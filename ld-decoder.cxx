@@ -35,7 +35,7 @@ int main(int argc, char *argv[])
 	int bufloc = 0;
 
 	fd = open(argv[1], O_RDONLY);
-	if (argc >= 3) lseek64(fd, atoi(argv[2])*1024*1024, SEEK_SET);
+	if (argc >= 3) lseek64(fd, atoi(argv[2]), SEEK_SET);
 
 	dlen = read(fd, data, sizeof(data));
 
@@ -106,20 +106,25 @@ int main(int argc, char *argv[])
 					peakbin = fbin;
 				}
 				fbin++;
-			//	cerr << i << ':' << f << ' ' << fc << ',' << fci << ' ' << ctor(fc, fci) / N << ' ' << atan2(fci, ctor(fc, fci)) << endl;
+//				cerr << i << ':' << f << ' ' << fc << ',' << fci << ' ' << ctor(fc, fci) / N << ' ' << atan2(fci, ctor(fc, fci)) << endl;
 			}
 
 			double dpi;
 			double tfreq;	
-			if ((peakbin >= 1) && (peakbin < (f - 1))) {
+			if ((peakbin >= 1) && (peakbin < (fbin - 1))) {
 				double p0 = bin[peakbin - 1];
 				double p2 = bin[peakbin + 1];
 		
 				dpi = (double)peakbin + ((p2 - p0) / (2.0 * ((2.0 * peak) - p0 - p2))); 
 				tfreq = (dpi * step) + lf;	
+
+				if (tfreq < 0) {
+					cerr << "invalid freq " << tfreq << " peak bin " << (peakbin * step) + lf << endl;
+					tfreq = 0;
+				}
 			} else {
 				// this generally only happens during a long dropout
-//				cerr << "out of range\n";
+//				cerr << "out of range on sample " << i << " with step " << step;
 				tfreq = 0;	
 			}
 
@@ -127,8 +132,12 @@ int main(int argc, char *argv[])
 		};
 
 		// One rough pass to get the approximate frequency, and then a final pass to resolve it
-		tfreq = peakfinder(7600000, 9450000, 800000);
-		if (tfreq != 0) tfreq = peakfinder(tfreq - 50000, tfreq + 50000, 10000);
+		tfreq = peakfinder(7600000, 9600000, 500000);
+		if (tfreq != 0) {
+			double tfreq2 = peakfinder(tfreq - 100000, tfreq + 100000, 10000);
+		
+			if (tfreq2 != 0.0) tfreq = tfreq2;
+		}
 
 		// convert frequency into 8-bit unsigned output for the next phase
 		const double zero = 7600000.0;
