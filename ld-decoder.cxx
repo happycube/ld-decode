@@ -1,4 +1,4 @@
-/* NTSC decoder prototype, Copyright (C) 2013 Chad Page.  License: LGPL2 */
+/* LD decoder prototype, Copyright (C) 2013 Chad Page.  License: LGPL2 */
 
 #include <stdio.h>
 #include <iostream>
@@ -10,78 +10,16 @@
 #include <stdlib.h>
 #include <string.h>
 
-//#define CHZ 35795453.0 
-//#define CHZ (28636363.0*5.0/4.0)
+// capture frequency and fundamental NTSC color frequency
 #define CHZ 1000000.0*(315.0/88.0)*8.0
-
 #define FSC 1000000.0*(315.0/88.0)
 
 using namespace std;
-
-double ctor(fftw_complex c)
-{
-	return sqrt((c[0] * c[0]) + (c[1] * c[1]));
-} 
 
 double ctor(double r, double i)
 {
 	return sqrt((r * r) + (i * i));
 }
-
-
-// state-containing high pass filter
-class Highpass {
-	private:
-		double dt, RC;
-		double a;
-		double o_prev, in_prev;
-	public:
-		Highpass(double _dt = (1.0 / CHZ), double _RC = (1.0 / 2700000.0))
-		{
-			dt = _dt;
-			RC = _RC;
-			a = RC / (RC + dt);
-			in_prev = o_prev = 0.0;
-
-//			cout << RC << ',' << dt << ',' << a << endl;
-		}	
-		double iterate(double in) {
-			double o;
-
-			o = (a * o_prev) + (a * (in - in_prev)); 
-			o_prev = o;
-			in_prev = in;
-
-			return o;
-		}
-};
-
-// state-containing low pass filter
-class Lowpass {
-	private:
-		double dt, RC;
-		double a;
-		double o_prev, in_prev;
-	public:
-		Lowpass(double _dt = (1.0 / CHZ), double _RC = (1.0 / 10000000.0))
-		{
-			dt = _dt;
-			RC = _RC;
-			a = dt / (RC + dt);
-			in_prev = o_prev = 0.0;
-
-//			cout << RC << ',' << dt << ',' << a << endl;
-		}	
-		double iterate(double in) {
-			double o;
-
-			o = (a * in) + ((1 - a) * o_prev); 
-			o_prev = o;
-			in_prev = in;
-
-			return o;
-		}
-};
 
 unsigned char data[28*1024*1024];
 double ddata[28 * 1024 * 1024];
@@ -92,6 +30,9 @@ int main(int argc, char *argv[])
 	unsigned char avg, peak = 0;
 	long long total = 0;
 	int rp;
+
+	char outbuf[4096];
+	int bufloc = 0;
 
 	fd = open(argv[1], O_RDONLY);
 	if (argc >= 3) lseek64(fd, atoi(argv[2])*1024*1024, SEEK_SET);
@@ -107,21 +48,9 @@ int main(int argc, char *argv[])
 
 	avg = total / dlen;
 
-#define HP 0
-#if HP 
-	Highpass hp;
-	Lowpass lp;
-
-	// high pass
-	for (int i = 0; i < dlen; i++) {
-		double in = (double)(data[i] - avg);
-		ddata[i] = hp.iterate(in); 
-	}
-#else
 	for (int i = 0; i < dlen; i++) {
 		ddata[i] = (double)(data[i] - avg);
 	}
-#endif
 
 	double breq = CHZ / 8500000; 
 	double freq = CHZ / 8500000; 
@@ -131,11 +60,14 @@ int main(int argc, char *argv[])
 	
 	for (int i = N; i < dlen - N; i++) {
 		double fc, fci;
-		double peak = 0, peakfreq = 0;	
 		double bin[2048];
-		int fbin = 0, peakbin = 0;
 		double avg = 0.0;		
+		
+		for (int k = (-N + 1); k < N; k++) {
+			avg += ddata[i + k] / ((2 * N) - 1);
+		}
 
+		// this is one bin of a DFT.  For quick+dirty reasons, I'm using lambdas inside the function.
 		auto dft = [&](double f) -> double  
 		{
 			fc = fci = 0.0;
@@ -153,40 +85,52 @@ int main(int argc, char *argv[])
 			}
 			return ctor(fc, fci);
 		};
-			
-		for (int k = (-N + 1); k < N; k++) {
-			avg += ddata[i + k] / ((2 * N) - 1);
-		}
-
-		phase = 0.0;	
-		for (int f = 7500000; f < 9400000 + 500000; f += 50000) { 
-			bin[fbin] = dft(f);
-			if (bin[fbin] > peak) {
-				peak = bin[fbin];
-				peakfreq = f;
-				peakbin = fbin;
-			}
-			fbin++;
-//			cerr << i << ':' << f << ' ' << fc << ',' << fci << ' ' << ctor(fc, fci) / N << ' ' << atan2(fci, ctor(fc, fci)) << endl;
-		}
-
-		double dpi;
-		double tfreq;	
-		if (peakbin >= 1) {
-			double p0 = bin[peakbin - 1];
-			double p2 = bin[peakbin + 1];
 		
-			dpi = (double)peakbin + ((p2 - p0) / (2.0 * ((2.0 * peak) - p0 - p2))); 
-			tfreq = (dpi * 50000) + 7500000;	
+		double tfreq;	
 
-			dft(tfreq);
-//			cerr << i << ':' << tfreq << ' ' << fc << ',' << fci << ' ' << ctor(fc, fci) << ' ' << atan2(fci, ctor(fc, fci)) << endl;
-//			phase -= atan2(fci, ctor(fc, fci));
-		}
-
-//		tfreq = (dpi * 50000) + 7500000;	
-		// cerr << bin[0] << ' ' << tfreq << endl;
+		// Run a few bins of the DFT and use quadratric interpretation to find the frequency peak.  In effect due to the
+		// DFT size, this is low pass filtered.
+		auto peakfinder = [&](double lf, double hf, double step) -> double  
+		{
+			double peak = 0, peakfreq = 0;	
+			int fbin = 0, peakbin = 0;
+			int f;
 	
+			// we include an extra bin on each side so we can do quadratric interp across the whole range 
+			lf -= step;
+			for (f = lf; f < hf + step + 1; f += step) { 
+				bin[fbin] = dft(f);
+				if (bin[fbin] > peak) {
+					peak = bin[fbin];
+					peakfreq = f;
+					peakbin = fbin;
+				}
+				fbin++;
+			//	cerr << i << ':' << f << ' ' << fc << ',' << fci << ' ' << ctor(fc, fci) / N << ' ' << atan2(fci, ctor(fc, fci)) << endl;
+			}
+
+			double dpi;
+			double tfreq;	
+			if ((peakbin >= 1) && (peakbin < (f - 1))) {
+				double p0 = bin[peakbin - 1];
+				double p2 = bin[peakbin + 1];
+		
+				dpi = (double)peakbin + ((p2 - p0) / (2.0 * ((2.0 * peak) - p0 - p2))); 
+				tfreq = (dpi * step) + lf;	
+			} else {
+				// this generally only happens during a long dropout
+//				cerr << "out of range\n";
+				tfreq = 0;	
+			}
+
+			return tfreq;
+		};
+
+		// One rough pass to get the approximate frequency, and then a final pass to resolve it
+		tfreq = peakfinder(7600000, 9450000, 800000);
+		if (tfreq != 0) tfreq = peakfinder(tfreq - 50000, tfreq + 50000, 10000);
+
+		// convert frequency into 8-bit unsigned output for the next phase
 		const double zero = 7600000.0;
 		const double one = 9300000.0;
 		const double mfactor = 254.0 / (one - zero);
@@ -198,9 +142,14 @@ int main(int argc, char *argv[])
 		else if (tmpout > 255) out = 255;
 		else out = tmpout; 
 
-		write(1, &out, 1);	
-
-//		cerr << i << ' ' << peakfreq << ' ' << peakbin << ':' << (dpi * 500000) + 7500000 << ' ' << (int) out << endl;
+		outbuf[bufloc++] = out;
+		if (bufloc == 4096) {	
+			if (write(1, outbuf, 4096) != 4096) {
+				cerr << "write error\n";
+				exit(0);
+			}
+			bufloc = 0;
+		}
 	};
 
 	return 0;	
