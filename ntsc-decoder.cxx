@@ -35,6 +35,29 @@ double clamp(double v, double low, double high)
 	else return v;
 }
 
+class LowPass {
+	protected:
+		bool first;
+	public:
+		double alpha;
+		double val;
+		
+		LowPass(double _alpha = 0.15) {
+			alpha = _alpha;	
+			first = true;
+		}	
+
+		double feed(double _val) {
+			if (first) {
+				first = false;
+				val = val;
+			} else {
+				val = (alpha * val) + ((1 - alpha) * _val);	
+			}
+			return val;
+		}
+};
+
 unsigned char rdata[1024*1024*32];
 double data[1024*1024*32];
 int dlen;
@@ -92,7 +115,7 @@ int cb_analysis(int begin, int end, double &peaklevel, double &peakphase)
 		double level = ctor(fc, fci) / 33.0;
 		if (level > 0.6) phase -= (atan2(fci, ctor(fc, fci)));
 		if (level > peaklevel) peaklevel = level;
-		cerr << i << ' ' << ctor(fc, fci) / 33 << endl;
+		cerr << i << ' ' << ctor(fc, fci) / 33 << ' ' << phase << ' ' << peaklevel << endl;
 	}
 //	cerr << i << ' ' << state << ' ' << (int)data[i] << ':' << ire << ' ' << ' ' << fc << ',' << fci << " : " << ctor(fc, fci) / N << ',' << atan2(fci, ctor(fci, fc)) << ',' << phase << endl; 
 //		if (fc < 0) phase += (M_PIl / 2.0); 
@@ -144,6 +167,8 @@ int main(int argc, char *argv[])
 	i = 0;
 	double burst = 0.0;
 
+	LowPass lpU(0.8), lpV(0.8);
+
 	while (i < dlen) {
 		if (!find_sync(i, begin, len)) {
 			int lc = 0;
@@ -156,7 +181,7 @@ int main(int argc, char *argv[])
 
 			burst = 0.0;
 			// color burst is approx i + 30 to i + 90
-			cb_analysis(i + 40, i + 80, burst, phase);
+			cb_analysis(i + 20, i + 120, burst, phase);
 
 			cerr << freq << ',' << phase << endl;
 			freq = 8.0;
@@ -176,6 +201,11 @@ int main(int argc, char *argv[])
 
 				double u = ((fc / 15) * 32 / burst);
 				double v = ((fci / 15) * 32 / burst);
+
+				lpU.feed(u);
+				lpV.feed(v);
+				u = lpU.val;
+				v = lpV.val;
 /*
 				fc = fci = 0.0;
 				for (int k = -9; k < 10; k++) {
@@ -187,12 +217,12 @@ int main(int argc, char *argv[])
 
 				//v = ((fci / 19) / burst * 32);
 */
-				if (burst > 0.2) {
+/*				if (burst > 0.2) {
 					y += ((v / burst) * sin(phase + (2.0 * M_PIl * (((double)j / freq)))));
 					y -= ((u / burst) * cos(phase + (2.0 * M_PIl * (((double)j / freq)))));
 				}
 				y -= (255 * 0.2);
-
+*/
 //			u = v = 0;
 
 /*
