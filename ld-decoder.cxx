@@ -21,12 +21,40 @@ double ctor(double r, double i)
 	return sqrt((r * r) + (i * i));
 }
 
+class LowPass {
+	protected:
+		bool first;
+	public:
+		double alpha;
+		double val;
+		
+		LowPass(double _alpha = 0.15) {
+			alpha = _alpha;	
+			first = true;
+		}	
+		
+		double reset(double _val) {
+			val = _val;
+			return val;
+		}
+
+		double feed(double _val) {
+			if (first) {
+				first = false;
+				val = val;
+			} else {
+				val = (alpha * val) + ((1 - alpha) * _val);	
+			}
+			return val;
+		}
+};
+
 unsigned char data[28*1024*1024];
 double ddata[28 * 1024 * 1024];
 
 int main(int argc, char *argv[])
 {
-	int rv, fd, dlen;
+	int rv, fd, dlen = sizeof(data);
 	unsigned char avg, peak = 0;
 	long long total = 0;
 	int rp;
@@ -36,9 +64,14 @@ int main(int argc, char *argv[])
 
 	fd = open(argv[1], O_RDONLY);
 	if (argc >= 3) lseek64(fd, atoi(argv[2]), SEEK_SET);
+	
+	if (argc >= 4) {
+		if (atoi(argv[3]) < sizeof(data)) {
+			dlen = atoi(argv[3]); 
+		}
+	}
 
-	dlen = read(fd, data, sizeof(data));
-
+	dlen = read(fd, data, dlen);
 	cout << std::setprecision(8);
 
 	for (int i = 0; i < dlen; i++) {
@@ -52,11 +85,18 @@ int main(int argc, char *argv[])
 		ddata[i] = (double)(data[i] - avg);
 	}
 
-	double breq = CHZ / 8500000; 
-	double freq = CHZ / 8500000; 
+	double curfreq = CHZ;
+
+	double breq = curfreq / 8500000; 
+	double freq = curfreq / 8500000; 
 	double phase = 0.0;	
+
+	LowPass lpfreq(0.20);
+	LowPass lpsync(0.98);
 	
 	#define N 8
+
+	bool insync = false;
 	
 	for (int i = N; i < dlen - N; i++) {
 		double fc, fci;
@@ -71,7 +111,7 @@ int main(int argc, char *argv[])
 		auto dft = [&](double f) -> double  
 		{
 			fc = fci = 0.0;
-			freq = CHZ / (double)f;
+			freq = curfreq / (double)f;
 	
 			for (int k = (-N + 1); k < N; k++) {
 				double o = ddata[i + k]; 
@@ -132,33 +172,55 @@ int main(int argc, char *argv[])
 		};
 
 		// One rough pass to get the approximate frequency, and then a final pass to resolve it
-		tfreq = peakfinder(7600000, 9600000, 500000);
+		tfreq = peakfinder(7600000, 9600000, 1000000);
 		if (tfreq != 0) {
-			double tfreq2 = peakfinder(tfreq - 100000, tfreq + 100000, 10000);
+			double tfreq2 = peakfinder(tfreq - 100000, tfreq + 100000, 20000);
 		
 			if (tfreq2 != 0.0) tfreq = tfreq2;
 		}
+
+		lpfreq.feed(tfreq);
 
 		// convert frequency into 8-bit unsigned output for the next phase
 		const double zero = 7600000.0;
 		const double one = 9300000.0;
 		const double mfactor = 254.0 / (one - zero);
 
-		unsigned char out;
-		double tmpout = ((double)(tfreq - zero) * mfactor);
-
-		if (tmpout < 0) out = 0;
-		else if (tmpout > 255) out = 255;
-		else out = tmpout; 
-
-		outbuf[bufloc++] = out;
-		if (bufloc == 4096) {	
-			if (write(1, outbuf, 4096) != 4096) {
-				cerr << "write error\n";
-				exit(0);
+		if (insync) {
+			if (tfreq > 7900000) {
+				insync = false;
+				if (fabs(lpsync.val - 7600000) < 100000) {
+//					curfreq /= (lpsync.val / 7600000.0);
+				}
+				cerr << i << ' ' << lpsync.val << ' ' << (double)curfreq << ' ' << (double)CHZ << endl;
+	
+				breq = curfreq / 8500000; 
+				freq = curfreq / 8500000; 
 			}
-			bufloc = 0;
+			lpsync.feed(tfreq);
+		} else {
+			if (tfreq < 7700000) {
+				insync = true;
+				lpsync.reset(tfreq);
+				// cerr << i << ' ' << tfreq << ' ' << lpfreq.val << endl;
+			}
 		}
+
+			unsigned char out;
+			double tmpout = ((double)(tfreq - zero) * mfactor);
+
+			if (tmpout < 0) out = 0;
+			else if (tmpout > 255) out = 255;
+			else out = tmpout; 
+
+			outbuf[bufloc++] = out;
+			if (bufloc == 4096) {	
+				if (write(1, outbuf, 4096) != 4096) {
+					cerr << "write error\n";
+					exit(0);
+				}
+				bufloc = 0;
+			}
 	};
 
 	return 0;	
