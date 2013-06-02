@@ -14,7 +14,7 @@
 const double FSC=(1000000.0*(315.0/88.0))*1.00;
 const double CHZ=(1000000.0*(315.0/88.0))*8.0;
 
-#define LOW 0
+#define LOW 0 
 
 using namespace std;
 
@@ -142,8 +142,6 @@ int main(int argc, char *argv[])
 
 //	cout << std::setprecision(8);
 
-//	dlen = 1024;
-
 	rlow = LOW;  rhigh = 255;
 	
 	igrad = (double)(rhigh - rlow) / 140.0;
@@ -167,7 +165,8 @@ int main(int argc, char *argv[])
 	i = 0;
 	double burst = 0.0;
 
-	LowPass lpU(0.8), lpV(0.8);
+//	LowPass lpU(0.95), lpV(0.95);
+	LowPass lpU(0.80), lpV(0.80);
 
 	while (i < dlen) {
 		if (!find_sync(i, begin, len)) {
@@ -181,7 +180,7 @@ int main(int argc, char *argv[])
 
 			burst = 0.0;
 			// color burst is approx i + 30 to i + 90
-			cb_analysis(i + 20, i + 120, burst, phase);
+			cb_analysis(i + 25, i + 70, burst, phase);
 
 			cerr << freq << ',' << phase << endl;
 			freq = 8.0;
@@ -204,25 +203,23 @@ int main(int argc, char *argv[])
 
 				lpU.feed(u);
 				lpV.feed(v);
+#if 1
+				if (burst > 0.2) {
+					y -= (fc / 2) * cos(phase + (2.0 * M_PIl * (((double)j / freq))));
+					y += (fci / 2) * sin(phase + (2.0 * M_PIl * (((double)j / freq))));
+				}
+				y -= (255 * (0.20 ));
+#endif
 				u = lpU.val;
 				v = lpV.val;
-/*
-				fc = fci = 0.0;
-				for (int k = -9; k < 10; k++) {
-					double o = data[j + k]; 
 
-					fc += (o * cos(phase + (2.0 * M_PIl * ((double)(j + k) / freq)))); 
-					fci -= (o * sin(phase + (2.0 * M_PIl * ((double)(j + k) / freq)))); 
-				}
-
-				//v = ((fci / 19) / burst * 32);
-*/
-/*				if (burst > 0.2) {
+#if 0
+				if (burst > 0.2) {
 					y += ((v / burst) * sin(phase + (2.0 * M_PIl * (((double)j / freq)))));
 					y -= ((u / burst) * cos(phase + (2.0 * M_PIl * (((double)j / freq)))));
 				}
-				y -= (255 * 0.2);
-*/
+//				y -= (255 * 0.2);
+#endif
 //			u = v = 0;
 
 /*

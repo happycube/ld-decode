@@ -224,13 +224,15 @@ int main(int argc, char *argv[])
 	cerr << std::setprecision(16);
 
 	fd = open(argv[1], O_RDONLY);
-	if (argc >= 3) lseek64(fd, atoi(argv[2]), SEEK_SET);
+	if (argc >= 3) lseek64(fd, atoll(argv[2]), SEEK_SET);
 	
 	if (argc >= 4) {
-		if ((size_t)atoi(argv[3]) < sizeof(data)) {
+		if ((size_t)atoi(argv[3]) < dlen) {
 			dlen = atoi(argv[3]); 
 		}
 	}
+
+	cerr << dlen << endl;
 
 	data = new unsigned char[dlen + 1];
 
@@ -251,6 +253,7 @@ int main(int argc, char *argv[])
 	for (int i = 0; i < dlen; i++) {
 		//cerr << i << endl;
 		ddata[i] = butter.feed((double)data[i] - avg);
+//		ddata[i] = ((double)data[i] - avg);
 		//if (i < 100) cerr << (double)(data[i] - avg) << ", ";
 		if (i < 100) cerr << (double)(ddata[i]) << ", ";
 		total += ddata[i];
@@ -262,14 +265,16 @@ int main(int argc, char *argv[])
 	char outbuf[4096];
 	int bufloc = 0;
 	
-	LowPass lpf(0.2);
+	LowPass lpf(-0.20);
 
-	for (int i = 8; i < dlen - 8; i++) {		
+	#define N 8 
+
+	for (int i = N; i < dlen - N; i++) {		
 		// One rough pass to get the approximate frequency for a pixel, and then a final pass to resolve it
-		double pf = peakfreq(ddata, i, 8, 7000000, 10000000, 250000, CHZ);
+		double pf = peakfreq(ddata, i, N, 7000000, 10000000, 1000000, CHZ);
 
 		if (pf != 0) {
-			double pf2 = peakfreq(ddata, i, 8, pf - 100000, pf + 100000, 20000, CHZ);
+			double pf2 = peakfreq(ddata, i, N, pf - 100000, pf + 100000, 25000, CHZ);
 		
 			if (pf2 != 0.0) pf = pf2;
 		}
@@ -277,11 +282,15 @@ int main(int argc, char *argv[])
 		if (insync) {
 			if (pf > 7900000) {
 				insync = false;
+				lpf.reset(pf);
 				//cerr << i << ' ' << pf << ' ' << pf / 7600000.0 << endl;
 			}
 		} else {
 			if (pf < 7650000) {
 				insync = true;
+			} else {
+				lpf.feed(pf);
+				pf = lpf.val;
 			}
 		}
 
