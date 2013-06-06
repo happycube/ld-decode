@@ -11,8 +11,8 @@
 #include <string.h>
 
 // capture frequency and fundamental NTSC color frequency
-#define CHZ 1000000.0*(315.0/88.0)*8.0
-#define FSC 1000000.0*(315.0/88.0)
+const double CHZ = (1000000.0*(315.0/88.0)*8.0);
+const double FSC = (1000000.0*(315.0/88.0));
 
 using namespace std;
 
@@ -86,19 +86,20 @@ double peakfreq(double *buf, int offset, int len, double lf, double hf, double s
 	double peak = 0;	
 	int fbin = 0, peakbin = 0;
 	int f;
-		
-//	dc_filter(buf_mdc, &buf[offset - len], (len * 2) + 1);
+
+	dc_filter(buf_mdc, &buf[offset - len], (len * 2) + 1);
 	
 	// we include an extra bin on each side so we can do quadratric interp across the whole range 
 	lf -= step;
 	for (f = lf; f < hf + step + 1; f += step) { 
-		bin[fbin] = dft(&buf[offset - len], len, len, (basefreq / f));
+		//bin[fbin] = dft(&buf[offset - len], len, len, (basefreq / f));
+		bin[fbin] = dft(buf_mdc, len, len, (basefreq / f));
+//		cerr << f << ' ' << bin[fbin] << endl;
 		if (bin[fbin] > peak) {
 			peak = bin[fbin];
 			peakbin = fbin;
 		}
 		fbin++;
-//		cerr << i << ':' << f << ' ' << fc << ',' << fci << ' ' << ctor(fc, fci) / N << ' ' << atan2(fci, ctor(fc, fci)) << endl;
 	}
 
 	double dpi;
@@ -116,7 +117,7 @@ double peakfreq(double *buf, int offset, int len, double lf, double hf, double s
 		}
 	} else {
 		// this generally only happens during a long dropout
-		cerr << "out of range on sample " <<  offset << " with step " << step;
+		cerr << "out of range on sample " <<  offset << " with step " << step << ' ' << peakbin << endl;
 		pf = 0;	
 	}
 
@@ -265,7 +266,7 @@ int main(int argc, char *argv[])
 	char outbuf[4096];
 	int bufloc = 0;
 	
-	LowPass lpf(-0.20);
+	LowPass lpf(0.00);
 
 	#define N 8 
 
@@ -274,7 +275,7 @@ int main(int argc, char *argv[])
 		double pf = peakfreq(ddata, i, N, 7000000, 10000000, 1000000, CHZ);
 
 		if (pf != 0) {
-			double pf2 = peakfreq(ddata, i, N, pf - 100000, pf + 100000, 25000, CHZ);
+			double pf2 = peakfreq(ddata, i, N, pf - 100000, pf + 100000, 20000, CHZ);
 		
 			if (pf2 != 0.0) pf = pf2;
 		}
@@ -290,9 +291,11 @@ int main(int argc, char *argv[])
 				insync = true;
 			} else {
 				lpf.feed(pf);
+		//		cerr << i << ' ' << pf << ' ' << lpf.val << endl;
 				pf = lpf.val;
 			}
 		}
+		cerr << i << ' ' << pf << ' ' << lpf.val << endl;
 
 		unsigned char out;
 		double tmpout = ((double)(pf - zero) * mfactor);
@@ -301,7 +304,7 @@ int main(int argc, char *argv[])
 		else if (tmpout > 255) out = 255;
 		else out = tmpout; 
 				
-		//cerr << i << ' ' << pf << ' ' << pf << ' ' << (int)out << endl;
+//		cerr << i << ' ' << pf << ' ' << pf << ' ' << (int)out << endl;
 
 		outbuf[bufloc++] = out;
 		if (bufloc == 4096) {	
@@ -352,5 +355,4 @@ int main(int argc, char *argv[])
 
 	return rv;
 }
-
 
