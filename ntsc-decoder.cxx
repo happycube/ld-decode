@@ -14,7 +14,7 @@
 const double FSC=(1000000.0*(315.0/88.0))*1.00;
 const double CHZ=(1000000.0*(315.0/88.0))*8.0;
 
-#define LOW 0 
+#define LOW 8 
 
 using namespace std;
 
@@ -80,8 +80,8 @@ int find_sync(int start, int &begin, int &len)
 		if (!begin) {
 			if (data[i] < -20.0) {
 				sc++;
-				if (sc > 16) {
-					begin = i - 16;
+				if (sc > 32) {
+					begin = i - 32;
 				}
 			}
 		} else if (data[i] > -15.0) {
@@ -137,8 +137,11 @@ int main(int argc, char *argv[])
 	double igrad = 0.0;
 
 	fd = open(argv[1], O_RDONLY);
-	if (argc >= 3) lseek64(fd, atoi(argv[2]) /* *1024*1024 */, SEEK_SET);
-	dlen = read(fd, rdata, sizeof(rdata));
+	if (argc >= 3) lseek64(fd, atoll(argv[2]) /* *1024*1024 */, SEEK_SET);
+
+	dlen = sizeof(rdata);
+	if (argc >= 4) dlen = atol(argv[3]);
+	dlen = read(fd, rdata, dlen);
 
 //	cout << std::setprecision(8);
 
@@ -165,8 +168,7 @@ int main(int argc, char *argv[])
 	i = 0;
 	double burst = 0.0;
 
-//	LowPass lpU(0.95), lpV(0.95);
-	LowPass lpU(0.80), lpV(0.80);
+	LowPass lpU(0.8), lpV(0.8);
 
 	while (i < dlen) {
 		if (!find_sync(i, begin, len)) {
@@ -204,11 +206,14 @@ int main(int argc, char *argv[])
 				lpU.feed(u);
 				lpV.feed(v);
 #if 1
-				if (burst > 0.2) {
-					y -= (fc / 2) * cos(phase + (2.0 * M_PIl * (((double)j / freq))));
-					y += (fci / 2) * sin(phase + (2.0 * M_PIl * (((double)j / freq))));
+				if (/*(j >= 6430) && (j <= 6446) && */(burst > 0.2)) {
+			//		cerr << j << ' ' << fc << ' ' << fci << ' ' << y << ' ';
+//					//cerr << j << ' ' << lpU.val << ' ' << lpV.val << ' ' << y << ' ';
+//					y -= (fc ) * cos(phase + (2.0 * M_PIl * (((double)j / freq))));
+//					y += (fci ) * sin(phase + (2.0 * M_PIl * (((double)j / freq))));
+//					cerr << y << ' ' << endl;
 				}
-				y -= (255 * (0.20 ));
+//				y -= (255 * .2);
 #endif
 				u = lpU.val;
 				v = lpV.val;
@@ -232,14 +237,15 @@ R = 1.164(Y - 16) + 1.596(V - 128)
 				double g = (y * 1.164) - (0.813 * v) - (u * 0.391); 
 				double b = (y * 1.164) + (u * 2.018); 
 
-//				cerr << fc << ':' << fci << endl;				
+				//cerr << fc << ':' << fci << ' ' << r << endl;				
 
 //				line[lc++] = clamp(y, 0, 255);
 	
 				line[lc++] = clamp(r, 0, 255);
 				line[lc++] = clamp(g, 0, 255);
 				line[lc++] = clamp(b, 0, 255);
-
+				//cerr << fc << ':' << fci << ' ' << lc << ' ' << (int)line[lc - 2] << endl;				
+			
 			}
 			write(1, line, 1536 * 3);
 		} else {
