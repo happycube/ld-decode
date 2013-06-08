@@ -14,7 +14,7 @@
 const double FSC=(1000000.0*(315.0/88.0))*1.00;
 const double CHZ=(1000000.0*(315.0/88.0))*8.0;
 
-#define LOW 8 
+#define LOW 24 
 
 using namespace std;
 
