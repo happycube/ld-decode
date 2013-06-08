@@ -14,7 +14,7 @@
 const double FSC=(1000000.0*(315.0/88.0))*1.00;
 const double CHZ=(1000000.0*(315.0/88.0))*8.0;
 
-#define LOW 24 
+#define LOW 0 
 
 using namespace std;
 
@@ -168,7 +168,7 @@ int main(int argc, char *argv[])
 	i = 0;
 	double burst = 0.0;
 
-	LowPass lpU(0.8), lpV(0.8);
+	LowPass lpU(0.95), lpV(0.95);
 
 	while (i < dlen) {
 		if (!find_sync(i, begin, len)) {
