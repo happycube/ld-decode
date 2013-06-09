@@ -275,7 +275,9 @@ int main(int argc, char *argv[])
 		
 			if (pf2 != 0.0) pf = pf2;
 		}
-
+				
+		pf = butterout.feed(pf);
+/*
 		if (insync) {
 			if (pf > 7900000) {
 				insync = false;
@@ -294,7 +296,7 @@ int main(int argc, char *argv[])
 			}
 		}
 //		cerr << i << ' ' << pf << ' ' << lpf.val << endl;
-
+*/
 		unsigned char out;
 		double tmpout = ((double)(pf - zero) * mfactor);
 			
