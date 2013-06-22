@@ -16,7 +16,43 @@ const double FSC = (1000000.0*(315.0/88.0));
 
 using namespace std;
 
-// (too) simple lowpass filter
+template <class T> class CircBuf {
+	protected:
+		bool firstpass;
+		long count, cur;
+		T *buf;
+		T total;
+	public:
+		CircBuf(int size) {
+			buf = new T[size];
+
+			count = size;
+			cur = 0;
+			total = 0;
+			firstpass = true;
+		}
+
+		double feed(T nv)
+		{
+			if (!firstpass) {
+				total -= buf[cur];
+			}  
+
+			buf[cur] = nv;
+			total += nv;
+			cur++;
+			if (cur == count) {
+				cur = 0; firstpass = false;
+			}
+
+			if (firstpass) {
+				return total / cur;
+			} else {
+				return total / count;
+			}
+		}
+};
+
 class LowPass {
 	protected:
 		bool first;
@@ -27,24 +63,21 @@ class LowPass {
 		LowPass(double _alpha = 0.15) {
 			alpha = _alpha;	
 			first = true;
-			val = 0;
+			val = 0.0;
 		}	
-		
-		double reset(double _val) {
-			val = _val;
-			return val;
-		}
 
 		double feed(double _val) {
 			if (first) {
 				first = false;
-				val = val;
+				val = _val;
 			} else {
 				val = (alpha * val) + ((1 - alpha) * _val);	
 			}
 			return val;
 		}
 };
+
+unsigned char rdata[1024*1024*32];
 
 double ctor(double r, double i)
 {
@@ -64,6 +97,18 @@ inline double dft(double *buf, int offset, int len, double bin)
 	}
 
 	return ctor(fc, fci);
+}
+
+inline void dftc(double *buf, int offset, int len, double bin, double &fc, double &fci) 
+{
+	fc = fci = 0.0;
+
+	for (int k = (-len + 1); k < len; k++) {
+		double o = buf[offset + k]; 
+		
+		fc += (o * cos((2.0 * M_PIl * ((double)(offset - k) / bin)))); 
+		fci -= (o * sin((2.0 * M_PIl * ((double)(offset - k) / bin)))); 
+	}
 }
 
 void dc_filter(double *out, double *in, int len)
@@ -92,12 +137,13 @@ double peakfreq(double *buf, int offset, int len, double lf, double hf, double s
 	// we include an extra bin on each side so we can do quadratric interp across the whole range 
 	lf -= step;
 	for (f = lf; f < hf + step + 1; f += step) { 
-		//bin[fbin] = dft(&buf[offset - len], len, len, (basefreq / f));
-		bin[fbin] = dft(buf_mdc, len, len, (basefreq / f));
+		bin[fbin] = dft(&buf[offset - len], len, len, (basefreq / f));
+//		bin[fbin] = dft(buf_mdc, len, len, (basefreq / f));
 //		cerr << f << ' ' << bin[fbin] << endl;
 		if (bin[fbin] > peak) {
 			peak = bin[fbin];
 			peakbin = fbin;
+	//		cerr << f << ' ' << peak << endl;
 		}
 		fbin++;
 	}
@@ -118,7 +164,7 @@ double peakfreq(double *buf, int offset, int len, double lf, double hf, double s
 	} else {
 		// this generally only happens during a long dropout
 		cerr << "out of range on sample " <<  offset << " with step " << step << ' ' << peakbin << endl;
-		pf = 0;	
+		pf = (!peakbin) ? lf : hf;	
 	}
 
 	delete [] buf_mdc;
@@ -198,19 +244,40 @@ class LDE {
 		}
 };
 
-/* [n, Wn] = buttord((4.75/28.636),(6/28.636),5,20); [b, a] = butter(n, Wn); */ 
+// look for a zero crossing to sync up to
+int findzc(double *x, int len)
+{
+	double buf_mdc[len];
 
-const double butter_hp_b[] {0.274519698994363, -2.196157591954904, 7.686551571842164, -15.373103143684329, 19.216378929605412, -15.373103143684329, 7.686551571842164, -2.196157591954904, 0.274519698994363}; 
-const double butter_hp_a[] {1.000000000000000, -5.451971339878093, 13.301357128600866, -18.897310764958611, 17.055320256020426, -9.993718550464875, 3.707093163051426, -0.794910674423948, 0.075361065158677};  
+	dc_filter(buf_mdc, x, len);
 
-/* [n, Wn] = buttord((9/28.636),(11/28.636),5,20); [b, a] = butter(8, .30166); printf("%.15f, ", a); printf("\n");printf("%.15f, ", b); printf("\n"); */
+	for (int i = 1; i < len; i++) {
+		if ((buf_mdc[i] > 0) && (buf_mdc[i - 1] < 0)) return i;
+	}
+	return 0;
+}
 
-const double butter_vlp_a[] {1.000000000000000, -3.158134334331964, 5.114084769831670, -5.125062350588971, 3.422619065378838, -1.535535239782429, 0.448610127017045, -0.077499208036140, 0.006035230997728};
-const double butter_vlp_b[] {0.000371554923773, 0.002972439390181, 0.010403537865632, 0.020807075731264, 0.026008844664080, 0.020807075731264, 0.010403537865632, 0.002972439390181, 0.000371554923773}; 
+/* [n, Wn] = buttord((4.75/freq),(6/freq),5,20); [b, a] = butter(n, Wn, 'high'); */ 
+const double butter_hp_a[] {1.000000000000000, -5.452003763582253, 13.301505580218667, -18.897609846239369, 17.055662325697007, -9.993957663170113, 3.707195076964163, -0.794935153408986, 0.075363617536322}; 
+const double butter_hp_b[] {0.274524347761003, -2.196194782088027, 7.686681737308096, -15.373363474616191, 19.216704343270241, -15.373363474616191, 7.686681737308096, -2.196194782088027, 0.274524347761003}; 
 
-const double zero = 7600000.0;
-const double one = 9300000.0;
-const double mfactor = 254.0 / (one - zero);
+/* [n, Wn] = buttord([(6/28.636), (20/28.636)],[(5.3/28.636),(21.5/28.636)],5,20) */
+const double butter_bp_a[] {1.000000000000000, -1.708560919841575, 1.848799350100783, -1.812154162835113, 2.409265394434789, -2.181187978172917, 1.580615611624372, -1.068095638262071, 0.837490336169044, -0.479425849004081, 0.231495442539485, -0.101805027917706, 0.051011251354331, -0.016095112555307, 0.004363569816507, -0.000846544909261, 0.000229303114358};
+const double butter_bp_b[] {0.006009756284377, 0.000000000000000, -0.048078050275014, 0.000000000000000, 0.168273175962549, 0.000000000000000, -0.336546351925098, 0.000000000000000, 0.420682939906373, 0.000000000000000, -0.336546351925098, 0.000000000000000, 0.168273175962549, 0.000000000000000, -0.048078050275014, 0.000000000000000, 0.006009756284377}; 
+
+/* [n, Wn] = buttord((9/freq),(11/freq),5,20); [b, a] = butter(n, Wn); printf("%.15f, ", a); printf("\n");printf("%.15f, ", b); printf("\n"); */
+
+//const double butter_vlp_28a[] {1.000000000000000, -3.158234920673198, 5.114344712366162, -5.125405870554332, 3.422893181883937, -1.535675781320924, 0.448655610713883, -0.077507747696208, 0.006035943167793}; 
+//const double butter_vlp_28b[] {0.000371504405809, 0.002972035246472, 0.010402123362653, 0.020804246725305, 0.026005308406632, 0.020804246725305, 0.010402123362653, 0.002972035246472, 0.000371504405809}; 
+
+/* [n, Wn] = buttord((4.5/freq),(6/freq),3,25); [b, a] = butter(n, Wn); printf("%f %f\n", n, Wn); printf("%.15f, ", a); printf("\n");printf("%.15f, ", b); printf("\n"); */
+
+const double butter_vlp_28a[] {1.000000000000000, -2.955334800381594, 4.607255143193481, -4.467535165870464, 2.906391161426700, -1.274216653993614, 0.364989006532751, -0.061949530725109, 0.004749610655610};
+const double butter_vlp_28b[] {0.000485737386085, 0.003885899088680, 0.013600646810380, 0.027201293620760, 0.034001617025950, 0.027201293620760, 0.013600646810380, 0.003885899088680, 0.000485737386085};
+
+const double zero = 7500000.0;
+const double one = 9400000.0;
+const double mfactor = 65536.0 / (one - zero);
 
 int main(int argc, char *argv[])
 {
@@ -223,6 +290,8 @@ int main(int argc, char *argv[])
 
 	cerr << std::setprecision(16);
 
+	data = new unsigned char[dlen + 1];
+#if 1
 	fd = open(argv[1], O_RDONLY);
 	if (argc >= 3) lseek64(fd, atoll(argv[2]), SEEK_SET);
 	
@@ -238,12 +307,27 @@ int main(int argc, char *argv[])
 
 	dlen = read(fd, data, dlen);
 	cout << std::setprecision(8);
+#endif
 	
 	ddata = new double[dlen + 1];
 
-	LDE butterin(8, butter_hp_a, butter_hp_b);
-	LDE butterout(8, butter_vlp_a, butter_vlp_b);
+	double *freq = new double[dlen];
+	memset(freq, 0, sizeof(double) * dlen);
+#if 0
+	double lphase = 0.0, cphase = 0.0;
 
+	for (int i = 0; i < dlen; i++) {
+		cphase += ((FSC / 2) / CHZ);
+		freq[i] = 8800000 + (sin(cphase * M_PIl * 2.0) * 200000);
+		lphase += (freq[i] / CHZ);
+		data[i] = (sin(lphase * M_PIl * 2.0) * 64) + 128;
+	} 
+#endif
+
+	//LDE butterin(8, butter_hp_a, butter_hp_b);
+	LDE butterin(16, butter_bp_a, butter_bp_b);
+	LDE butterout(8, butter_vlp_28a, butter_vlp_28b);
+	
 	for (int i = 0; i < dlen; i++) {
 		total += data[i];
 	}
@@ -261,96 +345,143 @@ int main(int argc, char *argv[])
 	}
 
 	bool insync = false;
-	char outbuf[4096];
+	double outbuf[32768], outbuf_nf[32768];
 	int bufloc = 0;
+/*
+	CircBuf<double> cbvar(32);
+
+	LowPass lpavg(0.99);
+	lpavg.feed(ddata[0]);
+
+	for (int i = 16; i < dlen; i++) {		
+		lpavg.feed(ddata[i]);
+
+		double lpgap = (cbvar.feed(fabs(ddata[i] - lpavg.val))) / (M_PIl / 4.0) * 1.0;
+
+		double cdata = ddata[i];
+		double pcdata = ddata[i - 1];
+
+		double g1 = (atan2(pcdata, (lpgap / 2.0)) / (M_PIl / 4.0));
+                double g2 = (atan2(cdata, (lpgap / 2.0)) / (M_PIl / 4.0));
+
+//		cerr << i << ' ' << (int)data[i] << ' ' << ddata[i] << ' ' << lpavg.val << ' ' << lpgap << ' ' << g1 << ' ' << g2 << endl;
+	}	
 	
+	return 0;
+*/	
 	#define N 8 
 
-	for (int i = N; i < dlen - N; i++) {		
+	int ti;
+	double synctime = 0;
+	double offset = 0.0;
+
+	int prevsync = 0, synccount = 0;
+	double prev_offset = 0.0;
+
+	LowPass linelen(0.0);
+
+	for (int i = 128, ti = 128; i < dlen - 128; i++) {		
+/*
+		ti++;
+		if (synctime && i == (int)(synctime + .5)) {
+			double pf = peakfreq(ddata, i, 32, 7300000, 7900000, 100000, CHZ);
+			double pf2 = peakfreq(ddata, i, 32, pf - 40000, pf + 40000, 10000, CHZ);
+
+			cerr << "SYNC: " << pf << ' ' << pf2 << ' ' << 1820 * (7600000.0 / pf2) << endl;
+			synctime += ((7600000.0 / pf2) * 1820);
+			offset += ((7600000.0 / pf2) * 1820) - 1820;
+			i = ti + (offset + .5); 
+		}
+*/
 		// One rough pass to get the approximate frequency for a pixel, and then a final pass to resolve it
-		double pf = peakfreq(ddata, i, N, 7000000, 10000000, 500000, CHZ);
+		double pf = peakfreq(ddata, i, N, 7300000, 9500000, 100000, CHZ);
 
 		if (pf != 0) {
-			double pf2 = peakfreq(ddata, i, N, pf - 100000, pf + 100000, 20000, CHZ);
+			double pf2 = peakfreq(ddata, i, N, pf - 40000, pf + 40000, 10000, CHZ);
 		
 			if (pf2 != 0.0) pf = pf2;
 		}
-				
-		pf = butterout.feed(pf);
-/*
-		if (insync) {
-			if (pf > 7900000) {
-				insync = false;
-				butterout.clear();
-				pf = butterout.feed(pf);
-				//cerr << i << ' ' << pf << ' ' << pf / 7600000.0 << endl;
-			}
-		} else {
-			if (pf < 7650000) {
-				insync = true;
-			} else {
-			//	cerr << pf << ' ';
-				pf = butterout.feed(pf);
-			//	cerr << pf << endl;
-		//		cerr << i << ' ' << pf << ' ' << butterout.val << endl;
-			}
-		}
-//		cerr << i << ' ' << pf << ' ' << lpf.val << endl;
-*/
-		unsigned char out;
-		double tmpout = ((double)(pf - zero) * mfactor);
+	
+		// cerr << i << ' ' << freq[i] << ' ' << pf << ' ' ;	
+		outbuf_nf[bufloc++] = pf;
+		pf = butterout.feed(pf - 8500000) + 8500000;
+		outbuf[bufloc] = pf;
+		//cerr << pf << ' ' << endl;
+	
+		synccount = (pf < 7750000) ? synccount + 1 : 0;
+		if ((bufloc == 4096) || (synccount == 60)) {
+			int ll = i - prevsync;
+			double sf = 2.0;
+			int outlen = bufloc / sf;
+			double filtered[bufloc + 16];
 			
-		if (tmpout < 0) out = 0;
-		else if (tmpout > 255) out = 255;
-		else out = tmpout; 
-				
-//		cerr << i << ' ' << pf << ' ' << pf << ' ' << (int)out << endl;
+			double pf_sync = peakfreq(ddata, i, 32, 7500000, 7700000, 10000, CHZ);
+	
+			LDE butterp1(8, butter_vlp_28a, butter_vlp_28b);
+			LDE butterp2(8, butter_vlp_28a, butter_vlp_28b);
 
-		outbuf[bufloc++] = out;
-		if (bufloc == 4096) {	
-			if (write(1, outbuf, 4096) != 4096) {
+			if ((ll > 1800) && (ll < 1840)) {
+				sf = ll / 910.0; //linelen.feed(ll);
+				outlen = bufloc / sf;
+			}	
+		
+			cerr << "SYNC " << pf_sync << ' ' << ll << ' ' << sf << ' ' << bufloc << ' ' << bufloc / sf << ' ' << outlen << ' ' << linelen.val << endl; 
+
+			for (int j = 0; j < bufloc; j++) {
+				filtered[j] = outbuf[j];
+				//cerr << outbuf_nf[j] << ' ' << outbuf[j] << ' ' << filtered[j] << endl;
+			}
+/*			for (int j = bufloc - 1; j >= 0; j--) {
+				filtered[j] = butterp2.feed(filtered[j] - 7600000) + 7600000;
+				cerr << j << ' ' << outbuf_nf[j] << ' ' << outbuf[j] << ' ' << filtered[j] << endl;
+			}
+*/	
+			unsigned short output[outlen + 1]; 
+			double val = 0.0, cur = prev_offset;
+			for (int j = 0; j < outlen; j++) {
+				double ncur = cur + sf;
+
+//				cerr << fabs(cur) << ' ' << outbuf_nf[(int)fabs(cur)] << ' ';
+				val = filtered[(int)floor(cur)] * (1 - (cur - floor(cur))); 
+				for (int k = floor(cur + 1); k < floor(ncur); k++) {
+					val += filtered[k]; 
+//					cerr << outbuf[k] << ' ';
+				} 
+				if (ncur != floor(ncur)) {
+//					cerr << 'e'<< outbuf[(int)floor(ncur)];
+					val += filtered[(int)floor(ncur)] * (ncur - floor(ncur)); 
+				}
+				filtered[j] = val / sf * (2.0 / sf);
+//				cerr << j << ' ' << filtered[j] << endl;
+//				cerr << endl << j << ' ' << cur << ' ' << ncur << ' ' << val << ' ' << (ncur - floor(ncur)) << endl;
+				cur = ncur;
+			}
+			
+			for (int j = 0; j < outlen; j++) {
+				unsigned short out;
+				double tmpout = ((double)(filtered[j] - zero) * mfactor);
+				
+				if (tmpout < 0) out = 0;
+				else if (tmpout > 65535) out = 65535;
+				else out = tmpout; 
+
+				output[j] = out;
+			}
+			
+			if (write(1, output, 2 * outlen) != 2 * outlen) {
 				cerr << "write error\n";
 				exit(0);
 			}
+
+			prevsync = i;
+			
+			outbuf[0] = outbuf[bufloc - 1];
+			prev_offset = 0; // cur - floor(cur);
+			cerr << endl << outbuf[0] << ' ' << cur << ' ' << prev_offset << endl;
 			bufloc = 0;
 		}
 	};
 
-#if 0
-	LowPass lpf(0.8);
-
-	double lf = 8000000.0;
-	int pfc = 0, prev_i = 0;	
-	for (int i = 512; i < dlen - 512; i++) {
-		double pf = peakfreq(ddata, i, 128, 7600000, 9400000, 500000, CHZ);
-
-//		cout << pf << endl;
-		if (pf < 7800000) {
-			pf = peakfreq(ddata, i, 128, 7500000, 7800000, 100000, CHZ);
-//			cout << 'x' << pf << endl;
-			if ((pf > 7570000) && (pf < 7630000)) {
-				if (!pfc) {
-					butterout.clear();
-					pf = butterout.feed(pf);
-				} else {
-					pf = butterout.feed(pf);
-				}
-				if (pf < lf) lf = pf;
-				pfc++;
-			}
-		} else {
-			if (pfc > 80) {
-				// cout << i << ' ' << i - prev_i << ' ' << pfc << ' ' << lf << ' ' << lpf.val << ' ' << (1820.0 / (lpf.val / 7600000.0)) << endl;
-				prev_i = i;
-			}
-
-			lf = 8000000.0;
-
-			if ((pfc > 80) && (pfc < 256)) i += (1820 - 256); 
-			pfc = 0;
-		}
-	}
-#endif
 	delete [] data;
 	delete [] ddata;
 

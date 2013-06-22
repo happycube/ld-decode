@@ -12,7 +12,7 @@
 //#define CHZ (28636363.0*5.0/4.0)
 
 const double FSC=(1000000.0*(315.0/88.0))*1.00;
-const double CHZ=(1000000.0*(315.0/88.0))*8.0;
+const double CHZ=(1000000.0*(315.0/88.0))*4.0;
 
 #define LOW 0 
 
@@ -50,7 +50,7 @@ class LowPass {
 		double feed(double _val) {
 			if (first) {
 				first = false;
-				val = val;
+				val = _val;
 			} else {
 				val = (alpha * val) + ((1 - alpha) * _val);	
 			}
@@ -58,7 +58,7 @@ class LowPass {
 		}
 };
 
-unsigned char rdata[1024*1024*32];
+unsigned short rdata[1024*1024*32];
 double data[1024*1024*32];
 int dlen;
 
@@ -99,15 +99,14 @@ double phase = 0.0;
 int cb_analysis(int begin, int end, double &peaklevel, double &peakphase)
 {
 //	double fc = 0.0, fci = 0.0;
-	double freq = 8.0;
-	double igrad = (double)(255 - LOW) / 140.0;
+	double freq = 4.0;
 
 	// peaklevel = 0.0;
 
 	for (int i = begin + 16; i < end; i++) {	
 		double fc = 0.0, fci = 0.0;
 		for (int j = -16; j < 16; j++) {
-			double o = (double)(data[i + j]) / igrad; 
+			double o = (double)(data[i + j]); 
 
 			fc += (o * cos(phase + (2.0 * M_PIl * ((double)(i + j) / freq)))); 
 			fci -= (o * sin(phase + (2.0 * M_PIl * ((double)(i + j) / freq)))); 
@@ -131,7 +130,8 @@ int cb_analysis(int begin, int end, double &peaklevel, double &peakphase)
 int main(int argc, char *argv[])
 {
 	int i, rv, fd;
-	unsigned char avg, rhigh = 0, rlow = 255;
+	unsigned short avg, rhigh = 0, rlow = 65535;
+	unsigned short high = 0, low = 65535;
 	long long total = 0;
 	int rp;
 	double igrad = 0.0;
@@ -142,33 +142,37 @@ int main(int argc, char *argv[])
 	dlen = sizeof(rdata);
 	if (argc >= 4) dlen = atol(argv[3]);
 	dlen = read(fd, rdata, dlen);
+	dlen /= 2.0;
 
 //	cout << std::setprecision(8);
 
-	rlow = LOW;  rhigh = 255;
+	rlow = 3500;  rhigh = 65535;
 	
 	igrad = (double)(rhigh - rlow) / 140.0;
 	double irestep = 140.0 / (double)(rhigh - rlow); 
 
 	for (i = 0; i < dlen; i++) {
 //		data[i] = (sin(2 * M_PIl * ((double)i / (CHZ / FSC))) * 10) + 128; 
-//		cout << (sin(2 * M_PIl * ((double)i / 8.0)) * 127) + 128 << endl;
+//		cout << (sin(2 * M_PIl * ((double)i / 4.0)) * 127) + 128 << endl;
 
 //		data[i] = ((rdata[i] - 25) * 956.0 / 223.0) + 16; 
 
 		data[i] = (((double)rdata[i] - rlow) * irestep)  - 40;
-//		cout << (int)rdata[i] << ' ' << data[i] << endl;
+//		cerr << (int)rdata[i] << ' ' << data[i] << endl;
 
-//		if (data[i] > high) high = data[i];
-//		if (data[i] < low)  low = data[i];
+		if (data[i] > high) high = data[i];
+		if (data[i] < low)  low = data[i];
 		total += data[i];
 	}
+
+	rhigh = high;
 #if 1
 	int begin = 0, len = 0;
 	i = 0;
 	double burst = 0.0;
 
-	LowPass lpU(0.95), lpV(0.95);
+	LowPass lpburst(0.8);
+	LowPass lpU(0.9), lpV(0.9);
 
 	while (i < dlen) {
 		if (!find_sync(i, begin, len)) {
@@ -182,17 +186,16 @@ int main(int argc, char *argv[])
 
 			burst = 0.0;
 			// color burst is approx i + 30 to i + 90
-			cb_analysis(i + 25, i + 70, burst, phase);
+			cb_analysis(i + 15, i + 35, burst, phase);
+			lpburst.feed(burst);
 
 			cerr << freq << ',' << phase << endl;
-			freq = 8.0;
+			freq = 4.0;
 
-			for (int j = i + 120; j < i + 120 + 1536; j++) {
+			for (int j = i + 60; j < i + 60 + 768; j++) {
 				double fc = 0, fci = 0;
-				double y = data[j] * 2.55;
+				double y = data[j];
 		
-				y = clamp(y, 0, 255);
-			
 				for (int k = -7; k < 8; k++) {
 					double o = data[j + k]; 
 
@@ -200,12 +203,13 @@ int main(int argc, char *argv[])
 					fci -= (o * sin(phase + (2.0 * M_PIl * ((double)(j + k) / freq)))); 
 				}
 
-				double u = ((fc / 15) * 32 / burst);
-				double v = ((fci / 15) * 32 / burst);
+				double u = (fc / 15 * (16 / lpburst.val));
+				double v = (fci / 15 * (16 / lpburst.val));
 
 				lpU.feed(u);
 				lpV.feed(v);
-#if 1
+				//cerr << lpU.val << ' ' << lpV.val << endl;
+#if 0
 				if (/*(j >= 6430) && (j <= 6446) && */(burst > 0.2)) {
 			//		cerr << j << ' ' << fc << ' ' << fci << ' ' << y << ' ';
 //					//cerr << j << ' ' << lpU.val << ' ' << lpV.val << ' ' << y << ' ';
@@ -217,6 +221,13 @@ int main(int argc, char *argv[])
 #endif
 				u = lpU.val;
 				v = lpV.val;
+
+				y *= 2.55;
+				u *= 2.55;
+				v *= 2.55;
+				clamp(y, 0, 130);
+				clamp(u, -78, 78);
+				clamp(v, -78, 78);
 
 #if 0
 				if (burst > 0.2) {
@@ -247,7 +258,7 @@ R = 1.164(Y - 16) + 1.596(V - 128)
 				//cerr << fc << ':' << fci << ' ' << lc << ' ' << (int)line[lc - 2] << endl;				
 			
 			}
-			write(1, line, 1536 * 3);
+			write(1, line, 768 * 3);
 		} else {
 			i = dlen;
 		}
