@@ -7,9 +7,9 @@ ntsc-decode takes that, time base corrects it, decodes the color, and then (curr
 to run:  ./ld-decode [file] > [file].ld
 ./ntsc-decode [file].ld > [file].rgb
 
-to view ld-decode output: display -size 1820x512 -depth 8 gray:ldplant.ld 
-to view ntsc-decode output: display -size 1536x700 -depth 8 rgb:ldplant.rgb
-use this command line to make it a .jpg:  convert -size 1536x700 -depth 8  rgb:ntscbar.rgb -resize 50%x100% ntscbar.jpg
+to view ld-decode output: display -size 910x512 -depth 16 gray:ldplant.ld 
+to view ntsc-decode output: display -size 768x700 -depth 8 rgb:ldplant.rgb
+use this command line to make it a .jpg:  convert -size 768x700 -depth 8  rgb:ntscbar.rgb -resize 100%x200% ntscbar.jpg
 
 Piping ld-decode to ntsc-decode doesn't work yet, it's pre-loading the entire file for no good reason.
 
