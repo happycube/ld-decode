@@ -171,7 +171,7 @@ int main(int argc, char *argv[])
 	i = 0;
 	double burst = 0.0;
 
-	LowPass lpburst(0.8);
+	LowPass lpburst(0.5);
 	LowPass lpU(0.9), lpV(0.9);
 
 	while (i < dlen) {
@@ -195,32 +195,23 @@ int main(int argc, char *argv[])
 			for (int j = i + 60; j < i + 60 + 768; j++) {
 				double fc = 0, fci = 0;
 				double y = data[j];
-		
-				for (int k = -7; k < 8; k++) {
-					double o = data[j + k]; 
-
-					fc += (o * cos(phase + (2.0 * M_PIl * ((double)(j + k) / freq)))); 
-					fci -= (o * sin(phase + (2.0 * M_PIl * ((double)(j + k) / freq)))); 
-				}
-
-				double u = (fc / 15 * (16 / lpburst.val));
-				double v = (fci / 15 * (16 / lpburst.val));
-
-				lpU.feed(u);
-				lpV.feed(v);
+				double u, v;	
+	
+				lpU.feed(data[j] * cos(phase + (2.0 * M_PIl * ((double)(j) / freq)))); 
+				lpV.feed(-data[j] * sin(phase + (2.0 * M_PIl * ((double)(j) / freq)))); 
 				//cerr << lpU.val << ' ' << lpV.val << endl;
 #if 0
 				if (/*(j >= 6430) && (j <= 6446) && */(burst > 0.2)) {
-			//		cerr << j << ' ' << fc << ' ' << fci << ' ' << y << ' ';
-//					//cerr << j << ' ' << lpU.val << ' ' << lpV.val << ' ' << y << ' ';
-//					y -= (fc ) * cos(phase + (2.0 * M_PIl * (((double)j / freq))));
-//					y += (fci ) * sin(phase + (2.0 * M_PIl * (((double)j / freq))));
+//					cerr << j << ' ' << fc << ' ' << fci << ' ' << y << ' ';
+					//cerr << j << ' ' << lpU.val << ' ' << lpV.val << ' ' << y << ' ';
+//					y += (fc / 17) * cos(phase + (2.0 * M_PIl * (((double)j / freq))));
+//					y -= (fci / 17 ) * sin(phase + (2.0 * M_PIl * (((double)j / freq))));
 //					cerr << y << ' ' << endl;
 				}
 //				y -= (255 * .2);
 #endif
-				u = lpU.val;
-				v = lpV.val;
+				u = lpU.val * (10 / burst);
+				v = lpV.val * (10 / burst);
 
 				y *= 2.55;
 				u *= 2.55;
