@@ -22,10 +22,12 @@ template <class T> class CircBuf {
 		long count, cur;
 		T *buf;
 		T total;
+		double decay;
 	public:
-		CircBuf(int size) {
+		CircBuf(int size, double _decay = 0.0) {
 			buf = new T[size];
 
+			decay = _decay;
 			count = size;
 			cur = 0;
 			total = 0;
@@ -34,22 +36,20 @@ template <class T> class CircBuf {
 
 		double feed(T nv)
 		{
-			if (!firstpass) {
-				total -= buf[cur];
-			}  
-
+			total = 0;
 			buf[cur] = nv;
-			total += nv;
 			cur++;
 			if (cur == count) {
-				cur = 0; firstpass = false;
+				cur = 0;
 			}
 
-			if (firstpass) {
-				return total / cur;
-			} else {
-				return total / count;
+			for (int i = 0; i < count; i++) {
+				int p = cur - i;
+
+				if (p < 0) p += 8;	
+				total += buf[p] * (1.0 - (decay * (count - i)));
 			}
+			return total / count;
 		}
 };
 
@@ -226,10 +226,16 @@ const double sloper_b[] {-0.000382933090327, -0.006981809154571, -0.010728227199
 
 // b = fir1(24, [(4.5/14.318)])
 const double f_inband_b[] {-0.001458335318862, -0.002737915886599, -0.001836705992068, 0.004085617415551, 0.012370069525266, 0.010951080350295, -0.010588722259342, -0.041169486390469, -0.043903285021353, 0.017273375962974, 0.138109125865719, 0.261765401589396, 0.314279560318985, 0.261765401589396, 0.138109125865719, 0.017273375962974, -0.043903285021353, -0.041169486390469, -0.010588722259342, 0.010951080350295, 0.012370069525266, 0.004085617415551, -0.001836705992068, -0.002737915886599, -0.001458335318862};
+// 4.2
+//const double f_inband_b[] {-0.0021258831152027, -0.0017413220525271, 0.0010739857696014, 0.0069735741472413, 0.0108121362068461, 0.0027940210838033, -0.0200361248301128, -0.0417508398061147, -0.0311706453651985, 0.0346581583070210, 0.1444228282223425, 0.2495691561345716, 0.2930419105954573, 0.2495691561345716, 0.1444228282223425, 0.0346581583070210, -0.0311706453651985, -0.0417508398061147, -0.0200361248301128, 0.0027940210838033, 0.0108121362068461, 0.0069735741472413, 0.0010739857696014, -0.0017413220525271, -0.0021258831152027};
 const double f_inband_a[25] {1, 0,};
 
 const double f_flat_b[] {0, 0, 0, 0, 1, 0, 0, 0, 0};
 const double f_flat_a[] {1, 0, 0, 0, 0, 0, 0, 0, 0};
+
+const double f_diff_b[] {-0.0001635329437577, 0.0000250863493418, -0.0000491628576317, 0.0002990414592446, 0.0003996311166487, -0.0022588454691466, 0.0008485791841910, 0.0065302903475175, -0.0085278240384115, -0.0087503258843905, 0.0273990327824906, -0.0040853009352476, -0.0557297381930505, 0.0577653216430894, 0.0825424814206669, -0.2995204674752212, 0.4063410034179687, -0.2995204674752212, 0.0825424814206669, 0.0577653216430894, -0.0557297381930505, -0.0040853009352476, 0.0273990327824906, -0.0087503258843905, -0.0085278240384115, 0.0065302903475175, 0.0008485791841910, -0.0022588454691466, 0.0003996311166487, 0.0002990414592446, -0.0000491628576317, 0.0000250863493418, -0.0001635329437577};
+const double f_diff_a[33] {1,};
+ 
 
 const double zero = 7500000.0;
 const double one = 9400000.0;
@@ -274,7 +280,7 @@ int main(int argc, char *argv[])
 
 	for (int i = 0; i < dlen; i++) {
 		cphase += ((FSC / 2) / CHZ);
-		freq[i] = 8800000 + (sin(cphase * M_PIl * 2.0) * 200000);
+		freq[i] = 8800000 + (sin(cphase * M_PIl * 2.0) * 000000);
 		lphase += (freq[i] / CHZ);
 		data[i] = (sin(lphase * M_PIl * 2.0) * 64) + 128;
 	} 
@@ -325,10 +331,10 @@ int main(int argc, char *argv[])
 	for (int f = low, j = 0; f < high; f+= bd, j++) {
 //		inband_q[j] = new LDE(9, f_inband8_a, f_inband8_b);
 //		inband_i[j] = new LDE(9, f_inband8_a, f_inband8_b);
-//		inband_q[j] = new LDE(8, f_flat_a, f_flat_b);
-//		inband_i[j] = new LDE(8, f_flat_a, f_flat_b);
-		cd_q[j] = new CircBuf<double>(8);
-		cd_i[j] = new CircBuf<double>(8);
+		inband_q[j] = new LDE(32, f_diff_a, f_diff_b);
+		inband_i[j] = new LDE(32, f_diff_a, f_diff_b);
+		cd_q[j] = new CircBuf<double>(N, 0.1);
+		cd_i[j] = new CircBuf<double>(N, 0.1);
 		fbin[j] = CHZ / f;
 	}
 
@@ -371,7 +377,7 @@ int main(int argc, char *argv[])
 		} else {
 			pf = (!npeak) ? low : high;	
 		}
-		//cerr << pf << ' ';
+		//cerr << i << ' ' << pf << ' ';
 		pf = butterout.feed(pf - 8500000) + 8500000;
 		outbuf[bufloc++] = pf;
 		//cerr << outbuf[bufloc - 1] << endl;
