@@ -299,8 +299,8 @@ int main(int argc, char *argv[])
 	
 	for (int i = 0; i < dlen; i++) {
 		//cerr << i << endl;
-		ddata[i] = butterin.feed((double)data[i] - avg);
-//		ddata[i] = ((double)data[i] - avg);
+//		ddata[i] = butterin.feed((double)data[i] - avg);
+		ddata[i] = ((double)data[i] - avg);
 		//if (i < 100) cerr << (double)(data[i] - avg) << ", ";
 		if (i < 100) cerr << (double)(ddata[i]) << ", ";
 		total += ddata[i];
