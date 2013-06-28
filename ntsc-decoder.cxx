@@ -146,7 +146,7 @@ int main(int argc, char *argv[])
 
 //	cout << std::setprecision(8);
 
-	rlow = 3500;  rhigh = 65535;
+	rlow = 0;  rhigh = 65535;
 	
 	igrad = (double)(rhigh - rlow) / 140.0;
 	double irestep = 140.0 / (double)(rhigh - rlow); 

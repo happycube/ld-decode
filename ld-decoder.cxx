@@ -112,54 +112,6 @@ void dc_filter(double *out, double *in, int len)
 	}
 }
 
-double peakfreq(double *buf, int offset, int len, double lf, double hf, double step, double basefreq) 
-{
-	double *buf_mdc = new double[(len * 2) + 1];
-	double bin[2048];
-	double peak = 0;	
-	int fbin = 0, peakbin = 0;
-	int f;
-
-	dc_filter(buf_mdc, &buf[offset - len], (len * 2) + 1);
-	
-	// we include an extra bin on each side so we can do quadratric interp across the whole range 
-	lf -= step;
-	for (f = lf; f < hf + step + 1; f += step) { 
-		bin[fbin] = dft(&buf[offset - len], len, len, (basefreq / f));
-//		bin[fbin] = dft(buf_mdc, len, len, (basefreq / f));
-		cerr << f << ' ' << (basefreq / f) << ' ' << bin[fbin] << endl;
-		if (bin[fbin] > peak) {
-			peak = bin[fbin];
-			peakbin = fbin;
-	//		cerr << f << ' ' << peak << endl;
-		}
-		fbin++;
-	}
-
-	double dpi;
-	double pf;	
-	if ((peakbin >= 1) && (peakbin < (fbin - 1))) {
-		double p0 = bin[peakbin - 1];
-		double p2 = bin[peakbin + 1];
-		
-		dpi = (double)peakbin + ((p2 - p0) / (2.0 * ((2.0 * peak) - p0 - p2))); 
-		pf = (dpi * step) + lf;	
-
-		if (pf < 0) {
-			cerr << "invalid freq " << pf << " peak bin " << (peakbin * step) + lf << endl;
-			pf = 0;
-		}
-	} else {
-		// this generally only happens during a long dropout
-		cerr << "out of range on sample " <<  offset << " with step " << step << ' ' << peakbin << endl;
-		pf = (!peakbin) ? lf : hf;	
-	}
-
-	delete [] buf_mdc;
-
-	return pf;
-};
-
 /* Linear difference equation - used for running filters (compute with Octave, etc) */
 
 class LDE {
@@ -299,7 +251,7 @@ int main(int argc, char *argv[])
 	
 	for (int i = 0; i < dlen; i++) {
 		//cerr << i << endl;
-//		ddata[i] = butterin.feed((double)data[i] - avg);
+	//	ddata[i] = butterin.feed((double)data[i] - avg);
 		ddata[i] = ((double)data[i] - avg);
 		//if (i < 100) cerr << (double)(data[i] - avg) << ", ";
 		if (i < 100) cerr << (double)(ddata[i]) << ", ";
@@ -381,23 +333,13 @@ int main(int argc, char *argv[])
 		pf = butterout.feed(pf - 8500000) + 8500000;
 		outbuf[bufloc++] = pf;
 		//cerr << outbuf[bufloc - 1] << endl;
-#if 0
-		// One rough pass to get the approximate frequency for a pixel, and then a final pass to resolve it
-		pf = peakfreq(ddata, i, N, 7300000, 9500000, 100000, CHZ);
-
-		if (pf != 0) {
-			double pf2 = peakfreq(ddata, i, N, pf - 40000, pf + 40000, 10000, CHZ);
-		
-			if (pf2 != 0.0) pf = pf2;
-		}
 	
-		outbuf_nf[bufloc++] = pf;
-		pf = butterout.feed(pf - 8500000) + 8500000;
-		outbuf[bufloc] = pf;
-		cerr << pf << endl;
-#endif	
-		synccount = (pf < 7750000) ? synccount + 1 : 0;
-		if ((bufloc == 4096) || (synccount == 60)) {
+		if (synccount < 60) {	
+			synccount = (pf < 7750000) ? synccount + 1 : 0;
+		} else {
+			synccount = (pf > 8000000) ? -1 : synccount + 1;
+		}
+		if ((bufloc == 4096) || (synccount == -1)) {
 			int ll = i - prevsync;
 			double sf = 2.0;
 			int outlen = bufloc / sf;
@@ -407,7 +349,6 @@ int main(int argc, char *argv[])
 			for (int t = bufloc - 1; t > bufloc - 31; t--) {
 				pf_sync += outbuf[t] / 30.0;
 			}
-//			double pf_sync = peakfreq(ddata, i, 32, 7500000, 7700000, 10000, CHZ);
 	
 			if ((ll > 1800) && (ll < 1840)) {
 				sf = ll / 910.0; //linelen.feed(ll);
