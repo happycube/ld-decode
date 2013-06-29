@@ -58,6 +58,61 @@ class LowPass {
 		}
 };
 
+/* Linear difference equation - used for running filters (compute with Octave, etc) */
+
+class LDE {
+	protected:
+		int order;
+		const double *a, *b;
+		double *y, *x;
+	public:
+		LDE(int _order, const double *_a, const double *_b) {
+			order = _order + 1;
+			a = _a;
+			b = _b;
+			x = new double[order];
+			y = new double[order];
+	
+			clear();
+		}
+
+		~LDE() {
+			delete [] x;
+			delete [] y;
+		}
+
+		void clear(double val = 0) {
+			for (int i = 0; i < order; i++) {
+				x[i] = y[i] = val;
+			}
+		}
+
+		double feed(double val) {
+			for (int i = order - 1; i >= 1; i--) {
+				x[i] = x[i - 1];
+				y[i] = y[i - 1];
+			}
+		
+			x[0] = val;
+			y[0] = ((b[0] / a[0]) * x[0]);
+			//cerr << "0 " << x[0] << ' ' << b[0] << ' ' << (b[0] * x[0]) << ' ' << y[0] << endl;
+			for (int o = 1; o < order; o++) {
+				y[0] += ((b[o] / a[0]) * x[o]);
+				y[0] -= ((a[o] / a[0]) * y[o]);
+				//cerr << o << ' ' << x[o] << ' ' << y[o] << ' ' << a[o] << ' ' << b[o] << ' ' << (b[o] * x[o]) << ' ' << -(a[o] * y[o]) << ' ' << y[0] << endl;
+			}
+
+			return y[0];
+		}
+		double val() {return y[0];}
+};
+
+const double f_1_3mhz_b[] { 0.0036060934345636, 0.0070432860248957, 0.0165634902264449, 0.0335110773933283, 0.0569009793411000, 0.0833641365386416, 0.1079115700302820, 0.1253040833495197, 0.1315905673224488, 0.1253040833495197, 0.1079115700302820, 0.0833641365386417, 0.0569009793411000, 0.0335110773933283, 0.0165634902264449, 0.0070432860248957, 0.0036060934345636 };
+const double f_1_3mhz_a[16] {1, 0}; 
+
+const double f_2_0mhz_b[] {-0.0012097806585851, 0.0005363310904051, 0.0064481508113010, 0.0214040604771777, 0.0476485060320027, 0.0825576816951750, 0.1186225284899607, 0.1459316718189519, 0.1561217004872220, 0.1459316718189518, 0.1186225284899607, 0.0825576816951750, 0.0476485060320027, 0.0214040604771777, 0.0064481508113010, 0.0005363310904051, -0.0012097806585851};
+const double f_2_0mhz_a[16] {1, 0}; 
+
 unsigned short rdata[1024*1024*32];
 double data[1024*1024*32];
 int dlen;
@@ -172,11 +227,14 @@ int main(int argc, char *argv[])
 	double burst = 0.0;
 
 	LowPass lpburst(0.5);
-	LowPass lpU(0.9), lpV(0.9);
+//	LowPass lpU(0.9), lpV(0.9);
+
+	LDE lpU(16, f_1_3mhz_a, f_1_3mhz_b);
+	LDE lpV(16, f_1_3mhz_a, f_1_3mhz_b);
 
 	while (i < dlen) {
 		if (!find_sync(i, begin, len)) {
-			int lc = 0;
+			int lc = -21;
 			unsigned char line[1536 * 3];
 
 			cerr << begin << ' ' << len << endl;
@@ -192,26 +250,28 @@ int main(int argc, char *argv[])
 			cerr << freq << ',' << phase << endl;
 			freq = 4.0;
 
-			for (int j = i + 60; j < i + 60 + 768; j++) {
+			for (int j = i + 60; j < i + 60 + 768 + 7; j++) {
 				double fc = 0, fci = 0;
 				double y = data[j];
 				double u, v;	
 	
-				lpU.feed(data[j] * cos(phase + (2.0 * M_PIl * ((double)(j) / freq)))); 
-				lpV.feed(-data[j] * sin(phase + (2.0 * M_PIl * ((double)(j) / freq)))); 
+				u = lpU.feed(data[j] * cos(phase + (2.0 * M_PIl * ((double)(j) / freq)))); 
+				v = lpV.feed(-data[j] * sin(phase + (2.0 * M_PIl * ((double)(j) / freq)))); 
+				y = data[j - 6];
 				//cerr << lpU.val << ' ' << lpV.val << endl;
-#if 0
+#if 1
 				if (/*(j >= 6430) && (j <= 6446) && */(burst > 0.2)) {
-//					cerr << j << ' ' << fc << ' ' << fci << ' ' << y << ' ';
-					//cerr << j << ' ' << lpU.val << ' ' << lpV.val << ' ' << y << ' ';
-//					y += (fc / 17) * cos(phase + (2.0 * M_PIl * (((double)j / freq))));
-//					y -= (fci / 17 ) * sin(phase + (2.0 * M_PIl * (((double)j / freq))));
+//					cerr << j << ' ' << u << ' ' << v << ' ' << y << ' ';
+//					cerr << u * cos(phase + (2.0 * M_PIl * (((double)j / freq)))) << ' ' ;
+//					cerr << v * cos(phase + (2.0 * M_PIl * (((double)j / freq)))) << ' ' ;
+					y += u * (2 * cos(phase + (2.0 * M_PIl * (((double)j / freq)))));
+					y -= v * (2 * sin(phase + (2.0 * M_PIl * (((double)j / freq)))));
 //					cerr << y << ' ' << endl;
 				}
 //				y -= (255 * .2);
 #endif
-				u = lpU.val * (10 / burst);
-				v = lpV.val * (10 / burst);
+				u *= (10 / burst);
+				v *= (10 / burst);
 
 				y *= 2.55;
 				u *= 2.55;
@@ -242,10 +302,12 @@ R = 1.164(Y - 16) + 1.596(V - 128)
 				//cerr << fc << ':' << fci << ' ' << r << endl;				
 
 //				line[lc++] = clamp(y, 0, 255);
-	
-				line[lc++] = clamp(r, 0, 255);
-				line[lc++] = clamp(g, 0, 255);
-				line[lc++] = clamp(b, 0, 255);
+
+				if (lc > 0) {	
+					line[lc++] = clamp(r, 0, 255);
+					line[lc++] = clamp(g, 0, 255);
+					line[lc++] = clamp(b, 0, 255);
+				} else lc += 3;
 				//cerr << fc << ':' << fci << ' ' << lc << ' ' << (int)line[lc - 2] << endl;				
 			
 			}

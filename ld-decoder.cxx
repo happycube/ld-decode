@@ -177,9 +177,9 @@ const double sloper_a[130] {1, 0,};
 const double sloper_b[] {-0.000382933090327, -0.006981809154571, -0.010728227199389, 0.002631923851791, 0.039289107592644, 0.066237756021515, 0.025065301059788, -0.093761155255764, -0.195764924035992, -0.140771313374372, 0.111345118277709, 0.419588831542530, 0.558754903157552, 0.419588831542530, 0.111345118277709, -0.140771313374372, -0.195764924035992, -0.093761155255764, 0.025065301059788, 0.066237756021515, 0.03928910759264}; 
 
 // b = fir1(24, [(4.5/14.318)])
-//const double f_inband_b[] {-0.001458335318862, -0.002737915886599, -0.001836705992068, 0.004085617415551, 0.012370069525266, 0.010951080350295, -0.010588722259342, -0.041169486390469, -0.043903285021353, 0.017273375962974, 0.138109125865719, 0.261765401589396, 0.314279560318985, 0.261765401589396, 0.138109125865719, 0.017273375962974, -0.043903285021353, -0.041169486390469, -0.010588722259342, 0.010951080350295, 0.012370069525266, 0.004085617415551, -0.001836705992068, -0.002737915886599, -0.001458335318862};
+const double f_inband_b[] {-0.001458335318862, -0.002737915886599, -0.001836705992068, 0.004085617415551, 0.012370069525266, 0.010951080350295, -0.010588722259342, -0.041169486390469, -0.043903285021353, 0.017273375962974, 0.138109125865719, 0.261765401589396, 0.314279560318985, 0.261765401589396, 0.138109125865719, 0.017273375962974, -0.043903285021353, -0.041169486390469, -0.010588722259342, 0.010951080350295, 0.012370069525266, 0.004085617415551, -0.001836705992068, -0.002737915886599, -0.001458335318862};
 // 4.2
-const double f_inband_b[] {-0.0021258831152027, -0.0017413220525271, 0.0010739857696014, 0.0069735741472413, 0.0108121362068461, 0.0027940210838033, -0.0200361248301128, -0.0417508398061147, -0.0311706453651985, 0.0346581583070210, 0.1444228282223425, 0.2495691561345716, 0.2930419105954573, 0.2495691561345716, 0.1444228282223425, 0.0346581583070210, -0.0311706453651985, -0.0417508398061147, -0.0200361248301128, 0.0027940210838033, 0.0108121362068461, 0.0069735741472413, 0.0010739857696014, -0.0017413220525271, -0.0021258831152027};
+//const double f_inband_b[] {-0.0021258831152027, -0.0017413220525271, 0.0010739857696014, 0.0069735741472413, 0.0108121362068461, 0.0027940210838033, -0.0200361248301128, -0.0417508398061147, -0.0311706453651985, 0.0346581583070210, 0.1444228282223425, 0.2495691561345716, 0.2930419105954573, 0.2495691561345716, 0.1444228282223425, 0.0346581583070210, -0.0311706453651985, -0.0417508398061147, -0.0200361248301128, 0.0027940210838033, 0.0108121362068461, 0.0069735741472413, 0.0010739857696014, -0.0017413220525271, -0.0021258831152027};
 const double f_inband_a[25] {1, 0,};
 
 const double f_flat_b[] {0, 0, 0, 0, 1, 0, 0, 0, 0};
@@ -187,7 +187,6 @@ const double f_flat_a[] {1, 0, 0, 0, 0, 0, 0, 0, 0};
 
 const double f_diff_b[] {-0.0001635329437577, 0.0000250863493418, -0.0000491628576317, 0.0002990414592446, 0.0003996311166487, -0.0022588454691466, 0.0008485791841910, 0.0065302903475175, -0.0085278240384115, -0.0087503258843905, 0.0273990327824906, -0.0040853009352476, -0.0557297381930505, 0.0577653216430894, 0.0825424814206669, -0.2995204674752212, 0.4063410034179687, -0.2995204674752212, 0.0825424814206669, 0.0577653216430894, -0.0557297381930505, -0.0040853009352476, 0.0273990327824906, -0.0087503258843905, -0.0085278240384115, 0.0065302903475175, 0.0008485791841910, -0.0022588454691466, 0.0003996311166487, 0.0002990414592446, -0.0000491628576317, 0.0000250863493418, -0.0001635329437577};
 const double f_diff_a[33] {1,};
- 
 
 const double zero = 7500000.0;
 const double one = 9400000.0;
@@ -232,7 +231,7 @@ int main(int argc, char *argv[])
 
 	for (int i = 0; i < dlen; i++) {
 		cphase += ((FSC / 2) / CHZ);
-		freq[i] = 8800000 + (sin(cphase * M_PIl * 2.0) * 000000);
+		freq[i] = 7600000 + (sin(cphase * M_PIl * 2.0) * 000000);
 		lphase += (freq[i] / CHZ);
 		data[i] = (sin(lphase * M_PIl * 2.0) * 64) + 128;
 	} 
@@ -251,7 +250,7 @@ int main(int argc, char *argv[])
 	
 	for (int i = 0; i < dlen; i++) {
 		//cerr << i << endl;
-	//	ddata[i] = butterin.feed((double)data[i] - avg);
+		//ddata[i] = butterin.feed((double)data[i] - avg);
 		ddata[i] = ((double)data[i] - avg);
 		//if (i < 100) cerr << (double)(data[i] - avg) << ", ";
 		if (i < 100) cerr << (double)(ddata[i]) << ", ";
@@ -262,8 +261,6 @@ int main(int argc, char *argv[])
 	double outbuf[32768], outbuf_nf[32768];
 	int bufloc = 0;
 	
-	#define N 8 
-
 	int ti;
 	double synctime = 0;
 	double offset = 0.0;
@@ -271,8 +268,8 @@ int main(int argc, char *argv[])
 	int prevsync = 0, synccount = 0;
 	double prev_offset = 0.0;
 
-	int low = 7500000, high=9500000, bd = 100000;
-	int nbands = ((high - low) / bd) + 2;
+	int low = 7400000, high=9600000, bd = 200000;
+	int nbands = ((high - low) / bd) + 3;
 
 	LDE *inband_q[nbands];
 	LDE *inband_i[nbands];
@@ -281,14 +278,17 @@ int main(int argc, char *argv[])
 	CircBuf<double> *cd_q[nbands], *cd_i[nbands];
 
 	for (int f = low, j = 0; f < high; f+= bd, j++) {
-//		inband_q[j] = new LDE(9, f_inband8_a, f_inband8_b);
-//		inband_i[j] = new LDE(9, f_inband8_a, f_inband8_b);
-		inband_q[j] = new LDE(32, f_diff_a, f_diff_b);
-		inband_i[j] = new LDE(32, f_diff_a, f_diff_b);
-		cd_q[j] = new CircBuf<double>(N, 0.1);
-		cd_i[j] = new CircBuf<double>(N, 0.1);
+		inband_q[j] = new LDE(24, f_inband_a, f_inband_b);
+		inband_i[j] = new LDE(24, f_inband_a, f_inband_b);
+//		inband_q[j] = new LDE(32, f_diff_a, f_diff_b);
+//		inband_i[j] = new LDE(32, f_diff_a, f_diff_b);
+#define N 8 
+		cd_q[j] = new CircBuf<double>(N, .0/N);
+		cd_i[j] = new CircBuf<double>(N, .0/N);
 		fbin[j] = CHZ / f;
 	}
+		
+	double sf = 2.0;
 
 	for (int i = 128, ti = 0; i < dlen - 128; i++) {		
 		double pf = 7600000;
@@ -299,17 +299,23 @@ int main(int argc, char *argv[])
 //		cerr << i << ' ';
 		for (f = low, j = 0; f < high; f+= bd, j++) {
 			//cerr << (j * bd) + low << ' ';
+			double fcq = ddata[i] * cos((2.0 * M_PIl * ((double)i / fbin[j]))); 
+			double fci = -ddata[i] * sin((2.0 * M_PIl * ((double)i / fbin[j]))); 
+			double phase = atan2(fcq, fci);
+			
 			//double fcq = inband_q[j]->feed(ddata[i] * cos((2.0 * M_PIl * ((double)i / fbin[j])))); 
 			//double fci = inband_i[j]->feed(-ddata[i] * sin((2.0 * M_PIl * ((double)i / fbin[j])))); 
-			double fcq = cd_q[j]->feed(ddata[i] * cos((2.0 * M_PIl * ((double)i / fbin[j])))); 
-			double fci = cd_i[j]->feed(-ddata[i] * sin((2.0 * M_PIl * ((double)i / fbin[j])))); 
+			fcq = cd_q[j]->feed(ddata[i] * cos((2.0 * M_PIl * ((double)i / fbin[j])))); 
+			fci = cd_i[j]->feed(-ddata[i] * sin((2.0 * M_PIl * ((double)i / fbin[j])))); 
 			//cerr << fbin[j] << ' ';
 			//cerr << fcq << ' ';
 			//cerr << fci << ' ';
 			//cerr << ctor(fcq, fci) << ' ';
+			//cerr << iq << ' ';
+
 			level[j] = ctor(fcq, fci);
+			level[j] = inband_q[j]->feed(level[j]);
 			if (level[j] > peak) {peak = level[j]; npeak = j;}
-			//cerr << level[j] << endl; 
 		}
 //		cerr << endl << (npeak * bd) + low << ' ' << level[npeak] << endl;
 		pf = (npeak * bd) + low;
@@ -330,18 +336,18 @@ int main(int argc, char *argv[])
 			pf = (!npeak) ? low : high;	
 		}
 		//cerr << i << ' ' << pf << ' ';
-		pf = butterout.feed(pf - 8500000) + 8500000;
+		//pf = butterout.feed(pf - 8500000) + 8500000;
 		outbuf[bufloc++] = pf;
 		//cerr << outbuf[bufloc - 1] << endl;
-	
+		
 		if (synccount < 60) {	
 			synccount = (pf < 7750000) ? synccount + 1 : 0;
 		} else {
 			synccount = (pf > 8000000) ? -1 : synccount + 1;
 		}
+
 		if ((bufloc == 4096) || (synccount == -1)) {
 			int ll = i - prevsync;
-			double sf = 2.0;
 			int outlen = bufloc / sf;
 			double filtered[bufloc + 16];
 
@@ -350,12 +356,12 @@ int main(int argc, char *argv[])
 				pf_sync += outbuf[t] / 30.0;
 			}
 	
-			if ((ll > 1800) && (ll < 1840)) {
+			if ((ll > 1810) && (ll < 1830)) {
 				sf = ll / 910.0; //linelen.feed(ll);
 //				sf = 2.0 * (7610000 / pf_sync); // ll / 910.0; //linelen.feed(ll);
-//				sf = 2.0;
+				sf = 2.0;
 				outlen = bufloc / sf;
-			}	
+			} 
 		
 			cerr << "SYNC " << pf_sync << ' ' << ll << ' ' << sf << ' ' << bufloc << ' ' << bufloc / sf << ' ' << outlen << ' ' << (1820.0 ) / sf << endl; 
 
