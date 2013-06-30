@@ -107,10 +107,10 @@ class LDE {
 		double val() {return y[0];}
 };
 
-const double f_1_3mhz_b[] { 0.0036060934345636, 0.0070432860248957, 0.0165634902264449, 0.0335110773933283, 0.0569009793411000, 0.0833641365386416, 0.1079115700302820, 0.1253040833495197, 0.1315905673224488, 0.1253040833495197, 0.1079115700302820, 0.0833641365386417, 0.0569009793411000, 0.0335110773933283, 0.0165634902264449, 0.0070432860248957, 0.0036060934345636 };
+const double f_1_3mhz_b[] {-3.2298296184665740e-03, -3.9763697027928036e-03, -3.0488187471881391e-03, 7.1571555933253586e-03, 3.3887137420533418e-02, 7.7579717689882186e-02, 1.2857649823595613e-01, 1.7003884825042573e-01, 1.8603132175664944e-01, 1.7003884825042576e-01, 1.2857649823595613e-01, 7.7579717689882199e-02, 3.3887137420533425e-02, 7.1571555933253577e-03, -3.0488187471881404e-03, -3.9763697027928062e-03, -3.2298296184665740e-03  };
 const double f_1_3mhz_a[16] {1, 0}; 
 
-const double f_2_0mhz_b[] {-0.0012097806585851, 0.0005363310904051, 0.0064481508113010, 0.0214040604771777, 0.0476485060320027, 0.0825576816951750, 0.1186225284899607, 0.1459316718189519, 0.1561217004872220, 0.1459316718189518, 0.1186225284899607, 0.0825576816951750, 0.0476485060320027, 0.0214040604771777, 0.0064481508113010, 0.0005363310904051, -0.0012097806585851};
+const double f_2_0mhz_b[] { 2.0725950133615822e-03, -8.3463967955793583e-04, -9.7490566449315967e-03, -2.1735983355962385e-02, -1.4929346936560809e-02, 3.7413352363703849e-02, 1.3482681278026168e-01, 2.3446159984589487e-01, 2.7694933322758158e-01, 2.3446159984589490e-01, 1.3482681278026165e-01, 3.7413352363703870e-02, -1.4929346936560811e-02, -2.1735983355962385e-02, -9.7490566449315984e-03, -8.3463967955793670e-04, 2.0725950133615822e-03 }; 
 const double f_2_0mhz_a[16] {1, 0}; 
 
 unsigned short rdata[1024*1024*32];
@@ -221,7 +221,6 @@ int main(int argc, char *argv[])
 	}
 
 	rhigh = high;
-#if 1
 	int begin = 0, len = 0;
 	i = 0;
 	double burst = 0.0;
@@ -260,7 +259,7 @@ int main(int argc, char *argv[])
 				y = data[j - 6];
 				//cerr << lpU.val << ' ' << lpV.val << endl;
 #if 1
-				if (/*(j >= 6430) && (j <= 6446) && */(burst > 0.2)) {
+				if (burst > 0.2) {
 //					cerr << j << ' ' << u << ' ' << v << ' ' << y << ' ';
 //					cerr << u * cos(phase + (2.0 * M_PIl * (((double)j / freq)))) << ' ' ;
 //					cerr << v * cos(phase + (2.0 * M_PIl * (((double)j / freq)))) << ' ' ;
@@ -279,15 +278,6 @@ int main(int argc, char *argv[])
 				clamp(y, 0, 130);
 				clamp(u, -78, 78);
 				clamp(v, -78, 78);
-
-#if 0
-				if (burst > 0.2) {
-					y += ((v / burst) * sin(phase + (2.0 * M_PIl * (((double)j / freq)))));
-					y -= ((u / burst) * cos(phase + (2.0 * M_PIl * (((double)j / freq)))));
-				}
-//				y -= (255 * 0.2);
-#endif
-//			u = v = 0;
 
 /*
 B = 1.164(Y - 16)                   + 2.018(U - 128)
@@ -343,106 +333,6 @@ R = 1.164(Y - 16) + 1.596(V - 128)
 	peak chroma = 972 
 
 */
-
-#else
-
-	// cout << dlen << ' ' << (int)high << ' ' << (int)low << ' ' << igrad << endl;
-
-	
-//	double irestep = 140.0 / (double)(rhigh - rlow); 
-
-	double freq = (CHZ / FSC);
-	double phase = 0.0;
-	int sc = 0;
-
-
-	int lc = 0;
-	unsigned char line[2048 * 3];
-
-	for (int i = 16; i < dlen; i++) {
-		double fc = 0, fci = 0;
-		double ire = ((double)(data[i] - rlow) / igrad)  - 40;
-
-	#define N 16
-		for (int j = 0; j < N; j++) {
-			double o = (double)(data[i - j]) / igrad; 
-
-			fc += (o * cos(phase + (2.0 * M_PIl * ((double)(i - j) / freq)))); 
-			fci -= (o * sin(phase + (2.0 * M_PIl * ((double)(i - j) / freq)))); 
-		}
-	//	cerr << i << ' ' << state << ' ' << (int)data[i] << ':' << ire << ' ' << ' ' << fc << ',' << fci << " : " << ctor(fc, fci) / N << ',' << atan2(fci, ctor(fci, fc)) << ',' << phase << endl; 
-//		if (fc < 0) phase += (M_PIl / 2.0); 
-//		if (ctor(fc, fci)) phase += (atan2(fci, ctor(fc, fci)));
-
-	static int first = 1;
-
-		switch (state) {
-			case STATE_LINE:
-				if (ire < -10.0) {
-					sc++;
-					if (sc > 16) {
-						cerr << lc << endl;
-						write(1, line, (2048 * 3));
-						memset(line, 0, sizeof(line));
-						lc = 0;
-						state = STATE_SYNC;
-						sc = 0;
-					}
-				} else {
-					if (lc < (2048 * 3)) {
-						double y = ire * 2.55;
-		
-						y = clamp(y, 0, 255);
-	
-						double u = ((fc / N) * 8);
-						double v = ((fci / N) * 8);
-
-/*
-B = 1.164(Y - 16)                   + 2.018(U - 128)
-
-G = 1.164(Y - 16) - 0.813(V - 128) - 0.391(U - 128)
-
-R = 1.164(Y - 16) + 1.596(V - 128)
-*/
-
-						double r = (y * 1.164) + (1.596 * v); 
-						double g = (y * 1.164) - (0.813 * v) - (u * 0.391); 
-						double b = (y * 1.164) + (u * 2.018); 
-					
-						line[lc++] = clamp(r, 0, 255);
-						line[lc++] = clamp(g, 0, 255);
-						line[lc++] = clamp(b, 0, 255);
-	
-					}
-					sc = 0;
-				}	
-				break;
-			case STATE_SYNC:
-				if (ire > -10) state = STATE_PORCH;
-				break;
-			case STATE_PORCH:
-				sc++;
-				if ((ctor(fc, fci) / N) > 4.25) state = STATE_CB; 
-				break;
-			case STATE_CB:
-				if ((ctor(fc, fci) / N) < 3.5) {
-					first = 0;
-					state = STATE_PORCH2;	
-				} else if (ctor(fc, fci)) {
-					phase -= (atan2(fci, ctor(fc, fci)));
-				}
-				break;
-			case STATE_PORCH2:
-				if ((ctor(fc, fci) / N) < 1) state = STATE_PORCH3; 
-				break;
-			case STATE_PORCH3:
-				if ((ire > 5)) state = STATE_LINE; 
-				break;
-		
-		};
-
-	}
-#endif	
 
 	return 0;
 }
