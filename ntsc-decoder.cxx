@@ -14,8 +14,6 @@
 const double FSC=(1000000.0*(315.0/88.0))*1.00;
 const double CHZ=(1000000.0*(315.0/88.0))*4.0;
 
-#define LOW 0 
-
 using namespace std;
 
 double _ctor(fftw_complex c)
@@ -202,6 +200,8 @@ int main(int argc, char *argv[])
 //	cout << std::setprecision(8);
 
 	rlow = 0;  rhigh = 65535;
+
+//	rlow = 4;  rhigh = 0x3fb;
 	
 	igrad = (double)(rhigh - rlow) / 140.0;
 	double irestep = 140.0 / (double)(rhigh - rlow); 
@@ -246,7 +246,7 @@ int main(int argc, char *argv[])
 			cb_analysis(i + 15, i + 35, burst, phase);
 			lpburst.feed(burst);
 
-			cerr << freq << ',' << phase << endl;
+			cerr << burst << ',' << phase << endl;
 			freq = 4.0;
 
 			for (int j = i + 60; j < i + 60 + 768 + 7; j++) {
@@ -258,7 +258,7 @@ int main(int argc, char *argv[])
 				v = lpV.feed(-data[j] * sin(phase + (2.0 * M_PIl * ((double)(j) / freq)))); 
 				y = data[j - 6];
 				//cerr << lpU.val << ' ' << lpV.val << endl;
-#if 1
+#if 0
 				if (burst > 0.2) {
 //					cerr << j << ' ' << u << ' ' << v << ' ' << y << ' ';
 //					cerr << u * cos(phase + (2.0 * M_PIl * (((double)j / freq)))) << ' ' ;

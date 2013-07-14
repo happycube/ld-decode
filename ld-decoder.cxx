@@ -20,6 +20,7 @@ template <class T> class CircBuf {
 	protected:
 		bool firstpass;
 		long count, cur;
+		T latest;	
 		T *buf;
 		T total;
 		double decay;
@@ -34,7 +35,7 @@ template <class T> class CircBuf {
 			firstpass = true;
 		}
 
-		double feed(T nv)
+		double _feed(T nv)
 		{
 			total = 0;
 			buf[cur] = nv;
@@ -49,31 +50,17 @@ template <class T> class CircBuf {
 				if (p < 0) p += 8;	
 				total += buf[p] * (1.0 - (decay * (count - i)));
 			}
+
 			return total / count;
 		}
-};
-
-class LowPass {
-	protected:
-		bool first;
-	public:
-		double alpha;
-		double val;
 		
-		LowPass(double _alpha = 0.15) {
-			alpha = _alpha;	
-			first = true;
-			val = 0.0;
-		}	
-
-		double feed(double _val) {
-			if (first) {
-				first = false;
-				val = _val;
-			} else {
-				val = (alpha * val) + ((1 - alpha) * _val);	
-			}
-			return val;
+		double feed(T nv) {
+//			_feed(nv);
+//			_feed((latest * .75) + (nv * .25));
+//			_feed((latest * .5) + (nv * .5));
+//			_feed((latest * .25) + (nv * .75));
+			latest = nv;
+			return _feed(nv);
 		}
 };
 
@@ -101,30 +88,11 @@ inline double dftc(double *buf, int offset, int len, double bin, double &fc, dou
 
 inline double dft(double *buf, int offset, int len, double bin) 
 {
-	double fc = 0.0, fci = 0.0;
+	double fc, fci;
 
-	for (int k = (-len + 1); k < len; k++) {
-//		cout << offset + k << ' ' << len << endl;
-		double o = buf[offset + k]; 
-		
-		fc += (o * cos((2.0 * M_PIl * ((double)(offset - k) / bin)))); 
-		fci -= (o * sin((2.0 * M_PIl * ((double)(offset - k) / bin)))); 
-	}
+	dftc(buf, offset, len, bin, fc, fci);
 
 	return ctor(fc, fci);
-}
-
-void dc_filter(double *out, double *in, int len)
-{
-	double avg = 0;
-
-	for (int i = 0; i < len; i++) {
-		avg += (in[i] / len);
-	}
-	
-	for (int i = 0; i < len; i++) {
-		out[i] = in[i] - avg;
-	}
 }
 
 /* Linear difference equation - used for running filters (compute with Octave, etc) */
@@ -196,9 +164,21 @@ const double sloper_a[130] {1, 0,};
 /*  b = fir2(32, [0 (2/14.318) (3/14.318) (4.5/14.318) (5.0/14.318) 1.0], [1 1 2 4 0 0]);*/
 const double sloper_b[] {-0.000382933090327, -0.006981809154571, -0.010728227199389, 0.002631923851791, 0.039289107592644, 0.066237756021515, 0.025065301059788, -0.093761155255764, -0.195764924035992, -0.140771313374372, 0.111345118277709, 0.419588831542530, 0.558754903157552, 0.419588831542530, 0.111345118277709, -0.140771313374372, -0.195764924035992, -0.093761155255764, 0.025065301059788, 0.066237756021515, 0.03928910759264}; 
 
-// 4.5mhz filter
-const double f_inband8_b[] { -4.8895027341377632e-03, 4.5950362400661512e-03, 8.5194126749789864e-02, 2.4665672386348092e-01, 3.3688723176160174e-01, 2.4665672386348100e-01, 8.5194126749789878e-02, 4.5950362400661521e-03, -4.8895027341377632e-03}; 
+const double f_inband4_b[] { 3.5666419234145923e-02, 2.4104820178557229e-01, 4.4657075796056345e-01, 2.4104820178557235e-01, 3.5666419234145923e-02  };
+
+// 4.2mhz filter
+const double f_inband8_b[] {-3.5634174409531622e-03, 9.4654740832740107e-03, 9.1456278081537348e-02, 2.4141004764330087e-01, 3.2246323526568188e-01, 2.4141004764330090e-01, 9.1456278081537348e-02, 9.4654740832740124e-03, -3.5634174409531609e-03}; 
 const double f_inband8_a[9] {1, 0,};
+
+const double f_inband6_b[] {2.4022915041852354e-02, 9.3282252671075941e-02, 2.3198968207147672e-01, 3.0141030043118994e-01, 2.3198968207147680e-01, 9.3282252671075941e-02, 2.4022915041852354e-02  };
+
+const double f_inband7_b[] { 2.0639067636214502e-02, 6.5484287559733512e-02, 1.6641090209130313e-01, 2.4746574271274874e-01, 2.4746574271274879e-01, 1.6641090209130316e-01, 6.5484287559733539e-02, 2.0639067636214502e-02 }; 
+
+const double f_inband10_b[] { 1.4473689993225168e-02, 3.0481961953682260e-02, 7.2460474187224108e-02, 1.2449718560551960e-01, 1.6668129896367703e-01, 1.8281077859334358e-01, 1.6668129896367706e-01, 1.2449718560551964e-01, 7.2460474187224122e-02, 3.0481961953682267e-02, 1.4473689993225168e-02 };
+
+const double f_inband12_b[] { 1.2044644014910172e-02, 2.1421282730098870e-02, 4.7063446272317504e-02, 8.2220344973345905e-02, 1.1748376963988481e-01, 1.4335163673986193e-01, 1.5282975125916140e-01, 1.4335163673986195e-01, 1.1748376963988487e-01, 8.2220344973345919e-02, 4.7063446272317497e-02, 2.1421282730098887e-02, 1.2044644014910171e-02 }; 
+
+const double f_inband16_b[] { 8.9727868389106926e-03, 1.2981375511317471e-02, 2.4367856526345349e-02, 4.1492976778828870e-02, 6.1792338849973226e-02, 8.2174723473312908e-02, 9.9507815960196741e-02, 1.1111353861554261e-01, 1.1519317489114411e-01, 1.1111353861554263e-01, 9.9507815960196755e-02, 8.2174723473312936e-02, 6.1792338849973226e-02, 4.1492976778828863e-02, 2.4367856526345353e-02, 1.2981375511317481e-02, 8.9727868389106926e-03 }; 
 
 // b = fir1(24, [(4.5/14.318)])
 const double f_inband_b[] {-0.001458335318862, -0.002737915886599, -0.001836705992068, 0.004085617415551, 0.012370069525266, 0.010951080350295, -0.010588722259342, -0.041169486390469, -0.043903285021353, 0.017273375962974, 0.138109125865719, 0.261765401589396, 0.314279560318985, 0.261765401589396, 0.138109125865719, 0.017273375962974, -0.043903285021353, -0.041169486390469, -0.010588722259342, 0.010951080350295, 0.012370069525266, 0.004085617415551, -0.001836705992068, -0.002737915886599, -0.001458335318862};
@@ -212,14 +192,16 @@ const double f_flat_a[] {1, 0, 0, 0, 0, 0, 0, 0, 0};
 const double f_diff_b[] {-0.0001635329437577, 0.0000250863493418, -0.0000491628576317, 0.0002990414592446, 0.0003996311166487, -0.0022588454691466, 0.0008485791841910, 0.0065302903475175, -0.0085278240384115, -0.0087503258843905, 0.0273990327824906, -0.0040853009352476, -0.0557297381930505, 0.0577653216430894, 0.0825424814206669, -0.2995204674752212, 0.4063410034179687, -0.2995204674752212, 0.0825424814206669, 0.0577653216430894, -0.0557297381930505, -0.0040853009352476, 0.0273990327824906, -0.0087503258843905, -0.0085278240384115, 0.0065302903475175, 0.0008485791841910, -0.0022588454691466, 0.0003996311166487, 0.0002990414592446, -0.0000491628576317, 0.0000250863493418, -0.0001635329437577};
 const double f_diff_a[33] {1,};
 
-// 3.5mhz fir1
-//const double f_hp_b[] {-5.2233122995139940e-04, -1.7082609318519331e-02, -8.5929313061105295e-02, -1.9084603032392095e-01, 7.5704600929723254e-01, -1.9084603032392097e-01, -8.5929313061105309e-02, -1.7082609318519335e-02, -5.2233122995139940e-04}; 
-//const double f_hp_b[] { 4.8532613891468770e-04, 8.3390507431009651e-04, 7.6869993408222299e-04, 2.0690363502716850e-04, -7.1004989863944273e-04, -1.5399702230112086e-03, -1.6590132291091372e-03, -6.3102914998487008e-04, 1.3457397262763970e-03, 3.2651198285648729e-03, 3.7005630528483013e-03, 1.6988706219031816e-03, -2.3100665249408746e-03, -6.2805595979030975e-03, -7.4213411391159199e-03, -3.9159736278543186e-03, 3.4628609286186051e-03, 1.1022046672099554e-02, 1.3725619417974226e-02, 8.1714270701632903e-03, -4.6285461225751374e-03, -1.8553394109051539e-02, -2.4784285266225312e-02, -1.6623676456192293e-02, 5.6251394069828471e-03, 3.2613737881770924e-02, 4.8555731456348221e-02, 3.7976938900159532e-02, -6.2948092938117572e-03, -7.7907146600187480e-02, -1.5757890608989139e-01, -2.1987460976329917e-01, 7.5635985531755634e-01, -2.1987460976329917e-01, -1.5757890608989139e-01, -7.7907146600187480e-02, -6.2948092938117581e-03, 3.7976938900159539e-02, 4.8555731456348221e-02, 3.2613737881770931e-02, 5.6251394069828480e-03, -1.6623676456192293e-02, -2.4784285266225312e-02, -1.8553394109051539e-02, -4.6285461225751400e-03, 8.1714270701632886e-03, 1.3725619417974231e-02, 1.1022046672099552e-02, 3.4628609286186055e-03, -3.9159736278543220e-03, -7.4213411391159181e-03, -6.2805595979031001e-03, -2.3100665249408741e-03, 1.6988706219031816e-03, 3.7005630528483039e-03, 3.2651198285648724e-03, 1.3457397262763974e-03, -6.3102914998487019e-04, -1.6590132291091379e-03, -1.5399702230112094e-03, -7.1004989863944338e-04, 2.0690363502716912e-04, 7.6869993408222343e-04, 8.3390507431009759e-04, 4.8532613891468770e-04}; 
-const double f_hp_b[] { -3.6315861562715454e-04, 6.2894182939766063e-04, 3.0111986214688283e-04, 1.8845833191473188e-03, -7.9280012703750267e-04, 8.9325610952693194e-04, -3.6912268163235727e-03, -7.8333995702427366e-05, -2.7354939869451674e-03, 3.1063458422602233e-03, 3.3540027639192586e-03, 3.5246830244444567e-03, 3.8719858692722606e-03, -8.0936656980037085e-03, -9.6597768805999605e-04, -1.6733302769842608e-02, 8.6205303103566080e-03, -4.7516842775922928e-03, 2.5745041780324610e-02, 3.2867510961838487e-03, 9.6084093191679161e-03, -1.4845258455340094e-02, -3.0615710235647582e-02, -8.5976135903761460e-03, -2.8181449677278210e-02, 6.2403079730476013e-02, 6.7735184952764926e-04, 1.0496976497636988e-01, -6.6878788705777473e-02, 9.1965871412481217e-03, -2.4476309912599065e-01, -1.3583380546459459e-01, 6.5304594558071272e-01, -1.3583380546459459e-01, -2.4476309912599065e-01, 9.1965871412481217e-03, -6.6878788705777459e-02, 1.0496976497636989e-01, 6.7735184952764894e-04, 6.2403079730476020e-02, -2.8181449677278213e-02, -8.5976135903761443e-03, -3.0615710235647582e-02, -1.4845258455340096e-02, 9.6084093191679213e-03, 3.2867510961838492e-03, 2.5745041780324617e-02, -4.7516842775922911e-03, 8.6205303103566097e-03, -1.6733302769842622e-02, -9.6597768805999561e-04, -8.0936656980037120e-03, 3.8719858692722584e-03, 3.5246830244444584e-03, 3.3540027639192608e-03, 3.1063458422602220e-03, -2.7354939869451678e-03, -7.8333995702427596e-05, -3.6912268163235727e-03, 8.9325610952693054e-04, -7.9280012703750375e-04, 1.8845833191473184e-03, 3.0111986214688429e-04, 6.2894182939765998e-04, -3.6315861562715454e-04};
+// 8-tap 3.5mhz high-pass fir1
+const double f_hp8_b[] {-5.2233122995139940e-04, -1.7082609318519331e-02, -8.5929313061105295e-02, -1.9084603032392095e-01, 7.5704600929723254e-01, -1.9084603032392097e-01, -8.5929313061105309e-02, -1.7082609318519335e-02, -5.2233122995139940e-04};
+
+// 64-tap 3.75mhz high-pass fir1
+const double f_hp_b[] {-7.0923708380408047e-04, -2.3251905255110359e-04, 4.8575571908952988e-04, 1.0722682497955394e-03, 1.0729041253752371e-03, 2.2351660282327550e-04, -1.2109437593036290e-03, -2.3437353448091678e-03, -2.0916071787832205e-03, -1.4451389624136754e-05, 2.9988472409555864e-03, 4.8921739972686215e-03, 3.6751803533387308e-03, -9.0450534328188935e-04, -6.4951986392191609e-03, -9.0863899372204942e-03, -5.6134947648300050e-03, 3.3196286192241167e-03, 1.2706494067793631e-02, 1.5565690867403271e-02, 7.6118157386835762e-03, -8.6920490026209021e-03, -2.3865906373439900e-02, -2.6165783531054587e-02, -9.3452659450452384e-03, 2.1133007715282752e-02, 4.7944921933848278e-02, 4.9258702461956509e-02, 1.0521353767674078e-02, -6.5645397779266534e-02, -1.5751039107008202e-01, -2.3235452500130585e-01, 7.3970080799953608e-01, -2.3235452500130585e-01, -1.5751039107008200e-01, -6.5645397779266534e-02, 1.0521353767674079e-02, 4.9258702461956516e-02, 4.7944921933848271e-02, 2.1133007715282752e-02, -9.3452659450452384e-03, -2.6165783531054594e-02, -2.3865906373439900e-02, -8.6920490026209038e-03, 7.6118157386835814e-03, 1.5565690867403271e-02, 1.2706494067793634e-02, 3.3196286192241201e-03, -5.6134947648300067e-03, -9.0863899372205046e-03, -6.4951986392191600e-03, -9.0450534328189065e-04, 3.6751803533387295e-03, 4.8921739972686232e-03, 2.9988472409555886e-03, -1.4451389624136642e-05, -2.0916071787832205e-03, -2.3437353448091699e-03, -1.2109437593036290e-03, 2.2351660282327518e-04, 1.0729041253752381e-03, 1.0722682497955394e-03, 4.8575571908952961e-04, -2.3251905255110346e-04, -7.0923708380408047e-04 };
+
 
 const double f_a[256] {1,};
 
-const double zero = 7500000.0;
+const double zero = 7600000.0;
 const double one = 9400000.0;
 const double mfactor = 65536.0 / (one - zero);
 
@@ -227,7 +209,7 @@ const int linelen = 2048;
 
 // todo?:  move into object
 
-const int low = 7400000, high=9800000, bd = 100000;
+const int low = 7400000, high=9800000, bd = 200000;
 const int nbands = ((high + 1 - low) / bd);
 
 double fbin[nbands];
@@ -235,20 +217,23 @@ double fbin[nbands];
 double c_cos[nbands][linelen];
 double c_sin[nbands][linelen];
 
-CircBuf<double> *cd_q[nbands], *cd_i[nbands];
+//CircBuf<double> *cd_q[nbands], *cd_i[nbands];
+LDE *cd_q[nbands], *cd_i[nbands];
 	
-LDE *lpf45[nbands];
+LDE lpf45(7, NULL, f_inband7_b);
 
 void init_table()
 {
 	int N = 8;
 
 	for (int f = low, j = 0; f < high; f+= bd, j++) {
-		cd_q[j] = new CircBuf<double>(N, 1.0/N);
-		cd_i[j] = new CircBuf<double>(N, 1.0/N);
+//		cd_q[j] = new CircBuf<double>(N, 1.0/N);
+//		cd_i[j] = new CircBuf<double>(N, 1.0/N);
+		//cd_q[j] = new LDE(8, NULL, f_inband8_b);
+		//cd_i[j] = new LDE(8, NULL, f_inband8_b);
+		cd_q[j] = new LDE(8, NULL, f_inband8_b);
+		cd_i[j] = new LDE(8, NULL, f_inband8_b);
 		fbin[j] = CHZ / f;
-		//lpf45[j] = new LDE(24, NULL, f_inband_b);
-		lpf45[j] = new LDE(8, NULL, f_inband8_b);
 
 		for (int i = 0; i < linelen; i++) {
 			c_cos[j][i] = cos((2.0 * M_PIl * ((double)i / fbin[j]))); 
@@ -278,11 +263,11 @@ int findsync(double *out, int len)
 	return sync;
 }
 
-int decode_line(unsigned char *rawdata, unsigned short *output)
+int decode_line(unsigned char *rawdata, double *output)
 {
 	double data[linelen], out[linelen];
 	int rv = 0, total = 0;
-	LDE lpf_in(64, NULL, f_hp_b);
+	LDE lpf_in(8, NULL, f_hp8_b);
 
 	for (int i = 0; i < linelen; i++) {
 		total += rawdata[i];
@@ -292,126 +277,109 @@ int decode_line(unsigned char *rawdata, unsigned short *output)
 
 	// perform averaging and low-pass filtering on input
 	for (int i = 0; i < linelen; i++) {
-		data[i] = lpf_in.feed(rawdata[i] - avg);
-	//	data[i] = (rawdata[i] - avg);
+		//data[i] = lpf_in.feed(rawdata[i] - avg);
+		data[i] = (rawdata[i] - avg);
 	}
 
+	double phase[6400];
+	memset(phase, 0, sizeof(phase));
+
 	// perform multi-band FT
-	for (int i = 0; i < linelen; i++) {
+	for (int i = 1; i < linelen; i++) {
 		int npeak = -1;
-		double level[linelen], peak = -1;
+		double level[linelen], peak = 50000;
 		int f, j;
 
+		double pf = 0.0, avg = 0.0;
+
 		for (f = low, j = 0; f < high; f += bd, j++) {
+//			double oq = cd_q[j]->val;
+//			double oi = cd_i[j]->val;
 			double fcq = cd_q[j]->feed(data[i] * c_cos[j][i]); 
 			double fci = cd_i[j]->feed(-data[i] * c_sin[j][i]); 
 
-			level[j] = ctor(fcq, fci);
-			level[j] = lpf45[j]->feed(level[j]);
-			if (level[j] > peak) {peak = level[j]; npeak = j;}
-		}
-		double pf = (npeak * bd) + low;
-	
-		//cerr << i << ' ' << pf << ' ' << peak << endl;
-	
-		double dpi;
-		if ((npeak >= 1) && (npeak < (j - 1))) {
-			double p0 = level[npeak - 1];
-			double p2 = level[npeak + 1];
-	
-			dpi = (double)npeak + ((p2 - p0) / (2.0 * ((2.0 * peak) - p0 - p2))); 
-			pf = (dpi * bd) + low;	
+			level[j] = atan2(fci, fcq) - phase[j]; 
+			if (level[j] > M_PIl) level[j] -= (2 * M_PIl);
+			else if (level[j] < -M_PIl) level[j] += (2 * M_PIl);
 
-			if (pf < 0) {
-				cerr << "invalid freq " << pf << " peak bin " << (npeak * bd) + low << endl;
-				pf = 0;
-				}
-		} else {
-			pf = (!npeak) ? low : f;	
+//			cerr << f << ' ' << level[j] << ' ' << f * (level[j] / 2.0) << endl; 
+		
+//			avg += f - (f * level[j] / (28.63636 / 16.0));	
+//			avg += f + ((f / 2.0) * level[j]);
+			//cerr << f << ' ' << level[j] << ' ' << f + ((f / 2.0) * level[j])  << ' ' << atan2(fcq, fci) << ' ' << fcq << ' ' << fci << ' ' << endl;
+//			cerr << f << ' ' << level[j] << ' ' << f + ((f / 2.0) * level[j])  << ' ' << ctor(fcq, fci) << ' ' << ctor(fcq - oq, fci - oi) << ' ' << fcq - oq << ' ' << fci - oi<< ' ' << endl;
+//			cerr << (9200000.0 - f) / (level[j] / (CHZ / f)) << endl;
+//			cerr << f + ((9200000.0 / 2.0) * level[j]) << endl;
+
+			if (fabs(level[j]) < peak) {
+				npeak = j;
+				peak = level[j];
+				pf = f + ((f / 2.0) * level[j]);
+			}
+			phase[j] = atan2(fci, fcq);
 		}
+
+		pf = lpf45.feed(pf);
+
 		out[i] = pf;
 	}
-#if 0 // decided not to do tbc here afterall
-	int sync = findsync(out, 2048);
 
-	rv = sync;
-	cerr << 'x' << sync << endl;
-	if ((sync <= 256) || (sync > 512)) {
-		rv = -abs(sync);
-		sync = 0;
-	}
-
-	int sync2 = findsync(out + (sync + 1800), (2048 - sync - 1800));
-
-	if (sync2 > 0) sync2 += (sync + 1800);
-	//cerr << sync2 << ' ' << (2048 - sync - 1800) << endl;
-
-	// get color burst values 
-	double pi, pq;
-	double scale[32];
-
-	for (int i = 40; i < 72; i++) {
-		scale[i - 40] = (out[i] - 8000000) / 400000; 
-	}
-
-	dftc(scale, 16, 16, 8, pi, pq);
-	cerr << pi << ' ' << pq << ' ' << atan2(pi, pq) << endl;
-#endif
-	double halfout[910];	
-	for (int j = 0; j < 910; j++) {
-		halfout[j] = (out[(j * 2) + 64] + out[(j * 2) + 65]) / 2;
-	}	
-
-	for (int i = 0; i < 910; i++) {
+	double savg = 0, tvolt = 0;
+	for (int i = 0; i < 1820; i++) {
 		unsigned short iout;
-		double tmpout = ((double)(halfout[i] - zero) * mfactor);
+		double tmpout = ((double)(out[i + 128] - zero) * mfactor);
 
-		if (tmpout < 0) iout = 0;
-		else if (tmpout > 65535) iout = 65535;
-		else iout = tmpout;
+		output[i] = (out[i + 128] - zero) / (9400000.0 - 7600000.0);
+		tvolt += output[i];
 
-		output[i] = iout;
+	//	cerr << i << ' ' << out[i + 128] << ' ' << output[i] << endl;
 	}
-			
+
+	savg = tvolt / 1820.0;	
+	double sdev = 0.0;
+	for (int i = 0; i < 1820.0; i++) {
+		sdev += ((output[i] - savg) * (output[i] - savg));
+	}	
+	sdev = sqrt(sdev / 1820.0);
+
+	cerr << "avg " << savg << " sdev " << sdev << " snr " << 10 * log(savg / sdev) << endl;
+
 	return rv;
 }
 
 int main(int argc, char *argv[])
 {
-	int rv = 0, fd, dlen = 1024 * 1024 * 2;
-	long long total = 0;
-	double avg = 0.0;
-	unsigned short output[1820];
-
-	unsigned char *data;
-	double *ddata;
+	int rv = 0, fd = 0, dlen = -1 ;
+	double output[2048];
+	unsigned char inbuf[2048];
 
 	cerr << std::setprecision(16);
 
-	data = new unsigned char[dlen + 1];
-#if 1
-	fd = open(argv[1], O_RDONLY);
-	if (argc >= 3) lseek64(fd, atoll(argv[2]), SEEK_SET);
-	
+	cerr << argc << endl;
+
+	cerr << strncmp(argv[1], "-", 1) << endl;
+
+	if (argc >= 2 && (strncmp(argv[1], "-", 1))) {
+		fd = open(argv[1], O_RDONLY);
+	}
+
+	if (argc >= 3) {
+		unsigned long long offset = atoll(argv[2]);
+
+		if (offset) lseek64(fd, offset, SEEK_SET);
+	}
+		
 	if (argc >= 4) {
 		if ((size_t)atoi(argv[3]) < dlen) {
 			dlen = atoi(argv[3]); 
 		}
 	}
 
-	cerr << dlen << endl;
-
-	data = new unsigned char[dlen + 1];
-
-	dlen = read(fd, data, dlen);
 	cout << std::setprecision(8);
-#endif
 	
-	ddata = new double[dlen + 1];
-
+#if 0
 	double *freq = new double[dlen];
 	memset(freq, 0, sizeof(double) * dlen);
-#if 0
 	double lphase = 0.0, cphase = 0.0;
 
 	for (int i = 0; i < dlen; i++) {
@@ -423,24 +391,25 @@ int main(int argc, char *argv[])
 #endif
 
 	init_table();
+	rv = read(fd, inbuf, 2048);
 
-	int i = 4096;
-	while ((i + 1820) < dlen) {	
-		int rv = decode_line(&data[i], output);
+	int i = 2048;
+
+	while ((rv == 2048) && ((dlen == -1) || (i < dlen))) {
+		int rv = decode_line(inbuf, output);
 		cerr << i << ' ' << rv << endl;
 
-		i+=1820;
-		if (write(1, output, 2 * 910) != 2 * 910) {
+		if (write(1, output, sizeof(double) * 1820) != sizeof(double) * 1820) {
 			//cerr << "write error\n";
 			exit(0);
 		}
-/*
-		if ((rv < 0) && (rv >= -256)) {
-			i -= 128;
-		} else if ((rv < 0) && (rv >= -256)) {
-			i += 128;
-		}
-*/
+
+		i += 1820;
+		memmove(inbuf, &inbuf[1820], 228);
+		rv = read(fd, &inbuf[228], 1820) + 228;
+		
+		if (rv < 2048) return 0;
+		cerr << i << ' ' << rv << endl;
 	}
 	return 0;
 }
