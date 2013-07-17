@@ -60,8 +60,6 @@ template <class T> class CircBuf {
 		}
 };
 
-unsigned char rdata[1024*1024*32];
-
 double ctor(double r, double i)
 {
 	return sqrt((r * r) + (i * i));
@@ -212,7 +210,7 @@ int decode_line(unsigned char *rawdata, double *output)
 		data[i] = (rawdata[i] - avg);
 	}
 
-	double phase[6400];
+	double phase[nbands];
 	memset(phase, 0, sizeof(phase));
 
 	// perform multi-band FT

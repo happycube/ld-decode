@@ -85,18 +85,23 @@ class LDE {
 			}
 		}
 
-		double feed(double val) {
+		inline double feed(double val) {
+			double a0;
+
+			if (!a) a0 = 1;
+
 			for (int i = order - 1; i >= 1; i--) {
 				x[i] = x[i - 1];
-				y[i] = y[i - 1];
+				if (a) y[i] = y[i - 1];
 			}
 		
 			x[0] = val;
-			y[0] = ((b[0] / a[0]) * x[0]);
+	
+			y[0] = ((b[0] / a0) * x[0]);
 			//cerr << "0 " << x[0] << ' ' << b[0] << ' ' << (b[0] * x[0]) << ' ' << y[0] << endl;
 			for (int o = 1; o < order; o++) {
-				y[0] += ((b[o] / a[0]) * x[o]);
-				y[0] -= ((a[o] / a[0]) * y[o]);
+				y[0] += ((b[o] / a0) * x[o]);
+				if (a) y[0] -= ((a[o] / a[0]) * y[o]);
 				//cerr << o << ' ' << x[o] << ' ' << y[o] << ' ' << a[o] << ' ' << b[o] << ' ' << (b[o] * x[o]) << ' ' << -(a[o] * y[o]) << ' ' << y[0] << endl;
 			}
 
@@ -104,6 +109,13 @@ class LDE {
 		}
 		double val() {return y[0];}
 };
+
+// 4.2mhz filter
+const double f_inband8_b[] {-3.5634174409531622e-03, 9.4654740832740107e-03, 9.1456278081537348e-02, 2.4141004764330087e-01, 3.2246323526568188e-01, 2.4141004764330090e-01, 9.1456278081537348e-02, 9.4654740832740124e-03, -3.5634174409531609e-03}; 
+
+const double f_inband7_b[] { 2.0639067636214502e-02, 6.5484287559733512e-02, 1.6641090209130313e-01, 2.4746574271274874e-01, 2.4746574271274879e-01, 1.6641090209130316e-01, 6.5484287559733539e-02, 2.0639067636214502e-02 }; 
+
+const double f_1_3mhz8_b[] {1.5111163746320235e-02, 4.4814714383727902e-02, 1.2072313833671151e-01, 2.0140745712834590e-01, 2.3588705280978872e-01, 2.0140745712834590e-01, 1.2072313833671151e-01, 4.4814714383727916e-02, 1.5111163746320235e-02};
 
 const double f_1_3mhz_b[] {-3.2298296184665740e-03, -3.9763697027928036e-03, -3.0488187471881391e-03, 7.1571555933253586e-03, 3.3887137420533418e-02, 7.7579717689882186e-02, 1.2857649823595613e-01, 1.7003884825042573e-01, 1.8603132175664944e-01, 1.7003884825042576e-01, 1.2857649823595613e-01, 7.7579717689882199e-02, 3.3887137420533425e-02, 7.1571555933253577e-03, -3.0488187471881404e-03, -3.9763697027928062e-03, -3.2298296184665740e-03  };
 const double f_1_3mhz_a[16] {1, 0}; 
@@ -155,6 +167,7 @@ int cb_analysis(int begin, int end, double &peaklevel, double &peakphase)
 	double freq = 4.0;
 
 	// peaklevel = 0.0;
+	phase = 0.0;
 
 	for (int i = begin + 16; i < end; i++) {	
 		double fc = 0.0, fci = 0.0;
@@ -228,23 +241,25 @@ int main(int argc, char *argv[])
 	LowPass lpburst(0.5);
 //	LowPass lpU(0.9), lpV(0.9);
 
-	LDE lpU(16, f_1_3mhz_a, f_1_3mhz_b);
-	LDE lpV(16, f_1_3mhz_a, f_1_3mhz_b);
+	LDE lpU(8, NULL, f_1_3mhz8_b);
+	LDE lpV(8, NULL, f_1_3mhz8_b);
 
 	while (i < dlen) {
 		if (!find_sync(i, begin, len)) {
+			begin = i; len = 70;	
 			int lc = -21;
 			unsigned char line[1536 * 3];
 
-			cerr << begin << ' ' << len << endl;
+			cerr << i << ' ' << begin << ' ' << len << endl;
 			i = begin + len;
 
 			double freq, phase;
 
 			burst = 0.0;
 			// color burst is approx i + 30 to i + 90
-			cb_analysis(i + 15, i + 35, burst, phase);
-			lpburst.feed(burst);
+			cb_analysis(i + 00, i + 40, burst, phase);
+//			burst = lpburst.feed(burst);
+//			burst = M_PIl * 2.0;
 
 			cerr << burst << ',' << phase << endl;
 			freq = 4.0;
@@ -258,14 +273,18 @@ int main(int argc, char *argv[])
 				v = lpV.feed(-data[j] * sin(phase + (2.0 * M_PIl * ((double)(j) / freq)))); 
 				y = data[j - 6];
 				//cerr << lpU.val << ' ' << lpV.val << endl;
-#if 0
+#if 1
 				if (burst > 0.2) {
+					double yp = 0.0;
+					
 //					cerr << j << ' ' << u << ' ' << v << ' ' << y << ' ';
 //					cerr << u * cos(phase + (2.0 * M_PIl * (((double)j / freq)))) << ' ' ;
 //					cerr << v * cos(phase + (2.0 * M_PIl * (((double)j / freq)))) << ' ' ;
-					y += u * (2 * cos(phase + (2.0 * M_PIl * (((double)j / freq)))));
-					y -= v * (2 * sin(phase + (2.0 * M_PIl * (((double)j / freq)))));
-//					cerr << y << ' ' << endl;
+					yp += u * ((burst / M_PIl) * cos(phase + (2.0 * M_PIl * (((double)j / freq)))));
+					yp -= v * ((burst / M_PIl) * sin(phase + (2.0 * M_PIl * (((double)j / freq)))));
+
+					y += yp;
+//					cerr << yp << ' ' << y << ' ' << endl;
 				}
 //				y -= (255 * .2);
 #endif
@@ -302,6 +321,8 @@ R = 1.164(Y - 16) + 1.596(V - 128)
 			
 			}
 			write(1, line, 768 * 3);
+
+			i += (910 - 70);
 		} else {
 			i = dlen;
 		}
