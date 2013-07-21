@@ -3,6 +3,8 @@
 #include <stdio.h>
 #include <iostream>
 #include <iomanip>
+#include <vector>
+#include <complex>
 #include <unistd.h>
 #include <sys/fcntl.h>
 #include <fftw3.h>
@@ -15,50 +17,6 @@ const double CHZ = (1000000.0*(315.0/88.0)*8.0);
 const double FSC = (1000000.0*(315.0/88.0));
 
 using namespace std;
-
-template <class T> class CircBuf {
-	protected:
-		bool firstpass;
-		long count, cur;
-		T latest;	
-		T *buf;
-		T total;
-		double decay;
-	public:
-		CircBuf(int size, double _decay = 0.0) {
-			buf = new T[size];
-
-			decay = _decay;
-			count = size;
-			cur = 0;
-			total = 0;
-			firstpass = true;
-		}
-
-		double _feed(T nv)
-		{
-			total = 0;
-			buf[cur] = nv;
-			cur++;
-			if (cur == count) {
-				cur = 0;
-			}
-
-			for (int i = 0; i < count; i++) {
-				int p = cur - i;
-
-				if (p < 0) p += 8;	
-				total += buf[p] * (1.0 - (decay * (count - i)));
-			}
-
-			return total / count;
-		}
-		
-		double feed(T nv) {
-			latest = nv;
-			return _feed(nv);
-		}
-};
 
 double ctor(double r, double i)
 {
@@ -108,8 +66,8 @@ class LDE {
 		}
 
 		~LDE() {
-			delete [] x;
-			delete [] y;
+//			delete [] x;
+//			delete [] y;
 		}
 
 		void clear(double val = 0) {
@@ -143,6 +101,10 @@ class LDE {
 		double val() {return y[0];}
 };
 
+// longer-duration .5mhz filter, used for sync
+
+const double f_0_5mhz_b[] {2.8935325675960790e-03, 3.4577251216393609e-03, 4.7838244505790843e-03, 6.9572831696391620e-03, 1.0011907953112537e-02, 1.3924181711788889e-02, 1.8611409324653432e-02, 2.3933941132695716e-02, 2.9701434113594740e-02, 3.5682813848999163e-02, 4.1619323616848357e-02, 4.7239811465409724e-02, 5.2277230286682991e-02, 5.6485223640968835e-02, 5.9653649812310708e-02, 6.1621960508198896e-02, 6.2289494550564671e-02, 6.1621960508198896e-02, 5.9653649812310708e-02, 5.6485223640968821e-02, 5.2277230286682998e-02, 4.7239811465409724e-02, 4.1619323616848378e-02, 3.5682813848999170e-02, 2.9701434113594740e-02, 2.3933941132695712e-02, 1.8611409324653432e-02, 1.3924181711788901e-02, 1.0011907953112541e-02, 6.9572831696391620e-03, 4.7838244505790896e-03, 3.4577251216393622e-03, 2.8935325675960790e-03 };
+
 // 4.2mhz filter
 const double f_inband8_b[] {-3.5634174409531622e-03, 9.4654740832740107e-03, 9.1456278081537348e-02, 2.4141004764330087e-01, 3.2246323526568188e-01, 2.4141004764330090e-01, 9.1456278081537348e-02, 9.4654740832740124e-03, -3.5634174409531609e-03}; 
 
@@ -161,113 +123,138 @@ const int linelen = 2048;
 
 // todo?:  move into object
 
-const int low = 7400000, high=9800000, bd = 200000;
+const int low = 7400000, high=9800000, bd = 300000;
 const int nbands = ((high + 1 - low) / bd);
 
 double fbin[nbands];
 
-double c_cos[nbands][linelen];
-double c_sin[nbands][linelen];
-
-//CircBuf<double> *cd_q[nbands], *cd_i[nbands];
-LDE *cd_q[nbands], *cd_i[nbands];
-	
 LDE lpf45(7, NULL, f_inband7_b);
 
-void init_table()
-{
-	int N = 8;
+struct FreqBand : public vector<double> {
+	public:
+		double flow, fhigh, gap;
+		double fbase;
 
-	for (int f = low, j = 0; f < high; f+= bd, j++) {
-//		cd_q[j] = new CircBuf<double>(N, 1.0/N);
-//		cd_i[j] = new CircBuf<double>(N, 1.0/N);
-		cd_q[j] = new LDE(8, NULL, f_inband8_b);
-		cd_i[j] = new LDE(8, NULL, f_inband8_b);
-		fbin[j] = CHZ / f;
+	//	FreqBand(double _fbase = CHZ, double _flow = 7500000, double _fhigh = 9600000, double _gap = 100000) {
+		FreqBand(double _fbase = CHZ, double _flow = 7600000, double _fhigh = 9300000, double _gap = 50000) {
+			flow = _flow;
+			fhigh = _fhigh;
+			gap = _gap;
+			fbase = _fbase;
+			
+			int numbands = floor(((fhigh - flow) / gap) + 1);
 
-		for (int i = 0; i < linelen; i++) {
-			c_cos[j][i] = cos((2.0 * M_PIl * ((double)i / fbin[j]))); 
-			c_sin[j][i] = sin((2.0 * M_PIl * ((double)i / fbin[j]))); 
+			for (int i = 0; i < numbands; i++) push_back(flow + (gap * i));
 		}
-	}
-}
+};
 
-int decode_line(unsigned char *rawdata, double *output)
-{
-	double data[linelen], out[linelen];
-	int rv = 0, total = 0;
-	LDE lpf_in(8, NULL, f_hp8_b);
+typedef vector<complex<double>> cossin;
 
-	for (int i = 0; i < linelen; i++) {
-		total += rawdata[i];
-	}
+class FM_demod {
+	protected:
+		vector<LDE> f_q, f_i;
+		LDE *f_post;
+		vector<cossin> ldft;
+	
+		int linelen;
 
-	double avg = (double)total / (double)linelen;
+		int min_offset;
 
-	// perform averaging and low-pass filtering on input
-	for (int i = 0; i < linelen; i++) {
-		//data[i] = lpf_in.feed(rawdata[i] - avg);
-		data[i] = (rawdata[i] - avg);
-	}
+		FreqBand fb;
+	public:
+		FM_demod(int _linelen, FreqBand _fb, int _filt_size, const double *filt_a, const double *filt_b, int pf_size, const double *pf_a, const double *pf_b) {
+			linelen = _linelen;
 
-	double phase[nbands];
-	memset(phase, 0, sizeof(phase));
+			fb = _fb;
 
-	// perform multi-band FT
-	for (int i = 1; i < linelen; i++) {
-		int npeak = -1;
-		double level[linelen], peak = 50000;
-		int f, j;
+			for (double f : fb) {
+				cossin tmpdft;
+				double fmult = f / fb.fbase; 
 
-		double pf = 0.0;
+				for (int i = 0; i < linelen; i++) {
+					tmpdft.push_back(complex<double>(sin(i * 2.0 * M_PIl * fmult), cos(i * 2.0 * M_PIl * fmult))); 
+				}	
+				ldft.push_back(tmpdft);
 
-		for (f = low, j = 0; f < high; f += bd, j++) {
-			double fcq = cd_q[j]->feed(data[i] * c_cos[j][i]); 
-			double fci = cd_i[j]->feed(-data[i] * c_sin[j][i]); 
+				f_i.push_back(LDE(_filt_size, NULL, filt_b));
+				f_q.push_back(LDE(_filt_size, NULL, filt_b));
 
-			level[j] = atan2(fci, fcq) - phase[j]; 
-			if (level[j] > M_PIl) level[j] -= (2 * M_PIl);
-			else if (level[j] < -M_PIl) level[j] += (2 * M_PIl);
+				f_post = new LDE(pf_size, NULL, pf_b);
 
-			if (fabs(level[j]) < peak) {
-				npeak = j;
-				peak = level[j];
-				pf = f + ((f / 2.0) * level[j]);
+				min_offset = _filt_size + pf_size + 2;
+			}	
+		}
+
+		vector<double> process(vector<double> in) 
+		{
+			vector<double> out;
+			vector<double> phase(in.size());
+			double avg = 0;
+
+			if (in.size() < (size_t)linelen) return out;
+
+			for (double n : in) avg += n / in.size();
+
+			int i = 0;
+			for (double n : in) {
+				double level[fb.size() + 1];
+				double peak = 500000, pf = 0.0;
+				int npeak;
+				int j = 0;
+
+				n -= avg;
+	
+//				auto c = ldft[j]->begin(); 
+				for (double f: fb) {
+//					cerr << j << ' ' << f << endl;
+					double fci = f_i[j].feed(n * ldft[j][i].real());
+					double fcq = f_q[j].feed(-n * ldft[j][i].imag());
+			
+					level[j] = atan2(fci, fcq) - phase[j]; 
+					if (level[j] > M_PIl) level[j] -= (2 * M_PIl);
+					else if (level[j] < -M_PIl) level[j] += (2 * M_PIl);
+			
+					if (fabs(level[j]) < peak) {
+						npeak = j;
+						peak = level[j];
+						pf = f + ((f / 2.0) * level[j]);
+					}
+					phase[j] = atan2(fci, fcq);
+
+//					cerr << f << ' ' << pf << ' ' << fci << ' ' << fcq << ' ' << level[j] << ' ' << phase[j] << ' ' << peak << endl;
+
+					j++;
+				}
+	
+//				double thisout = pf;	
+				double thisout = f_post->feed(pf);	
+				if (i > min_offset) out.push_back(thisout);
+				i++;
 			}
-			phase[j] = atan2(fci, fcq);
+/*		
+			double avgout = 0.0;	
+			for (double n : out) {
+				n = (n - zero) / (9400000.0 - 7600000.0);
+				avgout += n / out.size();
+			}
+			
+			double sdev = 0.0;	
+			for (double n : out) {
+				sdev += ((n - avgout) * (n - avgout));
+			}
+*/
+			return out;
 		}
-
-		out[i] = lpf45.feed(pf);
-	}
-
-	double savg = 0, tvolt = 0;
-	for (int i = 0; i < 1820; i++) {
-		unsigned short iout;
-		double tmpout = ((double)(out[i + 128] - zero) * mfactor);
-
-		output[i] = (out[i + 128] - zero) / (9400000.0 - 7600000.0);
-		tvolt += output[i];
-	}
-
-	savg = tvolt / 1820.0;	
-	double sdev = 0.0;
-	for (int i = 0; i < 1820.0; i++) {
-		sdev += ((output[i] - savg) * (output[i] - savg));
-	}	
-	sdev = sqrt(sdev / 1820.0);
-
-	cerr << "avg " << savg << " sdev " << sdev << " snr " << 10 * log(savg / sdev) << endl;
-
-	return rv;
-}
+};
 
 int main(int argc, char *argv[])
 {
 	int rv = 0, fd = 0, dlen = -1 ;
-	double output[2048];
+	//double output[2048];
 	unsigned char inbuf[2048];
+	FreqBand fb;
 
-	cerr << std::setprecision(16);
+	cerr << std::setprecision(10);
 
 	cerr << argc << endl;
 
@@ -291,23 +278,51 @@ int main(int argc, char *argv[])
 
 	cout << std::setprecision(8);
 	
-	init_table();
 	rv = read(fd, inbuf, 2048);
 
 	int i = 2048;
 
-	while ((rv == 2048) && ((dlen == -1) || (i < dlen))) {
-		int rv = decode_line(inbuf, output);
-		cerr << i << ' ' << rv << endl;
+	FM_demod video(2048, fb, 8, NULL, f_inband8_b, 7, NULL, f_inband7_b);
 
-		if (write(1, output, sizeof(double) * 1820) != sizeof(double) * 1820) {
+	while ((rv == 2048) && ((dlen == -1) || (i < dlen))) {
+		vector<double> dinbuf;
+
+		for (int j = 0; j < 2048; j++) dinbuf.push_back(inbuf[j]); 
+
+		vector<double> outline = video.process(dinbuf);
+		double *output = outline.data();
+
+		vector<unsigned char> bout;
+		for (double n : outline) {
+//			cerr << n << ' ' << endl;
+			n -= 7600000.0;
+			n /= (9300000.0 - 7600000.0);
+			if (n < 0) n = 0;
+			if (n > 1) n = 1.0;
+			bout.push_back(n * 255.0);
+		}
+
+		unsigned char *boutput = bout.data();
+		int len = outline.size();
+		if (write(1, boutput, bout.size()) != bout.size()) {
 			//cerr << "write error\n";
 			exit(0);
 		}
 
-		i += 1820;
-		memmove(inbuf, &inbuf[1820], 228);
-		rv = read(fd, &inbuf[228], 1820) + 228;
+/*
+//		int rv = decode_line(inbuf, output);
+		cerr << i << ' ' << rv << endl;
+
+		int len = outline.size();
+
+		if (write(1, output, sizeof(double) * outline.size()) != sizeof(double) * outline.size()) {
+			//cerr << "write error\n";
+			exit(0);
+		}
+*/
+		i += len;
+		memmove(inbuf, &inbuf[len], 2048 - len);
+		rv = read(fd, &inbuf[(2048 - len)], len) + (2048 - len);
 		
 		if (rv < 2048) return 0;
 		cerr << i << ' ' << rv << endl;
