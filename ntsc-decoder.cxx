@@ -12,7 +12,9 @@
 //#define CHZ (28636363.0*5.0/4.0)
 
 const double FSC=(1000000.0*(315.0/88.0))*1.00;
-const double CHZ=(1000000.0*(315.0/88.0))*4.0;
+const double CHZ=(1000000.0*(315.0/88.0))*8.0;
+
+#define LOW 0 
 
 using namespace std;
 
@@ -75,8 +77,8 @@ class LDE {
 		}
 
 		~LDE() {
-			delete [] x;
-			delete [] y;
+//			delete [] x;
+//			delete [] y;
 		}
 
 		void clear(double val = 0) {
@@ -107,21 +109,17 @@ class LDE {
 
 			return y[0];
 		}
-		double val() {return y[0];}
 };
-
-// 4.2mhz filter
-const double f_inband8_b[] {-3.5634174409531622e-03, 9.4654740832740107e-03, 9.1456278081537348e-02, 2.4141004764330087e-01, 3.2246323526568188e-01, 2.4141004764330090e-01, 9.1456278081537348e-02, 9.4654740832740124e-03, -3.5634174409531609e-03}; 
-
-const double f_inband7_b[] { 2.0639067636214502e-02, 6.5484287559733512e-02, 1.6641090209130313e-01, 2.4746574271274874e-01, 2.4746574271274879e-01, 1.6641090209130316e-01, 6.5484287559733539e-02, 2.0639067636214502e-02 }; 
-
-const double f_1_3mhz8_b[] {1.5111163746320235e-02, 4.4814714383727902e-02, 1.2072313833671151e-01, 2.0140745712834590e-01, 2.3588705280978872e-01, 2.0140745712834590e-01, 1.2072313833671151e-01, 4.4814714383727916e-02, 1.5111163746320235e-02};
 
 const double f_1_3mhz_b[] {-3.2298296184665740e-03, -3.9763697027928036e-03, -3.0488187471881391e-03, 7.1571555933253586e-03, 3.3887137420533418e-02, 7.7579717689882186e-02, 1.2857649823595613e-01, 1.7003884825042573e-01, 1.8603132175664944e-01, 1.7003884825042576e-01, 1.2857649823595613e-01, 7.7579717689882199e-02, 3.3887137420533425e-02, 7.1571555933253577e-03, -3.0488187471881404e-03, -3.9763697027928062e-03, -3.2298296184665740e-03  };
 const double f_1_3mhz_a[16] {1, 0}; 
 
 const double f_2_0mhz_b[] { 2.0725950133615822e-03, -8.3463967955793583e-04, -9.7490566449315967e-03, -2.1735983355962385e-02, -1.4929346936560809e-02, 3.7413352363703849e-02, 1.3482681278026168e-01, 2.3446159984589487e-01, 2.7694933322758158e-01, 2.3446159984589490e-01, 1.3482681278026165e-01, 3.7413352363703870e-02, -1.4929346936560811e-02, -2.1735983355962385e-02, -9.7490566449315984e-03, -8.3463967955793670e-04, 2.0725950133615822e-03 }; 
 const double f_2_0mhz_a[16] {1, 0}; 
+
+const double f28_1_3mhz_b[] {-0.001605546962576, -0.001720715415901, -0.001946803465800, -0.001995111072946, -0.001418912133847, 0.000319283972829, 0.003749771835142, 0.009283568838623, 0.017106823088818, 0.027102555215712, 0.038816809945381, 0.051479087693364, 0.064077535801999, 0.075479512054721, 0.084579633459880, 0.090451915763888, 0.092481182761425, 0.090451915763888, 0.084579633459880, 0.075479512054721, 0.064077535801999, 0.051479087693364, 0.038816809945381, 0.027102555215712, 0.017106823088818, 0.009283568838623, 0.003749771835142, 0.000319283972829, -0.001418912133847, -0.001995111072946, -0.001946803465800, -0.001720715415901, -0.001605546962576};
+
+//const double f28_1_3mhz_b[] {0.003606093434564, 0.007043286024896, 0.016563490226445, 0.033511077393328, 0.056900979341100, 0.083364136538642, 0.107911570030282, 0.125304083349520, 0.131590567322449, 0.125304083349520, 0.107911570030282, 0.083364136538642, 0.056900979341100, 0.033511077393328, 0.016563490226445, 0.007043286024896, 0.003606093434564};
 
 unsigned short rdata[1024*1024*32];
 double data[1024*1024*32];
@@ -164,10 +162,9 @@ double phase = 0.0;
 int cb_analysis(int begin, int end, double &peaklevel, double &peakphase)
 {
 //	double fc = 0.0, fci = 0.0;
-	double freq = 4.0;
+	double freq = 8.0;
 
-	// peaklevel = 0.0;
-	phase = 0.0;
+	peaklevel = 0.0;
 
 	for (int i = begin + 16; i < end; i++) {	
 		double fc = 0.0, fci = 0.0;
@@ -177,10 +174,11 @@ int cb_analysis(int begin, int end, double &peaklevel, double &peakphase)
 			fc += (o * cos(phase + (2.0 * M_PIl * ((double)(i + j) / freq)))); 
 			fci -= (o * sin(phase + (2.0 * M_PIl * ((double)(i + j) / freq)))); 
 		}
-		double level = ctor(fc, fci) / 33.0;
-		if (level > 0.6) phase -= (atan2(fci, ctor(fc, fci)));
-		if (level > peaklevel) peaklevel = level;
-		cerr << i << ' ' << ctor(fc, fci) / 33 << ' ' << phase << ' ' << peaklevel << endl;
+		peaklevel += ctor(fc, fci) / 33.0 / 2.0;
+		phase -= (atan2(fci, ctor(fc, fci)));
+//		if (level > 0.6) phase = (atan2(fc, ctor(fc, fci)));
+//		if (level > peaklevel) { peaklevel = level;}
+		cerr << i << ' ' << ctor(fc, fci) / 33 / 2.0<< ' ' << phase << ' ' << peaklevel << endl;
 	}
 //	cerr << i << ' ' << state << ' ' << (int)data[i] << ':' << ire << ' ' << ' ' << fc << ',' << fci << " : " << ctor(fc, fci) / N << ',' << atan2(fci, ctor(fci, fc)) << ',' << phase << endl; 
 //		if (fc < 0) phase += (M_PIl / 2.0); 
@@ -189,6 +187,7 @@ int cb_analysis(int begin, int end, double &peaklevel, double &peakphase)
 
 	//peakfreq = freq;
 	peakphase = phase;
+	peaklevel /= (end - begin - 16);
 
 	return 0;
 }
@@ -212,9 +211,7 @@ int main(int argc, char *argv[])
 
 //	cout << std::setprecision(8);
 
-	rlow = 0;  rhigh = 65535;
-
-//	rlow = 4;  rhigh = 0x3fb;
+	rlow = 0;  rhigh = 62000;
 	
 	igrad = (double)(rhigh - rlow) / 140.0;
 	double irestep = 140.0 / (double)(rhigh - rlow); 
@@ -233,7 +230,8 @@ int main(int argc, char *argv[])
 		total += data[i];
 	}
 
-	rhigh = high;
+	cerr << high << endl;
+//	rhigh = high;
 	int begin = 0, len = 0;
 	i = 0;
 	double burst = 0.0;
@@ -241,50 +239,44 @@ int main(int argc, char *argv[])
 	LowPass lpburst(0.5);
 //	LowPass lpU(0.9), lpV(0.9);
 
-	LDE lpU(8, NULL, f_1_3mhz8_b);
-	LDE lpV(8, NULL, f_1_3mhz8_b);
+	LDE lpU(32, NULL, f28_1_3mhz_b);
+	LDE lpV(32, NULL, f28_1_3mhz_b);
 
 	while (i < dlen) {
 		if (!find_sync(i, begin, len)) {
-			begin = i; len = 70;	
 			int lc = -21;
 			unsigned char line[1536 * 3];
 
-			cerr << i << ' ' << begin << ' ' << len << endl;
+			cerr << begin << ' ' << len << endl;
 			i = begin + len;
 
-			double freq, phase;
+			double freq = 8.0, phase;
 
 			burst = 0.0;
 			// color burst is approx i + 30 to i + 90
-			cb_analysis(i + 00, i + 40, burst, phase);
-//			burst = lpburst.feed(burst);
-//			burst = M_PIl * 2.0;
+			cb_analysis(i + 20, i + 60, burst, phase);
+			lpburst.feed(burst);
 
-			cerr << burst << ',' << phase << endl;
-			freq = 4.0;
+			cerr << freq << ',' << phase << endl;
+			freq = 8.0;
 
-			for (int j = i + 60; j < i + 60 + 768 + 7; j++) {
+			for (int j = i + 120; j < i + 120 + 1536 + 7; j++) {
 				double fc = 0, fci = 0;
 				double y = data[j];
 				double u, v;	
 	
 				u = lpU.feed(data[j] * cos(phase + (2.0 * M_PIl * ((double)(j) / freq)))); 
 				v = lpV.feed(-data[j] * sin(phase + (2.0 * M_PIl * ((double)(j) / freq)))); 
-				y = data[j - 6];
+				y = data[j - 7];
 				//cerr << lpU.val << ' ' << lpV.val << endl;
 #if 1
 				if (burst > 0.2) {
-					double yp = 0.0;
-					
-//					cerr << j << ' ' << u << ' ' << v << ' ' << y << ' ';
+					cerr << j << ' ' << u << ' ' << v << ' ' << y << ' ';
 //					cerr << u * cos(phase + (2.0 * M_PIl * (((double)j / freq)))) << ' ' ;
 //					cerr << v * cos(phase + (2.0 * M_PIl * (((double)j / freq)))) << ' ' ;
-					yp += u * ((burst / M_PIl) * cos(phase + (2.0 * M_PIl * (((double)j / freq)))));
-					yp -= v * ((burst / M_PIl) * sin(phase + (2.0 * M_PIl * (((double)j / freq)))));
-
-					y += yp;
-//					cerr << yp << ' ' << y << ' ' << endl;
+					y -= u * (2.0 * cos(phase + (2.0 * M_PIl * (((double)(j - 7) / freq)))));
+					y += v * (2.0 * sin(phase + (2.0 * M_PIl * (((double)(j - 7) / freq)))));
+					cerr << y << ' ' << endl;
 				}
 //				y -= (255 * .2);
 #endif
@@ -320,9 +312,7 @@ R = 1.164(Y - 16) + 1.596(V - 128)
 				//cerr << fc << ':' << fci << ' ' << lc << ' ' << (int)line[lc - 2] << endl;				
 			
 			}
-			write(1, line, 768 * 3);
-
-			i += (910 - 70);
+			write(1, line, 1536 * 3);
 		} else {
 			i = dlen;
 		}
