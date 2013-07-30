@@ -4,6 +4,7 @@
 #include <iostream>
 #include <iomanip>
 #include <vector>
+#include <list>
 #include <complex>
 #include <unistd.h>
 #include <sys/fcntl.h>
@@ -132,6 +133,13 @@ const double f_butter8_b[] {0.0003095893499646, 0.0024767147997169, 0.0086685017
 const double f_boost6_b[] {0.0111989816340250, 0.0048865621882266, -0.0481490541009254, -0.8694087656392513, 2.8936261819359768, -0.8694087656392512, -0.0481490541009254, 0.0048865621882266, 0.0111989816340250};
 //const double f_boost6_b[] {0.0168027211008027, 0.0022145267218688, 0.0416814439546960, -1.4449168967980353, 3.8620269283049078, -1.4449168967980355, 0.0416814439546960, 0.0022145267218688, 0.0168027211008027};
 
+const double f_2_0mhz_b[] { 2.0725950133615822e-03, -8.3463967955793583e-04, -9.7490566449315967e-03, -2.1735983355962385e-02, -1.4929346936560809e-02, 3.7413352363703849e-02, 1.3482681278026168e-01, 2.3446159984589487e-01, 2.7694933322758158e-01, 2.3446159984589490e-01, 1.3482681278026165e-01, 3.7413352363703870e-02, -1.4929346936560811e-02, -2.1735983355962385e-02, -9.7490566449315984e-03, -8.3463967955793670e-04, 2.0725950133615822e-03 };
+const double f_2_0mhz_a[16] {1, 0};
+
+const double f28_1_3mhz_b[] {-1.606520060122928e-03, -1.655407847264293e-03, -1.775562785865866e-03, -1.613365514625196e-03, -6.608951305251436e-04, 1.658880771815467e-03, 5.878138286414544e-03, 1.236192372717719e-02, 2.120122219652129e-02, 3.214365150841308e-02, 4.457824331557173e-02, 5.758147137495655e-02, 7.002060196594841e-02, 8.069966942725533e-02, 8.852500613801824e-02, 9.266294262631157e-02, 9.266294262631157e-02, 8.852500613801825e-02, 8.069966942725534e-02, 7.002060196594842e-02, 5.758147137495655e-02, 4.457824331557171e-02, 3.214365150841310e-02, 2.120122219652130e-02, 1.236192372717719e-02, 5.878138286414545e-03, 1.658880771815467e-03, -6.608951305251436e-04, -1.613365514625196e-03, -1.775562785865866e-03, -1.655407847264294e-03, -1.606520060122928e-03};
+
+const double f28_0_6mhz_b[] {2.418525441220349e-03, 3.032499155527502e-03, 4.402843624075901e-03, 6.673297306993343e-03, 9.925756676326794e-03, 1.416822744109794e-02, 1.932851039649254e-02, 2.525438455323643e-02, 3.172049685116917e-02, 3.844158358553873e-02, 4.509108637168183e-02, 5.132373645854953e-02, 5.680031079400327e-02, 6.121254638517508e-02, 6.430615740210396e-02, 6.590003755680766e-02, 6.590003755680766e-02, 6.430615740210398e-02, 6.121254638517508e-02, 5.680031079400327e-02, 5.132373645854953e-02, 4.509108637168181e-02, 3.844158358553876e-02, 3.172049685116920e-02, 2.525438455323643e-02, 1.932851039649254e-02, 1.416822744109794e-02, 9.925756676326791e-03, 6.673297306993343e-03, 4.402843624075902e-03, 3.032499155527506e-03, 2.418525441220350e-03};
+
 const double f_a[256] {1,};
 
 const double zero = 7600000.0;
@@ -154,8 +162,8 @@ struct FreqBand : public vector<double> {
 		double flow, fhigh, gap;
 		double fbase;
 
-	//	FreqBand(double _fbase = CHZ, double _flow = 7500000, double _fhigh = 9600000, double _gap = 100000) {
-		FreqBand(double _fbase = CHZ, double _flow = 7600000, double _fhigh = 9300000, double _gap = 250000) {
+		FreqBand(double _fbase = CHZ, double _flow = 7500000, double _fhigh = 9600000, double _gap = 100000) {
+	//	FreqBand(double _fbase = CHZ, double _flow = 7600000, double _fhigh = 9300000, double _gap = 250000) {
 			flow = _flow;
 			fhigh = _fhigh;
 			gap = _gap;
@@ -212,7 +220,7 @@ class FM_demod {
 		vector<double> process(vector<double> in) 
 		{
 			vector<double> out;
-			vector<double> phase(in.size());
+			vector<double> phase(fb.size() + 1);
 			double avg = 0, total = 0.0;
 
 			LDE boost(8, NULL, f_boost6_b);
@@ -223,7 +231,7 @@ class FM_demod {
 
 			int i = 0;
 			for (double n : in) {
-				double level[fb.size() + 1];
+				vector<double> level(fb.size() + 1);
 				double peak = 500000, pf = 0.0;
 				int npeak;
 				int j = 0;
@@ -231,14 +239,17 @@ class FM_demod {
 				n -= avg;
 				total += fabs(n);
 				n = boost.feed(n);
+
+				level[j] = 0;
 	
 //				auto c = ldft[j]->begin(); 
 				for (double f: fb) {
-//					cerr << j << ' ' << f << endl;
 					double fci = f_i[j].feed(n * ldft[j][i].real());
 					double fcq = f_q[j].feed(-n * ldft[j][i].imag());
-			
-					level[j] = atan2(fci, fcq) - phase[j]; 
+		
+//					cerr << fci << ' ' << fcq << endl;
+	
+					level[j] = atan2(fci, fcq) - phase[j];
 					if (level[j] > M_PIl) level[j] -= (2 * M_PIl);
 					else if (level[j] < -M_PIl) level[j] += (2 * M_PIl);
 						
@@ -274,6 +285,158 @@ class FM_demod {
 
 			cerr << total / in.size() << endl;
 			return out;
+		}
+};
+
+inline double IRE(double in) 
+{
+	return (in * 140.0) - 40.0;
+}
+
+struct YIQ {
+	double y, i, q;
+
+	YIQ(double _y = 0.0, double _i = 0.0, double _q = 0.0) {
+		y = _y; i = _i; q = _q;
+	};
+};
+
+double clamp(double v, double low, double high)
+{
+	if (v < low) return low;
+	else if (v > high) return high;
+	else return v;
+}
+
+struct RGB {
+	double r, g, b;
+
+	void conv(YIQ y) { 
+		y.i = clamp(y.i, -0.5957, .5957);
+		y.q = clamp(y.q, -0.5226, .5226);
+
+		y.y -= (.4 / 1.4);
+		y.y *= 1.4; 
+		y.y = clamp(y.y, 0, 1);
+
+//		r = y.y + 0.9563 * y.i + 0.6210 * y.q; 
+//		g = y.y - 0.2721 * y.i - 0.6474 * y.q; 
+//		b = y.y - 1.1070 * y.i + 1.7046 * y.q; 
+
+		r = (y.y * 1.164) + (1.596 * y.i);
+		g = (y.y * 1.164) - (0.813 * y.i) - (y.q * 0.391);
+		b = (y.y * 1.164) + (y.q * 2.018);
+
+		r = clamp(r, 0, 1);
+		g = clamp(g, 0, 1);
+		b = clamp(b, 0, 1);
+//		cerr << 'y' << y.y << " i" << y.i << " q" << y.q << ' ';
+//		cerr << 'r' << r << " g" << g << " b" << b << endl;
+	};
+};
+
+class NTSColor {
+	protected:
+		LDE *f_i, *f_q, *f_sync;
+		double fc, fci;
+		double freq;
+
+		int counter, lastsync;
+		bool insync;
+
+		double phase, level;
+	
+		list<double> prev;
+
+		vector<YIQ> &buf;
+	public:
+		NTSColor(vector<YIQ> &_buf, double _freq = 8.0) : buf(_buf) {
+			lastsync = -1;
+			counter = 0;
+			insync = false;
+
+			level = phase = 0.0;
+
+			freq = _freq;
+
+			f_i = new LDE(31, NULL, f28_1_3mhz_b);
+			f_q = new LDE(31, NULL, f28_1_3mhz_b);
+			
+//			f_sync = new LDE(64, NULL, f_inband8_b);
+		}
+
+		YIQ feed(double in) {
+			counter++;
+			if (lastsync >= 0) lastsync++;
+
+//			cerr << insync << ' ' << lastsync << endl;
+
+			prev.push_back(in);	
+			if (prev.size() > 32) prev.pop_front();
+
+			int count = 0;
+			if (insync == false) {
+				for (double v: prev) {
+					if (v < 0.1) {
+						count++;
+					}
+				}
+				if (count >= 24) {
+					for (int i = lastsync; i >= 0 && i < 1820; i++) {
+						buf.push_back(YIQ(0,0,0));
+					}
+					lastsync = 24;
+					for (int i = 0; i < lastsync; i++) {
+						buf.push_back(YIQ(0,0,0));
+					}
+
+					cerr << "sync at " << counter<<endl;
+					insync = true;
+					prev.clear();
+				}
+
+				// average 20 color value samples to get phase/level
+				if ((lastsync >= 190) && (lastsync < 210)) {
+					fci += f_i->val();
+					fc += f_q->val();
+				} else if (lastsync == 210) {
+					level = ctor(fc, fci) / 20;
+					phase -= atan2(fci, ctor(fc, fci));
+					cerr << "level " << level << " phase" << atan2(fci, ctor(fc, fci)) << endl ;
+				}
+			} else {
+				for (double v: prev) {
+					if (v > 0.2) count++;
+				}
+				if (count >= 16) {
+					insync = false;
+					prev.clear();
+					fc = fci = 0;
+				}
+			}
+
+                        double q = f_q->feed(in * cos(phase + (2.0 * M_PIl * ((double)(counter) / freq))));
+			double i = f_i->feed(-in * sin(phase + (2.0 * M_PIl * ((double)(counter) / freq))));
+
+			if ((lastsync >= 0) && (lastsync < 1820)) {
+				double y = in;
+
+				if (prev.size() > 17) {
+					list<double>::iterator cur = prev.begin();
+	
+					for (int i = 0; i < (prev.size() - 16); i++, cur++);	
+					y = *cur;
+				}
+
+				cerr << "i " << i << " q " << q << " y " << y;
+				y += i * 2 * (cos(phase + (2.0 * M_PIl * (((double)(counter - 17) / freq)))));
+                                y += q * 2 * (sin(phase + (2.0 * M_PIl * (((double)(counter - 17) / freq)))));
+				cerr << " " << y << endl;
+				YIQ outc = YIQ(y, i * (.2 / level), q * (.2 / level));
+				buf.push_back(outc);	
+			}
+
+			return YIQ();
 		}
 };
 
@@ -316,7 +479,11 @@ int main(int argc, char *argv[])
 	FM_demod video(2048, fb, 6, f_butter6_a, f_butter6_b, 7, NULL, f_inband7_b);
 //	FM_demod video(2048, fb, 8, f_butter8_a, f_butter8_b, 8, NULL, f_inband8_b);
 //	FM_demod video(2048, fb, 8, NULL, f_inband8_b, 7, NULL, f_inband7_b);
+//	FM_demod video(2048, fb, 8, NULL, f_inband8_b, 7, NULL, f_inband7_b);
 //	FM_demod video(2048, fb, 4, NULL, f_inband4_b, 7, NULL, f_inband7_b);
+	
+	vector<YIQ> outbuf;	
+	NTSColor color(outbuf);
 
 	while ((rv == 2048) && ((dlen == -1) || (i < dlen))) {
 		vector<double> dinbuf;
@@ -324,7 +491,6 @@ int main(int argc, char *argv[])
 		for (int j = 0; j < 2048; j++) dinbuf.push_back(inbuf[j]); 
 
 		vector<double> outline = video.process(dinbuf);
-		double *output = outline.data();
 
 		vector<unsigned short> bout;
 		for (double n : outline) {
@@ -333,8 +499,19 @@ int main(int argc, char *argv[])
 			n /= (9300000.0 - 7600000.0);
 			if (n < 0) n = 0;
 			if (n > (65535.0 / 62000.0)) n = (65535.0 / 62000.0);
-			bout.push_back(n * 62000.0);
+			color.feed(n);
+//			bout.push_back(n * 62000.0);
 		}
+
+//cerr << "z\n";
+		for (YIQ i : outbuf) {
+			RGB r;
+			r.conv(i);
+			bout.push_back(r.r * 62000.0);
+			bout.push_back(r.g * 62000.0);
+			bout.push_back(r.b * 62000.0);
+		}
+		outbuf.clear();
 
 		unsigned short *boutput = bout.data();
 		int len = outline.size();
@@ -343,17 +520,6 @@ int main(int argc, char *argv[])
 			exit(0);
 		}
 
-/*
-//		int rv = decode_line(inbuf, output);
-		cerr << i << ' ' << rv << endl;
-
-		int len = outline.size();
-
-		if (write(1, output, sizeof(double) * outline.size()) != sizeof(double) * outline.size()) {
-			//cerr << "write error\n";
-			exit(0);
-		}
-*/
 		i += len;
 		memmove(inbuf, &inbuf[len], 2048 - len);
 		rv = read(fd, &inbuf[(2048 - len)], len) + (2048 - len);
