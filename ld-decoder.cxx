@@ -78,8 +78,8 @@ class LDE {
 		}
 
 		~LDE() {
-//			delete [] x;
-//			delete [] y;
+//			delete x;
+//			delete y;
 		}
 
 		void clear(double val = 0) {
@@ -194,7 +194,6 @@ struct FreqBand : public vector<double> {
 		double fbase;
 
 		FreqBand(double _fbase = CHZ, double _flow = 7500000, double _fhigh = 9600000, double _gap = 100000) {
-	//	FreqBand(double _fbase = CHZ, double _flow = 7600000, double _fhigh = 9300000, double _gap = 250000) {
 			flow = _flow;
 			fhigh = _fhigh;
 			gap = _gap;
@@ -269,7 +268,6 @@ class FM_demod {
 
 				cerr << n << endl;
 	
-//				auto c = ldft[j]->begin(); 
 				for (double f: fb) {
 					double fci = f_i[j].feed(n * ldft[j][i].real());
 					double fcq = f_q[j].feed(-n * ldft[j][i].imag());
@@ -297,20 +295,8 @@ class FM_demod {
 				if (i > min_offset) out.push_back(thisout);
 				i++;
 			}
-/*		
-			double avgout = 0.0;	
-			for (double n : out) {
-				n = (n - zero) / (9400000.0 - 7600000.0);
-				avgout += n / out.size();
-			}
-			
-			double sdev = 0.0;	
-			for (double n : out) {
-				sdev += ((n - avgout) * (n - avgout));
-			}
-*/
 
-			cerr << total / in.size() << endl;
+//			cerr << total / in.size() << endl;
 			return out;
 		}
 };
@@ -346,10 +332,6 @@ struct RGB {
 		y.y *= 1.4; 
 		y.y = clamp(y.y, 0, 1);
 
-//		r = y.y + 0.9563 * y.i + 0.6210 * y.q; 
-//		g = y.y - 0.2721 * y.i - 0.6474 * y.q; 
-//		b = y.y - 1.1070 * y.i + 1.7046 * y.q; 
-
 		r = (y.y * 1.164) + (1.596 * y.i);
 		g = (y.y * 1.164) - (0.813 * y.i) - (y.q * 0.391);
 		b = (y.y * 1.164) + (y.q * 2.018);
@@ -364,7 +346,7 @@ struct RGB {
 
 class NTSColor {
 	protected:
-		LDE *f_i, *f_q, *f_sync, *f_burst;
+		LDE *f_i, *f_q, *f_burst;
 		double fc, fci;
 		double freq;
 
@@ -413,15 +395,12 @@ class NTSColor {
 			f_i = new LDE(31, NULL, f28_1_3mhz_b);
 			f_q = new LDE(31, NULL, f28_1_3mhz_b);
 			
-			f_sync = new LDE(31, NULL, f28_0_6mhz_b);
 			f_burst = new LDE(4, f_lpburst_a, f_lpburst_b);
 		}
 
 		YIQ feed(double in) {
 			counter++;
 			if (lastsync >= 0) lastsync++;
-
-			f_sync->feed(in);
 
 //			cerr << insync << ' ' << lastsync << endl;
 
@@ -459,13 +438,10 @@ class NTSColor {
 						phase -= atan2(fci, ctor(fc, fci));
 						phased = true;
 						phase_count = counter;
-						//cerr << "level " << level << " q " << fc / 20 << " i " << fci / 20 << " phase " << atan2(fci, ctor(fc, fci)) << " cphase " << phase << ' ' << igap << ' ' << f_sync->val() << endl ;
+						//cerr << "level " << level << " q " << fc / 20 << " i " << fci / 20 << " phase " << atan2(fci, ctor(fc, fci)) << " cphase " << phase << ' ' << igap << endl ;
 					}
 				}
 			} else {
-				if (lastsync == 16) {
-					//cerr << "fsync " << (f_sync->val() * 1700000) + 7600000 << ' ' << igap << endl; 
-				}
 				for (double v: prev) {
 					if (v > 0.2) count++;
 				}
@@ -500,10 +476,13 @@ class NTSColor {
 				}
 
 				//cerr << "i " << i << " q " << q << " y " << y;
+#ifndef BW
 				y += i * 2 * (cos(curphase + (2.0 * M_PIl * (((double)(counter - 17) / freq)))));
-                               y += q * 2 * (sin(curphase + (2.0 * M_PIl * (((double)(counter - 17) / freq))))); //cerr << " " << y << endl;
+                              y += q * 2 * (sin(curphase + (2.0 * M_PIl * (((double)(counter - 17) / freq))))); //cerr << " " << y << endl;
 				YIQ outc = YIQ(y, i * (.2 / level), q * (.2 / level));
-//				YIQ outc = YIQ(y, 0,0);
+#else
+				YIQ outc = YIQ(y, 0,0);
+#endif
 				if (!lastsync) outc.y = 1.0;
 				buf->push_back(outc);	
 			}
@@ -519,9 +498,7 @@ int main(int argc, char *argv[])
 	unsigned char inbuf[2048];
 
 	cerr << std::setprecision(10);
-
 	cerr << argc << endl;
-
 	cerr << strncmp(argv[1], "-", 1) << endl;
 
 	if (argc >= 2 && (strncmp(argv[1], "-", 1))) {
@@ -553,19 +530,14 @@ int main(int argc, char *argv[])
 	LDE f_butter6(6, f_butter6_a, f_butter6_b);
 	LDE f_boost6(8, NULL, f_boost6_b);
 
-	FreqBand fb(CHZ, 7500000, 9600000, 250000); 
-	FreqBand fb_a_left(CHZ, 2150000, 2450000, 10000); 
-	FreqBand fb_a_right(CHZ, 2650000, 2950000, 10000); 
+	FreqBand fb(CHZ, 7500000, 9600000, 400000); 
+	FreqBand fb_a_left(CHZ, 2150000, 2450000, 50000); 
+	FreqBand fb_a_right(CHZ, 2650000, 2950000, 50000); 
 
 	FM_demod a_left(2048, fb_a_left, &f_lpf30, &f_lpf02, NULL);
 	FM_demod a_right(2048, fb_a_right, &f_lpf30, &f_lpf02, NULL);
 
-//	FM_demod video(2048, fb, 4, f_butter4_a, f_butter4_b, 7, NULL, f_inband7_b);
 	FM_demod video(2048, fb, &f_hp35, &f_butter6, NULL);
-//	FM_demod video(2048, fb, 8, f_butter8_a, f_butter8_b, 8, NULL, f_inband8_b);
-//	FM_demod video(2048, fb, 8, NULL, f_inband8_b, 7, NULL, f_inband7_b);
-//	FM_demod video(2048, fb, 8, NULL, f_inband8_b, 7, NULL, f_inband7_b);
-//	FM_demod video(2048, fb, 4, NULL, f_inband4_b, 7, NULL, f_inband7_b);
 	
 	vector<YIQ> outbuf;	
 	NTSColor color, color2(&outbuf);
@@ -593,26 +565,26 @@ int main(int argc, char *argv[])
 			double n = outline[i];
 			double l = outaudiol[i + agap];
 			double r = outaudior[i + agap];
-//			cerr << n << ' ' << endl;
+
 			n -= 7600000.0;
 			n /= (9300000.0 - 7600000.0);
 			if (n < 0) n = 0;
 			if (n > (65535.0 / 62000.0)) n = (65535.0 / 62000.0);
+
 			color.feed(n);
 			if (color.get_newphase(nextphase)) {
 				color2.set_phase(nextphase);
 			}
+
 			delaybuf.push(n);
 			if (delaybuf.size() >= 1820) {
 				color2.feed(delaybuf.front());
 				delaybuf.pop();
 			}
-//			bout.push_back(n * 62000.0);
 
 			cerr << outline[i] << ' ' << l << ' ' << r << endl;
 		}
 
-//cerr << "z\n";
 		for (YIQ i : outbuf) {
 			RGB r;
 			r.conv(i);
