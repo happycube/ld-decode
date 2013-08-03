@@ -5,6 +5,7 @@
 #include <iomanip>
 #include <vector>
 #include <list>
+#include <queue>
 #include <complex>
 #include <unistd.h>
 #include <sys/fcntl.h>
@@ -63,6 +64,16 @@ class LDE {
 			x = new double[order];
 			y = new double[order];
 	
+			clear();
+		}
+
+		LDE(LDE *orig) {
+			order = orig->order;
+			a = orig->a;
+			b = orig->b;
+			x = new double[order];
+			y = new double[order];
+				
 			clear();
 		}
 
@@ -140,6 +151,26 @@ const double f28_1_3mhz_b[] {-1.606520060122928e-03, -1.655407847264293e-03, -1.
 
 const double f28_0_6mhz_b[] {2.418525441220349e-03, 3.032499155527502e-03, 4.402843624075901e-03, 6.673297306993343e-03, 9.925756676326794e-03, 1.416822744109794e-02, 1.932851039649254e-02, 2.525438455323643e-02, 3.172049685116917e-02, 3.844158358553873e-02, 4.509108637168183e-02, 5.132373645854953e-02, 5.680031079400327e-02, 6.121254638517508e-02, 6.430615740210396e-02, 6.590003755680766e-02, 6.590003755680766e-02, 6.430615740210398e-02, 6.121254638517508e-02, 5.680031079400327e-02, 5.132373645854953e-02, 4.509108637168181e-02, 3.844158358553876e-02, 3.172049685116920e-02, 2.525438455323643e-02, 1.932851039649254e-02, 1.416822744109794e-02, 9.925756676326791e-03, 6.673297306993343e-03, 4.402843624075902e-03, 3.032499155527506e-03, 2.418525441220350e-03};
 
+const double f_lpf02_64_b[] {1.785079571600233e-03, 1.871256387908000e-03, 2.060891268622261e-03, 2.358034740999874e-03, 2.765349920913731e-03, 3.284041202271052e-03, 3.913803237428164e-03, 4.652791269950761e-03, 5.497613560998612e-03, 6.443346315818078e-03, 7.483571172591150e-03, 8.610434967691238e-03, 9.814731144807718e-03, 1.108600183600479e-02, 1.241265931607188e-02, 1.378212522282291e-02, 1.518098565036490e-02, 1.659515996448901e-02, 1.801008096351505e-02, 1.941088381791982e-02, 2.078260107111147e-02, 2.211036087436589e-02, 2.337958556314357e-02, 2.457618766098266e-02, 2.568676042142219e-02, 2.669876008772367e-02, 2.760067716357312e-02, 2.838219414379064e-02, 2.903432734998789e-02, 2.954955074908480e-02, 2.992189989900669e-02, 3.014705446157090e-02, 3.022239804289450e-02, 3.014705446157089e-02, 2.992189989900668e-02, 2.954955074908479e-02, 2.903432734998789e-02, 2.838219414379064e-02, 2.760067716357312e-02, 2.669876008772367e-02, 2.568676042142220e-02, 2.457618766098266e-02, 2.337958556314357e-02, 2.211036087436589e-02, 2.078260107111148e-02, 1.941088381791982e-02, 1.801008096351506e-02, 1.659515996448901e-02, 1.518098565036491e-02, 1.378212522282292e-02, 1.241265931607188e-02, 1.108600183600479e-02, 9.814731144807716e-03, 8.610434967691242e-03, 7.483571172591156e-03, 6.443346315818077e-03, 5.497613560998612e-03, 4.652791269950765e-03, 3.913803237428165e-03, 3.284041202271053e-03, 2.765349920913733e-03, 2.358034740999874e-03, 2.060891268622262e-03, 1.871256387907999e-03, 1.785079571600233e-03};
+
+const double f_lpf30_b7_a[] {1.000000000000000e+00, -1.001752925667820e+01, 4.818012448934698e+01, -1.474362068100452e+02, 3.209452996998522e+02, -5.266697808887541e+02, 6.738478922002332e+02, -6.859158541504489e+02, 5.618723553981042e+02, -3.722260094293712e+02, 1.992906245125886e+02, -8.569286834120848e+01, 2.921444510991529e+01, -7.727318853556639e+00, 1.530726275923486e+00, -2.139064948453619e-01, 1.882054672323584e-02, -7.847626261975797e-04};
+const double f_lpf30_b7_b[] {2.231228112437725e-10, 3.793087791144133e-09, 3.034470232915306e-08, 1.517235116457653e-07, 5.310322907601786e-07, 1.380683955976464e-06, 2.761367911952929e-06, 4.339292433068888e-06, 5.424115541336110e-06, 5.424115541336110e-06, 4.339292433068888e-06, 2.761367911952929e-06, 1.380683955976464e-06, 5.310322907601786e-07, 1.517235116457653e-07, 3.034470232915306e-08, 3.793087791144133e-09, 2.231228112437725e-10};
+
+const double f_lpf30_32_b[] {-1.386894684039784e-03, -7.392108445957141e-04, 6.528422922646250e-04, 3.039709459458449e-03, 5.697141304519828e-03, 6.569233424905397e-03, 3.075613418906020e-03, -6.006254594139485e-03, -1.855650972427626e-02, -2.842165268593719e-02, -2.698327706840176e-02, -6.785002057053770e-03, 3.428376859229806e-02, 9.040001150127136e-02, 1.484856228852927e-01, 1.923408150190244e-01, 2.086680875210060e-01, 1.923408150190244e-01, 1.484856228852927e-01, 9.040001150127136e-02, 3.428376859229806e-02, -6.785002057053770e-03, -2.698327706840176e-02, -2.842165268593720e-02, -1.855650972427626e-02, -6.006254594139486e-03, 3.075613418906019e-03, 6.569233424905402e-03, 5.697141304519829e-03, 3.039709459458449e-03, 6.528422922646255e-04, -7.392108445957147e-04, -1.386894684039784e-03}; 
+
+const double f_lpf02_b1_a[] {1.000000000000000e+00, -9.999937186442455e-01}; 
+const double f_lpf02_b1_b[] {3.140677877222177e-06, 3.140677877222177e-06}; 
+
+const double f_lpburst_a[] {1.000000000000000, -1.570398851228172, 1.275613324983280, -0.484403368335086, 0.076197064610332};
+const double f_lpburst_b[] {0.018563010626897, 0.074252042507589, 0.111378063761383, 0.074252042507589, 0.018563010626897}; 
+
+const double f_hp32_b[] { 2.727748521075775e-03, 2.493444033678934e-02, 1.071670557197850e-01, 2.243407006421851e-01, 2.816601095603296e-01, 2.243407006421851e-01, 1.071670557197850e-01, 2.493444033678935e-02, 2.727748521075775e-03};
+
+const double f_hp35_14_b[] {2.920242503210705e-03, 6.624873097752306e-03, 1.019323615024227e-02, -2.860428785028677e-03, -5.117884625321341e-02, -1.317695333943684e-01, -2.108392223608709e-01, 7.582009982420270e-01, -2.108392223608709e-01, -1.317695333943685e-01, -5.117884625321342e-02, -2.860428785028680e-03, 1.019323615024228e-02, 6.624873097752300e-03, 2.920242503210705e-03};
+
+const double f_hp35_b7_a[] { 1.000000000000000e+00, -3.560303553782462e+00, 5.933262502831511e+00, -5.806826093963448e+00, 3.560914834236377e+00, -1.356645514969462e+00, 2.956929537894906e-01, -2.832366986279234e-02};
+const double f_hp35_b7_b[] {1.682966337768402e-01, -1.178076436437882e+00, 3.534229309313644e+00, -5.890382182189407e+00, 5.890382182189407e+00, -3.534229309313644e+00, 1.178076436437882e+00, -1.682966337768402e-01}; 
+
 const double f_a[256] {1,};
 
 const double zero = 7600000.0;
@@ -180,7 +211,7 @@ typedef vector<complex<double>> cossin;
 class FM_demod {
 	protected:
 		vector<LDE> f_q, f_i;
-		LDE *f_post;
+		LDE *f_pre, *f_post;
 		vector<cossin> ldft;
 	
 		int linelen;
@@ -189,7 +220,7 @@ class FM_demod {
 
 		FreqBand fb;
 	public:
-		FM_demod(int _linelen, FreqBand _fb, int _filt_size, const double *filt_a, const double *filt_b, int pf_size, const double *pf_a, const double *pf_b) {
+		FM_demod(int _linelen, FreqBand _fb, LDE *prefilt, LDE *filt, LDE *postfilt) {
 			linelen = _linelen;
 
 			fb = _fb;
@@ -203,18 +234,14 @@ class FM_demod {
 				}	
 				ldft.push_back(tmpdft);
 
-				if (filt_a) {
-					f_i.push_back(LDE(_filt_size, filt_a, filt_b));
-					f_q.push_back(LDE(_filt_size, filt_a, filt_b));
-				} else {
-					f_i.push_back(LDE(_filt_size, NULL, filt_b));
-					f_q.push_back(LDE(_filt_size, NULL, filt_b));
-				}
+				f_i.push_back(LDE(filt));
+				f_q.push_back(LDE(filt));
+			}
+	
+			f_pre = prefilt ? new LDE(*prefilt) : NULL;
+			f_post = postfilt ? new LDE(*postfilt) : NULL;
 
-				f_post = new LDE(pf_size, NULL, pf_b);
-
-				min_offset = 9 + _filt_size + pf_size + 2;
-			}	
+			min_offset = 128;
 		}
 
 		vector<double> process(vector<double> in) 
@@ -222,8 +249,6 @@ class FM_demod {
 			vector<double> out;
 			vector<double> phase(fb.size() + 1);
 			double avg = 0, total = 0.0;
-
-			LDE boost(8, NULL, f_boost6_b);
 
 			if (in.size() < (size_t)linelen) return out;
 
@@ -238,9 +263,11 @@ class FM_demod {
 
 				n -= avg;
 				total += fabs(n);
-				n = boost.feed(n);
+				if (f_pre) n = f_pre->feed(n);
 
 				level[j] = 0;
+
+				cerr << n << endl;
 	
 //				auto c = ldft[j]->begin(); 
 				for (double f: fb) {
@@ -253,7 +280,7 @@ class FM_demod {
 					if (level[j] > M_PIl) level[j] -= (2 * M_PIl);
 					else if (level[j] < -M_PIl) level[j] += (2 * M_PIl);
 						
-					if (fabs(level[j]) < peak) {
+					if (fabs(level[j]) < fabs(peak)) {
 						npeak = j;
 						peak = level[j];
 						pf = f + ((f / 2.0) * level[j]);
@@ -266,7 +293,7 @@ class FM_demod {
 				}
 	
 				double thisout = pf;	
-				thisout = f_post->feed(pf);	
+				if (f_post) thisout = f_post->feed(pf);	
 				if (i > min_offset) out.push_back(thisout);
 				i++;
 			}
@@ -330,14 +357,14 @@ struct RGB {
 		r = clamp(r, 0, 1);
 		g = clamp(g, 0, 1);
 		b = clamp(b, 0, 1);
-//		cerr << 'y' << y.y << " i" << y.i << " q" << y.q << ' ';
-//		cerr << 'r' << r << " g" << g << " b" << b << endl;
+		//cerr << 'y' << y.y << " i" << y.i << " q" << y.q << ' ';
+		//cerr << 'r' << r << " g" << g << " b" << b << endl;
 	};
 };
 
 class NTSColor {
 	protected:
-		LDE *f_i, *f_q, *f_sync;
+		LDE *f_i, *f_q, *f_sync, *f_burst;
 		double fc, fci;
 		double freq;
 
@@ -345,29 +372,56 @@ class NTSColor {
 		bool insync;
 
 		double phase, level;
+		int phase_count;
+		bool phased;
+
+		double nextphase;
+		int nextphase_count;
 	
 		list<double> prev;
 
-		vector<YIQ> &buf;
+		vector<YIQ> *buf;
+
+		int igap;
 	public:
-		NTSColor(vector<YIQ> &_buf, double _freq = 8.0) : buf(_buf) {
-			lastsync = -1;
+		bool get_newphase(double &np) {
+			if (phased) {
+				np = phase;
+				phased = false;
+				return true;
+			} else return false;
+		}	
+
+		void set_phase(double np) {
+			nextphase = np;
+			nextphase_count = counter + 1820;
+		}
+
+		NTSColor(vector<YIQ> *_buf = NULL, double _freq = 8.0) {
+			nextphase_count = lastsync = -1;
 			counter = 0;
-			insync = false;
+			phased = insync = false;
 
 			level = phase = 0.0;
 
 			freq = _freq;
 
+			buf = _buf;
+
+			igap = -1;
+
 			f_i = new LDE(31, NULL, f28_1_3mhz_b);
 			f_q = new LDE(31, NULL, f28_1_3mhz_b);
 			
-//			f_sync = new LDE(64, NULL, f_inband8_b);
+			f_sync = new LDE(31, NULL, f28_0_6mhz_b);
+			f_burst = new LDE(4, f_lpburst_a, f_lpburst_b);
 		}
 
 		YIQ feed(double in) {
 			counter++;
 			if (lastsync >= 0) lastsync++;
+
+			f_sync->feed(in);
 
 //			cerr << insync << ' ' << lastsync << endl;
 
@@ -382,29 +436,36 @@ class NTSColor {
 					}
 				}
 				if (count >= 24) {
-					for (int i = lastsync; i >= 0 && i < 1820; i++) {
-						buf.push_back(YIQ(0,0,0));
-					}
-					lastsync = 24;
-					for (int i = 0; i < lastsync; i++) {
-						buf.push_back(YIQ(0,0,0));
-					}
+                                        for (int i = lastsync; i >= 0 && i < 1820; i++) {
+                                               if (buf) buf->push_back(YIQ(0,0,0));
+                                        }
+					igap = lastsync;
 
-					cerr << "sync at " << counter<<endl;
+					lastsync = 0;
+
+					//cerr << "sync at " << counter - 24 << ' ' << igap << endl;
 					insync = true;
 					prev.clear();
 				}
 
+				if (counter == nextphase_count) phase = nextphase; 
 				// average 20 color value samples to get phase/level
-				if ((lastsync >= 190) && (lastsync < 210)) {
-					fci += f_i->val();
-					fc += f_q->val();
-				} else if (lastsync == 210) {
-					level = ctor(fc, fci) / 20;
-					phase -= atan2(fci, ctor(fc, fci));
-					cerr << "level " << level << " phase" << atan2(fci, ctor(fc, fci)) << endl ;
+				if ((lastsync >= 186) && (lastsync < 210)) {
+					fc = f_q->val();
+					fci = f_i->val();
+				} else if ((igap > 1000) && lastsync == 210) {
+					level = f_burst->feed(ctor(fc, fci));
+					if (nextphase_count < 0) {
+						phase -= atan2(fci, ctor(fc, fci));
+						phased = true;
+						phase_count = counter;
+						//cerr << "level " << level << " q " << fc / 20 << " i " << fci / 20 << " phase " << atan2(fci, ctor(fc, fci)) << " cphase " << phase << ' ' << igap << ' ' << f_sync->val() << endl ;
+					}
 				}
 			} else {
+				if (lastsync == 16) {
+					//cerr << "fsync " << (f_sync->val() * 1700000) + 7600000 << ' ' << igap << endl; 
+				}
 				for (double v: prev) {
 					if (v > 0.2) count++;
 				}
@@ -415,10 +476,20 @@ class NTSColor {
 				}
 			}
 
-                        double q = f_q->feed(in * cos(phase + (2.0 * M_PIl * ((double)(counter) / freq))));
-			double i = f_i->feed(-in * sin(phase + (2.0 * M_PIl * ((double)(counter) / freq))));
+			double curphase = phase;
+			if (nextphase_count > counter) {
+				int gap = nextphase_count - phase_count;
 
-			if ((lastsync >= 0) && (lastsync < 1820)) {
+				curphase = (phase * (1.0 - ((counter - phase_count) / (double)gap)));
+				curphase += (nextphase * (((counter - phase_count) / (double)gap)));
+
+				//cerr << 'C' << counter << ' ' <<  phase << ' ' << curphase << ' ' << nextphase << endl;
+			}
+
+                        double q = f_q->feed(in * cos(curphase + (2.0 * M_PIl * ((double)(counter) / freq))));
+			double i = f_i->feed(-in * sin(curphase + (2.0 * M_PIl * ((double)(counter) / freq))));
+
+			if (buf && (lastsync >= 0) && (lastsync < 1820)) {
 				double y = in;
 
 				if (prev.size() > 17) {
@@ -428,12 +499,13 @@ class NTSColor {
 					y = *cur;
 				}
 
-				cerr << "i " << i << " q " << q << " y " << y;
-				y += i * 2 * (cos(phase + (2.0 * M_PIl * (((double)(counter - 17) / freq)))));
-                                y += q * 2 * (sin(phase + (2.0 * M_PIl * (((double)(counter - 17) / freq)))));
-				cerr << " " << y << endl;
+				//cerr << "i " << i << " q " << q << " y " << y;
+				y += i * 2 * (cos(curphase + (2.0 * M_PIl * (((double)(counter - 17) / freq)))));
+                               y += q * 2 * (sin(curphase + (2.0 * M_PIl * (((double)(counter - 17) / freq))))); //cerr << " " << y << endl;
 				YIQ outc = YIQ(y, i * (.2 / level), q * (.2 / level));
-				buf.push_back(outc);	
+//				YIQ outc = YIQ(y, 0,0);
+				if (!lastsync) outc.y = 1.0;
+				buf->push_back(outc);	
 			}
 
 			return YIQ();
@@ -445,7 +517,6 @@ int main(int argc, char *argv[])
 	int rv = 0, fd = 0, dlen = -1 ;
 	//double output[2048];
 	unsigned char inbuf[2048];
-	FreqBand fb;
 
 	cerr << std::setprecision(10);
 
@@ -475,15 +546,33 @@ int main(int argc, char *argv[])
 
 	int i = 2048;
 
+//	LDE f_hp35(7, f_hp35_b7_a, f_hp35_b7_b);
+	LDE f_hp35(14, NULL, f_hp35_14_b);
+	LDE f_lpf30(32, f_lpf30_b7_a, f_lpf30_b7_b);
+	LDE f_lpf02(1, f_lpf02_b1_a, f_lpf02_b1_b);
+	LDE f_butter6(6, f_butter6_a, f_butter6_b);
+	LDE f_boost6(8, NULL, f_boost6_b);
+
+	FreqBand fb(CHZ, 7500000, 9600000, 250000); 
+	FreqBand fb_a_left(CHZ, 2150000, 2450000, 10000); 
+	FreqBand fb_a_right(CHZ, 2650000, 2950000, 10000); 
+
+	FM_demod a_left(2048, fb_a_left, &f_lpf30, &f_lpf02, NULL);
+	FM_demod a_right(2048, fb_a_right, &f_lpf30, &f_lpf02, NULL);
+
 //	FM_demod video(2048, fb, 4, f_butter4_a, f_butter4_b, 7, NULL, f_inband7_b);
-	FM_demod video(2048, fb, 6, f_butter6_a, f_butter6_b, 7, NULL, f_inband7_b);
+	FM_demod video(2048, fb, &f_hp35, &f_butter6, NULL);
 //	FM_demod video(2048, fb, 8, f_butter8_a, f_butter8_b, 8, NULL, f_inband8_b);
 //	FM_demod video(2048, fb, 8, NULL, f_inband8_b, 7, NULL, f_inband7_b);
 //	FM_demod video(2048, fb, 8, NULL, f_inband8_b, 7, NULL, f_inband7_b);
 //	FM_demod video(2048, fb, 4, NULL, f_inband4_b, 7, NULL, f_inband7_b);
 	
 	vector<YIQ> outbuf;	
-	NTSColor color(outbuf);
+	NTSColor color, color2(&outbuf);
+//	NTSColor color(&outbuf), color2;
+	queue<double> delaybuf;
+
+	double nextphase;
 
 	while ((rv == 2048) && ((dlen == -1) || (i < dlen))) {
 		vector<double> dinbuf;
@@ -491,16 +580,36 @@ int main(int argc, char *argv[])
 		for (int j = 0; j < 2048; j++) dinbuf.push_back(inbuf[j]); 
 
 		vector<double> outline = video.process(dinbuf);
+		vector<double> outaudiol = a_left.process(dinbuf);
+		vector<double> outaudior = a_right.process(dinbuf);
 
 		vector<unsigned short> bout;
-		for (double n : outline) {
+
+		cerr << outline.size() << ' ' << outaudiol.size() << endl;
+//		int agap = outaudiol.size() - outline.size();
+		int agap = 0;
+
+		for (int i = 0; i < outline.size(); i++) {
+			double n = outline[i];
+			double l = outaudiol[i + agap];
+			double r = outaudior[i + agap];
 //			cerr << n << ' ' << endl;
 			n -= 7600000.0;
 			n /= (9300000.0 - 7600000.0);
 			if (n < 0) n = 0;
 			if (n > (65535.0 / 62000.0)) n = (65535.0 / 62000.0);
 			color.feed(n);
+			if (color.get_newphase(nextphase)) {
+				color2.set_phase(nextphase);
+			}
+			delaybuf.push(n);
+			if (delaybuf.size() >= 1820) {
+				color2.feed(delaybuf.front());
+				delaybuf.pop();
+			}
 //			bout.push_back(n * 62000.0);
+
+			cerr << outline[i] << ' ' << l << ' ' << r << endl;
 		}
 
 //cerr << "z\n";
