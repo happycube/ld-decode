@@ -149,6 +149,9 @@ const double f_2_0mhz_a[16] {1, 0};
 
 const double f28_1_3mhz_b[] {-1.606520060122928e-03, -1.655407847264293e-03, -1.775562785865866e-03, -1.613365514625196e-03, -6.608951305251436e-04, 1.658880771815467e-03, 5.878138286414544e-03, 1.236192372717719e-02, 2.120122219652129e-02, 3.214365150841308e-02, 4.457824331557173e-02, 5.758147137495655e-02, 7.002060196594841e-02, 8.069966942725533e-02, 8.852500613801824e-02, 9.266294262631157e-02, 9.266294262631157e-02, 8.852500613801825e-02, 8.069966942725534e-02, 7.002060196594842e-02, 5.758147137495655e-02, 4.457824331557171e-02, 3.214365150841310e-02, 2.120122219652130e-02, 1.236192372717719e-02, 5.878138286414545e-03, 1.658880771815467e-03, -6.608951305251436e-04, -1.613365514625196e-03, -1.775562785865866e-03, -1.655407847264294e-03, -1.606520060122928e-03};
 
+const double f_1_3_b7_a[] {1.000000000000000e+00, -7.396276582145773e+00, 2.443468934606965e+01, -4.730770392148882e+01, 5.913667585513913e+01, -4.948376216668154e+01, 2.771076495156773e+01, -1.001220824786418e+01, 2.117521591068093e+00, -1.996960414398089e-01};
+const double f_1_3_b7_b[] {9.344188421209170e-09, 8.409769579088253e-08, 3.363907831635301e-07, 7.849118273815703e-07, 1.177367741072355e-06, 1.177367741072355e-06, 7.849118273815703e-07, 3.363907831635301e-07, 8.409769579088253e-08, 9.344188421209170e-09};
+
 const double f28_0_6mhz_b[] {2.418525441220349e-03, 3.032499155527502e-03, 4.402843624075901e-03, 6.673297306993343e-03, 9.925756676326794e-03, 1.416822744109794e-02, 1.932851039649254e-02, 2.525438455323643e-02, 3.172049685116917e-02, 3.844158358553873e-02, 4.509108637168183e-02, 5.132373645854953e-02, 5.680031079400327e-02, 6.121254638517508e-02, 6.430615740210396e-02, 6.590003755680766e-02, 6.590003755680766e-02, 6.430615740210398e-02, 6.121254638517508e-02, 5.680031079400327e-02, 5.132373645854953e-02, 4.509108637168181e-02, 3.844158358553876e-02, 3.172049685116920e-02, 2.525438455323643e-02, 1.932851039649254e-02, 1.416822744109794e-02, 9.925756676326791e-03, 6.673297306993343e-03, 4.402843624075902e-03, 3.032499155527506e-03, 2.418525441220350e-03};
 
 const double f_lpf02_64_b[] {1.785079571600233e-03, 1.871256387908000e-03, 2.060891268622261e-03, 2.358034740999874e-03, 2.765349920913731e-03, 3.284041202271052e-03, 3.913803237428164e-03, 4.652791269950761e-03, 5.497613560998612e-03, 6.443346315818078e-03, 7.483571172591150e-03, 8.610434967691238e-03, 9.814731144807718e-03, 1.108600183600479e-02, 1.241265931607188e-02, 1.378212522282291e-02, 1.518098565036490e-02, 1.659515996448901e-02, 1.801008096351505e-02, 1.941088381791982e-02, 2.078260107111147e-02, 2.211036087436589e-02, 2.337958556314357e-02, 2.457618766098266e-02, 2.568676042142219e-02, 2.669876008772367e-02, 2.760067716357312e-02, 2.838219414379064e-02, 2.903432734998789e-02, 2.954955074908480e-02, 2.992189989900669e-02, 3.014705446157090e-02, 3.022239804289450e-02, 3.014705446157089e-02, 2.992189989900668e-02, 2.954955074908479e-02, 2.903432734998789e-02, 2.838219414379064e-02, 2.760067716357312e-02, 2.669876008772367e-02, 2.568676042142220e-02, 2.457618766098266e-02, 2.337958556314357e-02, 2.211036087436589e-02, 2.078260107111148e-02, 1.941088381791982e-02, 1.801008096351506e-02, 1.659515996448901e-02, 1.518098565036491e-02, 1.378212522282292e-02, 1.241265931607188e-02, 1.108600183600479e-02, 9.814731144807716e-03, 8.610434967691242e-03, 7.483571172591156e-03, 6.443346315818077e-03, 5.497613560998612e-03, 4.652791269950765e-03, 3.913803237428165e-03, 3.284041202271053e-03, 2.765349920913733e-03, 2.358034740999874e-03, 2.060891268622262e-03, 1.871256387907999e-03, 1.785079571600233e-03};
@@ -170,6 +173,10 @@ const double f_hp35_14_b[] {2.920242503210705e-03, 6.624873097752306e-03, 1.0193
 
 const double f_hp35_b7_a[] { 1.000000000000000e+00, -3.560303553782462e+00, 5.933262502831511e+00, -5.806826093963448e+00, 3.560914834236377e+00, -1.356645514969462e+00, 2.956929537894906e-01, -2.832366986279234e-02};
 const double f_hp35_b7_b[] {1.682966337768402e-01, -1.178076436437882e+00, 3.534229309313644e+00, -5.890382182189407e+00, 5.890382182189407e+00, -3.534229309313644e+00, 1.178076436437882e+00, -1.682966337768402e-01}; 
+
+const double f_lpf45_8_b[] {-4.889502734137763e-03, 4.595036240066151e-03, 8.519412674978986e-02, 2.466567238634809e-01, 3.368872317616017e-01, 2.466567238634810e-01, 8.519412674978988e-02, 4.595036240066152e-03, -4.889502734137763e-03};
+
+const double f_lpf13_8_b[] {1.511108761398408e-02, 4.481461214778652e-02, 1.207230841165654e-01, 2.014075783203990e-01, 2.358872756025299e-01, 2.014075783203991e-01, 1.207230841165654e-01, 4.481461214778654e-02, 1.511108761398408e-02};
 
 const double f_a[256] {1,};
 
@@ -266,7 +273,7 @@ class FM_demod {
 
 				level[j] = 0;
 
-				cerr << n << endl;
+				//cerr << n << endl;
 	
 				for (double f: fb) {
 					double fci = f_i[j].feed(n * ldft[j][i].real());
@@ -325,8 +332,8 @@ struct RGB {
 	double r, g, b;
 
 	void conv(YIQ y) { 
-		y.i = clamp(y.i, -0.5957, .5957);
-		y.q = clamp(y.q, -0.5226, .5226);
+	//	y.i = clamp(y.i, -0.5957, .5957);
+	//	y.q = clamp(y.q, -0.5226, .5226);
 
 		y.y -= (.4 / 1.4);
 		y.y *= 1.4; 
@@ -346,7 +353,8 @@ struct RGB {
 
 class NTSColor {
 	protected:
-		LDE *f_i, *f_q, *f_burst;
+		LDE *f_i, *f_q, *f_burst, *f_igap;
+		LDE *f_post, *f_posti, *f_postq;
 		double fc, fci;
 		double freq;
 
@@ -359,6 +367,8 @@ class NTSColor {
 
 		double nextphase;
 		int nextphase_count;
+
+		double poffset, pix_poffset;
 	
 		list<double> prev;
 
@@ -379,10 +389,12 @@ class NTSColor {
 			nextphase_count = counter + 1820;
 		}
 
-		NTSColor(vector<YIQ> *_buf = NULL, double _freq = 8.0) {
+		NTSColor(vector<YIQ> *_buf = NULL, LDE *_f_post = NULL, LDE *_f_postc = NULL, double _freq = 8.0) {
 			nextphase_count = lastsync = -1;
 			counter = 0;
 			phased = insync = false;
+
+			pix_poffset = poffset = 0;
 
 			level = phase = 0.0;
 
@@ -392,10 +404,17 @@ class NTSColor {
 
 			igap = -1;
 
+//			f_i = new LDE(9, f_1_3_b7_a, f_1_3_b7_b);
+//			f_q = new LDE(9, f_1_3_b7_a, f_1_3_b7_b);
 			f_i = new LDE(31, NULL, f28_1_3mhz_b);
 			f_q = new LDE(31, NULL, f28_1_3mhz_b);
 			
 			f_burst = new LDE(4, f_lpburst_a, f_lpburst_b);
+			f_igap = new LDE(4, f_lpburst_a, f_lpburst_b);
+			
+			f_post = _f_post ? new LDE(*_f_post) : NULL;
+			f_posti = _f_postc ? new LDE(*_f_postc) : NULL;
+			f_postq = _f_postc ? new LDE(*_f_postc) : NULL;
 		}
 
 		YIQ feed(double in) {
@@ -419,6 +438,7 @@ class NTSColor {
                                                if (buf) buf->push_back(YIQ(0,0,0));
                                         }
 					igap = lastsync;
+					f_igap->feed(igap);
 
 					lastsync = 0;
 
@@ -428,17 +448,24 @@ class NTSColor {
 				}
 
 				if (counter == nextphase_count) phase = nextphase; 
-				// average 20 color value samples to get phase/level
-				if ((lastsync >= 186) && (lastsync < 210)) {
+
+				if ((igap > 1000) && lastsync == 210) {
 					fc = f_q->val();
 					fci = f_i->val();
-				} else if ((igap > 1000) && lastsync == 210) {
-					level = f_burst->feed(ctor(fc, fci));
+					level = 0.1; // (hctor(fc, fci));
 					if (nextphase_count < 0) {
-						phase -= atan2(fci, ctor(fc, fci));
+						double padj = atan2(fci, ctor(fc, fci));
+
+//						if ((f_igap->val() >= 1820) && (padj < 0)) padj += (M_PIl / 2.0);
+
+						phase -= (padj * sqrt(2.0));
 						phased = true;
 						phase_count = counter;
-						//cerr << "level " << level << " q " << fc / 20 << " i " << fci / 20 << " phase " << atan2(fci, ctor(fc, fci)) << " cphase " << phase << ' ' << igap << endl ;
+
+						pix_poffset = phase / M_PIl * 4.0;
+						poffset += (igap - 1820);	
+
+						if (nextphase_count < counter) cerr << "level " << level << " q " << fc << " i " << fci << " phase " << atan2(fci, ctor(fc, fci)) << " cphase " << phase << ' ' << igap << ' ' << poffset - pix_poffset << endl ;
 					}
 				}
 			} else {
@@ -475,11 +502,17 @@ class NTSColor {
 					y = *cur;
 				}
 
-				//cerr << "i " << i << " q " << q << " y " << y;
 #ifndef BW
-				y += i * 2 * (cos(curphase + (2.0 * M_PIl * (((double)(counter - 17) / freq)))));
-                              y += q * 2 * (sin(curphase + (2.0 * M_PIl * (((double)(counter - 17) / freq))))); //cerr << " " << y << endl;
-				YIQ outc = YIQ(y, i * (.2 / level), q * (.2 / level));
+				double iadj = i * 2 * (cos(curphase + (2.0 * M_PIl * (((double)(counter - 17) / freq)))));
+				double qadj = q * 2 * (sin(curphase + (2.0 * M_PIl * (((double)(counter - 17) / freq))))); 
+				cerr << "p " << atan2(i, q) << " iadj " << iadj << " qadj " << qadj << " y " << y;
+				y += iadj + qadj;
+				cerr << " " << y << endl;
+
+				if (f_post) y = f_post->feed(y);
+				if (f_posti) i = f_posti->feed(i);
+				if (f_postq) q = f_postq->feed(q);
+				YIQ outc = YIQ(y, i * 2.0, q * 2.0);
 #else
 				YIQ outc = YIQ(y, 0,0);
 #endif
@@ -530,6 +563,9 @@ int main(int argc, char *argv[])
 	LDE f_butter6(6, f_butter6_a, f_butter6_b);
 	LDE f_boost6(8, NULL, f_boost6_b);
 
+	LDE f_lpf45(8, NULL, f_lpf45_8_b);
+	LDE f_lpf13(8, NULL, f_lpf13_8_b);
+
 	FreqBand fb(CHZ, 7500000, 9600000, 400000); 
 	FreqBand fb_a_left(CHZ, 2150000, 2450000, 50000); 
 	FreqBand fb_a_right(CHZ, 2650000, 2950000, 50000); 
@@ -540,8 +576,8 @@ int main(int argc, char *argv[])
 	FM_demod video(2048, fb, &f_hp35, &f_butter6, NULL);
 	
 	vector<YIQ> outbuf;	
-	NTSColor color, color2(&outbuf);
-//	NTSColor color(&outbuf), color2;
+//	NTSColor color, color2(&outbuf, &f_lpf45);
+	NTSColor color(&outbuf, &f_lpf45), color2;
 	queue<double> delaybuf;
 
 	double nextphase;
@@ -572,6 +608,7 @@ int main(int argc, char *argv[])
 			if (n > (65535.0 / 62000.0)) n = (65535.0 / 62000.0);
 
 			color.feed(n);
+/*
 			if (color.get_newphase(nextphase)) {
 				color2.set_phase(nextphase);
 			}
@@ -581,8 +618,8 @@ int main(int argc, char *argv[])
 				color2.feed(delaybuf.front());
 				delaybuf.pop();
 			}
-
-			cerr << outline[i] << ' ' << l << ' ' << r << endl;
+*/
+			//cerr << outline[i] << ' ' << l << ' ' << r << endl;
 		}
 
 		for (YIQ i : outbuf) {
