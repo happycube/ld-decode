@@ -138,11 +138,10 @@ const double f_butter6_b[] {0.0023163244731745, 0.0138979468390470, 0.0347448670
 const double f_butter8_a[] {1.0000000000000000, -3.2910431389188823, 5.4649816845801347, -5.5946268902911909, 3.8014233895293916, -1.7314645265989386, 0.5125138525205987, -0.0895781664897369, 0.0070486692595647};
 const double f_butter8_b[] {0.0003095893499646, 0.0024767147997169, 0.0086685017990093, 0.0173370035980186, 0.0216712544975232, 0.0173370035980186, 0.0086685017990093, 0.0024767147997169, 0.0003095893499646};
 
-//const double f_boost6_b[] {0.0171085311223133, 0.0066159866434093, -0.0287374093196349, -1.4956846203123810, 4.1364660365098924, -1.4956846203123810, -0.0287374093196349, 0.0066159866434093, 0.0171085311223133};
-//const double f_boost6_b[] {0.0254170399264351, -0.0059024716440027, -0.0364988745431467, -1.8598195331511393, 4.9380431080332725, -1.8598195331511400, -0.0364988745431467, -0.0059024716440027, 0.0254170399264351};
 // fir2(8, [0, 4/freq, 5/freq, 6/freq, 10/freq, 1], [1.0, 1.0, 2, 3, 4, 5])
-const double f_boost6_b[] {0.0111989816340250, 0.0048865621882266, -0.0481490541009254, -0.8694087656392513, 2.8936261819359768, -0.8694087656392512, -0.0481490541009254, 0.0048865621882266, 0.0111989816340250};
-//const double f_boost6_b[] {0.0168027211008027, 0.0022145267218688, 0.0416814439546960, -1.4449168967980353, 3.8620269283049078, -1.4449168967980355, 0.0416814439546960, 0.0022145267218688, 0.0168027211008027};
+//const double f_boost6_b[] {0.0111989816340250, 0.0048865621882266, -0.0481490541009254, -0.8694087656392513, 2.8936261819359768, -0.8694087656392512, -0.0481490541009254, 0.0048865621882266, 0.0111989816340250};
+// fir2(8, [0, 3.0/freq, 3.5/freq, 5/freq, 6/freq, 10/freq, 1], [0.0, 0.0, 1.0, 2, 3, 4, 5]) 
+const double f_boost8_b[] {8.226231487511369e-03, -1.760999224010931e-02, -1.354044946940760e-01, -1.040291091550781e+00, 2.684106353139590e+00, -1.040291091550782e+00, -1.354044946940761e-01, -1.760999224010932e-02, 8.226231487511367e-03};
 
 const double f_2_0mhz_b[] { 2.0725950133615822e-03, -8.3463967955793583e-04, -9.7490566449315967e-03, -2.1735983355962385e-02, -1.4929346936560809e-02, 3.7413352363703849e-02, 1.3482681278026168e-01, 2.3446159984589487e-01, 2.7694933322758158e-01, 2.3446159984589490e-01, 1.3482681278026165e-01, 3.7413352363703870e-02, -1.4929346936560811e-02, -2.1735983355962385e-02, -9.7490566449315984e-03, -8.3463967955793670e-04, 2.0725950133615822e-03 };
 const double f_2_0mhz_a[16] {1, 0};
@@ -153,6 +152,12 @@ const double f_1_3_b7_a[] {1.000000000000000e+00, -7.396276582145773e+00, 2.4434
 const double f_1_3_b7_b[] {9.344188421209170e-09, 8.409769579088253e-08, 3.363907831635301e-07, 7.849118273815703e-07, 1.177367741072355e-06, 1.177367741072355e-06, 7.849118273815703e-07, 3.363907831635301e-07, 8.409769579088253e-08, 9.344188421209170e-09};
 
 const double f28_0_6mhz_b[] {2.418525441220349e-03, 3.032499155527502e-03, 4.402843624075901e-03, 6.673297306993343e-03, 9.925756676326794e-03, 1.416822744109794e-02, 1.932851039649254e-02, 2.525438455323643e-02, 3.172049685116917e-02, 3.844158358553873e-02, 4.509108637168183e-02, 5.132373645854953e-02, 5.680031079400327e-02, 6.121254638517508e-02, 6.430615740210396e-02, 6.590003755680766e-02, 6.590003755680766e-02, 6.430615740210398e-02, 6.121254638517508e-02, 5.680031079400327e-02, 5.132373645854953e-02, 4.509108637168181e-02, 3.844158358553876e-02, 3.172049685116920e-02, 2.525438455323643e-02, 1.932851039649254e-02, 1.416822744109794e-02, 9.925756676326791e-03, 6.673297306993343e-03, 4.402843624075902e-03, 3.032499155527506e-03, 2.418525441220350e-03};
+
+const double f_lpf048_b4_b[] {5.164738337291061e-10, 2.065895334916424e-09, 3.098843002374636e-09, 2.065895334916424e-09, 5.164738337291061e-10};
+const double f_lpf048_b4_a[] {1.000000000000000e+00, -3.975007767097551e+00, 5.925335133687553e+00, -3.925644691784699e+00, 9.753173334582784e-01};
+
+const double f_lpf02_b10_a[] {1.000000000000000e+00, -9.711859090988344e+00, 4.244814355964149e+01, -1.099543302485029e+02, 1.869287195307871e+02, -2.179331623808879e+02, 1.764607744527764e+02, -9.798418160199763e+01, 3.570857176090681e+01, -7.712306725921948e+00, 7.496307441868854e-01};
+const double f_lpf02_b10_b[] {2.932632075123687e-17, 2.932632075123687e-16, 1.319684433805659e-15, 3.519158490148425e-15, 6.158527357759743e-15, 7.390232829311692e-15, 6.158527357759743e-15, 3.519158490148425e-15, 1.319684433805659e-15, 2.932632075123687e-16, 2.932632075123687e-17};
 
 const double f_lpf02_64_b[] {1.785079571600233e-03, 1.871256387908000e-03, 2.060891268622261e-03, 2.358034740999874e-03, 2.765349920913731e-03, 3.284041202271052e-03, 3.913803237428164e-03, 4.652791269950761e-03, 5.497613560998612e-03, 6.443346315818078e-03, 7.483571172591150e-03, 8.610434967691238e-03, 9.814731144807718e-03, 1.108600183600479e-02, 1.241265931607188e-02, 1.378212522282291e-02, 1.518098565036490e-02, 1.659515996448901e-02, 1.801008096351505e-02, 1.941088381791982e-02, 2.078260107111147e-02, 2.211036087436589e-02, 2.337958556314357e-02, 2.457618766098266e-02, 2.568676042142219e-02, 2.669876008772367e-02, 2.760067716357312e-02, 2.838219414379064e-02, 2.903432734998789e-02, 2.954955074908480e-02, 2.992189989900669e-02, 3.014705446157090e-02, 3.022239804289450e-02, 3.014705446157089e-02, 2.992189989900668e-02, 2.954955074908479e-02, 2.903432734998789e-02, 2.838219414379064e-02, 2.760067716357312e-02, 2.669876008772367e-02, 2.568676042142220e-02, 2.457618766098266e-02, 2.337958556314357e-02, 2.211036087436589e-02, 2.078260107111148e-02, 1.941088381791982e-02, 1.801008096351506e-02, 1.659515996448901e-02, 1.518098565036491e-02, 1.378212522282292e-02, 1.241265931607188e-02, 1.108600183600479e-02, 9.814731144807716e-03, 8.610434967691242e-03, 7.483571172591156e-03, 6.443346315818077e-03, 5.497613560998612e-03, 4.652791269950765e-03, 3.913803237428165e-03, 3.284041202271053e-03, 2.765349920913733e-03, 2.358034740999874e-03, 2.060891268622262e-03, 1.871256387907999e-03, 1.785079571600233e-03};
 
@@ -365,7 +370,9 @@ class NTSColor {
 		int phase_count;
 		bool phased;
 
-		double nextphase;
+		double adjfreq;
+
+		double nextfreq, nextphase;
 		int nextphase_count;
 
 		double poffset, pix_poffset;
@@ -376,15 +383,17 @@ class NTSColor {
 
 		int igap;
 	public:
-		bool get_newphase(double &np) {
+		bool get_newphase(double &afreq, double &np) {
 			if (phased) {
+				afreq = adjfreq;
 				np = phase;
 				phased = false;
 				return true;
 			} else return false;
 		}	
 
-		void set_phase(double np) {
+		void set_phase(double nf, double np) {
+			nextfreq = nf;
 			nextphase = np;
 			nextphase_count = counter + 1820;
 		}
@@ -395,6 +404,7 @@ class NTSColor {
 			phased = insync = false;
 
 			pix_poffset = poffset = 0;
+			adjfreq = 1.0;
 
 			level = phase = 0.0;
 
@@ -417,7 +427,7 @@ class NTSColor {
 			f_postq = _f_postc ? new LDE(*_f_postc) : NULL;
 		}
 
-		YIQ feed(double in) {
+		void feed(double in) {
 			counter++;
 			if (lastsync >= 0) lastsync++;
 
@@ -434,9 +444,11 @@ class NTSColor {
 					}
 				}
 				if (count >= 24) {
+#ifndef NOSNAP
                                         for (int i = lastsync; i >= 0 && i < 1820; i++) {
                                                if (buf) buf->push_back(YIQ(0,0,0));
                                         }
+#endif
 					igap = lastsync;
 					f_igap->feed(igap);
 
@@ -452,11 +464,12 @@ class NTSColor {
 				if ((igap > 1000) && lastsync == 210) {
 					fc = f_q->val();
 					fci = f_i->val();
-					level = 0.1; // (hctor(fc, fci));
-					if (nextphase_count < 0) {
+					level = ctor(fc, fci);
+					if (level > .05 && nextphase_count < 0) {
 						double padj = atan2(fci, ctor(fc, fci));
 
-//						if ((f_igap->val() >= 1820) && (padj < 0)) padj += (M_PIl / 2.0);
+//						if ((f_igap->val() <= 1940) && (f_igap->val() >= 1821) && (padj < 0)) padj += (M_PIl / 2.0);
+//						if ((f_igap->val() >= 1800) && (f_igap->val() <= 1819) && (padj > 0)) padj -= (M_PIl / 2.0);
 
 						phase -= (padj * sqrt(2.0));
 						phased = true;
@@ -465,8 +478,11 @@ class NTSColor {
 						pix_poffset = phase / M_PIl * 4.0;
 						poffset += (igap - 1820);	
 
-						if (nextphase_count < counter) cerr << "level " << level << " q " << fc << " i " << fci << " phase " << atan2(fci, ctor(fc, fci)) << " cphase " << phase << ' ' << igap << ' ' << poffset - pix_poffset << endl ;
+//						adjfreq = 1820.0 / igap; // (igap + ((padj / M_PIl) * 4.0));
+						adjfreq = 1820.0 / (1820 + (padj * 1.1 * (M_PIl / 2.0)));
 					}
+
+//					if (nextphase_count < counter) cerr << counter << " level " << level << " q " << fc << " i " << fci << " phase " << atan2(fci, ctor(fc, fci)) << " adjfreq " << adjfreq << ' ' << igap << ' ' << poffset - pix_poffset << endl ;
 				}
 			} else {
 				for (double v: prev) {
@@ -492,7 +508,11 @@ class NTSColor {
                         double q = f_q->feed(in * cos(curphase + (2.0 * M_PIl * ((double)(counter) / freq))));
 			double i = f_i->feed(-in * sin(curphase + (2.0 * M_PIl * ((double)(counter) / freq))));
 
+#ifdef NOSNAP
+			if (buf && (lastsync >= 0)) {
+#else
 			if (buf && (lastsync >= 0) && (lastsync < 1820)) {
+#endif
 				double y = in;
 
 				if (prev.size() > 17) {
@@ -505,9 +525,9 @@ class NTSColor {
 #ifndef BW
 				double iadj = i * 2 * (cos(curphase + (2.0 * M_PIl * (((double)(counter - 17) / freq)))));
 				double qadj = q * 2 * (sin(curphase + (2.0 * M_PIl * (((double)(counter - 17) / freq))))); 
-				cerr << "p " << atan2(i, q) << " iadj " << iadj << " qadj " << qadj << " y " << y;
+				//cerr << "p " << atan2(i, q) << " iadj " << iadj << " qadj " << qadj << " y " << y;
 				y += iadj + qadj;
-				cerr << " " << y << endl;
+				//cerr << " " << y << endl;
 
 				if (f_post) y = f_post->feed(y);
 				if (f_posti) i = f_posti->feed(i);
@@ -520,7 +540,7 @@ class NTSColor {
 				buf->push_back(outc);	
 			}
 
-			return YIQ();
+	//		return YIQ();
 		}
 };
 
@@ -559,48 +579,39 @@ int main(int argc, char *argv[])
 //	LDE f_hp35(7, f_hp35_b7_a, f_hp35_b7_b);
 	LDE f_hp35(14, NULL, f_hp35_14_b);
 	LDE f_lpf30(32, f_lpf30_b7_a, f_lpf30_b7_b);
-	LDE f_lpf02(1, f_lpf02_b1_a, f_lpf02_b1_b);
+	LDE f_lpf02(4, f_lpf048_b4_a, f_lpf048_b4_b);
 	LDE f_butter6(6, f_butter6_a, f_butter6_b);
-	LDE f_boost6(8, NULL, f_boost6_b);
+	LDE f_boost8(8, NULL, f_boost8_b);
 
 	LDE f_lpf45(8, NULL, f_lpf45_8_b);
 	LDE f_lpf13(8, NULL, f_lpf13_8_b);
 
 	FreqBand fb(CHZ, 7500000, 9600000, 400000); 
-	FreqBand fb_a_left(CHZ, 2150000, 2450000, 50000); 
-	FreqBand fb_a_right(CHZ, 2650000, 2950000, 50000); 
+	FreqBand fb_a_left(CHZ, 2150000, 2450000, 1000); 
+	FreqBand fb_a_right(CHZ, 2650000, 2950000, 1000); 
 
-	FM_demod a_left(2048, fb_a_left, &f_lpf30, &f_lpf02, NULL);
-	FM_demod a_right(2048, fb_a_right, &f_lpf30, &f_lpf02, NULL);
-
-	FM_demod video(2048, fb, &f_hp35, &f_butter6, NULL);
+	FM_demod video(2048, fb, &f_boost8, &f_butter6, NULL);
 	
 	vector<YIQ> outbuf;	
-//	NTSColor color, color2(&outbuf, &f_lpf45);
-	NTSColor color(&outbuf, &f_lpf45), color2;
+	NTSColor color, color2(&outbuf, &f_lpf45);
+//	NTSColor color(&outbuf, &f_lpf45), color2;
 	queue<double> delaybuf;
 
-	double nextphase;
-
+	int nextcount = 0, count = 0;
+	double nextfreq = 1.0000, nextphase = 0.0;
+	double cval = 0.0, cloc = 0.0;
+		
 	while ((rv == 2048) && ((dlen == -1) || (i < dlen))) {
 		vector<double> dinbuf;
 
 		for (int j = 0; j < 2048; j++) dinbuf.push_back(inbuf[j]); 
 
 		vector<double> outline = video.process(dinbuf);
-		vector<double> outaudiol = a_left.process(dinbuf);
-		vector<double> outaudior = a_right.process(dinbuf);
 
 		vector<unsigned short> bout;
 
-		cerr << outline.size() << ' ' << outaudiol.size() << endl;
-//		int agap = outaudiol.size() - outline.size();
-		int agap = 0;
-
 		for (int i = 0; i < outline.size(); i++) {
 			double n = outline[i];
-			double l = outaudiol[i + agap];
-			double r = outaudior[i + agap];
 
 			n -= 7600000.0;
 			n /= (9300000.0 - 7600000.0);
@@ -608,18 +619,46 @@ int main(int argc, char *argv[])
 			if (n > (65535.0 / 62000.0)) n = (65535.0 / 62000.0);
 
 			color.feed(n);
-/*
-			if (color.get_newphase(nextphase)) {
-				color2.set_phase(nextphase);
+
+			count++;
+
+			if (color.get_newphase(nextfreq, nextphase)) {
+//				color2.set_phase(nextfreq, nextphase);
+				//cerr << "F " << nextfreq << ' ' << nextphase << endl;
+//				nextfreq = 1.0;
+				nextcount = count;	
 			}
 
+			delaybuf.push(n);
+
+			if (delaybuf.size() >= 1820) {
+				double len = nextfreq;
+				double newval = delaybuf.front();
+				while (len > 0.0) {
+					double avail = 1.0 - (cloc - floor(cloc));  
+					if (avail > len) {
+						cval += (len * newval); 
+						cloc += len;
+						len = 0.0;
+					} else {
+						cval += (avail * newval);
+						//cerr << "V " << cloc << ' ' << newval << ' ' << cval << endl;
+						color2.feed(cval);
+						cval = 0;					
+						cloc += avail;
+						len -= avail;
+					} 
+				}
+				delaybuf.pop();
+			} 
+
+/*
 			delaybuf.push(n);
 			if (delaybuf.size() >= 1820) {
 				color2.feed(delaybuf.front());
 				delaybuf.pop();
 			}
 */
-			//cerr << outline[i] << ' ' << l << ' ' << r << endl;
 		}
 
 		for (YIQ i : outbuf) {
