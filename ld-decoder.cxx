@@ -374,9 +374,6 @@ class NTSColor {
 
 		double adjfreq;
 
-		double nextfreq, nextphase;
-		int nextphase_count;
-
 		double poffset, pix_poffset;
 
 		vector<double> line;
@@ -396,12 +393,6 @@ class NTSColor {
 			} else return false;
 		}	
 
-		void set_phase(double nf, double np) {
-			nextfreq = nf;
-			nextphase = np;
-			nextphase_count = counter + 1820;
-		}
-		
 		void phillips_decode() {
 			int i = 0;
 			int oc = 0;
@@ -433,7 +424,6 @@ class NTSColor {
 		}
 
 		NTSColor(vector<YIQ> *_buf = NULL, LDE *_f_post = NULL, LDE *_f_postc = NULL, double _freq = 8.0) {
-			nextphase_count = lastsync = -1;
 			counter = 0;
 			phased = insync = false;
 
@@ -441,6 +431,8 @@ class NTSColor {
 
 			pix_poffset = poffset = 0;
 			adjfreq = 1.0;
+
+			lastsync = -1;
 
 			level = phase = 0.0;
 
@@ -450,8 +442,6 @@ class NTSColor {
 
 			igap = -1;
 
-//			f_i = new LDE(9, f_1_3_b7_a, f_1_3_b7_b);
-//			f_q = new LDE(9, f_1_3_b7_a, f_1_3_b7_b);
 			f_i = new LDE(31, NULL, f28_1_3mhz_b);
 			f_q = new LDE(31, NULL, f28_1_3mhz_b);
 			
@@ -506,17 +496,16 @@ class NTSColor {
 					
 				line.push_back(in);
 
-				if (counter == nextphase_count) phase = nextphase; 
-
 				if ((igap > 1000) && lastsync == 210) {
 					fc = f_q->val();
 					fci = f_i->val();
 					level = ctor(fc, fci);
-					if (level > .05 && nextphase_count < 0) {
+					if ((level > .075) && (level < .125)) {
 						double padj = atan2(fci, ctor(fc, fci));
 
-//						if ((f_igap->val() <= 1940) && (f_igap->val() >= 1821) && (padj < 0)) padj += (M_PIl / 2.0);
-//						if ((f_igap->val() >= 1800) && (f_igap->val() <= 1819) && (padj > 0)) padj -= (M_PIl / 2.0);
+						if (fc > 0) padj += (igap > 1820) ? (M_PIl / 2.0) : -(M_PIl / 2.0);
+					//	if ((f_igap->val() <= 1940) && (f_igap->val() >= 1821) && (padj < 0)) padj += (M_PIl / 2.0);
+					//	if ((f_igap->val() >= 1800) && (f_igap->val() <= 1819) && (padj > 0)) padj -= (M_PIl / 2.0);
 
 						phase -= (padj * sqrt(2.0));
 						phased = true;
@@ -529,7 +518,7 @@ class NTSColor {
 						adjfreq = 1820.0 / (1820 + (padj * 1.1 * (M_PIl / 2.0)));
 					}
 
-//					if (nextphase_count < counter) cerr << counter << " level " << level << " q " << fc << " i " << fci << " phase " << atan2(fci, ctor(fc, fci)) << " adjfreq " << adjfreq << ' ' << igap << ' ' << poffset - pix_poffset << endl ;
+					if (buf) cerr << counter << " level " << level << " q " << fc << " i " << fci << " phase " << atan2(fci, ctor(fc, fci)) << " adjfreq " << adjfreq << ' ' << igap << ' ' << poffset - pix_poffset << endl ;
 				}
 			} else {
 				for (double v: prev) {
@@ -542,6 +531,7 @@ class NTSColor {
 				}
 			}
 
+#if 0
 			double curphase = phase;
 			if (nextphase_count > counter) {
 				int gap = nextphase_count - phase_count;
@@ -551,9 +541,9 @@ class NTSColor {
 
 				//cerr << 'C' << counter << ' ' <<  phase << ' ' << curphase << ' ' << nextphase << endl;
 			}
-
-                        double q = f_q->feed(in * cos(curphase + (2.0 * M_PIl * ((double)(counter) / freq))));
-			double i = f_i->feed(-in * sin(curphase + (2.0 * M_PIl * ((double)(counter) / freq))));
+#endif
+                        double q = f_q->feed(in * cos(phase + (2.0 * M_PIl * ((double)(counter) / freq))));
+			double i = f_i->feed(-in * sin(phase + (2.0 * M_PIl * ((double)(counter) / freq))));
 
 #ifdef NOSNAP
 			if (buf && (lastsync >= 0)) {
@@ -570,8 +560,8 @@ class NTSColor {
 				}
 
 #ifndef BW
-				double iadj = i * 2 * (cos(curphase + (2.0 * M_PIl * (((double)(counter - 17) / freq)))));
-				double qadj = q * 2 * (sin(curphase + (2.0 * M_PIl * (((double)(counter - 17) / freq))))); 
+				double iadj = i * 2 * (cos(phase + (2.0 * M_PIl * (((double)(counter - 17) / freq)))));
+				double qadj = q * 2 * (sin(phase + (2.0 * M_PIl * (((double)(counter - 17) / freq))))); 
 				//cerr << "p " << atan2(i, q) << " iadj " << iadj << " qadj " << qadj << " y " << y;
 				y += iadj + qadj;
 				//cerr << " " << y << endl;
