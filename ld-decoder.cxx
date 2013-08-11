@@ -342,15 +342,15 @@ struct RGB {
 
 		y.y -= (.4 / 1.4);
 		y.y *= 1.4; 
-		y.y = clamp(y.y, 0, 1);
+		y.y = clamp(y.y, 0, 1.0);
 
 		r = (y.y * 1.164) + (1.596 * y.i);
 		g = (y.y * 1.164) - (0.813 * y.i) - (y.q * 0.391);
 		b = (y.y * 1.164) + (y.q * 2.018);
 
-		r = clamp(r, 0, 1);
-		g = clamp(g, 0, 1);
-		b = clamp(b, 0, 1);
+		r = clamp(r, 0, 1.05);
+		g = clamp(g, 0, 1.05);
+		b = clamp(b, 0, 1.05);
 		//cerr << 'y' << y.y << " i" << y.i << " q" << y.q << ' ';
 		//cerr << 'r' << r << " g" << g << " b" << b << endl;
 	};
@@ -362,6 +362,8 @@ class NTSColor {
 		LDE *f_post, *f_posti, *f_postq;
 		double fc, fci;
 		double freq;
+
+		int cfline;
 
 		int counter, lastsync;
 		bool insync;
@@ -376,6 +378,8 @@ class NTSColor {
 		int nextphase_count;
 
 		double poffset, pix_poffset;
+
+		vector<double> line;
 	
 		list<double> prev;
 
@@ -397,11 +401,43 @@ class NTSColor {
 			nextphase = np;
 			nextphase_count = counter + 1820;
 		}
+		
+		void phillips_decode() {
+			int i = 0;
+			int oc = 0;
+			int lastone = 220 - 55 - 00;
+
+			unsigned long code = 0;
+
+			for (double c: line) {
+				if (c > 0.8) {
+					oc++;
+				} else {
+					if (oc) {
+						int firstone = (i - oc) - 167;	
+						int bit = firstone / 57;
+
+						int offset = firstone - (bit * 57);
+						if ((offset > 10) && (offset < 50)) {
+							code |= (1 << (23 - bit));
+						}
+
+						cerr << cfline << ' ' << i << ' ' << firstone << ' ' << bit * 57 << ' ' << bit << ' ' << hex << code << dec << endl;
+						lastone = i;
+					}
+					oc = 0;
+				}
+				i++;
+			}
+			cerr << hex << code << dec << endl;
+		}
 
 		NTSColor(vector<YIQ> *_buf = NULL, LDE *_f_post = NULL, LDE *_f_postc = NULL, double _freq = 8.0) {
 			nextphase_count = lastsync = -1;
 			counter = 0;
 			phased = insync = false;
+
+			cfline = -1;
 
 			pix_poffset = poffset = 0;
 			adjfreq = 1.0;
@@ -449,6 +485,14 @@ class NTSColor {
                                                if (buf) buf->push_back(YIQ(0,0,0));
                                         }
 #endif
+					
+					if (igap > 300 && igap < 1200) {
+						cfline = 0;
+					} else {
+						if ((cfline >= 6) && cfline <= 8) phillips_decode();
+						if (cfline >= 0) cfline++;
+					}
+					
 					igap = lastsync;
 					f_igap->feed(igap);
 
@@ -457,7 +501,10 @@ class NTSColor {
 					//cerr << "sync at " << counter - 24 << ' ' << igap << endl;
 					insync = true;
 					prev.clear();
+					line.clear();
 				}
+					
+				line.push_back(in);
 
 				if (counter == nextphase_count) phase = nextphase; 
 
@@ -586,14 +633,15 @@ int main(int argc, char *argv[])
 	LDE f_lpf45(8, NULL, f_lpf45_8_b);
 	LDE f_lpf13(8, NULL, f_lpf13_8_b);
 
-	FreqBand fb(CHZ, 7500000, 9600000, 400000); 
+	FreqBand fb(CHZ, 7500000, 9600000, 250000); 
 	FreqBand fb_a_left(CHZ, 2150000, 2450000, 1000); 
 	FreqBand fb_a_right(CHZ, 2650000, 2950000, 1000); 
 
 	FM_demod video(2048, fb, &f_boost8, &f_butter6, NULL);
 	
 	vector<YIQ> outbuf;	
-	NTSColor color, color2(&outbuf, &f_lpf45);
+//	NTSColor color, color2(&outbuf, &f_lpf45, &f_lpf13);
+	NTSColor color, color2(&outbuf, &f_lpf45, NULL);
 //	NTSColor color(&outbuf, &f_lpf45), color2;
 	queue<double> delaybuf;
 
@@ -614,7 +662,7 @@ int main(int argc, char *argv[])
 			double n = outline[i];
 
 			n -= 7600000.0;
-			n /= (9300000.0 - 7600000.0);
+			n /= (9400000.0 - 7600000.0);
 			if (n < 0) n = 0;
 			if (n > (65535.0 / 62000.0)) n = (65535.0 / 62000.0);
 
