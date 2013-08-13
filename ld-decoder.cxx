@@ -500,12 +500,15 @@ class NTSColor {
 					fc = f_q->val();
 					fci = f_i->val();
 					level = ctor(fc, fci);
-					if ((level > .075) && (level < .125)) {
+					if ((level > .05) && (level < .15)) {
 						double padj = atan2(fci, ctor(fc, fci));
 
-						if (fc > 0) padj += (igap > 1820) ? (M_PIl / 2.0) : -(M_PIl / 2.0);
-					//	if ((f_igap->val() <= 1940) && (f_igap->val() >= 1821) && (padj < 0)) padj += (M_PIl / 2.0);
-					//	if ((f_igap->val() >= 1800) && (f_igap->val() <= 1819) && (padj > 0)) padj -= (M_PIl / 2.0);
+						if (fc > 0) {
+							if (igap > 1820) 
+								padj = (M_PIl / 2.0) - padj; 
+							else
+								padj = -(M_PIl / 2.0) + padj; 
+						}
 
 						phase -= (padj * sqrt(2.0));
 						phased = true;
