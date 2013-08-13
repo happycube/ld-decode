@@ -200,23 +200,6 @@ double fbin[nbands];
 
 LDE lpf45(7, NULL, f_inband7_b);
 
-struct FreqBand : public vector<double> {
-	public:
-		double flow, fhigh, gap;
-		double fbase;
-
-		FreqBand(double _fbase = CHZ, double _flow = 7500000, double _fhigh = 9600000, double _gap = 100000) {
-			flow = _flow;
-			fhigh = _fhigh;
-			gap = _gap;
-			fbase = _fbase;
-			
-			int numbands = floor(((fhigh - flow) / gap) + 1);
-
-			for (int i = 0; i < numbands; i++) push_back(flow + (gap * i));
-		}
-};
-
 typedef vector<complex<double>> cossin;
 
 class FM_demod {
@@ -229,16 +212,16 @@ class FM_demod {
 
 		int min_offset;
 
-		FreqBand fb;
+		vector<double> fb;
 	public:
-		FM_demod(int _linelen, FreqBand _fb, LDE *prefilt, LDE *filt, LDE *postfilt) {
+		FM_demod(int _linelen, vector<double> _fb, LDE *prefilt, LDE *filt, LDE *postfilt) {
 			linelen = _linelen;
 
 			fb = _fb;
 
 			for (double f : fb) {
 				cossin tmpdft;
-				double fmult = f / fb.fbase; 
+				double fmult = f / CHZ; 
 
 				for (int i = 0; i < linelen; i++) {
 					tmpdft.push_back(complex<double>(sin(i * 2.0 * M_PIl * fmult), cos(i * 2.0 * M_PIl * fmult))); 
@@ -413,14 +396,14 @@ class NTSColor {
 							code |= (1 << (23 - bit));
 						}
 
-						cerr << cfline << ' ' << i << ' ' << firstone << ' ' << bit * 57 << ' ' << bit << ' ' << hex << code << dec << endl;
+//						cerr << cfline << ' ' << i << ' ' << firstone << ' ' << bit * 57 << ' ' << bit << ' ' << hex << code << dec << endl;
 						lastone = i;
 					}
 					oc = 0;
 				}
 				i++;
 			}
-			cerr << hex << code << dec << endl;
+			cerr << "P " << cfline << ' ' << hex << code << dec << endl;
 		}
 
 		NTSColor(vector<YIQ> *_buf = NULL, LDE *_f_post = NULL, LDE *_f_postc = NULL, double _freq = 8.0) {
@@ -522,6 +505,8 @@ class NTSColor {
 					}
 
 					if (buf) cerr << counter << " level " << level << " q " << fc << " i " << fci << " phase " << atan2(fci, ctor(fc, fci)) << " adjfreq " << adjfreq << ' ' << igap << ' ' << poffset - pix_poffset << endl ;
+				} else {
+					if (buf && lastsync == 210 && igap >= 0) cerr << "S " << counter << ' ' << igap << endl;
 				}
 			} else {
 				for (double v: prev) {
@@ -626,9 +611,7 @@ int main(int argc, char *argv[])
 	LDE f_lpf45(8, NULL, f_lpf45_8_b);
 	LDE f_lpf13(8, NULL, f_lpf13_8_b);
 
-	FreqBand fb(CHZ, 7500000, 9600000, 250000); 
-	FreqBand fb_a_left(CHZ, 2150000, 2450000, 1000); 
-	FreqBand fb_a_right(CHZ, 2650000, 2950000, 1000); 
+	vector<double> fb({7600000, 8100000, 8500000, 8900000, 9300000}); 
 
 	FM_demod video(2048, fb, &f_boost8, &f_butter6, NULL);
 	
@@ -723,7 +706,7 @@ int main(int argc, char *argv[])
 		rv = read(fd, &inbuf[(2048 - len)], len) + (2048 - len);
 		
 		if (rv < 2048) return 0;
-		cerr << i << ' ' << rv << endl;
+//		cerr << i << ' ' << rv << endl;
 	}
 	return 0;
 }
