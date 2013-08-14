@@ -501,7 +501,7 @@ class NTSColor {
 						poffset += (igap - 1820);	
 
 //						adjfreq = 1820.0 / igap; // (igap + ((padj / M_PIl) * 4.0));
-						adjfreq = 1820.0 / (1820 + (padj * (10.0/9.0) * (M_PIl / 2.0)));
+						adjfreq = 1820.0 / (1820 + (padj * 1.15 * (M_PIl / 2.0)));
 					}
 
 					cerr << (buf ? 'B' : 'A') << ' ' ;
