@@ -356,7 +356,7 @@ struct RGB {
 
 class NTSColor {
 	protected:
-		LDE *f_i, *f_q, *f_burst, *f_igap;
+		LDE *f_i, *f_q, *f_burst;
 		LDE *f_post;
 		double fc, fci;
 		double freq;
@@ -444,7 +444,6 @@ class NTSColor {
 			f_q = new LDE(31, NULL, f28_1_3mhz_b);
 			
 			f_burst = new LDE(4, f_lpburst_a, f_lpburst_b);
-			f_igap = new LDE(4, f_lpburst_a, f_lpburst_b);
 			
 			f_post = _f_post ? new LDE(*_f_post) : NULL;
 		}
@@ -480,7 +479,6 @@ class NTSColor {
 					}
 					
 					igap = lastsync;
-					f_igap->feed(igap);
 
 					lastsync = 0;
 
@@ -556,7 +554,7 @@ class NTSColor {
 				//cerr << "p " << lastsync << ' ' << ctor(i, q) << ' ' << (atan2(i, ctor(i,q)) / (M_PIl / 180.0)) + 180.0 << " iadj " << iadj << " qadj " << qadj << " y " << y;
 				//cerr << "p " << atan2(i, q) << " iadj " << iadj << " qadj " << qadj << " y " << y;
 				y += iadj + qadj;
-				cerr << " " << y << endl;
+				//cerr << " " << y << endl;
 
 				if (f_post) y = f_post->feed(y);
 				YIQ outc = YIQ(y, i * 2.0, q * 2.0);
