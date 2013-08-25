@@ -366,6 +366,8 @@ class NTSColor {
 		int counter, lastsync;
 		bool insync;
 
+		double _sin[32], _cos[32];
+
 		double phase, level;
 		int phase_count;
 		bool phased;
@@ -439,6 +441,11 @@ class NTSColor {
 			buf = _buf;
 
 			igap = -1;
+						
+			for (int e = 0; e < 8; e++) {
+				_cos[e] = cos(phase + (2.0 * M_PIl * ((double)e / freq)));
+				_sin[e] = sin(phase + (2.0 * M_PIl * ((double)e / freq)));
+			}
 
 			f_i = new LDE(31, NULL, f28_1_3mhz_b);
 			f_q = new LDE(31, NULL, f28_1_3mhz_b);
@@ -508,6 +515,11 @@ class NTSColor {
 						phased = true;
 						phase_count = counter;
 
+						for (int e = 0; e < 8; e++) {
+							_cos[e] = cos(phase + (2.0 * M_PIl * ((double)e / freq)));
+							_sin[e] = sin(phase + (2.0 * M_PIl * ((double)e / freq)));
+						}
+
 						pix_poffset = phase / M_PIl * 4.0;
 						poffset += (igap - 1820);	
 
@@ -531,7 +543,12 @@ class NTSColor {
 				}
 			}
 
-                        double q = f_q->feed(in * cos(phase + (2.0 * M_PIl * ((double)(counter) / freq))));
+       //                 double q = f_q->feed(in * _cos[counter % 8]);
+	//		double i = f_i->feed(-in * _sin[counter % 8]);
+
+//			cerr << _cos[counter % 8] << ' ' << cos(phase + (2.0 * M_PIl * ((double)(counter) / freq))) << endl;
+
+                      double q = f_q->feed(in * cos(phase + (2.0 * M_PIl * ((double)(counter) / freq))));
 			double i = f_i->feed(-in * sin(phase + (2.0 * M_PIl * ((double)(counter) / freq))));
 
 #ifdef NOSNAP
@@ -600,7 +617,7 @@ int main(int argc, char *argv[])
 	rv = read(fd, inbuf, 2048);
 
 	int i = 2048;
-
+	
 //	LDE f_hp35(7, f_hp35_b7_a, f_hp35_b7_b);
 	LDE f_hp35(14, NULL, f_hp35_14_b);
 	LDE f_lpf30(32, f_lpf30_b7_a, f_lpf30_b7_b);
