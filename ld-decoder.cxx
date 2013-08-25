@@ -499,18 +499,19 @@ class NTSColor {
 					
 				line.push_back(in);
 
-				if ((igap > 1000) && lastsync == 210) {
+				if ((igap > 1000) && lastsync == 196) {
 					fc = f_q->val();
 					fci = f_i->val();
 					level = ctor(fc, fci);
-					if ((level > .05) && (level < .15)) {
+					if ((level > .03) && (level < .18)) {
 						double padj = atan2(fci, ctor(fc, fci));
 
 						if (fc > 0) {
 							if (igap > 1820) 
 								padj = (M_PIl / 2.0) - padj; 
-							else
+							else {
 								padj = -(M_PIl / 2.0) - padj; 
+							}
 						}
 
 						phase -= (padj * sqrt(2.0));
@@ -525,14 +526,13 @@ class NTSColor {
 						pix_poffset = phase / M_PIl * 4.0;
 						poffset += (igap - 1820);	
 
-//						adjfreq = 1820.0 / igap; // (igap + ((padj / M_PIl) * 4.0));
-						adjfreq = 1820.0 / (1820 + (padj * 1.15 * (M_PIl / 2.0)));
+						adjfreq = 1820.0 / (1820 + (padj * (7.0/6.0) * (M_PIl / 2.0)));
 					}
 
 					cerr << (buf ? 'B' : 'A') << ' ' ;
 					cerr << counter << " level " << level << " q " << fc << " i " << fci << " phase " << atan2(fci, ctor(fc, fci)) << " adjfreq " << adjfreq << ' ' << igap << ' ' << poffset - pix_poffset << endl ;
 				} else {
-					if (buf && lastsync == 210 && igap >= 0) cerr << "S " << counter << ' ' << igap << endl;
+//					if (buf && lastsync == 200 && igap >= 0) cerr << "S " << counter << ' ' << igap << endl;
 				}
 			} else {
 				for (double v: prev) {
@@ -560,16 +560,17 @@ class NTSColor {
 #endif
 				double y = in;
 
-				if (prev.size() > 17) {
+				const int ywinder = 18;
+				if (prev.size() > ywinder) {
 					list<double>::iterator cur = prev.begin();
 	
-					for (int i = 0; i < (prev.size() - 17); i++, cur++);	
+					for (int i = 0; i < (prev.size() - ywinder); i++, cur++);	
 					y = *cur;
 				}
 
 #ifndef BW
-				double iadj = i * 2 * _cos[(counter - 2) % 8];
-				double qadj = q * 2 * _sin[(counter - 2) % 8]; 
+				double iadj = i * 2 * _cos[(counter - 3) % 8];
+				double qadj = q * 2 * _sin[(counter - 3) % 8]; 
 //				cerr << "p " << lastsync << ' ' << ctor(i, q) << ' ' << (atan2(i, ctor(i,q)) / (M_PIl / 180.0)) + 180.0 << " iadj " << iadj << " qadj " << qadj << " y " << y << " " << iadj + qadj;
 				//cerr << "p " << atan2(i, q) << " iadj " << iadj << " qadj " << qadj << " y " << y;
 				y += iadj + qadj;
