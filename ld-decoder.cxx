@@ -543,13 +543,13 @@ class NTSColor {
 				}
 			}
 
-       //                 double q = f_q->feed(in * _cos[counter % 8]);
-	//		double i = f_i->feed(-in * _sin[counter % 8]);
+                        double q = f_q->feed(in * _cos[counter % 8]);
+			double i = f_i->feed(-in * _sin[counter % 8]);
 
 //			cerr << _cos[counter % 8] << ' ' << cos(phase + (2.0 * M_PIl * ((double)(counter) / freq))) << endl;
 
-                      double q = f_q->feed(in * cos(phase + (2.0 * M_PIl * ((double)(counter) / freq))));
-			double i = f_i->feed(-in * sin(phase + (2.0 * M_PIl * ((double)(counter) / freq))));
+//                        double q = f_q->feed(in * cos(phase + (2.0 * M_PIl * ((double)(counter) / freq))));
+//			double i = f_i->feed(-in * sin(phase + (2.0 * M_PIl * ((double)(counter) / freq))));
 
 #ifdef NOSNAP
 			if (buf && (lastsync >= 0)) {
