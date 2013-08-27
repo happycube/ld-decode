@@ -609,7 +609,12 @@ class NTSColor {
 //				cerr << " " << y << endl;
 
 				if (f_post) y = f_post->feed(y);
-				YIQ outc = YIQ(y, i * 2.0, q * 2.0);
+				YIQ outc;	
+				if (level > .04) {
+					outc = YIQ(y, (.2 / level) * i, (.2 / level) * q);
+				} else {
+					outc = YIQ(y, 0, 0);
+				}
 #else
 				YIQ outc = YIQ(y, 0,0);
 #endif
@@ -759,7 +764,7 @@ int main(int argc, char *argv[])
 
 				for (double v: *delaybuf[j]) {
 					color[j + 1]->feed(v);
-					delaybuf[j + 1]->feed(v);
+					if (j < (ntsc_passes - 2)) delaybuf[j + 1]->feed(v);
 				}
 				delaybuf[j]->clear();
 			}
