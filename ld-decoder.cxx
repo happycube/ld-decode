@@ -621,6 +621,49 @@ class NTSColor {
 		}
 };
 
+class Resample : public vector<double> {
+	protected:
+		int prebuf;
+
+		double cval, cloc;
+		double factor;
+
+		queue<double> delaybuf;
+	public:
+		Resample(int _prebuf = 1820) {
+			cval = cloc = 0;
+			prebuf = _prebuf;
+			factor = 1.0;
+		}
+
+		void setscale(double _n) {factor = _n;}
+
+		void feed(double n) {
+			delaybuf.push(n);
+
+			if (delaybuf.size() >= 1820) {
+				double len = factor;
+				double newval = delaybuf.front();
+				while (len > 0.0) {
+					double avail = 1.0 - (cloc - floor(cloc));  
+					if (avail > len) {
+						cval += (len * newval); 
+						cloc += len;
+						len = 0.0;
+					} else {
+						cval += (avail * newval);
+						//cerr << "V " << cloc << ' ' << newval << ' ' << cval << endl;
+						push_back(cval);
+						cval = 0;					
+						cloc += avail;
+						len -= avail;
+					} 
+				}
+				delaybuf.pop();
+			} 
+		}
+};
+
 int main(int argc, char *argv[])
 {
 	int rv = 0, fd = 0, dlen = -1 ;
@@ -671,14 +714,20 @@ int main(int argc, char *argv[])
 	FM_demod video(2048, fb, &f_boost8, &f_butter6, NULL);
 	
 	vector<YIQ> outbuf;	
-//	NTSColor color, color2(&outbuf, &f_lpf45, &f_lpf13);
-	NTSColor color, color2(&outbuf, NULL);
-//	NTSColor color(&outbuf, &f_lpf45), color2;
-	queue<double> delaybuf;
 
-	int nextcount = 0, count = 0;
+	int ntsc_passes = 4;
+	vector<NTSColor *> color;
+	vector<Resample *> delaybuf;
+
+	for (int i = 0; i < ntsc_passes - 1; i++) {
+		color.push_back(new NTSColor());
+		delaybuf.push_back(new Resample());
+	} 
+	color.push_back(new NTSColor(&outbuf));
+	delaybuf.push_back(new Resample());
+
+	int count = 0;
 	double nextfreq = 1.0000, nextphase = 0.0;
-	double cval = 0.0, cloc = 0.0;
 		
 	while ((rv == 2048) && ((dlen == -1) || (i < dlen))) {
 		vector<double> dinbuf;
@@ -697,47 +746,23 @@ int main(int argc, char *argv[])
 			if (n < 0) n = 0;
 			if (n > (65535.0 / 62000.0)) n = (65535.0 / 62000.0);
 
-			color.feed(n);
-
 			count++;
+			color[0]->feed(n);
+			delaybuf[0]->feed(n);
 
-			if (color.get_newphase(nextfreq, nextphase)) {
-//				color2.set_phase(nextfreq, nextphase);
-				//cerr << "F " << nextfreq << ' ' << nextphase << endl;
-//				nextfreq = 1.0;
-				nextcount = count;	
-			}
-
-			delaybuf.push(n);
-
-			if (delaybuf.size() >= 1820) {
-				double len = nextfreq;
-				double newval = delaybuf.front();
-				while (len > 0.0) {
-					double avail = 1.0 - (cloc - floor(cloc));  
-					if (avail > len) {
-						cval += (len * newval); 
-						cloc += len;
-						len = 0.0;
-					} else {
-						cval += (avail * newval);
-						//cerr << "V " << cloc << ' ' << newval << ' ' << cval << endl;
-						color2.feed(cval);
-						cval = 0;					
-						cloc += avail;
-						len -= avail;
-					} 
+			for (int j = 0; j < ntsc_passes - 1; j++) { 
+				if (color[j]->get_newphase(nextfreq, nextphase)) {
+					cerr << "newscale " << j << " " << nextfreq << endl;
+					delaybuf[j]->setscale(nextfreq);		
+//					nextfreq = 1.0;
 				}
-				delaybuf.pop();
-			} 
 
-/*
-			delaybuf.push(n);
-			if (delaybuf.size() >= 1820) {
-				color2.feed(delaybuf.front());
-				delaybuf.pop();
+				for (double v: *delaybuf[j]) {
+					color[j + 1]->feed(v);
+					delaybuf[j + 1]->feed(v);
+				}
+				delaybuf[j]->clear();
 			}
-*/
 		}
 
 		for (YIQ i : outbuf) {
