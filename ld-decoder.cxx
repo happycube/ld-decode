@@ -684,7 +684,7 @@ int main(int argc, char *argv[])
 		if (offset) lseek64(fd, offset, SEEK_SET);
 	}
 		
-	if (argc >= 4) {
+	if (argc >= 3) {
 		if ((size_t)atoi(argv[3]) < dlen) {
 			dlen = atoi(argv[3]); 
 		}
