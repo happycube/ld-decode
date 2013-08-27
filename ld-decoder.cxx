@@ -512,6 +512,9 @@ class NTSColor {
 					cerr << lastsync << ' ' << ctor(f_syncq->val(), f_synci->val()) << endl;
 				}
 */
+
+				while (igap > 3500) igap -= 1820;
+
 				if ((igap > 1000) && lastsync == 250) {
 //					fc = f_syncq->val();
 //					fci = f_synci->val();
