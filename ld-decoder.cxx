@@ -129,23 +129,13 @@ const double f_inband7_b[] { -6.2211448918489030e-04, 2.8265367663495418e-02, 1.
 // 8-tap 3.5mhz high-pass fir1
 const double f_hp8_b[] {-5.2233122995139940e-04, -1.7082609318519331e-02, -8.5929313061105295e-02, -1.9084603032392095e-01, 7.5704600929723254e-01, -1.9084603032392097e-01, -8.5929313061105309e-02, -1.7082609318519335e-02, -5.2233122995139940e-04};
 
-const double f_butter4_a[] {1.0000000000000000, -1.6232715948812961, 1.3304266228523409, -0.5121023075052276, 0.0810552055606200};
-const double f_butter4_b[] {0.0172567453766523, 0.0690269815066093, 0.1035404722599139, 0.0690269815066093, 0.0172567453766523};
-
-//const double f_butter6_a[] {1.0000000000000000, -2.4594002236413273, 3.0570327078873287, -2.1912939461291545, 0.9464602376928106, -0.2285198647947151, 0.0239658552682254};
-//const double f_butter6_b[] {0.0023163244731745, 0.0138979468390470, 0.0347448670976174, 0.0463264894634899, 0.0347448670976174, 0.0138979468390470, 0.0023163244731745};
 
 // [n, Wc] = buttord(4.0 / freq, 3.5 / freq, 6, 12); [b, a] = butter(n, Wc)
 const double f_butter6_a[] {1.000000000000000e+00, -2.352249761025037e+00, 2.861013965944460e+00, -2.009740195346082e+00, 8.553145693150709e-01, -2.037566682488971e-01, 2.113751308567020e-02};
 const double f_butter6_b[] {2.683115995706020e-03, 1.609869597423612e-02, 4.024673993559030e-02, 5.366231991412039e-02, 4.024673993559030e-02, 1.609869597423612e-02, 2.683115995706020e-03};  
 
-//const double f_butter6_a[] {1.000000000000000e+00, -2.176093103298010e+00, 2.558369553340582e+00, -1.736746576197926e+00, 7.220024028506609e-01, -1.682075513126257e-01, 1.715021646708015e-02};
-//const double f_butter6_b[] {3.382420966402511e-03, 2.029452579841506e-02, 5.073631449603766e-02, 6.764841932805021e-02, 5.073631449603766e-02, 2.029452579841506e-02, 3.382420966402511e-03};
-//const double f_butter6_a[] {1.000000000000000e+00, -1.479015896529934e+00, 1.596890758027192e+00, -9.184863635688618e-01, 3.569843597015975e-01, -7.505248516623388e-02, 7.266546349155719e-03};
-//const double f_butter6_b[] {7.634170606451799e-03, 4.580502363871079e-02, 1.145125590967770e-01, 1.526834121290360e-01, 1.145125590967770e-01, 4.580502363871079e-02, 7.634170606451799e-03}; 
-
-const double f_butter8_a[] {1.0000000000000000, -3.2910431389188823, 5.4649816845801347, -5.5946268902911909, 3.8014233895293916, -1.7314645265989386, 0.5125138525205987, -0.0895781664897369, 0.0070486692595647};
-const double f_butter8_b[] {0.0003095893499646, 0.0024767147997169, 0.0086685017990093, 0.0173370035980186, 0.0216712544975232, 0.0173370035980186, 0.0086685017990093, 0.0024767147997169, 0.0003095893499646};
+const double f_butter8_a[] {1.000000000000000e+00, -7.999995183466980e+00, 2.799996628428046e+01, -5.599989885287620e+01, 6.999983142151834e+01, -5.599983142157634e+01, 2.799989885298059e+01, -7.999966284338464e+00, 9.999951834785804e-01};
+const double f_butter8_b[] {2.374220925679126e-51, 1.899376740543300e-50, 6.647818591901551e-50, 1.329563718380310e-49, 1.661954647975388e-49, 1.329563718380310e-49, 6.647818591901551e-50, 1.899376740543300e-50, 2.374220925679126e-51}; 
 
 // fir2(8, [0, 4/freq, 5/freq, 6/freq, 10/freq, 1], [1.0, 1.0, 2, 3, 4, 5])
 //const double f_boost6_b[] {0.0111989816340250, 0.0048865621882266, -0.0481490541009254, -0.8694087656392513, 2.8936261819359768, -0.8694087656392512, -0.0481490541009254, 0.0048865621882266, 0.0111989816340250};
@@ -227,6 +217,8 @@ class FM_demod {
 		vector<LDE> f_q, f_i;
 		LDE *f_pre, *f_post;
 		vector<cossin> ldft;
+
+		double avglevel;
 	
 		int linelen;
 
@@ -255,6 +247,8 @@ class FM_demod {
 			f_pre = prefilt ? new LDE(*prefilt) : NULL;
 			f_post = postfilt ? new LDE(*postfilt) : NULL;
 
+			avglevel = 30;
+
 			min_offset = 128;
 		}
 
@@ -262,6 +256,7 @@ class FM_demod {
 		{
 			vector<double> out;
 			vector<double> phase(fb.size() + 1);
+			vector<double> level(fb.size() + 1);
 			double avg = 0, total = 0.0;
 
 			if (in.size() < (size_t)linelen) return out;
@@ -270,7 +265,7 @@ class FM_demod {
 
 			int i = 0;
 			for (double n : in) {
-				vector<double> level(fb.size() + 1);
+				vector<double> angle(fb.size() + 1);
 				double peak = 500000, pf = 0.0;
 				int npeak;
 				int j = 0;
@@ -279,7 +274,7 @@ class FM_demod {
 				total += fabs(n);
 				if (f_pre) n = f_pre->feed(n);
 
-				level[j] = 0;
+				angle[j] = 0;
 
 				//cerr << n << endl;
 	
@@ -288,15 +283,17 @@ class FM_demod {
 					double fcq = f_q[j].feed(-n * ldft[j][i].imag());
 		
 //					cerr << fci << ' ' << fcq << endl;
+
+					level[j] = ctor(fci, fcq);
 	
-					level[j] = atan2(fci, fcq) - phase[j];
-					if (level[j] > M_PIl) level[j] -= (2 * M_PIl);
-					else if (level[j] < -M_PIl) level[j] += (2 * M_PIl);
+					angle[j] = atan2(fci, fcq) - phase[j];
+					if (angle[j] > M_PIl) angle[j] -= (2 * M_PIl);
+					else if (angle[j] < -M_PIl) angle[j] += (2 * M_PIl);
 						
-					if (fabs(level[j]) < fabs(peak)) {
+					if (fabs(angle[j]) < fabs(peak)) {
 						npeak = j;
-						peak = level[j];
-						pf = f + ((f / 2.0) * level[j]);
+						peak = angle[j];
+						pf = f + ((f / 2.0) * angle[j]);
 					}
 					phase[j] = atan2(fci, fcq);
 
@@ -306,8 +303,16 @@ class FM_demod {
 				}
 	
 				double thisout = pf;	
+
 				if (f_post) thisout = f_post->feed(pf);	
-				if (i > min_offset) out.push_back(thisout);
+				if (i > min_offset) {
+					avglevel *= 0.99;
+					avglevel += level[npeak] * .01;
+
+//					cerr << avglevel << ' ' << level[npeak] << endl; 
+
+					out.push_back(((level[npeak] / avglevel) > 0.5) ? thisout : 0);
+				};
 				i++;
 			}
 
@@ -369,6 +374,8 @@ class NTSColor {
 
 		int cfline;
 
+		int field, fieldcount;
+
 		int counter, lastsync;
 		bool insync;
 		double peaksync, peaksynci, peaksyncq;
@@ -385,6 +392,10 @@ class NTSColor {
 
 		vector<double> line;
 	
+		YIQ frame[1536 * 512];
+		
+		list<double> buf_1h;
+	
 		list<double> prev;
 
 		vector<YIQ> *buf;
@@ -400,7 +411,7 @@ class NTSColor {
 			} else return false;
 		}	
 
-		void phillips_decode() {
+		unsigned long phillips_decode() {
 			int i = 0;
 			int oc = 0;
 			int lastone = 220 - 55 - 00;
@@ -412,7 +423,7 @@ class NTSColor {
 					oc++;
 				} else {
 					if (oc) {
-						int firstone = (i - oc) - 167;	
+						int firstone = (i - oc) - 160;	
 						int bit = firstone / 57;
 
 						int offset = firstone - (bit * 57);
@@ -420,7 +431,7 @@ class NTSColor {
 							code |= (1 << (23 - bit));
 						}
 
-//						cerr << cfline << ' ' << i << ' ' << firstone << ' ' << bit * 57 << ' ' << bit << ' ' << hex << code << dec << endl;
+						cerr << cfline << ' ' << i << ' ' << firstone << ' ' << bit * 57 << ' ' << bit << ' ' << hex << code << dec << endl;
 						lastone = i;
 					}
 					oc = 0;
@@ -428,12 +439,15 @@ class NTSColor {
 				i++;
 			}
 			cerr << "P " << cfline << ' ' << hex << code << dec << endl;
+			return code;
 		}
 
 		NTSColor(vector<YIQ> *_buf = NULL, LDE *_f_post = NULL, LDE *_f_postc = NULL, double _freq = 8.0) {
 			counter = 0;
 			phased = insync = false;
 
+			fieldcount = -10;
+			field = -1;
 			cfline = -1;
 
 			pix_poffset = poffset = 0;
@@ -466,12 +480,21 @@ class NTSColor {
 		}
 
 		void feed(double in) {
+			if (!in) {
+				in = buf_1h.front(); 
+			}
+
+			buf_1h.push_back(in);
+			if (buf_1h.size() > 1820) buf_1h.pop_front();
+
+			double dn = (double) in / 62000.0;
+
 			counter++;
 			if (lastsync >= 0) lastsync++;
 
 //			cerr << insync << ' ' << lastsync << endl;
 
-			prev.push_back(in);	
+			prev.push_back(dn);
 			if (prev.size() > 32) prev.pop_front();
 
 			int count = 0;
@@ -489,9 +512,32 @@ class NTSColor {
 #endif
 					
 					if (igap > 300 && igap < 1200) {
+						if (cfline) {
+							cerr << "S " << cfline << endl;
+
+							if (cfline == 254) {
+								field = 1;
+								fieldcount++;
+							} else if (field >= 0) {
+								field = 0;
+								fieldcount++;
+							}
+
+							if (fieldcount == 2) {
+								for (int i = 0; field >= 0 && i < (1536 * 480); i++) {
+									if (buf) buf->push_back(frame[i]);
+								} 
+								fieldcount = -10;
+							}
+						}
 						cfline = 0;
 					} else {
-						if ((cfline >= 6) && cfline <= 8) phillips_decode();
+						if (buf && (cfline >= 6) && (cfline <= 8)) {
+							unsigned long pc = phillips_decode() & 0xff0000;
+							if (pc == 0xf80000 || pc == 0xfa0000 || pc == 0xf00000) {
+								fieldcount = 0;
+							}					
+						}
 						if (cfline >= 0) cfline++;
 					}
 					
@@ -500,13 +546,13 @@ class NTSColor {
 					lastsync = 0;
 					peaksynci = peaksyncq = peaksync = 0;
 
-					//cerr << "sync at " << counter - 24 << ' ' << igap << endl;
+//					cerr << "sync at " << counter - 24 << ' ' << igap << endl;
 					insync = true;
 					prev.clear();
 					line.clear();
 				}
 					
-				line.push_back(in);
+				line.push_back(dn);
 /*
 				if (buf && lastsync > 170 && lastsync < 250) {
 					cerr << lastsync << ' ' << ctor(f_syncq->val(), f_synci->val()) << endl;
@@ -564,12 +610,12 @@ class NTSColor {
 				}
 			}
 
-                        double q = f_q->feed(in * _cos[counter % 8]);
-			double i = f_i->feed(-in * _sin[counter % 8]);
+                        double q = f_q->feed(dn * _cos[counter % 8]);
+			double i = f_i->feed(-dn * _sin[counter % 8]);
                        
 			if ((lastsync > 100) && (lastsync < 250)) { 
-				double q = f_syncq->feed(in * _cos[counter % 8]);
-				double i = f_synci->feed(-in * _sin[counter % 8]);
+				double q = f_syncq->feed(dn * _cos[counter % 8]);
+				double i = f_synci->feed(-dn * _sin[counter % 8]);
 
 				double synclev = ctor(i, q);
 
@@ -582,15 +628,15 @@ class NTSColor {
 
 //			cerr << _cos[counter % 8] << ' ' << cos(phase + (2.0 * M_PIl * ((double)(counter) / freq))) << endl;
 
-//                      double q = f_q->feed(in * cos(phase + (2.0 * M_PIl * ((double)(counter) / freq))));
-//			double i = f_i->feed(-in * sin(phase + (2.0 * M_PIl * ((double)(counter) / freq))));
+//                      double q = f_q->feed(dn * cos(phase + (2.0 * M_PIl * ((double)(counter) / freq))));
+//			double i = f_i->feed(-dn * sin(phase + (2.0 * M_PIl * ((double)(counter) / freq))));
 
 #ifdef NOSNAP
 			if (buf && (lastsync >= 0)) {
 #else
 			if (buf && (lastsync >= 0) && (lastsync < 1820)) {
 #endif
-				double y = in;
+				double y = dn;
 
 				const int ywinder = 18;
 				if (prev.size() > ywinder) {
@@ -609,17 +655,17 @@ class NTSColor {
 //				cerr << " " << y << endl;
 
 				if (f_post) y = f_post->feed(y);
-				YIQ outc;	
-				if (level > .04) {
-					outc = YIQ(y, (.2 / level) * i, (.2 / level) * q);
-				} else {
-					outc = YIQ(y, 0, 0);
-				}
+
+				YIQ outc = YIQ(y, 2.5 * i, 2.5 * q);
 #else
 				YIQ outc = YIQ(y, 0,0);
 #endif
 				if (!lastsync) outc.y = 1.0;
-				buf->push_back(outc);	
+
+				if ((field >= 0) && cfline > 15 && (lastsync > 252) && (lastsync < (252 + 1536)) ) {
+//					cerr << cfline << ' ' << lastsync << endl;
+					frame[((((cfline - 15) * 2) + field) * 1536) + (lastsync - 252)] = outc;
+				}
 			}
 
 	//		return YIQ();
@@ -706,6 +752,7 @@ int main(int argc, char *argv[])
 	LDE f_lpf30(32, f_lpf30_b7_a, f_lpf30_b7_b);
 	LDE f_lpf02(4, f_lpf048_b4_a, f_lpf048_b4_b);
 	LDE f_butter6(6, f_butter6_a, f_butter6_b);
+	LDE f_butter8(8, f_butter8_a, f_butter8_b);
 	LDE f_boost6(8, NULL, f_boost6_b);
 	LDE f_boost8(8, NULL, f_boost8_b);
 	LDE f_boost16(8, NULL, f_boost16_b);
@@ -728,7 +775,7 @@ int main(int argc, char *argv[])
 		color.push_back(new NTSColor());
 		delaybuf.push_back(new Resample());
 	} 
-	color.push_back(new NTSColor(&outbuf));
+	color.push_back(new NTSColor(&outbuf, &f_lpf45));
 	delaybuf.push_back(new Resample());
 
 	int count = 0;
@@ -745,15 +792,21 @@ int main(int argc, char *argv[])
 
 		for (int i = 0; i < outline.size(); i++) {
 			double n = outline[i];
+			int in;
 
-			n -= 7600000.0;
-			n /= (9400000.0 - 7600000.0);
-			if (n < 0) n = 0;
-			if (n > (65535.0 / 62000.0)) n = (65535.0 / 62000.0);
+			if (n > 0) {
+				n -= 7600000.0;
+				n /= (9400000.0 - 7600000.0);
+				if (n < 0) n = 0;
+				if (n > 1.1) n = 1.1;
+				in = 1 + (n * 62000.0);
+			} else {
+				in = 0;
+			}
 
 			count++;
-			color[0]->feed(n);
-			delaybuf[0]->feed(n);
+			color[0]->feed(in);
+			delaybuf[0]->feed(in);
 
 			for (int j = 0; j < ntsc_passes - 1; j++) { 
 				if (color[j]->get_newphase(nextfreq, nextphase)) {
