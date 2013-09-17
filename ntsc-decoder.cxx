@@ -512,7 +512,7 @@ class NTSColor {
 					}
 				}
 				if (count >= 24) {
-					if (igap > 300 && igap < 1200) {
+					if (igap > 800 && igap < 1000) {
 						if (cfline) {
 							cerr << "S " << cfline << endl;
 
@@ -560,7 +560,7 @@ class NTSColor {
 
 				while (igap > 3500) igap -= 1820;
 
-				if ((igap > 1000) && lastsync == 250) {
+				if ((igap > 1700) && (igap < 1900) && lastsync == 250) {
 //					fc = f_syncq->val();
 //					fci = f_synci->val();
 //					level = ctor(fc, fci);
@@ -591,6 +591,7 @@ class NTSColor {
 						poffset += (igap - 1820);	
 
 						adjfreq = 1820.0 / (1820 + (padj * (7.0/6.0) * (M_PIl / 2.0)));
+					//	if (fabs(padj) < 0.1) adjfreq = 1.0;
 					}
 
 					cerr << (buf ? 'B' : 'A') << ' ' ;
@@ -756,11 +757,11 @@ int main(int argc, char *argv[])
 
 	vector<YIQ> outbuf;	
 
-	int ntsc_passes = 1;
+	int ntsc_passes = 4;
 	vector<NTSColor *> color;
 	vector<Resample *> delaybuf;
 
-	for (int i = 0; i < ntsc_passes - 4; i++) {
+	for (int i = 0; i < ntsc_passes - 1; i++) {
 		color.push_back(new NTSColor());
 		delaybuf.push_back(new Resample());
 	} 
