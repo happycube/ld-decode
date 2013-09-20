@@ -177,9 +177,6 @@ const double f_lpf30_32_b[] {-1.386894684039784e-03, -7.392108445957141e-04, 6.5
 const double f_lpf02_b1_a[] {1.000000000000000e+00, -9.999937186442455e-01}; 
 const double f_lpf02_b1_b[] {3.140677877222177e-06, 3.140677877222177e-06}; 
 
-const double f_lpburst_a[] {1.000000000000000, -1.570398851228172, 1.275613324983280, -0.484403368335086, 0.076197064610332};
-const double f_lpburst_b[] {0.018563010626897, 0.074252042507589, 0.111378063761383, 0.074252042507589, 0.018563010626897}; 
-
 const double f_hp32_b[] { 2.727748521075775e-03, 2.493444033678934e-02, 1.071670557197850e-01, 2.243407006421851e-01, 2.816601095603296e-01, 2.243407006421851e-01, 1.071670557197850e-01, 2.493444033678935e-02, 2.727748521075775e-03};
 
 const double f_hp35_14_b[] {2.920242503210705e-03, 6.624873097752306e-03, 1.019323615024227e-02, -2.860428785028677e-03, -5.117884625321341e-02, -1.317695333943684e-01, -2.108392223608709e-01, 7.582009982420270e-01, -2.108392223608709e-01, -1.317695333943685e-01, -5.117884625321342e-02, -2.860428785028680e-03, 1.019323615024228e-02, 6.624873097752300e-03, 2.920242503210705e-03};
@@ -192,6 +189,8 @@ const double f_lpf49_8_b[] {-6.035564708478322e-03, -1.459747550010019e-03, 7.61
 const double f_lpf45_8_b[] {-4.889502734137763e-03, 4.595036240066151e-03, 8.519412674978986e-02, 2.466567238634809e-01, 3.368872317616017e-01, 2.466567238634810e-01, 8.519412674978988e-02, 4.595036240066152e-03, -4.889502734137763e-03};
 
 const double f_lpf13_8_b[] {1.511108761398408e-02, 4.481461214778652e-02, 1.207230841165654e-01, 2.014075783203990e-01, 2.358872756025299e-01, 2.014075783203991e-01, 1.207230841165654e-01, 4.481461214778654e-02, 1.511108761398408e-02};
+
+const double f_hsync8[] {1.447786467971050e-02, 4.395811440315845e-02, 1.202636955256379e-01, 2.024216184054497e-01, 2.377574139720867e-01, 2.024216184054497e-01, 1.202636955256379e-01, 4.395811440315847e-02, 1.447786467971050e-02};
 
 const double f_a[256] {1,};
 
@@ -364,13 +363,20 @@ struct RGB {
 	};
 };
 
+enum tbc_type {TBC_HSYNC, TBC_CBURST};
+
 class NTSColor {
 	protected:
-		LDE *f_i, *f_q, *f_burst;
+		LDE *f_i, *f_q;
 		LDE *f_synci, *f_syncq;
 		LDE *f_post;
+
+		LDE *f_linelen;
+
 		double fc, fci;
 		double freq;
+
+		tbc_type tbc;
 
 		int cfline;
 
@@ -409,6 +415,10 @@ class NTSColor {
 				return true;
 			} else return false;
 		}	
+
+		void set_tbc(tbc_type type) {
+			tbc = type;
+		}
 
 		unsigned long phillips_decode() {
 			int i = 0;
@@ -475,17 +485,20 @@ class NTSColor {
 			
 			f_synci = new LDE(65, NULL, f28_0_6mhz_b65);
 			f_syncq = new LDE(65, NULL, f28_0_6mhz_b65);
-			
-			f_burst = new LDE(4, f_lpburst_a, f_lpburst_b);
-			
+		
+			f_linelen = new LDE(8, NULL, f_hsync8);
+			for (int i = 0; i < 9; i++) f_linelen->feed(1820);
+	
 			f_post = _f_post ? new LDE(*_f_post) : NULL;
 		}
 
 		void write() {
+#ifndef RAW
 			for (int i = 0; field >= 0 && i < (1536 * 480); i++) {
 				if (buf) buf->push_back(frame[i]);
 			} 
 			memset(frame, 0, sizeof(frame));
+#endif
 		}
 
 		void feed(double in) {
@@ -531,6 +544,7 @@ class NTSColor {
 						}
 						cfline = 0;
 					} else {
+						if ((igap > 1800) && (igap < 1840)) f_linelen->feed(igap);
 						if (buf && (cfline >= 6) && (cfline <= 8)) {
 							unsigned long pc = phillips_decode() & 0xff0000;
 							if (pc == 0xf80000 || pc == 0xfa0000 || pc == 0xf00000) {
@@ -556,7 +570,6 @@ class NTSColor {
 				if (buf && lastsync > 170 && lastsync < 270) {
 //					cerr << lastsync << ' ' << ctor(f_syncq->val(), f_synci->val()) << endl;
 				}
-
 
 				while (igap > 3500) igap -= 1820;
 
@@ -590,12 +603,15 @@ class NTSColor {
 						pix_poffset = phase / M_PIl * 4.0;
 						poffset += (igap - 1820);	
 
-						adjfreq = 1820.0 / (1820 + (padj * (7.0/6.0) * (M_PIl / 2.0)));
-					//	if (fabs(padj) < 0.1) adjfreq = 1.0;
+						if (tbc == TBC_HSYNC) {
+							adjfreq = 1820.0 / f_linelen->val();
+						} else {
+							adjfreq = 1820.0 / (1820 + (padj * (7.0/6.0) * (M_PIl / 2.0)));
+						}
 					}
 
 					cerr << (buf ? 'B' : 'A') << ' ' ;
-					cerr << counter << " level " << level << " q " << fc << " i " << fci << " phase " << atan2(fci, ctor(fc, fci)) << " adjfreq " << adjfreq << ' ' << igap << ' ' << poffset - pix_poffset << endl ;
+					cerr << counter << " level " << level << " q " << fc << " i " << fci << " phase " << atan2(fci, ctor(fc, fci)) << " adjfreq " << adjfreq << ' ' << igap << ':' << f_linelen->val() << ' ' << poffset - pix_poffset << endl ;
 				} else {
 //					if (buf && lastsync == 200 && igap >= 0) cerr << "S " << counter << ' ' << igap << endl;
 				}
@@ -624,6 +640,12 @@ class NTSColor {
 					peaksyncq = q;
 					peaksync = synclev;
 				}
+			}
+
+			// Automatically jump to the next line on HSYNC failure
+			if (lastsync == (1820 + 250)) {
+				lastsync -= 1820;
+				cfline++;	
 			}
 
 //			cerr << _cos[counter % 8] << ' ' << cos(phase + (2.0 * M_PIl * ((double)(counter) / freq))) << endl;
@@ -656,12 +678,15 @@ class NTSColor {
 #endif
 				if (!lastsync) outc.y = 1.0;
 
+#ifdef RAW
+				buf->push_back(outc);			
+#else
 				if ((field >= 0) && cfline > 15 && (lastsync > 252) && (lastsync < (252 + 1536)) ) {
 //					cerr << cfline << ' ' << lastsync << endl;
 					frame[((((cfline - 15) * 2) + field) * 1536) + (lastsync - 252)] = outc;
 				}
+#endif
 			}
-
 	//		return YIQ();
 		}
 };
@@ -757,7 +782,7 @@ int main(int argc, char *argv[])
 
 	vector<YIQ> outbuf;	
 
-	int ntsc_passes = 4;
+	int ntsc_passes = 3;
 	vector<NTSColor *> color;
 	vector<Resample *> delaybuf;
 
@@ -767,6 +792,9 @@ int main(int argc, char *argv[])
 	} 
 	color.push_back(new NTSColor(&outbuf, &f_lpf45));
 	delaybuf.push_back(new Resample());
+
+	color[0]->set_tbc(TBC_HSYNC);
+	color[1]->set_tbc(TBC_CBURST);
 
 	int count = 0;
 	double nextfreq = 1.0000, nextphase = 0.0;
