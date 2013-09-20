@@ -606,7 +606,7 @@ class NTSColor {
 						if (tbc == TBC_HSYNC) {
 							adjfreq = 1820.0 / f_linelen->val();
 						} else {
-							adjfreq = 1820.0 / (1820 + (padj * (7.0/6.0) * (M_PIl / 2.0)));
+							adjfreq = 1820.0 / (1820 + (padj * (M_PIl / 2.0)));
 						}
 					}
 
@@ -717,7 +717,7 @@ class Resample : public vector<double> {
 				while (len > 0.0) {
 					double avail = 1.0 - (cloc - floor(cloc));  
 					if (avail > len) {
-						cval += (len * newval); 
+						cval += (len * newval) / factor; 
 						cloc += len;
 						len = 0.0;
 					} else {
