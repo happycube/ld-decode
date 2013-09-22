@@ -401,7 +401,7 @@ class NTSColor {
 
 		vector<double> line;
 	
-		YIQ frame[1536 * 512];
+		YIQ frame[1544 * 1024];
 		
 		vector<YIQ> *buf;
 
@@ -418,6 +418,19 @@ class NTSColor {
 
 		void set_tbc(tbc_type type) {
 			tbc = type;
+		}
+
+		bool whiteflag_decode() {
+			int oc = 0;
+
+			for (double c: line) {
+				if (c > 0.8) {
+					oc++;
+				}
+				if (oc > 600) return true;
+			}
+			cerr << "W" << oc << endl;
+			return false;
 		}
 
 		unsigned long phillips_decode() {
@@ -494,21 +507,32 @@ class NTSColor {
 
 		void write() {
 #ifndef RAW
-			for (int i = 0; field >= 0 && i < (1536 * 480); i++) {
-				if (buf) buf->push_back(frame[i]);
+			for (int i = 0; field >= 0 && i < (1544 * 480); i++) {
+				if (buf && ((i % 1544) >= 8)) buf->push_back(frame[i]);
 			} 
 			memset(frame, 0, sizeof(frame));
 #endif
 		}
 
+		bool expectsync() {
+			if (insync || (cfline <= 0)) return true;
+			if (lastsync > 1700) return true; 
+			if ((cfline >= 250) && (lastsync > 850) && (lastsync < 980)) return true; 
+
+			return false;
+		}
+
 		void feed(double in) {
-			if (!in) {
-				in = buf_1h[counter % 1820]; 
+			double dn = (double) in / 62000.0;
+		
+			if (!dn || ((dn < 0.1) && !expectsync())) {
+				dn = buf_1h[counter % 1820]; 
+				if ((dn < 0.1) && !expectsync()) {
+					dn = 0.101;	
+				}
 			}
 
-			buf_1h[counter % 1820] = in;
-
-			double dn = (double) in / 62000.0;
+			buf_1h[counter % 1820] = dn;
 
 			counter++;
 			if (lastsync >= 0) lastsync++;
@@ -524,9 +548,9 @@ class NTSColor {
 						count++;
 					}
 				}
-				if (count >= 24) {
-					if (igap > 800 && igap < 1000) {
-						if (cfline) {
+				if (expectsync() && count >= 24) {
+					if ((igap > 880) && (igap < 940)) {
+						if (cfline >= 253) {
 							cerr << "S " << cfline << endl;
 
 							if (cfline == 254) {
@@ -539,13 +563,16 @@ class NTSColor {
 
 							if (fieldcount == 2) {
 								write();
-								fieldcount = -10;
+								fieldcount = 0;
 							}
 						}
 						cfline = 0;
 					} else {
 						if ((igap > 1800) && (igap < 1840)) f_linelen->feed(igap);
-						if (buf && (cfline >= 6) && (cfline <= 8)) {
+						if (buf && (cfline >= 0) && (cfline <= 3)) {
+							if (whiteflag_decode()) fieldcount = 0;	
+						}
+						if (0 && buf && (cfline >= 6) && (cfline <= 8)) {
 							unsigned long pc = phillips_decode() & 0xff0000;
 							if (pc == 0xf80000 || pc == 0xfa0000 || pc == 0xf00000) {
 								fieldcount = 0;
@@ -559,7 +586,7 @@ class NTSColor {
 					lastsync = 0;
 					peaksynci = peaksyncq = peaksync = 0;
 
-//					cerr << "sync at " << counter - 24 << ' ' << igap << endl;
+					cerr << cfline << " sync at " << counter - 24 << ' ' << igap << ' ' << insync << endl;
 					insync = true;
 					prev.clear();
 					line.clear();
@@ -580,7 +607,7 @@ class NTSColor {
 					fc = peaksyncq;
 					fci = peaksynci;
 					level = peaksync;
-					if ((level > .05) && (level < .15)) {
+					if ((level > .02) && (level < .10)) {
 						double padj = atan2(fci, ctor(fc, fci));
 
 						if (fc > 0) {
@@ -643,7 +670,7 @@ class NTSColor {
 			}
 
 			// Automatically jump to the next line on HSYNC failure
-			if (lastsync == (1820 + 250)) {
+			if (lastsync == (1820 + 260)) {
 				lastsync -= 1820;
 				cfline++;	
 			}
@@ -681,9 +708,11 @@ class NTSColor {
 #ifdef RAW
 				buf->push_back(outc);			
 #else
-				if ((field >= 0) && cfline > 15 && (lastsync > 252) && (lastsync < (252 + 1536)) ) {
+				if ((field >= 0) && cfline > 15 && (lastsync > 252) && (lastsync < (252 + 1544)) ) {
 //					cerr << cfline << ' ' << lastsync << endl;
-					frame[((((cfline - 15) * 2) + field) * 1536) + (lastsync - 252)] = outc;
+					frame[((((cfline - 15) * 2) + field) * 1544) + (lastsync - 252)].y = outc.y;
+					frame[((((cfline - 15) * 2) + field) * 1544) + (lastsync - 252) + 8].i = outc.i;
+					frame[((((cfline - 15) * 2) + field) * 1544) + (lastsync - 252) + 8].q = outc.q;
 				}
 #endif
 			}
