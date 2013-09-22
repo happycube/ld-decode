@@ -224,7 +224,7 @@ class FM_demod {
 		LDE *f_pre, *f_post;
 		vector<cossin> ldft;
 
-		double avglevel;
+		double avglevel[32];
 	
 		int linelen;
 
@@ -253,7 +253,7 @@ class FM_demod {
 			f_pre = prefilt ? new LDE(*prefilt) : NULL;
 			f_post = postfilt ? new LDE(*postfilt) : NULL;
 
-			avglevel = 30;
+			for (int i = 0; i < 32; i++) avglevel[i] = 30;
 
 			min_offset = 128;
 		}
@@ -312,12 +312,13 @@ class FM_demod {
 
 				if (f_post) thisout = f_post->feed(pf);	
 				if (i > min_offset) {
-					avglevel *= 0.99;
-					avglevel += level[npeak] * .01;
+					int bin = (npeak - 7600000) / 500000;
+					avglevel[bin] *= 0.98;
+					avglevel[bin] += level[npeak] * .02;
 
-//					cerr << avglevel << ' ' << level[npeak] << endl; 
+					//cerr << thisout << ' ' << avglevel[bin] << ' ' << level[npeak] << endl; 
 
-					out.push_back(((level[npeak] / avglevel) > 0.5) ? thisout : 0);
+					out.push_back(((level[npeak] / avglevel[bin]) > 0.5) ? thisout : 0);
 				};
 				i++;
 			}
@@ -375,11 +376,11 @@ int main(int argc, char *argv[])
 	LDE f_lpf40(8, NULL, f_lpf40_8_b);
 	LDE f_lpf13(8, NULL, f_lpf13_8_b);
 
-	vector<double> fb({7600000, 8100000, 8300000, 8500000, 8700000, 8900000, 9100000, 9300000}); 
-//	vector<double> fb({8100000, 8700000, 9300000}); 
+//	vector<double> fb({7600000, 8100000, 8300000, 8500000, 8700000, 8900000, 9100000, 9300000}); 
+	vector<double> fb({7600000, 8100000, 8500000, 8700000, 9100000, 9300000}); 
 //	vector<double> fb({8500000}); 
 
-	FM_demod video(2048, fb, &f_boost8, &f_lpf49, NULL);
+	FM_demod video(2048, fb, &f_boost8, &f_lpf40, NULL);
 	
 	while ((rv == 2048) && ((dlen == -1) || (i < dlen))) {
 		vector<double> dinbuf;
