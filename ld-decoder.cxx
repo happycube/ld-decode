@@ -377,8 +377,8 @@ int main(int argc, char *argv[])
 	LDE f_lpf13(8, NULL, f_lpf13_8_b);
 
 //	vector<double> fb({7600000, 8100000, 8300000, 8500000, 8700000, 8900000, 9100000, 9300000}); 
-	vector<double> fb({7600000, 8100000, 8500000, 8700000, 9100000, 9300000}); 
-//	vector<double> fb({8500000}); 
+//	vector<double> fb({7600000, 8100000, 8600000, 9100000}); 
+	vector<double> fb({8500000}); 
 
 	FM_demod video(2048, fb, &f_boost8, &f_lpf40, NULL);
 	

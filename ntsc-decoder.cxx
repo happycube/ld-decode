@@ -720,49 +720,6 @@ class NTSColor {
 		}
 };
 
-class Resample : public vector<double> {
-	protected:
-		int prebuf;
-
-		double cval, cloc;
-		double factor;
-
-		queue<double> delaybuf;
-	public:
-		Resample(int _prebuf = 1820) {
-			cval = cloc = 0;
-			prebuf = _prebuf;
-			factor = 1.0;
-		}
-
-		void setscale(double _n) {factor = _n;}
-
-		void feed(double n) {
-			delaybuf.push(n);
-
-			if (delaybuf.size() >= 1820) {
-				double len = factor;
-				double newval = delaybuf.front();
-				while (len > 0.0) {
-					double avail = 1.0 - (cloc - floor(cloc));  
-					if (avail > len) {
-						cval += (len * newval) / factor; 
-						cloc += len;
-						len = 0.0;
-					} else {
-						cval += (avail * newval);
-						//cerr << "V " << cloc << ' ' << newval << ' ' << cval << endl;
-						push_back(cval);
-						cval = 0;					
-						cloc += avail;
-						len -= avail;
-					} 
-				}
-				delaybuf.pop();
-			} 
-		}
-};
-
 int main(int argc, char *argv[])
 {
 	int rv = 0, fd = 0, dlen = -1 ;
@@ -811,19 +768,7 @@ int main(int argc, char *argv[])
 
 	vector<YIQ> outbuf;	
 
-	int ntsc_passes = 3;
-	vector<NTSColor *> color;
-	vector<Resample *> delaybuf;
-
-	for (int i = 0; i < ntsc_passes - 1; i++) {
-		color.push_back(new NTSColor());
-		delaybuf.push_back(new Resample());
-	} 
-	color.push_back(new NTSColor(&outbuf, &f_lpf45));
-	delaybuf.push_back(new Resample());
-
-	color[0]->set_tbc(TBC_HSYNC);
-	color[1]->set_tbc(TBC_CBURST);
+	NTSColor *color = new NTSColor(&outbuf, &lpf45);
 
 	int count = 0;
 	double nextfreq = 1.0000, nextphase = 0.0;
@@ -837,29 +782,12 @@ int main(int argc, char *argv[])
 			int in = inbuf[i];
 
 			count++;
-			color[0]->feed(in);
-			delaybuf[0]->feed(in);
-
-			for (int j = 0; j < ntsc_passes - 1; j++) { 
-				if (color[j]->get_newphase(nextfreq, nextphase)) {
-					cerr << "newscale " << j << " " << nextfreq << endl;
-					delaybuf[j]->setscale(nextfreq);		
-//					nextfreq = 1.0;
-				}
-
-				for (double v: *delaybuf[j]) {
-					color[j + 1]->feed(v);
-					if (j < (ntsc_passes - 2)) delaybuf[j + 1]->feed(v);
-				}
-				delaybuf[j]->clear();
-			}
+			color->feed(in);
 		}
 		
 		i += rv;
 		if (i % 2) inbuf[0] = inbuf[rv];
 		rv = read(fd, &inbuf[i % 2], 2048 - (i % 2));
-
-//		if (rv < 2048) color[ntsc_passes - 1]->write(); 
 
 		for (YIQ i : outbuf) {
 			RGB r;
