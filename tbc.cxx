@@ -15,7 +15,7 @@
 #include <string.h>
 
 // capture frequency and fundamental NTSC color frequency
-const double CHZ = (1000000.0*(315.0/88.0)*8.0);
+//const double CHZ = (1000000.0*(315.0/88.0)*8.0);
 //const double FSC = (1000000.0*(315.0/88.0));
 
 using namespace std;
@@ -49,37 +49,38 @@ inline double dft(double *buf, int offset, int len, double bin)
 	return ctor(fc, fci);
 }
 
-/* Linear difference equation - used for running filters (compute with Octave, etc) */
-
-class LDE {
+class Filter {
 	protected:
 		int order;
-		const double *a, *b;
-		double *y, *x;
+		bool isIIR;
+		vector<double> a, b;
+		vector<double> y, x;
 	public:
-		LDE(int _order, const double *_a, const double *_b) {
+		Filter(int _order, const double *_a, const double *_b) {
 			order = _order + 1;
-			a = _a;
-			b = _b;
-			x = new double[order];
-			y = new double[order];
+			if (_a) {
+				a.insert(b.begin(), _a, _a + order);
+				isIIR = true;
+			} else {
+				a.push_back(1.0);
+				isIIR = false;
+			}
+			b.insert(b.begin(), _b, _b + order);
+			x.resize(order);
+			y.resize(order);
 	
 			clear();
 		}
 
-		LDE(LDE *orig) {
+		Filter(Filter *orig) {
 			order = orig->order;
+			isIIR = orig->isIIR;
 			a = orig->a;
 			b = orig->b;
-			x = new double[order];
-			y = new double[order];
+			x.resize(order);
+			y.resize(order);
 				
 			clear();
-		}
-
-		~LDE() {
-//			delete x;
-//			delete y;
 		}
 
 		void clear(double val = 0) {
@@ -89,25 +90,25 @@ class LDE {
 		}
 
 		inline double feed(double val) {
-			double a0;
+			double a0 = a[0];
+			double y0;
 
-			if (!a) a0 = 1;
+			double *x_data = x.data();
+			double *y_data = y.data();
 
-			for (int i = order - 1; i >= 1; i--) {
-				x[i] = x[i - 1];
-				if (a) y[i] = y[i - 1];
-			}
-		
+			memmove(&x_data[1], x_data, sizeof(double) * (order - 1)); 
+			if (isIIR) memmove(&y_data[1], y_data, sizeof(double) * (order - 1)); 
+
 			x[0] = val;
-	
-			y[0] = ((b[0] / a0) * x[0]);
+			y0 = 0; // ((b[0] / a0) * x[0]);
 			//cerr << "0 " << x[0] << ' ' << b[0] << ' ' << (b[0] * x[0]) << ' ' << y[0] << endl;
-			for (int o = 1; o < order; o++) {
-				y[0] += ((b[o] / a0) * x[o]);
-				if (a) y[0] -= ((a[o] / a[0]) * y[o]);
+			for (int o = 0; o < order; o++) {
+				y0 += ((b[o] / a0) * x[o]);
+				if (isIIR && o) y0 -= ((a[o] / a0) * y[o]);
 				//cerr << o << ' ' << x[o] << ' ' << y[o] << ' ' << a[o] << ' ' << b[o] << ' ' << (b[o] * x[o]) << ' ' << -(a[o] * y[o]) << ' ' << y[0] << endl;
 			}
 
+			y[0] = y0;
 			return y[0];
 		}
 		double val() {return y[0];}
@@ -171,118 +172,7 @@ const int nbands = ((high + 1 - low) / bd);
 
 double fbin[nbands];
 
-LDE lpf45(7, NULL, f_inband7_b);
-
-typedef vector<complex<double>> cossin;
-
-class FM_demod {
-	protected:
-		vector<LDE> f_q, f_i;
-		LDE *f_pre, *f_post;
-		vector<cossin> ldft;
-
-		double avglevel;
-	
-		int linelen;
-
-		int min_offset;
-
-		vector<double> fb;
-	public:
-		FM_demod(int _linelen, vector<double> _fb, LDE *prefilt, LDE *filt, LDE *postfilt) {
-			linelen = _linelen;
-
-			fb = _fb;
-
-			for (double f : fb) {
-				cossin tmpdft;
-				double fmult = f / CHZ; 
-
-				for (int i = 0; i < linelen; i++) {
-					tmpdft.push_back(complex<double>(sin(i * 2.0 * M_PIl * fmult), cos(i * 2.0 * M_PIl * fmult))); 
-				}	
-				ldft.push_back(tmpdft);
-
-				f_i.push_back(LDE(filt));
-				f_q.push_back(LDE(filt));
-			}
-	
-			f_pre = prefilt ? new LDE(*prefilt) : NULL;
-			f_post = postfilt ? new LDE(*postfilt) : NULL;
-
-			avglevel = 30;
-
-			min_offset = 128;
-		}
-
-		vector<double> process(vector<double> in) 
-		{
-			vector<double> out;
-			vector<double> phase(fb.size() + 1);
-			vector<double> level(fb.size() + 1);
-			double avg = 0, total = 0.0;
-
-			if (in.size() < (size_t)linelen) return out;
-
-			for (double n : in) avg += n / in.size();
-
-			int i = 0;
-			for (double n : in) {
-				vector<double> angle(fb.size() + 1);
-				double peak = 500000, pf = 0.0;
-				int npeak;
-				int j = 0;
-
-				n -= avg;
-				total += fabs(n);
-				if (f_pre) n = f_pre->feed(n);
-
-				angle[j] = 0;
-
-				//cerr << n << endl;
-	
-				for (double f: fb) {
-					double fci = f_i[j].feed(n * ldft[j][i].real());
-					double fcq = f_q[j].feed(-n * ldft[j][i].imag());
-		
-//					cerr << fci << ' ' << fcq << endl;
-
-					level[j] = ctor(fci, fcq);
-	
-					angle[j] = atan2(fci, fcq) - phase[j];
-					if (angle[j] > M_PIl) angle[j] -= (2 * M_PIl);
-					else if (angle[j] < -M_PIl) angle[j] += (2 * M_PIl);
-						
-					if (fabs(angle[j]) < fabs(peak)) {
-						npeak = j;
-						peak = angle[j];
-						pf = f + ((f / 2.0) * angle[j]);
-					}
-					phase[j] = atan2(fci, fcq);
-
-//					cerr << f << ' ' << pf << ' ' << fci << ' ' << fcq << ' ' << level[j] << ' ' << phase[j] << ' ' << peak << endl;
-
-					j++;
-				}
-	
-				double thisout = pf;	
-
-				if (f_post) thisout = f_post->feed(pf);	
-				if (i > min_offset) {
-					avglevel *= 0.99;
-					avglevel += level[npeak] * .01;
-
-//					cerr << avglevel << ' ' << level[npeak] << endl; 
-
-					out.push_back(((level[npeak] / avglevel) > 0.5) ? thisout : 0);
-				};
-				i++;
-			}
-
-//			cerr << total / in.size() << endl;
-			return out;
-		}
-};
+Filter lpf45(7, NULL, f_inband7_b);
 
 inline double IRE(double in) 
 {
@@ -293,11 +183,11 @@ enum tbc_type {TBC_HSYNC, TBC_CBURST};
 
 class TBC {
 	protected:
-		LDE *f_i, *f_q;
-		LDE *f_synci, *f_syncq;
-		LDE *f_post;
+		Filter *f_i, *f_q;
+		Filter *f_synci, *f_syncq;
+		Filter *f_post;
 
-		LDE *f_linelen;
+		Filter *f_linelen;
 
 		double fc, fci;
 		double freq;
@@ -369,13 +259,13 @@ class TBC {
 				_sin[e] = sin(phase + (2.0 * M_PIl * ((double)e / freq)));
 			}
 
-			f_i = new LDE(30, NULL, f28_1_3mhz_b30);
-			f_q = new LDE(30, NULL, f28_1_3mhz_b30);
+			f_i = new Filter(30, NULL, f28_1_3mhz_b30);
+			f_q = new Filter(30, NULL, f28_1_3mhz_b30);
 			
-			f_synci = new LDE(65, NULL, f28_0_6mhz_b65);
-			f_syncq = new LDE(65, NULL, f28_0_6mhz_b65);
+			f_synci = new Filter(65, NULL, f28_0_6mhz_b65);
+			f_syncq = new Filter(65, NULL, f28_0_6mhz_b65);
 		
-			f_linelen = new LDE(8, NULL, f_hsync8);
+			f_linelen = new Filter(8, NULL, f_hsync8);
 			for (int i = 0; i < 9; i++) f_linelen->feed(1820);
 		}
 
@@ -579,18 +469,18 @@ int main(int argc, char *argv[])
 
 	int i = 2048;
 	
-//	LDE f_hp35(7, f_hp35_b7_a, f_hp35_b7_b);
-	LDE f_hp35(14, NULL, f_hp35_14_b);
-	LDE f_lpf30(32, f_lpf30_b7_a, f_lpf30_b7_b);
-	LDE f_butter6(6, f_butter6_a, f_butter6_b);
-	LDE f_butter8(8, f_butter8_a, f_butter8_b);
-	LDE f_boost6(8, NULL, f_boost6_b);
-	LDE f_boost8(8, NULL, f_boost8_b);
-	LDE f_boost16(8, NULL, f_boost16_b);
+//	Filter f_hp35(7, f_hp35_b7_a, f_hp35_b7_b);
+	Filter f_hp35(14, NULL, f_hp35_14_b);
+	Filter f_lpf30(32, f_lpf30_b7_a, f_lpf30_b7_b);
+	Filter f_butter6(6, f_butter6_a, f_butter6_b);
+	Filter f_butter8(8, f_butter8_a, f_butter8_b);
+	Filter f_boost6(8, NULL, f_boost6_b);
+	Filter f_boost8(8, NULL, f_boost8_b);
+	Filter f_boost16(8, NULL, f_boost16_b);
 
-	LDE f_lpf49(8, NULL, f_lpf49_8_b);
-	LDE f_lpf45(8, NULL, f_lpf45_8_b);
-	LDE f_lpf13(8, NULL, f_lpf13_8_b);
+	Filter f_lpf49(8, NULL, f_lpf49_8_b);
+	Filter f_lpf45(8, NULL, f_lpf45_8_b);
+	Filter f_lpf13(8, NULL, f_lpf13_8_b);
 
 	vector<unsigned short> outbuf;	
 
