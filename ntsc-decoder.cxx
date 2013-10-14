@@ -102,10 +102,16 @@ class Filter {
 			x[0] = val;
 			y0 = 0; // ((b[0] / a0) * x[0]);
 			//cerr << "0 " << x[0] << ' ' << b[0] << ' ' << (b[0] * x[0]) << ' ' << y[0] << endl;
-			for (int o = 0; o < order; o++) {
-				y0 += ((b[o] / a0) * x[o]);
-				if (isIIR && o) y0 -= ((a[o] / a0) * y[o]);
-				//cerr << o << ' ' << x[o] << ' ' << y[o] << ' ' << a[o] << ' ' << b[o] << ' ' << (b[o] * x[o]) << ' ' << -(a[o] * y[o]) << ' ' << y[0] << endl;
+			if (isIIR) {
+				for (int o = 0; o < order; o++) {
+					y0 += ((b[o] / a0) * x[o]);
+					if (o) y0 -= ((a[o] / a0) * y[o]);
+					//cerr << o << ' ' << x[o] << ' ' << y[o] << ' ' << a[o] << ' ' << b[o] << ' ' << (b[o] * x[o]) << ' ' << -(a[o] * y[o]) << ' ' << y[0] << endl;
+				}
+			} else {
+				for (int o = 0; o < order; o++) {
+					y0 += b[o] * x[o];
+				}
 			}
 
 			y[0] = y0;
@@ -267,7 +273,7 @@ class NTSColor {
 				}
 				if (oc > 600) return true;
 			}
-			cerr << "W" << oc << endl;
+//			cerr << "W" << oc << endl;
 			return false;
 		}
 
@@ -381,12 +387,13 @@ class NTSColor {
 
 			int count = 0;
 			if (insync == false) {
-				for (int i = 0; i < 32; i++) {
+				bool expect = expectsync();
+				for (int i = 0; expect && i < 32; i++) {
 					if (prev[i] < 0.1) {
 						count++;
 					}
 				}
-				if (expectsync() && count >= 24) {
+				if (expect && count >= 24) {
 					if ((igap > 880) && (igap < 940)) {
 						if (cfline >= 253) {
 							cerr << "S " << cfline << endl;
@@ -439,9 +446,6 @@ class NTSColor {
 				while (igap > 3500) igap -= 1820;
 
 				if ((igap > 1700) && (igap < 1900) && lastsync == 250) {
-//					fc = f_syncq->val();
-//					fci = f_synci->val();
-//					level = ctor(fc, fci);
 					fc = peaksyncq;
 					fci = peaksynci;
 					level = peaksync;

@@ -99,10 +99,16 @@ class Filter {
 			x[0] = val;
 			y0 = 0; // ((b[0] / a0) * x[0]);
 			//cerr << "0 " << x[0] << ' ' << b[0] << ' ' << (b[0] * x[0]) << ' ' << y[0] << endl;
-			for (int o = 0; o < order; o++) {
-				y0 += ((b[o] / a0) * x[o]);
-				if (isIIR && o) y0 -= ((a[o] / a0) * y[o]);
-				//cerr << o << ' ' << x[o] << ' ' << y[o] << ' ' << a[o] << ' ' << b[o] << ' ' << (b[o] * x[o]) << ' ' << -(a[o] * y[o]) << ' ' << y[0] << endl;
+			if (isIIR) {
+				for (int o = 0; o < order; o++) {
+					y0 += ((b[o] / a0) * x[o]);
+					if (o) y0 -= ((a[o] / a0) * y[o]);
+					//cerr << o << ' ' << x[o] << ' ' << y[o] << ' ' << a[o] << ' ' << b[o] << ' ' << (b[o] * x[o]) << ' ' << -(a[o] * y[o]) << ' ' << y[0] << endl;
+				}
+			} else {
+				for (int o = 0; o < order; o++) {
+					y0 += b[o] * x[o];
+				}
 			}
 
 			y[0] = y0;
