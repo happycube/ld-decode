@@ -1,5 +1,7 @@
 /* LD decoder prototype, Copyright (C) 2013 Chad Page.  License: LGPL2 */
 
+// to decode resulting audio: sox -r 48k -e signed -b 16 -c 2 [in] [out.wav]
+
 #include <stdio.h>
 #include <iostream>
 #include <iomanip>
