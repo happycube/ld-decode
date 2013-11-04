@@ -207,6 +207,78 @@ struct RGB {
 	};
 };
 
+// NewCode
+
+/* 
+ * NTSC(/PAL) Description 
+ * ----------------
+ *
+ * There are a few different types of NTSC lines with different contained data.  While PAL is similar, I 
+ * am currently only concerned with NTSC.  Perhaps I will wind up with PAL video tapes someday... 
+ *
+ * Since many of these lines are repeated, we will describe these lines and then generate the typical frame.
+ */
+
+// These are bit fields, since data type can be added to a core type
+enum LineFeatures {
+	// Core line types
+	LINE_NORMAL       = 0x01, /* standard line - Porch, sync pulse, porch, color burst, porch, data */ 
+	LINE_EQUALIZATION = 0x02, /* -SYNC, half line, -SYNC, half line */ 
+	LINE_FIELDSYNC    = 0x04, /* Long -SYNC, serration pulse std sync pulse len */ 
+	LINE_HALF         = 0x08, /* Half-length video line at end of odd field, followed by -SYNC at 262.5 */ 
+	// Line data features
+	LINE_VIDEO	  = 0x0040, /* What we actually care about - picture data! */
+	LINE_MULTIBURST   = 0x0080, /* White, 0.5-4.1mhz burst pulses */
+	LINE_COMPTEST     = 0x0100, /* 3.58mhz bursts, short pulses, white */
+	LINE_REFSIGNAL    = 0x0200, /* Burst, grey, black */
+	LINE_MCA	  = 0x0400, /* LD-specific MCA code (only matters on GM disks) */
+	LINE_PHILLIPS	  = 0x0800, /* LD-specific 48-bit Phillips code */
+	LINE_CAPTION	  = 0x1000, /* Closed captioning */
+	LINE_WHITEFLAG	  = 0x2000, /* CAV LD only - depicts beginning of new film frame */
+};
+
+int NTSCLine[526], NTSCLineLoc[526];
+
+void buildNTSCLines()
+{
+	int i;
+
+	for (i = 0; i < 526; i++) NTSCLineLoc[i] = -1;
+
+	// Each line array starts with 1 to line up with documetnation 
+
+	// Odd field is line 1-263, even field is 264-525 
+
+	// first set of eq lines
+	for (i = 1; i <= 3; i++) NTSCLine[i] = NTSCLine[264 + i] = LINE_EQUALIZATION; 
+
+	for (i = 4; i <= 6; i++) NTSCLine[i] = NTSCLine[264 + i] = LINE_FIELDSYNC; 
+
+	for (i = 7; i <= 9; i++) NTSCLine[i] = NTSCLine[264 + i] = LINE_EQUALIZATION; 
+
+	// While lines 10-21 have regular sync, but they contain special non-picture information 	
+	for (i = 10; i <= 21; i++) NTSCLine[i] = NTSCLine[264 + i] = LINE_NORMAL; 
+
+	// define odd field
+	NTSCLine[10] |= LINE_WHITEFLAG; 
+	NTSCLine[18] |= LINE_PHILLIPS; 
+
+	for (i = 22; i <= 263; i++) {
+		NTSCLine[i] = LINE_NORMAL | LINE_VIDEO; 
+		NTSCLineLoc[i] = ((i - 22) * 2) + 0;
+	}
+	NTSCLine[263] = LINE_HALF | LINE_VIDEO;
+
+	// define even field
+	NTSCLine[273] |= LINE_WHITEFLAG; 
+	NTSCLine[264 + 18] |= LINE_PHILLIPS; 
+	
+	for (i = 285; i <= 525; i++) {
+		NTSCLine[i] = LINE_NORMAL | LINE_VIDEO; 
+		NTSCLineLoc[i] = ((i - 285) * 2) + 1;
+	}
+}
+
 enum tbc_type {TBC_HSYNC, TBC_CBURST};
 
 class NTSColor {
@@ -222,11 +294,11 @@ class NTSColor {
 
 		tbc_type tbc;
 
-		int cfline;
+		int cline;
 
-		int field, fieldcount;
+		int fieldcount;
 
-		int counter, lastsync;
+		int counter, lastline, lastsync;
 		bool insync;
 		double peaksync, peaksynci, peaksyncq;
 
@@ -249,7 +321,7 @@ class NTSColor {
 		
 		vector<YIQ> *buf;
 
-		int igap;
+		int prev_igap, igap;
 	public:
 		bool get_newphase(double &afreq, double &np) {
 			if (phased) {
@@ -297,14 +369,14 @@ class NTSColor {
 							code |= (1 << (23 - bit));
 						}
 
-						cerr << cfline << ' ' << i << ' ' << firstone << ' ' << bit * 57 << ' ' << bit << ' ' << hex << code << dec << endl;
+						cerr << cline << ' ' << i << ' ' << firstone << ' ' << bit * 57 << ' ' << bit << ' ' << hex << code << dec << endl;
 						lastone = i;
 					}
 					oc = 0;
 				}
 				i++;
 			}
-			cerr << "P " << cfline << ' ' << hex << code << dec << endl;
+			cerr << "P " << cline << ' ' << hex << code << dec << endl;
 			return code;
 		}
 
@@ -312,14 +384,13 @@ class NTSColor {
 			counter = 0;
 			phased = insync = false;
 
-			fieldcount = -10;
-			field = -1;
-			cfline = -1;
+			fieldcount = 0;
+			cline = 0;
 
 			pix_poffset = poffset = 0;
 			adjfreq = 1.0;
 
-			lastsync = -1;
+			lastline = lastsync = -1;
 
 			level = phase = 0.0;
 
@@ -327,7 +398,7 @@ class NTSColor {
 
 			buf = _buf;
 
-			igap = -1;
+			prev_igap = igap = -1;
 					
 			buf_1h.resize(1820);
 			prev.resize(32);
@@ -351,29 +422,36 @@ class NTSColor {
 
 		void write() {
 #ifndef RAW
-			for (int i = 0; field >= 0 && i < (1544 * 480); i++) {
+			for (int i = 0; i < (1544 * 480); i++) {
 				if (buf && ((i % 1544) >= 8)) buf->push_back(frame[i]);
 			} 
 			memset(frame, 0, sizeof(frame));
+			cerr << "written\n";
 #endif
 		}
 
-		bool expectsync() {
-			if (insync || (cfline <= 0)) return true;
-			if (lastsync > 1700) return true; 
-			if ((cfline >= 250) && (lastsync > 850) && (lastsync < 980)) return true; 
+		void bump_cline() {
+			cline++;
+				
+//			if (NTSCLine[cline] && LINE_NORMAL) lastsync = 0; 
+	
+			if ((cline == 263) || (cline == 526)) {
+				fieldcount++;
+				cerr << "fc " << fieldcount << endl;
 
-			return false;
+				if (fieldcount == 2) {
+					write();
+					fieldcount = 0;
+				}
+			}
+			if (cline == 526) cline = 1;
 		}
 
 		void feed(double in) {
 			double dn = (double) in / 62000.0;
-		
-			if (!dn || ((dn < 0.1) && !expectsync())) {
+	
+			if (!dn) {
 				dn = buf_1h[counter % 1820]; 
-				if ((dn < 0.1) && !expectsync()) {
-					dn = 0.101;	
-				}
 			}
 
 			buf_1h[counter % 1820] = dn;
@@ -387,51 +465,51 @@ class NTSColor {
 
 			int count = 0;
 			if (insync == false) {
-				bool expect = expectsync();
-				for (int i = 0; expect && i < 32; i++) {
+				for (int i = 0; i < 32; i++) {
 					if (prev[i] < 0.1) {
 						count++;
 					}
 				}
-				if (expect && count >= 24) {
+//				if (count >= 16) cerr << cline << " sync at 1 " << counter - 16 << ' ' << igap << ' ' << insync << endl;
+				if (count >= 24) {
 					if ((igap > 880) && (igap < 940)) {
-						if (cfline >= 253) {
-							cerr << "S " << cfline << endl;
-
-							if (cfline == 254) {
-								field = 1;
-								fieldcount++;
-							} else if (field >= 0) {
-								field = 0;
-								fieldcount++;
-							}
-
-							if (fieldcount == 2) {
-								write();
-								fieldcount = 0;
-							}
-						}
-						cfline = 0;
+						if ((cline <= 0) && (prev_igap >= 1800)) {
+							cline = 1;
+							lastline = counter;
+						} /* else if ((cline >= 1) && ((counter - lastline) > 1800)) {
+							lastline = counter;
+							cline++;
+							if (cline == 526) cline = 1;
+						} */
 					} else {
-						if ((igap > 1800) && (igap < 1840)) f_linelen->feed(igap);
-						if (buf && (cfline >= 0) && (cfline <= 3)) {
-							if (whiteflag_decode()) fieldcount = 0;	
+						if (buf && (NTSCLine[cline] & LINE_WHITEFLAG)) {
+							if (whiteflag_decode()) {
+								cerr << "whiteflag " << cline << endl;
+								fieldcount = 0;	
+							}
 						}
-						if (0 && buf && (cfline >= 6) && (cfline <= 8)) {
+/*						if (0 && buf && (cfline >= 6) && (cfline <= 8)) {
 							unsigned long pc = phillips_decode() & 0xff0000;
 							if (pc == 0xf80000 || pc == 0xfa0000 || pc == 0xf00000) {
 								fieldcount = 0;
 							}					
 						}
-						if (cfline >= 0) cfline++;
+*/						if ((igap > 1800) && (igap < 1840)) {
+							f_linelen->feed(igap);
+							if ((cline >= 1) && ((counter - lastline) > 1810)) {
+								lastline = counter;
+								bump_cline();
+							}
+						}
 					}
-					
+				
+					prev_igap = igap;	
 					igap = lastsync;
 
 					lastsync = 0;
 					peaksynci = peaksyncq = peaksync = 0;
 
-					cerr << cfline << " sync at " << counter - 24 << ' ' << igap << ' ' << insync << endl;
+					cerr << cline << ' ' << NTSCLineLoc[cline] << " sync at " << counter - 24 << ' ' << igap << ' ' << insync << endl;
 					insync = true;
 					prev.clear();
 					line.clear();
@@ -439,13 +517,7 @@ class NTSColor {
 					
 				line.push_back(dn);
 
-				if (buf && lastsync > 170 && lastsync < 270) {
-//					cerr << lastsync << ' ' << ctor(f_syncq->val(), f_synci->val()) << endl;
-				}
-
-				while (igap > 3500) igap -= 1820;
-
-				if ((igap > 1700) && (igap < 1900) && lastsync == 250) {
+				if ((NTSCLine[cline] & LINE_NORMAL) && (igap < 1900) && lastsync == 250) {
 					fc = peaksyncq;
 					fci = peaksynci;
 					level = peaksync;
@@ -479,8 +551,8 @@ class NTSColor {
 						}
 					}
 
-					cerr << (buf ? 'B' : 'A') << ' ' ;
-					cerr << counter << " level " << level << " q " << fc << " i " << fci << " phase " << atan2(fci, ctor(fc, fci)) << " adjfreq " << adjfreq << ' ' << igap << ':' << f_linelen->val() << ' ' << poffset - pix_poffset << endl ;
+					//cerr << (buf ? 'B' : 'A') << ' ' ;
+					//cerr << counter << " level " << level << " q " << fc << " i " << fci << " phase " << atan2(fci, ctor(fc, fci)) << " adjfreq " << adjfreq << ' ' << igap << ':' << f_linelen->val() << ' ' << poffset - pix_poffset << endl ;
 				} else {
 //					if (buf && lastsync == 200 && igap >= 0) cerr << "S " << counter << ' ' << igap << endl;
 				}
@@ -512,9 +584,9 @@ class NTSColor {
 			}
 
 			// Automatically jump to the next line on HSYNC failure
-			if (lastsync == (1820 + 260)) {
-				lastsync -= 1820;
-				cfline++;	
+			if ((cline >= 1) && ((counter - lastline) == 2100)) {
+				lastline += 1820;
+				bump_cline();
 			}
 
 //			cerr << _cos[counter % 8] << ' ' << cos(phase + (2.0 * M_PIl * ((double)(counter) / freq))) << endl;
@@ -550,11 +622,11 @@ class NTSColor {
 #ifdef RAW
 				buf->push_back(outc);			
 #else
-				if ((field >= 0) && cfline > 15 && (lastsync > 252) && (lastsync < (252 + 1544)) ) {
-//					cerr << cfline << ' ' << lastsync << endl;
-					frame[((((cfline - 15) * 2) + field) * 1544) + (lastsync - 252)].y = outc.y;
-					frame[((((cfline - 15) * 2) + field) * 1544) + (lastsync - 252) + 8].i = outc.i;
-					frame[((((cfline - 15) * 2) + field) * 1544) + (lastsync - 252) + 8].q = outc.q;
+				if ((NTSCLineLoc[cline] >= 0) && (lastsync > 252) && (lastsync < (252 + 1544)) ) {
+//					cerr << cline << ' ' << lastsync << endl;
+					frame[(NTSCLineLoc[cline] * 1544) + (lastsync - 252)].y = outc.y;
+					frame[(NTSCLineLoc[cline] * 1544) + (lastsync - 252) + 8].i = outc.i;
+					frame[(NTSCLineLoc[cline] * 1544) + (lastsync - 252) + 8].q = outc.q;
 				}
 #endif
 			}
@@ -586,6 +658,8 @@ int main(int argc, char *argv[])
 			dlen = atoi(argv[3]); 
 		}
 	}
+
+	buildNTSCLines();
 
 	cout << std::setprecision(8);
 	
