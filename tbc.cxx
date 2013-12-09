@@ -475,7 +475,7 @@ int main(int argc, char *argv[])
 	rv = read(fd, inbuf, 2048);
 
 	int i = 2048;
-	
+
 //	Filter f_hp35(7, f_hp35_b7_a, f_hp35_b7_b);
 	Filter f_hp35(14, NULL, f_hp35_14_b);
 	Filter f_lpf30(32, f_lpf30_b7_a, f_lpf30_b7_b);

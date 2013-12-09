@@ -239,6 +239,7 @@ enum LineFeatures {
 
 int NTSCLine[526], NTSCLineLoc[526];
 
+// WIP
 void buildNTSCLines()
 {
 	int i;
@@ -476,11 +477,7 @@ class NTSColor {
 						if ((cline <= 0) && (prev_igap >= 1800)) {
 							cline = 1;
 							lastline = counter;
-						} /* else if ((cline >= 1) && ((counter - lastline) > 1800)) {
-							lastline = counter;
-							cline++;
-							if (cline == 526) cline = 1;
-						} */
+						} 
 					} else {
 						if (buf && (NTSCLine[cline] & LINE_WHITEFLAG)) {
 							if (whiteflag_decode()) {
@@ -521,6 +518,7 @@ class NTSColor {
 					fc = peaksyncq;
 					fci = peaksynci;
 					level = peaksync;
+					cerr << level << endl;
 					if ((level > .02) && (level < .10)) {
 						double padj = atan2(fci, ctor(fc, fci));
 
@@ -613,7 +611,9 @@ class NTSColor {
 
 				if (f_post) y = f_post->feed(y);
 
-				YIQ outc = YIQ(y, 2.5 * i, 2.5 * q);
+//				cerr << (.1 / level) << endl;
+//				YIQ outc = YIQ(y, (.1 / level) * i, (.1 / level) * q);
+				YIQ outc = YIQ(y, 4 * i, 4 * q);
 #else
 				YIQ outc = YIQ(y, 0,0);
 #endif
