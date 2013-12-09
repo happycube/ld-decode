@@ -1,19 +1,26 @@
-Note:  This is very early development code.  Therefore it is very, very ugly ;)
+Note:  This is very early development code.  Therefore it is still very, very ugly ;)
 
 ld-decode takes the raw RF data signal (captured using cxadc) and converts it into a raw composite video signal.  audio is not decoded yet.
 
-ntsc-decode takes that, time base corrects it, decodes the color, and then (currently) completely fails to comb filter it.
+ntsc-decode takes that, time base corrects it, and decodes the color using a 1D comb filter, which provides mixed results
 
-to run:  ./ld-decode [file] > [file].ld
-./ntsc-decode [file].ld > [file].rgb
+to run:  
 
-to view ld-decode output: display -size 910x512 -depth 16 gray:ldplant.ld 
-to view ntsc-decode output: display -size 768x700 -depth 8 rgb:ldplant.rgb
-use this command line to make it a .jpg:  convert -size 768x700 -depth 8  rgb:ntscbar.rgb -resize 100%x200% ntscbar.jpg
+./ld-decode [file] > [file].ld 
+./tbc [file.ld] > [file].tbc
+./ntsc-decode [file].tbc > [file].rgb
 
-Piping ld-decode to ntsc-decode doesn't work yet, it's pre-loading the entire file for no good reason.
+or pipelined:
 
-ld-decode has a lambda in it, so you'll need to use "-std=gnu++0x" to compile it.
+./ld file.raw [start] [length] | ./tbc - | ./ntsc - > file.rgb
+
+to view ld-decode output: display -size 1820x512 -depth 16 gray:ldplant.ld 
+to view ntsc-decode output: display -size 1536x480 -depth 16 rgb:ldplant.rgb
+use this command line to make it a .jpg:  convert -size 1536x480 -depth 16 rgb:ntscbar.rgb -resize 45%x100% ntscbar.jpg
+
+To convert from .rgb to high quality .mp4:
+
+avconv -f rawvideo -pix_fmt rgb48 -s 1536x480 -i file.rgb -qscale 3 -s 720x480 file.mp4
 
 LICENSE:  LGPL2
 
