@@ -1,0 +1,47 @@
+
+Overview
+--------
+
+	This is (probably) the first software RF decoder for Laserdiscs.
+
+	While the LaserDisc format was the first consumer optical disk 
+available, and very similar to CD's in a lot of ways, it was actually an
+analog system, owing to the technology available in the 1970's.
+
+	Out of all consumer analog formats, LaserDisc was the only one to 
+directly/fully encode NTSC and PAL video.  This is good and bad - while it 
+is capable of better resolution, especially color resolution, it is 
+vulnerable to chroma noise and needs good processing.
+
+	The video itself is encoded in FM, with 7.6mhz being the sync pulse,
+8.1mhz black, and 9.3mhz the white tip.	
+
+	Analog audio is also FM encoded - the left channel is at about 2.3mhz,
+right at 2.8.  Digital audio is exactly the same as CD audio, with preemphasis
+used to prevent affecting the other signals on the disk.
+
+	AC3 is a special case, replacing the right analog channel.  Unfortunatly
+I have been unable to find complete information and I do not have an AC3 decoder,
+so I am presently unable to create a decoder.  Too bad, since that is probably
+the best application for my software decoding technology!
+
+---
+
+The programs:
+
+- cxadc-linux3 (a sep. project on github) - this is a 28mhz (8x FSC) capture
+system using a Connexxant CX23880 video capture card.  By far the cheapest
+broadband ADC available, albeit discontinued. 
+
+- ld-decoder.cxx (ld) - This program converts the FM video signal directly into
+a 16-bit grayscale raw image (1820x*). 
+
+- tbc.cxx - This program takes the output of ld and performs time base correction.
+The output is very similar to the composite output of a LaserDisc player, but I
+do not have a way to convert it directly into composite output... yet.
+
+- ntsc-decoder.cxx - This program takes the tbc output and converts it into a 
+sequence of 1536x480 16-bit RGB color frames.  It uses a simple 1D/heterodyne
+comb filter, which albeit primitive performs well (albeit not perfectly!)
+on 1980's LaserDisc material. 
+
