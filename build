@@ -1,6 +1,8 @@
 #clang++ -std=c++11  -Wall -O3 -o ntsc ntsc-decoder.cxx
 #clang++ -std=c++11  -Wall -O3 -o tgen tgen.cxx
 #clang++ -std=c++11  -Wall -O3 -o tbc tbc.cxx
+rm -f audio ; clang++ -std=c++11  -Wall -DNOSNAP -O3 -g -o audio audio-decoder.cxx
+rm -f full-ld ; clang++ -std=c++11  -Wall -DNOSNAP -O3 -g -o full-ld full-ld.cxx
 rm -f ld ; clang++ -std=c++11  -Wall -DNOSNAP -O3 -g -o ld ld-decoder.cxx
 rm -f tbc ; clang++ -std=c++11  -Wall -D_NOSNAP -O3 -g -o tbc tbc.cxx
 rm -f ntsc ; clang++ -std=c++11  -Wall -D_NOSNAP -O3 -g -o ntsc ntsc-decoder.cxx
