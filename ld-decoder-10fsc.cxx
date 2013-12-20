@@ -252,9 +252,20 @@ class FM_demod {
 				for (double f: fb) {
 					double fci = f_i[j].feed(n * ldft[j][i].real());
 					double fcq = f_q[j].feed(-n * ldft[j][i].imag());
-					double at2 = atan2(fci, fcq);	
-	
-//					cerr << fci << ' ' << fcq << endl;
+
+					double at2;
+
+#if 0
+					at2 = atan2(fci, fcq);	
+#else
+					if (!fcq) {
+						at2 = 0;
+					} else {
+						at2 = atan(fci/fcq);
+						if (fcq < 0) at2 = ((fci < 0) ? -M_PI : M_PI) + at2;			
+					}
+#endif
+//					cerr << fci << ' ' << fcq << ' ' << at2 << ' ' << atan(fci/fcq) << ' ' << at << endl;
 
 					level[j] = ctor(fci, fcq);
 	
@@ -304,7 +315,7 @@ int main(int argc, char *argv[])
 	int rv = 0, fd = 0;
 	size_t dlen = -1;
 	//double output[2048];
-	unsigned char inbuf[2048];
+	unsigned char inbuf[4096];
 
 	cerr << std::setprecision(10);
 	cerr << argc << endl;
@@ -328,9 +339,9 @@ int main(int argc, char *argv[])
 
 	cout << std::setprecision(8);
 	
-	rv = read(fd, inbuf, 2048);
+	rv = read(fd, inbuf, 4096);
 
-	int i = 2048;
+	int i = 4096;
 	
 	Filter f_afilt16(16, NULL, f_afilt16_b);
 	Filter f_boost16(16, NULL, f_boost16_b);
@@ -340,18 +351,18 @@ int main(int argc, char *argv[])
 	vector<double> fb({7600000, 8100000, 8700000, 9100000}); 
 	//vector<double> fb({8500000}); 
 
-	FM_demod video(2048, {7600000, 8100000, 8700000, 9300000}, &f_boost16, {&f_lpf40, &f_lpf40, &f_lpf40, &f_lpf40, &f_lpf40, &f_lpf40, &f_lpf40, &f_lpf40}, NULL);
+	FM_demod video(4096, {7600000, 8100000, 8400000, 8700000, 9000000, 9300000}, &f_boost16, {&f_lpf40, &f_lpf40, &f_lpf40, &f_lpf40, &f_lpf40, &f_lpf40, &f_lpf40, &f_lpf40}, NULL);
 //	FM_demod video(2048, {7600000, 8100000, 8700000, 9300000}, &f_boost16, {&f_lpfb4, &f_lpfb4, &f_lpfb4, &f_lpfb4}, NULL);
 
 	double deemp[10], orig[10];
 
 	for (int i = 0; i < 10; i++) deemp[i] = 8300000;
 	
-	while ((rv == 2048) && ((dlen == -1) || (i < dlen))) {
+	while ((rv == 4096) && ((dlen == -1) || (i < dlen))) {
 		vector<double> dinbuf;
 		vector<unsigned short> ioutbuf;
 
-		for (int j = 0; j < 2048; j++) dinbuf.push_back(inbuf[j]); 
+		for (int j = 0; j < 4096; j++) dinbuf.push_back(inbuf[j]); 
 
 		vector<double> outline = video.process(dinbuf);
 
@@ -367,7 +378,7 @@ int main(int argc, char *argv[])
 
 //				cerr << n << ' ' << diff << ' ' << (n - 9300000) / diff << ' ' << (n - 8100000) / diff;
 				orig[entry] = n;
-	 			n -= (diff * .3);
+	 			n -= (diff * (1.0/3.0));
 ///	 			n -= (diff * .4);
 //	 			n -= (diff * (fabs(diff) / 4800000));
 				deemp[entry] = n;
@@ -393,11 +404,11 @@ int main(int argc, char *argv[])
 			exit(0);
 		}
 
-		i += (len > 1820) ? 1820 : len;
-		memmove(inbuf, &inbuf[len], 2048 - len);
-		rv = read(fd, &inbuf[(2048 - len)], len) + (2048 - len);
+		i += len;
+		memmove(inbuf, &inbuf[len], 4096 - len);
+		rv = read(fd, &inbuf[(4096 - len)], len) + (4096 - len);
 		
-		if (rv < 2048) return 0;
+		if (rv < 4096) return 0;
 		cerr << i << ' ' << rv << endl;
 	}
 	return 0;
