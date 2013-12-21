@@ -263,7 +263,7 @@ void buildNTSCLines()
 	for (i = 10; i <= 21; i++) NTSCLine[i] = NTSCLine[264 + i] = LINE_NORMAL; 
 
 	// define odd field
-	NTSCLine[10] |= LINE_WHITEFLAG; 
+	NTSCLine[11] |= LINE_WHITEFLAG; 
 	NTSCLine[18] |= LINE_PHILLIPS; 
 
 	for (i = 22; i <= 263; i++) {
@@ -280,6 +280,15 @@ void buildNTSCLines()
 		NTSCLine[i] = LINE_NORMAL | LINE_VIDEO; 
 		NTSCLineLoc[i] = ((i - 285) * 2) + 1;
 	}
+#if 0
+	// debug only
+	for (i = 0; i <= 263; i++) {
+		NTSCLineLoc[i] = ((i) * 2) + 0;
+	}
+	for (i = 264; i <= 525; i++) {
+		NTSCLineLoc[i] = ((i - 263) * 2) + 1;
+	}
+#endif
 }
 
 enum tbc_type {TBC_HSYNC, TBC_CBURST};
@@ -346,9 +355,10 @@ class NTSColor {
 				if (c > 0.8) {
 					oc++;
 				}
-				if (oc > 600) return true;
+				cerr << c << endl;
+				if (oc > 700) return true;
 			}
-//			cerr << "W" << oc << endl;
+			cerr << cline << " W" << oc << endl;
 			return false;
 		}
 
@@ -483,7 +493,7 @@ class NTSColor {
 					} else {
 						if (buf && (NTSCLine[cline] & LINE_WHITEFLAG)) {
 							if (whiteflag_decode()) {
-								cerr << "whiteflag " << cline << endl;
+								cerr << "Whiteflag " << cline << endl;
 								fieldcount = 0;	
 							}
 						}

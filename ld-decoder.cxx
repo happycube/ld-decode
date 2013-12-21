@@ -107,19 +107,22 @@ class Filter {
 				}
 			} else {
 				if (order == 13) {
-					y0 += b[0] * x[0];
-					y0 += b[1] * x[1];
-					y0 += b[2] * x[2];
-					y0 += b[3] * x[3];
-					y0 += b[4] * x[4];
-					y0 += b[5] * x[5];
-					y0 += b[6] * x[6];
-					y0 += b[7] * x[7];
-					y0 += b[8] * x[8];
-					y0 += b[9] * x[9];
-					y0 += b[10] * x[10];
-					y0 += b[11] * x[11];
-					y0 += b[12] * x[12];
+					double t[4];
+		
+					// Cycling through destinations reduces pipeline stalls.	
+					t[0] = b[0] * x[0];
+					t[1] = b[1] * x[1];
+					t[2] = b[2] * x[2];
+					t[3] = b[3] * x[3];
+					t[0] += b[4] * x[4];
+					t[1] += b[5] * x[5];
+					t[2] += b[6] * x[6];
+					t[3] += b[7] * x[7];
+					t[0] += b[8] * x[8];
+					t[1] += b[9] * x[9];
+					t[2] += b[10] * x[10];
+					t[3] += b[11] * x[11];
+					y0 = t[0] + t[1] + t[2] + t[3] + (b[12] * x[12]);
 				} else for (int o = 0; o < order; o++) {
 					y0 += b[o] * x[o];
 				}
@@ -134,7 +137,7 @@ class Filter {
 // b = fir2(8, [0, 3.0/freq, 3.5/freq, 4.0/freq, 5/freq, 7/freq, 9/freq, 11/freq, 13/freq, 1], [0.0, 0.0, 0.5, 1.0, 1.2, 1.6, 2.0, 2.4, 2.6, 2.6] 
 //const double f_boost6_b[] {-4.033954487174667e-03, -3.408583476980324e-02, -5.031202829325306e-01, 1.454592400360107e+00, -5.031202829325309e-01, -3.408583476980324e-02, -4.033954487174666e-03};
 //const double f_boost8_b[] {1.990859784029516e-03, -1.466569224478291e-02, -3.522213674516057e-02, -6.922384231866260e-01, 1.669825180053711e+00, -6.922384231866261e-01, -3.522213674516058e-02, -1.466569224478292e-02, 1.990859784029516e-03};
-const double f_boost16_b[] {1.598977954996517e-04, 3.075456659938196e-03, 9.185596072285866e-03, 1.709531178223861e-02, 3.432562296816891e-03, -3.610562619607920e-02, -9.514006526914356e-02, -6.305237888418010e-01, 1.454592400360107e+00, -6.305237888418012e-01, -9.514006526914358e-02, -3.610562619607921e-02, 3.432562296816892e-03, 1.709531178223861e-02, 9.185596072285866e-03, 3.075456659938199e-03, 1.598977954996517e-04};
+const double f_boost16_b[] {3.123765469711817e-03, 2.997477562454424e-03, 3.750031772606975e-03, -6.673430389299294e-03, -1.357392588270026e-02, -8.285925814646711e-02, -1.301633550658124e-01, -6.195450317461929e-01, 1.724998474121094e+00, -6.195450317461930e-01, -1.301633550658124e-01, -8.285925814646714e-02, -1.357392588270026e-02, -6.673430389299293e-03, 3.750031772606975e-03, 2.997477562454426e-03, 3.123765469711817e-03};
 
 const double f_afilt12_b[] {3.922718601230534e-03, 5.509003626732362e-03, -1.667423239655722e-03, -4.181643575364793e-02, -1.214946615984729e-01, -2.070707760267587e-01, 7.555600946599786e-01, -2.070707760267588e-01, -1.214946615984730e-01, -4.181643575364795e-02, -1.667423239655722e-03, 5.509003626732367e-03, 3.922718601230534e-03};
 
@@ -190,6 +193,39 @@ Filter f_lpf13(8, NULL, f_lpf13_8_b);
 Filter f_lpf06(8, NULL, f_lpf06_8_b);
 
 Filter f_allpass(31, f_allpass_32_a, f_allpass_32_b);
+
+// From http://lists.apple.com/archives/perfoptimization-dev/2005/Jan/msg00051.html.  Used w/o permission, but will replace when
+// going integer... probably!
+const double PI_FLOAT = M_PIl;
+const double PIBY2_FLOAT = (M_PIl/2.0); 
+// |error| < 0.005
+double fast_atan2( double y, double x )
+{
+	if ( x == 0.0f )
+	{
+		if ( y > 0.0f ) return PIBY2_FLOAT;
+		if ( y == 0.0f ) return 0.0f;
+		return -PIBY2_FLOAT;
+	}
+	double atan;
+	double z = y/x;
+	if (  fabs( z ) < 1.0f  )
+	{
+		atan = z/(1.0f + 0.28f*z*z);
+		if ( x < 0.0f )
+		{
+			if ( y < 0.0f ) return atan - PI_FLOAT;
+			return atan + PI_FLOAT;
+		}
+	}
+	else
+	{
+		atan = PIBY2_FLOAT - z/(z*z + 0.28f);
+		if ( y < 0.0f ) return atan - PI_FLOAT;
+	}
+	return atan;
+}
+
 
 typedef vector<complex<double>> v_cossin;
 
@@ -281,7 +317,7 @@ class FM_demod {
 				for (double f: fb) {
 					double fci = f_i[j].feed(n * ldft[j][i].real());
 					double fcq = f_q[j].feed(-n * ldft[j][i].imag());
-					double at2 = atan2(fci, fcq);	
+					double at2 = fast_atan2(fci, fcq);	
 	
 //					cerr << fci << ' ' << fcq << endl;
 
@@ -330,7 +366,8 @@ class FM_demod {
 
 int main(int argc, char *argv[])
 {
-	int rv = 0, fd = 0, dlen = -1 ;
+	int rv = 0, fd = 0;
+	long long dlen = -1;
 	//double output[2048];
 	unsigned char inbuf[2048];
 
@@ -348,7 +385,7 @@ int main(int argc, char *argv[])
 		if (offset) lseek64(fd, offset, SEEK_SET);
 	}
 		
-	if (argc >= 3) {
+	if (argc >= 4) {
 		if ((size_t)atoi(argv[3]) < dlen) {
 			dlen = atoi(argv[3]); 
 		}
@@ -372,7 +409,7 @@ int main(int argc, char *argv[])
 
 	//FM_demod video(2048, {7600000, 8100000, 8700000, 9100000}, &f_afilt12, {&f_lpf40_12, &f_lpf40_12, &f_lpf40_12, &f_lpf40_12}, NULL);
 //	FM_demod video(2048, {7600000, 8100000, 8400000, 8700000, 9000000, 9300000}, &f_afilt12, {&f_lpf40_12, &f_lpf40_12, &f_lpf40_12, &f_lpf40_12, &f_lpf40_12, &f_lpf40_12}, NULL);
-	FM_demod video(2048, {7600000, 8100000, 8400000, 8700000, 9000000, 9300000}, &f_afilt12, {&f_lpf40_12, &f_lpf40_12, &f_lpf40_12, &f_lpf40_12, &f_lpf40_12, &f_lpf40_12}, NULL);
+	FM_demod video(2048, {7600000, 8100000, 8700000, 9300000}, &f_afilt12, {&f_lpf40_12, &f_lpf40_12, &f_lpf40_12, &f_lpf40_12, &f_lpf40_12, &f_lpf40_12}, NULL);
 //	FM_demod video(2048, {7600000, 8100000, 8700000, 9300000}, &f_afilt12, {&f_lpf40_12, &f_lpf40_12, &f_lpf40_12, &f_lpf40_12}, NULL);
 //	FM_demod video(2048, {7600000, 8100000, 8700000, 9300000}, &f_afilt12, {&f_lpf42b_12, &f_lpf42b_12, &f_lpf42b_12, &f_lpf42b_12}, NULL);
 //	FM_demod video(2048, {7600000, 8100000, 8400000, 8700000, 9000000, 9300000}, &f_afilt12, {&f_lpf525, &f_lpf525, &f_lpf525, &f_lpf525, &f_lpf525, &f_lpf525}, NULL);
