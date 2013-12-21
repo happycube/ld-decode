@@ -51,26 +51,28 @@ inline double dft(double *buf, int offset, int len, double bin)
 
 inline double addmul16(double *b, double *x)
 {
-	double y0;
+	double y[4];
 
-	y0 = b[0] * x[0];
-	y0 += b[1] * x[1];
-	y0 += b[2] * x[2];
-	y0 += b[3] * x[3];
-	y0 += b[4] * x[4];
-	y0 += b[5] * x[5];
-	y0 += b[6] * x[6];
-	y0 += b[7] * x[7];
-	y0 += b[8] * x[8];
-	y0 += b[9] * x[9];
-	y0 += b[10] * x[10];
-	y0 += b[11] * x[11];
-	y0 += b[12] * x[12];
-	y0 += b[13] * x[13];
-	y0 += b[14] * x[14];
-	y0 += b[15] * x[15];
+	// this *was* an attempt to force 256-bit ops, but it still made things
+	// a little faster - latency fix?
+	y[0] = b[0] * x[0];
+	y[1] = b[1] * x[1];
+	y[2] = b[2] * x[2];
+	y[3] = b[3] * x[3];
+	y[0] += b[4] * x[4];
+	y[1] += b[5] * x[5];
+	y[2] += b[6] * x[6];
+	y[3] += b[7] * x[7];
+	y[0] += b[8] * x[8];
+	y[1] += b[9] * x[9];
+	y[2] += b[10] * x[10];
+	y[3] += b[11] * x[11];
+	y[0] += b[12] * x[12];
+	y[1] += b[13] * x[13];
+	y[2] += b[14] * x[14];
+	y[3] += b[15] * x[15];
 
-	return y0;
+	return (y[0] + y[1] + y[2] + y[3]);
 }
 
 class Filter {
@@ -135,11 +137,10 @@ class Filter {
 			} else {
 				int o = 0;
 
-/*
 				for (o = 0; (o + 16) < order; o+=16) {
 					y0 += addmul16(&b[o], &x[o]);
 				}
-*/
+
 				for (; o < order; o++) {
 					y0 += b[o] * x[o];
 				}
@@ -353,10 +354,10 @@ class NTSColor {
 			int oc = 0;
 
 			for (double c: line) {
-				if (c > 0.8) {
+				if (c > 0.5) {
 					oc++;
 				}
-				if (oc > 750) return true;
+				if (oc > 700) return true;
 			}
 //			cerr << "W" << oc << endl;
 			return false;

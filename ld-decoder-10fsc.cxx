@@ -27,22 +27,20 @@ double ctor(double r, double i)
 class Filter {
 	protected:
 		int order;
-		vector<double> b;
-		vector<double> x;
+		__declspec(align(32)) double b[17];
+		__declspec(align(32)) double x[17];
 		double y0;
 	public:
 		Filter(int _order, const double *_a, const double *_b) {
 			order = _order + 1;
-			b.insert(b.begin(), _b, _b + order);
-			x.resize(order);
+			for (int i = 0; i < order; i++) b[i] = _b[i];
 	
 			clear();
 		}
 
 		Filter(Filter *orig) {
 			order = orig->order;
-			b = orig->b;
-			x.resize(order);
+			for (int i = 0; i < order; i++) b[i] = orig->b[i];
 				
 			clear();
 		}
@@ -54,9 +52,8 @@ class Filter {
 		}
 
 		inline double feed(double val) {
-			double *x_data = x.data();
 
-			memmove(&x_data[1], x_data, sizeof(double) * (order - 1)); 
+			memmove(&x[1], x, sizeof(double) * (order - 1)); 
 
 			x[0] = val;
 			y0 = 0; // ((b[0] / a0) * x[0]);
@@ -121,7 +118,7 @@ double fast_atan2( double y, double x )
 	}
 	double atan;
 	double z = y/x;
-	if ( fabs( z ) < 1.0f )
+	if (  fabs( z ) < 1.0f  )
 	{
 		atan = z/(1.0f + 0.28f*z*z);
 		if ( x < 0.0f )
