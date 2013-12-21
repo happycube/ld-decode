@@ -24,27 +24,25 @@ double ctor(double r, double i)
 	return sqrt((r * r) + (i * i));
 }
 
-const int max_filter_order = 128 + 1;
 class Filter {
 	protected:
 		int order;
-		__declspec(align(32)) double b[max_filter_order];
-		__declspec(align(32)) double x[max_filter_order];
+		vector<double> b;
+		vector<double> x;
 		double y0;
 	public:
 		Filter(int _order, const double *_a, const double *_b) {
 			order = _order + 1;
-		
-			memcpy(b, _b, sizeof(double) * (order + 1));
-
-			y0 = 0;
+			b.insert(b.begin(), _b, _b + order);
+			x.resize(order);
 	
 			clear();
 		}
 
 		Filter(Filter *orig) {
 			order = orig->order;
-			memcpy(b, orig->b, sizeof(b));
+			b = orig->b;
+			x.resize(order);
 				
 			clear();
 		}
@@ -56,29 +54,35 @@ class Filter {
 		}
 
 		inline double feed(double val) {
-			memmove(&x[1], x, sizeof(double) * (order - 1));
-		
+			double *x_data = x.data();
+
+			memmove(&x_data[1], x_data, sizeof(double) * (order - 1)); 
+
 			x[0] = val;
 			y0 = 0; // ((b[0] / a0) * x[0]);
 			//cerr << "0 " << x[0] << ' ' << b[0] << ' ' << (b[0] * x[0]) << ' ' << y[0] << endl;
 			if (order == 17) {
-				y0 += b[0] * x[0];
-				y0 += b[1] * x[1];
-				y0 += b[2] * x[2];
-				y0 += b[3] * x[3];
-				y0 += b[4] * x[4];
-				y0 += b[5] * x[5];
-				y0 += b[6] * x[6];
-				y0 += b[7] * x[7];
-				y0 += b[8] * x[8];
-				y0 += b[9] * x[9];
-				y0 += b[10] * x[10];
-				y0 += b[11] * x[11];
-				y0 += b[12] * x[12];
-				y0 += b[13] * x[13];
-				y0 += b[14] * x[14];
-				y0 += b[15] * x[15];
-				y0 += b[16] * x[16];
+				double y[4];
+
+				// this *was* an attempt to force 256-bit ops, but it still made things
+				// a little faster - latency fix?
+				y[0] = b[0] * x[0];
+				y[1] = b[1] * x[1];
+				y[2] = b[2] * x[2];
+				y[3] = b[3] * x[3];
+				y[0] += b[4] * x[4];
+				y[1] += b[5] * x[5];
+				y[2] += b[6] * x[6];
+				y[3] += b[7] * x[7];
+				y[0] += b[8] * x[8];
+				y[1] += b[9] * x[9];
+				y[2] += b[10] * x[10];
+				y[3] += b[11] * x[11];
+				y[0] += b[12] * x[12];
+				y[1] += b[13] * x[13];
+				y[2] += b[14] * x[14];
+				y[3] += b[15] * x[15];
+				y0 = (b[16] * x[16]) + y[0] + y[1] + y[2] + y[3];
 			} else for (int o = 0; o < order; o++) {
 				y0 += b[o] * x[o];
 			}
@@ -185,7 +189,7 @@ class FM_demod {
 			for (int i = 0; i < 9; i++) cbuf[i] = 8100000;
 
 			// 16-order pre, 16-order ...
-			min_offset = 48;
+			min_offset = 40;
 		}
 
 		~FM_demod() {
@@ -201,7 +205,7 @@ class FM_demod {
 			double avg = 0, total = 0.0;
 			
 			for (int i = 0; i < 9; i++) cbuf[i] = 8100000;
-			
+
 			if (in.size() < (size_t)linelen) return out;
 
 			for (double n : in) avg += n / in.size();
@@ -250,17 +254,8 @@ class FM_demod {
 				double thisout = pf;	
 
 				if (f_post) thisout = f_post->feed(pf);	
-				if (i > min_offset) {
-					int bin = (thisout - 7600000) / 200000;
-					if (bin < 0) bin = 0;
-					if (bin > 10) bin = 10;
 
-					avglevel[bin] *= 0.9;
-					avglevel[bin] += level[npeak] * .1;
-
-//					out.push_back(((level[npeak] / avglevel[bin]) > 0.3) ? thisout : 0);
-					out.push_back(thisout);
-				};
+				if (i > min_offset) out.push_back(thisout);
 				i++;
 			}
 
@@ -358,7 +353,7 @@ int main(int argc, char *argv[])
 		rv = read(fd, &inbuf[(4096 - len)], len) + (4096 - len);
 		
 		if (rv < 4096) return 0;
-		cerr << i << ' ' << rv << ' ' << outline.size() << endl;
+		cerr << i << ' ' << rv << endl;
 	}
 	return 0;
 }
