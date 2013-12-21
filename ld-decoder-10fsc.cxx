@@ -24,93 +24,68 @@ double ctor(double r, double i)
 	return sqrt((r * r) + (i * i));
 }
 
+const int max_filter_order = 128 + 1;
 class Filter {
 	protected:
 		int order;
-		bool isIIR;
-		vector<double> a, b;
-		vector<double> y, x;
+		__declspec(align(32)) double b[max_filter_order];
+		__declspec(align(32)) double x[max_filter_order];
+		double y0;
 	public:
 		Filter(int _order, const double *_a, const double *_b) {
 			order = _order + 1;
-			if (_a) {
-				a.insert(b.begin(), _a, _a + order);
-				isIIR = true;
-			} else {
-				a.push_back(1.0);
-				isIIR = false;
-			}
-			b.insert(b.begin(), _b, _b + order);
-			x.resize(order);
-			y.resize(order);
+		
+			memcpy(b, _b, sizeof(double) * (order + 1));
+
+			y0 = 0;
 	
 			clear();
 		}
 
 		Filter(Filter *orig) {
 			order = orig->order;
-			isIIR = orig->isIIR;
-			a = orig->a;
-			b = orig->b;
-			x.resize(order);
-			y.resize(order);
+			memcpy(b, orig->b, sizeof(b));
 				
 			clear();
 		}
 
 		void clear(double val = 0) {
 			for (int i = 0; i < order; i++) {
-				x[i] = y[i] = val;
+				x[i] = val;
 			}
 		}
 
 		inline double feed(double val) {
-			double a0 = a[0];
-			double y0;
-
-			double *x_data = x.data();
-			double *y_data = y.data();
-
-			memmove(&x_data[1], x_data, sizeof(double) * (order - 1)); 
-			if (isIIR) memmove(&y_data[1], y_data, sizeof(double) * (order - 1)); 
-
+			memmove(&x[1], x, sizeof(double) * (order - 1));
+		
 			x[0] = val;
 			y0 = 0; // ((b[0] / a0) * x[0]);
 			//cerr << "0 " << x[0] << ' ' << b[0] << ' ' << (b[0] * x[0]) << ' ' << y[0] << endl;
-			if (isIIR) {
-				for (int o = 0; o < order; o++) {
-					y0 += ((b[o] / a0) * x[o]);
-					if (o) y0 -= ((a[o] / a0) * y[o]);
-					//cerr << o << ' ' << x[o] << ' ' << y[o] << ' ' << a[o] << ' ' << b[o] << ' ' << (b[o] * x[o]) << ' ' << -(a[o] * y[o]) << ' ' << y[0] << endl;
-				}
-			} else {
-				if (order == 17) {
-					y0 += b[0] * x[0];
-					y0 += b[1] * x[1];
-					y0 += b[2] * x[2];
-					y0 += b[3] * x[3];
-					y0 += b[4] * x[4];
-					y0 += b[5] * x[5];
-					y0 += b[6] * x[6];
-					y0 += b[7] * x[7];
-					y0 += b[8] * x[8];
-					y0 += b[9] * x[9];
-					y0 += b[10] * x[10];
-					y0 += b[11] * x[11];
-					y0 += b[12] * x[12];
-					y0 += b[13] * x[13];
-					y0 += b[14] * x[14];
-					y0 += b[15] * x[15];
-					y0 += b[16] * x[16];
-				} else for (int o = 0; o < order; o++) {
-					y0 += b[o] * x[o];
-				}
+			if (order == 17) {
+				y0 += b[0] * x[0];
+				y0 += b[1] * x[1];
+				y0 += b[2] * x[2];
+				y0 += b[3] * x[3];
+				y0 += b[4] * x[4];
+				y0 += b[5] * x[5];
+				y0 += b[6] * x[6];
+				y0 += b[7] * x[7];
+				y0 += b[8] * x[8];
+				y0 += b[9] * x[9];
+				y0 += b[10] * x[10];
+				y0 += b[11] * x[11];
+				y0 += b[12] * x[12];
+				y0 += b[13] * x[13];
+				y0 += b[14] * x[14];
+				y0 += b[15] * x[15];
+				y0 += b[16] * x[16];
+			} else for (int o = 0; o < order; o++) {
+				y0 += b[o] * x[o];
 			}
 
-			y[0] = y0;
-			return y[0];
+			return y0;
 		}
-		double val() {return y[0];}
+		double val() {return y0;}
 };
 
 // b = fir2(16, [0 .15 .2 .5 1], [0 0 1 1 1], 'hamming'); freqz(b)
@@ -210,7 +185,7 @@ class FM_demod {
 			for (int i = 0; i < 9; i++) cbuf[i] = 8100000;
 
 			// 16-order pre, 16-order ...
-			min_offset = 40;
+			min_offset = 48;
 		}
 
 		~FM_demod() {
@@ -226,7 +201,7 @@ class FM_demod {
 			double avg = 0, total = 0.0;
 			
 			for (int i = 0; i < 9; i++) cbuf[i] = 8100000;
-
+			
 			if (in.size() < (size_t)linelen) return out;
 
 			for (double n : in) avg += n / in.size();
@@ -278,6 +253,7 @@ class FM_demod {
 				if (i > min_offset) {
 					int bin = (thisout - 7600000) / 200000;
 					if (bin < 0) bin = 0;
+					if (bin > 10) bin = 10;
 
 					avglevel[bin] *= 0.9;
 					avglevel[bin] += level[npeak] * .1;
@@ -382,7 +358,7 @@ int main(int argc, char *argv[])
 		rv = read(fd, &inbuf[(4096 - len)], len) + (4096 - len);
 		
 		if (rv < 4096) return 0;
-		cerr << i << ' ' << rv << endl;
+		cerr << i << ' ' << rv << ' ' << outline.size() << endl;
 	}
 	return 0;
 }
