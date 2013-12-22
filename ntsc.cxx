@@ -128,6 +128,7 @@ enum LineFeatures {
 	LINE_EQUALIZATION = 0x02, /* -SYNC, half line, -SYNC, half line */ 
 	LINE_FIELDSYNC    = 0x04, /* Long -SYNC, serration pulse std sync pulse len */ 
 	LINE_HALF         = 0x08, /* Half-length video line at end of odd field, followed by -SYNC at 262.5 */ 
+	LINE_ENDFIELD     = 0x10, /* End of Field */ 
 	// Line data features
 	LINE_VIDEO	  = 0x0040, /* What we actually care about - picture data! */
 	LINE_MULTIBURST   = 0x0080, /* White, 0.5-4.1mhz burst pulses */
@@ -163,9 +164,7 @@ void buildNTSCLines()
 	for (i = 10; i <= 21; i++) NTSCLine[i] = NTSCLine[264 + i] = LINE_NORMAL; 
 
 	// define odd field
-	NTSCLine[10] |= LINE_WHITEFLAG; 
 	NTSCLine[11] |= LINE_WHITEFLAG; 
-	NTSCLine[12] |= LINE_WHITEFLAG; 
 	NTSCLine[15] |= LINE_PHILLIPS; 
 	NTSCLine[16] |= LINE_PHILLIPS; 
 	NTSCLine[17] |= LINE_PHILLIPS; 
@@ -177,17 +176,19 @@ void buildNTSCLines()
 		NTSCLine[i] = LINE_NORMAL | LINE_VIDEO; 
 		NTSCLineLoc[i] = ((i - 22) * 2) + 0;
 	}
-	NTSCLine[263] = LINE_HALF | LINE_VIDEO;
+	NTSCLine[263] = LINE_HALF | LINE_VIDEO | LINE_ENDFIELD;
 
 	// define even field
-	NTSCLine[273] |= LINE_WHITEFLAG; 
+	NTSCLine[274] |= LINE_WHITEFLAG; 
 	NTSCLine[264 + 18] |= LINE_PHILLIPS; 
 	
 	for (i = 285; i <= 525; i++) {
 		NTSCLine[i] = LINE_NORMAL | LINE_VIDEO; 
 		NTSCLineLoc[i] = ((i - 285) * 2) + 1;
 	}
-#if 0
+
+	NTSCLine[525] |= LINE_ENDFIELD;
+#if 1
 	// debug only
 	for (i = 0; i <= 263; i++) {
 		NTSCLineLoc[i] = ((i) * 2) + 0;
@@ -258,12 +259,14 @@ class TBC
 		int linecount;  // total # of lines process - needed to maintain phase
 		int curline;    // current line # in frame 
 		int active;	// set to 1 when first frame ends
+
+		int fieldcount;
 	
 		int bufsize; 
 
 		double curscale;
 
-		uint16_t frame[1820 * 527];
+		uint16_t frame[1820 * 530];
 
 		double _cos[16], _sin[16];
 		Filter *f_i, *f_q;
@@ -367,7 +370,7 @@ class TBC
 
 	public:
 		TBC(int _bufsize = 4096) {
-			curline = linecount = -1;
+			fieldcount = curline = linecount = -1;
 			active = 0;
 
 			bufsize = _bufsize;
@@ -412,7 +415,7 @@ class TBC
 
 			// check sync lengths and distance between syncs to see if we've got a regular line
 			if ((fabs(linelen - hlen) < (hlen * .02)) && 
-			    (sync2_len > (16 * freq)) && (sync2_len < (18 * freq)) &&
+/*			    (sync2_len > (16 * freq)) && (sync2_len < (18 * freq)) && */
 			    (sync_len > (16 * freq)) && (sync_len < (18 * freq)))
 			{
 				double plevel, pphase, pphase2;
@@ -465,9 +468,9 @@ class TBC
 				if ((sync_len > (15 * freq)) &&
 				    (sync_len < (18 * freq)) &&
 				    (sync2_len < (9 * freq)) &&
-				    ((sync2_start - sync_start) > (freq * 225))) {
-					cerr << "END\n";
-					curline = 524;
+				    ((sync2_start - sync_start) < (freq * 125)) &&
+				    ((sync2_start - sync_start) > (freq * 110))) {
+					curline = 263;
 				}
 
 				ScaleOut(buffer, outbuf, sync_start, 1820);
@@ -476,16 +479,34 @@ class TBC
 
 			if (curline >= 0) {
 				cerr << "L" << NTSCLineLoc[curline] << endl;
+
+				// On Laserdisc, lines 11 and 274 are 'white' flags indicating new field start
+				if (NTSCLine[curline] & LINE_WHITEFLAG) {
+					int wc = 0;
+					for (int i = line_blanklen; i < 1800; i++) {
+						if (outbuf[i] > 40000) wc++;
+					} 
+					if (wc > 800) fieldcount = 0;
+				}
+
 				if (NTSCLineLoc[curline] >= 0) {
 					memcpy(&frame[NTSCLineLoc[curline] * 1820], outbuf, 3840);
+				
+					if ((fieldcount >= 0) && (NTSCLine[curline] & LINE_ENDFIELD))
+					{
+						fieldcount++;
+						if (fieldcount == 2) {
+							write(1, frame, 1820 * 2 * 525);
+							memset(frame, 0, sizeof(frame));
+							fieldcount = 0;
+						}
+					}
 				}
+
 				curline++;
-				if (curline > 524) {
-					curline = 0; 
-					if (active) {
-						write(1, frame, 1820 * 480 * 2);
-					} else active = 1;
-					memset(frame, 0, sizeof(frame));
+				if (curline > 525) {
+					curline = 1; 
+					if (fieldcount < 0) fieldcount = 0;
 				}
 			}
 			if (linecount >= 0) linecount++;
