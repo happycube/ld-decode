@@ -111,6 +111,45 @@ inline double IRE(double in)
 	return (in * 140.0) - 40.0;
 }
 
+struct YIQ {
+        double y, i, q;
+
+        YIQ(double _y = 0.0, double _i = 0.0, double _q = 0.0) {
+                y = _y; i = _i; q = _q;
+        };
+};
+
+double clamp(double v, double low, double high)
+{
+        if (v < low) return low;
+        else if (v > high) return high;
+        else return v;
+}
+
+struct RGB {
+        double r, g, b;
+
+        void conv(YIQ y) {
+        //      y.i = clamp(y.i, -0.5957, .5957);
+        //      y.q = clamp(y.q, -0.5226, .5226);
+
+                y.y -= (.4 / 1.4);
+                y.y *= 1.4;
+                y.y = clamp(y.y, 0, 1.0);
+
+                r = (y.y * 1.164) + (1.596 * y.i);
+                g = (y.y * 1.164) - (0.813 * y.i) - (y.q * 0.391);
+                b = (y.y * 1.164) + (y.q * 2.018);
+
+                r = clamp(r, 0, 1.05);
+                g = clamp(g, 0, 1.05);
+                b = clamp(b, 0, 1.05);
+                //cerr << 'y' << y.y << " i" << y.i << " q" << y.q << ' ';
+                //cerr << 'r' << r << " g" << g << " b" << b << endl;
+        };
+};
+
+
 /* 
  * NTSC(/PAL) Description 
  * ----------------
@@ -340,7 +379,80 @@ class TBC
 
 			return rv;
 		}
+	
+		// buffer: 1820x525 uint16_t array, fully decoded and TBC'd frame from TBC
+		void CombFilter(uint16_t *buffer)
+		{
+			YIQ outline[1820];
+			for (int i = 44; i < 524; i++) {
+				uint16_t *line = &buffer[i * 1820];
+				double _cos[(int)freq + 1], _sin[(int)freq + 1];
+				double level, phase;
 
+				double val, _val, delay[18];
+				double cmult;
+
+				double circbuf[18];
+
+				BurstDetect(line, 3.5 * dots_usec, 7.5 * dots_usec, level, phase);
+				cerr << "burst " << level << ' ' << phase << endl;
+				for (int j = 0; j < (int)freq; j++) { 
+	                                _cos[j] = cos(phase + (2.0 * M_PIl * ((double)j / freq)));
+					_sin[j] = sin(phase + (2.0 * M_PIl * ((double)j / freq)));
+				}
+
+				cmult = 3.5;
+//				cmult = 0.2 / ((double)level / 65535.0);
+
+				int counter = 0;
+				for (int h = line_blanklen - 64; counter < 1544; h++) {
+					val = (double)line[h] / 65535.0;
+					
+					double q = f_q->feed(-val * _cos[h % 8]);
+					double i = f_i->feed(val * _sin[h % 8]);
+					
+					cerr << "P" << h << ' ' << counter << ' ' << line[h] << ' ' << val;
+				
+	                                if (counter > 17) {
+						_val = circbuf[counter % 17];
+       	                         	}
+	                                circbuf[counter % 17] = val;
+					val = _val;
+
+	                                double iadj = i * 2 * _cos[(h + 1) % 8];
+					double qadj = q * 2 * _sin[(h + 1) % 8];
+
+					cerr << ' ' << _val << ' ' << iadj + qadj << ' ';
+
+					val += iadj + qadj;
+					YIQ outc = YIQ(val, cmult * i, cmult * q);	
+
+					if (counter >= 64) {
+						outline[counter - 64].y = outc.y;
+						outline[counter - 64 + 8].i = outc.i;
+						outline[counter - 64 + 8].q = outc.q;
+						cerr << ' ' << outc.y << ' ' << outc.i << ' ' << outc.q;
+					} 
+					cerr << endl;
+
+					counter++;
+				}
+
+				uint16_t output[1536 * 3];
+				int o = 0; 
+				for (int h = 0; h < 1536; h++) {
+					RGB r;
+					r.conv(outline[h]);
+
+					output[o++] = (uint16_t)(r.r * 62000.0); 
+					output[o++] = (uint16_t)(r.g * 62000.0); 
+					output[o++] = (uint16_t)(r.b * 62000.0); 
+				}
+				write(1, output, sizeof(output));
+			}
+
+			return;
+		}
 
 		void ScaleOut(uint16_t *buf, uint16_t *outbuf, double start, double len)
 		{
@@ -496,7 +608,8 @@ class TBC
 					{
 						fieldcount++;
 						if (fieldcount == 2) {
-							write(1, frame, 1820 * 2 * 525);
+							CombFilter(frame);
+					//		write(1, frame, 1820 * 2 * 525);
 							memset(frame, 0, sizeof(frame));
 							fieldcount = 0;
 						}
