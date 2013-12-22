@@ -100,7 +100,9 @@ class Filter {
 // back-reason for selecting 30:  14.318/1.3*e = 29.939.  seems to work better than 31 ;) 
 const double f28_1_3mhz_b30[] {4.914004914004915e-03, 5.531455998921954e-03, 7.356823678403171e-03, 1.031033062576930e-02, 1.426289441492169e-02, 1.904176904176904e-02, 2.443809475353342e-02, 3.021602622216704e-02, 3.612304011689930e-02, 4.190097158553291e-02, 4.729729729729729e-02, 5.207617192414463e-02, 5.602873571329703e-02, 5.898224266066317e-02, 6.080761034014438e-02, 6.142506142506142e-02, 6.080761034014438e-02, 5.898224266066317e-02, 5.602873571329704e-02, 5.207617192414465e-02, 4.729729729729731e-02, 4.190097158553292e-02, 3.612304011689932e-02, 3.021602622216705e-02, 2.443809475353343e-02, 1.904176904176904e-02, 1.426289441492169e-02, 1.031033062576930e-02, 7.356823678403167e-03, 5.531455998921954e-03, 4.914004914004915e-03};
 
-const double f28_0_6mhz_b65[] {2.274019329164298e-03, 2.335061058268382e-03, 2.517616315402780e-03, 2.819980631318463e-03, 3.239330911865343e-03, 3.771751796461725e-03, 4.412272214761106e-03, 5.154911800196637e-03, 5.992736727052425e-03, 6.917924449726024e-03, 7.921836739729059e-03, 8.995100338499179e-03, 1.012769447298977e-02, 1.130904441692792e-02, 1.252812022418446e-02, 1.377353971240908e-02, 1.503367473540020e-02, 1.629675975197302e-02, 1.755100167764746e-02, 1.878468999350057e-02, 1.998630608412639e-02, 2.114463078384454e-02, 2.224884912702732e-02, 2.328865132451982e-02, 2.425432902336347e-02, 2.513686595107182e-02, 2.592802209813746e-02, 2.662041065278063e-02, 2.720756696962055e-02, 2.768400892832751e-02, 2.804528811870335e-02, 2.828803137428890e-02, 2.840997226671035e-02, 2.840997226671035e-02, 2.828803137428890e-02, 2.804528811870335e-02, 2.768400892832751e-02, 2.720756696962055e-02, 2.662041065278064e-02, 2.592802209813747e-02, 2.513686595107182e-02, 2.425432902336347e-02, 2.328865132451982e-02, 2.224884912702732e-02, 2.114463078384455e-02, 1.998630608412640e-02, 1.878468999350057e-02, 1.755100167764746e-02, 1.629675975197302e-02, 1.503367473540020e-02, 1.377353971240908e-02, 1.252812022418446e-02, 1.130904441692792e-02, 1.012769447298977e-02, 8.995100338499189e-03, 7.921836739729063e-03, 6.917924449726024e-03, 5.992736727052432e-03, 5.154911800196641e-03, 4.412272214761106e-03, 3.771751796461728e-03, 3.239330911865346e-03, 2.819980631318465e-03, 2.517616315402780e-03, 2.335061058268382e-03, 2.274019329164298e-03};
+const double f28_1_3mhz_b32[] {-1.605533065998730e-03, -1.720671809315438e-03, -1.946714932361703e-03, -1.994955262998560e-03, -1.418668951504014e-03, 3.196223312744169e-04, 3.750192920679346e-03, 9.284036375671866e-03, 1.710727911480327e-02, 2.710292793921179e-02, 3.881702596824465e-02, 5.147908615666569e-02, 6.407728145733732e-02, 7.547900436664387e-02, 8.457890959912071e-02, 9.045104659530802e-02, 9.248026239443490e-02, 9.045104659530802e-02, 8.457890959912071e-02, 7.547900436664387e-02, 6.407728145733733e-02, 5.147908615666569e-02, 3.881702596824466e-02, 2.710292793921179e-02, 1.710727911480328e-02, 9.284036375671866e-03, 3.750192920679346e-03, 3.196223312744170e-04, -1.418668951504014e-03, -1.994955262998559e-03, -1.946714932361704e-03, -1.720671809315439e-03, -1.605533065998730e-03};
+
+const double f28_0_6mhz_b64[] {-6.916447903947148e-04, -6.637277886690091e-04, -6.506794962762819e-04, -6.385960636428408e-04, -6.091489627652988e-04, -5.401328736698201e-04, -4.062390816451122e-04, -1.800289567056259e-04, 1.669277273337949e-04, 6.627933750400666e-04, 1.334132570703104e-03, 2.204566737142542e-03, 3.293471104686198e-03, 4.614771600461567e-03, 6.175896724145871e-03, 7.976934496300239e-03, 1.001003732312394e-02, 1.225910839260336e-02, 1.469979236820074e-02, 1.729978111972153e-02, 2.001943252605971e-02, 2.281268753589040e-02, 2.562825822709219e-02, 2.841104809911676e-02, 3.110375576479802e-02, 3.364860502185666e-02, 3.598913834498529e-02, 3.807200741849585e-02, 3.984869359245655e-02, 4.127709314339044e-02, 4.232290688845818e-02, 4.296078085959773e-02, 4.317515410421566e-02, 4.296078085959773e-02, 4.232290688845819e-02, 4.127709314339045e-02, 3.984869359245655e-02, 3.807200741849585e-02, 3.598913834498529e-02, 3.364860502185667e-02, 3.110375576479803e-02, 2.841104809911677e-02, 2.562825822709219e-02, 2.281268753589041e-02, 2.001943252605972e-02, 1.729978111972153e-02, 1.469979236820075e-02, 1.225910839260336e-02, 1.001003732312394e-02, 7.976934496300244e-03, 6.175896724145871e-03, 4.614771600461570e-03, 3.293471104686198e-03, 2.204566737142541e-03, 1.334132570703105e-03, 6.627933750400653e-04, 1.669277273337959e-04, -1.800289567056260e-04, -4.062390816451116e-04, -5.401328736698201e-04, -6.091489627652993e-04, -6.385960636428407e-04, -6.506794962762823e-04, -6.637277886690096e-04, -6.916447903947148e-04};
 
 const double f_hsync8[] {1.447786467971050e-02, 4.395811440315845e-02, 1.202636955256379e-01, 2.024216184054497e-01, 2.377574139720867e-01, 2.024216184054497e-01, 1.202636955256379e-01, 4.395811440315847e-02, 1.447786467971050e-02};
 
@@ -109,269 +111,345 @@ inline double IRE(double in)
 	return (in * 140.0) - 40.0;
 }
 
-enum tbc_type {TBC_HSYNC, TBC_CBURST};
+/* 
+ * NTSC(/PAL) Description 
+ * ----------------
+ *
+ * There are a few different types of NTSC lines with different contained data.  While PAL is similar, I 
+ * am currently only concerned with NTSC.  Perhaps I will wind up with PAL video tapes someday... 
+ *
+ * Since many of these lines are repeated, we will describe these lines and then generate the typical frame.
+ */
 
-class TBC {
-	protected:
-		Filter *f_i, *f_q;
-		Filter *f_synci, *f_syncq;
-		Filter *f_post;
-
-		Filter *f_linelen;
-
-		double fc, fci;
-		double freq;
-
-		tbc_type tbc;
-
-		int cfline;
-
-		int field, fieldcount;
-
-		int counter, lastsync;
-		bool insync;
-		double peaksync, peaksynci, peaksyncq;
-
-		double _sin[32], _cos[32];
-
-		vector<double> prev, buf_1h;
-		double circbuf[18];
-
-		double phase, level;
-		int phase_count;
-		bool phased;
-
-		double adjfreq;
-
-		double poffset, pix_poffset;
-
-		vector<double> line;
-	
-		int igap;
-	public:
-		bool get_newphase(double &afreq, double &np) {
-			if (phased) {
-				afreq = adjfreq;
-				np = phase;
-				phased = false;
-				return true;
-			} else return false;
-		}	
-
-		void set_tbc(tbc_type type) {
-			tbc = type;
-		}
-
-		TBC(double _freq = 8.0) {
-			counter = 0;
-			phased = insync = false;
-
-			fieldcount = -10;
-			field = -1;
-			cfline = -1;
-
-			pix_poffset = poffset = 0;
-			adjfreq = 1.0;
-
-			lastsync = -1;
-
-			level = phase = 0.0;
-
-			freq = _freq;
-
-			igap = -1;
-					
-			buf_1h.resize(1820);
-			prev.resize(32);
-	
-			for (int e = 0; e < 8; e++) {
-				_cos[e] = cos(phase + (2.0 * M_PIl * ((double)e / freq)));
-				_sin[e] = sin(phase + (2.0 * M_PIl * ((double)e / freq)));
-			}
-
-			f_i = new Filter(30, NULL, f28_1_3mhz_b30);
-			f_q = new Filter(30, NULL, f28_1_3mhz_b30);
-			
-			f_synci = new Filter(65, NULL, f28_0_6mhz_b65);
-			f_syncq = new Filter(65, NULL, f28_0_6mhz_b65);
-		
-			f_linelen = new Filter(8, NULL, f_hsync8);
-			for (int i = 0; i < 9; i++) f_linelen->feed(1820);
-		}
-
-		bool expectsync() {
-			if (insync || (cfline <= 0)) return true;
-			if (lastsync > 1700) return true; 
-			if ((cfline >= 250) && (lastsync > 850) && (lastsync < 980)) return true; 
-
-			return false;
-		}
-
-		void feed(double in) {
-			double dn = (double) in / 62000.0;
-			bool exp_sync = expectsync();	
-
-			if (!dn || ((dn < 0.1) && !exp_sync)) {
-				dn = buf_1h[counter % 1820]; 
-				if ((dn < 0.1) && !exp_sync) {
-					dn = 0.101;	
-				}
-			}
-
-			buf_1h[counter % 1820] = dn;
-			prev[counter % 32] = dn;
-
-			counter++;
-			if (lastsync >= 0) lastsync++;
-
-//			cerr << insync << ' ' << lastsync << endl;
-
-			int count = 0;
-			if (insync == false) {
-				for (int i = 0; exp_sync && i < 32; i++) {
-					if (prev[i] < 0.1) {
-						count++;
-					}
-				}
-				if (exp_sync && count >= 24) {
-					if ((igap > 880) && (igap < 940)) {
-						f_linelen->feed(igap * 2.0);
-						cfline = 0;
-					} else {
-						if ((igap > 1800) && (igap < 1840)) f_linelen->feed(igap);
-					}
-					
-					igap = lastsync;
-
-					lastsync = 0;
-					peaksynci = peaksyncq = peaksync = 0;
-
-					cerr << cfline << " sync at " << counter - 24 << ' ' << igap << ' ' << insync << endl;
-					insync = true;
-					prev.clear();
-					line.clear();
-				}
-					
-				line.push_back(dn);
-
-				while (igap > 3500) igap -= 1820;
-
-				if ((igap > 1700) && (igap < 1900) && lastsync == 250) {
-					fc = peaksyncq;
-					fci = peaksynci;
-					level = peaksync;
-					if ((level > .02) && (level < .10)) {
-						double padj = atan2(fci, ctor(fc, fci));
-
-						if (fc > 0) {
-							if (igap > 1820) 
-								padj = (M_PIl / 2.0) - padj; 
-							else {
-								padj = -(M_PIl / 2.0) - padj; 
-							}
-						}
-
-						phase -= (padj * sqrt(2.0));
-						phased = true;
-						phase_count = counter;
-
-						for (int e = 0; e < 8; e++) {
-							_cos[e] = cos(phase + (2.0 * M_PIl * ((double)e / freq)));
-							_sin[e] = sin(phase + (2.0 * M_PIl * ((double)e / freq)));
-						}
-
-						pix_poffset = phase / M_PIl * 4.0;
-						poffset += (igap - 1820);	
-
-						if (tbc == TBC_HSYNC) {
-							adjfreq = 1820.0 / f_linelen->val();
-						} else {
-							adjfreq = 1820.0 / (1820 + (padj * (M_PIl / 2.0)));
-						}
-					}
-
-					cerr << counter << " level " << level << " q " << fc << " i " << fci << " phase " << atan2(fci, ctor(fc, fci)) << " adjfreq " << adjfreq << ' ' << igap << ':' << f_linelen->val() << ' ' << poffset - pix_poffset << endl ;
-				}
-			} else {
-				for (int i = 0; i < 32; i++) {
-					if (prev[i] > 0.2) count++;
-				}
-				if (count >= 16) {
-					insync = false;
-					prev.clear();
-					fc = fci = 0;
-				}
-			}
-
-			if ((lastsync > 100) && (lastsync < 250)) { 
-				double q = f_syncq->feed(dn * _cos[counter % 8]);
-				double i = f_synci->feed(-dn * _sin[counter % 8]);
-
-				double synclev = ctor(i, q);
-
-				if (synclev > peaksync) {
-					peaksynci = i;
-					peaksyncq = q;
-					peaksync = synclev;
-				}
-			}
-
-			// Automatically jump to the next line on HSYNC failure
-			if (lastsync == (1820 + 260)) {
-				lastsync -= 1820;
-				cfline++;	
-			}
-		}
+// These are bit fields, since data type can be added to a core type
+enum LineFeatures {
+	// Core line types
+	LINE_NORMAL       = 0x01, /* standard line - Porch, sync pulse, porch, color burst, porch, data */ 
+	LINE_EQUALIZATION = 0x02, /* -SYNC, half line, -SYNC, half line */ 
+	LINE_FIELDSYNC    = 0x04, /* Long -SYNC, serration pulse std sync pulse len */ 
+	LINE_HALF         = 0x08, /* Half-length video line at end of odd field, followed by -SYNC at 262.5 */ 
+	// Line data features
+	LINE_VIDEO	  = 0x0040, /* What we actually care about - picture data! */
+	LINE_MULTIBURST   = 0x0080, /* White, 0.5-4.1mhz burst pulses */
+	LINE_COMPTEST     = 0x0100, /* 3.58mhz bursts, short pulses, white */
+	LINE_REFSIGNAL    = 0x0200, /* Burst, grey, black */
+	LINE_MCA	  = 0x0400, /* LD-specific MCA code (only matters on GM disks) */
+	LINE_PHILLIPS	  = 0x0800, /* LD-specific 48-bit Phillips code */
+	LINE_CAPTION	  = 0x1000, /* Closed captioning */
+	LINE_WHITEFLAG	  = 0x2000, /* CAV LD only - depicts beginning of new film frame */
 };
 
-class Resample : public vector<double> {
+int NTSCLine[526], NTSCLineLoc[526];
+
+// WIP
+void buildNTSCLines()
+{
+	int i;
+
+	for (i = 0; i < 526; i++) NTSCLineLoc[i] = -1;
+
+	// Each line array starts with 1 to line up with documetnation 
+
+	// Odd field is line 1-263, even field is 264-525 
+
+	// first set of eq lines
+	for (i = 1; i <= 3; i++) NTSCLine[i] = NTSCLine[264 + i] = LINE_EQUALIZATION; 
+
+	for (i = 4; i <= 6; i++) NTSCLine[i] = NTSCLine[264 + i] = LINE_FIELDSYNC; 
+
+	for (i = 7; i <= 9; i++) NTSCLine[i] = NTSCLine[264 + i] = LINE_EQUALIZATION; 
+
+	// While lines 10-21 have regular sync, but they contain special non-picture information 	
+	for (i = 10; i <= 21; i++) NTSCLine[i] = NTSCLine[264 + i] = LINE_NORMAL; 
+
+	// define odd field
+	NTSCLine[10] |= LINE_WHITEFLAG; 
+	NTSCLine[11] |= LINE_WHITEFLAG; 
+	NTSCLine[12] |= LINE_WHITEFLAG; 
+	NTSCLine[15] |= LINE_PHILLIPS; 
+	NTSCLine[16] |= LINE_PHILLIPS; 
+	NTSCLine[17] |= LINE_PHILLIPS; 
+	NTSCLine[18] |= LINE_PHILLIPS; 
+	NTSCLine[19] |= LINE_PHILLIPS; 
+	NTSCLine[20] |= LINE_PHILLIPS; 
+
+	for (i = 22; i <= 263; i++) {
+		NTSCLine[i] = LINE_NORMAL | LINE_VIDEO; 
+		NTSCLineLoc[i] = ((i - 22) * 2) + 0;
+	}
+	NTSCLine[263] = LINE_HALF | LINE_VIDEO;
+
+	// define even field
+	NTSCLine[273] |= LINE_WHITEFLAG; 
+	NTSCLine[264 + 18] |= LINE_PHILLIPS; 
+	
+	for (i = 285; i <= 525; i++) {
+		NTSCLine[i] = LINE_NORMAL | LINE_VIDEO; 
+		NTSCLineLoc[i] = ((i - 285) * 2) + 1;
+	}
+#if 0
+	// debug only
+	for (i = 0; i <= 263; i++) {
+		NTSCLineLoc[i] = ((i) * 2) + 0;
+	}
+	for (i = 264; i <= 525; i++) {
+		NTSCLineLoc[i] = ((i - 263) * 2) + 1;
+	}
+#endif
+}
+
+// NTSC properties
+const double freq = 8.0;	// in FSC
+
+const double hlen = 227.5 * freq;
+const double dotclk = (1000000.0*(315.0/88.0)*8.0); 
+
+const double dots_usec = dotclk / 1000000.0; 
+
+// values for horizontal timings 
+const double line_blanklen = 10.7 * dots_usec;
+
+const double line_fporch = 1.5 * dots_usec; // front porch
+
+const double line_syncp = 4.7 * dots_usec; // sync pulse
+const double line_bporch = 4.5  * dots_usec; // total back porch 
+
+const double line_bporch1 = 0.5 * dots_usec;
+const double line_burstlen = 9.0 * freq; // 9 3.58mhz cycles
+const double line_bporch2 = 1.5 * dots_usec; // approximate 
+
+// timings used in vsync lines
+const double line_eqpulse = 2.3 * dots_usec;
+const double line_serpulse = 4.7 * dots_usec;
+
+const double line_vspulse = 30 * dots_usec; // ???
+
+// uint16_t levels
+uint16_t level_m40ire = 1;
+uint16_t level_0ire = 16384;
+uint16_t level_7_5_ire = 3071;
+uint16_t level_100ire = 40959;
+uint16_t level_120ire = 65535;
+
+inline double u16_to_ire(uint16_t level)
+{
+	if (level == 0) return -100;
+	
+	return -40 + ((160.0 / 65533.0) * (double)level); 
+} 
+
+inline uint16_t ire_to_u16(double ire)
+{
+	if (ire <= -100) return 0;
+	if (ire <= -40) return 1;
+
+	if (ire >= 120) return 65535;	
+
+	return (((ire + 40) / 160.0) * 65534) + 1;
+} 
+
+// tunables
+
+double black_ire = 7.5;
+
+class TBC
+{
 	protected:
-		int prebuf;
+		int curline;
+	
+		int bufsize; 
 
-		double cval, cloc;
-		double factor;
+		double curscale;
 
-		queue<double> delaybuf;
-	public:
-		Resample(int _prebuf = 1820) {
-			cval = cloc = 0;
-			prebuf = _prebuf;
-			factor = 1.0;
+		double _cos[16], _sin[16];
+		Filter *f_i, *f_q;
+		Filter *f_synci, *f_syncq;
+
+		int FindHSync(uint16_t *buf, int start, int &pulselen, int tlen = 32) {
+			Filter f_s(32, NULL, f28_1_3mhz_b32);
+
+			int sync_start = -1;
+
+			// allow for filter startup
+			if (start > 31) start -= 31;
+	
+			for (int i = start; i < bufsize; i++) {
+				double v = f_s.feed(buf[i]);
+
+//				cerr << i << ' ' << buf[i] << ' ' << v << endl; 
+
+				// need to wait 30 samples
+				if (i > 30) {
+					if (sync_start < 0) {
+						if (v < 10000) sync_start = i;
+					} else if (v > 10000) {
+						if ((i - sync_start) > tlen) {
+						//	cerr << "found " << i << " " << sync_start << ' ' << (i - sync_start) << endl;
+							pulselen = i - sync_start;
+							return sync_start - 15; // XXX: find right offset
+						}
+						sync_start = -1;
+					}
+				}
+			}
+			return -1;
+		} 
+
+		int BurstDetect(uint16_t *buf, int start, int len, double &plevel, double &pphase)
+		{
+			int rv = 0;
+			double pi = 0, pq = 0;
+
+			plevel = 0.0;
+			pphase = 0.0;
+
+			f_synci->clear(ire_to_u16(black_ire));
+			f_syncq->clear(ire_to_u16(black_ire));
+
+			// XXX? allow for filter startup
+			if (start > 65) start -= 65;
+
+			for (int l = start; l < start + len; l++) {
+				double v = buf[l];
+
+				double q = f_syncq->feed(v * _cos[l % 8]);
+				double i = f_synci->feed(-v * _sin[l % 8]);
+
+				double level = ctor(i, q);
+
+//				if ((l - start) > 65) cerr << l << ' ' << buf[l] << ' ' << level << ' ' << atan2(i, q) << endl;
+	
+				if (((l - start) > 65) && level > plevel) {
+					plevel = level;
+					pi = i; pq = q;
+				}
+			}
+
+			if (plevel) {
+				pphase = atan2(pi, pq);
+			}
+
+			cerr << pi << ' ' << pq << ' ' << pphase << endl;
+
+			return rv;
 		}
 
-		void setscale(double _n) {factor = _n;}
 
-		void feed(double n) {
-			delaybuf.push(n);
+		void ScaleOut(uint16_t *buf, double start, double len)
+		{
+			uint16_t outbuf[(int)hlen * 2];
+			double perpel = len / hlen; 
+			double plevel, pphase, out;
 
-			if (delaybuf.size() >= 1820) {
-				double len = factor;
-				double newval = delaybuf.front();
-				while (len > 0.0) {
-					double avail = 1.0 - (cloc - floor(cloc));  
-					if (avail > len) {
-						cval += (len * newval) / factor; 
-						cloc += len;
-						len = 0.0;
-					} else {
-						cval += (avail * newval);
-						//cerr << "V " << cloc << ' ' << newval << ' ' << cval << endl;
-						push_back(cval);
-						cval = 0;					
-						cloc += avail;
-						len -= avail;
-					} 
+			for (int i = 0; i < hlen; i++) {
+				double p1, p2;
+
+				p1 = start + (i * perpel);
+				p2 = start + ((i + 1) * perpel);
+				
+				int l1 = floor(p1), l2 = floor(p2);
+
+				if (l1 == l2) {
+					out = perpel * buf[(int)floor(p1)];
+				} else {
+					out = (buf[l1] * (floor(p2) - p1)) +
+					      (buf[l2] * (p2 - floor(p2))); 
 				}
-				delaybuf.pop();
-			} 
+//				out *= perpel;
+				if (out > 65535) out = 65535;
+				if (out < 0) out = 0;
+				outbuf[i] = out;
+			}
+			write(1, outbuf, 1820 * 2);
+/*
+			BurstDetect(outbuf, (3.5 * dots_usec), 7.0 * dots_usec, plevel, pphase);
+			cerr << "post-scale " << plevel << ' ' << pphase << endl;
+			BurstDetect(outbuf, 1820 + (3.5 * dots_usec), 7.0 * dots_usec, plevel, pphase);
+			cerr << "post-scale2 " << plevel << ' ' << pphase << endl;
+*/
+		}
+
+	public:
+		TBC(int _bufsize = 4096) {
+			curline = -1;
+
+			bufsize = _bufsize;
+		
+			// build table of standard cos/sin for phase/level calc	
+			for (int e = 0; e < freq; e++) {
+				_cos[e] = cos((2.0 * M_PIl * ((double)e / freq)));
+				_sin[e] = sin((2.0 * M_PIl * ((double)e / freq)));
+			}
+
+			f_i = new Filter(32, NULL, f28_1_3mhz_b32);
+			f_q = new Filter(32, NULL, f28_1_3mhz_b32);
+
+                        f_synci = new Filter(64, NULL, f28_0_6mhz_b64);
+                        f_syncq = new Filter(64, NULL, f28_0_6mhz_b64);
+		}
+
+		// This assumes an entire 4K sliding buffer is available.  The return value is the # of new bytes desired 
+		int Process(uint16_t *buffer) {
+			
+			// find the first VSYNC, determine it's length
+
+			int sync_len;
+			int sync_start = FindHSync(buffer, 0, sync_len);
+
+			// if there isn't a whole line and (if applicable) following burst, advance first
+			if (sync_start < 0) return 4096;
+			if ((4096 - sync_start) < 2400) return (sync_start - 64);
+			if (sync_start < 50) return 512;
+
+			cerr << "first sync " << sync_start << " " << sync_len << endl;
+
+			// find next vsync.  this may be at .5H, if we're in VSYNC
+			int sync2_len;
+			int sync2_start = FindHSync(buffer, sync_start + sync_len + (int)(64 * freq), sync2_len);
+			
+			cerr << "second sync " << sync2_start << " " << sync2_len << endl;
+
+			// determine if this is a standard line
+			double linelen = sync2_start - sync_start;
+
+			// check sync lengths and distance between syncs to see if we've got a regular line
+			if ((fabs(linelen - hlen) < (hlen * .02)) && 
+			    (sync2_len > (16 * freq)) && (sync2_len < (18 * freq)) &&
+			    (sync_len > (16 * freq)) && (sync_len < (18 * freq)))
+			{
+				double plevel, pphase, pphase2;
+
+				cerr << "regular line" << endl; 
+				BurstDetect(&buffer[sync_start], 3.5 * dots_usec, 7.5 * dots_usec, plevel, pphase);
+				cerr << "burst 1 " << plevel << " " << pphase << endl;
+			
+				cerr << sync_len << ' ' << (sync2_start - sync_start + sync2_len) << endl;	
+				BurstDetect(&buffer[sync_start], (sync2_start - sync_start) + (3.5 * dots_usec), 7.5 * dots_usec, plevel, pphase2);
+				cerr << "burst 2 " << plevel << " " << pphase2 << endl;
+
+				double gap = -((pphase2 - pphase) / M_PIl) * 4.0;
+				if (gap < -4) gap += 8;
+				if (gap > 4) gap -= 8;
+
+				cerr << "gap " << gap << endl;
+				ScaleOut(buffer, sync_start, 1820 + gap);
+			} else {
+				cerr << "special line" << endl; 
+				ScaleOut(buffer, sync_start, 1820);
+			}
+
+			// begin line processing depending on line type
+
+			return (sync_start - 64 + 1820);
 		}
 };
 
 int main(int argc, char *argv[])
 {
-	int rv = 0, fd = 0, dlen = -1 ;
+	int rv = 0, fd = 0;
+	long long dlen = -1, tproc = 0;
 	//double output[2048];
-	unsigned short inbuf[2048];
+	unsigned short inbuf[4096];
 
 	cerr << std::setprecision(10);
 	cerr << argc << endl;
@@ -387,81 +465,26 @@ int main(int argc, char *argv[])
 		if (offset) lseek64(fd, offset, SEEK_SET);
 	}
 		
-	if (argc >= 3) {
+	if (argc >= 4) {
 		if ((size_t)atoi(argv[3]) < dlen) {
 			dlen = atoi(argv[3]); 
 		}
 	}
 
 	cout << std::setprecision(8);
-	
-	rv = read(fd, inbuf, 2048);
 
-	int i = 2048;
+	TBC tbc;
 
-	vector<unsigned short> outbuf;	
+	rv = read(fd, inbuf, 8192);
 
-	int ntsc_passes = 2;
-	vector<TBC *> tbc;
-	vector<Resample *> delaybuf;
+	while (rv == 8192 && ((tproc < dlen) || (dlen < 0))) {
+		int plen = tbc.Process(inbuf);	
 
-	for (int i = 0; i < ntsc_passes - 1; i++) {
-		tbc.push_back(new TBC());
-		delaybuf.push_back(new Resample());
-	} 
-	tbc.push_back(new TBC());
-	delaybuf.push_back(new Resample());
-
-	tbc[0]->set_tbc(TBC_HSYNC);
-	tbc[1]->set_tbc(TBC_CBURST);
-
-	int count = 0;
-	double nextfreq = 1.0000, nextphase = 0.0;
-		
-	while ((rv > 0) && ((dlen == -1) || (i < dlen))) {
-		vector<double> dinbuf;
-
-		for (int i = 0; i < (rv / 2); i++) {
-			int in = inbuf[i];
-
-			count++;
-			tbc[0]->feed(in);
-			delaybuf[0]->feed(in);
-
-			for (int j = 0; j < ntsc_passes; j++) { 
-				if (tbc[j]->get_newphase(nextfreq, nextphase)) {
-					cerr << "newscale " << j << " " << nextfreq << endl;
-					delaybuf[j]->setscale(nextfreq);		
-//					nextfreq = 1.0;
-				}
-
-				if (!j) {
-					for (double v: *delaybuf[j]) {
-						tbc[1]->feed(v);
-						delaybuf[1]->feed(v);
-					}
-					delaybuf[0]->clear();
-				}
-			}
-				
-			for (double v: *delaybuf[1]) {
-				if (v < 0) v = 0;
-				if (v > 65535) v = 65535;
-				outbuf.push_back((unsigned short)v);
-			}
-			delaybuf[1]->clear();
-		}
-		
-		i += rv;
-		if (i % 2) inbuf[0] = inbuf[rv];
-		rv = read(fd, &inbuf[i % 2], 2048 - (i % 2));
-
-		unsigned short *boutput = outbuf.data();
-		if (write(1, boutput, outbuf.size() * 2) != outbuf.size() * 2) {
-			exit(0);
-		}
-		outbuf.clear();
+		tproc += plen;
+                memmove(inbuf, &inbuf[plen], (4096 - plen) * 2);
+                rv = read(fd, &inbuf[(4096 - plen)], plen * 2) + ((4096 - plen) * 2);
 	}
+
 	return 0;
 }
 
