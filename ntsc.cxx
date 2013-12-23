@@ -247,7 +247,7 @@ const double dotclk = (1000000.0*(315.0/88.0)*8.0);
 const double dots_usec = dotclk / 1000000.0; 
 
 // values for horizontal timings 
-const double line_blanklen = 10.7 * dots_usec;
+const double line_blanklen = 10.2 * dots_usec;
 
 const double line_fporch = 1.5 * dots_usec; // front porch
 
@@ -405,13 +405,13 @@ class TBC
 //				cmult = 0.2 / ((double)level / 65535.0);
 
 				int counter = 0;
-				for (int h = line_blanklen - 64; counter < 1544; h++) {
+				for (int h = line_blanklen - 64; counter < 1760; h++) {
 					val = (double)line[h] / 65535.0;
 					
 					double q = f_q->feed(-val * _cos[h % 8]);
 					double i = f_i->feed(val * _sin[h % 8]);
 					
-					cerr << "P" << h << ' ' << counter << ' ' << line[h] << ' ' << val;
+//					cerr << "P" << h << ' ' << counter << ' ' << line[h] << ' ' << val;
 				
 	                                if (counter > 17) {
 						_val = circbuf[counter % 17];
@@ -422,25 +422,25 @@ class TBC
 	                                double iadj = i * 2 * _cos[(h + 1) % 8];
 					double qadj = q * 2 * _sin[(h + 1) % 8];
 
-					cerr << ' ' << _val << ' ' << iadj + qadj << ' ';
+//					cerr << ' ' << _val << ' ' << iadj + qadj << ' ';
 
 					val += iadj + qadj;
 					YIQ outc = YIQ(val, cmult * i, cmult * q);	
 
 					if (counter >= 64) {
 						outline[counter - 64].y = outc.y;
-						outline[counter - 64 + 8].i = outc.i;
-						outline[counter - 64 + 8].q = outc.q;
-						cerr << ' ' << outc.y << ' ' << outc.i << ' ' << outc.q;
+						outline[counter - 64].i = outc.i;
+						outline[counter - 64].q = outc.q;
+//						cerr << ' ' << outc.y << ' ' << outc.i << ' ' << outc.q;
 					} 
-					cerr << endl;
+//					cerr << endl;
 
 					counter++;
 				}
 
-				uint16_t output[1536 * 3];
+				uint16_t output[1488 * 3];
 				int o = 0; 
-				for (int h = 0; h < 1536; h++) {
+				for (int h = 0; h < 1488; h++) {
 					RGB r;
 					r.conv(outline[h]);
 
@@ -634,6 +634,7 @@ int main(int argc, char *argv[])
 	long long dlen = -1, tproc = 0;
 	//double output[2048];
 	unsigned short inbuf[4096];
+	unsigned char *cinbuf = (unsigned char *)inbuf;
 
 	cerr << std::setprecision(10);
 	cerr << argc << endl;
@@ -662,6 +663,11 @@ int main(int argc, char *argv[])
 	TBC tbc;
 
 	rv = read(fd, inbuf, 8192);
+	while ((rv > 0) && (rv < 8192)) {
+		int rv2 = read(fd, &cinbuf[rv], 8192 - rv);
+		if (rv2 <= 0) exit(0);
+		rv += rv2;
+	}
 
 	while (rv == 8192 && ((tproc < dlen) || (dlen < 0))) {
 		int plen = tbc.Process(inbuf);	
@@ -669,6 +675,11 @@ int main(int argc, char *argv[])
 		tproc += plen;
                 memmove(inbuf, &inbuf[plen], (4096 - plen) * 2);
                 rv = read(fd, &inbuf[(4096 - plen)], plen * 2) + ((4096 - plen) * 2);
+		while ((rv > 0) && (rv < 8192)) {
+			int rv2 = read(fd, &cinbuf[rv], 8192 - rv);
+			if (rv2 <= 0) exit(-1);
+			rv += rv2;
+		}	
 	}
 
 	return 0;
