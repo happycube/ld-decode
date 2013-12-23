@@ -327,8 +327,8 @@ class TBC
 				// need to wait 30 samples
 				if (i > 30) {
 					if (sync_start < 0) {
-						if (v < 10000) sync_start = i;
-					} else if (v > 10000) {
+						if (v < 12000) sync_start = i;
+					} else if (v > 12000) {
 						if ((i - sync_start) > tlen) {
 						//	cerr << "found " << i << " " << sync_start << ' ' << (i - sync_start) << endl;
 							pulselen = i - sync_start;
@@ -535,14 +535,18 @@ class TBC
 				cerr << "regular line" << endl; 
 				BurstDetect(&buffer[sync_start], 3.5 * dots_usec, 7.5 * dots_usec, plevel, pphase);
 				cerr << "burst 1 " << plevel << " " << pphase << endl;
-			
+		
 				cerr << sync_len << ' ' << (sync2_start - sync_start + sync2_len) << endl;	
 				BurstDetect(&buffer[sync_start], (sync2_start - sync_start) + (3.5 * dots_usec), 7.5 * dots_usec, plevel, pphase2);
-				cerr << "burst 2 " << plevel << " " << pphase2 << endl;
+				cerr << "burst 2 " << plevel << " " << pphase2 << ' ';
 
 				double gap = -((pphase2 - pphase) / M_PIl) * 4.0;
+				cerr << sync_start << ":" << sync2_start << " " << (((sync2_start - sync_start) > hlen)) << ' ' << gap << endl;
 				if (gap < -4) gap += 8;
 				if (gap > 4) gap -= 8;
+				
+				if (((sync2_start - sync_start) > hlen) && (gap < 0)) gap += 4;
+				if (((sync2_start - sync_start) < hlen) && (gap > 0)) gap -= 4;
 
 				cerr << "gap " << gap << endl;
 				ScaleOut(buffer, outbuf, sync_start, 1820 + gap);
@@ -559,21 +563,24 @@ class TBC
 						pcon = (-M_PIl / 2) - pphase;
 					}
 				}
-				if (linecount % 2) {
-					pcon = (-M_PIl / 2) - pphase;
-				} else {
-					pcon = (M_PIl / 2) - pphase;
+
+				if (plevel > 1000) {
+					if (linecount % 2) {
+						pcon = (-M_PIl / 2) - pphase;
+					} else {
+						pcon = (M_PIl / 2) - pphase;
+					}
+					cerr << pcon << endl;
+
+					double adjust = (pcon / M_PIl) * 4.0;
+					if (adjust < -4) adjust += 8;
+					if (adjust > 4) adjust -= 8;
+					cerr << "adjust " << adjust << endl;
+				
+					ScaleOut(buffer, outbuf, sync_start + adjust, 1820 + gap);
+					BurstDetect(outbuf, 3.5 * dots_usec, 7.5 * dots_usec, plevel, pphase);
+					cerr << "post-scale 2 " << plevel << " " << pphase << endl;
 				}
-				cerr << pcon << endl;
-
-				double adjust = (pcon / M_PIl) * 4.0;
-				if (adjust < -4) adjust += 8;
-				if (adjust > 4) adjust -= 8;
-				cerr << "adjust " << adjust << endl;
-
-				ScaleOut(buffer, outbuf, sync_start + adjust, 1820 + gap);
-				BurstDetect(outbuf, 3.5 * dots_usec, 7.5 * dots_usec, plevel, pphase);
-				cerr << "post-scale 2 " << plevel << " " << pphase << endl;
 			} else {
 				cerr << "special line" << endl; 
 
@@ -619,6 +626,7 @@ class TBC
 				curline++;
 				if (curline > 525) {
 					curline = 1; 
+//					linecount = -1;
 					if (fieldcount < 0) fieldcount = 0;
 				}
 			}
