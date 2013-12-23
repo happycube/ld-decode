@@ -311,7 +311,7 @@ class TBC
 		Filter *f_i, *f_q;
 		Filter *f_synci, *f_syncq;
 
-		int FindHSync(uint16_t *buf, int start, int &pulselen, int tlen = 32) {
+		int FindHSync(uint16_t *buf, int start, int &pulselen, int tlen = 60) {
 			Filter f_s(32, NULL, f28_1_3mhz_b32);
 
 			int sync_start = -1;
