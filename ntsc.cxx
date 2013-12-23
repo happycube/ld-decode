@@ -300,6 +300,8 @@ class TBC
 		int curline;    // current line # in frame 
 		int active;	// set to 1 when first frame ends
 
+		long long scount;	// total # of samples consumed
+
 		int fieldcount;
 	
 		int bufsize; 
@@ -486,6 +488,8 @@ class TBC
 			fieldcount = curline = linecount = -1;
 			active = 0;
 
+			scount = 0;
+
 			bufsize = _bufsize;
 		
 			// build table of standard cos/sin for phase/level calc	
@@ -509,13 +513,22 @@ class TBC
 
 			int sync_len;
 			int sync_start = FindHSync(buffer, 0, bufsize, sync_len);
+			
+//			if (linecount && (sync_start > 300)) sync_start = 64;
 
 			// if there isn't a whole line and (if applicable) following burst, advance first
-			if (sync_start < 0) return 4096;
-			if ((4096 - sync_start) < 2400) return (sync_start - 64);
-			if (sync_start < 50) return 512;
-
-			if (linecount && (sync_start > 100)) sync_start = 64;
+			if (sync_start < 0) {
+				scount += 4096;
+				return 4096;
+			}
+			if ((4096 - sync_start) < 2400) {
+				scount += sync_start - 64;
+				return sync_start - 64;
+			}
+			if (sync_start < 50) {
+				scount += 512;
+				return 512;
+			}
 
 			cerr << "first sync " << sync_start << " " << sync_len << endl;
 
@@ -605,7 +618,7 @@ class TBC
 
 				if (((curline > 23) && (curline < 260)) || 
 				    ((curline > 290) && (curline < 520))) {
-					cerr << "ERR\n";
+					cerr << "ERR " << scount << endl;
 				}
 
 				if ((sync_len > (15 * freq)) &&
@@ -660,6 +673,7 @@ class TBC
 			}
 			if (linecount >= 0) linecount++;
 
+			scount += sync_start - 64 + 1820;
 			return (sync_start - 64 + 1820);
 		}
 };
