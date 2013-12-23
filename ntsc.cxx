@@ -291,6 +291,7 @@ inline uint16_t ire_to_u16(double ire)
 // tunables
 
 double black_ire = 7.5;
+bool whiteflag_detect = true;
 
 class TBC
 {
@@ -530,30 +531,37 @@ class TBC
 /*			    (sync2_len > (16 * freq)) && (sync2_len < (18 * freq)) && */
 			    (sync_len > (16 * freq)) && (sync_len < (18 * freq)))
 			{
-				double plevel, pphase, pphase2;
+				double plevel, plevel2, pphase, pphase2, gap;
 
-				cerr << "regular line" << endl; 
+				// determine color burst and phase levels of both this and next color bursts
+
 				BurstDetect(&buffer[sync_start], 3.5 * dots_usec, 7.5 * dots_usec, plevel, pphase);
 				cerr << "burst 1 " << plevel << " " << pphase << endl;
 		
 				cerr << sync_len << ' ' << (sync2_start - sync_start + sync2_len) << endl;	
-				BurstDetect(&buffer[sync_start], (sync2_start - sync_start) + (3.5 * dots_usec), 7.5 * dots_usec, plevel, pphase2);
-				cerr << "burst 2 " << plevel << " " << pphase2 << ' ';
+				BurstDetect(&buffer[sync_start], (sync2_start - sync_start) + (3.5 * dots_usec), 7.5 * dots_usec, plevel2, pphase2);
+				cerr << "burst 2 " << plevel2 << " " << pphase2 << ' ';
 
-				double gap = -((pphase2 - pphase) / M_PIl) * 4.0;
-				cerr << sync_start << ":" << sync2_start << " " << (((sync2_start - sync_start) > hlen)) << ' ' << gap << endl;
-				if (gap < -4) gap += 8;
-				if (gap > 4) gap -= 8;
+				// if available, use the phase data of the next line's burst to determine line length
+				if (plevel2 > 1000) {
+					gap = -((pphase2 - pphase) / M_PIl) * 4.0;
+					cerr << sync_start << ":" << sync2_start << " " << (((sync2_start - sync_start) > hlen)) << ' ' << gap << endl;
+					if (gap < -4) gap += 8;
+					if (gap > 4) gap -= 8;
 				
-				if (((sync2_start - sync_start) > hlen) && (gap < 0)) gap += 4;
-				if (((sync2_start - sync_start) < hlen) && (gap > 0)) gap -= 4;
+					if (((sync2_start - sync_start) > hlen) && (gap < 0)) gap += 4;
+					if (((sync2_start - sync_start) < hlen) && (gap > 0)) gap -= 4;
 
-				cerr << "gap " << gap << endl;
-				ScaleOut(buffer, outbuf, sync_start, 1820 + gap);
+					cerr << "gap " << gap << endl;
+					ScaleOut(buffer, outbuf, sync_start, 1820 + gap);
 				
-				BurstDetect(outbuf, 3.5 * dots_usec, 7.5 * dots_usec, plevel, pphase);
-				cerr << "post-scale 1 " << plevel << " " << pphase << endl;
+					BurstDetect(outbuf, 3.5 * dots_usec, 7.5 * dots_usec, plevel, pphase);
+					cerr << "post-scale 1 " << plevel << " " << pphase << endl;
+				} else {
+					gap = sync2_start - sync_start;
+				}
 
+				// if this is the first line (of the frame?) set up phase targets for each line
 				if (linecount == -1) {
 					if (pphase > 0) { 
 						linecount = 0;
@@ -564,6 +572,7 @@ class TBC
 					}
 				}
 
+				// if this line has a good color burst, adjust phase
 				if (plevel > 1000) {
 					if (linecount % 2) {
 						pcon = (-M_PIl / 2) - pphase;
@@ -586,7 +595,7 @@ class TBC
 
 				if ((sync_len > (15 * freq)) &&
 				    (sync_len < (18 * freq)) &&
-				    (sync2_len < (9 * freq)) &&
+				    (sync2_len < (10 * freq)) &&
 				    ((sync2_start - sync_start) < (freq * 125)) &&
 				    ((sync2_start - sync_start) > (freq * 110))) {
 					curline = 263;
@@ -599,13 +608,16 @@ class TBC
 			if (curline >= 0) {
 				cerr << "L" << NTSCLineLoc[curline] << endl;
 
-				// On Laserdisc, lines 11 and 274 are 'white' flags indicating new field start
-				if (NTSCLine[curline] & LINE_WHITEFLAG) {
-					int wc = 0;
-					for (int i = line_blanklen; i < 1800; i++) {
-						if (outbuf[i] > 40000) wc++;
-					} 
-					if (wc > 800) fieldcount = 0;
+				if (whiteflag_detect) {
+					// On Laserdisc, lines 11 and 274 are 'white' flags indicating new field start
+					if (NTSCLine[curline] & LINE_WHITEFLAG) {
+						int wc = 0;
+						for (int i = line_blanklen; i < 1800; i++) {
+							if (outbuf[i] > 40000) wc++;
+						} 
+						cerr << "W" << curline << ' ' << wc << ' ' << fieldcount << endl;
+						if (wc > 800) fieldcount = 0;
+					}
 				}
 
 				if (NTSCLineLoc[curline] >= 0) {
@@ -615,6 +627,7 @@ class TBC
 					{
 						fieldcount++;
 						if (fieldcount == 2) {
+							cerr << "Write\n";
 							CombFilter(frame);
 					//		write(1, frame, 1820 * 2 * 525);
 							memset(frame, 0, sizeof(frame));
@@ -626,7 +639,7 @@ class TBC
 				curline++;
 				if (curline > 525) {
 					curline = 1; 
-//					linecount = -1;
+					linecount = -1;
 					if (fieldcount < 0) fieldcount = 0;
 				}
 			}
