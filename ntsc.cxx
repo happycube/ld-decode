@@ -312,7 +312,7 @@ class TBC
 		Filter *f_i, *f_q;
 		Filter *f_synci, *f_syncq;
 
-		int FindHSync(uint16_t *buf, int start, int &pulselen, int tlen = 60) {
+		int FindHSync(uint16_t *buf, int start, int len, int &pulselen, int tlen = 60) {
 			Filter f_s(32, NULL, f28_1_3mhz_b32);
 
 			int sync_start = -1;
@@ -320,7 +320,7 @@ class TBC
 			// allow for filter startup
 			if (start > 31) start -= 31;
 	
-			for (int i = start; i < bufsize; i++) {
+			for (int i = start; i < start + len; i++) {
 				double v = f_s.feed(buf[i]);
 
 //				cerr << i << ' ' << buf[i] << ' ' << v << endl; 
@@ -508,28 +508,38 @@ class TBC
 			double pcon;
 
 			int sync_len;
-			int sync_start = FindHSync(buffer, 0, sync_len);
+			int sync_start = FindHSync(buffer, 0, bufsize, sync_len);
 
 			// if there isn't a whole line and (if applicable) following burst, advance first
 			if (sync_start < 0) return 4096;
 			if ((4096 - sync_start) < 2400) return (sync_start - 64);
 			if (sync_start < 50) return 512;
 
+			if (linecount && (sync_start > 100)) sync_start = 64;
+
 			cerr << "first sync " << sync_start << " " << sync_len << endl;
 
 			// find next vsync.  this may be at .5H, if we're in VSYNC
 			int sync2_len;
-			int sync2_start = FindHSync(buffer, sync_start + sync_len + (int)(64 * freq), sync2_len);
-			
+			int sync2_start;
+	
+			sync2_start = FindHSync(buffer, sync_start + 750, 300, sync2_len);
+			if (sync2_start < 0) {
+				sync2_start = FindHSync(buffer, sync_start + 1800, 300, sync2_len);
+			}		
+			if (sync2_start < 0) {
+				sync2_start = sync_start + 1820;
+			}		
+	
 			cerr << "second sync " << sync2_start << " " << sync2_len << endl;
 
 			// determine if this is a standard line
 			double linelen = sync2_start - sync_start;
 
 			// check sync lengths and distance between syncs to see if we've got a regular line
-			if ((fabs(linelen - hlen) < (hlen * .02)) && 
+			if ((fabs(linelen - hlen) < (hlen * .05)) && 
 /*			    (sync2_len > (16 * freq)) && (sync2_len < (18 * freq)) && */
-			    (sync_len > (16 * freq)) && (sync_len < (18 * freq)))
+			    (sync_len > (15 * freq)) && (sync_len < (20 * freq)))
 			{
 				double plevel, plevel2, pphase, pphase2, gap;
 
@@ -557,19 +567,19 @@ class TBC
 				
 					BurstDetect(outbuf, 3.5 * dots_usec, 7.5 * dots_usec, plevel, pphase);
 					cerr << "post-scale 1 " << plevel << " " << pphase << endl;
+				
+					// if this is the first line (of the frame?) set up phase targets for each line
+					if (linecount == -1) {
+						if (pphase > 0) { 
+							linecount = 0;
+							pcon = (M_PIl / 2) - pphase;
+						} else {
+							linecount = 1;
+							pcon = (-M_PIl / 2) - pphase;
+						}
+					}
 				} else {
 					gap = sync2_start - sync_start;
-				}
-
-				// if this is the first line (of the frame?) set up phase targets for each line
-				if (linecount == -1) {
-					if (pphase > 0) { 
-						linecount = 0;
-						pcon = (M_PIl / 2) - pphase;
-					} else {
-						linecount = 1;
-						pcon = (-M_PIl / 2) - pphase;
-					}
 				}
 
 				// if this line has a good color burst, adjust phase
@@ -592,6 +602,11 @@ class TBC
 				}
 			} else {
 				cerr << "special line" << endl; 
+
+				if (((curline > 23) && (curline < 260)) || 
+				    ((curline > 290) && (curline < 520))) {
+					cerr << "ERR\n";
+				}
 
 				if ((sync_len > (15 * freq)) &&
 				    (sync_len < (18 * freq)) &&
