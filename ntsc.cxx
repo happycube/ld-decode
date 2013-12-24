@@ -141,9 +141,9 @@ struct RGB {
                 g = (y.y * 1.164) - (0.813 * y.i) - (y.q * 0.391);
                 b = (y.y * 1.164) + (y.q * 2.018);
 
-                r = clamp(r, 0, 1.05);
-                g = clamp(g, 0, 1.05);
-                b = clamp(b, 0, 1.05);
+                r = clamp(r, 0, 1.00);
+                g = clamp(g, 0, 1.00);
+                b = clamp(b, 0, 1.00);
                 //cerr << 'y' << y.y << " i" << y.i << " q" << y.q << ' ';
                 //cerr << 'r' << r << " g" << g << " b" << b << endl;
         };
@@ -267,8 +267,8 @@ const double line_vspulse = 30 * dots_usec; // ???
 // uint16_t levels
 uint16_t level_m40ire = 1;
 uint16_t level_0ire = 16384;
-uint16_t level_7_5_ire = 3071;
-uint16_t level_100ire = 40959;
+uint16_t level_7_5_ire = 16384+3071;
+uint16_t level_100ire = 57344;
 uint16_t level_120ire = 65535;
 
 inline double u16_to_ire(uint16_t level)
@@ -280,7 +280,7 @@ inline double u16_to_ire(uint16_t level)
 
 inline uint16_t ire_to_u16(double ire)
 {
-	if (ire <= -100) return 0;
+	if (ire <= -60) return 0;
 	if (ire <= -40) return 1;
 
 	if (ire >= 120) return 65535;	
@@ -330,8 +330,8 @@ class TBC
 				// need to wait 30 samples
 				if (i > 30) {
 					if (sync_start < 0) {
-						if (v < 12000) sync_start = i;
-					} else if (v > 12000) {
+						if (v < 11000) sync_start = i;
+					} else if (v > 11000) {
 						if ((i - sync_start) > tlen) {
 						//	cerr << "found " << i << " " << sync_start << ' ' << (i - sync_start) << endl;
 							pulselen = i - sync_start;
@@ -409,7 +409,7 @@ class TBC
 
 				int counter = 0;
 				for (int h = line_blanklen - 64; counter < 1760; h++) {
-					val = (double)line[h] / 65535.0;
+					val = (double)line[h] / (double)level_100ire;
 					
 					double q = f_q->feed(-val * _cos[h % 8]);
 					double i = f_i->feed(val * _sin[h % 8]);
@@ -447,9 +447,9 @@ class TBC
 					RGB r;
 					r.conv(outline[h]);
 
-					output[o++] = (uint16_t)(r.r * 62000.0); 
-					output[o++] = (uint16_t)(r.g * 62000.0); 
-					output[o++] = (uint16_t)(r.b * 62000.0); 
+					output[o++] = (uint16_t)(r.r * 65530.0); 
+					output[o++] = (uint16_t)(r.g * 65530.0); 
+					output[o++] = (uint16_t)(r.b * 65530.0); 
 				}
 				write(1, output, sizeof(output));
 			}
@@ -514,8 +514,6 @@ class TBC
 			int sync_len;
 			int sync_start = FindHSync(buffer, 0, bufsize, sync_len);
 			
-//			if (linecount && (sync_start > 300)) sync_start = 64;
-
 			// if there isn't a whole line and (if applicable) following burst, advance first
 			if (sync_start < 0) {
 				scount += 4096;
@@ -566,16 +564,16 @@ class TBC
 				cerr << "burst 2 " << plevel2 << " " << pphase2 << ' ';
 
 				// if available, use the phase data of the next line's burst to determine line length
-				if (plevel2 > 1000) {
+				if ((plevel > 1000) && (plevel2 > 1000)) {
 					gap = -((pphase2 - pphase) / M_PIl) * 4.0;
 					cerr << sync_start << ":" << sync2_start << " " << (((sync2_start - sync_start) > hlen)) << ' ' << gap << endl;
 					if (gap < -4) gap += 8;
 					if (gap > 4) gap -= 8;
-				
-					if (((sync2_start - sync_start) > hlen) && (gap < 0)) gap += 4;
-					if (((sync2_start - sync_start) < hlen) && (gap > 0)) gap -= 4;
+			
+					if (((sync2_start - sync_start) > hlen) && (gap < -.5)) gap += 4;
+					if (((sync2_start - sync_start) < hlen) && (gap > .5)) gap -= 4;
 
-					cerr << "gap " << gap << endl;
+//					cerr << "gap " << gap << endl;
 					ScaleOut(buffer, outbuf, sync_start, 1820 + gap);
 				
 					BurstDetect(outbuf, 3.5 * dots_usec, 7.5 * dots_usec, plevel, pphase);
@@ -592,6 +590,7 @@ class TBC
 						}
 					}
 				} else {
+					cerr << "WARN:  Missing burst\n";
 					gap = sync2_start - sync_start;
 				}
 
@@ -607,11 +606,13 @@ class TBC
 					double adjust = (pcon / M_PIl) * 4.0;
 					if (adjust < -4) adjust += 8;
 					if (adjust > 4) adjust -= 8;
-					cerr << "adjust " << adjust << endl;
+					cerr << "adjust " << adjust << " gap " << gap << endl;
 				
 					ScaleOut(buffer, outbuf, sync_start + adjust, 1820 + gap);
 					BurstDetect(outbuf, 3.5 * dots_usec, 7.5 * dots_usec, plevel, pphase);
 					cerr << "post-scale 2 " << plevel << " " << pphase << endl;
+				} else {
+					cerr << "WARN:  No first burst found\n";
 				}
 			} else {
 				cerr << "special line" << endl; 
