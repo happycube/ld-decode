@@ -267,6 +267,11 @@ int main(int argc, char *argv[])
 	int rv = 0, fd = 0, dlen = -1 ;
 	//double output[2048];
 	unsigned char inbuf[2048];
+	unsigned long long offset = 0;
+	unsigned long long cur = 0;
+	unsigned long long guide = 0;
+
+	bool have_guide = false;
 
 	cerr << std::setprecision(10);
 	cerr << argc << endl;
@@ -277,16 +282,26 @@ int main(int argc, char *argv[])
 	}
 
 	if (argc >= 3) {
-		unsigned long long offset = atoll(argv[2]);
-
-		if (offset) lseek64(fd, offset, SEEK_SET);
+		offset = atoll(argv[2]);
 	}
-		
-	if (argc >= 3) {
-		if ((size_t)atoi(argv[3]) < dlen) {
+	
+	if (argc >= 4) {
+		if (!strcmp(argv[3], "-")) {
+			long long first;
+
+			have_guide = true;
+
+			cin >> first;
+			cerr << first << endl; 
+
+			offset += first;
+			cur = guide = first;
+		} else if ((size_t)atoi(argv[3]) < dlen) {
 			dlen = atoi(argv[3]); 
 		}
 	}
+			
+	if (offset) lseek64(fd, offset, SEEK_SET);
 
 	cout << std::setprecision(8);
 	
@@ -305,10 +320,14 @@ int main(int argc, char *argv[])
 
 	double t_n = 0.0;
 
-	int x = 0, total = 0;	
+	int x = 0;
+	long long total = 0;	
 	double pt = 1, t = 0;
 	int zc_count = 0;
 	double zc_dist = 0;
+
+	double speed = 1.0;
+	double next = 0;
 //	int crosspoint = 0;
 	while ((rv == 2048) && ((dlen == -1) || (i < dlen))) {
 		vector<double> dinbuf;
@@ -330,10 +349,32 @@ int main(int argc, char *argv[])
 		//cerr << 'L' << outline.size() << endl;
 		for (int i = 0; i < outleft.size(); i++) {
 			short output;
+	
+			cur += 4;	
+			if (cur > guide) {
+				unsigned long long newguide;
+
+				if (have_guide) {
+					cin >> newguide;
+					if (newguide == guide) dlen = i; 
+					cerr << newguide << ' ' << guide << endl;
+				} else {
+					newguide = guide + 1820;
+				}
+				double diff = newguide - guide;
+
+				guide = newguide;
+				if (!diff) 
+					speed = 1.0;
+				else
+					speed = diff / 1820.0;	
+
+//				cerr << "S" << speed << ' ' << diff << ' ' << cur << ' ' << guide << endl;
+			} 
 
 			total++;
 
-			if (!(total % 143)) {
+			if (total > next) {
 				double n = outleft[i];
 //				cerr << 'T' << n << endl;
 				n -= 2301136.0;
@@ -350,6 +391,9 @@ int main(int argc, char *argv[])
 				if (n > 1) n = 1;
 				output = n * 32767;
 				bout.push_back(output);
+
+				next += (143 * speed);
+//				cerr << "N" << next << endl;
 			}
 		}
 		

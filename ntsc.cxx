@@ -293,6 +293,8 @@ inline uint16_t ire_to_u16(double ire)
 double black_ire = 7.5;
 bool whiteflag_detect = true;
 
+int write_locs = -1;
+
 class TBC
 {
 	protected:
@@ -633,6 +635,12 @@ class TBC
 				ScaleOut(buffer, outbuf, sync_start, 1820);
 			}
 		
+			if (write_locs == 1) {
+				char outline[128];
+
+				sprintf(outline, "%ld\n", scount + sync_start);
+				write(3, outline, strlen(outline));
+			}
 
 			if (curline >= 0) {
 				cerr << "L" << NTSCLineLoc[curline] << endl;
@@ -670,6 +678,9 @@ class TBC
 					curline = 1; 
 					linecount = -1;
 					if (fieldcount < 0) fieldcount = 0;
+					if (!write_locs) {
+						write_locs = 1;
+					}
 				}
 			}
 			if (linecount >= 0) linecount++;
@@ -678,6 +689,11 @@ class TBC
 			return (sync_start - 64 + 1820);
 		}
 };
+
+int is_valid_fd(int fd)
+{
+    return fcntl(fd, F_GETFL) != -1 || errno != EBADF;
+}
 
 int main(int argc, char *argv[])
 {
@@ -705,6 +721,10 @@ int main(int argc, char *argv[])
 		if ((size_t)atoi(argv[3]) < dlen) {
 			dlen = atoi(argv[3]); 
 		}
+	}
+
+	if (is_valid_fd(3)) {
+		write_locs = 0;
 	}
 
 	cout << std::setprecision(8);
