@@ -322,8 +322,8 @@ int main(int argc, char *argv[])
 
 			offset += first;
 			cur = guide = first;
-		} else if ((size_t)atoi(argv[3]) < dlen) {
-			dlen = atoi(argv[3]); 
+		} else if ((size_t)atoll(argv[3]) < dlen) {
+			dlen = atoll(argv[3]); 
 		}
 	}
 			

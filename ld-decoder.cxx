@@ -389,8 +389,8 @@ int main(int argc, char *argv[])
 	}
 		
 	if (argc >= 4) {
-		if ((size_t)atoi(argv[3]) < dlen) {
-			dlen = atoi(argv[3]); 
+		if ((size_t)atoll(argv[3]) < dlen) {
+			dlen = atoll(argv[3]); 
 		}
 	}
 
