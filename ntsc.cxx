@@ -204,12 +204,8 @@ void buildNTSCLines()
 
 	// define odd field
 	NTSCLine[11] |= LINE_WHITEFLAG; 
-	NTSCLine[15] |= LINE_PHILLIPS; 
-	NTSCLine[16] |= LINE_PHILLIPS; 
 	NTSCLine[17] |= LINE_PHILLIPS; 
 	NTSCLine[18] |= LINE_PHILLIPS; 
-	NTSCLine[19] |= LINE_PHILLIPS; 
-	NTSCLine[20] |= LINE_PHILLIPS; 
 
 	for (i = 22; i <= 263; i++) {
 		NTSCLine[i] = LINE_NORMAL | LINE_VIDEO; 
@@ -218,8 +214,9 @@ void buildNTSCLines()
 	NTSCLine[263] = LINE_HALF | LINE_VIDEO | LINE_ENDFIELD;
 
 	// define even field
-	NTSCLine[274] |= LINE_WHITEFLAG; 
-	NTSCLine[264 + 18] |= LINE_PHILLIPS; 
+	NTSCLine[263 + 11] |= LINE_WHITEFLAG; 
+	NTSCLine[263 + 17] |= LINE_PHILLIPS; 
+	NTSCLine[263 + 18] |= LINE_PHILLIPS; 
 	
 	for (i = 285; i <= 525; i++) {
 		NTSCLine[i] = LINE_NORMAL | LINE_VIDEO; 
@@ -239,9 +236,10 @@ void buildNTSCLines()
 }
 
 // NTSC properties
-const double freq = 8.0;	// in FSC
+const double freq = 8.0;	// in FSC.  Must be an even number!
 
 const double hlen = 227.5 * freq;
+const int    hleni = (int)hlen;
 const double dotclk = (1000000.0*(315.0/88.0)*8.0); 
 
 const double dots_usec = dotclk / 1000000.0; 
@@ -302,9 +300,12 @@ class TBC
 		int curline;    // current line # in frame 
 		int active;	// set to 1 when first frame ends
 
+		bool f_newframe, f_whiteflag;
+
 		long long scount;	// total # of samples consumed
 
 		int fieldcount;
+		int frames_out;	// total # of written frames
 	
 		int bufsize; 
 
@@ -316,10 +317,14 @@ class TBC
 		Filter *f_i, *f_q;
 		Filter *f_synci, *f_syncq;
 
+		int32_t framecode;	// in hex
+
 		int FindHSync(uint16_t *buf, int start, int len, int &pulselen, int tlen = 60) {
 			Filter f_s(32, NULL, f28_1_3mhz_b32);
 
 			int sync_start = -1;
+
+			framecode = -1;
 
 			// allow for filter startup
 			if (start > 31) start -= 31;
@@ -380,7 +385,7 @@ class TBC
 				pphase = atan2(pi, pq);
 			}
 
-			cerr << pi << ' ' << pq << ' ' << pphase << endl;
+//			cerr << pi << ' ' << pq << ' ' << pphase << endl;
 
 			return rv;
 		}
@@ -400,7 +405,7 @@ class TBC
 				double circbuf[18];
 
 				BurstDetect(line, 3.5 * dots_usec, 7.5 * dots_usec, level, phase);
-				cerr << "burst " << level << ' ' << phase << endl;
+//				cerr << "burst " << level << ' ' << phase << endl;
 				for (int j = 0; j < (int)freq; j++) { 
 	                                _cos[j] = cos(phase + (2.0 * M_PIl * ((double)j / freq)));
 					_sin[j] = sin(phase + (2.0 * M_PIl * ((double)j / freq)));
@@ -485,15 +490,42 @@ class TBC
 			}
 		}
 
+		uint32_t ReadPhillipsCode(uint16_t *line) {
+			const int first_bit = (int)(.188 * hlen);
+			const double bitlen = 2.0 * dots_usec;
+			uint32_t out = 0;
+
+			for (int i = 0; i < 24; i++) {
+				double val = 0;
+	
+//				cerr << dots_usec << ' ' << (int)(first_bit + (bitlen * i) + dots_usec) << ' ' << (int)(first_bit + (bitlen * (i + 1))) << endl;	
+				for (int h = (int)(first_bit + (bitlen * i) + dots_usec); h < (int)(first_bit + (bitlen * (i + 1))); h++) {
+//					cerr << h << ' ' << line[h] << ' ' << endl;
+					val += u16_to_ire(line[h]); 
+				}
+
+//				cerr << "bit " << 23 - i << " " << val / dots_usec << endl;	
+				if ((val / dots_usec) < 50) {
+					out |= (1 << (23 - i));
+				} 
+			}
+			cerr << "P " << curline << ' ' << hex << out << dec << endl;			
+
+			return out;
+		}
+
 	public:
 		TBC(int _bufsize = 4096) {
 			fieldcount = curline = linecount = -1;
 			active = 0;
+			frames_out = 0;
 
 			scount = 0;
 
 			bufsize = _bufsize;
-		
+	
+			f_newframe = f_whiteflag = false;
+	
 			// build table of standard cos/sin for phase/level calc	
 			for (int e = 0; e < freq; e++) {
 				_cos[e] = cos((2.0 * M_PIl * ((double)e / freq)));
@@ -512,6 +544,7 @@ class TBC
 			uint16_t outbuf[(int)hlen * 2];	
 			// find the first VSYNC, determine it's length
 			double pcon;
+			double gap = 0.0;
 
 			int sync_len;
 			int sync_start = FindHSync(buffer, 0, bufsize, sync_len);
@@ -530,7 +563,7 @@ class TBC
 				return 512;
 			}
 
-			cerr << "first sync " << sync_start << " " << sync_len << endl;
+//			cerr << "first sync " << sync_start << " " << sync_len << endl;
 
 			// find next vsync.  this may be at .5H, if we're in VSYNC
 			int sync2_len;
@@ -544,7 +577,7 @@ class TBC
 				sync2_start = sync_start + 1820;
 			}		
 	
-			cerr << "second sync " << sync2_start << " " << sync2_len << endl;
+//			cerr << "second sync " << sync2_start << " " << sync2_len << endl;
 
 			// determine if this is a standard line
 			double linelen = sync2_start - sync_start;
@@ -554,21 +587,21 @@ class TBC
 /*			    (sync2_len > (16 * freq)) && (sync2_len < (18 * freq)) && */
 			    (sync_len > (15 * freq)) && (sync_len < (20 * freq)))
 			{
-				double plevel, plevel2, pphase, pphase2, gap;
+				double plevel, plevel2, pphase, pphase2;
 
 				// determine color burst and phase levels of both this and next color bursts
 
 				BurstDetect(&buffer[sync_start], 3.5 * dots_usec, 7.5 * dots_usec, plevel, pphase);
-				cerr << "burst 1 " << plevel << " " << pphase << endl;
+				// cerr << "burst 1 " << plevel << " " << pphase << endl;
 		
-				cerr << sync_len << ' ' << (sync2_start - sync_start + sync2_len) << endl;	
+				// cerr << sync_len << ' ' << (sync2_start - sync_start + sync2_len) << endl;	
 				BurstDetect(&buffer[sync_start], (sync2_start - sync_start) + (3.5 * dots_usec), 7.5 * dots_usec, plevel2, pphase2);
-				cerr << "burst 2 " << plevel2 << " " << pphase2 << ' ';
+				// cerr << "burst 2 " << plevel2 << " " << pphase2 << ' ';
 
 				// if available, use the phase data of the next line's burst to determine line length
 				if ((plevel > 1000) && (plevel2 > 1000)) {
 					gap = -((pphase2 - pphase) / M_PIl) * 4.0;
-					cerr << sync_start << ":" << sync2_start << " " << (((sync2_start - sync_start) > hlen)) << ' ' << gap << endl;
+					// cerr << sync_start << ":" << sync2_start << " " << (((sync2_start - sync_start) > hlen)) << ' ' << gap << endl;
 					if (gap < -4) gap += 8;
 					if (gap > 4) gap -= 8;
 			
@@ -579,7 +612,7 @@ class TBC
 					ScaleOut(buffer, outbuf, sync_start, 1820 + gap);
 				
 					BurstDetect(outbuf, 3.5 * dots_usec, 7.5 * dots_usec, plevel, pphase);
-					cerr << "post-scale 1 " << plevel << " " << pphase << endl;
+					// cerr << "post-scale 1 " << plevel << " " << pphase << endl;
 				
 					// if this is the first line (of the frame?) set up phase targets for each line
 					if (linecount == -1) {
@@ -603,21 +636,21 @@ class TBC
 					} else {
 						pcon = (M_PIl / 2) - pphase;
 					}
-					cerr << pcon << endl;
+					// cerr << pcon << endl;
 
 					double adjust = (pcon / M_PIl) * 4.0;
 					if (adjust < -4) adjust += 8;
 					if (adjust > 4) adjust -= 8;
-					cerr << "adjust " << adjust << " gap " << gap << endl;
+					// cerr << "adjust " << adjust << " gap " << gap << endl;
 				
 					ScaleOut(buffer, outbuf, sync_start + adjust, 1820 + gap);
 					BurstDetect(outbuf, 3.5 * dots_usec, 7.5 * dots_usec, plevel, pphase);
-					cerr << "post-scale 2 " << plevel << " " << pphase << endl;
+					// cerr << "post-scale 2 " << plevel << " " << pphase << endl;
 				} else {
 					cerr << "WARN:  No first burst found\n";
 				}
 			} else {
-				cerr << "special line" << endl; 
+//				cerr << "special line" << endl; 
 
 				if (((curline > 23) && (curline < 260)) || 
 				    ((curline > 290) && (curline < 520))) {
@@ -638,23 +671,44 @@ class TBC
 			if (write_locs == 1) {
 				char outline[128];
 
-				sprintf(outline, "%ld\n", scount + sync_start);
+				sprintf(outline, "%ld %lf\n", scount + sync_start, gap);
 				write(3, outline, strlen(outline));
 			}
 
 			if (curline >= 0) {
-				cerr << "L" << NTSCLineLoc[curline] << endl;
+//				cerr << "L" << NTSCLineLoc[curline] << endl;
+				bool is_whiteflag = false;
+				bool is_newframe = false;
+
+				if (NTSCLine[curline] & LINE_PHILLIPS) {
+					int new_framecode = ReadPhillipsCode(buffer) - 0xf80000;
+
+					if ((new_framecode > 0) && (new_framecode < 0x60000)) {
+						f_newframe = true;
+						fieldcount = 0;
+					}
+				}
 
 				if (whiteflag_detect) {
 					// On Laserdisc, lines 11 and 274 are 'white' flags indicating new field start
 					if (NTSCLine[curline] & LINE_WHITEFLAG) {
 						int wc = 0;
 						for (int i = line_blanklen; i < 1800; i++) {
-							if (outbuf[i] > 40000) wc++;
+							if (outbuf[i] > 45000) wc++;
 						} 
-						cerr << "W" << curline << ' ' << wc << ' ' << fieldcount << endl;
-						if (wc > 800) fieldcount = 0;
+						cerr << "PW" << curline << ' ' << wc << ' ' << fieldcount << endl;
+						if (wc > 1000) {
+							f_whiteflag = true;
+							fieldcount = 0;
+						}
 					}
+				}
+
+				if (NTSCLine[curline] & LINE_VIDEO) {
+					if (f_whiteflag != f_newframe) {
+						cerr << "WARNING:  whiteflag " << is_whiteflag << " != newframe " << is_newframe << endl;
+					}
+					f_whiteflag = f_newframe = false;
 				}
 
 				if (NTSCLineLoc[curline] >= 0) {
@@ -664,7 +718,8 @@ class TBC
 					{
 						fieldcount++;
 						if (fieldcount == 2) {
-							cerr << "Write\n";
+							frames_out++;
+							cerr << "Writing Frame #" << frames_out << endl;
 							CombFilter(frame);
 					//		write(1, frame, 1820 * 2 * 525);
 							memset(frame, 0, sizeof(frame));
