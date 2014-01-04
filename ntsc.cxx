@@ -447,7 +447,8 @@ class TBC
 
 					counter++;
 				}
-
+				
+#if 0
 				uint16_t output[1488 * 3];
 				int o = 0; 
 				for (int h = 0; h < 1488; h++) {
@@ -458,6 +459,18 @@ class TBC
 					output[o++] = (uint16_t)(r.g * 65530.0); 
 					output[o++] = (uint16_t)(r.b * 65530.0); 
 				}
+#else
+				uint8_t output[1488 * 3];
+				int o = 0; 
+				for (int h = 0; h < 1488; h++) {
+					RGB r;
+					r.conv(outline[h]);
+
+					output[o++] = (uint8_t)(r.r * 255.0); 
+					output[o++] = (uint8_t)(r.g * 255.0); 
+					output[o++] = (uint8_t)(r.b * 255.0); 
+				}
+#endif
 				write(1, output, sizeof(output));
 			}
 

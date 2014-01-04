@@ -170,6 +170,37 @@ Filter f_half_r(16, NULL, f_half_b_16);
 
 typedef vector<complex<double>> v_cossin;
 
+const double PI_FLOAT = M_PIl;
+const double PIBY2_FLOAT = (M_PIl/2.0);
+// |error| < 0.005
+double fast_atan2( double y, double x )
+{
+        if ( x == 0.0f )
+        {
+                if ( y > 0.0f ) return PIBY2_FLOAT;
+                if ( y == 0.0f ) return 0.0f;
+                return -PIBY2_FLOAT;
+        }
+        double atan;
+        double z = y/x;
+        if (  fabs( z ) < 1.0f  )
+        {
+                atan = z/(1.0f + 0.28f*z*z);
+                if ( x < 0.0f )
+                {
+                        if ( y < 0.0f ) return atan - PI_FLOAT;
+                        return atan + PI_FLOAT;
+                }
+        }
+        else
+        {
+                atan = PIBY2_FLOAT - z/(z*z + 0.28f);
+                if ( y < 0.0f ) return atan - PI_FLOAT;
+        }
+        return atan;
+}
+
+
 class FM_demod {
 	protected:
 		vector<Filter> f_q, f_i;
@@ -247,7 +278,7 @@ class FM_demod {
 				for (double f: fb) {
 					double fci = f_i[j].feed(n * ldft[j][i].real());
 					double fcq = f_q[j].feed(-n * ldft[j][i].imag());
-					double at2 = atan2(fci, fcq);	
+					double at2 = fast_atan2(fci, fcq);	
 	
 //					cerr << fci << ' ' << fcq << endl;
 
@@ -263,20 +294,12 @@ class FM_demod {
 						pf = f + ((f / 2.0) * angle[j]);
 					}				
 					phase[j] = at2;
-/*		
-					if (fabs(angle[j]) < fabs(peak)) {
-						npeak = j;
-						peak = angle[j];
-						pf = f + ((f / 2.0) * angle[j]);
-					}
-					phase[j] = at2;
-*/
 
 //					cerr << f << ' ' << pf << ' ' << f + ((f / 2.0) * angle[j]) << ' ' << fci << ' ' << fcq << ' ' << ' ' << level[j] << ' ' << phase[j] << ' ' << peak << endl;
 
 					j++;
 				}
-				
+
 //				cerr << pf << endl;
 	
 				if (i > min_offset) out.push_back(pf);
@@ -288,14 +311,16 @@ class FM_demod {
 		}
 };
 
+double time_inc = 1.0 / 15734.0;
+
 int main(int argc, char *argv[])
 {
 	int rv = 0, fd = 0, dlen = -1 ;
 	//double output[2048];
 	unsigned char inbuf[2048];
-	unsigned long long offset = 0;
-	unsigned long long cur = 0;
-	unsigned long long guide = 0;
+	long long offset = 0;
+	long long cur = 0;
+	long long guide = 0;
 
 	bool have_guide = false;
 
@@ -310,14 +335,15 @@ int main(int argc, char *argv[])
 	if (argc >= 3) {
 		offset = atoll(argv[2]);
 	}
-	
+
+	double gap;
+	long long first = 0;
+
 	if (argc >= 4) {
 		if (!strcmp(argv[3], "-")) {
-			long long first;
-
 			have_guide = true;
 
-			cin >> first;
+			cin >> first >> gap;
 			cerr << first << endl; 
 
 			offset += first;
@@ -355,8 +381,12 @@ int main(int argc, char *argv[])
 	double zc_dist = 0;
 
 	double speed = 1.0;
-	double next = 0;
-//	int crosspoint = 0;
+	double ntime = 0;
+	long long next = -1;
+
+	double time1 = 0.0, time2 = 0.0;
+	long long pt1 = -1, pt2 = first;
+
 	while ((rv == 2048) && ((dlen == -1) || (i < dlen))) {
 		vector<double> dinbuf;
 		vector<unsigned short> ioutbuf;
@@ -366,7 +396,6 @@ int main(int argc, char *argv[])
 			if (!(j % 4)) dinbuf.push_back(f_quarter.val());
 		}
 
-//		cerr << dinbuf.size();
 		vector<double> outleft = left.process(dinbuf);
 		vector<double> outright = right.process(dinbuf);
 
@@ -379,32 +408,39 @@ int main(int argc, char *argv[])
 			short output;
 	
 			cur += 4;	
-			if (cur > guide) {
-				unsigned long long newguide;
+			if (cur > pt2) {
+//				cerr << "cur " << cur << " pt1 " << pt1 << " pt2 " << pt2 << endl;
+				time1 = time2;
+				time2 += time_inc;
+
+				pt1 = pt2; 
 
 				if (have_guide) {
-					cin >> newguide;
-					if (newguide == guide) dlen = i; 
-					cerr << newguide << ' ' << guide << endl;
+					cin >> pt2 >> gap;
+					if (pt2 == pt1) dlen = i; 
 				} else {
-					newguide = guide + 1820;
+					pt2 += 1820;
 				}
-				double diff = newguide - guide;
-
-				guide = newguide;
-				if (!diff) 
-					speed = 1.0;
-				else
-					speed = 1820.0 / diff;	
-
-//				cerr << "S" << speed << ' ' << diff << ' ' << cur << ' ' << guide << endl;
+//				cerr << "pt1 " << pt1 << " pt2 " << pt2 << " time1 " << time1 << " time2 " << time2 << endl;
 			} 
 
-			total++;
+			if ((next < 0) && (ntime < time2)) {
+				double gap = pt2 - pt1; 
+			
+				if (ntime < time1) {
+					cerr << "GLITCH:  next time is invalid " << ntime << ' ' << time1 << endl;
+					ntime = time1;	
+				}
 
-			if (total > next) {
+				next = pt1 + (((ntime - time1) / time_inc) * gap); 
+//				cerr << "ntime " << ntime << " next " << next << " off " << next - first << endl;
+			}
+
+			total++;
+//			cerr << "cur " << cur << " next " << next << endl;
+
+			if ((next > 0) && (cur > next)) {
 				double n = outleft[i];
-//				cerr << 'T' << n << endl;
 				n -= 2301136.0;
 				n /= (150000.0);
 				if (n < -1) n = -1;
@@ -422,8 +458,8 @@ int main(int argc, char *argv[])
 				output = f_half_r.feed(output);
 				if (!(total % 2)) bout.push_back(output);
 
-				next += (74.5 * speed);
-//				cerr << "N" << next << endl;
+				next = -1;
+				ntime += (1.0 / 96000.0);
 			}
 		}
 		
