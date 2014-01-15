@@ -322,7 +322,7 @@ int main(int argc, char *argv[])
 				double diff = n - deemp[entry];
 
 				orig[entry] = n;
-	 			n -= (diff * (1.0/3.0));
+	 			n -= (diff * .32);
 				deemp[entry] = n;
 
 				n -= 7600000.0;
@@ -331,7 +331,7 @@ int main(int argc, char *argv[])
 				in = 1 + (n * 62000.0);
 				if (in > 65535) in = 65535;
 			} else {
-				deemp[(i % 10)] = deemp[((i - 1) % 10)];
+				deemp[(i % 9)] = deemp[((i - 1) % 9)];
 				in = 0;
 			}
 

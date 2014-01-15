@@ -263,8 +263,15 @@ void buildNTSCLines()
 	for (i = 10; i <= 21; i++) NTSCLine[i] = NTSCLine[264 + i] = LINE_NORMAL; 
 
 	// define odd field
+	NTSCLine[10] |= LINE_WHITEFLAG; 
 	NTSCLine[11] |= LINE_WHITEFLAG; 
+	NTSCLine[12] |= LINE_WHITEFLAG; 
+	NTSCLine[15] |= LINE_PHILLIPS; 
+	NTSCLine[16] |= LINE_PHILLIPS; 
+	NTSCLine[17] |= LINE_PHILLIPS; 
 	NTSCLine[18] |= LINE_PHILLIPS; 
+	NTSCLine[19] |= LINE_PHILLIPS; 
+	NTSCLine[20] |= LINE_PHILLIPS; 
 
 	for (i = 22; i <= 263; i++) {
 		NTSCLine[i] = LINE_NORMAL | LINE_VIDEO; 
@@ -309,6 +316,7 @@ class NTSColor {
 		int cline;
 
 		int fieldcount;
+		int frames_out;
 
 		int counter, lastline, lastsync;
 		bool insync;
@@ -352,11 +360,11 @@ class NTSColor {
 			int oc = 0;
 
 			for (double c: line) {
-				if (c > 0.8) {
+				if (c > 0.7) {
 					oc++;
 				}
 				cerr << c << endl;
-				if (oc > 700) return true;
+				if (oc > 800) return true;
 			}
 			cerr << cline << " W" << oc << endl;
 			return false;
@@ -365,12 +373,13 @@ class NTSColor {
 		unsigned long phillips_decode() {
 			int i = 0;
 			int oc = 0;
-			int lastone = 220 - 55 - 00;
+			int lastone = 220 - 55;
 
 			unsigned long code = 0;
 
 			for (double c: line) {
-				if (c > 0.8) {
+				cerr << "p " << i << ' ' << c << endl; 
+				if (c > 0.5) {
 					oc++;
 				} else {
 					if (oc) {
@@ -383,6 +392,10 @@ class NTSColor {
 						}
 
 						cerr << cline << ' ' << i << ' ' << firstone << ' ' << bit * 57 << ' ' << bit << ' ' << hex << code << dec << endl;
+						if (bit == 24) {
+							cerr << "P " << cline << ' ' << hex << code << dec << endl;
+							return code;
+						}
 						lastone = i;
 					}
 					oc = 0;
@@ -399,6 +412,8 @@ class NTSColor {
 
 			fieldcount = 0;
 			cline = 0;
+
+			frames_out = 0;
 
 			pix_poffset = poffset = 0;
 			adjfreq = 1.0;
@@ -497,13 +512,13 @@ class NTSColor {
 								fieldcount = 0;	
 							}
 						}
-/*						if (0 && buf && (cfline >= 6) && (cfline <= 8)) {
+						if (buf && (NTSCLine[cline] & LINE_PHILLIPS)) {
 							unsigned long pc = phillips_decode() & 0xff0000;
 							if (pc == 0xf80000 || pc == 0xfa0000 || pc == 0xf00000) {
 								fieldcount = 0;
 							}					
 						}
-*/						if ((igap > 1800) && (igap < 1840)) {
+						if ((igap > 1800) && (igap < 1840)) {
 							f_linelen->feed(igap);
 							if ((cline >= 1) && ((counter - lastline) > 1810)) {
 								lastline = counter;
@@ -625,7 +640,8 @@ class NTSColor {
 
 //				cerr << (.1 / level) << endl;
 //				YIQ outc = YIQ(y, (.1 / level) * i, (.1 / level) * q);
-				YIQ outc = YIQ(y, 4 * i, 4 * q);
+				double mult = .2 / peaksync;
+				YIQ outc = YIQ(y, mult * i, mult * q);
 #else
 				YIQ outc = YIQ(y, 0,0);
 #endif
@@ -639,6 +655,7 @@ class NTSColor {
 					frame[(NTSCLineLoc[cline] * 1544) + (lastsync - 252)].y = outc.y;
 					frame[(NTSCLineLoc[cline] * 1544) + (lastsync - 252) + 8].i = outc.i;
 					frame[(NTSCLineLoc[cline] * 1544) + (lastsync - 252) + 8].q = outc.q;
+//					cerr << outc.y << ' ' << outc.i << ' ' << outc.q << endl;
 				}
 #endif
 			}
@@ -721,6 +738,8 @@ int main(int argc, char *argv[])
 			bout.push_back(r.r * 62000.0);
 			bout.push_back(r.g * 62000.0);
 			bout.push_back(r.b * 62000.0);
+//			cerr << i.y << ' ' << i.i << ' ' << i.q << endl;
+//			cerr << r.r << ' ' << r.g << ' ' << r.b << endl;
 		}
 		outbuf.clear();
 

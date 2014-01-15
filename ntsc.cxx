@@ -211,6 +211,7 @@ void buildNTSCLines()
 		NTSCLine[i] = LINE_NORMAL | LINE_VIDEO; 
 		NTSCLineLoc[i] = ((i - 22) * 2) + 0;
 	}
+
 	NTSCLine[263] = LINE_HALF | LINE_VIDEO | LINE_ENDFIELD;
 
 	// define even field
@@ -224,15 +225,14 @@ void buildNTSCLines()
 	}
 
 	NTSCLine[525] |= LINE_ENDFIELD;
-#if 1
-	// debug only
+
+	// full frame mode
 	for (i = 0; i <= 263; i++) {
 		NTSCLineLoc[i] = ((i) * 2) + 0;
 	}
 	for (i = 264; i <= 525; i++) {
 		NTSCLineLoc[i] = ((i - 263) * 2) + 1;
 	}
-#endif
 }
 
 // NTSC properties
@@ -245,16 +245,16 @@ const double dotclk = (1000000.0*(315.0/88.0)*8.0);
 const double dots_usec = dotclk / 1000000.0; 
 
 // values for horizontal timings 
-const double line_blanklen = 10.2 * dots_usec;
+const double line_blanklen = 10.9 * dots_usec;
 
 const double line_fporch = 1.5 * dots_usec; // front porch
 
 const double line_syncp = 4.7 * dots_usec; // sync pulse
-const double line_bporch = 4.5  * dots_usec; // total back porch 
+const double line_bporch = 4.7  * dots_usec; // total back porch 
 
 const double line_bporch1 = 0.5 * dots_usec;
 const double line_burstlen = 9.0 * freq; // 9 3.58mhz cycles
-const double line_bporch2 = 1.5 * dots_usec; // approximate 
+const double line_bporch2 = 1.7 * dots_usec; // approximate 
 
 // timings used in vsync lines
 const double line_eqpulse = 2.3 * dots_usec;
@@ -388,6 +388,13 @@ class TBC
 //			cerr << pi << ' ' << pq << ' ' << pphase << endl;
 
 			return rv;
+		}
+	
+		// writes a 1685x505 16-bit grayscale frame	
+		void WriteBWFrame(uint16_t *buffer) {
+			for (int i = 20; i <= 524; i++) {
+				write(1, &buffer[(i * 1820) + 135], 1685 * 2);
+			}
 		}
 	
 		// buffer: 1820x525 uint16_t array, fully decoded and TBC'd frame from TBC
@@ -692,7 +699,7 @@ class TBC
 //				cerr << "L" << NTSCLineLoc[curline] << endl;
 				bool is_whiteflag = false;
 				bool is_newframe = false;
-
+/*
 				if (NTSCLine[curline] & LINE_PHILLIPS) {
 					int new_framecode = ReadPhillipsCode(buffer) - 0xf80000;
 
@@ -723,7 +730,7 @@ class TBC
 					}
 					f_whiteflag = f_newframe = false;
 				}
-
+*/
 				if (NTSCLineLoc[curline] >= 0) {
 					memcpy(&frame[NTSCLineLoc[curline] * 1820], outbuf, 3840);
 				
@@ -733,8 +740,8 @@ class TBC
 						if (fieldcount == 2) {
 							frames_out++;
 							cerr << "Writing Frame #" << frames_out << endl;
-							CombFilter(frame);
-					//		write(1, frame, 1820 * 2 * 525);
+							WriteBWFrame(frame);
+//							CombFilter(frame);
 							memset(frame, 0, sizeof(frame));
 							fieldcount = 0;
 						}

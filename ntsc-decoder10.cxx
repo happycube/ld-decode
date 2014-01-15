@@ -353,11 +353,11 @@ class NTSColor {
 		bool whiteflag_decode() {
 			int oc = 0;
 
-			for (double c: line) {
-				if (c > 0.5) {
+			for (int i = 250; i < 1000; i++) {
+				if (line[i] > 0.5) {
 					oc++;
 				}
-				if (oc > 700) return true;
+				if (oc > 500) return true;
 			}
 //			cerr << "W" << oc << endl;
 			return false;
@@ -495,7 +495,7 @@ class NTSColor {
 						} 
 					} else {
 						if (buf && (NTSCLine[cline] & LINE_WHITEFLAG)) {
-							if (whiteflag_decode()) {
+							if (0 && whiteflag_decode()) {
 								cerr << "whiteflag " << cline << endl;
 								fieldcount = 0;	
 							}

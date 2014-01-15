@@ -1,8 +1,7 @@
 # params:  in file, start point, length, output file
-rm -f locpipe
-mkfifo locpipe
+rm -f locpipe  
+mkfifo locpipe 
 rm -f $4.m1v $4.wav $4.mpg
 sleep 1
-(cat locpipe | ./audio $1 $2 - 2> /dev/null | avconv -f s16le -ar 48k -ac 2 -i pipe:0 $4.wav  &)
-./ld $1 $2 $3 2> /dev/null | ./ntsc - 2> ntsclog 3> locpipe  | avconv -f rawvideo -r 24000/1001 -pix_fmt rgb48 -s 1488x480 -i pipe:0 -b 8192k -s 720x480 -f mpeg1video $4.m1v
-avconv -i $4.wav -i $4.m1v -vcodec copy $4.mpg
+(cat locpipe | ./audio $1 $2 - > $4.wav  &)
+./ld $1 $2 $3 2> /dev/null | ./ntsc - 2> ntsclog 3> locpipe  | avconv -f rawvideo -r 24000/1001 -pix_fmt rgb48 -s 1488x480 -i pipe:0 -s 720x480 -b:v 8192k -f mpeg1video $4.m1v 
