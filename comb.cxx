@@ -301,7 +301,9 @@ class Comb
 		int curline;    // current line # in frame 
 		int active;	// set to 1 when first frame ends
 
-		bool f_newframe, f_whiteflag;
+		int framecount;	
+
+		bool f_oddframe;	// true if frame starts with odd line
 
 		long long scount;	// total # of samples consumed
 
@@ -313,6 +315,8 @@ class Comb
 		double curscale;
 
 		uint16_t frame[1820 * 530];
+		uint8_t obuf[1488 * 525 * 3];
+		uint8_t tmp_obuf[1488 * 525 * 3];
 
 		double blevel;
 
@@ -361,9 +365,9 @@ class Comb
 
 			return rv;
 		}
-	
+
 		// buffer: 1685x505 uint16_t array
-		void CombFilter(uint16_t *buffer)
+		void CombFilter(uint16_t *buffer, uint8_t *output)
 		{
 			YIQ outline[1685];
 			for (int i = 24; i < 504; i++) {
@@ -389,9 +393,9 @@ class Comb
 				} else blevel = level;
 
 //				cmult = 3.0;
-				cmult = 0.3 / blevel;
+				cmult = 0.2 / blevel;
 
-				cerr << level << ' ' << blevel << endl;
+//				cerr << level << ' ' << blevel << endl;
 
 				int counter = 0;
 				for (int h = line_blanklen - 64 - 135; counter < 1760 - 135; h++) {
@@ -429,26 +433,25 @@ class Comb
 
 					counter++;
 				}
-				
-				uint8_t output[1488 * 3];
+		
+				uint8_t *line_output = &output[(1488 * 3 * (i - 24))];
+
 				int o = 0; 
 				for (int h = 0; h < 1488; h++) {
 					RGB r;
 					r.conv(outline[h]);
 
-					output[o++] = (uint8_t)(r.r * 255.0); 
-					output[o++] = (uint8_t)(r.g * 255.0); 
-					output[o++] = (uint8_t)(r.b * 255.0); 
+					line_output[o++] = (uint8_t)(r.r * 255.0); 
+					line_output[o++] = (uint8_t)(r.g * 255.0); 
+					line_output[o++] = (uint8_t)(r.b * 255.0); 
 				}
-
-				write(1, output, sizeof(output));
 			}
 
 			return;
 		}
 
 		uint32_t ReadPhillipsCode(uint16_t *line) {
-			const int first_bit = (int)(.188 * hlen);
+			const int first_bit = (int)205 - 58;
 			const double bitlen = 2.0 * dots_usec;
 			uint32_t out = 0;
 
@@ -461,7 +464,7 @@ class Comb
 					val += u16_to_ire(line[h]); 
 				}
 
-//				cerr << "bit " << 23 - i << " " << val / dots_usec << endl;	
+//				cerr << "bit " << 23 - i << " " << val / dots_usec << ' ' << hex << out << dec << endl;	
 				if ((val / dots_usec) < 50) {
 					out |= (1 << (23 - i));
 				} 
@@ -475,15 +478,15 @@ class Comb
 		Comb(int _bufsize = 4096) {
 			fieldcount = curline = linecount = -1;
 			active = 0;
-			frames_out = 0;
+			framecount = frames_out = 0;
 
 			blevel = 0;
 
 			scount = 0;
 
 			bufsize = _bufsize;
-	
-			f_newframe = f_whiteflag = false;
+
+			f_oddframe = false;	
 	
 			// build table of standard cos/sin for phase/level calc	
 			for (int e = 0; e < freq; e++) {
@@ -499,41 +502,57 @@ class Comb
 		}
 
 		int Process(uint16_t *buffer) {
-			CombFilter(buffer);
+			int fstart = -1;
+
+			if (f_oddframe) {
+				CombFilter(buffer, tmp_obuf);
+				for (int i = 0; i <= 478; i += 2) {
+					memcpy(&obuf[1488 * 3 * i], &tmp_obuf[1488 * 3 * i], 1488 * 3); 
+				}
+				write(1, obuf, (1488 * 480 * 3));
+				f_oddframe = false;		
+			}
+
+			for (int line = 2; line <= 3; line++) {
+				int wc = 0;
+				for (int i = 0; i < 1400; i++) {
+					if (buffer[(1685 * line) + i] > 45000) wc++;
+				} 
+				if (wc > 1000) {
+					fstart = (line % 2); 
+				}
+				cerr << "PW" << line << ' ' << wc << ' ' << fieldcount << endl;
+			}
+
+			for (int line = 14; line <= 17; line++) {
+				int new_framecode = ReadPhillipsCode(&buffer[line * 1685]) - 0xf80000;
+				cerr << line << ' ' << hex << new_framecode << dec << endl;
+
+				if ((new_framecode > 0) && (new_framecode < 0x60000)) {
+					int ofstart = fstart;
+					fstart = (line % 2); 
+					if ((ofstart >= 0) && (fstart != ofstart)) {
+						cerr << "MISMATCH\n";
+					}
+				}
+			}
+
+			CombFilter(buffer, obuf);
+
+			cerr << "FR " << framecount << ' ' << fstart << endl;
+			if (fstart == 0) {
+				write(1, obuf, (1488 * 480 * 3));
+			} else if (fstart == 1) {
+				f_oddframe = true;
+			}
+
+			framecount++;
+
 			return 0;
-#if 0
-			if (curline >= 0) {
-//				cerr << "L" << NTSCLineLoc[curline] << endl;
-				bool is_whiteflag = false;
-				bool is_newframe = false;
-
-				if (NTSCLine[curline] & LINE_PHILLIPS) {
-					int new_framecode = ReadPhillipsCode(buffer) - 0xf80000;
-
-					if ((new_framecode > 0) && (new_framecode < 0x60000)) {
-						f_newframe = true;
-						fieldcount = 0;
-					}
-				}
-/*
-				if (whiteflag_detect) {
-					// On Laserdisc, lines 11 and 274 are 'white' flags indicating new field start
-					if (NTSCLine[curline] & LINE_WHITEFLAG) {
-						int wc = 0;
-						for (int i = line_blanklen; i < 1800; i++) {
-							if (outbuf[i] > 45000) wc++;
-						} 
-						cerr << "PW" << curline << ' ' << wc << ' ' << fieldcount << endl;
-						if (wc > 1000) {
-							f_whiteflag = true;
-							fieldcount = 0;
-						}
-					}
-				}
-*/
-#endif
 		}
 };
+	
+Comb comb;
 
 int main(int argc, char *argv[])
 {
@@ -566,8 +585,6 @@ int main(int argc, char *argv[])
 	cout << std::setprecision(8);
 
 	buildNTSCLines();
-
-	Comb comb;
 
 	int bufsize = 1685 * 505 * 2;
 
