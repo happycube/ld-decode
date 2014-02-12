@@ -7,13 +7,17 @@ freq = (315.0 / 88.0) * 8.0
 freq_hz = freq * 1000000.0
 blocklen = 2048 
 
-bandpass_filter = sps.firwin(17, [0.10, 0.45])
-
+#bandpass_filter = sps.firwin(17, [0.10, 0.45])
 bandpass_filter = [3.023991564221081e-03, 4.233186409767337e-03, 7.954665760931824e-03, 2.061366484849445e-03, -1.422694634466230e-03, -7.408019315126677e-02, -1.359026202658482e-01, -6.450343643150648e-01, 1.689996991838728e+00, -6.450343643150648e-01, -1.359026202658483e-01, -7.408019315126678e-02, -1.422694634466230e-03, 2.061366484849445e-03, 7.954665760931824e-03, 4.233186409767340e-03, 3.023991564221081e-03]
 #for i in range(0, len(bandpass_filter)):
 #	print bandpass_filter[i], ",",  
 
-lowpass_filter = sps.firwin(17, 3.0 / (freq / 2))
+lowpass_filter = sps.firwin(17, 3.5 / (freq / 2), window='hamming')
+#for i in range(0, len(lowpass_filter)):
+#	print lowpass_filter[i], ",",  
+
+#print
+lowpass_filter = [-5.182956535966573e-04, -4.174028437151462e-03, -1.126381254549101e-02, -1.456598548706209e-02, 3.510439201231994e-03, 5.671595743858979e-02, 1.370914830220347e-01, 2.119161192395519e-01, 2.425762464437853e-01, 2.119161192395519e-01, 1.370914830220347e-01, 5.671595743858982e-02, 3.510439201231995e-03, -1.456598548706209e-02, -1.126381254549101e-02, -4.174028437151466e-03, -5.182956535966573e-04]
 
 def process(data):
 	# perform general bandpass filtering
@@ -24,6 +28,7 @@ def process(data):
 	ohet_filt = np.empty([len(bands), in_len], dtype=complex)
 	ohet_filtn = np.empty([len(bands), in_len + 16], dtype=complex)
 	angles = np.empty([len(bands), in_len + 16])
+	dangle = np.empty([len(bands), in_len + 16])
 	levels = np.empty([len(bands), in_len + 16])
 	output = np.empty(in_len)
 
@@ -35,26 +40,33 @@ def process(data):
 	# lowpass filtering
 	for b in range(len(bands)):
 		ohet_filtn[b] = sps.fftconvolve(ohet[b], lowpass_filter)
-		levels[b] = np.absolute(ohet_filtn[0]) 
-		angles[b] = np.angle(ohet_filtn[0]) 
+		levels[b] = np.absolute(ohet_filtn[b]) 
+		angles[b] = np.angle(ohet_filtn[b]) 
+
+		for i in range(0, in_len):
+			adiff = angles[b][i] - angles[b][i - 1]
+
+			if (adiff < -np.pi):
+				adiff += (np.pi * 2)
+			if (adiff > np.pi):
+				adiff -= (np.pi * 2)
+			
+			dangle[b][i] = adiff
 
 	# select strongest signal
 	for i in range(0, in_len):
-		peaklevel = 0
+		peaklevel = 500 
 		peakband = -1
+
+#		print i, 
 		for b in range(len(bands)):
-			if (levels[b][i] > peaklevel):
-				peaklevel = levels[b][i]
+#			print dangle[b][i], 
+			if (np.fabs(dangle[b][i]) < peaklevel):
+				peaklevel = np.fabs(dangle[b][i])
 				peakband = b
 
-		adiff = angles[peakband][i] - angles[peakband][i - 1]
-
-		if (adiff < -np.pi):
-			adiff += (np.pi * 2)
-		if (adiff > np.pi):
-			adiff -= (np.pi * 2)
-
-		output[i] = bands[peakband] - ((bands[peakband] / 2.0) * adiff)
+		output[i] = bands[peakband] - ((bands[peakband] / 2.0) * dangle[peakband][i])
+#		print output[i]
 
 	return np.delete(output, np.s_[0:128])
 
@@ -70,6 +82,10 @@ for b in range(len(bands)):
 	fmult = bands[b] / freq_hz 
 	for i in range(blocklen + 128): 
 		het[b][i] = complex(np.sin(i * 2.0 * np.pi * fmult), -(np.cos(i * 2.0 * np.pi * fmult))) 
+	print het[b][100],
+
+print
+
 
 # actual work
 
@@ -84,6 +100,7 @@ indata = np.fromstring(inbuf, 'uint8', toread)
 deemp_loop = np.zeros(9)
 for i in range(0, 9):
 	deemp_loop[i] = 8700000
+
 total = 0
 
 while len(inbuf) > 0:
@@ -101,7 +118,7 @@ while len(inbuf) > 0:
 		idl = total % 7
 		n = output[i]
 		diff = n - deemp_loop[idl]
-		n -= (diff * .25)
+		n -= (diff * (1.0/3.0))
 		deemp_loop[idl] = n
 
 		n = (n - 7600000.0) / 1700000.0
