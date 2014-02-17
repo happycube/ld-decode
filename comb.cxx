@@ -397,7 +397,7 @@ class Comb
 				} else blevel = level;
 
 //				cmult = 3.0;
-				cmult = 0.2 / blevel;
+				cmult = 0.1 / blevel;
 
 //				cerr << level << ' ' << blevel << endl;
 
