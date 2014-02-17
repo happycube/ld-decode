@@ -19,10 +19,12 @@ burst_len = 28 * 4
 color_filter = sps.firwin(33, 0.6 / (freq / 2), window='hamming')
 sync_filter = sps.firwin(65, 0.6 / (freq / 2), window='hamming')
 
+color_filter = [2.214464531115009e-03, 2.779566868356983e-03, 4.009052177841430e-03, 6.041802526864055e-03, 8.964977379775094e-03, 1.280250319629312e-02, 1.750822265693915e-02, 2.296445273166145e-02, 2.898626064895014e-02, 3.533129030361252e-02, 4.171449995422212e-02, 4.782674655050909e-02, 5.335581047849616e-02, 5.800822770944922e-02, 6.153020526791717e-02, 6.372594980605055e-02, 6.447193442389310e-02, 6.372594980605055e-02, 6.153020526791718e-02, 5.800822770944922e-02, 5.335581047849616e-02, 4.782674655050909e-02, 4.171449995422215e-02, 3.533129030361253e-02, 2.898626064895015e-02, 2.296445273166145e-02, 1.750822265693915e-02, 1.280250319629313e-02, 8.964977379775097e-03, 6.041802526864056e-03, 4.009052177841434e-03, 2.779566868356985e-03, 2.214464531115009e-03]
+
 # set up sync color heterodyne table first 
 bhet = np.empty(8, dtype=np.complex)
 for i in range(0, 8):
-	bhet[i] = complex(np.sin((i / freq) * 2.0 * np.pi), -(np.cos((i / freq) * 2.0 * np.pi)))
+	bhet[i] = complex(np.cos((i / freq) * 2.0 * np.pi), -(np.sin((i / freq) * 2.0 * np.pi)))
 
 def burst_detect(line):
 	level = 0
@@ -54,7 +56,9 @@ def clamp(v, min, max):
 
 def torgb(y, i, q):
 	# rebase y@0 to 0ire from -40
-	y = y - 16384
+	y = (y - 16384) * 1.40
+	i = i * 1.4
+	q = q * 1.4
 
 	r = (y * 1.164) + (1.596 * i);
 	g = (y * 1.164) - (0.813 * i) - (q * 0.391);
@@ -68,35 +72,41 @@ def torgb(y, i, q):
 
 # return 1488x480 rgb frame
 def comb(inframe):
-	rgb = np.empty([480, 1488 * 3], dtype=np.uint8)
+	rgb = np.zeros([480, 1488 * 3], dtype=np.uint8)
 	prevframe = inframe
 		
 	lohet = np.empty(1685, dtype=np.complex)
-
-	for l in range(25, 505):
+	for l in range(24, 504):
 		print l
 		[level, phase] = burst_detect(inframe[l])
 #		print level, phase
 
 		lhet = np.empty(8, dtype=np.complex)
 		for i in range(0, 8):
-			lhet[i] = complex(np.sin(phase + ((i / freq) * 2.0 * np.pi)), -(phase + np.cos((i / freq) * 2.0 * np.pi)))
+			lhet[i] = complex(np.cos(phase + ((i / freq) * 2.0 * np.pi)), np.sin(phase + ((i / freq) * 2.0 * np.pi)))
 
 		for i in range(0, 1685):
 			lohet[i] = lhet[i % 8] * inframe[l][i]
+#			print lohet[i].real, lohet[i].imag
 
 		lohet_filt = sps.fftconvolve(lohet, color_filter)
+#		lohet_filt = np.delete(lohet_filt, np.s_[0:len(output)])
+#		for i in range(0, 1685):
+#			print inframe[l][i - 17], lohet_filt[i].real, lohet_filt[i].imag
 		
-		cmult = 3.0	
+		cmult = 3.5	
 
-		for i in range(113, 1600):
-			iadj = lohet_filt[i].imag * 2 * lhet[(i + 1) % 8].imag
-			qadj = lohet_filt[i].real * 2 * lhet[(i + 1) % 8].real
+		for i in range(155, 155 + 1488):
+			iadj = 2 * lohet_filt[i].imag * lhet[(i - 5) % 8].imag
+			qadj = 2 * lohet_filt[i].real * lhet[(i - 5) % 8].real
+#			print i, inframe[l][i - 17], lohet_filt[i].imag, lohet_filt[i].real, iadj, qadj, iadj + qadj, inframe[l][i - 17] + iadj + qadj
 
-			[r, g, b] = torgb(inframe[l][i], cmult * lohet_filt[i].imag, cmult * lohet_filt[i].real)
-			rgb[l - 25][((i - 113) * 3) + 0] = r 
-			rgb[l - 25][((i - 113) * 3) + 1] = g 
-			rgb[l - 25][((i - 113) * 3) + 2] = b 
+#			[r, g, b] = torgb(inframe[l][i - 17] + iadj + qadj, 0, 0) 
+#			[r, g, b] = torgb(inframe[l][i - 17] , 0, 0) 
+			[r, g, b] = torgb(inframe[l][i - 17] + iadj + qadj, cmult * lohet_filt[i].imag, -cmult * lohet_filt[i].real)
+			rgb[l - 25][((i - 155) * 3) + 0] = r 
+			rgb[l - 25][((i - 155) * 3) + 1] = g 
+			rgb[l - 25][((i - 155) * 3) + 2] = b 
 	
 	return rgb
 
@@ -130,9 +140,9 @@ def process(inframe):
 	if (isWhiteFlag(inframe[2])):
 		for i in range(0, 480):
 			outfile.write(rgb[i])
-	
+
 	if (isWhiteFlag(inframe[3])):
-		pf_useodd = True
+			pf_useodd = True
 	
 	prevrgb = rgb
 	
