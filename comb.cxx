@@ -292,7 +292,7 @@ inline uint16_t ire_to_u16(double ire)
 
 // tunables
 
-double black_ire = -40;
+double black_ire = -20;
 const int black_u16 = ire_to_u16(black_ire);
 bool whiteflag_detect = true;
 
@@ -397,7 +397,7 @@ class Comb
 				} else blevel = level;
 
 //				cmult = 3.0;
-				cmult = 0.1 / blevel;
+				cmult = 0.12 / blevel;
 
 //				cerr << level << ' ' << blevel << endl;
 
@@ -418,6 +418,9 @@ class Comb
        	                         	}
 	                                circbuf[counter % 17] = val;
 					val = _val;
+#ifdef BW
+					i = q = 0;
+#endif
 
 	                                double iadj = i * 2 * _cos[(h + 1) % 8];
 					double qadj = q * 2 * _sin[(h + 1) % 8];
@@ -425,6 +428,9 @@ class Comb
 //					cerr << ' ' << _val << ' ' << iadj + qadj << ' ';
 
 					val += iadj + qadj;
+#ifdef GRAY 
+					i = q = 0;
+#endif
 					YIQ outc = YIQ(val, cmult * i, cmult * q);	
 
 					if (counter >= 42) {

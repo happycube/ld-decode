@@ -1,22 +1,24 @@
 Note:  This is very early development code.  Therefore it is still very, very ugly ;)
 
-ld-decode takes the raw RF data signal (captured using cxadc) and converts it into a raw composite video signal.  audio is not decoded yet.
+ld(-decode) takes the raw RF data signal (captured using cxadc) and converts it into a raw composite video signal.  
+
+ntsc performs the time base conversion and produces 1685x505 
 
 ntsc-decode takes that, time base corrects it, and decodes the color using a 1D comb filter, which provides mixed results
 
 to run:  
 
-./ld-decode [file] > [file].ld 
-./tbc [file.ld] > [file].tbc
-./ntsc-decode [file].tbc > [file].rgb
+./ld [file] > [file].ld 
+./ntsc [file.ld] > [file].tbc
+./comb [file].tbc > [file].rgb
 
 or pipelined:
 
-./ld file.raw [start] [length] | ./tbc - | ./ntsc - > file.rgb
+./ld file.raw [start] [length] | ./ntsc - | ./comb - > file.rgb
 
-to view ld-decode output: display -size 1820x512 -depth 16 gray:ldplant.ld 
-to view ntsc-decode output: display -size 1536x480 -depth 16 rgb:ldplant.rgb
-use this command line to make it a .jpg:  convert -size 1536x480 -depth 16 rgb:ntscbar.rgb -resize 45%x100% ntscbar.jpg
+to view ld-decode output: display -size 1685x505 -depth 16 gray:ldplant.tbc 
+to view ntsc-decode output: display -size 1488x480 -depth 16 rgb:ldplant.rgb
+use this command line to make it a .jpg:  convert -size 1488x480 -depth 8 rgb:ntscbar.rgb -resize 45%x100% ntscbar.jpg
 
 To convert from .rgb to high quality .mp4:
 
