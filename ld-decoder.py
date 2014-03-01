@@ -12,14 +12,14 @@ bandpass_filter = [3.023991564221081e-03, 4.233186409767337e-03, 7.9546657609318
 #for i in range(0, len(bandpass_filter)):
 #	print bandpass_filter[i], ",",  
 
-lowpass_filter = sps.firwin(17, 3.5 / (freq / 2), window='hamming')
-#for i in range(0, len(lowpass_filter)):
-#	print lowpass_filter[i], ",",  
+lowpass_filter = sps.firwin(17, 4.0 / (freq / 2), window='hamming')
+for i in range(0, len(lowpass_filter)):
+	print lowpass_filter[i], ",",  
 
 #print
 #lowpass_filter = [-5.182956535966573e-04, -4.174028437151462e-03, -1.126381254549101e-02, -1.456598548706209e-02, 3.510439201231994e-03, 5.671595743858979e-02, 1.370914830220347e-01, 2.119161192395519e-01, 2.425762464437853e-01, 2.119161192395519e-01, 1.370914830220347e-01, 5.671595743858982e-02, 3.510439201231995e-03, -1.456598548706209e-02, -1.126381254549101e-02, -4.174028437151466e-03, -5.182956535966573e-04]
 
-bands = [8100000, 8700000, 9300000] 
+bands = [8700000] 
 	
 def process(data):
 	# perform general bandpass filtering
@@ -107,11 +107,10 @@ total = toread = blocklen
 inbuf = infile.read(toread)
 indata = np.fromstring(inbuf, 'uint8', toread)
 	
-deemp_loop = np.zeros(9)
-for i in range(0, 9):
-	deemp_loop[i] = 8700000
-
 total = 0
+
+charge = 0
+prev = 8700000
 
 while len(inbuf) > 0:
 	toread = blocklen - indata.size 
@@ -124,12 +123,13 @@ while len(inbuf) > 0:
 	output_16 = np.empty(len(output), dtype=np.uint16)
 
 	for i in range(0, len(output)):
-		# cruddy attempt at deemphasis
-		idl = total % 7
+		# (less) cruddy attempt at deemphasis
 		n = output[i]
-		diff = n - deemp_loop[idl]
-		n -= (diff * (1.0/3.0))
-		deemp_loop[idl] = n
+
+		charge = charge + ((n - prev) * 1.0)
+		prev = n
+		n = n - (charge * 0.5) 
+		charge = charge * 0.9
 
 		n = (n - 7600000.0) / 1700000.0
 		if n < 0:
