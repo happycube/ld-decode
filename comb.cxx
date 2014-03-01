@@ -138,7 +138,7 @@ struct RGB {
         //      y.q = clamp(y.q, -0.5226, .5226);
 
                 y.y -= (.4 / 1.4);
-                y.y *= 1.4;
+                y.y *= 1.0;
 //                y.y = clamp(y.y, 0, 1.0);
 
                 r = (y.y * 1.164) + (1.596 * y.i);
@@ -516,7 +516,7 @@ class Comb
 		}
 
 		int Process(uint16_t *buffer) {
-			int fstart = -1;
+			int fstart = 0;
 
 			if (f_oddframe) {
 				CombFilter(buffer, tmp_obuf);
