@@ -453,6 +453,8 @@ class Comb
 	                             
 					double icomb = blend(i[l][h], i[l - 2][h], i[l + 2][h]);
 					double qcomb = blend(q[l][h], q[l - 2][h], q[l + 2][h]);
+					//double icomb = i[l][h];
+					//double qcomb = q[l][h];
  
 					double iadj = icomb * 2 * _cos[l][(h + 1) % 8];
 					double qadj = qcomb * 2 * _sin[l][(h + 1) % 8];
