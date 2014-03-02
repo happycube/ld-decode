@@ -371,6 +371,29 @@ class Comb
 			return rv;
 		}
 
+		double blend(double orig, double a, double b) {
+			double abs_orig = fabs(orig);
+		        double agreementa = fabs(orig - a);
+		        double agreementb = fabs(orig - b);
+        		double disagreementa = fabs(orig + a);
+        		double disagreementb = fabs(orig + b);
+
+			if ((agreementa < agreementb) && (agreementa < (abs_orig / 4))) {
+				return (0.5 * orig) + (0.5 * a);
+			}
+			if (agreementb < (abs_orig / 4)) {
+				return (0.5 * orig) + (0.5 * b);
+			}
+			if ((disagreementa < disagreementb) && (disagreementa < (abs_orig / 4))) {
+				return (0.5 * orig) + (0.5 * a);
+			}
+			if (disagreementb < (abs_orig / 4)) {
+				return (0.5 * orig) + (0.5 * b);
+			}
+
+			return (0.5 * orig) + (0.25 * a) + (0.25 * b);
+		}
+
 		// buffer: 1685x505 uint16_t array
 		void CombFilter(uint16_t *buffer, uint8_t *output)
 		{
@@ -428,8 +451,8 @@ class Comb
 #endif
 					double cmult = 0.12 / blevel[l];
 	                             
-					double icomb = 0.5 * (i[l][h] + (0.5 * (i[l - 2][h] + i[l + 2][h])));
-					double qcomb = 0.5 * (q[l][h] + (0.5 * (q[l - 2][h] + q[l + 2][h])));
+					double icomb = blend(i[l][h], i[l - 2][h], i[l + 2][h]);
+					double qcomb = blend(q[l][h], q[l - 2][h], q[l + 2][h]);
  
 					double iadj = icomb * 2 * _cos[l][(h + 1) % 8];
 					double qadj = qcomb * 2 * _sin[l][(h + 1) % 8];
