@@ -75,38 +75,60 @@ def comb(inframe):
 	rgb = np.zeros([480, 1488 * 3], dtype=np.uint8)
 	prevframe = inframe
 		
-	lohet = np.empty(1685, dtype=np.complex)
+	lhet = np.empty([525, 8], dtype=np.complex)
+	lohet = np.empty([525, 1685], dtype=np.complex)
+	lohet_filt = np.empty([525, 1685 + 32], dtype=np.complex)
+	#for l in range(24, 504):
 	for l in range(24, 504):
-		print l
 		[level, phase] = burst_detect(inframe[l])
 #		print level, phase
 
-		lhet = np.empty(8, dtype=np.complex)
 		for i in range(0, 8):
-			lhet[i] = complex(np.cos(phase + ((i / freq) * 2.0 * np.pi)), np.sin(phase + ((i / freq) * 2.0 * np.pi)))
+			lhet[l][i] = complex(np.cos(phase + ((i / freq) * 2.0 * np.pi)), np.sin(phase + ((i / freq) * 2.0 * np.pi)))
 
 		for i in range(0, 1685):
-			lohet[i] = lhet[i % 8] * inframe[l][i]
+			lohet[l][i] = lhet[l][i % 8] * inframe[l][i]
 #			print lohet[i].real, lohet[i].imag
 
-		lohet_filt = sps.fftconvolve(lohet, color_filter)
+		lohet_filt[l] = sps.fftconvolve(lohet[l], color_filter)
 #		lohet_filt = np.delete(lohet_filt, np.s_[0:len(output)])
 #		for i in range(0, 1685):
 #			print inframe[l][i - 17], lohet_filt[i].real, lohet_filt[i].imag
 		
-		cmult = 3.5	
+	cmult = 3.5	
 
+	for l in range(24, 504):
 		for i in range(155, 155 + 1488):
-			iadj = 2 * lohet_filt[i].imag * lhet[(i - 5) % 8].imag
-			qadj = 2 * lohet_filt[i].real * lhet[(i - 5) % 8].real
+#			print i, lohet_filt[l][i].imag * lhet[(i - 5) % 8].imag, lohet_filt[l][i].real * lhet[(i - 5) % 8].real, 
+#			print lohet_filt[l - 2][i].imag * lhet[(i - 5) % 8].imag, lohet_filt[l - 2][i].real * lhet[(i - 5) % 8].real, 
+#			print lohet_filt[l + 2][i].imag * lhet[(i - 5) % 8].imag, lohet_filt[l + 2][i].real * lhet[(i - 5) % 8].real, 
+#			iadj = 2 * (lohet_filt[l][i].imag * lhet[l][(i - 5) % 8].imag)
+#			qadj = 2 * (lohet_filt[l][i].real * lhet[l][(i - 5) % 8].real) 
+			
+#			iadj = lohet_filt[l][i].imag * lhet[(i - 5) % 8].imag + (0.5 * (lohet_filt[l + 2][i].imag * lhet[(i - 5) % 8].imag + lohet_filt[l - 2][i].imag * lhet[(i - 5) % 8].imag))
+#			qadj = lohet_filt[l][i].real * lhet[(i - 5) % 8].real + (0.5 * (lohet_filt[l + 2][i].real * lhet[(i - 5) % 8].real + lohet_filt[l - 2][i].real * lhet[(i - 5) % 8].real)) 
+
+			imag = (0.5 * lohet_filt[l][i].imag) + (0.25 * (lohet_filt[l - 2][i].imag + lohet_filt[l + 2][i].imag)) 
+			real = (0.5 * lohet_filt[l][i].real) + (0.25 * (lohet_filt[l - 2][i].real + lohet_filt[l + 2][i].real)) 
+			iadj = 2 * (imag * lhet[l][(i - 5) % 8].imag)
+			qadj = 2 * (real * lhet[l][(i - 5) % 8].real) 
+
+#			imag = lohet_filt[l][i].imag
+#			real = lohet_filt[l][i].real
+
+#			print i, inframe[l][i - 17], iadj, qadj, inframe[l][i - 17] + iadj + qadj, imag, real, 
+
+#			print iadj, qadj
 #			print i, inframe[l][i - 17], lohet_filt[i].imag, lohet_filt[i].real, iadj, qadj, iadj + qadj, inframe[l][i - 17] + iadj + qadj
 
 #			[r, g, b] = torgb(inframe[l][i - 17] + iadj + qadj, 0, 0) 
 #			[r, g, b] = torgb(inframe[l][i - 17] , 0, 0) 
-			[r, g, b] = torgb(inframe[l][i - 17] + iadj + qadj, cmult * lohet_filt[i].imag, -cmult * lohet_filt[i].real)
+			[r, g, b] = torgb(inframe[l][i - 17] + iadj + qadj, cmult * imag, -cmult * real)
 			rgb[l - 25][((i - 155) * 3) + 0] = r 
 			rgb[l - 25][((i - 155) * 3) + 1] = g 
 			rgb[l - 25][((i - 155) * 3) + 2] = b 
+
+#			print r, g, b
 	
 	return rgb
 
@@ -137,9 +159,9 @@ def process(inframe):
 				outfile.write(rgb[i])
 
 	# determine if this is a whole (even+odd) or half (odd) frame using white flag detection for now
-	if (isWhiteFlag(inframe[2])):
-		for i in range(0, 480):
-			outfile.write(rgb[i])
+#	if (isWhiteFlag(inframe[2])):
+	for i in range(0, 480):
+		outfile.write(rgb[i])
 
 	if (isWhiteFlag(inframe[3])):
 			pf_useodd = True
@@ -174,4 +196,4 @@ while len(inbuf) > 0:
 #	indata = np.delete(indata, np.s_[0:len(output)])
 	indata = np.array([])
 
-
+	exit()

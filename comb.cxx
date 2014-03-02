@@ -322,9 +322,10 @@ class Comb
 		uint8_t obuf[1488 * 525 * 3];
 		uint8_t tmp_obuf[1488 * 525 * 3];
 
-		double blevel;
+		double blevel[525];
 
-		double _cos[16], _sin[16];
+		double _cos[525][16], _sin[525][16];
+		double i[525][1820], q[525][1820];
 		Filter *f_i, *f_q;
 		Filter *f_synci, *f_syncq;
 
@@ -348,8 +349,8 @@ class Comb
 				double v = buf[l];
 				v = (double)(v - black_u16) / (double)(level_100ire - black_u16); 
 
-				double q = f_syncq->feed(v * _cos[l % 8]);
-				double i = f_synci->feed(-v * _sin[l % 8]);
+				double q = f_syncq->feed(v * _cos[0][l % 8]);
+				double i = f_synci->feed(-v * _sin[0][l % 8]);
 
 				double level = ctor(i, q);
 
@@ -374,30 +375,29 @@ class Comb
 		void CombFilter(uint16_t *buffer, uint8_t *output)
 		{
 			YIQ outline[1685];
-			for (int i = 24; i < 504; i++) {
-				uint16_t *line = &buffer[i * 1685];
-				double _cos[(int)freq + 1], _sin[(int)freq + 1];
+			blevel[23] = 0;
+			for (int l = 24; l < 504; l++) {
+				uint16_t *line = &buffer[l * 1685];
+//				double _cos[(int)freq + 1], _sin[(int)freq + 1];
 				double level, phase;
 
 				double val, _val;
 				double cmult;
 
-				double circbuf[18];
-
 				BurstDetect(line, 0, 4 * dots_usec, level, phase);
 //				cerr << "burst " << level << ' ' << phase << endl;
 				for (int j = 0; j < (int)freq; j++) { 
-	                                _cos[j] = cos(phase + (2.0 * M_PIl * ((double)j / freq)));
-					_sin[j] = sin(phase + (2.0 * M_PIl * ((double)j / freq)));
+	                                _cos[l][j] = cos(phase + (2.0 * M_PIl * ((double)j / freq)));
+					_sin[l][j] = sin(phase + (2.0 * M_PIl * ((double)j / freq)));
 				}
 
-				if (blevel > 0) {
-					blevel *= 0.9;
-					blevel += (level * 0.1);
-				} else blevel = level;
+				if (blevel[l - 1] > 0) {
+					blevel[l] = blevel[l - 1] * 0.9;
+					blevel[l] += (level * 0.1);
+				} else blevel[l] = level;
 
 //				cmult = 3.0;
-				cmult = 0.12 / blevel;
+				cmult = 0.12 / blevel[l];
 
 //				cerr << level << ' ' << blevel << endl;
 
@@ -407,31 +407,45 @@ class Comb
 					val = (double)(line[h] - black_u16) / (double)(level_100ire - black_u16); 
 //					val = clamp(val, 0, 1.2);
 //					val = u16_to_ire(line[h]);
-					
-					double q = f_q->feed(-val * _cos[h % 8]);
-					double i = f_i->feed(val * _sin[h % 8]);
+				
+					q[l][h] = f_q->feed(-val * _cos[l][h % 8]);
+					i[l][h] = f_i->feed(val * _sin[l][h % 8]);
 					
 //					cerr << "P" << h << ' ' << counter << ' ' << line[h] << ' ' << val << ' ' << (double)line[h] / (double)level_100ire << endl;
-				
+					counter++;
+				}
+			}
+	
+			for (int l = 24; l < 504; l++) {
+				uint16_t *line = &buffer[l * 1685];
+				int counter = 0;
+				double circbuf[18];
+				double val, _val;
+				for (int h = line_blanklen - 64 - 135; counter < 1760 - 135; h++) {
+					val = (double)(line[h] - black_u16) / (double)(level_100ire - black_u16); 
+#ifdef BW
+					i = q = 0;
+#endif
+					double cmult = 0.12 / blevel[l];
+	                             
+					double icomb = 0.5 * (i[l][h] + (0.5 * (i[l - 2][h] + i[l + 2][h])));
+					double qcomb = 0.5 * (q[l][h] + (0.5 * (q[l - 2][h] + q[l + 2][h])));
+ 
+					double iadj = icomb * 2 * _cos[l][(h + 1) % 8];
+					double qadj = qcomb * 2 * _sin[l][(h + 1) % 8];
+
+//					cerr << ' ' << _val << ' ' << iadj + qadj << ' ';
 	                                if (counter > 17) {
 						_val = circbuf[counter % 17];
        	                         	}
 	                                circbuf[counter % 17] = val;
 					val = _val;
-#ifdef BW
-					i = q = 0;
-#endif
-
-	                                double iadj = i * 2 * _cos[(h + 1) % 8];
-					double qadj = q * 2 * _sin[(h + 1) % 8];
-
-//					cerr << ' ' << _val << ' ' << iadj + qadj << ' ';
 
 					val += iadj + qadj;
 #ifdef GRAY 
 					i = q = 0;
 #endif
-					YIQ outc = YIQ(val, cmult * i, cmult * q);	
+					YIQ outc = YIQ(val, cmult * icomb, cmult * qcomb);	
 
 					if (counter >= 42) {
 						outline[counter - 42].y = outc.y;
@@ -444,7 +458,7 @@ class Comb
 					counter++;
 				}
 		
-				uint8_t *line_output = &output[(1488 * 3 * (i - 24))];
+				uint8_t *line_output = &output[(1488 * 3 * (l - 24))];
 
 				int o = 0; 
 				for (int h = 0; h < 1488; h++) {
@@ -490,8 +504,6 @@ class Comb
 			active = 0;
 			framecount = frames_out = 0;
 
-			blevel = 0;
-
 			scount = 0;
 
 			bufsize = _bufsize;
@@ -500,8 +512,8 @@ class Comb
 	
 			// build table of standard cos/sin for phase/level calc	
 			for (int e = 0; e < freq; e++) {
-				_cos[e] = cos((2.0 * M_PIl * ((double)e / freq)));
-				_sin[e] = sin((2.0 * M_PIl * ((double)e / freq)));
+				_cos[0][e] = cos((2.0 * M_PIl * ((double)e / freq)));
+				_sin[0][e] = sin((2.0 * M_PIl * ((double)e / freq)));
 			}
 
 			//f_i = new Filter(32, NULL, f28_1_3mhz_b32);
@@ -516,7 +528,8 @@ class Comb
 		}
 
 		int Process(uint16_t *buffer) {
-			int fstart = -1;
+//			int fstart = -1;
+			int fstart = 0;
 
 			if (f_oddframe) {
 				CombFilter(buffer, tmp_obuf);
