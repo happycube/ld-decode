@@ -13,12 +13,18 @@
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 
 // capture frequency and fundamental NTSC color frequency
 //const double CHZ = (1000000.0*(315.0/88.0)*8.0);
 //const double FSC = (1000000.0*(315.0/88.0));
 
 using namespace std;
+
+bool pulldown_mode = false;
+int ofd = 1;
+bool image_mode = false;
+char *image_base = "FRAME";
 
 double ctor(double r, double i)
 {
@@ -292,9 +298,11 @@ inline uint16_t ire_to_u16(double ire)
 
 // tunables
 
-double black_ire = -20;
-const int black_u16 = ire_to_u16(black_ire);
+double black_ire = 7.5;
+int black_u16 = ire_to_u16(black_ire);
+int white_u16 = level_100ire; 
 bool whiteflag_detect = true;
+
 
 int write_locs = -1;
 
@@ -305,6 +313,7 @@ class Comb
 		int curline;    // current line # in frame 
 		int active;	// set to 1 when first frame ends
 
+		int framecode;
 		int framecount;	
 
 		bool f_oddframe;	// true if frame starts with odd line
@@ -329,8 +338,6 @@ class Comb
 		Filter *f_i, *f_q;
 		Filter *f_synci, *f_syncq;
 
-		int32_t framecode;	// in hex
-
 		int BurstDetect(uint16_t *buf, int start, int len, double &plevel, double &pphase)
 		{
 			int rv = 0;
@@ -347,7 +354,8 @@ class Comb
 
 			for (int l = start; l < start + len; l++) {
 				double v = buf[l];
-				v = (double)(v - black_u16) / (double)(level_100ire - black_u16); 
+
+				v = (double)(v - black_u16) / (double)(white_u16 - black_u16); 
 
 				double q = f_syncq->feed(v * _cos[0][l % 8]);
 				double i = f_synci->feed(-v * _sin[0][l % 8]);
@@ -419,15 +427,10 @@ class Comb
 					blevel[l] += (level * 0.1);
 				} else blevel[l] = level;
 
-//				cmult = 3.0;
-				cmult = 0.12 / blevel[l];
-
-//				cerr << level << ' ' << blevel << endl;
-
 				int counter = 0;
 				for (int h = line_blanklen - 64 - 135; counter < 1760 - 135; h++) {
 //					val = (double)line[h] / (double)level_100ire;
-					val = (double)(line[h] - black_u16) / (double)(level_100ire - black_u16); 
+					val = (double)(line[h] - black_u16) / (double)(white_u16 - black_u16); 
 //					val = clamp(val, 0, 1.2);
 //					val = u16_to_ire(line[h]);
 				
@@ -445,12 +448,14 @@ class Comb
 				double circbuf[18];
 				double val, _val;
 				for (int h = line_blanklen - 64 - 135; counter < 1760 - 135; h++) {
-					val = (double)(line[h] - black_u16) / (double)(level_100ire - black_u16); 
+					val = (double)(line[h] - black_u16) / (double)(white_u16 - black_u16); 
+//					cerr << black_u16 << ' ' << line[h] << ' ' << level_100ire << ' ' << val << endl;
 #ifdef BW
 					i = q = 0;
 #endif
 					double cmult = 0.12 / blevel[l];
-	                             
+//					double cmult = 3.5;
+ 
 					double icomb = blend(i[l][h], i[l - 2][h], i[l + 2][h]);
 					double qcomb = blend(q[l][h], q[l - 2][h], q[l + 2][h]);
 					//double icomb = i[l][h];
@@ -527,7 +532,7 @@ class Comb
 		Comb(int _bufsize = 4096) {
 			fieldcount = curline = linecount = -1;
 			active = 0;
-			framecount = frames_out = 0;
+			framecode = framecount = frames_out = 0;
 
 			scount = 0;
 
@@ -541,8 +546,8 @@ class Comb
 				_sin[0][e] = sin((2.0 * M_PIl * ((double)e / freq)));
 			}
 
-			//f_i = new Filter(32, NULL, f28_1_3mhz_b32);
-			//f_q = new Filter(32, NULL, f28_1_3mhz_b32);
+			//f_i = new Filter(30, NULL, f28_1_3mhz_b30);
+			//f_q = new Filter(30, NULL, f28_1_3mhz_b30);
 			f_i = new Filter(32, NULL, f28_0_6mhz_b32);
 			f_q = new Filter(32, NULL, f28_0_6mhz_b32);
 //			f_i = new Filter(32, NULL, f28_2_0mhz_b32);
@@ -552,16 +557,33 @@ class Comb
                         f_syncq = new Filter(64, NULL, f28_0_6mhz_b64);
 		}
 
-		int Process(uint16_t *buffer) {
-//			int fstart = -1;
-			int fstart = 0;
+		void WriteFrame(uint8_t *obuf, int fnum = 0) {
+			if (!image_mode) {
+				write(ofd, obuf, (1488 * 480 * 3));
+			} else {
+				char ofname[512];
 
-			if (f_oddframe) {
+				sprintf(ofname, "%s%d.rgb", image_base, fnum); 
+				cerr << "W " << ofname << endl;
+				ofd = open(ofname, O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR | S_IROTH);
+				write(ofd, obuf, (1488 * 480 * 3));
+				close(ofd);
+			}
+		}
+
+		int Process(uint16_t *buffer) {
+			int fstart = -1;
+
+			if (!pulldown_mode) {
+				fstart = 0;
+			}
+
+			if (pulldown_mode && f_oddframe) {
 				CombFilter(buffer, tmp_obuf);
 				for (int i = 0; i <= 478; i += 2) {
 					memcpy(&obuf[1488 * 3 * i], &tmp_obuf[1488 * 3 * i], 1488 * 3); 
 				}
-				write(1, obuf, (1488 * 480 * 3));
+				WriteFrame(obuf, framecode);
 				f_oddframe = false;		
 			}
 
@@ -578,10 +600,19 @@ class Comb
 
 			for (int line = 14; line <= 17; line++) {
 				int new_framecode = ReadPhillipsCode(&buffer[line * 1685]) - 0xf80000;
+
 				cerr << line << ' ' << hex << new_framecode << dec << endl;
 
 				if ((new_framecode > 0) && (new_framecode < 0x60000)) {
 					int ofstart = fstart;
+
+					framecode = new_framecode & 0x0f;
+					framecode += ((new_framecode & 0x000f0) >> 4) * 10;
+					framecode += ((new_framecode & 0x00f00) >> 8) * 100;
+					framecode += ((new_framecode & 0x0f000) >> 12) * 1000;
+					framecode += ((new_framecode & 0xf0000) >> 16) * 10000;
+	
+	
 					fstart = (line % 2); 
 					if ((ofstart >= 0) && (fstart != ofstart)) {
 						cerr << "MISMATCH\n";
@@ -593,7 +624,7 @@ class Comb
 
 			cerr << "FR " << framecount << ' ' << fstart << endl;
 			if (fstart == 0) {
-				write(1, obuf, (1488 * 480 * 3));
+				WriteFrame(obuf, framecode);
 			} else if (fstart == 1) {
 				f_oddframe = true;
 			}
@@ -606,6 +637,16 @@ class Comb
 	
 Comb comb;
 
+void usage()
+{
+	cerr << "comb: " << endl;
+	cerr << "-i [filename] : input filename (default: stdin)\n";
+	cerr << "-o [filename] : output filename/base (default: stdout/frame)\n";
+	cerr << "-f : use separate file for each frame\n";
+	cerr << "-p : use white flag/frame # for pulldown\n";	
+	cerr << "-h : this\n";	
+}
+
 int main(int argc, char *argv[])
 {
 	int rv = 0, fd = 0;
@@ -613,25 +654,47 @@ int main(int argc, char *argv[])
 	//double output[2048];
 	unsigned short inbuf[1685 * 525 * 2];
 	unsigned char *cinbuf = (unsigned char *)inbuf;
+	int c;
+
+	char out_filename[256] = "";
 
 	cerr << std::setprecision(10);
 	cerr << argc << endl;
 	cerr << strncmp(argv[1], "-", 1) << endl;
 
-	if (argc >= 2 && (strncmp(argv[1], "-", 1))) {
-		fd = open(argv[1], O_RDONLY);
-	}
+	opterr = 0;
 
-	if (argc >= 3) {
-		unsigned long long offset = atoll(argv[2]);
+	while ((c = getopt(argc, argv, "b:w:i:o:fph")) != -1) {
+		switch (c) {
+			case 'b':
+				sscanf(optarg, "%d", &black_u16);
+				break;
+			case 'w':
+				sscanf(optarg, "%d", &white_u16);
+				break;
+			case 'h':
+				usage();
+				return 0;
+			case 'f':
+				image_mode = true;	
+				break;
+			case 'p':
+				pulldown_mode = true;	
+				break;
+			case 'i':
+				fd = open(optarg, O_RDONLY);
+				break;
+			case 'o':
+				image_base = (char *)malloc(strlen(optarg) + 1);
+				strncpy(image_base, optarg, strlen(optarg));
+				break;
+			default:
+				return -1;
+		} 
+	} 
 
-		if (offset) lseek64(fd, offset, SEEK_SET);
-	}
-		
-	if (argc >= 4) {
-		if ((size_t)atoi(argv[3]) < dlen) {
-			dlen = atoi(argv[3]); 
-		}
+	if (!image_mode && strlen(out_filename)) {
+		ofd = open(image_base, O_WRONLY | O_CREAT);
 	}
 
 	cout << std::setprecision(8);

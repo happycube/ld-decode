@@ -223,7 +223,7 @@ Filter f_lpf40(8, NULL, f_lpf40_8_b);
 Filter f_lpf45_12(12, NULL, f_lpf45_12_hamming_b);
 Filter f_lpf42_12(12, NULL, f_lpf42_12_hamming_b);
 Filter f_lpf42b_12(3, f_lpf42b_3_a, f_lpf42b_3_b);
-Filter f_lpf40_16(16, NULL, f_lpf40_16_python_b);
+Filter f_lpf40_16(16, NULL, f_lpf42_16_python_b);
 Filter f_lpf30(8, NULL, f_lpf30_8_b);
 Filter f_lpf13(8, NULL, f_lpf13_8_b);
 Filter f_lpf06(8, NULL, f_lpf06_8_b);
