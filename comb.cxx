@@ -25,6 +25,7 @@ bool pulldown_mode = false;
 int ofd = 1;
 bool image_mode = false;
 char *image_base = "FRAME";
+bool bw_mode = false;
 
 double ctor(double r, double i)
 {
@@ -298,7 +299,7 @@ inline uint16_t ire_to_u16(double ire)
 
 // tunables
 
-double black_ire = 7.5;
+double black_ire = -20;
 int black_u16 = ire_to_u16(black_ire);
 int white_u16 = level_100ire; 
 bool whiteflag_detect = true;
@@ -460,6 +461,10 @@ class Comb
 					double qcomb = blend(q[l][h], q[l - 2][h], q[l + 2][h]);
 					//double icomb = i[l][h];
 					//double qcomb = q[l][h];
+
+					if (bw_mode) {
+						icomb = qcomb = 0;
+					}
  
 					double iadj = icomb * 2 * _cos[l][(h + 1) % 8];
 					double qadj = qcomb * 2 * _sin[l][(h + 1) % 8];
@@ -664,8 +669,11 @@ int main(int argc, char *argv[])
 
 	opterr = 0;
 
-	while ((c = getopt(argc, argv, "b:w:i:o:fph")) != -1) {
+	while ((c = getopt(argc, argv, "Bb:w:i:o:fph")) != -1) {
 		switch (c) {
+			case 'B':
+				bw_mode = true;
+				break;
 			case 'b':
 				sscanf(optarg, "%d", &black_u16);
 				break;
