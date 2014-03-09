@@ -391,6 +391,8 @@ int main(int argc, char *argv[])
 	double time1 = 0.0, time2 = 0.0;
 	long long pt1 = -1, pt2 = first;
 
+	double fadj = 1.0;
+
 	while ((rv == 2048) && ((dlen == -1) || (i < dlen))) {
 		vector<double> dinbuf;
 		vector<unsigned short> ioutbuf;
@@ -427,6 +429,9 @@ int main(int argc, char *argv[])
 				} else {
 					pt2 += 1820;
 				}
+
+				fadj = 1820.0 / (gap + 1820.0);
+
 //				cerr << "pt1 " << pt1 << " pt2 " << pt2 << " time1 " << time1 << " time2 " << time2 << endl;
 			} 
 
@@ -436,7 +441,7 @@ int main(int argc, char *argv[])
 					ntime = time1;	
 				}
 
-				next = pt1 + (((ntime - time1) / time_inc) * ( 1820.0)); 
+				next = pt1 + (((ntime - time1) / time_inc) * (gap + 1820.0)); 
 //				cerr << "ntime " << ntime << " next " << next << " off " << next - first << endl;
 			}
 
@@ -444,7 +449,7 @@ int main(int argc, char *argv[])
 //			cerr << "cur " << cur << " next " << next << endl;
 				
 			if ((next >= 0) && (cur > next)) {
-				double n = outleft[i];
+				double n = outleft[i] * fadj;
 				n -= 2301136.0;
 				n /= (150000.0);
 				if (n < -1) n = -1;
@@ -453,7 +458,7 @@ int main(int argc, char *argv[])
 				output = f_half_l.feed(output);
 				if (!(total % 2)) bout.push_back(output);
 				
-				n = outright[i];
+				n = outright[i] * fadj;
 				n -= 2812499.0;
 				n /= (150000.0);
 				if (n < -1) n = -1;
