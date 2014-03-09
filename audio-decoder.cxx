@@ -146,6 +146,10 @@ double f_lpf01_2fsc_b[] {1.011429497640438e-05, 3.034288492921315e-05, 3.0342884
 
 Filter f_lpf01(3, f_lpf01_2fsc_a, f_lpf01_2fsc_b);
 
+double f_lpf02_2fsc_b[] {7.755048316953870e-05, 2.326514495086161e-04, 2.326514495086161e-04, 7.755048316953870e-05};
+double f_lpf02_2fsc_a[] {1.000000000000000e+00, -2.824525707443156e+00, 2.664110766227272e+00, -8.389646549187590e-01};
+Filter f_lpf02(3, f_lpf02_2fsc_a, f_lpf02_2fsc_b);
+
 //double f_lpf01_2fsc_a[] {1.000000000000000e+00, -2.912241901643419e+00, 2.828292351114106e+00, -9.159695351108759e-01};
 //double f_lpf01_2fsc_b[] {1.011429497640438e-05, 3.034288492921315e-05, 3.034288492921315e-05, 1.011429497640438e-05};
 
@@ -336,7 +340,7 @@ int main(int argc, char *argv[])
 		offset = atoll(argv[2]);
 	}
 
-	double gap;
+	double gap = 0;
 	long long first = 0;
 
 	if (argc >= 4) {
@@ -344,7 +348,7 @@ int main(int argc, char *argv[])
 			have_guide = true;
 
 			cin >> first >> gap;
-			cerr << first << endl; 
+			cerr << first << ' ' << gap << endl; 
 
 			offset += first;
 			cur = guide = first;
@@ -366,8 +370,8 @@ int main(int argc, char *argv[])
 	vector<double> fb({2300000}); 
 	//vector<double> fb({8500000}); 
 
-	FM_demod left(512, {2200000, 2301136.0, 2400000}, NULL, {&f_lpf01, &f_lpf01, &f_lpf01}, NULL, CHZ/4.0);
-	FM_demod right(512, {2710000, 2812499.0, 2910000}, NULL, {&f_lpf01, &f_lpf01, &f_lpf01}, NULL, CHZ/4.0);
+	FM_demod left(512, {2301136.0}, NULL, {&f_lpf02}, NULL, CHZ/4.0);
+	FM_demod right(512, {2812499.0}, NULL, {&f_lpf02}, NULL, CHZ/4.0);
 //	FM_demod left(512, {2200000, 2400000}, NULL, {&f_lpf01, &f_lpf01, &f_lpf01}, NULL, CHZ/4.0);
 //	FM_demod right(512, {2710000, 2910000}, NULL, {&f_lpf01, &f_lpf01, &f_lpf01}, NULL, CHZ/4.0);
 //	FM_demod video(2048, fb, NULL, &f_lpf45, NULL);
@@ -406,6 +410,8 @@ int main(int argc, char *argv[])
 		//cerr << 'L' << outline.size() << endl;
 		for (int i = 0; i < outleft.size(); i++) {
 			short output;
+
+//			cerr << i << ' ' << cur << ' ' << pt2 << endl;
 	
 			cur += 4;	
 			if (cur > pt2) {
@@ -425,21 +431,19 @@ int main(int argc, char *argv[])
 			} 
 
 			if ((next < 0) && (ntime < time2)) {
-				double gap = pt2 - pt1; 
-			
 				if (ntime < time1) {
 					cerr << "GLITCH:  next time is invalid " << ntime << ' ' << time1 << endl;
 					ntime = time1;	
 				}
 
-				next = pt1 + (((ntime - time1) / time_inc) * gap); 
+				next = pt1 + (((ntime - time1) / time_inc) * ( 1820.0)); 
 //				cerr << "ntime " << ntime << " next " << next << " off " << next - first << endl;
 			}
 
-			total++;
+//			total++;
 //			cerr << "cur " << cur << " next " << next << endl;
-
-			if ((next > 0) && (cur > next)) {
+				
+			if ((next >= 0) && (cur > next)) {
 				double n = outleft[i];
 				n -= 2301136.0;
 				n /= (150000.0);
@@ -460,12 +464,14 @@ int main(int argc, char *argv[])
 
 				next = -1;
 				ntime += (1.0 / 96000.0);
+				
+				total++;
 			}
 		}
 		
 		short *boutput = bout.data();
 		int len = outleft.size();
-//		cerr << len << endl;
+		//cerr << outleft.size() << ' ' << bout.size() << endl;
 		if (write(1, boutput, bout.size() * 2) != bout.size() * 2) {
 			//cerr << "write error\n";
 			exit(0);

@@ -380,24 +380,36 @@ class Comb
 			return rv;
 		}
 
-		double blend(double orig, double a, double b) {
+		double blend(double orig, double a, double b, bool &dis) {
 			double abs_orig = fabs(orig);
 		        double agreementa = fabs(orig - a);
 		        double agreementb = fabs(orig - b);
         		double disagreementa = fabs(orig + a);
         		double disagreementb = fabs(orig + b);
 
+			dis = false;
+
 			if ((agreementa < agreementb) && (agreementa < (abs_orig / 4))) {
-				return (0.5 * orig) + (0.5 * a);
+				if (agreementb < (abs_orig / 4)) {
+					return (0.5 * orig) + (0.25 * a) + (0.25 * b);
+				} else {
+					return (0.5 * orig) + (0.5 * a);
+				}
 			}
 			if (agreementb < (abs_orig / 4)) {
 				return (0.5 * orig) + (0.5 * b);
 			}
 			if ((disagreementa < disagreementb) && (disagreementa < (abs_orig / 4))) {
-				return (0.5 * orig) + (0.5 * a);
+				dis = true;
+				if (disagreementb < (abs_orig / 4)) {
+					return ((0.5 * orig) + (0.25 * a) + (0.25 * b));
+				} else {
+					return ((0.5 * orig) + (0.5 * a));
+				}
 			}
 			if (disagreementb < (abs_orig / 4)) {
-				return (0.5 * orig) + (0.5 * b);
+				dis = true;
+				return ((0.5 * orig) + (0.5 * b));
 			}
 
 			return (0.5 * orig) + (0.25 * a) + (0.25 * b);
@@ -456,18 +468,27 @@ class Comb
 #endif
 					double cmult = 0.12 / blevel[l];
 //					double cmult = 3.5;
- 
-					double icomb = blend(i[l][h], i[l - 2][h], i[l + 2][h]);
-					double qcomb = blend(q[l][h], q[l - 2][h], q[l + 2][h]);
+
+					double icomp = i[l][h];
+					double qcomp = q[l][h];
+
+					bool dis;
+
+					double icomb = blend(i[l][h], i[l - 2][h], i[l + 2][h], dis);
+					icomp = dis ? 0 : icomb;
+					double qcomb = blend(q[l][h], q[l - 2][h], q[l + 2][h], dis);
+					qcomp = dis ? 0 : qcomb;
+
 					//double icomb = i[l][h];
 					//double qcomb = q[l][h];
 
 					if (bw_mode) {
 						icomb = qcomb = 0;
+						icomp = qcomp = 0;
 					}
  
-					double iadj = icomb * 2 * _cos[l][(h + 1) % 8];
-					double qadj = qcomb * 2 * _sin[l][(h + 1) % 8];
+					double iadj = icomp * 2 * _cos[l][(h + 1) % 8];
+					double qadj = qcomp * 2 * _sin[l][(h + 1) % 8];
 
 //					cerr << ' ' << _val << ' ' << iadj + qadj << ' ';
 	                                if (counter > 17) {
@@ -581,9 +602,7 @@ class Comb
 
 			if (!pulldown_mode) {
 				fstart = 0;
-			}
-
-			if (pulldown_mode && f_oddframe) {
+			} else if (f_oddframe) {
 				CombFilter(buffer, tmp_obuf);
 				for (int i = 0; i <= 478; i += 2) {
 					memcpy(&obuf[1488 * 3 * i], &tmp_obuf[1488 * 3 * i], 1488 * 3); 
