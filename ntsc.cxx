@@ -635,7 +635,7 @@ class TBC
 				curline++;
 				if (curline > 525) {
 					curline = 1; 
-					linecount = -1;
+				//	linecount = -1;
 					if (fieldcount < 0) fieldcount = 0;
 					if (!write_locs) {
 						write_locs = 1;
