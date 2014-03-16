@@ -528,14 +528,14 @@ class TBC
 				// determine color burst and phase levels of both this and next color bursts
 
 				BurstDetect(&buffer[sync_start], 3.5 * dots_usec, 7.5 * dots_usec, plevel, pphase);
-//				cerr << curline << " burst 1 " << plevel << " " << pphase << endl;
+//				cerr << curline << " start " << sync_start << " burst 1 " << plevel << " " << pphase << endl;
 		
 				// cerr << sync_len << ' ' << (sync2_start - sync_start + sync2_len) << endl;	
 				BurstDetect(&buffer[sync_start], (sync2_start - sync_start) + (3.5 * dots_usec), 7.5 * dots_usec, plevel2, pphase2);
 				// cerr << "burst 2 " << plevel2 << " " << pphase2 << ' ';
 
 				// if available, use the phase data of the next line's burst to determine line length
-				if ((plevel > 1000) && (plevel2 > 1000)) {
+				if ((plevel > 500) && (plevel2 > 500)) {
 					gap = -((pphase2 - pphase) / M_PIl) * 4.0;
 					// cerr << sync_start << ":" << sync2_start << " " << (((sync2_start - sync_start) > hlen)) << ' ' << gap << endl;
 					if (gap < -4) gap += 8;
@@ -566,7 +566,7 @@ class TBC
 				}
 
 				// if this line has a good color burst, adjust phase
-				if (plevel > 1000) {
+				if (plevel > 500) {
 					if (linecount % 2) {
 						pcon = (-M_PIl / 2) - pphase;
 					} else {
@@ -575,13 +575,20 @@ class TBC
 					// cerr << pcon << endl;
 
 					double adjust = (pcon / M_PIl) * 4.0;
-					if (adjust < -4) adjust += 8;
-					if (adjust > 4) adjust -= 8;
-					// cerr << "adjust " << adjust << " gap " << gap << endl;
+//					cerr << "adjust " << adjust << " gap " << gap << endl;
+					if (adjust < -4) {
+						adjust += 8;
+						linecount++;
+					}
+					if (adjust > 4) {
+						adjust -= 8;
+						linecount++;
+					}
+//					cerr << "adjust " << adjust << " gap " << gap << endl;
 				
 					ScaleOut(buffer, outbuf, sync_start + adjust, 1820 + gap);
 					BurstDetect(outbuf, 3.5 * dots_usec, 7.5 * dots_usec, plevel, pphase);
-					//cerr << "adjust " << adjust << " gap " << gap << " post-scale 2 " << plevel << " " << pphase << endl;
+//					cerr << "adjust " << adjust << " gap " << gap << " post-scale 2 " << plevel << " " << pphase << endl;
 				} else {
 					cerr << "WARN:  No first burst found\n";
 				}

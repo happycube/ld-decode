@@ -647,7 +647,7 @@ class Comb
 			CombFilter(buffer, obuf);
 
 			cerr << "FR " << framecount << ' ' << fstart << endl;
-			if (fstart == 0) {
+			if (!pulldown_mode || (fstart == 0)) {
 				WriteFrame(obuf, framecode);
 			} else if (fstart == 1) {
 				f_oddframe = true;
