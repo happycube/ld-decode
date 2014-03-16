@@ -578,11 +578,11 @@ class TBC
 //					cerr << "adjust " << adjust << " gap " << gap << endl;
 					if (adjust < -4) {
 						adjust += 8;
-						linecount++;
+						if (curline < 10) linecount++;
 					}
 					if (adjust > 4) {
 						adjust -= 8;
-						linecount++;
+						if (curline < 10) linecount++;
 					}
 //					cerr << "adjust " << adjust << " gap " << gap << endl;
 				
