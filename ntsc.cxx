@@ -450,6 +450,12 @@ class TBC
 			return out;
 		}
 
+		bool IsVisibleLine(int curline) {
+			if ((curline < 0) || (curline > 525)) return false;
+
+			return (NTSCLine[curline] & LINE_VIDEO);
+		}
+
 	public:
 		TBC(int _bufsize = 4096) {
 			fieldcount = curline = linecount = -1;
@@ -578,11 +584,11 @@ class TBC
 //					cerr << "adjust " << adjust << " gap " << gap << endl;
 					if (adjust < -4) {
 						adjust += 8;
-						if (curline < 10) linecount++;
+						if (!IsVisibleLine(curline)) linecount++;
 					}
 					if (adjust > 4) {
 						adjust -= 8;
-						if (curline < 10) linecount++;
+						if (!IsVisibleLine(curline)) linecount++;
 					}
 //					cerr << "adjust " << adjust << " gap " << gap << endl;
 				
