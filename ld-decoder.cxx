@@ -466,6 +466,11 @@ int main(int argc, char *argv[])
 	Filter f_afilt16(16, NULL, f_afilt16_b);
 	Filter f_afilt32(32, NULL, f_afilt32_b);
 
+	double c[16];
+	for (int i = 0; i < 16; i++) c[i] = (1.0/16.0);
+	
+	Filter c_avg(15, NULL, c);
+
 	//FM_demod video(2048, {7600000, 8100000, 8400000, 8700000, 9000000, 9300000}, NULL /*&f_boost16*/, {&f_lpf40_16, &f_lpf40_16, &f_lpf40_16, &f_lpf40_16, &f_lpf40_16, &f_lpf40_16}, NULL);
 
 //	FM_demod video(2048, {8700000}, &f_boost16, {&f_lpf40_16, &f_lpf40_16, &f_lpf40_16, &f_lpf40_16, &f_lpf40_16, &f_lpf40_16}, NULL);
@@ -490,12 +495,17 @@ int main(int argc, char *argv[])
 			int in;
 
 			if (n > 0) {
+				double adj = c_avg.feed(fabs(n - prev)) / 250000.0;
+				if (adj > 1.0) adj = 1.0;
+
 //				cerr << i << ' ' << n << ' ';
 				charge += ((n - prev) * 1.0);
 				prev = n;
-				n -= (charge * 0.6);
+
+				n -= (charge * (.72 - (adj * .21)));
+//				n -= (charge * .6);
 //				cerr << charge << ' ';
-				charge *= 0.88;
+				charge *= 0.89;
 
 //				cerr << n << ' ' << endl;
 
