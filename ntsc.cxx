@@ -584,11 +584,17 @@ class TBC
 //					cerr << "adjust " << adjust << " gap " << gap << endl;
 					if (adjust < -4) {
 						adjust += 8;
-						if (!IsVisibleLine(curline)) linecount++;
+						if ((curline == 273) || (curline == 274) || 
+						    (curline == 10) || (curline == 11)) { 
+							linecount++;
+						}
 					}
 					if (adjust > 4) {
 						adjust -= 8;
-						if (!IsVisibleLine(curline)) linecount++;
+						if ((curline == 273) || (curline == 274) || 
+						    (curline == 10) || (curline == 11)) { 
+							linecount++;
+						}
 					}
 //					cerr << "adjust " << adjust << " gap " << gap << endl;
 				
