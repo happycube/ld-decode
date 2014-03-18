@@ -495,14 +495,14 @@ int main(int argc, char *argv[])
 			int in;
 
 			if (n > 0) {
-				double adj = c_avg.feed(fabs(n - prev)) / 250000.0;
+				double adj = c_avg.feed(fabs(n - prev)) / 350000.0;
 				if (adj > 1.0) adj = 1.0;
 
 //				cerr << i << ' ' << n << ' ';
 				charge += ((n - prev) * 1.0);
 				prev = n;
 
-				n -= (charge * (.67 - (adj * .10)));
+				n -= (charge * (.68 - (adj * .10)));
 //				n -= (charge * .62);
 //				cerr << charge << ' ';
 				charge *= 0.89;
