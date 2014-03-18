@@ -7,14 +7,14 @@ freq = (315.0 / 88.0) * 8.0
 freq_hz = freq * 1000000.0
 blocklen = 32768 
 
-#bandpass_filter = sps.firwin(17, [0.10, 0.45])
-bandpass_filter = [3.023991564221081e-03, 4.233186409767337e-03, 7.954665760931824e-03, 2.061366484849445e-03, -1.422694634466230e-03, -7.408019315126677e-02, -1.359026202658482e-01, -6.450343643150648e-01, 1.689996991838728e+00, -6.450343643150648e-01, -1.359026202658483e-01, -7.408019315126678e-02, -1.422694634466230e-03, 2.061366484849445e-03, 7.954665760931824e-03, 4.233186409767340e-03, 3.023991564221081e-03]
+bandpass_filter = [1.054426894146890e-04, -4.855229756583843e-05, -1.697044474992538e-04, -7.766136246382485e-04, 9.144665108615849e-04, -1.491605732025549e-04, -2.685488739297526e-03, 7.285040311086869e-03, -4.774190752742531e-03, 3.330240008284701e-03, 2.358989562928025e-02, -3.821800878599309e-02, 3.820884674542058e-02, 4.425991853422013e-02, -2.472175319907102e-01, -1.569521671065990e-02, 3.841248896214869e-01, -1.569521671065990e-02, -2.472175319907102e-01, 4.425991853422012e-02, 3.820884674542059e-02, -3.821800878599308e-02, 2.358989562928026e-02, 3.330240008284701e-03, -4.774190752742532e-03, 7.285040311086868e-03, -2.685488739297526e-03, -1.491605732025550e-04, 9.144665108615855e-04, -7.766136246382485e-04, -1.697044474992539e-04, -4.855229756583846e-05, 1.054426894146890e-04]
+
 #for i in range(0, len(bandpass_filter)):
 #	print bandpass_filter[i], ",",  
 
-lowpass_filter = sps.firwin(17, 4.0 / (freq / 2), window='hamming')
+lowpass_filter = sps.firwin(17, 4.5 / (freq / 2), window='hamming')
 for i in range(0, len(lowpass_filter)):
-	print lowpass_filter[i], ",",  
+	print "%.15e" % lowpass_filter[i], ",",  
 
 #print
 #lowpass_filter = [-5.182956535966573e-04, -4.174028437151462e-03, -1.126381254549101e-02, -1.456598548706209e-02, 3.510439201231994e-03, 5.671595743858979e-02, 1.370914830220347e-01, 2.119161192395519e-01, 2.425762464437853e-01, 2.119161192395519e-01, 1.370914830220347e-01, 5.671595743858982e-02, 3.510439201231995e-03, -1.456598548706209e-02, -1.126381254549101e-02, -4.174028437151466e-03, -5.182956535966573e-04]
@@ -26,13 +26,13 @@ def process(data):
 	in_len = len(data)
 	in_filt = sps.fftconvolve(data, bandpass_filter)
 
-	ohet = np.empty([len(bands), in_len + 16], dtype=complex)
-	ohet_filt = np.empty([len(bands), in_len + 16], dtype=complex)
-	ohet_filtn = np.empty([len(bands), in_len + 32], dtype=complex)
-	angles = np.empty([len(bands), in_len + 32])
-	dangle = np.empty([len(bands), in_len + 32])
-	abs_dangle = np.empty([len(bands), in_len + 32])
-	levels = np.empty([len(bands), in_len + 32])
+	ohet = np.empty([len(bands), in_len + 32], dtype=complex)
+	ohet_filt = np.empty([len(bands), in_len + 32], dtype=complex)
+	ohet_filtn = np.empty([len(bands), in_len + 48], dtype=complex)
+	angles = np.empty([len(bands), in_len + 48])
+	dangle = np.empty([len(bands), in_len + 48])
+	abs_dangle = np.empty([len(bands), in_len + 48])
+	levels = np.empty([len(bands), in_len + 48])
 	output = np.empty(in_len)
 
 #	print len(in_filt) 
@@ -76,7 +76,7 @@ def process(data):
 				peakband = b
 
 		output[i] = bands[peakband] - ((bands[peakband] / 2.0) * dangle[peakband][i])
-#		print output[i]
+	#	print levels[peakband][i], output[i]
 
 	return np.delete(output, np.s_[0:128])
 
@@ -99,7 +99,7 @@ print
 
 # actual work
 
-infile = open("rd.raw", "rb")
+infile = open("mb.raw", "rb")
 outfile = open("testpy.ld", "wb")
 #indata = []
 
@@ -110,7 +110,8 @@ indata = np.fromstring(inbuf, 'uint8', toread)
 total = 0
 
 charge = 0
-prev = 8700000
+scharge = 0
+prev = 9300000
 
 while len(inbuf) > 0:
 	toread = blocklen - indata.size 
@@ -127,9 +128,11 @@ while len(inbuf) > 0:
 		n = output[i]
 
 		charge = charge + ((n - prev) * 1.0)
+#		print i, n, charge, 
 		prev = n
-		n = n - (charge * 0.5) 
-		charge = charge * 0.9
+		n = n - (charge * 0.60) 
+		charge = charge * 0.90
+#		print n
 
 		n = (n - 7600000.0) / 1700000.0
 		if n < 0:
