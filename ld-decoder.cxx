@@ -502,7 +502,8 @@ int main(int argc, char *argv[])
 				charge += ((n - prev) * 1.0);
 				prev = n;
 
-				n -= (charge * (.68 - (adj * .10)));
+				n -= (charge * (.68 - (adj * .105)));
+//				n -= (charge * (.69 - (adj * .11)));
 //				n -= (charge * .62);
 //				cerr << adj << ' ' << charge << ' ';
 				charge *= 0.88;
