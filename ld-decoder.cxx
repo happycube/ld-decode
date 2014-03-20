@@ -477,7 +477,9 @@ int main(int argc, char *argv[])
 	Filter f_afilt32(32, NULL, f_afilt32_b);
 
 	double c[16];
-	for (int i = 0; i < 16; i++) c[i] = (1.0/16.0);
+	double total = 0;
+	for (int i = 0; i < 16; i++) total += (1.0/(16.0));
+	for (int i = 0; i < 16; i++) c[i] = (1.0/(16.0)) / total;
 	
 	Filter c_avg(15, NULL, c);
 
@@ -519,7 +521,9 @@ int main(int argc, char *argv[])
 				charge += ((n - prev) * 1.0);
 				prev = n;
 
-				n -= (charge * (.68 - (adj * .105)));
+//				n -= (charge * (.68 - (adj * .105)));
+//				n -= (charge * (.7 - (adj * .2)));
+				n -= (charge * (.715 - (adj * .25)));
 //				n -= (charge * .5);
 		//		cerr << charge << ' ' << adj << ' ';
 				charge *= 0.88;
