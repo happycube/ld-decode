@@ -427,6 +427,8 @@ class FM_demod {
 		}
 };
 
+bool triple_hdyne = true;
+
 int main(int argc, char *argv[])
 {
 	int rv = 0, fd = 0;
@@ -474,7 +476,14 @@ int main(int argc, char *argv[])
 	//FM_demod video(2048, {7600000, 8100000, 8400000, 8700000, 9000000, 9300000}, NULL /*&f_boost16*/, {&f_lpf40_16, &f_lpf40_16, &f_lpf40_16, &f_lpf40_16, &f_lpf40_16, &f_lpf40_16}, NULL);
 
 //	FM_demod video(2048, {8700000}, &f_boost16, {&f_lpf40_16, &f_lpf40_16, &f_lpf40_16, &f_lpf40_16, &f_lpf40_16, &f_lpf40_16}, NULL);
-	FM_demod video(2048, {8700000}, {&f_boost32}, {&f_lpf}, NULL);
+	FM_demod video(2048, {8100000, 8700000, 9300000}, {&f_boost32}, {&f_lpf, &f_lpf, &f_lpf}, NULL);
+/*
+	if (triple_hdyne) {
+		FM_demod video(2048, {8100000, 8700000, 9300000}, {&f_boost32}, {&f_lpf, &f_lpf, &f_lpf}, NULL);
+	} else {
+		FM_demod video(2048, {8700000}, {&f_boost32}, {&f_lpf, &f_lpf, &f_lpf}, NULL);
+	}
+*/
 //	FM_demod video(2048, {7600000, 8100000, 8400000, 8700000, 9000000, 9300000}, &f_boost16, {&f_lpf40_16, &f_lpf40_16, &f_lpf40_16, &f_lpf40_16, &f_lpf40_16, &f_lpf40_16}, NULL);
 //	FM_demod video(2048, {7600000, 8100000, 8700000, 9300000}, &f_boost16, {&f_lpf40_16, &f_lpf40_16, &f_lpf40_16, &f_lpf40_16, &f_lpf40_16, &f_lpf40_16}, NULL);
 
@@ -503,9 +512,7 @@ int main(int argc, char *argv[])
 				prev = n;
 
 				n -= (charge * (.68 - (adj * .105)));
-//				n -= (charge * (.69 - (adj * .11)));
-//				n -= (charge * .62);
-//				cerr << adj << ' ' << charge << ' ';
+//				cerr << charge << ' ' << adj << ' ';
 				charge *= 0.88;
 
 //				cerr << n << ' ' << endl;
