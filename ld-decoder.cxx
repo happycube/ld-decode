@@ -530,7 +530,7 @@ int main(int argc, char *argv[])
 
 //				n -= (charge * (.68 - (adj * .105)));
 //				n -= (charge * (.7 - (adj * .2)));
-				n -= (charge * (.75 - (adj * .60)));
+				n -= (charge * (.75 - (adj * .40)));
 //				n -= (charge * .5);
 		//		cerr << charge << ' ' << adj << ' ';
 				charge *= 0.88;
