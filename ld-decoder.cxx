@@ -527,7 +527,7 @@ int main(int argc, char *argv[])
 			int in;
 
 			if (n > 0) {
-				double adj = pow(c_avg.feed(fabs(n - prev)) / 400000.0, 0.60);
+				double adj = pow(c_avg.feed(fabs(n - prev)) / 300000.0, 0.70);
 
 //				cerr << i << ' ' << n << ' ';
 				charge += ((n - prev) * 1.0);
@@ -536,7 +536,7 @@ int main(int argc, char *argv[])
 //				n -= (charge * (.68 - (adj * .105)));
 //				n -= (charge * (.7 - (adj * .2)));
 				//double f = (.75 - (adj * .50));
-				double f = (.85 - (adj * .50));
+				double f = (.75 - (adj * .40));
 				if (f < 0) f = 0;
 				n -= (charge * f);
 //				n -= (charge * .5);
