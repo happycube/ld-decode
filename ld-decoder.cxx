@@ -536,14 +536,15 @@ int main(int argc, char *argv[])
 //				n -= (charge * (.68 - (adj * .105)));
 //				n -= (charge * (.7 - (adj * .2)));
 				//double f = (.75 - (adj * .50));
-				double f = (.75 - (adj * .40));
-				if (f < 0) f = 0;
+				double f = .65;
+
+				if (fabs(charge) < 150000) f += (0.35 * (1.0 - (fabs(charge) / 150000.0)));
+
 				n -= (charge * f);
 //				n -= (charge * .5);
-		//		cerr << charge << ' ' << adj << ' ';
-				charge *= 0.88;
-
-//				cerr << n << ' ' << endl;
+//				cerr << n << ' ' << charge << ' ' << adj << ' ';
+				charge *= 0.89;
+//				cerr << charge << ' ' << endl;
 
 				n -= 7600000.0;
 				n /= (9300000.0 - 7600000.0);
