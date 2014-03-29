@@ -1,7 +1,0 @@
-# params:  in file, start point, length, output file
-rm -f locpipe  
-mkfifo locpipe 
-rm -f $4.m1v $4.wav $4.mpg
-sleep 1
-(cat locpipe | ./audio $1 $2 - > $4.wav  &)
-./ld $1 $2 $3 2> /dev/null | ./ntsc - 2> ntsclog 3> locpipe  | avconv -f rawvideo -r 24000/1001 -pix_fmt rgb48 -s 1488x480 -i pipe:0 -s 720x480 -b:v 8192k -f mpeg1video $4.m1v 
