@@ -543,7 +543,7 @@ int main(int argc, char *argv[])
 				n -= (charge * f);
 //				n -= (charge * .5);
 //				cerr << n << ' ' << charge << ' ' << adj << ' ';
-				charge *= 0.89;
+				charge *= 0.88;
 //				cerr << charge << ' ' << endl;
 
 				n -= 7600000.0;
