@@ -538,7 +538,7 @@ int main(int argc, char *argv[])
 				//double f = (.75 - (adj * .50));
 				double f = .60;
 
-				if (fabs(charge) < 150000) f += (0.25 * (1.0 - (fabs(charge) / 150000.0)));
+				if (fabs(charge) < 150000) f += (0.40 * (1.0 - (fabs(charge) / 150000.0)));
 
 				n -= (charge * f);
 //				n -= (charge * .5);
