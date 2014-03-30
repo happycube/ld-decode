@@ -1,101 +1,10 @@
 /* LD decoder prototype, Copyright (C) 2013 Chad Page.  License: LGPL2 */
 
-#include <stdio.h>
-#include <iostream>
-#include <iomanip>
-#include <vector>
-#include <list>
-#include <queue>
-#include <complex>
-#include <unistd.h>
-#include <sys/fcntl.h>
-#include <fftw3.h>
-#include <math.h>
-#include <stdlib.h>
-#include <string.h>
+#include "ld-decoder.h"
 
 // capture frequency and fundamental NTSC color frequency
 //const double CHZ = (1000000.0*(315.0/88.0)*8.0);
 //const double FSC = (1000000.0*(315.0/88.0));
-
-using namespace std;
-
-double ctor(double r, double i)
-{
-	return sqrt((r * r) + (i * i));
-}
-
-class Filter {
-	protected:
-		int order;
-		bool isIIR;
-		vector<double> a, b;
-		vector<double> y, x;
-	public:
-		Filter(int _order, const double *_a, const double *_b) {
-			order = _order + 1;
-			if (_a) {
-				a.insert(b.begin(), _a, _a + order);
-				isIIR = true;
-			} else {
-				a.push_back(1.0);
-				isIIR = false;
-			}
-			b.insert(b.begin(), _b, _b + order);
-			x.resize(order);
-			y.resize(order);
-	
-			clear();
-		}
-
-		Filter(Filter *orig) {
-			order = orig->order;
-			isIIR = orig->isIIR;
-			a = orig->a;
-			b = orig->b;
-			x.resize(order);
-			y.resize(order);
-				
-			clear();
-		}
-
-		void clear(double val = 0) {
-			for (int i = 0; i < order; i++) {
-				x[i] = y[i] = val;
-			}
-		}
-
-		inline double feed(double val) {
-			double a0 = a[0];
-			double y0;
-
-			double *x_data = x.data();
-			double *y_data = y.data();
-
-			memmove(&x_data[1], x_data, sizeof(double) * (order - 1)); 
-			if (isIIR) memmove(&y_data[1], y_data, sizeof(double) * (order - 1)); 
-
-			x[0] = val;
-			y0 = 0; // ((b[0] / a0) * x[0]);
-			//cerr << "0 " << x[0] << ' ' << b[0] << ' ' << (b[0] * x[0]) << ' ' << y[0] << endl;
-
-			if (isIIR) {
-				for (int o = 0; o < order; o++) {
-					y0 += ((b[o] / a0) * x[o]);
-					if (o) y0 -= ((a[o] / a0) * y[o]);
-					//cerr << o << ' ' << x[o] << ' ' << y[o] << ' ' << a[o] << ' ' << b[o] << ' ' << (b[o] * x[o]) << ' ' << -(a[o] * y[o]) << ' ' << y[0] << endl;
-				}
-			} else {
-				for (int o = 0; o < order; o++) {
-					y0 += b[o] * x[o];
-				}
-			}
-
-			y[0] = y0;
-			return y[0];
-		}
-		double val() {return y[0];}
-};
 
 // back-reason for selecting 30:  14.318/1.3*e = 29.939.  seems to work better than 31 ;) 
 const double f28_1_3mhz_b30[] {4.914004914004915e-03, 5.531455998921954e-03, 7.356823678403171e-03, 1.031033062576930e-02, 1.426289441492169e-02, 1.904176904176904e-02, 2.443809475353342e-02, 3.021602622216704e-02, 3.612304011689930e-02, 4.190097158553291e-02, 4.729729729729729e-02, 5.207617192414463e-02, 5.602873571329703e-02, 5.898224266066317e-02, 6.080761034014438e-02, 6.142506142506142e-02, 6.080761034014438e-02, 5.898224266066317e-02, 5.602873571329704e-02, 5.207617192414465e-02, 4.729729729729731e-02, 4.190097158553292e-02, 3.612304011689932e-02, 3.021602622216705e-02, 2.443809475353343e-02, 1.904176904176904e-02, 1.426289441492169e-02, 1.031033062576930e-02, 7.356823678403167e-03, 5.531455998921954e-03, 4.914004914004915e-03};
