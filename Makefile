@@ -15,3 +15,7 @@ ntsc: ntsc.cxx
 comb: comb.cxx
 	clang++ -std=c++11  -Wall -D_NOSNAP -O3 -g -o comb comb.cxx
 
+test:
+	./ldd snw.raw | ./ntsc - | ./comb - > snw.rgb
+	convert -size 1488x480 -depth 8 rgb:snw.rgb -resize 640x480\! snw.png
+
