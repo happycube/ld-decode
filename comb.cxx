@@ -212,6 +212,15 @@ int black_u16 = ire_to_u16(black_ire);
 int white_u16 = level_100ire; 
 bool whiteflag_detect = true;
 
+enum cline_stat {
+};
+
+typedef struct cline {
+	double y[hleni]; // Y
+	double m[hleni]; // IQ magnitude
+	double a[hleni]; // IQ phase angle
+//	int stat[hleni];
+} cline_t;
 
 int write_locs = -1;
 
@@ -243,7 +252,7 @@ class Comb
 		double blevel[525];
 
 		double _cos[525][16], _sin[525][16];
-		double i[525][1820], q[525][1820];
+		cline_t wbuf[3][525];
 		Filter *f_i, *f_q;
 		Filter *f_synci, *f_syncq;
 
@@ -323,6 +332,57 @@ class Comb
 			return (0.5 * orig) + (0.25 * a) + (0.25 * b);
 		}
 
+		double adiff(double a1, double a2) {
+			double v = a2 - a1;
+
+			if (v > M_PIl) v -= (2 * M_PIl);
+			else if (v <= -M_PIl) v += (2 * M_PIl);
+
+			return v;
+		}
+
+		cline_t Blend(cline_t &prev, cline_t &cur, cline_t &next) {
+			cline cur_combed;
+
+			int counter = 0;
+			for (int h = line_blanklen - 64 - 135; counter < 1760 - 135; h++) {
+//				cerr << h << ' ' << prev.a[h] << ' ' << cur.a[h] << ' ' << next.a[h] << ' ';	
+//				cerr << ": " << prev.m[h] << ' ' << cur.m[h] << ' ' << next.m[h] << endl;	
+//				cerr << h << ' ' << adiff(prev.a[h], cur.a[h]) << ' ' << adiff(cur.a[h], next.a[h]) << ' ' << adiff(prev.a[h], next.a[h]) << endl;	
+
+				double diff = (fabs(adiff(prev.a[h], cur.a[h])) + fabs(adiff(cur.a[h], next.a[h]))) / 2.0;
+//				double adj = fabs(adiff(prev.a[h], next.a[h]) / diff);	
+
+				cur_combed.y[h] = cur.y[h];
+				cur_combed.a[h] = cur.a[h];
+				cur_combed.m[h] = cur.m[h];
+#if 0
+				if (fabs(adiff(prev.a[h], cur.a[h])) < (M_PIl * .1)) {
+					cur_combed.a[h] *= 0.5;
+					cur_combed.a[h] += (prev.a[h] * 0.5);
+				} else if (fabs(adiff(prev.a[h], next.a[h])) < (M_PIl * .1)) {
+					cur_combed.a[h] *= 0.5;
+					cur_combed.a[h] += (next.a[h] * 0.5);
+				} 
+#endif	
+				if (diff > (M_PIl * .5)) {
+					double adj = 1 - (diff / M_PIl); 
+					if (adj < 0) adj = 0;
+					if (adj > 1) adj = 1;
+//				cerr << h << ' ' << prev.a[h] << ' ' << cur.a[h] << ' ' << next.a[h] << ' ';	
+//				cerr << ": " << prev.m[h] << ' ' << cur.m[h] << ' ' << next.m[h] << endl;	
+//				cerr << h << ' ' << adiff(prev.a[h], cur.a[h]) << ' ' << adiff(cur.a[h], next.a[h]) << ' ' << adiff(prev.a[h], next.a[h]) << endl;	
+//					cerr << diff << ' ' <<  adj << endl;
+					
+					cur_combed.m[h] *= adj;
+				}
+
+				counter++;
+//				cerr << h << ' ' << diff << ' ' <<  adj << endl;
+			}
+			return cur_combed;
+		}
+
 		// buffer: 1685x505 uint16_t array
 		void CombFilter(uint16_t *buffer, uint8_t *output)
 		{
@@ -333,8 +393,7 @@ class Comb
 //				double _cos[(int)freq + 1], _sin[(int)freq + 1];
 				double level, phase;
 
-				double val, _val;
-				double cmult;
+				double val;
 
 				BurstDetect(line, 0, 4 * dots_usec, level, phase);
 //				cerr << "burst " << level << ' ' << phase << endl;
@@ -350,13 +409,16 @@ class Comb
 
 				int counter = 0;
 				for (int h = line_blanklen - 64 - 135; counter < 1760 - 135; h++) {
-//					val = (double)line[h] / (double)level_100ire;
+					double sq, si;
+
 					val = (double)(line[h] - black_u16) / (double)(white_u16 - black_u16); 
-//					val = clamp(val, 0, 1.2);
-//					val = u16_to_ire(line[h]);
 				
-					q[l][h] = f_q->feed(-val * _cos[l][h % 8]);
-					i[l][h] = f_i->feed(val * _sin[l][h % 8]);
+					sq = f_q->feed(-val * _cos[l][h % 8]);
+					si = f_i->feed(val * _sin[l][h % 8]);
+
+					wbuf[0][l].y[h] = line[h]; 
+					wbuf[0][l].m[h] = ctor(si, sq); 
+					wbuf[0][l].a[h] = atan2(si, sq); 
 					
 //					cerr << "P" << h << ' ' << counter << ' ' << line[h] << ' ' << val << ' ' << (double)line[h] / (double)level_100ire << endl;
 					counter++;
@@ -364,37 +426,28 @@ class Comb
 			}
 	
 			for (int l = 24; l < 504; l++) {
-				uint16_t *line = &buffer[l * 1685];
+				cline_t line;
+
+				cerr << l << endl;
+
+				if (l < 503) 
+					line = Blend(wbuf[0][l - 2], wbuf[0][l], wbuf[0][l + 2]);
+				else
+					memcpy(&line, &wbuf[0][l], sizeof(cline_t));
+
 				int counter = 0;
 				double circbuf[18];
 				double val, _val;
 				for (int h = line_blanklen - 64 - 135; counter < 1760 - 135; h++) {
-					val = (double)(line[h] - black_u16) / (double)(white_u16 - black_u16); 
-//					cerr << black_u16 << ' ' << line[h] << ' ' << level_100ire << ' ' << val << endl;
+					val = (double)(line.y[h] - black_u16) / (double)(white_u16 - black_u16); 
 #ifdef BW
 					i = q = 0;
 #endif
 					double cmult = 0.12 / blevel[l];
-//					double cmult = 3.5;
 
-					double icomp = i[l][h];
-					double qcomp = q[l][h];
+					double icomp = line.m[h] * sin(line.a[h]);
+					double qcomp = line.m[h] * cos(line.a[h]);
 
-					bool dis;
-
-					double icomb = blend(i[l][h], i[l - 2][h], i[l + 2][h], dis);
-					icomp = dis ? 0 : icomb;
-					double qcomb = blend(q[l][h], q[l - 2][h], q[l + 2][h], dis);
-					qcomp = dis ? 0 : qcomb;
-
-					//double icomb = i[l][h];
-					//double qcomb = q[l][h];
-
-					if (bw_mode) {
-						icomb = qcomb = 0;
-						icomp = qcomp = 0;
-					}
- 
 					double iadj = icomp * 2 * _cos[l][(h + 1) % 8];
 					double qadj = qcomp * 2 * _sin[l][(h + 1) % 8];
 
@@ -409,7 +462,7 @@ class Comb
 #ifdef GRAY 
 					i = q = 0;
 #endif
-					YIQ outc = YIQ(val, cmult * icomb, cmult * qcomb);	
+					YIQ outc = YIQ(val, cmult * icomp, cmult * qcomp);	
 
 					if (counter >= 42) {
 						outline[counter - 42].y = outc.y;
