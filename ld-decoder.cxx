@@ -229,9 +229,9 @@ int main(int argc, char *argv[])
 	
 	Filter f_boost32(32, NULL, f_boost32_b);
 
-	FM_demod video(2048, {8100000, 8700000, 9300000}, {&f_boost32}, {&f_lpf, &f_lpf, &f_lpf}, NULL);
+	FM_demod video(2048, {8100000, 8600000, 9100000, 9600000}, {&f_boost32}, {&f_lpf, &f_lpf, &f_lpf, &f_lpf, &f_lpf}, NULL);
 
-	double charge = 0, prev = 8700000;
+	double charge = 0, acharge = 0, prev = 8700000;
 
 	while ((rv == 2048) && ((dlen == -1) || (i < dlen))) {
 		vector<double> dinbuf;
@@ -250,16 +250,18 @@ int main(int argc, char *argv[])
 			if (n > 0) {
 //				cerr << i << ' ' << n << ' ';
 				charge += ((n - prev) * 1.0);
+				acharge += fabs((n - prev) * 1.0);
 				prev = n;
 
-				double f = .60;
+				double f = .48;
 
-				if (fabs(charge) < 150000) f += (0.40 * (1.0 - (fabs(charge) / 150000.0)));
+				if (fabs(acharge) < 500000) f += (0.52 * (1.0 - (fabs(acharge) / 500000.0)));
 
 				n -= (charge * f);
 //				n -= (charge * .5);
 //				cerr << n << ' ' << charge << ' ' << adj << ' ';
 				charge *= 0.88;
+				acharge *= 0.88;
 //				cerr << charge << ' ' << endl;
 
 				n -= 7600000.0;
