@@ -369,10 +369,6 @@ class Comb
 					double adj = 1 - (diff / M_PIl); 
 					if (adj < 0) adj = 0;
 					if (adj > 1) adj = 1;
-//				cerr << h << ' ' << prev.a[h] << ' ' << cur.a[h] << ' ' << next.a[h] << ' ';	
-//				cerr << ": " << prev.m[h] << ' ' << cur.m[h] << ' ' << next.m[h] << endl;	
-//				cerr << h << ' ' << adiff(prev.a[h], cur.a[h]) << ' ' << adiff(cur.a[h], next.a[h]) << ' ' << adiff(prev.a[h], next.a[h]) << endl;	
-//					cerr << diff << ' ' <<  adj << endl;
 					
 					cur_combed.m[h] *= adj;
 				}
@@ -428,8 +424,6 @@ class Comb
 			for (int l = 24; l < 504; l++) {
 				cline_t line;
 
-				cerr << l << endl;
-
 				if (l < 503) 
 					line = Blend(wbuf[0][l - 2], wbuf[0][l], wbuf[0][l + 2]);
 				else
@@ -440,14 +434,18 @@ class Comb
 				double val, _val;
 				for (int h = line_blanklen - 64 - 135; counter < 1760 - 135; h++) {
 					val = (double)(line.y[h] - black_u16) / (double)(white_u16 - black_u16); 
-#ifdef BW
-					i = q = 0;
-#endif
 					double cmult = 0.12 / blevel[l];
 
-					double icomp = line.m[h] * sin(line.a[h]);
-					double qcomp = line.m[h] * cos(line.a[h]);
-
+					double icomp = 0;
+					double qcomp = 0;
+				
+					if (!bw_mode) {
+						icomp = line.m[h] * sin(line.a[h]);
+						qcomp = line.m[h] * cos(line.a[h]);
+					} else {
+						icomp = qcomp = 0;
+					}
+	
 					double iadj = icomp * 2 * _cos[l][(h + 1) % 8];
 					double qadj = qcomp * 2 * _sin[l][(h + 1) % 8];
 
