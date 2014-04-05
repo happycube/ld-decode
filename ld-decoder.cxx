@@ -25,7 +25,7 @@ const double f_lpf50_16_python_b[] {1.916071020215727e-03 , 5.134814884462994e-0
 
 //const double f_lpf55_16_python_b[] {-0.000723397637219 , 0.00433368634435 , 0.00931049560886 , -0.00571459940902 , -0.0426674090828 , -0.0349785521301 , 0.0915883051498 , 0.286887403184 , 0.383928135944 , 0.286887403184 , 0.0915883051498 , -0.0349785521301 , -0.0426674090828 , -0.00571459940902 , 0.00931049560886 , 0.00433368634435 , -0.000723397637219};
 
-Filter f_lpf(16, NULL, f_lpf42_16_python_b);
+Filter f_lpf(16, NULL, f_lpf50_16_python_b);
 
 // From http://lists.apple.com/archives/perfoptimization-dev/2005/Jan/msg00051.html. 
 const double PI_FLOAT = M_PIl;
@@ -270,9 +270,9 @@ int main(int argc, char *argv[])
 				acharge += fabs((n - prev) * 1.0);
 				prev = n;
 
-				double f = .48;
+				double f = .68;
 
-				if (fabs(acharge) < 500000) f += (0.52 * (1.0 - (fabs(acharge) / 500000.0)));
+				if (fabs(acharge) < 500000) f += (0.32 * (1.0 - (fabs(acharge) / 500000.0)));
 
 				n -= (charge * f);
 //				n -= (charge * .5);
