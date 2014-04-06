@@ -301,9 +301,9 @@ int main(int argc, char *argv[])
 				acharge += fabs((n - prev) * 1.0);
 				prev = n;
 
-				double f = .68;
+				double f = .65;
 
-				if (fabs(acharge) < 500000.0) f += (0.32 * (1.0 - (fabs(acharge) / 500000.0)));
+				if (fabs(acharge) < 500000.0) f += (0.35 * (1.0 - (fabs(acharge) / 500000.0)));
 
 				n -= (charge * f);
 //				n -= (charge * .5);
