@@ -6,11 +6,14 @@
 //const double CHZ = (1000000.0*(315.0/88.0)*8.0);
 //const double FSC = (1000000.0*(315.0/88.0));
 
-const double f14_1_3mhz_b15[] {-3.190093002289628e-03, -3.191345516111202e-03, 2.934926651176227e-04, 1.634894114451717e-02, 5.123523965895763e-02, 1.014467069217903e-01, 1.523838439686879e-01, 1.846732141593300e-01, 1.846732141593300e-01, 1.523838439686880e-01, 1.014467069217904e-01, 5.123523965895767e-02, 1.634894114451718e-02, 2.934926651176237e-04, -3.191345516111201e-03, -3.190093002289628e-03};
+// back-reason for selecting 30:  14.318/1.3*e = 29.939.  seems to work better than 31 ;) 
+const double f28_1_3mhz_b30[] {4.914004914004915e-03, 5.531455998921954e-03, 7.356823678403171e-03, 1.031033062576930e-02, 1.426289441492169e-02, 1.904176904176904e-02, 2.443809475353342e-02, 3.021602622216704e-02, 3.612304011689930e-02, 4.190097158553291e-02, 4.729729729729729e-02, 5.207617192414463e-02, 5.602873571329703e-02, 5.898224266066317e-02, 6.080761034014438e-02, 6.142506142506142e-02, 6.080761034014438e-02, 5.898224266066317e-02, 5.602873571329704e-02, 5.207617192414465e-02, 4.729729729729731e-02, 4.190097158553292e-02, 3.612304011689932e-02, 3.021602622216705e-02, 2.443809475353343e-02, 1.904176904176904e-02, 1.426289441492169e-02, 1.031033062576930e-02, 7.356823678403167e-03, 5.531455998921954e-03, 4.914004914004915e-03};
 
-const double f14_0_6mhz_b15[] {5.162833431022274e-03, 9.537169343788440e-03, 2.179793428021240e-02, 4.246170446278436e-02, 6.920721093300924e-02, 9.725734014351654e-02, 1.206398826611330e-01, 1.339359247445336e-01, 1.339359247445335e-01, 1.206398826611330e-01, 9.725734014351656e-02, 6.920721093300930e-02, 4.246170446278436e-02, 2.179793428021239e-02, 9.537169343788435e-03, 5.162833431022274e-03};
+const double f28_1_3mhz_b32[] {-1.605533065998730e-03, -1.720671809315438e-03, -1.946714932361703e-03, -1.994955262998560e-03, -1.418668951504014e-03, 3.196223312744169e-04, 3.750192920679346e-03, 9.284036375671866e-03, 1.710727911480327e-02, 2.710292793921179e-02, 3.881702596824465e-02, 5.147908615666569e-02, 6.407728145733732e-02, 7.547900436664387e-02, 8.457890959912071e-02, 9.045104659530802e-02, 9.248026239443490e-02, 9.045104659530802e-02, 8.457890959912071e-02, 7.547900436664387e-02, 6.407728145733733e-02, 5.147908615666569e-02, 3.881702596824466e-02, 2.710292793921179e-02, 1.710727911480328e-02, 9.284036375671866e-03, 3.750192920679346e-03, 3.196223312744170e-04, -1.418668951504014e-03, -1.994955262998559e-03, -1.946714932361704e-03, -1.720671809315439e-03, -1.605533065998730e-03};
 
-const double f14_0_6mhz_b30[] {-1.258748785899385e-03, -1.057528127814725e-03, -7.529999144837454e-04, 9.019397940118997e-05, 1.988350225701514e-03, 5.443508287665837e-03, 1.083818469820938e-02, 1.833894901300455e-02, 2.782730702513882e-02, 3.887247656764735e-02, 5.075392314356197e-02, 6.253310939739308e-02, 7.316529074574056e-02, 8.163491886101157e-02, 8.709363828372436e-02, 8.897885319999538e-02, 8.709363828372438e-02, 8.163491886101154e-02, 7.316529074574056e-02, 6.253310939739311e-02, 5.075392314356199e-02, 3.887247656764737e-02, 2.782730702513884e-02, 1.833894901300456e-02, 1.083818469820939e-02, 5.443508287665837e-03, 1.988350225701514e-03, 9.019397940119008e-05, -7.529999144837451e-04, -1.057528127814725e-03, -1.258748785899385e-03};
+const double f28_0_6mhz_b64[] {-6.916447903947148e-04, -6.637277886690091e-04, -6.506794962762819e-04, -6.385960636428408e-04, -6.091489627652988e-04, -5.401328736698201e-04, -4.062390816451122e-04, -1.800289567056259e-04, 1.669277273337949e-04, 6.627933750400666e-04, 1.334132570703104e-03, 2.204566737142542e-03, 3.293471104686198e-03, 4.614771600461567e-03, 6.175896724145871e-03, 7.976934496300239e-03, 1.001003732312394e-02, 1.225910839260336e-02, 1.469979236820074e-02, 1.729978111972153e-02, 2.001943252605971e-02, 2.281268753589040e-02, 2.562825822709219e-02, 2.841104809911676e-02, 3.110375576479802e-02, 3.364860502185666e-02, 3.598913834498529e-02, 3.807200741849585e-02, 3.984869359245655e-02, 4.127709314339044e-02, 4.232290688845818e-02, 4.296078085959773e-02, 4.317515410421566e-02, 4.296078085959773e-02, 4.232290688845819e-02, 4.127709314339045e-02, 3.984869359245655e-02, 3.807200741849585e-02, 3.598913834498529e-02, 3.364860502185667e-02, 3.110375576479803e-02, 2.841104809911677e-02, 2.562825822709219e-02, 2.281268753589041e-02, 2.001943252605972e-02, 1.729978111972153e-02, 1.469979236820075e-02, 1.225910839260336e-02, 1.001003732312394e-02, 7.976934496300244e-03, 6.175896724145871e-03, 4.614771600461570e-03, 3.293471104686198e-03, 2.204566737142541e-03, 1.334132570703105e-03, 6.627933750400653e-04, 1.669277273337959e-04, -1.800289567056260e-04, -4.062390816451116e-04, -5.401328736698201e-04, -6.091489627652993e-04, -6.385960636428407e-04, -6.506794962762823e-04, -6.637277886690096e-04, -6.916447903947148e-04};
+
+const double f_hsync8[] {1.447786467971050e-02, 4.395811440315845e-02, 1.202636955256379e-01, 2.024216184054497e-01, 2.377574139720867e-01, 2.024216184054497e-01, 1.202636955256379e-01, 4.395811440315847e-02, 1.447786467971050e-02};
 
 inline double IRE(double in) 
 {
@@ -142,11 +145,7 @@ void buildNTSCLines()
 }
 
 // NTSC properties
-const double in_freq = 8.0;	// in FSC 
-const double freq = 4.0;	// output freq in FSC.  Needs to be an even number (for now?) 
-const int freqi = 4;
-
-const double sfreq = in_freq / freq;
+const double freq = 8.0;	// in FSC.  Must be an even number!
 
 const double hlen = 227.5 * freq;
 const int    hleni = (int)hlen;
@@ -221,7 +220,7 @@ class TBC
 
 		double curscale;
 
-		uint16_t frame[hleni * 530];
+		uint16_t frame[1820 * 530];
 
 		double _cos[16], _sin[16];
 		Filter *f_i, *f_q;
@@ -229,28 +228,28 @@ class TBC
 
 		int32_t framecode;	// in hex
 
-		int FindHSync(uint16_t *buf, int start, int len, int &pulselen, int tlen = 25) {
-			Filter f_s(15, NULL, f14_1_3mhz_b15);
+		int FindHSync(uint16_t *buf, int start, int len, int &pulselen, int tlen = 60) {
+			Filter f_s(32, NULL, f28_1_3mhz_b32);
 
 			int sync_start = -1;
 
 			framecode = -1;
 
 			// allow for filter startup
-			if (start > 15) start -= 15;
+			if (start > 31) start -= 31;
 	
 			for (int i = start; i < start + len; i++) {
 				double v = f_s.feed(buf[i]);
 
 //				cerr << i << ' ' << buf[i] << ' ' << v << endl; 
 
-				// need to wait 15 samples
-				if (i > 15) {
+				// need to wait 30 samples
+				if (i > 30) {
 					if (sync_start < 0) {
 						if (v < 11000) sync_start = i;
 					} else if (v > 11000) {
 						if ((i - sync_start) > tlen) {
-//							cerr << "found " << i << " " << sync_start << ' ' << (i - sync_start) << endl;
+						//	cerr << "found " << i << " " << sync_start << ' ' << (i - sync_start) << endl;
 							pulselen = i - sync_start;
 							return sync_start - 15; // XXX: find right offset
 						}
@@ -273,19 +272,19 @@ class TBC
 			f_syncq->clear(ire_to_u16(black_ire));
 
 			// XXX? allow for filter startup
-			if (start > 20) start -= 20;
+			if (start > 65) start -= 65;
 
 			for (int l = start; l < start + len; l++) {
 				double v = buf[l];
 
-				double q = f_syncq->feed(v * _cos[l % freqi]);
-				double i = f_synci->feed(-v * _sin[l % freqi]);
+				double q = f_syncq->feed(v * _cos[l % 8]);
+				double i = f_synci->feed(-v * _sin[l % 8]);
 
 				double level = ctor(i, q);
 
 //				if ((l - start) > 65) cerr << l << ' ' << buf[l] << ' ' << level << ' ' << atan2(i, q) << endl;
 	
-				if (((l - start) > 15) && level > plevel) {
+				if (((l - start) > 65) && level > plevel) {
 					plevel = level;
 					pi = i; pq = q;
 				}
@@ -303,7 +302,7 @@ class TBC
 		// writes a 1685x505 16-bit grayscale frame	
 		void WriteBWFrame(uint16_t *buffer) {
 			for (int i = 20; i <= 524; i++) {
-				write(1, &buffer[(i * 910) + 90], 842 * 2);
+				write(1, &buffer[(i * 1820) + 135], 1685 * 2);
 			}
 		}
 
@@ -318,24 +317,15 @@ class TBC
 	
 		void ScaleOut(uint16_t *buf, uint16_t *outbuf, double start, double len)
 		{
-			double rescale_len = len * sfreq;
-			double perpel = rescale_len / hlen; 
+			double perpel = len / hlen; 
 			double plevel, pphase, out;
 
-			int slen = (int)(bufsize / perpel) - 2; 
-
-			start *= (in_freq / freq);
-
-//			cerr << "scaling inlen " << len << " recale_len " << rescale_len << "  slen " << slen << " perpel " << perpel << "start " << start << endl;
-
-			for (int i = 0; i < slen; i++) {
+			for (int i = 0; i < hlen + 400; i++) {
 				double p1;
 				
 				p1 = start + (i * perpel);
 				int index = (int)p1;
 				if (index < 1) index = 1;
-
-//				if (!i) cerr << index << endl;
 
 				out = CubicInterpolate(&buf[index - 1], p1 - index);
 
@@ -393,32 +383,29 @@ class TBC
 				_sin[e] = sin((2.0 * M_PIl * ((double)e / freq)));
 			}
 
-			f_i = new Filter(15, NULL, f14_1_3mhz_b15);
-			f_q = new Filter(15, NULL, f14_1_3mhz_b15);
+			f_i = new Filter(32, NULL, f28_1_3mhz_b32);
+			f_q = new Filter(32, NULL, f28_1_3mhz_b32);
 
-                        f_synci = new Filter(15, NULL, f14_0_6mhz_b15);
-                        f_syncq = new Filter(15, NULL, f14_0_6mhz_b15);
+                        f_synci = new Filter(64, NULL, f28_0_6mhz_b64);
+                        f_syncq = new Filter(64, NULL, f28_0_6mhz_b64);
 		}
 
 		// This assumes an entire 4K sliding buffer is available.  The return value is the # of new bytes desired 
 		int Process(uint16_t *buffer) {
-			uint16_t buf[hleni * 4];	
+			uint16_t outbuf[(int)hlen * 2];	
 			// find the first VSYNC, determine it's length
 			double pcon;
 			double gap = 0.0;
 
-			// initialize internal buffer - rescales the input to desired fsc 
-			ScaleOut(buffer, buf, 0, hleni);
-
 			int sync_len;
-			int sync_start = FindHSync(buf, 0, bufsize / sfreq, sync_len);
+			int sync_start = FindHSync(buffer, 0, bufsize, sync_len);
 			
 			// if there isn't a whole line and (if applicable) following burst, advance first
 			if (sync_start < 0) {
-				scount += 2048;
-				return 2048;
+				scount += 4096;
+				return 4096;
 			}
-			if ((2048 - sync_start) < 1100) {
+			if ((4096 - sync_start) < 2400) {
 				scount += sync_start - 64;
 				return sync_start - 64;
 			}
@@ -427,23 +414,24 @@ class TBC
 				return 512;
 			}
 
-			cerr << "first sync " << sync_start << " " << sync_len << endl;
+//			cerr << "first sync " << sync_start << " " << sync_len << endl;
 
 			// find next vsync.  this may be at .5H, if we're in VSYNC
-			int sync2_len = 0;
+			int sync2_len;
 			int sync2_start;
 	
-			sync2_start = FindHSync(buf, sync_start + 300, 300, sync2_len);
+			sync2_start = FindHSync(buffer, sync_start + 750, 300, sync2_len);
 			if (sync2_start < 0) {
-				sync2_start = FindHSync(buf, sync_start + 900, 200, sync2_len);
+				sync2_start = FindHSync(buffer, sync_start + 1800, 300, sync2_len);
 			}		
 			if (sync2_start < 0) {
-				sync2_start = sync_start + hleni;
+				sync2_start = sync_start + 1820;
 			}		
 	
+//			cerr << "second sync " << sync2_start << " " << sync2_len << endl;
+
 			// determine if this is a standard line
 			double linelen = sync2_start - sync_start;
-			cerr << "second sync " << sync2_start << " " << sync2_len << " " << linelen << endl;
 
 			// check sync lengths and distance between syncs to see if we've got a regular line
 			if ((fabs(linelen - hlen) < (hlen * .05)) && 
@@ -454,35 +442,37 @@ class TBC
 
 				// determine color burst and phase levels of both this and next color bursts
 
-				BurstDetect(&buf[sync_start], 3.5 * dots_usec, 7.5 * dots_usec, plevel, pphase);
-				cerr << curline << " start " << sync_start << " burst 1 " << plevel << " " << pphase << endl;
+				BurstDetect(&buffer[sync_start], 3.5 * dots_usec, 7.5 * dots_usec, plevel, pphase);
+//				cerr << curline << " start " << sync_start << " burst 1 " << plevel << " " << pphase << endl;
 		
 				// cerr << sync_len << ' ' << (sync2_start - sync_start + sync2_len) << endl;	
-				BurstDetect(&buf[sync_start], (sync2_start - sync_start) + (3.5 * dots_usec), 7.5 * dots_usec, plevel2, pphase2);
-				cerr << "burst 2 " << plevel2 << " " << pphase2 << ' ';
+				BurstDetect(&buffer[sync_start], (sync2_start - sync_start) + (3.5 * dots_usec), 7.5 * dots_usec, plevel2, pphase2);
+				// cerr << "burst 2 " << plevel2 << " " << pphase2 << ' ';
 
 				// if available, use the phase data of the next line's burst to determine line length
 				if ((plevel > 500) && (plevel2 > 500)) {
-					gap = -((pphase2 - pphase) / M_PIl) * 2.0;
-					cerr << sync_start << ":" << sync2_start << " " << (((sync2_start - sync_start) > hlen)) << ' ' << gap << endl;
-					if (gap < -2) gap += 4;
-					if (gap > 2) gap -= 4;
+					gap = -((pphase2 - pphase) / M_PIl) * 4.0;
+					// cerr << sync_start << ":" << sync2_start << " " << (((sync2_start - sync_start) > hlen)) << ' ' << gap << endl;
+					if (gap < -4) gap += 8;
+					if (gap > 4) gap -= 8;
 			
-					if (((sync2_start - sync_start) > hlen) && (gap < -.5)) gap += 2;
-					if (((sync2_start - sync_start) < hlen) && (gap > .5)) gap -= 2;
+					if (((sync2_start - sync_start) > hlen) && (gap < -.5)) gap += 4;
+					if (((sync2_start - sync_start) < hlen) && (gap > .5)) gap -= 4;
 
-					cerr << "gap " << gap << endl;
-					ScaleOut(buffer, buf, sync_start, hlen + gap);
+//					cerr << "gap " << gap << endl;
+					ScaleOut(buffer, outbuf, sync_start, 1820 + gap);
 				
-					BurstDetect(buf, 3.5 * dots_usec, 7.5 * dots_usec, plevel, pphase);
-					cerr << "gap " << gap << ' ' << "post-scale 1 " << plevel << " " << pphase << endl;
+					BurstDetect(outbuf, 3.5 * dots_usec, 7.5 * dots_usec, plevel, pphase);
+//					cerr << "gap " << gap << ' ' << "post-scale 1 " << plevel << " " << pphase << endl;
 				
 					// if this is the first line (of the frame?) set up phase targets for each line
 					if (linecount == -1) {
 						if (pphase > 0) { 
 							linecount = 0;
+							pcon = (M_PIl / 2) - pphase;
 						} else {
 							linecount = 1;
+							pcon = (-M_PIl / 2) - pphase;
 						}
 					}
 				} else {
@@ -494,61 +484,42 @@ class TBC
 				if (plevel > 500) {
 					if (linecount % 2) {
 						pcon = (-M_PIl / 2) - pphase;
-						if (pcon < -M_PIl) {
-							pcon = (M_PIl / 2) + (M_PIl - pphase);
-						}
-						cerr << "- " << pcon << endl;
 					} else {
 						pcon = (M_PIl / 2) - pphase;
-						cerr << "+ " << pcon << endl;
-						if (pcon > M_PIl) {
-							pcon = (-M_PIl / 2) - (pphase + M_PIl);
-							cerr << "+ " << pcon << endl;
-						}
 					}
+					// cerr << pcon << endl;
 
-					double adjust = (pcon / M_PIl) * 2.02;
-					cerr << "adjust " << adjust << " gap " << gap << endl;
-					if (adjust < -2) {
-						adjust += 4;
+					double adjust = (pcon / M_PIl) * 4.0;
+//					cerr << "adjust " << adjust << " gap " << gap << endl;
+					if (adjust < -4) {
+						adjust += 8;
 						if ((curline == 273) || (curline == 274) || 
 						    (curline == 10) || (curline == 11)) { 
-//							linecount++;
+							linecount++;
 						}
 					}
-					if (adjust > 2) {
-						adjust -= 4;
+					if (adjust > 4) {
+						adjust -= 8;
 						if ((curline == 273) || (curline == 274) || 
 						    (curline == 10) || (curline == 11)) { 
-//							linecount++;
+							linecount++;
 						}
 					}
 //					cerr << "adjust " << adjust << " gap " << gap << endl;
 				
-					ScaleOut(buffer, buf, sync_start - 16 + adjust, hlen + gap);
-					BurstDetect(buf, 3.5 * dots_usec, 7.5 * dots_usec, plevel, pphase);
-					int new_sync_len = 0;
-					int new_sync_start = FindHSync(buf, 0, bufsize / sfreq, new_sync_len);
-					cerr << "adjust " << adjust << " gap " << gap << " post-scale 2 " << plevel << " " << new_sync_start << " " << pphase << endl;
-					
-					if (new_sync_start != 15) {	
-						adjust += (new_sync_start - 15);
-						ScaleOut(buffer, buf, sync_start - 16 + adjust, hlen + gap);
-						new_sync_start = FindHSync(buf, 0, bufsize / sfreq, new_sync_len);
-						cerr << "adjust " << adjust << " gap " << gap << " post-scale 3 " << plevel << " " << new_sync_start << " " << pphase << endl;
-					}
+					ScaleOut(buffer, outbuf, sync_start + adjust, 1820 + gap);
+					BurstDetect(outbuf, 3.5 * dots_usec, 7.5 * dots_usec, plevel, pphase);
+//					cerr << "adjust " << adjust << " gap " << gap << " post-scale 2 " << plevel << " " << pphase << endl;
 				} else {
 					cerr << "WARN:  No first burst found\n";
 				}
 			} else {
-				cerr << "special line" << endl; 
+//				cerr << "special line" << endl; 
 
 				if (((curline > 23) && (curline < 260)) || 
 				    ((curline > 290) && (curline < 520))) {
 					cerr << "ERR " << scount << endl;
 				}
-
-				cerr << sync_len / freq << " " << (sync2_start - sync_start) / freq << endl;
 
 				if ((sync_len > (15 * freq)) &&
 				    (sync_len < (18 * freq)) &&
@@ -558,11 +529,9 @@ class TBC
 					curline = 263;
 				}
 
-				ScaleOut(buffer, buf, sync_start, hlen);
+				ScaleOut(buffer, outbuf, sync_start, 1820);
 			}
-	
-			cerr << curline << endl;
-	
+		
 			if (write_locs == 1) {
 				char outline[128];
 
@@ -576,7 +545,7 @@ class TBC
 				bool is_newframe = false;
 
 				if (NTSCLineLoc[curline] >= 0) {
-					memcpy(&frame[NTSCLineLoc[curline] * hleni], buf, hleni * 2);
+					memcpy(&frame[NTSCLineLoc[curline] * 1820], outbuf, 3840);
 				
 					if ((fieldcount >= 0) && (NTSCLine[curline] & LINE_ENDFIELD))
 					{
@@ -594,7 +563,7 @@ class TBC
 				curline++;
 				if (curline > 525) {
 					curline = 1; 
-					linecount = -1;
+				//	linecount = -1;
 					if (fieldcount < 0) fieldcount = 0;
 					if (!write_locs) {
 						write_locs = 1;
@@ -603,8 +572,8 @@ class TBC
 			}
 			if (linecount >= 0) linecount++;
 
-			scount += sync_start - 64 + hleni;
-			return (sfreq * (sync_start - 64 + hleni));
+			scount += sync_start - 64 + 1820;
+			return (sync_start - 64 + 1820);
 		}
 };
 

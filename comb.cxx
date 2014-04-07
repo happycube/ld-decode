@@ -12,11 +12,18 @@ bool image_mode = false;
 char *image_base = "FRAME";
 bool bw_mode = false;
 
-const double f14_1_3mhz_b15[] {-3.190093002289628e-03, -3.191345516111202e-03, 2.934926651176227e-04, 1.634894114451717e-02, 5.123523965895763e-02, 1.014467069217903e-01, 1.523838439686879e-01, 1.846732141593300e-01, 1.846732141593300e-01, 1.523838439686880e-01, 1.014467069217904e-01, 5.123523965895767e-02, 1.634894114451718e-02, 2.934926651176237e-04, -3.191345516111201e-03, -3.190093002289628e-03};
+// back-reason for selecting 30:  14.318/1.3*e = 29.939.  seems to work better than 31 ;) 
+const double f28_1_3mhz_b30[] {4.914004914004915e-03, 5.531455998921954e-03, 7.356823678403171e-03, 1.031033062576930e-02, 1.426289441492169e-02, 1.904176904176904e-02, 2.443809475353342e-02, 3.021602622216704e-02, 3.612304011689930e-02, 4.190097158553291e-02, 4.729729729729729e-02, 5.207617192414463e-02, 5.602873571329703e-02, 5.898224266066317e-02, 6.080761034014438e-02, 6.142506142506142e-02, 6.080761034014438e-02, 5.898224266066317e-02, 5.602873571329704e-02, 5.207617192414465e-02, 4.729729729729731e-02, 4.190097158553292e-02, 3.612304011689932e-02, 3.021602622216705e-02, 2.443809475353343e-02, 1.904176904176904e-02, 1.426289441492169e-02, 1.031033062576930e-02, 7.356823678403167e-03, 5.531455998921954e-03, 4.914004914004915e-03};
 
-const double f14_0_6mhz_b15[] {5.162833431022274e-03, 9.537169343788440e-03, 2.179793428021240e-02, 4.246170446278436e-02, 6.920721093300924e-02, 9.725734014351654e-02, 1.206398826611330e-01, 1.339359247445336e-01, 1.339359247445335e-01, 1.206398826611330e-01, 9.725734014351656e-02, 6.920721093300930e-02, 4.246170446278436e-02, 2.179793428021239e-02, 9.537169343788435e-03, 5.162833431022274e-03};
+const double f28_0_6mhz_b32[] {2.214464531115009e-03, 2.779566868356983e-03, 4.009052177841430e-03, 6.041802526864055e-03, 8.964977379775094e-03, 1.280250319629312e-02, 1.750822265693915e-02, 2.296445273166145e-02, 2.898626064895014e-02, 3.533129030361252e-02, 4.171449995422212e-02, 4.782674655050909e-02, 5.335581047849616e-02, 5.800822770944922e-02, 6.153020526791717e-02, 6.372594980605055e-02, 6.447193442389310e-02, 6.372594980605055e-02, 6.153020526791718e-02, 5.800822770944922e-02, 5.335581047849616e-02, 4.782674655050909e-02, 4.171449995422215e-02, 3.533129030361253e-02, 2.898626064895015e-02, 2.296445273166145e-02, 1.750822265693915e-02, 1.280250319629313e-02, 8.964977379775097e-03, 6.041802526864056e-03, 4.009052177841434e-03, 2.779566868356985e-03, 2.214464531115009e-03};
 
-const double f14_0_6mhz_b30[] {-1.258748785899385e-03, -1.057528127814725e-03, -7.529999144837454e-04, 9.019397940118997e-05, 1.988350225701514e-03, 5.443508287665837e-03, 1.083818469820938e-02, 1.833894901300455e-02, 2.782730702513882e-02, 3.887247656764735e-02, 5.075392314356197e-02, 6.253310939739308e-02, 7.316529074574056e-02, 8.163491886101157e-02, 8.709363828372436e-02, 8.897885319999538e-02, 8.709363828372438e-02, 8.163491886101154e-02, 7.316529074574056e-02, 6.253310939739311e-02, 5.075392314356199e-02, 3.887247656764737e-02, 2.782730702513884e-02, 1.833894901300456e-02, 1.083818469820939e-02, 5.443508287665837e-03, 1.988350225701514e-03, 9.019397940119008e-05, -7.529999144837451e-04, -1.057528127814725e-03, -1.258748785899385e-03};
+const double f28_1_3mhz_b32[] {-1.605533065998730e-03, -1.720671809315438e-03, -1.946714932361703e-03, -1.994955262998560e-03, -1.418668951504014e-03, 3.196223312744169e-04, 3.750192920679346e-03, 9.284036375671866e-03, 1.710727911480327e-02, 2.710292793921179e-02, 3.881702596824465e-02, 5.147908615666569e-02, 6.407728145733732e-02, 7.547900436664387e-02, 8.457890959912071e-02, 9.045104659530802e-02, 9.248026239443490e-02, 9.045104659530802e-02, 8.457890959912071e-02, 7.547900436664387e-02, 6.407728145733733e-02, 5.147908615666569e-02, 3.881702596824466e-02, 2.710292793921179e-02, 1.710727911480328e-02, 9.284036375671866e-03, 3.750192920679346e-03, 3.196223312744170e-04, -1.418668951504014e-03, -1.994955262998559e-03, -1.946714932361704e-03, -1.720671809315439e-03, -1.605533065998730e-03};
+
+const double f28_2_0mhz_b32[] {1.006978939588801e-03, 4.700244549263112e-04, -4.726346152704030e-04, -2.225844911626193e-03, -4.930568911222814e-03, -8.168445482658226e-03, -1.081751892744065e-02, -1.115502409857046e-02, -7.225662580847139e-03, 2.599834101418699e-03, 1.902920988854001e-02, 4.140374974465560e-02, 6.756622702884178e-02, 9.412348408941272e-02, 1.170721331619509e-01, 1.326445909772283e-01, 1.381589342821457e-01, 1.326445909772283e-01, 1.170721331619509e-01, 9.412348408941271e-02, 6.756622702884177e-02, 4.140374974465560e-02, 1.902920988854002e-02, 2.599834101418700e-03, -7.225662580847139e-03, -1.115502409857046e-02, -1.081751892744065e-02, -8.168445482658233e-03, -4.930568911222816e-03, -2.225844911626193e-03, -4.726346152704032e-04, 4.700244549263113e-04, 1.006978939588801e-03};
+
+const double f28_0_6mhz_b64[] {-6.916447903947148e-04, -6.637277886690091e-04, -6.506794962762819e-04, -6.385960636428408e-04, -6.091489627652988e-04, -5.401328736698201e-04, -4.062390816451122e-04, -1.800289567056259e-04, 1.669277273337949e-04, 6.627933750400666e-04, 1.334132570703104e-03, 2.204566737142542e-03, 3.293471104686198e-03, 4.614771600461567e-03, 6.175896724145871e-03, 7.976934496300239e-03, 1.001003732312394e-02, 1.225910839260336e-02, 1.469979236820074e-02, 1.729978111972153e-02, 2.001943252605971e-02, 2.281268753589040e-02, 2.562825822709219e-02, 2.841104809911676e-02, 3.110375576479802e-02, 3.364860502185666e-02, 3.598913834498529e-02, 3.807200741849585e-02, 3.984869359245655e-02, 4.127709314339044e-02, 4.232290688845818e-02, 4.296078085959773e-02, 4.317515410421566e-02, 4.296078085959773e-02, 4.232290688845819e-02, 4.127709314339045e-02, 3.984869359245655e-02, 3.807200741849585e-02, 3.598913834498529e-02, 3.364860502185667e-02, 3.110375576479803e-02, 2.841104809911677e-02, 2.562825822709219e-02, 2.281268753589041e-02, 2.001943252605972e-02, 1.729978111972153e-02, 1.469979236820075e-02, 1.225910839260336e-02, 1.001003732312394e-02, 7.976934496300244e-03, 6.175896724145871e-03, 4.614771600461570e-03, 3.293471104686198e-03, 2.204566737142541e-03, 1.334132570703105e-03, 6.627933750400653e-04, 1.669277273337959e-04, -1.800289567056260e-04, -4.062390816451116e-04, -5.401328736698201e-04, -6.091489627652993e-04, -6.385960636428407e-04, -6.506794962762823e-04, -6.637277886690096e-04, -6.916447903947148e-04};
+
+const double f_hsync8[] {1.447786467971050e-02, 4.395811440315845e-02, 1.202636955256379e-01, 2.024216184054497e-01, 2.377574139720867e-01, 2.024216184054497e-01, 1.202636955256379e-01, 4.395811440315847e-02, 1.447786467971050e-02};
 
 inline double IRE(double in) 
 {
@@ -148,7 +155,7 @@ void buildNTSCLines()
 }
 
 // NTSC properties
-const double freq = 4.0;	// in FSC.  Must be an even number!
+const double freq = 8.0;	// in FSC.  Must be an even number!
 
 const double hlen = 227.5 * freq;
 const int    hleni = (int)hlen;
@@ -239,8 +246,8 @@ class Comb
 		double curscale;
 
 		uint16_t frame[1820 * 530];
-		uint8_t obuf[742 * 525 * 3];
-		uint8_t tmp_obuf[742 * 525 * 3];
+		uint8_t obuf[1488 * 525 * 3];
+		uint8_t tmp_obuf[1488 * 525 * 3];
 
 		double blevel[525];
 
@@ -261,7 +268,7 @@ class Comb
 			f_syncq->clear(ire_to_u16(black_ire));
 
 			// XXX? allow for filter startup
-			if (start > 30) start -= 30;
+			if (start > 65) start -= 65;
 
 			for (int l = start; l < start + len; l++) {
 				double v = buf[l];
@@ -274,10 +281,8 @@ class Comb
 				double level = ctor(i, q);
 
 //				if ((l - start) > 65) cerr << l << ' ' << buf[l] << ' ' << level << ' ' << atan2(i, q) << endl;
-
-//				cerr << l << ' ' << i << ' ' << q << ' ' << level << endl;
 	
-				if (((l - start) > 15) && level > plevel) {
+				if (((l - start) > 65) && level > plevel) {
 					plevel = level;
 					pi = i; pq = q;
 				}
@@ -340,7 +345,7 @@ class Comb
 			cline cur_combed;
 
 			int counter = 0;
-			for (int h = 0; counter < 842; h++) {
+			for (int h = line_blanklen - 64 - 135; counter < 1760 - 135; h++) {
 //				cerr << h << ' ' << prev.a[h] << ' ' << cur.a[h] << ' ' << next.a[h] << ' ';	
 //				cerr << ": " << prev.m[h] << ' ' << cur.m[h] << ' ' << next.m[h] << endl;	
 //				cerr << h << ' ' << adiff(prev.a[h], cur.a[h]) << ' ' << adiff(cur.a[h], next.a[h]) << ' ' << adiff(prev.a[h], next.a[h]) << endl;	
@@ -374,20 +379,20 @@ class Comb
 			return cur_combed;
 		}
 
-		// buffer: 842x505 uint16_t array
+		// buffer: 1685x505 uint16_t array
 		void CombFilter(uint16_t *buffer, uint8_t *output)
 		{
-			YIQ outline[842];
+			YIQ outline[1685];
 			blevel[23] = 0;
 			for (int l = 24; l < 504; l++) {
-				uint16_t *line = &buffer[l * 842];
+				uint16_t *line = &buffer[l * 1685];
 //				double _cos[(int)freq + 1], _sin[(int)freq + 1];
 				double level, phase;
 
 				double val;
 
-				BurstDetect(line, 0, 1.5 * dots_usec, level, phase);
-				cerr << "burst " << level << ' ' << phase << endl;
+				BurstDetect(line, 0, 4 * dots_usec, level, phase);
+//				cerr << "burst " << level << ' ' << phase << endl;
 				for (int j = 0; j < (int)freq; j++) { 
 	                                _cos[l][j] = cos(phase + (2.0 * M_PIl * ((double)j / freq)));
 					_sin[l][j] = sin(phase + (2.0 * M_PIl * ((double)j / freq)));
@@ -399,7 +404,7 @@ class Comb
 				} else blevel[l] = level;
 
 				int counter = 0;
-				for (int h = 0; counter < 842; h++) {
+				for (int h = line_blanklen - 64 - 135; counter < 1760 - 135; h++) {
 					double sq, si;
 
 					val = (double)(line[h] - black_u16) / (double)(white_u16 - black_u16); 
@@ -425,18 +430,14 @@ class Comb
 					memcpy(&line, &wbuf[0][l], sizeof(cline_t));
 
 				int counter = 0;
-				double circbuf[9];
-				for (int i = 0; i < 9; i++) circbuf[i] = 0;
-
+				double circbuf[18];
 				double val, _val;
-				for (int h = 0; counter < 842; h++) {
+				for (int h = line_blanklen - 64 - 135; counter < 1760 - 135; h++) {
 					val = (double)(line.y[h] - black_u16) / (double)(white_u16 - black_u16); 
 					double cmult = 0.12 / blevel[l];
 
 					double icomp = 0;
 					double qcomp = 0;
-
-					//cerr << h << "x" << l << endl;
 				
 					if (!bw_mode) {
 						icomp = line.m[h] * sin(line.a[h]);
@@ -447,14 +448,12 @@ class Comb
 	
 					double iadj = icomp * 2 * _cos[l][(h + 1) % 8];
 					double qadj = qcomp * 2 * _sin[l][(h + 1) % 8];
-					
-//					cerr << counter << ' ' << val << ' ' ;
 
 //					cerr << ' ' << _val << ' ' << iadj + qadj << ' ';
-	                                if (counter > 9) {
-						_val = circbuf[counter % 9];
+	                                if (counter > 17) {
+						_val = circbuf[counter % 17];
        	                         	}
-	                                circbuf[counter % 9] = val;
+	                                circbuf[counter % 17] = val;
 					val = _val;
 
 					val += iadj + qadj;
@@ -463,12 +462,10 @@ class Comb
 #endif
 					YIQ outc = YIQ(val, cmult * icomp, cmult * qcomp);	
 
-//					cerr << outc.y << endl;
-
-					if ((counter >= 81) && (counter < (742 + 81))) {
-						outline[counter - 81].y = outc.y;
-						outline[counter - 81].i = outc.i;
-						outline[counter - 81].q = outc.q;
+					if (counter >= 42) {
+						outline[counter - 42].y = outc.y;
+						outline[counter - 42].i = outc.i;
+						outline[counter - 42].q = outc.q;
 //						cerr << ' ' << outc.y << ' ' << outc.i << ' ' << outc.q;
 					} 
 //					cerr << endl;
@@ -476,10 +473,10 @@ class Comb
 					counter++;
 				}
 		
-				uint8_t *line_output = &output[(742 * 3 * (l - 24))];
+				uint8_t *line_output = &output[(1488 * 3 * (l - 24))];
 
 				int o = 0; 
-				for (int h = 0; h < 742; h++) {
+				for (int h = 0; h < 1488; h++) {
 					RGB r;
 					r.conv(outline[h]);
 
@@ -493,7 +490,7 @@ class Comb
 		}
 
 		uint32_t ReadPhillipsCode(uint16_t *line) {
-			const int first_bit = (int)102 - 29;
+			const int first_bit = (int)205 - 58;
 			const double bitlen = 2.0 * dots_usec;
 			uint32_t out = 0;
 
@@ -534,23 +531,27 @@ class Comb
 				_sin[0][e] = sin((2.0 * M_PIl * ((double)e / freq)));
 			}
 
-			f_i = new Filter(15, NULL, f14_0_6mhz_b15);
-			f_q = new Filter(15, NULL, f14_0_6mhz_b15);
+			//f_i = new Filter(30, NULL, f28_1_3mhz_b30);
+			//f_q = new Filter(30, NULL, f28_1_3mhz_b30);
+			f_i = new Filter(32, NULL, f28_0_6mhz_b32);
+			f_q = new Filter(32, NULL, f28_0_6mhz_b32);
+//			f_i = new Filter(32, NULL, f28_2_0mhz_b32);
+//			f_q = new Filter(32, NULL, f28_2_0mhz_b32);
 
-                        f_synci = new Filter(15, NULL, f14_0_6mhz_b15);
-                        f_syncq = new Filter(15, NULL, f14_0_6mhz_b15);
+                        f_synci = new Filter(64, NULL, f28_0_6mhz_b64);
+                        f_syncq = new Filter(64, NULL, f28_0_6mhz_b64);
 		}
 
 		void WriteFrame(uint8_t *obuf, int fnum = 0) {
 			if (!image_mode) {
-				write(ofd, obuf, (742 * 480 * 3));
+				write(ofd, obuf, (1488 * 480 * 3));
 			} else {
 				char ofname[512];
 
 				sprintf(ofname, "%s%d.rgb", image_base, fnum); 
 				cerr << "W " << ofname << endl;
 				ofd = open(ofname, O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR | S_IROTH);
-				write(ofd, obuf, (742 * 480 * 3));
+				write(ofd, obuf, (1488 * 480 * 3));
 				close(ofd);
 			}
 		}
@@ -563,7 +564,7 @@ class Comb
 			} else if (f_oddframe) {
 				CombFilter(buffer, tmp_obuf);
 				for (int i = 0; i <= 478; i += 2) {
-					memcpy(&obuf[742 * 3 * i], &tmp_obuf[742 * 3 * i], 742 * 3); 
+					memcpy(&obuf[1488 * 3 * i], &tmp_obuf[1488 * 3 * i], 1488 * 3); 
 				}
 				WriteFrame(obuf, framecode);
 				f_oddframe = false;		
@@ -571,8 +572,8 @@ class Comb
 
 			for (int line = 2; line <= 3; line++) {
 				int wc = 0;
-				for (int i = 0; i < 700; i++) {
-					if (buffer[(842 * line) + i] > 45000) wc++;
+				for (int i = 0; i < 1400; i++) {
+					if (buffer[(1685 * line) + i] > 45000) wc++;
 				} 
 				if (wc > 1000) {
 					fstart = (line % 2); 
@@ -581,7 +582,7 @@ class Comb
 			}
 
 			for (int line = 14; line <= 17; line++) {
-				int new_framecode = ReadPhillipsCode(&buffer[line * 842]) - 0xf80000;
+				int new_framecode = ReadPhillipsCode(&buffer[line * 1685]) - 0xf80000;
 
 				cerr << line << ' ' << hex << new_framecode << dec << endl;
 
@@ -634,7 +635,7 @@ int main(int argc, char *argv[])
 	int rv = 0, fd = 0;
 	long long dlen = -1, tproc = 0;
 	//double output[2048];
-	unsigned short inbuf[842 * 525 * 2];
+	unsigned short inbuf[1685 * 525 * 2];
 	unsigned char *cinbuf = (unsigned char *)inbuf;
 	int c;
 
@@ -686,7 +687,7 @@ int main(int argc, char *argv[])
 
 	buildNTSCLines();
 
-	int bufsize = 842 * 505 * 2;
+	int bufsize = 1685 * 505 * 2;
 
 	rv = read(fd, inbuf, bufsize);
 	while ((rv > 0) && (rv < bufsize)) {
