@@ -280,7 +280,7 @@ int main(int argc, char *argv[])
 	Filter f_boost32(32, NULL, f_boost32_b);
 
 	//FM_demod video(2048, {8100000, 8500000, 8900000, 9300000, 9700000}, {&f_bpf18}, {&f_lpf, &f_lpf, &f_lpf, &f_lpf, &f_lpf}, NULL);
-	FM_demod video(2048, {8100000, 8500000, 8900000, 9300000}, {&f_bpf25}, {&f_lpf, &f_lpf, &f_lpf, &f_lpf, &f_lpf}, NULL);
+	FM_demod video(2048, {8100000, 8500000, 8900000, 9300000}, {&f_boost32}, {&f_lpf, &f_lpf, &f_lpf, &f_lpf, &f_lpf}, NULL);
 
 	double charge = 0, acharge = 0, prev = 8700000;
 
@@ -304,13 +304,17 @@ int main(int argc, char *argv[])
 				acharge += fabs((n - prev) * 1.0);
 				prev = n;
 
-				double f = .70;
+				double f = .55;
 
-				if (fabs(acharge) < 500000.0) f += (0.3 * (1.0 - (fabs(acharge) / 500000.0)));
+//				cerr << i << ' ' << charge << ' ' << acharge << endl;
+
+				if (fabs(acharge) < 250000.0) f = 1.0;
+				if (fabs(acharge) < 500000.0) f = 1.0 - (0.5 * ((acharge - 250000.0) / 250000.0));
+//				else if (fabs(acharge) > 2000000.0) f -= (0.5 * (1.0 - ((acharge - 2000000) / 2000000.0)));
 
 				n -= (charge * f);
 //				n -= (charge * .5);
-//				cerr << n << ' ' << charge << ' ' << adj << ' ';
+//				cerr << n << ' ' << charge << ' ' << acharge << ' ' << endl;
 				charge *= 0.88;
 				acharge *= 0.88;
 //				cerr << charge << ' ' << endl;
