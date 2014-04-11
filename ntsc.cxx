@@ -218,6 +218,7 @@ class TBC
 	
 		int bufsize; 
 
+		double prev_adjust;
 		double curscale;
 
 		uint16_t frame[1820 * 530];
@@ -388,6 +389,8 @@ class TBC
 
                         f_synci = new Filter(64, NULL, f28_0_6mhz_b64);
                         f_syncq = new Filter(64, NULL, f28_0_6mhz_b64);
+
+			prev_adjust = 0;
 		}
 
 		// This assumes an entire 4K sliding buffer is available.  The return value is the # of new bytes desired 
@@ -399,7 +402,9 @@ class TBC
 
 			int sync_len;
 			int sync_start = FindHSync(buffer, 0, bufsize, sync_len);
-			
+		
+			bool jumped = false;
+	
 			// if there isn't a whole line and (if applicable) following burst, advance first
 			if (sync_start < 0) {
 				scount += 4096;
@@ -456,8 +461,8 @@ class TBC
 					if (gap < -4) gap += 8;
 					if (gap > 4) gap -= 8;
 			
-					if (((sync2_start - sync_start) > hlen) && (gap < -.5)) gap += 4;
-					if (((sync2_start - sync_start) < hlen) && (gap > .5)) gap -= 4;
+//					if (((sync2_start - sync_start) > hlen) && (gap < -.5)) gap += 4;
+//					if (((sync2_start - sync_start) < hlen) && (gap > .5)) gap -= 4;
 
 //					cerr << "gap " << gap << endl;
 					ScaleOut(buffer, outbuf, sync_start, 1820 + gap);
@@ -469,10 +474,8 @@ class TBC
 					if (linecount == -1) {
 						if (pphase > 0) { 
 							linecount = 0;
-							pcon = (M_PIl / 2) - pphase;
 						} else {
 							linecount = 1;
-							pcon = (-M_PIl / 2) - pphase;
 						}
 					}
 				} else {
@@ -484,32 +487,40 @@ class TBC
 				if (plevel > 500) {
 					if (linecount % 2) {
 						pcon = (-M_PIl / 2) - pphase;
+                                                if (pcon < -M_PIl) {
+                                                        pcon = (M_PIl / 2) + (M_PIl - pphase);
+                                                }
 					} else {
 						pcon = (M_PIl / 2) - pphase;
+                                                if (pcon > M_PIl) {
+                                                        pcon = (-M_PIl / 2) - (pphase + M_PIl);
+						}
 					}
 					// cerr << pcon << endl;
 
 					double adjust = (pcon / M_PIl) * 4.0;
+					double dadjust = fabs(adjust - prev_adjust);
+
+					// if we jumped a half phase, we might be repeating a frame
+					if ((dadjust > 3.5) && (dadjust < 4.5)) {
+//						cerr << "J" << linecount << ' ' << prev_adjust << ' ' << adjust << endl;
+						jumped = true;
+						linecount++;
+					}
+
 //					cerr << "adjust " << adjust << " gap " << gap << endl;
 					if (adjust < -4) {
 						adjust += 8;
-						if ((curline == 273) || (curline == 274) || 
-						    (curline == 10) || (curline == 11)) { 
-							linecount++;
-						}
 					}
 					if (adjust > 4) {
 						adjust -= 8;
-						if ((curline == 273) || (curline == 274) || 
-						    (curline == 10) || (curline == 11)) { 
-							linecount++;
-						}
 					}
 //					cerr << "adjust " << adjust << " gap " << gap << endl;
+
+                                        ScaleOut(buffer, outbuf, sync_start + adjust, 1820 + gap);
+                                        BurstDetect(outbuf, 3.5 * dots_usec, 7.5 * dots_usec, plevel, pphase);
 				
-					ScaleOut(buffer, outbuf, sync_start + adjust, 1820 + gap);
-					BurstDetect(outbuf, 3.5 * dots_usec, 7.5 * dots_usec, plevel, pphase);
-//					cerr << "adjust " << adjust << " gap " << gap << " post-scale 2 " << plevel << " " << pphase << endl;
+					prev_adjust = jumped ? 0 : adjust;
 				} else {
 					cerr << "WARN:  No first burst found\n";
 				}
