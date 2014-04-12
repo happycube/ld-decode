@@ -309,7 +309,7 @@ int main(int argc, char *argv[])
 //				cerr << i << ' ' << charge << ' ' << acharge << endl;
 
 				if (fabs(acharge) < 250000.0) f = 1.0;
-				if (fabs(acharge) < 500000.0) f = 1.0 - (0.5 * ((acharge - 250000.0) / 250000.0));
+				else if (fabs(acharge) < 500000.0) f = 1.0 - (0.45 * ((acharge - 250000.0) / 250000.0));
 //				else if (fabs(acharge) > 2000000.0) f -= (0.5 * (1.0 - ((acharge - 2000000) / 2000000.0)));
 
 				n -= (charge * f);
