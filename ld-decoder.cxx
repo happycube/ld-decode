@@ -304,7 +304,7 @@ int main(int argc, char *argv[])
 				acharge += fabs((n - prev) * 1.0);
 				prev = n;
 
-				double f = .62;
+				double f = .65;
 
 //				cerr << i << ' ' << charge << ' ' << acharge << endl;
 
@@ -315,8 +315,8 @@ int main(int argc, char *argv[])
 				n -= (charge * f);
 //				n -= (charge * .5);
 //				cerr << n << ' ' << charge << ' ' << acharge << ' ' << endl;
-				charge *= 0.895;
-				acharge *= 0.895;
+				charge *= 0.88;
+				acharge *= 0.88;
 //				cerr << charge << ' ' << endl;
 
 				n -= 7600000.0;
