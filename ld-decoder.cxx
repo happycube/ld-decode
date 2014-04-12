@@ -304,19 +304,19 @@ int main(int argc, char *argv[])
 				acharge += fabs((n - prev) * 1.0);
 				prev = n;
 
-				double f = .55;
+				double f = .62;
 
 //				cerr << i << ' ' << charge << ' ' << acharge << endl;
 
 				if (fabs(acharge) < 250000.0) f = 1.0;
-				else if (fabs(acharge) < 500000.0) f = 1.0 - (0.45 * ((acharge - 250000.0) / 250000.0));
+				else if (fabs(acharge) < 500000.0) f = 1.0 - ((1.0 - f) * ((acharge - 250000.0) / 250000.0));
 //				else if (fabs(acharge) > 2000000.0) f -= (0.5 * (1.0 - ((acharge - 2000000) / 2000000.0)));
 
 				n -= (charge * f);
 //				n -= (charge * .5);
 //				cerr << n << ' ' << charge << ' ' << acharge << ' ' << endl;
-				charge *= 0.88;
-				acharge *= 0.88;
+				charge *= 0.895;
+				acharge *= 0.895;
 //				cerr << charge << ' ' << endl;
 
 				n -= 7600000.0;
