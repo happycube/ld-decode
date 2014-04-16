@@ -6,7 +6,10 @@ clean:
 audio: audio-decoder.cxx
 	clang++ -std=c++11  -Wall -DNOSNAP -O3 -g -o audio audio-decoder.cxx
 
-ldd: ld-decoder.cxx
+ldcur: ld-decoder-cur.cxx
+	clang++ -std=c++11  -mavx -march=corei7-avx -Wall -DNOSNAP -O3 -g -o ldcur ld-decoder-cur.cxx
+
+ldd: ld-decoder.cxx deemp.h
 	clang++ -std=c++11  -mavx -march=corei7-avx -Wall -DNOSNAP -O3 -g -o ldd ld-decoder.cxx
 
 ldd10: ld-decoder-10.cxx
@@ -17,6 +20,9 @@ ntsc10: ntsc.cxx
 
 ntsc: ntsc.cxx
 	clang++ -std=c++11  -Wall -D_NOSNAP -O3 -g -o ntsc ntsc.cxx
+
+comb: comb.cxx
+	clang++ -std=c++11  -Wall -D_NOSNAP -O3 -g -o comb comb.cxx
 
 ntsc4: ntsc-4fsc.cxx
 	clang++ -std=c++11  -Wall -D_NOSNAP -O3 -g -o ntsc4 ntsc-4fsc.cxx
