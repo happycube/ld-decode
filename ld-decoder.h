@@ -15,7 +15,7 @@
 #include <string.h>
 
 // capture frequency and fundamental NTSC color frequency
-const double CHZ = (1000000.0*(315.0/88.0)*8.0);
+//const double CHZ = (1000000.0*(315.0/88.0)*8.0);
 
 using namespace std;
 
@@ -133,5 +133,14 @@ class Filter {
 		}
 		double val() {return y[0];}
 };
+		
+// taken from http://www.paulinternet.nl/?page=bicubic
+double CubicInterpolate(double *y, double x)
+{
+	double p[4];
+	p[0] = y[0]; p[1] = y[1]; p[2] = y[2]; p[3] = y[3];
+
+	return p[1] + 0.5 * x*(p[2] - p[0] + x*(2.0*p[0] - 5.0*p[1] + 4.0*p[2] - p[3] + x*(3.0*(p[1] - p[2]) + p[3] - p[0])));
+}
 
 #endif

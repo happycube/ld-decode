@@ -451,10 +451,10 @@ class Comb
 //					cerr << counter << ' ' << val << ' ' ;
 
 //					cerr << ' ' << _val << ' ' << iadj + qadj << ' ';
-	                                if (counter > 9) {
-						_val = circbuf[counter % 9];
+	                                if (counter > 8) {
+						_val = circbuf[counter % 8];
        	                         	}
-	                                circbuf[counter % 9] = val;
+	                                circbuf[counter % 8] = val;
 					val = _val;
 
 					val += iadj + qadj;
