@@ -209,9 +209,7 @@ int main(int argc, char *argv[])
 
 	int i = 2048;
 	
-	Filter f_boost36(36, NULL, f_boost36_b);
-
-	FM_demod video(2048, {8100000, 8500000, 8900000, 9300000, 9700000}, {&f_boost36}, {&f_lpf, &f_lpf, &f_lpf, &f_lpf, &f_lpf, &f_lpf}, NULL);
+	FM_demod video(2048, {8100000, 8500000, 8900000, 9300000, 9700000}, {&f_boost}, {&f_lpf, &f_lpf, &f_lpf, &f_lpf, &f_lpf, &f_lpf}, NULL);
 
 	while ((rv == 2048) && ((dlen == -1) || (i < dlen))) {
 		vector<double> dinbuf;
