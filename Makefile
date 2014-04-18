@@ -12,6 +12,9 @@ ldcur: ld-decoder-cur.cxx
 ldd: ld-decoder.cxx deemp.h
 	clang++ -std=c++11  -mavx -march=corei7-avx -Wall -DNOSNAP -O3 -g -o ldd ld-decoder.cxx
 
+deemp.h: fdls.py
+	python fdls.py > deemp.h
+
 ldd10: ld-decoder-10.cxx
 	clang++ -std=c++11  -mavx -march=corei7-avx -Wall -DNOSNAP -O3 -g -o ldd10 ld-decoder-10.cxx
 
