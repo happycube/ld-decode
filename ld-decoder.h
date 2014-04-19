@@ -68,21 +68,39 @@ class Filter {
 	
 			clear();
 		}
+		
+		Filter(vector<double> _b, vector<double> _a) {
+			b = _b;
+			a = _a;
+
+			cerr << "O" << b.size() - 2 <<endl;
+			order = b.size();
+			
+			x.resize(b.size() + 1);
+			y.resize(a.size() + 1);
+	
+			clear();
+
+			isIIR = true;
+		}
 
 		Filter(Filter *orig) {
 			order = orig->order;
 			isIIR = orig->isIIR;
 			a = orig->a;
 			b = orig->b;
-			x.resize(order);
-			y.resize(order);
+			x.resize(b.size());
+			y.resize(a.size());
 				
 			clear();
 		}
 
 		void clear(double val = 0) {
-			for (int i = 0; i < order; i++) {
-				x[i] = y[i] = val;
+			for (int i = 0; i < a.size(); i++) {
+				y[i] = val;
+			}
+			for (int i = 0; i < b.size(); i++) {
+				x[i] = val;
 			}
 		}
 
@@ -93,17 +111,18 @@ class Filter {
 			double *x_data = x.data();
 			double *y_data = y.data();
 
-			memmove(&x_data[1], x_data, sizeof(double) * (order - 1)); 
-			if (isIIR) memmove(&y_data[1], y_data, sizeof(double) * (order - 1)); 
+			memmove(&x_data[1], x_data, sizeof(double) * (b.size() - 1)); 
+			if (isIIR) memmove(&y_data[1], y_data, sizeof(double) * (a.size() - 1)); 
 
 			x[0] = val;
 			y0 = 0; // ((b[0] / a0) * x[0]);
 			//cerr << "0 " << x[0] << ' ' << b[0] << ' ' << (b[0] * x[0]) << ' ' << y[0] << endl;
 			if (isIIR) {
-				for (int o = 0; o < order; o++) {
+				for (int o = 0; o < b.size(); o++) {
 					y0 += ((b[o] / a0) * x[o]);
-					if (o) y0 -= ((a[o] / a0) * y[o]);
-					//cerr << o << ' ' << x[o] << ' ' << y[o] << ' ' << a[o] << ' ' << b[o] << ' ' << (b[o] * x[o]) << ' ' << -(a[o] * y[o]) << ' ' << y[0] << endl;
+				}
+				for (int o = 1; o < a.size(); o++) {
+					y0 -= ((a[o] / a0) * y[o]);
 				}
 			} else {
 				if (order == 13) {

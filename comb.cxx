@@ -434,7 +434,7 @@ class Comb
 				double val, _val;
 				for (int h = line_blanklen - 64 - 135; counter < 1760 - 135; h++) {
 					val = (double)(line.y[h] - black_u16) / (double)(white_u16 - black_u16); 
-					double cmult = 0.12 / blevel[l];
+					double cmult = 0.15 / blevel[l];
 
 					double icomp = 0;
 					double qcomp = 0;
