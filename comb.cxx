@@ -253,7 +253,7 @@ class Comb
 
 		double blevel[525];
 
-		double _cos[525][16], _sin[525][16];
+		double _cos[5][525][16], _sin[5][525][16];
 		cline_t wbuf[5][525];
 		Filter *f_i, *f_q;
 		Filter *f_synci, *f_syncq;
@@ -277,8 +277,8 @@ class Comb
 
 				v = (double)(v - black_u16) / (double)(white_u16 - black_u16); 
 
-				double q = f_syncq->feed(v * _cos[0][l % 8]);
-				double i = f_synci->feed(-v * _sin[0][l % 8]);
+				double q = f_syncq->feed(v * _cos[0][0][l % 8]);
+				double i = f_synci->feed(-v * _sin[0][0][l % 8]);
 
 				double level = ctor(i, q);
 
@@ -377,7 +377,7 @@ class Comb
 					cerr << " [" << next.a[h] << ", " << next.m[h] << "] " << diff << endl;
 				}
 
-				if (0 && diff > (M_PIl * .5)) {
+				if (diff > (M_PIl * .5)) {
 					double adj = 1 - (diff / M_PIl); 
 					if (adj < 0) adj = 0;
 					if (adj > 1) adj = 1;
@@ -398,6 +398,8 @@ class Comb
 			blevel[23] = 0;
 				
 			memmove(wbuf[1], wbuf[0], sizeof(cline_t) * 525 * 4);
+			memmove(_sin[1], _sin[0], sizeof(double) * 525 * 16 * 4);
+			memmove(_cos[1], _cos[0], sizeof(double) * 525 * 16 * 4);
 
 			for (int l = 24; l < 504; l++) {
 				uint16_t *line = &buffer[l * 1685];
@@ -409,8 +411,8 @@ class Comb
 				BurstDetect(line, 0, 4 * dots_usec, level, phase);
 //				cerr << "burst " << level << ' ' << phase << endl;
 				for (int j = 0; j < (int)freq; j++) { 
-	                                _cos[l][j] = cos(phase + (2.0 * M_PIl * ((double)j / freq)));
-					_sin[l][j] = sin(phase + (2.0 * M_PIl * ((double)j / freq)));
+	                                _cos[0][l][j] = cos(phase + (2.0 * M_PIl * ((double)j / freq)));
+					_sin[0][l][j] = sin(phase + (2.0 * M_PIl * ((double)j / freq)));
 				}
 
 				if (blevel[l - 1] > 0) {
@@ -424,8 +426,8 @@ class Comb
 
 					val = (double)(line[h] - black_u16) / (double)(white_u16 - black_u16); 
 				
-					sq = f_q->feed(-val * _cos[l][h % 8]);
-					si = f_i->feed(val * _sin[l][h % 8]);
+					sq = f_q->feed(-val * _cos[0][l][h % 8]);
+					si = f_i->feed(val * _sin[0][l][h % 8]);
 
 					wbuf[0][l].y[h] = line[h]; 
 					wbuf[0][l].m[h] = ctor(si, sq); 
@@ -454,7 +456,7 @@ class Comb
 				double val, _val;
 				for (int h = line_blanklen - 64 - 135; counter < 1760 - 135; h++) {
 					val = (double)(line.y[h] - black_u16) / (double)(white_u16 - black_u16); 
-					double cmult = 0.15 / blevel[l];
+					double cmult = 0.12 / blevel[l];
 
 					double icomp = 0;
 					double qcomp = 0;
@@ -466,8 +468,8 @@ class Comb
 						icomp = qcomp = 0;
 					}
 	
-					double iadj = icomp * 2 * _cos[l][(h + 1) % 8];
-					double qadj = qcomp * 2 * _sin[l][(h + 1) % 8];
+					double iadj = icomp * 2 * _cos[3][l][(h + 1) % 8];
+					double qadj = qcomp * 2 * _sin[3][l][(h + 1) % 8];
 
 //					cerr << ' ' << _val << ' ' << iadj + qadj << ' ';
 	                                if (counter > 17) {
@@ -547,16 +549,16 @@ class Comb
 	
 			// build table of standard cos/sin for phase/level calc	
 			for (int e = 0; e < freq; e++) {
-				_cos[0][e] = cos((2.0 * M_PIl * ((double)e / freq)));
-				_sin[0][e] = sin((2.0 * M_PIl * ((double)e / freq)));
+				_cos[0][0][e] = cos((2.0 * M_PIl * ((double)e / freq)));
+				_sin[0][0][e] = sin((2.0 * M_PIl * ((double)e / freq)));
 			}
 
 			//f_i = new Filter(30, NULL, f28_1_3mhz_b30);
 			//f_q = new Filter(30, NULL, f28_1_3mhz_b30);
-			//f_i = new Filter(32, NULL, f28_0_6mhz_b32);
-			//f_q = new Filter(32, NULL, f28_0_6mhz_b32);
-			f_i = new Filter(f_color);
-			f_q = new Filter(f_color);
+			f_i = new Filter(32, NULL, f28_0_6mhz_b32);
+			f_q = new Filter(32, NULL, f28_0_6mhz_b32);
+//			f_i = new Filter(f_color);
+//			f_q = new Filter(f_color);
 //			f_i = new Filter(32, NULL, f28_2_0mhz_b32);
 //			f_q = new Filter(32, NULL, f28_2_0mhz_b32);
 
@@ -587,15 +589,16 @@ class Comb
 
 			if (!pulldown_mode) {
 				fstart = 0;
+				memcpy(obuf, tmp_obuf, sizeof(obuf));
 			} else if (f_oddframe) {
 				for (int i = 0; i <= 478; i += 2) {
 					memcpy(&obuf[1488 * 3 * i], &tmp_obuf[1488 * 3 * i], 1488 * 3); 
 				}
 				WriteFrame(obuf, framecode);
 				f_oddframe = false;		
+			} else {
+				memcpy(obuf, tmp_obuf, sizeof(obuf));
 			}
-
-			memcpy(obuf, tmp_obuf, sizeof(obuf));
 
 			for (int line = 2; line <= 3; line++) {
 				int wc = 0;
