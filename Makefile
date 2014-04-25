@@ -21,10 +21,10 @@ ldd10: ld-decoder-10.cxx
 ntsc10: ntsc.cxx
 	clang++ -std=c++11  -Wall -D_NOSNAP -O3 -g -DDOWNSCALE -o ntsc10 ntsc.cxx
 
-ntsc: ntsc.cxx
+ntsc: ntsc.cxx deemp.h
 	clang++ -std=c++11  -Wall -D_NOSNAP -O3 -g -o ntsc ntsc.cxx
 
-comb: comb.cxx
+comb: comb.cxx deemp.h
 	clang++ -std=c++11  -Wall -D_NOSNAP -O3 -g -o comb comb.cxx
 
 ntsc4: ntsc-4fsc.cxx

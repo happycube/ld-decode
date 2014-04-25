@@ -2,6 +2,8 @@
 
 #include "ld-decoder.h"
 
+#include "deemp.h"
+
 // capture frequency and fundamental NTSC color frequency
 //const double CHZ = (1000000.0*(315.0/88.0)*8.0);
 //const double FSC = (1000000.0*(315.0/88.0));
@@ -252,7 +254,7 @@ class Comb
 		double blevel[525];
 
 		double _cos[525][16], _sin[525][16];
-		cline_t wbuf[3][525];
+		cline_t wbuf[5][525];
 		Filter *f_i, *f_q;
 		Filter *f_synci, *f_syncq;
 
@@ -346,9 +348,12 @@ class Comb
 
 			int counter = 0;
 			for (int h = line_blanklen - 64 - 135; counter < 1760 - 135; h++) {
-//				cerr << h << ' ' << prev.a[h] << ' ' << cur.a[h] << ' ' << next.a[h] << ' ';	
-//				cerr << ": " << prev.m[h] << ' ' << cur.m[h] << ' ' << next.m[h] << endl;	
-//				cerr << h << ' ' << adiff(prev.a[h], cur.a[h]) << ' ' << adiff(cur.a[h], next.a[h]) << ' ' << adiff(prev.a[h], next.a[h]) << endl;	
+
+				if (0 && curline == 430) {
+				cerr << h << ' ' << prev.a[h] << ' ' << cur.a[h] << ' ' << next.a[h] << ' ';	
+				cerr << ": " << prev.m[h] << ' ' << cur.m[h] << ' ' << next.m[h] << endl;	
+				cerr << h << ' ' << adiff(prev.a[h], cur.a[h]) << ' ' << adiff(cur.a[h], next.a[h]) << ' ' << adiff(prev.a[h], next.a[h]) << endl;	
+				}
 
 				double diff = (fabs(adiff(prev.a[h], cur.a[h])) + fabs(adiff(cur.a[h], next.a[h]))) / 2.0;
 //				double adj = fabs(adiff(prev.a[h], next.a[h]) / diff);	
@@ -365,7 +370,14 @@ class Comb
 					cur_combed.a[h] += (next.a[h] * 0.5);
 				} 
 #endif	
-				if (diff > (M_PIl * .5)) {
+				if (curline == 240) {
+					double val = (double)(cur.y[h] - black_u16) / (double)(white_u16 - black_u16); 
+					cerr << h << ' ' << val << " [" << prev.a[h] << ", " << prev.m[h] << "] ";
+					cerr << " [" << cur.a[h] << ", " << cur.m[h] << "] " ;
+					cerr << " [" << next.a[h] << ", " << next.m[h] << "] " << diff << endl;
+				}
+
+				if (0 && diff > (M_PIl * .5)) {
 					double adj = 1 - (diff / M_PIl); 
 					if (adj < 0) adj = 0;
 					if (adj > 1) adj = 1;
@@ -380,10 +392,13 @@ class Comb
 		}
 
 		// buffer: 1685x505 uint16_t array
-		void CombFilter(uint16_t *buffer, uint8_t *output)
+		int CombFilter(uint16_t *buffer, uint8_t *output)
 		{
 			YIQ outline[1685];
 			blevel[23] = 0;
+				
+			memmove(wbuf[1], wbuf[0], sizeof(cline_t) * 525 * 4);
+
 			for (int l = 24; l < 504; l++) {
 				uint16_t *line = &buffer[l * 1685];
 //				double _cos[(int)freq + 1], _sin[(int)freq + 1];
@@ -420,14 +435,19 @@ class Comb
 					counter++;
 				}
 			}
+
+			if (framecount < 5) return 0;
 	
 			for (int l = 24; l < 504; l++) {
 				cline_t line;
 
+				curline = l;
+
 				if (l < 503) 
-					line = Blend(wbuf[0][l - 2], wbuf[0][l], wbuf[0][l + 2]);
+//					line = Blend(wbuf[3][l - 2], wbuf[3][l], wbuf[3][l + 2]);
+					line = Blend(wbuf[2][l], wbuf[3][l], wbuf[4][l]);
 				else
-					memcpy(&line, &wbuf[0][l], sizeof(cline_t));
+					memcpy(&line, &wbuf[3][l], sizeof(cline_t));
 
 				int counter = 0;
 				double circbuf[18];
@@ -486,7 +506,7 @@ class Comb
 				}
 			}
 
-			return;
+			return 1;
 		}
 
 		uint32_t ReadPhillipsCode(uint16_t *line) {
@@ -533,8 +553,10 @@ class Comb
 
 			//f_i = new Filter(30, NULL, f28_1_3mhz_b30);
 			//f_q = new Filter(30, NULL, f28_1_3mhz_b30);
-			f_i = new Filter(32, NULL, f28_0_6mhz_b32);
-			f_q = new Filter(32, NULL, f28_0_6mhz_b32);
+			//f_i = new Filter(32, NULL, f28_0_6mhz_b32);
+			//f_q = new Filter(32, NULL, f28_0_6mhz_b32);
+			f_i = new Filter(f_color);
+			f_q = new Filter(f_color);
 //			f_i = new Filter(32, NULL, f28_2_0mhz_b32);
 //			f_q = new Filter(32, NULL, f28_2_0mhz_b32);
 
@@ -558,17 +580,22 @@ class Comb
 
 		int Process(uint16_t *buffer) {
 			int fstart = -1;
+			
+			framecount++;
+				
+			if (!CombFilter(buffer, tmp_obuf)) return 0;
 
 			if (!pulldown_mode) {
 				fstart = 0;
 			} else if (f_oddframe) {
-				CombFilter(buffer, tmp_obuf);
 				for (int i = 0; i <= 478; i += 2) {
 					memcpy(&obuf[1488 * 3 * i], &tmp_obuf[1488 * 3 * i], 1488 * 3); 
 				}
 				WriteFrame(obuf, framecode);
 				f_oddframe = false;		
 			}
+
+			memcpy(obuf, tmp_obuf, sizeof(obuf));
 
 			for (int line = 2; line <= 3; line++) {
 				int wc = 0;
@@ -603,16 +630,12 @@ class Comb
 				}
 			}
 
-			CombFilter(buffer, obuf);
-
 			cerr << "FR " << framecount << ' ' << fstart << endl;
 			if (!pulldown_mode || (fstart == 0)) {
 				WriteFrame(obuf, framecode);
 			} else if (fstart == 1) {
 				f_oddframe = true;
 			}
-
-			framecount++;
 
 			return 0;
 		}
