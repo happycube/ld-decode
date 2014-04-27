@@ -116,7 +116,7 @@ Th = np.zeros(6)
 [Bcolor, Acolor] = FDLS(Fr, Am, Th, Ncolor, Dcolor) 
 
 Ncolor = 32
-Fcolor = sps.firwin(Ncolor + 1, 0.5 / (freq), window='hamming')
+Fcolor = sps.firwin(Ncolor + 1, 0.8 / (freq), window='hamming')
 
 Nlpf = 18
 lowpass_filter = sps.firwin(Nlpf + 1, 5.0 / (freq), window='hamming')

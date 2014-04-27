@@ -214,13 +214,14 @@ int black_u16 = ire_to_u16(black_ire);
 int white_u16 = level_100ire; 
 bool whiteflag_detect = true;
 
-enum cline_stat {
-};
+//enum cline_stat {
+//};
 
 typedef struct cline {
 	double y[hleni]; // Y
 	double m[hleni]; // IQ magnitude
 	double a[hleni]; // IQ phase angle
+	double k[hleni]; // 3D blend factor
 //	int stat[hleni];
 } cline_t;
 
@@ -251,7 +252,7 @@ class Comb
 		uint8_t obuf[1488 * 525 * 3];
 		uint8_t tmp_obuf[1488 * 525 * 3];
 
-		double blevel[525];
+		double blevel[5][525];
 
 		double _cos[5][525][16], _sin[5][525][16];
 		cline_t wbuf[5][525];
@@ -343,8 +344,53 @@ class Comb
 			return v;
 		}
 
-		cline_t Blend(cline_t &prev, cline_t &cur, cline_t &next) {
-			cline cur_combed;
+		cline_t ProcColor(uint16_t *in_line, int fnum, int lnum) {
+			cline_t line;
+
+			int counter = 0;
+			for (int h = line_blanklen - 64 - 135; counter < 1760 - 135; h++) {
+				double sq, si;
+
+				double val = (double)(in_line[h] - black_u16) / (double)(white_u16 - black_u16); 
+			
+				sq = f_q->feed(-val * _cos[fnum][lnum][h % 8]);
+				si = f_i->feed(val * _sin[fnum][lnum][h % 8]);
+
+				line.y[h] = in_line[h]; 
+				line.m[h] = ctor(si, sq); 
+				line.a[h] = atan2(si, sq); 
+				
+				counter++;
+			}
+
+			return line;
+		}
+
+		// simple addition-based combing
+		cline_t BlendAdd(cline_t &prev, cline_t &cur, cline_t &next, int fnum, int lnum) {
+			uint16_t line[1760];
+
+			int counter = 0;
+			for (int h = line_blanklen - 64 - 135; counter < 1760 - 135; h++, counter++) {
+				//line[h] = (uint16_t)((cur.y[h] * .5) + (prev.y[h] * .25) + (next.y[h] * .25));
+				line[h] = (uint16_t)(((cur.y[h] * 0.5) - (prev.y[h] * .25) - (next.y[h] * .25)) + 32768);
+//				if (lnum == 240) cerr << h << ' ' << cur.y[h] << ' ' << line[h] << endl; 
+			}
+
+			cline_t blended = ProcColor(line, fnum, lnum);
+			counter = 0;
+			for (int h = line_blanklen - 64 - 135; counter < 1760 - 135; h++, counter++) {
+				 blended.y[h] = (uint16_t)((cur.y[h] * .5) + (prev.y[h] * .25) + (next.y[h] * .25));
+				 if (lnum == 240) cerr << h << ' ' << cur.y[h] << ' ' << blended.y[h] << endl; 
+			}
+			return blended;
+		}
+
+		cline_t Blend(cline_t &prev, cline_t &cur, cline_t &next, int fnum, int lnum) {
+			cline_t cur_combed;
+			cline_t added; 	
+
+			added = BlendAdd(prev, cur, next, fnum, lnum);
 
 			int counter = 0;
 			for (int h = line_blanklen - 64 - 135; counter < 1760 - 135; h++) {
@@ -361,6 +407,7 @@ class Comb
 				cur_combed.y[h] = cur.y[h];
 				cur_combed.a[h] = cur.a[h];
 				cur_combed.m[h] = cur.m[h];
+				cur_combed.k[h] = 0.0;
 #if 0
 				if (fabs(adiff(prev.a[h], cur.a[h])) < (M_PIl * .1)) {
 					cur_combed.a[h] *= 0.5;
@@ -372,7 +419,7 @@ class Comb
 #endif	
 				if (curline == 240) {
 					double val = (double)(cur.y[h] - black_u16) / (double)(white_u16 - black_u16); 
-					cerr << h << ' ' << val << " [" << prev.a[h] << ", " << prev.m[h] << "] ";
+					cerr << h << ' ' << adiff(prev.a[h], next.a[h]) << ' ' << val << " [" << prev.a[h] << ", " << prev.m[h] << "] ";
 					cerr << " [" << cur.a[h] << ", " << cur.m[h] << "] " ;
 					cerr << " [" << next.a[h] << ", " << next.m[h] << "] " << diff << endl;
 				}
@@ -383,6 +430,13 @@ class Comb
 					if (adj > 1) adj = 1;
 					
 					cur_combed.m[h] *= adj;
+				} else if (0 && fabs(adiff(prev.a[h], next.a[h])) < (M_PIl / 4.0) && 
+					   (1 || fabs(adiff(prev.a[h], cur.a[h]) > (M_PIl * .5)))) {
+					cur_combed.y[h] = added.y[h];
+					cur_combed.m[h] = added.m[h];
+					cur_combed.a[h] = added.a[h];
+					cur_combed.k[h] = 1.0;
+					if (lnum == 240) cerr << "B" << cur_combed.m[h] << ' ' << cur_combed.a[h] << endl;
 				}
 
 				counter++;
@@ -395,11 +449,13 @@ class Comb
 		int CombFilter(uint16_t *buffer, uint8_t *output)
 		{
 			YIQ outline[1685];
-			blevel[23] = 0;
+			blevel[0][23] = 0;
 				
 			memmove(wbuf[1], wbuf[0], sizeof(cline_t) * 525 * 4);
 			memmove(_sin[1], _sin[0], sizeof(double) * 525 * 16 * 4);
 			memmove(_cos[1], _cos[0], sizeof(double) * 525 * 16 * 4);
+			memmove(blevel[1], blevel[0], sizeof(double) * 525 * 4);
+			memset(blevel[0], 0, sizeof(double) * 525 * 1);
 
 			for (int l = 24; l < 504; l++) {
 				uint16_t *line = &buffer[l * 1685];
@@ -415,27 +471,12 @@ class Comb
 					_sin[0][l][j] = sin(phase + (2.0 * M_PIl * ((double)j / freq)));
 				}
 
-				if (blevel[l - 1] > 0) {
-					blevel[l] = blevel[l - 1] * 0.9;
-					blevel[l] += (level * 0.1);
-				} else blevel[l] = level;
+				if (blevel[0][l - 1] > 0) {
+					blevel[0][l] = blevel[0][l - 1] * 0.9;
+					blevel[0][l] += (level * 0.1);
+				} else blevel[0][l] = level;
 
-				int counter = 0;
-				for (int h = line_blanklen - 64 - 135; counter < 1760 - 135; h++) {
-					double sq, si;
-
-					val = (double)(line[h] - black_u16) / (double)(white_u16 - black_u16); 
-				
-					sq = f_q->feed(-val * _cos[0][l][h % 8]);
-					si = f_i->feed(val * _sin[0][l][h % 8]);
-
-					wbuf[0][l].y[h] = line[h]; 
-					wbuf[0][l].m[h] = ctor(si, sq); 
-					wbuf[0][l].a[h] = atan2(si, sq); 
-					
-//					cerr << "P" << h << ' ' << counter << ' ' << line[h] << ' ' << val << ' ' << (double)line[h] / (double)level_100ire << endl;
-					counter++;
-				}
+				wbuf[0][l] = ProcColor(line, 0, l);
 			}
 
 			if (framecount < 5) return 0;
@@ -446,8 +487,8 @@ class Comb
 				curline = l;
 
 				if (l < 503) 
-//					line = Blend(wbuf[3][l - 2], wbuf[3][l], wbuf[3][l + 2]);
-					line = Blend(wbuf[2][l], wbuf[3][l], wbuf[4][l]);
+					line = Blend(wbuf[3][l - 2], wbuf[3][l], wbuf[3][l + 2]);
+//					line = Blend(wbuf[2][l], wbuf[3][l], wbuf[4][l], 3, l);
 				else
 					memcpy(&line, &wbuf[3][l], sizeof(cline_t));
 
@@ -456,7 +497,7 @@ class Comb
 				double val, _val;
 				for (int h = line_blanklen - 64 - 135; counter < 1760 - 135; h++) {
 					val = (double)(line.y[h] - black_u16) / (double)(white_u16 - black_u16); 
-					double cmult = 0.12 / blevel[l];
+					double cmult = 0.12 / blevel[3][l];
 
 					double icomp = 0;
 					double qcomp = 0;
@@ -478,7 +519,7 @@ class Comb
 	                                circbuf[counter % 17] = val;
 					val = _val;
 
-					val += iadj + qadj;
+					val += (iadj + qadj) * (1.0 - line.k[h]);
 #ifdef GRAY 
 					i = q = 0;
 #endif
