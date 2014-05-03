@@ -458,7 +458,7 @@ class TBC
 		int Process(uint16_t *buffer) {
 			uint16_t outbuf[(int)hlen * 2];	
 			// find the first VSYNC, determine it's length
-			double pcon;
+			double pcon = 0;
 			double gap = 0.0;
 
 			int sync_len;
@@ -544,7 +544,9 @@ class TBC
 
 				// if this line has a good color burst, adjust phase
 				if (plevel > 500) {
-					if (linecount % 2) {
+//					cerr << pphase << ' ';
+
+					if (pphase < 0) {
 						pcon = (-M_PIl / 2) - pphase;
                                                 if (pcon < -M_PIl) {
                                                         pcon = (M_PIl / 2) + (M_PIl - pphase);
