@@ -224,7 +224,7 @@ class TBC
 	
 		int bufsize; 
 
-		bool jumped;
+		bool jumped, offset_mode;
 		double prev_gap, prev_adjust;
 
 		double curscale;
@@ -264,8 +264,8 @@ class TBC
 				// need to wait 30 samples
 				if (i > 32) {
 					if (sync_start < 0) {
-						if (v < 10000) sync_start = i;
-					} else if (v > 10000) {
+						if (v < 9500) sync_start = i;
+					} else if (v > 9500) {
 						if ((i - sync_start) > tlen) {
 						//	cerr << "found " << i << " " << sync_start << ' ' << (i - sync_start) << endl;
 							pulselen = i - sync_start;
@@ -448,6 +448,8 @@ class TBC
 			bufsize = _bufsize;
 	
 			f_newframe = f_whiteflag = false;
+
+			offset_mode = false;
 	
 			// build table of standard cos/sin for phase/level calc	
 			for (int e = 0; e < freq; e++) {
@@ -557,7 +559,13 @@ class TBC
 				if (plevel > 500) {
 //					cerr << pphase << ' ' << fabs(adiff(-M_PIl / 2.0, pphase)) << endl;
 
-					if (fabs(adiff(-M_PIl / 2.0, pphase)) < (M_PIl / 2.0)) {
+					if (fabs(pphase) < .25) {
+						offset_mode = true;
+					}
+
+					double tgt = offset_mode ? 0 : (-M_PIl / 2.0) ;
+
+					if (fabs(adiff(tgt, pphase)) < (M_PIl / 2.0)) {
 						pcon = (-M_PIl / 2) - pphase;
                                                 if (pcon < -M_PIl) {
                                                         pcon = (M_PIl / 2) + (M_PIl - pphase);
@@ -568,6 +576,7 @@ class TBC
                                                         pcon = (-M_PIl / 2) - (pphase + M_PIl);
 						}
 					}
+//					cerr << offset_mode << ' ' << pphase << ' ' << fabs(adiff(tgt, pphase)) << endl;
 					// cerr << pcon << endl;
 
 					double adjust = (pcon / M_PIl) * 4.0;
@@ -578,12 +587,12 @@ class TBC
 					    (!jumped && (fabs(gap - prev_gap) > 2.0))) { 
 	
 						cerr << "J" << linecount << ' ' << prev_adjust << ' ' << adjust << ' ' << gap << ' ' << prev_gap << endl;
-					cerr << pphase << ' ' << fabs(adiff(-M_PIl / 2.0, pphase)) << endl;
-						jumped = true;
+//					cerr << offset_mode << ' ' << pphase << ' ' << fabs(adiff(-M_PIl / 2.0, pphase)) << endl;
 						linecount++;
+						jumped = true;
 					} else {
 						jumped = false;
-					}
+					} 
 #endif			
 	
 					if (dadjust > 7.0) {
