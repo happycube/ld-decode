@@ -24,7 +24,8 @@ color_filter = [2.214464531115009e-03, 2.779566868356983e-03, 4.009052177841430e
 # set up sync color heterodyne table first 
 bhet = np.empty(8, dtype=np.complex)
 for i in range(0, 8):
-	bhet[i] = complex(np.cos((i / freq) * 2.0 * np.pi), -(np.sin((i / freq) * 2.0 * np.pi)))
+	bhet[i] = complex(np.cos(((i / freq) * 2.0 * np.pi) + (33.0/180.0)), -(np.sin(((i / freq) * 2.0 * np.pi) + (33.0/180.0))))
+	bhet[i] = complex(np.cos(((i / freq) * 2.0 * np.pi) + (0.0/180.0)), -(np.sin(((i / freq) * 2.0 * np.pi) + (0.0/180.0))))
 
 def burst_detect(line):
 	level = 0
@@ -76,7 +77,6 @@ def comb(inframe):
 	prevframe = inframe
 		
 	lhet = np.empty([525, 8], dtype=np.complex)
-#	adj = np.empty([525, 1685 + 32], dtype=np.complex)
 	adji = np.empty([525, 1685 + 32], dtype=np.double)
 	adjq = np.empty([525, 1685 + 32], dtype=np.double)
 	lohet = np.empty([525, 1685], dtype=np.complex)
@@ -94,7 +94,6 @@ def comb(inframe):
 			lohet[l][i] = lhet[l][i % 8] * inframe[l][i]
 
 		for i in range(155, 155 + 1488):
-		#	adj[l][i] = 2 * lhet[l][(i - 5) % 8] 
 			adji[l][i] = 2 * lhet[l][(i - 5) % 8].imag 
 			adjq[l][i] = 2 * lhet[l][(i - 5) % 8].real
 #			print lohet[i].real, lohet[i].imag
@@ -107,16 +106,46 @@ def comb(inframe):
 	cmult = 3.5	
 	inframe_fcomp = np.empty([1717], dtype=np.uint16)
 
+	row = np.empty([1685 + 32], dtype=np.complex)
+
 	for l in range(24, 504):
 		print l
 
 		# compute 2D and adjustment arrays
-		row = (0.5 * lohet_filt[l]) + (0.25 * lohet_filt[l - 2]) + (0.25 * lohet_filt[l + 2]) 
-		vadji = row.imag * adji[l]
-		vadjq = row.real * adjq[l]
+		rowa = (0.5 * lohet_filt[l]) + (0.25 * lohet_filt[l - 2]) + (0.25 * lohet_filt[l + 2]) 
+		rowp = (0.5 * lohet_filt[l]) + (0.5 * lohet_filt[l - 2]) 
+		rown = (0.5 * lohet_filt[l]) + (0.5 * lohet_filt[l + 2]) 
+
+		a = np.absolute(lohet_filt[l])
+		diffp = np.fabs((np.absolute(lohet_filt[l] - lohet_filt[l - 2]) / a))
+		diffn = np.fabs((np.absolute(lohet_filt[l] - lohet_filt[l + 2]) / a))
+
+		dgreep = np.fabs(diffp - 2)
+		dgreen = np.fabs(diffn - 2)
+		
+		agreep = np.fabs(diffp - 1)
+		agreen = np.fabs(diffn - 1)
 
 		for i in range(155, 155 + 1488):
+			if (l == 60):
+				print i, a[i], agreep[i], agreen[i] 
+
+			if (a[i] < 400):
+				row[i] = lohet_filt[l][i] 
+			elif ((dgreep[i] < dgreen[i]) and (dgreep[i] < 0.2)):
+				row[i] = rowp[i]
+			elif (dgreen[i] < 0.2):
+				row[i] = rown[i]
+#			elif ((agreep[i] < agreen[i]) and (agreep[i] < 0.2)):
+#				row[i] = rowp[i]
+#			elif (agreen[i] < 0.2):
+#				row[i] = rown[i]
+			else:
+				row[i] = rowa[i] 
 			inframe_fcomp[i] = inframe[l][i - 17]
+		
+		vadji = row.imag * adji[l]
+		vadjq = row.real * adjq[l]
 
 		[r, g, b] = torgb(inframe_fcomp + vadji + vadjq, cmult * row.imag, -cmult * row.real)
 	

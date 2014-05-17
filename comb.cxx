@@ -2,8 +2,6 @@
 
 #include "ld-decoder.h"
 
-#include "deemp.h"
-
 // capture frequency and fundamental NTSC color frequency
 //const double CHZ = (1000000.0*(315.0/88.0)*8.0);
 //const double FSC = (1000000.0*(315.0/88.0));
@@ -214,14 +212,13 @@ int black_u16 = ire_to_u16(black_ire);
 int white_u16 = level_100ire; 
 bool whiteflag_detect = true;
 
-//enum cline_stat {
-//};
+enum cline_stat {
+};
 
 typedef struct cline {
 	double y[hleni]; // Y
 	double m[hleni]; // IQ magnitude
 	double a[hleni]; // IQ phase angle
-	double k[hleni]; // 3D blend factor
 //	int stat[hleni];
 } cline_t;
 
@@ -252,10 +249,10 @@ class Comb
 		uint8_t obuf[1488 * 525 * 3];
 		uint8_t tmp_obuf[1488 * 525 * 3];
 
-		double blevel[5][525];
+		double blevel[525];
 
-		double _cos[5][525][16], _sin[5][525][16];
-		cline_t wbuf[5][525];
+		double _cos[525][16], _sin[525][16];
+		cline_t wbuf[3][525];
 		Filter *f_i, *f_q;
 		Filter *f_synci, *f_syncq;
 
@@ -278,8 +275,8 @@ class Comb
 
 				v = (double)(v - black_u16) / (double)(white_u16 - black_u16); 
 
-				double q = f_syncq->feed(v * _cos[0][0][l % 8]);
-				double i = f_synci->feed(-v * _sin[0][0][l % 8]);
+				double q = f_syncq->feed(v * _cos[0][l % 8]);
+				double i = f_synci->feed(-v * _sin[0][l % 8]);
 
 				double level = ctor(i, q);
 
@@ -344,62 +341,14 @@ class Comb
 			return v;
 		}
 
-		cline_t ProcColor(uint16_t *in_line, int fnum, int lnum) {
-			cline_t line;
+		cline_t Blend(cline_t &prev, cline_t &cur, cline_t &next) {
+			cline cur_combed;
 
 			int counter = 0;
 			for (int h = line_blanklen - 64 - 135; counter < 1760 - 135; h++) {
-				double sq, si;
-
-				double val = (double)(in_line[h] - black_u16) / (double)(white_u16 - black_u16); 
-			
-				sq = f_q->feed(-val * _cos[fnum][lnum][h % 8]);
-				si = f_i->feed(val * _sin[fnum][lnum][h % 8]);
-
-				line.y[h] = in_line[h]; 
-				line.m[h] = ctor(si, sq); 
-				line.a[h] = atan2(si, sq); 
-				
-				counter++;
-			}
-
-			return line;
-		}
-
-		// simple addition-based combing
-		cline_t BlendAdd(cline_t &prev, cline_t &cur, cline_t &next, int fnum, int lnum) {
-			uint16_t line[1760];
-
-			int counter = 0;
-			for (int h = line_blanklen - 64 - 135; counter < 1760 - 135; h++, counter++) {
-				//line[h] = (uint16_t)((cur.y[h] * .5) + (prev.y[h] * .25) + (next.y[h] * .25));
-				line[h] = (uint16_t)(((cur.y[h] * 0.5) - (prev.y[h] * .25) - (next.y[h] * .25)) + 32768);
-//				if (lnum == 240) cerr << h << ' ' << cur.y[h] << ' ' << line[h] << endl; 
-			}
-
-			cline_t blended = ProcColor(line, fnum, lnum);
-			counter = 0;
-			for (int h = line_blanklen - 64 - 135; counter < 1760 - 135; h++, counter++) {
-				 blended.y[h] = (uint16_t)((cur.y[h] * .5) + (prev.y[h] * .25) + (next.y[h] * .25));
-				 if (lnum == 240) cerr << h << ' ' << cur.y[h] << ' ' << blended.y[h] << endl; 
-			}
-			return blended;
-		}
-
-		cline_t Blend(cline_t &prev, cline_t &cur, cline_t &next, int fnum, int lnum) {
-			cline_t cur_combed;
-			cline_t added; 	
-
-			added = BlendAdd(prev, cur, next, fnum, lnum);
-
-			int counter = 0;
-			for (int h = line_blanklen - 64 - 135; counter < 1760 - 135; h++) {
-
-				if (0 && curline == 430) {
-				cerr << h << ' ' << prev.a[h] << ' ' << cur.a[h] << ' ' << next.a[h] << ' ';	
-				cerr << ": " << prev.m[h] << ' ' << cur.m[h] << ' ' << next.m[h] << endl;	
-				cerr << h << ' ' << adiff(prev.a[h], cur.a[h]) << ' ' << adiff(cur.a[h], next.a[h]) << ' ' << adiff(prev.a[h], next.a[h]) << endl;	
-				}
+//				cerr << h << ' ' << prev.a[h] << ' ' << cur.a[h] << ' ' << next.a[h] << ' ';	
+//				cerr << ": " << prev.m[h] << ' ' << cur.m[h] << ' ' << next.m[h] << endl;	
+//				cerr << h << ' ' << adiff(prev.a[h], cur.a[h]) << ' ' << adiff(cur.a[h], next.a[h]) << ' ' << adiff(prev.a[h], next.a[h]) << endl;	
 
 				double diff = (fabs(adiff(prev.a[h], cur.a[h])) + fabs(adiff(cur.a[h], next.a[h]))) / 2.0;
 //				double adj = fabs(adiff(prev.a[h], next.a[h]) / diff);	
@@ -407,7 +356,6 @@ class Comb
 				cur_combed.y[h] = cur.y[h];
 				cur_combed.a[h] = cur.a[h];
 				cur_combed.m[h] = cur.m[h];
-				cur_combed.k[h] = 0.0;
 #if 0
 				if (fabs(adiff(prev.a[h], cur.a[h])) < (M_PIl * .1)) {
 					cur_combed.a[h] *= 0.5;
@@ -417,26 +365,12 @@ class Comb
 					cur_combed.a[h] += (next.a[h] * 0.5);
 				} 
 #endif	
-				if (curline == 240) {
-					double val = (double)(cur.y[h] - black_u16) / (double)(white_u16 - black_u16); 
-					cerr << h << ' ' << adiff(prev.a[h], next.a[h]) << ' ' << val << " [" << prev.a[h] << ", " << prev.m[h] << "] ";
-					cerr << " [" << cur.a[h] << ", " << cur.m[h] << "] " ;
-					cerr << " [" << next.a[h] << ", " << next.m[h] << "] " << diff << endl;
-				}
-
 				if (diff > (M_PIl * .5)) {
 					double adj = 1 - (diff / M_PIl); 
 					if (adj < 0) adj = 0;
 					if (adj > 1) adj = 1;
 					
 					cur_combed.m[h] *= adj;
-				} else if (0 && fabs(adiff(prev.a[h], next.a[h])) < (M_PIl / 4.0) && 
-					   (1 || fabs(adiff(prev.a[h], cur.a[h]) > (M_PIl * .5)))) {
-					cur_combed.y[h] = added.y[h];
-					cur_combed.m[h] = added.m[h];
-					cur_combed.a[h] = added.a[h];
-					cur_combed.k[h] = 1.0;
-					if (lnum == 240) cerr << "B" << cur_combed.m[h] << ' ' << cur_combed.a[h] << endl;
 				}
 
 				counter++;
@@ -446,17 +380,10 @@ class Comb
 		}
 
 		// buffer: 1685x505 uint16_t array
-		int CombFilter(uint16_t *buffer, uint8_t *output)
+		void CombFilter(uint16_t *buffer, uint8_t *output)
 		{
 			YIQ outline[1685];
-			blevel[0][23] = 0;
-				
-			memmove(wbuf[1], wbuf[0], sizeof(cline_t) * 525 * 4);
-			memmove(_sin[1], _sin[0], sizeof(double) * 525 * 16 * 4);
-			memmove(_cos[1], _cos[0], sizeof(double) * 525 * 16 * 4);
-			memmove(blevel[1], blevel[0], sizeof(double) * 525 * 4);
-			memset(blevel[0], 0, sizeof(double) * 525 * 1);
-
+			blevel[23] = 0;
 			for (int l = 24; l < 504; l++) {
 				uint16_t *line = &buffer[l * 1685];
 //				double _cos[(int)freq + 1], _sin[(int)freq + 1];
@@ -467,37 +394,47 @@ class Comb
 				BurstDetect(line, 0, 4 * dots_usec, level, phase);
 //				cerr << "burst " << level << ' ' << phase << endl;
 				for (int j = 0; j < (int)freq; j++) { 
-	                                _cos[0][l][j] = cos(phase + (2.0 * M_PIl * ((double)j / freq)));
-					_sin[0][l][j] = sin(phase + (2.0 * M_PIl * ((double)j / freq)));
+	                                _cos[l][j] = cos(phase + (2.0 * M_PIl * ((double)j / freq)));
+					_sin[l][j] = sin(phase + (2.0 * M_PIl * ((double)j / freq)));
 				}
 
-				if (blevel[0][l - 1] > 0) {
-					blevel[0][l] = blevel[0][l - 1] * 0.9;
-					blevel[0][l] += (level * 0.1);
-				} else blevel[0][l] = level;
+				if (blevel[l - 1] > 0) {
+					blevel[l] = blevel[l - 1] * 0.9;
+					blevel[l] += (level * 0.1);
+				} else blevel[l] = level;
 
-				wbuf[0][l] = ProcColor(line, 0, l);
+				int counter = 0;
+				for (int h = line_blanklen - 64 - 135; counter < 1760 - 135; h++) {
+					double sq, si;
+
+					val = (double)(line[h] - black_u16) / (double)(white_u16 - black_u16); 
+				
+					sq = f_q->feed(-val * _cos[l][h % 8]);
+					si = f_i->feed(val * _sin[l][h % 8]);
+
+					wbuf[0][l].y[h] = line[h]; 
+					wbuf[0][l].m[h] = ctor(si, sq); 
+					wbuf[0][l].a[h] = atan2(si, sq); 
+					
+//					cerr << "P" << h << ' ' << counter << ' ' << line[h] << ' ' << val << ' ' << (double)line[h] / (double)level_100ire << endl;
+					counter++;
+				}
 			}
-
-			if (framecount < 5) return 0;
 	
 			for (int l = 24; l < 504; l++) {
 				cline_t line;
 
-				curline = l;
-
 				if (l < 503) 
-					line = Blend(wbuf[3][l - 2], wbuf[3][l], wbuf[3][l + 2]);
-//					line = Blend(wbuf[2][l], wbuf[3][l], wbuf[4][l], 3, l);
+					line = Blend(wbuf[0][l - 2], wbuf[0][l], wbuf[0][l + 2]);
 				else
-					memcpy(&line, &wbuf[3][l], sizeof(cline_t));
+					memcpy(&line, &wbuf[0][l], sizeof(cline_t));
 
 				int counter = 0;
 				double circbuf[18];
 				double val, _val;
 				for (int h = line_blanklen - 64 - 135; counter < 1760 - 135; h++) {
 					val = (double)(line.y[h] - black_u16) / (double)(white_u16 - black_u16); 
-					double cmult = 0.12 / blevel[3][l];
+					double cmult = 0.15 / blevel[l];
 
 					double icomp = 0;
 					double qcomp = 0;
@@ -509,8 +446,8 @@ class Comb
 						icomp = qcomp = 0;
 					}
 	
-					double iadj = icomp * 2 * _cos[3][l][(h + 1) % 8];
-					double qadj = qcomp * 2 * _sin[3][l][(h + 1) % 8];
+					double iadj = icomp * 2 * _cos[l][(h + 1) % 8];
+					double qadj = qcomp * 2 * _sin[l][(h + 1) % 8];
 
 //					cerr << ' ' << _val << ' ' << iadj + qadj << ' ';
 	                                if (counter > 17) {
@@ -519,7 +456,7 @@ class Comb
 	                                circbuf[counter % 17] = val;
 					val = _val;
 
-					val += (iadj + qadj) * (1.0 - line.k[h]);
+					val += iadj + qadj;
 #ifdef GRAY 
 					i = q = 0;
 #endif
@@ -549,7 +486,7 @@ class Comb
 				}
 			}
 
-			return 1;
+			return;
 		}
 
 		uint32_t ReadPhillipsCode(uint16_t *line) {
@@ -590,16 +527,14 @@ class Comb
 	
 			// build table of standard cos/sin for phase/level calc	
 			for (int e = 0; e < freq; e++) {
-				_cos[0][0][e] = cos((2.0 * M_PIl * ((double)e / freq)));
-				_sin[0][0][e] = sin((2.0 * M_PIl * ((double)e / freq)));
+				_cos[0][e] = cos((33.0 / 180.0) + (2.0 * M_PIl * ((double)e / freq)));
+				_sin[0][e] = sin((33.0 / 180.0) + (2.0 * M_PIl * ((double)e / freq)));
 			}
 
 			//f_i = new Filter(30, NULL, f28_1_3mhz_b30);
 			//f_q = new Filter(30, NULL, f28_1_3mhz_b30);
 			f_i = new Filter(32, NULL, f28_0_6mhz_b32);
 			f_q = new Filter(32, NULL, f28_0_6mhz_b32);
-//			f_i = new Filter(f_color);
-//			f_q = new Filter(f_color);
 //			f_i = new Filter(32, NULL, f28_2_0mhz_b32);
 //			f_q = new Filter(32, NULL, f28_2_0mhz_b32);
 
@@ -623,22 +558,16 @@ class Comb
 
 		int Process(uint16_t *buffer) {
 			int fstart = -1;
-			
-			framecount++;
-				
-			if (!CombFilter(buffer, tmp_obuf)) return 0;
 
 			if (!pulldown_mode) {
 				fstart = 0;
-				memcpy(obuf, tmp_obuf, sizeof(obuf));
 			} else if (f_oddframe) {
+				CombFilter(buffer, tmp_obuf);
 				for (int i = 0; i <= 478; i += 2) {
 					memcpy(&obuf[1488 * 3 * i], &tmp_obuf[1488 * 3 * i], 1488 * 3); 
 				}
 				WriteFrame(obuf, framecode);
 				f_oddframe = false;		
-			} else {
-				memcpy(obuf, tmp_obuf, sizeof(obuf));
 			}
 
 			for (int line = 2; line <= 3; line++) {
@@ -674,12 +603,16 @@ class Comb
 				}
 			}
 
+			CombFilter(buffer, obuf);
+
 			cerr << "FR " << framecount << ' ' << fstart << endl;
 			if (!pulldown_mode || (fstart == 0)) {
 				WriteFrame(obuf, framecode);
 			} else if (fstart == 1) {
 				f_oddframe = true;
 			}
+
+			framecount++;
 
 			return 0;
 		}
