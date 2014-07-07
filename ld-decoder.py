@@ -30,6 +30,7 @@ Ddeemp = 11
 # 503 v2, also good de-emp for 2800, but lower FR
 Fr = np.array([0,   .5000, 1.60, 3.00, 4.2, 5.0, 10.0]) / (freq)
 Am = np.array([100, 84.0,    45,   45, 60,  70 , 00]) / 100.0
+Am = np.array([100, 84.0,    45,   55, 75,  75 , 00]) / 100.0
 Th = np.zeros(len(Fr))
 
 [f_deemp_b, f_deemp_a] = fdls.FDLS(Fr, Am, Th, Ndeemp, Ddeemp)
@@ -70,8 +71,8 @@ def process(data):
 
 	return output
 
-infile = open("20950.raw", "rb")
-outfile = open("20950p2.ld", "wb")
+infile = open("snw.raw", "rb")
+outfile = open("snwp.ld", "wb")
 #indata = []
 
 total = toread = blocklen 
