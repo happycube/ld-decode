@@ -96,9 +96,11 @@ while len(inbuf) > 0:
 
 	reduced = (foutput - 7600000) / 1700000.0
 	output = np.clip(reduced * 57344.0, 1, 65535) 
+	
+	np.copyto(output_16, output, 'unsafe')
 
-	for i in range(0, len(output)):
-		output_16[i] = output[i]
+#	for i in range(0, len(output)):
+#		output_16[i] = output[i]
 
 	outfile.write(output_16)
 	
