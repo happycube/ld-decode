@@ -3,6 +3,8 @@ import scipy as sp
 import scipy.signal as sps
 import sys
 
+import ipdb
+
 freq = (315.0 / 88.0) * 8.0
 freq_hz = freq * 1000000.0
 blocklen = 32768 
@@ -12,73 +14,36 @@ bandpass_filter = [1.054426894146890e-04, -4.855229756583843e-05, -1.69704447499
 #for i in range(0, len(bandpass_filter)):
 #	print bandpass_filter[i], ",",  
 
-lowpass_filter = sps.firwin(18, 5.0 / (freq / 2), window='hamming')
+lowpass_filter = sps.firwin(17, 5.0 / (freq / 2), window='hamming')
 for i in range(0, len(lowpass_filter)):
 	print "%.15e" % lowpass_filter[i], ",",  
-exit()
 #print
 #lowpass_filter = [-5.182956535966573e-04, -4.174028437151462e-03, -1.126381254549101e-02, -1.456598548706209e-02, 3.510439201231994e-03, 5.671595743858979e-02, 1.370914830220347e-01, 2.119161192395519e-01, 2.425762464437853e-01, 2.119161192395519e-01, 1.370914830220347e-01, 5.671595743858982e-02, 3.510439201231995e-03, -1.456598548706209e-02, -1.126381254549101e-02, -4.174028437151466e-03, -5.182956535966573e-04]
 
-bands = [8700000] 
+bands = [8700000, 8700000] 
 	
 def process(data):
 	# perform general bandpass filtering
 	in_len = len(data)
 	in_filt = sps.fftconvolve(data, bandpass_filter)
 
-	ohet = np.empty([len(bands), in_len + 32], dtype=complex)
-	ohet_filt = np.empty([len(bands), in_len + 32], dtype=complex)
-	ohet_filtn = np.empty([len(bands), in_len + 48], dtype=complex)
-	angles = np.empty([len(bands), in_len + 48])
-	dangle = np.empty([len(bands), in_len + 48])
-	abs_dangle = np.empty([len(bands), in_len + 48])
-	levels = np.empty([len(bands), in_len + 48])
-	output = np.empty(in_len)
+	hilbert = sps.hilbert(in_filt) 
 
-#	print len(in_filt) 
-
-	# heterodyning
-	for b in range(len(bands)):
-		if len(in_filt) == len(het[b]):
-			ohet[b] = np.multiply(in_filt, het[b])
-		else:
-			for i in range(in_len): 
-				ohet[b][i] = in_filt[i] * het[b][i]	
-
-	# lowpass filtering
-	for b in range(len(bands)):
-		ohet_filtn[b] = sps.fftconvolve(ohet[b], lowpass_filter)
-		levels[b] = np.absolute(ohet_filtn[b]) 
-		angles[b] = np.angle(ohet_filtn[b]) 
-
-		for i in range(0, in_len):
-			adiff = angles[b][i] - angles[b][i - 1]
-
-			if (adiff < -np.pi):
-				adiff += (np.pi * 2)
-			if (adiff > np.pi):
-				adiff -= (np.pi * 2)
-			
-			dangle[b][i] = adiff
-
-		abs_dangle[b] = np.fabs(dangle[b])
-
-	# select strongest signal
+	tangles = np.angle(hilbert) 
+	tdangles = np.empty(in_len + 32)
 	for i in range(0, in_len):
-		peaklevel = 500 
-		peakband = -1
+		adiff = tangles[i + 17] - tangles[i + 16]
 
-#		print i, 
-		for b in range(len(bands)):
-#			print dangle[b][i], 
-			if (abs_dangle[b][i] < peaklevel):
-				peaklevel = abs_dangle[b][i]
-				peakband = b
+		if (adiff < -np.pi):
+			adiff += (np.pi * 2)
+		if (adiff > np.pi):
+			adiff -= (np.pi * 2)
+			
+		tdangles[i] = adiff
+			
+	output = (sps.fftconvolve(tdangles, lowpass_filter) * 4557618)[16:32768]
 
-		output[i] = bands[peakband] - ((bands[peakband] / 2.0) * dangle[peakband][i])
-	#	print levels[peakband][i], output[i]
-
-	return np.delete(output, np.s_[0:128])
+	return output
 
 # setup
 
@@ -99,8 +64,8 @@ print
 
 # actual work
 
-infile = open("mb.raw", "rb")
-outfile = open("testpy.ld", "wb")
+infile = open("20950.raw", "rb")
+outfile = open("20950p.ld", "wb")
 #indata = []
 
 total = toread = blocklen 
