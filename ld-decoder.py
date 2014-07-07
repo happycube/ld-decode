@@ -54,20 +54,17 @@ def process(data):
 	print len(data), in_len
 
 	tangles = np.angle(hilbert) 
-	tdangles = np.empty(in_len - 80)
-	for i in range(64, in_len - 16):
-		adiff = tangles[i] - tangles[i - 1]
+	dangles = np.empty(in_len - 80)
 
-		if (adiff < -np.pi):
-			adiff += (np.pi * 2)
-		if (adiff > np.pi):
-			adiff -= (np.pi * 2)
-			
-		tdangles[i - 64] = adiff
-		
-#		print i - 64, tdangles[i - 64]
+	dangles = np.diff(tangles[64:])
+
+	# make sure unwapping goes the right way
+	if (dangles[0] < -np.pi):
+		dangles[0] += (np.pi * 2)
 	
-	output = (sps.fftconvolve(tdangles, lowpass_filter) * 4557618)[32:len(tdangles)]
+	tdangles2 = np.unwrap(dangles) 
+	
+	output = (sps.fftconvolve(tdangles2, lowpass_filter) * 4557618)[32:len(tdangles2)]
 
 	return output
 
@@ -97,19 +94,11 @@ while len(inbuf) > 0:
 	foutput = sps.lfilter(f_deemp_b, f_deemp_a, output)[32:len(output)]
 	output_16 = np.empty(len(foutput), dtype=np.uint16)
 
-	for i in range(0, len(foutput)):
-#		print i, output[i] #, foutput[i]
-		n = foutput[i ]
+	reduced = (foutput - 7600000) / 1700000.0
+	output = np.clip(reduced * 57344.0, 1, 65535) 
 
-		n = (n - 7600000.0) / 1700000.0
-		if n < 0:
-			n = 0;
-		n = 1 + (n * 57344.0)
-		if n > 65535:
-			n = 65535
-
-		output_16[i] = n	
-		total+=1
+	for i in range(0, len(output)):
+		output_16[i] = output[i]
 
 	outfile.write(output_16)
 	
