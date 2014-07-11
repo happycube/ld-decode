@@ -106,7 +106,7 @@ for i in range(0, len(Fr)):
 [f_deemp_b, f_deemp_a] = fdls.FDLS(Fr, Am, Th, Ndeemp, Ddeemp)
 
 w, h = sps.freqz(B, A)
-deemp_corr = ((h[0].real - 1) / 2.0) + 1
+deemp_corr = ((h[0].real - 1) / 1.2) + 1
 
 #f_deemp_b = sps.firwin2(25, np.array([0, 0.3, 0.5, 1.6, 3.0, 5.0, freq/2]) / (freq/2), [2.4, 0.89, 0.772, .4636, .3893, .3657, .353]);
 #f_deemp_a = [1.0]
