@@ -38,7 +38,7 @@ bandpass_filter = [1.054426894146890e-04, -4.855229756583843e-05, -1.69704447499
 Bboost = sps.firwin(15, [3.5/(freq/2.0), 13.0/(freq/2.0)], pass_zero=False) 
 Aboost = [1.0]
 
-lowpass_filter = sps.firwin(19, 5.0 / (freq / 2), window='hamming')
+lowpass_filter = sps.firwin(15, 4.3 / (freq / 2), window='hamming')
 
 Ndeemp = 5 
 Ddeemp = 7
@@ -84,12 +84,12 @@ for f in range(0, n):
 
         Fr[f] = cf / freq
         Am[f] = np.power(10, (DE/20.0)) 
+        #Am[f] = np.power(10, (DE/24.0)) 
 
 	if (cf > 5.5):
-		cf = 5.5
-
-#	if (cf > 2.5) and (cf < 5.5):
-#		Am[f] = Am[f] + (((cf - 3.0) / 3.0) * 0.05) 
+		Am[f] -= ((cf - 5.5) * .00)
+		if (Am[f] < 0):
+			Am[f] = 0 
 	
 	#print f, Fr[f] * freq, Am[f]
 
@@ -101,16 +101,18 @@ Ddeemp = 4
 
 for i in range(0, len(Fr)):
 	Th[i] = -(Fr[i] * 4600) / 180.0
+#	Th[i] = -(Fr[i] * 5000) / 180.0
 #	print i, Fr[i], Th[i]
 
 [f_deemp_b, f_deemp_a] = fdls.FDLS(Fr, Am, Th, Ndeemp, Ddeemp)
 
 w, h = sps.freqz(B, A)
-deemp_corr = ((h[0].real - 1) / 1.2) + 1
+deemp_corr = ((h[0].real - 1) / 1.15) + 1
 
 #f_deemp_b = sps.firwin2(25, np.array([0, 0.3, 0.5, 1.6, 3.0, 5.0, freq/2]) / (freq/2), [2.4, 0.89, 0.772, .4636, .3893, .3657, .353]);
 #f_deemp_a = [1.0]
 
+#doplot(f_deemp_b, f_deemp_a)
 #exit()
 
 def process(data):
@@ -133,6 +135,7 @@ def process(data):
 	tdangles2 = np.unwrap(dangles) 
 	
 	output = (sps.fftconvolve(tdangles2, lowpass_filter) * 4557618)[128:len(tdangles2)]
+#	output = (sps.lfilter(Blpf, Alpf, tdangles2) * 4557618)[128:len(tdangles2)]
 	#output = (tdangles2 * 4557618)[128:len(tdangles2)]
 
 	return output
