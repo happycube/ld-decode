@@ -64,33 +64,19 @@ for f in range(0, n):
 
         Fr[f] = cf / freq
         Am[f] = np.power(10, (DE/20.0)) 
-        #Am[f] = np.power(10, (DE/24.0)) 
-
-	if (cf > 5.5):
-		Am[f] -= ((cf - 5.5) * .00)
-		if (Am[f] < 0):
-			Am[f] = 0 
 	
 	#print f, Fr[f] * freq, Am[f]
 
 Ndeemp = 6 
 Ddeemp = 4
-#Fr = np.array([0,   0.3, 0.5,  1.6,  3.0,  5.0, freq]) / (freq)
-#Am = np.array([100,  89,77.2,46.36,38.93,.3657,    0]) / 100.0
-#Th = np.zeros(len(Fr))
 
 for i in range(0, len(Fr)):
 	Th[i] = -(Fr[i] * 4600) / 180.0
-#	Th[i] = -(Fr[i] * 5000) / 180.0
-#	print i, Fr[i], Th[i]
 
 [f_deemp_b, f_deemp_a] = fdls.FDLS(Fr, Am, Th, Ndeemp, Ddeemp)
 
 w, h = sps.freqz(B, A)
 deemp_corr = ((h[0].real - 1) / 1.15) + 1
-
-#f_deemp_b = sps.firwin2(25, np.array([0, 0.3, 0.5, 1.6, 3.0, 5.0, freq/2]) / (freq/2), [2.4, 0.89, 0.772, .4636, .3893, .3657, .353]);
-#f_deemp_a = [1.0]
 
 #doplot(f_deemp_b, f_deemp_a)
 #exit()
@@ -158,11 +144,7 @@ while (len(inbuf) > 0):
 	
 	output = process(indata)
 
-	foutput = (sps.lfilter(f_deemp_b, f_deemp_a, output)[128:len(output)])  / deemp_corr
-#	for i in range(0, len(foutput)):
-#		print i, output[i], foutput[i]
-
-#	exit()
+	foutput = (sps.lfilter(f_deemp_b, f_deemp_a, output)[128:len(output)]) / deemp_corr
 
 	output_16 = np.empty(len(foutput), dtype=np.uint16)
 
