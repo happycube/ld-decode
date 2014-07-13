@@ -1,6 +1,7 @@
 /* LD decoder prototype, Copyright (C) 2013 Chad Page.  License: LGPL2 */
 
 #include "ld-decoder.h"
+#include "deemp.h"
 
 // capture frequency and fundamental NTSC color frequency
 //const double CHZ = (1000000.0*(315.0/88.0)*8.0);
@@ -540,6 +541,8 @@ class Comb
 
                         f_synci = new Filter(64, NULL, f28_0_6mhz_b64);
                         f_syncq = new Filter(64, NULL, f28_0_6mhz_b64);
+                        f_synci = new Filter(f_sync);
+                        f_syncq = new Filter(f_sync);
 		}
 
 		void WriteFrame(uint8_t *obuf, int fnum = 0) {
