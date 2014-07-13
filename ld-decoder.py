@@ -71,7 +71,7 @@ Ndeemp = 6
 Ddeemp = 4
 
 for i in range(0, len(Fr)):
-	Th[i] = -(Fr[i] * 4600) / 180.0
+	Th[i] = -(Fr[i] * 4300) / 180.0
 
 [f_deemp_b, f_deemp_a] = fdls.FDLS(Fr, Am, Th, Ndeemp, Ddeemp)
 
