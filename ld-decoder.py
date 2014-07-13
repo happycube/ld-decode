@@ -33,10 +33,10 @@ def doplot(B, A):
 	plt.axis('tight')
 	plt.show()
 
-Bboost = sps.firwin(12, [3.5/(freq/2.0), 13.0/(freq/2.0)], pass_zero=False) 
+Bboost = sps.firwin(12, [4.3/(freq/2.0), 14.0/(freq/2.0)], pass_zero=False) 
 Aboost = [1.0]
 
-lowpass_filter = sps.firwin(15, 4.3 / (freq / 2), window='hamming')
+lowpass_filter = sps.firwin(15, 4.6 / (freq / 2), window='hamming')
 
 tH = 100.0/1000000000.0 # 100nS
 tL = 300.0/1000000000.0 # 300nS
