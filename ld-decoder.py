@@ -33,16 +33,50 @@ def doplot(B, A):
 	plt.axis('tight')
 	plt.show()
 
-Bboost = sps.firwin(12, [4.3/(freq/2.0), 14.0/(freq/2.0)], pass_zero=False) 
-Aboost = [1.0]
+ffreq = freq/2.0
 
-lowpass_filter = sps.firwin(15, 4.6 / (freq / 2), window='hamming')
+Bboost = sps.firwin(17, [6.0/(freq/2.0), 12.5/(freq/2.0)], pass_zero=False) 
+Bboost = sps.firwin(17, [4.5/(freq/2.0), 14.0/(freq/2.0)], pass_zero=False) 
+Bboost = sps.firwin(33, 4.0 / (freq / 2), window='hamming', pass_zero=False)
+#Bboost = sps.firwin2(25, [0, 5.4/(freq/2.0), 12.0/(freq/2.0), 14.0/(freq/2.0), 1.0], [0.0, 1.0, 2.0, 2.0, 1.0]) 
+Bboost = sps.firwin2(37, [0, 4.0/(freq/2.0), 12.0/(freq/2.0), 14.0/(freq/2.0), 1.0], [0.0, 1.0, 2.0, 3.0, 2.0]) 
+Aboost = [1.0]
+#doplot(Bboost, Aboost)
+#exit()
+
+n = 128 
+Fr = np.zeros(n)
+Am = np.zeros(n)
+Th = np.zeros(n)
+
+for f in range(0, n):
+	cf = freq * (float(f) / 256.0)
+     
+	if (cf > 1.0) and (cf < 3.5):
+		Am[f] = 0 
+	else:
+		Am[f] = 1
+
+	Fr[f] = float(f) / 256.0
+	Th[f] = -(Fr[f] * 19) 
+
+[f_afilt_b, f_afilt_a] = fdls.FDLS(Fr, Am, Th, 12, 1)
+#doplot(f_afilt_b, f_afilt_a)
+#exit()
+
+#alfilt = sps.firwin(11, [2.10/ffreq, 3.10/ffreq])
+#arfilt = sps.firwin(9, [2.60/ffreq, 3.00/ffreq])
+
+lowpass_filter = sps.firwin(31, 4.5 / (freq / 2), window='hamming')
+#lowpass_filter = sps.firwin(15, 4.3 / (freq / 2), window='hamming')
+#doplot(lowpass_filter, [1.0])
+#exit()
 
 tH = 100.0/1000000000.0 # 100nS
 tL = 300.0/1000000000.0 # 300nS
 
-n = 70
-df = 5 
+n = 128
+df = 128.0/(freq/2) 
 Fr = np.zeros(n)
 Am = np.zeros(n)
 Th = np.zeros(n)
@@ -60,32 +94,52 @@ for f in range(0, n):
         DE = ((10.0*np.log(A/B))-21.9722457733) * (10.0 / 21.9722457733)
 #        print f, np.log(A/B), np.power(10, DE / 24.0)
 
+#	cf = (1.0 / float(n)) * float(f)
 	cf = (float(f) / df)
 
         Fr[f] = cf / freq
-        Am[f] = np.power(10, (DE/20.0)) 
-	
+        Am[f] = np.power(10, (DE/18.0)) 
+
 	#print f, Fr[f] * freq, Am[f]
 
-Ndeemp = 6 
-Ddeemp = 4
+#Fr[n - 1] = 1.0 
+
+Ndeemp = 7
+Ddeemp = 3
 
 for i in range(0, len(Fr)):
-	Th[i] = -(Fr[i] * 4300) / 180.0
+	Th[i] = -(Fr[i] * 5040) / 180.0
+	Th[i] = -(Fr[i] * 29.4) 
+	Th[i] = -(Fr[i] * 30.0) 
+	Th[i] = -(Fr[i] * 30.0) 
+#	Th[i] = -(Fr[i] * 29.5) 
 
 [f_deemp_b, f_deemp_a] = fdls.FDLS(Fr, Am, Th, Ndeemp, Ddeemp)
 
+#f_deemp_b = sps.firwin2(125, Fr, Am)
+#f_deemp_b = [1.0]
+#f_deemp_a = [1.0]
+
 w, h = sps.freqz(B, A)
 deemp_corr = ((h[0].real - 1) / 1.15) + 1
+#deemp_corr = 0.9945
+deemp_corr = 0.9880
+#deemp_corr = 1.001
 
-#doplot(f_deemp_b, f_deemp_a)
+#doplot(alfilt, [1.0])
 #exit()
 
 def process(data):
 	# perform general bandpass filtering
 	in_len = len(data)
 #	in_filt = sps.fftconvolve(data, bandpass_filter)
-	in_filt = sps.lfilter(Bboost, Aboost, data)
+	in_filt1 = sps.lfilter(Bboost, Aboost, data)
+#	in_filt = sps.lfilter(f_afilt_b, f_afilt_a, in_filt1)
+#	in_filt = sps.lfilter(arfilt, [1.0], in_filt2)
+
+	in_filt = in_filt1
+	
+#	in_filt = sps.lfilter(Bboost, Aboost, data)
 
 	hilbert = sps.hilbert(in_filt) 
 
@@ -147,6 +201,8 @@ while (len(inbuf) > 0):
 	foutput = (sps.lfilter(f_deemp_b, f_deemp_a, output)[128:len(output)]) / deemp_corr
 
 	output_16 = np.empty(len(foutput), dtype=np.uint16)
+
+	foutput *= 1.0055 
 
 	reduced = (foutput - 7600000) / 1700000.0
 	output = np.clip(reduced * 57344.0, 1, 65535) 
