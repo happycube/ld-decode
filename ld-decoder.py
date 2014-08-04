@@ -104,8 +104,8 @@ for f in range(0, n):
 
 #Fr[n - 1] = 1.0 
 
-Ndeemp = 7
-Ddeemp = 3
+Ndeemp = 8
+Ddeemp = 5
 
 for i in range(0, len(Fr)):
 	Th[i] = -(Fr[i] * 5040) / 180.0
@@ -123,7 +123,7 @@ for i in range(0, len(Fr)):
 w, h = sps.freqz(B, A)
 deemp_corr = ((h[0].real - 1) / 1.15) + 1
 #deemp_corr = 0.9945
-deemp_corr = 0.9880
+deemp_corr = 0.9915
 #deemp_corr = 1.001
 
 #doplot(alfilt, [1.0])
@@ -201,8 +201,6 @@ while (len(inbuf) > 0):
 	foutput = (sps.lfilter(f_deemp_b, f_deemp_a, output)[128:len(output)]) / deemp_corr
 
 	output_16 = np.empty(len(foutput), dtype=np.uint16)
-
-	foutput *= 1.0055 
 
 	reduced = (foutput - 7600000) / 1700000.0
 	output = np.clip(reduced * 57344.0, 1, 65535) 
