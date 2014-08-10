@@ -50,13 +50,6 @@ struct RGB {
         double r, g, b;
 
         void conv(YIQ y) {
-        //      y.i = clamp(y.i, -0.5957, .5957);
-        //      y.q = clamp(y.q, -0.5226, .5226);
-
-//                y.y -= (.4 / 1.4);
-                y.y *= 1.0;
-//                y.y = clamp(y.y, 0, 1.0);
-
                 r = (y.y * 1.164) + (1.596 * y.i);
                 g = (y.y * 1.164) - (0.813 * y.i) - (y.q * 0.391);
                 b = (y.y * 1.164) + (y.q * 2.018);
@@ -220,6 +213,8 @@ typedef struct cline {
 	double y[hleni]; // Y
 	double m[hleni]; // IQ magnitude
 	double a[hleni]; // IQ phase angle
+	double i[hleni]; // IQ phase angle
+	double q[hleni]; // IQ phase angle
 //	int stat[hleni];
 } cline_t;
 
@@ -342,7 +337,7 @@ class Comb
 			return v;
 		}
 
-		cline_t Blend(cline_t &prev, cline_t &cur, cline_t &next) {
+		cline_t _Blend(cline_t &prev, cline_t &cur, cline_t &next) {
 			cline cur_combed;
 
 			int counter = 0;
@@ -377,6 +372,41 @@ class Comb
 				counter++;
 //				cerr << h << ' ' << diff << ' ' <<  adj << endl;
 			}
+			return cur_combed;
+		}
+		
+		cline_t Blend(cline_t &prev, cline_t &cur, cline_t &next) {
+			cline cur_combed;
+
+			int counter = 0;
+			for (int h = line_blanklen - 64 - 135; counter < 1760 - 135; h++) {
+				cur_combed.y[h] = cur.y[h];
+				cur_combed.i[h] = cur.i[h];
+				cur_combed.q[h] = cur.q[h];
+#if 1
+				double fcuri = fabs(cur.i[h]);
+				double fcurq = fabs(cur.q[h]);
+
+				cur_combed.i[h] = (cur.i[h] / 2.0) + (prev.i[h] / 4.0) + (next.i[h] / 4.0);
+				cur_combed.q[h] = (cur.q[h] / 2.0) + (prev.q[h] / 4.0) + (next.q[h] / 4.0);
+
+				if ((fcuri < fabs(prev.i[h])) && (fcuri < fabs(next.i[h]))) {			
+//					cur_combed.i[h] = (prev.i[h] + next.i[h]) / 2.0;
+//					if (cur_combed.i[h] > .02) cerr << curline << ' ' << h << ' ' << cur_combed.i[h] << ' ' << cur.i[h] << ' ' << prev.i[h] << ' ' << next.i[h] << endl; 
+				}
+//				cerr << cur_combed.i[h] << ' ' << cur.i[h] << ' ' << prev.i[h] << ' ' << next.i[h] << endl; 
+			
+				if ((fcurq < fabs(prev.q[h])) && (fcurq < fabs(next.q[h]))) {
+//					cur_combed.q[h] = (prev.q[h] + next.q[h]) / 2.0;
+				}
+
+
+#endif
+				cur_combed.m[h] = ctor(cur_combed.i[h], cur_combed.q[h]); 
+				cur_combed.a[h] = atan2(cur_combed.i[h], cur_combed.q[h]); 
+				counter++;
+			}
+
 			return cur_combed;
 		}
 
@@ -417,6 +447,8 @@ class Comb
 					wbuf[0][l].y[h] = line[h] - black_u16; 
 					wbuf[0][l].m[h] = ctor(si, sq); 
 					wbuf[0][l].a[h] = atan2(si, sq); 
+					wbuf[0][l].i[h] = si; 
+					wbuf[0][l].q[h] = sq; 
 					
 //					cerr << "P" << h << ' ' << counter << ' ' << line[h] << ' ' << val << ' ' << (double)line[h] / (double)level_100ire << endl;
 					counter++;
@@ -444,12 +476,16 @@ class Comb
 					if (!bw_mode) {
 						icomp = line.m[h] * sin(line.a[h]);
 						qcomp = line.m[h] * cos(line.a[h]);
+						//icomp = wbuf[0][l].m[h] * sin(wbuf[0][l].a[h]);
+						//qcomp = wbuf[0][l].m[h] * cos(wbuf[0][l].a[h]);
 					} else {
 						icomp = qcomp = 0;
 					}
 	
 					double iadj = icomp * 2 * _cos[l][(h + 1) % 8];
 					double qadj = qcomp * 2 * _sin[l][(h + 1) % 8];
+					//double iadj = (wbuf[0][l].m[h] * sin(wbuf[0][l].a[h])) * 2 * _cos[l][(h + 1) % 8];
+					//double qadj = (wbuf[0][l].m[h] * cos(wbuf[0][l].a[h])) * 2 * _sin[l][(h + 1) % 8];
 
 //					cerr << ' ' << _val << ' ' << iadj + qadj << ' ';
 	                                if (counter > 17) {
