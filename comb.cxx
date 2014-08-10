@@ -53,8 +53,8 @@ struct RGB {
         //      y.i = clamp(y.i, -0.5957, .5957);
         //      y.q = clamp(y.q, -0.5226, .5226);
 
-                y.y -= (.4 / 1.4);
-                y.y *= 1.1;
+//                y.y -= (.4 / 1.4);
+                y.y *= 1.0;
 //                y.y = clamp(y.y, 0, 1.0);
 
                 r = (y.y * 1.164) + (1.596 * y.i);
@@ -384,7 +384,8 @@ class Comb
 		void CombFilter(uint16_t *buffer, uint8_t *output)
 		{
 			YIQ outline[1685];
-			blevel[23] = 0;
+			blevel[22] = 0.05;
+			blevel[23] = 0.05;
 			for (int l = 24; l < 504; l++) {
 				uint16_t *line = &buffer[l * 1685];
 //				double _cos[(int)freq + 1], _sin[(int)freq + 1];
@@ -399,9 +400,9 @@ class Comb
 					_sin[l][j] = sin(phase + (2.0 * M_PIl * ((double)j / freq)));
 				}
 
-				if (blevel[l - 1] > 0) {
-					blevel[l] = blevel[l - 1] * 0.9;
-					blevel[l] += (level * 0.1);
+				if (blevel[l - 2] > 0) {
+					blevel[l] = blevel[l - 2] * 0.95;
+					blevel[l] += (level * 0.05);
 				} else blevel[l] = level;
 
 				int counter = 0;
@@ -413,7 +414,7 @@ class Comb
 					sq = f_q->feed(-val * _cos[l][h % 8]);
 					si = f_i->feed(val * _sin[l][h % 8]);
 
-					wbuf[0][l].y[h] = line[h]; 
+					wbuf[0][l].y[h] = line[h] - black_u16; 
 					wbuf[0][l].m[h] = ctor(si, sq); 
 					wbuf[0][l].a[h] = atan2(si, sq); 
 					
