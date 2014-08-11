@@ -14,17 +14,10 @@ char *image_base = "FRAME";
 bool bw_mode = false;
 
 // back-reason for selecting 30:  14.318/1.3*e = 29.939.  seems to work better than 31 ;) 
-const double f28_1_3mhz_b30[] {4.914004914004915e-03, 5.531455998921954e-03, 7.356823678403171e-03, 1.031033062576930e-02, 1.426289441492169e-02, 1.904176904176904e-02, 2.443809475353342e-02, 3.021602622216704e-02, 3.612304011689930e-02, 4.190097158553291e-02, 4.729729729729729e-02, 5.207617192414463e-02, 5.602873571329703e-02, 5.898224266066317e-02, 6.080761034014438e-02, 6.142506142506142e-02, 6.080761034014438e-02, 5.898224266066317e-02, 5.602873571329704e-02, 5.207617192414465e-02, 4.729729729729731e-02, 4.190097158553292e-02, 3.612304011689932e-02, 3.021602622216705e-02, 2.443809475353343e-02, 1.904176904176904e-02, 1.426289441492169e-02, 1.031033062576930e-02, 7.356823678403167e-03, 5.531455998921954e-03, 4.914004914004915e-03};
 
 const double f28_0_6mhz_b32[] {2.214464531115009e-03, 2.779566868356983e-03, 4.009052177841430e-03, 6.041802526864055e-03, 8.964977379775094e-03, 1.280250319629312e-02, 1.750822265693915e-02, 2.296445273166145e-02, 2.898626064895014e-02, 3.533129030361252e-02, 4.171449995422212e-02, 4.782674655050909e-02, 5.335581047849616e-02, 5.800822770944922e-02, 6.153020526791717e-02, 6.372594980605055e-02, 6.447193442389310e-02, 6.372594980605055e-02, 6.153020526791718e-02, 5.800822770944922e-02, 5.335581047849616e-02, 4.782674655050909e-02, 4.171449995422215e-02, 3.533129030361253e-02, 2.898626064895015e-02, 2.296445273166145e-02, 1.750822265693915e-02, 1.280250319629313e-02, 8.964977379775097e-03, 6.041802526864056e-03, 4.009052177841434e-03, 2.779566868356985e-03, 2.214464531115009e-03};
 
-const double f28_1_3mhz_b32[] {-1.605533065998730e-03, -1.720671809315438e-03, -1.946714932361703e-03, -1.994955262998560e-03, -1.418668951504014e-03, 3.196223312744169e-04, 3.750192920679346e-03, 9.284036375671866e-03, 1.710727911480327e-02, 2.710292793921179e-02, 3.881702596824465e-02, 5.147908615666569e-02, 6.407728145733732e-02, 7.547900436664387e-02, 8.457890959912071e-02, 9.045104659530802e-02, 9.248026239443490e-02, 9.045104659530802e-02, 8.457890959912071e-02, 7.547900436664387e-02, 6.407728145733733e-02, 5.147908615666569e-02, 3.881702596824466e-02, 2.710292793921179e-02, 1.710727911480328e-02, 9.284036375671866e-03, 3.750192920679346e-03, 3.196223312744170e-04, -1.418668951504014e-03, -1.994955262998559e-03, -1.946714932361704e-03, -1.720671809315439e-03, -1.605533065998730e-03};
-
-const double f28_2_0mhz_b32[] {1.006978939588801e-03, 4.700244549263112e-04, -4.726346152704030e-04, -2.225844911626193e-03, -4.930568911222814e-03, -8.168445482658226e-03, -1.081751892744065e-02, -1.115502409857046e-02, -7.225662580847139e-03, 2.599834101418699e-03, 1.902920988854001e-02, 4.140374974465560e-02, 6.756622702884178e-02, 9.412348408941272e-02, 1.170721331619509e-01, 1.326445909772283e-01, 1.381589342821457e-01, 1.326445909772283e-01, 1.170721331619509e-01, 9.412348408941271e-02, 6.756622702884177e-02, 4.140374974465560e-02, 1.902920988854002e-02, 2.599834101418700e-03, -7.225662580847139e-03, -1.115502409857046e-02, -1.081751892744065e-02, -8.168445482658233e-03, -4.930568911222816e-03, -2.225844911626193e-03, -4.726346152704032e-04, 4.700244549263113e-04, 1.006978939588801e-03};
-
 const double f28_0_6mhz_b64[] {-6.916447903947148e-04, -6.637277886690091e-04, -6.506794962762819e-04, -6.385960636428408e-04, -6.091489627652988e-04, -5.401328736698201e-04, -4.062390816451122e-04, -1.800289567056259e-04, 1.669277273337949e-04, 6.627933750400666e-04, 1.334132570703104e-03, 2.204566737142542e-03, 3.293471104686198e-03, 4.614771600461567e-03, 6.175896724145871e-03, 7.976934496300239e-03, 1.001003732312394e-02, 1.225910839260336e-02, 1.469979236820074e-02, 1.729978111972153e-02, 2.001943252605971e-02, 2.281268753589040e-02, 2.562825822709219e-02, 2.841104809911676e-02, 3.110375576479802e-02, 3.364860502185666e-02, 3.598913834498529e-02, 3.807200741849585e-02, 3.984869359245655e-02, 4.127709314339044e-02, 4.232290688845818e-02, 4.296078085959773e-02, 4.317515410421566e-02, 4.296078085959773e-02, 4.232290688845819e-02, 4.127709314339045e-02, 3.984869359245655e-02, 3.807200741849585e-02, 3.598913834498529e-02, 3.364860502185667e-02, 3.110375576479803e-02, 2.841104809911677e-02, 2.562825822709219e-02, 2.281268753589041e-02, 2.001943252605972e-02, 1.729978111972153e-02, 1.469979236820075e-02, 1.225910839260336e-02, 1.001003732312394e-02, 7.976934496300244e-03, 6.175896724145871e-03, 4.614771600461570e-03, 3.293471104686198e-03, 2.204566737142541e-03, 1.334132570703105e-03, 6.627933750400653e-04, 1.669277273337959e-04, -1.800289567056260e-04, -4.062390816451116e-04, -5.401328736698201e-04, -6.091489627652993e-04, -6.385960636428407e-04, -6.506794962762823e-04, -6.637277886690096e-04, -6.916447903947148e-04};
-
-const double f_hsync8[] {1.447786467971050e-02, 4.395811440315845e-02, 1.202636955256379e-01, 2.024216184054497e-01, 2.377574139720867e-01, 2.024216184054497e-01, 1.202636955256379e-01, 4.395811440315847e-02, 1.447786467971050e-02};
 
 inline double IRE(double in) 
 {
@@ -50,6 +43,8 @@ struct RGB {
         double r, g, b;
 
         void conv(YIQ y) {
+		y.y /= 1.0;
+
                 r = (y.y * 1.164) + (1.596 * y.i);
                 g = (y.y * 1.164) - (0.813 * y.i) - (y.q * 0.391);
                 b = (y.y * 1.164) + (y.q * 2.018);
@@ -160,21 +155,6 @@ const double dots_usec = dotclk / 1000000.0;
 // values for horizontal timings 
 const double line_blanklen = 10.9 * dots_usec;
 
-const double line_fporch = 1.5 * dots_usec; // front porch
-
-const double line_syncp = 4.7 * dots_usec; // sync pulse
-const double line_bporch = 4.7  * dots_usec; // total back porch 
-
-const double line_bporch1 = 0.5 * dots_usec;
-const double line_burstlen = 9.0 * freq; // 9 3.58mhz cycles
-const double line_bporch2 = 1.7 * dots_usec; // approximate 
-
-// timings used in vsync lines
-const double line_eqpulse = 2.3 * dots_usec;
-const double line_serpulse = 4.7 * dots_usec;
-
-const double line_vspulse = 30 * dots_usec; // ???
-
 // uint16_t levels
 uint16_t level_m40ire = 1;
 uint16_t level_0ire = 16384;
@@ -196,18 +176,15 @@ inline uint16_t ire_to_u16(double ire)
 
 	if (ire >= 120) return 65535;	
 
-	return (((ire + 40) / 160.0) * 65534) + 1;
+	return (((ire + 40.0) / 160.0) * 65534.0) + 1;
 } 
 
 // tunables
 
-double black_ire = -20;
-int black_u16 = ire_to_u16(black_ire);
-int white_u16 = level_100ire; 
+double black_ire = 7.5;
+int black_u16 = level_7_5_ire;
+int white_u16 = ire_to_u16(120); 
 bool whiteflag_detect = true;
-
-enum cline_stat {
-};
 
 typedef struct cline {
 	double y[hleni]; // Y
@@ -215,7 +192,6 @@ typedef struct cline {
 	double a[hleni]; // IQ phase angle
 	double i[hleni]; // IQ phase angle
 	double q[hleni]; // IQ phase angle
-//	int stat[hleni];
 } cline_t;
 
 int write_locs = -1;
@@ -293,88 +269,6 @@ class Comb
 			return rv;
 		}
 
-		double blend(double orig, double a, double b, bool &dis) {
-			double abs_orig = fabs(orig);
-		        double agreementa = fabs(orig - a);
-		        double agreementb = fabs(orig - b);
-        		double disagreementa = fabs(orig + a);
-        		double disagreementb = fabs(orig + b);
-
-			dis = false;
-
-			if ((agreementa < agreementb) && (agreementa < (abs_orig / 4))) {
-				if (agreementb < (abs_orig / 4)) {
-					return (0.5 * orig) + (0.25 * a) + (0.25 * b);
-				} else {
-					return (0.5 * orig) + (0.5 * a);
-				}
-			}
-			if (agreementb < (abs_orig / 4)) {
-				return (0.5 * orig) + (0.5 * b);
-			}
-			if ((disagreementa < disagreementb) && (disagreementa < (abs_orig / 4))) {
-				dis = true;
-				if (disagreementb < (abs_orig / 4)) {
-					return ((0.5 * orig) + (0.25 * a) + (0.25 * b));
-				} else {
-					return ((0.5 * orig) + (0.5 * a));
-				}
-			}
-			if (disagreementb < (abs_orig / 4)) {
-				dis = true;
-				return ((0.5 * orig) + (0.5 * b));
-			}
-
-			return (0.5 * orig) + (0.25 * a) + (0.25 * b);
-		}
-
-		double adiff(double a1, double a2) {
-			double v = a2 - a1;
-
-			if (v > M_PIl) v -= (2 * M_PIl);
-			else if (v <= -M_PIl) v += (2 * M_PIl);
-
-			return v;
-		}
-
-		cline_t _Blend(cline_t &prev, cline_t &cur, cline_t &next) {
-			cline cur_combed;
-
-			int counter = 0;
-			for (int h = line_blanklen - 64 - 135; counter < 1760 - 135; h++) {
-//				cerr << h << ' ' << prev.a[h] << ' ' << cur.a[h] << ' ' << next.a[h] << ' ';	
-//				cerr << ": " << prev.m[h] << ' ' << cur.m[h] << ' ' << next.m[h] << endl;	
-//				cerr << h << ' ' << adiff(prev.a[h], cur.a[h]) << ' ' << adiff(cur.a[h], next.a[h]) << ' ' << adiff(prev.a[h], next.a[h]) << endl;	
-
-				double diff = (fabs(adiff(prev.a[h], cur.a[h])) + fabs(adiff(cur.a[h], next.a[h]))) / 2.0;
-//				double adj = fabs(adiff(prev.a[h], next.a[h]) / diff);	
-
-				cur_combed.y[h] = cur.y[h];
-				cur_combed.a[h] = cur.a[h];
-				cur_combed.m[h] = cur.m[h];
-#if 0
-				if (fabs(adiff(prev.a[h], cur.a[h])) < (M_PIl * .1)) {
-					cur_combed.a[h] *= 0.5;
-					cur_combed.a[h] += (prev.a[h] * 0.5);
-				} else if (fabs(adiff(prev.a[h], next.a[h])) < (M_PIl * .1)) {
-					cur_combed.a[h] *= 0.5;
-					cur_combed.a[h] += (next.a[h] * 0.5);
-				} 
-#endif	
-				if (diff > (M_PIl * .5)) {
-					double adj = 1 - (diff / M_PIl); 
-					if (adj < 0) adj = 0;
-					if (adj > 1) adj = 1;
-					
-					cur_combed.m[h] *= adj;
-				}
-
-				counter++;
-//				cerr << h << ' ' << diff << ' ' <<  adj << endl;
-			}
-			return cur_combed;
-		}
-		
 		cline_t Blend(cline_t &prev, cline_t &cur, cline_t &next) {
 			cline cur_combed;
 
@@ -383,25 +277,10 @@ class Comb
 				cur_combed.y[h] = cur.y[h];
 				cur_combed.i[h] = cur.i[h];
 				cur_combed.q[h] = cur.q[h];
-#if 1
-				double fcuri = fabs(cur.i[h]);
-				double fcurq = fabs(cur.q[h]);
 
 				cur_combed.i[h] = (cur.i[h] / 2.0) + (prev.i[h] / 4.0) + (next.i[h] / 4.0);
 				cur_combed.q[h] = (cur.q[h] / 2.0) + (prev.q[h] / 4.0) + (next.q[h] / 4.0);
 
-				if ((fcuri < fabs(prev.i[h])) && (fcuri < fabs(next.i[h]))) {			
-//					cur_combed.i[h] = (prev.i[h] + next.i[h]) / 2.0;
-//					if (cur_combed.i[h] > .02) cerr << curline << ' ' << h << ' ' << cur_combed.i[h] << ' ' << cur.i[h] << ' ' << prev.i[h] << ' ' << next.i[h] << endl; 
-				}
-//				cerr << cur_combed.i[h] << ' ' << cur.i[h] << ' ' << prev.i[h] << ' ' << next.i[h] << endl; 
-			
-				if ((fcurq < fabs(prev.q[h])) && (fcurq < fabs(next.q[h]))) {
-//					cur_combed.q[h] = (prev.q[h] + next.q[h]) / 2.0;
-				}
-
-
-#endif
 				cur_combed.m[h] = ctor(cur_combed.i[h], cur_combed.q[h]); 
 				cur_combed.a[h] = atan2(cur_combed.i[h], cur_combed.q[h]); 
 				counter++;
@@ -414,8 +293,8 @@ class Comb
 		void CombFilter(uint16_t *buffer, uint8_t *output)
 		{
 			YIQ outline[1685];
-			blevel[22] = 0.05;
-			blevel[23] = 0.05;
+			blevel[22] = 0.08;
+			blevel[23] = 0.08;
 			for (int l = 24; l < 504; l++) {
 				uint16_t *line = &buffer[l * 1685];
 //				double _cos[(int)freq + 1], _sin[(int)freq + 1];
@@ -424,7 +303,6 @@ class Comb
 				double val;
 
 				BurstDetect(line, 0, 4 * dots_usec, level, phase);
-//				cerr << "burst " << level << ' ' << phase << endl;
 				for (int j = 0; j < (int)freq; j++) { 
 	                                _cos[l][j] = cos(phase + (2.0 * M_PIl * ((double)j / freq)));
 					_sin[l][j] = sin(phase + (2.0 * M_PIl * ((double)j / freq)));
@@ -444,13 +322,10 @@ class Comb
 					sq = f_q->feed(-val * _cos[l][h % 8]);
 					si = f_i->feed(val * _sin[l][h % 8]);
 
-					wbuf[0][l].y[h] = line[h] - black_u16; 
-					wbuf[0][l].m[h] = ctor(si, sq); 
-					wbuf[0][l].a[h] = atan2(si, sq); 
+					wbuf[0][l].y[h] = line[h]; 
 					wbuf[0][l].i[h] = si; 
 					wbuf[0][l].q[h] = sq; 
 					
-//					cerr << "P" << h << ' ' << counter << ' ' << line[h] << ' ' << val << ' ' << (double)line[h] / (double)level_100ire << endl;
 					counter++;
 				}
 			}
@@ -476,18 +351,11 @@ class Comb
 					if (!bw_mode) {
 						icomp = line.m[h] * sin(line.a[h]);
 						qcomp = line.m[h] * cos(line.a[h]);
-						//icomp = wbuf[0][l].m[h] * sin(wbuf[0][l].a[h]);
-						//qcomp = wbuf[0][l].m[h] * cos(wbuf[0][l].a[h]);
-					} else {
-						icomp = qcomp = 0;
 					}
 	
 					double iadj = icomp * 2 * _cos[l][(h + 1) % 8];
 					double qadj = qcomp * 2 * _sin[l][(h + 1) % 8];
-					//double iadj = (wbuf[0][l].m[h] * sin(wbuf[0][l].a[h])) * 2 * _cos[l][(h + 1) % 8];
-					//double qadj = (wbuf[0][l].m[h] * cos(wbuf[0][l].a[h])) * 2 * _sin[l][(h + 1) % 8];
 
-//					cerr << ' ' << _val << ' ' << iadj + qadj << ' ';
 	                                if (counter > 17) {
 						_val = circbuf[counter % 17];
        	                         	}
@@ -501,12 +369,8 @@ class Comb
 					YIQ outc = YIQ(val, cmult * icomp, cmult * qcomp);	
 
 					if (counter >= 42) {
-						outline[counter - 42].y = outc.y;
-						outline[counter - 42].i = outc.i;
-						outline[counter - 42].q = outc.q;
-//						cerr << ' ' << outc.y << ' ' << outc.i << ' ' << outc.q;
+						outline[counter - 42] = outc;
 					} 
-//					cerr << endl;
 
 					counter++;
 				}
@@ -569,12 +433,8 @@ class Comb
 				_sin[0][e] = sin((33.0 / 180.0) + (2.0 * M_PIl * ((double)e / freq)));
 			}
 
-			//f_i = new Filter(30, NULL, f28_1_3mhz_b30);
-			//f_q = new Filter(30, NULL, f28_1_3mhz_b30);
 			f_i = new Filter(32, NULL, f28_0_6mhz_b32);
 			f_q = new Filter(32, NULL, f28_0_6mhz_b32);
-//			f_i = new Filter(32, NULL, f28_2_0mhz_b32);
-//			f_q = new Filter(32, NULL, f28_2_0mhz_b32);
 
                         f_synci = new Filter(64, NULL, f28_0_6mhz_b64);
                         f_syncq = new Filter(64, NULL, f28_0_6mhz_b64);
@@ -635,7 +495,6 @@ class Comb
 					framecode += ((new_framecode & 0x0f000) >> 12) * 1000;
 					framecode += ((new_framecode & 0xf0000) >> 16) * 10000;
 	
-	
 					fstart = (line % 2); 
 					if ((ofstart >= 0) && (fstart != ofstart)) {
 						cerr << "MISMATCH\n";
@@ -686,7 +545,7 @@ int main(int argc, char *argv[])
 	cerr << strncmp(argv[1], "-", 1) << endl;
 
 	opterr = 0;
-
+	
 	while ((c = getopt(argc, argv, "Bb:w:i:o:fph")) != -1) {
 		switch (c) {
 			case 'B':
