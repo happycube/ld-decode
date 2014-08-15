@@ -37,7 +37,7 @@ ffreq = freq/2.0
 
 Bboost = sps.firwin(17, [6.0/(freq/2.0), 12.5/(freq/2.0)], pass_zero=False) 
 Bboost = sps.firwin(17, [4.5/(freq/2.0), 14.0/(freq/2.0)], pass_zero=False) 
-Bboost = sps.firwin(33, 4.0 / (freq / 2), window='hamming', pass_zero=False)
+Bboost = sps.firwin(33, 3.2 / (freq / 2), window='hamming', pass_zero=False)
 #Bboost = sps.firwin2(25, [0, 5.4/(freq/2.0), 12.0/(freq/2.0), 14.0/(freq/2.0), 1.0], [0.0, 1.0, 2.0, 2.0, 1.0]) 
 #Bboost = sps.firwin2(37, [0, 4.0/(freq/2.0), 12.0/(freq/2.0), 14.0/(freq/2.0), 1.0], [0.0, 1.0, 2.0, 3.0, 2.0]) 
 Aboost = [1.0]
@@ -189,6 +189,10 @@ charge = 0
 scharge = 0
 prev = 9300000
 
+hp_nr_filter = sps.firwin(31, 1.8 / (freq / 2), window='hamming', pass_zero=False)
+#doplot(hp_nr_filter, [1.0])
+#exit()
+
 while (len(inbuf) > 0):
 	toread = blocklen - indata.size 
 
@@ -200,9 +204,21 @@ while (len(inbuf) > 0):
 
 	foutput = (sps.lfilter(f_deemp_b, f_deemp_a, output)[128:len(output)]) / deemp_corr
 
-	output_16 = np.empty(len(foutput), dtype=np.uint16)
+	output_16 = np.empty(len(foutput)-30, dtype=np.uint16)
 
 	reduced = (foutput - 7600000) / 1700000.0
+
+	output_hp = sps.lfilter(hp_nr_filter, [1.0], reduced)
+	np.clip(output_hp, -.008, .008, out=output_hp)
+#	np.clip(output_hp, -.0075, .0075, out=output_hp)
+#	plt.plot(range(0, 1024), reduced[0:1024])
+	reduced = (reduced[15:len(reduced)-15] - output_hp[30:len(output_hp)])
+#	reduced = reduced[15:len(reduced)-15]
+#	plt.plot(range(0, 1024), output_hp[0:1024])
+#	plt.plot(range(0, 1024), reduced[0:1024])
+#	plt.show()
+#	exit()
+
 	output = np.clip(reduced * 57344.0, 1, 65535) 
 	
 	np.copyto(output_16, output, 'unsafe')
