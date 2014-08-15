@@ -67,7 +67,7 @@ for f in range(0, n):
 #alfilt = sps.firwin(11, [2.10/ffreq, 3.10/ffreq])
 #arfilt = sps.firwin(9, [2.60/ffreq, 3.00/ffreq])
 
-lowpass_filter = sps.firwin(31, 4.5 / (freq / 2), window='hamming')
+lowpass_filter = sps.firwin(31, 5.2 / (freq / 2), window='hamming')
 #lowpass_filter = sps.firwin(15, 4.3 / (freq / 2), window='hamming')
 #doplot(lowpass_filter, [1.0])
 #exit()
