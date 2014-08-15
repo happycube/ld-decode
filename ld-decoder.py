@@ -98,14 +98,14 @@ for f in range(0, n):
 	cf = (float(f) / df)
 
         Fr[f] = cf / freq
-        Am[f] = np.power(10, (DE/18.0)) 
+        Am[f] = np.power(10, (DE/19.0)) 
 
 	#print f, Fr[f] * freq, Am[f]
 
 #Fr[n - 1] = 1.0 
 
 Ndeemp = 8
-Ddeemp = 5
+Ddeemp = 6
 
 for i in range(0, len(Fr)):
 	Th[i] = -(Fr[i] * 5040) / 180.0
@@ -123,7 +123,7 @@ for i in range(0, len(Fr)):
 w, h = sps.freqz(B, A)
 deemp_corr = ((h[0].real - 1) / 1.15) + 1
 #deemp_corr = 0.9945
-deemp_corr = 0.9915
+deemp_corr = 0.9945
 #deemp_corr = 1.001
 
 #doplot(alfilt, [1.0])
