@@ -204,21 +204,9 @@ while (len(inbuf) > 0):
 
 	foutput = (sps.lfilter(f_deemp_b, f_deemp_a, output)[128:len(output)]) / deemp_corr
 
-	output_16 = np.empty(len(foutput)-30, dtype=np.uint16)
+	output_16 = np.empty(len(foutput), dtype=np.uint16)
 
 	reduced = (foutput - 7600000) / 1700000.0
-
-	output_hp = sps.lfilter(hp_nr_filter, [1.0], reduced)
-#	np.clip(output_hp, -.015, .015, out=output_hp)
-	np.clip(output_hp, -.000, .000, out=output_hp)
-#	np.clip(output_hp, -.0075, .0075, out=output_hp)
-#	plt.plot(range(0, 1024), reduced[0:1024])
-	reduced = (reduced[15:len(reduced)-15] - output_hp[30:len(output_hp)])
-#	reduced = reduced[15:len(reduced)-15]
-#	plt.plot(range(0, 1024), output_hp[0:1024])
-#	plt.plot(range(0, 1024), reduced[0:1024])
-#	plt.show()
-#	exit()
 
 	output = np.clip(reduced * 57344.0, 1, 65535) 
 	
