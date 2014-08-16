@@ -98,14 +98,14 @@ for f in range(0, n):
 	cf = (float(f) / df)
 
         Fr[f] = cf / freq
-        Am[f] = np.power(10, (DE/19.0)) 
+        Am[f] = np.power(10, (DE/18.0)) 
 
 	#print f, Fr[f] * freq, Am[f]
 
 #Fr[n - 1] = 1.0 
 
 Ndeemp = 8
-Ddeemp = 6
+Ddeemp = 5
 
 for i in range(0, len(Fr)):
 	Th[i] = -(Fr[i] * 5040) / 180.0
@@ -123,7 +123,7 @@ for i in range(0, len(Fr)):
 w, h = sps.freqz(B, A)
 deemp_corr = ((h[0].real - 1) / 1.15) + 1
 #deemp_corr = 0.9945
-deemp_corr = 0.9945
+deemp_corr = 0.9915
 #deemp_corr = 1.001
 
 #doplot(alfilt, [1.0])
@@ -209,7 +209,8 @@ while (len(inbuf) > 0):
 	reduced = (foutput - 7600000) / 1700000.0
 
 	output_hp = sps.lfilter(hp_nr_filter, [1.0], reduced)
-	np.clip(output_hp, -.008, .008, out=output_hp)
+#	np.clip(output_hp, -.015, .015, out=output_hp)
+	np.clip(output_hp, -.000, .000, out=output_hp)
 #	np.clip(output_hp, -.0075, .0075, out=output_hp)
 #	plt.plot(range(0, 1024), reduced[0:1024])
 	reduced = (reduced[15:len(reduced)-15] - output_hp[30:len(output_hp)])

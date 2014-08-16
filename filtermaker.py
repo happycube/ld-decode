@@ -100,6 +100,10 @@ sync_filter = sps.firwin(33, 0.1 / (freq), window='hamming')
 #fdls.doplot(freq*2, sync_filter, [1.0])
 #exit()
 
+Nnr = 31
+hp_nr_filter = sps.firwin(Nnr, 1.8 / (freq ), window='hamming', pass_zero=False)
+hp_nrc_filter = sps.firwin(Nnr, 0.4 / (freq ), window='hamming', pass_zero=False)
+
 print "vector<double> c_deemp_b = {",
 for i in range(0, len(B)):
         print "%.15e" % B[i], ",",
@@ -177,5 +181,20 @@ print "};"
 print
 print "Filter f_lpf(" ,Nlpf, ", NULL, c_lpf);"
 print
+
+print "const double c_nr[] {",
+for i in range(0, len(hp_nr_filter)):
+        print "%.15e" % hp_nr_filter[i], ",",
+print "};"
+print
+print "Filter f_nr(" ,Nnr, ", NULL, c_nr);"
+
+print "const double c_nrc[] {",
+for i in range(0, len(hp_nrc_filter)):
+        print "%.15e" % hp_nrc_filter[i], ",",
+print "};"
+print
+print "Filter f_nrc(" ,Nnr, ", NULL, c_nr);"
+
 
 

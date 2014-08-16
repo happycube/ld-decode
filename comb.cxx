@@ -186,6 +186,9 @@ int black_u16 = level_7_5_ire;
 int white_u16 = ire_to_u16(120); 
 bool whiteflag_detect = true;
 
+double nr_y = 0.008;
+double nr_c = 0.008;
+
 typedef struct cline {
 	double y[hleni]; // Y
 	double m[hleni]; // IQ magnitude
@@ -227,6 +230,8 @@ class Comb
 		cline_t wbuf[3][525];
 		Filter *f_i, *f_q;
 		Filter *f_synci, *f_syncq;
+
+		Filter *f_hpy, *f_hpi, *f_hpq;
 
 		int BurstDetect(uint16_t *buf, int start, int len, double &plevel, double &pphase)
 		{
@@ -292,7 +297,7 @@ class Comb
 		// buffer: 1685x505 uint16_t array
 		void CombFilter(uint16_t *buffer, uint8_t *output)
 		{
-			YIQ outline[1685];
+			YIQ outline[1685], hpline[1685];
 			blevel[22] = 0.08;
 			blevel[23] = 0.08;
 			for (int l = 24; l < 504; l++) {
@@ -341,9 +346,11 @@ class Comb
 				int counter = 0;
 				double circbuf[18];
 				double val, _val;
-				for (int h = line_blanklen - 64 - 135; counter < 1760 - 135; h++) {
+
+				double cmult = 0.15 / blevel[l];
+
+				for (int h = line_blanklen - 64 - 135 - 32; counter < 1760 - 135; h++) {
 					val = (double)(line.y[h] - black_u16) / (double)(white_u16 - black_u16); 
-					double cmult = 0.15 / blevel[l];
 
 					double icomp = 0;
 					double qcomp = 0;
@@ -363,13 +370,15 @@ class Comb
 					val = _val;
 
 					val += iadj + qadj;
-#ifdef GRAY 
-					i = q = 0;
-#endif
+					
 					YIQ outc = YIQ(val, cmult * icomp, cmult * qcomp);	
 
 					if (counter >= 42) {
 						outline[counter - 42] = outc;
+
+						hpline[counter-42].y = clamp(f_hpy->feed(outc.y), -nr_y, nr_y);
+						hpline[counter-42].i = clamp(f_hpi->feed(outc.i), -nr_c, nr_c);
+						hpline[counter-42].q = clamp(f_hpq->feed(outc.q), -nr_c, nr_c);
 					} 
 
 					counter++;
@@ -380,7 +389,12 @@ class Comb
 				int o = 0; 
 				for (int h = 0; h < 1488; h++) {
 					RGB r;
-					r.conv(outline[h]);
+
+					outline[h+32].y -= hpline[h+47].y;
+					outline[h+32].i -= hpline[h+47].i;
+					outline[h+32].q -= hpline[h+47].q;
+					
+					r.conv(outline[h + 32]);
 
 					line_output[o++] = (uint8_t)(r.r * 255.0); 
 					line_output[o++] = (uint8_t)(r.g * 255.0); 
@@ -440,6 +454,10 @@ class Comb
                         f_syncq = new Filter(64, NULL, f28_0_6mhz_b64);
                         f_synci = new Filter(f_sync);
                         f_syncq = new Filter(f_sync);
+			
+			f_hpy = new Filter(f_nr);
+			f_hpi = new Filter(f_nrc);
+			f_hpq = new Filter(f_nrc);
 		}
 
 		void WriteFrame(uint8_t *obuf, int fnum = 0) {
@@ -546,7 +564,7 @@ int main(int argc, char *argv[])
 
 	opterr = 0;
 	
-	while ((c = getopt(argc, argv, "Bb:w:i:o:fph")) != -1) {
+	while ((c = getopt(argc, argv, "Bb:w:i:o:fphn:N:")) != -1) {
 		switch (c) {
 			case 'B':
 				bw_mode = true;
@@ -554,8 +572,11 @@ int main(int argc, char *argv[])
 			case 'b':
 				sscanf(optarg, "%d", &black_u16);
 				break;
-			case 'w':
-				sscanf(optarg, "%d", &white_u16);
+			case 'n':
+				sscanf(optarg, "%lf", &nr_y);
+				break;
+			case 'N':
+				sscanf(optarg, "%lf", &nr_c);
 				break;
 			case 'h':
 				usage();
