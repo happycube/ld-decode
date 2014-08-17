@@ -1,4 +1,4 @@
-all: ldd ldd10 ntsc ntsc10 comb audio
+all: ldd ntsc ntsc-aud comb audio
 
 clean:
 	rm -f ldd ntsc comb audio
@@ -23,6 +23,9 @@ ntsc10: ntsc.cxx
 
 ntsc: ntsc.cxx deemp.h
 	clang++ -std=c++11  -Wall -D_NOSNAP -O3 -g -o ntsc ntsc.cxx
+
+ntsc-aud: ntsc.cxx deemp.h
+	clang++ -std=c++11  -Wall -DSOUND -D_NOSNAP -O3 -g -o ntsc-aud ntsc.cxx
 
 comb: comb.cxx deemp.h
 	clang++ -std=c++11  -Wall -D_NOSNAP -O3 -g -o comb comb.cxx

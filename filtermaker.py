@@ -104,6 +104,10 @@ Nnr = 31
 hp_nr_filter = sps.firwin(Nnr, 1.8 / (freq ), window='hamming', pass_zero=False)
 hp_nrc_filter = sps.firwin(Nnr, 0.4 / (freq ), window='hamming', pass_zero=False)
 
+Ncolor = 17
+#colorbp_filter = sps.firwin(Ncolor, [3.2216 / freq, 3.9375 / freq], window='hamming', pass_zero=False)
+colorbp_filter = sps.firwin(Ncolor, [3.4006 / freq, 3.7585 / freq], window='hamming', pass_zero=False)
+
 print "vector<double> c_deemp_b = {",
 for i in range(0, len(B)):
         print "%.15e" % B[i], ",",
@@ -196,5 +200,11 @@ print "};"
 print
 print "Filter f_nrc(" ,Nnr, ", NULL, c_nr);"
 
+print "const double c_colorbp[] {",
+for i in range(0, len(colorbp_filter)):
+        print "%.15e" % colorbp_filter[i], ",",
+print "};"
+print
+print "Filter f_colorbp(" ,Ncolor, ", NULL, c_colorbp);"
 
 

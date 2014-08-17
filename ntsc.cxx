@@ -235,6 +235,7 @@ class TBC
 		double _cos[16], _sin[16];
 		Filter *f_i, *f_q;
 		Filter *f_synci, *f_syncq;
+		Filter *f_bpcolor;
 
 		int32_t framecode;	// in hex
 
@@ -279,60 +280,6 @@ class TBC
 			return -1;
 		} 
 		
-		int eBurstDetect(uint16_t *buf, int start, int len, double &plevel, double &pphase)
-		{
-			int rv = 0;
-			double pi = 0, pq = 0;
-
-			double i[4096], q[4096], level[4096];
-
-			plevel = 0.0;
-			pphase = 0.0;
-
-			f_synci->clear(ire_to_u16(black_ire));
-			f_syncq->clear(ire_to_u16(black_ire));
-
-			// XXX? allow for filter startup
-			if (start > 65) start -= 65;
-
-			for (int l = start; l < start + len; l++) {
-				double v = buf[l];
-
-//				v = (double)(v - black_u16) / (double)(white_u16 - black_u16); 
-
-				q[l] = f_syncq->feed(v * _cos[l % 8]);
-				i[l] = f_synci->feed(-v * _sin[l % 8]);
-
-				level[l] = ctor(i[l], q[l]);
-
-//				if ((l - start) > 65) cerr << l << ' ' << buf[l] << ' ' << level[l] << ' ' << atan2(i[l], q[l]) << ' ' << atan2(pi, pq) << endl;
-	
-				if (((l - start) > 65) && level[l] > plevel) {
-					plevel = level[l];
-					pi = i[l]; pq = q[l];
-				}
-			}
-	
-			double aphase = 0.0, threshold = plevel * .98;	
-			int valid = 0;	
-			for (int l = start + 65; l < start + len; l++) {
-				if (level[l] > threshold) {
-					aphase += atan2(i[l], q[l]);
-					valid++;
-//					cerr << aphase << ' ' << aphase / valid << endl;
-				}
-			}
-
-			if (plevel) {
-				pphase = aphase / valid;
-//				pphase = atan2(pi, pq);
-			}
-
-//			cerr << pi << ' ' << pq << ' ' << pphase << endl;
-
-			return rv;
-		}
-
 		int BurstDetect(uint16_t *buf, int start, int len, double &plevel, double &pphase)
 		{
 			int rv = 0;
@@ -348,7 +295,7 @@ class TBC
 			if (start > 65) start -= 65;
 
 			for (int l = start; l < start + len; l++) {
-				double v = buf[l];
+				double v = f_bpcolor->feed(buf[l]);
 
 				double q = f_syncq->feed(v * _cos[l % 8]);
 				double i = f_synci->feed(-v * _sin[l % 8]);
@@ -375,7 +322,7 @@ class TBC
 		// writes a 1685x505 16-bit grayscale frame	
 		void WriteBWFrame(uint16_t *buffer) {
 			for (int i = 20; i <= 524; i++) {
-				write(1, &buffer[(i * 1820) + 135], 1685 * 2);
+				if (write_locs < 0) write(1, &buffer[(i * 1820) + 135], 1685 * 2);
 			}
 		}
 
@@ -467,6 +414,8 @@ class TBC
 //                        f_syncq = new Filter(64, NULL, f28_0_3mhz_b64);
 			f_synci = new Filter(f_sync);
 			f_syncq = new Filter(f_sync);
+
+			f_bpcolor = new Filter(f_colorbp);
 
 			jumped = false;
 			prev_gap = prev_adjust = 0;
@@ -646,7 +595,7 @@ class TBC
 				char outline[128];
 
 				sprintf(outline, "%ld %lf\n", scount + sync_start, gap);
-				write(3, outline, strlen(outline));
+				write(1, outline, strlen(outline));
 			}
 
 			if (curline >= 0) {
@@ -689,11 +638,6 @@ class TBC
 		}
 };
 
-int is_valid_fd(int fd)
-{
-    return fcntl(fd, F_GETFL) != -1 || errno != EBADF;
-}
-
 int main(int argc, char *argv[])
 {
 	int rv = 0, fd = 0;
@@ -722,9 +666,10 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	if (is_valid_fd(3)) {
+	// XX: make parameter
+	#if SOUND
 		write_locs = 0;
-	}
+	#endif
 
 	cout << std::setprecision(8);
 
