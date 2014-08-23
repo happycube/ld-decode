@@ -37,7 +37,7 @@ ffreq = freq/2.0
 
 Bboost = sps.firwin(17, [6.0/(freq/2.0), 12.5/(freq/2.0)], pass_zero=False) 
 Bboost = sps.firwin(17, [4.5/(freq/2.0), 14.0/(freq/2.0)], pass_zero=False) 
-Bboost = sps.firwin(33, 3.2 / (freq / 2), window='hamming', pass_zero=False)
+Bboost = sps.firwin(33, 4.0 / (freq / 2), window='hamming', pass_zero=False)
 #Bboost = sps.firwin2(25, [0, 5.4/(freq/2.0), 12.0/(freq/2.0), 14.0/(freq/2.0), 1.0], [0.0, 1.0, 2.0, 2.0, 1.0]) 
 #Bboost = sps.firwin2(37, [0, 4.0/(freq/2.0), 12.0/(freq/2.0), 14.0/(freq/2.0), 1.0], [0.0, 1.0, 2.0, 3.0, 2.0]) 
 Aboost = [1.0]
