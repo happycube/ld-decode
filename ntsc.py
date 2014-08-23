@@ -21,7 +21,7 @@ prevrgb = np.empty([480, 1488 * 3], dtype=np.uint8)
 
 burst_len = 28 * 4
 
-color_filter = sps.firwin(33, 0.8 / (freq), window='hamming')
+color_filter = sps.firwin(33, 0.3 / (freq), window='hamming')
 sync_filter = sps.firwin(33, 0.1 / (freq), window='hamming')
 
 Nlpf = 8
@@ -71,7 +71,7 @@ def burst_detect(line):
 		obhet[i] = bhet[i % 8] * line[i]
 
 #	obhet_filt = sps.fftconvolve(obhet, color_filter)
-	obhet_filt = sps.lfilter(color_filter, [1.0], obhet)
+	obhet_filt = sps.lfilter(sync_filter, [1.0], obhet)
 	obhet_levels = np.absolute(obhet_filt)
 	obhet_angles = np.angle(obhet_filt)
 
@@ -332,10 +332,10 @@ def find_sync(buf):
 
 				if (prev_crosspoint > 0):
 					begin = prev_crosspoint
-					end = crosspoint
-					linelen = end - begin
+					end = begin + ((crosspoint - prev_crosspoint) * scale_linelen) 
+					linelen = np.floor(crosspoint - prev_crosspoint)
 
-					if (crosspoint + (linelen * scale_linelen) > len(buf)):
+					if (end > len(buf)):
 						return np.floor(prev_crosspoint) - 100 
 
 #					print crosspoint, prev_crosspoint, crosspoint - prev_crosspoint, count
@@ -345,10 +345,10 @@ def find_sync(buf):
 #						print line, outl
 						print(line, outl, file=sys.stderr) 
 
-						out = scale(buf, begin, begin + (linelen * scale_linelen), scale_tgt)
+						out = scale(buf, begin, end, scale_tgt)
 
 						angle = burst_detect(out)[1]
-						angle2 = burst_detect(out[linelen:len(out)])[1]
+						angle2 = burst_detect(out[1820:len(out)])[1]
 
 						if tgt_phase:
 							tgt_phase = -tgt_phase
@@ -360,32 +360,34 @@ def find_sync(buf):
 						adjust = wrap_angle(angle, tgt_phase) 
 						
 #						print outl, angle, angle2, adjust
-						printerr(outl, angle, angle2, adjust)
+						rate = (crosspoint - prev_crosspoint) / 1820.0
+						printerr(outl, angle, angle2, (crosspoint - prev_crosspoint), end - begin, scale_tgt * rate, adjust)
 
 						begin = begin + (adjust * 1.2)
 						end = end + (adjust * 1.2)
-						linelen = end - begin
-						
+
 						#out = scale(buf, prev_crosspoint, crosspoint, linelen)
 #						printe(prev_crosspoint, prev_crosspoint + (linelen * scale_linelen), scale_tgt
-						out = scale(buf, begin, begin + (linelen * scale_linelen), scale_tgt)
+						out = scale(buf, begin, end, scale_tgt)
 						
 						angle = burst_detect(out)[1]
-						angle2 = burst_detect(out[linelen:len(out)])[1]
+						angle2 = burst_detect(out[1820:len(out)])[1]
 						
 						adjust2 = wrap_angle(angle2, -tgt_phase) 
 						printerr(outl, angle, angle2, adjust2)
 						
-#						end = end - (adjust2 * 1.0)
-						linelen = end - begin
+						end = end + (adjust2 * 1.0)
 						
-						out = scale(buf, begin, begin + (linelen * scale_linelen), scale_tgt)
+						out = scale(buf, begin, end, scale_tgt)
+						angle = burst_detect(out)[1]
+						angle2 = burst_detect(out[linelen:len(out)])[1]
+						printerr(outl, angle, angle2, end - begin)
 						
 						output_16 = np.empty(len(out), dtype=np.uint16)
 						np.copyto(output_16, out, 'unsafe')
 						
 						angle = burst_detect(out)[1]
-						angle2 = burst_detect(out[linelen:len(out)])[1]
+						angle2 = burst_detect(out[1820:len(out)])[1]
 #						print outl, angle, angle2
 
 						outl = getline(line)
