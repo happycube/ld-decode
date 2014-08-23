@@ -249,6 +249,20 @@ def getline(l):
 	
 	return ((l - 273) * 2) + 1 
 
+def scale(buf, begin, end):
+	ibegin = np.floor(begin)
+	iend = np.floor(end)
+
+	linelen = end - begin
+
+	dist = iend - ibegin + 1 
+	arr = np.linspace(0, dist, num=dist)
+#	print len(arr), dist #, len(buf[np.floor(crosspoint):np.floor(crosspoint) + dist])
+	spl = interpolate.splrep(arr, buf[ibegin:ibegin + dist])
+	arrout = np.linspace(begin - ibegin, linelen, 1820)
+						
+	return np.clip(interpolate.splev(arrout, spl), 0, 65535)
+
 def find_sync(buf):
 	count = 0
 	numsyncs = 0
@@ -289,16 +303,7 @@ def find_sync(buf):
 					if (line >= 0) and (linelen > 1800) and (count > 90):
 						outl = getline(line)
 
-						begin = np.floor(prev_crosspoint)
-						end = np.floor(crosspoint)
-
-						dist = end - begin + 1 
-						arr = np.linspace(0, dist, num=dist)
-#						print len(arr), dist #, len(buf[np.floor(crosspoint):np.floor(crosspoint) + dist])
-						spl = interpolate.splrep(arr, buf[np.floor(prev_crosspoint):np.floor(prev_crosspoint) + dist])
-
-						arrout = np.linspace(prev_crosspoint - begin, linelen, 1820)
-						out = np.clip(interpolate.splev(arrout, spl), 0, 65535)
+						out = scale(buf, prev_crosspoint, crosspoint)
 
 						angle = burst_detect(out)[1]
 						if (angle < 0):
@@ -312,17 +317,8 @@ def find_sync(buf):
 						prev_crosspoint = prev_crosspoint + (adjust * 1.0)
 #						crosspoint = crosspoint + (adjust * 1.3)
 						
-						begin = np.floor(prev_crosspoint)
-						end = np.floor(crosspoint)
-
-						dist = end - begin + 1 
-						arr = np.linspace(0, dist, num=dist)
-#						print len(arr), dist #, len(buf[np.floor(crosspoint):np.floor(crosspoint) + dist])
-						spl = interpolate.splrep(arr, buf[begin:begin + dist])
-
-						arrout = np.linspace(prev_crosspoint - begin, linelen, 1820)
-						out = np.clip(interpolate.splev(arrout, spl), 0, 65535)
-
+						out = scale(buf, prev_crosspoint, crosspoint)
+						
 					#	output_16 = np.empty(len(out), dtype=np.uint16)
 						np.copyto(output_16, out, 'unsafe')
 
