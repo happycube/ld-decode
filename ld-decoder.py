@@ -219,7 +219,7 @@ while (len(inbuf) > 0):
 
 	reduced = (foutput - 7600000) / 1700000.0
 
-	output = np.clip(reduced * 57344.0, 1, 65535) 
+	output = np.clip(reduced * 57344.0, 0, 65535) 
 	
 	np.copyto(output_16, output, 'unsafe')
 
