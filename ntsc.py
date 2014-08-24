@@ -49,8 +49,8 @@ for i in range(0, len(Fr)):
 frame = np.empty([505, 1685], dtype=np.uint16)
 
 # set up sync color heterodyne table first 
-bhet = np.empty(8, dtype=np.complex)
-for i in range(0, 8):
+bhet = np.empty(100, dtype=np.complex)
+for i in range(0, 100):
 	bhet[i] = complex(np.cos(((i / freq) * 2.0 * np.pi) + (33.0/180.0)), -(np.sin(((i / freq) * 2.0 * np.pi) + (33.0/180.0))))
 	bhet[i] = complex(np.cos(((i / freq) * 2.0 * np.pi) + (0.0/180.0)), -(np.sin(((i / freq) * 2.0 * np.pi) + (0.0/180.0))))
 
@@ -63,175 +63,22 @@ def burst_detect(line):
 	level = 0
 	phase = 0
 
-	obhet = np.empty(burst_len, dtype=np.complex)
-	obhet = np.empty(1820, dtype=np.complex)
-	#for i in range(0, burst_len):
+	obhet = np.empty(100, dtype=np.complex)
 
-	for i in range(8, 240):
-		obhet[i] = bhet[i % 8] * line[i]
+	obhet = bhet * line[140:240]
+#	for i in range(140, 239):
+#		obhet[i - 140] = bhet[i % 8] * line[i]
 
-#	obhet_filt = sps.fftconvolve(obhet, color_filter)
 	obhet_filt = sps.lfilter(sync_filter, [1.0], obhet)
 	obhet_levels = np.absolute(obhet_filt)
 	obhet_angles = np.angle(obhet_filt)
 
-	#for i in range(65, burst_len):
-	for i in range(130, 240):
-#		print i, line[i]
-#		if (level == 0):
-#		print i, line[i], level, obhet_plevels[i], obhet_levels[i]
+	for i in range(0, 100):
 		if (obhet_levels[i] > level) and (obhet_levels[i] < 10000):
 			level = obhet_levels[i]
 			phase = obhet_angles[i]
 
 	return [level, phase]
-
-def clamp(v, min, max):
-	if v < min:
-		return min
-
-	if v > max:
-		return max
-
-	return v
-
-def torgb(y, i, q):
-	# rebase y@0 to 0ire from -40
-	y = (y - 16384) * 1.40
-	i = i * 1.4
-	q = q * 1.4
-
-	r = (y * 1.164) + (1.596 * i);
-	g = (y * 1.164) - (0.813 * i) - (q * 0.391);
-	b = (y * 1.164) + (q * 2.018);
-
-	r = np.clip(r / 256, 0, 255)	
-	g = np.clip(g / 256, 0, 255)	
-	b = np.clip(b / 256, 0, 255)	
-
-	return [r, g, b]
-
-# return 1488x480 rgb frame
-def comb(inframe):
-	rgb = np.zeros([480, 1488 * 3], dtype=np.uint8)
-	prevframe = inframe
-		
-	lhet = np.empty([525, 8], dtype=np.complex)
-	adji = np.empty([525, 1685 + 32], dtype=np.double)
-	adjq = np.empty([525, 1685 + 32], dtype=np.double)
-	lohet = np.empty([525, 1685], dtype=np.complex)
-	lohet_filt = np.empty([525, 1685 + 32], dtype=np.complex)
-	#for l in range(24, 504):
-	for l in range(24, 504):
-#		print l
-		[level, phase] = burst_detect(inframe[l])
-#		print level, phase
-
-		for i in range(0, 8):
-			lhet[l][i] = complex(np.cos(phase + ((i / freq) * 2.0 * np.pi)), np.sin(phase + ((i / freq) * 2.0 * np.pi)))
-
-		for i in range(0, 1685):
-			lohet[l][i] = lhet[l][i % 8] * inframe[l][i]
-
-		for i in range(155, 155 + 1488):
-			adji[l][i] = 2 * lhet[l][(i - 5) % 8].imag 
-			adjq[l][i] = 2 * lhet[l][(i - 5) % 8].real
-#			print lohet[i].real, lohet[i].imag
-
-		lohet_filt[l] = sps.fftconvolve(lohet[l], color_filter)
-#		lohet_filt = np.delete(lohet_filt, np.s_[0:len(output)])
-#		for i in range(0, 1685):
-#			print inframe[l][i - 17], lohet_filt[i].real, lohet_filt[i].imag
-		
-	cmult = 3.5	
-	inframe_fcomp = np.empty([1717], dtype=np.uint16)
-
-	row = np.empty([1685 + 32], dtype=np.complex)
-
-	for l in range(24, 504):
-
-		# compute 2D and adjustment arrays
-		rowa = (0.5 * lohet_filt[l]) + (0.25 * lohet_filt[l - 2]) + (0.25 * lohet_filt[l + 2]) 
-		rowp = (0.5 * lohet_filt[l]) + (0.5 * lohet_filt[l - 2]) 
-		rown = (0.5 * lohet_filt[l]) + (0.5 * lohet_filt[l + 2]) 
-
-		a = np.absolute(lohet_filt[l])
-		diffp = np.fabs((np.absolute(lohet_filt[l] - lohet_filt[l - 2]) / a))
-		diffn = np.fabs((np.absolute(lohet_filt[l] - lohet_filt[l + 2]) / a))
-
-		dgreep = np.fabs(diffp - 2)
-		dgreen = np.fabs(diffn - 2)
-		
-		agreep = np.fabs(diffp - 1)
-		agreen = np.fabs(diffn - 1)
-
-		for i in range(155, 155 + 1488):
-#			if (l == 60) or (l == 61):
-#				print i, lohet_filt[l][i], a[i], agreep[i], agreen[i] 
-
-			if (a[i] < 400):
-				row[i] = lohet_filt[l][i] 
-			elif ((dgreep[i] < dgreen[i]) and (dgreep[i] < 0.2)):
-				row[i] = rowp[i]
-			elif (dgreen[i] < 0.2):
-				row[i] = rown[i]
-#			elif ((agreep[i] < agreen[i]) and (agreep[i] < 0.2)):
-#				row[i] = rowp[i]
-#			elif (agreen[i] < 0.2):
-#				row[i] = rown[i]
-			else:
-				row[i] = rowa[i] 
-			inframe_fcomp[i] = inframe[l][i - 17]
-		
-		vadji = row.imag * adji[l]
-		vadjq = row.real * adjq[l]
-
-		[r, g, b] = torgb(inframe_fcomp + vadji + vadjq, cmult * row.imag, -cmult * row.real)
-	
-		for i in range(155, 155 + 1488):
-			rgb[l - 25][((i - 155) * 3) + 0] = r[i] 
-			rgb[l - 25][((i - 155) * 3) + 1] = g[i] 
-			rgb[l - 25][((i - 155) * 3) + 2] = b[i] 
-
-#			print r, g, b
-	
-	return rgb
-
-def isWhiteFlag(line):
-	wc = 0
-	for i in range(0, 1400):
-		if line[i] > 45000:
-			wc = wc + 1
-
-#	print wc
-	return (wc > 1000)
-
-pf_useodd = 0
-
-def process(inframe):
-	global pf_useodd
-	global prevrgb 
-
-	rgb = comb(inframe)
-
-	# if the previous odd field is the start of the current frame, combine and write	
-	if pf_useodd:
-#		print "odd start"
-		for i in range(0, 480):
-			if (i % 2):
-				outfile.write(prevrgb[i])
-			else: 
-				outfile.write(rgb[i])
-
-	# determine if this is a whole (even+odd) or half (odd) frame using white flag detection for now
-#	if (isWhiteFlag(inframe[2])):
-	for i in range(0, 480):
-		outfile.write(rgb[i])
-
-	if (isWhiteFlag(inframe[3])):
-			pf_useodd = True
-	
-	prevrgb = rgb
 
 level_m40ire = 1;
 level_0ire = 16384;
@@ -247,14 +94,11 @@ def getline(l):
 
 	if (l < 10):
 		return -1
-
-	if (l < 262):
+	elif (l < 262):
 		return (l - 10) * 2
-	
-	if (l < 271):
+	elif (l < 271):
 		return -1
-	
-	if (l > 524):
+	elif (l > 524):
 		return -1
 	
 	return ((l - 273) * 2) + 1 
@@ -299,7 +143,6 @@ tgt_phase = 0
 
 def find_sync(buf):
 	count = 0
-	numsyncs = 0
 	global line, tgt_phase
 
 #	print buf
@@ -325,7 +168,6 @@ def find_sync(buf):
 				d = filtered[i] - filtered[i - 1]
 				c = (filtered[i] - cross) / d
 	#			print (i + c) - crosspoint, i - count, count
-				numsyncs = numsyncs + 1
 
 				l = buf[i:i + 1820]
 	#			print burst_detect(l)
@@ -361,7 +203,7 @@ def find_sync(buf):
 						
 #						print outl, angle, angle2, adjust
 						rate = (crosspoint - prev_crosspoint) / 1820.0
-						printerr(outl, angle, angle2, (crosspoint - prev_crosspoint), end - begin, scale_tgt * rate, adjust)
+#						printerr(outl, angle, angle2, (crosspoint - prev_crosspoint), end - begin, scale_tgt * rate, adjust)
 
 						begin = begin + (adjust * 1.2)
 						end = end + (adjust * 1.2)
@@ -370,26 +212,22 @@ def find_sync(buf):
 #						printe(prev_crosspoint, prev_crosspoint + (linelen * scale_linelen), scale_tgt
 						out = scale(buf, begin, end, scale_tgt)
 						
-						angle = burst_detect(out)[1]
+#						angle = burst_detect(out)[1]
 						angle2 = burst_detect(out[1820:len(out)])[1]
 						
 						adjust2 = wrap_angle(angle2, -tgt_phase) 
-						printerr(outl, angle, angle2, adjust2)
+#						printerr(outl, angle, angle2, adjust2)
 						
 						end = end + (adjust2 * 1.0)
 						
 						out = scale(buf, begin, end, scale_tgt)
-						angle = burst_detect(out)[1]
-						angle2 = burst_detect(out[linelen:len(out)])[1]
-						printerr(outl, angle, angle2, end - begin)
+#						angle = burst_detect(out)[1]
+#						angle2 = burst_detect(out[1820:len(out)])[1]
+#						printerr(outl, angle, angle2, end - begin)
 						
 						output_16 = np.empty(len(out), dtype=np.uint16)
 						np.copyto(output_16, out, 'unsafe')
 						
-						angle = burst_detect(out)[1]
-						angle2 = burst_detect(out[1820:len(out)])[1]
-#						print outl, angle, angle2
-
 						outl = getline(line)
 						if (outl >= 0):	
 							#frame[outl] = output_16[130:130+1685+ntsc_hsynctoline]
@@ -404,7 +242,8 @@ def find_sync(buf):
 							line = 266.5
 						elif ((line == -1) or (line > 520)) and (linelen > 1800) and (count < 80):
 							if (line > 0):
-								sys.stdout.write(frame)
+								frame.tofile(sys.stdout)
+#								sys.stdout.write(frame)
 							line = 1
 							tgt_phase = 0
 						elif (line == -2) and (linelen > 1800) and (count > 80):
@@ -420,9 +259,8 @@ def find_sync(buf):
 							tgt_phase = -tgt_phase
 	
 				prev_crosspoint = crosspoint
-
+			
 			count = 0
-
 	return np.floor(prev_crosspoint) - 100 
 	
 outfile = open("test.rgb", "wb")
@@ -431,28 +269,18 @@ infile = sys.stdin
 #indata = []
 
 toread = blocklen * 2 
-inbuf = infile.read(toread)
-indata = np.fromstring(inbuf, 'uint16', toread / 2)
+inbuf = infile.buffer.read(65536)
+indata = np.fromstring(inbuf, 'uint16', 32768)
 #print toread
 
 while len(inbuf) > 0:
 	toread = (blocklen - len(indata)) * 2 
 	while toread > 0:
-		inbuf = infile.read(toread)
-		indata = np.append(indata, np.fromstring(inbuf, 'uint16', toread / 2))
+		inbuf = infile.buffer.read(65536)
+		indata = np.append(indata, np.fromstring(inbuf, 'uint16', 32768))
 		toread = (blocklen - len(indata)) 
 
-#		print len(indata), toread
-#		print len(inbuf), toread
-
-#	print toread
 	keep = find_sync(indata) * 1
 
-#	print len(indata)
-#	inframe = np.reshape(indata, (505, 1685))	
-#	rgbout = process(inframe)
-
-#	indata = np.delete(indata, np.s_[0:len(output)])
 	indata = indata[keep:len(indata)]
 
-#	exit()
