@@ -127,7 +127,8 @@ def scale(buf, begin, end, tgtlen):
 	spl = interpolate.splrep(arr, buf[ibegin:ibegin + dist])
 	arrout = np.linspace(begin - ibegin, linelen, tgtlen)
 						
-	return np.clip(interpolate.splev(arrout, spl), 0, 65535)
+#	return np.clip(interpolate.splev(arrout, spl), 0, 65535)
+	return interpolate.splev(arrout, spl)
 
 def wrap_angle(angle, tgt):
 	adjust = tgt - angle
@@ -151,7 +152,7 @@ def find_sync(buf):
 	cross = 5000
 	prev_crosspoint = -1
 
-	for i in range(0, len(filtered) - 4096):
+	for i in range(0, len(buf) - 4096):
 #		print i, filtered[i], buf[i], buf[i + (len(sync_filter) / 2)]
 		if (filtered[i] < cross):
 			if (count == 0):
@@ -190,7 +191,6 @@ def find_sync(buf):
 						out = scale(buf, begin, end, scale_tgt)
 
 						angle = burst_detect(out)[1]
-						angle2 = burst_detect(out[1820:len(out)])[1]
 
 						if tgt_phase:
 							tgt_phase = -tgt_phase
@@ -208,25 +208,17 @@ def find_sync(buf):
 						begin = begin + (adjust * 1.2)
 						end = end + (adjust * 1.2)
 
-						#out = scale(buf, prev_crosspoint, crosspoint, linelen)
-#						printe(prev_crosspoint, prev_crosspoint + (linelen * scale_linelen), scale_tgt
 						out = scale(buf, begin, end, scale_tgt)
 						
-#						angle = burst_detect(out)[1]
 						angle2 = burst_detect(out[1820:len(out)])[1]
-						
 						adjust2 = wrap_angle(angle2, -tgt_phase) 
-#						printerr(outl, angle, angle2, adjust2)
 						
 						end = end + (adjust2 * 1.0)
 						
 						out = scale(buf, begin, end, scale_tgt)
-#						angle = burst_detect(out)[1]
-#						angle2 = burst_detect(out[1820:len(out)])[1]
-#						printerr(outl, angle, angle2, end - begin)
 						
 						output_16 = np.empty(len(out), dtype=np.uint16)
-						np.copyto(output_16, out, 'unsafe')
+						np.copyto(output_16, np.clip(out, 0, 65535), 'unsafe')
 						
 						outl = getline(line)
 						if (outl >= 0):	
@@ -269,8 +261,8 @@ infile = sys.stdin
 #indata = []
 
 toread = blocklen * 2 
-inbuf = infile.buffer.read(65536)
-indata = np.fromstring(inbuf, 'uint16', 32768)
+inbuf = infile.buffer.read(131072)
+indata = np.fromstring(inbuf, 'uint16', 65536)
 #print toread
 
 while len(inbuf) > 0:
