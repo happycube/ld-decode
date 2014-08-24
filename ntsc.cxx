@@ -322,6 +322,18 @@ class TBC
 		// writes a 1685x505 16-bit grayscale frame	
 		void WriteBWFrame(uint16_t *buffer) {
 			for (int i = 20; i <= 524; i++) {
+				int ldo = -128;
+				for (int j = 135; j < (1685+135); j++) {
+					if (buffer[(i * 1820) + j] < 3000) {
+						ldo = j;
+					}
+					
+					if ((j - ldo) < 32) {
+//						cerr << "rep " << ldo << ' ' << j << ' ' << buffer[(i * 1820) + j] << ' ';
+						buffer[(i * 1820) + j] = buffer[((i - 2) * 1820) + j - 4];
+//						cerr << buffer[(i * 1820) + j] << endl;
+					}
+				}
 				if (write_locs < 0) write(1, &buffer[(i * 1820) + 135], 1685 * 2);
 			}
 		}
@@ -421,7 +433,7 @@ class TBC
 			prev_gap = prev_adjust = 0;
 		}
 
-		// This assumes an entire 4K sliding buffer is available.  The return value is the # of new bytes desired 
+		// This assumes an entire 8K sliding buffer is available.  The return value is the # of new bytes desired 
 		int Process(uint16_t *buffer) {
 			uint16_t outbuf[(int)hlen * 2];	
 			// find the first VSYNC, determine it's length
@@ -429,23 +441,23 @@ class TBC
 			double gap = 0.0;
 
 			int sync_len;
-			int sync_start = FindHSync(buffer, 0, bufsize, sync_len);
+			int sync_start = FindHSync(buffer, 4096, bufsize, sync_len);
 		
 			// if there isn't a whole line and (if applicable) following burst, advance first
 			if (sync_start < 0) {
-				scount += 4096;
-				return 4096;
+				scount += 16384;
+				return 16384;
 			}
-			if ((4096 - sync_start) < 2400) {
-				scount += sync_start - 64;
-				return sync_start - 64;
+			if ((16384 - sync_start) < 2400) {
+				scount += sync_start - 4096 - 64;
+				return sync_start - 4096 - 64;
 			}
-			if (sync_start < 50) {
+			if (sync_start < 4096) {
 				scount += 512;
 				return 512;
 			}
 
-//			cerr << "first sync " << sync_start << " " << sync_len << endl;
+			cerr << "first sync " << sync_start << " " << sync_len << endl;
 
 			// find next vsync.  this may be at .5H, if we're in VSYNC
 			int sync2_len;
@@ -459,7 +471,7 @@ class TBC
 				sync2_start = sync_start + 1820;
 			}		
 	
-//			cerr << "second sync " << sync2_start << " " << sync2_len << endl;
+			cerr << "second sync " << sync2_start << " " << sync2_len << endl;
 
 			// determine if this is a standard line
 			double linelen = sync2_start - sync_start;
@@ -474,7 +486,7 @@ class TBC
 				// determine color burst and phase levels of both this and next color bursts
 
 				BurstDetect(&buffer[sync_start], 4.5 * dots_usec, 7.0 * dots_usec, plevel, pphase);
-//				cerr << curline << " start " << sync_start << " burst 1 " << plevel << " " << pphase << endl;
+				cerr << curline << " start " << sync_start << " burst 1 " << plevel << " " << pphase << endl;
 		
 				// cerr << sync_len << ' ' << (sync2_start - sync_start + sync2_len) << endl;	
 				BurstDetect(&buffer[sync_start], (sync2_start - sync_start) + (4.5 * dots_usec), 7.0 * dots_usec, plevel2, pphase2);
@@ -494,7 +506,7 @@ class TBC
 					ScaleOut(buffer, outbuf, sync_start, 1820 + gap);
 				
 					BurstDetect(outbuf, 4.5 * dots_usec, 7.0 * dots_usec, plevel, pphase);
-//					cerr << "gap " << gap << ' ' << "post-scale 1 " << plevel << " " << pphase << endl;
+					cerr << "gap " << gap << ' ' << "post-scale 1 " << plevel << " " << pphase << endl;
 				
 					// if this is the first line (of the frame?) set up phase targets for each line
 					if (linecount == -1) {
@@ -633,8 +645,8 @@ class TBC
 
 			prev_gap = gap;
 
-			scount += sync_start - 64 + 1820;
-			return (sync_start - 64 + 1820);
+			scount += (sync_start - 4096 - 64) + 1820;
+			return ((sync_start - 4096 - 64) + 1820);
 		}
 };
 
@@ -643,7 +655,7 @@ int main(int argc, char *argv[])
 	int rv = 0, fd = 0;
 	long long dlen = -1, tproc = 0;
 	//double output[2048];
-	unsigned short inbuf[4096];
+	unsigned short inbuf[16384];
 	unsigned char *cinbuf = (unsigned char *)inbuf;
 
 	cerr << std::setprecision(10);
@@ -677,21 +689,21 @@ int main(int argc, char *argv[])
 
 	TBC tbc;
 
-	rv = read(fd, inbuf, 8192);
-	while ((rv > 0) && (rv < 8192)) {
-		int rv2 = read(fd, &cinbuf[rv], 8192 - rv);
+	rv = read(fd, inbuf, 32768);
+	while ((rv > 0) && (rv < 32768)) {
+		int rv2 = read(fd, &cinbuf[rv], 32768 - rv);
 		if (rv2 <= 0) exit(0);
 		rv += rv2;
 	}
 
-	while (rv == 8192 && ((tproc < dlen) || (dlen < 0))) {
+	while (rv == 32768 && ((tproc < dlen) || (dlen < 0))) {
 		int plen = tbc.Process(inbuf);	
 
 		tproc += plen;
-                memmove(inbuf, &inbuf[plen], (4096 - plen) * 2);
-                rv = read(fd, &inbuf[(4096 - plen)], plen * 2) + ((4096 - plen) * 2);
-		while ((rv > 0) && (rv < 8192)) {
-			int rv2 = read(fd, &cinbuf[rv], 8192 - rv);
+                memmove(inbuf, &inbuf[plen], (16384 - plen) * 2);
+                rv = read(fd, &inbuf[(16384 - plen)], plen * 2) + ((16384 - plen) * 2);
+		while ((rv > 0) && (rv < 32768)) {
+			int rv2 = read(fd, &cinbuf[rv], 32768 - rv);
 			if (rv2 <= 0) exit(-1);
 			rv += rv2;
 		}	
