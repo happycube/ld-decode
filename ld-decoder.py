@@ -37,7 +37,7 @@ ffreq = freq/2.0
 
 Bboost = sps.firwin(17, [6.0/(freq/2.0), 12.5/(freq/2.0)], pass_zero=False) 
 Bboost = sps.firwin(17, [4.5/(freq/2.0), 14.0/(freq/2.0)], pass_zero=False) 
-Bboost = sps.firwin(33, 4.0 / (freq / 2), window='hamming', pass_zero=False)
+Bboost = sps.firwin(33, 3.5 / (freq / 2), window='hamming', pass_zero=False)
 #Bboost = sps.firwin2(25, [0, 5.4/(freq/2.0), 12.0/(freq/2.0), 14.0/(freq/2.0), 1.0], [0.0, 1.0, 2.0, 2.0, 1.0]) 
 #Bboost = sps.firwin2(37, [0, 4.0/(freq/2.0), 12.0/(freq/2.0), 14.0/(freq/2.0), 1.0], [0.0, 1.0, 2.0, 3.0, 2.0]) 
 Aboost = [1.0]
@@ -155,6 +155,17 @@ def process(data):
 	tdangles2 = np.unwrap(dangles) 
 	
 	output = (sps.fftconvolve(tdangles2, lowpass_filter) * 4557618)[128:len(tdangles2)]
+
+	if (output[np.argmax(output)] > freq_hz):
+		for i in range(0, len(output)):
+			if output[i] > freq_hz:
+				output[i] = output[i] - freq_hz
+	
+	if (output[np.argmin(output)] < 0):
+		for i in range(0, len(output)):
+			if output[i] < 0:
+				output[i] = output[i] + freq_hz
+
 #	output = (sps.lfilter(Blpf, Alpf, tdangles2) * 4557618)[128:len(tdangles2)]
 	#output = (tdangles2 * 4557618)[128:len(tdangles2)]
 
