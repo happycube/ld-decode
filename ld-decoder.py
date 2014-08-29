@@ -129,6 +129,13 @@ deemp_corr = 0.9915
 #doplot(alfilt, [1.0])
 #exit()
 
+# from http://tlfabian.blogspot.com/2013/01/implementing-hilbert-90-degree-shift.html
+hilbert_filter = np.fft.fftshift(
+    np.fft.ifft([0]+[1]*20+[0]*20)
+)
+
+#hilbert_filter = [+0.0000000000, +0.0164307736, +0.0000000000, +0.0727931242, +0.0000000000, +0.2386781263, +0.0000000000, +0.9649845850, +0.0000000000, -0.9649845850, -0.0000000000, -0.2386781263, -0.0000000000, -0.0727931242, -0.0000000000, -0.0164307736, 0]
+
 def process(data):
 	# perform general bandpass filtering
 	in_len = len(data)
@@ -141,7 +148,11 @@ def process(data):
 	
 #	in_filt = sps.lfilter(Bboost, Aboost, data)
 
-	hilbert = sps.hilbert(in_filt) 
+	hilbert = sps.lfilter(hilbert_filter, 1.0, in_filt) 
+
+	# the hilbert transform has errors at the edges.  but it doesn't seem to matter much IRL
+	hilbert = hilbert[128:len(hilbert)-128]
+	in_len -= 256 
 
 	tangles = np.angle(hilbert) 
 	dangles = np.empty(in_len - 80)
@@ -156,6 +167,7 @@ def process(data):
 	
 	output = (sps.fftconvolve(tdangles2, lowpass_filter) * 4557618)[128:len(tdangles2)]
 
+	# particularly bad bits can cause phase inversions.  detect and fix when needed - the loops are slow in python.
 	if (output[np.argmax(output)] > freq_hz):
 		for i in range(0, len(output)):
 			if output[i] > freq_hz:
