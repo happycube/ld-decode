@@ -57,7 +57,8 @@ for i in range(0, 100):
 burst_len = 300
 
 def printerr(*objs):
-    print(*objs, file=sys.stderr)
+#	print(*objs, file=sys.stderr)
+	return
 
 def burst_detect(line):
 	level = 0
@@ -186,7 +187,7 @@ def find_sync(buf):
 						outl = getline(line)
 
 #						print line, outl
-						print(line, outl, file=sys.stderr) 
+						printerr(line, outl) 
 
 						out = scale(buf, begin, end, scale_tgt)
 
@@ -216,9 +217,15 @@ def find_sync(buf):
 						end = end + (adjust2 * 1.0)
 						
 						out = scale(buf, begin, end, scale_tgt)
-						
+
+						ladjust = ((((end - begin) / scale_tgt) - 1) * 1.01) + 1
+	
+						out = ((out / 57344.0) * 1700000) + 7600000 
+						out = out * ladjust 
+						out = (out - 7600000) / 1700000.0
+	
 						output_16 = np.empty(len(out), dtype=np.uint16)
-						np.copyto(output_16, np.clip(out, 0, 65535), 'unsafe')
+						np.copyto(output_16, np.clip(out * 57344.0, 0, 65535), 'unsafe')
 						
 						outl = getline(line)
 						if (outl >= 0):	
@@ -244,7 +251,7 @@ def find_sync(buf):
 							line = line + 0.5
 						elif line >= 0 and (linelen > 1700):
 							line = line + 1
-						print(line, prev_crosspoint, crosspoint, count, file=sys.stderr) 
+						printerr(line, prev_crosspoint, crosspoint, count) 
 
 						# hack
 						if (np.floor(line) == 272):
