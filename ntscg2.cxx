@@ -94,7 +94,7 @@ void Scale(uint16_t *buf, double *outbuf, double start, double end, double outle
 		int index = (int)p1;
 		if (index < 1) index = 1;
 
-		outbuf[i] = CubicInterpolate(&buf[index - 1], p1 - index);
+		outbuf[i] = clamp(CubicInterpolate(&buf[index - 1], p1 - index), 0, 65535);
 	}
 }
                 
@@ -127,7 +127,7 @@ Filter f_bpcolor(f_colorbp);
 		
 void BurstDetect(double *line, int loc, double &plevel, double &pphase) 
 {
-	double pi = 0, pq = 0;
+	double pi = 0, pq = 0, ploc = -1;
 	int len = 200;
 
 	plevel = 0.0;
@@ -135,20 +135,24 @@ void BurstDetect(double *line, int loc, double &plevel, double &pphase)
 
 	f_syncr.clear(0);
 	f_synci.clear(0);
+	f_bpcolor.clear(0);
 
 	for (int l = loc; l < loc + len; l++) {
 		double v = f_bpcolor.feed(line[l]);
+		//double v = (line[l]);
+
+//		f_bpcolor.dump();
 
 		double q = f_syncr.feed(v * _cos[l % 8]);
 		double i = f_synci.feed(-v * _sin[l % 8]);
 
 		double level = ctor(i, q);
 
-//		if ((l - start) > 65) cerr << l << ' ' << buf[l] << ' ' << level << ' ' << atan2(i, q) << endl;
+//		cerr << l << ' ' << line[l] << ' ' << v << ' ' << i << ' ' << q << ' ' << level << endl;
 
-	//	cerr << l << ' ' << line[l] << ' ' << level << ' ' << atan2(i, q) << endl;
-	
-		if (((l - loc) > 32) && level > plevel) {
+		if (((l - loc) > 32) && (level > plevel) && (level < 10000)) {
+			ploc = l;
+//			cerr << l << ' ' << level << ' ' << atan2(pi, pq) << endl;
 			plevel = level;
 			pi = i; pq = q;
 		}
@@ -157,11 +161,8 @@ void BurstDetect(double *line, int loc, double &plevel, double &pphase)
 	if (plevel) {
 		pphase = atan2(pi, pq);
 	}
-
 }
 	
-		// writes a 1685x505 16-bit grayscale frame	
-
 void _BurstDetect(uint16_t *line, int loc, double &plevel, double &pphase) 
 {
 	complex<double> hdyne[100], hdyne_filt[100];
@@ -186,7 +187,7 @@ void _BurstDetect(uint16_t *line, int loc, double &plevel, double &pphase)
 			if (abs(hdyne_filt[j]) > plevel) {
 				peakloc = j;
 				plevel = level[j];
-	//			cerr << peakloc << ' ' << plevel << ' ' << pphase << endl;
+				cerr << peakloc << ' ' << plevel << ' ' << pphase << endl;
 			}
 		}
 		cerr << j << ' ' << hdyne[j].real() << ' ' << hdyne[j].imag() << endl;
@@ -279,23 +280,24 @@ int Process(uint16_t *buf, int len)
 
 					cerr << "O " << begin << ' ' << end << ' ' << end - begin << ' ' << scale_tgt << ' ' << tgt_phase << endl;
 
-					cerr << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
+//					cerr << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
 					adjust1 = WrapAngle(pphase1, tgt_phase);	
 					adjust2 = WrapAngle(pphase2, tgt_phase);
-					begin += (adjust1 * 1.33);
+					begin += (adjust1 * 1.2732);
+					end += (adjust1 * 1.2732);
 //					end += (adjust1 * 1.33);
 					
-					cerr << "1 "  << adjust1 << ' ' << begin << ' ' << end << ' ' << end - begin << ' ' << scale_tgt << endl;
+					cerr << "1 "  << ' ' << adjust1 << ' ' << begin << ' ' << end << ' ' << end - begin << ' ' << scale_tgt << endl;
 
 					Scale(buf, tout2, begin, end, scale_tgt); 
 					BurstDetect(tout2, 0, plevel1, pphase1); 
 					BurstDetect(tout2, 1822, plevel2, pphase2); 
-					cerr << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
-					
+
 					adjust1 = WrapAngle(pphase1, tgt_phase);	
 					adjust2 = WrapAngle(pphase2, pphase1);
 //					begin -= (adjust1 * 2.0);
-					end += (adjust2 * 1.33);
+					end += (adjust1 * 1.2732);
+					cerr << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
 
 					cerr << "2 " << adjust2 << ' ' << begin << ' ' << end << ' ' << end - begin << ' ' << scale_tgt << endl;
 					Scale(buf, tout3, begin, end, scale_tgt); 
@@ -305,7 +307,7 @@ int Process(uint16_t *buf, int len)
 					cerr << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
 					
 					adjust2 = WrapAngle(pphase2, pphase1);
-					end += (adjust2 * 1.33);
+					end += (adjust2 * 1.2732);
 
 					// LD only: need to adjust output value for velocity
 					double lvl_adjust = ((((end - begin) / scale_tgt) - 1) * 0.84) + 1;
