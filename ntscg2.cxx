@@ -279,6 +279,7 @@ int Process(uint16_t *buf, int len)
 					if (floor(line) == 272) tgt_phase = -tgt_phase;
 
 					cerr << "O " << begin << ' ' << end << ' ' << end - begin << ' ' << scale_tgt << ' ' << tgt_phase << endl;
+					cerr << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
 
 //					cerr << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
 					adjust1 = WrapAngle(pphase1, tgt_phase);	
@@ -296,7 +297,7 @@ int Process(uint16_t *buf, int len)
 					adjust1 = WrapAngle(pphase1, tgt_phase);	
 					adjust2 = WrapAngle(pphase2, pphase1);
 //					begin -= (adjust1 * 2.0);
-					end += (adjust1 * 1.2732);
+					end += (adjust2 * 1.2732);
 					cerr << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
 
 					cerr << "2 " << adjust2 << ' ' << begin << ' ' << end << ' ' << end - begin << ' ' << scale_tgt << endl;
@@ -306,12 +307,9 @@ int Process(uint16_t *buf, int len)
 					BurstDetect(tout3, 1822, plevel2, pphase2); 
 					cerr << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
 					
-					adjust2 = WrapAngle(pphase2, pphase1);
-					end += (adjust2 * 1.2732);
-
 					// LD only: need to adjust output value for velocity
 					double lvl_adjust = ((((end - begin) / scale_tgt) - 1) * 0.84) + 1;
-					for (int x = 124; (oline > 0) && (x < (124+1685)); x++) {
+					for (int x = 115; (oline > 0) && (x < (115+1685)); x++) {
 						double v = tout3[x];
 
 //						cerr << x << ' ' << tout1[x] << ' ' << tout2[x] << ' ' << tout3[x] << endl;
@@ -321,7 +319,7 @@ int Process(uint16_t *buf, int len)
 						v = ((v - 7600000) / 1700000) * 57344.0;
 
 //						cerr << tout3[x] << ' ' << v << endl;
-						frame[oline][x - 124] = clamp(v, 0, 65535);
+						frame[oline][x - 115] = clamp(v, 0, 65535);
 //						frame[oline][x - 130] = tout3[x];
 					}
 				
