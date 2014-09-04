@@ -87,14 +87,14 @@ void Scale(uint16_t *buf, double *outbuf, double start, double end, double outle
 	double inlen = end - start;
 	double perpel = inlen / outlen; 
 
+	double p1 = start;
 	for (int i = 0; i < outlen; i++) {
-		double p1;
-		
-		p1 = start + (i * perpel);
 		int index = (int)p1;
 		if (index < 1) index = 1;
 
 		outbuf[i] = clamp(CubicInterpolate(&buf[index - 1], p1 - index), 0, 65535);
+
+		p1 += perpel;
 	}
 }
                 
@@ -137,7 +137,7 @@ void BurstDetect(double *line, int loc, double &plevel, double &pphase)
 	f_synci.clear(0);
 	f_bpcolor.clear(0);
 
-	for (int l = loc; l < loc + len; l++) {
+	for (int l = loc + 110; l < loc + len; l++) {
 		double v = f_bpcolor.feed(line[l]);
 		//double v = (line[l]);
 
@@ -150,7 +150,7 @@ void BurstDetect(double *line, int loc, double &plevel, double &pphase)
 
 //		cerr << l << ' ' << line[l] << ' ' << v << ' ' << i << ' ' << q << ' ' << level << endl;
 
-		if (((l - loc) > 32) && (level > plevel) && (level < 10000)) {
+		if (((l - loc) > 16) && (level > plevel) && (level < 10000)) {
 			ploc = l;
 //			cerr << l << ' ' << level << ' ' << atan2(pi, pq) << endl;
 			plevel = level;
@@ -163,51 +163,6 @@ void BurstDetect(double *line, int loc, double &plevel, double &pphase)
 	}
 }
 	
-void _BurstDetect(uint16_t *line, int loc, double &plevel, double &pphase) 
-{
-	complex<double> hdyne[100], hdyne_filt[100];
-	double level[100], phase[100];
-	double tlevel = 0;
-	int i, j, peakloc = -1;
-
-	plevel = pphase = 0;
-			
-	f_syncr.clear(ire_to_u16(black_ire));
-	f_synci.clear(ire_to_u16(black_ire));
-
-	for (i = loc + 140, j = 0; i < loc + 240; i++, j++) {
-		hdyne[j] = (double)line[i] * burst_hdyne[i]; 
-
-		hdyne_filt[j] = complex<double>(f_syncr.feed(hdyne[j].real()), f_synci.feed(hdyne[j].imag()));
-
-		level[j] = ctor(hdyne_filt[j].real(), hdyne_filt[j].imag());
-		phase[j] = atan2(hdyne_filt[j].real(), hdyne_filt[j].imag());
-
-		if (j > 16) {
-			if (abs(hdyne_filt[j]) > plevel) {
-				peakloc = j;
-				plevel = level[j];
-				cerr << peakloc << ' ' << plevel << ' ' << pphase << endl;
-			}
-		}
-		cerr << j << ' ' << hdyne[j].real() << ' ' << hdyne[j].imag() << endl;
-		cerr << j << ' ' << hdyne_filt[j].real() << ' ' << hdyne_filt[j].imag() << ' ' << level[j] << ' ' << phase[j]<< endl;
-	}
-	
-	for (i = peakloc - 5; i < (peakloc + 6); i++) {
-		tlevel += level[i];
-	}
-
-	pphase = 0;
-	for (i = peakloc - 5; i < (peakloc + 6); i++) {
-		pphase += (phase[i] * (level[i] / tlevel));
-//		cerr << i << ' ' << hdyne[i].real() << ' ' << hdyne[i].imag() << endl;
-//		cerr << i << ' ' << hdyne_filt[i].real() << ' ' << hdyne_filt[i].imag() << ' ' << level[i] / tlevel << ' ' << phase[i] << ' ' << pphase << ' ' << phase[peakloc] << endl;
-	}
-
-	cerr << pphase << ' ' << phase[peakloc] << endl;
-}
-
 int get_oline(double line)
 {
 	int l = (int)(line + 0.5);
