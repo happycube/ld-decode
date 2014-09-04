@@ -168,8 +168,9 @@ double tgt_phase = 0;
 int Process(uint16_t *buf, int len)
 {
 	double prevf, f = 0;
-	double crosspoint = -1, prev_crosspoint = -1;
+	double crosspoint = -1, prev_crosspoint = -1, tmp_crosspoint = -1;
 	int count = 0;
+	int firstline = -1;
 
 	f_syncp.clear(ire_to_u16(black_ire));
 
@@ -182,11 +183,12 @@ int Process(uint16_t *buf, int len)
 				double d = prevf - f;
 				double c = (prevf - cross) / d;
 
-				crosspoint = (i - 1) + c; 
+				tmp_crosspoint = (i - 1) + c; 
 			}
 			count++;
 		} else {
-			if ((count > 16) && prev_crosspoint > 0) {
+			if (count > 40) crosspoint = tmp_crosspoint;
+			if ((count > 30) && prev_crosspoint > 0) {
 				double begin = prev_crosspoint;
 				double end = begin + ((crosspoint - prev_crosspoint) * scale_linelen);
 				double linelen = crosspoint - prev_crosspoint; 
@@ -195,13 +197,15 @@ int Process(uint16_t *buf, int len)
 				double tout2[4096];
 				double tout3[4096];
 
-//				cerr << line << ' ' << linelen << ' ' << count << endl;
+				cerr << line << ' ' << i << ' ' << linelen << ' ' << count << endl;
 				if ((line >= 0) && (linelen >= (ntsc_pline * 0.9)) && (count > 90)) {
 					// standard line
 					double plevel1, pphase1;
 					double plevel2, pphase2;
 					double adjust1, adjust2;
 					int oline = get_oline(line);
+
+					if (firstline < 0) firstline = line;
 
 					Scale(buf, tout1, begin, end, scale_tgt); 
 					BurstDetect(tout1, 0, plevel1, pphase1); 
@@ -217,34 +221,28 @@ int Process(uint16_t *buf, int len)
 				
 					if (floor(line) == 272) tgt_phase = -tgt_phase;
 
-//					cerr << "O " << begin << ' ' << end << ' ' << end - begin << ' ' << scale_tgt << ' ' << tgt_phase << endl;
-//					cerr << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
-
-//					cerr << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
+					cerr << line << " 0" << ' ' << ((end - begin) / scale_tgt) * 1820.0 << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
 					adjust1 = WrapAngle(pphase1, tgt_phase);	
 					adjust2 = WrapAngle(pphase2, tgt_phase);
 					begin += (adjust1 * 1.2732);
 					end += (adjust1 * 1.2732);
-//					end += (adjust1 * 1.33);
-					
-//					cerr << "1 "  << ' ' << adjust1 << ' ' << begin << ' ' << end << ' ' << end - begin << ' ' << scale_tgt << endl;
 
 					Scale(buf, tout2, begin, end, scale_tgt); 
 					BurstDetect(tout2, 0, plevel1, pphase1); 
 					BurstDetect(tout2, 1822, plevel2, pphase2); 
+					
+					cerr << line << " 1" << ' ' << ((end - begin) / scale_tgt) * 1820.0 << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
 
 					adjust1 = WrapAngle(pphase1, tgt_phase);	
 					adjust2 = WrapAngle(pphase2, pphase1);
-//					begin -= (adjust1 * 2.0);
 					end += (adjust2 * 1.2732);
-//					cerr << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
-
-//					cerr << "2 " << adjust2 << ' ' << begin << ' ' << end << ' ' << end - begin << ' ' << scale_tgt << endl;
+					
 					Scale(buf, tout3, begin, end, scale_tgt); 
 					
 					BurstDetect(tout3, 0, plevel1, pphase1); 
 					BurstDetect(tout3, 1822, plevel2, pphase2); 
-//					cerr << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
+
+					cerr << line << " 2" << ' ' << ((end - begin) / scale_tgt) * 1820.0 << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
 					
 					// LD only: need to adjust output value for velocity
 					double lvl_adjust = ((((end - begin) / scale_tgt) - 1) * 0.84) + 1;
@@ -265,7 +263,7 @@ int Process(uint16_t *buf, int len)
 					//crosspoint = begin + (((end - begin) / scale_tgt) * 1820);
 	
 					line++;
-				} else if ((line == -1) && (linelen < 1000) && (count > 80) && (count < 160)) {
+				} else if ((line == -1) && (linelen > 800) && (linelen < 1000) && (count > 80) && (count < 160)) {
 					line = 262.5;
 				} else if (((line == -1) || (line > 520)) && (linelen > 1800) && (count < 80)) {
 					if (line > 0) {
@@ -273,6 +271,7 @@ int Process(uint16_t *buf, int len)
 					}
 					tgt_phase = 0;
 					line = 1;
+					firstline = -1;
 				} else if ((line == -2) && (linelen > 1800) && (count > 80)) {
 					line = -1;
 				} else if ((line >= 0) && (linelen > 800) && (linelen < 1000)) {
@@ -292,7 +291,7 @@ int Process(uint16_t *buf, int len)
 		}
 	}
 
-	return (prev_crosspoint - 100);
+	return (prev_crosspoint - 700);
 }
 
 int main(int argc, char *argv[])
