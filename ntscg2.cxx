@@ -4,19 +4,6 @@
 #include "ld-decoder.h"
 #include "deemp.h"
 
-inline double IRE(double in) 
-{
-	return (in * 140.0) - 40.0;
-}
-
-struct YIQ {
-        double y, i, q;
-
-        YIQ(double _y = 0.0, double _i = 0.0, double _q = 0.0) {
-                y = _y; i = _i; q = _q;
-        };
-};
-
 double clamp(double v, double low, double high)
 {
         if (v < low) return low;
@@ -74,7 +61,7 @@ inline uint16_t ire_to_u16(double ire)
 } 
 		
 // taken from http://www.paulinternet.nl/?page=bicubic
-double CubicInterpolate(uint16_t *y, double x)
+inline double CubicInterpolate(uint16_t *y, double x)
 {
 	double p[4];
 	p[0] = y[0]; p[1] = y[1]; p[2] = y[2]; p[3] = y[3];
@@ -82,7 +69,7 @@ double CubicInterpolate(uint16_t *y, double x)
 	return p[1] + 0.5 * x*(p[2] - p[0] + x*(2.0*p[0] - 5.0*p[1] + 4.0*p[2] - p[3] + x*(3.0*(p[1] - p[2]) + p[3] - p[0])));
 }
 
-void Scale(uint16_t *buf, double *outbuf, double start, double end, double outlen)
+inline void Scale(uint16_t *buf, double *outbuf, double start, double end, double outlen)
 {
 	double inlen = end - start;
 	double perpel = inlen / outlen; 
@@ -98,7 +85,7 @@ void Scale(uint16_t *buf, double *outbuf, double start, double end, double outle
 	}
 }
                 
-double WrapAngle(double a1, double a2) {
+inline double WrapAngle(double a1, double a2) {
 	double v = a2 - a1;
 
 	if (v > M_PIl) v -= (2 * M_PIl);
@@ -139,9 +126,6 @@ void BurstDetect(double *line, int loc, double &plevel, double &pphase)
 
 	for (int l = loc + 110; l < loc + len; l++) {
 		double v = f_bpcolor.feed(line[l]);
-		//double v = (line[l]);
-
-//		f_bpcolor.dump();
 
 		double q = f_syncr.feed(v * _cos[l % 8]);
 		double i = f_synci.feed(-v * _sin[l % 8]);
@@ -211,7 +195,7 @@ int Process(uint16_t *buf, int len)
 				double tout2[4096];
 				double tout3[4096];
 
-				cerr << line << ' ' << linelen << ' ' << count << endl;
+//				cerr << line << ' ' << linelen << ' ' << count << endl;
 				if ((line >= 0) && (linelen >= (ntsc_pline * 0.9)) && (count > 90)) {
 					// standard line
 					double plevel1, pphase1;
@@ -233,8 +217,8 @@ int Process(uint16_t *buf, int len)
 				
 					if (floor(line) == 272) tgt_phase = -tgt_phase;
 
-					cerr << "O " << begin << ' ' << end << ' ' << end - begin << ' ' << scale_tgt << ' ' << tgt_phase << endl;
-					cerr << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
+//					cerr << "O " << begin << ' ' << end << ' ' << end - begin << ' ' << scale_tgt << ' ' << tgt_phase << endl;
+//					cerr << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
 
 //					cerr << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
 					adjust1 = WrapAngle(pphase1, tgt_phase);	
@@ -243,7 +227,7 @@ int Process(uint16_t *buf, int len)
 					end += (adjust1 * 1.2732);
 //					end += (adjust1 * 1.33);
 					
-					cerr << "1 "  << ' ' << adjust1 << ' ' << begin << ' ' << end << ' ' << end - begin << ' ' << scale_tgt << endl;
+//					cerr << "1 "  << ' ' << adjust1 << ' ' << begin << ' ' << end << ' ' << end - begin << ' ' << scale_tgt << endl;
 
 					Scale(buf, tout2, begin, end, scale_tgt); 
 					BurstDetect(tout2, 0, plevel1, pphase1); 
@@ -253,14 +237,14 @@ int Process(uint16_t *buf, int len)
 					adjust2 = WrapAngle(pphase2, pphase1);
 //					begin -= (adjust1 * 2.0);
 					end += (adjust2 * 1.2732);
-					cerr << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
+//					cerr << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
 
-					cerr << "2 " << adjust2 << ' ' << begin << ' ' << end << ' ' << end - begin << ' ' << scale_tgt << endl;
+//					cerr << "2 " << adjust2 << ' ' << begin << ' ' << end << ' ' << end - begin << ' ' << scale_tgt << endl;
 					Scale(buf, tout3, begin, end, scale_tgt); 
 					
 					BurstDetect(tout3, 0, plevel1, pphase1); 
 					BurstDetect(tout3, 1822, plevel2, pphase2); 
-					cerr << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
+//					cerr << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
 					
 					// LD only: need to adjust output value for velocity
 					double lvl_adjust = ((((end - begin) / scale_tgt) - 1) * 0.84) + 1;
@@ -278,9 +262,7 @@ int Process(uint16_t *buf, int len)
 //						frame[oline][x - 130] = tout3[x];
 					}
 				
-					cerr << "C " << crosspoint << ' ';	
 					//crosspoint = begin + (((end - begin) / scale_tgt) * 1820);
-					cerr << crosspoint << endl;	
 	
 					line++;
 				} else if ((line == -1) && (linelen < 1000) && (count > 80) && (count < 160)) {
