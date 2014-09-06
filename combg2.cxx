@@ -70,9 +70,9 @@ struct RGB {
         void conv(YIQ y) {
 		YIQ t;
 
-		t.y = (y.y - black_u16) * (4.0 / 3.0);
-		t.i = y.i * 1.33;
-		t.q = y.q * 1.33;
+		t.y = (y.y - black_u16) * 1.43;
+		t.i = y.i * 1.43;
+		t.q = y.q * 1.43;
 
                 r = (t.y * 1.164) + (1.596 * t.i);
                 g = (t.y * 1.164) - (0.813 * t.i) - (t.q * 0.391);
