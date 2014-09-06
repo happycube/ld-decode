@@ -13,6 +13,37 @@ bool image_mode = false;
 char *image_base = "FRAME";
 bool bw_mode = false;
 
+// NTSC properties
+const double freq = 4.0;	// in FSC.  Must be an even number!
+
+const double hlen = 227.5 * freq;
+const int    hleni = (int)hlen;
+const double dotclk = (1000000.0*(315.0/88.0)*freq); 
+
+const double dots_usec = dotclk / 1000000.0; 
+
+// values for horizontal timings 
+const double line_blanklen = 10.9 * dots_usec;
+
+inline uint16_t ire_to_u16(double ire);
+
+// uint16_t levels
+uint16_t level_m40ire = 1;
+uint16_t level_0ire = 16384;
+uint16_t level_7_5_ire = 16384+3071;
+uint16_t level_100ire = 57344;
+uint16_t level_120ire = 65535;
+
+// tunables
+
+double black_ire = 7.5;
+int black_u16 = level_7_5_ire;
+int white_u16 = ire_to_u16(110); 
+bool whiteflag_detect = true;
+
+double nr_y = 2.0;
+double nr_c = 0.5;
+
 inline double IRE(double in) 
 {
 	return (in * 140.0) - 40.0;
@@ -39,9 +70,9 @@ struct RGB {
         void conv(YIQ y) {
 		YIQ t;
 
-		t.y = (y.y - 16384) * 1.40;
-		t.i = y.i * 1.4;
-		t.q = y.q * 1.4;
+		t.y = (y.y - black_u16) * (4.0 / 3.0);
+		t.i = y.i * 1.33;
+		t.q = y.q * 1.33;
 
                 r = (t.y * 1.164) + (1.596 * t.i);
                 g = (t.y * 1.164) - (0.813 * t.i) - (t.q * 0.391);
@@ -54,25 +85,6 @@ struct RGB {
                 //cerr << 'r' << r << " g" << g << " b" << b << endl;
         };
 };
-
-// NTSC properties
-const double freq = 4.0;	// in FSC.  Must be an even number!
-
-const double hlen = 227.5 * freq;
-const int    hleni = (int)hlen;
-const double dotclk = (1000000.0*(315.0/88.0)*8.0); 
-
-const double dots_usec = dotclk / 1000000.0; 
-
-// values for horizontal timings 
-const double line_blanklen = 10.9 * dots_usec;
-
-// uint16_t levels
-uint16_t level_m40ire = 1;
-uint16_t level_0ire = 16384;
-uint16_t level_7_5_ire = 16384+3071;
-uint16_t level_100ire = 57344;
-uint16_t level_120ire = 65535;
 
 inline double u16_to_ire(uint16_t level)
 {
@@ -90,16 +102,6 @@ inline uint16_t ire_to_u16(double ire)
 
 	return (((ire + 40.0) / 160.0) * 65534.0) + 1;
 } 
-
-// tunables
-
-double black_ire = 7.5;
-int black_u16 = level_7_5_ire;
-int white_u16 = ire_to_u16(120); 
-bool whiteflag_detect = true;
-
-double nr_y = 1.0;
-double nr_c = 0.5;
 
 typedef struct cline {
 	double y[hleni]; // Y
@@ -175,7 +177,7 @@ class Comb
 
 				double si = 0, sq = 0;
 
-				for (int h = 72; h < 852; h++) {
+				for (int h = 64; h < 852; h++) {
 					int phase = h % 4;
 
 					double prev = line[h - 2];	
@@ -194,6 +196,8 @@ class Comb
 						default: break;
 					}
 
+					if (bw_mode) si = sq = 0;
+
 					wbuf[0][l].y[h] = cur; 
 					wbuf[0][l].i[h - 9] = f_i->feed(si); 
 					wbuf[0][l].q[h - 9] = f_q->feed(sq); 
@@ -211,7 +215,7 @@ class Comb
 					memcpy(&line, &wbuf[0][l], sizeof(cline_t));
 		
 				uint8_t *line_output = &output[(744 * 3 * (l - 24))];
-				cerr << l << ' ' << (744 * 3 * (l - 24)) << endl;
+//				cerr << l << ' ' << (744 * 3 * (l - 24)) << endl;
 
 				// only need 744 for deocding, but need extra space for the filter
 				for (int h = 0; h < 760; h++) {
@@ -220,9 +224,9 @@ class Comb
 					YIQ y;
 					RGB r;
 
-					y.y = line.y[h + 72];
-					y.i = line.i[h + 72];
-					y.q = line.q[h + 72];
+					y.y = line.y[h + 64];
+					y.i = line.i[h + 64];
+					y.q = line.q[h + 64];
 
 					switch (phase) {
 						case 0: comp = y.q; break;
@@ -261,15 +265,13 @@ class Comb
 					line_output[o++] = (uint8_t)(r.g); 
 					line_output[o++] = (uint8_t)(r.b); 
 				}
-		
-				if (l == 51) cerr << (int)line_output[300] << endl;	
 			}
 
 			return;
 		}
 
 		uint32_t ReadPhillipsCode(uint16_t *line) {
-			const int first_bit = (int)205 - 58;
+			const int first_bit = (int)73;
 			const double bitlen = 2.0 * dots_usec;
 			uint32_t out = 0;
 
