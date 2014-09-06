@@ -98,8 +98,8 @@ int black_u16 = level_7_5_ire;
 int white_u16 = ire_to_u16(120); 
 bool whiteflag_detect = true;
 
-double nr_y = 0.008;
-double nr_c = 0.008;
+double nr_y = 1.0;
+double nr_c = 0.5;
 
 typedef struct cline {
 	double y[hleni]; // Y
@@ -213,7 +213,8 @@ class Comb
 				uint8_t *line_output = &output[(744 * 3 * (l - 24))];
 				cerr << l << ' ' << (744 * 3 * (l - 24)) << endl;
 
-				for (int h = 0; h < 744; h++) {
+				// only need 744 for deocding, but need extra space for the filter
+				for (int h = 0; h < 760; h++) {
 					double comp;	
 					int phase = h % 4;
 					YIQ y;
@@ -234,12 +235,22 @@ class Comb
 					if (invertphase) comp = -comp;
 					y.y -= comp;
 
-#if 0
-					outline[h+32].y -= hpline[h+47].y;
-					outline[h+32].i -= hpline[h+47].i;
-					outline[h+32].q -= hpline[h+47].q;
-#endif					
-					r.conv(y);
+					hpline[h].y = clamp(f_hpy->feed(y.y), -nr_y, nr_y);
+					hpline[h].i = clamp(f_hpi->feed(y.i), -nr_c, nr_c);
+					hpline[h].q = clamp(f_hpq->feed(y.q), -nr_c, nr_c);
+
+					outline[h] = y;
+				}
+
+				for (int h = 0; h < 760; h++) {
+					RGB r;
+
+//					cerr << h << ' ' << outline[h].y << ' ' << nr_y << ' ' << hpline[h + 8].y << endl;
+
+					outline[h].y -= hpline[h+8].y;
+					outline[h].i -= hpline[h+8].i;
+					outline[h].q -= hpline[h+8].q;
+					r.conv(outline[h]);
 
 //					if ((l == 50) && !(h % 20)) {
 //						cerr << h << ' ' << (int)(outline[h+32].y * 65536) << ' ' << (int)(outline[h+32].i * 65536) << ' ' << (int)(outline[h+32].q * 65536) << ' ' << r.r << ' ' << r.g << ' ' << r.b << endl;
@@ -439,6 +450,9 @@ int main(int argc, char *argv[])
 				return -1;
 		} 
 	} 
+
+	nr_y = (nr_y / 160.0) * 65534.0;
+	nr_c = (nr_c / 160.0) * 65534.0;
 
 	if (!image_mode && strlen(out_filename)) {
 		ofd = open(image_base, O_WRONLY | O_CREAT);
