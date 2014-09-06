@@ -19,42 +19,6 @@ burst_len = 28 * 4
 color_filter = sps.firwin(17, 0.6 / (freq / 2), window='hamming')
 sync_filter = sps.firwin(17, 0.1 / (freq / 2), window='hamming')
 
-#color_filter = [2.214464531115009e-03, 2.779566868356983e-03, 4.009052177841430e-03, 6.041802526864055e-03, 8.964977379775094e-03, 1.280250319629312e-02, 1.750822265693915e-02, 2.296445273166145e-02, 2.898626064895014e-02, 3.533129030361252e-02, 4.171449995422212e-02, 4.782674655050909e-02, 5.335581047849616e-02, 5.800822770944922e-02, 6.153020526791717e-02, 6.372594980605055e-02, 6.447193442389310e-02, 6.372594980605055e-02, 6.153020526791718e-02, 5.800822770944922e-02, 5.335581047849616e-02, 4.782674655050909e-02, 4.171449995422215e-02, 3.533129030361253e-02, 2.898626064895015e-02, 2.296445273166145e-02, 1.750822265693915e-02, 1.280250319629313e-02, 8.964977379775097e-03, 6.041802526864056e-03, 4.009052177841434e-03, 2.779566868356985e-03, 2.214464531115009e-03]
-
-# set up sync color heterodyne table first 
-bhet = np.empty(4, dtype=np.complex)
-for i in range(0, 4):
-	bhet[i] = complex(np.cos(((i / freq) * 2.0 * np.pi) + (0.0/180.0)), -(np.sin(((i / freq) * 2.0 * np.pi) + (0.0/180.0))))
-	bhet[i] = complex(np.cos(((i / freq) * 2.0 * np.pi) + (0.0/180.0)), -(np.sin(((i / freq) * 2.0 * np.pi) + (0.0/180.0))))
-
-def burst_detect(line):
-	level = 0
-	phase = 0
-
-	obhet = np.empty(burst_len, dtype=np.complex)
-	for i in range(0, burst_len):
-		obhet[i] = bhet[i % 4] * line[i]
-
-	obhet_filt = sps.fftconvolve(obhet, color_filter)
-	obhet_levels = np.absolute(obhet_filt)
-	obhet_angles = np.angle(obhet_filt)
-
-	for i in range(65, burst_len):
-		if obhet_levels[i] > level:
-			level = obhet_levels[i]
-			phase = obhet_angles[i]
-
-	return [level, phase]
-
-def clamp(v, min, max):
-	if v < min:
-		return min
-
-	if v > max:
-		return max
-
-	return v
-
 def torgb(y, i, q):
 	# rebase y@0 to 0ire from -40
 	y = (y - 16384) * 1.40
@@ -76,15 +40,7 @@ def comb(inframe):
 	rgb = np.zeros([480, 744 * 3], dtype=np.uint8)
 	prevframe = inframe
 		
-	lhet = np.empty([525, 8], dtype=np.complex)
-	adji = np.empty([525, 852 + 32], dtype=np.double)
-	adjq = np.empty([525, 852 + 32], dtype=np.double)
-	lohet = np.empty([525, 852], dtype=np.complex)
-	lohet_filt = np.empty([525, 852 + 32], dtype=np.complex)
-
 	yiq = np.empty([480, 780, 4], dtype=np.double)
-	fo = np.empty([480, 780], dtype=np.double)
-	fy = np.empty([480, 780], dtype=np.double)
 	fi = np.empty([480, 780], dtype=np.double)
 	fq = np.empty([480, 780], dtype=np.double)
 
@@ -92,10 +48,8 @@ def comb(inframe):
 	q = 0
 
 	for l in range(23, 503):
-		print inframe[l][0]
 		linephase = inframe[l][0]
 
-		print burst_detect(inframe[l])
 		for x in range(72, 850):
 			prev = np.double(inframe[l][x - 2])
 			cur = np.double(inframe[l][x])
@@ -104,7 +58,7 @@ def comb(inframe):
 			phase = x % 4
 
 			c = (cur - ((prev + nex) / 2)) / 2
-#			c = (cur - prev) / 2
+
 			if (linephase == 16384):
 				c = -c
 
@@ -117,16 +71,11 @@ def comb(inframe):
 			elif (phase == 3):
 				i = c	
 	
-			#if ((x / 2) % 2) == 1:
-			#	c = -c
-
 			y = (cur - ((cur - prev) / 2))
 
 #			print x, x % 4, cur, c, prev, nex, y, i, q, cur + c
 
 			yiq[l - 23][x - 72] = [cur, y, i, q]
-			fo[l - 23][x - 72] = cur 
-			fy[l - 23][x - 72] = y 
 			fi[l - 23][x - 72] = i 
 			fq[l - 23][x - 72] = q 
 		
@@ -137,13 +86,9 @@ def comb(inframe):
 	
 	for l in range(23, 503):
 		linephase = inframe[l][0]
-#		print l
+
 		for x in range(72, 744+72):
 			[cur, y, i, q] = yiq[l - 23][x - 72]
-#			if (l > 27) and (l <= 500):
-#				[other, yq, iq, qq] = ((yiq[l - 25][x - 72]) + (yiq[l - 21][x - 72])) / 2
-#			else:
-#				[other, yq, iq, qq] = yiq[l - 23][x - 72]
 	
 			if (l > 27) and (l <= 500):
 				otheri = (fi[l-25][x - 72] + fi[l-21][x - 72]) / 2.0
@@ -171,15 +116,12 @@ def comb(inframe):
 			_y = y
 			y = cur - comp
 
-			print x, phase, cur, i, q, y, _y
+#			print x, phase, cur, i, q, y, _y
 
 			[r, g, b] = torgb(y, i, q)
 			rgb[l - 23][((x - 72) * 3) + 0] = r 
 			rgb[l - 23][((x - 72) * 3) + 1] = g 
 			rgb[l - 23][((x - 72) * 3) + 2] = b 
-
-#			if (x % 10) == 0:
-#			print l, x, yiq[l-25][x-72], r, g, b
 
 	return rgb
 
