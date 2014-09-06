@@ -37,15 +37,19 @@ struct RGB {
         double r, g, b;
 
         void conv(YIQ y) {
-		y.y /= 1.0;
+		YIQ t;
 
-                r = (y.y * 1.164) + (1.596 * y.i);
-                g = (y.y * 1.164) - (0.813 * y.i) - (y.q * 0.391);
-                b = (y.y * 1.164) + (y.q * 2.018);
+		t.y = (y.y - 16384) * 1.40;
+		t.i = y.i * 1.4;
+		t.q = y.q * 1.4;
 
-                r = clamp(r, 0, 1.00);
-                g = clamp(g, 0, 1.00);
-                b = clamp(b, 0, 1.00);
+                r = (t.y * 1.164) + (1.596 * t.i);
+                g = (t.y * 1.164) - (0.813 * t.i) - (t.q * 0.391);
+                b = (t.y * 1.164) + (t.q * 2.018);
+
+                r = clamp(r / 256, 0, 255);
+                g = clamp(g / 256, 0, 255);
+                b = clamp(b / 256, 0, 255);
                 //cerr << 'y' << y.y << " i" << y.i << " q" << y.q << ' ';
                 //cerr << 'r' << r << " g" << g << " b" << b << endl;
         };
@@ -145,7 +149,7 @@ class Comb
 			cline cur_combed;
 
 			int counter = 0;
-			for (int h = line_blanklen - 64 - 135; counter < 1760 - 135; h++) {
+			for (int h = 0; counter < 852; h++) {
 				cur_combed.y[h] = cur.y[h];
 				cur_combed.i[h] = cur.i[h];
 				cur_combed.q[h] = cur.q[h];
@@ -196,10 +200,10 @@ class Comb
 				}
 			}
 
-			int o = 0;
 			for (int l = 24; l < 504; l++) {
 				bool invertphase = (buffer[l * 852] == 16384);
 				cline_t line;
+				int o = 0;
 
 				if (l < 503) 
 					line = Blend(wbuf[0][l - 2], wbuf[0][l], wbuf[0][l + 2]);
@@ -207,6 +211,7 @@ class Comb
 					memcpy(&line, &wbuf[0][l], sizeof(cline_t));
 		
 				uint8_t *line_output = &output[(744 * 3 * (l - 24))];
+				cerr << l << ' ' << (744 * 3 * (l - 24)) << endl;
 
 				for (int h = 0; h < 744; h++) {
 					double comp;	
@@ -228,6 +233,7 @@ class Comb
 
 					if (invertphase) comp = -comp;
 					y.y -= comp;
+
 #if 0
 					outline[h+32].y -= hpline[h+47].y;
 					outline[h+32].i -= hpline[h+47].i;
@@ -238,11 +244,14 @@ class Comb
 //					if ((l == 50) && !(h % 20)) {
 //						cerr << h << ' ' << (int)(outline[h+32].y * 65536) << ' ' << (int)(outline[h+32].i * 65536) << ' ' << (int)(outline[h+32].q * 65536) << ' ' << r.r << ' ' << r.g << ' ' << r.b << endl;
 //					}
+//					cerr << l << ' ' << (744 * 3 * (l - 24)) << ' ' << o << ' ' << (r.r * 255.0) << endl;
 
-					line_output[o++] = (uint8_t)(r.r * 255.0); 
-					line_output[o++] = (uint8_t)(r.g * 255.0); 
-					line_output[o++] = (uint8_t)(r.b * 255.0); 
+					line_output[o++] = (uint8_t)(r.r); 
+					line_output[o++] = (uint8_t)(r.g); 
+					line_output[o++] = (uint8_t)(r.b); 
 				}
+		
+				if (l == 51) cerr << (int)line_output[300] << endl;	
 			}
 
 			return;
@@ -325,7 +334,7 @@ class Comb
 				for (int i = 0; i < 700; i++) {
 					if (buffer[(852 * line) + i] > 45000) wc++;
 				} 
-				if (wc > 1000) {
+				if (wc > 500) {
 					fstart = (line % 2); 
 				}
 				cerr << "PW" << line << ' ' << wc << ' ' << fieldcount << endl;
