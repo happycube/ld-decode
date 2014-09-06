@@ -104,6 +104,10 @@ class Filter {
 			}
 		}
 
+		void dump() {
+			for (int i = 0 ; i < order; i++) cerr << x[i] << ' ' << b[i] << endl;
+		}
+
 		inline double feed(double val) {
 			double a0 = a[0];
 			double y0;
@@ -146,6 +150,8 @@ class Filter {
 					y0 += b[o] * x[o];
 				}
 			}
+
+//			for (int i = 0 ; i < order; i++) cerr << x[i] << endl;
 
 			y[0] = y0;
 			return y[0];

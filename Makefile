@@ -21,14 +21,20 @@ ldd10: ld-decoder-10.cxx
 ntsc10: ntsc.cxx
 	clang++ -std=c++11  -Wall -D_NOSNAP -O3 -g -DDOWNSCALE -o ntsc10 ntsc.cxx
 
-ntsc: ntsc.cxx deemp.h
-	clang++ -std=c++11  -Wall -D_NOSNAP -O3 -g -o ntsc ntsc.cxx
+ntscold: ntsc.cxx deemp.h
+	clang++ -std=c++11  -Wall -D_NOSNAP -O3 -g -o ntscold ntsc.cxx
+
+ntsc: ntscg2.cxx deemp.h
+	clang++ -std=c++11  -Wall -D_NOSNAP -O3 -g -o ntsc ntscg2.cxx
 
 ntsc-aud: ntsc.cxx deemp.h
 	clang++ -std=c++11  -Wall -DSOUND -D_NOSNAP -O3 -g -o ntsc-aud ntsc.cxx
 
 comb: comb.cxx deemp.h
 	clang++ -std=c++11  -Wall -D_NOSNAP -O3 -g -o comb comb.cxx
+
+combg2: combg2.cxx deemp.h
+	clang++ -std=c++11  -Wall -D_NOSNAP -O3 -g -o combg2 combg2.cxx
 
 ntsc4: ntsc-4fsc.cxx
 	clang++ -std=c++11  -Wall -D_NOSNAP -O3 -g -o ntsc4 ntsc-4fsc.cxx

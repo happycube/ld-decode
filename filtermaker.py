@@ -91,22 +91,27 @@ Bcolor = sps.firwin(33, 0.8 / (freq), window='hamming')
 Acolor = [1.0]
 
 Ncolor = 32
-Fcolor = sps.firwin(Ncolor + 1, 1.0 / (freq), window='hamming')
+Fcolor = sps.firwin(Ncolor + 1, 0.2 / (freq), window='hamming')
 
 Nlpf = 18
 lowpass_filter = sps.firwin(Nlpf + 1, 5.0 / (freq), window='hamming')
 
-sync_filter = sps.firwin(33, 0.1 / (freq), window='hamming')
+sync_filter = sps.firwin(Ncolor + 1, 0.1 / (freq), window='hamming')
 #fdls.doplot(freq*2, sync_filter, [1.0])
 #exit()
 
-Nnr = 31
-hp_nr_filter = sps.firwin(Nnr, 1.8 / (freq ), window='hamming', pass_zero=False)
-hp_nrc_filter = sps.firwin(Nnr, 0.4 / (freq ), window='hamming', pass_zero=False)
+Nnr = 16
+hp_nr_filter = sps.firwin(Nnr + 1, 1.8 / (freq / 2.0), window='hamming', pass_zero=False)
+hp_nrc_filter = sps.firwin(Nnr + 1, 0.6 / (freq / 2.0), window='hamming', pass_zero=False)
 
-Ncolor = 17
-#colorbp_filter = sps.firwin(Ncolor, [3.2216 / freq, 3.9375 / freq], window='hamming', pass_zero=False)
-colorbp_filter = sps.firwin(Ncolor, [3.4006 / freq, 3.7585 / freq], window='hamming', pass_zero=False)
+Ncolorlp4 = 16 
+colorlp4_filter = sps.firwin(Ncolorlp4 + 1, [0.6 / (freq / 2)], window='hamming')
+
+Ncolorbp4 = 8
+colorbp4_filter = sps.firwin(Ncolorbp4 + 1, [3.4006 / (freq / 2), 3.7585 / (freq / 2)], window='hamming', pass_zero=False)
+
+Ncolorbp8 = 16
+colorbp8_filter = sps.firwin(Ncolorbp8 + 1, [3.4006 / (freq), 3.7585 / (freq)], window='hamming', pass_zero=False)
 
 print "vector<double> c_deemp_b = {",
 for i in range(0, len(B)):
@@ -200,11 +205,24 @@ print "};"
 print
 print "Filter f_nrc(" ,Nnr, ", NULL, c_nr);"
 
-print "const double c_colorbp[] {",
-for i in range(0, len(colorbp_filter)):
-        print "%.15e" % colorbp_filter[i], ",",
+print "const double c_colorbp4[] {",
+for i in range(0, len(colorbp4_filter)):
+        print "%.15e" % colorbp4_filter[i], ",",
 print "};"
 print
-print "Filter f_colorbp(" ,Ncolor, ", NULL, c_colorbp);"
+print "Filter f_colorbp4(" ,Ncolorbp4, ", NULL, c_colorbp4);"
 
+print "const double c_colorbp8[] {",
+for i in range(0, len(colorbp8_filter)):
+        print "%.15e" % colorbp8_filter[i], ",",
+print "};"
+print
+print "Filter f_colorbp8(" ,Ncolorbp8, ", NULL, c_colorbp8);"
+
+print "const double c_colorlp4[] {",
+for i in range(0, len(colorlp4_filter)):
+        print "%.15e" % colorlp4_filter[i], ",",
+print "};"
+print
+print "Filter f_colorlp4(" ,Ncolorlp4, ", NULL, c_colorlp4);"
 

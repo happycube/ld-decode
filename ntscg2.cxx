@@ -309,7 +309,7 @@ int Process(uint16_t *buf, int len)
 					if (line > 0) {
 						write(1, frame, sizeof(frame));
 					}
-					tgt_phase = 0;
+//					tgt_phase = 0;
 					line = 1;
 					firstline = -1;
 				} else if ((line == -2) && (linelen > 1800) && (count > 80)) {

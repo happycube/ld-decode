@@ -177,7 +177,7 @@ class Comb
 
 				double si = 0, sq = 0;
 
-				for (int h = 64; h < 852; h++) {
+				for (int h = 68; h < 852; h++) {
 					int phase = h % 4;
 
 					double prev = line[h - 2];	
@@ -217,16 +217,16 @@ class Comb
 				uint8_t *line_output = &output[(744 * 3 * (l - 24))];
 //				cerr << l << ' ' << (744 * 3 * (l - 24)) << endl;
 
-				// only need 744 for deocding, but need extra space for the filter
+				// only need 744 for deocding, but need extra space for the NR filter
 				for (int h = 0; h < 760; h++) {
 					double comp;	
 					int phase = h % 4;
 					YIQ y;
 					RGB r;
 
-					y.y = line.y[h + 64];
-					y.i = line.i[h + 64];
-					y.q = line.q[h + 64];
+					y.y = line.y[h + 70];
+					y.i = line.i[h + 70];
+					y.q = line.q[h + 70];
 
 					switch (phase) {
 						case 0: comp = y.q; break;

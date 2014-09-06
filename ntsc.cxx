@@ -427,7 +427,7 @@ class TBC
 			f_synci = new Filter(f_sync);
 			f_syncq = new Filter(f_sync);
 
-			f_bpcolor = new Filter(f_colorbp);
+			f_bpcolor = new Filter(f_colorbp8);
 
 			jumped = false;
 			prev_gap = prev_adjust = 0;

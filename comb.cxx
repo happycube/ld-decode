@@ -396,6 +396,10 @@ class Comb
 					
 					r.conv(outline[h + 32]);
 
+					if ((l == 50) && !(h % 20)) {
+					//	cerr << h << ' ' << (int)(outline[h+32].y * 65536) << ' ' << (int)(outline[h+32].i * 65536) << ' ' << (int)(outline[h+32].q * 65536) << ' ' << r.r << ' ' << r.g << ' ' << r.b << endl;
+					}
+
 					line_output[o++] = (uint8_t)(r.r * 255.0); 
 					line_output[o++] = (uint8_t)(r.g * 255.0); 
 					line_output[o++] = (uint8_t)(r.b * 255.0); 

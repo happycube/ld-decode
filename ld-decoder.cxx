@@ -232,7 +232,7 @@ int main(int argc, char *argv[])
 				n /= (9300000.0 - 7600000.0);
 				if (n < 0) n = 0;
 				in = 1 + (n * 57344.0);
-				if (in > 65535) in = 65535;
+				if (in > 64000) in = 64000;
 //				cerr << in << endl;
 			} else {
 				in = 0;
