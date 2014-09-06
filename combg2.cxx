@@ -196,7 +196,7 @@ class Comb
 
 					wbuf[0][l].y[h] = cur; 
 					wbuf[0][l].i[h - 9] = f_i->feed(si); 
-					wbuf[0][l].q[h - 9] = f_q->feed(si); 
+					wbuf[0][l].q[h - 9] = f_q->feed(sq); 
 				}
 			}
 
