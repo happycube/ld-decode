@@ -105,14 +105,13 @@ inline double WrapAngle(double a1, double a2) {
 
 // tunables
 
+int afd = -1, fd = 0;
+
 double black_ire = 7.5;
 
 int write_locs = -1;
 
 uint16_t frame[505][(int)(OUT_FREQ * 213)];
-
-// set up sync color heterodyne table first 
-complex<double> burst_hdyne[2400];
 
 Filter f_syncr(f_sync);
 Filter f_synci(f_sync);
@@ -188,7 +187,7 @@ double cross = 5000;
 double line = -2;
 double tgt_phase = 0;
 
-int Process(uint16_t *buf, int len)
+int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 {
 	double prevf, f = 0;
 	double crosspoint = -1, prev_crosspoint = -1, tmp_crosspoint = -1;
@@ -334,63 +333,80 @@ int Process(uint16_t *buf, int len)
 	return (prev_crosspoint - 700);
 }
 
+const int ablen = 512;
+const int vblen = 16384;
+
+const int absize = 512 * 8;
+const int vbsize = 16384 * 2;
+
 int main(int argc, char *argv[])
 {
-	int rv = 0, fd = 0;
+	int rv = 0, arv = 0;
 	long long dlen = -1, tproc = 0;
 	//double output[2048];
-	unsigned short inbuf[16384];
+	float abuf[ablen * 2];
+	unsigned short inbuf[vblen];
 	unsigned char *cinbuf = (unsigned char *)inbuf;
+	unsigned char *cabuf = (unsigned char *)abuf;
+
+	int c;
 
 	cerr << std::setprecision(10);
 	cerr << argc << endl;
 	cerr << strncmp(argv[1], "-", 1) << endl;
-
-	if (argc >= 2 && (strncmp(argv[1], "-", 1))) {
-		fd = open(argv[1], O_RDONLY);
-	}
-
-	if (argc >= 3) {
-		unsigned long long offset = atoll(argv[2]);
-
-		if (offset) lseek64(fd, offset, SEEK_SET);
-	}
-		
-	if (argc >= 4) {
-		if ((size_t)atoi(argv[3]) < dlen) {
-			dlen = atoi(argv[3]); 
-		}
-	}
-
-	for (int i = 0; i < 2400; i++) {
-		 burst_hdyne[i] = complex<double>(cos(((i / in_freq) * 2.0 * M_PIl) + (0.0/180.0)), -(sin(((i / in_freq) * 2.0 * M_PIl) + (0.0/180.0))));
-	}
-
-	// XX: make parameter
-	#if SOUND
-		write_locs = 0;
-	#endif
+	
+	opterr = 0;
+	
+	while ((c = getopt(argc, argv, "i:a:")) != -1) {
+		switch (c) {
+			case 'i':
+				fd = open(optarg, O_RDONLY);
+				break;
+			case 'a':
+				afd = open(optarg, O_RDONLY);
+				break;
+			default:
+				return -1;
+		} 
+	} 
 
 	cout << std::setprecision(8);
 
-	rv = read(fd, inbuf, 32768);
-	while ((rv > 0) && (rv < 32768)) {
-		int rv2 = read(fd, &cinbuf[rv], 32768 - rv);
+	rv = read(fd, inbuf, vbsize);
+	while ((rv > 0) && (rv < vbsize)) {
+		int rv2 = read(fd, &cinbuf[rv], vbsize - rv);
 		if (rv2 <= 0) exit(0);
 		rv += rv2;
 	}
+	
+	arv = read(afd, abuf, absize);
+	while ((arv > 0) && (arv < absize)) {
+		int arv2 = read(fd, &cabuf[arv], absize - arv);
+		if (arv2 <= 0) exit(0);
+		arv += arv2;
+	}
 
-	while (rv == 32768 && ((tproc < dlen) || (dlen < 0))) {
-		int plen = Process(inbuf, rv / 2);	
+	int aplen;
+	while (rv == vbsize && ((tproc < dlen) || (dlen < 0))) {
+		int plen = Process(inbuf, rv / 2, abuf, arv / 8, aplen);
 
 		tproc += plen;
-                memmove(inbuf, &inbuf[plen], (16384 - plen) * 2);
-                rv = read(fd, &inbuf[(16384 - plen)], plen * 2) + ((16384 - plen) * 2);
-		while ((rv > 0) && (rv < 32768)) {
-			int rv2 = read(fd, &cinbuf[rv], 32768 - rv);
+               
+		memmove(inbuf, &inbuf[plen], (vblen - plen) * 2);
+
+                rv = read(fd, &inbuf[(vblen - plen)], plen * 2) + ((vblen - plen) * 2);
+		while ((rv > 0) && (rv < vbsize)) {
+			int rv2 = read(fd, &cinbuf[rv], vbsize - rv);
 			if (rv2 <= 0) exit(-1);
 			rv += rv2;
 		}	
+	
+                arv = read(afd, &abuf[absize - aplen], plen * 2) + ((absize - plen) * 2);
+		while ((arv > 0) && (arv < absize)) {
+			int arv2 = read(fd, &cabuf[arv], absize - arv);
+			if (arv2 <= 0) exit(-1);
+			arv += arv2;
+		}
 	}
 
 	return 0;
