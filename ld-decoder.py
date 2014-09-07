@@ -44,9 +44,6 @@ Aboost = [1.0]
 #doplot(Bboost, Aboost)
 #exit()
 
-print Bboost
-exit
-
 n = 128 
 Fr = np.zeros(n)
 Am = np.zeros(n)
@@ -111,10 +108,6 @@ for i in range(0, len(Fr)):
 #	Th[i] = -(Fr[i] * 29.5) 
 
 [f_deemp_b, f_deemp_a] = fdls.FDLS(Fr, Am, Th, Ndeemp, Ddeemp)
-
-print f_deemp_b
-print f_deemp_a
-exit()
 
 #f_deemp_b = sps.firwin2(125, Fr, Am)
 #f_deemp_b = [1.0]
