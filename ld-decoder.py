@@ -44,6 +44,9 @@ Aboost = [1.0]
 #doplot(Bboost, Aboost)
 #exit()
 
+print Bboost
+exit
+
 n = 128 
 Fr = np.zeros(n)
 Am = np.zeros(n)
@@ -86,23 +89,16 @@ for f in range(0, n):
         H = 2.0 * np.pi * F * tH
         L = 2.0 * np.pi * F * tL
 
-#       print H, L
-
         A = 1.0 + (1.0 / (H * H))
         B = 1.0 + (1.0 / (L * L))
 
         DE = ((10.0*np.log(A/B))-21.9722457733) * (10.0 / 21.9722457733)
-#        print f, np.log(A/B), np.power(10, DE / 24.0)
-
-#	cf = (1.0 / float(n)) * float(f)
 	cf = (float(f) / df)
 
         Fr[f] = cf / freq
         Am[f] = np.power(10, (DE/18.0)) 
 
 	#print f, Fr[f] * freq, Am[f]
-
-#Fr[n - 1] = 1.0 
 
 Ndeemp = 8
 Ddeemp = 5
@@ -115,6 +111,10 @@ for i in range(0, len(Fr)):
 #	Th[i] = -(Fr[i] * 29.5) 
 
 [f_deemp_b, f_deemp_a] = fdls.FDLS(Fr, Am, Th, Ndeemp, Ddeemp)
+
+print f_deemp_b
+print f_deemp_a
+exit()
 
 #f_deemp_b = sps.firwin2(125, Fr, Am)
 #f_deemp_b = [1.0]

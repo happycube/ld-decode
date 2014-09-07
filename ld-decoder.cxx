@@ -37,21 +37,20 @@ double fast_atan2( double y, double x )
 	return atan;
 }
 
+inline double WrapAngle(double a1, double a2) {
+        double v = a2 - a1;
 
-typedef vector<complex<double>> v_cossin;
+        if (v > M_PIl) v -= (2 * M_PIl);
+        else if (v <= -M_PIl) v += (2 * M_PIl);
+
+        return v;
+}
 
 class FM_demod {
 	protected:
-		double ilf;
-		vector<Filter> f_q, f_i;
-		vector<Filter *> f_pre;
+		Filter *f_pre;
 		Filter *f_post;
 
-		vector<v_cossin> ldft;
-		double avglevel[40];
-
-		double cbuf[9];
-	
 		int linelen;
 
 		int min_offset;
@@ -60,36 +59,14 @@ class FM_demod {
 
 		vector<double> fb;
 	public:
-		FM_demod(int _linelen, vector<double> _fb, vector<Filter *> prefilt, vector<Filter *> filt, Filter *postfilt) {
+		FM_demod(int _linelen, Filter *prefilt, Filter *postfilt) {
 			int i = 0;
 			linelen = _linelen;
 
-			fb = _fb;
-
-			ilf = 8600000;
 			deemp = 0;
-
-			for (double f : fb) {
-				v_cossin tmpdft;
-				double fmult = f / CHZ; 
-
-				for (int i = 0; i < linelen; i++) {
-					tmpdft.push_back(complex<double>(sin(i * 2.0 * M_PIl * fmult), cos(i * 2.0 * M_PIl * fmult))); 
-					// cerr << sin(i * 2.0 * M_PIl * fmult) << ' ' << cos(i * 2.0 * M_PIl * fmult) << endl;
-				}	
-				ldft.push_back(tmpdft);
-
-				f_i.push_back(Filter(filt[i]));
-				f_q.push_back(Filter(filt[i]));
-
-				i++;
-			}
 
 			f_pre = prefilt;
 			f_post = postfilt ? new Filter(*postfilt) : NULL;
-
-			for (int i = 0; i < 40; i++) avglevel[i] = 30;
-			for (int i = 0; i < 9; i++) cbuf[i] = 8100000;
 
 			min_offset = 128;
 		}
@@ -104,77 +81,41 @@ class FM_demod {
 			vector<double> out;
 			vector<double> phase(fb.size() + 1);
 			vector<double> level(fb.size() + 1);
-			double total = 0.0;
 			
-			for (int i = 0; i < 9; i++) cbuf[i] = 8100000;
-
 			if (in.size() < (size_t)linelen) return out;
+
+			double prev_ang = 0;
 
 			int i = 0;
 			for (double n : in) {
-				vector<double> angle(fb.size() + 1);
-				double peak = 500000, pf = 0.0;
-				int npeak;
-				int j = 0;
+				double v = 0;	
 
-				total += fabs(n);
-				for (Filter *f: f_pre) {
-					n = f->feed(n);
-				}
+				n = f_pre->feed(n);
 
-				angle[j] = 0;
+				double real = f_hilbertr.feed(n);
+				double imag = f_hilberti.feed(n);
 
-//				cerr << i << ' ';
-	
-				for (double f: fb) {
-					double fci = f_i[j].feed(n * ldft[j][i].real());
-					double fcq = f_q[j].feed(-n * ldft[j][i].imag());
-					double at2 = fast_atan2(fci, fcq);	
-	
-//					cerr << n << ' ' << fci << ' ' << fcq << ' ' ;
+				double ang = atan2(real, imag);
+		
+				if (!i) prev_ang = ang;
 
-					level[j] = ctor(fci, fcq);
-	
-					angle[j] = at2 - phase[j];
-					if (angle[j] > M_PIl) angle[j] -= (2 * M_PIl);
-					else if (angle[j] < -M_PIl) angle[j] += (2 * M_PIl);
-					
-//					cerr << at2 << ' ' << angle[j] << ' '; 
-				//	cerr << angle[j] << ' ';
-						
-					if (fabs(angle[j]) < fabs(peak)) {
-						npeak = j;
-						peak = angle[j];
-						pf = f + ((f / 2.0) * angle[j]);
-					}
-//					cerr << pf << endl;
-					phase[j] = at2;
+				double diff = WrapAngle(ang, prev_ang);
 
-				//	cerr << f << ' ' << pf << ' ' << f + ((f / 2.0) * angle[j]) << ' ' << fci << ' ' << fcq << ' ' << ' ' << level[j] << ' ' << phase[j] << ' ' << peak << endl;
+				v = diff * 4557618;
+				if (f_post) v = f_post->feed(v);	
 
-					j++;
-				}
-	
-				double thisout = pf;	
+			//	cerr << ang << ' ' << diff << ' ' << diff * 4557618 << ' ' << v << endl;
 
-				if (f_post) thisout = f_post->feed(pf);	
-				if (i > min_offset) {
-					int bin = (thisout - 7600000) / 200000;
-					if (1 || bin < 0) bin = 0;
+				prev_ang = ang;
 
-					avglevel[bin] *= 0.9;
-					avglevel[bin] += level[npeak] * .1;
+				if (i > 1024) out.push_back(v);
 
-					out.push_back(((level[npeak] / avglevel[bin]) > 0.3) ? thisout : 0);
-				};
 				i++;
 			}
 
 			return out;
 		}
 };
-
-bool triple_hdyne = true;
 
 int main(int argc, char *argv[])
 {
@@ -203,13 +144,24 @@ int main(int argc, char *argv[])
 		}
 	}
 
+#if 0
+	for (int i = 0 ; i < 4096; i++) {
+		double n = 9300000;
+
+		cerr << "d " << n ;
+		n = f_deemp.feed(n) ;
+		cerr << " " << n / 0.9919 << endl;
+	}
+	return -1;
+#endif
+
 	cout << std::setprecision(8);
 	
 	rv = read(fd, inbuf, 2048);
 
 	int i = 2048;
 	
-	FM_demod video(2048, {7700000, 8100000, 8500000, 8900000, 9300000, 9700000}, {&f_boost}, {&f_lpf, &f_lpf, &f_lpf, &f_lpf, &f_lpf, &f_lpf}, NULL);
+	FM_demod video(2048, &f_boost, &f_lpf);
 
 	while ((rv == 2048) && ((dlen == -1) || (i < dlen))) {
 		vector<double> dinbuf;
@@ -226,7 +178,9 @@ int main(int argc, char *argv[])
 			int in;
 
 			if (n > 0) {
-				n = f_deemp.feed(n) ;
+		//		cerr << "d " << n ;
+				n = f_deemp.feed(n) / .9919;
+		//		cerr << " " << n << endl;
 
 				n -= 7600000.0;
 				n /= (9300000.0 - 7600000.0);

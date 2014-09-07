@@ -78,6 +78,9 @@ class Filter {
 			
 			x.resize(b.size() + 1);
 			y.resize(a.size() + 1);
+
+//			for (int i = 0; i < b.size(); i++) cerr << b[i] << endl;;
+//			for (int i = 0; i < b.size(); i++) cerr << a[i] << endl;;
 	
 			clear();
 
@@ -128,6 +131,8 @@ class Filter {
 				for (int o = 1; o < a.size(); o++) {
 					y0 -= ((a[o] / a0) * y[o]);
 				}
+//				for (int i = 0 ; i < b.size(); i++) cerr << 'b' << i << ' ' << b[i] << ' ' << x[i] << endl;
+//				for (int i = 0 ; i < a.size(); i++) cerr << 'a' << i << ' ' << a[i] << ' ' << y[i] << endl;
 			} else {
 				if (order == 13) {
 					double t[4];
@@ -150,8 +155,6 @@ class Filter {
 					y0 += b[o] * x[o];
 				}
 			}
-
-//			for (int i = 0 ; i < order; i++) cerr << x[i] << endl;
 
 			y[0] = y0;
 			return y[0];

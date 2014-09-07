@@ -9,67 +9,51 @@ import fdls as fdls
 
 freq = 4 * 315.0 / 88.0
 
-Ndeemp = 10 
-Ddeemp = 10 
-Fr = np.array([0,   .5000, 1.00, 2.00, 3.00, 3.58, 4.2, 5.5, 6.5, 10.0]) / (freq * 2.0)
-Am = np.array([100, 85.0,    68,   58,   65,   75,   75,  75 , 75, 0]) / 100.0
-Th = np.zeros(10)
-#Th = np.array([0, 0, 0, 0, 0, 0, -0, -1, -1])
+tH = 100.0/1000000000.0 # 100nS
+tL = 300.0/1000000000.0 # 300nS
 
-#Fr = np.array([0, 0.5, 1.0, 2.0, 2.5, 3.0, 3.5, 4.0, 4.2, 4.5, 5.0, 6.0, freq]) / (freq * 2.0) 
-#Am = np.array([1.00, .79, .66, .622, .64725, .7105, .8, .907, 1.24, 1.3986, 1.5, 1.5, 1.5, 1.5]) 
-#Am = np.array([1.00, .82, .72, .64725, .7105, .8, .907, 1.24, 1.3986, 1.5, 1.5, 1.5, 1.5]) 
-#Th = np.zeros(len(Fr))
-#Fr = np.array([0,   .5000, 1.59, 2.00, 3.00, 3.58, 4.2, 5.5, 10.0]) / (freq * 2.0)
-#Am = np.array([100, 83.0,    32, 47,   65,   83,   88,  90 , 10]) / 100.0
-#Th = np.zeros(9)
+n = 128
+df = 128.0/(freq) 
+Fr = np.zeros(n)
+Am = np.zeros(n)
+Th = np.zeros(n)
 
-Ndeemp = 4 
-Ddeemp = 11 
-# V2800
-Fr = np.array([0,   .5000, 1.00, 2.00, 3.00, 3.58, 4.2, 5.5, 10.0]) / (freq * 2.0)
-Am = np.array([100, 83.0,    60,   46,   57,   70,   88,  90 , 10]) / 100.0
-Th = np.zeros(9)
+for f in range(0, n):
+        F = ((float(f) / df) * 1000000.0) + 1
+        H = 2.0 * np.pi * F * tH
+        L = 2.0 * np.pi * F * tL
 
-# 503 v1
-Fr = np.array([0,   .5000, 1.60, 3.00, 4.2, 5.5, 10.0]) / (freq * 2.0)
-Am = np.array([100, 83.0,    44,   50, 70,  75 , 10]) / 100.0
-Th = np.zeros(len(Fr))
+        A = 1.0 + (1.0 / (H * H))
+        B = 1.0 + (1.0 / (L * L))
+
+        DE = ((10.0*np.log(A/B))-21.9722457733) * (10.0 / 21.9722457733)
+	cf = (float(f) / df)
+
+        Fr[f] = cf / (freq * 2)
+        Am[f] = np.power(10, (DE/18.0)) 
+
+Ndeemp = 8
+Ddeemp = 5
+
+for i in range(0, len(Fr)):
+	Th[i] = -(Fr[i] * 5040) / 180.0
+	Th[i] = -(Fr[i] * 29.4) 
+	Th[i] = -(Fr[i] * 30.0) 
+	Th[i] = -(Fr[i] * 30.0) 
+
+[f_deemp_b, f_deemp_a] = fdls.FDLS(Fr, Am, Th, Ndeemp, Ddeemp)
+
+#Ndeemp = 4 
+#Ddeemp = 11 
 
 # 503 v2, also good de-emp for 2800, but lower FR
 Fr = np.array([0,   .5000, 1.60, 3.00, 4.2, 5.0, 10.0]) / (freq * 2.0)
 Am = np.array([100, 84.0,    45,   45, 60,  70 , 00]) / 100.0
 Th = np.zeros(len(Fr))
 
-# v. good de-emp for 2800, but relatively low FR
-#Fr = np.array([0,   .5000, 1.60, 3.00, 4.2, 5.0, 10.0]) / (freq * 2.0)
-#Am = np.array([100, 84.0,    44,   45, 60,  70 , 00]) / 100.0
-#Th = np.zeros(len(Fr))
+#[f_deemp_b, f_deemp_a] = fdls.FDLS(Fr, Am, Th, Ndeemp, Ddeemp)
 
-# nice balance of de-emp and FR on 2800 
-#Fr = np.array([0,   .5000, 1.60, 3.00, 4.2, 5.0, 10.0]) / (freq * 2.0)
-#Am = np.array([100, 84.0,    44,   50, 68,  80 , 00]) / 100.0
-#Th = np.zeros(len(Fr))
-
-#nf = 256 
-#Fr = np.zeros(nf)
-#Am = np.zeros(nf)
-#Th = np.zeros(nf)
-#for i in range(0, len(Fr)):
-#	Fr[i] = i / (nf * 2.0)
-#	Am[i] = 1.0 
-
-[B, A] = fdls.FDLS(Fr, Am, Th, Ndeemp, Ddeemp)
-
-#Nboost = 36
-#boost_filter = sps.firwin2(Nboost + 1, [0, (3.2/freq), (7.3/freq), (9.3/freq), (11.3/freq), (12.5/freq), 1], [0, -.00, 1.15, 2.0, 1.15, .05, 0], window='hamming')
-
-Nboost = 9
-Fr = np.array([0, 3.2, 7.3, 9.3, 11.3, 12.5, freq]) / (freq * 2.0)
-Am = np.array([0, 0, 1.3, 2.0, 1.3, .05, 0]) / 100.0
-#Am = np.array([0, 0, 1.0, 1.0, 1.0, .05, 0]) / 100.0
-Th = np.zeros(7)
-[Bboost, Aboost] = fdls.FDLS(Fr, Am, Th, Nboost, Nboost) 
+Bboost = sps.firwin(33, 3.5 / (freq), window='hamming', pass_zero=False)
 
 Nlpf = 14 
 Dlpf = 2 
@@ -93,8 +77,8 @@ Acolor = [1.0]
 Ncolor = 32
 Fcolor = sps.firwin(Ncolor + 1, 0.2 / (freq), window='hamming')
 
-Nlpf = 18
-lowpass_filter = sps.firwin(Nlpf + 1, 5.0 / (freq), window='hamming')
+Nlpf = 30
+lowpass_filter = sps.firwin(Nlpf + 1, 5.2 / (freq), window='hamming')
 
 sync_filter = sps.firwin(Ncolor + 1, 0.1 / (freq), window='hamming')
 #fdls.doplot(freq*2, sync_filter, [1.0])
@@ -113,15 +97,36 @@ colorbp4_filter = sps.firwin(Ncolorbp4 + 1, [3.4006 / (freq / 2), 3.7585 / (freq
 Ncolorbp8 = 16
 colorbp8_filter = sps.firwin(Ncolorbp8 + 1, [3.4006 / (freq), 3.7585 / (freq)], window='hamming', pass_zero=False)
 
+# from http://tlfabian.blogspot.com/2013/01/implementing-hilbert-90-degree-shift.html
+hilbert_filter = np.fft.fftshift(
+    np.fft.ifft([0]+[1]*20+[0]*20)
+)
+
+print "const double c_hilbertr[] {",
+for i in range(0, len(hilbert_filter)):
+        print "%.15e" % hilbert_filter.real[i], ",",
+print "};"
+print
+print "Filter f_hilbertr(" ,len(hilbert_filter)-1, ", NULL, c_hilbertr);"
+print
+
+print "const double c_hilberti[] {",
+for i in range(0, len(hilbert_filter)):
+        print "%.15e" % hilbert_filter.imag[i], ",",
+print "};"
+print
+print "Filter f_hilberti(" ,len(hilbert_filter)-1, ", NULL, c_hilberti);"
+print
+
 print "vector<double> c_deemp_b = {",
-for i in range(0, len(B)):
-        print "%.15e" % B[i], ",",
+for i in range(0, len(f_deemp_b)):
+        print "%.15e" % f_deemp_b[i], ",",
 print "};"
 print
 
 print "vector <double> c_deemp_a = {",
-for i in range(0, len(A)):
-        print "%.15e" % A[i], ",",
+for i in range(0, len(f_deemp_a)):
+        print "%.15e" % f_deemp_a[i], ",",
 print "};"
 print
 print "Filter f_deemp(c_deemp_b, c_deemp_a);"
@@ -132,13 +137,7 @@ for i in range(0, len(Bboost)):
         print "%.15e" % Bboost[i], ",",
 print "};"
 print
-
-print "const double c_boost_a[] {",
-for i in range(0, len(Aboost)):
-        print "%.15e" % Aboost[i], ",",
-print "};"
-print
-print "Filter f_boost(", Nboost, ", c_boost_a, c_boost_b);"
+print "Filter f_boost(", len(Bboost) - 1, ", NULL, c_boost_b);"
 
 print "vector<double> c_lpf_b = {",
 for i in range(0, len(Blpf)):

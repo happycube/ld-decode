@@ -9,7 +9,7 @@ audio: audio-decoder.cxx
 ldcur: ld-decoder-cur.cxx
 	clang++ -std=c++11  -mavx -march=corei7-avx -Wall -DNOSNAP -O3 -g -o ldcur ld-decoder-cur.cxx
 
-ldd: ld-decoder.cxx deemp.h
+ldd: ld-decoder.cxx deemp.h ld-decoder.h
 	clang++ -std=c++11  -mavx -march=corei7-avx -Wall -DNOSNAP -O3 -g -o ldd ld-decoder.cxx
 
 deemp.h: filtermaker.py
@@ -24,7 +24,7 @@ ntsc10: ntsc.cxx
 ntscold: ntsc.cxx deemp.h
 	clang++ -std=c++11  -Wall -D_NOSNAP -O3 -g -o ntscold ntsc.cxx
 
-ntsc: ntscg2.cxx deemp.h
+ntsc: ntscg2.cxx ld-decoder.h deemp.h
 	clang++ -std=c++11  -Wall -D_NOSNAP -O3 -g -o ntsc ntscg2.cxx
 
 ntsc-aud: ntsc.cxx deemp.h
