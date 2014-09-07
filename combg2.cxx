@@ -237,7 +237,8 @@ class Comb
 					}
 
 					if (invertphase) comp = -comp;
-					y.y -= comp;
+//					cerr << y.y << ' ' << comp << ' ' << y.y + comp << endl;
+					y.y += comp;
 
 					hpline[h].y = clamp(f_hpy->feed(y.y), -nr_y, nr_y);
 					hpline[h].i = clamp(f_hpi->feed(y.i), -nr_c, nr_c);
