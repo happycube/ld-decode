@@ -3,7 +3,7 @@
 #include <complex>
 #include "ld-decoder.h"
 #include "deemp.h"
-
+	
 double clamp(double v, double low, double high)
 {
         if (v < low) return low;
@@ -185,7 +185,7 @@ Filter f_syncp(f_sync);
 double cross = 5000;
 
 double line = -2;
-double tgt_phase = 0;
+double tgt_phase = -1;
 
 int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 {
@@ -211,7 +211,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 		} else {
 			if (count > 40) crosspoint = tmp_crosspoint;
 
-			if ((count > 30) && prev_crosspoint > 0) {
+			if ((count > 40) && prev_crosspoint > 0) {
 				double begin = prev_crosspoint;
 				double end = begin + ((crosspoint - prev_crosspoint) * scale_linelen);
 				double linelen = crosspoint - prev_crosspoint; 
@@ -232,28 +232,19 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 					BurstDetect(tout1, out_freq, 0, plevel1, pphase1); 
 					BurstDetect(tout1, out_freq, 228, plevel2, pphase2); 
 
-					if (!tgt_phase) {
+					if (tgt_phase == -1) {
 						if ((pphase1 < 0) && (pphase1 > (-M_PIl * 3 / 4))) {
-							tgt_phase = (-M_PIl / 2.0);
+							tgt_phase = 0;
 						} else {
-							tgt_phase = (M_PIl / 2.0);
+							tgt_phase = -180 * (M_PIl / 180.0);
 						}
-					} else tgt_phase = -tgt_phase;
-			
-					if (floor(line) == 272) tgt_phase = -tgt_phase;
-
-					double atgt_phase = tgt_phase - (57 * (M_PIl / 180));
-
-					if (tgt_phase > 0) 
-						atgt_phase = (-180 + 0) * (M_PIl / 180);
-					else
-						atgt_phase = (0 + 0) * (M_PIl / 180);
-
-			//		atgt_phase = tgt_phase + (33 * (M_PIl / 180));
-
+					} else if (floor(line) != 272) { 
+						tgt_phase = tgt_phase ? 0 : (-180 * (M_PIl / 180.0));
+					}		
+	
 					cerr << line << " 0" << ' ' << ((end - begin) / scale_tgt) * 1820.0 << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
-					adjust1 = WrapAngle(pphase1, atgt_phase);	
-					adjust2 = WrapAngle(pphase2, atgt_phase);
+					adjust1 = WrapAngle(pphase1, tgt_phase);	
+					adjust2 = WrapAngle(pphase2, tgt_phase);
 					begin += (adjust1 * phasemult);
 					end += (adjust1 * phasemult);
 
@@ -263,7 +254,6 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 					
 					cerr << line << " 1" << ' ' << ((end - begin) / scale_tgt) * 1820.0 << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
 
-					adjust1 = WrapAngle(pphase1, atgt_phase);	
 					adjust2 = WrapAngle(pphase2, pphase1);
 					end += (adjust2 * phasemult);
 					
@@ -294,11 +284,9 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 //						cerr << x << ' ' << tout1[x] << ' ' << tout2[x] << ' ' << tout3[x] << ' ' << v << ' ' << frame[oline][x - (int)(14 * out_freq)] << endl;
 					}
 
-					if (tgt_phase > 0) 
-						frame[oline][0] = 32768; 
-					else
-						frame[oline][0] = 16384; 
-					
+					if (oline >= 0) {
+						frame[oline][0] = tgt_phase ? 32768 : 16384; 
+					}	
 					//crosspoint = begin + (((end - begin) / scale_tgt) * 1820);
 	
 					line++;
@@ -323,9 +311,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 	//			if (floor(line) == 272) tgt_phase -= tgt_phase;
 //				cerr << line << endl;
 			}
-
 			prev_crosspoint = crosspoint;
-
 			count = 0;
 		}
 	}
@@ -336,8 +322,8 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 const int ablen = 512;
 const int vblen = 16384;
 
-const int absize = 512 * 8;
-const int vbsize = 16384 * 2;
+const int absize = ablen * 8;
+const int vbsize = vblen * 2;
 
 int main(int argc, char *argv[])
 {
@@ -354,7 +340,7 @@ int main(int argc, char *argv[])
 	cerr << std::setprecision(10);
 	cerr << argc << endl;
 	cerr << strncmp(argv[1], "-", 1) << endl;
-	
+
 	opterr = 0;
 	
 	while ((c = getopt(argc, argv, "i:a:")) != -1) {
@@ -378,34 +364,40 @@ int main(int argc, char *argv[])
 		if (rv2 <= 0) exit(0);
 		rv += rv2;
 	}
-	
-	arv = read(afd, abuf, absize);
-	while ((arv > 0) && (arv < absize)) {
-		int arv2 = read(fd, &cabuf[arv], absize - arv);
-		if (arv2 <= 0) exit(0);
-		arv += arv2;
+
+	if (afd != -1) {	
+		arv = read(afd, abuf, absize);
+		while ((arv > 0) && (arv < absize)) {
+			int arv2 = read(fd, &cabuf[arv], absize - arv);
+			if (arv2 <= 0) exit(0);
+			arv += arv2;
+		}
 	}
 
 	int aplen;
 	while (rv == vbsize && ((tproc < dlen) || (dlen < 0))) {
 		int plen = Process(inbuf, rv / 2, abuf, arv / 8, aplen);
 
+		cerr << "plen " << plen << endl;
 		tproc += plen;
                
 		memmove(inbuf, &inbuf[plen], (vblen - plen) * 2);
-
+	
                 rv = read(fd, &inbuf[(vblen - plen)], plen * 2) + ((vblen - plen) * 2);
 		while ((rv > 0) && (rv < vbsize)) {
+			cerr << "reread\n";
 			int rv2 = read(fd, &cinbuf[rv], vbsize - rv);
-			if (rv2 <= 0) exit(-1);
+			if (rv2 <= 0) exit(0);
 			rv += rv2;
 		}	
-	
-                arv = read(afd, &abuf[absize - aplen], plen * 2) + ((absize - plen) * 2);
-		while ((arv > 0) && (arv < absize)) {
-			int arv2 = read(fd, &cabuf[arv], absize - arv);
-			if (arv2 <= 0) exit(-1);
-			arv += arv2;
+		
+		if (afd != -1) {	
+	                arv = read(afd, &abuf[absize - aplen], plen * 2) + ((absize - plen) * 2);
+			while ((arv > 0) && (arv < absize)) {
+				int arv2 = read(fd, &cabuf[arv], absize - arv);
+				if (arv2 <= 0) exit(0);
+				arv += arv2;
+			}
 		}
 	}
 
