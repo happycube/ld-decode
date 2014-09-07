@@ -30,11 +30,11 @@ ntsc: ntscg2.cxx ld-decoder.h deemp.h
 ntsc-aud: ntsc.cxx deemp.h
 	clang++ -std=c++11  -Wall -DSOUND -D_NOSNAP -O3 -g -o ntsc-aud ntsc.cxx
 
-comb: comb.cxx deemp.h
-	clang++ -std=c++11  -Wall -D_NOSNAP -O3 -g -o comb comb.cxx
+combold: comb.cxx deemp.h
+	clang++ -std=c++11  -Wall -D_NOSNAP -O3 -g -o combold combold.cxx
 
-combg2: combg2.cxx deemp.h
-	clang++ -std=c++11  -Wall -D_NOSNAP -O3 -g -o combg2 combg2.cxx
+comb: combg2.cxx deemp.h
+	clang++ -std=c++11  -Wall -D_NOSNAP -O3 -g -o comb combg2.cxx
 
 ntsc4: ntsc-4fsc.cxx
 	clang++ -std=c++11  -Wall -D_NOSNAP -O3 -g -o ntsc4 ntsc-4fsc.cxx
