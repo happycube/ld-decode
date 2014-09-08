@@ -42,7 +42,7 @@ int white_u16 = ire_to_u16(110);
 bool whiteflag_detect = true;
 
 double nr_y = 2.0;
-double nr_c = 0.5;
+double nr_c = 1.0;
 
 inline double IRE(double in) 
 {
@@ -425,7 +425,7 @@ int main(int argc, char *argv[])
 				bw_mode = true;
 				break;
 			case 'b':
-				sscanf(optarg, "%d", &black_u16);
+				sscanf(optarg, "%lf", &black_ire);
 				break;
 			case 'n':
 				sscanf(optarg, "%lf", &nr_y);
@@ -453,6 +453,8 @@ int main(int argc, char *argv[])
 				return -1;
 		} 
 	} 
+
+	black_u16 = ire_to_u16(black_ire);
 
 	nr_y = (nr_y / 160.0) * 65534.0;
 	nr_c = (nr_c / 160.0) * 65534.0;

@@ -17,7 +17,7 @@ blocklen = 65536 * 8
 color_filter = sps.firwin(33, 0.3 / (freq), window='hamming')
 sync_filter = sps.firwin(33, 0.1 / (freq), window='hamming')
 
-frame = np.empty([505, 1685], dtype=np.uint16)
+frame = np.empty([505, 852], dtype=np.uint16)
 
 # set up sync color heterodyne table first 
 bhet = np.empty(4096, dtype=np.complex)
@@ -170,7 +170,7 @@ def find_sync(buf):
 						
 						printerr(angle, angle2, begin, end, ((end - begin) / scale_tgt) * 1820.0)
 						
-						out = scale(buf, begin, end, scale_tgt)
+						out = scale(buf, begin, end, scale_tgt / 2)
 
 						ladjust = ((((end - begin) / scale_tgt) - 1) * 0.84) + 1
 	
@@ -179,13 +179,13 @@ def find_sync(buf):
 						out = (out - 7600000) / 1700000.0
 						
 						# qa code only - determine final phases	
-						angle = burst_detect(out)[1]
-						angle2 = burst_detect(out, 1820)[1]
-						printerr(angle, angle2)
+#						angle = burst_detect(out)[1]
+#						angle2 = burst_detect(out, 1820)[1]
+#						printerr(angle, angle2)
 	
 						outl = getline(line)
 						if (outl >= 0):	
-							np.copyto(frame[outl], np.clip(out[130:130+1685] * 57344.0, 0, 65535), 'unsafe')
+							np.copyto(frame[outl], np.clip(out[65:65+852] * 57344.0, 0, 65535), 'unsafe')
 	
 						line = line + 1
 					else: 

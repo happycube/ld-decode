@@ -97,6 +97,11 @@ colorbp4_filter = sps.firwin(Ncolorbp4 + 1, [3.4006 / (freq / 2), 3.7585 / (freq
 Ncolorbp8 = 16
 colorbp8_filter = sps.firwin(Ncolorbp8 + 1, [3.4006 / (freq), 3.7585 / (freq)], window='hamming', pass_zero=False)
 
+leftbp_filter = sps.firwin(129, [2.1/freq, 2.45/freq], window='hamming', pass_zero=False)
+rightbp_filter = sps.firwin(129, [2.65/freq, 2.95/freq], window='hamming', pass_zero=False)
+
+audiolp_filter = sps.firwin(513, .004 / (freq / 4), window='hamming')
+
 # from http://tlfabian.blogspot.com/2013/01/implementing-hilbert-90-degree-shift.html
 hilbert_filter = np.fft.fftshift(
     np.fft.ifft([0]+[1]*20+[0]*20)
@@ -224,4 +229,25 @@ for i in range(0, len(colorlp4_filter)):
 print "};"
 print
 print "Filter f_colorlp4(" ,Ncolorlp4, ", NULL, c_colorlp4);"
+
+print "const double c_leftbp[] {",
+for i in range(0, len(leftbp_filter)):
+        print "%.15e" % leftbp_filter[i], ",",
+print "};"
+print
+print "Filter f_leftbp(" ,len(leftbp_filter)-1, ", NULL, c_leftbp);"
+
+print "const double c_rightbp[] {",
+for i in range(0, len(rightbp_filter)):
+        print "%.15e" % rightbp_filter[i], ",",
+print "};"
+print
+print "Filter f_rightbp(" ,len(rightbp_filter)-1, ", NULL, c_rightbp);"
+
+print "const double c_audiolp[] {",
+for i in range(0, len(audiolp_filter)):
+        print "%.15e" % audiolp_filter[i], ",",
+print "};"
+print
+print "Filter f_audiolp(" ,len(audiolp_filter)-1, ", NULL, c_audiolp);"
 

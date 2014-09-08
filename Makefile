@@ -1,10 +1,13 @@
-all: ldd ntsc ntsc-aud comb audio
+all: ldd ntsc ntsc-aud comb 
 
 clean:
 	rm -f ldd ntsc comb audio
 
 audio: audio-decoder.cxx
 	clang++ -std=c++11  -Wall -DNOSNAP -O3 -g -o audio audio-decoder.cxx
+
+audiog2: audio-g2.cxx deemp.h
+	clang++ -std=c++11  -Wall -DNOSNAP -O3 -g -o audiog2 audio-g2.cxx
 
 ldcur: ld-decoder-cur.cxx
 	clang++ -std=c++11  -mavx -march=corei7-avx -Wall -DNOSNAP -O3 -g -o ldcur ld-decoder-cur.cxx

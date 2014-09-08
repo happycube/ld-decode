@@ -108,7 +108,8 @@ class Filter {
 		}
 
 		void dump() {
-			for (int i = 0 ; i < order; i++) cerr << x[i] << ' ' << b[i] << endl;
+//			for (int i = 0 ; i < order; i++) cerr << x[i] << ' ' << b[i] << endl;
+			cerr << (const void *)a.data() << ' ' << a[0] << endl;
 		}
 
 		inline double feed(double val) {
