@@ -89,9 +89,6 @@ class FM_demod_audio {
 				n = f_pre->feed(n);
 				t++;
 
-				// only process one of every four samples
-				if (t % 4) continue;
-
 				double real = f_hilbertr.feed(n);
 				double imag = f_hilberti.feed(n);
 
@@ -104,7 +101,7 @@ class FM_demod_audio {
 				v = diff * (4557618 / 4);
 				if (f_post) v = f_post->feed(v);	
 
-//				cerr << ang << ' ' << diff << ' ' << diff * (4557618 / 4)<< ' ' << v << endl;
+				//cerr << ang << ' ' << diff << ' ' << diff * (4557618 / 4)<< ' ' << v << endl;
 
 				prev_ang = ang;
 
@@ -121,8 +118,8 @@ int main(int argc, char *argv[])
 {
 	int rv = 0, fd = 0;
 	long long dlen = -1;
-	//double output[32768];
-	unsigned char inbuf[32768];
+	//double output[262144];
+	unsigned char inbuf[256*1024];
 
 	cerr << std::setprecision(10);
 	cerr << argc << endl;
@@ -146,19 +143,22 @@ int main(int argc, char *argv[])
 
 	cout << std::setprecision(8);
 	
-	rv = read(fd, inbuf, 32768);
+	rv = read(fd, inbuf, 256*1024);
 
-	FM_demod_audio left(32768, &f_leftbp, &f_audiolp);
-	FM_demod_audio right(32768, &f_rightbp, &f_audiolp);
+	FM_demod_audio left(64*1024, &f_leftbp, &f_audiolp);
+	FM_demod_audio right(64*1024, &f_rightbp, &f_audiolp);
 
 	int tot = 0;
 	int i = 0;
 
-	while ((rv == 32768) && ((dlen == -1) || (i < dlen))) {
+	while ((rv == 262144) && ((dlen == -1) || (i < dlen))) {
 		vector<double> dinbuf;
 		vector<unsigned short> ioutbuf;
 
-		for (int j = 0; j < 32768; j++) dinbuf.push_back(inbuf[j]); 
+		for (int j = 0; j < 262144; j++) {
+			double filt = f_audioin.feed(inbuf[j]);
+			if (!(j % 4)) dinbuf.push_back(filt); 
+		}
 
 		vector<double> outleft = left.process(dinbuf);
 		vector<double> outright = right.process(dinbuf);
@@ -185,10 +185,10 @@ int main(int argc, char *argv[])
 		int len = outleft.size() * 4;
 
 		i += len;
-		memmove(inbuf, &inbuf[len], 32768 - len);
-		rv = read(fd, &inbuf[(32768 - len)], len) + (32768 - len);
+		memmove(inbuf, &inbuf[len], 262144 - len);
+		rv = read(fd, &inbuf[(262144 - len)], len) + (262144 - len);
 		
-		if (rv < 32768) return 0;
+		if (rv < 262144) return 0;
 	}
 
 	return 0;

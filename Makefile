@@ -1,4 +1,4 @@
-all: ldd ntsc ntsc-aud comb 
+all: ldd ntsc audiog2 comb 
 
 clean:
 	rm -f ldd ntsc comb audio

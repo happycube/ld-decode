@@ -187,27 +187,31 @@ int get_oline(double line)
 	return -1;
 }
 
-//double _left = 0, _right = 0;
+double _left = 0, _right = 0;
+Filter f_fml(f_fmdeemp), f_fmr(f_fmdeemp);
 
 uint16_t aout[512];
 int aout_i = 0;
 void ProcessAudioSample(float left, float right)
 {
-	if (left < 2250000) left = 2301136;
-	if (left > 2350000) left = 2301136;
+	float oleft = left, oright = right;
+	if (left < 2150000) left = 2301136;
+	if (left > 2450000) left = 2301136;
 	left -= 2301136;
 	left *= (65535.0 / 300000.0);
+	left = f_fml.feed(left);
 	left += 32768;
 	
-	if (right < 2700000) right = 2812499;
-	if (right > 2900000) right = 2812499; 
+	if (right < 2650000) right = 2812499;
+	if (right > 2960000) right = 2812499; 
 	right -= 2812499;
 	right *= (65535.0 / 300000.0);
+	right = f_fml.feed(right);
 	right += 32768;
 
-//	cerr << "P1 " << left - _left << ' ' << right - _right << endl;
-//	_left = left;
-//	_right = right;
+	cerr << "P1 " << oleft << ' ' << left - _left << ' ' << oright << ' ' << right - _right << endl;
+	_left = left;
+	_right = right;
 
 	aout[aout_i * 2] = clamp(left, 0, 65535);
 	aout[(aout_i * 2) + 1] = clamp(right, 0, 65535);
