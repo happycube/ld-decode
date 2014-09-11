@@ -178,7 +178,7 @@ void BurstDetect(double *line, int freq, double _loc, double &plevel, double &pp
 	
 int get_oline(double line)
 {
-	int l = (int)(line + 0.5);
+	int l = (int)line;
 
 	if (l < 10) return -1;
 	else if (l < 262) return (l - 10) * 2;
@@ -241,6 +241,7 @@ double afreq = 48000;
 double agap  = dotclk / (double)va_ratio;
 
 bool first = true;
+double prev_linelen = 1820;
 
 int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 {
@@ -277,6 +278,18 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 				double tout1[4096], tout2[4096], tout3[4096];
 
 				cerr << "S " << line << ' ' << i << ' ' << linelen << ' ' << count << endl;
+
+				int oline = get_oline(line + 1);
+
+				if ((get_oline(line) >= 0) && (get_oline(line + 1) >= 0) && !InRange(linelen, prev_linelen - 8, prev_linelen + 8)) {
+					i = crosspoint = begin + 1820;
+					end = begin + ((crosspoint - prev_crosspoint) * scale_linelen);
+					linelen = 1820;
+					count = 15.5 * in_freq;
+					cerr << "E " << begin << ' ' << crosspoint << ' ' << end << endl;
+					cerr << "s " << line << ' ' << i << ' ' << linelen << ' ' << count << endl;
+				} 
+
 				if ((line >= 0) && (linelen >= (ntsc_ipline * 0.9)) && (count > (11 * in_freq))) {
 					// standard line
 					double plevel1, pphase1;
@@ -289,7 +302,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 					BurstDetect(tout1, out_freq, 228, plevel2, pphase2); 
 
 					if (tgt_phase == -1) {
-						if ((pphase1 < 0) && (pphase1 > (-M_PIl * 3 / 4))) {
+						if (fabs(pphase1) < (M_PIl / 2)) {
 							tgt_phase = 0;
 						} else {
 							tgt_phase = -180 * (M_PIl / 180.0);
@@ -298,7 +311,8 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 						tgt_phase = tgt_phase ? 0 : (-180 * (M_PIl / 180.0));
 					}		
 	
-					cerr << line << " 0" << ' ' << ((end - begin) / scale_tgt) * 1820.0 << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
+//					cerr << line << " 0" << ' ' << ((end - begin) / scale_tgt) * 1820.0 << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
+					cerr << line << " 0" << ' ' << begin << ' ' << end  << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
 					adjust1 = WrapAngle(pphase1, tgt_phase);	
 					adjust2 = WrapAngle(pphase2, tgt_phase);
 					begin += (adjust1 * phasemult);
@@ -308,7 +322,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 					BurstDetect(tout2, out_freq, 0, plevel1, pphase1); 
 					BurstDetect(tout2, out_freq, 228, plevel2, pphase2); 
 					
-					cerr << line << " 1" << ' ' << ((end - begin) / scale_tgt) * 1820.0 << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
+					cerr << line << " 1" << ' ' << begin << ' ' << end  << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
 
 					adjust2 = WrapAngle(pphase2, pphase1);
 					end += (adjust2 * phasemult);
@@ -317,7 +331,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 					BurstDetect(tout3, out_freq, 0, plevel1, pphase1); 
 					BurstDetect(tout3, out_freq, 228, plevel2, pphase2); 
 
-					cerr << line << " 2" << ' ' << ((end - begin) / scale_tgt) * 1820.0 << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
+					cerr << line << " 2" << ' ' << begin << ' ' << end  << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
 
 					// LD only: need to adjust output value for velocity
 					double lvl_adjust = ((((end - begin) / iscale_tgt) - 1) * 1.0) + 1;
@@ -352,7 +366,8 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 					if (oline >= 0) {
 						frame[oline][0] = tgt_phase ? 32768 : 16384; 
 					}	
-					
+
+					prev_linelen = linelen;					
 					line++;
 					//crosspoint = begin + (((end - begin) / scale_tgt) * 1820);
 				} else if ((line == -1) && InRange(linelen, 850, 950) && InRange(count, 40, 160)) {
