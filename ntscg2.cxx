@@ -111,6 +111,7 @@ bool InRange(double v, double l, double h) {
 
 // tunables
 
+bool despackle = true;
 int afd = -1, fd = 0;
 
 double black_ire = 7.5;
@@ -227,7 +228,7 @@ void ProcessAudioSample(float left, float right)
 }
 
 Filter f_syncp(f_sync);
-double cross = 7000;
+double cross = 5000;
 
 double line = -2;
 double tgt_phase = -1;
@@ -329,7 +330,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 
 //						cerr << oline << ' ' << i << ' ' << v << endl;
 
-						if ((v < 7800000) && (i > 16)) {
+						if (despackle && (v < 7800000) && (i > 16)) {
 							if ((i - ldo) > 16) {
 								for (int j = i - 4; j > 2 && j < i; j++) {
 									double to = (frame[oline - 2][j - 2] + frame[oline - 2][j + 2]) / 2;
@@ -437,8 +438,11 @@ int main(int argc, char *argv[])
 
 	opterr = 0;
 	
-	while ((c = getopt(argc, argv, "i:a:A")) != -1) {
+	while ((c = getopt(argc, argv, "s:n:i:a:A")) != -1) {
 		switch (c) {
+			case 's':
+				sscanf(optarg, "%lf", &cross);
+				break;
 			case 'i':
 				fd = open(optarg, O_RDONLY);
 				break;
@@ -447,6 +451,9 @@ int main(int argc, char *argv[])
 				break;
 			case 'A':
 				audio_only = true;
+				break;
+			case 'n':
+				despackle = false;
 				break;
 			default:
 				return -1;
