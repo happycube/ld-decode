@@ -97,10 +97,12 @@ colorbp4_filter = sps.firwin(Ncolorbp4 + 1, [3.4006 / (freq / 2), 3.7585 / (freq
 Ncolorbp8 = 16
 colorbp8_filter = sps.firwin(Ncolorbp8 + 1, [3.4006 / (freq), 3.7585 / (freq)], window='hamming', pass_zero=False)
 
-leftbp_filter = sps.firwin(129, [2.1/freq, 2.45/freq], window='hamming', pass_zero=False)
-rightbp_filter = sps.firwin(129, [2.65/freq, 2.95/freq], window='hamming', pass_zero=False)
+audioin_filter = sps.firwin(65, 3.15 / (freq), window='hamming')
 
-audiolp_filter = sps.firwin(513, .004 / (freq / 4), window='hamming')
+leftbp_filter = sps.firwin(65, [2.15/(freq/4), 2.45/(freq/4)], window='hamming', pass_zero=False)
+rightbp_filter = sps.firwin(65, [2.65/(freq/4), 2.95/(freq/4)], window='hamming', pass_zero=False)
+
+audiolp_filter = sps.firwin(129, .004 / (freq / 4), window='hamming')
 
 # from http://tlfabian.blogspot.com/2013/01/implementing-hilbert-90-degree-shift.html
 hilbert_filter = np.fft.fftshift(
@@ -123,15 +125,33 @@ print
 print "Filter f_hilberti(" ,len(hilbert_filter)-1, ", NULL, c_hilberti);"
 print
 
+# fm deemphasis (75us)
+table = [[.000, 0], [.1, -.01], [.5, -.23], [1, -.87], [2, -2.76], [3, -4.77], [4, -6.58], [5, -8.16], [6, -9.54], [7, -10.75], [8, -11.82], [9, -12.78], [10, -13.66], [11, -14.45], [12, -15.18], [13, -15.86], [14, -16.49], [15, -17.07], [16, -17.62], [17, -18.14], [18, -18.63], [19, -19.09], [20, -19.53], [24, -20]]
+
+Fr = np.empty([len(table)])
+Am = np.empty([len(table)])
+for i in range(0, len(table)):
+	Fr[i] = (table[i][0] / 24.0)
+	Am[i] = (np.exp(table[i][1] / 9.0))
+
+Bfmdeemp = sps.firwin2(33, Fr, Am)
+
+print "const double c_fmdeemp_b[] {",
+for i in range(0, len(Bfmdeemp)):
+	print "%.15e" % Bfmdeemp[i], ",",
+print "};"
+print
+print "Filter f_fmdeemp(", len(Bfmdeemp) - 1, ", NULL, c_fmdeemp_b);"
+
 print "vector<double> c_deemp_b = {",
 for i in range(0, len(f_deemp_b)):
-        print "%.15e" % f_deemp_b[i], ",",
+	print "%.15e" % f_deemp_b[i], ",",
 print "};"
 print
 
 print "vector <double> c_deemp_a = {",
 for i in range(0, len(f_deemp_a)):
-        print "%.15e" % f_deemp_a[i], ",",
+	print "%.15e" % f_deemp_a[i], ",",
 print "};"
 print
 print "Filter f_deemp(c_deemp_b, c_deemp_a);"
@@ -139,14 +159,14 @@ print
 
 print "const double c_boost_b[] {",
 for i in range(0, len(Bboost)):
-        print "%.15e" % Bboost[i], ",",
+	print "%.15e" % Bboost[i], ",",
 print "};"
 print
 print "Filter f_boost(", len(Bboost) - 1, ", NULL, c_boost_b);"
 
 print "vector<double> c_lpf_b = {",
 for i in range(0, len(Blpf)):
-        print "%.15e" % Blpf[i], ",",
+	print "%.15e" % Blpf[i], ",",
 print "};"
 print
 
@@ -250,4 +270,11 @@ for i in range(0, len(audiolp_filter)):
 print "};"
 print
 print "Filter f_audiolp(" ,len(audiolp_filter)-1, ", NULL, c_audiolp);"
+
+print "const double c_audioin[] {",
+for i in range(0, len(audioin_filter)):
+        print "%.15e" % audioin_filter[i], ",",
+print "};"
+print
+print "Filter f_audioin(" ,len(audioin_filter)-1, ", NULL, c_audioin);"
 

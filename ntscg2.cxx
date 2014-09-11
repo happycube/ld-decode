@@ -319,21 +319,30 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 					// LD only: need to adjust output value for velocity
 					double lvl_adjust = ((((end - begin) / iscale_tgt) - 1) * 1.0) + 1;
 					int ldo = -128;
-					for (int i = 0; (oline > 0) && (i < (213 * out_freq)); i++) {
+					for (int i = 0; (oline > 2) && (i < (213 * out_freq)); i++) {
 						double v = tout3[i + (int)(14 * out_freq)];
 
 						v = ((v / 57344.0) * 1700000) + 7600000;
-						v *= lvl_adjust;
-						v = ((v - 7600000) / 1700000) * 57344.0;
+						double o = (((v * lvl_adjust) - 7600000) / 1700000) * 57344.0;
 
-						if ((v < 3000) && (i > 16)) ldo = i;
+//						cerr << oline << ' ' << i << ' ' << v << endl;
 
-						if (((i - ldo) < 16) && (i > 4) && (oline >= 4)) {
-							v = frame[oline - 2][i - 2];
+						if ((v < 7800000) && (i > 16)) {
+							if ((i - ldo) > 16) {
+								for (int j = i - 4; j > 2 && j < i; j++) {
+									double to = (frame[oline - 2][j - 4] + frame[oline - 2][j + 4]) / 2;
+									frame[oline][j] = clamp(to, 0, 65535);
+								}
+							}
+							ldo = i;
+						}
+
+						if (((i - ldo) < 16) && (i > 4)) {
+							o = (frame[oline - 2][i - 4] + frame[oline - 2][i + 4]) / 2;
 						}
 
 //						cerr << tout3[x] << ' ' << v << endl;
-						frame[oline][i] = clamp(v, 0, 65535);
+						frame[oline][i] = clamp(o, 0, 65535);
 //						cerr << x << ' ' << tout1[x] << ' ' << tout2[x] << ' ' << tout3[x] << ' ' << v << ' ' << frame[oline][x - (int)(14 * out_freq)] << endl;
 					}
 
