@@ -227,7 +227,7 @@ void ProcessAudioSample(float left, float right)
 }
 
 Filter f_syncp(f_sync);
-double cross = 5000;
+double cross = 7000;
 
 double line = -2;
 double tgt_phase = -1;
@@ -238,6 +238,8 @@ int va_ratio = 80;
 double a_next = -1;
 double afreq = 48000;
 double agap  = dotclk / (double)va_ratio;
+
+bool first = true;
 
 int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 {
@@ -273,7 +275,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 
 				double tout1[4096], tout2[4096], tout3[4096];
 
-				cerr << line << ' ' << i << ' ' << linelen << ' ' << count << endl;
+				cerr << "S " << line << ' ' << i << ' ' << linelen << ' ' << count << endl;
 				if ((line >= 0) && (linelen >= (ntsc_ipline * 0.9)) && (count > (11 * in_freq))) {
 					// standard line
 					double plevel1, pphase1;
@@ -330,7 +332,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 						if ((v < 7800000) && (i > 16)) {
 							if ((i - ldo) > 16) {
 								for (int j = i - 4; j > 2 && j < i; j++) {
-									double to = (frame[oline - 2][j - 4] + frame[oline - 2][j + 4]) / 2;
+									double to = (frame[oline - 2][j - 2] + frame[oline - 2][j + 2]) / 2;
 									frame[oline][j] = clamp(to, 0, 65535);
 								}
 							}
@@ -338,7 +340,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 						}
 
 						if (((i - ldo) < 16) && (i > 4)) {
-							o = (frame[oline - 2][i - 4] + frame[oline - 2][i + 4]) / 2;
+							o = (frame[oline - 2][i - 2] + frame[oline - 2][i + 2]) / 2;
 						}
 
 //						cerr << tout3[x] << ' ' << v << endl;
@@ -352,12 +354,13 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 					
 					line++;
 					//crosspoint = begin + (((end - begin) / scale_tgt) * 1820);
-				} else if ((line == -1) && InRange(linelen, 850, 950) && InRange(count, 80, 160)) {
+				} else if ((line == -1) && InRange(linelen, 850, 950) && InRange(count, 40, 160)) {
 					line = 262.5;
-				} else if (((line == -1) || (line > 520)) && (linelen > 1800) && (count < 80)) {
-					if ((!audio_only) && (line > 0)) {
+				} else if (((line == -1) || (line > 520)) && (linelen > 1800) && InRange(count, 55, 75)) {
+					if (!first) {
 						write(1, frame, sizeof(frame));
 					}
+					first = false;
 //					tgt_phase = 0;
 					line = 1;
 				} else if ((line == -2) && (linelen > 1780) && (count > 80)) {
