@@ -171,8 +171,22 @@ def process(data):
 			if output[i] < 0:
 				output[i] = output[i] + freq_hz
 
+	output = output[1500:2800]
+
 #	output = (sps.lfilter(Blpf, Alpf, tdangles2) * 4557618)[128:len(tdangles2)]
 	#output = (tdangles2 * 4557618)[128:len(tdangles2)]
+	reduced = (output - 7600000) / 1700000.0
+	output = np.clip(reduced * 57344.0, 0, 65535) 
+
+	mean = np.mean(output)
+	mean_ire = ((160.0 / 65533.0) * mean) - 40
+	std_ire = ((160.0 / 65533.0) * np.std(output))
+	print "mean ire: ", mean, ((160.0 / 65533.0) * mean) - 40
+	print "stddev", std_ire
+	print "SNR", 20 * np.log10((((160.0 / 65533.0) * mean) - 40) / std_ire)
+
+
+	exit()
 
 	return output
 
