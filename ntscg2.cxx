@@ -323,12 +323,32 @@ wrapup:
 	frame[oline][0] = tgt_phase ? 32768 : 16384; 
 }
 
+bool IsABlank(int line, double start, double len)
+{
+	bool isHalf = false;
+	double end = start + len;
+
+	double half = 227.5 * in_freq / 2;
+	double full = 227.5 * in_freq;
+
+	if ((line == 525) || (line < 10) || ((line >= 263) && (line <272))) isHalf = true;
+
+	//if ((start < (full + in_freq)) && (end > full)) return true;
+	if (end > full) return true;
+	
+	//if (isHalf && (start < (half + in_freq)) && (end > half)) return true;
+	if (isHalf && (end > half)) return true;
+
+	return false;
+}
+
 int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 {
 	double prevf, f = 0;
 	double crosspoint = -1, prev_crosspoint = -1, tmp_crosspoint = -1;
 	int count = 0, debounce = 0;
 	int rv = 0;
+	bool valid;
 
 	f_syncp.clear(ire_to_u16(black_ire));
 
@@ -349,6 +369,8 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 			count++;
 			debounce = 0;
 		} else {
+			double bkup_crosspoint = crosspoint;
+
 			if (debounce < 16) debounce++;
 
 			if ((debounce >= 16) && (count > 40)) crosspoint = tmp_crosspoint;
@@ -359,6 +381,8 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 				double linelen = crosspoint - prev_crosspoint; 
 
 				cerr << "S " << line << ' ' << i << ' ' << crosspoint << ' ' << prev_crosspoint << ' ' << linelen << ' ' << count << endl;
+
+				cerr << begin << ' ' << end << ' ' << crosspoint - prev_crosspoint << ' ' << count << endl;
 
 				int oline = get_oline(line + 1);
 
@@ -372,6 +396,17 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 					cerr << "e " << begin << ' ' << crosspoint << ' ' << end << endl;
 					cerr << "s " << line << ' ' << i << ' ' << linelen << ' ' << count << endl;
 				} 
+
+				valid = IsABlank(line, crosspoint - prev_crosspoint, count); 
+
+				if (!valid) {
+					cerr << "X " << crosspoint - prev_crosspoint << ' ' << count << endl;
+
+					crosspoint = bkup_crosspoint;
+					debounce = 0;
+					count = 0;
+					continue;
+				}
 
 				if ((line >= 0) && (linelen >= (ntsc_ipline * 0.9)) && (count > (11 * in_freq))) {
 					// standard line
