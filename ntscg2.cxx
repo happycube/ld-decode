@@ -118,7 +118,7 @@ double black_ire = 7.5;
 
 int write_locs = -1;
 
-uint16_t frame[505][(int)(OUT_FREQ * 213)];
+uint16_t frame[505][(int)(OUT_FREQ * 211)];
 
 Filter f_syncr(f_sync);
 Filter f_synci(f_sync);
@@ -231,7 +231,7 @@ Filter f_syncp(f_sync);
 double cross = 5000;
 
 double line = -2;
-double tgt_phase = -1;
+int phase = -1;
 
 int64_t vread = 0, aread = 0;
 int va_ratio = 80;
@@ -243,11 +243,91 @@ double agap  = dotclk / (double)va_ratio;
 bool first = true;
 double prev_linelen = 1820;
 
+
+void ProcessLine(uint16_t *buf, double begin, double end, int line)
+{
+	double tout1[4096], tout2[4096], tout3[4096];
+	double plevel1, pphase1;
+	double plevel2, pphase2;
+	double adjust1, adjust2;
+	int oline = get_oline(line);
+
+	double tgt_phase;
+
+	Scale(buf, tout1, begin, end, scale_tgt); 
+	BurstDetect(tout1, out_freq, 0, plevel1, pphase1); 
+	BurstDetect(tout1, out_freq, 228, plevel2, pphase2); 
+
+	if (plevel1 < 1000) goto wrapup;
+	if (plevel2 < 1000) goto wrapup;
+
+	if (phase == -1) {
+		if (fabs(pphase1) < (M_PIl / 2)) {
+			phase = 1;
+		} else {
+			phase = 0;
+		}
+	} 
+
+	tgt_phase = ((line + phase) % 2) ? (-180 * (M_PIl / 180.0)) : 0;
+
+//	cerr << line << " 0" << ' ' << ((end - begin) / scale_tgt) * 1820.0 << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
+	cerr << line << " 0" << ' ' << begin << ' ' << end  << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
+	adjust1 = WrapAngle(pphase1, tgt_phase);	
+	adjust2 = WrapAngle(pphase2, tgt_phase);
+	begin += (adjust1 * phasemult);
+	end += (adjust1 * phasemult);
+
+	Scale(buf, tout2, begin, end, scale_tgt); 
+	BurstDetect(tout2, out_freq, 0, plevel1, pphase1); 
+	BurstDetect(tout2, out_freq, 228, plevel2, pphase2); 
+					
+	cerr << line << " 1" << ' ' << begin << ' ' << end  << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
+
+	adjust2 = WrapAngle(pphase2, pphase1);
+	end += (adjust2 * phasemult);
+					
+	Scale(buf, tout3, begin, end, scale_tgt); 
+	BurstDetect(tout3, out_freq, 0, plevel1, pphase1); 
+	BurstDetect(tout3, out_freq, 228, plevel2, pphase2); 
+
+	cerr << line << " 2" << ' ' << begin << ' ' << end  << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
+
+wrapup:
+	// LD only: need to adjust output value for velocity, and remove defects as possible
+	double lvl_adjust = ((((end - begin) / iscale_tgt) - 1) * 1.0) + 1;
+	int ldo = -128;
+	for (int i = 0; (oline > 2) && (i < (211 * out_freq)); i++) {
+		double v = tout3[i + (int)(14 * out_freq)];
+
+		v = ((v / 57344.0) * 1700000) + 7600000;
+		double o = (((v * lvl_adjust) - 7600000) / 1700000) * 57344.0;
+
+		if (despackle && (v < 7800000) && (i > 16)) {
+			if ((i - ldo) > 16) {
+				for (int j = i - 4; j > 2 && j < i; j++) {
+					double to = (frame[oline - 2][j - 2] + frame[oline - 2][j + 2]) / 2;
+					frame[oline][j] = clamp(to, 0, 65535);
+				}
+			}
+			ldo = i;
+		}
+
+		if (((i - ldo) < 16) && (i > 4)) {
+			o = (frame[oline - 2][i - 2] + frame[oline - 2][i + 2]) / 2;
+		}
+
+		frame[oline][i] = clamp(o, 0, 65535);
+	}
+	
+	frame[oline][0] = tgt_phase ? 32768 : 16384; 
+}
+
 int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 {
 	double prevf, f = 0;
 	double crosspoint = -1, prev_crosspoint = -1, tmp_crosspoint = -1;
-	int count = 0;
+	int count = 0, debounce = 0;
 	int rv = 0;
 
 	f_syncp.clear(ire_to_u16(black_ire));
@@ -267,129 +347,70 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 				tmp_crosspoint = (i - 1) + c; 
 			}
 			count++;
+			debounce = 0;
 		} else {
-			if (count > 40) crosspoint = tmp_crosspoint;
+			if (debounce < 16) debounce++;
 
-			if ((count > 40) && prev_crosspoint > 0) {
+			if ((debounce >= 16) && (count > 40)) crosspoint = tmp_crosspoint;
+
+			if ((debounce >= 16) && (count > 40) && prev_crosspoint > 0) {
 				double begin = prev_crosspoint;
 				double end = begin + ((crosspoint - prev_crosspoint) * scale_linelen);
 				double linelen = crosspoint - prev_crosspoint; 
 
-				double tout1[4096], tout2[4096], tout3[4096];
-
-				cerr << "S " << line << ' ' << i << ' ' << linelen << ' ' << count << endl;
+				cerr << "S " << line << ' ' << i << ' ' << crosspoint << ' ' << prev_crosspoint << ' ' << linelen << ' ' << count << endl;
 
 				int oline = get_oline(line + 1);
 
+
 				if ((get_oline(line) >= 0) && (get_oline(line + 1) >= 0) && !InRange(linelen, prev_linelen - 8, prev_linelen + 8)) {
+					cerr << "E " << begin << ' ' << crosspoint << ' ' << end << ' ' << linelen << ' ' << prev_linelen << endl;
 					i = crosspoint = begin + 1820;
 					end = begin + ((crosspoint - prev_crosspoint) * scale_linelen);
 					linelen = 1820;
 					count = 15.5 * in_freq;
-					cerr << "E " << begin << ' ' << crosspoint << ' ' << end << endl;
+					cerr << "e " << begin << ' ' << crosspoint << ' ' << end << endl;
 					cerr << "s " << line << ' ' << i << ' ' << linelen << ' ' << count << endl;
 				} 
 
 				if ((line >= 0) && (linelen >= (ntsc_ipline * 0.9)) && (count > (11 * in_freq))) {
 					// standard line
-					double plevel1, pphase1;
-					double plevel2, pphase2;
-					double adjust1, adjust2;
 					int oline = get_oline(line);
 
-					Scale(buf, tout1, begin, end, scale_tgt); 
-					BurstDetect(tout1, out_freq, 0, plevel1, pphase1); 
-					BurstDetect(tout1, out_freq, 228, plevel2, pphase2); 
-
-					if (tgt_phase == -1) {
-						if (fabs(pphase1) < (M_PIl / 2)) {
-							tgt_phase = 0;
-						} else {
-							tgt_phase = -180 * (M_PIl / 180.0);
-						}
-					} else if (floor(line) != 272) { 
-						tgt_phase = tgt_phase ? 0 : (-180 * (M_PIl / 180.0));
-					}		
-	
-//					cerr << line << " 0" << ' ' << ((end - begin) / scale_tgt) * 1820.0 << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
-					cerr << line << " 0" << ' ' << begin << ' ' << end  << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
-					adjust1 = WrapAngle(pphase1, tgt_phase);	
-					adjust2 = WrapAngle(pphase2, tgt_phase);
-					begin += (adjust1 * phasemult);
-					end += (adjust1 * phasemult);
-
-					Scale(buf, tout2, begin, end, scale_tgt); 
-					BurstDetect(tout2, out_freq, 0, plevel1, pphase1); 
-					BurstDetect(tout2, out_freq, 228, plevel2, pphase2); 
-					
-					cerr << line << " 1" << ' ' << begin << ' ' << end  << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
-
-					adjust2 = WrapAngle(pphase2, pphase1);
-					end += (adjust2 * phasemult);
-					
-					Scale(buf, tout3, begin, end, scale_tgt); 
-					BurstDetect(tout3, out_freq, 0, plevel1, pphase1); 
-					BurstDetect(tout3, out_freq, 228, plevel2, pphase2); 
-
-					cerr << line << " 2" << ' ' << begin << ' ' << end  << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
-
-					// LD only: need to adjust output value for velocity
-					double lvl_adjust = ((((end - begin) / iscale_tgt) - 1) * 1.0) + 1;
-					int ldo = -128;
-					for (int i = 0; (oline > 2) && (i < (213 * out_freq)); i++) {
-						double v = tout3[i + (int)(14 * out_freq)];
-
-						v = ((v / 57344.0) * 1700000) + 7600000;
-						double o = (((v * lvl_adjust) - 7600000) / 1700000) * 57344.0;
-
-//						cerr << oline << ' ' << i << ' ' << v << endl;
-
-						if (despackle && (v < 7800000) && (i > 16)) {
-							if ((i - ldo) > 16) {
-								for (int j = i - 4; j > 2 && j < i; j++) {
-									double to = (frame[oline - 2][j - 2] + frame[oline - 2][j + 2]) / 2;
-									frame[oline][j] = clamp(to, 0, 65535);
-								}
-							}
-							ldo = i;
-						}
-
-						if (((i - ldo) < 16) && (i > 4)) {
-							o = (frame[oline - 2][i - 2] + frame[oline - 2][i + 2]) / 2;
-						}
-
-//						cerr << tout3[x] << ' ' << v << endl;
-						frame[oline][i] = clamp(o, 0, 65535);
-//						cerr << x << ' ' << tout1[x] << ' ' << tout2[x] << ' ' << tout3[x] << ' ' << v << ' ' << frame[oline][x - (int)(14 * out_freq)] << endl;
-					}
-
 					if (oline >= 0) {
-						frame[oline][0] = tgt_phase ? 32768 : 16384; 
+						ProcessLine(buf, begin, end, line); 
 					}	
 
 					prev_linelen = linelen;					
-					line++;
+
+					double tmplen = linelen;
+					while (tmplen > 850) {
+						line = line + 0.5;
+						tmplen -= 910;
+					}
 					//crosspoint = begin + (((end - begin) / scale_tgt) * 1820);
 				} else if ((line == -1) && InRange(linelen, 850, 950) && InRange(count, 40, 160)) {
 					line = 262.5;
-				} else if (((line == -1) || (line > 520)) && (linelen > 1800) && InRange(count, 55, 75)) {
+					prev_linelen = 1820;					
+				} else if (((line == -1) || (line > 520)) && (linelen > 1800) && InRange(count, 40, 75)) {
 					if (!first) {
 						write(1, frame, sizeof(frame));
-					}
-					first = false;
-//					tgt_phase = 0;
+					} else first = false;
+					prev_linelen = 1820;					
 					line = 1;
+					if (phase >= 0) phase = !phase;
 				} else if ((line == -2) && (linelen > 1780) && (count > 80)) {
 					line = -1;
-				} else if ((line >= 0) && InRange(linelen, 850, 950)) {
-					line += 0.5;
-				} else if ((line >= 0) && (linelen > 1780)) {
-					line += 1;
+				} else if (line >= 0) {
+					double tmplen = linelen;
+					while (tmplen > 850) {
+						line = line + 0.5;
+						tmplen -= 910;
+					}
 				} 
 //				printerr(line, prev_crosspoint, crosspoint, count)
  
-	//			if (floor(line) == 272) tgt_phase -= tgt_phase;
-//				cerr << line << endl;
+				// process audio (if available)
 				if ((afd > 0) && (line > 0)) {
 					double nomlen = InRange(linelen, 850, 950) ? 910 : 1820;
 					double scale = linelen / nomlen;
@@ -414,12 +435,18 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 					}	
 				}	
 			}
-			prev_crosspoint = crosspoint;
-			count = 0;
+//			prev_crosspoint = crosspoint;
+//			count = 0;
+//			cerr << debounce << endl;
+			if (debounce >= 16) { 
+				prev_crosspoint = crosspoint;
+//				cerr << debounce << ' ' << cross << ' ' << prev_crosspoint << endl;
+				count = 0;
+			}
 		}
 	}
 	
-	rv = prev_crosspoint - 700;
+	rv = prev_crosspoint - 100;
 
 	a_next -= aplen;
 	aplen *= 2;
