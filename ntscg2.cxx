@@ -111,6 +111,7 @@ bool InRange(double v, double l, double h) {
 
 // tunables
 
+bool write_fields = false;
 bool despackle = true;
 int afd = -1, fd = 0;
 
@@ -154,14 +155,17 @@ void BurstDetect(double *line, int freq, double _loc, double &plevel, double &pp
 	f_bpcolor->clear(0);
 
 	for (int l = loc + (14 * freq); l < loc + len; l++) {
-		double v = f_bpcolor->feed(line[l]);
+		int x = line[l];
+	
+		if (x < 6000) x = 6000;
+		if (x >= 26000) x = 26000;
+
+		double v = f_bpcolor->feed(x);
 
 		double q = f_syncr.feed(v * _cos[l % freq]);
 		double i = f_synci.feed(-v * _sin[l % freq]);
 
 		double level = ctor(i, q);
-
-	//	cerr << l << ' ' << line[l] << ' ' << v << ' ' << i << ' ' << q << ' ' << level << ' ' << atan2(i, q) << endl;
 
 		if (((l - loc) > 16) && (level > plevel) && (level < 10000)) {
 			ploc = l;
@@ -262,11 +266,7 @@ void ProcessLine(uint16_t *buf, double begin, double end, int line)
 	if (plevel2 < 1000) goto wrapup;
 
 	if (phase == -1) {
-		if (fabs(pphase1) < (M_PIl / 2)) {
-			phase = 1;
-		} else {
-			phase = 0;
-		}
+		phase = (fabs(pphase1) < (M_PIl / 2));
 	} 
 
 	tgt_phase = ((line + phase) % 2) ? (-180 * (M_PIl / 180.0)) : 0;
@@ -333,10 +333,7 @@ bool IsABlank(int line, double start, double len)
 
 	if ((line == 525) || (line < 10) || ((line >= 263) && (line <272))) isHalf = true;
 
-	//if ((start < (full + in_freq)) && (end > full)) return true;
 	if (end > full) return true;
-	
-	//if (isHalf && (start < (half + in_freq)) && (end > half)) return true;
 	if (isHalf && (end > half)) return true;
 
 	return false;
@@ -346,9 +343,11 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 {
 	double prevf, f = 0;
 	double crosspoint = -1, prev_crosspoint = -1, tmp_crosspoint = -1;
-	int count = 0, debounce = 0;
+	int prev_count = 0, count = 0, debounce = 0;
 	int rv = 0;
 	bool valid;
+
+	double prev_linelen = 1820;
 
 	f_syncp.clear(ire_to_u16(black_ire));
 
@@ -379,23 +378,10 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 				double begin = prev_crosspoint;
 				double end = begin + ((crosspoint - prev_crosspoint) * scale_linelen);
 				double linelen = crosspoint - prev_crosspoint; 
-
-				cerr << "S " << line << ' ' << i << ' ' << crosspoint << ' ' << prev_crosspoint << ' ' << linelen << ' ' << count << endl;
-
-				cerr << begin << ' ' << end << ' ' << crosspoint - prev_crosspoint << ' ' << count << endl;
-
+				
 				int oline = get_oline(line + 1);
 
-
-				if ((get_oline(line) >= 0) && (get_oline(line + 1) >= 0) && !InRange(linelen, prev_linelen - 8, prev_linelen + 8)) {
-					cerr << "E " << begin << ' ' << crosspoint << ' ' << end << ' ' << linelen << ' ' << prev_linelen << endl;
-					i = crosspoint = begin + 1820;
-					end = begin + ((crosspoint - prev_crosspoint) * scale_linelen);
-					linelen = 1820;
-					count = 15.5 * in_freq;
-					cerr << "e " << begin << ' ' << crosspoint << ' ' << end << endl;
-					cerr << "s " << line << ' ' << i << ' ' << linelen << ' ' << count << endl;
-				} 
+				cerr << "S " << line << ' ' << oline << ' ' << i << ' ' << crosspoint << ' ' << prev_crosspoint << ' ' << linelen << ' ' << count << endl;
 
 				valid = IsABlank(line, crosspoint - prev_crosspoint, count); 
 
@@ -407,6 +393,34 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 					count = 0;
 					continue;
 				}
+		
+				double lgap = fabs(linelen - prev_linelen);
+		
+				if ((get_oline(line) >= 0) && (get_oline(line + 1) >= 0) && InRange(lgap, 2, 100)) {
+					cerr << "E " << begin << ' ' << crosspoint << ' ' << end << ' ' << linelen << ' ' << prev_linelen << ' ' << prev_count << ' ' << count << endl;
+
+					if (prev_count && (count < prev_count)) {
+						cerr << "C " << endl;
+						crosspoint -= (linelen - prev_linelen);
+						end = begin + ((crosspoint - prev_crosspoint) * scale_linelen);
+						linelen = crosspoint - prev_crosspoint; 
+					} else if ((crosspoint - prev_crosspoint) < (prev_linelen - 2)) {
+						cerr << "A " << endl;
+						crosspoint -= (linelen - prev_linelen);
+						end = begin + ((crosspoint - prev_crosspoint) * scale_linelen);
+						linelen = crosspoint - prev_crosspoint; 
+					} else {
+						cerr << "B " << endl;
+						begin += (linelen - prev_linelen);
+						prev_crosspoint += (linelen - prev_linelen);
+						end = begin + ((crosspoint - prev_crosspoint) * scale_linelen);
+						linelen = crosspoint - prev_crosspoint; 
+					} 
+
+					cerr << "ES " << line << ' ' << oline << ' ' << i << ' ' << crosspoint << ' ' << prev_crosspoint << ' ' << linelen << ' ' << count << endl;
+				}	
+
+				prev_count = count;
 
 				if ((line >= 0) && (linelen >= (ntsc_ipline * 0.9)) && (count > (11 * in_freq))) {
 					// standard line
@@ -430,6 +444,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 				} else if (((line == -1) || (line > 520)) && (linelen > 1800) && InRange(count, 40, 75)) {
 					if (!first) {
 						write(1, frame, sizeof(frame));
+						memset(frame, 0, sizeof(frame));
 					} else first = false;
 					prev_linelen = 1820;					
 					line = 1;
@@ -443,7 +458,13 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 						tmplen -= 910;
 					}
 				} 
-//				printerr(line, prev_crosspoint, crosspoint, count)
+
+				if (write_fields && line == 268) {
+					if (!first) {
+						write(1, frame, sizeof(frame));
+						memset(frame, 0, sizeof(frame));
+					} else first = false;
+				}
  
 				// process audio (if available)
 				if ((afd > 0) && (line > 0)) {
@@ -454,14 +475,11 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 
 					if (a_next < 0) a_next = prev_crosspoint / va_ratio;
 						
-//					cerr << "AA" << abuf[0] << endl; 
-
 					cerr << "a" << a_next * va_ratio << ' ' << crosspoint << endl; 
 					while ((a_next * va_ratio) < crosspoint) {
 						int index = (int)a_next * 2;
 
 						float left = abuf[index], right = abuf[index + 1];
-//						cerr << "A" << a_next << ' ' << index << ' ' << left << ' ' << right << endl; 
 						
 						ProcessAudioSample(left * lvl_adjust, right * lvl_adjust);
 	
@@ -469,19 +487,18 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 						a_next += ((dotclk / afreq) / va_ratio) * scale;
 					}	
 				}	
+			} else if (prev_crosspoint < 0) {
+				prev_count = count;
 			}
-//			prev_crosspoint = crosspoint;
-//			count = 0;
-//			cerr << debounce << endl;
+
 			if (debounce >= 16) { 
 				prev_crosspoint = crosspoint;
-//				cerr << debounce << ' ' << cross << ' ' << prev_crosspoint << endl;
 				count = 0;
 			}
 		}
 	}
 	
-	rv = prev_crosspoint - 100;
+	rv = prev_crosspoint - 200;
 
 	a_next -= aplen;
 	aplen *= 2;
@@ -501,7 +518,6 @@ int main(int argc, char *argv[])
 {
 	int rv = 0, arv = 0;
 	long long dlen = -1, tproc = 0;
-	//double output[2048];
 	float abuf[ablen * 2];
 	unsigned short inbuf[vblen];
 	unsigned char *cinbuf = (unsigned char *)inbuf;
@@ -515,7 +531,7 @@ int main(int argc, char *argv[])
 
 	opterr = 0;
 	
-	while ((c = getopt(argc, argv, "s:n:i:a:A")) != -1) {
+	while ((c = getopt(argc, argv, "s:n:i:a:Af")) != -1) {
 		switch (c) {
 			case 's':
 				sscanf(optarg, "%lf", &cross);
@@ -531,6 +547,9 @@ int main(int argc, char *argv[])
 				break;
 			case 'n':
 				despackle = false;
+				break;
+			case 'f':
+				write_fields = true;
 				break;
 			default:
 				return -1;
@@ -566,7 +585,6 @@ int main(int argc, char *argv[])
 	
                 rv = read(fd, &inbuf[(vblen - plen)], plen * 2) + ((vblen - plen) * 2);
 		while ((rv > 0) && (rv < vbsize)) {
-//			cerr << "reread\n";
 			int rv2 = read(fd, &cinbuf[rv], vbsize - rv);
 			if (rv2 <= 0) exit(0);
 			rv += rv2;
@@ -577,9 +595,6 @@ int main(int argc, char *argv[])
 			cerr << "X" << aplen << ' ' << (double)(ablen - (aplen * 4))/4.0 << ' ' << abuf[0] << ' ' ;
 			memmove(abuf, &abuf[aplen], absize - (aplen * 4));
 			cerr << abuf[0] << endl;
-
-//                	arv = read(afd, &abuf[(vblen - plen)], plen * 2) + ((vblen - plen) * 2);
-//			cerr << "pa " << aplen << ' ' <<  absize - aplen << ' ' << ((absize - aplen)) << endl; 
 
                 	arv = read(afd, &abuf[ablen - aplen], aplen * 4) + (absize - (aplen * 4));
 			while ((arv > 0) && (arv < absize)) {
