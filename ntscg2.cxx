@@ -394,22 +394,35 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 					continue;
 				}
 		
-				double lgap = fabs(linelen - prev_linelen);
-		
-				if ((get_oline(line) >= 0) && (get_oline(line + 1) >= 0) && InRange(lgap, 2, 100)) {
+				double algap = fabs(linelen - prev_linelen);
+				int acgap = abs(count - prev_count);	
+				double lgap = (linelen - prev_linelen);
+				int cgap = (count - prev_count);	
+				bool eed = false;
+	
+				if (prev_count && (get_oline(line) >= 0) && (get_oline(line + 1) >= 0) && (InRange(algap, 4, 100) || InRange(acgap, 2, 100))) {
 					cerr << "E " << begin << ' ' << crosspoint << ' ' << end << ' ' << linelen << ' ' << prev_linelen << ' ' << prev_count << ' ' << count << endl;
 
-					if (prev_count && (count < prev_count)) {
+					eed = true;
+
+					cerr << linelen << ' ' << count - prev_count << endl;
+
+					if (InRange(linelen + (count - prev_count), 1818, 1822)) {
 						cerr << "C " << endl;
 						crosspoint -= (linelen - prev_linelen);
 						end = begin + ((crosspoint - prev_crosspoint) * scale_linelen);
 						linelen = crosspoint - prev_crosspoint; 
-					} else if ((crosspoint - prev_crosspoint) < (prev_linelen - 2)) {
+					} else if (0 && prev_count && (count > prev_count)) {
+						cerr << "D " << endl;
+						crosspoint -= (linelen - prev_linelen);
+						end = begin + ((crosspoint - prev_crosspoint) * scale_linelen);
+						linelen = crosspoint - prev_crosspoint; 
+					} else if (0 && (crosspoint - prev_crosspoint) < (prev_linelen - 4)) {
 						cerr << "A " << endl;
 						crosspoint -= (linelen - prev_linelen);
 						end = begin + ((crosspoint - prev_crosspoint) * scale_linelen);
 						linelen = crosspoint - prev_crosspoint; 
-					} else {
+					} else if (1) {
 						cerr << "B " << endl;
 						begin += (linelen - prev_linelen);
 						prev_crosspoint += (linelen - prev_linelen);
@@ -428,6 +441,11 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 
 					if (oline >= 0) {
 						ProcessLine(buf, begin, end, line); 
+	
+						if (0 && eed == true) {
+							for (int i = 1; i < 65; i++) 
+								frame[oline][i] = 65535; 
+						}
 					}	
 
 					prev_linelen = linelen;					
@@ -508,8 +526,8 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 	return rv;
 }
 
-const int ablen = 2048;
-const int vblen = 16384;
+const int ablen = 8192;
+const int vblen = ablen * 16;
 
 const int absize = ablen * 8;
 const int vbsize = vblen * 2;
