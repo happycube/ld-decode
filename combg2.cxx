@@ -151,7 +151,7 @@ class Comb
 			cline cur_combed;
 
 			int counter = 0;
-			for (int h = 0; counter < 852; h++) {
+			for (int h = 0; counter < 844; h++) {
 				cur_combed.y[h] = cur.y[h];
 				cur_combed.i[h] = cur.i[h];
 				cur_combed.q[h] = cur.q[h];
@@ -167,17 +167,17 @@ class Comb
 			return cur_combed;
 		}
 
-		// buffer: 852x505 uint16_t array
+		// buffer: 844x505 uint16_t array
 		void CombFilter(uint16_t *buffer, uint8_t *output)
 		{
-			YIQ outline[852], hpline[852];
+			YIQ outline[844], hpline[844];
 			for (int l = 24; l < 504; l++) {
-				uint16_t *line = &buffer[l * 852];
+				uint16_t *line = &buffer[l * 844];
 				bool invertphase = (line[0] == 16384);
 
 				double si = 0, sq = 0;
 
-				for (int h = 68; h < 852; h++) {
+				for (int h = 68; h < 844; h++) {
 					int phase = h % 4;
 
 					double prev = line[h - 2];	
@@ -205,7 +205,7 @@ class Comb
 			}
 
 			for (int l = 24; l < 504; l++) {
-				bool invertphase = (buffer[l * 852] == 16384);
+				bool invertphase = (buffer[l * 844] == 16384);
 				cline_t line;
 				int o = 0;
 
@@ -346,7 +346,7 @@ class Comb
 			for (int line = 2; line <= 3; line++) {
 				int wc = 0;
 				for (int i = 0; i < 700; i++) {
-					if (buffer[(852 * line) + i] > 45000) wc++;
+					if (buffer[(844 * line) + i] > 45000) wc++;
 				} 
 				if (wc > 500) {
 					fstart = (line % 2); 
@@ -355,7 +355,7 @@ class Comb
 			}
 
 			for (int line = 14; line <= 17; line++) {
-				int new_framecode = ReadPhillipsCode(&buffer[line * 852]) - 0xf80000;
+				int new_framecode = ReadPhillipsCode(&buffer[line * 844]) - 0xf80000;
 
 				cerr << line << ' ' << hex << new_framecode << dec << endl;
 
@@ -407,7 +407,7 @@ int main(int argc, char *argv[])
 	int rv = 0, fd = 0;
 	long long dlen = -1, tproc = 0;
 	//double output[2048];
-	unsigned short inbuf[852 * 525 * 2];
+	unsigned short inbuf[844 * 525 * 2];
 	unsigned char *cinbuf = (unsigned char *)inbuf;
 	int c;
 
@@ -465,7 +465,7 @@ int main(int argc, char *argv[])
 
 	cout << std::setprecision(8);
 
-	int bufsize = 852 * 505 * 2;
+	int bufsize = 844 * 505 * 2;
 
 	rv = read(fd, inbuf, bufsize);
 	while ((rv > 0) && (rv < bufsize)) {
