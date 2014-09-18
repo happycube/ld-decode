@@ -67,6 +67,7 @@ for f in range(0, n):
 #alfilt = sps.firwin(11, [2.10/ffreq, 3.10/ffreq])
 #arfilt = sps.firwin(9, [2.60/ffreq, 3.00/ffreq])
 
+freqh = freq / 2
 lowpass_filter = sps.firwin(31, 5.2 / (freq / 2), window='hamming')
 #lowpass_filter = sps.firwin(15, 4.3 / (freq / 2), window='hamming')
 #doplot(lowpass_filter, [1.0])
@@ -77,11 +78,12 @@ tL = 300.0/1000000000.0 # 300nS
 
 n = 128
 df = 128.0/(freq/2) 
-Fr = np.zeros(n)
-Am = np.zeros(n)
-Th = np.zeros(n)
+Fr = np.zeros(n + 1)
+Frh = np.zeros(n + 1)
+Am = np.zeros(n + 1)
+Th = np.zeros(n + 1)
 
-for f in range(0, n):
+for f in range(0, n + 1):
         F = ((float(f) / df) * 1000000.0) + 1
         H = 2.0 * np.pi * F * tH
         L = 2.0 * np.pi * F * tL
@@ -90,12 +92,14 @@ for f in range(0, n):
         B = 1.0 + (1.0 / (L * L))
 
         DE = ((10.0*np.log(A/B))-21.9722457733) * (10.0 / 21.9722457733)
+        DE = ((10.0*np.log(A/B))-20) * (10.0 / 20)
 	cf = (float(f) / df)
 
         Fr[f] = cf / freq
-        Am[f] = np.power(10, (DE/18.0)) 
+        Frh[f] = cf / (freq / 2.0)
+        Am[f] = np.power(10, (DE/20.0)) 
 
-	#print f, Fr[f] * freq, Am[f]
+#	print f, Fr[f], Fr[f] * freq, Am[f]
 
 Ndeemp = 8
 Ddeemp = 5
@@ -105,9 +109,22 @@ for i in range(0, len(Fr)):
 	Th[i] = -(Fr[i] * 29.4) 
 	Th[i] = -(Fr[i] * 30.0) 
 	Th[i] = -(Fr[i] * 30.0) 
-#	Th[i] = -(Fr[i] * 29.5) 
+	Th[i] = -(Fr[i] * 29.5) 
 
 [f_deemp_b, f_deemp_a] = fdls.FDLS(Fr, Am, Th, Ndeemp, Ddeemp)
+
+# [b, a] = bilinear(.3e-8, .1e-8, (1/3), 28636363*2); freqz(b, a)
+
+f_deemp_b = [0.28193,  -0.43615] 
+f_deemp_a = [1.0000 , -1.1542]
+#doplot(f_deemp_b, f_deemp_a)
+#exit()
+
+freqh = freq / 2
+f_deemp_b = sps.firwin2(257, Frh, Am) 
+f_deemp_a = 1.0
+doplot(f_deemp_b, [1.0])
+exit()
 
 #f_deemp_b = sps.firwin2(125, Fr, Am)
 #f_deemp_b = [1.0]
@@ -115,9 +132,12 @@ for i in range(0, len(Fr)):
 
 w, h = sps.freqz(B, A)
 deemp_corr = ((h[0].real - 1) / 1.15) + 1
+deemp_corr = h[0].real 
+
 #deemp_corr = 0.9945
-deemp_corr = 0.9915
-#deemp_corr = 1.001
+#deemp_corr = 0.9915
+deemp_corr = 1.0
+deemp_corr = .988
 
 #doplot(alfilt, [1.0])
 #exit()
@@ -171,6 +191,8 @@ def process(data):
 			if output[i] < 0:
 				output[i] = output[i] + freq_hz
 
+	return output
+
 	output = output[1500:2800]
 
 #	output = (sps.lfilter(Blpf, Alpf, tdangles2) * 4557618)[128:len(tdangles2)]
@@ -223,6 +245,8 @@ hp_nr_filter = sps.firwin(31, 1.8 / (freq / 2), window='hamming', pass_zero=Fals
 #doplot(hp_nr_filter, [1.0])
 #exit()
 
+zi = sps.lfilter_zi(f_deemp_b, f_deemp_a)
+
 while (len(inbuf) > 0):
 	toread = blocklen - indata.size 
 
@@ -233,6 +257,10 @@ while (len(inbuf) > 0):
 	output = process(indata)
 
 	foutput = (sps.lfilter(f_deemp_b, f_deemp_a, output)[128:len(output)]) / deemp_corr
+
+#	print len(output), len(foutput)
+#	for i in range(256, 3072):
+#		print output[i + 128], foutput[i]
 
 	output_16 = np.empty(len(foutput), dtype=np.uint16)
 
