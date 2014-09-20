@@ -30,16 +30,13 @@ for f in range(0, n):
 	cf = (float(f) / df)
 
         Fr[f] = cf / (freq * 2)
-        Am[f] = np.power(10, (DE/18.0)) 
+        Am[f] = np.power(10, (DE/20.0)) 
 
 Ndeemp = 8
 Ddeemp = 5
 
 for i in range(0, len(Fr)):
-	Th[i] = -(Fr[i] * 5040) / 180.0
-	Th[i] = -(Fr[i] * 29.4) 
-	Th[i] = -(Fr[i] * 30.0) 
-	Th[i] = -(Fr[i] * 30.0) 
+	Th[i] = -(Fr[i] * 31.0) 
 
 [f_deemp_b, f_deemp_a] = fdls.FDLS(Fr, Am, Th, Ndeemp, Ddeemp)
 
