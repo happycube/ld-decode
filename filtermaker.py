@@ -12,8 +12,8 @@ freq = 4 * 315.0 / 88.0
 tH = 100.0/1000000000.0 # 100nS
 tL = 300.0/1000000000.0 # 300nS
 
-n = 128
-df = 128.0/(freq) 
+n = 2048 
+df = 2048.0/(freq) 
 Fr = np.zeros(n)
 Am = np.zeros(n)
 Th = np.zeros(n)
@@ -30,13 +30,13 @@ for f in range(0, n):
 	cf = (float(f) / df)
 
         Fr[f] = cf / (freq * 2)
-        Am[f] = np.power(10, (DE/20.0)) 
+        Am[f] = np.power(10, (DE/19.5)) 
 
 Ndeemp = 8
 Ddeemp = 5
 
 for i in range(0, len(Fr)):
-	Th[i] = -(Fr[i] * 31.0) 
+	Th[i] = -(Fr[i] * 30.5) 
 
 [f_deemp_b, f_deemp_a] = fdls.FDLS(Fr, Am, Th, Ndeemp, Ddeemp)
 
