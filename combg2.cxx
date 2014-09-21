@@ -14,10 +14,10 @@ char *image_base = "FRAME";
 bool bw_mode = false;
 
 // NTSC properties
-const double freq = 4.0;	// in FSC.  Must be an even number!
+const double freq = 4.0;
+const double hlen = 227.5 * freq; 
+const int hleni = (int)hlen; 
 
-const double hlen = 227.5 * freq;
-const int    hleni = (int)hlen;
 const double dotclk = (1000000.0*(315.0/88.0)*freq); 
 
 const double dots_usec = dotclk / 1000000.0; 
@@ -42,7 +42,7 @@ int white_u16 = ire_to_u16(110);
 bool whiteflag_detect = true;
 
 double nr_y = 2.0;
-double nr_c = 1.0;
+double nr_c = 0.8;
 
 inline double IRE(double in) 
 {
@@ -104,11 +104,7 @@ inline uint16_t ire_to_u16(double ire)
 } 
 
 typedef struct cline {
-	double y[hleni]; // Y
-	double m[hleni]; // IQ magnitude
-	double a[hleni]; // IQ phase angle
-	double i[hleni]; // IQ phase angle
-	double q[hleni]; // IQ phase angle
+	YIQ p[910];
 } cline_t;
 
 int write_locs = -1;
@@ -118,7 +114,6 @@ class Comb
 	protected:
 		int linecount;  // total # of lines process - needed to maintain phase
 		int curline;    // current line # in frame 
-		int active;	// set to 1 when first frame ends
 
 		int framecode;
 		int framecount;	
@@ -130,78 +125,67 @@ class Comb
 		int fieldcount;
 		int frames_out;	// total # of written frames
 	
-		int bufsize; 
-
-		double curscale;
-
 		uint16_t frame[1820 * 530];
 		uint8_t obuf[744 * 525 * 3];
-		uint8_t tmp_obuf[744 * 525 * 3];
 
-		double blevel[525];
-
-		double _cos[525][16], _sin[525][16];
 		cline_t wbuf[3][525];
 		Filter *f_i, *f_q;
-		Filter *f_synci, *f_syncq;
 
 		Filter *f_hpy, *f_hpi, *f_hpq;
 
 		cline_t Blend(cline_t &prev, cline_t &cur, cline_t &next) {
-			cline cur_combed;
+			cline_t cur_combed;
 
-			int counter = 0;
-			for (int h = 0; counter < 844; h++) {
-				cur_combed.y[h] = cur.y[h];
-				cur_combed.i[h] = cur.i[h];
-				cur_combed.q[h] = cur.q[h];
+			for (int h = 0; h < 844; h++) {
+				cur_combed.p[h] = cur.p[h];
 
-				cur_combed.i[h] = (cur.i[h] / 2.0) + (prev.i[h] / 4.0) + (next.i[h] / 4.0);
-				cur_combed.q[h] = (cur.q[h] / 2.0) + (prev.q[h] / 4.0) + (next.q[h] / 4.0);
-
-				cur_combed.m[h] = ctor(cur_combed.i[h], cur_combed.q[h]); 
-				cur_combed.a[h] = atan2(cur_combed.i[h], cur_combed.q[h]); 
-				counter++;
+				cur_combed.p[h].i = (cur.p[h].i / 2.0) + (prev.p[h].i / 4.0) + (next.p[h].i / 4.0);
+				cur_combed.p[h].q = (cur.p[h].q / 2.0) + (prev.p[h].q / 4.0) + (next.p[h].q / 4.0);
 			}
 
 			return cur_combed;
 		}
 
+		void SplitLine(cline_t &out, uint16_t *line) 
+		{
+			bool invertphase = (line[0] == 16384);
+
+			double si = 0, sq = 0;
+
+			for (int h = 68; h < 844; h++) {
+				int phase = h % 4;
+
+				double prev = line[h - 2];	
+				double cur  = line[h];	
+				double next = line[h + 2];	
+
+				double c = (cur - ((prev + next) / 2)) / 2;
+
+				if (invertphase) c = -c;
+
+				switch (phase) {
+					case 0: sq = c; break;
+					case 1: si = -c; break;
+					case 2: sq = -c; break;
+					case 3: si = c; break;
+					default: break;
+				}
+
+				if (bw_mode) si = sq = 0;
+
+				out.p[h].y = cur; 
+				out.p[h - 9].i = f_i->feed(si); 
+				out.p[h - 9].q = f_q->feed(sq); 
+			}
+		}
+			
 		// buffer: 844x505 uint16_t array
 		void CombFilter(uint16_t *buffer, uint8_t *output)
 		{
 			YIQ outline[844], hpline[844];
+
 			for (int l = 24; l < 504; l++) {
-				uint16_t *line = &buffer[l * 844];
-				bool invertphase = (line[0] == 16384);
-
-				double si = 0, sq = 0;
-
-				for (int h = 68; h < 844; h++) {
-					int phase = h % 4;
-
-					double prev = line[h - 2];	
-					double cur  = line[h];	
-					double next = line[h - 2];	
-
-					double c = (cur - ((prev + next) / 2)) / 2;
-
-					if (invertphase) c = -c;
-
-					switch (phase) {
-						case 0: sq = c; break;
-						case 1: si = -c; break;
-						case 2: sq = -c; break;
-						case 3: si = c; break;
-						default: break;
-					}
-
-					if (bw_mode) si = sq = 0;
-
-					wbuf[0][l].y[h] = cur; 
-					wbuf[0][l].i[h - 9] = f_i->feed(si); 
-					wbuf[0][l].q[h - 9] = f_q->feed(sq); 
-				}
+				SplitLine(wbuf[0][l], &buffer[l * 844]); 
 			}
 
 			for (int l = 24; l < 504; l++) {
@@ -215,18 +199,14 @@ class Comb
 					memcpy(&line, &wbuf[0][l], sizeof(cline_t));
 		
 				uint8_t *line_output = &output[(744 * 3 * (l - 24))];
-//				cerr << l << ' ' << (744 * 3 * (l - 24)) << endl;
 
 				// only need 744 for deocding, but need extra space for the NR filter
-				for (int h = 0; h < 760; h++) {
+				for (int h = 0; h < 752; h++) {
 					double comp;	
 					int phase = h % 4;
 					YIQ y;
-					RGB r;
 
-					y.y = line.y[h + 70];
-					y.i = line.i[h + 70];
-					y.q = line.q[h + 70];
+					y = line.p[h + 70];
 
 					switch (phase) {
 						case 0: comp = y.q; break;
@@ -240,21 +220,36 @@ class Comb
 //					cerr << y.y << ' ' << comp << ' ' << y.y + comp << endl;
 					y.y += comp;
 
-					hpline[h].y = clamp(f_hpy->feed(y.y), -nr_y, nr_y);
-					hpline[h].i = clamp(f_hpi->feed(y.i), -nr_c, nr_c);
-					hpline[h].q = clamp(f_hpq->feed(y.q), -nr_c, nr_c);
+					//hpline[h].y = clamp(f_hpy->feed(y.y), -nr_y, nr_y);
+					hpline[h].y = f_hpy->feed(y.y);
+					hpline[h].i = f_hpi->feed(y.i);
+					hpline[h].q = f_hpq->feed(y.q);
 
 					outline[h] = y;
 				}
 
-				for (int h = 0; h < 760; h++) {
+				for (int h = 0; h < 744; h++) {
 					RGB r;
+					YIQ a = hpline[h + 8];
 
-//					cerr << h << ' ' << outline[h].y << ' ' << nr_y << ' ' << hpline[h + 8].y << endl;
+					if ((nr_y > 0) && (fabs(a.y) < nr_y)) {
+						double hpm = (a.y / nr_y);
+						a.y *= (1 - fabs(hpm * hpm * hpm));
+						outline[h].y -= a.y;
+					}
+					
+					if ((nr_c > 0) && (fabs(a.i) < nr_c)) {
+						double hpm = (a.i / nr_c);
+						a.i *= (1 - fabs(hpm * hpm * hpm));
+						outline[h].i -= a.i;
+					}
+					
+					if ((nr_c > 0) && (fabs(a.q) < nr_c)) {
+						double hpm = (a.q / nr_c);
+						a.q *= (1 - fabs(hpm * hpm * hpm));
+						outline[h].q -= a.q;
+					}
 
-					outline[h].y -= hpline[h+8].y;
-					outline[h].i -= hpline[h+8].i;
-					outline[h].q -= hpline[h+8].q;
 					r.conv(outline[h]);
 
 //					if ((l == 50) && !(h % 20)) {
@@ -296,14 +291,11 @@ class Comb
 		}
 
 	public:
-		Comb(int _bufsize = 4096) {
+		Comb() {
 			fieldcount = curline = linecount = -1;
-			active = 0;
 			framecode = framecount = frames_out = 0;
 
 			scount = 0;
-
-			bufsize = _bufsize;
 
 			f_oddframe = false;	
 	
@@ -335,6 +327,7 @@ class Comb
 			if (!pulldown_mode) {
 				fstart = 0;
 			} else if (f_oddframe) {
+				uint8_t tmp_obuf[744 * 525 * 3];
 				CombFilter(buffer, tmp_obuf);
 				for (int i = 0; i <= 478; i += 2) {
 					memcpy(&obuf[744 * 3 * i], &tmp_obuf[744 * 3 * i], 744 * 3); 
@@ -406,7 +399,6 @@ int main(int argc, char *argv[])
 {
 	int rv = 0, fd = 0;
 	long long dlen = -1, tproc = 0;
-	//double output[2048];
 	unsigned short inbuf[844 * 525 * 2];
 	unsigned char *cinbuf = (unsigned char *)inbuf;
 	int c;
