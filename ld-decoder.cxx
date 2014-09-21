@@ -179,7 +179,7 @@ int main(int argc, char *argv[])
 
 			if (n > 0) {
 		//		cerr << "d " << n ;
-				n = f_deemp.feed(n) / .9919;
+				n = f_deemp.feed(n) / .9928;
 		//		cerr << " " << n << endl;
 
 				n -= 7600000.0;
