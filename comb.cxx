@@ -186,8 +186,8 @@ int black_u16 = level_7_5_ire;
 int white_u16 = ire_to_u16(120); 
 bool whiteflag_detect = true;
 
-double nr_y = 0.008;
-double nr_c = 0.008;
+double nr_y = 0.020;
+double nr_c = 0.005;
 
 typedef struct cline {
 	double y[hleni]; // Y
@@ -376,7 +376,8 @@ class Comb
 					if (counter >= 42) {
 						outline[counter - 42] = outc;
 
-						hpline[counter-42].y = clamp(f_hpy->feed(outc.y), -nr_y, nr_y);
+						//hpline[counter-42].y = clamp(f_hpy->feed(outc.y), -nr_y, nr_y);
+						hpline[counter-42].y = f_hpy->feed(outc.y);
 						hpline[counter-42].i = clamp(f_hpi->feed(outc.i), -nr_c, nr_c);
 						hpline[counter-42].q = clamp(f_hpq->feed(outc.q), -nr_c, nr_c);
 					} 
@@ -390,7 +391,20 @@ class Comb
 				for (int h = 0; h < 1488; h++) {
 					RGB r;
 
-					outline[h+32].y -= hpline[h+47].y;
+					double hp = hpline[h+47].y;
+
+					if (hp < nr_y) {
+						cerr << h << ' ' << outline[h+32].y << ' ' << hp << ' ';
+						outline[h+32].y -= hp;
+
+						double hpm = (hp / nr_y);
+						hp *= (1 - (hpm * hpm));
+						cerr << hpm << ' ' << hp << ' ';
+						outline[h+32].y -= hp;
+						cerr << outline[h+32].y << endl;
+					}
+
+//					outline[h+32].y -= hpline[h+47].y;
 					outline[h+32].i -= hpline[h+47].i;
 					outline[h+32].q -= hpline[h+47].q;
 					
