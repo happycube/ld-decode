@@ -178,6 +178,82 @@ class Comb
 				out.p[h - 9].q = f_q->feed(sq); 
 			}
 		}
+					
+
+		void DoCNR(int fnum = 0) {
+			if (nr_c < 0) return;
+
+			// part 1:  do horizontal 
+			for (int l = 24; l < 504; l++) {
+				YIQ hpline[844];
+				cline_t *input = &wbuf[fnum][l];
+
+				for (int h = 70; h < 752 + 70; h++) {
+					YIQ y = input->p[h]; 
+
+					hpline[h].i = f_hpi->feed(y.i);
+					hpline[h].q = f_hpq->feed(y.q);
+				}
+
+				for (int h = 70; h < 744 + 70; h++) {
+					YIQ a = hpline[h + 8];
+
+					if (fabs(a.i) < nr_c) {
+						double hpm = (a.i / nr_c);
+						a.i *= (1 - fabs(hpm * hpm * hpm));
+//						cerr << nr_c << ' ' << h << ' ' << l << ' ' << wbuf[fnum][l].p[h].i << ' ' << a.i << ' ' ;
+						input->p[h].i -= a.i;
+//						cerr << wbuf[fnum][l].p[h].i << endl;
+					}
+					
+					if (fabs(a.q) < nr_c) {
+						double hpm = (a.q / nr_c);
+						a.q *= (1 - fabs(hpm * hpm * hpm));
+						input->p[h].q -= a.q;
+					}
+				}
+			}
+
+			for (int p = 0; p < 2; p++) {
+				// part 2: vertical
+				for (int x = 70; x < 744 + 70; x++) {
+					YIQ hpline[505 + 16];
+
+					for (int l = p; l < 505 + 16; l+=2) {
+						int rl = (l < 505) ? l + p: 502 + p;
+
+						YIQ y = wbuf[fnum][rl].p[x];
+						hpline[l].i = f_hpi->feed(y.i);
+						hpline[l].q = f_hpq->feed(y.q);
+					}
+				
+					for (int l = p; l < 505; l+=2) {
+						YIQ *y = &wbuf[fnum][l+p].p[x];
+						YIQ a = hpline[l + 16];
+					
+						if (fabs(a.i) < nr_c) {
+							double hpm = (a.i / nr_c);
+							a.i *= (1 - fabs(hpm * hpm * hpm));
+//							cerr << nr_c << ' ' << x << ' ' << l << ' ' << wbuf[fnum][l].p[x].i << ' ' << a.i << ' ' ;
+							wbuf[fnum][l].p[x].i -= a.i;
+//							cerr << wbuf[fnum][l].p[x].i << ' ';
+						} else { 
+//							cerr << "Oi " << x << ' ' << l << ' ';
+						}
+					
+						if (fabs(a.q) < nr_c) {
+							double hpm = (a.q / nr_c);
+							a.q *= (1 - fabs(hpm * hpm * hpm));
+//							cerr << wbuf[fnum][l].p[x].q << ' ';
+							wbuf[fnum][l].p[x].q -= a.q;
+//							cerr << wbuf[fnum][l].p[x].q << endl;
+						} else { 
+//							cerr << "Oq\n"; 
+						}
+					}
+				}
+			}
+		}
 			
 		// buffer: 844x505 uint16_t array
 		void CombFilter(uint16_t *buffer, uint8_t *output)
@@ -188,6 +264,8 @@ class Comb
 				SplitLine(wbuf[0][l], &buffer[l * 844]); 
 			}
 
+			DoCNR();	
+
 			for (int l = 24; l < 504; l++) {
 				bool invertphase = (buffer[l * 844] == 16384);
 				cline_t line;
@@ -197,15 +275,22 @@ class Comb
 					line = Blend(wbuf[0][l - 2], wbuf[0][l], wbuf[0][l + 2]);
 				else
 					memcpy(&line, &wbuf[0][l], sizeof(cline_t));
-		
+	
 				uint8_t *line_output = &output[(744 * 3 * (l - 24))];
-
-				// only need 744 for deocding, but need extra space for the NR filter
-				for (int h = 0; h < 752; h++) {
+				
+				// only need 744 for deocding, but need extra space for the NR filters
+				for (int h = 0; h < 760; h++) {
 					double comp;	
 					int phase = h % 4;
 					YIQ y;
-
+#if 0
+					if (l == 240) {
+//						cerr << h << ' ' << line.p[h + 70].y << ' ' line.p[h + 70].i << ' ' << line.p[h + 70].q << endl;
+						cerr << h << ' ' << wbuf[0][l - 2].p[h + 70].y << ' ' << wbuf[0][l - 2].p[h + 70].i << ' ' << wbuf[0][l - 2].p[h + 70].q  << endl;
+						cerr << h << ' ' << wbuf[0][l - 0].p[h + 70].y << ' ' << wbuf[0][l - 0].p[h + 70].i << ' ' << wbuf[0][l - 0].p[h + 70].q  << endl;
+						cerr << h << ' ' << wbuf[0][l + 2].p[h + 70].y << ' ' << wbuf[0][l + 2].p[h + 70].i << ' ' << wbuf[0][l + 2].p[h + 70].q  << endl;
+					}
+#endif
 					y = line.p[h + 70];
 
 					switch (phase) {
@@ -217,18 +302,14 @@ class Comb
 					}
 
 					if (invertphase) comp = -comp;
-//					cerr << y.y << ' ' << comp << ' ' << y.y + comp << endl;
 					y.y += comp;
 
-					//hpline[h].y = clamp(f_hpy->feed(y.y), -nr_y, nr_y);
 					hpline[h].y = f_hpy->feed(y.y);
-					hpline[h].i = f_hpi->feed(y.i);
-					hpline[h].q = f_hpq->feed(y.q);
 
 					outline[h] = y;
 				}
 
-				for (int h = 0; h < 744; h++) {
+				for (int h = 0; h < 752; h++) {
 					RGB r;
 					YIQ a = hpline[h + 8];
 
@@ -238,18 +319,6 @@ class Comb
 						outline[h].y -= a.y;
 					}
 					
-					if ((nr_c > 0) && (fabs(a.i) < nr_c)) {
-						double hpm = (a.i / nr_c);
-						a.i *= (1 - fabs(hpm * hpm * hpm));
-						outline[h].i -= a.i;
-					}
-					
-					if ((nr_c > 0) && (fabs(a.q) < nr_c)) {
-						double hpm = (a.q / nr_c);
-						a.q *= (1 - fabs(hpm * hpm * hpm));
-						outline[h].q -= a.q;
-					}
-
 					r.conv(outline[h]);
 
 //					if ((l == 50) && !(h % 20)) {
