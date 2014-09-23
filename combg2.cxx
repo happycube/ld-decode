@@ -49,6 +49,7 @@ inline double IRE(double in)
 	return (in * 140.0) - 40.0;
 }
 
+// XXX:  This is actually YUV.
 struct YIQ {
         double y, i, q;
 
@@ -64,34 +65,37 @@ double clamp(double v, double low, double high)
         else return v;
 }
 
-struct RGB {
-        double r, g, b;
-
-        void conv(YIQ y) {
-		YIQ t;
-
-		t.y = (y.y - black_u16) * 1.43;
-		t.i = y.i * 1.43;
-		t.q = y.q * 1.43;
-
-                r = (t.y * 1.164) + (1.596 * t.i);
-                g = (t.y * 1.164) - (0.813 * t.i) - (t.q * 0.391);
-                b = (t.y * 1.164) + (t.q * 2.018);
-
-                r = clamp(r / 256, 0, 255);
-                g = clamp(g / 256, 0, 255);
-                b = clamp(b / 256, 0, 255);
-                //cerr << 'y' << y.y << " i" << y.i << " q" << y.q << ' ';
-                //cerr << 'r' << r << " g" << g << " b" << b << endl;
-        };
-};
-
 inline double u16_to_ire(uint16_t level)
 {
 	if (level == 0) return -100;
 	
 	return -40 + ((160.0 / 65533.0) * (double)level); 
-} 
+}
+
+struct RGB {
+        double r, g, b;
+
+        void conv(YIQ _y) {
+		double y = u16_to_ire(_y.y);
+		double i = (_y.i) * (160.0 / 65533.0);
+		double q = (_y.q) * (160.0 / 65533.0);
+
+                r = y + (1.13983 * q);
+                g = y - (0.58060 * q) - (i * 0.39465);
+                b = y + (i * 2.032);
+//		r = y + (0.956 * t.i) + (.621 * t.q);
+//		g = y - (0.272 * t.i) - (.647 * t.q);
+//		b = y - (1.107 * t.i) + (1.704 * t.q);
+
+		double m = 2.56;
+
+                r = clamp(r * m, 0, 255);
+                g = clamp(g * m, 0, 255);
+                b = clamp(b * m, 0, 255);
+                //cerr << 'y' << y.y << " i" << y.i << " q" << y.q << ' ';
+                //cerr << 'r' << r << " g" << g << " b" << b << endl;
+        };
+};
 
 inline uint16_t ire_to_u16(double ire)
 {
@@ -166,10 +170,10 @@ class Comb
 				if (invertphase) c = -c;
 
 				switch (phase) {
-					case 0: sq = c; break;
-					case 1: si = -c; break;
-					case 2: sq = -c; break;
-					case 3: si = c; break;
+					case 0: si = c; break;
+					case 1: sq = -c; break;
+					case 2: si = -c; break;
+					case 3: sq = c; break;
 					default: break;
 				}
 
@@ -324,10 +328,10 @@ class Comb
 					YIQ y = cbuf[0][l].p[h + 70];
 
 					switch (phase) {
-						case 0: comp = y.q; break;
-						case 1: comp = -y.i; break;
-						case 2: comp = -y.q; break;
-						case 3: comp = y.i; break;
+						case 0: comp = y.i; break;
+						case 1: comp = -y.q; break;
+						case 2: comp = -y.i; break;
+						case 3: comp = y.q; break;
 						default: break;
 					}
 
@@ -348,6 +352,21 @@ class Comb
 					RGB r;
 					
 					r.conv(wbuf[0][l].p[h + 70]);
+
+                                       if (0 && l == 50) {
+                                               double y = u16_to_ire(wbuf[0][l].p[h + 70].y);
+                                               double i = (wbuf[0][l].p[h + 70].i) * (160.0 / 65533.0);
+                                               double q = (wbuf[0][l].p[h + 70].q) * (160.0 / 65533.0);
+
+                                               double m = ctor(q, i);
+                                               double a = atan2(q, i);
+
+                                               a *= (180 / M_PIl);
+                                               if (a < 0) a += 360;
+
+                                               cerr << h << ' ' << y << ' ' << i << ' ' << q << ' ' << m << ' ' << a << ' '; 
+                                               cerr << r.r << ' ' << r.g << ' ' << r.b << endl;
+                                       }
 
 					line_output[o++] = (uint8_t)(r.r); 
 					line_output[o++] = (uint8_t)(r.g); 
