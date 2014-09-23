@@ -129,9 +129,11 @@ class Comb
 		uint8_t obuf[744 * 525 * 3];
 
 		cline_t wbuf[3][525];
+		cline_t cbuf[3][525];
 		Filter *f_i, *f_q;
 
 		Filter *f_hpy, *f_hpi, *f_hpq;
+		Filter *f_hpvy, *f_hpvi, *f_hpvq;
 
 		cline_t Blend(cline_t &prev, cline_t &cur, cline_t &next) {
 			cline_t cur_combed;
@@ -201,9 +203,7 @@ class Comb
 					if (fabs(a.i) < nr_c) {
 						double hpm = (a.i / nr_c);
 						a.i *= (1 - fabs(hpm * hpm * hpm));
-//						cerr << nr_c << ' ' << h << ' ' << l << ' ' << wbuf[fnum][l].p[h].i << ' ' << a.i << ' ' ;
 						input->p[h].i -= a.i;
-//						cerr << wbuf[fnum][l].p[h].i << endl;
 					}
 					
 					if (fabs(a.q) < nr_c) {
@@ -223,75 +223,105 @@ class Comb
 						int rl = (l < 505) ? l + p: 502 + p;
 
 						YIQ y = wbuf[fnum][rl].p[x];
-						hpline[l].i = f_hpi->feed(y.i);
-						hpline[l].q = f_hpq->feed(y.q);
+						hpline[l].i = f_hpvi->feed(y.i);
+						hpline[l].q = f_hpvq->feed(y.q);
 					}
 				
 					for (int l = p; l < 505; l+=2) {
-						YIQ *y = &wbuf[fnum][l+p].p[x];
 						YIQ a = hpline[l + 16];
 					
 						if (fabs(a.i) < nr_c) {
 							double hpm = (a.i / nr_c);
 							a.i *= (1 - fabs(hpm * hpm * hpm));
-//							cerr << nr_c << ' ' << x << ' ' << l << ' ' << wbuf[fnum][l].p[x].i << ' ' << a.i << ' ' ;
 							wbuf[fnum][l].p[x].i -= a.i;
-//							cerr << wbuf[fnum][l].p[x].i << ' ';
-						} else { 
-//							cerr << "Oi " << x << ' ' << l << ' ';
 						}
 					
 						if (fabs(a.q) < nr_c) {
 							double hpm = (a.q / nr_c);
 							a.q *= (1 - fabs(hpm * hpm * hpm));
-//							cerr << wbuf[fnum][l].p[x].q << ' ';
 							wbuf[fnum][l].p[x].q -= a.q;
-//							cerr << wbuf[fnum][l].p[x].q << endl;
-						} else { 
-//							cerr << "Oq\n"; 
 						}
 					}
 				}
 			}
 		}
+		
+		void DoYNR(int fnum = 0) {
+			if (nr_y < 0) return;
+
+			// part 1:  do horizontal 
+			for (int l = 24; l < 504; l++) {
+				YIQ hpline[844];
+				cline_t *input = &wbuf[fnum][l];
+
+				for (int h = 70; h < 752 + 70; h++) {
+					hpline[h].y = f_hpy->feed(input->p[h].y);
+				}
+
+				for (int h = 70; h < 744 + 70; h++) {
+					YIQ a = hpline[h + 8];
+
+					if (fabs(a.y) < nr_y) {
+						double hpm = (a.y / nr_y);
+						a.y *= (1 - fabs(hpm * hpm * hpm));
+						input->p[h].y -= a.y;
+					}
+				}
+			}
+#if 0 // 2D YNR really doesn't work well yet, if ever
+			if (!pulldown_mode) return;
+
+			// part 2: vertical
+			for (int x = 70; x < 744 + 70; x++) {
+				YIQ hpline[505 + 16];
+
+				for (int l = 0; l < 505 + 16; l++) {
+					int rl = (l < 505) ? l : 504;
+
+					YIQ y = wbuf[fnum][rl].p[x];
+					hpline[l].y = f_hpvy->feed(y.y);
+				}
 			
+				for (int l = 0; l < 505; l++) {
+					YIQ *y = &wbuf[fnum][l].p[x];
+					YIQ a = hpline[l + 8];
+				
+					if (fabs(a.y) < _nr_y) {
+						double hpm = (a.y / _nr_y);
+						a.i *= (1 - fabs(hpm * hpm * hpm));
+						wbuf[fnum][l].p[x].y -= a.y;
+					}
+				}
+			}
+#endif
+		}
+		
 		// buffer: 844x505 uint16_t array
 		void CombFilter(uint16_t *buffer, uint8_t *output)
 		{
-			YIQ outline[844], hpline[844];
-
 			for (int l = 24; l < 504; l++) {
 				SplitLine(wbuf[0][l], &buffer[l * 844]); 
 			}
 
 			DoCNR();	
 
+			// comb filtering phase
+			for (int l = 24; l < 504; l++) {
+				if (l < 503) 
+					cbuf[0][l] = Blend(wbuf[0][l - 2], wbuf[0][l], wbuf[0][l + 2]);
+				else
+					memcpy(&cbuf[0][l], &wbuf[0][l], sizeof(cline_t));
+			}
+
+			// remove color data from baseband (Y)	
 			for (int l = 24; l < 504; l++) {
 				bool invertphase = (buffer[l * 844] == 16384);
-				cline_t line;
-				int o = 0;
 
-				if (l < 503) 
-					line = Blend(wbuf[0][l - 2], wbuf[0][l], wbuf[0][l + 2]);
-				else
-					memcpy(&line, &wbuf[0][l], sizeof(cline_t));
-	
-				uint8_t *line_output = &output[(744 * 3 * (l - 24))];
-				
-				// only need 744 for deocding, but need extra space for the NR filters
 				for (int h = 0; h < 760; h++) {
 					double comp;	
 					int phase = h % 4;
-					YIQ y;
-#if 0
-					if (l == 240) {
-//						cerr << h << ' ' << line.p[h + 70].y << ' ' line.p[h + 70].i << ' ' << line.p[h + 70].q << endl;
-						cerr << h << ' ' << wbuf[0][l - 2].p[h + 70].y << ' ' << wbuf[0][l - 2].p[h + 70].i << ' ' << wbuf[0][l - 2].p[h + 70].q  << endl;
-						cerr << h << ' ' << wbuf[0][l - 0].p[h + 70].y << ' ' << wbuf[0][l - 0].p[h + 70].i << ' ' << wbuf[0][l - 0].p[h + 70].q  << endl;
-						cerr << h << ' ' << wbuf[0][l + 2].p[h + 70].y << ' ' << wbuf[0][l + 2].p[h + 70].i << ' ' << wbuf[0][l + 2].p[h + 70].q  << endl;
-					}
-#endif
-					y = line.p[h + 70];
+
+					YIQ y = cbuf[0][l].p[h + 70];
 
 					switch (phase) {
 						case 0: comp = y.q; break;
@@ -304,27 +334,20 @@ class Comb
 					if (invertphase) comp = -comp;
 					y.y += comp;
 
-					hpline[h].y = f_hpy->feed(y.y);
-
-					outline[h] = y;
+					wbuf[0][l].p[h + 70] = y;
 				}
-
+			}
+			
+			DoYNR();
+		
+			// YIQ (YUV?) -> RGB conversion	
+			for (int l = 24; l < 504; l++) {
+				uint8_t *line_output = &output[(744 * 3 * (l - 24))];
+				int o = 0;
 				for (int h = 0; h < 752; h++) {
 					RGB r;
-					YIQ a = hpline[h + 8];
-
-					if ((nr_y > 0) && (fabs(a.y) < nr_y)) {
-						double hpm = (a.y / nr_y);
-						a.y *= (1 - fabs(hpm * hpm * hpm));
-						outline[h].y -= a.y;
-					}
 					
-					r.conv(outline[h]);
-
-//					if ((l == 50) && !(h % 20)) {
-//						cerr << h << ' ' << (int)(outline[h+32].y * 65536) << ' ' << (int)(outline[h+32].i * 65536) << ' ' << (int)(outline[h+32].q * 65536) << ' ' << r.r << ' ' << r.g << ' ' << r.b << endl;
-//					}
-//					cerr << l << ' ' << (744 * 3 * (l - 24)) << ' ' << o << ' ' << (r.r * 255.0) << endl;
+					r.conv(wbuf[0][l].p[h + 70]);
 
 					line_output[o++] = (uint8_t)(r.r); 
 					line_output[o++] = (uint8_t)(r.g); 
@@ -374,6 +397,10 @@ class Comb
 			f_hpy = new Filter(f_nr);
 			f_hpi = new Filter(f_nrc);
 			f_hpq = new Filter(f_nrc);
+			
+			f_hpvy = new Filter(f_nrvl);
+			f_hpvi = new Filter(f_nrvc);
+			f_hpvq = new Filter(f_nrvc);
 		}
 
 		void WriteFrame(uint8_t *obuf, int fnum = 0) {
