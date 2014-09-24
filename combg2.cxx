@@ -130,7 +130,11 @@ class Comb
 		int frames_out;	// total # of written frames
 	
 		uint16_t frame[1820 * 530];
+
+		uint8_t output[744 * 525 * 3];
 		uint8_t obuf[744 * 525 * 3];
+
+		uint16_t rawbuffer[3][844 * 505];
 
 		cline_t wbuf[3][525];
 		cline_t cbuf[3][525];
@@ -139,11 +143,28 @@ class Comb
 		Filter *f_hpy, *f_hpi, *f_hpq;
 		Filter *f_hpvy, *f_hpvi, *f_hpvq;
 
-		cline_t Blend(cline_t &prev, cline_t &cur, cline_t &next) {
+		cline_t Blend(cline_t &prev, cline_t &cur, cline_t &next, bool debug = false) {
 			cline_t cur_combed;
 
 			for (int h = 0; h < 844; h++) {
 				cur_combed.p[h] = cur.p[h];
+
+				if (debug) cerr << h << ' ' << prev.p[h].i << ' ' << cur.p[h].i << ' ' << next.p[h].i << endl;
+
+				cur_combed.p[h].i = (cur.p[h].i / 2.0) + (prev.p[h].i / 4.0) + (next.p[h].i / 4.0);
+				cur_combed.p[h].q = (cur.p[h].q / 2.0) + (prev.p[h].q / 4.0) + (next.p[h].q / 4.0);
+			}
+
+			return cur_combed;
+		}
+		
+		cline_t Blend3D(cline_t &prev, cline_t &cur, cline_t &next, bool debug = false) {
+			cline_t cur_combed;
+
+			for (int h = 0; h < 844; h++) {
+				cur_combed.p[h] = cur.p[h];
+
+				if (debug) cerr << h << ' ' << prev.p[h].y << ' ' << cur.p[h].y << ' ' << next.p[h].y << endl;
 
 				cur_combed.p[h].i = (cur.p[h].i / 2.0) + (prev.p[h].i / 4.0) + (next.p[h].i / 4.0);
 				cur_combed.p[h].q = (cur.p[h].q / 2.0) + (prev.p[h].q / 4.0) + (next.p[h].q / 4.0);
@@ -300,83 +321,6 @@ class Comb
 #endif
 		}
 		
-		// buffer: 844x505 uint16_t array
-		void CombFilter(uint16_t *buffer, uint8_t *output)
-		{
-			for (int l = 24; l < 504; l++) {
-				SplitLine(wbuf[0][l], &buffer[l * 844]); 
-			}
-
-			DoCNR();	
-
-			// comb filtering phase
-			for (int l = 24; l < 504; l++) {
-				if (l < 503) 
-					cbuf[0][l] = Blend(wbuf[0][l - 2], wbuf[0][l], wbuf[0][l + 2]);
-				else
-					memcpy(&cbuf[0][l], &wbuf[0][l], sizeof(cline_t));
-			}
-
-			// remove color data from baseband (Y)	
-			for (int l = 24; l < 504; l++) {
-				bool invertphase = (buffer[l * 844] == 16384);
-
-				for (int h = 0; h < 760; h++) {
-					double comp;	
-					int phase = h % 4;
-
-					YIQ y = cbuf[0][l].p[h + 70];
-
-					switch (phase) {
-						case 0: comp = y.i; break;
-						case 1: comp = -y.q; break;
-						case 2: comp = -y.i; break;
-						case 3: comp = y.q; break;
-						default: break;
-					}
-
-					if (invertphase) comp = -comp;
-					y.y += comp;
-
-					wbuf[0][l].p[h + 70] = y;
-				}
-			}
-			
-			DoYNR();
-		
-			// YIQ (YUV?) -> RGB conversion	
-			for (int l = 24; l < 504; l++) {
-				uint8_t *line_output = &output[(744 * 3 * (l - 24))];
-				int o = 0;
-				for (int h = 0; h < 752; h++) {
-					RGB r;
-					
-					r.conv(wbuf[0][l].p[h + 70]);
-
-                                       if (0 && l == 50) {
-                                               double y = u16_to_ire(wbuf[0][l].p[h + 70].y);
-                                               double i = (wbuf[0][l].p[h + 70].i) * (160.0 / 65533.0);
-                                               double q = (wbuf[0][l].p[h + 70].q) * (160.0 / 65533.0);
-
-                                               double m = ctor(q, i);
-                                               double a = atan2(q, i);
-
-                                               a *= (180 / M_PIl);
-                                               if (a < 0) a += 360;
-
-                                               cerr << h << ' ' << y << ' ' << i << ' ' << q << ' ' << m << ' ' << a << ' '; 
-                                               cerr << r.r << ' ' << r.g << ' ' << r.b << endl;
-                                       }
-
-					line_output[o++] = (uint8_t)(r.r); 
-					line_output[o++] = (uint8_t)(r.g); 
-					line_output[o++] = (uint8_t)(r.b); 
-				}
-			}
-
-			return;
-		}
-
 		uint32_t ReadPhillipsCode(uint16_t *line) {
 			const int first_bit = (int)73;
 			const double bitlen = 2.0 * dots_usec;
@@ -435,17 +379,120 @@ class Comb
 				close(ofd);
 			}
 		}
+		
+		// buffer: 844x505 uint16_t array
+		void Process(uint16_t *buffer, bool threed = false)
+		{
+			int f = threed ? 1 : 0;
 
-		int Process(uint16_t *buffer) {
+			cerr << "P\n";
+
+			memcpy(wbuf[2], wbuf[1], sizeof(cline_t) * 505);
+			memcpy(wbuf[1], wbuf[0], sizeof(cline_t) * 505);
+
+			memcpy(rawbuffer[2], rawbuffer[1], (844 * 505 * 2));
+			memcpy(rawbuffer[1], rawbuffer[0], (844 * 505 * 2));
+			memcpy(rawbuffer[0], buffer, (844 * 505 * 2));
+
+			if (framecount == 0) {
+				f = 0;
+				threed = 0;
+			}
+
+			if (threed && framecount == 1) {
+				framecount++;
+				return;
+			}
+
+			for (int l = 24; l < 504; l++) {
+				SplitLine(wbuf[0][l], &buffer[l * 844]); 
+			}
+
+			DoCNR();	
+
+			// comb filtering phase
+			for (int l = 24; l < 504; l++) {
+				if (!threed) {
+					if (l < 503) 
+						cbuf[f][l] = Blend(wbuf[0][l - 2], wbuf[0][l], wbuf[0][l + 2]);
+					else
+						memcpy(&cbuf[f][l], &wbuf[0][l], sizeof(cline_t));
+				} else {
+					cbuf[f][l] = Blend3D(wbuf[0][l], wbuf[1][l], wbuf[2][l], (l == 50));
+				}
+			}
+
+			// remove color data from baseband (Y)	
+			for (int l = 24; l < 504; l++) {
+				bool invertphase = (buffer[l * 844] == 16384);
+
+				for (int h = 0; h < 760; h++) {
+					double comp;	
+					int phase = h % 4;
+
+					YIQ y = cbuf[f][l].p[h + 70];
+
+					switch (phase) {
+						case 0: comp = y.i; break;
+						case 1: comp = -y.q; break;
+						case 2: comp = -y.i; break;
+						case 3: comp = y.q; break;
+						default: break;
+					}
+
+					if (invertphase) comp = -comp;
+					y.y += comp;
+
+					wbuf[f][l].p[h + 70] = y;
+				}
+			}
+			
+			DoYNR();
+		
+			// YIQ (YUV?) -> RGB conversion	
+			for (int l = 24; l < 504; l++) {
+				uint8_t *line_output = &output[(744 * 3 * (l - 24))];
+				int o = 0;
+				for (int h = 0; h < 752; h++) {
+					RGB r;
+					
+					r.conv(wbuf[f][l].p[h + 70]);
+
+                                       if (0 && l == 50) {
+                                               double y = u16_to_ire(wbuf[f][l].p[h + 70].y);
+                                               double i = (wbuf[f][l].p[h + 70].i) * (160.0 / 65533.0);
+                                               double q = (wbuf[f][l].p[h + 70].q) * (160.0 / 65533.0);
+
+                                               double m = ctor(q, i);
+                                               double a = atan2(q, i);
+
+                                               a *= (180 / M_PIl);
+                                               if (a < 0) a += 360;
+
+                                               cerr << h << ' ' << y << ' ' << i << ' ' << q << ' ' << m << ' ' << a << ' '; 
+                                               cerr << r.r << ' ' << r.g << ' ' << r.b << endl;
+                                       }
+
+					line_output[o++] = (uint8_t)(r.r); 
+					line_output[o++] = (uint8_t)(r.g); 
+					line_output[o++] = (uint8_t)(r.b); 
+				}
+			}
+
+			PostProcess(f);
+			framecount++;
+
+			return;
+		}
+
+		int PostProcess(int fnum) {
 			int fstart = -1;
 
 			if (!pulldown_mode) {
 				fstart = 0;
 			} else if (f_oddframe) {
-				uint8_t tmp_obuf[744 * 525 * 3];
-				CombFilter(buffer, tmp_obuf);
 				for (int i = 0; i <= 478; i += 2) {
-					memcpy(&obuf[744 * 3 * i], &tmp_obuf[744 * 3 * i], 744 * 3); 
+					memcpy(&obuf[744 * 3 * i], &output[744 * 3 * i], 744 * 3); 
 				}
 				WriteFrame(obuf, framecode);
 				f_oddframe = false;		
@@ -454,7 +501,7 @@ class Comb
 			for (int line = 2; line <= 3; line++) {
 				int wc = 0;
 				for (int i = 0; i < 700; i++) {
-					if (buffer[(844 * line) + i] > 45000) wc++;
+					if (rawbuffer[fnum][(844 * line) + i] > 45000) wc++;
 				} 
 				if (wc > 500) {
 					fstart = (line % 2); 
@@ -463,7 +510,7 @@ class Comb
 			}
 
 			for (int line = 14; line <= 17; line++) {
-				int new_framecode = ReadPhillipsCode(&buffer[line * 844]) - 0xf80000;
+				int new_framecode = ReadPhillipsCode(&rawbuffer[fnum][line * 844]) - 0xf80000;
 
 				cerr << line << ' ' << hex << new_framecode << dec << endl;
 
@@ -483,16 +530,13 @@ class Comb
 				}
 			}
 
-			CombFilter(buffer, obuf);
-
 			cerr << "FR " << framecount << ' ' << fstart << endl;
 			if (!pulldown_mode || (fstart == 0)) {
-				WriteFrame(obuf, framecode);
+				WriteFrame(output, framecode);
 			} else if (fstart == 1) {
+				memcpy(obuf, output, sizeof(output));
 				f_oddframe = true;
 			}
-
-			framecount++;
 
 			return 0;
 		}
@@ -582,7 +626,7 @@ int main(int argc, char *argv[])
 	}
 
 	while (rv == bufsize && ((tproc < dlen) || (dlen < 0))) {
-		comb.Process(inbuf);	
+		comb.Process(inbuf, false);	
 	
 		rv = read(fd, inbuf, bufsize);
 		while ((rv > 0) && (rv < bufsize)) {
