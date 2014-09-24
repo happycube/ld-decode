@@ -385,7 +385,7 @@ class Comb
 		{
 			int f = threed ? 1 : 0;
 
-			cerr << "P\n";
+			cerr << "P " << f << endl;
 
 			memcpy(wbuf[2], wbuf[1], sizeof(cline_t) * 505);
 			memcpy(wbuf[1], wbuf[0], sizeof(cline_t) * 505);
@@ -394,6 +394,12 @@ class Comb
 			memcpy(rawbuffer[1], rawbuffer[0], (844 * 505 * 2));
 			memcpy(rawbuffer[0], buffer, (844 * 505 * 2));
 
+			for (int l = 24; l < 504; l++) {
+				SplitLine(wbuf[0][l], &rawbuffer[0][l * 844]); 
+			}
+
+			DoCNR();	
+			
 			if (framecount == 0) {
 				f = 0;
 				threed = 0;
@@ -403,12 +409,6 @@ class Comb
 				framecount++;
 				return;
 			}
-
-			for (int l = 24; l < 504; l++) {
-				SplitLine(wbuf[0][l], &buffer[l * 844]); 
-			}
-
-			DoCNR();	
 
 			// comb filtering phase
 			for (int l = 24; l < 504; l++) {
@@ -424,7 +424,7 @@ class Comb
 
 			// remove color data from baseband (Y)	
 			for (int l = 24; l < 504; l++) {
-				bool invertphase = (buffer[l * 844] == 16384);
+				bool invertphase = (rawbuffer[f][l * 844] == 16384);
 
 				for (int h = 0; h < 760; h++) {
 					double comp;	
@@ -448,6 +448,7 @@ class Comb
 			}
 			
 			DoYNR();
+			cerr << "Q " << f << endl;
 		
 			// YIQ (YUV?) -> RGB conversion	
 			for (int l = 24; l < 504; l++) {
@@ -562,6 +563,8 @@ int main(int argc, char *argv[])
 	unsigned char *cinbuf = (unsigned char *)inbuf;
 	int c;
 
+	bool threed = false;
+
 	char out_filename[256] = "";
 
 	cerr << std::setprecision(10);
@@ -570,8 +573,11 @@ int main(int argc, char *argv[])
 
 	opterr = 0;
 	
-	while ((c = getopt(argc, argv, "Bb:w:i:o:fphn:N:")) != -1) {
+	while ((c = getopt(argc, argv, "tBb:w:i:o:fphn:N:")) != -1) {
 		switch (c) {
+			case 't':
+				threed = true;
+				break;
 			case 'B':
 				bw_mode = true;
 				break;
@@ -626,7 +632,7 @@ int main(int argc, char *argv[])
 	}
 
 	while (rv == bufsize && ((tproc < dlen) || (dlen < 0))) {
-		comb.Process(inbuf, false);	
+		comb.Process(inbuf, threed);
 	
 		rv = read(fd, inbuf, bufsize);
 		while ((rv > 0) && (rv < bufsize)) {
