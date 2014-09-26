@@ -87,11 +87,11 @@ struct RGB {
 //		g = y - (0.272 * t.i) - (.647 * t.q);
 //		b = y - (1.107 * t.i) + (1.704 * t.q);
 
-		double m = 2.56;
+		double m = 2.40;
 
-                r = clamp(r * m, 0, 255);
-                g = clamp(g * m, 0, 255);
-                b = clamp(b * m, 0, 255);
+                r = clamp(r * m, 0, 240);
+                g = clamp(g * m, 0, 240);
+                b = clamp(b * m, 0, 240);
                 //cerr << 'y' << y.y << " i" << y.i << " q" << y.q << ' ';
                 //cerr << 'r' << r << " g" << g << " b" << b << endl;
         };
@@ -381,9 +381,9 @@ class Comb
 		}
 		
 		// buffer: 844x505 uint16_t array
-		void Process(uint16_t *buffer, bool threed = false)
+		void Process(uint16_t *buffer, int dim = 2)
 		{
-			int f = threed ? 1 : 0;
+			int f = (dim == 3) ? 1 : 0;
 
 			cerr << "P " << f << endl;
 
@@ -398,21 +398,23 @@ class Comb
 				SplitLine(wbuf[0][l], &rawbuffer[0][l * 844]); 
 			}
 
-			DoCNR();	
+			DoCNR(0);	
 			
 			if (framecount == 0) {
 				f = 0;
-				threed = 0;
+				if (dim > 2) dim = 2;
 			}
 
-			if (threed && framecount == 1) {
+			if ((f == 1) && framecount == 1) {
 				framecount++;
 				return;
 			}
 
 			// comb filtering phase
 			for (int l = 24; l < 504; l++) {
-				if (!threed) {
+				if (dim == 1) {
+					memcpy(&cbuf[f][l], &wbuf[0][l], sizeof(cline_t));
+				} else if (dim == 2) {
 					if (l < 503) 
 						cbuf[f][l] = Blend(wbuf[0][l - 2], wbuf[0][l], wbuf[0][l + 2]);
 					else
@@ -447,8 +449,7 @@ class Comb
 				}
 			}
 			
-			DoYNR();
-			cerr << "Q " << f << endl;
+			DoYNR(f);
 		
 			// YIQ (YUV?) -> RGB conversion	
 			for (int l = 24; l < 504; l++) {
@@ -459,7 +460,7 @@ class Comb
 					
 					r.conv(wbuf[f][l].p[h + 70]);
 
-                                       if (0 && l == 50) {
+                                       if (1 && l == 50) {
                                                double y = u16_to_ire(wbuf[f][l].p[h + 70].y);
                                                double i = (wbuf[f][l].p[h + 70].i) * (160.0 / 65533.0);
                                                double q = (wbuf[f][l].p[h + 70].q) * (160.0 / 65533.0);
@@ -563,7 +564,7 @@ int main(int argc, char *argv[])
 	unsigned char *cinbuf = (unsigned char *)inbuf;
 	int c;
 
-	bool threed = false;
+	int dim = 2;
 
 	char out_filename[256] = "";
 
@@ -573,10 +574,10 @@ int main(int argc, char *argv[])
 
 	opterr = 0;
 	
-	while ((c = getopt(argc, argv, "tBb:w:i:o:fphn:N:")) != -1) {
+	while ((c = getopt(argc, argv, "d:Bb:w:i:o:fphn:N:")) != -1) {
 		switch (c) {
-			case 't':
-				threed = true;
+			case 'd':
+				sscanf(optarg, "%d", &dim);
 				break;
 			case 'B':
 				bw_mode = true;
@@ -632,7 +633,7 @@ int main(int argc, char *argv[])
 	}
 
 	while (rv == bufsize && ((tproc < dlen) || (dlen < 0))) {
-		comb.Process(inbuf, threed);
+		comb.Process(inbuf, dim);
 	
 		rv = read(fd, inbuf, bufsize);
 		while ((rv > 0) && (rv < bufsize)) {
