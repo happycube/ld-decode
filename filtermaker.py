@@ -88,7 +88,7 @@ Nnr = 16
 hp_nr_filter = sps.firwin(Nnr + 1, 1.8 / (freq / 2.0), window='hamming', pass_zero=False)
 hp_nrc_filter = sps.firwin(Nnr + 1, 0.6 / (freq / 2.0), window='hamming', pass_zero=False)
 
-Ncolorlp4 = 16 
+Ncolorlp4 = 8 
 colorlp4_filter = sps.firwin(Ncolorlp4 + 1, [0.6 / (freq / 2)], window='hamming')
 
 Ncolorbp4 = 8

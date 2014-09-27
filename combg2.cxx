@@ -76,6 +76,20 @@ struct RGB {
         double r, g, b;
 
         void conv(YIQ _y) {
+               YIQ t;
+#if 0 
+               t.y = (_y.y - black_u16) * 1.43;
+               t.i = _y.q * 1.43;
+               t.q = _y.i * 1.43;
+ 
+                 r = (t.y * 1.164) + (1.596 * t.i);
+                 g = (t.y * 1.164) - (0.813 * t.i) - (t.q * 0.391);
+                 b = (t.y * 1.164) + (t.q * 2.018);
+ 
+                 r = clamp(r / 256, 0, 255);
+                 g = clamp(g / 256, 0, 255);
+                 b = clamp(b / 256, 0, 255);
+#else
 		double y = u16_to_ire(_y.y);
 		double i = (_y.i) * (160.0 / 65533.0);
 		double q = (_y.q) * (160.0 / 65533.0);
@@ -87,14 +101,15 @@ struct RGB {
 //		g = y - (0.272 * t.i) - (.647 * t.q);
 //		b = y - (1.107 * t.i) + (1.704 * t.q);
 
-		double m = 2.40;
+		double m = 2.24;
 
-                r = clamp(r * m, 0, 240);
-                g = clamp(g * m, 0, 240);
-                b = clamp(b * m, 0, 240);
+                r = clamp(r * m, -16, 224) + 16;
+                g = clamp(g * m, -16, 224) + 16;
+                b = clamp(b * m, -16, 224) + 16;
                 //cerr << 'y' << y.y << " i" << y.i << " q" << y.q << ' ';
                 //cerr << 'r' << r << " g" << g << " b" << b << endl;
-        };
+#endif   
+     };
 };
 
 inline uint16_t ire_to_u16(double ire)
@@ -201,8 +216,8 @@ class Comb
 				if (bw_mode) si = sq = 0;
 
 				out.p[h].y = cur; 
-				out.p[h - 9].i = f_i->feed(si); 
-				out.p[h - 9].q = f_q->feed(sq); 
+				out.p[h - 4].i = f_i->feed(si); 
+				out.p[h - 4].q = f_q->feed(sq); 
 			}
 		}
 					
@@ -361,9 +376,9 @@ class Comb
 			f_hpi = new Filter(f_nrc);
 			f_hpq = new Filter(f_nrc);
 			
-			f_hpvy = new Filter(f_nrvl);
-			f_hpvi = new Filter(f_nrvc);
-			f_hpvq = new Filter(f_nrvc);
+			f_hpvy = new Filter(f_nr);
+			f_hpvi = new Filter(f_nrc);
+			f_hpvq = new Filter(f_nrc);
 		}
 
 		void WriteFrame(uint8_t *obuf, int fnum = 0) {
