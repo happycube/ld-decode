@@ -278,9 +278,9 @@ void ProcessLine(uint16_t *buf, double begin, double end, int line)
 //	cerr << line << " 0" << ' ' << ((end - begin) / scale_tgt) * 1820.0 << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
 	cerr << line << " 0" << ' ' << begin << ' ' << end  << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
 	adjust1 = WrapAngle(pphase1, tgt_phase);	
-	adjust2 = WrapAngle(pphase2, tgt_phase);
+	adjust2 = WrapAngle(pphase2, pphase1);
 	begin += (adjust1 * phasemult);
-	end += (adjust1 * phasemult);
+	end += ((adjust1 + adjust2) * phasemult);
 
 	Scale(buf, tout2, begin, end, scale_tgt); 
 	BurstDetect(tout2, out_freq, 0, plevel1, pphase1); 
@@ -288,8 +288,13 @@ void ProcessLine(uint16_t *buf, double begin, double end, int line)
 					
 	cerr << line << " 1" << ' ' << begin << ' ' << end  << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
 
+	adjust1 = WrapAngle(pphase1, tgt_phase);	
 	adjust2 = WrapAngle(pphase2, pphase1);
-	end += (adjust2 * phasemult);
+	begin += (adjust1 * phasemult);
+	end += ((adjust1 + adjust2) * phasemult);
+
+//	adjust2 = WrapAngle(pphase2, pphase1);
+//	end += (adjust2 * phasemult);
 					
 	Scale(buf, tout3, begin, end, scale_tgt); 
 	BurstDetect(tout3, out_freq, 0, plevel1, pphase1); 
