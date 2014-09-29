@@ -12,9 +12,10 @@ freq = 4 * 315.0 / 88.0
 tH = 100.0/1000000000.0 # 100nS
 tL = 300.0/1000000000.0 # 300nS
 
-n = 128
-df = 128.0/(freq) 
+n = 512 
+df = 512.0/(freq) 
 Fr = np.zeros(n)
+Fr2 = np.zeros(n)
 Am = np.zeros(n)
 Th = np.zeros(n)
 
@@ -30,7 +31,11 @@ for f in range(0, n):
 	cf = (float(f) / df)
 
         Fr[f] = cf / (freq * 2)
-        Am[f] = np.power(10, (DE/19.5)) 
+        Fr2[f] = (cf * 2) / (freq * 2)
+        Am[f] = np.power(10, (DE/20.0)) 
+
+#	if (cf > 6.0):
+#		Am[f] = 0
 
 Ndeemp = 8
 Ddeemp = 5
@@ -41,6 +46,21 @@ for i in range(0, len(Fr)):
 	Th[i] = -(Fr[i] * 30.0) 
 
 [f_deemp_b, f_deemp_a] = fdls.FDLS(Fr, Am, Th, Ndeemp, Ddeemp)
+
+f_deemp_bil_b = [2.819257458245255e-01, -4.361485083509491e-01]
+f_deemp_bil_a = [1.000000000000000e+00, -1.154222762526424e+00]
+
+w, h = sps.freqz(f_deemp_bil_b, f_deemp_bil_a)
+w = w / (np.pi * 1.0)
+h.imag = h.imag * 1
+
+Ndeemp = 8
+Ddeemp = 8
+for i in range(0, len(Fr)):
+	Th[i] = -(Fr[i] * 7.5) 
+	Th[i] = -((Fr[i] * 28.0) * h.real[i])
+	Th[i] = -((Fr[i] * 6.90) / h.real[i])
+[f_deemp_b, f_deemp_a] = fdls.FDLS(w, h.real*1, Th, Ndeemp, Ddeemp)
 
 #Ndeemp = 4 
 #Ddeemp = 11 
