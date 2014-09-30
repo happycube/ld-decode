@@ -59,7 +59,7 @@ Ddeemp = 8
 for i in range(0, len(Fr)):
 	Th[i] = -(Fr[i] * 7.5) 
 	Th[i] = -((Fr[i] * 28.0) * h.real[i])
-	Th[i] = -((Fr[i] * 6.90) / h.real[i])
+	Th[i] = (-((Fr[i] * 6.90) / h.real[i])) - (3 * (np.pi / 180)) 
 [f_deemp_b, f_deemp_a] = fdls.FDLS(w, h.real*1, Th, Ndeemp, Ddeemp)
 
 #Ndeemp = 4 
