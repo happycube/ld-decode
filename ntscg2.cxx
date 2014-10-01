@@ -474,7 +474,10 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 					if (!first) {
 						write(1, frame, sizeof(frame));
 						memset(frame, 0, sizeof(frame));
-					} else first = false;
+					} else {
+						first = false;
+						phase = -1;
+					}
 					prev_linelen = 1820;					
 					line = 1;
 					if (phase >= 0) phase = !phase;
