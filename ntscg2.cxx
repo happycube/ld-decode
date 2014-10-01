@@ -249,6 +249,7 @@ double agap  = dotclk / (double)va_ratio;
 bool first = true;
 double prev_linelen = 1820;
 
+int iline = 0;
 
 void ProcessLine(uint16_t *buf, double begin, double end, int line)
 {
@@ -269,11 +270,12 @@ void ProcessLine(uint16_t *buf, double begin, double end, int line)
 
 	if (phase == -1) {
 		phase = (fabs(pphase1) > (M_PIl / 2));
-		tgt_phase = ((line + phase) % 2) ? (-180 * (M_PIl / 180.0)) : (0 * (M_PIl / 180.0));
+		iline = line;
+		tgt_phase = ((line + phase + iline) % 2) ? (-180 * (M_PIl / 180.0)) : (0 * (M_PIl / 180.0));
 		cerr << "p " << pphase1 << ' ' << fabs(pphase1) << ' ' << phase << ' ' << tgt_phase << endl;
 	} 
 
-	tgt_phase = ((line + phase) % 2) ? (-180 * (M_PIl / 180.0)) : (0 * (M_PIl / 180.0));
+	tgt_phase = ((line + phase + iline) % 2) ? (-180 * (M_PIl / 180.0)) : (0 * (M_PIl / 180.0));
 
 //	cerr << line << " 0" << ' ' << ((end - begin) / scale_tgt) * 1820.0 << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
 	cerr << line << " 0" << ' ' << begin << ' ' << end  << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
