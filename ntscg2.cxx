@@ -412,7 +412,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 
 					cerr << linelen << ' ' << count - prev_count << endl;
 
-					if (InRange(linelen + (count - prev_count), 1818, 1822)) {
+					if (InRange(linelen + (count - prev_count), 1816, 1824)) {
 						cerr << "C " << endl;
 						crosspoint -= (linelen - prev_linelen);
 						end = begin + ((crosspoint - prev_crosspoint) * scale_linelen);
@@ -593,7 +593,7 @@ int main(int argc, char *argv[])
 	if (afd != -1) {	
 		arv = read(afd, abuf, absize);
 		while ((arv > 0) && (arv < absize)) {
-			int arv2 = read(fd, &cabuf[arv], absize - arv);
+			int arv2 = read(afd, &cabuf[arv], absize - arv);
 			if (arv2 <= 0) exit(0);
 			arv += arv2;
 		}
