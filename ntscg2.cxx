@@ -251,12 +251,12 @@ double prev_linelen = 1820;
 
 int iline = 0;
 
-void ProcessLine(uint16_t *buf, double begin, double end, int line)
+double ProcessLine(uint16_t *buf, double begin, double end, int line)
 {
-	double tout1[4096], tout2[4096], tout3[4096];
+	double tout1[4096], tout2[4096];
 	double plevel1, pphase1;
 	double plevel2, pphase2;
-	double adjust1, adjust2;
+	double adjust1, adjust2, adjlen = 1820;
 	int oline = get_oline(line);
 
 	double tgt_phase;
@@ -277,39 +277,31 @@ void ProcessLine(uint16_t *buf, double begin, double end, int line)
 
 	tgt_phase = ((line + phase + iline) % 2) ? (-180 * (M_PIl / 180.0)) : (0 * (M_PIl / 180.0));
 
+	adjlen = (end - begin) / (scale_tgt / ntsc_opline);
+	cerr << line << " " << 0 << ' ' << begin << ' ' << (begin + adjlen) << '/' << end  << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
+
+	for (int pass = 0; pass < 2; pass++) {
 //	cerr << line << " 0" << ' ' << ((end - begin) / scale_tgt) * 1820.0 << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
-	cerr << line << " 0" << ' ' << begin << ' ' << end  << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
-	adjust1 = WrapAngle(pphase1, tgt_phase);	
-	adjust2 = WrapAngle(pphase2, pphase1);
-	begin += (adjust1 * phasemult);
-	end += ((adjust1 + adjust2) * phasemult);
+		adjust1 = WrapAngle(pphase1, tgt_phase);	
+		adjust2 = WrapAngle(pphase2, pphase1);
+		begin += (adjust1 * phasemult);
+		end += ((adjust1 + adjust2) * phasemult);
 
-	Scale(buf, tout2, begin, end, scale_tgt); 
-	BurstDetect(tout2, out_freq, 0, plevel1, pphase1); 
-	BurstDetect(tout2, out_freq, 228, plevel2, pphase2); 
+		Scale(buf, tout2, begin, end, scale_tgt); 
+		BurstDetect(tout2, out_freq, 0, plevel1, pphase1); 
+		BurstDetect(tout2, out_freq, 228, plevel2, pphase2); 
+
+		adjlen = (end - begin) / (scale_tgt / ntsc_opline);
 					
-	cerr << line << " 1" << ' ' << begin << ' ' << end  << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
-
-	adjust1 = WrapAngle(pphase1, tgt_phase);	
-	adjust2 = WrapAngle(pphase2, pphase1);
-	begin += (adjust1 * phasemult);
-	end += ((adjust1 + adjust2) * phasemult);
-
-//	adjust2 = WrapAngle(pphase2, pphase1);
-//	end += (adjust2 * phasemult);
-					
-	Scale(buf, tout3, begin, end, scale_tgt); 
-	BurstDetect(tout3, out_freq, 0, plevel1, pphase1); 
-	BurstDetect(tout3, out_freq, 228, plevel2, pphase2); 
-
-	cerr << line << " 2" << ' ' << begin << ' ' << end  << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
+		cerr << line << " " << pass << ' ' << begin << ' ' << (begin + adjlen) << '/' << end  << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
+	}
 
 wrapup:
 	// LD only: need to adjust output value for velocity, and remove defects as possible
 	double lvl_adjust = ((((end - begin) / iscale_tgt) - 1) * 1.0) + 1;
 	int ldo = -128;
 	for (int i = 0; (oline > 2) && (i < (211 * out_freq)); i++) {
-		double v = tout3[i + (int)(14 * out_freq)];
+		double v = tout2[i + (int)(14 * out_freq)];
 
 		v = ((v / 57344.0) * 1700000) + 7600000;
 		double o = (((v * lvl_adjust) - 7600000) / 1700000) * 57344.0;
@@ -332,6 +324,8 @@ wrapup:
 	}
 	
 	frame[oline][0] = tgt_phase ? 32768 : 16384; 
+
+	return begin + adjlen;
 }
 
 bool IsABlank(int line, double start, double len)
@@ -451,7 +445,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 					int oline = get_oline(line);
 
 					if (oline >= 0) {
-						ProcessLine(buf, begin, end, line); 
+						crosspoint = ProcessLine(buf, begin, end, line); 
 	
 						if (0 && eed == true) {
 							for (int i = 1; i < 65; i++) 
@@ -466,7 +460,6 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 						line = line + 0.5;
 						tmplen -= 910;
 					}
-					//crosspoint = begin + (((end - begin) / scale_tgt) * 1820);
 				} else if ((line == -1) && InRange(linelen, 850, 950) && InRange(count, 40, 160)) {
 					line = 262.5;
 					prev_linelen = 1820;					
