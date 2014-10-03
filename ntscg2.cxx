@@ -20,11 +20,17 @@ void aclamp(double *v, int len, double low, double high)
 }
 
 // NTSC properties
+#ifdef FSC10
+const double in_freq = 10.0;	// in FSC.  Must be an even number!
+#else
 const double in_freq = 8.0;	// in FSC.  Must be an even number!
+#endif
+
 #define OUT_FREQ 4
 const double out_freq = OUT_FREQ;	// in FSC.  Must be an even number!
 
 const double ntsc_uline = 63.5; // usec_
+const double ntsc_iphline = 113.75 * in_freq; // pixels per half-line
 const double ntsc_ipline = 227.5 * in_freq; // pixels per line
 const double ntsc_opline = 227.5 * out_freq; // pixels per line
 const int ntsc_oplinei = 227.5 * out_freq; // pixels per line
@@ -109,6 +115,12 @@ bool InRange(double v, double l, double h) {
 	return ((v > l) && (v < h));
 }
 
+bool InRangeCF(double v, double l, double h) {
+	l *= in_freq;
+	h *= in_freq;
+	return ((v > l) && (v < h));
+}
+
 // tunables
 
 bool write_fields = false;
@@ -121,11 +133,19 @@ int write_locs = -1;
 
 uint16_t frame[505][(int)(OUT_FREQ * 211)];
 
+#ifdef FSC10
+Filter f_syncr(f_sync10);
+Filter f_synci(f_sync10);
+
+Filter f_bpcolor4(f_color10bp4);
+Filter f_bpcolor8(f_color10bp8);
+#else
 Filter f_syncr(f_sync);
 Filter f_synci(f_sync);
 
 Filter f_bpcolor4(f_colorbp4);
 Filter f_bpcolor8(f_colorbp8);
+#endif
 		
 void BurstDetect(double *line, int freq, double _loc, double &plevel, double &pphase) 
 {
@@ -233,7 +253,12 @@ void ProcessAudioSample(float left, float right)
 	}
 }
 
+#ifdef FSC10
+Filter f_syncp(f_sync10);
+#else
 Filter f_syncp(f_sync);
+#endif
+
 double cross = 5000;
 
 double line = -2;
@@ -247,7 +272,7 @@ double afreq = 48000;
 double agap  = dotclk / (double)va_ratio;
 
 bool first = true;
-double prev_linelen = 1820;
+double prev_linelen = ntsc_ipline;
 
 int iline = 0;
 
@@ -256,7 +281,7 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line)
 	double tout1[4096], tout2[4096];
 	double plevel1, pphase1;
 	double plevel2, pphase2;
-	double adjust1, adjust2, adjlen = 1820;
+	double adjust1, adjust2, adjlen = ntsc_ipline;
 	int oline = get_oline(line);
 
 	double tgt_phase;
@@ -281,7 +306,7 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line)
 	cerr << line << " " << 0 << ' ' << begin << ' ' << (begin + adjlen) << '/' << end  << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
 
 	for (int pass = 0; pass < 2; pass++) {
-//	cerr << line << " 0" << ' ' << ((end - begin) / scale_tgt) * 1820.0 << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
+//	cerr << line << " 0" << ' ' << ((end - begin) / scale_tgt) * ntsc_ipline.0 << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
 		adjust1 = WrapAngle(pphase1, tgt_phase);	
 		adjust2 = WrapAngle(pphase2, pphase1);
 		begin += (adjust1 * phasemult);
@@ -352,7 +377,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 	int rv = 0;
 	bool valid;
 
-	double prev_linelen = 1820;
+	double prev_linelen = ntsc_ipline;
 
 	f_syncp.clear(ire_to_u16(black_ire));
 
@@ -412,7 +437,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 
 					cerr << linelen << ' ' << count - prev_count << endl;
 
-					if (InRange(linelen + (count - prev_count), 1816, 1824)) {
+					if (InRangeCF(linelen + (count - prev_count), 227, 228)) {
 						cerr << "C " << endl;
 						crosspoint -= (linelen - prev_linelen);
 						end = begin + ((crosspoint - prev_crosspoint) * scale_linelen);
@@ -456,14 +481,14 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 					prev_linelen = linelen;					
 
 					double tmplen = linelen;
-					while (tmplen > 850) {
+					while (tmplen > (105 * in_freq)) {
 						line = line + 0.5;
-						tmplen -= 910;
+						tmplen -= ntsc_iphline;
 					}
-				} else if ((line == -1) && InRange(linelen, 850, 950) && InRange(count, 40, 160)) {
+				} else if ((line == -1) && InRangeCF(linelen, 105, 120) && InRangeCF(count, 5, 20)) {
 					line = 262.5;
-					prev_linelen = 1820;					
-				} else if (((line == -1) || (line > 520)) && (linelen > 1800) && InRange(count, 40, 75)) {
+					prev_linelen = ntsc_ipline;					
+				} else if (((line == -1) || (line > (65 * in_freq))) && (linelen > (225 * in_freq)) && InRangeCF(count, 5, 10)) {
 					if (!first) {
 						write(1, frame, sizeof(frame));
 						memset(frame, 0, sizeof(frame));
@@ -471,16 +496,16 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 						first = false;
 						phase = -1;
 					}
-					prev_linelen = 1820;					
+					prev_linelen = ntsc_ipline;					
 					line = 1;
 					if (phase >= 0) phase = !phase;
-				} else if ((line == -2) && (linelen > 1780) && (count > 80)) {
+				} else if ((line == -2) && (linelen > (in_freq * 220)) && (count > (10 * in_freq))) {
 					line = -1;
 				} else if (line >= 0) {
 					double tmplen = linelen;
-					while (tmplen > 850) {
+					while (tmplen > (105 * in_freq)) {
 						line = line + 0.5;
-						tmplen -= 910;
+						tmplen -= ntsc_iphline;
 					}
 				} 
 
@@ -493,7 +518,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
  
 				// process audio (if available)
 				if ((afd > 0) && (line > 0)) {
-					double nomlen = InRange(linelen, 850, 950) ? 910 : 1820;
+					double nomlen = InRangeCF(linelen, 105, 120) ? ntsc_iphline : ntsc_ipline;
 					double scale = linelen / nomlen;
 					
 					double lvl_adjust = ((scale - 1) * 0.84) + 1;
