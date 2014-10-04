@@ -178,15 +178,15 @@ int main(int argc, char *argv[])
 			int in;
 
 			if (n > 0) {
-		//		cerr << "d " << n ;
+//				cerr << "d " << n << ' ';
 				n = f_deemp.feed(n) / .4960;
-		//		cerr << " " << n << endl;
+//				cerr << " " << n << endl;
 
 				n -= 7600000.0;
 				n /= (9300000.0 - 7600000.0);
 				if (n < 0) n = 0;
 				in = 1 + (n * 57344.0);
-				if (in > 64000) in = 64000;
+				if (in > 65530) in = 65530;
 //				cerr << in << endl;
 			} else {
 				in = 0;
