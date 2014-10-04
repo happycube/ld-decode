@@ -227,10 +227,10 @@ int get_oline(double line)
 {
 	int l = (int)line;
 
-	if (l < 10) return -1;
-	else if (l < 262) return (l - 10) * 2;
-	else if (l < 273) return -1;
-	else if (l < 525) return ((l - 273) * 2) + 1;
+	if (l < 9) return -1;
+	else if (l < 262) return (l - 9) * 2;
+	else if (l < 272) return -1;
+	else if (l < 524) return ((l - 272) * 2) + 1;
 
 	return -1;
 }
