@@ -307,8 +307,6 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line)
 	BurstDetect(tout, out_freq, 0, plevel1, pphase1); 
 	BurstDetect(tout, out_freq, 228, plevel2, pphase2); 
 
-	cerr << line << ' ' << plevel1 << ' ' << plevel2 << endl;
-
 	if (plevel1 < 1000) goto wrapup;
 	if (plevel2 < 1000) goto wrapup;
 
@@ -321,7 +319,6 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line)
 
 	tgt_phase = ((line + phase + iline) % 2) ? (-180 * (M_PIl / 180.0)) : (0 * (M_PIl / 180.0));
 	if (in_freq == 4) goto wrapup;
-	cerr << tgt_phase << endl;
 
 	adjlen = (end - begin) / (scale_tgt / ntsc_opline);
 	cerr << line << " " << 0 << ' ' << begin << ' ' << (begin + adjlen) << '/' << end  << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
@@ -554,8 +551,6 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 				if ((line >= 0) && (linelen >= (ntsc_ipline * 0.9)) && (count > (14 * in_freq))) {
 					// standard line
 					int oline = get_oline(line);
-
-					cerr << "stdline " << line << endl; 
 
 					if (oline >= 0) {
 						ProcessLine(buf, begin, end, line); 

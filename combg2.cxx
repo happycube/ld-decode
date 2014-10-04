@@ -41,7 +41,7 @@ int white_u16 = ire_to_u16(100);
 bool whiteflag_detect = true;
 
 double nr_y = 4.0;
-double nr_c = 1.0;
+double nr_c = 0.0;
 
 inline double IRE(double in) 
 {
@@ -176,7 +176,7 @@ class Comb
 			return cur_combed;
 		}
 
-		void SplitLine(cline_t &out, uint16_t *line) 
+		void SplitLine(int lnum, cline_t &out, uint16_t *line) 
 		{
 			bool invertphase = (line[0] == 16384);
 
@@ -400,7 +400,7 @@ class Comb
 			memcpy(rawbuffer[0], buffer, (844 * 505 * 2));
 
 			for (int l = firstline; l < 504; l++) {
-				SplitLine(wbuf[0][l], &rawbuffer[0][l * 844]); 
+				SplitLine(l, wbuf[0][l], &rawbuffer[0][l * 844]); 
 			}
 
 			DoCNR(0);	

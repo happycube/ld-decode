@@ -128,7 +128,8 @@ WriteFilter("sync10", sync_filter10)
 Nnr = 16
 hp_nr_filter = sps.firwin(Nnr + 1, 1.8 / (freq / 2.0), window='hamming', pass_zero=False)
 WriteFilter("nr", hp_nr_filter)
-hp_nrc_filter = sps.firwin(Nnr + 1, 0.6 / (freq / 2.0), window='hamming', pass_zero=False)
+Nnrc = 24
+hp_nrc_filter = sps.firwin(Nnrc + 1, 0.5 / (freq / 2.0), window='hamming', pass_zero=False)
 WriteFilter("nrc", hp_nrc_filter)
 
 Ncolorlp4 = 8 
