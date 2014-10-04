@@ -1,4 +1,4 @@
-all: ldd ntsc audiog2 comb 
+all: ldd ntsc ntsc4 audiog2 comb 
 
 clean:
 	rm -f ldd ntsc comb audio
@@ -20,6 +20,9 @@ deemp.h: filtermaker.py
 
 ldd10: ld-decoder-10.cxx
 	clang++ -std=c++11  -mavx -march=corei7-avx -Wall -DNOSNAP -O3 -g -o ldd10 ld-decoder-10.cxx
+
+ntsc4: ntscg2.cxx ld-decoder.h deemp.h
+	clang++ -std=c++11  -Wall -D_NOSNAP -DFSC4 -O3 -g -o ntsc4 ntscg2.cxx
 
 ntsc10: ntscg2.cxx ld-decoder.h deemp.h
 	clang++ -std=c++11  -Wall -D_NOSNAP -DFSC10 -O3 -g -o ntsc10 ntscg2.cxx

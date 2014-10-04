@@ -22,6 +22,8 @@ void aclamp(double *v, int len, double low, double high)
 // NTSC properties
 #ifdef FSC10
 const double in_freq = 10.0;	// in FSC.  Must be an even number!
+#elif defined(FSC4)
+const double in_freq = 4.0;	// in FSC.  Must be an even number!
 #else
 const double in_freq = 8.0;	// in FSC.  Must be an even number!
 #endif
@@ -140,18 +142,30 @@ int write_locs = -1;
 
 uint16_t frame[505][(int)(OUT_FREQ * 211)];
 
+Filter f_bpcolor4(f_colorbp4);
+Filter f_bpcolor8(f_colorbp8);
+
 #ifdef FSC10
 Filter f_syncr(f_sync10);
 Filter f_synci(f_sync10);
 
-Filter f_bpcolor4(f_color10bp4);
-Filter f_bpcolor8(f_color10bp8);
+Filter f_syncp(f_sync10);
+
+Filter f_longsync(f_dsync10);
+#elif defined(FSC4)
+Filter f_syncr(f_sync4);
+Filter f_synci(f_sync4);
+
+Filter f_syncp(f_sync4);
+
+Filter f_longsync(f_dsync4);
 #else
 Filter f_syncr(f_sync);
 Filter f_synci(f_sync);
 
-Filter f_bpcolor4(f_colorbp4);
-Filter f_bpcolor8(f_colorbp8);
+Filter f_syncp(f_sync);
+
+Filter f_longsync(f_dsync);
 #endif
 		
 void BurstDetect(double *line, int freq, double _loc, double &plevel, double &pphase) 
@@ -213,9 +227,9 @@ int get_oline(double line)
 {
 	int l = (int)line;
 
-	if (l < 10) return -1;
+	if (l < 11) return -1;
 	else if (l < 262) return (l - 10) * 2;
-	else if (l < 271) return -1;
+	else if (l < 273) return -1;
 	else if (l < 525) return ((l - 273) * 2) + 1;
 
 	return -1;
@@ -261,12 +275,6 @@ void ProcessAudioSample(float left, float right)
 		rv = aout_i = 0;
 	}
 }
-
-#ifdef FSC10
-Filter f_syncp(f_sync10);
-#else
-Filter f_syncp(f_sync);
-#endif
 
 double cross = 0;
 
@@ -316,12 +324,20 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line)
 	adjlen = (end - begin) / (scale_tgt / ntsc_opline);
 	cerr << line << " " << 0 << ' ' << begin << ' ' << (begin + adjlen) << '/' << end  << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
 
-	for (int pass = 0; pass < 2; pass++) {
+	for (int pass = 0; pass < ((in_freq == 4) ? 4 : 2); pass++) {
 //	cerr << line << " 0" << ' ' << ((end - begin) / scale_tgt) * ntsc_ipline.0 << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
 		adjust1 = WrapAngle(pphase1, tgt_phase);	
 		adjust2 = WrapAngle(pphase2, pphase1);
-		begin += (adjust1 * phasemult);
-		end += ((adjust1 + adjust2) * phasemult);
+
+		if (in_freq != 4) {
+			begin += (adjust1 * phasemult);
+			end += ((adjust1 + adjust2) * phasemult);
+		} else {
+			//if (pass == 0) begin += (adjust1 * (phasemult / 1.0));
+			//if (pass >= 1) end += (adjust2 * (phasemult / 2.0));
+			begin += (adjust1 * (phasemult / 2.0));
+			end += (adjust2 * (phasemult / 2.0));
+		}
 
 		Scale(buf, tout2, begin, end, scale_tgt); 
 		BurstDetect(tout2, out_freq, 0, plevel1, pphase1); 
@@ -334,7 +350,8 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line)
 
 wrapup:
 	// LD only: need to adjust output value for velocity, and remove defects as possible
-	double lvl_adjust = ((((end - begin) / iscale_tgt) - 1) * 1.0) + 1;
+//	double lvl_adjust = ((((end - begin) / iscale_tgt) - 1) * 1.0) + 1;
+	double lvl_adjust = 1.0; //((((end - begin) / iscale_tgt) - 1) * 1.0) + 1;
 	int ldo = -128;
 	for (int i = 0; (oline > 2) && (i < (211 * out_freq)); i++) {
 		double v = tout2[i + (int)(14 * out_freq)];
@@ -366,7 +383,7 @@ wrapup:
 	return begin + adjlen;
 }
 
-bool IsABlank(int line, double start, double len)
+bool IsABlank(double line, double start, double len)
 {
 	bool isHalf = false;
 	double end = start + len;
@@ -374,10 +391,15 @@ bool IsABlank(int line, double start, double len)
 	double half = 227.5 * in_freq / 2;
 	double full = 227.5 * in_freq;
 
-	if ((line == 525) || (line < 10) || ((line >= 263) && (line <272))) isHalf = true;
+	if ((line == 525) || (line < 11) || ((line >= 262.4) && (line <= 273))) {
+//		cerr << "halfline\n";
+		isHalf = true;
+	}
 
 	if (end > full) return true;
 	if (isHalf && (end > half)) return true;
+
+//	cerr << "fail " << line << ' ' << end << " start " << start << " len " << len << " halfneed " << half << endl;
 
 	return false;
 }
@@ -429,7 +451,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 				cerr << "S " << line << ' ' << oline << ' ' << i << ' ' << crosspoint << ' ' << prev_crosspoint << ' ' << linelen << ' ' << count << ' ' << valid << endl;
 
 				if (!valid) {
-					cerr << "X " << crosspoint - prev_crosspoint << ' ' << count << endl;
+					cerr << "X " << line << ' ' << crosspoint - prev_crosspoint << ' ' << count << endl;
 
 					crosspoint = bkup_crosspoint;
 					debounce = 0;
@@ -477,9 +499,11 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 				prev_count = count;
 
 //				cerr << line << ' ' << linelen << ' ' << ntsc_ipline * 0.9 << ' ' << count << ' ' << 11 * in_freq << endl;
-				if ((line >= 0) && (linelen >= (ntsc_ipline * 0.9)) && (count > (11 * in_freq))) {
+				if ((line >= 0) && (linelen >= (ntsc_ipline * 0.9)) && (count > (14 * in_freq))) {
 					// standard line
 					int oline = get_oline(line);
+
+					cerr << "stdline " << line << endl; 
 
 					if (oline >= 0) {
 						crosspoint = ProcessLine(buf, begin, end, line); 
@@ -498,9 +522,9 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 						tmplen -= ntsc_iphline;
 					}
 				} else if ((line == -1) && InRangeCF(linelen, 105, 120) && InRangeCF(count, 5, 20)) {
-					line = 262.5;
+					line = 263.5;
 					prev_linelen = ntsc_ipline;					
-				} else if (((line == -1) || (line > (65 * in_freq))) && (linelen > (225 * in_freq)) && InRangeCF(count, 5, 10)) {
+				} else if (((line == -1) || (line >= 525)) && (linelen > (225 * in_freq)) && InRangeCF(count, 5, 14)) {
 					if (!first) {
 						write(1, frame, sizeof(frame));
 						memset(frame, 0, sizeof(frame));
@@ -510,6 +534,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 					}
 					prev_linelen = ntsc_ipline;					
 					line = 1;
+					phase = -1;
 					if (phase >= 0) phase = !phase;
 				} else if ((line == -2) && (linelen > (in_freq * 220)) && (count > (10 * in_freq))) {
 					line = -1;
@@ -570,6 +595,8 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 	return rv;
 }
 
+bool seven_five = false;
+
 void autoset(uint16_t *buf, int len)
 {
 	double f[len];
@@ -577,7 +604,7 @@ void autoset(uint16_t *buf, int len)
 	int lowloc = -1;
 	int checklen = (int)(in_freq * 4);
 	
-	f_dsync.clear(0);
+	f_longsync.clear(0);
 
 	// phase 1:  get low (-40ire) and high (??ire)
 	for (int i = 0; i < len; i++) {
@@ -618,7 +645,7 @@ void autoset(uint16_t *buf, int len)
 
 	cerr << "old base:scale = " << inbase << ':' << inscale << endl;
 
-	inscale = (f[nloc] - low) / 40.0;
+	inscale = (f[nloc] - low) / ((seven_five) ? 47.5 : 40.0);
 	inbase = low - (20 * inscale);	// -40IRE to -60IRE
 	if (inbase < 1) inbase = 1;
 	cerr << "new base:scale = " << inbase << ':' << inscale << endl;
@@ -649,7 +676,7 @@ int main(int argc, char *argv[])
 
 	opterr = 0;
 	
-	while ((c = getopt(argc, argv, "ls:n:i:a:Af")) != -1) {
+	while ((c = getopt(argc, argv, "hls:n:i:a:Af")) != -1) {
 		switch (c) {
 			case 's':
 				sscanf(optarg, "%lf", &cross);
@@ -672,12 +699,17 @@ int main(int argc, char *argv[])
 			case 'f':
 				write_fields = true;
 				break;
+			case 'h':
+				seven_five = true;
+				break;
 			default:
 				return -1;
 		} 
 	} 
 
 	cout << std::setprecision(8);
+
+	cerr << "freq = " << in_freq << endl;
 
 	rv = read(fd, inbuf, vbsize);
 	while ((rv > 0) && (rv < vbsize)) {
@@ -706,7 +738,7 @@ int main(int argc, char *argv[])
 	level_100ire = ire_to_in(100);
 	level_120ire = ire_to_in(120);
 
-	cross = ire_to_in(-10);
+	cross = ire_to_in(seven_five ? -5 : -10);
 
 	int aplen = 0;
 	while (rv == vbsize && ((tproc < dlen) || (dlen < 0))) {

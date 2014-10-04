@@ -7,6 +7,7 @@ import scipy.signal as sps
 
 import fdls as fdls
 
+freq4 = 4 * 315.0 / 88.0
 freq = 4 * 315.0 / 88.0
 freq10 = 5 * 315.0 / 88.0
 
@@ -91,6 +92,10 @@ Nlpf = 30
 lowpass_filter = sps.firwin(Nlpf + 1, 5.2 / (freq), window='hamming')
 WriteFilter("lpf", lowpass_filter)
 
+Nlpf4 = 10
+lowpass_filter4 = sps.firwin(Nlpf + 1, 5.2 / (freq4), window='hamming')
+WriteFilter("lpf4", lowpass_filter4)
+
 Nlpf10 = 30
 lowpass_filter10 = sps.firwin(Nlpf + 1, 5.2 / (freq10), window='hamming')
 WriteFilter("lpf10", lowpass_filter10)
@@ -104,8 +109,20 @@ Ndsync = 32
 dsync_filter = sps.firwin(Ndsync + 1, 0.1 / (freq), window='hamming')
 WriteFilter("dsync", dsync_filter)
 
-Ncolor10 = 32
-sync_filter10 = sps.firwin(Ncolor + 1, 0.1 / (freq10), window='hamming')
+Ndsync = 20 
+dsync_filter4 = sps.firwin(Ndsync + 1, 0.1 / (freq4), window='hamming')
+WriteFilter("dsync4", dsync_filter4)
+
+Ndsync = 32 
+dsync_filter10 = sps.firwin(Ndsync + 1, 0.1 / (freq10), window='hamming')
+WriteFilter("dsync10", dsync_filter10)
+
+Nsync = 20
+sync_filter4 = sps.firwin(Nsync + 1, 0.1 / (freq4), window='hamming')
+WriteFilter("sync4", sync_filter4)
+
+Nsync = 32
+sync_filter10 = sps.firwin(Nsync + 1, 0.1 / (freq10), window='hamming')
 WriteFilter("sync10", sync_filter10)
 
 Nnr = 16
@@ -125,14 +142,6 @@ WriteFilter("colorbp4", colorbp4_filter)
 Ncolorbp8 = 16
 colorbp8_filter = sps.firwin(Ncolorbp8 + 1, [3.4006 / (freq), 3.7585 / (freq)], window='hamming', pass_zero=False)
 WriteFilter("colorbp8", colorbp8_filter)
-
-Ncolor10bp4 = 10 
-color10bp4_filter = sps.firwin(Ncolor10bp4 + 1, [3.4006 / (freq10 / 2), 3.7585 / (freq10 / 2)], window='hamming', pass_zero=False)
-WriteFilter("color10bp4", color10bp4_filter)
-
-Ncolor10bp8 = 20
-color10bp8_filter = sps.firwin(Ncolor10bp8 + 1, [3.4006 / (freq10), 3.7585 / (freq10)], window='hamming', pass_zero=False)
-WriteFilter("color10bp8", color10bp8_filter)
 
 audioin_filter = sps.firwin(65, 3.15 / (freq), window='hamming')
 WriteFilter("audioin", audioin_filter)
