@@ -87,7 +87,7 @@ inline uint16_t ire_to_out(double ire)
 }
 		
 // taken from http://www.paulinternet.nl/?page=bicubic
-inline double CubicInterpolate(uint16_t *y, double x)
+double CubicInterpolate(uint16_t *y, double x)
 {
 	double p[4];
 	p[0] = y[0]; p[1] = y[1]; p[2] = y[2]; p[3] = y[3];
@@ -227,7 +227,7 @@ int get_oline(double line)
 {
 	int l = (int)line;
 
-	if (l < 11) return -1;
+	if (l < 10) return -1;
 	else if (l < 262) return (l - 10) * 2;
 	else if (l < 273) return -1;
 	else if (l < 525) return ((l - 273) * 2) + 1;
@@ -295,7 +295,7 @@ int iline = 0;
 
 double ProcessLine(uint16_t *buf, double begin, double end, int line)
 {
-	double tout1[4096], tout2[4096];
+	double tout[4096];
 	double plevel1, pphase1;
 	double plevel2, pphase2;
 	double adjust1, adjust2, adjlen = ntsc_ipline;
@@ -303,14 +303,14 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line)
 
 	double tgt_phase;
 
-	Scale(buf, tout1, begin, end, scale_tgt); 
-	BurstDetect(tout1, out_freq, 0, plevel1, pphase1); 
-	BurstDetect(tout1, out_freq, 228, plevel2, pphase2); 
+	Scale(buf, tout, begin, end, scale_tgt); 
+	BurstDetect(tout, out_freq, 0, plevel1, pphase1); 
+	BurstDetect(tout, out_freq, 228, plevel2, pphase2); 
 
 	cerr << line << ' ' << plevel1 << ' ' << plevel2 << endl;
 
-	if (plevel1 < 500) goto wrapup;
-	if (plevel2 < 500) goto wrapup;
+	if (plevel1 < 1500) goto wrapup;
+	if (plevel2 < 1500) goto wrapup;
 
 	if (phase == -1) {
 		phase = (fabs(pphase1) > (M_PIl / 2));
@@ -339,9 +339,9 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line)
 			end += (adjust2 * (phasemult / 2.0));
 		}
 
-		Scale(buf, tout2, begin, end, scale_tgt); 
-		BurstDetect(tout2, out_freq, 0, plevel1, pphase1); 
-		BurstDetect(tout2, out_freq, 228, plevel2, pphase2); 
+		Scale(buf, tout, begin, end, scale_tgt); 
+		BurstDetect(tout, out_freq, 0, plevel1, pphase1); 
+		BurstDetect(tout, out_freq, 228, plevel2, pphase2); 
 
 		adjlen = (end - begin) / (scale_tgt / ntsc_opline);
 					
@@ -350,32 +350,43 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line)
 
 wrapup:
 	// LD only: need to adjust output value for velocity, and remove defects as possible
-//	double lvl_adjust = ((((end - begin) / iscale_tgt) - 1) * 1.0) + 1;
-	double lvl_adjust = 1.0; //((((end - begin) / iscale_tgt) - 1) * 1.0) + 1;
+	double lvl_adjust = ((((end - begin) / iscale_tgt) - 1) * 1.0) + 1;
 	int ldo = -128;
-	for (int i = 0; (oline > 2) && (i < (211 * out_freq)); i++) {
-		double v = tout2[i + (int)(14 * out_freq)];
+	for (int h = 0; (oline > 2) && (h < (211 * out_freq)); h++) {
+		double v = tout[h + (int)(14 * out_freq)];
+		double ire = in_to_ire(v);
+		double o;
 
-		v = ((v / 57344.0) * 1700000) + 7600000;
-		double o = (((v * lvl_adjust) - 7600000) / 1700000) * 57344.0;
+		if (in_freq != 4) {
+			double freq = (ire * ((9300000 - 7600000) / 100)) + 7600000; 
 
-		if (despackle && (v < 7800000) && (i > 16)) {
-			if ((i - ldo) > 16) {
-				for (int j = i - 4; j > 2 && j < i; j++) {
+//			cerr << h << ' ' << v << ' ' << ire << ' ' << freq << ' ';
+			freq *= lvl_adjust;
+//			cerr << freq << ' ';
+
+			ire = ((freq - 7600000) / 1700000) * 100;
+//			cerr << ire << endl;
+			o = ire_to_out(ire);
+		} else { 
+			o = ire_to_out(in_to_ire(v));
+		}
+
+		if (despackle && (ire < -30) && (h > 100)) {
+			if ((h - ldo) > 16) {
+				for (int j = h - 4; j > 2 && j < h; j++) {
 					double to = (frame[oline - 2][j - 2] + frame[oline - 2][j + 2]) / 2;
 					frame[oline][j] = clamp(to, 0, 65535);
 				}
 			}
-			ldo = i;
+			ldo = h;
 		}
 
-		if (((i - ldo) < 16) && (i > 4)) {
-			o = (frame[oline - 2][i - 2] + frame[oline - 2][i + 2]) / 2;
+		if (((h - ldo) < 16) && (h > 4)) {
+			o = (frame[oline - 2][h - 2] + frame[oline - 2][h + 2]) / 2;
+//			cerr << "R " << o << endl;
 		}
 
-		o = ire_to_out(in_to_ire(o));
-
-		frame[oline][i] = clamp(o, 0, 65535);
+		frame[oline][h] = clamp(o, 0, 65535);
 	}
 	
 	frame[oline][0] = tgt_phase ? 32768 : 16384; 
@@ -419,7 +430,8 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 	cerr << "Process " << len << ' ' << (const void *)buf << endl;
 	f_syncp.dump();
 
-	for (int i = 0; i < len - 2048; i++) {
+	int i;
+	for (i = 0; (i >= 0) && (i < (len - 4096)); i++) {
 		prevf = f;
 		f = f_syncp.feed(buf[i]); 
 	
@@ -463,13 +475,14 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 				int acgap = abs(count - prev_count);	
 				bool eed = false;
 	
-				if (prev_count && (get_oline(line) >= 0) && (get_oline(line + 1) >= 0) && (InRange(algap, 4, 100) || InRange(acgap, 2, 100))) {
+				if (prev_count && (get_oline(line - 1) >= 0) && (get_oline(line) >= 0) && (get_oline(line + 1) >= 0) && (InRangeCF(algap, .5, 12.5) || InRangeCF(acgap, .8, 12.5))) {
 					cerr << "E " << begin << ' ' << crosspoint << ' ' << end << ' ' << linelen << ' ' << prev_linelen << ' ' << prev_count << ' ' << count << endl;
 
 					eed = true;
 
 					cerr << linelen << ' ' << count - prev_count << endl;
 
+#if 1
 					if (InRangeCF(linelen + (count - prev_count), 227, 228)) {
 						cerr << "C " << endl;
 						crosspoint -= (linelen - prev_linelen);
@@ -487,14 +500,51 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 						linelen = crosspoint - prev_crosspoint; 
 					} else if (1) {
 						cerr << "B " << endl;
-						begin += (linelen - prev_linelen);
-						prev_crosspoint += (linelen - prev_linelen);
+						begin += (linelen + prev_linelen) / 1.0;
+						prev_crosspoint += (linelen - prev_linelen) / 1.0;
 						end = begin + ((crosspoint - prev_crosspoint) * scale_linelen);
 						linelen = crosspoint - prev_crosspoint; 
 					} 
-
+#else
+					if (InRangeCF(linelen, 140, 226.5)) {
+						crosspoint += (in_freq * 227.5) - prev_linelen;
+						
+						end = begin + ((crosspoint - prev_crosspoint) * scale_linelen);
+						linelen = crosspoint - prev_crosspoint; 
+					} else if (InRangeCF(linelen, 228.5, 280)) {
+						crosspoint += (in_freq * 227.5) - prev_linelen;
+						
+						end = begin + ((crosspoint - prev_crosspoint) * scale_linelen);
+						linelen = crosspoint - prev_crosspoint; 
+					}
+#endif
 					cerr << "ES " << line << ' ' << oline << ' ' << i << ' ' << crosspoint << ' ' << prev_crosspoint << ' ' << linelen << ' ' << count << endl;
-				}	
+				} else if (line > 0) {
+					// special case for a bit of Airplane that had a dropout at the beginning of field
+
+					// sync started early
+					if (0 && InRangeCF(linelen, 140, 226)) {
+						crosspoint += (in_freq * 227.5) - linelen;
+						
+						end = begin + ((crosspoint - prev_crosspoint) * scale_linelen);
+						linelen = crosspoint - prev_crosspoint; 
+						
+						cerr << "Es " << line << ' ' << oline << ' ' << i << ' ' << crosspoint << ' ' << prev_crosspoint << ' ' << linelen << ' ' << count << endl;
+					}
+#if 0
+					if (!InRangeCF(linelen, 227.5 - 1, 227.5 + 1)) {
+						if (linelen < (227 * in_freq)) {
+							crosspoint += (227.5 * in_freq) - linelen;
+						} else {
+							prev_crosspoint -= (227.5 * in_freq) - linelen;
+						}
+						begin = prev_crosspoint;
+						end = begin + ((crosspoint - prev_crosspoint) * scale_linelen);
+						linelen = crosspoint - prev_crosspoint; 
+						cerr << "Es " << line << ' ' << oline << ' ' << i << ' ' << crosspoint << ' ' << prev_crosspoint << ' ' << linelen << ' ' << count << endl;
+					}	
+#endif
+				}
 
 				prev_count = count;
 
@@ -506,7 +556,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 					cerr << "stdline " << line << endl; 
 
 					if (oline >= 0) {
-						crosspoint = ProcessLine(buf, begin, end, line); 
+						ProcessLine(buf, begin, end, line); 
 	
 						if (0 && eed == true) {
 							for (int i = 1; i < 65; i++) 
@@ -584,6 +634,8 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 			}
 		}
 	}
+
+	if (i < 0) cerr << "WTF\n";
 	
 	rv = prev_crosspoint - 200;
 
@@ -738,7 +790,7 @@ int main(int argc, char *argv[])
 	level_100ire = ire_to_in(100);
 	level_120ire = ire_to_in(120);
 
-	cross = ire_to_in(seven_five ? -5 : -10);
+	cross = ire_to_in(seven_five ? -5 : -20);
 
 	int aplen = 0;
 	while (rv == vbsize && ((tproc < dlen) || (dlen < 0))) {
