@@ -29,14 +29,14 @@ const double in_freq = 8.0;	// in FSC.  Must be an even number!
 #define OUT_FREQ 4
 const double out_freq = OUT_FREQ;	// in FSC.  Must be an even number!
 
-const double ntsc_uline = 63.5; // usec_
+//const double ntsc_uline = 63.5; // usec_
 const double ntsc_iphline = 113.75 * in_freq; // pixels per half-line
 const double ntsc_ipline = 227.5 * in_freq; // pixels per line
 const double ntsc_opline = 227.5 * out_freq; // pixels per line
-const int ntsc_oplinei = 227.5 * out_freq; // pixels per line
+//const int ntsc_oplinei = 227.5 * out_freq; // pixels per line
 const double dotclk = (1000000.0*(315.0/88.0)*in_freq); 
 
-const double dots_usec = dotclk / 1000000.0; 
+//const double dots_usec = dotclk / 1000000.0; 
 
 const double ntsc_blanklen = 9.2;
 
@@ -52,29 +52,37 @@ const double scale_tgt = ntsc_opline + ntsc_hsynctoline;
 const double phasemult = 1.591549430918953e-01 * in_freq;
 
 // uint16_t levels
-uint16_t level_m40ire = 1;
-uint16_t level_0ire = 14044;
-uint16_t level_7_5_ire = 16677;
-uint16_t level_100ire = 49152;
-uint16_t level_120ire = 56174;
+uint16_t level_m40ire;
+uint16_t level_0ire;
+uint16_t level_7_5_ire;
+uint16_t level_100ire;
+uint16_t level_120ire;
 
 bool audio_only = false;
 
-inline double u16_to_ire(uint16_t level)
+double inbase = 1;	// IRE == -60
+double inscale = 351.09;
+
+inline double in_to_ire(uint16_t level)
 {
 	if (level == 0) return -100;
 	
-	return -40 + ((double)(level - 1) / 351.09); 
+	return -60 + ((double)(level - inbase) / inscale); 
 } 
 
-inline uint16_t ire_to_u16(double ire)
+inline uint16_t ire_to_in(double ire)
 {
 	if (ire <= -60) return 0;
-	if (ire <= -40) return 1;
 	
-	return clamp((ire + 40) * 351.09, 1, 65535);
-
+	return clamp(((ire + 60) * inscale) + inbase, 1, 65535);
 } 
+
+inline uint16_t ire_to_out(double ire)
+{
+	if (ire <= -60) return 0;
+	
+	return clamp(((ire + 60) * 327.68) + 1, 1, 65535);
+}
 		
 // taken from http://www.paulinternet.nl/?page=bicubic
 inline double CubicInterpolate(uint16_t *y, double x)
@@ -260,7 +268,7 @@ Filter f_syncp(f_sync10);
 Filter f_syncp(f_sync);
 #endif
 
-double cross = ire_to_u16(-10);
+double cross = 0;
 
 double line = -2;
 int phase = -1;
@@ -348,6 +356,8 @@ wrapup:
 			o = (frame[oline - 2][i - 2] + frame[oline - 2][i + 2]) / 2;
 		}
 
+		o = ire_to_out(in_to_ire(o));
+
 		frame[oline][i] = clamp(o, 0, 65535);
 	}
 	
@@ -382,7 +392,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 
 	double prev_linelen = ntsc_ipline;
 
-	f_syncp.clear(ire_to_u16(black_ire));
+	f_syncp.clear(ire_to_in(black_ire));
 
 	cerr << "Process " << len << ' ' << (const void *)buf << endl;
 	f_syncp.dump();
@@ -429,8 +439,6 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 		
 				double algap = fabs(linelen - prev_linelen);
 				int acgap = abs(count - prev_count);	
-				double lgap = (linelen - prev_linelen);
-				int cgap = (count - prev_count);	
 				bool eed = false;
 	
 				if (prev_count && (get_oline(line) >= 0) && (get_oline(line + 1) >= 0) && (InRange(algap, 4, 100) || InRange(acgap, 2, 100))) {
@@ -562,18 +570,74 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 	return rv;
 }
 
-const int ablen = 8192;
+void autoset(uint16_t *buf, int len)
+{
+	double f[len];
+	double low = 65535, high = 0;
+	int lowloc = -1;
+	int checklen = (int)(in_freq * 4);
+	
+	f_dsync.clear(0);
+
+	// phase 1:  get low (-40ire) and high (??ire)
+	for (int i = 0; i < len; i++) {
+		f[i] = f_dsync.feed(buf[i]);
+
+		if ((i > (in_freq * 256)) && (f[i] < low) && (f[i - checklen] < low)) {
+			if (f[i - checklen] > f[i]) 
+				low = f[i - checklen];
+			else 
+				low = f[i];
+
+			lowloc = i;
+		}
+		
+		if ((i > (in_freq * 256)) && (f[i] > high) && (f[i - checklen] > high)) {
+			if (f[i - checklen] < f[i]) 
+				high = f[i - checklen];
+			else 
+				high = f[i];
+		}
+
+//		cerr << i << ' ' << buf[i] << ' ' << f[i] << ' ' << low << ':' << high << endl;
+	}
+
+	cerr << lowloc << ' ' << low << ':' << high << endl;
+
+	// phase 2: attempt to figure out the 0IRE porch near the sync
+
+	int gap = high - low;
+	int nloc;
+
+	for (nloc = lowloc; (nloc > lowloc - (in_freq * 320)) && (f[nloc] < (low + (gap / 8))); nloc--);
+
+	cerr << nloc << ' ' << (lowloc - nloc) / in_freq << ' ' << f[nloc] << endl;
+
+	nloc -= (in_freq * 4);
+	cerr << nloc << ' ' << (lowloc - nloc) / in_freq << ' ' << f[nloc] << endl;
+
+	cerr << "old base:scale = " << inbase << ':' << inscale << endl;
+
+	inscale = (f[nloc] - low) / 40.0;
+	inbase = low - (20 * inscale);	// -40IRE to -60IRE
+	if (inbase < 1) inbase = 1;
+	cerr << "new base:scale = " << inbase << ':' << inscale << endl;
+}
+
+const int ablen = (8 * 1024);
 const int vblen = ablen * 16;
 
 const int absize = ablen * 8;
 const int vbsize = vblen * 2;
+	
+float abuf[ablen * 2];
+unsigned short inbuf[vblen];
 
 int main(int argc, char *argv[])
 {
 	int rv = 0, arv = 0;
+	bool do_autoset = true;
 	long long dlen = -1, tproc = 0;
-	float abuf[ablen * 2];
-	unsigned short inbuf[vblen];
 	unsigned char *cinbuf = (unsigned char *)inbuf;
 	unsigned char *cabuf = (unsigned char *)abuf;
 
@@ -585,7 +649,7 @@ int main(int argc, char *argv[])
 
 	opterr = 0;
 	
-	while ((c = getopt(argc, argv, "s:n:i:a:Af")) != -1) {
+	while ((c = getopt(argc, argv, "ls:n:i:a:Af")) != -1) {
 		switch (c) {
 			case 's':
 				sscanf(optarg, "%lf", &cross);
@@ -598,6 +662,9 @@ int main(int argc, char *argv[])
 				break;
 			case 'A':
 				audio_only = true;
+				break;
+			case 'l':
+				do_autoset = false;
 				break;
 			case 'n':
 				despackle = false;
@@ -627,6 +694,19 @@ int main(int argc, char *argv[])
 			arv += arv2;
 		}
 	}
+
+	if (do_autoset) {
+		autoset(inbuf, vbsize / 2);
+	}
+
+	// define const levels based off possible autoset
+	level_m40ire = ire_to_in(-40);
+	level_0ire = ire_to_in(0);
+	level_7_5_ire = ire_to_in(7.5);
+	level_100ire = ire_to_in(100);
+	level_120ire = ire_to_in(120);
+
+	cross = ire_to_in(-10);
 
 	int aplen = 0;
 	while (rv == vbsize && ((tproc < dlen) || (dlen < 0))) {

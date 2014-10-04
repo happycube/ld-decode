@@ -95,8 +95,14 @@ Nlpf10 = 30
 lowpass_filter10 = sps.firwin(Nlpf + 1, 5.2 / (freq10), window='hamming')
 WriteFilter("lpf10", lowpass_filter10)
 
+Ncolor = 32
 sync_filter = sps.firwin(Ncolor + 1, 0.1 / (freq), window='hamming')
 WriteFilter("sync", sync_filter)
+
+# used in ntsc to determine sync level
+Ndsync = 32 
+dsync_filter = sps.firwin(Ndsync + 1, 0.1 / (freq), window='hamming')
+WriteFilter("dsync", dsync_filter)
 
 Ncolor10 = 32
 sync_filter10 = sps.firwin(Ncolor + 1, 0.1 / (freq10), window='hamming')

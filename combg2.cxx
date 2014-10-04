@@ -25,14 +25,9 @@ const double dots_usec = dotclk / 1000000.0;
 // values for horizontal timings 
 const double line_blanklen = 10.9 * dots_usec;
 
+double irescale = 327.67;
+double irebase = 1;
 inline uint16_t ire_to_u16(double ire);
-
-// uint16_t levels
-uint16_t level_m40ire = 1;
-uint16_t level_0ire = 16384;
-uint16_t level_7_5_ire = 16384+3071;
-uint16_t level_100ire = 57344;
-uint16_t level_120ire = 65535;
 
 // tunables
 
@@ -41,8 +36,8 @@ int linesout = 480;
 double brightness = 240;
 
 double black_ire = 7.5;
-int black_u16 = level_7_5_ire;
-int white_u16 = ire_to_u16(110); 
+int black_u16 = ire_to_u16(black_ire);
+int white_u16 = ire_to_u16(100); 
 bool whiteflag_detect = true;
 
 double nr_y = 4.0;
@@ -73,7 +68,7 @@ inline double u16_to_ire(uint16_t level)
 {
 	if (level == 0) return -100;
 	
-	return -40 + ((double)(level - 1) / 351.09); 
+	return -60 + ((double)(level - irebase) / irescale); 
 }
 
 struct RGB {
@@ -81,9 +76,12 @@ struct RGB {
 
         void conv(YIQ _y) {
                YIQ t;
+
 		double y = u16_to_ire(_y.y);
-		double i = (_y.i) * (160.0 / 65533.0);
-		double q = (_y.q) * (160.0 / 65533.0);
+		y = (y - black_ire) * (100 / (100 - black_ire)); 
+
+		double i = (_y.i) / irescale;
+		double q = (_y.q) / irescale;
 
                 r = y + (1.13983 * q);
                 g = y - (0.58060 * q) - (i * 0.39465);
@@ -108,9 +106,8 @@ struct RGB {
 inline uint16_t ire_to_u16(double ire)
 {
 	if (ire <= -60) return 0;
-	if (ire <= -40) return 1;
 	
-	return clamp((ire + 40) * 351.09, 1, 65535);
+	return clamp(((ire + 60) * irescale) + irebase, 1, 65535);
 } 
 
 typedef struct cline {
@@ -582,7 +579,7 @@ int main(int argc, char *argv[])
 
 	opterr = 0;
 	
-	while ((c = getopt(argc, argv, "vd:Bb:l:w:i:o:fphn:N:")) != -1) {
+	while ((c = getopt(argc, argv, "vd:Bb:I:w:i:o:fphn:N:")) != -1) {
 		switch (c) {
 			case 'd':
 				sscanf(optarg, "%d", &dim);
@@ -596,7 +593,7 @@ int main(int argc, char *argv[])
 			case 'b':
 				sscanf(optarg, "%lf", &brightness);
 				break;
-			case 'l':
+			case 'I':
 				sscanf(optarg, "%lf", &black_ire);
 				break;
 			case 'n':
@@ -627,9 +624,10 @@ int main(int argc, char *argv[])
 	} 
 
 	black_u16 = ire_to_u16(black_ire);
+	cerr << ' ' << black_u16 << endl;
 
-	nr_y = (nr_y / 160.0) * 65534.0;
-	nr_c = (nr_c / 160.0) * 65534.0;
+	nr_y = nr_y * irescale;
+	nr_c = nr_c * irescale;
 
 	if (!image_mode && strlen(out_filename)) {
 		ofd = open(image_base, O_WRONLY | O_CREAT);

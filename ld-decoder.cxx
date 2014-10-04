@@ -163,6 +163,16 @@ int main(int argc, char *argv[])
 	
 	FM_demod video(2048, &f_boost, &f_lpf);
 
+	double minire = -60;
+	double maxire = 140;
+	double hz_ire_scale = (9300000 - 8100000) / 100;
+
+	double min = 8100000 + (hz_ire_scale * -60);
+
+	double out_scale = 65534.0 / (maxire - minire);
+
+	cerr << "ire scale " << out_scale << endl;
+
 	while ((rv == 2048) && ((dlen == -1) || (i < dlen))) {
 		vector<double> dinbuf;
 		vector<unsigned short> ioutbuf;
@@ -182,11 +192,11 @@ int main(int argc, char *argv[])
 				n = f_deemp.feed(n) / .4960;
 //				cerr << " " << n << endl;
 
-				n -= 7600000.0;
-				n /= (9300000.0 - 7600000.0);
+				n -= min;
+				n /= hz_ire_scale;
 				if (n < 0) n = 0;
-				in = 1 + (n * 49152.0);
-				if (in > 65530) in = 65530;
+				in = 1 + (n * out_scale);
+				if (in > 65535) in = 65535;
 //				cerr << in << endl;
 			} else {
 				in = 0;
