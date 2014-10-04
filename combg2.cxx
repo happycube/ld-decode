@@ -505,7 +505,7 @@ class Comb
 				f_oddframe = false;		
 			}
 
-			for (int line = 2; line <= 3; line++) {
+			for (int line = 4; line <= 5; line++) {
 				int wc = 0;
 				for (int i = 0; i < 700; i++) {
 					if (rawbuffer[fnum][(844 * line) + i] > 45000) wc++;
@@ -516,7 +516,7 @@ class Comb
 				cerr << "PW" << line << ' ' << wc << ' ' << fieldcount << endl;
 			}
 
-			for (int line = 14; line <= 17; line++) {
+			for (int line = 16; line <= 20; line++) {
 				int new_framecode = ReadPhillipsCode(&rawbuffer[fnum][line * 844]) - 0xf80000;
 
 				cerr << line << ' ' << hex << new_framecode << dec << endl;
