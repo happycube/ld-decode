@@ -53,10 +53,10 @@ const double phasemult = 1.591549430918953e-01 * in_freq;
 
 // uint16_t levels
 uint16_t level_m40ire = 1;
-uint16_t level_0ire = 16384;
-uint16_t level_7_5_ire = 16384+3071;
-uint16_t level_100ire = 57344;
-uint16_t level_120ire = 65535;
+uint16_t level_0ire = 14044;
+uint16_t level_7_5_ire = 16677;
+uint16_t level_100ire = 49152;
+uint16_t level_120ire = 56174;
 
 bool audio_only = false;
 
@@ -64,17 +64,16 @@ inline double u16_to_ire(uint16_t level)
 {
 	if (level == 0) return -100;
 	
-	return -40 + ((160.0 / 65533.0) * (double)level); 
+	return -40 + ((double)(level - 1) / 351.09); 
 } 
 
 inline uint16_t ire_to_u16(double ire)
 {
 	if (ire <= -60) return 0;
 	if (ire <= -40) return 1;
+	
+	return clamp((ire + 40) * 351.09, 1, 65535);
 
-	if (ire >= 120) return 65535;	
-
-	return (((ire + 40) / 160.0) * 65534) + 1;
 } 
 		
 // taken from http://www.paulinternet.nl/?page=bicubic
@@ -261,7 +260,7 @@ Filter f_syncp(f_sync10);
 Filter f_syncp(f_sync);
 #endif
 
-double cross = 5000;
+double cross = ire_to_u16(-10);
 
 double line = -2;
 int phase = -1;

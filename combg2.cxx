@@ -73,7 +73,7 @@ inline double u16_to_ire(uint16_t level)
 {
 	if (level == 0) return -100;
 	
-	return -40 + ((160.0 / 65533.0) * (double)level); 
+	return -40 + ((double)(level - 1) / 351.09); 
 }
 
 struct RGB {
@@ -109,10 +109,8 @@ inline uint16_t ire_to_u16(double ire)
 {
 	if (ire <= -60) return 0;
 	if (ire <= -40) return 1;
-
-	if (ire >= 120) return 65535;	
-
-	return (((ire + 40.0) / 160.0) * 65534.0) + 1;
+	
+	return clamp((ire + 40) * 351.09, 1, 65535);
 } 
 
 typedef struct cline {

@@ -185,7 +185,7 @@ int main(int argc, char *argv[])
 				n -= 7600000.0;
 				n /= (9300000.0 - 7600000.0);
 				if (n < 0) n = 0;
-				in = 1 + (n * 57344.0);
+				in = 1 + (n * 49152.0);
 				if (in > 65530) in = 65530;
 //				cerr << in << endl;
 			} else {
