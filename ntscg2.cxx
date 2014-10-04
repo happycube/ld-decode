@@ -309,8 +309,8 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line)
 
 	cerr << line << ' ' << plevel1 << ' ' << plevel2 << endl;
 
-	if (plevel1 < 1500) goto wrapup;
-	if (plevel2 < 1500) goto wrapup;
+	if (plevel1 < 1000) goto wrapup;
+	if (plevel2 < 1000) goto wrapup;
 
 	if (phase == -1) {
 		phase = (fabs(pphase1) > (M_PIl / 2));
@@ -320,6 +320,8 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line)
 	} 
 
 	tgt_phase = ((line + phase + iline) % 2) ? (-180 * (M_PIl / 180.0)) : (0 * (M_PIl / 180.0));
+	if (in_freq == 4) goto wrapup;
+	cerr << tgt_phase << endl;
 
 	adjlen = (end - begin) / (scale_tgt / ntsc_opline);
 	cerr << line << " " << 0 << ' ' << begin << ' ' << (begin + adjlen) << '/' << end  << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
@@ -329,14 +331,14 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line)
 		adjust1 = WrapAngle(pphase1, tgt_phase);	
 		adjust2 = WrapAngle(pphase2, pphase1);
 
-		if (in_freq != 4) {
+		if (1 || in_freq != 4) {
 			begin += (adjust1 * phasemult);
 			end += ((adjust1 + adjust2) * phasemult);
 		} else {
-			//if (pass == 0) begin += (adjust1 * (phasemult / 1.0));
-			//if (pass >= 1) end += (adjust2 * (phasemult / 2.0));
-			begin += (adjust1 * (phasemult / 2.0));
-			end += (adjust2 * (phasemult / 2.0));
+			if (pass == 0) begin += (adjust1 * (phasemult / 1.0));
+			if (pass >= 1) end += (adjust2 * (phasemult / 2.0));
+			//begin += (adjust1 * (phasemult / 2.0));
+			//end += (adjust2 * (phasemult / 2.0));
 		}
 
 		Scale(buf, tout, begin, end, scale_tgt); 
@@ -449,9 +451,9 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 
 			if (debounce < 16) debounce++;
 
-			if ((debounce >= 16) && (count > 40)) crosspoint = tmp_crosspoint;
+			if ((debounce >= 16) && (count > (5 * in_freq))) crosspoint = tmp_crosspoint;
 
-			if ((debounce >= 16) && (count > 40) && prev_crosspoint > 0) {
+			if ((debounce >= 16) && (count > (5 * in_freq)) && prev_crosspoint > 0) {
 				double begin = prev_crosspoint;
 				double end = begin + ((crosspoint - prev_crosspoint) * scale_linelen);
 				double linelen = crosspoint - prev_crosspoint; 
