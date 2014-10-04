@@ -371,7 +371,7 @@ wrapup:
 			o = ire_to_out(in_to_ire(v));
 		}
 
-		if (despackle && (ire < -30) && (h > 100)) {
+		if (despackle && (ire < -30) && (h > 80)) {
 			if ((h - ldo) > 16) {
 				for (int j = h - 4; j > 2 && j < h; j++) {
 					double to = (frame[oline - 2][j - 2] + frame[oline - 2][j + 2]) / 2;
@@ -584,7 +584,9 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 					}
 					prev_linelen = ntsc_ipline;					
 					line = 1;
-					phase = -1;
+
+//					if (still_handling) XXX
+//					phase = -1;
 					if (phase >= 0) phase = !phase;
 				} else if ((line == -2) && (linelen > (in_freq * 220)) && (count > (10 * in_freq))) {
 					line = -1;
@@ -715,7 +717,7 @@ unsigned short inbuf[vblen];
 int main(int argc, char *argv[])
 {
 	int rv = 0, arv = 0;
-	bool do_autoset = true;
+	bool do_autoset = (in_freq == 4);
 	long long dlen = -1, tproc = 0;
 	unsigned char *cinbuf = (unsigned char *)inbuf;
 	unsigned char *cabuf = (unsigned char *)abuf;
@@ -728,7 +730,7 @@ int main(int argc, char *argv[])
 
 	opterr = 0;
 	
-	while ((c = getopt(argc, argv, "hls:n:i:a:Af")) != -1) {
+	while ((c = getopt(argc, argv, "hgs:n:i:a:Af")) != -1) {
 		switch (c) {
 			case 's':
 				sscanf(optarg, "%lf", &cross);
@@ -742,8 +744,8 @@ int main(int argc, char *argv[])
 			case 'A':
 				audio_only = true;
 				break;
-			case 'l':
-				do_autoset = false;
+			case 'g':
+				do_autoset = !do_autoset;
 				break;
 			case 'n':
 				despackle = false;
