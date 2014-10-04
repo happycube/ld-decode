@@ -36,13 +36,17 @@ uint16_t level_120ire = 65535;
 
 // tunables
 
+int linesout = 480;
+
+double brightness = 240;
+
 double black_ire = 7.5;
 int black_u16 = level_7_5_ire;
 int white_u16 = ire_to_u16(110); 
 bool whiteflag_detect = true;
 
-double nr_y = 2.0;
-double nr_c = 0.8;
+double nr_y = 4.0;
+double nr_c = 1.0;
 
 inline double IRE(double in) 
 {
@@ -77,19 +81,6 @@ struct RGB {
 
         void conv(YIQ _y) {
                YIQ t;
-#if 0 
-               t.y = (_y.y - black_u16) * 1.43;
-               t.i = _y.q * 1.43;
-               t.q = _y.i * 1.43;
- 
-                 r = (t.y * 1.164) + (1.596 * t.i);
-                 g = (t.y * 1.164) - (0.813 * t.i) - (t.q * 0.391);
-                 b = (t.y * 1.164) + (t.q * 2.018);
- 
-                 r = clamp(r / 256, 0, 255);
-                 g = clamp(g / 256, 0, 255);
-                 b = clamp(b / 256, 0, 255);
-#else
 		double y = u16_to_ire(_y.y);
 		double i = (_y.i) * (160.0 / 65533.0);
 		double q = (_y.q) * (160.0 / 65533.0);
@@ -97,18 +88,20 @@ struct RGB {
                 r = y + (1.13983 * q);
                 g = y - (0.58060 * q) - (i * 0.39465);
                 b = y + (i * 2.032);
-//		r = y + (0.956 * t.i) + (.621 * t.q);
-//		g = y - (0.272 * t.i) - (.647 * t.q);
-//		b = y - (1.107 * t.i) + (1.704 * t.q);
+#if 1
+		double m = brightness / 100;
 
+                r = clamp(r * m, 0, 255);
+                g = clamp(g * m, 0, 255);
+                b = clamp(b * m, 0, 255);
+#else
 		double m = 2.24;
 
                 r = clamp(r * m, -16, 224) + 16;
                 g = clamp(g * m, -16, 224) + 16;
                 b = clamp(b * m, -16, 224) + 16;
+#endif
                 //cerr << 'y' << y.y << " i" << y.i << " q" << y.q << ' ';
-                //cerr << 'r' << r << " g" << g << " b" << b << endl;
-#endif   
      };
 };
 
@@ -146,8 +139,8 @@ class Comb
 	
 		uint16_t frame[1820 * 530];
 
-		uint8_t output[744 * 525 * 3];
-		uint8_t obuf[744 * 525 * 3];
+		uint8_t output[744 * 505 * 3];
+		uint8_t obuf[744 * 505 * 3];
 
 		uint16_t rawbuffer[3][844 * 505];
 
@@ -287,10 +280,11 @@ class Comb
 		}
 		
 		void DoYNR(int fnum = 0) {
+			int firstline = (linesout == 505) ? 0 : 24;
 			if (nr_y < 0) return;
 
 			// part 1:  do horizontal 
-			for (int l = 24; l < 504; l++) {
+			for (int l = firstline; l < 504; l++) {
 				YIQ hpline[844];
 				cline_t *input = &wbuf[fnum][l];
 
@@ -383,14 +377,14 @@ class Comb
 
 		void WriteFrame(uint8_t *obuf, int fnum = 0) {
 			if (!image_mode) {
-				write(ofd, obuf, (744 * 480 * 3));
+				write(ofd, obuf, (744 * linesout * 3));
 			} else {
 				char ofname[512];
 
 				sprintf(ofname, "%s%d.rgb", image_base, fnum); 
 				cerr << "W " << ofname << endl;
 				ofd = open(ofname, O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR | S_IROTH);
-				write(ofd, obuf, (744 * 480 * 3));
+				write(ofd, obuf, (744 * linesout * 3));
 				close(ofd);
 			}
 		}
@@ -398,6 +392,7 @@ class Comb
 		// buffer: 844x505 uint16_t array
 		void Process(uint16_t *buffer, int dim = 2)
 		{
+			int firstline = (linesout == 505) ? 0 : 24;
 			int f = (dim == 3) ? 1 : 0;
 
 			cerr << "P " << f << endl;
@@ -409,7 +404,7 @@ class Comb
 			memcpy(rawbuffer[1], rawbuffer[0], (844 * 505 * 2));
 			memcpy(rawbuffer[0], buffer, (844 * 505 * 2));
 
-			for (int l = 24; l < 504; l++) {
+			for (int l = firstline; l < 504; l++) {
 				SplitLine(wbuf[0][l], &rawbuffer[0][l * 844]); 
 			}
 
@@ -426,11 +421,11 @@ class Comb
 			}
 
 			// comb filtering phase
-			for (int l = 24; l < 504; l++) {
+			for (int l = firstline; l < 504; l++) {
 				if (dim == 1) {
 					memcpy(&cbuf[f][l], &wbuf[0][l], sizeof(cline_t));
 				} else if (dim == 2) {
-					if (l < 503) 
+					if ((l >= 24) && (l < 503)) 
 						cbuf[f][l] = Blend(wbuf[0][l - 2], wbuf[0][l], wbuf[0][l + 2]);
 					else
 						memcpy(&cbuf[f][l], &wbuf[0][l], sizeof(cline_t));
@@ -440,7 +435,7 @@ class Comb
 			}
 
 			// remove color data from baseband (Y)	
-			for (int l = 24; l < 504; l++) {
+			for (int l = firstline; l < 504; l++) {
 				bool invertphase = (rawbuffer[f][l * 844] == 16384);
 
 				for (int h = 0; h < 760; h++) {
@@ -467,8 +462,8 @@ class Comb
 			DoYNR(f);
 		
 			// YIQ (YUV?) -> RGB conversion	
-			for (int l = 24; l < 504; l++) {
-				uint8_t *line_output = &output[(744 * 3 * (l - 24))];
+			for (int l = firstline; l < 504; l++) {
+				uint8_t *line_output = &output[(744 * 3 * (l - firstline))];
 				int o = 0;
 				for (int h = 0; h < 752; h++) {
 					RGB r;
@@ -508,7 +503,7 @@ class Comb
 			if (!pulldown_mode) {
 				fstart = 0;
 			} else if (f_oddframe) {
-				for (int i = 0; i <= 478; i += 2) {
+				for (int i = 0; i <= linesout; i += 2) {
 					memcpy(&obuf[744 * 3 * i], &output[744 * 3 * i], 744 * 3); 
 				}
 				WriteFrame(obuf, framecode);
@@ -589,15 +584,21 @@ int main(int argc, char *argv[])
 
 	opterr = 0;
 	
-	while ((c = getopt(argc, argv, "d:Bb:w:i:o:fphn:N:")) != -1) {
+	while ((c = getopt(argc, argv, "vd:Bb:l:w:i:o:fphn:N:")) != -1) {
 		switch (c) {
 			case 'd':
 				sscanf(optarg, "%d", &dim);
+				break;
+			case 'v':
+				linesout = 505;
 				break;
 			case 'B':
 				bw_mode = true;
 				break;
 			case 'b':
+				sscanf(optarg, "%lf", &brightness);
+				break;
+			case 'l':
 				sscanf(optarg, "%lf", &black_ire);
 				break;
 			case 'n':

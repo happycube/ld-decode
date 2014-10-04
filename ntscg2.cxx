@@ -151,7 +151,7 @@ void BurstDetect(double *line, int freq, double _loc, double &plevel, double &pp
 {
 	double _cos[freq], _sin[freq];
 	double pi = 0, pq = 0, ploc = -1;
-	int len = (25 * freq);
+	int len = (28 * freq);
 	int loc = _loc * freq;
 
 	Filter *f_bpcolor;
@@ -174,7 +174,7 @@ void BurstDetect(double *line, int freq, double _loc, double &plevel, double &pp
 	}
 	f_bpcolor->clear(0);
 
-	for (int l = loc + (14 * freq); l < loc + len; l++) {
+	for (int l = loc + (15 * freq); l < loc + len; l++) {
 		int x = line[l];
 	
 		if (x < 6000) x = 6000;
@@ -186,6 +186,8 @@ void BurstDetect(double *line, int freq, double _loc, double &plevel, double &pp
 		double i = f_synci.feed(-v * _sin[l % freq]);
 
 		double level = ctor(i, q);
+
+//		cerr << l << ' ' << level << ' ' << atan2(pi, pq) << endl;
 
 		if (((l - loc) > 16) && (level > plevel) && (level < 10000)) {
 			ploc = l;
@@ -290,8 +292,10 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line)
 	BurstDetect(tout1, out_freq, 0, plevel1, pphase1); 
 	BurstDetect(tout1, out_freq, 228, plevel2, pphase2); 
 
-	if (plevel1 < 1000) goto wrapup;
-	if (plevel2 < 1000) goto wrapup;
+	cerr << line << ' ' << plevel1 << ' ' << plevel2 << endl;
+
+	if (plevel1 < 500) goto wrapup;
+	if (plevel2 < 500) goto wrapup;
 
 	if (phase == -1) {
 		phase = (fabs(pphase1) > (M_PIl / 2));
@@ -410,10 +414,10 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 				double linelen = crosspoint - prev_crosspoint; 
 				
 				int oline = get_oline(line + 0);
-
-				cerr << "S " << line << ' ' << oline << ' ' << i << ' ' << crosspoint << ' ' << prev_crosspoint << ' ' << linelen << ' ' << count << endl;
-
+				
 				valid = IsABlank(line, crosspoint - prev_crosspoint, count); 
+
+				cerr << "S " << line << ' ' << oline << ' ' << i << ' ' << crosspoint << ' ' << prev_crosspoint << ' ' << linelen << ' ' << count << ' ' << valid << endl;
 
 				if (!valid) {
 					cerr << "X " << crosspoint - prev_crosspoint << ' ' << count << endl;
@@ -465,6 +469,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 
 				prev_count = count;
 
+//				cerr << line << ' ' << linelen << ' ' << ntsc_ipline * 0.9 << ' ' << count << ' ' << 11 * in_freq << endl;
 				if ((line >= 0) && (linelen >= (ntsc_ipline * 0.9)) && (count > (11 * in_freq))) {
 					// standard line
 					int oline = get_oline(line);

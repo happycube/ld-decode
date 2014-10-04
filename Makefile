@@ -22,7 +22,7 @@ ldd10: ld-decoder-10.cxx
 	clang++ -std=c++11  -mavx -march=corei7-avx -Wall -DNOSNAP -O3 -g -o ldd10 ld-decoder-10.cxx
 
 ntsc10: ntscg2.cxx ld-decoder.h deemp.h
-	clang++ -std=c++11  -Wall -D_NOSNAP -DFSC10 -O3 -g -o ntsc ntscg2.cxx
+	clang++ -std=c++11  -Wall -D_NOSNAP -DFSC10 -O3 -g -o ntsc10 ntscg2.cxx
 
 ntsc: ntscg2.cxx ld-decoder.h deemp.h
 	clang++ -std=c++11  -Wall -D_NOSNAP -O3 -g -o ntsc ntscg2.cxx

@@ -8,6 +8,7 @@ import scipy.signal as sps
 import fdls as fdls
 
 freq = 4 * 315.0 / 88.0
+freq10 = 5 * 315.0 / 88.0
 
 tH = 100.0/1000000000.0 # 100nS
 tL = 300.0/1000000000.0 # 300nS
@@ -15,37 +16,8 @@ tL = 300.0/1000000000.0 # 300nS
 n = 512 
 df = 512.0/(freq) 
 Fr = np.zeros(n)
-Fr2 = np.zeros(n)
 Am = np.zeros(n)
 Th = np.zeros(n)
-
-for f in range(0, n):
-        F = ((float(f) / df) * 1000000.0) + 1
-        H = 2.0 * np.pi * F * tH
-        L = 2.0 * np.pi * F * tL
-
-        A = 1.0 + (1.0 / (H * H))
-        B = 1.0 + (1.0 / (L * L))
-
-        DE = ((10.0*np.log(A/B))-21.9722457733) * (10.0 / 21.9722457733)
-	cf = (float(f) / df)
-
-        Fr[f] = cf / (freq * 2)
-        Fr2[f] = (cf * 2) / (freq * 2)
-        Am[f] = np.power(10, (DE/20.0)) 
-
-#	if (cf > 6.0):
-#		Am[f] = 0
-
-Ndeemp = 8
-Ddeemp = 5
-
-for i in range(0, len(Fr)):
-	Th[i] = -(Fr[i] * 5040) / 180.0
-	Th[i] = -(Fr[i] * 29.4) 
-	Th[i] = -(Fr[i] * 30.0) 
-
-[f_deemp_b, f_deemp_a] = fdls.FDLS(Fr, Am, Th, Ndeemp, Ddeemp)
 
 f_deemp_bil_b = [2.819257458245255e-01, -4.361485083509491e-01]
 f_deemp_bil_a = [1.000000000000000e+00, -1.154222762526424e+00]
@@ -57,22 +29,39 @@ h.imag = h.imag * 1
 Ndeemp = 8
 Ddeemp = 8
 for i in range(0, len(Fr)):
-	Th[i] = -(Fr[i] * 7.5) 
-	Th[i] = -((Fr[i] * 28.0) * h.real[i])
+        cf = (float(i) / df)
+	Fr[i] = cf / (freq * 2)
+
 	Th[i] = (-((Fr[i] * 6.90) / h.real[i])) - (0 * (np.pi / 180)) 
+
 [f_deemp_b, f_deemp_a] = fdls.FDLS(w, h.real*1, Th, Ndeemp, Ddeemp)
+#fdls.doplot2(freq,f_deemp_b, f_deemp_a, 1.0, f_deemp_bil_b, f_deemp_bil_a, 1.0)
+#exit()
 
-#Ndeemp = 4 
-#Ddeemp = 11 
+# [b, a] = bilinear([.3e-7], [.1e-7], 1/3, 1000000*5*315/88)
+f_deemp10_bil_b = [2.678107124284971e-01, -4.643785751430057e-01]
+f_deemp10_bil_a = [1.000000000000000e+00, -1.196567862714509e+00]
 
-# 503 v2, also good de-emp for 2800, but lower FR
-Fr = np.array([0,   .5000, 1.60, 3.00, 4.2, 5.0, 10.0]) / (freq * 2.0)
-Am = np.array([100, 84.0,    45,   45, 60,  70 , 00]) / 100.0
-Th = np.zeros(len(Fr))
+w, h = sps.freqz(f_deemp10_bil_b, f_deemp10_bil_a)
+w = w / (np.pi * 1.0)
+h.imag = h.imag * 1
 
-#[f_deemp_b, f_deemp_a] = fdls.FDLS(Fr, Am, Th, Ndeemp, Ddeemp)
+df = 512.0/(freq10) 
+Ndeemp10 = 8
+Ddeemp10 = 8
+for i in range(0, len(Fr)):
+        cf = (float(i) / df)
+	Fr[i] = cf / (freq10 * 2)
+
+	Th[i] = (-((Fr[i] * 5.95) / h.real[i])) - (0 * (np.pi / 180)) 
+
+[f_deemp10_b, f_deemp10_a] = fdls.FDLS(w, h.real*1, Th, Ndeemp10, Ddeemp10)
+
+#fdls.doplot2(freq10,f_deemp10_b, f_deemp10_a, 1.0, f_deemp10_bil_b, f_deemp10_bil_a, 1.0)
+#exit()
 
 Bboost = sps.firwin(33, 3.5 / (freq), window='hamming', pass_zero=False)
+Bboost10 = sps.firwin(33, 3.5 / (freq10), window='hamming', pass_zero=False)
 
 Nlpf = 14 
 Dlpf = 2 
@@ -99,9 +88,13 @@ Fcolor = sps.firwin(Ncolor + 1, 0.2 / (freq), window='hamming')
 Nlpf = 30
 lowpass_filter = sps.firwin(Nlpf + 1, 5.2 / (freq), window='hamming')
 
+Nlpf10 = 30
+lowpass_filter10 = sps.firwin(Nlpf + 1, 5.2 / (freq10), window='hamming')
+
 sync_filter = sps.firwin(Ncolor + 1, 0.1 / (freq), window='hamming')
-#fdls.doplot(freq*2, sync_filter, [1.0])
-#exit()
+
+Ncolor10 = 32
+sync_filter10 = sps.firwin(Ncolor + 1, 0.1 / (freq10), window='hamming')
 
 Nnr = 16
 hp_nr_filter = sps.firwin(Nnr + 1, 1.8 / (freq / 2.0), window='hamming', pass_zero=False)
@@ -115,6 +108,12 @@ colorbp4_filter = sps.firwin(Ncolorbp4 + 1, [3.4006 / (freq / 2), 3.7585 / (freq
 
 Ncolorbp8 = 16
 colorbp8_filter = sps.firwin(Ncolorbp8 + 1, [3.4006 / (freq), 3.7585 / (freq)], window='hamming', pass_zero=False)
+
+Ncolor10bp4 = 10 
+color10bp4_filter = sps.firwin(Ncolor10bp4 + 1, [3.4006 / (freq10 / 2), 3.7585 / (freq10 / 2)], window='hamming', pass_zero=False)
+
+Ncolor10bp8 = 20
+color10bp8_filter = sps.firwin(Ncolor10bp8 + 1, [3.4006 / (freq10), 3.7585 / (freq10)], window='hamming', pass_zero=False)
 
 audioin_filter = sps.firwin(65, 3.15 / (freq), window='hamming')
 
@@ -176,12 +175,34 @@ print
 print "Filter f_deemp(c_deemp_b, c_deemp_a);"
 print
 
+print "vector<double> c_deemp10_b = {",
+for i in range(0, len(f_deemp10_b)):
+	print "%.15e" % f_deemp10_b[i], ",",
+print "};"
+print
+
+print "vector <double> c_deemp10_a = {",
+for i in range(0, len(f_deemp10_a)):
+	print "%.15e" % f_deemp10_a[i], ",",
+print "};"
+print
+print "Filter f_deemp10(c_deemp10_b, c_deemp10_a);"
+print
+
+
 print "const double c_boost_b[] {",
 for i in range(0, len(Bboost)):
 	print "%.15e" % Bboost[i], ",",
 print "};"
 print
 print "Filter f_boost(", len(Bboost) - 1, ", NULL, c_boost_b);"
+
+print "const double c_boost10_b[] {",
+for i in range(0, len(Bboost10)):
+	print "%.15e" % Bboost10[i], ",",
+print "};"
+print
+print "Filter f_boost10(", len(Bboost10) - 1, ", NULL, c_boost10_b);"
 
 print "vector<double> c_lpf_b = {",
 for i in range(0, len(Blpf)):
@@ -225,6 +246,15 @@ for i in range(0, len(sync_filter)):
 print "};"
 print
 print "Filter f_sync(" ,Ncolor, ", NULL, c_sync);"
+print
+
+print "const double c_sync10[] {",
+for i in range(0, len(sync_filter10)):
+        print "%.15e" % sync_filter10[i], ",",
+print "};"
+print
+print "Filter f_sync10(" ,Ncolor10, ", NULL, c_sync10);"
+print
 
 print "const double c_lpf[] {",
 for i in range(0, len(lowpass_filter)):
@@ -232,6 +262,14 @@ for i in range(0, len(lowpass_filter)):
 print "};"
 print
 print "Filter f_lpf(" ,Nlpf, ", NULL, c_lpf);"
+print
+
+print "const double c_lpf10[] {",
+for i in range(0, len(lowpass_filter10)):
+        print "%.15e" % lowpass_filter10[i], ",",
+print "};"
+print
+print "Filter f_lpf10(" ,Nlpf10, ", NULL, c_lpf10);"
 print
 
 print "const double c_nr[] {",
@@ -255,12 +293,26 @@ print "};"
 print
 print "Filter f_colorbp4(" ,Ncolorbp4, ", NULL, c_colorbp4);"
 
+print "const double c_color10bp4[] {",
+for i in range(0, len(color10bp4_filter)):
+        print "%.15e" % color10bp4_filter[i], ",",
+print "};"
+print
+print "Filter f_color10bp4(" ,Ncolor10bp4, ", NULL, c_color10bp4);"
+
 print "const double c_colorbp8[] {",
 for i in range(0, len(colorbp8_filter)):
         print "%.15e" % colorbp8_filter[i], ",",
 print "};"
 print
 print "Filter f_colorbp8(" ,Ncolorbp8, ", NULL, c_colorbp8);"
+
+print "const double c_color10bp8[] {",
+for i in range(0, len(color10bp8_filter)):
+        print "%.15e" % color10bp8_filter[i], ",",
+print "};"
+print
+print "Filter f_color10bp8(" ,Ncolor10bp8, ", NULL, c_color10bp8);"
 
 print "const double c_colorlp4[] {",
 for i in range(0, len(colorlp4_filter)):
