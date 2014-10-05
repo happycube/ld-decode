@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 
 freq = (315.0 / 88.0) * 8.0
 freq_hz = freq * 1000000.0
-blocklen = 4096 
+blocklen = (128 * 1024) 
 
 def doplot(B, A):
 	w, h = sps.freqz(B, A)
@@ -120,7 +120,8 @@ def process(data):
 	
 #	in_filt = sps.lfilter(Bboost, Aboost, data)
 
-	hilbert = sps.lfilter(hilbert_filter, 1.0, in_filt) 
+#	hilbert = sps.lfilter(hilbert_filter, 1.0, in_filt) 
+	hilbert = sps.hilbert(in_filt)
 
 	# the hilbert transform has errors at the edges.  but it doesn't seem to matter much IRL
 	hilbert = hilbert[128:len(hilbert)-128]
