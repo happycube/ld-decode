@@ -64,69 +64,40 @@ for f in range(0, n):
 #doplot(f_afilt_b, f_afilt_a)
 #exit()
 
-#alfilt = sps.firwin(11, [2.10/ffreq, 3.10/ffreq])
-#arfilt = sps.firwin(9, [2.60/ffreq, 3.00/ffreq])
-
 lowpass_filter = sps.firwin(31, 5.2 / (freq / 2), window='hamming')
-#lowpass_filter = sps.firwin(15, 4.3 / (freq / 2), window='hamming')
 #doplot(lowpass_filter, [1.0])
 #exit()
 
 tH = 100.0/1000000000.0 # 100nS
 tL = 300.0/1000000000.0 # 300nS
 
-n = 128
-df = 128.0/(freq/2) 
+n = 512 
+df = 512.0/(freq) 
 Fr = np.zeros(n)
 Am = np.zeros(n)
 Th = np.zeros(n)
 
-for f in range(0, n):
-        F = ((float(f) / df) * 1000000.0) + 1
-        H = 2.0 * np.pi * F * tH
-        L = 2.0 * np.pi * F * tL
+f_deemp_bil_b = [2.819257458245255e-01, -4.361485083509491e-01]
+f_deemp_bil_a = [1.000000000000000e+00, -1.154222762526424e+00]
 
-#       print H, L
-
-        A = 1.0 + (1.0 / (H * H))
-        B = 1.0 + (1.0 / (L * L))
-
-        DE = ((10.0*np.log(A/B))-21.9722457733) * (10.0 / 21.9722457733)
-#        print f, np.log(A/B), np.power(10, DE / 24.0)
-
-#	cf = (1.0 / float(n)) * float(f)
-	cf = (float(f) / df)
-
-        Fr[f] = cf / freq
-        Am[f] = np.power(10, (DE/18.0)) 
-
-	#print f, Fr[f] * freq, Am[f]
-
-#Fr[n - 1] = 1.0 
+w, h = sps.freqz(f_deemp_bil_b, f_deemp_bil_a)
+w = w / (np.pi * 1.0)
+h.imag = h.imag * 1
 
 Ndeemp = 8
-Ddeemp = 5
-
+Ddeemp = 8
 for i in range(0, len(Fr)):
-	Th[i] = -(Fr[i] * 5040) / 180.0
-	Th[i] = -(Fr[i] * 29.4) 
-	Th[i] = -(Fr[i] * 30.0) 
-	Th[i] = -(Fr[i] * 30.0) 
-#	Th[i] = -(Fr[i] * 29.5) 
+	cf = (float(i) / df)
+	Fr[i] = cf / (freq * 2)
 
-[f_deemp_b, f_deemp_a] = fdls.FDLS(Fr, Am, Th, Ndeemp, Ddeemp)
+	Th[i] = (-((Fr[i] * 6.90) / h.real[i])) - (0 * (np.pi / 180)) 
 
-#f_deemp_b = sps.firwin2(125, Fr, Am)
-#f_deemp_b = [1.0]
-#f_deemp_a = [1.0]
+[f_deemp_b, f_deemp_a] = fdls.FDLS(w, h.real*1, Th, Ndeemp, Ddeemp)
 
-w, h = sps.freqz(B, A)
-deemp_corr = ((h[0].real - 1) / 1.15) + 1
-#deemp_corr = 0.9945
-deemp_corr = 0.9915
-#deemp_corr = 1.001
+deemp_corr = .4960
 
-#doplot(alfilt, [1.0])
+#WriteFilter("deemp", f_deemp_b, f_deemp_a)
+#fdls.doplot(freq, f_deemp_b, f_deemp_a)
 #exit()
 
 # from http://tlfabian.blogspot.com/2013/01/implementing-hilbert-90-degree-shift.html
@@ -216,6 +187,14 @@ hp_nr_filter = sps.firwin(31, 1.8 / (freq / 2), window='hamming', pass_zero=Fals
 #doplot(hp_nr_filter, [1.0])
 #exit()
 
+minire = -60
+maxire = 140
+hz_ire_scale = (9300000 - 8100000) / 100
+
+minn = 8100000 + (hz_ire_scale * -60)
+
+out_scale = 65534.0 / (maxire - minire)
+
 while (len(inbuf) > 0):
 	toread = blocklen - indata.size 
 
@@ -229,9 +208,9 @@ while (len(inbuf) > 0):
 
 	output_16 = np.empty(len(foutput), dtype=np.uint16)
 
-	reduced = (foutput - 7600000) / 1700000.0
+	reduced = (foutput - minn) / hz_ire_scale
 
-	output = np.clip(reduced * 57344.0, 0, 65535) 
+	output = np.clip(reduced * out_scale, 0, 65535) 
 	
 	np.copyto(output_16, output, 'unsafe')
 
