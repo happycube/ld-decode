@@ -28,17 +28,17 @@ def doplot(freq, B, A):
 	plt.show()
 
 def FDLS(Fr, Am, Th, N, D):
-	wmtsa = Fr * (2*np.pi)
+	wmts = Fr * (2*np.pi)
 
 	ND = 0
 	Xa = np.zeros((N + D + 1, len(Fr))) 
 
 	for i in range(0, D):
-		Xa[ND] = -Am * np.cos((-(i + 1) * wmtsa) + Th)
+		Xa[ND] = -Am * np.cos((-(i + 1) * wmts) + Th)
 		ND = ND + 1
 
 	for i in range(0, N + 1):
-		Xa[ND] = np.cos(i * -wmtsa)
+		Xa[ND] = np.cos(i * -wmts)
 		ND = ND + 1
 
 	X = Xa.transpose()
