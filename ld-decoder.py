@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 
 freq = (315.0 / 88.0) * 8.0
 freq_hz = freq * 1000000.0
-blocklen = 32768 
+blocklen = 4096 
 
 def doplot(B, A):
 	w, h = sps.freqz(B, A)
@@ -90,10 +90,11 @@ for i in range(0, len(Fr)):
 	cf = (float(i) / df)
 	Fr[i] = cf / (freq * 2)
 
-	Th[i] = (-((Fr[i] * 6.90) / h.real[i])) - (0 * (np.pi / 180)) 
+	Th[i] = (-((Fr[i] * (6.9)) / h.real[i])) + (0 * (np.pi / 180)) 
 
 [f_deemp_b, f_deemp_a] = fdls.FDLS(w, h.real*1, Th, Ndeemp, Ddeemp)
 
+deemp_corr = 1
 deemp_corr = .4960
 
 #WriteFilter("deemp", f_deemp_b, f_deemp_a)
@@ -149,10 +150,13 @@ def process(data):
 			if output[i] < 0:
 				output[i] = output[i] + freq_hz
 
-#	output = (sps.lfilter(Blpf, Alpf, tdangles2) * 4557618)[128:len(tdangles2)]
-	#output = (tdangles2 * 4557618)[128:len(tdangles2)]
-
 	return output
+	output = (sps.lfilter(f_deemp_b, f_deemp_a, output)[128:len(output)]) / deemp_corr
+	print output
+
+	plt.plot(range(0, len(output)), output)
+	plt.show()
+	exit()
 
 outfile = sys.stdout
 #outfile = open("snwp.ld", "wb")
