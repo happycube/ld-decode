@@ -92,6 +92,10 @@ Nlpf = 30
 lowpass_filter = sps.firwin(Nlpf + 1, 5.2 / (freq), window='hamming')
 WriteFilter("lpf", lowpass_filter)
 
+Nlpf = 30
+lowpass_filter = sps.firwin(Nlpf + 1, 4.2 / (freq), window='hamming')
+WriteFilter("lpf42", lowpass_filter)
+
 Nlpf4 = 10
 lowpass_filter4 = sps.firwin(Nlpf + 1, 5.2 / (freq4), window='hamming')
 WriteFilter("lpf4", lowpass_filter4)
@@ -157,7 +161,7 @@ WriteFilter("audiolp", audiolp_filter)
 
 # from http://tlfabian.blogspot.com/2013/01/implementing-hilbert-90-degree-shift.html
 hilbert_filter = np.fft.fftshift(
-    np.fft.ifft([0]+[1]*20+[0]*20)
+    np.fft.ifft([0]+[1]*15+[0]*15)
 )
 WriteFilter("hilbertr", hilbert_filter.real)
 WriteFilter("hilberti", hilbert_filter.imag)

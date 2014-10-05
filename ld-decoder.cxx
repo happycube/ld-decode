@@ -6,6 +6,9 @@ const double CHZ = (1000000.0*(315.0/88.0)*8.0);
 
 #include "deemp.h"
 
+bool fast = false;
+bool fscten = false;	// 10x fsc - todo
+
 // From http://lists.apple.com/archives/perfoptimization-dev/2005/Jan/msg00051.html. 
 const double PI_FLOAT = M_PIl;
 const double PIBY2_FLOAT = (M_PIl/2.0); 
@@ -95,7 +98,12 @@ class FM_demod {
 				double real = f_hilbertr.feed(n);
 				double imag = f_hilberti.feed(n);
 
-				double ang = atan2(real, imag);
+				double ang;
+	
+				if (fast)
+					ang = fast_atan2(real, imag); 
+				else 
+					ang = atan2(real, imag);
 		
 				if (!i) prev_ang = ang;
 
@@ -123,37 +131,44 @@ int main(int argc, char *argv[])
 	long long dlen = -1;
 	//double output[2048];
 	unsigned char inbuf[2048];
+	char c;
 
 	cerr << std::setprecision(10);
 	cerr << argc << endl;
 	cerr << strncmp(argv[1], "-", 1) << endl;
+	
+	opterr = 0;
+	while ((c = getopt (argc, argv, "ft")) != -1) {
+		switch (c) {
+			case 'f':
+				fast = true;
+				break;
+			case 't':
+				fscten = true;
+				break;
+			default:
+				cerr << "unknown option " << c << endl;
+				break;
+		}
+	} 
 
-	if (argc >= 2 && (strncmp(argv[1], "-", 1))) {
-		fd = open(argv[1], O_RDONLY);
+	int optsleft = argc - optind;
+
+	if (optsleft >= 1 && (strncmp(argv[optind], "-", 1))) {
+		fd = open(argv[optind], O_RDONLY);
 	}
 
-	if (argc >= 3) {
-		unsigned long long offset = atoll(argv[2]);
+	if (optsleft >= 2) {
+		unsigned long long offset = atoll(argv[optind + 1]);
 
 		if (offset) lseek64(fd, offset, SEEK_SET);
 	}
 		
-	if (argc >= 4) {
-		if ((size_t)atoll(argv[3]) < dlen) {
-			dlen = atoll(argv[3]); 
+	if (optsleft >= 3) {
+		if ((size_t)atoll(argv[optind + 2]) < dlen) {
+			dlen = atoll(argv[optind + 2]); 
 		}
 	}
-
-#if 0
-	for (int i = 0 ; i < 4096; i++) {
-		double n = 9300000;
-
-		cerr << "d " << n ;
-		n = f_deemp.feed(n) ;
-		cerr << " " << n / 0.9919 << endl;
-	}
-	return -1;
-#endif
 
 	cout << std::setprecision(8);
 	
