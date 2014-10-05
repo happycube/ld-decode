@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 
 freq = (315.0 / 88.0) * 8.0
 freq_hz = freq * 1000000.0
-blocklen = (128 * 1024) 
+blocklen = (32 * 1024) 
 
 def doplot(B, A):
 	w, h = sps.freqz(B, A)
