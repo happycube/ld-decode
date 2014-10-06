@@ -9,46 +9,6 @@ const double CHZ = (1000000.0*(315.0/88.0)*8.0);
 bool fast = false;
 bool fscten = false;	// 10x fsc - todo
 
-// From http://lists.apple.com/archives/perfoptimization-dev/2005/Jan/msg00051.html. 
-const double PI_FLOAT = M_PIl;
-const double PIBY2_FLOAT = (M_PIl/2.0); 
-// |error| < 0.005
-double fast_atan2( double y, double x )
-{
-	if ( x == 0.0f )
-	{
-		if ( y > 0.0f ) return PIBY2_FLOAT;
-		if ( y == 0.0f ) return 0.0f;
-		return -PIBY2_FLOAT;
-	}
-	double atan;
-	double z = y/x;
-	if (  fabs( z ) < 1.0f  )
-	{
-		atan = z/(1.0f + 0.28f*z*z);
-		if ( x < 0.0f )
-		{
-			if ( y < 0.0f ) return atan - PI_FLOAT;
-			return atan + PI_FLOAT;
-		}
-	}
-	else
-	{
-		atan = PIBY2_FLOAT - z/(z*z + 0.28f);
-		if ( y < 0.0f ) return atan - PI_FLOAT;
-	}
-	return atan;
-}
-
-inline double WrapAngle(double a1, double a2) {
-        double v = a2 - a1;
-
-        if (v > M_PIl) v -= (2 * M_PIl);
-        else if (v <= -M_PIl) v += (2 * M_PIl);
-
-        return v;
-}
-
 class FM_demod {
 	protected:
 		Filter *f_pre;

@@ -111,15 +111,6 @@ inline void Scale(uint16_t *buf, double *outbuf, double start, double end, doubl
 	}
 }
                 
-inline double WrapAngle(double a1, double a2) {
-	double v = a2 - a1;
-
-	if (v > M_PIl) v -= (2 * M_PIl);
-	else if (v <= -M_PIl) v += (2 * M_PIl);
-
-	return v;
-}
-
 bool InRange(double v, double l, double h) {
 	return ((v > l) && (v < h));
 }
@@ -646,14 +637,19 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 	return rv;
 }
 
-bool seven_five = false;
+bool seven_five = (in_freq == 4);
+double low = 65535, high = 0;
 
-void autoset(uint16_t *buf, int len)
+void autoset(uint16_t *buf, int len, bool fullagc = true)
 {
 	double f[len];
-	double low = 65535, high = 0;
 	int lowloc = -1;
 	int checklen = (int)(in_freq * 4);
+
+	if (!fullagc) {
+		low = 65535;
+		high = 0;
+	}
 	
 	f_longsync.clear(0);
 
@@ -684,22 +680,40 @@ void autoset(uint16_t *buf, int len)
 
 	// phase 2: attempt to figure out the 0IRE porch near the sync
 
-	int gap = high - low;
-	int nloc;
+	if (!fullagc) {
+		int gap = high - low;
+		int nloc;
 
-	for (nloc = lowloc; (nloc > lowloc - (in_freq * 320)) && (f[nloc] < (low + (gap / 8))); nloc--);
+		for (nloc = lowloc; (nloc > lowloc - (in_freq * 320)) && (f[nloc] < (low + (gap / 8))); nloc--);
 
-	cerr << nloc << ' ' << (lowloc - nloc) / in_freq << ' ' << f[nloc] << endl;
+		cerr << nloc << ' ' << (lowloc - nloc) / in_freq << ' ' << f[nloc] << endl;
 
-	nloc -= (in_freq * 4);
-	cerr << nloc << ' ' << (lowloc - nloc) / in_freq << ' ' << f[nloc] << endl;
+		nloc -= (in_freq * 4);
+		cerr << nloc << ' ' << (lowloc - nloc) / in_freq << ' ' << f[nloc] << endl;
+	
+		cerr << "old base:scale = " << inbase << ':' << inscale << endl;
 
-	cerr << "old base:scale = " << inbase << ':' << inscale << endl;
+		inscale = (f[nloc] - low) / ((seven_five) ? 47.5 : 40.0);
+		inbase = low - (20 * inscale);	// -40IRE to -60IRE
+		if (inbase < 1) inbase = 1;
+		cerr << "new base:scale = " << inbase << ':' << inscale << endl;
+	} else {
+		inscale = (high - low) / 140.0;
+	}
 
-	inscale = (f[nloc] - low) / ((seven_five) ? 47.5 : 40.0);
 	inbase = low - (20 * inscale);	// -40IRE to -60IRE
 	if (inbase < 1) inbase = 1;
+
 	cerr << "new base:scale = " << inbase << ':' << inscale << endl;
+	
+	// rebase constants
+	level_m40ire = ire_to_in(-40);
+	level_0ire = ire_to_in(0);
+	level_7_5_ire = ire_to_in(7.5);
+	level_100ire = ire_to_in(100);
+	level_120ire = ire_to_in(120);
+	
+	cross = ire_to_in(seven_five ? -5 : -20);
 }
 
 const int ablen = (8 * 1024);
@@ -778,11 +792,7 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	if (do_autoset) {
-		autoset(inbuf, vbsize / 2);
-	}
-
-	// define const levels based off possible autoset
+	// base constant levels
 	level_m40ire = ire_to_in(-40);
 	level_0ire = ire_to_in(0);
 	level_7_5_ire = ire_to_in(7.5);
@@ -793,6 +803,10 @@ int main(int argc, char *argv[])
 
 	int aplen = 0;
 	while (rv == vbsize && ((tproc < dlen) || (dlen < 0))) {
+		if (do_autoset) {
+			autoset(inbuf, vbsize / 2);
+		}
+
 		int plen = Process(inbuf, rv / 2, abuf, arv / 8, aplen);
 
 		cerr << "plen " << plen << endl;

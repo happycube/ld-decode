@@ -214,7 +214,7 @@ class Comb
 			if (nr_c < 0) return;
 
 			// part 1:  do horizontal 
-			for (int l = 24; l < 504; l++) {
+			for (int l = 24; l < 505; l++) {
 				YIQ hpline[844];
 				cline_t *input = &wbuf[fnum][l];
 
@@ -279,7 +279,7 @@ class Comb
 			if (nr_y < 0) return;
 
 			// part 1:  do horizontal 
-			for (int l = firstline; l < 504; l++) {
+			for (int l = firstline; l < 505; l++) {
 				YIQ hpline[844];
 				cline_t *input = &wbuf[fnum][l];
 
@@ -387,7 +387,7 @@ class Comb
 		// buffer: 844x505 uint16_t array
 		void Process(uint16_t *buffer, int dim = 2)
 		{
-			int firstline = (linesout == 505) ? 0 : 24;
+			int firstline = (linesout == 505) ? 1 : 25;
 			int f = (dim == 3) ? 1 : 0;
 
 			cerr << "P " << f << endl;
@@ -416,7 +416,7 @@ class Comb
 			}
 
 			// comb filtering phase
-			for (int l = firstline; l < 504; l++) {
+			for (int l = firstline; l < 505; l++) {
 				if (dim == 1) {
 					memcpy(&cbuf[f][l], &wbuf[0][l], sizeof(cline_t));
 				} else if (dim == 2) {
@@ -430,7 +430,7 @@ class Comb
 			}
 
 			// remove color data from baseband (Y)	
-			for (int l = firstline; l < 504; l++) {
+			for (int l = firstline; l < 505; l++) {
 				bool invertphase = (rawbuffer[f][l * 844] == 16384);
 
 				for (int h = 0; h < 760; h++) {
@@ -457,7 +457,7 @@ class Comb
 			DoYNR(f);
 		
 			// YIQ (YUV?) -> RGB conversion	
-			for (int l = firstline; l < 504; l++) {
+			for (int l = firstline; l < 505; l++) {
 				uint8_t *line_output = &output[(744 * 3 * (l - firstline))];
 				int o = 0;
 				for (int h = 0; h < 752; h++) {
@@ -465,7 +465,7 @@ class Comb
 					
 					r.conv(wbuf[f][l].p[h + 70]);
 
-                                       if (1 && l == 50) {
+                                       if (0 && l == 50) {
                                                double y = u16_to_ire(wbuf[f][l].p[h + 70].y);
                                                double i = (wbuf[f][l].p[h + 70].i) * (160.0 / 65533.0);
                                                double q = (wbuf[f][l].p[h + 70].q) * (160.0 / 65533.0);
