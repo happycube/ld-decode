@@ -67,7 +67,7 @@ class FM_demod {
 		
 				if (!i) prev_ang = ang;
 
-				double diff = WrapAngle(ang, prev_ang);
+				double diff = WrapAngle(prev_ang - ang);
 
 				v = diff * 4557618;
 				if (f_post) v = f_post->feed(v);	

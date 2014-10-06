@@ -316,8 +316,8 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line)
 
 	for (int pass = 0; pass < ((in_freq == 4) ? 4 : 2); pass++) {
 //	cerr << line << " 0" << ' ' << ((end - begin) / scale_tgt) * ntsc_ipline.0 << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
-		adjust1 = WrapAngle(pphase1, tgt_phase);	
-		adjust2 = WrapAngle(pphase2, pphase1);
+		adjust1 = WrapAngle(tgt_phase - pphase1);	
+		adjust2 = WrapAngle(pphase1 - pphase2);
 
 		if (1 || in_freq != 4) {
 			begin += (adjust1 * phasemult);

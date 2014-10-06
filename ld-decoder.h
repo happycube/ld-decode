@@ -50,9 +50,7 @@ inline double fast_atan2( double y, double x )
 	return atan;
 }
 
-inline double WrapAngle(double a1, double a2) {
-        double v = a2 - a1;
-
+inline double WrapAngle(double v) {
         if (v > M_PIl) v -= (2 * M_PIl);
         else if (v <= -M_PIl) v += (2 * M_PIl);
 
