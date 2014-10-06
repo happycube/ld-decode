@@ -11,7 +11,21 @@ import matplotlib.pyplot as plt
 
 freq = (315.0 / 88.0) * 8.0
 freq_hz = freq * 1000000.0
-blocklen = (32 * 1024) 
+blocklen = (3 * 1024) 
+
+def dosplot(B, A):
+	w, h = sps.freqz(B, A)
+
+	fig = plt.figure()
+	plt.title('Digital filter frequency response')
+
+	ax1 = fig.add_subplot(111)
+
+	plt.plot(w * (freq/np.pi) / 2.0, 20 * np.log10(abs(h)), 'b')
+	plt.ylabel('Amplitude [dB]', color='b')
+	plt.xlabel('Frequency [rad/sample]')
+
+	plt.show()
 
 def doplot(B, A):
 	w, h = sps.freqz(B, A)
@@ -33,16 +47,74 @@ def doplot(B, A):
 	plt.axis('tight')
 	plt.show()
 
+def doplot2(B, A, C, B2, A2, C2):
+	w, h = sps.freqz(B, A)
+	w2, h2 = sps.freqz(B2, A2)
+
+	h.real /= C
+	h2.real /= C2
+
+	begin = 0
+	end = len(w)
+#	end = int(len(w) * (12 / freq))
+
+#	chop = len(w) / 20
+	chop = 0
+	w = w[begin:end]
+	w2 = w2[begin:end]
+	h = h[begin:end]
+	h2 = h2[begin:end]
+
+	v = np.empty(len(w))
+	
+	print len(w)
+
+	hm = np.absolute(h)
+	hm2 = np.absolute(h2)
+
+	v0 = hm[0] / hm2[0]
+	for i in range(0, len(w)):
+		print i, freq / 2 * (w[i] / np.pi), hm[i], hm2[i], hm[i] / hm2[i], (hm[i] / hm2[i]) / v0
+		v[i] = (hm[i] / hm2[i]) / v0
+
+	fig = plt.figure()
+	plt.title('Digital filter frequency response')
+
+	ax1 = fig.add_subplot(111)
+
+	v  = 20 * np.log10(v )
+
+#	plt.plot(w * (freq/np.pi) / 2.0, v)
+#	plt.show()
+#	exit()
+
+	plt.plot(w * (freq/np.pi) / 2.0, 20 * np.log10(abs(h)), 'r')
+	plt.plot(w * (freq/np.pi) / 2.0, 20 * np.log10(abs(h2)), 'b')
+	plt.ylabel('Amplitude [dB]', color='b')
+	plt.xlabel('Frequency [rad/sample]')
+	
+	ax2 = ax1.twinx()
+	angles = np.unwrap(np.angle(h))
+	angles2 = np.unwrap(np.angle(h2))
+	plt.plot(w * (freq/np.pi) / 2.0, angles, 'g')
+	plt.plot(w * (freq/np.pi) / 2.0, angles2, 'y')
+	plt.ylabel('Angle (radians)', color='g')
+	plt.grid()
+	plt.axis('tight')
+	plt.show()
+
 ffreq = freq/2.0
 
 Bboost = sps.firwin(17, [6.0/(freq/2.0), 12.5/(freq/2.0)], pass_zero=False) 
 Bboost = sps.firwin(17, [4.5/(freq/2.0), 14.0/(freq/2.0)], pass_zero=False) 
 Bboost = sps.firwin(33, 3.5 / (freq / 2), window='hamming', pass_zero=False)
 #Bboost = sps.firwin2(25, [0, 5.4/(freq/2.0), 12.0/(freq/2.0), 14.0/(freq/2.0), 1.0], [0.0, 1.0, 2.0, 2.0, 1.0]) 
-#Bboost = sps.firwin2(37, [0, 4.0/(freq/2.0), 12.0/(freq/2.0), 14.0/(freq/2.0), 1.0], [0.0, 1.0, 2.0, 3.0, 2.0]) 
+#Bboost = sps.firwin2(33, [0, 3.5/(freq/2.0), 12.0/(freq/2.0), 14.0/(freq/2.0), 1.0], [0.0, 1.0, 2.0, 2.0, 2.0]) 
+#Bboost = sps.firwin2(33, [0, 3.5/(freq/2.0), 12.0/(freq/2.0), 14.0/(freq/2.0), 1.0], [0.0, 1.0, 1.0, 1.0, 1.0]) 
+Bboosta = sps.firwin2(49, np.array([0, 2.0, 3.0, 4.5, 8.0, 10.0, 12.0, 14.0, freq/2.0]) / (freq/2.0), [0.0, 0.0, 0.1, 0.9, 1.0, 1.3, 2.0, 3.0, 4.0]) 
 Aboost = [1.0]
-#doplot(Bboost, Aboost)
-#exit()
+
+#Bboost = Bboosta
 
 n = 128 
 Fr = np.zeros(n)
@@ -52,17 +124,29 @@ Th = np.zeros(n)
 for f in range(0, n):
 	cf = freq * (float(f) / 256.0)
      
-	if (cf > 1.0) and (cf < 3.5):
-		Am[f] = 0 
+	if (cf > 13.7):
+		Am[f] = 0
+	elif (cf > 9.0):
+		Am[f] = 1 # + ((cf - 9.0) / 4) 
+	elif (cf > 4.0):
+		Am[f] = 1 
+	elif (cf > 3.0):
+		Am[f] = 1 * (cf - 3.0)
 	else:
-		Am[f] = 1
+		Am[f] = 0
 
 	Fr[f] = float(f) / 256.0
-	Th[f] = -(Fr[f] * 19) 
+	Th[f] = -(Fr[f] * 42) 
 
-[f_afilt_b, f_afilt_a] = fdls.FDLS(Fr, Am, Th, 12, 1)
+[f_test_b, f_test_a] = fdls.FDLS(Fr, Am, Th, 16, 8, 0)
 #doplot(f_afilt_b, f_afilt_a)
 #exit()
+
+#doplot2(Bboost, Aboost, 1.0, f_test_b, f_test_a, 1.0)
+#exit()
+
+Bboost = f_test_b
+Aboost = f_test_a
 
 lowpass_filter = sps.firwin(31, 5.2 / (freq / 2), window='hamming')
 #doplot(lowpass_filter, [1.0])
@@ -70,6 +154,28 @@ lowpass_filter = sps.firwin(31, 5.2 / (freq / 2), window='hamming')
 
 tH = 100.0/1000000000.0 # 100nS
 tL = 300.0/1000000000.0 # 300nS
+
+n = 512 
+df = 512.0/(freq) 
+Fr = np.zeros(n)
+Am = np.zeros(n)
+Th = np.zeros(n)
+
+f_deemp_bil_b = [2.819257458245255e-01, -4.361485083509491e-01]
+f_deemp_bil_a = [1.000000000000000e+00, -1.154222762526424e+00]
+
+w, h = sps.freqz(f_deemp_bil_b, f_deemp_bil_a)
+w = w / (2 * np.pi) 
+
+Th1 = np.angle(h)
+Am = np.absolute(h)/1.0
+
+Ndeemp = 1 
+Ddeemp = 1
+for i in range(0, len(w)):
+	Th[i] = -(Th1[i] * 1.0) 
+
+[f_deemp_b, f_deemp_a] = fdls.FDLS(w, Am, Th, Ndeemp, Ddeemp, 0)
 
 n = 512 
 df = 512.0/(freq) 
@@ -90,20 +196,23 @@ for i in range(0, len(Fr)):
 	cf = (float(i) / df)
 	Fr[i] = cf / (freq * 2)
 
-	Th[i] = (-((Fr[i] * (6.9)) / h.real[i])) + (0 * (np.pi / 180)) 
+	Th[i] = (-((Fr[i] * 6.90) / h.real[i])) - (0 * (np.pi / 180)) 
 
+#[f_deemp_b, f_deemp_a] = fdls.FDLS(w, np.absolute(h)*1, Th, Ndeemp, Ddeemp)
 [f_deemp_b, f_deemp_a] = fdls.FDLS(w, h.real*1, Th, Ndeemp, Ddeemp)
 
-deemp_corr = 1
-deemp_corr = .4960
-
-#WriteFilter("deemp", f_deemp_b, f_deemp_a)
-#fdls.doplot(freq, f_deemp_b, f_deemp_a)
+#doplot2(f_deemp_b, f_deemp_a, 1.0, f_deemp_bil_b, f_deemp_bil_a, 1.0)
+#doplot2(f_deempc_b, f_deempc_a, 1.0, f_deemp_b, f_deemp_a, 1.0)
 #exit()
 
+deemp_corr = 1
+deemp_corr = .496 
+
+av = 13
 # from http://tlfabian.blogspot.com/2013/01/implementing-hilbert-90-degree-shift.html
 hilbert_filter = np.fft.fftshift(
-    np.fft.ifft([0]+[1]*20+[0]*20)
+   # np.fft.ifft([0]+[1]*20+[0]*20)
+    np.fft.ifft([0]+[1]*av+[0]*av)
 )
 
 #hilbert_filter = [+0.0000000000, +0.0164307736, +0.0000000000, +0.0727931242, +0.0000000000, +0.2386781263, +0.0000000000, +0.9649845850, +0.0000000000, -0.9649845850, -0.0000000000, -0.2386781263, -0.0000000000, -0.0727931242, -0.0000000000, -0.0164307736, 0]
@@ -120,11 +229,13 @@ def process(data):
 	
 #	in_filt = sps.lfilter(Bboost, Aboost, data)
 
-#	hilbert = sps.lfilter(hilbert_filter, 1.0, in_filt) 
+	#hilbert = sps.lfilter(hilbert_filter, 1.0, in_filt) 
 	hilbert = sps.hilbert(in_filt)
 
 	# the hilbert transform has errors at the edges.  but it doesn't seem to matter much IRL
 	hilbert = hilbert[128:len(hilbert)-128]
+	#hilberta = hilberta[128-av:len(hilbert)-128-av]
+
 	in_len -= 256 
 
 	tangles = np.angle(hilbert) 
@@ -156,6 +267,7 @@ def process(data):
 	print output
 
 	plt.plot(range(0, len(output)), output)
+#	plt.ylim([7500000,9500000])
 	plt.show()
 	exit()
 
