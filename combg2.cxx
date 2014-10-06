@@ -160,16 +160,27 @@ class Comb
 		Filter *f_hpy, *f_hpi, *f_hpq;
 		Filter *f_hpvy, *f_hpvi, *f_hpvq;
 
-		cline_t Blend(cline_t &prev, cline_t &cur, cline_t &next, bool debug = false) {
+		cline_t Blend(cline_t &prev, cline_t &cur, cline_t &next, int l = -1) {
 			cline_t cur_combed;
 
 			for (int h = 0; h < 844; h++) {
+				double preva, cura, nexta;
 				cur_combed.p[h] = cur.p[h];
 
-//				if (debug) cerr << h << ' ' << prev.p[h].i << ' ' << cur.p[h].i << ' ' << next.p[h].i << endl;
-
+//				if (l == 40) cerr << h << ' ' << prev.p[h].m << ' ' << cur.p[h].m << ' ' << next.p[h].m << ' ' << prev.p[h].a << ' ' << cur.p[h].a << ' ' << next.p[h].a << endl;
 				cur_combed.p[h].m = (cur.p[h].m / 2.0) + (prev.p[h].m / 4.0) + (next.p[h].m / 4.0);
-				cur_combed.p[h].a = ((cur.p[h].a / 2.0) + (prev.p[h].a / 4.0) + (next.p[h].a / 4.0));
+
+				preva = prev.p[h].a;
+				cura = cur.p[h].a;
+				nexta = next.p[h].a;
+
+				if ((cura - preva) > M_PIl) preva += (2 * M_PIl); 
+				if ((cura - preva) < -M_PIl) preva -= (2 * M_PIl); 
+				if ((cura - nexta) > M_PIl) nexta += (2 * M_PIl); 
+				if ((cura - nexta) < -M_PIl) nexta -= (2 * M_PIl); 
+
+				cur_combed.p[h].a = ((cura / 2.0) + (preva / 4.0) + (nexta / 4.0));
+//				if (l == 40) cerr << h << ' ' << cur_combed.p[h].m << ' ' << cur_combed.p[h].a << endl;
 			}
 
 			return cur_combed;
@@ -434,7 +445,7 @@ class Comb
 					memcpy(&cbuf[f][l], &wbuf[0][l], sizeof(cline_t));
 				} else if (dim == 2) {
 					if ((l >= 24) && (l < 503)) 
-						cbuf[f][l] = Blend(wbuf[0][l - 2], wbuf[0][l], wbuf[0][l + 2]);
+						cbuf[f][l] = Blend(wbuf[0][l - 2], wbuf[0][l], wbuf[0][l + 2], l);
 					else
 						memcpy(&cbuf[f][l], &wbuf[0][l], sizeof(cline_t));
 				} else {
@@ -485,7 +496,10 @@ class Comb
 					double i, q;
 					wbuf[f][l].p[h + 70].ToIQ(i, q);
 
-					if (l == 40) cerr << h + 70 << ' ' << wbuf[f][l].p[h + 70].y << ' ' << i << ' ' << q << ' ' << wbuf[f][l].p[h + 70].m << ' ' << wbuf[f][l].p[h + 70].a << ' ' << (wbuf[f][l].p[h + 70].a / (M_PIl / 180)) + 180 << ' ' << r.r << ' ' << r.g << ' ' << r.b << endl;
+					double angle = (wbuf[f][l].p[h + 70].a / (M_PIl / 180));
+					if (angle < 0) angle += 360;
+
+					if (l == 40) cerr << h + 70 << ' ' << wbuf[f][l].p[h + 70].y << ' ' << i << ' ' << q << ' ' << wbuf[f][l].p[h + 70].m << ' ' << wbuf[f][l].p[h + 70].a << ' ' << angle << ' ' << r.r << ' ' << r.g << ' ' << r.b << endl;
 
 					line_output[o++] = (uint8_t)(r.r); 
 					line_output[o++] = (uint8_t)(r.g); 
