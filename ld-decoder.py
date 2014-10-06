@@ -161,6 +161,9 @@ Fr = np.zeros(n)
 Am = np.zeros(n)
 Th = np.zeros(n)
 
+# this bilinear filter *should* be mostly accurate deemphasis, but it's unstable.  
+# reversing the angle stabilizes it, which FDLS can do.
+
 f_deemp_bil_b = [2.819257458245255e-01, -4.361485083509491e-01]
 f_deemp_bil_a = [1.000000000000000e+00, -1.154222762526424e+00]
 
@@ -176,6 +179,9 @@ for i in range(0, len(w)):
 	Th[i] = -(Th1[i] * 1.0) 
 
 [f_deemp_b, f_deemp_a] = fdls.FDLS(w, Am, Th, Ndeemp, Ddeemp, 0)
+
+# This version shouldn't work at all (uses just the real angle from the bilinear,
+# computes the angle very oddly!), but it fits the current data well.
 
 n = 512 
 df = 512.0/(freq) 
