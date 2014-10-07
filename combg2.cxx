@@ -140,7 +140,7 @@ class Comb
 		uint16_t rawbuffer[3][844 * 505];
 
 		cline_t wbuf[3][525];
-		cline_t cbuf[3][525];
+		cline_t cbuf[525];
 		Filter *f_i, *f_q;
 
 		Filter *f_hpy, *f_hpi, *f_hpq;
@@ -152,7 +152,8 @@ class Comb
 			for (int h = 0; h < 844; h++) {
 				cur_combed.p[h] = cur.p[h];
 
-				if (debug) cerr << h << ' ' << prev.p[h].i << ' ' << cur.p[h].i << ' ' << next.p[h].i << endl;
+//				if (debug) cerr << h << ' ' << prev.p[h].i << ' ' << cur.p[h].i << ' ' << next.p[h].i;
+//				if (debug) cerr << ' ' << prev.p[h].q << ' ' << cur.p[h].q << ' ' << next.p[h].q << endl;
 
 				cur_combed.p[h].i = (cur.p[h].i / 2.0) + (prev.p[h].i / 4.0) + (next.p[h].i / 4.0);
 				cur_combed.p[h].q = (cur.p[h].q / 2.0) + (prev.p[h].q / 4.0) + (next.p[h].q / 4.0);
@@ -167,22 +168,98 @@ class Comb
 			for (int h = 0; h < 844; h++) {
 				cur_combed.p[h] = cur.p[h];
 
-				if (debug) cerr << h << ' ' << prev.p[h].y << ' ' << cur.p[h].y << ' ' << next.p[h].y << endl;
+				if (debug) cerr << h << ' ' << prev.p[h].i << ' ' << cur.p[h].i << ' ' << next.p[h].i;
+				if (debug) cerr << ' ' << prev.p[h].q << ' ' << cur.p[h].q << ' ' << next.p[h].q << endl;
 
 				cur_combed.p[h].i = (cur.p[h].i / 2.0) + (prev.p[h].i / 4.0) + (next.p[h].i / 4.0);
 				cur_combed.p[h].q = (cur.p[h].q / 2.0) + (prev.p[h].q / 4.0) + (next.p[h].q / 4.0);
+				
+				if (debug) cerr << cur_combed.p[h].i << ' ' << cur_combed.p[h].q << endl;
 			}
 
 			return cur_combed;
 		}
+		
+		void Split(bool do3d = false) 
+		{
+			int f = 1;
 
+			if (!do3d) f = 0;
+
+			for (int l = 0; l < 505; l++) {
+				uint16_t *line = &rawbuffer[f][l * 844];	
+				bool invertphase = (line[0] == 16384);
+				
+				// used for 3d only, but don't want to recalc every pel	
+				uint16_t *p3line = &rawbuffer[0][l * 844];	
+				uint16_t *n3line = &rawbuffer[2][l * 844];	
+						
+				uint16_t *p2line = &rawbuffer[f][(l - 2) * 844];	
+				uint16_t *n2line = &rawbuffer[f][(l + 2) * 844];	
+		
+				double c[4];
+				double f3 = 0, f2 = 0;
+			
+				double si = 0, sq = 0;
+	
+				for (int h = 4; h < 840; h++) {
+					int phase = h % 4;
+
+					if (1 && do3d) {
+						c[3] = (line[h] - ((p3line[h] + n3line[h]) / 2)) / 2;
+						f3 = 1.0;
+					}
+
+					// 2D filtering - can't do the ends
+					if (1 && (l >= 2) && (l <= 502)) {
+						c[2] = (line[h] - ((p2line[h] + n2line[h]) / 2)) / 2;
+						f2 = 1.0;
+					}
+
+					// 1D 
+					{				
+						double prev = line[h - 2];	
+						double cur  = line[h];	
+						double next = line[h + 2];	
+
+						c[1] = (cur - ((prev + next) / 2)) / 2;
+					}
+
+					// merge 
+					double rem = 1.0;
+					c[0] = (f3 * c[3]);
+					rem = clamp(1.0 - f3, 0, 1);
+					
+					c[0] += (f2 * (rem * c[2]));
+					rem = clamp((rem * (1.0 - f2)), 0, 1);
+
+					c[0] += rem * c[1];
+
+					if (invertphase) c[0] = -c[0];
+
+					switch (phase) {
+						case 0: si = c[0]; break;
+						case 1: sq = -c[0]; break;
+						case 2: si = -c[0]; break;
+						case 3: sq = c[0]; break;
+						default: break;
+					}
+
+					cbuf[l].p[h].y = line[h]; 
+					cbuf[l].p[h].i = bw_mode ? 0 : si; 
+					cbuf[l].p[h].q = bw_mode ? 0 : sq; 
+				}
+//				if (lnum == 100) cerr << h << ' ' << si << ' ' << sq 
+			}
+		}
+					
 		void SplitLine(int lnum, cline_t &out, uint16_t *line) 
 		{
 			bool invertphase = (line[0] == 16384);
 
 			double si = 0, sq = 0;
 
-			for (int h = 68; h < 844; h++) {
+			for (int h = 4; h < 844; h++) {
 				int phase = h % 4;
 
 				double prev = line[h - 2];	
@@ -194,18 +271,27 @@ class Comb
 				if (invertphase) c = -c;
 
 				switch (phase) {
+#if 0
+					case 0: si = f_i->feed(c); break;
+					case 1: sq = f_q->feed(-c); break;
+					case 2: si = f_i->feed(-c); break;
+					case 3: sq = f_q->feed(c); break;
+#else
 					case 0: si = c; break;
 					case 1: sq = -c; break;
 					case 2: si = -c; break;
 					case 3: sq = c; break;
+#endif
 					default: break;
 				}
 
-				if (bw_mode) si = sq = 0;
-
 				out.p[h].y = cur; 
-				out.p[h - 4].i = f_i->feed(si); 
-				out.p[h - 4].q = f_q->feed(sq); 
+				//out.p[h - 8].i = bw_mode ? 0 : f_i->val(); 
+				//out.p[h - 8].q = bw_mode ? 0 : f_q->val(); 
+				out.p[h].i = bw_mode ? 0 : si; 
+				out.p[h].q = bw_mode ? 0 : sq; 
+
+//				if (lnum == 100) cerr << h << ' ' << si << ' ' << sq 
 			}
 		}
 					
@@ -216,7 +302,7 @@ class Comb
 			// part 1:  do horizontal 
 			for (int l = 24; l < 505; l++) {
 				YIQ hpline[844];
-				cline_t *input = &wbuf[fnum][l];
+				cline_t *input = &cbuf[l];
 
 				for (int h = 70; h < 752 + 70; h++) {
 					YIQ y = input->p[h]; 
@@ -241,7 +327,7 @@ class Comb
 					}
 				}
 			}
-
+#if 0
 			for (int p = 0; p < 2; p++) {
 				// part 2: vertical
 				for (int x = 70; x < 744 + 70; x++) {
@@ -272,16 +358,17 @@ class Comb
 					}
 				}
 			}
+#endif
 		}
 		
-		void DoYNR(int fnum = 0) {
+		void DoYNR() {
 			int firstline = (linesout == 505) ? 0 : 24;
 			if (nr_y < 0) return;
 
 			// part 1:  do horizontal 
 			for (int l = firstline; l < 505; l++) {
 				YIQ hpline[844];
-				cline_t *input = &wbuf[fnum][l];
+				cline_t *input = &cbuf[l];
 
 				for (int h = 70; h < 752 + 70; h++) {
 					hpline[h].y = f_hpy->feed(input->p[h].y);
@@ -333,7 +420,7 @@ class Comb
 			for (int i = 0; i < 24; i++) {
 				double val = 0;
 	
-//				cerr << dots_usec << ' ' << (int)(first_bit + (bitlen * i) + dots_usec) << ' ' << (int)(first_bit + (bitlen * (i + 1))) << endl;	
+			//	cerr << dots_usec << ' ' << (int)(first_bit + (bitlen * i) + dots_usec) << ' ' << (int)(first_bit + (bitlen * (i + 1))) << endl;	
 				for (int h = (int)(first_bit + (bitlen * i) + dots_usec); h < (int)(first_bit + (bitlen * (i + 1))); h++) {
 //					cerr << h << ' ' << line[h] << ' ' << endl;
 					val += u16_to_ire(line[h]); 
@@ -390,7 +477,7 @@ class Comb
 			int firstline = (linesout == 505) ? 1 : 25;
 			int f = (dim == 3) ? 1 : 0;
 
-			cerr << "P " << f << endl;
+			cerr << "P " << f << ' ' << dim << endl;
 
 			memcpy(wbuf[2], wbuf[1], sizeof(cline_t) * 505);
 			memcpy(wbuf[1], wbuf[0], sizeof(cline_t) * 505);
@@ -398,37 +485,16 @@ class Comb
 			memcpy(rawbuffer[2], rawbuffer[1], (844 * 505 * 2));
 			memcpy(rawbuffer[1], rawbuffer[0], (844 * 505 * 2));
 			memcpy(rawbuffer[0], buffer, (844 * 505 * 2));
-
-			for (int l = firstline; l < 504; l++) {
-				SplitLine(l, wbuf[0][l], &rawbuffer[0][l * 844]); 
-			}
+		
+			if ((dim == 3) && (framecount < 2)) {
+				framecount++;
+				return;
+			} 
+	
+			Split(dim == 3); 
 
 			DoCNR(0);	
 			
-			if (framecount == 0) {
-				f = 0;
-				if (dim > 2) dim = 2;
-			}
-
-			if ((f == 1) && framecount == 1) {
-				framecount++;
-				return;
-			}
-
-			// comb filtering phase
-			for (int l = firstline; l < 505; l++) {
-				if (dim == 1) {
-					memcpy(&cbuf[f][l], &wbuf[0][l], sizeof(cline_t));
-				} else if (dim == 2) {
-					if ((l >= 24) && (l < 503)) 
-						cbuf[f][l] = Blend(wbuf[0][l - 2], wbuf[0][l], wbuf[0][l + 2]);
-					else
-						memcpy(&cbuf[f][l], &wbuf[0][l], sizeof(cline_t));
-				} else {
-					cbuf[f][l] = Blend3D(wbuf[0][l], wbuf[1][l], wbuf[2][l], (l == 50));
-				}
-			}
-
 			// remove color data from baseband (Y)	
 			for (int l = firstline; l < 505; l++) {
 				bool invertphase = (rawbuffer[f][l * 844] == 16384);
@@ -437,7 +503,7 @@ class Comb
 					double comp;	
 					int phase = h % 4;
 
-					YIQ y = cbuf[f][l].p[h + 70];
+					YIQ y = cbuf[l].p[h + 70];
 
 					switch (phase) {
 						case 0: comp = y.i; break;
@@ -450,11 +516,11 @@ class Comb
 					if (invertphase) comp = -comp;
 					y.y += comp;
 
-					wbuf[f][l].p[h + 70] = y;
+					cbuf[l].p[h + 70] = y;
 				}
 			}
 			
-			DoYNR(f);
+			DoYNR();
 		
 			// YIQ (YUV?) -> RGB conversion	
 			for (int l = firstline; l < 505; l++) {
@@ -463,7 +529,7 @@ class Comb
 				for (int h = 0; h < 752; h++) {
 					RGB r;
 					
-					r.conv(wbuf[f][l].p[h + 70]);
+					r.conv(cbuf[l].p[h + 70]);
 
                                        if (0 && l == 50) {
                                                double y = u16_to_ire(wbuf[f][l].p[h + 70].y);
@@ -517,11 +583,12 @@ class Comb
 			}
 
 			for (int line = 16; line <= 20; line++) {
-				int new_framecode = ReadPhillipsCode(&rawbuffer[fnum][line * 844]) - 0xf80000;
+				int new_framecode = ReadPhillipsCode(&rawbuffer[fnum][line * 844]); // - 0xf80000;
+				int fca = new_framecode & 0xf00000;
 
-				cerr << line << ' ' << hex << new_framecode << dec << endl;
+				cerr << "c" << line << ' ' << hex << ' ' <<  new_framecode << ' ' << fca << ' ' << dec << endl;
 
-				if ((new_framecode > 0) && (new_framecode < 0x60000)) {
+				if ((new_framecode & 0xf00000) == 0xf00000) {
 					int ofstart = fstart;
 
 					framecode = new_framecode & 0x0f;
@@ -529,6 +596,8 @@ class Comb
 					framecode += ((new_framecode & 0x00f00) >> 8) * 100;
 					framecode += ((new_framecode & 0x0f000) >> 12) * 1000;
 					framecode += ((new_framecode & 0xf0000) >> 16) * 10000;
+	
+					cerr << "frame " << framecode << endl;
 	
 					fstart = (line % 2); 
 					if ((ofstart >= 0) && (fstart != ofstart)) {
