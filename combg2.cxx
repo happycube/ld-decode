@@ -420,7 +420,7 @@ class Comb
 				if (dim == 1) {
 					memcpy(&cbuf[f][l], &wbuf[0][l], sizeof(cline_t));
 				} else if (dim == 2) {
-					if (0 && (l >= 24) && (l < 503)) 
+					if ((l >= 24) && (l < 503)) 
 						cbuf[f][l] = Blend(wbuf[0][l - 2], wbuf[0][l], wbuf[0][l + 2]);
 					else
 						memcpy(&cbuf[f][l], &wbuf[0][l], sizeof(cline_t));
@@ -448,7 +448,7 @@ class Comb
 					}
 
 					if (invertphase) comp = -comp;
-//					y.y += comp;
+					y.y += comp;
 
 					wbuf[f][l].p[h + 70] = y;
 				}
@@ -479,7 +479,6 @@ class Comb
                                                cerr << h << ' ' << y << ' ' << i << ' ' << q << ' ' << m << ' ' << a << ' '; 
                                                cerr << r.r << ' ' << r.g << ' ' << r.b << endl;
                                        }
-					if (l == 40) cerr << h + 70 << ' ' << wbuf[f][l].p[h + 70].y << ' ' << wbuf[f][l].p[h + 70].i << ' ' << wbuf[f][l].p[h + 70].q << ' ' << r.r << ' ' << r.g << ' ' << r.b << endl;
 
 					line_output[o++] = (uint8_t)(r.r); 
 					line_output[o++] = (uint8_t)(r.g); 
