@@ -48,22 +48,13 @@ inline double IRE(double in)
 	return (in * 140.0) - 40.0;
 }
 
-struct YMA {
-        double y, m, a;
+// XXX:  This is actually YUV.
+struct YIQ {
+        double y, i, q;
 
-        YMA(double _y = 0.0, double _m = 0.0, double _a = 0.0) {
-                y = _y; m = _m; a = _a;
+        YIQ(double _y = 0.0, double _i = 0.0, double _q = 0.0) {
+                y = _y; i = _i; q = _q;
         };
-
-	void FromIQ(double i, double q) {
-		m = ctor(i, q); 
-		a = atan2(q, i); 
-	}
-
-	void ToIQ(double &i, double &q) {
-		i = m * cos(a);
-		q = m * sin(a);
-	}
 };
 
 double clamp(double v, double low, double high)
@@ -83,19 +74,14 @@ inline double u16_to_ire(uint16_t level)
 struct RGB {
         double r, g, b;
 
-        void conv(YMA _y) {
-               YMA t;
-		double i, q;
+        void conv(YIQ _y) {
+               YIQ t;
 
 		double y = u16_to_ire(_y.y);
 		y = (y - black_ire) * (100 / (100 - black_ire)); 
 
-//		_y.a = WrapAngle(_y.a + (51 * M_PIl / 180.0));
-
-		_y.ToIQ(i, q);
-
-		i = i / irescale;
-		q = q / irescale;
+		double i = (_y.i) / irescale;
+		double q = (_y.q) / irescale;
 
                 r = y + (1.13983 * q);
                 g = y - (0.58060 * q) - (i * 0.39465);
@@ -125,7 +111,7 @@ inline uint16_t ire_to_u16(double ire)
 } 
 
 typedef struct cline {
-	YMA p[910];
+	YIQ p[910];
 } cline_t;
 
 int write_locs = -1;
@@ -160,34 +146,16 @@ class Comb
 		Filter *f_hpy, *f_hpi, *f_hpq;
 		Filter *f_hpvy, *f_hpvi, *f_hpvq;
 
-		cline_t Blend(cline_t &prev, cline_t &cur, cline_t &next, int l = -1) {
+		cline_t Blend(cline_t &prev, cline_t &cur, cline_t &next, bool debug = false) {
 			cline_t cur_combed;
 
 			for (int h = 0; h < 844; h++) {
-				double preva, cura, nexta;
 				cur_combed.p[h] = cur.p[h];
 
-				if (l == 100) cerr << h << ' ' << prev.p[h].m << ' ' << cur.p[h].m << ' ' << next.p[h].m << ' ' << prev.p[h].a << ' ' << cur.p[h].a << ' ' << next.p[h].a << endl;
-//				cur_combed.p[h].m = (cur.p[h].m / 2.0) + (prev.p[h].m / 4.0) + (next.p[h].m / 4.0);
+				if (debug) cerr << h << ' ' << prev.p[h].i << ' ' << cur.p[h].i << ' ' << next.p[h].i << endl;
 
-				preva = prev.p[h].a;
-				cura = cur.p[h].a;
-				nexta = next.p[h].a;
-
-				if ((cura - preva) > M_PIl) preva += (2 * M_PIl); 
-				if ((cura - preva) < -M_PIl) preva -= (2 * M_PIl); 
-				if ((cura - nexta) > M_PIl) nexta += (2 * M_PIl); 
-				if ((cura - nexta) < -M_PIl) nexta -= (2 * M_PIl); 
-	
-				cur_combed.p[h].m = cur.p[h].m;
-				if (l == 100) cerr << fabs(WrapAngle(preva - cura)) << ' ' << (prev.p[h].m * fabs(WrapAngle(preva) / M_PIl / 2.0)) << endl;
-				cur_combed.p[h].m -= (prev.p[h].m * fabs(WrapAngle(preva - cura) / M_PIl) / 2.0);
-				cur_combed.p[h].m -= (next.p[h].m * fabs(WrapAngle(nexta - cura) / M_PIl) / 2.0);
-				
-
-				if (l == 100) cerr << h << ' ' << prev.p[h].m << ' ' << cur.p[h].m << ' ' << next.p[h].m << ' ' << prev.p[h].a << ' ' << cur.p[h].a << ' ' << next.p[h].a << endl;
-				cur_combed.p[h].a = WrapAngle((cura / 2.0) + (preva / 4.0) + (nexta / 4.0));
-				if (l == 100) cerr << h << ' ' << cur_combed.p[h].m << ' ' << cur_combed.p[h].a << endl;
+				cur_combed.p[h].i = (cur.p[h].i / 2.0) + (prev.p[h].i / 4.0) + (next.p[h].i / 4.0);
+				cur_combed.p[h].q = (cur.p[h].q / 2.0) + (prev.p[h].q / 4.0) + (next.p[h].q / 4.0);
 			}
 
 			return cur_combed;
@@ -195,7 +163,7 @@ class Comb
 		
 		cline_t Blend3D(cline_t &prev, cline_t &cur, cline_t &next, bool debug = false) {
 			cline_t cur_combed;
-#if 0
+
 			for (int h = 0; h < 844; h++) {
 				cur_combed.p[h] = cur.p[h];
 
@@ -204,8 +172,8 @@ class Comb
 				cur_combed.p[h].i = (cur.p[h].i / 2.0) + (prev.p[h].i / 4.0) + (next.p[h].i / 4.0);
 				cur_combed.p[h].q = (cur.p[h].q / 2.0) + (prev.p[h].q / 4.0) + (next.p[h].q / 4.0);
 			}
-#endif
-			return cur;
+
+			return cur_combed;
 		}
 
 		void SplitLine(int lnum, cline_t &out, uint16_t *line) 
@@ -236,27 +204,29 @@ class Comb
 				if (bw_mode) si = sq = 0;
 
 				out.p[h].y = cur; 
-				out.p[h - 4].FromIQ(f_i->feed(si), f_q->feed(sq)); 
+				out.p[h - 4].i = f_i->feed(si); 
+				out.p[h - 4].q = f_q->feed(sq); 
 			}
 		}
 					
+
 		void DoCNR(int fnum = 0) {
 			if (nr_c < 0) return;
-#if 0
+
 			// part 1:  do horizontal 
 			for (int l = 24; l < 505; l++) {
-				YMA hpline[844];
+				YIQ hpline[844];
 				cline_t *input = &wbuf[fnum][l];
 
 				for (int h = 70; h < 752 + 70; h++) {
-					YMA y = input->p[h]; 
+					YIQ y = input->p[h]; 
 
-					hpline[h].m = f_hpi->feed(y.m);
-					hpline[h].a = f_hpq->feed(y.a);
+					hpline[h].i = f_hpi->feed(y.i);
+					hpline[h].q = f_hpq->feed(y.q);
 				}
 
 				for (int h = 70; h < 744 + 70; h++) {
-					YMA a = hpline[h + 8];
+					YIQ a = hpline[h + 8];
 
 					if (fabs(a.i) < nr_c) {
 						double hpm = (a.i / nr_c);
@@ -275,18 +245,18 @@ class Comb
 			for (int p = 0; p < 2; p++) {
 				// part 2: vertical
 				for (int x = 70; x < 744 + 70; x++) {
-					YMA hpline[505 + 16];
+					YIQ hpline[505 + 16];
 
 					for (int l = p; l < 505 + 16; l+=2) {
 						int rl = (l < 505) ? l + p: 502 + p;
 
-						YMA y = wbuf[fnum][rl].p[x];
+						YIQ y = wbuf[fnum][rl].p[x];
 						hpline[l].i = f_hpvi->feed(y.i);
 						hpline[l].q = f_hpvq->feed(y.q);
 					}
 				
 					for (int l = p; l < 505; l+=2) {
-						YMA a = hpline[l + 16];
+						YIQ a = hpline[l + 16];
 					
 						if (fabs(a.i) < nr_c) {
 							double hpm = (a.i / nr_c);
@@ -302,7 +272,6 @@ class Comb
 					}
 				}
 			}
-#endif
 		}
 		
 		void DoYNR(int fnum = 0) {
@@ -311,7 +280,7 @@ class Comb
 
 			// part 1:  do horizontal 
 			for (int l = firstline; l < 505; l++) {
-				YMA hpline[844];
+				YIQ hpline[844];
 				cline_t *input = &wbuf[fnum][l];
 
 				for (int h = 70; h < 752 + 70; h++) {
@@ -319,7 +288,7 @@ class Comb
 				}
 
 				for (int h = 70; h < 744 + 70; h++) {
-					YMA a = hpline[h + 8];
+					YIQ a = hpline[h + 8];
 
 					if (fabs(a.y) < nr_y) {
 						double hpm = (a.y / nr_y);
@@ -333,18 +302,18 @@ class Comb
 
 			// part 2: vertical
 			for (int x = 70; x < 744 + 70; x++) {
-				YMA hpline[505 + 16];
+				YIQ hpline[505 + 16];
 
 				for (int l = 0; l < 505 + 16; l++) {
 					int rl = (l < 505) ? l : 504;
 
-					YMA y = wbuf[fnum][rl].p[x];
+					YIQ y = wbuf[fnum][rl].p[x];
 					hpline[l].y = f_hpvy->feed(y.y);
 				}
 			
 				for (int l = 0; l < 505; l++) {
-					YMA *y = &wbuf[fnum][l].p[x];
-					YMA a = hpline[l + 8];
+					YIQ *y = &wbuf[fnum][l].p[x];
+					YIQ a = hpline[l + 8];
 				
 					if (fabs(a.y) < _nr_y) {
 						double hpm = (a.y / _nr_y);
@@ -451,8 +420,8 @@ class Comb
 				if (dim == 1) {
 					memcpy(&cbuf[f][l], &wbuf[0][l], sizeof(cline_t));
 				} else if (dim == 2) {
-					if ((l >= 24) && (l < 503)) 
-						cbuf[f][l] = Blend(wbuf[0][l - 2], wbuf[0][l], wbuf[0][l + 2], l);
+					if (0 && (l >= 24) && (l < 503)) 
+						cbuf[f][l] = Blend(wbuf[0][l - 2], wbuf[0][l], wbuf[0][l + 2]);
 					else
 						memcpy(&cbuf[f][l], &wbuf[0][l], sizeof(cline_t));
 				} else {
@@ -466,23 +435,20 @@ class Comb
 
 				for (int h = 0; h < 760; h++) {
 					double comp;	
-					double i, q;
 					int phase = h % 4;
 
-					YMA y = cbuf[f][l].p[h + 70];
-
-					y.ToIQ(i, q);
+					YIQ y = cbuf[f][l].p[h + 70];
 
 					switch (phase) {
-						case 0: comp = i; break;
-						case 1: comp = -q; break;
-						case 2: comp = -i; break;
-						case 3: comp = q; break;
+						case 0: comp = y.i; break;
+						case 1: comp = -y.q; break;
+						case 2: comp = -y.i; break;
+						case 3: comp = y.q; break;
 						default: break;
 					}
 
 					if (invertphase) comp = -comp;
-					y.y += comp;
+//					y.y += comp;
 
 					wbuf[f][l].p[h + 70] = y;
 				}
@@ -490,23 +456,30 @@ class Comb
 			
 			DoYNR(f);
 		
-			// YMA (YUV?) -> RGB conversion	
+			// YIQ (YUV?) -> RGB conversion	
 			for (int l = firstline; l < 505; l++) {
 				uint8_t *line_output = &output[(744 * 3 * (l - firstline))];
 				int o = 0;
 				for (int h = 0; h < 752; h++) {
 					RGB r;
 					
-//					wbuf[f][l].p[h + 70].a = WrapAngle(wbuf[f][l].p[h + 70].a + (0 * M_PIl / 180.0));
 					r.conv(wbuf[f][l].p[h + 70]);
 
-					double i, q;
-					wbuf[f][l].p[h + 70].ToIQ(i, q);
+                                       if (0 && l == 50) {
+                                               double y = u16_to_ire(wbuf[f][l].p[h + 70].y);
+                                               double i = (wbuf[f][l].p[h + 70].i) * (160.0 / 65533.0);
+                                               double q = (wbuf[f][l].p[h + 70].q) * (160.0 / 65533.0);
 
-					double angle = (wbuf[f][l].p[h + 70].a / (M_PIl / 180));
-					if (angle < 0) angle += 360;
+                                               double m = ctor(q, i);
+                                               double a = atan2(q, i);
 
-					if (l == 240) cerr << h + 70 << ' ' << wbuf[f][l].p[h + 70].y << ' ' << i << ' ' << q << ' ' << wbuf[f][l].p[h + 70].m << ' ' << wbuf[f][l].p[h + 70].a << ' ' << angle << ' ' << r.r << ' ' << r.g << ' ' << r.b << endl;
+                                               a *= (180 / M_PIl);
+                                               if (a < 0) a += 360;
+
+                                               cerr << h << ' ' << y << ' ' << i << ' ' << q << ' ' << m << ' ' << a << ' '; 
+                                               cerr << r.r << ' ' << r.g << ' ' << r.b << endl;
+                                       }
+					if (l == 40) cerr << h + 70 << ' ' << wbuf[f][l].p[h + 70].y << ' ' << wbuf[f][l].p[h + 70].i << ' ' << wbuf[f][l].p[h + 70].q << ' ' << r.r << ' ' << r.g << ' ' << r.b << endl;
 
 					line_output[o++] = (uint8_t)(r.r); 
 					line_output[o++] = (uint8_t)(r.g); 
