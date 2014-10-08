@@ -13,6 +13,8 @@ bool image_mode = false;
 char *image_base = "FRAME";
 bool bw_mode = false;
 
+bool cwide_mode = false;
+
 // NTSC properties
 const double freq = 4.0;
 const double hlen = 227.5 * freq; 
@@ -142,6 +144,7 @@ class Comb
 		cline_t wbuf[3][525];
 		cline_t cbuf[525];
 		Filter *f_i, *f_q;
+		Filter *f_wi, *f_wq;
 
 		Filter *f_hpy, *f_hpi, *f_hpq;
 		Filter *f_hpvy, *f_hpvi, *f_hpvq;
@@ -217,27 +220,41 @@ class Comb
 					double c[3], d[3], v[3];
 
 					if (1 && do3d) {
-						c[2] = (line[h] - ((p3line[h] + n3line[h]) / 2)) / 2; 
+						c[2] = (((p3line[h] + n3line[h]) / 2) - line[h]); 
 						d[2] = fabs((p3line[h] - n3line[h]) / 2); 
-						v[2] = c[2] ? 1 - clamp((fabs(d[2] / irescale) / 10), 0, 1) : 0;
+						d[2] = fabs(((p3line[h] - line[h]) - (n3line[h] - line[h]))); 
+						v[2] = c[2] ? 1 - clamp((fabs(d[2] / irescale) / 6), 0, 1) : .00;
+//						v[2] = c[2] ? 1 - clamp((fabs(d[2]) / fabs(c[2])), 0, 1) : 0;
 					} else v[2] = 0;
 
 					// 2D filtering - can't do the ends
-					if ((l >= 2) && (l <= 502)) {
-						c[1] = (line[h] - ((p2line[h] + n2line[h]) / 2)) / 2; 
+					if (1 && (l >= 2) && (l <= 502)) {
+						c[1] = (((p2line[h] + n2line[h]) / 2) - line[h]); 
 						d[1] = fabs((p2line[h] - n2line[h]) / 2); 
-						v[1] = c[1] ? 1 - clamp((fabs(d[1] / irescale) / 10), 0, 1) : 0;
+						d[1] = fabs(((p2line[h] - line[h]) - (n2line[h] - line[h]))); 
+						v[1] = c[1] ? 1 - clamp((fabs(d[1] / irescale) / 10), 0, 1) : 0.00;
+//						v[1] = c[1] ? 1 - clamp((fabs(d[1]) / fabs(c[1])), 0, 1) : 0;
 					} else v[1] = 0; 
 
 					// 1D 
 					if (1) {
-						c[0] = (line[h] - ((line[h + 2] + line[h - 2]) / 2)) / 2; 
+						c[0] = (((line[h + 2] + line[h - 2]) / 2) - line[h]); 
+						double x = d[0] - c[0];
 						d[0] = fabs((line[h - 2] - line[h + 2]) / 2); 
-						v[0] = c[0] ? 1 - clamp((fabs(d[0] / irescale) / 10), 0, 1) : 0;
+						d[0] = fabs(((line[h - 2] - line[h]) - (line[h + 2] - line[h]))); 
+						v[0] = c[0] ? 1 - clamp((fabs(d[0] / irescale) / 10), 0, 1) : 0.00;
+//						v[0] = c[0] ? 1 - clamp((fabs(d[0]) / fabs(c[0])), 0, 1) : 0;
 					} else v[0] = 0;
+
+					if ((v[1] + v[2]) > .02) v[0] = 0;
 
 					double vtot = v[0] + v[1] + v[2];
 					double cavg = 0, cavg0 = 0, cavg1 = 0,ctot = 0;
+					if (0 && l == 100) {
+						cerr << "1 " << h << ' ' << line[h] << ' ' << line[h - 2] << ' ' << line[h + 2] << ' ' << c[0] << ' ' << d[0] << ' ' << v[0] << ' ' << cavg0 << endl;
+						cerr << "2 " << h << ' ' << line[h] << ' ' << p2line[h] << ' ' << n2line[h] << ' ' << c[1] << ' ' << d[1] << ' ' << v[1] << ' ' << cavg1 << endl;
+						cerr << "3 " << h << ' ' << line[h] << ' ' << p3line[h] << ' ' << n3line[h] << ' ' << c[2] << ' ' << d[2] << ' ' << v[2] << ' ' << cavg << endl;
+					}
 
 					// crude sort
 					for (int s1 = 0; s1 < 3; s1++) {
@@ -257,30 +274,45 @@ class Comb
 						}
 					}
 
-					if (vtot > 0.2) {
+					if (vtot > 0.0) {
 						double vused = 0;
+
+						v[0] /= vtot;
+						v[1] /= vtot;
+						v[2] /= vtot;
 #if 0
 						cavg = (c[0] * (v[0] / vtot));
 						cavg += (c[1] * (v[1] / vtot));
 						cavg += (c[2] * (v[2] / vtot));
 #endif
+#if 0
 						cavg0 = cavg = c[0] * v[0];
 						vused = v[0];
 						cavg += c[1] * (v[1] * (1 - vused));
 						cavg1 = cavg;
-						vused += (v[1] * (1 - vused));
+						vused += v[1] * (1 - vused);
 						cavg += c[2] * (v[2] * (1 - vused));
 						vused += (v[2] * (1 - vused));
-					} else cavg = 0;
+#else
+						cavg0 = cavg = c[0] * v[0];
+						vused = v[0];
+						cavg += c[1] * v[1]; //(v[1] * (1 - vused));
+						cavg1 = cavg;
+						vused += v[1]; //* (1 - vused);
+						cavg += c[2] * v[2]; // * (1 - vused));
+						vused += (v[2] * (1 - vused));
+#endif
+					} else cavg = (c[0] + c[1] + c[2]) / 3;
 
 	
-					if (l == 100) {
+					if (0 && l == 100) {
 						cerr << 'a' << h << ' ' << line[h] << ' ' << c[0] << ' ' << d[0] << ' ' << v[0] << ' ' << cavg0 << endl;
 						cerr << 'b' << h << ' ' << line[h] << ' ' << c[1] << ' ' << d[1] << ' ' << v[1] << ' ' << cavg1 << endl;
 						cerr << 'c' << h << ' ' << line[h] << ' ' << c[2] << ' ' << d[2] << ' ' << v[2] << ' ' << cavg << endl;
 					}
 
-					if (invertphase) cavg = -cavg;
+					cavg /= 2;
+					if (!invertphase) cavg = -cavg;
 
 					switch (phase) {
 						case 0: si = cavg; break;
@@ -291,8 +323,17 @@ class Comb
 					}
 
 					cbuf[l].p[h].y = line[h]; 
-					cbuf[l].p[h - 4].i = bw_mode ? 0 : f_i->feed(si); 
-					cbuf[l].p[h - 4].q = bw_mode ? 0 : f_q->feed(sq); 
+					cbuf[l].p[h].i = si;  
+					cbuf[l].p[h].q = sq; 
+
+					if (cwide_mode) {
+						cbuf[l].p[h - 4].i = bw_mode ? 0 : f_wi->feed(si); 
+						cbuf[l].p[h - 4].q = bw_mode ? 0 : f_wq->feed(sq); 
+					} else {
+						cbuf[l].p[h - 4].i = bw_mode ? 0 : f_i->feed(si); 
+						cbuf[l].p[h - 4].q = bw_mode ? 0 : f_q->feed(sq); 
+					}
+
 				}
 //				if (lnum == 100) cerr << h << ' ' << si << ' ' << sq 
 			}
@@ -492,6 +533,9 @@ class Comb
 	
 			f_i = new Filter(f_colorlp4);
 			f_q = new Filter(f_colorlp4);
+			
+			f_wi = new Filter(f_colorwlp4);
+			f_wq = new Filter(f_colorwlp4);
 
 			f_hpy = new Filter(f_nr);
 			f_hpi = new Filter(f_nrc);
@@ -514,6 +558,7 @@ class Comb
 				write(ofd, obuf, (744 * linesout * 3));
 				close(ofd);
 			}
+		//	exit(0);
 		}
 		
 		// buffer: 844x505 uint16_t array
@@ -693,7 +738,7 @@ int main(int argc, char *argv[])
 
 	opterr = 0;
 	
-	while ((c = getopt(argc, argv, "vd:Bb:I:w:i:o:fphn:N:")) != -1) {
+	while ((c = getopt(argc, argv, "wvd:Bb:I:w:i:o:fphn:N:")) != -1) {
 		switch (c) {
 			case 'd':
 				sscanf(optarg, "%d", &dim);
@@ -703,6 +748,9 @@ int main(int argc, char *argv[])
 				break;
 			case 'B':
 				bw_mode = true;
+				break;
+			case 'w':
+				cwide_mode = true;
 				break;
 			case 'b':
 				sscanf(optarg, "%lf", &brightness);
