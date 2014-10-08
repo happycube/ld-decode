@@ -185,8 +185,18 @@ class Comb
 			int f = 1;
 
 			if (!do3d) f = 0;
+			
+			for (int l = 0; l < 24; l++) {
+				uint16_t *line = &rawbuffer[f][l * 844];	
+					
+				for (int h = 4; h < 840; h++) {
+					cbuf[l].p[h].y = line[h]; 
+					cbuf[l].p[h].i = 0; 
+					cbuf[l].p[h].q = 0; 
+				}
+			}
 
-			for (int l = 0; l < 505; l++) {
+			for (int l = 24; l < 505; l++) {
 				uint16_t *line = &rawbuffer[f][l * 844];	
 				bool invertphase = (line[0] == 16384);
 				
@@ -197,7 +207,6 @@ class Comb
 				uint16_t *p2line = &rawbuffer[f][(l - 2) * 844];	
 				uint16_t *n2line = &rawbuffer[f][(l + 2) * 844];	
 		
-				double c[4];
 				double f3 = 0, f2 = 0;
 			
 				double si = 0, sq = 0;
@@ -205,49 +214,85 @@ class Comb
 				for (int h = 4; h < 840; h++) {
 					int phase = h % 4;
 
+					double c[3], d[3], v[3];
+
 					if (1 && do3d) {
-						c[3] = (line[h] - ((p3line[h] + n3line[h]) / 2)) / 2;
-						f3 = 1.0;
-					}
+						c[2] = (line[h] - ((p3line[h] + n3line[h]) / 2)) / 2; 
+						d[2] = fabs((p3line[h] - n3line[h]) / 2); 
+						v[2] = c[2] ? 1 - clamp((fabs(d[2] / irescale) / 10), 0, 1) : 0;
+					} else v[2] = 0;
 
 					// 2D filtering - can't do the ends
-					if (1 && (l >= 2) && (l <= 502)) {
-						c[2] = (line[h] - ((p2line[h] + n2line[h]) / 2)) / 2;
-						f2 = 1.0;
-					}
+					if ((l >= 2) && (l <= 502)) {
+						c[1] = (line[h] - ((p2line[h] + n2line[h]) / 2)) / 2; 
+						d[1] = fabs((p2line[h] - n2line[h]) / 2); 
+						v[1] = c[1] ? 1 - clamp((fabs(d[1] / irescale) / 10), 0, 1) : 0;
+					} else v[1] = 0; 
 
 					// 1D 
-					{				
-						double prev = line[h - 2];	
-						double cur  = line[h];	
-						double next = line[h + 2];	
+					if (1) {
+						c[0] = (line[h] - ((line[h + 2] + line[h - 2]) / 2)) / 2; 
+						d[0] = fabs((line[h - 2] - line[h + 2]) / 2); 
+						v[0] = c[0] ? 1 - clamp((fabs(d[0] / irescale) / 10), 0, 1) : 0;
+					} else v[0] = 0;
 
-						c[1] = (cur - ((prev + next) / 2)) / 2;
+					double vtot = v[0] + v[1] + v[2];
+					double cavg = 0, cavg0 = 0, cavg1 = 0,ctot = 0;
+
+					// crude sort
+					for (int s1 = 0; s1 < 3; s1++) {
+						for (int s2 = 0; s2 < 2; s2++) {
+							if (fabs(c[s2]) > fabs(c[s2 + 1])) {
+								double ctmp = c[s2 + 1];
+								double dtmp = d[s2 + 1];	
+								double vtmp = v[s2 + 1];	
+
+								c[s2 + 1] = c[s2];
+								c[s2] = ctmp;
+								d[s2 + 1] = d[s2];
+								d[s2] = dtmp;
+								v[s2 + 1] = v[s2];
+								v[s2] = vtmp;
+							}
+						}
 					}
 
-					// merge 
-					double rem = 1.0;
-					c[0] = (f3 * c[3]);
-					rem = clamp(1.0 - f3, 0, 1);
-					
-					c[0] += (f2 * (rem * c[2]));
-					rem = clamp((rem * (1.0 - f2)), 0, 1);
+					if (vtot > 0.2) {
+						double vused = 0;
+#if 0
+						cavg = (c[0] * (v[0] / vtot));
+						cavg += (c[1] * (v[1] / vtot));
+						cavg += (c[2] * (v[2] / vtot));
+#endif
+						cavg0 = cavg = c[0] * v[0];
+						vused = v[0];
+						cavg += c[1] * (v[1] * (1 - vused));
+						cavg1 = cavg;
+						vused += (v[1] * (1 - vused));
+						cavg += c[2] * (v[2] * (1 - vused));
+						vused += (v[2] * (1 - vused));
+					} else cavg = 0;
 
-					c[0] += rem * c[1];
+	
+					if (l == 100) {
+						cerr << 'a' << h << ' ' << line[h] << ' ' << c[0] << ' ' << d[0] << ' ' << v[0] << ' ' << cavg0 << endl;
+						cerr << 'b' << h << ' ' << line[h] << ' ' << c[1] << ' ' << d[1] << ' ' << v[1] << ' ' << cavg1 << endl;
+						cerr << 'c' << h << ' ' << line[h] << ' ' << c[2] << ' ' << d[2] << ' ' << v[2] << ' ' << cavg << endl;
+					}
 
-					if (invertphase) c[0] = -c[0];
+					if (invertphase) cavg = -cavg;
 
 					switch (phase) {
-						case 0: si = c[0]; break;
-						case 1: sq = -c[0]; break;
-						case 2: si = -c[0]; break;
-						case 3: sq = c[0]; break;
+						case 0: si = cavg; break;
+						case 1: sq = -cavg; break;
+						case 2: si = -cavg; break;
+						case 3: sq = cavg; break;
 						default: break;
 					}
 
 					cbuf[l].p[h].y = line[h]; 
-					cbuf[l].p[h].i = bw_mode ? 0 : si; 
-					cbuf[l].p[h].q = bw_mode ? 0 : sq; 
+					cbuf[l].p[h - 4].i = bw_mode ? 0 : f_i->feed(si); 
+					cbuf[l].p[h - 4].q = bw_mode ? 0 : f_q->feed(sq); 
 				}
 //				if (lnum == 100) cerr << h << ' ' << si << ' ' << sq 
 			}
