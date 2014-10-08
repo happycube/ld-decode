@@ -250,10 +250,10 @@ class Comb
 
 					double vtot = v[0] + v[1] + v[2];
 					double cavg = 0, cavg0 = 0, cavg1 = 0,ctot = 0;
-					if (0 && l == 100) {
-						cerr << "1 " << h << ' ' << line[h] << ' ' << line[h - 2] << ' ' << line[h + 2] << ' ' << c[0] << ' ' << d[0] << ' ' << v[0] << ' ' << cavg0 << endl;
-						cerr << "2 " << h << ' ' << line[h] << ' ' << p2line[h] << ' ' << n2line[h] << ' ' << c[1] << ' ' << d[1] << ' ' << v[1] << ' ' << cavg1 << endl;
-						cerr << "3 " << h << ' ' << line[h] << ' ' << p3line[h] << ' ' << n3line[h] << ' ' << c[2] << ' ' << d[2] << ' ' << v[2] << ' ' << cavg << endl;
+					if (1 && l == 470) {
+						cerr << "1 " << h - 70 << ' ' << line[h] << ' ' << line[h - 2] << ' ' << line[h + 2] << ' ' << c[0] << ' ' << d[0] << ' ' << v[0] << ' ' << cavg0 << endl;
+						cerr << "2 " << h - 70 << ' ' << line[h] << ' ' << p2line[h] << ' ' << n2line[h] << ' ' << c[1] << ' ' << d[1] << ' ' << v[1] << ' ' << cavg1 << endl;
+						cerr << "3 " << h - 70 << ' ' << line[h] << ' ' << p3line[h] << ' ' << n3line[h] << ' ' << c[2] << ' ' << d[2] << ' ' << v[2] << ' ' << cavg << endl;
 					}
 
 					// crude sort
@@ -305,10 +305,10 @@ class Comb
 					} else cavg = (c[0] + c[1] + c[2]) / 3;
 
 	
-					if (0 && l == 100) {
-						cerr << 'a' << h << ' ' << line[h] << ' ' << c[0] << ' ' << d[0] << ' ' << v[0] << ' ' << cavg0 << endl;
-						cerr << 'b' << h << ' ' << line[h] << ' ' << c[1] << ' ' << d[1] << ' ' << v[1] << ' ' << cavg1 << endl;
-						cerr << 'c' << h << ' ' << line[h] << ' ' << c[2] << ' ' << d[2] << ' ' << v[2] << ' ' << cavg << endl;
+					if (1 && l == 470) {
+						cerr << 'a' << h - 70 << ' ' << line[h] << ' ' << c[0] << ' ' << d[0] << ' ' << v[0] << ' ' << cavg0 << endl;
+						cerr << 'b' << h - 70 << ' ' << line[h] << ' ' << c[1] << ' ' << d[1] << ' ' << v[1] << ' ' << cavg1 << endl;
+						cerr << 'c' << h - 70 << ' ' << line[h] << ' ' << c[2] << ' ' << d[2] << ' ' << v[2] << ' ' << cavg << endl;
 					}
 
 					cavg /= 2;
@@ -327,8 +327,8 @@ class Comb
 					cbuf[l].p[h].q = sq; 
 
 					if (cwide_mode) {
-						cbuf[l].p[h - 4].i = bw_mode ? 0 : f_wi->feed(si); 
-						cbuf[l].p[h - 4].q = bw_mode ? 0 : f_wq->feed(sq); 
+						cbuf[l].p[h - 6].i = bw_mode ? 0 : f_wi->feed(si); 
+						cbuf[l].p[h - 6].q = bw_mode ? 0 : f_wq->feed(sq); 
 					} else {
 						cbuf[l].p[h - 4].i = bw_mode ? 0 : f_i->feed(si); 
 						cbuf[l].p[h - 4].q = bw_mode ? 0 : f_q->feed(sq); 
@@ -403,12 +403,14 @@ class Comb
 					if (fabs(a.i) < nr_c) {
 						double hpm = (a.i / nr_c);
 						a.i *= (1 - fabs(hpm * hpm * hpm));
+						//a.i -= hpm;
 						input->p[h].i -= a.i;
 					}
 					
 					if (fabs(a.q) < nr_c) {
 						double hpm = (a.q / nr_c);
 						a.q *= (1 - fabs(hpm * hpm * hpm));
+						//a.q -= hpm;
 						input->p[h].q -= a.q;
 					}
 				}

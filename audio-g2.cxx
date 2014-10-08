@@ -3,37 +3,6 @@
 #include "ld-decoder.h"
 #include "deemp.h"
 
-// From http://lists.apple.com/archives/perfoptimization-dev/2005/Jan/msg00051.html. 
-const double PI_FLOAT = M_PIl;
-const double PIBY2_FLOAT = (M_PIl/2.0); 
-// |error| < 0.005
-double fast_atan2( double y, double x )
-{
-	if ( x == 0.0f )
-	{
-		if ( y > 0.0f ) return PIBY2_FLOAT;
-		if ( y == 0.0f ) return 0.0f;
-		return -PIBY2_FLOAT;
-	}
-	double atan;
-	double z = y/x;
-	if (  fabs( z ) < 1.0f  )
-	{
-		atan = z/(1.0f + 0.28f*z*z);
-		if ( x < 0.0f )
-		{
-			if ( y < 0.0f ) return atan - PI_FLOAT;
-			return atan + PI_FLOAT;
-		}
-	}
-	else
-	{
-		atan = PIBY2_FLOAT - z/(z*z + 0.28f);
-		if ( y < 0.0f ) return atan - PI_FLOAT;
-	}
-	return atan;
-}
-
 inline double WrapAngle(double a1, double a2) {
         double v = a2 - a1;
 
