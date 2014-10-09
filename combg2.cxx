@@ -223,9 +223,11 @@ class Comb
 						c[2] = (((p3line[h] + n3line[h]) / 2) - line[h]); 
 						d[2] = fabs((p3line[h] - n3line[h]) / 2); 
 						d[2] = fabs(((p3line[h] - line[h]) - (n3line[h] - line[h]))); 
-						v[2] = c[2] ? 1 - clamp((fabs(d[2] / irescale) / 6), 0, 1) : .00;
+						v[2] = c[2] ? 1 - clamp((fabs(d[2] / irescale) / 10), 0, 1) : .00;
 //						v[2] = c[2] ? 1 - clamp((fabs(d[2]) / fabs(c[2])), 0, 1) : 0;
-					} else v[2] = 0;
+					} else {
+						c[2] = d[2] = v[2] = 0;
+					}
 
 					// 2D filtering - can't do the ends
 					if (1 && (l >= 2) && (l <= 502)) {
@@ -234,7 +236,9 @@ class Comb
 						d[1] = fabs(((p2line[h] - line[h]) - (n2line[h] - line[h]))); 
 						v[1] = c[1] ? 1 - clamp((fabs(d[1] / irescale) / 10), 0, 1) : 0.00;
 //						v[1] = c[1] ? 1 - clamp((fabs(d[1]) / fabs(c[1])), 0, 1) : 0;
-					} else v[1] = 0; 
+					} else {
+						c[1] = d[1] = v[1] = 0;
+					}
 
 					// 1D 
 					if (1) {
@@ -246,7 +250,7 @@ class Comb
 //						v[0] = c[0] ? 1 - clamp((fabs(d[0]) / fabs(c[0])), 0, 1) : 0;
 					} else v[0] = 0;
 
-					if ((v[1] + v[2]) > .02) v[0] = 0;
+					if ((v[1] + v[2]) > .20) v[0] = 0;
 
 					double vtot = v[0] + v[1] + v[2];
 					double cavg = 0, cavg0 = 0, cavg1 = 0,ctot = 0;
@@ -560,7 +564,7 @@ class Comb
 				write(ofd, obuf, (744 * linesout * 3));
 				close(ofd);
 			}
-		//	exit(0);
+			exit(0);
 		}
 		
 		// buffer: 844x505 uint16_t array
