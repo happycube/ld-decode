@@ -183,11 +183,11 @@ class Comb
 			return cur_combed;
 		}
 		
-		void Split(bool do3d = false) 
+		void Split(int dim) 
 		{
 			int f = 1;
 
-			if (!do3d) f = 0;
+			if (dim < 3) f = 0;
 			
 			for (int l = 0; l < 24; l++) {
 				uint16_t *line = &rawbuffer[f][l * 844];	
@@ -219,7 +219,7 @@ class Comb
 
 					double c[3], d[3], v[3];
 
-					if (1 && do3d) {
+					if (1 && (dim >= 3)) {
 						c[2] = (((p3line[h] + n3line[h]) / 2) - line[h]); 
 						d[2] = fabs((p3line[h] - n3line[h]) / 2); 
 						d[2] = fabs(((p3line[h] - line[h]) - (n3line[h] - line[h]))); 
@@ -230,7 +230,7 @@ class Comb
 					}
 
 					// 2D filtering - can't do the ends
-					if (1 && (l >= 2) && (l <= 502)) {
+					if (1 && (dim >= 2) && (l >= 2) && (l <= 502)) {
 						c[1] = (((p2line[h] + n2line[h]) / 2) - line[h]); 
 						d[1] = fabs((p2line[h] - n2line[h]) / 2); 
 						d[1] = fabs(((p2line[h] - line[h]) - (n2line[h] - line[h]))); 
@@ -587,7 +587,7 @@ class Comb
 				return;
 			} 
 	
-			Split(dim == 3); 
+			Split(dim); 
 
 			DoCNR(0);	
 			
