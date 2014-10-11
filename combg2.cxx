@@ -254,7 +254,7 @@ class Comb
 
 					double vtot = v[0] + v[1] + v[2];
 					double cavg = 0, cavg0 = 0, cavg1 = 0,ctot = 0;
-					if (1 && l == 470) {
+					if (0 && l == 470) {
 						cerr << "1 " << h - 70 << ' ' << line[h] << ' ' << line[h - 2] << ' ' << line[h + 2] << ' ' << c[0] << ' ' << d[0] << ' ' << v[0] << ' ' << cavg0 << endl;
 						cerr << "2 " << h - 70 << ' ' << line[h] << ' ' << p2line[h] << ' ' << n2line[h] << ' ' << c[1] << ' ' << d[1] << ' ' << v[1] << ' ' << cavg1 << endl;
 						cerr << "3 " << h - 70 << ' ' << line[h] << ' ' << p3line[h] << ' ' << n3line[h] << ' ' << c[2] << ' ' << d[2] << ' ' << v[2] << ' ' << cavg << endl;
@@ -309,7 +309,7 @@ class Comb
 					} else cavg = (c[0] + c[1] + c[2]) / 3;
 
 	
-					if (1 && l == 470) {
+					if (0 && l == 470) {
 						cerr << 'a' << h - 70 << ' ' << line[h] << ' ' << c[0] << ' ' << d[0] << ' ' << v[0] << ' ' << cavg0 << endl;
 						cerr << 'b' << h - 70 << ' ' << line[h] << ' ' << c[1] << ' ' << d[1] << ' ' << v[1] << ' ' << cavg1 << endl;
 						cerr << 'c' << h - 70 << ' ' << line[h] << ' ' << c[2] << ' ' << d[2] << ' ' << v[2] << ' ' << cavg << endl;
@@ -317,6 +317,15 @@ class Comb
 
 					cavg /= 2;
 					if (!invertphase) cavg = -cavg;
+				/*	
+					switch (phase) {
+						case 0: si = f_i->feed(cavg); break;
+						case 1: sq = f_q->feed(-cavg); break;
+						case 2: si = f_i->feed(-cavg); break;
+						case 3: sq = f_q->feed(cavg); break;
+						default: break;
+					}
+*/
 
 					switch (phase) {
 						case 0: si = cavg; break;
@@ -326,66 +335,24 @@ class Comb
 						default: break;
 					}
 
+
 					cbuf[l].p[h].y = line[h]; 
 					cbuf[l].p[h].i = si;  
 					cbuf[l].p[h].q = sq; 
+				}
 
+				for (int h = 4; 1 && h < 840; h++) {
 					if (cwide_mode) {
-						cbuf[l].p[h - 6].i = bw_mode ? 0 : f_wi->feed(si); 
-						cbuf[l].p[h - 6].q = bw_mode ? 0 : f_wq->feed(sq); 
+						cbuf[l].p[h - 8].i = bw_mode ? 0 : f_wi->feed(cbuf[l].p[h].i); 
+						cbuf[l].p[h - 8].q = bw_mode ? 0 : f_wq->feed(cbuf[l].p[h].q); 
 					} else {
-						cbuf[l].p[h - 4].i = bw_mode ? 0 : f_i->feed(si); 
-						cbuf[l].p[h - 4].q = bw_mode ? 0 : f_q->feed(sq); 
-					}
-
-				}
-//				if (lnum == 100) cerr << h << ' ' << si << ' ' << sq 
+						cbuf[l].p[h - 8].i = bw_mode ? 0 : f_i->feed(cbuf[l].p[h].i); 
+						cbuf[l].p[h - 8].q = bw_mode ? 0 : f_q->feed(cbuf[l].p[h].q); 
+					}	
+				}	
 			}
 		}
 					
-		void SplitLine(int lnum, cline_t &out, uint16_t *line) 
-		{
-			bool invertphase = (line[0] == 16384);
-
-			double si = 0, sq = 0;
-
-			for (int h = 4; h < 844; h++) {
-				int phase = h % 4;
-
-				double prev = line[h - 2];	
-				double cur  = line[h];	
-				double next = line[h + 2];	
-
-				double c = (cur - ((prev + next) / 2)) / 2;
-
-				if (invertphase) c = -c;
-
-				switch (phase) {
-#if 0
-					case 0: si = f_i->feed(c); break;
-					case 1: sq = f_q->feed(-c); break;
-					case 2: si = f_i->feed(-c); break;
-					case 3: sq = f_q->feed(c); break;
-#else
-					case 0: si = c; break;
-					case 1: sq = -c; break;
-					case 2: si = -c; break;
-					case 3: sq = c; break;
-#endif
-					default: break;
-				}
-
-				out.p[h].y = cur; 
-				//out.p[h - 8].i = bw_mode ? 0 : f_i->val(); 
-				//out.p[h - 8].q = bw_mode ? 0 : f_q->val(); 
-				out.p[h].i = bw_mode ? 0 : si; 
-				out.p[h].q = bw_mode ? 0 : sq; 
-
-//				if (lnum == 100) cerr << h << ' ' << si << ' ' << sq 
-			}
-		}
-					
-
 		void DoCNR(int fnum = 0) {
 			if (nr_c < 0) return;
 
@@ -505,7 +472,7 @@ class Comb
 		}
 		
 		uint32_t ReadPhillipsCode(uint16_t *line) {
-			const int first_bit = (int)73;
+			const int first_bit = (int)100 - (1.0 * dots_usec);
 			const double bitlen = 2.0 * dots_usec;
 			uint32_t out = 0;
 
@@ -564,7 +531,7 @@ class Comb
 				write(ofd, obuf, (744 * linesout * 3));
 				close(ofd);
 			}
-			exit(0);
+//			exit(0);
 		}
 		
 		// buffer: 844x505 uint16_t array
@@ -667,7 +634,7 @@ class Comb
 				f_oddframe = false;		
 			}
 
-			for (int line = 4; line <= 5; line++) {
+			for (int line = 7; line <= 8; line++) {
 				int wc = 0;
 				for (int i = 0; i < 700; i++) {
 					if (rawbuffer[fnum][(844 * line) + i] > 45000) wc++;
@@ -678,13 +645,13 @@ class Comb
 				cerr << "PW" << line << ' ' << wc << ' ' << fieldcount << endl;
 			}
 
-			for (int line = 16; line <= 20; line++) {
+			for (int line = 14; line <= 20; line++) {
 				int new_framecode = ReadPhillipsCode(&rawbuffer[fnum][line * 844]); // - 0xf80000;
-				int fca = new_framecode & 0xf00000;
+				int fca = new_framecode & 0xf80000;
 
 				cerr << "c" << line << ' ' << hex << ' ' <<  new_framecode << ' ' << fca << ' ' << dec << endl;
 
-				if ((new_framecode & 0xf00000) == 0xf00000) {
+				if ((new_framecode & 0xf80000) == 0xf80000) {
 					int ofstart = fstart;
 
 					framecode = new_framecode & 0x0f;
@@ -692,6 +659,8 @@ class Comb
 					framecode += ((new_framecode & 0x00f00) >> 8) * 100;
 					framecode += ((new_framecode & 0x0f000) >> 12) * 1000;
 					framecode += ((new_framecode & 0xf0000) >> 16) * 10000;
+
+					framecode -= 80000;
 	
 					cerr << "frame " << framecode << endl;
 	
