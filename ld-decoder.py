@@ -105,17 +105,6 @@ def doplot2(B, A, C, B2, A2, C2):
 
 ffreq = freq/2.0
 
-Bboost = sps.firwin(17, [6.0/(freq/2.0), 12.5/(freq/2.0)], pass_zero=False) 
-Bboost = sps.firwin(17, [4.5/(freq/2.0), 14.0/(freq/2.0)], pass_zero=False) 
-Bboost = sps.firwin(33, 3.5 / (freq / 2), window='hamming', pass_zero=False)
-#Bboost = sps.firwin2(25, [0, 5.4/(freq/2.0), 12.0/(freq/2.0), 14.0/(freq/2.0), 1.0], [0.0, 1.0, 2.0, 2.0, 1.0]) 
-#Bboost = sps.firwin2(33, [0, 3.5/(freq/2.0), 12.0/(freq/2.0), 14.0/(freq/2.0), 1.0], [0.0, 1.0, 2.0, 2.0, 2.0]) 
-#Bboost = sps.firwin2(33, [0, 3.5/(freq/2.0), 12.0/(freq/2.0), 14.0/(freq/2.0), 1.0], [0.0, 1.0, 1.0, 1.0, 1.0]) 
-Bboosta = sps.firwin2(49, np.array([0, 2.0, 3.0, 4.5, 8.0, 10.0, 12.0, 14.0, freq/2.0]) / (freq/2.0), [0.0, 0.0, 0.1, 0.9, 1.0, 1.3, 2.0, 3.0, 4.0]) 
-Aboost = [1.0]
-
-#Bboost = Bboosta
-
 n = 128 
 Fr = np.zeros(n)
 Am = np.zeros(n)
@@ -138,30 +127,11 @@ for f in range(0, n):
 	Fr[f] = float(f) / 256.0
 	Th[f] = -(Fr[f] * 42) 
 
-[f_test_b, f_test_a] = fdls.FDLS(Fr, Am, Th, 16, 8, 0)
-#doplot(f_afilt_b, f_afilt_a)
-#exit()
-
-#doplot2(Bboost, Aboost, 1.0, f_test_b, f_test_a, 1.0)
-#exit()
-
-Bboost = f_test_b
-Aboost = f_test_a
+[Bboost, Aboost] = fdls.FDLS(Fr, Am, Th, 16, 8, 0)
 
 lowpass_filter = sps.firwin(31, 5.2 / (freq / 2), window='hamming')
-#doplot(lowpass_filter, [1.0])
-#exit()
 
-tH = 100.0/1000000000.0 # 100nS
-tL = 300.0/1000000000.0 # 300nS
-
-n = 512 
-df = 512.0/(freq) 
-Fr = np.zeros(n)
-Am = np.zeros(n)
-Th = np.zeros(n)
-
-# this bilinear filter *should* be mostly accurate deemphasis, but it's unstable.  
+# XXX: this bilinear filter *should* be mostly accurate deemphasis, but it's unstable.  
 # reversing the angle stabilizes it, which FDLS can do.
 
 f_deemp_bil_b = [2.819257458245255e-01, -4.361485083509491e-01]
@@ -170,6 +140,7 @@ f_deemp_bil_a = [1.000000000000000e+00, -1.154222762526424e+00]
 w, h = sps.freqz(f_deemp_bil_b, f_deemp_bil_a)
 w = w / (2 * np.pi) 
 
+Th = np.empty(len(w))
 Th1 = np.angle(h)
 Am = np.absolute(h)/1.0
 
@@ -214,38 +185,25 @@ for i in range(0, len(Fr)):
 deemp_corr = 1
 deemp_corr = .496 
 
-av = 13
-# from http://tlfabian.blogspot.com/2013/01/implementing-hilbert-90-degree-shift.html
-hilbert_filter = np.fft.fftshift(
-   # np.fft.ifft([0]+[1]*20+[0]*20)
-    np.fft.ifft([0]+[1]*av+[0]*av)
-)
+# audio filters
+Baudiorf = sps.firwin(65, 3.2 / (freq / 2), window='hamming', pass_zero=True)
 
-#hilbert_filter = [+0.0000000000, +0.0164307736, +0.0000000000, +0.0727931242, +0.0000000000, +0.2386781263, +0.0000000000, +0.9649845850, +0.0000000000, -0.9649845850, -0.0000000000, -0.2386781263, -0.0000000000, -0.0727931242, -0.0000000000, -0.0164307736, 0]
+afreq = freq / 4
 
-def process(data):
-	# perform general bandpass filtering
-	in_len = len(data)
-#	in_filt = sps.fftconvolve(data, bandpass_filter)
-	in_filt1 = sps.lfilter(Bboost, Aboost, data)
-#	in_filt = sps.lfilter(f_afilt_b, f_afilt_a, in_filt1)
-#	in_filt = sps.lfilter(arfilt, [1.0], in_filt2)
+leftbp_filter = sps.firwin(65, [2.15/(afreq/2), 2.45/(afreq/2)], window='hamming', pass_zero=False)
+rightbp_filter = sps.firwin(65, [2.65/(afreq/2), 2.95/(afreq/2)], window='hamming', pass_zero=False)
+ac3bp_filter = sps.firwin(65, [2.7/(afreq/2), 3.1/(afreq/2)], window='hamming', pass_zero=False)
 
-	in_filt = in_filt1
-	
-#	in_filt = sps.lfilter(Bboost, Aboost, data)
+audiolp_filter = sps.firwin(129, .004 / (afreq / 2), window='hamming')
 
-	#hilbert = sps.lfilter(hilbert_filter, 1.0, in_filt) 
+def fm_decode(in_filt, lowpass_filter, freq_hz):
 	hilbert = sps.hilbert(in_filt)
 
 	# the hilbert transform has errors at the edges.  but it doesn't seem to matter much IRL
-	hilbert = hilbert[128:len(hilbert)-128]
-	#hilberta = hilberta[128-av:len(hilbert)-128-av]
-
-	in_len -= 256 
+	chop = len(hilbert) / 32
+	hilbert = hilbert[chop:len(hilbert)-chop]
 
 	tangles = np.angle(hilbert) 
-	dangles = np.empty(in_len - 80)
 
 	dangles = np.diff(tangles[128:])
 
@@ -255,7 +213,7 @@ def process(data):
 	
 	tdangles2 = np.unwrap(dangles) 
 	
-	output = (sps.fftconvolve(tdangles2, lowpass_filter) * 4557618)[128:len(tdangles2)]
+	output = (sps.fftconvolve(tdangles2, lowpass_filter) * (freq_hz / (np.pi * 2)))[len(lowpass_filter):len(tdangles2)]
 
 	# particularly bad bits can cause phase inversions.  detect and fix when needed - the loops are slow in python.
 	if (output[np.argmax(output)] > freq_hz):
@@ -269,6 +227,17 @@ def process(data):
 				output[i] = output[i] + freq_hz
 
 	return output
+
+def process_video(data):
+	# perform general bandpass filtering
+	in_len = len(data)
+	in_filt = sps.lfilter(Bboost, Aboost, data)
+
+	output = fm_decode(in_filt, lowpass_filter, freq_hz) 
+
+	return output
+
+# graph for debug
 	output = (sps.lfilter(f_deemp_b, f_deemp_a, output)[128:len(output)]) / deemp_corr
 	print output
 
@@ -277,9 +246,10 @@ def process(data):
 	plt.show()
 	exit()
 
+#def process_audio(indata):
+
+
 outfile = sys.stdout
-#outfile = open("snwp.ld", "wb")
-#indata = []
 
 argc = len(sys.argv)
 if argc >= 2:
@@ -325,7 +295,7 @@ while (len(inbuf) > 0):
 		inbuf = infile.read(toread)
 		indata = np.append(indata, np.fromstring(inbuf, 'uint8', len(inbuf)))
 	
-	output = process(indata)
+	output = process_video(indata)
 
 	foutput = (sps.lfilter(f_deemp_b, f_deemp_a, output)[128:len(output)]) / deemp_corr
 
