@@ -608,7 +608,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 
 						float left = abuf[index], right = abuf[index + 1];
 						
-						ProcessAudioSample(left / lvl_adjust, right / lvl_adjust);
+						ProcessAudioSample(left * lvl_adjust, right * lvl_adjust);
 	
 						aplen = a_next;
 						a_next += ((dotclk / afreq) / va_ratio) * scale;
