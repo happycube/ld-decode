@@ -160,8 +160,13 @@ WriteFilter("leftbp", leftbp_filter)
 rightbp_filter = sps.firwin(65, [2.65/(freq/4), 2.95/(freq/4)], window='hamming', pass_zero=False)
 WriteFilter("rightbp", rightbp_filter)
 
-audiolp_filter = sps.firwin(129, .004 / (freq / 4), window='hamming')
+# decoded audio LP first stage:  2x fsc sample rate 
+audiolp_filter = sps.firwin(33, .05 / (freq / 4), window='hamming')
 WriteFilter("audiolp", audiolp_filter)
+
+# decoded audio LP second stage:  2x/20 fsc sample rate 
+audiolp20_filter = sps.firwin(33, .05 / (freq / 4 / 20), window='hamming')
+WriteFilter("audiolp20", audiolp20_filter)
 
 # from http://tlfabian.blogspot.com/2013/01/implementing-hilbert-90-degree-shift.html
 hilbert_filter = np.fft.fftshift(

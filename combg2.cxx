@@ -480,7 +480,7 @@ class Comb
 		
 			for (int i = 70; (first_bit == -1) && (i < 140); i++) {
 				if (u16_to_ire(line[i]) > 90) {
-					first_bit = i - (1.2 * dots_usec); 
+					first_bit = i - (1.0 * dots_usec); 
 				}
 //				cerr << i << ' ' << line[i] << ' ' << u16_to_ire(line[i]) << ' ' << first_bit << endl;
 			}
@@ -530,6 +530,7 @@ class Comb
 		}
 
 		void WriteFrame(uint8_t *obuf, int fnum = 0) {
+			cerr << "WR" << fnum << endl;
 			if (!image_mode) {
 				write(ofd, obuf, (744 * linesout * 3));
 			} else {
@@ -547,7 +548,7 @@ class Comb
 		// buffer: 844x505 uint16_t array
 		void Process(uint16_t *buffer, int dim = 2)
 		{
-			int firstline = (linesout == 505) ? 1 : 25;
+			int firstline = (linesout == 505) ? 1 : 24;
 			int f = (dim == 3) ? 1 : 0;
 
 			cerr << "P " << f << ' ' << dim << endl;
@@ -637,7 +638,7 @@ class Comb
 			if (!pulldown_mode) {
 				fstart = 0;
 			} else if (f_oddframe) {
-				for (int i = 0; i <= linesout; i += 2) {
+				for (int i = 0; i < linesout; i += 2) {
 					memcpy(&obuf[744 * 3 * i], &output[744 * 3 * i], 744 * 3); 
 				}
 				WriteFrame(obuf, framecode);
@@ -652,7 +653,7 @@ class Comb
 				if (wc > 500) {
 					fstart = (line % 2); 
 				}
-				cerr << "PW" << line << ' ' << wc << ' ' << fieldcount << endl;
+				cerr << "PW" << fnum << ' ' << line << ' ' << wc << ' ' << fieldcount << endl;
 			}
 
 			for (int line = 16; line < 20; line++) {
@@ -661,7 +662,7 @@ class Comb
 
 				cerr << "c" << line << ' ' << hex << ' ' <<  new_framecode << ' ' << fca << ' ' << dec << endl;
 
-				if ((new_framecode & 0xf80000) == 0xf80000) {
+				if (((new_framecode & 0xf00000) == 0xf00000) && (new_framecode < 0xff0000)) {
 					int ofstart = fstart;
 
 					framecode = new_framecode & 0x0f;
@@ -670,7 +671,7 @@ class Comb
 					framecode += ((new_framecode & 0x0f000) >> 12) * 1000;
 					framecode += ((new_framecode & 0xf0000) >> 16) * 10000;
 
-					framecode -= 80000;
+					if (framecode > 80000) framecode -= 80000;
 	
 					cerr << "frame " << framecode << endl;
 	
@@ -683,9 +684,13 @@ class Comb
 
 			cerr << "FR " << framecount << ' ' << fstart << endl;
 			if (!pulldown_mode || (fstart == 0)) {
+//				memcpy(obuf, output, sizeof(output));
 				WriteFrame(output, framecode);
 			} else if (fstart == 1) {
-				memcpy(obuf, output, sizeof(output));
+				for (int i = 1; i < linesout; i += 2) {
+					memcpy(&obuf[744 * 3 * i], &output[744 * 3 * i], 744 * 3); 
+				}
+//				memcpy(obuf, output, sizeof(output));
 				f_oddframe = true;
 			}
 

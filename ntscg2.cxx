@@ -564,6 +564,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 					prev_linelen = ntsc_ipline;					
 				} else if (((line == -1) || (line >= 525)) && (linelen > (225 * in_freq)) && InRangeCF(count, 5, 14)) {
 					if (!first) {
+						cerr << "writing full frame\n";
 						write(1, frame, sizeof(frame));
 						memset(frame, 0, sizeof(frame));
 					} else {
@@ -588,6 +589,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 
 				if (write_fields && line == 268) {
 					if (!first) {
+						cerr << "writing half frame\n";
 						write(1, frame, sizeof(frame));
 						memset(frame, 0, sizeof(frame));
 					} else first = false;
