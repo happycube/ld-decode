@@ -554,7 +554,7 @@ class Comb
 				write(ofd, obuf, (744 * linesout * 3));
 				close(ofd);
 			}
-			exit(0);
+			//exit(0);
 		}
 		
 		// buffer: 844x505 uint16_t array
