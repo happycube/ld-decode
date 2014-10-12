@@ -63,7 +63,7 @@ uint16_t level_120ire;
 bool audio_only = false;
 
 double inbase = 1;	// IRE == -60
-double inscale = 351.09;
+double inscale = 327.68;
 
 inline double in_to_ire(uint16_t level)
 {
