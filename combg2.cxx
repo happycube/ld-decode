@@ -218,13 +218,14 @@ class Comb
 					int phase = h % 4;
 
 					double c[3], d[3], v[3];
+					double err[3];
 
 					if (1 && (dim >= 3)) {
 						c[2] = (((p3line[h] + n3line[h]) / 2) - line[h]); 
 						d[2] = fabs((p3line[h] - n3line[h]) / 2); 
 						d[2] = fabs(((p3line[h] - line[h]) - (n3line[h] - line[h]))); 
 						v[2] = c[2] ? 1 - clamp((fabs(d[2] / irescale) / 10), 0, 1) : .00;
-//						v[2] = c[2] ? 1 - clamp((fabs(d[2]) / fabs(c[2])), 0, 1) : 0;
+						v[2] = c[2] ? 1 - clamp((fabs(d[2]) / fabs(c[2])) * 2, 0, 1) : 0;
 					} else {
 						c[2] = d[2] = v[2] = 0;
 					}
@@ -234,8 +235,8 @@ class Comb
 						c[1] = (((p2line[h] + n2line[h]) / 2) - line[h]); 
 						d[1] = fabs((p2line[h] - n2line[h]) / 2); 
 						d[1] = fabs(((p2line[h] - line[h]) - (n2line[h] - line[h]))); 
-						v[1] = c[1] ? 1 - clamp((fabs(d[1] / irescale) / 10), 0, 1) : 0.00;
-//						v[1] = c[1] ? 1 - clamp((fabs(d[1]) / fabs(c[1])), 0, 1) : 0;
+						v[1] = c[1] ? 1 - clamp((fabs(d[1] / irescale) / 20), 0, 1) : 0.00;
+						v[1] = c[1] ? 1 - clamp((fabs(d[1]) / fabs(c[1])) * 1.5, 0, 1) : 0;
 					} else {
 						c[1] = d[1] = v[1] = 0;
 					}
@@ -246,20 +247,20 @@ class Comb
 						double x = d[0] - c[0];
 						d[0] = fabs((line[h - 2] - line[h + 2]) / 2); 
 						d[0] = fabs(((line[h - 2] - line[h]) - (line[h + 2] - line[h]))); 
-						v[0] = c[0] ? 1 - clamp((fabs(d[0] / irescale) / 10), 0, 1) : 0.00;
-//						v[0] = c[0] ? 1 - clamp((fabs(d[0]) / fabs(c[0])), 0, 1) : 0;
+						v[0] = c[0] ? 1 - clamp((fabs(d[0] / irescale) / 20), 0, 1) : 0.00;
+						v[0] = c[0] ? 1 - clamp((fabs(d[0]) / fabs(c[0])) * 1, 0, 1) : 0;
 					} else v[0] = 0;
-
-					if ((v[1] + v[2]) > .20) v[0] = 0;
+			
+					if ((v[1] + v[2]) > .5) v[0] = 0;
 
 					double vtot = v[0] + v[1] + v[2];
 					double cavg = 0, cavg0 = 0, cavg1 = 0,ctot = 0;
-					if (0 && l == 470) {
+					if (1 && ((l == 100) || (l == 50)) && (h % 2)) {
 						cerr << "1 " << h - 70 << ' ' << line[h] << ' ' << line[h - 2] << ' ' << line[h + 2] << ' ' << c[0] << ' ' << d[0] << ' ' << v[0] << ' ' << cavg0 << endl;
 						cerr << "2 " << h - 70 << ' ' << line[h] << ' ' << p2line[h] << ' ' << n2line[h] << ' ' << c[1] << ' ' << d[1] << ' ' << v[1] << ' ' << cavg1 << endl;
 						cerr << "3 " << h - 70 << ' ' << line[h] << ' ' << p3line[h] << ' ' << n3line[h] << ' ' << c[2] << ' ' << d[2] << ' ' << v[2] << ' ' << cavg << endl;
 					}
-
+					
 					// crude sort
 					for (int s1 = 0; s1 < 3; s1++) {
 						for (int s2 = 0; s2 < 2; s2++) {
@@ -278,12 +279,19 @@ class Comb
 						}
 					}
 
-					if (vtot > 0.0) {
-						double vused = 0;
+#if 1
+					if (vtot <= .01) {
+						v[0] = .5; 
+						v[1] = 1; 
+						v[2] = 0; 
+						vtot = 1.5;
+					}
 
-						v[0] /= vtot;
-						v[1] /= vtot;
-						v[2] /= vtot;
+					double vused = 0;
+
+					v[0] /= vtot;
+					v[1] /= vtot;
+					v[2] /= vtot;
 #if 0
 						cavg = (c[0] * (v[0] / vtot));
 						cavg += (c[1] * (v[1] / vtot));
@@ -298,18 +306,22 @@ class Comb
 						cavg += c[2] * (v[2] * (1 - vused));
 						vused += (v[2] * (1 - vused));
 #else
-						cavg0 = cavg = c[0] * v[0];
-						vused = v[0];
-						cavg += c[1] * v[1]; //(v[1] * (1 - vused));
-						cavg1 = cavg;
-						vused += v[1]; //* (1 - vused);
-						cavg += c[2] * v[2]; // * (1 - vused));
-						vused += (v[2] * (1 - vused));
+					cavg0 = cavg = c[0] * v[0];
+					vused = v[0];
+					cavg += c[1] * v[1]; //(v[1] * (1 - vused));
+					cavg1 = cavg;
+					vused += v[1]; //* (1 - vused);
+					cavg += c[2] * v[2]; // * (1 - vused));
+					vused += (v[2] * (1 - vused));
 #endif
-					} else cavg = (c[0] + c[1] + c[2]) / 3;
+#endif	
+					if (fabs(c[1] - c[2]) < fabs(c[1] - c[0])) { 
+						cavg = (c[1] + c[2]) / 2;
+					} else {
+						cavg = (c[1] + c[0]) / 2;
+					}
 
-	
-					if (0 && l == 470) {
+					if (1 && ((l == 100) || (l == 50)) && (h % 2)) {
 						cerr << 'a' << h - 70 << ' ' << line[h] << ' ' << c[0] << ' ' << d[0] << ' ' << v[0] << ' ' << cavg0 << endl;
 						cerr << 'b' << h - 70 << ' ' << line[h] << ' ' << c[1] << ' ' << d[1] << ' ' << v[1] << ' ' << cavg1 << endl;
 						cerr << 'c' << h - 70 << ' ' << line[h] << ' ' << c[2] << ' ' << d[2] << ' ' << v[2] << ' ' << cavg << endl;
@@ -542,7 +554,7 @@ class Comb
 				write(ofd, obuf, (744 * linesout * 3));
 				close(ofd);
 			}
-//			exit(0);
+			exit(0);
 		}
 		
 		// buffer: 844x505 uint16_t array
