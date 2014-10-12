@@ -265,8 +265,11 @@ def process_video(data):
 	exit()
 
 def process_audio(indata):
-	in_filt = sps.lfilter(Baudiorf, [1.0], indata)
-	in_filt4 = sps.decimate(in_filt, 4)
+	in_filt = sps.lfilter(Baudiorf, [1.0], indata)[len(Baudiorf):]
+	in_filt4 = np.empty(int(len(in_filt) / 4) + 1)
+
+	for i in range(0, len(in_filt), 4):
+		in_filt4[int(i / 4)] = in_filt[i]
 
 	in_left = sps.lfilter(leftbp_filter, [1.0], in_filt4)[len(leftbp_filter):] 
 	in_right = sps.lfilter(rightbp_filter, [1.0], in_filt4)[len(rightbp_filter):] 
@@ -281,19 +284,23 @@ def process_audio(indata):
 	out_left = sps.lfilter(audiolp_filter, [1.0], out_left)[len(audiolp_filter):]
 	out_right = sps.lfilter(audiolp_filter, [1.0], out_right)[len(audiolp_filter):] 
 
-	output = np.empty(len(out_left) * 2)
-	outputf = np.empty(len(out_left) * 2, dtype = np.float32)
+	output = np.empty((len(out_left) * 2 / 20) + 1)
+	outputf = np.empty((len(out_left) * 2 / 20) + 1, dtype = np.float32)
 
 #	print len(out_left), len(output)
 
-	for i in range(0, len(out_left)):
-		output[(i * 2)] = out_left[i]
-		output[(i * 2) + 1] = out_right[i]
-#		print output[i * 2], output[(i * 2) + 1] 	
+	tot = 0
+	for i in range(0, len(out_left), 20):
+		tot = tot + 1
+		output[(i / 10)] = out_left[i]
+		output[(i / 10) + 1] = out_right[i]
+#		print i, i / 10, output[(i / 10)], output[(i / 10) + 1] 	
+
+#	exit()
 	
 	np.copyto(outputf, output, 'unsafe')
 
-	return outputf, len(out_left)
+	return outputf, tot 
 
 	plt.plot(range(0, len(out_left)), out_left)
 	plt.plot(range(0, len(out_right)), out_right)
@@ -344,7 +351,7 @@ def main():
 #				print i, output[i * 2], output[(i * 2) + 1]
 
 			outfile.write(output)
-			nread = osamp * 4
+			nread = osamp * 20 * 4
 		else:
 			output_16 = process_video(indata)
 			outfile.write(output_16)
