@@ -598,17 +598,17 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 					double nomlen = InRangeCF(linelen, 105, 120) ? ntsc_iphline : ntsc_ipline;
 					double scale = linelen / nomlen;
 					
-					double lvl_adjust = ((scale - 1) * 0.84) + 1;
+					double lvl_adjust = ((scale - 1) * 0.83) + 1;
 
 					if (a_next < 0) a_next = prev_crosspoint / va_ratio;
 						
-					cerr << "a" << a_next * va_ratio << ' ' << crosspoint << endl; 
+					cerr << "a " << scale << ' ' << lvl_adjust << ' ' << a_next * va_ratio << ' ' << crosspoint << endl; 
 					while ((a_next * va_ratio) < crosspoint) {
 						int index = (int)a_next * 2;
 
 						float left = abuf[index], right = abuf[index + 1];
 						
-						ProcessAudioSample(left * lvl_adjust, right * lvl_adjust);
+						ProcessAudioSample(left / lvl_adjust, right / lvl_adjust);
 	
 						aplen = a_next;
 						a_next += ((dotclk / afreq) / va_ratio) * scale;
@@ -716,7 +716,7 @@ void autoset(uint16_t *buf, int len, bool fullagc = true)
 	cross = ire_to_in(seven_five ? -5 : -20);
 }
 
-const int ablen = (8 * 1024);
+const int ablen = (5 * 1024);
 const int vblen = ablen * 16;
 
 const int absize = ablen * 8;
@@ -783,6 +783,8 @@ int main(int argc, char *argv[])
 		rv += rv2;
 	}
 
+	cerr << "B" << absize << ' ' << ablen * 2 * sizeof(float) << endl ;
+
 	if (afd != -1) {	
 		arv = read(afd, abuf, absize);
 		while ((arv > 0) && (arv < absize)) {
@@ -806,7 +808,11 @@ int main(int argc, char *argv[])
 		if (do_autoset) {
 			autoset(inbuf, vbsize / 2);
 		}
-
+/*
+		for (int i = 0; i < (arv / 8); i+=2) {
+			cerr << i << ' ' << abuf[i] << ' ' << abuf[i + 1] << endl;
+		}
+*/
 		int plen = Process(inbuf, rv / 2, abuf, arv / 8, aplen);
 
 		cerr << "plen " << plen << endl;
@@ -820,7 +826,6 @@ int main(int argc, char *argv[])
 			if (rv2 <= 0) exit(0);
 			rv += rv2;
 		}	
-		
 		
 		if (afd != -1) {	
 			cerr << "X" << aplen << ' ' << (double)(ablen - (aplen * 4))/4.0 << ' ' << abuf[0] << ' ' ;

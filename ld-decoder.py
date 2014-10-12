@@ -13,7 +13,7 @@ import getopt
 
 freq = (315.0 / 88.0) * 8.0
 freq_hz = freq * 1000000.0
-blocklen = (100 * 1024) 
+blocklen = (128 * 1024) 
 
 def dosplot(B, A):
 	w, h = sps.freqz(B, A)
@@ -194,8 +194,8 @@ afreq = freq / 4
 leftbp_filter = sps.firwin(97, [2.15/(afreq/2), 2.45/(afreq/2)], window='hamming', pass_zero=False)
 rightbp_filter = sps.firwin(97, [2.65/(afreq/2), 2.95/(afreq/2)], window='hamming', pass_zero=False)
 
-#audiolp_filter = sps.firwin(513, .004 / (afreq / 2), window='hamming')
-audiolp_filter = sps.firwin(129, .004 / (afreq / 2), window='hamming')
+audiolp_filter = sps.firwin(513, .05 / (afreq / 2), window='hamming')
+#audiolp_filter = sps.firwin(129, .004 / (afreq / 2), window='hamming')
 
 def fm_decode(in_filt, lowpass_filter, freq_hz):
 	hilbert = sps.hilbert(in_filt)
@@ -268,8 +268,8 @@ def process_audio(indata):
 	in_filt = sps.lfilter(Baudiorf, [1.0], indata)
 	in_filt4 = sps.decimate(in_filt, 4)
 
-	in_left = sps.lfilter(leftbp_filter, [1.0], in_filt4) 
-	in_right = sps.lfilter(rightbp_filter, [1.0], in_filt4) 
+	in_left = sps.lfilter(leftbp_filter, [1.0], in_filt4)[len(leftbp_filter):] 
+	in_right = sps.lfilter(rightbp_filter, [1.0], in_filt4)[len(rightbp_filter):] 
 
 	out_left = fm_decode(in_left, [1.0], freq_hz / 4)
 	out_right = fm_decode(in_right, [1.0], freq_hz / 4)
@@ -281,13 +281,19 @@ def process_audio(indata):
 	out_left = sps.lfilter(audiolp_filter, [1.0], out_left)[len(audiolp_filter):]
 	out_right = sps.lfilter(audiolp_filter, [1.0], out_right)[len(audiolp_filter):] 
 
-	output = np.empty(len(out_left) * 2, dtype = float)
+	output = np.empty(len(out_left) * 2)
+	outputf = np.empty(len(out_left) * 2, dtype = np.float32)
+
+#	print len(out_left), len(output)
 
 	for i in range(0, len(out_left)):
 		output[(i * 2)] = out_left[i]
 		output[(i * 2) + 1] = out_right[i]
+#		print output[i * 2], output[(i * 2) + 1] 	
+	
+	np.copyto(outputf, output, 'unsafe')
 
-	return output
+	return outputf, len(out_left)
 
 	plt.plot(range(0, len(out_left)), out_left)
 	plt.plot(range(0, len(out_right)), out_right)
@@ -333,13 +339,15 @@ def main():
 			indata = np.append(indata, np.fromstring(inbuf, 'uint8', len(inbuf)))
 
 		if audio_mode:	
-			output = process_audio(indata)
-#			print len(indata), len(output), len(output) / 2 * 4
-#			outfile.write(output)
-			nread = len(output) / 2
+			output, osamp = process_audio(indata)
+#			for i in range(0, osamp):
+#				print i, output[i * 2], output[(i * 2) + 1]
+
+			outfile.write(output)
+			nread = osamp * 4
 		else:
 			output_16 = process_video(indata)
-#			outfile.write(output_16)
+			outfile.write(output_16)
 			nread = len(output_16)
 
 		indata = indata[nread:len(indata)]
