@@ -115,10 +115,10 @@ Th = np.zeros(n)
 for f in range(0, n):
 	cf = freq * (float(f) / 256.0)
      
-	if (cf > 13.7):
-		Am[f] = 0
-	elif (cf > 9.0):
-		Am[f] = 1 # + ((cf - 9.0) / 4) 
+#	if (cf > 13.8):
+#		Am[f] = 0
+	if (cf > 6.0):
+		Am[f] = 1  + ((cf - 6.0) / 12) 
 	elif (cf > 4.0):
 		Am[f] = 1 
 	elif (cf > 3.0):
@@ -130,6 +130,8 @@ for f in range(0, n):
 	Th[f] = -(Fr[f] * 42) 
 
 [Bboost, Aboost] = fdls.FDLS(Fr, Am, Th, 16, 8, 0)
+#dosplot(Bboost, Aboost)
+#exit()
 
 lowpass_filter = sps.firwin(31, 5.2 / (freq / 2), window='hamming')
 
@@ -152,6 +154,8 @@ for i in range(0, len(w)):
 	Th[i] = -(Th1[i] * 1.0) 
 
 [f_deemp_b, f_deemp_a] = fdls.FDLS(w, Am, Th, Ndeemp, Ddeemp, 0)
+#doplot2(f_deemp_b, f_deemp_a, 1.0, f_deemp_bil_b, f_deemp_bil_a, 1.0)
+#exit()
 
 # This version shouldn't work at all (uses just the real angle from the bilinear,
 # computes the angle very oddly!), but it fits the current data well.
