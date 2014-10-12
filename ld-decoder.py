@@ -7,11 +7,13 @@ import sys
 import fdls as fdls
 import matplotlib.pyplot as plt
 
+import getopt
+
 #import ipdb
 
 freq = (315.0 / 88.0) * 8.0
 freq_hz = freq * 1000000.0
-blocklen = (3 * 1024) 
+blocklen = (100 * 1024) 
 
 def dosplot(B, A):
 	w, h = sps.freqz(B, A)
@@ -175,7 +177,6 @@ for i in range(0, len(Fr)):
 
 	Th[i] = (-((Fr[i] * 6.90) / h.real[i])) - (0 * (np.pi / 180)) 
 
-#[f_deemp_b, f_deemp_a] = fdls.FDLS(w, np.absolute(h)*1, Th, Ndeemp, Ddeemp)
 [f_deemp_b, f_deemp_a] = fdls.FDLS(w, h.real*1, Th, Ndeemp, Ddeemp)
 
 #doplot2(f_deemp_b, f_deemp_a, 1.0, f_deemp_bil_b, f_deemp_bil_a, 1.0)
@@ -186,26 +187,27 @@ deemp_corr = 1
 deemp_corr = .496 
 
 # audio filters
-Baudiorf = sps.firwin(65, 3.2 / (freq / 2), window='hamming', pass_zero=True)
+Baudiorf = sps.firwin(65, 3.5 / (freq / 2), window='hamming', pass_zero=True)
 
 afreq = freq / 4
 
-leftbp_filter = sps.firwin(65, [2.15/(afreq/2), 2.45/(afreq/2)], window='hamming', pass_zero=False)
-rightbp_filter = sps.firwin(65, [2.65/(afreq/2), 2.95/(afreq/2)], window='hamming', pass_zero=False)
-ac3bp_filter = sps.firwin(65, [2.7/(afreq/2), 3.1/(afreq/2)], window='hamming', pass_zero=False)
+leftbp_filter = sps.firwin(97, [2.15/(afreq/2), 2.45/(afreq/2)], window='hamming', pass_zero=False)
+rightbp_filter = sps.firwin(97, [2.65/(afreq/2), 2.95/(afreq/2)], window='hamming', pass_zero=False)
 
+#audiolp_filter = sps.firwin(513, .004 / (afreq / 2), window='hamming')
 audiolp_filter = sps.firwin(129, .004 / (afreq / 2), window='hamming')
 
 def fm_decode(in_filt, lowpass_filter, freq_hz):
 	hilbert = sps.hilbert(in_filt)
 
 	# the hilbert transform has errors at the edges.  but it doesn't seem to matter much IRL
-	chop = len(hilbert) / 32
+	chop = 192	
 	hilbert = hilbert[chop:len(hilbert)-chop]
 
 	tangles = np.angle(hilbert) 
 
-	dangles = np.diff(tangles[128:])
+#	dangles = np.diff(tangles[128:])
+	dangles = np.diff(tangles)
 
 	# make sure unwapping goes the right way
 	if (dangles[0] < -np.pi):
@@ -213,7 +215,7 @@ def fm_decode(in_filt, lowpass_filter, freq_hz):
 	
 	tdangles2 = np.unwrap(dangles) 
 	
-	output = (sps.fftconvolve(tdangles2, lowpass_filter) * (freq_hz / (np.pi * 2)))[len(lowpass_filter):len(tdangles2)]
+	output = (tdangles2 * (freq_hz / (np.pi * 2)))[len(lowpass_filter):len(tdangles2)]
 
 	# particularly bad bits can cause phase inversions.  detect and fix when needed - the loops are slow in python.
 	if (output[np.argmax(output)] > freq_hz):
@@ -228,14 +230,30 @@ def fm_decode(in_filt, lowpass_filter, freq_hz):
 
 	return output
 
+minire = -60
+maxire = 140
+hz_ire_scale = (9300000 - 8100000) / 100
+
+minn = 8100000 + (hz_ire_scale * -60)
+
+out_scale = 65534.0 / (maxire - minire)
+
 def process_video(data):
 	# perform general bandpass filtering
-	in_len = len(data)
 	in_filt = sps.lfilter(Bboost, Aboost, data)
 
 	output = fm_decode(in_filt, lowpass_filter, freq_hz) 
 
-	return output
+	output = sps.lfilter(lowpass_filter, [1.0], output)[len(lowpass_filter):]
+
+	doutput = (sps.lfilter(f_deemp_b, f_deemp_a, output)[128:len(output)]) / deemp_corr
+	
+	output_16 = np.empty(len(doutput), dtype=np.uint16)
+	reduced = (doutput - minn) / hz_ire_scale
+	output = np.clip(reduced * out_scale, 0, 65535) 
+	np.copyto(output_16, output, 'unsafe')
+
+	return output_16
 
 # graph for debug
 	output = (sps.lfilter(f_deemp_b, f_deemp_a, output)[128:len(output)]) / deemp_corr
@@ -246,72 +264,92 @@ def process_video(data):
 	plt.show()
 	exit()
 
-#def process_audio(indata):
+def process_audio(indata):
+	in_filt = sps.lfilter(Baudiorf, [1.0], indata)
+	in_filt4 = sps.decimate(in_filt, 4)
 
+	in_left = sps.lfilter(leftbp_filter, [1.0], in_filt4) 
+	in_right = sps.lfilter(rightbp_filter, [1.0], in_filt4) 
 
-outfile = sys.stdout
+	out_left = fm_decode(in_left, [1.0], freq_hz / 4)
+	out_right = fm_decode(in_right, [1.0], freq_hz / 4)
 
-argc = len(sys.argv)
-if argc >= 2:
-	infile = open(sys.argv[1], "rb")
-else:
-	infile = sys.stdin
+	# fast but not as good	
+	out_left = np.clip(out_left, 2150000, 2450000) 
+	out_right = np.clip(out_right, 2650000, 2950000) 
 
-if (argc >= 3):
-	infile.seek(int(sys.argv[2]))
+	out_left = sps.lfilter(audiolp_filter, [1.0], out_left)[len(audiolp_filter):]
+	out_right = sps.lfilter(audiolp_filter, [1.0], out_right)[len(audiolp_filter):] 
 
-if (argc >= 4):
-	total_len = int(sys.argv[3])
-	limit = 1
-else:
-	limit = 0
+	output = np.empty(len(out_left) * 2, dtype = float)
 
-total = toread = blocklen 
-inbuf = infile.read(toread)
-indata = np.fromstring(inbuf, 'uint8', toread)
+	for i in range(0, len(out_left)):
+		output[(i * 2)] = out_left[i]
+		output[(i * 2) + 1] = out_right[i]
+
+	return output
+
+	plt.plot(range(0, len(out_left)), out_left)
+	plt.plot(range(0, len(out_right)), out_right)
+	plt.show()
+	exit()
 	
-total = 0
+def main():
+	outfile = sys.stdout
+	audio_mode = 0 
 
-charge = 0
-scharge = 0
-prev = 9300000
+	optlist, cut_argv = getopt.getopt(sys.argv[1:], "a")
 
-hp_nr_filter = sps.firwin(31, 1.8 / (freq / 2), window='hamming', pass_zero=False)
-#doplot(hp_nr_filter, [1.0])
-#exit()
+	for o, a in optlist:
+		if o == "-a":
+			audio_mode = 1
 
-minire = -60
-maxire = 140
-hz_ire_scale = (9300000 - 8100000) / 100
+	argc = len(cut_argv)
+	if argc >= 1:
+		infile = open(cut_argv[0], "rb")
+	else:
+		infile = sys.stdin
 
-minn = 8100000 + (hz_ire_scale * -60)
+	if (argc >= 2):
+		infile.seek(int(cut_argv[1]))
 
-out_scale = 65534.0 / (maxire - minire)
+	if (argc >= 3):
+		total_len = int(cut_argv[2])
+		limit = 1
+	else:
+		limit = 0
 
-while (len(inbuf) > 0):
-	toread = blocklen - indata.size 
-
-	if toread > 0:
-		inbuf = infile.read(toread)
-		indata = np.append(indata, np.fromstring(inbuf, 'uint8', len(inbuf)))
+	total = toread = blocklen 
+	inbuf = infile.read(toread)
+	indata = np.fromstring(inbuf, 'uint8', toread)
 	
-	output = process_video(indata)
+	total = 0
 
-	foutput = (sps.lfilter(f_deemp_b, f_deemp_a, output)[128:len(output)]) / deemp_corr
+	while (len(inbuf) > 0):
+		toread = blocklen - indata.size 
 
-	output_16 = np.empty(len(foutput), dtype=np.uint16)
+		if toread > 0:
+			inbuf = infile.read(toread)
+			indata = np.append(indata, np.fromstring(inbuf, 'uint8', len(inbuf)))
 
-	reduced = (foutput - minn) / hz_ire_scale
+		if audio_mode:	
+			output = process_audio(indata)
+#			print len(indata), len(output), len(output) / 2 * 4
+#			outfile.write(output)
+			nread = len(output) / 2
+		else:
+			output_16 = process_video(indata)
+#			outfile.write(output_16)
+			nread = len(output_16)
 
-	output = np.clip(reduced * out_scale, 0, 65535) 
+		indata = indata[nread:len(indata)]
 	
-	np.copyto(output_16, output, 'unsafe')
+		if limit == 1:
+			total_len -= toread 
+			if (total_len < 0):
+				inbuf = ""
 
-	outfile.write(output_16)
-	
-	indata = indata[len(output_16):len(indata)]
-	
-	if limit == 1:
-		total_len -= toread 
-		if (total_len < 0):
-			inbuf = ""
+if __name__ == "__main__":
+    main()
+
+
