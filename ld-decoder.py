@@ -319,7 +319,7 @@ def main():
 
 	for o, a in optlist:
 		if o == "-a":
-			audio_mode = 1
+			audio_mode = 0	# XXX: audio mode is broken
 
 	argc = len(cut_argv)
 	if argc >= 1:

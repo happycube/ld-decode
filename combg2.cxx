@@ -472,9 +472,19 @@ class Comb
 		}
 		
 		uint32_t ReadPhillipsCode(uint16_t *line) {
-			const int first_bit = (int)100 - (1.0 * dots_usec);
+			int first_bit = -1 ;// (int)100 - (1.0 * dots_usec);
 			const double bitlen = 2.0 * dots_usec;
 			uint32_t out = 0;
+
+			// find first bit
+		
+			for (int i = 70; (first_bit == -1) && (i < 140); i++) {
+				if (u16_to_ire(line[i]) > 90) {
+					first_bit = i - (1.2 * dots_usec); 
+				}
+//				cerr << i << ' ' << line[i] << ' ' << u16_to_ire(line[i]) << ' ' << first_bit << endl;
+			}
+			if (first_bit < 0) return 0;
 
 			for (int i = 0; i < 24; i++) {
 				double val = 0;
@@ -486,7 +496,7 @@ class Comb
 				}
 
 //				cerr << "bit " << 23 - i << " " << val / dots_usec << ' ' << hex << out << dec << endl;	
-				if ((val / dots_usec) < 50) {
+				if ((val / dots_usec) > 50) {
 					out |= (1 << (23 - i));
 				} 
 			}
@@ -634,7 +644,7 @@ class Comb
 				f_oddframe = false;		
 			}
 
-			for (int line = 7; line <= 8; line++) {
+			for (int line = 4; line <= 5; line++) {
 				int wc = 0;
 				for (int i = 0; i < 700; i++) {
 					if (rawbuffer[fnum][(844 * line) + i] > 45000) wc++;
@@ -645,7 +655,7 @@ class Comb
 				cerr << "PW" << line << ' ' << wc << ' ' << fieldcount << endl;
 			}
 
-			for (int line = 14; line <= 20; line++) {
+			for (int line = 16; line < 20; line++) {
 				int new_framecode = ReadPhillipsCode(&rawbuffer[fnum][line * 844]); // - 0xf80000;
 				int fca = new_framecode & 0xf80000;
 
