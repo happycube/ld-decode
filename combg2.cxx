@@ -140,6 +140,7 @@ class Comb
 		uint8_t obuf[744 * 505 * 3];
 
 		uint16_t rawbuffer[3][844 * 505];
+		double LPraw[3][844 * 505];
 
 		cline_t wbuf[3][525];
 		cline_t cbuf[525];
@@ -182,13 +183,23 @@ class Comb
 
 			return cur_combed;
 		}
-		
+	
+		void LPFrame(int fnum)
+		{
+			for (int l = 24; l < 505; l++) {
+				for (int h = 32; h < 844; h++) {
+					LPraw[fnum][(l * 844) + h - 16] = f_lpf05h.feed(rawbuffer[fnum][(l * 844) + h]);
+				}
+			}
+		}
+	
 		void Split(int dim) 
 		{
+			double lp[844 * 505];
 			int f = 1;
-
-			if (dim < 3) f = 0;
 			
+			if (dim < 3) f = 0;
+		
 			for (int l = 0; l < 24; l++) {
 				uint16_t *line = &rawbuffer[f][l * 844];	
 					
@@ -217,8 +228,12 @@ class Comb
 				for (int h = 4; h < 840; h++) {
 					int phase = h % 4;
 
+					double k;
+
 					double c[3], d[3], v[3];
 					double err[3];
+						
+					int adr = (l * 844) + h;
 
 					if (1 && (dim >= 3)) {
 						c[2] = (((p3line[h] + n3line[h]) / 2) - line[h]); 
@@ -226,6 +241,10 @@ class Comb
 						d[2] = fabs(((p3line[h] - line[h]) - (n3line[h] - line[h]))); 
 						v[2] = c[2] ? 1 - clamp((fabs(d[2] / irescale) / 10), 0, 1) : .00;
 						v[2] = c[2] ? 1 - clamp((fabs(d[2]) / fabs(c[2])) * 2, 0, 1) : 0;
+						k = fabs(LPraw[1][adr] - LPraw[0][adr]) + fabs(LPraw[1][adr] - LPraw[2][adr]);
+						k /= irescale;
+						v[2] = clamp(1 - ((k - 0) / 5), 0, 1);
+						if (l == 100) cerr << "T3 " << h << ' ' << c[2] << ' ' << d[2] << ' ' << v[2] << ' ' << k << endl;
 					} else {
 						c[2] = d[2] = v[2] = 0;
 					}
@@ -237,6 +256,10 @@ class Comb
 						d[1] = fabs(((p2line[h] - line[h]) - (n2line[h] - line[h]))); 
 						v[1] = c[1] ? 1 - clamp((fabs(d[1] / irescale) / 20), 0, 1) : 0.00;
 						v[1] = c[1] ? 1 - clamp((fabs(d[1]) / fabs(c[1])) * 1.5, 0, 1) : 0;
+						k = fabs(LPraw[1][adr] - LPraw[1][adr - 844]) + fabs(LPraw[1][adr] - LPraw[1][adr + 844]);
+						k /= irescale;
+						v[1] = clamp(1 - (k / 8), 0, 1);
+						if (l == 100) cerr << "T2 " << h << ' ' << c[1] << ' ' << d[1] << ' ' << v[1] << ' ' << k << endl;
 					} else {
 						c[1] = d[1] = v[1] = 0;
 					}
@@ -251,7 +274,15 @@ class Comb
 						v[0] = c[0] ? 1 - clamp((fabs(d[0]) / fabs(c[0])) * 1, 0, 1) : 0;
 					} else v[0] = 0;
 			
-					if ((v[1] + v[2]) > .5) v[0] = 0;
+					if ((v[1] + v[2]) >= .5) v[0] = 0;
+
+					if ((v[0] + v[1]) > 0) {
+						double v12a = 1 - v[2];
+						double v12b = v12a / (v[0] + v[1]);	
+			
+						v[0] *= v12b;
+						v[1] *= v12b;
+					}
 
 					double vtot = v[0] + v[1] + v[2];
 					double cavg = 0, cavg0 = 0, cavg1 = 0,ctot = 0;
@@ -281,10 +312,10 @@ class Comb
 
 #if 1
 					if (vtot <= .01) {
-						v[0] = .5; 
+						//v[0] = .5; 
 						v[1] = 1; 
-						v[2] = 0; 
-						vtot = 1.5;
+						v[2] = 1; 
+						vtot = 2;
 					}
 
 					double vused = 0;
@@ -298,13 +329,13 @@ class Comb
 						cavg += (c[2] * (v[2] / vtot));
 #endif
 #if 0
-						cavg0 = cavg = c[0] * v[0];
-						vused = v[0];
-						cavg += c[1] * (v[1] * (1 - vused));
-						cavg1 = cavg;
-						vused += v[1] * (1 - vused);
-						cavg += c[2] * (v[2] * (1 - vused));
-						vused += (v[2] * (1 - vused));
+					cavg0 = cavg = c[0] * v[0];
+					vused = v[0];
+					cavg += c[1] * (v[1] * (1 - vused));
+					cavg1 = cavg;
+					vused += v[1] * (1 - vused);
+					cavg += c[2] * (v[2] * (1 - vused));
+					vused += (v[2] * (1 - vused));
 #else
 					cavg0 = cavg = c[0] * v[0];
 					vused = v[0];
@@ -315,12 +346,13 @@ class Comb
 					vused += (v[2] * (1 - vused));
 #endif
 #endif	
+/*
 					if (fabs(c[1] - c[2]) < fabs(c[1] - c[0])) { 
 						cavg = (c[1] + c[2]) / 2;
 					} else {
 						cavg = (c[1] + c[0]) / 2;
 					}
-
+*/
 					if (1 && ((l == 100) || (l == 50)) && (h % 2)) {
 						cerr << 'a' << h - 70 << ' ' << line[h] << ' ' << c[0] << ' ' << d[0] << ' ' << v[0] << ' ' << cavg0 << endl;
 						cerr << 'b' << h - 70 << ' ' << line[h] << ' ' << c[1] << ' ' << d[1] << ' ' << v[1] << ' ' << cavg1 << endl;
@@ -554,7 +586,7 @@ class Comb
 				write(ofd, obuf, (744 * linesout * 3));
 				close(ofd);
 			}
-			//exit(0);
+			exit(0);
 		}
 		
 		// buffer: 844x505 uint16_t array
@@ -571,6 +603,11 @@ class Comb
 			memcpy(rawbuffer[2], rawbuffer[1], (844 * 505 * 2));
 			memcpy(rawbuffer[1], rawbuffer[0], (844 * 505 * 2));
 			memcpy(rawbuffer[0], buffer, (844 * 505 * 2));
+			
+			memcpy(LPraw[2], LPraw[1], (844 * 505 * sizeof(double)));
+			memcpy(LPraw[1], LPraw[0], (844 * 505 * sizeof(double)));
+
+			LPFrame(0);
 		
 			if ((dim == 3) && (framecount < 2)) {
 				framecount++;

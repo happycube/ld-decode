@@ -96,6 +96,12 @@ Nlpf = 30
 lowpass_filter = sps.firwin(Nlpf + 1, 4.2 / (freq), window='hamming')
 WriteFilter("lpf42", lowpass_filter)
 
+# used for comb filtering
+lowpass05h_filter = sps.firwin(32 + 1, 0.5 / (freq), window='hamming')
+WriteFilter("lpf05h", lowpass05h_filter)
+lowpass05v_filter = sps.firwin(8 + 1, 0.5 / (freq), window='hamming')
+WriteFilter("lpf05v", lowpass05v_filter)
+
 Nlpf4 = 10
 lowpass_filter4 = sps.firwin(Nlpf + 1, 5.2 / (freq4), window='hamming')
 WriteFilter("lpf4", lowpass_filter4)
@@ -161,7 +167,7 @@ rightbp_filter = sps.firwin(65, [2.65/(freq/4), 2.95/(freq/4)], window='hamming'
 WriteFilter("rightbp", rightbp_filter)
 
 # decoded audio LP first stage:  2x fsc sample rate 
-audiolp_filter = sps.firwin(33, .05 / (freq / 4), window='hamming')
+audiolp_filter = sps.firwin(17, .05 / (freq / 4), window='hamming')
 WriteFilter("audiolp", audiolp_filter)
 
 # decoded audio LP second stage:  2x/20 fsc sample rate 
@@ -170,7 +176,7 @@ WriteFilter("audiolp20", audiolp20_filter)
 
 # from http://tlfabian.blogspot.com/2013/01/implementing-hilbert-90-degree-shift.html
 hilbert_filter = np.fft.fftshift(
-    np.fft.ifft([0]+[1]*15+[0]*15)
+    np.fft.ifft([0]+[1]*13+[0]*13)
 )
 WriteFilter("hilbertr", hilbert_filter.real)
 WriteFilter("hilberti", hilbert_filter.imag)
