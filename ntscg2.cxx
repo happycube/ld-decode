@@ -232,9 +232,18 @@ Filter f_fml(f_fmdeemp), f_fmr(f_fmdeemp);
 
 uint16_t aout[512];
 int aout_i = 0;
-void ProcessAudioSample(float left, float right)
+void ProcessAudioSample(float left, float right, double vel)
 {
 	float oleft = left, oright = right;
+
+	double scale = ((vel - 1) * 0.5) + 1;
+
+//	cerr << "A " << vel << ' ' << scale << ' ' << left - 2301136 << ' ' << right - 2812499 << ' '; 
+
+	left *= scale;
+	right *= scale;
+	
+	cerr << right - 2812499 << endl; 
 
 	if (!InRange(left, 2150000, 2450000)) left = pleft;
 	pleft = left;
@@ -250,7 +259,7 @@ void ProcessAudioSample(float left, float right)
 	right = f_fmr.feed(right);
 	right += 32768;
 
-	cerr << "P1 " << oleft << ' ' << left - _left << ' ' << oright << ' ' << right - _right << endl;
+//	cerr << "A1 " << oleft << ' ' << left - _left << ' ' << oright << ' ' << right - _right << endl;
 	_left = left;
 	_right = right;
 
@@ -538,18 +547,18 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 
 				prev_count = count;
 
+				double adj_linelen = linelen;
+
 //				cerr << line << ' ' << linelen << ' ' << ntsc_ipline * 0.9 << ' ' << count << ' ' << 11 * in_freq << endl;
 				if ((line >= 0) && (linelen >= (ntsc_ipline * 0.9)) && (count > (14 * in_freq))) {
 					// standard line
 					int oline = get_oline(line);
 
 					if (oline >= 0) {
-						ProcessLine(buf, begin, end, line); 
-	
-						if (0 && eed == true) {
-							for (int i = 1; i < 65; i++) 
-								frame[oline][i] = 65535; 
-						}
+						double adjend = ProcessLine(buf, begin, end, line); 
+
+						adj_linelen = adjend - begin;
+//						cerr << "ADJ " << end << ' ' << (adjend - begin) / 1820 << endl;	
 					}	
 
 					prev_linelen = linelen;					
@@ -598,19 +607,17 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 				// process audio (if available)
 				if ((afd > 0) && (line > 0)) {
 					double nomlen = InRangeCF(linelen, 105, 120) ? ntsc_iphline : ntsc_ipline;
-					double scale = linelen / nomlen;
+					double scale = adj_linelen / nomlen;
 					
-					double lvl_adjust = ((scale - 1) * 0.83) + 1;
-
 					if (a_next < 0) a_next = prev_crosspoint / va_ratio;
 						
-					cerr << "a " << scale << ' ' << lvl_adjust << ' ' << a_next * va_ratio << ' ' << crosspoint << endl; 
+//					cerr << "a " << scale << ' ' << lvl_adjust << ' ' << a_next * va_ratio << ' ' << crosspoint << endl; 
 					while ((a_next * va_ratio) < crosspoint) {
 						int index = (int)a_next * 2;
 
 						float left = abuf[index], right = abuf[index + 1];
 						
-						ProcessAudioSample(left * lvl_adjust, right * lvl_adjust);
+						ProcessAudioSample(left, right, scale);
 	
 						aplen = a_next;
 						a_next += ((dotclk / afreq) / va_ratio) * scale;
