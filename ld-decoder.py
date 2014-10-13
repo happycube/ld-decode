@@ -221,16 +221,22 @@ def fm_decode(in_filt, lowpass_filter, freq_hz):
 	
 	output = (tdangles2 * (freq_hz / (np.pi * 2)))[len(lowpass_filter):len(tdangles2)]
 
-	# particularly bad bits can cause phase inversions.  detect and fix when needed - the loops are slow in python.
-	if (output[np.argmax(output)] > freq_hz):
-		for i in range(0, len(output)):
-			if output[i] > freq_hz:
-				output[i] = output[i] - freq_hz
+	errcount = 1
+	while errcount > 0:
+		errcount = 0
+
+		# particularly bad bits can cause phase inversions.  detect and fix when needed - the loops are slow in python.
+		if (output[np.argmax(output)] > freq_hz):
+			errcount = 1
+			for i in range(0, len(output)):
+				if output[i] > freq_hz:
+					output[i] = output[i] - freq_hz
 	
-	if (output[np.argmin(output)] < 0):
-		for i in range(0, len(output)):
-			if output[i] < 0:
-				output[i] = output[i] + freq_hz
+		if (output[np.argmin(output)] < 0):
+			errcount = 1
+			for i in range(0, len(output)):
+				if output[i] < 0:
+					output[i] = output[i] + freq_hz
 
 	return output
 
@@ -260,7 +266,7 @@ def process_video(data):
 	return output_16
 
 # graph for debug
-	output = (sps.lfilter(f_deemp_b, f_deemp_a, output)[128:len(output)]) / deemp_corr
+#	output = (sps.lfilter(f_deemp_b, f_deemp_a, output)[128:len(output)]) / deemp_corr
 	print output
 
 	plt.plot(range(0, len(output)), output)
