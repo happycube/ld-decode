@@ -111,6 +111,7 @@ int main(int argc, char *argv[])
 	}
 
 	cout << std::setprecision(8);
+	cerr << "LEN " << dlen << endl;
 	
 	rv = read(fd, inbuf, 256*1024);
 

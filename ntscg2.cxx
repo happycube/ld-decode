@@ -321,7 +321,7 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line)
 	if (in_freq == 4) goto wrapup;
 
 	adjlen = (end - begin) / (scale_tgt / ntsc_opline);
-	cerr << line << " " << 0 << ' ' << begin << ' ' << (begin + adjlen) << '/' << end  << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
+//	cerr << line << " " << 0 << ' ' << begin << ' ' << (begin + adjlen) << '/' << end  << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
 
 	for (int pass = 0; pass < ((in_freq == 4) ? 4 : 2); pass++) {
 //	cerr << line << " 0" << ' ' << ((end - begin) / scale_tgt) * ntsc_ipline.0 << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
@@ -344,7 +344,7 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line)
 
 		adjlen = (end - begin) / (scale_tgt / ntsc_opline);
 					
-		cerr << line << " " << pass << ' ' << begin << ' ' << (begin + adjlen) << '/' << end  << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
+//		cerr << line << " " << pass << ' ' << begin << ' ' << (begin + adjlen) << '/' << end  << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
 	}
 
 wrapup:
@@ -459,7 +459,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 				
 				valid = IsABlank(line, crosspoint - prev_crosspoint, count); 
 
-				cerr << "S " << line << ' ' << oline << ' ' << i << ' ' << crosspoint << ' ' << prev_crosspoint << ' ' << linelen << ' ' << count << ' ' << valid << endl;
+//				cerr << "S " << line << ' ' << oline << ' ' << i << ' ' << crosspoint << ' ' << prev_crosspoint << ' ' << linelen << ' ' << count << ' ' << valid << endl;
 
 				if (!valid) {
 					cerr << "X " << line << ' ' << crosspoint - prev_crosspoint << ' ' << count << endl;
@@ -573,7 +573,6 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 					prev_linelen = ntsc_ipline;					
 				} else if (((line == -1) || (line >= 525)) && (linelen > (225 * in_freq)) && InRangeCF(count, 5, 14)) {
 					if (!first) {
-						cerr << "writing full frame\n";
 						write(1, frame, sizeof(frame));
 						memset(frame, 0, sizeof(frame));
 					} else {
@@ -598,7 +597,6 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 
 				if (write_fields && line == 268) {
 					if (!first) {
-						cerr << "writing half frame\n";
 						write(1, frame, sizeof(frame));
 						memset(frame, 0, sizeof(frame));
 					} else first = false;
@@ -685,7 +683,7 @@ void autoset(uint16_t *buf, int len, bool fullagc = true)
 //		cerr << i << ' ' << buf[i] << ' ' << f[i] << ' ' << low << ':' << high << endl;
 	}
 
-	cerr << lowloc << ' ' << low << ':' << high << endl;
+//	cerr << lowloc << ' ' << low << ':' << high << endl;
 
 	// phase 2: attempt to figure out the 0IRE porch near the sync
 
@@ -837,7 +835,7 @@ int main(int argc, char *argv[])
 		}	
 		
 		if (afd != -1) {	
-			cerr << "X" << aplen << ' ' << (double)(ablen - (aplen * 4))/4.0 << ' ' << abuf[0] << ' ' ;
+//			cerr << "AX " << absize << ' ' << aplen * 4 << ' ' << (double)(absize - (aplen * 4)) << ' ' << abuf[0] << ' ' ;
 			memmove(abuf, &abuf[aplen], absize - (aplen * 4));
 			cerr << abuf[0] << endl;
 
