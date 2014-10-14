@@ -150,40 +150,6 @@ class Comb
 		Filter *f_hpy, *f_hpi, *f_hpq;
 		Filter *f_hpvy, *f_hpvi, *f_hpvq;
 
-		cline_t Blend(cline_t &prev, cline_t &cur, cline_t &next, bool debug = false) {
-			cline_t cur_combed;
-
-			for (int h = 0; h < 844; h++) {
-				cur_combed.p[h] = cur.p[h];
-
-//				if (debug) cerr << h << ' ' << prev.p[h].i << ' ' << cur.p[h].i << ' ' << next.p[h].i;
-//				if (debug) cerr << ' ' << prev.p[h].q << ' ' << cur.p[h].q << ' ' << next.p[h].q << endl;
-
-				cur_combed.p[h].i = (cur.p[h].i / 2.0) + (prev.p[h].i / 4.0) + (next.p[h].i / 4.0);
-				cur_combed.p[h].q = (cur.p[h].q / 2.0) + (prev.p[h].q / 4.0) + (next.p[h].q / 4.0);
-			}
-
-			return cur_combed;
-		}
-		
-		cline_t Blend3D(cline_t &prev, cline_t &cur, cline_t &next, bool debug = false) {
-			cline_t cur_combed;
-
-			for (int h = 0; h < 844; h++) {
-				cur_combed.p[h] = cur.p[h];
-
-				if (debug) cerr << h << ' ' << prev.p[h].i << ' ' << cur.p[h].i << ' ' << next.p[h].i;
-				if (debug) cerr << ' ' << prev.p[h].q << ' ' << cur.p[h].q << ' ' << next.p[h].q << endl;
-
-				cur_combed.p[h].i = (cur.p[h].i / 2.0) + (prev.p[h].i / 4.0) + (next.p[h].i / 4.0);
-				cur_combed.p[h].q = (cur.p[h].q / 2.0) + (prev.p[h].q / 4.0) + (next.p[h].q / 4.0);
-				
-				if (debug) cerr << cur_combed.p[h].i << ' ' << cur_combed.p[h].q << endl;
-			}
-
-			return cur_combed;
-		}
-	
 		void LPFrame(int fnum)
 		{
 			for (int l = 24; l < 505; l++) {
@@ -244,7 +210,7 @@ class Comb
 						k = fabs(LPraw[1][adr] - LPraw[0][adr]) + fabs(LPraw[1][adr] - LPraw[2][adr]);
 						k /= irescale;
 						v[2] = clamp(1 - ((k - 0) / 5), 0, 1);
-						if (l == 100) cerr << "T3 " << h << ' ' << c[2] << ' ' << d[2] << ' ' << v[2] << ' ' << k << endl;
+//						if (l == 100) cerr << "T3 " << h << ' ' << c[2] << ' ' << d[2] << ' ' << v[2] << ' ' << k << endl;
 					} else {
 						c[2] = d[2] = v[2] = 0;
 					}
@@ -259,7 +225,7 @@ class Comb
 						k = fabs(LPraw[1][adr] - LPraw[1][adr - 844]) + fabs(LPraw[1][adr] - LPraw[1][adr + 844]);
 						k /= irescale;
 						v[1] = clamp(1 - (k / 8), 0, 1);
-						if (l == 100) cerr << "T2 " << h << ' ' << c[1] << ' ' << d[1] << ' ' << v[1] << ' ' << k << endl;
+//						if (l == 100) cerr << "T2 " << h << ' ' << c[1] << ' ' << d[1] << ' ' << v[1] << ' ' << k << endl;
 					} else {
 						c[1] = d[1] = v[1] = 0;
 					}
@@ -286,7 +252,7 @@ class Comb
 
 					double vtot = v[0] + v[1] + v[2];
 					double cavg = 0, cavg0 = 0, cavg1 = 0,ctot = 0;
-					if (1 && ((l == 100) || (l == 50)) && (h % 2)) {
+					if (0 && ((l == 100) || (l == 50)) && (h % 2)) {
 						cerr << "1 " << h - 70 << ' ' << line[h] << ' ' << line[h - 2] << ' ' << line[h + 2] << ' ' << c[0] << ' ' << d[0] << ' ' << v[0] << ' ' << cavg0 << endl;
 						cerr << "2 " << h - 70 << ' ' << line[h] << ' ' << p2line[h] << ' ' << n2line[h] << ' ' << c[1] << ' ' << d[1] << ' ' << v[1] << ' ' << cavg1 << endl;
 						cerr << "3 " << h - 70 << ' ' << line[h] << ' ' << p3line[h] << ' ' << n3line[h] << ' ' << c[2] << ' ' << d[2] << ' ' << v[2] << ' ' << cavg << endl;
@@ -353,7 +319,7 @@ class Comb
 						cavg = (c[1] + c[0]) / 2;
 					}
 */
-					if (1 && ((l == 100) || (l == 50)) && (h % 2)) {
+					if (0 && ((l == 100) || (l == 50)) && (h % 2)) {
 						cerr << 'a' << h - 70 << ' ' << line[h] << ' ' << c[0] << ' ' << d[0] << ' ' << v[0] << ' ' << cavg0 << endl;
 						cerr << 'b' << h - 70 << ' ' << line[h] << ' ' << c[1] << ' ' << d[1] << ' ' << v[1] << ' ' << cavg1 << endl;
 						cerr << 'c' << h - 70 << ' ' << line[h] << ' ' << c[2] << ' ' << d[2] << ' ' << v[2] << ' ' << cavg << endl;
@@ -586,7 +552,7 @@ class Comb
 				write(ofd, obuf, (744 * linesout * 3));
 				close(ofd);
 			}
-			exit(0);
+//			exit(0);
 		}
 		
 		// buffer: 844x505 uint16_t array
@@ -702,14 +668,14 @@ class Comb
 				if (wc > 500) {
 					fstart = (line % 2); 
 				}
-				cerr << "PW" << fnum << ' ' << line << ' ' << wc << ' ' << fieldcount << endl;
+				//cerr << "PW" << fnum << ' ' << line << ' ' << wc << ' ' << fieldcount << endl;
 			}
 
 			for (int line = 16; line < 20; line++) {
 				int new_framecode = ReadPhillipsCode(&rawbuffer[fnum][line * 844]); // - 0xf80000;
 				int fca = new_framecode & 0xf80000;
 
-				cerr << "c" << line << ' ' << hex << ' ' <<  new_framecode << ' ' << fca << ' ' << dec << endl;
+				//cerr << "c" << line << ' ' << hex << ' ' <<  new_framecode << ' ' << fca << ' ' << dec << endl;
 
 				if (((new_framecode & 0xf00000) == 0xf00000) && (new_framecode < 0xff0000)) {
 					int ofstart = fstart;
