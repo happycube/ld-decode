@@ -344,7 +344,7 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line)
 
 		adjlen = (end - begin) / (scale_tgt / ntsc_opline);
 					
-//		cerr << line << " " << pass << ' ' << begin << ' ' << (begin + adjlen) << '/' << end  << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
+		cerr << line << " " << pass << ' ' << begin << ' ' << (begin + adjlen) << '/' << end  << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
 	}
 
 wrapup:
@@ -393,6 +393,11 @@ wrapup:
 	return begin + adjlen;
 }
 
+bool IsRegLine(double line)
+{
+	return ((line >= 10) && (line <= 262)) || ((line >= 272) && (line <= 524));
+}
+
 bool IsABlank(double line, double start, double len)
 {
 	bool isHalf = false;
@@ -401,7 +406,7 @@ bool IsABlank(double line, double start, double len)
 	double half = 227.5 * in_freq / 2;
 	double full = 227.5 * in_freq;
 
-	if ((line == 525) || (line < 11) || ((line >= 262.4) && (line <= 273))) {
+	if ((line >= 520) || (line < 11) || ((line >= 260.0) && (line <= 273))) {
 //		cerr << "halfline\n";
 		isHalf = true;
 	}
@@ -459,7 +464,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 				
 				valid = IsABlank(line, crosspoint - prev_crosspoint, count); 
 
-//				cerr << "S " << line << ' ' << oline << ' ' << i << ' ' << crosspoint << ' ' << prev_crosspoint << ' ' << linelen << ' ' << count << ' ' << valid << endl;
+				cerr << "S " << line << ' ' << oline << ' ' << i << ' ' << crosspoint << ' ' << prev_crosspoint << ' ' << linelen << ' ' << count << ' ' << valid << endl;
 
 				if (!valid) {
 					cerr << "X " << line << ' ' << crosspoint - prev_crosspoint << ' ' << count << endl;
@@ -473,8 +478,11 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 				double algap = fabs(linelen - prev_linelen);
 				int acgap = abs(count - prev_count);	
 				bool eed = false;
+
+				cerr << "algap " << algap << " acgap " << acgap << endl; 
 	
-				if (prev_count && (get_oline(line - 1) >= 0) && (get_oline(line) >= 0) && (get_oline(line + 1) >= 0) && (InRangeCF(algap, .5, 12.5) || InRangeCF(acgap, .8, 12.5))) {
+				//if (prev_count && (get_oline(line - 1) >= 0) && (get_oline(line) >= 0) && (get_oline(line + 1) >= 0) && (InRangeCF(algap, .5, 12.5) || InRangeCF(acgap, .8, 12.5))) {
+				if (prev_count && IsRegLine(line) && (InRangeCF(algap, .5, 100) || InRangeCF(acgap, .8, 100))) {
 					cerr << "E " << begin << ' ' << crosspoint << ' ' << end << ' ' << linelen << ' ' << prev_linelen << ' ' << prev_count << ' ' << count << endl;
 
 					eed = true;
