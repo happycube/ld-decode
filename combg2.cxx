@@ -88,18 +88,18 @@ struct RGB {
                 r = y + (1.13983 * q);
                 g = y - (0.58060 * q) - (i * 0.39465);
                 b = y + (i * 2.032);
-#if 1
+#if 0
 		double m = brightness / 100;
 
                 r = clamp(r * m, 0, 255);
                 g = clamp(g * m, 0, 255);
                 b = clamp(b * m, 0, 255);
 #else
-		double m = 2.24;
+		double m = brightness * 256 / 100;
 
-                r = clamp(r * m, -16, 224) + 16;
-                g = clamp(g * m, -16, 224) + 16;
-                b = clamp(b * m, -16, 224) + 16;
+                r = clamp(r * m, 0, 65535);
+                g = clamp(g * m, 0, 65535);
+                b = clamp(b * m, 0, 65535);
 #endif
                 //cerr << 'y' << y.y << " i" << y.i << " q" << y.q << ' ';
      };
@@ -136,8 +136,8 @@ class Comb
 	
 		uint16_t frame[1820 * 530];
 
-		uint8_t output[744 * 505 * 3];
-		uint8_t obuf[744 * 505 * 3];
+		uint16_t output[744 * 505 * 3];
+		uint16_t obuf[744 * 505 * 3];
 
 		uint16_t rawbuffer[3][844 * 505];
 		double LPraw[3][844 * 505];
@@ -154,7 +154,7 @@ class Comb
 		{
 			for (int l = 24; l < 505; l++) {
 				for (int h = 32; h < 844; h++) {
-					LPraw[fnum][(l * 844) + h - 16] = f_lpf05h.feed(rawbuffer[fnum][(l * 844) + h]);
+					LPraw[fnum][(l * 844) + h - 16] = f_lpf10h.feed(rawbuffer[fnum][(l * 844) + h]);
 				}
 			}
 		}
@@ -539,17 +539,17 @@ class Comb
 			f_hpvq = new Filter(f_nrc);
 		}
 
-		void WriteFrame(uint8_t *obuf, int fnum = 0) {
+		void WriteFrame(uint16_t *obuf, int fnum = 0) {
 			cerr << "WR" << fnum << endl;
 			if (!image_mode) {
-				write(ofd, obuf, (744 * linesout * 3));
+				write(ofd, obuf, (744 * linesout * 3) * 2);
 			} else {
 				char ofname[512];
 
 				sprintf(ofname, "%s%d.rgb", image_base, fnum); 
 				cerr << "W " << ofname << endl;
 				ofd = open(ofname, O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR | S_IROTH);
-				write(ofd, obuf, (744 * linesout * 3));
+				write(ofd, obuf, (744 * linesout * 3) * 2);
 				close(ofd);
 			}
 //			exit(0);
@@ -613,7 +613,7 @@ class Comb
 		
 			// YIQ (YUV?) -> RGB conversion	
 			for (int l = firstline; l < 505; l++) {
-				uint8_t *line_output = &output[(744 * 3 * (l - firstline))];
+				uint16_t *line_output = &output[(744 * 3 * (l - firstline))];
 				int o = 0;
 				for (int h = 0; h < 752; h++) {
 					RGB r;
@@ -635,9 +635,9 @@ class Comb
                                                cerr << r.r << ' ' << r.g << ' ' << r.b << endl;
                                        }
 
-					line_output[o++] = (uint8_t)(r.r); 
-					line_output[o++] = (uint8_t)(r.g); 
-					line_output[o++] = (uint8_t)(r.b); 
+					line_output[o++] = (uint16_t)(r.r); 
+					line_output[o++] = (uint16_t)(r.g); 
+					line_output[o++] = (uint16_t)(r.b); 
 				}
 			}
 
@@ -654,7 +654,7 @@ class Comb
 				fstart = 0;
 			} else if (f_oddframe) {
 				for (int i = 0; i < linesout; i += 2) {
-					memcpy(&obuf[744 * 3 * i], &output[744 * 3 * i], 744 * 3); 
+					memcpy(&obuf[744 * 3 * i], &output[744 * 3 * i], 744 * 3 * 2); 
 				}
 				WriteFrame(obuf, framecode);
 				f_oddframe = false;		
@@ -703,7 +703,7 @@ class Comb
 				WriteFrame(output, framecode);
 			} else if (fstart == 1) {
 				for (int i = 1; i < linesout; i += 2) {
-					memcpy(&obuf[744 * 3 * i], &output[744 * 3 * i], 744 * 3); 
+					memcpy(&obuf[744 * 3 * i], &output[744 * 3 * i], 744 * 3 * 2); 
 				}
 //				memcpy(obuf, output, sizeof(output));
 				f_oddframe = true;

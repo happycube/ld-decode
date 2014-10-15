@@ -252,7 +252,7 @@ void ProcessAudioSample(float left, float right, double vel)
 	left = f_fml.feed(left);
 	left += 32768;
 	
-	if (!InRange(right, 2650000, 2960000)) right = pright;
+	if (!InRange(right, 2661000, 2961200)) right = pright;
 	pright = right;
 	right -= 2812499;
 	right *= (65535.0 / 300000.0);
