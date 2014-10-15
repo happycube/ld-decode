@@ -1,4 +1,4 @@
-#!/usr/bin/python2
+#!/usr/bin/python
 import numpy as np
 import scipy as sp
 import scipy.signal as sps
@@ -13,7 +13,7 @@ import getopt
 
 freq = (315.0 / 88.0) * 8.0
 freq_hz = freq * 1000000.0
-blocklen = (128 * 1024) 
+blocklen = (16 * 1024) 
 
 def dosplot(B, A):
 	w, h = sps.freqz(B, A)
@@ -69,14 +69,14 @@ def doplot2(B, A, C, B2, A2, C2):
 
 	v = np.empty(len(w))
 	
-	print len(w)
+#	print len(w)
 
 	hm = np.absolute(h)
 	hm2 = np.absolute(h2)
 
 	v0 = hm[0] / hm2[0]
 	for i in range(0, len(w)):
-		print i, freq / 2 * (w[i] / np.pi), hm[i], hm2[i], hm[i] / hm2[i], (hm[i] / hm2[i]) / v0
+#		print i, freq / 2 * (w[i] / np.pi), hm[i], hm2[i], hm[i] / hm2[i], (hm[i] / hm2[i]) / v0
 		v[i] = (hm[i] / hm2[i]) / v0
 
 	fig = plt.figure()
@@ -133,7 +133,16 @@ for f in range(0, n):
 #dosplot(Bboost, Aboost)
 #exit()
 
-lowpass_filter = sps.firwin(31, 5.2 / (freq / 2), window='hamming')
+#lowpass_filter_b = sps.firwin(25, 5.4 / (freq / 2)) #, window='hamming')
+lowpass_filter_a = [1.0]
+lowpass_filter_b = sps.firwin(31, 5.2 / (freq / 2)) #, window='hamming')
+
+N, Wn = sps.cheb1ord(4.2/(freq/2), 5.0/(freq/2), 1, 10)
+#lowpass_filter_b, lowpass_filter_a = sps.cheby1(N, 1, Wn, 'low')
+
+#print N, Wn
+#doplot(lowpass_filter_b, lowpass_filter_a)
+#exit()
 
 # XXX: this bilinear filter *should* be mostly accurate deemphasis, but it's unstable.  
 # reversing the angle stabilizes it, which FDLS can do.
@@ -187,8 +196,8 @@ for i in range(0, len(Fr)):
 #doplot2(f_deempc_b, f_deempc_a, 1.0, f_deemp_b, f_deemp_a, 1.0)
 #exit()
 
-deemp_corr = 1
-deemp_corr = .496 
+#deemp_corr = 1
+deemp_corr = .499 
 
 # audio filters
 Baudiorf = sps.firwin(65, 3.5 / (freq / 2), window='hamming', pass_zero=True)
@@ -201,7 +210,7 @@ rightbp_filter = sps.firwin(97, [2.65/(afreq/2), 2.95/(afreq/2)], window='hammin
 audiolp_filter = sps.firwin(513, .05 / (afreq / 2), window='hamming')
 #audiolp_filter = sps.firwin(129, .004 / (afreq / 2), window='hamming')
 
-def fm_decode(in_filt, lowpass_filter, freq_hz):
+def fm_decode(in_filt, freq_hz):
 	hilbert = sps.hilbert(in_filt)
 
 	# the hilbert transform has errors at the edges.  but it doesn't seem to matter much IRL
@@ -219,7 +228,7 @@ def fm_decode(in_filt, lowpass_filter, freq_hz):
 	
 	tdangles2 = np.unwrap(dangles) 
 	
-	output = (tdangles2 * (freq_hz / (np.pi * 2)))[len(lowpass_filter):len(tdangles2)]
+	output = (tdangles2 * (freq_hz / (np.pi * 2)))
 
 	errcount = 1
 	while errcount > 0:
@@ -252,11 +261,11 @@ def process_video(data):
 	# perform general bandpass filtering
 	in_filt = sps.lfilter(Bboost, Aboost, data)
 
-	output = fm_decode(in_filt, lowpass_filter, freq_hz) 
+	output = fm_decode(in_filt, freq_hz) 
 
-	output = sps.lfilter(lowpass_filter, [1.0], output)[len(lowpass_filter):]
+	output = sps.lfilter(lowpass_filter_b, lowpass_filter_a, output)[len(lowpass_filter_b):]
 
-	doutput = (sps.lfilter(f_deemp_b, f_deemp_a, output)[128:len(output)]) / deemp_corr
+	doutput = (sps.lfilter(f_deemp_b, f_deemp_a, output)[64:len(output)]) / deemp_corr
 	
 	output_16 = np.empty(len(doutput), dtype=np.uint16)
 	reduced = (doutput - minn) / hz_ire_scale
@@ -267,7 +276,7 @@ def process_video(data):
 
 # graph for debug
 #	output = (sps.lfilter(f_deemp_b, f_deemp_a, output)[128:len(output)]) / deemp_corr
-	print output
+#	print output
 
 	plt.plot(range(0, len(output)), output)
 #	plt.ylim([7500000,9500000])
@@ -360,10 +369,11 @@ def main():
 #			for i in range(0, osamp):
 #				print i, output[i * 2], output[(i * 2) + 1]
 
-			outfile.write(output)
+#			outfile.write(output)
 			nread = osamp * 20 * 4
 		else:
 			output_16 = process_video(indata)
+#			output_16.tofile(outfile)
 			outfile.write(output_16)
 			nread = len(output_16)
 
