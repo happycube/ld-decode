@@ -398,7 +398,7 @@ wrapup:
 
 bool IsRegLine(double line)
 {
-	return ((line >= 10) && (line <= 262)) || ((line >= 272) && (line <= 524));
+	return ((line >= 11) && (line <= 262)) || ((line >= 273) && (line <= 524));
 }
 
 bool IsABlank(double line, double start, double len)
@@ -854,7 +854,7 @@ int main(int argc, char *argv[])
 			arv = (absize - (aplen * 4));
 //                	arv = read(afd, &abuf[ablen - aplen], aplen * 4) + (absize - (aplen * 4));
 			while (arv < absize) {
-				usleep(100000);
+//				usleep(100000);
 				int arv2 = read(afd, &cabuf[arv], absize - arv);
 				if (arv2 <= 0) exit(0);
 				arv += arv2;
