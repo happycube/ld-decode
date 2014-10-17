@@ -243,16 +243,19 @@ void ProcessAudioSample(float left, float right, double vel)
 	left *= scale;
 	right *= scale;
 	
-	cerr << right - 2812499 << endl; 
+	//cerr << left - 2301136 << ' ' << right - 2812499 << ' ' ; 
+	cerr << "A " << left << ' ' << right << ' ' ; 
 
-	if (!InRange(left, 2150000, 2450000)) left = pleft;
+	if (!InRange(left, 2100000, 2500000)) left = pleft;
+	cerr << left  ; 
 	pleft = left;
 	left -= 2301136;
 	left *= (65535.0 / 300000.0);
 	left = f_fml.feed(left);
 	left += 32768;
 	
-	if (!InRange(right, 2661000, 2961200)) right = pright;
+	if (!InRange(right, 2601000, 3011200)) right = pright;
+	cerr << ' ' << right << endl ; 
 	pright = right;
 	right -= 2812499;
 	right *= (65535.0 / 300000.0);
@@ -614,6 +617,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 				if ((afd > 0) && (line > 0)) {
 					double nomlen = InRangeCF(linelen, 105, 120) ? ntsc_iphline : ntsc_ipline;
 					double scale = adj_linelen / nomlen;
+					//double scale = linelen / nomlen;
 					
 					if (a_next < 0) a_next = prev_crosspoint / va_ratio;
 						
@@ -847,12 +851,16 @@ int main(int argc, char *argv[])
 			memmove(abuf, &abuf[aplen], absize - (aplen * 4));
 			cerr << abuf[0] << endl;
 
-                	arv = read(afd, &abuf[ablen - aplen], aplen * 4) + (absize - (aplen * 4));
-			while ((arv > 0) && (arv < absize)) {
+			arv = (absize - (aplen * 4));
+//                	arv = read(afd, &abuf[ablen - aplen], aplen * 4) + (absize - (aplen * 4));
+			while (arv < absize) {
+				usleep(100000);
 				int arv2 = read(afd, &cabuf[arv], absize - arv);
 				if (arv2 <= 0) exit(0);
 				arv += arv2;
 			}
+
+			if (arv == 0) exit(0);
 		}
 	}
 
