@@ -120,18 +120,18 @@ for f in range(0, n):
 	#if (cf > 13.8):
 	#	Am[f] = 0
 	if (cf > 7.0):
-		Am[f] = 1  + ((cf - 7.0) / 30) 
+		Am[f] = 1 + ((cf - 7.0) / 30) 
 		# CLV
 #		Am[f] = 1 + ((cf - 7.0) / 8.5) 
-	elif (cf > 3.7):
+	elif (cf > 3.9):
 		Am[f] = 1 
-	elif (cf > 3.2):
-		Am[f] = 1 - ((3.7 - cf) * 2)
+	elif (cf > 2.9):
+		Am[f] = 1 * ((cf - 2.9) * 1)
 	else:
 		Am[f] = 0
 
 	Fr[f] = float(f) / 256.0
-	Th[f] = -(Fr[f] * 42) 
+	Th[f] = -(Fr[f] * 40) 
 
 [Bboost, Aboost] = fdls.FDLS(Fr, Am, Th, 8, 8, 0)
 #doplot(Bboost, Aboost)
