@@ -15,6 +15,8 @@ bool bw_mode = false;
 
 bool cwide_mode = false;
 
+bool f_oneframe = false;
+
 // NTSC properties
 const double freq = 4.0;
 const double hlen = 227.5 * freq; 
@@ -57,6 +59,26 @@ struct YIQ {
         YIQ(double _y = 0.0, double _i = 0.0, double _q = 0.0) {
                 y = _y; i = _i; q = _q;
         };
+
+	YIQ operator*=(double x) {
+		YIQ o;
+
+		o.y = this->y * x;
+		o.i = this->i * x;
+		o.q = this->q * x;
+
+		return o;
+	}
+	
+	YIQ operator+=(YIQ p) {
+		YIQ o;
+
+		o.y = this->y + p.y;
+		o.i = this->i + p.i;
+		o.q = this->q + p.q;
+
+		return o;
+	}
 };
 
 double clamp(double v, double low, double high)
@@ -141,9 +163,11 @@ class Comb
 
 		uint16_t rawbuffer[3][844 * 505];
 		double LPraw[3][844 * 505];
+		double K3D[844 * 505];
 
 		cline_t wbuf[3][525];
 		cline_t cbuf[525];
+		cline_t prevbuf[525];
 		Filter *f_i, *f_q;
 		Filter *f_wi, *f_wq;
 
@@ -209,11 +233,13 @@ class Comb
 						v[2] = c[2] ? 1 - clamp((fabs(d[2]) / fabs(c[2])) * 2, 0, 1) : 0;
 						k = fabs(LPraw[1][adr] - LPraw[0][adr]) + fabs(LPraw[1][adr] - LPraw[2][adr]);
 						k /= irescale;
-						v[2] = clamp(1 - ((k - 0) / 5), 0, 1);
+						v[2] = clamp(1 - ((k - 0) / 8), 0, 1);
 //						if (l == 100) cerr << "T3 " << h << ' ' << c[2] << ' ' << d[2] << ' ' << v[2] << ' ' << k << endl;
 					} else {
 						c[2] = d[2] = v[2] = 0;
 					}
+
+					K3D[adr] = v[2];
 
 					// 2D filtering - can't do the ends
 					if (1 && (dim >= 2) && (l >= 2) && (l <= 502)) {
@@ -224,7 +250,7 @@ class Comb
 						v[1] = c[1] ? 1 - clamp((fabs(d[1]) / fabs(c[1])) * 1.5, 0, 1) : 0;
 						k = fabs(LPraw[1][adr] - LPraw[1][adr - 844]) + fabs(LPraw[1][adr] - LPraw[1][adr + 844]);
 						k /= irescale;
-						v[1] = clamp(1 - (k / 8), 0, 1);
+						v[1] = clamp(1 - (k / 10), 0, 1);
 //						if (l == 100) cerr << "T2 " << h << ' ' << c[1] << ' ' << d[1] << ' ' << v[1] << ' ' << k << endl;
 					} else {
 						c[1] = d[1] = v[1] = 0;
@@ -327,15 +353,6 @@ class Comb
 
 					cavg /= 2;
 					if (!invertphase) cavg = -cavg;
-				/*	
-					switch (phase) {
-						case 0: si = f_i->feed(cavg); break;
-						case 1: sq = f_q->feed(-cavg); break;
-						case 2: si = f_i->feed(-cavg); break;
-						case 3: sq = f_q->feed(cavg); break;
-						default: break;
-					}
-*/
 
 					switch (phase) {
 						case 0: si = cavg; break;
@@ -345,7 +362,6 @@ class Comb
 						default: break;
 					}
 
-
 					cbuf[l].p[h].y = line[h]; 
 					cbuf[l].p[h].i = si;  
 					cbuf[l].p[h].q = sq; 
@@ -353,13 +369,16 @@ class Comb
 
 				for (int h = 4; 1 && h < 840; h++) {
 					if (cwide_mode) {
-						cbuf[l].p[h - 8].i = bw_mode ? 0 : f_wi->feed(cbuf[l].p[h].i); 
-						cbuf[l].p[h - 8].q = bw_mode ? 0 : f_wq->feed(cbuf[l].p[h].q); 
+						cbuf[l].p[h - 5].i = bw_mode ? 0 : f_wi->feed(cbuf[l].p[h].i); 
+						cbuf[l].p[h - 5].q = bw_mode ? 0 : f_wq->feed(cbuf[l].p[h].q); 
+						//cbuf[l].p[h].i = bw_mode ? 0 : cbuf[l].p[h].i; 
+						//cbuf[l].p[h].q = bw_mode ? 0 : cbuf[l].p[h].q; 
 					} else {
 						cbuf[l].p[h - 8].i = bw_mode ? 0 : f_i->feed(cbuf[l].p[h].i); 
 						cbuf[l].p[h - 8].q = bw_mode ? 0 : f_q->feed(cbuf[l].p[h].q); 
 					}	
 				}	
+
 			}
 		}
 					
@@ -396,38 +415,6 @@ class Comb
 					}
 				}
 			}
-#if 0
-			for (int p = 0; p < 2; p++) {
-				// part 2: vertical
-				for (int x = 70; x < 744 + 70; x++) {
-					YIQ hpline[505 + 16];
-
-					for (int l = p; l < 505 + 16; l+=2) {
-						int rl = (l < 505) ? l + p: 502 + p;
-
-						YIQ y = wbuf[fnum][rl].p[x];
-						hpline[l].i = f_hpvi->feed(y.i);
-						hpline[l].q = f_hpvq->feed(y.q);
-					}
-				
-					for (int l = p; l < 505; l+=2) {
-						YIQ a = hpline[l + 16];
-					
-						if (fabs(a.i) < nr_c) {
-							double hpm = (a.i / nr_c);
-							a.i *= (1 - fabs(hpm * hpm * hpm));
-							wbuf[fnum][l].p[x].i -= a.i;
-						}
-					
-						if (fabs(a.q) < nr_c) {
-							double hpm = (a.q / nr_c);
-							a.q *= (1 - fabs(hpm * hpm * hpm));
-							wbuf[fnum][l].p[x].q -= a.q;
-						}
-					}
-				}
-			}
-#endif
 		}
 		
 		void DoYNR() {
@@ -453,32 +440,6 @@ class Comb
 					}
 				}
 			}
-#if 0 // 2D YNR really doesn't work well yet, if ever
-			if (!pulldown_mode) return;
-
-			// part 2: vertical
-			for (int x = 70; x < 744 + 70; x++) {
-				YIQ hpline[505 + 16];
-
-				for (int l = 0; l < 505 + 16; l++) {
-					int rl = (l < 505) ? l : 504;
-
-					YIQ y = wbuf[fnum][rl].p[x];
-					hpline[l].y = f_hpvy->feed(y.y);
-				}
-			
-				for (int l = 0; l < 505; l++) {
-					YIQ *y = &wbuf[fnum][l].p[x];
-					YIQ a = hpline[l + 8];
-				
-					if (fabs(a.y) < _nr_y) {
-						double hpm = (a.y / _nr_y);
-						a.i *= (1 - fabs(hpm * hpm * hpm));
-						wbuf[fnum][l].p[x].y -= a.y;
-					}
-				}
-			}
-#endif
 		}
 		
 		uint32_t ReadPhillipsCode(uint16_t *line) {
@@ -552,7 +513,7 @@ class Comb
 				write(ofd, obuf, (744 * linesout * 3) * 2);
 				close(ofd);
 			}
-//			exit(0);
+			if (f_oneframe) exit(0);
 		}
 		
 		// buffer: 844x505 uint16_t array
@@ -572,7 +533,9 @@ class Comb
 			
 			memcpy(LPraw[2], LPraw[1], (844 * 505 * sizeof(double)));
 			memcpy(LPraw[1], LPraw[0], (844 * 505 * sizeof(double)));
-
+		
+			memcpy(prevbuf, cbuf, sizeof(cbuf));
+	
 			LPFrame(0);
 		
 			if ((dim == 3) && (framecount < 2)) {
@@ -617,13 +580,39 @@ class Comb
 				int o = 0;
 				for (int h = 0; h < 752; h++) {
 					RGB r;
-					
-					r.conv(cbuf[l].p[h + 70]);
+					YIQ yiq = cbuf[l].p[h + 70];
 
-                                       if (0 && l == 50) {
-                                               double y = u16_to_ire(wbuf[f][l].p[h + 70].y);
-                                               double i = (wbuf[f][l].p[h + 70].i) * (160.0 / 65533.0);
-                                               double q = (wbuf[f][l].p[h + 70].q) * (160.0 / 65533.0);
+					if (0 && framecount > 2) {
+	
+						double k = K3D[(l * 844) + (h + 70)] * .5; 
+
+						// XXX: fix operator override
+
+//						yiq *= (1 - k);
+						yiq.y *= (1 - k);
+						yiq.i *= (1 - k);
+						yiq.q *= (1 - k);
+						yiq.y += (prevbuf[l].p[h + 70].y * k);
+						yiq.i += (prevbuf[l].p[h + 70].i * k);
+						yiq.q += (prevbuf[l].p[h + 70].q * k);
+					}
+	
+					// for debug: display difference areas	
+					if (0) {
+						int adr = (l * 844) + (h + 70);
+               	                                 double k = fabs(LPraw[1][adr] - LPraw[0][adr]) + fabs(LPraw[1][adr] - LPraw[2][adr]);
+//            	                                   k /= irescale;
+//						cerr << k << ' ' << yiq.y << endl;
+						yiq.y = k;
+						yiq.i = yiq.q = 0;
+					}
+	
+					r.conv(yiq);
+	
+      	                                if (1 && l == 475) {
+                                               double y = u16_to_ire(yiq.y);
+                                               double i = (yiq.i) * (160.0 / 65533.0);
+                                               double q = (yiq.q) * (160.0 / 65533.0);
 
                                                double m = ctor(q, i);
                                                double a = atan2(q, i);
@@ -631,7 +620,8 @@ class Comb
                                                a *= (180 / M_PIl);
                                                if (a < 0) a += 360;
 
-                                               cerr << h << ' ' << y << ' ' << i << ' ' << q << ' ' << m << ' ' << a << ' '; 
+						double k = K3D[(l * 844) + (h + 70)] * .5; 
+                                               cerr << h << ' ' << k << ' ' << y << ' ' << i << ' ' << q << ' ' << m << ' ' << a << ' '; 
                                                cerr << r.r << ' ' << r.g << ' ' << r.b << endl;
                                        }
 
@@ -743,10 +733,13 @@ int main(int argc, char *argv[])
 
 	opterr = 0;
 	
-	while ((c = getopt(argc, argv, "wvd:Bb:I:w:i:o:fphn:N:")) != -1) {
+	while ((c = getopt(argc, argv, "Owvd:Bb:I:w:i:o:fphn:N:")) != -1) {
 		switch (c) {
 			case 'd':
 				sscanf(optarg, "%d", &dim);
+				break;
+			case 'O':
+				f_oneframe = true;
 				break;
 			case 'v':
 				linesout = 505;
