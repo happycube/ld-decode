@@ -114,37 +114,30 @@ Th = np.zeros(n)
 
 for f in range(0, n):
 	cf = freq * (float(f) / 256.0)
-     
-	if (cf > 13.8):
-		Am[f] = 0
-	if (cf > 6.0):
-		Am[f] = 1 + ((cf - 6.0) / 20) 
-	elif (cf > 4.0):
+    
+	Am[f] = 1
+ 
+	#if (cf > 13.8):
+	#	Am[f] = 0
+	if (cf > 7.0):
+		Am[f] = 1 + ((cf - 7.0) / 30) 
+		# CLV
+#		Am[f] = 1 + ((cf - 7.0) / 8.5) 
+	elif (cf > 3.9):
 		Am[f] = 1 
-	elif (cf > 3.0):
-		Am[f] = 1 * (cf - 3.0)
+	elif (cf > 2.9):
+		Am[f] = 1 * ((cf - 2.9) * 1)
 	else:
 		Am[f] = 0
 
 	Fr[f] = float(f) / 256.0
-	Th[f] = -(Fr[f] * 42) 
+	Th[f] = -(Fr[f] * 40) 
 
-[Bboost, Aboost] = fdls.FDLS(Fr, Am, Th, 16, 8, 0)
-#dosplot(Bboost, Aboost)
+[Bboost, Aboost] = fdls.FDLS(Fr, Am, Th, 8, 8, 0)
+#doplot(Bboost, Aboost)
 #exit()
-
-#lowpass_filter_b = sps.firwin(25, 5.4 / (freq / 2)) #, window='hamming')
-lowpass_filter_a = [1.0]
-lowpass_filter_b = sps.firwin(33, 5.2 / (freq / 2)) #, window='hamming')
-
-#N, Wn = sps.cheb1ord(4.2/(freq/2), 5.0/(freq/2), 1, 10)
-#lowpass_filter_b, lowpass_filter_a = sps.cheby1(N, 1, Wn, 'low')
 
 lowpass_filter_b, lowpass_filter_a = sps.butter(6, (4.5/(freq/2)), 'low')
-
-#print N, Wn
-#dosplot(lowpass_filter_b, lowpass_filter_a)
-#exit()
 
 # XXX: this bilinear filter *should* be mostly accurate deemphasis, but it's unstable.  
 # reversing the angle stabilizes it, which FDLS can do.
