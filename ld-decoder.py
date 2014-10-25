@@ -160,11 +160,14 @@ Am = np.absolute(h)/1.0
 Ndeemp = 1 
 Ddeemp = 1
 for i in range(0, len(w)):
+	# compensate for off scaled bilinear curve - drops to 0.33 when it needs to be exponentially based 
+	# adj = (1/3)/((10^.5)/10)
+	Am[i] = 1.0 - ((1.0 - Am[i]) * 1.054092553389460) 
 	Th[i] = -(Th1[i] * 1.0) 
 
 [f_deemp_b, f_deemp_a] = fdls.FDLS(w, Am, Th, Ndeemp, Ddeemp, 0)
-#doplot2(f_deemp_b, f_deemp_a, 1.0, f_deemp_bil_b, f_deemp_bil_a, 1.0)
-#exit()
+# sqrt of adjustment above
+deemp_corr = 1.026690096080341 
 
 # This version shouldn't work at all (uses just the real angle from the bilinear,
 # computes the angle very oddly!), but it fits the current data well.
@@ -190,14 +193,12 @@ for i in range(0, len(Fr)):
 
 	Th[i] = (-((Fr[i] * 6.90) / h.real[i])) - (0 * (np.pi / 180)) 
 
-[f_deemp_b, f_deemp_a] = fdls.FDLS(w, h.real*1, Th, Ndeemp, Ddeemp)
+#[f_deemp_b, f_deemp_a] = fdls.FDLS(w, h.real*1, Th, Ndeemp, Ddeemp)
+#deemp_corr = .499 
 
 #doplot2(f_deemp_b, f_deemp_a, 1.0, f_deemp_bil_b, f_deemp_bil_a, 1.0)
 #doplot2(f_deempc_b, f_deempc_a, 1.0, f_deemp_b, f_deemp_a, 1.0)
 #exit()
-
-#deemp_corr = 1
-deemp_corr = .499 
 
 # audio filters
 Baudiorf = sps.firwin(65, 3.5 / (freq / 2), window='hamming', pass_zero=True)
