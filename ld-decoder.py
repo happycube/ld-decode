@@ -115,8 +115,8 @@ Th = np.zeros(n)
 for f in range(0, n):
 	cf = freq * (float(f) / 256.0)
      
-#	if (cf > 13.8):
-#		Am[f] = 0
+	if (cf > 13.8):
+		Am[f] = 0
 	if (cf > 6.0):
 		Am[f] = 1 + ((cf - 6.0) / 20) 
 	elif (cf > 4.0):
@@ -140,8 +140,7 @@ lowpass_filter_b = sps.firwin(33, 5.2 / (freq / 2)) #, window='hamming')
 #N, Wn = sps.cheb1ord(4.2/(freq/2), 5.0/(freq/2), 1, 10)
 #lowpass_filter_b, lowpass_filter_a = sps.cheby1(N, 1, Wn, 'low')
 
-lowpass_filter_b, lowpass_filter_a = sps.butter(4, (4.5/(freq/2)), 'low')
-lowpass_filter_b, lowpass_filter_a = sps.butter(4, (4.5/(freq/2)), 'low')
+lowpass_filter_b, lowpass_filter_a = sps.butter(6, (4.5/(freq/2)), 'low')
 
 #print N, Wn
 #dosplot(lowpass_filter_b, lowpass_filter_a)
