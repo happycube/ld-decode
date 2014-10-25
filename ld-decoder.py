@@ -118,7 +118,7 @@ for f in range(0, n):
 #	if (cf > 13.8):
 #		Am[f] = 0
 	if (cf > 6.0):
-		Am[f] = 1  + ((cf - 6.0) / 12) 
+		Am[f] = 1 + ((cf - 6.0) / 20) 
 	elif (cf > 4.0):
 		Am[f] = 1 
 	elif (cf > 3.0):
@@ -135,13 +135,16 @@ for f in range(0, n):
 
 #lowpass_filter_b = sps.firwin(25, 5.4 / (freq / 2)) #, window='hamming')
 lowpass_filter_a = [1.0]
-lowpass_filter_b = sps.firwin(31, 5.2 / (freq / 2)) #, window='hamming')
+lowpass_filter_b = sps.firwin(33, 5.2 / (freq / 2)) #, window='hamming')
 
-N, Wn = sps.cheb1ord(4.2/(freq/2), 5.0/(freq/2), 1, 10)
+#N, Wn = sps.cheb1ord(4.2/(freq/2), 5.0/(freq/2), 1, 10)
 #lowpass_filter_b, lowpass_filter_a = sps.cheby1(N, 1, Wn, 'low')
 
+lowpass_filter_b, lowpass_filter_a = sps.butter(4, (4.5/(freq/2)), 'low')
+lowpass_filter_b, lowpass_filter_a = sps.butter(4, (4.5/(freq/2)), 'low')
+
 #print N, Wn
-#doplot(lowpass_filter_b, lowpass_filter_a)
+#dosplot(lowpass_filter_b, lowpass_filter_a)
 #exit()
 
 # XXX: this bilinear filter *should* be mostly accurate deemphasis, but it's unstable.  
@@ -168,37 +171,6 @@ for i in range(0, len(w)):
 [f_deemp_b, f_deemp_a] = fdls.FDLS(w, Am, Th, Ndeemp, Ddeemp, 0)
 # sqrt of adjustment above
 deemp_corr = 1.026690096080341 
-
-# This version shouldn't work at all (uses just the real angle from the bilinear,
-# computes the angle very oddly!), but it fits the current data well.
-
-n = 512 
-df = 512.0/(freq) 
-Fr = np.zeros(n)
-Am = np.zeros(n)
-Th = np.zeros(n)
-
-f_deemp_bil_b = [2.819257458245255e-01, -4.361485083509491e-01]
-f_deemp_bil_a = [1.000000000000000e+00, -1.154222762526424e+00]
-
-w, h = sps.freqz(f_deemp_bil_b, f_deemp_bil_a)
-w = w / (np.pi * 1.0)
-h.imag = h.imag * 1
-
-Ndeemp = 8
-Ddeemp = 8
-for i in range(0, len(Fr)):
-	cf = (float(i) / df)
-	Fr[i] = cf / (freq * 2)
-
-	Th[i] = (-((Fr[i] * 6.90) / h.real[i])) - (0 * (np.pi / 180)) 
-
-#[f_deemp_b, f_deemp_a] = fdls.FDLS(w, h.real*1, Th, Ndeemp, Ddeemp)
-#deemp_corr = .499 
-
-#doplot2(f_deemp_b, f_deemp_a, 1.0, f_deemp_bil_b, f_deemp_bil_a, 1.0)
-#doplot2(f_deempc_b, f_deempc_a, 1.0, f_deemp_b, f_deemp_a, 1.0)
-#exit()
 
 # audio filters
 Baudiorf = sps.firwin(65, 3.5 / (freq / 2), window='hamming', pass_zero=True)
