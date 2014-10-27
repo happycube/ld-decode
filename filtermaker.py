@@ -144,8 +144,8 @@ Ncolorlp4 = 16
 colorlp4_filter = sps.firwin(Ncolorlp4 + 1, [0.6 / (freq / 2)], window='hamming')
 WriteFilter("colorlp4", colorlp4_filter)
 
-Ncolorwlp4 = 16 
-colorwlp4_filter = sps.firwin(Ncolorwlp4 + 1, [2.0 / (freq / 2)], window='hamming')
+Ncolorwlp4 = 10 
+colorwlp4_filter = sps.firwin(Ncolorwlp4 + 1, [1.5 / (freq / 2)], window='hamming')
 WriteFilter("colorwlp4", colorwlp4_filter)
 
 Ncolorbp4 = 8

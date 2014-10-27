@@ -9,7 +9,7 @@ binfile = open(sys.argv[1], "rb").read()
 #binfile = open("tgen.ld", "rb").read()
 data = np.fromstring(binfile, dtype=np.uint16)
 
-irescale = 327.68
+irescale = 327.67
 def u16_to_ire(u):
 	return (u / irescale) - 60
 
@@ -49,7 +49,7 @@ c = []
 #for i in range(0, 512):
 #	c.append(((b[i * 2] - mean) / 2) + ((b[(i * 2) + 1] - mean) / 2)) 
 
-for i in range(0, len(b)):
+for i in range(8, len(b)):
 	c.append(u16_to_ire(b[i])) 
 #	c.append(((b[i] * ((9300000.0 - 7600000.0) / 57344.0))) + 7600000) 
 

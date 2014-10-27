@@ -107,37 +107,46 @@ def doplot2(B, A, C, B2, A2, C2):
 
 ffreq = freq/2.0
 
-n = 128 
-Fr = np.zeros(n)
-Am = np.zeros(n)
-Th = np.zeros(n)
+def CalcBoost(clv):
+	n = 128 
+	Fr = np.zeros(n)
+	Am = np.zeros(n)
+	Th = np.zeros(n)
 
-for f in range(0, n):
-	cf = freq * (float(f) / 256.0)
+	for f in range(0, n):
+		cf = freq * (float(f) / 256.0)
     
-	Am[f] = 1
+		Am[f] = 1
  
 	#if (cf > 13.8):
 	#	Am[f] = 0
-	if (cf > 7.0):
-		Am[f] = 1 + ((cf - 7.0) / 30) 
+		if (cf > 5.8):
+			Am[f] = 1 + ((cf - 5.8) / 30) 
 		# CLV
-#		Am[f] = 1 + ((cf - 7.0) / 8.5) 
-	elif (cf > 3.9):
-		Am[f] = 1 
-	elif (cf > 2.9):
-		Am[f] = 1 * ((cf - 2.9) * 1)
-	else:
-		Am[f] = 0
+			if (clv):
+				Am[f] = 1 + ((cf - 5.8) / 8.5) 
+		elif (cf > 3.9):
+			Am[f] = 1 
+		elif (cf > 2.9):
+			Am[f] = 1 * ((cf - 2.9) * 1)
+		else:
+			Am[f] = 0
 
-	Fr[f] = float(f) / 256.0
-	Th[f] = -(Fr[f] * 40) 
+		Fr[f] = float(f) / 256.0
+		Th[f] = -(Fr[f] * 40) 
 
-[Bboost, Aboost] = fdls.FDLS(Fr, Am, Th, 8, 8, 0)
+	[Bboost, Aboost] = fdls.FDLS(Fr, Am, Th, 8, 8, 0)
+
+	return [Bboost, Aboost]
+
+[Bboost, Aboost] = CalcBoost(0)
 #doplot(Bboost, Aboost)
 #exit()
 
 lowpass_filter_b, lowpass_filter_a = sps.butter(6, (4.5/(freq/2)), 'low')
+
+#lowpass_filter_b = [1.0]
+#lowpass_filter_a = [1.0]
 
 # XXX: this bilinear filter *should* be mostly accurate deemphasis, but it's unstable.  
 # reversing the angle stabilizes it, which FDLS can do.
@@ -292,14 +301,23 @@ def process_audio(indata):
 	exit()
 	
 def main():
+	global Bboost, Aboost
+
 	outfile = sys.stdout
 	audio_mode = 0 
+	CAV = 0
 
-	optlist, cut_argv = getopt.getopt(sys.argv[1:], "a")
+	optlist, cut_argv = getopt.getopt(sys.argv[1:], "aAL")
 
 	for o, a in optlist:
+		print "opt", o, a
 		if o == "-a":
 			audio_mode = 0	# XXX: audio mode is broken
+		if o == "-A":
+			CAV = 1
+			[Bboost, Aboost] = CalcBoost(1)
+		if o == "-L":
+			[Bboost, Aboost] = CalcBoost(1)
 
 	argc = len(cut_argv)
 	if argc >= 1:
@@ -321,6 +339,7 @@ def main():
 	indata = np.fromstring(inbuf, 'uint8', toread)
 	
 	total = 0
+	total_read = 0
 
 	while (len(inbuf) > 0):
 		toread = blocklen - indata.size 
@@ -342,8 +361,15 @@ def main():
 			outfile.write(output_16)
 			nread = len(output_16)
 
+			total_read += nread
+
+			# In Pioneer players, freq compensation is kept for 300-450 seconds
+			if CAV and (total_read > (60 * freq_hz)):
+				CAV = 0
+				[Bboost, Aboost] = CalcBoost(0)
+
 		indata = indata[nread:len(indata)]
-	
+
 		if limit == 1:
 			total_len -= toread 
 			if (total_len < 0):

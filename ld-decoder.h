@@ -57,6 +57,10 @@ inline double WrapAngle(double v) {
         return v;
 }
 
+inline double absWrapAngle(double v) {
+	return fabs(WrapAngle(v));
+}
+
 inline double ctor(double r, double i)
 {
 	return sqrt((r * r) + (i * i));

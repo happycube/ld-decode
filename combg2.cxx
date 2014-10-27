@@ -165,7 +165,6 @@ class Comb
 		double LPraw[3][844 * 505];
 		double K3D[844 * 505];
 
-		cline_t wbuf[3][525];
 		cline_t cbuf[525];
 		cline_t prevbuf[525];
 		Filter *f_i, *f_q;
@@ -212,7 +211,6 @@ class Comb
 				uint16_t *n2line = &rawbuffer[f][(l + 2) * 844];	
 		
 				double f3 = 0, f2 = 0;
-			
 				double si = 0, sq = 0;
 	
 				for (int h = 4; h < 840; h++) {
@@ -226,11 +224,12 @@ class Comb
 					int adr = (l * 844) + h;
 
 					if (1 && (dim >= 3)) {
+
+						if (l == 475) cerr << h - 70 << ' ' << line[h] << ' ' << p2line[h] << ' ' << n2line[h] << ' ' << p3line[h] << ' ' << n3line[h] << endl;  
+
 						c[2] = (((p3line[h] + n3line[h]) / 2) - line[h]); 
 						d[2] = fabs((p3line[h] - n3line[h]) / 2); 
 						d[2] = fabs(((p3line[h] - line[h]) - (n3line[h] - line[h]))); 
-						v[2] = c[2] ? 1 - clamp((fabs(d[2] / irescale) / 10), 0, 1) : .00;
-						v[2] = c[2] ? 1 - clamp((fabs(d[2]) / fabs(c[2])) * 2, 0, 1) : 0;
 						k = fabs(LPraw[1][adr] - LPraw[0][adr]) + fabs(LPraw[1][adr] - LPraw[2][adr]);
 						k /= irescale;
 						v[2] = clamp(1 - ((k - 0) / 8), 0, 1);
@@ -246,8 +245,6 @@ class Comb
 						c[1] = (((p2line[h] + n2line[h]) / 2) - line[h]); 
 						d[1] = fabs((p2line[h] - n2line[h]) / 2); 
 						d[1] = fabs(((p2line[h] - line[h]) - (n2line[h] - line[h]))); 
-						v[1] = c[1] ? 1 - clamp((fabs(d[1] / irescale) / 20), 0, 1) : 0.00;
-						v[1] = c[1] ? 1 - clamp((fabs(d[1]) / fabs(c[1])) * 1.5, 0, 1) : 0;
 						k = fabs(LPraw[1][adr] - LPraw[1][adr - 844]) + fabs(LPraw[1][adr] - LPraw[1][adr + 844]);
 						k /= irescale;
 						v[1] = clamp(1 - (k / 10), 0, 1);
@@ -302,7 +299,6 @@ class Comb
 						}
 					}
 
-#if 1
 					if (vtot <= .01) {
 						//v[0] = .5; 
 						v[1] = 1; 
@@ -315,20 +311,7 @@ class Comb
 					v[0] /= vtot;
 					v[1] /= vtot;
 					v[2] /= vtot;
-#if 0
-						cavg = (c[0] * (v[0] / vtot));
-						cavg += (c[1] * (v[1] / vtot));
-						cavg += (c[2] * (v[2] / vtot));
-#endif
-#if 0
-					cavg0 = cavg = c[0] * v[0];
-					vused = v[0];
-					cavg += c[1] * (v[1] * (1 - vused));
-					cavg1 = cavg;
-					vused += v[1] * (1 - vused);
-					cavg += c[2] * (v[2] * (1 - vused));
-					vused += (v[2] * (1 - vused));
-#else
+
 					cavg0 = cavg = c[0] * v[0];
 					vused = v[0];
 					cavg += c[1] * v[1]; //(v[1] * (1 - vused));
@@ -336,15 +319,7 @@ class Comb
 					vused += v[1]; //* (1 - vused);
 					cavg += c[2] * v[2]; // * (1 - vused));
 					vused += (v[2] * (1 - vused));
-#endif
-#endif	
-/*
-					if (fabs(c[1] - c[2]) < fabs(c[1] - c[0])) { 
-						cavg = (c[1] + c[2]) / 2;
-					} else {
-						cavg = (c[1] + c[0]) / 2;
-					}
-*/
+
 					if (0 && ((l == 100) || (l == 50)) && (h % 2)) {
 						cerr << 'a' << h - 70 << ' ' << line[h] << ' ' << c[0] << ' ' << d[0] << ' ' << v[0] << ' ' << cavg0 << endl;
 						cerr << 'b' << h - 70 << ' ' << line[h] << ' ' << c[1] << ' ' << d[1] << ' ' << v[1] << ' ' << cavg1 << endl;
@@ -371,8 +346,6 @@ class Comb
 					if (cwide_mode) {
 						cbuf[l].p[h - 5].i = bw_mode ? 0 : f_wi->feed(cbuf[l].p[h].i); 
 						cbuf[l].p[h - 5].q = bw_mode ? 0 : f_wq->feed(cbuf[l].p[h].q); 
-						//cbuf[l].p[h].i = bw_mode ? 0 : cbuf[l].p[h].i; 
-						//cbuf[l].p[h].q = bw_mode ? 0 : cbuf[l].p[h].q; 
 					} else {
 						cbuf[l].p[h - 8].i = bw_mode ? 0 : f_i->feed(cbuf[l].p[h].i); 
 						cbuf[l].p[h - 8].q = bw_mode ? 0 : f_q->feed(cbuf[l].p[h].q); 
@@ -524,9 +497,6 @@ class Comb
 
 			cerr << "P " << f << ' ' << dim << endl;
 
-			memcpy(wbuf[2], wbuf[1], sizeof(cline_t) * 505);
-			memcpy(wbuf[1], wbuf[0], sizeof(cline_t) * 505);
-
 			memcpy(rawbuffer[2], rawbuffer[1], (844 * 505 * 2));
 			memcpy(rawbuffer[1], rawbuffer[0], (844 * 505 * 2));
 			memcpy(rawbuffer[0], buffer, (844 * 505 * 2));
@@ -582,13 +552,13 @@ class Comb
 					RGB r;
 					YIQ yiq = cbuf[l].p[h + 70];
 
+					// merge code - works but causes bad artifacs 
 					if (0 && framecount > 2) {
 	
 						double k = K3D[(l * 844) + (h + 70)] * .5; 
 
 						// XXX: fix operator override
 
-//						yiq *= (1 - k);
 						yiq.y *= (1 - k);
 						yiq.i *= (1 - k);
 						yiq.q *= (1 - k);
@@ -689,13 +659,11 @@ class Comb
 
 			cerr << "FR " << framecount << ' ' << fstart << endl;
 			if (!pulldown_mode || (fstart == 0)) {
-//				memcpy(obuf, output, sizeof(output));
 				WriteFrame(output, framecode);
 			} else if (fstart == 1) {
 				for (int i = 1; i < linesout; i += 2) {
 					memcpy(&obuf[744 * 3 * i], &output[744 * 3 * i], 744 * 3 * 2); 
 				}
-//				memcpy(obuf, output, sizeof(output));
 				f_oddframe = true;
 			}
 
