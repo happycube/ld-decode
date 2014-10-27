@@ -352,7 +352,7 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line)
 
 wrapup:
 	// LD only: need to adjust output value for velocity, and remove defects as possible
-	double lvl_adjust = ((((end - begin) / iscale_tgt) - 1) * 1.0) + 1;
+	double lvl_adjust = ((((end - begin) / iscale_tgt) - 1) * 2.0) + 1;
 	int ldo = -128;
 	for (int h = 0; (oline > 2) && (h < (211 * out_freq)); h++) {
 		double v = tout[h + (int)(14 * out_freq)];
