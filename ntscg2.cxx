@@ -244,10 +244,10 @@ void ProcessAudioSample(float left, float right, double vel)
 	right *= scale;
 	
 	//cerr << left - 2301136 << ' ' << right - 2812499 << ' ' ; 
-	cerr << "A " << left << ' ' << right << ' ' ; 
+//	cerr << "A " << left << ' ' << right << ' ' ; 
 
 	if (!InRange(left, 2100000, 2500000)) left = pleft;
-	cerr << left  ; 
+//	cerr << left  ; 
 	pleft = left;
 	left -= 2301136;
 	left *= (65535.0 / 300000.0);
@@ -255,7 +255,7 @@ void ProcessAudioSample(float left, float right, double vel)
 	left += 32768;
 	
 	if (!InRange(right, 2601000, 3011200)) right = pright;
-	cerr << ' ' << right << endl ; 
+//	cerr << ' ' << right << endl ; 
 	pright = right;
 	right -= 2812499;
 	right *= (65535.0 / 300000.0);
@@ -835,8 +835,14 @@ int main(int argc, char *argv[])
 		int plen = Process(inbuf, rv / 2, abuf, arv / 8, aplen);
 
 		cerr << "plen " << plen << endl;
+		if (plen < 0) {
+			cerr << "skipping ahead" << endl;
+			plen = vblen / 2;
+			aplen = plen / va_ratio;
+		}
 		tproc += plen;
-               
+
+		cerr << "move " << plen << ' ' << (vblen - plen) * 2; 
 		memmove(inbuf, &inbuf[plen], (vblen - plen) * 2);
 	
                 rv = read(fd, &inbuf[(vblen - plen)], plen * 2) + ((vblen - plen) * 2);
