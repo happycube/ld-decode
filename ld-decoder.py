@@ -121,9 +121,11 @@ def CalcBoost(clv):
 	#if (cf > 13.8):
 	#	Am[f] = 0
 		if (cf > 5.8):
-			Am[f] = 1 + ((cf - 5.8) / 30) 
+			Am[f] = 1 + ((cf - 5.8) / 20) 
 		# CLV
-			if (clv):
+			if (clv == 2):
+				Am[f] = 1 + ((cf - 5.8) / 6.5) 
+			elif (clv == 1):
 				Am[f] = 1 + ((cf - 5.8) / 8.5) 
 		elif (cf > 3.9):
 			Am[f] = 1 
@@ -140,10 +142,13 @@ def CalcBoost(clv):
 	return [Bboost, Aboost]
 
 [Bboost, Aboost] = CalcBoost(0)
+
+#Bboost, Aboost = sps.butter(8, (3.5/(freq/2)), 'high')
 #doplot(Bboost, Aboost)
 #exit()
 
-lowpass_filter_b, lowpass_filter_a = sps.butter(6, (4.5/(freq/2)), 'low')
+lowpass_filter_b, lowpass_filter_a = sps.butter(6, (4.2/(freq/2)), 'low')
+lowpass_filter_b, lowpass_filter_a = sps.butter(8, (5.5/(freq/2)), 'low')
 
 #lowpass_filter_b = [1.0]
 #lowpass_filter_a = [1.0]
@@ -161,17 +166,22 @@ Th = np.empty(len(w))
 Th1 = np.angle(h)
 Am = np.absolute(h)/1.0
 
+# compensate for off scaled bilinear curve - drops to 0.33 when it needs to be -10Db (.31something) 
+adj = (1.0/3.0)/(np.power(10.0,.5)/10.0)
+
 Ndeemp = 1 
 Ddeemp = 1
 for i in range(0, len(w)):
-	# compensate for off scaled bilinear curve - drops to 0.33 when it needs to be exponentially based 
-	# adj = (1/3)/((10^.5)/10)
-	Am[i] = 1.0 - ((1.0 - Am[i]) * 1.054092553389460) 
+	Am[i] = 1.0 - ((1.0 - Am[i]) * adj) 
 	Th[i] = -(Th1[i] * 1.0) 
 
 [f_deemp_b, f_deemp_a] = fdls.FDLS(w, Am, Th, Ndeemp, Ddeemp, 0)
 # sqrt of adjustment above
-deemp_corr = 1.026690096080341 
+deemp_corr = np.sqrt(adj)
+
+#f_deemp_b = [1.0]
+#f_deemp_a = [1.0]
+#deemp_corr = 1.0
 
 # audio filters
 Baudiorf = sps.firwin(65, 3.5 / (freq / 2), window='hamming', pass_zero=True)
@@ -240,6 +250,7 @@ def process_video(data):
 	output = sps.lfilter(lowpass_filter_b, lowpass_filter_a, output)[len(lowpass_filter_b):]
 
 	doutput = (sps.lfilter(f_deemp_b, f_deemp_a, output)[64:len(output)]) / deemp_corr
+#	doutput = (sps.lfilter(f_deemp_b, f_deemp_a, doutput)[64:len(doutput)]) / deemp_corr
 	
 	output_16 = np.empty(len(doutput), dtype=np.uint16)
 	reduced = (doutput - minn) / hz_ire_scale
@@ -302,22 +313,26 @@ def process_audio(indata):
 	
 def main():
 	global Bboost, Aboost
+	global lowpass_filter_b, lowpass_filter_a 
 
 	outfile = sys.stdout
 	audio_mode = 0 
 	CAV = 0
 
-	optlist, cut_argv = getopt.getopt(sys.argv[1:], "aAL")
+	optlist, cut_argv = getopt.getopt(sys.argv[1:], "aAlLn")
 
 	for o, a in optlist:
-		print "opt", o, a
 		if o == "-a":
 			audio_mode = 0	# XXX: audio mode is broken
 		if o == "-A":
 			CAV = 1
 			[Bboost, Aboost] = CalcBoost(1)
-		if o == "-L":
+		if o == "-l":
 			[Bboost, Aboost] = CalcBoost(1)
+		if o == "-L":
+			[Bboost, Aboost] = CalcBoost(2)
+		if o == "-n":
+			lowpass_filter_b, lowpass_filter_a = sps.butter(6, (4.2/(freq/2)), 'low')
 
 	argc = len(cut_argv)
 	if argc >= 1:
