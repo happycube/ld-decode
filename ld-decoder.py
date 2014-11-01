@@ -121,7 +121,7 @@ def CalcBoost(clv):
 	#if (cf > 13.8):
 	#	Am[f] = 0
 		if (cf > 5.8):
-			Am[f] = 1 + ((cf - 5.8) / 20) 
+			Am[f] = 1 # + ((cf - 5.8) / 20) 
 		# CLV
 			if (clv == 2):
 				Am[f] = 1 + ((cf - 5.8) / 6.5) 
@@ -143,12 +143,18 @@ def CalcBoost(clv):
 
 [Bboost, Aboost] = CalcBoost(0)
 
-#Bboost, Aboost = sps.butter(8, (3.5/(freq/2)), 'high')
+#Baudiohp, Aaudiohp = sps.butter(6, (3.5/(freq/2)), 'high')
+#Bboost, Aboost = sps.butter(6, (10.0/(freq/2)), 'high')
+
 #doplot(Bboost, Aboost)
 #exit()
 
 lowpass_filter_b, lowpass_filter_a = sps.butter(6, (4.2/(freq/2)), 'low')
 lowpass_filter_b, lowpass_filter_a = sps.butter(8, (5.5/(freq/2)), 'low')
+lowpass_filter_b, lowpass_filter_a = sps.butter(8, (4.8/(freq/2)), 'low')
+lowpass_filter_b, lowpass_filter_a = sps.butter(8, (4.6/(freq/2)), 'low')
+lowpass_filter_b, lowpass_filter_a = sps.butter(6, (4.2/(freq/2)), 'low')
+lowpass_filter_b, lowpass_filter_a = sps.butter(4, (4.2/(freq/2)), 'low')
 
 #lowpass_filter_b = [1.0]
 #lowpass_filter_a = [1.0]
@@ -167,7 +173,8 @@ Th1 = np.angle(h)
 Am = np.absolute(h)/1.0
 
 # compensate for off scaled bilinear curve - drops to 0.33 when it needs to be -10Db (.31something) 
-adj = (1.0/3.0)/(np.power(10.0,.5)/10.0)
+adj = (1.0/3.0)/(np.power(10.0,.51)/10.0)
+#adj = (1.0/3.0)/(np.power(10.0,.38)/10.0)
 
 Ndeemp = 1 
 Ddeemp = 1
@@ -177,11 +184,26 @@ for i in range(0, len(w)):
 
 [f_deemp_b, f_deemp_a] = fdls.FDLS(w, Am, Th, Ndeemp, Ddeemp, 0)
 # sqrt of adjustment above
-deemp_corr = np.sqrt(adj)
+deemp_corr = np.sqrt(adj) * 0.9995 
 
 #f_deemp_b = [1.0]
+w2 = np.empty(len(w) * 2)
+am2 = np.empty(len(w) * 2)
+
+for i in range(0, len(w)):
+	w2[i] = w[i] 
+	am2[i] = Am[i] 
+
+for i in range(len(w), len(w2)):
+	w2[i] = float(i) / (len(w2) - 1) 
+	am2[i] = Am[len(w) - 1] 
+
+
+#f_deemp_b = sps.firwin2(33, w2, am2)
 #f_deemp_a = [1.0]
-#deemp_corr = 1.0
+#deemp_corr = 0.6675
+#deemp_corr = 0.5590
+#deemp_corr = 0.7920
 
 # audio filters
 Baudiorf = sps.firwin(65, 3.5 / (freq / 2), window='hamming', pass_zero=True)
@@ -243,7 +265,8 @@ out_scale = 65534.0 / (maxire - minire)
 
 def process_video(data):
 	# perform general bandpass filtering
-	in_filt = sps.lfilter(Bboost, Aboost, data)
+#	in_filt = sps.lfilter(Baudiohp, Aaudiohp, data)
+	in_filt = (sps.lfilter(Bboost, Aboost, data) / 12)
 
 	output = fm_decode(in_filt, freq_hz) 
 
