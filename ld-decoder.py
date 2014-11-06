@@ -124,13 +124,13 @@ def CalcBoost(clv):
 			Am[f] = 1 + ((cf - 5.8) / 20) 
 		# CLV
 			if (clv == 2):
-				Am[f] = 1 + ((cf - 5.8) / 6.5) 
+				Am[f] = 1 + ((cf - 5.8) / 5.0) 
 			elif (clv == 1):
 				Am[f] = 1 + ((cf - 5.8) / 8.5) 
-		elif (cf > 3.9):
+		elif (cf > 4.0):
 			Am[f] = 1 
-		elif (cf > 2.9):
-			Am[f] = 1 * ((cf - 2.9) * 1)
+		elif (cf > 3.0):
+			Am[f] = 1 * ((cf - 3.0) * 1)
 		else:
 			Am[f] = 0
 
@@ -142,15 +142,11 @@ def CalcBoost(clv):
 	return [Bboost, Aboost]
 
 [Bboost, Aboost] = CalcBoost(0)
-
+#Bboost, Aboost = sps.butter(6, (3.4/(freq/2)), 'high')
 #doplot(Bboost, Aboost)
 #exit()
 
 lowpass_filter_b, lowpass_filter_a = sps.butter(6, (4.2/(freq/2)), 'low')
-lowpass_filter_b, lowpass_filter_a = sps.butter(5, (4.5/(freq/2)), 'low')
-lowpass_filter_b, lowpass_filter_a = sps.butter(6, (4.5/(freq/2)), 'low')
-lowpass_filter_b, lowpass_filter_a = sps.butter(6, (4.2/(freq/2)), 'low')
-lowpass_filter_b, lowpass_filter_a = sps.butter(6, (4.4/(freq/2)), 'low')
 
 #dosplot(lowpass_filter_b, lowpass_filter_a)
 #exit()
@@ -162,6 +158,32 @@ lowpass_filter_b, lowpass_filter_a = sps.butter(6, (4.4/(freq/2)), 'low')
 f_deemp_b = [3.778720395899611e-01, -2.442559208200777e-01]
 f_deemp_a = [1.000000000000000e+00, -8.663838812301168e-01]
 deemp_corr = 1.0
+
+adj = (1.0/3.0)/(np.power(10.0,.495)/10.0)
+#adj = (1.0/3.0)/(np.power(10.0,.38)/10.0)
+
+w, h = sps.freqz(f_deemp_b, f_deemp_a)
+w = w / (2 * np.pi)
+
+Am = np.absolute(h)/1.0
+Th = np.empty(len(w))
+Th1 = np.angle(h)
+
+Ndeemp = 1 
+Ddeemp = 1
+for i in range(0, len(w)):
+#	print Am[i], 
+	Am[i] = 1.0 - ((1.0 - Am[i]) * adj) 
+#	Th[i] = (Th1[i] * (adj * adj)) 
+	Th[i] = (Th1[i] * (adj)) 
+#	print Am[i]
+
+[f_deemp_b, f_deemp_a] = fdls.FDLS(w, Am, Th, Ndeemp, Ddeemp, 0)
+# sqrt of adjustment above
+#deemp_corr = np.sqrt(adj) * 0.9860
+deemp_corr = np.sqrt(adj) * 0.9920
+deemp_corr = np.sqrt(adj) * 0.9911
+
 
 # audio filters
 Baudiorf = sps.firwin(65, 3.5 / (freq / 2), window='hamming', pass_zero=True)
@@ -299,20 +321,20 @@ def main():
 	audio_mode = 0 
 	CAV = 0
 
-	optlist, cut_argv = getopt.getopt(sys.argv[1:], "aAlLn")
+	optlist, cut_argv = getopt.getopt(sys.argv[1:], "aAlLw")
 
 	for o, a in optlist:
 		if o == "-a":
 			audio_mode = 0	# XXX: audio mode is broken
 		if o == "-A":
 			CAV = 1
-			[Bboost, Aboost] = CalcBoost(1)
+			[Bboost, Aboost] = CalcBoost(2)
 		if o == "-l":
 			[Bboost, Aboost] = CalcBoost(1)
 		if o == "-L":
 			[Bboost, Aboost] = CalcBoost(2)
-		if o == "-n":
-			lowpass_filter_b, lowpass_filter_a = sps.butter(6, (4.2/(freq/2)), 'low')
+		if o == "-w":
+			lowpass_filter_b, lowpass_filter_a = sps.butter(6, (4.8/(freq/2)), 'low')
 
 	argc = len(cut_argv)
 	if argc >= 1:

@@ -236,15 +236,18 @@ void ProcessAudioSample(float left, float right, double vel)
 {
 	float oleft = left, oright = right;
 
+	//double scale = ((vel - 1) * 0.5) + 1;
 	double scale = ((vel - 1) * 0.5) + 1;
 
 //	cerr << "A " << vel << ' ' << scale << ' ' << left - 2301136 << ' ' << right - 2812499 << ' '; 
 
-	left *= scale;
-	right *= scale;
+	cerr << "AA " << left - 2301136 << ' ' << right - 2812499 << endl; 
+	//cerr << "A " << left << ' ' << right << ' ' ; 
 	
-	//cerr << left - 2301136 << ' ' << right - 2812499 << ' ' ; 
-//	cerr << "A " << left << ' ' << right << ' ' ; 
+//	left *= scale;
+//	right *= scale;
+	
+	cerr << "AB " << left - 2301136 << ' ' << right - 2812499 << endl; 
 
 	if (!InRange(left, 2100000, 2500000)) left = pleft;
 //	cerr << left  ; 

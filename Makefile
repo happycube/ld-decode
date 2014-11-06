@@ -1,10 +1,10 @@
-all: ldd ntsc ntsc4 audiog2 comb 
+all: cx ldd ntsc ntsc4 audiog2 comb 
 
 clean:
 	rm -f ldd ntsc comb audio
 
-audio: audio-decoder.cxx
-	clang++ -std=c++11  -Wall -DNOSNAP -O3 -g -o audio audio-decoder.cxx
+cx: cx-expander.cxx deemp.h
+	clang++ -std=c++11  -Wall -DNOSNAP -O3 -g -o cx cx-expander.cxx
 
 audiog2: audio-g2.cxx deemp.h
 	clang++ -std=c++11  -Wall -DNOSNAP -O3 -g -o audiog2 audio-g2.cxx
@@ -28,7 +28,7 @@ ntsc10: ntscg2.cxx ld-decoder.h deemp.h
 	clang++ -std=c++11  -Wall -D_NOSNAP -DFSC10 -O3 -g -o ntsc10 ntscg2.cxx
 
 ntsc: ntscg2.cxx ld-decoder.h deemp.h
-	clang++ -std=c++11  -Wall -D_NOSNAP -O3 -g -o ntsc ntscg2.cxx
+	clang++ -std=c++11  -Wall -D_NOSNAP -fno-omit-frame-pointer -g -o ntsc ntscg2.cxx
 
 comb: combg2.cxx deemp.h
 	clang++ -std=c++11  -Wall -D_NOSNAP -O3 -g -o comb combg2.cxx

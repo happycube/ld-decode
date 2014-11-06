@@ -156,12 +156,15 @@ Ncolorbp8 = 16
 colorbp8_filter = sps.firwin(Ncolorbp8 + 1, [3.4006 / (freq), 3.7585 / (freq)], window='hamming', pass_zero=False)
 WriteFilter("colorbp8", colorbp8_filter)
 
-audioin_filter = sps.firwin(65, 3.15 / (freq), window='hamming')
-WriteFilter("audioin", audioin_filter)
+#audioin_filter = sps.firwin(65, 3.15 / (freq), window='hamming')
+#WriteFilter("audioin", audioin_filter)
 
-leftbp_filter = sps.firwin(65, [2.15/(freq/4), 2.45/(freq/4)], window='hamming', pass_zero=False)
+audioin_filter_b, audioin_filter_a = sps.butter(8, 3.3 / freq)
+WriteFilter("audioin", audioin_filter_b, audioin_filter_a)
+
+leftbp_filter = sps.firwin(33, [2.2/(freq/4), 2.4/(freq/4)], window='hamming', pass_zero=False)
 WriteFilter("leftbp", leftbp_filter)
-rightbp_filter = sps.firwin(65, [2.65/(freq/4), 2.95/(freq/4)], window='hamming', pass_zero=False)
+rightbp_filter = sps.firwin(33, [2.7/(freq/4), 2.9/(freq/4)], window='hamming', pass_zero=False)
 WriteFilter("rightbp", rightbp_filter)
 
 # decoded audio LP first stage:  2x fsc sample rate 
@@ -171,6 +174,20 @@ WriteFilter("audiolp", audiolp_filter)
 # decoded audio LP second stage:  2x/20 fsc sample rate 
 audiolp20_filter = sps.firwin(33, .05 / (freq / 4 / 20), window='hamming')
 WriteFilter("audiolp20", audiolp20_filter)
+
+#a500_48k_b, a500_48k_a = sps.butter(8, 500.0/24000.0)
+a500_48k_b = sps.firwin(17, 500.0/24000.0, pass_zero=False)
+a500_48k_a = [1.0]
+WriteFilter("a500_48k", a500_48k_b, a500_48k_a)
+
+#a500_44k_b, a500_44k_a = sps.butter(8, 500.0/22050.0) 
+a500_44k_b = sps.firwin(17, 500.0/22050.0, pass_zero=False) 
+a500_44k_a = [1.0]
+WriteFilter("a500_44k", a500_44k_b, a500_44k_a)
+
+a40h_48k_b = sps.firwin(17, 40.0/24000.0, pass_zero=False) 
+a40h_48k_a = [1.0]
+WriteFilter("a40h_48k", a40h_48k_b, a40h_48k_a)
 
 # from http://tlfabian.blogspot.com/2013/01/implementing-hilbert-90-degree-shift.html
 hilbert_filter = np.fft.fftshift(
