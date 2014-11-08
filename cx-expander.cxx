@@ -23,9 +23,16 @@ double slow = 0, fast = 0;
 
 double m14db = 0.199526231496888;
 
+/* 
+ *  Key CX notes for decoding:
+ *  
+ *  - CX expanding crosses over/is equal at 0 DB (40% modulation) - this is found on Pioneer ref disk 
+ *
+ *  - Per PR-8210 service manual, at 75% modulation should be 87.3% higher (914mVrms vs 488mVrms)
+ */
+
 void Process(uint16_t *buf, int nsamp)
 {
-
 	for (int i = 0; i < nsamp; i++) {
 		double left = (buf[i * 2] - 32768); 
 		double right = (buf[(i * 2 + 1)] - 32768); 
@@ -39,17 +46,21 @@ void Process(uint16_t *buf, int nsamp)
 		double _max = max(fabs(left), fabs(right));
 
 //		if ((snum < 100) || (snum > 2000)) _max = 0; 
+//		if ((snum < 100)) _max = 0; 
 
 //		fast = (fast * .96) + (_max * .04);	
 		fast = (fast * .998);
-		if (_max > fast) fast = min(_max, fast + (_max * .032));	
-		
-//		cerr << left << ' ' << right << ' ' << _max << ' ';
+		if (_max > fast) fast = min(_max, fast + (_max * .035));	
+	
+		double oleft = left;
+	
+//		cerr << snum << " IN " << left << ' ' << right << ' ' ;
 
 		slow = (slow * .99985);
 		if (_max > slow) slow = min(_max, slow + (_max * .0019));	
 
-		double val = max(fast, slow * 1.00) - (7200 * m14db);
+		// XXX : there is currently some non-linearity in 1khz samples
+		double val = max(fast, slow * 1.00) - (6250 * m14db);
 
 		if (val < 0) val = 0;
 
@@ -60,6 +71,12 @@ void Process(uint16_t *buf, int nsamp)
 
 		left *= 1 + (val / 1250);
 		right *= 1 + (val / 1250);
+
+//		cerr << ' ' << _max << " F:" << fast << " S:" << slow << ' ' << val << " OUT " << left << ' ' << right << ' ' << left / oleft << endl;
+
+		// need to reduce it to prevent clipping 
+		left *= .25;
+		right *= .25;
 	
 //		cerr << ' ' << _max << ' ' << fast << ' ' << slow << ' ' << val << ' ' << left << ' ' << right << endl;
 
