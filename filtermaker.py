@@ -108,7 +108,7 @@ Nlpf10 = 30
 lowpass_filter10 = sps.firwin(Nlpf + 1, 5.2 / (freq10), window='hamming')
 WriteFilter("lpf10", lowpass_filter10)
 
-Ncolor = 32
+Ncolor = 24
 sync_filter = sps.firwin(Ncolor + 1, 0.1 / (freq), window='hamming')
 WriteFilter("sync", sync_filter)
 

@@ -471,6 +471,8 @@ class Comb
 			f_hpvy = new Filter(f_nr);
 			f_hpvi = new Filter(f_nrc);
 			f_hpvq = new Filter(f_nrc);
+
+			memset(output, 0, sizeof(output));
 		}
 
 		void WriteFrame(uint16_t *obuf, int fnum = 0) {
@@ -492,7 +494,7 @@ class Comb
 		// buffer: 844x505 uint16_t array
 		void Process(uint16_t *buffer, int dim = 2)
 		{
-			int firstline = (linesout == 505) ? 1 : 24;
+			int firstline = (linesout == 505) ? 1 : 26;
 			int f = (dim == 3) ? 1 : 0;
 
 			cerr << "P " << f << ' ' << dim << endl;
@@ -550,7 +552,7 @@ class Comb
 				int o = 0;
 				for (int h = 0; h < 752; h++) {
 					RGB r;
-					YIQ yiq = cbuf[l].p[h + 70];
+					YIQ yiq = cbuf[l].p[h + 74];
 
 					// merge code - works but causes bad artifacs 
 					if (0 && framecount > 2) {
@@ -579,7 +581,7 @@ class Comb
 	
 					r.conv(yiq);
 	
-      	                                if (1 && l == 475) {
+      	                                if (0 && l == 475) {
                                                double y = u16_to_ire(yiq.y);
                                                double i = (yiq.i) * (160.0 / 65533.0);
                                                double q = (yiq.q) * (160.0 / 65533.0);

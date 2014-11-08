@@ -28,7 +28,7 @@ ntsc10: ntscg2.cxx ld-decoder.h deemp.h
 	clang++ -std=c++11  -Wall -D_NOSNAP -DFSC10 -O3 -g -o ntsc10 ntscg2.cxx
 
 ntsc: ntscg2.cxx ld-decoder.h deemp.h
-	clang++ -std=c++11  -Wall -D_NOSNAP -fno-omit-frame-pointer -g -o ntsc ntscg2.cxx
+	clang++ -std=c++11  -Wall -march=corei7-avx -O3 -mavx -D_NOSNAP -fno-omit-frame-pointer -g -o ntsc ntscg2.cxx
 
 comb: combg2.cxx deemp.h
 	clang++ -std=c++11  -Wall -D_NOSNAP -O3 -g -o comb combg2.cxx

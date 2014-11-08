@@ -51,7 +51,7 @@ const double iscale_tgt = ntsc_ipline + ntsc_ihsynctoline;
 const double ntsc_hsynctoline = ntsc_opline * (ntsc_blanklen / 63.5);
 const double scale_tgt = ntsc_opline + ntsc_hsynctoline;
 
-const double phasemult = 1.591549430918953e-01 * in_freq;
+const double phasemult = 1.591549430918953e-01 * in_freq; // * 0.99999;
 
 // uint16_t levels
 uint16_t level_m40ire;
@@ -87,7 +87,7 @@ inline uint16_t ire_to_out(double ire)
 }
 		
 // taken from http://www.paulinternet.nl/?page=bicubic
-double CubicInterpolate(uint16_t *y, double x)
+inline double CubicInterpolate(uint16_t *y, double x)
 {
 	double p[4];
 	p[0] = y[0]; p[1] = y[1]; p[2] = y[2]; p[3] = y[3];
@@ -239,18 +239,14 @@ void ProcessAudioSample(float left, float right, double vel)
 	//double scale = ((vel - 1) * 0.5) + 1;
 	double scale = ((vel - 1) * 0.5) + 1;
 
-//	cerr << "A " << vel << ' ' << scale << ' ' << left - 2301136 << ' ' << right - 2812499 << ' '; 
-
-	cerr << "AA " << left - 2301136 << ' ' << right - 2812499 << endl; 
-	//cerr << "A " << left << ' ' << right << ' ' ; 
+//	cerr << "AA " << left - 2301136 << ' ' << right - 2812499 << endl; 
 	
 //	left *= scale;
 //	right *= scale;
 	
-	cerr << "AB " << left - 2301136 << ' ' << right - 2812499 << endl; 
+//	cerr << "AB " << left - 2301136 << ' ' << right - 2812499 << endl; 
 
 	if (!InRange(left, 2100000, 2500000)) left = pleft;
-//	cerr << left  ; 
 	pleft = left;
 	left -= 2301136;
 	left *= (65535.0 / 300000.0);
@@ -258,7 +254,6 @@ void ProcessAudioSample(float left, float right, double vel)
 	left += 32768;
 	
 	if (!InRange(right, 2601000, 3011200)) right = pright;
-//	cerr << ' ' << right << endl ; 
 	pright = right;
 	right -= 2812499;
 	right *= (65535.0 / 300000.0);
@@ -327,10 +322,10 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line)
 	if (in_freq == 4) goto wrapup;
 
 	adjlen = (end - begin) / (scale_tgt / ntsc_opline);
-//	cerr << line << " " << 0 << ' ' << begin << ' ' << (begin + adjlen) << '/' << end  << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
+	cerr << line << " " << 0 << ' ' << begin << ' ' << (begin + adjlen) << '/' << end  << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
 
-	for (int pass = 0; pass < ((in_freq == 4) ? 4 : 2); pass++) {
-//	cerr << line << " 0" << ' ' << ((end - begin) / scale_tgt) * ntsc_ipline.0 << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
+	for (int pass = 0; pass < ((in_freq == 4) ? 4 : 1); pass++) {
+//		cerr << line << " 0" << ' ' << ((end - begin) / scale_tgt) * ntsc_ipline.0 << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
 		adjust1 = WrapAngle(tgt_phase - pphase1);	
 		adjust2 = WrapAngle(pphase1 - pphase2);
 
@@ -485,7 +480,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 				int acgap = abs(count - prev_count);	
 				bool eed = false;
 
-				cerr << "algap " << algap << " acgap " << acgap << endl; 
+//				cerr << "algap " << algap << " acgap " << acgap << endl; 
 	
 				//if (prev_count && (get_oline(line - 1) >= 0) && (get_oline(line) >= 0) && (get_oline(line + 1) >= 0) && (InRangeCF(algap, .5, 12.5) || InRangeCF(acgap, .8, 12.5))) {
 				if (prev_count && IsRegLine(line) && (InRangeCF(algap, .5, 100) || InRangeCF(acgap, .8, 100))) {
