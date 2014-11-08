@@ -168,11 +168,14 @@ rightbp_filter = sps.firwin(33, [2.7/(freq/4), 2.9/(freq/4)], window='hamming', 
 WriteFilter("rightbp", rightbp_filter)
 
 # decoded audio LP first stage:  2x fsc sample rate 
-audiolp_filter = sps.firwin(17, .05 / (freq / 4), window='hamming')
+audiolp_filter = sps.firwin(33, .024 / (freq / 4), window='hamming')
 WriteFilter("audiolp", audiolp_filter)
 
+#audiolp_filterb, audiolp_filtera = sps.butter(8, .05 / (freq / 4))
+#WriteFilter("audiolp", audiolp_filter_b, audiolp_filter_a)
+
 # decoded audio LP second stage:  2x/20 fsc sample rate 
-audiolp20_filter = sps.firwin(33, .05 / (freq / 4 / 20), window='hamming')
+audiolp20_filter = sps.firwin(33, .024 / (freq / 4 / 20), window='hamming')
 WriteFilter("audiolp20", audiolp20_filter)
 
 #a500_48k_b, a500_48k_a = sps.butter(8, 500.0/24000.0)
