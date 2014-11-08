@@ -38,7 +38,9 @@ void Process(uint16_t *buf, int nsamp)
 		double right = (buf[(i * 2 + 1)] - 32768); 
 
 		snum++;
-//		cerr << snum << ' ' << left << ' ' << right << ' ' ;
+
+		double orig_left = left;
+		double orig_right = right;
 
 		left = (f_left.feed(left));
 		right = (f_right.feed(right));
@@ -53,6 +55,7 @@ void Process(uint16_t *buf, int nsamp)
 		if (_max > fast) fast = min(_max, fast + (_max * .035));	
 	
 		double oleft = left;
+		double oright = right;
 	
 //		cerr << snum << " IN " << left << ' ' << right << ' ' ;
 
@@ -66,20 +69,18 @@ void Process(uint16_t *buf, int nsamp)
 
 		// 7200-1500=5500 is the (current) 0db point for val
 
-		left *= m14db;
-		right *= m14db;
+		left = orig_left * m14db;
+		right = orig_right * m14db;
 
 		left *= 1 + (val / 1250);
 		right *= 1 + (val / 1250);
 
-//		cerr << ' ' << _max << " F:" << fast << " S:" << slow << ' ' << val << " OUT " << left << ' ' << right << ' ' << left / oleft << endl;
+//		cerr << ' ' << _max << " F:" << fast << " S:" << slow << ' ' << val << " OUT " << left << ' ' << right << ' ' << left / oleft << ' ' << right / oright << endl;
 
 		// need to reduce it to prevent clipping 
 		left *= .25;
 		right *= .25;
 	
-//		cerr << ' ' << _max << ' ' << fast << ' ' << slow << ' ' << val << ' ' << left << ' ' << right << endl;
-
 		uint16_t obuf[2];
 
 		obuf[0] = clamp(left + 32768, 0, 65535);
