@@ -31,6 +31,10 @@ C program uses.
 	The code itself is still a convoluted mess.  Hopefully that will be
 fixed for 0.6/beta 1. :)
 
+	All code except FDLS.py (under scipy license) are licensed under LGPL2.
+
+---
+
 	I use cxadc-linux3 with a VGA amplifier box (which I figured has
 sufficient bandwidth to capture the 14-15mhz Laserdisc RF signal) to
 capture the raw LD data.  A future project may provide an easier way to
