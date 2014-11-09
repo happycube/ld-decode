@@ -25,23 +25,4 @@ I have been unable to find complete information and I do not have an AC3 decoder
 so I am presently unable to create a decoder.  Too bad, since that is probably
 the best application for my software decoding technology!
 
----
-
-The programs:
-
-- cxadc-linux3 (a sep. project on github) - this is a 28mhz (8x FSC) capture
-system using a Connexxant CX23880 video capture card.  By far the cheapest
-broadband ADC available, albeit discontinued. 
-
-- ld-decoder.cxx (ld) - This program converts the FM video signal directly into
-a 16-bit grayscale raw image (1820x*). 
-
-- tbc.cxx - This program takes the output of ld and performs time base correction.
-The output is very similar to the composite output of a LaserDisc player, but I
-do not have a way to convert it directly into composite output... yet.
-
-- ntsc-decoder.cxx - This program takes the tbc output and converts it into a 
-sequence of 1536x480 16-bit RGB color frames.  It uses a simple 1D/heterodyne
-comb filter, which albeit primitive performs well (albeit not perfectly!)
-on 1980's LaserDisc material. 
 
