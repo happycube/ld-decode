@@ -177,7 +177,7 @@ class Comb
 		{
 			for (int l = 24; l < 505; l++) {
 				for (int h = 32; h < 844; h++) {
-					LPraw[fnum][(l * 844) + h - 16] = f_lpf10h.feed(rawbuffer[fnum][(l * 844) + h]);
+					LPraw[fnum][(l * 844) + h - 16] = f_lpf_comb.feed(rawbuffer[fnum][(l * 844) + h]);
 				}
 			}
 		}
@@ -206,7 +206,7 @@ class Comb
 				// used for 3d only, but don't want to recalc every pel	
 				uint16_t *p3line = &rawbuffer[0][l * 844];	
 				uint16_t *n3line = &rawbuffer[2][l * 844];	
-						
+				
 				uint16_t *p2line = &rawbuffer[f][(l - 2) * 844];	
 				uint16_t *n2line = &rawbuffer[f][(l + 2) * 844];	
 		
@@ -245,8 +245,10 @@ class Comb
 						c[1] = (((p2line[h] + n2line[h]) / 2) - line[h]); 
 						d[1] = fabs((p2line[h] - n2line[h]) / 2); 
 						d[1] = fabs(((p2line[h] - line[h]) - (n2line[h] - line[h]))); 
-						k = fabs(LPraw[1][adr] - LPraw[1][adr - 844]) + fabs(LPraw[1][adr] - LPraw[1][adr + 844]);
-						k /= irescale;
+//						k = fabs(LPraw[f][adr] - LPraw[f][adr - 844]) + fabs(LPraw[f][adr] - LPraw[f][adr + 844]);
+//						k /= irescale;
+						v[1] = c[1] ? 1 - clamp((fabs(d[1]) / fabs(c[1])) * 1.5, 0, 1) : 0;
+
 						v[1] = clamp(1 - (k / 10), 0, 1);
 //						if (l == 100) cerr << "T2 " << h << ' ' << c[1] << ' ' << d[1] << ' ' << v[1] << ' ' << k << endl;
 					} else {
