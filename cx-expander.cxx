@@ -51,19 +51,18 @@ void Process(uint16_t *buf, int nsamp)
 //		if ((snum < 100)) _max = 0; 
 
 //		fast = (fast * .96) + (_max * .04);	
-		fast = (fast * .998);
-		if (_max > fast) fast = min(_max, fast + (_max * .035));	
-	
-		double oleft = left;
-		double oright = right;
+		fast = (fast * .9998);
+		if (_max > fast) fast = min(_max, fast + (_max * .040));	
 	
 //		cerr << snum << " IN " << left << ' ' << right << ' ' ;
 
-		slow = (slow * .99985);
-		if (_max > slow) slow = min(_max, slow + (_max * .0019));	
+		slow = (slow * .999985);
+		if (_max > slow) slow = min(_max, slow + (_max * .0020));	
+
+		const double factor = 6500;
 
 		// XXX : there is currently some non-linearity in 1khz samples
-		double val = max(fast, slow * 1.00) - (6250 * m14db);
+		double val = max(fast, slow * 1.00) - (factor * m14db);
 
 		if (val < 0) val = 0;
 
@@ -72,10 +71,10 @@ void Process(uint16_t *buf, int nsamp)
 		left = orig_left * m14db;
 		right = orig_right * m14db;
 
-		left *= 1 + (val / 1250);
-		right *= 1 + (val / 1250);
+		left *= 1 + (val / (factor * m14db));
+		right *= 1 + (val / (factor * m14db));
 
-//		cerr << ' ' << _max << " F:" << fast << " S:" << slow << ' ' << val << " OUT " << left << ' ' << right << ' ' << left / oleft << ' ' << right / oright << endl;
+//		cerr << ' ' << _max << " F:" << fast << " S:" << slow << ' ' << val << " OUT " << left << ' ' << right << ' ' << left / orig_left << ' ' << right / orig_right << endl;
 
 		// need to reduce it to prevent clipping 
 		left *= .25;

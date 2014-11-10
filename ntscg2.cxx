@@ -286,6 +286,7 @@ int64_t vread = 0, aread = 0;
 int va_ratio = 80;
 	
 double a_next = -1;
+double a_cur = -1;
 double afreq = 48000;
 double agap  = dotclk / (double)va_ratio;
 
@@ -617,17 +618,25 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 					double scale = adj_linelen / nomlen;
 					//double scale = linelen / nomlen;
 					
+					if (a_cur == -65536) a_cur = (prev_crosspoint / va_ratio) - 1;
+
 					if (a_next < 0) a_next = prev_crosspoint / va_ratio;
-						
+
+					if (a_cur == a_next) a_next++;
+
 //					cerr << "a " << scale << ' ' << lvl_adjust << ' ' << a_next * va_ratio << ' ' << crosspoint << endl; 
 					while ((a_next * va_ratio) < crosspoint) {
-						int index = (int)a_next * 2;
+						int c = 0;
+						double left = 0, right = 0;
 
-						float left = abuf[index], right = abuf[index + 1];
+						for (int i = a_cur; i < a_next; i++, c++) {
+							left += abuf[i * 2];
+							right += abuf[(i * 2) + 1];
+						}
 						
-						ProcessAudioSample(left, right, scale);
+						ProcessAudioSample(left / c, right / c, scale);
 	
-						aplen = a_next;
+						a_cur = aplen = a_next;
 						a_next += ((dotclk / afreq) / va_ratio) * scale;
 					}	
 				}	
@@ -646,6 +655,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 	
 	rv = prev_crosspoint - 200;
 
+	a_cur -= aplen;
 	a_next -= aplen;
 	aplen *= 2;
 	cerr << "N " << a_next << endl;

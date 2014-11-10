@@ -97,8 +97,8 @@ lowpass_filter = sps.firwin(Nlpf + 1, 4.2 / (freq), window='hamming')
 WriteFilter("lpf42", lowpass_filter)
 
 # used for comb filtering
-lpf_combcomp_filter = sps.firwin(32 + 1, 1.0 / (freq), window='hamming')
-WriteFilter("lpf_comb", lpf_combcomp_filter)
+lowpass10h_filter = sps.firwin(32 + 1, 1.3 / (freq), window='hamming')
+WriteFilter("lpf_comb", lowpass10h_filter)
 
 Nlpf4 = 10
 lowpass_filter4 = sps.firwin(Nlpf + 1, 5.2 / (freq4), window='hamming')
@@ -168,15 +168,14 @@ rightbp_filter = sps.firwin(33, [2.7/(freq/4), 2.9/(freq/4)], window='hamming', 
 WriteFilter("rightbp", rightbp_filter)
 
 # decoded audio LP first stage:  2x fsc sample rate 
-audiolp_filter = sps.firwin(33, .024 / (freq / 4), window='hamming')
-WriteFilter("audiolp", audiolp_filter)
 
-#audiolp_filterb, audiolp_filtera = sps.butter(8, .05 / (freq / 4))
-#WriteFilter("audiolp", audiolp_filter_b, audiolp_filter_a)
+audiolp_filter_b, audiolp_filter_a = sps.butter(8, .10 / (freq / 4))
+WriteFilter("audiolp", audiolp_filter_b, audiolp_filter_a)
 
 # decoded audio LP second stage:  2x/20 fsc sample rate 
-audiolp20_filter = sps.firwin(33, .024 / (freq / 4 / 20), window='hamming')
-WriteFilter("audiolp20", audiolp20_filter)
+
+audiolp_filter_b, audiolp_filter_a = sps.butter(8, .024 / (freq / 4 / 20))
+WriteFilter("audiolp20", audiolp_filter_b, audiolp_filter_a)
 
 #a500_48k_b, a500_48k_a = sps.butter(8, 500.0/24000.0)
 a500_48k_b = sps.firwin(17, 500.0/24000.0, pass_zero=False)

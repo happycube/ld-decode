@@ -140,8 +140,6 @@ int main(int argc, char *argv[])
 
 		for (int i = 0; i < outleft.size(); i++) {
 			tot++;
-//			out.push_back((float)(outleft[i]));
-//			out.push_back((float)(outright[i]));
 
 			if (!(tot % 20)) {
 				out.push_back((float)f_leftlp20.feed(outleft[i]));
