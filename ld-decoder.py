@@ -159,31 +159,15 @@ f_deemp_b = [3.778720395899611e-01, -2.442559208200777e-01]
 f_deemp_a = [1.000000000000000e+00, -8.663838812301168e-01]
 deemp_corr = 1.0
 
-adj = (1.0/3.0)/(np.power(10.0,.495)/10.0)
-#adj = (1.0/3.0)/(np.power(10.0,.38)/10.0)
+# t1 = 0.83; t2 = 3.0; [b, a] = bilinear(-t2*(10^-8), -t1*(10^-8), t1/t2, freq);
+# printf("f_deemp_b = ["); printf("%.15e, ", b); printf("]\nf_deemp_a = ["); printf("%.15e, ", a); printf("]\n")
+f_deemp_b = [3.172367682445019e-01, -2.050613721767547e-01, ]
+f_deemp_a = [1.000000000000000e+00, -8.878246039322528e-01, ]
 
-w, h = sps.freqz(f_deemp_b, f_deemp_a)
-w = w / (2 * np.pi)
-
-Am = np.absolute(h)/1.0
-Th = np.empty(len(w))
-Th1 = np.angle(h)
-
-Ndeemp = 1 
-Ddeemp = 1
-for i in range(0, len(w)):
-#	print Am[i], 
-	Am[i] = 1.0 - ((1.0 - Am[i]) * adj) 
-#	Th[i] = (Th1[i] * (adj * adj)) 
-	Th[i] = (Th1[i] * (adj)) 
-#	print Am[i]
-
-[f_deemp_b, f_deemp_a] = fdls.FDLS(w, Am, Th, Ndeemp, Ddeemp, 0)
-# sqrt of adjustment above
-#deemp_corr = np.sqrt(adj) * 0.9860
-deemp_corr = np.sqrt(adj) * 0.9920
-deemp_corr = np.sqrt(adj) * 0.9911
-
+# t1 = 0.9; t2 = 3.0; [b, a] = bilinear(-t2*(10^-8), -t1*(10^-8), t1/t2, freq);
+# printf("f_deemp_b = ["); printf("%.15e, ", b); printf("]\nf_deemp_a = ["); printf("%.15e, ", a); printf("]\n")
+f_deemp_b = [3.423721575744635e-01, -2.213088502188534e-01, ]
+f_deemp_a = [1.000000000000000e+00, -8.789366926443899e-01, ]
 
 # audio filters
 Baudiorf = sps.firwin(65, 3.5 / (freq / 2), window='hamming', pass_zero=True)
