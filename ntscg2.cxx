@@ -284,9 +284,10 @@ int phase = -1;
 
 int64_t vread = 0, aread = 0;
 int va_ratio = 80;
-	
+
+double a_prevcross = 0;	
+double a_prevline = -1;	
 double a_next = -1;
-double a_cur = -1;
 double afreq = 48000;
 double agap  = dotclk / (double)va_ratio;
 
@@ -391,6 +392,7 @@ wrapup:
 	}
 	
 	frame[oline][0] = tgt_phase ? 32768 : 16384; 
+	frame[oline][1] = plevel1; 
 
 	return begin + adjlen;
 }
@@ -421,7 +423,7 @@ bool IsABlank(double line, double start, double len)
 	return false;
 }
 
-int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
+int Process(uint16_t *buf, int len, float *abuf, int alen)
 {
 	double prevf, f = 0;
 	double crosspoint = -1, prev_crosspoint = -1, tmp_crosspoint = -1;
@@ -483,7 +485,6 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 
 //				cerr << "algap " << algap << " acgap " << acgap << endl; 
 	
-				//if (prev_count && (get_oline(line - 1) >= 0) && (get_oline(line) >= 0) && (get_oline(line + 1) >= 0) && (InRangeCF(algap, .5, 12.5) || InRangeCF(acgap, .8, 12.5))) {
 				if (prev_count && IsRegLine(line) && (InRangeCF(algap, .5, 100) || InRangeCF(acgap, .8, 100))) {
 					cerr << "E " << begin << ' ' << crosspoint << ' ' << end << ' ' << linelen << ' ' << prev_linelen << ' ' << prev_count << ' ' << count << endl;
 
@@ -611,34 +612,40 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 						memset(frame, 0, sizeof(frame));
 					} else first = false;
 				}
- 
+
 				// process audio (if available)
 				if ((afd > 0) && (line > 0)) {
-					double nomlen = InRangeCF(linelen, 105, 120) ? ntsc_iphline : ntsc_ipline;
-					double scale = adj_linelen / nomlen;
-					//double scale = linelen / nomlen;
+					double linegap = line - a_prevline;
+				
+					if (linegap < 0) linegap += 525;
+	
+					a_prevcross = prev_crosspoint;
+					if (a_next < 0) {
+						a_next = prev_crosspoint / va_ratio ;
+						linegap = 0.5;
+					}
 					
-					if (a_cur == -65536) a_cur = (prev_crosspoint / va_ratio) - 1;
+					double scale = ((crosspoint - a_prevcross) / linegap) / 1820.0;
 
-					if (a_next < 0) a_next = prev_crosspoint / va_ratio;
-
-					if (a_cur == a_next) a_next++;
+//					cerr << "linegap " << linegap << " scale " << scale << " anext " << a_next * va_ratio << " cp " << crosspoint << " pcp " << a_prevcross << endl;
 
 //					cerr << "a " << scale << ' ' << lvl_adjust << ' ' << a_next * va_ratio << ' ' << crosspoint << endl; 
 					while ((a_next * va_ratio) < crosspoint) {
-						int c = 0;
-						double left = 0, right = 0;
+						int index = (int)a_next * 2;
 
-						for (int i = a_cur; i < a_next; i++, c++) {
-							left += abuf[i * 2];
-							right += abuf[(i * 2) + 1];
-						}
+						float left = abuf[index], right = abuf[index + 1];
 						
-						ProcessAudioSample(left / c, right / c, scale);
+						ProcessAudioSample(left, right, scale);
+
+//						cerr << dotclk << ' ' << afreq << ' ' << scale << endl;
 	
-						a_cur = aplen = a_next;
-						a_next += ((dotclk / afreq) / va_ratio) * scale;
-					}	
+						double agap = ((dotclk / afreq) / (double)va_ratio) * scale;
+						a_next += agap;
+//						cerr << "agap " << agap << " anext " << a_next * va_ratio << " cp " << crosspoint << endl; 
+					}
+
+					a_prevline = line;
+					a_prevcross = crosspoint;
 				}	
 			} else if (prev_crosspoint < 0) {
 				prev_count = count;
@@ -655,10 +662,11 @@ int Process(uint16_t *buf, int len, float *abuf, int alen, int &aplen)
 	
 	rv = prev_crosspoint - 200;
 
-	a_cur -= aplen;
-	a_next -= aplen;
-	aplen *= 2;
-	cerr << "N " << a_next << endl;
+	if (a_next >= 0) {
+		a_next -= (rv / va_ratio);
+		if (a_next < 0) a_next = 0;
+	}
+
 	vread += rv;
 
 	return rv;
@@ -831,6 +839,8 @@ int main(int argc, char *argv[])
 	cross = ire_to_in(seven_five ? -5 : -20);
 
 	int aplen = 0;
+	int aplen_mod = 0;
+	int aplen_tot = 0, aplen_totmod = 0;
 	while (rv == vbsize && ((tproc < dlen) || (dlen < 0))) {
 		if (do_autoset) {
 			autoset(inbuf, vbsize / 2);
@@ -840,9 +850,25 @@ int main(int argc, char *argv[])
 			cerr << i << ' ' << abuf[i] << ' ' << abuf[i + 1] << endl;
 		}
 */
-		int plen = Process(inbuf, rv / 2, abuf, arv / 8, aplen);
+		int plen = Process(inbuf, rv / 2, abuf, arv / 8);
+		
+		cerr << "plen " << plen << " aplen orig " << aplen << ' ' ;
 
-		cerr << "plen " << plen << endl;
+		aplen_tot += aplen;
+
+		aplen = plen / va_ratio;
+		aplen_mod += plen % va_ratio;
+		if (aplen_mod >= va_ratio) {
+			aplen++;	
+			aplen_mod = 0;
+		}
+
+		aplen *= 2;
+		cerr << " aplen mod " << aplen << ' ';
+		
+		aplen_totmod += aplen;
+		cerr << " orig tot " << aplen_tot << " mod tot " << aplen_totmod << endl;
+
 		if (plen < 0) {
 			cerr << "skipping ahead" << endl;
 			plen = vblen / 2;
@@ -850,7 +876,7 @@ int main(int argc, char *argv[])
 		}
 		tproc += plen;
 
-		cerr << "move " << plen << ' ' << (vblen - plen) * 2; 
+//		cerr << "move " << plen << ' ' << (vblen - plen) * 2; 
 		memmove(inbuf, &inbuf[plen], (vblen - plen) * 2);
 	
                 rv = read(fd, &inbuf[(vblen - plen)], plen * 2) + ((vblen - plen) * 2);

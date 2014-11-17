@@ -177,9 +177,9 @@ WriteFilter("audiolp", audiolp_filter_b, audiolp_filter_a)
 audiolp_filter_b, audiolp_filter_a = sps.butter(8, .024 / (freq / 4 / 20))
 WriteFilter("audiolp20", audiolp_filter_b, audiolp_filter_a)
 
-#a500_48k_b, a500_48k_a = sps.butter(8, 500.0/24000.0)
-a500_48k_b = sps.firwin(17, 500.0/24000.0, pass_zero=False)
-a500_48k_a = [1.0]
+a500_48k_b, a500_48k_a = sps.butter(4, 500.0/24000.0, btype='highpass')
+#a500_48k_b = sps.firwin(17, 500.0/24000.0, pass_zero=False)
+#a500_48k_a = [1.0]
 WriteFilter("a500_48k", a500_48k_b, a500_48k_a)
 
 #a500_44k_b, a500_44k_a = sps.butter(8, 500.0/22050.0) 
@@ -187,8 +187,9 @@ a500_44k_b = sps.firwin(17, 500.0/22050.0, pass_zero=False)
 a500_44k_a = [1.0]
 WriteFilter("a500_44k", a500_44k_b, a500_44k_a)
 
-a40h_48k_b = sps.firwin(17, 40.0/24000.0, pass_zero=False) 
-a40h_48k_a = [1.0]
+a40h_48k_b, a40h_48k_a = sps.butter(4, 40.0/24000.0, btype='highpass')
+#a40h_48k_b = sps.firwin(17, 40.0/24000.0, pass_zero=False) 
+#a40h_48k_a = [1.0]
 WriteFilter("a40h_48k", a40h_48k_b, a40h_48k_a)
 
 # from http://tlfabian.blogspot.com/2013/01/implementing-hilbert-90-degree-shift.html

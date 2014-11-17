@@ -15,6 +15,8 @@ freq = (315.0 / 88.0) * 8.0
 freq_hz = freq * 1000000.0
 blocklen = (16 * 1024) 
 
+wide_mode = 0
+
 def dosplot(B, A):
 	w, h = sps.freqz(B, A)
 
@@ -121,7 +123,8 @@ def CalcBoost(clv):
 	#if (cf > 13.8):
 	#	Am[f] = 0
 		if (cf > 5.8):
-			Am[f] = 1 + ((cf - 5.8) / 20) 
+			Am[f] = 1 # + ((cf - 5.8) / 20) 
+#			Am[f] = 1  - ((cf - 5.8) / 10) 
 		# CLV
 			if (clv == 2):
 				Am[f] = 1 + ((cf - 5.8) / 5.0) 
@@ -142,7 +145,7 @@ def CalcBoost(clv):
 	return [Bboost, Aboost]
 
 [Bboost, Aboost] = CalcBoost(0)
-#Bboost, Aboost = sps.butter(6, (3.4/(freq/2)), 'high')
+#Bboost, Aboost = sps.butter(6, (3.8/(freq/2)), 'high')
 #doplot(Bboost, Aboost)
 #exit()
 
@@ -168,6 +171,14 @@ f_deemp_a = [1.000000000000000e+00, -8.878246039322528e-01, ]
 # printf("f_deemp_b = ["); printf("%.15e, ", b); printf("]\nf_deemp_a = ["); printf("%.15e, ", a); printf("]\n")
 f_deemp_b = [3.423721575744635e-01, -2.213088502188534e-01, ]
 f_deemp_a = [1.000000000000000e+00, -8.789366926443899e-01, ]
+
+# t1 = .875
+f_deemp_b = [3.334224479793254e-01, -2.155237713318184e-01, ]
+f_deemp_a = [1.000000000000000e+00, -8.821013233524929e-01, ]
+
+# t1 = .833
+f_deemp_b = [3.183188754563553e-01, -2.057608446588788e-01, ]
+f_deemp_a = [1.000000000000000e+00, -8.874419692025236e-01, ]
 
 # audio filters
 Baudiorf = sps.firwin(65, 3.5 / (freq / 2), window='hamming', pass_zero=True)
@@ -221,8 +232,8 @@ def fm_decode(in_filt, freq_hz):
 
 minire = -60
 maxire = 140
-hz_ire_scale = (9300000 - 8100000) / 100
 
+hz_ire_scale = (9300000 - 8100000) / 100
 minn = 8100000 + (hz_ire_scale * -60)
 
 out_scale = 65534.0 / (maxire - minire)
@@ -300,6 +311,7 @@ def process_audio(indata):
 def main():
 	global Bboost, Aboost
 	global lowpass_filter_b, lowpass_filter_a 
+	global wide_mode, hz_ire_scale, minn
 
 	outfile = sys.stdout
 	audio_mode = 0 
@@ -319,6 +331,9 @@ def main():
 			[Bboost, Aboost] = CalcBoost(2)
 		if o == "-w":
 			lowpass_filter_b, lowpass_filter_a = sps.butter(6, (4.8/(freq/2)), 'low')
+			wide_mode = 1
+			hz_ire_scale = (9360000 - 8100000) / 100
+			minn = 8100000 + (hz_ire_scale * -60)
 
 	argc = len(cut_argv)
 	if argc >= 1:

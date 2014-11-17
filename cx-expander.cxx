@@ -74,11 +74,14 @@ void Process(uint16_t *buf, int nsamp)
 		left *= 1 + (val / (factor * m14db));
 		right *= 1 + (val / (factor * m14db));
 
+		left = f_left30.feed(left);
+		right = f_right30.feed(right);
+
 //		cerr << ' ' << _max << " F:" << fast << " S:" << slow << ' ' << val << " OUT " << left << ' ' << right << ' ' << left / orig_left << ' ' << right / orig_right << endl;
 
 		// need to reduce it to prevent clipping 
-		left *= .25;
-		right *= .25;
+		left *= .4;
+		right *= .4;
 	
 		uint16_t obuf[2];
 

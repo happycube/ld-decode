@@ -165,6 +165,8 @@ class Comb
 		double LPraw[3][844 * 505];
 		double K3D[844 * 505];
 
+		double aburstlev;	// average color burst
+
 		cline_t cbuf[525];
 		cline_t prevbuf[525];
 		Filter *f_i, *f_q;
@@ -458,6 +460,8 @@ class Comb
 
 			scount = 0;
 
+			aburstlev = 10.0;
+
 			f_oddframe = false;	
 	
 			f_i = new Filter(f_colorlp4);
@@ -550,11 +554,21 @@ class Comb
 		
 			// YIQ (YUV?) -> RGB conversion	
 			for (int l = firstline; l < 505; l++) {
+				double burstlev = rawbuffer[f][(l * 844) + 1] / irescale;
 				uint16_t *line_output = &output[(744 * 3 * (l - firstline))];
 				int o = 0;
+
+				if (burstlev > 5) {
+					aburstlev = (aburstlev * .99) + (burstlev * .01);
+				}
+//				cerr << "burst level " << burstlev << " mavg " << aburstlev << endl;
+
 				for (int h = 0; h < 752; h++) {
 					RGB r;
 					YIQ yiq = cbuf[l].p[h + 74];
+
+					yiq.i *= (10 / aburstlev);
+					yiq.q *= (10 / aburstlev);
 
 					// merge code - works but causes bad artifacs 
 					if (0 && framecount > 2) {
@@ -669,6 +683,7 @@ class Comb
 					memcpy(&obuf[744 * 3 * i], &output[744 * 3 * i], 744 * 3 * 2); 
 				}
 				f_oddframe = true;
+				cerr << "odd frame\n";
 			}
 
 			return 0;
