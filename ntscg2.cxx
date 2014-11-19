@@ -53,12 +53,16 @@ const double scale_tgt = ntsc_opline + ntsc_hsynctoline;
 
 const double phasemult = 1.591549430918953e-01 * in_freq; // * 0.99999;
 
+double hfreq = 525.0 * (30000.0 / 1001.0);
+
 // uint16_t levels
 uint16_t level_m40ire;
 uint16_t level_0ire;
 uint16_t level_7_5_ire;
 uint16_t level_100ire;
 uint16_t level_120ire;
+
+int fr_count = 0, au_count = 0;
 
 bool audio_only = false;
 
@@ -279,7 +283,7 @@ void ProcessAudioSample(float left, float right, double vel)
 
 double cross = 0;
 
-double line = -2;
+double tline = 0, line = -2;
 int phase = -1;
 
 int64_t vread = 0, aread = 0;
@@ -577,6 +581,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 					double tmplen = linelen;
 					while (tmplen > (105 * in_freq)) {
 						line = line + 0.5;
+						if (!first) tline = tline + 0.5;
 						tmplen -= ntsc_iphline;
 					}
 				} else if ((line == -1) && InRangeCF(linelen, 105, 120) && InRangeCF(count, 5, 20)) {
@@ -584,6 +589,8 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 					prev_linelen = ntsc_ipline;					
 				} else if (((line == -1) || (line >= 525)) && (linelen > (225 * in_freq)) && InRangeCF(count, 5, 14)) {
 					if (!first) {
+						fr_count++;
+						cerr << "Frame #" << fr_count << " acount " << au_count << endl;
 						write(1, frame, sizeof(frame));
 						memset(frame, 0, sizeof(frame));
 					} else {
@@ -592,6 +599,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 					}
 					prev_linelen = ntsc_ipline;					
 					line = 1;
+					tline++;
 
 //					if (still_handling) XXX
 //					phase = -1;
@@ -602,6 +610,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 					double tmplen = linelen;
 					while (tmplen > (105 * in_freq)) {
 						line = line + 0.5;
+						if (!first) tline = tline + 0.5;
 						tmplen -= ntsc_iphline;
 					}
 				} 
@@ -613,40 +622,26 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 					} else first = false;
 				}
 
-				// process audio (if available)
-				if ((afd > 0) && (line > 0)) {
-					double linegap = line - a_prevline;
-				
-					if (linegap < 0) linegap += 525;
-	
-					a_prevcross = prev_crosspoint;
-					if (a_next < 0) {
-						a_next = prev_crosspoint / va_ratio ;
-						linegap = 0.5;
-					}
+				if ((afd > 0) && !first) {
+					double a_max = tline * (afreq / hfreq); 
+					double a_start = (tline - 1) * (afreq / hfreq); 
 					
-					double scale = ((crosspoint - a_prevcross) / linegap) / 1820.0;
+					//double scale = ((crosspoint - a_prevcross) / linegap) / 1820.0;
 
-//					cerr << "linegap " << linegap << " scale " << scale << " anext " << a_next * va_ratio << " cp " << crosspoint << " pcp " << a_prevcross << endl;
+					while (au_count < a_max) {
+						double cur = au_count - a_start;
 
-//					cerr << "a " << scale << ' ' << lvl_adjust << ' ' << a_next * va_ratio << ' ' << crosspoint << endl; 
-					while ((a_next * va_ratio) < crosspoint) {
-						int index = (int)a_next * 2;
+						if (cur < 0) cur = 0;
+						cur /= (afreq / hfreq);
 
-						float left = abuf[index], right = abuf[index + 1];
-						
-						ProcessAudioSample(left, right, scale);
+						int index = (int)(((cur * linelen) + prev_crosspoint) / va_ratio); 
 
-//						cerr << dotclk << ' ' << afreq << ' ' << scale << endl;
-	
-						double agap = ((dotclk / afreq) / (double)va_ratio) * scale;
-						a_next += agap;
-//						cerr << "agap " << agap << " anext " << a_next * va_ratio << " cp " << crosspoint << endl; 
+						float left = abuf[index * 2], right = abuf[(index * 2) + 1];
+						ProcessAudioSample(left, right, 1.0);
+
+						au_count++;
 					}
-
-					a_prevline = line;
-					a_prevcross = crosspoint;
-				}	
+				}
 			} else if (prev_crosspoint < 0) {
 				prev_count = count;
 			}
