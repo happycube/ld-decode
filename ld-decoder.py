@@ -109,12 +109,12 @@ def doplot2(B, A, C, B2, A2, C2):
 
 ffreq = freq/2.0
 
-def CalcBoost(clv):
+def CalcBoost(byte = 0):
 	n = 128 
 	Fr = np.zeros(n)
 	Am = np.zeros(n)
 	Th = np.zeros(n)
-
+	
 	for f in range(0, n):
 		cf = freq * (float(f) / 256.0)
     
@@ -122,14 +122,18 @@ def CalcBoost(clv):
  
 	#if (cf > 13.8):
 	#	Am[f] = 0
-		if (cf > 5.8):
-			Am[f] = 1 # + ((cf - 5.8) / 20) 
+		fadj = 6.5
+		if (cf > fadj):
+			adj = .05
+			adj = adj - (.17 * (byte / 50000000000.0)) 
+			Am[f] = 1 + ((cf - fadj) *  adj) 
+#			Am[f] = 1 + ((cf - fadj) * -.12) 
 #			Am[f] = 1  - ((cf - 5.8) / 10) 
 		# CLV
-			if (clv == 2):
-				Am[f] = 1 + ((cf - 5.8) / 5.0) 
-			elif (clv == 1):
-				Am[f] = 1 + ((cf - 5.8) / 8.5) 
+#			if (clv == 2):
+#				Am[f] = 1 + ((cf - 5.8) / 5.0) 
+#			elif (clv == 1):
+#				Am[f] = 1 + ((cf - 5.8) / 8.5) 
 		elif (cf > 4.0):
 			Am[f] = 1 
 		elif (cf > 3.0):
@@ -316,6 +320,7 @@ def main():
 	outfile = sys.stdout
 	audio_mode = 0 
 	CAV = 0
+	firstbyte = 0
 
 	optlist, cut_argv = getopt.getopt(sys.argv[1:], "aAlLw")
 
@@ -342,19 +347,27 @@ def main():
 		infile = sys.stdin
 
 	if (argc >= 2):
-		infile.seek(int(cut_argv[1]))
+		firstbyte = int(cut_argv[1])
+		infile.seek(firstbyte)
 
 	if (argc >= 3):
 		total_len = int(cut_argv[2])
 		limit = 1
 	else:
 		limit = 0
+	
+	if CAV:		
+		[Bboost, Aboost] = CalcBoost(firstbyte)
+
+#	dosplot(Bboost, Aboost)
+#	exit()
 
 	total = toread = blocklen 
 	inbuf = infile.read(toread)
 	indata = np.fromstring(inbuf, 'uint8', toread)
 	
 	total = 0
+	total_prevread = 0
 	total_read = 0
 
 	while (len(inbuf) > 0):
@@ -377,12 +390,14 @@ def main():
 			outfile.write(output_16)
 			nread = len(output_16)
 
+			total_pread = total_read 
 			total_read += nread
 
-			# In Pioneer players, freq compensation is kept for 300-450 seconds
-			if CAV and (total_read > (60 * freq_hz)):
-				CAV = 0
-				[Bboost, Aboost] = CalcBoost(0)
+			if CAV:
+				total_bpread = total_pread / 500000000 
+				total_bread = total_read / 500000000 
+				if total_bpread != total_bread: 
+					[Bboost, Aboost] = CalcBoost(total_read + firstbyte)
 
 		indata = indata[nread:len(indata)]
 

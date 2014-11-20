@@ -16,6 +16,8 @@ bool bw_mode = false;
 bool cwide_mode = false;
 
 bool f_oneframe = false;
+	
+int dim = 2;
 
 // NTSC properties
 const double freq = 4.0;
@@ -485,6 +487,9 @@ class Comb
 			cerr << "WR" << fnum << endl;
 			if (!image_mode) {
 				write(ofd, obuf, (744 * linesout * 3) * 2);
+				if ((dim == 3) && !frames_out) {
+					write(ofd, obuf, (744 * linesout * 3) * 2);
+				}		
 			} else {
 				char ofname[512];
 
@@ -495,6 +500,7 @@ class Comb
 				close(ofd);
 			}
 			if (f_oneframe) exit(0);
+			frames_out++;
 		}
 		
 		// buffer: 844x505 uint16_t array
@@ -709,8 +715,6 @@ int main(int argc, char *argv[])
 	unsigned short inbuf[844 * 525 * 2];
 	unsigned char *cinbuf = (unsigned char *)inbuf;
 	int c;
-
-	int dim = 2;
 
 	char out_filename[256] = "";
 

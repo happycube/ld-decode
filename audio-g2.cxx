@@ -101,6 +101,9 @@ int main(int argc, char *argv[])
 	if (argc >= 3) {
 		unsigned long long offset = atoll(argv[2]);
 
+		// XXX:  100ms delay
+		offset += 2863636;
+
 		if (offset) lseek64(fd, offset, SEEK_SET);
 	}
 		
