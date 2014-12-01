@@ -192,6 +192,8 @@ void BurstDetect(double *line, int freq, double _loc, double &plevel, double &pp
 
 	for (int l = loc + (15 * freq); l < loc + len; l++) {
 		int x = line[l];
+
+		if (x == 0) cerr << "dropout in sync\n";
 	
 		if (x < 6000) x = 6000;
 		if (x >= 26000) x = 26000;
@@ -222,10 +224,10 @@ int get_oline(double line)
 {
 	int l = (int)line;
 
-	if (l < 9) return -1;
-	else if (l < 262) return (l - 9) * 2;
-	else if (l < 272) return -1;
-	else if (l < 524) return ((l - 272) * 2) + 1;
+	if (l < 10) return -1;
+	else if (l < 263) return (l - 10) * 2;
+	else if (l < 273) return -1;
+	else if (l < 525) return ((l - 273) * 2) + 1;
 
 	return -1;
 }
@@ -243,36 +245,20 @@ void ProcessAudioSample(float left, float right, double vel)
 	//double scale = ((vel - 1) * 0.5) + 1;
 	double scale = ((vel - 1) * 0.5) + 1;
 
-//	cerr << "AA " << left - 2301136 << ' ' << right - 2812499 << endl; 
-	
-//	left *= scale;
-//	right *= scale;
-	
-//	cerr << "AB " << left - 2301136 << ' ' << right - 2812499 << endl; 
-
-	if (!InRange(left, 2100000, 2500000)) left = pleft;
-	pleft = left;
-	left -= 2301136;
 	left *= (65535.0 / 300000.0);
 	left = f_fml.feed(left);
 	left += 32768;
 	
-	if (!InRange(right, 2601000, 3011200)) right = pright;
-	pright = right;
-	right -= 2812499;
 	right *= (65535.0 / 300000.0);
 	right = f_fmr.feed(right);
 	right += 32768;
 
-//	cerr << "A1 " << oleft << ' ' << left - _left << ' ' << oright << ' ' << right - _right << endl;
 	_left = left;
 	_right = right;
 
 	aout[aout_i * 2] = clamp(left, 0, 65535);
 	aout[(aout_i * 2) + 1] = clamp(right, 0, 65535);
 	
-//	cerr << "P2 " << aout[aout_i * 2] << ' ' << aout[(aout_i * 2) + 1] << endl;
-
 	aout_i++;
 	if (aout_i == 256) {
 		int rv = write(audio_only ? 1 : 3, aout, sizeof(aout));
@@ -302,17 +288,21 @@ int iline = 0;
 
 double ProcessLine(uint16_t *buf, double begin, double end, int line)
 {
-	double tout[4096];
+	double tout[8192];
 	double plevel1, pphase1;
 	double plevel2, pphase2;
 	double adjust1, adjust2, adjlen = ntsc_ipline;
 	int oline = get_oline(line);
+
+	if (oline < 0) return 0;
 
 	double tgt_phase;
 
 	Scale(buf, tout, begin, end, scale_tgt); 
 	BurstDetect(tout, out_freq, 0, plevel1, pphase1); 
 	BurstDetect(tout, out_freq, 228, plevel2, pphase2); 
+
+	cerr << "levels " << plevel1 << ' ' << plevel2 << endl;
 
 	if (plevel1 < 1000) goto wrapup;
 	if (plevel2 < 1000) goto wrapup;
@@ -328,9 +318,9 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line)
 	if (in_freq == 4) goto wrapup;
 
 	adjlen = (end - begin) / (scale_tgt / ntsc_opline);
-	cerr << line << " " << 0 << ' ' << begin << ' ' << (begin + adjlen) << '/' << end  << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
+	cerr << line << " " << oline << " " << 0 << ' ' << begin << ' ' << (begin + adjlen) << '/' << end  << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
 
-	for (int pass = 0; pass < ((in_freq == 4) ? 4 : 1); pass++) {
+	for (int pass = 0; pass < ((in_freq == 4) ? 4 : 2); pass++) {
 //		cerr << line << " 0" << ' ' << ((end - begin) / scale_tgt) * ntsc_ipline.0 << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
 		adjust1 = WrapAngle(tgt_phase - pphase1);	
 		adjust2 = WrapAngle(pphase1 - pphase2);
@@ -377,7 +367,7 @@ wrapup:
 			o = ire_to_out(in_to_ire(v));
 		}
 
-		if (despackle && (ire < -30) && (h > 80)) {
+		if (despackle && (ire < -10) && (h > 80)) {
 			if ((h - ldo) > 16) {
 				for (int j = h - 4; j > 2 && j < h; j++) {
 					double to = (frame[oline - 2][j - 2] + frame[oline - 2][j + 2]) / 2;
@@ -426,202 +416,96 @@ bool IsABlank(double line, double start, double len)
 
 	return false;
 }
-
+	
+double psync[1820*1200];
 int Process(uint16_t *buf, int len, float *abuf, int alen)
 {
-	double prevf, f = 0;
-	double crosspoint = -1, prev_crosspoint = -1, tmp_crosspoint = -1;
-	int prev_count = 0, count = 0, debounce = 0;
 	int rv = 0;
-	bool valid;
+	bool first = true;
 
-	double prev_linelen = ntsc_ipline;
+	f_syncid.clear(0);
 
-	f_syncp.clear(ire_to_in(black_ire));
+	cerr << "len " << len << endl;
+	for (int i = 0; i < len; i++) {
+		double val = f_syncid.feed(buf[i] < 12000); 
+		if (i > syncid_offset) psync[i - syncid_offset] = val; 
+	}
 
-	cerr << "Process " << len << ' ' << (const void *)buf << endl;
-	f_syncp.dump();
+	int insync = 0;
+	double line = 0;
 
-	int i;
-	for (i = 0; (i >= 0) && (i < (len - 4096)); i++) {
-		prevf = f;
-		f = f_syncp.feed(buf[i]); 
-	
-		if (f < cross) {
-			if (count <= 0) {
-				double d = prevf - f;
-				double c = (prevf - cross) / d;
+	double prev_begin = 0, prev_end = 0, prev_linelen = 1820;
+	double begin = -1, end = -1, linelen = 1820;
 
-				tmp_crosspoint = (i - 1) + c; 
-			}
-			count++;
-			debounce = 0;
-		} else {
-			double bkup_crosspoint = crosspoint;
+	int i, prev = 0;
+	for (i = 500; i < len - syncid_offset; i++) {
+		double level = psync[i];
 
-			if (debounce < 16) debounce++;
+		// look for peaks with valid level values
+		if ((level > .08) && (level > psync [i - 1]) && (level > psync [i + 1])) {
+			cerr << i << ' ' << i - prev << ' ' << buf[i] << ' ' << psync[i] << endl;
 
-			if ((debounce >= 16) && (count > (5 * in_freq))) crosspoint = tmp_crosspoint;
+			if (InRange(level, 0.1, 0.2)) {
+				if (!insync) {
+					insync = ((i - prev) < 1200) ? 2 : 1;
+					cerr << "sync type " << insync << endl;
 
-			if ((debounce >= 16) && (count > (5 * in_freq)) && prev_crosspoint > 0) {
-				double begin = prev_crosspoint;
-				double end = begin + ((crosspoint - prev_crosspoint) * scale_linelen);
-				double linelen = crosspoint - prev_crosspoint; 
-				
-				int oline = get_oline(line + 0);
-				
-				valid = IsABlank(line, crosspoint - prev_crosspoint, count); 
-
-				cerr << "S " << line << ' ' << oline << ' ' << i << ' ' << crosspoint << ' ' << prev_crosspoint << ' ' << linelen << ' ' << count << ' ' << valid << endl;
-
-				if (!valid) {
-					cerr << "X " << line << ' ' << crosspoint - prev_crosspoint << ' ' << count << endl;
-
-					crosspoint = bkup_crosspoint;
-					debounce = 0;
-					count = 0;
-					continue;
-				}
-		
-				double algap = fabs(linelen - prev_linelen);
-				int acgap = abs(count - prev_count);	
-				bool eed = false;
-
-//				cerr << "algap " << algap << " acgap " << acgap << endl; 
-	
-				if (prev_count && IsRegLine(line) && (InRangeCF(algap, .5, 100) || InRangeCF(acgap, .8, 100))) {
-					cerr << "E " << begin << ' ' << crosspoint << ' ' << end << ' ' << linelen << ' ' << prev_linelen << ' ' << prev_count << ' ' << count << endl;
-
-					eed = true;
-
-					cerr << linelen << ' ' << count - prev_count << endl;
-
-#if 1
-					if (InRangeCF(linelen + (count - prev_count), 227, 228)) {
-						cerr << "C " << endl;
-						crosspoint -= (linelen - prev_linelen);
-						end = begin + ((crosspoint - prev_crosspoint) * scale_linelen);
-						linelen = crosspoint - prev_crosspoint; 
-					} else if (0 && prev_count && (count > prev_count)) {
-						cerr << "D " << endl;
-						crosspoint -= (linelen - prev_linelen);
-						end = begin + ((crosspoint - prev_crosspoint) * scale_linelen);
-						linelen = crosspoint - prev_crosspoint; 
-					} else if (0 && (crosspoint - prev_crosspoint) < (prev_linelen - 4)) {
-						cerr << "A " << endl;
-						crosspoint -= (linelen - prev_linelen);
-						end = begin + ((crosspoint - prev_crosspoint) * scale_linelen);
-						linelen = crosspoint - prev_crosspoint; 
-					} else if (1) {
-						cerr << "B " << endl;
-						begin += (linelen + prev_linelen) / 1.0;
-						prev_crosspoint += (linelen - prev_linelen) / 1.0;
-						end = begin + ((crosspoint - prev_crosspoint) * scale_linelen);
-						linelen = crosspoint - prev_crosspoint; 
-					} 
-#else
-					if (InRangeCF(linelen, 140, 226.5)) {
-						crosspoint += (in_freq * 227.5) - prev_linelen;
-						
-						end = begin + ((crosspoint - prev_crosspoint) * scale_linelen);
-						linelen = crosspoint - prev_crosspoint; 
-					} else if (InRangeCF(linelen, 228.5, 280)) {
-						crosspoint += (in_freq * 227.5) - prev_linelen;
-						
-						end = begin + ((crosspoint - prev_crosspoint) * scale_linelen);
-						linelen = crosspoint - prev_crosspoint; 
-					}
-#endif
-					cerr << "ES " << line << ' ' << oline << ' ' << i << ' ' << crosspoint << ' ' << prev_crosspoint << ' ' << linelen << ' ' << count << endl;
-				} else if (line > 0) {
-					// special case for a bit of Airplane that had a dropout at the beginning of field
-
-					// sync started early
-					if (0 && InRangeCF(linelen, 140, 226)) {
-						crosspoint += (in_freq * 227.5) - linelen;
-						
-						end = begin + ((crosspoint - prev_crosspoint) * scale_linelen);
-						linelen = crosspoint - prev_crosspoint; 
-						
-						cerr << "Es " << line << ' ' << oline << ' ' << i << ' ' << crosspoint << ' ' << prev_crosspoint << ' ' << linelen << ' ' << count << endl;
-					}
-#if 0
-					if (!InRangeCF(linelen, 227.5 - 1, 227.5 + 1)) {
-						if (linelen < (227 * in_freq)) {
-							crosspoint += (227.5 * in_freq) - linelen;
+					if (insync == 1) {
+						if (!first) {
+							write(1, frame, sizeof(frame));
+							memset(frame, 0, sizeof(frame));
+							return i - 32768;
 						} else {
-							prev_crosspoint -= (227.5 * in_freq) - linelen;
+							first = false;
 						}
-						begin = prev_crosspoint;
-						end = begin + ((crosspoint - prev_crosspoint) * scale_linelen);
-						linelen = crosspoint - prev_crosspoint; 
-						cerr << "Es " << line << ' ' << oline << ' ' << i << ' ' << crosspoint << ' ' << prev_crosspoint << ' ' << linelen << ' ' << count << endl;
-					}	
-#endif
+					}
+				}
+			} else if (InRange(level, 0.25, 0.5)) {
+				bool bad = false;
+
+				prev_begin = begin;
+				prev_end = end;
+				prev_linelen = linelen;
+
+				begin = -1; end = -1;
+
+				if (insync) {
+					line = (insync == 2) ? 273 : 10;
+					insync = 0;
+				} else line++;
+
+				if (!insync) { 
+					for (int x = i; begin == -1 && x > (i - 100); x--) {
+						if (buf[x] > 12000) begin = x; 
+					}
+					
+					for (int x = i; end == -1 && x < (i + 100); x++) {
+						if (buf[x] > 12000) end = x; 
+					}
+
+					bad = (begin < 0) || (end < 0) || (!InRange(end - begin, 128, 136));
+					cerr << line << ' ' << bad << ' ' << prev_begin << ' ' << begin << ' ' << end << ' ' << end - prev_begin << ' ' << scale_tgt << endl;
+				}
+				// normal line
+				if (bad || buf[i] > 12000) {
+					// defective line
+					begin = prev_begin + prev_linelen;
+					end = prev_end + prev_linelen;
+					cerr << "BAD " << bad << ' ' << begin << ' ' << end << endl;
 				}
 
-				prev_count = count;
+				linelen = end - prev_end;
 
-				double adj_linelen = linelen;
+				double send = prev_begin + ((begin - prev_begin) * scale_linelen);
+				double adjend = ProcessLine(buf, prev_begin, send, line); 
+			} else {
+				// in vsync/equalizing lines - don't care right now
+			}  
+			prev = i;
+		}
+	}	
 
-//				cerr << line << ' ' << linelen << ' ' << ntsc_ipline * 0.9 << ' ' << count << ' ' << 11 * in_freq << endl;
-				if ((line >= 0) && (linelen >= (ntsc_ipline * 0.9)) && (count > (14 * in_freq))) {
-					// standard line
-					int oline = get_oline(line);
-
-					if (oline >= 0) {
-						double adjend = ProcessLine(buf, begin, end, line); 
-
-						adj_linelen = adjend - begin;
-//						cerr << "ADJ " << end << ' ' << (adjend - begin) / 1820 << endl;	
-					}	
-
-					prev_linelen = linelen;					
-
-					double tmplen = linelen;
-					while (tmplen > (105 * in_freq)) {
-						line = line + 0.5;
-						if (!first) tline = tline + 0.5;
-						tmplen -= ntsc_iphline;
-					}
-				} else if ((line == -1) && InRangeCF(linelen, 105, 120) && InRangeCF(count, 5, 20)) {
-					line = 263.5;
-					prev_linelen = ntsc_ipline;					
-				} else if (((line == -1) || (line >= 525)) && (linelen > (225 * in_freq)) && InRangeCF(count, 5, 14)) {
-					if (!first) {
-						fr_count++;
-						cerr << "Frame #" << fr_count << " acount " << au_count << endl;
-						write(1, frame, sizeof(frame));
-						memset(frame, 0, sizeof(frame));
-					} else {
-						first = false;
-						phase = -1;
-					}
-					prev_linelen = ntsc_ipline;					
-					line = 1;
-					tline++;
-
-//					if (still_handling) XXX
-//					phase = -1;
-					if (phase >= 0) phase = !phase;
-				} else if ((line == -2) && (linelen > (in_freq * 220)) && (count > (10 * in_freq))) {
-					line = -1;
-				} else if (line >= 0) {
-					double tmplen = linelen;
-					while (tmplen > (105 * in_freq)) {
-						line = line + 0.5;
-						if (!first) tline = tline + 0.5;
-						tmplen -= ntsc_iphline;
-					}
-				} 
-
-				if (write_fields && line == 268) {
-					if (!first) {
-						write(1, frame, sizeof(frame));
-						memset(frame, 0, sizeof(frame));
-					} else first = false;
-				}
-
+#if 0
 				if ((afd > 0) && !first) {
 					double a_max = tline * (afreq / hfreq); 
 					double a_start = (tline - 1) * (afreq / hfreq); 
@@ -642,29 +526,8 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 						au_count++;
 					}
 				}
-			} else if (prev_crosspoint < 0) {
-				prev_count = count;
-			}
-
-			if (debounce >= 16) { 
-				prev_crosspoint = crosspoint;
-				count = 0;
-			}
-		}
-	}
-
-	if (i < 0) cerr << "WTF\n";
-	
-	rv = prev_crosspoint - 200;
-
-	if (a_next >= 0) {
-		a_next -= (rv / va_ratio);
-		if (a_next < 0) a_next = 0;
-	}
-
-	vread += rv;
-
-	return rv;
+#endif
+	return (i > 16384) ? i - 16384 : 0;
 }
 
 bool seven_five = (in_freq == 4);
@@ -746,8 +609,8 @@ void autoset(uint16_t *buf, int len, bool fullagc = true)
 	cross = ire_to_in(seven_five ? -5 : -20);
 }
 
-const int ablen = (5 * 1024);
-const int vblen = ablen * 16;
+const int vblen = (1820 * 1100);	// should be divisible evenly by 16
+const int ablen = vblen / 16;
 
 const int absize = ablen * 8;
 const int vbsize = vblen * 2;
@@ -823,6 +686,8 @@ int main(int argc, char *argv[])
 			arv += arv2;
 		}
 	}
+							
+	memset(frame, 0, sizeof(frame));
 
 	// base constant levels
 	level_m40ire = ire_to_in(-40);
@@ -832,6 +697,8 @@ int main(int argc, char *argv[])
 	level_120ire = ire_to_in(120);
 
 	cross = ire_to_in(seven_five ? -5 : -20);
+
+	f_linelen.clear(1820);
 
 	int aplen = 0;
 	int aplen_mod = 0;
