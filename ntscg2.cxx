@@ -32,13 +32,9 @@ const double in_freq = 8.0;	// in FSC.  Must be an even number!
 const double out_freq = OUT_FREQ;	// in FSC.  Must be an even number!
 
 //const double ntsc_uline = 63.5; // usec_
-const double ntsc_iphline = 113.75 * in_freq; // pixels per half-line
 const double ntsc_ipline = 227.5 * in_freq; // pixels per line
 const double ntsc_opline = 227.5 * out_freq; // pixels per line
 //const int ntsc_oplinei = 227.5 * out_freq; // pixels per line
-const double dotclk = (1000000.0*(315.0/88.0)*in_freq); 
-
-//const double dots_usec = dotclk / 1000000.0; 
 
 const double ntsc_blanklen = 9.2;
 
@@ -55,19 +51,24 @@ const double phasemult = 1.591549430918953e-01 * in_freq; // * 0.99999;
 
 double hfreq = 525.0 * (30000.0 / 1001.0);
 
-// uint16_t levels
-uint16_t level_m40ire;
-uint16_t level_0ire;
-uint16_t level_7_5_ire;
-uint16_t level_100ire;
-uint16_t level_120ire;
-
 int fr_count = 0, au_count = 0;
 
 bool audio_only = false;
 
 double inbase = 1;	// IRE == -60
 double inscale = 327.68;
+
+int a_read = 0, v_read = 0;
+int va_ratio = 80;
+
+const int vblen = (1820 * 1100);	// should be divisible evenly by 16
+const int ablen = (1820 * 1100) / 40;
+
+const int absize = ablen * 8;
+const int vbsize = vblen * 2;
+	
+float abuf[ablen * 2];
+unsigned short inbuf[vblen];
 
 inline double in_to_ire(uint16_t level)
 {
@@ -193,8 +194,7 @@ void BurstDetect(double *line, int freq, double _loc, double &plevel, double &pp
 	for (int l = loc + (15 * freq); l < loc + len; l++) {
 		int x = line[l];
 
-		if (x == 0) cerr << "dropout in sync\n";
-	
+		// XXX: use ire->int here
 		if (x < 6000) x = 6000;
 		if (x >= 26000) x = 26000;
 
@@ -205,11 +205,8 @@ void BurstDetect(double *line, int freq, double _loc, double &plevel, double &pp
 
 		double level = ctor(i, q);
 
-//		cerr << l << ' ' << level << ' ' << atan2(pi, pq) << endl;
-
 		if (((l - loc) > 16) && (level > plevel) && (level < 10000)) {
 			ploc = l;
-//			cerr << l << ' ' << level << ' ' << atan2(pi, pq) << endl;
 			plevel = level;
 			pi = i; pq = q;
 		}
@@ -240,10 +237,7 @@ uint16_t aout[512];
 int aout_i = 0;
 void ProcessAudioSample(float left, float right, double vel)
 {
-	float oleft = left, oright = right;
-
-	//double scale = ((vel - 1) * 0.5) + 1;
-	double scale = ((vel - 1) * 0.5) + 1;
+//	double scale = ((vel - 1) * 0.5) + 1;
 
 	left *= (65535.0 / 300000.0);
 	left = f_fml.feed(left);
@@ -267,24 +261,50 @@ void ProcessAudioSample(float left, float right, double vel)
 	}
 }
 
+double afreq = 48000;
+
+double prev_time = -1;
+double next_audsample = 0;
+int prev_loc = -1;
+void ProcessAudio(double frame, int loc, float *abuf)
+{
+	double time = frame / (30000.0 / 1001.0);
+
+	if (prev_time >= 0) {
+		while (next_audsample < time) {
+			double i1 = (next_audsample - prev_time) / (time - prev_time); 
+			int i = (i1 * (loc - prev_loc)) + prev_loc;
+
+			if (i < v_read) {
+				ProcessAudioSample(f_fml.val(), f_fmr.val(), 1.0);  
+			} else {
+				int index = (i / va_ratio) - a_read;
+				if (index >= ablen) {
+					cerr << "audio error " << frame << " " << time << " " << i1 << " " << i << " " << index << " " << ablen << endl;
+					index = ablen - 1;
+					exit(0);
+				} 
+				float left = abuf[index * 2], right = abuf[(index * 2) + 1];
+				ProcessAudioSample(left, right, 1.0);
+			} 
+
+			next_audsample += 1.0 / afreq;
+		}
+	}
+
+	prev_time = time; prev_loc = loc;
+}
+
 double cross = 0;
 
 double tline = 0, line = -2;
 int phase = -1;
 
-int64_t vread = 0, aread = 0;
-int va_ratio = 80;
-
-double a_prevcross = 0;	
-double a_prevline = -1;	
-double a_next = -1;
-double afreq = 48000;
-double agap  = dotclk / (double)va_ratio;
-
 bool first = true;
 double prev_linelen = ntsc_ipline;
 
 int iline = 0;
+int frameno = -1;
 
 double ProcessLine(uint16_t *buf, double begin, double end, int line)
 {
@@ -292,6 +312,7 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line)
 	double plevel1, pphase1;
 	double plevel2, pphase2;
 	double adjust1, adjust2, adjlen = ntsc_ipline;
+
 	int oline = get_oline(line);
 
 	if (oline < 0) return 0;
@@ -388,39 +409,12 @@ wrapup:
 	frame[oline][0] = tgt_phase ? 32768 : 16384; 
 	frame[oline][1] = plevel1; 
 
-	return begin + adjlen;
+	return adjlen;
 }
 
-bool IsRegLine(double line)
-{
-	return ((line >= 11) && (line <= 262)) || ((line >= 273) && (line <= 524));
-}
-
-bool IsABlank(double line, double start, double len)
-{
-	bool isHalf = false;
-	double end = start + len;
-
-	double half = 227.5 * in_freq / 2;
-	double full = 227.5 * in_freq;
-
-	if ((line >= 520) || (line < 11) || ((line >= 260.0) && (line <= 273))) {
-//		cerr << "halfline\n";
-		isHalf = true;
-	}
-
-	if (end > full) return true;
-	if (isHalf && (end > half)) return true;
-
-//	cerr << "fail " << line << ' ' << end << " start " << start << " len " << len << " halfneed " << half << endl;
-
-	return false;
-}
-	
 double psync[1820*1200];
 int Process(uint16_t *buf, int len, float *abuf, int alen)
 {
-	int rv = 0;
 	bool first = true;
 
 	f_syncid.clear(0);
@@ -443,21 +437,30 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 
 		// look for peaks with valid level values
 		if ((level > .08) && (level > psync [i - 1]) && (level > psync [i + 1])) {
+			bool canbesync = true;
+	
 			cerr << i << ' ' << i - prev << ' ' << buf[i] << ' ' << psync[i] << endl;
 
-			if (InRange(level, 0.1, 0.2)) {
+			if (!first && (get_oline(line) >= 0)) canbesync = false;
+
+			if (canbesync && InRange(level, 0.13, 0.2)) {
 				if (!insync) {
 					insync = ((i - prev) < 1200) ? 2 : 1;
-					cerr << "sync type " << insync << endl;
+					cerr << frameno << " sync type " << insync << endl;
 
 					if (insync == 1) {
 						if (!first) {
+							frameno++;
 							write(1, frame, sizeof(frame));
 							memset(frame, 0, sizeof(frame));
 							return i - 32768;
 						} else {
 							first = false;
+							ProcessAudio(frameno, v_read + i, abuf);
 						}
+						if (phase >= 0) phase = !phase;
+					} else {
+						if (!first) ProcessAudio(frameno + .5, v_read + i, abuf);
 					}
 				}
 			} else if (InRange(level, 0.25, 0.5)) {
@@ -497,7 +500,11 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 				linelen = end - prev_end;
 
 				double send = prev_begin + ((begin - prev_begin) * scale_linelen);
-				double adjend = ProcessLine(buf, prev_begin, send, line); 
+
+				if (!first) {
+					linelen = ProcessLine(buf, prev_begin, send, line); 
+					ProcessAudio((line / 525.0) + frameno, v_read + begin, abuf); 
+				}
 			} else {
 				// in vsync/equalizing lines - don't care right now
 			}  
@@ -505,28 +512,6 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 		}
 	}	
 
-#if 0
-				if ((afd > 0) && !first) {
-					double a_max = tline * (afreq / hfreq); 
-					double a_start = (tline - 1) * (afreq / hfreq); 
-					
-					//double scale = ((crosspoint - a_prevcross) / linegap) / 1820.0;
-
-					while (au_count < a_max) {
-						double cur = au_count - a_start;
-
-						if (cur < 0) cur = 0;
-						cur /= (afreq / hfreq);
-
-						int index = (int)(((cur * linelen) + prev_crosspoint) / va_ratio); 
-
-						float left = abuf[index * 2], right = abuf[(index * 2) + 1];
-						ProcessAudioSample(left, right, 1.0);
-
-						au_count++;
-					}
-				}
-#endif
 	return (i > 16384) ? i - 16384 : 0;
 }
 
@@ -599,30 +584,14 @@ void autoset(uint16_t *buf, int len, bool fullagc = true)
 
 	cerr << "new base:scale = " << inbase << ':' << inscale << endl;
 	
-	// rebase constants
-	level_m40ire = ire_to_in(-40);
-	level_0ire = ire_to_in(0);
-	level_7_5_ire = ire_to_in(7.5);
-	level_100ire = ire_to_in(100);
-	level_120ire = ire_to_in(120);
-	
 	cross = ire_to_in(seven_five ? -5 : -20);
 }
-
-const int vblen = (1820 * 1100);	// should be divisible evenly by 16
-const int ablen = vblen / 16;
-
-const int absize = ablen * 8;
-const int vbsize = vblen * 2;
-	
-float abuf[ablen * 2];
-unsigned short inbuf[vblen];
 
 int main(int argc, char *argv[])
 {
 	int rv = 0, arv = 0;
 	bool do_autoset = (in_freq == 4);
-	long long dlen = -1, tproc = 0;
+	long long dlen = -1;
 	unsigned char *cinbuf = (unsigned char *)inbuf;
 	unsigned char *cabuf = (unsigned char *)abuf;
 
@@ -689,54 +658,27 @@ int main(int argc, char *argv[])
 							
 	memset(frame, 0, sizeof(frame));
 
-	// base constant levels
-	level_m40ire = ire_to_in(-40);
-	level_0ire = ire_to_in(0);
-	level_7_5_ire = ire_to_in(7.5);
-	level_100ire = ire_to_in(100);
-	level_120ire = ire_to_in(120);
-
 	cross = ire_to_in(seven_five ? -5 : -20);
 
 	f_linelen.clear(1820);
 
 	int aplen = 0;
-	int aplen_mod = 0;
-	int aplen_tot = 0, aplen_totmod = 0;
-	while (rv == vbsize && ((tproc < dlen) || (dlen < 0))) {
+	while (rv == vbsize && ((v_read < dlen) || (dlen < 0))) {
 		if (do_autoset) {
 			autoset(inbuf, vbsize / 2);
 		}
-/*
-		for (int i = 0; i < (arv / 8); i+=2) {
-			cerr << i << ' ' << abuf[i] << ' ' << abuf[i + 1] << endl;
-		}
-*/
+
 		int plen = Process(inbuf, rv / 2, abuf, arv / 8);
 		
-		cerr << "plen " << plen << " aplen orig " << aplen << ' ' ;
-
-		aplen_tot += aplen;
-
-		aplen = plen / va_ratio;
-		aplen_mod += plen % va_ratio;
-		if (aplen_mod >= va_ratio) {
-			aplen++;	
-			aplen_mod = 0;
-		}
-
-		aplen *= 2;
-		cerr << " aplen mod " << aplen << ' ';
-		
-		aplen_totmod += aplen;
-		cerr << " orig tot " << aplen_tot << " mod tot " << aplen_totmod << endl;
-
 		if (plen < 0) {
 			cerr << "skipping ahead" << endl;
 			plen = vblen / 2;
-			aplen = plen / va_ratio;
 		}
-		tproc += plen;
+
+		v_read += plen;
+		aplen = (v_read / va_ratio) - a_read;
+
+		a_read += aplen;
 
 //		cerr << "move " << plen << ' ' << (vblen - plen) * 2; 
 		memmove(inbuf, &inbuf[plen], (vblen - plen) * 2);
@@ -750,10 +692,11 @@ int main(int argc, char *argv[])
 		
 		if (afd != -1) {	
 //			cerr << "AX " << absize << ' ' << aplen * 4 << ' ' << (double)(absize - (aplen * 4)) << ' ' << abuf[0] << ' ' ;
-			memmove(abuf, &abuf[aplen], absize - (aplen * 4));
+			cerr << absize << ' ' << aplen << ' ' << aplen * 8 << endl;
+			memmove(abuf, &abuf[aplen], absize - (aplen * 8));
 			cerr << abuf[0] << endl;
 
-			arv = (absize - (aplen * 4));
+			arv = (absize - (aplen * 8));
 //                	arv = read(afd, &abuf[ablen - aplen], aplen * 4) + (absize - (aplen * 4));
 			while (arv < absize) {
 //				usleep(100000);
