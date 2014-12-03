@@ -266,6 +266,8 @@ double afreq = 48000;
 double prev_time = -1;
 double next_audsample = 0;
 int prev_loc = -1;
+
+int prev_index = 0, prev_i = 0;
 void ProcessAudio(double frame, int loc, float *abuf)
 {
 	double time = frame / (30000.0 / 1001.0);
@@ -285,6 +287,9 @@ void ProcessAudio(double frame, int loc, float *abuf)
 					exit(0);
 				} 
 				float left = abuf[index * 2], right = abuf[(index * 2) + 1];
+				cerr << "A " << frame << ' ' << loc << ' ' << i1 << ' ' << i << ' ' << i - prev_i << ' ' << index << ' ' << index - prev_index << ' ' << left << ' ' << right << endl;
+				prev_index = index;
+				prev_i = i;
 				ProcessAudioSample(left, right, 1.0);
 			} 
 
@@ -456,11 +461,11 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 							return i - 32768;
 						} else {
 							first = false;
-							ProcessAudio(frameno, v_read + i, abuf);
+							//ProcessAudio(frameno, v_read + i, abuf);
 						}
 						if (phase >= 0) phase = !phase;
 					} else {
-						if (!first) ProcessAudio(frameno + .5, v_read + i, abuf);
+//						if (!first) ProcessAudio(frameno + .5, v_read + i, abuf);
 					}
 				}
 			} else if (InRange(level, 0.25, 0.5)) {
@@ -692,8 +697,8 @@ int main(int argc, char *argv[])
 		
 		if (afd != -1) {	
 //			cerr << "AX " << absize << ' ' << aplen * 4 << ' ' << (double)(absize - (aplen * 4)) << ' ' << abuf[0] << ' ' ;
-			cerr << absize << ' ' << aplen << ' ' << aplen * 8 << endl;
-			memmove(abuf, &abuf[aplen], absize - (aplen * 8));
+			cerr << "AA " << absize << ' ' << aplen << ' ' << a_read << endl;
+			memmove(abuf, &abuf[aplen * 2], absize - (aplen * 8));
 			cerr << abuf[0] << endl;
 
 			arv = (absize - (aplen * 8));
