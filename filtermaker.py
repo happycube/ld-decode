@@ -211,3 +211,12 @@ for i in range(0, len(table)):
 Bfmdeemp = sps.firwin2(33, Fr, Am)
 WriteFilter("fmdeemp", Bfmdeemp)
 
+# Used to determine sync status - feed it a 1 when level < 12000 
+f_syncid_b, f_syncid_a = sps.butter(3, 0.002)
+WriteFilter("syncid", f_syncid_b, f_syncid_a)
+
+print("const int syncid_offset = 320;")
+
+
+linelen_filter_b, linelen_filter_a = sps.butter(5, 0.1)
+WriteFilter("linelen", linelen_filter_b, linelen_filter_a)

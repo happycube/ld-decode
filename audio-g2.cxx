@@ -145,8 +145,8 @@ int main(int argc, char *argv[])
 			tot++;
 
 			if (!(tot % 20)) {
-				out.push_back((float)f_leftlp20.feed(outleft[i]));
-				out.push_back((float)f_rightlp20.feed(outright[i]));
+				out.push_back((float)f_leftlp20.feed(outleft[i]) - 2301136);
+				out.push_back((float)f_rightlp20.feed(outright[i]) - 2812499);
 			}
 		}
 
