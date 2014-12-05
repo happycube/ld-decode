@@ -13,7 +13,8 @@ import getopt
 
 freq = (315.0 / 88.0) * 8.0
 freq_hz = freq * 1000000.0
-blocklen = (16 * 1024) 
+blocklen = (16 * 1024) + 512
+hilbertlen = (16 * 1024)
 
 wide_mode = 0
 
@@ -51,12 +52,12 @@ def doplot(B, A):
 	plt.axis('tight')
 	plt.show()
 
-def doplot2(B, A, C, B2, A2, C2):
+def doplot2(B, A, B2, A2):
 	w, h = sps.freqz(B, A)
 	w2, h2 = sps.freqz(B2, A2)
 
-	h.real /= C
-	h2.real /= C2
+#	h.real /= C
+#	h2.real /= C2
 
 	begin = 0
 	end = len(w)
@@ -120,20 +121,11 @@ def CalcBoost(byte = 0):
     
 		Am[f] = 1
  
-	#if (cf > 13.8):
-	#	Am[f] = 0
 		fadj = 6.5
 		if (cf > fadj):
 			adj = .05
 			adj = adj - (.17 * (byte / 50000000000.0)) 
 			Am[f] = 1 + ((cf - fadj) *  adj) 
-#			Am[f] = 1 + ((cf - fadj) * -.12) 
-#			Am[f] = 1  - ((cf - 5.8) / 10) 
-		# CLV
-#			if (clv == 2):
-#				Am[f] = 1 + ((cf - 5.8) / 5.0) 
-#			elif (clv == 1):
-#				Am[f] = 1 + ((cf - 5.8) / 8.5) 
 		elif (cf > 4.0):
 			Am[f] = 1 
 		elif (cf > 3.0):
@@ -189,13 +181,30 @@ Baudiorf = sps.firwin(65, 3.5 / (freq / 2), window='hamming', pass_zero=True)
 
 afreq = freq / 4
 
-leftbp_filter = sps.firwin(97, [2.15/(afreq/2), 2.45/(afreq/2)], window='hamming', pass_zero=False)
-rightbp_filter = sps.firwin(97, [2.65/(afreq/2), 2.95/(afreq/2)], window='hamming', pass_zero=False)
+left_audfreq = 2.301136
+right_audfreq = 2.812499
 
-audiolp_filter = sps.firwin(513, .05 / (afreq / 2), window='hamming')
-#audiolp_filter = sps.firwin(129, .004 / (afreq / 2), window='hamming')
+hfreq = freq / 8.0
 
-def fm_decode(in_filt, freq_hz):
+N, Wn = sps.buttord([(left_audfreq-.05) / hfreq, (left_audfreq+.05) / hfreq], [(left_audfreq-.15) / hfreq, (left_audfreq+.15)/hfreq], 1, 20)
+leftbp_filter_b, leftbp_filter_a = sps.butter(N, Wn, btype='bandpass')
+
+N, Wn = sps.buttord([(right_audfreq-.05) / hfreq, (right_audfreq+.05) / hfreq], [(right_audfreq-.15) / hfreq, (right_audfreq+.15)/hfreq], 1, 20)
+rightbp_filter_b, rightbp_filter_a = sps.butter(N, Wn, btype='bandpass')
+
+#doplot(leftbp_filter_b, leftbp_filter_a)
+#doplot2(leftbp_filter, [1.0], rightbp_filter, [1.0]);
+#doplot2(leftbp_filter_b, leftbp_filter_a, rightbp_filter_b, rightbp_filter_a);
+
+N, Wn = sps.buttord(0.016 / hfreq, 0.024 / hfreq, 1, 5) 
+audiolp_filter_b, audiolp_filter_a = sps.butter(N, Wn)
+
+N, Wn = sps.buttord(3.1 / (freq / 2.0), 3.5 / (freq / 2.0), 1, 20) 
+audiorf_filter_b, audiorf_filter_a = sps.butter(N, Wn)
+
+
+def fm_decode(in_filt, freq_hz, hlen = hilbertlen):
+	in_filt = in_filt[0:hlen]
 	hilbert = sps.hilbert(in_filt)
 
 	# the hilbert transform has errors at the edges.  but it doesn't seem to matter much IRL
@@ -246,17 +255,43 @@ def process_video(data):
 	# perform general bandpass filtering
 	in_filt = sps.lfilter(Bboost, Aboost, data)
 
-	output = fm_decode(in_filt, freq_hz) 
+	output = fm_decode(in_filt, freq_hz)
 
-	output = sps.lfilter(lowpass_filter_b, lowpass_filter_a, output)[len(lowpass_filter_b):]
+	# save the original fm decoding and align to filters
+	output_prefilt = output[(len(f_deemp_b) * 24) + len(f_deemp_b) + len(lowpass_filter_b):]
 
-	doutput = (sps.lfilter(f_deemp_b, f_deemp_a, output)[64:len(output)]) / deemp_corr
+	# clip impossible values (i.e. rot)
+	output = np.clip(output, 7100000, 10800000) 
+
+	output = sps.lfilter(lowpass_filter_b, lowpass_filter_a, output)
+
+	doutput = (sps.lfilter(f_deemp_b, f_deemp_a, output)[len(f_deemp_b) * 32:len(output)]) / deemp_corr
+
 #	doutput = (sps.lfilter(f_deemp_b, f_deemp_a, doutput)[64:len(doutput)]) / deemp_corr
 	
 	output_16 = np.empty(len(doutput), dtype=np.uint16)
 	reduced = (doutput - minn) / hz_ire_scale
 	output = np.clip(reduced * out_scale, 0, 65535) 
+	
 	np.copyto(output_16, output, 'unsafe')
+
+	err = 1
+	while False: # err > 0:
+		err = 0
+	
+		am = np.argmax(output_prefilt)	
+		if (output_prefilt[np.argmax(output_prefilt)] > 11200000):
+			err = 1
+			output_prefilt[am] = 11200000
+			if (am < len(output_16)):
+				output_16[am] = 0
+		
+		am = np.argmin(output_prefilt)	
+		if (output_prefilt[np.argmax(output_prefilt)] < 7000000):
+			err = 1
+			output_prefilt[am] = 7000000
+			if (am < len(output_16)):
+				output_16[am] = 0
 
 	return output_16
 
@@ -264,51 +299,58 @@ def process_video(data):
 #	output = (sps.lfilter(f_deemp_b, f_deemp_a, output)[128:len(output)]) / deemp_corr
 #	print output
 
-	plt.plot(range(0, len(output)), output)
-#	plt.ylim([7500000,9500000])
+	plt.plot(range(0, len(output_16)), output_16)
+#	plt.plot(range(0, len(doutput)), doutput)
+#	plt.plot(range(0, len(output_prefilt)), output_prefilt)
 	plt.show()
 	exit()
 
+left_audfreqm = left_audfreq * 1000000
+right_audfreqm = right_audfreq * 1000000
+
 def process_audio(indata):
-	in_filt = sps.lfilter(Baudiorf, [1.0], indata)[len(Baudiorf):]
+	in_filt = sps.lfilter(audiorf_filter_b, audiorf_filter_a, indata)[len(audiorf_filter_b) * 2:]
+
 	in_filt4 = np.empty(int(len(in_filt) / 4) + 1)
 
 	for i in range(0, len(in_filt), 4):
 		in_filt4[int(i / 4)] = in_filt[i]
 
-	in_left = sps.lfilter(leftbp_filter, [1.0], in_filt4)[len(leftbp_filter):] 
-	in_right = sps.lfilter(rightbp_filter, [1.0], in_filt4)[len(rightbp_filter):] 
+	in_left = sps.lfilter(leftbp_filter_b, leftbp_filter_a, in_filt4)[len(leftbp_filter_b) * 1:] 
+	in_right = sps.lfilter(rightbp_filter_b, rightbp_filter_a, in_filt4)[len(rightbp_filter_b) * 1:] 
 
-	out_left = fm_decode(in_left, [1.0], freq_hz / 4)
-	out_right = fm_decode(in_right, [1.0], freq_hz / 4)
+#	if (len(in_left) % 2):
+#		in_left = in_left[0:len(in_left - 1)]
+#	if (len(in_right) % 2):
+#		in_right = in_right[0:len(in_right - 1)]
 
-	# fast but not as good	
-	out_left = np.clip(out_left, 2150000, 2450000) 
-	out_right = np.clip(out_right, 2650000, 2950000) 
+#	print len(in_left)
 
-	out_left = sps.lfilter(audiolp_filter, [1.0], out_left)[len(audiolp_filter):]
-	out_right = sps.lfilter(audiolp_filter, [1.0], out_right)[len(audiolp_filter):] 
+	out_left = fm_decode(in_left, freq_hz / 4, hilbertlen / 4)
+	out_right = fm_decode(in_right, freq_hz / 4, hilbertlen / 4)
 
-	output = np.empty((len(out_left) * 2 / 20) + 1)
-	outputf = np.empty((len(out_left) * 2 / 20) + 1, dtype = np.float32)
+	out_left = np.clip(out_left - left_audfreqm, -150000, 150000) 
+	out_right = np.clip(out_right - right_audfreqm, -150000, 150000) 
 
-#	print len(out_left), len(output)
+	out_left = sps.lfilter(audiolp_filter_b, audiolp_filter_a, out_left)[len(audiolp_filter_b) * 2:]
+	out_right = sps.lfilter(audiolp_filter_b, audiolp_filter_a, out_right)[len(audiolp_filter_b) * 2:] 
+
+	outputf = np.empty((len(out_left) * 2.0 / 20.0) + 2, dtype = np.float32)
 
 	tot = 0
 	for i in range(0, len(out_left), 20):
+		outputf[tot * 2] = out_left[i]
+		outputf[(tot * 2) + 1] = out_right[i]
 		tot = tot + 1
-		output[(i / 10)] = out_left[i]
-		output[(i / 10) + 1] = out_right[i]
-#		print i, i / 10, output[(i / 10)], output[(i / 10) + 1] 	
 
 #	exit()
 	
-	np.copyto(outputf, output, 'unsafe')
-
-	return outputf, tot 
+#	return outputf, len(out_left) * 4 
 
 	plt.plot(range(0, len(out_left)), out_left)
-	plt.plot(range(0, len(out_right)), out_right)
+#	plt.plot(range(0, len(out_leftl)), out_leftl)
+	plt.plot(range(0, len(out_right)), out_right + 150000)
+#	plt.ylim([2000000,3000000])
 	plt.show()
 	exit()
 	
@@ -322,18 +364,13 @@ def main():
 	CAV = 0
 	firstbyte = 0
 
-	optlist, cut_argv = getopt.getopt(sys.argv[1:], "aAlLw")
+	optlist, cut_argv = getopt.getopt(sys.argv[1:], "aAw")
 
 	for o, a in optlist:
 		if o == "-a":
-			audio_mode = 0	# XXX: audio mode is broken
+			audio_mode = 1	
 		if o == "-A":
 			CAV = 1
-			[Bboost, Aboost] = CalcBoost(2)
-		if o == "-l":
-			[Bboost, Aboost] = CalcBoost(1)
-		if o == "-L":
-			[Bboost, Aboost] = CalcBoost(2)
 		if o == "-w":
 			lowpass_filter_b, lowpass_filter_a = sps.butter(6, (4.8/(freq/2)), 'low')
 			wide_mode = 1
@@ -382,8 +419,8 @@ def main():
 #			for i in range(0, osamp):
 #				print i, output[i * 2], output[(i * 2) + 1]
 
-#			outfile.write(output)
-			nread = osamp * 20 * 4
+			outfile.write(output)
+			nread = osamp 
 		else:
 			output_16 = process_video(indata)
 #			output_16.tofile(outfile)
