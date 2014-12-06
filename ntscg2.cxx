@@ -330,7 +330,7 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line)
 
 	cerr << "levels " << plevel1 << ' ' << plevel2 << endl;
 
-	if (plevel1 < 1000) goto wrapup;
+	if (plevel1 < 2000) goto wrapup;
 	if (plevel2 < 1000) goto wrapup;
 
 	if (phase == -1) {
@@ -393,7 +393,7 @@ wrapup:
 			o = ire_to_out(in_to_ire(v));
 		}
 
-		if (despackle && (ire < -10) && (h > 80)) {
+		if (despackle && (ire < -20) && (h > 80)) {
 			if ((h - ldo) > 16) {
 				for (int j = h - 4; j > 2 && j < h; j++) {
 					double to = (frame[oline - 2][j - 2] + frame[oline - 2][j + 2]) / 2;
@@ -491,8 +491,8 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 						if (buf[x] > 12000) end = x; 
 					}
 
-					bad = (begin < 0) || (end < 0) || (!InRange(end - begin, 128, 136));
-					cerr << line << ' ' << bad << ' ' << prev_begin << ' ' << begin << ' ' << end << ' ' << end - prev_begin << ' ' << scale_tgt << endl;
+					bad = (begin < 0) || (end < 0) || (!InRange(end - begin, 120, 144));
+					cerr << line << ' ' << bad << ' ' << prev_begin << ' ' << begin << ' ' << end << ' ' << end - begin << ' ' << scale_tgt << endl;
 				}
 				// normal line
 				if (bad || buf[i] > 12000) {

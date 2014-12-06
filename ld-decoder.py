@@ -16,6 +16,9 @@ freq_hz = freq * 1000000.0
 blocklen = (16 * 1024) + 512
 hilbertlen = (16 * 1024)
 
+blocklen = (128 * 1024) + 512
+hilbertlen = (128 * 1024)
+
 wide_mode = 0
 
 def dosplot(B, A):
@@ -261,7 +264,7 @@ def process_video(data):
 	output_prefilt = output[(len(f_deemp_b) * 24) + len(f_deemp_b) + len(lowpass_filter_b):]
 
 	# clip impossible values (i.e. rot)
-	output = np.clip(output, 7100000, 10800000) 
+#	output = np.clip(output, 7100000, 10800000) 
 
 	output = sps.lfilter(lowpass_filter_b, lowpass_filter_a, output)
 
@@ -332,8 +335,8 @@ def process_audio(indata):
 	out_left = np.clip(out_left - left_audfreqm, -150000, 150000) 
 	out_right = np.clip(out_right - right_audfreqm, -150000, 150000) 
 
-	out_left = sps.lfilter(audiolp_filter_b, audiolp_filter_a, out_left)[len(audiolp_filter_b) * 2:]
-	out_right = sps.lfilter(audiolp_filter_b, audiolp_filter_a, out_right)[len(audiolp_filter_b) * 2:] 
+	out_left = sps.lfilter(audiolp_filter_b, audiolp_filter_a, out_left)[400:]
+	out_right = sps.lfilter(audiolp_filter_b, audiolp_filter_a, out_right)[400:] 
 
 	outputf = np.empty((len(out_left) * 2.0 / 20.0) + 2, dtype = np.float32)
 
@@ -345,7 +348,7 @@ def process_audio(indata):
 
 #	exit()
 	
-#	return outputf, len(out_left) * 4 
+	return outputf, len(out_left) * 4 
 
 	plt.plot(range(0, len(out_left)), out_left)
 #	plt.plot(range(0, len(out_leftl)), out_leftl)
