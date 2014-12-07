@@ -128,7 +128,7 @@ bool InRangeCF(double v, double l, double h) {
 
 // tunables
 
-bool write_fields = false;
+bool freeze_frame = false;
 bool despackle = true;
 int afd = -1, fd = 0;
 
@@ -463,7 +463,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 							first = false;
 							//ProcessAudio(frameno, v_read + i, abuf);
 						}
-						if (phase >= 0) phase = !phase;
+						if (!freeze_frame && phase >= 0) phase = !phase;
 					} else {
 //						if (!first) ProcessAudio(frameno + .5, v_read + i, abuf);
 					}
@@ -629,7 +629,7 @@ int main(int argc, char *argv[])
 				despackle = false;
 				break;
 			case 'f':
-				write_fields = true;
+				freeze_frame = true;
 				break;
 			case 'h':
 				seven_five = true;

@@ -300,6 +300,7 @@ def process_video(data):
 
 # graph for debug
 #	output = (sps.lfilter(f_deemp_b, f_deemp_a, output)[128:len(output)]) / deemp_corr
+
 #	print output
 
 	plt.plot(range(0, len(output_16)), output_16)
@@ -311,7 +312,22 @@ def process_video(data):
 left_audfreqm = left_audfreq * 1000000
 right_audfreqm = right_audfreq * 1000000
 
+test_mode = 0
+
 def process_audio(indata):
+	global test_mode
+
+	if test_mode > 0:
+		outputf = np.empty(32768 * 2, dtype = np.float32)
+		for i in range(0, 32768):
+			outputf[i * 2] = np.cos((i + test_mode) / (freq_hz / 4.0 / 10000)) 
+			outputf[(i * 2) + 1] = np.cos((i + test_mode) / (freq_hz / 4.0 / 10000)) 
+
+		outputf *= 50000
+	
+		test_mode += 32768 
+		return outputf, 32768 
+
 	in_filt = sps.lfilter(audiorf_filter_b, audiorf_filter_a, indata)[len(audiorf_filter_b) * 2:]
 
 	in_filt4 = np.empty(int(len(in_filt) / 4) + 1)
@@ -348,7 +364,7 @@ def process_audio(indata):
 
 #	exit()
 	
-	return outputf, len(out_left) * 4 
+	return outputf[0:tot * 2], len(out_left) * 4 
 
 	plt.plot(range(0, len(out_left)), out_left)
 #	plt.plot(range(0, len(out_leftl)), out_leftl)
