@@ -397,7 +397,7 @@ class Comb
 		}
 		
 		void DoYNR() {
-			int firstline = (linesout == 505) ? 0 : 24;
+			int firstline = (linesout == 505) ? 0 : 23;
 			if (nr_y < 0) return;
 
 			// part 1:  do horizontal 
@@ -506,7 +506,7 @@ class Comb
 		// buffer: 844x505 uint16_t array
 		void Process(uint16_t *buffer, int dim = 2)
 		{
-			int firstline = (linesout == 505) ? 1 : 26;
+			int firstline = (linesout == 505) ? 0 : 25;
 			int f = (dim == 3) ? 1 : 0;
 
 			cerr << "P " << f << ' ' << dim << endl;
