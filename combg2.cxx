@@ -637,14 +637,14 @@ class Comb
 			if (!pulldown_mode) {
 				fstart = 0;
 			} else if (f_oddframe) {
-				for (int i = 0; i < linesout; i += 2) {
+				for (int i = 1; i < linesout; i += 2) {
 					memcpy(&obuf[744 * 3 * i], &output[744 * 3 * i], 744 * 3 * 2); 
 				}
 				WriteFrame(obuf, framecode);
 				f_oddframe = false;		
 			}
 
-			for (int line = 4; line <= 5; line++) {
+			for (int line = 3; line <= 5; line++) {
 				int wc = 0;
 				for (int i = 0; i < 700; i++) {
 					if (rawbuffer[fnum][(844 * line) + i] > 45000) wc++;
@@ -655,7 +655,7 @@ class Comb
 				//cerr << "PW" << fnum << ' ' << line << ' ' << wc << ' ' << fieldcount << endl;
 			}
 
-			for (int line = 16; line < 20; line++) {
+			for (int line = 14; line < 20; line++) {
 				int new_framecode = ReadPhillipsCode(&rawbuffer[fnum][line * 844]); // - 0xf80000;
 				int fca = new_framecode & 0xf80000;
 
@@ -685,7 +685,7 @@ class Comb
 			if (!pulldown_mode || (fstart == 0)) {
 				WriteFrame(output, framecode);
 			} else if (fstart == 1) {
-				for (int i = 1; i < linesout; i += 2) {
+				for (int i = 0; i < linesout; i += 2) {
 					memcpy(&obuf[744 * 3 * i], &output[744 * 3 * i], 744 * 3 * 2); 
 				}
 				f_oddframe = true;

@@ -311,6 +311,10 @@ double prev_linelen = ntsc_ipline;
 int iline = 0;
 int frameno = -1;
 
+bool bad = false;
+double prev_begin_adjust = 0.0;
+double prev_end_adjust = 0.0;
+
 double ProcessLine(uint16_t *buf, double begin, double end, int line)
 {
 	double tout[8192];
@@ -318,6 +322,10 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line)
 	double plevel2, pphase2;
 	double adjust1, adjust2, adjlen = ntsc_ipline;
 
+	double orig_end = end;
+	double orig_begin = begin;
+
+	int pass = 0;
 	int oline = get_oline(line);
 
 	if (oline < 0) return 0;
@@ -330,8 +338,21 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line)
 
 	cerr << "levels " << plevel1 << ' ' << plevel2 << endl;
 
-	if (plevel1 < 2000) goto wrapup;
-	if (plevel2 < 1000) goto wrapup;
+	if ((plevel1 < 2300) || (plevel2 < 2000)) {
+		cerr << "SKIP phase adj\n";
+#if 0
+		cerr << line << " " << oline << " " << " ERR1 " << begin << ' ' << (begin + adjlen) << '/' << end  << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
+
+		begin += prev_begin_adjust;
+		end += prev_end_adjust;
+		Scale(buf, tout, begin, end, scale_tgt); 
+		BurstDetect(tout, out_freq, 0, plevel1, pphase1); 
+		BurstDetect(tout, out_freq, 228, plevel2, pphase2); 
+
+		cerr << line << " " << oline << " " << " ERR2 " << begin << ' ' << (begin + adjlen) << '/' << end  << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
+#endif
+		goto wrapup;
+	}
 
 	if (phase == -1) {
 		phase = (fabs(pphase1) > (M_PIl / 2));
@@ -346,7 +367,7 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line)
 	adjlen = (end - begin) / (scale_tgt / ntsc_opline);
 	cerr << line << " " << oline << " " << 0 << ' ' << begin << ' ' << (begin + adjlen) << '/' << end  << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
 
-	for (int pass = 0; pass < ((in_freq == 4) ? 4 : 2); pass++) {
+	for (pass = 0; pass < ((in_freq == 4) ? 4 : 2); pass++) {
 //		cerr << line << " 0" << ' ' << ((end - begin) / scale_tgt) * ntsc_ipline.0 << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
 		adjust1 = WrapAngle(tgt_phase - pphase1);	
 		adjust2 = WrapAngle(pphase1 - pphase2);
@@ -361,7 +382,7 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line)
 			//end += (adjust2 * (phasemult / 2.0));
 		}
 
-		Scale(buf, tout, begin, end, scale_tgt); 
+//		Scale(buf, tout, begin, end, scale_tgt); 
 		BurstDetect(tout, out_freq, 0, plevel1, pphase1); 
 		BurstDetect(tout, out_freq, 228, plevel2, pphase2); 
 
@@ -369,6 +390,9 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line)
 					
 		cerr << line << " " << pass << ' ' << begin << ' ' << (begin + adjlen) << '/' << end  << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
 	}
+
+	prev_begin_adjust = begin - orig_begin;
+	prev_end_adjust = end - orig_end;
 
 wrapup:
 	// LD only: need to adjust output value for velocity, and remove defects as possible
@@ -410,6 +434,20 @@ wrapup:
 
 		frame[oline][h] = clamp(o, 0, 65535);
 	}
+
+	if (bad) {
+		frame[oline][2] = 48000; 
+		frame[oline][3] = 48000; 
+		frame[oline][4] = 48000; 
+		frame[oline][5] = 48000; 
+	}
+	
+	if (!pass) {
+		frame[oline][2] = 32000; 
+		frame[oline][3] = 32000; 
+		frame[oline][4] = 32000; 
+		frame[oline][5] = 32000; 
+	}
 	
 	frame[oline][0] = tgt_phase ? 32768 : 16384; 
 	frame[oline][1] = plevel1; 
@@ -444,15 +482,25 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 		// look for peaks with valid level values
 		if ((level > .08) && (level > psync [i - 1]) && (level > psync [i + 1])) {
 			bool canbesync = true;
+			bool belated = false;
 	
 			if (!first && (get_oline(line) >= 0)) canbesync = false;
 
 			cerr << i << ' ' << i - prev << ' ' << line << ' ' << buf[i] << ' ' << psync[i] << ' ' << canbesync << endl;
+			
+			if ((level > 1.0) && !insync) {
+				// in vsync/equalizing lines - don't care right now
+				cerr << "belated sync detect\n";
+				belated = 1;
+			}
 
-
-			if (canbesync && InRange(level, 0.13, 0.2)) {
+			if (belated || (canbesync && InRange(level, 0.13, 0.2))) {
 				if (!insync) {
-					insync = ((i - prev) < 1200) ? 2 : 1;
+					if (!belated) {
+						insync = ((i - prev) < 1200) ? 2 : 1;
+					} else {
+						insync = (prevsync == 1) ? 2 : 1;
+					}
 					cerr << frameno << " sync type " << insync << endl;
 
 					if (insync == 1) {
@@ -470,8 +518,8 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 //						if (!first) ProcessAudio(frameno + .5, v_read + i, abuf);
 					}
 				}
-			} else if (InRange(level, 0.25, 0.5)) {
-				bool bad = false;
+			} else if (InRangeCF(i - prev, 225, 230) && InRange(level, 0.25, 0.7)) {
+				bad = false;
 
 				prev_begin = begin;
 				prev_end = end;
@@ -513,10 +561,6 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 					linelen = ProcessLine(buf, prev_begin, send, line); 
 					ProcessAudio((line / 525.0) + frameno, v_read + begin, abuf); 
 				}
-			} else if ((level > 1.0) && !insync) {
-				// in vsync/equalizing lines - don't care right now
-				cerr << "belated sync detect\n";
-				insync = (prevsync == 1) ? 2 : 1;
 			}  
 			prev = i;
 		}
