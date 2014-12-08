@@ -330,8 +330,8 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line)
 
 	cerr << "levels " << plevel1 << ' ' << plevel2 << endl;
 
-	if (plevel1 < 2300) goto wrapup;
-	if (plevel2 < 2000) goto wrapup;
+	if (plevel1 < 2000) goto wrapup;
+	if (plevel2 < 1000) goto wrapup;
 
 	if (phase == -1) {
 		phase = (fabs(pphase1) > (M_PIl / 2));
@@ -445,20 +445,14 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 		if ((level > .08) && (level > psync [i - 1]) && (level > psync [i + 1])) {
 			bool canbesync = true;
 	
-			if (!first && (get_oline(line) >= 0)) canbesync = false;
+			if (!first && !(InRange(line, 261, 265) || InRange(line, 520, 530))) canbesync = false;	
 
-			cerr << "P " << i << ' ' << i - prev << ' ' << line << ' ' << buf[i] << ' ' << psync[i] << ' ' << canbesync << endl;
+			cerr << i << ' ' << i - prev << ' ' << line << ' ' << buf[i] << ' ' << psync[i] << ' ' << canbesync << endl;
 
-			if ((i - prev) > 2400) cerr << "XXX\n";
 
-			if ((canbesync && (level < .25)) || (level > 1.0)) {
+			if (canbesync && InRange(level, 0.13, 0.2)) {
 				if (!insync) {
-					if (level > 1.0) {
-						cerr << "belated sync detected\n";
-						insync = (prevsync == 1) ? 2 : 1;
-					} else {
-						insync = ((i - prev) < 1000) ? 2 : 1;
-					}
+					insync = ((i - prev) < 1200) ? 2 : 1;
 					cerr << frameno << " sync type " << insync << endl;
 
 					if (insync == 1) {
@@ -476,8 +470,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 //						if (!first) ProcessAudio(frameno + .5, v_read + i, abuf);
 					}
 				}
-				prev = i;
-			} else if (InRange(level, 0.25, 0.8) && InRangeCF(i - prev, 140, 240)) {
+			} else if (InRange(level, 0.25, 0.5)) {
 				bool bad = false;
 
 				prev_begin = begin;
@@ -520,9 +513,12 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 					linelen = ProcessLine(buf, prev_begin, send, line); 
 					ProcessAudio((line / 525.0) + frameno, v_read + begin, abuf); 
 				}
-				prev = i;
-			} 
-			if (insync) prev = i;
+			} else if ((level > 1.0) && !insync) {
+				// in vsync/equalizing lines - don't care right now
+				cerr << "belated sync detect\n";
+				insync = (prevsync == 1) ? 2 : 1;
+			}  
+			prev = i;
 		}
 	}	
 
