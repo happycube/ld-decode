@@ -115,7 +115,6 @@ class Filter {
 			b = _b;
 			a = _a;
 
-			cerr << "O" << b.size() - 2 <<endl;
 			order = b.size();
 			
 			x.resize(b.size() + 1);

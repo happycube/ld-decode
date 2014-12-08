@@ -430,6 +430,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 		if (i > syncid_offset) psync[i - syncid_offset] = val; 
 	}
 
+	int prevsync = -1;
 	int insync = 0;
 	double line = 0;
 
@@ -444,9 +445,10 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 		if ((level > .08) && (level > psync [i - 1]) && (level > psync [i + 1])) {
 			bool canbesync = true;
 	
-			cerr << i << ' ' << i - prev << ' ' << buf[i] << ' ' << psync[i] << endl;
-
 			if (!first && (get_oline(line) >= 0)) canbesync = false;
+
+			cerr << i << ' ' << i - prev << ' ' << line << ' ' << buf[i] << ' ' << psync[i] << ' ' << canbesync << endl;
+
 
 			if (canbesync && InRange(level, 0.13, 0.2)) {
 				if (!insync) {
@@ -479,6 +481,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 
 				if (insync) {
 					line = (insync == 2) ? 273 : 10;
+					prevsync = insync;
 					insync = 0;
 				} else line++;
 
@@ -510,8 +513,10 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 					linelen = ProcessLine(buf, prev_begin, send, line); 
 					ProcessAudio((line / 525.0) + frameno, v_read + begin, abuf); 
 				}
-			} else {
+			} else if ((level > 1.0) && !insync) {
 				// in vsync/equalizing lines - don't care right now
+				cerr << "belated sync detect\n";
+				insync = (prevsync == 1) ? 2 : 1;
 			}  
 			prev = i;
 		}
@@ -603,8 +608,6 @@ int main(int argc, char *argv[])
 	int c;
 
 	cerr << std::setprecision(10);
-	cerr << argc << endl;
-	cerr << strncmp(argv[1], "-", 1) << endl;
 
 	opterr = 0;
 	
@@ -638,8 +641,6 @@ int main(int argc, char *argv[])
 				return -1;
 		} 
 	} 
-
-	cout << std::setprecision(8);
 
 	cerr << "freq = " << in_freq << endl;
 
