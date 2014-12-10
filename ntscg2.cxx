@@ -393,7 +393,7 @@ wrapup:
 			o = ire_to_out(in_to_ire(v));
 		}
 
-		if (despackle && (ire < -20) && (h > 80)) {
+		if (despackle && (ire < -30) && (h > 80)) {
 			if ((h - ldo) > 16) {
 				for (int j = h - 4; j > 2 && j < h; j++) {
 					double to = (frame[oline - 2][j - 2] + frame[oline - 2][j + 2]) / 2;

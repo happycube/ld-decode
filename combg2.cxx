@@ -13,8 +13,6 @@ bool image_mode = false;
 char *image_base = "FRAME";
 bool bw_mode = false;
 
-bool cwide_mode = false;
-
 bool f_oneframe = false;
 	
 int dim = 2;
@@ -165,14 +163,12 @@ class Comb
 
 		uint16_t rawbuffer[3][844 * 505];
 		double LPraw[3][844 * 505];
-		double K3D[844 * 505];
 
 		double aburstlev;	// average color burst
 
 		cline_t cbuf[525];
 		cline_t prevbuf[525];
 		Filter *f_i, *f_q;
-		Filter *f_wi, *f_wq;
 
 		Filter *f_hpy, *f_hpi, *f_hpq;
 		Filter *f_hpvy, *f_hpvi, *f_hpvq;
@@ -207,7 +203,6 @@ class Comb
 				uint16_t *line = &rawbuffer[f][l * 844];	
 				bool invertphase = (line[0] == 16384);
 				
-				// used for 3d only, but don't want to recalc every pel	
 				uint16_t *p3line = &rawbuffer[0][l * 844];	
 				uint16_t *n3line = &rawbuffer[2][l * 844];	
 				
@@ -216,121 +211,49 @@ class Comb
 		
 				double f3 = 0, f2 = 0;
 				double si = 0, sq = 0;
+
+				double k[840];
 	
 				for (int h = 4; h < 840; h++) {
 					int phase = h % 4;
 
-					double k;
+					double _k;
 
-					double c[3], d[3], v[3];
+					double c[3],  v[3];
 					double err[3];
 						
 					int adr = (l * 844) + h;
 
 					if (1 && (dim >= 3)) {
-
-						if (l == 475) cerr << h - 70 << ' ' << line[h] << ' ' << p2line[h] << ' ' << n2line[h] << ' ' << p3line[h] << ' ' << n3line[h] << endl;  
-
+						c[2] = (p3line[h] - line[h]); 
 						c[2] = (((p3line[h] + n3line[h]) / 2) - line[h]); 
-						d[2] = fabs((p3line[h] - n3line[h]) / 2); 
-						d[2] = fabs(((p3line[h] - line[h]) - (n3line[h] - line[h]))); 
-						k = fabs(LPraw[1][adr] - LPraw[0][adr]) + fabs(LPraw[1][adr] - LPraw[2][adr]);
-						k /= irescale;
-						v[2] = clamp(1 - ((k - 0) / 8), 0, 1);
-//						if (l == 100) cerr << "T3 " << h << ' ' << c[2] << ' ' << d[2] << ' ' << v[2] << ' ' << k << endl;
+						_k = fabs(LPraw[1][adr] - LPraw[0][adr]) + fabs(LPraw[1][adr] - LPraw[2][adr]);
+						_k /= irescale;
+						k[h] = v[2] = clamp(1 - ((_k - 0) / 12), 0, 1);
+						//v[2] = 1;
 					} else {
-						c[2] = d[2] = v[2] = 0;
+						k[h] = c[2] = v[2] = 0;
 					}
-
-					K3D[adr] = v[2];
 
 					// 2D filtering - can't do the ends
 					if (1 && (dim >= 2) && (l >= 2) && (l <= 502)) {
-						c[1] = (((p2line[h] + n2line[h]) / 2) - line[h]); 
-						d[1] = fabs((p2line[h] - n2line[h]) / 2); 
-						d[1] = fabs(((p2line[h] - line[h]) - (n2line[h] - line[h]))); 
-//						k = fabs(LPraw[f][adr] - LPraw[f][adr - 844]) + fabs(LPraw[f][adr] - LPraw[f][adr + 844]);
-//						k /= irescale;
-						v[1] = c[1] ? 1 - clamp((fabs(d[1]) / fabs(c[1])) * 1.5, 0, 1) : 0;
-
-						v[1] = clamp(1 - (k / 10), 0, 1);
-//						if (l == 100) cerr << "T2 " << h << ' ' << c[1] << ' ' << d[1] << ' ' << v[1] << ' ' << k << endl;
+						c[1] = ((((double)p2line[h] + (double)n2line[h]) / 2) - line[h]); 
+						v[1] = 1 - v[2];
 					} else {
-						c[1] = d[1] = v[1] = 0;
+						c[1] = v[1] = 0;
 					}
 
 					// 1D 
 					if (1) {
 						c[0] = (((line[h + 2] + line[h - 2]) / 2) - line[h]); 
-						double x = d[0] - c[0];
-						d[0] = fabs((line[h - 2] - line[h + 2]) / 2); 
-						d[0] = fabs(((line[h - 2] - line[h]) - (line[h + 2] - line[h]))); 
-						v[0] = c[0] ? 1 - clamp((fabs(d[0] / irescale) / 20), 0, 1) : 0.00;
-						v[0] = c[0] ? 1 - clamp((fabs(d[0]) / fabs(c[0])) * 1, 0, 1) : 0;
+						v[0] = 1 - v[2] - v[1];
 					} else v[0] = 0;
-			
-					if ((v[1] + v[2]) >= .5) v[0] = 0;
-
-					if ((v[0] + v[1]) > 0) {
-						double v12a = 1 - v[2];
-						double v12b = v12a / (v[0] + v[1]);	
-			
-						v[0] *= v12b;
-						v[1] *= v12b;
-					}
-
-					double vtot = v[0] + v[1] + v[2];
-					double cavg = 0, cavg0 = 0, cavg1 = 0,ctot = 0;
-					if (0 && ((l == 100) || (l == 50)) && (h % 2)) {
-						cerr << "1 " << h - 70 << ' ' << line[h] << ' ' << line[h - 2] << ' ' << line[h + 2] << ' ' << c[0] << ' ' << d[0] << ' ' << v[0] << ' ' << cavg0 << endl;
-						cerr << "2 " << h - 70 << ' ' << line[h] << ' ' << p2line[h] << ' ' << n2line[h] << ' ' << c[1] << ' ' << d[1] << ' ' << v[1] << ' ' << cavg1 << endl;
-						cerr << "3 " << h - 70 << ' ' << line[h] << ' ' << p3line[h] << ' ' << n3line[h] << ' ' << c[2] << ' ' << d[2] << ' ' << v[2] << ' ' << cavg << endl;
-					}
 					
-					// crude sort
-					for (int s1 = 0; s1 < 3; s1++) {
-						for (int s2 = 0; s2 < 2; s2++) {
-							if (fabs(c[s2]) > fabs(c[s2 + 1])) {
-								double ctmp = c[s2 + 1];
-								double dtmp = d[s2 + 1];	
-								double vtmp = v[s2 + 1];	
+					double cavg = 0;
 
-								c[s2 + 1] = c[s2];
-								c[s2] = ctmp;
-								d[s2 + 1] = d[s2];
-								d[s2] = dtmp;
-								v[s2 + 1] = v[s2];
-								v[s2] = vtmp;
-							}
-						}
-					}
-
-					if (vtot <= .01) {
-						//v[0] = .5; 
-						v[1] = 1; 
-						v[2] = 1; 
-						vtot = 2;
-					}
-
-					double vused = 0;
-
-					v[0] /= vtot;
-					v[1] /= vtot;
-					v[2] /= vtot;
-
-					cavg0 = cavg = c[0] * v[0];
-					vused = v[0];
-					cavg += c[1] * v[1]; //(v[1] * (1 - vused));
-					cavg1 = cavg;
-					vused += v[1]; //* (1 - vused);
-					cavg += c[2] * v[2]; // * (1 - vused));
-					vused += (v[2] * (1 - vused));
-
-					if (0 && ((l == 100) || (l == 50)) && (h % 2)) {
-						cerr << 'a' << h - 70 << ' ' << line[h] << ' ' << c[0] << ' ' << d[0] << ' ' << v[0] << ' ' << cavg0 << endl;
-						cerr << 'b' << h - 70 << ' ' << line[h] << ' ' << c[1] << ' ' << d[1] << ' ' << v[1] << ' ' << cavg1 << endl;
-						cerr << 'c' << h - 70 << ' ' << line[h] << ' ' << c[2] << ' ' << d[2] << ' ' << v[2] << ' ' << cavg << endl;
-					}
+					cavg = c[2] * v[2];
+					cavg += (c[1] * v[1]);
+					cavg += (c[0] * v[0]);
 
 					cavg /= 2;
 					if (!invertphase) cavg = -cavg;
@@ -342,6 +265,10 @@ class Comb
 						case 3: sq = cavg; break;
 						default: break;
 					}
+						
+					if (l == 240) {
+						cerr << "D2 " << h << ' ' << p3line[h] << ' ' << line[h] << ' ' << n3line[h] << ' ' << v[2] << ' ' << v[1] << endl; 
+					}
 
 					cbuf[l].p[h].y = line[h]; 
 					cbuf[l].p[h].i = si;  
@@ -349,13 +276,10 @@ class Comb
 				}
 
 				for (int h = 4; 1 && h < 840; h++) {
-					if (cwide_mode) {
-						cbuf[l].p[h - 5].i = bw_mode ? 0 : f_wi->feed(cbuf[l].p[h].i); 
-						cbuf[l].p[h - 5].q = bw_mode ? 0 : f_wq->feed(cbuf[l].p[h].q); 
-					} else {
-						cbuf[l].p[h - 8].i = bw_mode ? 0 : f_i->feed(cbuf[l].p[h].i); 
-						cbuf[l].p[h - 8].q = bw_mode ? 0 : f_q->feed(cbuf[l].p[h].q); 
-					}	
+					cbuf[l].p[h - 5].i *= k[h];
+					cbuf[l].p[h - 5].i += (bw_mode ? 0 : f_i->feed(cbuf[l].p[h].i)) * (1 - k[h]); 
+					cbuf[l].p[h - 5].q *= k[h];
+					cbuf[l].p[h - 5].q += (bw_mode ? 0 : f_q->feed(cbuf[l].p[h].q)) * (1 - k[h]); 
 				}	
 
 			}
@@ -364,7 +288,6 @@ class Comb
 		void DoCNR(int fnum = 0) {
 			if (nr_c < 0) return;
 
-			// part 1:  do horizontal 
 			for (int l = 24; l < 505; l++) {
 				YIQ hpline[844];
 				cline_t *input = &cbuf[l];
@@ -400,7 +323,6 @@ class Comb
 			int firstline = (linesout == 505) ? 0 : 23;
 			if (nr_y < 0) return;
 
-			// part 1:  do horizontal 
 			for (int l = firstline; l < 505; l++) {
 				YIQ hpline[844];
 				cline_t *input = &cbuf[l];
@@ -456,7 +378,7 @@ class Comb
 		}
 
 	public:
-		Comb() {
+		Comb(bool cwide = false) {
 			fieldcount = curline = linecount = -1;
 			framecode = framecount = frames_out = 0;
 
@@ -465,12 +387,14 @@ class Comb
 			aburstlev = 10.0;
 
 			f_oddframe = false;	
-	
-			f_i = new Filter(f_colorlp4);
-			f_q = new Filter(f_colorlp4);
-			
-			f_wi = new Filter(f_colorwlp4);
-			f_wq = new Filter(f_colorwlp4);
+		
+			if (!cwide) {	
+				f_i = new Filter(f_colorlp4);
+				f_q = new Filter(f_colorlp4);
+			} else {	
+				f_i = new Filter(f_colorwlp4);
+				f_q = new Filter(f_colorwlp4);
+			}
 
 			f_hpy = new Filter(f_nr);
 			f_hpi = new Filter(f_nrc);
@@ -481,6 +405,19 @@ class Comb
 			f_hpvq = new Filter(f_nrc);
 
 			memset(output, 0, sizeof(output));
+		}
+
+		void Set_CWide(bool cwide = true) {
+			delete f_i;
+			delete f_q;
+			
+			if (!cwide) {	
+				f_i = new Filter(f_colorlp4);
+				f_q = new Filter(f_colorlp4);
+			} else {	
+				f_i = new Filter(f_colorwlp4);
+				f_q = new Filter(f_colorwlp4);
+			}
 		}
 
 		void WriteFrame(uint16_t *obuf, int fnum = 0) {
@@ -576,26 +513,11 @@ class Comb
 					yiq.i *= (10 / aburstlev);
 					yiq.q *= (10 / aburstlev);
 
-					// merge code - works but causes bad artifacs 
-					if (0 && framecount > 2) {
-	
-						double k = K3D[(l * 844) + (h + 70)] * .5; 
-
-						// XXX: fix operator override
-
-						yiq.y *= (1 - k);
-						yiq.i *= (1 - k);
-						yiq.q *= (1 - k);
-						yiq.y += (prevbuf[l].p[h + 70].y * k);
-						yiq.i += (prevbuf[l].p[h + 70].i * k);
-						yiq.q += (prevbuf[l].p[h + 70].q * k);
-					}
-	
 					// for debug: display difference areas	
 					if (0) {
 						int adr = (l * 844) + (h + 70);
-               	                                 double k = fabs(LPraw[1][adr] - LPraw[0][adr]) + fabs(LPraw[1][adr] - LPraw[2][adr]);
-//            	                                   k /= irescale;
+               	                                double k = fabs(LPraw[1][adr] - LPraw[0][adr]) + fabs(LPraw[1][adr] - LPraw[2][adr]);
+//            	                                k /= irescale;
 //						cerr << k << ' ' << yiq.y << endl;
 						yiq.y = k;
 						yiq.i = yiq.q = 0;
@@ -603,22 +525,6 @@ class Comb
 	
 					r.conv(yiq);
 	
-      	                                if (0 && l == 475) {
-                                               double y = u16_to_ire(yiq.y);
-                                               double i = (yiq.i) * (160.0 / 65533.0);
-                                               double q = (yiq.q) * (160.0 / 65533.0);
-
-                                               double m = ctor(q, i);
-                                               double a = atan2(q, i);
-
-                                               a *= (180 / M_PIl);
-                                               if (a < 0) a += 360;
-
-						double k = K3D[(l * 844) + (h + 70)] * .5; 
-                                               cerr << h << ' ' << k << ' ' << y << ' ' << i << ' ' << q << ' ' << m << ' ' << a << ' '; 
-                                               cerr << r.r << ' ' << r.g << ' ' << r.b << endl;
-                                       }
-
 					line_output[o++] = (uint16_t)(r.r); 
 					line_output[o++] = (uint16_t)(r.g); 
 					line_output[o++] = (uint16_t)(r.b); 
@@ -644,7 +550,7 @@ class Comb
 				f_oddframe = false;		
 			}
 
-			for (int line = 3; line <= 5; line++) {
+			for (int line = 4; line <= 5; line++) {
 				int wc = 0;
 				for (int i = 0; i < 700; i++) {
 					if (rawbuffer[fnum][(844 * line) + i] > 45000) wc++;
@@ -655,7 +561,7 @@ class Comb
 				//cerr << "PW" << fnum << ' ' << line << ' ' << wc << ' ' << fieldcount << endl;
 			}
 
-			for (int line = 14; line < 20; line++) {
+			for (int line = 16; line < 20; line++) {
 				int new_framecode = ReadPhillipsCode(&rawbuffer[fnum][line * 844]); // - 0xf80000;
 				int fca = new_framecode & 0xf80000;
 
@@ -716,6 +622,8 @@ int main(int argc, char *argv[])
 	unsigned char *cinbuf = (unsigned char *)inbuf;
 	int c;
 
+	bool cwide = false;
+
 	char out_filename[256] = "";
 
 	cerr << std::setprecision(10);
@@ -737,9 +645,7 @@ int main(int argc, char *argv[])
 				break;
 			case 'B':
 				bw_mode = true;
-				break;
-			case 'w':
-				cwide_mode = true;
+				dim = 2;
 				break;
 			case 'b':
 				sscanf(optarg, "%lf", &brightness);
@@ -764,6 +670,9 @@ int main(int argc, char *argv[])
 				break;
 			case 'i':
 				fd = open(optarg, O_RDONLY);
+				break;
+			case 'w':
+				comb.Set_CWide(true);
 				break;
 			case 'o':
 				image_base = (char *)malloc(strlen(optarg) + 1);
