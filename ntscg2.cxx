@@ -450,7 +450,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 			cerr << i << ' ' << i - prev << ' ' << line << ' ' << buf[i] << ' ' << psync[i] << ' ' << canbesync << endl;
 
 
-			if (canbesync && InRange(level, 0.13, 0.2)) {
+			if (canbesync && InRange(level, 0.13, 0.28)) {
 				if (!insync) {
 					insync = ((i - prev) < 1200) ? 2 : 1;
 					cerr << frameno << " sync type " << insync << endl;
@@ -470,7 +470,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 //						if (!first) ProcessAudio(frameno + .5, v_read + i, abuf);
 					}
 				}
-			} else if (InRange(level, 0.25, 0.5)) {
+			} else if (InRange(level, 0.28, 0.5)) {
 				bool bad = false;
 
 				prev_begin = begin;
@@ -513,10 +513,13 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 					linelen = ProcessLine(buf, prev_begin, send, line); 
 					ProcessAudio((line / 525.0) + frameno, v_read + begin, abuf); 
 				}
-			} else if ((level > 1.0) && !insync) {
+			} else if (level > 1.0) {
 				// in vsync/equalizing lines - don't care right now
-				cerr << "belated sync detect\n";
-				insync = (prevsync == 1) ? 2 : 1;
+				if (!insync) {
+					cerr << "belated sync detect\n";
+					insync = (prevsync == 1) ? 2 : 1;
+					if ((insync == 1) && !freeze_frame && phase >= 0) phase = !phase;
+				}
 			}  
 			prev = i;
 		}

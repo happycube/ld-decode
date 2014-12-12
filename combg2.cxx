@@ -235,16 +235,37 @@ class Comb
 						k[h] = c[2] = v[2] = 0;
 					}
 
+					// 1D-a 
+					if (0) {
+						c[0] = (((line[h + 2] + line[h - 2]) / 2) - line[h]); 
+	                                        double _k = fabs(((line[h - 2] - line[h]) - (line[h + 2] - line[h]))); 
+                                                v[0] = c[0] ? 1 - clamp((fabs(_k) / fabs(c[0])) * 1, 0, 1) : 0;
+
+						v[0] *= (1 - v[2]);
+					}
+
 					// 2D filtering - can't do the ends
 					if (1 && (dim >= 2) && (l >= 2) && (l <= 502)) {
-						c[1] = ((((double)p2line[h] + (double)n2line[h]) / 2) - line[h]); 
-						v[1] = 1 - v[2];
+						double err_p = abs(p2line[h - 2] - line[h]) + abs(p2line[h + 2] - line[h]);
+						double err_n = abs(n2line[h - 2] - line[h]) + abs(n2line[h + 2] - line[h]);
+						double err = err_p + err_n;				
+
+						if (l == 240) {
+							cerr << "E " << h << ' ' << err_p << ' ' << err_n << endl;
+						}
+						if (err != 0) {
+							c[1] = (p2line[h] - line[h]) * (1 - (err_p / err)); 
+							c[1] += (n2line[h] - line[h]) * (1 - (err_n / err)); 
+						} else {
+							c[1] = ((((double)p2line[h] + (double)n2line[h]) / 2) - line[h]); 
+						}
+						v[1] = 1 - v[2] - v[0];
 					} else {
 						c[1] = v[1] = 0;
 					}
 
 					// 1D 
-					if (1) {
+					if (0) {
 						c[0] = (((line[h + 2] + line[h - 2]) / 2) - line[h]); 
 						v[0] = 1 - v[2] - v[1];
 					} else v[0] = 0;
@@ -267,7 +288,7 @@ class Comb
 					}
 						
 					if (l == 240) {
-						cerr << "D2 " << h << ' ' << p3line[h] << ' ' << line[h] << ' ' << n3line[h] << ' ' << v[2] << ' ' << v[1] << endl; 
+						cerr << "D2 " << h << ' ' << p3line[h] << ' ' << line[h] << ' ' << n3line[h] << ' ' << v[2] << ' ' << v[1] << ' ' << v[0] << endl; 
 					}
 
 					cbuf[l].p[h].y = line[h]; 
@@ -508,7 +529,7 @@ class Comb
 
 				for (int h = 0; h < 752; h++) {
 					RGB r;
-					YIQ yiq = cbuf[l].p[h + 74];
+					YIQ yiq = cbuf[l].p[h + 82];
 
 					yiq.i *= (10 / aburstlev);
 					yiq.q *= (10 / aburstlev);
