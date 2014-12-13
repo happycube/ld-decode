@@ -58,7 +58,7 @@ bool audio_only = false;
 double inbase = 1;	// IRE == -60
 double inscale = 327.68;
 
-int a_read = 0, v_read = 0;
+long long a_read = 0, v_read = 0;
 int va_ratio = 80;
 
 const int vblen = (1820 * 1100);	// should be divisible evenly by 16
@@ -317,6 +317,7 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line)
 	double plevel1, pphase1;
 	double plevel2, pphase2;
 	double adjust1, adjust2, adjlen = ntsc_ipline;
+	int pass = 0;
 
 	int oline = get_oline(line);
 
@@ -346,7 +347,7 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line)
 	adjlen = (end - begin) / (scale_tgt / ntsc_opline);
 	cerr << line << " " << oline << " " << 0 << ' ' << begin << ' ' << (begin + adjlen) << '/' << end  << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
 
-	for (int pass = 0; pass < ((in_freq == 4) ? 4 : 2); pass++) {
+	for (pass = 0; pass < ((in_freq == 4) ? 4 : 2); pass++) {
 //		cerr << line << " 0" << ' ' << ((end - begin) / scale_tgt) * ntsc_ipline.0 << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
 		adjust1 = WrapAngle(tgt_phase - pphase1);	
 		adjust2 = WrapAngle(pphase1 - pphase2);
@@ -410,6 +411,21 @@ wrapup:
 
 		frame[oline][h] = clamp(o, 0, 65535);
 	}
+/*
+        if (bad) {
+                frame[oline][2] = 48000;
+                frame[oline][3] = 48000;
+                frame[oline][4] = 48000;
+                frame[oline][5] = 48000;
+        }
+*/
+        if (!pass) {
+                frame[oline][2] = 32000;
+                frame[oline][3] = 32000;
+                frame[oline][4] = 32000;
+                frame[oline][5] = 32000;
+		cerr << "BURST ERROR " << line << " " << pass << ' ' << begin << ' ' << (begin + adjlen) << '/' << end  << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
+        }
 	
 	frame[oline][0] = tgt_phase ? 32768 : 16384; 
 	frame[oline][1] = plevel1; 
@@ -470,7 +486,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 //						if (!first) ProcessAudio(frameno + .5, v_read + i, abuf);
 					}
 				}
-			} else if (InRange(level, 0.28, 0.5)) {
+			} else if (InRange(level, 0.28, 0.6)) {
 				bool bad = false;
 
 				prev_begin = begin;

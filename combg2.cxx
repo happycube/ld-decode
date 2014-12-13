@@ -265,7 +265,7 @@ class Comb
 					}
 
 					// 1D 
-					if (0) {
+					if (1) {
 						c[0] = (((line[h + 2] + line[h - 2]) / 2) - line[h]); 
 						v[0] = 1 - v[2] - v[1];
 					} else v[0] = 0;
@@ -399,7 +399,7 @@ class Comb
 		}
 
 	public:
-		Comb(bool cwide = false) {
+		Comb(bool cwide = true) {
 			fieldcount = curline = linecount = -1;
 			framecode = framecount = frames_out = 0;
 

@@ -21,8 +21,8 @@ ntsc10: ntscg2.cxx ld-decoder.h deemp.h
 	clang++ -std=c++11  -Wall $(CFLAGS) -DFSC10 -o ntsc10 ntscg2.cxx
 
 ntsc: ntscg2.cxx ld-decoder.h deemp.h
-#	clang++ -std=c++11  -g -Wall $(CFLAGS) -o ntsc ntscg2.cxx
-	clang++ -std=c++11  -g -Wall -o ntsc ntscg2.cxx
+	clang++ -std=c++11  -g -Wall $(CFLAGS) -o ntsc ntscg2.cxx
+#	clang++ -std=c++11  -g -Wall -o ntsc ntscg2.cxx
 
 comb: combg2.cxx deemp.h
 	clang++ -std=c++11  -Wall $(CFLAGS) -o comb combg2.cxx
