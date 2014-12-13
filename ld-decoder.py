@@ -13,11 +13,12 @@ import getopt
 
 freq = (315.0 / 88.0) * 8.0
 freq_hz = freq * 1000000.0
+
 blocklen = (16 * 1024) + 512
 hilbertlen = (16 * 1024)
 
-blocklen = (128 * 1024) + 512
-hilbertlen = (128 * 1024)
+#blocklen = (128 * 1024) + 512
+#hilbertlen = (128 * 1024)
 
 wide_mode = 0
 
@@ -378,6 +379,8 @@ def main():
 	global lowpass_filter_b, lowpass_filter_a 
 	global wide_mode, hz_ire_scale, minn
 
+	global blocklen, hilbertlen
+
 	outfile = sys.stdout
 	audio_mode = 0 
 	CAV = 0
@@ -388,6 +391,8 @@ def main():
 	for o, a in optlist:
 		if o == "-a":
 			audio_mode = 1	
+			blocklen = (128 * 1024) + 512
+			hilbertlen = (128 * 1024)
 		if o == "-A":
 			CAV = 1
 		if o == "-w":

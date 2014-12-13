@@ -51,7 +51,7 @@ const double phasemult = 1.591549430918953e-01 * in_freq; // * 0.99999;
 
 double hfreq = 525.0 * (30000.0 / 1001.0);
 
-int fr_count = 0, au_count = 0;
+long long fr_count = 0, au_count = 0;
 
 bool audio_only = false;
 
@@ -265,22 +265,22 @@ double afreq = 48000;
 
 double prev_time = -1;
 double next_audsample = 0;
-int prev_loc = -1;
+size_t prev_loc = -1;
 
-int prev_index = 0, prev_i = 0;
-void ProcessAudio(double frame, int loc, float *abuf)
+size_t prev_index = 0, prev_i = 0;
+void ProcessAudio(double frame, size_t loc, float *abuf)
 {
 	double time = frame / (30000.0 / 1001.0);
 
 	if (prev_time >= 0) {
 		while (next_audsample < time) {
 			double i1 = (next_audsample - prev_time) / (time - prev_time); 
-			int i = (i1 * (loc - prev_loc)) + prev_loc;
+			size_t i = (i1 * (loc - prev_loc)) + prev_loc;
 
 			if (i < v_read) {
 				ProcessAudioSample(f_fml.val(), f_fmr.val(), 1.0);  
 			} else {
-				int index = (i / va_ratio) - a_read;
+				size_t index = (i / va_ratio) - a_read;
 				if (index >= ablen) {
 					cerr << "audio error " << frame << " " << time << " " << i1 << " " << i << " " << index << " " << ablen << endl;
 					index = ablen - 1;
@@ -687,7 +687,7 @@ int main(int argc, char *argv[])
 
 	f_linelen.clear(1820);
 
-	int aplen = 0;
+	size_t aplen = 0;
 	while (rv == vbsize && ((v_read < dlen) || (dlen < 0))) {
 		if (do_autoset) {
 			autoset(inbuf, vbsize / 2);
