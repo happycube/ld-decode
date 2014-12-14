@@ -251,7 +251,7 @@ class Comb
 						double err = err_p + err_n;				
 
 						if (l == 240) {
-//							cerr << "E " << h << ' ' << err_p << ' ' << err_n << endl;
+							cerr << "E " << h << ' ' << err_p << ' ' << err_n << endl;
 						}
 						if (err != 0) {
 							c[1] = (p2line[h] - line[h]) * (1 - (err_p / err)); 
@@ -288,7 +288,7 @@ class Comb
 					}
 						
 					if (l == 240) {
-//						cerr << "D2 " << h << ' ' << p3line[h] << ' ' << line[h] << ' ' << n3line[h] << ' ' << v[2] << ' ' << v[1] << ' ' << v[0] << endl; 
+						cerr << "D2 " << h << ' ' << p3line[h] << ' ' << line[h] << ' ' << n3line[h] << ' ' << v[2] << ' ' << v[1] << ' ' << v[0] << endl; 
 					}
 
 					cbuf[l].p[h].y = line[h]; 
@@ -464,7 +464,7 @@ class Comb
 		// buffer: 844x505 uint16_t array
 		void Process(uint16_t *buffer, int dim = 2)
 		{
-			int firstline = (linesout == 505) ? 0 : 26;
+			int firstline = (linesout == 505) ? 0 : 25;
 			int f = (dim == 3) ? 1 : 0;
 
 			cerr << "P " << f << ' ' << dim << endl;
@@ -577,7 +577,7 @@ class Comb
 					if (rawbuffer[fnum][(844 * line) + i] > 45000) wc++;
 				} 
 				if (wc > 500) {
-					fstart = !(line % 2); 
+					fstart = (line % 2); 
 				}
 				//cerr << "PW" << fnum << ' ' << line << ' ' << wc << ' ' << fieldcount << endl;
 			}
@@ -601,7 +601,7 @@ class Comb
 	
 					cerr << "frame " << framecode << endl;
 	
-					fstart = !(line % 2); 
+					fstart = (line % 2); 
 					if ((ofstart >= 0) && (fstart != ofstart)) {
 						cerr << "MISMATCH\n";
 					}
