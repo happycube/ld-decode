@@ -338,7 +338,7 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line, bool err =
 
 	cerr << "levels " << plevel1 << ' ' << plevel2 << endl;
 
-	if ((plevel1 < 2400) || (plevel2 < 1800)) {
+	if ((plevel1 < 2000) || (plevel2 < 1000)) {
 		begin += prev_offset;
 		end += prev_offset;
 	
