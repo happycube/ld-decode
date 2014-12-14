@@ -470,6 +470,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 		if (i > syncid_offset) psync[i - syncid_offset] = val; 
 	}
 
+	long long syncstart = -1;
 	int prevsync = -1;
 	int insync = 0;
 	double line = 0;
@@ -483,15 +484,19 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 
 		// look for peaks with valid level values
 		if ((level > .08) && (level > psync [i - 1]) && (level > psync [i + 1])) {
-			bool canbesync = true;
+			bool canstartsync = true;
+			bool probsync = false;
 	
-			if (!first && !(InRange(line, 261, 265) || InRange(line, 520, 530))) canbesync = false;	
+			if (!first && !(InRange(line, 261, 265) || InRange(line, 520, 530))) canstartsync = false;	
 
-			cerr << i << ' ' << i - prev << ' ' << line << ' ' << buf[i] << ' ' << psync[i] << ' ' << canbesync << endl;
+			probsync = insync && InRangeCF(i - syncstart, 0, 8.9 * 227.5);
 
+			cerr << i << ' ' << i - prev << ' ' << line << ' ' << buf[i] << ' ' << psync[i] << ' ' << canstartsync << ' ' << probsync << endl;
 
-			if (canbesync && InRange(level, 0.13, 0.28)) {
+			if ((canstartsync && InRange(level, 0.13, 0.28)) || (probsync && InRange(level, 0.28, 0.4))) {
 				if (!insync) {
+					syncstart = i;
+
 					insync = ((i - prev) < 1200) ? 2 : 1;
 					cerr << frameno << " sync type " << insync << endl;
 
