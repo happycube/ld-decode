@@ -486,7 +486,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 //						if (!first) ProcessAudio(frameno + .5, v_read + i, abuf);
 					}
 				}
-			} else if (InRange(level, 0.28, 0.6)) {
+			} else if (InRange(level, 0.28, 0.6) || (!insync && InRange(level, 0.23, 0.28))) {
 				bool bad = false;
 
 				prev_begin = begin;
