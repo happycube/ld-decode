@@ -316,7 +316,7 @@ double prev_begin = 0;
 int iline = 0;
 int frameno = -1;
 
-double ProcessLine(uint16_t *buf, double begin, double end, int line)
+double ProcessLine(uint16_t *buf, double begin, double end, int line, bool err = false)
 {
 	double tout[8192];
 	double plevel1, pphase1;
@@ -332,17 +332,24 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line)
 
 	double tgt_phase;
 
-	begin += prev_offset;
-	end += prev_offset;
-
 	Scale(buf, tout, begin, end, scale_tgt); 
 	BurstDetect(tout, out_freq, 0, plevel1, pphase1); 
 	BurstDetect(tout, out_freq, 228, plevel2, pphase2); 
 
 	cerr << "levels " << plevel1 << ' ' << plevel2 << endl;
 
-	if (plevel1 < 2400) goto wrapup;
-	if (plevel2 < 1800) goto wrapup;
+	if ((plevel1 < 2400) || (plevel2 < 1800)) {
+		begin += prev_offset;
+		end += prev_offset;
+	
+		Scale(buf, tout, begin, end, scale_tgt); 
+		goto wrapup;
+	}
+
+	if (err) {
+		begin += prev_offset;
+		end += prev_offset;
+	}
 
 	if (phase == -1) {
 		phase = (fabs(pphase1) > (M_PIl / 2));
@@ -419,8 +426,8 @@ wrapup:
 //			cerr << "R " << o << endl;
 		}
 
-		// if (!(oline % 2)) frame[oline][h] = clamp(o, 0, 65535);
 		frame[oline][h] = clamp(o, 0, 65535);
+		//if (!(oline % 2)) frame[oline][h] = clamp(o, 0, 65535);
 	}
 /*
         if (bad) {
@@ -550,7 +557,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 				double send = prev_begin + ((begin - prev_begin) * scale_linelen);
 
 				if (!first) {
-					linelen = ProcessLine(buf, prev_begin, send, line); 
+					linelen = ProcessLine(buf, prev_begin, send, line, bad); 
 					ProcessAudio((line / 525.0) + frameno, v_read + begin, abuf); 
 				}
 			} else if (level > 1.0) {
