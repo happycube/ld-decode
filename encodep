@@ -15,9 +15,7 @@ rm -f ntsclog
 mkfifo ntsclog
 
 ./ld-decoder.py -a $1 $2 $3 | buffer -s 32k -m 2m > pipe.rpcm &
-./ld-decoder.py $1 $2 $3 2> /dev/null | buffer -s 19200 -m 2m | ./ntsc -a pipe.rpcm > pipe2.tbc 2> ntsclog 3> pipe2.pcm & 
-
-cat ntsclog | gzip -c > ntsclog.gz &
+./ld-decoder.py $1 $2 $3 2> /dev/null | buffer -s 19200 -m 2m | ./ntsc -a pipe.rpcm > pipe2.tbc 2> /dev/null 3> pipe2.pcm & 
 
 #| avconv -f u16le -ar 48k -ac 2 -i pipe:0 $4.wav  
 
@@ -26,5 +24,5 @@ cat ntsclog | gzip -c > ntsclog.gz &
 #cat pipe2.pcm | ./cx > pipe2a.pcm &
 cat pipe2.pcm | tee $4.pcm | ./cx > pipe2a.pcm &
 
-cat pipe2.tbc | ./comb -p -d 3 - 2> comblog | buffer -s 131072 -b 32 | avconv -f u16le -ar 48k -ac 2 -i pipe2a.pcm -b:a 256k -f rawvideo -r 24000/1001 -pix_fmt rgb48 -s 744x480 -i pipe:0 -b:v 10000k -flags ildct -s 1440x1080 $4.avi
+cat pipe2.tbc | ./comb -p -d 3 - 2> /dev/null | buffer -s 131072 -b 32 | avconv -f u16le -ar 48k -ac 2 -i pipe2a.pcm -b:a 256k -f rawvideo -r 24000/1001 -pix_fmt rgb48 -s 744x480 -i pipe:0 -b:v 10000k -flags ildct -s 1440x1080 $4.avi
 

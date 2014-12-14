@@ -495,7 +495,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 					insync = ((i - prev) < 1200) ? 2 : 1;
 					cerr << frameno << " sync type " << insync << endl;
 
-					if (insync == 1) {
+					if (insync == 2) {
 						if (!first) {
 							frameno++;
 							write(1, frame, sizeof(frame));
