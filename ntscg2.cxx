@@ -495,7 +495,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 
 			cerr << i << ' ' << i - prev << ' ' << line << ' ' << buf[i] << ' ' << psync[i] << ' ' << canstartsync << ' ' << probsync << endl;
 
-			if ((canstartsync && InRange(level, 0.13, 0.28)) || (probsync && InRange(level, 0.28, 0.4))) {
+			if ((canstartsync && InRange(level, 0.13, 0.22)) || (probsync && InRange(level, 0.22, 0.4))) {
 				if (!insync) {
 					syncstart = i;
 
