@@ -53,6 +53,8 @@ double hfreq = 525.0 * (30000.0 / 1001.0);
 
 long long fr_count = 0, au_count = 0;
 
+int writeonfield = 1;
+
 bool audio_only = false;
 
 double inbase = 1;	// IRE == -60
@@ -267,8 +269,8 @@ double prev_time = -1;
 double next_audsample = 0;
 size_t prev_loc = -1;
 
-size_t prev_index = 0, prev_i = 0;
-void ProcessAudio(double frame, size_t loc, float *abuf)
+long long prev_index = 0, prev_i = 0;
+void ProcessAudio(double frame, long long loc, float *abuf)
 {
 	double time = frame / (30000.0 / 1001.0);
 
@@ -286,7 +288,7 @@ void ProcessAudio(double frame, size_t loc, float *abuf)
 				if (index >= ablen) {
 					cerr << "audio error " << frame << " " << time << " " << i1 << " " << i << " " << index << " " << ablen << endl;
 					index = ablen - 1;
-					exit(0);
+//					exit(0);
 				} 
 				float left = abuf[index * 2], right = abuf[(index * 2) + 1];
 				cerr << "A " << frame << ' ' << loc << ' ' << i1 << ' ' << i << ' ' << i - prev_i << ' ' << index << ' ' << index - prev_index << ' ' << left << ' ' << right << endl;
@@ -466,7 +468,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 
 	cerr << "len " << len << endl;
 	for (int i = 0; i < len; i++) {
-		double val = f_syncid.feed(buf[i] < 12000); 
+		double val = f_syncid.feed(buf[i] && (buf[i] < 12000)); 
 		if (i > syncid_offset) psync[i - syncid_offset] = val; 
 	}
 
@@ -500,7 +502,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 					insync = ((i - prev) < 1200) ? 2 : 1;
 					cerr << frameno << " sync type " << insync << endl;
 
-					if (insync == 1) {
+					if (insync == writeonfield) {
 						if (!first) {
 							frameno++;
 							write(1, frame, sizeof(frame));
@@ -666,8 +668,11 @@ int main(int argc, char *argv[])
 
 	opterr = 0;
 	
-	while ((c = getopt(argc, argv, "hgs:n:i:a:Af")) != -1) {
+	while ((c = getopt(argc, argv, "mhgs:n:i:a:Af")) != -1) {
 		switch (c) {
+			case 'm':	// "magnetic video" mode - bottom field first
+				writeonfield = 2;
+				break;
 			case 's':
 				sscanf(optarg, "%lf", &cross);
 				break;

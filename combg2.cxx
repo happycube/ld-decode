@@ -7,6 +7,8 @@
 //const double CHZ = (1000000.0*(315.0/88.0)*8.0);
 //const double FSC = (1000000.0*(315.0/88.0));
 
+bool eightbitout = false;
+
 bool pulldown_mode = false;
 int ofd = 1;
 bool image_mode = false;
@@ -444,9 +446,21 @@ class Comb
 		void WriteFrame(uint16_t *obuf, int fnum = 0) {
 			cerr << "WR" << fnum << endl;
 			if (!image_mode) {
-				write(ofd, obuf, (744 * linesout * 3) * 2);
-				if ((dim == 3) && !frames_out) {
+				if (!eightbitout) {
 					write(ofd, obuf, (744 * linesout * 3) * 2);
+					if ((dim == 3) && !frames_out) {
+						write(ofd, obuf, (744 * linesout * 3) * 2);
+					}		
+				} else {
+					uint8_t obuf8[744 * linesout * 3];	
+
+					for (int i = 0; i < (744 * linesout * 3); i++) {
+						obuf8[i] = obuf[i] >> 8;
+					}
+					write(ofd, obuf8, (744 * linesout * 3));
+					if ((dim == 3) && !frames_out) {
+						write(ofd, obuf8, (744 * linesout * 3));
+					}		
 				}		
 			} else {
 				char ofname[512];
@@ -653,8 +667,11 @@ int main(int argc, char *argv[])
 
 	opterr = 0;
 	
-	while ((c = getopt(argc, argv, "Owvd:Bb:I:w:i:o:fphn:N:")) != -1) {
+	while ((c = getopt(argc, argv, "8Owvd:Bb:I:w:i:o:fphn:N:")) != -1) {
 		switch (c) {
+			case '8':
+				eightbitout = true;
+				break;
 			case 'd':
 				sscanf(optarg, "%d", &dim);
 				break;

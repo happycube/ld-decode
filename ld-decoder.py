@@ -397,6 +397,7 @@ def main():
 			CAV = 1
 		if o == "-w":
 			lowpass_filter_b, lowpass_filter_a = sps.butter(6, (4.8/(freq/2)), 'low')
+			lowpass_filter_b, lowpass_filter_a = sps.butter(6, (4.5/(freq/2)), 'low')
 			wide_mode = 1
 			hz_ire_scale = (9360000 - 8100000) / 100
 			minn = 8100000 + (hz_ire_scale * -60)
