@@ -495,7 +495,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 
 			cerr << i << ' ' << i - prev << ' ' << line << ' ' << buf[i] << ' ' << psync[i] << ' ' << canstartsync << ' ' << probsync << endl;
 
-			if ((canstartsync && InRange(level, 0.13, 0.22)) || (probsync && InRange(level, 0.22, 0.4))) {
+			if ((canstartsync && InRange(level, 0.13, 0.20)) || (probsync && InRange(level, 0.20, 0.25))) {
 				if (!insync) {
 					syncstart = i;
 
@@ -519,7 +519,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 
 					prev_offset = 0;
 				}
-			} else if (InRange(level, 0.28, 0.6) || (!insync && InRange(level, 0.23, 0.28))) {
+			} else if (InRange(level, 0.25, 0.6) || (!insync && InRange(level, 0.14, 0.25))) {
 				bool bad = false;
 				bool outofsync = false;
 
@@ -547,7 +547,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 						if (buf[x] > 12000) end = x; 
 					}
 
-					bad = (begin < 0) || (end < 0) || (!outofsync && (!InRange(end - begin, 128, 136)));
+					bad = (begin < 0) || (end < 0) || (!outofsync && (!InRange(end - begin, 128, 139)));
 				//	bad = (begin < 0) || (end < 0) || (!outofsync && (!InRange(end - begin, 128, 136) || !InRangeCF(i - prev, 226.5, 228.5)));
 					cerr << line << ' ' << bad << ' ' << prev_begin << ' ' << begin << ' ' << end << ' ' << end - begin << ' ' << scale_tgt << endl;
 				}
@@ -758,7 +758,7 @@ int main(int argc, char *argv[])
 		
 		if (afd != -1) {	
 //			cerr << "AX " << absize << ' ' << aplen * 4 << ' ' << (double)(absize - (aplen * 4)) << ' ' << abuf[0] << ' ' ;
-			cerr << "AA " << absize << ' ' << aplen << ' ' << a_read << endl;
+			cerr << "AA " << plen << ' ' << aplen << ' ' << v_read << ' ' << a_read << ' ' << (double)v_read / (double)a_read << endl;
 			memmove(abuf, &abuf[aplen * 2], absize - (aplen * 8));
 			cerr << abuf[0] << endl;
 
