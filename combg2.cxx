@@ -15,7 +15,11 @@ bool image_mode = false;
 char *image_base = "FRAME";
 bool bw_mode = false;
 
+bool f_debug2d = false;
+
 bool f_oneframe = false;
+
+int debug_line = -1000;
 	
 int dim = 2;
 
@@ -200,21 +204,69 @@ class Comb
 					cbuf[l].p[h].q = 0; 
 				}
 			}
+		
+			double d1buffer[505][844];
+			// precompute 1D comb filter, needed for 2D 
+			for (int l = 24; l < 505; l++) {
+				uint16_t *line = &rawbuffer[f][l * 844];	
+				for (int h = 4; h < 840; h++) {
+					d1buffer[l][h] = (((line[h + 2] + line[h - 2]) / 2) - line[h]); 
+				}
+			}
 
 			for (int l = 24; l < 505; l++) {
 				uint16_t *line = &rawbuffer[f][l * 844];	
 				bool invertphase = (line[0] == 16384);
-				
+		
+				// shortcuts for previous/next 1D/pixel lines	
 				uint16_t *p3line = &rawbuffer[0][l * 844];	
 				uint16_t *n3line = &rawbuffer[2][l * 844];	
-				
-				uint16_t *p2line = &rawbuffer[f][(l - 2) * 844];	
-				uint16_t *n2line = &rawbuffer[f][(l + 2) * 844];	
+		
+				double *p1line = d1buffer[l - 2];
+				double *n1line = d1buffer[l + 2];
 		
 				double f3 = 0, f2 = 0;
 				double si = 0, sq = 0;
+					
+				Filter f_ti(f_colorlp4), f_tq(f_colorlp4);
+				double tsi = 0, tsq = 0;
 
-				double k[840];
+				double k[840], c_2d[840], c_2df[840];
+
+				// 2D filtering.  can't do top or bottom line - calced between 1d and 3d because this is
+				// filtered 
+				if (1 && (dim >= 2) && (l >= 2) && (l <= 502)) {
+					for (int h = 16; h < 840; h++) {
+						int phase = h % 4;
+
+						double tc1;
+
+						tc1  = (d1buffer[l][h] - p1line[h]);
+						tc1 += (d1buffer[l][h] - n1line[h]);
+
+						tc1 /= (2 * 2);
+
+						double tc1f = tc1;
+
+						if (!invertphase) tc1 = -tc1;
+
+						switch (phase) {
+							case 0: tsi = tc1; tc1f = f_ti.feed(tsi); break;
+							case 1: tsq = -tc1; tc1f = -f_tq.feed(tsq); break;
+							case 2: tsi = -tc1; tc1f = -f_ti.feed(tsi); break;
+							case 3: tsq = tc1; tc1f = f_tq.feed(tsq); break;
+							default: break;
+						}
+						
+						if (!invertphase) {
+							tc1 = -tc1;
+							tc1f = -tc1f;
+						}
+						c_2df[h - 8] = tc1f;
+
+						c_2d[h] = tc1;
+					}
+				}
 	
 				for (int h = 4; h < 840; h++) {
 					int phase = h % 4;
@@ -236,39 +288,18 @@ class Comb
 					} else {
 						k[h] = c[2] = v[2] = 0;
 					}
-
-					// 1D-a 
-					if (0) {
-						c[0] = (((line[h + 2] + line[h - 2]) / 2) - line[h]); 
-	                                        double _k = fabs(((line[h - 2] - line[h]) - (line[h + 2] - line[h]))); 
-                                                v[0] = c[0] ? 1 - clamp((fabs(_k) / fabs(c[0])) * 1, 0, 1) : 0;
-
-						v[0] *= (1 - v[2]);
-					}
-
-					// 2D filtering - can't do the ends
+				
 					if (1 && (dim >= 2) && (l >= 2) && (l <= 502)) {
-						double err_p = abs(p2line[h - 2] - line[h]) + abs(p2line[h + 2] - line[h]);
-						double err_n = abs(n2line[h - 2] - line[h]) + abs(n2line[h + 2] - line[h]);
-						double err = err_p + err_n;				
-
-						if (l == 240) {
-							cerr << "E " << h << ' ' << err_p << ' ' << err_n << endl;
-						}
-						if (err != 0) {
-							c[1] = (p2line[h] - line[h]) * (1 - (err_p / err)); 
-							c[1] += (n2line[h] - line[h]) * (1 - (err_n / err)); 
-						} else {
-							c[1] = ((((double)p2line[h] + (double)n2line[h]) / 2) - line[h]); 
-						}
-						v[1] = 1 - v[2] - v[0];
+						c[1] = c_2df[h];
+						if ((dim == 2) || (fabs(c_2df[h]) > fabs(c_2d[h]))) c[1] = c_2d[h];
+						v[1] = 1 - v[2];
 					} else {
 						c[1] = v[1] = 0;
 					}
-
+					
 					// 1D 
 					if (1) {
-						c[0] = (((line[h + 2] + line[h - 2]) / 2) - line[h]); 
+						c[0] = d1buffer[l][h];
 						v[0] = 1 - v[2] - v[1];
 					} else v[0] = 0;
 					
@@ -279,6 +310,11 @@ class Comb
 					cavg += (c[0] * v[0]);
 
 					cavg /= 2;
+
+					if (f_debug2d) {
+						cavg = c[1] - c[2];
+					}
+
 					if (!invertphase) cavg = -cavg;
 
 					switch (phase) {
@@ -288,14 +324,16 @@ class Comb
 						case 3: sq = cavg; break;
 						default: break;
 					}
-						
-					if (l == 240) {
-						cerr << "D2 " << h << ' ' << p3line[h] << ' ' << line[h] << ' ' << n3line[h] << ' ' << v[2] << ' ' << v[1] << ' ' << v[0] << endl; 
-					}
 
 					cbuf[l].p[h].y = line[h]; 
+					if (f_debug2d) cbuf[l].p[h].y = ire_to_u16(50); 
 					cbuf[l].p[h].i = si;  
 					cbuf[l].p[h].q = sq; 
+
+					if (l == (debug_line + 25)) {
+						//cerr << "E " << h << ' ' << cavg << ' ' << si << ' ' << sq << ' ' << c[1] << ' ' << c[2] << ' ' << k[h] << endl;
+						cerr << "E " << h << ' ' << si << ' ' << sq << ' ' << c[1] << ' ' << c[2] << ' ' << k[h] << endl;
+					}
 				}
 
 				for (int h = 4; 1 && h < 840; h++) {
@@ -430,27 +468,14 @@ class Comb
 			memset(output, 0, sizeof(output));
 		}
 
-		void Set_CWide(bool cwide = true) {
-			delete f_i;
-			delete f_q;
-			
-			if (!cwide) {	
-				f_i = new Filter(f_colorlp4);
-				f_q = new Filter(f_colorlp4);
-			} else {	
-				f_i = new Filter(f_colorwlp4);
-				f_q = new Filter(f_colorwlp4);
-			}
-		}
-
 		void WriteFrame(uint16_t *obuf, int fnum = 0) {
 			cerr << "WR" << fnum << endl;
 			if (!image_mode) {
 				if (!eightbitout) {
 					write(ofd, obuf, (744 * linesout * 3) * 2);
-					if ((dim == 3) && !frames_out) {
-						write(ofd, obuf, (744 * linesout * 3) * 2);
-					}		
+//					if ((dim == 3) && !frames_out) {
+//						write(ofd, obuf, (744 * linesout * 3) * 2);
+//					}		
 				} else {
 					uint8_t obuf8[744 * linesout * 3];	
 
@@ -458,9 +483,9 @@ class Comb
 						obuf8[i] = obuf[i] >> 8;
 					}
 					write(ofd, obuf8, (744 * linesout * 3));
-					if ((dim == 3) && !frames_out) {
-						write(ofd, obuf8, (744 * linesout * 3));
-					}		
+//					if ((dim == 3) && !frames_out) {
+//						write(ofd, obuf8, (744 * linesout * 3));
+//					}		
 				}		
 			} else {
 				char ofname[512];
@@ -559,6 +584,10 @@ class Comb
 					}
 	
 					r.conv(yiq);
+					
+					if (l == debug_line) {
+						r.r = r.g = r.b = 0;
+					}
 	
 					line_output[o++] = (uint16_t)(r.r); 
 					line_output[o++] = (uint16_t)(r.g); 
@@ -667,7 +696,7 @@ int main(int argc, char *argv[])
 
 	opterr = 0;
 	
-	while ((c = getopt(argc, argv, "8Owvd:Bb:I:w:i:o:fphn:N:")) != -1) {
+	while ((c = getopt(argc, argv, "8OwvDd:Bb:I:w:i:o:fphn:N:l:")) != -1) {
 		switch (c) {
 			case '8':
 				eightbitout = true;
@@ -675,13 +704,19 @@ int main(int argc, char *argv[])
 			case 'd':
 				sscanf(optarg, "%d", &dim);
 				break;
+			case 'D':
+				f_debug2d = true;
+				dim = 3;
+				break;
 			case 'O':
 				f_oneframe = true;
 				break;
 			case 'v':
+				// copy in VBI area (B&W)
 				linesout = 505;
 				break;
 			case 'B':
+				// B&W mode
 				bw_mode = true;
 				dim = 2;
 				break;
@@ -707,14 +742,17 @@ int main(int argc, char *argv[])
 				pulldown_mode = true;	
 				break;
 			case 'i':
+				// set input file
 				fd = open(optarg, O_RDONLY);
 				break;
-			case 'w':
-				comb.Set_CWide(true);
-				break;
 			case 'o':
+				// set output file base name for image mode
 				image_base = (char *)malloc(strlen(optarg) + 1);
 				strncpy(image_base, optarg, strlen(optarg));
+				break;
+			case 'l':
+				// black out a desired line
+				sscanf(optarg, "%d", &debug_line);
 				break;
 			default:
 				return -1;
