@@ -15,7 +15,8 @@ deemp.h: filtermaker.py
 	python3.4 filtermaker.py > deemp.h
 
 ntsc4: ntscg2.cxx ld-decoder.h deemp.h
-	clang++ -std=c++11  -Wall $(CFLAGS) -DFSC4 -o ntsc4 ntscg2.cxx
+	#clang++ -std=c++11  -Wall $(CFLAGS) -DFSC4 -o ntsc4 ntscg2.cxx
+	clang++ -std=c++11  -Wall -g -DFSC4 -o ntsc4 ntscg2.cxx
 
 ntsc10: ntscg2.cxx ld-decoder.h deemp.h
 	clang++ -std=c++11  -Wall $(CFLAGS) -DFSC10 -o ntsc10 ntscg2.cxx

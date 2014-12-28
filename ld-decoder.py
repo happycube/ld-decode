@@ -17,9 +17,6 @@ freq_hz = freq * 1000000.0
 blocklen = (16 * 1024) + 512
 hilbertlen = (16 * 1024)
 
-#blocklen = (128 * 1024) + 512
-#hilbertlen = (128 * 1024)
-
 wide_mode = 0
 
 def dosplot(B, A):
@@ -114,7 +111,7 @@ def doplot2(B, A, B2, A2):
 
 ffreq = freq/2.0
 
-def CalcBoost(byte = 0):
+def CalcBoost(byte = 0, fixed_adj = -1):
 	n = 128 
 	Fr = np.zeros(n)
 	Am = np.zeros(n)
@@ -127,9 +124,18 @@ def CalcBoost(byte = 0):
  
 		fadj = 6.5
 		if (cf > fadj):
-			adj = .05
-			adj = adj - (.17 * (byte / 50000000000.0)) 
-			Am[f] = 1 + ((cf - fadj) *  adj) 
+			adj = .17
+			adj = adj - (.30 * (byte / 17000000000.0)) 
+
+			if adj < -.12:
+				adj = -.12
+		
+			if fixed_adj > -.9:
+				adj = fixed_adj
+
+			Am[f] = 1 + ((cf - fadj) * adj) 
+			if Am[f] < 0:
+				Am[f] = 0
 		elif (cf > 4.0):
 			Am[f] = 1 
 		elif (cf > 3.0):
@@ -138,13 +144,14 @@ def CalcBoost(byte = 0):
 			Am[f] = 0
 
 		Fr[f] = float(f) / 256.0
-		Th[f] = -(Fr[f] * 40) 
+		Th[f] = -(Fr[f] * 42) 
 
 	[Bboost, Aboost] = fdls.FDLS(Fr, Am, Th, 8, 8, 0)
 
 	return [Bboost, Aboost]
 
 [Bboost, Aboost] = CalcBoost(0)
+#[Bboost, Aboost] = CalcBoost(17000000000)
 #Bboost, Aboost = sps.butter(6, (3.8/(freq/2)), 'high')
 #doplot(Bboost, Aboost)
 #exit()
@@ -164,21 +171,21 @@ deemp_corr = 1.0
 
 # t1 = 0.83; t2 = 3.0; [b, a] = bilinear(-t2*(10^-8), -t1*(10^-8), t1/t2, freq);
 # printf("f_deemp_b = ["); printf("%.15e, ", b); printf("]\nf_deemp_a = ["); printf("%.15e, ", a); printf("]\n")
-f_deemp_b = [3.172367682445019e-01, -2.050613721767547e-01, ]
-f_deemp_a = [1.000000000000000e+00, -8.878246039322528e-01, ]
+#f_deemp_b = [3.172367682445019e-01, -2.050613721767547e-01, ]
+#f_deemp_a = [1.000000000000000e+00, -8.878246039322528e-01, ]
 
 # t1 = 0.9; t2 = 3.0; [b, a] = bilinear(-t2*(10^-8), -t1*(10^-8), t1/t2, freq);
 # printf("f_deemp_b = ["); printf("%.15e, ", b); printf("]\nf_deemp_a = ["); printf("%.15e, ", a); printf("]\n")
-f_deemp_b = [3.423721575744635e-01, -2.213088502188534e-01, ]
-f_deemp_a = [1.000000000000000e+00, -8.789366926443899e-01, ]
+#f_deemp_b = [3.423721575744635e-01, -2.213088502188534e-01, ]
+#f_deemp_a = [1.000000000000000e+00, -8.789366926443899e-01, ]
 
 # t1 = .875
-#f_deemp_b = [3.334224479793254e-01, -2.155237713318184e-01, ]
-#f_deemp_a = [1.000000000000000e+00, -8.821013233524929e-01, ]
+f_deemp_b = [3.334224479793254e-01, -2.155237713318184e-01, ]
+f_deemp_a = [1.000000000000000e+00, -8.821013233524929e-01, ]
 
 # t1 = .833
-#f_deemp_b = [3.183188754563553e-01, -2.057608446588788e-01, ]
-#f_deemp_a = [1.000000000000000e+00, -8.874419692025236e-01, ]
+f_deemp_b = [3.183188754563553e-01, -2.057608446588788e-01, ]
+f_deemp_a = [1.000000000000000e+00, -8.874419692025236e-01, ]
 
 # audio filters
 Baudiorf = sps.firwin(65, 3.5 / (freq / 2), window='hamming', pass_zero=True)
@@ -206,13 +213,17 @@ audiolp_filter_b, audiolp_filter_a = sps.butter(N, Wn)
 N, Wn = sps.buttord(3.1 / (freq / 2.0), 3.5 / (freq / 2.0), 1, 20) 
 audiorf_filter_b, audiorf_filter_a = sps.butter(N, Wn)
 
+# from http://tlfabian.blogspot.com/2013/01/implementing-hilbert-90-degree-shift.html
+hilbert_filter = np.fft.fftshift(
+    np.fft.ifft([0]+[1]*20+[0]*20)
+)
 
 def fm_decode(in_filt, freq_hz, hlen = hilbertlen):
-	in_filt = in_filt[0:hlen]
-	hilbert = sps.hilbert(in_filt)
+	hilbert = sps.hilbert(in_filt[0:hlen])
+#	hilbert = sps.lfilter(hilbert_filter, 1.0, in_filt)
 
 	# the hilbert transform has errors at the edges.  but it doesn't seem to matter much IRL
-	chop = 192	
+	chop = 256 
 	hilbert = hilbert[chop:len(hilbert)-chop]
 
 	tangles = np.angle(hilbert) 
@@ -258,6 +269,7 @@ out_scale = 65534.0 / (maxire - minire)
 def process_video(data):
 	# perform general bandpass filtering
 	in_filt = sps.lfilter(Bboost, Aboost, data)
+#	in_filt = data
 
 	output = fm_decode(in_filt, freq_hz)
 
@@ -329,6 +341,8 @@ def process_audio(indata):
 		test_mode += 32768 
 		return outputf, 32768 
 
+#	print(len(indata), len(audiorf_filter_b * 2), len(leftbp_filter_b) * 1)
+
 	in_filt = sps.lfilter(audiorf_filter_b, audiorf_filter_a, indata)[len(audiorf_filter_b) * 2:]
 
 	in_filt4 = np.empty(int(len(in_filt) / 4) + 1)
@@ -346,8 +360,8 @@ def process_audio(indata):
 
 #	print len(in_left)
 
-	out_left = fm_decode(in_left, freq_hz / 4, hilbertlen / 4)
-	out_right = fm_decode(in_right, freq_hz / 4, hilbertlen / 4)
+	out_left = fm_decode(in_left, freq_hz / 4)
+	out_right = fm_decode(in_right, freq_hz / 4)
 
 	out_left = np.clip(out_left - left_audfreqm, -150000, 150000) 
 	out_right = np.clip(out_right - right_audfreqm, -150000, 150000) 
@@ -365,7 +379,7 @@ def process_audio(indata):
 
 #	exit()
 	
-	return outputf[0:tot * 2], len(out_left) * 4 
+	return outputf[0:tot * 2], tot * 20 * 4 
 
 	plt.plot(range(0, len(out_left)), out_left)
 #	plt.plot(range(0, len(out_leftl)), out_leftl)
@@ -373,26 +387,69 @@ def process_audio(indata):
 #	plt.ylim([2000000,3000000])
 	plt.show()
 	exit()
-	
+
+def test():
+	test = np.empty(blocklen, dtype=np.uint8)
+#	test = np.empty(blocklen)
+
+	global hilbert_filter
+
+#	for hlen in range(3, 18):
+	for vlevel in range(90, 100, 10):
+#		hilbert_filter = np.fft.fftshift(
+#		    np.fft.ifft([0]+[1]*hlen+[0]*hlen)
+#		)
+
+#		vlevel = 40
+		vphase = 0
+		alphase = 0
+		arphase = 0
+
+		for i in range(0, len(test)):
+			if i > len(test) / 2:
+				vfreq = 9300000
+			else:
+				vfreq = 8100000
+
+			vphase += vfreq / freq_hz 
+			alphase += 2300000 / freq_hz 
+			arphase += 2800000 / freq_hz 
+			test[i] = (np.sin(vphase * np.pi * 2.0) * vlevel)
+			test[i] += (np.sin(alphase * np.pi * 2.0) * vlevel / 10.0)
+			test[i] += (np.sin(arphase * np.pi * 2.0) * vlevel / 10.0)
+			test[i] += 128
+
+		output = process_video(test)[7800:8500]	
+		plt.plot(range(0, len(output)), output)
+
+		mean = np.mean(output)
+		std = np.std(output)
+#		print vlevel, mean, std, 20 * np.log10(mean / std) 
+
+	plt.show()
+	exit()
+
 def main():
 	global Bboost, Aboost
 	global lowpass_filter_b, lowpass_filter_a 
 	global wide_mode, hz_ire_scale, minn
 
-	global blocklen, hilbertlen
+	global blocklen
+
+#	test()
 
 	outfile = sys.stdout
 	audio_mode = 0 
 	CAV = 0
 	firstbyte = 0
 
-	optlist, cut_argv = getopt.getopt(sys.argv[1:], "aAw")
+	optlist, cut_argv = getopt.getopt(sys.argv[1:], "aAwc:")
 
 	for o, a in optlist:
 		if o == "-a":
 			audio_mode = 1	
-			blocklen = (128 * 1024) + 512
-			hilbertlen = (128 * 1024)
+			blocklen = (64 * 1024) + 2048 
+			hilbertlen = (16 * 1024)
 		if o == "-A":
 			CAV = 1
 		if o == "-w":
@@ -401,6 +458,8 @@ def main():
 			wide_mode = 1
 			hz_ire_scale = (9360000 - 8100000) / 100
 			minn = 8100000 + (hz_ire_scale * -60)
+		if o == "-c":
+			[Bboost, Aboost] = CalcBoost(0, float(a))
 
 	argc = len(cut_argv)
 	if argc >= 1:
@@ -439,25 +498,33 @@ def main():
 			inbuf = infile.read(toread)
 			indata = np.append(indata, np.fromstring(inbuf, 'uint8', len(inbuf)))
 
+			if indata.size < blocklen:
+				exit()
+
 		if audio_mode:	
 			output, osamp = process_audio(indata)
 #			for i in range(0, osamp):
 #				print i, output[i * 2], output[(i * 2) + 1]
+			
+			nread = osamp 
+
+#			print len(output), nread
 
 			outfile.write(output)
-			nread = osamp 
 		else:
 			output_16 = process_video(indata)
 #			output_16.tofile(outfile)
 			outfile.write(output_16)
 			nread = len(output_16)
+			
+#			print(len(output_16), nread)
 
 			total_pread = total_read 
 			total_read += nread
 
 			if CAV:
-				total_bpread = total_pread / 500000000 
-				total_bread = total_read / 500000000 
+				total_bpread = int(total_pread) / 500000000 
+				total_bread = int(total_read) / 500000000 
 				if total_bpread != total_bread: 
 					[Bboost, Aboost] = CalcBoost(total_read + firstbyte)
 

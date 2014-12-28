@@ -3,20 +3,14 @@
 #include "ld-decoder.h"
 #include "deemp.h"
 
-// capture frequency and fundamental NTSC color frequency
-//const double CHZ = (1000000.0*(315.0/88.0)*8.0);
-//const double FSC = (1000000.0*(315.0/88.0));
-
-bool eightbitout = false;
-
-bool pulldown_mode = false;
 int ofd = 1;
-bool image_mode = false;
 char *image_base = "FRAME";
-bool bw_mode = false;
 
+bool f_write8bit = false;
+bool f_pulldown = false;
+bool f_writeimages = false;
+bool f_bw = false;
 bool f_debug2d = false;
-
 bool f_oneframe = false;
 
 int debug_line = -1000;
@@ -48,7 +42,6 @@ double brightness = 240;
 double black_ire = 7.5;
 int black_u16 = ire_to_u16(black_ire);
 int white_u16 = ire_to_u16(100); 
-bool whiteflag_detect = true;
 
 double nr_y = 4.0;
 double nr_c = 0.0;
@@ -116,20 +109,12 @@ struct RGB {
                 r = y + (1.13983 * q);
                 g = y - (0.58060 * q) - (i * 0.39465);
                 b = y + (i * 2.032);
-#if 0
-		double m = brightness / 100;
-
-                r = clamp(r * m, 0, 255);
-                g = clamp(g * m, 0, 255);
-                b = clamp(b * m, 0, 255);
-#else
+		
 		double m = brightness * 256 / 100;
 
                 r = clamp(r * m, 0, 65535);
                 g = clamp(g * m, 0, 65535);
                 b = clamp(b * m, 0, 65535);
-#endif
-                //cerr << 'y' << y.y << " i" << y.i << " q" << y.q << ' ';
      };
 };
 
@@ -174,7 +159,6 @@ class Comb
 
 		cline_t cbuf[525];
 		cline_t prevbuf[525];
-		Filter *f_i, *f_q;
 
 		Filter *f_hpy, *f_hpi, *f_hpq;
 		Filter *f_hpvy, *f_hpvi, *f_hpvq;
@@ -227,9 +211,11 @@ class Comb
 		
 				double f3 = 0, f2 = 0;
 				double si = 0, sq = 0;
-					
-				Filter f_ti(f_colorlp4), f_tq(f_colorlp4);
-				double tsi = 0, tsq = 0;
+
+				// In 3D mode the 2D is a lower color resolution backup, so it needs more filtering
+				Filter f_ti((dim == 3) ? f_colorlp4 : f_colorwlp4);
+				Filter f_tq((dim == 3) ? f_colorlp4 : f_colorwlp4);
+				int f_toffset = 8;
 
 				double k[840], c_2d[840], c_2df[840];
 
@@ -237,6 +223,7 @@ class Comb
 				// filtered 
 				if (1 && (dim >= 2) && (l >= 2) && (l <= 502)) {
 					for (int h = 16; h < 840; h++) {
+						double tsi = 0, tsq = 0;
 						int phase = h % 4;
 
 						double tc1;
@@ -262,8 +249,7 @@ class Comb
 							tc1 = -tc1;
 							tc1f = -tc1f;
 						}
-						c_2df[h - 8] = tc1f;
-
+						c_2df[h - f_toffset] = tc1f;
 						c_2d[h] = tc1;
 					}
 				}
@@ -278,7 +264,7 @@ class Comb
 						
 					int adr = (l * 844) + h;
 
-					if (1 && (dim >= 3)) {
+					if (dim >= 3) {
 						c[2] = (p3line[h] - line[h]); 
 						c[2] = (((p3line[h] + n3line[h]) / 2) - line[h]); 
 						_k = fabs(LPraw[1][adr] - LPraw[0][adr]) + fabs(LPraw[1][adr] - LPraw[2][adr]);
@@ -289,9 +275,9 @@ class Comb
 						k[h] = c[2] = v[2] = 0;
 					}
 				
-					if (1 && (dim >= 2) && (l >= 2) && (l <= 502)) {
+					if ((dim >= 2) && (l >= 2) && (l <= 502)) {
 						c[1] = c_2df[h];
-						if ((dim == 2) || (fabs(c_2df[h]) > fabs(c_2d[h]))) c[1] = c_2d[h];
+						if (fabs(c_2df[h]) > fabs(c_2d[h])) c[1] = c_2d[h];
 						v[1] = 1 - v[2];
 					} else {
 						c[1] = v[1] = 0;
@@ -331,18 +317,9 @@ class Comb
 					cbuf[l].p[h].q = sq; 
 
 					if (l == (debug_line + 25)) {
-						//cerr << "E " << h << ' ' << cavg << ' ' << si << ' ' << sq << ' ' << c[1] << ' ' << c[2] << ' ' << k[h] << endl;
 						cerr << "E " << h << ' ' << si << ' ' << sq << ' ' << c[1] << ' ' << c[2] << ' ' << k[h] << endl;
 					}
 				}
-
-				for (int h = 4; 1 && h < 840; h++) {
-					cbuf[l].p[h - 5].i *= k[h];
-					cbuf[l].p[h - 5].i += (bw_mode ? 0 : f_i->feed(cbuf[l].p[h].i)) * (1 - k[h]); 
-					cbuf[l].p[h - 5].q *= k[h];
-					cbuf[l].p[h - 5].q += (bw_mode ? 0 : f_q->feed(cbuf[l].p[h].q)) * (1 - k[h]); 
-				}	
-
 			}
 		}
 					
@@ -439,7 +416,7 @@ class Comb
 		}
 
 	public:
-		Comb(bool cwide = true) {
+		Comb() {
 			fieldcount = curline = linecount = -1;
 			framecode = framecount = frames_out = 0;
 
@@ -449,14 +426,6 @@ class Comb
 
 			f_oddframe = false;	
 		
-			if (!cwide) {	
-				f_i = new Filter(f_colorlp4);
-				f_q = new Filter(f_colorlp4);
-			} else {	
-				f_i = new Filter(f_colorwlp4);
-				f_q = new Filter(f_colorwlp4);
-			}
-
 			f_hpy = new Filter(f_nr);
 			f_hpi = new Filter(f_nrc);
 			f_hpq = new Filter(f_nrc);
@@ -470,12 +439,9 @@ class Comb
 
 		void WriteFrame(uint16_t *obuf, int fnum = 0) {
 			cerr << "WR" << fnum << endl;
-			if (!image_mode) {
-				if (!eightbitout) {
+			if (!f_writeimages) {
+				if (!f_write8bit) {
 					write(ofd, obuf, (744 * linesout * 3) * 2);
-//					if ((dim == 3) && !frames_out) {
-//						write(ofd, obuf, (744 * linesout * 3) * 2);
-//					}		
 				} else {
 					uint8_t obuf8[744 * linesout * 3];	
 
@@ -483,9 +449,6 @@ class Comb
 						obuf8[i] = obuf[i] >> 8;
 					}
 					write(ofd, obuf8, (744 * linesout * 3));
-//					if ((dim == 3) && !frames_out) {
-//						write(ofd, obuf8, (744 * linesout * 3));
-//					}		
 				}		
 			} else {
 				char ofname[512];
@@ -573,16 +536,6 @@ class Comb
 					yiq.i *= (10 / aburstlev);
 					yiq.q *= (10 / aburstlev);
 
-					// for debug: display difference areas	
-					if (0) {
-						int adr = (l * 844) + (h + 70);
-               	                                double k = fabs(LPraw[1][adr] - LPraw[0][adr]) + fabs(LPraw[1][adr] - LPraw[2][adr]);
-//            	                                k /= irescale;
-//						cerr << k << ' ' << yiq.y << endl;
-						yiq.y = k;
-						yiq.i = yiq.q = 0;
-					}
-	
 					r.conv(yiq);
 					
 					if (l == debug_line) {
@@ -604,7 +557,7 @@ class Comb
 		int PostProcess(int fnum) {
 			int fstart = -1;
 
-			if (!pulldown_mode) {
+			if (!f_pulldown) {
 				fstart = 0;
 			} else if (f_oddframe) {
 				for (int i = 1; i < linesout; i += 2) {
@@ -622,14 +575,11 @@ class Comb
 				if (wc > 500) {
 					fstart = (line % 2); 
 				}
-				//cerr << "PW" << fnum << ' ' << line << ' ' << wc << ' ' << fieldcount << endl;
 			}
 
 			for (int line = 16; line < 20; line++) {
 				int new_framecode = ReadPhillipsCode(&rawbuffer[fnum][line * 844]); // - 0xf80000;
 				int fca = new_framecode & 0xf80000;
-
-				//cerr << "c" << line << ' ' << hex << ' ' <<  new_framecode << ' ' << fca << ' ' << dec << endl;
 
 				if (((new_framecode & 0xf00000) == 0xf00000) && (new_framecode < 0xff0000)) {
 					int ofstart = fstart;
@@ -652,7 +602,7 @@ class Comb
 			}
 
 			cerr << "FR " << framecount << ' ' << fstart << endl;
-			if (!pulldown_mode || (fstart == 0)) {
+			if (!f_pulldown || (fstart == 0)) {
 				WriteFrame(output, framecode);
 			} else if (fstart == 1) {
 				for (int i = 0; i < linesout; i += 2) {
@@ -673,8 +623,11 @@ void usage()
 	cerr << "comb: " << endl;
 	cerr << "-i [filename] : input filename (default: stdin)\n";
 	cerr << "-o [filename] : output filename/base (default: stdout/frame)\n";
+	cerr << "-d [dimensions] : Use 2D/3D comb filtering\n";
+	cerr << "-B : B&W output\n";
 	cerr << "-f : use separate file for each frame\n";
 	cerr << "-p : use white flag/frame # for pulldown\n";	
+	cerr << "-l [line] : debug selected line - extra prints for that line, and blacks it out\n";	
 	cerr << "-h : this\n";	
 }
 
@@ -685,8 +638,6 @@ int main(int argc, char *argv[])
 	unsigned short inbuf[844 * 525 * 2];
 	unsigned char *cinbuf = (unsigned char *)inbuf;
 	int c;
-
-	bool cwide = false;
 
 	char out_filename[256] = "";
 
@@ -699,7 +650,7 @@ int main(int argc, char *argv[])
 	while ((c = getopt(argc, argv, "8OwvDd:Bb:I:w:i:o:fphn:N:l:")) != -1) {
 		switch (c) {
 			case '8':
-				eightbitout = true;
+				f_write8bit = true;
 				break;
 			case 'd':
 				sscanf(optarg, "%d", &dim);
@@ -717,7 +668,7 @@ int main(int argc, char *argv[])
 				break;
 			case 'B':
 				// B&W mode
-				bw_mode = true;
+				f_bw = true;
 				dim = 2;
 				break;
 			case 'b':
@@ -736,10 +687,10 @@ int main(int argc, char *argv[])
 				usage();
 				return 0;
 			case 'f':
-				image_mode = true;	
+				f_writeimages = true;	
 				break;
 			case 'p':
-				pulldown_mode = true;	
+				f_pulldown = true;	
 				break;
 			case 'i':
 				// set input file
@@ -765,7 +716,7 @@ int main(int argc, char *argv[])
 	nr_y = nr_y * irescale;
 	nr_c = nr_c * irescale;
 
-	if (!image_mode && strlen(out_filename)) {
+	if (!f_writeimages && strlen(out_filename)) {
 		ofd = open(image_base, O_WRONLY | O_CREAT);
 	}
 

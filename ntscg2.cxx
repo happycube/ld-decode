@@ -395,7 +395,7 @@ wrapup:
 	double lvl_adjust = ((((end - begin) / iscale_tgt) - 1) * 2.0) + 1;
 	int ldo = -128;
 	for (int h = 0; (oline > 2) && (h < (211 * out_freq)); h++) {
-		double v = tout[h + (int)(14 * out_freq)];
+		double v = tout[h + (int)(15 * out_freq)];
 		double ire = in_to_ire(v);
 		double o;
 
@@ -477,8 +477,8 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 	int insync = 0;
 	double line = 0;
 
-	double prev_begin = 0, prev_end = 0, prev_linelen = 1820;
-	double begin = -1, end = -1, linelen = 1820;
+	double prev_begin = 0, prev_end = 0, prev_linelen = ntsc_ipline;
+	double begin = -1, end = -1, linelen = ntsc_ipline;
 
 	int i, prev = 0;
 	for (i = 500; i < len - syncid_offset; i++) {
@@ -499,7 +499,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 				if (!insync) {
 					syncstart = i;
 
-					insync = ((i - prev) < 1200) ? 2 : 1;
+					insync = ((i - prev) < (150 * in_freq)) ? 2 : 1;
 					cerr << frameno << " sync type " << insync << endl;
 
 					if (insync == writeonfield) {
@@ -585,9 +585,10 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 bool seven_five = (in_freq == 4);
 double low = 65535, high = 0;
 
+double f[vblen];
+
 void autoset(uint16_t *buf, int len, bool fullagc = true)
 {
-	double f[len];
 	int lowloc = -1;
 	int checklen = (int)(in_freq * 4);
 
@@ -596,7 +597,7 @@ void autoset(uint16_t *buf, int len, bool fullagc = true)
 		high = 0;
 	}
 	
-	f_longsync.clear(0);
+//	f_longsync.clear(0);
 
 	// phase 1:  get low (-40ire) and high (??ire)
 	for (int i = 0; i < len; i++) {
