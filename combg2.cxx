@@ -422,7 +422,7 @@ class Comb
 
 			scount = 0;
 
-			aburstlev = 10.0;
+			aburstlev = -1;
 
 			f_oddframe = false;	
 		
@@ -525,6 +525,7 @@ class Comb
 				int o = 0;
 
 				if (burstlev > 5) {
+					if (aburstlev < 0) aburstlev = burstlev;	
 					aburstlev = (aburstlev * .99) + (burstlev * .01);
 				}
 //				cerr << "burst level " << burstlev << " mavg " << aburstlev << endl;
