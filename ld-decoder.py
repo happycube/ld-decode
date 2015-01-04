@@ -27,6 +27,12 @@ def dosplot(B, A):
 
 	ax1 = fig.add_subplot(111)
 
+	db = 20 * np.log10(abs(h))
+
+	for i in range(1, len(w)):
+		if (db[i] >= -3) and (db[i - 1] < -3):
+			print "-3db crossing at ", w[i] * (freq/np.pi) / 2.0 
+
 	plt.plot(w * (freq/np.pi) / 2.0, 20 * np.log10(abs(h)), 'b')
 	plt.ylabel('Amplitude [dB]', color='b')
 	plt.xlabel('Frequency [rad/sample]')
@@ -38,9 +44,13 @@ def doplot(B, A):
 
 	fig = plt.figure()
 	plt.title('Digital filter frequency response')
+	
+	for i in range(1, len(w)):
+		if (db[i] >= -3) and (db[i - 1] < -3):
+			print "-3db crossing at ", w[i] * (freq/np.pi) / 2.0 
 
 	ax1 = fig.add_subplot(111)
-
+	
 	plt.plot(w * (freq/np.pi) / 2.0, 20 * np.log10(abs(h)), 'b')
 	plt.ylabel('Amplitude [dB]', color='b')
 	plt.xlabel('Frequency [rad/sample]')
@@ -49,6 +59,7 @@ def doplot(B, A):
 	angles = np.unwrap(np.angle(h))
 	plt.plot(w * (freq/np.pi) / 2.0, angles, 'g')
 	plt.ylabel('Angle (radians)', color='g')
+	
 	plt.grid()
 	plt.axis('tight')
 	plt.show()
@@ -105,6 +116,7 @@ def doplot2(B, A, B2, A2):
 	plt.plot(w * (freq/np.pi) / 2.0, angles, 'g')
 	plt.plot(w * (freq/np.pi) / 2.0, angles2, 'y')
 	plt.ylabel('Angle (radians)', color='g')
+
 	plt.grid()
 	plt.axis('tight')
 	plt.show()
@@ -112,13 +124,14 @@ def doplot2(B, A, B2, A2):
 ffreq = freq/2.0
 
 def CalcBoost(byte = 0, fixed_adj = -1):
-	n = 128 
+	n = 128
+	n2 = n * 2
 	Fr = np.zeros(n)
 	Am = np.zeros(n)
 	Th = np.zeros(n)
 	
 	for f in range(0, n):
-		cf = freq * (float(f) / 256.0)
+		cf = freq * (float(f) / n2)
     
 		Am[f] = 1
  
@@ -143,16 +156,17 @@ def CalcBoost(byte = 0, fixed_adj = -1):
 		else:
 			Am[f] = 0
 
-		Fr[f] = float(f) / 256.0
+		Fr[f] = float(f) / n2 
 		Th[f] = -(Fr[f] * 42) 
 
 	[Bboost, Aboost] = fdls.FDLS(Fr, Am, Th, 8, 8, 0)
+#	dosplot(Bboost, Aboost)
+#	exit()
 
 	return [Bboost, Aboost]
 
-[Bboost, Aboost] = CalcBoost(0)
-#[Bboost, Aboost] = CalcBoost(17000000000)
-#Bboost, Aboost = sps.butter(6, (3.8/(freq/2)), 'high')
+[Bboost, Aboost] = CalcBoost(0, 0)
+
 #doplot(Bboost, Aboost)
 #exit()
 
@@ -180,8 +194,8 @@ deemp_corr = 1.0
 #f_deemp_a = [1.000000000000000e+00, -8.789366926443899e-01, ]
 
 # t1 = .875
-f_deemp_b = [3.334224479793254e-01, -2.155237713318184e-01, ]
-f_deemp_a = [1.000000000000000e+00, -8.821013233524929e-01, ]
+#f_deemp_b = [3.334224479793254e-01, -2.155237713318184e-01, ]
+#f_deemp_a = [1.000000000000000e+00, -8.821013233524929e-01, ]
 
 # t1 = .833
 f_deemp_b = [3.183188754563553e-01, -2.057608446588788e-01, ]
