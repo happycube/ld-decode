@@ -323,40 +323,6 @@ class Comb
 			}
 		}
 					
-		void DoCNR(int fnum = 0) {
-			if (nr_c < 0) return;
-
-			for (int l = 24; l < 505; l++) {
-				YIQ hpline[844];
-				cline_t *input = &cbuf[l];
-
-				for (int h = 70; h < 752 + 70; h++) {
-					YIQ y = input->p[h]; 
-
-					hpline[h].i = f_hpi->feed(y.i);
-					hpline[h].q = f_hpq->feed(y.q);
-				}
-
-				for (int h = 70; h < 744 + 70; h++) {
-					YIQ a = hpline[h + 8];
-
-					if (fabs(a.i) < nr_c) {
-						double hpm = (a.i / nr_c);
-						a.i *= (1 - fabs(hpm * hpm * hpm));
-						//a.i -= hpm;
-						input->p[h].i -= a.i;
-					}
-					
-					if (fabs(a.q) < nr_c) {
-						double hpm = (a.q / nr_c);
-						a.q *= (1 - fabs(hpm * hpm * hpm));
-						//a.q -= hpm;
-						input->p[h].q -= a.q;
-					}
-				}
-			}
-		}
-		
 		void DoYNR() {
 			int firstline = (linesout == 505) ? 0 : 23;
 			if (nr_y < 0) return;
@@ -489,8 +455,6 @@ class Comb
 	
 			Split(dim); 
 
-			DoCNR(0);	
-			
 			// remove color data from baseband (Y)	
 			for (int l = firstline; l < 505; l++) {
 				bool invertphase = (rawbuffer[f][l * 844] == 16384);
@@ -648,7 +612,7 @@ int main(int argc, char *argv[])
 
 	opterr = 0;
 	
-	while ((c = getopt(argc, argv, "8OwvDd:Bb:I:w:i:o:fphn:N:l:")) != -1) {
+	while ((c = getopt(argc, argv, "8OwvDd:Bb:I:w:i:o:fphn:l:")) != -1) {
 		switch (c) {
 			case '8':
 				f_write8bit = true;
@@ -680,9 +644,6 @@ int main(int argc, char *argv[])
 				break;
 			case 'n':
 				sscanf(optarg, "%lf", &nr_y);
-				break;
-			case 'N':
-				sscanf(optarg, "%lf", &nr_c);
 				break;
 			case 'h':
 				usage();
