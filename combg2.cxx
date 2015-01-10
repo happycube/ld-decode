@@ -328,20 +328,24 @@ class Comb
 			if (nr_y < 0) return;
 
 			for (int l = firstline; l < 505; l++) {
-				YIQ hpline[844];
+				YIQ hplinef[844], hplineb[844];
 				cline_t *input = &cbuf[l];
 
-				for (int h = 70; h < 752 + 70; h++) {
-					hpline[h].y = f_hpy->feed(input->p[h].y);
+				for (int h = 70; h <= 752 + 70; h++) {
+					hplinef[h].y = f_hpy->feed(input->p[h].y);
+				}
+				
+				for (int h = 760 + 70; h >= 62; h--) {
+					hplineb[h].y = f_hpy->feed(input->p[h].y);
 				}
 
 				for (int h = 70; h < 744 + 70; h++) {
-					YIQ a = hpline[h + 8];
+					double a = hplinef[h + 8].y ; // + hplineb[h - 8].y;
 
-					if (fabs(a.y) < nr_y) {
-						double hpm = (a.y / nr_y);
-						a.y *= (1 - fabs(hpm * hpm * hpm));
-						input->p[h].y -= a.y;
+					if (fabs(a) < nr_y) {
+						double hpm = (a / nr_y);
+						a *= (1 - fabs(hpm * hpm * hpm));
+						input->p[h].y -= a;
 					}
 				}
 			}

@@ -32,6 +32,7 @@ const double in_freq = 8.0;	// in FSC.  Must be an even number!
 const double out_freq = OUT_FREQ;	// in FSC.  Must be an even number!
 
 //const double ntsc_uline = 63.5; // usec_
+const int ntsc_iplinei = 227.5 * in_freq; // pixels per line
 const double ntsc_ipline = 227.5 * in_freq; // pixels per line
 const double ntsc_opline = 227.5 * out_freq; // pixels per line
 //const int ntsc_oplinei = 227.5 * out_freq; // pixels per line
@@ -63,8 +64,8 @@ double inscale = 327.68;
 long long a_read = 0, v_read = 0;
 int va_ratio = 80;
 
-const int vblen = (1820 * 1100);	// should be divisible evenly by 16
-const int ablen = (1820 * 1100) / 40;
+const int vblen = (ntsc_iplinei * 1100);	// should be divisible evenly by 16
+const int ablen = (ntsc_iplinei * 1100) / 40;
 
 const int absize = ablen * 8;
 const int vbsize = vblen * 2;
@@ -150,6 +151,8 @@ Filter f_synci(f_sync10);
 Filter f_syncp(f_sync10);
 
 Filter f_longsync(f_dsync10);
+
+Filter f_syncid(f_syncid10);
 #elif defined(FSC4)
 Filter f_syncr(f_sync4);
 Filter f_synci(f_sync4);
@@ -157,6 +160,7 @@ Filter f_synci(f_sync4);
 Filter f_syncp(f_sync4);
 
 Filter f_longsync(f_dsync4);
+Filter f_syncid(f_syncid4);
 #else
 Filter f_syncr(f_sync);
 Filter f_synci(f_sync);
@@ -164,6 +168,7 @@ Filter f_synci(f_sync);
 Filter f_syncp(f_sync);
 
 Filter f_longsync(f_dsync);
+Filter f_syncid(f_syncid8);
 #endif
 		
 void BurstDetect(double *line, int freq, double _loc, double &plevel, double &pphase) 
@@ -304,8 +309,6 @@ void ProcessAudio(double frame, long long loc, float *abuf)
 	prev_time = time; prev_loc = loc;
 }
 
-double cross = 0;
-
 double tline = 0, line = -2;
 int phase = -1;
 
@@ -340,7 +343,7 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line, bool err =
 
 	cerr << "levels " << plevel1 << ' ' << plevel2 << endl;
 
-	if ((plevel1 < 2000) || (plevel2 < 1000)) {
+	if ((plevel1 < 1400) || (plevel2 < 1000)) {
 		begin += prev_offset;
 		end += prev_offset;
 	
@@ -361,7 +364,7 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line, bool err =
 	} 
 
 	tgt_phase = ((line + phase + iline) % 2) ? (-180 * (M_PIl / 180.0)) : (0 * (M_PIl / 180.0));
-	if (in_freq == 4) goto wrapup;
+//	if (in_freq == 4) goto wrapup;
 
 	adjlen = (end - begin) / (scale_tgt / ntsc_opline);
 	cerr << line << " " << oline << " " << 0 << ' ' << begin << ' ' << (begin + adjlen) << '/' << end  << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
@@ -459,7 +462,9 @@ wrapup:
 	return adjlen;
 }
 
-double psync[1820*1200];
+uint16_t synclevel = 12000;
+
+double psync[ntsc_iplinei*1200];
 int Process(uint16_t *buf, int len, float *abuf, int alen)
 {
 	bool first = true;
@@ -468,7 +473,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 
 	cerr << "len " << len << endl;
 	for (int i = 0; i < len; i++) {
-		double val = f_syncid.feed(buf[i] && (buf[i] < 12000)); 
+		double val = f_syncid.feed(buf[i] && (buf[i] < synclevel)); 
 		if (i > syncid_offset) psync[i - syncid_offset] = val; 
 	}
 
@@ -495,7 +500,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 
 			cerr << i << ' ' << i - prev << ' ' << line << ' ' << buf[i] << ' ' << psync[i] << ' ' << canstartsync << ' ' << probsync << endl;
 
-			if ((canstartsync && InRange(level, 0.13, 0.20)) || (probsync && InRange(level, 0.20, 0.25))) {
+			if ((canstartsync && InRange(level, 0.10, 0.21)) || (probsync && InRange(level, 0.20, 0.25))) {
 				if (!insync) {
 					syncstart = i;
 
@@ -539,20 +544,19 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 				}
 
 				if (!insync) { 
-					for (int x = i; begin == -1 && x > (i - 100); x--) {
-						if (buf[x] > 12000) begin = x; 
+					for (int x = i; begin == -1 && x > (i - (12.5 * in_freq)); x--) {
+						if (buf[x] > synclevel) begin = x; 
 					}
 					
-					for (int x = i; end == -1 && x < (i + 100); x++) {
-						if (buf[x] > 12000) end = x; 
+					for (int x = i; end == -1 && x < (i + (12.5 * in_freq)); x++) {
+						if (buf[x] > synclevel) end = x; 
 					}
 
-					bad = (begin < 0) || (end < 0) || (!outofsync && (!InRange(end - begin, 128, 139)));
-				//	bad = (begin < 0) || (end < 0) || (!outofsync && (!InRange(end - begin, 128, 136) || !InRangeCF(i - prev, 226.5, 228.5)));
-					cerr << line << ' ' << bad << ' ' << prev_begin << ' ' << begin << ' ' << end << ' ' << end - begin << ' ' << scale_tgt << endl;
+					bad = (begin < 0) || (end < 0) || (!outofsync && (!InRangeCF(end - begin, 16, 18)));
+					cerr << line << ' ' << bad << ' ' << buf[i] << ' ' << synclevel << ' ' << prev_begin << ' ' << begin << ' ' << end << ' ' << end - begin << ' ' << scale_tgt << endl;
 				}
 				// normal line
-				if (bad || buf[i] > 12000) {
+				if (bad || buf[i] > synclevel) {
 					// defective line
 					begin = prev_begin + prev_linelen;
 					end = prev_end + prev_linelen;
@@ -601,7 +605,7 @@ void autoset(uint16_t *buf, int len, bool fullagc = true)
 
 	// phase 1:  get low (-40ire) and high (??ire)
 	for (int i = 0; i < len; i++) {
-		f[i] = f_dsync.feed(buf[i]);
+		f[i] = f_longsync.feed(buf[i]);
 
 		if ((i > (in_freq * 256)) && (f[i] < low) && (f[i - checklen] < low)) {
 			if (f[i - checklen] > f[i]) 
@@ -647,12 +651,12 @@ void autoset(uint16_t *buf, int len, bool fullagc = true)
 		inscale = (high - low) / 140.0;
 	}
 
-	inbase = low - (20 * inscale);	// -40IRE to -60IRE
+	inbase = low;	// -40IRE to -60IRE
 	if (inbase < 1) inbase = 1;
 
-	cerr << "new base:scale = " << inbase << ':' << inscale << endl;
-	
-	cross = ire_to_in(seven_five ? -5 : -20);
+	cerr << "new base:scale = " << inbase << ':' << inscale << " low: " << low << ' ' << high << endl;
+
+	synclevel = low + (inscale * 20);
 }
 
 int main(int argc, char *argv[])
@@ -673,9 +677,6 @@ int main(int argc, char *argv[])
 		switch (c) {
 			case 'm':	// "magnetic video" mode - bottom field first
 				writeonfield = 2;
-				break;
-			case 's':
-				sscanf(optarg, "%lf", &cross);
 				break;
 			case 'i':
 				fd = open(optarg, O_RDONLY);
@@ -725,9 +726,7 @@ int main(int argc, char *argv[])
 							
 	memset(frame, 0, sizeof(frame));
 
-	cross = ire_to_in(seven_five ? -5 : -20);
-
-	f_linelen.clear(1820);
+	f_linelen.clear(ntsc_ipline);
 
 	size_t aplen = 0;
 	while (rv == vbsize && ((v_read < dlen) || (dlen < 0))) {
@@ -758,15 +757,12 @@ int main(int argc, char *argv[])
 		}	
 		
 		if (afd != -1) {	
-//			cerr << "AX " << absize << ' ' << aplen * 4 << ' ' << (double)(absize - (aplen * 4)) << ' ' << abuf[0] << ' ' ;
 			cerr << "AA " << plen << ' ' << aplen << ' ' << v_read << ' ' << a_read << ' ' << (double)v_read / (double)a_read << endl;
 			memmove(abuf, &abuf[aplen * 2], absize - (aplen * 8));
 			cerr << abuf[0] << endl;
 
 			arv = (absize - (aplen * 8));
-//                	arv = read(afd, &abuf[ablen - aplen], aplen * 4) + (absize - (aplen * 4));
 			while (arv < absize) {
-//				usleep(100000);
 				int arv2 = read(afd, &cabuf[arv], absize - arv);
 				if (arv2 <= 0) exit(0);
 				arv += arv2;

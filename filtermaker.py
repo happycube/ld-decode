@@ -211,9 +211,15 @@ for i in range(0, len(table)):
 Bfmdeemp = sps.firwin2(33, Fr, Am)
 WriteFilter("fmdeemp", Bfmdeemp)
 
-# Used to determine sync status - feed it a 1 when level < 12000 
+# Used to determine sync status - feed it a 1 when level < 12000 (fsc8) or IRE -10 or so (fsc4) 
 f_syncid_b, f_syncid_a = sps.butter(3, 0.002)
-WriteFilter("syncid", f_syncid_b, f_syncid_a)
+WriteFilter("syncid8", f_syncid_b, f_syncid_a)
+
+f_syncid_b, f_syncid_a = sps.butter(3, 0.004)
+WriteFilter("syncid4", f_syncid_b, f_syncid_a)
+
+f_syncid_b, f_syncid_a = sps.butter(3, 0.0016)
+WriteFilter("syncid10", f_syncid_b, f_syncid_a)
 
 print("const int syncid_offset = 320;")
 
