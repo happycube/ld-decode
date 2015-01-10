@@ -172,11 +172,16 @@ def CalcBoost(byte = 0, fixed_adj = -1):
 
 lowpass_filter_b, lowpass_filter_a = sps.butter(6, (4.2/(freq/2)), 'low')
 
+#lowpass_filter_b, lowpass_filter_a = sps.butter(8, (4.5/(freq/2)), 'low')
+#lowpass_filter_b, lowpass_filter_a = sps.butter(8, (4.8/(freq/2)), 'low')
+#lowpass_filter_b, lowpass_filter_a = sps.butter(9, (5.0/(freq/2)), 'low')
+
+#lowpass_filter_b, lowpass_filter_a = sps.butter(10, (5.3/(freq/2)), 'low')
+
 #dosplot(lowpass_filter_b, lowpass_filter_a)
 #exit()
 
-#lowpass_filter_b = [1.0]
-#lowpass_filter_a = [1.0]
+# demphasis coefficients.  haven't figured out how to compute them outside octave yet.
 
 # [b, a] = bilinear(-3*(10^-8), -1*(10^-8), 1/3, freq)
 f_deemp_b = [3.778720395899611e-01, -2.442559208200777e-01]
@@ -472,13 +477,26 @@ def main():
 		if o == "-A":
 			CAV = 1
 		if o == "-w":
-			lowpass_filter_b, lowpass_filter_a = sps.butter(6, (4.8/(freq/2)), 'low')
-			lowpass_filter_b, lowpass_filter_a = sps.butter(6, (4.5/(freq/2)), 'low')
+			lowpass_filter_b, lowpass_filter_a = sps.butter(9, (5.0/(freq/2)), 'low')
+			lowpass_filter_b, lowpass_filter_a = sps.butter(8, (4.8/(freq/2)), 'low')
 			wide_mode = 1
 			hz_ire_scale = (9360000 - 8100000) / 100
 			minn = 8100000 + (hz_ire_scale * -60)
 		if o == "-c":
 			[Bboost, Aboost] = CalcBoost(0, float(a))
+		if o == "-s":
+			if a == 0:
+				lowpass_filter_b, lowpass_filter_a = sps.butter(6, (4.2/(freq/2)), 'low')
+			if a == 1:	
+				lowpass_filter_b, lowpass_filter_a = sps.butter(8, (4.5/(freq/2)), 'low')
+			if a == 2:	
+				lowpass_filter_b, lowpass_filter_a = sps.butter(8, (4.8/(freq/2)), 'low')
+			if a == 3:	
+				lowpass_filter_b, lowpass_filter_a = sps.butter(9, (5.0/(freq/2)), 'low')
+			if a == 4:	
+				lowpass_filter_b, lowpass_filter_a = sps.butter(10, (5.3/(freq/2)), 'low')
+
+
 
 	argc = len(cut_argv)
 	if argc >= 1:
