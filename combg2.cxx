@@ -43,8 +43,7 @@ double black_ire = 7.5;
 int black_u16 = ire_to_u16(black_ire);
 int white_u16 = ire_to_u16(100); 
 
-double nr_y = 4.0;
-double nr_c = 0.0;
+double nr_y = 3.5;
 
 inline double IRE(double in) 
 {
@@ -680,7 +679,6 @@ int main(int argc, char *argv[])
 	cerr << ' ' << black_u16 << endl;
 
 	nr_y = nr_y * irescale;
-	nr_c = nr_c * irescale;
 
 	if (!f_writeimages && strlen(out_filename)) {
 		ofd = open(image_base, O_WRONLY | O_CREAT);
