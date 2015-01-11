@@ -175,7 +175,10 @@ class Comb
 		{
 			double lp[844 * 505];
 			int f = 1;
-			
+		
+			double mse = 0.0;
+			double me = 0.0;
+	
 			if (dim < 3) f = 0;
 		
 			for (int l = 0; l < 24; l++) {
@@ -192,8 +195,37 @@ class Comb
 			// precompute 1D comb filter, needed for 2D 
 			for (int l = 24; l < 505; l++) {
 				uint16_t *line = &rawbuffer[f][l * 844];	
+				bool invertphase = (line[0] == 16384);
+
+				Filter f_1di((dim == 3) ? f_colorwlp4 : f_colorwlp4);
+				Filter f_1dq((dim == 3) ? f_colorwlp4 : f_colorwlp4);
+				int f_toffset = 8;
+
 				for (int h = 4; h < 840; h++) {
-					d1buffer[l][h] = (((line[h + 2] + line[h - 2]) / 2) - line[h]); 
+					int phase = h % 4;
+					double tc1 = (((line[h + 2] + line[h - 2]) / 2) - line[h]); 
+					double tc1f = 0, tsi = 0, tsq = 0;
+
+					if (!invertphase) tc1 = -tc1;
+						
+					switch (phase) {
+						case 0: tsi = tc1; tc1f = f_1di.feed(tsi); break;
+						case 1: tsq = -tc1; tc1f = -f_1dq.feed(tsq); break;
+						case 2: tsi = -tc1; tc1f = -f_1di.feed(tsi); break;
+						case 3: tsq = tc1; tc1f = f_1dq.feed(tsq); break;
+						default: break;
+					}
+						
+					if (!invertphase) {
+						tc1 = -tc1;
+						tc1f = -tc1f;
+					}
+
+					d1buffer[l][h - f_toffset] = tc1f;					
+
+					if (l == (debug_line + 25)) {
+						cerr << h << ' ' << line[h - 4] << ' ' << line[h - 2] << ' ' << line[h] << ' ' << line[h + 2] << ' ' << line[h + 4] << ' ' << tc1 << ' ' << d1buffer[l][h - f_toffset] << endl;
+					}
 				}
 			}
 
@@ -205,54 +237,41 @@ class Comb
 				uint16_t *p3line = &rawbuffer[0][l * 844];	
 				uint16_t *n3line = &rawbuffer[2][l * 844];	
 		
+				double *p2line = d1buffer[l - 4];
 				double *p1line = d1buffer[l - 2];
 				double *n1line = d1buffer[l + 2];
+				double *n2line = d1buffer[l + 4];
 		
 				double f3 = 0, f2 = 0;
 				double si = 0, sq = 0;
-
-				// In 3D mode the 2D is a lower color resolution backup, so it needs more filtering
-				Filter f_ti((dim == 3) ? f_colorlp4 : f_colorwlp4);
-				Filter f_tq((dim == 3) ? f_colorlp4 : f_colorwlp4);
-				int f_toffset = 8;
 
 				double k[840], c_2d[840], c_2df[840];
 
 				// 2D filtering.  can't do top or bottom line - calced between 1d and 3d because this is
 				// filtered 
-				if (1 && (dim >= 2) && (l >= 2) && (l <= 502)) {
+				if (1 && (dim >= 2) && (l >= 4) && (l <= 500)) {
 					for (int h = 16; h < 840; h++) {
 						double tsi = 0, tsq = 0;
 						int phase = h % 4;
 
 						double tc1;
 
+						if (l == (debug_line + 25)) {
+							//cerr << "2D " << h << ' ' << d1buffer[l][h] << ' ' << p1line[h] << ' ' << n1line[h] << endl;
+							cerr << "2D " << h << ' ' << p2line[h] << ' ' <<  p1line[h] << ' ' << d1buffer[l][h] << ' ' << n1line[h] << ' ' << n2line[h] << endl;
+						}	
+
 						tc1  = (d1buffer[l][h] - p1line[h]);
 						tc1 += (d1buffer[l][h] - n1line[h]);
 
 						tc1 /= (2 * 2);
 
-						double tc1f = tc1;
-
-						if (!invertphase) tc1 = -tc1;
-
-						switch (phase) {
-							case 0: tsi = tc1; tc1f = f_ti.feed(tsi); break;
-							case 1: tsq = -tc1; tc1f = -f_tq.feed(tsq); break;
-							case 2: tsi = -tc1; tc1f = -f_ti.feed(tsi); break;
-							case 3: tsq = tc1; tc1f = f_tq.feed(tsq); break;
-							default: break;
-						}
-						
-						if (!invertphase) {
-							tc1 = -tc1;
-							tc1f = -tc1f;
-						}
-						c_2df[h - f_toffset] = tc1f;
+						c_2df[h] = tc1;
 						c_2d[h] = tc1;
 					}
 				}
 	
+				double msel = 0.0, sel = 0.0;
 				for (int h = 4; h < 840; h++) {
 					int phase = h % 4;
 
@@ -260,7 +279,7 @@ class Comb
 
 					double c[3],  v[3];
 					double err[3];
-						
+				
 					int adr = (l * 844) + h;
 
 					if (dim >= 3) {
@@ -298,6 +317,8 @@ class Comb
 
 					if (f_debug2d) {
 						cavg = c[1] - c[2];
+						msel += (cavg * cavg);
+						sel += fabs(cavg);
 					}
 
 					if (!invertphase) cavg = -cavg;
@@ -316,9 +337,27 @@ class Comb
 					cbuf[l].p[h].q = sq; 
 
 					if (l == (debug_line + 25)) {
+						_k = fabs(LPraw[1][adr - (844 * 2)] - LPraw[1][adr]) + fabs(LPraw[1][adr + (844 * 2)] - LPraw[1][adr]);
+						cerr << h << ' ' << c[1] - c[2] << ' ' << c[1] << ' ' << c[2] << ' ' << LPraw[1][adr - (844 * 2)] << ' ' << LPraw[1][adr] << ' ' << LPraw[1][adr + (844 * 2)] << endl;
+					}						
+						
+					if (f_bw) {
+						cbuf[l].p[h].i = 0;  
+						cbuf[l].p[h].q = 0; 
+					}
+
+					if (l == (debug_line + 25)) {
 						cerr << "E " << h << ' ' << si << ' ' << sq << ' ' << c[1] << ' ' << c[2] << ' ' << k[h] << endl;
 					}
 				}
+				if (f_debug2d && (l >= 6) && (l <= 500)) {
+					cerr << l << ' ' << msel / (840 - 4) << " ME " << sel / (840 - 4) << endl; 
+					mse += msel / (840 - 4);
+					me += sel / (840 - 4);
+				}
+			}
+			if (f_debug2d) {
+				cerr << "TOTAL MSE " << mse << " ME " << me << endl;
 			}
 		}
 					
