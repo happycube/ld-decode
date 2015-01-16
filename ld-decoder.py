@@ -34,6 +34,12 @@ def dosplot(B, A):
 			print ">-10db crossing at ", w[i] * (freq/np.pi) / 2.0 
 		if (db[i] >= -3) and (db[i - 1] < -3):
 			print "-3db crossing at ", w[i] * (freq/np.pi) / 2.0 
+		if (db[i] < -3) and (db[i - 1] >= -3):
+			print "<-3db crossing at ", w[i] * (freq/np.pi) / 2.0 
+		if (db[i] < -10) and (db[i - 1] >= -10):
+			print "<-10db crossing at ", w[i] * (freq/np.pi) / 2.0 
+		if (db[i] < -20) and (db[i - 1] >= -20):
+			print "<-20db crossing at ", w[i] * (freq/np.pi) / 2.0 
 
 	plt.plot(w * (freq/np.pi) / 2.0, 20 * np.log10(abs(h)), 'b')
 	plt.ylabel('Amplitude [dB]', color='b')
@@ -182,10 +188,10 @@ def CalcBoost(byte = 0, fixed_adj = -1):
 #exit()
 
 lowpass_filter_b, lowpass_filter_a = sps.butter(6, (4.2/(freq/2)), 'low')
-lowpass_filter_b, lowpass_filter_a = sps.butter(7, (4.2/(freq/2)), 'low')
+lowpass_filter_b, lowpass_filter_a = sps.butter(4, (4.2/(freq/2)), 'low')
 
 #lowpass_filter_b, lowpass_filter_a = sps.butter(8, (4.5/(freq/2)), 'low')
-lowpass_filter_b, lowpass_filter_a = sps.butter(8, (4.5/(freq/2)), 'low')
+#lowpass_filter_b, lowpass_filter_a = sps.butter(8, (4.5/(freq/2)), 'low')
 #lowpass_filter_b, lowpass_filter_a = sps.butter(9, (5.0/(freq/2)), 'low')
 
 #lowpass_filter_b, lowpass_filter_a = sps.butter(10, (5.3/(freq/2)), 'low')
@@ -504,16 +510,20 @@ def main():
 		if o == "-s":
 			ia = int(a)
 			if ia == 0:
-				lowpass_filter_b, lowpass_filter_a = sps.butter(7, (4.2/(freq/2)), 'low')
+				lowpass_filter_b, lowpass_filter_a = sps.butter(4, (4.2/(freq/2)), 'low')
 			if ia == 1:	
 				lowpass_filter_b, lowpass_filter_a = sps.butter(8, (4.5/(freq/2)), 'low')
 			if ia == 2:	
 				lowpass_filter_b, lowpass_filter_a = sps.butter(8, (4.8/(freq/2)), 'low')
 			if ia == 3:	
 				lowpass_filter_b, lowpass_filter_a = sps.butter(9, (5.0/(freq/2)), 'low')
+				lowpass_filter_b, lowpass_filter_a = sps.butter(1, (5.0/(freq/2)), 'low')
 			if ia == 4:	
 				lowpass_filter_b, lowpass_filter_a = sps.butter(10, (5.3/(freq/2)), 'low')
 
+
+#	dosplot(lowpass_filter_b, lowpass_filter_a)
+#	exit()
 
 	argc = len(cut_argv)
 	if argc >= 1:
