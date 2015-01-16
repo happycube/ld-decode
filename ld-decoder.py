@@ -30,6 +30,8 @@ def dosplot(B, A):
 	db = 20 * np.log10(abs(h))
 
 	for i in range(1, len(w)):
+		if (db[i] >= -10) and (db[i - 1] < -10):
+			print ">-10db crossing at ", w[i] * (freq/np.pi) / 2.0 
 		if (db[i] >= -3) and (db[i - 1] < -3):
 			print "-3db crossing at ", w[i] * (freq/np.pi) / 2.0 
 
@@ -45,9 +47,14 @@ def doplot(B, A):
 	fig = plt.figure()
 	plt.title('Digital filter frequency response')
 	
+	db = 20 * np.log10(abs(h))
 	for i in range(1, len(w)):
+		if (db[i] >= -10) and (db[i - 1] < -10):
+			print ">-10db crossing at ", w[i] * (freq/np.pi) / 2.0 
 		if (db[i] >= -3) and (db[i - 1] < -3):
-			print "-3db crossing at ", w[i] * (freq/np.pi) / 2.0 
+			print ">-3db crossing at ", w[i] * (freq/np.pi) / 2.0 
+		if (db[i] < -3) and (db[i - 1] >= -3):
+			print "<-3db crossing at ", w[i] * (freq/np.pi) / 2.0 
 
 	ax1 = fig.add_subplot(111)
 	
@@ -157,7 +164,7 @@ def CalcBoost(byte = 0, fixed_adj = -1):
 			Am[f] = 0
 
 		Fr[f] = float(f) / n2 
-		Th[f] = -(Fr[f] * 42) 
+		Th[f] = -(Fr[f] * 41.5) 
 
 	[Bboost, Aboost] = fdls.FDLS(Fr, Am, Th, 8, 8, 0)
 #	dosplot(Bboost, Aboost)
@@ -170,16 +177,25 @@ def CalcBoost(byte = 0, fixed_adj = -1):
 #doplot(Bboost, Aboost)
 #exit()
 
-lowpass_filter_b, lowpass_filter_a = sps.butter(6, (4.2/(freq/2)), 'low')
+#Bboost, Aboost = sps.butter(7, (3.5/(freq/2)), 'high')
+#dosplot(Bboost, Aboost)
+#exit()
 
+lowpass_filter_b, lowpass_filter_a = sps.butter(6, (4.2/(freq/2)), 'low')
+lowpass_filter_b, lowpass_filter_a = sps.butter(7, (4.2/(freq/2)), 'low')
+
+#lowpass_filter_b, lowpass_filter_a = sps.butter(8, (4.5/(freq/2)), 'low')
 lowpass_filter_b, lowpass_filter_a = sps.butter(8, (4.5/(freq/2)), 'low')
-#lowpass_filter_b, lowpass_filter_a = sps.butter(8, (4.8/(freq/2)), 'low')
 #lowpass_filter_b, lowpass_filter_a = sps.butter(9, (5.0/(freq/2)), 'low')
 
 #lowpass_filter_b, lowpass_filter_a = sps.butter(10, (5.3/(freq/2)), 'low')
+#lowpass_filter_b, lowpass_filter_a = sps.butter(10, (5.0/(freq/2)), 'low')
 
 #dosplot(lowpass_filter_b, lowpass_filter_a)
 #exit()
+
+#lowpass_filter_b = [1.0]
+#lowpass_filter_a = [1.0]
 
 # demphasis coefficients.  haven't figured out how to compute them outside octave yet.
 
@@ -199,12 +215,12 @@ deemp_corr = 1.0
 #f_deemp_a = [1.000000000000000e+00, -8.789366926443899e-01, ]
 
 # t1 = .875
-#f_deemp_b = [3.334224479793254e-01, -2.155237713318184e-01, ]
-#f_deemp_a = [1.000000000000000e+00, -8.821013233524929e-01, ]
+f_deemp_b = [3.334224479793254e-01, -2.155237713318184e-01, ]
+f_deemp_a = [1.000000000000000e+00, -8.821013233524929e-01, ]
 
 # t1 = .833
-f_deemp_b = [3.183188754563553e-01, -2.057608446588788e-01, ]
-f_deemp_a = [1.000000000000000e+00, -8.874419692025236e-01, ]
+#f_deemp_b = [3.183188754563553e-01, -2.057608446588788e-01, ]
+#f_deemp_a = [1.000000000000000e+00, -8.874419692025236e-01, ]
 
 # t1 = .8
 #f_deemp_b = [3.063915161937518e-01, -1.980510174835196e-01, ]
@@ -419,7 +435,7 @@ def test():
 	global hilbert_filter
 
 #	for hlen in range(3, 18):
-	for vlevel in range(90, 100, 10):
+	for vlevel in range(20, 100, 10):
 #		hilbert_filter = np.fft.fftshift(
 #		    np.fft.ifft([0]+[1]*hlen+[0]*hlen)
 #		)
@@ -446,9 +462,10 @@ def test():
 		output = process_video(test)[7800:8500]	
 		plt.plot(range(0, len(output)), output)
 
+		output = output[400:700]	
 		mean = np.mean(output)
 		std = np.std(output)
-#		print vlevel, mean, std, 20 * np.log10(mean / std) 
+		print vlevel, mean, std, 20 * np.log10(mean / std) 
 
 	plt.show()
 	exit()
@@ -467,7 +484,7 @@ def main():
 	CAV = 0
 	firstbyte = 0
 
-	optlist, cut_argv = getopt.getopt(sys.argv[1:], "aAwc:")
+	optlist, cut_argv = getopt.getopt(sys.argv[1:], "aAwc:s:")
 
 	for o, a in optlist:
 		if o == "-a":
@@ -485,17 +502,17 @@ def main():
 		if o == "-c":
 			[Bboost, Aboost] = CalcBoost(0, float(a))
 		if o == "-s":
-			if a == 0:
-				lowpass_filter_b, lowpass_filter_a = sps.butter(6, (4.2/(freq/2)), 'low')
-			if a == 1:	
+			ia = int(a)
+			if ia == 0:
+				lowpass_filter_b, lowpass_filter_a = sps.butter(7, (4.2/(freq/2)), 'low')
+			if ia == 1:	
 				lowpass_filter_b, lowpass_filter_a = sps.butter(8, (4.5/(freq/2)), 'low')
-			if a == 2:	
+			if ia == 2:	
 				lowpass_filter_b, lowpass_filter_a = sps.butter(8, (4.8/(freq/2)), 'low')
-			if a == 3:	
+			if ia == 3:	
 				lowpass_filter_b, lowpass_filter_a = sps.butter(9, (5.0/(freq/2)), 'low')
-			if a == 4:	
+			if ia == 4:	
 				lowpass_filter_b, lowpass_filter_a = sps.butter(10, (5.3/(freq/2)), 'low')
-
 
 
 	argc = len(cut_argv)
