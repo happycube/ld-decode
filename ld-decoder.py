@@ -137,8 +137,8 @@ def doplot2(B, A, B2, A2):
 ffreq = freq/2.0
 
 def CalcBoost(byte = 0, fixed_adj = -1):
-	n = 128
-	n2 = n * 2
+	n = 2000
+	n2 = (n * 2) - 2
 	Fr = np.zeros(n)
 	Am = np.zeros(n)
 	Th = np.zeros(n)
@@ -170,7 +170,7 @@ def CalcBoost(byte = 0, fixed_adj = -1):
 			Am[f] = 0
 
 		Fr[f] = float(f) / n2 
-		Th[f] = -(Fr[f] * 41.5) 
+		Th[f] = -(Fr[f] * 44.0) 
 
 	[Bboost, Aboost] = fdls.FDLS(Fr, Am, Th, 8, 8, 0)
 #	dosplot(Bboost, Aboost)
