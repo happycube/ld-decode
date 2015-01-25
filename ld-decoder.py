@@ -153,8 +153,8 @@ def CalcBoost(byte = 0, fixed_adj = -1):
 			adj = .17
 			adj = adj - (.30 * (byte / 17000000000.0)) 
 
-			if adj < -.12:
-				adj = -.12
+			if adj < -.05:
+				adj = -.05
 		
 			if fixed_adj > -.9:
 				adj = fixed_adj
@@ -494,8 +494,8 @@ def main():
 		if o == "-A":
 			CAV = 1
 		if o == "-w":
-			lowpass_filter_b, lowpass_filter_a = sps.butter(9, (5.0/(freq/2)), 'low')
-			lowpass_filter_b, lowpass_filter_a = sps.butter(8, (4.8/(freq/2)), 'low')
+#			lowpass_filter_b, lowpass_filter_a = sps.butter(9, (5.0/(freq/2)), 'low')
+#			lowpass_filter_b, lowpass_filter_a = sps.butter(8, (4.8/(freq/2)), 'low')
 			wide_mode = 1
 			hz_ire_scale = (9360000 - 8100000) / 100
 			minn = 8100000 + (hz_ire_scale * -60)
@@ -508,10 +508,10 @@ def main():
 			if ia == 1:	
 				lowpass_filter_b, lowpass_filter_a = sps.butter(8, (4.5/(freq/2)), 'low')
 			if ia == 2:	
-				lowpass_filter_b, lowpass_filter_a = sps.butter(9, (4.8/(freq/2)), 'low')
+				# calibrated for Video Essentials
+				lowpass_filter_b, lowpass_filter_a = sps.butter(7, (4.8/(freq/2)), 'low')
 			if ia == 3:	
 				lowpass_filter_b, lowpass_filter_a = sps.butter(9, (5.0/(freq/2)), 'low')
-				lowpass_filter_b, lowpass_filter_a = sps.butter(1, (5.0/(freq/2)), 'low')
 			if ia == 4:	
 				lowpass_filter_b, lowpass_filter_a = sps.butter(10, (5.3/(freq/2)), 'low')
 
