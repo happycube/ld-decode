@@ -1,7 +1,7 @@
 all: cx ntsc ntsc4 audiog2 comb 
 
 CFLAGS=-O3 
-#CFLAGS=-O3 -mavx -march=corei7-avx
+CFLAGS=-O3 -mavx -march=corei7-avx
 
 clean:
 	rm -f ldd ntsc ntsc4 ntsc10 audiog2 comb 

@@ -54,6 +54,7 @@ double hfreq = 525.0 * (30000.0 / 1001.0);
 
 long long fr_count = 0, au_count = 0;
 
+bool f_flip = false;
 int writeonfield = 1;
 
 bool audio_only = false;
@@ -170,6 +171,7 @@ Filter f_syncp(f_sync);
 Filter f_longsync(f_dsync);
 Filter f_syncid(f_syncid8);
 #endif
+
 		
 void BurstDetect(double *line, int freq, double _loc, double &plevel, double &pphase) 
 {
@@ -321,12 +323,15 @@ double prev_begin = 0;
 int iline = 0;
 int frameno = -1;
 
+static int offburst = 0;
+
 double ProcessLine(uint16_t *buf, double begin, double end, int line, bool err = false)
 {
 	double tout[8192];
 	double plevel1, pphase1;
 	double plevel2, pphase2;
 	double adjust1, adjust2, adjlen = ntsc_ipline;
+	double obegin = begin;
 	int pass = 0;
 
 	double orig_begin = begin;
@@ -356,11 +361,11 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line, bool err =
 		end += prev_offset;
 	}
 
-	if (phase == -1) {
+	if ((phase == -1) || (offburst >= 5)) {
 		phase = (fabs(pphase1) > (M_PIl / 2));
 		iline = line;
-		tgt_phase = ((line + phase + iline) % 2) ? (-180 * (M_PIl / 180.0)) : (0 * (M_PIl / 180.0));
-		cerr << "p " << pphase1 << ' ' << fabs(pphase1) << ' ' << phase << ' ' << tgt_phase << endl;
+		offburst = 0;
+		cerr << "p " << pphase1 << ' ' << fabs(pphase1) << ' ' << phase << endl;
 	} 
 
 	tgt_phase = ((line + phase + iline) % 2) ? (-180 * (M_PIl / 180.0)) : (0 * (M_PIl / 180.0));
@@ -391,6 +396,11 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line, bool err =
 		adjlen = (end - begin) / (scale_tgt / ntsc_opline);
 					
 		cerr << line << " " << pass << ' ' << begin << ' ' << (begin + adjlen) << '/' << end  << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
+	}
+
+	// trigger phase re-adjustment if we keep adjusting over 3 pix/line
+	if (fabs(begin - obegin) > (in_freq * .375)) {
+		offburst++;
 	}
 
 wrapup:
@@ -505,6 +515,9 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 					syncstart = i;
 
 					insync = ((i - prev) < (150 * in_freq)) ? 2 : 1;
+					if (f_flip) {
+						insync = ((i - prev) < (150 * in_freq)) ? 1 : 2;
+					}
 					cerr << frameno << " sync type " << insync << endl;
 
 					if (insync == writeonfield) {
@@ -552,7 +565,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 						if (buf[x] > synclevel) end = x; 
 					}
 
-					bad = (begin < 0) || (end < 0) || (!outofsync && (!InRangeCF(end - begin, 16, 18)));
+					bad = (begin < 0) || (end < 0) || (!outofsync && (!InRangeCF(end - begin, 15.5, 18)));
 					cerr << line << ' ' << bad << ' ' << buf[i] << ' ' << synclevel << ' ' << prev_begin << ' ' << begin << ' ' << end << ' ' << end - begin << ' ' << scale_tgt << endl;
 				}
 				// normal line
@@ -673,10 +686,13 @@ int main(int argc, char *argv[])
 
 	opterr = 0;
 	
-	while ((c = getopt(argc, argv, "mhgs:n:i:a:Af")) != -1) {
+	while ((c = getopt(argc, argv, "mhgs:n:i:a:AfF")) != -1) {
 		switch (c) {
 			case 'm':	// "magnetic video" mode - bottom field first
 				writeonfield = 2;
+				break;
+			case 'F':	// flip fields 
+				f_flip = true;
 				break;
 			case 'i':
 				fd = open(optarg, O_RDONLY);
