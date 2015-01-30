@@ -401,6 +401,8 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line, bool err =
 	// trigger phase re-adjustment if we keep adjusting over 3 pix/line
 	if (fabs(begin - obegin) > (in_freq * .375)) {
 		offburst++;
+	} else {
+		offburst = 0;
 	}
 
 wrapup:
