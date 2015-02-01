@@ -150,11 +150,11 @@ def CalcBoost(byte = 0, fixed_adj = -1):
  
 		fadj = 6.5
 		if (cf > fadj):
-			adj = .17
+			adj = .10
 			adj = adj - (.30 * (byte / 17000000000.0)) 
 
-			if adj < -.05:
-				adj = -.05
+			if adj < -.12:
+				adj = -.12
 		
 			if fixed_adj > -.9:
 				adj = fixed_adj
@@ -162,9 +162,9 @@ def CalcBoost(byte = 0, fixed_adj = -1):
 			Am[f] = 1 + ((cf - fadj) * adj) 
 			if Am[f] < 0:
 				Am[f] = 0
-		elif (cf > 4.0):
+		elif (cf > 4.2):
 			Am[f] = 1 
-		elif (cf > 3.0):
+		elif (cf > 3.2):
 			Am[f] = 1 * ((cf - 3.0) * 1)
 		else:
 			Am[f] = 0
@@ -219,8 +219,8 @@ f_deemp_b = [3.334224479793254e-01, -2.155237713318184e-01, ]
 f_deemp_a = [1.000000000000000e+00, -8.821013233524929e-01, ]
 
 # t1 = .833
-#f_deemp_b = [3.183188754563553e-01, -2.057608446588788e-01, ]
-#f_deemp_a = [1.000000000000000e+00, -8.874419692025236e-01, ]
+f_deemp_b = [3.183188754563553e-01, -2.057608446588788e-01, ]
+f_deemp_a = [1.000000000000000e+00, -8.874419692025236e-01, ]
 
 # t1 = .8
 #f_deemp_b = [3.063915161937518e-01, -1.980510174835196e-01, ]
@@ -509,7 +509,7 @@ def main():
 				lowpass_filter_b, lowpass_filter_a = sps.butter(8, (4.5/(freq/2)), 'low')
 			if ia == 2:	
 				# calibrated for Video Essentials
-				lowpass_filter_b, lowpass_filter_a = sps.butter(7, (4.8/(freq/2)), 'low')
+				lowpass_filter_b, lowpass_filter_a = sps.butter(7, (4.5/(freq/2)), 'low')
 			if ia == 3:	
 				lowpass_filter_b, lowpass_filter_a = sps.butter(9, (5.0/(freq/2)), 'low')
 			if ia == 4:	
