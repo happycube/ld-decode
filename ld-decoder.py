@@ -508,7 +508,7 @@ def main():
 			if ia == 1:	
 				lowpass_filter_b, lowpass_filter_a = sps.butter(8, (4.5/(freq/2)), 'low')
 			if ia == 2:	
-				lowpass_filter_b, lowpass_filter_a = sps.butter(7, (4.5/(freq/2)), 'low')
+				lowpass_filter_b, lowpass_filter_a = sps.butter(9, (4.8/(freq/2)), 'low')
 			if ia == 3:	
 				# high frequency response - and ringing.  choose your poison ;)	
 				lowpass_filter_b, lowpass_filter_a = sps.butter(10, (5.0/(freq/2)), 'low')
