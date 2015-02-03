@@ -270,12 +270,27 @@ class Comb
 						c_2d[h] = tc1;
 					}
 				}
+
+				// a = fir1(16, 0.1); printf("%.15f, ", a)
+				Filter lp_3d({0.005719569452904, 0.009426612841315, 0.019748592575455, 0.036822680065252, 0.058983880135427, 0.082947830292278, 0.104489989820068, 0.119454688318951, 0.124812312996699, 0.119454688318952, 0.104489989820068, 0.082947830292278, 0.058983880135427, 0.036822680065252, 0.019748592575455, 0.009426612841315, 0.005719569452904}, {1.0});
+
+				// need to prefilter K using a LPF
+				double _k[844];
+				for (int h = 4; (dim >= 3) && (h < 840); h++) {
+					int adr = (l * 844) + h;
+
+					double __k = fabs(LPraw[1][adr] - LPraw[0][adr]) + fabs(LPraw[1][adr] - LPraw[2][adr]);
+					__k /= irescale;
+
+					if (h > 12) _k[h - 8] = lp_3d.feed(__k);
+					if (h >= 836) _k[h] = __k;
+				}
 	
 				double msel = 0.0, sel = 0.0;
 				for (int h = 4; h < 840; h++) {
 					int phase = h % 4;
 
-					double _k;
+//					double _k;
 
 					double c[3],  v[3];
 					double err[3];
@@ -285,9 +300,13 @@ class Comb
 					if (dim >= 3) {
 						c[2] = (p3line[h] - line[h]); 
 						c[2] = (((p3line[h] + n3line[h]) / 2) - line[h]); 
-						_k = fabs(LPraw[1][adr] - LPraw[0][adr]) + fabs(LPraw[1][adr] - LPraw[2][adr]);
-						_k /= irescale;
-						k[h] = v[2] = clamp(1 - ((_k - 0) / 12), 0, 1);
+				//		_k = fabs(LPraw[1][adr] - LPraw[0][adr]) + fabs(LPraw[1][adr] - LPraw[2][adr]);
+				//		_k /= irescale;
+
+						k[h] = v[2] = clamp(1 - ((_k[h] - 0) / 12), 0, 1);
+						if (l == 360) {
+							cerr << "K" << h << ' ' << LPraw[0][adr] << ' ' << LPraw[1][adr] << ' ' << LPraw[2][adr] << ' ' << _k << ' ' << k[h] << endl;
+						}
 						//v[2] = 1;
 					} else {
 						k[h] = c[2] = v[2] = 0;
@@ -337,7 +356,7 @@ class Comb
 					cbuf[l].p[h].q = sq; 
 
 					if (l == (debug_line + 25)) {
-						_k = fabs(LPraw[1][adr - (844 * 2)] - LPraw[1][adr]) + fabs(LPraw[1][adr + (844 * 2)] - LPraw[1][adr]);
+//						_k = fabs(LPraw[1][adr - (844 * 2)] - LPraw[1][adr]) + fabs(LPraw[1][adr + (844 * 2)] - LPraw[1][adr]);
 						cerr << h << ' ' << c[1] - c[2] << ' ' << c[1] << ' ' << c[2] << ' ' << LPraw[1][adr - (844 * 2)] << ' ' << LPraw[1][adr] << ' ' << LPraw[1][adr + (844 * 2)] << endl;
 					}						
 						
