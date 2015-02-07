@@ -97,7 +97,7 @@ lowpass_filter = sps.firwin(Nlpf + 1, 4.2 / (freq), window='hamming')
 WriteFilter("lpf42", lowpass_filter)
 
 # used for comb filtering
-lowpass10h_filter = sps.firwin(32 + 1, 1.3 / (freq), window='hamming')
+lowpass10h_filter = sps.firwin(32 + 1, 0.8 / (freq), window='hamming')
 WriteFilter("lpf_comb", lowpass10h_filter)
 
 Nlpf4 = 10
@@ -134,7 +134,7 @@ sync_filter10 = sps.firwin(Nsync + 1, 0.1 / (freq10), window='hamming')
 WriteFilter("sync10", sync_filter10)
 
 Nnr = 16
-hp_nr_filter = sps.firwin(Nnr + 1, 1.8 / (freq / 2.0), window='hamming', pass_zero=False)
+hp_nr_filter = sps.firwin(Nnr + 1, 1.60 / (freq / 2.0), window='hamming', pass_zero=False)
 WriteFilter("nr", hp_nr_filter)
 Nnrc = 24
 hp_nrc_filter = sps.firwin(Nnrc + 1, 0.5 / (freq / 2.0), window='hamming', pass_zero=False)
