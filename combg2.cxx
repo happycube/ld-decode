@@ -279,9 +279,8 @@ class Comb
 				for (int h = 4; (dim >= 3) && (h < 840); h++) {
 					int adr = (l * 844) + h;
 
-					double __k = fabs(LPraw[1][adr] - LPraw[0][adr]) + fabs(LPraw[1][adr] - LPraw[2][adr]);
-					__k /= irescale;
-					__k = abs(rawbuffer[0][adr] - rawbuffer[2][adr]); 
+					double __k = abs(rawbuffer[0][adr] - rawbuffer[2][adr]); 
+					__k += abs((rawbuffer[1][adr] - rawbuffer[2][adr]) - (rawbuffer[1][adr] - rawbuffer[0][adr])); 
 
 					if (h > 12) _k[h - 8] = lp_3d.feed(__k);
 					if (h >= 836) _k[h] = __k;
@@ -299,19 +298,9 @@ class Comb
 					int adr = (l * 844) + h;
 
 					if (dim >= 3) {
-						c[2] = (p3line[h] - line[h]); 
 						c[2] = (((p3line[h] + n3line[h]) / 2) - line[h]); 
-				//		_k = fabs(LPraw[1][adr] - LPraw[0][adr]) + fabs(LPraw[1][adr] - LPraw[2][adr]);
-				//		_k /= irescale;
 
-						double tk = abs(rawbuffer[0][adr] - rawbuffer[2][adr]); 
-
-						k[h] = v[2] = clamp(1 - ((_k[h] - 0) / 12), 0, 1);
-						k[h] = v[2] = clamp(1 - ((_k[h] - 400) / 2000), 0, 1);
-						if (l == 360) {
-							cerr << "K" << h << ' ' << LPraw[0][adr] << ' ' << LPraw[1][adr] << ' ' << LPraw[2][adr] << ' ' << _k << ' ' << k[h] << endl;
-						}
-						//v[2] = 1;
+						k[h] = v[2] = clamp(1 - ((_k[h] - 400) / 1800), 0, 1);
 					} else {
 						k[h] = c[2] = v[2] = 0;
 					}
