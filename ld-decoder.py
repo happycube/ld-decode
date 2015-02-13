@@ -2,6 +2,7 @@
 import numpy as np
 import scipy as sp
 import scipy.signal as sps
+import scipy.fftpack as fftpack 
 import sys
 
 import fdls as fdls
@@ -173,6 +174,8 @@ def CalcBoost(byte = 0, fixed_adj = -1):
 		Th[f] = -(Fr[f] * 44.0) 
 
 	[Bboost, Aboost] = fdls.FDLS(Fr, Am, Th, 8, 8, 0)
+	Bboost, Aboost = sps.butter(7, (3.0/(freq/2)), 'high')
+#	Bboost, Aboost = sps.butter(7, (3.5/(freq/2)), 'high')
 #	dosplot(Bboost, Aboost)
 #	exit()
 
@@ -183,8 +186,8 @@ def CalcBoost(byte = 0, fixed_adj = -1):
 #doplot(Bboost, Aboost)
 #exit()
 
-#Bboost, Aboost = sps.butter(7, (3.5/(freq/2)), 'high')
-#dosplot(Bboost, Aboost)
+#Bboost, Aboost = sps.butter(7, (3.3/(freq/2)), 'high')
+##dosplot(Bboost, Aboost)
 #exit()
 
 #lowpass_filter_b, lowpass_filter_a = sps.butter(6, (4.2/(freq/2)), 'low')
@@ -219,8 +222,8 @@ f_deemp_b = [3.334224479793254e-01, -2.155237713318184e-01, ]
 f_deemp_a = [1.000000000000000e+00, -8.821013233524929e-01, ]
 
 # t1 = .833
-f_deemp_b = [3.183188754563553e-01, -2.057608446588788e-01, ]
-f_deemp_a = [1.000000000000000e+00, -8.874419692025236e-01, ]
+#f_deemp_b = [3.183188754563553e-01, -2.057608446588788e-01, ]
+#f_deemp_a = [1.000000000000000e+00, -8.874419692025236e-01, ]
 
 # t1 = .8
 #f_deemp_b = [3.063915161937518e-01, -1.980510174835196e-01, ]
@@ -305,11 +308,35 @@ hz_ire_scale = (9300000 - 8100000) / 100
 minn = 8100000 + (hz_ire_scale * -60)
 
 out_scale = 65534.0 / (maxire - minire)
+	
+Bbpf, Abpf = sps.butter(3, [4.2/(freq/2), 13.2/(freq/2)], btype='bandpass')
+Bbpf, Abpf = sps.butter(3, [2.0/(freq/2), 13.5/(freq/2)], btype='bandpass')
+Bcutl, Acutl = sps.butter(2, [2.15/(freq/2), 2.45/(freq/2)], btype='bandstop')
+Bcutr, Acutr = sps.butter(2, [2.65/(freq/2), 2.95/(freq/2)], btype='bandstop')
+				
+
+#lowpass_filter_b, lowpass_filter_a = sps.butter(1, (4.2/(freq/2)), 'low')
+#Bcutr, Acutr = sps.butter(1, [2.68/(freq/2), 3.08/(freq/2)], btype='bandstop')
+
+#doplot(Bcutl, Acutl)
 
 def process_video(data):
 	# perform general bandpass filtering
-	in_filt = sps.lfilter(Bboost, Aboost, data)
-#	in_filt = data
+#	Bboost, Aboost = sps.butter(7, (3.5/(freq/2)), 'high')
+#	in_filt = sps.lfilter(Bboost, Aboost, data)
+
+#	_fft = fftpack.fft(data)
+
+	in_filt1 = sps.lfilter(Bbpf, Abpf, data)
+	in_filt2 = sps.lfilter(Bcutl, Acutl, in_filt1)
+	in_filt = sps.lfilter(Bcutr, Acutr, in_filt2)
+
+#	in_filt = sps.lfilter(Bboost, Aboost, data)
+
+#	plt.plot(in_filt)
+#	plt.plot(in_filta)
+#	plt.show()
+#	exit()
 
 	output = fm_decode(in_filt, freq_hz)
 
