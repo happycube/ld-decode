@@ -311,8 +311,8 @@ out_scale = 65534.0 / (maxire - minire)
 	
 Bbpf, Abpf = sps.butter(3, [4.2/(freq/2), 13.2/(freq/2)], btype='bandpass')
 Bbpf, Abpf = sps.butter(3, [2.0/(freq/2), 13.5/(freq/2)], btype='bandpass')
-Bcutl, Acutl = sps.butter(2, [2.15/(freq/2), 2.45/(freq/2)], btype='bandstop')
-Bcutr, Acutr = sps.butter(2, [2.65/(freq/2), 2.95/(freq/2)], btype='bandstop')
+Bcutl, Acutl = sps.butter(1, [2.15/(freq/2), 2.45/(freq/2)], btype='bandstop')
+Bcutr, Acutr = sps.butter(1, [2.65/(freq/2), 2.95/(freq/2)], btype='bandstop')
 				
 
 #lowpass_filter_b, lowpass_filter_a = sps.butter(1, (4.2/(freq/2)), 'low')
