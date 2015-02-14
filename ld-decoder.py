@@ -222,13 +222,14 @@ f_deemp_b = [3.334224479793254e-01, -2.155237713318184e-01, ]
 f_deemp_a = [1.000000000000000e+00, -8.821013233524929e-01, ]
 
 # t1 = .833
-#f_deemp_b = [3.183188754563553e-01, -2.057608446588788e-01, ]
-#f_deemp_a = [1.000000000000000e+00, -8.874419692025236e-01, ]
+f_deemp_b = [3.183188754563553e-01, -2.057608446588788e-01, ]
+f_deemp_a = [1.000000000000000e+00, -8.874419692025236e-01, ]
 
 # t1 = .8
 #f_deemp_b = [3.063915161937518e-01, -1.980510174835196e-01, ]
 #f_deemp_a = [1.000000000000000e+00, -8.916595012897678e-01, ]
-
+f_emp_b = [2.262510674637062e+00, -8.637062339880442e-01, ]
+f_emp_a = [1.000000000000000e+00, 3.988044406490179e-01, ]
 
 # audio filters
 Baudiorf = sps.firwin(65, 3.5 / (freq / 2), window='hamming', pass_zero=True)
@@ -309,16 +310,30 @@ minn = 8100000 + (hz_ire_scale * -60)
 
 out_scale = 65534.0 / (maxire - minire)
 	
-Bbpf, Abpf = sps.butter(3, [4.2/(freq/2), 13.2/(freq/2)], btype='bandpass')
-Bbpf, Abpf = sps.butter(3, [2.0/(freq/2), 13.5/(freq/2)], btype='bandpass')
-Bcutl, Acutl = sps.butter(1, [2.15/(freq/2), 2.45/(freq/2)], btype='bandstop')
-Bcutr, Acutr = sps.butter(1, [2.65/(freq/2), 2.95/(freq/2)], btype='bandstop')
-				
+Bbpf, Abpf = sps.butter(3, [3.2/(freq/2), 13.5/(freq/2)], btype='bandpass')
+Bcutl, Acutl = sps.butter(1, [2.20/(freq/2), 2.40/(freq/2)], btype='bandstop')
+Bcutr, Acutr = sps.butter(1, [2.70/(freq/2), 2.90/(freq/2)], btype='bandstop')
 
-#lowpass_filter_b, lowpass_filter_a = sps.butter(1, (4.2/(freq/2)), 'low')
+#lowpass_filter_b, lowpass_filter_a = sps.butter(8, (4.5/(freq/2)), 'low')
+
+lowpass_filter_b, lowpass_filter_a = sps.butter(7, (4.4/(freq/2)), 'low')
+#dosplot(lowpass_filter_b, lowpass_filter_a)
+#exit()
+
 #Bcutr, Acutr = sps.butter(1, [2.68/(freq/2), 3.08/(freq/2)], btype='bandstop')
 
 #doplot(Bcutl, Acutl)
+
+# octave:104> t1 = 100; t2 = 55; [b, a] = bilinear(-t2*(10^-8), -t1*(10^-8), t1/t2, freq); freqz(b, a)
+# octave:105> printf("f_emp_b = ["); printf("%.15e, ", b); printf("]\nf_emp_a = ["); printf("%.15e, ", a); printf("]\n")
+f_emp_b = [1.293279022403258e+00, -1.018329938900196e-02, ]
+f_emp_a = [1.000000000000000e+00, 2.830957230142566e-01, ]
+
+Inner = 0
+
+#lowpass_filter_b = [1.0]
+#lowpass_filter_a = [1.0]
+
 
 def process_video(data):
 	# perform general bandpass filtering
@@ -329,7 +344,14 @@ def process_video(data):
 
 	in_filt1 = sps.lfilter(Bbpf, Abpf, data)
 	in_filt2 = sps.lfilter(Bcutl, Acutl, in_filt1)
-	in_filt = sps.lfilter(Bcutr, Acutr, in_filt2)
+	in_filt3 = sps.lfilter(Bcutr, Acutr, in_filt2)
+
+	if Inner == 0:
+		in_filt = in_filt3
+	else:
+		in_filt = sps.lfilter(f_emp_b, f_emp_a, in_filt3)
+		
+#	in_filt = sps.lfilter(lowpass_filter_b, lowpass_filter_a, in_filt3)
 
 #	in_filt = sps.lfilter(Bboost, Aboost, data)
 
@@ -501,6 +523,8 @@ def main():
 	global Bboost, Aboost
 	global lowpass_filter_b, lowpass_filter_a 
 	global wide_mode, hz_ire_scale, minn
+	
+	global Inner 
 
 	global blocklen
 
@@ -520,6 +544,7 @@ def main():
 			hilbertlen = (16 * 1024)
 		if o == "-A":
 			CAV = 1
+			Inner = 1
 		if o == "-w":
 #			lowpass_filter_b, lowpass_filter_a = sps.butter(9, (5.0/(freq/2)), 'low')
 #			lowpass_filter_b, lowpass_filter_a = sps.butter(8, (4.8/(freq/2)), 'low')
@@ -556,15 +581,16 @@ def main():
 		firstbyte = int(cut_argv[1])
 		infile.seek(firstbyte)
 
+	if CAV and firstbyte > 11454654400:
+		CAV = 0
+		Inner = 0 
+
 	if (argc >= 3):
 		total_len = int(cut_argv[2])
 		limit = 1
 	else:
 		limit = 0
 	
-	if CAV:		
-		[Bboost, Aboost] = CalcBoost(firstbyte)
-
 #	dosplot(Bboost, Aboost)
 #	exit()
 
@@ -608,10 +634,13 @@ def main():
 			total_read += nread
 
 			if CAV:
-				total_bpread = int(total_pread) / 500000000 
-				total_bread = int(total_read) / 500000000 
-				if total_bpread != total_bread: 
-					[Bboost, Aboost] = CalcBoost(total_read + firstbyte)
+				if total_read > 11454654400:
+					CAV = 0
+					Inner = 0
+#				total_bpread = int(total_pread) / 500000000 
+#				total_bread = int(total_read) / 500000000 
+#				if total_bpread != total_bread: 
+#					[Bboost, Aboost] = CalcBoost(total_read + firstbyte)
 
 		indata = indata[nread:len(indata)]
 
