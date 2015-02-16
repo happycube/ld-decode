@@ -5,6 +5,7 @@
 
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
 
 using namespace cv;
 
@@ -399,10 +400,15 @@ class Comb
 				for (int h = 70; h < 744 + 70; h++) {
 					double a = hplinef[h + 8].y ; // + hplineb[h - 8].y;
 
+					if (l == (debug_line + 25)) {
+						cerr << "NR " << h << ' ' << input->p[h].y << ' ' << a << ' ' ;
+					}
+
 					if (fabs(a) < nr_y) {
 						double hpm = (a / nr_y);
 						a *= (1 - fabs(hpm * hpm * hpm));
-						input->p[h].y += a;
+						input->p[h].y -= a;
+						if (l == (debug_line + 25)) cerr << a << ' ' << input->p[h].y << endl; 
 					}
 				}
 			}
@@ -499,7 +505,11 @@ class Comb
 				}
 				
 				Mat pic = Mat(480, 744, CV_16UC3, BGRoutput);
-				imshow("comb", pic);	
+				Mat rpic;
+
+				resize(pic, rpic, Size(1280,960));
+
+				imshow("comb", rpic);	
 				waitKey(f_oneframe ? 0 : 1);
 			}
 			if (f_oneframe) exit(0);
