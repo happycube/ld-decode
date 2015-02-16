@@ -3,6 +3,8 @@ all: cx ntsc ntsc4 audiog2 comb
 CFLAGS=-O3 
 CFLAGS=-O3 -mavx -march=corei7-avx
 
+OPENCV_LIBS=-lopencv_core -lopencv_highgui -lopencv_imgproc
+
 clean:
 	rm -f ldd ntsc ntsc4 ntsc10 audiog2 comb 
 
@@ -30,7 +32,7 @@ comb-ntsc: comb-ntsc.cxx deemp.h
 	clang++ -std=c++11  -Wall $(CFLAGS) -o comb-ntsc comb-ntsc.cxx
 
 comb: combg2.cxx deemp.h
-	clang++ -std=c++11  -Wall $(CFLAGS) -o comb combg2.cxx
+	clang++ -std=c++11  -Wall $(CFLAGS) $(OPENCV_LIBS) -o comb combg2.cxx
 
 test:
 	./ldd snw.raw | ./ntsc - | ./comb - > snw.rgb

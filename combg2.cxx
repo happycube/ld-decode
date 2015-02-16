@@ -3,6 +3,11 @@
 #include "ld-decoder.h"
 #include "deemp.h"
 
+#include <opencv2/core/core.hpp>
+#include <opencv2/highgui/highgui.hpp>
+
+using namespace cv;
+
 int ofd = 1;
 char *image_base = "FRAME";
 
@@ -12,6 +17,8 @@ bool f_writeimages = false;
 bool f_bw = false;
 bool f_debug2d = false;
 bool f_oneframe = false;
+
+bool f_monitor = false;
 
 int debug_line = -1000;
 	
@@ -23,7 +30,6 @@ const double hlen = 227.5 * freq;
 const int hleni = (int)hlen; 
 
 const double dotclk = (1000000.0*(315.0/88.0)*freq); 
-
 const double dots_usec = dotclk / 1000000.0; 
 
 // values for horizontal timings 
@@ -149,6 +155,7 @@ class Comb
 		uint16_t frame[1820 * 530];
 
 		uint16_t output[744 * 505 * 3];
+		uint16_t BGRoutput[744 * 505 * 3];
 		uint16_t obuf[744 * 505 * 3];
 
 		uint16_t rawbuffer[3][844 * 505];
@@ -395,7 +402,7 @@ class Comb
 					if (fabs(a) < nr_y) {
 						double hpm = (a / nr_y);
 						a *= (1 - fabs(hpm * hpm * hpm));
-						input->p[h].y -= a;
+						input->p[h].y += a;
 					}
 				}
 			}
@@ -478,6 +485,22 @@ class Comb
 				ofd = open(ofname, O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR | S_IROTH);
 				write(ofd, obuf, (744 * linesout * 3) * 2);
 				close(ofd);
+			}
+			if (f_monitor) {
+//				Mat pic = Mat::zeros(480, 744, CV_16UC3);
+
+				for (int y = 0; y < 480; y++) {
+					for (int x = 0; x < 744; x++) {
+						BGRoutput[(((y * 744) + x) * 3) + 0] = obuf[(((y * 744) + x) * 3) + 2];
+						BGRoutput[(((y * 744) + x) * 3) + 1] = obuf[(((y * 744) + x) * 3) + 1];
+						BGRoutput[(((y * 744) + x) * 3) + 2] = obuf[(((y * 744) + x) * 3) + 0];
+//						pic.at<Scalar_<uint16_t>>(x,y) = Scalar_<uint16_t>(obuf[(((y * 744) + x) * 3) + 2], obuf[(((y * 744) + x) * 3) + 1], obuf[(((y * 744) + x) * 3) + 0]); 
+					}
+				}
+				
+				Mat pic = Mat(480, 744, CV_16UC3, BGRoutput);
+				imshow("comb", pic);	
+				waitKey(f_oneframe ? 0 : 1);
 			}
 			if (f_oneframe) exit(0);
 			frames_out++;
@@ -666,7 +689,7 @@ int main(int argc, char *argv[])
 
 	opterr = 0;
 	
-	while ((c = getopt(argc, argv, "8OwvDd:Bb:I:w:i:o:fphn:l:")) != -1) {
+	while ((c = getopt(argc, argv, "m8OwvDd:Bb:I:w:i:o:fphn:l:")) != -1) {
 		switch (c) {
 			case '8':
 				f_write8bit = true;
@@ -721,10 +744,17 @@ int main(int argc, char *argv[])
 				// black out a desired line
 				sscanf(optarg, "%d", &debug_line);
 				break;
+			case 'm':
+				f_monitor = true;
+				break;
 			default:
 				return -1;
 		} 
 	} 
+
+	if (f_monitor) {
+		namedWindow("comb", WINDOW_AUTOSIZE);
+	}
 
 	black_u16 = ire_to_u16(black_ire);
 	cerr << ' ' << black_u16 << endl;
@@ -755,6 +785,11 @@ int main(int argc, char *argv[])
 			if (rv2 <= 0) exit(0);
 			rv += rv2;
 		}
+	}
+
+	if (f_monitor) {
+		cerr << "Done - waiting for key\n";
+		waitKey(0);
 	}
 
 	return 0;
