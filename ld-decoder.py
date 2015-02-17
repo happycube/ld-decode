@@ -152,6 +152,7 @@ f_deemp_b = [3.778720395899611e-01, -2.442559208200777e-01]
 f_deemp_a = [1.000000000000000e+00, -8.663838812301168e-01]
 deemp_corr = 1.0
 
+# freq=4000000*315/88
 # t1 = 0.83; t2 = 3.0; [b, a] = bilinear(-t2*(10^-8), -t1*(10^-8), t1/t2, freq);
 # printf("f_deemp_b = ["); printf("%.15e, ", b); printf("]\nf_deemp_a = ["); printf("%.15e, ", a); printf("]\n")
 #f_deemp_b = [3.172367682445019e-01, -2.050613721767547e-01, ]
@@ -159,22 +160,24 @@ deemp_corr = 1.0
 
 # t1 = 0.9; t2 = 3.0; [b, a] = bilinear(-t2*(10^-8), -t1*(10^-8), t1/t2, freq);
 # printf("f_deemp_b = ["); printf("%.15e, ", b); printf("]\nf_deemp_a = ["); printf("%.15e, ", a); printf("]\n")
-f_deemp_b = [3.423721575744635e-01, -2.213088502188534e-01, ]
-f_deemp_a = [1.000000000000000e+00, -8.789366926443899e-01, ]
+#f_deemp_b = [3.423721575744635e-01, -2.213088502188534e-01, ]
+#f_deemp_a = [1.000000000000000e+00, -8.789366926443899e-01, ]
 
 # t1 = .875
-f_deemp_b = [3.334224479793254e-01, -2.155237713318184e-01, ]
-f_deemp_a = [1.000000000000000e+00, -8.821013233524929e-01, ]
+#f_deemp_b = [3.334224479793254e-01, -2.155237713318184e-01, ]
+#f_deemp_a = [1.000000000000000e+00, -8.821013233524929e-01, ]
+
+# t1 = .85
+f_deemp_b = [3.244425401246140e-01, -2.097191723349937e-01, ]
+f_deemp_a = [1.000000000000000e+00, -8.852766322103798e-01, ]
 
 # t1 = .833
-f_deemp_b = [3.183188754563553e-01, -2.057608446588788e-01, ]
-f_deemp_a = [1.000000000000000e+00, -8.874419692025236e-01, ]
+#f_deemp_b = [3.183188754563553e-01, -2.057608446588788e-01, ]
+#f_deemp_a = [1.000000000000000e+00, -8.874419692025236e-01, ]
 
 # t1 = .8
 #f_deemp_b = [3.063915161937518e-01, -1.980510174835196e-01, ]
 #f_deemp_a = [1.000000000000000e+00, -8.916595012897678e-01, ]
-f_emp_b = [2.262510674637062e+00, -8.637062339880442e-01, ]
-f_emp_a = [1.000000000000000e+00, 3.988044406490179e-01, ]
 
 # audio filters
 Baudiorf = sps.firwin(65, 3.5 / (freq / 2), window='hamming', pass_zero=True)
@@ -449,6 +452,7 @@ def test():
 def main():
 	global lowpass_filter_b, lowpass_filter_a 
 	global wide_mode, hz_ire_scale, minn
+	global f_deemp_b, f_deemp_a
 
 	global Bcutr, Acutr
 	
@@ -463,7 +467,7 @@ def main():
 	CAV = 0
 	firstbyte = 0
 
-	optlist, cut_argv = getopt.getopt(sys.argv[1:], "CaAws:")
+	optlist, cut_argv = getopt.getopt(sys.argv[1:], "fCaAws:")
 
 	for o, a in optlist:
 		if o == "-a":
@@ -473,6 +477,10 @@ def main():
 		if o == "-A":
 			CAV = 1
 			Inner = 1
+		if o == "-f":
+			# use full spec deemphasis filter - will result in overshoot, but higher freq resonse
+			f_deemp_b = [3.778720395899611e-01, -2.442559208200777e-01]
+			f_deemp_a = [1.000000000000000e+00, -8.663838812301168e-01]
 		if o == "-C":
 			Bcutr, Acutr = sps.butter(1, [2.68/(freq/2), 3.08/(freq/2)], btype='bandstop')
 		if o == "-w":
