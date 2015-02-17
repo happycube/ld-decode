@@ -172,8 +172,8 @@ f_deemp_b = [3.244425401246140e-01, -2.097191723349937e-01, ]
 f_deemp_a = [1.000000000000000e+00, -8.852766322103798e-01, ]
 
 # t1 = .833
-#f_deemp_b = [3.183188754563553e-01, -2.057608446588788e-01, ]
-#f_deemp_a = [1.000000000000000e+00, -8.874419692025236e-01, ]
+f_deemp_b = [3.183188754563553e-01, -2.057608446588788e-01, ]
+f_deemp_a = [1.000000000000000e+00, -8.874419692025236e-01, ]
 
 # t1 = .8
 #f_deemp_b = [3.063915161937518e-01, -1.980510174835196e-01, ]
@@ -467,7 +467,7 @@ def main():
 	CAV = 0
 	firstbyte = 0
 
-	optlist, cut_argv = getopt.getopt(sys.argv[1:], "fCaAws:")
+	optlist, cut_argv = getopt.getopt(sys.argv[1:], "hCaAws:")
 
 	for o, a in optlist:
 		if o == "-a":
@@ -477,7 +477,7 @@ def main():
 		if o == "-A":
 			CAV = 1
 			Inner = 1
-		if o == "-f":
+		if o == "-h":
 			# use full spec deemphasis filter - will result in overshoot, but higher freq resonse
 			f_deemp_b = [3.778720395899611e-01, -2.442559208200777e-01]
 			f_deemp_a = [1.000000000000000e+00, -8.663838812301168e-01]
