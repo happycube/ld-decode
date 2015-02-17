@@ -64,5 +64,6 @@ print 20 * np.log10(70 / std_ire)
 #plt.plot(freq, sp.real, freq, sp.imag)
 plt.plot(range(0, len(c)), c)
 #plt.ylim([7700000,9700000])
+plt.ylim(-25, 120)
 plt.show()
 

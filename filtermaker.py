@@ -133,9 +133,12 @@ Nsync = 32
 sync_filter10 = sps.firwin(Nsync + 1, 0.1 / (freq10), window='hamming')
 WriteFilter("sync10", sync_filter10)
 
-Nnr = 16
+Nnr = 24
 hp_nr_filter = sps.firwin(Nnr + 1, 1.80 / (freq / 2.0), window='hamming', pass_zero=False)
 WriteFilter("nr", hp_nr_filter)
+hp_nr28_filter = sps.firwin(Nnr + 1, [2.60 / (freq / 2.0), 2.9 / (freq / 2.0)], window='hamming', pass_zero=False)
+WriteFilter("nr28", hp_nr28_filter)
+
 Nnrc = 24
 hp_nrc_filter = sps.firwin(Nnrc + 1, 0.35 / (freq / 2.0), window='hamming', pass_zero=False)
 WriteFilter("nrc", hp_nrc_filter)

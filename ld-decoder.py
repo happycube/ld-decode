@@ -137,61 +137,6 @@ def doplot2(B, A, B2, A2):
 
 ffreq = freq/2.0
 
-def CalcBoost(byte = 0, fixed_adj = -1):
-	n = 2000
-	n2 = (n * 2) - 2
-	Fr = np.zeros(n)
-	Am = np.zeros(n)
-	Th = np.zeros(n)
-	
-	for f in range(0, n):
-		cf = freq * (float(f) / n2)
-    
-		Am[f] = 1
- 
-		fadj = 6.5
-		if (cf > fadj):
-			adj = .10
-			adj = adj - (.30 * (byte / 17000000000.0)) 
-
-			if adj < -.05:
-				adj = -.05
-		
-			if fixed_adj > -.9:
-				adj = fixed_adj
-
-			Am[f] = 1 + ((cf - fadj) * adj) 
-			if Am[f] < 0:
-				Am[f] = 0
-		elif (cf > 4.2):
-			Am[f] = 1 
-		elif (cf > 3.2):
-			Am[f] = 1 * ((cf - 3.0) * 1)
-		else:
-			Am[f] = 0
-
-		Fr[f] = float(f) / n2 
-		Th[f] = -(Fr[f] * 44.0) 
-
-	[Bboost, Aboost] = fdls.FDLS(Fr, Am, Th, 8, 8, 0)
-	Bboost, Aboost = sps.butter(7, (3.0/(freq/2)), 'high')
-#	Bboost, Aboost = sps.butter(7, (3.5/(freq/2)), 'high')
-#	dosplot(Bboost, Aboost)
-#	exit()
-
-	return [Bboost, Aboost]
-
-[Bboost, Aboost] = CalcBoost(0, 0)
-
-#doplot(Bboost, Aboost)
-#exit()
-
-#Bboost, Aboost = sps.butter(7, (3.3/(freq/2)), 'high')
-##dosplot(Bboost, Aboost)
-#exit()
-
-#lowpass_filter_b, lowpass_filter_a = sps.butter(6, (4.2/(freq/2)), 'low')
-#lowpass_filter_b, lowpass_filter_a = sps.butter(4, (4.2/(freq/2)), 'low')
 lowpass_filter_b, lowpass_filter_a = sps.butter(8, (4.5/(freq/2)), 'low')
 
 #dosplot(lowpass_filter_b, lowpass_filter_a)
@@ -313,14 +258,9 @@ out_scale = 65534.0 / (maxire - minire)
 Bbpf, Abpf = sps.butter(3, [3.2/(freq/2), 13.5/(freq/2)], btype='bandpass')
 Bcutl, Acutl = sps.butter(1, [2.20/(freq/2), 2.40/(freq/2)], btype='bandstop')
 Bcutr, Acutr = sps.butter(1, [2.70/(freq/2), 2.90/(freq/2)], btype='bandstop')
-
-#lowpass_filter_b, lowpass_filter_a = sps.butter(8, (4.5/(freq/2)), 'low')
+# AC3 - Bcutr, Acutr = sps.butter(1, [2.68/(freq/2), 3.08/(freq/2)], btype='bandstop')
 
 lowpass_filter_b, lowpass_filter_a = sps.butter(7, (4.4/(freq/2)), 'low')
-#dosplot(lowpass_filter_b, lowpass_filter_a)
-#exit()
-
-#Bcutr, Acutr = sps.butter(1, [2.68/(freq/2), 3.08/(freq/2)], btype='bandstop')
 
 #doplot(Bcutl, Acutl)
 
@@ -337,10 +277,6 @@ Inner = 0
 
 def process_video(data):
 	# perform general bandpass filtering
-#	Bboost, Aboost = sps.butter(7, (3.5/(freq/2)), 'high')
-#	in_filt = sps.lfilter(Bboost, Aboost, data)
-
-#	_fft = fftpack.fft(data)
 
 	in_filt1 = sps.lfilter(Bbpf, Abpf, data)
 	in_filt2 = sps.lfilter(Bcutl, Acutl, in_filt1)
@@ -351,15 +287,6 @@ def process_video(data):
 	else:
 		in_filt = sps.lfilter(f_emp_b, f_emp_a, in_filt3)
 		
-#	in_filt = sps.lfilter(lowpass_filter_b, lowpass_filter_a, in_filt3)
-
-#	in_filt = sps.lfilter(Bboost, Aboost, data)
-
-#	plt.plot(in_filt)
-#	plt.plot(in_filta)
-#	plt.show()
-#	exit()
-
 	output = fm_decode(in_filt, freq_hz)
 
 	# save the original fm decoding and align to filters
@@ -520,9 +447,10 @@ def test():
 	exit()
 
 def main():
-	global Bboost, Aboost
 	global lowpass_filter_b, lowpass_filter_a 
 	global wide_mode, hz_ire_scale, minn
+
+	global Bcutr, Acutr
 	
 	global Inner 
 
@@ -535,7 +463,7 @@ def main():
 	CAV = 0
 	firstbyte = 0
 
-	optlist, cut_argv = getopt.getopt(sys.argv[1:], "aAwc:s:")
+	optlist, cut_argv = getopt.getopt(sys.argv[1:], "CaAws:")
 
 	for o, a in optlist:
 		if o == "-a":
@@ -545,18 +473,18 @@ def main():
 		if o == "-A":
 			CAV = 1
 			Inner = 1
+		if o == "-C":
+			Bcutr, Acutr = sps.butter(1, [2.68/(freq/2), 3.08/(freq/2)], btype='bandstop')
 		if o == "-w":
 #			lowpass_filter_b, lowpass_filter_a = sps.butter(9, (5.0/(freq/2)), 'low')
 #			lowpass_filter_b, lowpass_filter_a = sps.butter(8, (4.8/(freq/2)), 'low')
 			wide_mode = 1
 			hz_ire_scale = (9360000 - 8100000) / 100
 			minn = 8100000 + (hz_ire_scale * -60)
-		if o == "-c":
-			[Bboost, Aboost] = CalcBoost(0, float(a))
 		if o == "-s":
 			ia = int(a)
 			if ia == 0:
-				lowpass_filter_b, lowpass_filter_a = sps.butter(5, (4.2/(freq/2)), 'low')
+				lowpass_filter_b, lowpass_filter_a = sps.butter(7, (4.4/(freq/2)), 'low')
 			if ia == 1:	
 				lowpass_filter_b, lowpass_filter_a = sps.butter(8, (4.5/(freq/2)), 'low')
 			if ia == 2:	
@@ -577,6 +505,7 @@ def main():
 	else:
 		infile = sys.stdin
 
+	firstbyte = 0
 	if (argc >= 2):
 		firstbyte = int(cut_argv[1])
 		infile.seek(firstbyte)
@@ -591,9 +520,6 @@ def main():
 	else:
 		limit = 0
 	
-#	dosplot(Bboost, Aboost)
-#	exit()
-
 	total = toread = blocklen 
 	inbuf = infile.read(toread)
 	indata = np.fromstring(inbuf, 'uint8', toread)
@@ -634,13 +560,9 @@ def main():
 			total_read += nread
 
 			if CAV:
-				if total_read > 11454654400:
+				if (total_read + firstbyte) > 11454654400:
 					CAV = 0
 					Inner = 0
-#				total_bpread = int(total_pread) / 500000000 
-#				total_bread = int(total_read) / 500000000 
-#				if total_bpread != total_bread: 
-#					[Bboost, Aboost] = CalcBoost(total_read + firstbyte)
 
 		indata = indata[nread:len(indata)]
 

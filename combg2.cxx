@@ -50,7 +50,7 @@ double black_ire = 7.5;
 int black_u16 = ire_to_u16(black_ire);
 int white_u16 = ire_to_u16(100); 
 
-double nr_y = 3.5;
+double nr_y = 1.0;
 
 inline double IRE(double in) 
 {
@@ -386,30 +386,30 @@ class Comb
 			if (nr_y < 0) return;
 
 			for (int l = firstline; l < 505; l++) {
-				YIQ hplinef[844], hplineb[844];
+				YIQ hplinef[844];
 				cline_t *input = &cbuf[l];
 
-				for (int h = 70; h <= 752 + 70; h++) {
+				for (int h = 70; h <= 752 + 80; h++) {
 					hplinef[h].y = f_hpy->feed(input->p[h].y);
 				}
 				
-				for (int h = 760 + 70; h >= 62; h--) {
-					hplineb[h].y = f_hpy->feed(input->p[h].y);
-				}
-
 				for (int h = 70; h < 744 + 70; h++) {
-					double a = hplinef[h + 8].y ; // + hplineb[h - 8].y;
+					double a = hplinef[h + 12].y;
 
 					if (l == (debug_line + 25)) {
-						cerr << "NR " << h << ' ' << input->p[h].y << ' ' << a << ' ' ;
+						cerr << "NR " << h << ' ' << input->p[h].y << ' ' << hplinef[h + 12].y << ' ' << ' ' << a << ' ' ;
 					}
 
-					if (fabs(a) < nr_y) {
+					if (fabs(a) > nr_y) {
+						a = (a > 0) ? nr_y : -nr_y;
+					}
+
+					if (fabs(a) <= nr_y) {
 						double hpm = (a / nr_y);
-						a *= (1 - fabs(hpm * hpm * hpm));
+//						a *= (1 - fabs(hpm * hpm * hpm));
 						input->p[h].y -= a;
 						if (l == (debug_line + 25)) cerr << a << ' ' << input->p[h].y << endl; 
-					}
+					} else if (l == (debug_line + 25)) cerr << endl;
 				}
 			}
 		}
