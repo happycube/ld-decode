@@ -172,8 +172,8 @@ f_deemp_b = [3.244425401246140e-01, -2.097191723349937e-01, ]
 f_deemp_a = [1.000000000000000e+00, -8.852766322103798e-01, ]
 
 # t1 = .833
-f_deemp_b = [3.183188754563553e-01, -2.057608446588788e-01, ]
-f_deemp_a = [1.000000000000000e+00, -8.874419692025236e-01, ]
+#f_deemp_b = [3.183188754563553e-01, -2.057608446588788e-01, ]
+#f_deemp_a = [1.000000000000000e+00, -8.874419692025236e-01, ]
 
 # t1 = .8
 #f_deemp_b = [3.063915161937518e-01, -1.980510174835196e-01, ]
@@ -492,11 +492,11 @@ def main():
 		if o == "-s":
 			ia = int(a)
 			if ia == 0:
-				lowpass_filter_b, lowpass_filter_a = sps.butter(7, (4.4/(freq/2)), 'low')
+				lowpass_filter_b, lowpass_filter_a = sps.butter(5, (4.2/(freq/2)), 'low')
 			if ia == 1:	
-				lowpass_filter_b, lowpass_filter_a = sps.butter(8, (4.5/(freq/2)), 'low')
+				lowpass_filter_b, lowpass_filter_a = sps.butter(5, (4.5/(freq/2)), 'low')
 			if ia == 2:	
-				lowpass_filter_b, lowpass_filter_a = sps.butter(9, (4.8/(freq/2)), 'low')
+				lowpass_filter_b, lowpass_filter_a = sps.butter(5, (4.8/(freq/2)), 'low')
 			if ia == 3:	
 				# high frequency response - and ringing.  choose your poison ;)	
 				lowpass_filter_b, lowpass_filter_a = sps.butter(10, (5.0/(freq/2)), 'low')
