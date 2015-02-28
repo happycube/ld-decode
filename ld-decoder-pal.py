@@ -136,59 +136,8 @@ def doplot2(B, A, B2, A2):
 
 ffreq = freq/2.0
 
-def CalcBoost(byte = 0, fixed_adj = -1):
-	n = 2000
-	n2 = (n * 2) - 2
-	Fr = np.zeros(n)
-	Am = np.zeros(n)
-	Th = np.zeros(n)
-	
-	for f in range(0, n):
-		cf = freq * (float(f) / n2)
-    
-		Am[f] = 1
- 
-		fadj = 6.5
-		if (cf > fadj):
-			adj = .10
-			adj = adj - (.30 * (byte / 17000000000.0)) 
+Bboost, Aboost = sps.butter(1, (2.0/(freq/2)), 'high')
 
-			if adj < -.05:
-				adj = -.05
-		
-			if fixed_adj > -.9:
-				adj = fixed_adj
-
-			Am[f] = 1 + ((cf - fadj) * adj) 
-			if Am[f] < 0:
-				Am[f] = 0
-		elif (cf > 4.2):
-			Am[f] = 1 
-		elif (cf > 3.2):
-			Am[f] = 1 * ((cf - 3.0) * 1)
-		else:
-			Am[f] = 0
-
-		Fr[f] = float(f) / n2 
-		Th[f] = -(Fr[f] * 44.0) 
-
-	[Bboost, Aboost] = fdls.FDLS(Fr, Am, Th, 8, 8, 0)
-#	dosplot(Bboost, Aboost)
-#	exit()
-
-	return [Bboost, Aboost]
-
-[Bboost, Aboost] = CalcBoost(0, 0)
-
-#doplot(Bboost, Aboost)
-#exit()
-
-Bboost, Aboost = sps.butter(7, (2.0/(freq/2)), 'high')
-#dosplot(Bboost, Aboost)
-#exit()
-
-#lowpass_filter_b, lowpass_filter_a = sps.butter(6, (4.2/(freq/2)), 'low')
-#lowpass_filter_b, lowpass_filter_a = sps.butter(4, (4.2/(freq/2)), 'low')
 lowpass_filter_b, lowpass_filter_a = sps.butter(8, (5.5/(freq/2)), 'low')
 
 #dosplot(lowpass_filter_b, lowpass_filter_a)
@@ -227,14 +176,28 @@ deemp_corr = 1.0
 #f_deemp_a = [1.000000000000000e+00, -8.916595012897678e-01, ]
 
 # t1 = 0.9, t2 = 4.0 - PAL
-#f_deemp_b = [2.250000998693053e-01, -2.249998421420658e-01, ]
-#f_deemp_a = [1.000000000000000e+00, -9.999997422727605e-01, ]
+f_deemp_b = [2.250000998693053e-01, -2.249998421420658e-01, ]
+f_deemp_a = [1.000000000000000e+00, -9.999997422727605e-01, ]
 
 #f_deemp_b = [2.500001073863483e-01, -2.499998210227529e-01, ]
 #f_deemp_a = [1.000000000000000e+00, -9.999997136364046e-01, ]
 f_deemp_b = [3.001060445387063e-01, -1.664899257688229e-01, ]
 f_deemp_a = [1.000000000000000e+00, -8.663838812301168e-01, ]
 
+f_deemp_b = [2.719120316002989e-01, -1.508487242446888e-01, ]
+f_deemp_a = [1.000000000000000e+00, -8.789366926443899e-01, ]
+
+# t1 = 0.7, t2 = 4.0 - PAL
+f_deemp_b = [2.433361994840929e-01, -1.349957007738607e-01, ]
+f_deemp_a = [1.000000000000000e+00, -8.916595012897678e-01, ]
+f_deemp_b = [2.143707390975003e-01, -1.189265231035602e-01, ]
+f_deemp_a = [1.000000000000000e+00, -9.045557840060601e-01, ]
+
+f_deemp_b = [1.958542245307747e-01, -1.004100085368346e-01, ]
+f_deemp_a = [1.000000000000000e+00, -9.045557840060601e-01, ]
+
+f_deemp_b = [2.381776863975760e-01, -1.427334704036360e-01, ]
+f_deemp_a = [1.000000000000000e+00, -9.045557840060601e-01, ]
 
 # audio filters
 Baudiorf = sps.firwin(65, 3.5 / (freq / 2), window='hamming', pass_zero=True)
@@ -511,8 +474,6 @@ def main():
 			wide_mode = 1
 			hz_ire_scale = (9360000 - 8100000) / 100
 			minn = 8100000 + (hz_ire_scale * -60)
-		if o == "-c":
-			[Bboost, Aboost] = CalcBoost(0, float(a))
 		if o == "-s":
 			ia = int(a)
 			if ia == 0:
@@ -547,9 +508,6 @@ def main():
 	else:
 		limit = 0
 	
-	if CAV:		
-		[Bboost, Aboost] = CalcBoost(firstbyte)
-
 #	dosplot(Bboost, Aboost)
 #	exit()
 
@@ -591,12 +549,6 @@ def main():
 
 			total_pread = total_read 
 			total_read += nread
-
-			if CAV:
-				total_bpread = int(total_pread) / 500000000 
-				total_bread = int(total_read) / 500000000 
-				if total_bpread != total_bread: 
-					[Bboost, Aboost] = CalcBoost(total_read + firstbyte)
 
 		indata = indata[nread:len(indata)]
 
