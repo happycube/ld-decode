@@ -80,7 +80,7 @@ def scale(buf, begin, end, tgtlen):
 
 	dist = iend - ibegin + 1 
 	arr = np.linspace(0, dist, num=dist)
-	print(dist, begin, ibegin, ibegin + dist)
+#	print(arr, dist, begin, ibegin, ibegin + dist)
 	spl = interpolate.splrep(arr, buf[ibegin:ibegin + dist])
 	arrout = np.linspace(begin - ibegin, linelen, tgtlen)
 						
@@ -113,9 +113,20 @@ phasemult = 1.591549430918953e-01 * 8 # this has something to do with pi/radians
 
 tgt_angle = 0
 
-outbuf = np.empty((1832 * 625), dtype=np.uint16)
-
 sync_filter = sps.firwin(32, 0.8 / (freq_mhz / 2), window='hamming')
+
+# pal parameters
+bfreq = 4.43361875
+ofreq = bfreq * 4
+oline = 1135
+
+# for analysis we want the hsync pulse from the *next* line
+ialine = 1967 # input frequency * (68.7/1000000)
+oaline = 1135 + 84 # line length used for analysis
+
+outbuf = np.empty((oaline * 625), dtype=np.uint16)
+
+pilot_filter = sps.firwin(32, [1.6 / (ofreq / 2), 1.9 / (ofreq / 2)], window='hamming', pass_zero=False)
 
 def process(indata):
 	global tgt_angle 
@@ -172,7 +183,10 @@ def process(indata):
 				insync = 1
 
 		if insync == 0 and cline > 0:
-			outbuf[(cline * 1832):(cline + 1) * 1832] = indata[begin:begin+1832] 
+			inline = indata[begin:begin+ialine+1].astype(np.float32)
+			out1 = scale(inline, 0, ialine, oaline)
+			out1 = np.clip(out1, 0, 65535)
+			outbuf[(cline * oaline):(cline + 1) * oaline] = out1 
 
 		# NTSC code!
 		if (0 and insync == 0):
