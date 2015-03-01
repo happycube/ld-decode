@@ -258,7 +258,7 @@ minn = 8100000 + (hz_ire_scale * -60)
 
 out_scale = 65534.0 / (maxire - minire)
 	
-Bbpf, Abpf = sps.butter(3, [3.2/(freq/2), 13.5/(freq/2)], btype='bandpass')
+Bbpf, Abpf = sps.butter(2, [3.2/(freq/2), 13.5/(freq/2)], btype='bandpass')
 Bcutl, Acutl = sps.butter(1, [2.20/(freq/2), 2.40/(freq/2)], btype='bandstop')
 Bcutr, Acutr = sps.butter(1, [2.70/(freq/2), 2.90/(freq/2)], btype='bandstop')
 # AC3 - Bcutr, Acutr = sps.butter(1, [2.68/(freq/2), 3.08/(freq/2)], btype='bandstop')
