@@ -86,6 +86,14 @@ def scale(buf, begin, end, tgtlen):
 						
 	return interpolate.splev(arrout, spl)
 
+def sub_angle(angle):
+	if (angle > (np.pi / 2)):
+		return (np.pi - angle)
+	elif (angle < -(np.pi / 2)):
+		return (-np.pi - angle)
+	else:
+		return -angle
+
 def wrap_angle(angle, tgt):
 	adjust = tgt - angle
 	if (adjust > (np.pi)):
@@ -126,7 +134,46 @@ oaline = 1135 + 84 # line length used for analysis
 
 outbuf = np.empty((oaline * 625), dtype=np.uint16)
 
-pilot_filter = sps.firwin(32, [1.6 / (ofreq / 2), 1.9 / (ofreq / 2)], window='hamming', pass_zero=False)
+pilot_filter = sps.firwin(16, [3.5 / (ofreq / 2), 4.0 / (ofreq / 2)], window='hamming', pass_zero=False)
+#pilot_filter = sps.firwin(16, 4.5 / (ofreq / 2), window='hamming')
+
+phet = np.empty(4096, dtype=np.complex)
+pfreq = ofreq / 3.75
+for i in range(0, 4096):
+	phet[i] = complex(np.cos(((i / pfreq) * 2.0 * np.pi) + (0.0/180.0)), -(np.sin(((i / pfreq) * 2.0 * np.pi) + (0.0/180.0))))
+
+def pilot_detect(line, loc = 0):
+	level = 0
+	phase = 0
+
+	obhet = np.empty(83, dtype=np.complex)
+
+	obhet = phet[loc:loc+83] * line[loc:loc+83]
+
+	obhet_filt = sps.lfilter(pilot_filter, [1.0], obhet)
+	obhet_levels = np.absolute(obhet_filt)
+	obhet_angles = np.angle(obhet_filt)
+
+	for i in range(0, 83):
+#		print(i, line[i], obhet_levels[i], obhet_angles[i])
+		if (obhet_levels[i] > level) and (obhet_levels[i] < 20000):
+			level = obhet_levels[i]
+			phase = obhet_angles[i]
+
+#	lineseg = obhet_filt[0:83]
+#	lineseg -= np.mean(lineseg)
+
+#	ffti = np.fft.fft(lineseg)
+#	fftp = np.fft.fft(phet.real[loc:loc+83] * 10000)
+
+#	fftir = np.absolute(ffti)
+#	fftpr = np.absolute(fftp)
+
+#	plt.plot(fftir)
+#	plt.plot(fftpr)
+#	plt.show()
+#	exit()
+	return [level, phase]
 
 def process(indata):
 	global tgt_angle 
@@ -183,9 +230,33 @@ def process(indata):
 				insync = 1
 
 		if insync == 0 and cline > 0:
-			inline = indata[begin:begin+ialine+1].astype(np.float32)
-			out1 = scale(inline, 0, ialine, oaline)
-			out1 = np.clip(out1, 0, 65535)
+			inline = indata[begin-24:begin-24+ialine+32].astype(np.float32)
+
+			# set parameters for first pass
+			boffset = 24 
+			eoffset = ialine
+
+			count = 0
+			while count < 2:		
+				out1 = scale(inline, boffset, eoffset, oaline)
+				out1 = np.clip(out1, 0, 65535)
+
+				pilot1 = pilot_detect(out1, 0)
+				pilot2 = pilot_detect(out1[oline:])
+
+				print(boffset, eoffset, pilot1, pilot2)
+
+				phasemult = 1 * (3.75 / (ofreq / 2)) 
+			#	print(phasemult)
+
+				if (count == 0):
+					boffset += sub_angle(pilot1[1]) * phasemult 
+#					eoffset += sub_angle(pilot1[1]) * phasemult 
+				if (count == 1):
+					eoffset -= sub_angle(pilot2[1]) * phasemult 
+
+				count += 1
+
 			outbuf[(cline * oaline):(cline + 1) * oaline] = out1 
 
 		# NTSC code!
