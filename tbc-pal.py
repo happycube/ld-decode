@@ -38,9 +38,7 @@ blocklen = 131072
 
 color_filter = sps.firwin(17, 0.1 / (freq_mhz / 2), window='hamming')
 
-frame = np.empty([505, 844], dtype=np.uint16)
-
-# set up sync color heterodyne table first 
+# NTSC: set up sync color heterodyne table first 
 bhet = np.empty(4096, dtype=np.complex)
 for i in range(0, 4096):
 	bhet[i] = complex(np.cos(((i / freq) * 2.0 * np.pi) + (33.0/180.0)), -(np.sin(((i / freq) * 2.0 * np.pi) + (33.0/180.0))))
@@ -50,6 +48,7 @@ def printerr(*objs):
 	print(*objs, file=sys.stderr)
 	return
 
+# NTSC code
 def burst_detect(line, loc = 0):
 	level = 0
 	phase = 0
@@ -116,6 +115,8 @@ tgt_angle = 0
 
 outbuf = np.empty((1832 * 625), dtype=np.uint16)
 
+sync_filter = sps.firwin(32, 0.8 / (freq_mhz / 2), window='hamming')
+
 def process(indata):
 	global tgt_angle 
 
@@ -123,11 +124,12 @@ def process(indata):
 
 #	indata = indata[85000:105000]
 #	indata = indata[7000:10000]
-#	indata = indata[0000:200000]
+#	indata = indata[0000:120000]
+
+	indata_lf = sps.lfilter(sync_filter, [1.0], indata)[16:]
 
 	vis_sync = np.vectorize(is_sync)
 	indata_bool = vis_sync(indata) 
-	
 	indata_bool_filt = sps.lfilter(f_id_b, f_id_a, indata_bool)[330:]
 
 	insync = -1 
@@ -146,15 +148,20 @@ def process(indata):
 
 		begin = -1
 		for j in range(peak, peak - 300, -1):
-			if (begin == -1) and (indata[j] > 12000):
+			if (begin == -1) and (indata_lf[j] > 29000):
 				begin = j
 
 		end = -1
 		for j in range(peak, peak + 300, 1):
-			if (end == -1) and (indata[j] > 12000):
+			if (end == -1) and (indata_lf[j] > 29000):
 				end = j
 
-		print("l ", line, cline, peak, begin, end, "g", end - begin, begin - prev_begin, peak - begin, indata_bool_filt[peak], indata[peak])
+		if begin > 0 and end > 0:
+			synclen = end - begin
+		else:
+			synclen = 0
+
+		print("l ", line, cline, peak, begin, end, "g", synclen, begin - prev_begin, peak - begin, indata_bool_filt[peak], indata[peak])
 
 		if (insync <= 0) and (peakval < .18):
 			if ((np.fabs(begin - prev_begin) - 910) < 100):
@@ -165,8 +172,9 @@ def process(indata):
 				insync = 1
 
 		if insync == 0 and cline > 0:
-			outbuf[(cline * 1832):(cline + 1) * 1832] = indata[peak:peak+1832] 
+			outbuf[(cline * 1832):(cline + 1) * 1832] = indata[begin:begin+1832] 
 
+		# NTSC code!
 		if (0 and insync == 0):
 			# detect error condition - if so, reuse previous begin/end
 			if (np.fabs(end - begin - 131.0) > 3):
@@ -245,10 +253,10 @@ def process(indata):
 #	for i in range(0, len(indata_bool_filt), 50000):
 #		print(i, indata_bool_filt[np.argmax(indata_bool_filt[i:i+50000])])
 
-	plt.plot(range(0,len(indata_bool_filt)), indata_bool_filt)
+#	plt.plot(range(0,len(indata_bool_filt)), indata_bool_filt)
 #	plt.plot(range(0,len(indata_bool)), indata_bool)
-	plt.plot(range(0,len(indata)), indata / 65535.0)
-	plt.show()
+#	plt.plot(range(0,len(indata)), indata / 65535.0)
+#	plt.show()
 	exit()
 
 	return 1820*505
