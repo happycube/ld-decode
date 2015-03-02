@@ -132,7 +132,7 @@ oline = 1135
 ialine = 1967 # input frequency * (68.7/1000000)
 oaline = 1135 + 84 # line length used for analysis
 
-outbuf = np.empty((oaline * 625), dtype=np.uint16)
+outbuf = np.empty((oline * 625), dtype=np.uint16)
 
 pilot_filter = sps.firwin(16, [3.5 / (ofreq / 2), 4.0 / (ofreq / 2)], window='hamming', pass_zero=False)
 #pilot_filter = sps.firwin(16, 4.5 / (ofreq / 2), window='hamming')
@@ -204,10 +204,15 @@ def process(indata):
 
 		peakval = indata_bool_filt[peak]
 
+		boffset = 0
+
 		begin = -1
 		for j in range(peak, peak - 300, -1):
 			if (begin == -1) and (indata_lf[j] > 29000):
 				begin = j
+				boffset = indata_lf[j] - indata_lf[j + 1]
+				begin += (indata_lf[j] - 29000) / boffset
+#				print(boffset)
 
 		end = -1
 		for j in range(peak, peak + 300, 1):
@@ -230,74 +235,16 @@ def process(indata):
 				insync = 1
 
 		if insync == 0 and cline > 0:
-			inline = indata[begin-24:begin-24+ialine+32].astype(np.float32)
+			inline = indata[prev_begin:begin+1].astype(np.float32)
 
-			# set parameters for first pass
-			boffset = 24 
-			eoffset = ialine
+			eoffset = begin - np.floor(prev_begin) 
 
-			count = 0
-			while count < 2:		
-				out1 = scale(inline, boffset, eoffset, oaline)
-				out1 = np.clip(out1, 0, 65535)
+			print(prev_begin - np.floor(prev_begin), eoffset, len(inline), oline)
 
-				pilot1 = pilot_detect(out1, 0)
-				pilot2 = pilot_detect(out1[oline:])
+			out1 = scale(inline, prev_begin - np.floor(prev_begin), eoffset, oline)
+			out1 = np.clip(out1, 0, 65535)
 
-				print(boffset, eoffset, pilot1, pilot2)
-
-				phasemult = 1 * (3.75 / (ofreq / 2)) 
-			#	print(phasemult)
-
-				if (count == 0):
-					boffset += sub_angle(pilot1[1]) * phasemult 
-#					eoffset += sub_angle(pilot1[1]) * phasemult 
-				if (count == 1):
-					eoffset -= sub_angle(pilot2[1]) * phasemult 
-
-				count += 1
-
-			outbuf[(cline * oaline):(cline + 1) * oaline] = out1 
-
-		# NTSC code!
-		if (0 and insync == 0):
-			# detect error condition - if so, reuse previous begin/end
-			if (np.fabs(end - begin - 131.0) > 3):
-				begin = prev_begin + prev_len
-				end = prev_end + prev_len
-				print(line, begin, end, "error")
-
-			send = prev_begin + ((begin - prev_begin) * scale_line)
-			print(end, send)
-
-			ibegin = np.floor(prev_begin)
-			out1 = scale(indata[ibegin:ibegin+2300], prev_begin - ibegin, send - ibegin, scale_linelen)
-			a1 = burst_detect(out1)	
-			a2 = burst_detect(out1[910:])	
-		
-			if (tgt_angle == 0):
-				tgt_angle = np.pi / 2.0 if wrap_angle(a1[1], np.pi / 2.0) < (np.pi / 2.0) else -np.pi/2.0
-			else:
-				tgt_angle = -tgt_angle
-				
-			print("scale 0", prev_begin, send, a1, a2)
-
-			count = 1
-			err = (np.fabs(wrap_angle(a1[1], tgt_angle)) * 1) + np.fabs(wrap_angle(a2[1], tgt_angle))
-			while (err > .01) and a1[0] > 1500 and a2[0] > 1500 and count < 10:
-				begin_offset = wrap_angle(a1[1], tgt_angle) * phasemult 
-				end_offset = wrap_angle(a2[1], a1[1]) * phasemult 
-				prev_begin += begin_offset - (end_offset * .07)
-				send += begin_offset + (end_offset * 1.0)
-				ibegin = np.floor(prev_begin)
-				out2 = scale(indata[ibegin:ibegin+2300], prev_begin - ibegin, send - ibegin, scale_linelen)
-				a1 = burst_detect(out2)	
-				a2 = burst_detect(out2[910:])	
-#				print("scale", count, " ", prev_begin, send, a1, a2)
-				err = (np.fabs(wrap_angle(a1[1], tgt_angle)) * 1) + np.fabs(wrap_angle(a2[1], tgt_angle))
-				count += 1
-
-			tcount += (count - 1)
+			outbuf[(cline * oline):(cline + 1) * oline] = out1 
 
 #			print("scaler", prev_begin, begin, end = ' ' ) 
 #			rescale = (send - prev_begin) / (scale_linelen * 2)
