@@ -276,7 +276,7 @@ maxire = 140
 hz_ire_scale = (9300000 - 8100000) / 100
 minn = 8100000 + (hz_ire_scale * -60)
 
-hz_ire_scale = (7900000 - 7100000) / 100
+hz_ire_scale = (8000000 - 7100000) / 100
 minn = 6760000 + (hz_ire_scale * -60)
 
 out_scale = 65534.0 / (maxire - minire)
