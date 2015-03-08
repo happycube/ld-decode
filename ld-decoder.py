@@ -7,6 +7,7 @@ import sys
 
 import fdls as fdls
 import matplotlib.pyplot as plt
+import fft8 as fft8 
 
 import getopt
 
@@ -259,6 +260,7 @@ minn = 8100000 + (hz_ire_scale * -60)
 out_scale = 65534.0 / (maxire - minire)
 	
 Bbpf, Abpf = sps.butter(2, [3.2/(freq/2), 13.5/(freq/2)], btype='bandpass')
+#Bbpf, Abpf = sps.butter(3, 3.2/(freq/2), btype='highpass')
 Bcutl, Acutl = sps.butter(1, [2.20/(freq/2), 2.40/(freq/2)], btype='bandstop')
 Bcutr, Acutr = sps.butter(1, [2.70/(freq/2), 2.90/(freq/2)], btype='bandstop')
 # AC3 - Bcutr, Acutr = sps.butter(1, [2.68/(freq/2), 3.08/(freq/2)], btype='bandstop')
@@ -289,7 +291,11 @@ def process_video(data):
 		in_filt = in_filt3
 	else:
 		in_filt = sps.lfilter(f_emp_b, f_emp_a, in_filt3)
-		
+
+#	fft8.plotfft(in_filt3)
+#	#fft8.plotfft(data)
+#	exit()	
+	
 	output = fm_decode(in_filt, freq_hz)
 
 	# save the original fm decoding and align to filters
@@ -492,16 +498,18 @@ def main():
 		if o == "-s":
 			ia = int(a)
 			if ia == 0:
-				lowpass_filter_b, lowpass_filter_a = sps.butter(5, (4.2/(freq/2)), 'low')
+				lowpass_filter_b, lowpass_filter_a = sps.butter(7, (4.2/(freq/2)), 'low')
 			if ia == 1:	
-				lowpass_filter_b, lowpass_filter_a = sps.butter(5, (4.5/(freq/2)), 'low')
+				lowpass_filter_b, lowpass_filter_a = sps.butter(7, (4.4/(freq/2)), 'low')
 			if ia == 2:	
-				lowpass_filter_b, lowpass_filter_a = sps.butter(5, (4.8/(freq/2)), 'low')
+				lowpass_filter_b, lowpass_filter_a = sps.butter(7, (4.7/(freq/2)), 'low')
 			if ia == 3:	
 				# high frequency response - and ringing.  choose your poison ;)	
 				lowpass_filter_b, lowpass_filter_a = sps.butter(10, (5.0/(freq/2)), 'low')
+				lowpass_filter_b, lowpass_filter_a = sps.butter(7, (5.0/(freq/2)), 'low')
 			if ia == 4:	
 				lowpass_filter_b, lowpass_filter_a = sps.butter(10, (5.3/(freq/2)), 'low')
+				lowpass_filter_b, lowpass_filter_a = sps.butter(7, (5.3/(freq/2)), 'low')
 
 
 #	dosplot(lowpass_filter_b, lowpass_filter_a)
