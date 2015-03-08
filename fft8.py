@@ -5,8 +5,10 @@ import numpy as np
 import scipy as sp
 import sys
 
-SAMPLE_RATE = 3.579545 * 8
+SAMPLE_RATE = 8 * 315 / 88.0 
 MAX_SAMPLES = int(1e6)
+
+filename = ""
 
 def load( filename ):
 	if filename.endswith('.ld'):
@@ -22,8 +24,7 @@ def load( filename ):
 		print('Loaded %d bytes of file %s' % (max_samples, filename))
 	return data	
 
-def load_and_plot( filename ):
-	data     = load( filename )
+def plotfft( data , filename = ""):
 	mean     = np.mean(data)
 	rawmax   = max( data )
 	rawmin   = min( data )
@@ -43,4 +44,7 @@ def load_and_plot( filename ):
 					          ( filename, sigrange, rawmax, rawmin, mean, peak_to_background ) )
 	plt.show()
 
-load_and_plot( sys.argv[1] )
+if __name__ == "__main__":
+	data = load( sys.argv[1] )
+	filename = sys.argv[1]
+	plotfft( data , filename)
