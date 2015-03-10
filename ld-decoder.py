@@ -265,7 +265,7 @@ Bcutl, Acutl = sps.butter(1, [2.20/(freq/2), 2.40/(freq/2)], btype='bandstop')
 Bcutr, Acutr = sps.butter(1, [2.70/(freq/2), 2.90/(freq/2)], btype='bandstop')
 # AC3 - Bcutr, Acutr = sps.butter(1, [2.68/(freq/2), 3.08/(freq/2)], btype='bandstop')
 
-lowpass_filter_b, lowpass_filter_a = sps.butter(7, (4.4/(freq/2)), 'low')
+lowpass_filter_b, lowpass_filter_a = sps.butter(5, (4.4/(freq/2)), 'low')
 
 #doplot(Bcutl, Acutl)
 
@@ -492,15 +492,16 @@ def main():
 		if o == "-w":
 #			lowpass_filter_b, lowpass_filter_a = sps.butter(9, (5.0/(freq/2)), 'low')
 #			lowpass_filter_b, lowpass_filter_a = sps.butter(8, (4.8/(freq/2)), 'low')
+			lowpass_filter_b, lowpass_filter_a = sps.butter(7, (4.7/(freq/2)), 'low')
 			wide_mode = 1
 			hz_ire_scale = (9360000 - 8100000) / 100
 			minn = 8100000 + (hz_ire_scale * -60)
 		if o == "-s":
 			ia = int(a)
 			if ia == 0:
-				lowpass_filter_b, lowpass_filter_a = sps.butter(7, (4.2/(freq/2)), 'low')
+				lowpass_filter_b, lowpass_filter_a = sps.butter(5, (4.2/(freq/2)), 'low')
 			if ia == 1:	
-				lowpass_filter_b, lowpass_filter_a = sps.butter(7, (4.4/(freq/2)), 'low')
+				lowpass_filter_b, lowpass_filter_a = sps.butter(5, (4.4/(freq/2)), 'low')
 			if ia == 2:	
 				lowpass_filter_b, lowpass_filter_a = sps.butter(7, (4.7/(freq/2)), 'low')
 			if ia == 3:	
@@ -510,6 +511,12 @@ def main():
 			if ia == 4:	
 				lowpass_filter_b, lowpass_filter_a = sps.butter(10, (5.3/(freq/2)), 'low')
 				lowpass_filter_b, lowpass_filter_a = sps.butter(7, (5.3/(freq/2)), 'low')
+			if ia == 51:	
+				lowpass_filter_b, lowpass_filter_a = sps.butter(5, (4.4/(freq/2)), 'low')
+			if ia == 61:	
+				lowpass_filter_b, lowpass_filter_a = sps.butter(6, (4.4/(freq/2)), 'low')
+			if ia == 62:	
+				lowpass_filter_b, lowpass_filter_a = sps.butter(6, (4.7/(freq/2)), 'low')
 
 
 #	dosplot(lowpass_filter_b, lowpass_filter_a)
