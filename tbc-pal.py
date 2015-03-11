@@ -207,16 +207,18 @@ def process(indata):
 		boffset = 0
 
 		begin = -1
+
+		crosslev = 25000
 		for j in range(peak, peak - 300, -1):
-			if (begin == -1) and (indata_lf[j] > 29000):
+			if (begin == -1) and (indata_lf[j] > crosslev):
 				begin = j
 				boffset = indata_lf[j] - indata_lf[j + 1]
-				begin += (indata_lf[j] - 29000) / boffset
+				begin += (indata_lf[j] - crosslev) / boffset
 #				print(boffset)
 
 		end = -1
 		for j in range(peak, peak + 300, 1):
-			if (end == -1) and (indata_lf[j] > 29000):
+			if (end == -1) and (indata_lf[j] > crosslev):
 				end = j
 
 		if begin > 0 and end > 0:
@@ -300,7 +302,7 @@ buftgt = 1820 * 1200
 indata_valid = 0
 indata = np.empty(buftgt, dtype=np.uint16)
 
-outfile = open("test.tbc", "wb")
+outfile = open("testpal.tbc", "wb")
 
 def main(argv=None):
 	infile = sys.stdin.buffer
