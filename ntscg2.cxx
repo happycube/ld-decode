@@ -385,8 +385,6 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line, bool err =
 		} else {
 			if (pass == 0) begin += (adjust1 * (phasemult / 1.0));
 			if (pass >= 1) end += (adjust2 * (phasemult / 2.0));
-			//begin += (adjust1 * (phasemult / 2.0));
-			//end += (adjust2 * (phasemult / 2.0));
 		}
 
 		Scale(buf, tout, begin, end, scale_tgt); 
@@ -446,14 +444,7 @@ wrapup:
 		frame[oline][h] = clamp(o, 0, 65535);
 		//if (!(oline % 2)) frame[oline][h] = clamp(o, 0, 65535);
 	}
-/*
-        if (bad) {
-                frame[oline][2] = 48000;
-                frame[oline][3] = 48000;
-                frame[oline][4] = 48000;
-                frame[oline][5] = 48000;
-        }
-*/
+
         if (!pass) {
                 frame[oline][2] = 32000;
                 frame[oline][3] = 32000;
@@ -464,7 +455,7 @@ wrapup:
 		prev_offset = begin - orig_begin;
 	}
 
-	cerr << "GAP " << begin - prev_begin << endl;
+	cerr << line << " GAP " << begin - prev_begin << endl;
 	
 	frame[oline][0] = tgt_phase ? 32768 : 16384; 
 	frame[oline][1] = plevel1; 
@@ -567,8 +558,9 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 						if (buf[x] > synclevel) end = x; 
 					}
 
-					bad = (begin < 0) || (end < 0) || (!outofsync && (!InRangeCF(end - begin, 15.5, 18)));
-					cerr << line << ' ' << bad << ' ' << buf[i] << ' ' << synclevel << ' ' << prev_begin << ' ' << begin << ' ' << end << ' ' << end - begin << ' ' << scale_tgt << endl;
+					bad = (begin < 0) || (end < 0) || (!outofsync && (!InRangeCF(end - begin, 15.5, 18)))|| (!outofsync && !first && !InRangeCF(begin - prev_begin, 226.5, 228.5)); 
+		
+					cerr << line << ' ' << bad << ' ' << prev_begin << " : " << begin << ' ' << end << ' ' << end - begin << ' ' << begin - prev_begin << ' ' << scale_tgt << endl;
 				}
 				// normal line
 				if (bad || buf[i] > synclevel) {
