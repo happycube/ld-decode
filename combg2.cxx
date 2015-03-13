@@ -257,7 +257,7 @@ class Comb
 
 				// 2D filtering.  can't do top or bottom line - calced between 1d and 3d because this is
 				// filtered 
-				if (1 && (dim >= 2) && (l >= 4) && (l <= 500)) {
+				if (1 && (dim >= 2) && (l >= 4) && (l <= 503)) {
 					for (int h = 16; h < 840; h++) {
 						double tsi = 0, tsq = 0;
 						int phase = h % 4;
@@ -277,6 +277,9 @@ class Comb
 						c_2df[h] = tc1;
 						c_2d[h] = tc1;
 					}
+				} else {
+					memset(c_2df, 0, sizeof(c_2df));
+					memset(c_2d, 0, sizeof(c_2d));
 				}
 
 				// a = fir1(16, 0.1); printf("%.15f, ", a)
@@ -747,8 +750,8 @@ int main(int argc, char *argv[])
 				break;
 			case 'o':
 				// set output file base name for image mode
-				image_base = (char *)malloc(strlen(optarg) + 1);
-				strncpy(image_base, optarg, strlen(optarg));
+				image_base = (char *)malloc(strlen(optarg) + 2);
+				strncpy(image_base, optarg, strlen(optarg) + 1);
 				break;
 			case 'l':
 				// black out a desired line
