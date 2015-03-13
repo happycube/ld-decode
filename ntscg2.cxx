@@ -491,6 +491,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 	int i, prev = 0;
 	for (i = 500; i < len - syncid_offset; i++) {
 		double level = psync[i];
+		double good_linelen = 1820.0;
 
 		// look for peaks with valid level values
 		if ((level > .08) && (level > psync [i - 1]) && (level > psync [i + 1])) {
@@ -558,17 +559,22 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 						if (buf[x] > synclevel) end = x; 
 					}
 
-					bad = (begin < 0) || (end < 0) || (!outofsync && (!InRangeCF(end - begin, 15.5, 18)))|| (!outofsync && !first && !InRangeCF(begin - prev_begin, 226.5, 228.5)); 
+					bad = (begin < 0) || (end < 0);
+					bad |= (!outofsync && (!InRangeCF(end - begin, 15.5, 18)));
+					
+					bad |= get_oline(line) > 22 && (!InRangeCF(begin - prev_begin, 224.5, 230.5) || !InRangeCF(end - prev_end, 224.5, 230.5)); 
 		
 					cerr << line << ' ' << bad << ' ' << prev_begin << " : " << begin << ' ' << end << ' ' << end - begin << ' ' << begin - prev_begin << ' ' << scale_tgt << endl;
 				}
 				// normal line
 				if (bad || buf[i] > synclevel) {
 					// defective line
-					begin = prev_begin + prev_linelen;
-					end = prev_end + prev_linelen;
+					begin = prev_begin + good_linelen; // prev_linelen;
+					end = prev_end + good_linelen; // prev_linelen;
 					cerr << "BAD " << bad << ' ' << begin << ' ' << end << endl;
-				}
+				} else if ((get_oline(line) > 22) && InRangeCF(begin - prev_begin, 227.0, 229.0)) {
+					good_linelen = prev_begin - begin;
+				} 
 
 				linelen = end - prev_end;
 
