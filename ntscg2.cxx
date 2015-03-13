@@ -506,7 +506,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 			bool canstartsync = true;
 			bool probsync = false;
 	
-			if (!first && !(InRange(line, 261, 265) || InRange(line, 520, 530))) canstartsync = false;	
+			if (!first && !(InRange(line, 262, 265) || InRange(line, 524, 530))) canstartsync = false;	
 
 			probsync = insync && InRangeCF(i - syncstart, 0, 8.9 * 227.5);
 
@@ -527,7 +527,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 							frameno++;
 							write(1, frame, sizeof(frame));
 							memset(frame, 0, sizeof(frame));
-							return i - 32768;
+							return i - 1500;
 						} else {
 							first = false;
 							//ProcessAudio(frameno, v_read + i, abuf);
