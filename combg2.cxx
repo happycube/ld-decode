@@ -21,6 +21,10 @@ bool f_oneframe = false;
 
 bool f_monitor = false;
 
+double p_3dcore = 1.25;
+double p_3drange = 5.5;
+double p_3d2drej = 2;
+
 int debug_line = -1000;
 	
 int dim = 2;
@@ -309,9 +313,15 @@ class Comb
 					int adr = (l * 844) + h;
 
 					if (dim >= 3) {
+						double k2 = abs(p2line[h] - n2line[h]) / (irescale * 15); 
+						double adj = (p_3d2drej - p_3dcore) * (clamp(k2, 0, 1));
+				
 						c[2] = (((p3line[h] + n3line[h]) / 2) - line[h]); 
+						k[h] = v[2] = clamp(1 - ((_k[h] - (p_3dcore + adj)) / p_3drange), 0, 1);
 
-						k[h] = v[2] = clamp(1 - ((_k[h] - 400) / 1800), 0, 1);
+						if (l == (debug_line + 25)) {
+							cerr << "3DC " << h << ' ' << k2 << ' ' << adj << ' ' << k[h] << endl;
+						}
 					} else {
 						k[h] = c[2] = v[2] = 0;
 					}
@@ -702,8 +712,17 @@ int main(int argc, char *argv[])
 
 	opterr = 0;
 	
-	while ((c = getopt(argc, argv, "m8OwvDd:Bb:I:w:i:o:fphn:l:")) != -1) {
+	while ((c = getopt(argc, argv, "c:r:R:m8OwvDd:Bb:I:w:i:o:fphn:l:")) != -1) {
 		switch (c) {
+			case 'c':
+				sscanf(optarg, "%lf", &p_3dcore);
+				break; 
+			case 'r':
+				sscanf(optarg, "%lf", &p_3drange);
+				break; 
+			case 'R':
+				sscanf(optarg, "%lf", &p_3d2drej);
+				break; 
 			case '8':
 				f_write8bit = true;
 				break;
@@ -769,10 +788,13 @@ int main(int argc, char *argv[])
 		namedWindow("comb", WINDOW_AUTOSIZE);
 	}
 
-	black_u16 = ire_to_u16(black_ire);
-	cerr << ' ' << black_u16 << endl;
+	p_3dcore *= irescale;
+	p_3drange *= irescale;
+	p_3d2drej *= irescale;
 
-	nr_y = nr_y * irescale;
+	black_u16 = ire_to_u16(black_ire);
+
+	nr_y *= irescale;
 
 	if (!f_writeimages && strlen(out_filename)) {
 		ofd = open(image_base, O_WRONLY | O_CREAT);
