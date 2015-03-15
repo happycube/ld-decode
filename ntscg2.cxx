@@ -572,6 +572,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 					begin = prev_begin + good_linelen; // prev_linelen;
 					end = prev_end + good_linelen; // prev_linelen;
 					cerr << "BAD " << bad << ' ' << begin << ' ' << end << endl;
+					i = begin + 300; // workaround for double-length line
 				} else if ((get_oline(line) > 22) && InRangeCF(begin - prev_begin, 227.0, 229.0)) {
 					good_linelen = prev_begin - begin;
 				} 
