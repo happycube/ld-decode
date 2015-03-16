@@ -31,14 +31,14 @@ int dim = 2;
 
 // NTSC properties
 const double freq = 4.0;
-const double hlen = 227.5 * freq; 
-const int hleni = (int)hlen; 
+//const double hlen = 227.5 * freq; 
+//const int hleni = (int)hlen; 
 
 const double dotclk = (1000000.0*(315.0/88.0)*freq); 
 const double dots_usec = dotclk / 1000000.0; 
 
 // values for horizontal timings 
-const double line_blanklen = 10.9 * dots_usec;
+//const double line_blanklen = 10.9 * dots_usec;
 
 double irescale = 327.67;
 double irebase = 1;
@@ -145,6 +145,7 @@ const int nframes = 3;	// 3 frames needed for 3D buffer - for now
 
 const int in_y = 505;
 const int in_x = 844;
+const int in_size = in_y * in_x;
 const int out_x = 744;
 
 class Comb
@@ -170,14 +171,15 @@ class Comb
 		uint16_t obuf[out_x * in_y * 3];
 
 		double combbuffer[nframes][3][in_y][in_x];
+		double combk[nframes][3][in_y][in_x];
 
 		uint16_t rawbuffer[nframes][in_x * in_y];
 		double LPraw[nframes][in_x * in_y];
 
 		double aburstlev;	// average color burst
 
-		cline_t cbuf[525];
-		cline_t prevbuf[525];
+		cline_t cbuf[in_y];
+		cline_t prevbuf[in_y];
 
 		Filter *f_hpy, *f_hpi, *f_hpq;
 		Filter *f_hpvy, *f_hpvi, *f_hpvq;
@@ -238,7 +240,6 @@ class Comb
 	
 		void Split(int dim) 
 		{
-			double lp[in_x * in_y];
 			int f = 1;
 		
 			double mse = 0.0;
@@ -255,7 +256,10 @@ class Comb
 					cbuf[l].p[h].q = 0; 
 				}
 			}
-		
+	
+			memset(combbuffer[f], 0, sizeof(double) * 3 * in_size);
+			memset(combk[f], 0, sizeof(double) * 3 * in_size);
+	
 			// precompute 1D comb filter, needed for 2D and optical flow 
 			Split1D(f);
 
@@ -270,18 +274,14 @@ class Comb
 				double *p1line = combbuffer[f][0][l - 2];
 				double *n1line = combbuffer[f][0][l + 2];
 		
-				double f3 = 0, f2 = 0;
 				double si = 0, sq = 0;
 
-				double k[840], c_2d[840], c_2df[840];
+				double k[840];
 
 				// 2D filtering.  can't do top or bottom line - calced between 1d and 3d because this is
 				// filtered 
 				if (1 && (dim >= 2) && (l >= 4) && (l <= 503)) {
 					for (int h = 16; h < 840; h++) {
-						double tsi = 0, tsq = 0;
-						int phase = h % 4;
-
 						double tc1;
 
 						if (l == (debug_line + 25)) {
@@ -291,15 +291,10 @@ class Comb
 
 						tc1  = (combbuffer[f][0][l][h] - p1line[h]);
 						tc1 += (combbuffer[f][0][l][h] - n1line[h]);
-
 						tc1 /= (2 * 2);
 
-						c_2df[h] = tc1;
-						c_2d[h] = tc1;
+						combbuffer[f][1][l][h] = tc1;
 					}
-				} else {
-					memset(c_2df, 0, sizeof(c_2df));
-					memset(c_2d, 0, sizeof(c_2d));
 				}
 
 				// a = fir1(16, 0.1); printf("%.15f, ", a)
@@ -321,10 +316,7 @@ class Comb
 				for (int h = 4; h < 840; h++) {
 					int phase = h % 4;
 
-//					double _k;
-
 					double c[3],  v[3];
-					double err[3];
 				
 					int adr = (l * in_x) + h;
 
@@ -332,19 +324,17 @@ class Comb
 						double k2 = abs(p1line[h] - n1line[h]) / (irescale * 15); 
 						double adj = (p_3d2drej - p_3dcore) * (clamp(k2, 0, 1));
 				
-						c[2] = (((p3line[h] + n3line[h]) / 2) - line[h]); 
-						k[h] = v[2] = clamp(1 - ((_k[h] - (p_3dcore + adj)) / p_3drange), 0, 1);
-
+						c[2] = combbuffer[f][2][l][h] = (((p3line[h] + n3line[h]) / 2) - line[h]); 
+						combk[f][2][l][h] = clamp(1 - ((_k[h] - (p_3dcore + adj)) / p_3drange), 0, 1);
 						if (l == (debug_line + 25)) {
-							cerr << "3DC " << h << ' ' << k2 << ' ' << adj << ' ' << k[h] << endl;
+//							cerr << "3DC " << h << ' ' << k2 << ' ' << adj << ' ' << k[h] << endl;
 						}
 					} else {
-						k[h] = c[2] = v[2] = 0;
+						c[2] = v[2] = 0;
 					}
 				
 					if ((dim >= 2) && (l >= 2) && (l <= 502)) {
-						c[1] = c_2df[h];
-						if (fabs(c_2df[h]) > fabs(c_2d[h])) c[1] = c_2d[h];
+						c[1] = combbuffer[f][1][l][h];
 						v[1] = 1 - v[2];
 					} else {
 						c[1] = v[1] = 0;
@@ -354,11 +344,9 @@ class Comb
 					if (1) {
 						c[0] = combbuffer[f][0][l][h];
 						v[0] = 1 - v[2] - v[1];
-					} else v[0] = 0;
+					} else c[0] = v[0] = 0;
 					
-					double cavg = 0;
-
-					cavg = c[2] * v[2];
+					double cavg = c[2] * v[2];
 					cavg += (c[1] * v[1]);
 					cavg += (c[0] * v[0]);
 
@@ -391,8 +379,7 @@ class Comb
 					}						
 						
 					if (f_bw) {
-						cbuf[l].p[h].i = 0;  
-						cbuf[l].p[h].q = 0; 
+						cbuf[l].p[h].i = cbuf[l].p[h].q = 0;  
 					}
 
 					if (l == (debug_line + 25)) {
@@ -434,7 +421,7 @@ class Comb
 					}
 
 					if (fabs(a) <= nr_y) {
-						double hpm = (a / nr_y);
+//						double hpm = (a / nr_y);
 //						a *= (1 - fabs(hpm * hpm * hpm));
 						input->p[h].y -= a;
 						if (l == (debug_line + 25)) cerr << a << ' ' << input->p[h].y << endl; 
@@ -662,7 +649,7 @@ class Comb
 
 			for (int line = 16; line < 20; line++) {
 				int new_framecode = ReadPhillipsCode(&rawbuffer[fnum][line * in_x]); // - 0xf80000;
-				int fca = new_framecode & 0xf80000;
+				//int fca = new_framecode & 0xf80000;
 
 				if (((new_framecode & 0xf00000) == 0xf00000) && (new_framecode < 0xff0000)) {
 					int ofstart = fstart;
