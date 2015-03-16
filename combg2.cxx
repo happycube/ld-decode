@@ -325,7 +325,7 @@ class Comb
 						double adj = (p_3d2drej - p_3dcore) * (clamp(k2, 0, 1));
 				
 						c[2] = combbuffer[f][2][l][h] = (((p3line[h] + n3line[h]) / 2) - line[h]); 
-						combk[f][2][l][h] = clamp(1 - ((_k[h] - (p_3dcore + adj)) / p_3drange), 0, 1);
+						v[2] = combk[f][2][l][h] = clamp(1 - ((_k[h] - (p_3dcore + adj)) / p_3drange), 0, 1);
 						if (l == (debug_line + 25)) {
 //							cerr << "3DC " << h << ' ' << k2 << ' ' << adj << ' ' << k[h] << endl;
 						}
@@ -335,7 +335,7 @@ class Comb
 				
 					if ((dim >= 2) && (l >= 2) && (l <= 502)) {
 						c[1] = combbuffer[f][1][l][h];
-						v[1] = 1 - v[2];
+						v[1] = combk[f][1][l][h] = 1 - combk[f][2][l][h];
 					} else {
 						c[1] = v[1] = 0;
 					}
@@ -343,17 +343,30 @@ class Comb
 					// 1D 
 					if (1) {
 						c[0] = combbuffer[f][0][l][h];
-						v[0] = 1 - v[2] - v[1];
+						v[0] = combk[f][0][l][h] = 1 - combk[f][2][l][h] - combk[f][1][l][h];
 					} else c[0] = v[0] = 0;
-					
-					double cavg = c[2] * v[2];
-					cavg += (c[1] * v[1]);
-					cavg += (c[0] * v[0]);
+#if 0
+				}
+			}	
+	
+			for (int l = 24; l < in_y; l++) {
+				double msel = 0.0, sel = 0.0;
+				uint16_t *line = &rawbuffer[f][l * in_x];	
+				bool invertphase = (line[0] == 16384);
+
+				for (int h = 4; h < 840; h++) {
+					int phase = h % 4;
+					double si = 0, sq = 0;
+#endif		
+					double cavg = 0;
+					cavg += (combbuffer[f][2][l][h] * combk[f][2][l][h]);
+					cavg += (combbuffer[f][1][l][h] * combk[f][1][l][h]);
+					cavg += (combbuffer[f][0][l][h] * combk[f][0][l][h]);
 
 					cavg /= 2;
 
 					if (f_debug2d) {
-						cavg = c[1] - c[2];
+						cavg = combbuffer[f][1][l][h] - combbuffer[f][2][l][h];
 						msel += (cavg * cavg);
 						sel += fabs(cavg);
 					}
@@ -375,7 +388,7 @@ class Comb
 
 					if (l == (debug_line + 25)) {
 //						_k = fabs(LPraw[1][adr - (in_x * 2)] - LPraw[1][adr]) + fabs(LPraw[1][adr + (in_x * 2)] - LPraw[1][adr]);
-						cerr << h << ' ' << c[1] - c[2] << ' ' << c[1] << ' ' << c[2] << ' ' << LPraw[1][adr - (in_x * 2)] << ' ' << LPraw[1][adr] << ' ' << LPraw[1][adr + (in_x * 2)] << endl;
+//						cerr << h << ' ' << combbuffer[f][1][l][h] - combbuffer[f][2][l][h] << ' ' << c[1] << ' ' << c[2] << ' ' << LPraw[1][adr - (in_x * 2)] << ' ' << LPraw[1][adr] << ' ' << LPraw[1][adr + (in_x * 2)] << endl;
 					}						
 						
 					if (f_bw) {
@@ -383,7 +396,7 @@ class Comb
 					}
 
 					if (l == (debug_line + 25)) {
-						cerr << "E " << h << ' ' << si << ' ' << sq << ' ' << c[1] << ' ' << c[2] << ' ' << k[h] << endl;
+//						cerr << "E " << h << ' ' << si << ' ' << sq << ' ' << c[1] << ' ' << c[2] << ' ' << k[h] << endl;
 					}
 				}
 				if (f_debug2d && (l >= 6) && (l <= 500)) {
