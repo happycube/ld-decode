@@ -141,6 +141,8 @@ typedef struct cline {
 
 int write_locs = -1;
 
+const int nframes = 3;	// 3 frames needed for 3D buffer - for now
+
 class Comb
 {
 	protected:
@@ -163,8 +165,10 @@ class Comb
 		uint16_t BGRoutput[744 * 505 * 3];
 		uint16_t obuf[744 * 505 * 3];
 
-		uint16_t rawbuffer[3][844 * 505];
-		double LPraw[3][844 * 505];
+		double d1buffer[505][844];
+
+		uint16_t rawbuffer[nframes][844 * 505];
+		double LPraw[nframes][844 * 505];
 
 		double aburstlev;	// average color burst
 
@@ -182,31 +186,17 @@ class Comb
 				}
 			}
 		}
-	
-		void Split(int dim) 
+
+		void ColorProc(int frame, int dim)
 		{
-			double lp[844 * 505];
-			int f = 1;
-		
-			double mse = 0.0;
-			double me = 0.0;
-	
-			if (dim < 3) f = 0;
-		
-			for (int l = 0; l < 24; l++) {
-				uint16_t *line = &rawbuffer[f][l * 844];	
-					
-				for (int h = 4; h < 840; h++) {
-					cbuf[l].p[h].y = line[h]; 
-					cbuf[l].p[h].i = 0; 
-					cbuf[l].p[h].q = 0; 
-				}
-			}
-		
-			double d1buffer[505][844];
-			// precompute 1D comb filter, needed for 2D 
+
+		}
+
+		// precompute 1D comb filter, needed for 2D and optical flow 
+		void Split1D(int frame)
+		{
 			for (int l = 24; l < 505; l++) {
-				uint16_t *line = &rawbuffer[f][l * 844];	
+				uint16_t *line = &rawbuffer[frame][l * 844];	
 				bool invertphase = (line[0] == 16384);
 
 				Filter f_1di((dim == 3) ? f_colorwlp4 : f_colorwlp4);
@@ -240,6 +230,30 @@ class Comb
 					}
 				}
 			}
+		}
+	
+		void Split(int dim) 
+		{
+			double lp[844 * 505];
+			int f = 1;
+		
+			double mse = 0.0;
+			double me = 0.0;
+	
+			if (dim < 3) f = 0;
+		
+			for (int l = 0; l < 24; l++) {
+				uint16_t *line = &rawbuffer[f][l * 844];	
+					
+				for (int h = 4; h < 840; h++) {
+					cbuf[l].p[h].y = line[h]; 
+					cbuf[l].p[h].i = 0; 
+					cbuf[l].p[h].q = 0; 
+				}
+			}
+		
+			// precompute 1D comb filter, needed for 2D and optical flow 
+			Split1D(f);
 
 			for (int l = 24; l < 505; l++) {
 				uint16_t *line = &rawbuffer[f][l * 844];	
@@ -249,10 +263,8 @@ class Comb
 				uint16_t *p3line = &rawbuffer[0][l * 844];	
 				uint16_t *n3line = &rawbuffer[2][l * 844];	
 		
-				double *p2line = d1buffer[l - 4];
 				double *p1line = d1buffer[l - 2];
 				double *n1line = d1buffer[l + 2];
-				double *n2line = d1buffer[l + 4];
 		
 				double f3 = 0, f2 = 0;
 				double si = 0, sq = 0;
@@ -270,7 +282,7 @@ class Comb
 
 						if (l == (debug_line + 25)) {
 							//cerr << "2D " << h << ' ' << d1buffer[l][h] << ' ' << p1line[h] << ' ' << n1line[h] << endl;
-							cerr << "2D " << h << ' ' << p2line[h] << ' ' <<  p1line[h] << ' ' << d1buffer[l][h] << ' ' << n1line[h] << ' ' << n2line[h] << endl;
+							cerr << "2D " << h << ' ' << p1line[h] << ' ' << d1buffer[l][h] << ' ' << n1line[h] << ' ' << endl;
 						}	
 
 						tc1  = (d1buffer[l][h] - p1line[h]);
@@ -313,7 +325,7 @@ class Comb
 					int adr = (l * 844) + h;
 
 					if (dim >= 3) {
-						double k2 = abs(p2line[h] - n2line[h]) / (irescale * 15); 
+						double k2 = abs(p1line[h] - n1line[h]) / (irescale * 15); 
 						double adj = (p_3d2drej - p_3dcore) * (clamp(k2, 0, 1));
 				
 						c[2] = (((p3line[h] + n3line[h]) / 2) - line[h]); 
@@ -505,8 +517,9 @@ class Comb
 				write(ofd, obuf, (744 * linesout * 3) * 2);
 				close(ofd);
 			}
+
 			if (f_monitor) {
-//				Mat pic = Mat::zeros(480, 744, CV_16UC3);
+				// OpenCV wants BGR, not RGB
 
 				for (int y = 0; y < 480; y++) {
 					for (int x = 0; x < 744; x++) {
@@ -525,6 +538,7 @@ class Comb
 				imshow("comb", rpic);	
 				waitKey(f_oneframe ? 0 : 1);
 			}
+
 			if (f_oneframe) exit(0);
 			frames_out++;
 		}
