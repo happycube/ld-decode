@@ -242,9 +242,6 @@ class Comb
 		{
 			int f = 1;
 		
-			double mse = 0.0;
-			double me = 0.0;
-	
 			if (dim < 3) f = 0;
 		
 			for (int l = 0; l < 24; l++) {
@@ -263,9 +260,11 @@ class Comb
 			// precompute 1D comb filter, needed for 2D and optical flow 
 			Split1D(f);
 
+			// get IQ 
+			SplitIQ(f);
+
 			for (int l = 24; l < in_y; l++) {
 				uint16_t *line = &rawbuffer[f][l * in_x];	
-				bool invertphase = (line[0] == 16384);
 		
 				// shortcuts for previous/next 1D/pixel lines	
 				uint16_t *p3line = &rawbuffer[0][l * in_x];	
@@ -274,10 +273,6 @@ class Comb
 				double *p1line = combbuffer[f][0][l - 2];
 				double *n1line = combbuffer[f][0][l + 2];
 		
-				double si = 0, sq = 0;
-
-				double k[840];
-
 				// 2D filtering.  can't do top or bottom line - calced between 1d and 3d because this is
 				// filtered 
 				if (1 && (dim >= 2) && (l >= 4) && (l <= 503)) {
@@ -312,59 +307,50 @@ class Comb
 					if (h >= 836) _k[h] = __k;
 				}
 	
-				double msel = 0.0, sel = 0.0;
 				for (int h = 4; h < 840; h++) {
-					int phase = h % 4;
-
-					double c[3],  v[3];
-				
-					int adr = (l * in_x) + h;
-
 					if (dim >= 3) {
 						double k2 = abs(p1line[h] - n1line[h]) / (irescale * 15); 
 						double adj = (p_3d2drej - p_3dcore) * (clamp(k2, 0, 1));
 				
-						c[2] = combbuffer[f][2][l][h] = (((p3line[h] + n3line[h]) / 2) - line[h]); 
-						v[2] = combk[f][2][l][h] = clamp(1 - ((_k[h] - (p_3dcore + adj)) / p_3drange), 0, 1);
+						combbuffer[f][2][l][h] = (((p3line[h] + n3line[h]) / 2) - line[h]); 
+						combk[f][2][l][h] = clamp(1 - ((_k[h] - (p_3dcore + adj)) / p_3drange), 0, 1);
 						if (l == (debug_line + 25)) {
 //							cerr << "3DC " << h << ' ' << k2 << ' ' << adj << ' ' << k[h] << endl;
 						}
-					} else {
-						c[2] = v[2] = 0;
 					}
 				
 					if ((dim >= 2) && (l >= 2) && (l <= 502)) {
-						c[1] = combbuffer[f][1][l][h];
-						v[1] = combk[f][1][l][h] = 1 - combk[f][2][l][h];
-					} else {
-						c[1] = v[1] = 0;
+						combk[f][1][l][h] = 1 - combk[f][2][l][h];
 					}
 					
 					// 1D 
-					if (1) {
-						c[0] = combbuffer[f][0][l][h];
-						v[0] = combk[f][0][l][h] = 1 - combk[f][2][l][h] - combk[f][1][l][h];
-					} else c[0] = v[0] = 0;
-#if 0
+					combk[f][0][l][h] = 1 - combk[f][2][l][h] - combk[f][1][l][h];
 				}
 			}	
-	
+
+			// Now get the proper IQ values with 2D and 3D filtering
+			SplitIQ(f);
+		}	
+
+		void SplitIQ(int f) {
+			double mse = 0.0;
+			double me = 0.0;
 			for (int l = 24; l < in_y; l++) {
 				double msel = 0.0, sel = 0.0;
 				uint16_t *line = &rawbuffer[f][l * in_x];	
 				bool invertphase = (line[0] == 16384);
 
+				double si = 0, sq = 0;
 				for (int h = 4; h < 840; h++) {
 					int phase = h % 4;
-					double si = 0, sq = 0;
-#endif		
 					double cavg = 0;
+
 					cavg += (combbuffer[f][2][l][h] * combk[f][2][l][h]);
 					cavg += (combbuffer[f][1][l][h] * combk[f][1][l][h]);
 					cavg += (combbuffer[f][0][l][h] * combk[f][0][l][h]);
 
 					cavg /= 2;
-
+					
 					if (f_debug2d) {
 						cavg = combbuffer[f][1][l][h] - combbuffer[f][2][l][h];
 						msel += (cavg * cavg);
@@ -546,6 +532,35 @@ class Comb
 			if (f_oneframe) exit(0);
 			frames_out++;
 		}
+
+		void AdjustY(int f) {
+			int firstline = (linesout == in_y) ? 0 : 25;
+			// remove color data from baseband (Y)	
+			for (int l = firstline; l < in_y; l++) {
+				bool invertphase = (rawbuffer[f][l * in_x] == 16384);
+
+				for (int h = 0; h < 760; h++) {
+					double comp;	
+					int phase = h % 4;
+
+					YIQ y = cbuf[l].p[h + 70];
+
+					switch (phase) {
+						case 0: comp = y.i; break;
+						case 1: comp = -y.q; break;
+						case 2: comp = -y.i; break;
+						case 3: comp = y.q; break;
+						default: break;
+					}
+
+					if (invertphase) comp = -comp;
+					y.y += comp;
+
+					cbuf[l].p[h + 70] = y;
+				}
+			}
+
+		}
 		
 		// buffer: in_xxin_y uint16_t array
 		void Process(uint16_t *buffer, int dim = 2)
@@ -573,31 +588,8 @@ class Comb
 	
 			Split(dim); 
 
-			// remove color data from baseband (Y)	
-			for (int l = firstline; l < in_y; l++) {
-				bool invertphase = (rawbuffer[f][l * in_x] == 16384);
+			AdjustY(f);
 
-				for (int h = 0; h < 760; h++) {
-					double comp;	
-					int phase = h % 4;
-
-					YIQ y = cbuf[l].p[h + 70];
-
-					switch (phase) {
-						case 0: comp = y.i; break;
-						case 1: comp = -y.q; break;
-						case 2: comp = -y.i; break;
-						case 3: comp = y.q; break;
-						default: break;
-					}
-
-					if (invertphase) comp = -comp;
-					y.y += comp;
-
-					cbuf[l].p[h + 70] = y;
-				}
-			}
-			
 			DoYNR();
 		
 			// YIQ (YUV?) -> RGB conversion	
