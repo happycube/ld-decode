@@ -143,6 +143,10 @@ int write_locs = -1;
 
 const int nframes = 3;	// 3 frames needed for 3D buffer - for now
 
+const int in_y = 505;
+const int in_x = 844;
+const int out_x = 744;
+
 class Comb
 {
 	protected:
@@ -161,14 +165,14 @@ class Comb
 	
 		uint16_t frame[1820 * 530];
 
-		uint16_t output[744 * 505 * 3];
-		uint16_t BGRoutput[744 * 505 * 3];
-		uint16_t obuf[744 * 505 * 3];
+		uint16_t output[out_x * in_y * 3];
+		uint16_t BGRoutput[out_x * in_y * 3];
+		uint16_t obuf[out_x * in_y * 3];
 
-		double d1buffer[505][844];
+		double combbuffer[nframes][3][in_y][in_x];
 
-		uint16_t rawbuffer[nframes][844 * 505];
-		double LPraw[nframes][844 * 505];
+		uint16_t rawbuffer[nframes][in_x * in_y];
+		double LPraw[nframes][in_x * in_y];
 
 		double aburstlev;	// average color burst
 
@@ -180,9 +184,9 @@ class Comb
 
 		void LPFrame(int fnum)
 		{
-			for (int l = 24; l < 505; l++) {
-				for (int h = 32; h < 844; h++) {
-					LPraw[fnum][(l * 844) + h - 16] = f_lpf_comb.feed(rawbuffer[fnum][(l * 844) + h]);
+			for (int l = 24; l < in_y; l++) {
+				for (int h = 32; h < in_x; h++) {
+					LPraw[fnum][(l * in_x) + h - 16] = f_lpf_comb.feed(rawbuffer[fnum][(l * in_x) + h]);
 				}
 			}
 		}
@@ -195,8 +199,8 @@ class Comb
 		// precompute 1D comb filter, needed for 2D and optical flow 
 		void Split1D(int frame)
 		{
-			for (int l = 24; l < 505; l++) {
-				uint16_t *line = &rawbuffer[frame][l * 844];	
+			for (int l = 24; l < in_y; l++) {
+				uint16_t *line = &rawbuffer[frame][l * in_x];	
 				bool invertphase = (line[0] == 16384);
 
 				Filter f_1di((dim == 3) ? f_colorwlp4 : f_colorwlp4);
@@ -223,10 +227,10 @@ class Comb
 						tc1f = -tc1f;
 					}
 
-					d1buffer[l][h - f_toffset] = tc1f;					
+					combbuffer[frame][0][l][h - f_toffset] = tc1f;					
 
 					if (l == (debug_line + 25)) {
-						cerr << h << ' ' << line[h - 4] << ' ' << line[h - 2] << ' ' << line[h] << ' ' << line[h + 2] << ' ' << line[h + 4] << ' ' << tc1 << ' ' << d1buffer[l][h - f_toffset] << endl;
+						cerr << h << ' ' << line[h - 4] << ' ' << line[h - 2] << ' ' << line[h] << ' ' << line[h + 2] << ' ' << line[h + 4] << ' ' << tc1 << ' ' << combbuffer[frame][0][l][h - f_toffset] << endl;
 					}
 				}
 			}
@@ -234,7 +238,7 @@ class Comb
 	
 		void Split(int dim) 
 		{
-			double lp[844 * 505];
+			double lp[in_x * in_y];
 			int f = 1;
 		
 			double mse = 0.0;
@@ -243,7 +247,7 @@ class Comb
 			if (dim < 3) f = 0;
 		
 			for (int l = 0; l < 24; l++) {
-				uint16_t *line = &rawbuffer[f][l * 844];	
+				uint16_t *line = &rawbuffer[f][l * in_x];	
 					
 				for (int h = 4; h < 840; h++) {
 					cbuf[l].p[h].y = line[h]; 
@@ -255,16 +259,16 @@ class Comb
 			// precompute 1D comb filter, needed for 2D and optical flow 
 			Split1D(f);
 
-			for (int l = 24; l < 505; l++) {
-				uint16_t *line = &rawbuffer[f][l * 844];	
+			for (int l = 24; l < in_y; l++) {
+				uint16_t *line = &rawbuffer[f][l * in_x];	
 				bool invertphase = (line[0] == 16384);
 		
 				// shortcuts for previous/next 1D/pixel lines	
-				uint16_t *p3line = &rawbuffer[0][l * 844];	
-				uint16_t *n3line = &rawbuffer[2][l * 844];	
+				uint16_t *p3line = &rawbuffer[0][l * in_x];	
+				uint16_t *n3line = &rawbuffer[2][l * in_x];	
 		
-				double *p1line = d1buffer[l - 2];
-				double *n1line = d1buffer[l + 2];
+				double *p1line = combbuffer[f][0][l - 2];
+				double *n1line = combbuffer[f][0][l + 2];
 		
 				double f3 = 0, f2 = 0;
 				double si = 0, sq = 0;
@@ -281,12 +285,12 @@ class Comb
 						double tc1;
 
 						if (l == (debug_line + 25)) {
-							//cerr << "2D " << h << ' ' << d1buffer[l][h] << ' ' << p1line[h] << ' ' << n1line[h] << endl;
-							cerr << "2D " << h << ' ' << p1line[h] << ' ' << d1buffer[l][h] << ' ' << n1line[h] << ' ' << endl;
+							//cerr << "2D " << h << ' ' << combbuffer[l][h] << ' ' << p1line[h] << ' ' << n1line[h] << endl;
+							cerr << "2D " << h << ' ' << p1line[h] << ' ' << combbuffer[f][0][l][h] << ' ' << n1line[h] << ' ' << endl;
 						}	
 
-						tc1  = (d1buffer[l][h] - p1line[h]);
-						tc1 += (d1buffer[l][h] - n1line[h]);
+						tc1  = (combbuffer[f][0][l][h] - p1line[h]);
+						tc1 += (combbuffer[f][0][l][h] - n1line[h]);
 
 						tc1 /= (2 * 2);
 
@@ -302,9 +306,9 @@ class Comb
 				Filter lp_3d({0.005719569452904, 0.009426612841315, 0.019748592575455, 0.036822680065252, 0.058983880135427, 0.082947830292278, 0.104489989820068, 0.119454688318951, 0.124812312996699, 0.119454688318952, 0.104489989820068, 0.082947830292278, 0.058983880135427, 0.036822680065252, 0.019748592575455, 0.009426612841315, 0.005719569452904}, {1.0});
 
 				// need to prefilter K using a LPF
-				double _k[844];
+				double _k[in_x];
 				for (int h = 4; (dim >= 3) && (h < 840); h++) {
-					int adr = (l * 844) + h;
+					int adr = (l * in_x) + h;
 
 					double __k = abs(rawbuffer[0][adr] - rawbuffer[2][adr]); 
 					__k += abs((rawbuffer[1][adr] - rawbuffer[2][adr]) - (rawbuffer[1][adr] - rawbuffer[0][adr])); 
@@ -322,7 +326,7 @@ class Comb
 					double c[3],  v[3];
 					double err[3];
 				
-					int adr = (l * 844) + h;
+					int adr = (l * in_x) + h;
 
 					if (dim >= 3) {
 						double k2 = abs(p1line[h] - n1line[h]) / (irescale * 15); 
@@ -348,7 +352,7 @@ class Comb
 					
 					// 1D 
 					if (1) {
-						c[0] = d1buffer[l][h];
+						c[0] = combbuffer[f][0][l][h];
 						v[0] = 1 - v[2] - v[1];
 					} else v[0] = 0;
 					
@@ -382,8 +386,8 @@ class Comb
 					cbuf[l].p[h].q = sq; 
 
 					if (l == (debug_line + 25)) {
-//						_k = fabs(LPraw[1][adr - (844 * 2)] - LPraw[1][adr]) + fabs(LPraw[1][adr + (844 * 2)] - LPraw[1][adr]);
-						cerr << h << ' ' << c[1] - c[2] << ' ' << c[1] << ' ' << c[2] << ' ' << LPraw[1][adr - (844 * 2)] << ' ' << LPraw[1][adr] << ' ' << LPraw[1][adr + (844 * 2)] << endl;
+//						_k = fabs(LPraw[1][adr - (in_x * 2)] - LPraw[1][adr]) + fabs(LPraw[1][adr + (in_x * 2)] - LPraw[1][adr]);
+						cerr << h << ' ' << c[1] - c[2] << ' ' << c[1] << ' ' << c[2] << ' ' << LPraw[1][adr - (in_x * 2)] << ' ' << LPraw[1][adr] << ' ' << LPraw[1][adr + (in_x * 2)] << endl;
 					}						
 						
 					if (f_bw) {
@@ -407,18 +411,18 @@ class Comb
 		}
 					
 		void DoYNR() {
-			int firstline = (linesout == 505) ? 0 : 23;
+			int firstline = (linesout == in_y) ? 0 : 23;
 			if (nr_y < 0) return;
 
-			for (int l = firstline; l < 505; l++) {
-				YIQ hplinef[844];
+			for (int l = firstline; l < in_y; l++) {
+				YIQ hplinef[in_x];
 				cline_t *input = &cbuf[l];
 
 				for (int h = 70; h <= 752 + 80; h++) {
 					hplinef[h].y = f_hpy->feed(input->p[h].y);
 				}
 				
-				for (int h = 70; h < 744 + 70; h++) {
+				for (int h = 70; h < out_x + 70; h++) {
 					double a = hplinef[h + 12].y;
 
 					if (l == (debug_line + 25)) {
@@ -499,14 +503,14 @@ class Comb
 			cerr << "WR" << fnum << endl;
 			if (!f_writeimages) {
 				if (!f_write8bit) {
-					write(ofd, obuf, (744 * linesout * 3) * 2);
+					write(ofd, obuf, (out_x * linesout * 3) * 2);
 				} else {
-					uint8_t obuf8[744 * linesout * 3];	
+					uint8_t obuf8[out_x * linesout * 3];	
 
-					for (int i = 0; i < (744 * linesout * 3); i++) {
+					for (int i = 0; i < (out_x * linesout * 3); i++) {
 						obuf8[i] = obuf[i] >> 8;
 					}
-					write(ofd, obuf8, (744 * linesout * 3));
+					write(ofd, obuf8, (out_x * linesout * 3));
 				}		
 			} else {
 				char ofname[512];
@@ -514,7 +518,7 @@ class Comb
 				sprintf(ofname, "%s%d.rgb", image_base, fnum); 
 				cerr << "W " << ofname << endl;
 				ofd = open(ofname, O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR | S_IROTH);
-				write(ofd, obuf, (744 * linesout * 3) * 2);
+				write(ofd, obuf, (out_x * linesout * 3) * 2);
 				close(ofd);
 			}
 
@@ -522,15 +526,15 @@ class Comb
 				// OpenCV wants BGR, not RGB
 
 				for (int y = 0; y < 480; y++) {
-					for (int x = 0; x < 744; x++) {
-						BGRoutput[(((y * 744) + x) * 3) + 0] = obuf[(((y * 744) + x) * 3) + 2];
-						BGRoutput[(((y * 744) + x) * 3) + 1] = obuf[(((y * 744) + x) * 3) + 1];
-						BGRoutput[(((y * 744) + x) * 3) + 2] = obuf[(((y * 744) + x) * 3) + 0];
-//						pic.at<Scalar_<uint16_t>>(x,y) = Scalar_<uint16_t>(obuf[(((y * 744) + x) * 3) + 2], obuf[(((y * 744) + x) * 3) + 1], obuf[(((y * 744) + x) * 3) + 0]); 
+					for (int x = 0; x < out_x; x++) {
+						BGRoutput[(((y * out_x) + x) * 3) + 0] = obuf[(((y * out_x) + x) * 3) + 2];
+						BGRoutput[(((y * out_x) + x) * 3) + 1] = obuf[(((y * out_x) + x) * 3) + 1];
+						BGRoutput[(((y * out_x) + x) * 3) + 2] = obuf[(((y * out_x) + x) * 3) + 0];
+//						pic.at<Scalar_<uint16_t>>(x,y) = Scalar_<uint16_t>(obuf[(((y * out_x) + x) * 3) + 2], obuf[(((y * out_x) + x) * 3) + 1], obuf[(((y * out_x) + x) * 3) + 0]); 
 					}
 				}
 				
-				Mat pic = Mat(480, 744, CV_16UC3, BGRoutput);
+				Mat pic = Mat(480, out_x, CV_16UC3, BGRoutput);
 				Mat rpic;
 
 				resize(pic, rpic, Size(1280,960));
@@ -543,20 +547,20 @@ class Comb
 			frames_out++;
 		}
 		
-		// buffer: 844x505 uint16_t array
+		// buffer: in_xxin_y uint16_t array
 		void Process(uint16_t *buffer, int dim = 2)
 		{
-			int firstline = (linesout == 505) ? 0 : 25;
+			int firstline = (linesout == in_y) ? 0 : 25;
 			int f = (dim == 3) ? 1 : 0;
 
 			cerr << "P " << f << ' ' << dim << endl;
 
-			memcpy(rawbuffer[2], rawbuffer[1], (844 * 505 * 2));
-			memcpy(rawbuffer[1], rawbuffer[0], (844 * 505 * 2));
-			memcpy(rawbuffer[0], buffer, (844 * 505 * 2));
+			memcpy(rawbuffer[2], rawbuffer[1], (in_x * in_y * 2));
+			memcpy(rawbuffer[1], rawbuffer[0], (in_x * in_y * 2));
+			memcpy(rawbuffer[0], buffer, (in_x * in_y * 2));
 			
-			memcpy(LPraw[2], LPraw[1], (844 * 505 * sizeof(double)));
-			memcpy(LPraw[1], LPraw[0], (844 * 505 * sizeof(double)));
+			memcpy(LPraw[2], LPraw[1], (in_x * in_y * sizeof(double)));
+			memcpy(LPraw[1], LPraw[0], (in_x * in_y * sizeof(double)));
 		
 			memcpy(prevbuf, cbuf, sizeof(cbuf));
 	
@@ -570,8 +574,8 @@ class Comb
 			Split(dim); 
 
 			// remove color data from baseband (Y)	
-			for (int l = firstline; l < 505; l++) {
-				bool invertphase = (rawbuffer[f][l * 844] == 16384);
+			for (int l = firstline; l < in_y; l++) {
+				bool invertphase = (rawbuffer[f][l * in_x] == 16384);
 
 				for (int h = 0; h < 760; h++) {
 					double comp;	
@@ -597,9 +601,9 @@ class Comb
 			DoYNR();
 		
 			// YIQ (YUV?) -> RGB conversion	
-			for (int l = firstline; l < 505; l++) {
-				double burstlev = rawbuffer[f][(l * 844) + 1] / irescale;
-				uint16_t *line_output = &output[(744 * 3 * (l - firstline))];
+			for (int l = firstline; l < in_y; l++) {
+				double burstlev = rawbuffer[f][(l * in_x) + 1] / irescale;
+				uint16_t *line_output = &output[(out_x * 3 * (l - firstline))];
 				int o = 0;
 
 				if (burstlev > 5) {
@@ -640,7 +644,7 @@ class Comb
 				fstart = 0;
 			} else if (f_oddframe) {
 				for (int i = 1; i < linesout; i += 2) {
-					memcpy(&obuf[744 * 3 * i], &output[744 * 3 * i], 744 * 3 * 2); 
+					memcpy(&obuf[out_x * 3 * i], &output[out_x * 3 * i], out_x * 3 * 2); 
 				}
 				WriteFrame(obuf, framecode);
 				f_oddframe = false;		
@@ -649,7 +653,7 @@ class Comb
 			for (int line = 4; line <= 5; line++) {
 				int wc = 0;
 				for (int i = 0; i < 700; i++) {
-					if (rawbuffer[fnum][(844 * line) + i] > 45000) wc++;
+					if (rawbuffer[fnum][(in_x * line) + i] > 45000) wc++;
 				} 
 				if (wc > 500) {
 					fstart = (line % 2); 
@@ -657,7 +661,7 @@ class Comb
 			}
 
 			for (int line = 16; line < 20; line++) {
-				int new_framecode = ReadPhillipsCode(&rawbuffer[fnum][line * 844]); // - 0xf80000;
+				int new_framecode = ReadPhillipsCode(&rawbuffer[fnum][line * in_x]); // - 0xf80000;
 				int fca = new_framecode & 0xf80000;
 
 				if (((new_framecode & 0xf00000) == 0xf00000) && (new_framecode < 0xff0000)) {
@@ -685,7 +689,7 @@ class Comb
 				WriteFrame(output, framecode);
 			} else if (fstart == 1) {
 				for (int i = 0; i < linesout; i += 2) {
-					memcpy(&obuf[744 * 3 * i], &output[744 * 3 * i], 744 * 3 * 2); 
+					memcpy(&obuf[out_x * 3 * i], &output[out_x * 3 * i], out_x * 3 * 2); 
 				}
 				f_oddframe = true;
 				cerr << "odd frame\n";
@@ -714,7 +718,7 @@ int main(int argc, char *argv[])
 {
 	int rv = 0, fd = 0;
 	long long dlen = -1, tproc = 0;
-	unsigned short inbuf[844 * 525 * 2];
+	unsigned short inbuf[in_x * 525 * 2];
 	unsigned char *cinbuf = (unsigned char *)inbuf;
 	int c;
 
@@ -752,7 +756,7 @@ int main(int argc, char *argv[])
 				break;
 			case 'v':
 				// copy in VBI area (B&W)
-				linesout = 505;
+				linesout = in_y;
 				break;
 			case 'B':
 				// B&W mode
@@ -816,7 +820,7 @@ int main(int argc, char *argv[])
 
 	cout << std::setprecision(8);
 
-	int bufsize = 844 * 505 * 2;
+	int bufsize = in_x * in_y * 2;
 
 	rv = read(fd, inbuf, bufsize);
 	while ((rv > 0) && (rv < bufsize)) {
