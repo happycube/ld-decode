@@ -179,6 +179,7 @@ class Comb
 		double aburstlev;	// average color burst
 
 		cline_t cbuf[in_y];
+		cline_t tbuf[in_y];
 		cline_t prevbuf[in_y];
 
 		Filter *f_hpy, *f_hpi, *f_hpq;
@@ -238,31 +239,8 @@ class Comb
 			}
 		}
 	
-		void Split(int dim) 
+		void Split23D(int f, int dim) 
 		{
-			int f = 1;
-		
-			if (dim < 3) f = 0;
-		
-			for (int l = 0; l < 24; l++) {
-				uint16_t *line = &rawbuffer[f][l * in_x];	
-					
-				for (int h = 4; h < 840; h++) {
-					cbuf[l].p[h].y = line[h]; 
-					cbuf[l].p[h].i = 0; 
-					cbuf[l].p[h].q = 0; 
-				}
-			}
-	
-			memset(combbuffer[f], 0, sizeof(double) * 3 * in_size);
-			memset(combk[f], 0, sizeof(double) * 3 * in_size);
-	
-			// precompute 1D comb filter, needed for 2D and optical flow 
-			Split1D(f);
-
-			// get IQ 
-			SplitIQ(f);
-
 			for (int l = 24; l < in_y; l++) {
 				uint16_t *line = &rawbuffer[f][l * in_x];	
 		
@@ -463,6 +441,40 @@ class Comb
 			return out;
 		}
 
+
+		void ToRGB(int f, int firstline) {
+			// YIQ (YUV?) -> RGB conversion	
+			for (int l = firstline; l < in_y; l++) {
+				double burstlev = rawbuffer[f][(l * in_x) + 1] / irescale;
+				uint16_t *line_output = &output[(out_x * 3 * (l - firstline))];
+				int o = 0;
+
+				if (burstlev > 5) {
+					if (aburstlev < 0) aburstlev = burstlev;	
+					aburstlev = (aburstlev * .99) + (burstlev * .01);
+				}
+//				cerr << "burst level " << burstlev << " mavg " << aburstlev << endl;
+
+				for (int h = 0; h < 752; h++) {
+					RGB r;
+					YIQ yiq = cbuf[l].p[h + 82];
+
+					yiq.i *= (10 / aburstlev);
+					yiq.q *= (10 / aburstlev);
+
+					r.conv(yiq);
+					
+					if (l == debug_line) {
+						r.r = r.g = r.b = 0;
+					}
+	
+					line_output[o++] = (uint16_t)(r.r); 
+					line_output[o++] = (uint16_t)(r.g); 
+					line_output[o++] = (uint16_t)(r.b); 
+				}
+			}
+		}
+
 	public:
 		Comb() {
 			fieldcount = curline = linecount = -1;
@@ -533,7 +545,7 @@ class Comb
 			frames_out++;
 		}
 
-		void AdjustY(int f) {
+		void AdjustY(int f, cline_t cbuf[in_y]) {
 			int firstline = (linesout == in_y) ? 0 : 25;
 			// remove color data from baseband (Y)	
 			for (int l = firstline; l < in_y; l++) {
@@ -585,44 +597,37 @@ class Comb
 				framecount++;
 				return;
 			} 
+			
+			for (int l = 0; l < 24; l++) {
+				uint16_t *line = &rawbuffer[f][l * in_x];	
+					
+				for (int h = 4; h < 840; h++) {
+					cbuf[l].p[h].y = line[h]; 
+					cbuf[l].p[h].i = 0; 
+					cbuf[l].p[h].q = 0; 
+				}
+			}
 	
-			Split(dim); 
+			memset(combbuffer[f], 0, sizeof(double) * 3 * in_size);
+			memset(combk[f], 0, sizeof(double) * 3 * in_size);
+	
+			// precompute 1D comb filter, needed for 2D and optical flow 
+			Split1D(f);
+	
+			memcpy(tbuf, cbuf, sizeof(cbuf));	
 
-			AdjustY(f);
+			// get IQ for 1D 
+			SplitIQ(f);
+			AdjustY(f, tbuf);
+
+			Split23D(f, dim); 
+
+			AdjustY(f, cbuf);
 
 			DoYNR();
 		
-			// YIQ (YUV?) -> RGB conversion	
-			for (int l = firstline; l < in_y; l++) {
-				double burstlev = rawbuffer[f][(l * in_x) + 1] / irescale;
-				uint16_t *line_output = &output[(out_x * 3 * (l - firstline))];
-				int o = 0;
-
-				if (burstlev > 5) {
-					if (aburstlev < 0) aburstlev = burstlev;	
-					aburstlev = (aburstlev * .99) + (burstlev * .01);
-				}
-//				cerr << "burst level " << burstlev << " mavg " << aburstlev << endl;
-
-				for (int h = 0; h < 752; h++) {
-					RGB r;
-					YIQ yiq = cbuf[l].p[h + 82];
-
-					yiq.i *= (10 / aburstlev);
-					yiq.q *= (10 / aburstlev);
-
-					r.conv(yiq);
-					
-					if (l == debug_line) {
-						r.r = r.g = r.b = 0;
-					}
+			ToRGB(f, firstline);
 	
-					line_output[o++] = (uint16_t)(r.r); 
-					line_output[o++] = (uint16_t)(r.g); 
-					line_output[o++] = (uint16_t)(r.b); 
-				}
-			}
-
 			PostProcess(f);
 			framecount++;
 
