@@ -305,9 +305,6 @@ class Comb
 					combk[f][0][l][h] = 1 - combk[f][2][l][h] - combk[f][1][l][h];
 				}
 			}	
-
-			// Now get the proper IQ values with 2D and 3D filtering
-			SplitIQ(f);
 		}	
 
 		void SplitIQ(int f) {
@@ -620,7 +617,9 @@ class Comb
 			SplitIQ(f);
 			AdjustY(f, tbuf);
 
+			// Now 2/3D 
 			Split23D(f, dim); 
+			SplitIQ(f);
 
 			AdjustY(f, cbuf);
 
