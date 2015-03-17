@@ -194,11 +194,6 @@ class Comb
 			}
 		}
 
-		void ColorProc(int frame, int dim)
-		{
-
-		}
-
 		// precompute 1D comb filter, needed for 2D and optical flow 
 		void Split1D(int frame)
 		{
@@ -472,6 +467,24 @@ class Comb
 			}
 		}
 
+		void DrawFrame(uint16_t *obuf) {
+			for (int y = 0; y < 480; y++) {
+				for (int x = 0; x < out_x; x++) {
+					BGRoutput[(((y * out_x) + x) * 3) + 0] = obuf[(((y * out_x) + x) * 3) + 2];
+					BGRoutput[(((y * out_x) + x) * 3) + 1] = obuf[(((y * out_x) + x) * 3) + 1];
+					BGRoutput[(((y * out_x) + x) * 3) + 2] = obuf[(((y * out_x) + x) * 3) + 0];
+				}
+			}
+				
+			Mat pic = Mat(480, out_x, CV_16UC3, BGRoutput);
+			Mat rpic;
+
+			resize(pic, rpic, Size(1280,960));
+
+			imshow("comb", rpic);	
+			waitKey(f_oneframe ? 0 : 1);
+		}
+
 	public:
 		Comb() {
 			fieldcount = curline = linecount = -1;
@@ -518,25 +531,8 @@ class Comb
 			}
 
 			if (f_monitor) {
-				// OpenCV wants BGR, not RGB
-
-				for (int y = 0; y < 480; y++) {
-					for (int x = 0; x < out_x; x++) {
-						BGRoutput[(((y * out_x) + x) * 3) + 0] = obuf[(((y * out_x) + x) * 3) + 2];
-						BGRoutput[(((y * out_x) + x) * 3) + 1] = obuf[(((y * out_x) + x) * 3) + 1];
-						BGRoutput[(((y * out_x) + x) * 3) + 2] = obuf[(((y * out_x) + x) * 3) + 0];
-//						pic.at<Scalar_<uint16_t>>(x,y) = Scalar_<uint16_t>(obuf[(((y * out_x) + x) * 3) + 2], obuf[(((y * out_x) + x) * 3) + 1], obuf[(((y * out_x) + x) * 3) + 0]); 
-					}
-				}
-				
-				Mat pic = Mat(480, out_x, CV_16UC3, BGRoutput);
-				Mat rpic;
-
-				resize(pic, rpic, Size(1280,960));
-
-				imshow("comb", rpic);	
-				waitKey(f_oneframe ? 0 : 1);
-			}
+				DrawFrame(obuf);
+			}	
 
 			if (f_oneframe) exit(0);
 			frames_out++;
@@ -611,16 +607,18 @@ class Comb
 			// precompute 1D comb filter, needed for 2D and optical flow 
 			Split1D(f);
 	
-			memcpy(tbuf, cbuf, sizeof(cbuf));	
-
 			// get IQ for 1D 
 			SplitIQ(f);
+
+			memcpy(tbuf, cbuf, sizeof(cbuf));	
 			AdjustY(f, tbuf);
+			
+			ToRGB(f, firstline);
 
 			// Now 2/3D 
 			Split23D(f, dim); 
-			SplitIQ(f);
 
+			SplitIQ(f);
 			AdjustY(f, cbuf);
 
 			DoYNR();
