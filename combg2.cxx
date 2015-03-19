@@ -513,7 +513,7 @@ void drawOptFlowMap (const Mat& flow, Mat& cflowmap, int step, const Scalar& col
 				prev[field] = pic.clone();
 			}
 
-			double min = 0.1;
+			double min = 0.0;
 			double max = 0.5;
 
 			if (!first) {
