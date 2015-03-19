@@ -1,9 +1,9 @@
 all: cx ntsc ntsc4 audiog2 comb 
 
 CFLAGS=-O3 
-CFLAGS=-O3 -mavx -march=corei7-avx
+CFLAGS=-g -O3 -mavx -march=corei7-avx
 
-OPENCV_LIBS=-lopencv_core -lopencv_highgui -lopencv_imgproc
+OPENCV_LIBS=-lopencv_core -lopencv_highgui -lopencv_imgproc -lopencv_video
 
 clean:
 	rm -f ldd ntsc ntsc4 ntsc10 audiog2 comb 
@@ -23,6 +23,9 @@ ntsc4: ntscg2.cxx ld-decoder.h deemp.h
 
 ntsc10: ntscg2.cxx ld-decoder.h deemp.h
 	clang++ -std=c++11  -Wall $(CFLAGS) -DFSC10 -o ntsc10 ntscg2.cxx
+
+tbc-pal: tbc-pal.cxx ld-decoder.h deemp.h
+	clang++ -std=c++11  -g -Wall $(CFLAGS) -o tbc-pal tbc-pal.cxx
 
 ntsc: ntscg2.cxx ld-decoder.h deemp.h
 	clang++ -std=c++11  -g -Wall $(CFLAGS) -o ntsc ntscg2.cxx
