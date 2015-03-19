@@ -513,7 +513,7 @@ void drawOptFlowMap (const Mat& flow, Mat& cflowmap, int step, const Scalar& col
 				prev[field] = pic.clone();
 			}
 
-			double min = 0.0;
+			double min = 0.1;
 			double max = 0.5;
 
 			if (!first) {
@@ -537,8 +537,8 @@ void drawOptFlowMap (const Mat& flow, Mat& cflowmap, int step, const Scalar& col
             					const Point2f& flowpoint1 = flow[0].at<Point2f>(l, x);  
 	            				const Point2f& flowpoint2 = flow[1].at<Point2f>(l, x);  
 							
-						double c1 = 1 - clamp((ctor(flowpoint1.y, flowpoint1.x) - min) / max, 0, 1);
-						double c2 = 1 - clamp((ctor(flowpoint2.y, flowpoint2.x) - min) / max, 0, 1);
+						double c1 = 1 - clamp((ctor(flowpoint1.y, flowpoint1.x * 2) - min) / max, 0, 1);
+						double c2 = 1 - clamp((ctor(flowpoint2.y, flowpoint2.x * 2) - min) / max, 0, 1);
 			
 						double c = (c1 < c2) ? c1 : c2;
 	
