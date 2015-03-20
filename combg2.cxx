@@ -472,21 +472,78 @@ class Comb
 				}
 			}
 		}
+
+		// Use this for properly interlaced frames.  Pulldown messes it up a bit.	
+		void OpticalFlow3D_Merged(int frame, cline_t cbuf[in_y]) {
+			static Mat prev;
+			static bool first = true;
+
+			const int cxsize = 377;
+			const int cysize = 242;
 	
-void drawOptFlowMap (const Mat& flow, Mat& cflowmap, int step, const Scalar& color) {  
- for(int y = 0; y < cflowmap.rows; y += step)  
-        for(int x = 0; x < cflowmap.cols; x += step)  
-        {  
-            const Point2f& fxy = flow.at< Point2f>(y, x);  
-            line(cflowmap, Point(x,y), Point(cvRound(x+fxy.x), cvRound(y+fxy.y)),  
-                 color);  
-            circle(cflowmap, Point(cvRound(x+fxy.x), cvRound(y+fxy.y)), 1, color, -1);  
-        }  
-    } 
+			Mat flow;
+			uint16_t fieldbuf[cxsize * 242];
+			uint16_t flowmap[in_x * in_y];
+
+			memset(fieldbuf, 0, sizeof(fieldbuf));
+			memset(flowmap, 0, sizeof(flowmap));
+
+			int x, y;
+
+			Mat pic;
+
+			for (y = 0; y < cysize; y++) {
+				for (x = 0; x < cxsize; x++) {
+					double t = 0;
+
+					t += cbuf[23 + (y * 2)].p[70 + (x * 2)].y;
+					t += cbuf[23 + (y * 2)].p[71 + (x * 2)].y;
+					t += cbuf[24 + (y * 2)].p[70 + (x * 2)].y;
+					t += cbuf[24 + (y * 2)].p[71 + (x * 2)].y;
+					fieldbuf[(y * cxsize) + x] = clamp((t / 4), 0, 65535);
+				}
+			}
+			pic = Mat(242, cxsize, CV_16UC1, fieldbuf);
+			//if (!first) calcOpticalFlowFarneback(pic, prev[field], flow[field], 0.5, 3, 15, 3, 5, 1.2, 0);
+			if (!first) calcOpticalFlowFarneback(pic, prev, flow, 0.5, 4, 70, 3, 7, 1.5, 0);
+
+			prev = pic.clone();
+
+			double min = 0.0;
+			double max = 0.25;
+
+			if (!first) {
+				for (y = 0; y < cysize; y++) {
+					for (x = 0; x < cxsize; x++) {
+            					const Point2f& flowpoint1 = flow.at<Point2f>(y, x);  
+							
+						double c = 1 - clamp((ctor(flowpoint1.y, flowpoint1.x * 2) - min) / max, 0, 1);
+			
+						combk[frame][2][23 + (y * 2)][70 + (x * 2)] = c;
+						combk[frame][2][23 + (y * 2)][71 + (x * 2)] = c;
+						combk[frame][2][24 + (y * 2)][70 + (x * 2)] = c;
+						combk[frame][2][24 + (y * 2)][71 + (x * 2)] = c;
+
+						flowmap[(y * cxsize) + x] = c * 65535;
+					}
+				}
+
+//				Mat fpic = Mat(242, cxsize, CV_16UC1, flowmap);
+//				Mat rpic;
+				//resize(cflow, rpic, Size(1280,960));
+//				resize(fpic, rpic, Size(1280,960));
 	
-		void OpticalFlow3D(int frame, cline_t cbuf[in_y]) {
+//				imshow("comb", rpic);	
+//				waitKey(f_oneframe ? 0 : 1);
+			} else first = false;
+		}
+	
+		void OpticalFlow3D_HalfX(int frame, cline_t cbuf[in_y]) {
 			static Mat prev[2];
 			static bool first = true;
+			
+			const int cxsize = 377;
+			const int cysize = 242;
 	
 			Mat flow[2];	
 			uint16_t fieldbuf[in_x * 242];
@@ -500,15 +557,19 @@ void drawOptFlowMap (const Mat& flow, Mat& cflowmap, int step, const Scalar& col
 			Mat pic;
 
 			for (int field = 0; field < 2; field++) {
-				for (y = 23 + field, l = 0; y < 505; y +=2, l++) {
-					for (int x = 70; x < in_x; x++) {
-						fieldbuf[(l * in_x) + x] = cbuf[y].p[x].y;
+				for (y = 0; y < cysize; y++) {
+					for (int x = 0; x < cxsize; x++) {
+						double t = 0;
+
+						t += cbuf[23 + field + (y * 2)].p[70 + (x * 2)].y;
+						t += cbuf[23 + field + (y * 2)].p[71 + (x * 2)].y;
+						fieldbuf[(y * cxsize) + x] = clamp((t / 2), 0, 65535);
 					}
 				}
-				cerr << "OF " << l << endl;
-				pic = Mat(242, in_x, CV_16UC1, fieldbuf);
+//				cerr << "OF " << l << endl;
+				pic = Mat(242, cxsize, CV_16UC1, fieldbuf);
 				//if (!first) calcOpticalFlowFarneback(pic, prev[field], flow[field], 0.5, 3, 15, 3, 5, 1.2, 0);
-				if (!first) calcOpticalFlowFarneback(pic, prev[field], flow[field], 0.5, 4, 70, 3, 7, 1.5, 0);
+				if (!first) calcOpticalFlowFarneback(pic, prev[field], flow[field], 0.5, 4, 50, 3, 7, 1.5, 0);
 
 				prev[field] = pic.clone();
 			}
@@ -517,37 +578,83 @@ void drawOptFlowMap (const Mat& flow, Mat& cflowmap, int step, const Scalar& col
 			double max = 0.5;
 
 			if (!first) {
-#if 0
-				for (int field = 0; field < 2; field++) {
-					for (y = 23 + field, l = 0; y < 505; y +=2, l++) {
-						for (int x = 70; x < in_x; x++) {
-//							flow[field][(l * in_x) + x] = cbuf[y].p[x].y;
-            						const Point2f& flowpoint = flow[field].at<Point2f>(l, x);  
-							flowmap[(y * in_x) + x] = 65535 - clamp((ctor(flowpoint.y, flowpoint.x) - .2) * 65536 / 2, 0, 65535);
-//							combk[frame][2][y][x] = 1 - clamp((ctor(flowpoint.y, flowpoint.x) - min) / max, 0, 1);
-							combk[frame][2][y][x] = 1 - clamp((ctor(flowpoint.y, flowpoint.x) - min) / max, 0, 1);
-//							if (ctor(flowpoint.y, flowpoint.x) > 4) 		
-//								cerr << y << ' ' << x << ' ' << ctor(flowpoint.y, flowpoint.x) << ' ' << combk[frame][2][y][x] << endl;
-						}
-					}
-				}	
-#else 
-				for (y = 22, l = 0; y < 504; l++, y+=2) {
-					for (int x = 70; x < in_x; x++) {
-            					const Point2f& flowpoint1 = flow[0].at<Point2f>(l, x);  
-	            				const Point2f& flowpoint2 = flow[1].at<Point2f>(l, x);  
+				for (y = 0; y < cysize; y++) {
+					for (int x = 0; x < cxsize; x++) {
+            					const Point2f& flowpoint1 = flow[0].at<Point2f>(y, x);  
+	            				const Point2f& flowpoint2 = flow[1].at<Point2f>(y, x);  
 							
 						double c1 = 1 - clamp((ctor(flowpoint1.y, flowpoint1.x * 2) - min) / max, 0, 1);
 						double c2 = 1 - clamp((ctor(flowpoint2.y, flowpoint2.x * 2) - min) / max, 0, 1);
 			
 						double c = (c1 < c2) ? c1 : c2;
 	
-						combk[frame][2][y][x] = c;
-						combk[frame][2][y + 1][x] = c;
+						combk[frame][2][23 + (y * 2)][70 + (x * 2)] = c;
+						combk[frame][2][23 + (y * 2)][71 + (x * 2)] = c;
+						combk[frame][2][24 + (y * 2)][70 + (x * 2)] = c;
+						combk[frame][2][24 + (y * 2)][71 + (x * 2)] = c;
 					}
 				}
 
-#endif
+//				Mat fpic = Mat(in_y, in_x, CV_16UC1, flowmap);
+//				Mat rpic;
+				//resize(cflow, rpic, Size(1280,960));
+//				resize(fpic, rpic, Size(1280,960));
+	
+//				imshow("comb", rpic);	
+//				waitKey(f_oneframe ? 0 : 1);
+			} else first = false;
+		}
+
+		void OpticalFlow3D(int frame, cline_t cbuf[in_y]) {
+			static Mat prev[2];
+			static bool first = true;
+			
+			const int cysize = 242;
+	
+			Mat flow[2];	
+			uint16_t fieldbuf[in_x * 242];
+			uint16_t flowmap[in_x * in_y];
+
+			memset(fieldbuf, 0, sizeof(fieldbuf));
+			memset(flowmap, 0, sizeof(flowmap));
+
+			int l, y;
+
+			Mat pic;
+
+			for (int field = 0; field < 2; field++) {
+				for (y = 0; y < cysize; y++) {
+					for (int x = 0; x < in_x; x++) {
+						fieldbuf[(y * in_x) + x] = cbuf[23 + field + (y * 2)].p[70 + x].y;
+					}
+				}
+//				cerr << "OF " << l << endl;
+				pic = Mat(242, in_x, CV_16UC1, fieldbuf);
+				//if (!first) calcOpticalFlowFarneback(pic, prev[field], flow[field], 0.5, 3, 15, 3, 5, 1.2, 0);
+				if (!first) calcOpticalFlowFarneback(pic, prev[field], flow[field], 0.5, 4, 60, 3, 7, 1.5, 0);
+
+				prev[field] = pic.clone();
+			}
+
+			double min = 0.0;
+			double max = 0.5;
+
+			if (!first) {
+				for (y = 0; y < cysize; y++) {
+					for (int x = 0; x < in_x; x++) {
+            					const Point2f& flowpoint1 = flow[0].at<Point2f>(y, x);  
+	            				const Point2f& flowpoint2 = flow[1].at<Point2f>(y, x);  
+							
+						double c1 = 1 - clamp((ctor(flowpoint1.y, flowpoint1.x * 2) - min) / max, 0, 1);
+						double c2 = 1 - clamp((ctor(flowpoint2.y, flowpoint2.x * 2) - min) / max, 0, 1);
+			
+						double c = (c1 < c2) ? c1 : c2;
+	
+						combk[frame][2][23 + (y * 2)][70 + x] = c;
+						combk[frame][2][24 + (y * 2)][70 + x] = c;
+					}
+				}
+
 //				Mat fpic = Mat(in_y, in_x, CV_16UC1, flowmap);
 //				Mat rpic;
 				//resize(cflow, rpic, Size(1280,960));
@@ -587,9 +694,9 @@ void drawOptFlowMap (const Mat& flow, Mat& cflowmap, int step, const Scalar& col
 		
 				Mat gpic = Mat(250, out_x, CV_16UC1, Flowmap);
 	
-				Mat cflow;  
-				cvtColor(prev, cflow, CV_GRAY2BGR);  
-				drawOptFlowMap(flow, cflow, 10, CV_RGB(0, 255, 0));		
+//				Mat cflow;  
+//				cvtColor(prev, cflow, CV_GRAY2BGR);  
+//				drawOptFlowMap(flow, cflow, 10, CV_RGB(0, 255, 0));		
 
 				Mat rpic;
 				//resize(cflow, rpic, Size(1280,960));
