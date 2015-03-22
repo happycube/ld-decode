@@ -471,9 +471,13 @@ def main():
 	outfile = sys.stdout
 	audio_mode = 0 
 	CAV = 0
-	firstbyte = 0
 
-	optlist, cut_argv = getopt.getopt(sys.argv[1:], "hCaAws:")
+	firstbyte = 0
+	total_len = 0
+
+	f_seconds = False 
+
+	optlist, cut_argv = getopt.getopt(sys.argv[1:], "hCaAwSs:")
 
 	for o, a in optlist:
 		if o == "-a":
@@ -496,6 +500,8 @@ def main():
 			wide_mode = 1
 			hz_ire_scale = (9360000 - 8100000) / 100
 			minn = 8100000 + (hz_ire_scale * -60)
+		if o == "-S":
+			f_seconds = True
 		if o == "-s":
 			ia = int(a)
 			if ia == 0:
@@ -530,18 +536,27 @@ def main():
 
 	firstbyte = 0
 	if (argc >= 2):
-		firstbyte = int(cut_argv[1])
-		infile.seek(firstbyte)
-
-	if CAV and firstbyte > 11454654400:
-		CAV = 0
-		Inner = 0 
+		firstbyte = float(cut_argv[1])
 
 	if (argc >= 3):
-		total_len = int(cut_argv[2])
+		total_len = float(cut_argv[2])
 		limit = 1
 	else:
 		limit = 0
+
+	if f_seconds:
+		firstbyte *= freq_hz 
+		total_len *= freq_hz 
+
+	firstbyte = int(firstbyte)
+	total_len = int(total_len)
+
+	if (firstbyte > 0):	
+		infile.seek(firstbyte)
+	
+	if CAV and firstbyte > 11454654400:
+		CAV = 0
+		Inner = 0 
 	
 	total = toread = blocklen 
 	inbuf = infile.read(toread)
