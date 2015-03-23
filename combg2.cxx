@@ -238,22 +238,18 @@ class Comb
 				}
 			}
 		}
-	
-		void Split23D(int f, int dim) 
+		
+		void Split2D(int f) 
 		{
 			for (int l = 24; l < in_y; l++) {
 				uint16_t *line = &rawbuffer[f][l * in_x];	
-		
-				// shortcuts for previous/next 1D/pixel lines	
-				uint16_t *p3line = &rawbuffer[0][l * in_x];	
-				uint16_t *n3line = &rawbuffer[2][l * in_x];	
 		
 				double *p1line = combbuffer[f][0][l - 2];
 				double *n1line = combbuffer[f][0][l + 2];
 		
 				// 2D filtering.  can't do top or bottom line - calced between 1d and 3d because this is
 				// filtered 
-				if (1 && (dim >= 2) && (l >= 4) && (l <= 503)) {
+				if ((l >= 4) && (l <= 503)) {
 					for (int h = 16; h < 840; h++) {
 						double tc1;
 
@@ -270,6 +266,26 @@ class Comb
 					}
 				}
 
+				for (int h = 4; h < 840; h++) {
+					if ((l >= 2) && (l <= 502)) {
+						combk[f][1][l][h] = 1 - combk[f][2][l][h];
+					}
+					
+					// 1D 
+					combk[f][0][l][h] = 1 - combk[f][2][l][h] - combk[f][1][l][h];
+				}
+			}	
+		}	
+
+		void Split23D(int f, int dim) 
+		{
+			for (int l = 24; l < in_y; l++) {
+				uint16_t *line = &rawbuffer[f][l * in_x];	
+		
+				// shortcuts for previous/next 1D/pixel lines	
+				uint16_t *p3line = &rawbuffer[0][l * in_x];	
+				uint16_t *n3line = &rawbuffer[2][l * in_x];	
+		
 				// a = fir1(16, 0.1); printf("%.15f, ", a)
 				Filter lp_3d({0.005719569452904, 0.009426612841315, 0.019748592575455, 0.036822680065252, 0.058983880135427, 0.082947830292278, 0.104489989820068, 0.119454688318951, 0.124812312996699, 0.119454688318952, 0.104489989820068, 0.082947830292278, 0.058983880135427, 0.036822680065252, 0.019748592575455, 0.009426612841315, 0.005719569452904}, {1.0});
 
@@ -287,9 +303,6 @@ class Comb
 	
 				for (int h = 4; h < 840; h++) {
 					if (dim >= 3) {
-						double k2 = abs(p1line[h] - n1line[h]) / (irescale * 15); 
-						double adj = (p_3d2drej - p_3dcore) * (clamp(k2, 0, 1));
-				
 						combbuffer[f][2][l][h] = (((p3line[h] + n3line[h]) / 2) - line[h]); 
 						combbuffer[f][2][l][h] = (p3line[h] - line[h]); 
 //						combk[f][2][l][h] = clamp(1 - ((_k[h] - (p_3dcore + adj)) / p_3drange), 0, 1);
@@ -853,6 +866,10 @@ class Comb
 	
 			// precompute 1D comb filter, needed for 2D and optical flow 
 			Split1D(f);
+		//	SplitIQ(f);
+
+			Split2D(f); 
+			
 			SplitIQ(f);
 
 			memcpy(tbuf, cbuf, sizeof(cbuf));	
