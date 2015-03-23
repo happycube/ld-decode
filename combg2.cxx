@@ -530,7 +530,6 @@ class Comb
 
 //				Mat fpic = Mat(242, cxsize, CV_16UC1, flowmap);
 //				Mat rpic;
-				//resize(cflow, rpic, Size(1280,960));
 //				resize(fpic, rpic, Size(1280,960));
 	
 //				imshow("comb", rpic);	
@@ -607,13 +606,14 @@ class Comb
 
 		void OpticalFlow3D(int frame, cline_t cbuf[in_y]) {
 			static Mat prev[2];
-			static bool first = true;
+			static Mat flow[2];	
+			static int fnum = 0;
 			
 			const int cysize = 242;
+			const int cxsize = in_x - 70;
 	
-			Mat flow[2];	
-			uint16_t fieldbuf[in_x * 242];
-			uint16_t flowmap[in_x * in_y];
+			uint16_t fieldbuf[in_x * cysize];
+			uint16_t flowmap[in_y][cxsize];
 
 			memset(fieldbuf, 0, sizeof(fieldbuf));
 			memset(flowmap, 0, sizeof(flowmap));
@@ -624,24 +624,21 @@ class Comb
 
 			for (int field = 0; field < 2; field++) {
 				for (y = 0; y < cysize; y++) {
-					for (int x = 0; x < in_x; x++) {
-						fieldbuf[(y * in_x) + x] = cbuf[23 + field + (y * 2)].p[70 + x].y;
+					for (int x = 0; x < cxsize; x++) {
+						fieldbuf[(y * cxsize) + x] = cbuf[23 + field + (y * 2)].p[70 + x].y;
 					}
 				}
-//				cerr << "OF " << l << endl;
-				pic = Mat(242, in_x, CV_16UC1, fieldbuf);
-				//if (!first) calcOpticalFlowFarneback(pic, prev[field], flow[field], 0.5, 3, 15, 3, 5, 1.2, 0);
-				if (!first) calcOpticalFlowFarneback(pic, prev[field], flow[field], 0.5, 4, 60, 3, 7, 1.5, 0);
-
+				pic = Mat(242, cxsize, CV_16UC1, fieldbuf);
+				if (fnum) calcOpticalFlowFarneback(pic, prev[field], flow[field], 0.5, 4, 60, 3, 7, 1.5, (fnum > 1) ? OPTFLOW_USE_INITIAL_FLOW : 0);
 				prev[field] = pic.clone();
 			}
 
 			double min = 0.0;
 			double max = 0.5;
 
-			if (!first) {
+			if (fnum) {
 				for (y = 0; y < cysize; y++) {
-					for (int x = 0; x < in_x; x++) {
+					for (int x = 0; x < cxsize; x++) {
             					const Point2f& flowpoint1 = flow[0].at<Point2f>(y, x);  
 	            				const Point2f& flowpoint2 = flow[1].at<Point2f>(y, x);  
 							
@@ -650,19 +647,23 @@ class Comb
 			
 						double c = (c1 < c2) ? c1 : c2;
 	
-						combk[frame][2][23 + (y * 2)][70 + x] = c;
-						combk[frame][2][24 + (y * 2)][70 + x] = c;
+						combk[frame][2][(y * 2)][70 + x] = c;
+						combk[frame][2][(y * 2) + 1][70 + x] = c;
+
+						uint16_t fm = clamp(c * 65535, 0, 65535);
+						flowmap[(y * 2)][0 + x] = fm;
+						flowmap[(y * 2) + 1][0 + x] = fm;
 					}
 				}
 
-//				Mat fpic = Mat(in_y, in_x, CV_16UC1, flowmap);
-//				Mat rpic;
-				//resize(cflow, rpic, Size(1280,960));
-//				resize(fpic, rpic, Size(1280,960));
+				Mat fpic = Mat(in_y - 23, cxsize, CV_16UC1, flowmap);
+				Mat rpic;
+				resize(fpic, rpic, Size(1280,960));
 	
-//				imshow("comb", rpic);	
-//				waitKey(f_oneframe ? 0 : 1);
-			} else first = false;
+				imshow("comb", rpic);	
+				waitKey(f_oneframe ? 0 : 1);
+			}
+			fnum++; 
 		}
 
 		void DrawFrameY(cline_t cbuf[in_y]) {
