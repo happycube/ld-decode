@@ -151,7 +151,6 @@ const int out_x = 744;
 
 struct frame_t {
 	uint16_t rawbuffer[in_x * in_y];
-	double LPraw[in_x * in_y];
 
 	double clpbuffer[3][in_y][in_x];
 	double combk[3][in_y][in_x];
@@ -182,30 +181,14 @@ class Comb
 		uint16_t Goutput[out_x * in_y];
 		uint16_t Flowmap[out_x * in_y];
 
-//		double clpbuffer[nframes][3][in_y][in_x];
-//		double combk[nframes][3][in_y][in_x];
-
-//		uint16_t rawbuffer[nframes][in_x * in_y];
-//		double LPraw[nframes][in_x * in_y];
-
 		double aburstlev;	// average color burst
 
-//		cline_t cbuf[in_y];
 		cline_t tbuf[in_y];
 
 		frame_t Frame[nframes];
 
 		Filter *f_hpy, *f_hpi, *f_hpq;
 		Filter *f_hpvy, *f_hpvi, *f_hpvq;
-
-		void LPFrame(int fnum)
-		{
-			for (int l = 24; l < in_y; l++) {
-				for (int h = 32; h < in_x; h++) {
-					Frame[fnum].LPraw[(l * in_x) + h - 16] = f_lpf_comb.feed(Frame[fnum].rawbuffer[(l * in_x) + h]);
-				}
-			}
-		}
 
 		// precompute 1D comb filter, needed for 2D and optical flow 
 		void Split1D(int fnum)
@@ -672,36 +655,31 @@ class Comb
 
 			memcpy(Frame[0].rawbuffer, buffer, (in_x * in_y * 2));
 			
-			//memset(cbuf, 0, sizeof(cbuf));
-	
-			LPFrame(0);
 			Split1D(0);
 			Split2D(0); 
 			SplitIQ(0);
 		
-			if ((dim == 3) && (framecount < 2)) {
-				framecount++;
-				return;
-			} 
-			
+			// copy VBI	
 			for (int l = 0; l < 24; l++) {
-				uint16_t *line = &Frame[f].rawbuffer[l * in_x];	
+				uint16_t *line = &Frame[0].rawbuffer[l * in_x];	
 					
 				for (int h = 4; h < 840; h++) {
-					Frame[f].cbuf[l].p[h].y = line[h]; 
+					Frame[0].cbuf[l].p[h].y = line[h]; 
 				}
 			}
-	
-			memcpy(tbuf, Frame[f].cbuf, sizeof(tbuf));	
-			AdjustY(f, tbuf);
+		
+			if (dim >= 3) {
+				if (framecount < 2) {
+					framecount++;
+					return;
+				}
 
-			if (dim >= 3) OpticalFlow3D(f, tbuf);
-			
-//			ToRGB(f, firstline, tbuf);
-//			DrawFrame(output);
+				memcpy(tbuf, Frame[f].cbuf, sizeof(tbuf));	
+				AdjustY(f, tbuf);
 
-			// Now 2/3D 
-			Split3D(f, true); 
+				OpticalFlow3D(f, tbuf);
+				Split3D(f, true); 
+			}			
 
 			SplitIQ(f);
 			AdjustY(f, Frame[f].cbuf);
