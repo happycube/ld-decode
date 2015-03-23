@@ -286,7 +286,7 @@ class Comb
 			}	
 		}	
 
-		void Split23D(int f, int dim) 
+		void Split3D(int f, bool opt_flow = false) 
 		{
 			for (int l = 24; l < in_y; l++) {
 				uint16_t *line = &Frame[f].rawbuffer[l * in_x];	
@@ -311,16 +311,17 @@ class Comb
 				}
 	
 				for (int h = 4; h < 840; h++) {
-					if (dim >= 3) {
-						Frame[f].clpbuffer[2][l][h] = (((p3line[h] + n3line[h]) / 2) - line[h]); 
+					if (opt_flow) {
 						Frame[f].clpbuffer[2][l][h] = (p3line[h] - line[h]); 
-//						Frame[f].combk[2][l][h] = clamp(1 - ((_k[h] - (p_3dcore + adj)) / p_3drange), 0, 1);
-						if (l == (debug_line + 25)) {
-//							cerr << "3DC " << h << ' ' << k2 << ' ' << adj << ' ' << k[h] << endl;
-						}
+					} else {
+						Frame[f].clpbuffer[2][l][h] = (((p3line[h] + n3line[h]) / 2) - line[h]); 
+						Frame[f].combk[2][l][h] = clamp(1 - ((_k[h] - (p_3dcore)) / p_3drange), 0, 1);
+					}
+					if (l == (debug_line + 25)) {
+//						cerr << "3DC " << h << ' ' << k2 << ' ' << adj << ' ' << k[h] << endl;
 					}
 				
-					if ((dim >= 2) && (l >= 2) && (l <= 502)) {
+					if ((l >= 2) && (l <= 502)) {
 						Frame[f].combk[1][l][h] = 1 - Frame[f].combk[2][l][h];
 					}
 					
@@ -557,55 +558,6 @@ class Comb
 			fcount++; 
 		}
 
-		void DrawFrameY(cline_t cbuf[in_y]) {
-			static Mat prev;
-			static bool first = true;
-
-			for (int y = 12; y < 250; y++) {
-				for (int x = 0; x < out_x; x++) {
-					Goutput[(y * out_x) + x] = cbuf[y * 2].p[x + 70].y;
-				}
-			}
-				
-			Mat pic = Mat(250, out_x, CV_16UC1, Goutput);
-
-			if (!first) {
-				Mat flow;  
-				calcOpticalFlowFarneback(prev, pic, flow, 0.5, 3, 15, 3, 5, 1.2, 0);
-
-				for (int y = 0; y < 250; y++) {
-					for (int x = 0; x < out_x; x++) {
-            					const Point2f& flowpoint = flow.at< Point2f>(y, x);  
-//						uint16_t &gray = pic2.at<uint16_t>(y,x);
-
-//						cerr << y << ' ' << x << ' ' << ctor(flowpoint.y, flowpoint.x) << ' ' << flowpoint.x << ' ' <<  flowpoint.y << endl;
-
-						Flowmap[(y * out_x) + x] = clamp((ctor(flowpoint.y, flowpoint.x) - 4) * 65536 / 80, 0, 65535);
-					}
-				}
-		
-				Mat gpic = Mat(250, out_x, CV_16UC1, Flowmap);
-	
-//				Mat cflow;  
-//				cvtColor(prev, cflow, CV_GRAY2BGR);  
-//				drawOptFlowMap(flow, cflow, 10, CV_RGB(0, 255, 0));		
-
-				Mat rpic;
-				//resize(cflow, rpic, Size(1280,960));
-				resize(gpic, rpic, Size(1280,960));
-	
-				imshow("comb", rpic);	
-				waitKey(f_oneframe ? 0 : 1);
-			}
-
-			if (first) {
-				first = false;
-			} else {
-				// delete clone?
-			}
-			prev = pic.clone();
-		}
-
 		void DrawFrame(uint16_t *obuf) {
 			for (int y = 0; y < 480; y++) {
 				for (int x = 0; x < out_x; x++) {
@@ -723,6 +675,9 @@ class Comb
 			//memset(cbuf, 0, sizeof(cbuf));
 	
 			LPFrame(0);
+			Split1D(0);
+			Split2D(0); 
+			SplitIQ(0);
 		
 			if ((dim == 3) && (framecount < 2)) {
 				framecount++;
@@ -737,14 +692,6 @@ class Comb
 				}
 			}
 	
-			memset(Frame[f].clpbuffer, 0, sizeof(double) * 3 * in_size);
-			memset(Frame[f].combk, 0, sizeof(double) * 3 * in_size);
-	
-			// precompute 1D comb filter, needed for 2D and optical flow 
-			Split1D(f);
-			Split2D(f); 
-			SplitIQ(f);
-
 			memcpy(tbuf, Frame[f].cbuf, sizeof(tbuf));	
 			AdjustY(f, tbuf);
 
@@ -754,7 +701,7 @@ class Comb
 //			DrawFrame(output);
 
 			// Now 2/3D 
-			Split23D(f, dim); 
+			Split3D(f, true); 
 
 			SplitIQ(f);
 			AdjustY(f, Frame[f].cbuf);
