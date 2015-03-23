@@ -354,19 +354,11 @@ class Comb
 					Frame[f].cbuf[l].p[h].i = si;  
 					Frame[f].cbuf[l].p[h].q = sq; 
 
-					if (l == (debug_line + 25)) {
-//						_k = fabs(LPraw[1][adr - (in_x * 2)] - LPraw[1][adr]) + fabs(LPraw[1][adr + (in_x * 2)] - LPraw[1][adr]);
-//						cerr << h << ' ' << Frame[f].clpbuffer[1][l][h] - Frame[f].clpbuffer[2][l][h] << ' ' << c[1] << ' ' << c[2] << ' ' << LPraw[1][adr - (in_x * 2)] << ' ' << LPraw[1][adr] << ' ' << LPraw[1][adr + (in_x * 2)] << endl;
-					}						
-						
 					if (f_bw) {
 						Frame[f].cbuf[l].p[h].i = Frame[f].cbuf[l].p[h].q = 0;  
 					}
-
-					if (l == (debug_line + 25)) {
-//						cerr << "E " << h << ' ' << si << ' ' << sq << ' ' << c[1] << ' ' << c[2] << ' ' << k[h] << endl;
-					}
 				}
+
 				if (f_debug2d && (l >= 6) && (l <= 500)) {
 					cerr << l << ' ' << msel / (840 - 4) << " ME " << sel / (840 - 4) << endl; 
 					mse += msel / (840 - 4);
@@ -378,13 +370,13 @@ class Comb
 			}
 		}
 					
-		void DoYNR(int f) {
+		void DoYNR(int f, cline_t cbuf[in_y]) {
 			int firstline = (linesout == in_y) ? 0 : 23;
 			if (nr_y < 0) return;
 
 			for (int l = firstline; l < in_y; l++) {
 				YIQ hplinef[in_x];
-				cline_t *input = &Frame[f].cbuf[l];
+				cline_t *input = &cbuf[l];
 
 				for (int h = 70; h <= 752 + 80; h++) {
 					hplinef[h].y = f_hpy->feed(input->p[h].y);
@@ -394,19 +386,15 @@ class Comb
 					double a = hplinef[h + 12].y;
 
 					if (l == (debug_line + 25)) {
-						cerr << "NR " << h << ' ' << input->p[h].y << ' ' << hplinef[h + 12].y << ' ' << ' ' << a << ' ' ;
+						cerr << "NR " << h << ' ' << input->p[h].y << ' ' << hplinef[h + 12].y << ' ' << ' ' << a << ' ' << endl;
 					}
 
 					if (fabs(a) > nr_y) {
 						a = (a > 0) ? nr_y : -nr_y;
 					}
 
-					if (fabs(a) <= nr_y) {
-//						double hpm = (a / nr_y);
-//						a *= (1 - fabs(hpm * hpm * hpm));
-						input->p[h].y -= a;
-						if (l == (debug_line + 25)) cerr << a << ' ' << input->p[h].y << endl; 
-					} else if (l == (debug_line + 25)) cerr << endl;
+					input->p[h].y -= a;
+					if (l == (debug_line + 25)) cerr << a << ' ' << input->p[h].y << endl; 
 				}
 			}
 		}
@@ -654,7 +642,6 @@ class Comb
 			memset(&Frame[0], 0, sizeof(frame_t));
 
 			memcpy(Frame[0].rawbuffer, buffer, (in_x * in_y * 2));
-			
 			Split1D(0);
 			Split2D(0); 
 			SplitIQ(0);
@@ -682,11 +669,12 @@ class Comb
 			}			
 
 			SplitIQ(f);
-			AdjustY(f, Frame[f].cbuf);
 
-			DoYNR(f);
-		
-			ToRGB(f, firstline, Frame[f].cbuf);
+			memcpy(tbuf, Frame[f].cbuf, sizeof(tbuf));	
+
+			AdjustY(f, tbuf);
+			DoYNR(f, tbuf);
+			ToRGB(f, firstline, tbuf);
 	
 			PostProcess(f);
 			framecount++;
