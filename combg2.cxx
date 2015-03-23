@@ -149,6 +149,16 @@ const int in_x = 844;
 const int in_size = in_y * in_x;
 const int out_x = 744;
 
+struct frame_t {
+	uint16_t rawbuffer[in_x * in_y];
+	double LPraw[in_x * in_y];
+
+	double clpbuffer[3][in_y][in_x];
+	double combk[3][in_y][in_x];
+		
+	cline_t cbuf[in_y];
+};
+
 class Comb
 {
 	protected:
@@ -165,8 +175,6 @@ class Comb
 		int fieldcount;
 		int frames_out;	// total # of written frames
 	
-		uint16_t frame[1820 * 530];
-
 		uint16_t output[out_x * in_y * 3];
 		uint16_t BGRoutput[out_x * in_y * 3];
 		uint16_t obuf[out_x * in_y * 3];
@@ -174,17 +182,18 @@ class Comb
 		uint16_t Goutput[out_x * in_y];
 		uint16_t Flowmap[out_x * in_y];
 
-		double combbuffer[nframes][3][in_y][in_x];
-		double combk[nframes][3][in_y][in_x];
+//		double clpbuffer[nframes][3][in_y][in_x];
+//		double combk[nframes][3][in_y][in_x];
 
-		uint16_t rawbuffer[nframes][in_x * in_y];
-		double LPraw[nframes][in_x * in_y];
+//		uint16_t rawbuffer[nframes][in_x * in_y];
+//		double LPraw[nframes][in_x * in_y];
 
 		double aburstlev;	// average color burst
 
-		cline_t cbuf[in_y];
+//		cline_t cbuf[in_y];
 		cline_t tbuf[in_y];
-		cline_t prevbuf[in_y];
+
+		frame_t Frame[nframes];
 
 		Filter *f_hpy, *f_hpi, *f_hpq;
 		Filter *f_hpvy, *f_hpvi, *f_hpvq;
@@ -193,16 +202,16 @@ class Comb
 		{
 			for (int l = 24; l < in_y; l++) {
 				for (int h = 32; h < in_x; h++) {
-					LPraw[fnum][(l * in_x) + h - 16] = f_lpf_comb.feed(rawbuffer[fnum][(l * in_x) + h]);
+					Frame[fnum].LPraw[(l * in_x) + h - 16] = f_lpf_comb.feed(Frame[fnum].rawbuffer[(l * in_x) + h]);
 				}
 			}
 		}
 
 		// precompute 1D comb filter, needed for 2D and optical flow 
-		void Split1D(int frame)
+		void Split1D(int fnum)
 		{
 			for (int l = 24; l < in_y; l++) {
-				uint16_t *line = &rawbuffer[frame][l * in_x];	
+				uint16_t *line = &Frame[fnum].rawbuffer[l * in_x];	
 				bool invertphase = (line[0] == 16384);
 
 				Filter f_1di((dim == 3) ? f_colorwlp4 : f_colorwlp4);
@@ -229,11 +238,11 @@ class Comb
 						tc1f = -tc1f;
 					}
 
-					combbuffer[frame][0][l][h - f_toffset] = tc1f;					
-					combk[frame][0][l][h] = 1;
+					Frame[fnum].clpbuffer[0][l][h - f_toffset] = tc1f;					
+					Frame[fnum].combk[0][l][h] = 1;
 
 					if (l == (debug_line + 25)) {
-						cerr << h << ' ' << line[h - 4] << ' ' << line[h - 2] << ' ' << line[h] << ' ' << line[h + 2] << ' ' << line[h + 4] << ' ' << tc1 << ' ' << combbuffer[frame][0][l][h - f_toffset] << endl;
+						cerr << h << ' ' << line[h - 4] << ' ' << line[h - 2] << ' ' << line[h] << ' ' << line[h + 2] << ' ' << line[h + 4] << ' ' << tc1 << ' ' << Frame[fnum].clpbuffer[0][l][h - f_toffset] << endl;
 					}
 				}
 			}
@@ -242,10 +251,10 @@ class Comb
 		void Split2D(int f) 
 		{
 			for (int l = 24; l < in_y; l++) {
-				uint16_t *line = &rawbuffer[f][l * in_x];	
+				uint16_t *line = &Frame[f].rawbuffer[l * in_x];	
 		
-				double *p1line = combbuffer[f][0][l - 2];
-				double *n1line = combbuffer[f][0][l + 2];
+				double *p1line = Frame[f].clpbuffer[0][l - 2];
+				double *n1line = Frame[f].clpbuffer[0][l + 2];
 		
 				// 2D filtering.  can't do top or bottom line - calced between 1d and 3d because this is
 				// filtered 
@@ -254,25 +263,25 @@ class Comb
 						double tc1;
 
 						if (l == (debug_line + 25)) {
-							//cerr << "2D " << h << ' ' << combbuffer[l][h] << ' ' << p1line[h] << ' ' << n1line[h] << endl;
-							cerr << "2D " << h << ' ' << p1line[h] << ' ' << combbuffer[f][0][l][h] << ' ' << n1line[h] << ' ' << endl;
+							//cerr << "2D " << h << ' ' << clpbuffer[l][h] << ' ' << p1line[h] << ' ' << n1line[h] << endl;
+							cerr << "2D " << h << ' ' << p1line[h] << ' ' << Frame[f].clpbuffer[0][l][h] << ' ' << n1line[h] << ' ' << endl;
 						}	
 
-						tc1  = (combbuffer[f][0][l][h] - p1line[h]);
-						tc1 += (combbuffer[f][0][l][h] - n1line[h]);
+						tc1  = (Frame[f].clpbuffer[0][l][h] - p1line[h]);
+						tc1 += (Frame[f].clpbuffer[0][l][h] - n1line[h]);
 						tc1 /= (2 * 2);
 
-						combbuffer[f][1][l][h] = tc1;
+						Frame[f].clpbuffer[1][l][h] = tc1;
 					}
 				}
 
 				for (int h = 4; h < 840; h++) {
 					if ((l >= 2) && (l <= 502)) {
-						combk[f][1][l][h] = 1 - combk[f][2][l][h];
+						Frame[f].combk[1][l][h] = 1 - Frame[f].combk[2][l][h];
 					}
 					
 					// 1D 
-					combk[f][0][l][h] = 1 - combk[f][2][l][h] - combk[f][1][l][h];
+					Frame[f].combk[0][l][h] = 1 - Frame[f].combk[2][l][h] - Frame[f].combk[1][l][h];
 				}
 			}	
 		}	
@@ -280,11 +289,11 @@ class Comb
 		void Split23D(int f, int dim) 
 		{
 			for (int l = 24; l < in_y; l++) {
-				uint16_t *line = &rawbuffer[f][l * in_x];	
+				uint16_t *line = &Frame[f].rawbuffer[l * in_x];	
 		
 				// shortcuts for previous/next 1D/pixel lines	
-				uint16_t *p3line = &rawbuffer[0][l * in_x];	
-				uint16_t *n3line = &rawbuffer[2][l * in_x];	
+				uint16_t *p3line = &Frame[0].rawbuffer[l * in_x];	
+				uint16_t *n3line = &Frame[2].rawbuffer[l * in_x];	
 		
 				// a = fir1(16, 0.1); printf("%.15f, ", a)
 				Filter lp_3d({0.005719569452904, 0.009426612841315, 0.019748592575455, 0.036822680065252, 0.058983880135427, 0.082947830292278, 0.104489989820068, 0.119454688318951, 0.124812312996699, 0.119454688318952, 0.104489989820068, 0.082947830292278, 0.058983880135427, 0.036822680065252, 0.019748592575455, 0.009426612841315, 0.005719569452904}, {1.0});
@@ -294,8 +303,8 @@ class Comb
 				for (int h = 4; (dim >= 3) && (h < 840); h++) {
 					int adr = (l * in_x) + h;
 
-					double __k = abs(rawbuffer[0][adr] - rawbuffer[2][adr]); 
-					__k += abs((rawbuffer[1][adr] - rawbuffer[2][adr]) - (rawbuffer[1][adr] - rawbuffer[0][adr])); 
+					double __k = abs(Frame[0].rawbuffer[adr] - Frame[2].rawbuffer[adr]); 
+					__k += abs((Frame[1].rawbuffer[adr] - Frame[2].rawbuffer[adr]) - (Frame[1].rawbuffer[adr] - Frame[0].rawbuffer[adr])); 
 
 					if (h > 12) _k[h - 8] = lp_3d.feed(__k);
 					if (h >= 836) _k[h] = __k;
@@ -303,20 +312,20 @@ class Comb
 	
 				for (int h = 4; h < 840; h++) {
 					if (dim >= 3) {
-						combbuffer[f][2][l][h] = (((p3line[h] + n3line[h]) / 2) - line[h]); 
-						combbuffer[f][2][l][h] = (p3line[h] - line[h]); 
-//						combk[f][2][l][h] = clamp(1 - ((_k[h] - (p_3dcore + adj)) / p_3drange), 0, 1);
+						Frame[f].clpbuffer[2][l][h] = (((p3line[h] + n3line[h]) / 2) - line[h]); 
+						Frame[f].clpbuffer[2][l][h] = (p3line[h] - line[h]); 
+//						Frame[f].combk[2][l][h] = clamp(1 - ((_k[h] - (p_3dcore + adj)) / p_3drange), 0, 1);
 						if (l == (debug_line + 25)) {
 //							cerr << "3DC " << h << ' ' << k2 << ' ' << adj << ' ' << k[h] << endl;
 						}
 					}
 				
 					if ((dim >= 2) && (l >= 2) && (l <= 502)) {
-						combk[f][1][l][h] = 1 - combk[f][2][l][h];
+						Frame[f].combk[1][l][h] = 1 - Frame[f].combk[2][l][h];
 					}
 					
 					// 1D 
-					combk[f][0][l][h] = 1 - combk[f][2][l][h] - combk[f][1][l][h];
+					Frame[f].combk[0][l][h] = 1 - Frame[f].combk[2][l][h] - Frame[f].combk[1][l][h];
 				}
 			}	
 		}	
@@ -326,7 +335,7 @@ class Comb
 			double me = 0.0;
 			for (int l = 24; l < in_y; l++) {
 				double msel = 0.0, sel = 0.0;
-				uint16_t *line = &rawbuffer[f][l * in_x];	
+				uint16_t *line = &Frame[f].rawbuffer[l * in_x];	
 				bool invertphase = (line[0] == 16384);
 
 				double si = 0, sq = 0;
@@ -334,14 +343,14 @@ class Comb
 					int phase = h % 4;
 					double cavg = 0;
 
-					cavg += (combbuffer[f][2][l][h] * combk[f][2][l][h]);
-					cavg += (combbuffer[f][1][l][h] * combk[f][1][l][h]);
-					cavg += (combbuffer[f][0][l][h] * combk[f][0][l][h]);
+					cavg += (Frame[f].clpbuffer[2][l][h] * Frame[f].combk[2][l][h]);
+					cavg += (Frame[f].clpbuffer[1][l][h] * Frame[f].combk[1][l][h]);
+					cavg += (Frame[f].clpbuffer[0][l][h] * Frame[f].combk[0][l][h]);
 
 					cavg /= 2;
 					
 					if (f_debug2d) {
-						cavg = combbuffer[f][1][l][h] - combbuffer[f][2][l][h];
+						cavg = Frame[f].clpbuffer[1][l][h] - Frame[f].clpbuffer[2][l][h];
 						msel += (cavg * cavg);
 						sel += fabs(cavg);
 					}
@@ -356,18 +365,18 @@ class Comb
 						default: break;
 					}
 
-					cbuf[l].p[h].y = line[h]; 
-					if (f_debug2d) cbuf[l].p[h].y = ire_to_u16(50); 
-					cbuf[l].p[h].i = si;  
-					cbuf[l].p[h].q = sq; 
+					Frame[f].cbuf[l].p[h].y = line[h]; 
+					if (f_debug2d) Frame[f].cbuf[l].p[h].y = ire_to_u16(50); 
+					Frame[f].cbuf[l].p[h].i = si;  
+					Frame[f].cbuf[l].p[h].q = sq; 
 
 					if (l == (debug_line + 25)) {
 //						_k = fabs(LPraw[1][adr - (in_x * 2)] - LPraw[1][adr]) + fabs(LPraw[1][adr + (in_x * 2)] - LPraw[1][adr]);
-//						cerr << h << ' ' << combbuffer[f][1][l][h] - combbuffer[f][2][l][h] << ' ' << c[1] << ' ' << c[2] << ' ' << LPraw[1][adr - (in_x * 2)] << ' ' << LPraw[1][adr] << ' ' << LPraw[1][adr + (in_x * 2)] << endl;
+//						cerr << h << ' ' << Frame[f].clpbuffer[1][l][h] - Frame[f].clpbuffer[2][l][h] << ' ' << c[1] << ' ' << c[2] << ' ' << LPraw[1][adr - (in_x * 2)] << ' ' << LPraw[1][adr] << ' ' << LPraw[1][adr + (in_x * 2)] << endl;
 					}						
 						
 					if (f_bw) {
-						cbuf[l].p[h].i = cbuf[l].p[h].q = 0;  
+						Frame[f].cbuf[l].p[h].i = Frame[f].cbuf[l].p[h].q = 0;  
 					}
 
 					if (l == (debug_line + 25)) {
@@ -385,13 +394,13 @@ class Comb
 			}
 		}
 					
-		void DoYNR() {
+		void DoYNR(int f) {
 			int firstline = (linesout == in_y) ? 0 : 23;
 			if (nr_y < 0) return;
 
 			for (int l = firstline; l < in_y; l++) {
 				YIQ hplinef[in_x];
-				cline_t *input = &cbuf[l];
+				cline_t *input = &Frame[f].cbuf[l];
 
 				for (int h = 70; h <= 752 + 80; h++) {
 					hplinef[h].y = f_hpy->feed(input->p[h].y);
@@ -456,7 +465,7 @@ class Comb
 		void ToRGB(int f, int firstline, cline_t cbuf[in_y]) {
 			// YIQ (YUV?) -> RGB conversion	
 			for (int l = firstline; l < in_y; l++) {
-				double burstlev = rawbuffer[f][(l * in_x) + 1] / irescale;
+				double burstlev = Frame[f].rawbuffer[(l * in_x) + 1] / irescale;
 				uint16_t *line_output = &output[(out_x * 3 * (l - firstline))];
 				int o = 0;
 
@@ -486,141 +495,10 @@ class Comb
 			}
 		}
 
-		// Use this for properly interlaced frames.  Pulldown messes it up a bit.	
-		void OpticalFlow3D_Merged(int frame, cline_t cbuf[in_y]) {
-			static Mat prev;
-			static bool first = true;
-
-			const int cxsize = 377;
-			const int cysize = 242;
-	
-			Mat flow;
-			uint16_t fieldbuf[cxsize * 242];
-			uint16_t flowmap[in_x * in_y];
-
-			memset(fieldbuf, 0, sizeof(fieldbuf));
-			memset(flowmap, 0, sizeof(flowmap));
-
-			int x, y;
-
-			Mat pic;
-
-			for (y = 0; y < cysize; y++) {
-				for (x = 0; x < cxsize; x++) {
-					double t = 0;
-
-					t += cbuf[23 + (y * 2)].p[70 + (x * 2)].y;
-					t += cbuf[23 + (y * 2)].p[71 + (x * 2)].y;
-					t += cbuf[24 + (y * 2)].p[70 + (x * 2)].y;
-					t += cbuf[24 + (y * 2)].p[71 + (x * 2)].y;
-					fieldbuf[(y * cxsize) + x] = clamp((t / 4), 0, 65535);
-				}
-			}
-			pic = Mat(242, cxsize, CV_16UC1, fieldbuf);
-			//if (!first) calcOpticalFlowFarneback(pic, prev[field], flow[field], 0.5, 3, 15, 3, 5, 1.2, 0);
-			if (!first) calcOpticalFlowFarneback(pic, prev, flow, 0.5, 4, 70, 3, 7, 1.5, 0);
-
-			prev = pic.clone();
-
-			double min = 0.0;
-			double max = 0.25;
-
-			if (!first) {
-				for (y = 0; y < cysize; y++) {
-					for (x = 0; x < cxsize; x++) {
-            					const Point2f& flowpoint1 = flow.at<Point2f>(y, x);  
-							
-						double c = 1 - clamp((ctor(flowpoint1.y, flowpoint1.x * 2) - min) / max, 0, 1);
-			
-						combk[frame][2][23 + (y * 2)][70 + (x * 2)] = c;
-						combk[frame][2][23 + (y * 2)][71 + (x * 2)] = c;
-						combk[frame][2][24 + (y * 2)][70 + (x * 2)] = c;
-						combk[frame][2][24 + (y * 2)][71 + (x * 2)] = c;
-
-						flowmap[(y * cxsize) + x] = c * 65535;
-					}
-				}
-
-//				Mat fpic = Mat(242, cxsize, CV_16UC1, flowmap);
-//				Mat rpic;
-//				resize(fpic, rpic, Size(1280,960));
-	
-//				imshow("comb", rpic);	
-//				waitKey(f_oneframe ? 0 : 1);
-			} else first = false;
-		}
-	
-		void OpticalFlow3D_HalfX(int frame, cline_t cbuf[in_y]) {
-			static Mat prev[2];
-			static bool first = true;
-			
-			const int cxsize = 377;
-			const int cysize = 242;
-	
-			Mat flow[2];	
-			uint16_t fieldbuf[in_x * 242];
-			uint16_t flowmap[in_x * in_y];
-
-			memset(fieldbuf, 0, sizeof(fieldbuf));
-			memset(flowmap, 0, sizeof(flowmap));
-
-			int l, y;
-
-			Mat pic;
-
-			for (int field = 0; field < 2; field++) {
-				for (y = 0; y < cysize; y++) {
-					for (int x = 0; x < cxsize; x++) {
-						double t = 0;
-
-						t += cbuf[23 + field + (y * 2)].p[70 + (x * 2)].y;
-						t += cbuf[23 + field + (y * 2)].p[71 + (x * 2)].y;
-						fieldbuf[(y * cxsize) + x] = clamp((t / 2), 0, 65535);
-					}
-				}
-//				cerr << "OF " << l << endl;
-				pic = Mat(242, cxsize, CV_16UC1, fieldbuf);
-				//if (!first) calcOpticalFlowFarneback(pic, prev[field], flow[field], 0.5, 3, 15, 3, 5, 1.2, 0);
-				if (!first) calcOpticalFlowFarneback(pic, prev[field], flow[field], 0.5, 4, 50, 3, 7, 1.5, 0);
-
-				prev[field] = pic.clone();
-			}
-
-			double min = 0.0;
-			double max = 0.5;
-
-			if (!first) {
-				for (y = 0; y < cysize; y++) {
-					for (int x = 0; x < cxsize; x++) {
-            					const Point2f& flowpoint1 = flow[0].at<Point2f>(y, x);  
-	            				const Point2f& flowpoint2 = flow[1].at<Point2f>(y, x);  
-							
-						double c1 = 1 - clamp((ctor(flowpoint1.y, flowpoint1.x * 2) - min) / max, 0, 1);
-						double c2 = 1 - clamp((ctor(flowpoint2.y, flowpoint2.x * 2) - min) / max, 0, 1);
-			
-						double c = (c1 < c2) ? c1 : c2;
-	
-						combk[frame][2][23 + (y * 2)][70 + (x * 2)] = c;
-						combk[frame][2][23 + (y * 2)][71 + (x * 2)] = c;
-						combk[frame][2][24 + (y * 2)][70 + (x * 2)] = c;
-						combk[frame][2][24 + (y * 2)][71 + (x * 2)] = c;
-					}
-				}
-
-//				Mat fpic = Mat(in_y, in_x, CV_16UC1, flowmap);
-//				Mat rpic;
-				//resize(cflow, rpic, Size(1280,960));
-//				resize(fpic, rpic, Size(1280,960));
-	
-//				imshow("comb", rpic);	
-//				waitKey(f_oneframe ? 0 : 1);
-			} else first = false;
-		}
-
-		void OpticalFlow3D(int frame, cline_t cbuf[in_y]) {
+		void OpticalFlow3D(int fnum, cline_t cbuf[in_y]) {
 			static Mat prev[2];
 			static Mat flow[2];	
-			static int fnum = 0;
+			static int fcount = 0;
 			
 			const int cysize = 242;
 			const int cxsize = in_x - 70;
@@ -642,14 +520,14 @@ class Comb
 					}
 				}
 				pic = Mat(242, cxsize, CV_16UC1, fieldbuf);
-				if (fnum) calcOpticalFlowFarneback(pic, prev[field], flow[field], 0.5, 4, 60, 3, 7, 1.5, (fnum > 1) ? OPTFLOW_USE_INITIAL_FLOW : 0);
+				if (fcount) calcOpticalFlowFarneback(pic, prev[field], flow[field], 0.5, 4, 60, 3, 7, 1.5, (fcount > 1) ? OPTFLOW_USE_INITIAL_FLOW : 0);
 				prev[field] = pic.clone();
 			}
 
 			double min = 0.0;
 			double max = 0.5;
 
-			if (fnum) {
+			if (fcount) {
 				for (y = 0; y < cysize; y++) {
 					for (int x = 0; x < cxsize; x++) {
             					const Point2f& flowpoint1 = flow[0].at<Point2f>(y, x);  
@@ -660,8 +538,8 @@ class Comb
 			
 						double c = (c1 < c2) ? c1 : c2;
 	
-						combk[frame][2][(y * 2)][70 + x] = c;
-						combk[frame][2][(y * 2) + 1][70 + x] = c;
+						Frame[fnum].combk[2][(y * 2)][70 + x] = c;
+						Frame[fnum].combk[2][(y * 2) + 1][70 + x] = c;
 
 						uint16_t fm = clamp(c * 65535, 0, 65535);
 						flowmap[(y * 2)][0 + x] = fm;
@@ -676,7 +554,7 @@ class Comb
 				imshow("comb", rpic);	
 				waitKey(f_oneframe ? 0 : 1);
 			}
-			fnum++; 
+			fcount++; 
 		}
 
 		void DrawFrameY(cline_t cbuf[in_y]) {
@@ -803,7 +681,7 @@ class Comb
 			int firstline = (linesout == in_y) ? 0 : 25;
 			// remove color data from baseband (Y)	
 			for (int l = firstline; l < in_y; l++) {
-				bool invertphase = (rawbuffer[f][l * in_x] == 16384);
+				bool invertphase = (Frame[f].rawbuffer[l * in_x] == 16384);
 
 				for (int h = 0; h < 760; h++) {
 					double comp;	
@@ -836,15 +714,13 @@ class Comb
 
 			cerr << "P " << f << ' ' << dim << endl;
 
-			memcpy(rawbuffer[2], rawbuffer[1], (in_x * in_y * 2));
-			memcpy(rawbuffer[1], rawbuffer[0], (in_x * in_y * 2));
-			memcpy(rawbuffer[0], buffer, (in_x * in_y * 2));
+			memcpy(&Frame[2], &Frame[1], sizeof(frame_t));
+			memcpy(&Frame[1], &Frame[0], sizeof(frame_t));
+			memset(&Frame[0], 0, sizeof(frame_t));
+
+			memcpy(Frame[0].rawbuffer, buffer, (in_x * in_y * 2));
 			
-			memcpy(LPraw[2], LPraw[1], (in_x * in_y * sizeof(double)));
-			memcpy(LPraw[1], LPraw[0], (in_x * in_y * sizeof(double)));
-		
-			memcpy(prevbuf, cbuf, sizeof(cbuf));
-			memset(cbuf, 0, sizeof(cbuf));
+			//memset(cbuf, 0, sizeof(cbuf));
 	
 			LPFrame(0);
 		
@@ -854,25 +730,22 @@ class Comb
 			} 
 			
 			for (int l = 0; l < 24; l++) {
-				uint16_t *line = &rawbuffer[f][l * in_x];	
+				uint16_t *line = &Frame[f].rawbuffer[l * in_x];	
 					
 				for (int h = 4; h < 840; h++) {
-					cbuf[l].p[h].y = line[h]; 
+					Frame[f].cbuf[l].p[h].y = line[h]; 
 				}
 			}
 	
-			memset(combbuffer[f], 0, sizeof(double) * 3 * in_size);
-			memset(combk[f], 0, sizeof(double) * 3 * in_size);
+			memset(Frame[f].clpbuffer, 0, sizeof(double) * 3 * in_size);
+			memset(Frame[f].combk, 0, sizeof(double) * 3 * in_size);
 	
 			// precompute 1D comb filter, needed for 2D and optical flow 
 			Split1D(f);
-		//	SplitIQ(f);
-
 			Split2D(f); 
-			
 			SplitIQ(f);
 
-			memcpy(tbuf, cbuf, sizeof(cbuf));	
+			memcpy(tbuf, Frame[f].cbuf, sizeof(tbuf));	
 			AdjustY(f, tbuf);
 
 			if (dim >= 3) OpticalFlow3D(f, tbuf);
@@ -884,11 +757,11 @@ class Comb
 			Split23D(f, dim); 
 
 			SplitIQ(f);
-			AdjustY(f, cbuf);
+			AdjustY(f, Frame[f].cbuf);
 
-			DoYNR();
+			DoYNR(f);
 		
-			ToRGB(f, firstline, cbuf);
+			ToRGB(f, firstline, Frame[f].cbuf);
 	
 			PostProcess(f);
 			framecount++;
@@ -912,7 +785,7 @@ class Comb
 			for (int line = 4; line <= 5; line++) {
 				int wc = 0;
 				for (int i = 0; i < 700; i++) {
-					if (rawbuffer[fnum][(in_x * line) + i] > 45000) wc++;
+					if (Frame[fnum].rawbuffer[(in_x * line) + i] > 45000) wc++;
 				} 
 				if (wc > 500) {
 					fstart = (line % 2); 
@@ -920,7 +793,7 @@ class Comb
 			}
 
 			for (int line = 16; line < 20; line++) {
-				int new_framecode = ReadPhillipsCode(&rawbuffer[fnum][line * in_x]); // - 0xf80000;
+				int new_framecode = ReadPhillipsCode(&Frame[fnum].rawbuffer[line * in_x]); // - 0xf80000;
 				//int fca = new_framecode & 0xf80000;
 
 				if (((new_framecode & 0xf00000) == 0xf00000) && (new_framecode < 0xff0000)) {
