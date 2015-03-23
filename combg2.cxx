@@ -26,6 +26,8 @@ double p_3dcore = 1.25;
 double p_3drange = 5.5;
 double p_3d2drej = 2;
 
+bool f_opticalflow = true;
+
 int debug_line = -1000;
 	
 int dim = 2;
@@ -184,6 +186,7 @@ class Comb
 		double aburstlev;	// average color burst
 
 		cline_t tbuf[in_y];
+		cline_t pbuf[in_y], nbuf[in_y];
 
 		frame_t Frame[nframes];
 
@@ -260,7 +263,7 @@ class Comb
 
 				for (int h = 4; h < 840; h++) {
 					if ((l >= 2) && (l <= 502)) {
-						Frame[f].combk[1][l][h] = 1 - Frame[f].combk[2][l][h];
+						Frame[f].combk[1][l][h] = 1; // - Frame[f].combk[2][l][h];
 					}
 					
 					// 1D 
@@ -298,7 +301,7 @@ class Comb
 						Frame[f].clpbuffer[2][l][h] = (p3line[h] - line[h]); 
 					} else {
 						Frame[f].clpbuffer[2][l][h] = (((p3line[h] + n3line[h]) / 2) - line[h]); 
-						Frame[f].combk[2][l][h] = clamp(1 - ((_k[h] - (p_3dcore)) / p_3drange), 0, 1);
+//						Frame[f].combk[2][l][h] = clamp(1 - ((_k[h] - (p_3dcore)) / p_3drange), 0, 1);
 					}
 					if (l == (debug_line + 25)) {
 //						cerr << "3DC " << h << ' ' << k2 << ' ' << adj << ' ' << k[h] << endl;
@@ -353,6 +356,10 @@ class Comb
 					if (f_debug2d) Frame[f].cbuf[l].p[h].y = ire_to_u16(50); 
 					Frame[f].cbuf[l].p[h].i = si;  
 					Frame[f].cbuf[l].p[h].q = sq; 
+					
+					if (l == 240) {
+						cerr << h << ' ' << Frame[f].combk[1][l][h] << ' ' << Frame[f].combk[0][l][h] << ' ' << Frame[f].cbuf[l].p[h].y << ' ' << si << ' ' << sq << endl;
+					}
 
 					if (f_bw) {
 						Frame[f].cbuf[l].p[h].i = Frame[f].cbuf[l].p[h].q = 0;  
@@ -628,6 +635,61 @@ class Comb
 			}
 
 		}
+
+		void Proc3D_NoOF() {
+			memcpy(pbuf, Frame[1].cbuf, sizeof(pbuf));
+			memcpy(nbuf, Frame[1].cbuf, sizeof(pbuf));
+			memcpy(tbuf, Frame[1].cbuf, sizeof(pbuf));
+
+//			AdjustY(0, pbuf);
+//			AdjustY(2, nbuf);
+			
+		//	for (int y = 24; y < 505; y++) {
+			for (int y = 24; y < 505; y++) {
+				for (int x = 70; x < 815; x++) {
+					pbuf[y].p[x].i = (Frame[1].cbuf[y].p[x].i + Frame[0].cbuf[y].p[x].i) / 2; 
+					pbuf[y].p[x].q = (Frame[1].cbuf[y].p[x].q + Frame[0].cbuf[y].p[x].q) / 2; 
+					nbuf[y].p[x].i = (Frame[1].cbuf[y].p[x].i + Frame[2].cbuf[y].p[x].i) / 2; 
+					nbuf[y].p[x].q = (Frame[1].cbuf[y].p[x].q + Frame[2].cbuf[y].p[x].q) / 2; 
+//					cerr << "3DC2A Y " << Frame[0].cbuf[y].p[x].y << ' ' << Frame[1].cbuf[y].p[x].y << ' ' << Frame[2].cbuf[y].p[x].y << endl;
+//					cerr << "3DC2A I " << pbuf[y].p[x].i << ' ' << Frame[0].cbuf[y].p[x].i << ' ' << Frame[1].cbuf[y].p[x].i << ' ' << Frame[2].cbuf[y].p[x].i << endl;
+//					cerr << "3DC2A Q " << pbuf[y].p[x].q << ' ' << Frame[0].cbuf[y].p[x].q << ' ' << Frame[1].cbuf[y].p[x].q << ' ' << Frame[2].cbuf[y].p[x].q << endl;
+				}
+			}
+			AdjustY(1, pbuf);
+			AdjustY(1, nbuf);
+			
+			for (int y = 24; y < 505; y++) {
+//			for (int y = 24; y < 241; y++) {
+				for (int x = 70; x < 815; x++) {
+					double dy = 0, di = 0, dq = 0, diff = 0;
+
+
+					dy = fabs(pbuf[y].p[x].y - nbuf[y].p[x].y);
+					di = fabs(pbuf[y].p[x].i - nbuf[y].p[x].i);
+					dq = fabs(pbuf[y].p[x].q - nbuf[y].p[x].q);
+#if 0
+					dy += fabs(tbuf[y].p[x].y - pbuf[y].p[x].y);
+					dy += fabs(tbuf[y].p[x].y - nbuf[y].p[x].y);
+					di += fabs(tbuf[y].p[x].i - pbuf[y].p[x].i);
+					di += fabs(tbuf[y].p[x].i - nbuf[y].p[x].i);
+					dq += fabs(tbuf[y].p[x].q - pbuf[y].p[x].q);
+					dq += fabs(tbuf[y].p[x].q - nbuf[y].p[x].q);
+#endif
+					diff = dy + (di * 2) + (dq * 2);
+
+				if (y == 100) {
+					cerr << "3DC2 Y " << dy / irescale << ' ' << pbuf[y].p[x].y << ' ' << tbuf[y].p[x].y << ' ' << nbuf[y].p[x].y << endl;	
+					cerr << "3DC2 I " << di / irescale << ' ' << pbuf[y].p[x].i << ' ' << tbuf[y].p[x].i << ' ' << nbuf[y].p[x].i << endl;	
+					cerr << "3DC2 Q " << dq / irescale << ' ' << pbuf[y].p[x].q << ' ' << tbuf[y].p[x].q << ' ' << nbuf[y].p[x].q << endl;	
+					Frame[1].combk[2][y][x] = 1 - clamp(((diff / irescale) - 5) / 10, 0, 1);
+					cerr << x << ' ' << diff / irescale << ' ' << Frame[1].combk[2][y][x] << endl;
+				}
+					Frame[1].combk[2][y][x] = 1 - clamp(((diff / irescale) - 5) / 10, 0, 1);
+				}
+			}	
+
+		}
 		
 		// buffer: in_xxin_y uint16_t array
 		void Process(uint16_t *buffer, int dim = 2)
@@ -642,6 +704,7 @@ class Comb
 			memset(&Frame[0], 0, sizeof(frame_t));
 
 			memcpy(Frame[0].rawbuffer, buffer, (in_x * in_y * 2));
+
 			Split1D(0);
 			Split2D(0); 
 			SplitIQ(0);
@@ -664,8 +727,13 @@ class Comb
 				memcpy(tbuf, Frame[f].cbuf, sizeof(tbuf));	
 				AdjustY(f, tbuf);
 
-				OpticalFlow3D(f, tbuf);
-				Split3D(f, true); 
+				if (f_opticalflow) {
+					OpticalFlow3D(f, tbuf);
+					Split3D(f, true); 
+				} else {				
+					Proc3D_NoOF();
+					Split3D(f, false); 
+				}			
 			}			
 
 			SplitIQ(f);
@@ -775,8 +843,11 @@ int main(int argc, char *argv[])
 
 	opterr = 0;
 	
-	while ((c = getopt(argc, argv, "c:r:R:m8OwvDd:Bb:I:w:i:o:fphn:l:")) != -1) {
+	while ((c = getopt(argc, argv, "Fc:r:R:m8OwvDd:Bb:I:w:i:o:fphn:l:")) != -1) {
 		switch (c) {
+			case 'F':
+				f_opticalflow = false;
+				break;
 			case 'c':
 				sscanf(optarg, "%lf", &p_3dcore);
 				break; 
