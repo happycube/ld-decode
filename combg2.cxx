@@ -192,7 +192,7 @@ class Comb
 
 		Filter *f_hpy, *f_hpi, *f_hpq;
 		Filter *f_hpvy, *f_hpvi, *f_hpvq;
-
+		
 		// precompute 1D comb filter, needed for 2D and optical flow 
 		void Split1D(int fnum)
 		{
@@ -301,7 +301,7 @@ class Comb
 						Frame[f].clpbuffer[2][l][h] = (p3line[h] - line[h]); 
 					} else {
 						Frame[f].clpbuffer[2][l][h] = (((p3line[h] + n3line[h]) / 2) - line[h]); 
-//						Frame[f].combk[2][l][h] = clamp(1 - ((_k[h] - (p_3dcore)) / p_3drange), 0, 1);
+						Frame[f].combk[2][l][h] = clamp(1 - ((_k[h] - (p_3dcore)) / p_3drange), 0, 1);
 					}
 					if (l == (debug_line + 25)) {
 //						cerr << "3DC " << h << ' ' << k2 << ' ' << adj << ' ' << k[h] << endl;
@@ -637,20 +637,80 @@ class Comb
 		}
 
 		void Proc3D_NoOF() {
-			memcpy(pbuf, Frame[1].cbuf, sizeof(pbuf));
+			memcpy(pbuf, Frame[0].cbuf, sizeof(pbuf));
 			memcpy(nbuf, Frame[1].cbuf, sizeof(pbuf));
-			memcpy(tbuf, Frame[1].cbuf, sizeof(pbuf));
+			memcpy(tbuf, Frame[2].cbuf, sizeof(pbuf));
+				
+			// a = fir1(8, 0.1); printf("%.15f, ", a)
+			Filter lp_3dip({0.016282173233472, 0.046349864271587, 0.121506650149374, 0.199579915155249, 0.232562794380638, 0.199579915155249, 0.121506650149374, 0.046349864271587, 0.016282173233472}, {1.0});
+			Filter lp_3din({0.016282173233472, 0.046349864271587, 0.121506650149374, 0.199579915155249, 0.232562794380638, 0.199579915155249, 0.121506650149374, 0.046349864271587, 0.016282173233472}, {1.0});
+			Filter lp_3dqp({0.016282173233472, 0.046349864271587, 0.121506650149374, 0.199579915155249, 0.232562794380638, 0.199579915155249, 0.121506650149374, 0.046349864271587, 0.016282173233472}, {1.0});
+			Filter lp_3dqn({0.016282173233472, 0.046349864271587, 0.121506650149374, 0.199579915155249, 0.232562794380638, 0.199579915155249, 0.121506650149374, 0.046349864271587, 0.016282173233472}, {1.0});
 
 //			AdjustY(0, pbuf);
 //			AdjustY(2, nbuf);
 			
 		//	for (int y = 24; y < 505; y++) {
 			for (int y = 24; y < 505; y++) {
-				for (int x = 70; x < 815; x++) {
-					pbuf[y].p[x].i = (Frame[1].cbuf[y].p[x].i + Frame[0].cbuf[y].p[x].i) / 2; 
-					pbuf[y].p[x].q = (Frame[1].cbuf[y].p[x].q + Frame[0].cbuf[y].p[x].q) / 2; 
-					nbuf[y].p[x].i = (Frame[1].cbuf[y].p[x].i + Frame[2].cbuf[y].p[x].i) / 2; 
-					nbuf[y].p[x].q = (Frame[1].cbuf[y].p[x].q + Frame[2].cbuf[y].p[x].q) / 2; 
+				uint16_t *line = &Frame[1].rawbuffer[y * in_x];	
+				uint16_t *linep = &Frame[0].rawbuffer[y * in_x];	
+				uint16_t *linen = &Frame[2].rawbuffer[y * in_x];	
+				bool invertphase = (line[0] == 16384);
+
+				for (int x = 60; x < 830; x++) {
+					int phase = x % 4;
+					double tcp = (linep[x] - line[x]); 
+					double tcn = (linen[x] - line[x]); 
+					double psi = 0, psq = 0;
+					double nsi = 0, nsq = 0;
+
+				//	Frame[f].clpbuffer[2][l][h] = (((p3line[h] + n3line[h]) / 2) - line[h]); 
+				
+					if (!invertphase) {
+						tcp = -tcp;
+						tcn = -tcn;
+					}
+	
+					switch (phase) {
+#if 0
+						case 0: psi =  tcp; nsi =  tcn; break;
+						case 1: psq = -tcp; nsq = -tcn; break;
+						case 2: psi = -tcp; nsi = -tcn; break;
+						case 3: psq =  tcp; nsq =  tcn; break;
+#else
+						case 0: lp_3dip.feed( tcp);  lp_3din.feed( tcn); break;
+						case 1: lp_3dqp.feed(-tcp);  lp_3dqn.feed(-tcn); break;
+						case 2: lp_3dip.feed(-tcp);  lp_3din.feed(-tcn); break;
+						case 3: lp_3dqp.feed( tcp);  lp_3dqn.feed( tcn); break;
+#endif
+						default: break;
+					}
+#if 0
+					pbuf[y].p[x - 4].i = psi; 
+					pbuf[y].p[x - 4].q = psq; 
+					nbuf[y].p[x - 4].i = nsi; 
+					nbuf[y].p[x - 4].q = nsq; 
+#else
+					pbuf[y].p[x - 4].i = lp_3dip.val(); 
+					pbuf[y].p[x - 4].q = lp_3dqp.val(); 
+					nbuf[y].p[x - 4].i = lp_3din.val(); 
+					nbuf[y].p[x - 4].q = lp_3dqn.val(); 
+#endif
+
+#if 0	
+					if (!invertphase) {
+						tc1 = -tc1;
+						tc1f = -tc1f;
+					}
+
+					Frame[fnum].clpbuffer[0][l][h - f_toffset] = tc1f;
+#endif
+//					Frame[fnum].combk[0][l][h] = 1;
+
+//					pbuf[y].p[x].i = (Frame[1].cbuf[y].p[x].i + Frame[0].cbuf[y].p[x].i) / 2; 
+//					pbuf[y].p[x].q = (Frame[1].cbuf[y].p[x].q + Frame[0].cbuf[y].p[x].q) / 2; 
+//					nbuf[y].p[x].i = (Frame[1].cbuf[y].p[x].i + Frame[2].cbuf[y].p[x].i) / 2; 
+//					nbuf[y].p[x].q = (Frame[1].cbuf[y].p[x].q + Frame[2].cbuf[y].p[x].q) / 2; 
 //					cerr << "3DC2A Y " << Frame[0].cbuf[y].p[x].y << ' ' << Frame[1].cbuf[y].p[x].y << ' ' << Frame[2].cbuf[y].p[x].y << endl;
 //					cerr << "3DC2A I " << pbuf[y].p[x].i << ' ' << Frame[0].cbuf[y].p[x].i << ' ' << Frame[1].cbuf[y].p[x].i << ' ' << Frame[2].cbuf[y].p[x].i << endl;
 //					cerr << "3DC2A Q " << pbuf[y].p[x].q << ' ' << Frame[0].cbuf[y].p[x].q << ' ' << Frame[1].cbuf[y].p[x].q << ' ' << Frame[2].cbuf[y].p[x].q << endl;
@@ -676,16 +736,16 @@ class Comb
 					dq += fabs(tbuf[y].p[x].q - pbuf[y].p[x].q);
 					dq += fabs(tbuf[y].p[x].q - nbuf[y].p[x].q);
 #endif
-					diff = dy + (di * 2) + (dq * 2);
+					diff = (dy * 1) + (di * 1) + (dq * 1);
 
 				if (y == 100) {
 					cerr << "3DC2 Y " << dy / irescale << ' ' << pbuf[y].p[x].y << ' ' << tbuf[y].p[x].y << ' ' << nbuf[y].p[x].y << endl;	
 					cerr << "3DC2 I " << di / irescale << ' ' << pbuf[y].p[x].i << ' ' << tbuf[y].p[x].i << ' ' << nbuf[y].p[x].i << endl;	
 					cerr << "3DC2 Q " << dq / irescale << ' ' << pbuf[y].p[x].q << ' ' << tbuf[y].p[x].q << ' ' << nbuf[y].p[x].q << endl;	
-					Frame[1].combk[2][y][x] = 1 - clamp(((diff / irescale) - 5) / 10, 0, 1);
+					Frame[1].combk[2][y][x] = 1 - clamp(((diff / irescale) - 3) / 8, 0, 1);
 					cerr << x << ' ' << diff / irescale << ' ' << Frame[1].combk[2][y][x] << endl;
 				}
-					Frame[1].combk[2][y][x] = 1 - clamp(((diff / irescale) - 5) / 10, 0, 1);
+					Frame[1].combk[2][y][x] = 1 - clamp(((diff / irescale) - 3) / 8, 0, 1);
 				}
 			}	
 
@@ -731,7 +791,7 @@ class Comb
 					OpticalFlow3D(f, tbuf);
 					Split3D(f, true); 
 				} else {				
-					Proc3D_NoOF();
+//					Proc3D_NoOF();
 					Split3D(f, false); 
 				}			
 			}			
