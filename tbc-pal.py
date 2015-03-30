@@ -41,38 +41,17 @@ color_filter = sps.firwin(17, 0.1 / (freq_mhz / 2), window='hamming')
 # NTSC: set up sync color heterodyne table first 
 bhet = np.empty(4096, dtype=np.complex)
 for i in range(0, 4096):
-	bhet[i] = complex(np.cos(((i / freq) * 2.0 * np.pi) + (33.0/180.0)), -(np.sin(((i / freq) * 2.0 * np.pi) + (33.0/180.0))))
 	bhet[i] = complex(np.cos(((i / freq) * 2.0 * np.pi) + (0.0/180.0)), -(np.sin(((i / freq) * 2.0 * np.pi) + (0.0/180.0))))
 
 def printerr(*objs):
 	print(*objs, file=sys.stderr)
 	return
 
-# NTSC code
-def burst_detect(line, loc = 0):
-	level = 0
-	phase = 0
-
-	obhet = np.empty(100, dtype=np.complex)
-
-	obhet = bhet[loc+00:loc+100] * line[loc+00:loc+100]
-
-	obhet_filt = sps.lfilter(color_filter, [1.0], obhet)
-	obhet_levels = np.absolute(obhet_filt)
-	obhet_angles = np.angle(obhet_filt)
-
-	for i in range(0, 100):
-#		print(i, line[i], obhet_levels[i], obhet_angles[i])
-		if (obhet_levels[i] > level) and (obhet_levels[i] < 10000):
-			level = obhet_levels[i]
-			phase = obhet_angles[i]
-
-	return [level, phase]
-
 from scipy import interpolate
 
 # This uses numpy's interpolator, which provides very good results
 def scale(buf, begin, end, tgtlen):
+	print("scaling ", begin, end, tgtlen)
 	ibegin = np.floor(begin)
 	iend = np.floor(end)
 
@@ -103,6 +82,34 @@ def wrap_angle(angle, tgt):
 
 	return adjust
 
+def align_angle(angle):
+	pid2 = np.pi / 2
+	pid4 = np.pi / 4
+
+	fangle = np.fabs(angle)
+
+#	if (np.pi - angle) < pid4:
+	if (angle > 0) and (angle < pid2):
+		print("c1")
+		return angle
+	elif (angle > 0) and (angle < np.pi):
+		print("c2")
+		return angle - pid2
+	elif (angle > 0) and (angle < pid4):
+		print("c3")
+		return angle
+	elif angle > -pid4:
+		print("c4")
+		return -angle
+	elif angle > -pid2:
+		print("c5")
+		return pid2 + angle
+	elif (-np.pi - angle) < pid4:
+		print("c6")
+		return np.pi + angle  
+
+
+
 # new code
 
 # sync filter, should be usable for 4x and 8x fsc
@@ -115,10 +122,6 @@ f_id_b, f_id_a = sps.butter(3, 0.002)
 def is_sync(x):
 	return 1 if x < 24000 else 0
 
-scale_line = ((63.5 + 9.2) / 63.5)
-scale_linelen = 910.0 * ((63.5 + 9.2) / 63.5) # add to non-TBC line length to get second hblank
-phasemult = 1.591549430918953e-01 * 8 # this has something to do with pi/radians, forgot what 
-
 tgt_angle = 0
 
 sync_filter = sps.firwin(32, 0.8 / (freq_mhz / 2), window='hamming')
@@ -128,52 +131,73 @@ bfreq = 4.43361875
 ofreq = bfreq * 4
 oline = 1135
 
-# for analysis we want the hsync pulse from the *next* line
-ialine = 1967 # input frequency * (68.7/1000000)
-oaline = 1135 + 84 # line length used for analysis
+# 14000000 * (68.7/1000000)
+# s14line = 961.8 -  oh oh.  it rounds up to 962 OK, but this could complicate the math a bit.
+
+# we need to include the next hsync pulse and round it up to an even #.
+ia15line = 1029  # 15000000*(68.6/1000000) 
+iline = 1832.727 # ntsc-8fsc * (64/1M)
+ialine = 1964.4545 # scaled ia15line up to 8M*315/88 - ntsc-8fsc
 
 outbuf = np.empty((oline * 625), dtype=np.uint16)
 
-pilot_filter = sps.firwin(16, [3.5 / (ofreq / 2), 4.0 / (ofreq / 2)], window='hamming', pass_zero=False)
-#pilot_filter = sps.firwin(16, 4.5 / (ofreq / 2), window='hamming')
+pilot_filter = sps.firwin(16, [3.6 / 7.5, 3.9 / 7.5], window='hamming', pass_zero=False)
+#pilot_filter = sps.firwin(16, 4.5 / 7.5, window='hamming')
 
 phet = np.empty(4096, dtype=np.complex)
-pfreq = ofreq / 3.75
+pfreq = 15 / 3.75
 for i in range(0, 4096):
 	phet[i] = complex(np.cos(((i / pfreq) * 2.0 * np.pi) + (0.0/180.0)), -(np.sin(((i / pfreq) * 2.0 * np.pi) + (0.0/180.0))))
 
+# This now uses 15mhz scaled data, not pal-4fsc
 def pilot_detect(line, loc = 0):
 	level = 0
 	phase = 0
 
-	obhet = np.empty(83, dtype=np.complex)
+#	plt.plot(line[0:60])
+#	plt.show()
+#	exit()
 
-	obhet = phet[loc:loc+83] * line[loc:loc+83]
+	obhet = np.empty(60, dtype=np.complex)
+
+	obhet = phet[loc:loc+60] * line[loc:loc+60]
 
 	obhet_filt = sps.lfilter(pilot_filter, [1.0], obhet)
 	obhet_levels = np.absolute(obhet_filt)
 	obhet_angles = np.angle(obhet_filt)
 
-	for i in range(0, 83):
-#		print(i, line[i], obhet_levels[i], obhet_angles[i])
-		if (obhet_levels[i] > level) and (obhet_levels[i] < 20000):
+	for i in range(1, 60):
+		aa = align_angle(obhet_angles[i])
+		print(i, line[i], obhet_levels[i], obhet_angles[i], aa, sub_angle(obhet_angles[i] - obhet_angles[i - 1]))
+		if (obhet_levels[i] > level) and (obhet_levels[i] < 50000):
 			level = obhet_levels[i]
-			phase = obhet_angles[i]
+			phase = aa
 
-#	lineseg = obhet_filt[0:83]
-#	lineseg -= np.mean(lineseg)
-
-#	ffti = np.fft.fft(lineseg)
-#	fftp = np.fft.fft(phet.real[loc:loc+83] * 10000)
-
-#	fftir = np.absolute(ffti)
-#	fftpr = np.absolute(fftp)
-
-#	plt.plot(fftir)
-#	plt.plot(fftpr)
-#	plt.show()
-#	exit()
+	plt.plot(line[loc:loc+60])
+#	plt.plot(np.angle(phet[loc+0:loc+60]))
 	return [level, phase]
+
+#	plt.plot((np.absolute(phet[loc:loc+60].imag)*10000)+20000)
+#	plt.plot(line[loc:loc+60])
+#	plt.plot(obhet_levels[0:60])
+#	plt.plot(obhet_angles[0:60])
+	plt.plot(np.angle(phet[loc+0:loc+60]))
+	plt.show()
+	exit()
+
+	lineseg = obhet_filt[0:60]
+	lineseg -= np.mean(lineseg)
+
+	ffti = np.fft.fft(lineseg)
+	fftp = np.fft.fft(phet.real[loc:loc+60] * 10000)
+
+	fftir = np.absolute(ffti)
+	fftpr = np.absolute(fftp)
+
+	plt.plot(fftir)
+	plt.plot(fftpr)
+	plt.show()
+	exit()
 
 def process(indata):
 	global tgt_angle 
@@ -237,21 +261,39 @@ def process(indata):
 				insync = 1
 
 		if insync == 0 and cline > 0:
-			inline = indata[prev_begin:begin+1].astype(np.float32)
+			inline = indata[prev_begin - 8:begin+150].astype(np.float32)
 
-			eoffset = begin - np.floor(prev_begin) 
+			boffset = prev_begin - np.floor(prev_begin) + 8
+			eoffset = begin + 8 - np.floor(prev_begin) 
 
-			print(prev_begin - np.floor(prev_begin), eoffset, len(inline), oline)
+			# need to scale to 15mhz for pilot alignment
+			alen = (begin - prev_begin) * (ialine / iline)
+			aeoffset = boffset + alen 
 
-			out1 = scale(inline, prev_begin - np.floor(prev_begin), eoffset, oline)
+			s15 = scale(inline, boffset, aeoffset, ia15line) 
+			pilot_freq = pilot_detect(s15)
+
+			pmult = 4.0 / np.pi 
+			print(prev_begin, pilot_freq, wrap_angle(pilot_freq[1], 0), sub_angle(pilot_freq[1]) * pmult) 
+
+			adj = pilot_freq[1] * pmult
+			adj = -2			
+			boffset += adj 
+			aeoffset += adj 
+
+			s15 = scale(inline, boffset, aeoffset, ia15line) 
+			pilot_freq = pilot_detect(s15)
+			print(prev_begin, pilot_freq, wrap_angle(pilot_freq[1], 0), sub_angle(pilot_freq[1]) * pmult) 
+	
+			plt.show()
+			exit()
+
+			out1 = scale(inline, 8 + prev_begin - np.floor(prev_begin), eoffset, oline)
 			out1 = np.clip(out1, 0, 65535)
 
 			outbuf[(cline * oline):(cline + 1) * oline] = out1 
 
 #			print("scaler", prev_begin, begin, end = ' ' ) 
-#			rescale = (send - prev_begin) / (scale_linelen * 2)
-#			begin = prev_begin + (1820 * rescale) 
-#			print(rescale, begin) 
 
 		# needs to be done first becausse the first line is written normally
 		if (insync >= 1):
