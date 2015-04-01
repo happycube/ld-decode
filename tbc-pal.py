@@ -90,22 +90,22 @@ def align_angle(angle):
 
 #	if (np.pi - angle) < pid4:
 	if (angle > 0) and (angle < pid2):
-		print("c1")
+#		print("c1")
 		return angle
 	elif (angle > 0) and (angle < np.pi):
-		print("c2")
+#		print("c2")
 		return angle - pid2
 	elif (angle > 0) and (angle < pid4):
-		print("c3")
+#		print("c3")
 		return angle
 	elif angle > -pid4:
-		print("c4")
+#		print("c4")
 		return -angle
 	elif angle > -pid2:
-		print("c5")
+#		print("c5")
 		return pid2 + angle
 	elif (-np.pi - angle) < pid4:
-		print("c6")
+#		print("c6")
 		return np.pi + angle  
 
 
@@ -144,9 +144,9 @@ outbuf = np.empty((oline * 625), dtype=np.uint16)
 pilot_filter = sps.firwin(16, [3.6 / 7.5, 3.9 / 7.5], window='hamming', pass_zero=False)
 #pilot_filter = sps.firwin(16, 4.5 / 7.5, window='hamming')
 
-phet = np.empty(4096, dtype=np.complex)
+phet = np.empty(2048, dtype=np.complex)
 pfreq = 15 / 3.75
-for i in range(0, 4096):
+for i in range(0, 2048):
 	phet[i] = complex(np.cos(((i / pfreq) * 2.0 * np.pi) + (0.0/180.0)), -(np.sin(((i / pfreq) * 2.0 * np.pi) + (0.0/180.0))))
 
 # This now uses 15mhz scaled data, not pal-4fsc
@@ -158,23 +158,31 @@ def pilot_detect(line, loc = 0):
 #	plt.show()
 #	exit()
 
-	obhet = np.empty(60, dtype=np.complex)
+	lined = np.double(line[loc:loc+60]) 
 
-	obhet = phet[loc:loc+60] * line[loc:loc+60]
+	obhet = phet[loc:loc+60] * lined[loc:loc+60]
 
 	obhet_filt = sps.lfilter(pilot_filter, [1.0], obhet)
-	obhet_levels = np.absolute(obhet_filt)
-	obhet_angles = np.angle(obhet_filt)
+	obhet_levels = np.absolute(obhet)
+	obhet_angles = np.angle(obhet)
 
-	for i in range(1, 60):
+	for i in range(21, 60):
 		aa = align_angle(obhet_angles[i])
 		print(i, line[i], obhet_levels[i], obhet_angles[i], aa, sub_angle(obhet_angles[i] - obhet_angles[i - 1]))
 		if (obhet_levels[i] > level) and (obhet_levels[i] < 50000):
 			level = obhet_levels[i]
 			phase = aa
 
-	plt.plot(line[loc:loc+60])
-#	plt.plot(np.angle(phet[loc+0:loc+60]))
+#	print(level, phase)
+#	exit()
+#	plt.plot(obheti - obhet.imag)
+#	plt.plot(line[loc:loc+60])
+#	plt.plot(obhet.imag)
+#	plt.plot(obhet_filt[21:].imag)
+#	plt.plot(obhet_angles[21:])
+#	plt.plot(obhet[21:].imag)
+#	plt.show()
+#	exit()
 	return [level, phase]
 
 #	plt.plot((np.absolute(phet[loc:loc+60].imag)*10000)+20000)
@@ -285,8 +293,8 @@ def process(indata):
 			pilot_freq = pilot_detect(s15)
 			print(prev_begin, pilot_freq, wrap_angle(pilot_freq[1], 0), sub_angle(pilot_freq[1]) * pmult) 
 	
-			plt.show()
-			exit()
+#			plt.show()
+#			exit()
 
 			out1 = scale(inline, 8 + prev_begin - np.floor(prev_begin), eoffset, oline)
 			out1 = np.clip(out1, 0, 65535)
