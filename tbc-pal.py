@@ -12,6 +12,7 @@ import io
 
 from scipy.interpolate import interp1d
 import matplotlib.pyplot as plt
+from matplotlib.mlab import find
 
 # support code
 
@@ -109,7 +110,6 @@ def align_angle(angle):
 		return np.pi + angle  
 
 
-
 # new code
 
 # sync filter, should be usable for 4x and 8x fsc
@@ -135,13 +135,15 @@ oline = 1135
 # s14line = 961.8 -  oh oh.  it rounds up to 962 OK, but this could complicate the math a bit.
 
 # we need to include the next hsync pulse and round it up to an even #.
+i15line = 960  # 15000000*(64/1000000) 
 ia15line = 1029  # 15000000*(68.6/1000000) 
+ia4fline = 1217 # scaled ia15line up to 8M*315/88 - ntsc-8fsc
 iline = 1832.727 # ntsc-8fsc * (64/1M)
 ialine = 1964.4545 # scaled ia15line up to 8M*315/88 - ntsc-8fsc
 
 outbuf = np.empty((oline * 625), dtype=np.uint16)
 
-pilot_filter = sps.firwin(16, [3.6 / 7.5, 3.9 / 7.5], window='hamming', pass_zero=False)
+pilot_filter_b, pilot_filter_a = sps.butter(1, [3.65 / 7.5, 3.85 / 7.5])
 #pilot_filter = sps.firwin(16, 4.5 / 7.5, window='hamming')
 
 phet = np.empty(2048, dtype=np.complex)
@@ -149,63 +151,39 @@ pfreq = 15 / 3.75
 for i in range(0, 2048):
 	phet[i] = complex(np.cos(((i / pfreq) * 2.0 * np.pi) + (0.0/180.0)), -(np.sin(((i / pfreq) * 2.0 * np.pi) + (0.0/180.0))))
 
-# This now uses 15mhz scaled data, not pal-4fsc
-def pilot_detect(line, loc = 0):
-	level = 0
+def quadpeak(y):
+	return (y[2] - y[0]) / (2 * (2 * y[1] - y[0] - y[2]))
+
+def pilot_detect(line, loc = 0, ilen = 60):
+	cropline = line[loc:loc+ilen]
+#	cropline = sps.lfilter(pilot_filter_b, pilot_filter_a, cropline) 
+	cropline -= np.mean(cropline)
+	acropline = np.absolute(cropline)
+
+#	print(len(cropline))
+
+#	indices = find((cropline[1:] >= 0) & (cropline[:-1] < 0))
+#	print(indices)
+	toffset = 0
+	count = 0
 	phase = 0
+	for i in range(15, 35):
+		if (cropline[i] > 5000) and (cropline[i] > cropline[i - 1]) and (cropline[i] > cropline[i + 1]):	
+			phase = i % 2 
+			offset = quadpeak(cropline[i-1:i+2])
+			toffset += offset
+			count += 1
+			print(i, offset, cropline[i - 1], cropline[i], cropline[i + 1])
+		elif (cropline[i] < -5000) and (cropline[i] < cropline[i - 1]) and (cropline[i] < cropline[i + 1]):	
+			phase = i % 2 
+			offset = quadpeak(cropline[i-1:i+2])
+			toffset += offset
+			count += 1
+			print(i, offset, cropline[i - 1], cropline[i], cropline[i + 1])
 
-#	plt.plot(line[0:60])
-#	plt.show()
-#	exit()
-
-	lined = np.double(line[loc:loc+60]) 
-
-	obhet = phet[loc:loc+60] * lined[loc:loc+60]
-
-	obhet_filt = sps.lfilter(pilot_filter, [1.0], obhet)
-	obhet_levels = np.absolute(obhet)
-	obhet_angles = np.angle(obhet)
-
-	for i in range(21, 60):
-		aa = align_angle(obhet_angles[i])
-		print(i, line[i], obhet_levels[i], obhet_angles[i], aa, sub_angle(obhet_angles[i] - obhet_angles[i - 1]))
-		if (obhet_levels[i] > level) and (obhet_levels[i] < 50000):
-			level = obhet_levels[i]
-			phase = aa
-
-#	print(level, phase)
-#	exit()
-#	plt.plot(obheti - obhet.imag)
-#	plt.plot(line[loc:loc+60])
-#	plt.plot(obhet.imag)
-#	plt.plot(obhet_filt[21:].imag)
-#	plt.plot(obhet_angles[21:])
-#	plt.plot(obhet[21:].imag)
-#	plt.show()
-#	exit()
-	return [level, phase]
-
-#	plt.plot((np.absolute(phet[loc:loc+60].imag)*10000)+20000)
-#	plt.plot(line[loc:loc+60])
-#	plt.plot(obhet_levels[0:60])
-#	plt.plot(obhet_angles[0:60])
-	plt.plot(np.angle(phet[loc+0:loc+60]))
-	plt.show()
-	exit()
-
-	lineseg = obhet_filt[0:60]
-	lineseg -= np.mean(lineseg)
-
-	ffti = np.fft.fft(lineseg)
-	fftp = np.fft.fft(phet.real[loc:loc+60] * 10000)
-
-	fftir = np.absolute(ffti)
-	fftpr = np.absolute(fftp)
-
-	plt.plot(fftir)
-	plt.plot(fftpr)
-	plt.show()
-	exit()
+	rv = (phase + (toffset / count))
+	rv *= 2.2
+	return rv
 
 def process(indata):
 	global tgt_angle 
@@ -279,24 +257,30 @@ def process(indata):
 			aeoffset = boffset + alen 
 
 			s15 = scale(inline, boffset, aeoffset, ia15line) 
-			pilot_freq = pilot_detect(s15)
+			pilot_offset = pilot_detect(s15)
+			print(line, " pass 1: ", boffset, aeoffset, pilot_offset)
 
-			pmult = 4.0 / np.pi 
-			print(prev_begin, pilot_freq, wrap_angle(pilot_freq[1], 0), sub_angle(pilot_freq[1]) * pmult) 
-
-			adj = pilot_freq[1] * pmult
-			adj = -2			
-			boffset += adj 
-			aeoffset += adj 
+			boffset += pilot_offset 
+			aeoffset += pilot_offset 
 
 			s15 = scale(inline, boffset, aeoffset, ia15line) 
-			pilot_freq = pilot_detect(s15)
-			print(prev_begin, pilot_freq, wrap_angle(pilot_freq[1], 0), sub_angle(pilot_freq[1]) * pmult) 
+			pilot_offset = pilot_detect(s15)
+			pilot_offset2 = pilot_detect(s15, 960)
+			print(boffset, pilot_offset, pilot_offset2) 
+			print(line, " pass 2: ", boffset, aeoffset, pilot_offset, pilot_offset2)
+
+			if (pilot_offset2 < 2.0):
+				aeoffset += (pilot_offset2) 
+				s15 = scale(inline, boffset, aeoffset, ia15line) 
+				pilot_offset = pilot_detect(s15)
+				pilot_offset2 = pilot_detect(s15, 960)
+				print(line, " pass 3: ", boffset, aeoffset, pilot_offset, pilot_offset2)
 	
 #			plt.show()
 #			exit()
 
-			out1 = scale(inline, 8 + prev_begin - np.floor(prev_begin), eoffset, oline)
+			out1 = scale(inline, boffset, aeoffset, ia4fline)[0:1135] 
+			#out1 = scale(inline, 8 + prev_begin - np.floor(prev_begin), eoffset, oline)
 			out1 = np.clip(out1, 0, 65535)
 
 			outbuf[(cline * oline):(cline + 1) * oline] = out1 
