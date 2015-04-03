@@ -165,14 +165,16 @@ Filter f_longsync(f_dsync);
 Filter f_syncid(f_syncid8);
 #endif
 
+/*
 inline double wrapadj(double w)
 {
+	return w;
 	while (w > 2)  w -= 4;
 	while (w < -2) w += 4;
 
 	return w;
 }
-
+*/
 bool BurstDetect_New(double *line, int freq, double _loc, bool tgt, double &plevel, double &pphase) 
 {
 	int len = (28 * freq);
@@ -184,21 +186,21 @@ bool BurstDetect_New(double *line, int freq, double _loc, bool tgt, double &plev
 
 	for (int i = loc + (15 * freq); i < loc + len; i++) {
 		if ((line[i] > 22500) && (line[i] < 30000) && (line[i] > line[i - 1]) && (line[i] > line[i + 1])) {
-			double c = round((i + peakdetect_quad(&line[i - 1])) / 4) * 4;
+			double c = round(((i + peakdetect_quad(&line[i - 1])) / 4) + 0.5) * 4;
 //			c = i + phase;
 			if (tgt) c -= 2;
 			phase = (i + peakdetect_quad(&line[i - 1])) - c;
 
 			// XXX: this may be wrong, but phase is almost always negative here
-			if (phase > 2.5) phase -= 4;
-			if (phase < -2.5) phase += 4;
+			if (phase > 3.0) phase -= 4;
+			if (phase < -3.0) phase += 4;
 
 			ptot += phase;
 
 			tpeak += line[i];
 
 			count++;
-//			cerr << "BDN " << i << ' ' << line[i - 1] << ' ' << line[i] << ' ' << line[i + 1] << ' ' << phase << ' ' << (i + peakdetect_quad(&line[i - 1])) << ' ' << c << ' ' << ptot << endl; 
+			// cerr << "BDN " << i << ' ' << line[i - 1] << ' ' << line[i] << ' ' << line[i + 1] << ' ' << phase << ' ' << (i + peakdetect_quad(&line[i - 1])) << ' ' << c << ' ' << ptot << endl; 
 		} 
 		else if ((line[i] < 16000) && (line[i] < line[i - 1]) && (line[i] < line[i + 1])) {
 			cmin++;
@@ -372,8 +374,8 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line, bool err =
 	for (pass = 0; (pass < 12) && ((fabs(nadj1) + fabs(nadj2)) > .05); pass++) {
 //		cerr << line << " 0" << ' ' << ((end - begin) / scale_tgt) * ntsc_ipline.0 << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
 
-		nadj1 = wrapadj(nphase1) * 1;
-		nadj2 = wrapadj(nphase2) * 1;
+		nadj1 = nphase1 * 1;
+		nadj2 = nphase2 * 1;
 
 		cerr << tgt_nphase << ' ' << nphase1 << ' ' << nphase2 << ' ' << (nphase2 - nphase1) << endl;
 		cerr << "adj1 " << pass << ' ' << nadj1 << ' ' << endl;
@@ -386,8 +388,8 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line, bool err =
 		BurstDetect_New(tout, out_freq, 0, tgt_nphase != 0, plevel1, nphase1); 
 		BurstDetect_New(tout, out_freq, 228, tgt_nphase != 0, plevel2, nphase2); 
 		
-		nadj1 = wrapadj(nphase1) * 1;
-		nadj2 = wrapadj(nphase2) * 1;
+		nadj1 = (nphase1) * 1;
+		nadj2 = (nphase2) * 1;
 
 		adjlen = (end - begin) / (scale_tgt / ntsc_opline);
 					
@@ -405,7 +407,7 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line, bool err =
 		double orig_len = orig_end - orig_begin;
 		double new_len = end - begin;
 		cerr << "len " << frameno + 1 << ":" << oline << ' ' << orig_len << ' ' << new_len << ' ' << orig_begin << ' ' << begin << ' ' << orig_end << ' ' << end << endl;
-		if (fabs(new_len - orig_len) > 3.5) {
+		if (fabs(new_len - orig_len) > (in_freq * .45)) {
 			cerr << "ERRP len " << frameno + 1 << ":" << oline << ' ' << orig_len << ' ' << new_len << ' ' << orig_begin << ' ' << begin << ' ' << orig_end << ' ' << end << endl;
 
 			begin = orig_begin;
