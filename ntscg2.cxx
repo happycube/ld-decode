@@ -196,7 +196,7 @@ bool BurstDetect_New(double *line, int freq, double _loc, bool tgt, double &plev
 			tpeak += line[i];
 
 			count++;
-			cerr << "BDN " << i << ' ' << line[i - 1] << ' ' << line[i] << ' ' << line[i + 1] << ' ' << phase << ' ' << (i + peakdetect_quad(&line[i - 1])) << ' ' << c << ' ' << ptot << endl; 
+//			cerr << "BDN " << i << ' ' << line[i - 1] << ' ' << line[i] << ' ' << line[i + 1] << ' ' << phase << ' ' << (i + peakdetect_quad(&line[i - 1])) << ' ' << c << ' ' << ptot << endl; 
 		} 
 		else if ((line[i] < 16000) && (line[i] < line[i - 1]) && (line[i] < line[i + 1])) {
 			cmin++;
@@ -204,10 +204,10 @@ bool BurstDetect_New(double *line, int freq, double _loc, bool tgt, double &plev
 		}
 	}
 
-	plevel = (tpeak / count) - (tmin / cmin);
+	plevel = ((tpeak / count) - (tmin / cmin)) / 4.5;
 	pphase = (ptot / count) * 1;
 
-	cerr << "BDN end " << plevel << ' ' << pphase << endl;
+//	cerr << "BDN end " << plevel << ' ' << pphase << endl;
 	
 	return (count >= 4);
 }
@@ -315,13 +315,13 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line, bool err =
 {
 	double tout[8192];
 	double adjlen = ntsc_ipline;
-	double obegin = begin;
 	int pass = 0;
 
 	double plevel1, plevel2;
 	double nphase1, nphase2;
 
 	double orig_begin = begin;
+	double orig_end = end;
 
 	int oline = get_oline(line);
 
@@ -336,10 +336,12 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line, bool err =
 		tgt_nphase = ((line + phase + iline) % 2) ? -2 : 0;
 	} 
 
-	BurstDetect_New(tout, out_freq, 0, tgt_nphase != 0, plevel1, nphase1); 
-	BurstDetect_New(tout, out_freq, 228, tgt_nphase != 0, plevel2, nphase2); 
+	bool valid = BurstDetect_New(tout, out_freq, 0, tgt_nphase != 0, plevel1, nphase1); 
+	valid |= BurstDetect_New(tout, out_freq, 228, tgt_nphase != 0, plevel2, nphase2); 
 
-	if ((plevel1 < 1400) || (plevel2 < 1000)) {
+	cerr << "levels " << plevel1 << ' ' << plevel2 << endl;
+
+	if (!valid || (plevel1 < 1400) || (plevel2 < 1000)) {
 		begin += prev_offset;
 		end += prev_offset;
 	
@@ -356,14 +358,14 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line, bool err =
 		phase = (fabs(nphase1) > 1);
 		iline = line;
 		offburst = 0;
-//		cerr << "p " << nphase1 << ' ' << pphase1 << ' ' << fabs(pphase1) << ' ' << phase << ' ' << (((line + phase + iline) % 2) ? -2 : 0) << endl;
+		cerr << "p " << nphase1 << ' ' << phase << endl;
 
 		tgt_nphase = ((line + phase + iline) % 2) ? -2 : 0;
 	} 
 //	if (in_freq == 4) goto wrapup;
 
 	adjlen = (end - begin) / (scale_tgt / ntsc_opline);
-//	cerr << line << " " << oline << " " << tgt_nphase << ' ' << begin << ' ' << (begin + adjlen) << '/' << end  << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
+	cerr << line << " " << oline << " " << tgt_nphase << ' ' << begin << ' ' << (begin + adjlen) << '/' << end  << endl;
 
 	for (pass = 0; (pass < 12) && ((fabs(nadj1) + fabs(nadj2)) > .05); pass++) {
 //		cerr << line << " 0" << ' ' << ((end - begin) / scale_tgt) * ntsc_ipline.0 << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
@@ -390,8 +392,28 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line, bool err =
 //		cerr << line << " " << pass << ' ' << begin << ' ' << (begin + adjlen) << '/' << end  << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << ' ' << nphase1 << ' ' << nphase2 << endl;
 	}
 
+	if (fabs(begin - orig_begin) > 3) {
+		cerr << "ERRP begin " << frameno + 1 << ":" << oline << ' ' << orig_begin << ' ' << begin << ' ' << orig_end << ' ' << end << endl;
+	} 
+	if (fabs(end - orig_end) > 3) {
+		cerr << "ERRP end " << frameno + 1 << ":" << oline << ' ' << orig_begin << ' ' << begin << ' ' << orig_end << ' ' << end << endl;
+	} 
+
+	{
+		double orig_len = orig_end - orig_begin;
+		double new_len = end - begin;
+		cerr << "len " << frameno + 1 << ":" << oline << ' ' << orig_len << ' ' << new_len << ' ' << orig_begin << ' ' << begin << ' ' << orig_end << ' ' << end << endl;
+		if (fabs(new_len - orig_len) > 3.5) {
+			cerr << "ERRP len " << frameno + 1 << ":" << oline << ' ' << orig_len << ' ' << new_len << ' ' << orig_begin << ' ' << begin << ' ' << orig_end << ' ' << end << endl;
+
+			begin = orig_begin;
+			end = orig_end;
+			Scale(buf, tout, begin, end, scale_tgt); 
+		}
+	}
+
 	// trigger phase re-adjustment if we keep adjusting over 3 pix/line
-	if (fabs(begin - obegin) > (in_freq * .375)) {
+	if (fabs(begin - orig_begin) > (in_freq * .375)) {
 		offburst++;
 	} else {
 		offburst = 0;
@@ -556,7 +578,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 					bad = (begin < 0) || (end < 0);
 					bad |= (!outofsync && (!InRangeCF(end - begin, 15.5, 18)));
 					
-					bad |= get_oline(line) > 22 && (!InRangeCF(begin - prev_begin, 224.5, 230.5) || !InRangeCF(end - prev_end, 224.5, 230.5)); 
+					bad |= get_oline(line) > 22 && (!InRangeCF(begin - prev_begin, 226.5, 228.5) || !InRangeCF(end - prev_end, 226.5, 228.5)); 
 		
 					cerr << line << ' ' << bad << ' ' << prev_begin << " : " << begin << ' ' << end << ' ' << end - begin << ' ' << begin - prev_begin << ' ' << scale_tgt << endl;
 				}
