@@ -52,6 +52,8 @@ double hfreq = 525.0 * (30000.0 / 1001.0);
 
 long long fr_count = 0, au_count = 0;
 
+double f_tol = 1.0;
+
 bool f_flip = false;
 int writeonfield = 1;
 
@@ -578,7 +580,8 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 					bad = (begin < 0) || (end < 0);
 					bad |= (!outofsync && (!InRangeCF(end - begin, 15.5, 18)));
 					
-					bad |= get_oline(line) > 22 && (!InRangeCF(begin - prev_begin, 226.5, 228.5) || !InRangeCF(end - prev_end, 226.5, 228.5)); 
+					//bad |= get_oline(line) > 22 && (!InRangeCF(begin - prev_begin, 226.5, 228.5) || !InRangeCF(end - prev_end, 226.5, 228.5)); 
+					bad |= get_oline(line) > 22 && (!InRangeCF(begin - prev_begin, 227.5 - f_tol, 227.5 + f_tol) || !InRangeCF(end - prev_end, 227.5 - f_tol, 227.5 + f_tol)); 
 		
 					cerr << line << ' ' << bad << ' ' << prev_begin << " : " << begin << ' ' << end << ' ' << end - begin << ' ' << begin - prev_begin << ' ' << scale_tgt << endl;
 				}
@@ -703,7 +706,7 @@ int main(int argc, char *argv[])
 
 	opterr = 0;
 	
-	while ((c = getopt(argc, argv, "mhgs:n:i:a:AfF")) != -1) {
+	while ((c = getopt(argc, argv, "mhgs:n:i:a:AfFt:")) != -1) {
 		switch (c) {
 			case 'm':	// "magnetic video" mode - bottom field first
 				writeonfield = 2;
@@ -731,6 +734,9 @@ int main(int argc, char *argv[])
 				break;
 			case 'h':
 				seven_five = true;
+				break;
+			case 't':
+				sscanf(optarg, "%lf", &f_tol);		
 				break;
 			default:
 				return -1;
