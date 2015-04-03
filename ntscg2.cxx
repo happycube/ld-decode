@@ -48,8 +48,6 @@ const double iscale_tgt = ntsc_ipline + ntsc_ihsynctoline;
 const double ntsc_hsynctoline = ntsc_opline * (ntsc_blanklen / 63.5);
 const double scale_tgt = ntsc_opline + ntsc_hsynctoline;
 
-const double phasemult = 1.591549430918953e-01 * in_freq; // * 0.99999;
-
 double hfreq = 525.0 * (30000.0 / 1001.0);
 
 long long fr_count = 0, au_count = 0;
@@ -155,28 +153,12 @@ Filter f_bpcolor4(f_colorbp4);
 Filter f_bpcolor8(f_colorbp8);
 
 #ifdef FSC10
-Filter f_syncr(f_sync10);
-Filter f_synci(f_sync10);
-
-Filter f_syncp(f_sync10);
-
 Filter f_longsync(f_dsync10);
-
 Filter f_syncid(f_syncid10);
 #elif defined(FSC4)
-Filter f_syncr(f_sync4);
-Filter f_synci(f_sync4);
-
-Filter f_syncp(f_sync4);
-
 Filter f_longsync(f_dsync4);
 Filter f_syncid(f_syncid4);
 #else
-Filter f_syncr(f_sync);
-Filter f_synci(f_sync);
-
-Filter f_syncp(f_sync);
-
 Filter f_longsync(f_dsync);
 Filter f_syncid(f_syncid8);
 #endif
@@ -193,8 +175,8 @@ bool BurstDetect_New(double *line, int freq, double _loc, bool tgt, double &plev
 {
 	int len = (28 * freq);
 	int loc = _loc * freq;
-	int count = 0;
-	double ptot = 0;
+	int count = 0, cmin = 0;
+	double ptot = 0, tpeak = 0, tmin = 0;
 
 	double phase = 0;
 
@@ -206,87 +188,30 @@ bool BurstDetect_New(double *line, int freq, double _loc, bool tgt, double &plev
 			phase = (i + peakdetect_quad(&line[i - 1])) - c;
 
 			// XXX: this may be wrong, but phase is almost always negative here
-			if (phase > 1.5) phase -= 4;
-			if (phase < -3.5) phase += 4;
+			if (phase > 2.5) phase -= 4;
+			if (phase < -2.5) phase += 4;
 
 			ptot += phase;
+
+			tpeak += line[i];
 
 			count++;
 			cerr << "BDN " << i << ' ' << line[i - 1] << ' ' << line[i] << ' ' << line[i + 1] << ' ' << phase << ' ' << (i + peakdetect_quad(&line[i - 1])) << ' ' << c << ' ' << ptot << endl; 
 		} 
-/*		if ((line[i] < 16000) && (line[i] < line[i - 1]) && (line[i] < line[i + 1])) {
-			pcount++;
-			ptot += peakdetect_quad(&line[i - 1]);
-			cerr << "BDN " << i << ' ' << line[i - 1] << ' ' << line[i] << ' ' << line[i + 1] << ' ' << peakdetect_quad(&line[i - 1]) << endl; 
+		else if ((line[i] < 16000) && (line[i] < line[i - 1]) && (line[i] < line[i + 1])) {
+			cmin++;
+			tmin += line[i];
 		}
-*/
 	}
 
-	if (count >= 2) {
-		pphase = (ptot / count) * 1;
-		cerr << "BDN tot " << ptot / (double)count << endl;
-	} else {
-		pphase = (ptot / count) * 1;
-		cerr << "ERR " << ptot / (double)count << endl;
-	}
+	plevel = (tpeak / count) - (tmin / cmin);
+	pphase = (ptot / count) * 1;
 
+	cerr << "BDN end " << plevel << ' ' << pphase << endl;
+	
 	return (count >= 4);
 }
 
-
-void BurstDetect(double *line, int freq, double _loc, double &plevel, double &pphase) 
-{
-	double _cos[freq], _sin[freq];
-	double pi = 0, pq = 0, ploc = -1;
-	int len = (28 * freq);
-	int loc = _loc * freq;
-
-	Filter *f_bpcolor;
-
-	plevel = 0.0;
-	pphase = 0.0;
-
-	f_syncr.clear(0);
-	f_synci.clear(0);
-	
-	for (int e = 0; e < freq; e++) {
-		_cos[e] = cos((2.0 * M_PIl * ((double)e / freq)));
-		_sin[e] = sin((2.0 * M_PIl * ((double)e / freq)));
-	}
-
-	if (freq == 4) {
-		f_bpcolor = &f_bpcolor4;
-	} else {
-		f_bpcolor = &f_bpcolor8;
-	}
-	f_bpcolor->clear(0);
-
-	for (int l = loc + (15 * freq); l < loc + len; l++) {
-		int x = line[l];
-
-		// XXX: use ire->int here
-		if (x < 6000) x = 6000;
-		if (x >= 26000) x = 26000;
-
-		double v = f_bpcolor->feed(x);
-
-		double q = f_syncr.feed(v * _cos[l % freq]);
-		double i = f_synci.feed(-v * _sin[l % freq]);
-
-		double level = ctor(i, q);
-
-		if (((l - loc) > 16) && (level > plevel) && (level < 10000)) {
-			ploc = l;
-			plevel = level;
-			pi = i; pq = q;
-		}
-	}
-
-	if (plevel) {
-		pphase = atan2(pi, pq);
-	}
-}
-	
 int get_oline(double line)
 {
 	int l = (int)line;
@@ -389,12 +314,11 @@ static int offburst = 0;
 double ProcessLine(uint16_t *buf, double begin, double end, int line, bool err = false)
 {
 	double tout[8192];
-	double plevel1, pphase1;
-	double plevel2, pphase2;
-	double adjust1, adjust2, adjlen = ntsc_ipline;
+	double adjlen = ntsc_ipline;
 	double obegin = begin;
 	int pass = 0;
 
+	double plevel1, plevel2;
 	double nphase1, nphase2;
 
 	double orig_begin = begin;
@@ -403,21 +327,17 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line, bool err =
 
 	if (oline < 0) return 0;
 
-	double tgt_phase = 0, tgt_nphase = 0;
+	double tgt_nphase = 0;
 	double nadj1 = 1, nadj2 = 1;
 
 	Scale(buf, tout, begin, end, scale_tgt); 
-	BurstDetect(tout, out_freq, 0, plevel1, pphase1); 
-	BurstDetect(tout, out_freq, 228, plevel2, pphase2); 
 
 	if (phase != -1) {
-		tgt_phase = ((line + phase + iline) % 2) ? (-180 * (M_PIl / 180.0)) : (0 * (M_PIl / 180.0));
 		tgt_nphase = ((line + phase + iline) % 2) ? -2 : 0;
 	} 
 
-	cerr << "levels " << plevel1 << ' ' << plevel2 << " phase 1 " << pphase1 << endl;
 	BurstDetect_New(tout, out_freq, 0, tgt_nphase != 0, plevel1, nphase1); 
-	BurstDetect_New(tout, out_freq, 228, tgt_nphase != 0, plevel1, nphase2); 
+	BurstDetect_New(tout, out_freq, 228, tgt_nphase != 0, plevel2, nphase2); 
 
 	if ((plevel1 < 1400) || (plevel2 < 1000)) {
 		begin += prev_offset;
@@ -433,60 +353,41 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line, bool err =
 	}
 
 	if ((phase == -1) || (offburst >= 5)) {
-		phase = (fabs(pphase1) > (M_PIl / 2));
 		phase = (fabs(nphase1) > 1);
 		iline = line;
 		offburst = 0;
-		cerr << "p " << nphase1 << ' ' << pphase1 << ' ' << fabs(pphase1) << ' ' << phase << ' ' << (((line + phase + iline) % 2) ? -2 : 0) << endl;
+//		cerr << "p " << nphase1 << ' ' << pphase1 << ' ' << fabs(pphase1) << ' ' << phase << ' ' << (((line + phase + iline) % 2) ? -2 : 0) << endl;
 
-		tgt_phase = ((line + phase + iline) % 2) ? (-180 * (M_PIl / 180.0)) : (0 * (M_PIl / 180.0));
 		tgt_nphase = ((line + phase + iline) % 2) ? -2 : 0;
 	} 
 //	if (in_freq == 4) goto wrapup;
 
 	adjlen = (end - begin) / (scale_tgt / ntsc_opline);
-	cerr << line << " " << oline << " " << tgt_nphase << ' ' << begin << ' ' << (begin + adjlen) << '/' << end  << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
+//	cerr << line << " " << oline << " " << tgt_nphase << ' ' << begin << ' ' << (begin + adjlen) << '/' << end  << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
 
 	for (pass = 0; (pass < 12) && ((fabs(nadj1) + fabs(nadj2)) > .05); pass++) {
 //		cerr << line << " 0" << ' ' << ((end - begin) / scale_tgt) * ntsc_ipline.0 << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
-		adjust1 = WrapAngle(tgt_phase - pphase1);	
-		adjust2 = WrapAngle(pphase1 - pphase2);
 
-		nadj1 = wrapadj(nphase1 - tgt_nphase) * 1;
-		nadj2 = wrapadj(nphase2 - tgt_nphase) * 1;
 		nadj1 = wrapadj(nphase1) * 1;
 		nadj2 = wrapadj(nphase2) * 1;
 
 		cerr << tgt_nphase << ' ' << nphase1 << ' ' << nphase2 << ' ' << (nphase2 - nphase1) << endl;
-		cerr << "adj1 " << pass << ' ' << nadj1 << ' ' << (adjust1 * phasemult) << endl;
-		cerr << "adj2 " << pass << ' ' << nadj2 << ' ' << ((adjust1 + adjust2) * phasemult) << endl; // (adjust2 * (phasemult / 2.0)) << endl;
+		cerr << "adj1 " << pass << ' ' << nadj1 << ' ' << endl;
+		cerr << "adj2 " << pass << ' ' << nadj2 << ' ' << endl; // (adjust2 * (phasemult / 2.0)) << endl;
 
-		if (1 || in_freq != 4) {
-			begin += nadj1;
-			if (pass) end += nadj2;
-//			begin += (adjust1 * phasemult);
-//			end += ((adjust1 + adjust2) * phasemult);
-		} else {
-//			if (pass <= 1) begin += (tgt_nphase - nphase1);
-//			else if (pass >= 2) end += (tgt_nphase - nphase2);
-//			if (pass == 0) begin += (adjust1 * (phasemult / 1.0));
-//			if (pass >= 1) end += (adjust2 * (phasemult / 2.0));
-		}
+		begin += nadj1;
+		if (pass) end += nadj2;
 
 		Scale(buf, tout, begin, end, scale_tgt); 
-		BurstDetect(tout, out_freq, 0, plevel1, pphase1); 
-		BurstDetect(tout, out_freq, 228, plevel2, pphase2); 
 		BurstDetect_New(tout, out_freq, 0, tgt_nphase != 0, plevel1, nphase1); 
 		BurstDetect_New(tout, out_freq, 228, tgt_nphase != 0, plevel2, nphase2); 
 		
-		nadj1 = wrapadj(nphase1 - tgt_nphase);
-		nadj2 = wrapadj(nphase2 - tgt_nphase);
 		nadj1 = wrapadj(nphase1) * 1;
 		nadj2 = wrapadj(nphase2) * 1;
 
 		adjlen = (end - begin) / (scale_tgt / ntsc_opline);
 					
-		cerr << line << " " << pass << ' ' << begin << ' ' << (begin + adjlen) << '/' << end  << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << ' ' << nphase1 << ' ' << nphase2 << endl;
+//		cerr << line << " " << pass << ' ' << begin << ' ' << (begin + adjlen) << '/' << end  << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << ' ' << nphase1 << ' ' << nphase2 << endl;
 	}
 
 	// trigger phase re-adjustment if we keep adjusting over 3 pix/line
@@ -543,14 +444,14 @@ wrapup:
                 frame[oline][3] = 32000;
                 frame[oline][4] = 32000;
                 frame[oline][5] = 32000;
-		cerr << "BURST ERROR " << line << " " << pass << ' ' << begin << ' ' << (begin + adjlen) << '/' << end  << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
+		cerr << "BURST ERROR " << line << " " << pass << ' ' << begin << ' ' << (begin + adjlen) << '/' << end  << ' ' << endl;
         } else {
 		prev_offset = begin - orig_begin;
 	}
 
 	cerr << line << " GAP " << begin - prev_begin << endl;
 	
-	frame[oline][0] = tgt_phase ? 32768 : 16384; 
+	frame[oline][0] = (tgt_nphase != 0) ? 32768 : 16384; 
 	frame[oline][1] = plevel1; 
 
 	prev_begin = begin;
