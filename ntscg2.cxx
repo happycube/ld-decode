@@ -186,23 +186,26 @@ bool BurstDetect_New(double *line, int freq, double _loc, bool tgt, double &plev
 
 	for (int i = loc + (15 * freq); i < loc + len; i++) {
 		if ((line[i] > 22500) && (line[i] < 30000) && (line[i] > line[i - 1]) && (line[i] > line[i + 1])) {
-			double c = round(((i + peakdetect_quad(&line[i - 1])) / 4) + 0.5) * 4;
+			double c = round(((i + peakdetect_quad(&line[i - 1])) / 4) + (tgt ? 0.5 : 0)) * 4;
 //			c = i + phase;
+
+//			cerr << "B " << i + peakdetect_quad(&line[i - 1]) << ' ' << c << endl;
+
 			if (tgt) c -= 2;
 			phase = (i + peakdetect_quad(&line[i - 1])) - c;
 
 			// XXX: this may be wrong, but phase is almost always negative here
-			if (phase > 3.0) phase -= 4;
-			if (phase < -3.0) phase += 4;
+//			if (phase > 2.2) phase -= 4;
+//			if (phase < -2.2) phase += 4;
 
 			ptot += phase;
 
 			tpeak += line[i];
 
 			count++;
-			// cerr << "BDN " << i << ' ' << line[i - 1] << ' ' << line[i] << ' ' << line[i + 1] << ' ' << phase << ' ' << (i + peakdetect_quad(&line[i - 1])) << ' ' << c << ' ' << ptot << endl; 
+//			cerr << "BDN " << i << ' ' << line[i - 1] << ' ' << line[i] << ' ' << line[i + 1] << ' ' << phase << ' ' << (i + peakdetect_quad(&line[i - 1])) << ' ' << c << ' ' << ptot << endl; 
 		} 
-		else if ((line[i] < 16000) && (line[i] < line[i - 1]) && (line[i] < line[i + 1])) {
+		else if ((line[i] < 20000) && (line[i] < line[i - 1]) && (line[i] < line[i + 1])) {
 			cmin++;
 			tmin += line[i];
 		}
@@ -413,8 +416,12 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line, bool err =
 			begin = orig_begin;
 			end = orig_end;
 			Scale(buf, tout, begin, end, scale_tgt); 
+			BurstDetect_New(tout, out_freq, 0, tgt_nphase != 0, plevel1, nphase1); 
+			BurstDetect_New(tout, out_freq, 228, tgt_nphase != 0, plevel2, nphase2); 
 		}
 	}
+	
+	cerr << "final levels " << plevel1 << ' ' << plevel2 << endl;
 
 	// trigger phase re-adjustment if we keep adjusting over 3 pix/line
 	if (fabs(begin - orig_begin) > (in_freq * .375)) {
