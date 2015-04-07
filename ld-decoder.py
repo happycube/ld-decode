@@ -411,7 +411,7 @@ def process_audio(indata):
 
 #	exit()
 	
-#	return outputf[0:tot * 2], tot * 20 * 4 
+	return outputf[0:tot * 2], tot * 20 * 4 
 
 	plt.plot(range(0, len(out_left)), out_left)
 #	plt.plot(range(0, len(out_leftl)), out_leftl)
@@ -479,8 +479,8 @@ def main():
 	audio_mode = 0 
 	CAV = 0
 
-	firstbyte = 0
-	total_len = 0
+	byte_start = 0
+	byte_end = 0
 
 	f_seconds = False 
 
@@ -541,27 +541,32 @@ def main():
 	else:
 		infile = sys.stdin
 
-	firstbyte = 0
+	byte_start = 0
 	if (argc >= 2):
-		firstbyte = float(cut_argv[1])
+		byte_start = float(cut_argv[1])
 
 	if (argc >= 3):
-		total_len = float(cut_argv[2])
+		byte_end = float(cut_argv[2])
 		limit = 1
 	else:
 		limit = 0
 
 	if f_seconds:
-		firstbyte *= freq_hz 
-		total_len *= freq_hz 
+		byte_start *= freq_hz 
+		byte_end *= freq_hz 
+	else:
+		# for backwards compat (for now)
+		byte_end += byte_start
 
-	firstbyte = int(firstbyte)
-	total_len = int(total_len)
+	byte_end -= byte_start
 
-	if (firstbyte > 0):	
-		infile.seek(firstbyte)
+	byte_start = int(byte_start)
+	byte_end = int(byte_end)
+
+	if (byte_start > 0):	
+		infile.seek(byte_start)
 	
-	if CAV and firstbyte > 11454654400:
+	if CAV and byte_start > 11454654400:
 		CAV = 0
 		Inner = 0 
 	
@@ -605,15 +610,15 @@ def main():
 			total_read += nread
 
 			if CAV:
-				if (total_read + firstbyte) > 11454654400:
+				if (total_read + byte_start) > 11454654400:
 					CAV = 0
 					Inner = 0
 
 		indata = indata[nread:len(indata)]
 
 		if limit == 1:
-			total_len -= toread 
-			if (total_len < 0):
+			byte_end -= toread 
+			if (byte_end < 0):
 				inbuf = ""
 
 if __name__ == "__main__":
