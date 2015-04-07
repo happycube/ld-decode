@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 import numpy as np
 import scipy as sp
 import scipy.signal as sps
@@ -33,15 +33,15 @@ def dosplot(B, A):
 
 	for i in range(1, len(w)):
 		if (db[i] >= -10) and (db[i - 1] < -10):
-			print ">-10db crossing at ", w[i] * (freq/np.pi) / 2.0 
+			print(">-10db crossing at ", w[i] * (freq/np.pi) / 2.0) 
 		if (db[i] >= -3) and (db[i - 1] < -3):
-			print "-3db crossing at ", w[i] * (freq/np.pi) / 2.0 
+			print("-3db crossing at ", w[i] * (freq/np.pi) / 2.0) 
 		if (db[i] < -3) and (db[i - 1] >= -3):
-			print "<-3db crossing at ", w[i] * (freq/np.pi) / 2.0 
+			print("<-3db crossing at ", w[i] * (freq/np.pi) / 2.0) 
 		if (db[i] < -10) and (db[i - 1] >= -10):
-			print "<-10db crossing at ", w[i] * (freq/np.pi) / 2.0 
+			print("<-10db crossing at ", w[i] * (freq/np.pi) / 2.0) 
 		if (db[i] < -20) and (db[i - 1] >= -20):
-			print "<-20db crossing at ", w[i] * (freq/np.pi) / 2.0 
+			print("<-20db crossing at ", w[i] * (freq/np.pi) / 2.0) 
 
 	plt.plot(w * (freq/np.pi) / 2.0, 20 * np.log10(abs(h)), 'b')
 	plt.ylabel('Amplitude [dB]', color='b')
@@ -58,11 +58,11 @@ def doplot(B, A):
 	db = 20 * np.log10(abs(h))
 	for i in range(1, len(w)):
 		if (db[i] >= -10) and (db[i - 1] < -10):
-			print ">-10db crossing at ", w[i] * (freq/np.pi) / 2.0 
+			print(">-10db crossing at ", w[i] * (freq/np.pi) / 2.0) 
 		if (db[i] >= -3) and (db[i - 1] < -3):
-			print ">-3db crossing at ", w[i] * (freq/np.pi) / 2.0 
+			print(">-3db crossing at ", w[i] * (freq/np.pi) / 2.0) 
 		if (db[i] < -3) and (db[i - 1] >= -3):
-			print "<-3db crossing at ", w[i] * (freq/np.pi) / 2.0 
+			print("<-3db crossing at ", w[i] * (freq/np.pi) / 2.0) 
 
 	ax1 = fig.add_subplot(111)
 	
@@ -450,7 +450,7 @@ def test():
 		output = output[400:700]	
 		mean = np.mean(output)
 		std = np.std(output)
-		print vlevel, mean, std, 20 * np.log10(mean / std) 
+		print(vlevel, mean, std, 20 * np.log10(mean / std)) 
 
 	plt.show()
 	exit()
@@ -468,7 +468,7 @@ def main():
 
 #	test()
 
-	outfile = sys.stdout
+	outfile = sys.stdout.buffer
 	audio_mode = 0 
 	CAV = 0
 
