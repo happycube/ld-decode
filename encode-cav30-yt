@@ -15,12 +15,12 @@ rm ntsclog ; mkfifo ntsclog
 
 #./audiog2 $1 $2 $3 | buffer -s 32k -m 2m > pipe.rpcm &
 ./ld-decoder.py -S -a $1 $2 $3 | buffer -s 32k -m 2m > pipe.rpcm &
-./ld-decoder.py -S -A $1 $2 $3 2> /dev/null | buffer -s 19200 -m 2m | ./ntsc -t 1.0 -a pipe.rpcm 2> /dev/null 3> pipe2.pcm > pipe2.tbc & 
+./ld-decoder.py -S -A $1 $2 $3 2> /dev/null | buffer -s 19200 -m 2m | ./ntsc -t 2.0 -a pipe.rpcm 2> /dev/null 3> pipe2.pcm > pipe2.tbc & 
 
 cat pipe2.pcm | ./cx > pipe2a.pcm &
 #cat pipe2.pcm  > pipe2a.pcm &
 
-cat pipe2.tbc | ./comb -d 3 -I 0 -F - 2> /dev/null | buffer -s 512000 -b 2048 | ffmpeg -f u16le -ar 48k -ac 2 -i pipe2a.pcm -f rawvideo -r 30000/1001 -pix_fmt rgb48 -s 744x480 -i /dev/stdin -acodec flac -aspect 4:3 -c:v libx264rgb -preset slow -crf 18 -flags +ildct+ilme $4.mkv
+cat pipe2.tbc | ./comb -d 3 -I 0 -F - 2> /dev/null | buffer -s 512000 -b 2048 | ffmpeg -f u16le -ar 48k -ac 2 -i pipe2a.pcm -f rawvideo -r 30000/1001 -pix_fmt rgb48 -s 744x480 -i /dev/stdin -acodec flac -aspect 4:3 -c:v libx264rgb -preset slow -crf 24 -vf yadif=1:1:0,mcdeint,scale=960x720 $4.mkv
 
 # to transcode to youtube
 # ffmpeg -i /mnt2/cpage/ld-decoded/demo1.mkv -c:v libx264 -preset veryslow -crf 24 -vf yadif=1:1:0,mcdeint,scale=1440x1080 -c:a copy demo1b.mkv
