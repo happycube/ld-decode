@@ -206,11 +206,11 @@ rightbp_filter_b, rightbp_filter_a = sps.butter(N, Wn, btype='bandpass')
 N, Wn = sps.buttord(0.016 / hfreq, 0.024 / hfreq, 1, 5) 
 audiolp_filter_b, audiolp_filter_a = sps.butter(N, Wn)
 
-#N, Wn = sps.buttord(3.1 / (freq / 2.0), 3.5 / (freq / 2.0), 1, 20) 
+N, Wn = sps.buttord(3.1 / (freq / 2.0), 3.5 / (freq / 2.0), 1, 20) 
 #N = 12
 #Wn = 3.2 / (freq / 2.0)
-N = 8
-Wn = 3.4 / (freq / 2.0)
+#N = 8
+#Wn = 3.4 / (freq / 2.0)
 audiorf_filter_b, audiorf_filter_a = sps.butter(N, Wn)
 
 # from http://tlfabian.blogspot.com/2013/01/implementing-hilbert-90-degree-shift.html
