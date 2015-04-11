@@ -157,12 +157,15 @@ Filter f_bpcolor8(f_colorbp8);
 #ifdef FSC10
 Filter f_longsync(f_dsync10);
 Filter f_syncid(f_syncid10);
+int syncid_offset = syncid10_offset;
 #elif defined(FSC4)
 Filter f_longsync(f_dsync4);
 Filter f_syncid(f_syncid4);
+int syncid_offset = 165;
 #else
 Filter f_longsync(f_dsync);
 Filter f_syncid(f_syncid8);
+int syncid_offset = syncid8_offset;
 #endif
 
 /*
@@ -518,7 +521,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 	int i, prev = 0;
 	for (i = 500; i < len - syncid_offset; i++) {
 		double level = psync[i];
-		double good_linelen = 1820.0;
+		double good_linelen = in_freq * 227.5;
 
 		// look for peaks with valid level values
 		if ((level > .08) && (level > psync [i - 1]) && (level > psync [i + 1])) {
@@ -599,7 +602,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 					// defective line
 					begin = prev_begin + good_linelen; // prev_linelen;
 					end = prev_end + good_linelen; // prev_linelen;
-					cerr << "BAD " << bad << ' ' << begin << ' ' << end << endl;
+					cerr << "BAD " << bad << ' ' << begin << ' ' << end << ' ' << buf[i] << ' ' << synclevel << endl;
 					i = begin + 300; // workaround for double-length line
 				} else if ((get_oline(line) > 22) && InRangeCF(begin - prev_begin, 227.0, 229.0)) {
 					good_linelen = prev_begin - begin;
@@ -642,6 +645,8 @@ void autoset(uint16_t *buf, int len, bool fullagc = true)
 		low = 65535;
 		high = 0;
 	}
+
+	cerr << "old base:scale = " << inbase << ':' << inscale << endl;
 	
 //	f_longsync.clear(0);
 
@@ -698,7 +703,7 @@ void autoset(uint16_t *buf, int len, bool fullagc = true)
 
 	cerr << "new base:scale = " << inbase << ':' << inscale << " low: " << low << ' ' << high << endl;
 
-	synclevel = low + (inscale * 20);
+	synclevel = inbase + (inscale * 20);
 }
 
 int main(int argc, char *argv[])
