@@ -15,12 +15,12 @@ rm ntsclog ; mkfifo ntsclog
 
 #./audiog2 $1 $2 $3 | buffer -s 32k -m 2m > pipe.rpcm &
 ./ld-decoder.py -a $1 $2 $3 | buffer -s 32k -m 2m > pipe.rpcm &
-./ld-decoder.py $1 $2 $3 2> /dev/null | buffer -s 19200 -m 2m | ./ntsc -a pipe.rpcm 2> /dev/null 3> pipe2.pcm > pipe2.tbc & 
+./ld-decoder.py -s 2 $1 $2 $3 2> /dev/null | buffer -s 19200 -m 2m | ./ntsc -a pipe.rpcm 2> /dev/null 3> pipe2.pcm > pipe2.tbc & 
 
-#cat pipe2.pcm | ./cx > pipe2a.pcm &
-cat pipe2.pcm > pipe2a.pcm &
+cat pipe2.pcm | ./cx > pipe2a.pcm &
+#cat pipe2.pcm > pipe2a.pcm &
 
 #cat pipe2.tbc | ./comb -d 3 -I 0 - 2> /dev/null | buffer -s 256000 -b 2048 | ffmpeg -f u16le -ar 48k -ac 2 -i pipe2.pcm -f rawvideo -r 30000/1001 -pix_fmt rgb48 -s 744x480 -i /dev/stdin -b:v 15000k -vcodec mpeg4 -vf "yadif,scale=1440x1080" $4.avi
 
-cat pipe2.tbc | ./comb -d 3 -n 2 -I 7.5 - 2> /dev/null | buffer -s 256000 -b 2048 | ffmpeg -f u16le -ar 48k -ac 2 -i pipe2a.pcm -f rawvideo -r 30000/1001 -pix_fmt rgb48 -s 744x480 -i /dev/stdin -b:v 15000k -aspect 4:3 -vcodec mpeg4 -flags +ilme+ildct $4.avi
+cat pipe2.tbc | ./comb -d 3 -I 0 - 2> /dev/null | buffer -s 256000 -b 2048 | ffmpeg -f u16le -ar 48k -ac 2 -i pipe2a.pcm -f rawvideo -r 30000/1001 -pix_fmt rgb48 -s 744x480 -i /dev/stdin -b:v 15000k -aspect 4:3 -vcodec mpeg4 -flags +ilme+ildct $4.avi
 

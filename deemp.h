@@ -188,7 +188,9 @@ vector <double> c_syncid10_a = {1.000000000000000e+00, -2.989946914091735e+00, 2
 
 Filter f_syncid10(c_syncid10_b, c_syncid10_a);
 
-const int syncid_offset = 320;
+const int syncid4_offset = 165;
+const int syncid8_offset = 320;
+const int syncid10_offset = 400;
 vector<double> c_linelen_b = {5.979578037000322e-05, 2.989789018500159e-04, 5.979578037000320e-04, 5.979578037000320e-04, 2.989789018500159e-04, 5.979578037000322e-05, };
 vector <double> c_linelen_a = {1.000000000000000e+00, -3.984543119612336e+00, 6.434867090275866e+00, -5.253615170352267e+00, 2.165132909724131e+00, -3.599282450635560e-01, };
 

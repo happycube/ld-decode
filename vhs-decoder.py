@@ -179,6 +179,18 @@ f_deemp_a = [1.000000000000000e+00, -8.852766322103798e-01, ]
 #f_deemp_b = [3.063915161937518e-01, -1.980510174835196e-01, ]
 #f_deemp_a = [1.000000000000000e+00, -8.916595012897678e-01, ]
 
+f_deemp_b = [1.273893413224186e-01, -5.827250094940713e-02, ]
+f_deemp_a = [1.000000000000000e+00, -9.308831596269884e-01, ]
+
+f_deemp_b = [1.150118851709636e-01, -4.589504479795208e-02, ]
+f_deemp_a = [1.000000000000000e+00, -9.308831596269884e-01, ]
+
+f_deemp_b = [6.997441317165425e-02, -2.792301702080320e-02, ]
+f_deemp_a = [1.000000000000000e+00, -9.579486038491489e-01, ]
+
+f_deemp_b = [5.851707135547494e-02, -2.335100939622290e-02, ]
+f_deemp_a = [1.000000000000000e+00, -9.648339380407480e-01, ]
+
 # audio filters
 Baudiorf = sps.firwin(65, 3.5 / (freq / 2), window='hamming', pass_zero=True)
 
@@ -258,9 +270,8 @@ minn = 5400000 + (hz_ire_scale * -60)
 
 out_scale = 65534.0 / (maxire - minire)
 	
-Bbpf, Abpf = sps.butter(2, [3.2/(freq/2), 13.5/(freq/2)], btype='bandpass')
-Bcutl, Acutl = sps.butter(1, [2.20/(freq/2), 2.40/(freq/2)], btype='bandstop')
-Bcutr, Acutr = sps.butter(1, [2.70/(freq/2), 2.90/(freq/2)], btype='bandstop')
+#Bbpf, Abpf = sps.butter(2, [3.2/(freq/2), 13.5/(freq/2)], btype='bandpass')
+Bbpf, Abpf = sps.butter(2, [0.5/(freq/2), 10.0/(freq/2)], btype='bandpass')
 # AC3 - Bcutr, Acutr = sps.butter(1, [2.68/(freq/2), 3.08/(freq/2)], btype='bandstop')
 
 lowpass_filter_b, lowpass_filter_a = sps.butter(7, (4.4/(freq/2)), 'low')
@@ -281,15 +292,10 @@ Inner = 0
 def process_video(data):
 	# perform general bandpass filtering
 
-	in_filt1 = sps.lfilter(Bbpf, Abpf, data)
-	in_filt2 = sps.lfilter(Bcutl, Acutl, in_filt1)
-	in_filt3 = sps.lfilter(Bcutr, Acutr, in_filt2)
+	in_filt = sps.lfilter(Bbpf, Abpf, data)
+#	in_filt2 = sps.lfilter(Bcutl, Acutl, in_filt1)
+#	in_filt3 = sps.lfilter(Bcutr, Acutr, in_filt2)
 
-	if Inner == 0:
-		in_filt = in_filt3
-	else:
-		in_filt = sps.lfilter(f_emp_b, f_emp_a, in_filt3)
-		
 	output = fm_decode(in_filt, freq_hz)
 
 	# save the original fm decoding and align to filters
@@ -300,7 +306,8 @@ def process_video(data):
 
 	output = sps.lfilter(lowpass_filter_b, lowpass_filter_a, output)
 
-	doutput = (sps.lfilter(f_deemp_b, f_deemp_a, output)[len(f_deemp_b) * 32:len(output)]) / deemp_corr
+	doutput = (sps.lfilter(f_deemp_b, f_deemp_a, output)[len(f_deemp_b) * 64:len(output)]) / deemp_corr
+#	doutput = output
 
 #	doutput = (sps.lfilter(f_deemp_b, f_deemp_a, doutput)[64:len(doutput)]) / deemp_corr
 	

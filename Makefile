@@ -1,7 +1,7 @@
 all: cx ntsc ntsc4 audiog2 comb 
 
 CFLAGS=-O3 
-CFLAGS=-g -O3 -mavx -march=corei7-avx
+CFLAGS=-g -O3 -fno-omit-frame-pointer -mavx -march=corei7-avx
 
 OPENCV_LIBS=-lopencv_core -lopencv_highgui -lopencv_imgproc -lopencv_video
 

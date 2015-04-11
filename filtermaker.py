@@ -229,7 +229,9 @@ WriteFilter("syncid4", f_syncid_b, f_syncid_a)
 f_syncid_b, f_syncid_a = sps.butter(3, 0.0016)
 WriteFilter("syncid10", f_syncid_b, f_syncid_a)
 
-print("const int syncid_offset = 320;")
+print("const int syncid4_offset = 165;")
+print("const int syncid8_offset = 320;")
+print("const int syncid10_offset = 400;")
 
 
 linelen_filter_b, linelen_filter_a = sps.butter(5, 0.1)
