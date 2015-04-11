@@ -59,8 +59,8 @@ int writeonfield = 1;
 
 bool audio_only = false;
 
-double inbase = 1;	// IRE == -60
 double inscale = 327.68;
+double inbase = (inscale * 20);	// IRE == -40
 
 long long a_read = 0, v_read = 0;
 int va_ratio = 80;
@@ -78,14 +78,14 @@ inline double in_to_ire(uint16_t level)
 {
 	if (level == 0) return -100;
 	
-	return -60 + ((double)(level - inbase) / inscale); 
+	return -40 + ((double)(level - inbase) / inscale); 
 } 
 
 inline uint16_t ire_to_in(double ire)
 {
 	if (ire <= -60) return 0;
 	
-	return clamp(((ire + 60) * inscale) + inbase, 1, 65535);
+	return clamp(((ire + 40) * inscale) + inbase, 1, 65535);
 } 
 
 inline uint16_t ire_to_out(double ire)
@@ -372,7 +372,7 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line, bool err =
 //	if (in_freq == 4) goto wrapup;
 
 	adjlen = (end - begin) / (scale_tgt / ntsc_opline);
-	cerr << line << " " << oline << " " << tgt_nphase << ' ' << begin << ' ' << (begin + adjlen) << '/' << end  << endl;
+	//cerr << line << " " << oline << " " << tgt_nphase << ' ' << begin << ' ' << (begin + adjlen) << '/' << end  << endl;
 
 	for (pass = 0; (pass < 12) && ((fabs(nadj1) + fabs(nadj2)) > .05); pass++) {
 //		cerr << line << " 0" << ' ' << ((end - begin) / scale_tgt) * ntsc_ipline.0 << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
@@ -380,9 +380,9 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line, bool err =
 		nadj1 = nphase1 * 1;
 		nadj2 = nphase2 * 1;
 
-		cerr << tgt_nphase << ' ' << nphase1 << ' ' << nphase2 << ' ' << (nphase2 - nphase1) << endl;
-		cerr << "adj1 " << pass << ' ' << nadj1 << ' ' << endl;
-		cerr << "adj2 " << pass << ' ' << nadj2 << ' ' << endl; // (adjust2 * (phasemult / 2.0)) << endl;
+		//cerr << tgt_nphase << ' ' << nphase1 << ' ' << nphase2 << ' ' << (nphase2 - nphase1) << endl;
+		//cerr << "adj1 " << pass << ' ' << nadj1 << ' ' << endl;
+		//cerr << "adj2 " << pass << ' ' << nadj2 << ' ' << endl; // (adjust2 * (phasemult / 2.0)) << endl;
 
 		begin += nadj1;
 		if (pass) end += nadj2;
