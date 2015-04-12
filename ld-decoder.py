@@ -193,22 +193,26 @@ right_audfreq = 2.812499
 
 hfreq = freq / 8.0
 
-N, Wn = sps.buttord([(left_audfreq-.05) / hfreq, (left_audfreq+.05) / hfreq], [(left_audfreq-.15) / hfreq, (left_audfreq+.15)/hfreq], 1, 20)
+N, Wn = sps.buttord([(left_audfreq-.10) / hfreq, (left_audfreq+.10) / hfreq], [(left_audfreq-.15) / hfreq, (left_audfreq+.15)/hfreq], 1, 15)
+#print(N,Wn)
 leftbp_filter_b, leftbp_filter_a = sps.butter(N, Wn, btype='bandpass')
 
-N, Wn = sps.buttord([(right_audfreq-.05) / hfreq, (right_audfreq+.05) / hfreq], [(right_audfreq-.15) / hfreq, (right_audfreq+.15)/hfreq], 1, 20)
+N, Wn = sps.buttord([(right_audfreq-.10) / hfreq, (right_audfreq+.10) / hfreq], [(right_audfreq-.15) / hfreq, (right_audfreq+.15)/hfreq], 1, 15)
+#print(N,Wn)
+#N, Wn = sps.buttord([(right_audfreq-.10) / hfreq, (right_audfreq+.10) / hfreq], [(right_audfreq-.18) / hfreq, (right_audfreq+.18)/hfreq], 1, 15)
+#print(N,Wn)
 rightbp_filter_b, rightbp_filter_a = sps.butter(N, Wn, btype='bandpass')
 
 #doplot(leftbp_filter_b, leftbp_filter_a)
 #doplot2(leftbp_filter, [1.0], rightbp_filter, [1.0]);
 #doplot2(leftbp_filter_b, leftbp_filter_a, rightbp_filter_b, rightbp_filter_a);
 
-N, Wn = sps.buttord(0.016 / hfreq, 0.024 / hfreq, 1, 5) 
+N, Wn = sps.buttord(0.016 / hfreq, 0.024 / hfreq, 1, 8) 
 audiolp_filter_b, audiolp_filter_a = sps.butter(N, Wn)
 
-N, Wn = sps.buttord(3.1 / (freq / 2.0), 3.5 / (freq / 2.0), 1, 20) 
+N, Wn = sps.buttord(3.1 / (freq / 2.0), 3.5 / (freq / 2.0), 1, 16) 
 #N = 12
-#Wn = 3.2 / (freq / 2.0)
+#Wn = 3.3 / (freq / 2.0)
 #N = 8
 #Wn = 3.4 / (freq / 2.0)
 audiorf_filter_b, audiorf_filter_a = sps.butter(N, Wn)
@@ -398,8 +402,8 @@ def process_audio(indata):
 	out_left = np.clip(out_left - left_audfreqm, -150000, 150000) 
 	out_right = np.clip(out_right - right_audfreqm, -150000, 150000) 
 
-	out_left = sps.lfilter(audiolp_filter_b, audiolp_filter_a, out_left)[400:]
-	out_right = sps.lfilter(audiolp_filter_b, audiolp_filter_a, out_right)[400:] 
+	out_left = sps.lfilter(audiolp_filter_b, audiolp_filter_a, out_left)[800:]
+	out_right = sps.lfilter(audiolp_filter_b, audiolp_filter_a, out_right)[800:] 
 
 	outputf = np.empty((len(out_left) * 2.0 / 20.0) + 2, dtype = np.float32)
 
@@ -415,7 +419,7 @@ def process_audio(indata):
 
 	plt.plot(range(0, len(out_left)), out_left)
 #	plt.plot(range(0, len(out_leftl)), out_leftl)
-#	plt.plot(range(0, len(out_right)), out_right + 150000)
+	plt.plot(range(0, len(out_right)), out_right + 150000)
 #	plt.ylim([2000000,3000000])
 	plt.show()
 	exit()
