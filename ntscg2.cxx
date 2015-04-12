@@ -368,7 +368,7 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line, bool err =
 
 	cerr << "levels " << plevel1 << ' ' << plevel2 << " valid " << valid << endl;
 
-	if (!valid || (plevel1 < 1400) || (plevel2 < 1000)) {
+	if (!valid || (plevel1 < (f_highburst ? 1800 : 1000)) || (plevel2 < (f_highburst ? 1000 : 800))) {
 		begin += prev_offset;
 		end += prev_offset;
 	
@@ -512,7 +512,8 @@ wrapup:
 	return adjlen;
 }
 
-uint16_t synclevel = 12000;
+//uint16_t synclevel = 12000;
+uint16_t synclevel = inbase + (inscale * 15);
 
 double psync[ntsc_iplinei*1200];
 int Process(uint16_t *buf, int len, float *abuf, int alen)
@@ -564,6 +565,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 					if (insync == writeonfield) {
 						if (!first) {
 							frameno++;
+							cerr << "WRITING\n";
 							write(1, frame, sizeof(frame));
 							memset(frame, 0, sizeof(frame));
 							return i - 1500;
@@ -598,20 +600,31 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 				}
 
 				if (!insync) { 
-					for (int x = i; begin == -1 && x > (i - (12.5 * in_freq)); x--) {
-						if (buf[x] > synclevel) begin = x; 
+					int abovecount = 0, x = 0;
+					for (x = i; begin == -1 && x > (i - (12.5 * in_freq)); x--) {
+						if (buf[x] > (synclevel + (inscale * 5))) {
+							abovecount++;
+							if (abovecount > 4) begin = x - abovecount;
+						} else abovecount = 0;
 					}
-					
-					for (int x = i; end == -1 && x < (i + (12.5 * in_freq)); x++) {
-						if (buf[x] > synclevel) end = x; 
+//					if (begin == -1 && abovecount) begin = x - abovecount;				
+
+					abovecount = 0;	
+					for (x = i; end == -1 && x < (i + (12.5 * in_freq)); x++) {
+						if (buf[x] > (synclevel + (inscale * 5))) {
+							abovecount++;
+							if (abovecount > 4) end = x - abovecount;
+						} else abovecount = 0;
 					}
+//					if (end == -1 && abovecount) end = x - abovecount;				
 
 					bad = (begin < 0) || (end < 0);
 					bad |= (!outofsync && (!InRangeCF(end - begin, 15.5, 18)));
-					
 					//bad |= get_oline(line) > 22 && (!InRangeCF(begin - prev_begin, 226.5, 228.5) || !InRangeCF(end - prev_end, 226.5, 228.5)); 
 					bad |= get_oline(line) > 22 && (!InRangeCF(begin - prev_begin, 227.5 - f_tol, 227.5 + f_tol) || !InRangeCF(end - prev_end, 227.5 - f_tol, 227.5 + f_tol)); 
-		
+	
+					if ((line == 10) || (line == 273)) bad = 0;
+	
 					cerr << line << ' ' << bad << ' ' << prev_begin << " : " << begin << ' ' << end << ' ' << end - begin << ' ' << begin - prev_begin << ' ' << scale_tgt << endl;
 				}
 				// normal line
@@ -720,7 +733,7 @@ void autoset(uint16_t *buf, int len, bool fullagc = true)
 
 	cerr << "new base:scale = " << inbase << ':' << inscale << " low: " << low << ' ' << high << endl;
 
-	synclevel = inbase + (inscale * 20);
+	synclevel = inbase + (inscale * 15);
 }
 
 int main(int argc, char *argv[])
