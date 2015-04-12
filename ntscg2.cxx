@@ -54,6 +54,7 @@ long long fr_count = 0, au_count = 0;
 
 double f_tol = 1.0;
 
+bool f_highburst = (in_freq == 4);
 bool f_flip = false;
 int writeonfield = 1;
 
@@ -184,16 +185,25 @@ bool BurstDetect_New(double *line, int freq, double _loc, bool tgt, double &plev
 	int loc = _loc * freq;
 	int count = 0, cmin = 0;
 	double ptot = 0, tpeak = 0, tmin = 0;
+	double start = 15;
 
 	double phase = 0;
 
 //	cerr << ire_to_in(7) << ' ' << ire_to_in(16) << endl;
-	double low = ire_to_in(7);
-	double high = ire_to_in(18);
+	double highmin = ire_to_in(f_highburst ? 12 : 7);
+	double highmax = ire_to_in(f_highburst ? 23 : 22);
+	double lowmin = ire_to_in(f_highburst ? -12 : -7);
+	double lowmax = ire_to_in(f_highburst ? -23 : -22);
+//	cerr << lowmin << ' ' << lowmax << endl;
 
-	for (int i = loc + (15 * freq); i < loc + len; i++) {
+	if (f_highburst) {
+		start = 20;
+		len = (start + 6) * freq;
+	}
+
+	for (int i = loc + (start * freq); i < loc + len; i++) {
 //		cerr << line[i] << endl;
-		if ((line[i] > low) && (line[i] < high) && (line[i] > line[i - 1]) && (line[i] > line[i + 1])) {
+		if ((line[i] > highmin) && (line[i] < highmax) && (line[i] > line[i - 1]) && (line[i] > line[i + 1])) {
 			double c = round(((i + peakdetect_quad(&line[i - 1])) / 4) + (tgt ? 0.5 : 0)) * 4;
 //			c = i + phase;
 
@@ -213,7 +223,7 @@ bool BurstDetect_New(double *line, int freq, double _loc, bool tgt, double &plev
 			count++;
 //			cerr << "BDN " << i << ' ' << in_to_ire(line[i]) << ' ' << line[i - 1] << ' ' << line[i] << ' ' << line[i + 1] << ' ' << phase << ' ' << (i + peakdetect_quad(&line[i - 1])) << ' ' << c << ' ' << ptot << endl; 
 		} 
-		else if ((line[i] < 20000) && (line[i] < line[i - 1]) && (line[i] < line[i + 1])) {
+		else if ((line[i] < lowmin) && (line[i] > lowmax) && (line[i] < line[i - 1]) && (line[i] < line[i + 1])) {
 			cmin++;
 			tmin += line[i];
 		}
@@ -727,7 +737,7 @@ int main(int argc, char *argv[])
 
 	opterr = 0;
 	
-	while ((c = getopt(argc, argv, "mhgs:n:i:a:AfFt:")) != -1) {
+	while ((c = getopt(argc, argv, "Hmhgs:n:i:a:AfFt:")) != -1) {
 		switch (c) {
 			case 'm':	// "magnetic video" mode - bottom field first
 				writeonfield = 2;
@@ -755,6 +765,9 @@ int main(int argc, char *argv[])
 				break;
 			case 'h':
 				seven_five = true;
+				break;
+			case 'H':
+				f_highburst = !f_highburst;
 				break;
 			case 't':
 				sscanf(optarg, "%lf", &f_tol);		
