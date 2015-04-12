@@ -602,7 +602,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 				if (!insync) { 
 					int abovecount = 0, x = 0;
 					for (x = i; begin == -1 && x > (i - (12.5 * in_freq)); x--) {
-						if (buf[x] > (synclevel + (inscale * 5))) {
+						if (buf[x] > (synclevel + (inscale * 0))) {
 							abovecount++;
 							if (abovecount > 4) begin = x - abovecount;
 						} else abovecount = 0;
@@ -611,7 +611,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 
 					abovecount = 0;	
 					for (x = i; end == -1 && x < (i + (12.5 * in_freq)); x++) {
-						if (buf[x] > (synclevel + (inscale * 5))) {
+						if (buf[x] > (synclevel + (inscale * 0))) {
 							abovecount++;
 							if (abovecount > 4) end = x - abovecount;
 						} else abovecount = 0;
@@ -733,7 +733,7 @@ void autoset(uint16_t *buf, int len, bool fullagc = true)
 
 	cerr << "new base:scale = " << inbase << ':' << inscale << " low: " << low << ' ' << high << endl;
 
-	synclevel = inbase + (inscale * 15);
+	synclevel = inbase + (inscale * 20);
 }
 
 int main(int argc, char *argv[])
