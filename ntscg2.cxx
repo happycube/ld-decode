@@ -187,11 +187,13 @@ bool BurstDetect_New(double *line, int freq, double _loc, bool tgt, double &plev
 
 	double phase = 0;
 
-	cerr << ire_to_in(52) << ' ' << ire_to_in(60) << endl;
+//	cerr << ire_to_in(7) << ' ' << ire_to_in(16) << endl;
+	double low = ire_to_in(7);
+	double high = ire_to_in(18);
 
-	for (int i = loc + (1.5 * freq); i < loc + len; i++) {
+	for (int i = loc + (15 * freq); i < loc + len; i++) {
 //		cerr << line[i] << endl;
-		if (/*(line[i] > ire_to_in(12)) && (line[i] < ire_to_in(20)) &&*/ (line[i] > line[i - 1]) && (line[i] > line[i + 1])) {
+		if ((line[i] > low) && (line[i] < high) && (line[i] > line[i - 1]) && (line[i] > line[i + 1])) {
 			double c = round(((i + peakdetect_quad(&line[i - 1])) / 4) + (tgt ? 0.5 : 0)) * 4;
 //			c = i + phase;
 
@@ -343,17 +345,8 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line, bool err =
 	double tgt_nphase = 0;
 	double nadj1 = 1, nadj2 = 1;
 
-/*
-	for (int i = begin; i < begin + 910; i++) {
-		cerr << i << ' ' << i - begin << ' ' << buf[i] << endl;
-	}
-*/
 	Scale(buf, tout, begin, end, scale_tgt); 
 	
-	for (int i = 0; i < 910; i++) {
-		cerr << i << ' ' << buf[i + (int)begin] << ' ' << tout[i] << endl;
-	}
-
 	if (phase != -1) {
 		tgt_nphase = ((line + phase + iline) % 2) ? -2 : 0;
 	} 
