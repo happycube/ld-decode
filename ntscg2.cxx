@@ -211,7 +211,7 @@ bool BurstDetect_New(double *line, int freq, double _loc, bool tgt, double &plev
 			tpeak += line[i];
 
 			count++;
-			cerr << "BDN " << i << ' ' << in_to_ire(line[i]) << ' ' << line[i - 1] << ' ' << line[i] << ' ' << line[i + 1] << ' ' << phase << ' ' << (i + peakdetect_quad(&line[i - 1])) << ' ' << c << ' ' << ptot << endl; 
+//			cerr << "BDN " << i << ' ' << in_to_ire(line[i]) << ' ' << line[i - 1] << ' ' << line[i] << ' ' << line[i + 1] << ' ' << phase << ' ' << (i + peakdetect_quad(&line[i - 1])) << ' ' << c << ' ' << ptot << endl; 
 		} 
 		else if ((line[i] < 20000) && (line[i] < line[i - 1]) && (line[i] < line[i + 1])) {
 			cmin++;
@@ -222,9 +222,9 @@ bool BurstDetect_New(double *line, int freq, double _loc, bool tgt, double &plev
 	plevel = ((tpeak / count) - (tmin / cmin)) / 4.5;
 	pphase = (ptot / count) * 1;
 
-	cerr << "BDN end " << plevel << ' ' << pphase << ' ' << count << endl;
+//	cerr << "BDN end " << plevel << ' ' << pphase << ' ' << count << endl;
 	
-	return (count >= 2);
+	return (count >= 3);
 }
 
 int get_oline(double line)
@@ -345,6 +345,8 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line, bool err =
 	double tgt_nphase = 0;
 	double nadj1 = 1, nadj2 = 1;
 
+	cerr << "ProcessLine " << begin << ' ' << end << endl;
+
 	Scale(buf, tout, begin, end, scale_tgt); 
 	
 	if (phase != -1) {
@@ -352,7 +354,7 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line, bool err =
 	} 
 
 	bool valid = BurstDetect_New(tout, out_freq, 0, tgt_nphase != 0, plevel1, nphase1); 
-	valid |= BurstDetect_New(tout, out_freq, 228, tgt_nphase != 0, plevel2, nphase2); 
+	valid &= BurstDetect_New(tout, out_freq, 228, tgt_nphase != 0, plevel2, nphase2); 
 
 	cerr << "levels " << plevel1 << ' ' << plevel2 << " valid " << valid << endl;
 
@@ -490,7 +492,7 @@ wrapup:
 		prev_offset = begin - orig_begin;
 	}
 
-	cerr << line << " GAP " << begin - prev_begin << endl;
+	cerr << line << " GAP " << begin - prev_begin << ' ' << prev_begin << ' ' << begin << endl;
 	
 	frame[oline][0] = (tgt_nphase != 0) ? 32768 : 16384; 
 	frame[oline][1] = plevel1; 
