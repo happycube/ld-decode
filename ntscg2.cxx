@@ -623,16 +623,16 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 					//bad |= get_oline(line) > 22 && (!InRangeCF(begin - prev_begin, 226.5, 228.5) || !InRangeCF(end - prev_end, 226.5, 228.5)); 
 					bad |= get_oline(line) > 22 && (!InRangeCF(begin - prev_begin, 227.5 - f_tol, 227.5 + f_tol) || !InRangeCF(end - prev_end, 227.5 - f_tol, 227.5 + f_tol)); 
 	
-					if ((line == 10) || (line == 273)) bad = 0;
+//					if ((line == 10) || (line == 273)) bad = 0;
 	
 					cerr << line << ' ' << bad << ' ' << prev_begin << " : " << begin << ' ' << end << ' ' << end - begin << ' ' << begin - prev_begin << ' ' << scale_tgt << endl;
 				}
 				// normal line
-				if (bad || buf[i] > synclevel) {
+				if ((bad || buf[i] > synclevel) && (line != 10) && (line != 273)) {
 					// defective line
 					begin = prev_begin + good_linelen; // prev_linelen;
 					end = prev_end + good_linelen; // prev_linelen;
-					cerr << "BAD " << bad << ' ' << begin << ' ' << end << ' ' << buf[i] << ' ' << synclevel << endl;
+					cerr << "BAD " << bad << ' ' << line << ' ' << begin << ' ' << end << ' ' << buf[i] << ' ' << synclevel << endl;
 					i = begin + 300; // workaround for double-length line
 				} else if ((get_oline(line) > 22) && InRangeCF(begin - prev_begin, 227.0, 229.0)) {
 					good_linelen = prev_begin - begin;
