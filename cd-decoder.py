@@ -756,7 +756,7 @@ def find_peaks1(data):
 				prev = qi
 #			prev = qi 
 
-def find_peaks(data):
+def find_peaks(data, level):
 	prev = -1 
 	begin = -1
 	for i in range(1, 5800):
@@ -764,7 +764,7 @@ def find_peaks(data):
 		if data[i] >= 6 and data[i - 1] < 6:
 			begin = i
 		# end of peak area
-		if data[i] < 6 and data[i - 1] >= 6 and begin != -1:
+		if data[i] < level and data[i - 1] >= level and begin != -1:
 			peak = ((i - begin) / 2) + begin
 			rqi = np.round((peak - prev) / 6.626)
 			print peak, peak - prev, (peak - prev) / 6.626, rqi, 
@@ -820,28 +820,41 @@ def decode_efm(apply_filters=True, apply_demp=False, just_log=True, random_input
 
     if apply_filters:
 #        bandpass = sps.firwin(8191, [0.013 / FREQ_MHZ, 2.1 / FREQ_MHZ], pass_zero=False)
-#        bandpass = sps.firwin(49, [.05/NYQUIST_MHZ, 1.10/NYQUIST_MHZ], pass_zero=False)
+        bandpass = sps.firwin(49, [.05/NYQUIST_MHZ, 1.10/NYQUIST_MHZ], pass_zero=False)
         bandpassb, bandpassa = sps.butter(2, [0.42/NYQUIST_MHZ, 1.8/NYQUIST_MHZ], btype='bandpass')
-        bandpassb, bandpassa = sps.butter(12, [0.0/NYQUIST_MHZ, 1.8/NYQUIST_MHZ], btype='bandpass')
-        bandpassb, bandpassa = sps.butter(8, 1.8/NYQUIST_MHZ)
+        bandpassb, bandpassa = sps.butter(4, [0.15/NYQUIST_MHZ, 1.8/NYQUIST_MHZ], btype='bandpass')
+#        bandpassb, bandpassa = sps.butter(4, [0.10/NYQUIST_MHZ, 1.0/NYQUIST_MHZ], btype='bandpass')
+        bandpassb, bandpassa = sps.butter(5, [0.05/NYQUIST_MHZ, 1.8/NYQUIST_MHZ], btype='bandpass')
+#        bandpassb, bandpassa = sps.butter(2, 1.8/NYQUIST_MHZ)
 #        data = sps.lfilter(bandpass, 1, data[20000:40000])
+
+	# almost right for cdaudio
+        bandpassb, bandpassa = sps.butter(5, [0.05/NYQUIST_MHZ, 1.8/NYQUIST_MHZ], btype='bandpass')
+#        bandpassb, bandpassa = sps.butter(4, [0.06/NYQUIST_MHZ, 1.1/NYQUIST_MHZ], btype='bandpass')
+#        bandpassb, bandpassa = sps.butter(4, [0.30/NYQUIST_MHZ, 1.6/NYQUIST_MHZ], btype='bandpass')
+
         data = sps.lfilter(bandpassb, bandpassa, data)
 
-    data = sps.detrend(data, type='constant')  # Remove DC
+#    data = sps.detrend(data, type='constant')  # Remove DC
 
         #low_pass = sps.cheby2(16, 100., 4.3 / FREQ_MHZ)  # Looks a bit odd, but is a reasonable tie for the spec filter (-26db at 2.0 Mhz, -50+ at 2.3Mhz)
         # low_pass = sps.cheby2(10, 50., 4.3 / FREQ_MHZ)  # Looks a bit odd, but is a reasonable tie for the spec filter (-26db at 2.0 Mhz, -50+ at 2.3Mhz)
         #data = sps.filtfilt(low_pass[0], low_pass[1], data)
 
-    data = np.abs(np.diff(data))
 #    data = (np.diff(data))
+#    data = (np.diff(data))
+#    data = np.abs(data)
 
 #    plt.plot(data[9000:10000])
     plt.plot(data[5000:6000])
+#    plt.plot(data[100:1000])
     plt.show()
-    exit()
+#    exit()
 
-    find_peaks(data)
+    data = (np.diff(data))
+    data = np.abs(data)
+
+    find_peaks(data, 1.4)
     exit()
 
     bit_gen = edgeclock_decode(data, 0., 6.626)
