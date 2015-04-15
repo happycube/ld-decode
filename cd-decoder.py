@@ -832,8 +832,12 @@ def decode_efm(apply_filters=True, apply_demp=False, just_log=True, random_input
         bandpassb, bandpassa = sps.butter(5, [0.05/NYQUIST_MHZ, 1.8/NYQUIST_MHZ], btype='bandpass')
 #        bandpassb, bandpassa = sps.butter(4, [0.06/NYQUIST_MHZ, 1.1/NYQUIST_MHZ], btype='bandpass')
 #        bandpassb, bandpassa = sps.butter(4, [0.30/NYQUIST_MHZ, 1.6/NYQUIST_MHZ], btype='bandpass')
+#        data = sps.lfilter(bandpassb, bandpassa, data)
 
-        data = sps.lfilter(bandpassb, bandpassa, data)
+	# looks good for cdaudio, not so much for ldd
+        bandpass = sps.firwin(49, [.05/NYQUIST_MHZ, 1.10/NYQUIST_MHZ], pass_zero=False)
+        bandpass = sps.firwin(25, [.05/NYQUIST_MHZ, 1.10/NYQUIST_MHZ], pass_zero=False)
+        data = sps.lfilter(bandpass, 1, data[0:10000])
 
 #    data = sps.detrend(data, type='constant')  # Remove DC
 
