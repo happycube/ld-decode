@@ -6,8 +6,8 @@ import sys
 connection_rate = 2
 learning_rate = 0.05
 num_input = 27
-num_hidden = 4
-num_output = 4
+num_hidden = 3
+num_output = 2
 
 desired_error = 0.00001
 #desired_error = 0.00031 

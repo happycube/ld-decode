@@ -248,7 +248,7 @@ class Comb
 
 			for (int y = 24; y < 503; y++) {
 				int xstart = 70;// + ((Frame[f].rawbuffer[y * in_x] == 16384) * 2);
-				for (int x = xstart; x < 844; x+=4) {
+				for (int x = xstart; x < 844; x+=2) {
 					int ti = 0;
 					for (int ty = y - 1; ty <= y + 1; ty++) {
 						for (int tx = x - 4; tx <= x + 4; tx++) {
@@ -259,19 +259,16 @@ class Comb
 				
 					calc_out = fann_run(ann, input);
 
-					Frame[f].clpbuffer[1][y][x - 3] = calc_out[0] * nn_cscale;
-					Frame[f].clpbuffer[1][y][x - 2] = calc_out[1] * nn_cscale;
-					Frame[f].clpbuffer[1][y][x - 1] = calc_out[2] * nn_cscale;
-					Frame[f].clpbuffer[1][y][x] = calc_out[3] * nn_cscale;	
+					Frame[f].clpbuffer[1][y][x - 1] = calc_out[0] * nn_cscale;
+					Frame[f].clpbuffer[1][y][x] = calc_out[1] * nn_cscale;	
 					
 					if (1 && y == (f_debugline + 25)) {
 						cerr << "D2DNA " << x << ' ' << Frame[f].clpbuffer[1][y][x - 1] << ' ' << Frame[f].clpbuffer[1][y][x] << endl;
 					}
 	
-					Frame[f].combk[1][y][x-3] = 1;
-					Frame[f].combk[1][y][x-2] = 1;
 					Frame[f].combk[1][y][x-1] = 1;
 					Frame[f].combk[1][y][x] = 1;
+					Frame[f].combk[0][y][x-1] = 0;
 					Frame[f].combk[0][y][x] = 0;
 				}
 			}	
@@ -634,11 +631,11 @@ class Comb
 			printf("fname %s\n", ofname);
 			FILE *tfile = fopen(ofname, "w+");
 
-			fprintf(tfile, "86175 27 4\n");
+			fprintf(tfile, "172350 27 2\n");
 
 			for (int y = 28; (tfile != NULL) && (y < 478); y++) {
 				int xstart = 70;// + ((Frame[1].rawbuffer[y * in_x] == 16384) * 2);
-				for (int x = xstart; x < 844 - 8; x+=4) {
+				for (int x = xstart; x < 844 - 8; x+=2) {
 					for (int ty = y - 1; ty <= y + 1; ty++) {
 						for (int tx = x - 4; tx <= x + 4; tx++) {
 							double val = Frame[1].rawbuffer[(ty * in_x) + tx];
@@ -646,17 +643,15 @@ class Comb
 						}
 					}
 					//fprintf(tfile, "\n%lf %lf\n", Frame[1].cbuf[y].p[x].i / 32768.0, Frame[1].cbuf[y].p[x].q / 32768.0); 
-					double o1 = Frame[1].clpbuffer[2][y][x - 3];
-					double o2 = Frame[1].clpbuffer[2][y][x - 2];
-					double o3 = Frame[1].clpbuffer[2][y][x - 1];
-					double o4 = Frame[1].clpbuffer[2][y][x];
+					double o1 = Frame[1].clpbuffer[2][y][x - 1];
+					double o2 = Frame[1].clpbuffer[2][y][x];
 
 					if (0 && ((x - xstart) % 4) >= 2) {
 //						fprintf(tfile, "\nflip %d %d %d\n", (x - xstart), x, y);
 						o1 = -o1;
 						o2 = -o2;
 					}
-					fprintf(tfile, "\n%lf %lf %lf %lf\n", o1 / nn_cscale, o2 / nn_cscale, o3 / nn_cscale, o4 / nn_cscale); 
+					fprintf(tfile, "\n%lf %lf\n", o1 / nn_cscale, o2 / nn_cscale); 
 				}
 			}
 			printf("%p\n", tfile);
