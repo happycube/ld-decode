@@ -2,7 +2,6 @@
 import numpy as np
 import scipy.signal as sps
 import sys
-import matplotlib.pyplot as plt
 
 #
 # Sample usage:
@@ -735,7 +734,7 @@ def edgeclock_decode(data, start_sample, pace, verbose=False):
     printerr('Distribution of edge gaps %s ! should stop here but: %s ' % ( str(tcount[0:11]), str(tcount[11:]) ))
 
 
-def decode_efm(apply_filters=True, apply_demp=False, just_log=False, random_input=False):
+def decode_efm(apply_filters=True, apply_demp=False, just_log=True, random_input=False):
     """ Decode EFM from STDIN, assuming it's a 28Mhz 8bit raw stream.
           apply_filters    apply lowpass/highpass filters
           apply_demp       apply de-emphasis filter (False for CD Audio)
@@ -755,18 +754,14 @@ def decode_efm(apply_filters=True, apply_demp=False, just_log=False, random_inpu
         data = np.fromiter(run_filter(de_emphasis_filter, data), np.int16)  # De-emph - 26db below 500khz
 
     if apply_filters:
-        bandpass = sps.firwin(8191, [0.013 / FREQ_MHZ, 2.1 / FREQ_MHZ], pass_zero=False)
-        bandpass = sps.firwin(49, [.05/FREQ_MHZ, 1.10/FREQ_MHZ], pass_zero=False)
-        data = sps.lfilter(bandpass, 1, data)
+        # bandpass = sps.firwin(8191, [0.013 / FREQ_MHZ, 2.1 / FREQ_MHZ], pass_zero=False)
+        # data = sps.lfilter(bandpass, 1, data)
 
-        #low_pass = sps.cheby2(16, 100., 4.3 / FREQ_MHZ)  # Looks a bit odd, but is a reasonable tie for the spec filter (-26db at 2.0 Mhz, -50+ at 2.3Mhz)
+        low_pass = sps.cheby2(16, 100., 4.3 / FREQ_MHZ)  # Looks a bit odd, but is a reasonable tie for the spec filter (-26db at 2.0 Mhz, -50+ at 2.3Mhz)
         # low_pass = sps.cheby2(10, 50., 4.3 / FREQ_MHZ)  # Looks a bit odd, but is a reasonable tie for the spec filter (-26db at 2.0 Mhz, -50+ at 2.3Mhz)
-        #data = sps.filtfilt(low_pass[0], low_pass[1], data)
+        data = sps.filtfilt(low_pass[0], low_pass[1], data)
 
-    plt.plot((data[5000:8000]))
-    plt.show()
-
-    bit_gen = edgeclock_decode(data, 0., 6.26)
+    bit_gen = edgeclock_decode(data, 0., 6.626)
     data_frames = []
 
     try:
@@ -788,7 +783,7 @@ def decode_efm(apply_filters=True, apply_demp=False, just_log=False, random_inpu
     except StopIteration:
         printerr('Hit the end of the bitstream')
         printerr('Found %d frames ' % frames)
-        printerr(' Expected %.2f frames' % ((SAMPLES / 6.26 ) / 588 ))
+        printerr(' Expected %.2f frames' % ((SAMPLES / 6.626 ) / 588 ))
     ## Output data should now contain all the decoded frames
     audioleft, audioright = extract_audio_samples(data_frames)
     data = np.clip(data, 0, 255).astype(np.uint8)

@@ -8,6 +8,8 @@
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/video/tracking.hpp> 
 
+#include "floatfann.h"
+
 using namespace cv;
 
 int ofd = 1;
@@ -16,9 +18,14 @@ char *image_base = "FRAME";
 bool f_write8bit = false;
 bool f_pulldown = false;
 bool f_writeimages = false;
+bool f_training = false;
 bool f_bw = false;
 bool f_debug2d = false;
 bool f_oneframe = false;
+
+bool f_neuralnet = false;
+struct fann *ann = NULL;
+double nn_cscale = 32768.0;
 
 bool f_monitor = false;
 
@@ -28,7 +35,7 @@ double p_3d2drej = 2;
 
 bool f_opticalflow = false;
 
-int debug_line = -1000;
+int f_debugline = -1000;
 	
 int dim = 2;
 
@@ -227,15 +234,53 @@ class Comb
 					Frame[fnum].clpbuffer[0][l][h - f_toffset] = tc1f;					
 					Frame[fnum].combk[0][l][h] = 1;
 
-					if (l == (debug_line + 25)) {
+					if (l == (f_debugline + 25)) {
 						cerr << h << ' ' << line[h - 4] << ' ' << line[h - 2] << ' ' << line[h] << ' ' << line[h + 2] << ' ' << line[h + 4] << ' ' << tc1 << ' ' << Frame[fnum].clpbuffer[0][l][h - f_toffset] << endl;
 					}
 				}
 			}
 		}
 		
+		void Split2D_NN(int f) 
+		{
+			fann_type *calc_out;
+			fann_type input[28];
+
+			for (int y = 24; y < 503; y++) {
+				int xstart = 70;// + ((Frame[f].rawbuffer[y * in_x] == 16384) * 2);
+				for (int x = xstart; x < 844; x+=4) {
+					int ti = 0;
+					for (int ty = y - 1; ty <= y + 1; ty++) {
+						for (int tx = x - 4; tx <= x + 4; tx++) {
+							int val = Frame[f].rawbuffer[(ty * in_x) + tx];
+							input[ti++] = (((double)val)/32768.0) - 1.0;
+						}
+					}
+				
+					calc_out = fann_run(ann, input);
+
+					Frame[f].clpbuffer[1][y][x - 3] = calc_out[0] * nn_cscale;
+					Frame[f].clpbuffer[1][y][x - 2] = calc_out[1] * nn_cscale;
+					Frame[f].clpbuffer[1][y][x - 1] = calc_out[2] * nn_cscale;
+					Frame[f].clpbuffer[1][y][x] = calc_out[3] * nn_cscale;	
+					
+					if (1 && y == (f_debugline + 25)) {
+						cerr << "D2DNA " << x << ' ' << Frame[f].clpbuffer[1][y][x - 1] << ' ' << Frame[f].clpbuffer[1][y][x] << endl;
+					}
+	
+					Frame[f].combk[1][y][x-3] = 1;
+					Frame[f].combk[1][y][x-2] = 1;
+					Frame[f].combk[1][y][x-1] = 1;
+					Frame[f].combk[1][y][x] = 1;
+					Frame[f].combk[0][y][x] = 0;
+				}
+			}	
+		}	
+	
 		void Split2D(int f) 
 		{
+			if (f_neuralnet && ann) return Split2D_NN(f);
+
 			for (int l = 24; l < in_y; l++) {
 				uint16_t *line = &Frame[f].rawbuffer[l * in_x];	
 		
@@ -248,7 +293,7 @@ class Comb
 					for (int h = 16; h < 840; h++) {
 						double tc1;
 
-						if (l == (debug_line + 25)) {
+						if (l == (f_debugline + 25)) {
 							//cerr << "2D " << h << ' ' << clpbuffer[l][h] << ' ' << p1line[h] << ' ' << n1line[h] << endl;
 							cerr << "2D " << h << ' ' << p1line[h] << ' ' << Frame[f].clpbuffer[0][l][h] << ' ' << n1line[h] << ' ' << endl;
 						}	
@@ -303,7 +348,7 @@ class Comb
 						Frame[f].clpbuffer[2][l][h] = (((p3line[h] + n3line[h]) / 2) - line[h]); 
 						Frame[f].combk[2][l][h] = clamp(1 - ((_k[h] - (p_3dcore)) / p_3drange), 0, 1);
 					}
-					if (l == (debug_line + 25)) {
+					if (l == (f_debugline + 25)) {
 //						cerr << "3DC " << h << ' ' << k2 << ' ' << adj << ' ' << k[h] << endl;
 					}
 				
@@ -325,6 +370,8 @@ class Comb
 				uint16_t *line = &Frame[f].rawbuffer[l * in_x];	
 				bool invertphase = (line[0] == 16384);
 
+//				if (f_neuralnet) invertphase = true;
+
 				double si = 0, sq = 0;
 				for (int h = 4; h < 840; h++) {
 					int phase = h % 4;
@@ -340,6 +387,10 @@ class Comb
 						cavg = Frame[f].clpbuffer[1][l][h] - Frame[f].clpbuffer[2][l][h];
 						msel += (cavg * cavg);
 						sel += fabs(cavg);
+
+						if (l == (f_debugline + 25)) {
+							cerr << "D2D " << h << ' ' << Frame[f].clpbuffer[1][l][h] << ' ' << Frame[f].clpbuffer[2][l][h] << ' ' << cavg << endl;
+						}
 					}
 
 					if (!invertphase) cavg = -cavg;
@@ -392,7 +443,7 @@ class Comb
 				for (int h = 70; h < out_x + 70; h++) {
 					double a = hplinef[h + 12].y;
 
-					if (l == (debug_line + 25)) {
+					if (l == (f_debugline + 25)) {
 						cerr << "NR " << h << ' ' << input->p[h].y << ' ' << hplinef[h + 12].y << ' ' << ' ' << a << ' ' << endl;
 					}
 
@@ -401,7 +452,7 @@ class Comb
 					}
 
 					input->p[h].y -= a;
-					if (l == (debug_line + 25)) cerr << a << ' ' << input->p[h].y << endl; 
+					if (l == (f_debugline + 25)) cerr << a << ' ' << input->p[h].y << endl; 
 				}
 			}
 		}
@@ -463,7 +514,7 @@ class Comb
 
 					r.conv(yiq);
 					
-					if (l == debug_line) {
+					if (l == f_debugline) {
 						r.r = r.g = r.b = 0;
 					}
 	
@@ -576,6 +627,42 @@ class Comb
 			memset(output, 0, sizeof(output));
 		}
 
+		void WriteTrainingData(int fnum) {
+			char ofname[512];	
+			sprintf(ofname, "%s%d.train", image_base, fnum); 
+
+			printf("fname %s\n", ofname);
+			FILE *tfile = fopen(ofname, "w+");
+
+			fprintf(tfile, "86175 27 4\n");
+
+			for (int y = 28; (tfile != NULL) && (y < 478); y++) {
+				int xstart = 70;// + ((Frame[1].rawbuffer[y * in_x] == 16384) * 2);
+				for (int x = xstart; x < 844 - 8; x+=4) {
+					for (int ty = y - 1; ty <= y + 1; ty++) {
+						for (int tx = x - 4; tx <= x + 4; tx++) {
+							double val = Frame[1].rawbuffer[(ty * in_x) + tx];
+							fprintf(tfile, "%lf ", (val/32768.0) - 1.0);
+						}
+					}
+					//fprintf(tfile, "\n%lf %lf\n", Frame[1].cbuf[y].p[x].i / 32768.0, Frame[1].cbuf[y].p[x].q / 32768.0); 
+					double o1 = Frame[1].clpbuffer[2][y][x - 3];
+					double o2 = Frame[1].clpbuffer[2][y][x - 2];
+					double o3 = Frame[1].clpbuffer[2][y][x - 1];
+					double o4 = Frame[1].clpbuffer[2][y][x];
+
+					if (0 && ((x - xstart) % 4) >= 2) {
+//						fprintf(tfile, "\nflip %d %d %d\n", (x - xstart), x, y);
+						o1 = -o1;
+						o2 = -o2;
+					}
+					fprintf(tfile, "\n%lf %lf %lf %lf\n", o1 / nn_cscale, o2 / nn_cscale, o3 / nn_cscale, o4 / nn_cscale); 
+				}
+			}
+			printf("%p\n", tfile);
+			fclose(tfile);
+		}
+
 		void WriteFrame(uint16_t *obuf, int fnum = 0) {
 			cerr << "WR" << fnum << endl;
 			if (!f_writeimages) {
@@ -591,6 +678,8 @@ class Comb
 				}		
 			} else {
 				char ofname[512];
+				
+				if (f_training) WriteTrainingData(fnum);
 
 				sprintf(ofname, "%s%d.rgb", image_base, fnum); 
 				cerr << "W " << ofname << endl;
@@ -765,7 +854,7 @@ class Comb
 
 			memcpy(Frame[0].rawbuffer, buffer, (in_x * in_y * 2));
 
-			Split1D(0);
+			if (!f_neuralnet) Split1D(0);
 			Split2D(0); 
 			SplitIQ(0);
 		
@@ -903,7 +992,7 @@ int main(int argc, char *argv[])
 
 	opterr = 0;
 	
-	while ((c = getopt(argc, argv, "Fc:r:R:m8OwvDd:Bb:I:w:i:o:fphn:l:")) != -1) {
+	while ((c = getopt(argc, argv, "NtFc:r:R:m8OwvDd:Bb:I:w:i:o:fphn:l:")) != -1) {
 		switch (c) {
 			case 'F':
 				f_opticalflow = true;
@@ -968,10 +1057,18 @@ int main(int argc, char *argv[])
 				break;
 			case 'l':
 				// black out a desired line
-				sscanf(optarg, "%d", &debug_line);
+				sscanf(optarg, "%d", &f_debugline);
 				break;
 			case 'm':
 				f_monitor = true;
+				break;
+			case 't': // training mode - write images as well
+				f_training = true;
+				f_writeimages = true;	
+				dim = 3;
+				break;
+			case 'N':
+				f_neuralnet = true;
 				break;
 			default:
 				return -1;
@@ -980,6 +1077,10 @@ int main(int argc, char *argv[])
 
 	if (1 || f_monitor) {
 		namedWindow("comb", WINDOW_AUTOSIZE);
+	}
+
+	if (f_neuralnet) {
+		ann = fann_create_from_file("test.net");	
 	}
 
 	p_3dcore *= irescale;

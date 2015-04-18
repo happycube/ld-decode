@@ -796,7 +796,7 @@ def find_zc(data):
 			prev = i
 			 
 
-def decode_efm(apply_filters=True, apply_demp=False, just_log=True, random_input=False):
+def decode_efm(apply_filters=True, apply_demp=True, just_log=True, random_input=False):
     """ Decode EFM from STDIN, assuming it's a 28Mhz 8bit raw stream.
           apply_filters    apply lowpass/highpass filters
           apply_demp       apply de-emphasis filter (False for CD Audio)
@@ -811,6 +811,9 @@ def decode_efm(apply_filters=True, apply_demp=False, just_log=True, random_input
 #    plt.plot((data[5000:8000]))
 #    plt.show()
 #    exit()
+
+    data = data[0:10000]
+    plt.plot(data[5000:6000])
 
     if apply_demp:
         # This is too slow, need to work out a way to do it in scipy
@@ -837,9 +840,11 @@ def decode_efm(apply_filters=True, apply_demp=False, just_log=True, random_input
 	# looks good for cdaudio, not so much for ldd
         bandpass = sps.firwin(49, [.05/NYQUIST_MHZ, 1.10/NYQUIST_MHZ], pass_zero=False)
         bandpass = sps.firwin(25, [.05/NYQUIST_MHZ, 1.10/NYQUIST_MHZ], pass_zero=False)
+        bandpass = sps.firwin(35, [.05/NYQUIST_MHZ, 1.10/NYQUIST_MHZ], pass_zero=False)
+#        bandpass = sps.firwin(55, [.05/NYQUIST_MHZ, 1.10/NYQUIST_MHZ], pass_zero=False)
         data = sps.lfilter(bandpass, 1, data[0:10000])
 
-#    data = sps.detrend(data, type='constant')  # Remove DC
+    data = sps.detrend(data, type='constant')  # Remove DC
 
         #low_pass = sps.cheby2(16, 100., 4.3 / FREQ_MHZ)  # Looks a bit odd, but is a reasonable tie for the spec filter (-26db at 2.0 Mhz, -50+ at 2.3Mhz)
         # low_pass = sps.cheby2(10, 50., 4.3 / FREQ_MHZ)  # Looks a bit odd, but is a reasonable tie for the spec filter (-26db at 2.0 Mhz, -50+ at 2.3Mhz)
@@ -849,16 +854,15 @@ def decode_efm(apply_filters=True, apply_demp=False, just_log=True, random_input
 #    data = (np.diff(data))
 #    data = np.abs(data)
 
-#    plt.plot(data[9000:10000])
     plt.plot(data[5000:6000])
-#    plt.plot(data[100:1000])
-    plt.show()
-#    exit()
 
     data = (np.diff(data))
     data = np.abs(data)
 
-    find_peaks(data, 1.4)
+    plt.plot(data[5000:6000])
+    plt.show()
+    
+    find_peaks(data, 0.5)
     exit()
 
     bit_gen = edgeclock_decode(data, 0., 6.626)

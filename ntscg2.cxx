@@ -421,9 +421,11 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line, bool err =
 
 	if (fabs(begin - orig_begin) > 3) {
 		cerr << "ERRP begin " << frameno + 1 << ":" << oline << ' ' << orig_begin << ' ' << begin << ' ' << orig_end << ' ' << end << endl;
+//		begin = orig_begin;
 	} 
 	if (fabs(end - orig_end) > 3) {
 		cerr << "ERRP end " << frameno + 1 << ":" << oline << ' ' << orig_begin << ' ' << begin << ' ' << orig_end << ' ' << end << endl;
+//		end = orig_end;
 	} 
 
 	{
