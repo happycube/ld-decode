@@ -26,7 +26,7 @@ double p_3dcore = 1.25;
 double p_3drange = 5.5;
 double p_3d2drej = 2;
 
-bool f_opticalflow = true;
+bool f_opticalflow = false;
 
 int debug_line = -1000;
 	
@@ -906,7 +906,7 @@ int main(int argc, char *argv[])
 	while ((c = getopt(argc, argv, "Fc:r:R:m8OwvDd:Bb:I:w:i:o:fphn:l:")) != -1) {
 		switch (c) {
 			case 'F':
-				f_opticalflow = false;
+				f_opticalflow = true;
 				break;
 			case 'c':
 				sscanf(optarg, "%lf", &p_3dcore);
