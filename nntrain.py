@@ -3,10 +3,10 @@
 from pyfann import libfann
 import sys
 
-connection_rate = 2
+connection_rate = 1
 learning_rate = 0.05
 num_input = 27
-num_hidden = 3
+num_hidden = 27 
 num_output = 2
 
 desired_error = 0.00001
@@ -20,7 +20,12 @@ ann.create_sparse_array(connection_rate, (num_input, num_hidden, num_output))
 ann.set_learning_rate(learning_rate)
 ann.set_activation_function_output(libfann.SIGMOID_SYMMETRIC_STEPWISE)
 
-ann.train_on_file(sys.argv[1], max_iterations, iterations_between_reports, desired_error)
+train_data = libfann.training_data()
+for i in range(1, len(sys.argv)):
+	print sys.argv[i]
+	train_data.read_train_from_file(sys.argv[i])
+
+ann.train_on_data(train_data, max_iterations, iterations_between_reports, desired_error)
 
 ann.print_connections();
 
