@@ -4,15 +4,15 @@ from pyfann import libfann
 import sys
 
 connection_rate = 1
-learning_rate = 0.05
+learning_rate = 0.04
 num_input = 27
 num_hidden = 27 
 num_output = 2
 
-desired_error = 0.00001
+desired_error = 0.000001
 #desired_error = 0.00031 
 #desired_error = 0.00057
-max_iterations = 500
+max_iterations = 400
 iterations_between_reports = 10
 
 ann = libfann.neural_net()
