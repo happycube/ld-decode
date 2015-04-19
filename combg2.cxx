@@ -252,18 +252,22 @@ class Comb
 
 			for (int y = 24; y < 503; y++) {
 				int xstart = 70;// + ((Frame[f].rawbuffer[y * in_x] == 16384) * 2);
-				for (int x = xstart; x < 844; x+=2) {
+				for (int x = xstart; x < 840; x+=2) {
 					int ti = 0;
 					for (int ty = y - 2; ty <= y + 2; ty+=2) {
 						for (int tx = x - 2; tx <= x + 1; tx++) {
 							int val = Frame[f].rawbuffer[(ty * in_x) + tx];
-							input[ti++] = (((double)val)/32768.0) - 1.0;
+//							input[ti++] = (((double)val)/32768.0) - 1.0;
 						}
 					}
 					double val;
-					val = rawbuffer_val(f, x - 1, y) - rawbuffer_val(f, x, y);	
+					val = rawbuffer_val(f, x - 0, y) - rawbuffer_val(f, x - 2, y - 0);	
 					input[ti++] = (((double)val)/32768.0) - 0.0;
-					val = rawbuffer_val(f, x - 0, y) - rawbuffer_val(f, x - 2, y);	
+					val = rawbuffer_val(f, x - 0, y) - rawbuffer_val(f, x + 2, y - 0);	
+					input[ti++] = (((double)val)/32768.0) - 0.0;
+					val = rawbuffer_val(f, x - 1, y) - rawbuffer_val(f, x - 3, y - 0);	
+					input[ti++] = (((double)val)/32768.0) - 0.0;
+					val = rawbuffer_val(f, x - 1, y) - rawbuffer_val(f, x + 3, y - 0);	
 					input[ti++] = (((double)val)/32768.0) - 0.0;
 					val = rawbuffer_val(f, x - 1, y) - rawbuffer_val(f, x - 1, y - 2);	
 					input[ti++] = (((double)val)/32768.0) - 0.0;
@@ -272,6 +276,22 @@ class Comb
 					val = rawbuffer_val(f, x - 1, y) - rawbuffer_val(f, x - 1, y + 2);	
 					input[ti++] = (((double)val)/32768.0) - 0.0;
 					val = rawbuffer_val(f, x - 0, y) - rawbuffer_val(f, x - 0, y + 2);	
+					input[ti++] = (((double)val)/32768.0) - 0.0;
+					val = rawbuffer_val(f, x - 1, y) - rawbuffer_val(f, x - 3, y - 2);	
+					input[ti++] = (((double)val)/32768.0) - 0.0;
+					val = rawbuffer_val(f, x - 0, y) - rawbuffer_val(f, x - 2, y - 2);	
+					input[ti++] = (((double)val)/32768.0) - 0.0;
+					val = rawbuffer_val(f, x - 1, y) - rawbuffer_val(f, x - 3, y + 2);	
+					input[ti++] = (((double)val)/32768.0) - 0.0;
+					val = rawbuffer_val(f, x - 0, y) - rawbuffer_val(f, x - 2, y + 2);	
+					input[ti++] = (((double)val)/32768.0) - 0.0;
+					val = rawbuffer_val(f, x - 1, y) - rawbuffer_val(f, x + 1, y - 2);	
+					input[ti++] = (((double)val)/32768.0) - 0.0;
+					val = rawbuffer_val(f, x - 0, y) - rawbuffer_val(f, x + 2, y - 2);	
+					input[ti++] = (((double)val)/32768.0) - 0.0;
+					val = rawbuffer_val(f, x - 1, y) - rawbuffer_val(f, x + 1, y + 2);	
+					input[ti++] = (((double)val)/32768.0) - 0.0;
+					val = rawbuffer_val(f, x - 0, y) - rawbuffer_val(f, x + 2, y + 2);	
 					input[ti++] = (((double)val)/32768.0) - 0.0;
 				
 					calc_out = fann_run(ann, input);
@@ -650,7 +670,7 @@ class Comb
 			printf("fname %s\n", ofname);
 			FILE *tfile = fopen(ofname, "w+");
 
-			fprintf(tfile, "172350 18 2\n");
+			fprintf(tfile, "172350 16 2\n");
 
 			for (int y = 28; (tfile != NULL) && (y < 478); y++) {
 				int xstart = 70;// + ((Frame[1].rawbuffer[y * in_x] == 16384) * 2);
@@ -658,25 +678,45 @@ class Comb
 					for (int ty = y - 2; ty <= y + 2; ty+=2) {
 						for (int tx = x - 2; tx <= x + 1; tx++) {
 							double val = Frame[1].rawbuffer[(ty * in_x) + tx];
-							fprintf(tfile, "%lf ", (val/32768.0) - 1.0);
+//							fprintf(tfile, "%lf ", (val/32768.0) - 1.0);
 						}
 					}
 
+					int f = 1;
 					double val;
-					val = Frame[1].rawbuffer[(y * in_x) + x - 1] - Frame[1].rawbuffer[(y * in_x) + x - 0];
+					val = rawbuffer_val(f, x - 0, y) - rawbuffer_val(f, x - 2, y - 0);	
 					fprintf(tfile, "%lf ", (val/32768.0) - 0.0);
-					val = Frame[1].rawbuffer[(y * in_x) + x + 0] - Frame[1].rawbuffer[(y * in_x) + x - 2];
+					val = rawbuffer_val(f, x - 0, y) - rawbuffer_val(f, x + 2, y - 0);	
 					fprintf(tfile, "%lf ", (val/32768.0) - 0.0);
-					val = Frame[1].rawbuffer[(y * in_x) + x - 1] - Frame[1].rawbuffer[((y - 2) * in_x) + x - 1];
+					val = rawbuffer_val(f, x - 1, y) - rawbuffer_val(f, x - 3, y - 0);	
 					fprintf(tfile, "%lf ", (val/32768.0) - 0.0);
-					val = Frame[1].rawbuffer[(y * in_x) + x - 0] - Frame[1].rawbuffer[((y - 2) * in_x) + x - 0];
+					val = rawbuffer_val(f, x - 1, y) - rawbuffer_val(f, x + 3, y - 0);	
 					fprintf(tfile, "%lf ", (val/32768.0) - 0.0);
-					val = Frame[1].rawbuffer[(y * in_x) + x - 1] - Frame[1].rawbuffer[((y + 2) * in_x) + x - 1];
+					val = rawbuffer_val(f, x - 1, y) - rawbuffer_val(f, x - 1, y - 2);	
 					fprintf(tfile, "%lf ", (val/32768.0) - 0.0);
-					val = Frame[1].rawbuffer[(y * in_x) + x - 0] - Frame[1].rawbuffer[((y + 2) * in_x) + x - 0];
+					val = rawbuffer_val(f, x - 0, y) - rawbuffer_val(f, x - 0, y - 2);	
 					fprintf(tfile, "%lf ", (val/32768.0) - 0.0);
-						
-
+					val = rawbuffer_val(f, x - 1, y) - rawbuffer_val(f, x - 1, y + 2);	
+					fprintf(tfile, "%lf ", (val/32768.0) - 0.0);
+					val = rawbuffer_val(f, x - 0, y) - rawbuffer_val(f, x - 0, y + 2);	
+					fprintf(tfile, "%lf ", (val/32768.0) - 0.0);
+					val = rawbuffer_val(f, x - 1, y) - rawbuffer_val(f, x - 3, y - 2);	
+					fprintf(tfile, "%lf ", (val/32768.0) - 0.0);
+					val = rawbuffer_val(f, x - 0, y) - rawbuffer_val(f, x - 2, y - 2);	
+					fprintf(tfile, "%lf ", (val/32768.0) - 0.0);
+					val = rawbuffer_val(f, x - 1, y) - rawbuffer_val(f, x - 3, y + 2);	
+					fprintf(tfile, "%lf ", (val/32768.0) - 0.0);
+					val = rawbuffer_val(f, x - 0, y) - rawbuffer_val(f, x - 2, y + 2);	
+					fprintf(tfile, "%lf ", (val/32768.0) - 0.0);
+					val = rawbuffer_val(f, x - 1, y) - rawbuffer_val(f, x + 1, y - 2);	
+					fprintf(tfile, "%lf ", (val/32768.0) - 0.0);
+					val = rawbuffer_val(f, x - 0, y) - rawbuffer_val(f, x + 2, y - 2);	
+					fprintf(tfile, "%lf ", (val/32768.0) - 0.0);
+					val = rawbuffer_val(f, x - 1, y) - rawbuffer_val(f, x + 1, y + 2);	
+					fprintf(tfile, "%lf ", (val/32768.0) - 0.0);
+					val = rawbuffer_val(f, x - 0, y) - rawbuffer_val(f, x + 2, y + 2);	
+					fprintf(tfile, "%lf ", (val/32768.0) - 0.0);
+				
 					//fprintf(tfile, "\n%lf %lf\n", Frame[1].cbuf[y].p[x].i / 32768.0, Frame[1].cbuf[y].p[x].q / 32768.0); 
 					double o1 = Frame[1].clpbuffer[2][y][x - 1];
 					double o2 = Frame[1].clpbuffer[2][y][x];
