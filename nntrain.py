@@ -6,10 +6,10 @@ import sys
 connection_rate = 1.0 
 learning_rate = 0.25
 num_input = 16 
-num_hidden = 16 
+num_hidden = 32 
 num_output = 2
 
-desired_error = 0.000010
+desired_error = 0.000052 
 #desired_error = 0.00031 
 #desired_error = 0.00057
 max_iterations = 100
