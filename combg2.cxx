@@ -240,7 +240,11 @@ class Comb
 				}
 			}
 		}
-		
+	
+		int rawbuffer_val(int fr, int x, int y) {
+			return Frame[fr].rawbuffer[(y * in_x) + x];
+		}
+	
 		void Split2D_NN(int f) 
 		{
 			fann_type *calc_out;
@@ -256,6 +260,19 @@ class Comb
 							input[ti++] = (((double)val)/32768.0) - 1.0;
 						}
 					}
+					double val;
+					val = rawbuffer_val(f, x - 1, y) - rawbuffer_val(f, x, y);	
+					input[ti++] = (((double)val)/32768.0) - 0.0;
+					val = rawbuffer_val(f, x - 0, y) - rawbuffer_val(f, x - 2, y);	
+					input[ti++] = (((double)val)/32768.0) - 0.0;
+					val = rawbuffer_val(f, x - 1, y) - rawbuffer_val(f, x - 1, y - 2);	
+					input[ti++] = (((double)val)/32768.0) - 0.0;
+					val = rawbuffer_val(f, x - 0, y) - rawbuffer_val(f, x - 0, y - 2);	
+					input[ti++] = (((double)val)/32768.0) - 0.0;
+					val = rawbuffer_val(f, x - 1, y) - rawbuffer_val(f, x - 1, y + 2);	
+					input[ti++] = (((double)val)/32768.0) - 0.0;
+					val = rawbuffer_val(f, x - 0, y) - rawbuffer_val(f, x - 0, y + 2);	
+					input[ti++] = (((double)val)/32768.0) - 0.0;
 				
 					calc_out = fann_run(ann, input);
 
@@ -633,7 +650,7 @@ class Comb
 			printf("fname %s\n", ofname);
 			FILE *tfile = fopen(ofname, "w+");
 
-			fprintf(tfile, "172350 12 2\n");
+			fprintf(tfile, "172350 18 2\n");
 
 			for (int y = 28; (tfile != NULL) && (y < 478); y++) {
 				int xstart = 70;// + ((Frame[1].rawbuffer[y * in_x] == 16384) * 2);
@@ -644,6 +661,22 @@ class Comb
 							fprintf(tfile, "%lf ", (val/32768.0) - 1.0);
 						}
 					}
+
+					double val;
+					val = Frame[1].rawbuffer[(y * in_x) + x - 1] - Frame[1].rawbuffer[(y * in_x) + x - 0];
+					fprintf(tfile, "%lf ", (val/32768.0) - 0.0);
+					val = Frame[1].rawbuffer[(y * in_x) + x + 0] - Frame[1].rawbuffer[(y * in_x) + x - 2];
+					fprintf(tfile, "%lf ", (val/32768.0) - 0.0);
+					val = Frame[1].rawbuffer[(y * in_x) + x - 1] - Frame[1].rawbuffer[((y - 2) * in_x) + x - 1];
+					fprintf(tfile, "%lf ", (val/32768.0) - 0.0);
+					val = Frame[1].rawbuffer[(y * in_x) + x - 0] - Frame[1].rawbuffer[((y - 2) * in_x) + x - 0];
+					fprintf(tfile, "%lf ", (val/32768.0) - 0.0);
+					val = Frame[1].rawbuffer[(y * in_x) + x - 1] - Frame[1].rawbuffer[((y + 2) * in_x) + x - 1];
+					fprintf(tfile, "%lf ", (val/32768.0) - 0.0);
+					val = Frame[1].rawbuffer[(y * in_x) + x - 0] - Frame[1].rawbuffer[((y + 2) * in_x) + x - 0];
+					fprintf(tfile, "%lf ", (val/32768.0) - 0.0);
+						
+
 					//fprintf(tfile, "\n%lf %lf\n", Frame[1].cbuf[y].p[x].i / 32768.0, Frame[1].cbuf[y].p[x].q / 32768.0); 
 					double o1 = Frame[1].clpbuffer[2][y][x - 1];
 					double o2 = Frame[1].clpbuffer[2][y][x];
