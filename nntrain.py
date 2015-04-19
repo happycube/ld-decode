@@ -4,12 +4,12 @@ from pyfann import libfann
 import sys
 
 connection_rate = 1.0 
-learning_rate = 0.05
+learning_rate = 0.25
 num_input = 16 
-num_hidden = 32 
+num_hidden = 16 
 num_output = 2
 
-desired_error = 0.00001
+desired_error = 0.000010
 #desired_error = 0.00031 
 #desired_error = 0.00057
 max_iterations = 100
@@ -21,9 +21,10 @@ ann.set_learning_rate(learning_rate)
 #ann.set_activation_function_hidden(libfann.SIGMOID_SYMMETRIC_STEPWISE)
 #ann.set_activation_function_hidden(libfann.SIGMOID_SYMMETRIC)
 #ann.set_activation_function_output(libfann.SIGMOID_SYMMETRIC_STEPWISE)
-for i in range(16,32):
-	ann.set_activation_function(libfann.LINEAR_PIECE_SYMMETRIC, 1, i)
+#for i in range(16,32):
+#	ann.set_activation_function(libfann.LINEAR_PIECE_SYMMETRIC, 1, i)
 
+ann.set_activation_function_hidden(libfann.LINEAR_PIECE_SYMMETRIC)
 ann.set_activation_function_output(libfann.LINEAR_PIECE_SYMMETRIC)
 #ann.set_activation_function_output(libfann.SIN_SYMMETRIC)
 #ann.set_activation_function_output(libfann.LINEAR)
