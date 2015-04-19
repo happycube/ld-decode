@@ -22,8 +22,9 @@ bool f_training = false;
 bool f_bw = false;
 bool f_debug2d = false;
 bool f_oneframe = false;
+bool f_showk = false;
 
-bool f_neuralnet = false;
+bool f_neuralnet = true;
 struct fann *ann = NULL;
 double nn_cscale = 32768.0;
 
@@ -33,7 +34,7 @@ double p_3dcore = 1.25;
 double p_3drange = 5.5;
 double p_3d2drej = 2;
 
-bool f_opticalflow = false;
+bool f_opticalflow = true;
 
 int f_debugline = -1000;
 	
@@ -548,6 +549,12 @@ class Comb
 					yiq.i *= (10 / aburstlev);
 					yiq.q *= (10 / aburstlev);
 
+					if (f_showk) {
+						yiq.y = ire_to_u16(Frame[f].combk[dim - 1][l][h + 82] * 100);
+//						yiq.y = ire_to_u16(((double)h / 752.0) * 100);
+						yiq.i = yiq.q = 0;
+					}
+
 					r.conv(yiq);
 					
 					if (l == f_debugline) {
@@ -617,8 +624,8 @@ class Comb
 				Mat rpic;
 				resize(fpic, rpic, Size(1280,960));
 	
-				imshow("comb", rpic);	
-				waitKey(f_oneframe ? 0 : 1);
+//				imshow("comb", rpic);	
+//				waitKey(f_oneframe ? 0 : 1);
 			}
 			fcount++; 
 		}
@@ -1062,7 +1069,7 @@ int main(int argc, char *argv[])
 
 	opterr = 0;
 	
-	while ((c = getopt(argc, argv, "NtFc:r:R:m8OwvDd:Bb:I:w:i:o:fphn:l:")) != -1) {
+	while ((c = getopt(argc, argv, "kNtFc:r:R:m8OwvDd:Bb:I:w:i:o:fphn:l:")) != -1) {
 		switch (c) {
 			case 'F':
 				f_opticalflow = true;
@@ -1139,6 +1146,9 @@ int main(int argc, char *argv[])
 				break;
 			case 'N':
 				f_neuralnet = true;
+				break;
+			case 'k':
+				f_showk = true;
 				break;
 			default:
 				return -1;
