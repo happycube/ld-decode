@@ -251,7 +251,7 @@ class Comb
 				for (int x = xstart; x < 844; x+=2) {
 					int ti = 0;
 					for (int ty = y - 2; ty <= y + 2; ty+=2) {
-						for (int tx = x - 4; tx <= x + 4; tx++) {
+						for (int tx = x - 2; tx <= x + 1; tx++) {
 							int val = Frame[f].rawbuffer[(ty * in_x) + tx];
 							input[ti++] = (((double)val)/32768.0) - 1.0;
 						}
@@ -259,13 +259,15 @@ class Comb
 				
 					calc_out = fann_run(ann, input);
 
-					Frame[f].clpbuffer[1][y][x - 1] = calc_out[0] * nn_cscale * 1.41;
-					Frame[f].clpbuffer[1][y][x] = calc_out[1] * nn_cscale * 1.41;	
+					Frame[f].clpbuffer[1][y][x - 1] = calc_out[0] * nn_cscale * 1.00;
+					Frame[f].clpbuffer[1][y][x] = calc_out[1] * nn_cscale * 1.00;	
 					
 					if (1 && y == (f_debugline + 25)) {
 						cerr << "D2DNA " << x << ' ' << Frame[f].clpbuffer[1][y][x - 1] << ' ' << Frame[f].clpbuffer[1][y][x] << endl;
 					}
 	
+					Frame[f].combk[2][y][x-1] = 0;
+					Frame[f].combk[2][y][x] = 0;
 					Frame[f].combk[1][y][x-1] = 1;
 					Frame[f].combk[1][y][x] = 1;
 					Frame[f].combk[0][y][x-1] = 0;
@@ -631,13 +633,13 @@ class Comb
 			printf("fname %s\n", ofname);
 			FILE *tfile = fopen(ofname, "w+");
 
-			fprintf(tfile, "172350 27 2\n");
+			fprintf(tfile, "172350 12 2\n");
 
 			for (int y = 28; (tfile != NULL) && (y < 478); y++) {
 				int xstart = 70;// + ((Frame[1].rawbuffer[y * in_x] == 16384) * 2);
 				for (int x = xstart; x < 844 - 8; x+=2) {
 					for (int ty = y - 2; ty <= y + 2; ty+=2) {
-						for (int tx = x - 4; tx <= x + 4; tx++) {
+						for (int tx = x - 2; tx <= x + 1; tx++) {
 							double val = Frame[1].rawbuffer[(ty * in_x) + tx];
 							fprintf(tfile, "%lf ", (val/32768.0) - 1.0);
 						}
