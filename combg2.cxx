@@ -200,8 +200,44 @@ class Comb
 
 		Filter *f_hpy, *f_hpi, *f_hpq;
 		Filter *f_hpvy, *f_hpvi, *f_hpvq;
+	
+		// filters in-line color data	
+		void FilterColorData(int fnum, int fdim)
+		{
+			for (int l = 24; l < in_y; l++) {
+				uint16_t *line = &Frame[fnum].rawbuffer[l * in_x];	
+				bool invertphase = (line[0] == 16384);
+
+				Filter f_1di((dim == 3) ? f_colorwlp4 : f_colorwlp4);
+				Filter f_1dq((dim == 3) ? f_colorwlp4 : f_colorwlp4);
+				int f_toffset = 8;
+
+				for (int h = 4; h < 840; h++) {
+					int phase = h % 4;
+					double tc1 = Frame[fnum].clpbuffer[fdim][l][h]; 
+					double tc1f = 0, tsi = 0, tsq = 0;
+
+					if (!invertphase) tc1 = -tc1;
+						
+					switch (phase) {
+						case 0: tsi = tc1; tc1f = f_1di.feed(tsi); break;
+						case 1: tsq = -tc1; tc1f = -f_1dq.feed(tsq); break;
+						case 2: tsi = -tc1; tc1f = -f_1di.feed(tsi); break;
+						case 3: tsq = tc1; tc1f = f_1dq.feed(tsq); break;
+						default: break;
+					}
+						
+					if (!invertphase) {
+						tc1 = -tc1;
+						tc1f = -tc1f;
+					}
+
+					Frame[fnum].clpbuffer[fdim][l][h - f_toffset] = tc1f;
+				}
+			}
+		}
 		
-		// precompute 1D comb filter, needed for 2D and optical flow 
+		// precompute 1D comb filter, used as a fallback for edges 
 		void Split1D(int fnum)
 		{
 			for (int l = 24; l < in_y; l++) {
@@ -253,6 +289,7 @@ class Comb
 
 			for (int y = 24; y < 503; y++) {
 				int xstart = 70;// + ((Frame[f].rawbuffer[y * in_x] == 16384) * 2);
+
 				for (int x = xstart; x < 840; x+=2) {
 					int ti = 0;
 					for (int ty = y - 2; ty <= y + 2; ty+=2) {
@@ -306,12 +343,13 @@ class Comb
 	
 //					Frame[f].combk[2][y][x-1] = 0;
 //					Frame[f].combk[2][y][x] = 0;
-					Frame[f].combk[1][y][x-1] = 1;
-					Frame[f].combk[1][y][x] = 1;
+					Frame[f].combk[1][y][x-1] = 1 - ((dim >= 3) ? Frame[f].combk[2][y][x-1] : 0);
+					Frame[f].combk[1][y][x] = 1 - ((dim >= 3) ? Frame[f].combk[2][y][x] : 0);
 					Frame[f].combk[0][y][x-1] = 0;
 					Frame[f].combk[0][y][x] = 0;
 				}
 			}	
+//			FilterColorData(f, 1);
 		}	
 	
 		void Split2D(int f) 
@@ -933,7 +971,7 @@ class Comb
 
 			memcpy(Frame[0].rawbuffer, buffer, (in_x * in_y * 2));
 
-			if (!f_neuralnet) Split1D(0);
+			Split1D(0);
 			Split2D(0); 
 			SplitIQ(0);
 		
@@ -950,6 +988,7 @@ class Comb
 				if (f_opticalflow && (framecount >= 1)) {
 					memcpy(tbuf, Frame[0].cbuf, sizeof(tbuf));	
 					AdjustY(0, tbuf);
+					DoYNR(0, tbuf);
 					OpticalFlow3D(tbuf);
 				}
 
