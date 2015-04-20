@@ -568,11 +568,12 @@ class Comb
 			}
 		}
 
-		void OpticalFlow3D(int fnum, cline_t cbuf[in_y]) {
+		void OpticalFlow3D(cline_t cbuf[in_y]) {
 			static Mat prev[2];
 			static Mat flow[2];	
 			static int fcount = 0;
-			
+			int fnum = 1;		
+	
 			const int cysize = 242;
 			const int cxsize = in_x - 70;
 	
@@ -610,9 +611,10 @@ class Comb
 						double c2 = 1 - clamp((ctor(flowpoint2.y, flowpoint2.x * 2) - min) / max, 0, 1);
 			
 						double c = (c1 < c2) ? c1 : c2;
-	
-						Frame[fnum].combk[2][(y * 2)][70 + x] = c;
-						Frame[fnum].combk[2][(y * 2) + 1][70 + x] = c;
+
+						// HACK:  This goes around a 1-frame delay	
+						Frame[1].combk[2][(y * 2)][70 + x] = c;
+						Frame[1].combk[2][(y * 2) + 1][70 + x] = c;
 
 						uint16_t fm = clamp(c * 65535, 0, 65535);
 						flowmap[(y * 2)][0 + x] = fm;
@@ -945,21 +947,18 @@ class Comb
 			}
 		
 			if (dim >= 3) {
+				if (f_opticalflow && (framecount <= 1)) {
+					memcpy(tbuf, Frame[1].cbuf, sizeof(tbuf));	
+					AdjustY(1, tbuf);
+					OpticalFlow3D(tbuf);
+				}
+
 				if (framecount < 2) {
 					framecount++;
 					return;
 				}
 
-				memcpy(tbuf, Frame[f].cbuf, sizeof(tbuf));	
-				AdjustY(f, tbuf);
-
-				if (f_opticalflow) {
-					OpticalFlow3D(f, tbuf);
-					Split3D(f, true); 
-				} else {				
-//					Proc3D_NoOF();
-					Split3D(f, false); 
-				}			
+				Split3D(f, f_opticalflow); 
 			}			
 
 			SplitIQ(f);
@@ -1072,7 +1071,7 @@ int main(int argc, char *argv[])
 	while ((c = getopt(argc, argv, "kNtFc:r:R:m8OwvDd:Bb:I:w:i:o:fphn:l:")) != -1) {
 		switch (c) {
 			case 'F':
-				f_opticalflow = true;
+				f_opticalflow = false;
 				break;
 			case 'c':
 				sscanf(optarg, "%lf", &p_3dcore);
