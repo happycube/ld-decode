@@ -304,8 +304,8 @@ class Comb
 						cerr << "D2DNA " << x << ' ' << Frame[f].clpbuffer[1][y][x - 1] << ' ' << Frame[f].clpbuffer[1][y][x] << endl;
 					}
 	
-					Frame[f].combk[2][y][x-1] = 0;
-					Frame[f].combk[2][y][x] = 0;
+//					Frame[f].combk[2][y][x-1] = 0;
+//					Frame[f].combk[2][y][x] = 0;
 					Frame[f].combk[1][y][x-1] = 1;
 					Frame[f].combk[1][y][x] = 1;
 					Frame[f].combk[0][y][x-1] = 0;
@@ -572,7 +572,7 @@ class Comb
 			static Mat prev[2];
 			static Mat flow[2];	
 			static int fcount = 0;
-			int fnum = 1;		
+			int fnum = 0;		
 	
 			const int cysize = 242;
 			const int cxsize = in_x - 70;
@@ -947,9 +947,9 @@ class Comb
 			}
 		
 			if (dim >= 3) {
-				if (f_opticalflow && (framecount <= 1)) {
-					memcpy(tbuf, Frame[1].cbuf, sizeof(tbuf));	
-					AdjustY(1, tbuf);
+				if (f_opticalflow && (framecount >= 1)) {
+					memcpy(tbuf, Frame[0].cbuf, sizeof(tbuf));	
+					AdjustY(0, tbuf);
 					OpticalFlow3D(tbuf);
 				}
 
