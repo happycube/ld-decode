@@ -1183,7 +1183,7 @@ int main(int argc, char *argv[])
 				dim = 3;
 				break;
 			case 'N':
-				f_neuralnet = true;
+				f_neuralnet = false;
 				break;
 			case 'k':
 				f_showk = true;
