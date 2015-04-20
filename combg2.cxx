@@ -268,8 +268,8 @@ class Comb
 						tc1f = -tc1f;
 					}
 
-					//Frame[fnum].clpbuffer[0][l][h - f_toffset] = tc1f;
 					Frame[fnum].clpbuffer[0][l][h] = tc1;
+					if (dim == 1) Frame[fnum].clpbuffer[0][l][h - f_toffset] = tc1f;
 
 					Frame[fnum].combk[0][l][h] = 1;
 
@@ -974,7 +974,7 @@ class Comb
 			memcpy(Frame[0].rawbuffer, buffer, (in_x * in_y * 2));
 
 			Split1D(0);
-			Split2D(0); 
+			if (dim >= 2) Split2D(0); 
 			SplitIQ(0);
 		
 			// copy VBI	
