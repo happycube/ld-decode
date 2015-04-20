@@ -24,7 +24,7 @@ bool f_debug2d = false;
 bool f_oneframe = false;
 bool f_showk = false;
 
-bool f_neuralnet = true;
+bool f_neuralnet = false;
 struct fann *ann = NULL;
 double nn_cscale = 32768.0;
 
@@ -268,7 +268,9 @@ class Comb
 						tc1f = -tc1f;
 					}
 
-					Frame[fnum].clpbuffer[0][l][h - f_toffset] = tc1f;					
+					//Frame[fnum].clpbuffer[0][l][h - f_toffset] = tc1f;
+					Frame[fnum].clpbuffer[0][l][h] = tc1;
+
 					Frame[fnum].combk[0][l][h] = 1;
 
 					if (l == (f_debugline + 25)) {
@@ -1183,7 +1185,7 @@ int main(int argc, char *argv[])
 				dim = 3;
 				break;
 			case 'N':
-				f_neuralnet = false;
+				f_neuralnet = !f_neuralnet;
 				break;
 			case 'k':
 				f_showk = true;
