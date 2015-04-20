@@ -1,5 +1,8 @@
 #!/usr/bin/python
 
+# usage: python nntrain.py FRAME21947.train FRAME8049.train
+#			   ^ ref disk       ^ he010
+
 from pyfann import libfann
 import sys
 
