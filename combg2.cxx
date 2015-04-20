@@ -30,8 +30,8 @@ double nn_cscale = 32768.0;
 
 bool f_monitor = false;
 
-double p_3dcore = 1.25;
-double p_3drange = 5.5;
+double p_3dcore = -1;
+double p_3drange = -1;
 double p_3d2drej = 2;
 
 bool f_opticalflow = true;
@@ -505,7 +505,8 @@ class Comb
 			}
 		}
 					
-		void DoYNR(int f, cline_t cbuf[in_y]) {
+		void DoYNR(int f, cline_t cbuf[in_y], double mult = 1.0) {
+			double mnr_y = nr_y * mult;
 			int firstline = (linesout == in_y) ? 0 : 23;
 			if (nr_y < 0) return;
 
@@ -524,8 +525,8 @@ class Comb
 						cerr << "NR " << h << ' ' << input->p[h].y << ' ' << hplinef[h + 12].y << ' ' << ' ' << a << ' ' << endl;
 					}
 
-					if (fabs(a) > nr_y) {
-						a = (a > 0) ? nr_y : -nr_y;
+					if (fabs(a) > mnr_y) {
+						a = (a > 0) ? mnr_y : -mnr_y;
 					}
 
 					input->p[h].y -= a;
@@ -638,8 +639,8 @@ class Comb
 				prev[field] = pic.clone();
 			}
 
-			double min = 0.0;
-			double max = 0.5;
+			double min = p_3dcore;  // 0.0
+			double max = p_3drange; // 0.5
 
 			if (fcount) {
 				for (y = 0; y < cysize; y++) {
@@ -990,7 +991,7 @@ class Comb
 				if (f_opticalflow && (framecount >= 1)) {
 					memcpy(tbuf, Frame[0].cbuf, sizeof(tbuf));	
 					AdjustY(0, tbuf);
-					DoYNR(0, tbuf);
+					DoYNR(0, tbuf, 1);
 					OpticalFlow3D(tbuf);
 				}
 
@@ -1199,13 +1200,20 @@ int main(int argc, char *argv[])
 		namedWindow("comb", WINDOW_AUTOSIZE);
 	}
 
+	if (f_opticalflow) {
+		if (p_3dcore < 0) p_3dcore = 0;
+		if (p_3drange < 0) p_3drange = 0.5;
+	} else {
+		if (p_3dcore < 0) p_3dcore = 1.25;
+		if (p_3drange < 0) p_3drange = 5.5;
+		p_3dcore *= irescale;
+		p_3drange *= irescale;
+		p_3d2drej *= irescale;
+	}
+
 	if (f_neuralnet) {
 		ann = fann_create_from_file("test.net");	
 	}
-
-	p_3dcore *= irescale;
-	p_3drange *= irescale;
-	p_3d2drej *= irescale;
 
 	black_u16 = ire_to_u16(black_ire);
 
