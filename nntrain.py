@@ -6,10 +6,10 @@
 from pyfann import libfann
 import sys
 
-connection_rate = 1.0 
-learning_rate = 0.25
+connection_rate = 0.50 
+learning_rate = 0.30
 num_input = 16 
-num_hidden = 32 
+num_hidden = 64
 num_output = 2
 
 desired_error = 0.000052 
