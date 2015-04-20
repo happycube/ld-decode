@@ -621,7 +621,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 //					if (end == -1 && abovecount) end = x - abovecount;				
 
 					bad = (begin < 0) || (end < 0);
-					bad |= (!outofsync && (!InRangeCF(end - begin, 15.5, 18)));
+					bad |= (!outofsync && (!InRangeCF(end - begin, 15.5, 18.5)));
 					//bad |= get_oline(line) > 22 && (!InRangeCF(begin - prev_begin, 226.5, 228.5) || !InRangeCF(end - prev_end, 226.5, 228.5)); 
 					bad |= get_oline(line) > 22 && (!InRangeCF(begin - prev_begin, 227.5 - f_tol, 227.5 + f_tol) || !InRangeCF(end - prev_end, 227.5 - f_tol, 227.5 + f_tol)); 
 	
