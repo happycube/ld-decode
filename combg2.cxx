@@ -21,6 +21,7 @@ bool f_writeimages = false;
 bool f_training = false;
 bool f_bw = false;
 bool f_debug2d = false;
+bool f_adaptive2d = false;
 bool f_oneframe = false;
 bool f_showk = false;
 
@@ -32,6 +33,8 @@ bool f_monitor = false;
 
 double p_3dcore = -1;
 double p_3drange = -1;
+double p_2dcore = -1;
+double p_2drange = -1;
 double p_3d2drej = 2;
 
 bool f_opticalflow = true;
@@ -359,9 +362,12 @@ class Comb
 			if (f_neuralnet && ann) return Split2D_NN(f);
 
 			for (int l = 24; l < in_y; l++) {
+				uint16_t *pline = &Frame[f].rawbuffer[(l - 2) * in_x];	
 				uint16_t *line = &Frame[f].rawbuffer[l * in_x];	
+				uint16_t *nline = &Frame[f].rawbuffer[(l + 2) * in_x];	
 		
 				double *p1line = Frame[f].clpbuffer[0][l - 2];
+				double *c1line = Frame[f].clpbuffer[0][l];
 				double *n1line = Frame[f].clpbuffer[0][l + 2];
 		
 				// 2D filtering.  can't do top or bottom line - calced between 1d and 3d because this is
@@ -369,23 +375,42 @@ class Comb
 				if ((l >= 4) && (l <= 503)) {
 					for (int h = 16; h < 840; h++) {
 						double tc1;
+					
+						double kp, kn;
+
+						kp = fabs(fabs(c1line[h]) - fabs(p1line[h])) - fabs(c1line[h] * .2);
+						kn = fabs(fabs(c1line[h]) - fabs(n1line[h])) - fabs(c1line[h] * .2);
+
+						kp = clamp(1 - (kp / p_2drange), 0, 1);
+						kn = clamp(1 - (kn / p_2drange), 0, 1);
+
+						if (!f_adaptive2d) kn = kp = 1.0;
+
+						double sc = 1.0;
+	
+						if (kn || kp) {	
+							sc = (2.0 / (kn + kp)) * max(kn * kn, kp * kp);
+							if (sc < 1.0) sc = 1.0;
+						}
+						
+
+						tc1  = ((Frame[f].clpbuffer[0][l][h] - p1line[h]) * kp * sc);
+						tc1 += ((Frame[f].clpbuffer[0][l][h] - n1line[h]) * kn * sc);
+						tc1 /= (2 * 2);
 
 						if (l == (f_debugline + 25)) {
 							//cerr << "2D " << h << ' ' << clpbuffer[l][h] << ' ' << p1line[h] << ' ' << n1line[h] << endl;
-							cerr << "2D " << h << ' ' << p1line[h] << ' ' << Frame[f].clpbuffer[0][l][h] << ' ' << n1line[h] << ' ' << endl;
+							cerr << "2D " << h << ' ' << ' ' << sc << ' ' << kp << ' ' << kn << ' ' << (pline[h]) << '|' << (p1line[h]) << ' ' << (line[h]) << '|' << (Frame[f].clpbuffer[0][l][h]) << ' ' << (nline[h]) << '|' << (n1line[h]) << " OUT " << (tc1) << endl;
 						}	
 
-						tc1  = (Frame[f].clpbuffer[0][l][h] - p1line[h]);
-						tc1 += (Frame[f].clpbuffer[0][l][h] - n1line[h]);
-						tc1 /= (2 * 2);
-
 						Frame[f].clpbuffer[1][l][h] = tc1;
+						Frame[f].combk[1][l][h] = (sc * (kn + kp)) / 2.0;
 					}
 				}
 
 				for (int h = 4; h < 840; h++) {
 					if ((l >= 2) && (l <= 502)) {
-						Frame[f].combk[1][l][h] = 1 - Frame[f].combk[2][l][h];
+						Frame[f].combk[1][l][h] *= 1 - Frame[f].combk[2][l][h];
 					}
 					
 					// 1D 
@@ -598,7 +623,7 @@ class Comb
 
 					r.conv(yiq);
 					
-					if (l == f_debugline) {
+					if (l == (f_debugline + 25)) {
 						r.r = r.g = r.b = 0;
 					}
 	
@@ -1110,10 +1135,13 @@ int main(int argc, char *argv[])
 
 	opterr = 0;
 	
-	while ((c = getopt(argc, argv, "kNtFc:r:R:m8OwvDd:Bb:I:w:i:o:fphn:l:")) != -1) {
+	while ((c = getopt(argc, argv, "akNtFc:r:R:m8OwvDd:Bb:I:w:i:o:fphn:l:")) != -1) {
 		switch (c) {
 			case 'F':
 				f_opticalflow = false;
+				break;
+			case 'a':
+				f_adaptive2d = true;
 				break;
 			case 'c':
 				sscanf(optarg, "%lf", &p_3dcore);
@@ -1210,6 +1238,9 @@ int main(int argc, char *argv[])
 		p_3drange *= irescale;
 		p_3d2drej *= irescale;
 	}
+
+	p_2dcore = 0 * irescale;
+	p_2drange = 10 * irescale;
 
 	if (f_neuralnet) {
 		ann = fann_create_from_file("test.net");	
