@@ -21,7 +21,7 @@ bool f_writeimages = false;
 bool f_training = false;
 bool f_bw = false;
 bool f_debug2d = false;
-bool f_adaptive2d = true;
+bool f_adaptive2d = false;
 bool f_oneframe = false;
 bool f_showk = false;
 
