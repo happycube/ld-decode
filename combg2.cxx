@@ -21,7 +21,7 @@ bool f_writeimages = false;
 bool f_training = false;
 bool f_bw = false;
 bool f_debug2d = false;
-bool f_adaptive2d = false;
+bool f_adaptive2d = true;
 bool f_oneframe = false;
 bool f_showk = false;
 
@@ -387,10 +387,17 @@ class Comb
 						if (!f_adaptive2d) kn = kp = 1.0;
 
 						double sc = 1.0;
-	
+
 						if (kn || kp) {	
+							if (kn > (3 * kp)) kp = 0;
+							else if (kp > (3 * kn)) kn = 0;
+
 							sc = (2.0 / (kn + kp));// * max(kn * kn, kp * kp);
 							if (sc < 1.0) sc = 1.0;
+						} else {
+							if ((fabs(fabs(p1line[h]) - fabs(n1line[h])) - fabs((n1line[h] + p1line[h]) * .2)) <= 0) {
+								kn = kp = 1;
+							}
 						}
 						
 
@@ -1141,7 +1148,7 @@ int main(int argc, char *argv[])
 				f_opticalflow = false;
 				break;
 			case 'a':
-				f_adaptive2d = true;
+				f_adaptive2d = !f_adaptive2d;
 				break;
 			case 'c':
 				sscanf(optarg, "%lf", &p_3dcore);
