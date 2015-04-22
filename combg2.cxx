@@ -385,7 +385,7 @@ class Comb
 
 				for (int h = 4; h < 840; h++) {
 					if ((l >= 2) && (l <= 502)) {
-						Frame[f].combk[1][l][h] = 1; // - Frame[f].combk[2][l][h];
+						Frame[f].combk[1][l][h] = 1 - Frame[f].combk[2][l][h];
 					}
 					
 					// 1D 
