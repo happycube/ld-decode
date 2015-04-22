@@ -389,7 +389,7 @@ class Comb
 						double sc = 1.0;
 	
 						if (kn || kp) {	
-							sc = (2.0 / (kn + kp)) * max(kn * kn, kp * kp);
+							sc = (2.0 / (kn + kp));// * max(kn * kn, kp * kp);
 							if (sc < 1.0) sc = 1.0;
 						}
 						
@@ -404,7 +404,7 @@ class Comb
 						}	
 
 						Frame[f].clpbuffer[1][l][h] = tc1;
-						Frame[f].combk[1][l][h] = (sc * (kn + kp)) / 2.0;
+						Frame[f].combk[1][l][h] = 1.0; // (sc * (kn + kp)) / 2.0;
 					}
 				}
 
