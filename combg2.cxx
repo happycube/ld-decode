@@ -208,11 +208,11 @@ class Comb
 			for (int l = 24; l < in_y; l++) {
 				Filter f_i(f_colorwlp4);
 				Filter f_q(f_colorwlp4);
-				int f_toffset = 8;
+				int f_toffset = 4;
 
 				for (int h = 4; h < 840; h++) {
-					cbuf[l].p[h].i = f_i.feed(cbuf[l].p[h].i); 
-					cbuf[l].p[h].q = f_i.feed(cbuf[l].p[h].q); 
+					cbuf[l].p[h - f_toffset].i = f_i.feed(cbuf[l].p[h].i); 
+					cbuf[l].p[h - f_toffset].q = f_q.feed(cbuf[l].p[h].q); 
 				}
 			}
 		}
@@ -391,10 +391,10 @@ class Comb
 					
 						double kp, kn;
 
-						kp = fabs(fabs(c1line[h]) - fabs(p1line[h])) - fabs(c1line[h] * .2);
-						kn = fabs(fabs(c1line[h]) - fabs(n1line[h])) - fabs(c1line[h] * .2);
+						kp = fabs(fabs(c1line[h]) - fabs(p1line[h])) - fabs(c1line[h] * .20);
+						kn = fabs(fabs(c1line[h]) - fabs(n1line[h])) - fabs(c1line[h] * .20);
 
-						p_2drange = 50 * irescale;
+						p_2drange = 40 * irescale;
 						kp = clamp(1 - (kp / p_2drange), 0, 1);
 						kn = clamp(1 - (kn / p_2drange), 0, 1);
 
@@ -438,7 +438,7 @@ class Comb
 					Frame[f].combk[0][l][h] = 1 - Frame[f].combk[2][l][h] - Frame[f].combk[1][l][h];
 				}
 			}	
-			FilterColorData(f, 1);
+//			FilterColorData(f, 1);
 		}	
 
 		void Split3D(int f, bool opt_flow = false) 
@@ -1048,13 +1048,14 @@ class Comb
 				}
 
 				Split3D(f, f_opticalflow); 
-			}			
+			}
 
 			SplitIQ(f);
 
 			memcpy(tbuf, Frame[f].cbuf, sizeof(tbuf));	
 
 			AdjustY(f, tbuf);
+//			if (dim == 2) FilterIQ(tbuf);
 			DoYNR(f, tbuf);
 			ToRGB(f, firstline, tbuf);
 	
