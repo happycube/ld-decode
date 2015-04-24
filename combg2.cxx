@@ -386,15 +386,22 @@ class Comb
 				// 2D filtering.  can't do top or bottom line - calced between 1d and 3d because this is
 				// filtered 
 				if ((l >= 4) && (l <= 503)) {
-					for (int h = 16; h < 840; h++) {
+					for (int h = 18; h < 840; h++) {
 						double tc1;
 					
 						double kp, kn;
 
-						kp = fabs(fabs(c1line[h]) - fabs(p1line[h])) - fabs(c1line[h] * .20);
-						kn = fabs(fabs(c1line[h]) - fabs(n1line[h])) - fabs(c1line[h] * .20);
+						kp  = fabs(fabs(c1line[h]) - fabs(p1line[h])); // - fabs(c1line[h] * .20);
+						kp += fabs(fabs(c1line[h - 1]) - fabs(p1line[h - 1])); 
+						kp -= (fabs(c1line[h]) + fabs(c1line[h - 1])) * .10;
+						kn  = fabs(fabs(c1line[h]) - fabs(n1line[h])); // - fabs(c1line[h] * .20);
+						kn += fabs(fabs(c1line[h - 1]) - fabs(n1line[h - 1])); 
+						kn -= (fabs(c1line[h]) + fabs(n1line[h - 1])) * .10;
 
-						p_2drange = 40 * irescale;
+						kp /= 2;
+						kn /= 2;
+
+						p_2drange = 45 * irescale;
 						kp = clamp(1 - (kp / p_2drange), 0, 1);
 						kn = clamp(1 - (kn / p_2drange), 0, 1);
 
@@ -438,7 +445,7 @@ class Comb
 					Frame[f].combk[0][l][h] = 1 - Frame[f].combk[2][l][h] - Frame[f].combk[1][l][h];
 				}
 			}	
-//			FilterColorData(f, 1);
+			FilterColorData(f, 1);
 		}	
 
 		void Split3D(int f, bool opt_flow = false) 
