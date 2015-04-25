@@ -445,7 +445,7 @@ class Comb
 					Frame[f].combk[0][l][h] = 1 - Frame[f].combk[2][l][h] - Frame[f].combk[1][l][h];
 				}
 			}	
-			FilterColorData(f, 1);
+			if (dim < 3) FilterColorData(f, 1);
 		}	
 
 		void Split3D(int f, bool opt_flow = false) 
@@ -539,9 +539,9 @@ class Comb
 					Frame[f].cbuf[l].p[h].i = si;  
 					Frame[f].cbuf[l].p[h].q = sq; 
 					
-					if (l == 240) {
-						cerr << h << ' ' << Frame[f].combk[1][l][h] << ' ' << Frame[f].combk[0][l][h] << ' ' << Frame[f].cbuf[l].p[h].y << ' ' << si << ' ' << sq << endl;
-					}
+//					if (l == 240 ) {
+//						cerr << h << ' ' << Frame[f].combk[1][l][h] << ' ' << Frame[f].combk[0][l][h] << ' ' << Frame[f].cbuf[l].p[h].y << ' ' << si << ' ' << sq << endl;
+//					}
 
 					if (f_bw) {
 						Frame[f].cbuf[l].p[h].i = Frame[f].cbuf[l].p[h].q = 0;  
