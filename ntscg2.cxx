@@ -475,7 +475,8 @@ wrapup:
 			o = ire_to_out(in_to_ire(v));
 		}
 
-		if (despackle && (ire < -30) && (h > 80)) {
+		if (despackle && (h > 80) && ((fabs(o - (double)frame[oline][h - 1]) > 23000) || (ire < -25))) {
+//		if (despackle && (ire < -30) && (h > 80)) {
 			if ((h - ldo) > 16) {
 				for (int j = h - 4; j > 2 && j < h; j++) {
 					double to = (frame[oline - 2][j - 2] + frame[oline - 2][j + 2]) / 2;
@@ -493,7 +494,7 @@ wrapup:
 		frame[oline][h] = clamp(o, 0, 65535);
 		//if (!(oline % 2)) frame[oline][h] = clamp(o, 0, 65535);
 	}
-
+	
         if (!pass) {
                 frame[oline][2] = 32000;
                 frame[oline][3] = 32000;
