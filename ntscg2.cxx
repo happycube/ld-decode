@@ -535,6 +535,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 	int insync = 0;
 	double line = 0;
 
+	double prev2_begin, prev2_end;
 	double prev_begin = 0, prev_end = 0, prev_linelen = ntsc_ipline;
 	double begin = -1, end = -1, linelen = ntsc_ipline;
 
@@ -542,7 +543,6 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 	bool prevbad = false;
 	for (i = 500; i < len - syncid_offset; i++) {
 		double level = psync[i];
-		double good_linelen = in_freq * 227.5;
 
 		// look for peaks with valid level values
 		if ((level > .08) && (level > psync [i - 1]) && (level > psync [i + 1])) {
@@ -587,6 +587,8 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 				bool bad = false;
 				bool outofsync = false;
 
+				prev2_begin = prev_begin;
+				prev2_end = prev_end;
 				prev_begin = begin;
 				prev_end = end;
 				prev_linelen = linelen;
@@ -633,12 +635,13 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 				// normal line
 				if ((bad || buf[i] > synclevel) && (line != 10) && (line != 273)) {
 					// defective line
-					begin = prev_begin + good_linelen; // prev_linelen;
-					end = prev_end + good_linelen; // prev_linelen;
-					cerr << "BAD " << bad << ' ' << line << ' ' << begin << ' ' << end << ' ' << buf[i] << ' ' << synclevel << endl;
+					//begin = prev_begin + (good_linelen * 1); // prev_linelen;
+					//end = prev_end + (good_linelen * 1); // prev_linelen;
+					begin = prev2_begin + (ntsc_ipline * 2); // prev_linelen;
+					end = prev2_end + (ntsc_ipline * 2); // prev_linelen;
+					cerr << "BAD " << frameno + 1 << ' ' << line << ' ' << bad << " " << begin << ' ' << end << ' ' << buf[i] << ' ' << synclevel << endl;
 					i = begin + 300; // workaround for double-length line
-				} else if ((get_oline(line) > 22) && InRangeCF(begin - prev_begin, 227.0, 229.0)) {
-					good_linelen = prev_begin - begin;
+					bad = 1;
 				} 
 
 				linelen = end - prev_end;
@@ -650,6 +653,14 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 					ProcessAudio((line / 525.0) + frameno, v_read + begin, abuf); 
 				}
 				prevbad = bad;
+
+				if (bad) {
+					int oline = get_oline(line);
+                			frame[oline][2] = 65000;
+			                frame[oline][3] = 48000;
+          			        frame[oline][4] = 65000;
+			                frame[oline][5] = 48000;
+				}
 			} else if (level > 1.0) {
 				// in vsync/equalizing lines - don't care right now
 				if (!insync) {
