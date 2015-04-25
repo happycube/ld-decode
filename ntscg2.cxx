@@ -54,6 +54,8 @@ long long fr_count = 0, au_count = 0;
 
 double f_tol = 1.0;
 
+bool f_diff = false;
+
 bool f_highburst = (in_freq == 4);
 bool f_flip = false;
 int writeonfield = 1;
@@ -456,6 +458,9 @@ wrapup:
 	// LD only: need to adjust output value for velocity, and remove defects as possible
 	double lvl_adjust = ((((end - begin) / iscale_tgt) - 1) * 2.0) + 1;
 	int ldo = -128;
+	
+	double diff[(int)(212 * out_freq)];
+	double prev_o = 0;
 	for (int h = 0; (oline > 2) && (h < (211 * out_freq)); h++) {
 		double v = tout[h + (int)(15 * out_freq)];
 		double ire = in_to_ire(v);
@@ -475,7 +480,7 @@ wrapup:
 			o = ire_to_out(in_to_ire(v));
 		}
 
-		if (despackle && (h > 80) && ((fabs(o - (double)frame[oline][h - 1]) > 23000) || (ire < -25))) {
+		if (despackle && (h > (20 * out_freq)) && ((fabs(o - prev_o) > 23000) || (ire < -25))) {
 //		if (despackle && (ire < -30) && (h > 80)) {
 			if ((h - ldo) > 16) {
 				for (int j = h - 4; j > 2 && j < h; j++) {
@@ -492,7 +497,13 @@ wrapup:
 		}
 
 		frame[oline][h] = clamp(o, 0, 65535);
+		diff[h] = o - prev_o;
+		prev_o = o;
 		//if (!(oline % 2)) frame[oline][h] = clamp(o, 0, 65535);
+	}
+	
+	for (int h = 0; f_diff && (oline > 2) && (h < (211 * out_freq)); h++) {
+		frame[oline][h] = clamp(diff[h], 0, 65535);
 	}
 	
         if (!pass) {
@@ -766,8 +777,11 @@ int main(int argc, char *argv[])
 
 	opterr = 0;
 	
-	while ((c = getopt(argc, argv, "Hmhgs:n:i:a:AfFt:")) != -1) {
+	while ((c = getopt(argc, argv, "dHmhgs:n:i:a:AfFt:")) != -1) {
 		switch (c) {
+			case 'd':	// show differences between pixels
+				f_diff = true;
+				break;
 			case 'm':	// "magnetic video" mode - bottom field first
 				writeonfield = 2;
 				break;
