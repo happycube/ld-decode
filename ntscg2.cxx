@@ -539,6 +539,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 	double begin = -1, end = -1, linelen = ntsc_ipline;
 
 	int i, prev = 0;
+	bool prevbad = false;
 	for (i = 500; i < len - syncid_offset; i++) {
 		double level = psync[i];
 		double good_linelen = in_freq * 227.5;
@@ -623,11 +624,11 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 					bad = (begin < 0) || (end < 0);
 					bad |= (!outofsync && (!InRangeCF(end - begin, 15.5, 18.5)));
 					//bad |= get_oline(line) > 22 && (!InRangeCF(begin - prev_begin, 226.5, 228.5) || !InRangeCF(end - prev_end, 226.5, 228.5)); 
-					bad |= get_oline(line) > 22 && (!InRangeCF(begin - prev_begin, 227.5 - f_tol, 227.5 + f_tol) || !InRangeCF(end - prev_end, 227.5 - f_tol, 227.5 + f_tol)); 
+					if (!prevbad) bad |= get_oline(line) > 22 && (!InRangeCF(begin - prev_begin, 227.5 - f_tol, 227.5 + f_tol) || !InRangeCF(end - prev_end, 227.5 - f_tol, 227.5 + f_tol)); 
 	
 //					if ((line == 10) || (line == 273)) bad = 0;
 	
-					cerr << line << ' ' << bad << ' ' << prev_begin << " : " << begin << ' ' << end << ' ' << end - begin << ' ' << begin - prev_begin << ' ' << scale_tgt << endl;
+					cerr << line << ' ' << prevbad << ':' << bad << ' ' << prev_begin << " : " << begin << ' ' << end << ' ' << end - begin << ' ' << begin - prev_begin << ' ' << scale_tgt << endl;
 				}
 				// normal line
 				if ((bad || buf[i] > synclevel) && (line != 10) && (line != 273)) {
@@ -648,6 +649,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 					linelen = ProcessLine(buf, prev_begin, send, line, bad); 
 					ProcessAudio((line / 525.0) + frameno, v_read + begin, abuf); 
 				}
+				prevbad = bad;
 			} else if (level > 1.0) {
 				// in vsync/equalizing lines - don't care right now
 				if (!insync) {
