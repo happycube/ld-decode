@@ -347,6 +347,10 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line, bool err =
 	double plevel1, plevel2;
 	double nphase1, nphase2;
 
+	if (!end) {
+		end = begin + (scale_linelen * ntsc_ipline); 
+	}
+
 	double orig_begin = begin;
 	double orig_end = end;
 
@@ -529,8 +533,145 @@ wrapup:
 //uint16_t synclevel = 12000;
 uint16_t synclevel = inbase + (inscale * 15);
 
+struct Line {
+	double center;
+	double peak;
+	double beginsync, endsync;
+	int linenum;
+	bool bad;
+};
+
+bool IsPeak(double *p, int i)
+{
+	return (p[i] >= p[i - 1]) && (p[i] >= p[i + 1]);
+}
+
 double psync[ntsc_iplinei*1200];
 int Process(uint16_t *buf, int len, float *abuf, int alen)
+{
+	vector<Line> peaks; 
+
+	// sample syncs
+	f_syncid.clear(0);
+
+	for (int i = 0; i < len; i++) {
+		double val = f_syncid.feed(buf[i] && (buf[i] < synclevel)); 
+		if (i > syncid_offset) psync[i - syncid_offset] = val; 
+	}
+
+	for (int i = 2000; i < len; i++) {
+		double level = psync[i];
+
+		if ((level > .07) && (level > psync [i - 1]) && (level > psync [i + 1])) {
+			Line l;
+
+			l.center = i;
+			l.peak   = level;
+			l.bad = false;
+
+			peaks.push_back(l);	
+//			cerr << peaks.size() << ' ' << i << ' ' << level << endl;
+
+		}
+	}
+
+	// find first field index - returned as firstline 
+	int firstpeak = -1, firstline = -1, lastline = -1;
+	for (int i = 9; (i < peaks.size() - 9) && (firstline == -1); i++) {
+		if (peaks[i].peak > 1.0) {
+			if (peaks[i].center < (ntsc_ipline * 10)) {
+				return peaks[i].center - (ntsc_ipline * 515);
+			} else {
+				firstpeak = i;
+				firstline = -1; lastline = -1;
+
+				cerr << firstpeak << ' ' << peaks[firstpeak].peak << ' ' << peaks[firstpeak].center << endl;
+	
+				for (int i = firstpeak - 1; (i > 0) && (lastline == -1); i--) {
+					if ((peaks[i].peak > 0.2) && (peaks[i].peak < 0.75)) lastline = i;
+				}	
+
+				int distance_prev = peaks[lastline + 1].center - peaks[lastline].center;
+				int synctype = (distance_prev > (in_freq * 140)) ? 1 : 2;
+
+				cerr << lastline << ' ' << synctype << ' ' << (in_freq * 140) << ' ' << distance_prev << ' ' << peaks[lastline + 1].center - peaks[lastline].center << endl;
+	
+				for (int i = firstpeak + 1; (i < peaks.size()) && (firstline == -1); i++) {
+					if ((peaks[i].peak > 0.2) && (peaks[i].peak < 0.75)) firstline = i;
+				}	
+	
+				cerr << firstline << ' ' << peaks[firstline].center - peaks[firstline-1].center << endl;
+
+				cerr << synctype << ' ' << writeonfield << endl;
+				if (synctype != writeonfield) {
+					firstline = firstpeak = -1; 
+					i += 6;
+				}
+			}
+		}
+	}
+
+	int line = 11;
+	for (int i = firstline + 1; i < (firstline + 540); i++) {
+		if (InRange(peaks[i].peak, .2, .5)) {
+			int cbeginsync = 0, cendsync = 0;
+			int center = peaks[i].center;
+
+			if (line <= -1) line = 274;
+
+			peaks[i].beginsync = peaks[i].endsync = -1;
+			for (int x = 0; x < 200 && InRange(peaks[i].peak, .20, .5) && ((peaks[i].beginsync == -1) || (peaks[i].endsync == -1)); x++) {
+				cbeginsync++;
+				cendsync++;
+	
+				if (buf[center - x] < synclevel) cbeginsync = 0;
+				if (buf[center + x] < synclevel) cendsync = 0;
+
+				if ((cbeginsync == 4) && (peaks[i].beginsync < 0)) peaks[i].beginsync = center - x + 4;			
+				if ((cendsync == 4) && (peaks[i].endsync < 0)) peaks[i].endsync = center + x - 4;			
+			}
+
+			peaks[i].bad = !InRangeCF(peaks[i].endsync - peaks[i].beginsync, 15.5, 18.5);
+			peaks[i].linenum = line;
+		} else if (peaks[i].peak > .9) {
+			line = -10;
+			peaks[i].linenum = -1;
+		}
+		line++;
+	}
+	
+	for (int i = firstline + 1; i < (firstline + 540); i++) {
+		if (peaks[i].linenum > 0) {
+			int line = peaks[i].linenum ;
+			if (peaks[i].bad) {
+				cerr << "BAD\n";
+				peaks[i].beginsync = peaks[i - 1].beginsync + ((peaks[i + 1].endsync - peaks[i - 1].beginsync) / 2); 
+				peaks[i].center = peaks[i - 1].center + ((peaks[i + 1].center - peaks[i - 1].center) / 2); 
+				peaks[i].endsync = peaks[i - 1].endsync + ((peaks[i + 1].endsync - peaks[i - 1].endsync) / 2); 
+			}
+
+			cerr << line << ' ' << i << ' ' << peaks[i].bad << ' ' <<  peaks[i].peak << ' ' << peaks[i].center << ' ' << peaks[i].center - peaks[i-1].center << ' ' << peaks[i].beginsync << ' ' << peaks[i].endsync << ' ' << peaks[i].endsync - peaks[i].beginsync << endl;
+					
+			double linelen = ProcessLine(buf, peaks[i].beginsync, 0, line, peaks[i].bad); 
+			ProcessAudio((line / 525.0) + frameno, v_read + peaks[i].beginsync, abuf); 
+		}
+	}
+
+	if (!first) {
+		frameno++;
+		cerr << "WRITING\n";
+		write(1, frame, sizeof(frame));
+		memset(frame, 0, sizeof(frame));
+	} else {
+		first = false;
+		//ProcessAudio(frameno, v_read + i, abuf);
+	}
+	if (!freeze_frame && phase >= 0) phase = !phase;
+	
+	return peaks[firstline + 525].center;
+}
+
+int Process_old(uint16_t *buf, int len, float *abuf, int alen)
 {
 	bool first = true;
 
@@ -850,7 +991,9 @@ int main(int argc, char *argv[])
 			autoset(inbuf, vbsize / 2);
 		}
 
-		int plen = Process(inbuf, rv / 2, abuf, arv / 8);
+		//ProcessNew(inbuf, rv / 2, abuf, arv / 8);
+//		int plen = Process(inbuf, rv / 2, abuf, arv / 8);
+		int plen = Process_old(inbuf, rv / 2, abuf, arv / 8);
 		
 		if (plen < 0) {
 			cerr << "skipping ahead" << endl;
