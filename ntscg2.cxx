@@ -52,7 +52,7 @@ double hfreq = 525.0 * (30000.0 / 1001.0);
 
 long long fr_count = 0, au_count = 0;
 
-double f_tol = 1.0;
+double f_tol = 0.5;
 
 bool f_diff = false;
 
