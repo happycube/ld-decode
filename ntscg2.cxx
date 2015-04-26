@@ -351,6 +351,8 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line, bool err =
 		end = begin + (scale_linelen * ntsc_ipline); 
 	}
 
+	cerr << "PL " << begin << ' ' << end << ' ' << line << ' ' << err << ' ' << end - begin << endl;
+
 	double orig_begin = begin;
 	double orig_end = end;
 
@@ -568,6 +570,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 			l.center = i;
 			l.peak   = level;
 			l.bad = false;
+			l.linenum = -1;
 
 			peaks.push_back(l);	
 //			cerr << peaks.size() << ' ' << i << ' ' << level << endl;
@@ -611,13 +614,17 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 		}
 	}
 
-	int line = 11;
-	for (int i = firstline + 1; i < (firstline + 540); i++) {
+	bool field2 = false;
+	int line = -10;
+	for (int i = firstline - 1; i < (firstline + 540); i++) {
 		if (InRange(peaks[i].peak, .2, .5)) {
 			int cbeginsync = 0, cendsync = 0;
 			int center = peaks[i].center;
 
-			if (line <= -1) line = 274;
+			if (line <= -1) {
+				line = field2 ? 273 : 10;
+				field2 = true;
+			}
 
 			peaks[i].beginsync = peaks[i].endsync = -1;
 			for (int x = 0; x < 200 && InRange(peaks[i].peak, .20, .5) && ((peaks[i].beginsync == -1) || (peaks[i].endsync == -1)); x++) {
@@ -633,6 +640,9 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 
 			peaks[i].bad = !InRangeCF(peaks[i].endsync - peaks[i].beginsync, 15.5, 18.5);
 			peaks[i].linenum = line;
+
+			// HACK!
+			if (line == 273) peaks[i].linenum = -1;
 		} else if (peaks[i].peak > .9) {
 			line = -10;
 			peaks[i].linenum = -1;
@@ -640,19 +650,29 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 		line++;
 	}
 	
-	for (int i = firstline + 1; i < (firstline + 540); i++) {
+	for (int i = firstline - 1; i < (firstline + 540); i++) {
 		if (peaks[i].linenum > 0) {
 			int line = peaks[i].linenum ;
 			if (peaks[i].bad) {
-				cerr << "BAD\n";
-				peaks[i].beginsync = peaks[i - 1].beginsync + ((peaks[i + 1].endsync - peaks[i - 1].beginsync) / 2); 
-				peaks[i].center = peaks[i - 1].center + ((peaks[i + 1].center - peaks[i - 1].center) / 2); 
-				peaks[i].endsync = peaks[i - 1].endsync + ((peaks[i + 1].endsync - peaks[i - 1].endsync) / 2); 
+				cerr << "BAD " << i << ' ' << line << endl;
+				cerr << peaks[i].beginsync << ' ' << peaks[i].center << ' ' << peaks[i].endsync << ' ' << peaks[i].endsync - peaks[i].beginsync << endl;
+				double gap = ((peaks[i + 1].beginsync - peaks[i - 1].beginsync) / 2);
+				peaks[i].beginsync = peaks[i - 1].beginsync + gap; 
+				peaks[i].center = peaks[i - 1].center + gap; 
+				peaks[i].endsync = peaks[i - 1].endsync + gap; 
+				cerr << peaks[i].beginsync << ' ' << peaks[i].center << ' ' << peaks[i].endsync << ' ' << peaks[i].endsync - peaks[i].beginsync << endl;
 			}
+		}
+	}
 
+	for (int i = firstline + 1; i < (firstline + 540); i++) {
+		if (peaks[i].linenum > 0) {
+			int line = peaks[i].linenum ;
 			cerr << line << ' ' << i << ' ' << peaks[i].bad << ' ' <<  peaks[i].peak << ' ' << peaks[i].center << ' ' << peaks[i].center - peaks[i-1].center << ' ' << peaks[i].beginsync << ' ' << peaks[i].endsync << ' ' << peaks[i].endsync - peaks[i].beginsync << endl;
+				
+			double send = peaks[i - 1].beginsync + ((peaks[i].beginsync - peaks[i - 1].beginsync) * scale_linelen);
 					
-			double linelen = ProcessLine(buf, peaks[i].beginsync, 0, line, peaks[i].bad); 
+			double linelen = ProcessLine(buf, peaks[i - 1].beginsync, send, line, peaks[i].bad); 
 			ProcessAudio((line / 525.0) + frameno, v_read + peaks[i].beginsync, abuf); 
 		}
 	}
@@ -912,14 +932,19 @@ int main(int argc, char *argv[])
 	unsigned char *cinbuf = (unsigned char *)inbuf;
 	unsigned char *cabuf = (unsigned char *)abuf;
 
+	bool f_test = false;
+
 	int c;
 
 	cerr << std::setprecision(10);
 
 	opterr = 0;
 	
-	while ((c = getopt(argc, argv, "dHmhgs:n:i:a:AfFt:")) != -1) {
+	while ((c = getopt(argc, argv, "TdHmhgs:n:i:a:AfFt:")) != -1) {
 		switch (c) {
+			case 'T':
+				f_test = true;
+				break;
 			case 'd':	// show differences between pixels
 				f_diff = true;
 				break;
@@ -991,10 +1016,14 @@ int main(int argc, char *argv[])
 			autoset(inbuf, vbsize / 2);
 		}
 
-		//ProcessNew(inbuf, rv / 2, abuf, arv / 8);
-//		int plen = Process(inbuf, rv / 2, abuf, arv / 8);
-		int plen = Process_old(inbuf, rv / 2, abuf, arv / 8);
-		
+		int plen;
+
+		if (f_test) {
+			plen = Process(inbuf, rv / 2, abuf, arv / 8);
+		} else {
+			plen = Process_old(inbuf, rv / 2, abuf, arv / 8);
+		}
+	
 		if (plen < 0) {
 			cerr << "skipping ahead" << endl;
 			plen = vblen / 2;
