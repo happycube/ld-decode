@@ -48,6 +48,8 @@ const double iscale_tgt = ntsc_ipline + ntsc_ihsynctoline;
 const double ntsc_hsynctoline = ntsc_opline * (ntsc_blanklen / 63.5);
 const double scale_tgt = ntsc_opline + ntsc_hsynctoline;
 
+double p_rotdetect = 70;
+
 double hfreq = 525.0 * (30000.0 / 1001.0);
 
 long long fr_count = 0, au_count = 0;
@@ -464,6 +466,8 @@ wrapup:
 	// LD only: need to adjust output value for velocity, and remove defects as possible
 	double lvl_adjust = ((((end - begin) / iscale_tgt) - 1) * 2.0) + 1;
 	int ldo = -128;
+
+	double rotdetect = p_rotdetect * inscale;
 	
 	double diff[(int)(212 * out_freq)];
 	double prev_o = 0;
@@ -486,7 +490,7 @@ wrapup:
 			o = ire_to_out(in_to_ire(v));
 		}
 
-		if (despackle && (h > (20 * out_freq)) && ((fabs(o - prev_o) > 23000) || (ire < -25))) {
+		if (despackle && (h > (20 * out_freq)) && ((fabs(o - prev_o) > rotdetect) || (ire < -25))) {
 //		if (despackle && (ire < -30) && (h > 80)) {
 			if ((h - ldo) > 16) {
 				for (int j = h - 4; j > 2 && j < h; j++) {
@@ -960,7 +964,7 @@ int main(int argc, char *argv[])
 
 	opterr = 0;
 	
-	while ((c = getopt(argc, argv, "TdHmhgs:n:i:a:AfFt:")) != -1) {
+	while ((c = getopt(argc, argv, "TdHmhgs:n:i:a:AfFt:r:")) != -1) {
 		switch (c) {
 			case 'T':
 				f_test = !f_test;
@@ -1000,6 +1004,9 @@ int main(int argc, char *argv[])
 				break;
 			case 't':
 				sscanf(optarg, "%lf", &f_tol);		
+				break;
+			case 'r':
+				sscanf(optarg, "%lf", &p_rotdetect);		
 				break;
 			default:
 				return -1;
