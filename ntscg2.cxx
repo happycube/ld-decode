@@ -351,7 +351,7 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line, bool err =
 		end = begin + (scale_linelen * ntsc_ipline); 
 	}
 
-	cerr << "PL " << begin << ' ' << end << ' ' << line << ' ' << err << ' ' << end - begin << endl;
+	cerr << "PL " << line << ' ' << begin << ' ' << end << ' ' << err << ' ' << end - begin << endl;
 
 	double orig_begin = begin;
 	double orig_end = end;
@@ -561,10 +561,10 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 		if (i > syncid_offset) psync[i - syncid_offset] = val; 
 	}
 
-	for (int i = 2000; i < len; i++) {
+	for (int i = 0; i < len - syncid_offset; i++) {
 		double level = psync[i];
 
-		if ((level > .07) && (level > psync [i - 1]) && (level > psync [i + 1])) {
+		if ((level > .05) && (level > psync [i - 1]) && (level > psync [i + 1])) {
 			Line l;
 
 			l.center = i;
@@ -582,8 +582,8 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 	int firstpeak = -1, firstline = -1, lastline = -1;
 	for (int i = 9; (i < peaks.size() - 9) && (firstline == -1); i++) {
 		if (peaks[i].peak > 1.0) {
-			if (peaks[i].center < (ntsc_ipline * 10)) {
-				return peaks[i].center - (ntsc_ipline * 515);
+			if (peaks[i].center < (ntsc_ipline * 8)) {
+				return (ntsc_ipline * 400);
 			} else {
 				firstpeak = i;
 				firstline = -1; lastline = -1;
@@ -597,7 +597,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 				int distance_prev = peaks[lastline + 1].center - peaks[lastline].center;
 				int synctype = (distance_prev > (in_freq * 140)) ? 1 : 2;
 
-				cerr << lastline << ' ' << synctype << ' ' << (in_freq * 140) << ' ' << distance_prev << ' ' << peaks[lastline + 1].center - peaks[lastline].center << endl;
+				cerr << "P1_" << lastline << ' ' << synctype << ' ' << (in_freq * 140) << ' ' << distance_prev << ' ' << peaks[lastline + 1].center - peaks[lastline].center << endl;
 	
 				for (int i = firstpeak + 1; (i < peaks.size()) && (firstline == -1); i++) {
 					if ((peaks[i].peak > 0.2) && (peaks[i].peak < 0.75)) firstline = i;
@@ -617,7 +617,11 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 	bool field2 = false;
 	int line = -10;
 	for (int i = firstline - 1; i < (firstline + 540); i++) {
-		if (InRange(peaks[i].peak, .2, .5)) {
+//		cerr << "P2A " << i << ' ' << peaks[i].peak << endl;
+		bool canstartsync = false;
+		if ((line < 0) || InRange(line, 262, 274) || InRange(line, 524, 530)) canstartsync = true;
+
+		if (InRange(peaks[i].peak, canstartsync ? .25 : .1, .5)) {
 			int cbeginsync = 0, cendsync = 0;
 			int center = peaks[i].center;
 
@@ -640,7 +644,9 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 
 			peaks[i].bad = !InRangeCF(peaks[i].endsync - peaks[i].beginsync, 15.5, 18.5);
 			peaks[i].linenum = line;
-
+			
+			cerr << "P2_" << line << ' ' << i << ' ' << peaks[i].bad << ' ' <<  peaks[i].peak << ' ' << peaks[i].center << ' ' << peaks[i].center - peaks[i-1].center << ' ' << peaks[i].beginsync << ' ' << peaks[i].endsync << ' ' << peaks[i].endsync - peaks[i].beginsync << endl;
+				
 			// HACK!
 			if (line == 273) peaks[i].linenum = -1;
 		} else if (peaks[i].peak > .9) {
@@ -672,23 +678,19 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 				
 			double send = peaks[i - 1].beginsync + ((peaks[i].beginsync - peaks[i - 1].beginsync) * scale_linelen);
 					
-			double linelen = ProcessLine(buf, peaks[i - 1].beginsync, send, line, peaks[i].bad); 
+			double linelen = ProcessLine(buf, peaks[i - 1].beginsync - 10, send - 10, line, peaks[i].bad); 
 			ProcessAudio((line / 525.0) + frameno, v_read + peaks[i].beginsync, abuf); 
 		}
 	}
 
-	if (!first) {
-		frameno++;
-		cerr << "WRITING\n";
-		write(1, frame, sizeof(frame));
-		memset(frame, 0, sizeof(frame));
-	} else {
-		first = false;
-		//ProcessAudio(frameno, v_read + i, abuf);
-	}
+	frameno++;
+	cerr << "WRITING\n";
+	write(1, frame, sizeof(frame));
+	memset(frame, 0, sizeof(frame));
+
 	if (!freeze_frame && phase >= 0) phase = !phase;
 	
-	return peaks[firstline + 525].center;
+	return peaks[firstline + 500].center;
 }
 
 int Process_old(uint16_t *buf, int len, float *abuf, int alen)
