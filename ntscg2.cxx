@@ -663,7 +663,13 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 			if (peaks[i].bad) {
 				cerr << "BAD " << i << ' ' << line << endl;
 				cerr << peaks[i].beginsync << ' ' << peaks[i].center << ' ' << peaks[i].endsync << ' ' << peaks[i].endsync - peaks[i].beginsync << endl;
-				double gap = ((peaks[i + 1].beginsync - peaks[i - 1].beginsync) / 2);
+
+				int lg = 1;
+
+				for (lg = 1; lg < 3 && (peaks[i - lg].bad || peaks[i + lg].bad); lg++);
+
+				cerr << "BADLG " << lg << endl;
+				double gap = ((peaks[i + lg].beginsync - peaks[i - lg].beginsync) / (lg * 2));
 				peaks[i].beginsync = peaks[i - 1].beginsync + gap; 
 				peaks[i].center = peaks[i - 1].center + gap; 
 				peaks[i].endsync = peaks[i - 1].endsync + gap; 
