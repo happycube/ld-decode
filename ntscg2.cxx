@@ -349,10 +349,6 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line, bool err =
 	double plevel1, plevel2;
 	double nphase1, nphase2;
 
-	if (!end) {
-		end = begin + (scale_linelen * ntsc_ipline); 
-	}
-
 	cerr << "PL " << line << ' ' << begin << ' ' << end << ' ' << err << ' ' << end - begin << endl;
 
 	double orig_begin = begin;
@@ -620,12 +616,19 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 
 	bool field2 = false;
 	int line = -10;
-	for (int i = firstline - 1; i < (firstline + 540); i++) {
+	for (int i = firstline - 1; (i < (firstline + 540)) && (line < 526); i++) {
 //		cerr << "P2A " << i << ' ' << peaks[i].peak << endl;
 		bool canstartsync = false;
 		if ((line < 0) || InRange(line, 262, 274) || InRange(line, 524, 530)) canstartsync = true;
 
-		if (InRange(peaks[i].peak, canstartsync ? .25 : .1, .5)) {
+		// recovery routine for if we get a burst way out of place
+		if (!canstartsync && ((peaks[i].center - peaks[i - 1].center) < (207.5 * in_freq)) && (peaks[i].center > peaks[i - 1].center)) {
+			cerr << "ohoh." << i << ' ' << peaks[i].center << ' ' << peaks[i].center - peaks[i - 1].center << ' ' << peaks.size() << endl ;
+			peaks.erase(peaks.begin()+i);
+			i--;
+//			cerr << "ohoh." << i << ' ' << peaks.size() << endl ;
+			line--;
+		} else if (InRange(peaks[i].peak, canstartsync ? .25 : .0, .9)) {
 			int cbeginsync = 0, cendsync = 0;
 			int center = peaks[i].center;
 
@@ -660,17 +663,18 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 		}
 		line++;
 	}
-	
-	for (int i = firstline - 1; i < (firstline + 540); i++) {
+
+	line = -1;	
+	for (int i = firstline - 1; (i < (firstline + 540)) && (line < 526); i++) {
 		if (peaks[i].linenum > 0) {
-			int line = peaks[i].linenum ;
+			line = peaks[i].linenum ;
 			if (peaks[i].bad) {
 				cerr << "BAD " << i << ' ' << line << endl;
 				cerr << peaks[i].beginsync << ' ' << peaks[i].center << ' ' << peaks[i].endsync << ' ' << peaks[i].endsync - peaks[i].beginsync << endl;
 
 				int lg = 1;
 
-				for (lg = 1; lg < 3 && (peaks[i - lg].bad || peaks[i + lg].bad); lg++);
+				for (lg = 1; lg < 8 && (peaks[i - lg].bad || peaks[i + lg].bad); lg++);
 
 				cerr << "BADLG " << lg << endl;
 				double gap = ((peaks[i + lg].beginsync - peaks[i - lg].beginsync) / (lg * 2));
@@ -682,9 +686,10 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 		}
 	}
 
-	for (int i = firstline + 1; i < (firstline + 540); i++) {
+	line = -1;	
+	for (int i = firstline - 1; (i < (firstline + 540)) && (line < 526); i++) {
 		if ((peaks[i].linenum > 0) && (peaks[i].linenum <= 525)) {
-			int line = peaks[i].linenum ;
+			line = peaks[i].linenum ;
 			cerr << line << ' ' << i << ' ' << peaks[i].bad << ' ' <<  peaks[i].peak << ' ' << peaks[i].center << ' ' << peaks[i].center - peaks[i-1].center << ' ' << peaks[i].beginsync << ' ' << peaks[i].endsync << ' ' << peaks[i].endsync - peaks[i].beginsync << endl;
 				
 			double send = peaks[i - 1].beginsync + ((peaks[i].beginsync - peaks[i - 1].beginsync) * scale_linelen);
