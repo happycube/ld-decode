@@ -694,7 +694,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 				
 			double send = peaks[i - 1].beginsync + ((peaks[i].beginsync - peaks[i - 1].beginsync) * scale_linelen);
 					
-			double linelen = ProcessLine(buf, peaks[i - 1].beginsync - 10, send - 10, line, peaks[i].bad); 
+			double linelen = ProcessLine(buf, peaks[i - 1].beginsync - 4, send - 4, line, peaks[i].bad); 
 
 			cerr << "PA " << (line / 525.0) + frameno << ' ' << v_read + peaks[i].beginsync << endl;
 			ProcessAudio((line / 525.0) + frameno, v_read + peaks[i].beginsync, abuf); 
