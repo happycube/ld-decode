@@ -643,6 +643,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 			}
 
 			peaks[i].bad = !InRangeCF(peaks[i].endsync - peaks[i].beginsync, 15.5, 18.5);
+			if (!peaks[i - 1].bad) peaks[i].bad |= get_oline(line) > 22 && (!InRangeCF(peaks[i].beginsync - peaks[i-1].beginsync, 227.5 - f_tol, 227.5 + f_tol) || !InRangeCF(peaks[i].endsync - peaks[i-1].endsync, 227.5 - f_tol, 227.5 + f_tol)); 
 			peaks[i].linenum = line;
 			
 			cerr << "P2_" << line << ' ' << i << ' ' << peaks[i].bad << ' ' <<  peaks[i].peak << ' ' << peaks[i].center << ' ' << peaks[i].center - peaks[i-1].center << ' ' << peaks[i].beginsync << ' ' << peaks[i].endsync << ' ' << peaks[i].endsync - peaks[i].beginsync << endl;
@@ -672,14 +673,24 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 	}
 
 	for (int i = firstline + 1; i < (firstline + 540); i++) {
-		if (peaks[i].linenum > 0) {
+		if ((peaks[i].linenum > 0) && (peaks[i].linenum <= 525)) {
 			int line = peaks[i].linenum ;
 			cerr << line << ' ' << i << ' ' << peaks[i].bad << ' ' <<  peaks[i].peak << ' ' << peaks[i].center << ' ' << peaks[i].center - peaks[i-1].center << ' ' << peaks[i].beginsync << ' ' << peaks[i].endsync << ' ' << peaks[i].endsync - peaks[i].beginsync << endl;
 				
 			double send = peaks[i - 1].beginsync + ((peaks[i].beginsync - peaks[i - 1].beginsync) * scale_linelen);
 					
 			double linelen = ProcessLine(buf, peaks[i - 1].beginsync - 10, send - 10, line, peaks[i].bad); 
+
+			cerr << "PA " << (line / 525.0) + frameno << ' ' << v_read + peaks[i].beginsync << endl;
 			ProcessAudio((line / 525.0) + frameno, v_read + peaks[i].beginsync, abuf); 
+				
+			if (peaks[i].bad) {
+				int oline = get_oline(line);
+                		frame[oline][2] = 65000;
+		                frame[oline][3] = 48000;
+          		        frame[oline][4] = 65000;
+		                frame[oline][5] = 48000;
+			}
 		}
 	}
 
@@ -825,6 +836,7 @@ int Process_old(uint16_t *buf, int len, float *abuf, int alen)
 
 				if (!first) {
 					linelen = ProcessLine(buf, prev_begin, send, line, bad); 
+					cerr << "PA " << (line / 525.0) + frameno << ' ' << v_read + begin << endl;
 					ProcessAudio((line / 525.0) + frameno, v_read + begin, abuf); 
 				}
 				prevbad = bad;
@@ -934,7 +946,7 @@ int main(int argc, char *argv[])
 	unsigned char *cinbuf = (unsigned char *)inbuf;
 	unsigned char *cabuf = (unsigned char *)abuf;
 
-	bool f_test = false;
+	bool f_test = true;
 
 	int c;
 
@@ -945,7 +957,7 @@ int main(int argc, char *argv[])
 	while ((c = getopt(argc, argv, "TdHmhgs:n:i:a:AfFt:")) != -1) {
 		switch (c) {
 			case 'T':
-				f_test = true;
+				f_test = !f_test;
 				break;
 			case 'd':	// show differences between pixels
 				f_diff = true;
