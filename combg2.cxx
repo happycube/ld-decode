@@ -25,6 +25,8 @@ bool f_adaptive2d = false;
 bool f_oneframe = false;
 bool f_showk = false;
 
+bool f_colorlpf = true;
+
 bool f_neuralnet = false;
 struct fann *ann = NULL;
 double nn_cscale = 32768.0;
@@ -445,7 +447,7 @@ class Comb
 					Frame[f].combk[0][l][h] = 1 - Frame[f].combk[2][l][h] - Frame[f].combk[1][l][h];
 				}
 			}	
-			if (dim < 3) FilterColorData(f, 1);
+			if (f_colorlpf) FilterColorData(f, 1);
 		}	
 
 		void Split3D(int f, bool opt_flow = false) 
@@ -1165,8 +1167,11 @@ int main(int argc, char *argv[])
 
 	opterr = 0;
 	
-	while ((c = getopt(argc, argv, "akNtFc:r:R:m8OwvDd:Bb:I:w:i:o:fphn:l:")) != -1) {
+	while ((c = getopt(argc, argv, "LakNtFc:r:R:m8OwvDd:Bb:I:w:i:o:fphn:l:")) != -1) {
 		switch (c) {
+			case 'L':
+				f_colorlpf = false;
+				break;
 			case 'F':
 				f_opticalflow = false;
 				break;
