@@ -303,10 +303,12 @@ def process_video(data):
 	else:
 		in_filt = sps.lfilter(f_emp_b, f_emp_a, in_filt3)
 
-#	fft8.plotfft(in_filt3)
+
+#	fft8.plotfft(in_filt)
 #	#fft8.plotfft(data)
-#	exit()	
-	
+#	plt.plot(in_filt)
+#	plt.show()
+
 	output = fm_decode(in_filt, freq_hz)
 
 	# save the original fm decoding and align to filters

@@ -140,7 +140,7 @@ hp_nr28_filter = sps.firwin(Nnr + 1, [2.60 / (freq / 2.0), 2.9 / (freq / 2.0)], 
 WriteFilter("nr28", hp_nr28_filter)
 
 Nnrc = 24
-hp_nrc_filter = sps.firwin(Nnrc + 1, 0.35 / (freq / 2.0), window='hamming', pass_zero=False)
+hp_nrc_filter = sps.firwin(Nnrc + 1, 0.4 / (freq / 2.0), window='hamming', pass_zero=False)
 WriteFilter("nrc", hp_nrc_filter)
 
 Ncolorlp4 = 8 

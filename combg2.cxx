@@ -70,6 +70,7 @@ double black_ire = 7.5;
 int black_u16 = ire_to_u16(black_ire);
 int white_u16 = ire_to_u16(100); 
 
+double nr_c = 0.0;
 double nr_y = 1.0;
 
 inline double IRE(double in) 
@@ -560,11 +561,49 @@ class Comb
 				cerr << "TOTAL MSE " << mse << " ME " << me << endl;
 			}
 		}
+		
+		void DoCNR(int f, cline_t cbuf[in_y], double mult = 1.0) {
+			double mnr_c = nr_c * mult;
+
+			int firstline = (linesout == in_y) ? 0 : 23;
+			if (nr_c <= 0) return;
+
+			for (int l = firstline; l < in_y; l++) {
+				YIQ hplinef[in_x];
+				cline_t *input = &cbuf[l];
+
+				for (int h = 70; h <= 752 + 80; h++) {
+					hplinef[h].i = f_hpi->feed(input->p[h].i);
+					hplinef[h].q = f_hpq->feed(input->p[h].q);
+				}
+				
+				for (int h = 70; h < out_x + 70; h++) {
+					double ai = hplinef[h + 12].i;
+					double aq = hplinef[h + 12].q;
+
+//					if (l == (f_debugline + 25)) {
+//						cerr << "NR " << h << ' ' << input->p[h].y << ' ' << hplinef[h + 12].y << ' ' << ' ' << a << ' ' << endl;
+//					}
+
+					if (fabs(ai) > mnr_c) {
+						ai = (ai > 0) ? mnr_c : -mnr_c;
+					}
+					
+					if (fabs(aq) > mnr_c) {
+						aq = (aq > 0) ? mnr_c : -mnr_c;
+					}
+
+					input->p[h].i -= ai;
+					input->p[h].q -= aq;
+//					if (l == (f_debugline + 25)) cerr << a << ' ' << input->p[h].y << endl; 
+				}
+			}
+		}
 					
 		void DoYNR(int f, cline_t cbuf[in_y], double mult = 1.0) {
 			double mnr_y = nr_y * mult;
 			int firstline = (linesout == in_y) ? 0 : 23;
-			if (nr_y < 0) return;
+			if (nr_y <= 0) return;
 
 			for (int l = firstline; l < in_y; l++) {
 				YIQ hplinef[in_x];
@@ -1066,6 +1105,7 @@ class Comb
 			AdjustY(f, tbuf);
 //			if (dim == 2) FilterIQ(tbuf);
 			DoYNR(f, tbuf);
+			DoCNR(f, tbuf);
 			ToRGB(f, firstline, tbuf);
 	
 			PostProcess(f);
@@ -1167,7 +1207,7 @@ int main(int argc, char *argv[])
 
 	opterr = 0;
 	
-	while ((c = getopt(argc, argv, "LakNtFc:r:R:m8OwvDd:Bb:I:w:i:o:fphn:l:")) != -1) {
+	while ((c = getopt(argc, argv, "LakN:tFc:r:R:m8OwvDd:Bb:I:w:i:o:fphn:l:")) != -1) {
 		switch (c) {
 			case 'L':
 				f_colorlpf = false;
@@ -1218,6 +1258,9 @@ int main(int argc, char *argv[])
 			case 'n':
 				sscanf(optarg, "%lf", &nr_y);
 				break;
+			case 'N':
+				sscanf(optarg, "%lf", &nr_c);
+				break;
 			case 'h':
 				usage();
 				return 0;
@@ -1248,9 +1291,9 @@ int main(int argc, char *argv[])
 				f_writeimages = true;	
 				dim = 3;
 				break;
-			case 'N':
-				f_neuralnet = !f_neuralnet;
-				break;
+//			case 'N':
+//				f_neuralnet = !f_neuralnet;
+//				break;
 			case 'k':
 				f_showk = true;
 				break;
@@ -1284,6 +1327,7 @@ int main(int argc, char *argv[])
 	black_u16 = ire_to_u16(black_ire);
 
 	nr_y *= irescale;
+	nr_c *= irescale;
 
 	if (!f_writeimages && strlen(out_filename)) {
 		ofd = open(image_base, O_WRONLY | O_CREAT);
