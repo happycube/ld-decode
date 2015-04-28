@@ -112,6 +112,19 @@ Ncolor = 24
 sync_filter = sps.firwin(Ncolor + 1, 0.1 / (freq), window='hamming')
 WriteFilter("sync", sync_filter)
 
+# PAL sync filter
+Ndsync = 32 
+dsync_filter = sps.firwin(Ndsync + 1, 2.0 / (freq), window='hamming')
+WriteFilter("psync8", dsync_filter)
+
+Ndsync = 32 
+dsync_filter = sps.firwin(Ndsync + 1, 2.0 / (freq4), window='hamming')
+WriteFilter("psync4", dsync_filter)
+
+Ndsync = 32 
+dsync_filter = sps.firwin(Ndsync + 1, 2.0 / (freq10), window='hamming')
+WriteFilter("psync10", dsync_filter)
+
 # used in ntsc to determine sync level
 Ndsync = 32 
 dsync_filter = sps.firwin(Ndsync + 1, 0.1 / (freq), window='hamming')
