@@ -31,6 +31,12 @@ const double in_freq = 8.0;	// in FSC.  Must be an even number!
 #define OUT_FREQ 4
 const double out_freq = OUT_FREQ;	// in FSC.  Must be an even number!
 
+struct VFormat {
+	double cycles_line;
+	double blanklen_ms;
+	double a;	
+};
+
 //const double ntsc_uline = 63.5; // usec_
 const int ntsc_iplinei = 227.5 * in_freq; // pixels per line
 const double ntsc_ipline = 227.5 * in_freq; // pixels per line
@@ -678,9 +684,9 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 
 				cerr << "BADLG " << lg << endl;
 				double gap = ((peaks[i + lg].beginsync - peaks[i - lg].beginsync) / (lg * 2));
-				peaks[i].beginsync = peaks[i - 1].beginsync + gap; 
-				peaks[i].center = peaks[i - 1].center + gap; 
-				peaks[i].endsync = peaks[i - 1].endsync + gap; 
+				peaks[i].beginsync = peaks[i - lg].beginsync + gap; 
+				peaks[i].center = peaks[i - lg].center + gap; 
+				peaks[i].endsync = peaks[i - lg].endsync + gap; 
 				cerr << peaks[i].beginsync << ' ' << peaks[i].center << ' ' << peaks[i].endsync << ' ' << peaks[i].endsync - peaks[i].beginsync << endl;
 			}
 		}
