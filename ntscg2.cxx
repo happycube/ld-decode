@@ -629,7 +629,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 
 		if (!canstartsync && ((peaks[i].center - peaks[i - 1].center) > (440 * in_freq)) && (peaks[i].center > peaks[i - 1].center)) {
 			// looks like we outright skipped a line because of corruption.  add a new one! 
-			cerr << "ohoh1 " << i << ' ' << peaks[i].center << ' ' << peaks[i].center - peaks[i - 1].center << ' ' << peaks.size() << endl ;
+			cerr << "LONG " << i << ' ' << peaks[i].center << ' ' << peaks[i].center - peaks[i - 1].center << ' ' << peaks.size() << endl ;
 
 			Line l;
 
@@ -643,8 +643,10 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 			i--;
 			line--;
 		} else if (!canstartsync && ((peaks[i].center - peaks[i - 1].center) < (207.5 * in_freq)) && (peaks[i].center > peaks[i - 1].center)) {
-			// recovery routine for if we get a burst way out of place
-			cerr << "ohoh2 " << i << ' ' << peaks[i].center << ' ' << peaks[i].center - peaks[i - 1].center << ' ' << peaks.size() << endl ;
+			// recovery routine for if we get a short line due to excessive dropout
+ 
+			cerr << "SHORT " << i << ' ' << peaks[i].center << ' ' << peaks[i].center - peaks[i - 1].center << ' ' << peaks.size() << endl ;
+
 			peaks.erase(peaks.begin()+i);
 			i--;
 //			cerr << "ohoh." << i << ' ' << peaks.size() << endl ;
