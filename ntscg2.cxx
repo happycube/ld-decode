@@ -579,7 +579,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 			l.linenum = -1;
 
 			peaks.push_back(l);	
-		//	cerr << peaks.size() << ' ' << i << ' ' << level << endl;
+			cerr << peaks.size() << ' ' << i << ' ' << level << endl;
 
 		}
 	}
@@ -627,17 +627,36 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 		bool canstartsync = false;
 		if ((line < 0) || InRange(line, 262, 274) || InRange(line, 524, 530)) canstartsync = true;
 
-		// recovery routine for if we get a burst way out of place
-		if (!canstartsync && ((peaks[i].center - peaks[i - 1].center) < (207.5 * in_freq)) && (peaks[i].center > peaks[i - 1].center)) {
-			cerr << "ohoh." << i << ' ' << peaks[i].center << ' ' << peaks[i].center - peaks[i - 1].center << ' ' << peaks.size() << endl ;
+		if (!canstartsync && ((peaks[i].center - peaks[i - 1].center) > (440 * in_freq)) && (peaks[i].center > peaks[i - 1].center)) {
+			// looks like we outright skipped a line because of corruption.  add a new one! 
+			cerr << "ohoh1 " << i << ' ' << peaks[i].center << ' ' << peaks[i].center - peaks[i - 1].center << ' ' << peaks.size() << endl ;
+
+			Line l;
+
+			l.center = peaks[i - 1].center + 1820;
+			l.peak   = peaks[i - 1].peak;
+			l.bad = true;
+			l.linenum = -1;
+
+			peaks.insert(peaks.begin()+i, l);
+
+			i--;
+			line--;
+		} else if (!canstartsync && ((peaks[i].center - peaks[i - 1].center) < (207.5 * in_freq)) && (peaks[i].center > peaks[i - 1].center)) {
+			// recovery routine for if we get a burst way out of place
+			cerr << "ohoh2 " << i << ' ' << peaks[i].center << ' ' << peaks[i].center - peaks[i - 1].center << ' ' << peaks.size() << endl ;
 			peaks.erase(peaks.begin()+i);
 			i--;
 //			cerr << "ohoh." << i << ' ' << peaks.size() << endl ;
 			line--;
-		} else if (InRange(peaks[i].peak, canstartsync ? .25 : .0, .50)) {
+		} else if (peaks[i].peak > .85) {
+			line = -10;
+			peaks[i].linenum = -1;
+		} else if (InRange(peaks[i].peak, canstartsync ? .25 : .0, (line < 0) ? .50 : .8)) {
 			int cbeginsync = 0, cendsync = 0;
 			int center = peaks[i].center;
 
+			// XXX:  This can be fragile
 			if (line <= -1) {
 				line = field2 ? 273 : 10;
 				field2 = true;
@@ -663,9 +682,6 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 				
 			// HACK!
 			if (line == 273) peaks[i].linenum = -1;
-		} else if (peaks[i].peak > .9) {
-			line = -10;
-			peaks[i].linenum = -1;
 		}
 		line++;
 	}
