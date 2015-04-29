@@ -579,7 +579,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 			l.linenum = -1;
 
 			peaks.push_back(l);	
-//			cerr << peaks.size() << ' ' << i << ' ' << level << endl;
+		//	cerr << peaks.size() << ' ' << i << ' ' << level << endl;
 
 		}
 	}
@@ -634,7 +634,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 			i--;
 //			cerr << "ohoh." << i << ' ' << peaks.size() << endl ;
 			line--;
-		} else if (InRange(peaks[i].peak, canstartsync ? .25 : .0, .9)) {
+		} else if (InRange(peaks[i].peak, canstartsync ? .25 : .0, .50)) {
 			int cbeginsync = 0, cendsync = 0;
 			int center = peaks[i].center;
 
