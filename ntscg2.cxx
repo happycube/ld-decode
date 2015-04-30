@@ -594,7 +594,8 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 	for (int i = 9; (i < peaks.size() - 9) && (firstline == -1); i++) {
 		if (peaks[i].peak > 1.0) {
 			if (peaks[i].center > (ntsc_ipline * 400)) {
-				return (ntsc_ipline * 350);
+				//return (ntsc_ipline * 350);
+				return (peaks[i].center - (ntsc_ipline * 20));
 			} else if (peaks[i].center < (ntsc_ipline * 8)) {
 				return (ntsc_ipline * 400);
 			} else {
@@ -726,7 +727,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 			double send = peaks[i - 1].beginsync + ((peaks[i].beginsync - peaks[i - 1].beginsync) * scale_linelen);
 
 			// XXX:  This is a hack to avoid a crashing condition!
-			if (!((line == 10) && (peaks[i].center - peaks[i-1].center) < (in_freq * 200))) {
+			if (!((line < 12) && (peaks[i].center - peaks[i-1].center) < (in_freq * 200))) {
 				double linelen = ProcessLine(buf, peaks[i - 1].beginsync - 4, send - 4, line, peaks[i].bad); 
 
 				cerr << "PA " << (line / 525.0) + frameno << ' ' << v_read + peaks[i].beginsync << endl;
