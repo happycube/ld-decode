@@ -355,6 +355,8 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line, bool err =
 	double plevel1, plevel2;
 	double nphase1, nphase2;
 
+	if (begin < 0) begin = 0;
+
 	cerr << "PL " << line << ' ' << begin << ' ' << end << ' ' << err << ' ' << end - begin << endl;
 
 	double orig_begin = begin;
@@ -558,6 +560,9 @@ double psync[ntsc_iplinei*1200];
 int Process(uint16_t *buf, int len, float *abuf, int alen)
 {
 	vector<Line> peaks; 
+	peaks.clear();
+
+	memset(frame, 0, sizeof(frame));
 
 	// sample syncs
 	f_syncid.clear(0);
@@ -588,7 +593,9 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 	int firstpeak = -1, firstline = -1, lastline = -1;
 	for (int i = 9; (i < peaks.size() - 9) && (firstline == -1); i++) {
 		if (peaks[i].peak > 1.0) {
-			if (peaks[i].center < (ntsc_ipline * 8)) {
+			if (peaks[i].center > (ntsc_ipline * 400)) {
+				return (ntsc_ipline * 350);
+			} else if (peaks[i].center < (ntsc_ipline * 8)) {
 				return (ntsc_ipline * 400);
 			} else {
 				firstpeak = i;
@@ -622,7 +629,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 
 	bool field2 = false;
 	int line = -10;
-	for (int i = firstline - 1; (i < (firstline + 540)) && (line < 526); i++) {
+	for (int i = firstline - 1; i < peaks.size() && (i < (firstline + 540)) && (line < 526); i++) {
 //		cerr << "P2A " << i << ' ' << peaks[i].peak << endl;
 		bool canstartsync = false;
 		if ((line < 0) || InRange(line, 262, 274) || InRange(line, 524, 530)) canstartsync = true;
@@ -717,18 +724,21 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 			cerr << line << ' ' << i << ' ' << peaks[i].bad << ' ' <<  peaks[i].peak << ' ' << peaks[i].center << ' ' << peaks[i].center - peaks[i-1].center << ' ' << peaks[i].beginsync << ' ' << peaks[i].endsync << ' ' << peaks[i].endsync - peaks[i].beginsync << endl;
 				
 			double send = peaks[i - 1].beginsync + ((peaks[i].beginsync - peaks[i - 1].beginsync) * scale_linelen);
-					
-			double linelen = ProcessLine(buf, peaks[i - 1].beginsync - 4, send - 4, line, peaks[i].bad); 
 
-			cerr << "PA " << (line / 525.0) + frameno << ' ' << v_read + peaks[i].beginsync << endl;
-			ProcessAudio((line / 525.0) + frameno, v_read + peaks[i].beginsync, abuf); 
+			// XXX:  This is a hack to avoid a crashing condition!
+			if (!((line == 10) && (peaks[i].center - peaks[i-1].center) < (in_freq * 200))) {
+				double linelen = ProcessLine(buf, peaks[i - 1].beginsync - 4, send - 4, line, peaks[i].bad); 
+
+				cerr << "PA " << (line / 525.0) + frameno << ' ' << v_read + peaks[i].beginsync << endl;
+				ProcessAudio((line / 525.0) + frameno, v_read + peaks[i].beginsync, abuf); 
 				
-			if (peaks[i].bad) {
-				int oline = get_oline(line);
-                		frame[oline][2] = 65000;
-		                frame[oline][3] = 48000;
-          		        frame[oline][4] = 65000;
-		                frame[oline][5] = 48000;
+				if (peaks[i].bad) {
+					int oline = get_oline(line);
+               		 		frame[oline][2] = 65000;
+			                frame[oline][3] = 48000;
+          			        frame[oline][4] = 65000;
+			                frame[oline][5] = 48000;
+				}
 			}
 		}
 	}
