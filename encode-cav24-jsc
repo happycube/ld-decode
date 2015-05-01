@@ -1,0 +1,23 @@
+# params:  in file, start point, length, output file
+rm -f $4.wav
+rm -f $4.rpcm $4.pcm $4.tbc
+rm -f $4.mkv $4.avi
+
+rm -f pipe.rpcm
+mkfifo pipe.rpcm
+
+rm -f pipe2.pcm pipe2a.pcm pipe2.tbc
+mkfifo pipe2.pcm
+mkfifo pipe2a.pcm
+mkfifo pipe2.tbc
+
+./ld-decoder.py -S -a $1 $2 $3 | buffer -s 32k -m 2m > pipe.rpcm &
+./ld-decoder.py -A -s 2 -S $1 $2 $3 2> /dev/null | buffer -s 19200 -m 2m | ./ntsc -r 80 -a pipe.rpcm 2> /dev/null 3> pipe2.pcm > pipe2.tbc & 
+
+# top one for CX, bottom for not-CX
+cat pipe2.pcm | ./cx > pipe2a.pcm &
+#cat pipe2.pcm  > pipe2a.pcm &
+
+#cat pipe2.tbc | ./comb -d 3 -I 7.5 -F - 2> /dev/null | buffer -s 512000 -b 2048 | ffmpeg -f u16le -ar 48k -ac 2 -i pipe2a.pcm -f rawvideo -r 30000/1001 -pix_fmt rgb48 -s 744x480 -i /dev/stdin -acodec flac -aspect 4:3 -c:v huffyuv -flags +ildct+ilme $4.mkv
+cat pipe2.tbc | ./comb -d 3 -a -I 0 -r 0.4 -N 1.5 -n 1.5 - 2> /dev/null | buffer -s 512000 -b 2048 | ffmpeg -f u16le -ar 48k -ac 2 -i pipe2a.pcm -f rawvideo -r 30000/1001 -pix_fmt rgb48 -s 744x480 -i /dev/stdin -acodec flac -aspect 2.35 -vf "crop=744:280:0:59,fps=30000/1001,fieldmatch=order=bff:combmatch=full, yadif=deint=interlaced, decimate" -c:v libx264rgb -pix_fmt yuv420p -preset slow -crf 22 $4.mkv
+
