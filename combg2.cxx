@@ -1086,7 +1086,8 @@ class Comb
 				if (f_opticalflow && (framecount >= 1)) {
 					memcpy(tbuf, Frame[0].cbuf, sizeof(tbuf));	
 					AdjustY(0, tbuf);
-					DoYNR(0, tbuf, 1);
+					DoYNR(0, tbuf, 2);
+					DoCNR(0, tbuf, 2);
 					OpticalFlow3D(tbuf);
 				}
 
