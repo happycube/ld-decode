@@ -481,13 +481,13 @@ wrapup:
 		double o;
 
 		if (in_freq != 4) {
-			double freq = (ire * ((9300000 - 7600000) / 100)) + 7600000; 
+			double freq = (ire * ((9300000 - 8100000) / 100)) + 8100000; 
 
 //			cerr << h << ' ' << v << ' ' << ire << ' ' << freq << ' ';
 			freq *= lvl_adjust;
 //			cerr << freq << ' ';
 
-			ire = ((freq - 7600000) / 1700000) * 100;
+			ire = ((freq - 8100000) / 1200000) * 100;
 //			cerr << ire << endl;
 			o = ire_to_out(ire);
 		} else { 
