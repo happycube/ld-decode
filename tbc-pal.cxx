@@ -188,106 +188,49 @@ Filter f_syncid(f_syncid8);
 int syncid_offset = syncid8_offset;
 #endif
 
-bool PilotDetect(double *line, double loc, bool tgt, double &plevel, double &pphase) 
+bool PilotDetect(double *line, double loc, double &plevel, double &pphase) 
 {
-	int len = (28 * 4);
+	int len = (10 * 4);
 	int count = 0, cmin = 0;
 	double ptot = 0, tpeak = 0, tmin = 0;
-	double start = 10;
+	double start = 0;
 
 	double phase = 0;
 
 //	cerr << ire_to_in(7) << ' ' << ire_to_in(16) << endl;
-	double highmin = ire_to_in(f_highburst ? 12 : 7);
-	double highmax = ire_to_in(f_highburst ? 23 : 22);
+	double highmin = 28000;//ire_to_in(f_highburst ? 12 : 7);
+	double highmax = 31250;//);
 	double lowmin = ire_to_in(f_highburst ? -12 : -7);
 	double lowmax = ire_to_in(f_highburst ? -23 : -22);
 //	cerr << lowmin << ' ' << lowmax << endl;
 
 	for (int i = loc + start; i < loc + len; i++) {
-		if (1 || (line[i] > highmin) && (line[i] < highmax) && (line[i] > line[i - 1]) && (line[i] > line[i + 1])) {
-			double c = round(((i + peakdetect_quad(&line[i - 1])) / 4) + (tgt ? 0.5 : 0)) * 4;
-
-			if (tgt) c -= 2;
-			phase = (i + peakdetect_quad(&line[i - 1])) - c;
-
-			ptot += phase;
-
-			tpeak += line[i];
-
-			count++;
-//			cerr << "BDN " << i << ' ' << in_to_ire(line[i]) << ' ' << line[i - 1] << ' ' << line[i] << ' ' << line[i + 1] << ' ' << phase << ' ' << (i + peakdetect_quad(&line[i - 1])) << ' ' << c << ' ' << ptot << endl; 
-		} 
-		else if ((line[i] < lowmin) && (line[i] > lowmax) && (line[i] < line[i - 1]) && (line[i] < line[i + 1])) {
-			cmin++;
-			tmin += line[i];
-		}
-	}
-
-	plevel = ((tpeak / count) - (tmin / cmin)) / 4.5;
-	pphase = (ptot / count) * 1;
-
-	return (count >= 3);
-}
-	
-
-bool BurstDetect_New(double *line, int freq, double _loc, bool tgt, double &plevel, double &pphase) 
-{
-	int len = (28 * freq);
-	int loc = _loc * freq;
-	int count = 0, cmin = 0;
-	double ptot = 0, tpeak = 0, tmin = 0;
-	double start = 15;
-
-	double phase = 0;
-
-//	cerr << ire_to_in(7) << ' ' << ire_to_in(16) << endl;
-	double highmin = ire_to_in(f_highburst ? 12 : 7);
-	double highmax = ire_to_in(f_highburst ? 23 : 22);
-	double lowmin = ire_to_in(f_highburst ? -12 : -7);
-	double lowmax = ire_to_in(f_highburst ? -23 : -22);
-//	cerr << lowmin << ' ' << lowmax << endl;
-
-	if (f_highburst) {
-		start = 20;
-		len = (start + 6) * freq;
-	}
-
-	for (int i = loc + (start * freq); i < loc + len; i++) {
-//		cerr << line[i] << endl;
 		if ((line[i] > highmin) && (line[i] < highmax) && (line[i] > line[i - 1]) && (line[i] > line[i + 1])) {
-			double c = round(((i + peakdetect_quad(&line[i - 1])) / 4) + (tgt ? 0.5 : 0)) * 4;
-//			c = i + phase;
+			double c = round(((i + peakdetect_quad(&line[i - 1])) / 4)) * 4;
 
-//			cerr << "B " << i + peakdetect_quad(&line[i - 1]) << ' ' << c << endl;
-
-			if (tgt) c -= 2;
 			phase = (i + peakdetect_quad(&line[i - 1])) - c;
-
-			// XXX: this may be wrong, but phase is almost always negative here
-//			if (phase > 2.2) phase -= 4;
-//			if (phase < -2.2) phase += 4;
 
 			ptot += phase;
 
 			tpeak += line[i];
 
 			count++;
-//			cerr << "BDN " << i << ' ' << in_to_ire(line[i]) << ' ' << line[i - 1] << ' ' << line[i] << ' ' << line[i + 1] << ' ' << phase << ' ' << (i + peakdetect_quad(&line[i - 1])) << ' ' << c << ' ' << ptot << endl; 
+			cerr << "BDN " << i << ' ' << in_to_ire(line[i]) << ' ' << line[i - 1] << ' ' << line[i] << ' ' << line[i + 1] << ' ' << phase << ' ' << (i + peakdetect_quad(&line[i - 1])) << ' ' << c << ' ' << ptot << endl; 
 		} 
-		else if ((line[i] < lowmin) && (line[i] > lowmax) && (line[i] < line[i - 1]) && (line[i] < line[i + 1])) {
+		else if (/*(line[i] < lowmin) && (line[i] > lowmax) && */ (line[i] < line[i - 1]) && (line[i] < line[i + 1])) {
 			cmin++;
 			tmin += line[i];
 		}
 	}
 
-	plevel = ((tpeak / count) - (tmin / cmin)) / 4.5;
+	plevel = ((tpeak / count) /*- (tmin / cmin)*/) / 2.25;
 	pphase = (ptot / count) * 1;
 
-//	cerr << "BDN end " << plevel << ' ' << pphase << ' ' << count << endl;
-	
+	cerr << "plevel " << plevel << " pphase " << pphase << ' ' << count << endl;
+
 	return (count >= 3);
 }
+	
 
 int get_oline(double line)
 {
@@ -429,18 +372,18 @@ double ProcessLine(uint16_t *buf, vector<Line> &lines, int index)
 
 	cerr << "a" << endl;
 	
-	bool valid = PilotDetect(tout, 2, 0, plevel1, nphase1); 
+	bool valid = PilotDetect(tout, 2, plevel1, nphase1); 
 	cerr << "b" << endl;
-	valid &= PilotDetect(tout, 242, 0, plevel2, nphase2); 
+	valid &= PilotDetect(tout, 242, plevel2, nphase2); 
 	cerr << "c" << endl;
 
 	cerr << "levels " << plevel1 << ' ' << plevel2 << " valid " << valid << endl;
 
-	if (!valid || (plevel1 < (f_highburst ? 1800 : 1000)) || (plevel2 < (f_highburst ? 1000 : 800))) {
+	if (!valid /* || (plevel1 < (f_highburst ? 1800 : 1000)) || (plevel2 < (f_highburst ? 1000 : 800)) */) {
 		begin += prev_offset;
 		end += prev_offset;
 	
-		Scale(buf, tout, begin, end, scale15_len); 
+		Scale(buf, tout, begin, end, scale4fsc_len); 
 		goto wrapup;
 	}
 
@@ -465,8 +408,8 @@ double ProcessLine(uint16_t *buf, vector<Line> &lines, int index)
 		if (pass) end += nadj2;
 
 		Scale(buf, tout, begin, end, scale15_len); 
-		PilotDetect(tout, 2, 0, plevel1, nphase1); 
-		PilotDetect(tout, 242, 0, plevel2, nphase2); 
+		PilotDetect(tout, 2, plevel1, nphase1); 
+		PilotDetect(tout, 242, plevel2, nphase2); 
 		
 		nadj1 = (nphase1) * 1;
 		nadj2 = (nphase2) * 1;
@@ -495,8 +438,8 @@ double ProcessLine(uint16_t *buf, vector<Line> &lines, int index)
 			begin = orig_begin;
 			end = orig_end;
 			Scale(buf, tout, begin, end, scale15_len); 
-			PilotDetect(tout, 2, 0, plevel1, nphase1); 
-			PilotDetect(tout, 242, 0, plevel2, nphase2); 
+			PilotDetect(tout, 2, plevel1, nphase1); 
+			PilotDetect(tout, 242, plevel2, nphase2); 
 		}
 	}
 	
