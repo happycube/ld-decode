@@ -564,6 +564,7 @@ class Comb
 		
 		void DoCNR(int f, cline_t cbuf[in_y], double mult = 1.0) {
 			double mnr_c = nr_c * mult;
+			if ((mult > 1.1) && (nr_c < mult)) mnr_c = mult;
 
 			int firstline = (linesout == in_y) ? 0 : 23;
 			if (nr_c <= 0) return;
@@ -602,6 +603,7 @@ class Comb
 					
 		void DoYNR(int f, cline_t cbuf[in_y], double mult = 1.0) {
 			double mnr_y = nr_y * mult;
+			if ((mult > 1.1) && (nr_y < mult)) mnr_y = mult;
 			int firstline = (linesout == in_y) ? 0 : 23;
 			if (nr_y <= 0) return;
 
