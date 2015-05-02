@@ -40,7 +40,7 @@ struct VFormat {
 //const double pal_uline = 64; // usec_
 const int pal_iplinei = 229 * in_freq; // pixels per line
 const double pal_ipline = 229 * in_freq; // pixels per line
-const double pal_opline = 229 * out_freq; // pixels per line
+const double pal_opline = 1135; // pixels per line
 //const int pal_oplinei = 229 * out_freq; // pixels per line
 
 const double pixels_per_usec = 1000000.0 / (in_freq * (1000000.0 * 315.0 / 88.0)); 
@@ -51,10 +51,14 @@ const double pal_blanklen = 6.7;
 const double scale_linelen = (70.7 / 64); 
 
 const double pal_ihsynctoline = pal_ipline * (pal_blanklen / 64);
-const double iscale_tgt = pal_ipline + pal_ihsynctoline;
+const double iscale15_len = pal_ipline + pal_ihsynctoline;
 
 const double pal_hsynctoline = pal_opline * (pal_blanklen / 64);
-const double scale_tgt = pal_opline + pal_hsynctoline;
+
+// contains padding
+double scale15_len = 15000000.0 * (70.7 / 1000000.0);
+// endsync to next endsync
+double scale4fsc_len = 4 * 4433618 * (64 / 1000000.0);
 
 double p_rotdetect = 80;
 
@@ -132,6 +136,8 @@ inline void Scale(uint16_t *buf, double *outbuf, double start, double end, doubl
 	double inlen = end - start;
 	double perpel = inlen / outlen; 
 
+	cerr << "scale " << start << ' ' << end << ' ' << outlen << endl;
+
 	double p1 = start;
 	for (int i = 0; i < outlen; i++) {
 		int index = (int)p1;
@@ -163,7 +169,7 @@ double black_ire = 7.5;
 
 int write_locs = -1;
 
-uint16_t frame[625][(int)(OUT_FREQ * 211)];
+uint16_t frame[625][1135];
 
 Filter f_bpcolor4(f_colorbp4);
 Filter f_bpcolor8(f_colorbp8);
@@ -419,10 +425,14 @@ double ProcessLine(uint16_t *buf, vector<Line> &lines, int index)
 
 	cerr << "ProcessLine " << begin << ' ' << end << endl;
 
-	Scale(buf, tout, begin, end, scale_tgt); 
+	Scale(buf, tout, begin, end, scale15_len); 
+
+	cerr << "a" << endl;
 	
-	bool valid = BurstDetect_New(tout, out_freq, 0, 0, plevel1, nphase1); 
-	valid &= BurstDetect_New(tout, out_freq, 228, 0, plevel2, nphase2); 
+	bool valid = PilotDetect(tout, 2, 0, plevel1, nphase1); 
+	cerr << "b" << endl;
+	valid &= PilotDetect(tout, 242, 0, plevel2, nphase2); 
+	cerr << "c" << endl;
 
 	cerr << "levels " << plevel1 << ' ' << plevel2 << " valid " << valid << endl;
 
@@ -430,7 +440,7 @@ double ProcessLine(uint16_t *buf, vector<Line> &lines, int index)
 		begin += prev_offset;
 		end += prev_offset;
 	
-		Scale(buf, tout, begin, end, scale_tgt); 
+		Scale(buf, tout, begin, end, scale15_len); 
 		goto wrapup;
 	}
 
@@ -439,10 +449,10 @@ double ProcessLine(uint16_t *buf, vector<Line> &lines, int index)
 		end += prev_offset;
 	}
 
-	adjlen = (end - begin) / (scale_tgt / pal_opline);
+	adjlen = (end - begin) / (scale15_len / pal_opline);
 
 	for (pass = 0; (pass < 12) && ((fabs(nadj1) + fabs(nadj2)) > .05); pass++) {
-//		cerr << line << " 0" << ' ' << ((end - begin) / scale_tgt) * pal_ipline.0 << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
+//		cerr << line << " 0" << ' ' << ((end - begin) / scale15_len) * pal_ipline.0 << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
 
 		nadj1 = nphase1 * 1;
 		nadj2 = nphase2 * 1;
@@ -454,14 +464,14 @@ double ProcessLine(uint16_t *buf, vector<Line> &lines, int index)
 		begin += nadj1;
 		if (pass) end += nadj2;
 
-		Scale(buf, tout, begin, end, scale_tgt); 
-		BurstDetect_New(tout, out_freq, 0, 0, plevel1, nphase1); 
-		BurstDetect_New(tout, out_freq, 228, 0, plevel2, nphase2); 
+		Scale(buf, tout, begin, end, scale15_len); 
+		PilotDetect(tout, 2, 0, plevel1, nphase1); 
+		PilotDetect(tout, 242, 0, plevel2, nphase2); 
 		
 		nadj1 = (nphase1) * 1;
 		nadj2 = (nphase2) * 1;
 
-		adjlen = (end - begin) / (scale_tgt / pal_opline);
+		adjlen = (end - begin) / (scale15_len / pal_opline);
 					
 //		cerr << line << " " << pass << ' ' << begin << ' ' << (begin + adjlen) << '/' << end  << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << ' ' << nphase1 << ' ' << nphase2 << endl;
 	}
@@ -484,36 +494,37 @@ double ProcessLine(uint16_t *buf, vector<Line> &lines, int index)
 
 			begin = orig_begin;
 			end = orig_end;
-			Scale(buf, tout, begin, end, scale_tgt); 
-			BurstDetect_New(tout, out_freq, 0, 0, plevel1, nphase1); 
-			BurstDetect_New(tout, out_freq, 228, 0, plevel2, nphase2); 
+			Scale(buf, tout, begin, end, scale15_len); 
+			PilotDetect(tout, 2, 0, plevel1, nphase1); 
+			PilotDetect(tout, 242, 0, plevel2, nphase2); 
 		}
 	}
 	
 	cerr << "final levels " << plevel1 << ' ' << plevel2 << endl;
+	Scale(buf, tout, begin, end, scale4fsc_len); 
 
 wrapup:
 	// LD only: need to adjust output value for velocity, and remove defects as possible
-	double lvl_adjust = ((((end - begin) / iscale_tgt) - 1) * 2.0) + 1;
+	double lvl_adjust = ((((end - begin) / iscale15_len) - 1) * 2.0) + 1;
 	int ldo = -128;
 
 	double rotdetect = p_rotdetect * inscale;
 	
-	double diff[(int)(212 * out_freq)];
+	double diff[1135];
 	double prev_o = 0;
-	for (int h = 0; (oline > 2) && (h < (211 * out_freq)); h++) {
-		double v = tout[h + (int)(15 * out_freq)];
+	for (int h = 0; (oline > 2) && (h < 1135); h++) {
+		double v = tout[h + 60];
 		double ire = in_to_ire(v);
 		double o;
 
 		if (in_freq != 4) {
-			double freq = (ire * ((9300000 - 7600000) / 100)) + 7600000; 
+//			double freq = (ire * ((7900000 - 7100000) / 100)) + 7100000; 
 
 //			cerr << h << ' ' << v << ' ' << ire << ' ' << freq << ' ';
-			freq *= lvl_adjust;
+//			freq *= lvl_adjust;
 //			cerr << freq << ' ';
 
-			ire = ((freq - 7600000) / 1700000) * 100;
+//			ire = ((freq - 7900000) / 800000) * 100;
 //			cerr << ire << endl;
 			o = ire_to_out(ire);
 		} else { 
@@ -542,199 +553,7 @@ wrapup:
 		//if (!(oline % 2)) frame[oline][h] = clamp(o, 0, 65535);
 	}
 	
-	for (int h = 0; f_diff && (oline > 2) && (h < (211 * out_freq)); h++) {
-		frame[oline][h] = clamp(diff[h], 0, 65535);
-	}
-	
-        if (!pass) {
-                frame[oline][2] = 32000;
-                frame[oline][3] = 32000;
-                frame[oline][4] = 32000;
-                frame[oline][5] = 32000;
-		cerr << "BURST ERROR " << line << " " << pass << ' ' << begin << ' ' << (begin + adjlen) << '/' << end  << ' ' << endl;
-        } else {
-		prev_offset = begin - orig_begin;
-	}
-
-	cerr << line << " GAP " << begin - prev_begin << ' ' << prev_begin << ' ' << begin << endl;
-	
-	frame[oline][0] = (tgt_nphase != 0) ? 32768 : 16384; 
-	frame[oline][1] = plevel1; 
-
-	prev_begin = begin;
-
-	return adjlen;
-}
-
-double ProcessLine_NTSC(uint16_t *buf, double begin, double end, int line, bool err = false)
-{
-	double tout[8192];
-	double adjlen = pal_ipline;
-	int pass = 0;
-
-	double plevel1, plevel2;
-	double nphase1, nphase2;
-
-	cerr << "PL " << line << ' ' << begin << ' ' << end << ' ' << err << ' ' << end - begin << endl;
-
-	double orig_begin = begin;
-	double orig_end = end;
-
-	int oline = get_oline(line);
-
-	if (oline < 0) return 0;
-
-	double tgt_nphase = 0;
-	double nadj1 = 1, nadj2 = 1;
-
-	cerr << "ProcessLine " << begin << ' ' << end << endl;
-
-	Scale(buf, tout, begin, end, scale_tgt); 
-	
-	if (phase != -1) {
-		tgt_nphase = ((line + phase + iline) % 2) ? -2 : 0;
-	} 
-
-	bool valid = BurstDetect_New(tout, out_freq, 0, tgt_nphase != 0, plevel1, nphase1); 
-	valid &= BurstDetect_New(tout, out_freq, 228, tgt_nphase != 0, plevel2, nphase2); 
-
-	cerr << "levels " << plevel1 << ' ' << plevel2 << " valid " << valid << endl;
-
-	if (!valid || (plevel1 < (f_highburst ? 1800 : 1000)) || (plevel2 < (f_highburst ? 1000 : 800))) {
-		begin += prev_offset;
-		end += prev_offset;
-	
-		Scale(buf, tout, begin, end, scale_tgt); 
-		goto wrapup;
-	}
-
-	if (err) {
-		begin += prev_offset;
-		end += prev_offset;
-	}
-
-	if ((phase == -1) || (offburst >= 5)) {
-		phase = (fabs(nphase1) > 1);
-		iline = line;
-		offburst = 0;
-		cerr << "p " << nphase1 << ' ' << phase << endl;
-
-		tgt_nphase = ((line + phase + iline) % 2) ? -2 : 0;
-	} 
-//	if (in_freq == 4) goto wrapup;
-
-	adjlen = (end - begin) / (scale_tgt / pal_opline);
-	//cerr << line << " " << oline << " " << tgt_nphase << ' ' << begin << ' ' << (begin + adjlen) << '/' << end  << endl;
-
-	for (pass = 0; (pass < 12) && ((fabs(nadj1) + fabs(nadj2)) > .05); pass++) {
-//		cerr << line << " 0" << ' ' << ((end - begin) / scale_tgt) * pal_ipline.0 << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
-
-		nadj1 = nphase1 * 1;
-		nadj2 = nphase2 * 1;
-
-		//cerr << tgt_nphase << ' ' << nphase1 << ' ' << nphase2 << ' ' << (nphase2 - nphase1) << endl;
-		//cerr << "adj1 " << pass << ' ' << nadj1 << ' ' << endl;
-		//cerr << "adj2 " << pass << ' ' << nadj2 << ' ' << endl; // (adjust2 * (phasemult / 2.0)) << endl;
-
-		begin += nadj1;
-		if (pass) end += nadj2;
-
-		Scale(buf, tout, begin, end, scale_tgt); 
-		BurstDetect_New(tout, out_freq, 0, tgt_nphase != 0, plevel1, nphase1); 
-		BurstDetect_New(tout, out_freq, 228, tgt_nphase != 0, plevel2, nphase2); 
-		
-		nadj1 = (nphase1) * 1;
-		nadj2 = (nphase2) * 1;
-
-		adjlen = (end - begin) / (scale_tgt / pal_opline);
-					
-//		cerr << line << " " << pass << ' ' << begin << ' ' << (begin + adjlen) << '/' << end  << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << ' ' << nphase1 << ' ' << nphase2 << endl;
-	}
-
-	if (fabs(begin - orig_begin) > 3) {
-		cerr << "ERRP begin " << frameno + 1 << ":" << oline << ' ' << orig_begin << ' ' << begin << ' ' << orig_end << ' ' << end << endl;
-//		begin = orig_begin;
-	} 
-	if (fabs(end - orig_end) > 3) {
-		cerr << "ERRP end " << frameno + 1 << ":" << oline << ' ' << orig_begin << ' ' << begin << ' ' << orig_end << ' ' << end << endl;
-//		end = orig_end;
-	} 
-
-	{
-		double orig_len = orig_end - orig_begin;
-		double new_len = end - begin;
-		cerr << "len " << frameno + 1 << ":" << oline << ' ' << orig_len << ' ' << new_len << ' ' << orig_begin << ' ' << begin << ' ' << orig_end << ' ' << end << endl;
-		if (fabs(new_len - orig_len) > (in_freq * .45)) {
-			cerr << "ERRP len " << frameno + 1 << ":" << oline << ' ' << orig_len << ' ' << new_len << ' ' << orig_begin << ' ' << begin << ' ' << orig_end << ' ' << end << endl;
-
-			begin = orig_begin;
-			end = orig_end;
-			Scale(buf, tout, begin, end, scale_tgt); 
-			BurstDetect_New(tout, out_freq, 0, tgt_nphase != 0, plevel1, nphase1); 
-			BurstDetect_New(tout, out_freq, 228, tgt_nphase != 0, plevel2, nphase2); 
-		}
-	}
-	
-	cerr << "final levels " << plevel1 << ' ' << plevel2 << endl;
-
-	// trigger phase re-adjustment if we keep adjusting over 3 pix/line
-	if (fabs(begin - orig_begin) > (in_freq * .375)) {
-		offburst++;
-	} else {
-		offburst = 0;
-	}
-
-wrapup:
-	// LD only: need to adjust output value for velocity, and remove defects as possible
-	double lvl_adjust = ((((end - begin) / iscale_tgt) - 1) * 2.0) + 1;
-	int ldo = -128;
-
-	double rotdetect = p_rotdetect * inscale;
-	
-	double diff[(int)(212 * out_freq)];
-	double prev_o = 0;
-	for (int h = 0; (oline > 2) && (h < (211 * out_freq)); h++) {
-		double v = tout[h + (int)(15 * out_freq)];
-		double ire = in_to_ire(v);
-		double o;
-
-		if (in_freq != 4) {
-			double freq = (ire * ((9300000 - 7600000) / 100)) + 7600000; 
-
-//			cerr << h << ' ' << v << ' ' << ire << ' ' << freq << ' ';
-			freq *= lvl_adjust;
-//			cerr << freq << ' ';
-
-			ire = ((freq - 7600000) / 1700000) * 100;
-//			cerr << ire << endl;
-			o = ire_to_out(ire);
-		} else { 
-			o = ire_to_out(in_to_ire(v));
-		}
-
-		if (despackle && (h > (20 * out_freq)) && ((fabs(o - prev_o) > rotdetect) || (ire < -25))) {
-//		if (despackle && (ire < -30) && (h > 80)) {
-			if ((h - ldo) > 16) {
-				for (int j = h - 4; j > 2 && j < h; j++) {
-					double to = (frame[oline - 2][j - 2] + frame[oline - 2][j + 2]) / 2;
-					frame[oline][j] = clamp(to, 0, 65535);
-				}
-			}
-			ldo = h;
-		}
-
-		if (((h - ldo) < 16) && (h > 4)) {
-			o = (frame[oline - 2][h - 2] + frame[oline - 2][h + 2]) / 2;
-//			cerr << "R " << o << endl;
-		}
-
-		frame[oline][h] = clamp(o, 0, 65535);
-		diff[h] = o - prev_o;
-		prev_o = o;
-		//if (!(oline % 2)) frame[oline][h] = clamp(o, 0, 65535);
-	}
-	
-	for (int h = 0; f_diff && (oline > 2) && (h < (211 * out_freq)); h++) {
+	for (int h = 0; f_diff && (oline > 2) && (h < 1135); h++) {
 		frame[oline][h] = clamp(diff[h], 0, 65535);
 	}
 	
@@ -857,14 +676,28 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 		bool canstartsync = false;
 		if ((line < 0) || InRange(line, 310, 317) || InRange(line, 623, 630)) canstartsync = true;
 
-		// recovery routine for if we get a burst way out of place
-		if (!canstartsync && ((peaks[i].center - peaks[i - 1].center) < (207.5 * in_freq)) && (peaks[i].center > peaks[i - 1].center)) {
-			cerr << "ohoh." << i << ' ' << peaks[i].center << ' ' << peaks[i].center - peaks[i - 1].center << ' ' << peaks.size() << endl ;
+		if (!canstartsync && ((peaks[i].center - peaks[i - 1].center) > (440 * in_freq)) && (peaks[i].center > peaks[i - 1].center)) {
+			// looks like we outright skipped a line because of corruption.  add a new one! 
+			cerr << "LONG " << i << ' ' << peaks[i].center << ' ' << peaks[i].center - peaks[i - 1].center << ' ' << peaks.size() << endl ;
+
+			Line l;
+
+			l.center = peaks[i - 1].center + 1820;
+			l.peak   = peaks[i - 1].peak;
+			l.bad = true;
+			l.linenum = -1;
+
+			peaks.insert(peaks.begin()+i, l);
+
+			i--;
+			line--;
+		} else if (!canstartsync && ((peaks[i].center - peaks[i - 1].center) < (207.5 * in_freq)) && (peaks[i].center > peaks[i - 1].center)) {
+			cerr << "SHORT " << i << ' ' << peaks[i].center << ' ' << peaks[i].center - peaks[i - 1].center << ' ' << peaks.size() << endl ;
 			peaks.erase(peaks.begin()+i);
 			i--;
 //			cerr << "ohoh." << i << ' ' << peaks.size() << endl ;
 			line--;
-		} else if (InRange(peaks[i].peak, canstartsync ? .25 : .0, .9)) {
+		} else if (InRange(peaks[i].peak, canstartsync ? .25 : .0, .5)) {
 			int cbeginsync = 0, cendsync = 0;
 			int center = peaks[i].center;
 
