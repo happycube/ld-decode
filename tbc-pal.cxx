@@ -40,7 +40,7 @@ struct VFormat {
 //const double pal_uline = 64; // usec_
 const int pal_iplinei = 229 * in_freq; // pixels per line
 const double pal_ipline = 229 * in_freq; // pixels per line
-const double pal_opline = 1135; // pixels per line
+const double pal_opline = 980; // pixels per line
 //const int pal_oplinei = 229 * out_freq; // pixels per line
 
 const double pixels_per_usec = 1000000.0 / (in_freq * (1000000.0 * 315.0 / 88.0)); 
@@ -169,7 +169,7 @@ double black_ire = 7.5;
 
 int write_locs = -1;
 
-uint16_t frame[625][1135];
+uint16_t frame[625][980];
 
 Filter f_bpcolor4(f_colorbp4);
 Filter f_bpcolor8(f_colorbp8);
@@ -510,9 +510,9 @@ wrapup:
 
 	double rotdetect = p_rotdetect * inscale;
 	
-	double diff[1135];
+	double diff[980];
 	double prev_o = 0;
-	for (int h = 0; (oline > 2) && (h < 1135); h++) {
+	for (int h = 0; (oline > 2) && (h < 980); h++) {
 		double v = tout[h + 60];
 		double ire = in_to_ire(v);
 		double o;
@@ -553,7 +553,7 @@ wrapup:
 		//if (!(oline % 2)) frame[oline][h] = clamp(o, 0, 65535);
 	}
 	
-	for (int h = 0; f_diff && (oline > 2) && (h < 1135); h++) {
+	for (int h = 0; f_diff && (oline > 2) && (h < 980); h++) {
 		frame[oline][h] = clamp(diff[h], 0, 65535);
 	}
 	
@@ -711,8 +711,8 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 				cbeginsync++;
 				cendsync++;
 	
-				if (buf[center - x] < 30000) cbeginsync = 0;
-				if (buf[center + x] < 30000) cendsync = 0;
+				if (buf[center - x] < 25500) cbeginsync = 0;
+				if (buf[center + x] < 25500) cendsync = 0;
 
 				if ((cbeginsync == 4) && (peaks[i].beginsync < 0)) peaks[i].beginsync = center - x + 4;			
 				if ((cendsync == 4) && (peaks[i].endsync < 0)) peaks[i].endsync = center + x - 4;			
@@ -748,9 +748,9 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 
 				cerr << "BADLG " << lg << endl;
 				double gap = ((peaks[i + lg].beginsync - peaks[i - lg].beginsync) / (lg * 2));
-				peaks[i].beginsync = peaks[i - lg].beginsync + gap; 
-				peaks[i].center = peaks[i - lg].center + gap; 
-				peaks[i].endsync = peaks[i - lg].endsync + gap; 
+				peaks[i].beginsync = peaks[i - lg].beginsync + (gap * lg); 
+				peaks[i].center = peaks[i - lg].center + (gap * lg); 
+				peaks[i].endsync = peaks[i - lg].endsync + (gap * lg); 
 				cerr << peaks[i].beginsync << ' ' << peaks[i].center << ' ' << peaks[i].endsync << ' ' << peaks[i].endsync - peaks[i].beginsync << endl;
 			}
 		}
