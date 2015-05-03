@@ -37,10 +37,12 @@ struct VFormat {
 	double a;	
 };
 
+double burstfreq = 4.43361875;
+
 //const double pal_uline = 64; // usec_
 const int pal_iplinei = 229 * in_freq; // pixels per line
 const double pal_ipline = 229 * in_freq; // pixels per line
-const double pal_opline = 980; // pixels per line
+const double pal_opline = 1052; // pixels per line
 //const int pal_oplinei = 229 * out_freq; // pixels per line
 
 const double pixels_per_usec = 1000000.0 / (in_freq * (1000000.0 * 315.0 / 88.0)); 
@@ -58,7 +60,7 @@ const double pal_hsynctoline = pal_opline * (pal_blanklen / 64);
 // contains padding
 double scale15_len = 15000000.0 * (70.7 / 1000000.0);
 // endsync to next endsync
-double scale4fsc_len = 4 * 4433618 * (64 / 1000000.0);
+double scale4fsc_len = 4 * 4433618 * (70.7 / 1000000.0);
 
 double p_rotdetect = 80;
 
@@ -169,7 +171,7 @@ double black_ire = 7.5;
 
 int write_locs = -1;
 
-uint16_t frame[625][980];
+uint16_t frame[610][1052];
 
 Filter f_bpcolor4(f_colorbp4);
 Filter f_bpcolor8(f_colorbp8);
@@ -190,22 +192,27 @@ int syncid_offset = syncid8_offset;
 
 bool PilotDetect(double *line, double loc, double &plevel, double &pphase) 
 {
-	int len = (10 * 4);
-	int count = 0, cmin = 0;
-	double ptot = 0, tpeak = 0, tmin = 0;
+	int len = (8 * in_freq);
+	int count = 0, cmax = 0;
+	double ptot = 0, tpeak = 0, tmax = 0;
 	double start = 0;
 
 	double phase = 0;
 
+	loc *= out_freq;
+
 //	cerr << ire_to_in(7) << ' ' << ire_to_in(16) << endl;
 	double highmin = 28000;//ire_to_in(f_highburst ? 12 : 7);
-	double highmax = 31250;//);
-	double lowmin = ire_to_in(f_highburst ? -12 : -7);
-	double lowmax = ire_to_in(f_highburst ? -23 : -22);
+	double highmax = 31000;//);
+	double lowmin = 7500;
+	double lowmax = 12000;
+//	double lowmin = 3000;
+//	double lowmax = 5000;
 //	cerr << lowmin << ' ' << lowmax << endl;
 
 	for (int i = loc + start; i < loc + len; i++) {
-		if ((line[i] > highmin) && (line[i] < highmax) && (line[i] > line[i - 1]) && (line[i] > line[i + 1])) {
+		//if ((line[i] > highmin) && (line[i] < highmax) && (line[i] > line[i - 1]) && (line[i] > line[i + 1])) {
+		if ((line[i] > lowmin) && (line[i] < lowmax) && (line[i] < line[i - 1]) && (line[i] < line[i + 1])) {
 			double c = round(((i + peakdetect_quad(&line[i - 1])) / 4)) * 4;
 
 			phase = (i + peakdetect_quad(&line[i - 1])) - c;
@@ -217,9 +224,9 @@ bool PilotDetect(double *line, double loc, double &plevel, double &pphase)
 			count++;
 			cerr << "BDN " << i << ' ' << in_to_ire(line[i]) << ' ' << line[i - 1] << ' ' << line[i] << ' ' << line[i + 1] << ' ' << phase << ' ' << (i + peakdetect_quad(&line[i - 1])) << ' ' << c << ' ' << ptot << endl; 
 		} 
-		else if (/*(line[i] < lowmin) && (line[i] > lowmax) && */ (line[i] < line[i - 1]) && (line[i] < line[i + 1])) {
-			cmin++;
-			tmin += line[i];
+		else if (/*(line[i] < lowmin) && (line[i] > lowmax) && */ (line[i] > line[i - 1]) && (line[i] > line[i + 1])) {
+			cmax++;
+			tmax += line[i];
 		}
 	}
 
@@ -235,13 +242,16 @@ bool PilotDetect(double *line, double loc, double &plevel, double &pphase)
 int get_oline(double line)
 {
 	int l = (int)line;
+	int rv = -1;
 
-	if (l < 10) return -1;
-	else if (l < 313) return (l - 10) * 2;
-	else if (l < 319) return -1;
-	else if (l < 625) return ((l - 319) * 2) + 1;
+	if (l < 10) rv = -1;
+	else if (l < 314) rv = (l - 10) * 2;
+	else if (l < 319) rv = -1;
+	else if (l < 622) rv = ((l - 319) * 2) + 1;
 
-	return -1;
+	if (rv > 609) rv = -1;
+
+	return rv;
 }
 
 double pleft = 0, pright = 0;
@@ -355,11 +365,14 @@ double ProcessLine(uint16_t *buf, vector<Line> &lines, int index)
 	bool err = lines[index].bad;
 
 	// use 1usec of padding
+	double pixels_per_usec = 28.625; 
 	double begin = lines[index].beginsync - pixels_per_usec;
 	double end = lines[index+1].endsync + pixels_per_usec;
 
 	double orig_begin = begin;
 	double orig_end = end;
+
+	cerr << "PPL " << line << ' ' << lines[index].beginsync << ' ' << lines[index+1].endsync << ' ' << lines[index+1].endsync - lines[index].beginsync << endl;
 
 	cerr << "PL " << line << ' ' << begin << ' ' << end << ' ' << err << ' ' << end - begin << endl;
 
@@ -372,10 +385,9 @@ double ProcessLine(uint16_t *buf, vector<Line> &lines, int index)
 
 	cerr << "a" << endl;
 	
-	bool valid = PilotDetect(tout, 2, plevel1, nphase1); 
+	bool valid = PilotDetect(tout, 0, plevel1, nphase1); 
 	cerr << "b" << endl;
-	valid &= PilotDetect(tout, 242, plevel2, nphase2); 
-	cerr << "c" << endl;
+	PilotDetect(tout, 240, plevel2, nphase2); 
 
 	cerr << "levels " << plevel1 << ' ' << plevel2 << " valid " << valid << endl;
 
@@ -408,8 +420,8 @@ double ProcessLine(uint16_t *buf, vector<Line> &lines, int index)
 		if (pass) end += nadj2;
 
 		Scale(buf, tout, begin, end, scale15_len); 
-		PilotDetect(tout, 2, plevel1, nphase1); 
-		PilotDetect(tout, 242, plevel2, nphase2); 
+		PilotDetect(tout, 0, plevel1, nphase1); 
+		PilotDetect(tout, 240, plevel2, nphase2); 
 		
 		nadj1 = (nphase1) * 1;
 		nadj2 = (nphase2) * 1;
@@ -418,7 +430,7 @@ double ProcessLine(uint16_t *buf, vector<Line> &lines, int index)
 					
 //		cerr << line << " " << pass << ' ' << begin << ' ' << (begin + adjlen) << '/' << end  << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << ' ' << nphase1 << ' ' << nphase2 << endl;
 	}
-
+#if 0
 	if (fabs(begin - orig_begin) > 3) {
 		cerr << "ERRP begin " << frameno + 1 << ":" << oline << ' ' << orig_begin << ' ' << begin << ' ' << orig_end << ' ' << end << endl;
 //		begin = orig_begin;
@@ -438,12 +450,14 @@ double ProcessLine(uint16_t *buf, vector<Line> &lines, int index)
 			begin = orig_begin;
 			end = orig_end;
 			Scale(buf, tout, begin, end, scale15_len); 
-			PilotDetect(tout, 2, plevel1, nphase1); 
-			PilotDetect(tout, 242, plevel2, nphase2); 
+			PilotDetect(tout, 0, plevel1, nphase1); 
+			PilotDetect(tout, 240, plevel2, nphase2); 
 		}
 	}
-	
+#endif
 	cerr << "final levels " << plevel1 << ' ' << plevel2 << endl;
+	begin += 4.0 * (burstfreq / 3.75);
+	end += 4.0 * (burstfreq / 3.75);
 	Scale(buf, tout, begin, end, scale4fsc_len); 
 
 wrapup:
@@ -453,10 +467,10 @@ wrapup:
 
 	double rotdetect = p_rotdetect * inscale;
 	
-	double diff[980];
+	double diff[1052];
 	double prev_o = 0;
-	for (int h = 0; (oline > 2) && (h < 980); h++) {
-		double v = tout[h + 60];
+	for (int h = 0; (oline > 2) && (h < 1052); h++) {
+		double v = tout[h + 94];
 		double ire = in_to_ire(v);
 		double o;
 
@@ -496,7 +510,7 @@ wrapup:
 		//if (!(oline % 2)) frame[oline][h] = clamp(o, 0, 65535);
 	}
 	
-	for (int h = 0; f_diff && (oline > 2) && (h < 980); h++) {
+	for (int h = 0; f_diff && (oline > 2) && (h < 1052); h++) {
 		frame[oline][h] = clamp(diff[h], 0, 65535);
 	}
 	
