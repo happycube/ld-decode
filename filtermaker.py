@@ -215,6 +215,12 @@ hilbert_filter = np.fft.fftshift(
 WriteFilter("hilbertr", hilbert_filter.real)
 WriteFilter("hilberti", hilbert_filter.imag)
 
+# PAL sync 3.75mhz pilot burst filter 
+freq_pal4fsc = 4 * 4.43361875
+Npilot = 16
+pilot_filter = sps.firwin(Npilot + 1, [2.0 / (freq_pal4fsc / 2), 6.0 / (freq_pal4fsc / 2)], window='hamming', pass_zero=False)
+WriteFilter("pilot", pilot_filter)
+
 # fm deemphasis (75us)
 table = [[.000, 0], [.1, -.01], [.5, -.23], [1, -.87], [2, -2.76], [3, -4.77], [4, -6.58], [5, -8.16], [6, -9.54], [7, -10.75], [8, -11.82], [9, -12.78], [10, -13.66], [11, -14.45], [12, -15.18], [13, -15.86], [14, -16.49], [15, -17.07], [16, -17.62], [17, -18.14], [18, -18.63], [19, -19.09], [20, -19.53], [24, -20]]
 

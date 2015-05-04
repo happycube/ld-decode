@@ -201,32 +201,38 @@ bool PilotDetect(double *line, double loc, double &plevel, double &pphase)
 
 	loc *= out_freq;
 
+	double linef[len + 32];	
+	int offset = loc + start;
+	for (int i = 0; i < len + 16; i++) {
+		double v = f_pilot.feed(line[i + offset]);
+		if (i >= 8) linef[i] = v;
+//		cerr << i << ' ' << line[i + offset] << ' ' << linef[i] << endl;
+	}
 //	cerr << ire_to_in(7) << ' ' << ire_to_in(16) << endl;
-	double highmin = 28000;//ire_to_in(f_highburst ? 12 : 7);
-	double highmax = 31000;//);
-	double lowmin = 7500;
-	double lowmax = 12000;
+	double min = 7500;
+	double max = 20000;
 //	double lowmin = 3000;
 //	double lowmax = 5000;
 //	cerr << lowmin << ' ' << lowmax << endl;
 
-	for (int i = loc + start; i < loc + len; i++) {
+	for (int i = 1; i < len; i++) {
 		//if ((line[i] > highmin) && (line[i] < highmax) && (line[i] > line[i - 1]) && (line[i] > line[i + 1])) {
-		if ((line[i] > lowmin) && (line[i] < lowmax) && (line[i] < line[i - 1]) && (line[i] < line[i + 1])) {
-			double c = round(((i + peakdetect_quad(&line[i - 1])) / 4)) * 4;
+//		cerr << line[i + offset] << ' ' << linef[i] << endl;
+		if ((linef[i] < -min) && (linef[i] > -max) && (linef[i] < linef[i - 1]) && (linef[i] < linef[i + 1])) {
+			double c = round(((i + peakdetect_quad(&linef[i - 1])) / 4)) * 4;
 
-			phase = (i + peakdetect_quad(&line[i - 1])) - c;
+			phase = (i + peakdetect_quad(&linef[i - 1])) - c;
 
 			ptot += phase;
 
-			tpeak += line[i];
+			tpeak += linef[i];
 
 			count++;
-			cerr << "BDN " << i << ' ' << in_to_ire(line[i]) << ' ' << line[i - 1] << ' ' << line[i] << ' ' << line[i + 1] << ' ' << phase << ' ' << (i + peakdetect_quad(&line[i - 1])) << ' ' << c << ' ' << ptot << endl; 
+			cerr << "BDN " << i << ' ' << in_to_ire(linef[i]) << ' ' << linef[i - 1] << ' ' << linef[i] << ' ' << linef[i + 1] << ' ' << phase << ' ' << (i + peakdetect_quad(&linef[i - 1])) << ' ' << c << ' ' << ptot << endl; 
 		} 
-		else if (/*(line[i] < lowmin) && (line[i] > lowmax) && */ (line[i] > line[i - 1]) && (line[i] > line[i + 1])) {
+		else if (/*(line[i] < lowmin) && (line[i] > lowmax) && */ (linef[i] > linef[i - 1]) && (linef[i] > linef[i + 1])) {
 			cmax++;
-			tmax += line[i];
+			tmax += linef[i];
 		}
 	}
 
@@ -234,7 +240,7 @@ bool PilotDetect(double *line, double loc, double &plevel, double &pphase)
 	pphase = (ptot / count) * 1;
 
 	cerr << "plevel " << plevel << " pphase " << pphase << ' ' << count << endl;
-
+//	exit(0);
 	return (count >= 3);
 }
 	
@@ -668,8 +674,8 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 				cbeginsync++;
 				cendsync++;
 	
-				if (buf[center - x] < 25500) cbeginsync = 0;
-				if (buf[center + x] < 25500) cendsync = 0;
+				if (buf[center - x] < 26500) cbeginsync = 0;
+				if (buf[center + x] < 26500) cendsync = 0;
 
 				if ((cbeginsync == 4) && (peaks[i].beginsync < 0)) peaks[i].beginsync = center - x + 4;			
 				if ((cendsync == 4) && (peaks[i].endsync < 0)) peaks[i].endsync = center + x - 4;			
@@ -679,7 +685,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 			if (!peaks[i - 1].bad) peaks[i].bad |= get_oline(line) > 22 && (!InRangeF(peaks[i].beginsync - peaks[i-1].beginsync, 229 - f_tol, 229 + f_tol) || !InRangeF(peaks[i].endsync - peaks[i-1].endsync, 229 - f_tol, 229 + f_tol)); 
 			peaks[i].linenum = line;
 			
-			cerr << "P2_" << line << ' ' << i << ' ' << peaks[i].bad << ' ' <<  peaks[i].peak << ' ' << peaks[i].center << ' ' << peaks[i].center - peaks[i-1].center << ' ' << peaks[i].beginsync << ' ' << peaks[i].endsync << ' ' << peaks[i].endsync - peaks[i].beginsync << endl;
+			cerr << "P2_" << line << ' ' << i << ' ' << peaks[i].bad << ' ' <<  peaks[i].peak << ' ' << peaks[i].center << ' ' << peaks[i].center - peaks[i-1].center << ' ' << peaks[i].beginsync << ' ' << peaks[i].endsync << ' ' << peaks[i].endsync - peaks[i].beginsync << ' ' << peaks[i].beginsync - peaks[i-1].beginsync << endl;
 				
 			// HACK!
 			if (line == 318) peaks[i].linenum = -1;
