@@ -192,7 +192,7 @@ int syncid_offset = syncid8_offset;
 
 bool PilotDetect(double *line, double loc, double &plevel, double &pphase) 
 {
-	int len = (8 * in_freq);
+	int len = (12 * in_freq);
 	int count = 0, cmax = 0;
 	double ptot = 0, tpeak = 0, tmax = 0;
 	double start = 0;
@@ -209,13 +209,13 @@ bool PilotDetect(double *line, double loc, double &plevel, double &pphase)
 //		cerr << i << ' ' << line[i + offset] << ' ' << linef[i] << endl;
 	}
 //	cerr << ire_to_in(7) << ' ' << ire_to_in(16) << endl;
-	double min = 7500;
+	double min = 5000;
 	double max = 20000;
 //	double lowmin = 3000;
 //	double lowmax = 5000;
 //	cerr << lowmin << ' ' << lowmax << endl;
 
-	for (int i = 1; i < len; i++) {
+	for (int i = 28; i < len; i++) {
 		//if ((line[i] > highmin) && (line[i] < highmax) && (line[i] > line[i - 1]) && (line[i] > line[i + 1])) {
 //		cerr << line[i + offset] << ' ' << linef[i] << endl;
 		if ((linef[i] < -min) && (linef[i] > -max) && (linef[i] < linef[i - 1]) && (linef[i] < linef[i + 1])) {
@@ -404,12 +404,13 @@ double ProcessLine(uint16_t *buf, vector<Line> &lines, int index)
 		Scale(buf, tout, begin, end, scale4fsc_len); 
 		goto wrapup;
 	}
-
+/*
 	if (err) {
+		cerr << "ERR\n";
 		begin += prev_offset;
 		end += prev_offset;
 	}
-
+*/
 	adjlen = (end - begin) / (scale15_len / pal_opline);
 
 	for (pass = 0; (pass < 12) && ((fabs(nadj1) + fabs(nadj2)) > .05); pass++) {
@@ -422,8 +423,12 @@ double ProcessLine(uint16_t *buf, vector<Line> &lines, int index)
 		//cerr << "adj1 " << pass << ' ' << nadj1 << ' ' << endl;
 		//cerr << "adj2 " << pass << ' ' << nadj2 << ' ' << endl; // (adjust2 * (phasemult / 2.0)) << endl;
 
+		if (!pass) nadj2 = 0;
+	
+		cerr << "adjusting " << nadj1 << ' ' << nadj2 << endl;
+
 		begin += nadj1;
-		if (pass) end += nadj2;
+		end += nadj2;
 
 		Scale(buf, tout, begin, end, scale15_len); 
 		PilotDetect(tout, 0, plevel1, nphase1); 
@@ -436,7 +441,7 @@ double ProcessLine(uint16_t *buf, vector<Line> &lines, int index)
 					
 //		cerr << line << " " << pass << ' ' << begin << ' ' << (begin + adjlen) << '/' << end  << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << ' ' << nphase1 << ' ' << nphase2 << endl;
 	}
-#if 0
+#if 1
 	if (fabs(begin - orig_begin) > 3) {
 		cerr << "ERRP begin " << frameno + 1 << ":" << oline << ' ' << orig_begin << ' ' << begin << ' ' << orig_end << ' ' << end << endl;
 //		begin = orig_begin;
@@ -445,6 +450,8 @@ double ProcessLine(uint16_t *buf, vector<Line> &lines, int index)
 		cerr << "ERRP end " << frameno + 1 << ":" << oline << ' ' << orig_begin << ' ' << begin << ' ' << orig_end << ' ' << end << endl;
 //		end = orig_end;
 	} 
+
+	cerr << "offset " << begin - orig_begin << ' ' << end - orig_end << endl;
 
 	{
 		double orig_len = orig_end - orig_begin;
