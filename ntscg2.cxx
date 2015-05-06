@@ -105,7 +105,12 @@ inline uint16_t ire_to_out(double ire)
 	
 	return clamp(((ire + 60) * 327.68) + 1, 1, 65535);
 }
-	
+
+double out_to_ire(uint16_t in)
+{
+	return (in / 327.68) - 60;
+}
+
 //def quadpeak(y):
 //        return (y[2] - y[0]) / (2 * (2 * y[1] - y[0] - y[2]))
 
@@ -553,7 +558,65 @@ struct Line {
 
 bool IsPeak(double *p, int i)
 {
-	return (p[i] >= p[i - 1]) && (p[i] >= p[i + 1]);
+	return (fabs(p[i]) >= fabs(p[i - 1])) && (fabs(p[i]) >= fabs(p[i + 1]));
+}
+
+double dots_usec = 4.0 * 315.0 / 88.0;
+uint32_t ReadPhillipsCode(uint16_t *line) {
+	int first_bit = -1; // 108 - dots_usec;
+	const double bitlen = 2.0 * dots_usec;
+	uint32_t out = 0;
+
+	double Δline[844];
+
+	for (int i = 1; i < 843; i++) {
+		Δline[i] = line[i] - line[i - 1]; 
+	}
+
+	// find first positive transition (ala bit) 
+	for (int i = 70; (first_bit == -1) && (i < 140); i++) {
+		cerr << i << ' ' << out_to_ire(line[i]) << ' ' << Δline[i] << endl;
+		if (IsPeak(Δline, i) && (Δline[i] > 10 * 327.68)) {
+			first_bit = i; 
+		}
+	}
+	if (first_bit < 0) return 0;
+
+	for (int i = 0; i < 24; i++) {
+		double val = 0;
+	
+		int rloc = -1, loc = (first_bit + (i * 2 * dots_usec));
+		double rpeak = -1;
+
+		for (int h = loc - 8; (h < loc + 8); h++) {
+			if (IsPeak(Δline, h)) {
+				if (fabs(Δline[h]) > rpeak) {
+					rpeak = fabs(Δline[h]);
+					rloc = h;
+				}
+			}
+		}
+
+		if (rloc == -1) rloc = loc;
+
+		if (Δline[rloc] > 0) {
+			out |= (1 << (23 - i));
+		} 
+		cerr << i << ' ' << loc << ' ' << Δline[loc] << ' ' << rloc << ' ' << Δline[rloc] << ' ' << out << endl; 
+
+		if (!i) first_bit = rloc;
+	}
+	cerr << "P " << hex << out << dec << endl;			
+
+	return out;
+}
+
+void DecodeVBI()
+{
+	for (int i = 14; i < 20; i++) {
+		ReadPhillipsCode(frame[i]);
+	}	
+//	exit(0);
 }
 
 double psync[ntsc_iplinei*1200];
@@ -589,7 +652,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 		}
 	}
 
-	// find first field index - returned as firstline 
+	// PASS 1: find first field index - returned as firstline 
 	int firstpeak = -1, firstline = -1, lastline = -1;
 	for (int i = 9; (i < peaks.size() - 9) && (firstline == -1); i++) {
 		if (peaks[i].peak > 1.0) {
@@ -628,6 +691,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 		}
 	}
 
+	// PASS 2: Line processing and error detection
 	bool field2 = false;
 	int line = -10;
 	for (int i = firstline - 1; i < peaks.size() && (i < (firstline + 540)) && (line < 526); i++) {
@@ -696,6 +760,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 		line++;
 	}
 
+	// PASS 3:  Error correction
 	line = -1;	
 	for (int i = firstline - 1; (i < (firstline + 540)) && (line < 526); i++) {
 		if (peaks[i].linenum > 0) {
@@ -718,6 +783,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 		}
 	}
 
+	// PASS 3:  Wrapup and audio processing 
 	line = -1;	
 	for (int i = firstline - 1; (i < (firstline + 540)) && (line < 526); i++) {
 		if ((peaks[i].linenum > 0) && (peaks[i].linenum <= 525)) {
@@ -743,6 +809,9 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 			}
 		}
 	}
+
+	// Decode VBI data
+	DecodeVBI();
 
 	frameno++;
 	cerr << "WRITING\n";
