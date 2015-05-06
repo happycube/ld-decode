@@ -221,20 +221,22 @@ double CubicInterpolate(double *y, double x)
 	words 0-5: decoded VBI data
 
 	word 6:
-		bits 0-7: chapter # (when implemented)
-		bit 16: CAV/CLV
-		bit 17: Frame begins on odd field (CAV only)
-		bit 18: CX enable/disable
+		bit 0: CAV/CLV
+		bit 1: Frame begins on odd field (CAV only)
+		bit 2: CX enable/disable
+		bit 8: white flag on odd frame
+		bit 9: white flag on even frame
+		bits 16-31: chapter #
 
 	word 7:  Frame # (CAV *and* CLV)
 		CLV:  ((Hour * 3600) + (Minute * 60) + Second) * FPS) + frame #	
 */
 
-#define FRAME_INFO_CLV		0x10000
-#define FRAME_INFO_CAV_ODD	0x20000
-#define FRAME_INFO_CX		0x40000
+#define FRAME_INFO_CLV		0x1
+#define FRAME_INFO_CAV_ODD	0x2
+#define FRAME_INFO_CX		0x4
 
-#define FRAME_INFO_WHITE_ODD	0x100000
-#define FRAME_INFO_WHITE_EVEN	0x200000
+#define FRAME_INFO_WHITE_ODD	0x100
+#define FRAME_INFO_WHITE_EVEN	0x200
 
 #endif

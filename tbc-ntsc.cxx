@@ -41,7 +41,6 @@ struct VFormat {
 const int ntsc_iplinei = 227.5 * in_freq; // pixels per line
 const double ntsc_ipline = 227.5 * in_freq; // pixels per line
 const double ntsc_opline = 227.5 * out_freq; // pixels per line
-//const int ntsc_oplinei = 227.5 * out_freq; // pixels per line
 
 const double ntsc_blanklen = 9.2;
 
@@ -111,14 +110,10 @@ double out_to_ire(uint16_t in)
 	return (in / 327.68) - 60;
 }
 
-//def quadpeak(y):
-//        return (y[2] - y[0]) / (2 * (2 * y[1] - y[0] - y[2]))
-
 inline double peakdetect_quad(double *y) 
 {
 	return (2 * (y[2] - y[0]) / (2 * (2 * y[1] - y[0] - y[2])));
 }
-
 	
 // taken from http://www.paulinternet.nl/?page=bicubic
 inline double CubicInterpolate(uint16_t *y, double x)
@@ -156,7 +151,6 @@ bool InRangeCF(double v, double l, double h) {
 }
 
 // tunables
-
 bool freeze_frame = false;
 bool despackle = true;
 int afd = -1, fd = 0;
@@ -166,9 +160,6 @@ double black_ire = 7.5;
 int write_locs = -1;
 
 uint16_t frame[505][(int)(OUT_FREQ * 211)];
-
-Filter f_bpcolor4(f_colorbp4);
-Filter f_bpcolor8(f_colorbp8);
 
 #ifdef FSC10
 Filter f_longsync(f_dsync10);
@@ -184,16 +175,6 @@ Filter f_syncid(f_syncid8);
 int syncid_offset = syncid8_offset;
 #endif
 
-/*
-inline double wrapadj(double w)
-{
-	return w;
-	while (w > 2)  w -= 4;
-	while (w < -2) w += 4;
-
-	return w;
-}
-*/
 bool BurstDetect_New(double *line, int freq, double _loc, bool tgt, double &plevel, double &pphase) 
 {
 	int len = (28 * freq);
@@ -217,19 +198,13 @@ bool BurstDetect_New(double *line, int freq, double _loc, bool tgt, double &plev
 	}
 
 	for (int i = loc + (start * freq); i < loc + len; i++) {
-//		cerr << line[i] << endl;
 		if ((line[i] > highmin) && (line[i] < highmax) && (line[i] > line[i - 1]) && (line[i] > line[i + 1])) {
 			double c = round(((i + peakdetect_quad(&line[i - 1])) / 4) + (tgt ? 0.5 : 0)) * 4;
-//			c = i + phase;
 
 //			cerr << "B " << i + peakdetect_quad(&line[i - 1]) << ' ' << c << endl;
 
 			if (tgt) c -= 2;
 			phase = (i + peakdetect_quad(&line[i - 1])) - c;
-
-			// XXX: this may be wrong, but phase is almost always negative here
-//			if (phase > 2.2) phase -= 4;
-//			if (phase < -2.2) phase += 4;
 
 			ptot += phase;
 
@@ -265,25 +240,17 @@ int get_oline(double line)
 }
 
 double pleft = 0, pright = 0;
-double _left = 0, _right = 0;
 Filter f_fml(f_fmdeemp), f_fmr(f_fmdeemp);
 
 uint16_t aout[512];
 int aout_i = 0;
 void ProcessAudioSample(float left, float right, double vel)
 {
-//	double scale = ((vel - 1) * 0.5) + 1;
-
-	left *= (65535.0 / 300000.0);
-	left = f_fml.feed(left);
+	left = f_fml.feed(left * (65535.0 / 300000.0));
 	left += 32768;
 	
-	right *= (65535.0 / 300000.0);
-	right = f_fmr.feed(right);
+	right = f_fmr.feed(right * (65535.0 / 300000.0));
 	right += 32768;
-
-	_left = left;
-	_right = right;
 
 	aout[aout_i * 2] = clamp(left, 0, 65535);
 	aout[(aout_i * 2) + 1] = clamp(right, 0, 65535);
@@ -408,20 +375,13 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line, bool err =
 
 		tgt_nphase = ((line + phase + iline) % 2) ? -2 : 0;
 	} 
-//	if (in_freq == 4) goto wrapup;
 
 	adjlen = (end - begin) / (scale_tgt / ntsc_opline);
 	//cerr << line << " " << oline << " " << tgt_nphase << ' ' << begin << ' ' << (begin + adjlen) << '/' << end  << endl;
 
 	for (pass = 0; (pass < 12) && ((fabs(nadj1) + fabs(nadj2)) > .05); pass++) {
-//		cerr << line << " 0" << ' ' << ((end - begin) / scale_tgt) * ntsc_ipline.0 << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
-
 		nadj1 = nphase1 * 1;
 		nadj2 = nphase2 * 1;
-
-		//cerr << tgt_nphase << ' ' << nphase1 << ' ' << nphase2 << ' ' << (nphase2 - nphase1) << endl;
-		//cerr << "adj1 " << pass << ' ' << nadj1 << ' ' << endl;
-		//cerr << "adj2 " << pass << ' ' << nadj2 << ' ' << endl; // (adjust2 * (phasemult / 2.0)) << endl;
 
 		begin += nadj1;
 		if (pass) end += nadj2;
@@ -434,18 +394,7 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line, bool err =
 		nadj2 = (nphase2) * 1;
 
 		adjlen = (end - begin) / (scale_tgt / ntsc_opline);
-					
-//		cerr << line << " " << pass << ' ' << begin << ' ' << (begin + adjlen) << '/' << end  << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << ' ' << nphase1 << ' ' << nphase2 << endl;
 	}
-
-	if (fabs(begin - orig_begin) > 3) {
-		cerr << "ERRP begin " << frameno + 1 << ":" << oline << ' ' << orig_begin << ' ' << begin << ' ' << orig_end << ' ' << end << endl;
-//		begin = orig_begin;
-	} 
-	if (fabs(end - orig_end) > 3) {
-		cerr << "ERRP end " << frameno + 1 << ":" << oline << ' ' << orig_begin << ' ' << begin << ' ' << orig_end << ' ' << end << endl;
-//		end = orig_end;
-	} 
 
 	{
 		double orig_len = orig_end - orig_begin;
@@ -488,19 +437,14 @@ wrapup:
 		if (in_freq != 4) {
 			double freq = (ire * ((9300000 - 8100000) / 100)) + 8100000; 
 
-//			cerr << h << ' ' << v << ' ' << ire << ' ' << freq << ' ';
 			freq *= lvl_adjust;
-//			cerr << freq << ' ';
-
 			ire = ((freq - 8100000) / 1200000) * 100;
-//			cerr << ire << endl;
 			o = ire_to_out(ire);
 		} else { 
 			o = ire_to_out(in_to_ire(v));
 		}
 
 		if (despackle && (h > (20 * out_freq)) && ((fabs(o - prev_o) > rotdetect) || (ire < -25))) {
-//		if (despackle && (ire < -30) && (h > 80)) {
 			if ((h - ldo) > 16) {
 				for (int j = h - 4; j > 2 && j < h; j++) {
 					double to = (frame[oline - 2][j - 2] + frame[oline - 2][j + 2]) / 2;
@@ -518,7 +462,6 @@ wrapup:
 		frame[oline][h] = clamp(o, 0, 65535);
 		diff[h] = o - prev_o;
 		prev_o = o;
-		//if (!(oline % 2)) frame[oline][h] = clamp(o, 0, 65535);
 	}
 	
 	for (int h = 0; f_diff && (oline > 2) && (h < (211 * out_freq)); h++) {
@@ -526,10 +469,7 @@ wrapup:
 	}
 	
         if (!pass) {
-                frame[oline][2] = 32000;
-                frame[oline][3] = 32000;
-                frame[oline][4] = 32000;
-                frame[oline][5] = 32000;
+                for (int x = 2; x < 6; x++) {frame[oline][x] = 32000;}
 		cerr << "BURST ERROR " << line << " " << pass << ' ' << begin << ' ' << (begin + adjlen) << '/' << end  << ' ' << endl;
         } else {
 		prev_offset = begin - orig_begin;
@@ -568,7 +508,6 @@ bool IsPeak(double *p, int i)
 double dots_usec = 4.0 * 315.0 / 88.0;
 uint32_t ReadPhillipsCode(uint16_t *line) {
 	int first_bit = -1; // 108 - dots_usec;
-	const double bitlen = 2.0 * dots_usec;
 	uint32_t out = 0;
 
 	double Δline[844];
@@ -577,7 +516,7 @@ uint32_t ReadPhillipsCode(uint16_t *line) {
 		Δline[i] = line[i] - line[i - 1]; 
 	}
 
-	// find first positive transition (ala bit) 
+	// find first positive transition (exactly halfway into bit 0 which is *always* 1) 
 	for (int i = 70; (first_bit == -1) && (i < 140); i++) {
 //		cerr << i << ' ' << out_to_ire(line[i]) << ' ' << Δline[i] << endl;
 		if (IsPeak(Δline, i) && (Δline[i] > 10 * 327.68)) {
@@ -587,8 +526,6 @@ uint32_t ReadPhillipsCode(uint16_t *line) {
 	if (first_bit < 0) return 0;
 
 	for (int i = 0; i < 24; i++) {
-		double val = 0;
-	
 		int rloc = -1, loc = (first_bit + (i * 2 * dots_usec));
 		double rpeak = -1;
 
@@ -603,9 +540,7 @@ uint32_t ReadPhillipsCode(uint16_t *line) {
 
 		if (rloc == -1) rloc = loc;
 
-		if (Δline[rloc] > 0) {
-			out |= (1 << (23 - i));
-		} 
+		out |= (Δline[rloc] > 0) ? (1 << (23 - i)) : 0;
 //		cerr << i << ' ' << loc << ' ' << Δline[loc] << ' ' << rloc << ' ' << Δline[rloc] << ' ' << out << endl; 
 
 		if (!i) first_bit = rloc;
@@ -630,13 +565,14 @@ bool CheckWhiteFlag(int l)
 void DecodeVBI()
 {
 	uint32_t code[6];
+
 	uint32_t clv_time = 0;
-	uint32_t stat_chap = 0;
+	uint32_t chap = 0;
+	uint32_t flags = 0;
 
 	bool odd = false;
 	bool clv = false;
 	bool cx  = false;
-	int chap = 0;
 	int fnum = 0;
 
 	memset(code, 0, sizeof(code));
@@ -704,14 +640,14 @@ void DecodeVBI()
 	}	
 	cerr << " fnum " << fnum << endl;
 
-	stat_chap = chap | (clv ? FRAME_INFO_CLV : 0) | (odd ? FRAME_INFO_CAV_ODD : 0) | (cx ? FRAME_INFO_CX : 0); 
-	stat_chap |= CheckWhiteFlag(4) ? FRAME_INFO_WHITE_EVEN : 0; 
-	stat_chap |= CheckWhiteFlag(5) ? FRAME_INFO_WHITE_ODD  : 0; 
+	flags = (clv ? FRAME_INFO_CLV : 0) | (odd ? FRAME_INFO_CAV_ODD : 0) | (cx ? FRAME_INFO_CX : 0); 
+	flags |= CheckWhiteFlag(4) ? FRAME_INFO_WHITE_EVEN : 0; 
+	flags |= CheckWhiteFlag(5) ? FRAME_INFO_WHITE_ODD  : 0; 
 
-	cerr << "Status/Chapter " << hex << stat_chap << dec << endl;
+	cerr << "Status " << hex << flags << dec << " chapter " << chap << endl;
 
-	frame[0][6] = stat_chap >> 16;
-	frame[0][7] = stat_chap & 0xffff;
+	frame[0][6] = chap;
+	frame[0][7] = flags;
 	frame[0][8] = fnum >> 16;
 	frame[0][9] = fnum & 0xffff;
 	frame[0][10] = clv_time >> 16;
@@ -894,17 +830,15 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 
 			// XXX:  This is a hack to avoid a crashing condition!
 			if (!((line < 12) && (peaks[i].center - peaks[i-1].center) < (in_freq * 200))) {
-				double linelen = ProcessLine(buf, peaks[i - 1].beginsync - 4, send - 4, line, peaks[i].bad); 
+				ProcessLine(buf, peaks[i - 1].beginsync - 4, send - 4, line, peaks[i].bad); 
 
 				cerr << "PA " << (line / 525.0) + frameno << ' ' << v_read + peaks[i].beginsync << endl;
 				ProcessAudio((line / 525.0) + frameno, v_read + peaks[i].beginsync, abuf); 
 				
 				if (peaks[i].bad) {
 					int oline = get_oline(line);
-               		 		frame[oline][2] = 65000;
-			                frame[oline][3] = 48000;
-          			        frame[oline][4] = 65000;
-			                frame[oline][5] = 48000;
+               		 		frame[oline][2] = frame[oline][4] = 65000;
+			                frame[oline][3] = frame[oline][5] = 0;
 				}
 			}
 		}
@@ -1006,19 +940,14 @@ int main(int argc, char *argv[])
 	unsigned char *cinbuf = (unsigned char *)inbuf;
 	unsigned char *cabuf = (unsigned char *)abuf;
 
-	bool f_test = true;
-
 	int c;
 
 	cerr << std::setprecision(10);
 
 	opterr = 0;
 	
-	while ((c = getopt(argc, argv, "TdHmhgs:n:i:a:AfFt:r:")) != -1) {
+	while ((c = getopt(argc, argv, "dHmhgs:n:i:a:AfFt:r:")) != -1) {
 		switch (c) {
-			case 'T':
-				f_test = !f_test;
-				break;
 			case 'd':	// show differences between pixels
 				f_diff = true;
 				break;
