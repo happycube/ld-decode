@@ -1,4 +1,4 @@
-all: cx tbc-pal tbc-ntsc ntsc4 audiog2 comb 
+all: cx tbc-pal tbc-ntsc ntsc4 audiog2 comb-ntsc 
 
 CFLAGS=-O3 
 CFLAGS=-g -O2 -fno-omit-frame-pointer -mavx -march=corei7-avx
@@ -34,9 +34,7 @@ tbc-ntsc: tbc-ntsc.cxx ld-decoder.h deemp.h
 
 comb-ntsc: comb-ntsc.cxx deemp.h
 	clang++ -lfann -std=c++11  -Wall $(CFLAGS) $(OPENCV_LIBS) -o comb-ntsc comb-ntsc.cxx
-
-comb: combg2.cxx deemp.h
-	clang++ -lfann -std=c++11  -Wall $(CFLAGS) $(OPENCV_LIBS) -o comb combg2.cxx
+	cp comb-ntsc comb
 
 test:
 	./ldd snw.raw | ./ntsc - | ./comb - > snw.rgb
