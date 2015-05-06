@@ -575,7 +575,7 @@ uint32_t ReadPhillipsCode(uint16_t *line) {
 
 	// find first positive transition (ala bit) 
 	for (int i = 70; (first_bit == -1) && (i < 140); i++) {
-		cerr << i << ' ' << out_to_ire(line[i]) << ' ' << Δline[i] << endl;
+//		cerr << i << ' ' << out_to_ire(line[i]) << ' ' << Δline[i] << endl;
 		if (IsPeak(Δline, i) && (Δline[i] > 10 * 327.68)) {
 			first_bit = i; 
 		}
@@ -602,7 +602,7 @@ uint32_t ReadPhillipsCode(uint16_t *line) {
 		if (Δline[rloc] > 0) {
 			out |= (1 << (23 - i));
 		} 
-		cerr << i << ' ' << loc << ' ' << Δline[loc] << ' ' << rloc << ' ' << Δline[rloc] << ' ' << out << endl; 
+//		cerr << i << ' ' << loc << ' ' << Δline[loc] << ' ' << rloc << ' ' << Δline[rloc] << ' ' << out << endl; 
 
 		if (!i) first_bit = rloc;
 	}
@@ -613,8 +613,39 @@ uint32_t ReadPhillipsCode(uint16_t *line) {
 
 void DecodeVBI()
 {
+	uint32_t code[6];
+	bool clv = false;
+
+	memset(code, 0, sizeof(code));
 	for (int i = 14; i < 20; i++) {
-		ReadPhillipsCode(frame[i]);
+		code[i - 14] = ReadPhillipsCode(frame[i]);
+	}
+
+	for (int i = 0; i < 6; i++) {
+		if (0x87ffff == code[i]) {
+//			cerr << code[i] << ' ' << clv << endl;
+			clv = true;
+		}
+//		cerr << code[i] << ' ' << clv << endl;
+	}
+
+	if (clv == true) {
+		cerr << "CLV " << hex << code[0] << ' ' << code[1] << ' ' << code[2] << ' ' << code[3] << ' ' << code[4] << ' ' << code[5] << endl;
+	} else {
+		for (int i = 0; i < 7; i++) {
+			int fnum = 0;
+
+			// CAV
+			if ((code[i] >= 0xf80000) && (code[i] <= 0xffffff)) {
+				fnum = code[i] & 0x0f;
+				fnum += ((code[i] & 0x000f0) >> 4) * 10;
+				fnum += ((code[i] & 0x00f00) >> 8) * 100;
+				fnum += ((code[i] & 0x0f000) >> 12) * 1000;
+				fnum += ((code[i] & 0xf0000) >> 16) * 10000;
+				if (fnum >= 80000) fnum -= 80000;
+				cerr << i << " CAV " << fnum << endl;
+			} 
+		}	
 	}	
 //	exit(0);
 }
@@ -665,7 +696,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 				firstpeak = i;
 				firstline = -1; lastline = -1;
 
-				cerr << firstpeak << ' ' << peaks[firstpeak].peak << ' ' << peaks[firstpeak].center << endl;
+				//cerr << firstpeak << ' ' << peaks[firstpeak].peak << ' ' << peaks[firstpeak].center << endl;
 	
 				for (int i = firstpeak - 1; (i > 0) && (lastline == -1); i--) {
 					if ((peaks[i].peak > 0.2) && (peaks[i].peak < 0.75)) lastline = i;
