@@ -218,7 +218,7 @@ WriteFilter("hilberti", hilbert_filter.imag)
 # PAL sync 3.75mhz pilot burst filter 
 freq_pal4fsc = 4 * 4.43361875
 Npilot = 16
-pilot_filter = sps.firwin(Npilot + 1, [2.0 / (freq_pal4fsc / 2), 6.0 / (freq_pal4fsc / 2)], window='hamming', pass_zero=False)
+pilot_filter = sps.firwin(Npilot + 1, [3.7 / (freq_pal4fsc / 2), 3.8 / (freq_pal4fsc / 2)], window='hamming', pass_zero=False)
 WriteFilter("pilot", pilot_filter)
 
 # fm deemphasis (75us)

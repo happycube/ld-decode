@@ -338,7 +338,8 @@ int phase = -1;
 
 bool first = true;
 double prev_linelen = pal_ipline;
-double prev_offset = 0.0;
+double prev_offset_begin = 0.0;
+double prev_offset_end = 0.0;
 
 double prev_begin = 0;
 
@@ -360,6 +361,8 @@ double ProcessLine(uint16_t *buf, vector<Line> &lines, int index)
 	double tout[8192];
 	double adjlen = pal_ipline;
 	int pass = 0;
+
+	double begin_offset, end_offset;
 
 	double plevel1, plevel2;
 	double nphase1, nphase2;
@@ -398,8 +401,8 @@ double ProcessLine(uint16_t *buf, vector<Line> &lines, int index)
 	cerr << "levels " << plevel1 << ' ' << plevel2 << " valid " << valid << endl;
 
 	if (!valid /* || (plevel1 < (f_highburst ? 1800 : 1000)) || (plevel2 < (f_highburst ? 1000 : 800)) */) {
-		begin += prev_offset;
-		end += prev_offset;
+		begin += prev_offset_begin;
+		end += prev_offset_end;
 	
 		Scale(buf, tout, begin, end, scale4fsc_len); 
 		goto wrapup;
@@ -451,17 +454,31 @@ double ProcessLine(uint16_t *buf, vector<Line> &lines, int index)
 //		end = orig_end;
 	} 
 
-	cerr << "offset " << begin - orig_begin << ' ' << end - orig_end << endl;
+	begin_offset = begin - orig_begin;
+	end_offset = end - orig_end;
+	cerr << "offset " << begin_offset << ' ' << end_offset << endl;
 
 	{
 		double orig_len = orig_end - orig_begin;
 		double new_len = end - begin;
 		cerr << "len " << frameno + 1 << ":" << oline << ' ' << orig_len << ' ' << new_len << ' ' << orig_begin << ' ' << begin << ' ' << orig_end << ' ' << end << endl;
-		if (fabs(new_len - orig_len) > (in_freq * .45)) {
+		if (fabs(new_len - orig_len) > (in_freq * 1)) {
 			cerr << "ERRP len " << frameno + 1 << ":" << oline << ' ' << orig_len << ' ' << new_len << ' ' << orig_begin << ' ' << begin << ' ' << orig_end << ' ' << end << endl;
 
-			begin = orig_begin;
-			end = orig_end;
+/*			while ((begin - orig_begin) > 3) begin -= 4;
+			while ((begin - orig_begin) < -3) begin += 4;
+			while ((end - orig_end) > 3) end -= 4;
+			while ((end - orig_end) < -3) end += 4;
+*/
+			if (fabs(begin_offset) > fabs(end_offset)) 
+				begin = orig_begin + end_offset;
+			else
+				end = orig_end + begin_offset;
+	
+			cerr << "noffset " << begin - orig_begin << ' ' << end - orig_end << endl;
+
+//			begin = orig_begin;
+//			end = orig_end;
 			Scale(buf, tout, begin, end, scale15_len); 
 			PilotDetect(tout, 0, plevel1, nphase1); 
 			PilotDetect(tout, 240, plevel2, nphase2); 
@@ -534,7 +551,8 @@ wrapup:
                 frame[oline][5] = 32000;
 		cerr << "BURST ERROR " << line << " " << pass << ' ' << begin << ' ' << (begin + adjlen) << '/' << end  << ' ' << endl;
         } else {
-		prev_offset = begin - orig_begin;
+		prev_offset_begin = begin - orig_begin;
+		prev_offset_end = begin - orig_begin;
 	}
 
 	cerr << line << " GAP " << begin - prev_begin << ' ' << prev_begin << ' ' << begin << endl;

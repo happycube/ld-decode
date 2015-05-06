@@ -347,6 +347,9 @@ def process_video(data):
 			if (am < len(output_16)):
 				output_16[am] = 0
 
+#	plt.plot(range(0, len(data)), data)
+#	plt.plot(range(0, len(output_16)), output_16)
+#	plt.show()
 	return output_16
 
 # graph for debug

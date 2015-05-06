@@ -1,4 +1,4 @@
-all: cx tbc-pal ntsc ntsc4 audiog2 comb 
+all: cx tbc-pal tbc-ntsc ntsc4 audiog2 comb 
 
 CFLAGS=-O3 
 CFLAGS=-g -O2 -fno-omit-frame-pointer -mavx -march=corei7-avx
@@ -17,22 +17,23 @@ audiog2: audio-g2.cxx deemp.h
 deemp.h: filtermaker.py
 	python3.4 filtermaker.py > deemp.h
 
-ntsc4: ntscg2.cxx ld-decoder.h deemp.h
-	#clang++ -std=c++11  -Wall $(CFLAGS) -DFSC4 -o ntsc4 ntscg2.cxx
-	clang++ -std=c++11  -Wall -g -DFSC4 -o ntsc4 ntscg2.cxx
+ntsc4: tbc-ntsc.cxx ld-decoder.h deemp.h
+	#clang++ -std=c++11  -Wall $(CFLAGS) -DFSC4 -o ntsc4 tbc-ntsc.cxx
+	clang++ -std=c++11  -Wall -g -DFSC4 -o ntsc4 tbc-ntsc.cxx
 
-ntsc10: ntscg2.cxx ld-decoder.h deemp.h
-	clang++ -std=c++11  -Wall $(CFLAGS) -DFSC10 -o ntsc10 ntscg2.cxx
+ntsc10: tbc-ntsc.cxx ld-decoder.h deemp.h
+	clang++ -std=c++11  -Wall $(CFLAGS) -DFSC10 -o ntsc10 tbc-ntsc.cxx
 
 tbc-pal: tbc-pal.cxx ld-decoder.h deemp.h
 	clang++ -std=c++11  -g -Wall $(CFLAGS) -o tbc-pal tbc-pal.cxx
 
-ntsc: ntscg2.cxx ld-decoder.h deemp.h
-	clang++ -std=c++11  -g -Wall $(CFLAGS) -o ntsc ntscg2.cxx
-#	clang++ -std=c++11  -g -Wall -o ntsc ntscg2.cxx
+tbc-ntsc: tbc-ntsc.cxx ld-decoder.h deemp.h
+	clang++ -std=c++11  -g -Wall $(CFLAGS) -o tbc-ntsc tbc-ntsc.cxx
+	cp tbc-ntsc ntsc
+#	clang++ -std=c++11  -g -Wall -o ntsc tbc-ntsc.cxx
 
 comb-ntsc: comb-ntsc.cxx deemp.h
-	clang++ -lfann -std=c++11  -Wall $(CFLAGS) -o comb-ntsc comb-ntsc.cxx
+	clang++ -lfann -std=c++11  -Wall $(CFLAGS) $(OPENCV_LIBS) -o comb-ntsc comb-ntsc.cxx
 
 comb: combg2.cxx deemp.h
 	clang++ -lfann -std=c++11  -Wall $(CFLAGS) $(OPENCV_LIBS) -o comb combg2.cxx

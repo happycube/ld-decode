@@ -31,8 +31,8 @@ if (len(sys.argv) == 5):
 	end = int(sys.argv[4])
 
 #b = (data[84550:(84550+1024)])
-#b = (data[((1135 * 30) + 300):((1135 * 30) + 1650)])
-b = (data[((1135 * line)):((1135 * line) + 1135)])
+#b = (data[((1052 * 30) + 300):((1052 * 30) + 1650)])
+b = (data[((1052 * line)):((1052 * line) + 1052)])
 
 c = b[begin:end]
 mean = np.mean(c)

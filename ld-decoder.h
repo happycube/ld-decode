@@ -213,4 +213,28 @@ double CubicInterpolate(double *y, double x)
 	return p[1] + 0.5 * x*(p[2] - p[0] + x*(2.0*p[0] - 5.0*p[1] + 4.0*p[2] - p[3] + x*(3.0*(p[1] - p[2]) + p[3] - p[0])));
 }
 
+/*
+	TBC line 0 format (presumably shared for PAL/NTSC):
+
+	All data in uint32_t, using pairs of 16-bit words in the line.
+
+	words 0-5: decoded VBI data
+
+	word 6:
+		bits 0-7: chapter # (when implemented)
+		bit 16: CAV/CLV
+		bit 17: Frame begins on odd field (CAV only)
+		bit 18: CX enable/disable
+
+	word 7:  Frame # (CAV *and* CLV)
+		CLV:  ((Hour * 3600) + (Minute * 60) + Second) * FPS) + frame #	
+*/
+
+#define FRAME_INFO_CLV		0x10000
+#define FRAME_INFO_CAV_ODD	0x20000
+#define FRAME_INFO_CX		0x40000
+
+#define FRAME_INFO_WHITE_ODD	0x100000
+#define FRAME_INFO_WHITE_EVEN	0x200000
+
 #endif

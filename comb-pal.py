@@ -9,51 +9,73 @@ freq = 4.0
 
 freq_mhz = 4.43361875 * freq
 freq_hz = freq * 1000000.0
-blocklen = (1135*625) 
+blocklen = (1052*605) 
 
-# inframe is a 1135x505 uint16 buffer.  basically an ntsc frame with syncs removed
+# inframe is a 1052x505 uint16 buffer.  basically an ntsc frame with syncs removed
 
-prevframe = np.empty([625, 1135], dtype=np.uint16)
-prevrgb = np.empty([576, 1135 * 3], dtype=np.uint8)
+prevframe = np.empty([605, 1052], dtype=np.uint16)
+prevrgb = np.empty([576, 1052 * 3], dtype=np.uint8)
 
 burst_len = 28 * 4
 
 color_filter = sps.firwin(33, 0.6 / (freq / 2), window='hamming')
 sync_filter = sps.firwin(65, 0.6 / (freq / 2), window='hamming')
 
-color_filter = [2.214464531115009e-03, 2.779566868356983e-03, 4.009052177841430e-03, 6.041802526864055e-03, 8.964977379775094e-03, 1.280250319629312e-02, 1.750822265693915e-02, 2.296445273166145e-02, 2.898626064895014e-02, 3.533129030361252e-02, 4.171449995422212e-02, 4.782674655050909e-02, 5.335581047849616e-02, 5.800822770944922e-02, 6.153020526791717e-02, 6.372594980605055e-02, 6.447193442389310e-02, 6.372594980605055e-02, 6.153020526791718e-02, 5.800822770944922e-02, 5.335581047849616e-02, 4.782674655050909e-02, 4.171449995422215e-02, 3.533129030361253e-02, 2.898626064895015e-02, 2.296445273166145e-02, 1.750822265693915e-02, 1.280250319629313e-02, 8.964977379775097e-03, 6.041802526864056e-03, 4.009052177841434e-03, 2.779566868356985e-03, 2.214464531115009e-03]
+color_filter = [2.214464531115009e-03, 2.779566868356983e-03, 4.009052177841430e-03, 6.041802526864055e-03, 8.964977379775094e-03, 1.280250319629312e-02, 1.750822265693915e-02, 2.296445273166145e-02, 2.898626064895014e-02, 3.533129030361252e-02, 4.171449995422212e-02, 4.782674655050909e-02, 5.335581047849616e-02, 5.800822770944922e-02, 6.153020526791717e-02, 6.3725941052605055e-02, 6.447193442389310e-02, 6.3725941052605055e-02, 6.153020526791718e-02, 5.800822770944922e-02, 5.335581047849616e-02, 4.782674655050909e-02, 4.171449995422215e-02, 3.533129030361253e-02, 2.898626064895015e-02, 2.296445273166145e-02, 1.750822265693915e-02, 1.280250319629313e-02, 8.964977379775097e-03, 6.041802526864056e-03, 4.009052177841434e-03, 2.779566868356985e-03, 2.214464531115009e-03]
 
 # set up sync color heterodyne table first 
 bhet = np.empty(8, dtype=np.complex)
 for i in range(0, 8):
 	bhet[i] = complex(+np.sin(((i / freq) * 2.0 * np.pi) - (00.0/180.0)), -(np.cos(((i / freq) * 2.0 * np.pi) - (00.0/180.0))))
 
-burst_len = 65
+burst_len = 36
 
-def burst_detect(line):
+def burst_detect_old(line):
 	level = 0
 	phase = 0
+	peak = 0
 
 	obhet = np.empty(burst_len, dtype=np.complex)
 	for i in range(0, burst_len):
-		obhet[i] = bhet[i % 8] * line[i + 90]
+		obhet[i] = bhet[i % 8] * line[i + 20]
 
 	obhet_filt = sps.fftconvolve(obhet, sync_filter)
 	obhet_levels = np.absolute(obhet_filt)
 	obhet_angles = np.angle(obhet_filt)
+	obhet_levels = np.absolute(obhet)
+	obhet_angles = np.angle(obhet)
 	
 #	plt.plot(obhet_levels)
 #	plt.plot(obhet_angles)
 #	plt.show()
 
 	for i in range(0, burst_len):
+		print i, line[i + 20], obhet[i], obhet_levels[i]
 		if obhet_levels[i] > level:
 			level = obhet_levels[i]
 			phase = obhet_angles[i]
+			peak = i
 
-	phase = np.mean(obhet_angles[52:78])
+#	phase = np.mean(obhet_angles[0:40])
 
-	return [level, phase]
+	return [level, phase, peak]
+
+def peak_detect(y):
+	return (2 * (y[2] - y[0]) / (2 * (2 * y[1] - y[0] - y[2])))
+
+def burst_detect(line):
+	level = 0
+	phase = 0
+	peak = 0
+
+	for i in range(20, 68):
+		if (line[i] > line [i - 1]) and (line[i] > line[i + 1]):
+			peak = peak_detect(np.array(line[i - 1: i + 2], dtype=np.float))
+
+			c = np.round((i + peak) / 4) * 4
+			phase = (i + peak) - c
+
+			print i, line[i - 1], line[i], line[i + 1], peak, c, phase 
 
 def clamp(v, min, max):
 	if v < min:
@@ -86,47 +108,49 @@ def torgb(y, u, v):
 
 	return [r, g, b]
 
-# return 1135x576 rgb frame
+# return 1052x576 rgb frame
 def comb(inframe):
-	rgb = np.zeros([625, 1135 * 3], dtype=np.uint8)
+	rgb = np.zeros([605, 1052 * 3], dtype=np.uint8)
 	prevframe = inframe
 		
-	lhet = np.empty([625, 8], dtype=np.complex)
-	adji = np.empty([625, 1135 + 32], dtype=np.double)
-	adjq = np.empty([625, 1135 + 32], dtype=np.double)
-	lohet = np.empty([625, 1135], dtype=np.complex)
-	lohet_filt = np.empty([625, 1135 + 32], dtype=np.complex)
+	lhet = np.empty([605, 8], dtype=np.complex)
+	adji = np.empty([605, 1052 + 32], dtype=np.double)
+	adjq = np.empty([605, 1052 + 32], dtype=np.double)
+	lohet = np.empty([605, 1052], dtype=np.complex)
+	lohet_filt = np.empty([605, 1052 + 32], dtype=np.complex)
 
-	for l in range(24, 620):
+	for l in range(24, 605):
 	#for l in range(100, 320):
 #		plt.plot(inframe[l])
 #		plt.show()
 #		exit()
-		[level, phase] = burst_detect(inframe[l])
-		print l, level, phase
+		burst_detect(inframe[l])
+#		exit()
+		[level, phase, peak] = burst_detect_old(inframe[l])
+		print "burst", l, peak, level, phase
 
 		for i in range(0, 8):
 			lhet[l][i] = complex(np.cos(phase + ((i / freq) * 2.0 * np.pi)), np.sin(phase + ((i / freq) * 2.0 * np.pi)))
 
-		for i in range(0, 1135):
+		for i in range(0, 1052):
 			lohet[l][i] = lhet[l][i % 8] * inframe[l][i]
 
-		for i in range(0, 0 + 1135):
+		for i in range(0, 0 + 1052):
 			adji[l][i] = 2 * lhet[l][(i - 5) % 8].imag 
 			adjq[l][i] = 2 * lhet[l][(i - 5) % 8].real
 #			print lohet[i].real, lohet[i].imag
 
 		lohet_filt[l] = sps.fftconvolve(lohet[l], color_filter)
 #		lohet_filt = np.delete(lohet_filt, np.s_[0:len(output)])
-#		for i in range(0, 1135):
+#		for i in range(0, 1052):
 #			print inframe[l][i - 17], lohet_filt[i].real, lohet_filt[i].imag
 		
 	cmult = 3.5	
-	inframe_fcomp = np.empty([1135 + 32], dtype=np.uint16)
+	inframe_fcomp = np.empty([1052 + 32], dtype=np.uint16)
 
-	row = np.empty([1135 + 32], dtype=np.complex)
+	row = np.empty([1052 + 32], dtype=np.complex)
 
-	for l in range(24, 620):
+	for l in range(24, 603):
 #	for l in range(100, 320):
 		print l
 
@@ -145,7 +169,7 @@ def comb(inframe):
 		agreep = np.fabs(diffp - 1)
 		agreen = np.fabs(diffn - 1)
 
-		for i in range(0, 0 + 1135):
+		for i in range(0, 0 + 1052):
 			if (l == 60):
 				print i, a[i], agreep[i], agreen[i] 
 
@@ -168,10 +192,10 @@ def comb(inframe):
 
 		[r, g, b] = torgb(inframe_fcomp + vadji + vadjq, cmult * row.imag, -cmult * row.real)
 	
-		for i in range(0, 0 + 1135):
-			rgb[l - 25][((i - 155) * 3) + 0] = r[i] 
-			rgb[l - 25][((i - 155) * 3) + 1] = g[i] 
-			rgb[l - 25][((i - 155) * 3) + 2] = b[i] 
+		for i in range(0, 0 + 1052):
+			rgb[l - 25][((i - 85) * 3) + 0] = r[i] 
+			rgb[l - 25][((i - 85) * 3) + 1] = g[i] 
+			rgb[l - 25][((i - 85) * 3) + 2] = b[i] 
 
 #			print r, g, b
 	
@@ -179,7 +203,7 @@ def comb(inframe):
 
 def isWhiteFlag(line):
 	wc = 0
-	for i in range(0, 1135):
+	for i in range(0, 1052):
 		if line[i] > 45000:
 			wc = wc + 1
 
@@ -235,7 +259,7 @@ while len(inbuf) > 0:
 		print len(inbuf), toread
 
 	print len(indata)
-	inframe = np.reshape(indata, (625, 1135))	
+	inframe = np.reshape(indata, (605, 1052))	
 	rgbout = process(inframe)
 
 #	indata = np.delete(indata, np.s_[0:len(output)])

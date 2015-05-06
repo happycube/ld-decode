@@ -49,6 +49,9 @@ def live_plot(samples, normalize=True):
         plt.axis([0, SAMPLE_RATE / 2, 0, max_value])
         fig.canvas.set_window_title(
             'LiveFFT  Range:%d(%d - %d) Mean:%.2f PkBG:%.2fdb' % ( sigrange, rawmax, rawmin, mean, peak_to_background ))
+        print 'LiveFFT  Range:%d(%d - %d) Mean:%.2f PkBG:%.2fdb' % ( sigrange, rawmax, rawmin, mean, peak_to_background )
+	if (sigrange > 240):
+		print 'high range'
 
     fig = plt.figure(1)
     ax1 = fig.add_subplot(1, 1, 1)
