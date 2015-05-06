@@ -1,0 +1,28 @@
+# params:  in file, start point, length, output file
+rm -f $4.wav
+rm -f $4.rpcm $4.pcm $4.tbc
+rm -f $4.mkv $4.avi
+
+export TMPDIR=`mktemp -d /tmp/ldXXXXXX`
+echo $TMPDIR
+
+rm -f $TMPDIR/pipe.rpcm
+mkfifo $TMPDIR/pipe.rpcm
+
+rm -f $TMPDIR/pipe2.pcm $TMPDIR/pipe2a.pcm $TMPDIR/pipe2.tbc
+mkfifo $TMPDIR/pipe2.pcm
+mkfifo $TMPDIR/pipe2a.pcm
+mkfifo $TMPDIR/pipe2.tbc
+
+./ld-decoder.py -S -a $1 $2 $3 | buffer -s 32k -m 2m > $TMPDIR/pipe.rpcm &
+./ld-decoder.py -A -s 2 -S $1 $2 $3 2> /dev/null | buffer -s 19200 -m 2m | ./ntsc -r 80 -a $TMPDIR/pipe.rpcm 2> /dev/null 3> $TMPDIR/pipe2.pcm > $TMPDIR/pipe2.tbc & 
+
+# top one for CX, bottom for not-CX
+cat $TMPDIR/pipe2.pcm | ./cx > $TMPDIR/pipe2a.pcm &
+#cat $TMPDIR/pipe2.pcm  > $TMPDIR/pipe2a.pcm &
+
+#cat $TMPDIR/pipe2.tbc | ./comb -d 3 -I 7.5 -F - 2> /dev/null | buffer -s 512000 -b 2048 | ffmpeg -f u16le -ar 48k -ac 2 -i $TMPDIR/pipe2a.pcm -f rawvideo -r 30000/1001 -pix_fmt rgb48 -s 744x480 -i /dev/stdin -acodec flac -aspect 4:3 -c:v huffyuv -flags +ildct+ilme $4.mkv
+cat $TMPDIR/pipe2.tbc | ./comb -d 3 -a -I 0 -F -p -r 3 -N 0.75 -n 1.5 - 2> /dev/null | buffer -s 512000 -b 2048 | ffmpeg -f u16le -ar 48k -ac 2 -i $TMPDIR/pipe2a.pcm -f rawvideo -r 24000/1001 -pix_fmt rgb48 -s 744x480 -i /dev/stdin -acodec flac -aspect 2.28 -vf "crop=744:280:0:59" -c:v libx264rgb -pix_fmt yuv420p -preset slow -crf 20 $4.mkv
+
+rm -rf $TMPDIR
+
