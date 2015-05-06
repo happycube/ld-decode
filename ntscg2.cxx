@@ -561,6 +561,10 @@ bool IsPeak(double *p, int i)
 	return (fabs(p[i]) >= fabs(p[i - 1])) && (fabs(p[i]) >= fabs(p[i + 1]));
 }
 
+// Essential VBI/Phillips code reference: http://www.daphne-emu.com/mediawiki/index.php/VBIInfo
+
+// (LD-V6000A info page is cryptic but very essential!)
+
 double dots_usec = 4.0 * 315.0 / 88.0;
 uint32_t ReadPhillipsCode(uint16_t *line) {
 	int first_bit = -1; // 108 - dots_usec;
@@ -611,42 +615,107 @@ uint32_t ReadPhillipsCode(uint16_t *line) {
 	return out;
 }
 
+bool CheckWhiteFlag(int l)
+{
+	int wc = 0;
+
+	for (int i = 100; i < 800; i++) {
+		if (out_to_ire(frame[l][i]) > 80) wc++;
+		if (wc >= 200) return true;
+ 	}
+
+	return false;
+}
+
 void DecodeVBI()
 {
 	uint32_t code[6];
+	uint32_t clv_time = 0;
+	uint32_t stat_chap = 0;
+
+	bool odd = false;
 	bool clv = false;
+	bool cx  = false;
+	int chap = 0;
+	int fnum = 0;
 
 	memset(code, 0, sizeof(code));
 	for (int i = 14; i < 20; i++) {
 		code[i - 14] = ReadPhillipsCode(frame[i]);
 	}
+	cerr << "Phillips codes " << hex << code[0] << ' ' << code[1] << ' ' << code[2] << ' ' << code[3] << ' ' << code[4] << ' ' << code[5] << dec << endl;
 
 	for (int i = 0; i < 6; i++) {
+		frame[0][i * 2] = code[i] >> 16;
+		frame[0][(i * 2) + 1] = code[i] & 0xffff;
+		
+		if ((code[i] & 0xf00fff) == 0x800fff) {
+			chap =  ((code[i] & 0x00f000) >> 12);
+			chap += (((code[i] & 0x0f0000) >> 16) - 8) * 10;
+		}
+
+		if ((code[i] & 0xfff000) == 0x8dc000) {
+			cx = true;
+		}
+
 		if (0x87ffff == code[i]) {
-//			cerr << code[i] << ' ' << clv << endl;
 			clv = true;
 		}
-//		cerr << code[i] << ' ' << clv << endl;
 	}
 
 	if (clv == true) {
-		cerr << "CLV " << hex << code[0] << ' ' << code[1] << ' ' << code[2] << ' ' << code[3] << ' ' << code[4] << ' ' << code[5] << endl;
+		uint16_t hours = 0;
+		uint16_t minutes = 0;
+		uint16_t seconds = 0;
+		uint16_t framenum = 0;
+		// Find CLV frame # data
+		for (int i = 0; i < 7; i++) {
+			// CLV Picture #
+			if (((code[i] & 0xf0f000) == 0x80e000) && ((code[i] & 0x0f0000) >= 0x0a0000)) {
+				seconds = (((code[i] & 0x0f0000) - 0x0a0000) >> 16) * 10; 
+				seconds += (code[i] & 0x000f00) >> 8; 
+				framenum = code[i] & 0x0f;
+				framenum += ((code[i] & 0x000f0) >> 4) * 10;
+			} 
+			if ((code[i] & 0xf0ff00) == 0xf0dd00) {
+				hours = ((code[i] & 0x0f0000) >> 16);
+				minutes = code[i] & 0x0f;
+				minutes += ((code[i] & 0x000f0) >> 4) * 10;
+			} 
+		}
+		fnum = (((hours * 3600) + (minutes * 60) + seconds) * 30) + framenum; 
+		clv_time = (hours << 24) | (minutes << 16) || (seconds << 8) || framenum;
+		cerr << "CLV " << hours << ':' << minutes << ':' << seconds << '.' << framenum << endl;
 	} else {
 		for (int i = 0; i < 7; i++) {
-			int fnum = 0;
-
-			// CAV
+			// CAV frame:  f80000 + frame
 			if ((code[i] >= 0xf80000) && (code[i] <= 0xffffff)) {
+				// Convert from BCD to binary
 				fnum = code[i] & 0x0f;
 				fnum += ((code[i] & 0x000f0) >> 4) * 10;
 				fnum += ((code[i] & 0x00f00) >> 8) * 100;
 				fnum += ((code[i] & 0x0f000) >> 12) * 1000;
 				fnum += ((code[i] & 0xf0000) >> 16) * 10000;
 				if (fnum >= 80000) fnum -= 80000;
-				cerr << i << " CAV " << fnum << endl;
+				cerr << i << " CAV frame " << fnum << endl;
+				if (i % 2) odd = true;
 			} 
 		}	
 	}	
+	cerr << " fnum " << fnum << endl;
+
+	stat_chap = chap | (clv ? FRAME_INFO_CLV : 0) | (odd ? FRAME_INFO_CAV_ODD : 0) | (cx ? FRAME_INFO_CX : 0); 
+	stat_chap |= CheckWhiteFlag(4) ? FRAME_INFO_WHITE_EVEN : 0; 
+	stat_chap |= CheckWhiteFlag(5) ? FRAME_INFO_WHITE_ODD  : 0; 
+
+	cerr << "Status/Chapter " << hex << stat_chap << dec << endl;
+
+	frame[0][6] = stat_chap >> 16;
+	frame[0][7] = stat_chap & 0xffff;
+	frame[0][8] = fnum >> 16;
+	frame[0][9] = fnum & 0xffff;
+	frame[0][10] = clv_time >> 16;
+	frame[0][11] = clv_time & 0xffff;
 //	exit(0);
 }
 
