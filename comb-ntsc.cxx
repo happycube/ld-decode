@@ -8,6 +8,8 @@
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/video/tracking.hpp> 
 
+#include "floatfann.h"
+
 using namespace cv;
 
 int ofd = 1;
@@ -25,6 +27,8 @@ bool f_showk = false;
 
 bool f_colorlpf = true;
 
+bool f_neuralnet = false;
+struct fann *ann = NULL;
 double nn_cscale = 32768.0;
 
 bool f_monitor = false;
@@ -43,6 +47,8 @@ int dim = 2;
 
 // NTSC properties
 const double freq = 4.0;
+//const double hlen = 227.5 * freq; 
+//const int hleni = (int)hlen; 
 
 const double dotclk = (1000000.0*(315.0/88.0)*freq); 
 const double dots_usec = dotclk / 1000000.0; 
@@ -297,8 +303,80 @@ class Comb
 			return Frame[fr].rawbuffer[(y * in_x) + x];
 		}
 	
+		void Split2D_NN(int f) 
+		{
+			fann_type *calc_out;
+			fann_type input[28];
+
+			for (int y = 24; y < 503; y++) {
+				int xstart = 70;// + ((Frame[f].rawbuffer[y * in_x] == 16384) * 2);
+
+				for (int x = xstart; x < 840; x+=2) {
+					int ti = 0;
+					for (int ty = y - 2; ty <= y + 2; ty+=2) {
+						for (int tx = x - 2; tx <= x + 1; tx++) {
+							int val = Frame[f].rawbuffer[(ty * in_x) + tx];
+//							input[ti++] = (((double)val)/32768.0) - 1.0;
+						}
+					}
+					double val;
+					val = rawbuffer_val(f, x - 0, y) - rawbuffer_val(f, x - 2, y - 0);	
+					input[ti++] = (((double)val)/32768.0) - 0.0;
+					val = rawbuffer_val(f, x - 0, y) - rawbuffer_val(f, x + 2, y - 0);	
+					input[ti++] = (((double)val)/32768.0) - 0.0;
+					val = rawbuffer_val(f, x - 1, y) - rawbuffer_val(f, x - 3, y - 0);	
+					input[ti++] = (((double)val)/32768.0) - 0.0;
+					val = rawbuffer_val(f, x - 1, y) - rawbuffer_val(f, x + 3, y - 0);	
+					input[ti++] = (((double)val)/32768.0) - 0.0;
+					val = rawbuffer_val(f, x - 1, y) - rawbuffer_val(f, x - 1, y - 2);	
+					input[ti++] = (((double)val)/32768.0) - 0.0;
+					val = rawbuffer_val(f, x - 0, y) - rawbuffer_val(f, x - 0, y - 2);	
+					input[ti++] = (((double)val)/32768.0) - 0.0;
+					val = rawbuffer_val(f, x - 1, y) - rawbuffer_val(f, x - 1, y + 2);	
+					input[ti++] = (((double)val)/32768.0) - 0.0;
+					val = rawbuffer_val(f, x - 0, y) - rawbuffer_val(f, x - 0, y + 2);	
+					input[ti++] = (((double)val)/32768.0) - 0.0;
+					val = rawbuffer_val(f, x - 1, y) - rawbuffer_val(f, x - 3, y - 2);	
+					input[ti++] = (((double)val)/32768.0) - 0.0;
+					val = rawbuffer_val(f, x - 0, y) - rawbuffer_val(f, x - 2, y - 2);	
+					input[ti++] = (((double)val)/32768.0) - 0.0;
+					val = rawbuffer_val(f, x - 1, y) - rawbuffer_val(f, x - 3, y + 2);	
+					input[ti++] = (((double)val)/32768.0) - 0.0;
+					val = rawbuffer_val(f, x - 0, y) - rawbuffer_val(f, x - 2, y + 2);	
+					input[ti++] = (((double)val)/32768.0) - 0.0;
+					val = rawbuffer_val(f, x - 1, y) - rawbuffer_val(f, x + 1, y - 2);	
+					input[ti++] = (((double)val)/32768.0) - 0.0;
+					val = rawbuffer_val(f, x - 0, y) - rawbuffer_val(f, x + 2, y - 2);	
+					input[ti++] = (((double)val)/32768.0) - 0.0;
+					val = rawbuffer_val(f, x - 1, y) - rawbuffer_val(f, x + 1, y + 2);	
+					input[ti++] = (((double)val)/32768.0) - 0.0;
+					val = rawbuffer_val(f, x - 0, y) - rawbuffer_val(f, x + 2, y + 2);	
+					input[ti++] = (((double)val)/32768.0) - 0.0;
+				
+					calc_out = fann_run(ann, input);
+
+					Frame[f].clpbuffer[1][y][x - 1] = calc_out[0] * nn_cscale * 1.00;
+					Frame[f].clpbuffer[1][y][x] = calc_out[1] * nn_cscale * 1.00;	
+					
+					if (1 && y == (f_debugline + 25)) {
+						cerr << "D2DNA " << x << ' ' << Frame[f].clpbuffer[1][y][x - 1] << ' ' << Frame[f].clpbuffer[1][y][x] << endl;
+					}
+	
+//					Frame[f].combk[2][y][x-1] = 0;
+//					Frame[f].combk[2][y][x] = 0;
+					Frame[f].combk[1][y][x-1] = 1 - ((dim >= 3) ? Frame[f].combk[2][y][x-1] : 0);
+					Frame[f].combk[1][y][x] = 1 - ((dim >= 3) ? Frame[f].combk[2][y][x] : 0);
+					Frame[f].combk[0][y][x-1] = 0;
+					Frame[f].combk[0][y][x] = 0;
+				}
+			}	
+//			FilterColorData(f, 1);
+		}	
+	
 		void Split2D(int f) 
 		{
+			if (f_neuralnet && ann) return Split2D_NN(f);
+
 			for (int l = 24; l < in_y; l++) {
 				uint16_t *pline = &Frame[f].rawbuffer[(l - 2) * in_x];	
 				uint16_t *line = &Frame[f].rawbuffer[l * in_x];	
@@ -732,6 +810,76 @@ class Comb
 			memset(output, 0, sizeof(output));
 		}
 
+		void WriteTrainingData(int fnum) {
+			char ofname[512];	
+			sprintf(ofname, "%s%d.train", image_base, fnum); 
+
+			printf("fname %s\n", ofname);
+			FILE *tfile = fopen(ofname, "w+");
+
+			fprintf(tfile, "172350 16 2\n");
+
+			for (int y = 28; (tfile != NULL) && (y < 478); y++) {
+				int xstart = 70;// + ((Frame[1].rawbuffer[y * in_x] == 16384) * 2);
+				for (int x = xstart; x < 844 - 8; x+=2) {
+					for (int ty = y - 2; ty <= y + 2; ty+=2) {
+						for (int tx = x - 2; tx <= x + 1; tx++) {
+							double val = Frame[1].rawbuffer[(ty * in_x) + tx];
+//							fprintf(tfile, "%lf ", (val/32768.0) - 1.0);
+						}
+					}
+
+					int f = 1;
+					double val;
+					val = rawbuffer_val(f, x - 0, y) - rawbuffer_val(f, x - 2, y - 0);	
+					fprintf(tfile, "%lf ", (val/32768.0) - 0.0);
+					val = rawbuffer_val(f, x - 0, y) - rawbuffer_val(f, x + 2, y - 0);	
+					fprintf(tfile, "%lf ", (val/32768.0) - 0.0);
+					val = rawbuffer_val(f, x - 1, y) - rawbuffer_val(f, x - 3, y - 0);	
+					fprintf(tfile, "%lf ", (val/32768.0) - 0.0);
+					val = rawbuffer_val(f, x - 1, y) - rawbuffer_val(f, x + 3, y - 0);	
+					fprintf(tfile, "%lf ", (val/32768.0) - 0.0);
+					val = rawbuffer_val(f, x - 1, y) - rawbuffer_val(f, x - 1, y - 2);	
+					fprintf(tfile, "%lf ", (val/32768.0) - 0.0);
+					val = rawbuffer_val(f, x - 0, y) - rawbuffer_val(f, x - 0, y - 2);	
+					fprintf(tfile, "%lf ", (val/32768.0) - 0.0);
+					val = rawbuffer_val(f, x - 1, y) - rawbuffer_val(f, x - 1, y + 2);	
+					fprintf(tfile, "%lf ", (val/32768.0) - 0.0);
+					val = rawbuffer_val(f, x - 0, y) - rawbuffer_val(f, x - 0, y + 2);	
+					fprintf(tfile, "%lf ", (val/32768.0) - 0.0);
+					val = rawbuffer_val(f, x - 1, y) - rawbuffer_val(f, x - 3, y - 2);	
+					fprintf(tfile, "%lf ", (val/32768.0) - 0.0);
+					val = rawbuffer_val(f, x - 0, y) - rawbuffer_val(f, x - 2, y - 2);	
+					fprintf(tfile, "%lf ", (val/32768.0) - 0.0);
+					val = rawbuffer_val(f, x - 1, y) - rawbuffer_val(f, x - 3, y + 2);	
+					fprintf(tfile, "%lf ", (val/32768.0) - 0.0);
+					val = rawbuffer_val(f, x - 0, y) - rawbuffer_val(f, x - 2, y + 2);	
+					fprintf(tfile, "%lf ", (val/32768.0) - 0.0);
+					val = rawbuffer_val(f, x - 1, y) - rawbuffer_val(f, x + 1, y - 2);	
+					fprintf(tfile, "%lf ", (val/32768.0) - 0.0);
+					val = rawbuffer_val(f, x - 0, y) - rawbuffer_val(f, x + 2, y - 2);	
+					fprintf(tfile, "%lf ", (val/32768.0) - 0.0);
+					val = rawbuffer_val(f, x - 1, y) - rawbuffer_val(f, x + 1, y + 2);	
+					fprintf(tfile, "%lf ", (val/32768.0) - 0.0);
+					val = rawbuffer_val(f, x - 0, y) - rawbuffer_val(f, x + 2, y + 2);	
+					fprintf(tfile, "%lf ", (val/32768.0) - 0.0);
+				
+					//fprintf(tfile, "\n%lf %lf\n", Frame[1].cbuf[y].p[x].i / 32768.0, Frame[1].cbuf[y].p[x].q / 32768.0); 
+					double o1 = Frame[1].clpbuffer[2][y][x - 1];
+					double o2 = Frame[1].clpbuffer[2][y][x];
+
+					if (0 && ((x - xstart) % 4) >= 2) {
+//						fprintf(tfile, "\nflip %d %d %d\n", (x - xstart), x, y);
+						o1 = -o1;
+						o2 = -o2;
+					}
+					fprintf(tfile, "\n%lf %lf\n", o1 / nn_cscale, o2 / nn_cscale); 
+				}
+			}
+			printf("%p\n", tfile);
+			fclose(tfile);
+		}
+
 		void WriteFrame(uint16_t *obuf, int fnum = 0) {
 			cerr << "WR" << fnum << endl;
 			if (!f_writeimages) {
@@ -748,6 +896,8 @@ class Comb
 			} else {
 				char ofname[512];
 				
+				if (f_training) WriteTrainingData(fnum);
+
 				sprintf(ofname, "%s%d.rgb", image_base, fnum); 
 				cerr << "W " << ofname << endl;
 				ofd = open(ofname, O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR | S_IROTH);
@@ -803,6 +953,10 @@ class Comb
 			Filter lp_3dqp({0.016282173233472, 0.046349864271587, 0.121506650149374, 0.199579915155249, 0.232562794380638, 0.199579915155249, 0.121506650149374, 0.046349864271587, 0.016282173233472}, {1.0});
 			Filter lp_3dqn({0.016282173233472, 0.046349864271587, 0.121506650149374, 0.199579915155249, 0.232562794380638, 0.199579915155249, 0.121506650149374, 0.046349864271587, 0.016282173233472}, {1.0});
 
+//			AdjustY(0, pbuf);
+//			AdjustY(2, nbuf);
+			
+		//	for (int y = 24; y < 505; y++) {
 			for (int y = 24; y < 505; y++) {
 				uint16_t *line = &Frame[1].rawbuffer[y * in_x];	
 				uint16_t *linep = &Frame[0].rawbuffer[y * in_x];	
@@ -816,43 +970,87 @@ class Comb
 					double psi = 0, psq = 0;
 					double nsi = 0, nsq = 0;
 
+				//	Frame[f].clpbuffer[2][l][h] = (((p3line[h] + n3line[h]) / 2) - line[h]); 
+				
 					if (!invertphase) {
 						tcp = -tcp;
 						tcn = -tcn;
 					}
 	
 					switch (phase) {
+#if 0
+						case 0: psi =  tcp; nsi =  tcn; break;
+						case 1: psq = -tcp; nsq = -tcn; break;
+						case 2: psi = -tcp; nsi = -tcn; break;
+						case 3: psq =  tcp; nsq =  tcn; break;
+#else
 						case 0: lp_3dip.feed( tcp);  lp_3din.feed( tcn); break;
 						case 1: lp_3dqp.feed(-tcp);  lp_3dqn.feed(-tcn); break;
 						case 2: lp_3dip.feed(-tcp);  lp_3din.feed(-tcn); break;
 						case 3: lp_3dqp.feed( tcp);  lp_3dqn.feed( tcn); break;
+#endif
 						default: break;
 					}
+#if 0
+					pbuf[y].p[x - 4].i = psi; 
+					pbuf[y].p[x - 4].q = psq; 
+					nbuf[y].p[x - 4].i = nsi; 
+					nbuf[y].p[x - 4].q = nsq; 
+#else
 					pbuf[y].p[x - 4].i = lp_3dip.val(); 
 					pbuf[y].p[x - 4].q = lp_3dqp.val(); 
 					nbuf[y].p[x - 4].i = lp_3din.val(); 
 					nbuf[y].p[x - 4].q = lp_3dqn.val(); 
+#endif
+
+#if 0	
+					if (!invertphase) {
+						tc1 = -tc1;
+						tc1f = -tc1f;
+					}
+
+					Frame[fnum].clpbuffer[0][l][h - f_toffset] = tc1f;
+#endif
+//					Frame[fnum].combk[0][l][h] = 1;
+
+//					pbuf[y].p[x].i = (Frame[1].cbuf[y].p[x].i + Frame[0].cbuf[y].p[x].i) / 2; 
+//					pbuf[y].p[x].q = (Frame[1].cbuf[y].p[x].q + Frame[0].cbuf[y].p[x].q) / 2; 
+//					nbuf[y].p[x].i = (Frame[1].cbuf[y].p[x].i + Frame[2].cbuf[y].p[x].i) / 2; 
+//					nbuf[y].p[x].q = (Frame[1].cbuf[y].p[x].q + Frame[2].cbuf[y].p[x].q) / 2; 
+//					cerr << "3DC2A Y " << Frame[0].cbuf[y].p[x].y << ' ' << Frame[1].cbuf[y].p[x].y << ' ' << Frame[2].cbuf[y].p[x].y << endl;
+//					cerr << "3DC2A I " << pbuf[y].p[x].i << ' ' << Frame[0].cbuf[y].p[x].i << ' ' << Frame[1].cbuf[y].p[x].i << ' ' << Frame[2].cbuf[y].p[x].i << endl;
+//					cerr << "3DC2A Q " << pbuf[y].p[x].q << ' ' << Frame[0].cbuf[y].p[x].q << ' ' << Frame[1].cbuf[y].p[x].q << ' ' << Frame[2].cbuf[y].p[x].q << endl;
 				}
 			}
 			AdjustY(1, pbuf);
 			AdjustY(1, nbuf);
 			
 			for (int y = 24; y < 505; y++) {
+//			for (int y = 24; y < 241; y++) {
 				for (int x = 70; x < 815; x++) {
 					double dy = 0, di = 0, dq = 0, diff = 0;
+
 
 					dy = fabs(pbuf[y].p[x].y - nbuf[y].p[x].y);
 					di = fabs(pbuf[y].p[x].i - nbuf[y].p[x].i);
 					dq = fabs(pbuf[y].p[x].q - nbuf[y].p[x].q);
+#if 0
+					dy += fabs(tbuf[y].p[x].y - pbuf[y].p[x].y);
+					dy += fabs(tbuf[y].p[x].y - nbuf[y].p[x].y);
+					di += fabs(tbuf[y].p[x].i - pbuf[y].p[x].i);
+					di += fabs(tbuf[y].p[x].i - nbuf[y].p[x].i);
+					dq += fabs(tbuf[y].p[x].q - pbuf[y].p[x].q);
+					dq += fabs(tbuf[y].p[x].q - nbuf[y].p[x].q);
+#endif
 					diff = (dy * 1) + (di * 1) + (dq * 1);
 
-					if (y == (f_debugline + 25)) {
-						cerr << "3DC2 Y " << dy / irescale << ' ' << pbuf[y].p[x].y << ' ' << tbuf[y].p[x].y << ' ' << nbuf[y].p[x].y << endl;	
-						cerr << "3DC2 I " << di / irescale << ' ' << pbuf[y].p[x].i << ' ' << tbuf[y].p[x].i << ' ' << nbuf[y].p[x].i << endl;	
-						cerr << "3DC2 Q " << dq / irescale << ' ' << pbuf[y].p[x].q << ' ' << tbuf[y].p[x].q << ' ' << nbuf[y].p[x].q << endl;	
-						Frame[1].combk[2][y][x] = 1 - clamp(((diff / irescale) - 3) / 8, 0, 1);
-						cerr << x << ' ' << diff / irescale << ' ' << Frame[1].combk[2][y][x] << endl;
-					}
+				if (y == 100) {
+					cerr << "3DC2 Y " << dy / irescale << ' ' << pbuf[y].p[x].y << ' ' << tbuf[y].p[x].y << ' ' << nbuf[y].p[x].y << endl;	
+					cerr << "3DC2 I " << di / irescale << ' ' << pbuf[y].p[x].i << ' ' << tbuf[y].p[x].i << ' ' << nbuf[y].p[x].i << endl;	
+					cerr << "3DC2 Q " << dq / irescale << ' ' << pbuf[y].p[x].q << ' ' << tbuf[y].p[x].q << ' ' << nbuf[y].p[x].q << endl;	
+					Frame[1].combk[2][y][x] = 1 - clamp(((diff / irescale) - 3) / 8, 0, 1);
+					cerr << x << ' ' << diff / irescale << ' ' << Frame[1].combk[2][y][x] << endl;
+				}
 					Frame[1].combk[2][y][x] = 1 - clamp(((diff / irescale) - 3) / 8, 0, 1);
 				}
 			}	
@@ -921,6 +1119,7 @@ class Comb
 
 		int PostProcess(int fnum) {
 			int fstart = -1;
+			uint16_t *fbuf = Frame[fnum].rawbuffer;
 
 			if (!f_pulldown) {
 				fstart = 0;
@@ -932,39 +1131,14 @@ class Comb
 				f_oddframe = false;		
 			}
 
-			for (int line = 4; line <= 5; line++) {
-				int wc = 0;
-				for (int i = 0; i < 700; i++) {
-					if (Frame[fnum].rawbuffer[(in_x * line) + i] > 45000) wc++;
-				} 
-				if (wc > 500) {
-					fstart = (line % 2); 
-				}
-			}
+			uint16_t flags = fbuf[7];
 
-			for (int line = 16; line < 20; line++) {
-				int new_framecode = ReadPhillipsCode(&Frame[fnum].rawbuffer[line * in_x]); // - 0xf80000;
-				//int fca = new_framecode & 0xf80000;
+			cerr << "flags " << hex << flags << dec << endl;
+//			if (flags & FRAME_INFO_CAV_ODD) fstart = 1;
+			if (flags & FRAME_INFO_WHITE_ODD) fstart = 1;
+			else if (flags & FRAME_INFO_WHITE_EVEN) fstart = 0;
 
-				if (((new_framecode & 0xf00000) == 0xf00000) && (new_framecode < 0xff0000)) {
-					int ofstart = fstart;
-
-					framecode = new_framecode & 0x0f;
-					framecode += ((new_framecode & 0x000f0) >> 4) * 10;
-					framecode += ((new_framecode & 0x00f00) >> 8) * 100;
-					framecode += ((new_framecode & 0x0f000) >> 12) * 1000;
-					framecode += ((new_framecode & 0xf0000) >> 16) * 10000;
-
-					if (framecode > 80000) framecode -= 80000;
-	
-					cerr << "frame " << framecode << endl;
-	
-					fstart = (line % 2); 
-					if ((ofstart >= 0) && (fstart != ofstart)) {
-						cerr << "MISMATCH\n";
-					}
-				}
-			}
+			framecode = (fbuf[8] << 16) | fbuf[9];
 
 			cerr << "FR " << framecount << ' ' << fstart << endl;
 			if (!f_pulldown || (fstart == 0)) {
@@ -1096,6 +1270,9 @@ int main(int argc, char *argv[])
 				f_writeimages = true;	
 				dim = 3;
 				break;
+//			case 'N':
+//				f_neuralnet = !f_neuralnet;
+//				break;
 			case 'k':
 				f_showk = true;
 				break;
@@ -1104,7 +1281,7 @@ int main(int argc, char *argv[])
 		} 
 	} 
 
-	if (f_monitor) {
+	if (1 || f_monitor) {
 		namedWindow("comb", WINDOW_AUTOSIZE);
 	}
 
@@ -1121,6 +1298,10 @@ int main(int argc, char *argv[])
 
 	p_2dcore = 0 * irescale;
 	p_2drange = 10 * irescale;
+
+	if (f_neuralnet) {
+		ann = fann_create_from_file("test.net");	
+	}
 
 	black_u16 = ire_to_u16(black_ire);
 
