@@ -223,8 +223,8 @@ class Comb
 
 		void FilterIQ(cline_t cbuf[in_y]) {
 			for (int l = 24; l < in_y; l++) {
-				Filter f_i(f_colorwlp4);
-				Filter f_q(f_colorwlp4);
+				Filter f_i(f_colorlpi);
+				Filter f_q(f_colorlpq);
 				int f_toffset = 4;
 
 				for (int h = 4; h < 840; h++) {
@@ -241,9 +241,9 @@ class Comb
 				uint16_t *line = &Frame[fnum].rawbuffer[l * in_x];	
 				bool invertphase = (line[0] == 16384);
 
-				Filter f_1di((dim == 3) ? f_colorwlp4 : f_colorwlp4);
-				Filter f_1dq((dim == 3) ? f_colorwlp4 : f_colorwlp4);
-				int f_toffset = 8;
+				Filter f_1di(f_colorlpi);
+				Filter f_1dq(f_colorlpq);
+				int f_toffset = 12;
 
 				for (int h = 4; h < 840; h++) {
 					int phase = h % 4;
@@ -277,9 +277,9 @@ class Comb
 				uint16_t *line = &Frame[fnum].rawbuffer[l * in_x];	
 				bool invertphase = (line[0] == 16384);
 
-				Filter f_1di((dim == 3) ? f_colorwlp4 : f_colorwlp4);
-				Filter f_1dq((dim == 3) ? f_colorwlp4 : f_colorwlp4);
-				int f_toffset = 8;
+				Filter f_1di(f_colorlpi);
+				Filter f_1dq(f_colorlpq);
+				int f_toffset = 12;
 
 				for (int h = 4; h < 840; h++) {
 					int phase = h % 4;

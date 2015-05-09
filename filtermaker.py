@@ -156,13 +156,12 @@ Nnrc = 24
 hp_nrc_filter = sps.firwin(Nnrc + 1, 0.4 / (freq / 2.0), window='hamming', pass_zero=False)
 WriteFilter("nrc", hp_nrc_filter)
 
-Ncolorlp4 = 8 
-colorlp4_filter = sps.firwin(Ncolorlp4 + 1, [0.4 / (freq / 2)], window='hamming')
-WriteFilter("colorlp4", colorlp4_filter)
+Ncolorwlp = 12 
+colorwlpi_filter = sps.firwin(Ncolorwlp + 1, [1.3 / (freq / 2)], window='hamming')
+WriteFilter("colorlpi", colorwlpi_filter)
 
-Ncolorwlp4 = 8 
-colorwlp4_filter = sps.firwin(Ncolorwlp4 + 1, [1.5 / (freq / 2)], window='hamming')
-WriteFilter("colorwlp4", colorwlp4_filter)
+colorwlpq_filter = sps.firwin(Ncolorwlp + 1, [0.6 / (freq / 2)], window='hamming')
+WriteFilter("colorlpq", colorwlpq_filter)
 
 Ncolorbp4 = 8
 colorbp4_filter = sps.firwin(Ncolorbp4 + 1, [3.4006 / (freq / 2), 3.7585 / (freq / 2)], window='hamming', pass_zero=False)
