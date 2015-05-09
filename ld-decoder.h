@@ -66,6 +66,13 @@ inline double ctor(double r, double i)
 	return sqrt((r * r) + (i * i));
 }
 
+inline double atan2deg(double y, double x)
+{
+	double rv = (atan2(y, x) * (180 / M_PIl));
+	if (rv < 0) rv += 360;
+	return rv;
+}
+
 inline double dftc(double *buf, int offset, int len, double bin, double &fc, double &fci) 
 {
 	fc = 0.0; fci = 0.0;

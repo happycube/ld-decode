@@ -37,6 +37,8 @@ struct VFormat {
 	double a;	
 };
 
+double shift33 = (+.0 - (1 * (33.0 / 360.0))) * out_freq;
+
 //const double ntsc_uline = 63.5; // usec_
 const int ntsc_iplinei = 227.5 * in_freq; // pixels per line
 const double ntsc_ipline = 227.5 * in_freq; // pixels per line
@@ -124,12 +126,12 @@ inline double CubicInterpolate(uint16_t *y, double x)
 	return p[1] + 0.5 * x*(p[2] - p[0] + x*(2.0*p[0] - 5.0*p[1] + 4.0*p[2] - p[3] + x*(3.0*(p[1] - p[2]) + p[3] - p[0])));
 }
 
-inline void Scale(uint16_t *buf, double *outbuf, double start, double end, double outlen)
+inline void Scale(uint16_t *buf, double *outbuf, double start, double end, double outlen, double offset = 0)
 {
 	double inlen = end - start;
 	double perpel = inlen / outlen; 
 
-	double p1 = start;
+	double p1 = start + (offset * perpel);
 	for (int i = 0; i < outlen; i++) {
 		int index = (int)p1;
 		if (index < 1) index = 1;
@@ -219,7 +221,7 @@ bool BurstDetect_New(double *line, int freq, double _loc, bool tgt, double &plev
 		}
 	}
 
-	plevel = ((tpeak / count) - (tmin / cmin)) / 4.5;
+	plevel = ((tpeak / count) - (tmin / cmin)) / 4.2;
 	pphase = (ptot / count) * 1;
 
 //	cerr << "BDN end " << plevel << ' ' << pphase << ' ' << count << endl;
@@ -358,7 +360,7 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line, bool err =
 		begin += prev_offset;
 		end += prev_offset;
 	
-		Scale(buf, tout, begin, end, scale_tgt); 
+		Scale(buf, tout, begin, end, scale_tgt, shift33); 
 		goto wrapup;
 	}
 
@@ -410,6 +412,8 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line, bool err =
 			BurstDetect_New(tout, out_freq, 228, tgt_nphase != 0, plevel2, nphase2); 
 		}
 	}
+		
+	Scale(buf, tout, begin, end, scale_tgt, shift33); 
 	
 	cerr << "final levels " << plevel1 << ' ' << plevel2 << endl;
 

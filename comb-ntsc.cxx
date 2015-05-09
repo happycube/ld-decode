@@ -115,6 +115,8 @@ inline double u16_to_ire(uint16_t level)
 	return -60 + ((double)(level - irebase) / irescale); 
 }
 
+int cline = -1;
+
 struct RGB {
         double r, g, b;
 
@@ -124,13 +126,31 @@ struct RGB {
 		double y = u16_to_ire(_y.y);
 		y = (y - black_ire) * (100 / (100 - black_ire)); 
 
-		double i = (_y.i) / irescale;
-		double q = (_y.q) / irescale;
+		double i = +(_y.i) / irescale;
+		double q = +(_y.q) / irescale;
 
-                r = y + (1.13983 * q);
-                g = y - (0.58060 * q) - (i * 0.39465);
-                b = y + (i * 2.032);
-		
+		double mag = ctor(i, q);
+		double angle = atan2(i, q) - ((33.0 / 180.0) * M_PIl);
+
+		double v = cos(angle) * mag;
+		double u = sin(angle) * mag;
+
+		if (cline == (f_debugline + 25)) {
+			cerr << i << ' ' << q << ' ' << atan2deg(q, i) << ' ' << mag << ' ' << angle << ' ' << u << ' ' << v << ' ' << atan2deg(v, u) << endl;
+		}
+
+#if 0
+                r = y + (.956 * u) + (.621 * v);
+                g = y - (.272 * u) - (.647 * v);
+                b = y - (1.108 * u) + (1.705 * v);
+                //r = y + (.956 * i) + (.621 * q);
+                //g = y - (.272 * i) - (.647 * q);
+                //b = y - (1.108 * i) + (1.705 * q);
+#else
+                r = y + (1.13983 * v);
+                g = y - (0.58060 * v) - (u * 0.39465);
+                b = y + (u * 2.032);
+#endif
 		double m = brightness * 256 / 100;
 
                 r = clamp(r * m, 0, 65535);
@@ -615,9 +635,15 @@ class Comb
 						yiq.i = yiq.q = 0;
 					}
 
+					if (l == (f_debugline + 25)) {
+//						cerr << "YIQ " << h << ' ' << atan2deg(yiq.q, yiq.i) << ' ' << yiq.y << ' ' << yiq.i << ' ' << yiq.q << endl;
+					}
+
+					cline = l;
 					r.conv(yiq);
 					
 					if (l == (f_debugline + 25)) {
+//						cerr << "RGB " << r.r << ' ' << r.g << ' ' << r.b << endl ;
 						r.r = r.g = r.b = 0;
 					}
 	
