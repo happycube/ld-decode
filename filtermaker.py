@@ -157,11 +157,22 @@ hp_nrc_filter = sps.firwin(Nnrc + 1, 0.4 / (freq / 2.0), window='hamming', pass_
 WriteFilter("nrc", hp_nrc_filter)
 
 Ncolorlp = 8 
-colorwlpi_filter = sps.firwin(Ncolorlp + 1, [1.3 / (freq4 / 2)], window='hamming')
-WriteFilter("colorlpi", colorwlpi_filter)
+colorwlpi_filter = sps.firwin(Ncolorlp + 1, [1.3 / (freq4 / 1)], window='hamming')
+colorwlpq_filter = sps.firwin(Ncolorlp + 1, [0.6 / (freq4 / 1)], window='hamming')
 
-colorwlpq_filter = sps.firwin(Ncolorlp + 1, [0.6 / (freq4 / 2)], window='hamming')
-WriteFilter("colorlpq", colorwlpq_filter)
+#Ncolorlp = 16
+#colorwlpi_filter = sps.firwin(Ncolorlp + 1, [1.6 / (freq4 / 2)], window='hamming')
+#colorwlpq_filter = sps.firwin(Ncolorlp + 1, [0.55 / (freq4 / 2)], window='hamming')
+
+#WriteFilter("colorlpi", colorwlpi_filter)
+#WriteFilter("colorlpq", colorwlpq_filter)
+
+i_filter_b, i_filter_a = sps.butter(1, (1.3/(freq4/2)), 'low')
+q_filter_b, q_filter_a = sps.butter(3, (0.6/(freq4/2)), 'low')
+WriteFilter("colorlpi", i_filter_b, i_filter_a)
+WriteFilter("colorlpq", q_filter_b, q_filter_a)
+print("const int f_colorlpi_offset = 2;")
+print("const int f_colorlpq_offset = 16;")
 
 Ncolorbp4 = 8
 colorbp4_filter = sps.firwin(Ncolorbp4 + 1, [3.4006 / (freq / 2), 3.7585 / (freq / 2)], window='hamming', pass_zero=False)

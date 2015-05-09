@@ -19,11 +19,11 @@ bool f_writeimages = false;
 bool f_training = false;
 bool f_bw = false;
 bool f_debug2d = false;
-bool f_adaptive2d = false;
+bool f_adaptive2d = true;
 bool f_oneframe = false;
 bool f_showk = false;
 
-bool f_colorlpf = true;
+bool f_colorlpf = false;
 
 double nn_cscale = 32768.0;
 
@@ -228,7 +228,6 @@ class Comb
 
 				Filter f_i(f_colorlpi);
 				Filter f_q(f_colorlpq);
-				int f_toffset = 8;
 
 				double filti = 0, filtq = 0;
 
@@ -242,48 +241,17 @@ class Comb
 						case 3: filtq = f_q.feed(cbuf[l].p[h].q); break;
 						default: break;
 					}
-					cbuf[l].p[h - f_toffset].i = filti; 
-					cbuf[l].p[h - f_toffset].q = filtq; 
+
+					if (l == (f_debugline + 25)) {
+						cerr << "IQF " << h << ' ' << cbuf[l].p[h - f_colorlpi_offset].i << ' ' << filti << ' ' << cbuf[l].p[h - f_colorlpq_offset].q << ' ' << filtq << endl;
+					}
+
+					cbuf[l].p[h - f_colorlpi_offset].i = filti; 
+					cbuf[l].p[h - f_colorlpq_offset].q = filtq; 
 				}
 			}
 		}
 	
-		// filters in-line color data	
-		void FilterColorData(int fnum, int fdim)
-		{
-			for (int l = 24; l < in_y; l++) {
-				uint16_t *line = &Frame[fnum].rawbuffer[l * in_x];	
-				bool invertphase = (line[0] == 16384);
-
-				Filter f_1di(f_colorlpi);
-				Filter f_1dq(f_colorlpq);
-				int f_toffset = 8;
-
-				for (int h = 4; h < 840; h++) {
-					int phase = h % 4;
-					double tc1 = Frame[fnum].clpbuffer[fdim][l][h]; 
-					double tc1f = 0, tsi = 0, tsq = 0;
-
-					if (!invertphase) tc1 = -tc1;
-						
-					switch (phase) {
-						case 0: tsi = tc1; tc1f = f_1di.feed(tsi); break;
-						case 1: tsq = -tc1; tc1f = -f_1dq.feed(tsq); break;
-						case 2: tsi = -tc1; tc1f = -f_1di.feed(tsi); break;
-						case 3: tsq = tc1; tc1f = f_1dq.feed(tsq); break;
-						default: break;
-					}
-						
-					if (!invertphase) {
-						tc1 = -tc1;
-						tc1f = -tc1f;
-					}
-
-					Frame[fnum].clpbuffer[fdim][l][h - f_toffset] = tc1f;
-				}
-			}
-		}
-		
 		// precompute 1D comb filter, used as a fallback for edges 
 		void Split1D(int fnum)
 		{
@@ -404,7 +372,6 @@ class Comb
 					Frame[f].combk[0][l][h] = 1 - Frame[f].combk[2][l][h] - Frame[f].combk[1][l][h];
 				}
 			}	
-//			if (f_colorlpf) FilterColorData(f, 1);
 		}	
 
 		void Split3D(int f, bool opt_flow = false) 
@@ -518,11 +485,10 @@ class Comb
 			}
 		}
 		
-		void DoCNR(int f, cline_t cbuf[in_y], double mult = 1.0) {
-			double mnr_c = nr_c * mult;
-			if ((mult > 1.1) && (nr_c < mult)) mnr_c = mult;
-
+		void DoCNR(int f, cline_t cbuf[in_y], double min = -1.0) {
 			int firstline = (linesout == in_y) ? 0 : 23;
+	
+			if (nr_c < min) nr_c = min;
 			if (nr_c <= 0) return;
 
 			for (int l = firstline; l < in_y; l++) {
@@ -542,12 +508,12 @@ class Comb
 //						cerr << "NR " << h << ' ' << input->p[h].y << ' ' << hplinef[h + 12].y << ' ' << ' ' << a << ' ' << endl;
 //					}
 
-					if (fabs(ai) > mnr_c) {
-						ai = (ai > 0) ? mnr_c : -mnr_c;
+					if (fabs(ai) > nr_c) {
+						ai = (ai > 0) ? nr_c : -nr_c;
 					}
 					
-					if (fabs(aq) > mnr_c) {
-						aq = (aq > 0) ? mnr_c : -mnr_c;
+					if (fabs(aq) > nr_c) {
+						aq = (aq > 0) ? nr_c : -nr_c;
 					}
 
 					input->p[h].i -= ai;
@@ -557,10 +523,11 @@ class Comb
 			}
 		}
 					
-		void DoYNR(int f, cline_t cbuf[in_y], double mult = 1.0) {
-			double mnr_y = nr_y * mult;
-			if ((mult > 1.1) && (nr_y < mult)) mnr_y = mult;
+		void DoYNR(int f, cline_t cbuf[in_y], double min = -1.0) {
 			int firstline = (linesout == in_y) ? 0 : 23;
+
+			if (nr_y < min) nr_y = min;
+
 			if (nr_y <= 0) return;
 
 			for (int l = firstline; l < in_y; l++) {
@@ -578,8 +545,8 @@ class Comb
 						cerr << "NR " << h << ' ' << input->p[h].y << ' ' << hplinef[h + 12].y << ' ' << ' ' << a << ' ' << endl;
 					}
 
-					if (fabs(a) > mnr_y) {
-						a = (a > 0) ? mnr_y : -mnr_y;
+					if (fabs(a) > nr_y) {
+						a = (a > 0) ? nr_y : -nr_y;
 					}
 
 					input->p[h].y -= a;
@@ -1031,7 +998,7 @@ int main(int argc, char *argv[])
 	while ((c = getopt(argc, argv, "LakN:tFc:r:R:m8OwvDd:Bb:I:w:i:o:fphn:l:")) != -1) {
 		switch (c) {
 			case 'L':
-				f_colorlpf = false;
+				f_colorlpf = !f_colorlpf;
 				break;
 			case 'F':
 				f_opticalflow = false;
