@@ -609,7 +609,7 @@ void DecodeVBI()
 		uint16_t seconds = 0;
 		uint16_t framenum = 0;
 		// Find CLV frame # data
-		for (int i = 0; i < 7; i++) {
+		for (int i = 0; i < 6; i++) {
 			// CLV Picture #
 			if (((code[i] & 0xf0f000) == 0x80e000) && ((code[i] & 0x0f0000) >= 0x0a0000)) {
 				seconds = (((code[i] & 0x0f0000) - 0x0a0000) >> 16) * 10; 
@@ -627,7 +627,7 @@ void DecodeVBI()
 		clv_time = (hours << 24) | (minutes << 16) || (seconds << 8) || framenum;
 		cerr << "CLV " << hours << ':' << minutes << ':' << seconds << '.' << framenum << endl;
 	} else {
-		for (int i = 0; i < 7; i++) {
+		for (int i = 0; i < 6; i++) {
 			// CAV frame:  f80000 + frame
 			if ((code[i] >= 0xf80000) && (code[i] <= 0xffffff)) {
 				// Convert from BCD to binary
