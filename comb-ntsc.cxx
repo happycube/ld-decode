@@ -221,15 +221,29 @@ class Comb
 		Filter *f_hpy, *f_hpi, *f_hpq;
 		Filter *f_hpvy, *f_hpvi, *f_hpvq;
 
-		void FilterIQ(cline_t cbuf[in_y]) {
+		void FilterIQ(cline_t cbuf[in_y], int fnum) {
 			for (int l = 24; l < in_y; l++) {
+				uint16_t *line = &Frame[fnum].rawbuffer[l * in_x];	
+				bool invertphase = (line[0] == 16384);
+
 				Filter f_i(f_colorlpi);
 				Filter f_q(f_colorlpq);
-				int f_toffset = 4;
+				int f_toffset = 8;
+
+				double filti = 0, filtq = 0;
 
 				for (int h = 4; h < 840; h++) {
-					cbuf[l].p[h - f_toffset].i = f_i.feed(cbuf[l].p[h].i); 
-					cbuf[l].p[h - f_toffset].q = f_q.feed(cbuf[l].p[h].q); 
+					int phase = h % 4;
+					
+					switch (phase) {
+						case 0: filti = f_i.feed(cbuf[l].p[h].i); break;
+						case 1: filtq = f_q.feed(cbuf[l].p[h].q); break;
+						case 2: filti = f_i.feed(cbuf[l].p[h].i); break;
+						case 3: filtq = f_q.feed(cbuf[l].p[h].q); break;
+						default: break;
+					}
+					cbuf[l].p[h - f_toffset].i = filti; 
+					cbuf[l].p[h - f_toffset].q = filtq; 
 				}
 			}
 		}
@@ -243,7 +257,7 @@ class Comb
 
 				Filter f_1di(f_colorlpi);
 				Filter f_1dq(f_colorlpq);
-				int f_toffset = 12;
+				int f_toffset = 8;
 
 				for (int h = 4; h < 840; h++) {
 					int phase = h % 4;
@@ -279,7 +293,7 @@ class Comb
 
 				Filter f_1di(f_colorlpi);
 				Filter f_1dq(f_colorlpq);
-				int f_toffset = 12;
+				int f_toffset = 8;
 
 				for (int h = 4; h < 840; h++) {
 					int phase = h % 4;
@@ -390,7 +404,7 @@ class Comb
 					Frame[f].combk[0][l][h] = 1 - Frame[f].combk[2][l][h] - Frame[f].combk[1][l][h];
 				}
 			}	
-			if (f_colorlpf) FilterColorData(f, 1);
+//			if (f_colorlpf) FilterColorData(f, 1);
 		}	
 
 		void Split3D(int f, bool opt_flow = false) 
@@ -934,7 +948,7 @@ class Comb
 			memcpy(tbuf, Frame[f].cbuf, sizeof(tbuf));	
 
 			AdjustY(f, tbuf);
-//			if (dim == 2) FilterIQ(tbuf);
+			if (f_colorlpf) FilterIQ(tbuf, f);
 			DoYNR(f, tbuf);
 			DoCNR(f, tbuf);
 			ToRGB(f, firstline, tbuf);
