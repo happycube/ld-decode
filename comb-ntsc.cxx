@@ -22,8 +22,10 @@ bool f_debug2d = false;
 bool f_adaptive2d = true;
 bool f_oneframe = false;
 bool f_showk = false;
+bool f_wide = false;
 
 bool f_colorlpf = false;
+bool f_colorlpf_hq = true;
 
 double nn_cscale = 32768.0;
 
@@ -177,7 +179,7 @@ const int nframes = 3;	// 3 frames needed for 3D buffer - for now
 const int in_y = 505;
 const int in_x = 844;
 const int in_size = in_y * in_x;
-const int out_x = 744;
+const int out_x = 844;
 
 struct frame_t {
 	uint16_t rawbuffer[in_x * in_y];
@@ -227,7 +229,9 @@ class Comb
 				bool invertphase = (line[0] == 16384);
 
 				Filter f_i(f_colorlpi);
-				Filter f_q(f_colorlpq);
+				Filter f_q(f_colorlpf_hq ? f_colorlpi : f_colorlpq);
+
+				int qoffset = f_colorlpf_hq ? f_colorlpi_offset : f_colorlpq_offset;
 
 				double filti = 0, filtq = 0;
 
@@ -243,11 +247,11 @@ class Comb
 					}
 
 					if (l == (f_debugline + 25)) {
-						cerr << "IQF " << h << ' ' << cbuf[l].p[h - f_colorlpi_offset].i << ' ' << filti << ' ' << cbuf[l].p[h - f_colorlpq_offset].q << ' ' << filtq << endl;
+						cerr << "IQF " << h << ' ' << cbuf[l].p[h - f_colorlpi_offset].i << ' ' << filti << ' ' << cbuf[l].p[h - qoffset].q << ' ' << filtq << endl;
 					}
 
 					cbuf[l].p[h - f_colorlpi_offset].i = filti; 
-					cbuf[l].p[h - f_colorlpq_offset].q = filtq; 
+					cbuf[l].p[h - qoffset].q = filtq; 
 				}
 			}
 		}
@@ -495,12 +499,12 @@ class Comb
 				YIQ hplinef[in_x];
 				cline_t *input = &cbuf[l];
 
-				for (int h = 70; h <= 752 + 80; h++) {
+				for (int h = 60; h <= 752 + 80; h++) {
 					hplinef[h].i = f_hpi->feed(input->p[h].i);
 					hplinef[h].q = f_hpq->feed(input->p[h].q);
 				}
 				
-				for (int h = 70; h < out_x + 70; h++) {
+				for (int h = 60; h < out_x + 70; h++) {
 					double ai = hplinef[h + 12].i;
 					double aq = hplinef[h + 12].q;
 
@@ -531,14 +535,14 @@ class Comb
 			if (nr_y <= 0) return;
 
 			for (int l = firstline; l < in_y; l++) {
-				YIQ hplinef[in_x];
+				YIQ hplinef[in_x + 32];
 				cline_t *input = &cbuf[l];
 
-				for (int h = 70; h <= 752 + 80; h++) {
+				for (int h = 40; h <= 844; h++) {
 					hplinef[h].y = f_hpy->feed(input->p[h].y);
 				}
 				
-				for (int h = 70; h < out_x + 70; h++) {
+				for (int h = 40; h < 844; h++) {
 					double a = hplinef[h + 12].y;
 
 					if (l == (f_debugline + 25)) {
@@ -603,9 +607,9 @@ class Comb
 				}
 //				cerr << "burst level " << burstlev << " mavg " << aburstlev << endl;
 
-				for (int h = 0; h < 752; h++) {
+				for (int h = 0; h < 844; h++) {
 					RGB r;
-					YIQ yiq = cbuf[l].p[h + 82];
+					YIQ yiq = cbuf[l].p[h + 0];
 
 					yiq.i *= (10 / aburstlev);
 					yiq.q *= (10 / aburstlev);
@@ -699,16 +703,16 @@ class Comb
 			fcount++; 
 		}
 
-		void DrawFrame(uint16_t *obuf) {
+		void DrawFrame(uint16_t *obuf, int owidth = 844) {
 			for (int y = 0; y < 480; y++) {
-				for (int x = 0; x < out_x; x++) {
-					BGRoutput[(((y * out_x) + x) * 3) + 0] = obuf[(((y * out_x) + x) * 3) + 2];
-					BGRoutput[(((y * out_x) + x) * 3) + 1] = obuf[(((y * out_x) + x) * 3) + 1];
-					BGRoutput[(((y * out_x) + x) * 3) + 2] = obuf[(((y * out_x) + x) * 3) + 0];
+				for (int x = 0; x < owidth; x++) {
+					BGRoutput[(((y * owidth) + x) * 3) + 0] = obuf[(((y * owidth) + x) * 3) + 2];
+					BGRoutput[(((y * owidth) + x) * 3) + 1] = obuf[(((y * owidth) + x) * 3) + 1];
+					BGRoutput[(((y * owidth) + x) * 3) + 2] = obuf[(((y * owidth) + x) * 3) + 0];
 				}
 			}
 				
-			Mat pic = Mat(480, out_x, CV_16UC3, BGRoutput);
+			Mat pic = Mat(480, owidth, CV_16UC3, BGRoutput);
 			Mat rpic;
 
 			resize(pic, rpic, Size(1280,960));
@@ -739,18 +743,18 @@ class Comb
 			memset(output, 0, sizeof(output));
 		}
 
-		void WriteFrame(uint16_t *obuf, int fnum = 0) {
+		void WriteFrame(uint16_t *obuf, int owidth = 844, int fnum = 0) {
 			cerr << "WR" << fnum << endl;
 			if (!f_writeimages) {
 				if (!f_write8bit) {
-					write(ofd, obuf, (out_x * linesout * 3) * 2);
+					write(ofd, obuf, (owidth * linesout * 3) * 2);
 				} else {
-					uint8_t obuf8[out_x * linesout * 3];	
+					uint8_t obuf8[owidth * linesout * 3];	
 
-					for (int i = 0; i < (out_x * linesout * 3); i++) {
+					for (int i = 0; i < (owidth * linesout * 3); i++) {
 						obuf8[i] = obuf[i] >> 8;
 					}
-					write(ofd, obuf8, (out_x * linesout * 3));
+					write(ofd, obuf8, (owidth * linesout * 3));
 				}		
 			} else {
 				char ofname[512];
@@ -758,12 +762,12 @@ class Comb
 				sprintf(ofname, "%s%d.rgb", image_base, fnum); 
 				cerr << "W " << ofname << endl;
 				ofd = open(ofname, O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR | S_IROTH);
-				write(ofd, obuf, (out_x * linesout * 3) * 2);
+				write(ofd, obuf, (owidth * linesout * 3) * 2);
 				close(ofd);
 			}
 
 			if (f_monitor) {
-				DrawFrame(obuf);
+				DrawFrame(obuf, owidth);
 			}	
 
 			if (f_oneframe) exit(0);
@@ -776,11 +780,11 @@ class Comb
 			for (int l = firstline; l < in_y; l++) {
 				bool invertphase = (Frame[f].rawbuffer[l * in_x] == 16384);
 
-				for (int h = 0; h < 760; h++) {
+				for (int h = 2; h < 842; h++) {
 					double comp;	
 					int phase = h % 4;
 
-					YIQ y = cbuf[l].p[h + 70];
+					YIQ y = cbuf[l].p[h + 2];
 
 					switch (phase) {
 						case 0: comp = y.i; break;
@@ -793,7 +797,7 @@ class Comb
 					if (invertphase) comp = -comp;
 					y.y += comp;
 
-					cbuf[l].p[h + 70] = y;
+					cbuf[l].p[h + 0] = y;
 				}
 			}
 
@@ -845,7 +849,7 @@ class Comb
 			AdjustY(1, nbuf);
 			
 			for (int y = 24; y < 505; y++) {
-				for (int x = 70; x < 815; x++) {
+				for (int x = 50; x < 844; x++) {
 					double dy = 0, di = 0, dq = 0, diff = 0;
 
 					dy = fabs(pbuf[y].p[x].y - nbuf[y].p[x].y);
@@ -930,13 +934,16 @@ class Comb
 			int fstart = -1;
 			uint16_t *fbuf = Frame[fnum].rawbuffer;
 
+			int rout_x = f_wide ? out_x : 744;
+			int roffset = f_wide ? 0 : 78;
+
 			if (!f_pulldown) {
 				fstart = 0;
 			} else if (f_oddframe) {
 				for (int i = 1; i < linesout; i += 2) {
-					memcpy(&obuf[out_x * 3 * i], &output[out_x * 3 * i], out_x * 3 * 2); 
+					memcpy(&obuf[rout_x * 3 * i], &output[(out_x * 3 * i) + (roffset * 3)], rout_x * 3 * 2); 
 				}
-				WriteFrame(obuf, framecode);
+				WriteFrame(obuf, rout_x, framecode);
 				f_oddframe = false;		
 			}
 
@@ -951,10 +958,13 @@ class Comb
 
 			cerr << "FR " << framecount << ' ' << fstart << endl;
 			if (!f_pulldown || (fstart == 0)) {
-				WriteFrame(output, framecode);
+				for (int i = 0; i < linesout; i++) {
+					memcpy(&obuf[rout_x * 3 * i], &output[(out_x * 3 * i) + (roffset * 3)], rout_x * 3 * 2); 
+				}
+				WriteFrame(obuf, rout_x, framecode);
 			} else if (fstart == 1) {
 				for (int i = 0; i < linesout; i += 2) {
-					memcpy(&obuf[out_x * 3 * i], &output[out_x * 3 * i], out_x * 3 * 2); 
+					memcpy(&obuf[rout_x * 3 * i], &output[(out_x * 3 * i) + (roffset * 3)], rout_x * 3 * 2); 
 				}
 				f_oddframe = true;
 				cerr << "odd frame\n";
@@ -995,10 +1005,16 @@ int main(int argc, char *argv[])
 
 	opterr = 0;
 	
-	while ((c = getopt(argc, argv, "LakN:tFc:r:R:m8OwvDd:Bb:I:w:i:o:fphn:l:")) != -1) {
+	while ((c = getopt(argc, argv, "WQLakN:tFc:r:R:m8OwvDd:Bb:I:w:i:o:fphn:l:")) != -1) {
 		switch (c) {
+			case 'W':
+				f_wide = !f_wide;
+				break;
 			case 'L':
 				f_colorlpf = !f_colorlpf;
+				break;
+			case 'Q':
+				f_colorlpf_hq = !f_colorlpf_hq;
 				break;
 			case 'F':
 				f_opticalflow = false;
