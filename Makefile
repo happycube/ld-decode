@@ -32,9 +32,13 @@ tbc-ntsc: tbc-ntsc.cxx ld-decoder.h deemp.h
 	cp tbc-ntsc ntsc
 #	clang++ -std=c++11  -g -Wall -o ntsc tbc-ntsc.cxx
 
+ntsc: tbc-ntsc
+
 comb-ntsc: comb-ntsc.cxx deemp.h
 	clang++ -lfann -std=c++11  -Wall $(CFLAGS) $(OPENCV_LIBS) -o comb-ntsc comb-ntsc.cxx
 	cp comb-ntsc comb
+
+comb: comb-ntsc
 
 test:
 	./ldd snw.raw | ./ntsc - | ./comb - > snw.rgb

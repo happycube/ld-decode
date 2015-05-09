@@ -119,7 +119,7 @@ vector <double> c_colorlpq_a = {1.000000000000000e+00, -2.474855846726987e+00, 2
 Filter f_colorlpq(c_colorlpq_b, c_colorlpq_a);
 
 const int f_colorlpi_offset = 2;
-const int f_colorlpq_offset = 16;
+const int f_colorlpq_offset = 14;
 vector<double> c_colorbp4_b = {3.524083455247116e-02, 5.701405570187424e-07, -2.408398699505458e-01, -7.721391739544891e-07, 4.478385909901386e-01, -7.721391739544892e-07, -2.408398699505458e-01, 5.701405570187425e-07, 3.524083455247116e-02, };
 vector <double> c_colorbp4_a = {1.000000000000000e+00, };
 

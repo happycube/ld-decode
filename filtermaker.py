@@ -172,7 +172,7 @@ q_filter_b, q_filter_a = sps.butter(3, (0.6/(freq4/2)), 'low')
 WriteFilter("colorlpi", i_filter_b, i_filter_a)
 WriteFilter("colorlpq", q_filter_b, q_filter_a)
 print("const int f_colorlpi_offset = 2;")
-print("const int f_colorlpq_offset = 16;")
+print("const int f_colorlpq_offset = 14;")
 
 Ncolorbp4 = 8
 colorbp4_filter = sps.firwin(Ncolorbp4 + 1, [3.4006 / (freq / 2), 3.7585 / (freq / 2)], window='hamming', pass_zero=False)
