@@ -426,6 +426,9 @@ class Comb
 		void SplitIQ(int f) {
 			double mse = 0.0;
 			double me = 0.0;
+
+			memset(Frame[f].cbuf, 0, sizeof(cline_t) * in_y); 
+
 			for (int l = 24; l < in_y; l++) {
 				double msel = 0.0, sel = 0.0;
 				uint16_t *line = &Frame[f].rawbuffer[l * in_x];	
@@ -496,15 +499,15 @@ class Comb
 			if (nr_c <= 0) return;
 
 			for (int l = firstline; l < in_y; l++) {
-				YIQ hplinef[in_x];
+				YIQ hplinef[in_x + 32];
 				cline_t *input = &cbuf[l];
 
-				for (int h = 60; h <= 752 + 80; h++) {
+				for (int h = 60; h <= 842; h++) {
 					hplinef[h].i = f_hpi->feed(input->p[h].i);
 					hplinef[h].q = f_hpq->feed(input->p[h].q);
 				}
 				
-				for (int h = 60; h < out_x + 70; h++) {
+				for (int h = 60; h < 842; h++) {
 					double ai = hplinef[h + 12].i;
 					double aq = hplinef[h + 12].q;
 
@@ -538,15 +541,15 @@ class Comb
 				YIQ hplinef[in_x + 32];
 				cline_t *input = &cbuf[l];
 
-				for (int h = 40; h <= 844; h++) {
+				for (int h = 40; h <= 843; h++) {
 					hplinef[h].y = f_hpy->feed(input->p[h].y);
 				}
 				
-				for (int h = 40; h < 844; h++) {
+				for (int h = 40; h < 843; h++) {
 					double a = hplinef[h + 12].y;
 
 					if (l == (f_debugline + 25)) {
-						cerr << "NR " << h << ' ' << input->p[h].y << ' ' << hplinef[h + 12].y << ' ' << ' ' << a << ' ' << endl;
+						cerr << "NR " << l << ' ' << h << ' ' << input->p[h].y << ' ' << hplinef[h + 12].y << ' ' << ' ' << a << ' ' << endl;
 					}
 
 					if (fabs(a) > nr_y) {
