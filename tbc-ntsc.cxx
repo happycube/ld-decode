@@ -426,7 +426,7 @@ double ProcessLine(uint16_t *buf, double begin, double end, int line, bool err =
 
 wrapup:
 	// LD only: need to adjust output value for velocity, and remove defects as possible
-	double lvl_adjust = ((((end - begin) / iscale_tgt) - 1) * 2.0) + 1;
+	double lvl_adjust = ((((end - begin) / iscale_tgt) - 1) * 1.0) + 1;
 	int ldo = -128;
 
 	double rotdetect = p_rotdetect * inscale;
@@ -545,7 +545,7 @@ uint32_t ReadPhillipsCode(uint16_t *line) {
 		if (rloc == -1) rloc = loc;
 
 		out |= (Δline[rloc] > 0) ? (1 << (23 - i)) : 0;
-//		cerr << i << ' ' << loc << ' ' << Δline[loc] << ' ' << rloc << ' ' << Δline[rloc] << ' ' << out << endl; 
+		cerr << i << ' ' << loc << ' ' << Δline[loc] << ' ' << rloc << ' ' << Δline[rloc] << ' ' << Δline[rloc] / inscale << ' ' << out << endl; 
 
 		if (!i) first_bit = rloc;
 	}
