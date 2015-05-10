@@ -493,13 +493,15 @@ def main():
 
 	f_seconds = False 
 
-	optlist, cut_argv = getopt.getopt(sys.argv[1:], "hCaAwSs:")
+	optlist, cut_argv = getopt.getopt(sys.argv[1:], "hLCaAwSs:")
 
 	for o, a in optlist:
 		if o == "-a":
 			audio_mode = 1	
 			blocklen = (64 * 1024) + 2048 
 			hilbertlen = (16 * 1024)
+		if o == "-L":
+			Inner = 1
 		if o == "-A":
 			CAV = 1
 			Inner = 1
