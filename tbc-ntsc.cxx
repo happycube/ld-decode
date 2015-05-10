@@ -459,11 +459,12 @@ wrapup:
 		}
 
 		if (((h - ldo) < 16) && (h > 4)) {
-			o = (frame[oline - 2][h - 2] + frame[oline - 2][h + 2]) / 2;
+			double tmpo = (frame[oline - 2][h - 2] + frame[oline - 2][h + 2]) / 2;
+			frame[oline][h] = clamp(tmpo, 0, 65535);
 //			cerr << "R " << o << endl;
+		} else {
+			frame[oline][h] = clamp(o, 0, 65535);
 		}
-
-		frame[oline][h] = clamp(o, 0, 65535);
 		diff[h] = o - prev_o;
 		prev_o = o;
 	}
