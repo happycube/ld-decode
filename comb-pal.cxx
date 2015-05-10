@@ -544,45 +544,10 @@ class Comb
 			}
 		}
 		
-		uint32_t ReadPhillipsCode(uint16_t *line) {
-			int first_bit = -1 ;// (int)100 - (1.0 * dots_usec);
-			const double bitlen = 2.0 * dots_usec;
-			uint32_t out = 0;
-
-			// find first bit
-		
-			for (int i = 70; (first_bit == -1) && (i < 140); i++) {
-				if (u16_to_ire(line[i]) > 90) {
-					first_bit = i - (1.0 * dots_usec); 
-				}
-//				cerr << i << ' ' << line[i] << ' ' << u16_to_ire(line[i]) << ' ' << first_bit << endl;
-			}
-			if (first_bit < 0) return 0;
-
-			for (int i = 0; i < 24; i++) {
-				double val = 0;
-	
-			//	cerr << dots_usec << ' ' << (int)(first_bit + (bitlen * i) + dots_usec) << ' ' << (int)(first_bit + (bitlen * (i + 1))) << endl;	
-				for (int h = (int)(first_bit + (bitlen * i) + dots_usec); h < (int)(first_bit + (bitlen * (i + 1))); h++) {
-//					cerr << h << ' ' << line[h] << ' ' << endl;
-					val += u16_to_ire(line[h]); 
-				}
-
-//				cerr << "bit " << 23 - i << " " << val / dots_usec << ' ' << hex << out << dec << endl;	
-				if ((val / dots_usec) > 50) {
-					out |= (1 << (23 - i));
-				} 
-			}
-			cerr << "P " << curline << ' ' << hex << out << dec << endl;			
-
-			return out;
-		}
-
-
 		void ToRGB(int f, int firstline, cline_t cbuf[in_y]) {
 			// YIQ (YUV?) -> RGB conversion	
 			for (int l = firstline; l < in_y; l++) {
-				double burstlev = Frame[f].rawbuffer[(l * in_x) + 1] / irescale;
+				double burstlev = 8; // Frame[f].rawbuffer[(l * in_x) + 1] / irescale;
 				uint16_t *line_output = &output[(out_x * 3 * (l - firstline))];
 				int o = 0;
 
@@ -590,7 +555,7 @@ class Comb
 					if (aburstlev < 0) aburstlev = burstlev;	
 					aburstlev = (aburstlev * .99) + (burstlev * .01);
 				}
-//				cerr << "burst level " << burstlev << " mavg " << aburstlev << endl;
+				if (f == f_debugline + 25) cerr << "burst level " << burstlev << " mavg " << aburstlev << endl;
 
 				for (int h = 0; h < 1052; h++) {
 					RGB r;
