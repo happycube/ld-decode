@@ -128,31 +128,13 @@ struct RGB {
 		double y = u16_to_ire(_y.y);
 		y = (y - black_ire) * (100 / (100 - black_ire)); 
 
-		double i = +(_y.i) / irescale;
-		double q = +(_y.q) / irescale;
+		double u = +(_y.i) / irescale;
+		double v = +(_y.q) / irescale;
 
-		double mag = ctor(i, q);
-		double angle = atan2(i, q) - ((33.0 / 180.0) * M_PIl);
-
-		double v = cos(angle) * mag;
-		double u = sin(angle) * mag;
-
-		if (cline == (f_debugline + 25)) {
-			cerr << i << ' ' << q << ' ' << atan2deg(q, i) << ' ' << mag << ' ' << angle << ' ' << u << ' ' << v << ' ' << atan2deg(v, u) << endl;
-		}
-
-#if 0
-                r = y + (.956 * u) + (.621 * v);
-                g = y - (.272 * u) - (.647 * v);
-                b = y - (1.108 * u) + (1.705 * v);
-                //r = y + (.956 * i) + (.621 * q);
-                //g = y - (.272 * i) - (.647 * q);
-                //b = y - (1.108 * i) + (1.705 * q);
-#else
                 r = y + (1.13983 * v);
                 g = y - (0.58060 * v) - (u * 0.39465);
                 b = y + (u * 2.032);
-#endif
+
 		double m = brightness * 256 / 100;
 
                 r = clamp(r * m, 0, 65535);
@@ -168,10 +150,6 @@ inline uint16_t ire_to_u16(double ire)
 	return clamp(((ire + 60) * irescale) + irebase, 1, 65535);
 } 
 
-typedef struct cline {
-	YIQ p[910];
-} cline_t;
-
 int write_locs = -1;
 
 const int nframes = 3;	// 3 frames needed for 3D buffer - for now
@@ -180,6 +158,10 @@ const int in_y = 610;
 const int in_x = 1052;
 const int in_size = in_y * in_x;
 const int out_x = 1052;
+
+typedef struct cline {
+	YIQ p[in_x];
+} cline_t;
 
 struct frame_t {
 	uint16_t rawbuffer[in_x * in_y];
