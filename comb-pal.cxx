@@ -41,7 +41,7 @@ bool f_opticalflow = true;
 
 int f_debugline = -1000;
 	
-int dim = 2;
+int dim = 1;
 
 // NTSC properties
 const double freq = 4.0;
@@ -270,7 +270,7 @@ class Comb
 					}
 
 					Frame[fnum].clpbuffer[0][l][h] = tc1;
-					if (dim == 1) Frame[fnum].clpbuffer[0][l][h - f_toffset] = tc1f;
+//					if (dim == 1) Frame[fnum].clpbuffer[0][l][h - f_toffset] = tc1f;
 
 					Frame[fnum].combk[0][l][h] = 1;
 
