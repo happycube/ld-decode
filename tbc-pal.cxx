@@ -222,13 +222,11 @@ bool PilotDetect(double *line, double loc, double &plevel, double &pphase)
 			double c = round(((i + peakdetect_quad(&linef[i - 1])) / 4)) * 4;
 
 			phase = (i + peakdetect_quad(&linef[i - 1])) - c;
-
 			ptot += phase;
 
 			tpeak += linef[i];
-
 			count++;
-			cerr << "BDN " << i << ' ' << in_to_ire(linef[i]) << ' ' << linef[i - 1] << ' ' << linef[i] << ' ' << linef[i + 1] << ' ' << phase << ' ' << (i + peakdetect_quad(&linef[i - 1])) << ' ' << c << ' ' << ptot << endl; 
+//			cerr << "BDN " << i << ' ' << in_to_ire(linef[i]) << ' ' << linef[i - 1] << ' ' << linef[i] << ' ' << linef[i + 1] << ' ' << phase << ' ' << (i + peakdetect_quad(&linef[i - 1])) << ' ' << c << ' ' << ptot << endl; 
 		} 
 		else if (/*(line[i] < lowmin) && (line[i] > lowmax) && */ (linef[i] > linef[i - 1]) && (linef[i] > linef[i + 1])) {
 			cmax++;
@@ -243,6 +241,60 @@ bool PilotDetect(double *line, double loc, double &plevel, double &pphase)
 //	exit(0);
 	return (count >= 3);
 }
+
+bool BurstDetect(double *line, double _loc, double &plevel, double &pphase) 
+{
+	double freq = out_freq;
+	int loc = _loc * freq;
+	int count = 0, cmin = 0;
+	double ptot = 0, tpeak = 0, tmin = 0;
+	double start = 5;
+	int len = ((start + 10) * freq);
+
+	double phase = 0;
+
+//	cerr << ire_to_in(7) << ' ' << ire_to_in(16) << endl;
+	double highmin = 26500; // ire_to_in(f_highburst ? 12 : 7);
+	double highmax = 31500; // ire_to_in(f_highburst ? 23 : 22);
+	double lowmin = ire_to_in(f_highburst ? -12 : -7);
+	double lowmax = ire_to_in(f_highburst ? -23 : -22);
+//	cerr << lowmin << ' ' << lowmax << endl;
+
+	if (f_highburst) {
+		start = 10;
+		len = (start + 6) * freq;
+	}
+
+	for (int i = loc + (start * freq); i < loc + len; i++) {
+		if ((line[i] > highmin) && (line[i] < highmax) && (line[i] > line[i - 1]) && (line[i] > line[i + 1])) {
+			double c = round(((i + peakdetect_quad(&line[i - 1])) / 4) ) * 4;
+
+//			cerr << "B " << i + peakdetect_quad(&line[i - 1]) << ' ' << c << endl;
+
+//			if (tgt) c -= 2;
+			phase = (i + peakdetect_quad(&line[i - 1])) - c;
+
+			ptot += phase;
+
+			tpeak += line[i];
+
+			count++;
+			cerr << "BDN " << i << ' ' << in_to_ire(line[i]) << ' ' << line[i - 1] << ' ' << line[i] << ' ' << line[i + 1] << ' ' << phase << ' ' << (i + peakdetect_quad(&line[i - 1])) << ' ' << c << ' ' << ptot << endl; 
+		} 
+		else if (/*(line[i] < lowmin) && (line[i] > lowmax) &&*/ (line[i] < line[i - 1]) && (line[i] < line[i + 1])) {
+			cmin++;
+			tmin += line[i];
+		}
+	}
+
+	plevel = (tpeak / count) /* - (tmin / cmin)) */ / 4.2;
+	pphase = (ptot / count) * 1;
+
+//	cerr << "BDN end " << plevel << ' ' << pphase << ' ' << count << endl;
+	
+	return (count >= 3);
+}
+
 	
 
 int get_oline(double line)
@@ -367,6 +419,9 @@ double ProcessLine(uint16_t *buf, vector<Line> &lines, int index)
 	double plevel1, plevel2;
 	double nphase1, nphase2;
 	
+	double blevel = 0;
+	double bphase = 0;	
+	
 	int line = lines[index].linenum;
 	int oline = get_oline(line);
 	if (oline < 0) return 0;
@@ -489,11 +544,17 @@ double ProcessLine(uint16_t *buf, vector<Line> &lines, int index)
 	begin += 4.0 * (burstfreq / 3.75);
 	end += 4.0 * (burstfreq / 3.75);
 	Scale(buf, tout, begin, end, scale4fsc_len); 
+		
+	BurstDetect(tout, 0, blevel, bphase); 
+
+	cerr << "BURST " << line << ' ' << blevel << ' ' << bphase << endl;
 
 wrapup:
 	// LD only: need to adjust output value for velocity, and remove defects as possible
-	double lvl_adjust = ((((end - begin) / iscale15_len) - 1) * 2.0) + 1;
+	double lvl_adjust = ((((end - begin) / iscale15_len) - 1) * 1.0) + 1;
 	int ldo = -128;
+
+	cerr << "leveladj " << lvl_adjust << endl;
 
 	double rotdetect = p_rotdetect * inscale;
 	
@@ -505,13 +566,13 @@ wrapup:
 		double o;
 
 		if (in_freq != 4) {
-//			double freq = (ire * ((7900000 - 7100000) / 100)) + 7100000; 
+			double freq = (ire * ((7900000 - 7100000) / 100)) + 7100000; 
 
 //			cerr << h << ' ' << v << ' ' << ire << ' ' << freq << ' ';
-//			freq *= lvl_adjust;
+			freq *= lvl_adjust;
 //			cerr << freq << ' ';
 
-//			ire = ((freq - 7900000) / 800000) * 100;
+			ire = ((freq - 7100000) / 800000) * 100;
 //			cerr << ire << endl;
 			o = ire_to_out(ire);
 		} else { 

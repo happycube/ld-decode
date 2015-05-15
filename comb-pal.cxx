@@ -1,5 +1,6 @@
 /* LD decoder prototype, Copyright (C) 2013 Chad Page.  License: LGPL2 */
 
+
 #include "ld-decoder.h"
 #include "deemp.h"
 
@@ -45,12 +46,6 @@ int dim = 1;
 
 // NTSC properties
 const double freq = 4.0;
-
-const double dotclk = (1000000.0*(315.0/88.0)*freq); 
-const double dots_usec = dotclk / 1000000.0; 
-
-// values for horizontal timings 
-//const double line_blanklen = 10.9 * dots_usec;
 
 double irescale = 327.67;
 double irebase = 1;
@@ -122,14 +117,24 @@ int cline = -1;
 struct RGB {
         double r, g, b;
 
-        void conv(YIQ _y) {
+        void conv(YIQ _y, double angleadj = 0) {
                YIQ t;
 
 		double y = u16_to_ire(_y.y);
 		y = (y - black_ire) * (100 / (100 - black_ire)); 
 
-		double u = +(_y.i) / irescale;
-		double v = +(_y.q) / irescale;
+		double i = +(_y.i) / irescale;
+		double q = +(_y.q) / irescale;
+
+		double mag = ctor(i, q);
+		double angle = atan2(i, q) + ((angleadj / 180.0) * M_PIl);
+
+		double u = cos(angle) * mag;
+		double v = sin(angle) * mag;
+
+		if (cline == (f_debugline + 25)) {
+			cerr << i << ' ' << q << ' ' << atan2deg(q, i) << ' ' << mag << ' ' << angle << ' ' << u << ' ' << v << ' ' << atan2deg(v, u) << endl;
+		}
 
                 r = y + (1.13983 * v);
                 g = y - (0.58060 * v) - (u * 0.39465);
@@ -157,7 +162,6 @@ const int nframes = 3;	// 3 frames needed for 3D buffer - for now
 const int in_y = 610;
 const int in_x = 1052;
 const int in_size = in_y * in_x;
-const int out_x = 1052;
 
 typedef struct cline {
 	YIQ p[in_x];
@@ -188,12 +192,12 @@ class Comb
 		int fieldcount;
 		int frames_out;	// total # of written frames
 	
-		uint16_t output[out_x * in_y * 3];
-		uint16_t BGRoutput[out_x * in_y * 3];
-		uint16_t obuf[out_x * in_y * 3];
+		uint16_t output[in_x * in_y * 3];
+		uint16_t BGRoutput[in_x * in_y * 3];
+		uint16_t obuf[in_x * in_y * 3];
 		
-		uint16_t Goutput[out_x * in_y];
-		uint16_t Flowmap[out_x * in_y];
+		uint16_t Goutput[in_x * in_y];
+		uint16_t Flowmap[in_x * in_y];
 
 		double aburstlev;	// average color burst
 
@@ -217,7 +221,7 @@ class Comb
 
 				double filti = 0, filtq = 0;
 
-				for (int h = 4; h < (out_x - 4); h++) {
+				for (int h = 4; h < (in_x - 4); h++) {
 					int phase = h % 4;
 					
 					switch (phase) {
@@ -249,7 +253,7 @@ class Comb
 				Filter f_1dq(f_colorlpq);
 				int f_toffset = 8;
 
-				for (int h = 4; h < (out_x - 4); h++) {
+				for (int h = 4; h < (in_x - 4); h++) {
 					int phase = h % 4;
 					double tc1 = (((line[h + 2] + line[h - 2]) / 2) - line[h]); 
 					double tc1f = 0, tsi = 0, tsq = 0;
@@ -288,18 +292,18 @@ class Comb
 		void Split2D(int f) 
 		{
 			for (int l = 24; l < in_y; l++) {
-				uint16_t *pline = &Frame[f].rawbuffer[(l - 2) * in_x];	
+				uint16_t *pline = &Frame[f].rawbuffer[(l - 4) * in_x];	
 				uint16_t *line = &Frame[f].rawbuffer[l * in_x];	
-				uint16_t *nline = &Frame[f].rawbuffer[(l + 2) * in_x];	
+				uint16_t *nline = &Frame[f].rawbuffer[(l + 4) * in_x];	
 		
-				double *p1line = Frame[f].clpbuffer[0][l - 2];
+				double *p1line = Frame[f].clpbuffer[0][l - 4];
 				double *c1line = Frame[f].clpbuffer[0][l];
-				double *n1line = Frame[f].clpbuffer[0][l + 2];
+				double *n1line = Frame[f].clpbuffer[0][l + 4];
 		
 				// 2D filtering.  can't do top or bottom line - calced between 1d and 3d because this is
 				// filtered 
-				if ((l >= 4) && (l <= 503)) {
-					for (int h = 18; h < (out_x - 4); h++) {
+				if ((l >= 4) && (l <= (in_y - 4))) {
+					for (int h = 18; h < (in_x - 4); h++) {
 						double tc1;
 					
 						double kp, kn;
@@ -349,7 +353,7 @@ class Comb
 					}
 				}
 
-				for (int h = 4; h < (out_x - 4); h++) {
+				for (int h = 4; h < (in_x - 4); h++) {
 					if ((l >= 2) && (l <= 502)) {
 						Frame[f].combk[1][l][h] *= 1 - Frame[f].combk[2][l][h];
 					}
@@ -359,7 +363,7 @@ class Comb
 				}
 			}	
 		}	
-
+#if 0
 		void Split3D(int f, bool opt_flow = false) 
 		{
 			for (int l = 24; l < in_y; l++) {
@@ -374,7 +378,7 @@ class Comb
 
 				// need to prefilter K using a LPF
 				double _k[in_x];
-				for (int h = 4; (dim >= 3) && (h < (out_x - 4)); h++) {
+				for (int h = 4; (dim >= 3) && (h < (in_x - 4)); h++) {
 					int adr = (l * in_x) + h;
 
 					double __k = abs(Frame[0].rawbuffer[adr] - Frame[2].rawbuffer[adr]); 
@@ -384,7 +388,7 @@ class Comb
 					if (h >= 836) _k[h] = __k;
 				}
 	
-				for (int h = 4; h < (out_x - 4); h++) {
+				for (int h = 4; h < (in_x - 4); h++) {
 					if (opt_flow) {
 						Frame[f].clpbuffer[2][l][h] = (p3line[h] - line[h]); 
 					} else {
@@ -404,7 +408,7 @@ class Comb
 				}
 			}	
 		}	
-
+#endif
 		void SplitIQ(int f) {
 			double mse = 0.0;
 			double me = 0.0;
@@ -419,7 +423,7 @@ class Comb
 //				if (f_neuralnet) invertphase = true;
 
 				double si = 0, sq = 0;
-				for (int h = 4; h < (out_x - 4); h++) {
+				for (int h = 4; h < (in_x - 4); h++) {
 					int phase = h % 4;
 					double cavg = 0;
 
@@ -464,9 +468,9 @@ class Comb
 				}
 
 				if (f_debug2d && (l >= 6) && (l <= 500)) {
-					cerr << l << ' ' << msel / (out_x - 4) << " ME " << sel / (out_x - 4) << endl; 
-					mse += msel / (out_x - 4);
-					me += sel / (out_x - 4);
+					cerr << l << ' ' << msel / (in_x - 4) << " ME " << sel / (in_x - 4) << endl; 
+					mse += msel / (in_x - 4);
+					me += sel / (in_x - 4);
 				}
 			}
 			if (f_debug2d) {
@@ -484,12 +488,12 @@ class Comb
 				YIQ hplinef[in_x + 32];
 				cline_t *input = &cbuf[l];
 
-				for (int h = 60; h <= 842; h++) {
+				for (int h = 60; h <= (in_x - 4); h++) {
 					hplinef[h].i = f_hpi->feed(input->p[h].i);
 					hplinef[h].q = f_hpq->feed(input->p[h].q);
 				}
 				
-				for (int h = 60; h < 842; h++) {
+				for (int h = 60; h < (in_x - 16); h++) {
 					double ai = hplinef[h + 12].i;
 					double aq = hplinef[h + 12].q;
 
@@ -523,11 +527,11 @@ class Comb
 				YIQ hplinef[in_x + 32];
 				cline_t *input = &cbuf[l];
 
-				for (int h = 40; h <= 843; h++) {
+				for (int h = 40; h <= in_x; h++) {
 					hplinef[h].y = f_hpy->feed(input->p[h].y);
 				}
 				
-				for (int h = 40; h < 843; h++) {
+				for (int h = 40; h < in_x - 12; h++) {
 					double a = hplinef[h + 12].y;
 
 					if (l == (f_debugline + 25)) {
@@ -548,7 +552,7 @@ class Comb
 			// YIQ (YUV?) -> RGB conversion	
 			for (int l = firstline; l < in_y; l++) {
 				double burstlev = 8; // Frame[f].rawbuffer[(l * in_x) + 1] / irescale;
-				uint16_t *line_output = &output[(out_x * 3 * (l - firstline))];
+				uint16_t *line_output = &output[(in_x * 3 * (l - firstline))];
 				int o = 0;
 
 				if (burstlev > 5) {
@@ -557,12 +561,14 @@ class Comb
 				}
 				if (f == f_debugline + 25) cerr << "burst level " << burstlev << " mavg " << aburstlev << endl;
 
-				for (int h = 0; h < 1052; h++) {
+				for (int h = 0; h < in_x; h++) {
 					RGB r;
 					YIQ yiq = cbuf[l].p[h + 0];
 
 					yiq.i *= (10 / aburstlev);
 					yiq.q *= (10 / aburstlev);
+
+					if ((l % 2)) yiq.q = -yiq.q;
 
 					if (f_showk) {
 						yiq.y = ire_to_u16(Frame[f].combk[dim - 1][l][h + 82] * 100);
@@ -730,7 +736,7 @@ class Comb
 			for (int l = firstline; l < in_y; l++) {
 				bool invertphase = (Frame[f].rawbuffer[l * in_x] == 16384);
 
-				for (int h = 2; h < 842; h++) {
+				for (int h = 2; h < in_x; h++) {
 					double comp;	
 					int phase = h % 4;
 
@@ -753,73 +759,6 @@ class Comb
 
 		}
 
-		void Proc3D_NoOF() {
-			memcpy(pbuf, Frame[0].cbuf, sizeof(pbuf));
-			memcpy(nbuf, Frame[1].cbuf, sizeof(pbuf));
-			memcpy(tbuf, Frame[2].cbuf, sizeof(pbuf));
-				
-			// a = fir1(8, 0.1); printf("%.15f, ", a)
-			Filter lp_3dip({0.016282173233472, 0.046349864271587, 0.121506650149374, 0.199579915155249, 0.232562794380638, 0.199579915155249, 0.121506650149374, 0.046349864271587, 0.016282173233472}, {1.0});
-			Filter lp_3din({0.016282173233472, 0.046349864271587, 0.121506650149374, 0.199579915155249, 0.232562794380638, 0.199579915155249, 0.121506650149374, 0.046349864271587, 0.016282173233472}, {1.0});
-			Filter lp_3dqp({0.016282173233472, 0.046349864271587, 0.121506650149374, 0.199579915155249, 0.232562794380638, 0.199579915155249, 0.121506650149374, 0.046349864271587, 0.016282173233472}, {1.0});
-			Filter lp_3dqn({0.016282173233472, 0.046349864271587, 0.121506650149374, 0.199579915155249, 0.232562794380638, 0.199579915155249, 0.121506650149374, 0.046349864271587, 0.016282173233472}, {1.0});
-
-			for (int y = 24; y < in_y; y++) {
-				uint16_t *line = &Frame[1].rawbuffer[y * in_x];	
-				uint16_t *linep = &Frame[0].rawbuffer[y * in_x];	
-				uint16_t *linen = &Frame[2].rawbuffer[y * in_x];	
-				bool invertphase = (line[0] == 16384);
-
-				for (int x = 60; x < 830; x++) {
-					int phase = x % 4;
-					double tcp = (linep[x] - line[x]); 
-					double tcn = (linen[x] - line[x]); 
-					double psi = 0, psq = 0;
-					double nsi = 0, nsq = 0;
-
-					if (!invertphase) {
-						tcp = -tcp;
-						tcn = -tcn;
-					}
-	
-					switch (phase) {
-						case 0: lp_3dip.feed( tcp);  lp_3din.feed( tcn); break;
-						case 1: lp_3dqp.feed(-tcp);  lp_3dqn.feed(-tcn); break;
-						case 2: lp_3dip.feed(-tcp);  lp_3din.feed(-tcn); break;
-						case 3: lp_3dqp.feed( tcp);  lp_3dqn.feed( tcn); break;
-						default: break;
-					}
-					pbuf[y].p[x - 4].i = lp_3dip.val(); 
-					pbuf[y].p[x - 4].q = lp_3dqp.val(); 
-					nbuf[y].p[x - 4].i = lp_3din.val(); 
-					nbuf[y].p[x - 4].q = lp_3dqn.val(); 
-				}
-			}
-			AdjustY(1, pbuf);
-			AdjustY(1, nbuf);
-			
-			for (int y = 24; y < in_y; y++) {
-				for (int x = 50; x < 1052; x++) {
-					double dy = 0, di = 0, dq = 0, diff = 0;
-
-					dy = fabs(pbuf[y].p[x].y - nbuf[y].p[x].y);
-					di = fabs(pbuf[y].p[x].i - nbuf[y].p[x].i);
-					dq = fabs(pbuf[y].p[x].q - nbuf[y].p[x].q);
-					diff = (dy * 1) + (di * 1) + (dq * 1);
-
-					if (y == (f_debugline + 25)) {
-						cerr << "3DC2 Y " << dy / irescale << ' ' << pbuf[y].p[x].y << ' ' << tbuf[y].p[x].y << ' ' << nbuf[y].p[x].y << endl;	
-						cerr << "3DC2 I " << di / irescale << ' ' << pbuf[y].p[x].i << ' ' << tbuf[y].p[x].i << ' ' << nbuf[y].p[x].i << endl;	
-						cerr << "3DC2 Q " << dq / irescale << ' ' << pbuf[y].p[x].q << ' ' << tbuf[y].p[x].q << ' ' << nbuf[y].p[x].q << endl;	
-						Frame[1].combk[2][y][x] = 1 - clamp(((diff / irescale) - 3) / 8, 0, 1);
-						cerr << x << ' ' << diff / irescale << ' ' << Frame[1].combk[2][y][x] << endl;
-					}
-					Frame[1].combk[2][y][x] = 1 - clamp(((diff / irescale) - 3) / 8, 0, 1);
-				}
-			}	
-
-		}
-		
 		// buffer: in_xxin_y uint16_t array
 		void Process(uint16_t *buffer, int dim = 2)
 		{
@@ -842,11 +781,11 @@ class Comb
 			for (int l = 0; l < 24; l++) {
 				uint16_t *line = &Frame[0].rawbuffer[l * in_x];	
 					
-				for (int h = 4; h < (out_x - 4); h++) {
+				for (int h = 4; h < (in_x - 4); h++) {
 					Frame[0].cbuf[l].p[h].y = line[h]; 
 				}
 			}
-		
+	#if 0	
 			if (dim >= 3) {
 				if (f_opticalflow && (framecount >= 1)) {
 					memcpy(tbuf, Frame[0].cbuf, sizeof(tbuf));	
@@ -863,7 +802,7 @@ class Comb
 
 				Split3D(f, f_opticalflow); 
 			}
-
+#endif
 			SplitIQ(f);
 
 			memcpy(tbuf, Frame[f].cbuf, sizeof(tbuf));	
@@ -884,16 +823,16 @@ class Comb
 			int fstart = -1;
 			uint16_t *fbuf = Frame[fnum].rawbuffer;
 
-			int rout_x = f_wide ? out_x : 744;
+			int out_x = f_wide ? in_x : 744;
 			int roffset = f_wide ? 0 : 78;
 
 			if (!f_pulldown) {
 				fstart = 0;
 			} else if (f_oddframe) {
 				for (int i = 1; i < linesout; i += 2) {
-					memcpy(&obuf[rout_x * 3 * i], &output[(out_x * 3 * i) + (roffset * 3)], rout_x * 3 * 2); 
+					memcpy(&obuf[out_x * 3 * i], &output[(in_x * 3 * i) + (roffset * 3)], out_x * 3 * 2); 
 				}
-				WriteFrame(obuf, rout_x, framecode);
+				WriteFrame(obuf, out_x, framecode);
 				f_oddframe = false;		
 			}
 
@@ -909,12 +848,12 @@ class Comb
 			cerr << "FR " << framecount << ' ' << fstart << endl;
 			if (!f_pulldown || (fstart == 0)) {
 				for (int i = 0; i < linesout; i++) {
-					memcpy(&obuf[rout_x * 3 * i], &output[(out_x * 3 * i) + (roffset * 3)], rout_x * 3 * 2); 
+					memcpy(&obuf[out_x * 3 * i], &output[(in_x * 3 * i) + (roffset * 3)], out_x * 3 * 2); 
 				}
-				WriteFrame(obuf, rout_x, framecode);
+				WriteFrame(obuf, out_x, framecode);
 			} else if (fstart == 1) {
 				for (int i = 0; i < linesout; i += 2) {
-					memcpy(&obuf[rout_x * 3 * i], &output[(out_x * 3 * i) + (roffset * 3)], rout_x * 3 * 2); 
+					memcpy(&obuf[out_x * 3 * i], &output[(in_x * 3 * i) + (roffset * 3)], out_x * 3 * 2); 
 				}
 				f_oddframe = true;
 				cerr << "odd frame\n";
