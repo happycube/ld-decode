@@ -561,7 +561,7 @@ wrapup:
 	double diff[1052];
 	double prev_o = 0;
 	for (int h = 0; (oline > 2) && (h < 1052); h++) {
-		double v = tout[h + 0 /* 94 */ ];
+		double v = tout[h + 94 ];
 		double ire = in_to_ire(v);
 		double o;
 
@@ -644,6 +644,8 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 		double val = f_psync8.feed(buf[i]);
 		if (i > 16) filtbuf[i - 16] = val;
 	}
+	
+	f_linelen.clear(pal_ipline);
 
 	// sample syncs
 	f_syncid.clear(0);
@@ -720,6 +722,8 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 
 	bool field2 = false;
 	int line = -10;
+	double prev_linelen = 1832;
+
 	for (int i = firstline - 2; (i < (firstline + 650)) && (line < 623) && (i < peaks.size()); i++) {
 //		cerr << "P2A " << i << ' ' << peaks[i].peak << endl;
 		bool canstartsync = false;
@@ -767,14 +771,26 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 				if ((cendsync == 4) && (peaks[i].endsync < 0)) peaks[i].endsync = center + x - 4;			
 			}
 
+			// this is asymetric since on an NTSC player playback is sped up to 1820 pixels/line 
+			double prev_linelen_cf = clamp(prev_linelen / in_freq, 224, 232);
+
 			peaks[i].bad = !InRangeF(peaks[i].endsync - peaks[i].beginsync, 14.5, 20.5);
-			if (!peaks[i - 1].bad) peaks[i].bad |= get_oline(line) > 22 && (!InRangeF(peaks[i].beginsync - peaks[i-1].beginsync, 229 - f_tol, 229 + f_tol) || !InRangeF(peaks[i].endsync - peaks[i-1].endsync, 229 - f_tol, 229 + f_tol)); 
+
+			if (!peaks[i - 1].bad) peaks[i].bad |= get_oline(line) > 22 && (!InRangeF(peaks[i].beginsync - peaks[i-1].beginsync, prev_linelen_cf - f_tol, prev_linelen_cf + f_tol) || !InRangeF(peaks[i].endsync - peaks[i-1].endsync, prev_linelen_cf - f_tol, prev_linelen_cf + f_tol)); 
+
 			peaks[i].linenum = line;
 			
 			cerr << "P2_" << line << ' ' << i << ' ' << peaks[i].bad << ' ' <<  peaks[i].peak << ' ' << peaks[i].center << ' ' << peaks[i].center - peaks[i-1].center << ' ' << peaks[i].beginsync << ' ' << peaks[i].endsync << ' ' << peaks[i].endsync - peaks[i].beginsync << ' ' << peaks[i].beginsync - peaks[i-1].beginsync << endl;
 				
 			// HACK!
 			if (line == 318) peaks[i].linenum = -1;
+
+			// if we have a good line, feed it's length to the line LPF.  The 8 line lag is insignificant 
+			// since it's a ~30hz oscillation. 
+			double linelen = peaks[i].center - peaks[i-1].center;
+			if (!peaks[i].bad && !peaks[i - 1].bad && InRangeF(linelen, 227.5 - 4, 229 + 4)) {
+				prev_linelen = f_linelen.feed(linelen);
+			}
 		} else if (peaks[i].peak > .9) {
 			line = -10;
 			peaks[i].linenum = -1;
@@ -796,7 +812,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 				for (lg = 1; lg < 8 && (peaks[i - lg].bad || peaks[i + lg].bad); lg++);
 
 				cerr << "BADLG " << lg << endl;
-				double gap = ((peaks[i + lg].beginsync - peaks[i - lg].beginsync) / (lg * 2));
+				double gap = (peaks[i + lg].beginsync - peaks[i - lg].beginsync) / 2;
 				peaks[i].beginsync = peaks[i - lg].beginsync + (gap * lg); 
 				peaks[i].center = peaks[i - lg].center + (gap * lg); 
 				peaks[i].endsync = peaks[i - lg].endsync + (gap * lg); 
@@ -994,8 +1010,6 @@ int main(int argc, char *argv[])
 	}
 							
 	memset(frame, 0, sizeof(frame));
-
-	f_linelen.clear(pal_ipline);
 
 	size_t aplen = 0;
 	while (rv == vbsize && ((v_read < dlen) || (dlen < 0))) {
