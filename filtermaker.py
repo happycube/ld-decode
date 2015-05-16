@@ -263,5 +263,5 @@ print("const int syncid8_offset = 320;")
 print("const int syncid10_offset = 400;")
 
 
-linelen_filter_b, linelen_filter_a = sps.butter(5, 0.1)
-WriteFilter("linelen", linelen_filter_b, linelen_filter_a)
+linelen_filter_b = sps.firwin(17, 0.1)
+WriteFilter("linelen", linelen_filter_b, [1.0])

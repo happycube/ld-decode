@@ -226,7 +226,7 @@ bool PilotDetect(double *line, double loc, double &plevel, double &pphase)
 
 			tpeak += linef[i];
 			count++;
-//			cerr << "BDN " << i << ' ' << in_to_ire(linef[i]) << ' ' << linef[i - 1] << ' ' << linef[i] << ' ' << linef[i + 1] << ' ' << phase << ' ' << (i + peakdetect_quad(&linef[i - 1])) << ' ' << c << ' ' << ptot << endl; 
+			cerr << "BDN " << i << ' ' << in_to_ire(linef[i]) << ' ' << linef[i - 1] << ' ' << linef[i] << ' ' << linef[i + 1] << ' ' << phase << ' ' << (i + peakdetect_quad(&linef[i - 1])) << ' ' << c << ' ' << ptot << endl; 
 		} 
 		else if (/*(line[i] < lowmin) && (line[i] > lowmax) && */ (linef[i] > linef[i - 1]) && (linef[i] > linef[i + 1])) {
 			cmax++;
@@ -561,7 +561,7 @@ wrapup:
 	double diff[1052];
 	double prev_o = 0;
 	for (int h = 0; (oline > 2) && (h < 1052); h++) {
-		double v = tout[h + 94];
+		double v = tout[h + 0 /* 94 */ ];
 		double ire = in_to_ire(v);
 		double o;
 
