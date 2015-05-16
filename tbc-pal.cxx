@@ -226,7 +226,7 @@ bool PilotDetect(double *line, double loc, double &plevel, double &pphase)
 
 			tpeak += linef[i];
 			count++;
-			cerr << "BDN " << i << ' ' << in_to_ire(linef[i]) << ' ' << linef[i - 1] << ' ' << linef[i] << ' ' << linef[i + 1] << ' ' << phase << ' ' << (i + peakdetect_quad(&linef[i - 1])) << ' ' << c << ' ' << ptot << endl; 
+//			cerr << "BDN " << i << ' ' << in_to_ire(linef[i]) << ' ' << linef[i - 1] << ' ' << linef[i] << ' ' << linef[i + 1] << ' ' << phase << ' ' << (i + peakdetect_quad(&linef[i - 1])) << ' ' << c << ' ' << ptot << endl; 
 		} 
 		else if (/*(line[i] < lowmin) && (line[i] > lowmax) && */ (linef[i] > linef[i - 1]) && (linef[i] > linef[i + 1])) {
 			cmax++;
@@ -237,7 +237,7 @@ bool PilotDetect(double *line, double loc, double &plevel, double &pphase)
 	plevel = ((tpeak / count) /*- (tmin / cmin)*/) / 2.25;
 	pphase = (ptot / count) * 1;
 
-	cerr << "plevel " << plevel << " pphase " << pphase << ' ' << count << endl;
+//	cerr << "PhaseDetect plevel " << plevel << " pphase " << pphase << ' ' << count << endl;
 //	exit(0);
 	return (count >= 3);
 }
@@ -279,7 +279,7 @@ bool BurstDetect(double *line, double _loc, double &plevel, double &pphase)
 			tpeak += line[i];
 
 			count++;
-			cerr << "BDN " << i << ' ' << in_to_ire(line[i]) << ' ' << line[i - 1] << ' ' << line[i] << ' ' << line[i + 1] << ' ' << phase << ' ' << (i + peakdetect_quad(&line[i - 1])) << ' ' << c << ' ' << ptot << endl; 
+//			cerr << "BDN " << i << ' ' << in_to_ire(line[i]) << ' ' << line[i - 1] << ' ' << line[i] << ' ' << line[i + 1] << ' ' << phase << ' ' << (i + peakdetect_quad(&line[i - 1])) << ' ' << c << ' ' << ptot << endl; 
 		} 
 		else if (/*(line[i] < lowmin) && (line[i] > lowmax) &&*/ (line[i] < line[i - 1]) && (line[i] < line[i + 1])) {
 			cmin++;
@@ -290,7 +290,7 @@ bool BurstDetect(double *line, double _loc, double &plevel, double &pphase)
 	plevel = (tpeak / count) /* - (tmin / cmin)) */ / 4.2;
 	pphase = (ptot / count) * 1;
 
-//	cerr << "BDN end " << plevel << ' ' << pphase << ' ' << count << endl;
+//	cerr << "BurstDetect end " << plevel << ' ' << pphase << ' ' << count << endl;
 	
 	return (count >= 3);
 }
@@ -453,7 +453,7 @@ double ProcessLine(uint16_t *buf, vector<Line> &lines, int index)
 	cerr << "b" << endl;
 	PilotDetect(tout, 240, plevel2, nphase2); 
 
-	cerr << "levels " << plevel1 << ' ' << plevel2 << " valid " << valid << endl;
+	cerr << "Beginning Pilot levels " << plevel1 << ' ' << plevel2 << " valid " << valid << endl;
 
 	if (!valid /* || (plevel1 < (f_highburst ? 1800 : 1000)) || (plevel2 < (f_highburst ? 1000 : 800)) */) {
 		begin += prev_offset_begin;
@@ -471,7 +471,7 @@ double ProcessLine(uint16_t *buf, vector<Line> &lines, int index)
 */
 	adjlen = (end - begin) / (scale15_len / pal_opline);
 
-	for (pass = 0; (pass < 12) && ((fabs(nadj1) + fabs(nadj2)) > .05); pass++) {
+	for (pass = 0; (pass < 12) && ((fabs(nadj1) + fabs(nadj2)) > .005); pass++) {
 //		cerr << line << " 0" << ' ' << ((end - begin) / scale15_len) * pal_ipline.0 << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
 
 		nadj1 = nphase1 * 1;
@@ -499,6 +499,8 @@ double ProcessLine(uint16_t *buf, vector<Line> &lines, int index)
 					
 //		cerr << line << " " << pass << ' ' << begin << ' ' << (begin + adjlen) << '/' << end  << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << ' ' << nphase1 << ' ' << nphase2 << endl;
 	}
+	
+	cerr << "End Pilot levels " << pass << ' ' << plevel1 << ':' << nphase1 << " " << plevel2 << ':' << nphase2 << " valid " << valid << endl;
 #if 1
 	if (fabs(begin - orig_begin) > 3) {
 		cerr << "ERRP begin " << frameno + 1 << ":" << oline << ' ' << orig_begin << ' ' << begin << ' ' << orig_end << ' ' << end << endl;
@@ -546,7 +548,6 @@ double ProcessLine(uint16_t *buf, vector<Line> &lines, int index)
 	Scale(buf, tout, begin, end, scale4fsc_len); 
 		
 	BurstDetect(tout, 0, blevel, bphase); 
-
 	cerr << "BURST " << line << ' ' << blevel << ' ' << bphase << endl;
 
 wrapup:
