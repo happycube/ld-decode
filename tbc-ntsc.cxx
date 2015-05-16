@@ -61,7 +61,7 @@ double hfreq = 525.0 * (30000.0 / 1001.0);
 
 long long fr_count = 0, au_count = 0;
 
-double f_tol = 1.25;
+double f_tol = 0.5;
 
 bool f_diff = false;
 
@@ -735,6 +735,8 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 	// PASS 2: Line processing and error detection
 	bool field2 = false;
 	int line = -10;
+	double prev_linelen = 1820;
+
 	for (int i = firstline - 1; i < peaks.size() && (i < (firstline + 540)) && (line < 526); i++) {
 //		cerr << "P2A " << i << ' ' << peaks[i].peak << endl;
 		bool canstartsync = false;
@@ -790,13 +792,18 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 			}
 
 			peaks[i].bad = !InRangeCF(peaks[i].endsync - peaks[i].beginsync, 15.5, 18.5);
-			if (!peaks[i - 1].bad) peaks[i].bad |= get_oline(line) > 22 && (!InRangeCF(peaks[i].beginsync - peaks[i-1].beginsync, 227.5 - f_tol, 227.5 + f_tol) || !InRangeCF(peaks[i].endsync - peaks[i-1].endsync, 227.5 - f_tol, 227.5 + f_tol)); 
+
+			double prev_linelen_cf = prev_linelen / in_freq;
+
+			if (!peaks[i - 1].bad) peaks[i].bad |= get_oline(line) > 22 && (!InRangeCF(peaks[i].beginsync - peaks[i-1].beginsync, prev_linelen_cf - f_tol, prev_linelen_cf + f_tol) || !InRangeCF(peaks[i].endsync - peaks[i-1].endsync, prev_linelen_cf - f_tol, prev_linelen_cf + f_tol)); 
 			peaks[i].linenum = line;
 			
-			cerr << "P2_" << line << ' ' << i << ' ' << peaks[i].bad << ' ' <<  peaks[i].peak << ' ' << peaks[i].center << ' ' << peaks[i].center - peaks[i-1].center << ' ' << peaks[i].beginsync << ' ' << peaks[i].endsync << ' ' << peaks[i].endsync - peaks[i].beginsync << endl;
+			cerr << "P2_" << line << ' ' << i << ' ' << peaks[i].bad << ' ' <<  peaks[i].peak << ' ' << peaks[i].center << ' ' << prev_linelen_cf << ' ' << peaks[i].center - peaks[i-1].center << ' ' << peaks[i].beginsync << ' ' << peaks[i].endsync << ' ' << peaks[i].endsync - peaks[i].beginsync << endl;
 				
 			// HACK!
 			if (line == 273) peaks[i].linenum = -1;
+
+			if (!peaks[i].bad && !peaks[i - 1].bad) prev_linelen = peaks[i].center - peaks[i-1].center;
 		}
 		line++;
 	}
