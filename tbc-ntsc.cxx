@@ -61,7 +61,7 @@ double hfreq = 525.0 * (30000.0 / 1001.0);
 
 long long fr_count = 0, au_count = 0;
 
-double f_tol = 0.5;
+double f_tol = .5;
 
 bool f_diff = false;
 
@@ -793,7 +793,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 
 			peaks[i].bad = !InRangeCF(peaks[i].endsync - peaks[i].beginsync, 15.5, 18.5);
 
-			double prev_linelen_cf = prev_linelen / in_freq;
+			double prev_linelen_cf = clamp(prev_linelen / in_freq, 227, 228);
 
 			if (!peaks[i - 1].bad) peaks[i].bad |= get_oline(line) > 22 && (!InRangeCF(peaks[i].beginsync - peaks[i-1].beginsync, prev_linelen_cf - f_tol, prev_linelen_cf + f_tol) || !InRangeCF(peaks[i].endsync - peaks[i-1].endsync, prev_linelen_cf - f_tol, prev_linelen_cf + f_tol)); 
 			peaks[i].linenum = line;
@@ -803,7 +803,11 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 			// HACK!
 			if (line == 273) peaks[i].linenum = -1;
 
-			if (!peaks[i].bad && !peaks[i - 1].bad && (get_oline(line) > 22)) prev_linelen = peaks[i].center - peaks[i-1].center;
+			if (!peaks[i].bad && !peaks[i - 1].bad && (get_oline(line) > 22)) {
+				prev_linelen = peaks[i].center - peaks[i-1].center;
+			} else {
+				prev_linelen = 1820;
+			}
 		}
 		line++;
 	}
