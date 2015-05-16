@@ -61,7 +61,7 @@ double hfreq = 525.0 * (30000.0 / 1001.0);
 
 long long fr_count = 0, au_count = 0;
 
-double f_tol = .7;
+double f_tol = .5;
 
 bool f_diff = false;
 
@@ -239,6 +239,11 @@ int get_oline(double line)
 	else if (l < 525) return ((l - 273) * 2) + 1;
 
 	return -1;
+}
+
+bool is_visibleline(int line) 
+{
+	return (get_oline(line) >= 22);
 }
 
 double pleft = 0, pright = 0;
@@ -668,6 +673,9 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 
 	memset(frame, 0, sizeof(frame));
 
+	// clear line length filter - will be repopulated with the pre-line 22/273 samples	
+	f_linelen.clear(ntsc_ipline);
+
 	// sample syncs
 	f_syncid.clear(0);
 
@@ -793,7 +801,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 
 			peaks[i].bad = !InRangeCF(peaks[i].endsync - peaks[i].beginsync, 15.5, 18.5);
 
-			double prev_linelen_cf = clamp(prev_linelen / in_freq, 227, 228);
+			double prev_linelen_cf = clamp(prev_linelen / in_freq, 226, 229);
 
 			if (!peaks[i - 1].bad) peaks[i].bad |= get_oline(line) > 22 && (!InRangeCF(peaks[i].beginsync - peaks[i-1].beginsync, prev_linelen_cf - f_tol, prev_linelen_cf + f_tol) || !InRangeCF(peaks[i].endsync - peaks[i-1].endsync, prev_linelen_cf - f_tol, prev_linelen_cf + f_tol)); 
 			peaks[i].linenum = line;
@@ -803,10 +811,11 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 			// HACK!
 			if (line == 273) peaks[i].linenum = -1;
 
-			if (!peaks[i].bad && !peaks[i - 1].bad && (get_oline(line) > 22)) {
-				prev_linelen = peaks[i].center - peaks[i-1].center;
-			} else {
-				prev_linelen = 1820;
+			// if we have a good line, feed it's length to the line LPF.  The 8 line lag is insignificant 
+			// since it's a ~30hz oscillation. 
+			double linelen = peaks[i].center - peaks[i-1].center;
+			if (!peaks[i].bad && !peaks[i - 1].bad && InRangeCF(linelen, 227.5 - 4, 227.5 + 4)) {
+				prev_linelen = f_linelen.feed(linelen);
 			}
 		}
 		line++;
@@ -826,11 +835,11 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 				for (lg = 1; lg < 8 && (peaks[i - lg].bad || peaks[i + lg].bad); lg++);
 
 				cerr << "BADLG " << lg << endl;
-				double gap = ((peaks[i + lg].beginsync - peaks[i - lg].beginsync) / (lg * 2));
+				double gap = (peaks[i + lg].beginsync - peaks[i - lg].beginsync) / 2;
 				peaks[i].beginsync = peaks[i - lg].beginsync + gap; 
 				peaks[i].center = peaks[i - lg].center + gap; 
 				peaks[i].endsync = peaks[i - lg].endsync + gap; 
-				cerr << peaks[i].beginsync << ' ' << peaks[i].center << ' ' << peaks[i].endsync << ' ' << peaks[i].endsync - peaks[i].beginsync << endl;
+				cerr << gap << ' ' << peaks[i].beginsync << ' ' << peaks[i].center << ' ' << peaks[i].endsync << ' ' << peaks[i].endsync - peaks[i].beginsync << endl;
 			}
 		}
 	}
