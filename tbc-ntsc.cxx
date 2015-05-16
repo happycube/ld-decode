@@ -803,7 +803,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 			// HACK!
 			if (line == 273) peaks[i].linenum = -1;
 
-			if (!peaks[i].bad && !peaks[i - 1].bad) prev_linelen = peaks[i].center - peaks[i-1].center;
+			if (!peaks[i].bad && !peaks[i - 1].bad && (get_oline(line) > 22)) prev_linelen = peaks[i].center - peaks[i-1].center;
 		}
 		line++;
 	}
