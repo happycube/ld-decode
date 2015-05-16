@@ -199,39 +199,26 @@ bool PilotDetect(double *line, double loc, double &plevel, double &pphase)
 
 	double phase = 0;
 
-	loc *= out_freq;
+	loc *= 4;
 
-	double linef[len + 32];	
-	int offset = loc + start;
-	for (int i = 0; i < len + 16; i++) {
-		double v = f_pilot.feed(line[i + offset]);
-		if (i >= 8) linef[i] = v;
-//		cerr << i << ' ' << line[i + offset] << ' ' << linef[i] << endl;
-	}
 //	cerr << ire_to_in(7) << ' ' << ire_to_in(16) << endl;
 	double min = 5000;
 	double max = 20000;
-//	double lowmin = 3000;
-//	double lowmax = 5000;
+	double lowmin = 7000;
+	double lowmax = 13000;
 //	cerr << lowmin << ' ' << lowmax << endl;
 
-	for (int i = 28; i < len; i++) {
-		//if ((line[i] > highmin) && (line[i] < highmax) && (line[i] > line[i - 1]) && (line[i] > line[i + 1])) {
-//		cerr << line[i + offset] << ' ' << linef[i] << endl;
-		if ((linef[i] < -min) && (linef[i] > -max) && (linef[i] < linef[i - 1]) && (linef[i] < linef[i + 1])) {
-			double c = round(((i + peakdetect_quad(&linef[i - 1])) / 4)) * 4;
+	for (int i = 28 + loc; i < len + loc; i++) {
+		if ((line[i] > lowmin) && (line[i] < lowmax) && (line[i] < line[i - 1]) && (line[i] < line[i + 1])) {
+			double c = round(((i + peakdetect_quad(&line[i - 1])) / 4)) * 4;
 
-			phase = (i + peakdetect_quad(&linef[i - 1])) - c;
+			phase = (i + peakdetect_quad(&line[i - 1])) - c;
 			ptot += phase;
 
-			tpeak += linef[i];
+			tpeak += line[i];
 			count++;
-//			cerr << "BDN " << i << ' ' << in_to_ire(linef[i]) << ' ' << linef[i - 1] << ' ' << linef[i] << ' ' << linef[i + 1] << ' ' << phase << ' ' << (i + peakdetect_quad(&linef[i - 1])) << ' ' << c << ' ' << ptot << endl; 
+			cerr << "BDP " << i << ' ' << in_to_ire(line[i]) << ' ' << line[i - 1] << ' ' << line[i] << ' ' << line[i + 1] << ' ' << phase << ' ' << (i + peakdetect_quad(&line[i - 1])) << ' ' << c << ' ' << ptot << endl; 
 		} 
-		else if (/*(line[i] < lowmin) && (line[i] > lowmax) && */ (linef[i] > linef[i - 1]) && (linef[i] > linef[i + 1])) {
-			cmax++;
-			tmax += linef[i];
-		}
 	}
 
 	plevel = ((tpeak / count) /*- (tmin / cmin)*/) / 2.25;
@@ -266,6 +253,7 @@ bool BurstDetect(double *line, double _loc, double &plevel, double &pphase)
 	}
 
 	for (int i = loc + (start * freq); i < loc + len; i++) {
+		cerr << "B " << ' ' << i << ' ' << line[i] << endl;
 		if ((line[i] > highmin) && (line[i] < highmax) && (line[i] > line[i - 1]) && (line[i] > line[i + 1])) {
 			double c = round(((i + peakdetect_quad(&line[i - 1])) / 4) ) * 4;
 
@@ -490,6 +478,7 @@ double ProcessLine(uint16_t *buf, vector<Line> &lines, int index)
 
 		Scale(buf, tout, begin, end, scale15_len); 
 		PilotDetect(tout, 0, plevel1, nphase1); 
+		cerr << "b" << endl;
 		PilotDetect(tout, 240, plevel2, nphase2); 
 		
 		nadj1 = (nphase1) * 1;
@@ -543,8 +532,8 @@ double ProcessLine(uint16_t *buf, vector<Line> &lines, int index)
 	}
 #endif
 	cerr << "final levels " << plevel1 << ' ' << plevel2 << endl;
-	begin += 4.0 * (burstfreq / 3.75);
-	end += 4.0 * (burstfreq / 3.75);
+//	begin += 4.0 * (burstfreq / 3.75);
+//	end += 4.0 * (burstfreq / 3.75);
 	Scale(buf, tout, begin, end, scale4fsc_len); 
 		
 	BurstDetect(tout, 0, blevel, bphase); 
