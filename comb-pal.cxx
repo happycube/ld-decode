@@ -816,7 +816,7 @@ class Comb
 		}
 
 		void AdjustY(int f, cline_t cbuf[in_y]) {
-			int firstline = (linesout == in_y) ? 0 : 25;
+			int firstline = (linesout == in_y) ? 0 : 32;
 			// remove color data from baseband (Y)	
 			for (int l = firstline; l < in_y; l++) {
 				bool invertphase = (Frame[f].rawbuffer[l * in_x] == 16384);
@@ -847,7 +847,7 @@ class Comb
 		// buffer: in_xxin_y uint16_t array
 		void Process(uint16_t *buffer, int dim = 2)
 		{
-			int firstline = (linesout == in_y) ? 0 : 25;
+			int firstline = (linesout == in_y) ? 0 : 32;
 			int f = (dim == 3) ? 1 : 0;
 
 			cerr << "P " << f << ' ' << dim << endl;
