@@ -53,7 +53,7 @@ inline uint16_t ire_to_u16(double ire);
 
 // tunables
 
-int lineoffset = 32;
+int lineoffset = 0;
 
 int linesout = 576;
 
@@ -486,7 +486,7 @@ class Comb
 		}
 		
 		void DoCNR(int f, cline_t cbuf[in_y], double min = -1.0) {
-			int firstline = (linesout == in_y) ? 0 : 23;
+			int firstline = (linesout == in_y) ? 0 : lineoffset;
 	
 			if (nr_c < min) nr_c = min;
 			if (nr_c <= 0) return;
@@ -524,7 +524,7 @@ class Comb
 		}
 					
 		void DoYNR(int f, cline_t cbuf[in_y], double min = -1.0) {
-			int firstline = (linesout == in_y) ? 0 : 23;
+			int firstline = (linesout == in_y) ? 0 : lineoffset;
 
 			if (nr_y < min) nr_y = min;
 
@@ -578,8 +578,13 @@ class Comb
 				cerr << "angle of " << l << " is " << angle[l] << ' ' <<  endl; 
 			}
 
-			// XXX:  This is an awful hack, looking at only one of the stages to determine flip
-			bool phase = angle[230] > 180;
+			// XXX:  This still feels dodgy, but when we look at a 4-line sequence phase inversion
+			// depends on whether the second or third line has different phase from first/4th 
+			int phasecount = 0, tot = 0;
+			for (int l = 20; l < (in_y - 4); l += 4, tot++) {
+				if (fabs(angle[l + 1] - angle[l]) < 20) phasecount++; 
+			}
+			bool phase = phasecount > (tot / 2);
 
 			for (int l = firstline; l < in_y; l++) {
 				double burstlev = 8; // Frame[f].rawbuffer[(l * in_x) + 1] / irescale;
@@ -801,7 +806,7 @@ class Comb
 		}
 
 		void AdjustY(int f, cline_t cbuf[in_y]) {
-			int firstline = (linesout == in_y) ? 0 : 32;
+			int firstline = (linesout == in_y) ? 0 : lineoffset;
 			// remove color data from baseband (Y)	
 			for (int l = firstline; l < in_y; l++) {
 				bool invertphase = (Frame[f].rawbuffer[l * in_x] == 16384);
@@ -832,7 +837,7 @@ class Comb
 		// buffer: in_xxin_y uint16_t array
 		void Process(uint16_t *buffer, int dim = 2)
 		{
-			int firstline = (linesout == in_y) ? 0 : 32;
+			int firstline = (linesout == in_y) ? 0 : lineoffset;
 			int f = (dim == 3) ? 1 : 0;
 
 			cerr << "P " << f << ' ' << dim << endl;
