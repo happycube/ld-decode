@@ -138,7 +138,7 @@ struct RGB {
 //		if (((line + 1) % 4) >= 2) u = -u;
 
 		if (cline == (f_debugline + 25)) {
-			cerr << i << ' ' << q << ' ' << atan2deg(q, i) << ' ' << mag << ' ' << angle << ' ' << u << ' ' << v << ' ' << atan2deg(v, u) << endl;
+//			cerr << i << ' ' << q << ' ' << atan2deg(q, i) << ' ' << mag << ' ' << angle << ' ' << u << ' ' << v << ' ' << atan2deg(v, u) << endl;
 		}
 
                 r = y + (1.13983 * v);
@@ -555,6 +555,28 @@ class Comb
 		
 		void ToRGB(int f, int firstline, cline_t cbuf[in_y]) {
 			// YIQ (YUV?) -> RGB conversion	
+
+			// TEMP:  Need to figure out which phase we're in this frame
+			bool phase = false;
+			{
+				int l = 230;
+
+				double ang = 0;
+				for (int h = 25; h < 55; h++) {
+					YIQ yiqp = cbuf[l - 2].p[h + 0];
+					YIQ yiq = cbuf[l].p[h];
+//					yiq.i = (yiqp.i + yiq.i) / 2;
+//					yiq.q = (yiqp.q + yiq.q) / 2;
+//					if ((l % 2)) yiq.q = -yiq.q;
+					cerr << "BURST " << l << ' ' << h << ' ' << yiq.y << ' ' << yiq.i << ' ' << yiq.q << ' ' << ctor(yiq.i, yiq.q) << ' ' << atan2deg(yiq.q, yiq.i) << endl;
+					ang += atan2deg(yiq.q, yiq.i);	
+				}
+				ang /= 30;
+				cerr << "angle of " << l << " is " << ang << endl; 
+
+				phase = ang > 180;
+			}
+
 			for (int l = firstline; l < in_y; l++) {
 				double burstlev = 8; // Frame[f].rawbuffer[(l * in_x) + 1] / irescale;
 				uint16_t *line_output = &output[(in_x * 3 * (l - firstline))];
@@ -582,20 +604,26 @@ class Comb
 				double angleadj = 135 - ang;
 	
 				for (int h = 0; h < in_x; h++) {
+					double adj2 = 0;
+
 					double i = +(cbuf[l].p[h].i);
 					double q = +(cbuf[l].p[h].q);
 
 					double mag = ctor(i, q);
 //					if (((line + 1) % 4) >= 2) angleadj -= 65;
-					double angle = atan2(q, i) + ((angleadj / 180.0) * M_PIl);
+//					if ((l % 4) >= 2) adj2 = +65;
+					int rotate = l % 4;
+//					if ((rotate == 0) || (rotate == 3)) adj2 = +65;
+//					angleadj = 0;
+					double angle = atan2(q, i) + (((angleadj + adj2) / 180.0) * M_PIl);
 
-					if ((l == f_debugline + 25))
+					if (l == (f_debugline + 25))
 						cerr << "A " << h << ' ' << cbuf[l].p[h].i << ' ' << cbuf[l].p[h].q << ' ' ;
 
 					cbuf[l].p[h].i = cos(angle) * mag;
 					cbuf[l].p[h].q = sin(angle) * mag;
 
-					if ((l == f_debugline + 25))
+					if (l == (f_debugline + 25)) 
 						cerr << cbuf[l].p[h].i << ' ' << cbuf[l].p[h].q << endl ;
 				}
 
@@ -604,20 +632,37 @@ class Comb
 					YIQ yiqp = cbuf[l - 2].p[h + 0];
 					YIQ yiq = cbuf[l].p[h + 0];
 
-					yiq.i = (yiqp.i + yiq.i) / 2;
-					yiq.q = (yiqp.q + yiq.q) / 2;
+//					yiq.i = (yiqp.i + yiq.i) / 1;
+//					yiq.q = (yiqp.q + yiq.q) / 1;
 
 					yiq.i *= (10 / aburstlev);
 					yiq.q *= (10 / aburstlev);
+					
+					double i = yiq.i, q = yiq.q;
 
+					int rotate = l % 4;
+					bool flip = (rotate == 1) || (rotate == 2);
+					if (phase) flip = !flip;
+
+					if (flip) {
+						yiq.i = -q;
+						yiq.q = -i;
+					}
+/*
+					if ((rotate == 1) || (rotate == 2)) {
+						double tmp = yiq.i;
+						yiq.i = -yiq.q;
+						yiq.q = -tmp;	
+					}
+*/
 					if (f_showk) {
 						yiq.y = ire_to_u16(Frame[f].combk[dim - 1][l][h + 82] * 100);
 //						yiq.y = ire_to_u16(((double)h / 752.0) * 100);
 						yiq.i = yiq.q = 0;
 					}
 
-					if ((l == f_debugline + 25)) {
-						cerr << "YIQ " << h << ' ' << atan2deg(yiq.q, yiq.i) << ' ' << 135 - ang << ' ' << yiq.y << ' ' << yiq.i << ' ' << yiq.q << endl;
+					if (l == (f_debugline + 25)) {
+						cerr << "YIQ " << h << ' ' << l << ' ' << l % 4 << ' ' << ang << ' ' << atan2deg(yiq.q, yiq.i) << ' ' << yiq.y << ' ' << yiq.i << ' ' << yiq.q << endl;
 					}
 
 					cline = l;
