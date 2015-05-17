@@ -57,7 +57,7 @@ int linesout = 576;
 
 double brightness = 240;
 
-double black_ire = 7.5;
+double black_ire = 40;
 int black_u16 = ire_to_u16(black_ire);
 int white_u16 = ire_to_u16(100); 
 
@@ -117,8 +117,10 @@ int cline = -1;
 struct RGB {
         double r, g, b;
 
-        void conv(YIQ _y, double angleadj = 0) {
+        void conv(YIQ _y, double angleadj = 0, int line = 0) {
                YIQ t;
+
+//		angleadj = 0;
 
 		double y = u16_to_ire(_y.y);
 		y = (y - black_ire) * (100 / (100 - black_ire)); 
@@ -127,10 +129,13 @@ struct RGB {
 		double q = +(_y.q) / irescale;
 
 		double mag = ctor(i, q);
-		double angle = atan2(i, q) + ((angleadj / 180.0) * M_PIl);
+//		if (((line + 1) % 4) >= 2) angleadj -= 65;
+		double angle = atan2(q, i) + ((angleadj / 180.0) * M_PIl);
 
 		double u = cos(angle) * mag;
 		double v = sin(angle) * mag;
+
+//		if (((line + 1) % 4) >= 2) u = -u;
 
 		if (cline == (f_debugline + 25)) {
 			cerr << i << ' ' << q << ' ' << atan2deg(q, i) << ' ' << mag << ' ' << angle << ' ' << u << ' ' << v << ' ' << atan2deg(v, u) << endl;
@@ -247,7 +252,7 @@ class Comb
 		{
 			for (int l = 24; l < in_y; l++) {
 				uint16_t *line = &Frame[fnum].rawbuffer[l * in_x];	
-				bool invertphase = (line[0] == 16384);
+				bool invertphase = false; // (line[0] == 16384);
 
 				Filter f_1di(f_colorlpi);
 				Filter f_1dq(f_colorlpq);
@@ -561,14 +566,49 @@ class Comb
 				}
 				if (f == f_debugline + 25) cerr << "burst level " << burstlev << " mavg " << aburstlev << endl;
 
+				double ang = 0;
+				for (int h = 25; h < 55; h++) {
+					YIQ yiqp = cbuf[l - 2].p[h + 0];
+					YIQ yiq = cbuf[l].p[h];
+//					yiq.i = (yiqp.i + yiq.i) / 2;
+//					yiq.q = (yiqp.q + yiq.q) / 2;
+//					if ((l % 2)) yiq.q = -yiq.q;
+					cerr << "BURST " << l << ' ' << h << ' ' << yiq.y << ' ' << yiq.i << ' ' << yiq.q << ' ' << ctor(yiq.i, yiq.q) << ' ' << atan2deg(yiq.q, yiq.i) << endl;
+					ang += atan2deg(yiq.q, yiq.i);	
+				}
+				ang /= 30;
+				cerr << "angle of " << l << " is " << ang << endl; 
+			
+				double angleadj = 135 - ang;
+	
+				for (int h = 0; h < in_x; h++) {
+					double i = +(cbuf[l].p[h].i);
+					double q = +(cbuf[l].p[h].q);
+
+					double mag = ctor(i, q);
+//					if (((line + 1) % 4) >= 2) angleadj -= 65;
+					double angle = atan2(q, i) + ((angleadj / 180.0) * M_PIl);
+
+					if ((l == f_debugline + 25))
+						cerr << "A " << h << ' ' << cbuf[l].p[h].i << ' ' << cbuf[l].p[h].q << ' ' ;
+
+					cbuf[l].p[h].i = cos(angle) * mag;
+					cbuf[l].p[h].q = sin(angle) * mag;
+
+					if ((l == f_debugline + 25))
+						cerr << cbuf[l].p[h].i << ' ' << cbuf[l].p[h].q << endl ;
+				}
+
 				for (int h = 0; h < in_x; h++) {
 					RGB r;
+					YIQ yiqp = cbuf[l - 2].p[h + 0];
 					YIQ yiq = cbuf[l].p[h + 0];
+
+					yiq.i = (yiqp.i + yiq.i) / 2;
+					yiq.q = (yiqp.q + yiq.q) / 2;
 
 					yiq.i *= (10 / aburstlev);
 					yiq.q *= (10 / aburstlev);
-
-					if ((l % 2)) yiq.q = -yiq.q;
 
 					if (f_showk) {
 						yiq.y = ire_to_u16(Frame[f].combk[dim - 1][l][h + 82] * 100);
@@ -576,12 +616,12 @@ class Comb
 						yiq.i = yiq.q = 0;
 					}
 
-					if (l == (f_debugline + 25)) {
-//						cerr << "YIQ " << h << ' ' << atan2deg(yiq.q, yiq.i) << ' ' << yiq.y << ' ' << yiq.i << ' ' << yiq.q << endl;
+					if ((l == f_debugline + 25)) {
+						cerr << "YIQ " << h << ' ' << atan2deg(yiq.q, yiq.i) << ' ' << 135 - ang << ' ' << yiq.y << ' ' << yiq.i << ' ' << yiq.q << endl;
 					}
 
 					cline = l;
-					r.conv(yiq);
+					r.conv(yiq); // , 135 - ang, l);
 					
 					if (l == (f_debugline + 25)) {
 //						cerr << "RGB " << r.r << ' ' << r.g << ' ' << r.b << endl ;
