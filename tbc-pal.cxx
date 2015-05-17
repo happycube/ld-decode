@@ -217,7 +217,7 @@ bool PilotDetect(double *line, double loc, double &plevel, double &pphase)
 
 			tpeak += line[i];
 			count++;
-			cerr << "BDP " << i << ' ' << in_to_ire(line[i]) << ' ' << line[i - 1] << ' ' << line[i] << ' ' << line[i + 1] << ' ' << phase << ' ' << (i + peakdetect_quad(&line[i - 1])) << ' ' << c << ' ' << ptot << endl; 
+//			cerr << "BDP " << i << ' ' << in_to_ire(line[i]) << ' ' << line[i - 1] << ' ' << line[i] << ' ' << line[i + 1] << ' ' << phase << ' ' << (i + peakdetect_quad(&line[i - 1])) << ' ' << c << ' ' << ptot << endl; 
 		} 
 	}
 
@@ -229,31 +229,21 @@ bool PilotDetect(double *line, double loc, double &plevel, double &pphase)
 	return (count >= 3);
 }
 
-bool BurstDetect(double *line, double _loc, double &plevel, double &pphase) 
+bool BurstDetect(double *line, int start, int end, double &plevel, double &pphase) 
 {
 	double freq = out_freq;
-	int loc = _loc * freq;
 	int count = 0, cmin = 0;
 	double ptot = 0, tpeak = 0, tmin = 0;
-	double start = 5;
-	int len = ((start + 10) * freq);
 
 	double phase = 0;
 
 //	cerr << ire_to_in(7) << ' ' << ire_to_in(16) << endl;
-	double highmin = 26500; // ire_to_in(f_highburst ? 12 : 7);
-	double highmax = 31500; // ire_to_in(f_highburst ? 23 : 22);
-	double lowmin = ire_to_in(f_highburst ? -12 : -7);
-	double lowmax = ire_to_in(f_highburst ? -23 : -22);
+	double highmin = 35500; // ire_to_in(f_highburst ? 12 : 7);
+	double highmax = 39000; // ire_to_in(f_highburst ? 23 : 22);
 //	cerr << lowmin << ' ' << lowmax << endl;
 
-	if (f_highburst) {
-		start = 10;
-		len = (start + 6) * freq;
-	}
-
-	for (int i = loc + (start * freq); i < loc + len; i++) {
-		cerr << "B " << ' ' << i << ' ' << line[i] << endl;
+	for (int i = start; i < end; i++) {
+//		cerr << "BN " << ' ' << i << ' ' << line[i] << endl;
 		if ((line[i] > highmin) && (line[i] < highmax) && (line[i] > line[i - 1]) && (line[i] > line[i + 1])) {
 			double c = round(((i + peakdetect_quad(&line[i - 1])) / 4) ) * 4;
 
@@ -407,8 +397,8 @@ double ProcessLine(uint16_t *buf, vector<Line> &lines, int index)
 	double plevel1, plevel2;
 	double nphase1, nphase2;
 	
-	double blevel = 0;
-	double bphase = 0;	
+	double burstlevel = 0;
+	double burstphase = 0;	
 	
 	int line = lines[index].linenum;
 	int oline = get_oline(line);
@@ -423,23 +413,22 @@ double ProcessLine(uint16_t *buf, vector<Line> &lines, int index)
 
 	double orig_begin = begin;
 	double orig_end = end;
+	
+	double tgt_nphase = 0;
 
 	cerr << "PPL " << line << ' ' << lines[index].beginsync << ' ' << lines[index+1].endsync << ' ' << lines[index+1].endsync - lines[index].beginsync << endl;
-
 	cerr << "PL " << line << ' ' << begin << ' ' << end << ' ' << err << ' ' << end - begin << endl;
-
-	double tgt_nphase = 0;
-	double nadj1 = 1, nadj2 = 1;
 
 	cerr << "ProcessLine " << begin << ' ' << end << endl;
 
 	Scale(buf, tout, begin, end, scale15_len); 
 
-	cerr << "a" << endl;
-	
 	bool valid = PilotDetect(tout, 0, plevel1, nphase1); 
-	cerr << "b" << endl;
+	cerr << "second pilot:" << endl;
 	PilotDetect(tout, 240, plevel2, nphase2); 
+	
+	double nadj1 = nphase1 * 1;
+	double nadj2 = nphase2 * 1;
 
 	cerr << "Beginning Pilot levels " << plevel1 << ' ' << plevel2 << " valid " << valid << endl;
 
@@ -450,25 +439,10 @@ double ProcessLine(uint16_t *buf, vector<Line> &lines, int index)
 		Scale(buf, tout, begin, end, scale4fsc_len); 
 		goto wrapup;
 	}
-/*
-	if (err) {
-		cerr << "ERR\n";
-		begin += prev_offset;
-		end += prev_offset;
-	}
-*/
+
 	adjlen = (end - begin) / (scale15_len / pal_opline);
 
 	for (pass = 0; (pass < 12) && ((fabs(nadj1) + fabs(nadj2)) > .005); pass++) {
-//		cerr << line << " 0" << ' ' << ((end - begin) / scale15_len) * pal_ipline.0 << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << endl;
-
-		nadj1 = nphase1 * 1;
-		nadj2 = nphase2 * 1;
-
-		//cerr << tgt_nphase << ' ' << nphase1 << ' ' << nphase2 << ' ' << (nphase2 - nphase1) << endl;
-		//cerr << "adj1 " << pass << ' ' << nadj1 << ' ' << endl;
-		//cerr << "adj2 " << pass << ' ' << nadj2 << ' ' << endl; // (adjust2 * (phasemult / 2.0)) << endl;
-
 		if (!pass) nadj2 = 0;
 	
 		cerr << "adjusting " << nadj1 << ' ' << nadj2 << endl;
@@ -478,31 +452,20 @@ double ProcessLine(uint16_t *buf, vector<Line> &lines, int index)
 
 		Scale(buf, tout, begin, end, scale15_len); 
 		PilotDetect(tout, 0, plevel1, nphase1); 
-		cerr << "b" << endl;
+		cerr << "second burst" << endl;
 		PilotDetect(tout, 240, plevel2, nphase2); 
 		
-		nadj1 = (nphase1) * 1;
-		nadj2 = (nphase2) * 1;
+		nadj1 = nphase1 * 1;
+		nadj2 = nphase2 * 1;
 
 		adjlen = (end - begin) / (scale15_len / pal_opline);
-					
-//		cerr << line << " " << pass << ' ' << begin << ' ' << (begin + adjlen) << '/' << end  << ' ' << plevel1 << ' ' << pphase1 << ' ' << pphase2 << ' ' << nphase1 << ' ' << nphase2 << endl;
 	}
 	
 	cerr << "End Pilot levels " << pass << ' ' << plevel1 << ':' << nphase1 << " " << plevel2 << ':' << nphase2 << " valid " << valid << endl;
-#if 1
-	if (fabs(begin - orig_begin) > 3) {
-		cerr << "ERRP begin " << frameno + 1 << ":" << oline << ' ' << orig_begin << ' ' << begin << ' ' << orig_end << ' ' << end << endl;
-//		begin = orig_begin;
-	} 
-	if (fabs(end - orig_end) > 3) {
-		cerr << "ERRP end " << frameno + 1 << ":" << oline << ' ' << orig_begin << ' ' << begin << ' ' << orig_end << ' ' << end << endl;
-//		end = orig_end;
-	} 
 
 	begin_offset = begin - orig_begin;
 	end_offset = end - orig_end;
-	cerr << "offset " << begin_offset << ' ' << end_offset << endl;
+	cerr << "offset " << oline << ' ' << begin_offset << ' ' << end_offset << ' ' << end - begin << ' ' << (begin - prev_begin) * (70.7 / 64.0) << ' ' << endl;
 
 	{
 		double orig_len = orig_end - orig_begin;
@@ -511,11 +474,6 @@ double ProcessLine(uint16_t *buf, vector<Line> &lines, int index)
 		if (fabs(new_len - orig_len) > (in_freq * 1)) {
 			cerr << "ERRP len " << frameno + 1 << ":" << oline << ' ' << orig_len << ' ' << new_len << ' ' << orig_begin << ' ' << begin << ' ' << orig_end << ' ' << end << endl;
 
-/*			while ((begin - orig_begin) > 3) begin -= 4;
-			while ((begin - orig_begin) < -3) begin += 4;
-			while ((end - orig_end) > 3) end -= 4;
-			while ((end - orig_end) < -3) end += 4;
-*/
 			if (fabs(begin_offset) > fabs(end_offset)) 
 				begin = orig_begin + end_offset;
 			else
@@ -523,21 +481,19 @@ double ProcessLine(uint16_t *buf, vector<Line> &lines, int index)
 	
 			cerr << "noffset " << begin - orig_begin << ' ' << end - orig_end << endl;
 
-//			begin = orig_begin;
-//			end = orig_end;
 			Scale(buf, tout, begin, end, scale15_len); 
 			PilotDetect(tout, 0, plevel1, nphase1); 
 			PilotDetect(tout, 240, plevel2, nphase2); 
 		}
 	}
-#endif
+
 	cerr << "final levels " << plevel1 << ' ' << plevel2 << endl;
-//	begin += 4.0 * (burstfreq / 3.75);
-//	end += 4.0 * (burstfreq / 3.75);
+	begin += 4.0 * (burstfreq / 3.75);
+	end += 4.0 * (burstfreq / 3.75);
 	Scale(buf, tout, begin, end, scale4fsc_len); 
 		
-	BurstDetect(tout, 0, blevel, bphase); 
-	cerr << "BURST " << line << ' ' << blevel << ' ' << bphase << endl;
+	BurstDetect(tout, 120, 164, burstlevel, burstphase); 
+	cerr << "BURST " << get_oline(line) << ' ' << line << ' ' << burstlevel << ' ' << burstphase << endl;
 
 wrapup:
 	// LD only: need to adjust output value for velocity, and remove defects as possible

@@ -53,7 +53,7 @@ inline uint16_t ire_to_u16(double ire);
 
 // tunables
 
-int lineoffset = 0;
+int lineoffset = 32;
 
 int linesout = 576;
 
