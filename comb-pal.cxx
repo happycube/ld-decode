@@ -124,7 +124,7 @@ struct RGB {
 
 //		angleadj = 0;
 
-		double y = u16_to_ire(_y.y);
+		double y = u16_to_ire(clamp(_y.y, 0, 65535));
 		y = (y - black_ire) * (100 / (100 - black_ire)); 
 
 		double i = +(_y.i) / irescale;
@@ -140,7 +140,7 @@ struct RGB {
 //		if (((line + 1) % 4) >= 2) u = -u;
 
 		if (cline == (f_debugline + lineoffset)) {
-//			cerr << i << ' ' << q << ' ' << atan2deg(q, i) << ' ' << mag << ' ' << angle << ' ' << u << ' ' << v << ' ' << atan2deg(v, u) << endl;
+//			cerr << "YIQ1 " << y << ' ' << i << ' ' << q << ' ' << atan2deg(q, i) << ' ' << mag << ' ' << angle << ' ' << u << ' ' << v << ' ' << atan2deg(v, u) << endl;
 		}
 
                 r = y + (1.13983 * v);
@@ -152,6 +152,9 @@ struct RGB {
                 r = clamp(r * m, 0, 65535);
                 g = clamp(g * m, 0, 65535);
                 b = clamp(b * m, 0, 65535);
+		if (cline == (f_debugline + lineoffset)) {
+//			cerr << "YIQ2 " << r << ' ' << g << ' ' << b << endl;
+		}
      };
 };
 
