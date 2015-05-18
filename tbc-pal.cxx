@@ -68,6 +68,8 @@ double hfreq = 625.0 * (30000.0 / 1001.0);
 
 long long fr_count = 0, au_count = 0;
 
+int f_debugline = -1;
+
 double f_tol = 0.5;
 
 bool f_diff = false;
@@ -192,6 +194,58 @@ int syncid_offset = syncid8_offset;
 #endif
 
 bool PilotDetect(double *line, double loc, double &plevel, double &pphase) 
+{
+	int len = (12 * in_freq);
+	int count = 0, cmax = 0;
+	double ptot = 0, tpeak = 0, tmax = 0;
+	double start = 0;
+
+	double phase = 0;
+
+	loc *= 4;
+
+	double linef[len + 32];	
+	int offset = loc + start;
+	for (int i = 0; i < len + 16; i++) {
+		double val = clamp(line[i + offset], 0, 37000);
+		double v = f_pilot.feed(val);
+		if (i >= 8) linef[i] = v;
+//		cerr << i << ' ' << line[i + offset] << ' ' << linef[i] << endl;
+	}
+//	cerr << ire_to_in(7) << ' ' << ire_to_in(16) << endl;
+	double min = 9000;
+	double max = 17000;
+//	double lowmin = 3000;
+//	double lowmax = 5000;
+//	cerr << lowmin << ' ' << lowmax << endl;
+
+	for (int i = 24; i < 96; i++) {
+		if ((linef[i] < -min) && (linef[i] > -max) && (linef[i] < linef[i - 1]) && (linef[i] < linef[i + 1])) {
+			double c = round(((i + peakdetect_quad(&linef[i - 1])) / 4)) * 4;
+
+			phase = (i + peakdetect_quad(&linef[i - 1])) - c;
+			ptot += phase;
+
+			tpeak += linef[i];
+			count++;
+//			cerr << "BDN " << i << ' ' << in_to_ire(linef[i]) << ' ' << linef[i - 1] << ' ' << linef[i] << ' ' << linef[i + 1] << ' ' << phase << ' ' << (i + peakdetect_quad(&linef[i - 1])) << ' ' << c << ' ' << ptot << endl; 
+		} 
+		else if (/*(line[i] < lowmin) && (line[i] > lowmax) && */ (linef[i] > linef[i - 1]) && (linef[i] > linef[i + 1])) {
+			cmax++;
+			tmax += linef[i];
+		}
+	}
+
+	plevel = ((tpeak / count) /*- (tmin / cmin)*/) / 2.25;
+	pphase = (ptot / count) * 1;
+
+	cerr << "plevel " << plevel << " pphase " << pphase << ' ' << count << endl;
+//	exit(0);
+	return (count >= 3);
+}
+
+
+bool PilotDetect_old(double *line, double loc, double &plevel, double &pphase) 
 {
 	int len = (12 * in_freq);
 	int count = 0, cmax = 0;
@@ -433,7 +487,7 @@ double ProcessLine(uint16_t *buf, vector<Line> &lines, int index)
 
 	cerr << "Beginning Pilot levels " << plevel1 << ' ' << plevel2 << " valid " << valid << endl;
 
-	if (!valid /* || (plevel1 < (f_highburst ? 1800 : 1000)) || (plevel2 < (f_highburst ? 1000 : 800)) */) {
+	if (!valid /*|| err*/) {
 		begin += prev_offset_begin;
 		end += prev_offset_end;
 	
@@ -456,8 +510,8 @@ double ProcessLine(uint16_t *buf, vector<Line> &lines, int index)
 		cerr << "second burst" << endl;
 		PilotDetect(tout, 240, plevel2, nphase2); 
 		
-		nadj1 = nphase1 * 1;
-		nadj2 = nphase2 * 1;
+		nadj1 = nphase1 * 1.5;
+		nadj2 = nphase2 * 1.5;
 
 		adjlen = (end - begin) / (scale15_len / pal_opline);
 	}
@@ -472,7 +526,7 @@ double ProcessLine(uint16_t *buf, vector<Line> &lines, int index)
 		double orig_len = orig_end - orig_begin;
 		double new_len = end - begin;
 		cerr << "len " << frameno + 1 << ":" << oline << ' ' << orig_len << ' ' << new_len << ' ' << orig_begin << ' ' << begin << ' ' << orig_end << ' ' << end << endl;
-		if (fabs(new_len - orig_len) > (in_freq * 1)) {
+		if (fabs(new_len - orig_len) > (in_freq * f_tol)) {
 			cerr << "ERRP len " << frameno + 1 << ":" << oline << ' ' << orig_len << ' ' << new_len << ' ' << orig_begin << ' ' << begin << ' ' << orig_end << ' ' << end << endl;
 
 			if (fabs(begin_offset) > fabs(end_offset)) 
@@ -543,6 +597,7 @@ wrapup:
 		}
 
 		frame[oline][h] = clamp(o, 0, 65535);
+		if (line == f_debugline) frame[oline][h] = 0; 
 		diff[h] = o - prev_o;
 		prev_o = o;
 		//if (!(oline % 2)) frame[oline][h] = clamp(o, 0, 65535);
@@ -897,7 +952,7 @@ int main(int argc, char *argv[])
 
 	opterr = 0;
 	
-	while ((c = getopt(argc, argv, "dHmhgs:n:i:a:AfFt:r:")) != -1) {
+	while ((c = getopt(argc, argv, "l:dHmhgs:n:i:a:AfFt:r:")) != -1) {
 		switch (c) {
 			case 'd':	// show differences between pixels
 				f_diff = true;
@@ -931,6 +986,9 @@ int main(int argc, char *argv[])
 				break;
 			case 'H':
 				f_highburst = !f_highburst;
+				break;
+			case 'l':
+				sscanf(optarg, "%ld", &f_debugline);		
 				break;
 			case 't':
 				sscanf(optarg, "%lf", &f_tol);		
