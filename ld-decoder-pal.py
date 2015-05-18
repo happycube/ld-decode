@@ -1,13 +1,18 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 import numpy as np
 import scipy as sp
 import scipy.signal as sps
+import scipy.fftpack as fftpack 
 import sys
 
 import fdls as fdls
 import matplotlib.pyplot as plt
+import fft8 as fft8 
 
 import getopt
+
+π = np.pi
+τ = np.pi * 2
 
 #import ipdb
 
@@ -31,17 +36,17 @@ def dosplot(B, A):
 
 	for i in range(1, len(w)):
 		if (db[i] >= -10) and (db[i - 1] < -10):
-			print ">-10db crossing at ", w[i] * (freq/np.pi) / 2.0 
+			print(">-10db crossing at ", w[i] * (freq/π) / 2.0) 
 		if (db[i] >= -3) and (db[i - 1] < -3):
-			print "-3db crossing at ", w[i] * (freq/np.pi) / 2.0 
+			print("-3db crossing at ", w[i] * (freq/π) / 2.0) 
 		if (db[i] < -3) and (db[i - 1] >= -3):
-			print "<-3db crossing at ", w[i] * (freq/np.pi) / 2.0 
+			print("<-3db crossing at ", w[i] * (freq/π) / 2.0) 
 		if (db[i] < -10) and (db[i - 1] >= -10):
-			print "<-10db crossing at ", w[i] * (freq/np.pi) / 2.0 
+			print("<-10db crossing at ", w[i] * (freq/π) / 2.0) 
 		if (db[i] < -20) and (db[i - 1] >= -20):
-			print "<-20db crossing at ", w[i] * (freq/np.pi) / 2.0 
+			print("<-20db crossing at ", w[i] * (freq/π) / 2.0) 
 
-	plt.plot(w * (freq/np.pi) / 2.0, 20 * np.log10(abs(h)), 'b')
+	plt.plot(w * (freq/π) / 2.0, 20 * np.log10(abs(h)), 'b')
 	plt.ylabel('Amplitude [dB]', color='b')
 	plt.xlabel('Frequency [rad/sample]')
 
@@ -56,21 +61,21 @@ def doplot(B, A):
 	db = 20 * np.log10(abs(h))
 	for i in range(1, len(w)):
 		if (db[i] >= -10) and (db[i - 1] < -10):
-			print ">-10db crossing at ", w[i] * (freq/np.pi) / 2.0 
+			print(">-10db crossing at ", w[i] * (freq/π) / 2.0) 
 		if (db[i] >= -3) and (db[i - 1] < -3):
-			print ">-3db crossing at ", w[i] * (freq/np.pi) / 2.0 
+			print(">-3db crossing at ", w[i] * (freq/π) / 2.0) 
 		if (db[i] < -3) and (db[i - 1] >= -3):
-			print "<-3db crossing at ", w[i] * (freq/np.pi) / 2.0 
+			print("<-3db crossing at ", w[i] * (freq/π) / 2.0) 
 
 	ax1 = fig.add_subplot(111)
 	
-	plt.plot(w * (freq/np.pi) / 2.0, 20 * np.log10(abs(h)), 'b')
+	plt.plot(w * (freq/π) / 2.0, 20 * np.log10(abs(h)), 'b')
 	plt.ylabel('Amplitude [dB]', color='b')
 	plt.xlabel('Frequency [rad/sample]')
 
 	ax2 = ax1.twinx()
 	angles = np.unwrap(np.angle(h))
-	plt.plot(w * (freq/np.pi) / 2.0, angles, 'g')
+	plt.plot(w * (freq/π) / 2.0, angles, 'g')
 	plt.ylabel('Angle (radians)', color='g')
 	
 	plt.grid()
@@ -104,7 +109,7 @@ def doplot2(B, A, B2, A2):
 
 	v0 = hm[0] / hm2[0]
 	for i in range(0, len(w)):
-#		print i, freq / 2 * (w[i] / np.pi), hm[i], hm2[i], hm[i] / hm2[i], (hm[i] / hm2[i]) / v0
+#		print i, freq / 2 * (w[i] / π), hm[i], hm2[i], hm[i] / hm2[i], (hm[i] / hm2[i]) / v0
 		v[i] = (hm[i] / hm2[i]) / v0
 
 	fig = plt.figure()
@@ -114,20 +119,20 @@ def doplot2(B, A, B2, A2):
 
 	v  = 20 * np.log10(v )
 
-#	plt.plot(w * (freq/np.pi) / 2.0, v)
+#	plt.plot(w * (freq/π) / 2.0, v)
 #	plt.show()
 #	exit()
 
-	plt.plot(w * (freq/np.pi) / 2.0, 20 * np.log10(abs(h)), 'r')
-	plt.plot(w * (freq/np.pi) / 2.0, 20 * np.log10(abs(h2)), 'b')
+	plt.plot(w * (freq/π) / 2.0, 20 * np.log10(abs(h)), 'r')
+	plt.plot(w * (freq/π) / 2.0, 20 * np.log10(abs(h2)), 'b')
 	plt.ylabel('Amplitude [dB]', color='b')
 	plt.xlabel('Frequency [rad/sample]')
 	
 	ax2 = ax1.twinx()
 	angles = np.unwrap(np.angle(h))
 	angles2 = np.unwrap(np.angle(h2))
-	plt.plot(w * (freq/np.pi) / 2.0, angles, 'g')
-	plt.plot(w * (freq/np.pi) / 2.0, angles2, 'y')
+	plt.plot(w * (freq/π) / 2.0, angles, 'g')
+	plt.plot(w * (freq/π) / 2.0, angles2, 'y')
 	plt.ylabel('Angle (radians)', color='g')
 
 	plt.grid()
@@ -209,20 +214,28 @@ right_audfreq = 2.812499
 
 hfreq = freq / 8.0
 
-N, Wn = sps.buttord([(left_audfreq-.05) / hfreq, (left_audfreq+.05) / hfreq], [(left_audfreq-.15) / hfreq, (left_audfreq+.15)/hfreq], 1, 20)
+N, Wn = sps.buttord([(left_audfreq-.10) / hfreq, (left_audfreq+.10) / hfreq], [(left_audfreq-.15) / hfreq, (left_audfreq+.15)/hfreq], 1, 15)
+#print(N,Wn)
 leftbp_filter_b, leftbp_filter_a = sps.butter(N, Wn, btype='bandpass')
 
-N, Wn = sps.buttord([(right_audfreq-.05) / hfreq, (right_audfreq+.05) / hfreq], [(right_audfreq-.15) / hfreq, (right_audfreq+.15)/hfreq], 1, 20)
+N, Wn = sps.buttord([(right_audfreq-.10) / hfreq, (right_audfreq+.10) / hfreq], [(right_audfreq-.15) / hfreq, (right_audfreq+.15)/hfreq], 1, 15)
+#print(N,Wn)
+#N, Wn = sps.buttord([(right_audfreq-.10) / hfreq, (right_audfreq+.10) / hfreq], [(right_audfreq-.18) / hfreq, (right_audfreq+.18)/hfreq], 1, 15)
+#print(N,Wn)
 rightbp_filter_b, rightbp_filter_a = sps.butter(N, Wn, btype='bandpass')
 
 #doplot(leftbp_filter_b, leftbp_filter_a)
 #doplot2(leftbp_filter, [1.0], rightbp_filter, [1.0]);
 #doplot2(leftbp_filter_b, leftbp_filter_a, rightbp_filter_b, rightbp_filter_a);
 
-N, Wn = sps.buttord(0.016 / hfreq, 0.024 / hfreq, 1, 5) 
+N, Wn = sps.buttord(0.016 / hfreq, 0.024 / hfreq, 1, 8) 
 audiolp_filter_b, audiolp_filter_a = sps.butter(N, Wn)
 
-N, Wn = sps.buttord(3.1 / (freq / 2.0), 3.5 / (freq / 2.0), 1, 20) 
+N, Wn = sps.buttord(3.1 / (freq / 2.0), 3.5 / (freq / 2.0), 1, 16) 
+#N = 12
+#Wn = 3.3 / (freq / 2.0)
+#N = 8
+#Wn = 3.4 / (freq / 2.0)
 audiorf_filter_b, audiorf_filter_a = sps.butter(N, Wn)
 
 # from http://tlfabian.blogspot.com/2013/01/implementing-hilbert-90-degree-shift.html
@@ -244,12 +257,12 @@ def fm_decode(in_filt, freq_hz, hlen = hilbertlen):
 	dangles = np.diff(tangles)
 
 	# make sure unwapping goes the right way
-	if (dangles[0] < -np.pi):
-		dangles[0] += (np.pi * 2)
+	if (dangles[0] < -π):
+		dangles[0] += τ
 	
 	tdangles2 = np.unwrap(dangles) 
 	
-	output = (tdangles2 * (freq_hz / (np.pi * 2)))
+	output = (tdangles2 * (freq_hz / τ))
 
 	errcount = 1
 	while errcount > 0:
@@ -273,18 +286,41 @@ def fm_decode(in_filt, freq_hz, hlen = hilbertlen):
 minire = -60
 maxire = 140
 
-hz_ire_scale = (9300000 - 8100000) / 100
-minn = 8100000 + (hz_ire_scale * -60)
-
 hz_ire_scale = (8000000 - 7100000) / 100
 minn = 6760000 + (hz_ire_scale * -60)
 
 out_scale = 65534.0 / (maxire - minire)
+	
+#doplot(Bcutl, Acutl)
+
+# octave:104> t1 = 100; t2 = 55; [b, a] = bilinear(-t2*(10^-8), -t1*(10^-8), t1/t2, freq); freqz(b, a)
+# octave:105> printf("f_emp_b = ["); printf("%.15e, ", b); printf("]\nf_emp_a = ["); printf("%.15e, ", a); printf("]\n")
+f_emp_b = [1.293279022403258e+00, -1.018329938900196e-02, ]
+f_emp_a = [1.000000000000000e+00, 2.830957230142566e-01, ]
+
+Inner = 0
+
+#lowpass_filter_b = [1.0]
+#lowpass_filter_a = [1.0]
+
 
 def process_video(data):
 	# perform general bandpass filtering
+
 	in_filt = sps.lfilter(Bboost, Aboost, data)
-#	in_filt = data
+#	in_filt2 = sps.lfilter(Bcutl, Acutl, in_filt1)
+#	in_filt3 = sps.lfilter(Bcutr, Acutr, in_filt2)
+
+#	if Inner == 0:
+#		in_filt = in_filt3
+#	else:
+#		in_filt = sps.lfilter(f_emp_b, f_emp_a, in_filt3)
+
+
+#	fft8.plotfft(in_filt)
+#	#fft8.plotfft(data)
+#	plt.plot(in_filt)
+#	plt.show()
 
 	output = fm_decode(in_filt, freq_hz)
 
@@ -324,6 +360,9 @@ def process_video(data):
 			if (am < len(output_16)):
 				output_16[am] = 0
 
+#	plt.plot(range(0, len(data)), data)
+#	plt.plot(range(0, len(output_16)), output_16)
+#	plt.show()
 	return output_16
 
 # graph for debug
@@ -381,8 +420,8 @@ def process_audio(indata):
 	out_left = np.clip(out_left - left_audfreqm, -150000, 150000) 
 	out_right = np.clip(out_right - right_audfreqm, -150000, 150000) 
 
-	out_left = sps.lfilter(audiolp_filter_b, audiolp_filter_a, out_left)[400:]
-	out_right = sps.lfilter(audiolp_filter_b, audiolp_filter_a, out_right)[400:] 
+	out_left = sps.lfilter(audiolp_filter_b, audiolp_filter_a, out_left)[800:]
+	out_right = sps.lfilter(audiolp_filter_b, audiolp_filter_a, out_right)[800:] 
 
 	outputf = np.empty((len(out_left) * 2.0 / 20.0) + 2, dtype = np.float32)
 
@@ -429,9 +468,9 @@ def test():
 			vphase += vfreq / freq_hz 
 			alphase += 2300000 / freq_hz 
 			arphase += 2800000 / freq_hz 
-			test[i] = (np.sin(vphase * np.pi * 2.0) * vlevel)
-			test[i] += (np.sin(alphase * np.pi * 2.0) * vlevel / 10.0)
-			test[i] += (np.sin(arphase * np.pi * 2.0) * vlevel / 10.0)
+			test[i] = (np.sin(vphase * τ) * vlevel)
+			test[i] += (np.sin(alphase * τ) * vlevel / 10.0)
+			test[i] += (np.sin(arphase * τ) * vlevel / 10.0)
 			test[i] += 128
 
 		output = process_video(test)[7800:8500]	
@@ -440,53 +479,81 @@ def test():
 		output = output[400:700]	
 		mean = np.mean(output)
 		std = np.std(output)
-		print vlevel, mean, std, 20 * np.log10(mean / std) 
+		print(vlevel, mean, std, 20 * np.log10(mean / std)) 
 
 	plt.show()
 	exit()
 
 def main():
-	global Bboost, Aboost
 	global lowpass_filter_b, lowpass_filter_a 
 	global wide_mode, hz_ire_scale, minn
+	global f_deemp_b, f_deemp_a
+
+	global Bcutr, Acutr
+	
+	global Inner 
 
 	global blocklen
 
 #	test()
 
-	outfile = sys.stdout
+	outfile = sys.stdout.buffer
 	audio_mode = 0 
 	CAV = 0
-	firstbyte = 0
 
-	optlist, cut_argv = getopt.getopt(sys.argv[1:], "aAwc:s:")
+	byte_start = 0
+	byte_end = 0
+
+	f_seconds = False 
+
+	optlist, cut_argv = getopt.getopt(sys.argv[1:], "hLCaAwSs:")
 
 	for o, a in optlist:
 		if o == "-a":
 			audio_mode = 1	
 			blocklen = (64 * 1024) + 2048 
 			hilbertlen = (16 * 1024)
+		if o == "-L":
+			Inner = 1
 		if o == "-A":
 			CAV = 1
+			Inner = 1
+		if o == "-h":
+			# use full spec deemphasis filter - will result in overshoot, but higher freq resonse
+			f_deemp_b = [3.778720395899611e-01, -2.442559208200777e-01]
+			f_deemp_a = [1.000000000000000e+00, -8.663838812301168e-01]
+		if o == "-C":
+			Bcutr, Acutr = sps.butter(1, [2.68/(freq/2), 3.08/(freq/2)], btype='bandstop')
 		if o == "-w":
 #			lowpass_filter_b, lowpass_filter_a = sps.butter(9, (5.0/(freq/2)), 'low')
 #			lowpass_filter_b, lowpass_filter_a = sps.butter(8, (4.8/(freq/2)), 'low')
+			lowpass_filter_b, lowpass_filter_a = sps.butter(7, (4.7/(freq/2)), 'low')
 			wide_mode = 1
 			hz_ire_scale = (9360000 - 8100000) / 100
 			minn = 8100000 + (hz_ire_scale * -60)
+		if o == "-S":
+			f_seconds = True
 		if o == "-s":
 			ia = int(a)
 			if ia == 0:
 				lowpass_filter_b, lowpass_filter_a = sps.butter(5, (4.2/(freq/2)), 'low')
 			if ia == 1:	
-				lowpass_filter_b, lowpass_filter_a = sps.butter(8, (4.5/(freq/2)), 'low')
+				lowpass_filter_b, lowpass_filter_a = sps.butter(5, (4.4/(freq/2)), 'low')
 			if ia == 2:	
-				lowpass_filter_b, lowpass_filter_a = sps.butter(9, (4.8/(freq/2)), 'low')
+				lowpass_filter_b, lowpass_filter_a = sps.butter(7, (4.7/(freq/2)), 'low')
 			if ia == 3:	
 				# high frequency response - and ringing.  choose your poison ;)	
 				lowpass_filter_b, lowpass_filter_a = sps.butter(10, (5.0/(freq/2)), 'low')
+				lowpass_filter_b, lowpass_filter_a = sps.butter(7, (5.0/(freq/2)), 'low')
 			if ia == 4:	
 				lowpass_filter_b, lowpass_filter_a = sps.butter(10, (5.3/(freq/2)), 'low')
+				lowpass_filter_b, lowpass_filter_a = sps.butter(7, (5.3/(freq/2)), 'low')
+			if ia == 51:	
+				lowpass_filter_b, lowpass_filter_a = sps.butter(5, (4.4/(freq/2)), 'low')
+			if ia == 61:	
+				lowpass_filter_b, lowpass_filter_a = sps.butter(6, (4.4/(freq/2)), 'low')
+			if ia == 62:	
+				lowpass_filter_b, lowpass_filter_a = sps.butter(6, (4.7/(freq/2)), 'low')
 
 
 #	dosplot(lowpass_filter_b, lowpass_filter_a)
@@ -498,19 +565,35 @@ def main():
 	else:
 		infile = sys.stdin
 
+	byte_start = 0
 	if (argc >= 2):
-		firstbyte = int(cut_argv[1])
-		infile.seek(firstbyte)
+		byte_start = float(cut_argv[1])
 
 	if (argc >= 3):
-		total_len = int(cut_argv[2])
+		byte_end = float(cut_argv[2])
 		limit = 1
 	else:
 		limit = 0
-	
-#	dosplot(Bboost, Aboost)
-#	exit()
 
+	if f_seconds:
+		byte_start *= freq_hz 
+		byte_end *= freq_hz 
+	else:
+		# for backwards compat (for now)
+		byte_end += byte_start
+
+	byte_end -= byte_start
+
+	byte_start = int(byte_start)
+	byte_end = int(byte_end)
+
+	if (byte_start > 0):	
+		infile.seek(byte_start)
+	
+	if CAV and byte_start > 11454654400:
+		CAV = 0
+		Inner = 0 
+	
 	total = toread = blocklen 
 	inbuf = infile.read(toread)
 	indata = np.fromstring(inbuf, 'uint8', toread)
@@ -550,11 +633,16 @@ def main():
 			total_pread = total_read 
 			total_read += nread
 
+			if CAV:
+				if (total_read + byte_start) > 11454654400:
+					CAV = 0
+					Inner = 0
+
 		indata = indata[nread:len(indata)]
 
 		if limit == 1:
-			total_len -= toread 
-			if (total_len < 0):
+			byte_end -= toread 
+			if (byte_end < 0):
 				inbuf = ""
 
 if __name__ == "__main__":
