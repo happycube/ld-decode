@@ -74,7 +74,8 @@ bool f_diff = false;
 
 bool f_highburst = (in_freq == 4);
 bool f_flip = false;
-int writeonfield = 1;
+//bool f_flip = true;
+int writeonfield = 2;
 
 bool audio_only = false;
 
@@ -281,9 +282,9 @@ int get_oline(double line)
 	int rv = -1;
 
 	if (l < 10) rv = -1;
-	else if (l < 314) rv = (l - 10) * 2;
+	else if (l < 314) rv = ((l - 10) * 2) + 0;
 	else if (l < 319) rv = -1;
-	else if (l < 622) rv = ((l - 319) * 2) + 1;
+	else if (l < 625) rv = ((l - 318) * 2) + 1;
 
 	if (rv > 609) rv = -1;
 
@@ -646,6 +647,10 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 
 				int distance_prev = peaks[lastline + 1].center - peaks[lastline].center;
 				int synctype = (distance_prev > (in_freq * 140)) ? 1 : 2;
+
+				if (f_flip) {
+					synctype = (distance_prev > (in_freq * 140)) ? 2 : 1;
+				}
 
 				cerr << "P1_" << lastline << ' ' << synctype << ' ' << (in_freq * 140) << ' ' << distance_prev << ' ' << peaks[lastline + 1].center - peaks[lastline].center << endl;
 	
