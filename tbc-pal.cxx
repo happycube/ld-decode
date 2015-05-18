@@ -731,15 +731,16 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 
 			peaks[i].linenum = line;
 			
-			cerr << "P2_" << line << ' ' << i << ' ' << peaks[i].bad << ' ' <<  peaks[i].peak << ' ' << peaks[i].center << ' ' << peaks[i].center - peaks[i-1].center << ' ' << peaks[i].beginsync << ' ' << peaks[i].endsync << ' ' << peaks[i].endsync - peaks[i].beginsync << ' ' << peaks[i].beginsync - peaks[i-1].beginsync << endl;
+			cerr << "P2_" << line << ' ' << i << ' ' << peaks[i].bad << ' ' <<  peaks[i].peak << ' ' << peaks[i].center << ' ' << peaks[i].center - peaks[i-1].center << ' ' << peaks[i].beginsync << ' ' << peaks[i].endsync << ' ' << peaks[i].endsync - peaks[i].beginsync << ' ' << peaks[i].beginsync - peaks[i-1].beginsync << ' ' << prev_linelen << endl;
 				
 			// HACK!
 			if (line == 318) peaks[i].linenum = -1;
 
 			// if we have a good line, feed it's length to the line LPF.  The 8 line lag is insignificant 
 			// since it's a ~30hz oscillation. 
-			double linelen = peaks[i].center - peaks[i-1].center;
+			double linelen = peaks[i].beginsync - peaks[i-1].beginsync;
 			if (!peaks[i].bad && !peaks[i - 1].bad && InRangeF(linelen, 227.5 - 4, 229 + 4)) {
+//				cerr << "feeding " << linelen << endl;
 				prev_linelen = f_linelen.feed(linelen);
 			}
 		} else if (peaks[i].peak > .9) {
