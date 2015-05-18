@@ -575,7 +575,7 @@ class Comb
 				}
 				angle[l] = atan2deg(q, i);
 
-				cerr << "angle of " << l << " is " << angle[l] << ' ' <<  endl; 
+//				cerr << "angle of " << l << " is " << angle[l] << ' ' <<  endl; 
 			}
 
 			// XXX:  This still feels dodgy, but when we look at a 4-line sequence phase inversion
@@ -898,7 +898,7 @@ class Comb
 			int fstart = -1;
 			uint16_t *fbuf = Frame[fnum].rawbuffer;
 
-			int out_x = f_wide ? in_x : 744;
+			int out_x = f_wide ? in_x : 1052 - 78;
 			int roffset = f_wide ? 0 : 78;
 
 			if (!f_pulldown) {
