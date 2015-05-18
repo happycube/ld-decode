@@ -205,7 +205,7 @@ bool PilotDetect(double *line, double loc, double &plevel, double &pphase)
 //	cerr << ire_to_in(7) << ' ' << ire_to_in(16) << endl;
 	double min = 5000;
 	double max = 20000;
-	double lowmin = 7000;
+	double lowmin = 5000;
 	double lowmax = 13000;
 //	cerr << lowmin << ' ' << lowmax << endl;
 
@@ -227,7 +227,7 @@ bool PilotDetect(double *line, double loc, double &plevel, double &pphase)
 
 //	cerr << "PhaseDetect plevel " << plevel << " pphase " << pphase << ' ' << count << endl;
 //	exit(0);
-	return (count >= 3);
+	return (count >= 2);
 }
 
 bool BurstDetect(double *line, int start, int end, double &plevel, double &pphase) 
@@ -756,19 +756,21 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 		if (peaks[i].linenum > 0) {
 			line = peaks[i].linenum ;
 			if (peaks[i].bad) {
-				cerr << "BAD " << i << ' ' << line << endl;
+				cerr << "BAD " << i << ' ' << line << ' ';
 				cerr << peaks[i].beginsync << ' ' << peaks[i].center << ' ' << peaks[i].endsync << ' ' << peaks[i].endsync - peaks[i].beginsync << endl;
 
 				int lg = 1;
 
 				for (lg = 1; lg < 8 && (peaks[i - lg].bad || peaks[i + lg].bad); lg++);
 
-				cerr << "BADLG " << lg << endl;
+				cerr << peaks[i-lg].beginsync << ' ' << peaks[i-lg].center << ' ' << peaks[i-lg].endsync << ' ' << peaks[i-lg].endsync - peaks[i-lg].beginsync << endl;
+				cerr << "BADLG " << lg << ' ';
 				double gap = (peaks[i + lg].beginsync - peaks[i - lg].beginsync) / 2;
 				peaks[i].beginsync = peaks[i - lg].beginsync + (gap * lg); 
 				peaks[i].center = peaks[i - lg].center + (gap * lg); 
 				peaks[i].endsync = peaks[i - lg].endsync + (gap * lg); 
 				cerr << peaks[i].beginsync << ' ' << peaks[i].center << ' ' << peaks[i].endsync << ' ' << peaks[i].endsync - peaks[i].beginsync << endl;
+				cerr << peaks[i+lg].beginsync << ' ' << peaks[i+lg].center << ' ' << peaks[i+lg].endsync << ' ' << peaks[i+lg].endsync - peaks[i+lg].beginsync << endl;
 			}
 		}
 	}
