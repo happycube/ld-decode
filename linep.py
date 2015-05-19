@@ -9,9 +9,9 @@ binfile = open(sys.argv[1], "rb").read()
 #binfile = open("tgen.ld", "rb").read()
 data = np.fromstring(binfile, dtype=np.uint16)
 
-irescale = 312
+irescale = 327.68
 def u16_to_ire(u):
-	return (u / irescale) - 100
+	return (u / irescale) - 60 
 
 # MB on most disks
 line = 21 

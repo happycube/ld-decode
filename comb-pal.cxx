@@ -59,9 +59,9 @@ int linesout = 576;
 
 double brightness = 240;
 
-double black_ire = 40;
+double black_ire = 0;
 int black_u16 = ire_to_u16(black_ire);
-int white_u16 = ire_to_u16(100); 
+int white_u16 = ire_to_u16(100 + black_ire); 
 
 double nr_c = 0.0;
 double nr_y = 1.0;
@@ -147,7 +147,7 @@ struct RGB {
                 g = y - (0.58060 * v) - (u * 0.39465);
                 b = y + (u * 2.032);
 
-		double m = brightness * 200 / 100;
+		double m = brightness * 255 / 100;
 
                 r = clamp(r * m, 0, 65535);
                 g = clamp(g * m, 0, 65535);

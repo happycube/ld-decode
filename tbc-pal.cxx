@@ -79,8 +79,9 @@ int writeonfield = 2;
 
 bool audio_only = false;
 
-double inscale = 327.68;
-double inbase = (inscale * 20);	// IRE == -40
+// PAL input from -95 (for pilot) to 145 IRE
+double inscale = 273.06;
+double inbase = (inscale * 95);	
 
 long long a_read = 0, v_read = 0;
 int va_ratio = 80;
@@ -99,14 +100,14 @@ inline double in_to_ire(uint16_t level)
 {
 	if (level == 0) return -100;
 	
-	return -40 + ((double)(level - inbase) / inscale); 
+	return ((double)(level - inbase) / inscale); 
 } 
 
 inline uint16_t ire_to_in(double ire)
 {
-	if (ire <= -60) return 0;
+	if (ire <= -95) return 0;
 	
-	return clamp(((ire + 40) * inscale) + inbase, 1, 65535);
+	return clamp((ire * inscale) + inbase, 1, 65535);
 } 
 
 inline uint16_t ire_to_out(double ire)
@@ -597,7 +598,7 @@ wrapup:
 }
 
 //uint16_t synclevel = 12000;
-uint16_t synclevel = 22500; // inbase + (inscale * 15);
+uint16_t synclevel = ire_to_in(-32); // inbase + (inscale * 15);
 
 bool IsPeak(double *p, int i)
 {
@@ -612,9 +613,9 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 
 	for (int i = 0; i < len; i++) {
 		double val = f_psync8.feed(buf[i]);
+//		cerr << i << ' ' << buf[i] << ' ' << val << ' ' << in_to_ire(val) << endl;
 		if (i > 16) filtbuf[i - 16] = val;
 	}
-	
 	f_linelen.clear(pal_ipline);
 
 	// sample syncs
@@ -622,8 +623,12 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 
 	for (int i = 0; i < len; i++) {
 		double val = f_syncid.feed(filtbuf[i] && (filtbuf[i] < synclevel)); 
-		if (i > syncid_offset) psync[i - syncid_offset] = val; 
+		if (i > syncid_offset) {
+			psync[i - syncid_offset] = val; 
+//			cerr << i << ' ' << val << ' ' << filtbuf[i] << ' ' << synclevel << ' ' << in_to_ire(filtbuf[i]) << ' ' << in_to_ire(synclevel) << endl;
+		}
 	}
+//exit(0);
 
 	for (int i = 0; i < len - syncid_offset; i++) {
 		double level = psync[i];
@@ -738,8 +743,8 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 				cbeginsync++;
 				cendsync++;
 	
-				if (buf[center - x] < 26500) cbeginsync = 0;
-				if (buf[center + x] < 26500) cendsync = 0;
+				if (buf[center - x] < ire_to_in(-17.0)) cbeginsync = 0;
+				if (buf[center + x] < ire_to_in(-17.0)) cendsync = 0;
 
 				if ((cbeginsync == 4) && (peaks[i].beginsync < 0)) peaks[i].beginsync = center - x + 4;			
 				if ((cendsync == 4) && (peaks[i].endsync < 0)) peaks[i].endsync = center + x - 4;			
@@ -775,7 +780,6 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 
 	line = -1;	
 	for (int i = firstline - 1; (i < (firstline + 650)) && (line < 623) && (i < peaks.size()); i++) {
-		cerr << "proc " << i << endl;
 		if ((peaks[i].linenum > 0) && peaks[i].bad) {
 			HandleBadLine(peaks, i);
 		}

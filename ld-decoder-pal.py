@@ -283,11 +283,11 @@ def fm_decode(in_filt, freq_hz, hlen = hilbertlen):
 
 	return output
 
-minire = -60
-maxire = 140
+minire = -95
+maxire = 145
 
 hz_ire_scale = (8000000 - 7100000) / 100
-minn = 6760000 + (hz_ire_scale * -60)
+minn = 7100000 + (hz_ire_scale * minire)
 
 out_scale = 65534.0 / (maxire - minire)
 	
