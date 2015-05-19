@@ -387,7 +387,28 @@ struct Line {
 	bool bad;
 };
 
-double ProcessLine(uint16_t *buf, vector<Line> &lines, int index)
+void HandleBadLine(vector<Line> &peaks, int i)
+{			
+	int line = peaks[i].linenum;
+	cerr << "BAD " << i << ' ' << line << ' ';
+	cerr << peaks[i].beginsync << ' ' << peaks[i].center << ' ' << peaks[i].endsync << ' ' << peaks[i].endsync - peaks[i].beginsync << endl;
+
+	int lg = 1;
+
+	for (lg = 1; lg < 8 && (peaks[i - lg].bad || peaks[i + lg].bad); lg++);
+
+	cerr << peaks[i-lg].beginsync << ' ' << peaks[i-lg].center << ' ' << peaks[i-lg].endsync << ' ' << peaks[i-lg].endsync - peaks[i-lg].beginsync << endl;
+	cerr << "BADLG " << lg << ' ';
+	double gap = (peaks[i + lg].beginsync - peaks[i - lg].beginsync) / 2;
+	peaks[i].beginsync = peaks[i - lg].beginsync + (gap * lg); 
+	peaks[i].center = peaks[i - lg].center + (gap * lg); 
+	peaks[i].endsync = peaks[i - lg].endsync + (gap * lg); 
+	cerr << peaks[i].beginsync << ' ' << peaks[i].center << ' ' << peaks[i].endsync << ' ' << peaks[i].endsync - peaks[i].beginsync << endl;
+	cerr << peaks[i+lg].beginsync << ' ' << peaks[i+lg].center << ' ' << peaks[i+lg].endsync << ' ' << peaks[i+lg].endsync - peaks[i+lg].beginsync << endl;
+}
+
+
+double ProcessLine(uint16_t *buf, vector<Line> &lines, int index, bool recurse = false)
 {
 	double tout[8192];
 	double adjlen = pal_ipline;
@@ -468,17 +489,19 @@ double ProcessLine(uint16_t *buf, vector<Line> &lines, int index)
 	end_offset = end - orig_end;
 	cerr << "offset " << oline << ' ' << begin_offset << ' ' << end_offset << ' ' << end - begin << ' ' << (begin - prev_begin) * (70.7 / 64.0) << ' ' << endl;
 
-	{
+	if (!recurse) {
 		double orig_len = orig_end - orig_begin;
 		double new_len = end - begin;
 		cerr << "len " << frameno + 1 << ":" << oline << ' ' << orig_len << ' ' << new_len << ' ' << orig_begin << ' ' << begin << ' ' << orig_end << ' ' << end << endl;
 		if (fabs(new_len - orig_len) > (in_freq * f_tol)) {
 			cerr << "ERRP len " << frameno + 1 << ":" << oline << ' ' << orig_len << ' ' << new_len << ' ' << orig_begin << ' ' << begin << ' ' << orig_end << ' ' << end << endl;
 
-			if (fabs(begin_offset) > fabs(end_offset)) 
-				begin = orig_begin + end_offset;
-			else
-				end = orig_end + begin_offset;
+			HandleBadLine(lines, index);
+			return ProcessLine(buf, lines, index, true);
+//			if (fabs(begin_offset) > fabs(end_offset)) 
+//				begin = orig_begin + end_offset;
+//			else
+//				end = orig_end + begin_offset;
 	
 			cerr << "noffset " << begin - orig_begin << ' ' << end - orig_end << endl;
 
@@ -753,25 +776,8 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 	line = -1;	
 	for (int i = firstline - 1; (i < (firstline + 650)) && (line < 623) && (i < peaks.size()); i++) {
 		cerr << "proc " << i << endl;
-		if (peaks[i].linenum > 0) {
-			line = peaks[i].linenum ;
-			if (peaks[i].bad) {
-				cerr << "BAD " << i << ' ' << line << ' ';
-				cerr << peaks[i].beginsync << ' ' << peaks[i].center << ' ' << peaks[i].endsync << ' ' << peaks[i].endsync - peaks[i].beginsync << endl;
-
-				int lg = 1;
-
-				for (lg = 1; lg < 8 && (peaks[i - lg].bad || peaks[i + lg].bad); lg++);
-
-				cerr << peaks[i-lg].beginsync << ' ' << peaks[i-lg].center << ' ' << peaks[i-lg].endsync << ' ' << peaks[i-lg].endsync - peaks[i-lg].beginsync << endl;
-				cerr << "BADLG " << lg << ' ';
-				double gap = (peaks[i + lg].beginsync - peaks[i - lg].beginsync) / 2;
-				peaks[i].beginsync = peaks[i - lg].beginsync + (gap * lg); 
-				peaks[i].center = peaks[i - lg].center + (gap * lg); 
-				peaks[i].endsync = peaks[i - lg].endsync + (gap * lg); 
-				cerr << peaks[i].beginsync << ' ' << peaks[i].center << ' ' << peaks[i].endsync << ' ' << peaks[i].endsync - peaks[i].beginsync << endl;
-				cerr << peaks[i+lg].beginsync << ' ' << peaks[i+lg].center << ' ' << peaks[i+lg].endsync << ' ' << peaks[i+lg].endsync - peaks[i+lg].beginsync << endl;
-			}
+		if ((peaks[i].linenum > 0) && peaks[i].bad) {
+			HandleBadLine(peaks, i);
 		}
 	}
 
