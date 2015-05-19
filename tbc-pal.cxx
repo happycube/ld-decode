@@ -537,7 +537,7 @@ wrapup:
 		double o;
 
 		if (in_freq != 4) {
-			double freq = (ire * ((7900000 - 7100000) / 100)) + 7100000; 
+			double freq = (ire * ((8000000 - 7100000) / 100)) + 7100000; 
 
 //			cerr << h << ' ' << v << ' ' << ire << ' ' << freq << ' ';
 			freq *= lvl_adjust;
