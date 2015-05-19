@@ -1,0 +1,2 @@
+#!/bin/bash
+./ld-decoder-pal.py -S $1 $2 $3 | ./tbc-pal - 2> /tmp/tbclog | ./comb-pal -d 2 -m - > /dev/null 2> /tmp/comblog
