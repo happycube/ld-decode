@@ -536,24 +536,13 @@ def main():
 		if o == "-s":
 			ia = int(a)
 			if ia == 0:
-				lowpass_filter_b, lowpass_filter_a = sps.butter(5, (4.2/(freq/2)), 'low')
+				lowpass_filter_b, lowpass_filter_a = sps.butter(8, (5.2/(freq/2)), 'low')
 			if ia == 1:	
-				lowpass_filter_b, lowpass_filter_a = sps.butter(5, (4.4/(freq/2)), 'low')
+				lowpass_filter_b, lowpass_filter_a = sps.butter(8, (5.5/(freq/2)), 'low')
 			if ia == 2:	
-				lowpass_filter_b, lowpass_filter_a = sps.butter(7, (4.7/(freq/2)), 'low')
+				lowpass_filter_b, lowpass_filter_a = sps.butter(8, (5.8/(freq/2)), 'low')
 			if ia == 3:	
-				# high frequency response - and ringing.  choose your poison ;)	
-				lowpass_filter_b, lowpass_filter_a = sps.butter(10, (5.0/(freq/2)), 'low')
-				lowpass_filter_b, lowpass_filter_a = sps.butter(7, (5.0/(freq/2)), 'low')
-			if ia == 4:	
-				lowpass_filter_b, lowpass_filter_a = sps.butter(10, (5.3/(freq/2)), 'low')
-				lowpass_filter_b, lowpass_filter_a = sps.butter(7, (5.3/(freq/2)), 'low')
-			if ia == 51:	
-				lowpass_filter_b, lowpass_filter_a = sps.butter(5, (4.4/(freq/2)), 'low')
-			if ia == 61:	
-				lowpass_filter_b, lowpass_filter_a = sps.butter(6, (4.4/(freq/2)), 'low')
-			if ia == 62:	
-				lowpass_filter_b, lowpass_filter_a = sps.butter(6, (4.7/(freq/2)), 'low')
+				lowpass_filter_b, lowpass_filter_a = sps.butter(8, (6.1/(freq/2)), 'low')
 
 
 #	dosplot(lowpass_filter_b, lowpass_filter_a)

@@ -62,7 +62,7 @@ double scale15_len = 15000000.0 * (70.7 / 1000000.0);
 // endsync to next endsync
 double scale4fsc_len = 4 * 4433618 * (70.7 / 1000000.0);
 
-double p_rotdetect = 80;
+double p_rotdetect = 2000;
 
 double hfreq = 625.0 * (30000.0 / 1001.0);
 
@@ -598,7 +598,7 @@ wrapup:
 }
 
 //uint16_t synclevel = 12000;
-uint16_t synclevel = ire_to_in(-32); // inbase + (inscale * 15);
+uint16_t synclevel = ire_to_in(-30); // inbase + (inscale * 15);
 
 bool IsPeak(double *p, int i)
 {
