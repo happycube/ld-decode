@@ -400,7 +400,7 @@ void HandleBadLine(vector<Line> &peaks, int i)
 
 	cerr << peaks[i-lg].beginsync << ' ' << peaks[i-lg].center << ' ' << peaks[i-lg].endsync << ' ' << peaks[i-lg].endsync - peaks[i-lg].beginsync << endl;
 	cerr << "BADLG " << lg << ' ';
-	double gap = (peaks[i + lg].beginsync - peaks[i - lg].beginsync) / 2;
+	double gap = (peaks[i + lg].beginsync - peaks[i - lg].beginsync) / (lg * 2);
 	peaks[i].beginsync = peaks[i - lg].beginsync + (gap * lg); 
 	peaks[i].center = peaks[i - lg].center + (gap * lg); 
 	peaks[i].endsync = peaks[i - lg].endsync + (gap * lg); 
