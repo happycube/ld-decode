@@ -68,7 +68,7 @@ double hfreq = 625.0 * (30000.0 / 1001.0);
 
 long long fr_count = 0, au_count = 0;
 
-double f_tol = 0.5;
+double f_tol = 1.5;
 
 bool f_diff = false;
 
@@ -282,9 +282,9 @@ int get_oline(double line)
 	int l = (int)line;
 	int rv = -1;
 
-	if (l < 10) rv = -1;
+	if (l < 11) rv = -1;
 	else if (l < 314) rv = ((l - 10) * 2) + 0;
-	else if (l < 319) rv = -1;
+	else if (l < 320) rv = -1;
 	else if (l < 625) rv = ((l - 318) * 2) + 1;
 
 	if (rv > 609) rv = -1;
@@ -373,7 +373,10 @@ double prev_linelen = pal_ipline;
 double prev_offset_begin = 0.0;
 double prev_offset_end = 0.0;
 
-double prev_begin = 0;
+double prev_begin = 0, prev_end = 0;
+double prev_beginlen = 0, prev_endlen = 0;
+
+double prev_lvl_adjust = 1.0;
 
 int iline = 0;
 int frameno = -1;
@@ -396,7 +399,7 @@ void HandleBadLine(vector<Line> &peaks, int i)
 
 	int lg = 1;
 
-	for (lg = 1; lg < 8 && (peaks[i - lg].bad || peaks[i + lg].bad); lg++);
+	for (lg = 1; lg < 8 && ((i - lg) >= 0) && ((i + lg) < peaks.size()) && (peaks[i - lg].bad || peaks[i + lg].bad); lg++);
 
 	cerr << peaks[i-lg].beginsync << ' ' << peaks[i-lg].center << ' ' << peaks[i-lg].endsync << ' ' << peaks[i-lg].endsync - peaks[i-lg].beginsync << endl;
 	cerr << "BADLG " << lg << ' ';
@@ -441,6 +444,8 @@ double ProcessLine(uint16_t *buf, vector<Line> &lines, int index, bool recurse =
 
 	cerr << "PPL " << line << ' ' << lines[index].beginsync << ' ' << lines[index+1].endsync << ' ' << lines[index+1].endsync - lines[index].beginsync << endl;
 	cerr << "PL " << line << ' ' << begin << ' ' << end << ' ' << err << ' ' << end - begin << endl;
+
+	if ((end - begin) < (in_freq * 200)) return (end - begin); 
 
 	cerr << "ProcessLine " << begin << ' ' << end << endl;
 
@@ -491,12 +496,20 @@ double ProcessLine(uint16_t *buf, vector<Line> &lines, int index, bool recurse =
 	cerr << "offset " << oline << ' ' << begin_offset << ' ' << end_offset << ' ' << end - begin << ' ' << (begin - prev_begin) * (70.7 / 64.0) << ' ' << endl;
 
 	if (!recurse) {
+		double prev_len = prev_end - prev_begin;
 		double orig_len = orig_end - orig_begin;
 		double new_len = end - begin;
-		cerr << "len " << frameno + 1 << ":" << oline << ' ' << orig_len << ' ' << new_len << ' ' << orig_begin << ' ' << begin << ' ' << orig_end << ' ' << end << endl;
-		if (fabs(new_len - orig_len) > (in_freq * f_tol)) {
-			cerr << "ERRP len " << frameno + 1 << ":" << oline << ' ' << orig_len << ' ' << new_len << ' ' << orig_begin << ' ' << begin << ' ' << orig_end << ' ' << end << endl;
 
+		double beginlen = begin - prev_begin;
+		double endlen = end - prev_end;
+
+		cerr << "len " << frameno + 1 << ":" << oline << ' ' << orig_len << ' ' << new_len << ' ' << orig_begin << ' ' << begin << ' ' << orig_end << ' ' << end << endl;
+//		if ((fabs(new_len - orig_len) > (out_freq * f_tol)) || (fabs(new_len - prev_len) > (out_freq * f_tol))) {
+		if ((fabs(prev_endlen - endlen) > (out_freq * f_tol)) || (fabs(prev_beginlen - beginlen) > (out_freq * f_tol))) {
+			//cerr << "ERRP len " << frameno + 1 << ":" << oline << ' ' << orig_len << ' ' << new_len << ' ' << orig_begin << ' ' << begin << ' ' << orig_end << ' ' << end << endl;
+			cerr << "ERRP len " << frameno + 1 << ":" << oline << ' ' << prev_endlen - endlen << ' ' << prev_beginlen - beginlen << endl;
+
+			lines[index].bad = true;
 			HandleBadLine(lines, index);
 			return ProcessLine(buf, lines, index, true);
 //			if (fabs(begin_offset) > fabs(end_offset)) 
@@ -525,7 +538,13 @@ wrapup:
 	double lvl_adjust = ((((end - begin) / iscale15_len) - 1) * 1.0) + 1;
 	int ldo = -128;
 
-	cerr << "leveladj " << lvl_adjust << endl;
+	if (lines[index].bad) {
+		lvl_adjust = prev_lvl_adjust;
+	} else {
+		prev_lvl_adjust = lvl_adjust;
+	}
+
+	cerr << line << " leveladj " << lines[index].bad << ' ' << lvl_adjust << endl;
 
 	double rotdetect = p_rotdetect * inscale;
 	
@@ -587,12 +606,18 @@ wrapup:
 		prev_offset_end = begin - orig_begin;
 	}
 
-	cerr << line << " GAP " << begin - prev_begin << ' ' << prev_begin << ' ' << begin << endl;
+	cerr << line << ' ' << get_oline(line) << " FINAL " << prev_begin << ' ' << begin - prev_begin << ' ' << end - prev_end << ' ' << begin << ' ' << end <<  endl;
 	
 	frame[oline][0] = (tgt_nphase != 0) ? 32768 : 16384; 
 	frame[oline][1] = plevel1; 
 
+	begin -= 4.0 * (burstfreq / 3.75);
+	end -= 4.0 * (burstfreq / 3.75);
+	prev_beginlen = begin - prev_begin; 
+	prev_endlen = end - prev_end; 
+
 	prev_begin = begin;
+	prev_end = end;
 
 	return adjlen;
 }
@@ -772,6 +797,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 				prev_linelen = f_linelen.feed(linelen);
 			}
 		} else if (peaks[i].peak > .9) {
+			cerr << "P2A_0 " << i << ' ' << peaks[i].peak << endl;
 			line = -10;
 			peaks[i].linenum = -1;
 		}
