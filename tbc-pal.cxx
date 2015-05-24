@@ -509,7 +509,7 @@ double ProcessLine(uint16_t *buf, vector<Line> &lines, int index, bool recurse =
 			//cerr << "ERRP len " << frameno + 1 << ":" << oline << ' ' << orig_len << ' ' << new_len << ' ' << orig_begin << ' ' << begin << ' ' << orig_end << ' ' << end << endl;
 			cerr << "ERRP len " << frameno + 1 << ":" << oline << ' ' << prev_endlen - endlen << ' ' << prev_beginlen - beginlen << endl;
 
-			lines[index].bad = true;
+//			lines[index].bad = true;
 			HandleBadLine(lines, index);
 			return ProcessLine(buf, lines, index, true);
 //			if (fabs(begin_offset) > fabs(end_offset)) 
