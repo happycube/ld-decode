@@ -815,11 +815,11 @@ def decode_efm(apply_filters=True, apply_demp=True, just_log=True, random_input=
     data = data[0:10000]
     plt.plot(data[5000:6000])
 
-    if apply_demp:
+    #if apply_demp:
         # This is too slow, need to work out a way to do it in scipy
-        de_emphasis_filter = biquad_filter(-1.8617006585639506, 0.8706642683920058, 0.947680874725466,
-                                           -1.8659578411373265, 0.9187262110931641)
-        data = np.fromiter(run_filter(de_emphasis_filter, data), np.int16)  # De-emph - 26db below 500khz
+    #    de_emphasis_filter = biquad_filter(-1.8617006585639506, 0.8706642683920058, 0.947680874725466,
+    #                                       -1.8659578411373265, 0.9187262110931641)
+    #    data = np.fromiter(run_filter(de_emphasis_filter, data), np.int16)  # De-emph - 26db below 500khz
 
     if apply_filters:
 #        bandpass = sps.firwin(8191, [0.013 / FREQ_MHZ, 2.1 / FREQ_MHZ], pass_zero=False)
