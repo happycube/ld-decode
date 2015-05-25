@@ -950,14 +950,14 @@ class Comb
 				f_oddframe = false;		
 			}
 
-			uint16_t flags = fbuf[7];
+			uint16_t flags = fbuf[13];
 
 			cerr << "flags " << hex << flags << dec << endl;
 //			if (flags & FRAME_INFO_CAV_ODD) fstart = 1;
 			if (flags & FRAME_INFO_WHITE_ODD) fstart = 1;
 			else if (flags & FRAME_INFO_WHITE_EVEN) fstart = 0;
 
-			framecode = (fbuf[8] << 16) | fbuf[9];
+			framecode = (fbuf[14] << 16) | fbuf[15];
 
 			cerr << "FR " << framecount << ' ' << fstart << endl;
 			if (!f_pulldown || (fstart == 0)) {

@@ -699,12 +699,12 @@ void DecodeVBI()
 
 	cerr << "Status " << hex << flags << dec << " chapter " << chap << endl;
 
-	frame[0][6] = chap;
-	frame[0][7] = flags;
-	frame[0][8] = fnum >> 16;
-	frame[0][9] = fnum & 0xffff;
-	frame[0][10] = clv_time >> 16;
-	frame[0][11] = clv_time & 0xffff;
+	frame[0][12] = chap;
+	frame[0][13] = flags;
+	frame[0][14] = fnum >> 16;
+	frame[0][15] = fnum & 0xffff;
+	frame[0][16] = clv_time >> 16;
+	frame[0][17] = clv_time & 0xffff;
 //	exit(0);
 }
 
@@ -888,8 +888,8 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 				
 				if (peaks[i].bad) {
 					int oline = get_oline(line);
-               		 		frame[oline][2] = frame[oline][4] = 65000;
-			                frame[oline][3] = frame[oline][5] = 0;
+               		 		frame[oline][3] = frame[oline][5] = 65000;
+			                frame[oline][4] = frame[oline][6] = 0;
 				}
 			}
 		}
