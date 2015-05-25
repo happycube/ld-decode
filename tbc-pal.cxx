@@ -504,7 +504,6 @@ double ProcessLine(uint16_t *buf, vector<Line> &lines, int index, bool recurse =
 		double endlen = end - prev_end;
 
 		cerr << "len " << frameno + 1 << ":" << oline << ' ' << orig_len << ' ' << new_len << ' ' << orig_begin << ' ' << begin << ' ' << orig_end << ' ' << end << endl;
-//		if ((fabs(new_len - orig_len) > (out_freq * f_tol)) || (fabs(new_len - prev_len) > (out_freq * f_tol))) {
 		if ((fabs(prev_endlen - endlen) > (out_freq * f_tol)) || (fabs(prev_beginlen - beginlen) > (out_freq * f_tol))) {
 			//cerr << "ERRP len " << frameno + 1 << ":" << oline << ' ' << orig_len << ' ' << new_len << ' ' << orig_begin << ' ' << begin << ' ' << orig_end << ' ' << end << endl;
 			cerr << "ERRP len " << frameno + 1 << ":" << oline << ' ' << prev_endlen - endlen << ' ' << prev_beginlen - beginlen << endl;
@@ -512,16 +511,6 @@ double ProcessLine(uint16_t *buf, vector<Line> &lines, int index, bool recurse =
 			if (oline > 25) lines[index].bad = true;
 			HandleBadLine(lines, index);
 			return ProcessLine(buf, lines, index, true);
-//			if (fabs(begin_offset) > fabs(end_offset)) 
-//				begin = orig_begin + end_offset;
-//			else
-//				end = orig_end + begin_offset;
-	
-			cerr << "noffset " << begin - orig_begin << ' ' << end - orig_end << endl;
-
-			Scale(buf, tout, begin, end, scale15_len); 
-			PilotDetect(tout, 0, plevel1, nphase1); 
-			PilotDetect(tout, 240, plevel2, nphase2); 
 		}
 	}
 
@@ -726,7 +715,6 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 
 	bool field2 = false;
 	int line = -10;
-	double prev_linelen = 1832;
 
 	for (int i = firstline - 2; (i < (firstline + 650)) && (line < 623) && (i < peaks.size()); i++) {
 //		cerr << "P2A " << i << ' ' << peaks[i].peak << endl;
