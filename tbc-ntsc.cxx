@@ -321,6 +321,8 @@ double prev_offset = 0.0;
 double prev_begin = 0, prev_end = 0;
 double prev_beginlen = 0, prev_endlen = 0;
 
+double prev_lvl_adjust = 1.0;
+
 int iline = 0;
 int frameno = -1;
 
@@ -471,6 +473,12 @@ wrapup:
 	// LD only: need to adjust output value for velocity, and remove defects as possible
 	double lvl_adjust = ((((end - begin) / iscale_tgt) - 1) * 1.0) + 1;
 	int ldo = -128;
+	
+	if (lines[index].bad) {
+		lvl_adjust = prev_lvl_adjust;
+	} else {
+		prev_lvl_adjust = lvl_adjust;
+	}
 
 	double rotdetect = p_rotdetect * inscale;
 	
@@ -491,7 +499,7 @@ wrapup:
 			o = ire_to_out(in_to_ire(v));
 		}
 
-		if (despackle && (h > (20 * out_freq)) && ((fabs(o - prev_o) > rotdetect) || (ire < -25))) {
+		if (despackle && (h > (16 * out_freq)) && ((fabs(o - prev_o) > rotdetect) || (ire < -25))) {
 			if ((h - ldo) > 16) {
 				for (int j = h - 4; j > 2 && j < h; j++) {
 					double to = (frame[oline - 2][j - 2] + frame[oline - 2][j + 2]) / 2;
@@ -871,8 +879,6 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 			line = peaks[i].linenum ;
 			cerr << line << ' ' << i << ' ' << peaks[i].bad << ' ' <<  peaks[i].peak << ' ' << peaks[i].center << ' ' << peaks[i].center - peaks[i-1].center << ' ' << peaks[i].beginsync << ' ' << peaks[i].endsync << ' ' << peaks[i].endsync - peaks[i].beginsync << endl;
 				
-			double send = peaks[i - 1].beginsync + ((peaks[i].beginsync - peaks[i - 1].beginsync) * scale_linelen);
-
 			// XXX:  This is a hack to avoid a crashing condition!
 			if (!((line < 12) && (peaks[i].center - peaks[i-1].center) < (in_freq * 200))) {
 				ProcessLine(buf, peaks, i); 
