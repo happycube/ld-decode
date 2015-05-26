@@ -44,8 +44,7 @@ int f_debugline = -1000;
 	
 int dim = 1;
 
-// NTSC properties
-const double freq = 4.0;
+//const double freq = 4.0;
 
 double irescale = 327.67;
 double irebase = 1;
@@ -119,29 +118,14 @@ int cline = -1;
 struct RGB {
         double r, g, b;
 
-        void conv(YIQ _y, double angleadj = 0, int line = 0) {
+        void conv(YIQ _y) {
                YIQ t;
-
-//		angleadj = 0;
 
 		double y = u16_to_ire(clamp(_y.y, 0, 65535));
 		y = (y - black_ire) * (100 / (100 - black_ire)); 
 
-		double i = +(_y.i) / irescale;
-		double q = +(_y.q) / irescale;
-
-		double mag = ctor(i, q);
-//		if (((line + 1) % 4) >= 2) angleadj -= 65;
-		double angle = atan2(q, i) + ((angleadj / 180.0) * M_PIl);
-
-		double u = cos(angle) * mag;
-		double v = sin(angle) * mag;
-
-//		if (((line + 1) % 4) >= 2) u = -u;
-
-		if (cline == (f_debugline + lineoffset)) {
-//			cerr << "YIQ1 " << y << ' ' << i << ' ' << q << ' ' << atan2deg(q, i) << ' ' << mag << ' ' << angle << ' ' << u << ' ' << v << ' ' << atan2deg(v, u) << endl;
-		}
+		double u = +(_y.i) / irescale;
+		double v = +(_y.q) / irescale;
 
                 r = y + (1.13983 * v);
                 g = y - (0.58060 * v) - (u * 0.39465);
@@ -152,9 +136,6 @@ struct RGB {
                 r = clamp(r * m, 0, 65535);
                 g = clamp(g * m, 0, 65535);
                 b = clamp(b * m, 0, 65535);
-		if (cline == (f_debugline + lineoffset)) {
-//			cerr << "YIQ2 " << r << ' ' << g << ' ' << b << endl;
-		}
      };
 };
 
@@ -171,7 +152,7 @@ const int nframes = 3;	// 3 frames needed for 3D buffer - for now
 
 const int in_y = 610;
 const int in_x = 1052;
-const int in_size = in_y * in_x;
+//const int in_size = in_y * in_x;
 
 typedef struct cline {
 	YIQ p[in_x];
@@ -221,9 +202,6 @@ class Comb
 
 		void FilterIQ(cline_t cbuf[in_y], int fnum) {
 			for (int l = 24; l < in_y; l++) {
-				uint16_t *line = &Frame[fnum].rawbuffer[l * in_x];	
-				bool invertphase = (line[0] == 16384);
-
 				Filter f_i(f_colorlpi);
 				Filter f_q(f_colorlpf_hq ? f_colorlpi : f_colorlpq);
 
@@ -565,7 +543,6 @@ class Comb
 
 			// HACK!!!:  Need to figure out which phase we're in this frame
 			for (int l = 10; l < in_y; l++) {
-				double ang = 0;
 				double i = 0, q = 0;
 
 				for (int h = 25; h < 55; h++) {
@@ -609,11 +586,7 @@ class Comb
 					double q = +(cbuf[l].p[h].q);
 
 					double mag = ctor(i, q);
-//					if (((line + 1) % 4) >= 2) angleadj -= 65;
-//					if ((l % 4) >= 2) adj2 = +65;
-					int rotate = l % 4;
-//					if ((rotate == 0) || (rotate == 3)) adj2 = +65;
-//					angleadj = 0;
+
 					double angle = atan2(q, i) + (((angleadj + adj2) / 180.0) * M_PIl);
 
 					if (l == (f_debugline + lineoffset))
@@ -628,7 +601,6 @@ class Comb
 
 				for (int h = 0; h < in_x; h++) {
 					RGB r;
-					YIQ yiqp = cbuf[l - 2].p[h + 0];
 					YIQ yiq = cbuf[l].p[h + 0];
 
 //					yiq.i = (yiqp.i + yiq.i) / 1;
@@ -677,7 +649,6 @@ class Comb
 			static Mat prev[2];
 			static Mat flow[2];	
 			static int fcount = 0;
-			int fnum = 0;		
 	
 			const int cysize = 242;
 			const int cxsize = in_x - 70;
@@ -688,7 +659,7 @@ class Comb
 			memset(fieldbuf, 0, sizeof(fieldbuf));
 			memset(flowmap, 0, sizeof(flowmap));
 
-			int l, y;
+			int y;
 
 			Mat pic;
 
