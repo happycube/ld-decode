@@ -891,15 +891,6 @@ class Comb
 			if (dim >= 2) Split2D(0); 
 			SplitIQ(0);
 		
-			// copy VBI	
-			for (int l = 0; l < 24; l++) {
-				uint16_t *line = &Frame[0].rawbuffer[l * in_x];	
-					
-				for (int h = 4; h < 840; h++) {
-					Frame[0].cbuf[l].p[h].y = line[h]; 
-				}
-			}
-		
 			if (dim >= 3) {
 				if (f_opticalflow && (framecount >= 1)) {
 					memcpy(tbuf, Frame[0].cbuf, sizeof(tbuf));	
@@ -923,6 +914,16 @@ class Comb
 
 			AdjustY(f, tbuf);
 			if (f_colorlpf) FilterIQ(tbuf, f);
+
+			// copy VBI	
+			for (int l = 0; l < 24; l++) {
+				uint16_t *line = &Frame[f].rawbuffer[l * in_x];	
+					
+				for (int h = 4; h < 840; h++) {
+					tbuf[l].p[h].y = line[h]; 
+				}
+			}
+
 			DoYNR(f, tbuf);
 			DoCNR(f, tbuf);
 			ToRGB(f, firstline, tbuf);
@@ -953,7 +954,10 @@ class Comb
 			uint16_t flags = fbuf[13];
 
 			cerr << "flags " << hex << flags << dec << endl;
-//			if (flags & FRAME_INFO_CAV_ODD) fstart = 1;
+
+			if (flags & FRAME_INFO_CAV_ODD) fstart = 1;
+			else if (flags & FRAME_INFO_CAV_EVEN) fstart = 0;
+
 			if (flags & FRAME_INFO_WHITE_ODD) fstart = 1;
 			else if (flags & FRAME_INFO_WHITE_EVEN) fstart = 0;
 

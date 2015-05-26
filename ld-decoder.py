@@ -514,7 +514,7 @@ def main():
 		if o == "-w":
 #			lowpass_filter_b, lowpass_filter_a = sps.butter(9, (5.0/(freq/2)), 'low')
 #			lowpass_filter_b, lowpass_filter_a = sps.butter(8, (4.8/(freq/2)), 'low')
-			lowpass_filter_b, lowpass_filter_a = sps.butter(7, (4.7/(freq/2)), 'low')
+#			lowpass_filter_b, lowpass_filter_a = sps.butter(7, (4.7/(freq/2)), 'low')
 			wide_mode = 1
 			hz_ire_scale = (9360000 - 8100000) / 100
 			minn = 8100000 + (hz_ire_scale * -60)

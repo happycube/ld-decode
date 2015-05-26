@@ -623,7 +623,8 @@ void DecodeVBI()
 	uint32_t chap = 0;
 	uint32_t flags = 0;
 
-	bool odd = false;
+	bool odd = false; // CAV framecode on odd scanline
+	bool even = false; // on even scanline (need to report both, since some frames have none!)
 	bool clv = false;
 	bool cx  = false;
 	int fnum = 0;
@@ -688,12 +689,13 @@ void DecodeVBI()
 				if (fnum >= 80000) fnum -= 80000;
 				cerr << i << " CAV frame " << fnum << endl;
 				if (i % 2) odd = true;
+				if (!(i % 2)) even = true;
 			} 
 		}	
 	}	
 	cerr << " fnum " << fnum << endl;
 
-	flags = (clv ? FRAME_INFO_CLV : 0) | (odd ? FRAME_INFO_CAV_ODD : 0) | (cx ? FRAME_INFO_CX : 0); 
+	flags = (clv ? FRAME_INFO_CLV : 0) | (even ? FRAME_INFO_CAV_EVEN : 0) | (odd ? FRAME_INFO_CAV_ODD : 0) | (cx ? FRAME_INFO_CX : 0); 
 	flags |= CheckWhiteFlag(4) ? FRAME_INFO_WHITE_EVEN : 0; 
 	flags |= CheckWhiteFlag(5) ? FRAME_INFO_WHITE_ODD  : 0; 
 

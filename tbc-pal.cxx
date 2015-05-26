@@ -721,7 +721,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 		bool canstartsync = false;
 		if ((line < 0) || InRange(line, 310, 317) || InRange(line, 623, 630)) canstartsync = true;
 
-		if (!canstartsync && ((peaks[i].center - peaks[i - 1].center) > (440 * in_freq)) && (peaks[i].center > peaks[i - 1].center)) {
+		if (!canstartsync && ((peaks[i].center - peaks[i - 1].center) > (400 * in_freq)) && (peaks[i].center > peaks[i - 1].center)) {
 			// looks like we outright skipped a line because of corruption.  add a new one! 
 			cerr << "LONG " << i << ' ' << peaks[i].center << ' ' << peaks[i].center - peaks[i - 1].center << ' ' << peaks.size() << endl ;
 

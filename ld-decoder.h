@@ -240,8 +240,9 @@ double CubicInterpolate(double *y, double x)
 */
 
 #define FRAME_INFO_CLV		0x1
-#define FRAME_INFO_CAV_ODD	0x2
-#define FRAME_INFO_CX		0x4
+#define FRAME_INFO_CAV_EVEN	0x4
+#define FRAME_INFO_CAV_ODD	0x8
+#define FRAME_INFO_CX		0x10
 
 #define FRAME_INFO_WHITE_ODD	0x100
 #define FRAME_INFO_WHITE_EVEN	0x200
