@@ -876,7 +876,7 @@ class Comb
 		// buffer: in_xxin_y uint16_t array
 		void Process(uint16_t *buffer, int dim = 2)
 		{
-			int firstline = (linesout == in_y) ? 0 : 25;
+			int firstline = (linesout == in_y) ? 0 : 26;
 			int f = (dim == 3) ? 1 : 0;
 
 			cerr << "P " << f << ' ' << dim << endl;
@@ -944,7 +944,7 @@ class Comb
 			if (!f_pulldown) {
 				fstart = 0;
 			} else if (f_oddframe) {
-				for (int i = 1; i < linesout; i += 2) {
+				for (int i = 0; i < linesout; i += 2) {
 					memcpy(&obuf[rout_x * 3 * i], &output[(out_x * 3 * i) + (roffset * 3)], rout_x * 3 * 2); 
 				}
 				WriteFrame(obuf, rout_x, framecode);
@@ -970,7 +970,7 @@ class Comb
 				}
 				WriteFrame(obuf, rout_x, framecode);
 			} else if (fstart == 1) {
-				for (int i = 0; i < linesout; i += 2) {
+				for (int i = 1; i < linesout; i += 2) {
 					memcpy(&obuf[rout_x * 3 * i], &output[(out_x * 3 * i) + (roffset * 3)], rout_x * 3 * 2); 
 				}
 				f_oddframe = true;
