@@ -1,12 +1,12 @@
 all: cx tbc-pal tbc-ntsc ntsc4 audiog2 comb-ntsc comb-pal 
 
 CFLAGS=-O3 
-CFLAGS=-g -O2 -fno-omit-frame-pointer -mavx -march=corei7-avx
+CFLAGS=-g -O2 -fno-omit-frame-pointer -march=native
 
 OPENCV_LIBS=-lopencv_core -lopencv_highgui -lopencv_imgproc -lopencv_video
 
 clean:
-	rm -f ldd ntsc ntsc4 ntsc10 audiog2 comb 
+	rm -f cx tbc-pal tbc-ntsc ntsc4 audiog2 comb-ntsc comb-pal
 
 cx: cx-expander.cxx deemp.h
 	clang++ -std=c++11  -Wall $(CFLAGS) -o cx cx-expander.cxx
@@ -40,6 +40,9 @@ comb-ntsc: comb-ntsc.cxx deemp.h
 
 comb-pal: comb-pal.cxx deemp.h
 	clang++ -lfann -std=c++11  -Wall $(CFLAGS) $(OPENCV_LIBS) -o comb-pal comb-pal.cxx
+
+comb-paln: comb-paln.cxx deemp.h
+	clang++ -lfann -std=c++11  -Wall $(CFLAGS) $(OPENCV_LIBS) -o comb-paln comb-paln.cxx
 
 comb: comb-ntsc
 
