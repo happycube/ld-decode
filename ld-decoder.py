@@ -151,37 +151,12 @@ lowpass_filter_b, lowpass_filter_a = sps.butter(8, (4.5/(freq/2)), 'low')
 
 # demphasis coefficients.  haven't figured out how to compute them outside octave yet.
 
-# [b, a] = bilinear(-3*(10^-8), -1*(10^-8), 1/3, freq)
-f_deemp_b = [3.778720395899611e-01, -2.442559208200777e-01]
-f_deemp_a = [1.000000000000000e+00, -8.663838812301168e-01]
-deemp_corr = 1.0
+deemp_t1 = .85
+deemp_t2 = 3.0
 
-# freq=4000000*315/88
-# t1 = 0.83; t2 = 3.0; [b, a] = bilinear(-t2*(10^-8), -t1*(10^-8), t1/t2, freq);
-# printf("f_deemp_b = ["); printf("%.15e, ", b); printf("]\nf_deemp_a = ["); printf("%.15e, ", a); printf("]\n")
-#f_deemp_b = [3.172367682445019e-01, -2.050613721767547e-01, ]
-#f_deemp_a = [1.000000000000000e+00, -8.878246039322528e-01, ]
-
-# t1 = 0.9; t2 = 3.0; [b, a] = bilinear(-t2*(10^-8), -t1*(10^-8), t1/t2, freq);
-# printf("f_deemp_b = ["); printf("%.15e, ", b); printf("]\nf_deemp_a = ["); printf("%.15e, ", a); printf("]\n")
-#f_deemp_b = [3.423721575744635e-01, -2.213088502188534e-01, ]
-#f_deemp_a = [1.000000000000000e+00, -8.789366926443899e-01, ]
-
-# t1 = .875
-#f_deemp_b = [3.334224479793254e-01, -2.155237713318184e-01, ]
-#f_deemp_a = [1.000000000000000e+00, -8.821013233524929e-01, ]
-
-# t1 = .85
+# t1 = .85, t2 = 3.0
 f_deemp_b = [3.244425401246140e-01, -2.097191723349937e-01, ]
 f_deemp_a = [1.000000000000000e+00, -8.852766322103798e-01, ]
-
-# t1 = .833
-#f_deemp_b = [3.183188754563553e-01, -2.057608446588788e-01, ]
-#f_deemp_a = [1.000000000000000e+00, -8.874419692025236e-01, ]
-
-# t1 = .8
-#f_deemp_b = [3.063915161937518e-01, -1.980510174835196e-01, ]
-#f_deemp_a = [1.000000000000000e+00, -8.916595012897678e-01, ]
 
 # audio filters
 Baudiorf = sps.firwin(65, 3.5 / (freq / 2), window='hamming', pass_zero=True)
@@ -319,7 +294,7 @@ def process_video(data):
 
 	output = sps.lfilter(lowpass_filter_b, lowpass_filter_a, output)
 
-	doutput = (sps.lfilter(f_deemp_b, f_deemp_a, output)[len(f_deemp_b) * 32:len(output)]) / deemp_corr
+	doutput = (sps.lfilter(f_deemp_b, f_deemp_a, output)[len(f_deemp_b) * 32:len(output)]) 
 
 #	doutput = (sps.lfilter(f_deemp_b, f_deemp_a, doutput)[64:len(doutput)]) / deemp_corr
 	
@@ -476,6 +451,8 @@ def main():
 	global wide_mode, hz_ire_scale, minn
 	global f_deemp_b, f_deemp_a
 
+	global deemp_t1, deemp_t2
+
 	global Bcutr, Acutr
 	
 	global Inner 
@@ -493,9 +470,13 @@ def main():
 
 	f_seconds = False 
 
-	optlist, cut_argv = getopt.getopt(sys.argv[1:], "hLCaAwSs:")
+	optlist, cut_argv = getopt.getopt(sys.argv[1:], "d:D:hLCaAwSs:")
 
 	for o, a in optlist:
+		if o == "-d":
+			deemp_t1 = np.double(a)
+		if o == "-D":
+			deemp_t2 = np.double(a)
 		if o == "-a":
 			audio_mode = 1	
 			blocklen = (64 * 1024) + 2048 
@@ -580,7 +561,11 @@ def main():
 	if CAV and byte_start > 11454654400:
 		CAV = 0
 		Inner = 0 
-	
+
+	# set up deemp filter
+	[tf_b, tf_a] = sps.zpk2tf(-deemp_t2*(10**-8), -deemp_t1*(10**-8), deemp_t1 / deemp_t2)
+	[f_deemp_b, f_deemp_a] = sps.bilinear(tf_b, tf_a, 1/(freq_hz/2))
+
 	total = toread = blocklen 
 	inbuf = infile.read(toread)
 	indata = np.fromstring(inbuf, 'uint8', toread)
