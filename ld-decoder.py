@@ -245,10 +245,10 @@ minn = 8100000 + (hz_ire_scale * -60)
 
 out_scale = 65534.0 / (maxire - minire)
 	
-Bbpf, Abpf = sps.butter(2, [3.4/(freq/2), 13.5/(freq/2)], btype='bandpass')
+Bbpf, Abpf = sps.butter(2, [3.4/(freq/2), 14.0/(freq/2)], btype='bandpass')
 #Bbpf, Abpf = sps.butter(3, 3.2/(freq/2), btype='highpass')
-Bcutl, Acutl = sps.butter(1, [2.20/(freq/2), 2.40/(freq/2)], btype='bandstop')
-Bcutr, Acutr = sps.butter(1, [2.70/(freq/2), 2.90/(freq/2)], btype='bandstop')
+Bcutl, Acutl = sps.butter(1, [2.055/(freq/2), 2.505/(freq/2)], btype='bandstop')
+Bcutr, Acutr = sps.butter(1, [2.416/(freq/2), 3.176/(freq/2)], btype='bandstop')
 # AC3 - Bcutr, Acutr = sps.butter(1, [2.68/(freq/2), 3.08/(freq/2)], btype='bandstop')
 
 lowpass_filter_b, lowpass_filter_a = sps.butter(5, (4.4/(freq/2)), 'low')
@@ -491,7 +491,7 @@ def main():
 			f_deemp_b = [3.778720395899611e-01, -2.442559208200777e-01]
 			f_deemp_a = [1.000000000000000e+00, -8.663838812301168e-01]
 		if o == "-C":
-			Bcutr, Acutr = sps.butter(1, [2.68/(freq/2), 3.08/(freq/2)], btype='bandstop')
+			Bcutr, Acutr = sps.butter(1, [2.50/(freq/2), 3.26/(freq/2)], btype='bandstop')
 		if o == "-w":
 #			lowpass_filter_b, lowpass_filter_a = sps.butter(9, (5.0/(freq/2)), 'low')
 #			lowpass_filter_b, lowpass_filter_a = sps.butter(8, (4.8/(freq/2)), 'low')
