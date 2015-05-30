@@ -245,7 +245,7 @@ minn = 8100000 + (hz_ire_scale * -60)
 
 out_scale = 65534.0 / (maxire - minire)
 	
-Bbpf, Abpf = sps.butter(2, [3.2/(freq/2), 13.5/(freq/2)], btype='bandpass')
+Bbpf, Abpf = sps.butter(2, [3.4/(freq/2), 13.5/(freq/2)], btype='bandpass')
 #Bbpf, Abpf = sps.butter(3, 3.2/(freq/2), btype='highpass')
 Bcutl, Acutl = sps.butter(1, [2.20/(freq/2), 2.40/(freq/2)], btype='bandstop')
 Bcutr, Acutr = sps.butter(1, [2.70/(freq/2), 2.90/(freq/2)], btype='bandstop')
@@ -509,6 +509,8 @@ def main():
 				lowpass_filter_b, lowpass_filter_a = sps.butter(5, (4.4/(freq/2)), 'low')
 			if ia == 2:	
 				lowpass_filter_b, lowpass_filter_a = sps.butter(7, (4.7/(freq/2)), 'low')
+				deemp_t1 = .825
+				deemp_t2 = 2.35
 			if ia == 3:	
 				# high frequency response - and ringing.  choose your poison ;)	
 				lowpass_filter_b, lowpass_filter_a = sps.butter(10, (5.0/(freq/2)), 'low')
