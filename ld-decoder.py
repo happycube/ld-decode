@@ -509,7 +509,8 @@ def main():
 			if ia == 1:	
 				lowpass_filter_b, lowpass_filter_a = sps.butter(5, (4.4/(freq/2)), 'low')
 			if ia == 2:	
-				lowpass_filter_b, lowpass_filter_a = sps.butter(7, (4.7/(freq/2)), 'low')
+				lowpass_filter_b, lowpass_filter_a = sps.butter(6, (4.6/(freq/2)), 'low')
+				lowpass_filter_b, lowpass_filter_a = sps.butter(6, (4.6/(freq/2)), 'low')
 				deemp_t1 = .825
 				deemp_t2 = 2.35
 			if ia == 3:	
