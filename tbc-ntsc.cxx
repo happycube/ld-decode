@@ -55,7 +55,7 @@ const double iscale_tgt = ntsc_ipline + ntsc_ihsynctoline;
 const double ntsc_hsynctoline = ntsc_opline * (ntsc_blanklen / 63.5);
 const double scale_tgt = ntsc_opline + ntsc_hsynctoline;
 
-double p_rotdetect = 80;
+double p_rotdetect = 100;
 
 double hfreq = 525.0 * (30000.0 / 1001.0);
 
