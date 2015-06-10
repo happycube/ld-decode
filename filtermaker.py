@@ -152,6 +152,10 @@ WriteFilter("nr", hp_nr_filter)
 hp_nr28_filter = sps.firwin(Nnr + 1, [2.60 / (freq / 2.0), 2.9 / (freq / 2.0)], window='hamming', pass_zero=False)
 WriteFilter("nr28", hp_nr28_filter)
 
+Nnr = 24
+hp_nr_filter = sps.firwin(Nnr + 1, 1.80 / (freq / 2.0), window='hamming', pass_zero=True)
+WriteFilter("lp18", hp_nr_filter)
+
 Nnrc = 24
 hp_nrc_filter = sps.firwin(Nnrc + 1, 0.4 / (freq / 2.0), window='hamming', pass_zero=False)
 WriteFilter("nrc", hp_nrc_filter)

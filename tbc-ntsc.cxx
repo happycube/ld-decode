@@ -162,6 +162,8 @@ double black_ire = 7.5;
 int write_locs = -1;
 
 uint16_t frame[505][(int)(OUT_FREQ * 211)];
+double Δframe[505][(int)(OUT_FREQ * 211)];
+double Δframe_filt[505][(int)(OUT_FREQ * 211)];
 
 #ifdef FSC10
 Filter f_longsync(f_dsync10);
@@ -472,7 +474,6 @@ double ProcessLine(uint16_t *buf, vector<Line> &lines, int index, bool recurse =
 wrapup:
 	// LD only: need to adjust output value for velocity, and remove defects as possible
 	double lvl_adjust = ((((end - begin) / iscale_tgt) - 1) * 1.0) + 1;
-	int ldo = -128;
 	
 	if (lines[index].bad) {
 		lvl_adjust = prev_lvl_adjust;
@@ -480,9 +481,6 @@ wrapup:
 		prev_lvl_adjust = lvl_adjust;
 	}
 
-	double rotdetect = p_rotdetect * inscale;
-	
-	double diff[(int)(212 * out_freq)];
 	double prev_o = 0;
 	for (int h = 0; (oline > 2) && (h < (211 * out_freq)); h++) {
 		double v = tout[h + (int)(15 * out_freq)];
@@ -499,31 +497,18 @@ wrapup:
 			o = ire_to_out(in_to_ire(v));
 		}
 
-		if (despackle && (h > (16 * out_freq)) && ((fabs(o - prev_o) > rotdetect) || (ire < -25))) {
-			if ((h - ldo) > 16) {
-				for (int j = h - 4; j > 2 && j < h; j++) {
-					double to = (frame[oline - 2][j - 2] + frame[oline - 2][j + 2]) / 2;
-					frame[oline][j] = clamp(to, 0, 65535);
-				}
-			}
-			ldo = h;
-		}
+		frame[oline][h] = clamp(o, 0, 65535);
 
-		if (((h - ldo) < 16) && (h > 4)) {
-			double tmpo = (frame[oline - 2][h - 2] + frame[oline - 2][h + 2]) / 2;
-			frame[oline][h] = clamp(tmpo, 0, 65535);
-//			cerr << "R " << o << endl;
-		} else {
-			frame[oline][h] = clamp(o, 0, 65535);
-		}
-		diff[h] = o - prev_o;
+		Δframe[oline][h] = fabs(o - prev_o);
+		double dfilt = f_lp18.feed(Δframe[oline][h]); 
+		if (h > 12) {
+		//	cerr << "RD " << oline << ' ' << h << ' ' << Δframe[oline][h - 12] << ' ' << dfilt << endl;
+//			if (dfilt < 0) dfilt = 0;
+			Δframe_filt[oline][h - 12] = dfilt;
+		}	
 		prev_o = o;
 	}
-	
-	for (int h = 0; f_diff && (oline > 2) && (h < (211 * out_freq)); h++) {
-		frame[oline][h] = clamp(diff[h], 0, 65535);
-	}
-	
+
         if (!pass) {
                 for (int x = 2; x < 6; x++) {frame[oline][x] = 32000;}
 		cerr << "BURST ERROR " << line << " " << pass << ' ' << begin << ' ' << (begin + adjlen) << '/' << end  << ' ' << endl;
@@ -601,6 +586,45 @@ uint32_t ReadPhillipsCode(uint16_t *line) {
 	cerr << "P " << hex << out << dec << endl;			
 
 	return out;
+}
+
+const int out_x = 844;
+const int out_y = 505;
+
+inline double max(double a, double b)
+{
+	return (a > b) ? a : b;
+}
+
+void Despackle()
+{
+	for (int y = 22; y < out_y; y++) {
+		double rotdetect = p_rotdetect * inscale;
+
+		for (int x = 60; x < out_x - 16; x++) {
+
+			double comp = 0;
+	
+			for (int cy = y - 1; (cy < (y + 2)) && (cy < out_y); cy++) { 
+				for (int cx = x - 3; (cx < x + 3) && (cx < (out_x - 12)); cx++) {
+					comp = max(comp, Δframe_filt[cy][cx]);
+//					cerr << "RD " << cy << ' ' << cx << ' ' << comp << ' ' << Δframe_filt[cy][cx] << endl; 
+				}
+			}
+
+//			if ((Δframe[y][x] > rotdetect)) {
+			if ((out_to_ire(frame[y][x]) < -20) || (out_to_ire(frame[y][x]) > 130) || ((Δframe[y][x] > rotdetect) && ((Δframe[y][x] - comp) > rotdetect))) {
+//			if (((Δframe[y][x] > rotdetect) && ((Δframe[y][x] - comp) > rotdetect))) {
+				cerr << "R " << y << ' ' << x << ' ' << rotdetect << ' ' << Δframe[y][x] << ' ' << comp << ' ' << Δframe_filt[y][x] << endl;
+				for (int m = x - 4; (m < (x + 14)) && (m < out_x); m++) {
+					double to = (((double)frame[y - 2][m - 2]) + ((double)frame[y - 2][m + 2])) / 2;
+//					cerr << "Z " << y << ' ' << x << ' ' << m << endl;
+					frame[y][m] = clamp(to, 0, 65535);
+				}
+				x = x + 14;
+			}
+		} 
+	}
 }
 
 bool CheckWhiteFlag(int l)
@@ -896,6 +920,8 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 			}
 		}
 	}
+
+	if (despackle) Despackle();
 
 	// Decode VBI data
 	DecodeVBI();
