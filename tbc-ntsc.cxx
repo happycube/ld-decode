@@ -162,6 +162,7 @@ double black_ire = 7.5;
 int write_locs = -1;
 
 uint16_t frame[505][(int)(OUT_FREQ * 211)];
+uint16_t frame_orig[505][(int)(OUT_FREQ * 211)];
 double Δframe[505][(int)(OUT_FREQ * 211)];
 double Δframe_filt[505][(int)(OUT_FREQ * 211)];
 
@@ -598,6 +599,8 @@ inline double max(double a, double b)
 
 void Despackle()
 {
+	memcpy(frame_orig, frame, sizeof(frame));
+
 	for (int y = 22; y < out_y; y++) {
 		double rotdetect = p_rotdetect * inscale;
 
@@ -617,9 +620,15 @@ void Despackle()
 //			if (((Δframe[y][x] > rotdetect) && ((Δframe[y][x] - comp) > rotdetect))) {
 				cerr << "R " << y << ' ' << x << ' ' << rotdetect << ' ' << Δframe[y][x] << ' ' << comp << ' ' << Δframe_filt[y][x] << endl;
 				for (int m = x - 4; (m < (x + 14)) && (m < out_x); m++) {
-					double to = (((double)frame[y - 2][m - 2]) + ((double)frame[y - 2][m + 2])) / 2;
+					double tmp = (((double)frame_orig[y - 2][m - 2]) + ((double)frame_orig[y - 2][m + 2])) / 2;
+
+					if (y < (out_y - 3)) {
+						tmp /= 2;
+						tmp += ((((double)frame_orig[y + 2][m - 2]) + ((double)frame_orig[y + 2][m + 2])) / 4);
+					}
+
 //					cerr << "Z " << y << ' ' << x << ' ' << m << endl;
-					frame[y][m] = clamp(to, 0, 65535);
+					frame[y][m] = clamp(tmp, 0, 65535);
 				}
 				x = x + 14;
 			}
