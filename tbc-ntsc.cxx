@@ -613,7 +613,7 @@ void Despackle()
 			}
 
 //			if ((Δframe[y][x] > rotdetect)) {
-			if ((out_to_ire(frame[y][x]) < -20) || (out_to_ire(frame[y][x]) > 130) || ((Δframe[y][x] > rotdetect) && ((Δframe[y][x] - comp) > rotdetect))) {
+			if ((out_to_ire(frame[y][x]) < -20) || (out_to_ire(frame[y][x]) > 140) || ((Δframe[y][x] > rotdetect) && ((Δframe[y][x] - comp) > rotdetect))) {
 //			if (((Δframe[y][x] > rotdetect) && ((Δframe[y][x] - comp) > rotdetect))) {
 				cerr << "R " << y << ' ' << x << ' ' << rotdetect << ' ' << Δframe[y][x] << ' ' << comp << ' ' << Δframe_filt[y][x] << endl;
 				for (int m = x - 4; (m < (x + 14)) && (m < out_x); m++) {
