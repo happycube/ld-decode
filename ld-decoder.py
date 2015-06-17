@@ -23,6 +23,7 @@ blocklen = (16 * 1024) + 512
 hilbertlen = (16 * 1024)
 
 wide_mode = 0
+p_sndlimit = 150000
 
 def dosplot(B, A):
 	w, h = sps.freqz(B, A)
@@ -376,11 +377,38 @@ def process_audio(indata):
 
 #	print len(in_left)
 
-	out_left = fm_decode(in_left, freq_hz / 4)
-	out_right = fm_decode(in_right, freq_hz / 4)
+	out_left = fm_decode(in_left, freq_hz / 4) - left_audfreqm
+	out_right = fm_decode(in_right, freq_hz / 4) - right_audfreqm
 
-	out_left = np.clip(out_left - left_audfreqm, -150000, 150000) 
-	out_right = np.clip(out_right - right_audfreqm, -150000, 150000) 
+	#out_left = np.clip(out_left - left_audfreqm, -150000, 150000) 
+	#out_right = np.clip(out_right - right_audfreqm, -150000, 150000) 
+	out_leftabs = np.fabs(out_left)
+	out_rightabs = np.fabs(out_right)
+
+	lenerr = 160 
+	err = 1
+	while err > 0:
+		err = 0
+
+		am = np.argmax(out_leftabs)
+#		print(am, out_leftabs[am])
+		if (out_leftabs[am] > p_sndlimit):
+			err = 1
+			for squish in range(max(0, am - lenerr), min(am + lenerr, len(out_leftabs))):
+				out_left[squish] = 0
+				out_leftabs[squish] = 0
+				out_right[squish] = 0
+				out_rightabs[squish] = 0
+		
+		am = np.argmax(out_rightabs)	
+#		print(am, out_rightabs[am])
+		if (out_rightabs[am] > p_sndlimit):
+			err = 1
+			for squish in range(max(0, am - lenerr), min(am + lenerr, len(out_rightabs))):
+				out_right[squish] = 0
+				out_rightabs[squish] = 0
+				out_left[squish] = 0
+				out_leftabs[squish] = 0
 
 	out_left = sps.lfilter(audiolp_filter_b, audiolp_filter_a, out_left)[800:]
 	out_right = sps.lfilter(audiolp_filter_b, audiolp_filter_a, out_right)[800:] 
@@ -397,12 +425,13 @@ def process_audio(indata):
 	
 	return outputf[0:tot * 2], tot * 20 * 4 
 
-	plt.plot(range(0, len(out_left)), out_left)
+#	plt.plot(range(0, len(out_left)), out_left, 'blue')
 #	plt.plot(range(0, len(out_leftl)), out_leftl)
-	plt.plot(range(0, len(out_right)), out_right + 150000)
+#	plt.plot(range(0, len(out_right)), out_right, 'red')
 #	plt.ylim([2000000,3000000])
-	plt.show()
-	exit()
+#	plt.show()
+#	exit()
+	return outputf[0:tot * 2], tot * 20 * 4 
 
 def test():
 	test = np.empty(blocklen, dtype=np.uint8)
@@ -470,9 +499,12 @@ def main():
 
 	f_seconds = False 
 
-	optlist, cut_argv = getopt.getopt(sys.argv[1:], "d:D:hLCaAwSs:")
+	optlist, cut_argv = getopt.getopt(sys.argv[1:], "xd:D:hLCaAwSs:")
 
 	for o, a in optlist:
+		if o == "-x":
+			global p_sndlimit
+			p_sndlimit = 100000
 		if o == "-d":
 			deemp_t1 = np.double(a)
 		if o == "-D":
