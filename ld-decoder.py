@@ -380,35 +380,10 @@ def process_audio(indata):
 	out_left = fm_decode(in_left, freq_hz / 4) - left_audfreqm
 	out_right = fm_decode(in_right, freq_hz / 4) - right_audfreqm
 
-	#out_left = np.clip(out_left - left_audfreqm, -150000, 150000) 
-	#out_right = np.clip(out_right - right_audfreqm, -150000, 150000) 
-	out_leftabs = np.fabs(out_left)
-	out_rightabs = np.fabs(out_right)
-
-	lenerr = 160 
-	err = 1
-	while err > 0:
-		err = 0
-
-		am = np.argmax(out_leftabs)
-#		print(am, out_leftabs[am])
-		if (out_leftabs[am] > p_sndlimit):
-			err = 1
-			for squish in range(max(0, am - lenerr), min(am + lenerr, len(out_leftabs))):
-				out_left[squish] = 0
-				out_leftabs[squish] = 0
-				out_right[squish] = 0
-				out_rightabs[squish] = 0
-		
-		am = np.argmax(out_rightabs)	
-#		print(am, out_rightabs[am])
-		if (out_rightabs[am] > p_sndlimit):
-			err = 1
-			for squish in range(max(0, am - lenerr), min(am + lenerr, len(out_rightabs))):
-				out_right[squish] = 0
-				out_rightabs[squish] = 0
-				out_left[squish] = 0
-				out_leftabs[squish] = 0
+	out_left = np.clip(out_left - left_audfreqm, -150000, 150000) 
+	out_right = np.clip(out_right - right_audfreqm, -150000, 150000) 
+#	out_leftabs = np.fabs(out_left)
+#	out_rightabs = np.fabs(out_right)
 
 	out_left = sps.lfilter(audiolp_filter_b, audiolp_filter_a, out_left)[800:]
 	out_right = sps.lfilter(audiolp_filter_b, audiolp_filter_a, out_right)[800:] 
