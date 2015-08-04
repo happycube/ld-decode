@@ -3,24 +3,19 @@ import numpy as np
 import scipy as sp
 import scipy.signal as sps
 import scipy.fftpack as fftpack 
-import sys
-
-import fdls as fdls
 import matplotlib.pyplot as plt
-import fft8 as fft8 
-
-import ld_utils as utils
-
+import sys
 import getopt
+
+import fft8 as fft8 
+import fdls as fdls
+import ld_utils as utils
 
 π = np.pi
 τ = np.pi * 2
 
-#import ipdb
-
 freq = (315.0 / 88.0) * 8.0
 freq_hz = freq * 1000000.0
-ffreq = freq/2.0
 
 blocklen = (16 * 1024) + 512
 hilbertlen = (16 * 1024)
@@ -233,10 +228,14 @@ def process_audio(indata):
 
 def test():
 	test = np.empty(blocklen, dtype=np.uint8)
-#	test = np.empty(blocklen)
+
+	infile = open("noise.raw", "rb")
+
+	noisebuf = infile.read(blocklen)
+	noisedata = (np.fromstring(noisebuf, 'uint8', blocklen)) - 128
 
 #	for hlen in range(3, 18):
-	for vlevel in range(20, 100, 10):
+	for vlevel in range(50, 101, 5):
 
 		vphase = 0
 		alphase = 0
@@ -256,10 +255,16 @@ def test():
 			test[i] += (np.sin(arphase * τ) * vlevel / 10.0)
 			test[i] += 128
 
+		test += noisedata
+
 		output = process_video(test)[7800:8500]	
 		plt.plot(range(0, len(output)), output)
 
+		output /= out_scale
+		output -= 60
+
 		output = output[400:700]	
+
 		mean = np.mean(output)
 		std = np.std(output)
 		print(vlevel, mean, std, 20 * np.log10(mean / std)) 
@@ -280,6 +285,9 @@ def main():
 
 	global blocklen
 
+	# set up deemp filter
+#	[tf_b, tf_a] = sps.zpk2tf(-deemp_t2*(10**-8), -deemp_t1*(10**-8), deemp_t1 / deemp_t2)
+#	[f_deemp_b, f_deemp_a] = sps.bilinear(tf_b, tf_a, 1/(freq_hz/2))
 #	test()
 
 	outfile = sys.stdout.buffer
