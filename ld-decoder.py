@@ -229,7 +229,7 @@ def process_audio(indata):
 	exit()
 
 def test():
-	test = np.empty(blocklen, dtype=np.uint16)
+	test = np.empty(blocklen, dtype=np.uint8)
 
 	infile = open("noise.raw", "rb")
 
@@ -237,7 +237,7 @@ def test():
 	noisedata = np.double(np.fromstring(noisebuf, 'uint8', blocklen)) - 128
 
 #	for hlen in range(3, 18):
-	for vlevel in range(64, 513, 64):
+	for vlevel in range(32, 97, 16):
 
 		vphase = 0
 		alphase = 0
@@ -252,12 +252,12 @@ def test():
 			vphase += vfreq / freq_hz  
 			alphase += 2300000 / freq_hz 
 			arphase += 2800000 / freq_hz 
-			test[i] = (np.sin(vphase * τ) * vlevel)
-			test[i] += (np.sin(alphase * τ) * vlevel / 10.0)
-			test[i] += (np.sin(arphase * τ) * vlevel / 10.0)
-			test[i] += 32768 
+			tmp = (np.sin(vphase * τ) * vlevel)
+			tmp += (np.sin(alphase * τ) * vlevel / 10.0)
+			tmp += (np.sin(arphase * τ) * vlevel / 10.0)
+			test[i] = tmp + 128 
 
-		test += (noisedata * 4)
+		test += (noisedata * 1)
 
 		output = np.double(process_video(test)[7800:8500])
 		plt.plot(range(0, len(output)), output)
@@ -353,7 +353,7 @@ def main():
 	[tf_b, tf_a] = sps.zpk2tf(-deemp_t2*(10**-8), -deemp_t1*(10**-8), deemp_t1 / deemp_t2)
 	[f_deemp_b, f_deemp_a] = sps.bilinear(tf_b, tf_a, 1/(freq_hz/2))
 
-	#test()
+#	test()
 
 	argc = len(cut_argv)
 	if argc >= 1:
