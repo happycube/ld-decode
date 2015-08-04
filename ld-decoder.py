@@ -14,7 +14,7 @@ import ld_utils as utils
 π = np.pi
 τ = np.pi * 2
 
-freq = (315.0 / 88.0) * 8.0
+freq = (315.0 / 88.0) * 8.00
 freq_hz = freq * 1000000.0
 
 blocklen = (16 * 1024) + 512
@@ -153,6 +153,8 @@ def process_video(data):
 	reduced = (doutput - minn) / hz_ire_scale
 	output = np.clip(reduced * out_scale, 0, 65535) 
 	
+	#return output
+	
 	np.copyto(output_16, output, 'unsafe')
 
 #	plt.plot(range(0, len(data)), data)
@@ -227,15 +229,15 @@ def process_audio(indata):
 	exit()
 
 def test():
-	test = np.empty(blocklen, dtype=np.uint8)
+	test = np.empty(blocklen, dtype=np.uint16)
 
 	infile = open("noise.raw", "rb")
 
 	noisebuf = infile.read(blocklen)
-	noisedata = (np.fromstring(noisebuf, 'uint8', blocklen)) - 128
+	noisedata = np.double(np.fromstring(noisebuf, 'uint8', blocklen)) - 128
 
 #	for hlen in range(3, 18):
-	for vlevel in range(50, 101, 5):
+	for vlevel in range(64, 513, 64):
 
 		vphase = 0
 		alphase = 0
@@ -247,17 +249,17 @@ def test():
 			else:
 				vfreq = 8100000
 
-			vphase += vfreq / freq_hz 
+			vphase += vfreq / freq_hz  
 			alphase += 2300000 / freq_hz 
 			arphase += 2800000 / freq_hz 
 			test[i] = (np.sin(vphase * τ) * vlevel)
 			test[i] += (np.sin(alphase * τ) * vlevel / 10.0)
 			test[i] += (np.sin(arphase * τ) * vlevel / 10.0)
-			test[i] += 128
+			test[i] += 32768 
 
-		test += noisedata
+		test += (noisedata * 4)
 
-		output = process_video(test)[7800:8500]	
+		output = np.double(process_video(test)[7800:8500])
 		plt.plot(range(0, len(output)), output)
 
 		output /= out_scale
@@ -284,11 +286,6 @@ def main():
 	global Inner 
 
 	global blocklen
-
-	# set up deemp filter
-#	[tf_b, tf_a] = sps.zpk2tf(-deemp_t2*(10**-8), -deemp_t1*(10**-8), deemp_t1 / deemp_t2)
-#	[f_deemp_b, f_deemp_a] = sps.bilinear(tf_b, tf_a, 1/(freq_hz/2))
-#	test()
 
 	outfile = sys.stdout.buffer
 	audio_mode = 0 
@@ -352,6 +349,11 @@ def main():
 			if ia == 62:	
 				lowpass_filter_b, lowpass_filter_a = sps.butter(6, (4.7/(freq/2)), 'low')
 
+	# set up deemp filter
+	[tf_b, tf_a] = sps.zpk2tf(-deemp_t2*(10**-8), -deemp_t1*(10**-8), deemp_t1 / deemp_t2)
+	[f_deemp_b, f_deemp_a] = sps.bilinear(tf_b, tf_a, 1/(freq_hz/2))
+
+	#test()
 
 	argc = len(cut_argv)
 	if argc >= 1:
