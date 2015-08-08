@@ -11,14 +11,16 @@ import fft8 as fft8
 import fdls as fdls
 import ld_utils as utils
 
+import fftfilt as fftfilt
+
 π = np.pi
 τ = np.pi * 2
 
 freq = (315.0 / 88.0) * 8.00
 freq_hz = freq * 1000000.0
 
-blocklen = (16 * 1024) + 512
-hilbertlen = (16 * 1024)
+blocklen = (32 * 1024)  
+hilbertlen = (32 * 1024) 
 
 lowpass_filter_b, lowpass_filter_a = sps.butter(8, (4.5/(freq/2)), 'low')
 
@@ -54,12 +56,12 @@ N, Wn = sps.buttord(3.1 / (freq / 2.0), 3.5 / (freq / 2.0), 1, 16)
 audiorf_filter_b, audiorf_filter_a = sps.butter(N, Wn)
 
 # unused snippet: from http://tlfabian.blogspot.com/2013/01/implementing-hilbert-90-degree-shift.html
-#hilbert_filter = np.fft.fftshift(
-#    np.fft.ifft([0]+[1]*20+[0]*20)
-#)
+hilbert_filter = np.fft.fftshift(
+    np.fft.ifft([0]+[1]*200+[0]*200)
+)
 
-def fm_decode(in_filt, freq_hz, hlen = hilbertlen):
-	hilbert = sps.hilbert(in_filt[0:hlen])
+def fm_decode(hilbert, freq_hz, hlen = hilbertlen):
+	#hilbert = sps.hilbert(in_filt[0:hlen])
 #	hilbert = sps.lfilter(hilbert_filter, 1.0, in_filt)
 
 	# the hilbert transform has errors at the edges.  but it doesn't seem to matter much in practice 
@@ -107,9 +109,35 @@ out_scale = 65534.0 / (maxire - minire)
 Bbpf, Abpf = sps.butter(3, [3.2/(freq/2), 14.0/(freq/2)], btype='bandpass')
 Bcutl, Acutl = sps.butter(1, [2.055/(freq/2), 2.505/(freq/2)], btype='bandstop')
 Bcutr, Acutr = sps.butter(1, [2.416/(freq/2), 3.176/(freq/2)], btype='bandstop')
+Bcut, Acut = sps.butter(1, [2.055/(freq/2), 3.176/(freq/2)], btype='bandstop')
 # AC3 - Bcutr, Acutr = sps.butter(1, [2.68/(freq/2), 3.08/(freq/2)], btype='bandstop')
 
+#utils.doplot(Bcut, Acut)
+
 lowpass_filter_b, lowpass_filter_a = sps.butter(5, (4.4/(freq/2)), 'low')
+
+forder = 256 
+forderd = 0 
+[Bbpf_FDLS, Abpf_FDLS] = fdls.FDLS_fromfilt(Bbpf, Abpf, forder, forderd, 0)
+[Bcutl_FDLS, Acutl_FDLS] = fdls.FDLS_fromfilt(Bcutl, Acutl, forder, forderd, 0)
+[Bcutr_FDLS, Acutr_FDLS] = fdls.FDLS_fromfilt(Bcutr, Acutr, forder, forderd, 0)
+#[Bcut_FDLS, Acut_FDLS] = fdls.FDLS_fromfilt2(Bcutr, Acutr, Bcutl, Acutl, 128, 0, 0)
+#print(Bbpf, Abpf)
+#print(Bbpf_FDLS, Abpf_FDLS)
+#utils.doplot(Bbpf, Abpf)
+#utils.doplot(Bcutl, Acutr)
+#utils.doplot(Bcut_FDLS, Acut_FDLS)
+#utils.doplot2(Bbpf_FDLS, Abpf_FDLS, Bbpf, Abpf)
+#utils.doplot2(Bcutl_FDLS, Acutl_FDLS, Bcutl, Acutr)
+#exit()
+
+Fbpf = np.fft.fft(Bbpf_FDLS, blocklen)
+Fcutl = np.fft.fft(Bcutl_FDLS, blocklen)
+Fcutr = np.fft.fft(Bcutr_FDLS, blocklen)
+
+Fhilbert = np.fft.fft(hilbert_filter, blocklen)
+
+Filt = Fbpf * Fcutl * Fcutr * Fhilbert
 
 #doplot(Bcutl, Acutl)
 
@@ -123,18 +151,37 @@ Inner = 0
 #lowpass_filter_b = [1.0]
 #lowpass_filter_a = [1.0]
 
+#utils.doplot(Bfdls, [1.0])
 
 def process_video(data):
 	# perform general bandpass filtering
 
-	in_filt1 = sps.lfilter(Bbpf, Abpf, data)
-	in_filt2 = sps.lfilter(Bcutl, Acutl, in_filt1)
-	in_filt3 = sps.lfilter(Bcutr, Acutr, in_filt2)
+	#in_filt1 = sps.lfilter(Bbpf, Abpf, data)
+	in_filt = np.fft.ifft(np.fft.fft(data,blocklen)*Filt,blocklen)
+	
+#	print(in_filt1[5000:5010])
+#	print(in_filt2[5000:5010])
+#	print(in_filt3[5000:5010])
 
-	if Inner:
-		in_filt = sps.lfilter(f_emp_b, f_emp_a, in_filt3)
-	else:
-		in_filt = in_filt3
+#	plt.plot(in_filt3.real)
+#	plt.plot(in_filt1)
+#	plt.show()
+#	exit()
+	
+#	in_filt2 = sps.lfilter(Bcutl, Acutl, in_filt1)
+#	in_filt2 = fftfilt.fftfilt(Bcutl_FDLS, in_filt1)
+#	in_filt3 = fftfilt.fftfilt(Bcutr_FDLS, in_filt2)
+#	in_filt2 = sps.lfilter(Bcutl_FDLS, Acutl_FDLS, in_filt1)
+#	in_filt3 = sps.lfilter(Bcutr, Acutr, in_filt2)
+#	in_filt3 = sps.lfilter(Bcut, Acut, in_filt1)
+#	in_filt3 = sps.lfilter(Bcutr_FDLS, Acutr_FDLS, in_filt2)
+
+#	in_filt3 = sps.lfilter(Bfdls, [1.0], data)
+
+#	if Inner:
+#		in_filt = sps.lfilter(f_emp_b, f_emp_a, in_filt3)
+#	else:
+#		in_filt = in_filt3
 
 #	fft8.plotfft(in_filt)
 #	plt.plot(in_filt)
@@ -229,7 +276,7 @@ def process_audio(indata):
 	exit()
 
 def test():
-	test = np.empty(blocklen, dtype=np.uint8)
+	test = np.empty(blocklen, dtype=np.uint16)
 
 	infile = open("noise.raw", "rb")
 
@@ -237,7 +284,7 @@ def test():
 	noisedata = np.double(np.fromstring(noisebuf, 'uint8', blocklen)) - 128
 
 #	for hlen in range(3, 18):
-	for vlevel in range(32, 97, 16):
+	for vlevel in range(64, 101, 5):
 
 		vphase = 0
 		alphase = 0
@@ -255,23 +302,24 @@ def test():
 			tmp = (np.sin(vphase * τ) * vlevel)
 			tmp += (np.sin(alphase * τ) * vlevel / 10.0)
 			tmp += (np.sin(arphase * τ) * vlevel / 10.0)
-			test[i] = tmp + 128 
+#			tmp += noisedata[i] / 1
+			test[i] = tmp + 32768 
 
 		test += (noisedata * 1)
 
-		output = np.double(process_video(test)[7800:8500])
+		output = np.double(process_video(test)[7800:12800])
 		plt.plot(range(0, len(output)), output)
 
 		output /= out_scale
 		output -= 60
 
-		output = output[400:700]	
+		output = output[500:4000]	
 
 		mean = np.mean(output)
 		std = np.std(output)
 		print(vlevel, mean, std, 20 * np.log10(mean / std)) 
 
-	plt.show()
+#	plt.show()
 	exit()
 
 def main():
