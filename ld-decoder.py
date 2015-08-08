@@ -250,7 +250,7 @@ def process_audio(indata):
 		outputf[(tot * 2) + 1] = out_right[i]
 		tot = tot + 1
 
-#	return outputf[0:tot * 2], tot * 20 * 4 
+	return outputf[0:tot * 2], tot * 20 * 4 
 
 	plt.plot(range(0, len(out_left)), out_left)
 #	plt.plot(range(0, len(out_leftl)), out_leftl)
