@@ -20,7 +20,6 @@ freq = (315.0 / 88.0) * 8.00
 freq_hz = freq * 1000000.0
 
 blocklen = (32 * 1024)  
-hilbertlen = (32 * 1024) 
 
 lowpass_filter_b, lowpass_filter_a = sps.butter(8, (4.5/(freq/2)), 'low')
 
@@ -44,10 +43,10 @@ hfreq = freq / 8.0
 
 N, Wn = sps.buttord([(left_audfreq-.10) / hfreq, (left_audfreq+.10) / hfreq], [(left_audfreq-.15) / hfreq, (left_audfreq+.15)/hfreq], 1, 15)
 #print(N,Wn)
-leftbp_filter_b, leftbp_filter_a = sps.butter(N, Wn, btype='bandpass')
+Baudl, Aaudl = sps.butter(N, Wn, btype='bandpass')
 
 N, Wn = sps.buttord([(right_audfreq-.10) / hfreq, (right_audfreq+.10) / hfreq], [(right_audfreq-.15) / hfreq, (right_audfreq+.15)/hfreq], 1, 15)
-rightbp_filter_b, rightbp_filter_a = sps.butter(N, Wn, btype='bandpass')
+Baudr, Aaudr = sps.butter(N, Wn, btype='bandpass')
 
 N, Wn = sps.buttord(0.016 / hfreq, 0.024 / hfreq, 1, 8) 
 audiolp_filter_b, audiolp_filter_a = sps.butter(N, Wn)
@@ -60,7 +59,7 @@ hilbert_filter = np.fft.fftshift(
     np.fft.ifft([0]+[1]*200+[0]*200)
 )
 
-def fm_decode(hilbert, freq_hz, hlen = hilbertlen):
+def fm_decode(hilbert, freq_hz):
 	#hilbert = sps.hilbert(in_filt[0:hlen])
 #	hilbert = sps.lfilter(hilbert_filter, 1.0, in_filt)
 
@@ -121,23 +120,22 @@ forderd = 0
 [Bbpf_FDLS, Abpf_FDLS] = fdls.FDLS_fromfilt(Bbpf, Abpf, forder, forderd, 0)
 [Bcutl_FDLS, Acutl_FDLS] = fdls.FDLS_fromfilt(Bcutl, Acutl, forder, forderd, 0)
 [Bcutr_FDLS, Acutr_FDLS] = fdls.FDLS_fromfilt(Bcutr, Acutr, forder, forderd, 0)
-#[Bcut_FDLS, Acut_FDLS] = fdls.FDLS_fromfilt2(Bcutr, Acutr, Bcutl, Acutl, 128, 0, 0)
-#print(Bbpf, Abpf)
-#print(Bbpf_FDLS, Abpf_FDLS)
-#utils.doplot(Bbpf, Abpf)
-#utils.doplot(Bcutl, Acutr)
-#utils.doplot(Bcut_FDLS, Acut_FDLS)
-#utils.doplot2(Bbpf_FDLS, Abpf_FDLS, Bbpf, Abpf)
-#utils.doplot2(Bcutl_FDLS, Acutl_FDLS, Bcutl, Acutr)
-#exit()
 
 Fbpf = np.fft.fft(Bbpf_FDLS, blocklen)
 Fcutl = np.fft.fft(Bcutl_FDLS, blocklen)
 Fcutr = np.fft.fft(Bcutr_FDLS, blocklen)
 
+[Baudl_FDLS, Aaudl_FDLS] = fdls.FDLS_fromfilt(Baudl, Aaudl, forder, forderd, 0)
+[Baudr_FDLS, Aaudr_FDLS] = fdls.FDLS_fromfilt(Baudr, Aaudr, forder, forderd, 0)
+
+Faudl = np.fft.fft(Baudl_FDLS, blocklen)
+Faudr = np.fft.fft(Baudr_FDLS, blocklen)
+
 Fhilbert = np.fft.fft(hilbert_filter, blocklen)
 
-Filt = Fbpf * Fcutl * Fcutr * Fhilbert
+FiltV = Fbpf * Fcutl * Fcutr * Fhilbert
+FiltAL = Faudl * Fhilbert
+FiltAR = Faudr * Fhilbert
 
 #doplot(Bcutl, Acutl)
 
@@ -156,28 +154,9 @@ Inner = 0
 def process_video(data):
 	# perform general bandpass filtering
 
-	#in_filt1 = sps.lfilter(Bbpf, Abpf, data)
-	in_filt = np.fft.ifft(np.fft.fft(data,blocklen)*Filt,blocklen)
-	
-#	print(in_filt1[5000:5010])
-#	print(in_filt2[5000:5010])
-#	print(in_filt3[5000:5010])
+	in_filt = np.fft.ifft(np.fft.fft(data,blocklen)*FiltV,blocklen)
 
-#	plt.plot(in_filt3.real)
-#	plt.plot(in_filt1)
-#	plt.show()
-#	exit()
-	
-#	in_filt2 = sps.lfilter(Bcutl, Acutl, in_filt1)
-#	in_filt2 = fftfilt.fftfilt(Bcutl_FDLS, in_filt1)
-#	in_filt3 = fftfilt.fftfilt(Bcutr_FDLS, in_filt2)
-#	in_filt2 = sps.lfilter(Bcutl_FDLS, Acutl_FDLS, in_filt1)
-#	in_filt3 = sps.lfilter(Bcutr, Acutr, in_filt2)
-#	in_filt3 = sps.lfilter(Bcut, Acut, in_filt1)
-#	in_filt3 = sps.lfilter(Bcutr_FDLS, Acutr_FDLS, in_filt2)
-
-#	in_filt3 = sps.lfilter(Bfdls, [1.0], data)
-
+#	TODO: re-enable	
 #	if Inner:
 #		in_filt = sps.lfilter(f_emp_b, f_emp_a, in_filt3)
 #	else:
@@ -190,10 +169,9 @@ def process_video(data):
 	output = fm_decode(in_filt, freq_hz)
 
 	# save the original fm decoding and align to filters
-	output_prefilt = output[(len(f_deemp_b) * 24) + len(f_deemp_b) + len(lowpass_filter_b):]
+#	output_prefilt = output[(len(f_deemp_b) * 24) + len(f_deemp_b) + len(lowpass_filter_b):]
 
 	output = sps.lfilter(lowpass_filter_b, lowpass_filter_a, output)
-
 	doutput = (sps.lfilter(f_deemp_b, f_deemp_a, output)[len(f_deemp_b) * 32:len(output)]) 
 	
 	output_16 = np.empty(len(doutput), dtype=np.uint16)
@@ -237,20 +215,26 @@ def process_audio(indata):
 		test_mode += 32768 
 		return outputf, 32768 
 
-#	print(len(indata), len(audiorf_filter_b * 2), len(leftbp_filter_b) * 1)
+#	print(len(indata), len(audiorf_filter_b * 2), len(Baudl) * 1)
 
-	in_filt = sps.lfilter(audiorf_filter_b, audiorf_filter_a, indata)[len(audiorf_filter_b) * 2:]
+	in_filt = sps.lfilter(audiorf_filter_b, audiorf_filter_a, indata) #[len(audiorf_filter_b) * 2:]
 
 	in_filt4 = np.empty(int(len(in_filt) / 4) + 1)
 
 	for i in range(0, len(in_filt), 4):
 		in_filt4[int(i / 4)] = in_filt[i]
 
-	in_left = sps.lfilter(leftbp_filter_b, leftbp_filter_a, in_filt4)[len(leftbp_filter_b) * 1:] 
-	in_right = sps.lfilter(rightbp_filter_b, rightbp_filter_a, in_filt4)[len(rightbp_filter_b) * 1:] 
+	in_filt4 = in_filt4[0:(blocklen/4)]
 
-	out_left = fm_decode(in_left, freq_hz / 4)
-	out_right = fm_decode(in_right, freq_hz / 4)
+#	in_left = sps.lfilter(Baudl, Aaudl, in_filt4)[len(Baudl) * 1:] 
+#	in_right = sps.lfilter(Baudr, Aaudr, in_filt4)[len(Baudr) * 1:] 
+	print(len(in_filt4), len(FiltAL))
+	
+	in_left = np.fft.ifft(np.fft.fft(in_filt4,len(in_filt4))*FiltAL,len(in_filt4))
+	in_right = np.fft.ifft(np.fft.fft(in_filt4,len(in_filt4))*FiltAR,len(in_filt4))
+
+	out_left = fm_decode(in_left, freq_hz / 4)[384:]
+	out_right = fm_decode(in_right, freq_hz / 4)[384:]
 
 	out_left = np.clip(out_left - left_audfreqm, -150000, 150000) 
 	out_right = np.clip(out_right - right_audfreqm, -150000, 150000) 
@@ -266,7 +250,7 @@ def process_audio(indata):
 		outputf[(tot * 2) + 1] = out_right[i]
 		tot = tot + 1
 
-	return outputf[0:tot * 2], tot * 20 * 4 
+#	return outputf[0:tot * 2], tot * 20 * 4 
 
 	plt.plot(range(0, len(out_left)), out_left)
 #	plt.plot(range(0, len(out_leftl)), out_leftl)
@@ -353,8 +337,7 @@ def main():
 			deemp_t2 = np.double(a)
 		if o == "-a":
 			audio_mode = 1	
-			blocklen = (64 * 1024) + 2048 
-			hilbertlen = (16 * 1024)
+			blocklen = blocklen * 4 
 		if o == "-L":
 			Inner = 1
 		if o == "-A":
@@ -371,7 +354,7 @@ def main():
 			hz_ire_scale = (9360000 - 8100000) / 100
 			minn = 8100000 + (hz_ire_scale * -60)
 		if o == "-S":
-			f_seconds = True
+			fseconds = True
 		if o == "-s":
 			ia = int(a)
 			if ia == 0:

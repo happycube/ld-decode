@@ -68,14 +68,39 @@ def FDLS(Fr, Am, Th, N, D, shift = 0):
 
 	return [B, A]
 
-def FDLS_fromfilt(A, B, N, D, shift = 0):
+def FDLS_fromfilt(B, A, N, D, shift = 0):
 
-	w, h = sps.freqz(A, B)
+	w, h = sps.freqz(B, A, worN = 1024)
 	w = w / (np.pi * 2.0)
+
+	print(len(w))
 
 	Am = np.absolute(h)
 	Th = np.angle(h)
 
 	return FDLS(w, Am, Th, N, D, shift)
+
+def FDLS_fromfilt2(B, A, B2, A2, N, D, shift = 0):
+
+	w, h = sps.freqz(B, A, worN = 1024)
+	w = w / (np.pi * 2.0)
+	
+	w2, h2 = sps.freqz(B2, A2, worN = 1024)
+	w = w / (np.pi * 2.0)
+
+	h3 = (h + h2) / 2.0
+	plt.plot(h.real)
+	plt.plot(h.imag)
+	plt.plot(h3.real)
+	plt.plot(h3.imag)
+	plt.show()
+
+	print(len(w))
+
+	Am = np.absolute(h3)
+	Th = np.angle(h3)
+
+	return FDLS(w, Am, Th, N, D, shift)
+
 
 
