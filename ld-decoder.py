@@ -228,7 +228,6 @@ def process_audio(indata):
 
 #	in_left = sps.lfilter(Baudl, Aaudl, in_filt4)[len(Baudl) * 1:] 
 #	in_right = sps.lfilter(Baudr, Aaudr, in_filt4)[len(Baudr) * 1:] 
-	print(len(in_filt4), len(FiltAL))
 	
 	in_left = np.fft.ifft(np.fft.fft(in_filt4,len(in_filt4))*FiltAL,len(in_filt4))
 	in_right = np.fft.ifft(np.fft.fft(in_filt4,len(in_filt4))*FiltAR,len(in_filt4))
@@ -354,7 +353,7 @@ def main():
 			hz_ire_scale = (9360000 - 8100000) / 100
 			minn = 8100000 + (hz_ire_scale * -60)
 		if o == "-S":
-			fseconds = True
+			f_seconds = True
 		if o == "-s":
 			ia = int(a)
 			if ia == 0:
