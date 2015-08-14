@@ -33,6 +33,7 @@ def doplot(freq, B, A):
 
 	ax2 = ax1.twinx()
 	angles = np.unwrap(np.angle(h))
+	angles = np.angle(h)
 	plt.plot(w * (freq/np.pi) / 2.0, angles, 'g')
 	plt.ylabel('Angle (radians)', color='g')
 	plt.grid()
@@ -111,19 +112,19 @@ def FDLS(N, D, w, h = [], Am = [], Th = [], shift = 0):
 	# Y is a simple vector
 	Y = Am * np.cos(Th)
 
-	# The actual computation - the setup for this given above is the brilliant part
+	# The actual computation - the setup leading up to this is the brilliant part
 	out = numpy.linalg.lstsq(X, Y)
 
 	# There's always one A, even for an FIR filter
 	A = np.zeros(D + 1)
 	A[0] = 1
-	for i in range(0, D):
-		A[1 + i] = out[0][i]
+	A[1:D+1] = out[0][0:D]
 
-	# Now grab the B parameters.  There's s
+	# Now grab the B parameters.
 	B = np.zeros(N + 1)
-	for i in range(0, N + 1):
-		B[i] = out[0][i + D]
+	B[0:N+1] = out[0][D:N+D+1]
+	if N == 0:
+		B[0] = 1
 
 	# All done.
 	return [B, A]
