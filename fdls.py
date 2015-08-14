@@ -43,19 +43,22 @@ def diffplot(freq, B, A, B2, A2):
 	w, h = sps.freqz(B, A)
 	w2, h2 = sps.freqz(B2, A2)
 
-	h = h - h2
+#	h = h - h2
+	dabs = abs(h2) / abs(h)
+	dphase = np.unwrap(np.angle(h2)) - np.unwrap(np.angle(h))  
 
 	fig = plt.figure()
 	plt.title('Difference between digital filter frequency responses')
 
 	ax1 = fig.add_subplot(111)
 
-	plt.plot(w * (freq/np.pi) / 2.0, 20 * np.log10(abs(h)), 'b')
+	plt.plot(w * (freq/np.pi) / 2.0, 20 * np.log10(dabs), 'b')
 	plt.ylabel('Amplitude [dB]', color='b')
 	plt.xlabel('Frequency [rad/sample]')
 
 	ax2 = ax1.twinx()
 	angles = np.unwrap(np.angle(h))
+	angles = dphase
 	plt.plot(w * (freq/np.pi) / 2.0, angles, 'g')
 	plt.ylabel('Angle (radians)', color='g')
 	plt.grid()
@@ -82,7 +85,7 @@ def FDLS(N, D, w, h = [], Am = [], Th = [], shift = 0):
 	# Compute amplitude and angle from h if provided
 	if len(h) > 0:
 		Am = np.absolute(h)
-		Th = np.angle(h)
+		Th = np.angle(h) 
 
 	M = len(w)
 
@@ -125,8 +128,17 @@ def FDLS(N, D, w, h = [], Am = [], Th = [], shift = 0):
 	# All done.
 	return [B, A]
 
-def FDLS_fromfilt(B, A, N, D, shift = 0.0):
+#def FDLS_fromfilt(B, A, N, D, shift = 0.0):
+#	w, h = sps.freqz(B, A, worN = 1024)
+
+#	return FDLS(N, D, w, h = h, shift = shift) 
+
+def FDLS_fromfilt(B, A, N, D, shift = 0.0, phasemult = 1.0):
 	w, h = sps.freqz(B, A, worN = 1024)
 
-	return FDLS(N, D, w, h = h, shift = shift) 
+	Am = np.absolute(h)
+	Th = np.angle(h) * phasemult 
+
+	return FDLS(N, D, w, Am = Am, Th = Th, shift = shift) 
+ 
  

@@ -105,7 +105,7 @@ minn = 8100000 + (hz_ire_scale * -60)
 
 out_scale = 65534.0 / (maxire - minire)
 	
-Bbpf, Abpf = sps.butter(3, [3.2/(freq/2), 14.0/(freq/2)], btype='bandpass')
+Bbpf, Abpf = sps.butter(1, [3.2/(freq/2), 14.0/(freq/2)], btype='bandpass')
 Bcutl, Acutl = sps.butter(1, [2.055/(freq/2), 2.505/(freq/2)], btype='bandstop')
 Bcutr, Acutr = sps.butter(1, [2.416/(freq/2), 3.176/(freq/2)], btype='bandstop')
 Bcut, Acut = sps.butter(1, [2.055/(freq/2), 3.176/(freq/2)], btype='bandstop')
@@ -117,9 +117,15 @@ lowpass_filter_b, lowpass_filter_a = sps.butter(5, (4.4/(freq/2)), 'low')
 
 forder = 256 
 forderd = 0 
-[Bbpf_FDLS, Abpf_FDLS] = fdls.FDLS_fromfilt(Bbpf, Abpf, forder, forderd, 0)
-[Bcutl_FDLS, Acutl_FDLS] = fdls.FDLS_fromfilt(Bcutl, Acutl, forder, forderd, 0)
-[Bcutr_FDLS, Acutr_FDLS] = fdls.FDLS_fromfilt(Bcutr, Acutr, forder, forderd, 0)
+[Bbpf_FDLS, Abpf_FDLS] = fdls.FDLS_fromfilt(Bbpf, Abpf, forder, forderd, 0, phasemult = 1.00)
+[Bcutl_FDLS, Acutl_FDLS] = fdls.FDLS_fromfilt(Bcutl, Acutl, forder, forderd, 0, phasemult = 1.00)
+[Bcutr_FDLS, Acutr_FDLS] = fdls.FDLS_fromfilt(Bcutr, Acutr, forder, forderd, 0, phasemult = 1.00)
+
+#utils.doplot(Bcutl, Acutl) 
+#utils.doplot(Bcutl_FDLS, Acutl_FDLS) 
+#utils.doplot2(Bbpf, Abpf, Bbpf_FDLS, Abpf_FDLS) 
+#fdls.diffplot(freq, Bbpf, Abpf, Bbpf_FDLS, Abpf_FDLS) 
+#exit()
 
 Fbpf = np.fft.fft(Bbpf_FDLS, blocklen)
 Fcutl = np.fft.fft(Bcutl_FDLS, blocklen)
@@ -137,12 +143,26 @@ FiltV = Fbpf * Fcutl * Fcutr * Fhilbert
 FiltAL = Faudl * Fhilbert
 FiltAR = Faudr * Fhilbert
 
+# XXX
+#w, hbpf = sps.freqz(Bbpf, Abpf, worN=blocklen/2)
+#w, hcutl = sps.freqz(Bcutl, Acutl, worN=blocklen/2)
+#w, hcutr = sps.freqz(Bcutr, Acutr, worN=blocklen/2)
+
+#h = hbpf * hcutl * hcutr
+
+
 #doplot(Bcutl, Acutl)
 
 # octave:104> t1 = 100; t2 = 55; [b, a] = bilinear(-t2*(10^-8), -t1*(10^-8), t1/t2, freq); freqz(b, a)
 # octave:105> printf("f_emp_b = ["); printf("%.15e, ", b); printf("]\nf_emp_a = ["); printf("%.15e, ", a); printf("]\n")
 f_emp_b = [1.293279022403258e+00, -1.018329938900196e-02, ]
 f_emp_a = [1.000000000000000e+00, 2.830957230142566e-01, ]
+
+#[Bemp_FDLS, Aemp_FDLS] = fdls.FDLS_fromfilt(f_emp_b, f_emp_a, forder, forderd, 0)
+#Femp = np.fft.fft(Bemp_FDLS, blocklen)
+#[Blpf_FDLS, Alpf_FDLS] = fdls.FDLS_fromfilt(lowpass_filter_b, lowpass_filter_a, forder, forderd, 0)
+#Flpf = np.fft.fft(Blpf_FDLS, blocklen)
+#FiltPost = Femp * Flpf
 
 Inner = 0
 
@@ -171,10 +191,12 @@ def process_video(data):
 	# save the original fm decoding and align to filters
 #	output_prefilt = output[(len(f_deemp_b) * 24) + len(f_deemp_b) + len(lowpass_filter_b):]
 
+	# Using an FFT convolution on these makes it slower
 	output = sps.lfilter(lowpass_filter_b, lowpass_filter_a, output)
 	doutput = (sps.lfilter(f_deemp_b, f_deemp_a, output)[len(f_deemp_b) * 32:len(output)]) 
 	
 	output_16 = np.empty(len(doutput), dtype=np.uint16)
+
 	reduced = (doutput - minn) / hz_ire_scale
 	output = np.clip(reduced * out_scale, 0, 65535) 
 	
@@ -290,13 +312,11 @@ def test():
 
 		test += (noisedata * 1)
 
-		output = np.double(process_video(test)[7800:12800])
+		output = np.double(process_video(test)[(blocklen/2)+1000:(blocklen/2)+5096])
 		plt.plot(range(0, len(output)), output)
 
 		output /= out_scale
 		output -= 60
-
-		output = output[500:4000]	
 
 		mean = np.mean(output)
 		std = np.std(output)
