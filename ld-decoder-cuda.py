@@ -108,7 +108,7 @@ def fm_decode(hilbert, freq_hz):
 mod = SourceModule("""
 #include <cuComplex.h>
 __global__ void angle(float *out, cuComplex *in) {
-	const int i = threadIdx.x;
+	const int i = threadIdx.x  + blockIdx.x * blockDim.x; // + (1024 * threadIdx.y);
 	out[i] = atan2f(in[i].y, in[i].x);
 }
 """)
@@ -124,9 +124,12 @@ def fm_decode_cuda(hilbert, freq_hz):
 	tangles = gpuarray.empty(len(hilbert), np.float32)
 
 	angle = mod.get_function("angle")
-	for i in range(0, len(hilbert), 1024):
-#		print(i)
-		angle(tangles[i:i+1024], hilbert[i:i+1024], block=(1024,1,1))
+	bsize = 1024 
+#	for i in range(0, len(hilbert), bsize):
+		#angle(tangles[i:i+bsize], hilbert[i:i+bsize], block=(bsize,1,1), grid=(1,1))
+#		angle(tangles[i:i+bsize], hilbert[i:i+bsize], block=(512,1,1), grid=(2,1))
+#		angle(tangles[i:i+1024], hilbert[i:i+1024], block=(1024,1,1), grid=(1,1,1))
+	angle(tangles, hilbert, block=(1024,1,1), grid=(63,1))
 
 	tangles_dgpu = tangles.get()
 
@@ -319,7 +322,7 @@ def process_video_cuda(data):
 	in_filt_gpu = gpuarray.empty(len(fdata), np.complex64)
 	fft.ifft(fftout_gpu, in_filt_gpu, plani, True)
 
-	in_filt = in_filt_gpu.get()
+#	in_filt = in_filt_gpu.get()
 
 #	in_filt = np.fft.ifft(np.fft.fft(data,blocklen)*FiltV,blocklen)
 
@@ -333,8 +336,8 @@ def process_video_cuda(data):
 #	plt.plot(in_filt)
 #	plt.show()
 
-#	output = fm_decode_cuda(in_filt_gpu, freq_hz)
-	output = fm_decode(in_filt, freq_hz)
+	output = fm_decode_cuda(in_filt_gpu, freq_hz)
+#	output = fm_decode(in_filt, freq_hz)
 
 #	plt.plot(output_cuda)
 #	plt.plot(output)
