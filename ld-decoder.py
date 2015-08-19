@@ -140,6 +140,7 @@ Faudr = np.fft.fft(Baudr_FDLS, blocklen)
 Fhilbert = np.fft.fft(hilbert_filter, blocklen)
 
 FiltV = Fbpf * Fcutl * Fcutr * Fhilbert
+FiltV = np.complex64(FiltV)
 FiltAL = Faudl * Fhilbert
 FiltAR = Faudr * Fhilbert
 
@@ -174,7 +175,8 @@ Inner = 0
 def process_video(data):
 	# perform general bandpass filtering
 
-	in_filt = np.fft.ifft(np.fft.fft(data,blocklen)*FiltV,blocklen)
+	dataf = np.float32(data)
+	in_filt = np.fft.ifft(np.fft.fft(dataf,blocklen)*FiltV,blocklen)
 
 #	TODO: re-enable	
 #	if Inner:
