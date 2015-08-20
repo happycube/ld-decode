@@ -111,6 +111,12 @@ __global__ void angle(float *out, cuComplex *in) {
 	const int i = threadIdx.x  + blockIdx.x * blockDim.x; // + (1024 * threadIdx.y);
 	out[i] = atan2f(in[i].y, in[i].x);
 }
+
+__global__ void acorrect(float *data) {
+	const int i = threadIdx.x  + blockIdx.x * blockDim.x; // + (1024 * threadIdx.y);
+
+	data[i] = (data[i] >= 0) ? data[i] : data[i] + (3.141526 * 2);
+}
 """)
 
 def fm_decode_cuda(hilbert, freq_hz):
@@ -131,28 +137,17 @@ def fm_decode_cuda(hilbert, freq_hz):
 #		angle(tangles[i:i+1024], hilbert[i:i+1024], block=(1024,1,1), grid=(1,1,1))
 	angle(tangles, hilbert, block=(1024,1,1), grid=(63,1))
 
-	tangles_dgpu = tangles.get()
+#	tangles_dgpu = tangles.get()
 
-#	dangles_gpu = misc.diff(tangles)
-#	dangles = dangles_gpu.get() # gpuarray.from_gpu(dangles_gpu)
-	dangles = np.diff(tangles_dgpu)
-
-#	print(type(dangles_gpu), len(dangles_gpu))
-
-#	dangles = dangles_gpu.get() # gpuarray.from_gpu(dangles_gpu)
-#	dangles = np.empty(len(dangles_gpu), dtype=np.float32)
-#	drv.memcpy_dtoh(dangles, dangles_gpu)
-
-#	tangles = np.angle(hilbert) 
-
-#	dangles = np.diff(tangles)
-
-	if (dangles[0] < -pi):
-		dangles[0] += tau
+	dangles_gpu = misc.diff(tangles) 
 	
-	tdangles2 = np.unwrap(dangles) 
-	
-	output = (tdangles2 * (freq_hz / tau))
+	acorrect = mod.get_function("acorrect")
+	acorrect(dangles_gpu, block=(1024,1,1), grid=(63,1))
+
+	output = dangles_gpu.get() # gpuarray.from_gpu(dangles_gpu)
+	output *= (freq_hz / tau) 
+
+	return output
 
 	errcount = 1
 	while errcount > 0:
