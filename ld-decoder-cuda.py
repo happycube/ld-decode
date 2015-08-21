@@ -117,57 +117,29 @@ __global__ void acorrect(float *data) {
 
 	data[i] = (data[i] >= 0) ? data[i] : data[i] + (3.141526 * 2);
 }
-""")
+
+__global__ void clamp16(float *y, float *x) {
+	const int i = threadIdx.x  + blockIdx.x * blockDim.x; // + (1024 * threadIdx.y);
+	y[i] = max((float)0, min((float)65535, x[i]));
+}
+
+
+"""
+
+)
 
 def fm_decode_cuda(hilbert, freq_hz):
-	#hilbert = sps.hilbert(in_filt[0:hlen])
-#	hilbert = sps.lfilter(hilbert_filter, 1.0, in_filt)
-
-	# the hilbert transform has errors at the edges.  but it doesn't seem to matter much in practice 
-	chop = 512 
-	hilbert = hilbert[chop:len(hilbert)-chop]
-
 	tangles = gpuarray.empty(len(hilbert), np.float32)
 
 	angle = mod.get_function("angle")
-	bsize = 1024 
-#	for i in range(0, len(hilbert), bsize):
-		#angle(tangles[i:i+bsize], hilbert[i:i+bsize], block=(bsize,1,1), grid=(1,1))
-#		angle(tangles[i:i+bsize], hilbert[i:i+bsize], block=(512,1,1), grid=(2,1))
-#		angle(tangles[i:i+1024], hilbert[i:i+1024], block=(1024,1,1), grid=(1,1,1))
-	angle(tangles, hilbert, block=(1024,1,1), grid=(63,1))
-
-#	tangles_dgpu = tangles.get()
+	angle(tangles, hilbert, block=(1024,1,1), grid=(64,1))
 
 	dangles_gpu = misc.diff(tangles) 
 	
 	acorrect = mod.get_function("acorrect")
-	acorrect(dangles_gpu, block=(1024,1,1), grid=(63,1))
+	acorrect(dangles_gpu, block=(1024,1,1), grid=(64,1))
 
-	output = dangles_gpu.get() # gpuarray.from_gpu(dangles_gpu)
-	output *= (freq_hz / tau) 
-
-	return output
-
-	errcount = 1
-	while errcount > 0:
-		errcount = 0
-
-		# particularly bad bits can cause phase inversions.  detect and fix when needed - the loops are slow in python.
-		if (output[np.argmax(output)] > freq_hz):
-			errcount = 1
-			for i in range(0, len(output)):
-				if output[i] > freq_hz:
-					output[i] = output[i] - freq_hz
-	
-		if (output[np.argmin(output)] < 0):
-			errcount = 1
-			for i in range(0, len(output)):
-				if output[i] < 0:
-					output[i] = output[i] + freq_hz
-
-	return output
-
+	return dangles_gpu 
 
 minire = -60
 maxire = 140
@@ -232,11 +204,19 @@ FiltV_GPU = gpuarray.to_gpu(np.complex64(FiltV))
 f_emp_b = [1.293279022403258e+00, -1.018329938900196e-02, ]
 f_emp_a = [1.000000000000000e+00, 2.830957230142566e-01, ]
 
-#[Bemp_FDLS, Aemp_FDLS] = fdls.FDLS_fromfilt(f_emp_b, f_emp_a, forder, forderd, 0)
-#Femp = np.fft.fft(Bemp_FDLS, blocklen)
+[Bemp_FDLS, Aemp_FDLS] = fdls.FDLS_fromfilt(f_emp_b, f_emp_a, forder, forderd, 0)
+Femp = np.fft.fft(Bemp_FDLS, blocklen)
+
+FiltVInner = FiltV * Femp
+FiltVInner_GPU = gpuarray.to_gpu(np.complex64(FiltVInner))
+
+#[Bdeemp_FDLS, Adeemp_FDLS] = fdls.FDLS_fromfilt(f_deemp_b, f_deemp_a, forder, forderd, 0)
+#Fdeemp = np.fft.fft(Bdeemp_FDLS, blocklen)
 #[Blpf_FDLS, Alpf_FDLS] = fdls.FDLS_fromfilt(lowpass_filter_b, lowpass_filter_a, forder, forderd, 0)
 #Flpf = np.fft.fft(Blpf_FDLS, blocklen)
-#FiltPost = Femp * Flpf
+
+FiltPost = []
+FiltPost_GPU = []
 
 Inner = 0
 
@@ -296,10 +276,14 @@ def process_video(data):
 plan = None
 plani = None
 
+plan1 = None
+plani1 = None
+
 def process_video_cuda(data):
 	# perform general bandpass filtering
 
 	global plan, plani
+	global plan1, plani1
 
 	fdata = np.float32(data)
 
@@ -307,49 +291,60 @@ def process_video_cuda(data):
 
 	if plan == None:
 		plan = fft.Plan(gpudata.shape, np.float32, np.complex64)
+		plani = fft.Plan(gpudata.shape, np.complex64, np.complex64)
+
 	fftout_gpu = gpuarray.empty(len(fdata)//2+1, np.complex64)
 	fft.fft(gpudata, fftout_gpu, plan)
+
+	if Inner:	
+		fftout_gpu *= FiltVInner_GPU 
+	else:
+		fftout_gpu *= FiltV_GPU 
 	
-	fftout_gpu *= FiltV_GPU 
-	
-	if plani == None:
-		plani = fft.Plan(gpudata.shape, np.complex64, np.complex64)
 	in_filt_gpu = gpuarray.empty(len(fdata), np.complex64)
 	fft.ifft(fftout_gpu, in_filt_gpu, plani, True)
 
-#	in_filt = in_filt_gpu.get()
-
-#	in_filt = np.fft.ifft(np.fft.fft(data,blocklen)*FiltV,blocklen)
-
-#	TODO: re-enable	
-#	if Inner:
-#		in_filt = sps.lfilter(f_emp_b, f_emp_a, in_filt3)
-#	else:
-#		in_filt = in_filt3
-
-#	fft8.plotfft(in_filt)
-#	plt.plot(in_filt)
-#	plt.show()
-
 	output = fm_decode_cuda(in_filt_gpu, freq_hz)
-#	output = fm_decode(in_filt, freq_hz)
+#	output *= (freq_hz / tau)
+#	output_cpu = output.get().real
 
-#	plt.plot(output_cuda)
-#	plt.plot(output)
-#	plt.show()
-#	exit()
-
-	# save the original fm decoding and align to filters
-#	output_prefilt = output[(len(f_deemp_b) * 24) + len(f_deemp_b) + len(lowpass_filter_b):]
-
-	# Using an FFT convolution on these makes it slower
-	output = sps.lfilter(lowpass_filter_b, lowpass_filter_a, output)
-	doutput = (sps.lfilter(f_deemp_b, f_deemp_a, output)[len(f_deemp_b) * 32:len(output)]) 
+	doutput_gpu = gpuarray.empty(len(fdata), np.float32)
+	fftout_gpu = gpuarray.empty(len(fdata)//2+1, np.complex64)
 	
-	output_16 = np.empty(len(doutput), dtype=np.uint16)
+	reduced_gpu = gpuarray.empty(len(fdata), np.float32)
+	clipped_gpu = gpuarray.empty(len(fdata), np.float32)
+	
+	if plan1 == None:
+		plan1 = fft.Plan(output.shape, np.float32, np.complex64)
+		plani1 = fft.Plan(output.shape, np.complex64, np.float32)
 
-	reduced = (doutput - minn) / hz_ire_scale
-	output = np.clip(reduced * out_scale, 0, 65535) 
+	fft.fft(output, fftout_gpu, plan1)
+	fftout_gpu *= FiltPost_GPU 
+	fft.ifft(fftout_gpu, doutput_gpu, plani1, True)
+
+	doutput_gpu *= (freq_hz / tau)
+
+	mfactor = out_scale / hz_ire_scale
+
+	reduced_gpu = mfactor * (doutput_gpu - minn)
+
+#	reduced = reduced_gpu.get()
+#	output = np.clip(reduced, 0, 65535) 
+	
+	clamp16 = mod.get_function("clamp16")
+	clamp16(clipped_gpu, reduced_gpu, block=(1024,1,1), grid=(64,1)) 
+
+	output = clipped_gpu.get()
+
+#	print(reduced[2200:2220])
+#	print(output[2200:2220])
+#	exit()
+	
+#	output = np.clip(reduced * out_scale, 0, 65535) 
+	
+	chop = 512
+	output = output[chop:len(output)-chop]
+	output_16 = np.empty(len(output), dtype=np.uint16)
 	
 	#return output
 	
@@ -481,7 +476,7 @@ def main():
 	global hz_ire_scale, minn
 	global f_deemp_b, f_deemp_a
 
-	global deemp_t1, deemp_t2
+	global deemp_t1, deemp_t2, FiltPost, FiltPost_GPU
 
 	global Bcutr, Acutr
 	
@@ -594,6 +589,19 @@ def main():
 	[tf_b, tf_a] = sps.zpk2tf(-deemp_t2*(10**-8), -deemp_t1*(10**-8), deemp_t1 / deemp_t2)
 	[f_deemp_b, f_deemp_a] = sps.bilinear(tf_b, tf_a, 1/(freq_hz/2))
 
+	[Bdeemp_FDLS, Adeemp_FDLS] = fdls.FDLS_fromfilt(f_deemp_b, f_deemp_a, forder, forderd, 0)
+	Fdeemp = np.fft.fft(Bdeemp_FDLS, blocklen-1)
+	[Blpf_FDLS, Alpf_FDLS] = fdls.FDLS_fromfilt(lowpass_filter_b, lowpass_filter_a, forder, forderd, 0)
+	Flpf = np.fft.fft(Blpf_FDLS, blocklen-1)
+	FiltPost = Fdeemp * Flpf 
+	FiltPost_GPU = gpuarray.to_gpu(np.complex64(FiltPost))
+
+#	utils.doplot(f_deemp_b, f_deemp_a)
+#	utils.doplot(lowpass_filter_b, lowpass_filter_a)
+#	plt.plot(FiltPost.real)	
+#	plt.show()
+#	exit()
+
 	total = toread = blocklen 
 	inbuf = infile.read(toread)
 	indata = np.fromstring(inbuf, 'uint8', toread)
@@ -610,6 +618,7 @@ def main():
 			indata = np.append(indata, np.fromstring(inbuf, 'uint8', len(inbuf)))
 
 			if indata.size < blocklen:
+				pycuda.driver.stop_profiler()
 				exit()
 
 		if audio_mode:	
@@ -636,6 +645,9 @@ def main():
 			byte_end -= toread 
 			if (byte_end < 0):
 				inbuf = ""
+
+	pycuda.driver.stop_profiler()
+
 
 if __name__ == "__main__":
     main()
