@@ -28,7 +28,8 @@ tau = np.pi * 2
 freq = (315.0 / 88.0) * 8.00
 freq_hz = freq * 1000000.0
 
-blocklen = (64 * 1024)  
+blocklenk = 64
+blocklen = (blocklenk * 1024)  
 
 lowpass_filter_b, lowpass_filter_a = sps.butter(8, (4.5/(freq/2)), 'low')
 
@@ -118,9 +119,9 @@ __global__ void acorrect(float *data) {
 	data[i] = (data[i] >= 0) ? data[i] : data[i] + (3.141526 * 2);
 }
 
-__global__ void clamp16(float *y, float *x) {
+__global__ void clamp16(unsigned short *y, float *x) {
 	const int i = threadIdx.x  + blockIdx.x * blockDim.x; // + (1024 * threadIdx.y);
-	y[i] = max((float)0, min((float)65535, x[i]));
+	y[i] = (unsigned short)max((float)0, min((float)65535, x[i]));
 }
 
 
@@ -132,12 +133,12 @@ def fm_decode_cuda(hilbert, freq_hz):
 	tangles = gpuarray.empty(len(hilbert), np.float32)
 
 	angle = mod.get_function("angle")
-	angle(tangles, hilbert, block=(1024,1,1), grid=(64,1))
+	angle(tangles, hilbert, block=(1024,1,1), grid=(blocklenk,1))
 
 	dangles_gpu = misc.diff(tangles) 
 	
 	acorrect = mod.get_function("acorrect")
-	acorrect(dangles_gpu, block=(1024,1,1), grid=(64,1))
+	acorrect(dangles_gpu, block=(1024,1,1), grid=(blocklenk,1))
 
 	return dangles_gpu 
 
@@ -305,14 +306,12 @@ def process_video_cuda(data):
 	fft.ifft(fftout_gpu, in_filt_gpu, plani, True)
 
 	output = fm_decode_cuda(in_filt_gpu, freq_hz)
-#	output *= (freq_hz / tau)
-#	output_cpu = output.get().real
 
 	doutput_gpu = gpuarray.empty(len(fdata), np.float32)
 	fftout_gpu = gpuarray.empty(len(fdata)//2+1, np.complex64)
 	
 	reduced_gpu = gpuarray.empty(len(fdata), np.float32)
-	clipped_gpu = gpuarray.empty(len(fdata), np.float32)
+	clipped_gpu = gpuarray.empty(len(fdata), np.uint16)
 	
 	if plan1 == None:
 		plan1 = fft.Plan(output.shape, np.float32, np.complex64)
@@ -332,27 +331,13 @@ def process_video_cuda(data):
 #	output = np.clip(reduced, 0, 65535) 
 	
 	clamp16 = mod.get_function("clamp16")
-	clamp16(clipped_gpu, reduced_gpu, block=(1024,1,1), grid=(64,1)) 
+	clamp16(clipped_gpu, reduced_gpu, block=(1024,1,1), grid=(blocklenk,1)) 
 
-	output = clipped_gpu.get()
+	output_16 = clipped_gpu.get()
 
-#	print(reduced[2200:2220])
-#	print(output[2200:2220])
-#	exit()
-	
-#	output = np.clip(reduced * out_scale, 0, 65535) 
-	
 	chop = 512
-	output = output[chop:len(output)-chop]
-	output_16 = np.empty(len(output), dtype=np.uint16)
+	output_16 = output_16[chop:len(output_16)-chop]
 	
-	#return output
-	
-	np.copyto(output_16, output, 'unsafe')
-
-#	plt.plot(range(0, len(data)), data)
-#	plt.plot(range(0, len(output_16)), output_16)
-#	plt.show()
 	return output_16
 
 # graph for debug
