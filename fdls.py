@@ -1,4 +1,6 @@
-#!/usr/bin/python3
+#!/usr/bin/python
+# coding: latin-1
+
 # FDLS in python
 
 # FDLS created by Greg Berchin

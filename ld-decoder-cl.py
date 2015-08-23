@@ -28,7 +28,8 @@ from pyfft.cl import Plan
 import numpy
 
 import pyopencl as cl
-import pyopencl.array as cl_array
+import pyopencl.array as clarray
+import pyopencl.clmath as clmath
 
 ctx = cl.create_some_context(interactive=False)
 queue = cl.CommandQueue(ctx)
@@ -78,8 +79,8 @@ def fm_decode(hilbert, freq_hz):
 #	hilbert = sps.lfilter(hilbert_filter, 1.0, in_filt)
 
 	# the hilbert transform has errors at the edges.  but it doesn't seem to matter much in practice 
-	chop = 256 
-	hilbert = hilbert[chop:len(hilbert)-chop]
+#	chop = 256 
+#	hilbert = hilbert[chop:len(hilbert)-chop]
 
 	tangles = np.angle(hilbert) 
 	dangles = np.diff(tangles)
@@ -131,6 +132,22 @@ lowpass_filter_b, lowpass_filter_a = sps.butter(5, (4.4/(freq/2)), 'low')
 
 forder = 256 
 forderd = 0 
+
+w, hbpf = freqz(Bbpf, Abpf, worN=1024)
+w, hcutl = freqz(Bcutl, Acutl, worN=1024)
+w, hcutr = freqz(Bcutl, Acutr, worN=1024)
+
+h = hbpf * hcutl * hcutr
+
+w = w / (np.pi * 2.0)
+Am = np.absolute(h)
+Th = np.angle(h)
+
+[Bfdls, Afdls] = FDLS(w, Am, Th, forder, forderd, 0)
+
+utils.doplot(Bfdls, Afdls)
+exit()
+
 [Bbpf_FDLS, Abpf_FDLS] = fdls.FDLS_fromfilt(Bbpf, Abpf, forder, forderd, 0)
 [Bcutl_FDLS, Acutl_FDLS] = fdls.FDLS_fromfilt(Bcutl, Acutl, forder, forderd, 0)
 [Bcutr_FDLS, Acutr_FDLS] = fdls.FDLS_fromfilt(Bcutr, Acutr, forder, forderd, 0)
@@ -151,6 +168,8 @@ FiltV = Fbpf * Fcutl * Fcutr * Fhilbert
 FiltAL = Faudl * Fhilbert
 FiltAR = Faudr * Fhilbert
 
+gpu_FiltV = clarray.to_device(queue, FiltV)
+
 #doplot(Bcutl, Acutl)
 
 # octave:104> t1 = 100; t2 = 55; [b, a] = bilinear(-t2*(10^-8), -t1*(10^-8), t1/t2, freq); freqz(b, a)
@@ -170,8 +189,11 @@ def process_video(data):
 
 #	in_filt = np.fft.ifft(np.fft.fft(data,blocklen)*FiltV,blocklen)
 
-	gpu_data = cl_array.to_device(queue, data)
+	gpu_data = clarray.to_device(queue, data)
 	plan.execute(gpu_data.data) 
+	gpu_data.__mul__(gpu_FiltV)
+	plan.execute(gpu_data.data,inverse=True) 
+
 	in_filt = gpu_data.get()
 
 #	TODO: re-enable	
@@ -308,13 +330,11 @@ def test():
 
 		test += (noisedata * 1)
 
-		output = np.double(process_video(test)[7800:12800])
+		output = np.double(process_video(test)[(blocklen/2)+1000:(blocklen/2)+6000])
 		plt.plot(range(0, len(output)), output)
 
 		output /= out_scale
 		output -= 60
-
-		output = output[500:4000]	
 
 		mean = np.mean(output)
 		std = np.std(output)
