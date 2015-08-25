@@ -1,4 +1,8 @@
-#!/usr/bin/python3
+#!/usr/bin/python
+# coding: latin-1
+from __future__ import division
+from __future__ import print_function
+
 import numpy as np
 import scipy as sp
 import scipy.signal as sps
@@ -13,8 +17,8 @@ import ld_utils as utils
 
 import fftfilt as fftfilt
 
-π = np.pi
-τ = np.pi * 2
+pi = np.pi
+tau = np.pi * 2
 
 freq = (315.0 / 88.0) * 8.00
 freq_hz = freq * 1000000.0
@@ -71,12 +75,12 @@ def fm_decode(hilbert, freq_hz):
 	dangles = np.diff(tangles)
 
 	# If unwrapping at 0 is negative, flip 'em all around
-	if (dangles[0] < -π):
-		dangles[0] += τ
+	if (dangles[0] < -pi):
+		dangles[0] += tau
 	
 	tdangles2 = np.unwrap(dangles) 
 	
-	output = (tdangles2 * (freq_hz / τ))
+	output = (tdangles2 * (freq_hz / tau))
 
 	errcount = 1
 	while errcount > 0:
@@ -306,9 +310,9 @@ def test():
 			vphase += vfreq / freq_hz  
 			alphase += 2300000 / freq_hz 
 			arphase += 2800000 / freq_hz 
-			tmp = (np.sin(vphase * τ) * vlevel)
-			tmp += (np.sin(alphase * τ) * vlevel / 10.0)
-			tmp += (np.sin(arphase * τ) * vlevel / 10.0)
+			tmp = (np.sin(vphase * tau) * vlevel)
+			tmp += (np.sin(alphase * tau) * vlevel / 10.0)
+			tmp += (np.sin(arphase * tau) * vlevel / 10.0)
 #			tmp += noisedata[i] / 1
 			test[i] = tmp + 32768 
 
@@ -340,7 +344,7 @@ def main():
 
 	global blocklen
 
-	outfile = sys.stdout.buffer
+	outfile = sys.stdout #.buffer
 	audio_mode = 0 
 	CAV = 0
 
