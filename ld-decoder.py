@@ -67,6 +67,8 @@ def fm_decode(hilbert, freq_hz):
 	#hilbert = sps.hilbert(in_filt[0:hlen])
 #	hilbert = sps.lfilter(hilbert_filter, 1.0, in_filt)
 
+#	return hilbert.real
+
 	# the hilbert transform has errors at the edges.  but it doesn't seem to matter much in practice 
 	chop = 256 
 	hilbert = hilbert[chop:len(hilbert)-chop]
@@ -155,16 +157,19 @@ Fbpf = np.fft.fft(Bbpf_FDLS, blocklen)
 Fcutl = np.fft.fft(Bcutl_FDLS, blocklen)
 Fcutr = np.fft.fft(Bcutr_FDLS, blocklen)
 
-[Baudl_FDLS, Aaudl_FDLS] = fdls.FDLS_fromfilt(Baudl, Aaudl, forder, forderd, 0)
-[Baudr_FDLS, Aaudr_FDLS] = fdls.FDLS_fromfilt(Baudr, Aaudr, forder, forderd, 0)
+[Baudrf_FDLS, Aaudrf_FDLS] = fdls.FDLS_fromfilt(audiorf_filter_b, audiorf_filter_a, forder, forderd, 0)
+Faudrf = np.fft.fft(Baudrf_FDLS, blocklen * 4)
 
+[Baudl_FDLS, Aaudl_FDLS] = fdls.FDLS_fromfilt(Baudl, Aaudl, forder, forderd, 0)
 Faudl = np.fft.fft(Baudl_FDLS, blocklen)
+[Baudr_FDLS, Aaudr_FDLS] = fdls.FDLS_fromfilt(Baudr, Aaudr, forder, forderd, 0)
 Faudr = np.fft.fft(Baudr_FDLS, blocklen)
 
 Fhilbert = np.fft.fft(hilbert_filter, blocklen)
 
 FiltV = Fbpf * Fcutl * Fcutr * Fhilbert
 FiltV = np.complex64(FiltV)
+
 FiltAL = Faudl * Fhilbert
 FiltAR = Faudr * Fhilbert
 
@@ -265,22 +270,32 @@ def process_audio(indata):
 
 #	print(len(indata), len(audiorf_filter_b * 2), len(Baudl) * 1)
 
-	in_filt = sps.lfilter(audiorf_filter_b, audiorf_filter_a, indata) #[len(audiorf_filter_b) * 2:]
+#	in_filt = sps.lfilter(audiorf_filter_b, audiorf_filter_a, indata) #[len(audiorf_filter_b) * 2:]
+#	fft_in = np.fft.fft(in_filt,len(in_filt))
 
-	in_filt4 = np.empty(int(len(in_filt) / 4))
+	fft_in = np.fft.fft(indata,len(indata)) * Faudrf
 
-	for i in range(0, len(in_filt), 4):
-		in_filt4[int(i / 4)] = in_filt[i]
+#	in_filt4 = np.empty(int(len(in_filt) / 4))
+
+#	for i in range(0, len(in_filt), 4):
+#		in_filt4[int(i / 4)] = in_filt[i]
 
 #	in_filt4 = in_filt4[0:(blocklen/4)]
 
 #	in_left = sps.lfilter(Baudl, Aaudl, in_filt4)[len(Baudl) * 1:] 
 #	in_right = sps.lfilter(Baudr, Aaudr, in_filt4)[len(Baudr) * 1:] 
 
-	fft4 = np.fft.fft(in_filt4,len(in_filt4))
+#	fft4 = np.fft.fft(in_filt4,len(in_filt4))
+	eights = len(fft_in)//8
+	fft4 = np.delete(fft_in, np.s_[eights:eights*7])/4
+
+#	plt.plot(fft_in.real)
+
+	eights = len(fft_in)//8
+	fft_ina = np.delete(fft_in, np.s_[eights:eights*7])/4
 	
-	in_left = np.fft.ifft(fft4*FiltAL,len(in_filt4))
-	in_right = np.fft.ifft(fft4*FiltAR,len(in_filt4))
+	in_left = np.fft.ifft(fft4*FiltAL,len(fft4))
+	in_right = np.fft.ifft(fft4*FiltAR,len(fft4))
 
 	out_left = fm_decode(in_left, freq_hz / 4)[384:]
 	out_right = fm_decode(in_right, freq_hz / 4)[384:]
