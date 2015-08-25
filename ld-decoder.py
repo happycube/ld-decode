@@ -74,6 +74,23 @@ def fm_decode(hilbert, freq_hz):
 	tangles = np.angle(hilbert) 
 	dangles = np.diff(tangles)
 
+	dangles2 = dangles % pi
+
+	output = (dangles2 * (freq_hz / tau))
+
+	return output
+
+def fm_decode_old(hilbert, freq_hz):
+	#hilbert = sps.hilbert(in_filt[0:hlen])
+#	hilbert = sps.lfilter(hilbert_filter, 1.0, in_filt)
+
+	# the hilbert transform has errors at the edges.  but it doesn't seem to matter much in practice 
+	chop = 256 
+	hilbert = hilbert[chop:len(hilbert)-chop]
+
+	tangles = np.angle(hilbert) 
+	dangles = np.diff(tangles)
+
 	# If unwrapping at 0 is negative, flip 'em all around
 	if (dangles[0] < -pi):
 		dangles[0] += tau
@@ -100,6 +117,9 @@ def fm_decode(hilbert, freq_hz):
 					output[i] = output[i] + freq_hz
 
 	return output
+
+minire = -60
+maxire = 140
 
 minire = -60
 maxire = 140
@@ -247,18 +267,20 @@ def process_audio(indata):
 
 	in_filt = sps.lfilter(audiorf_filter_b, audiorf_filter_a, indata) #[len(audiorf_filter_b) * 2:]
 
-	in_filt4 = np.empty(int(len(in_filt) / 4) + 1)
+	in_filt4 = np.empty(int(len(in_filt) / 4))
 
 	for i in range(0, len(in_filt), 4):
 		in_filt4[int(i / 4)] = in_filt[i]
 
-	in_filt4 = in_filt4[0:(blocklen/4)]
+#	in_filt4 = in_filt4[0:(blocklen/4)]
 
 #	in_left = sps.lfilter(Baudl, Aaudl, in_filt4)[len(Baudl) * 1:] 
 #	in_right = sps.lfilter(Baudr, Aaudr, in_filt4)[len(Baudr) * 1:] 
+
+	fft4 = np.fft.fft(in_filt4,len(in_filt4))
 	
-	in_left = np.fft.ifft(np.fft.fft(in_filt4,len(in_filt4))*FiltAL,len(in_filt4))
-	in_right = np.fft.ifft(np.fft.fft(in_filt4,len(in_filt4))*FiltAR,len(in_filt4))
+	in_left = np.fft.ifft(fft4*FiltAL,len(in_filt4))
+	in_right = np.fft.ifft(fft4*FiltAR,len(in_filt4))
 
 	out_left = fm_decode(in_left, freq_hz / 4)[384:]
 	out_right = fm_decode(in_right, freq_hz / 4)[384:]
