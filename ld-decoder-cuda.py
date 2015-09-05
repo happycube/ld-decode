@@ -115,11 +115,12 @@ __global__ void angle(float *out, cuComplex *in) {
 	out[i] = atan2f(in[i].y, in[i].x);
 }
 
-__global__ void acorrect(float *data) {
+__global__ void acorrect(float *out, float *in) {
 	const int i = threadIdx.x  + blockIdx.x * blockDim.x; // + (1024 * threadIdx.y);
+	
+	float tmp = in[i + 1] - in[i];
 
-//	data[i] = fmodf(data[i], 3.141526);
-	data[i] = (data[i] >= 0) ? data[i] : data[i] + (3.14159265359 * 2);
+	out[i] = (tmp >= 0) ? tmp : tmp + (3.14159265359 * 2);
 }
 
 __global__ void clamp16(unsigned short *y, float *x) {
@@ -128,18 +129,26 @@ __global__ void clamp16(unsigned short *y, float *x) {
 }
 """)
 
+fdc_FirstRun = True
+fdc_tangles = None
+fdc_dangles = None
 def fm_decode_cuda(hilbert, freq_hz):
-	tangles = gpuarray.empty(len(hilbert), np.float32)
+	global fdc_FirstRun, fdc_tangles, fdc_dangles
+	if fdc_FirstRun == True:
+		fdc_tangles = gpuarray.empty(len(hilbert), np.float32)
+		fdc_dangles = gpuarray.empty(len(hilbert), np.float32)
+
+		fdc_FirstRun = False
 
 	angle = mod.get_function("angle")
-	angle(tangles, hilbert, block=(1024,1,1), grid=(blocklenk,1))
+	angle(fdc_tangles, hilbert, block=(1024,1,1), grid=(blocklenk,1))
 
-	dangles_gpu = misc.diff(tangles)
+#	dangles_gpu = misc.diff(tangles)
 	
 	acorrect = mod.get_function("acorrect")
-	acorrect(dangles_gpu, block=(1024,1,1), grid=(blocklenk,1))
+	acorrect(fdc_dangles, fdc_tangles, block=(1024,1,1), grid=(blocklenk,1))
 
-	return dangles_gpu 
+	return fdc_dangles 
 
 minire = -60
 maxire = 140
