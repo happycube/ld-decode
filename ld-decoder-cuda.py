@@ -274,6 +274,36 @@ def process_video(data):
 	plt.show()
 	exit()
 
+cs_first = True
+cs = {} 
+
+def prepare_video_cuda(data):
+	fdata = np.float32(data)
+	gpudata = gpuarray.to_gpu(fdata)
+
+	cs['plan1'] = fft.Plan(gpudata.shape, np.float32, np.complex64)
+	cs['plan1i'] = fft.Plan(gpudata.shape, np.complex64, np.complex64)
+	
+	cs['fft1_out'] = gpuarray.empty(len(fdata)//2+1, np.complex64)
+	fft.fft(gpudata, cs['fft1_out'], cs['plan1'])
+	
+	cs['filtered1'] = gpuarray.empty(len(fdata), np.complex64)
+	fft.ifft(cs['fft1_out'], cs['filtered1'], cs['plan1i'], True)
+	
+	output = fm_decode_cuda(cs['filtered1'], freq_hz)
+
+	cs['doutput_gpu'] = gpuarray.empty(len(fdata), np.float32)
+	cs['fftout_gpu'] = gpuarray.empty(len(fdata)//2+1, np.complex64)
+	
+	cs['reduced_gpu'] = gpuarray.empty(len(fdata), np.float32)
+	cs['clipped_gpu'] = gpuarray.empty(len(fdata), np.uint16)
+	
+	cs['plan2'] = fft.Plan(output.shape, np.float32, np.complex64)
+	cs['plan2i'] = fft.Plan(output.shape, np.complex64, np.float32)
+
+	fft.fft(output, cs['fftout_gpu'], cs['plan2'])
+	fft.ifft(cs['fftout_gpu'], cs['doutput_gpu'], cs['plan2i'], True)
+
 # cache the plans
 plan = None
 plani = None
@@ -284,57 +314,44 @@ plani1 = None
 def process_video_cuda(data):
 	# perform general bandpass filtering
 
+	global cs, cs_first 
+
 	global plan, plani
 	global plan1, plani1
+
+	if cs_first == True:
+		prepare_video_cuda(data)
+		cs_first = False
 
 	fdata = np.float32(data)
 
 	gpudata = gpuarray.to_gpu(fdata)
 
-	if plan == None:
-		plan = fft.Plan(gpudata.shape, np.float32, np.complex64)
-		plani = fft.Plan(gpudata.shape, np.complex64, np.complex64)
-
-	fftout_gpu = gpuarray.empty(len(fdata)//2+1, np.complex64)
-	fft.fft(gpudata, fftout_gpu, plan)
+	fft.fft(gpudata, cs['fft1_out'], cs['plan1'])
 
 	if Inner:	
-		fftout_gpu *= FiltVInner_GPU 
+		cs['fft1_out'] *= FiltVInner_GPU 
 	else:
-		fftout_gpu *= FiltV_GPU 
+		cs['fft1_out'] *= FiltV_GPU 
 	
-	in_filt_gpu = gpuarray.empty(len(fdata), np.complex64)
-	fft.ifft(fftout_gpu, in_filt_gpu, plani, True)
+	fft.ifft(cs['fft1_out'], cs['filtered1'], cs['plan1i'], True)
 
-	output = fm_decode_cuda(in_filt_gpu, freq_hz)
-
-	doutput_gpu = gpuarray.empty(len(fdata), np.float32)
-	fftout_gpu = gpuarray.empty(len(fdata)//2+1, np.complex64)
+	output = fm_decode_cuda(cs['filtered1'], freq_hz)
 	
-	reduced_gpu = gpuarray.empty(len(fdata), np.float32)
-	clipped_gpu = gpuarray.empty(len(fdata), np.uint16)
-	
-	if plan1 == None:
-		plan1 = fft.Plan(output.shape, np.float32, np.complex64)
-		plani1 = fft.Plan(output.shape, np.complex64, np.float32)
+	fft.fft(output, cs['fftout_gpu'], cs['plan2'])
+	cs['fftout_gpu'] *= FiltPost_GPU 
+	fft.ifft(cs['fftout_gpu'], cs['doutput_gpu'], cs['plan2i'], True)
 
-	fft.fft(output, fftout_gpu, plan1)
-	fftout_gpu *= FiltPost_GPU 
-	fft.ifft(fftout_gpu, doutput_gpu, plani1, True)
-
-	doutput_gpu *= (freq_hz / tau)
+	cs['doutput_gpu'] *= (freq_hz / tau)
 
 	mfactor = out_scale / hz_ire_scale
 
-	reduced_gpu = mfactor * (doutput_gpu - minn)
+	reduced_gpu = mfactor * (cs['doutput_gpu'] - minn)
 
-#	reduced = reduced_gpu.get()
-#	output = np.clip(reduced, 0, 65535) 
-	
 	clamp16 = mod.get_function("clamp16")
-	clamp16(clipped_gpu, reduced_gpu, block=(1024,1,1), grid=(blocklenk,1)) 
+	clamp16(cs['clipped_gpu'], reduced_gpu, block=(1024,1,1), grid=(blocklenk,1)) 
 
-	output_16 = clipped_gpu.get()
+	output_16 = cs['clipped_gpu'].get()
 
 	chop = 512
 	output_16 = output_16[chop:len(output_16)-chop]
