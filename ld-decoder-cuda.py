@@ -21,6 +21,8 @@ from pycuda.compiler import SourceModule
 
 import skcuda.fft as fft
 import skcuda.misc as misc
+    
+import cProfile
 
 pi = np.pi
 tau = np.pi * 2
@@ -124,11 +126,7 @@ __global__ void clamp16(unsigned short *y, float *x) {
 	const int i = threadIdx.x  + blockIdx.x * blockDim.x; // + (1024 * threadIdx.y);
 	y[i] = (unsigned short)max((float)0, min((float)65535, x[i]));
 }
-
-
-"""
-
-)
+""")
 
 def fm_decode_cuda(hilbert, freq_hz):
 	tangles = gpuarray.empty(len(hilbert), np.float32)
@@ -136,7 +134,7 @@ def fm_decode_cuda(hilbert, freq_hz):
 	angle = mod.get_function("angle")
 	angle(tangles, hilbert, block=(1024,1,1), grid=(blocklenk,1))
 
-	dangles_gpu = misc.diff(tangles) 
+	dangles_gpu = misc.diff(tangles)
 	
 	acorrect = mod.get_function("acorrect")
 	acorrect(dangles_gpu, block=(1024,1,1), grid=(blocklenk,1))
@@ -277,6 +275,7 @@ def process_video(data):
 cs_first = True
 cs = {} 
 
+# Things go *a lot* faster when you have the memory structures pre-allocated
 def prepare_video_cuda(data):
 	fdata = np.float32(data)
 	gpudata = gpuarray.to_gpu(fdata)
@@ -289,27 +288,17 @@ def prepare_video_cuda(data):
 	
 	cs['filtered1'] = gpuarray.empty(len(fdata), np.complex64)
 	fft.ifft(cs['fft1_out'], cs['filtered1'], cs['plan1i'], True)
-	
+
+	# need to dry run this so we know what size to expect	
 	output = fm_decode_cuda(cs['filtered1'], freq_hz)
 
 	cs['doutput_gpu'] = gpuarray.empty(len(fdata), np.float32)
 	cs['fftout_gpu'] = gpuarray.empty(len(fdata)//2+1, np.complex64)
 	
-	cs['reduced_gpu'] = gpuarray.empty(len(fdata), np.float32)
 	cs['clipped_gpu'] = gpuarray.empty(len(fdata), np.uint16)
 	
 	cs['plan2'] = fft.Plan(output.shape, np.float32, np.complex64)
 	cs['plan2i'] = fft.Plan(output.shape, np.complex64, np.float32)
-
-	fft.fft(output, cs['fftout_gpu'], cs['plan2'])
-	fft.ifft(cs['fftout_gpu'], cs['doutput_gpu'], cs['plan2i'], True)
-
-# cache the plans
-plan = None
-plani = None
-
-plan1 = None
-plani1 = None
 
 def process_video_cuda(data):
 	# perform general bandpass filtering
@@ -327,6 +316,8 @@ def process_video_cuda(data):
 
 	gpudata = gpuarray.to_gpu(fdata)
 
+	# first fft->ifft cycle applies pre-decoding filtering (low pass filters, CAV/CLV emphasis)
+	# and very importantly, performs the Hilbert transform
 	fft.fft(gpudata, cs['fft1_out'], cs['plan1'])
 
 	if Inner:	
@@ -337,26 +328,25 @@ def process_video_cuda(data):
 	fft.ifft(cs['fft1_out'], cs['filtered1'], cs['plan1i'], True)
 
 	output = fm_decode_cuda(cs['filtered1'], freq_hz)
-	
+
+	# post-processing:  output low-pass filtering and deemphasis	
 	fft.fft(output, cs['fftout_gpu'], cs['plan2'])
 	cs['fftout_gpu'] *= FiltPost_GPU 
 	fft.ifft(cs['fftout_gpu'], cs['doutput_gpu'], cs['plan2i'], True)
 
-	cs['doutput_gpu'] *= (freq_hz / tau)
-
+	sminn = minn / (freq_hz / tau)
 	mfactor = out_scale / hz_ire_scale
 
-	reduced_gpu = mfactor * (cs['doutput_gpu'] - minn)
+	cs['doutput_gpu'] -= sminn
+	cs['doutput_gpu'] *= (freq_hz / tau) * mfactor
 
 	clamp16 = mod.get_function("clamp16")
-	clamp16(cs['clipped_gpu'], reduced_gpu, block=(1024,1,1), grid=(blocklenk,1)) 
+	clamp16(cs['clipped_gpu'], cs['doutput_gpu'], block=(1024,1,1), grid=(blocklenk,1)) 
 
 	output_16 = cs['clipped_gpu'].get()
 
 	chop = 512
-	output_16 = output_16[chop:len(output_16)-chop]
-	
-	return output_16
+	return output_16[chop:len(output_16)-chop]
 
 # graph for debug
 #	output = (sps.lfilter(f_deemp_b, f_deemp_a, output)[128:len(output)]) / deemp_corr
@@ -653,6 +643,7 @@ def main():
 
 
 if __name__ == "__main__":
+    #cProfile.run('main()')
     main()
 
 
