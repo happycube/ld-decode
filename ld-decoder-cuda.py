@@ -110,45 +110,29 @@ def fm_decode(hilbert, freq_hz):
 
 mod = SourceModule("""
 #include <cuComplex.h>
+
+// The pycuda math library doesn't have atan2f.
 __global__ void angle(float *out, cuComplex *in) {
 	const int i = threadIdx.x  + blockIdx.x * blockDim.x; // + (1024 * threadIdx.y);
 	out[i] = atan2f(in[i].y, in[i].x);
 }
 
-__global__ void acorrect(float *out, float *in) {
+// Combines diff() and angle correction
+__global__ void adiff(float *out, float *in) {
 	const int i = threadIdx.x  + blockIdx.x * blockDim.x; // + (1024 * threadIdx.y);
-	
+
+	// XXX?  This could in theory overrun and cause a crash if CUDA got a strict MMU.
 	float tmp = in[i + 1] - in[i];
 
 	out[i] = (tmp >= 0) ? tmp : tmp + (3.14159265359 * 2);
 }
 
+// Clamp from 0 to 65535.  There ought to be a pyCUDA routine for this.
 __global__ void clamp16(unsigned short *y, float *x) {
 	const int i = threadIdx.x  + blockIdx.x * blockDim.x; // + (1024 * threadIdx.y);
 	y[i] = (unsigned short)max((float)0, min((float)65535, x[i]));
 }
 """)
-
-fdc_FirstRun = True
-fdc_tangles = None
-fdc_dangles = None
-def fm_decode_cuda(hilbert, freq_hz):
-	global fdc_FirstRun, fdc_tangles, fdc_dangles
-	if fdc_FirstRun == True:
-		fdc_tangles = gpuarray.empty(len(hilbert), np.float32)
-		fdc_dangles = gpuarray.empty(len(hilbert), np.float32)
-
-		fdc_FirstRun = False
-
-	angle = mod.get_function("angle")
-	angle(fdc_tangles, hilbert, block=(1024,1,1), grid=(blocklenk,1))
-
-#	dangles_gpu = misc.diff(tangles)
-	
-	acorrect = mod.get_function("acorrect")
-	acorrect(fdc_dangles, fdc_tangles, block=(1024,1,1), grid=(blocklenk,1))
-
-	return fdc_dangles 
 
 minire = -60
 maxire = 140
@@ -298,16 +282,16 @@ def prepare_video_cuda(data):
 	cs['filtered1'] = gpuarray.empty(len(fdata), np.complex64)
 	fft.ifft(cs['fft1_out'], cs['filtered1'], cs['plan1i'], True)
 
-	# need to dry run this so we know what size to expect	
-	output = fm_decode_cuda(cs['filtered1'], freq_hz)
+	cs['fm_angles'] = gpuarray.empty(len(cs['filtered1']), np.float32)
+	cs['fm_demod'] = gpuarray.empty(len(cs['filtered1']), np.float32)
 
 	cs['doutput_gpu'] = gpuarray.empty(len(fdata), np.float32)
 	cs['fftout_gpu'] = gpuarray.empty(len(fdata)//2+1, np.complex64)
 	
 	cs['clipped_gpu'] = gpuarray.empty(len(fdata), np.uint16)
 	
-	cs['plan2'] = fft.Plan(output.shape, np.float32, np.complex64)
-	cs['plan2i'] = fft.Plan(output.shape, np.complex64, np.float32)
+	cs['plan2'] = fft.Plan(cs['fm_demod'].shape, np.float32, np.complex64)
+	cs['plan2i'] = fft.Plan(cs['fm_demod'].shape, np.complex64, np.float32)
 
 def process_video_cuda(data):
 	# perform general bandpass filtering
@@ -336,10 +320,14 @@ def process_video_cuda(data):
 	
 	fft.ifft(cs['fft1_out'], cs['filtered1'], cs['plan1i'], True)
 
-	output = fm_decode_cuda(cs['filtered1'], freq_hz)
+	angle = mod.get_function("angle")
+	angle(cs['fm_angles'], cs['filtered1'], block=(1024,1,1), grid=(blocklenk,1))
+
+	acorrect = mod.get_function("adiff")
+	acorrect(cs['fm_demod'], cs['fm_angles'], block=(1024,1,1), grid=(blocklenk,1))
 
 	# post-processing:  output low-pass filtering and deemphasis	
-	fft.fft(output, cs['fftout_gpu'], cs['plan2'])
+	fft.fft(cs['fm_demod'], cs['fftout_gpu'], cs['plan2'])
 	cs['fftout_gpu'] *= FiltPost_GPU 
 	fft.ifft(cs['fftout_gpu'], cs['doutput_gpu'], cs['plan2i'], True)
 
@@ -429,7 +417,7 @@ def process_audio(indata):
 	exit()
 
 def test():
-	test = np.empty(blocklen, dtype=np.uint16)
+	test = np.empty(blocklen, dtype=np.int16)
 
 	infile = open("noise.raw", "rb")
 
@@ -455,10 +443,8 @@ def test():
 			tmp = (np.sin(vphase * tau) * vlevel)
 			tmp += (np.sin(alphase * tau) * vlevel / 10.0)
 			tmp += (np.sin(arphase * tau) * vlevel / 10.0)
-#			tmp += noisedata[i] / 1
+			tmp += noisedata[i] * 1
 			test[i] = tmp + 32768 
-
-		test += (noisedata * 1)
 
 		output = np.float(process_video(test)[(blocklen/2)+1000:(blocklen/2)+5096])
 		plt.plot(range(0, len(output)), output)
