@@ -416,6 +416,7 @@ def process_audio_cuda(data):
 	
 	if csa_first == True:
 		prepare_audio_cuda(data)
+		csa_first = False	
 	
 	fdata = np.float32(data)
 	gpudata = gpuarray.to_gpu(fdata)
@@ -671,7 +672,7 @@ def main():
 			output, osamp = process_audio_cuda(indata)
 			
 			nread = osamp 
-			outfile.write(output)
+#			outfile.write(output)
 		else:
 			output_16 = process_video_cuda(indata)
 			outfile.write(output_16)
@@ -696,7 +697,7 @@ def main():
 
 
 if __name__ == "__main__":
-#	cProfile.run('main()')
-    main()
+	cProfile.run('main()')
+#    main()
 
 
