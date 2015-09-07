@@ -147,6 +147,14 @@ __global__ void decimate4to1d(cuComplex *out, cuComplex *in)
 	out[i] = in[i * 4];
 } 
 
+__global__ void scale_nn(float *out, float *in, float s, float offset)
+{
+	const int i = threadIdx.x  + blockIdx.x * blockDim.x; // + (1024 * threadIdx.y);
+
+	int index = (s * i) + offset;	
+	out[i] = in[index];
+}
+
 """)
 
 minire = -60
@@ -381,6 +389,8 @@ def prepare_audio_cuda(data):
 	cs['left_clipped'] = gpuarray.empty(len(cs['filtered1']), np.float32)
 	cs['right_clipped'] = gpuarray.empty(len(cs['filtered1']), np.float32)
 	
+	cs['left_fft1'] = gpuarray.empty(len(fdata)//2+1, np.complex64)
+	cs['right_fft1'] = gpuarray.empty(len(fdata)//2+1, np.complex64)
 	cs['left_fft2'] = gpuarray.empty(len(fdata)//2+1, np.complex64)
 	cs['right_fft2'] = gpuarray.empty(len(fdata)//2+1, np.complex64)
 
@@ -390,10 +400,16 @@ def prepare_audio_cuda(data):
 	cs['plan2'] = fft.Plan(cs['left_demod'].shape, np.float32, np.complex64)
 	cs['plan2i'] = fft.Plan(cs['left_demod'].shape, np.complex64, np.float32)
 	
+	outlen = (blocklen - 1536) // 80
+	cs['left_scaledout'] = gpuarray.empty(outlen, np.float32)
+	cs['right_scaledout'] = gpuarray.empty(outlen, np.float32)
+	
 	cs['f_decimate4to1d'] = mod.get_function("decimate4to1d")
 	cs['f_angle'] = mod.get_function("angle")
 	cs['f_adiff'] = mod.get_function("adiff")
 	cs['f_audioclamp'] = mod.get_function("audioclamp")
+
+	cs['f_scale'] = mod.get_function("scale_nn")
 
 def process_audio_cuda(data):
 	global cs, csa, csa_first
@@ -406,11 +422,11 @@ def process_audio_cuda(data):
 	
 	fft.fft(gpudata, cs['fft1_out'], cs['plan1'])
 
-	fm_left_fft = cs['fft1_out'] * FiltAL_GPU
-	fm_right_fft = cs['fft1_out'] * FiltAR_GPU
+	cs['left_fft1'] = cs['fft1_out'] * FiltAL_GPU
+	cs['right_fft1'] = cs['fft1_out'] * FiltAR_GPU
 
-	fft.ifft(fm_left_fft, cs['fm_left'], cs['plan1i'], True)
-	fft.ifft(fm_right_fft, cs['fm_right'], cs['plan1i'], True)
+	fft.ifft(cs['left_fft1'], cs['fm_left'], cs['plan1i'], True)
+	fft.ifft(cs['right_fft1'], cs['fm_right'], cs['plan1i'], True)
 
 	cs['f_angle'](cs['left_angles'], cs['fm_left'], block=(1024,1,1), grid=(blocklenk,1))
 	cs['f_angle'](cs['right_angles'], cs['fm_right'], block=(1024,1,1), grid=(blocklenk,1))
@@ -436,54 +452,23 @@ def process_audio_cuda(data):
 	fft.ifft(cs['left_fft2'], cs['left_out'], cs['plan2i'], True)
 	fft.ifft(cs['right_fft2'], cs['right_out'], cs['plan2i'], True)
 
-	plt.plot(cs['left_out'].get()[768:-768])
-	plt.show()
-	exit()
+	outlen = (blocklen - 1536) // 80
+	cs['f_scale'](cs['left_scaledout'], cs['left_out'], np.float32(80), np.float32(768), block=(32, 1, 1), grid=(outlen//32,1));
+	cs['f_scale'](cs['right_scaledout'], cs['right_out'], np.float32(80), np.float32(768), block=(32, 1, 1), grid=(outlen//32,1));
 
-	# post-processing:  output low-pass filtering and deemphasis	
-	fft.fft(cs['fm_demod'], cs['fftout_gpu'], cs['plan2'])
-	cs['fftout_gpu'] *= FiltPost_GPU 
-	fft.ifft(cs['fftout_gpu'], cs['doutput_gpu'], cs['plan2i'], True)
-
-	sminn = minn / (freq_hz / tau)
-	mfactor = out_scale / hz_ire_scale
-
-	cs['doutput_gpu'] -= sminn
-	cs['doutput_gpu'] *= (freq_hz / tau) * mfactor
-
-	csa_first = False	
-
-	fft_in = np.fft.fft(indata,len(indata)) * Faudrf
-
-	eights = len(fft_in)//8
-	fft4 = np.delete(fft_in, np.s_[eights:eights*7])/4
+	out_left = cs['left_scaledout'].get()
+	out_right = cs['right_scaledout'].get()
 	
-	in_left = np.fft.ifft(fft4*FiltAL,len(fft4))
-	in_right = np.fft.ifft(fft4*FiltAR,len(fft4))
+	outputf = np.empty((len(out_left) * 2.0), dtype = np.float32)
 
-	out_left = fm_decode(in_left, freq_hz / 4)[384:]
-	out_right = fm_decode(in_right, freq_hz / 4)[384:]
+	for i in range(0, len(out_left)):
+		outputf[i * 2] = out_left[i]
+		outputf[(i * 2) + 1] = out_right[i]
 
-	out_left = np.clip(out_left - left_audfreqm, -150000, 150000) 
-	out_right = np.clip(out_right - right_audfreqm, -150000, 150000) 
+	return outputf, len(out_left) * 80 
 
-	out_left = sps.lfilter(audiolp_filter_b, audiolp_filter_a, out_left)[800:]
-	out_right = sps.lfilter(audiolp_filter_b, audiolp_filter_a, out_right)[800:] 
-
-	outputf = np.empty((len(out_left) * 2.0 / 20.0) + 2, dtype = np.float32)
-
-	tot = 0
-	for i in range(0, len(out_left), 20):
-		outputf[tot * 2] = out_left[i]
-		outputf[(tot * 2) + 1] = out_right[i]
-		tot = tot + 1
-
-	return outputf[0:tot * 2], tot * 20 * 4 
-
-	plt.plot(range(0, len(out_left)), out_left)
-#	plt.plot(range(0, len(out_leftl)), out_leftl)
-	plt.plot(range(0, len(out_right)), out_right + 150000)
-#	plt.ylim([2000000,3000000])
+	#plt.plot(cs['left_out'].get()[768:-768])
+	plt.plot(left_scaledout.get())
 	plt.show()
 	exit()
 
@@ -682,7 +667,7 @@ def main():
 				exit()
 
 		if audio_mode:	
-			process_audio(indata)
+#			process_audio(indata)
 			output, osamp = process_audio_cuda(indata)
 			
 			nread = osamp 
