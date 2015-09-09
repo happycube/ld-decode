@@ -33,10 +33,10 @@ freq_hz = freq * 1000000.0
 afreq = freq / 8.0
 afreq_hz = afreq * 1000000.0
 
-blocklenk = 64
+blocklenk = 1024 
 blocklen = (blocklenk * 1024)  
 
-ablocklenk = 16 
+ablocklenk = blocklenk//4 
 ablocklen = (ablocklenk * 1024)  
 
 lowpass_filter_b, lowpass_filter_a = sps.butter(8, (4.5/(freq/2)), 'low')
@@ -250,6 +250,11 @@ Fbpf = np.fft.fft(Bbpf_FDLS, blocklen)
 Fcutl = np.fft.fft(Bcutl_FDLS, blocklen)
 Fcutr = np.fft.fft(Bcutr_FDLS, blocklen)
 
+_fftlen = 32768
+Fbpf4k = np.fft.fft(Bbpf_FDLS, _fftlen)
+Fcutl4k = np.fft.fft(Bcutl_FDLS, _fftlen)
+Fcutr4k = np.fft.fft(Bcutr_FDLS, _fftlen)
+
 [Baudrf_FDLS, Aaudrf_FDLS] = fdls.FDLS_fromfilt(audiorf_filter_b, audiorf_filter_a, forder, forderd, 0)
 Faudrf = np.fft.fft(Baudrf_FDLS, blocklen)
 Faudrf_GPU = FFTtoGPU(Faudrf)
@@ -267,15 +272,26 @@ Faudl = np.fft.fft(Baudl_FDLS, blocklen)
 Faudr = np.fft.fft(Baudr_FDLS, blocklen)
 
 Fhilbert = np.fft.fft(hilbert_filter, blocklen)
+Fhilbert4k = np.fft.fft(hilbert_filter, _fftlen)
 
 FiltV = Fbpf * Fcutl * Fcutr * Fhilbert
+FiltV4k = Fbpf4k * Fcutl4k * Fcutr4k * Fhilbert4k
+
 FiltAL = Faudrf * Faudl * Fhilbert
 FiltAL_GPU = FFTtoGPU(FiltAL)
 FiltAR = Faudrf * Faudr * Fhilbert
 FiltAR_GPU = FFTtoGPU(FiltAR)
 
 FiltV_GPU = FFTtoGPU(FiltV)
+FiltV4k_GPU = FFTtoGPU(FiltV4k)
 
+print(FiltV.shape)
+print(FiltV4k.shape)
+
+#plt.plot(FiltV.real + 10)
+#plt.plot(FiltV4k.real + 0)
+#plt.show()
+#exit()
 # octave:104> t1 = 100; t2 = 55; [b, a] = bilinear(-t2*(10^-8), -t1*(10^-8), t1/t2, freq); freqz(b, a)
 # octave:105> printf("f_emp_b = ["); printf("%.15e, ", b); printf("]\nf_emp_a = ["); printf("%.15e, ", a); printf("]\n")
 f_emp_b = [1.293279022403258e+00, -1.018329938900196e-02, ]
@@ -307,15 +323,23 @@ def prepare_video_cuda(data):
 	fft.fft(gpudata, cs['fft1_out'], cs['plan1'])
 	
 	cs['filtered1'] = gpuarray.empty(len(fdata), np.complex64)
+	cs['filtered1a'] = gpuarray.empty(len(fdata), np.complex64)
 	fft.ifft(cs['fft1_out'], cs['filtered1'], cs['plan1i'], True)
 
 	cs['fm_angles'] = gpuarray.empty(len(cs['filtered1']), np.float32)
 	cs['fm_demod'] = gpuarray.empty(len(cs['filtered1']), np.float32)
+	
+	cs['fm_anglesa'] = gpuarray.empty(len(cs['filtered1']), np.float32)
+	cs['fm_demoda'] = gpuarray.empty(len(cs['filtered1']), np.float32)
 
 	cs['doutput_gpu'] = gpuarray.empty(len(fdata), np.float32)
 	cs['fftout_gpu'] = gpuarray.empty(len(fdata)//2+1, np.complex64)
 	
+	cs['doutput_gpua'] = gpuarray.empty(len(fdata), np.float32)
+	cs['fftout_gpua'] = gpuarray.empty(len(fdata)//2+1, np.complex64)
+	
 	cs['clipped_gpu'] = gpuarray.empty(len(fdata), np.uint16)
+	cs['clipped_gpua'] = gpuarray.empty(len(fdata), np.uint16)
 	
 	cs['plan2'] = fft.Plan(cs['fm_demod'].shape, np.float32, np.complex64)
 	cs['plan2i'] = fft.Plan(cs['fm_demod'].shape, np.complex64, np.float32)
@@ -324,30 +348,41 @@ def prepare_video_cuda(data):
 	cs['f_angle'] = mod.get_function("angle")
 	cs['f_adiff'] = mod.get_function("adiff")
 
-def fft_overlap(data, conv, overlap = 128, fftlen = 4096):
-	num = len(data) // (4096 - (overlap * 2))
-	print(num)
+	cs['plan8k'] = fft.Plan(_fftlen, np.float32, np.complex64)
+	cs['plan8ki'] = fft.Plan(_fftlen, np.complex64, np.complex64)
 
-	fdata = np.float32(data)
-	gd = gpuarray.empty(num*4096, dtype=np.float32)
+def fft_overlap(data, conv, overlap = 256, fftlen = _fftlen, plan = None, plani = None):
+	blocklen = fftlen - (overlap * 2)
+
+	num = len(data) // blocklen
+
+	output = gpuarray.empty(num*blocklen, dtype=np.complex64)
+	tmp = gpuarray.empty((fftlen // 2) + 1, dtype=np.complex64)
+	tmpout = gpuarray.empty(fftlen, dtype=np.complex64)
+	
+	if plan == None:
+		plan = fft.Plan(fftlen, np.float32, np.complex64)
+
+	if plani == None:
+		plani = fft.Plan(fftlen, np.complex64, np.complex64)
 
 	for i in range(0, num):
-		index = i * (fftlen - (overlap * 2))
+		index = i * blocklen
 		print(i, index, index+fftlen)
-		print(gd[i*fftlen:(i+1)*fftlen].shape)
-		print(fdata[index:index+fftlen].shape)
-		gd[i*fftlen:(i+1)*fftlen] = fdata[index:index+fftlen]
-#		gd[i].set(data[index:index+fftlen])
+		print(output[i*fftlen:(i+1)*fftlen].shape)
+		print(data[index:index+fftlen].shape)
 
-	gd[0:1000] = gd[5000:6000]
-	gd[1000:2000] = gd[5000:6000]
+		fft.fft(data[index:index+fftlen], tmp, plan)
+		tmp *= conv 
+		fft.ifft(tmp, tmpout, plani, True)
 
-	print(gd.get())
-	exit()
+		output[index:index+blocklen] = tmpout[overlap:-overlap]
+#		output[i*fftlen:(i+1)*fftlen] = data[index:index+fftlen] 
+
+	return output
 
 def process_video_cuda(data):
 	global cs, cs_first 
-#	fft_overlap(data, FiltV_GPU) 
 
 	if cs_first == True:
 		prepare_video_cuda(data)
@@ -357,35 +392,47 @@ def process_video_cuda(data):
 
 	gpudata = gpuarray.to_gpu(fdata)
 
-	# first fft->ifft cycle applies pre-decoding filtering (low pass filters, CAV/CLV emphasis)
-	# and very importantly, performs the Hilbert transform
-	fft.fft(gpudata, cs['fft1_out'], cs['plan1'])
+	if True:
+		# first fft->ifft cycle applies pre-decoding filtering (low pass filters, CAV/CLV emphasis)
+		# and very importantly, performs the Hilbert transform
+		fft.fft(gpudata, cs['fft1_out'], cs['plan1'])
 
-	if Inner:	
-		cs['fft1_out'] *= FiltVInner_GPU 
+		if Inner:	
+			cs['fft1_out'] *= FiltVInner_GPU 
+		else:
+			cs['fft1_out'] *= FiltV_GPU 
+	
+		fft.ifft(cs['fft1_out'], cs['filtered1'], cs['plan1i'], True)
 	else:
-		cs['fft1_out'] *= FiltV_GPU 
-	
-	fft.ifft(cs['fft1_out'], cs['filtered1'], cs['plan1i'], True)
 
-	fft_overlap(data, FiltV_GPU) 
-	
+		cs['filtered1'] = fft_overlap(gpudata, FiltV4k_GPU, plan=cs['plan8k'], plani=cs['plan8ki']) 
+
+#	plt.plot(filtered1a.get()[0000:6000] + 1000)
+#	plt.plot(cs['filtered1'].get()[0000:6000] + 00)
+#	plt.plot(cs['filtered1a'].get()[0000:6000] + 100)
+#	plt.plot(cs['filtered1'].get()[0000:6000] + 00)
+#	plt.show()
+#	exit()
+
 	cs['f_angle'](cs['fm_angles'], cs['filtered1'], block=(1024,1,1), grid=(blocklenk,1))
 	cs['f_adiff'](cs['fm_demod'], cs['fm_angles'], block=(1024,1,1), grid=(blocklenk,1))
+	
+	#plt.show()
+	#exit()
 
 	# post-processing:  output low-pass filtering and deemphasis	
 	fft.fft(cs['fm_demod'], cs['fftout_gpu'], cs['plan2'])
 	cs['fftout_gpu'] *= FiltPost_GPU 
 	fft.ifft(cs['fftout_gpu'], cs['doutput_gpu'], cs['plan2i'], True)
-
+	
 	sminn = minn / (freq_hz / tau)
 	mfactor = out_scale / hz_ire_scale
 
 	cs['doutput_gpu'] -= sminn
 	cs['doutput_gpu'] *= (freq_hz / tau) * mfactor
-
+	
 	cs['f_clamp16'](cs['clipped_gpu'], cs['doutput_gpu'], block=(1024,1,1), grid=(blocklenk,1)) 
-
+	
 	output_16 = cs['clipped_gpu'].get()
 
 	chop = 512
