@@ -151,6 +151,16 @@ __global__ void decimate4to1d(cuComplex *out, cuComplex *in)
 	out[i] = in[i * 4];
 } 
 
+__global__ void audioscale(float *out, float *in_left, float *in_right, float s, float offset)
+{
+	const int i = (threadIdx.x  + blockIdx.x * blockDim.x);
+
+	int index = (s * i) + offset;
+
+	out[i * 2] = in_left[index];
+	out[(i * 2)+ 1] = in_right[index];
+}
+
 __global__ void scale_nn(float *out, float *in, float s, float offset)
 {
 	const int i = threadIdx.x  + blockIdx.x * blockDim.x; // + (1024 * threadIdx.y);
@@ -486,6 +496,7 @@ def prepare_audio_cuda(data):
 	cs['plan2i'] = fft.Plan(cs['left_demod'].shape, np.complex64, np.float32)
 	
 	cs['outlen'] = outlen = (((ablocklen - 1536) // 20) // 32) * 32
+	cs['scaledout'] = gpuarray.empty(outlen * 2, np.float32)
 	cs['left_scaledout'] = gpuarray.empty(outlen, np.float32)
 	cs['right_scaledout'] = gpuarray.empty(outlen, np.float32)
 	
@@ -494,7 +505,7 @@ def prepare_audio_cuda(data):
 	cs['f_adiff'] = mod.get_function("adiff")
 	cs['f_audioclamp'] = mod.get_function("audioclamp")
 
-	cs['f_scale'] = mod.get_function("scale_nn")
+	cs['f_audioscale'] = mod.get_function("audioscale")
 	cs['f_scale4'] = mod.get_function("scale_avg4")
 	cs['f_scale4c'] = mod.get_function("scale_avg4c")
 
@@ -549,22 +560,16 @@ def process_audio_cuda(data):
 	fft.ifft(cs['right_fft2'], cs['right_out'], cs['plan2i'], True)
 
 	outlen = (ablocklen - 1536) // 20
-	cs['f_scale'](cs['left_scaledout'], cs['left_out'], np.float32(20), np.float32(768), block=(32, 1, 1), grid=(outlen//32,1));
-	cs['f_scale'](cs['right_scaledout'], cs['right_out'], np.float32(20), np.float32(768), block=(32, 1, 1), grid=(outlen//32,1));
+	cs['f_audioscale'](cs['scaledout'], cs['left_out'], cs['right_out'], np.float32(20), np.float32(768), block=(32, 1, 1), grid=(outlen//32,1));
+#	cs['f_scale'](cs['left_scaledout'], cs['left_out'], np.float32(20), np.float32(768), block=(32, 1, 1), grid=(outlen//32,1));
+#	cs['f_scale'](cs['right_scaledout'], cs['right_out'], np.float32(20), np.float32(768), block=(32, 1, 1), grid=(outlen//32,1));
 
-	out_left = cs['left_scaledout'].get()
-	out_right = cs['right_scaledout'].get()
-	
-	outputf = np.empty((len(out_left) * 2.0), dtype = np.float32)
+	return cs['scaledout'].get(), outlen * 80
 
-	for i in range(0, len(out_left)):
-		outputf[i * 2] = out_left[i]
-		outputf[(i * 2) + 1] = out_right[i]
+	plt.plot(cs['scaledout'].get())
 
-	return outputf, len(out_left) * 80 
-
-	plt.plot(cs['left_out'].get()[768:-768])
-	plt.plot(cs['right_out'].get()[768:-768] + 100000)
+#	plt.plot(cs['left_out'].get()[768:-768])
+#	plt.plot(cs['right_out'].get()[768:-768] + 100000)
 	plt.show()
 	exit()
 
@@ -767,10 +772,10 @@ def main():
 			output, osamp = process_audio_cuda(indata)
 			
 			nread = osamp 
-#			outfile.write(output)
+			outfile.write(output)
 		else:
 			output_16 = process_video_cuda(indata)
-#			outfile.write(output_16)
+			outfile.write(output_16)
 			nread = len(output_16)
 			
 			total_pread = total_read 
