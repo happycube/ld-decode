@@ -299,6 +299,8 @@ FiltAL_GPU = FFTtoGPU(FiltAL)
 FiltAR = Faudrf * Faudr * Fhilbert
 FiltAR_GPU = FFTtoGPU(FiltAR)
 
+#FiltV[0:7500] = FiltV[0:7500] * 0
+#FiltV[32000:32768] = FiltV[32000:32768] * 0
 FiltV_GPU = FFTtoGPU(FiltV)
 
 # octave:104> t1 = 100; t2 = 55; [b, a] = bilinear(-t2*(10^-8), -t1*(10^-8), t1/t2, freq); freqz(b, a)
@@ -370,6 +372,8 @@ def process_video_cuda(data):
 		cs['fft1_out'] *= FiltVInner_GPU 
 	else:
 		cs['fft1_out'] *= FiltV_GPU 
+		#cs['fft1_out'] *= FiltV_GPU 
+		#cs['fft1_out'] *= FiltV_GPU 
 	
 	fft.ifft(cs['fft1_out'], cs['filtered1'], cs['plan1i'], True)
 
@@ -568,10 +572,11 @@ def process_audio_cuda(data):
 def test():
 	test = np.empty(blocklen, dtype=np.int16)
 
-	infile = open("noise.raw", "rb")
+#	infile = open("noise.raw", "rb")
 
-	noisebuf = infile.read(blocklen)
-	noisedata = np.float(np.fromstring(noisebuf, 'uint8', blocklen)) - 128
+#	noisebuf = infile.read(blocklen)
+#	noisedata = (np.fromstring(noisebuf, 'uint8', blocklen)) 
+#	noisedata = np.float(noisedata)
 
 #	for hlen in range(3, 18):
 	for vlevel in range(64, 101, 5):
@@ -592,10 +597,10 @@ def test():
 			tmp = (np.sin(vphase * tau) * vlevel)
 			tmp += (np.sin(alphase * tau) * vlevel / 10.0)
 			tmp += (np.sin(arphase * tau) * vlevel / 10.0)
-			tmp += noisedata[i] * 1
+#			tmp += noisedata[i] * 1
 			test[i] = tmp + 32768 
 
-		output = np.float(process_video(test)[(blocklen/2)+1000:(blocklen/2)+5096])
+		output = np.float(process_video_cuda(test)[(blocklen/2)+1000:(blocklen/2)+5096])
 		plt.plot(range(0, len(output)), output)
 
 		output /= out_scale
@@ -687,7 +692,7 @@ def main():
 	[tf_b, tf_a] = sps.zpk2tf(-deemp_t2*(10**-8), -deemp_t1*(10**-8), deemp_t1 / deemp_t2)
 	[f_deemp_b, f_deemp_a] = sps.bilinear(tf_b, tf_a, 1/(freq_hz/2))
 
-#	test()
+	#test()
 
 	argc = len(cut_argv)
 	if argc >= 1:
