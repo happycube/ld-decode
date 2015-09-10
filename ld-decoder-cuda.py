@@ -133,10 +133,34 @@ __global__ void adiff(float *out, float *in) {
 	out[i] = (tmp >= 0) ? tmp : tmp + (3.14159265359 * 2);
 }
 
-// Clamp from 0 to 65535.  There ought to be a pyCUDA routine for this.
-__global__ void clamp16(unsigned short *y, float *x) {
+__global__ void anglediff(float *out, cuComplex *in) {
 	const int i = threadIdx.x  + blockIdx.x * blockDim.x; // + (1024 * threadIdx.y);
-	y[i] = (unsigned short)max((float)0, min((float)65535, x[i]));
+	
+	float tmp = atan2f(in[i + 1].y, in[i + 1].x) - atan2f(in[i].y, in[i].x);
+	
+	out[i] = (tmp >= 0) ? tmp : tmp + (3.14159265359 * 2);
+}
+
+__global__ void clamp16(unsigned short *y, float *x, float offset, float mul) {
+	const int i = threadIdx.x  + blockIdx.x * blockDim.x; // + (1024 * threadIdx.y);
+
+	float tmp = x[i];
+	
+	tmp += offset;
+	tmp *= mul;
+
+	y[i] = (unsigned short)max((float)0, min((float)65535, tmp));
+}
+
+__global__ void anglediff_mac(float *out, cuComplex *in, float mult, float add) {
+	const int i = threadIdx.x  + blockIdx.x * blockDim.x; // + (1024 * threadIdx.y);
+	
+	float tmp = atan2f(in[i + 1].y, in[i + 1].x) - atan2f(in[i].y, in[i].x);
+	
+	tmp = (tmp >= 0) ? tmp : tmp + (3.14159265359 * 2);
+	tmp *= mult;
+	tmp += add;
+	out[i] = max((float)-200000, min((float)200000, tmp));
 }
 
 __global__ void audioclamp(float *y, float *x) {
@@ -258,6 +282,7 @@ audiolp_filter_fir = sps.firwin(257, .020 / (freq / 2.0))
 [Baudiolp_FDLS, Aaudiolp_FDLS] = fdls.FDLS_fromfilt(audiolp_filter_b, audiolp_filter_a, forder, forderd, 0)
 [Baudiolp_FDLS, Aaudiolp_FDLS] = fdls.FDLS_fromfilt(audiolp_filter_fir, [1.0], forder, forderd, 0)
 FiltAPost = np.fft.fft(Baudiolp_FDLS, blocklen)
+FiltAPost = FiltAPost * FiltAPost * FiltAPost
 FiltAPost_GPU = FFTtoGPU(FiltAPost)
 
 [Baudl_FDLS, Aaudl_FDLS] = fdls.FDLS_fromfilt(Baudl, Aaudl, forder, forderd, 0)
@@ -322,6 +347,7 @@ def prepare_video_cuda(data):
 	
 	cs['f_clamp16'] = mod.get_function("clamp16")
 	cs['f_angle'] = mod.get_function("angle")
+	cs['f_anglediff'] = mod.get_function("anglediff")
 	cs['f_adiff'] = mod.get_function("adiff")
 
 def process_video_cuda(data):
@@ -347,8 +373,10 @@ def process_video_cuda(data):
 	
 	fft.ifft(cs['fft1_out'], cs['filtered1'], cs['plan1i'], True)
 
-	cs['f_angle'](cs['fm_angles'], cs['filtered1'], block=(1024,1,1), grid=(blocklenk,1))
-	cs['f_adiff'](cs['fm_demod'], cs['fm_angles'], block=(1024,1,1), grid=(blocklenk,1))
+#	cs['f_angle'](cs['fm_angles'], cs['filtered1'], block=(1024,1,1), grid=(blocklenk,1))
+#	cs['f_adiff'](cs['fm_demod'], cs['fm_angles'], block=(1024,1,1), grid=(blocklenk,1))
+
+	cs['f_anglediff'](cs['fm_demod'], cs['filtered1'], block=(1024,1,1), grid=(blocklenk,1))
 
 	# post-processing:  output low-pass filtering and deemphasis	
 	fft.fft(cs['fm_demod'], cs['fftout_gpu'], cs['plan2'])
@@ -358,10 +386,10 @@ def process_video_cuda(data):
 	sminn = minn / (freq_hz / tau)
 	mfactor = out_scale / hz_ire_scale
 
-	cs['doutput_gpu'] -= sminn
-	cs['doutput_gpu'] *= (freq_hz / tau) * mfactor
+#	cs['doutput_gpu'] -= sminn
+	mult = (freq_hz / tau) * mfactor
 
-	cs['f_clamp16'](cs['clipped_gpu'], cs['doutput_gpu'], block=(1024,1,1), grid=(blocklenk,1)) 
+	cs['f_clamp16'](cs['clipped_gpu'], cs['doutput_gpu'], np.float32(-sminn), np.float32(mult), block=(1024,1,1), grid=(blocklenk,1)) 
 
 	output_16 = cs['clipped_gpu'].get()
 
@@ -371,7 +399,8 @@ def process_video_cuda(data):
 # graph for debug
 #	output = (sps.lfilter(f_deemp_b, f_deemp_a, output)[128:len(output)]) / deemp_corr
 
-	plt.plot(range(0, len(output_16)), output_16)
+	plt.plot(cs['doutput_gpu'].get()[5000:7500])
+#	plt.plot(range(0, len(output_16)), output_16)
 #	plt.plot(range(0, len(doutput)), doutput)
 #	plt.plot(range(0, len(output_prefilt)), output_prefilt)
 	plt.show()
@@ -478,6 +507,7 @@ def prepare_audio_cuda(data):
 	cs['right_scaledout'] = gpuarray.empty(outlen, np.float32)
 	
 	cs['f_decimate4to1d'] = mod.get_function("decimate4to1d")
+	cs['f_anglediff_mac'] = mod.get_function("anglediff_mac")
 	cs['f_angle'] = mod.get_function("angle")
 	cs['f_adiff'] = mod.get_function("adiff")
 	cs['f_audioclamp'] = mod.get_function("audioclamp")
@@ -509,37 +539,22 @@ def process_audio_cuda(data):
 #	plt.plot(np.absolute(cs['fm_left1'].get())[4000:5000])
 #	plt.plot(np.absolute(cs['fm_left'].get())[4000:5000])
 
-	cs['f_angle'](cs['left_angles'], cs['fm_left'], block=(1024,1,1), grid=(ablocklenk,1))
-	cs['f_angle'](cs['right_angles'], cs['fm_right'], block=(1024,1,1), grid=(ablocklenk,1))
+	cs['f_anglediff_mac'](cs['left_clipped'], cs['fm_left'], np.float32((afreq_hz / 1.0 / np.pi)), np.float32(-left_audfreqm), block=(1024,1,1), grid=(ablocklenk,1))
+	cs['f_anglediff_mac'](cs['right_clipped'], cs['fm_right'], np.float32((afreq_hz / 1.0 / np.pi)), np.float32(-right_audfreqm), block=(1024,1,1), grid=(ablocklenk,1))
 
-	cs['f_adiff'](cs['left_demod'], cs['left_angles'], block=(1024,1,1), grid=(ablocklenk,1))
-	cs['f_adiff'](cs['right_demod'], cs['right_angles'], block=(1024,1,1), grid=(ablocklenk,1))
-
-	#plt.plot(cs['left_demod'].get())
-	cs['left_demod'] *= (afreq_hz / 1.0 / np.pi)
-	cs['right_demod'] *= (afreq_hz / 1.0 / np.pi)
-#	plt.plot(cs['left_demod'].get())
-#	plt.plot(cs['right_demod'].get())
-
-	cs['left_demod'] -= left_audfreqm 
-	cs['right_demod'] -= right_audfreqm 
-	
-	cs['f_audioclamp'](cs['left_clipped'], cs['left_demod'], block=(1024,1,1), grid=(ablocklenk,1)) 
-	cs['f_audioclamp'](cs['right_clipped'], cs['right_demod'], block=(1024,1,1), grid=(ablocklenk,1)) 
-	
 	fft.fft(cs['left_clipped'], cs['left_fft2'], cs['plan2'])
 	fft.fft(cs['right_clipped'], cs['right_fft2'], cs['plan2'])
 	
 	cs['left_fft2'] *= FiltAPost_GPU
 	cs['right_fft2'] *= FiltAPost_GPU
-
+	
 	fft.ifft(cs['left_fft2'], cs['left_out'], cs['plan2i'], True)
 	fft.ifft(cs['right_fft2'], cs['right_out'], cs['plan2i'], True)
 
-	outlen = (ablocklen - 1536) // 20
-	cs['f_audioscale'](cs['scaledout'], cs['left_out'], cs['right_out'], np.float32(20), np.float32(768), block=(32, 1, 1), grid=(outlen//32,1));
-#	cs['f_scale'](cs['left_scaledout'], cs['left_out'], np.float32(20), np.float32(768), block=(32, 1, 1), grid=(outlen//32,1));
-#	cs['f_scale'](cs['right_scaledout'], cs['right_out'], np.float32(20), np.float32(768), block=(32, 1, 1), grid=(outlen//32,1));
+	aclip = 256 
+
+	outlen = (ablocklen - (aclip * 2)) // 20
+	cs['f_audioscale'](cs['scaledout'], cs['left_out'], cs['right_out'], np.float32(20), np.float32(aclip), block=(32, 1, 1), grid=(outlen//32,1));
 
 	return cs['scaledout'].get(), outlen * 80
 
