@@ -66,38 +66,11 @@ SysParams_NTSC = {
 	'deemp': (.825, 2.35),
 
 	'vbpf': (3200000, 14000000),
-	'vlpf_freq': 4.4,	# in mhz
+	'vlpf_freq': 4400000,	# in mhz
 	'vlpf_order': 5		# butterworth filter order
 }
 
 SP = SysParams_NTSC
-
-# default deemp constants				
-deemp_t1 = .825
-deemp_t2 = 2.35
-
-# audio filters
-Baudiorf = sps.firwin(65, 3.5 / (freq / 2), window='hamming', pass_zero=True)
-Aaudiorf = [1.0]
-
-left_audfreq = 2.301136
-right_audfreq = 2.812499
-
-N, Wn = sps.buttord([(left_audfreq-.10) / (freq / 2.0), (left_audfreq+.10) / (freq / 2.0)], [(left_audfreq-.15) / (freq / 2.0), (left_audfreq+.15)/(afreq / 2.0)], 1, 15)
-#print(N,Wn)
-Baudl, Aaudl = sps.butter(N, Wn, btype='bandpass')
-
-N, Wn = sps.buttord([(right_audfreq-.10) / (freq / 2.0), (right_audfreq+.10) / (freq / 2.0)], [(right_audfreq-.15) / (freq / 2.0), (right_audfreq+.15)/(freq / 2.0)], 1, 15)
-Baudr, Aaudr = sps.butter(N, Wn, btype='bandpass')
-
-#Baudl = sps.firwin(129, [2.10 / (freq / 2.0), 2.50 / (freq / 2.0)], pass_zero=False)
-#Aaudl = [1.0]
-
-N, Wn = sps.buttord(0.016 / (afreq / 2.0), 0.024 / (afreq / 2.0), 2, 15) 
-audiolp_filter_b, audiolp_filter_a = sps.butter(N, Wn)
-
-N, Wn = sps.buttord(3.1 / (freq / 2.0), 3.5 / (freq / 2.0), 1, 20) 
-audiorf_filter_b, audiorf_filter_a = sps.butter(N, Wn, btype='lowpass')
 
 # from http://tlfabian.blogspot.com/2013/01/implementing-hilbert-90-degree-shift.html
 hilbert_filter = np.fft.fftshift(
@@ -156,6 +129,22 @@ def FFTtoGPU(fft):
 forder = 256 
 forderd = 0 
 
+# audio filters
+
+tf = SP['audio_lfreq']
+N, Wn = sps.buttord([(tf-.10) / (afreq_hz / 2.0), (tf+.10) / (afreq_hz / 2.0)], [(tf-.15) / (afreq_hz / 2.0), (tf+.15)/(afreq_hz / 2.0)], 1, 15)
+Baudl, Aaudl = sps.butter(N, Wn, btype='bandpass')
+
+tf = SP['audio_rfreq']
+N, Wn = sps.buttord([(tf-.10) / (afreq_hz / 2.0), (tf+.10) / (afreq_hz / 2.0)], [(tf-.15) / (afreq_hz / 2.0), (tf+.15)/(afreq_hz / 2.0)], 1, 15)
+Baudr, Aaudr = sps.butter(N, Wn, btype='bandpass')
+
+N, Wn = sps.buttord(0.016 / (afreq / 2.0), 0.024 / (afreq / 2.0), 2, 15) 
+audiolp_filter_b, audiolp_filter_a = sps.butter(N, Wn)
+
+N, Wn = sps.buttord(3.1 / (freq / 2.0), 3.5 / (freq / 2.0), 1, 20) 
+audiorf_filter_b, audiorf_filter_a = sps.butter(N, Wn, btype='lowpass')
+
 [Baudrf_FDLS, Aaudrf_FDLS] = fdls.FDLS_fromfilt(audiorf_filter_b, audiorf_filter_a, forder, forderd, 0)
 Faudrf = np.fft.fft(Baudrf_FDLS, blocklen)
 Faudrf_GPU = FFTtoGPU(Faudrf)
@@ -173,11 +162,9 @@ FiltAPost_GPU = FFTtoGPU(FiltAPost)
 Faudl = np.fft.fft(Baudl_FDLS, blocklen)
 Faudr = np.fft.fft(Baudr_FDLS, blocklen)
 
-Fhilbert = np.fft.fft(hilbert_filter, blocklen)
-
-FiltAL = Faudrf * Faudl * Fhilbert
+FiltAL = Faudrf * Faudl * fft_hilbert
 FiltAL_GPU = FFTtoGPU(FiltAL)
-FiltAR = Faudrf * Faudr * Fhilbert
+FiltAR = Faudrf * Faudr * fft_hilbert
 FiltAR_GPU = FFTtoGPU(FiltAR)
 
 Inner = 0
@@ -187,10 +174,6 @@ cs_first = True
 cs = {} 
 
 def prepare_video_filters():
-	# set up deemp filter
-	[tf_b, tf_a] = sps.zpk2tf(-SP['deemp'][1]*(10**-8), -SP['deemp'][0]*(10**-8), SP['deemp'][0] / SP['deemp'][1])
-	SP['f_deemp'] = sps.bilinear(tf_b, tf_a, 1/(freq_hz/2))
-
 	# TODO:  test these CLV+innerCAV parameters.  Should be same on PAL+NTSC 
 	t1 = 25
 	t2 = 13.75
@@ -198,18 +181,24 @@ def prepare_video_filters():
 	[tf_b, tf_a] = sps.zpk2tf(-t2*(10**-8), -t1*(10**-8), t1 / t2)
 	SP['f_emp'] = sps.bilinear(tf_b, tf_a, 1/(freq_hz/2))
 
+	# RF BPF and analog audio cut filters
 	SP['f_videorf_bpf'] = sps.butter(1, [SP['vbpf'][0]/(freq_hz/2), SP['vbpf'][1]/(freq_hz/2)], btype='bandpass')
 
 	if SP['analog_audio'] == True:
 		SP['f_aleft_stop'] = sps.butter(1, [(SP['audio_lfreq'] - 750000)/(freq_hz/2), (SP['audio_lfreq'] + 750000)/(freq_hz/2)], btype='bandstop')
 		SP['f_aright_stop'] = sps.butter(1, [(SP['audio_rfreq'] - 750000)/(freq_hz/2), (SP['audio_rfreq'] + 750000)/(freq_hz/2)], btype='bandstop')
 
-	lowpass_filter_b, lowpass_filter_a = sps.butter(SP['vlpf_order'], SP['vlpf_freq']/(freq/2), 'low')
+	# standard post-demod LPF
+	lowpass_filter_b, lowpass_filter_a = sps.butter(SP['vlpf_order'], SP['vlpf_freq']/(freq_hz/2), 'low')
+	
+	# post-demod deemphasis filter
+	[tf_b, tf_a] = sps.zpk2tf(-SP['deemp'][1]*(10**-8), -SP['deemp'][0]*(10**-8), SP['deemp'][0] / SP['deemp'][1])
+	SP['f_deemp'] = sps.bilinear(tf_b, tf_a, 1/(freq_hz/2))
 
 	# if AC3:
 	#SP['f_arightcut'] = sps.butter(1, [(2650000)/(freq_hz/2), (3150000)/(freq_hz/2)], btype='bandstop')
 
-	# prepare for FFT: convert above filters to FIR using LPF 
+	# prepare for FFT: convert above filters to FIR using FDLS techniques first
 	forder = 256 
 	forderd = 0 
 
@@ -217,16 +206,11 @@ def prepare_video_filters():
 	[Bemp_FDLS, Aemp_FDLS] = fdls.FDLS_fromfilt(SP['f_emp'][0], SP['f_emp'][1], forder, forderd, 0)
 	[Bdeemp_FDLS, Adeemp_FDLS] = fdls.FDLS_fromfilt(SP['f_deemp'][0], SP['f_deemp'][1], forder, forderd, 0)
 	[Bplpf_FDLS, Aplpf_FDLS] = fdls.FDLS_fromfilt(lowpass_filter_b, lowpass_filter_a, forder, forderd, 0)
-	if SP['analog_audio'] == True:
-		[Bcutl_FDLS, Acutl_FDLS] = fdls.FDLS_fromfilt(SP['f_aleft_stop'][0], SP['f_aleft_stop'][1], forder, forderd, 0, phasemult = 1.00)
-		[Bcutr_FDLS, Acutr_FDLS] = fdls.FDLS_fromfilt(SP['f_aright_stop'][0], SP['f_aright_stop'][1], forder, forderd, 0, phasemult = 1.00)
-		Fcutl = np.fft.fft(Bcutl_FDLS, blocklen)
-		Fcutr = np.fft.fft(Bcutr_FDLS, blocklen)
 
 	Fbpf = np.fft.fft(Bbpf_FDLS, blocklen)
 	Femp = np.fft.fft(Bemp_FDLS, blocklen)
 
-	SP['fft_video'] = Fbpf * Fhilbert
+	SP['fft_video'] = Fbpf * fft_hilbert
 
 	if SP['analog_audio'] == True:
 		[Bcutl_FDLS, Acutl_FDLS] = fdls.FDLS_fromfilt(SP['f_aleft_stop'][0], SP['f_aleft_stop'][1], forder, forderd, 0, phasemult = 1.00)
@@ -251,7 +235,6 @@ def prepare_video_filters():
 	SP['output_scale'] = (freq_hz / tau) * (out_scale / hz_ire_scale)
 
 def prepare_video_cuda():
-
 	# Things go *a lot* faster when you have the memory structures pre-allocated
 	cs['plan1'] = fft.Plan(blocklen, np.float32, np.complex64)
 	cs['plan1i'] = fft.Plan(blocklen, np.complex64, np.complex64)
@@ -269,10 +252,12 @@ def prepare_video_cuda():
 	
 	cs['plan2'] = fft.Plan(blocklen, np.float32, np.complex64)
 	cs['plan2i'] = fft.Plan(blocklen, np.complex64, np.float32)
-	
+
+	# CUDA functions.  The fewer setups we need, the faster it goes.	
 	cs['doclamp16'] = mod.get_function("clamp16")
 	cs['doanglediff'] = mod.get_function("anglediff")
 
+	# GPU-stored frequency-fomain filters
 	cs['filt_post'] = FFTtoGPU(SP['fft_post'])
 	cs['filt_video'] = FFTtoGPU(SP['fft_video'])
 	cs['filt_video_inner'] = FFTtoGPU(SP['fft_video_inner'])
@@ -327,12 +312,51 @@ def process_video_cuda(data):
 	plt.show()
 	exit()
 
-left_audfreqm = left_audfreq * 1000000
-right_audfreqm = right_audfreq * 1000000
-
 csa_first = True
 csa = {} 
+
+def prepare_audio_filters():
+	forder = 256 
+	forderd = 0 
+
+	# audio filters
+	tf = SP['audio_lfreq']
+	N, Wn = sps.buttord([(tf-.10) / (afreq_hz / 2.0), (tf+.10) / (afreq_hz / 2.0)], [(tf-.15) / (afreq_hz / 2.0), (tf+.15)/(afreq_hz / 2.0)], 1, 15)
+	N, Wn = sps.buttord([(tf-.10) / (freq_hz / 2.0), (tf+.10) / (freq_hz / 2.0)], [(tf-.15) / (freq_hz / 2.0), (tf+.15)/(freq_hz / 2.0)], 1, 15)
+	Baudl, Aaudl = sps.butter(N, Wn, btype='bandpass')
+
+	tf = SP['audio_rfreq']
+	N, Wn = sps.buttord([(tf-.10) / (afreq_hz / 2.0), (tf+.10) / (afreq_hz / 2.0)], [(tf-.15) / (afreq_hz / 2.0), (tf+.15)/(afreq_hz / 2.0)], 1, 15)
+	N, Wn = sps.buttord([(tf-.10) / (freq_hz / 2.0), (tf+.10) / (freq_hz / 2.0)], [(tf-.15) / (freq_hz / 2.0), (tf+.15)/(freq_hz / 2.0)], 1, 15)
+	Baudr, Aaudr = sps.butter(N, Wn, btype='bandpass')
+
+	N, Wn = sps.buttord(0.016 / (afreq / 2.0), 0.024 / (afreq / 2.0), 2, 15) 
+	audiolp_filter_b, audiolp_filter_a = sps.butter(N, Wn)
 	
+	# USE FIR
+	audiolp_filter_b = sps.firwin(257, .020 / (afreq / 2.0))
+	audiolp_filter_a = [1.0]
+
+	N, Wn = sps.buttord(3.1 / (freq / 2.0), 3.5 / (freq / 2.0), 1, 20) 
+	audiorf_filter_b, audiorf_filter_a = sps.butter(N, Wn, btype='lowpass')
+
+	[Baudrf_FDLS, Aaudrf_FDLS] = fdls.FDLS_fromfilt(audiorf_filter_b, audiorf_filter_a, forder, forderd, 0)
+	SP['fft_audiorf_lpf'] = Faudrf = np.fft.fft(Baudrf_FDLS, blocklen)
+
+	[Baudiolp_FDLS, Aaudiolp_FDLS] = fdls.FDLS_fromfilt(audiolp_filter_b, audiolp_filter_a, forder, forderd, 0)
+
+	FiltAPost = np.fft.fft(Baudiolp_FDLS, blocklen)
+	SP['fft_audiolpf'] = FiltAPost * FiltAPost * FiltAPost
+
+	[Baudl_FDLS, Aaudl_FDLS] = fdls.FDLS_fromfilt(Baudl, Aaudl, forder, forderd, 0)
+	[Baudr_FDLS, Aaudr_FDLS] = fdls.FDLS_fromfilt(Baudr, Aaudr, forder, forderd, 0)
+
+	Faudl = np.fft.fft(Baudl_FDLS, blocklen)
+	Faudr = np.fft.fft(Baudr_FDLS, blocklen)
+
+	SP['fft_audio_left'] = Faudrf * Faudl * fft_hilbert
+	SP['fft_audio_right'] = Faudrf * Faudr * fft_hilbert
+
 def prepare_audio_cuda(data):
 	fdata = np.float32(data)
 	gpudata = gpuarray.to_gpu(fdata)
@@ -341,7 +365,7 @@ def prepare_audio_cuda(data):
 	cs['plan1i'] = fft.Plan(ablocklen, np.complex64, np.complex64)
 	
 	cs['fft1_out'] = gpuarray.empty((len(fdata)//2)+1, np.complex64)
-	cs['ifft1_out'] = gpuarray.empty(len(fdata), np.complex64)
+	cs['ifft1_out'] = gpuarray.empty(ablocklen, np.complex64)
 	
 	cs['fm_left'] = gpuarray.empty(ablocklen, np.complex64)
 	cs['fm_right'] = gpuarray.empty(ablocklen, np.complex64)
@@ -367,11 +391,17 @@ def prepare_audio_cuda(data):
 	
 	cs['doanglediff_mac'] = mod.get_function("anglediff_mac")
 	cs['doaudioscale'] = mod.get_function("audioscale")
+	
+	cs['filt_audiorf_lpf'] = FFTtoGPU(SP['fft_audiorf_lpf'])
+	cs['filt_audiolpf'] = FFTtoGPU(SP['fft_audiolpf'])
+	cs['filt_audio_left'] = FFTtoGPU(SP['fft_audio_left'])
+	cs['filt_audio_right'] = FFTtoGPU(SP['fft_audio_right'])
 
 def process_audio_cuda(data):
 	global cs, csa, csa_first
 	
 	if csa_first == True:
+		prepare_audio_filters()
 		prepare_audio_cuda(data)
 		csa_first = False	
 	
@@ -380,8 +410,8 @@ def process_audio_cuda(data):
 	
 	fft.fft(gpudata, cs['fft1_out'], cs['plan1'])
 
-	cs['left_fft1'] = (cs['fft1_out'] * FiltAL_GPU) # [0:blocklen])[0:(ablocklen//2)+1]
-	cs['right_fft1'] = (cs['fft1_out'] * FiltAR_GPU)[0:(ablocklen//2)+1]
+	cs['left_fft1'] = (cs['fft1_out'] * cs['filt_audio_left']) # [0:blocklen])[0:(ablocklen//2)+1]
+	cs['right_fft1'] = (cs['fft1_out'] * cs['filt_audio_right'])[0:(ablocklen//2)+1]
 
 	fft.ifft(cs['left_fft1'][0:(ablocklen//2)+1], cs['fm_left'], cs['plan1i'], True)
 	fft.ifft(cs['right_fft1'], cs['fm_right'], cs['plan1i'], True)
@@ -389,14 +419,14 @@ def process_audio_cuda(data):
 	#plt.plot(fdata[4000:5000])
 #	plt.plot(np.absolute(cs['fm_left'].get())[4000:5000])
 
-	cs['doanglediff_mac'](cs['left_clipped'], cs['fm_left'], np.float32((afreq_hz / 1.0 / np.pi)), np.float32(-left_audfreqm), block=(1024,1,1), grid=(ablocklenk,1))
-	cs['doanglediff_mac'](cs['right_clipped'], cs['fm_right'], np.float32((afreq_hz / 1.0 / np.pi)), np.float32(-right_audfreqm), block=(1024,1,1), grid=(ablocklenk,1))
+	cs['doanglediff_mac'](cs['left_clipped'], cs['fm_left'], np.float32((afreq_hz / 1.0 / np.pi)), np.float32(-SP['audio_lfreq']), block=(1024,1,1), grid=(ablocklenk,1))
+	cs['doanglediff_mac'](cs['right_clipped'], cs['fm_right'], np.float32((afreq_hz / 1.0 / np.pi)), np.float32(-SP['audio_rfreq']), block=(1024,1,1), grid=(ablocklenk,1))
 
 	fft.fft(cs['left_clipped'], cs['left_fft2'], cs['plan2'])
 	fft.fft(cs['right_clipped'], cs['right_fft2'], cs['plan2'])
 	
-	cs['left_fft2'] *= FiltAPost_GPU
-	cs['right_fft2'] *= FiltAPost_GPU
+	cs['left_fft2'] *= cs['filt_audiolpf']
+	cs['right_fft2'] *= cs['filt_audiolpf'] 
 	
 	fft.ifft(cs['left_fft2'], cs['left_out'], cs['plan2i'], True)
 	fft.ifft(cs['right_fft2'], cs['right_out'], cs['plan2i'], True)
@@ -406,7 +436,7 @@ def process_audio_cuda(data):
 	outlen = (ablocklen - (aclip * 2)) // 20
 	cs['doaudioscale'](cs['scaledout'], cs['left_out'], cs['right_out'], np.float32(20), np.float32(aclip), block=(32, 1, 1), grid=(outlen//32,1));
 
-	return cs['scaledout'].get(), outlen * 80
+#	return cs['scaledout'].get(), outlen * 80
 
 	plt.plot(cs['scaledout'].get())
 
