@@ -1,4 +1,5 @@
 #!/usr/bin/python
+
 from __future__ import division
 from __future__ import print_function
 
@@ -36,7 +37,7 @@ afreq_hz = afreq * 1000000.0
 blocklenk = 64
 blocklen = (blocklenk * 1024)  
 
-ablocklenk = 16 
+ablocklenk = blocklenk//4 
 ablocklen = (ablocklenk * 1024)  
 
 lowpass_filter_b, lowpass_filter_a = sps.butter(8, (4.5/(freq/2)), 'low')
@@ -77,61 +78,8 @@ hilbert_filter = np.fft.fftshift(
     np.fft.ifft([0]+[1]*200+[0]*200)
 )
 
-def fm_decode(hilbert, freq_hz):
-	#hilbert = sps.hilbert(in_filt[0:hlen])
-#	hilbert = sps.lfilter(hilbert_filter, 1.0, in_filt)
-
-	# the hilbert transform has errors at the edges.  but it doesn't seem to matter much in practice 
-	chop = 256 
-	hilbert = hilbert[chop:len(hilbert)-chop]
-
-	tangles = np.angle(hilbert) 
-	dangles = np.diff(tangles)
-
-	if (dangles[0] < -pi):
-		dangles[0] += tau
-	
-	tdangles2 = np.unwrap(dangles) 
-	
-	output = (tdangles2 * (freq_hz / tau))
-
-	errcount = 1
-	while errcount > 0:
-		errcount = 0
-
-		# particularly bad bits can cause phase inversions.  detect and fix when needed - the loops are slow in python.
-		if (output[np.argmax(output)] > freq_hz):
-			errcount = 1
-			for i in range(0, len(output)):
-				if output[i] > freq_hz:
-					output[i] = output[i] - freq_hz
-	
-		if (output[np.argmin(output)] < 0):
-			errcount = 1
-			for i in range(0, len(output)):
-				if output[i] < 0:
-					output[i] = output[i] + freq_hz
-
-	return output
-
 mod = SourceModule("""
 #include <cuComplex.h>
-
-// The pycuda math library doesn't have atan2f.
-__global__ void angle(float *out, cuComplex *in) {
-	const int i = threadIdx.x  + blockIdx.x * blockDim.x; // + (1024 * threadIdx.y);
-	out[i] = atan2f(in[i].y, in[i].x);
-}
-
-// Combines diff() and angle correction
-__global__ void adiff(float *out, float *in) {
-	const int i = threadIdx.x  + blockIdx.x * blockDim.x; // + (1024 * threadIdx.y);
-
-	// XXX?  This could in theory overrun and cause a crash if CUDA got a strict MMU.
-	float tmp = in[i + 1] - in[i];
-
-	out[i] = (tmp >= 0) ? tmp : tmp + (3.14159265359 * 2);
-}
 
 __global__ void anglediff(float *out, cuComplex *in) {
 	const int i = threadIdx.x  + blockIdx.x * blockDim.x; // + (1024 * threadIdx.y);
@@ -185,64 +133,6 @@ __global__ void audioscale(float *out, float *in_left, float *in_right, float s,
 	out[(i * 2)+ 1] = in_right[index];
 }
 
-__global__ void scale_nn(float *out, float *in, float s, float offset)
-{
-	const int i = threadIdx.x  + blockIdx.x * blockDim.x; // + (1024 * threadIdx.y);
-
-	int index = (s * i) + offset;	
-	out[i] = in[index];
-}
-
-__global__ void scale_avg4(float *out, float *in)
-{
-	const int i = threadIdx.x  + blockIdx.x * blockDim.x; // + (1024 * threadIdx.y);
-
-	float tmp;
-
-	tmp = in[(i * 4) + 0];
-	tmp += in[(i * 4) + 1];
-	tmp += in[(i * 4) + 2];
-	tmp += in[(i * 4) + 3];
-
-	out[i] = tmp;
-}
-
-__global__ void scale_avg4c(cuFloatComplex *out, cuFloatComplex *in)
-{
-	const int i = threadIdx.x  + blockIdx.x * blockDim.x; // + (1024 * threadIdx.y);
-
-	float2 *inf = (float2 *)in;
-	float2 c;
-
-	c.x = 0;
-	c.y = 0;
-	for (int x = 0; x < 4; x++) {
-		c.x += inf[(i * 4) + x].x;
-		c.y += inf[(i * 4) + x].y;
-	}
-
-	out[i] = (cuFloatComplex)c;
-}
-
-__global__ void scale_avg4a(cuComplex *out, cuComplex *in)
-{
-	const int i = threadIdx.x  + blockIdx.x * blockDim.x; // + (1024 * threadIdx.y);
-	
-	float cx, cy;
-
-	cx = in[(i * 4) + 0].x;
-	cx += in[(i * 4) + 1].x;
-	cx += in[(i * 4) + 2].x;
-	cx += in[(i * 4) + 3].x;
-
-	cy = in[(i * 4) + 0].y;
-	cy += in[(i * 4) + 1].y;
-	cy += in[(i * 4) + 2].y;
-	cy += in[(i * 4) + 3].y;
-
-	out[i] = make_cuComplex(cx / 4.0, cy / 4.0);
-}
-
 """)
 
 def FFTtoGPU(fft):
@@ -278,7 +168,7 @@ Fcutr = np.fft.fft(Bcutr_FDLS, blocklen)
 Faudrf = np.fft.fft(Baudrf_FDLS, blocklen)
 Faudrf_GPU = FFTtoGPU(Faudrf)
 
-audiolp_filter_fir = sps.firwin(257, .020 / (freq / 2.0))
+audiolp_filter_fir = sps.firwin(257, .020 / (afreq / 2.0))
 [Baudiolp_FDLS, Aaudiolp_FDLS] = fdls.FDLS_fromfilt(audiolp_filter_b, audiolp_filter_a, forder, forderd, 0)
 [Baudiolp_FDLS, Aaudiolp_FDLS] = fdls.FDLS_fromfilt(audiolp_filter_fir, [1.0], forder, forderd, 0)
 FiltAPost = np.fft.fft(Baudiolp_FDLS, blocklen)
@@ -299,7 +189,7 @@ FiltAL_GPU = FFTtoGPU(FiltAL)
 FiltAR = Faudrf * Faudr * Fhilbert
 FiltAR_GPU = FFTtoGPU(FiltAR)
 
-#FiltV[0:7500] = FiltV[0:7500] * 0
+##FiltV[0:7500] = FiltV[0:7500] * 0
 #FiltV[32000:32768] = FiltV[32000:32768] * 0
 FiltV_GPU = FFTtoGPU(FiltV)
 
@@ -336,7 +226,6 @@ def prepare_video_cuda(data):
 	cs['filtered1'] = gpuarray.empty(len(fdata), np.complex64)
 	fft.ifft(cs['fft1_out'], cs['filtered1'], cs['plan1i'], True)
 
-	cs['fm_angles'] = gpuarray.empty(len(cs['filtered1']), np.float32)
 	cs['fm_demod'] = gpuarray.empty(len(cs['filtered1']), np.float32)
 
 	cs['doutput_gpu'] = gpuarray.empty(len(fdata), np.float32)
@@ -348,9 +237,7 @@ def prepare_video_cuda(data):
 	cs['plan2i'] = fft.Plan(cs['fm_demod'].shape, np.complex64, np.float32)
 	
 	cs['f_clamp16'] = mod.get_function("clamp16")
-	cs['f_angle'] = mod.get_function("angle")
 	cs['f_anglediff'] = mod.get_function("anglediff")
-	cs['f_adiff'] = mod.get_function("adiff")
 
 def process_video_cuda(data):
 	global cs, cs_first 
@@ -372,13 +259,8 @@ def process_video_cuda(data):
 		cs['fft1_out'] *= FiltVInner_GPU 
 	else:
 		cs['fft1_out'] *= FiltV_GPU 
-		#cs['fft1_out'] *= FiltV_GPU 
-		#cs['fft1_out'] *= FiltV_GPU 
 	
 	fft.ifft(cs['fft1_out'], cs['filtered1'], cs['plan1i'], True)
-
-#	cs['f_angle'](cs['fm_angles'], cs['filtered1'], block=(1024,1,1), grid=(blocklenk,1))
-#	cs['f_adiff'](cs['fm_demod'], cs['fm_angles'], block=(1024,1,1), grid=(blocklenk,1))
 
 	cs['f_anglediff'](cs['fm_demod'], cs['filtered1'], block=(1024,1,1), grid=(blocklenk,1))
 
@@ -388,10 +270,7 @@ def process_video_cuda(data):
 	fft.ifft(cs['fftout_gpu'], cs['doutput_gpu'], cs['plan2i'], True)
 
 	sminn = minn / (freq_hz / tau)
-	mfactor = out_scale / hz_ire_scale
-
-#	cs['doutput_gpu'] -= sminn
-	mult = (freq_hz / tau) * mfactor
+	mult = (freq_hz / tau) * (out_scale / hz_ire_scale)
 
 	cs['f_clamp16'](cs['clipped_gpu'], cs['doutput_gpu'], np.float32(-sminn), np.float32(mult), block=(1024,1,1), grid=(blocklenk,1)) 
 
@@ -413,62 +292,12 @@ def process_video_cuda(data):
 left_audfreqm = left_audfreq * 1000000
 right_audfreqm = right_audfreq * 1000000
 
-test_mode = 0
-
-def process_audio(indata):
-	global test_mode
-
-#	print(len(indata), len(audiorf_filter_b * 2), len(Baudl) * 1)
-
-#	in_filt = sps.lfilter(audiorf_filter_b, audiorf_filter_a, indata) #[len(audiorf_filter_b) * 2:]
-
-	fft = np.fft.fft(indata,len(indata))
-
-	in_left = np.fft.ifft(fft*FiltAL,len(indata))
-	in_right = np.fft.ifft(fft*FiltAR,len(indata))
-
-	out_left = fm_decode(in_left, freq_hz / 1)[384:]
-	out_right = fm_decode(in_right, freq_hz / 1)[384:]
-
-	out_left = np.clip(out_left - left_audfreqm, -150000, 150000) 
-	out_right = np.clip(out_right - right_audfreqm, -150000, 150000) 
-
-	out_left = sps.lfilter(audiolp_filter_b, audiolp_filter_a, out_left)[800:]
-	out_right = sps.lfilter(audiolp_filter_b, audiolp_filter_a, out_right)[800:] 
-	plt.plot(out_left)
-
-#	plt.show()
-#	exit()
-	
-	#plt.plot((out_left))
-	return()
-
-	outputf = np.empty((len(out_left) * 2.0 / 20.0) + 2, dtype = np.float32)
-
-	tot = 0
-	for i in range(0, len(out_left), 20):
-		outputf[tot * 2] = out_left[i]
-		outputf[(tot * 2) + 1] = out_right[i]
-		tot = tot + 1
-
-	return outputf[0:tot * 2], tot * 20 * 4 
-
-	plt.plot(range(0, len(out_left)), out_left)
-#	plt.plot(range(0, len(out_leftl)), out_leftl)
-	plt.plot(range(0, len(out_right)), out_right + 150000)
-#	plt.ylim([2000000,3000000])
-	plt.show()
-	exit()
-
 csa_first = True
 csa = {} 
 	
 def prepare_audio_cuda(data):
 	fdata = np.float32(data)
 	gpudata = gpuarray.to_gpu(fdata)
-
-	ablocklen = blocklen//4
-	ablocklenk = blocklenk//4
 
 	cs['plan1'] = fft.Plan(gpudata.shape, np.float32, np.complex64)
 	cs['plan1i'] = fft.Plan(ablocklen, np.complex64, np.complex64)
@@ -477,19 +306,8 @@ def prepare_audio_cuda(data):
 	cs['ifft1_out'] = gpuarray.empty(len(fdata), np.complex64)
 	#fft.fft(gpudata, cs['fft1_out'], cs['plan1'])
 	
-	cs['fm_left1'] = gpuarray.empty(blocklen, np.complex64)
-	
 	cs['fm_left'] = gpuarray.empty(ablocklen, np.complex64)
 	cs['fm_right'] = gpuarray.empty(ablocklen, np.complex64)
-	
-	cs['left_angles'] = gpuarray.empty(ablocklen, np.float32)
-	cs['right_angles'] = gpuarray.empty(ablocklen, np.float32)
-	
-	cs['left_demod1'] = gpuarray.empty(ablocklen, np.float32)
-	cs['right_demod1'] = gpuarray.empty(ablocklen, np.float32)
-	
-	cs['left_demod'] = gpuarray.empty(ablocklen, np.float32)
-	cs['right_demod'] = gpuarray.empty(ablocklen, np.float32)
 	
 	cs['left_clipped'] = gpuarray.empty(ablocklen, np.float32)
 	cs['right_clipped'] = gpuarray.empty(ablocklen, np.float32)
@@ -502,8 +320,8 @@ def prepare_audio_cuda(data):
 	cs['left_out'] = gpuarray.empty(ablocklen, np.float32)
 	cs['right_out'] = gpuarray.empty(ablocklen, np.float32)
 	
-	cs['plan2'] = fft.Plan(cs['left_demod'].shape, np.float32, np.complex64)
-	cs['plan2i'] = fft.Plan(cs['left_demod'].shape, np.complex64, np.float32)
+	cs['plan2'] = fft.Plan(ablocklen, np.float32, np.complex64)
+	cs['plan2i'] = fft.Plan(ablocklen, np.complex64, np.float32)
 	
 	cs['outlen'] = outlen = (((ablocklen - 1536) // 20) // 32) * 32
 	cs['scaledout'] = gpuarray.empty(outlen * 2, np.float32)
@@ -512,13 +330,9 @@ def prepare_audio_cuda(data):
 	
 	cs['f_decimate4to1d'] = mod.get_function("decimate4to1d")
 	cs['f_anglediff_mac'] = mod.get_function("anglediff_mac")
-	cs['f_angle'] = mod.get_function("angle")
-	cs['f_adiff'] = mod.get_function("adiff")
 	cs['f_audioclamp'] = mod.get_function("audioclamp")
 
 	cs['f_audioscale'] = mod.get_function("audioscale")
-	cs['f_scale4'] = mod.get_function("scale_avg4")
-	cs['f_scale4c'] = mod.get_function("scale_avg4c")
 
 def process_audio_cuda(data):
 	global cs, csa, csa_first
@@ -535,12 +349,10 @@ def process_audio_cuda(data):
 	cs['left_fft1'] = (cs['fft1_out'] * FiltAL_GPU) # [0:blocklen])[0:(ablocklen//2)+1]
 	cs['right_fft1'] = (cs['fft1_out'] * FiltAR_GPU)[0:(ablocklen//2)+1]
 
-	fft.ifft(cs['left_fft1'], cs['fm_left1'], cs['plan1i'], True)
 	fft.ifft(cs['left_fft1'][0:(ablocklen//2)+1], cs['fm_left'], cs['plan1i'], True)
 	fft.ifft(cs['right_fft1'], cs['fm_right'], cs['plan1i'], True)
 
 	#plt.plot(fdata[4000:5000])
-#	plt.plot(np.absolute(cs['fm_left1'].get())[4000:5000])
 #	plt.plot(np.absolute(cs['fm_left'].get())[4000:5000])
 
 	cs['f_anglediff_mac'](cs['left_clipped'], cs['fm_left'], np.float32((afreq_hz / 1.0 / np.pi)), np.float32(-left_audfreqm), block=(1024,1,1), grid=(ablocklenk,1))
@@ -765,7 +577,6 @@ def main():
 				exit()
 
 		if audio_mode:	
-#			process_audio(indata)
 			output, osamp = process_audio_cuda(indata)
 			
 			nread = osamp 
@@ -775,7 +586,6 @@ def main():
 			outfile.write(output_16)
 			nread = len(output_16)
 			
-			total_pread = total_read 
 			total_read += nread
 
 			if CAV:
