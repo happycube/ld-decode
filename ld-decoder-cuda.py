@@ -153,30 +153,8 @@ __global__ void audioscale(float *out, float *in_left, float *in_right, float s,
 def FFTtoGPU(fft):
 	return gpuarray.to_gpu((np.complex64(fft))[0:len(fft)//2])
 
-minire = -60
-maxire = 140
-
-hz_ire_scale = (9300000 - 8100000) / 100
-minn = 8100000 + (hz_ire_scale * -60)
-
-out_scale = 65534.0 / (maxire - minire)
-	
-Bbpf, Abpf = sps.butter(1, [3.2/(freq/2), 14.0/(freq/2)], btype='bandpass')
-Bcutl, Acutl = sps.butter(1, [2.25/(freq/2), 2.35/(freq/2)], btype='bandstop')
-Bcutr, Acutr = sps.butter(1, [2.75/(freq/2), 2.850/(freq/2)], btype='bandstop')
-# AC3 - Bcutr, Acutr = sps.butter(1, [2.68/(freq/2), 3.08/(freq/2)], btype='bandstop')
-
-lowpass_filter_b, lowpass_filter_a = sps.butter(5, (4.4/(freq/2)), 'low')
-
 forder = 256 
 forderd = 0 
-[Bbpf_FDLS, Abpf_FDLS] = fdls.FDLS_fromfilt(Bbpf, Abpf, forder, forderd, 0, phasemult = 1.00)
-[Bcutl_FDLS, Acutl_FDLS] = fdls.FDLS_fromfilt(Bcutl, Acutl, forder, forderd, 0, phasemult = 1.00)
-[Bcutr_FDLS, Acutr_FDLS] = fdls.FDLS_fromfilt(Bcutr, Acutr, forder, forderd, 0, phasemult = 1.00)
-
-Fbpf = np.fft.fft(Bbpf_FDLS, blocklen)
-Fcutl = np.fft.fft(Bcutl_FDLS, blocklen)
-Fcutr = np.fft.fft(Bcutr_FDLS, blocklen)
 
 [Baudrf_FDLS, Aaudrf_FDLS] = fdls.FDLS_fromfilt(audiorf_filter_b, audiorf_filter_a, forder, forderd, 0)
 Faudrf = np.fft.fft(Baudrf_FDLS, blocklen)
@@ -197,29 +175,10 @@ Faudr = np.fft.fft(Baudr_FDLS, blocklen)
 
 Fhilbert = np.fft.fft(hilbert_filter, blocklen)
 
-FiltV = Fbpf * Fcutl * Fcutr * Fhilbert
 FiltAL = Faudrf * Faudl * Fhilbert
 FiltAL_GPU = FFTtoGPU(FiltAL)
 FiltAR = Faudrf * Faudr * Fhilbert
 FiltAR_GPU = FFTtoGPU(FiltAR)
-
-##FiltV[0:7500] = FiltV[0:7500] * 0
-#FiltV[32000:32768] = FiltV[32000:32768] * 0
-FiltV_GPU = FFTtoGPU(FiltV)
-
-# octave:104> t1 = 100; t2 = 55; [b, a] = bilinear(-t2*(10^-8), -t1*(10^-8), t1/t2, freq); freqz(b, a)
-# octave:105> printf("f_emp_b = ["); printf("%.15e, ", b); printf("]\nf_emp_a = ["); printf("%.15e, ", a); printf("]\n")
-f_emp_b = [1.293279022403258e+00, -1.018329938900196e-02, ]
-f_emp_a = [1.000000000000000e+00, 2.830957230142566e-01, ]
-
-[Bemp_FDLS, Aemp_FDLS] = fdls.FDLS_fromfilt(f_emp_b, f_emp_a, forder, forderd, 0)
-Femp = np.fft.fft(Bemp_FDLS, blocklen)
-
-FiltVInner = FiltV * Femp
-FiltVInner_GPU = FFTtoGPU(FiltVInner)
-
-FiltPost = []
-FiltPost_GPU = []
 
 Inner = 0
 
@@ -283,6 +242,14 @@ def prepare_video_filters():
 	Fdeemp = np.fft.fft(Bdeemp_FDLS, blocklen)
 	SP['fft_post'] = Fplpf * Fdeemp	
 
+	# determine freq offset and mult for output stage	
+	hz_ire_scale = (SP['videorf_100ire'] - SP['videorf_0ire']) / 100
+	minn = SP['videorf_0ire'] + (hz_ire_scale * -60)
+	SP['output_minfreq'] = sminn = minn / (freq_hz / tau)
+
+	out_scale = 65534.0 / (SP['ire_max'] - SP['ire_min'])
+	SP['output_scale'] = (freq_hz / tau) * (out_scale / hz_ire_scale)
+
 def prepare_video_cuda():
 
 	# Things go *a lot* faster when you have the memory structures pre-allocated
@@ -342,10 +309,7 @@ def process_video_cuda(data):
 	cs['fft2_out'] *= cs['filt_post'] 
 	fft.ifft(cs['fft2_out'], cs['postlpf'], cs['plan2i'], True)
 
-	sminn = minn / (freq_hz / tau)
-	mult = (freq_hz / tau) * (out_scale / hz_ire_scale)
-
-	cs['doclamp16'](cs['clipped_gpu'], cs['postlpf'], np.float32(-sminn), np.float32(mult), block=(1024,1,1), grid=(blocklenk,1)) 
+	cs['doclamp16'](cs['clipped_gpu'], cs['postlpf'], np.float32(-SP['output_minfreq']), np.float32(SP['output_scale']), block=(1024,1,1), grid=(blocklenk,1)) 
 
 	output_16 = cs['clipped_gpu'].get()
 
