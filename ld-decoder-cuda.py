@@ -126,47 +126,6 @@ __global__ void audioscale(float *out, float *in_left, float *in_right, float s,
 def FFTtoGPU(fft):
 	return gpuarray.to_gpu((np.complex64(fft))[0:len(fft)//2])
 
-forder = 256 
-forderd = 0 
-
-# audio filters
-
-tf = SP['audio_lfreq']
-N, Wn = sps.buttord([(tf-.10) / (afreq_hz / 2.0), (tf+.10) / (afreq_hz / 2.0)], [(tf-.15) / (afreq_hz / 2.0), (tf+.15)/(afreq_hz / 2.0)], 1, 15)
-Baudl, Aaudl = sps.butter(N, Wn, btype='bandpass')
-
-tf = SP['audio_rfreq']
-N, Wn = sps.buttord([(tf-.10) / (afreq_hz / 2.0), (tf+.10) / (afreq_hz / 2.0)], [(tf-.15) / (afreq_hz / 2.0), (tf+.15)/(afreq_hz / 2.0)], 1, 15)
-Baudr, Aaudr = sps.butter(N, Wn, btype='bandpass')
-
-N, Wn = sps.buttord(0.016 / (afreq / 2.0), 0.024 / (afreq / 2.0), 2, 15) 
-audiolp_filter_b, audiolp_filter_a = sps.butter(N, Wn)
-
-N, Wn = sps.buttord(3.1 / (freq / 2.0), 3.5 / (freq / 2.0), 1, 20) 
-audiorf_filter_b, audiorf_filter_a = sps.butter(N, Wn, btype='lowpass')
-
-[Baudrf_FDLS, Aaudrf_FDLS] = fdls.FDLS_fromfilt(audiorf_filter_b, audiorf_filter_a, forder, forderd, 0)
-Faudrf = np.fft.fft(Baudrf_FDLS, blocklen)
-Faudrf_GPU = FFTtoGPU(Faudrf)
-
-audiolp_filter_fir = sps.firwin(257, .020 / (afreq / 2.0))
-[Baudiolp_FDLS, Aaudiolp_FDLS] = fdls.FDLS_fromfilt(audiolp_filter_b, audiolp_filter_a, forder, forderd, 0)
-[Baudiolp_FDLS, Aaudiolp_FDLS] = fdls.FDLS_fromfilt(audiolp_filter_fir, [1.0], forder, forderd, 0)
-FiltAPost = np.fft.fft(Baudiolp_FDLS, blocklen)
-FiltAPost = FiltAPost * FiltAPost * FiltAPost
-FiltAPost_GPU = FFTtoGPU(FiltAPost)
-
-[Baudl_FDLS, Aaudl_FDLS] = fdls.FDLS_fromfilt(Baudl, Aaudl, forder, forderd, 0)
-[Baudr_FDLS, Aaudr_FDLS] = fdls.FDLS_fromfilt(Baudr, Aaudr, forder, forderd, 0)
-
-Faudl = np.fft.fft(Baudl_FDLS, blocklen)
-Faudr = np.fft.fft(Baudr_FDLS, blocklen)
-
-FiltAL = Faudrf * Faudl * fft_hilbert
-FiltAL_GPU = FFTtoGPU(FiltAL)
-FiltAR = Faudrf * Faudr * fft_hilbert
-FiltAR_GPU = FFTtoGPU(FiltAR)
-
 Inner = 0
 
 # CUDA structures
@@ -319,15 +278,16 @@ def prepare_audio_filters():
 	forder = 256 
 	forderd = 0 
 
+	tf_rangel = 100000
+	tf_rangeh = 170000
 	# audio filters
 	tf = SP['audio_lfreq']
-	N, Wn = sps.buttord([(tf-.10) / (afreq_hz / 2.0), (tf+.10) / (afreq_hz / 2.0)], [(tf-.15) / (afreq_hz / 2.0), (tf+.15)/(afreq_hz / 2.0)], 1, 15)
-	N, Wn = sps.buttord([(tf-.10) / (freq_hz / 2.0), (tf+.10) / (freq_hz / 2.0)], [(tf-.15) / (freq_hz / 2.0), (tf+.15)/(freq_hz / 2.0)], 1, 15)
+	N, Wn = sps.buttord([(tf-tf_rangel) / (freq_hz / 2.0), (tf+tf_rangel) / (freq_hz / 2.0)], [(tf-tf_rangeh) / (freq_hz / 2.0), (tf+tf_rangeh)/(freq_hz / 2.0)], 1, 15)
 	Baudl, Aaudl = sps.butter(N, Wn, btype='bandpass')
 
 	tf = SP['audio_rfreq']
-	N, Wn = sps.buttord([(tf-.10) / (afreq_hz / 2.0), (tf+.10) / (afreq_hz / 2.0)], [(tf-.15) / (afreq_hz / 2.0), (tf+.15)/(afreq_hz / 2.0)], 1, 15)
-	N, Wn = sps.buttord([(tf-.10) / (freq_hz / 2.0), (tf+.10) / (freq_hz / 2.0)], [(tf-.15) / (freq_hz / 2.0), (tf+.15)/(freq_hz / 2.0)], 1, 15)
+	N, Wn = sps.buttord([(tf-tf_rangel) / (freq_hz / 2.0), (tf+tf_rangel) / (freq_hz / 2.0)], [(tf-tf_rangeh) / (freq_hz / 2.0), (tf+tf_rangeh)/(freq_hz / 2.0)], 1, 15)
+	N, Wn = sps.buttord([(tf-tf_rangel) / (freq_hz / 2.0), (tf+tf_rangel) / (freq_hz / 2.0)], [(tf-tf_rangeh) / (freq_hz / 2.0), (tf+tf_rangeh)/(freq_hz / 2.0)], 5, 15)
 	Baudr, Aaudr = sps.butter(N, Wn, btype='bandpass')
 
 	N, Wn = sps.buttord(0.016 / (afreq / 2.0), 0.024 / (afreq / 2.0), 2, 15) 
@@ -346,7 +306,7 @@ def prepare_audio_filters():
 	[Baudiolp_FDLS, Aaudiolp_FDLS] = fdls.FDLS_fromfilt(audiolp_filter_b, audiolp_filter_a, forder, forderd, 0)
 
 	FiltAPost = np.fft.fft(Baudiolp_FDLS, blocklen)
-	SP['fft_audiolpf'] = FiltAPost * FiltAPost * FiltAPost
+	SP['fft_audiolpf'] = FiltAPost * FiltAPost #* FiltAPost
 
 	[Baudl_FDLS, Aaudl_FDLS] = fdls.FDLS_fromfilt(Baudl, Aaudl, forder, forderd, 0)
 	[Baudr_FDLS, Aaudr_FDLS] = fdls.FDLS_fromfilt(Baudr, Aaudr, forder, forderd, 0)
@@ -357,14 +317,11 @@ def prepare_audio_filters():
 	SP['fft_audio_left'] = Faudrf * Faudl * fft_hilbert
 	SP['fft_audio_right'] = Faudrf * Faudr * fft_hilbert
 
-def prepare_audio_cuda(data):
-	fdata = np.float32(data)
-	gpudata = gpuarray.to_gpu(fdata)
-
-	cs['plan1'] = fft.Plan(gpudata.shape, np.float32, np.complex64)
+def prepare_audio_cuda():
+	cs['plan1'] = fft.Plan(blocklen, np.float32, np.complex64)
 	cs['plan1i'] = fft.Plan(ablocklen, np.complex64, np.complex64)
 	
-	cs['fft1_out'] = gpuarray.empty((len(fdata)//2)+1, np.complex64)
+	cs['fft1_out'] = gpuarray.empty(blocklen, np.complex64)
 	cs['ifft1_out'] = gpuarray.empty(ablocklen, np.complex64)
 	
 	cs['fm_left'] = gpuarray.empty(ablocklen, np.complex64)
@@ -392,7 +349,6 @@ def prepare_audio_cuda(data):
 	cs['doanglediff_mac'] = mod.get_function("anglediff_mac")
 	cs['doaudioscale'] = mod.get_function("audioscale")
 	
-	cs['filt_audiorf_lpf'] = FFTtoGPU(SP['fft_audiorf_lpf'])
 	cs['filt_audiolpf'] = FFTtoGPU(SP['fft_audiolpf'])
 	cs['filt_audio_left'] = FFTtoGPU(SP['fft_audio_left'])
 	cs['filt_audio_right'] = FFTtoGPU(SP['fft_audio_right'])
@@ -402,7 +358,7 @@ def process_audio_cuda(data):
 	
 	if csa_first == True:
 		prepare_audio_filters()
-		prepare_audio_cuda(data)
+		prepare_audio_cuda()
 		csa_first = False	
 	
 	fdata = np.float32(data)
@@ -410,14 +366,11 @@ def process_audio_cuda(data):
 	
 	fft.fft(gpudata, cs['fft1_out'], cs['plan1'])
 
-	cs['left_fft1'] = (cs['fft1_out'] * cs['filt_audio_left']) # [0:blocklen])[0:(ablocklen//2)+1]
+	cs['left_fft1'] = (cs['fft1_out'] * cs['filt_audio_left'])[0:(ablocklen//2)+1] # [0:blocklen])[0:(ablocklen//2)+1]
 	cs['right_fft1'] = (cs['fft1_out'] * cs['filt_audio_right'])[0:(ablocklen//2)+1]
 
-	fft.ifft(cs['left_fft1'][0:(ablocklen//2)+1], cs['fm_left'], cs['plan1i'], True)
+	fft.ifft(cs['left_fft1'], cs['fm_left'], cs['plan1i'], True)
 	fft.ifft(cs['right_fft1'], cs['fm_right'], cs['plan1i'], True)
-
-	#plt.plot(fdata[4000:5000])
-#	plt.plot(np.absolute(cs['fm_left'].get())[4000:5000])
 
 	cs['doanglediff_mac'](cs['left_clipped'], cs['fm_left'], np.float32((afreq_hz / 1.0 / np.pi)), np.float32(-SP['audio_lfreq']), block=(1024,1,1), grid=(ablocklenk,1))
 	cs['doanglediff_mac'](cs['right_clipped'], cs['fm_right'], np.float32((afreq_hz / 1.0 / np.pi)), np.float32(-SP['audio_rfreq']), block=(1024,1,1), grid=(ablocklenk,1))
@@ -440,7 +393,7 @@ def process_audio_cuda(data):
 
 	plt.plot(cs['scaledout'].get())
 
-#	plt.plot(cs['left_out'].get()[768:-768])
+#	plt.plot(cs['right_clipped'].get()[768:-768])
 #	plt.plot(cs['right_out'].get()[768:-768] + 100000)
 	plt.show()
 	exit()
