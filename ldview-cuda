@@ -1,0 +1,2 @@
+#!/bin/bash
+python ld-decoder-cuda.py -s 1 -S $1 $2 $3 | ./ntsc - 2> /dev/null | ./comb -d 3 -L -m - > /dev/null

@@ -1,0 +1,2 @@
+#!/bin/bash
+./lddecode.py -s 0 -S $1 $2 $3 | ./ntsc -r 25 - 2> /dev/null | ./comb -d 2 -m -L -Q - > /dev/null
