@@ -1,7 +1,7 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 
-from __future__ import division
-from __future__ import print_function
+#from __future__ import division
+#from __future__ import print_function
 
 import numpy as np
 import scipy as sp
@@ -24,6 +24,8 @@ import skcuda.fft as fft
 import skcuda.misc as misc
     
 import cProfile
+
+import copy
 
 pi = np.pi
 tau = np.pi * 2
@@ -70,7 +72,10 @@ SysParams_NTSC = {
 	'vlpf_order': 5		# butterworth filter order
 }
 
-SP = SysParams_NTSC
+try:
+	tmp = SysParams['fsc_mhz']
+except:
+	SysParams = copy.deepcopy(SysParams_NTSC)
 
 # from http://tlfabian.blogspot.com/2013/01/implementing-hilbert-90-degree-shift.html
 hilbert_filter = np.fft.fftshift(
@@ -132,7 +137,7 @@ Inner = 0
 cs_first = True
 cs = {} 
 
-def prepare_video_filters():
+def prepare_video_filters(SP):
 	# TODO:  test these CLV+innerCAV parameters.  Should be same on PAL+NTSC 
 	t1 = 25
 	t2 = 13.75
@@ -217,19 +222,18 @@ def prepare_video_cuda():
 	cs['doanglediff'] = mod.get_function("anglediff")
 
 	# GPU-stored frequency-fomain filters
-	cs['filt_post'] = FFTtoGPU(SP['fft_post'])
-	cs['filt_video'] = FFTtoGPU(SP['fft_video'])
-	cs['filt_video_inner'] = FFTtoGPU(SP['fft_video_inner'])
+	cs['filt_post'] = FFTtoGPU(SysParams['fft_post'])
+	cs['filt_video'] = FFTtoGPU(SysParams['fft_video'])
+	cs['filt_video_inner'] = FFTtoGPU(SysParams['fft_video_inner'])
 
 def process_video_cuda(data):
 	global cs, cs_first 
 #	fft_overlap(data, FiltV_GPU) 
 
 	if cs_first == True:
-		prepare_video_filters()
+		prepare_video_filters(SysParams)
 		prepare_video_cuda()
 		cs_first = False
-
 
 	fdata = np.float32(data)
 
@@ -253,7 +257,7 @@ def process_video_cuda(data):
 	cs['fft2_out'] *= cs['filt_post'] 
 	fft.ifft(cs['fft2_out'], cs['postlpf'], cs['plan2i'], True)
 
-	cs['doclamp16'](cs['clipped_gpu'], cs['postlpf'], np.float32(-SP['output_minfreq']), np.float32(SP['output_scale']), block=(1024,1,1), grid=(blocklenk,1)) 
+	cs['doclamp16'](cs['clipped_gpu'], cs['postlpf'], np.float32(-SysParams['output_minfreq']), np.float32(SysParams['output_scale']), block=(1024,1,1), grid=(blocklenk,1)) 
 
 	output_16 = cs['clipped_gpu'].get()
 
@@ -281,12 +285,12 @@ def prepare_audio_filters():
 	tf_rangel = 100000
 	tf_rangeh = 170000
 	# audio filters
-	tf = SP['audio_lfreq']
+	tf = SysParams['audio_lfreq']
 	N, Wn = sps.buttord([(tf-tf_rangel) / (freq_hz / 2.0), (tf+tf_rangel) / (freq_hz / 2.0)], [(tf-tf_rangeh) / (freq_hz / 2.0), (tf+tf_rangeh)/(freq_hz / 2.0)], 1, 15)
 	N, Wn = sps.buttord([(tf-tf_rangel) / (freq_hz / 2.0), (tf+tf_rangel) / (freq_hz / 2.0)], [(tf-tf_rangeh) / (freq_hz / 2.0), (tf+tf_rangeh)/(freq_hz / 2.0)], 5, 15)
 	Baudl, Aaudl = sps.butter(N, Wn, btype='bandpass')
 
-	tf = SP['audio_rfreq']
+	tf = SysParams['audio_rfreq']
 	N, Wn = sps.buttord([(tf-tf_rangel) / (freq_hz / 2.0), (tf+tf_rangel) / (freq_hz / 2.0)], [(tf-tf_rangeh) / (freq_hz / 2.0), (tf+tf_rangeh)/(freq_hz / 2.0)], 1, 15)
 	N, Wn = sps.buttord([(tf-tf_rangel) / (freq_hz / 2.0), (tf+tf_rangel) / (freq_hz / 2.0)], [(tf-tf_rangeh) / (freq_hz / 2.0), (tf+tf_rangeh)/(freq_hz / 2.0)], 5, 15)
 	Baudr, Aaudr = sps.butter(N, Wn, btype='bandpass')
@@ -301,12 +305,12 @@ def prepare_audio_filters():
 	audiorf_filter_b, audiorf_filter_a = sps.butter(N, Wn, btype='lowpass')
 
 	[Baudrf_FDLS, Aaudrf_FDLS] = fdls.FDLS_fromfilt(audiorf_filter_b, audiorf_filter_a, forder, forderd, 0)
-	SP['fft_audiorf_lpf'] = Faudrf = np.fft.fft(Baudrf_FDLS, blocklen)
+	SysParams['fft_audiorf_lpf'] = Faudrf = np.fft.fft(Baudrf_FDLS, blocklen)
 
 	[Baudiolp_FDLS, Aaudiolp_FDLS] = fdls.FDLS_fromfilt(audiolp_filter_b, audiolp_filter_a, forder, forderd, 0)
 
 	FiltAPost = np.fft.fft(Baudiolp_FDLS, blocklen)
-	SP['fft_audiolpf'] = FiltAPost #* FiltAPost * FiltAPost
+	SysParams['fft_audiolpf'] = FiltAPost #* FiltAPost * FiltAPost
 
 	[Baudl_FDLS, Aaudl_FDLS] = fdls.FDLS_fromfilt(Baudl, Aaudl, forder, forderd, 0)
 	[Baudr_FDLS, Aaudr_FDLS] = fdls.FDLS_fromfilt(Baudr, Aaudr, forder, forderd, 0)
@@ -314,8 +318,8 @@ def prepare_audio_filters():
 	Faudl = np.fft.fft(Baudl_FDLS, blocklen)
 	Faudr = np.fft.fft(Baudr_FDLS, blocklen)
 
-	SP['fft_audio_left'] = Faudrf * Faudl * fft_hilbert
-	SP['fft_audio_right'] = Faudrf * Faudr * fft_hilbert
+	SysParams['fft_audio_left'] = Faudrf * Faudl * fft_hilbert
+	SysParams['fft_audio_right'] = Faudrf * Faudr * fft_hilbert
 
 def prepare_audio_cuda():
 	cs['plan1'] = fft.Plan(blocklen, np.float32, np.complex64)
@@ -349,9 +353,9 @@ def prepare_audio_cuda():
 	cs['doanglediff_mac'] = mod.get_function("anglediff_mac")
 	cs['doaudioscale'] = mod.get_function("audioscale")
 	
-	cs['filt_audiolpf'] = FFTtoGPU(SP['fft_audiolpf'])
-	cs['filt_audio_left'] = FFTtoGPU(SP['fft_audio_left'])
-	cs['filt_audio_right'] = FFTtoGPU(SP['fft_audio_right'])
+	cs['filt_audiolpf'] = FFTtoGPU(SysParams['fft_audiolpf'])
+	cs['filt_audio_left'] = FFTtoGPU(SysParams['fft_audio_left'])
+	cs['filt_audio_right'] = FFTtoGPU(SysParams['fft_audio_right'])
 
 def process_audio_cuda(data):
 	global cs, csa, csa_first
@@ -372,8 +376,8 @@ def process_audio_cuda(data):
 	fft.ifft(cs['left_fft1'], cs['fm_left'], cs['plan1i'], True)
 	fft.ifft(cs['right_fft1'], cs['fm_right'], cs['plan1i'], True)
 
-	cs['doanglediff_mac'](cs['left_clipped'], cs['fm_left'], np.float32((afreq_hz / 1.0 / np.pi)), np.float32(-SP['audio_lfreq']), block=(1024,1,1), grid=(ablocklenk,1))
-	cs['doanglediff_mac'](cs['right_clipped'], cs['fm_right'], np.float32((afreq_hz / 1.0 / np.pi)), np.float32(-SP['audio_rfreq']), block=(1024,1,1), grid=(ablocklenk,1))
+	cs['doanglediff_mac'](cs['left_clipped'], cs['fm_left'], np.float32((afreq_hz / 1.0 / np.pi)), np.float32(-SysParams['audio_lfreq']), block=(1024,1,1), grid=(ablocklenk,1))
+	cs['doanglediff_mac'](cs['right_clipped'], cs['fm_right'], np.float32((afreq_hz / 1.0 / np.pi)), np.float32(-SysParams['audio_rfreq']), block=(1024,1,1), grid=(ablocklenk,1))
 
 	fft.fft(cs['left_clipped'], cs['left_fft2'], cs['plan2'])
 	fft.fft(cs['right_clipped'], cs['right_fft2'], cs['plan2'])
@@ -447,7 +451,7 @@ def main():
 	global hz_ire_scale, minn
 	global f_deemp_b, f_deemp_a
 
-	global SP, FiltPost, FiltPost_GPU
+	global SysParams, FiltPost, FiltPost_GPU
 
 	global Bcutr, Acutr
 	
@@ -455,7 +459,7 @@ def main():
 
 	global blocklen, blocklenk
 
-	outfile = sys.stdout #.buffer
+	outfile = sys.stdout.buffer
 	audio_mode = 0 
 	CAV = 0
 
@@ -468,9 +472,9 @@ def main():
 
 	for o, a in optlist:
 		if o == "-d":
-			SP['deemp'][0] = np.double(a)
+			SysParams['deemp'][0] = np.double(a)
 		if o == "-D":
-			SP['deemp'][1] = np.double(a)
+			SysParams['deemp'][1] = np.double(a)
 		if o == "-a":
 			audio_mode = 1	
 #			blocklen = blocklen * 2 
@@ -480,12 +484,8 @@ def main():
 		if o == "-A":
 			CAV = 1
 			Inner = 1
-#		if o == "-h":
-			# use full spec deemphasis filter - will result in overshoot, but higher freq resonse
-#			f_deemp_b = [3.778720395899611e-01, -2.442559208200777e-01]
-#			f_deemp_a = [1.000000000000000e+00, -8.663838812301168e-01]
 		if o == "-C":
-			Bcutr, Acutr = sps.butter(1, [2.50/(freq/2), 3.26/(freq/2)], btype='bandstop')
+			#Bcutr, Acutr = sps.butter(1, [2.50/(freq/2), 3.26/(freq/2)], btype='bandstop')
 			Bcutr, Acutr = sps.butter(1, [2.68/(freq/2), 3.08/(freq/2)], btype='bandstop')
 		if o == "-w":
 			hz_ire_scale = (9360000 - 8100000) / 100
@@ -494,6 +494,7 @@ def main():
 			f_seconds = True
 		if o == "-s":
 			ia = int(a)
+			# XXX: redo this all for sysparams
 			if ia == 0:
 				lowpass_filter_b, lowpass_filter_a = sps.butter(5, (4.2/(freq/2)), 'low')
 			if ia == 1:	
@@ -501,8 +502,8 @@ def main():
 			if ia == 2:	
 				lowpass_filter_b, lowpass_filter_a = sps.butter(6, (4.6/(freq/2)), 'low')
 				lowpass_filter_b, lowpass_filter_a = sps.butter(6, (4.6/(freq/2)), 'low')
-				SP['deemp_t1'] = .825
-				SP['deemp_t2'] = 2.35
+				SysParams['deemp_t1'] = .825
+				SysParams['deemp_t2'] = 2.35
 			if ia == 3:	
 				# high frequency response - and ringing.  choose your poison ;)	
 				lowpass_filter_b, lowpass_filter_a = sps.butter(10, (5.0/(freq/2)), 'low')
@@ -581,7 +582,7 @@ def main():
 			outfile.write(output)
 		else:
 			output_16 = process_video_cuda(indata)
-			outfile.write(output_16)
+			outfile.write(output_16.tobytes())
 			nread = len(output_16)
 			
 			total_read += nread
