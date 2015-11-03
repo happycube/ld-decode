@@ -11,6 +11,8 @@ import matplotlib.pyplot as plt
 import sys
 import getopt
 
+from datetime import  datetime
+
 import fft8 as fft8 
 import fdls as fdls
 import ld_utils as utils
@@ -21,7 +23,7 @@ import pycuda.gpuarray as gpuarray
 from pycuda.compiler import SourceModule
 
 import skcuda.fft as fft
-import skcuda.misc as misc
+#import skcuda.misc as misc
     
 import cProfile
 
@@ -36,7 +38,7 @@ freq_hz = freq * 1000000.0
 afreq = freq / 8.0
 afreq_hz = afreq * 1000000.0
 
-blocklenk = 64
+blocklenk = 512 
 blocklen = (blocklenk * 1024)  
 
 ablocklenk = blocklenk//4 
@@ -582,7 +584,8 @@ def main():
 			outfile.write(output)
 		else:
 			output_16 = process_video_cuda(indata)
-			outfile.write(output_16.tobytes())
+			#outfile.write(output_16.tobytes())
+			outfile.write(output_16)
 			nread = len(output_16)
 			
 			total_read += nread
@@ -603,7 +606,7 @@ def main():
 
 
 if __name__ == "__main__":
-#	cProfile.run('main()')
-	main()
+	cProfile.run('main()')
+	#main()
 
 
