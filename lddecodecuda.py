@@ -160,10 +160,6 @@ def prepare_video_filters(SP):
 	# if AC3:
 	#SP['f_arightcut'] = sps.butter(1, [(2650000)/(freq_hz/2), (3150000)/(freq_hz/2)], btype='bandstop')
 
-	# prepare for FFT: convert above filters to FIR using FDLS techniques first
-	forder = 256 
-	forderd = 0 
-
 	Fbpf = filttofft(SP['f_videorf_bpf'], blocklen)
 	Femp = filttofft(SP['f_emp'], blocklen)
 	Fdeemp = filttofft(SP['f_deemp'], blocklen)
@@ -271,9 +267,6 @@ csa_first = True
 csa = {} 
 
 def prepare_audio_filters():
-	forder = 768
-	forderd = 0 
-
 	tf_rangel = 100000
 	tf_rangeh = 170000
 
