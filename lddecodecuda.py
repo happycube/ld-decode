@@ -14,7 +14,6 @@ import getopt
 from datetime import  datetime
 
 import fft8 as fft8 
-import fdls as fdls
 import ld_utils as utils
 
 import pycuda.autoinit
@@ -43,12 +42,6 @@ blocklen = (blocklenk * 1024)
 
 ablocklenk = blocklenk//4 
 ablocklen = (ablocklenk * 1024)  
-
-lowpass_filter_b, lowpass_filter_a = sps.butter(8, (4.5/(freq/2)), 'low')
-
-# stubs for later
-f_deemp_b = []
-f_deemp_a = []
 
 # These are NTSC defaults.  They may be reprogrammed before starting
 SysParams_NTSC = {
@@ -139,6 +132,9 @@ Inner = 0
 cs_first = True
 cs = {} 
 
+def filttofft(filt, blocklen):
+	return sps.freqz(filt[0], filt[1], blocklen, whole=1)[1]
+
 def prepare_video_filters(SP):
 	# TODO:  test these CLV+innerCAV parameters.  Should be same on PAL+NTSC 
 	t1 = 25
@@ -155,11 +151,11 @@ def prepare_video_filters(SP):
 		SP['f_aright_stop'] = sps.butter(1, [(SP['audio_rfreq'] - 750000)/(freq_hz/2), (SP['audio_rfreq'] + 750000)/(freq_hz/2)], btype='bandstop')
 
 	# standard post-demod LPF
-	lowpass_filter_b, lowpass_filter_a = sps.butter(SP['vlpf_order'], SP['vlpf_freq']/(freq_hz/2), 'low')
+	f_lowpass_pd = sps.butter(SP['vlpf_order'], SP['vlpf_freq']/(freq_hz/2), 'low')
 	
 	# post-demod deemphasis filter
 	[tf_b, tf_a] = sps.zpk2tf(-SP['deemp'][1]*(10**-8), -SP['deemp'][0]*(10**-8), SP['deemp'][0] / SP['deemp'][1])
-	SP['f_deemp'] = sps.bilinear(tf_b, tf_a, 1/(freq_hz/2))
+	SP['f_deemp'] = sps.bilinear(tf_b, tf_a, 1.0/(freq_hz/2))
 
 	# if AC3:
 	#SP['f_arightcut'] = sps.butter(1, [(2650000)/(freq_hz/2), (3150000)/(freq_hz/2)], btype='bandstop')
@@ -168,28 +164,22 @@ def prepare_video_filters(SP):
 	forder = 256 
 	forderd = 0 
 
-	[Bbpf_FDLS, Abpf_FDLS] = fdls.FDLS_fromfilt(SP['f_videorf_bpf'][0], SP['f_videorf_bpf'][1], forder, forderd, 0, phasemult = 1.00)
-	[Bemp_FDLS, Aemp_FDLS] = fdls.FDLS_fromfilt(SP['f_emp'][0], SP['f_emp'][1], forder, forderd, 0)
-	[Bdeemp_FDLS, Adeemp_FDLS] = fdls.FDLS_fromfilt(SP['f_deemp'][0], SP['f_deemp'][1], forder, forderd, 0)
-	[Bplpf_FDLS, Aplpf_FDLS] = fdls.FDLS_fromfilt(lowpass_filter_b, lowpass_filter_a, forder, forderd, 0)
+	Fbpf = filttofft(SP['f_videorf_bpf'], blocklen)
+	Femp = filttofft(SP['f_emp'], blocklen)
+	Fdeemp = filttofft(SP['f_deemp'], blocklen)
 
-	Fbpf = np.fft.fft(Bbpf_FDLS, blocklen)
-	Femp = np.fft.fft(Bemp_FDLS, blocklen)
+	Fplpf = filttofft(f_lowpass_pd, blocklen)
 
 	SP['fft_video'] = Fbpf * fft_hilbert
 
 	if SP['analog_audio'] == True:
-		[Bcutl_FDLS, Acutl_FDLS] = fdls.FDLS_fromfilt(SP['f_aleft_stop'][0], SP['f_aleft_stop'][1], forder, forderd, 0, phasemult = 1.00)
-		[Bcutr_FDLS, Acutr_FDLS] = fdls.FDLS_fromfilt(SP['f_aright_stop'][0], SP['f_aright_stop'][1], forder, forderd, 0, phasemult = 1.00)
-		Fcutl = np.fft.fft(Bcutl_FDLS, blocklen)
-		Fcutr = np.fft.fft(Bcutr_FDLS, blocklen)
+		Fcutl = filttofft(SP['f_aleft_stop'], blocklen)
+		Fcutr = filttofft(SP['f_aright_stop'], blocklen)
 		SP['fft_video'] *= (Fcutl * Fcutr)
 	
 	SP['fft_video_inner'] = SP['fft_video'] * Femp
 
 	# Post processing:  lowpass filter + deemp
-	Fplpf = np.fft.fft(Bplpf_FDLS, blocklen)
-	Fdeemp = np.fft.fft(Bdeemp_FDLS, blocklen)
 	SP['fft_post'] = Fplpf * Fdeemp	
 
 	# determine freq offset and mult for output stage	
@@ -286,39 +276,29 @@ def prepare_audio_filters():
 
 	tf_rangel = 100000
 	tf_rangeh = 170000
+
 	# audio filters
 	tf = SysParams['audio_lfreq']
-	N, Wn = sps.buttord([(tf-tf_rangel) / (freq_hz / 2.0), (tf+tf_rangel) / (freq_hz / 2.0)], [(tf-tf_rangeh) / (freq_hz / 2.0), (tf+tf_rangeh)/(freq_hz / 2.0)], 1, 15)
 	N, Wn = sps.buttord([(tf-tf_rangel) / (freq_hz / 2.0), (tf+tf_rangel) / (freq_hz / 2.0)], [(tf-tf_rangeh) / (freq_hz / 2.0), (tf+tf_rangeh)/(freq_hz / 2.0)], 5, 15)
-	Baudl, Aaudl = sps.butter(N, Wn, btype='bandpass')
+	f_audl = sps.butter(N, Wn, btype='bandpass')
 
 	tf = SysParams['audio_rfreq']
-	N, Wn = sps.buttord([(tf-tf_rangel) / (freq_hz / 2.0), (tf+tf_rangel) / (freq_hz / 2.0)], [(tf-tf_rangeh) / (freq_hz / 2.0), (tf+tf_rangeh)/(freq_hz / 2.0)], 1, 15)
 	N, Wn = sps.buttord([(tf-tf_rangel) / (freq_hz / 2.0), (tf+tf_rangel) / (freq_hz / 2.0)], [(tf-tf_rangeh) / (freq_hz / 2.0), (tf+tf_rangeh)/(freq_hz / 2.0)], 5, 15)
-	Baudr, Aaudr = sps.butter(N, Wn, btype='bandpass')
+	f_audr = sps.butter(N, Wn, btype='bandpass')
 
 	N, Wn = sps.buttord(0.016 / (afreq / 2.0), 0.024 / (afreq / 2.0), 5, 15) 
-	audiolp_filter_b, audiolp_filter_a = sps.butter(N, Wn)
+	f_audiolp = sps.butter(N, Wn)
 	
-#	audiolp_filter_b = sps.firwin(257, .020 / (afreq / 2.0))
-#	audiolp_filter_a = [1.0]
-
 	N, Wn = sps.buttord(3.1 / (freq / 2.0), 3.5 / (freq / 2.0), 1, 20) 
-	audiorf_filter_b, audiorf_filter_a = sps.butter(N, Wn, btype='lowpass')
+	f_audiorf = sps.butter(N, Wn, btype='lowpass')
 
-	[Baudrf_FDLS, Aaudrf_FDLS] = fdls.FDLS_fromfilt(audiorf_filter_b, audiorf_filter_a, forder, forderd, 0)
-	SysParams['fft_audiorf_lpf'] = Faudrf = np.fft.fft(Baudrf_FDLS, blocklen)
+	SysParams['fft_audiorf_lpf'] = Faudrf = filttofft(SP['f_audiorf'], blocklen) 
 
-	[Baudiolp_FDLS, Aaudiolp_FDLS] = fdls.FDLS_fromfilt(audiolp_filter_b, audiolp_filter_a, forder, forderd, 0)
-
-	FiltAPost = np.fft.fft(Baudiolp_FDLS, blocklen)
+	FiltAPost = filttofft(SP['f_audiolp'], blocklen) 
 	SysParams['fft_audiolpf'] = FiltAPost #* FiltAPost * FiltAPost
 
-	[Baudl_FDLS, Aaudl_FDLS] = fdls.FDLS_fromfilt(Baudl, Aaudl, forder, forderd, 0)
-	[Baudr_FDLS, Aaudr_FDLS] = fdls.FDLS_fromfilt(Baudr, Aaudr, forder, forderd, 0)
-
-	Faudl = np.fft.fft(Baudl_FDLS, blocklen)
-	Faudr = np.fft.fft(Baudr_FDLS, blocklen)
+	Faudl = filttofft(SP['f_audl'], blocklen) 
+	Faudr = filttofft(SP['f_audr'], blocklen) 
 
 	SysParams['fft_audio_left'] = Faudrf * Faudl * fft_hilbert
 	SysParams['fft_audio_right'] = Faudrf * Faudr * fft_hilbert
@@ -449,9 +429,7 @@ def test():
 	exit()
 
 def main():
-	global lowpass_filter_b, lowpass_filter_a 
 	global hz_ire_scale, minn
-	global f_deemp_b, f_deemp_a
 
 	global SysParams, FiltPost, FiltPost_GPU
 
@@ -497,6 +475,7 @@ def main():
 		if o == "-s":
 			ia = int(a)
 			# XXX: redo this all for sysparams
+			'''
 			if ia == 0:
 				lowpass_filter_b, lowpass_filter_a = sps.butter(5, (4.2/(freq/2)), 'low')
 			if ia == 1:	
@@ -519,8 +498,7 @@ def main():
 				lowpass_filter_b, lowpass_filter_a = sps.butter(6, (4.4/(freq/2)), 'low')
 			if ia == 62:	
 				lowpass_filter_b, lowpass_filter_a = sps.butter(6, (4.7/(freq/2)), 'low')
-
-	# set up deemp filter
+			'''
 
 	#test()
 
