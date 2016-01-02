@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!python
 
 #from __future__ import division
 #from __future__ import print_function
@@ -67,6 +67,32 @@ SysParams_NTSC = {
 	'vlpf_order': 5		# butterworth filter order
 }
 
+SysParams_PAL = {
+	'analog_audio': False, # not true for later PAL
+	'audio_lfreq': 683593,
+	'audio_rfreq': 1066400,
+
+	'fsc_mhz': 4.43361875,
+
+	# video frequencies 
+	#'videorf_sync': 7600000,
+	'videorf_0ire': 7100000,
+	'videorf_100ire': 8000000,
+
+	'ire_min': -95,
+	'ire_max': 145,
+
+	# changeable defaults
+	'deemp': (.7, 4.0),
+
+	# XXX: guessing here!
+	'vbpf': (2200000, 11000000),
+
+	'vlpf_freq': 5500000,	# in mhz
+	'vlpf_order': 8		# butterworth filter order
+}
+
+# support reloading/rerunning from ipython
 try:
 	tmp = SysParams['fsc_mhz']
 except:
@@ -424,9 +450,11 @@ def main():
 
 	f_seconds = False 
 
-	optlist, cut_argv = getopt.getopt(sys.argv[1:], "d:D:hLCaAwSs:")
+	optlist, cut_argv = getopt.getopt(sys.argv[1:], "Pd:D:hLCaAwSs:")
 
 	for o, a in optlist:
+		if o == "-P":
+			SysParams = copy.deepcopy(SysParams_PAL)
 		if o == "-d":
 			SysParams['deemp'][0] = np.double(a)
 		if o == "-D":
