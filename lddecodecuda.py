@@ -132,8 +132,8 @@ Inner = 0
 cs_first = True
 cs = {} 
 
-def filttofft(filt, blocklen):
-	return sps.freqz(filt[0], filt[1], blocklen, whole=1)[1]
+def filtfft(filt, blen = blocklen):
+	return sps.freqz(filt[0], filt[1], blen, whole=1)[1]
 
 def prepare_video_filters(SP):
 	# TODO:  test these CLV+innerCAV parameters.  Should be same on PAL+NTSC 
@@ -141,36 +141,26 @@ def prepare_video_filters(SP):
 	t2 = 13.75
 	
 	[tf_b, tf_a] = sps.zpk2tf(-t2*(10**-8), -t1*(10**-8), t1 / t2)
-	SP['f_emp'] = sps.bilinear(tf_b, tf_a, 1/(freq_hz/2))
+	Femp = filtfft(sps.bilinear(tf_b, tf_a, 1/(freq_hz/2)))
 
 	# RF BPF and analog audio cut filters
-	SP['f_videorf_bpf'] = sps.butter(1, [SP['vbpf'][0]/(freq_hz/2), SP['vbpf'][1]/(freq_hz/2)], btype='bandpass')
-
-	if SP['analog_audio'] == True:
-		SP['f_aleft_stop'] = sps.butter(1, [(SP['audio_lfreq'] - 750000)/(freq_hz/2), (SP['audio_lfreq'] + 750000)/(freq_hz/2)], btype='bandstop')
-		SP['f_aright_stop'] = sps.butter(1, [(SP['audio_rfreq'] - 750000)/(freq_hz/2), (SP['audio_rfreq'] + 750000)/(freq_hz/2)], btype='bandstop')
+	Fbpf = filtfft(sps.butter(1, [SP['vbpf'][0]/(freq_hz/2), SP['vbpf'][1]/(freq_hz/2)], btype='bandpass'))
 
 	# standard post-demod LPF
-	f_lowpass_pd = sps.butter(SP['vlpf_order'], SP['vlpf_freq']/(freq_hz/2), 'low')
+	Fplpf = filtfft(sps.butter(SP['vlpf_order'], SP['vlpf_freq']/(freq_hz/2), 'low'))
 	
 	# post-demod deemphasis filter
 	[tf_b, tf_a] = sps.zpk2tf(-SP['deemp'][1]*(10**-8), -SP['deemp'][0]*(10**-8), SP['deemp'][0] / SP['deemp'][1])
-	SP['f_deemp'] = sps.bilinear(tf_b, tf_a, 1.0/(freq_hz/2))
-
-	# if AC3:
-	#SP['f_arightcut'] = sps.butter(1, [(2650000)/(freq_hz/2), (3150000)/(freq_hz/2)], btype='bandstop')
-
-	Fbpf = filttofft(SP['f_videorf_bpf'], blocklen)
-	Femp = filttofft(SP['f_emp'], blocklen)
-	Fdeemp = filttofft(SP['f_deemp'], blocklen)
-
-	Fplpf = filttofft(f_lowpass_pd, blocklen)
+	Fdeemp = filtfft(sps.bilinear(tf_b, tf_a, 1.0/(freq_hz/2)))
 
 	SP['fft_video'] = Fbpf * fft_hilbert
 
 	if SP['analog_audio'] == True:
-		Fcutl = filttofft(SP['f_aleft_stop'], blocklen)
-		Fcutr = filttofft(SP['f_aright_stop'], blocklen)
+		Fcutl = filtfft(sps.butter(1, [(SP['audio_lfreq'] - 750000)/(freq_hz/2), (SP['audio_lfreq'] + 750000)/(freq_hz/2)], btype='bandstop'))
+		Fcutr = filtfft(sps.butter(1, [(SP['audio_rfreq'] - 750000)/(freq_hz/2), (SP['audio_rfreq'] + 750000)/(freq_hz/2)], btype='bandstop'))
+		# if AC3:
+		#SP['f_arightcut'] = sps.butter(1, [(2650000)/(freq_hz/2), (3150000)/(freq_hz/2)], btype='bandstop')
+
 		SP['fft_video'] *= (Fcutl * Fcutr)
 	
 	SP['fft_video_inner'] = SP['fft_video'] * Femp
@@ -253,7 +243,6 @@ def process_video_cuda(data):
 	return output_16[chop:len(output_16)-chop]
 
 # graph for debug
-#	output = (sps.lfilter(f_deemp_b, f_deemp_a, output)[128:len(output)]) / deemp_corr
 
 #	plt.plot(cs['postlpf'].get()[5000:7500])
 	plt.plot(output_16[5000:7000])
@@ -273,25 +262,19 @@ def prepare_audio_filters():
 	# audio filters
 	tf = SysParams['audio_lfreq']
 	N, Wn = sps.buttord([(tf-tf_rangel) / (freq_hz / 2.0), (tf+tf_rangel) / (freq_hz / 2.0)], [(tf-tf_rangeh) / (freq_hz / 2.0), (tf+tf_rangeh)/(freq_hz / 2.0)], 5, 15)
-	f_audl = sps.butter(N, Wn, btype='bandpass')
+	Faudl = filtfft(sps.butter(N, Wn, btype='bandpass')) 
 
 	tf = SysParams['audio_rfreq']
 	N, Wn = sps.buttord([(tf-tf_rangel) / (freq_hz / 2.0), (tf+tf_rangel) / (freq_hz / 2.0)], [(tf-tf_rangeh) / (freq_hz / 2.0), (tf+tf_rangeh)/(freq_hz / 2.0)], 5, 15)
-	f_audr = sps.butter(N, Wn, btype='bandpass')
+	Faudr = filtfft(sps.butter(N, Wn, btype='bandpass')) 
 
 	N, Wn = sps.buttord(0.016 / (afreq / 2.0), 0.024 / (afreq / 2.0), 5, 15) 
-	f_audiolp = sps.butter(N, Wn)
+	FiltAPost = filtfft(sps.butter(N, Wn))
 	
 	N, Wn = sps.buttord(3.1 / (freq / 2.0), 3.5 / (freq / 2.0), 1, 20) 
-	f_audiorf = sps.butter(N, Wn, btype='lowpass')
+	SysParams['fft_audiorf_lpf'] = Faudrf = filtfft(sps.butter(N, Wn, btype='lowpass')) 
 
-	SysParams['fft_audiorf_lpf'] = Faudrf = filttofft(SP['f_audiorf'], blocklen) 
-
-	FiltAPost = filttofft(SP['f_audiolp'], blocklen) 
 	SysParams['fft_audiolpf'] = FiltAPost #* FiltAPost * FiltAPost
-
-	Faudl = filttofft(SP['f_audl'], blocklen) 
-	Faudr = filttofft(SP['f_audr'], blocklen) 
 
 	SysParams['fft_audio_left'] = Faudrf * Faudl * fft_hilbert
 	SysParams['fft_audio_right'] = Faudrf * Faudr * fft_hilbert
