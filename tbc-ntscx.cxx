@@ -754,7 +754,7 @@ int find_sync(uint16_t *buf, int len, int tgt = 50, bool debug = false)
 
 //	len -= pad;
 
-	uint16_t clen = 1920;
+	uint16_t clen = tgt * 3;
 	uint16_t *circbuf = new uint16_t[clen];
 
 	memset(circbuf, 0, clen * 2);
@@ -772,7 +772,7 @@ int find_sync(uint16_t *buf, int len, int tgt = 50, bool debug = false)
 			peakloc = i;
 //			cerr << peak << ' ' << peakloc << endl;
 		} else if ((count > tgt) && ((i - peakloc) > pad)) {
-	//		cerr << peak << ' ' << peakloc << ' ' << i - peakloc << endl;
+//			cerr << "sync line at " << i << "len " << count << endl;
 			return peakloc;
 		}
 
