@@ -745,16 +745,16 @@ void DecodeVBI()
 
 // XXX new test code starts here
 
-int find_sync(uint16_t *buf, int len, int tgt = 60)
+int find_sync(uint16_t *buf, int len, int tgt = 50, bool debug = false)
 {
-	const int chunksize = 16, pad = 32;
+	const int pad = 96;
 
 //	uint16_t from_min = ire_to_in(-5), from_max = ire_to_in(12.5);
 	uint16_t to_min = ire_to_in(-45), to_max = ire_to_in(-35);
 
-	len -= chunksize;
+//	len -= pad;
 
-	uint16_t clen = tgt + (chunksize * pad);
+	uint16_t clen = 1920;
 	uint16_t *circbuf = new uint16_t[clen];
 
 	memset(circbuf, 0, clen * 2);
@@ -770,13 +770,93 @@ int find_sync(uint16_t *buf, int len, int tgt = 60)
 		if (count > peak) {
 			peak = count;
 			peakloc = i;
+//			cerr << peak << ' ' << peakloc << endl;
 		} else if ((count > tgt) && ((i - peakloc) > pad)) {
+	//		cerr << peak << ' ' << peakloc << ' ' << i - peakloc << endl;
 			return peakloc;
+		}
+
+		if (debug) {
+			cerr << i << ' ' << buf[i] << ' ' << peak << ' ' << peakloc << ' ' << i - peakloc << endl;
 		}
 	}
 
+	cerr << "not found " << peak << ' ' << peakloc << endl;
+
 	return -1;
 }
+
+int find_vsync(uint16_t *buf, int len)
+{
+	const uint16_t field_len = in_freq * 227.5 * 280;
+
+	if (len < field_len) return -1;
+
+	int pulse_ends[6];
+	int slen = len;
+
+	int loc = 0;
+
+	for (int i = 0; i < 6; i++) {
+		// 32xFSC is *much* shorter, but it shouldn't get confused for an hsync -
+		// and on rotted disks and ones with burst in vsync, this helps
+		pulse_ends[i] = find_sync(&buf[loc], slen, 32 * in_freq);
+
+		cerr << pulse_ends[i] + loc << endl;
+
+		loc += pulse_ends[i];
+		slen = 3840; 
+	}
+
+	return 0;
+}
+
+#if 0
+# first pass - rough vsync detection (optional and may not be used on AVX version)
+
+loc = 0
+#loc = 250000
+field_len = int(FSC * 227.5 * 280)
+
+    else:
+        first_vsync = None
+        last_vsync = None
+
+        vloc = loc + rv - (910 * 8)
+        vcount = 0
+        rv = 0
+        while rv != None:
+            # First pass may return any of the 6 syncs, with padding
+
+            vend = vloc + int(227.5 * 6 * FSC) if vcount == 0 else vloc + int(227.5 * FSC)
+
+    #        rv = find_sync(data[vloc:vend], tgt = (60 * FSC), chunksize=int(16 * FSC), pad = 2)
+            rv = find_sync(data[vloc:vend], tgt = (60 * FSC), chunksize=16, pad = 2)
+            if rv is not None:
+                print('vsync pulse at:', vloc + rv)
+                vcount += 1
+
+                if first_vsync is None:
+                    first_vsync = vloc + rv
+                else:
+                    last_vsync = vloc + rv
+
+                vloc += rv
+
+    first_vsync -= int(127.5 * FSC)  # rewind 1 line so we don't calc the beginning
+
+    presync = data[first_vsync - int(227.5 * FSC * 4.5):first_vsync]
+    postsync = data[last_vsync: last_vsync + int(227.5 * FSC * 4.25)]
+
+    presync_t = np.sum(np.logical_and(presync > IREToRaw(-45), presync < IREToRaw(-35)))
+    postsync_t = np.sum(np.logical_and(postsync > IREToRaw(-45), postsync < IREToRaw(-35)))
+
+    print(first_vsync, last_vsync, presync_t, postsync_t, datetime.now() - ts)
+    
+    loc = last_vsync
+    
+    fields.append((loc, presync_t > postsync_t))
+#endif
 
 double psync[ntsc_iplinei*1200];
 int Process(uint16_t *buf, int len, float *abuf, int alen)
@@ -784,7 +864,11 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 	vector<Line> peaks; 
 	peaks.clear();
 
-	cerr << "peakloc " << find_sync(buf, len, 500) << endl;
+	int firstsync = find_sync(buf, len, 500);
+	cerr << "peakloc " << firstsync << endl;
+
+	//find_vsync(&buf[firstsync - 1920], len - (firstsync - 1920));
+	find_vsync(buf, len);
 
 	memset(frame, 0, sizeof(frame));
 
