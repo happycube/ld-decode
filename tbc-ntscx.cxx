@@ -21,11 +21,11 @@ void aclamp(double *v, int len, double low, double high)
 
 // NTSC properties
 #ifdef FSC10
-const double in_freq = 10.0;	// in FSC.  Must be an even number!
+const double FSC = 10.0;	// in FSC.  Must be an even number!
 #elif defined(FSC4)
-const double in_freq = 4.0;	// in FSC.  Must be an even number!
+const double FSC = 4.0;	// in FSC.  Must be an even number!
 #else
-const double in_freq = 8.0;	// in FSC.  Must be an even number!
+const double FSC = 8.0;	// in FSC.  Must be an even number!
 #endif
 
 #define OUT_FREQ 4
@@ -40,8 +40,8 @@ struct VFormat {
 double shift33 = (+.0 - (1 * (33.0 / 360.0))) * out_freq;
 
 //const double ntsc_uline = 63.5; // usec_
-const int ntsc_iplinei = 227.5 * in_freq; // pixels per line
-const double ntsc_ipline = 227.5 * in_freq; // pixels per line
+const int ntsc_iplinei = 227.5 * FSC; // pixels per line
+const double ntsc_ipline = 227.5 * FSC; // pixels per line
 const double ntsc_opline = 227.5 * out_freq; // pixels per line
 
 const double ntsc_blanklen = 9.2;
@@ -65,7 +65,7 @@ double f_tol = .5;
 
 bool f_diff = false;
 
-bool f_highburst = (in_freq == 4);
+bool f_highburst = (FSC == 4);
 bool f_flip = false;
 int writeonfield = 1;
 
@@ -147,8 +147,8 @@ bool InRange(double v, double l, double h) {
 }
 
 bool InRangeCF(double v, double l, double h) {
-	l *= in_freq;
-	h *= in_freq;
+	l *= FSC;
+	h *= FSC;
 	return ((v > l) && (v < h));
 }
 
@@ -466,7 +466,7 @@ double ProcessLine(uint16_t *buf, vector<Line> &lines, int index, bool recurse =
 	cerr << "final levels " << plevel1 << ' ' << plevel2 << endl;
 
 	// trigger phase re-adjustment if we keep adjusting over 3 pix/line
-	if (fabs(begin - orig_begin) > (in_freq * .375)) {
+	if (fabs(begin - orig_begin) > (FSC * .375)) {
 		offburst++;
 	} else {
 		offburst = 0;
@@ -488,7 +488,7 @@ wrapup:
 		double ire = in_to_ire(v);
 		double o;
 
-		if (in_freq != 4) {
+		if (FSC != 4) {
 			double freq = (ire * ((9300000 - 8100000) / 100)) + 8100000; 
 
 			freq *= lvl_adjust;
@@ -799,21 +799,22 @@ int count_slevel(uint16_t *buf, int begin, int end)
 	return count;
 }
 
+// returns index of end of VSYNC - negative if _ field 
 int find_vsync(uint16_t *buf, int len, int offset = 0)
 {
-	const uint16_t field_len = in_freq * 227.5 * 280;
+	const uint16_t field_len = FSC * 227.5 * 280;
 
 	if (len < field_len) return -1;
 
 	int pulse_ends[6];
 	int slen = len;
 
-	int loc = 0;
+	int loc = offset;
 
 	for (int i = 0; i < 6; i++) {
 		// 32xFSC is *much* shorter, but it shouldn't get confused for an hsync -
 		// and on rotted disks and ones with burst in vsync, this helps
-		int syncend = find_sync(&buf[loc], slen, 32 * in_freq);
+		int syncend = find_sync(&buf[loc], slen, 32 * FSC);
 
 		pulse_ends[i] = syncend + loc;
 		cerr << pulse_ends[i] << endl;
@@ -822,16 +823,16 @@ int find_vsync(uint16_t *buf, int len, int offset = 0)
 		slen = 3840; 
 	}
 
-	int rv = pulse_ends[0];
+	int rv = pulse_ends[5];
 
 	// determine line type
-	int before_end = pulse_ends[0] - (127.5 * in_freq);
-	int before_start = before_end - (227.5 * 4.5 * in_freq);
+	int before_end = pulse_ends[0] - (127.5 * FSC);
+	int before_start = before_end - (227.5 * 4.5 * FSC);
 
 	int pc_before = count_slevel(buf, before_start, before_end);
 	
 	int after_start = pulse_ends[5]; 
-	int after_end = after_start + (227.5 * 4.5 * in_freq);
+	int after_end = after_start + (227.5 * 4.5 * FSC);
 	int pc_after = count_slevel(buf, after_start, after_end); 
 
 	cerr << "beforeafter: " << pulse_ends[0] + offset << ' ' << pulse_ends[5] + offset << ' ' << pc_before << ' ' << pc_after << endl;
@@ -841,20 +842,107 @@ int find_vsync(uint16_t *buf, int len, int offset = 0)
 	return rv;
 }
 
+// returns end of each line, -end if error detected in this phase 
+// (caller responsible for freeing array)
+int * find_hsyncs(uint16_t *buf, int len, int offset, int nlines = 253)
+{
+	// sanity check (XXX: assert!)
+	if (len < (nlines * FSC * 227.5))
+		return NULL;
+
+	int *rv = new int[nlines];
+
+	int loc = offset;
+
+	for (int line = 0; line < nlines; line++) {
+		int syncend = find_sync(&buf[loc], 227.5 * 3 * FSC, 8 * FSC);
+
+		// If it skips a scan line, fake it
+		while ((line > 0) && (line < nlines) && (syncend > (218 * FSC))) {
+			cerr << 'X' << line << ' ' << loc << ' ' << syncend << endl;
+			rv[line] = -(rv[line - 1] + (227.5 * FSC)); 
+			syncend -= (227.5 * FSC);	
+			loc += (227.5 * FSC);
+			line++;  // hackish but should work
+		}
+
+		rv[line] = loc;
+
+		cerr << line << ' ' << loc << ' ' << syncend << endl;
+		loc += syncend + (200 * FSC);
+	}
+
+	return rv;
+}
+
 double psync[ntsc_iplinei*1200];
 int Process(uint16_t *buf, int len, float *abuf, int alen)
 {
-	vector<Line> peaks; 
-	peaks.clear();
-
-	int firstsync = find_sync(buf, len, 500);
-	cerr << "peakloc " << firstsync << endl;
-
-	//find_vsync(&buf[firstsync - 1920], len - (firstsync - 1920));
-	cerr << "findvsync " << find_vsync(buf, len, v_read) << endl;
+	int field = -1; 
+	int offset = 500;
 
 	memset(frame, 0, sizeof(frame));
 
+	while (field < 1) {
+		//find_vsync(&buf[firstsync - 1920], len - (firstsync - 1920));
+		int vs = find_vsync(buf, len, offset);
+
+		bool oddeven = vs > 0;
+		vs = abs(vs);
+		cerr << "findvsync " << oddeven << ' ' << vs << endl;
+
+		if ((oddeven == false) && (field == -1))
+			return vs + (FSC * 227.5 * 240);
+
+		field++;
+
+		// zoom ahead to close to the first full proper sync
+		if (oddeven) {
+			vs = abs(vs) + (750 * FSC);
+		} else {
+			vs = abs(vs) + (871 * FSC);
+		}
+
+		int *hsyncs = find_hsyncs(buf, len, vs);
+
+		for (int line = 0; line < 252; line++) {
+			double linebuf[910];
+			int line1 = abs(hsyncs[line]);
+			int line2 = abs(hsyncs[line + 1]);
+
+			int oline = (line * 2) + (oddeven ? 1 : 0);
+
+			cerr << oline << ' ' << line1 << ' ' << line2 << endl;
+			Scale(&buf[line1], linebuf, 0, (line2 - line1), 910);
+
+			for (int t = 0; t < 844; t++) {
+				double o = linebuf[t];
+
+				if (o > 65535) o = 65535;
+				if (o < 1) o = 1;
+
+				frame[oline][t] = o;
+			}
+		}
+
+		offset = abs(hsyncs[250]);
+
+		cerr << "new offset " << offset << endl;
+
+		free(hsyncs);
+	}
+	frameno++;
+	cerr << "WRITING\n";
+	write(1, frame, sizeof(frame));
+	memset(frame, 0, sizeof(frame));
+
+	return offset;
+}
+
+int oldProcess(uint16_t *buf, int len, float *abuf, int alen)
+{
+	vector<Line> peaks; 
+	peaks.clear();
 	// clear line length filter - will be repopulated with the pre-line 22/273 samples	
 	f_linelen.clear(ntsc_ipline);
 
@@ -903,9 +991,9 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 				}	
 
 				int distance_prev = peaks[lastline + 1].center - peaks[lastline].center;
-				int synctype = (distance_prev > (in_freq * 140)) ? 1 : 2;
+				int synctype = (distance_prev > (FSC * 140)) ? 1 : 2;
 
-				cerr << "P1_" << lastline << ' ' << synctype << ' ' << (in_freq * 140) << ' ' << distance_prev << ' ' << peaks[lastline + 1].center - peaks[lastline].center << endl;
+				cerr << "P1_" << lastline << ' ' << synctype << ' ' << (FSC * 140) << ' ' << distance_prev << ' ' << peaks[lastline + 1].center - peaks[lastline].center << endl;
 	
 				for (int i = firstpeak + 1; (i < peaks.size()) && (firstline == -1); i++) {
 					if ((peaks[i].peak > 0.2) && (peaks[i].peak < 0.75)) firstline = i;
@@ -932,7 +1020,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 		bool canstartsync = false;
 		if ((line < 0) || InRange(line, 262, 274) || InRange(line, 524, 530)) canstartsync = true;
 
-		if (!canstartsync && ((peaks[i].center - peaks[i - 1].center) > (440 * in_freq)) && (peaks[i].center > peaks[i - 1].center)) {
+		if (!canstartsync && ((peaks[i].center - peaks[i - 1].center) > (440 * FSC)) && (peaks[i].center > peaks[i - 1].center)) {
 			// looks like we outright skipped a line because of corruption.  add a new one! 
 			cerr << "LONG " << i << ' ' << peaks[i].center << ' ' << peaks[i].center - peaks[i - 1].center << ' ' << peaks.size() << endl ;
 
@@ -947,7 +1035,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 
 			i--;
 			line--;
-		} else if (!canstartsync && ((peaks[i].center - peaks[i - 1].center) < (207.5 * in_freq)) && (peaks[i].center > peaks[i - 1].center)) {
+		} else if (!canstartsync && ((peaks[i].center - peaks[i - 1].center) < (207.5 * FSC)) && (peaks[i].center > peaks[i - 1].center)) {
 			// recovery routine for if we get a short line due to excessive dropout
  
 			cerr << "SHORT " << i << ' ' << peaks[i].center << ' ' << peaks[i].center - peaks[i - 1].center << ' ' << peaks.size() << endl ;
@@ -983,7 +1071,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 
 			peaks[i].bad = !InRangeCF(peaks[i].endsync - peaks[i].beginsync, 15.5, 18.5);
 
-			double prev_linelen_cf = clamp(prev_linelen / in_freq, 226, 229);
+			double prev_linelen_cf = clamp(prev_linelen / FSC, 226, 229);
 
 			if (!peaks[i - 1].bad) peaks[i].bad |= get_oline(line) > 22 && (!InRangeCF(peaks[i].beginsync - peaks[i-1].beginsync, prev_linelen_cf - f_tol, prev_linelen_cf + f_tol) || !InRangeCF(peaks[i].endsync - peaks[i-1].endsync, prev_linelen_cf - f_tol, prev_linelen_cf + f_tol)); 
 			peaks[i].linenum = line;
@@ -1019,7 +1107,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 			cerr << line << ' ' << i << ' ' << peaks[i].bad << ' ' <<  peaks[i].peak << ' ' << peaks[i].center << ' ' << peaks[i].center - peaks[i-1].center << ' ' << peaks[i].beginsync << ' ' << peaks[i].endsync << ' ' << peaks[i].endsync - peaks[i].beginsync << endl;
 				
 			// XXX:  This is a hack to avoid a crashing condition!
-			if (!((line < 12) && (peaks[i].center - peaks[i-1].center) < (in_freq * 200))) {
+			if (!((line < 12) && (peaks[i].center - peaks[i-1].center) < (FSC * 200))) {
 				ProcessLine(buf, peaks, i); 
 
 				cerr << "PA " << (line / 525.0) + frameno << ' ' << v_read + peaks[i].beginsync << endl;
@@ -1049,7 +1137,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 	return peaks[firstline + 500].center;
 }
 
-bool seven_five = (in_freq == 4);
+bool seven_five = (FSC == 4);
 double low = 65535, high = 0;
 
 double f[vblen];
@@ -1057,7 +1145,7 @@ double f[vblen];
 void autoset(uint16_t *buf, int len, bool fullagc = true)
 {
 	int lowloc = -1;
-	int checklen = (int)(in_freq * 4);
+	int checklen = (int)(FSC * 4);
 
 	if (!fullagc) {
 		low = 65535;
@@ -1072,7 +1160,7 @@ void autoset(uint16_t *buf, int len, bool fullagc = true)
 	for (int i = 0; i < len; i++) {
 		f[i] = f_longsync.feed(buf[i]);
 
-		if ((i > (in_freq * 256)) && (f[i] < low) && (f[i - checklen] < low)) {
+		if ((i > (FSC * 256)) && (f[i] < low) && (f[i - checklen] < low)) {
 			if (f[i - checklen] > f[i]) 
 				low = f[i - checklen];
 			else 
@@ -1081,7 +1169,7 @@ void autoset(uint16_t *buf, int len, bool fullagc = true)
 			lowloc = i;
 		}
 		
-		if ((i > (in_freq * 256)) && (f[i] > high) && (f[i - checklen] > high)) {
+		if ((i > (FSC * 256)) && (f[i] > high) && (f[i - checklen] > high)) {
 			if (f[i - checklen] < f[i]) 
 				high = f[i - checklen];
 			else 
@@ -1099,12 +1187,12 @@ void autoset(uint16_t *buf, int len, bool fullagc = true)
 		int gap = high - low;
 		int nloc;
 
-		for (nloc = lowloc; (nloc > lowloc - (in_freq * 320)) && (f[nloc] < (low + (gap / 8))); nloc--);
+		for (nloc = lowloc; (nloc > lowloc - (FSC * 320)) && (f[nloc] < (low + (gap / 8))); nloc--);
 
-		cerr << nloc << ' ' << (lowloc - nloc) / in_freq << ' ' << f[nloc] << endl;
+		cerr << nloc << ' ' << (lowloc - nloc) / FSC << ' ' << f[nloc] << endl;
 
-		nloc -= (in_freq * 4);
-		cerr << nloc << ' ' << (lowloc - nloc) / in_freq << ' ' << f[nloc] << endl;
+		nloc -= (FSC * 4);
+		cerr << nloc << ' ' << (lowloc - nloc) / FSC << ' ' << f[nloc] << endl;
 	
 		cerr << "old base:scale = " << inbase << ':' << inscale << endl;
 
@@ -1127,7 +1215,7 @@ void autoset(uint16_t *buf, int len, bool fullagc = true)
 int main(int argc, char *argv[])
 {
 	int rv = 0, arv = 0;
-	bool do_autoset = (in_freq == 4);
+	bool do_autoset = (FSC == 4);
 	long long dlen = -1;
 	unsigned char *cinbuf = (unsigned char *)inbuf;
 	unsigned char *cabuf = (unsigned char *)abuf;
@@ -1184,7 +1272,7 @@ int main(int argc, char *argv[])
 		} 
 	} 
 
-	cerr << "freq = " << in_freq << endl;
+	cerr << "freq = " << FSC << endl;
 
 	rv = read(fd, inbuf, vbsize);
 	while ((rv > 0) && (rv < vbsize)) {
