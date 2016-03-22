@@ -748,32 +748,40 @@ void DecodeVBI()
 int find_sync(uint16_t *buf, int len, int tgt = 50, bool debug = false)
 {
 	const int pad = 96;
+	int rv = -1;
 
 //	uint16_t from_min = ire_to_in(-5), from_max = ire_to_in(12.5);
 	const uint16_t to_min = ire_to_in(-45), to_max = ire_to_in(-35);
+	const uint16_t err_min = ire_to_in(-55), err_max = ire_to_in(30);
 
 //	len -= pad;
 
 	uint16_t clen = tgt * 3;
 	uint16_t *circbuf = new uint16_t[clen];
+	uint16_t *circbuf_err = new uint16_t[clen];
 
 	memset(circbuf, 0, clen * 2);
+	memset(circbuf_err, 0, clen * 2);
 
-	int count = 0, peak = 0, peakloc = 0;
+	int count = 0, errcount = 0, peak = 0, peakloc = 0;
 
-	for (int i = 0; i < len; i++) {
+	for (int i = 0; (rv == -1) && (i < len); i++) {
 		int nv = (buf[i] >= to_min) && (buf[i] < to_max);
+		int err = (buf[i] <= err_min) || (buf[i] >= err_max);
 
 		count = count - circbuf[i % clen] + nv;
 		circbuf[i % clen] = nv;	
+		
+		errcount = errcount - circbuf_err[i % clen] + err;
+		circbuf_err[i % clen] = err;	
 
 		if (count > peak) {
 			peak = count;
 			peakloc = i;
-//			cerr << peak << ' ' << peakloc << endl;
 		} else if ((count > tgt) && ((i - peakloc) > pad)) {
-//			cerr << "sync line at " << i << "len " << count << endl;
-			return peakloc;
+			rv = peakloc;
+			
+			if (errcount > 1) rv = -rv;
 		}
 
 		if (debug) {
@@ -781,9 +789,10 @@ int find_sync(uint16_t *buf, int len, int tgt = 50, bool debug = false)
 		}
 	}
 
-	cerr << "not found " << peak << ' ' << peakloc << endl;
+	if (rv == -1) 
+		cerr << "not found " << peak << ' ' << peakloc << endl;
 
-	return -1;
+	return rv;
 }
 
 // This could probably be used for more than just field det, but eh
@@ -814,7 +823,7 @@ int find_vsync(uint16_t *buf, int len, int offset = 0)
 	for (int i = 0; i < 6; i++) {
 		// 32xFSC is *much* shorter, but it shouldn't get confused for an hsync -
 		// and on rotted disks and ones with burst in vsync, this helps
-		int syncend = find_sync(&buf[loc], slen, 32 * FSC);
+		int syncend = abs(find_sync(&buf[loc], slen, 32 * FSC));
 
 		pulse_ends[i] = syncend + loc;
 		cerr << pulse_ends[i] << endl;
@@ -857,6 +866,14 @@ int * find_hsyncs(uint16_t *buf, int len, int offset, int nlines = 253)
 	for (int line = 0; line < nlines; line++) {
 		int syncend = find_sync(&buf[loc], 227.5 * 3 * FSC, 8 * FSC);
 
+		int err_offset = 0;
+		while (syncend < -1) {
+			cerr << "eek " << syncend << ' ';
+			err_offset += (227.5 * FSC);
+			syncend = find_sync(&buf[loc] + err_offset, 227.5 * 3 * FSC, 8 * FSC);
+			cerr << syncend << endl;
+		}
+
 		// If it skips a scan line, fake it
 		while ((line > 0) && (line < nlines) && (syncend > (218 * FSC))) {
 			cerr << 'X' << line << ' ' << loc << ' ' << syncend << endl;
@@ -866,7 +883,7 @@ int * find_hsyncs(uint16_t *buf, int len, int offset, int nlines = 253)
 			line++;  // hackish but should work
 		}
 
-		rv[line] = loc;
+		rv[line] = loc + syncend;
 
 		cerr << line << ' ' << loc << ' ' << syncend << endl;
 		loc += syncend + (200 * FSC);
@@ -904,13 +921,20 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 		}
 
 		int *hsyncs = find_hsyncs(buf, len, vs);
+		bool err[252];	
 
 		for (int line = 0; line < 252; line++) {
+			err[line] = hsyncs[line] < 0;
+			hsyncs[line] = abs(hsyncs[line]);
+		}
+	
+		for (int line = 0; line < 252; line++) {
+			int line1 = hsyncs[line], line2 = hsyncs[line + 1];
 			double linebuf[910];
-			int line1 = abs(hsyncs[line]);
-			int line2 = abs(hsyncs[line + 1]);
 
 			int oline = (line * 2) + (oddeven ? 1 : 0);
+
+			if (err[line] == true) continue;
 
 			cerr << oline << ' ' << line1 << ' ' << line2 << endl;
 			Scale(&buf[line1], linebuf, 0, (line2 - line1), 910);
