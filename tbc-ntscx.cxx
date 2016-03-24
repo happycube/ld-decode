@@ -897,6 +897,29 @@ double * find_hsyncs(uint16_t *buf, int len, int offset, int nlines = 253)
 
 	return rv;
 }
+		
+
+// correct damaged hsyncs by interpolating neighboring lines
+void CorrectDamagedHSyncs(double *hsyncs, bool *err) 
+{
+	for (int line = 0; line < 252; line++) {
+		if (err[line] == false) continue;
+
+		int lprev, lnext;
+
+		for (lprev = line - 1; (err[lprev] == true) && (lprev >= 0); lprev--);
+		for (lnext = line + 1; (err[lnext] == true) && (lnext < 252); lnext++);
+
+		// This shouldn't happen...
+		if ((lprev < 0) || (lprev == 252)) continue;
+
+		cerr << "FIX " << line << ' ' << hsyncs[line] << ' ' << lprev << ' ' << lnext << ' ' ;
+
+		double lavg = (hsyncs[lnext] - hsyncs[lprev]) / (lnext - lprev); 
+		hsyncs[line] = hsyncs[lprev] + (lavg * (line - lprev));
+		cerr << hsyncs[line] << endl;
+	}
+}
 
 double psync[ntsc_iplinei*1200];
 int Process(uint16_t *buf, int len, float *abuf, int alen)
@@ -940,26 +963,54 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 		for (int line = 0; line < 252; line++) {
 			if (err[line] == true) continue;
 
+			double prev = 0, begsync = -1, endsync = -1;
 			const uint16_t tpoint = ire_to_in(-20); 
-
+			
+			// find beginning of hsync
 			f_endsync.clear();
-
-			double prev = 0;
-
-			for (int i = hsyncs[line] - 16; i < hsyncs[line] + 16; i++) {
+			prev = 0;
+			for (int i = hsyncs[line] - (20 * FSC); i < hsyncs[line] - (8 * FSC); i++) {
 				double cur = f_endsync.feed(buf[i]);
 
-				if ((prev < tpoint) && (cur > tpoint)) {
-//					cerr << 'D' << ' ' << line << ' ' << hsyncs[line] << ' ';
+				if ((prev > tpoint) && (cur < tpoint)) {
+//					cerr << 'B' << ' ' << i << ' ' << line << ' ' << hsyncs[line] << ' ';
 					double diff = cur - prev;
-					hsyncs[line] = ((i - 8) + (tpoint - prev) / diff);
+					begsync = ((i - 8) + (tpoint - prev) / diff);
 	
 //					cerr << prev << ' ' << tpoint << ' ' << cur << ' ' << hsyncs[line] << endl;
 					break;
 				}
 				prev = cur;
 			}
+
+			// find end of hsync
+			f_endsync.clear();
+			prev = 0;
+			for (int i = hsyncs[line] - (2 * FSC); i < hsyncs[line] + (2 * FSC); i++) {
+				double cur = f_endsync.feed(buf[i]);
+
+				if ((prev < tpoint) && (cur > tpoint)) {
+//					cerr << 'E' << ' ' << line << ' ' << hsyncs[line] << ' ';
+					double diff = cur - prev;
+					endsync = ((i - 8) + (tpoint - prev) / diff);
+	
+//					cerr << prev << ' ' << tpoint << ' ' << cur << ' ' << hsyncs[line] << endl;
+					break;
+				}
+				prev = cur;
+			}
+
+			cerr << line << ' ' << begsync << ' ' << endsync << ' ' << endsync - begsync << endl;
+
+			if ((!InRangeCF(endsync - begsync, 15.75, 16.5)) || (begsync == -1) || (endsync == -1)) {
+				err[line] = true;
+			} else {
+				hsyncs[line] = endsync;
+			}
 		}
+	
+		// We need semi-correct lines for the next phases	
+		CorrectDamagedHSyncs(hsyncs, err); 
 
 		double phase[252];
 		double tpodd = 0, tpeven = 0;
@@ -997,10 +1048,9 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 
 			if (fieldphase) lphase = !lphase;
 
-			double line1 = hsyncs[line], line2 = hsyncs[line + 1];
-			double line1_125 = line1 + ((line2 - line1) / 8);
+			double line1c = hsyncs[line] + ((hsyncs[line + 1] - hsyncs[line]) * 14.0 / 227.5);
 
-			Scale(buf, linebuf, line1, line1_125, 1820 / 8);
+			Scale(buf, linebuf, hsyncs[line], line1c, 14 * FSC);
 			BurstDetect(linebuf, FSC, 4, lphase, blevel, bphase); 
 //			cerr << line << ' ' << line1 << ' ' << line2 << ' ' << blevel << ' ' << bphase << endl;
 		
@@ -1008,34 +1058,14 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 	
 			hsyncs[line] += bphase;
 
-			double line1a = hsyncs[line], line2a = hsyncs[line] + bphase;
-			double line1a_125 = line1a + ((line2a - line1a) / 8);
-	
-			Scale(buf, linebuf, line1a, line1a_125, 1820 / 8);
+			Scale(buf, linebuf, hsyncs[line], line1c + bphase, 14 * FSC);
 			BurstDetect(linebuf, FSC, 4, lphase, blevel, bphase); 
 
 //			cerr << line << ' ' << line1a << ' ' << line2a << ' ' << blevel << ' ' << bphase << endl;
 		   }
 		}
-       
-		// correct damaged hsyncs by interpolating neighboring lines
-		for (int line = 0; line < 252; line++) {
-			if (err[line] == false) continue;
 
-			int lprev, lnext;
-
-			for (lprev = line - 1; (err[lprev] == true) && (lprev >= 0); lprev--);
-			for (lnext = line + 1; (err[lnext] == true) && (lnext < 252); lnext++);
-
-			// This shouldn't happen...
-			if ((lprev < 0) || (lprev == 252)) continue;
-
-			cerr << "FIX " << line << ' ' << hsyncs[line] << ' ' << lprev << ' ' << lnext << ' ' ;
-
-			double lavg = (hsyncs[lnext] - hsyncs[lprev]) / (lnext - lprev); 
-			hsyncs[line] = hsyncs[lprev] + (lavg * (line - lprev));
-			cerr << hsyncs[line] << endl;
-		}
+		CorrectDamagedHSyncs(hsyncs, err); 
 
 		// final output
 		for (int line = 0; line < 252; line++) {
