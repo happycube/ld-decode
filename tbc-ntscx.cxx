@@ -253,7 +253,7 @@ void ProcessAudio(double frame, long long loc, float *abuf)
 {
 	double time = frame / (30000.0 / 1001.0);
 
-	cerr << "PA " << frame << ' ' << loc << endl;
+//	cerr << "PA " << frame << ' ' << loc << endl;
 	if (afd < 0) return;
 
 	if (prev_time >= 0) {
@@ -613,13 +613,13 @@ int find_vsync(uint16_t *buf, int len, int offset = 0)
 
 // returns end of each line, -end if error detected in this phase 
 // (caller responsible for freeing array)
-double * find_hsyncs(uint16_t *buf, int len, int offset, int nlines = 253)
+bool find_hsyncs(uint16_t *buf, int len, int offset, double *rv, int nlines = 253)
 {
 	// sanity check (XXX: assert!)
 	if (len < (nlines * FSC * 227.5))
-		return NULL;
+		return false;
 
-	double *rv = new double[nlines];
+//	double *rv = new double[nlines];
 
 	int loc = offset;
 
@@ -657,7 +657,7 @@ double * find_hsyncs(uint16_t *buf, int len, int offset, int nlines = 253)
 // correct damaged hsyncs by interpolating neighboring lines
 void CorrectDamagedHSyncs(double *hsyncs, bool *err) 
 {
-	for (int line = 0; line < 252; line++) {
+	for (int line = 1; line < 251; line++) {
 		if (err[line] == false) continue;
 
 		int lprev, lnext;
@@ -680,6 +680,7 @@ double psync[ntsc_iplinei*1200];
 int Process(uint16_t *buf, int len, float *abuf, int alen)
 {
 	double linebuf[1820];
+	double hsyncs[253];
 	int field = -1; 
 	int offset = 500;
 
@@ -705,7 +706,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 			vs = abs(vs) + (871 * FSC);
 		}
 
-		double *hsyncs = find_hsyncs(buf, len, vs);
+		find_hsyncs(buf, len, vs, hsyncs);
 		bool err[252];	
 
 		// find hsyncs (rough alignment)
@@ -757,7 +758,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 
 			cerr << line << ' ' << begsync << ' ' << endsync << ' ' << endsync - begsync << endl;
 
-			if ((!InRangeCF(endsync - begsync, 15.75, 16.5)) || (begsync == -1) || (endsync == -1)) {
+			if ((!InRangeCF(endsync - begsync, 15.75, 17.25)) || (begsync == -1) || (endsync == -1)) {
 				err[line] = true;
 			} else {
 				hsyncs[line] = endsync;
@@ -775,7 +776,11 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 		for (int line = 0; line < 64; line++) {
 			double line1 = hsyncs[line], line2 = hsyncs[line + 1];
 
-			if (err[line] == true) continue;
+			if (err[line] == true) {
+				cerr << "ERR " << line << endl;
+				continue;
+
+			}
 
 			// burst detection/correction
 
@@ -791,7 +796,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 				neven++;
 			}
 	
-//			cerr << line << ' ' << line1 << ' ' << line2 << ' ' << blevel << ' ' << bphase << endl;
+			cerr << "BURST " << line << ' ' << line1 << ' ' << line2 << ' ' << blevel << ' ' << bphase << endl;
 		}
 
 		bool fieldphase = fabs(tpeven / neven) < fabs(tpodd / nodd);
@@ -860,8 +865,6 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 		offset = abs(hsyncs[250]);
 
 		cerr << "new offset " << offset << endl;
-
-		free(hsyncs);
 	}
 
 	if (despackle) Despackle();
