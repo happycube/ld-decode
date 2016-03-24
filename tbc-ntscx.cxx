@@ -126,13 +126,15 @@ inline double CubicInterpolate(uint16_t *y, double x)
 	return p[1] + 0.5 * x*(p[2] - p[0] + x*(2.0*p[0] - 5.0*p[1] + 4.0*p[2] - p[3] + x*(3.0*(p[1] - p[2]) + p[3] - p[0])));
 }
 
-inline void Scale(uint16_t *buf, double *outbuf, double start, double end, double outlen, double offset = 0)
+inline void Scale(uint16_t *buf, double *outbuf, double start, double end, double outlen, int from = 0, int to = -1)
 {
 	double inlen = end - start;
 	double perpel = inlen / outlen; 
 
-	double p1 = start + (offset * perpel);
-	for (int i = 0; i < outlen; i++) {
+	if (to == -1) to = (int)outlen; 
+
+	double p1 = start;
+	for (int i = from; i < to; i++) {
 		int index = (int)p1;
 		if (index < 1) index = 1;
 
@@ -169,31 +171,34 @@ double Δframe_filt[505][(int)(OUT_FREQ * 211)];
 #ifdef FSC10
 Filter f_longsync(f_dsync10);
 Filter f_syncid(f_syncid10);
+Filter f_endsync(f_esync10);
 int syncid_offset = syncid10_offset;
 #elif defined(FSC4)
 Filter f_longsync(f_dsync4);
 Filter f_syncid(f_syncid4);
+Filter f_endsync(f_esync4);
 int syncid_offset = syncid4_offset; 
 #else
 Filter f_longsync(f_dsync);
 Filter f_syncid(f_syncid8);
+Filter f_endsync(f_esync8);
 int syncid_offset = syncid8_offset;
 #endif
 
-bool BurstDetect_New(double *line, int freq, double _loc, bool tgt, double &plevel, double &pphase) 
+bool BurstDetect(double *line, int freq, double _loc, bool tgt, double &plevel, double &pphase) 
 {
-	int len = (28 * freq);
+	int len = (9 * freq);
 	int loc = _loc * freq;
 	int count = 0, cmin = 0;
 	double ptot = 0, tpeak = 0, tmin = 0;
-	double start = 15;
+	double start = 0;
 
 	double phase = 0;
 
 //	cerr << ire_to_in(7) << ' ' << ire_to_in(16) << endl;
-	double highmin = ire_to_in(f_highburst ? 12 : 7);
+	double highmin = ire_to_in(f_highburst ? 11 : 11);
 	double highmax = ire_to_in(f_highburst ? 23 : 22);
-	double lowmin = ire_to_in(f_highburst ? -12 : -7);
+	double lowmin = ire_to_in(f_highburst ? -11 : -11);
 	double lowmax = ire_to_in(f_highburst ? -23 : -22);
 //	cerr << lowmin << ' ' << lowmax << endl;
 
@@ -204,11 +209,11 @@ bool BurstDetect_New(double *line, int freq, double _loc, bool tgt, double &plev
 
 	for (int i = loc + (start * freq); i < loc + len; i++) {
 		if ((line[i] > highmin) && (line[i] < highmax) && (line[i] > line[i - 1]) && (line[i] > line[i + 1])) {
-			double c = round(((i + peakdetect_quad(&line[i - 1])) / 4) + (tgt ? 0.5 : 0)) * 4;
+			double c = round(((i + peakdetect_quad(&line[i - 1])) / freq) + (tgt ? 0.5 : 0)) * freq;
 
 //			cerr << "B " << i + peakdetect_quad(&line[i - 1]) << ' ' << c << endl;
 
-			if (tgt) c -= 2;
+			if (tgt) c -= (freq / 2);
 			phase = (i + peakdetect_quad(&line[i - 1])) - c;
 
 			ptot += phase;
@@ -216,7 +221,7 @@ bool BurstDetect_New(double *line, int freq, double _loc, bool tgt, double &plev
 			tpeak += line[i];
 
 			count++;
-//			cerr << "BDN " << i << ' ' << in_to_ire(line[i]) << ' ' << line[i - 1] << ' ' << line[i] << ' ' << line[i + 1] << ' ' << phase << ' ' << (i + peakdetect_quad(&line[i - 1])) << ' ' << c << ' ' << ptot << endl; 
+		//	cerr << "BDN " << i << ' ' << in_to_ire(line[i]) << ' ' << line[i - 1] << ' ' << line[i] << ' ' << line[i + 1] << ' ' << phase << ' ' << (i + peakdetect_quad(&line[i - 1])) << ' ' << c << ' ' << ptot << endl; 
 		} 
 		else if ((line[i] < lowmin) && (line[i] > lowmax) && (line[i] < line[i - 1]) && (line[i] < line[i + 1])) {
 			cmin++;
@@ -395,8 +400,8 @@ double ProcessLine(uint16_t *buf, vector<Line> &lines, int index, bool recurse =
 		tgt_nphase = ((line + phase + iline) % 2) ? -2 : 0;
 	} 
 
-	bool valid = BurstDetect_New(tout, out_freq, 0, tgt_nphase != 0, plevel1, nphase1); 
-	valid &= BurstDetect_New(tout, out_freq, 228, tgt_nphase != 0, plevel2, nphase2); 
+	bool valid = BurstDetect(tout, out_freq, 0, tgt_nphase != 0, plevel1, nphase1); 
+	valid &= BurstDetect(tout, out_freq, 228, tgt_nphase != 0, plevel2, nphase2); 
 
 	cerr << "levels " << plevel1 << ' ' << plevel2 << " valid " << valid << endl;
 
@@ -404,7 +409,7 @@ double ProcessLine(uint16_t *buf, vector<Line> &lines, int index, bool recurse =
 		begin += prev_offset;
 		end += prev_offset;
 	
-		Scale(buf, tout, begin, end, scale_tgt, shift33); 
+		Scale(buf, tout, begin, end, scale_tgt); // XXX : , shift33); 
 		goto wrapup;
 	}
 
@@ -433,8 +438,8 @@ double ProcessLine(uint16_t *buf, vector<Line> &lines, int index, bool recurse =
 		if (pass) end += nadj2;
 
 		Scale(buf, tout, begin, end, scale_tgt); 
-		BurstDetect_New(tout, out_freq, 0, tgt_nphase != 0, plevel1, nphase1); 
-		BurstDetect_New(tout, out_freq, 228, tgt_nphase != 0, plevel2, nphase2); 
+		BurstDetect(tout, out_freq, 0, tgt_nphase != 0, plevel1, nphase1); 
+		BurstDetect(tout, out_freq, 228, tgt_nphase != 0, plevel2, nphase2); 
 		
 		nadj1 = (nphase1) * 1;
 		nadj2 = (nphase2) * 1;
@@ -853,13 +858,13 @@ int find_vsync(uint16_t *buf, int len, int offset = 0)
 
 // returns end of each line, -end if error detected in this phase 
 // (caller responsible for freeing array)
-int * find_hsyncs(uint16_t *buf, int len, int offset, int nlines = 253)
+double * find_hsyncs(uint16_t *buf, int len, int offset, int nlines = 253)
 {
 	// sanity check (XXX: assert!)
 	if (len < (nlines * FSC * 227.5))
 		return NULL;
 
-	int *rv = new int[nlines];
+	double *rv = new double[nlines];
 
 	int loc = offset;
 
@@ -868,10 +873,10 @@ int * find_hsyncs(uint16_t *buf, int len, int offset, int nlines = 253)
 
 		int err_offset = 0;
 		while (syncend < -1) {
-			cerr << "eek " << syncend << ' ';
+//			cerr << "error found " << syncend << ' ';
 			err_offset += (227.5 * FSC);
 			syncend = find_sync(&buf[loc] + err_offset, 227.5 * 3 * FSC, 8 * FSC);
-			cerr << syncend << endl;
+//			cerr << syncend << endl;
 		}
 
 		// If it skips a scan line, fake it
@@ -884,8 +889,9 @@ int * find_hsyncs(uint16_t *buf, int len, int offset, int nlines = 253)
 		}
 
 		rv[line] = loc + syncend;
+		if (err_offset) rv[line] = -rv[line];
 
-		cerr << line << ' ' << loc << ' ' << syncend << endl;
+		//cerr << line << ' ' << loc << ' ' << syncend << endl;
 		loc += syncend + (200 * FSC);
 	}
 
@@ -895,6 +901,7 @@ int * find_hsyncs(uint16_t *buf, int len, int offset, int nlines = 253)
 double psync[ntsc_iplinei*1200];
 int Process(uint16_t *buf, int len, float *abuf, int alen)
 {
+	double linebuf[1820];
 	int field = -1; 
 	int offset = 500;
 
@@ -920,25 +927,126 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 			vs = abs(vs) + (871 * FSC);
 		}
 
-		int *hsyncs = find_hsyncs(buf, len, vs);
+		double *hsyncs = find_hsyncs(buf, len, vs);
 		bool err[252];	
 
+		// find hsyncs (rough alignment)
 		for (int line = 0; line < 252; line++) {
 			err[line] = hsyncs[line] < 0;
 			hsyncs[line] = abs(hsyncs[line]);
 		}
 	
+		// Determine vsync->0/7.5IRE transition point (TODO: break into function)
 		for (int line = 0; line < 252; line++) {
-			int line1 = hsyncs[line], line2 = hsyncs[line + 1];
-			double linebuf[910];
+			if (err[line] == true) continue;
 
-			int oline = (line * 2) + (oddeven ? 1 : 0);
+			const uint16_t tpoint = ire_to_in(-20); 
+
+			f_endsync.clear();
+
+			double prev = 0;
+
+			for (int i = hsyncs[line] - 16; i < hsyncs[line] + 16; i++) {
+				double cur = f_endsync.feed(buf[i]);
+
+				if ((prev < tpoint) && (cur > tpoint)) {
+//					cerr << 'D' << ' ' << line << ' ' << hsyncs[line] << ' ';
+					double diff = cur - prev;
+					hsyncs[line] = ((i - 8) + (tpoint - prev) / diff);
+	
+//					cerr << prev << ' ' << tpoint << ' ' << cur << ' ' << hsyncs[line] << endl;
+					break;
+				}
+				prev = cur;
+			}
+		}
+
+		double phase[252];
+		double tpodd = 0, tpeven = 0;
+		int nodd = 0, neven = 0; // need to track these to exclude bad lines
+		double blevel = 0, bphase = 0;
+		// detect alignment (undamaged lines only) 
+		for (int line = 0; line < 64; line++) {
+			double line1 = hsyncs[line], line2 = hsyncs[line + 1];
 
 			if (err[line] == true) continue;
 
-			cerr << oline << ' ' << line1 << ' ' << line2 << endl;
-			Scale(&buf[line1], linebuf, 0, (line2 - line1), 910);
+			// burst detection/correction
 
+			Scale(buf, linebuf, line1, line2, 1820);
+			BurstDetect(linebuf, FSC, 4, false, blevel, bphase); 
+			phase[line] = bphase;	
+	
+			if (line % 2) {
+				tpodd += phase[line];
+				nodd++;
+			} else {
+				tpeven += phase[line];
+				neven++;
+			}
+	
+//			cerr << line << ' ' << line1 << ' ' << line2 << ' ' << blevel << ' ' << bphase << endl;
+		}
+
+		bool fieldphase = fabs(tpeven / neven) < fabs(tpodd / nodd);
+		cerr << "PHASES: " << tpeven / neven << ' ' << tpodd / nodd << ' ' << fieldphase << endl; 
+
+		for (int pass = 0; pass < 2; pass++) {
+		   for (int line = 0; line < 252; line++) {
+			bool lphase = ((line % 2) == 0); 
+
+			if (fieldphase) lphase = !lphase;
+
+			double line1 = hsyncs[line], line2 = hsyncs[line + 1];
+			double line1_125 = line1 + ((line2 - line1) / 8);
+
+			Scale(buf, linebuf, line1, line1_125, 1820 / 8);
+			BurstDetect(linebuf, FSC, 4, lphase, blevel, bphase); 
+//			cerr << line << ' ' << line1 << ' ' << line2 << ' ' << blevel << ' ' << bphase << endl;
+		
+			bphase /= (pass + 1);
+	
+			hsyncs[line] += bphase;
+
+			double line1a = hsyncs[line], line2a = hsyncs[line] + bphase;
+			double line1a_125 = line1a + ((line2a - line1a) / 8);
+	
+			Scale(buf, linebuf, line1a, line1a_125, 1820 / 8);
+			BurstDetect(linebuf, FSC, 4, lphase, blevel, bphase); 
+
+//			cerr << line << ' ' << line1a << ' ' << line2a << ' ' << blevel << ' ' << bphase << endl;
+		   }
+		}
+       
+		// correct damaged hsyncs by interpolating neighboring lines
+		for (int line = 0; line < 252; line++) {
+			if (err[line] == false) continue;
+
+			int lprev, lnext;
+
+			for (lprev = line - 1; (err[lprev] == true) && (lprev >= 0); lprev--);
+			for (lnext = line + 1; (err[lnext] == true) && (lnext < 252); lnext++);
+
+			// This shouldn't happen...
+			if ((lprev < 0) || (lprev == 252)) continue;
+
+			cerr << "FIX " << line << ' ' << hsyncs[line] << ' ' << lprev << ' ' << lnext << ' ' ;
+
+			double lavg = (hsyncs[lnext] - hsyncs[lprev]) / (lnext - lprev); 
+			hsyncs[line] = hsyncs[lprev] + (lavg * (line - lprev));
+			cerr << hsyncs[line] << endl;
+		}
+
+		// final output
+		for (int line = 0; line < 252; line++) {
+			double line1 = hsyncs[line], line2 = hsyncs[line + 1];
+			int oline = (line * 2) + (oddeven ? 0 : 1);
+	
+//			cerr << "S " << line1 << ' ' << line2 << endl;
+			Scale(buf, linebuf, line1, line2, 910);
+
+		//	if (err[line]) continue;
+	
 			for (int t = 0; t < 844; t++) {
 				double o = linebuf[t];
 
