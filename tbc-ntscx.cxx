@@ -1012,10 +1012,10 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 		// We need semi-correct lines for the next phases	
 		CorrectDamagedHSyncs(hsyncs, err); 
 
-		double phase[252];
+		double blevel[252], phase[252];
 		double tpodd = 0, tpeven = 0;
 		int nodd = 0, neven = 0; // need to track these to exclude bad lines
-		double blevel = 0, bphase = 0;
+		double bphase = 0;
 		// detect alignment (undamaged lines only) 
 		for (int line = 0; line < 64; line++) {
 			double line1 = hsyncs[line], line2 = hsyncs[line + 1];
@@ -1025,7 +1025,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 			// burst detection/correction
 
 			Scale(buf, linebuf, line1, line2, 1820);
-			BurstDetect(linebuf, FSC, 4, false, blevel, bphase); 
+			BurstDetect(linebuf, FSC, 4, false, blevel[line], bphase); 
 			phase[line] = bphase;	
 	
 			if (line % 2) {
@@ -1045,21 +1045,24 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 		for (int pass = 0; pass < 2; pass++) {
 		   for (int line = 0; line < 252; line++) {
 			bool lphase = ((line % 2) == 0); 
-
 			if (fieldphase) lphase = !lphase;
 
 			double line1c = hsyncs[line] + ((hsyncs[line + 1] - hsyncs[line]) * 14.0 / 227.5);
 
 			Scale(buf, linebuf, hsyncs[line], line1c, 14 * FSC);
-			BurstDetect(linebuf, FSC, 4, lphase, blevel, bphase); 
+			BurstDetect(linebuf, FSC, 4, lphase, blevel[line], bphase); 
 //			cerr << line << ' ' << line1 << ' ' << line2 << ' ' << blevel << ' ' << bphase << endl;
 		
 			bphase /= (pass + 1);
-	
-			hsyncs[line] += bphase;
+
+			if ((bphase >= -FSC) and (bphase <= FSC)) {// Block NaN	
+				hsyncs[line] += bphase;
+			} else {
+				err[line] = true;
+			}
 
 			Scale(buf, linebuf, hsyncs[line], line1c + bphase, 14 * FSC);
-			BurstDetect(linebuf, FSC, 4, lphase, blevel, bphase); 
+			BurstDetect(linebuf, FSC, 4, lphase, blevel[line], bphase); 
 
 //			cerr << line << ' ' << line1a << ' ' << line2a << ' ' << blevel << ' ' << bphase << endl;
 		   }
@@ -1070,14 +1073,25 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 		// final output
 		for (int line = 0; line < 252; line++) {
 			double line1 = hsyncs[line], line2 = hsyncs[line + 1];
-			int oline = (line * 2) + (oddeven ? 0 : 1);
-	
+			int oline = 4 + (line * 2) + (oddeven ? 0 : 1);
+
+			int pt = 3 - 16;	
 //			cerr << "S " << line1 << ' ' << line2 << endl;
-			Scale(buf, linebuf, line1, line2, 910);
+			Scale(buf, linebuf, line1 + pt, line2 + pt, 910);
 
 		//	if (err[line]) continue;
 	
-			for (int t = 0; t < 844; t++) {
+			bool lphase = ((line % 2) == 0); 
+			if (fieldphase) lphase = !lphase;
+			frame[oline][0] = (lphase == 0) ? 32768 : 16384; 
+			frame[oline][1] = blevel[line];
+
+			if (err[line]) {
+               			frame[oline][3] = frame[oline][5] = 65000;
+			        frame[oline][4] = frame[oline][6] = 0;
+			}
+
+			for (int t = 4; t < 844; t++) {
 				double o = linebuf[t];
 
 				if (o > 65535) o = 65535;
