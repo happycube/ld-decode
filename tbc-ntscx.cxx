@@ -1080,6 +1080,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 			Scale(buf, linebuf, line1 + pt, line2 + pt, 910);
 
 		//	if (err[line]) continue;
+			ProcessAudio((line / 525) + frameno + (field * .5), v_read + hsyncs[line], abuf); 
 	
 			bool lphase = ((line % 2) == 0); 
 			if (fieldphase) lphase = !lphase;
@@ -1107,6 +1108,12 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 
 		free(hsyncs);
 	}
+
+	if (despackle) Despackle();
+
+	// Decode VBI data
+	DecodeVBI();
+
 	frameno++;
 	cerr << "WRITING\n";
 	write(1, frame, sizeof(frame));
