@@ -29,10 +29,15 @@ tbc-pal: tbc-pal.cxx ld-decoder.h deemp.h
 
 tbc-ntsc: tbc-ntsc.cxx ld-decoder.h deemp.h
 	clang++ -std=c++11  -g -Wall $(CFLAGS) -o tbc-ntsc tbc-ntsc.cxx
-	cp tbc-ntsc ntsc
+#	cp tbc-ntsc ntsc
 #	clang++ -std=c++11  -g -Wall -o ntsc tbc-ntsc.cxx
 
-ntsc: tbc-ntsc
+tbc-ntscx: tbc-ntscx.cxx ld-decoder.h deemp.h
+	clang++ -std=c++11  -g -Wall $(CFLAGS) -o tbc-ntscx tbc-ntscx.cxx
+#	clang++ -std=c++11  -g -Wall -o tbc-ntscx tbc-ntscx.cxx
+#	cp tbc-ntsc ntsc
+
+ntsc: tbc-ntscx
 
 comb-ntsc: comb-ntsc.cxx deemp.h
 	clang++ -lfann -std=c++11  -Wall $(CFLAGS) $(OPENCV_LIBS) -o comb-ntsc comb-ntsc.cxx
