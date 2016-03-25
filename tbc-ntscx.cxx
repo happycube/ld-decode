@@ -3,6 +3,8 @@
 #include <complex>
 #include "ld-decoder.h"
 #include "deemp.h"
+
+int p_skipframes = 0;
 	
 double clamp(double v, double low, double high)
 {
@@ -202,7 +204,7 @@ bool BurstDetect(double *line, int freq, double _loc, bool tgt, double &plevel, 
 			tpeak += line[i];
 
 			count++;
-		//	cerr << "BDN " << i << ' ' << in_to_ire(line[i]) << ' ' << line[i - 1] << ' ' << line[i] << ' ' << line[i + 1] << ' ' << phase << ' ' << (i + peakdetect_quad(&line[i - 1])) << ' ' << c << ' ' << ptot << endl; 
+//			cerr << "BDN " << i << ' ' << in_to_ire(line[i]) << ' ' << line[i - 1] << ' ' << line[i] << ' ' << line[i + 1] << ' ' << phase << ' ' << (i + peakdetect_quad(&line[i - 1])) << ' ' << c << ' ' << ptot << endl; 
 		} 
 		else if ((line[i] < lowmin) && (line[i] > lowmax) && (line[i] < line[i - 1]) && (line[i] < line[i + 1])) {
 			cmin++;
@@ -697,6 +699,12 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 		if ((oddeven == false) && (field == -1))
 			return vs + (FSC * 227.5 * 240);
 
+		// Process skip-frames mode - zoom forward an entire frame
+		if (frameno < p_skipframes) {
+			frameno++;
+			return vs + (FSC * 227.5 * 510);
+		}
+
 		field++;
 
 		// zoom ahead to close to the first full proper sync
@@ -785,7 +793,11 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 			// burst detection/correction
 
 			Scale(buf, linebuf, line1, line2, 1820);
-			BurstDetect(linebuf, FSC, 4, false, blevel[line], bphase); 
+			if (!BurstDetect(linebuf, FSC, 4, false, blevel[line], bphase)) { 
+				err[line] = true;
+				continue;
+			}	
+
 			phase[line] = bphase;	
 	
 			if (line % 2) {
@@ -796,7 +808,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 				neven++;
 			}
 	
-			cerr << "BURST " << line << ' ' << line1 << ' ' << line2 << ' ' << blevel << ' ' << bphase << endl;
+			cerr << "BURST " << line << ' ' << line1 << ' ' << line2 << ' ' << blevel[line] << ' ' << bphase << endl;
 		}
 
 		bool fieldphase = fabs(tpeven / neven) < fabs(tpodd / nodd);
@@ -810,7 +822,10 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 			double line1c = hsyncs[line] + ((hsyncs[line + 1] - hsyncs[line]) * 14.0 / 227.5);
 
 			Scale(buf, linebuf, hsyncs[line], line1c, 14 * FSC);
-			BurstDetect(linebuf, FSC, 4, lphase, blevel[line], bphase); 
+			if (!BurstDetect(linebuf, FSC, 4, lphase, blevel[line], bphase)) {
+				err[line] = true;
+				continue;
+			} 
 //			cerr << line << ' ' << line1 << ' ' << line2 << ' ' << blevel << ' ' << bphase << endl;
 		
 			bphase /= (pass + 1);
@@ -963,14 +978,22 @@ int main(int argc, char *argv[])
 	unsigned char *cinbuf = (unsigned char *)inbuf;
 	unsigned char *cabuf = (unsigned char *)abuf;
 
+	int p_maxframes = 1 << 28;
+
 	int c;
 
 	cerr << std::setprecision(10);
 
 	opterr = 0;
 	
-	while ((c = getopt(argc, argv, "dHmhgs:n:i:a:AfFt:r:")) != -1) {
+	while ((c = getopt(argc, argv, "s:n:DHmhgs:n:i:a:AfFt:r:")) != -1) {
 		switch (c) {
+			case 's':
+				sscanf(optarg, "%d", &p_skipframes);		
+				break;
+			case 'n':
+				sscanf(optarg, "%d", &p_maxframes);		
+				break;
 			case 'm':	// "magnetic video" mode - bottom field first
 				writeonfield = 2;
 				break;
@@ -989,7 +1012,7 @@ int main(int argc, char *argv[])
 			case 'g':
 				do_autoset = !do_autoset;
 				break;
-			case 'n':
+			case 'D':
 				despackle = false;
 				break;
 			case 'f':
@@ -1008,6 +1031,9 @@ int main(int argc, char *argv[])
 				return -1;
 		} 
 	} 
+
+	if (p_skipframes > 0)
+		p_maxframes += p_skipframes;
 
 	cerr << "freq = " << FSC << endl;
 
@@ -1032,7 +1058,7 @@ int main(int argc, char *argv[])
 	memset(frame, 0, sizeof(frame));
 
 	size_t aplen = 0;
-	while (rv == vbsize && ((v_read < dlen) || (dlen < 0))) {
+	while (rv == vbsize && ((v_read < dlen) || (dlen < 0)) && (frameno < p_maxframes)) {
 		if (do_autoset) {
 			autoset(inbuf, vbsize / 2);
 		}
