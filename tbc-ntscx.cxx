@@ -636,20 +636,21 @@ bool find_hsyncs(uint16_t *buf, int len, int offset, double *rv, int nlines = 25
 //			cerr << syncend << endl;
 		}
 
+		// cerr << "HSF " << line << ' ' << syncend << ' ' << err_offset << endl;
+
 		// If it skips a scan line, fake it
-		while ((line > 0) && (line < nlines) && (syncend > (218 * FSC))) {
+		if ((line > 0) && (line < nlines) && (syncend > (40 * FSC))) {
 			cerr << 'X' << line << ' ' << loc << ' ' << syncend << endl;
 			rv[line] = -(rv[line - 1] + (227.5 * FSC)); 
 			syncend -= (227.5 * FSC);	
 			loc += (227.5 * FSC);
-			line++;  // hackish but should work
+		} else {
+			rv[line] = loc + syncend;
+			if (err_offset) rv[line] = -rv[line];
+
+			//cerr << line << ' ' << loc << ' ' << syncend << endl;
+			loc += syncend + (200 * FSC);
 		}
-
-		rv[line] = loc + syncend;
-		if (err_offset) rv[line] = -rv[line];
-
-		//cerr << line << ' ' << loc << ' ' << syncend << endl;
-		loc += syncend + (200 * FSC);
 	}
 
 	return rv;
@@ -670,7 +671,9 @@ void CorrectDamagedHSyncs(double *hsyncs, bool *err)
 		// This shouldn't happen...
 		if ((lprev < 0) || (lprev == 252)) continue;
 
-		cerr << "FIX " << line << ' ' << hsyncs[line] << ' ' << lprev << ' ' << lnext << ' ' ;
+		double linex = (hsyncs[line] - hsyncs[0]) / line;
+
+		cerr << "FIX " << line << ' ' << linex << ' ' << hsyncs[line] << ' ' << hsyncs[line] - hsyncs[line - 1] << ' ' << lprev << ' ' << lnext << ' ' ;
 
 		double lavg = (hsyncs[lnext] - hsyncs[lprev]) / (lnext - lprev); 
 		hsyncs[line] = hsyncs[lprev] + (lavg * (line - lprev));
@@ -988,10 +991,10 @@ int main(int argc, char *argv[])
 	
 	while ((c = getopt(argc, argv, "s:n:DHmhgs:n:i:a:AfFt:r:")) != -1) {
 		switch (c) {
-			case 's':
+			case 's': // number of frames to skip at the beginning
 				sscanf(optarg, "%d", &p_skipframes);		
 				break;
-			case 'n':
+			case 'n': // number of frames to output
 				sscanf(optarg, "%d", &p_maxframes);		
 				break;
 			case 'm':	// "magnetic video" mode - bottom field first
