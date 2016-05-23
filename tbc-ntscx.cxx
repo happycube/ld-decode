@@ -23,14 +23,8 @@ const double FSC = 8.0;	// in FSC.  Must be an even number!
 #endif
 
 #define OUT_FREQ 4
-const double out_freq = OUT_FREQ;	// in FSC.  Must be an even number!
 
-//const double ntsc_uline = 63.5; // usec_
 const int ntsc_iplinei = 227.5 * FSC; // pixels per line
-//const double ntsc_ipline = 227.5 * FSC; // pixels per line
-//const double ntsc_opline = 227.5 * out_freq; // pixels per line
-
-//const double ntsc_blanklen = 9.2; // usec
 
 double p_rotdetect = 40;
 
@@ -163,12 +157,10 @@ bool BurstDetect(double *line, int freq, double _loc, bool tgt, double &plevel, 
 
 	double phase = 0;
 
-//	cerr << ire_to_in(7) << ' ' << ire_to_in(16) << endl;
 	double highmin = ire_to_in(f_highburst ? 11 : 11);
 	double highmax = ire_to_in(f_highburst ? 23 : 22);
 	double lowmin = ire_to_in(f_highburst ? -11 : -11);
 	double lowmax = ire_to_in(f_highburst ? -23 : -22);
-//	cerr << lowmin << ' ' << lowmax << endl;
 
 	if (f_highburst) {
 		start = 20;
@@ -518,7 +510,7 @@ int find_sync(uint16_t *buf, int len, int tgt = 50, bool debug = false)
 		} else if ((count > tgt) && ((i - peakloc) > pad)) {
 			rv = peakloc;
 			
-			if (errcount > 1) {
+			if ((FSC > 4) && (errcount > 1)) {
 				cerr << "HERR " << errcount << endl;
 				rv = -rv;
 			}
@@ -732,7 +724,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 			// find end of hsync
 			f_endsync.clear();
 			prev = 0;
-			for (int i = hsyncs[line] - (2 * FSC); i < hsyncs[line] + (2 * FSC); i++) {
+			for (int i = hsyncs[line] - (2 * FSC); i < hsyncs[line] + (4 * FSC); i++) {
 				double cur = f_endsync.feed(buf[i]);
 
 				if ((prev < tpoint) && (cur > tpoint)) {
