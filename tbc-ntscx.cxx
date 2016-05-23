@@ -545,7 +545,10 @@ int find_sync(uint16_t *buf, int len, int tgt = 50, bool debug = false)
 		} else if ((count > tgt) && ((i - peakloc) > pad)) {
 			rv = peakloc;
 			
-			if (errcount > 1) rv = -rv;
+			if (errcount > 1) {
+				cerr << "HERR " << errcount << endl;
+				rv = -rv;
+			}
 		}
 
 		if (debug) {
@@ -628,30 +631,36 @@ bool find_hsyncs(uint16_t *buf, int len, int offset, double *rv, int nlines = 25
 	int loc = offset;
 
 	for (int line = 0; line < nlines; line++) {
+		cerr << line << ' ' << loc << endl;
 		int syncend = find_sync(&buf[loc], 227.5 * 3 * FSC, 8 * FSC);
 
+		double gap = 227.5 * FSC;
+		
 		int err_offset = 0;
 		while (syncend < -1) {
-//			cerr << "error found " << syncend << ' ';
-			err_offset += (227.5 * FSC);
+			cerr << "error found " << line << ' ' << syncend << ' ';
+			err_offset += gap;
 			syncend = find_sync(&buf[loc] + err_offset, 227.5 * 3 * FSC, 8 * FSC);
-//			cerr << syncend << endl;
+			cerr << syncend << endl;
 		}
 
 		// cerr << "HSF " << line << ' ' << syncend << ' ' << err_offset << endl;
 
 		// If it skips a scan line, fake it
 		if ((line > 0) && (line < nlines) && (syncend > (40 * FSC))) {
-			cerr << 'X' << line << ' ' << loc << ' ' << syncend << endl;
-			rv[line] = -(rv[line - 1] + (227.5 * FSC)); 
-			syncend -= (227.5 * FSC);	
-			loc += (227.5 * FSC);
+			rv[line] = -(abs(rv[line - 1]) + gap); 
+			cerr << "XX " << line << ' ' << loc << ' ' << syncend << ' ' << rv[line] << endl;
+			syncend -= gap;	
+			loc += gap;
 		} else {
 			rv[line] = loc + syncend;
 			if (err_offset) rv[line] = -rv[line];
 
-			//cerr << line << ' ' << loc << ' ' << syncend << endl;
-			loc += syncend + (200 * FSC);
+			if (syncend != -1) {
+				loc += fabs(syncend) + (200 * FSC);
+			} else {
+				loc += gap;
+			}
 		}
 	}
 
@@ -671,7 +680,7 @@ void CorrectDamagedHSyncs(double *hsyncs, bool *err)
 		for (lnext = line + 1; (err[lnext] == true) && (lnext < 252); lnext++);
 
 		// This shouldn't happen...
-		if ((lprev < 0) || (lprev == 252)) continue;
+		if ((lprev < 0) || (lnext == 252)) continue;
 
 		double linex = (hsyncs[line] - hsyncs[0]) / line;
 
@@ -769,7 +778,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 				prev = cur;
 			}
 
-			cerr << line << ' ' << begsync << ' ' << endsync << ' ' << endsync - begsync << endl;
+			cerr << "A " << line << ' ' << begsync << ' ' << endsync << ' ' << endsync - begsync << endl;
 
 			if ((!InRangeCF(endsync - begsync, 15.75, 17.25)) || (begsync == -1) || (endsync == -1)) {
 				err[line] = true;
@@ -850,6 +859,8 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 
 		CorrectDamagedHSyncs(hsyncs, err); 
 
+		double prevl1 = 0;
+
 		// final output
 		for (int line = 0; line < 252; line++) {
 			double line1 = hsyncs[line], line2 = hsyncs[line + 1];
@@ -857,7 +868,10 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 
 			double shift33 = (33.0 / 360.0) * 4 * 2;
 			double pt = -12 - shift33;	
-//			cerr << "S " << line1 << ' ' << line2 << endl;
+
+//			cerr << "S " << line << ' ' << (line1 + pt) - prevl1 << ' ' << line1 + pt << ' ' << line2 + pt << endl;
+			prevl1 = line1 + pt;
+
 			Scale(buf, linebuf, line1 + pt, line2 + pt, 910, 0);
 
 		//	if (err[line]) continue;
