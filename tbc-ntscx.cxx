@@ -39,6 +39,8 @@ struct VFormat {
 	double a;	
 };
 
+double shift33 = (+.0 - (1 * (33.0 / 360.0))) * out_freq;
+
 //const double ntsc_uline = 63.5; // usec_
 const int ntsc_iplinei = 227.5 * FSC; // pixels per line
 //const double ntsc_ipline = 227.5 * FSC; // pixels per line
@@ -109,14 +111,14 @@ inline double CubicInterpolate(uint16_t *y, double x)
 	return p[1] + 0.5 * x*(p[2] - p[0] + x*(2.0*p[0] - 5.0*p[1] + 4.0*p[2] - p[3] + x*(3.0*(p[1] - p[2]) + p[3] - p[0])));
 }
 
-inline void Scale(uint16_t *buf, double *outbuf, double start, double end, double outlen, int from = 0, int to = -1)
+inline void Scale(uint16_t *buf, double *outbuf, double start, double end, double outlen, double offset = 0, int from = 0, int to = -1)
 {
 	double inlen = end - start;
 	double perpel = inlen / outlen; 
 
 	if (to == -1) to = (int)outlen; 
 
-	double p1 = start;
+	double p1 = start + (offset * perpel);
 	for (int i = from; i < to; i++) {
 		int index = (int)p1;
 		if (index < 1) index = 1;
@@ -853,9 +855,10 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 			double line1 = hsyncs[line], line2 = hsyncs[line + 1];
 			int oline = 4 + (line * 2) + (oddeven ? 0 : 1);
 
-			int pt = 3 - 16;	
+			double shift33 = (33.0 / 360.0) * 4 * 2;
+			double pt = -12 - shift33;	
 //			cerr << "S " << line1 << ' ' << line2 << endl;
-			Scale(buf, linebuf, line1 + pt, line2 + pt, 910);
+			Scale(buf, linebuf, line1 + pt, line2 + pt, 910, 0);
 
 		//	if (err[line]) continue;
 			ProcessAudio((line / 525.0) + frameno + (field * .5), v_read + hsyncs[line], abuf); 
