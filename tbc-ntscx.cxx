@@ -6,19 +6,11 @@
 
 int p_skipframes = 0;
 	
-double clamp(double v, double low, double high)
+inline double clamp(double v, double low, double high)
 {
         if (v < low) return low;
         else if (v > high) return high;
         else return v;
-}
-
-void aclamp(double *v, int len, double low, double high)
-{
-	for (int i = 0; i < len; i++) {
-	        if (v[i] < low) v[i] = low;
-		else if (v[i] > high) v[i] = high;
-	}
 }
 
 // NTSC properties
@@ -33,14 +25,6 @@ const double FSC = 8.0;	// in FSC.  Must be an even number!
 #define OUT_FREQ 4
 const double out_freq = OUT_FREQ;	// in FSC.  Must be an even number!
 
-struct VFormat {
-	double cycles_line;
-	double blanklen_ms;
-	double a;	
-};
-
-double shift33 = (+.0 - (1 * (33.0 / 360.0))) * out_freq;
-
 //const double ntsc_uline = 63.5; // usec_
 const int ntsc_iplinei = 227.5 * FSC; // pixels per line
 //const double ntsc_ipline = 227.5 * FSC; // pixels per line
@@ -53,6 +37,7 @@ double p_rotdetect = 40;
 bool f_highburst = (FSC == 4);
 bool f_flip = false;
 int writeonfield = 1;
+bool do_autoset = (FSC == 4);
 
 bool audio_only = false;
 
@@ -134,9 +119,7 @@ bool InRange(double v, double l, double h) {
 }
 
 bool InRangeCF(double v, double l, double h) {
-	l *= FSC;
-	h *= FSC;
-	return ((v > l) && (v < h));
+	return InRange(v, l * FSC, h * FSC);
 }
 
 // tunables
@@ -375,13 +358,10 @@ void Despackle()
 			for (int cy = y - 1; (cy < (y + 2)) && (cy < out_y); cy++) { 
 				for (int cx = x - 3; (cx < x + 3) && (cx < (out_x - 12)); cx++) {
 					comp = max(comp, Δframe_filt[cy][cx]);
-//					cerr << "RD " << cy << ' ' << cx << ' ' << comp << ' ' << Δframe_filt[cy][cx] << endl; 
 				}
 			}
 
-//			if ((Δframe[y][x] > rotdetect)) {
 			if ((out_to_ire(frame[y][x]) < -20) || (out_to_ire(frame[y][x]) > 140) || ((Δframe[y][x] > rotdetect) && ((Δframe[y][x] - comp) > rotdetect))) {
-//			if (((Δframe[y][x] > rotdetect) && ((Δframe[y][x] - comp) > rotdetect))) {
 				cerr << "R " << y << ' ' << x << ' ' << rotdetect << ' ' << Δframe[y][x] << ' ' << comp << ' ' << Δframe_filt[y][x] << endl;
 				for (int m = x - 4; (m < (x + 14)) && (m < out_x); m++) {
 					double tmp = (((double)frame_orig[y - 2][m - 2]) + ((double)frame_orig[y - 2][m + 2])) / 2;
@@ -391,7 +371,6 @@ void Despackle()
 						tmp += ((((double)frame_orig[y + 2][m - 2]) + ((double)frame_orig[y + 2][m + 2])) / 4);
 					}
 
-//					cerr << "Z " << y << ' ' << x << ' ' << m << endl;
 					frame[y][m] = clamp(tmp, 0, 65535);
 				}
 				x = x + 14;
@@ -504,21 +483,15 @@ void DecodeVBI()
 	frame[0][15] = fnum & 0xffff;
 	frame[0][16] = clv_time >> 16;
 	frame[0][17] = clv_time & 0xffff;
-//	exit(0);
 }
-
-// XXX new test code starts here
 
 int find_sync(uint16_t *buf, int len, int tgt = 50, bool debug = false)
 {
 	const int pad = 96;
 	int rv = -1;
 
-//	uint16_t from_min = ire_to_in(-5), from_max = ire_to_in(12.5);
 	const uint16_t to_min = ire_to_in(-45), to_max = ire_to_in(-35);
 	const uint16_t err_min = ire_to_in(-55), err_max = ire_to_in(30);
-
-//	len -= pad;
 
 	uint16_t clen = tgt * 3;
 	uint16_t *circbuf = new uint16_t[clen];
@@ -626,8 +599,6 @@ bool find_hsyncs(uint16_t *buf, int len, int offset, double *rv, int nlines = 25
 	if (len < (nlines * FSC * 227.5))
 		return false;
 
-//	double *rv = new double[nlines];
-
 	int loc = offset;
 
 	for (int line = 0; line < nlines; line++) {
@@ -643,8 +614,6 @@ bool find_hsyncs(uint16_t *buf, int len, int offset, double *rv, int nlines = 25
 			syncend = find_sync(&buf[loc] + err_offset, 227.5 * 3 * FSC, 8 * FSC);
 			cerr << syncend << endl;
 		}
-
-		// cerr << "HSF " << line << ' ' << syncend << ' ' << err_offset << endl;
 
 		// If it skips a scan line, fake it
 		if ((line > 0) && (line < nlines) && (syncend > (40 * FSC))) {
@@ -667,7 +636,6 @@ bool find_hsyncs(uint16_t *buf, int len, int offset, double *rv, int nlines = 25
 	return rv;
 }
 		
-
 // correct damaged hsyncs by interpolating neighboring lines
 void CorrectDamagedHSyncs(double *hsyncs, bool *err) 
 {
@@ -805,7 +773,6 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 			}
 
 			// burst detection/correction
-
 			Scale(buf, linebuf, line1, line2, 1820);
 			if (!BurstDetect(linebuf, FSC, 4, false, blevel[line], bphase)) { 
 				err[line] = true;
@@ -840,47 +807,36 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 				err[line] = true;
 				continue;
 			} 
-//			cerr << line << ' ' << line1 << ' ' << line2 << ' ' << blevel << ' ' << bphase << endl;
 		
-			bphase /= (pass + 1);
+			//bphase /= (pass + 1);
 
 			if ((bphase >= -FSC) and (bphase <= FSC)) {// Block NaN	
 				hsyncs[line] += bphase;
 			} else {
 				err[line] = true;
 			}
-
-			Scale(buf, linebuf, hsyncs[line], line1c + bphase, 14 * FSC);
-			BurstDetect(linebuf, FSC, 4, lphase, blevel[line], bphase); 
-
-//			cerr << line << ' ' << line1a << ' ' << line2a << ' ' << blevel << ' ' << bphase << endl;
 		   }
 		}
 
 		CorrectDamagedHSyncs(hsyncs, err); 
-
-		double prevl1 = 0;
 
 		// final output
 		for (int line = 0; line < 252; line++) {
 			double line1 = hsyncs[line], line2 = hsyncs[line + 1];
 			int oline = 4 + (line * 2) + (oddeven ? 0 : 1);
 
+			// 33 degree shift 
 			double shift33 = (33.0 / 360.0) * 4 * 2;
-			double pt = -12 - shift33;	
-
-//			cerr << "S " << line << ' ' << (line1 + pt) - prevl1 << ' ' << line1 + pt << ' ' << line2 + pt << endl;
-			prevl1 = line1 + pt;
+			double pt = -12 - shift33; // align with previous-gen tbc output
 
 			Scale(buf, linebuf, line1 + pt, line2 + pt, 910, 0);
 
-		//	if (err[line]) continue;
 			ProcessAudio((line / 525.0) + frameno + (field * .5), v_read + hsyncs[line], abuf); 
 	
 			bool lphase = ((line % 2) == 0); 
 			if (fieldphase) lphase = !lphase;
 			frame[oline][0] = (lphase == 0) ? 32768 : 16384; 
-			frame[oline][1] = blevel[line];
+			frame[oline][1] = ire_to_out(in_to_ire(blevel[line]));
 
 			if (err[line]) {
                			frame[oline][3] = frame[oline][5] = 65000;
@@ -890,10 +846,9 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 			for (int t = 4; t < 844; t++) {
 				double o = linebuf[t];
 
-				if (o > 65535) o = 65535;
-				if (o < 1) o = 1;
+				if (do_autoset) o = ire_to_out(in_to_ire(o));
 
-				frame[oline][t] = o;
+				frame[oline][t] = (uint16_t)clamp(o, 1, 65535);
 			}
 		}
 
@@ -953,11 +908,7 @@ void autoset(uint16_t *buf, int len, bool fullagc = true)
 			else 
 				high = f[i];
 		}
-
-//		cerr << i << ' ' << buf[i] << ' ' << f[i] << ' ' << low << ':' << high << endl;
 	}
-
-//	cerr << lowloc << ' ' << low << ':' << high << endl;
 
 	// phase 2: attempt to figure out the 0IRE porch near the sync
 
@@ -993,7 +944,6 @@ void autoset(uint16_t *buf, int len, bool fullagc = true)
 int main(int argc, char *argv[])
 {
 	int rv = 0, arv = 0;
-	bool do_autoset = (FSC == 4);
 	long long dlen = -1;
 	unsigned char *cinbuf = (unsigned char *)inbuf;
 	unsigned char *cabuf = (unsigned char *)abuf;
