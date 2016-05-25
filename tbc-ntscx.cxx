@@ -147,7 +147,7 @@ Filter f_endsync(f_esync8);
 int syncid_offset = syncid8_offset;
 #endif
 
-bool BurstDetect(double *line, int freq, double _loc, bool tgt, double &plevel, double &pphase) 
+bool BurstDetect(double *line, int freq, double _loc, int tgt, double &plevel, double &pphase, bool do_abs = false) 
 {
 	int len = (9 * freq);
 	int loc = _loc * freq;
@@ -163,9 +163,9 @@ bool BurstDetect(double *line, int freq, double _loc, bool tgt, double &plevel, 
 	double lowmin = ire_to_in(f_highburst ? -11 : -11);
 	double lowmax = ire_to_in(f_highburst ? -23 : -22);
 #else
-	double highmin = ire_to_in(f_highburst ? 11 : 12);
+	double highmin = ire_to_in(f_highburst ? 11 : 8);
 	double highmax = ire_to_in(f_highburst ? 23 : 22);
-	double lowmin = ire_to_in(f_highburst ? -11 : -6);
+	double lowmin = ire_to_in(f_highburst ? -11 : -8);
 	double lowmax = ire_to_in(f_highburst ? -23 : -22);
 #endif
 
@@ -183,12 +183,14 @@ bool BurstDetect(double *line, int freq, double _loc, bool tgt, double &plevel, 
 			if (tgt) c -= (freq / 2);
 			phase = (i + peakdetect_quad(&line[i - 1])) - c;
 
+			if (do_abs) phase = fabs(phase);
+
 			ptot += phase;
 
 			tpeak += line[i];
 
 			count++;
-//			cerr << "BDN " << i << ' ' << in_to_ire(line[i]) << ' ' << line[i - 1] << ' ' << line[i] << ' ' << line[i + 1] << ' ' << phase << ' ' << (i + peakdetect_quad(&line[i - 1])) << ' ' << c << ' ' << ptot << endl; 
+			cerr << "BDN " << i << ' ' << in_to_ire(line[i]) << ' ' << line[i - 1] << ' ' << line[i] << ' ' << line[i + 1] << ' ' << phase << ' ' << (i + peakdetect_quad(&line[i - 1])) << ' ' << c << ' ' << ptot << endl; 
 		} 
 		else if ((line[i] < lowmin) && (line[i] > lowmax) && (line[i] < line[i - 1]) && (line[i] < line[i + 1])) {
 			cmin++;
@@ -779,7 +781,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 
 			// burst detection/correction
 			Scale(buf, linebuf, line1, line2, 227.5 * FSC);
-			if (!BurstDetect(linebuf, FSC, 4, false, blevel[line], bphase)) { 
+			if (!BurstDetect(linebuf, FSC, 4, -1, blevel[line], bphase, true)) { 
 				cerr << "ERRnoburst " << line << endl;
 				err[line] = true;
 				continue;
@@ -809,7 +811,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 			double line1c = hsyncs[line] + ((hsyncs[line + 1] - hsyncs[line]) * 14.0 / 227.5);
 
 			Scale(buf, linebuf, hsyncs[line], line1c, 14 * FSC);
-			if (!BurstDetect(linebuf, FSC, 4, lphase, blevel[line], bphase)) {
+			if (!BurstDetect(linebuf, FSC, 4, lphase, blevel[line], bphase, false)) {
 				err[line] = true;
 				continue;
 			} 
