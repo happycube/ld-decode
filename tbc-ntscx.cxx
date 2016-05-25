@@ -28,7 +28,7 @@ const int ntsc_iplinei = 227.5 * FSC; // pixels per line
 
 double p_rotdetect = 40;
 
-bool f_highburst = (FSC == 4);
+bool f_highburst = false; // (FSC == 4);
 bool f_flip = false;
 int writeonfield = 1;
 bool do_autoset = (FSC == 4);
@@ -157,10 +157,17 @@ bool BurstDetect(double *line, int freq, double _loc, bool tgt, double &plevel, 
 
 	double phase = 0;
 
+#if 0
 	double highmin = ire_to_in(f_highburst ? 11 : 11);
 	double highmax = ire_to_in(f_highburst ? 23 : 22);
 	double lowmin = ire_to_in(f_highburst ? -11 : -11);
 	double lowmax = ire_to_in(f_highburst ? -23 : -22);
+#else
+	double highmin = ire_to_in(f_highburst ? 11 : 12);
+	double highmax = ire_to_in(f_highburst ? 23 : 22);
+	double lowmin = ire_to_in(f_highburst ? -11 : -6);
+	double lowmax = ire_to_in(f_highburst ? -23 : -22);
+#endif
 
 	if (f_highburst) {
 		start = 20;
@@ -186,7 +193,13 @@ bool BurstDetect(double *line, int freq, double _loc, bool tgt, double &plevel, 
 		else if ((line[i] < lowmin) && (line[i] > lowmax) && (line[i] < line[i - 1]) && (line[i] < line[i + 1])) {
 			cmin++;
 			tmin += line[i];
+//			cerr << "BDN- " << i << ' ' << in_to_ire(line[i]) << endl;
 		}
+	}
+
+	if (cmin == 0) {
+		cerr << "ERR Burst - no min detected\n";
+		cmin = 1;
 	}
 
 	plevel = ((tpeak / count) - (tmin / cmin)) / 4.2;
@@ -765,8 +778,9 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 			}
 
 			// burst detection/correction
-			Scale(buf, linebuf, line1, line2, 1820);
+			Scale(buf, linebuf, line1, line2, 227.5 * FSC);
 			if (!BurstDetect(linebuf, FSC, 4, false, blevel[line], bphase)) { 
+				cerr << "ERRnoburst " << line << endl;
 				err[line] = true;
 				continue;
 			}	
@@ -785,7 +799,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 		}
 
 		bool fieldphase = fabs(tpeven / neven) < fabs(tpodd / nodd);
-		cerr << "PHASES: " << tpeven / neven << ' ' << tpodd / nodd << ' ' << fieldphase << endl; 
+		cerr << "PHASES: " << neven + nodd << ' ' << tpeven / neven << ' ' << tpodd / nodd << ' ' << fieldphase << endl; 
 
 		for (int pass = 0; pass < 2; pass++) {
 		   for (int line = 0; line < 252; line++) {
@@ -819,6 +833,12 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 
 			// 33 degree shift 
 			double shift33 = (33.0 / 360.0) * 4 * 2;
+
+			if (FSC == 4) {
+				// XXX THIS IS BUGGED, but works
+				shift33 = (107.0 / 360.0) * 4 * 2;
+			}
+
 			double pt = -12 - shift33; // align with previous-gen tbc output
 
 			Scale(buf, linebuf, line1 + pt, line2 + pt, 910, 0);
@@ -828,7 +848,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 			bool lphase = ((line % 2) == 0); 
 			if (fieldphase) lphase = !lphase;
 			frame[oline][0] = (lphase == 0) ? 32768 : 16384; 
-			frame[oline][1] = ire_to_out(in_to_ire(blevel[line]));
+			frame[oline][1] = blevel[line] * (327.68 / inscale); // ire_to_out(in_to_ire(blevel[line]));
 
 			if (err[line]) {
                			frame[oline][3] = frame[oline][5] = 65000;
