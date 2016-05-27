@@ -1,11 +1,8 @@
-# fdls.FDLS in python
 
 import scipy
 import numpy
 import numpy as np
 import scipy.signal as sps
-
-import fdls as fdls
 
 freq4 = 4 * 315.0 / 88.0
 freq = 4 * 315.0 / 88.0
@@ -42,40 +39,6 @@ w, h = sps.freqz(f_deemp_bil_b, f_deemp_bil_a)
 w = w / (np.pi * 1.0)
 h.imag = h.imag * 1
 
-Ndeemp = 8
-Ddeemp = 8
-for i in range(0, len(Fr)):
-	cf = (float(i) / df)
-	Fr[i] = cf / (freq * 2)
-
-	Th[i] = (-((Fr[i] * 6.90) / h.real[i])) - (0 * (np.pi / 180)) 
-
-[f_deemp_b, f_deemp_a] = fdls.FDLS(w, h.real*1, Th, Ndeemp, Ddeemp)
-
-WriteFilter("deemp", f_deemp_b, f_deemp_a)
-#fdls.doplot(freq, f_deemp_b, f_deemp_a)
-#exit()
-
-# [b, a] = bilinear([.3e-7], [.1e-7], 1/3, 1000000*5*315/88)
-f_deemp10_bil_b = [2.678107124284971e-01, -4.643785751430057e-01]
-f_deemp10_bil_a = [1.000000000000000e+00, -1.196567862714509e+00]
-
-w, h = sps.freqz(f_deemp10_bil_b, f_deemp10_bil_a)
-w = w / (np.pi * 1.0)
-h.imag = h.imag * 1
-
-df = 512.0/(freq10) 
-Ndeemp10 = 8
-Ddeemp10 = 8
-for i in range(0, len(Fr)):
-	cf = (float(i) / df)
-	Fr[i] = cf / (freq10 * 2)
-
-	Th[i] = (-((Fr[i] * 5.95) / h.real[i])) - (0 * (np.pi / 180)) 
-
-[f_deemp10_b, f_deemp10_a] = fdls.FDLS(w, h.real*1, Th, Ndeemp10, Ddeemp10)
-WriteFilter("deemp10", f_deemp10_b, f_deemp10_a)
-
 #fdls.doplot2(freq10,f_deemp10_b, f_deemp10_a, 1.0, f_deemp10_bil_b, f_deemp10_bil_a, 1.0)
 #exit()
 
@@ -111,6 +74,22 @@ WriteFilter("lpf10", lowpass_filter10)
 Ncolor = 24
 sync_filter = sps.firwin(Ncolor + 1, 0.1 / (freq), window='hamming')
 WriteFilter("sync", sync_filter)
+
+# BPF sync filter for NTSC (+/- .2mhz)
+Nsyncbpf = 16 
+syncbpf_filter = sps.firwin(Nsyncbpf + 1, [3.37955 / freq4, 3.77955/ freq4], window='hamming')
+WriteFilter("ntscsyncbpf4", syncbpf_filter)
+
+# Small 1mhz filter for end-of-sync det
+N2sync = 16 
+sync2_filter = sps.firwin(N2sync + 1, 2.0 / (freq), window='hamming')
+WriteFilter("esync8", sync2_filter)
+
+sync2_filter = sps.firwin(N2sync + 1, 2.0 / (freq4), window='hamming')
+WriteFilter("esync4", sync2_filter)
+
+sync2_filter = sps.firwin(N2sync + 1, 2.0 / (freq10), window='hamming')
+WriteFilter("esync10", sync2_filter)
 
 # PAL sync filter
 Ndsync = 32 
