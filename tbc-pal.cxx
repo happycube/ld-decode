@@ -166,7 +166,7 @@ bool InRangeF(double v, double l, double h) {
 // tunables
 
 bool freeze_frame = false;
-bool despackle = true;
+bool despackle = false;
 int afd = -1, fd = 0;
 
 double black_ire = 7.5;
