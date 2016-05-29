@@ -15,7 +15,7 @@ audiog2: audio-g2.cxx deemp.h
 	clang++ -std=c++11  -Wall $(CFLAGS) -o audiog2 audio-g2.cxx
 
 deemp.h: filtermaker.py
-	python3.4 filtermaker.py > deemp.h
+	python3 filtermaker.py > deemp.h
 
 ntsc4: tbc-ntscx.cxx ld-decoder.h deemp.h
 	#clang++ -std=c++11  -Wall $(CFLAGS) -DFSC4 -o ntsc4 tbc-ntsc.cxx
