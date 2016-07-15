@@ -147,69 +147,102 @@ Filter f_endsync(f_esync8);
 int syncid_offset = syncid8_offset;
 #endif
 
-bool BurstDetect(double *line, int freq, double _loc, int tgt, double &plevel, double &pphase, bool do_abs = false) 
+bool BurstDetect2(double *line, int freq, double _loc, int tgt, double &plevel, double &pphase, bool do_abs = false) 
 {
-	int len = (9 * freq);
+	int len = (6 * freq);
 	int loc = _loc * freq;
-	int count = 0, cmin = 0;
-	double ptot = 0, tpeak = 0, tmin = 0;
-	double start = 0;
+	double start = 0 * freq;
 
-	double phase = 0;
+	double peakh = 0, peakl = 0;
+	int npeakh = 0, npeakl = 0;
+	double lastpeakh = -1, lastpeakl = -1;
 
-#if 0
-	double highmin = ire_to_in(f_highburst ? 11 : 11);
+	double highmin = ire_to_in(f_highburst ? 11 : 9);
 	double highmax = ire_to_in(f_highburst ? 23 : 22);
-	double lowmin = ire_to_in(f_highburst ? -11 : -11);
+	double lowmin = ire_to_in(f_highburst ? -11 : -9);
 	double lowmax = ire_to_in(f_highburst ? -23 : -22);
-#else
-	double highmin = ire_to_in(f_highburst ? 11 : 8);
-	double highmax = ire_to_in(f_highburst ? 23 : 22);
-	double lowmin = ire_to_in(f_highburst ? -11 : -8);
-	double lowmax = ire_to_in(f_highburst ? -23 : -22);
-#endif
-
-	if (f_highburst) {
-		start = 20;
-		len = (start + 6) * freq;
-	}
-
-	for (int i = loc + (start * freq); i < loc + len; i++) {
-		if ((line[i] > highmin) && (line[i] < highmax) && (line[i] > line[i - 1]) && (line[i] > line[i + 1])) {
-			double c = round(((i + peakdetect_quad(&line[i - 1])) / freq) + (tgt ? 0.5 : 0)) * freq;
-
-//			cerr << "B " << i + peakdetect_quad(&line[i - 1]) << ' ' << c << endl;
-
-			if (tgt) c -= (freq / 2);
-			phase = (i + peakdetect_quad(&line[i - 1])) - c;
-
-			if (do_abs) phase = fabs(phase);
-
-			ptot += phase;
-
-			tpeak += line[i];
-
-			count++;
-			cerr << "BDN " << i << ' ' << in_to_ire(line[i]) << ' ' << line[i - 1] << ' ' << line[i] << ' ' << line[i + 1] << ' ' << phase << ' ' << (i + peakdetect_quad(&line[i - 1])) << ' ' << c << ' ' << ptot << endl; 
-		} 
-		else if ((line[i] < lowmin) && (line[i] > lowmax) && (line[i] < line[i - 1]) && (line[i] < line[i + 1])) {
-			cmin++;
-			tmin += line[i];
-//			cerr << "BDN- " << i << ' ' << in_to_ire(line[i]) << endl;
-		}
-	}
-
-	if (cmin == 0) {
-		cerr << "ERR Burst - no min detected\n";
-		cmin = 1;
-	}
-
-	plevel = ((tpeak / count) - (tmin / cmin)) / 4.2;
-	pphase = (ptot / count) * 1;
-
-//	cerr << "BDN end " << plevel << ' ' << pphase << ' ' << count << endl;
 	
-	return (count >= 3);
+	int begin = loc + (start * freq);
+	int end = begin + len;
+
+	cerr << freq << ' ' << begin << ' ' << end << endl;
+
+	// first get average (probably should be a moving one)
+
+	double avg = 0;
+	for (int i = begin; i < end; i++) {
+		avg += line[i]; 
+	}
+	avg /= (end - begin);
+
+	// or we could just ass-u-me IRE 0...
+	avg = ire_to_in(0);
+
+	// get first and last ZC's, along with first low-to-high transition
+	double firstc = -1;
+	double firstc_h = -1;
+	double lastc = -1;
+
+	double avg_htl_zc = 0, avg_lth_zc = 0; 
+	int n_htl_zc = 0, n_lth_zc = 0;
+
+	for (int i = begin ; i < end; i++) {
+		if ((line[i] > highmin) && (line[i] < highmax) && (line[i] > line[i - 1]) && (line[i] > line[i + 1])) {
+			peakh += line[i];
+			npeakh++;
+			lastpeakh = i; lastpeakl = -1; 
+		} else if ((line[i] < lowmin) && (line[i] > lowmax) && (line[i] < line[i - 1]) && (line[i] < line[i + 1])) {
+			peakl += line[i];
+			npeakl++;
+			lastpeakl = i; lastpeakh = -1; 
+		} else if (((line[i] >= avg) && (line[i - 1] < avg)) && (lastpeakl != -1)) {
+			// XXX: figure this out quadratically
+			double diff = line[i] - line[i - 1];
+			double zc = i - ((line[i] - avg) / diff);
+
+			if (firstc == -1) firstc = zc;
+			if (firstc_h == -1) firstc_h = zc;
+			lastc = zc;
+
+			avg_lth_zc += (zc / freq) - floor(zc / freq); 
+			n_lth_zc++;
+
+			cerr << "ZCH " << i << ' ' << line[i - 1] << ' ' << avg << ' ' << line[i] << ' ' << zc << endl;
+		} else if (((line[i] <= avg) && (line[i - 1] > avg)) && (lastpeakh != -1)) {
+			// XXX: figure this out quadratically
+			double diff = line[i] - line[i - 1];
+			double zc = i - ((line[i] - avg) / diff);
+			
+			if (firstc == -1) firstc = zc;
+			lastc = zc;
+			
+			avg_htl_zc += (zc / freq) - floor(zc / freq); 
+			n_htl_zc++;
+		
+			cerr << "ZCL " << i << ' ' << line[i - 1] << ' ' << avg << ' ' << line[i] << ' ' << zc << endl;
+		}
+	} 
+
+//	cerr << "ZC " << n_htl_zc << ' ' << n_lth_zc << endl;
+
+	if (n_htl_zc) {
+		avg_htl_zc /= n_htl_zc;
+	} else return false;
+
+	if (n_lth_zc) {
+		avg_lth_zc /= n_lth_zc;
+	} else return false;
+
+	cerr << "PDETECT " << fabs(avg_htl_zc - avg_lth_zc) << ' ' << n_htl_zc << ' ' << avg_htl_zc << ' ' << n_lth_zc << ' ' << avg_lth_zc << endl;
+
+	double pdiff = fabs(avg_htl_zc - avg_lth_zc);
+
+	if ((pdiff < .35) && (pdiff > .65)) return false;
+
+	plevel = ((peakh / npeakh) - (peakl / npeakl)) / 4.3;
+	pphase = avg_htl_zc;
+	
+	return true;
 }
 
 double pleft = 0, pright = 0;
@@ -781,11 +814,11 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 
 			// burst detection/correction
 			Scale(buf, linebuf, line1, line2, 227.5 * FSC);
-			if (!BurstDetect(linebuf, FSC, 4, -1, blevel[line], bphase, true)) { 
+			if (!BurstDetect2(linebuf, FSC, 4, -1, blevel[line], bphase, true)) { 
 				cerr << "ERRnoburst " << line << endl;
 				err[line] = true;
 				continue;
-			}	
+			}
 
 			phase[line] = bphase;	
 	
@@ -803,26 +836,27 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 		bool fieldphase = fabs(tpeven / neven) < fabs(tpodd / nodd);
 		cerr << "PHASES: " << neven + nodd << ' ' << tpeven / neven << ' ' << tpodd / nodd << ' ' << fieldphase << endl; 
 
-		for (int pass = 0; pass < 2; pass++) {
-		   for (int line = 0; line < 252; line++) {
+		for (int pass = 0; pass < 4; pass++) {
+		   if (pass == 3) cerr << "pass3\n";
+	     	   for (int line = 0; line < 252; line++) {
 			bool lphase = ((line % 2) == 0); 
 			if (fieldphase) lphase = !lphase;
 
 			double line1c = hsyncs[line] + ((hsyncs[line + 1] - hsyncs[line]) * 14.0 / 227.5);
 
 			Scale(buf, linebuf, hsyncs[line], line1c, 14 * FSC);
-			if (!BurstDetect(linebuf, FSC, 4, lphase, blevel[line], bphase, false)) {
+			if (!BurstDetect2(linebuf, FSC, 4, lphase, blevel[line], bphase, false)) {
 				err[line] = true;
 				continue;
 			} 
-		
-			//bphase /= (pass + 1);
+			
+			double tgt = .260;
+			if (bphase > .5) tgt += .5; 
 
-			if ((bphase >= -FSC) and (bphase <= FSC)) {// Block NaN	
-				hsyncs[line] += bphase;
-			} else {
-				err[line] = true;
-			}
+			double adj = (tgt - bphase) * 8;
+
+			cerr << "ADJ " << line << ' ' << pass << ' ' << bphase << ' ' << tgt << ' ' << adj << endl;
+			hsyncs[line] -= adj;
 		   }
 		}
 
