@@ -4,7 +4,7 @@
 #include "ld-decoder.h"
 #include "deemp.h"
 
-bool f_debug = false;
+bool f_debug = true;
 
 int p_skipframes = 0;
 	
@@ -178,7 +178,7 @@ bool BurstDetect2(double *line, int freq, double _loc, int tgt, double &plevel, 
 	avg /= (end - begin);
 
 	// or we could just ass-u-me IRE 0...
-	avg = ire_to_in(0);
+	//avg = ire_to_in(0);
 
 	// get first and last ZC's, along with first low-to-high transition
 	double firstc = -1;
@@ -206,10 +206,12 @@ bool BurstDetect2(double *line, int freq, double _loc, int tgt, double &plevel, 
 			if (firstc_h == -1) firstc_h = zc;
 			lastc = zc;
 
-			avg_lth_zc += (zc / freq) - floor(zc / freq); 
+			double ph_zc = (zc / freq) - floor(zc / freq);	
+			if (ph_zc > .9) ph_zc -= 1.0;
+			avg_lth_zc += ph_zc; 
 			n_lth_zc++;
 
-			cerr << "ZCH " << i << ' ' << line[i - 1] << ' ' << avg << ' ' << line[i] << ' ' << zc << endl;
+			if (f_debug) cerr << "ZCH " << i << ' ' << line[i - 1] << ' ' << avg << ' ' << line[i] << ' ' << zc << ' ' << ph_zc << endl;
 		} else if (((line[i] <= avg) && (line[i - 1] > avg)) && (lastpeakh != -1)) {
 			// XXX: figure this out quadratically
 			double diff = line[i] - line[i - 1];
@@ -217,11 +219,13 @@ bool BurstDetect2(double *line, int freq, double _loc, int tgt, double &plevel, 
 			
 			if (firstc == -1) firstc = zc;
 			lastc = zc;
-			
-			avg_htl_zc += (zc / freq) - floor(zc / freq); 
+		
+			double ph_zc = (zc / freq) - floor(zc / freq);	
+			if (ph_zc > .9) ph_zc -= 1.0;
+			avg_htl_zc += ph_zc; 
 			n_htl_zc++;
 		
-			if (f_debug) cerr << "ZCL " << i << ' ' << line[i - 1] << ' ' << avg << ' ' << line[i] << ' ' << zc << endl;
+			if (f_debug) cerr << "ZCL " << i << ' ' << line[i - 1] << ' ' << avg << ' ' << line[i] << ' ' << zc << ' ' <<  ph_zc << endl;
 		}
 	} 
 
@@ -239,7 +243,7 @@ bool BurstDetect2(double *line, int freq, double _loc, int tgt, double &plevel, 
 
 	double pdiff = fabs(avg_htl_zc - avg_lth_zc);
 
-	if ((pdiff < .35) && (pdiff > .65)) return false;
+	if ((pdiff < .35) || (pdiff > .65)) return false;
 
 	plevel = ((peakh / npeakh) - (peakl / npeakl)) / 4.3;
 
@@ -846,8 +850,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 		bool fieldphase = fabs(tpeven / neven) < fabs(tpodd / nodd);
 		cerr << "PHASES: " << neven + nodd << ' ' << tpeven / neven << ' ' << tpodd / nodd << ' ' << fieldphase << endl; 
 
-		for (int pass = 0; pass < 4; pass++) {
-		   if (pass == 3) cerr << "pass3\n";
+		for (int pass = 0; pass < 2; pass++) {
 	     	   for (int line = 0; line < 252; line++) {
 			bool lphase = ((line % 2) == 0); 
 			if (fieldphase) lphase = !lphase;
