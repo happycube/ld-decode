@@ -284,6 +284,8 @@ void ProcessAudio(double frame, long long loc, float *abuf)
 {
 	double time = frame / (30000.0 / 1001.0);
 
+	cerr << "PA " << frame << ' ' << loc << endl;
+
 	if (afd < 0) return;
 
 	if (prev_time >= 0) {
