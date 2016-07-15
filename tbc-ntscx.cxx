@@ -4,6 +4,8 @@
 #include "ld-decoder.h"
 #include "deemp.h"
 
+bool f_debug = false;
+
 int p_skipframes = 0;
 	
 inline double clamp(double v, double low, double high)
@@ -219,7 +221,7 @@ bool BurstDetect2(double *line, int freq, double _loc, int tgt, double &plevel, 
 			avg_htl_zc += (zc / freq) - floor(zc / freq); 
 			n_htl_zc++;
 		
-			cerr << "ZCL " << i << ' ' << line[i - 1] << ' ' << avg << ' ' << line[i] << ' ' << zc << endl;
+			if (f_debug) cerr << "ZCL " << i << ' ' << line[i - 1] << ' ' << avg << ' ' << line[i] << ' ' << zc << endl;
 		}
 	} 
 
@@ -233,7 +235,7 @@ bool BurstDetect2(double *line, int freq, double _loc, int tgt, double &plevel, 
 		avg_lth_zc /= n_lth_zc;
 	} else return false;
 
-	cerr << "PDETECT " << fabs(avg_htl_zc - avg_lth_zc) << ' ' << n_htl_zc << ' ' << avg_htl_zc << ' ' << n_lth_zc << ' ' << avg_lth_zc << endl;
+	if (f_debug) cerr << "PDETECT " << fabs(avg_htl_zc - avg_lth_zc) << ' ' << n_htl_zc << ' ' << avg_htl_zc << ' ' << n_lth_zc << ' ' << avg_lth_zc << endl;
 
 	double pdiff = fabs(avg_htl_zc - avg_lth_zc);
 
