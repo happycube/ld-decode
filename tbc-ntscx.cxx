@@ -147,7 +147,7 @@ Filter f_endsync(f_esync8);
 int syncid_offset = syncid8_offset;
 #endif
 
-bool BurstDetect2(double *line, int freq, double _loc, int tgt, double &plevel, double &pphase, bool do_abs = false) 
+bool BurstDetect2(double *line, int freq, double _loc, int tgt, double &plevel, double &pphase, bool &phaseflip, bool do_abs = false) 
 {
 	int len = (6 * freq);
 	int loc = _loc * freq;
@@ -240,7 +240,14 @@ bool BurstDetect2(double *line, int freq, double _loc, int tgt, double &plevel, 
 	if ((pdiff < .35) && (pdiff > .65)) return false;
 
 	plevel = ((peakh / npeakh) - (peakl / npeakl)) / 4.3;
-	pphase = avg_htl_zc;
+
+	if (avg_htl_zc < .5) {
+		pphase = avg_htl_zc;
+		phaseflip = false;
+	} else {
+		pphase = avg_lth_zc;
+		phaseflip = true;
+	}
 	
 	return true;
 }
@@ -798,6 +805,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 		// We need semi-correct lines for the next phases	
 		CorrectDamagedHSyncs(hsyncs, err); 
 
+		bool phaseflip;
 		double blevel[252], phase[252];
 		double tpodd = 0, tpeven = 0;
 		int nodd = 0, neven = 0; // need to track these to exclude bad lines
@@ -814,7 +822,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 
 			// burst detection/correction
 			Scale(buf, linebuf, line1, line2, 227.5 * FSC);
-			if (!BurstDetect2(linebuf, FSC, 4, -1, blevel[line], bphase, true)) { 
+			if (!BurstDetect2(linebuf, FSC, 4, -1, blevel[line], bphase, phaseflip, true)) { 
 				cerr << "ERRnoburst " << line << endl;
 				err[line] = true;
 				continue;
@@ -823,10 +831,10 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 			phase[line] = bphase;	
 	
 			if (line % 2) {
-				tpodd += phase[line];
+				tpodd += phaseflip;
 				nodd++;
 			} else {
-				tpeven += phase[line];
+				tpeven += phaseflip;
 				neven++;
 			}
 	
@@ -845,13 +853,13 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 			double line1c = hsyncs[line] + ((hsyncs[line + 1] - hsyncs[line]) * 14.0 / 227.5);
 
 			Scale(buf, linebuf, hsyncs[line], line1c, 14 * FSC);
-			if (!BurstDetect2(linebuf, FSC, 4, lphase, blevel[line], bphase, false)) {
+			if (!BurstDetect2(linebuf, FSC, 4, lphase, blevel[line], bphase, phaseflip, false)) {
 				err[line] = true;
 				continue;
 			} 
 			
 			double tgt = .260;
-			if (bphase > .5) tgt += .5; 
+//			if (bphase > .5) tgt += .5; 
 
 			double adj = (tgt - bphase) * 8;
 
@@ -865,7 +873,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 		// final output
 		for (int line = 0; line < 252; line++) {
 			double line1 = hsyncs[line], line2 = hsyncs[line + 1];
-			int oline = 4 + (line * 2) + (oddeven ? 0 : 1);
+			int oline = 3 + (line * 2) + (oddeven ? 0 : 1);
 
 			// 33 degree shift 
 			double shift33 = (33.0 / 360.0) * 4 * 2;
