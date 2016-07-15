@@ -242,10 +242,10 @@ bool BurstDetect2(double *line, int freq, double _loc, int tgt, double &plevel, 
 	plevel = ((peakh / npeakh) - (peakl / npeakl)) / 4.3;
 
 	if (avg_htl_zc < .5) {
-		pphase = avg_htl_zc;
+		pphase = (avg_htl_zc + (avg_lth_zc - .5)) / 2;
 		phaseflip = false;
 	} else {
-		pphase = avg_lth_zc;
+		pphase = (avg_lth_zc + (avg_htl_zc - .5)) / 2;
 		phaseflip = true;
 	}
 	
