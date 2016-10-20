@@ -1,0 +1,30 @@
+# params:  in file, start point, length, output file
+rm -f $4.wav
+rm -f $4.rpcm $4.pcm $4.tbc
+rm -f $4.mkv $4.avi
+
+rm -f pipe.rpcm
+mkfifo pipe.rpcm
+
+rm -f pipe2.pcm pipe2a.pcm pipe2.tbc pipe3.rgb pipe3b.rgb
+mkfifo pipe2.pcm
+mkfifo pipe2a.pcm
+mkfifo pipe2.tbc
+
+mkfifo pipe3.rgb
+mkfifo pipe3b.rgb
+
+rm ntsclog 
+
+#./audiog2 $1 $2 $3 | buffer -s 32k -m 2m > pipe.rpcm &
+#./lddecodecuda.py -S -a $1 $2 $3 | buffer -s 32k -m 2m > pipe.rpcm &
+./lddecodecuda.py -S -A $1 $2 $3 2> /dev/null | buffer -s 19200 -m 2m | ./tbc-ntscx 2> ntsclog > pipe2.tbc & 
+
+cat pipe2.tbc | ./comb-tf.py 3> pipe3.rgb & 
+
+cat pipe3.rgb | buffer -s 512k -b 2048 | ffmpeg -thread_queue_size 128 -f rawvideo -r 30000/1001 -pix_fmt rgb24 -s 844x505 -i /dev/stdin -acodec flac -aspect 4:3 -c:v libx264rgb -crf 24 $4.mkv
+
+#cat pipe3.rgb | buffer -s 512k -b 2048 | ffmpeg -thread_queue_size 128 -f rawvideo -r 30000/1001 -pix_fmt rgb24 -s 844x505 -i /dev/stdin -acodec flac -aspect 4:3 -c:v libx264rgb -crf 24 -vf yadif=1:1:0,mcdeint $4.mkv
+# to transcode to youtube
+# ffmpeg -i /mnt2/cpage/ld-decoded/demo1.mkv -c:v libx264 -preset veryslow -crf 24 -vf yadif=1:1:0,mcdeint,scale=1440x1080 -c:a copy demo1b.mkv
+
