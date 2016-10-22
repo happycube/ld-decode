@@ -114,21 +114,37 @@ def buildmasks():
 # Variables useful for comb filtering/YC splitting
 def buildfilters():
     
-    shiftup = np.zeros((505), dtype=np.int32)
-    shiftup[0:503] = range(2, 505)
+    vshift = {}
+    hshift = {}
 
-    shiftdown = np.zeros((505), dtype=np.int32)
-    shiftdown[2:505] = range(0, 503)
+    for vd in [-4, -2, 2, 4]:
+        vshift[vd] = np.zeros((505), dtype=np.int32)
+    
+    for vd in [-8, -4, -2, 2, 4, 8]:
+        hshift[vd] = np.zeros((844), dtype=np.int32)
+    
+    vshift[-4][0:501] = range(4, 505)
+    vshift[-2][0:503] = range(2, 505)
+    vshift[2][2:505] = range(0, 503)
+    vshift[4][4:505] = range(0, 501)
+    
+    hshift[-8][0:836] = range(8, 844)
+    hshift[-4][0:840] = range(4, 844)
+    hshift[-2][0:842] = range(2, 844)
+    hshift[2][2:844] = range(0, 842)
+    hshift[4][4:844] = range(0, 840)
+    hshift[8][8:844] = range(0, 836)
     
     fsc = 315.0 / 88.0
     ChromaLPFp = sps.firwin(17, [1.5 / fsc])
     ChromaLPF = tf.Variable(ChromaLPFp.reshape(1, 17, 1, 1), dtype=np.float32)
     ChromaLPF.initializer.run()
 
-    YC_LPF = tf.Variable(np.array([.5,-1,.5]).reshape(1, 3, 1, 1), dtype=np.float32)
-    YC_LPF.initializer.run()
+    #YC_LPF = tf.Variable(np.array([.5,-1,.5]).reshape(1, 1, 3, 1), dtype=np.float32)
+    #YC_LPF.initializer.run()
 
-    return shiftup, shiftdown, ChromaLPF, YC_LPF
+    return vshift, hshift, ChromaLPF#, YC_LPF
+
 
 # Colorspace conversion
 def YIQtoRGB(Y, I, Q):
@@ -138,59 +154,68 @@ def YIQtoRGB(Y, I, Q):
 
     return R, G, B
 
-# rough YC split, with level inversions so I and Q have locked phase
-def YCsplit(x):
-    YC_LPF = tf.Variable(np.array([.5,-1,.5]).reshape(1, 3, 1, 1), dtype=np.float32)
-    YC_LPF.initializer.run()
-
-    c_fixedlevels = phaseinvert(conv1d(x, YC_LPF), stitches1, stitches2) * IQmask
-
+def hsplit(x):
     # break out I and Q - note that horizontal splits seem to require transposition!
-    c_fixedlevelsT = tf.transpose(c_fixedlevels)
+    c_fixedlevelsT = tf.transpose(x)
     partedIQ = tf.dynamic_partition(c_fixedlevelsT, partIQ, 2)
 
     # detranspose the split IQ data and shape into half-width image
     Q = tf.reshape(tf.transpose(partedIQ[0]), [1, 505, 422, 1])
     I = tf.reshape(tf.transpose(partedIQ[1]), [1, 505, 422, 1])
-    
+
     return I, Q
+    
+# rough YC split, with level inversions so I and Q have locked phase
+def YCsplit(x, yc_lpf):
+    combed = tf.nn.conv2d(x, yc_lpf, strides=[1,1,1,1], padding='SAME')
+    c_fixedlevels = phaseinvert(combed, stitches1, stitches2) * IQmask
 
-def proc2DCF(data):
-    up = tf.reshape(tf.gather(tf.reshape(data, [505, 422, 1]), shiftup), [1, 505, 422, 1])
-    down = tf.reshape(tf.gather(tf.reshape(data, [505, 422, 1]), shiftdown), [1, 505, 422, 1])
-    sum2 = tf.abs((data - up) + (data - down))
+    return c_fixedlevels # hsplit(c_fixedlevels)
 
-    return data * tf.clip_by_value((1 - (sum2 / 100)), 0, 1)
+# idea from https://stackoverflow.com/questions/35769944/manipulating-matrix-elements-in-tensorflow/35780087#35780087
+def mask(data, mask, width = 844):
+    datars = tf.reshape(data, [505, width, 1])
+    dzero = tf.zeros_like(datars)
+    
+    x = tf.select(mask, datars, dzero)
+
+    return tf.reshape(x, [1, 505, width, 1])
+
+mask2d_up = np.full(505, True, dtype=np.bool)
+mask2d_up[0:4] = False
+
+mask2d_down = np.full(505, True, dtype=np.bool)
+mask2d_down[-4:] = False
 
 rgbArray = []
 
 gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=.2)
-with tf.Session(config=tf.ConfigProto(log_device_placement=True, gpu_options=gpu_options)) as sess:
+with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options)) as sess:
+#if True:
     x = tf.placeholder(tf.float32, ntscimg_shape)
     partition = tf.placeholder(tf.int32, [1, 505])
     stitches1 = tf.placeholder(tf.int32)
     stitches2 = tf.placeholder(tf.int32)
     RGBout = tf.placeholder(tf.uint8, [505, 844, 3])
+    
+    #x2 = mask(x, 844)
+
+    YC_LPFh = tf.Variable(np.array([.5,-1,.5]).reshape(1, 3, 1, 1), dtype=np.float32)
+    YC_LPFh.initializer.run()
 
     # These need to be done inside the session
     IQmask, partIQ, stitchIQ = buildmasks()
-    shiftup, shiftdown, ChromaLPF, YC_LPF = buildfilters()
+    vshift, hshift, ChromaLPF = buildfilters()
 
-    # Get a rough Y/C split
-    I, Q = YCsplit(x)
+    # Get a 1D Y/C split
+    C = YCsplit(x, YC_LPFh)
     
-    # Chroma bandwidth filtering
-    I, Q = conv1d(I, ChromaLPF), conv1d(Q, ChromaLPF)
+    CVblend = tf.Variable(np.array([.25, 0, .5, 0, .25]).reshape(5, 1, 1, 1), dtype=np.float32)
+    CVblend.initializer.run()
+    Ca = tf.nn.conv2d(C, CVblend, strides=[1,1,1,1], padding='SAME')
+        
+    I, Q = hsplit(Ca)
     
-    # Prep 1D Y
-    C_1D = InterleaveX(Q, I) # re-merge I+Q
-    C_1DforY = phaseinvert(C_1D * IQmask, stitches1, stitches2) # re-invert phase and levels to match C-in-Y
-    Y1D = x + C_1DforY
-    
-
-    # perform crude 2D CF
-    I, Q = proc2DCF(I), proc2DCF(Q)
-
     # Wrapup phase
 
     C_afterproc = InterleaveX(Q, I) # re-merge I+Q
@@ -202,14 +227,19 @@ with tf.Session(config=tf.ConfigProto(log_device_placement=True, gpu_options=gpu
     # Double I and Q width 
     Iwide, Qwide = InterleaveX(I, I), InterleaveX(Q, Q)
     
-    R, G, B = YIQtoRGB(Y, Iwide, Qwide)
+    Yclip = tf.image.crop_to_bounding_box(tf.reshape(Y, (505, 844, 1)), 24, 80, 480, 744)
+    Iclip = tf.image.crop_to_bounding_box(tf.reshape(Iwide, (505, 844, 1)), 24, 80, 480, 744)
+    Qclip = tf.image.crop_to_bounding_box(tf.reshape(Qwide, (505, 844, 1)), 24, 80, 480, 744)
+    
+    cmult = np.sqrt(2.0)
+    R, G, B = YIQtoRGB(Yclip, Iclip * cmult, Qclip * cmult)
     
     # 'front end' begins here
     
     #infd = open('/home/cpage/ld-decode/he010-180_190.tbc', 'rb')
     #outfd = open('testout.rgb', 'wb')
     
-    rgbArray = np.zeros((505,844,3), 'uint8')
+    rgbArray = np.zeros((480,744,3), 'uint8')
     
     fc = 0
     
@@ -232,14 +262,14 @@ with tf.Session(config=tf.ConfigProto(log_device_placement=True, gpu_options=gpu
         in_stitches1 = np.where(in_partition == 0)[1]
         in_stitches2 = np.where(in_partition == 1)[1]
 
-        output = sess.run([Y, Iwide, Qwide, R, G, B, Y1D], feed_dict={x: data1.T.reshape(1,505,844,1), 
+        output = sess.run([Y, Iwide, Qwide, R, G, B], feed_dict={x: data1.T.reshape(1,505,844,1), 
                                                               partition: in_partition,
                                                               stitches1: in_stitches1,
                                                               stitches2: in_stitches2})
         
-        Rout = output[3].reshape((505, 844))
-        Gout = output[4].reshape((505, 844))
-        Bout = output[5].reshape((505, 844))
+        Rout = output[3].reshape((480, 744))
+        Gout = output[4].reshape((480, 744))
+        Bout = output[5].reshape((480, 744))
 
         rgbArray[...,0] = np.clip(Rout, 0, 100) * 2.55
         rgbArray[...,1] = np.clip(Gout, 0, 100) * 2.55
@@ -248,6 +278,6 @@ with tf.Session(config=tf.ConfigProto(log_device_placement=True, gpu_options=gpu
         fc += 1
         print("FRAMEout ", fc)
         
-        os.write(3, rgbArray.reshape(844 * 505 * 3))
+        os.write(3, rgbArray.reshape(744 * 480 * 3))
         
         #exit(0)
