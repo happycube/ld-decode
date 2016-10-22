@@ -21,7 +21,6 @@ infd = sys.stdin.buffer
 outfd = None
 #outfd = open('pipe3.rgb', 'wb')
 
-
 # This follows the default scale in lddecodercuda
 minire = -60
 maxire = 140
@@ -120,17 +119,19 @@ def buildfilters():
     for vd in [-4, -2, 2, 4]:
         vshift[vd] = np.zeros((505), dtype=np.int32)
     
-    for vd in [-8, -4, -2, 2, 4, 8]:
-        hshift[vd] = np.zeros((844), dtype=np.int32)
-    
     vshift[-4][0:501] = range(4, 505)
     vshift[-2][0:503] = range(2, 505)
     vshift[2][2:505] = range(0, 503)
     vshift[4][4:505] = range(0, 501)
+
+    for vd in [-8, -4, -2, -1, 1, 2, 4, 8]:
+        hshift[vd] = np.zeros((844), dtype=np.int32)
     
     hshift[-8][0:836] = range(8, 844)
     hshift[-4][0:840] = range(4, 844)
     hshift[-2][0:842] = range(2, 844)
+    hshift[-1][0:843] = range(1, 844)
+    hshift[1][1:844] = range(0, 843)
     hshift[2][2:844] = range(0, 842)
     hshift[4][4:844] = range(0, 840)
     hshift[8][8:844] = range(0, 836)
@@ -172,6 +173,21 @@ def YCsplit(x, yc_lpf):
 
     return c_fixedlevels # hsplit(c_fixedlevels)
 
+def C_LPF(C, clpf):
+    I, Q = hsplit(C)
+    If, Qf = conv1d(I, clpf), conv1d(Q, clpf)
+    
+    return InterleaveX(Qf, If)
+
+def do_hshift(img, amount):
+    shape = img.get_shape()
+    img_rs = tf.reshape(img, shape[1:3])
+    
+    img_tshift = tf.gather(tf.transpose(img_rs), hshift[amount])
+    img_shift = tf.transpose(img_tshift)
+    
+    return tf.reshape(img_shift, shape)
+
 # idea from https://stackoverflow.com/questions/35769944/manipulating-matrix-elements-in-tensorflow/35780087#35780087
 def mask(data, mask, width = 844):
     datars = tf.reshape(data, [505, width, 1])
@@ -207,15 +223,35 @@ with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options)) as sess:
     IQmask, partIQ, stitchIQ = buildmasks()
     vshift, hshift, ChromaLPF = buildfilters()
 
-    # Get a 1D Y/C split
-    C = YCsplit(x, YC_LPFh)
+    # Get a 1D Y/C split and do LPF on I+Q
+    Cs = YCsplit(x, YC_LPFh)
+    C = C_LPF(Cs, ChromaLPF)
+
+    CFup = tf.Variable(np.array([.5, 0, .5, 0, 0]).reshape(5, 1, 1, 1), dtype=np.float32)
+    CFup.initializer.run()
     
-    CVblend = tf.Variable(np.array([.25, 0, .5, 0, .25]).reshape(5, 1, 1, 1), dtype=np.float32)
-    CVblend.initializer.run()
-    Ca = tf.nn.conv2d(C, CVblend, strides=[1,1,1,1], padding='SAME')
-        
+    Cup = tf.nn.conv2d(C, CFup, strides=[1,1,1,1], padding='SAME')    
+    Cupa = tf.abs((Cup + do_hshift(Cup, 1)) / 2)
+
+    CFdown = tf.Variable(np.array([0, 0, .5, 0, .5]).reshape(5, 1, 1, 1), dtype=np.float32)
+    CFdown.initializer.run()
+    
+    Cdown = tf.nn.conv2d(C, CFdown, strides=[1,1,1,1], padding='SAME')
+    Cdowna = tf.abs((Cdown + do_hshift(Cdown, 1)) / 2)
+
+    Cbase = .25
+    Cmax = 3
+
+    Cdiff2 = Cup - Cdown
+    Cdiff1 = Cdown - Cup
+    Kup = tf.clip_by_value((tf.abs((Cup - C) - Cdiff2) - Cbase) / Cmax, 0, 1)
+    Kdown = tf.clip_by_value((tf.abs((Cdown - C) - Cdiff1) - Cbase) / Cmax, 0, 1)
+    
+    K1d = tf.clip_by_value(1 - Kup - Kdown, 0, 1)
+    
+    Ca = ((Cup * Kup) + (Cdown * Kdown) + (C * K1d)) / (Kup + Kdown + K1d)
+
     I, Q = hsplit(Ca)
-    
     # Wrapup phase
 
     C_afterproc = InterleaveX(Q, I) # re-merge I+Q
@@ -227,14 +263,15 @@ with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options)) as sess:
     # Double I and Q width 
     Iwide, Qwide = InterleaveX(I, I), InterleaveX(Q, Q)
     
-    Yclip = tf.image.crop_to_bounding_box(tf.reshape(Y, (505, 844, 1)), 24, 80, 480, 744)
-    Iclip = tf.image.crop_to_bounding_box(tf.reshape(Iwide, (505, 844, 1)), 24, 80, 480, 744)
-    Qclip = tf.image.crop_to_bounding_box(tf.reshape(Qwide, (505, 844, 1)), 24, 80, 480, 744)
+    Yclip = tf.image.crop_to_bounding_box(tf.reshape(Y, (505, 844, 1)), 25, 80, 480, 744)
+    Iclip = tf.image.crop_to_bounding_box(tf.reshape(Iwide, (505, 844, 1)), 25, 80, 480, 744)
+    Qclip = tf.image.crop_to_bounding_box(tf.reshape(Qwide, (505, 844, 1)), 25, 80, 480, 744)
     
     cmult = np.sqrt(2.0)
     R, G, B = YIQtoRGB(Yclip, Iclip * cmult, Qclip * cmult)
     
     # 'front end' begins here
+    
     
     #infd = open('/home/cpage/ld-decode/he010-180_190.tbc', 'rb')
     #outfd = open('testout.rgb', 'wb')
