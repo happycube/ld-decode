@@ -3,15 +3,17 @@
 #include "ld-decoder.h"
 #include "deemp.h"
 
+//#include <Eigen/Dense>
+//using namespace Eigen;
+
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/video/tracking.hpp> 
-
 using namespace cv;
 
 int ofd = 1;
-char *image_base = "FRAME";
+char *image_base = (char *)"FRAME";
 
 bool f_write8bit = false;
 bool f_pulldown = false;
@@ -74,7 +76,6 @@ inline double IRE(double in)
 	return (in * 140.0) - 40.0;
 }
 
-// XXX:  This is actually YUV.
 struct YIQ {
         double y, i, q;
 
@@ -121,44 +122,26 @@ int cline = -1;
 
 struct RGB {
         double r, g, b;
-
-        void conv(YIQ _y) {
+        
+	void conv(YIQ _y) {
                YIQ t;
 
 		double y = u16_to_ire(_y.y);
 		y = (y - black_ire) * (100 / (100 - black_ire)); 
+		
+		double q = +(_y.i) / irescale;
+		double i = +(_y.q) / irescale;
 
-		double i = +(_y.i) / irescale;
-		double q = +(_y.q) / irescale;
-
-		double mag = ctor(i, q);
-		double angle = atan2(i, q) - ((33.0 / 180.0) * M_PIl);
-
-		double v = cos(angle) * mag;
-		double u = sin(angle) * mag;
-
-		if (cline == (f_debugline + 25)) {
-			cerr << i << ' ' << q << ' ' << atan2deg(q, i) << ' ' << mag << ' ' << angle << ' ' << u << ' ' << v << ' ' << atan2deg(v, u) << endl;
-		}
-
-#if 0
-                r = y + (.956 * u) + (.621 * v);
-                g = y - (.272 * u) - (.647 * v);
-                b = y - (1.108 * u) + (1.705 * v);
-                //r = y + (.956 * i) + (.621 * q);
-                //g = y - (.272 * i) - (.647 * q);
-                //b = y - (1.108 * i) + (1.705 * q);
-#else
-                r = y + (1.13983 * v);
-                g = y - (0.58060 * v) - (u * 0.39465);
-                b = y + (u * 2.032);
-#endif
+		r = y + ( .956 * i) + (.621 * q);
+    		g = y - ( .272 * i) - (.647 * q);
+ 		b = y - (1.106 * i) + (1.703 * q);
+		
 		double m = brightness * 256 / 100;
 
                 r = clamp(r * m, 0, 65535);
                 g = clamp(g * m, 0, 65535);
                 b = clamp(b * m, 0, 65535);
-     };
+	}
 };
 
 inline uint16_t ire_to_u16(double ire)
@@ -178,7 +161,7 @@ const int nframes = 3;	// 3 frames needed for 3D buffer - for now
 
 const int in_y = 505;
 const int in_x = 844;
-const int in_size = in_y * in_x;
+//const int in_size = in_y * in_x;
 const int out_x = 844;
 
 struct frame_t {
@@ -225,8 +208,8 @@ class Comb
 
 		void FilterIQ(cline_t cbuf[in_y], int fnum) {
 			for (int l = 24; l < in_y; l++) {
-				uint16_t *line = &Frame[fnum].rawbuffer[l * in_x];	
-				bool invertphase = (line[0] == 16384);
+				//uint16_t *line = &Frame[fnum].rawbuffer[l * in_x];	
+				//bool invertphase = (line[0] == 16384);
 
 				Filter f_i(f_colorlpi);
 				Filter f_q(f_colorlpf_hq ? f_colorlpi : f_colorlpq);
@@ -646,7 +629,7 @@ class Comb
 			static Mat prev[2];
 			static Mat flow[2];	
 			static int fcount = 0;
-			int fnum = 0;		
+			//int fnum = 0;		
 	
 			const int cysize = 242;
 			const int cxsize = in_x - 70;
@@ -657,7 +640,7 @@ class Comb
 			memset(fieldbuf, 0, sizeof(fieldbuf));
 			memset(flowmap, 0, sizeof(flowmap));
 
-			int l, y;
+			int y;
 
 			Mat pic;
 
@@ -827,8 +810,8 @@ class Comb
 					int phase = x % 4;
 					double tcp = (linep[x] - line[x]); 
 					double tcn = (linen[x] - line[x]); 
-					double psi = 0, psq = 0;
-					double nsi = 0, nsq = 0;
+					//double psi = 0, psq = 0;
+					//double nsi = 0, nsq = 0;
 
 					if (!invertphase) {
 						tcp = -tcp;
