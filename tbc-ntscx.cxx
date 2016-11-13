@@ -4,7 +4,7 @@
 #include "ld-decoder.h"
 #include "deemp.h"
 
-bool f_debug = true;
+bool f_debug = false;
 
 int p_skipframes = 0;
 	
@@ -167,8 +167,6 @@ bool BurstDetect2(double *line, int freq, double _loc, int tgt, double &plevel, 
 	int begin = loc + (start * freq);
 	int end = begin + len;
 
-	cerr << freq << ' ' << begin << ' ' << end << endl;
-
 	// first get average (probably should be a moving one)
 
 	double avg = 0;
@@ -207,6 +205,7 @@ bool BurstDetect2(double *line, int freq, double _loc, int tgt, double &plevel, 
 			lastc = zc;
 
 			double ph_zc = (zc / freq) - floor(zc / freq);	
+			// XXX this has a potential edge case where a legit high # is wrapped
 			if (ph_zc > .9) ph_zc -= 1.0;
 			avg_lth_zc += ph_zc; 
 			n_lth_zc++;
@@ -221,6 +220,7 @@ bool BurstDetect2(double *line, int freq, double _loc, int tgt, double &plevel, 
 			lastc = zc;
 		
 			double ph_zc = (zc / freq) - floor(zc / freq);	
+			// XXX this has a potential edge case where a legit high # is wrapped
 			if (ph_zc > .9) ph_zc -= 1.0;
 			avg_htl_zc += ph_zc; 
 			n_htl_zc++;
@@ -288,10 +288,16 @@ double prev_time = -1;
 double next_audsample = 0;
 size_t prev_loc = -1;
 
+long long firstloc = -1;
+
 long long prev_index = 0, prev_i = 0;
 void ProcessAudio(double frame, long long loc, float *abuf)
 {
 	double time = frame / (30000.0 / 1001.0);
+
+	if (firstloc == -1) firstloc = loc;
+
+	double framea = (double)(loc - firstloc) / 1820.0 / 525.0;
 
 //	cerr << "PA " << frame << ' ' << loc << endl;
 	if (afd < 0) return;
@@ -311,7 +317,8 @@ void ProcessAudio(double frame, long long loc, float *abuf)
 //					exit(0);
 				} 
 				float left = abuf[index * 2], right = abuf[(index * 2) + 1];
-				cerr << "A " << frame << ' ' << loc << ' ' << i1 << ' ' << i << ' ' << i - prev_i << ' ' << index << ' ' << index - prev_index << ' ' << left << ' ' << right << endl;
+				double frameb = (double)(i - firstloc) / 1820.0 / 525.0;
+				cerr << "A " << frame << ' ' << loc << ' ' << frameb << ' ' << i1 << ' ' << i << ' ' << i - prev_i << ' ' << index << ' ' << index - prev_index << ' ' << left << ' ' << right << endl;
 				prev_index = index;
 				prev_i = i;
 				ProcessAudioSample(left, right, 1.0);
@@ -655,7 +662,7 @@ bool find_hsyncs(uint16_t *buf, int len, int offset, double *rv, int nlines = 25
 	int loc = offset;
 
 	for (int line = 0; line < nlines; line++) {
-		cerr << line << ' ' << loc << endl;
+	//	cerr << line << ' ' << loc << endl;
 		int syncend = find_sync(&buf[loc], 227.5 * 3 * FSC, 8 * FSC);
 
 		double gap = 227.5 * FSC;
@@ -799,7 +806,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 				prev = cur;
 			}
 
-			cerr << "A " << line << ' ' << begsync << ' ' << endsync << ' ' << endsync - begsync << endl;
+			cerr << "S " << line << ' ' << begsync << ' ' << endsync << ' ' << endsync - begsync << endl;
 
 			if ((!InRangeCF(endsync - begsync, 15.75, 17.25)) || (begsync == -1) || (endsync == -1)) {
 				err[line] = true;
@@ -850,7 +857,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 		bool fieldphase = fabs(tpeven / neven) < fabs(tpodd / nodd);
 		cerr << "PHASES: " << neven + nodd << ' ' << tpeven / neven << ' ' << tpodd / nodd << ' ' << fieldphase << endl; 
 
-		for (int pass = 0; pass < 2; pass++) {
+		for (int pass = 0; pass < 4; pass++) {
 	     	   for (int line = 0; line < 252; line++) {
 			bool lphase = ((line % 2) == 0); 
 			if (fieldphase) lphase = !lphase;
@@ -868,7 +875,7 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 
 			double adj = (tgt - bphase) * 8;
 
-			cerr << "ADJ " << line << ' ' << pass << ' ' << bphase << ' ' << tgt << ' ' << adj << endl;
+			if (f_debug) cerr << "ADJ " << line << ' ' << pass << ' ' << bphase << ' ' << tgt << ' ' << adj << endl;
 			hsyncs[line] -= adj;
 		   }
 		}
@@ -891,8 +898,12 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 			double pt = -12 - shift33; // align with previous-gen tbc output
 
 			Scale(buf, linebuf, line1 + pt, line2 + pt, 910, 0);
+		
+			double framepos = (line / 525.0) + frameno + (field * .50);
 
-			ProcessAudio((line / 525.0) + frameno + (field * .5), v_read + hsyncs[line], abuf); 
+			if (!field) framepos -= .001;
+
+			ProcessAudio(framepos, v_read + hsyncs[line], abuf); 
 	
 			bool lphase = ((line % 2) == 0); 
 			if (fieldphase) lphase = !lphase;
