@@ -1,4 +1,4 @@
-#!python
+#!/usr/bin/python3
 
 #from __future__ import division
 #from __future__ import print_function
@@ -24,7 +24,7 @@ from pycuda.compiler import SourceModule
 import skcuda.fft as fft
 #import skcuda.misc as misc
     
-import cProfile
+#import cProfile
 
 import copy
 
@@ -101,6 +101,7 @@ except:
 # from http://tlfabian.blogspot.com/2013/01/implementing-hilbert-90-degree-shift.html
 hilbert_filter = np.fft.fftshift(
     np.fft.ifft([0]+[1]*200+[0]*200)
+    #np.fft.ifft([0]+[1]*(blocklen//4)+[0]*(blocklen//4))
 )
 fft_hilbert = np.fft.fft(hilbert_filter, blocklen)
 
@@ -374,10 +375,13 @@ def process_audio_cuda(data):
 
 	aclip = 256 
 
-	outlen = (ablocklen - (aclip * 2)) // 20
-	cs['doaudioscale'](cs['scaledout'], cs['left_out'], cs['right_out'], np.float32(20), np.float32(aclip), block=(32, 1, 1), grid=(outlen//32,1));
+	outlen = ablocklen
 
-#	return cs['scaledout'].get(), outlen * 80
+	cs['doaudioscale'](cs['scaledout'], cs['left_out'], cs['right_out'], np.float32(20), np.float32(0), block=(32, 1, 1), grid=(outlen//32,1));
+
+	output = cs['scaledout'].get()[aclip:-aclip]
+    
+	return output, len(output) * 80 / 2
 
 	plt.plot(cs['scaledout'].get())
 
@@ -476,35 +480,24 @@ def main():
 			minn = 8100000 + (hz_ire_scale * -60)
 		if o == "-S":
 			f_seconds = True
+#		if o == "-s":
+#			ia = float(a)
+#			SysParams['vlpf_freq'] = ia * 1000000 
+#		if o == '-O':
+#			ia = int(a)
+#			SysParams['vlpf_order'] = ia 
 		if o == "-s":
 			ia = int(a)
-			# XXX: redo this all for sysparams
-			'''
 			if ia == 0:
-				lowpass_filter_b, lowpass_filter_a = sps.butter(5, (4.2/(freq/2)), 'low')
-			if ia == 1:	
-				lowpass_filter_b, lowpass_filter_a = sps.butter(5, (4.4/(freq/2)), 'low')
-			if ia == 2:	
-				lowpass_filter_b, lowpass_filter_a = sps.butter(6, (4.6/(freq/2)), 'low')
-				lowpass_filter_b, lowpass_filter_a = sps.butter(6, (4.6/(freq/2)), 'low')
-				SysParams['deemp_t1'] = .825
-				SysParams['deemp_t2'] = 2.35
-			if ia == 3:	
-				# high frequency response - and ringing.  choose your poison ;)	
-				lowpass_filter_b, lowpass_filter_a = sps.butter(10, (5.0/(freq/2)), 'low')
-				lowpass_filter_b, lowpass_filter_a = sps.butter(7, (5.0/(freq/2)), 'low')
-			if ia == 4:	
-				lowpass_filter_b, lowpass_filter_a = sps.butter(10, (5.3/(freq/2)), 'low')
-				lowpass_filter_b, lowpass_filter_a = sps.butter(7, (5.3/(freq/2)), 'low')
-			if ia == 51:	
-				lowpass_filter_b, lowpass_filter_a = sps.butter(5, (4.4/(freq/2)), 'low')
-			if ia == 61:	
-				lowpass_filter_b, lowpass_filter_a = sps.butter(6, (4.4/(freq/2)), 'low')
-			if ia == 62:	
-				lowpass_filter_b, lowpass_filter_a = sps.butter(6, (4.7/(freq/2)), 'low')
-			'''
-
-	#test()
+				SysParams['vlpf_freq'] = 4.2 * 1000000 
+				SysParams['vlpf_order'] = 5 
+#			if s == 1: # default
+#				SysParams['vlpf_freq'] = 4.4 * 1000000 
+#				SysParams['vlpf_order'] = ia 
+			if ia == 2:
+				SysParams['vlpf_freq'] = 5.0 * 1000000 
+				SysParams['vlpf_order'] = 6 
+					
 
 	argc = len(cut_argv)
 	if argc >= 1:
@@ -588,7 +581,7 @@ def main():
 
 
 if __name__ == "__main__":
-	cProfile.run('main()')
-	#main()
+#	cProfile.run('main()')
+	main()
 
 
