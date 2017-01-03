@@ -297,7 +297,7 @@ def process_audio(indata):
 	in_left = np.fft.ifft(fft4*FiltAL,len(fft4))
 	in_right = np.fft.ifft(fft4*FiltAR,len(fft4))
 
-	out_left = fm_decode(in_left, freq_hz / 4)[384:]
+	out_left = fm_decode_complex(in_left, freq_hz / 4)[384:]
 	out_right = fm_decode(in_right, freq_hz / 4)[384:]
 
 	out_left = np.clip(out_left - left_audfreqm, -150000, 150000) 
