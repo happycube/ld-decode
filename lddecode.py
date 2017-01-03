@@ -229,7 +229,7 @@ def process_video(data):
 	output_16 = np.empty(len(doutput), dtype=np.uint16)
 
 	reduced = (doutput - minn) / hz_ire_scale
-	output = np.clip(reduced * out_scale, 1, 65534) 
+	output = np.clip(reduced * out_scale, 0, 65535) 
 	
 	#return output
 	
