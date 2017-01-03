@@ -82,7 +82,7 @@ def fm_decode(hilbert, freq_hz):
 
 	return output
 
-def fm_decode_old(hilbert, freq_hz):
+def fm_decode_complex(hilbert, freq_hz):
 	#hilbert = sps.hilbert(in_filt[0:hlen])
 #	hilbert = sps.lfilter(hilbert_filter, 1.0, in_filt)
 
@@ -217,7 +217,7 @@ def process_video(data):
 #	plt.plot(in_filt)
 #	plt.show()
 
-	output = fm_decode(in_filt, freq_hz)
+	output = fm_decode_complex(in_filt, freq_hz)
 
 	# save the original fm decoding and align to filters
 #	output_prefilt = output[(len(f_deemp_b) * 24) + len(f_deemp_b) + len(lowpass_filter_b):]
@@ -229,7 +229,7 @@ def process_video(data):
 	output_16 = np.empty(len(doutput), dtype=np.uint16)
 
 	reduced = (doutput - minn) / hz_ire_scale
-	output = np.clip(reduced * out_scale, 0, 65535) 
+	output = np.clip(reduced * out_scale, 1, 65534) 
 	
 	#return output
 	
