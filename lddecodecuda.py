@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/python3.5
 
 #from __future__ import division
 #from __future__ import print_function
@@ -330,7 +330,7 @@ def prepare_audio_cuda():
 	cs['plan2'] = fft.Plan(ablocklen, np.float32, np.complex64)
 	cs['plan2i'] = fft.Plan(ablocklen, np.complex64, np.float32)
 	
-	cs['outlen'] = outlen = (((ablocklen - 1536) // 20) // 32) * 32
+	cs['outlen'] = outlen = ablocklen // 20 
 	cs['scaledout'] = gpuarray.empty(outlen * 2, np.float32)
 	cs['left_scaledout'] = gpuarray.empty(outlen, np.float32)
 	cs['right_scaledout'] = gpuarray.empty(outlen, np.float32)

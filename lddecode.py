@@ -188,8 +188,9 @@ FiltAR = Faudr * Fhilbert
 f_emp_b = [1.293279022403258e+00, -1.018329938900196e-02, ]
 f_emp_a = [1.000000000000000e+00, 2.830957230142566e-01, ]
 
-#[Bemp_FDLS, Aemp_FDLS] = fdls.FDLS_fromfilt(f_emp_b, f_emp_a, forder, forderd, 0)
-#Femp = np.fft.fft(Bemp_FDLS, blocklen)
+[Bemp_FDLS, Aemp_FDLS] = fdls.FDLS_fromfilt(f_emp_b, f_emp_a, forder, forderd, 0)
+Femp = np.fft.fft(Bemp_FDLS, blocklen)
+
 #[Blpf_FDLS, Alpf_FDLS] = fdls.FDLS_fromfilt(lowpass_filter_b, lowpass_filter_a, forder, forderd, 0)
 #Flpf = np.fft.fft(Blpf_FDLS, blocklen)
 #FiltPost = Femp * Flpf
