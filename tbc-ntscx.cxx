@@ -554,8 +554,8 @@ int find_sync(uint16_t *buf, int len, int tgt = 50, bool debug = false)
 	const uint16_t err_min = ire_to_in(-55), err_max = ire_to_in(30);
 
 	uint16_t clen = tgt * 3;
-	uint16_t *circbuf = new uint16_t[clen];
-	uint16_t *circbuf_err = new uint16_t[clen];
+	uint16_t circbuf[clen];
+	uint16_t circbuf_err[clen];
 
 	memset(circbuf, 0, clen * 2);
 	memset(circbuf_err, 0, clen * 2);
