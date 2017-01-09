@@ -129,6 +129,8 @@ def doplot2(B, A, B2, A2, freq = (315.0/88.0) * 8.0):
 	plt.axis('tight')
 	plt.show()
 
-
+# This matches FDLS-based conversion surprisingly well (i.e. FDLS is more accurate than I thought ;) )
+def BA_to_FFT(B, A, blocklen):
+    return np.complex64(sps.freqz(B, A, blocklen, whole=True)[1])
 
  

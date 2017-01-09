@@ -33,7 +33,7 @@ double p_rotdetect = 40;
 bool f_highburst = false; // (FSC == 4);
 bool f_flip = false;
 int writeonfield = 1;
-bool do_autoset = (FSC == 4);
+bool do_autoset = false; // (FSC == 4);
 
 bool audio_only = false;
 
@@ -1062,6 +1062,11 @@ int main(int argc, char *argv[])
 				return -1;
 		} 
 	} 
+
+	if (FSC == 4) {
+		inbase = 8000;
+		inscale = (40000 - 8000.0) / 140.0;
+	}
 
 	if (p_skipframes > 0)
 		p_maxframes += p_skipframes;

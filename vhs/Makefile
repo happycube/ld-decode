@@ -1,9 +1,9 @@
-all: cx tbc-pal tbc-ntsc ntsc4 audiog2 comb-ntsc comb-pal 
+all: ntsc4 comb-ntsc 
 
 CFLAGS=-O3 
-CFLAGS=-mavx -O2 -fno-omit-frame-pointer 
+CFLAGS=-g -O2 -fno-omit-frame-pointer 
 
-OPENCV_LIBS=-lopencv_core -lopencv_highgui -lopencv_imgproc -lopencv_video
+OPENCV_LIBS=-lopencv_core -lopencv_highgui -lopencv_imgproc -lopencv_video -lopencv_videoio
 
 clean:
 	rm -f cx tbc-pal tbc-ntsc ntsc4 audiog2 comb-ntsc comb-pal
@@ -46,10 +46,6 @@ ntsc: tbc-ntscx
 comb-ntsc: comb-ntsc.cxx deemp.h
 	clang++ -lfann -std=c++11  -Wall $(CFLAGS) $(OPENCV_LIBS) -o comb-ntsc comb-ntsc.cxx
 	cp comb-ntsc comb
-
-comb-ntsc-eigen: comb-ntsc-eigen.cxx deemp.h
-	clang++ -Ieigen -lfann -std=c++11  -Wall $(CFLAGS) $(OPENCV_LIBS) -o comb-ntsc-eigen comb-ntsc-eigen.cxx
-#	cp comb-ntsc-euler comb
 
 comb-pal: comb-pal.cxx deemp.h
 	clang++ -lfann -std=c++11  -Wall $(CFLAGS) $(OPENCV_LIBS) -o comb-pal comb-pal.cxx

@@ -1,4 +1,5 @@
 #!/usr/bin/python
+from __future__ import division
 import numpy as np
 import sys
 
@@ -42,7 +43,20 @@ std_ire = (np.std(c) / irescale)
 print "mean ire: ", mean, mean_ire 
 print "stddev", std_ire
 print "SNR", 20 * np.log10(mean_ire / std_ire)
+'''
+bhalf = np.empty(422, dtype = np.double)
+for i in range(0, 844, 2):
+	bhalf[i / 2] = (b[i] / 2) + (b[i + 1] / 2) 
 
+chalf = bhalf[begin//2:end//2]
+mean = np.mean(chalf)
+mean_ire = u16_to_ire(np.mean(chalf)) 
+std_ire = (np.std(chalf) / irescale) 
+
+print "half mean ire: ", mean, mean_ire 
+print "stddev", std_ire
+print "SNR", 20 * np.log10(mean_ire / std_ire)
+'''
 import matplotlib.pyplot as plt
 
 c = []
@@ -64,6 +78,6 @@ print 20 * np.log10(70 / std_ire)
 #plt.plot(freq, sp.real, freq, sp.imag)
 plt.plot(range(0, len(c)), c)
 #plt.ylim([7700000,9700000])
-plt.ylim(-25, 120)
+plt.ylim(-30, 120)
 plt.show()
 
