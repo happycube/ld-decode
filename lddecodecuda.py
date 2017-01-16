@@ -491,12 +491,20 @@ def main():
 			if ia == 0:
 				SysParams['vlpf_freq'] = 4.2 * 1000000 
 				SysParams['vlpf_order'] = 5 
-#			if s == 1: # default
-#				SysParams['vlpf_freq'] = 4.4 * 1000000 
-#				SysParams['vlpf_order'] = ia 
+			if ia == 1: # default
+				SysParams['vlpf_freq'] = 4.4 * 1000000 
+				SysParams['vlpf_order'] = 5 
 			if ia == 2:
 				SysParams['vlpf_freq'] = 5.0 * 1000000 
 				SysParams['vlpf_order'] = 6 
+			
+			if ia >= 30:
+				SysParams['vlpf_freq'] = (ia / 10.0) * 1000000 
+				SysParams['vlpf_order'] = 5 
+			
+#			if ia == 40:
+#				SysParams['vlpf_freq'] = 4.0 * 1000000 
+#				SysParams['vlpf_order'] = 5 
 					
 
 	argc = len(cut_argv)

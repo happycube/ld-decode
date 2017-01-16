@@ -26,6 +26,9 @@ bool f_oneframe = false;
 bool f_showk = false;
 bool f_wide = false;
 
+// Invert phase on purpose (almost never needed) 
+bool f_phaseinvert = false;
+
 bool f_colorlpf = false;
 bool f_colorlpf_hq = true;
 
@@ -246,6 +249,8 @@ class Comb
 				uint16_t *line = &Frame[fnum].rawbuffer[l * in_x];	
 				bool invertphase = (line[0] == 16384);
 
+				if (f_phaseinvert) invertphase = !invertphase;
+
 				Filter f_1di(f_colorlpi);
 				Filter f_1dq(f_colorlpq);
 				int f_toffset = 8;
@@ -416,6 +421,8 @@ class Comb
 				double msel = 0.0, sel = 0.0;
 				uint16_t *line = &Frame[f].rawbuffer[l * in_x];	
 				bool invertphase = (line[0] == 16384);
+				
+				if (f_phaseinvert) invertphase = !invertphase;
 
 //				if (f_neuralnet) invertphase = true;
 
@@ -591,7 +598,7 @@ class Comb
 					if (aburstlev < 0) aburstlev = burstlev;	
 					aburstlev = (aburstlev * .99) + (burstlev * .01);
 				}
-//				cerr << "burst level " << burstlev << " mavg " << aburstlev << endl;
+//				cerr << "burst level " << burstlev << " mavg " << aburstlev << ' ' << 10 / aburstlev << ' ' << endl;
 
 				for (int h = 0; h < 844; h++) {
 					RGB r;
@@ -607,14 +614,14 @@ class Comb
 					}
 
 					if (l == (f_debugline + 25)) {
-//						cerr << "YIQ " << h << ' ' << atan2deg(yiq.q, yiq.i) << ' ' << yiq.y << ' ' << yiq.i << ' ' << yiq.q << endl;
+						cerr << "YIQ " << h << ' ' << atan2deg(yiq.q, yiq.i) << ' ' << yiq.y << ' ' << yiq.i << ' ' << yiq.q << endl;
 					}
 
 					cline = l;
 					r.conv(yiq);
 					
 					if (l == (f_debugline + 25)) {
-//						cerr << "RGB " << r.r << ' ' << r.g << ' ' << r.b << endl ;
+						cerr << "RGB " << r.r << ' ' << r.g << ' ' << r.b << endl ;
 						r.r = r.g = r.b = 0;
 					}
 	
@@ -765,6 +772,7 @@ class Comb
 			// remove color data from baseband (Y)	
 			for (int l = firstline; l < in_y; l++) {
 				bool invertphase = (Frame[f].rawbuffer[l * in_x] == 16384);
+				if (f_phaseinvert) invertphase = !invertphase;
 
 				for (int h = 2; h < 842; h++) {
 					double comp;	
@@ -805,6 +813,7 @@ class Comb
 				uint16_t *linep = &Frame[0].rawbuffer[y * in_x];	
 				uint16_t *linen = &Frame[2].rawbuffer[y * in_x];	
 				bool invertphase = (line[0] == 16384);
+				if (f_phaseinvert) invertphase = !invertphase;
 
 				for (int x = 60; x < 830; x++) {
 					int phase = x % 4;

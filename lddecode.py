@@ -436,12 +436,11 @@ def main():
 			if ia == 4:	
 				lowpass_filter_b, lowpass_filter_a = sps.butter(10, (5.3/(freq/2)), 'low')
 				lowpass_filter_b, lowpass_filter_a = sps.butter(7, (5.3/(freq/2)), 'low')
-			if ia == 51:	
-				lowpass_filter_b, lowpass_filter_a = sps.butter(5, (4.4/(freq/2)), 'low')
-			if ia == 61:	
-				lowpass_filter_b, lowpass_filter_a = sps.butter(6, (4.4/(freq/2)), 'low')
-			if ia == 62:	
-				lowpass_filter_b, lowpass_filter_a = sps.butter(6, (4.7/(freq/2)), 'low')
+			
+			if ia >= 30:	
+				lpfreq = ia / 10.0
+				lowpass_filter_b, lowpass_filter_a = sps.butter(5, (lpfreq/(freq/2)), 'low')
+	
 
 	# set up deemp filter
 	[tf_b, tf_a] = sps.zpk2tf(-deemp_t2*(10**-8), -deemp_t1*(10**-8), deemp_t1 / deemp_t2)
