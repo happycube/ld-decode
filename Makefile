@@ -17,9 +17,8 @@ audiog2: audio-g2.cxx deemp.h
 deemp.h: filtermaker.py
 	python3 filtermaker.py > deemp.h
 
-ntsc4: tbc-ntscx.cxx ld-decoder.h deemp.h
-	#clang++ -std=c++11  -Wall $(CFLAGS) -DFSC4 -o ntsc4 tbc-ntsc.cxx
-	clang++ -std=c++11  -Wall -g -DFSC4 -o ntsc4 tbc-ntscx.cxx
+ntsc4: tbc-ntsc.cxx ld-decoder.h deemp.h
+	clang++ -std=c++11  -Wall -g -DFSC4 -o ntsc4 tbc-ntsc.cxx
 
 ntsc10: tbc-ntsc.cxx ld-decoder.h deemp.h
 	clang++ -std=c++11  -Wall $(CFLAGS) -DFSC10 -o ntsc10 tbc-ntsc.cxx
@@ -32,16 +31,7 @@ tbc-ntsc: tbc-ntsc.cxx ld-decoder.h deemp.h
 #	cp tbc-ntsc ntsc
 #	clang++ -std=c++11  -g -Wall -o ntsc tbc-ntsc.cxx
 
-tbc-ntscx: tbc-ntscx.cxx ld-decoder.h deemp.h
-	clang++ -std=c++11  -g -Wall $(CFLAGS) -o tbc-ntscx tbc-ntscx.cxx
-#	clang++ -std=c++11  -g -Wall -o tbc-ntscx tbc-ntscx.cxx
-	cp tbc-ntsc ntsc
-
-tbc-ntsc-airspy: tbc-ntsc-airspy.cxx ld-decoder.h deemp.h
-	clang++ -std=c++11  -g -Wall $(CFLAGS) -o tbc-ntsc-airspy tbc-ntsc-airspy.cxx
-#	clang++ -std=c++11  -g -Wall -o tbc-ntscx tbc-ntscx.cxx
-
-ntsc: tbc-ntscx
+ntsc: tbc-ntsc
 
 comb-ntsc: comb-ntsc.cxx deemp.h
 	clang++ -lfann -std=c++11  -Wall $(CFLAGS) $(OPENCV_LIBS) -o comb-ntsc comb-ntsc.cxx
