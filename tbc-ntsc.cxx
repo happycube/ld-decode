@@ -3,71 +3,37 @@
 #include <complex>
 #include "ld-decoder.h"
 #include "deemp.h"
+
+bool f_debug = false;
+
+int p_skipframes = 0;
 	
-double clamp(double v, double low, double high)
+inline double clamp(double v, double low, double high)
 {
         if (v < low) return low;
         else if (v > high) return high;
         else return v;
 }
 
-void aclamp(double *v, int len, double low, double high)
-{
-	for (int i = 0; i < len; i++) {
-	        if (v[i] < low) v[i] = low;
-		else if (v[i] > high) v[i] = high;
-	}
-}
-
 // NTSC properties
 #ifdef FSC10
-const double in_freq = 10.0;	// in FSC.  Must be an even number!
+const double FSC = 10.0;	// in FSC.  Must be an even number!
 #elif defined(FSC4)
-const double in_freq = 4.0;	// in FSC.  Must be an even number!
+const double FSC = 4.0;	// in FSC.  Must be an even number!
 #else
-const double in_freq = 8.0;	// in FSC.  Must be an even number!
+const double FSC = 8.0;	// in FSC.  Must be an even number!
 #endif
 
 #define OUT_FREQ 4
-const double out_freq = OUT_FREQ;	// in FSC.  Must be an even number!
 
-struct VFormat {
-	double cycles_line;
-	double blanklen_ms;
-	double a;	
-};
-
-double shift33 = (+.0 - (1 * (33.0 / 360.0))) * out_freq;
-
-//const double ntsc_uline = 63.5; // usec_
-const int ntsc_iplinei = 227.5 * in_freq; // pixels per line
-const double ntsc_ipline = 227.5 * in_freq; // pixels per line
-const double ntsc_opline = 227.5 * out_freq; // pixels per line
-
-const double ntsc_blanklen = 9.2;
-
-// we want the *next* colorburst as well for computation 
-const double scale_linelen = ((63.5 + ntsc_blanklen) / 63.5); 
-
-const double ntsc_ihsynctoline = ntsc_ipline * (ntsc_blanklen / 63.5);
-const double iscale_tgt = ntsc_ipline + ntsc_ihsynctoline;
-
-const double ntsc_hsynctoline = ntsc_opline * (ntsc_blanklen / 63.5);
-const double scale_tgt = ntsc_opline + ntsc_hsynctoline;
+const int ntsc_iplinei = 227.5 * FSC; // pixels per line
 
 double p_rotdetect = 40;
 
-double hfreq = 525.0 * (30000.0 / 1001.0);
-
-long long fr_count = 0, au_count = 0;
-
-double f_tol = .5;
-
-bool f_diff = false;
-
-bool f_highburst = (in_freq == 4);
+bool f_highburst = false; // (FSC == 4);
 bool f_flip = false;
 int writeonfield = 1;
+bool do_autoset = (FSC == 4);
 
 bool audio_only = false;
 
@@ -126,13 +92,15 @@ inline double CubicInterpolate(uint16_t *y, double x)
 	return p[1] + 0.5 * x*(p[2] - p[0] + x*(2.0*p[0] - 5.0*p[1] + 4.0*p[2] - p[3] + x*(3.0*(p[1] - p[2]) + p[3] - p[0])));
 }
 
-inline void Scale(uint16_t *buf, double *outbuf, double start, double end, double outlen, double offset = 0)
+inline void Scale(uint16_t *buf, double *outbuf, double start, double end, double outlen, double offset = 0, int from = 0, int to = -1)
 {
 	double inlen = end - start;
 	double perpel = inlen / outlen; 
 
+	if (to == -1) to = (int)outlen; 
+
 	double p1 = start + (offset * perpel);
-	for (int i = 0; i < outlen; i++) {
+	for (int i = from; i < to; i++) {
 		int index = (int)p1;
 		if (index < 1) index = 1;
 
@@ -147,9 +115,7 @@ bool InRange(double v, double l, double h) {
 }
 
 bool InRangeCF(double v, double l, double h) {
-	l *= in_freq;
-	h *= in_freq;
-	return ((v > l) && (v < h));
+	return InRange(v, l * FSC, h * FSC);
 }
 
 // tunables
@@ -169,84 +135,127 @@ double Δframe_filt[505][(int)(OUT_FREQ * 211)];
 #ifdef FSC10
 Filter f_longsync(f_dsync10);
 Filter f_syncid(f_syncid10);
+Filter f_endsync(f_esync10);
 int syncid_offset = syncid10_offset;
 #elif defined(FSC4)
 Filter f_longsync(f_dsync4);
 Filter f_syncid(f_syncid4);
+Filter f_endsync(f_esync4);
 int syncid_offset = syncid4_offset; 
 #else
 Filter f_longsync(f_dsync);
 Filter f_syncid(f_syncid8);
+Filter f_endsync(f_esync8);
 int syncid_offset = syncid8_offset;
 #endif
 
-bool BurstDetect_New(double *line, int freq, double _loc, bool tgt, double &plevel, double &pphase) 
+bool BurstDetect2(double *line, int freq, double _loc, int tgt, double &plevel, double &pphase, bool &phaseflip, bool do_abs = false) 
 {
-	int len = (28 * freq);
+	int len = (6 * freq);
 	int loc = _loc * freq;
-	int count = 0, cmin = 0;
-	double ptot = 0, tpeak = 0, tmin = 0;
-	double start = 15;
+	double start = 0 * freq;
 
-	double phase = 0;
+	double peakh = 0, peakl = 0;
+	int npeakh = 0, npeakl = 0;
+	double lastpeakh = -1, lastpeakl = -1;
 
-//	cerr << ire_to_in(7) << ' ' << ire_to_in(16) << endl;
-	double highmin = ire_to_in(f_highburst ? 12 : 7);
+	double highmin = ire_to_in(f_highburst ? 11 : 9);
 	double highmax = ire_to_in(f_highburst ? 23 : 22);
-	double lowmin = ire_to_in(f_highburst ? -12 : -7);
+	double lowmin = ire_to_in(f_highburst ? -11 : -9);
 	double lowmax = ire_to_in(f_highburst ? -23 : -22);
-//	cerr << lowmin << ' ' << lowmax << endl;
-
-	if (f_highburst) {
-		start = 20;
-		len = (start + 6) * freq;
-	}
-
-	for (int i = loc + (start * freq); i < loc + len; i++) {
-		if ((line[i] > highmin) && (line[i] < highmax) && (line[i] > line[i - 1]) && (line[i] > line[i + 1])) {
-			double c = round(((i + peakdetect_quad(&line[i - 1])) / 4) + (tgt ? 0.5 : 0)) * 4;
-
-//			cerr << "B " << i + peakdetect_quad(&line[i - 1]) << ' ' << c << endl;
-
-			if (tgt) c -= 2;
-			phase = (i + peakdetect_quad(&line[i - 1])) - c;
-
-			ptot += phase;
-
-			tpeak += line[i];
-
-			count++;
-//			cerr << "BDN " << i << ' ' << in_to_ire(line[i]) << ' ' << line[i - 1] << ' ' << line[i] << ' ' << line[i + 1] << ' ' << phase << ' ' << (i + peakdetect_quad(&line[i - 1])) << ' ' << c << ' ' << ptot << endl; 
-		} 
-		else if ((line[i] < lowmin) && (line[i] > lowmax) && (line[i] < line[i - 1]) && (line[i] < line[i + 1])) {
-			cmin++;
-			tmin += line[i];
-		}
-	}
-
-	plevel = ((tpeak / count) - (tmin / cmin)) / 4.2;
-	pphase = (ptot / count) * 1;
-
-//	cerr << "BDN end " << plevel << ' ' << pphase << ' ' << count << endl;
 	
-	return (count >= 3);
-}
+	int begin = loc + (start * freq);
+	int end = begin + len;
 
-int get_oline(double line)
-{
-	int l = (int)line;
+	// first get average (probably should be a moving one)
 
-	if (l < 10) return -1;
-	else if (l < 263) return (l - 10) * 2;
-	else if (l < 273) return -1;
-	else if (l < 525) return ((l - 273) * 2) + 1;
+	double avg = 0;
+	for (int i = begin; i < end; i++) {
+		avg += line[i]; 
+	}
+	avg /= (end - begin);
 
-	return -1;
-}
+	// or we could just ass-u-me IRE 0...
+	//avg = ire_to_in(0);
 
-bool is_visibleline(int line) 
-{
-	return (get_oline(line) >= 22);
+	// get first and last ZC's, along with first low-to-high transition
+	double firstc = -1;
+	double firstc_h = -1;
+	double lastc = -1;
+
+	double avg_htl_zc = 0, avg_lth_zc = 0; 
+	int n_htl_zc = 0, n_lth_zc = 0;
+
+	for (int i = begin ; i < end; i++) {
+		if ((line[i] > highmin) && (line[i] < highmax) && (line[i] > line[i - 1]) && (line[i] > line[i + 1])) {
+			peakh += line[i];
+			npeakh++;
+			lastpeakh = i; lastpeakl = -1; 
+		} else if ((line[i] < lowmin) && (line[i] > lowmax) && (line[i] < line[i - 1]) && (line[i] < line[i + 1])) {
+			peakl += line[i];
+			npeakl++;
+			lastpeakl = i; lastpeakh = -1; 
+		} else if (((line[i] >= avg) && (line[i - 1] < avg)) && (lastpeakl != -1)) {
+			// XXX: figure this out quadratically
+			double diff = line[i] - line[i - 1];
+			double zc = i - ((line[i] - avg) / diff);
+
+			if (firstc == -1) firstc = zc;
+			if (firstc_h == -1) firstc_h = zc;
+			lastc = zc;
+
+			double ph_zc = (zc / freq) - floor(zc / freq);	
+			// XXX this has a potential edge case where a legit high # is wrapped
+			if (ph_zc > .9) ph_zc -= 1.0;
+			avg_lth_zc += ph_zc; 
+			n_lth_zc++;
+
+			if (f_debug) cerr << "ZCH " << i << ' ' << line[i - 1] << ' ' << avg << ' ' << line[i] << ' ' << zc << ' ' << ph_zc << endl;
+		} else if (((line[i] <= avg) && (line[i - 1] > avg)) && (lastpeakh != -1)) {
+			// XXX: figure this out quadratically
+			double diff = line[i] - line[i - 1];
+			double zc = i - ((line[i] - avg) / diff);
+			
+			if (firstc == -1) firstc = zc;
+			lastc = zc;
+		
+			double ph_zc = (zc / freq) - floor(zc / freq);	
+			// XXX this has a potential edge case where a legit high # is wrapped
+			if (ph_zc > .9) ph_zc -= 1.0;
+			avg_htl_zc += ph_zc; 
+			n_htl_zc++;
+		
+			if (f_debug) cerr << "ZCL " << i << ' ' << line[i - 1] << ' ' << avg << ' ' << line[i] << ' ' << zc << ' ' <<  ph_zc << endl;
+		}
+	} 
+
+//	cerr << "ZC " << n_htl_zc << ' ' << n_lth_zc << endl;
+
+	if (n_htl_zc) {
+		avg_htl_zc /= n_htl_zc;
+	} else return false;
+
+	if (n_lth_zc) {
+		avg_lth_zc /= n_lth_zc;
+	} else return false;
+
+	if (f_debug) cerr << "PDETECT " << fabs(avg_htl_zc - avg_lth_zc) << ' ' << n_htl_zc << ' ' << avg_htl_zc << ' ' << n_lth_zc << ' ' << avg_lth_zc << endl;
+
+	double pdiff = fabs(avg_htl_zc - avg_lth_zc);
+
+	if ((pdiff < .35) || (pdiff > .65)) return false;
+
+	plevel = ((peakh / npeakh) - (peakl / npeakl)) / 4.3;
+
+	if (avg_htl_zc < .5) {
+		pphase = (avg_htl_zc + (avg_lth_zc - .5)) / 2;
+		phaseflip = false;
+	} else {
+		pphase = (avg_lth_zc + (avg_htl_zc - .5)) / 2;
+		phaseflip = true;
+	}
+	
+	return true;
 }
 
 double pleft = 0, pright = 0;
@@ -279,13 +288,18 @@ double prev_time = -1;
 double next_audsample = 0;
 size_t prev_loc = -1;
 
+long long firstloc = -1;
+
 long long prev_index = 0, prev_i = 0;
 void ProcessAudio(double frame, long long loc, float *abuf)
 {
 	double time = frame / (30000.0 / 1001.0);
 
-	cerr << "PA " << frame << ' ' << loc << endl;
+	if (firstloc == -1) firstloc = loc;
 
+	double framea = (double)(loc - firstloc) / 1820.0 / 525.0;
+
+//	cerr << "PA " << frame << ' ' << loc << endl;
 	if (afd < 0) return;
 
 	if (prev_time >= 0) {
@@ -303,7 +317,8 @@ void ProcessAudio(double frame, long long loc, float *abuf)
 //					exit(0);
 				} 
 				float left = abuf[index * 2], right = abuf[(index * 2) + 1];
-				cerr << "A " << frame << ' ' << loc << ' ' << i1 << ' ' << i << ' ' << i - prev_i << ' ' << index << ' ' << index - prev_index << ' ' << left << ' ' << right << endl;
+				double frameb = (double)(i - firstloc) / 1820.0 / 525.0;
+				cerr << "A " << frame << ' ' << loc << ' ' << frameb << ' ' << i1 << ' ' << i << ' ' << i - prev_i << ' ' << index << ' ' << index - prev_index << ' ' << left << ' ' << right << endl;
 				prev_index = index;
 				prev_i = i;
 				ProcessAudioSample(left, right, 1.0);
@@ -320,219 +335,9 @@ double tline = 0, line = -2;
 int phase = -1;
 
 bool first = true;
-double prev_linelen = ntsc_ipline;
-double prev_offset = 0.0;
-
-double prev_begin = 0, prev_end = 0;
-double prev_beginlen = 0, prev_endlen = 0;
-
-double prev_lvl_adjust = 1.0;
 
 int iline = 0;
 int frameno = -1;
-
-static int offburst = 0;
-
-struct Line {
-	double center;
-	double peak;
-	double beginsync, endsync;
-	int linenum;
-	bool bad;
-};
-
-void HandleBadLine(vector<Line> &peaks, int i)
-{			
-	int line = peaks[i].linenum;
-	cerr << "BAD " << i << ' ' << line << ' ';
-	cerr << peaks[i].beginsync << ' ' << peaks[i].center << ' ' << peaks[i].endsync << ' ' << peaks[i].endsync - peaks[i].beginsync << endl;
-
-	int lg = 1;
-
-	for (lg = 1; lg < 8 && ((i - lg) >= 0) && ((i + lg) < peaks.size()) && (peaks[i - lg].bad || peaks[i + lg].bad); lg++);
-
-	cerr << peaks[i-lg].beginsync << ' ' << peaks[i-lg].center << ' ' << peaks[i-lg].endsync << ' ' << peaks[i-lg].endsync - peaks[i-lg].beginsync << endl;
-	cerr << "BADLG " << lg << ' ';
-	double gap = (peaks[i + lg].beginsync - peaks[i - lg].beginsync) / (lg * 2);
-	peaks[i].beginsync = peaks[i - lg].beginsync + (gap * lg); 
-	peaks[i].center = peaks[i - lg].center + (gap * lg); 
-	peaks[i].endsync = peaks[i - lg].endsync + (gap * lg); 
-	cerr << peaks[i].beginsync << ' ' << peaks[i].center << ' ' << peaks[i].endsync << ' ' << peaks[i].endsync - peaks[i].beginsync << endl;
-	cerr << peaks[i+lg].beginsync << ' ' << peaks[i+lg].center << ' ' << peaks[i+lg].endsync << ' ' << peaks[i+lg].endsync - peaks[i+lg].beginsync << endl;
-}
-
-
-double ProcessLine(uint16_t *buf, vector<Line> &lines, int index, bool recurse = false)
-{
-	double begin = lines[index - 1].beginsync;
-	double end = lines[index - 1].beginsync + ((lines[index].beginsync - lines[index - 1].beginsync) * scale_linelen);
-	bool err = lines[index].bad;
-	int line = lines[index].linenum;
-	double tout[8192];
-	double adjlen = ntsc_ipline;
-	int pass = 0;
-
-	double plevel1, plevel2;
-	double nphase1, nphase2;
-
-	if (begin < 0) begin = 0;
-
-	cerr << "PL " << line << ' ' << begin << ' ' << end << ' ' << err << ' ' << end - begin << endl;
-
-	double orig_begin = begin;
-	double orig_end = end;
-
-	int oline = get_oline(line);
-
-	if (oline < 0) return 0;
-
-	double tgt_nphase = 0;
-	double nadj1 = 1, nadj2 = 1;
-
-	cerr << "ProcessLine " << begin << ' ' << end << endl;
-
-	Scale(buf, tout, begin, end, scale_tgt); 
-	
-	if (phase != -1) {
-		tgt_nphase = ((line + phase + iline) % 2) ? -2 : 0;
-	} 
-
-	bool valid = BurstDetect_New(tout, out_freq, 0, tgt_nphase != 0, plevel1, nphase1); 
-	valid &= BurstDetect_New(tout, out_freq, 228, tgt_nphase != 0, plevel2, nphase2); 
-
-	cerr << "levels " << plevel1 << ' ' << plevel2 << " valid " << valid << endl;
-
-	if (!valid || (plevel1 < (f_highburst ? 1800 : 1000)) || (plevel2 < (f_highburst ? 1000 : 800))) {
-		begin += prev_offset;
-		end += prev_offset;
-	
-		Scale(buf, tout, begin, end, scale_tgt, shift33); 
-		goto wrapup;
-	}
-
-	if (err) {
-		begin += prev_offset;
-		end += prev_offset;
-	}
-
-	if ((phase == -1) || (offburst >= 5)) {
-		phase = (fabs(nphase1) > 1);
-		iline = line;
-		offburst = 0;
-		cerr << "p " << nphase1 << ' ' << phase << endl;
-
-		tgt_nphase = ((line + phase + iline) % 2) ? -2 : 0;
-	} 
-
-	adjlen = (end - begin) / (scale_tgt / ntsc_opline);
-	//cerr << line << " " << oline << " " << tgt_nphase << ' ' << begin << ' ' << (begin + adjlen) << '/' << end  << endl;
-
-	for (pass = 0; (pass < 12) && ((fabs(nadj1) + fabs(nadj2)) > .05); pass++) {
-		nadj1 = nphase1 * 1;
-		nadj2 = nphase2 * 1;
-
-		begin += nadj1;
-		if (pass) end += nadj2;
-
-		Scale(buf, tout, begin, end, scale_tgt); 
-		BurstDetect_New(tout, out_freq, 0, tgt_nphase != 0, plevel1, nphase1); 
-		BurstDetect_New(tout, out_freq, 228, tgt_nphase != 0, plevel2, nphase2); 
-		
-		nadj1 = (nphase1) * 1;
-		nadj2 = (nphase2) * 1;
-
-		adjlen = (end - begin) / (scale_tgt / ntsc_opline);
-	}
-	
-	if (!recurse) {
-		//double prev_len = prev_end - prev_begin;
-		double orig_len = orig_end - orig_begin;
-		double new_len = end - begin;
-
-		double beginlen = begin - prev_begin;
-		double endlen = end - prev_end;
-
-		cerr << "len " << frameno + 1 << ":" << oline << ' ' << orig_len << ' ' << new_len << ' ' << orig_begin << ' ' << begin << ' ' << orig_end << ' ' << end << endl;
-		if ((fabs(prev_endlen - endlen) > (out_freq * f_tol)) || (fabs(prev_beginlen - beginlen) > (out_freq * f_tol))) {
-			//cerr << "ERRP len " << frameno + 1 << ":" << oline << ' ' << orig_len << ' ' << new_len << ' ' << orig_begin << ' ' << begin << ' ' << orig_end << ' ' << end << endl;
-			cerr << "ERRP len " << frameno + 1 << ":" << oline << ' ' << prev_endlen - endlen << ' ' << prev_beginlen - beginlen << endl;
-
-			if (oline > 20) lines[index].bad = true;
-			HandleBadLine(lines, index);
-			return ProcessLine(buf, lines, index, true);
-		}
-	}
-		
-	Scale(buf, tout, begin, end, scale_tgt, shift33); 
-	
-	cerr << "final levels " << plevel1 << ' ' << plevel2 << endl;
-
-	// trigger phase re-adjustment if we keep adjusting over 3 pix/line
-	if (fabs(begin - orig_begin) > (in_freq * .375)) {
-		offburst++;
-	} else {
-		offburst = 0;
-	}
-
-wrapup:
-	// LD only: need to adjust output value for velocity, and remove defects as possible
-	double lvl_adjust = ((((end - begin) / iscale_tgt) - 1) * 1.0) + 1;
-	
-	if (lines[index].bad) {
-		lvl_adjust = prev_lvl_adjust;
-	} else {
-		prev_lvl_adjust = lvl_adjust;
-	}
-
-	double prev_o = 0;
-	for (int h = 0; (oline > 2) && (h < (211 * out_freq)); h++) {
-		double v = tout[h + (int)(15 * out_freq)];
-		double ire = in_to_ire(v);
-		double o;
-
-		if (in_freq != 4) {
-			double freq = (ire * ((9300000 - 8100000) / 100)) + 8100000; 
-
-			freq *= lvl_adjust;
-			ire = ((freq - 8100000) / 1200000) * 100;
-			o = ire_to_out(ire);
-		} else { 
-			o = ire_to_out(in_to_ire(v));
-		}
-
-		frame[oline][h] = clamp(o, 0, 65535);
-
-		Δframe[oline][h] = fabs(o - prev_o);
-		double dfilt = f_lp18.feed(Δframe[oline][h]); 
-		if (h > 12) {
-		//	cerr << "RD " << oline << ' ' << h << ' ' << Δframe[oline][h - 12] << ' ' << dfilt << endl;
-//			if (dfilt < 0) dfilt = 0;
-			Δframe_filt[oline][h - 12] = dfilt;
-		}	
-		prev_o = o;
-	}
-
-        if (!pass) {
-                for (int x = 2; x < 6; x++) {frame[oline][x] = 32000;}
-		cerr << "BURST ERROR " << line << " " << pass << ' ' << begin << ' ' << (begin + adjlen) << '/' << end  << ' ' << endl;
-        } else {
-		prev_offset = begin - orig_begin;
-	}
-
-	cerr << line << " GAP " << begin - prev_begin << ' ' << prev_begin << ' ' << begin << endl;
-	
-	frame[oline][0] = (tgt_nphase != 0) ? 32768 : 16384; 
-	frame[oline][1] = plevel1; 
-
-	prev_beginlen = begin - prev_begin; 
-	prev_endlen = end - prev_end; 
-
-	prev_begin = begin;
-	prev_end = end;
-
-
-	return adjlen;
-}
 
 //uint16_t synclevel = 12000;
 uint16_t synclevel = inbase + (inscale * 15);
@@ -613,13 +418,10 @@ void Despackle()
 			for (int cy = y - 1; (cy < (y + 2)) && (cy < out_y); cy++) { 
 				for (int cx = x - 3; (cx < x + 3) && (cx < (out_x - 12)); cx++) {
 					comp = max(comp, Δframe_filt[cy][cx]);
-//					cerr << "RD " << cy << ' ' << cx << ' ' << comp << ' ' << Δframe_filt[cy][cx] << endl; 
 				}
 			}
 
-//			if ((Δframe[y][x] > rotdetect)) {
 			if ((out_to_ire(frame[y][x]) < -20) || (out_to_ire(frame[y][x]) > 140) || ((Δframe[y][x] > rotdetect) && ((Δframe[y][x] - comp) > rotdetect))) {
-//			if (((Δframe[y][x] > rotdetect) && ((Δframe[y][x] - comp) > rotdetect))) {
 				cerr << "R " << y << ' ' << x << ' ' << rotdetect << ' ' << Δframe[y][x] << ' ' << comp << ' ' << Δframe_filt[y][x] << endl;
 				for (int m = x - 4; (m < (x + 14)) && (m < out_x); m++) {
 					double tmp = (((double)frame_orig[y - 2][m - 2]) + ((double)frame_orig[y - 2][m + 2])) / 2;
@@ -629,7 +431,6 @@ void Despackle()
 						tmp += ((((double)frame_orig[y + 2][m - 2]) + ((double)frame_orig[y + 2][m + 2])) / 4);
 					}
 
-//					cerr << "Z " << y << ' ' << x << ' ' << m << endl;
 					frame[y][m] = clamp(tmp, 0, 65535);
 				}
 				x = x + 14;
@@ -742,194 +543,390 @@ void DecodeVBI()
 	frame[0][15] = fnum & 0xffff;
 	frame[0][16] = clv_time >> 16;
 	frame[0][17] = clv_time & 0xffff;
-//	exit(0);
+}
+
+int find_sync(uint16_t *buf, int len, int tgt = 50, bool debug = false)
+{
+	const int pad = 96;
+	int rv = -1;
+
+	const uint16_t to_min = ire_to_in(-45), to_max = ire_to_in(-35);
+	const uint16_t err_min = ire_to_in(-55), err_max = ire_to_in(30);
+
+	uint16_t clen = tgt * 3;
+	uint16_t circbuf[clen];
+	uint16_t circbuf_err[clen];
+
+	memset(circbuf, 0, clen * 2);
+	memset(circbuf_err, 0, clen * 2);
+
+	int count = 0, errcount = 0, peak = 0, peakloc = 0;
+
+	for (int i = 0; (rv == -1) && (i < len); i++) {
+		int nv = (buf[i] >= to_min) && (buf[i] < to_max);
+		int err = (buf[i] <= err_min) || (buf[i] >= err_max);
+
+		count = count - circbuf[i % clen] + nv;
+		circbuf[i % clen] = nv;	
+		
+		errcount = errcount - circbuf_err[i % clen] + err;
+		circbuf_err[i % clen] = err;	
+
+		if (count > peak) {
+			peak = count;
+			peakloc = i;
+		} else if ((count > tgt) && ((i - peakloc) > pad)) {
+			rv = peakloc;
+			
+			if ((FSC > 4) && (errcount > 1)) {
+				cerr << "HERR " << errcount << endl;
+				rv = -rv;
+			}
+		}
+
+		if (debug) {
+			cerr << i << ' ' << buf[i] << ' ' << peak << ' ' << peakloc << ' ' << i - peakloc << endl;
+		}
+	}
+
+	if (rv == -1) 
+		cerr << "not found " << peak << ' ' << peakloc << endl;
+
+	return rv;
+}
+
+// This could probably be used for more than just field det, but eh
+int count_slevel(uint16_t *buf, int begin, int end)
+{
+	const uint16_t to_min = ire_to_in(-45), to_max = ire_to_in(-35);
+	int count = 0;
+
+	for (int i = begin; i < end; i++) {
+		count += (buf[i] >= to_min) && (buf[i] < to_max);
+	}
+
+	return count;
+}
+
+// returns index of end of VSYNC - negative if _ field 
+int find_vsync(uint16_t *buf, int len, int offset = 0)
+{
+	const uint16_t field_len = FSC * 227.5 * 280;
+
+	if (len < field_len) return -1;
+
+	int pulse_ends[6];
+	int slen = len;
+
+	int loc = offset;
+
+	for (int i = 0; i < 6; i++) {
+		// 32xFSC is *much* shorter, but it shouldn't get confused for an hsync -
+		// and on rotted disks and ones with burst in vsync, this helps
+		int syncend = abs(find_sync(&buf[loc], slen, 32 * FSC));
+
+		pulse_ends[i] = syncend + loc;
+		cerr << pulse_ends[i] << endl;
+
+		loc += syncend;
+		slen = 3840; 
+	}
+
+	int rv = pulse_ends[5];
+
+	// determine line type
+	int before_end = pulse_ends[0] - (127.5 * FSC);
+	int before_start = before_end - (227.5 * 4.5 * FSC);
+
+	int pc_before = count_slevel(buf, before_start, before_end);
+	
+	int after_start = pulse_ends[5]; 
+	int after_end = after_start + (227.5 * 4.5 * FSC);
+	int pc_after = count_slevel(buf, after_start, after_end); 
+
+	cerr << "beforeafter: " << pulse_ends[0] + offset << ' ' << pulse_ends[5] + offset << ' ' << pc_before << ' ' << pc_after << endl;
+
+	if (pc_before < pc_after) rv = -rv;	
+
+	return rv;
+}
+
+// returns end of each line, -end if error detected in this phase 
+// (caller responsible for freeing array)
+bool find_hsyncs(uint16_t *buf, int len, int offset, double *rv, int nlines = 253)
+{
+	// sanity check (XXX: assert!)
+	if (len < (nlines * FSC * 227.5))
+		return false;
+
+	int loc = offset;
+
+	for (int line = 0; line < nlines; line++) {
+	//	cerr << line << ' ' << loc << endl;
+		int syncend = find_sync(&buf[loc], 227.5 * 3 * FSC, 8 * FSC);
+
+		double gap = 227.5 * FSC;
+		
+		int err_offset = 0;
+		while (syncend < -1) {
+			cerr << "error found " << line << ' ' << syncend << ' ';
+			err_offset += gap;
+			syncend = find_sync(&buf[loc] + err_offset, 227.5 * 3 * FSC, 8 * FSC);
+			cerr << syncend << endl;
+		}
+
+		// If it skips a scan line, fake it
+		if ((line > 0) && (line < nlines) && (syncend > (40 * FSC))) {
+			rv[line] = -(abs(rv[line - 1]) + gap); 
+			cerr << "XX " << line << ' ' << loc << ' ' << syncend << ' ' << rv[line] << endl;
+			syncend -= gap;	
+			loc += gap;
+		} else {
+			rv[line] = loc + syncend;
+			if (err_offset) rv[line] = -rv[line];
+
+			if (syncend != -1) {
+				loc += fabs(syncend) + (200 * FSC);
+			} else {
+				loc += gap;
+			}
+		}
+	}
+
+	return rv;
+}
+		
+// correct damaged hsyncs by interpolating neighboring lines
+void CorrectDamagedHSyncs(double *hsyncs, bool *err) 
+{
+	for (int line = 1; line < 251; line++) {
+		if (err[line] == false) continue;
+
+		int lprev, lnext;
+
+		for (lprev = line - 1; (err[lprev] == true) && (lprev >= 0); lprev--);
+		for (lnext = line + 1; (err[lnext] == true) && (lnext < 252); lnext++);
+
+		// This shouldn't happen...
+		if ((lprev < 0) || (lnext == 252)) continue;
+
+		double linex = (hsyncs[line] - hsyncs[0]) / line;
+
+		cerr << "FIX " << line << ' ' << linex << ' ' << hsyncs[line] << ' ' << hsyncs[line] - hsyncs[line - 1] << ' ' << lprev << ' ' << lnext << ' ' ;
+
+		double lavg = (hsyncs[lnext] - hsyncs[lprev]) / (lnext - lprev); 
+		hsyncs[line] = hsyncs[lprev] + (lavg * (line - lprev));
+		cerr << hsyncs[line] << endl;
+	}
 }
 
 double psync[ntsc_iplinei*1200];
 int Process(uint16_t *buf, int len, float *abuf, int alen)
 {
-	vector<Line> peaks; 
-	peaks.clear();
+	double linebuf[1820];
+	double hsyncs[253];
+	int field = -1; 
+	int offset = 500;
 
 	memset(frame, 0, sizeof(frame));
 
-	// clear line length filter - will be repopulated with the pre-line 22/273 samples	
-	f_linelen.clear(ntsc_ipline);
+	while (field < 1) {
+		//find_vsync(&buf[firstsync - 1920], len - (firstsync - 1920));
+		int vs = find_vsync(buf, len, offset);
 
-	// sample syncs
-	f_syncid.clear(0);
+		bool oddeven = vs > 0;
+		vs = abs(vs);
+		cerr << "findvsync " << oddeven << ' ' << vs << endl;
 
-	for (int i = 0; i < len; i++) {
-		double val = f_syncid.feed(buf[i] && (buf[i] < synclevel)); 
-		if (i > syncid_offset) psync[i - syncid_offset] = val; 
-	}
+		if ((oddeven == false) && (field == -1))
+			return vs + (FSC * 227.5 * 240);
 
-	for (int i = 0; i < len - syncid_offset; i++) {
-		double level = psync[i];
-
-		if ((level > .05) && (level > psync [i - 1]) && (level > psync [i + 1])) {
-			Line l;
-
-			l.center = i;
-			l.peak   = level;
-			l.bad = false;
-			l.linenum = -1;
-
-			peaks.push_back(l);	
-			cerr << peaks.size() << ' ' << i << ' ' << level << endl;
-
+		// Process skip-frames mode - zoom forward an entire frame
+		if (frameno < p_skipframes) {
+			frameno++;
+			return vs + (FSC * 227.5 * 510);
 		}
-	}
 
-	// PASS 1: find first field index - returned as firstline 
-	int firstpeak = -1, firstline = -1, lastline = -1;
-	for (int i = 9; (i < peaks.size() - 9) && (firstline == -1); i++) {
-		if (peaks[i].peak > 1.0) {
-			if (peaks[i].center > (ntsc_ipline * 400)) {
-				//return (ntsc_ipline * 350);
-				return (peaks[i].center - (ntsc_ipline * 20));
-			} else if (peaks[i].center < (ntsc_ipline * 8)) {
-				return (ntsc_ipline * 400);
-			} else {
-				firstpeak = i;
-				firstline = -1; lastline = -1;
+		field++;
 
-				//cerr << firstpeak << ' ' << peaks[firstpeak].peak << ' ' << peaks[firstpeak].center << endl;
-	
-				for (int i = firstpeak - 1; (i > 0) && (lastline == -1); i--) {
-					if ((peaks[i].peak > 0.2) && (peaks[i].peak < 0.75)) lastline = i;
-				}	
-
-				int distance_prev = peaks[lastline + 1].center - peaks[lastline].center;
-				int synctype = (distance_prev > (in_freq * 140)) ? 1 : 2;
-
-				cerr << "P1_" << lastline << ' ' << synctype << ' ' << (in_freq * 140) << ' ' << distance_prev << ' ' << peaks[lastline + 1].center - peaks[lastline].center << endl;
-	
-				for (int i = firstpeak + 1; (i < peaks.size()) && (firstline == -1); i++) {
-					if ((peaks[i].peak > 0.2) && (peaks[i].peak < 0.75)) firstline = i;
-				}	
-	
-				cerr << firstline << ' ' << peaks[firstline].center - peaks[firstline-1].center << endl;
-
-				cerr << synctype << ' ' << writeonfield << endl;
-				if (synctype != writeonfield) {
-					firstline = firstpeak = -1; 
-					i += 6;
-				}
-			}
+		// zoom ahead to close to the first full proper sync
+		if (oddeven) {
+			vs = abs(vs) + (750 * FSC);
+		} else {
+			vs = abs(vs) + (871 * FSC);
 		}
-	}
 
-	// PASS 2: Line processing and error detection
-	bool field2 = false;
-	int line = -10;
-	double prev_linelen = 1820;
+		find_hsyncs(buf, len, vs, hsyncs);
+		bool err[252];	
 
-	for (int i = firstline - 1; i < peaks.size() && (i < (firstline + 540)) && (line < 526); i++) {
-//		cerr << "P2A " << i << ' ' << peaks[i].peak << endl;
-		bool canstartsync = false;
-		if ((line < 0) || InRange(line, 262, 274) || InRange(line, 524, 530)) canstartsync = true;
-
-		if (!canstartsync && ((peaks[i].center - peaks[i - 1].center) > (440 * in_freq)) && (peaks[i].center > peaks[i - 1].center)) {
-			// looks like we outright skipped a line because of corruption.  add a new one! 
-			cerr << "LONG " << i << ' ' << peaks[i].center << ' ' << peaks[i].center - peaks[i - 1].center << ' ' << peaks.size() << endl ;
-
-			Line l;
-
-			l.center = peaks[i - 1].center + 1820;
-			l.peak   = peaks[i - 1].peak;
-			l.bad = true;
-			l.linenum = -1;
-
-			peaks.insert(peaks.begin()+i, l);
-
-			i--;
-			line--;
-		} else if (!canstartsync && ((peaks[i].center - peaks[i - 1].center) < (207.5 * in_freq)) && (peaks[i].center > peaks[i - 1].center)) {
-			// recovery routine for if we get a short line due to excessive dropout
- 
-			cerr << "SHORT " << i << ' ' << peaks[i].center << ' ' << peaks[i].center - peaks[i - 1].center << ' ' << peaks.size() << endl ;
-
-			peaks.erase(peaks.begin()+i);
-			i--;
-//			cerr << "ohoh." << i << ' ' << peaks.size() << endl ;
-			line--;
-		} else if (peaks[i].peak > .85) {
-			line = -10;
-			peaks[i].linenum = -1;
-		} else if (InRange(peaks[i].peak, canstartsync ? .25 : .0, (line < 0) ? .50 : .8)) {
-			int cbeginsync = 0, cendsync = 0;
-			int center = peaks[i].center;
-
-			// XXX:  This can be fragile
-			if (line <= -1) {
-				line = field2 ? 273 : 10;
-				field2 = true;
-			}
-
-			peaks[i].beginsync = peaks[i].endsync = -1;
-			for (int x = 0; x < 200 && InRange(peaks[i].peak, .20, .5) && ((peaks[i].beginsync == -1) || (peaks[i].endsync == -1)); x++) {
-				cbeginsync++;
-				cendsync++;
+		// find hsyncs (rough alignment)
+		for (int line = 0; line < 252; line++) {
+			err[line] = hsyncs[line] < 0;
+			hsyncs[line] = abs(hsyncs[line]);
+		}
 	
-				if (buf[center - x] < synclevel) cbeginsync = 0;
-				if (buf[center + x] < synclevel) cendsync = 0;
+		// Determine vsync->0/7.5IRE transition point (TODO: break into function)
+		for (int line = 0; line < 252; line++) {
+			if (err[line] == true) continue;
 
-				if ((cbeginsync == 4) && (peaks[i].beginsync < 0)) peaks[i].beginsync = center - x + 4;			
-				if ((cendsync == 4) && (peaks[i].endsync < 0)) peaks[i].endsync = center + x - 4;			
-			}
-
-			peaks[i].bad = !InRangeCF(peaks[i].endsync - peaks[i].beginsync, 15.5, 18.5);
-
-			double prev_linelen_cf = clamp(prev_linelen / in_freq, 226, 229);
-
-			if (!peaks[i - 1].bad) peaks[i].bad |= get_oline(line) > 22 && (!InRangeCF(peaks[i].beginsync - peaks[i-1].beginsync, prev_linelen_cf - f_tol, prev_linelen_cf + f_tol) || !InRangeCF(peaks[i].endsync - peaks[i-1].endsync, prev_linelen_cf - f_tol, prev_linelen_cf + f_tol)); 
-			peaks[i].linenum = line;
+			double prev = 0, begsync = -1, endsync = -1;
+			const uint16_t tpoint = ire_to_in(-20); 
 			
-			cerr << "P2_" << line << ' ' << i << ' ' << peaks[i].bad << ' ' <<  peaks[i].peak << ' ' << peaks[i].center << ' ' << prev_linelen_cf << ' ' << peaks[i].center - peaks[i-1].center << ' ' << peaks[i].beginsync << ' ' << peaks[i].endsync << ' ' << peaks[i].endsync - peaks[i].beginsync << endl;
-				
-			// HACK!
-			if (line == 273) peaks[i].linenum = -1;
+			// find beginning of hsync
+			f_endsync.clear();
+			prev = 0;
+			for (int i = hsyncs[line] - (20 * FSC); i < hsyncs[line] - (8 * FSC); i++) {
+				double cur = f_endsync.feed(buf[i]);
 
-			// if we have a good line, feed it's length to the line LPF.  The 8 line lag is insignificant 
-			// since it's a ~30hz oscillation. 
-			double linelen = peaks[i].center - peaks[i-1].center;
-			if (!peaks[i].bad && !peaks[i - 1].bad && InRangeCF(linelen, 227.5 - 4, 227.5 + 4)) {
-				prev_linelen = f_linelen.feed(linelen);
-			}
-		}
-		line++;
-	}
-
-	// PASS 3:  Error correction
-	line = -1;	
-	for (int i = firstline - 1; (i < (firstline + 540)) && (line < 526); i++) {
-		if (peaks[i].linenum > 0 && peaks[i].bad && (get_oline(peaks[i].linenum) >= 22)) {
-			HandleBadLine(peaks, i);
-		}
-	}
-
-	// PASS 3:  Wrapup and audio processing 
-	line = -1;	
-	for (int i = firstline - 1; (i < (firstline + 540)) && (line < 526); i++) {
-		if ((peaks[i].linenum > 0) && (peaks[i].linenum <= 525)) {
-			line = peaks[i].linenum ;
-			cerr << line << ' ' << i << ' ' << peaks[i].bad << ' ' <<  peaks[i].peak << ' ' << peaks[i].center << ' ' << peaks[i].center - peaks[i-1].center << ' ' << peaks[i].beginsync << ' ' << peaks[i].endsync << ' ' << peaks[i].endsync - peaks[i].beginsync << endl;
-				
-			// XXX:  This is a hack to avoid a crashing condition!
-			if (!((line < 12) && (peaks[i].center - peaks[i-1].center) < (in_freq * 200))) {
-				ProcessLine(buf, peaks, i); 
-
-				cerr << "PA " << (line / 525.0) + frameno << ' ' << v_read + peaks[i].beginsync << endl;
-				ProcessAudio((line / 525.0) + frameno, v_read + peaks[i].beginsync, abuf); 
-				
-				if (peaks[i].bad) {
-					int oline = get_oline(line);
-               		 		frame[oline][3] = frame[oline][5] = 65000;
-			                frame[oline][4] = frame[oline][6] = 0;
+				if ((prev > tpoint) && (cur < tpoint)) {
+//					cerr << 'B' << ' ' << i << ' ' << line << ' ' << hsyncs[line] << ' ';
+					double diff = cur - prev;
+					begsync = ((i - 8) + (tpoint - prev) / diff);
+	
+//					cerr << prev << ' ' << tpoint << ' ' << cur << ' ' << hsyncs[line] << endl;
+					break;
 				}
+				prev = cur;
+			}
+
+			// find end of hsync
+			f_endsync.clear();
+			prev = 0;
+			for (int i = hsyncs[line] - (2 * FSC); i < hsyncs[line] + (4 * FSC); i++) {
+				double cur = f_endsync.feed(buf[i]);
+
+				if ((prev < tpoint) && (cur > tpoint)) {
+//					cerr << 'E' << ' ' << line << ' ' << hsyncs[line] << ' ';
+					double diff = cur - prev;
+					endsync = ((i - 8) + (tpoint - prev) / diff);
+	
+//					cerr << prev << ' ' << tpoint << ' ' << cur << ' ' << hsyncs[line] << endl;
+					break;
+				}
+				prev = cur;
+			}
+
+			cerr << "S " << line << ' ' << begsync << ' ' << endsync << ' ' << endsync - begsync << endl;
+
+			if ((!InRangeCF(endsync - begsync, 15.75, 17.25)) || (begsync == -1) || (endsync == -1)) {
+				err[line] = true;
+			} else {
+				hsyncs[line] = endsync;
 			}
 		}
+	
+		// We need semi-correct lines for the next phases	
+		CorrectDamagedHSyncs(hsyncs, err); 
+
+		bool phaseflip;
+		double blevel[252], phase[252];
+		double tpodd = 0, tpeven = 0;
+		int nodd = 0, neven = 0; // need to track these to exclude bad lines
+		double bphase = 0;
+		// detect alignment (undamaged lines only) 
+		for (int line = 0; line < 64; line++) {
+			double line1 = hsyncs[line], line2 = hsyncs[line + 1];
+
+			if (err[line] == true) {
+				cerr << "ERR " << line << endl;
+				continue;
+
+			}
+
+			// burst detection/correction
+			Scale(buf, linebuf, line1, line2, 227.5 * FSC);
+			if (!BurstDetect2(linebuf, FSC, 4, -1, blevel[line], bphase, phaseflip, true)) { 
+				cerr << "ERRnoburst " << line << endl;
+				err[line] = true;
+				continue;
+			}
+
+			phase[line] = bphase;	
+	
+			if (line % 2) {
+				tpodd += phaseflip;
+				nodd++;
+			} else {
+				tpeven += phaseflip;
+				neven++;
+			}
+	
+			cerr << "BURST " << line << ' ' << line1 << ' ' << line2 << ' ' << blevel[line] << ' ' << bphase << endl;
+		}
+
+		bool fieldphase = fabs(tpeven / neven) < fabs(tpodd / nodd);
+		cerr << "PHASES: " << neven + nodd << ' ' << tpeven / neven << ' ' << tpodd / nodd << ' ' << fieldphase << endl; 
+
+		for (int pass = 0; pass < 4; pass++) {
+	     	   for (int line = 0; line < 252; line++) {
+			bool lphase = ((line % 2) == 0); 
+			if (fieldphase) lphase = !lphase;
+
+			double line1c = hsyncs[line] + ((hsyncs[line + 1] - hsyncs[line]) * 14.0 / 227.5);
+
+			Scale(buf, linebuf, hsyncs[line], line1c, 14 * FSC);
+			if (!BurstDetect2(linebuf, FSC, 4, lphase, blevel[line], bphase, phaseflip, false)) {
+				err[line] = true;
+				continue;
+			} 
+			
+			double tgt = .260;
+//			if (bphase > .5) tgt += .5; 
+
+			double adj = (tgt - bphase) * 8;
+
+			if (f_debug) cerr << "ADJ " << line << ' ' << pass << ' ' << bphase << ' ' << tgt << ' ' << adj << endl;
+			hsyncs[line] -= adj;
+		   }
+		}
+
+		CorrectDamagedHSyncs(hsyncs, err); 
+
+		// final output
+		for (int line = 0; line < 252; line++) {
+			double line1 = hsyncs[line], line2 = hsyncs[line + 1];
+			int oline = 3 + (line * 2) + (oddeven ? 0 : 1);
+
+			// 33 degree shift 
+			double shift33 = (33.0 / 360.0) * 4 * 2;
+
+			if (FSC == 4) {
+				// XXX THIS IS BUGGED, but works
+				shift33 = (107.0 / 360.0) * 4 * 2;
+			}
+
+			double pt = -12 - shift33; // align with previous-gen tbc output
+
+			Scale(buf, linebuf, line1 + pt, line2 + pt, 910, 0);
+		
+			double framepos = (line / 525.0) + frameno + (field * .50);
+
+			if (!field) framepos -= .001;
+
+			ProcessAudio(framepos, v_read + hsyncs[line], abuf); 
+	
+			bool lphase = ((line % 2) == 0); 
+			if (fieldphase) lphase = !lphase;
+			frame[oline][0] = (lphase == 0) ? 32768 : 16384; 
+			frame[oline][1] = blevel[line] * (327.68 / inscale); // ire_to_out(in_to_ire(blevel[line]));
+
+			if (err[line]) {
+               			frame[oline][3] = frame[oline][5] = 65000;
+			        frame[oline][4] = frame[oline][6] = 0;
+			}
+
+			for (int t = 4; t < 844; t++) {
+				double o = linebuf[t];
+
+				if (do_autoset) o = ire_to_out(in_to_ire(o));
+
+				frame[oline][t] = (uint16_t)clamp(o, 1, 65535);
+			}
+		}
+
+		offset = abs(hsyncs[250]);
+
+		cerr << "new offset " << offset << endl;
 	}
 
 	if (despackle) Despackle();
@@ -942,12 +939,10 @@ int Process(uint16_t *buf, int len, float *abuf, int alen)
 	write(1, frame, sizeof(frame));
 	memset(frame, 0, sizeof(frame));
 
-	if (!freeze_frame && phase >= 0) phase = !phase;
-	
-	return peaks[firstline + 500].center;
+	return offset;
 }
 
-bool seven_five = (in_freq == 4);
+bool seven_five = (FSC == 4);
 double low = 65535, high = 0;
 
 double f[vblen];
@@ -955,7 +950,7 @@ double f[vblen];
 void autoset(uint16_t *buf, int len, bool fullagc = true)
 {
 	int lowloc = -1;
-	int checklen = (int)(in_freq * 4);
+	int checklen = (int)(FSC * 4);
 
 	if (!fullagc) {
 		low = 65535;
@@ -970,7 +965,7 @@ void autoset(uint16_t *buf, int len, bool fullagc = true)
 	for (int i = 0; i < len; i++) {
 		f[i] = f_longsync.feed(buf[i]);
 
-		if ((i > (in_freq * 256)) && (f[i] < low) && (f[i - checklen] < low)) {
+		if ((i > (FSC * 256)) && (f[i] < low) && (f[i - checklen] < low)) {
 			if (f[i - checklen] > f[i]) 
 				low = f[i - checklen];
 			else 
@@ -979,17 +974,13 @@ void autoset(uint16_t *buf, int len, bool fullagc = true)
 			lowloc = i;
 		}
 		
-		if ((i > (in_freq * 256)) && (f[i] > high) && (f[i - checklen] > high)) {
+		if ((i > (FSC * 256)) && (f[i] > high) && (f[i - checklen] > high)) {
 			if (f[i - checklen] < f[i]) 
 				high = f[i - checklen];
 			else 
 				high = f[i];
 		}
-
-//		cerr << i << ' ' << buf[i] << ' ' << f[i] << ' ' << low << ':' << high << endl;
 	}
-
-//	cerr << lowloc << ' ' << low << ':' << high << endl;
 
 	// phase 2: attempt to figure out the 0IRE porch near the sync
 
@@ -997,12 +988,12 @@ void autoset(uint16_t *buf, int len, bool fullagc = true)
 		int gap = high - low;
 		int nloc;
 
-		for (nloc = lowloc; (nloc > lowloc - (in_freq * 320)) && (f[nloc] < (low + (gap / 8))); nloc--);
+		for (nloc = lowloc; (nloc > lowloc - (FSC * 320)) && (f[nloc] < (low + (gap / 8))); nloc--);
 
-		cerr << nloc << ' ' << (lowloc - nloc) / in_freq << ' ' << f[nloc] << endl;
+		cerr << nloc << ' ' << (lowloc - nloc) / FSC << ' ' << f[nloc] << endl;
 
-		nloc -= (in_freq * 4);
-		cerr << nloc << ' ' << (lowloc - nloc) / in_freq << ' ' << f[nloc] << endl;
+		nloc -= (FSC * 4);
+		cerr << nloc << ' ' << (lowloc - nloc) / FSC << ' ' << f[nloc] << endl;
 	
 		cerr << "old base:scale = " << inbase << ':' << inscale << endl;
 
@@ -1025,10 +1016,11 @@ void autoset(uint16_t *buf, int len, bool fullagc = true)
 int main(int argc, char *argv[])
 {
 	int rv = 0, arv = 0;
-	bool do_autoset = (in_freq == 4);
 	long long dlen = -1;
 	unsigned char *cinbuf = (unsigned char *)inbuf;
 	unsigned char *cabuf = (unsigned char *)abuf;
+
+	int p_maxframes = 1 << 28;
 
 	int c;
 
@@ -1036,10 +1028,13 @@ int main(int argc, char *argv[])
 
 	opterr = 0;
 	
-	while ((c = getopt(argc, argv, "dHmhgs:n:i:a:AfFt:r:")) != -1) {
+	while ((c = getopt(argc, argv, "s:n:DHmhgs:n:i:a:AfFt:r:")) != -1) {
 		switch (c) {
-			case 'd':	// show differences between pixels
-				f_diff = true;
+			case 's': // number of frames to skip at the beginning
+				sscanf(optarg, "%d", &p_skipframes);		
+				break;
+			case 'n': // number of frames to output
+				sscanf(optarg, "%d", &p_maxframes);		
 				break;
 			case 'm':	// "magnetic video" mode - bottom field first
 				writeonfield = 2;
@@ -1059,7 +1054,7 @@ int main(int argc, char *argv[])
 			case 'g':
 				do_autoset = !do_autoset;
 				break;
-			case 'n':
+			case 'D':
 				despackle = false;
 				break;
 			case 'f':
@@ -1071,9 +1066,6 @@ int main(int argc, char *argv[])
 			case 'H':
 				f_highburst = !f_highburst;
 				break;
-			case 't':
-				sscanf(optarg, "%lf", &f_tol);		
-				break;
 			case 'r':
 				sscanf(optarg, "%lf", &p_rotdetect);		
 				break;
@@ -1082,7 +1074,10 @@ int main(int argc, char *argv[])
 		} 
 	} 
 
-	cerr << "freq = " << in_freq << endl;
+	if (p_skipframes > 0)
+		p_maxframes += p_skipframes;
+
+	cerr << "freq = " << FSC << endl;
 
 	rv = read(fd, inbuf, vbsize);
 	while ((rv > 0) && (rv < vbsize)) {
@@ -1104,10 +1099,8 @@ int main(int argc, char *argv[])
 							
 	memset(frame, 0, sizeof(frame));
 
-	f_linelen.clear(ntsc_ipline);
-
 	size_t aplen = 0;
-	while (rv == vbsize && ((v_read < dlen) || (dlen < 0))) {
+	while (rv == vbsize && ((v_read < dlen) || (dlen < 0)) && (frameno < p_maxframes)) {
 		if (do_autoset) {
 			autoset(inbuf, vbsize / 2);
 		}
