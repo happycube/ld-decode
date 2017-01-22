@@ -1,4 +1,4 @@
-all: cx tbc-pal tbc-ntsc ntsc4 audiog2 comb-ntsc comb-pal 
+all: cx tbc-pal tbc-ntsc ntsc4 comb-ntsc comb-pal 
 
 CFLAGS=-O3 
 CFLAGS=-mavx -O2 -fno-omit-frame-pointer 
@@ -6,13 +6,10 @@ CFLAGS=-mavx -O2 -fno-omit-frame-pointer
 OPENCV_LIBS=-lopencv_core -lopencv_highgui -lopencv_imgproc -lopencv_video
 
 clean:
-	rm -f cx tbc-pal tbc-ntsc ntsc4 audiog2 comb-ntsc comb-pal
+	rm -f cx tbc-pal tbc-ntsc ntsc4 comb-ntsc comb-pal
 
 cx: cx-expander.cxx deemp.h
 	clang++ -std=c++11  -Wall $(CFLAGS) -o cx cx-expander.cxx
-
-audiog2: audio-g2.cxx deemp.h
-	clang++ -std=c++11  -Wall $(CFLAGS) -o audiog2 audio-g2.cxx
 
 deemp.h: filtermaker.py
 	python3 filtermaker.py > deemp.h
