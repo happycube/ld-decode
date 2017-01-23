@@ -1,8 +1,6 @@
 all: cx tbc-pal tbc-ntsc ntsc4 comb-ntsc comb-pal 
 
-CFLAGS=-O3 
-CFLAGS=-mavx -O2 -fno-omit-frame-pointer 
-
+CFLAGS=-g -O2 -fno-omit-frame-pointer -march=native
 OPENCV_LIBS=-lopencv_core -lopencv_highgui -lopencv_imgproc -lopencv_video
 
 clean:
