@@ -1,4 +1,5 @@
-#!/usr/bin/python3
+#!python
+
 import numpy as np
 import scipy as sp
 import scipy.signal as sps
@@ -109,7 +110,6 @@ def doplot2(B, A, B2, A2):
 
 	v0 = hm[0] / hm2[0]
 	for i in range(0, len(w)):
-#		print i, freq / 2 * (w[i] / π), hm[i], hm2[i], hm[i] / hm2[i], (hm[i] / hm2[i]) / v0
 		v[i] = (hm[i] / hm2[i]) / v0
 
 	fig = plt.figure()
@@ -118,10 +118,6 @@ def doplot2(B, A, B2, A2):
 	ax1 = fig.add_subplot(111)
 
 	v  = 20 * np.log10(v )
-
-#	plt.plot(w * (freq/π) / 2.0, v)
-#	plt.show()
-#	exit()
 
 	plt.plot(w * (freq/π) / 2.0, 20 * np.log10(abs(h)), 'r')
 	plt.plot(w * (freq/π) / 2.0, 20 * np.log10(abs(h2)), 'b')
@@ -145,78 +141,14 @@ Bboost, Aboost = sps.butter(1, (2.0/(freq/2)), 'high')
 
 lowpass_filter_b, lowpass_filter_a = sps.butter(8, (5.5/(freq/2)), 'low')
 
-#dosplot(lowpass_filter_b, lowpass_filter_a)
-#exit()
+# demphasis coefficients.
 
-#lowpass_filter_b = [1.0]
-#lowpass_filter_a = [1.0]
+deemp_t1 = .75
+deemp_t2 = 4.0
 
-# demphasis coefficients.  haven't figured out how to compute them outside octave yet.
-
-# [b, a] = bilinear(-3*(10^-8), -1*(10^-8), 1/3, freq)
-f_deemp_b = [3.778720395899611e-01, -2.442559208200777e-01]
-f_deemp_a = [1.000000000000000e+00, -8.663838812301168e-01]
-deemp_corr = 1.0
-
-# t1 = 0.83; t2 = 3.0; [b, a] = bilinear(-t2*(10^-8), -t1*(10^-8), t1/t2, freq);
-# printf("f_deemp_b = ["); printf("%.15e, ", b); printf("]\nf_deemp_a = ["); printf("%.15e, ", a); printf("]\n")
-#f_deemp_b = [3.172367682445019e-01, -2.050613721767547e-01, ]
-#f_deemp_a = [1.000000000000000e+00, -8.878246039322528e-01, ]
-
-# t1 = 0.9; t2 = 3.0; [b, a] = bilinear(-t2*(10^-8), -t1*(10^-8), t1/t2, freq);
-# printf("f_deemp_b = ["); printf("%.15e, ", b); printf("]\nf_deemp_a = ["); printf("%.15e, ", a); printf("]\n")
-#f_deemp_b = [3.423721575744635e-01, -2.213088502188534e-01, ]
-#f_deemp_a = [1.000000000000000e+00, -8.789366926443899e-01, ]
-
-# t1 = .875
-#f_deemp_b = [3.334224479793254e-01, -2.155237713318184e-01, ]
-#f_deemp_a = [1.000000000000000e+00, -8.821013233524929e-01, ]
-
-# t1 = .833
-#f_deemp_b = [3.183188754563553e-01, -2.057608446588788e-01, ]
-#f_deemp_a = [1.000000000000000e+00, -8.874419692025236e-01, ]
-
-# t1 = .8
-#f_deemp_b = [3.063915161937518e-01, -1.980510174835196e-01, ]
-#f_deemp_a = [1.000000000000000e+00, -8.916595012897678e-01, ]
-
-# t1 = 0.9, t2 = 4.0 - PAL
-f_deemp_b = [2.250000998693053e-01, -2.249998421420658e-01, ]
-f_deemp_a = [1.000000000000000e+00, -9.999997422727605e-01, ]
-
-#f_deemp_b = [2.500001073863483e-01, -2.499998210227529e-01, ]
-#f_deemp_a = [1.000000000000000e+00, -9.999997136364046e-01, ]
-f_deemp_b = [3.001060445387063e-01, -1.664899257688229e-01, ]
-f_deemp_a = [1.000000000000000e+00, -8.663838812301168e-01, ]
-
-f_deemp_b = [2.719120316002989e-01, -1.508487242446888e-01, ]
-f_deemp_a = [1.000000000000000e+00, -8.789366926443899e-01, ]
-
-# t1 = 0.7, t2 = 4.0 - PAL
-f_deemp_b = [2.433361994840929e-01, -1.349957007738607e-01, ]
-f_deemp_a = [1.000000000000000e+00, -8.916595012897678e-01, ]
-f_deemp_b = [2.143707390975003e-01, -1.189265231035602e-01, ]
-f_deemp_a = [1.000000000000000e+00, -9.045557840060601e-01, ]
-
-f_deemp_b = [1.958542245307747e-01, -1.004100085368346e-01, ]
-f_deemp_a = [1.000000000000000e+00, -9.045557840060601e-01, ]
-
-f_deemp_b = [2.381776863975760e-01, -1.427334704036360e-01, ]
-f_deemp_a = [1.000000000000000e+00, -9.045557840060601e-01, ]
-
-# freq = 4000000*315/88
-# t1 = 0.7; t2 = 4.0; [b, a] = bilinear(-t2*(10^-8), -t1*(10^-8), t1/t2, freq); printf("f_deemp_b = ["); printf("%.1
-# 5e, ", b); printf("]\nf_deemp_a = ["); printf("%.15e, ", a); printf("]\n")
-#f_deemp_b = [2.143707390975003e-01, -1.189265231035602e-01, ]
-#f_deemp_a = [1.000000000000000e+00, -9.045557840060601e-01, ]
-
-# t1 0.8 t2 4.0
-#f_deemp_b = [2.433361994840929e-01, -1.349957007738607e-01, ]
-#f_deemp_a = [1.000000000000000e+00, -8.916595012897678e-01, ]
-
-# t1 0.75
-f_deemp_b = [2.289026691830682e-01, -1.269884065785926e-01, ]
-f_deemp_a = [1.000000000000000e+00, -8.980857373955243e-01, ]
+# set up deemp filter
+[tf_b, tf_a] = sps.zpk2tf(-deemp_t2*(10**-8), -deemp_t1*(10**-8), deemp_t1 / deemp_t2)
+[f_deemp_b, f_deemp_a] = sps.bilinear(tf_b, tf_a, 1/(freq_hz/2))
 
 # audio filters
 Baudiorf = sps.firwin(65, 3.5 / (freq / 2), window='hamming', pass_zero=True)
@@ -229,27 +161,15 @@ right_audfreq = 2.812499
 hfreq = freq / 8.0
 
 N, Wn = sps.buttord([(left_audfreq-.10) / hfreq, (left_audfreq+.10) / hfreq], [(left_audfreq-.15) / hfreq, (left_audfreq+.15)/hfreq], 1, 15)
-#print(N,Wn)
 leftbp_filter_b, leftbp_filter_a = sps.butter(N, Wn, btype='bandpass')
 
 N, Wn = sps.buttord([(right_audfreq-.10) / hfreq, (right_audfreq+.10) / hfreq], [(right_audfreq-.15) / hfreq, (right_audfreq+.15)/hfreq], 1, 15)
-#print(N,Wn)
-#N, Wn = sps.buttord([(right_audfreq-.10) / hfreq, (right_audfreq+.10) / hfreq], [(right_audfreq-.18) / hfreq, (right_audfreq+.18)/hfreq], 1, 15)
-#print(N,Wn)
 rightbp_filter_b, rightbp_filter_a = sps.butter(N, Wn, btype='bandpass')
-
-#doplot(leftbp_filter_b, leftbp_filter_a)
-#doplot2(leftbp_filter, [1.0], rightbp_filter, [1.0]);
-#doplot2(leftbp_filter_b, leftbp_filter_a, rightbp_filter_b, rightbp_filter_a);
 
 N, Wn = sps.buttord(0.016 / hfreq, 0.024 / hfreq, 1, 8) 
 audiolp_filter_b, audiolp_filter_a = sps.butter(N, Wn)
 
 N, Wn = sps.buttord(3.1 / (freq / 2.0), 3.5 / (freq / 2.0), 1, 16) 
-#N = 12
-#Wn = 3.3 / (freq / 2.0)
-#N = 8
-#Wn = 3.4 / (freq / 2.0)
 audiorf_filter_b, audiorf_filter_a = sps.butter(N, Wn)
 
 # from http://tlfabian.blogspot.com/2013/01/implementing-hilbert-90-degree-shift.html
@@ -259,7 +179,6 @@ hilbert_filter = np.fft.fftshift(
 
 def fm_decode(in_filt, freq_hz, hlen = hilbertlen):
 	hilbert = sps.hilbert(in_filt[0:hlen])
-#	hilbert = sps.lfilter(hilbert_filter, 1.0, in_filt)
 
 	# the hilbert transform has errors at the edges.  but it doesn't seem to matter much IRL
 	chop = 256 
@@ -267,7 +186,6 @@ def fm_decode(in_filt, freq_hz, hlen = hilbertlen):
 
 	tangles = np.angle(hilbert) 
 
-#	dangles = np.diff(tangles[128:])
 	dangles = np.diff(tangles)
 
 	# make sure unwapping goes the right way
@@ -322,19 +240,6 @@ def process_video(data):
 	# perform general bandpass filtering
 
 	in_filt = sps.lfilter(Bboost, Aboost, data)
-#	in_filt2 = sps.lfilter(Bcutl, Acutl, in_filt1)
-#	in_filt3 = sps.lfilter(Bcutr, Acutr, in_filt2)
-
-#	if Inner == 0:
-#		in_filt = in_filt3
-#	else:
-#		in_filt = sps.lfilter(f_emp_b, f_emp_a, in_filt3)
-
-
-#	fft8.plotfft(in_filt)
-#	#fft8.plotfft(data)
-#	plt.plot(in_filt)
-#	plt.show()
 
 	output = fm_decode(in_filt, freq_hz)
 
@@ -345,11 +250,8 @@ def process_video(data):
 #	output = np.clip(output, 7100000, 10800000) 
 
 	output = sps.lfilter(lowpass_filter_b, lowpass_filter_a, output)
+	doutput = (sps.lfilter(f_deemp_b, f_deemp_a, output)[len(f_deemp_b) * 32:len(output)]) # / deemp_corr
 
-	doutput = (sps.lfilter(f_deemp_b, f_deemp_a, output)[len(f_deemp_b) * 32:len(output)]) / deemp_corr
-
-#	doutput = (sps.lfilter(f_deemp_b, f_deemp_a, doutput)[64:len(doutput)]) / deemp_corr
-	
 	output_16 = np.empty(len(doutput), dtype=np.uint16)
 	reduced = (doutput - minn) / hz_ire_scale
 	output = np.clip(reduced * out_scale, 0, 65535) 
@@ -374,19 +276,9 @@ def process_video(data):
 			if (am < len(output_16)):
 				output_16[am] = 0
 
-#	plt.plot(range(0, len(data)), data)
-#	plt.plot(range(0, len(output_16)), output_16)
-#	plt.show()
 	return output_16
 
-# graph for debug
-#	output = (sps.lfilter(f_deemp_b, f_deemp_a, output)[128:len(output)]) / deemp_corr
-
-#	print output
-
 	plt.plot(range(0, len(output_16)), output_16)
-#	plt.plot(range(0, len(doutput)), doutput)
-#	plt.plot(range(0, len(output_prefilt)), output_prefilt)
 	plt.show()
 	exit()
 
@@ -409,10 +301,7 @@ def process_audio(indata):
 		test_mode += 32768 
 		return outputf, 32768 
 
-#	print(len(indata), len(audiorf_filter_b * 2), len(leftbp_filter_b) * 1)
-
 	in_filt = sps.lfilter(audiorf_filter_b, audiorf_filter_a, indata)[len(audiorf_filter_b) * 2:]
-
 	in_filt4 = np.empty(int(len(in_filt) / 4) + 1)
 
 	for i in range(0, len(in_filt), 4):
@@ -420,13 +309,6 @@ def process_audio(indata):
 
 	in_left = sps.lfilter(leftbp_filter_b, leftbp_filter_a, in_filt4)[len(leftbp_filter_b) * 1:] 
 	in_right = sps.lfilter(rightbp_filter_b, rightbp_filter_a, in_filt4)[len(rightbp_filter_b) * 1:] 
-
-#	if (len(in_left) % 2):
-#		in_left = in_left[0:len(in_left - 1)]
-#	if (len(in_right) % 2):
-#		in_right = in_right[0:len(in_right - 1)]
-
-#	print len(in_left)
 
 	out_left = fm_decode(in_left, freq_hz / 4)
 	out_right = fm_decode(in_right, freq_hz / 4)
@@ -445,30 +327,19 @@ def process_audio(indata):
 		outputf[(tot * 2) + 1] = out_right[i]
 		tot = tot + 1
 
-#	exit()
-	
 	return outputf[0:tot * 2], tot * 20 * 4 
 
 	plt.plot(range(0, len(out_left)), out_left)
-#	plt.plot(range(0, len(out_leftl)), out_leftl)
 	plt.plot(range(0, len(out_right)), out_right + 150000)
-#	plt.ylim([2000000,3000000])
 	plt.show()
 	exit()
 
 def test():
 	test = np.empty(blocklen, dtype=np.uint8)
-#	test = np.empty(blocklen)
 
 	global hilbert_filter
 
-#	for hlen in range(3, 18):
 	for vlevel in range(20, 100, 10):
-#		hilbert_filter = np.fft.fftshift(
-#		    np.fft.ifft([0]+[1]*hlen+[0]*hlen)
-#		)
-
-#		vlevel = 40
 		vphase = 0
 		alphase = 0
 		arphase = 0
@@ -532,15 +403,9 @@ def main():
 		if o == "-A":
 			CAV = 1
 			Inner = 1
-		if o == "-h":
-			# use full spec deemphasis filter - will result in overshoot, but higher freq resonse
-			f_deemp_b = [3.778720395899611e-01, -2.442559208200777e-01]
-			f_deemp_a = [1.000000000000000e+00, -8.663838812301168e-01]
 		if o == "-C":
 			Bcutr, Acutr = sps.butter(1, [2.68/(freq/2), 3.08/(freq/2)], btype='bandstop')
 		if o == "-w":
-#			lowpass_filter_b, lowpass_filter_a = sps.butter(9, (5.0/(freq/2)), 'low')
-#			lowpass_filter_b, lowpass_filter_a = sps.butter(8, (4.8/(freq/2)), 'low')
 			lowpass_filter_b, lowpass_filter_a = sps.butter(7, (4.7/(freq/2)), 'low')
 			wide_mode = 1
 			hz_ire_scale = (9360000 - 8100000) / 100
@@ -558,9 +423,6 @@ def main():
 			if ia == 3:	
 				lowpass_filter_b, lowpass_filter_a = sps.butter(8, (6.1/(freq/2)), 'low')
 
-
-#	dosplot(lowpass_filter_b, lowpass_filter_a)
-#	exit()
 
 	argc = len(cut_argv)
 	if argc >= 1:
