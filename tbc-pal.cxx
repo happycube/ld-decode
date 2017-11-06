@@ -22,10 +22,22 @@ void aclamp(double *v, int len, double low, double high)
 // NTSC properties
 #ifdef FSC10
 const double in_freq = 10.0;	// in FSC.  Must be an even number!
+#elif defined(C32MHZ)
+const double in_freq = 32.0 / (315.0 / 88.0); 
 #elif defined(FSC4)
 const double in_freq = 4.0;	// in FSC.  Must be an even number!
 #else
 const double in_freq = 8.0;	// in FSC.  Must be an even number!
+#endif
+
+#ifdef C32MHZ
+const int pal_iplinei = 2048; // pixels per line
+const double pal_ipline = 2048; // pixels per line
+const double pixels_per_usec = 1000000.0 / 2048.0; 
+#else
+const int pal_iplinei = 229 * in_freq; // pixels per line
+const double pal_ipline = 229 * in_freq; // pixels per line
+const double pixels_per_usec = 1000000.0 / (in_freq * (1000000.0 * 315.0 / 88.0)); 
 #endif
 
 #define OUT_FREQ 4
@@ -40,12 +52,8 @@ struct VFormat {
 double burstfreq = 4.43361875;
 
 //const double pal_uline = 64; // usec_
-const int pal_iplinei = 229 * in_freq; // pixels per line
-const double pal_ipline = 229 * in_freq; // pixels per line
 const double pal_opline = 1052; // pixels per line
 //const int pal_oplinei = 229 * out_freq; // pixels per line
-
-const double pixels_per_usec = 1000000.0 / (in_freq * (1000000.0 * 315.0 / 88.0)); 
 
 // include everything from first sync to end of second sync, plus padding
 // 1 (padding) + 64 (line) + 4.7 (sync) + 1 padding = 72.35 

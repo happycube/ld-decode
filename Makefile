@@ -1,4 +1,4 @@
-all: cx tbc-pal tbc-ntsc ntsc4 comb-ntsc comb-pal 
+all: cx tbc-pal tbc-pal32 tbc-ntsc ntsc4 comb-ntsc comb-pal 
 
 CFLAGS=-g -O2 -fno-omit-frame-pointer -march=native
 OPENCV_LIBS=-lopencv_core -lopencv_highgui -lopencv_imgproc -lopencv_video
@@ -20,6 +20,9 @@ ntsc10: tbc-ntsc.cxx ld-decoder.h deemp.h
 
 tbc-pal: tbc-pal.cxx ld-decoder.h deemp.h
 	clang++ -std=c++11  -g -Wall $(CFLAGS) -o tbc-pal tbc-pal.cxx
+
+tbc-pal32: tbc-pal.cxx ld-decoder.h deemp.h
+	clang++ -std=c++11  -g -Wall $(CFLAGS) -DC32MHZ -o tbc-pal32 tbc-pal.cxx
 
 tbc-ntsc: tbc-ntsc.cxx ld-decoder.h deemp.h
 	clang++ -std=c++11  -g -Wall $(CFLAGS) -o tbc-ntsc tbc-ntsc.cxx
