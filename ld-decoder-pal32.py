@@ -156,6 +156,20 @@ deemp_t2 = 4.5
 [tf_b, tf_a] = sps.zpk2tf(-deemp_t2*(10**-8), -deemp_t1*(10**-8), deemp_t1 / deemp_t2)
 [f_deemp_b, f_deemp_a] = sps.bilinear(tf_b, tf_a, 1/(freq_hz/2))
 
+# XXX
+if True:
+    Bboost, Aboost = sps.butter(1, [(2.0/(freq/2)), (13.5/(freq/2))], 'bandpass')
+
+    deemp_t1 = .5
+    deemp_t2 = 4.5
+
+    # set up deemp filter
+    [tf_b, tf_a] = sps.zpk2tf(-deemp_t2*(10**-8), -deemp_t1*(10**-8), deemp_t1 / deemp_t2)
+    [f_deemp_b, f_deemp_a] = sps.bilinear(tf_b, tf_a, 1/(freq_hz/2))
+
+    lowpass_filter_b, lowpass_filter_a = sps.butter(5, (5.0/(freq/2)), 'low')
+# XXX
+
 # audio filters
 Baudiorf = sps.firwin(65, 3.5 / (freq / 2), window='hamming', pass_zero=True)
 
