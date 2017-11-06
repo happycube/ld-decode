@@ -407,14 +407,17 @@ void HandleBadLine(vector<Line> &peaks, int i)
 
 	int lg = 1;
 
-	for (lg = 1; lg < 8 && ((i - lg) >= 0) && ((i + lg) < peaks.size()) && (peaks[i - lg].bad || peaks[i + lg].bad); lg++);
+	for (lg = 2; lg < 8 && ((i - lg) >= 0) && ((i + lg) < peaks.size()) && (peaks[i - lg].bad || peaks[i + lg].bad); lg++);
 
 	cerr << peaks[i-lg].beginsync << ' ' << peaks[i-lg].center << ' ' << peaks[i-lg].endsync << ' ' << peaks[i-lg].endsync - peaks[i-lg].beginsync << endl;
+
 	cerr << "BADLG " << lg << ' ';
 	double gap = (peaks[i + lg].beginsync - peaks[i - lg].beginsync) / (lg * 2);
+
 	peaks[i].beginsync = peaks[i - lg].beginsync + (gap * lg); 
 	peaks[i].center = peaks[i - lg].center + (gap * lg); 
 	peaks[i].endsync = peaks[i - lg].endsync + (gap * lg); 
+
 	cerr << peaks[i].beginsync << ' ' << peaks[i].center << ' ' << peaks[i].endsync << ' ' << peaks[i].endsync - peaks[i].beginsync << endl;
 	cerr << peaks[i+lg].beginsync << ' ' << peaks[i+lg].center << ' ' << peaks[i+lg].endsync << ' ' << peaks[i+lg].endsync - peaks[i+lg].beginsync << endl;
 }
@@ -514,10 +517,31 @@ double ProcessLine(uint16_t *buf, vector<Line> &lines, int index, bool recurse =
 		cerr << "len " << frameno + 1 << ":" << oline << ' ' << orig_len << ' ' << new_len << ' ' << orig_begin << ' ' << begin << ' ' << orig_end << ' ' << end << endl;
 		if ((fabs(prev_endlen - endlen) > (out_freq * f_tol)) || (fabs(prev_beginlen - beginlen) > (out_freq * f_tol))) {
 			//cerr << "ERRP len " << frameno + 1 << ":" << oline << ' ' << orig_len << ' ' << new_len << ' ' << orig_begin << ' ' << begin << ' ' << orig_end << ' ' << end << endl;
-			cerr << "ERRP len " << frameno + 1 << ":" << oline << ' ' << prev_endlen - endlen << ' ' << prev_beginlen - beginlen << endl;
+			cerr << "ERRP len " << frameno + 1 << ":" << oline << ' ' << prev_beginlen - beginlen << ' ' << prev_endlen - endlen << endl;
+			cerr << "ERRP gap " << frameno + 1 << ":" << oline << ' ' << begin - prev_begin << ' ' << end - prev_end << endl;
 
-			if (oline > 25) lines[index].bad = true;
-			HandleBadLine(lines, index);
+			if (oline > 25) {
+				lines[index].bad = true;
+
+#if 1				
+				HandleBadLine(lines, index);
+#else
+				if ((prev_endlen - endlen) < -4) {
+					lines[index].endsync -= 8;	
+				} else if ((prev_endlen - endlen) > 4) {
+					lines[index].endsync += 8;	
+				}
+
+				if ((prev_beginlen - beginlen) < -4) {
+					lines[index].beginsync -= 8;	
+				} else if ((prev_beginlen - beginlen) > 4) {
+					lines[index].beginsync += 8;	
+				}
+#endif
+			} else {
+				HandleBadLine(lines, index);
+			}
+
 			return ProcessLine(buf, lines, index, true);
 		}
 	}

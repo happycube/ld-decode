@@ -149,6 +149,9 @@ lowpass_filter_b, lowpass_filter_a = sps.butter(8, (5.5/(freq/2)), 'low')
 deemp_t1 = .75
 deemp_t2 = 4.0
 
+deemp_t1 = .5 
+deemp_t2 = 4.5
+
 # set up deemp filter
 [tf_b, tf_a] = sps.zpk2tf(-deemp_t2*(10**-8), -deemp_t1*(10**-8), deemp_t1 / deemp_t2)
 [f_deemp_b, f_deemp_a] = sps.bilinear(tf_b, tf_a, 1/(freq_hz/2))
