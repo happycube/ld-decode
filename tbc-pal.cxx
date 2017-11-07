@@ -444,6 +444,7 @@ double ProcessLine(uint16_t *buf, vector<Line> &lines, int index, bool recurse =
 	bool err = lines[index].bad;
 
 	// use 1usec of padding
+	//double pixels_per_usec = 28.625; 
 	double pixels_per_usec = 28.625; 
 	double begin = lines[index].beginsync - pixels_per_usec;
 	double end = lines[index+1].endsync + pixels_per_usec;
@@ -549,8 +550,13 @@ double ProcessLine(uint16_t *buf, vector<Line> &lines, int index, bool recurse =
 	cerr << "final levels " << plevel1 << ' ' << plevel2 << endl;
 	begin += 4.0 * (burstfreq / 3.75);
 	end += 4.0 * (burstfreq / 3.75);
+
+#ifdef C32MHZ
+	Scale(buf, tout, begin - 8, end, scale4fsc_len); 
+#else
 	Scale(buf, tout, begin, end, scale4fsc_len); 
-		
+#endif
+
 	BurstDetect(tout, 120, 164, burstlevel, burstphase); 
 	cerr << "BURST " << get_oline(line) << ' ' << line << ' ' << burstlevel << ' ' << burstphase << endl;
 
