@@ -24,6 +24,7 @@ blocklen = (16 * 1024) + 512
 hilbertlen = (16 * 1024)
 
 wide_mode = 0
+s16 = False
 
 def dosplot(B, A):
         w, h = sps.freqz(B, A)
@@ -139,7 +140,7 @@ ffreq = freq/2.0
 
 Bboost, Aboost = sps.butter(1, (2.0/(freq/2)), 'high')
 
-lowpass_filter_b, lowpass_filter_a = sps.butter(8, (5.5/(freq/2)), 'low')
+lowpass_filter_b, lowpass_filter_a = sps.butter(8, (5.2/(freq/2)), 'low')
 
 # demphasis coefficients.
 
@@ -149,6 +150,23 @@ deemp_t2 = 4.0
 # set up deemp filter
 [tf_b, tf_a] = sps.zpk2tf(-deemp_t2*(10**-8), -deemp_t1*(10**-8), deemp_t1 / deemp_t2)
 [f_deemp_b, f_deemp_a] = sps.bilinear(tf_b, tf_a, 1/(freq_hz/2))
+
+# XXX
+if True:
+    #Bboost, Aboost = sps.butter(4, [(2.0/(freq/2)), (13.5/(freq/2))], 'bandpass')
+    #Bboost, Aboost = sps.butter(2, (1.8/(freq/2)), 'high')
+    
+    deemp_t1 = .65
+    deemp_t2 = 4.0
+    
+    deemp_corr = 1 # 0.996
+
+    # set up deemp filter
+    [tf_b, tf_a] = sps.zpk2tf(-deemp_t2*(10**-8), -deemp_t1*(10**-8), deemp_t1 / deemp_t2)
+    [f_deemp_b, f_deemp_a] = sps.bilinear(tf_b, tf_a, 1/(freq_hz/2))
+
+    lowpass_filter_b, lowpass_filter_a = sps.butter(8, (5.5/(freq/2)), 'low')
+# XXX
 
 # audio filters
 Baudiorf = sps.firwin(65, 3.5 / (freq / 2), window='hamming', pass_zero=True)
@@ -370,7 +388,7 @@ def test():
         exit()
 
 def main():
-        global lowpass_filter_b, lowpass_filter_a 
+        global s16, lowpass_filter_b, lowpass_filter_a 
         global wide_mode, hz_ire_scale, minn
         global f_deemp_b, f_deemp_a
 
@@ -391,9 +409,11 @@ def main():
 
         f_seconds = False 
 
-        optlist, cut_argv = getopt.getopt(sys.argv[1:], "hLCaAwSs:")
+        optlist, cut_argv = getopt.getopt(sys.argv[1:], "bhLCaAwSs:")
 
         for o, a in optlist:
+                if o == "-b":
+                        s16 = True  
                 if o == "-a":
                         audio_mode = 1  
                         blocklen = (64 * 1024) + 2048 
@@ -460,8 +480,13 @@ def main():
                 Inner = 0 
         
         total = toread = blocklen 
-        inbuf = infile.read(toread)
-        indata = np.fromstring(inbuf, 'uint8', toread)
+
+        if s16:
+            inbuf = infile.read(toread * 2)
+            indata = np.fromstring(inbuf, 'int16', toread) + 32768
+        else:
+            inbuf = infile.read(toread)
+            indata = np.fromstring(inbuf, 'uint8', toread)
         
         total = 0
         total_prevread = 0
@@ -471,11 +496,17 @@ def main():
                 toread = blocklen - indata.size 
 
                 if toread > 0:
+                    if s16:
+                        inbuf = infile.read(toread * 2)
+                        newdata = np.fromstring(inbuf, 'int16', toread) + 32768
+                    else:
                         inbuf = infile.read(toread)
-                        indata = np.append(indata, np.fromstring(inbuf, 'uint8', len(inbuf)))
+                        newdata = np.fromstring(inbuf, 'uint8', toread)
+       
+                    indata = np.append(indata, newdata)
 
-                        if indata.size < blocklen:
-                                exit()
+                    if indata.size < blocklen:
+                        exit()
 
                 if audio_mode:  
                         output, osamp = process_audio(indata)
