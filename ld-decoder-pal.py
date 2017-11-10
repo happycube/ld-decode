@@ -1,4 +1,4 @@
-#!python
+#!python3
 
 import numpy as np
 import scipy as sp
@@ -498,10 +498,16 @@ def main():
                 if toread > 0:
                     if s16:
                         inbuf = infile.read(toread * 2)
-                        newdata = np.fromstring(inbuf, 'int16', toread) + 32768
+                        try:
+                            newdata = np.fromstring(inbuf, 'int16', toread) 
+                        except:
+                            exit()
                     else:
                         inbuf = infile.read(toread)
-                        newdata = np.fromstring(inbuf, 'uint8', toread)
+                        try:
+                            newdata = np.fromstring(inbuf, 'uint8', toread) 
+                        except:
+                            exit()
        
                     indata = np.append(indata, newdata)
 
