@@ -194,6 +194,10 @@ int syncid_offset = syncid10_offset;
 Filter f_longsync(f_dsync4);
 Filter f_syncid(f_syncid4);
 int syncid_offset = syncid4_offset; 
+#elif defined(C32MHZ)
+Filter f_longsync(f_dsync32);
+Filter f_syncid(f_syncid32);
+int syncid_offset = syncid32_offset; 
 #else
 Filter f_longsync(f_dsync);
 Filter f_syncid(f_syncid8);
@@ -552,7 +556,7 @@ double ProcessLine(uint16_t *buf, vector<Line> &lines, int index, bool recurse =
 	end += 4.0 * (burstfreq / 3.75);
 
 #ifdef C32MHZ
-	Scale(buf, tout, begin - 8, end, scale4fsc_len); 
+	Scale(buf, tout, begin - 8, end + 1, scale4fsc_len); 
 #else
 	Scale(buf, tout, begin, end, scale4fsc_len); 
 #endif
