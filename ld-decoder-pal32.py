@@ -160,14 +160,14 @@ if True:
 #    deemp_t1 = .47
 #    deemp_t2 = 1.8
 
-    deemp_t1 = .50
+    deemp_t1 = .51
     deemp_t2 = 2.0
 
     # set up deemp filter
     [tf_b, tf_a] = sps.zpk2tf(-deemp_t2*(10**-8), -deemp_t1*(10**-8), deemp_t1 / deemp_t2)
     [f_deemp_b, f_deemp_a] = sps.bilinear(tf_b, tf_a, 1/(freq_hz/2))
 
-    lowpass_filter_b, lowpass_filter_a = sps.butter(1, (5.0/(freq/2)), 'low')
+    lowpass_filter_b, lowpass_filter_a = sps.butter(1, (5.2/(freq/2)), 'low')
 # XXX
 
 # audio filters
