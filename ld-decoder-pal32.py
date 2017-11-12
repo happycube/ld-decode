@@ -23,8 +23,8 @@ import getopt
 freq = 32
 freq_hz = freq * 1000000.0
 
-blocklen = (16 * 1024) + 512
-hilbertlen = (16 * 1024)
+blocklen = (32 * 1024) + 512
+hilbertlen = (32 * 1024)
 
 wide_mode = 0
 
@@ -155,16 +155,19 @@ deemp_t2 = 4.0
 
 # XXX
 if True:
-    Bboost, Aboost = sps.butter(1, [(2.0/(freq/2)), (13.5/(freq/2))], 'bandpass')
+    Bboost, Aboost = sps.butter(3, [(2.3/(freq/2)), (12.0/(freq/2))], 'bandpass')
 
-    deemp_t1 = .65
-    deemp_t2 = 4.0
+#    deemp_t1 = .47
+#    deemp_t2 = 1.8
+
+    deemp_t1 = .50
+    deemp_t2 = 2.0
 
     # set up deemp filter
     [tf_b, tf_a] = sps.zpk2tf(-deemp_t2*(10**-8), -deemp_t1*(10**-8), deemp_t1 / deemp_t2)
     [f_deemp_b, f_deemp_a] = sps.bilinear(tf_b, tf_a, 1/(freq_hz/2))
 
-#    lowpass_filter_b, lowpass_filter_a = sps.butter(8, (5.0/(freq/2)), 'low')
+    lowpass_filter_b, lowpass_filter_a = sps.butter(1, (5.0/(freq/2)), 'low')
 # XXX
 
 # audio filters
