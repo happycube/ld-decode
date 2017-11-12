@@ -155,7 +155,7 @@ deemp_t2 = 4.0
 
 # XXX
 if True:
-    Bboost, Aboost = sps.butter(3, [(2.3/(freq/2)), (12.0/(freq/2))], 'bandpass')
+    Bboost, Aboost = sps.butter(2, [(2.3/(freq/2)), (10.0/(freq/2))], 'bandpass')
 
 #    deemp_t1 = .47
 #    deemp_t2 = 1.8
