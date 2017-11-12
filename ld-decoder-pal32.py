@@ -1,4 +1,4 @@
-#!python
+#!python3
 
 # this version is based off 11/05 PAL version, changed for 32mhz/16bit signed samples
 
@@ -149,9 +149,6 @@ lowpass_filter_b, lowpass_filter_a = sps.butter(8, (5.5/(freq/2)), 'low')
 deemp_t1 = .75
 deemp_t2 = 4.0
 
-deemp_t1 = 1
-deemp_t2 = 4
-
 # set up deemp filter
 [tf_b, tf_a] = sps.zpk2tf(-deemp_t2*(10**-8), -deemp_t1*(10**-8), deemp_t1 / deemp_t2)
 [f_deemp_b, f_deemp_a] = sps.bilinear(tf_b, tf_a, 1/(freq_hz/2))
@@ -160,14 +157,14 @@ deemp_t2 = 4
 if True:
     Bboost, Aboost = sps.butter(1, [(2.0/(freq/2)), (13.5/(freq/2))], 'bandpass')
 
-    deemp_t1 = .5
-    deemp_t2 = 4.5
+    deemp_t1 = .65
+    deemp_t2 = 4.0
 
     # set up deemp filter
     [tf_b, tf_a] = sps.zpk2tf(-deemp_t2*(10**-8), -deemp_t1*(10**-8), deemp_t1 / deemp_t2)
     [f_deemp_b, f_deemp_a] = sps.bilinear(tf_b, tf_a, 1/(freq_hz/2))
 
-    lowpass_filter_b, lowpass_filter_a = sps.butter(5, (5.0/(freq/2)), 'low')
+#    lowpass_filter_b, lowpass_filter_a = sps.butter(8, (5.0/(freq/2)), 'low')
 # XXX
 
 # audio filters
