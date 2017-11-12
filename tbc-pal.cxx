@@ -566,7 +566,7 @@ double ProcessLine(uint16_t *buf, vector<Line> &lines, int index, bool recurse =
 
 wrapup:
 	// LD only: need to adjust output value for velocity, and remove defects as possible
-	double lvl_adjust = ((((end - begin) / iscale15_len) - 1) * 1.0) + 1;
+	double lvl_adjust = 1.0; // ((((end - begin) / iscale15_len) - 1) * 1.0) + 1;
 	int ldo = -128;
 
 	if (lines[index].bad) {
