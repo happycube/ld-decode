@@ -7,6 +7,7 @@ import scipy.signal as sps
 freq4 = 4 * 315.0 / 88.0
 freq = 4 * 315.0 / 88.0
 freq10 = 5 * 315.0 / 88.0
+freq32 = 32
 
 def WriteFilter(name, b, a = [1.0]):
 	print("vector<double> c_",name,"_b = {",sep="",end="")
@@ -116,6 +117,10 @@ WriteFilter("dsync4", dsync_filter4)
 Ndsync = 32 
 dsync_filter10 = sps.firwin(Ndsync + 1, 0.1 / (freq10), window='hamming')
 WriteFilter("dsync10", dsync_filter10)
+
+Ndsync = 32 
+dsync_filter32 = sps.firwin(Ndsync + 1, 0.1 / (freq32), window='hamming')
+WriteFilter("dsync32", dsync_filter32)
 
 Nsync = 20
 sync_filter4 = sps.firwin(Nsync + 1, 0.1 / (freq4), window='hamming')
@@ -240,11 +245,15 @@ WriteFilter("syncid8", f_syncid_b, f_syncid_a)
 f_syncid_b, f_syncid_a = sps.butter(3, 0.004)
 WriteFilter("syncid4", f_syncid_b, f_syncid_a)
 
+f_syncid_b, f_syncid_a = sps.butter(3, 0.0018)
+WriteFilter("syncid32", f_syncid_b, f_syncid_a)
+
 f_syncid_b, f_syncid_a = sps.butter(3, 0.0016)
 WriteFilter("syncid10", f_syncid_b, f_syncid_a)
 
 print("const int syncid4_offset = 165;")
 print("const int syncid8_offset = 320;")
+print("const int syncid32_offset = 360;")
 print("const int syncid10_offset = 400;")
 
 
