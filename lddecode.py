@@ -34,6 +34,8 @@ f_deemp_a = []
 # default deemp constants				
 deemp_t1 = .825
 deemp_t2 = 2.35
+deemp_t1 = .67
+deemp_t2 = 1.6
 
 # audio filters
 Baudiorf = sps.firwin(65, 3.5 / (freq / 2), window='hamming', pass_zero=True)

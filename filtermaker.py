@@ -92,6 +92,9 @@ WriteFilter("esync4", sync2_filter)
 sync2_filter = sps.firwin(N2sync + 1, 2.0 / (freq10), window='hamming')
 WriteFilter("esync10", sync2_filter)
 
+sync2_filter = sps.firwin(N2sync + 1, 2.0 / (freq32), window='hamming')
+WriteFilter("esync32", sync2_filter)
+
 # PAL sync filter
 Ndsync = 32 
 dsync_filter = sps.firwin(Ndsync + 1, 2.0 / (freq), window='hamming')

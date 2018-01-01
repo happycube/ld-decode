@@ -18,6 +18,8 @@ inline double clamp(double v, double low, double high)
 // NTSC properties
 #ifdef FSC10
 const double FSC = 10.0;	// in FSC.  Must be an even number!
+#elif defined(C32MHZ)
+const double FSC = 32.0 / (315.0 / 88.0);
 #elif defined(FSC4)
 const double FSC = 4.0;	// in FSC.  Must be an even number!
 #else
@@ -142,6 +144,11 @@ Filter f_longsync(f_dsync4);
 Filter f_syncid(f_syncid4);
 Filter f_endsync(f_esync4);
 int syncid_offset = syncid4_offset; 
+#elif defined(C32MHZ)
+Filter f_longsync(f_dsync32);
+Filter f_syncid(f_syncid32);
+Filter f_endsync(f_esync32);
+int syncid_offset = syncid32_offset;
 #else
 Filter f_longsync(f_dsync);
 Filter f_syncid(f_syncid8);

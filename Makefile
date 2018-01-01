@@ -26,8 +26,9 @@ tbc-pal32: tbc-pal.cxx ld-decoder.h deemp.h
 
 tbc-ntsc: tbc-ntsc.cxx ld-decoder.h deemp.h
 	clang++ -std=c++11  -g -Wall $(CFLAGS) -o tbc-ntsc tbc-ntsc.cxx
-#	cp tbc-ntsc ntsc
-#	clang++ -std=c++11  -g -Wall -o ntsc tbc-ntsc.cxx
+
+tbc-ntsc32: tbc-ntsc.cxx ld-decoder.h deemp.h
+	clang++ -std=c++11  -g -Wall $(CFLAGS) -DC32MHZ -o tbc-ntsc32 tbc-ntsc.cxx
 
 ntsc: tbc-ntsc
 
