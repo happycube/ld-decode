@@ -144,34 +144,24 @@ Bboost, Aboost = sps.butter(1, (2.0/(freq/2)), 'high')
 
 lowpass_filter_b, lowpass_filter_a = sps.butter(8, (5.5/(freq/2)), 'low')
 
-# demphasis coefficients.
+# use with older disks
+Bboost, Aboost = sps.butter(2, [(2.58/(freq/2)), (7.9/(freq/2))], 'bandpass')
 
-deemp_t1 = .75
-deemp_t2 = 4.0
+# use with later disks?
+#Bboost, Aboost = sps.butter(2, [(2.3/(freq/2)), (10.0/(freq/2))], 'bandpass')
+
+# demphasis coefficients (equivalent to 102/400nsec)
+deemp_t1 = .51
+deemp_t2 = 2.0
 
 # set up deemp filter
 [tf_b, tf_a] = sps.zpk2tf(-deemp_t2*(10**-8), -deemp_t1*(10**-8), deemp_t1 / deemp_t2)
 [f_deemp_b, f_deemp_a] = sps.bilinear(tf_b, tf_a, 1/(freq_hz/2))
 
-# XXX
-if True:
-    Bboost, Aboost = sps.butter(2, [(2.3/(freq/2)), (10.0/(freq/2))], 'bandpass')
-
-#    deemp_t1 = .47
-#    deemp_t2 = 1.8
-
-    deemp_t1 = .51
-    deemp_t2 = 2.0
-
-    # set up deemp filter
-    [tf_b, tf_a] = sps.zpk2tf(-deemp_t2*(10**-8), -deemp_t1*(10**-8), deemp_t1 / deemp_t2)
-    [f_deemp_b, f_deemp_a] = sps.bilinear(tf_b, tf_a, 1/(freq_hz/2))
-
-    lowpass_filter_b, lowpass_filter_a = sps.butter(1, (5.2/(freq/2)), 'low')
-# XXX
+lowpass_filter_b, lowpass_filter_a = sps.butter(1, (5.2/(freq/2)), 'low')
 
 # audio filters
-Baudiorf = sps.firwin(65, 3.5 / (freq / 2), window='hamming', pass_zero=True)
+Baudiorf = sps.firwin(65, 1.3 / (freq / 2), window='hamming', pass_zero=True)
 
 afreq = freq / 4
 
