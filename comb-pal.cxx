@@ -42,7 +42,7 @@ bool f_opticalflow = true;
 
 int f_debugline = -1000;
 	
-int dim = 1;
+int dim = 2;
 
 //const double freq = 4.0;
 
