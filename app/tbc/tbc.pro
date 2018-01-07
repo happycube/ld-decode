@@ -29,9 +29,11 @@ release:DESTDIR = ../../
 
 SOURCES += main.cpp \
     tbcpal.cpp \
-    filter.cpp
+    filter.cpp \
+    tbcntsc.cpp
 
 HEADERS += \
     tbcpal.h \
     filter.h \
-    ../../deemp.h
+    ../../deemp.h \
+    tbcntsc.h

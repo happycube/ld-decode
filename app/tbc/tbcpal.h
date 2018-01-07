@@ -1,6 +1,6 @@
 /************************************************************************
 
-    tcbpal.cpp
+    tcbpal.h
 
     Time-Based Correction
     ld-decode - Software decode of Laserdiscs from raw RF
