@@ -94,39 +94,26 @@ private:
     qint32 ntsc_iplinei;
 
     // Two-dimensional (time-corrected) video frame buffers
-    uint16_t frame[505][(qint32)(outputFrequencyInFsc * 211)];
-    uint16_t frameOriginal[505][(qint32)(outputFrequencyInFsc * 211)];
-    double_t deltaFrame[505][(qint32)(outputFrequencyInFsc * 211)];
-    double_t deltaFrameFilter[505][(qint32)(outputFrequencyInFsc * 211)];
+    //
+    // Frame buffers (505x844 for NTSC and 610x1052 for PAL (with FSC=4))
+    // Previously these were dynamically assigned, but I've used constants
+    // as it avoids the need for vectors (decision based on execution speed)
+    quint16 frameBuffer[505][844];
+    quint16 frameOriginal[505][844];
+    double_t deltaFrame[505][844];
+    double_t deltaFrameFilter[505][844];
 
     // Global filter declarations
     Filter *longSyncFilter;
-    Filter *f_syncid;
     Filter *f_endsync;
-    qint32 syncid_offset;
-
 
     // To be sorted
-    bool f_debug;
-
-    double_t inscale;
-    double_t inbase;
+    double_t inputMaximumIreLevel;
+    double_t inputMinimumIreLevel;
     qint64 a_read;
     qint64 v_read;
     qint32 va_ratio;
-    qint32 vblen;
-    qint32 ablen;
-    qint32 absize;
-    qint32 vbsize;
-    double_t abuf[ablen * 2];
-    quint8 inbuf[vblen];
     double_t outputFrequencyInFsc;
-
-    // tunables
-    qint32 afd;
-    qint32 fd;
-    double_t black_ire;
-    qint32 write_locs;
 
     // Globals for processAudio()
     double_t afreq;
@@ -137,45 +124,25 @@ private:
     qint64 prev_i;
 
     // Globals for processAudioSample()
-    double_t pleft;
-    double_t pright;
-    Filter *f_fml;
-    Filter *f_fmr;
-    qint32 aout_i;
-
-    // Audio output buffer
-    uint16_t aout[512];
+    Filter *audioChannelOneFilter;
+    Filter *audioChannelTwoFilter;
+    qint32 audioOutputBufferPointer;
 
     // Globals to do with the line processing functions
     // handlebadline() and processline()
-    double_t tline;
     double_t line;
     qint32 phase;
     bool first;
     qint32 frameno;
 
     qint64 firstloc;
-    qint32 iline;
 
-    // Not sure yet...
-    uint16_t synclevel;
-
-    // VBI?
-    double_t dots_usec;
-
-    // Despackle?
-    const qint32 out_x;
-    const qint32 out_y;
-
-    // Autoset?
+    // Auto-ranging state
     double_t low;
     double_t high;
 
-    double_t f[vblen];
-    double_t psync[ntsc_iplinei * 1200];
-
     // Private functions
-    void autoRange(quint16 *videoBuffer, qint32 len, bool fullagc = true);
+    quint16 autoRange(QVector<quint16> videoBuffer);
     qint32 processVideoAndAudioBuffer(quint16 *videoBuffer, qint32 videoLength, double_t *audioBuffer, qint32 audioLength);
     qint32 findSync(quint16 *videoBuffer, qint32 videoLength, qint32 tgt = 50, bool debug = false);
     qint32 countSlevel(quint16 *videoBuffer, qint32 begin, qint32 end);
@@ -183,7 +150,7 @@ private:
     bool findHsyncs(quint16 *videoBuffer, qint32 videoLength, qint32 offset, double_t *rv, qint32 nlines = 253);
     void correctDamagedHSyncs(double_t *hsyncs, bool *err);
     void processAudio(double_t frameBuffer, qint64 loc, double_t *audioBuffer);
-    void processAudioSample(double_t channelOne, double_t channelTwo, double_t velocity);
+    void processAudioSample(double_t channelOne, double_t channelTwo);
 
     inline double_t clamp(double_t value, double_t lowValue, double_t highValue);
 

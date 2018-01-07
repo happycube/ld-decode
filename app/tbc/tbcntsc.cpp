@@ -42,9 +42,7 @@ TbcNtsc::TbcNtsc(quint16 fscSetting)
 
         // Filters (used by process() and autoRange())
         longSyncFilter = new Filter(f_dsync10);
-        f_syncid = new Filter(f_syncid10);
         f_endsync = new Filter(f_esync10);
-        syncid_offset = syncid10_offset;
         break;
 
     case 32: // C32MHZ
@@ -54,9 +52,7 @@ TbcNtsc::TbcNtsc(quint16 fscSetting)
 
         // Filters (used by process() and autoRange())
         longSyncFilter = new Filter(f_dsync32);
-        f_syncid = new Filter(f_syncid32);
         f_endsync = new Filter(f_esync32);
-        syncid_offset = syncid32_offset;
         break;
 
     case 4: // FSC4
@@ -66,9 +62,7 @@ TbcNtsc::TbcNtsc(quint16 fscSetting)
 
         // Filters (used by process() and autoRange())
         longSyncFilter = new Filter(f_dsync4);
-        f_syncid = new Filter(f_syncid4);
         f_endsync = new Filter(f_esync4);
-        syncid_offset = syncid4_offset;
         break;
 
     default:
@@ -78,14 +72,20 @@ TbcNtsc::TbcNtsc(quint16 fscSetting)
 
         // Filters (used by process() and autoRange())
         longSyncFilter = new Filter(f_dsync);
-        f_syncid = new Filter(f_syncid8);
         f_endsync = new Filter(f_esync8);
-        syncid_offset = syncid8_offset;
     }
 
-    // Global 'configuration'
-    outputFrequencyInFsc = 4; // in FSC
+    // File names
+    setSourceVideoFile(""); // Default is empty
+    setSourceAudioFile(""); // Default is empty
+    setTargetVideoFile(""); // Default is empty
 
+    // Default tol setting
+    //setTol(1.5); // f_tol = 1.5; // NTSC TBC doesn't have a tol setting...
+
+    // Set global configuration settings
+
+    // Global 'configuration'
     writeOnField = 1;
     f_flip = false;
     audio_only = false;
@@ -95,27 +95,21 @@ TbcNtsc::TbcNtsc(quint16 fscSetting)
     seven_five = (videoInputFrequencyInFsc == 4);
     f_highburst = false; // (FSC == 4);
     p_rotdetect = 40;
-
-    f_debug = false;
     p_skipframes = 0;
 
-    inscale = 327.68;
-    inbase = (inscale * 20);	// IRE == -40
+    inputMaximumIreLevel = 327.68;
+    inputMinimumIreLevel = (inputMaximumIreLevel * 20);	// IRE == -40
     a_read = 0;
     v_read = 0;
     va_ratio = 80;
-    vblen = (ntsc_iplinei * 1100);	// should be divisible evenly by 16
-    ablen = (ntsc_iplinei * 1100) / 40;
-    absize = ablen * 8;
-    vbsize = vblen * 2;
-    abuf[ablen * 2];
-    inbuf[vblen];
 
     // tunables
-    afd = -1;
-    fd = 0;
-    black_ire = 7.5;
-    write_locs = -1;
+    afd = -1; // Audio file descriptor (input)
+    fd = 0; // Video file descriptor (input)
+
+    // If this is changed, all the buffer sizes change
+    // for NTSC it's 505x(Fsc * 211)
+    outputFrequencyInFsc = 4; // in FSC
 
     // Globals for processAudio()
     afreq = 48000;
@@ -126,202 +120,400 @@ TbcNtsc::TbcNtsc(quint16 fscSetting)
     prev_i = 0;
 
     // Globals for processAudioSample()
-    pleft = 0;
-    pright = 0;
-    f_fml(f_fmdeemp);
-    f_fmr(f_fmdeemp);
-    aout_i = 0;
-
-    // Audio output buffer
-    aout[512];
+    audioChannelOneFilter = new Filter(f_fmdeemp);
+    audioChannelTwoFilter = new Filter(f_fmdeemp);
+    audioOutputBufferPointer = 0;
 
     // Globals to do with the line processing functions
     // handlebadline() and processline()
-    tline = 0;
     line = -2;
     phase = -1;
     first = true;
     frameno = -1;
-
     firstloc = -1;
-    iline = 0;
 
-    // Not sure yet...
-    synclevel = inbase + (inscale * 15);
-
-    // VBI? - Is this supposed to be based on FSC?  Looks like it...
-    dots_usec = 4.0 * 315.0 / 88.0;
-
-    // Despackle?
-    out_x = 844;
-    out_y = 505;
-
-    // Autoset?
+    // Auto-ranging state
     low = 65535;
     high = 0;
-
-    f[vblen];
-    psync[ntsc_iplinei*1200];
-
-    // Frame buffers
-    frame[505][(int)(outputFrequencyInFsc * 211)];
-    frameOriginal[505][(int)(outputFrequencyInFsc * 211)];
-    deltaFrame[505][(int)(outputFrequencyInFsc * 211)];
-    deltaFrameFilter[505][(int)(outputFrequencyInFsc * 211)];
 }
 
 qint32 TbcNtsc::execute(void)
 {
-    int rv = 0, arv = 0;
-    long long dlen = -1;
-    unsigned char *cinbuf = (unsigned char *)inbuf;
-    unsigned char *cabuf = (unsigned char *)abuf;
+    // Show some info in the output
+    qInfo() << "NTSC laserdisc time-based correction (TBC)";
+    qInfo() << "Part of the Software Decode of Laserdiscs project";
+    qInfo() << "(c)2018 Chad Page and Simon Inns";
+    qInfo() << "LGPLv3 Open-Source - github: https://github.com/happycube/ld-decode";
+    qInfo() << "";
 
+    // Define our video and audio input buffers
+    QVector<quint16> videoBuffer;
+    QVector<double_t> audioBuffer;
+
+    // Note: any variables dealing with file length should be 64 bits, otherwise we can
+    // run into issues with big files on modern operating systems...
+
+    // All vector operations are defined in terms of elements (rather than bytes) - this
+    // is to make the code independent from the actual storage type chosen (i.e. quint16 or similar)
+
+    // Define the required number of elements in the video and audio buffers
+    qint32 videoBufferNumberOfElements = ((qint64)ntsc_iplinei * 1100);	// should be divisible evenly by 16
+    qint32 audioBufferNumberOfElements = ((qint64)ntsc_iplinei * 1100) / 40;
+
+    // Ensure that our buffer vectors are the correct length
+    videoBuffer.resize(videoBufferNumberOfElements);
+    audioBuffer.resize(audioBufferNumberOfElements);
+
+    QFile* audioInputFileHandle;
+    QFile* videoInputFileHandle;
+    QFile* videoOutputFileHandle;
+    bool processAudioData = false;
+
+    // Set the expected video sync level to -30 IRE
+    quint16 videoSyncLevel = inputMinimumIreLevel + (inputMaximumIreLevel * 15);
+
+    // Show the configured video input frequency in FSC (what does FSC stand for?)
+    qDebug() << "Video input frequency (FSC) = " << (double)videoInputFrequencyInFsc;
+
+    // Some unspecified setup involving globals?
     p_maxframes = 1 << 28;
+    if (p_skipframes > 0) p_maxframes += p_skipframes;
 
-    int c;
+    // Open the video and audio input files ready for use --------------------------------------------
 
-    if (p_skipframes > 0)
-        p_maxframes += p_skipframes;
+    // The TBC process expects a raw binary file containing a sequence of
+    // unsigned 16-bit integer values representing the RF sample as proecessed
+    // by the ld-decoder application (video signal is bandpassed and FM
+    // demodulated).  The unsigned integer values are offset-centre with the
+    // DC-offset of the signal at 32767.
 
-    qDebug() << "freq =" << videoInputFrequencyInFsc;
-
-    rv = read(fd, inbuf, vbsize);
-    while ((rv > 0) && (rv < vbsize)) {
-        int rv2 = read(fd, &cinbuf[rv], vbsize - rv);
-        if (rv2 <= 0) exit(0);
-        rv += rv2;
+    // Do we have a file name for the video file?
+    if (sourceVideoFileName.isEmpty()) {
+        // No source video file name was specified, using stdin instead
+        videoInputFileHandle = new QFile;
+        if (!videoInputFileHandle->open(stdin, QIODevice::ReadOnly)) {
+            // Failed to open stdin
+            qWarning() << "Could not open stdin...";
+            return -1;
+        }
+        qInfo() << "Reading video data from stdin";
+    } else {
+        // Open video file as for reading (quint16 data)
+        videoInputFileHandle = new QFile(sourceVideoFileName);
+        if (!videoInputFileHandle->open(QIODevice::ReadOnly)) {
+            // Failed to open video file
+            qWarning() << "Could not open specified video file";
+            return -1;
+        }
+        qInfo() << "Reading video data from" << sourceVideoFileName;
     }
 
-    qDebug() << "B" << absize << ablen * 2 * sizeof(float);
+    // The source audio file is as per the video file (described above), however
+    // the audio has been low-passed (to remove the video signal).  Note that the
+    // signal contains both channel 1 and channel 2 audio combined and therefore
+    // must be band-passed into individual channels before further processing
+    //
+    // Band-passing would be better performing in the ld-decoder process rather than
+    // in the TBC, but it is what it is
 
-    if (afd != -1) {
-        arv = read(afd, abuf, absize);
-        while ((arv > 0) && (arv < absize)) {
-            int arv2 = read(afd, &cabuf[arv], absize - arv);
-            if (arv2 <= 0) exit(0);
-            arv += arv2;
+    // Do we have a file name for the audio file?
+    if (sourceAudioFileName.isEmpty()) {
+        // No file to process...
+        qDebug() << "The audio input file name was not set";
+
+        // Make sure we can detect later that the file handle wasn't used...
+        audioInputFileHandle = NULL;
+    } else {
+        // Open audio file for reading (quint16 data)
+        audioInputFileHandle = new QFile(sourceAudioFileName);
+        if (!audioInputFileHandle->open(QFile::ReadOnly)) {
+            // Failed to open audio file
+            qWarning() << "Could not open specified audio file";
+            return -1;
+        } else {
+            processAudioData = true; // Flag that audio data should be processed
+            qInfo() << "Reading audio data from" << sourceAudioFileName;
         }
     }
 
-    memset(frame, 0, sizeof(frame));
+    // Do we have a file name for the output video file?
+    if (targetVideoFileName.isEmpty()) {
+        // No target video file name was specified, using stdout instead
+        videoOutputFileHandle = new QFile;
+        if (!videoOutputFileHandle->open(stdout, QIODevice::WriteOnly)) {
+            // Failed to open stdout
+            qWarning() << "Could not open stdout";
+            return -1;
+        }
+        qInfo() << "Writing video data to stdout";
+    } else {
+        // Open target video file for writing (quint16 data)
+        videoOutputFileHandle = new QFile(targetVideoFileName);
+        if (!videoOutputFileHandle->open(QIODevice::WriteOnly)) {
+            // Failed to open video output file
+            qWarning() << "Could not open specified video output file";
+            return -1;
+        }
+        qInfo() << "Writing video data to" << targetVideoFileName;
+    }
 
-    size_t aplen = 0;
-    while (rv == vbsize && ((v_read < dlen) || (dlen < 0)) && (frameno < p_maxframes)) {
-        if (performAutoRanging) {
-            autoRange(inbuf, vbsize / 2);
+    // Perform the input video and audio file processing --------------------------------------------
+    size_t numberOfAudioBufferElementsProcessed = 0;
+
+    // Buffer tracking variables
+    qint32 videoElementsInBuffer = 0;
+    qint32 audioElementsInBuffer = 0;
+
+    // Get the input video file size (for progress reporting)
+    qint64 inputFileSize = videoInputFileHandle->bytesAvailable();
+
+    // File tracking variables
+    qint64 receivedVideoBytes = 0;
+
+    do {
+        qDebug() << "Beginning video TBC processing loop with videoElementsInBuffer =" <<
+                    videoElementsInBuffer << "( buffer size is" << videoBuffer.size() << ")";
+
+        // Calculate processing progress in % (cannot do this for stdin...)
+        if (!sourceVideoFileName.isEmpty()) {
+            double_t percentDone = 100.0 - (100.0 / (double_t)inputFileSize) * (double_t)videoInputFileHandle->bytesAvailable();
+            qInfo() << (qint32)percentDone << "% of input file processed";
         }
 
-        int plen;
+        // Fill the video buffer from the video input file
+        while ((videoElementsInBuffer < videoBuffer.size()) && (!videoInputFileHandle->atEnd())) {
+            qDebug() << "Requesting" << (videoBuffer.size() - videoElementsInBuffer) <<
+                        "elements from video file to fill video buffer";
 
-        plen = processVideoAndAudioBuffer(inbuf, rv / 2, abuf, arv / 8);
+            // Read from the video input file and store in the video buffer vector
+            // This operation uses bytes, so we multiply the elements by the size of the data-type
+            receivedVideoBytes = videoInputFileHandle->read(reinterpret_cast<char *>(videoBuffer.data()) + (videoElementsInBuffer * sizeof(quint16)),
+                                                         ((videoBuffer.size() - videoElementsInBuffer) * sizeof(quint16)));
 
-        if (plen < 0) {
-            qDebug() << "skipping ahead";
-            plen = vblen / 2;
+            // If received bytes is -1, the video readRawData operation failed for some unknown reason
+            // If received bytes is 0, it's probably because we are reading from stdin with nothing avaiable
+            if (receivedVideoBytes < 0) {
+                qCritical() << "readRawData() operation on video input file returned error - aborting";
+                return -1;
+            }
+            qDebug() << "Received" << (receivedVideoBytes / sizeof(quint16)) << "elements (" << receivedVideoBytes <<
+                        "bytes ) from file read operation";
+
+            // Add the received elements count to the video elements in buffer count
+            videoElementsInBuffer += (qint32)(receivedVideoBytes / sizeof(quint16));
         }
 
-        v_read += plen;
-        aplen = (v_read / va_ratio) - a_read;
+        // Are we processing audio data?
+        if (processAudioData) {
+            qDebug() << "Requesting" << (audioBuffer.size() - audioElementsInBuffer) <<
+                        "elements from audio file to fill audio buffer";
 
-        a_read += aplen;
+            // Read from the audio input file and store in the audio buffer vector
+            // This operation uses bytes, so we multiply the elements by the size of the data-type
+            qint64 receivedAudioBytes = audioInputFileHandle->read(reinterpret_cast<char *>(audioBuffer.data()) + (audioElementsInBuffer * sizeof(double_t)),
+                                                         ((audioBuffer.size() - audioElementsInBuffer) * sizeof(double_t)));
 
-//		qDebug() << "move " << plen << (vblen - plen) * 2;
-        memmove(inbuf, &inbuf[plen], (vblen - plen) * 2);
+            // If received bytes is -1, the readRawData operation failed for some unknown reason
+            // If received bytes is 0, it's probably because we are reading from stdin with nothing avaiable
+            if (receivedAudioBytes < 0) {
+                qCritical() << "readRawData() operation on audio input file returned error - aborting";
+                return -1;
+            }
+            qDebug() << "Received" << (receivedAudioBytes / sizeof(double_t)) << "elements (" <<
+                        receivedAudioBytes << "bytes ) from file read operation";
 
-                rv = read(fd, &inbuf[(vblen - plen)], plen * 2) + ((vblen - plen) * 2);
-        while ((rv > 0) && (rv < vbsize)) {
-            int rv2 = read(fd, &cinbuf[rv], vbsize - rv);
-            if (rv2 <= 0) exit(0);
-            rv += rv2;
+            // Add the received elements count to the video elements in buffer count
+            audioElementsInBuffer += (qint32)(receivedAudioBytes / sizeof(double_t));
         }
 
-        if (afd != -1) {
-            qDebug() << "AA " << plen << aplen << v_read << a_read << (double_t)v_read / (double_t)a_read;
-            memmove(abuf, &abuf[aplen * 2], absize - (aplen * 8));
-            qDebug() << abuf[0];
-
-            arv = (absize - (aplen * 8));
-            while (arv < absize) {
-                int arv2 = read(afd, &cabuf[arv], absize - arv);
-                if (arv2 <= 0) exit(0);
-                arv += arv2;
+        // Only perform processing if there's something to process
+        if (receivedVideoBytes > 0) {
+            // Perform automatic ranging on the input video data?
+            if (performAutoRanging) {
+                // Perform auto range of input video data
+                qDebug() << "Performing auto ranging...";
+                videoSyncLevel = autoRange(videoBuffer);
             }
 
-            if (arv == 0) exit(0);
-        }
+            // Process the video and audio buffer (only the number of elements read from the file are processed,
+            // not the whole buffer)
+            qDebug() << "Processing the video and audio buffers...";
+            bool videoFrameBufferReady = false;
+
+            // THIS IS DIFFERENT FROM THE PAL FUNCTION!
+            qint32 numberOfVideoBufferElementsProcessed = processVideoAndAudioBuffer(videoBuffer, videoElementsInBuffer,
+                                                                                     audioBuffer, processAudioData, videoSyncLevel,
+                                                                                     &videoFrameBufferReady);
+            qDebug() << "Processed" << numberOfVideoBufferElementsProcessed << "elements from video buffer";
+
+            // Write the video frame buffer to disk?
+            if (videoFrameBufferReady && numberOfVideoBufferElementsProcessed > 0) {
+                if (!audio_only) {
+                    qInfo() << "Writing frame data to disc...";
+                    videoOutputFileHandle->write(reinterpret_cast<char *>(frameBuffer), sizeof(frameBuffer));
+                } else qInfo() << "Audio only selected - discarding video frame data";
+
+                // Note: this writes a complete buffer at the end of the file even if
+                // the buffer isn't completely full. Causes the size of file to be a little
+                // bit larger than the original TBC version.
+
+                // Clear the frame buffer
+                memset(frameBuffer, 0, sizeof(frameBuffer));
+            }
+
+            // Check if the processing found no video in the current buffer... and discard the buffer if required
+            if (numberOfVideoBufferElementsProcessed <= 0) {
+                qDebug() << "No video detected in video buffer, discarding buffer data"; // skipping ahead
+
+                // Set the number of processed bytes to the whole buffer, so all data will be shifted back
+                numberOfVideoBufferElementsProcessed = videoBuffer.size();
+            }
+
+            // These v_read/a_read variables seem to be used by both processVideoAndAudio and processAudio
+            // as part of the processings... but they are not passed, they are globals.  Messy
+            // They are also only set on the second-pass of those procedures... hopefully the defaults are sane?
+            // Not sure what they are actually for - probably tracking the audio data vs the video data
+            v_read += numberOfVideoBufferElementsProcessed;
+            numberOfAudioBufferElementsProcessed = (v_read / va_ratio) - a_read;
+            a_read += numberOfAudioBufferElementsProcessed;
+
+            // If the current buffer doesn't contain enough data for a complete line, the buffer is shifted around to
+            // the beginning of the detected line (detected by the processVideoAndAudioBuffer function) and then refilled
+            // to ensure the rest of the line data is in the buffer the next time it is processed
+
+            // Shift back the contents of videoBuffer
+            qDebug() << "Shifting back the video buffer contents by" <<
+                        numberOfVideoBufferElementsProcessed << "elements";
+
+            // We need to remove (videoBufferNumberOfElements - (videoProcessLengthInBytes / sizeof(quint16))
+            // elements from the start of the video buffer (as they are already processed)
+            videoBuffer.remove(0, numberOfVideoBufferElementsProcessed);
+
+            // Now we adjust videoBytesReceived to reflect the number of elements still in the buffer
+            // (based on the new size of the buffer due to the remove() operation)
+            videoElementsInBuffer = videoBuffer.size();
+
+            // Now we resize the video buffer back to its original length
+            videoBuffer.resize(videoBufferNumberOfElements);
+
+            // Are we processing audio?
+            if (processAudioData) {
+                // Shift back the audio data buffer by the same amount as the video buffer
+                qDebug() << "Shifting back the audio buffer contents by" <<
+                            numberOfVideoBufferElementsProcessed << "elements";
+
+                audioBuffer.remove(0, numberOfAudioBufferElementsProcessed);
+                audioElementsInBuffer = audioBuffer.size();
+                audioBuffer.resize(audioBufferNumberOfElements);
+            }
+        } else qInfo() << "Nothing received from the video input file/stdin";
+    } while ((!videoInputFileHandle->atEnd()) && (receivedVideoBytes > 0)); // Keep going until we hit the end of the video input file
+
+    qDebug() << "Closing open files...";
+
+    // Close the video input file handle
+    if (videoInputFileHandle->isOpen()) videoInputFileHandle->close();
+
+    // Close the video output file handle
+    if (videoOutputFileHandle->isOpen()) videoOutputFileHandle->close();
+
+    // Only close the audio input file handle if it was used
+    if (audioInputFileHandle != NULL) {
+        if (audioInputFileHandle->isOpen()) audioInputFileHandle->close();
     }
 
+    // Exit with success
+    qInfo() << "Processing complete";
     return 0;
 }
 
 // Private functions -------------------------------------------------------------------------------------
 
-// should be autoRange(QVector<quint16> videoBuffer)
-void TbcNtsc::autoRange(quint16 *videoBuffer, qint32 len, bool fullagc = true)
+// This function automatically finds the input range and
+// calculates where low (-40 IRE) and high (100 IRE) is in the signal
+//
+// Result is stored in these two globals:
+//      inputMaximumIreLevel
+//      inputMinimumIreLevel
+//
+// Returns:
+//      videoSyncLevel
+quint16 TbcNtsc::autoRange(QVector<quint16> videoBuffer)
 {
-    int lowloc = -1;
-    int checklen = (int)(videoInputFrequencyInFsc * 4);
+    QVector<double_t> longSyncFilterResult(videoBuffer.size());
+    bool fullagc = true;
+    qint32 lowloc = -1;
+    qint32 checklen = (qint32)(videoInputFrequencyInFsc * 4);
 
     if (!fullagc) {
         low = 65535;
         high = 0;
     }
 
-    qDebug() << "old base:scale =" << inbase << ':' << inscale;
+    qInfo() << "Performing auto-ranging";
+    qDebug() << "Scale before auto-ranging is =" << inputMinimumIreLevel << ':' << inputMaximumIreLevel;
 
-//	f_longsync.clear(0);
+    //	f_longsync.clear(0);
 
-    // phase 1:  get low (-40ire) and high (??ire)
-    for (int i = 0; i < len; i++) {
-        f[i] = longSyncFilter.feed(videoBuffer[i]);
+    // Phase 1:  Get the low (-40 IRE) and high (?? IRE) values
+    for (int currentVideoBufferElement = 0;
+         currentVideoBufferElement < videoBuffer.size();
+         currentVideoBufferElement++) {
+        longSyncFilterResult[currentVideoBufferElement] =
+                longSyncFilter.feed(videoBuffer[currentVideoBufferElement]);
 
-        if ((i > (videoInputFrequencyInFsc * 256)) && (f[i] < low) && (f[i - checklen] < low)) {
-            if (f[i - checklen] > f[i])
-                low = f[i - checklen];
+        if ((currentVideoBufferElement > (videoInputFrequencyInFsc * 256)) &&
+                (longSyncFilterResult[currentVideoBufferElement] < low) &&
+                (longSyncFilterResult[currentVideoBufferElement - checklen] < low)) {
+            if (longSyncFilterResult[currentVideoBufferElement - checklen] >
+                    longSyncFilterResult[currentVideoBufferElement])
+                low = longSyncFilterResult[currentVideoBufferElement - checklen];
             else
-                low = f[i];
+                low = longSyncFilterResult[currentVideoBufferElement];
 
-            lowloc = i;
+            lowloc = currentVideoBufferElement;
         }
 
-        if ((i > (videoInputFrequencyInFsc * 256)) && (f[i] > high) && (f[i - checklen] > high)) {
-            if (f[i - checklen] < f[i])
-                high = f[i - checklen];
+        if ((currentVideoBufferElement > (videoInputFrequencyInFsc * 256)) &&
+                (longSyncFilterResult[currentVideoBufferElement] > high) &&
+                (longSyncFilterResult[currentVideoBufferElement - checklen] > high)) {
+            if (longSyncFilterResult[currentVideoBufferElement - checklen] < longSyncFilterResult[currentVideoBufferElement])
+                high = longSyncFilterResult[currentVideoBufferElement - checklen];
             else
-                high = f[i];
+                high = longSyncFilterResult[currentVideoBufferElement];
         }
     }
 
-    // phase 2: attempt to figure out the 0IRE porch near the sync
-
+    // Phase 2: Attempt to figure out the 0 IRE porch near the sync
     if (!fullagc) {
-        int gap = high - low;
-        int nloc;
+        qint32 gap = high - low;
+        qint32 nloc;
 
-        for (nloc = lowloc; (nloc > lowloc - (videoInputFrequencyInFsc * 320)) && (f[nloc] < (low + (gap / 8))); nloc--);
+        for (nloc = lowloc; (nloc > lowloc - (videoInputFrequencyInFsc * 320)) && (longSyncFilterResult[nloc] < (low + (gap / 8))); nloc--);
 
-        qDebug() << nloc << (lowloc - nloc) / videoInputFrequencyInFsc << f[nloc];
+        qDebug() << nloc << (lowloc - nloc) / videoInputFrequencyInFsc << longSyncFilterResult[nloc];
 
         nloc -= (videoInputFrequencyInFsc * 4);
-        qDebug() << nloc << (lowloc - nloc) / videoInputFrequencyInFsc << f[nloc];
+        qDebug() << nloc << (lowloc - nloc) / videoInputFrequencyInFsc << longSyncFilterResult[nloc];
 
-        qDebug() << "old base:scale =" << inbase << ':' << inscale;
+        qDebug() << "Scale before auto-ranging is =" << inputMinimumIreLevel << ':' << inputMaximumIreLevel;
 
-        inscale = (f[nloc] - low) / ((seven_five) ? 47.5 : 40.0);
-        inbase = low - (20 * inscale);	// -40IRE to -60IRE
-        if (inbase < 1) inbase = 1;
-        qDebug() << "new base:scale =" << inbase << ':' << inscale;
+        inputMaximumIreLevel = (longSyncFilterResult[nloc] - low) / ((seven_five) ? 47.5 : 40.0);
+        inputMinimumIreLevel = low - (20 * inputMaximumIreLevel); // Should be in the range of -40 IRE to -60 IRE
+
+        if (inputMinimumIreLevel < 1) inputMinimumIreLevel = 1;
+        qDebug() << "Scale after auto-ranging is =" << inputMinimumIreLevel << ':' << inputMaximumIreLevel;
     } else {
-        inscale = (high - low) / 140.0;
+        inputMaximumIreLevel = (high - low) / 140.0;
     }
 
-    inbase = low;	// -40IRE to -60IRE
-    if (inbase < 1) inbase = 1;
+    inputMinimumIreLevel = low;	// -40IRE to -60IRE
+    if (inputMinimumIreLevel < 1) inputMinimumIreLevel = 1;
 
-    qDebug() << "new base:scale =" << inbase << ':' << inscale << " low:" << low << high;
+    qDebug() << "Scale after auto-ranging is =" << inputMinimumIreLevel << ':'
+             << inputMaximumIreLevel << " low:" << low << high;
 
-    synclevel = inbase + (inscale * 20);
+    return inputMinimumIreLevel + (inputMaximumIreLevel * 20);
 }
 
 // Should be:
@@ -336,7 +528,7 @@ qint32 TbcNtsc::processVideoAndAudioBuffer(quint16 *videoBuffer, qint32 videoLen
     int field = -1;
     int offset = 500;
 
-    memset(frame, 0, sizeof(frame));
+    memset(frameBuffer, 0, sizeof(frameBuffer));
 
     while (field < 1) {
         //find_vsync(&buf[firstsync - 1920], len - (firstsync - 1920));
@@ -485,7 +677,7 @@ qint32 TbcNtsc::processVideoAndAudioBuffer(quint16 *videoBuffer, qint32 videoLen
 
             double_t adj = (tgt - bphase) * 8;
 
-            if (f_debug) qDebug() << "ADJ" << line << pass << bphase << tgt << adj;
+            //qDebug() << "ADJ" << line << pass << bphase << tgt << adj;
             hsyncs[line] -= adj;
            }
         }
@@ -517,12 +709,12 @@ qint32 TbcNtsc::processVideoAndAudioBuffer(quint16 *videoBuffer, qint32 videoLen
 
             bool lphase = ((line % 2) == 0);
             if (fieldphase) lphase = !lphase;
-            frame[oline][0] = (lphase == 0) ? 32768 : 16384;
-            frame[oline][1] = blevel[line] * (327.68 / inscale); // ire_to_out(in_to_ire(blevel[line]));
+            frameBuffer[oline][0] = (lphase == 0) ? 32768 : 16384;
+            frameBuffer[oline][1] = blevel[line] * (327.68 / inputMaximumIreLevel); // ire_to_out(in_to_ire(blevel[line]));
 
             if (err[line]) {
-                        frame[oline][3] = frame[oline][5] = 65000;
-                    frame[oline][4] = frame[oline][6] = 0;
+                        frameBuffer[oline][3] = frameBuffer[oline][5] = 65000;
+                    frameBuffer[oline][4] = frameBuffer[oline][6] = 0;
             }
 
             for (int t = 4; t < 844; t++) {
@@ -530,7 +722,7 @@ qint32 TbcNtsc::processVideoAndAudioBuffer(quint16 *videoBuffer, qint32 videoLen
 
                 if (performAutoRanging) o = ire_to_out(in_to_ire(o));
 
-                frame[oline][t] = (uint16_t)clamp(o, 1, 65535);
+                frameBuffer[oline][t] = (uint16_t)clamp(o, 1, 65535);
             }
         }
 
@@ -546,8 +738,8 @@ qint32 TbcNtsc::processVideoAndAudioBuffer(quint16 *videoBuffer, qint32 videoLen
 
     frameno++;
     qDebug() << "WRITING\n";
-    write(1, frame, sizeof(frame));
-    memset(frame, 0, sizeof(frame));
+    write(1, frameBuffer, sizeof(frameBuffer));
+    memset(frameBuffer, 0, sizeof(frameBuffer));
 
     return offset;
 }
@@ -756,7 +948,7 @@ void TbcNtsc::processAudio(double_t frameBuffer, qint64 loc, double_t *audioBuff
             long long i = (i1 * (loc - prev_loc)) + prev_loc;
 
             if (i < v_read) {
-                processAudioSample(f_fml.val(), f_fmr.val(), 1.0);
+                processAudioSample(audioChannelOneFilter.val(), audioChannelTwoFilter.val(), 1.0);
             } else {
                 long long index = (i / va_ratio) - a_read;
                 if (index >= ablen) {
@@ -781,23 +973,25 @@ void TbcNtsc::processAudio(double_t frameBuffer, qint64 loc, double_t *audioBuff
     prev_time = time; prev_loc = loc;
 }
 
-// void TbcPal::processAudioSample(float_t channelOne, float_t channelTwo)
-void TbcNtsc::processAudioSample(double_t channelOne, double_t channelTwo, double_t velocity)
+// Process a sample of audio (from what to what?)
+void TbcNtsc::processAudioSample(double_t channelOne, double_t channelTwo)
 {
-    channelOne = f_fml.feed(channelOne * (65535.0 / 300000.0));
+    quint16 audioOutputBuffer[512];
+
+    channelOne = audioChannelOneFilter.feed(channelOne * (65535.0 / 300000.0));
     channelOne += 32768;
 
-    channelTwo = f_fmr.feed(channelTwo * (65535.0 / 300000.0));
+    channelTwo = audioChannelTwoFilter.feed(channelTwo * (65535.0 / 300000.0));
     channelTwo += 32768;
 
-    aout[aout_i * 2] = clamp(channelOne, 0, 65535);
-    aout[(aout_i * 2) + 1] = clamp(channelTwo, 0, 65535);
+    audioOutputBuffer[audioOutputBufferPointer * 2] = clamp(channelOne, 0, 65535);
+    audioOutputBuffer[(audioOutputBufferPointer * 2) + 1] = clamp(channelTwo, 0, 65535);
 
-    aout_i++;
-    if (aout_i == 256) {
-        int rv = write(audio_only ? 1 : 3, aout, sizeof(aout));
+    audioOutputBufferPointer++;
+    if (audioOutputBufferPointer == 256) {
+        int rv = write(audio_only ? 1 : 3, audioOutputBuffer, sizeof(audioOutputBuffer));
 
-        rv = aout_i = 0;
+        rv = audioOutputBufferPointer = 0;
     }
 }
 
@@ -815,7 +1009,7 @@ inline double_t TbcNtsc::in_to_ire(quint16 level)
 {
     if (level == 0) return -100;
 
-    return -40 + ((double_t)(level - inbase) / inscale);
+    return -40 + ((double_t)(level - inputMinimumIreLevel) / inputMaximumIreLevel);
 }
 
 // inline quint16 TbcPal::ire_to_in(double_t ire)
@@ -823,7 +1017,7 @@ inline quint16 TbcNtsc::ire_to_in(double_t ire)
 {
     if (ire <= -60) return 0;
 
-    return clamp(((ire + 40) * inscale) + inbase, 1, 65535);
+    return clamp(((ire + 40) * inputMaximumIreLevel) + inputMinimumIreLevel, 1, 65535);
 }
 
 // inline quint16 TbcPal::ire_to_out(double_t ire)
@@ -952,7 +1146,7 @@ bool TbcNtsc::burstDetect2(double_t *line, qint32 freq, double_t _loc, qint32 tg
             avg_lth_zc += ph_zc;
             n_lth_zc++;
 
-            if (f_debug) qDebug() << "ZCH" << i << line[i - 1] << avg << line[i] << zc << ph_zc;
+            //qDebug() << "ZCH" << i << line[i - 1] << avg << line[i] << zc << ph_zc;
         } else if (((line[i] <= avg) && (line[i - 1] > avg)) && (lastpeakh != -1)) {
             // XXX: figure this out quadratically
             double_t diff = line[i] - line[i - 1];
@@ -967,7 +1161,7 @@ bool TbcNtsc::burstDetect2(double_t *line, qint32 freq, double_t _loc, qint32 tg
             avg_htl_zc += ph_zc;
             n_htl_zc++;
 
-            if (f_debug) qDebug() << "ZCL" << i << line[i - 1] << avg << line[i] << zc <<  ph_zc;
+            //qDebug() << "ZCL" << i << line[i - 1] << avg << line[i] << zc <<  ph_zc;
         }
     }
 
@@ -981,7 +1175,7 @@ bool TbcNtsc::burstDetect2(double_t *line, qint32 freq, double_t _loc, qint32 tg
         avg_lth_zc /= n_lth_zc;
     } else return false;
 
-    if (f_debug) qDebug() << "PDETECT" << fabs(avg_htl_zc - avg_lth_zc) <<
+    //qDebug() << "PDETECT" << fabs(avg_htl_zc - avg_lth_zc) <<
                              n_htl_zc << avg_htl_zc << n_lth_zc << avg_lth_zc;
 
     double_t pdiff = fabs(avg_htl_zc - avg_lth_zc);
@@ -1015,6 +1209,9 @@ bool TbcNtsc::isPeak(double_t *p, qint32 i)
 // (LD-V6000A info page is cryptic but very essential!)
 quint32 TbcNtsc::readPhillipsCode(quint16 *line)
 {
+    // VBI? - Is this supposed to be based on FSC?  Looks like it...
+    double_t dots_usec = 4.0 * 315.0 / 88.0;
+
     int first_bit = -1; // 108 - dots_usec;
     uint32_t out = 0;
 
@@ -1049,7 +1246,7 @@ quint32 TbcNtsc::readPhillipsCode(quint16 *line)
         if (rloc == -1) rloc = loc;
 
         out |= (deltaLine[rloc] > 0) ? (1 << (23 - i)) : 0;
-        qDebug() << i << loc << deltaLine[loc] << rloc << deltaLine[rloc] << deltaLine[rloc] / inscale << out;
+        qDebug() << i << loc << deltaLine[loc] << rloc << deltaLine[rloc] << deltaLine[rloc] / inputMaximumIreLevel << out;
 
         if (!i) first_bit = rloc;
     }
@@ -1065,10 +1262,13 @@ inline double_t TbcNtsc::max(double_t a, double_t b)
 
 void TbcNtsc::despackle(void)
 {
-    memcpy(frameOriginal, frame, sizeof(frame));
+    qint32 out_x = 844;
+    qint32 out_y = 505;
+
+    memcpy(frameOriginal, frameBuffer, sizeof(frameBuffer));
 
     for (int y = 22; y < out_y; y++) {
-        double_t rotdetect = p_rotdetect * inscale;
+        double_t rotdetect = p_rotdetect * inputMaximumIreLevel;
 
         for (int x = 60; x < out_x - 16; x++) {
 
@@ -1080,7 +1280,7 @@ void TbcNtsc::despackle(void)
                 }
             }
 
-            if ((out_to_ire(frame[y][x]) < -20) || (out_to_ire(frame[y][x]) > 140) ||
+            if ((out_to_ire(frameBuffer[y][x]) < -20) || (out_to_ire(frameBuffer[y][x]) > 140) ||
                     ((deltaFrame[y][x] > rotdetect) && ((deltaFrame[y][x] - comp) > rotdetect))) {
                 qDebug() << "R" << y << x << rotdetect << deltaFrame[y][x] << comp << deltaFrameFilter[y][x];
                 for (int m = x - 4; (m < (x + 14)) && (m < out_x); m++) {
@@ -1093,7 +1293,7 @@ void TbcNtsc::despackle(void)
                                 ((double_t)frameOriginal[y + 2][m + 2])) / 4);
                     }
 
-                    frame[y][m] = clamp(tmp, 0, 65535);
+                    frameBuffer[y][m] = clamp(tmp, 0, 65535);
                 }
                 x = x + 14;
             }
@@ -1106,7 +1306,7 @@ bool TbcNtsc::checkWhiteFlag(qint32 l)
     int wc = 0;
 
     for (int i = 100; i < 800; i++) {
-        if (out_to_ire(frame[l][i]) > 80) wc++;
+        if (out_to_ire(frameBuffer[l][i]) > 80) wc++;
         if (wc >= 200) return true;
     }
 
@@ -1129,13 +1329,13 @@ void TbcNtsc::decodeVBI(void)
 
     memset(code, 0, sizeof(code));
     for (int i = 14; i < 20; i++) {
-        code[i - 14] = readPhillipsCode(frame[i]);
+        code[i - 14] = readPhillipsCode(frameBuffer[i]);
     }
     qDebug() << "Phillips codes" << hex << code[0] << code[1] << code[2] << code[3] << code[4] << code[5] << dec;
 
     for (int i = 0; i < 6; i++) {
-        frame[0][i * 2] = code[i] >> 16;
-        frame[0][(i * 2) + 1] = code[i] & 0xffff;
+        frameBuffer[0][i * 2] = code[i] >> 16;
+        frameBuffer[0][(i * 2) + 1] = code[i] & 0xffff;
 
         if ((code[i] & 0xf00fff) == 0x800fff) {
             chap =  ((code[i] & 0x00f000) >> 12);
@@ -1200,12 +1400,12 @@ void TbcNtsc::decodeVBI(void)
 
     qDebug() << "Status" << hex << flags << dec << "chapter" << chap;
 
-    frame[0][12] = chap;
-    frame[0][13] = flags;
-    frame[0][14] = fnum >> 16;
-    frame[0][15] = fnum & 0xffff;
-    frame[0][16] = clv_time >> 16;
-    frame[0][17] = clv_time & 0xffff;
+    frameBuffer[0][12] = chap;
+    frameBuffer[0][13] = flags;
+    frameBuffer[0][14] = fnum >> 16;
+    frameBuffer[0][15] = fnum & 0xffff;
+    frameBuffer[0][16] = clv_time >> 16;
+    frameBuffer[0][17] = clv_time & 0xffff;
 }
 
 // Configuration parameter handling functions -----------------------------------------

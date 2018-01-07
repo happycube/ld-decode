@@ -488,7 +488,6 @@ qint32 TbcPal::execute(void)
 //      videoSyncLevel
 quint16 TbcPal::autoRange(QVector<quint16> videoBuffer)
 {
-    qDebug() << "Called";
     QVector<double_t> longSyncFilterResult(videoBuffer.size());
     qint32 checklen = (qint32)(videoInputFrequencyInFsc * 4);
 
