@@ -7,6 +7,7 @@ ntsc4
 tbc-ntsc
 tbc-pal
 tbc-pal32
+tbc
 
 # Odd Python stuff
 numpy
