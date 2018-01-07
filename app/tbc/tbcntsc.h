@@ -118,7 +118,7 @@ private:
     // Globals for processAudio()
     double_t afreq;
     double_t prev_time;
-    double_t next_audsample;
+    double_t nextAudioSample;
     size_t prev_loc;
     qint64 prev_index;
     qint64 prev_i;
@@ -143,8 +143,10 @@ private:
 
     // Private functions
     quint16 autoRange(QVector<quint16> videoBuffer);
-    qint32 processVideoAndAudioBuffer(quint16 *videoBuffer, qint32 videoLength, double_t *audioBuffer, qint32 audioLength);
-    qint32 findSync(quint16 *videoBuffer, qint32 videoLength, qint32 tgt = 50, bool debug = false);
+    qint32 processVideoAndAudioBuffer(QVector<quint16> videoBuffer, qint32 videoBufferElementsToProcess,
+                                      QVector<double_t> audioBuffer, bool processAudioData,
+                                      bool *isVideoFrameBufferReadyForWrite);
+    qint32 findSync(quint16 *videoBuffer, qint32 videoLength, qint32 tgt = 50);
     qint32 countSlevel(quint16 *videoBuffer, qint32 begin, qint32 end);
     qint32 findVsync(quint16 *videoBuffer, qint32 videoLength, qint32 offset = 0);
     bool findHsyncs(quint16 *videoBuffer, qint32 videoLength, qint32 offset, double_t *rv, qint32 nlines = 253);
