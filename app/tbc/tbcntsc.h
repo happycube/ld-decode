@@ -168,7 +168,7 @@ private:
     bool inRange(double_t v, double_t l, double_t h);
     bool inRangeCF(double_t v, double_t l, double_t h);
 
-    bool burstDetect2(double_t *line, qint32 freq, double_t _loc, qint32 tgt, double_t &plevel, double_t &pphase, bool &phaseflip, bool do_abs = false);
+    bool burstDetect2(double_t *line, qint32 freq, double_t _loc, double_t &plevel, double_t &pphase, bool &phaseflip);
 
     bool isPeak(double_t *p, qint32 i);
 

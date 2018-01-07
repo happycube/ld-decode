@@ -1604,13 +1604,13 @@ void TbcPal::setRot(double_t value)
 // Set skip frames
 void TbcPal::setSkipFrames(qint32 value)
 {
-    qInfo() << "setSkipFrames is not supported by the PAL TBC";
+    qInfo() << "setSkipFrames is not supported by the PAL TBC" << value;
     //p_skipframes = value;
 }
 
 // Set maximum frames
 void TbcPal::setMaximumFrames(qint32 value)
 {
-    qInfo() << "setMaximumFrames is not supported by the PAL TBC";
+    qInfo() << "setMaximumFrames is not supported by the PAL TBC" << value;
     //p_maxframes = value;
 }
