@@ -146,10 +146,18 @@ private:
     qint32 processVideoAndAudioBuffer(QVector<quint16> videoBuffer, qint32 videoBufferElementsToProcess,
                                       QVector<double_t> audioBuffer, bool processAudioData,
                                       bool *isVideoFrameBufferReadyForWrite);
-    qint32 findSync(quint16 *videoBuffer, qint32 videoLength, qint32 tgt = 50);
+
+    qint32 findSync(quint16 *videoBuffer, qint32 videoLength);
+    qint32 findSync(quint16 *videoBuffer, qint32 videoLength, qint32 tgt);
+
     qint32 countSlevel(quint16 *videoBuffer, qint32 begin, qint32 end);
-    qint32 findVsync(quint16 *videoBuffer, qint32 videoLength, qint32 offset = 0);
-    bool findHsyncs(quint16 *videoBuffer, qint32 videoLength, qint32 offset, double_t *rv, qint32 nlines = 253);
+
+    qint32 findVsync(quint16 *videoBuffer, qint32 videoLength);
+    qint32 findVsync(quint16 *videoBuffer, qint32 videoLength, qint32 offset);
+
+    bool findHsyncs(quint16 *videoBuffer, qint32 videoLength, qint32 offset, double_t *rv);
+    bool findHsyncs(quint16 *videoBuffer, qint32 videoLength, qint32 offset, double_t *rv, qint32 nlines);
+
     void correctDamagedHSyncs(double_t *hsyncs, bool *err);
     void processAudio(double_t frameBuffer, qint64 loc, double_t *audioBuffer);
     void processAudioSample(double_t channelOne, double_t channelTwo);
@@ -163,7 +171,10 @@ private:
     inline double_t peakdetect_quad(double_t *y);
 
     inline double_t cubicInterpolate(quint16 *y, double_t x);
-    inline void scale(uint16_t *buf, double_t *outbuf, double_t start, double_t end, double_t outlen, double_t offset = 0, qint32 from = 0, qint32 to = -1);
+
+    void scale(uint16_t *buf, double_t *outbuf, double_t start, double_t end, double_t outlen);
+    void scale(uint16_t *buf, double_t *outbuf, double_t start, double_t end, double_t outlen, double_t offset);
+    void scale(uint16_t *buf, double_t *outbuf, double_t start, double_t end, double_t outlen, double_t offset, qint32 from, qint32 to);
 
     bool inRange(double_t v, double_t l, double_t h);
     bool inRangeCF(double_t v, double_t l, double_t h);

@@ -757,7 +757,15 @@ qint32 TbcNtsc::processVideoAndAudioBuffer(QVector<quint16> videoBuffer, qint32 
 }
 
 // Find the sync signal
-qint32 TbcNtsc::findSync(quint16 *videoBuffer, qint32 videoLength, qint32 tgt = 50)
+qint32 TbcNtsc::findSync(quint16 *videoBuffer, qint32 videoLength)
+{
+    // Default value
+    qint32 tgt = 50;
+
+    return findSync(videoBuffer, videoLength, tgt);
+}
+
+qint32 TbcNtsc::findSync(quint16 *videoBuffer, qint32 videoLength, qint32 tgt)
 {
     const int pad = 96;
     int rv = -1;
@@ -818,7 +826,15 @@ qint32 TbcNtsc::countSlevel(quint16 *videoBuffer, qint32 begin, qint32 end)
 }
 
 // Returns index of end of VSYNC - negative if _ field
-qint32 TbcNtsc::findVsync(quint16 *videoBuffer, qint32 videoLength, qint32 offset = 0)
+qint32 TbcNtsc::findVsync(quint16 *videoBuffer, qint32 videoLength)
+{
+    // Default value
+    qint32 offset = 0;
+
+    return findVsync(videoBuffer, videoLength, offset);
+}
+
+qint32 TbcNtsc::findVsync(quint16 *videoBuffer, qint32 videoLength, qint32 offset)
 {
     const uint16_t field_len = videoInputFrequencyInFsc * 227.5 * 280;
 
@@ -862,7 +878,15 @@ qint32 TbcNtsc::findVsync(quint16 *videoBuffer, qint32 videoLength, qint32 offse
 
 // Returns end of each line, -end if error detected in this phase
 // (caller responsible for freeing array)
-bool TbcNtsc::findHsyncs(quint16 *videoBuffer, qint32 videoLength, qint32 offset, double_t *rv, qint32 nlines = 253)
+bool TbcNtsc::findHsyncs(quint16 *videoBuffer, qint32 videoLength, qint32 offset, double_t *rv)
+{
+    // Default value
+    qint32 nlines = 253;
+
+    return findHsyncs(videoBuffer, videoLength, offset, rv, nlines);
+}
+
+bool TbcNtsc::findHsyncs(quint16 *videoBuffer, qint32 videoLength, qint32 offset, double_t *rv, qint32 nlines)
 {
     // sanity check (XXX: assert!)
     if (videoLength < (nlines * videoInputFrequencyInFsc * 227.5))
@@ -1055,8 +1079,29 @@ inline double_t TbcNtsc::cubicInterpolate(quint16 *y, double_t x)
 
 // This function takes a video line that is the wrong length
 // and interpolates the line to the correct (predicted) length
-inline void TbcNtsc::scale(uint16_t *buf, double_t *outbuf, double_t start, double_t end,
-                           double_t outlen, double_t offset = 0, qint32 from = 0, qint32 to = -1)
+void TbcNtsc::scale(uint16_t *buf, double_t *outbuf, double_t start, double_t end,
+                           double_t outlen)
+{
+    // Defaults
+    double_t offset = 0;
+    qint32 from = 0;
+    qint32 to = -1;
+
+    scale(buf, outbuf, start, end, outlen, offset, from, to);
+}
+
+void TbcNtsc::scale(uint16_t *buf, double_t *outbuf, double_t start, double_t end,
+                           double_t outlen, double_t offset)
+{
+    // Defaults
+    qint32 from = 0;
+    qint32 to = -1;
+
+    scale(buf, outbuf, start, end, outlen, offset, from, to);
+}
+
+void TbcNtsc::scale(uint16_t *buf, double_t *outbuf, double_t start, double_t end,
+                           double_t outlen, double_t offset, qint32 from, qint32 to)
 {
     double_t inlen = end - start;
     double_t perpel = inlen / outlen;
