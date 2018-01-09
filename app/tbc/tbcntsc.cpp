@@ -411,8 +411,13 @@ qint32 TbcNtsc::execute(void)
             if (videoOutputBufferReady && numberOfVideoBufferElementsProcessed > 0) {
                 if (!tbcConfiguration.audio_only) {
                     qDebug() << "Writing frame data to disc";
-                    videoOutputFileHandle->write(reinterpret_cast<char *>(videoOutputBuffer.data()),
-                                                 sizeof(videoOutputBuffer));
+
+                    // Note: in a 2D vector only the vector is in continuous memory
+                    // not the vector of vectors, so we have to write each contained
+                    // vector seperately here...
+                    for (qint32 line = 0; line < videoOutputBufferNumberOfLines; line++) {
+                        videoOutputFileHandle->write(reinterpret_cast<char *>(videoOutputBuffer[line].data()), videoOutputBuffer[line].size() * sizeof(quint16));
+                    }
                 } else qDebug() << "Audio only selected - discarding video frame data";
 
                 // Note: this writes a complete buffer at the end of the file even if
@@ -430,7 +435,7 @@ qint32 TbcNtsc::execute(void)
             // Write the audio output buffer to disk?
             if (audioOutputBufferReady && numberOfVideoBufferElementsProcessed > 0) {
                 qDebug() << "Writing audio data to disc";
-                audioOutputFileHandle->write(reinterpret_cast<char *>(audioOutputBuffer.data()), sizeof(audioOutputBuffer));
+                audioOutputFileHandle->write(reinterpret_cast<char *>(audioOutputBuffer.data()), audioOutputBuffer.size() * sizeof(quint16));
 
                 // Note: this writes a complete buffer at the end of the file even if
                 // the buffer isn't completely full. Causes the size of file to be a little
@@ -1087,7 +1092,7 @@ bool TbcNtsc::processAudio(double_t frameBuffer, qint64 loc, double_t *audioInpu
                                    processAudioState.audioChannelTwoFilter->filterValue(), audioOutputBuffer);
             } else {
                 qint64 index = (i / processAudioState.va_ratio) - processAudioState.a_read;
-                if (index >= (sizeof(audioInputBuffer) / sizeof(double_t))) {
+                if (index >= (qint64)(sizeof(audioInputBuffer) / sizeof(double_t))) {
                     qDebug() << "Audio error" << (double)frameBuffer << (double)time << (double)i1
                              << i << index << (sizeof(audioInputBuffer) / sizeof(double_t));
                     index = (sizeof(audioInputBuffer) / sizeof(double_t)) - 1;
