@@ -37,6 +37,7 @@
 
 // Locals
 #include "tbcpal.h"
+#include "tbcntsc.h"
 
 // Global for debug output
 bool showDebug = false;
@@ -271,6 +272,7 @@ int main(int argc, char *argv[])
 
         // Note: Only tested with 32 set...
         TbcPal tbcPal(32);
+        TbcNtsc tbcNtsc(32);
 
         // Apply the optional command line parameter settings to the object
         if (parser.isSet(showDifferenceBetweenPixelsOption)) tbcPal.setShowDifferenceBetweenPixels(showDifferenceBetweenPixels);

@@ -488,7 +488,6 @@ qint32 TbcPal::execute(void)
 //      videoSyncLevel
 quint16 TbcPal::autoRange(QVector<quint16> videoBuffer)
 {
-    qDebug() << "Called";
     QVector<double_t> longSyncFilterResult(videoBuffer.size());
     qint32 checklen = (qint32)(videoInputFrequencyInFsc * 4);
 
@@ -1297,7 +1296,7 @@ void TbcPal::processAudio(double_t frame, qint64 loc, double_t *audioBuffer)
 }
 
 // Process a sample of audio (from what to what?)
-void TbcPal::processAudioSample(float_t channelOne, float_t channelTwo)
+void TbcPal::processAudioSample(double_t channelOne, double_t channelTwo)
 {
     channelOne *= (65535.0 / 300000.0);
     channelOne = processAudioState.f_fml->feed(channelOne);
@@ -1600,4 +1599,18 @@ void TbcPal::setTol(double_t value)
 void TbcPal::setRot(double_t value)
 {
     p_rotdetect = value;
+}
+
+// Set skip frames
+void TbcPal::setSkipFrames(qint32 value)
+{
+    qInfo() << "setSkipFrames is not supported by the PAL TBC" << value;
+    //p_skipframes = value;
+}
+
+// Set maximum frames
+void TbcPal::setMaximumFrames(qint32 value)
+{
+    qInfo() << "setMaximumFrames is not supported by the PAL TBC" << value;
+    //p_maxframes = value;
 }

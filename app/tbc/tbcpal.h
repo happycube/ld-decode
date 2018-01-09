@@ -1,6 +1,6 @@
 /************************************************************************
 
-    tcbpal.cpp
+    tcbpal.h
 
     Time-Based Correction
     ld-decode - Software decode of Laserdiscs from raw RF
@@ -63,6 +63,8 @@ public:
     void setTargetVideoFile(QString stringValue);
     void setTol(double_t value);
     void setRot(double_t value);
+    void setSkipFrames(qint32 value);
+    void setMaximumFrames(qint32 value);
 
 private:
     // Private configuration globals that have
@@ -178,7 +180,7 @@ private:
     void handleBadLine(QVector<LineStruct> *lineDetails, qint32 lineToProcess);
 
     void processAudio(double_t frameBuffer, qint64 loc, double_t *audioBuffer);
-    void processAudioSample(float_t channelOne, float_t channelTwo);
+    void processAudioSample(double_t channelOne, double_t channelTwo);
 
     inline double_t clamp(double_t value, double_t lowValue, double_t highValue);
 
