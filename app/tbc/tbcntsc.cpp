@@ -1384,9 +1384,9 @@ quint32 TbcNtsc::readVbiData(QVector<QVector<quint16 > > videoOutputBuffer, quin
     quint32 out = 0;
 
     QVector<double_t> deltaLine;
-    deltaLine.resize(videoOutputBuffer.size()); // Same as number of lines;
+    deltaLine.resize(videoOutputBuffer[0].size()); // Same as number of samples;
 
-    for (qint32 i = 1; i < videoOutputBuffer.size() - 1; i++) {
+    for (qint32 i = 1; i < videoOutputBuffer[0].size() - 1; i++) {
         deltaLine[i] = videoOutputBuffer[line][i] - videoOutputBuffer[line][i - 1];
     }
 
