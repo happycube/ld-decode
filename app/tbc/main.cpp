@@ -169,6 +169,12 @@ int main(int argc, char *argv[])
                 QCoreApplication::translate("main", "file"));
     parser.addOption(targetVideoFileOption);
 
+    // Option to specify output audio file (-b)
+    QCommandLineOption targetAudioFileOption(QStringList() << "b" << "target-audio-file",
+                QCoreApplication::translate("main", "Specify output audio file"),
+                QCoreApplication::translate("main", "file"));
+    parser.addOption(targetAudioFileOption);
+
     // Option to specify output audio file (MISSING)
     //
     //
@@ -219,6 +225,7 @@ int main(int argc, char *argv[])
     QString sourceVideoFileParameter = parser.value(sourceVideoFileOption);
     QString sourceAudioFileParameter = parser.value(sourceAudioFileOption);
     QString targetVideoFileParameter = parser.value(targetVideoFileOption);
+    QString targetAudioFileParameter = parser.value(targetAudioFileOption);
 
     // Numerical parameter options
     bool tol = parser.isSet(tolOption);
@@ -256,7 +263,7 @@ int main(int argc, char *argv[])
         // Was the parameter a valid integer?
         if (conversionOk) {
             // Was the parameter in range?
-            if (rotParameterValue > 10.0) {
+            if (rotParameterValue > 1000.0) {
                 qCritical("The rot parameter specified with -r must be in the range of 0.0-1000.0");
                 commandLineOptionsOk = false;
             }
@@ -276,31 +283,32 @@ int main(int argc, char *argv[])
         // Any other value causes FSC8 to be set
 
         // Note: Only tested with 32 set...
-        //TbcPal tbcPal(32);
+        TbcPal tbcPal(32);
         TbcNtsc tbcNtsc(8); // Using old 8-bit input file for now...
 
         // Perform PAL or NTSC time based correction?
         if (palMode) {
             // Apply the optional command line parameter settings to the PAL TBC object
-//            if (parser.isSet(showDifferenceBetweenPixelsOption)) tbcPal.setShowDifferenceBetweenPixels(showDifferenceBetweenPixels);
-//            if (parser.isSet(magneticVideoModeOption)) tbcPal.setMagneticVideoMode(magneticVideoMode);
-//            if (parser.isSet(flipFieldsOption)) tbcPal.setFlipFields(flipFields);
-//            if (parser.isSet(audioOnlyOption)) tbcPal.setAudioOnly(audioOnly);
-//            if (parser.isSet(performAutoSetOption)) tbcPal.setPerformAutoSet(performAutoSet);
-//            if (parser.isSet(performDespackleOption)) tbcPal.setPerformDespackle(performDespackle);
-//            if (parser.isSet(performFreezeFrameOption)) tbcPal.setPerformFreezeFrame(performFreezeFrame);
-//            if (parser.isSet(performSevenFiveOption)) tbcPal.setPerformSevenFive(performSevenFive);
-//            if (parser.isSet(performHighBurstOption)) tbcPal.setPerformHighBurst(performHighBurst);
-//            if (parser.isSet(tolOption)) tbcPal.setTol(tolParameterValue);
-//            if (parser.isSet(rotOption)) tbcPal.setRot(rotParameterValue);
+            if (parser.isSet(showDifferenceBetweenPixelsOption)) tbcPal.setShowDifferenceBetweenPixels(showDifferenceBetweenPixels);
+            if (parser.isSet(magneticVideoModeOption)) tbcPal.setMagneticVideoMode(magneticVideoMode);
+            if (parser.isSet(flipFieldsOption)) tbcPal.setFlipFields(flipFields);
+            if (parser.isSet(audioOnlyOption)) tbcPal.setAudioOnly(audioOnly);
+            if (parser.isSet(performAutoSetOption)) tbcPal.setPerformAutoSet(performAutoSet);
+            if (parser.isSet(performDespackleOption)) tbcPal.setPerformDespackle(performDespackle);
+            if (parser.isSet(performFreezeFrameOption)) tbcPal.setPerformFreezeFrame(performFreezeFrame);
+            if (parser.isSet(performSevenFiveOption)) tbcPal.setPerformSevenFive(performSevenFive);
+            if (parser.isSet(performHighBurstOption)) tbcPal.setPerformHighBurst(performHighBurst);
+            if (parser.isSet(tolOption)) tbcPal.setTol(tolParameterValue);
+            if (parser.isSet(rotOption)) tbcPal.setRot(rotParameterValue);
 
-//            // Apply the mandatory command line parameters to the PAL TBC object
-//            tbcPal.setSourceVideoFile(sourceVideoFileParameter);
-//            tbcPal.setSourceAudioFile(sourceAudioFileParameter);
-//            tbcPal.setTargetVideoFile(targetVideoFileParameter);
+            // Apply the mandatory command line parameters to the PAL TBC object
+            tbcPal.setSourceVideoFile(sourceVideoFileParameter);
+            tbcPal.setSourceAudioFile(sourceAudioFileParameter);
+            tbcPal.setTargetVideoFile(targetVideoFileParameter);
+            // Audio output not implemented yet!!!
 
-//            // Execute PAL TBC
-//            tbcPal.execute();
+            // Execute PAL TBC
+            tbcPal.execute();
         } else {
             // Apply the optional command line parameter settings to the NTSC TBC object
             if (parser.isSet(showDifferenceBetweenPixelsOption)) tbcNtsc.setShowDifferenceBetweenPixels(showDifferenceBetweenPixels);
@@ -319,6 +327,7 @@ int main(int argc, char *argv[])
             tbcNtsc.setSourceVideoFile(sourceVideoFileParameter);
             tbcNtsc.setSourceAudioFile(sourceAudioFileParameter);
             tbcNtsc.setTargetVideoFile(targetVideoFileParameter);
+            tbcNtsc.setTargetAudioFile(targetAudioFileParameter);
 
             // Execute NTSC TBC
             tbcNtsc.execute();
