@@ -44,101 +44,98 @@ TbcNtsc::TbcNtsc(quint16 fscSetting)
     // seemed to support FSC4, FSC10 or C32MHZ...
     switch(fscSetting) {
     case 10: // 10FSC
+        qDebug() << "NTSC 10 FSC";
         c32mhz = false;
         videoInputFrequencyInFsc = 10.0;
         ntsc_iplinei = 227.5 * videoInputFrequencyInFsc; // pixels per line
 
         // Filters (used by process() and autoRange())
-        longSyncFilter = new Filter(f2_dsync10);
-        f_endsync = new Filter(f2_esync10);
+        autoRangeState.longSyncFilter = new Filter(f2_dsync10);
+        autoRangeState.f_endsync = new Filter(f2_esync10);
         break;
 
     case 32: // C32MHZ
+        qDebug() << "NTSC C32MHZ";
         c32mhz = true;
         videoInputFrequencyInFsc = 32.0 / (315.0 / 88.0); // = 8.93
         ntsc_iplinei = 227.5 * videoInputFrequencyInFsc; // pixels per line
 
         // Filters (used by process() and autoRange())
-        longSyncFilter = new Filter(f2_dsync32);
-        f_endsync = new Filter(f2_esync32);
+        autoRangeState.longSyncFilter = new Filter(f2_dsync32);
+        autoRangeState.f_endsync = new Filter(f2_esync32);
         break;
 
     case 4: // FSC4
+        qDebug() << "NTSC 4 FSC";
         c32mhz = false;
         videoInputFrequencyInFsc = 4.0;
         ntsc_iplinei = 227.5 * videoInputFrequencyInFsc; // pixels per line
 
         // Filters (used by process() and autoRange())
-        longSyncFilter = new Filter(f2_dsync4);
-        f_endsync = new Filter(f2_esync4);
+        autoRangeState.longSyncFilter = new Filter(f2_dsync4);
+        autoRangeState.f_endsync = new Filter(f2_esync4);
         break;
 
     default:
+        qDebug() << "NTSC 8 FSC";
         c32mhz = false;
         videoInputFrequencyInFsc = 8.0;
         ntsc_iplinei = 227.5 * videoInputFrequencyInFsc; // pixels per line
 
         // Filters (used by process() and autoRange())
-        longSyncFilter = new Filter(f2_dsync);
-        f_endsync = new Filter(f2_esync8);
+        autoRangeState.longSyncFilter = new Filter(f2_dsync);
+        autoRangeState.f_endsync = new Filter(f2_esync8);
     }
-
-    // File names
-    setSourceVideoFile(""); // Default is empty
-    setSourceAudioFile(""); // Default is empty
-    setTargetVideoFile(""); // Default is empty
-
-    // Default tol setting
-    //setTol(1.5); // f_tol = 1.5; // NTSC TBC doesn't have a tol setting...
-
-    // Set global configuration settings
-
-    // Global 'configuration'
-    writeOnField = 1;
-    f_flip = false;
-    audio_only = false;
-    performAutoRanging = (videoInputFrequencyInFsc == 4);
-    freeze_frame = false;
-    f_despackle = true;
-    seven_five = (videoInputFrequencyInFsc == 4);
-    f_highburst = false; // (FSC == 4);
-    p_rotdetect = 40;
-    p_skipframes = 0;
-
-    inputMaximumIreLevel = 327.68;
-    inputMinimumIreLevel = (inputMaximumIreLevel * 20);	// IRE == -40
-    a_read = 0;
-    v_read = 0;
-    va_ratio = 80;
 
     // If this is changed, all the buffer sizes change
     // for NTSC it's 505x(Fsc * 211)
-    outputFrequencyInFsc = 4; // in FSC
+    //outputFrequencyInFsc = 4; // in FSC
+
+    // Global 'configuration'
+    // Should probably be changed to call the 'set' functions to
+    // prevent logic errors between codes
+    setSourceVideoFile(""); // Default is empty
+    setSourceAudioFile(""); // Default is empty
+    setTargetVideoFile(""); // Default is empty
+    tbcConfiguration.writeOnField = 1;
+    tbcConfiguration.f_flip = false;
+    tbcConfiguration.audio_only = false;
+    tbcConfiguration.performAutoRanging = (videoInputFrequencyInFsc == 4); // Only works if FSC=4?
+    tbcConfiguration.freeze_frame = false;
+    tbcConfiguration.f_despackle = false;
+    tbcConfiguration.seven_five = (videoInputFrequencyInFsc == 4); // Only works if FSC=4?
+    tbcConfiguration.f_highburst = (videoInputFrequencyInFsc == 4); // Only works if FSC=4?
+    tbcConfiguration.p_rotdetect = 40;
+    tbcConfiguration.p_skipframes = 0;
+    tbcConfiguration.p_maxframes = 0;
 
     // Globals for processAudio()
-    afreq = 48000;
-    prev_time = -1;
-    nextAudioSample = 0;
-    prev_loc = -1;
-    prev_index = 0;
-    prev_i = 0;
+    processAudioState.afreq = 48000;
+    processAudioState.prev_time = -1;
+    processAudioState.nextAudioSample = 0;
+    processAudioState.prev_loc = -1;
+    processAudioState.prev_index = 0;
+    processAudioState.prev_i = 0;
+    processAudioState.firstloc = -1;
+
+    processAudioState.a_read = 0;
+    processAudioState.v_read = 0;
+    processAudioState.va_ratio = 80;
 
     // Globals for processAudioSample()
-    audioChannelOneFilter = new Filter(f2_fmdeemp);
-    audioChannelTwoFilter = new Filter(f2_fmdeemp);
-    audioOutputBufferPointer = 0;
+    processAudioState.audioChannelOneFilter = new Filter(f2_fmdeemp);
+    processAudioState.audioChannelTwoFilter = new Filter(f2_fmdeemp);
+    processAudioState.audioOutputBufferPointer = 0;
 
     // Globals to do with the line processing functions
     // handlebadline() and processline()
-    line = -2;
-    phase = -1;
-    first = true;
-    frameno = -1;
-    firstloc = -1;
+    processLineState.frameno = -1;
 
     // Auto-ranging state
-    low = 65535;
-    high = 0;
+    autoRangeState.low = 65535;
+    autoRangeState.high = 0;
+    autoRangeState.inputMaximumIreLevel = 327.68;
+    autoRangeState.inputMinimumIreLevel = (autoRangeState.inputMaximumIreLevel * 20);	// IRE == -40
 }
 
 qint32 TbcNtsc::execute(void)
@@ -148,6 +145,24 @@ qint32 TbcNtsc::execute(void)
     qInfo() << "Part of the Software Decode of Laserdiscs project";
     qInfo() << "(c)2018 Chad Page and Simon Inns";
     qInfo() << "LGPLv3 Open-Source - github: https://github.com/happycube/ld-decode";
+    qInfo() << "";
+
+    // Show the TBC's user-configuration so we can work out what a user did when
+    // analysing debug output...
+    qInfo() << "TBC options are as follows:";
+    qInfo() << "  Video format is NTSC";
+    qInfo() << "  Video input frequency (FSC) =" << (double)videoInputFrequencyInFsc;
+    qInfo() << "  Write on field =" << tbcConfiguration.writeOnField;
+    qInfo() << "  Flip frames is" << tbcConfiguration.f_flip;
+    qInfo() << "  Audio only is" << tbcConfiguration.audio_only;
+    qInfo() << "  Auto-ranging is" << tbcConfiguration.performAutoRanging;
+    qInfo() << "  Freeze-frame is" << tbcConfiguration.freeze_frame;
+    qInfo() << "  Despackle is" << tbcConfiguration.f_despackle;
+    qInfo() << "  Use 7.5 IRE black is" << tbcConfiguration.seven_five;
+    qInfo() << "  High-burst is" << tbcConfiguration.f_highburst;
+    qInfo() << "  Laser-rot detection level =" << (double)tbcConfiguration.p_rotdetect;
+    qInfo() << "  Skip frames =" << (double)tbcConfiguration.p_skipframes;
+    qInfo() << "  Maximum frames =" << (double)tbcConfiguration.p_maxframes;
     qInfo() << "";
 
     // Define our video and audio input buffers
@@ -176,12 +191,9 @@ qint32 TbcNtsc::execute(void)
     // Set the expected video sync level to -30 IRE
     //quint16 videoSyncLevel = inputMinimumIreLevel + (inputMaximumIreLevel * 15);
 
-    // Show the configured video input frequency in FSC (what does FSC stand for?)
-    qDebug() << "Video input frequency (FSC) = " << (double)videoInputFrequencyInFsc;
-
     // Some unspecified setup involving globals?
-    p_maxframes = 1 << 28;
-    if (p_skipframes > 0) p_maxframes += p_skipframes;
+    tbcConfiguration.p_maxframes = 1 << 28;
+    if (tbcConfiguration.p_skipframes > 0) tbcConfiguration.p_maxframes += tbcConfiguration.p_skipframes;
 
     // Open the video and audio input files ready for use --------------------------------------------
 
@@ -192,7 +204,7 @@ qint32 TbcNtsc::execute(void)
     // DC-offset of the signal at 32767.
 
     // Do we have a file name for the video file?
-    if (sourceVideoFileName.isEmpty()) {
+    if (tbcConfiguration.sourceVideoFileName.isEmpty()) {
         // No source video file name was specified, using stdin instead
         videoInputFileHandle = new QFile;
         if (!videoInputFileHandle->open(stdin, QIODevice::ReadOnly)) {
@@ -203,13 +215,13 @@ qint32 TbcNtsc::execute(void)
         qInfo() << "Reading video data from stdin";
     } else {
         // Open video file as for reading (quint16 data)
-        videoInputFileHandle = new QFile(sourceVideoFileName);
+        videoInputFileHandle = new QFile(tbcConfiguration.sourceVideoFileName);
         if (!videoInputFileHandle->open(QIODevice::ReadOnly)) {
             // Failed to open video file
             qWarning() << "Could not open specified video file";
             return -1;
         }
-        qInfo() << "Reading video data from" << sourceVideoFileName;
+        qInfo() << "Reading video data from" << tbcConfiguration.sourceVideoFileName;
     }
 
     // The source audio file is as per the video file (described above), however
@@ -221,7 +233,7 @@ qint32 TbcNtsc::execute(void)
     // in the TBC, but it is what it is
 
     // Do we have a file name for the audio file?
-    if (sourceAudioFileName.isEmpty()) {
+    if (tbcConfiguration.sourceAudioFileName.isEmpty()) {
         // No file to process...
         qDebug() << "The audio input file name was not set";
 
@@ -229,19 +241,19 @@ qint32 TbcNtsc::execute(void)
         audioInputFileHandle = NULL;
     } else {
         // Open audio file for reading (quint16 data)
-        audioInputFileHandle = new QFile(sourceAudioFileName);
+        audioInputFileHandle = new QFile(tbcConfiguration.sourceAudioFileName);
         if (!audioInputFileHandle->open(QFile::ReadOnly)) {
             // Failed to open audio file
             qWarning() << "Could not open specified audio file";
             return -1;
         } else {
             processAudioData = true; // Flag that audio data should be processed
-            qInfo() << "Reading audio data from" << sourceAudioFileName;
+            qInfo() << "Reading audio data from" << tbcConfiguration.sourceAudioFileName;
         }
     }
 
     // Do we have a file name for the output video file?
-    if (targetVideoFileName.isEmpty()) {
+    if (tbcConfiguration.targetVideoFileName.isEmpty()) {
         // No target video file name was specified, using stdout instead
         videoOutputFileHandle = new QFile;
         if (!videoOutputFileHandle->open(stdout, QIODevice::WriteOnly)) {
@@ -252,13 +264,13 @@ qint32 TbcNtsc::execute(void)
         qInfo() << "Writing video data to stdout";
     } else {
         // Open target video file for writing (quint16 data)
-        videoOutputFileHandle = new QFile(targetVideoFileName);
+        videoOutputFileHandle = new QFile(tbcConfiguration.targetVideoFileName);
         if (!videoOutputFileHandle->open(QIODevice::WriteOnly)) {
             // Failed to open video output file
             qWarning() << "Could not open specified video output file";
             return -1;
         }
-        qInfo() << "Writing video data to" << targetVideoFileName;
+        qInfo() << "Writing video data to" << tbcConfiguration.targetVideoFileName;
     }
 
     // Perform the input video and audio file processing --------------------------------------------
@@ -279,8 +291,9 @@ qint32 TbcNtsc::execute(void)
                     videoElementsInBuffer << "( buffer size is" << videoBuffer.size() << ")";
 
         // Calculate processing progress in % (cannot do this for stdin...)
-        if (!sourceVideoFileName.isEmpty()) {
-            double_t percentDone = 100.0 - (100.0 / (double_t)inputFileSize) * (double_t)videoInputFileHandle->bytesAvailable();
+        if (!tbcConfiguration.sourceVideoFileName.isEmpty()) {
+            double_t percentDone = 100.0 - (100.0 / (double_t)inputFileSize) *
+                    (double_t)videoInputFileHandle->bytesAvailable();
             qInfo() << (qint32)percentDone << "% of input file processed";
         }
 
@@ -291,7 +304,8 @@ qint32 TbcNtsc::execute(void)
 
             // Read from the video input file and store in the video buffer vector
             // This operation uses bytes, so we multiply the elements by the size of the data-type
-            receivedVideoBytes = videoInputFileHandle->read(reinterpret_cast<char *>(videoBuffer.data()) + (videoElementsInBuffer * sizeof(quint16)),
+            receivedVideoBytes = videoInputFileHandle->read(reinterpret_cast<char *>(videoBuffer.data()) +
+                                                            (videoElementsInBuffer * sizeof(quint16)),
                                                          ((videoBuffer.size() - videoElementsInBuffer) * sizeof(quint16)));
 
             // If received bytes is -1, the video readRawData operation failed for some unknown reason
@@ -314,7 +328,8 @@ qint32 TbcNtsc::execute(void)
 
             // Read from the audio input file and store in the audio buffer vector
             // This operation uses bytes, so we multiply the elements by the size of the data-type
-            qint64 receivedAudioBytes = audioInputFileHandle->read(reinterpret_cast<char *>(audioBuffer.data()) + (audioElementsInBuffer * sizeof(double_t)),
+            qint64 receivedAudioBytes = audioInputFileHandle->read(reinterpret_cast<char *>(audioBuffer.data()) +
+                                                                   (audioElementsInBuffer * sizeof(double_t)),
                                                          ((audioBuffer.size() - audioElementsInBuffer) * sizeof(double_t)));
 
             // If received bytes is -1, the readRawData operation failed for some unknown reason
@@ -333,7 +348,7 @@ qint32 TbcNtsc::execute(void)
         // Only perform processing if there's something to process
         if (receivedVideoBytes > 0) {
             // Perform automatic ranging on the input video data?
-            if (performAutoRanging) {
+            if (tbcConfiguration.performAutoRanging) {
                 // Perform auto range of input video data
                 qDebug() << "Performing auto ranging...";
                 autoRange(videoBuffer);
@@ -350,10 +365,10 @@ qint32 TbcNtsc::execute(void)
 
             // Write the video frame buffer to disk?
             if (videoFrameBufferReady && numberOfVideoBufferElementsProcessed > 0) {
-                if (!audio_only) {
-                    qInfo() << "Writing frame data to disc...";
+                if (!tbcConfiguration.audio_only) {
+                    qDebug() << "Writing frame data to disc";
                     videoOutputFileHandle->write(reinterpret_cast<char *>(frameBuffer), sizeof(frameBuffer));
-                } else qInfo() << "Audio only selected - discarding video frame data";
+                } else qDebug() << "Audio only selected - discarding video frame data";
 
                 // Note: this writes a complete buffer at the end of the file even if
                 // the buffer isn't completely full. Causes the size of file to be a little
@@ -375,9 +390,10 @@ qint32 TbcNtsc::execute(void)
             // as part of the processings... but they are not passed, they are globals.  Messy
             // They are also only set on the second-pass of those procedures... hopefully the defaults are sane?
             // Not sure what they are actually for - probably tracking the audio data vs the video data
-            v_read += numberOfVideoBufferElementsProcessed;
-            numberOfAudioBufferElementsProcessed = (v_read / va_ratio) - a_read;
-            a_read += numberOfAudioBufferElementsProcessed;
+            processAudioState.v_read += numberOfVideoBufferElementsProcessed;
+            numberOfAudioBufferElementsProcessed =
+                    (processAudioState.v_read / processAudioState.va_ratio) - processAudioState.a_read;
+            processAudioState.a_read += numberOfAudioBufferElementsProcessed;
 
             // If the current buffer doesn't contain enough data for a complete line, the buffer is shifted around to
             // the beginning of the detected line (detected by the processVideoAndAudioBuffer function) and then refilled
@@ -448,12 +464,13 @@ quint16 TbcNtsc::autoRange(QVector<quint16> videoBuffer)
     qint32 checklen = (qint32)(videoInputFrequencyInFsc * 4);
 
     if (!fullagc) {
-        low = 65535;
-        high = 0;
+        autoRangeState.low = 65535;
+        autoRangeState.high = 0;
     }
 
     qInfo() << "Performing auto-ranging";
-    qDebug() << "Scale before auto-ranging is =" << (double)inputMinimumIreLevel << ':' << (double)inputMaximumIreLevel;
+    qDebug() << "Scale before auto-ranging is =" << (double)autoRangeState.inputMinimumIreLevel << ':' <<
+                (double)autoRangeState.inputMaximumIreLevel;
 
     //	f_longsync.clear(0);
 
@@ -462,60 +479,68 @@ quint16 TbcNtsc::autoRange(QVector<quint16> videoBuffer)
          currentVideoBufferElement < videoBuffer.size();
          currentVideoBufferElement++) {
         longSyncFilterResult[currentVideoBufferElement] =
-                longSyncFilter->feed(videoBuffer[currentVideoBufferElement]);
+                autoRangeState.longSyncFilter->feed(videoBuffer[currentVideoBufferElement]);
 
         if ((currentVideoBufferElement > (videoInputFrequencyInFsc * 256)) &&
-                (longSyncFilterResult[currentVideoBufferElement] < low) &&
-                (longSyncFilterResult[currentVideoBufferElement - checklen] < low)) {
+                (longSyncFilterResult[currentVideoBufferElement] < autoRangeState.low) &&
+                (longSyncFilterResult[currentVideoBufferElement - checklen] < autoRangeState.low)) {
             if (longSyncFilterResult[currentVideoBufferElement - checklen] >
                     longSyncFilterResult[currentVideoBufferElement])
-                low = longSyncFilterResult[currentVideoBufferElement - checklen];
+                autoRangeState.low = longSyncFilterResult[currentVideoBufferElement - checklen];
             else
-                low = longSyncFilterResult[currentVideoBufferElement];
+                autoRangeState.low = longSyncFilterResult[currentVideoBufferElement];
 
             lowloc = currentVideoBufferElement;
         }
 
         if ((currentVideoBufferElement > (videoInputFrequencyInFsc * 256)) &&
-                (longSyncFilterResult[currentVideoBufferElement] > high) &&
-                (longSyncFilterResult[currentVideoBufferElement - checklen] > high)) {
-            if (longSyncFilterResult[currentVideoBufferElement - checklen] < longSyncFilterResult[currentVideoBufferElement])
-                high = longSyncFilterResult[currentVideoBufferElement - checklen];
+                (longSyncFilterResult[currentVideoBufferElement] > autoRangeState.high) &&
+                (longSyncFilterResult[currentVideoBufferElement - checklen] > autoRangeState.high)) {
+            if (longSyncFilterResult[currentVideoBufferElement - checklen] <
+                    longSyncFilterResult[currentVideoBufferElement])
+                autoRangeState.high = longSyncFilterResult[currentVideoBufferElement - checklen];
             else
-                high = longSyncFilterResult[currentVideoBufferElement];
+                autoRangeState.high = longSyncFilterResult[currentVideoBufferElement];
         }
     }
 
     // Phase 2: Attempt to figure out the 0 IRE porch near the sync
     if (!fullagc) {
-        qint32 gap = high - low;
+        qint32 gap = autoRangeState.high - autoRangeState.low;
         qint32 nloc;
 
-        for (nloc = lowloc; (nloc > lowloc - (videoInputFrequencyInFsc * 320)) && (longSyncFilterResult[nloc] < (low + (gap / 8))); nloc--);
+        for (nloc = lowloc;
+             (nloc > lowloc - (videoInputFrequencyInFsc * 320)) &&
+             (longSyncFilterResult[nloc] < (autoRangeState.low + (gap / 8))); nloc--);
 
         qDebug() << nloc << (lowloc - nloc) / (double)videoInputFrequencyInFsc << (double)longSyncFilterResult[nloc];
 
         nloc -= (videoInputFrequencyInFsc * 4);
         qDebug() << nloc << (lowloc - nloc) / (double)videoInputFrequencyInFsc << (double)longSyncFilterResult[nloc];
 
-        qDebug() << "Scale before auto-ranging is =" << (double)inputMinimumIreLevel << ':' << (double)inputMaximumIreLevel;
+        qDebug() << "Scale before auto-ranging is =" << (double)autoRangeState.inputMinimumIreLevel <<
+                    ':' << (double)autoRangeState.inputMaximumIreLevel;
 
-        inputMaximumIreLevel = (longSyncFilterResult[nloc] - low) / ((seven_five) ? 47.5 : 40.0);
-        inputMinimumIreLevel = low - (20 * inputMaximumIreLevel); // Should be in the range of -40 IRE to -60 IRE
+        autoRangeState.inputMaximumIreLevel = (longSyncFilterResult[nloc] - autoRangeState.low) /
+                ((tbcConfiguration.seven_five) ? 47.5 : 40.0);
+        autoRangeState.inputMinimumIreLevel = autoRangeState.low -
+                (20 * autoRangeState.inputMaximumIreLevel); // Should be in the range of -40 IRE to -60 IRE
 
-        if (inputMinimumIreLevel < 1) inputMinimumIreLevel = 1;
-        qDebug() << "Scale after auto-ranging is =" << (double)inputMinimumIreLevel << ':' << (double)inputMaximumIreLevel;
+        if (autoRangeState.inputMinimumIreLevel < 1) autoRangeState.inputMinimumIreLevel = 1;
+        qDebug() << "Scale after auto-ranging is =" << (double)autoRangeState.inputMinimumIreLevel << ':' <<
+                    (double)autoRangeState.inputMaximumIreLevel;
     } else {
-        inputMaximumIreLevel = (high - low) / 140.0;
+        autoRangeState.inputMaximumIreLevel = (autoRangeState.high - autoRangeState.low) / 140.0;
     }
 
-    inputMinimumIreLevel = low;	// -40IRE to -60IRE
-    if (inputMinimumIreLevel < 1) inputMinimumIreLevel = 1;
+    autoRangeState.inputMinimumIreLevel = autoRangeState.low;	// -40IRE to -60IRE
+    if (autoRangeState.inputMinimumIreLevel < 1) autoRangeState.inputMinimumIreLevel = 1;
 
-    qDebug() << "Scale after auto-ranging is =" << (double)inputMinimumIreLevel << ':'
-             << (double)inputMaximumIreLevel << " low:" << (double)low << (double)high;
+    qDebug() << "Scale after auto-ranging is =" << (double)autoRangeState.inputMinimumIreLevel << ':'
+             << (double)autoRangeState.inputMaximumIreLevel << " low:" << (double)autoRangeState.low <<
+                (double)autoRangeState.high;
 
-    return inputMinimumIreLevel + (inputMaximumIreLevel * 20);
+    return autoRangeState.inputMinimumIreLevel + (autoRangeState.inputMaximumIreLevel * 20);
 }
 
 // Process a buffer of video and audio data
@@ -554,8 +579,8 @@ qint32 TbcNtsc::processVideoAndAudioBuffer(QVector<quint16> videoBuffer, qint32 
             return verticalSync + (videoInputFrequencyInFsc * 227.5 * 240);
 
         // Process skip-frames mode - zoom forward an entire frame
-        if (frameno < p_skipframes) {
-            frameno++;
+        if (processLineState.frameno < tbcConfiguration.p_skipframes) {
+            processLineState.frameno++;
             return verticalSync + (videoInputFrequencyInFsc * 227.5 * 510);
         }
 
@@ -587,11 +612,11 @@ qint32 TbcNtsc::processVideoAndAudioBuffer(QVector<quint16> videoBuffer, qint32 
             quint16 tPoint = ire_to_in(-20);
 
             // Find beginning of horizontal sync
-            f_endsync->clear(0);
+            autoRangeState.f_endsync->clear(0);
             previous = 0;
             for (qint32 i = horizontalSyncs[line] - (20 * videoInputFrequencyInFsc);
                  i < horizontalSyncs[line] - (8 * videoInputFrequencyInFsc); i++) {
-                double_t current = f_endsync->feed(videoBuffer[i]);
+                double_t current = autoRangeState.f_endsync->feed(videoBuffer[i]);
 
                 if ((previous > tPoint) && (current < tPoint)) {
                     // qDebug() << "B" << i << line << hsyncs[line];
@@ -605,11 +630,11 @@ qint32 TbcNtsc::processVideoAndAudioBuffer(QVector<quint16> videoBuffer, qint32 
             }
 
             // Find end of horizontal sync
-            f_endsync->clear(0);
+            autoRangeState.f_endsync->clear(0);
             previous = 0;
             for (qint32 counter = horizontalSyncs[line] - (2 * videoInputFrequencyInFsc);
                  counter < horizontalSyncs[line] + (4 * videoInputFrequencyInFsc); counter++) {
-                double_t current = f_endsync->feed(videoBuffer[counter]);
+                double_t current = autoRangeState.f_endsync->feed(videoBuffer[counter]);
 
                 if ((previous < tPoint) && (current > tPoint)) {
                     // qDebug() << "E" << line << hsyncs[line];
@@ -622,7 +647,7 @@ qint32 TbcNtsc::processVideoAndAudioBuffer(QVector<quint16> videoBuffer, qint32 
                 previous = current;
             }
 
-            qDebug() << "S" << line << (double)startSync << (double)endSync << (double)(endSync - startSync);
+            qDebug() << "Sync S" << line << (double)startSync << (double)endSync << (double)(endSync - startSync);
 
             if ((!inRangeCF(endSync - startSync, 15.75, 17.25)) || (startSync == -1) || (endSync == -1)) {
                 isLineBad[line] = true;
@@ -644,7 +669,7 @@ qint32 TbcNtsc::processVideoAndAudioBuffer(QVector<quint16> videoBuffer, qint32 
             double_t line1 = horizontalSyncs[line], line2 = horizontalSyncs[line + 1];
 
             if (isLineBad[line] == true) {
-                qDebug() << "ERR" << line;
+                qDebug() << "Error" << line;
                 continue;
 
             }
@@ -652,7 +677,7 @@ qint32 TbcNtsc::processVideoAndAudioBuffer(QVector<quint16> videoBuffer, qint32 
             // Burst detection/correction
             scale(videoBuffer.data(), lineBuffer, line1, line2, 227.5 * videoInputFrequencyInFsc);
             if (!burstDetect2(lineBuffer, videoInputFrequencyInFsc, 4, bLevel[line], bPhase, phaseFlip)) {
-                qDebug() << "ERRnoburst" << line;
+                qDebug() << "Error (no burst)" << line;
                 isLineBad[line] = true;
                 continue; // Exits the for loop...
             }
@@ -665,11 +690,11 @@ qint32 TbcNtsc::processVideoAndAudioBuffer(QVector<quint16> videoBuffer, qint32 
                 nEven++;
             }
 
-            qDebug() << "BURST" << line << (double)line1 << (double)line2 << (double)bLevel[line] << (double)bPhase;
+            qDebug() << "Burst" << line << (double)line1 << (double)line2 << (double)bLevel[line] << (double)bPhase;
         }
 
         bool fieldPhase = fabs(tpEven / nEven) < fabs(tpOdd / nOdd);
-        qDebug() << "PHASES:" << nEven + nOdd << (double)(tpEven / nEven) << (double)(tpOdd / nOdd) << fieldPhase;
+        qDebug() << "Phases:" << nEven + nOdd << (double)(tpEven / nEven) << (double)(tpOdd / nOdd) << fieldPhase;
 
         for (qint32 pass = 0; pass < 4; pass++) {
                for (qint32 line = 0; line < 252; line++) {
@@ -696,8 +721,9 @@ qint32 TbcNtsc::processVideoAndAudioBuffer(QVector<quint16> videoBuffer, qint32 
 
         correctDamagedHSyncs(horizontalSyncs, isLineBad);
 
-        // Final output
-        for (qint32 line = 0; line < 252; line++) {
+        // Final output (this had a bug in the original code (line < 252) which caused oline to overflow to 505 -
+        // which causes a segfault in the line "frameBuffer[oline][t] = (quint16)clamp(o, 1, 65535);"
+        for (qint32 line = 0; line < 251; line++) {
             double_t line1 = horizontalSyncs[line], line2 = horizontalSyncs[line + 1];
             qint32 oline = 3 + (line * 2) + (oddEven ? 0 : 1);
 
@@ -713,19 +739,18 @@ qint32 TbcNtsc::processVideoAndAudioBuffer(QVector<quint16> videoBuffer, qint32 
 
             scale(videoBuffer.data(), lineBuffer, line1 + pt, line2 + pt, 910, 0);
 
-            double_t framePosition = (line / 525.0) + frameno + (field * .50);
+            double_t framePosition = (line / 525.0) + processLineState.frameno + (field * .50);
 
             if (!field) framePosition -= .001;
 
             // Process audio?
             if (processAudioData) {
-                processAudio(framePosition, v_read + horizontalSyncs[line], audioBuffer.data());
+                processAudio(framePosition, processAudioState.v_read + horizontalSyncs[line], audioBuffer.data());
             }
-
             bool lphase = ((line % 2) == 0);
             if (fieldPhase) lphase = !lphase;
             frameBuffer[oline][0] = (lphase == 0) ? 32768 : 16384;
-            frameBuffer[oline][1] = bLevel[line] * (327.68 / inputMaximumIreLevel); // ire_to_out(in_to_ire(blevel[line]));
+            frameBuffer[oline][1] = bLevel[line] * (327.68 / autoRangeState.inputMaximumIreLevel); // ire_to_out(in_to_ire(blevel[line]));
 
             if (isLineBad[line]) {
                         frameBuffer[oline][3] = frameBuffer[oline][5] = 65000;
@@ -734,25 +759,26 @@ qint32 TbcNtsc::processVideoAndAudioBuffer(QVector<quint16> videoBuffer, qint32 
 
             for (qint32 t = 4; t < 844; t++) {
                 double_t o = lineBuffer[t];
+                if (tbcConfiguration.performAutoRanging) o = ire_to_out(in_to_ire(o));
 
-                if (performAutoRanging) o = ire_to_out(in_to_ire(o));
-
-                frameBuffer[oline][t] = (uint16_t)clamp(o, 1, 65535);
+                frameBuffer[oline][t] = (quint16)clamp(o, 1, 65535);
             }
         }
-
         offset = abs(horizontalSyncs[250]);
 
-        qDebug() << "new offset" << offset;
+        qDebug() << "New offset is" << offset;
     }
 
-    if (f_despackle) despackle();
+    // Perform despackle?
+    if (tbcConfiguration.f_despackle) {
+        despackle();
+    }
 
     // Decode VBI data
-    decodeVBI();
+    decodeVbiData();
 
     // Increment the frame number
-    frameno++;
+    processLineState.frameno++;
 
     // Flag that the video frame buffer is ready to be written to disk:
     *isVideoFrameBufferReadyForWrite = true;
@@ -772,24 +798,24 @@ qint32 TbcNtsc::findSync(quint16 *videoBuffer, qint32 videoLength)
 
 qint32 TbcNtsc::findSync(quint16 *videoBuffer, qint32 videoLength, qint32 tgt)
 {
-    const int pad = 96;
-    int rv = -1;
+    const qint32 pad = 96;
+    qint32 rv = -1;
 
-    const uint16_t to_min = ire_to_in(-45), to_max = ire_to_in(-35);
-    const uint16_t err_min = ire_to_in(-55), err_max = ire_to_in(30);
+    const quint16 to_min = ire_to_in(-45), to_max = ire_to_in(-35);
+    const quint16 err_min = ire_to_in(-55), err_max = ire_to_in(30);
 
-    uint16_t clen = tgt * 3;
-    uint16_t circbuf[clen];
-    uint16_t circbuf_err[clen];
+    quint16 clen = tgt * 3;
+    quint16 circbuf[clen];
+    quint16 circbuf_err[clen];
 
     memset(circbuf, 0, clen * 2);
     memset(circbuf_err, 0, clen * 2);
 
-    int count = 0, errcount = 0, peak = 0, peakloc = 0;
+    qint32 count = 0, errcount = 0, peak = 0, peakloc = 0;
 
-    for (int i = 0; (rv == -1) && (i < videoLength); i++) {
-        int nv = (videoBuffer[i] >= to_min) && (videoBuffer[i] < to_max);
-        int err = (videoBuffer[i] <= err_min) || (videoBuffer[i] >= err_max);
+    for (qint32 i = 0; (rv == -1) && (i < videoLength); i++) {
+        qint32 nv = (videoBuffer[i] >= to_min) && (videoBuffer[i] < to_max);
+        qint32 err = (videoBuffer[i] <= err_min) || (videoBuffer[i] >= err_max);
 
         count = count - circbuf[i % clen] + nv;
         circbuf[i % clen] = nv;
@@ -804,7 +830,7 @@ qint32 TbcNtsc::findSync(quint16 *videoBuffer, qint32 videoLength, qint32 tgt)
             rv = peakloc;
 
             if ((videoInputFrequencyInFsc > 4) && (errcount > 1)) {
-                qDebug() << "HERR" << errcount;
+                qDebug() << "Horizontal Error HERR" << errcount;
                 rv = -rv;
             }
         }
@@ -812,7 +838,7 @@ qint32 TbcNtsc::findSync(quint16 *videoBuffer, qint32 videoLength, qint32 tgt)
         //qDebug() << i << videoBuffer[i] << peak << peakloc << i - peakloc;
     }
 
-    if (rv == -1) qDebug() << "not found" << peak << peakloc;
+    if (rv == -1) qDebug() << "Not found" << peak << peakloc;
 
     return rv;
 }
@@ -820,10 +846,10 @@ qint32 TbcNtsc::findSync(quint16 *videoBuffer, qint32 videoLength, qint32 tgt)
 // This could probably be used for more than just field det, but eh
 qint32 TbcNtsc::countSlevel(quint16 *videoBuffer, qint32 begin, qint32 end)
 {
-    const uint16_t to_min = ire_to_in(-45), to_max = ire_to_in(-35);
-    int count = 0;
+    const quint16 to_min = ire_to_in(-45), to_max = ire_to_in(-35);
+    qint32 count = 0;
 
-    for (int i = begin; i < end; i++) {
+    for (qint32 i = begin; i < end; i++) {
         count += (videoBuffer[i] >= to_min) && (videoBuffer[i] < to_max);
     }
 
@@ -841,40 +867,40 @@ qint32 TbcNtsc::findVsync(quint16 *videoBuffer, qint32 videoLength)
 
 qint32 TbcNtsc::findVsync(quint16 *videoBuffer, qint32 videoLength, qint32 offset)
 {
-    const uint16_t field_len = videoInputFrequencyInFsc * 227.5 * 280;
+    const quint16 field_len = videoInputFrequencyInFsc * 227.5 * 280;
 
     if (videoLength < field_len) return -1;
 
-    int pulse_ends[6];
-    int slen = videoLength;
+    qint32 pulse_ends[6];
+    qint32 slen = videoLength;
 
-    int loc = offset;
+    qint32 loc = offset;
 
-    for (int i = 0; i < 6; i++) {
+    for (qint32 i = 0; i < 6; i++) {
         // 32xFSC is *much* shorter, but it shouldn't get confused for an hsync -
         // and on rotted disks and ones with burst in vsync, this helps
         int syncend = abs(findSync(&videoBuffer[loc], slen, 32 * videoInputFrequencyInFsc));
 
         pulse_ends[i] = syncend + loc;
-        qDebug() << pulse_ends[i];
+        qDebug() << "Pulse ends" << pulse_ends[i];
 
         loc += syncend;
         slen = 3840;
     }
 
-    int rv = pulse_ends[5];
+    qint32 rv = pulse_ends[5];
 
     // determine line type
-    int before_end = pulse_ends[0] - (127.5 * videoInputFrequencyInFsc);
-    int before_start = before_end - (227.5 * 4.5 * videoInputFrequencyInFsc);
+    qint32 before_end = pulse_ends[0] - (127.5 * videoInputFrequencyInFsc);
+    qint32 before_start = before_end - (227.5 * 4.5 * videoInputFrequencyInFsc);
 
-    int pc_before = countSlevel(videoBuffer, before_start, before_end);
+    qint32 pc_before = countSlevel(videoBuffer, before_start, before_end);
 
-    int after_start = pulse_ends[5];
-    int after_end = after_start + (227.5 * 4.5 * videoInputFrequencyInFsc);
-    int pc_after = countSlevel(videoBuffer, after_start, after_end);
+    qint32 after_start = pulse_ends[5];
+    qint32 after_end = after_start + (227.5 * 4.5 * videoInputFrequencyInFsc);
+    qint32 pc_after = countSlevel(videoBuffer, after_start, after_end);
 
-    qDebug() << "beforeafter:" << pulse_ends[0] + offset << pulse_ends[5] + offset << pc_before << pc_after;
+    qDebug() << "Before/after:" << pulse_ends[0] + offset << pulse_ends[5] + offset << pc_before << pc_after;
 
     if (pc_before < pc_after) rv = -rv;
 
@@ -897,18 +923,18 @@ bool TbcNtsc::findHsyncs(quint16 *videoBuffer, qint32 videoLength, qint32 offset
     if (videoLength < (nlines * videoInputFrequencyInFsc * 227.5))
         return false;
 
-    int loc = offset;
+    qint32 loc = offset;
 
-    for (int line = 0; line < nlines; line++) {
+    for (qint32 line = 0; line < nlines; line++) {
     //	qDebug() << line << loc;
-        int syncend = findSync(&videoBuffer[loc], 227.5 * 3 * videoInputFrequencyInFsc,
+        qint32 syncend = findSync(&videoBuffer[loc], 227.5 * 3 * videoInputFrequencyInFsc,
                                8 * videoInputFrequencyInFsc);
 
         double_t gap = 227.5 * videoInputFrequencyInFsc;
 
-        int err_offset = 0;
+        qint32 err_offset = 0;
         while (syncend < -1) {
-            qDebug() << "error found" << line << syncend << ' ';
+            qDebug() << "Error found on line" << line << syncend << ' ';
             err_offset += gap;
             syncend = findSync(&videoBuffer[loc] + err_offset, 227.5 * 3 * videoInputFrequencyInFsc,
                                8 * videoInputFrequencyInFsc);
@@ -939,10 +965,11 @@ bool TbcNtsc::findHsyncs(quint16 *videoBuffer, qint32 videoLength, qint32 offset
 // correct damaged hsyncs by interpolating neighboring lines
 void TbcNtsc::correctDamagedHSyncs(double_t *hsyncs, bool *err)
 {
-    for (int line = 1; line < 251; line++) {
+    for (qint32 line = 1; line < 251; line++) {
         if (err[line] == false) continue;
 
-        int lprev, lnext;
+        qint32 lprev;
+        qint32 lnext;
 
         for (lprev = line - 1; (err[lprev] == true) && (lprev >= 0); lprev--);
         for (lnext = line + 1; (err[lnext] == true) && (lnext < 252); lnext++);
@@ -952,11 +979,12 @@ void TbcNtsc::correctDamagedHSyncs(double_t *hsyncs, bool *err)
 
         double_t linex = (hsyncs[line] - hsyncs[0]) / line;
 
-        qDebug() << "FIX" << line << (double)linex << (double)hsyncs[line] << (double)(hsyncs[line] - hsyncs[line - 1]) << lprev << lnext ;
+        qDebug() << "Fixed:" << line << (double)linex << (double)hsyncs[line] <<
+                    (double)(hsyncs[line] - hsyncs[line - 1]) << lprev << lnext ;
 
         double_t lavg = (hsyncs[lnext] - hsyncs[lprev]) / (lnext - lprev);
         hsyncs[line] = hsyncs[lprev] + (lavg * (line - lprev));
-        qDebug() << (double)hsyncs[line];
+        qDebug() << "hsyncs:" << (double)hsyncs[line];
     }
 }
 
@@ -966,36 +994,40 @@ void TbcNtsc::processAudio(double_t frameBuffer, qint64 loc, double_t *audioBuff
     double_t time = frameBuffer / (30000.0 / 1001.0);
 
     // Default firstloc if required
-    if (firstloc == -1) firstloc = loc;
+    if (processAudioState.firstloc == -1) processAudioState.firstloc = loc;
 
-    if (prev_time >= 0) {
-        while (nextAudioSample < time) {
-            double_t i1 = (nextAudioSample - prev_time) / (time - prev_time);
-            long long i = (i1 * (loc - prev_loc)) + prev_loc;
+    if (processAudioState.prev_time >= 0) {
+        while (processAudioState.nextAudioSample < time) {
+            double_t i1 = (processAudioState.nextAudioSample - processAudioState.prev_time) /
+                    (time - processAudioState.prev_time);
+            qint64 i = (i1 * (loc - processAudioState.prev_loc)) + processAudioState.prev_loc;
 
-            if (i < v_read) {
-                processAudioSample(audioChannelOneFilter->filterValue(), audioChannelTwoFilter->filterValue());
+            if (i < processAudioState.v_read) {
+                processAudioSample(processAudioState.audioChannelOneFilter->filterValue(),
+                                   processAudioState.audioChannelTwoFilter->filterValue());
             } else {
-                long long index = (i / va_ratio) - a_read;
+                qint64 index = (i / processAudioState.va_ratio) - processAudioState.a_read;
                 if (index >= (sizeof(audioBuffer) / sizeof(double_t))) {
-                    qDebug() << "audio error" << (double)frameBuffer << (double)time << (double)i1
+                    qDebug() << "Audio error" << (double)frameBuffer << (double)time << (double)i1
                              << i << index << (sizeof(audioBuffer) / sizeof(double_t));
                     index = (sizeof(audioBuffer) / sizeof(double_t)) - 1;
                 }
-                float channelOne = audioBuffer[index * 2], channelTwo = audioBuffer[(index * 2) + 1];
-                double_t frameb = (double_t)(i - firstloc) / 1820.0 / 525.0;
-                qDebug() << "A" << (double)frameBuffer << loc << (double)frameb << (double)i1 << i << i - prev_i <<
-                            index << index - prev_index << channelOne << channelTwo;
-                prev_index = index;
-                prev_i = i;
+                double_t channelOne = audioBuffer[index * 2], channelTwo = audioBuffer[(index * 2) + 1];
+                double_t frameb = (double_t)(i - processAudioState.firstloc) / 1820.0 / 525.0;
+                qDebug() << "Audio" << (double)frameBuffer << loc << (double)frameb << (double)i1 << i <<
+                            i - processAudioState.prev_i <<
+                            index << index - processAudioState.prev_index << (double)channelOne << (double)channelTwo;
+                processAudioState.prev_index = index;
+                processAudioState.prev_i = i;
                 processAudioSample(channelOne, channelTwo);
             }
 
-            nextAudioSample += 1.0 / afreq;
+            processAudioState.nextAudioSample += 1.0 / processAudioState.afreq;
         }
     }
 
-    prev_time = time; prev_loc = loc;
+    processAudioState.prev_time = time;
+    processAudioState.prev_loc = loc;
 }
 
 // Process a sample of audio (from what to what?)
@@ -1003,19 +1035,19 @@ void TbcNtsc::processAudioSample(double_t channelOne, double_t channelTwo)
 {
     quint16 audioOutputBuffer[512];
 
-    channelOne = audioChannelOneFilter->feed(channelOne * (65535.0 / 300000.0));
+    channelOne = processAudioState.audioChannelOneFilter->feed(channelOne * (65535.0 / 300000.0));
     channelOne += 32768;
 
-    channelTwo = audioChannelTwoFilter->feed(channelTwo * (65535.0 / 300000.0));
+    channelTwo = processAudioState.audioChannelTwoFilter->feed(channelTwo * (65535.0 / 300000.0));
     channelTwo += 32768;
 
-    audioOutputBuffer[audioOutputBufferPointer * 2] = clamp(channelOne, 0, 65535);
-    audioOutputBuffer[(audioOutputBufferPointer * 2) + 1] = clamp(channelTwo, 0, 65535);
+    audioOutputBuffer[processAudioState.audioOutputBufferPointer * 2] = clamp(channelOne, 0, 65535);
+    audioOutputBuffer[(processAudioState.audioOutputBufferPointer * 2) + 1] = clamp(channelTwo, 0, 65535);
 
     // Need to pass this buffer back to the main process function and write it to
     // disk there rather than being buried here...
-    audioOutputBufferPointer++;
-    if (audioOutputBufferPointer == 256) {
+    processAudioState.audioOutputBufferPointer++;
+    if (processAudioState.audioOutputBufferPointer == 256) {
 //        int rv = write(audio_only ? 1 : 3, audioOutputBuffer, sizeof(audioOutputBuffer));
 //        rv = audioOutputBufferPointer = 0;
         qWarning() << "Writing audio is not currently implemented!";
@@ -1037,7 +1069,7 @@ inline double_t TbcNtsc::in_to_ire(quint16 level)
 {
     if (level == 0) return -100;
 
-    return -40 + ((double_t)(level - inputMinimumIreLevel) / inputMaximumIreLevel);
+    return -40 + ((double_t)(level - autoRangeState.inputMinimumIreLevel) / autoRangeState.inputMaximumIreLevel);
 }
 
 // Convert from IRE to input scale
@@ -1045,7 +1077,7 @@ inline quint16 TbcNtsc::ire_to_in(double_t ire)
 {
     if (ire <= -60) return 0;
 
-    return clamp(((ire + 40) * inputMaximumIreLevel) + inputMinimumIreLevel, 1, 65535);
+    return clamp(((ire + 40) * autoRangeState.inputMaximumIreLevel) + autoRangeState.inputMinimumIreLevel, 1, 65535);
 }
 
 // Convert from IRE to output scale
@@ -1084,7 +1116,7 @@ inline double_t TbcNtsc::cubicInterpolate(quint16 *y, double_t x)
 
 // This function takes a video line that is the wrong length
 // and interpolates the line to the correct (predicted) length
-void TbcNtsc::scale(uint16_t *buf, double_t *outbuf, double_t start, double_t end,
+void TbcNtsc::scale(quint16 *buf, double_t *outbuf, double_t start, double_t end,
                            double_t outlen)
 {
     // Defaults
@@ -1095,7 +1127,7 @@ void TbcNtsc::scale(uint16_t *buf, double_t *outbuf, double_t start, double_t en
     scale(buf, outbuf, start, end, outlen, offset, from, to);
 }
 
-void TbcNtsc::scale(uint16_t *buf, double_t *outbuf, double_t start, double_t end,
+void TbcNtsc::scale(quint16 *buf, double_t *outbuf, double_t start, double_t end,
                            double_t outlen, double_t offset)
 {
     // Defaults
@@ -1105,7 +1137,7 @@ void TbcNtsc::scale(uint16_t *buf, double_t *outbuf, double_t start, double_t en
     scale(buf, outbuf, start, end, outlen, offset, from, to);
 }
 
-void TbcNtsc::scale(uint16_t *buf, double_t *outbuf, double_t start, double_t end,
+void TbcNtsc::scale(quint16 *buf, double_t *outbuf, double_t start, double_t end,
                            double_t outlen, double_t offset, qint32 from, qint32 to)
 {
     double_t inlen = end - start;
@@ -1114,8 +1146,8 @@ void TbcNtsc::scale(uint16_t *buf, double_t *outbuf, double_t start, double_t en
     if (to == -1) to = (int)outlen;
 
     double_t p1 = start + (offset * perpel);
-    for (int i = from; i < to; i++) {
-        int index = (int)p1;
+    for (qint32 i = from; i < to; i++) {
+        qint32 index = (qint32)p1;
         if (index < 1) index = 1;
 
         outbuf[i] = clamp(cubicInterpolate(&buf[index - 1], p1 - index), 0, 65535);
@@ -1142,18 +1174,18 @@ bool TbcNtsc::inRangeCF(double_t v, double_t l, double_t h)
 bool TbcNtsc::burstDetect2(double_t *line, qint32 freq, double_t _loc, double_t &plevel,
                            double_t &pphase, bool &phaseflip)
 {
-    int len = (6 * freq);
-    int loc = _loc * freq;
+    qint32 len = (6 * freq);
+    qint32 loc = _loc * freq;
     double_t start = 0 * freq;
 
     double_t peakh = 0, peakl = 0;
-    int npeakh = 0, npeakl = 0;
+    qint32 npeakh = 0, npeakl = 0;
     double_t lastpeakh = -1, lastpeakl = -1;
 
-    double_t highmin = ire_to_in(f_highburst ? 11 : 9);
-    double_t highmax = ire_to_in(f_highburst ? 23 : 22);
-    double_t lowmin = ire_to_in(f_highburst ? -11 : -9);
-    double_t lowmax = ire_to_in(f_highburst ? -23 : -22);
+    double_t highmin = ire_to_in(tbcConfiguration.f_highburst ? 11 : 9);
+    double_t highmax = ire_to_in(tbcConfiguration.f_highburst ? 23 : 22);
+    double_t lowmin = ire_to_in(tbcConfiguration.f_highburst ? -11 : -9);
+    double_t lowmax = ire_to_in(tbcConfiguration.f_highburst ? -23 : -22);
 
     int begin = loc + (start * freq);
     int end = begin + len;
@@ -1161,7 +1193,7 @@ bool TbcNtsc::burstDetect2(double_t *line, qint32 freq, double_t _loc, double_t 
     // first get average (probably should be a moving one)
 
     double_t avg = 0;
-    for (int i = begin; i < end; i++) {
+    for (qint32 i = begin; i < end; i++) {
         avg += line[i];
     }
     avg /= (end - begin);
@@ -1174,9 +1206,9 @@ bool TbcNtsc::burstDetect2(double_t *line, qint32 freq, double_t _loc, double_t 
     double_t firstc_h = -1;
 
     double_t avg_htl_zc = 0, avg_lth_zc = 0;
-    int n_htl_zc = 0, n_lth_zc = 0;
+    qint32 n_htl_zc = 0, n_lth_zc = 0;
 
-    for (int i = begin ; i < end; i++) {
+    for (qint32 i = begin ; i < end; i++) {
         if ((line[i] > highmin) && (line[i] < highmax) && (line[i] > line[i - 1]) && (line[i] > line[i + 1])) {
             peakh += line[i];
             npeakh++;
@@ -1263,17 +1295,17 @@ quint32 TbcNtsc::readPhillipsCode(quint16 *line)
     // VBI? - Is this supposed to be based on FSC?  Looks like it...
     double_t dots_usec = 4.0 * 315.0 / 88.0;
 
-    int first_bit = -1; // 108 - dots_usec;
-    uint32_t out = 0;
+    qint32 first_bit = -1; // 108 - dots_usec;
+    quint32 out = 0;
 
     double_t deltaLine[844];
 
-    for (int i = 1; i < 843; i++) {
+    for (qint32 i = 1; i < 843; i++) {
         deltaLine[i] = line[i] - line[i - 1];
     }
 
     // find first positive transition (exactly halfway into bit 0 which is *always* 1)
-    for (int i = 70; (first_bit == -1) && (i < 140); i++) {
+    for (qint32 i = 70; (first_bit == -1) && (i < 140); i++) {
 //		qDebug() << i << out_to_ire(line[i]) << Δline[i];
         if (isPeak(deltaLine, i) && (deltaLine[i] > 10 * 327.68)) {
             first_bit = i;
@@ -1281,11 +1313,11 @@ quint32 TbcNtsc::readPhillipsCode(quint16 *line)
     }
     if (first_bit < 0) return 0;
 
-    for (int i = 0; i < 24; i++) {
-        int rloc = -1, loc = (first_bit + (i * 2 * dots_usec));
+    for (qint32 i = 0; i < 24; i++) {
+        qint32 rloc = -1, loc = (first_bit + (i * 2 * dots_usec));
         double_t rpeak = -1;
 
-        for (int h = loc - 8; (h < loc + 8); h++) {
+        for (qint32 h = loc - 8; (h < loc + 8); h++) {
             if (isPeak(deltaLine, h)) {
                 if (fabs(deltaLine[h]) > rpeak) {
                     rpeak = fabs(deltaLine[h]);
@@ -1297,11 +1329,12 @@ quint32 TbcNtsc::readPhillipsCode(quint16 *line)
         if (rloc == -1) rloc = loc;
 
         out |= (deltaLine[rloc] > 0) ? (1 << (23 - i)) : 0;
-        qDebug() << i << loc << (double)deltaLine[loc] << rloc << (double)deltaLine[rloc] <<(double)(deltaLine[rloc] / inputMaximumIreLevel) << out;
+        qDebug() << "Delta line: " << i << loc << (double)deltaLine[loc] << rloc << (double)deltaLine[rloc] <<
+                    (double)(deltaLine[rloc] / autoRangeState.inputMaximumIreLevel) << out;
 
         if (!i) first_bit = rloc;
     }
-    qDebug() << "P" << hex << out << dec;
+    qDebug() << "Philips hex:" << hex << out << dec;
 
     return out;
 }
@@ -1311,42 +1344,45 @@ inline double_t TbcNtsc::max(double_t a, double_t b)
     return (a > b) ? a : b;
 }
 
+// This function was a bit odd... it references deltaFrame and
+// deltaFrameFilter (in the original code) - but never actually
+// stores anything in the arrays (and they are huge arrays).
+// So I've removed them...
 void TbcNtsc::despackle(void)
 {
-    qint32 out_x = 844;
-    qint32 out_y = 505;
+    quint16 frameOriginal[505][844];
+
+    qint32 outputX = 844;
+    qint32 outputY = 505;
 
     memcpy(frameOriginal, frameBuffer, sizeof(frameBuffer));
 
-    for (int y = 22; y < out_y; y++) {
-        double_t rotdetect = p_rotdetect * inputMaximumIreLevel;
+    for (qint32 inputY = 22; inputY < outputY; inputY++) {
+        double_t rotDetect = tbcConfiguration.p_rotdetect * autoRangeState.inputMaximumIreLevel;
 
-        for (int x = 60; x < out_x - 16; x++) {
+        for (qint32 inputX = 60; inputX < outputX - 16; inputX++) {
 
-            double_t comp = 0;
+            if ((out_to_ire(frameBuffer[inputY][inputX]) < -20) ||
+                    (out_to_ire(frameBuffer[inputY][inputX]) > 140)) {
 
-            for (int cy = y - 1; (cy < (y + 2)) && (cy < out_y); cy++) {
-                for (int cx = x - 3; (cx < x + 3) && (cx < (out_x - 12)); cx++) {
-                    comp = max(comp, deltaFrameFilter[cy][cx]);
-                }
-            }
+                qDebug() << "Despackle R" <<
+                            inputY <<
+                            inputX <<
+                            (double)rotDetect;
 
-            if ((out_to_ire(frameBuffer[y][x]) < -20) || (out_to_ire(frameBuffer[y][x]) > 140) ||
-                    ((deltaFrame[y][x] > rotdetect) && ((deltaFrame[y][x] - comp) > rotdetect))) {
-                qDebug() << "R" << y << x << (double)rotdetect << (double)deltaFrame[y][x] << (double)comp << (double)deltaFrameFilter[y][x];
-                for (int m = x - 4; (m < (x + 14)) && (m < out_x); m++) {
-                    double_t tmp = (((double_t)frameOriginal[y - 2][m - 2]) +
-                            ((double_t)frameOriginal[y - 2][m + 2])) / 2;
+                for (qint32 m = inputX - 4; (m < (inputX + 14)) && (m < outputX); m++) {
+                    double_t tmp = (((double_t)frameOriginal[inputY - 2][m - 2]) +
+                            ((double_t)frameOriginal[inputY - 2][m + 2])) / 2;
 
-                    if (y < (out_y - 3)) {
+                    if (inputY < (outputY - 3)) {
                         tmp /= 2;
-                        tmp += ((((double_t)frameOriginal[y + 2][m - 2]) +
-                                ((double_t)frameOriginal[y + 2][m + 2])) / 4);
+                        tmp += ((((double_t)frameOriginal[inputY + 2][m - 2]) +
+                                ((double_t)frameOriginal[inputY + 2][m + 2])) / 4);
                     }
 
-                    frameBuffer[y][m] = clamp(tmp, 0, 65535);
+                    frameBuffer[inputY][m] = clamp(tmp, 0, 65535);
                 }
-                x = x + 14;
+                inputX = inputX + 14;
             }
         }
     }
@@ -1355,9 +1391,9 @@ void TbcNtsc::despackle(void)
 // Used by the decodeVBI function for something...
 bool TbcNtsc::checkWhiteFlag(qint32 l)
 {
-    int wc = 0;
+    qint32 wc = 0;
 
-    for (int i = 100; i < 800; i++) {
+    for (qint32 i = 100; i < 800; i++) {
         if (out_to_ire(frameBuffer[l][i]) > 80) wc++;
         if (wc >= 200) return true;
     }
@@ -1366,27 +1402,27 @@ bool TbcNtsc::checkWhiteFlag(qint32 l)
 }
 
 // Decode VBI data
-void TbcNtsc::decodeVBI(void)
+void TbcNtsc::decodeVbiData(void)
 {
-    uint32_t code[6];
+    quint32 code[6];
 
-    uint32_t clv_time = 0;
-    uint32_t chap = 0;
-    uint32_t flags = 0;
+    quint32 clv_time = 0;
+    quint32 chap = 0;
+    quint32 flags = 0;
 
     bool odd = false; // CAV framecode on odd scanline
     bool even = false; // on even scanline (need to report both, since some frames have none!)
     bool clv = false;
     bool cx  = false;
-    int fnum = 0;
+    qint32 fnum = 0;
 
     memset(code, 0, sizeof(code));
-    for (int i = 14; i < 20; i++) {
+    for (qint32 i = 14; i < 20; i++) {
         code[i - 14] = readPhillipsCode(frameBuffer[i]);
     }
-    qDebug() << "Phillips codes" << hex << code[0] << code[1] << code[2] << code[3] << code[4] << code[5] << dec;
+    qDebug() << "Phillips codes:" << hex << code[0] << code[1] << code[2] << code[3] << code[4] << code[5] << dec;
 
-    for (int i = 0; i < 6; i++) {
+    for (qint32 i = 0; i < 6; i++) {
         frameBuffer[0][i * 2] = code[i] >> 16;
         frameBuffer[0][(i * 2) + 1] = code[i] & 0xffff;
 
@@ -1405,12 +1441,13 @@ void TbcNtsc::decodeVBI(void)
     }
 
     if (clv == true) {
-        uint16_t hours = 0;
-        uint16_t minutes = 0;
-        uint16_t seconds = 0;
-        uint16_t framenum = 0;
+        quint16 hours = 0;
+        quint16 minutes = 0;
+        quint16 seconds = 0;
+        quint16 framenum = 0;
+
         // Find CLV frame # data
-        for (int i = 0; i < 6; i++) {
+        for (qint32 i = 0; i < 6; i++) {
             // CLV Picture #
             if (((code[i] & 0xf0f000) == 0x80e000) && ((code[i] & 0x0f0000) >= 0x0a0000)) {
                 seconds = (((code[i] & 0x0f0000) - 0x0a0000) >> 16) * 10;
@@ -1428,7 +1465,7 @@ void TbcNtsc::decodeVBI(void)
         clv_time = (hours << 24) | (minutes << 16) || (seconds << 8) || framenum;
         qDebug() << "CLV" << hours << ':' << minutes << ':' << seconds << '.' << framenum;
     } else {
-        for (int i = 0; i < 6; i++) {
+        for (qint32 i = 0; i < 6; i++) {
             // CAV frame:  f80000 + frame
             if ((code[i] >= 0xf80000) && (code[i] <= 0xffffff)) {
                 // Convert from BCD to binary
@@ -1438,7 +1475,7 @@ void TbcNtsc::decodeVBI(void)
                 fnum += ((code[i] & 0x0f000) >> 12) * 1000;
                 fnum += ((code[i] & 0xf0000) >> 16) * 10000;
                 if (fnum >= 80000) fnum -= 80000;
-                qDebug() << i << "CAV frame" << fnum;
+                qDebug() << i << "CAV frame #" << fnum;
                 if (i % 2) odd = true;
                 if (!(i % 2)) even = true;
             }
@@ -1475,75 +1512,75 @@ void TbcNtsc::setShowDifferenceBetweenPixels(bool setting)
 void TbcNtsc::setMagneticVideoMode(bool setting)
 {
     if (setting) qInfo() << "Magnetic video mode is selected";
-    if (setting) writeOnField = 1;
-    else writeOnField = 2;
+    if (setting) tbcConfiguration.writeOnField = 1;
+    else tbcConfiguration.writeOnField = 2;
 }
 
 // Set f_flip
 void TbcNtsc::setFlipFields(bool setting)
 {
     if (setting) qInfo() << "Flip fields is selected";
-    f_flip = setting;
+    tbcConfiguration.f_flip = setting;
 }
 
 // Set audio_only
 void TbcNtsc::setAudioOnly(bool setting)
 {
     if (setting) qInfo() << "Audio only is selected";
-    audio_only = setting;
+    tbcConfiguration.audio_only = setting;
 }
 
 // Toggle do_autoset
 void TbcNtsc::setPerformAutoSet(bool setting)
 {
     if (setting) qInfo() << "Audio ranging is selected";
-    if (setting) performAutoRanging = !performAutoRanging;
+    if (setting) tbcConfiguration.performAutoRanging = !tbcConfiguration.performAutoRanging;
 }
 
 // Set despackle
 void TbcNtsc::setPerformDespackle(bool setting)
 {
     if (setting) qInfo() << "Despackle is selected";
-    f_despackle = setting; // Seems to be always forced to false?
+    tbcConfiguration.f_despackle = setting; // Seems to be always forced to false?
 }
 
 // Set freeze_frame
 void TbcNtsc::setPerformFreezeFrame(bool setting)
 {
     if (setting) qInfo() << "Perform freeze frame is selected";
-    freeze_frame = setting;
+    tbcConfiguration.freeze_frame = setting;
 }
 
 // Set seven_five
 void TbcNtsc::setPerformSevenFive(bool setting)
 {
     if (setting) qInfo() << "Perform seven-five is selected";
-    seven_five = setting;
+    tbcConfiguration.seven_five = setting;
 }
 
 // Toggle f_highburst
 void TbcNtsc::setPerformHighBurst(bool setting)
 {
     if (setting) qInfo() << "Perform high-burst is selected";
-    if (setting) f_highburst = !f_highburst;
+    if (setting) tbcConfiguration.f_highburst = !tbcConfiguration.f_highburst;
 }
 
 // Set the source video file's file name
 void TbcNtsc::setSourceVideoFile(QString stringValue)
 {
-    sourceVideoFileName = stringValue;
+    tbcConfiguration.sourceVideoFileName = stringValue;
 }
 
 // Set the source audio file's file name
 void TbcNtsc::setSourceAudioFile(QString stringValue)
 {
-    sourceAudioFileName = stringValue;
+    tbcConfiguration.sourceAudioFileName = stringValue;
 }
 
 // Set the target video file's file name
 void TbcNtsc::setTargetVideoFile(QString stringValue)
 {
-    targetVideoFileName = stringValue;
+    tbcConfiguration.targetVideoFileName = stringValue;
 }
 
 // Set f_tol
@@ -1563,13 +1600,13 @@ void TbcNtsc::setRot(double_t value)
 // Set skip frames
 void TbcNtsc::setSkipFrames(qint32 value)
 {
-    p_skipframes = value;
+    tbcConfiguration.p_skipframes = value;
 }
 
 // Set maximum frames
 void TbcNtsc::setMaximumFrames(qint32 value)
 {
-    p_maxframes = value;
+    tbcConfiguration.p_maxframes = value;
 }
 
 

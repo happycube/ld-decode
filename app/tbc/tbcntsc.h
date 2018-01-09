@@ -71,21 +71,23 @@ private:
     // matching 'set' functions to manipulate
     // the setting publicly (for command line
     // options)
-    QString sourceVideoFileName;
-    QString sourceAudioFileName;
-    QString targetVideoFileName;
+    struct tbcConfigurationStruct {
+        qint32 writeOnField;
+        bool f_flip;
+        bool audio_only;
+        bool performAutoRanging;
+        bool freeze_frame;
+        bool f_despackle;
+        bool seven_five;
+        bool f_highburst;
+        double_t p_rotdetect;
+        qint32 p_skipframes;
+        qint32 p_maxframes;
 
-    qint32 writeOnField;
-    bool f_flip;
-    bool audio_only;
-    bool performAutoRanging;
-    bool freeze_frame;
-    bool f_despackle;
-    bool seven_five;
-    bool f_highburst;
-    double_t p_rotdetect;
-    qint32 p_skipframes;
-    qint32 p_maxframes;
+        QString sourceVideoFileName;
+        QString sourceAudioFileName;
+        QString targetVideoFileName;
+    } tbcConfiguration;
 
     // Other configuration which does not have a 'set' function
     // in the class to set or get the value
@@ -93,53 +95,45 @@ private:
     double_t videoInputFrequencyInFsc;	// in FSC.  Must be an even number!
     qint32 ntsc_iplinei;
 
-    // Two-dimensional (time-corrected) video frame buffers
-    //
-    // Frame buffers (505x844 for NTSC and 610x1052 for PAL (with FSC=4))
-    // Previously these were dynamically assigned, but I've used constants
-    // as it avoids the need for vectors (decision based on execution speed)
-    quint16 frameBuffer[505][844];
-    quint16 frameOriginal[505][844];
-    double_t deltaFrame[505][844];
-    double_t deltaFrameFilter[505][844];
-
-    // Global filter declarations
-    Filter *longSyncFilter;
-    Filter *f_endsync;
-
-    // To be sorted
-    double_t inputMaximumIreLevel;
-    double_t inputMinimumIreLevel;
-    qint64 a_read;
-    qint64 v_read;
-    qint32 va_ratio;
-    double_t outputFrequencyInFsc;
-
     // Globals for processAudio()
-    double_t afreq;
-    double_t prev_time;
-    double_t nextAudioSample;
-    size_t prev_loc;
-    qint64 prev_index;
-    qint64 prev_i;
+    struct processAudioStateStruct {
+        double_t afreq;
+        double_t prev_time;
+        double_t nextAudioSample;
+        size_t prev_loc;
+        qint64 prev_index;
+        qint64 prev_i;
+        qint64 firstloc;
 
-    // Globals for processAudioSample()
-    Filter *audioChannelOneFilter;
-    Filter *audioChannelTwoFilter;
-    qint32 audioOutputBufferPointer;
+        qint64 a_read;
+        qint64 v_read;
+        qint32 va_ratio;
+
+        // Globals for processAudioSample()
+        Filter *audioChannelOneFilter;
+        Filter *audioChannelTwoFilter;
+        qint32 audioOutputBufferPointer;
+    } processAudioState;
 
     // Globals to do with the line processing functions
     // handlebadline() and processline()
-    double_t line;
-    qint32 phase;
-    bool first;
-    qint32 frameno;
-
-    qint64 firstloc;
+    struct processLineStateStruct {
+        qint32 frameno;
+    } processLineState;
 
     // Auto-ranging state
-    double_t low;
-    double_t high;
+    struct autoRangeStateStruct {
+        double_t low;
+        double_t high;
+        Filter *longSyncFilter;
+        Filter *f_endsync;
+
+        double_t inputMaximumIreLevel;
+        double_t inputMinimumIreLevel;
+    } autoRangeState;
+
+    // Two-dimensional (time-corrected) video frame buffer
+    quint16 frameBuffer[505][844]; // Frame buffer (505x844 for NTSC and 610x1052 for PAL (with FSC=4))
 
     // Private functions
     quint16 autoRange(QVector<quint16> videoBuffer);
@@ -172,9 +166,10 @@ private:
 
     inline double_t cubicInterpolate(quint16 *y, double_t x);
 
-    void scale(uint16_t *buf, double_t *outbuf, double_t start, double_t end, double_t outlen);
-    void scale(uint16_t *buf, double_t *outbuf, double_t start, double_t end, double_t outlen, double_t offset);
-    void scale(uint16_t *buf, double_t *outbuf, double_t start, double_t end, double_t outlen, double_t offset, qint32 from, qint32 to);
+    void scale(quint16 *buf, double_t *outbuf, double_t start, double_t end, double_t outlen);
+    void scale(quint16 *buf, double_t *outbuf, double_t start, double_t end, double_t outlen, double_t offset);
+    void scale(quint16 *buf, double_t *outbuf, double_t start, double_t end, double_t outlen, double_t offset,
+               qint32 from, qint32 to);
 
     bool inRange(double_t v, double_t l, double_t h);
     bool inRangeCF(double_t v, double_t l, double_t h);
@@ -187,7 +182,7 @@ private:
     inline double_t max(double_t a, double_t b);
     void despackle(void);
     bool checkWhiteFlag(qint32 l);
-    void decodeVBI(void);
+    void decodeVbiData(void);
 };
 
 // TODO: Clean this up...

@@ -109,8 +109,12 @@ int main(int argc, char *argv[])
     QCommandLineOption quietModeOption("q",QCoreApplication::translate("main", "Quiet mode (suppresses both debug and info messages - overrides -d)"));
     parser.addOption(quietModeOption);
 
-    // Option to show difference between pixels (-p)
-    QCommandLineOption showDifferenceBetweenPixelsOption("p",QCoreApplication::translate("main", "Show difference between pixels - untested"));
+    // Option to select PAL TBC mode (-p)
+    QCommandLineOption palModeOption("p",QCoreApplication::translate("main", "PAL mode (default is NTSC)"));
+    parser.addOption(palModeOption);
+
+    // Option to show difference between pixels (-x)
+    QCommandLineOption showDifferenceBetweenPixelsOption("x",QCoreApplication::translate("main", "Show difference between pixels - untested"));
     parser.addOption(showDifferenceBetweenPixelsOption);
 
     // Option to select "magnetic video mode" - bottom-field first (-m)
@@ -172,18 +176,18 @@ int main(int argc, char *argv[])
     // Definition of command line options requiring numerical parameters:
 
     // For tol and rot I have no idea what the correct range is for the parameters
-    // so I've set it to 0.0-10.0 for the time-being
+    // so I've set it to 0.0-1000.0 for the time-being
 
     // Option to set tol (-t)
     QCommandLineOption tolOption(QStringList() << "t" << "tol",
                 QCoreApplication::translate("main", "Specify tol - untested"),
-                QCoreApplication::translate("main", "0.0-10.0"));
+                QCoreApplication::translate("main", "0.0-1000.0"));
     parser.addOption(tolOption);
 
     // Option to set rot detection level (-r)
     QCommandLineOption rotOption(QStringList() << "r" << "rot",
                 QCoreApplication::translate("main", "Specify rot - untested"),
-                QCoreApplication::translate("main", "0.0-10.0"));
+                QCoreApplication::translate("main", "0.0-1000.0"));
     parser.addOption(rotOption);
 
     // Process the command line arguments given by the user
@@ -200,6 +204,7 @@ int main(int argc, char *argv[])
         showInfo = false;
     }
 
+    bool palMode = parser.isSet(palModeOption);
     bool showDifferenceBetweenPixels = parser.isSet(showDifferenceBetweenPixelsOption);
     bool magneticVideoMode = parser.isSet(magneticVideoModeOption);
     bool flipFields = parser.isSet(flipFieldsOption);
@@ -235,8 +240,8 @@ int main(int argc, char *argv[])
         // Was the parameter a valid integer?
         if (conversionOk) {
             // Was the parameter in range?
-            if (tolParameterValue > 10.0) {
-                qCritical("The tol parameter specified with -t must be in the range of 0.0-10.0");
+            if (tolParameterValue > 1000.0) {
+                qCritical("The tol parameter specified with -t must be in the range of 0.0-1000.0");
                 commandLineOptionsOk = false;
             }
         }
@@ -252,7 +257,7 @@ int main(int argc, char *argv[])
         if (conversionOk) {
             // Was the parameter in range?
             if (rotParameterValue > 10.0) {
-                qCritical("The rot parameter specified with -r must be in the range of 0.0-10.0");
+                qCritical("The rot parameter specified with -r must be in the range of 0.0-1000.0");
                 commandLineOptionsOk = false;
             }
         }
@@ -271,29 +276,53 @@ int main(int argc, char *argv[])
         // Any other value causes FSC8 to be set
 
         // Note: Only tested with 32 set...
-        TbcPal tbcPal(32);
-        TbcNtsc tbcNtsc(32);
+        //TbcPal tbcPal(32);
+        TbcNtsc tbcNtsc(8); // Using old 8-bit input file for now...
 
-        // Apply the optional command line parameter settings to the object
-        if (parser.isSet(showDifferenceBetweenPixelsOption)) tbcPal.setShowDifferenceBetweenPixels(showDifferenceBetweenPixels);
-        if (parser.isSet(magneticVideoModeOption)) tbcPal.setMagneticVideoMode(magneticVideoMode);
-        if (parser.isSet(flipFieldsOption)) tbcPal.setFlipFields(flipFields);
-        if (parser.isSet(audioOnlyOption)) tbcPal.setAudioOnly(audioOnly);
-        if (parser.isSet(performAutoSetOption)) tbcPal.setPerformAutoSet(performAutoSet);
-        if (parser.isSet(performDespackleOption)) tbcPal.setPerformDespackle(performDespackle);
-        if (parser.isSet(performFreezeFrameOption)) tbcPal.setPerformFreezeFrame(performFreezeFrame);
-        if (parser.isSet(performSevenFiveOption)) tbcPal.setPerformSevenFive(performSevenFive);
-        if (parser.isSet(performHighBurstOption)) tbcPal.setPerformHighBurst(performHighBurst);
-        if (parser.isSet(tolOption)) tbcPal.setTol(tolParameterValue);
-        if (parser.isSet(rotOption)) tbcPal.setRot(rotParameterValue);
+        // Perform PAL or NTSC time based correction?
+        if (palMode) {
+            // Apply the optional command line parameter settings to the PAL TBC object
+//            if (parser.isSet(showDifferenceBetweenPixelsOption)) tbcPal.setShowDifferenceBetweenPixels(showDifferenceBetweenPixels);
+//            if (parser.isSet(magneticVideoModeOption)) tbcPal.setMagneticVideoMode(magneticVideoMode);
+//            if (parser.isSet(flipFieldsOption)) tbcPal.setFlipFields(flipFields);
+//            if (parser.isSet(audioOnlyOption)) tbcPal.setAudioOnly(audioOnly);
+//            if (parser.isSet(performAutoSetOption)) tbcPal.setPerformAutoSet(performAutoSet);
+//            if (parser.isSet(performDespackleOption)) tbcPal.setPerformDespackle(performDespackle);
+//            if (parser.isSet(performFreezeFrameOption)) tbcPal.setPerformFreezeFrame(performFreezeFrame);
+//            if (parser.isSet(performSevenFiveOption)) tbcPal.setPerformSevenFive(performSevenFive);
+//            if (parser.isSet(performHighBurstOption)) tbcPal.setPerformHighBurst(performHighBurst);
+//            if (parser.isSet(tolOption)) tbcPal.setTol(tolParameterValue);
+//            if (parser.isSet(rotOption)) tbcPal.setRot(rotParameterValue);
 
-        // Apply the mandatory command line parameters to the object
-        tbcPal.setSourceVideoFile(sourceVideoFileParameter);
-        tbcPal.setSourceAudioFile(sourceAudioFileParameter);
-        tbcPal.setTargetVideoFile(targetVideoFileParameter);
+//            // Apply the mandatory command line parameters to the PAL TBC object
+//            tbcPal.setSourceVideoFile(sourceVideoFileParameter);
+//            tbcPal.setSourceAudioFile(sourceAudioFileParameter);
+//            tbcPal.setTargetVideoFile(targetVideoFileParameter);
 
-        // Execute PAL TBC
-        tbcPal.execute();
+//            // Execute PAL TBC
+//            tbcPal.execute();
+        } else {
+            // Apply the optional command line parameter settings to the NTSC TBC object
+            if (parser.isSet(showDifferenceBetweenPixelsOption)) tbcNtsc.setShowDifferenceBetweenPixels(showDifferenceBetweenPixels);
+            if (parser.isSet(magneticVideoModeOption)) tbcNtsc.setMagneticVideoMode(magneticVideoMode);
+            if (parser.isSet(flipFieldsOption)) tbcNtsc.setFlipFields(flipFields);
+            if (parser.isSet(audioOnlyOption)) tbcNtsc.setAudioOnly(audioOnly);
+            if (parser.isSet(performAutoSetOption)) tbcNtsc.setPerformAutoSet(performAutoSet);
+            if (parser.isSet(performDespackleOption)) tbcNtsc.setPerformDespackle(performDespackle);
+            if (parser.isSet(performFreezeFrameOption)) tbcNtsc.setPerformFreezeFrame(performFreezeFrame);
+            if (parser.isSet(performSevenFiveOption)) tbcNtsc.setPerformSevenFive(performSevenFive);
+            if (parser.isSet(performHighBurstOption)) tbcNtsc.setPerformHighBurst(performHighBurst);
+            if (parser.isSet(tolOption)) tbcNtsc.setTol(tolParameterValue);
+            if (parser.isSet(rotOption)) tbcNtsc.setRot(rotParameterValue);
+
+            // Apply the mandatory command line parameters to the NTSC TBC object
+            tbcNtsc.setSourceVideoFile(sourceVideoFileParameter);
+            tbcNtsc.setSourceAudioFile(sourceAudioFileParameter);
+            tbcNtsc.setTargetVideoFile(targetVideoFileParameter);
+
+            // Execute NTSC TBC
+            tbcNtsc.execute();
+        }
 
     } else {
         // Command line options were not ok
