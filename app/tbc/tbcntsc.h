@@ -190,4 +190,31 @@ private:
     void decodeVBI(void);
 };
 
+// TODO: Clean this up...
+//
+//    TBC line 0 format (presumably shared for PAL/NTSC):
+//
+//    All data in uint32_t, using pairs of 16-bit words in the line.
+//
+//    words 0-5: decoded VBI data
+//
+//    word 6:
+//        bit 0: CAV/CLV
+//        bit 1: Frame begins on odd field (CAV only)
+//        bit 2: CX enable/disable
+//        bit 8: white flag on odd frame
+//        bit 9: white flag on even frame
+//        bits 16-31: chapter #
+//
+//    word 7:  Frame # (CAV *and* CLV)
+//        CLV:  ((Hour * 3600) + (Minute * 60) + Second) * FPS) + frame #
+
+#define FRAME_INFO_CLV		0x1
+#define FRAME_INFO_CAV_EVEN	0x4
+#define FRAME_INFO_CAV_ODD	0x8
+#define FRAME_INFO_CX		0x10
+
+#define FRAME_INFO_WHITE_ODD	0x100
+#define FRAME_INFO_WHITE_EVEN	0x200
+
 #endif // TBCNTSC_H

@@ -36,4 +36,5 @@ HEADERS += \
     tbcpal.h \
     filter.h \
     ../../deemp.h \
-    tbcntsc.h
+    tbcntsc.h \
+    deemp2.h

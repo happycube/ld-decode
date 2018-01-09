@@ -27,7 +27,15 @@
 ************************************************************************/
 
 #include "tbcntsc.h"
-#include "../../deemp.h"
+
+// I had to create a copy of the deemp header because it's not really a C++ header
+// it's a collection of constants; so C++ gets confused if more than one class
+// includes it (as it tries to apply the same names twice in the same namespace
+// The 'header' should probably be moved to a class of its own or something...
+//
+// Will be less important once the two TBC implementations are merged into one class
+// (maybe...)
+#include "deemp2.h"
 
 TbcNtsc::TbcNtsc(quint16 fscSetting)
 {
@@ -41,8 +49,8 @@ TbcNtsc::TbcNtsc(quint16 fscSetting)
         ntsc_iplinei = 227.5 * videoInputFrequencyInFsc; // pixels per line
 
         // Filters (used by process() and autoRange())
-        longSyncFilter = new Filter(f_dsync10);
-        f_endsync = new Filter(f_esync10);
+        longSyncFilter = new Filter(f2_dsync10);
+        f_endsync = new Filter(f2_esync10);
         break;
 
     case 32: // C32MHZ
@@ -51,8 +59,8 @@ TbcNtsc::TbcNtsc(quint16 fscSetting)
         ntsc_iplinei = 227.5 * videoInputFrequencyInFsc; // pixels per line
 
         // Filters (used by process() and autoRange())
-        longSyncFilter = new Filter(f_dsync32);
-        f_endsync = new Filter(f_esync32);
+        longSyncFilter = new Filter(f2_dsync32);
+        f_endsync = new Filter(f2_esync32);
         break;
 
     case 4: // FSC4
@@ -61,8 +69,8 @@ TbcNtsc::TbcNtsc(quint16 fscSetting)
         ntsc_iplinei = 227.5 * videoInputFrequencyInFsc; // pixels per line
 
         // Filters (used by process() and autoRange())
-        longSyncFilter = new Filter(f_dsync4);
-        f_endsync = new Filter(f_esync4);
+        longSyncFilter = new Filter(f2_dsync4);
+        f_endsync = new Filter(f2_esync4);
         break;
 
     default:
@@ -71,8 +79,8 @@ TbcNtsc::TbcNtsc(quint16 fscSetting)
         ntsc_iplinei = 227.5 * videoInputFrequencyInFsc; // pixels per line
 
         // Filters (used by process() and autoRange())
-        longSyncFilter = new Filter(f_dsync);
-        f_endsync = new Filter(f_esync8);
+        longSyncFilter = new Filter(f2_dsync);
+        f_endsync = new Filter(f2_esync8);
     }
 
     // File names
@@ -116,8 +124,8 @@ TbcNtsc::TbcNtsc(quint16 fscSetting)
     prev_i = 0;
 
     // Globals for processAudioSample()
-    audioChannelOneFilter = new Filter(f_fmdeemp);
-    audioChannelTwoFilter = new Filter(f_fmdeemp);
+    audioChannelOneFilter = new Filter(f2_fmdeemp);
+    audioChannelTwoFilter = new Filter(f2_fmdeemp);
     audioOutputBufferPointer = 0;
 
     // Globals to do with the line processing functions
@@ -166,7 +174,7 @@ qint32 TbcNtsc::execute(void)
     bool processAudioData = false;
 
     // Set the expected video sync level to -30 IRE
-    quint16 videoSyncLevel = inputMinimumIreLevel + (inputMaximumIreLevel * 15);
+    //quint16 videoSyncLevel = inputMinimumIreLevel + (inputMaximumIreLevel * 15);
 
     // Show the configured video input frequency in FSC (what does FSC stand for?)
     qDebug() << "Video input frequency (FSC) = " << (double)videoInputFrequencyInFsc;
@@ -328,7 +336,7 @@ qint32 TbcNtsc::execute(void)
             if (performAutoRanging) {
                 // Perform auto range of input video data
                 qDebug() << "Performing auto ranging...";
-                videoSyncLevel = autoRange(videoBuffer);
+                autoRange(videoBuffer);
             }
 
             // Process the video and audio buffer (only the number of elements read from the file are processed,
@@ -627,7 +635,7 @@ qint32 TbcNtsc::processVideoAndAudioBuffer(QVector<quint16> videoBuffer, qint32 
         correctDamagedHSyncs(horizontalSyncs, isLineBad);
 
         bool phaseFlip;
-        double_t bLevel[252];
+        double_t bLevel[252]; // Why 252?
         double_t tpOdd = 0, tpEven = 0;
         qint32 nOdd = 0, nEven = 0; // need to track these to exclude bad lines
         double_t bPhase = 0;
@@ -648,9 +656,6 @@ qint32 TbcNtsc::processVideoAndAudioBuffer(QVector<quint16> videoBuffer, qint32 
                 isLineBad[line] = true;
                 continue; // Exits the for loop...
             }
-
-            // phase is not defined as an array?
-            phase[line] = bPhase;
 
             if (line % 2) {
                 tpOdd += phaseFlip;
@@ -972,10 +977,10 @@ void TbcNtsc::processAudio(double_t frameBuffer, qint64 loc, double_t *audioBuff
                 processAudioSample(audioChannelOneFilter->filterValue(), audioChannelTwoFilter->filterValue());
             } else {
                 long long index = (i / va_ratio) - a_read;
-                if (index >= ablen) {
+                if (index >= (sizeof(audioBuffer) / sizeof(double_t))) {
                     qDebug() << "audio error" << (double)frameBuffer << (double)time << (double)i1
-                             << i << index << ablen;
-                    index = ablen - 1;
+                             << i << index << (sizeof(audioBuffer) / sizeof(double_t));
+                    index = (sizeof(audioBuffer) / sizeof(double_t)) - 1;
                 }
                 float channelOne = audioBuffer[index * 2], channelTwo = audioBuffer[(index * 2) + 1];
                 double_t frameb = (double_t)(i - firstloc) / 1820.0 / 525.0;
@@ -1167,7 +1172,6 @@ bool TbcNtsc::burstDetect2(double_t *line, qint32 freq, double_t _loc, double_t 
     // get first and last ZC's, along with first low-to-high transition
     double_t firstc = -1;
     double_t firstc_h = -1;
-    double_t lastc = -1;
 
     double_t avg_htl_zc = 0, avg_lth_zc = 0;
     int n_htl_zc = 0, n_lth_zc = 0;
@@ -1188,7 +1192,6 @@ bool TbcNtsc::burstDetect2(double_t *line, qint32 freq, double_t _loc, double_t 
 
             if (firstc == -1) firstc = zc;
             if (firstc_h == -1) firstc_h = zc;
-            lastc = zc;
 
             double_t ph_zc = (zc / freq) - floor(zc / freq);
             // XXX this has a potential edge case where a legit high # is wrapped
@@ -1203,7 +1206,6 @@ bool TbcNtsc::burstDetect2(double_t *line, qint32 freq, double_t _loc, double_t 
             double_t zc = i - ((line[i] - avg) / diff);
 
             if (firstc == -1) firstc = zc;
-            lastc = zc;
 
             double_t ph_zc = (zc / freq) - floor(zc / freq);
             // XXX this has a potential edge case where a legit high # is wrapped
