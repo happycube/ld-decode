@@ -43,59 +43,66 @@
 class TbcNtsc
 {
 public:
-    TbcNtsc(quint16 fscSetting);
+    TbcNtsc();
+
+    // TBC mode enumeration
+    enum TbcModes {
+        ntsc_cxadc,     // NTSC video captured with 8-bit 28.8MSPS
+        ntsc_domdup,    // NTSC video captured with 16-bit 32.0MSPS
+        pal_cxadc,      // PAL video captured with 8-bit 28.8MSPS
+        pal_domdup      // PAL video captured with 16-bit 32.0MSPS
+    };
 
     // Execute the time-based correction
     qint32 execute(void);
 
-    // TBC NTSC parameter settings
-    void setShowDifferenceBetweenPixels(bool setting);
+    // TBC mode settings
+    void setTbcMode(TbcModes setting);
+
+    // TBC feature settings
     void setMagneticVideoMode(bool setting);
     void setFlipFields(bool setting);
-    void setAudioOnly(bool setting);
-    void setPerformAutoSet(bool setting);
-    void setPerformDespackle(bool setting);
+    void setAudioOutputOnly(bool setting);
     void setPerformFreezeFrame(bool setting);
-    void setPerformSevenFive(bool setting);
-    void setPerformHighBurst(bool setting);
+    void setRotDetectLevel(double_t value);
+    void setSkipFrames(qint32 value);
+    void setMaximumFrames(qint32 value);
+
+    // TBC file name settings
     void setSourceVideoFile(QString stringValue);
     void setSourceAudioFile(QString stringValue);
     void setTargetVideoFile(QString stringValue);
     void setTargetAudioFile(QString stringValue);
-    void setTol(double_t value);
-    void setRot(double_t value);
-    void setSkipFrames(qint32 value);
-    void setMaximumFrames(qint32 value);
 
 private:
-    // Private configuration globals that have
-    // matching 'set' functions to manipulate
-    // the setting publicly (for command line
-    // options)
+    // TBC Configuration globals
     struct tbcConfigurationStruct {
-        qint32 writeOnField;
-        bool f_flip;
-        bool audio_only;
-        bool performAutoRanging;
-        bool freeze_frame;
-        bool f_despackle;
-        bool seven_five;
-        bool f_highburst;
-        double_t p_rotdetect;
-        qint32 p_skipframes;
-        qint32 p_maxframes;
+        // Main TBC mode configuration
+        TbcModes tbcMode;
+        bool isNtsc;
+        double_t videoInputFrequencyInFsc;
+        double_t videoOutputFrequencyInFsc;
+        qint32 samplesPerLine;
 
+        // TBC feature configuration
+        qint32 writeOnField;
+        bool fieldFlip;
+        bool audioOutputOnly;
+        bool performAutoRanging;
+        bool freezeFrame;
+        bool performDespackle;
+        bool sevenFiveMode;
+        bool highBurst;
+        double_t rotDetectLevel;
+        qint32 skipFrames;
+        qint32 maximumFrames;
+
+        // Source and target file name configuration
         QString sourceVideoFileName;
         QString sourceAudioFileName;
         QString targetVideoFileName;
         QString targetAudioFileName;
     } tbcConfiguration;
-
-    // Other configuration which does not have a 'set' function
-    // in the class to set or get the value
-    bool c32mhz;
-    double_t videoInputFrequencyInFsc;	// in FSC.  Must be an even number!
-    qint32 ntsc_iplinei;
 
     // Globals for processAudio()
     struct processAudioStateStruct {
