@@ -1,6 +1,6 @@
 /************************************************************************
 
-    tcbpal.cpp
+    tbcpal.cpp
 
     Time-Based Correction
     ld-decode - Software decode of Laserdiscs from raw RF
@@ -26,8 +26,11 @@
 
 ************************************************************************/
 
+// Note: This is the 'legacy' PAL TBC... soon to be completely replaced
+// with the hybrid TBC class
+
 #include "tbcpal.h"
-#include "../../deemp.h"
+#include "deemp2.h"
 
 // Notes from Simon:
 //
@@ -61,8 +64,8 @@ TbcPal::TbcPal(quint16 fscSetting)
         pixels_per_usec = 1000000.0 / (videoInputFrequencyInFsc * (1000000.0 * 315.0 / 88.0));
 
         // Filters (used by process() and autoRange())
-        longSyncFilter = new Filter(f_dsync10); // autoRange() uses this
-        f_syncid = new Filter(f_syncid10);
+        longSyncFilter = new Filter(f2_dsync10); // autoRange() uses this
+        f_syncid = new Filter(f2_syncid10);
         syncid_offset = syncid10_offset;
         break;
 
@@ -74,8 +77,8 @@ TbcPal::TbcPal(quint16 fscSetting)
         pixels_per_usec = 1000000.0 / 2048.0;
 
         // Filters  (used by process() and autoRange())
-        longSyncFilter = new Filter(f_dsync32); // autoRange() uses this
-        f_syncid = new Filter(f_syncid32);
+        longSyncFilter = new Filter(f2_dsync32); // autoRange() uses this
+        f_syncid = new Filter(f2_syncid32);
         syncid_offset = syncid32_offset;
         break;
 
@@ -87,8 +90,8 @@ TbcPal::TbcPal(quint16 fscSetting)
         pixels_per_usec = 1000000.0 / (videoInputFrequencyInFsc * (1000000.0 * 315.0 / 88.0));
 
         // Filters (used by process() and autoRange())
-        longSyncFilter = new Filter(f_dsync4); // autoRange() uses this
-        f_syncid = new Filter(f_syncid4);
+        longSyncFilter = new Filter(f2_dsync4); // autoRange() uses this
+        f_syncid = new Filter(f2_syncid4);
         syncid_offset = syncid4_offset;
         break;
 
@@ -100,8 +103,8 @@ TbcPal::TbcPal(quint16 fscSetting)
         pixels_per_usec = 1000000.0 / (videoInputFrequencyInFsc * (1000000.0 * 315.0 / 88.0));
 
         // Filters (used by process() and autoRange())
-        longSyncFilter = new Filter(f_dsync); // autoRange() uses this
-        f_syncid = new Filter(f_syncid8);
+        longSyncFilter = new Filter(f2_dsync); // autoRange() uses this
+        f_syncid = new Filter(f2_syncid8);
         syncid_offset = syncid8_offset;
     }
 
@@ -165,8 +168,8 @@ TbcPal::TbcPal(quint16 fscSetting)
     // Globals for processAudioSample()
     processAudioState._audioChannelOne = 0;
     processAudioState._audioChannelTwo = 0;
-    processAudioState.f_fml = new Filter(f_fmdeemp);
-    processAudioState.f_fmr = new Filter(f_fmdeemp);
+    processAudioState.f_fml = new Filter(f2_fmdeemp);
+    processAudioState.f_fmr = new Filter(f2_fmdeemp);
     processAudioState.audioOutputBufferPointer = 0;
 
     // Globals to do with the line processing functions
@@ -576,7 +579,7 @@ qint32 TbcPal::processVideoAndAudioBuffer(QVector<quint16> videoBuffer, qint32 v
     memset(frameBuffer, 0, sizeof(frameBuffer));
 
     // Clear the line length and sync filters
-    f_linelen.clear(pal_ipline);
+    f2_linelen.clear(pal_ipline);
     f_syncid->clear(0);
 
     // Apply the video line filters to the video buffer
@@ -811,7 +814,7 @@ qint32 TbcPal::processVideoAndAudioBuffer(QVector<quint16> videoBuffer, qint32 v
             double_t linelen = lineDetails[lineCounter].beginSync - lineDetails[lineCounter-1].beginSync;
             if (!lineDetails[lineCounter].isBad && !lineDetails[lineCounter - 1].isBad && inRangeF(linelen, 227.5 - 4, 229 + 4)) {
 //				qDebug() << "Feeding " << linelen ;
-                lineProcessingState.prev_linelen = f_linelen.feed(linelen);
+                lineProcessingState.prev_linelen = f2_linelen.feed(linelen);
             }
         } else if (lineDetails[lineCounter].peak > .9) {
             qDebug() << "P2A_0 " << lineCounter << ' ' << (double)lineDetails[lineCounter].peak ;
@@ -918,7 +921,7 @@ void TbcPal::applyVideoLineFilters(quint16 *videoBuffer, quint16 *deempFilterBuf
          currentVideoBufferElement < videoBufferElementsToProcess;
          currentVideoBufferElement++) {
         // Note: f_psync8 is a pre-generated filter from deemp.h with an unknown purpose
-        double_t val = f_psync8.feed((double)videoBuffer[currentVideoBufferElement]);
+        double_t val = f2_psync8.feed((double)videoBuffer[currentVideoBufferElement]);
         if (currentVideoBufferElement > 16) deempFilterBuffer[currentVideoBufferElement - 16] = (quint16)val;
     }
 

@@ -37,7 +37,7 @@
 
 // Locals
 #include "tbcpal.h"
-#include "tbcntsc.h"
+#include "tbc.h"
 
 // Global for debug output
 bool showDebug = false;
@@ -227,7 +227,7 @@ int main(int argc, char *argv[])
         // Note: Only tested with 32 set...
         TbcPal tbcPal(32); // This will be removed soon
 
-        TbcNtsc tbcNtsc;
+        Tbc tbcNtsc;
 
         // Use legacy PAL TBC or new universal TBC?
         if (palLegacy) {
@@ -249,10 +249,10 @@ int main(int argc, char *argv[])
             tbcPal.execute();
         } else {
             // Set the TBC mode
-            if (cxadc && !palMode) tbcNtsc.setTbcMode(TbcNtsc::ntsc_cxadc);
-            if (cxadc && palMode) tbcNtsc.setTbcMode(TbcNtsc::pal_cxadc);
-            if (!cxadc && !palMode) tbcNtsc.setTbcMode(TbcNtsc::ntsc_domdup);
-            if (!cxadc && palMode) tbcNtsc.setTbcMode(TbcNtsc::pal_domdup);
+            if (cxadc && !palMode) tbcNtsc.setTbcMode(Tbc::ntsc_cxadc);
+            if (cxadc && palMode) tbcNtsc.setTbcMode(Tbc::pal_cxadc);
+            if (!cxadc && !palMode) tbcNtsc.setTbcMode(Tbc::ntsc_domdup);
+            if (!cxadc && palMode) tbcNtsc.setTbcMode(Tbc::pal_domdup);
 
             // Apply the optional command line parameter settings to the NTSC TBC object
             if (parser.isSet(magneticVideoModeOption)) tbcNtsc.setMagneticVideoMode(magneticVideoMode);
