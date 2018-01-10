@@ -142,7 +142,7 @@ private:
     qint32 processVideoAndAudioBuffer(QVector<quint16> videoInputBuffer, qint32 videoInputBufferElementsToProcess,
                                       QVector<double_t> audioInputBuffer, bool processAudioData,
                                       bool *isVideoFrameBufferReadyForWrite, bool *isAudioBufferReadyForWrite,
-                                      QVector<QVector<quint16> > videoOutputBuffer, QVector<quint16> audioOutputBuffer);
+                                      QVector<QVector<quint16> > &videoOutputBuffer, QVector<quint16> &audioOutputBuffer);
 
     qint32 findSync(quint16 *videoBuffer, qint32 videoLength);
     qint32 findSync(quint16 *videoBuffer, qint32 videoLength, qint32 tgt);
@@ -156,6 +156,7 @@ private:
     bool findHsyncs(quint16 *videoBuffer, qint32 videoLength, qint32 offset, double_t *rv, qint32 nlines);
 
     void correctDamagedHSyncs(double_t *hsyncs, bool *err);
+
     bool processAudio(double_t frameBuffer, qint64 loc, double_t *audioInputBuffer, quint16 *audioOutputBuffer);
     bool processAudioSample(double_t channelOne, double_t channelTwo, quint16 *audioOutputBuffer);
 
@@ -178,14 +179,12 @@ private:
     bool inRangeCF(double_t v, double_t l, double_t h);
 
     bool burstDetect2(double_t *line, qint32 freq, double_t _loc, double_t &plevel, double_t &pphase, bool &phaseflip);
-
     bool isPeak(QVector<double_t> p, qint32 i);
+    void despackle(QVector<QVector<quint16> > &videoOutputBuffer);
 
     quint32 readVbiData(QVector<QVector<quint16 > > videoOutputBuffer, quint16 line);
-    inline double_t max(double_t a, double_t b);
-    void despackle(QVector<QVector<quint16> > videoOutputBuffer);
     bool checkWhiteFlag(qint32 l, QVector<QVector<quint16> > videoOutputBuffer);
-    void decodeVbiData(QVector<QVector<quint16> > videoOutputBuffer);
+    void decodeVbiData(QVector<QVector<quint16> > &videoOutputBuffer);
 };
 
 // TODO: Clean this up...

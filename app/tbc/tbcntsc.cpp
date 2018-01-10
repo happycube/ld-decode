@@ -139,6 +139,8 @@ TbcNtsc::TbcNtsc(quint16 fscSetting)
     autoRangeState.inputMinimumIreLevel = (autoRangeState.inputMaximumIreLevel * 20);	// IRE == -40
 }
 
+// TODO: Split the file handling logic from the processing logic; this function is too
+// general purpose and long at the moment...
 qint32 TbcNtsc::execute(void)
 {
     // Show some info in the output
@@ -626,10 +628,12 @@ quint16 TbcNtsc::autoRange(QVector<quint16> videoBuffer)
 //      The number of videoBuffer elements that were processed
 //      A flag indicating if the video frame buffer is ready to be written to disc (by reference)
 //      A flag indicating if the audio buffer is ready to be written to disc (by reference)
+//      The videoOutputBuffer (by reference)
+//      The audioOutputBuffer (by reference)
 qint32 TbcNtsc::processVideoAndAudioBuffer(QVector<quint16> videoInputBuffer, qint32 videoInputBufferElementsToProcess,
                                            QVector<double_t> audioInputBuffer, bool processAudioData,
                                            bool *isVideoOutputBufferReadyForWrite, bool *isAudioOutputBufferReadyForWrite,
-                                           QVector<QVector<quint16 > > videoOutputBuffer, QVector<quint16> audioOutputBuffer)
+                                           QVector<QVector<quint16 > > &videoOutputBuffer, QVector<quint16> &audioOutputBuffer)
 {
     // Set the write buffer flag to a default of false (do not write)
     *isVideoOutputBufferReadyForWrite = false;
@@ -1014,11 +1018,11 @@ bool TbcNtsc::findHsyncs(quint16 *videoBuffer, qint32 videoLength, qint32 offset
 
         qint32 err_offset = 0;
         while (syncend < -1) {
-            qDebug() << "Error found on line" << line << syncend << ' ';
+            qDebug() << "Error found on line" << line << syncend;
             err_offset += gap;
             syncend = findSync(&videoBuffer[loc] + err_offset, 227.5 * 3 * videoInputFrequencyInFsc,
                                8 * videoInputFrequencyInFsc);
-            qDebug() << syncend;
+            qDebug() << "Error syncend" << syncend;
         }
 
         // If it skips a scan line, fake it
@@ -1375,8 +1379,64 @@ bool TbcNtsc::isPeak(QVector<double_t> p, qint32 i)
     return (fabs(p[i]) >= fabs(p[i - 1])) && (fabs(p[i]) >= fabs(p[i + 1]));
 }
 
+// This function was a bit odd... it references deltaFrame and
+// deltaFrameFilter (in the original code) - but never actually
+// stores anything in the arrays (and they are huge arrays).
+// So I've removed them...
+//
+// Returns:
+//      videoOutputBuffer (by reference)
+void TbcNtsc::despackle(QVector<QVector<quint16 > > &videoOutputBuffer)
+{
+    QVector<QVector<quint16 > > frameOriginal;
 
-// Functions with no PAL equivilent ---------------------------------------------------------------
+    // Set the vector of vectors to the same size as the video output buffer
+    frameOriginal.resize(videoOutputBuffer.size());
+
+    // Note: this trust that all elements of the vector of vectors are the same
+    // size... which they are.  So this allows us to simply 'copy' the size
+    // of the video output buffer... Neat :)
+    for (qint32 line = 0; line < videoOutputBuffer.size(); line++)
+        frameOriginal[line].resize(videoOutputBuffer[0].size());
+
+    qint32 outputX = videoOutputBuffer[0].size(); // Same as number of samples
+    qint32 outputY = videoOutputBuffer.size(); // Same as number of lines
+
+    // TODO: Verify that this actually copies the vector (rather than just the pointers...)
+    frameOriginal = videoOutputBuffer;
+
+    for (qint32 inputY = 22; inputY < outputY; inputY++) {
+        double_t rotDetect = tbcConfiguration.p_rotdetect * autoRangeState.inputMaximumIreLevel;
+
+        for (qint32 inputX = 60; inputX < outputX - 16; inputX++) {
+
+            if ((out_to_ire(videoOutputBuffer[inputY][inputX]) < -20) ||
+                    (out_to_ire(videoOutputBuffer[inputY][inputX]) > 140)) {
+
+                qDebug() << "Despackle R" <<
+                            inputY <<
+                            inputX <<
+                            (double)rotDetect;
+
+                for (qint32 m = inputX - 4; (m < (inputX + 14)) && (m < outputX); m++) {
+                    double_t tmp = (((double_t)frameOriginal[inputY - 2][m - 2]) +
+                            ((double_t)frameOriginal[inputY - 2][m + 2])) / 2;
+
+                    if (inputY < (outputY - 3)) {
+                        tmp /= 2;
+                        tmp += ((((double_t)frameOriginal[inputY + 2][m - 2]) +
+                                ((double_t)frameOriginal[inputY + 2][m + 2])) / 4);
+                    }
+
+                    videoOutputBuffer[inputY][m] = clamp(tmp, 0, 65535);
+                }
+                inputX = inputX + 14;
+            }
+        }
+    }
+}
+
+// VBI Decoding functions ---------------------------------------------------------------------
 
 // Essential VBI/Phillips code reference: http://www.daphne-emu.com/mediawiki/index.php/VBIInfo
 // (LD-V6000A info page is cryptic but very essential!)
@@ -1420,7 +1480,7 @@ quint32 TbcNtsc::readVbiData(QVector<QVector<quint16 > > videoOutputBuffer, quin
         if (rloc == -1) rloc = loc;
 
         out |= (deltaLine[rloc] > 0) ? (1 << (23 - i)) : 0;
-        qDebug() << "Delta line: " << i << loc << (double)deltaLine[loc] << rloc << (double)deltaLine[rloc] <<
+        qDebug() << "VBI Delta line:" << i << loc << (double)deltaLine[loc] << rloc << (double)deltaLine[rloc] <<
                     (double)(deltaLine[rloc] / autoRangeState.inputMaximumIreLevel) << out;
 
         if (!i) first_bit = rloc;
@@ -1428,64 +1488,6 @@ quint32 TbcNtsc::readVbiData(QVector<QVector<quint16 > > videoOutputBuffer, quin
     qDebug() << "VBI data hex:" << hex << out << dec;
 
     return out;
-}
-
-inline double_t TbcNtsc::max(double_t a, double_t b)
-{
-    return (a > b) ? a : b;
-}
-
-// This function was a bit odd... it references deltaFrame and
-// deltaFrameFilter (in the original code) - but never actually
-// stores anything in the arrays (and they are huge arrays).
-// So I've removed them...
-void TbcNtsc::despackle(QVector<QVector<quint16 > > videoOutputBuffer)
-{
-    QVector<QVector<quint16 > > frameOriginal;
-
-    // Set the vector of vectors to the same size as the video output buffer
-    frameOriginal.resize(videoOutputBuffer.size());
-
-    // Note: this trust that all elements of the vector of vectors are the same
-    // size... which they are.  So this allows us to simply 'copy' the size
-    // of the video output buffer... Neat :)
-    for (qint32 line = 0; line < videoOutputBuffer.size(); line++)
-        frameOriginal[line].resize(videoOutputBuffer[0].size());
-
-    qint32 outputX = videoOutputBuffer[0].size(); // Same as number of samples
-    qint32 outputY = videoOutputBuffer.size(); // Same as number of lines
-
-    frameOriginal = videoOutputBuffer;
-
-    for (qint32 inputY = 22; inputY < outputY; inputY++) {
-        double_t rotDetect = tbcConfiguration.p_rotdetect * autoRangeState.inputMaximumIreLevel;
-
-        for (qint32 inputX = 60; inputX < outputX - 16; inputX++) {
-
-            if ((out_to_ire(videoOutputBuffer[inputY][inputX]) < -20) ||
-                    (out_to_ire(videoOutputBuffer[inputY][inputX]) > 140)) {
-
-                qDebug() << "Despackle R" <<
-                            inputY <<
-                            inputX <<
-                            (double)rotDetect;
-
-                for (qint32 m = inputX - 4; (m < (inputX + 14)) && (m < outputX); m++) {
-                    double_t tmp = (((double_t)frameOriginal[inputY - 2][m - 2]) +
-                            ((double_t)frameOriginal[inputY - 2][m + 2])) / 2;
-
-                    if (inputY < (outputY - 3)) {
-                        tmp /= 2;
-                        tmp += ((((double_t)frameOriginal[inputY + 2][m - 2]) +
-                                ((double_t)frameOriginal[inputY + 2][m + 2])) / 4);
-                    }
-
-                    videoOutputBuffer[inputY][m] = clamp(tmp, 0, 65535);
-                }
-                inputX = inputX + 14;
-            }
-        }
-    }
 }
 
 // Used by the decodeVBI function for something...
@@ -1502,7 +1504,13 @@ bool TbcNtsc::checkWhiteFlag(qint32 l, QVector<QVector<quint16 > > videoOutputBu
 }
 
 // Decode VBI data
-void TbcNtsc::decodeVbiData(QVector<QVector<quint16 > > videoOutputBuffer)
+// Decodes the VBI data based on the information in the videoOutputBuffer
+// and then writes the decode VBI codes back into the videoOutputBuffer (which is an
+// odd way of doing things really)
+//
+// Returns:
+//      videoOutputBuffer (by reference)
+void TbcNtsc::decodeVbiData(QVector<QVector<quint16 > > &videoOutputBuffer)
 {
     quint32 code[6];
 
@@ -1520,7 +1528,7 @@ void TbcNtsc::decodeVbiData(QVector<QVector<quint16 > > videoOutputBuffer)
     for (qint32 line = 14; line < 20; line++) {
         code[line - 14] = readVbiData(videoOutputBuffer, line);
     }
-    qDebug() << "Phillips codes:" << hex << code[0] << code[1] << code[2] << code[3] << code[4] << code[5] << dec;
+    qDebug() << "VBI codes:" << hex << code[0] << code[1] << code[2] << code[3] << code[4] << code[5] << dec;
 
     for (qint32 i = 0; i < 6; i++) {
         videoOutputBuffer[0][i * 2] = code[i] >> 16;
@@ -1575,20 +1583,20 @@ void TbcNtsc::decodeVbiData(QVector<QVector<quint16 > > videoOutputBuffer)
                 fnum += ((code[i] & 0x0f000) >> 12) * 1000;
                 fnum += ((code[i] & 0xf0000) >> 16) * 10000;
                 if (fnum >= 80000) fnum -= 80000;
-                qDebug() << i << "CAV frame #" << fnum;
+                qDebug() << i << "VBI CAV frame #" << fnum;
                 if (i % 2) odd = true;
                 if (!(i % 2)) even = true;
             }
         }
     }
-    qDebug() << "fnum" << fnum;
+    qDebug() << "VBI fnum" << fnum;
 
     flags = (clv ? FRAME_INFO_CLV : 0) | (even ? FRAME_INFO_CAV_EVEN : 0) |
             (odd ? FRAME_INFO_CAV_ODD : 0) | (cx ? FRAME_INFO_CX : 0);
     flags |= checkWhiteFlag(4, videoOutputBuffer) ? FRAME_INFO_WHITE_EVEN : 0;
     flags |= checkWhiteFlag(5, videoOutputBuffer) ? FRAME_INFO_WHITE_ODD  : 0;
 
-    qDebug() << "Status" << hex << flags << dec << "chapter" << chap;
+    qDebug() << "VBI Status" << hex << flags << dec << "chapter" << chap;
 
     videoOutputBuffer[0][12] = chap;
     videoOutputBuffer[0][13] = flags;
