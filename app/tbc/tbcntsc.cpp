@@ -531,30 +531,29 @@ qint32 TbcNtsc::execute(void)
 //
 // Returns:
 //      videoSyncLevel
-quint16 TbcNtsc::autoRange(QVector<quint16> videoBuffer)
+//      videoInputBuffer (by reference)
+quint16 TbcNtsc::autoRange(QVector<quint16> &videoInputBuffer)
 {
-    QVector<double_t> longSyncFilterResult(videoBuffer.size());
-    bool fullagc = true;
+    QVector<double_t> longSyncFilterResult(videoInputBuffer.size());
+    bool fullagc = true; // Note: this was a passed parameter, but it was always true
     qint32 lowloc = -1;
     qint32 checklen = (qint32)(videoInputFrequencyInFsc * 4);
 
-    if (!fullagc) {
+    if (!fullagc) { // Note: Never used as fullagc is always true...
         autoRangeState.low = 65535;
         autoRangeState.high = 0;
     }
 
-    qInfo() << "Performing auto-ranging";
     qDebug() << "Scale before auto-ranging is =" << (double)autoRangeState.inputMinimumIreLevel << ':' <<
                 (double)autoRangeState.inputMaximumIreLevel;
 
-    //	f_longsync.clear(0);
-
     // Phase 1:  Get the low (-40 IRE) and high (?? IRE) values
+    // Note: this code is quite slow...
     for (int currentVideoBufferElement = 0;
-         currentVideoBufferElement < videoBuffer.size();
+         currentVideoBufferElement < videoInputBuffer.size();
          currentVideoBufferElement++) {
         longSyncFilterResult[currentVideoBufferElement] =
-                autoRangeState.longSyncFilter->feed(videoBuffer[currentVideoBufferElement]);
+                autoRangeState.longSyncFilter->feed(videoInputBuffer[currentVideoBufferElement]);
 
         if ((currentVideoBufferElement > (videoInputFrequencyInFsc * 256)) &&
                 (longSyncFilterResult[currentVideoBufferElement] < autoRangeState.low) &&
@@ -580,7 +579,7 @@ quint16 TbcNtsc::autoRange(QVector<quint16> videoBuffer)
     }
 
     // Phase 2: Attempt to figure out the 0 IRE porch near the sync
-    if (!fullagc) {
+    if (!fullagc) { // Note: Never used as fullagc is always true...
         qint32 gap = autoRangeState.high - autoRangeState.low;
         qint32 nloc;
 
@@ -848,7 +847,7 @@ qint32 TbcNtsc::processVideoAndAudioBuffer(QVector<quint16> videoInputBuffer, qi
         }
         offset = abs(horizontalSyncs[250]);
 
-        qDebug() << "New offset is" << offset;
+        qDebug() << "New offset is" << offset << videoInputBufferElementsToProcess;
     }
 
     // Perform despackle?
@@ -887,19 +886,16 @@ qint32 TbcNtsc::findSync(quint16 *videoInputBuffer, qint32 videoLength, qint32 t
     const quint16 err_min = ire_to_in(-55), err_max = ire_to_in(30);
 
     quint16 clen = tgt * 3;
-    quint16 circbuf[clen];
-    quint16 circbuf_err[clen];
-
-    memset(circbuf, 0, clen * 2);
-    memset(circbuf_err, 0, clen * 2);
+    QVector<bool> circbuf(clen);
+    QVector<bool> circbuf_err(clen);
 
     qint32 count = 0, errcount = 0, peak = 0, peakloc = 0;
 
     for (qint32 i = 0; (rv == -1) && (i < videoLength); i++) {
-        qint32 nv = (videoInputBuffer[i] >= to_min) && (videoInputBuffer[i] < to_max);
-        qint32 err = (videoInputBuffer[i] <= err_min) || (videoInputBuffer[i] >= err_max);
+        bool nv = (videoInputBuffer[i] >= to_min) && (videoInputBuffer[i] < to_max);
+        bool err = (videoInputBuffer[i] <= err_min) || (videoInputBuffer[i] >= err_max);
 
-        count = count - circbuf[i % clen] + nv;
+        if (nv) count -= circbuf[i % clen] + 1;
         circbuf[i % clen] = nv;
 
         errcount = errcount - circbuf_err[i % clen] + err;
@@ -916,8 +912,6 @@ qint32 TbcNtsc::findSync(quint16 *videoInputBuffer, qint32 videoLength, qint32 t
                 rv = -rv;
             }
         }
-
-        //qDebug() << i << videoBuffer[i] << peak << peakloc << i - peakloc;
     }
 
     if (rv == -1) qDebug() << "Not found" << peak << peakloc;
@@ -949,7 +943,7 @@ qint32 TbcNtsc::findVsync(quint16 *videoBuffer, qint32 videoLength)
 
 // Note: This function has an out-of-bounds error that can cause a segfault.  Need to track
 // down the cause.  Seems to happen when loc=505 and i=5 (when auto-ranging is configured true)
-qint32 TbcNtsc::findVsync(quint16 *videoBuffer, qint32 videoLength, qint32 offset)
+qint32 TbcNtsc::findVsync(quint16 *videoInputBuffer, qint32 videoLength, qint32 offset)
 {
     const quint16 field_len = videoInputFrequencyInFsc * 227.5 * 280;
 
@@ -959,30 +953,32 @@ qint32 TbcNtsc::findVsync(quint16 *videoBuffer, qint32 videoLength, qint32 offse
     qint32 slen = videoLength;
 
     qint32 loc = offset;
-
     for (qint32 i = 0; i < 6; i++) {
         // 32xFSC is *much* shorter, but it shouldn't get confused for an hsync -
         // and on rotted disks and ones with burst in vsync, this helps
-        qint32 syncend = abs(findSync(&videoBuffer[loc], slen, 32 * videoInputFrequencyInFsc));
+        qint32 syncend = abs(findSync(&videoInputBuffer[loc], slen, 32 * videoInputFrequencyInFsc));
 
         pulse_ends[i] = syncend + loc;
-        qDebug() << "Pulse ends" << pulse_ends[i];
+        qDebug() << "Pulse ends ["<< i << "] =" << pulse_ends[i];
 
         loc += syncend;
         slen = 3840;
     }
-
     qint32 rv = pulse_ends[5];
 
-    // determine line type
+    // Determine line type
     qint32 before_end = pulse_ends[0] - (127.5 * videoInputFrequencyInFsc);
     qint32 before_start = before_end - (227.5 * 4.5 * videoInputFrequencyInFsc);
 
-    qint32 pc_before = countSlevel(videoBuffer, before_start, before_end);
+    // Range check these variables as they can end up negative and cause a segfault
+    if (before_end < 0) before_end = 0;
+    if (before_start < 0) before_start = 0;
+
+    qint32 pc_before = countSlevel(videoInputBuffer, before_start, before_end);
 
     qint32 after_start = pulse_ends[5];
     qint32 after_end = after_start + (227.5 * 4.5 * videoInputFrequencyInFsc);
-    qint32 pc_after = countSlevel(videoBuffer, after_start, after_end);
+    qint32 pc_after = countSlevel(videoInputBuffer, after_start, after_end);
 
     qDebug() << "Before/after:" << pulse_ends[0] + offset << pulse_ends[5] + offset << pc_before << pc_after;
 
@@ -993,15 +989,15 @@ qint32 TbcNtsc::findVsync(quint16 *videoBuffer, qint32 videoLength, qint32 offse
 
 // Returns end of each line, -end if error detected in this phase
 // (caller responsible for freeing array)
-bool TbcNtsc::findHsyncs(quint16 *videoBuffer, qint32 videoLength, qint32 offset, double_t *rv)
+bool TbcNtsc::findHsyncs(quint16 *videoBuffer, qint32 videoLength, qint32 offset, double_t *horizontalSyncs)
 {
-    // Default value
+    // Default value (which is fixed, but should be based on the video buffer length or something?)
     qint32 nlines = 253;
 
-    return findHsyncs(videoBuffer, videoLength, offset, rv, nlines);
+    return findHsyncs(videoBuffer, videoLength, offset, horizontalSyncs, nlines);
 }
 
-bool TbcNtsc::findHsyncs(quint16 *videoBuffer, qint32 videoLength, qint32 offset, double_t *rv, qint32 nlines)
+bool TbcNtsc::findHsyncs(quint16 *videoBuffer, qint32 videoLength, qint32 offset, double_t *horizontalSyncs, qint32 nlines)
 {
     // sanity check (XXX: assert!)
     if (videoLength < (nlines * videoInputFrequencyInFsc * 227.5))
@@ -1010,10 +1006,8 @@ bool TbcNtsc::findHsyncs(quint16 *videoBuffer, qint32 videoLength, qint32 offset
     qint32 loc = offset;
 
     for (qint32 line = 0; line < nlines; line++) {
-    //	qDebug() << line << loc;
         qint32 syncend = findSync(&videoBuffer[loc], 227.5 * 3 * videoInputFrequencyInFsc,
                                8 * videoInputFrequencyInFsc);
-
         double_t gap = 227.5 * videoInputFrequencyInFsc;
 
         qint32 err_offset = 0;
@@ -1027,13 +1021,13 @@ bool TbcNtsc::findHsyncs(quint16 *videoBuffer, qint32 videoLength, qint32 offset
 
         // If it skips a scan line, fake it
         if ((line > 0) && (line < nlines) && (syncend > (40 * videoInputFrequencyInFsc))) {
-            rv[line] = -(abs(rv[line - 1]) + gap);
-            qDebug() << "XX" << line << loc << syncend << (double)rv[line];
+            horizontalSyncs[line] = -(abs(horizontalSyncs[line - 1]) + gap);
+            qDebug() << "XX" << line << loc << syncend << (double)horizontalSyncs[line];
             syncend -= gap;
             loc += gap;
         } else {
-            rv[line] = loc + syncend;
-            if (err_offset) rv[line] = -rv[line];
+            horizontalSyncs[line] = loc + syncend;
+            if (err_offset) horizontalSyncs[line] = -horizontalSyncs[line];
 
             if (syncend != -1) {
                 loc += fabs(syncend) + (200 * videoInputFrequencyInFsc);
@@ -1043,7 +1037,7 @@ bool TbcNtsc::findHsyncs(quint16 *videoBuffer, qint32 videoLength, qint32 offset
         }
     }
 
-    return rv;
+    return horizontalSyncs;
 }
 
 // correct damaged hsyncs by interpolating neighboring lines
@@ -1388,22 +1382,11 @@ bool TbcNtsc::isPeak(QVector<double_t> p, qint32 i)
 //      videoOutputBuffer (by reference)
 void TbcNtsc::despackle(QVector<QVector<quint16 > > &videoOutputBuffer)
 {
-    QVector<QVector<quint16 > > frameOriginal;
-
-    // Set the vector of vectors to the same size as the video output buffer
-    frameOriginal.resize(videoOutputBuffer.size());
-
-    // Note: this trust that all elements of the vector of vectors are the same
-    // size... which they are.  So this allows us to simply 'copy' the size
-    // of the video output buffer... Neat :)
-    for (qint32 line = 0; line < videoOutputBuffer.size(); line++)
-        frameOriginal[line].resize(videoOutputBuffer[0].size());
+    // Create a vector and copy the contents of videoOutputBuffer into it
+    QVector<QVector<quint16 > > originalVideoOutputBuffer(videoOutputBuffer);
 
     qint32 outputX = videoOutputBuffer[0].size(); // Same as number of samples
     qint32 outputY = videoOutputBuffer.size(); // Same as number of lines
-
-    // TODO: Verify that this actually copies the vector (rather than just the pointers...)
-    frameOriginal = videoOutputBuffer;
 
     for (qint32 inputY = 22; inputY < outputY; inputY++) {
         double_t rotDetect = tbcConfiguration.p_rotdetect * autoRangeState.inputMaximumIreLevel;
@@ -1419,13 +1402,13 @@ void TbcNtsc::despackle(QVector<QVector<quint16 > > &videoOutputBuffer)
                             (double)rotDetect;
 
                 for (qint32 m = inputX - 4; (m < (inputX + 14)) && (m < outputX); m++) {
-                    double_t tmp = (((double_t)frameOriginal[inputY - 2][m - 2]) +
-                            ((double_t)frameOriginal[inputY - 2][m + 2])) / 2;
+                    double_t tmp = (((double_t)originalVideoOutputBuffer[inputY - 2][m - 2]) +
+                            ((double_t)originalVideoOutputBuffer[inputY - 2][m + 2])) / 2;
 
                     if (inputY < (outputY - 3)) {
                         tmp /= 2;
-                        tmp += ((((double_t)frameOriginal[inputY + 2][m - 2]) +
-                                ((double_t)frameOriginal[inputY + 2][m + 2])) / 4);
+                        tmp += ((((double_t)originalVideoOutputBuffer[inputY + 2][m - 2]) +
+                                ((double_t)originalVideoOutputBuffer[inputY + 2][m + 2])) / 4);
                     }
 
                     videoOutputBuffer[inputY][m] = clamp(tmp, 0, 65535);

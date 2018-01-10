@@ -118,11 +118,11 @@ int main(int argc, char *argv[])
     parser.addOption(showDifferenceBetweenPixelsOption);
 
     // Option to select "magnetic video mode" - bottom-field first (-m)
-    QCommandLineOption magneticVideoModeOption("m",QCoreApplication::translate("main", "Magnetic video mode (bottom-field first)"));
+    QCommandLineOption magneticVideoModeOption("m",QCoreApplication::translate("main", "Magnetic video mode (bottom-field first for VHS support)"));
     parser.addOption(magneticVideoModeOption);
 
     // Option to flip fields (-F)
-    QCommandLineOption flipFieldsOption("F",QCoreApplication::translate("main", "Flip fields"));
+    QCommandLineOption flipFieldsOption("F",QCoreApplication::translate("main", "Flip video fields"));
     parser.addOption(flipFieldsOption);
 
     // Option to output audio only (-A)
@@ -130,7 +130,7 @@ int main(int argc, char *argv[])
     parser.addOption(audioOnlyOption);
 
     // Option to perform auto-set (-g)
-    QCommandLineOption performAutoSetOption("g",QCoreApplication::translate("main", "Perform input video auto-ranging"));
+    QCommandLineOption performAutoSetOption("g",QCoreApplication::translate("main", "Perform input video signal auto-ranging"));
     parser.addOption(performAutoSetOption);
 
     // Option to perform despackle (-n)
@@ -141,8 +141,8 @@ int main(int argc, char *argv[])
     QCommandLineOption performFreezeFrameOption("f",QCoreApplication::translate("main", "Perform freeze-frame - untested"));
     parser.addOption(performFreezeFrameOption);
 
-    // Option to perform seven-five (-h)
-    QCommandLineOption performSevenFiveOption("h",QCoreApplication::translate("main", "Perform seven-five - untested"));
+    // Option to perform seven-five (-s)
+    QCommandLineOption performSevenFiveOption("s",QCoreApplication::translate("main", "Use 7.5 IRE as black-level for video - untested"));
     parser.addOption(performSevenFiveOption);
 
     // Option to perform high-burst (-H)

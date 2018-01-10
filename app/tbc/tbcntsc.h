@@ -138,7 +138,7 @@ private:
     //quint16 videoOutputBuffer[505][844]; // Frame buffer (844 'pixels' x 505 lines for NTSC and 610x1052 for PAL (with FSC=4))
 
     // Private functions
-    quint16 autoRange(QVector<quint16> videoBuffer);
+    quint16 autoRange(QVector<quint16> &videoInputBuffer);
     qint32 processVideoAndAudioBuffer(QVector<quint16> videoInputBuffer, qint32 videoInputBufferElementsToProcess,
                                       QVector<double_t> audioInputBuffer, bool processAudioData,
                                       bool *isVideoFrameBufferReadyForWrite, bool *isAudioBufferReadyForWrite,
@@ -150,10 +150,10 @@ private:
     qint32 countSlevel(quint16 *videoBuffer, qint32 begin, qint32 end);
 
     qint32 findVsync(quint16 *videoBuffer, qint32 videoLength);
-    qint32 findVsync(quint16 *videoBuffer, qint32 videoLength, qint32 offset);
+    qint32 findVsync(quint16 *videoInputBuffer, qint32 videoLength, qint32 offset);
 
-    bool findHsyncs(quint16 *videoBuffer, qint32 videoLength, qint32 offset, double_t *rv);
-    bool findHsyncs(quint16 *videoBuffer, qint32 videoLength, qint32 offset, double_t *rv, qint32 nlines);
+    bool findHsyncs(quint16 *videoBuffer, qint32 videoLength, qint32 offset, double_t *horizontalSyncs);
+    bool findHsyncs(quint16 *videoBuffer, qint32 videoLength, qint32 offset, double_t *horizontalSyncs, qint32 nlines);
 
     void correctDamagedHSyncs(double_t *hsyncs, bool *err);
 
