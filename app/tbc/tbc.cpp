@@ -130,11 +130,28 @@ qint32 Tbc::execute(void)
     // is to make the code independent from the actual storage type chosen (i.e. quint16 or similar)
 
     // Define the required number of elements in the video and audio buffers
-    qint32 videoInputBufferNumberOfElements = ((qint64)tbcConfiguration.samplesPerLine * 1100);	// should be divisible evenly by 16
-    qint32 audioInputBufferNumberOfElements = ((qint64)tbcConfiguration.samplesPerLine * 1100) / 40;
-    qint32 audioOuputBufferNumberOfElements = 512; // Fixed length
-    qint32 videoOutputBufferNumberOfLines = 505; // The display is 505 lines for NTSC
-    qint32 videoOutputBufferNumberOfSamples = (tbcConfiguration.videoOutputFrequencyInFsc * 211); // Number of video samples per video line
+    qint32 videoInputBufferNumberOfElements;
+    qint32 audioInputBufferNumberOfElements;
+    qint32 audioOuputBufferNumberOfElements;
+    qint32 videoOutputBufferNumberOfLines;
+    qint32 videoOutputBufferNumberOfSamples;
+
+    if (tbcConfiguration.isNtsc) {
+        // NTSC configuration
+        // TODO: Where do 1100 and 40 come from?
+        videoInputBufferNumberOfElements = ((qint64)tbcConfiguration.samplesPerLine * 1100);	// should be divisible evenly by 16
+        audioInputBufferNumberOfElements = ((qint64)tbcConfiguration.samplesPerLine * 1100) / 40;
+        audioOuputBufferNumberOfElements = 512; // Fixed length
+        videoOutputBufferNumberOfLines = tbcConfiguration.numberOfVideoLines; // The display is 505 lines for NTSC
+        videoOutputBufferNumberOfSamples = (tbcConfiguration.videoOutputFrequencyInFsc * 211); // Number of video samples
+    } else {
+        // PAL configuration
+        videoInputBufferNumberOfElements = ((qint64)tbcConfiguration.samplesPerLine * 1100);	// should be divisible evenly by 16
+        audioInputBufferNumberOfElements = ((qint64)tbcConfiguration.samplesPerLine * 1100) / 40;
+        audioOuputBufferNumberOfElements = 512; // Fixed length
+        videoOutputBufferNumberOfLines = tbcConfiguration.numberOfVideoLines; // The display is 610 lines for PAL
+        videoOutputBufferNumberOfSamples = (tbcConfiguration.videoOutputFrequencyInFsc * 263); // 1052 / 4 = 263
+    }
 
     // Ensure that our buffer vectors are the correct length
     videoInputBuffer.resize(videoInputBufferNumberOfElements);
@@ -158,9 +175,6 @@ qint32 Tbc::execute(void)
     // Flag set if we should process audio data (and all the required
     // file names are supplied)
     bool processAudioData = false;
-
-    // Set the expected video sync level to -30 IRE - A left over from PAL - probably not needed?
-    //quint16 videoSyncLevel = inputMinimumIreLevel + (inputMaximumIreLevel * 15);
 
     // Set the maximum frames and skip frames configuration
     // TODO: Move this logic into the 'set' functions
@@ -505,6 +519,7 @@ quint16 Tbc::autoRange(QVector<quint16> &videoInputBuffer)
         longSyncFilterResult[currentVideoBufferElement] =
                 autoRangeState.longSyncFilter->feed(videoInputBuffer[currentVideoBufferElement]);
 
+        // TODO: Where does 256 come from?
         if ((currentVideoBufferElement > (tbcConfiguration.videoInputFrequencyInFsc * 256)) &&
                 (longSyncFilterResult[currentVideoBufferElement] < autoRangeState.low) &&
                 (longSyncFilterResult[currentVideoBufferElement - checklen] < autoRangeState.low)) {
@@ -534,6 +549,7 @@ quint16 Tbc::autoRange(QVector<quint16> &videoInputBuffer)
         qint32 nloc;
 
         for (nloc = lowloc;
+             // TODO: Where does 320 come from?
              (nloc > lowloc - (tbcConfiguration.videoInputFrequencyInFsc * 320)) &&
              (longSyncFilterResult[nloc] < (autoRangeState.low + (gap / 8))); nloc--);
 
@@ -557,7 +573,7 @@ quint16 Tbc::autoRange(QVector<quint16> &videoInputBuffer)
         autoRangeState.inputMaximumIreLevel = (autoRangeState.high - autoRangeState.low) / 140.0;
     }
 
-    autoRangeState.inputMinimumIreLevel = autoRangeState.low;	// -40IRE to -60IRE
+    autoRangeState.inputMinimumIreLevel = autoRangeState.low;	// -40 IRE to -60 IRE
     if (autoRangeState.inputMinimumIreLevel < 1) autoRangeState.inputMinimumIreLevel = 1;
 
     qDebug() << "Scale after auto-ranging is =" << (double)autoRangeState.inputMinimumIreLevel << ':'
@@ -588,10 +604,10 @@ qint32 Tbc::processVideoAndAudioBuffer(QVector<quint16> videoInputBuffer, qint32
     *isVideoOutputBufferReadyForWrite = false;
     *isAudioOutputBufferReadyForWrite = false;
 
-    double_t lineBuffer[1820]; // Why 1820
-    double_t horizontalSyncs[253]; // Why 253?
+    double_t lineBuffer[tbcConfiguration.samplesPerLine];
+    double_t horizontalSyncs[tbcConfiguration.videoFieldLength];
     qint32 field = -1;
-    qint32 offset = 500;
+    qint32 offset = 500; // TODO: Why 500?
 
     // Note: The video output buffer should be cleared by the calling function (process())
     // before invoking this function
@@ -604,34 +620,38 @@ qint32 Tbc::processVideoAndAudioBuffer(QVector<quint16> videoInputBuffer, qint32
         qDebug() << "findvsync" << oddEven << verticalSync;
 
         if ((oddEven == false) && (field == -1))
-            return verticalSync + (tbcConfiguration.videoInputFrequencyInFsc * 227.5 * 240);
+            // TODO: Where does 240 come from?
+            return verticalSync + (tbcConfiguration.videoInputFrequencyInFsc * tbcConfiguration.iplinei * 240);
 
         // Process skip-frames mode - zoom forward an entire frame
         if (processLineState.frameno < tbcConfiguration.skipFrames) {
             processLineState.frameno++;
-            return verticalSync + (tbcConfiguration.videoInputFrequencyInFsc * 227.5 * 510);
+            // TODO: Where does 510 come from?
+            return verticalSync + (tbcConfiguration.videoInputFrequencyInFsc * tbcConfiguration.iplinei * 510);
         }
 
         field++;
 
         // Zoom ahead to close to the first full proper sync
         if (oddEven) {
+            // TODO: What is 750?
             verticalSync = abs(verticalSync) + (750 * tbcConfiguration.videoInputFrequencyInFsc);
         } else {
+            // TODO: What is 871
             verticalSync = abs(verticalSync) + (871 * tbcConfiguration.videoInputFrequencyInFsc);
         }
 
         findHsyncs(videoInputBuffer.data(), videoInputBufferElementsToProcess, verticalSync, horizontalSyncs);
-        bool isLineBad[252];
+        bool isLineBad[tbcConfiguration.videoFieldLength-1];
 
         // Find horizontal syncs (rough alignment)
-        for (qint32 line = 0; line < 252; line++) {
+        for (qint32 line = 0; line < tbcConfiguration.videoFieldLength-1; line++) {
             isLineBad[line] = horizontalSyncs[line] < 0;
             horizontalSyncs[line] = abs(horizontalSyncs[line]);
         }
 
         // Determine vsync->0/7.5IRE transition point (TODO: break into function)
-        for (qint32 line = 0; line < 252; line++) {
+        for (qint32 line = 0; line < tbcConfiguration.videoFieldLength-1; line++) {
             if (isLineBad[line] == true) continue;
 
             double_t previous = 0;
@@ -677,6 +697,7 @@ qint32 Tbc::processVideoAndAudioBuffer(QVector<quint16> videoInputBuffer, qint32
 
             qDebug() << "Sync S" << line << (double)startSync << (double)endSync << (double)(endSync - startSync);
 
+            // TODO: Why 15.75 and 17.25?
             if ((!inRangeCF(endSync - startSync, 15.75, 17.25)) || (startSync == -1) || (endSync == -1)) {
                 isLineBad[line] = true;
             } else {
@@ -688,7 +709,7 @@ qint32 Tbc::processVideoAndAudioBuffer(QVector<quint16> videoInputBuffer, qint32
         correctDamagedHSyncs(horizontalSyncs, isLineBad);
 
         bool phaseFlip;
-        double_t bLevel[252]; // Why 252?
+        double_t bLevel[tbcConfiguration.videoFieldLength-1];
         double_t tpOdd = 0, tpEven = 0;
         qint32 nOdd = 0, nEven = 0; // need to track these to exclude bad lines
         double_t bPhase = 0;
@@ -703,7 +724,7 @@ qint32 Tbc::processVideoAndAudioBuffer(QVector<quint16> videoInputBuffer, qint32
             }
 
             // Burst detection/correction
-            scale(videoInputBuffer.data(), lineBuffer, line1, line2, 227.5 * tbcConfiguration.videoInputFrequencyInFsc);
+            scale(videoInputBuffer.data(), lineBuffer, line1, line2, tbcConfiguration.iplinei * tbcConfiguration.videoInputFrequencyInFsc);
             if (!burstDetect2(lineBuffer, tbcConfiguration.videoInputFrequencyInFsc, 4, bLevel[line], bPhase, phaseFlip)) {
                 qDebug() << "Error (no burst) on line" << line;
                 isLineBad[line] = true;
@@ -725,11 +746,12 @@ qint32 Tbc::processVideoAndAudioBuffer(QVector<quint16> videoInputBuffer, qint32
         qDebug() << "Phases:" << nEven + nOdd << (double)(tpEven / nEven) << (double)(tpOdd / nOdd) << fieldPhase;
 
         for (qint32 pass = 0; pass < 4; pass++) {
-               for (qint32 line = 0; line < 252; line++) {
+               for (qint32 line = 0; line < tbcConfiguration.videoFieldLength-1; line++) {
             bool lPhase = ((line % 2) == 0);
             if (fieldPhase) lPhase = !lPhase;
 
-            double_t line1c = horizontalSyncs[line] + ((horizontalSyncs[line + 1] - horizontalSyncs[line]) * 14.0 / 227.5);
+            // TODO: Why 14.0?
+            double_t line1c = horizontalSyncs[line] + ((horizontalSyncs[line + 1] - horizontalSyncs[line]) * 14.0 / tbcConfiguration.iplinei);
 
             scale(videoInputBuffer.data(), lineBuffer, horizontalSyncs[line], line1c, 14 * tbcConfiguration.videoInputFrequencyInFsc);
             if (!burstDetect2(lineBuffer, tbcConfiguration.videoInputFrequencyInFsc, 4, bLevel[line], bPhase, phaseFlip)) {
@@ -737,6 +759,7 @@ qint32 Tbc::processVideoAndAudioBuffer(QVector<quint16> videoInputBuffer, qint32
                 continue; // Exits the for loop...
             }
 
+            // TODO: why .260?
             double_t tgt = .260;
 //			if (bphase > .5) tgt += .5;
 
@@ -751,7 +774,7 @@ qint32 Tbc::processVideoAndAudioBuffer(QVector<quint16> videoInputBuffer, qint32
 
         // Final output (this had a bug in the original code (line < 252) which caused oline to overflow to 505 -
         // which causes a segfault in the line "frameBuffer[oline][t] = (quint16)clamp(o, 1, 65535);"
-        for (qint32 line = 0; line < 251; line++) {
+        for (qint32 line = 0; line < tbcConfiguration.videoFieldLength-2; line++) {
             double_t line1 = horizontalSyncs[line], line2 = horizontalSyncs[line + 1];
             qint32 oline = 3 + (line * 2) + (oddEven ? 0 : 1);
 
@@ -788,6 +811,7 @@ qint32 Tbc::processVideoAndAudioBuffer(QVector<quint16> videoInputBuffer, qint32
                     videoOutputBuffer[oline][4] = videoOutputBuffer[oline][6] = 0;
             }
 
+            // TODO: What is 844?
             for (qint32 t = 4; t < 844; t++) {
                 double_t o = lineBuffer[t];
                 if (tbcConfiguration.performAutoRanging) o = ire_to_out(in_to_ire(o));
@@ -795,7 +819,7 @@ qint32 Tbc::processVideoAndAudioBuffer(QVector<quint16> videoInputBuffer, qint32
                 videoOutputBuffer[oline][t] = (quint16)clamp(o, 1, 65535);
             }
         }
-        offset = abs(horizontalSyncs[250]);
+        offset = abs(horizontalSyncs[250]); // TODO: What is 250?
 
         qDebug() << "New offset is" << offset;
     }
@@ -824,7 +848,7 @@ qint32 Tbc::processVideoAndAudioBuffer(QVector<quint16> videoInputBuffer, qint32
 // Find the sync signal
 qint32 Tbc::findSync(quint16 *videoInputBuffer, qint32 videoLength)
 {
-    // Default value
+    // TODO: Why 50?
     qint32 tgt = 50;
 
     return findSync(videoInputBuffer, videoLength, tgt);
@@ -904,8 +928,9 @@ qint32 Tbc::findVsync(quint16 *videoBuffer, qint32 videoLength)
 // down the cause.  Seems to happen when loc=505 and i=5 (when auto-ranging is configured true)
 qint32 Tbc::findVsync(quint16 *videoInputBuffer, qint32 videoLength, qint32 offset)
 {
-    // 8.0FSC * 227.5 * 280 = 509,600
-    qint32 field_len = tbcConfiguration.videoInputFrequencyInFsc * 227.5 * 280;
+    // 8.0FSC * 227.5 * 280 = 509,600 (NTSC)
+    // TODO: What is 280?
+    qint32 field_len = tbcConfiguration.videoInputFrequencyInFsc * tbcConfiguration.iplinei * 280;
 
     if (videoLength < field_len) return -1;
 
@@ -922,13 +947,14 @@ qint32 Tbc::findVsync(quint16 *videoInputBuffer, qint32 videoLength, qint32 offs
         qDebug() << "Pulse ends"<< pulse_ends[i];
 
         loc += syncend;
-        slen = 3840;
+        slen = 3840; // TODO: What is 3840?
     }
     qint32 rv = pulse_ends[5];
 
     // Determine line type
+    // TODO: What is 127.5 and 4.5?
     qint32 before_end = pulse_ends[0] - (127.5 * tbcConfiguration.videoInputFrequencyInFsc);
-    qint32 before_start = before_end - (227.5 * 4.5 * tbcConfiguration.videoInputFrequencyInFsc);
+    qint32 before_start = before_end - (tbcConfiguration.iplinei * 4.5 * tbcConfiguration.videoInputFrequencyInFsc);
 
     // Range check these variables as they can end up negative and cause a segfault
     if (before_end < 0) before_end = 0;
@@ -937,7 +963,7 @@ qint32 Tbc::findVsync(quint16 *videoInputBuffer, qint32 videoLength, qint32 offs
     qint32 pc_before = countSlevel(videoInputBuffer, before_start, before_end);
 
     qint32 after_start = pulse_ends[5];
-    qint32 after_end = after_start + (227.5 * 4.5 * tbcConfiguration.videoInputFrequencyInFsc);
+    qint32 after_end = after_start + (tbcConfiguration.iplinei * 4.5 * tbcConfiguration.videoInputFrequencyInFsc);
     qint32 pc_after = countSlevel(videoInputBuffer, after_start, after_end);
 
     qDebug() << "Before/after:" << pulse_ends[0] + offset << pulse_ends[5] + offset << pc_before << pc_after;
@@ -952,7 +978,7 @@ qint32 Tbc::findVsync(quint16 *videoInputBuffer, qint32 videoLength, qint32 offs
 bool Tbc::findHsyncs(quint16 *videoBuffer, qint32 videoLength, qint32 offset, double_t *horizontalSyncs)
 {
     // Default value (which is fixed, but should be based on the video buffer length or something?)
-    qint32 nlines = 253;
+    qint32 nlines = tbcConfiguration.videoFieldLength;
 
     return findHsyncs(videoBuffer, videoLength, offset, horizontalSyncs, nlines);
 }
@@ -960,21 +986,21 @@ bool Tbc::findHsyncs(quint16 *videoBuffer, qint32 videoLength, qint32 offset, do
 bool Tbc::findHsyncs(quint16 *videoBuffer, qint32 videoLength, qint32 offset, double_t *horizontalSyncs, qint32 nlines)
 {
     // sanity check (XXX: assert!)
-    if (videoLength < (nlines * tbcConfiguration.videoInputFrequencyInFsc * 227.5))
+    if (videoLength < (nlines * tbcConfiguration.videoInputFrequencyInFsc * tbcConfiguration.iplinei))
         return false;
 
     qint32 loc = offset;
 
     for (qint32 line = 0; line < nlines; line++) {
-        qint32 syncend = findSync(&videoBuffer[loc], 227.5 * 3 * tbcConfiguration.videoInputFrequencyInFsc,
+        qint32 syncend = findSync(&videoBuffer[loc], tbcConfiguration.iplinei * 3 * tbcConfiguration.videoInputFrequencyInFsc,
                                8 * tbcConfiguration.videoInputFrequencyInFsc);
-        double_t gap = 227.5 * tbcConfiguration.videoInputFrequencyInFsc;
+        double_t gap =tbcConfiguration.iplinei * tbcConfiguration.videoInputFrequencyInFsc;
 
         qint32 err_offset = 0;
         while (syncend < -1) {
             qDebug() << "Error found on line" << line << syncend;
             err_offset += gap;
-            syncend = findSync(&videoBuffer[loc] + err_offset, 227.5 * 3 * tbcConfiguration.videoInputFrequencyInFsc,
+            syncend = findSync(&videoBuffer[loc] + err_offset, tbcConfiguration.iplinei * 3 * tbcConfiguration.videoInputFrequencyInFsc,
                                8 * tbcConfiguration.videoInputFrequencyInFsc);
             qDebug() << "Error syncend" << syncend;
         }
@@ -1003,17 +1029,17 @@ bool Tbc::findHsyncs(quint16 *videoBuffer, qint32 videoLength, qint32 offset, do
 // correct damaged hsyncs by interpolating neighboring lines
 void Tbc::correctDamagedHSyncs(double_t *hsyncs, bool *err)
 {
-    for (qint32 line = 1; line < 251; line++) {
+    for (qint32 line = 1; line < tbcConfiguration.videoFieldLength-2; line++) {
         if (err[line] == false) continue;
 
         qint32 lprev;
         qint32 lnext;
 
         for (lprev = line - 1; (err[lprev] == true) && (lprev >= 0); lprev--);
-        for (lnext = line + 1; (err[lnext] == true) && (lnext < 252); lnext++);
+        for (lnext = line + 1; (err[lnext] == true) && (lnext < tbcConfiguration.videoFieldLength-1); lnext++);
 
         // This shouldn't happen...
-        if ((lprev < 0) || (lnext == 252)) continue;
+        if ((lprev < 0) || (lnext == tbcConfiguration.videoFieldLength-1)) continue;
 
         double_t linex = (hsyncs[line] - hsyncs[0]) / line;
 
@@ -1056,7 +1082,8 @@ bool Tbc::processAudio(double_t frameBuffer, qint64 loc, double_t *audioInputBuf
                     index = (sizeof(audioInputBuffer) / sizeof(double_t)) - 1;
                 }
                 double_t channelOne = audioInputBuffer[index * 2], channelTwo = audioInputBuffer[(index * 2) + 1];
-                double_t frameb = (double_t)(i - processAudioState.firstloc) / 1820.0 / 525.0; // TODO: What are these constants?
+                // TODO: Where does 525.0 come from?
+                double_t frameb = (double_t)(i - processAudioState.firstloc) / (double_t)tbcConfiguration.samplesPerLine / 525.0; // TODO: What are these constants?
                 qDebug() << "Audio" << (double)frameBuffer << loc << (double)frameb << (double)i1 << i <<
                             i - processAudioState.prev_i <<
                             index << index - processAudioState.prev_index << (double)channelOne << (double)channelTwo;
@@ -1385,7 +1412,7 @@ void Tbc::despackle(QVector<QVector<quint16 > > &videoOutputBuffer)
 // (LD-V6000A info page is cryptic but very essential!)
 quint32 Tbc::readVbiData(QVector<QVector<quint16 > > videoOutputBuffer, quint16 line)
 {
-    // VBI? - Is this supposed to be based on FSC?  Looks like it...
+    // TODO: Verify this is the same for PAL as NTSC...
     double_t dots_usec = 4.0 * 315.0 / 88.0;
 
     qint32 first_bit = -1; // 108 - dots_usec;
@@ -1399,6 +1426,7 @@ quint32 Tbc::readVbiData(QVector<QVector<quint16 > > videoOutputBuffer, quint16 
     }
 
     // find first positive transition (exactly halfway into bit 0 which is *always* 1)
+    // TODO: Why 140 and 327.68?
     for (qint32 i = 70; (first_bit == -1) && (i < 140); i++) {
 //		qDebug() << i << out_to_ire(line[i]) << Δline[i];
         if (isPeak(deltaLine, i) && (deltaLine[i] > 10 * 327.68)) {
@@ -1438,6 +1466,7 @@ bool Tbc::checkWhiteFlag(qint32 l, QVector<QVector<quint16 > > videoOutputBuffer
 {
     qint32 wc = 0;
 
+    // TODO: Why 100, 800 and 200?
     for (qint32 i = 100; i < 800; i++) { // TODO: verify constants
         if (out_to_ire(videoOutputBuffer[l][i]) > 80) wc++;
         if (wc >= 200) return true;
@@ -1561,7 +1590,10 @@ void Tbc::setTbcMode(TbcModes setting)
         tbcConfiguration.isNtsc = true;
         tbcConfiguration.videoInputFrequencyInFsc = 8.0;
         tbcConfiguration.videoOutputFrequencyInFsc = 4.0;
-        tbcConfiguration.samplesPerLine = 227.5 * tbcConfiguration.videoInputFrequencyInFsc;
+        tbcConfiguration.numberOfVideoLines = 505;
+        tbcConfiguration.videoFieldLength = 253; // 505 / 2
+        tbcConfiguration.iplinei = 227.5;
+        tbcConfiguration.samplesPerLine = tbcConfiguration.iplinei * tbcConfiguration.videoInputFrequencyInFsc;
 
         // Configure the auto-range filters
         autoRangeState.longSyncFilter = new Filter(f_dsync);
@@ -1574,7 +1606,10 @@ void Tbc::setTbcMode(TbcModes setting)
         tbcConfiguration.isNtsc = true;
         tbcConfiguration.videoInputFrequencyInFsc = 32.0 / (315.0 / 88.0); // = 8.93;
         tbcConfiguration.videoOutputFrequencyInFsc = 4.0;
-        tbcConfiguration.samplesPerLine = 227.5 * tbcConfiguration.videoInputFrequencyInFsc;
+        tbcConfiguration.numberOfVideoLines = 505;
+        tbcConfiguration.videoFieldLength = 253; // 505 / 2
+        tbcConfiguration.iplinei = 227.5;
+        tbcConfiguration.samplesPerLine = tbcConfiguration.iplinei * tbcConfiguration.videoInputFrequencyInFsc;
 
         // Configure the auto-range filters
         autoRangeState.longSyncFilter = new Filter(f_dsync32);
@@ -1587,7 +1622,10 @@ void Tbc::setTbcMode(TbcModes setting)
         tbcConfiguration.isNtsc = false;
         tbcConfiguration.videoInputFrequencyInFsc = 8.0;
         tbcConfiguration.videoOutputFrequencyInFsc = 4.0;
-        tbcConfiguration.samplesPerLine = 229 * tbcConfiguration.videoInputFrequencyInFsc;
+        tbcConfiguration.numberOfVideoLines = 610;
+        tbcConfiguration.videoFieldLength = 305; // 610 / 2
+        tbcConfiguration.iplinei = 229;
+        tbcConfiguration.samplesPerLine = tbcConfiguration.iplinei * tbcConfiguration.videoInputFrequencyInFsc;
 
         // Configure the auto-range filters
         autoRangeState.longSyncFilter = new Filter(f_dsync);
@@ -1600,11 +1638,20 @@ void Tbc::setTbcMode(TbcModes setting)
         tbcConfiguration.isNtsc = false;
         tbcConfiguration.videoInputFrequencyInFsc = 32.0 / (315.0 / 88.0); // = 8.93
         tbcConfiguration.videoOutputFrequencyInFsc = 4.0;
-        tbcConfiguration.samplesPerLine = 229 * tbcConfiguration.videoInputFrequencyInFsc;
+        tbcConfiguration.numberOfVideoLines = 610;
+        tbcConfiguration.videoFieldLength = 305; // 610 / 2
+        tbcConfiguration.iplinei = 2048 / tbcConfiguration.videoInputFrequencyInFsc;
+        tbcConfiguration.samplesPerLine = tbcConfiguration.iplinei * tbcConfiguration.videoInputFrequencyInFsc;
 
         // Configure the auto-range filters
         autoRangeState.longSyncFilter = new Filter(f_dsync32);
         autoRangeState.f_endsync = new Filter(f_esync32);
+
+        // Configure the auto-range levels
+        // Input scale is from -95 IRE (for pilot signal) to 145 IRE
+        // which is a sweep of 240 IRE. 65535 / 240 = 273.0625
+        autoRangeState.inputMaximumIreLevel = 273.06;
+        autoRangeState.inputMinimumIreLevel = (autoRangeState.inputMaximumIreLevel * 95); // 0 IRE
         break;
 
     default:

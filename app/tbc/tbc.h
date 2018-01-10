@@ -82,6 +82,9 @@ private:
         bool isNtsc;
         double_t videoInputFrequencyInFsc;
         double_t videoOutputFrequencyInFsc;
+        qint32 numberOfVideoLines;
+        qint32 videoFieldLength;
+        double_t iplinei;
         qint32 samplesPerLine;
 
         // TBC feature configuration
