@@ -1,6 +1,6 @@
 /************************************************************************
 
-    tcbntsc.h
+    tbc.h
 
     Time-Based Correction
     ld-decode - Software decode of Laserdiscs from raw RF
@@ -26,8 +26,8 @@
 
 ************************************************************************/
 
-#ifndef TBCNTSC_H
-#define TBCNTSC_H
+#ifndef TBC_H
+#define TBC_H
 
 #include <QCoreApplication>
 #include <QDebug>
@@ -40,62 +40,72 @@
 
 #include "filter.h"
 
-class TbcNtsc
+class Tbc
 {
 public:
-    TbcNtsc(quint16 fscSetting);
+    Tbc();
+
+    // TBC mode enumeration
+    enum TbcModes {
+        ntsc_cxadc,     // NTSC video captured with 8-bit 28.8MSPS
+        ntsc_domdup,    // NTSC video captured with 16-bit 32.0MSPS
+        pal_cxadc,      // PAL video captured with 8-bit 28.8MSPS
+        pal_domdup      // PAL video captured with 16-bit 32.0MSPS
+    };
 
     // Execute the time-based correction
     qint32 execute(void);
 
-    // TBC NTSC parameter settings
-    void setShowDifferenceBetweenPixels(bool setting);
+    // TBC mode settings
+    void setTbcMode(TbcModes setting);
+
+    // TBC feature settings
     void setMagneticVideoMode(bool setting);
     void setFlipFields(bool setting);
-    void setAudioOnly(bool setting);
-    void setPerformAutoSet(bool setting);
-    void setPerformDespackle(bool setting);
+    void setAudioOutputOnly(bool setting);
     void setPerformFreezeFrame(bool setting);
-    void setPerformSevenFive(bool setting);
-    void setPerformHighBurst(bool setting);
+    void setRotDetectLevel(double_t value);
+    void setSkipFrames(qint32 value);
+    void setMaximumFrames(qint32 value);
+
+    // TBC file name settings
     void setSourceVideoFile(QString stringValue);
     void setSourceAudioFile(QString stringValue);
     void setTargetVideoFile(QString stringValue);
     void setTargetAudioFile(QString stringValue);
-    void setTol(double_t value);
-    void setRot(double_t value);
-    void setSkipFrames(qint32 value);
-    void setMaximumFrames(qint32 value);
 
 private:
-    // Private configuration globals that have
-    // matching 'set' functions to manipulate
-    // the setting publicly (for command line
-    // options)
+    // TBC Configuration globals
     struct tbcConfigurationStruct {
-        qint32 writeOnField;
-        bool f_flip;
-        bool audio_only;
-        bool performAutoRanging;
-        bool freeze_frame;
-        bool f_despackle;
-        bool seven_five;
-        bool f_highburst;
-        double_t p_rotdetect;
-        qint32 p_skipframes;
-        qint32 p_maxframes;
+        // Main TBC mode configuration
+        TbcModes tbcMode;
+        bool isNtsc;
+        double_t videoInputFrequencyInFsc;
+        double_t videoOutputFrequencyInFsc;
+        qint32 numberOfVideoLines;
+        qint32 videoFieldLength;
+        double_t iplinei;
+        qint32 samplesPerLine;
 
+        // TBC feature configuration
+        qint32 writeOnField;
+        bool fieldFlip;
+        bool audioOutputOnly;
+        bool performAutoRanging;
+        bool freezeFrame;
+        bool performDespackle;
+        bool sevenFiveMode;
+        bool highBurst;
+        double_t rotDetectLevel;
+        qint32 skipFrames;
+        qint32 maximumFrames;
+
+        // Source and target file name configuration
         QString sourceVideoFileName;
         QString sourceAudioFileName;
         QString targetVideoFileName;
         QString targetAudioFileName;
     } tbcConfiguration;
-
-    // Other configuration which does not have a 'set' function
-    // in the class to set or get the value
-    bool c32mhz;
-    double_t videoInputFrequencyInFsc;	// in FSC.  Must be an even number!
-    qint32 ntsc_iplinei;
 
     // Globals for processAudio()
     struct processAudioStateStruct {
@@ -134,11 +144,8 @@ private:
         double_t inputMinimumIreLevel;
     } autoRangeState;
 
-    // Two-dimensional (time-corrected) video frame buffer
-    //quint16 videoOutputBuffer[505][844]; // Frame buffer (844 'pixels' x 505 lines for NTSC and 610x1052 for PAL (with FSC=4))
-
     // Private functions
-    quint16 autoRange(QVector<quint16> videoBuffer);
+    quint16 autoRange(QVector<quint16> &videoInputBuffer);
     qint32 processVideoAndAudioBuffer(QVector<quint16> videoInputBuffer, qint32 videoInputBufferElementsToProcess,
                                       QVector<double_t> audioInputBuffer, bool processAudioData,
                                       bool *isVideoFrameBufferReadyForWrite, bool *isAudioBufferReadyForWrite,
@@ -150,10 +157,10 @@ private:
     qint32 countSlevel(quint16 *videoBuffer, qint32 begin, qint32 end);
 
     qint32 findVsync(quint16 *videoBuffer, qint32 videoLength);
-    qint32 findVsync(quint16 *videoBuffer, qint32 videoLength, qint32 offset);
+    qint32 findVsync(quint16 *videoInputBuffer, qint32 videoLength, qint32 offset);
 
-    bool findHsyncs(quint16 *videoBuffer, qint32 videoLength, qint32 offset, double_t *rv);
-    bool findHsyncs(quint16 *videoBuffer, qint32 videoLength, qint32 offset, double_t *rv, qint32 nlines);
+    bool findHsyncs(quint16 *videoBuffer, qint32 videoLength, qint32 offset, double_t *horizontalSyncs);
+    bool findHsyncs(quint16 *videoBuffer, qint32 videoLength, qint32 offset, double_t *horizontalSyncs, qint32 nlines);
 
     void correctDamagedHSyncs(double_t *hsyncs, bool *err);
 
@@ -167,7 +174,6 @@ private:
     inline quint16 ire_to_out(double_t ire);
     double_t out_to_ire(quint16 in);
     inline double_t peakdetect_quad(double_t *y);
-
     inline double_t cubicInterpolate(quint16 *y, double_t x);
 
     void scale(quint16 *buf, double_t *outbuf, double_t start, double_t end, double_t outlen);
@@ -187,7 +193,7 @@ private:
     void decodeVbiData(QVector<QVector<quint16> > &videoOutputBuffer);
 };
 
-// TODO: Clean this up...
+// TODO: Clean this up and put it in an enumeration instead
 //
 //    TBC line 0 format (presumably shared for PAL/NTSC):
 //
@@ -214,4 +220,4 @@ private:
 #define FRAME_INFO_WHITE_ODD	0x100
 #define FRAME_INFO_WHITE_EVEN	0x200
 
-#endif // TBCNTSC_H
+#endif // TBC_H
