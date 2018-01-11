@@ -29,6 +29,69 @@
 #include "tbc.h"
 #include "../../deemp.h"
 
+//
+// Notes on video frequencies to help understand this code:
+//
+// NTSC ---
+//
+// NTSC has 525 scanlines per frame (483 visible and 42 in the Vertical Blanking Interval)
+// Each frame has 2 fields with 262.5 scan lines in each field
+//
+// The field rate (Vfreq) of NTSC is 60 * (1000/1001) = 59.939 Hz (this is the root frequency from which all others are calculated)
+// The frame rate of NTSC is (field rate / 2) = 29.97 Hz
+//
+// If there are 262.5 scan lines per field and 59.939 fields/sec, the line rate (Hfreq) is 262.5 * 59.939 = 15.734 KHz
+//
+// The colour sub-carrier is 455/2 times the line rate i.e. 15.734 KHz * (455/2) = 3.579485 MHz (or 315/88 MHz)
+// The colour sub-carrier frequency is determined from the 'colour burst' signal which is 9 cycles of the
+// sub-carrier used to encode the colour information (and is included at the 'start' of each video signal)
+//
+// The 'sync' signal precedes the colour burst signal and there is an exact amount of time between the start of the sync
+// signal (known as the sync tip) and the start of the colour burst.
+//
+// If the line rate is 15734 Hz and the colour rate (aka dot-clock) is 3579485 Hz then the dot rate is 227.5 per line
+//
+// The colour rate is determined by the colour-burst signal which is 9 cycles long (and matches the frequency at which
+// the colour is encoded (i.e. modulated) into the video signal that follows the burst).
+//
+// FSC (in this code) is the relative frequency of the sampling clock to the colour rate (this is important since
+// 1 cycle of the colour sub-carrier is the smallest unit we need to measure in the video signal).
+//
+// If the colour sub-carrier is 3579485 Hz and the sampling clock is 28.635 MHz then the FSC is 8.0
+// meaning that every 8 samples represent 1 cycle of the colour sub-carrier (as per the cxadc sampler).
+// For the Domesday Duplicator the FSC is 8.9398 (32,000,000 / 3579485).
+//
+//
+// PAL --
+//
+// PAL has 625 scanlines per frame (576 visible and 49 in the Vertical Blanking Interval)
+// Each frame has 2 fields with 312.5 scan lines in each field
+//
+// The field rate (Vfreq) of PAL is 50 Hz
+// The frame rate of PAL is (field rate / 2) = 25 Hz
+//
+// If there are 312.5 scan lines per field and 50 fields/sec, the line rate (Hfreq) is 312.5 * 50 = 15,625 KHz
+//
+// The colour sub-carrier is 4.43361875 MHz.
+// The colour sub-carrier frequency is determined from the 'colour burst' signal which is 9 cycles of the
+// sub-carrier used to encode the colour information (and is included at the 'start' of each video signal)
+//
+// The 'sync' signal precedes the colour burst signal and there is an exact amount of time between the start of the sync
+// signal (known as the sync tip) and the start of the colour burst.
+//
+// If the line rate is 15625 Hz and the colour rate (aka dot-clock) is 4433618.75 Hz then the dot rate is 283.75 per line
+// Note: The actual figure is 283.7516, but there is a 25 Hz offset included which causes the dot rate to be exactly 283.75
+//
+// The colour rate is determined by the colour-burst signal which is 9 cycles long (and matches the frequency at which
+// the colour is encoded (i.e. modulated) into the video signal that follows the burst).
+//
+// FSC (in this code) is the relative frequency of the sampling clock to the colour rate (this is important since
+// 1 cycle of the colour sub-carrier is the smallest unit we need to measure in the video signal).
+//
+// If the colour sub-carrier is 4433618.75 Hz and the sampling clock is 28.635 MHz then the FSC is 6.458
+// meaning that every 6.458 samples represent 1 cycle of the colour sub-carrier (as per the cxadc sampler).
+// For the Domesday Duplicator the FSC is 7.217 (32,000,000 / 4433618.75).
+
 Tbc::Tbc()
 {
     // Default configuration is NTSC capture from cxADC (8-bit 28.8MSPS):
@@ -519,7 +582,8 @@ quint16 Tbc::autoRange(QVector<quint16> &videoInputBuffer)
         longSyncFilterResult[currentVideoBufferElement] =
                 autoRangeState.longSyncFilter->feed(videoInputBuffer[currentVideoBufferElement]);
 
-        // TODO: Where does 256 come from?
+        // TODO: Where does 256 come from? - as the videoInputFrequency is a small (double_t) number
+        // it's likely that 256 is a scaling factor?
         if ((currentVideoBufferElement > (tbcConfiguration.videoInputFrequencyInFsc * 256)) &&
                 (longSyncFilterResult[currentVideoBufferElement] < autoRangeState.low) &&
                 (longSyncFilterResult[currentVideoBufferElement - checklen] < autoRangeState.low)) {
@@ -621,6 +685,7 @@ qint32 Tbc::processVideoAndAudioBuffer(QVector<quint16> videoInputBuffer, qint32
 
         if ((oddEven == false) && (field == -1))
             // TODO: Where does 240 come from?
+            // Note from Chad: 240 and 510 are there to have it zoom to the next field/frame vsync
             return verticalSync + (tbcConfiguration.videoInputFrequencyInFsc * tbcConfiguration.iplinei * 240);
 
         // Process skip-frames mode - zoom forward an entire frame
@@ -698,6 +763,7 @@ qint32 Tbc::processVideoAndAudioBuffer(QVector<quint16> videoInputBuffer, qint32
             qDebug() << "Sync S" << line << (double)startSync << (double)endSync << (double)(endSync - startSync);
 
             // TODO: Why 15.75 and 17.25?
+            // Note from Chad: 127.5 and 4.5 are there to help lock down the size of the sync pulse... in vsync they can run very long
             if ((!inRangeCF(endSync - startSync, 15.75, 17.25)) || (startSync == -1) || (endSync == -1)) {
                 isLineBad[line] = true;
             } else {
@@ -833,6 +899,9 @@ qint32 Tbc::processVideoAndAudioBuffer(QVector<quint16> videoInputBuffer, qint32
     // Decode VBI data
     decodeVbiData(videoOutputBuffer);
 
+    // TODO: Add check for white flag back in here (as it's not really part of the VBI decoding function
+    // and should be split by itself)
+
     // Increment the frame number
     processLineState.frameno++;
 
@@ -953,6 +1022,7 @@ qint32 Tbc::findVsync(quint16 *videoInputBuffer, qint32 videoLength, qint32 offs
 
     // Determine line type
     // TODO: What is 127.5 and 4.5?
+    // Note from Chad: 127.5 and 4.5 are there to help lock down the size of the sync pulse... in vsync they can run very long
     qint32 before_end = pulse_ends[0] - (127.5 * tbcConfiguration.videoInputFrequencyInFsc);
     qint32 before_start = before_end - (tbcConfiguration.iplinei * 4.5 * tbcConfiguration.videoInputFrequencyInFsc);
 
@@ -1061,6 +1131,7 @@ bool Tbc::processAudio(double_t frameBuffer, qint64 loc, double_t *audioInputBuf
 {
     bool isAudioBufferReadyForWrite = false;
     double_t time = frameBuffer / (30000.0 / 1001.0); // TODO: What are these constants?
+    // Note from Chad: 30000/1001.0 is the NTSC frame rate (~29.976), 525 is the # of lines in an NTSC frame
 
     // Default firstloc if required
     if (processAudioState.firstloc == -1) processAudioState.firstloc = loc;
@@ -1109,6 +1180,7 @@ bool Tbc::processAudio(double_t frameBuffer, qint64 loc, double_t *audioInputBuf
 //      false - audio buffer not ready
 bool Tbc::processAudioSample(double_t channelOne, double_t channelTwo, quint16 *audioOutputBuffer)
 {
+    // 300000 is likely to do with the video frame rate
     channelOne = processAudioState.audioChannelOneFilter->feed(channelOne * (65535.0 / 300000.0));
     channelOne += 32768;
 
@@ -1367,6 +1439,8 @@ bool Tbc::isPeak(QVector<double_t> p, qint32 i)
 //
 // Returns:
 //      videoOutputBuffer (by reference)
+//
+// Note from Chad: despackle is the de-rotting code
 void Tbc::despackle(QVector<QVector<quint16 > > &videoOutputBuffer)
 {
     // Create a vector and copy the contents of videoOutputBuffer into it
@@ -1406,37 +1480,44 @@ void Tbc::despackle(QVector<QVector<quint16 > > &videoOutputBuffer)
     }
 }
 
-// VBI Decoding functions ---------------------------------------------------------------------
-
-// Essential VBI/Phillips code reference: http://www.daphne-emu.com/mediawiki/index.php/VBIInfo
-// (LD-V6000A info page is cryptic but very essential!)
+// Read data encoded in the VBI
+// TODO: This function doesn't work correctly...
 quint32 Tbc::readVbiData(QVector<QVector<quint16 > > videoOutputBuffer, quint16 line)
 {
-    // TODO: Verify this is the same for PAL as NTSC...
-    double_t dots_usec = 4.0 * 315.0 / 88.0;
+    qDebug() << "Attempting to read VBI data in line" << line;
 
-    qint32 first_bit = -1; // 108 - dots_usec;
+    // 3,500,000 cycles/sec
+    // Our output sampling rate is 4x the colour burst frequency
+    double_t outputSampleRateMHz = tbcConfiguration.videoOutputFrequencyInFsc * (315.0 / 88.0);
+
+    qint32 first_bit = -1; // 108 - outputSampleRateMHz;
     quint32 out = 0;
 
     QVector<double_t> deltaLine;
     deltaLine.resize(videoOutputBuffer[0].size()); // Same as number of samples;
 
+    // This generates the difference (delta) between two video lines in the output
+    // buffer - combining the two video fields... is this really what we want?
     for (qint32 i = 1; i < videoOutputBuffer[0].size() - 1; i++) {
         deltaLine[i] = videoOutputBuffer[line][i] - videoOutputBuffer[line][i - 1];
     }
 
     // find first positive transition (exactly halfway into bit 0 which is *always* 1)
     // TODO: Why 140 and 327.68?
+    // Note from Chad: 70->140 seemed a reasonable range to look for the first white pulse.  Could be replaced by much more exact timing
     for (qint32 i = 70; (first_bit == -1) && (i < 140); i++) {
-//		qDebug() << i << out_to_ire(line[i]) << Δline[i];
-        if (isPeak(deltaLine, i) && (deltaLine[i] > 10 * 327.68)) {
+        // is the current dot a peak and is it > 32768?
+        if (isPeak(deltaLine, i) && (deltaLine[i] > 32768.00)) {
             first_bit = i;
         }
     }
-    if (first_bit < 0) return 0;
+    if (first_bit < 0) {
+        qDebug() << "No valid data found in line" << line;
+        return 0;
+    }
 
     for (qint32 i = 0; i < 24; i++) {
-        qint32 rloc = -1, loc = (first_bit + (i * 2 * dots_usec));
+        qint32 rloc = -1, loc = (first_bit + (i * 2 * outputSampleRateMHz)); // 2 is 2 uSecs?
         double_t rpeak = -1;
 
         for (qint32 h = loc - 8; (h < loc + 8); h++) {
@@ -1451,17 +1532,18 @@ quint32 Tbc::readVbiData(QVector<QVector<quint16 > > videoOutputBuffer, quint16 
         if (rloc == -1) rloc = loc;
 
         out |= (deltaLine[rloc] > 0) ? (1 << (23 - i)) : 0;
-        qDebug() << "VBI Delta line:" << i << loc << (double)deltaLine[loc] << rloc << (double)deltaLine[rloc] <<
+        qDebug() << "VBI Delta (line" << line << "):" << i << loc << (double)deltaLine[loc] << rloc << (double)deltaLine[rloc] <<
                     (double)(deltaLine[rloc] / autoRangeState.inputMaximumIreLevel) << out;
 
         if (!i) first_bit = rloc;
     }
-    qDebug() << "VBI data hex:" << hex << out << dec;
+    qDebug() << "VBI data in line" << line << "is hex:" << hex << out;
 
     return out;
 }
 
 // Used by the decodeVBI function for something...
+// Note from Chad: the white flag check is there for CAV film disks to determine if a field is the beginning of a pulled down frame or not.
 bool Tbc::checkWhiteFlag(qint32 l, QVector<QVector<quint16 > > videoOutputBuffer)
 {
     qint32 wc = 0;
@@ -1484,98 +1566,76 @@ bool Tbc::checkWhiteFlag(qint32 l, QVector<QVector<quint16 > > videoOutputBuffer
 //      videoOutputBuffer (by reference)
 void Tbc::decodeVbiData(QVector<QVector<quint16 > > &videoOutputBuffer)
 {
-    quint32 code[6];
+    // For both NTSC and PAL discs there can be a maximum of 3 lines containing
+    // data.  The line number is relative to the field order in which the disc
+    // was encoded:
+    //
+    //   NTSC: 16, 17, 18 (or in reverse field order 279, 280, 281)
+    //    PAL: 16, 17, 18 (or in reverse field order 329, 330, 331)
+    //
+    // Since the field order is not determined here, the VBI will always appear
+    // on lines 16, 17 and 18 in the videoOutputBuffer (unless something flips the
+    // field order).
 
-    quint32 clv_time = 0;
-    quint32 chap = 0;
-    quint32 flags = 0;
+    // TODO notes:
+    // The original code was reading lines 14 to 20 and I'm not sure why...
+    // It could be that the outputBuffer has both fields interlaced together
+    // meaning that the order is:
+    //
+    // 279, 16, 280, 17, 281, 18 (field 1 first)
+    // 16, 279, 17, 280, 18, 281 (field 0 first)
+    //
+    // but which field order (or why it starts on line 14) - I don't understand
+    //
+    // The original code was also interpreting frame numbers as decimal values -
+    // and they are hex values... so the readVbiData function isn't working anyway...
+    // making it all very tough to debug right now.
 
-    bool odd = false; // CAV framecode on odd scanline
-    bool even = false; // on even scanline (need to report both, since some frames have none!)
-    bool clv = false;
-    bool cx  = false;
-    qint32 fnum = 0;
+    quint32 dataOnLine16 = readVbiData(videoOutputBuffer, 16);
+    quint32 dataOnLine17 = readVbiData(videoOutputBuffer, 17);
+    quint32 dataOnLine18 = readVbiData(videoOutputBuffer, 18);
 
-    memset(code, 0, sizeof(code));
-    for (qint32 line = 14; line < 20; line++) {
-        code[line - 14] = readVbiData(videoOutputBuffer, line);
+    // Show the VBI data in the debug output
+    qInfo() << "VBI data:" << hex <<
+                ": 16 =" << dataOnLine16 <<
+                ": 17 =" << dataOnLine17 <<
+                ": 18 =" << dataOnLine18;
+
+    // Interpret the VBI data (just to get the debug right now)
+    InterpretVbi interpretVbi(dataOnLine16, dataOnLine17, dataOnLine18);
+
+    // Show VBI data in debug
+    switch(interpretVbi.getDiscType()) {
+    case InterpretVbi::DiscTypes::cav:
+        qInfo() << "Disc type is CAV";
+        break;
+    case InterpretVbi::DiscTypes::clv:
+        qInfo() << "Disc type is CLV";
+        break;
+    case InterpretVbi::DiscTypes::unknownType:
+        qInfo() << "Disc type is unknown";
+        break;
     }
-    qDebug() << "VBI codes:" << hex << code[0] << code[1] << code[2] << code[3] << code[4] << code[5] << dec;
 
-    for (qint32 i = 0; i < 6; i++) {
-        videoOutputBuffer[0][i * 2] = code[i] >> 16;
-        videoOutputBuffer[0][(i * 2) + 1] = code[i] & 0xffff;
-
-        if ((code[i] & 0xf00fff) == 0x800fff) {
-            chap =  ((code[i] & 0x00f000) >> 12);
-            chap += (((code[i] & 0x0f0000) >> 16) - 8) * 10;
-        }
-
-        if ((code[i] & 0xfff000) == 0x8dc000) {
-            cx = true;
-        }
-
-        if (0x87ffff == code[i]) {
-            clv = true;
-        }
+    // Debug for CAV disks
+    if (interpretVbi.getDiscType() == InterpretVbi::DiscTypes::cav) {
+        if (interpretVbi.isPictureNumberAvailable())
+            qInfo() << "Picture number is:" << interpretVbi.getPictureNumber();
     }
 
-    if (clv == true) {
-        quint16 hours = 0;
-        quint16 minutes = 0;
-        quint16 seconds = 0;
-        quint16 framenum = 0;
+//    flags = (clv ? FRAME_INFO_CLV : 0) | (even ? FRAME_INFO_CAV_EVEN : 0) |
+//            (odd ? FRAME_INFO_CAV_ODD : 0) | (cx ? FRAME_INFO_CX : 0);
+//    flags |= checkWhiteFlag(4, videoOutputBuffer) ? FRAME_INFO_WHITE_EVEN : 0;
+//    flags |= checkWhiteFlag(5, videoOutputBuffer) ? FRAME_INFO_WHITE_ODD  : 0;
 
-        // Find CLV frame # data
-        for (qint32 i = 0; i < 6; i++) {
-            // CLV Picture #
-            if (((code[i] & 0xf0f000) == 0x80e000) && ((code[i] & 0x0f0000) >= 0x0a0000)) {
-                seconds = (((code[i] & 0x0f0000) - 0x0a0000) >> 16) * 10;
-                seconds += (code[i] & 0x000f00) >> 8;
-                framenum = code[i] & 0x0f;
-                framenum += ((code[i] & 0x000f0) >> 4) * 10;
-            }
-            if ((code[i] & 0xf0ff00) == 0xf0dd00) {
-                hours = ((code[i] & 0x0f0000) >> 16);
-                minutes = code[i] & 0x0f;
-                minutes += ((code[i] & 0x000f0) >> 4) * 10;
-            }
-        }
-        fnum = (((hours * 3600) + (minutes * 60) + seconds) * 30) + framenum;
-        clv_time = (hours << 24) | (minutes << 16) || (seconds << 8) || framenum;
-        qDebug() << "CLV" << hours << ':' << minutes << ':' << seconds << '.' << framenum;
-    } else {
-        for (qint32 i = 0; i < 6; i++) {
-            // CAV frame:  f80000 + frame
-            if ((code[i] >= 0xf80000) && (code[i] <= 0xffffff)) {
-                // Convert from BCD to binary
-                fnum = code[i] & 0x0f;
-                fnum += ((code[i] & 0x000f0) >> 4) * 10;
-                fnum += ((code[i] & 0x00f00) >> 8) * 100;
-                fnum += ((code[i] & 0x0f000) >> 12) * 1000;
-                fnum += ((code[i] & 0xf0000) >> 16) * 10000;
-                if (fnum >= 80000) fnum -= 80000;
-                qDebug() << i << "VBI CAV frame #" << fnum;
-                if (i % 2) odd = true;
-                if (!(i % 2)) even = true;
-            }
-        }
-    }
-    qDebug() << "VBI fnum" << fnum;
+//    qDebug() << "VBI Status" << hex << flags << dec << "chapter" << chap;
 
-    flags = (clv ? FRAME_INFO_CLV : 0) | (even ? FRAME_INFO_CAV_EVEN : 0) |
-            (odd ? FRAME_INFO_CAV_ODD : 0) | (cx ? FRAME_INFO_CX : 0);
-    flags |= checkWhiteFlag(4, videoOutputBuffer) ? FRAME_INFO_WHITE_EVEN : 0;
-    flags |= checkWhiteFlag(5, videoOutputBuffer) ? FRAME_INFO_WHITE_ODD  : 0;
-
-    qDebug() << "VBI Status" << hex << flags << dec << "chapter" << chap;
-
-    videoOutputBuffer[0][12] = chap;
-    videoOutputBuffer[0][13] = flags;
-    videoOutputBuffer[0][14] = fnum >> 16;
-    videoOutputBuffer[0][15] = fnum & 0xffff;
-    videoOutputBuffer[0][16] = clv_time >> 16;
-    videoOutputBuffer[0][17] = clv_time & 0xffff;
+//    videoOutputBuffer[0][12] = chap;
+//    videoOutputBuffer[0][13] = flags;
+//    videoOutputBuffer[0][14] = fnum >> 16;
+//    videoOutputBuffer[0][15] = fnum & 0xffff;
+//    videoOutputBuffer[0][16] = clv_time >> 16;
+//    videoOutputBuffer[0][17] = clv_time & 0xffff;
 }
 
 // Configuration parameter handling functions -----------------------------------------

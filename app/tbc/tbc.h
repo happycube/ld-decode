@@ -39,6 +39,7 @@
 #include <stdio.h>
 
 #include "filter.h"
+#include "interpretvbi.h"
 
 class Tbc
 {
