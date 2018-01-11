@@ -83,10 +83,10 @@ private:
         bool isNtsc;
         double_t videoInputFrequencyInFsc;
         double_t videoOutputFrequencyInFsc;
-        qint32 numberOfVideoLines;
-        qint32 videoFieldLength;
-        double_t iplinei;
-        qint32 samplesPerLine;
+        qint32 numberOfVideoLinesPerFrame;
+        qint32 numberOfVideoLinesPerField;
+        double_t dotsPerVideoLine;
+        qint32 inputSamplesPerVideoLine;
 
         // TBC feature configuration
         qint32 writeOnField;
@@ -158,7 +158,7 @@ private:
     qint32 countSlevel(quint16 *videoBuffer, qint32 begin, qint32 end);
 
     qint32 findVsync(quint16 *videoBuffer, qint32 videoLength);
-    qint32 findVsync(quint16 *videoInputBuffer, qint32 videoLength, qint32 offset);
+    qint32 findVsync(quint16 *videoInputBuffer, qint32 videoInputBufferNumberOfElements, qint32 offset);
 
     bool findHsyncs(quint16 *videoBuffer, qint32 videoLength, qint32 offset, double_t *horizontalSyncs);
     bool findHsyncs(quint16 *videoBuffer, qint32 videoLength, qint32 offset, double_t *horizontalSyncs, qint32 nlines);
