@@ -166,7 +166,7 @@ qint32 Tbc::execute(void)
     if (tbcConfiguration.tbcMode == ntsc_cxadc)  qInfo() << "  TBC mode is NTSC 8-bit 28.8MSPS";
     if (tbcConfiguration.tbcMode == ntsc_domdup) qInfo() << "  TBC mode is NTSC 16-bit 30MSPS";
     if (tbcConfiguration.tbcMode == pal_cxadc)   qInfo() << "  TBC mode is PAL 8-bit 28.8MSPS";
-    if (tbcConfiguration.tbcMode == pal_cxadc)   qInfo() << "  TBC mode is PAL 16-bit 30MSPS";
+    if (tbcConfiguration.tbcMode == pal_domdup)  qInfo() << "  TBC mode is PAL 16-bit 30MSPS";
 
     qInfo() << "  Video input frequency (FSC) =" << (double)tbcConfiguration.videoInputFrequencyInFsc;
     qInfo() << "  Write on field =" << tbcConfiguration.writeOnField;
@@ -215,11 +215,11 @@ qint32 Tbc::execute(void)
         videoOutputBufferNumberOfSamples = (tbcConfiguration.videoOutputFrequencyInFsc * 211); // Number of video samples
     } else {
         // PAL configuration - DOES NOT WORK AT ALL
-        videoInputBufferNumberOfElements = ((qint64)tbcConfiguration.inputSamplesPerVideoLine * 1300);
-        audioInputBufferNumberOfElements = ((qint64)tbcConfiguration.inputSamplesPerVideoLine * 1300) / 40;
+        videoInputBufferNumberOfElements = ((qint64)tbcConfiguration.inputSamplesPerVideoLine * 1100);
+        audioInputBufferNumberOfElements = ((qint64)tbcConfiguration.inputSamplesPerVideoLine * 1100) / 40;
         audioOuputBufferNumberOfElements = 512; // Fixed length
         videoOutputBufferNumberOfLines = tbcConfiguration.numberOfVideoLinesPerFrame; // The display is 610 lines for PAL
-        videoOutputBufferNumberOfSamples = (tbcConfiguration.videoOutputFrequencyInFsc * 288); // number of visible lines per field /2
+        videoOutputBufferNumberOfSamples = (tbcConfiguration.videoOutputFrequencyInFsc * 211);
     }
 
     // Ensure that our buffer vectors are the correct length
