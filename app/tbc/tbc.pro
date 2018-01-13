@@ -30,11 +30,13 @@ release:DESTDIR = ../../
 SOURCES += main.cpp \
     tbcpal.cpp \
     filter.cpp \
-    tbc.cpp
+    tbc.cpp \
+    interpretvbi.cpp
 
 HEADERS += \
     tbcpal.h \
     filter.h \
     ../../deemp.h \
     deemp2.h \
-    tbc.h
+    tbc.h \
+    interpretvbi.h
