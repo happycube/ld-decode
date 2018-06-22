@@ -339,7 +339,9 @@ def descramble(bit_gen):
     inp_bit = bit_gen.next()
     lsb_reg = register.pop(15)  # Pop the lsb
     x = (inp_bit != lsb_reg)  # XOR
-    register.insert(0, x)
+    #register.insert(0, x)
+    # change from Alok Menghrajani
+    register.insert(register[14] xor lsb_reg)
     yield x
 
 
