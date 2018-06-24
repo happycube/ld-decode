@@ -214,10 +214,10 @@ class Comb
 				//uint16_t *line = &Frame[fnum].rawbuffer[l * in_x];	
 				//bool invertphase = (line[0] == 16384);
 
-				Filter f_i(f_colorlpi);
+				Filter f_i(f_colorlpf_hq ? f_colorlpi : f_colorlpq);
 				Filter f_q(f_colorlpf_hq ? f_colorlpi : f_colorlpq);
 
-				int qoffset = f_colorlpf_hq ? f_colorlpi_offset : f_colorlpq_offset;
+				int qoffset = 16; // f_colorlpf_hq ? f_colorlpi_offset : f_colorlpq_offset;
 
 				double filti = 0, filtq = 0;
 
@@ -236,7 +236,7 @@ class Comb
 						cerr << "IQF " << h << ' ' << cbuf[l].p[h - f_colorlpi_offset].i << ' ' << filti << ' ' << cbuf[l].p[h - qoffset].q << ' ' << filtq << endl;
 					}
 
-					cbuf[l].p[h - f_colorlpi_offset].i = filti; 
+					cbuf[l].p[h - qoffset].i = filti; 
 					cbuf[l].p[h - qoffset].q = filtq; 
 				}
 			}
@@ -253,7 +253,7 @@ class Comb
 
 				Filter f_1di(f_colorlpi);
 				Filter f_1dq(f_colorlpq);
-				int f_toffset = 8;
+				int f_toffset = 16;
 
 				for (int h = 4; h < 840; h++) {
 					int phase = h % 4;
