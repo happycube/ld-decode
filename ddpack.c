@@ -15,16 +15,16 @@ inline uint16_t sconv(int16_t sample)
 
 int main(void)
 {
-	size_t rv;
+	size_t rv, ilen = 0;
 	int i;
 
-	while ((rv = read(0, inbuf, sizeof(inbuf))) > 0) {
-		for (i = 0; i < (rv / (3 * sizeof(int16_t))); i++) {
+	while ((rv = fread(inbuf, sizeof(int16_t), BUFSIZE, stdin)) > 0) {
+		for (i = 0; i < (rv / 3); i++) {
 			outbuf[i] = sconv(inbuf[(i * 3)]) << 0;
 			outbuf[i] |= sconv(inbuf[(i * 3) + 1]) << 10;
 			outbuf[i] |= sconv(inbuf[(i * 3) + 2]) << 20;
 		}
-		rv = write(1, outbuf, i * sizeof(uint32_t));
+		rv = fwrite(outbuf, sizeof(uint32_t), i, stdout);
 	}
 }
 

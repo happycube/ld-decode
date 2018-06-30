@@ -24,14 +24,14 @@ int main(void)
 	size_t rv = 0;
 	int i, o = 0;
 
-	while ((rv = read(0, inbuf, sizeof(inbuf))) > 0) {
+	while ((rv = fread(inbuf, sizeof(uint32_t), BUFSIZE, stdin)) > 0) {
 		o = 0;
-		for (i = 0; i < (rv / sizeof(uint32_t)); i++) {
+		for (i = 0; i < rv; i++) {
 			outbuf[o++] = extend(inbuf[i]);
 			outbuf[o++] = extend(inbuf[i] >> 10);
 			outbuf[o++] = extend(inbuf[i] >> 20);
 		}
-		rv = write(1, outbuf, o * sizeof(int16_t));
+		rv = fwrite(outbuf, sizeof(int16_t), o, stdout);
 	}
 }
 
