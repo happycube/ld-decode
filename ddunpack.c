@@ -10,7 +10,8 @@ int16_t outbuf[BUFSIZE * 3];
 
 int16_t extend(uint32_t sample) 
 {
-	uint16_t out = (uint16_t)(sample & 0x3ff);
+	uint16_t uout = (uint16_t)(sample & 0x3ff);
+	int16_t out = uout - 512;
 
 	out = out << 6;
 

@@ -10,7 +10,8 @@ uint32_t outbuf[BUFSIZE / 3];
 
 inline uint16_t sconv(int16_t sample) 
 {
-	return (((unsigned int)sample) >> 6) & 0x3ff;
+	uint32_t usample = (uint32_t)sample + 32768;
+	return (((unsigned int)usample) >> 6) & 0x3ff;
 }
 
 int main(void)
