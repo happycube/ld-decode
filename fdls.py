@@ -68,7 +68,7 @@ def diffplot(freq, B, A, B2, A2):
 	plt.axis('tight')
 	plt.show()
 
-def FDLS(N, D, w, h = [], Am = [], Th = [], shift = 0):
+def FDLS(N, D, w, Am = [], Th = [], shift = 0, h = []):
 	""" Python implentation of the FDLS filter design algorithm.
 
 	Keyword Arguments:
@@ -113,6 +113,9 @@ def FDLS(N, D, w, h = [], Am = [], Th = [], shift = 0):
 
 	# Y is a simple vector
 	Y = Am * np.cos(Th)
+	#print(X, Y)
+
+
 
 	# The actual computation - the setup leading up to this is the brilliant part
 	out = numpy.linalg.lstsq(X, Y)
