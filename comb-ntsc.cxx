@@ -29,7 +29,7 @@ bool f_wide = false;
 // Invert phase on purpose (almost never needed) 
 bool f_phaseinvert = false;
 
-bool f_colorlpf = false;
+bool f_colorlpf = true;
 bool f_colorlpf_hq = true;
 
 double nn_cscale = 32768.0;
