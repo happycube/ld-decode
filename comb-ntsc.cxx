@@ -214,10 +214,10 @@ class Comb
 				//uint16_t *line = &Frame[fnum].rawbuffer[l * in_x];	
 				//bool invertphase = (line[0] == 16384);
 
-				Filter f_i(f_colorlpf_hq ? f_colorlpi : f_colorlpq);
+				Filter f_i(f_colorlpf_hq ? f_colorlpi : f_colorlpi);
 				Filter f_q(f_colorlpf_hq ? f_colorlpi : f_colorlpq);
 
-				int qoffset = 16; // f_colorlpf_hq ? f_colorlpi_offset : f_colorlpq_offset;
+				int qoffset = 2; // f_colorlpf_hq ? f_colorlpi_offset : f_colorlpq_offset;
 
 				double filti = 0, filtq = 0;
 
