@@ -565,14 +565,28 @@ class Field:
                 linelocs2[i] -= 200 # search for *beginning* of hsync
 
             zc = calczc(self.data[0]['demod_05'], linelocs2[i], self.rf.iretohz(-20), reverse=False, _count=400)
+
             #print(i, linelocs2[i], zc)
             if zc is not None:
                 linelocs2[i] = zc - 32
+                
+                origdata = self.data[0]['demod_05'][int(zc)-40:int(zc)+100]
 
-                origdata = self.data[0]['demod'][int(zc)-40:int(zc)+100]
-                #(data[0]['demod'][int(zc)-100:int(zc)+20], rfd.iretohz(-50), rfd.iretohz(30)))
                 if np.min(origdata) < self.rf.iretohz(-50):
                     err[i] = True
+
+                if i >= 10: # don't run this special adjustment code on vsync lines (yet?)
+                    # on some captures with high speed variation wow effects can mess up TBC.
+                    # determine the low and high values and recompute zc along the middle
+
+                    low = np.mean(origdata[0:20])
+                    high = np.mean(origdata[100:120])
+
+                    zc2 = calczc(origdata, 0, (low + high) / 2, reverse=False, _count=len(origdata))
+                    zc2 += (int(zc)-40)
+                    #print(i, low, high, zc, zc2)
+
+                    linelocs2[i] = zc2 - 32
             else:
                 err[i] = True
 
@@ -584,7 +598,7 @@ class Field:
                 linelocs2[i] = linelocs2[i - 1] + gap
                 #print(i, zc, lbinelocs2[i])
 
-        return linelocs2, err
+        return linelocs2, err    
 
     def downscale(self, lineinfo = None, outwidth = None, wow=True, channel='demod', audio = False):
         if lineinfo is None:
