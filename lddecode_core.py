@@ -540,6 +540,10 @@ class Field:
             curline = self.peaklist[curindex]
             #print(curline)
 
+            # fill in as many missing lines as needed
+            while (curline - linelocs[-1]) > (self.inlinelen * 1.95):
+                linelocs.append(linelocs[-1] + (linelocs[-1] - linelocs[-2]))
+            
             if (curline - linelocs[-1]) > (self.inlinelen * 1.05):
                 linelocs.append(linelocs[-1] + self.inlinelen)
             elif (curline - linelocs[-1]) > (self.inlinelen * .95):
