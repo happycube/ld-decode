@@ -557,10 +557,10 @@ class Field:
 
         offset = 32 
 
-        err = [False] * len(self.linelocs[0])
+        err = [False] * len(self.linelocs1)
 
-        linelocs2 = self.linelocs[-1].copy()
-        for i in range(len(self.linelocs[0])):
+        linelocs2 = self.linelocs1.copy()
+        for i in range(len(self.linelocs1)):
             # First adjust the lineloc before the beginning of hsync - 
             # lines 1-9 are half-lines which need a smaller offset
             if i > 9:
@@ -733,7 +733,7 @@ class Field:
         self.audio_next_offset = audio_offset
         
         if len(self.vsyncs) == 0:
-            self.nextfieldoffset = start + self.rf.linelen
+            self.nextfieldoffset = start + (self.rf.linelen * 200)
             print("way too short")
             return
         elif len(self.vsyncs) == 1:
