@@ -525,7 +525,7 @@ class Field:
         prevpeak = 1.0
         for i, p in enumerate(self.peaklist):
             peak = ds[p]
-            if peak > .8 and prevpeak < .6:
+            if peak > .9 and prevpeak < .525:
                 vsyncs.append((i, *self.determine_field(i)))
 
             prevpeak = peak
