@@ -557,10 +557,10 @@ class Field:
 
         offset = 32 
 
-        err = [False] * len(self.linelocs1)
+        err = [False] * len(self.linelocs[0])
 
-        linelocs2 = self.linelocs1.copy()
-        for i in range(len(self.linelocs1)):
+        linelocs2 = self.linelocs[-1].copy()
+        for i in range(len(self.linelocs[0])):
             # First adjust the lineloc before the beginning of hsync - 
             # lines 1-9 are half-lines which need a smaller offset
             if i > 9:
@@ -588,7 +588,6 @@ class Field:
 
                     zc2 = calczc(origdata, 0, (low + high) / 2, reverse=False, _count=len(origdata))
                     zc2 += (int(zc)-40)
-                    #print(i, low, high, zc, zc2)
 
                     linelocs2[i] = zc2 - 32
             else:
@@ -601,9 +600,20 @@ class Field:
                 gap = linelocs2[i - 1] - linelocs2[i - 2]
                 linelocs2[i] = linelocs2[i - 1] + gap
                 #print(i, zc, lbinelocs2[i])
+                
+        # XXX: HACK!
+        # On both PAL and NTSC this gets it wrong for VSYNC areas.  They need to be *reasonably* 
+        # accurate for analog audio, but are never seen in the picture.
+        for i in range(8, -1, -1):
+            gap = linelocs2[i + 1] - linelocs2[i]
+#            print(i, gap)
+            if not inrange(gap, self.rf.linelen - (self.rf.freq * .2), self.rf.linelen + (self.rf.freq * .2)):
+                gap = self.rf.linelen
 
-        return linelocs2, err    
+            linelocs2[i] = linelocs2[i + 1] - gap
 
+        return linelocs2, err  
+    
     def downscale(self, lineinfo = None, outwidth = None, wow=True, channel='demod', audio = False):
         if lineinfo is None:
             lineinfo = self.linelocs
