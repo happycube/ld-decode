@@ -612,6 +612,16 @@ class Field:
 
             linelocs2[i] = linelocs2[i + 1] - gap
 
+        # XXX2: more hack!  This one covers a bit at the end of a PAL field
+        for i in range(300, len(linelocs2)):
+            gap = linelocs2[i] - linelocs2[i - 1]
+            #print(i, gap)
+            if not inrange(gap, self.rf.linelen - (self.rf.freq * .2), self.rf.linelen + (self.rf.freq * .2)):
+                gap = self.rf.linelen
+
+            linelocs2[i] = linelocs2[i - 1] + gap
+            
+            
         return linelocs2, err  
     
     def downscale(self, lineinfo = None, outwidth = None, wow=True, channel='demod', audio = False):
