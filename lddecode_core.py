@@ -1,5 +1,3 @@
-# Note:  This is a work in progress based on the ld-decode-r3 notebook.  This may not (or might) be up to date.
-
 from base64 import b64encode
 import copy
 from datetime import datetime
@@ -35,8 +33,6 @@ SysParams_NTSC = {
     'ire0': 8100000,
     'hz_ire': 1700000 / 140.0,
 
-    # most NTSC disks have analog audio, except CD-V and a few Panasonic demos
-    'analog_audio': True,
     # From the spec - audio frequencies are multiples of the (color) line rate
     'audio_lfreq': (1000000*315/88/227.5) * 146.25,
     'audio_rfreq': (1000000*315/88/227.5) * 178.75,
@@ -47,8 +43,9 @@ SysParams_NTSC = {
 # In color NTSC, the line period was changed from 63.5 to 227.5 color cycles,
 # which works out to 63.5(with a bar on top) usec
 SysParams_NTSC['line_period'] = 1/(SysParams_NTSC['fsc_mhz']/227.5)
-SysParams_NTSC['FPS'] = 1000000/ (525 * SysParams_NTSC['line_period'])
+SysParams_NTSC['FPS'] = 1000000/ (525 * SysParams_NTSC['line_period']) # ~29.976
 
+# XXX: more a decoder/tbc parameter, but 4X FSC is a standard that makes comb filters easy
 SysParams_NTSC['outlinelen'] = calclinelen(SysParams_NTSC, 4, 'fsc_mhz')
 
 SysParams_PAL = {
@@ -62,8 +59,6 @@ SysParams_PAL = {
     'ire0': 7100000,
     'hz_ire': 800000 / 100.0,
 
-    # only early PAL disks have analog audio
-    'analog_audio': True,
     # From the spec - audio frequencies are multiples of the (color) line rate
     'audio_lfreq': (1000000/64) * 43.75,
     'audio_rfreq': (1000000/64) * 68.25,
@@ -71,9 +66,9 @@ SysParams_PAL = {
     'philips_codelines': [19, 20, 21]
 }
 
+# XXX: even moreso, this is a decoder parameter
 SysParams_PAL['outlinelen'] = calclinelen(SysParams_PAL, 4, 'fsc_mhz')
 SysParams_PAL['outlinelen_pilot'] = calclinelen(SysParams_PAL, 4, 'pilot_mhz')
-
 
 SysParams_PAL['vsync_ire'] = .3 * (100 / .7)
 
@@ -112,9 +107,34 @@ RFParams_PAL = {
 }
 
 class RFDecode:
-    def __init__(self, inputfreq = 40, system = 'NTSC', blocklen_ = 16384, analog_audio = True):
-        self.blocklen = blocklen_
-        self.blockcut = 1024 # ???
+    """ RF decoding phase.
+    This uses FFT-based overlapping/clipping to do filtering (TODO: try overlap-add?) - this should support
+    GPU acceleration when someone/I gets along to it.
+    
+    Dataflow:
+    
+    all: Incoming Data -> FFT
+    
+    video path: inFFT -> video-frequency BPF[/optional analog audio filters] -> hilbert transform -> demod-FFT
+        demod-FFT -> low-pass-filters -> video/0.5mhz/burst/[PAL only pilot]
+        
+    audio path (optional): inFFT -> split into L/R -> bandpass filters -> L/R stage 1
+        Stage 2 then decimates further (4X) and applies low pass filters.
+        
+    """
+    def __init__(self, inputfreq = 40, system = 'NTSC', blocklen = 16384, blockcut = 1024, decode_analog_audio = True, has_analog_audio = True):
+        """The constructor - sets up demodulation parameters and sets up (initial) filters.
+        
+        Keyword arguments:
+        inputfreq = frequency in Msps.  (NOTE: only tested with 40Msps at this time)
+        system = video system (string, 'NTSC' or 'PAL')
+        blocklen = FFT blocklen.  16384/16K seems ideal for software FFT.  GPU FFT should probably be larger
+        blockcut = FFT block cut (default 1024 can be smaller if analog audio decoding is not done)
+        decode_analog_audio = enable analog audio decoding
+        has_analog_audio = set to False for NTSC/CD-V and digital sound PAL disks.
+        """
+        self.blocklen = blocklen
+        self.blockcut = blockcut 
         self.system = system
         
         freq = inputfreq
@@ -124,30 +144,38 @@ class RFDecode:
         self.freq_hz_half = self.freq * 1000000 / 2
         
         if system == 'NTSC':
-            self.SysParams = SysParams_NTSC
+            self.SysParams = SysParams_NTSC.copy()
             self.DecoderParams = RFParams_NTSC
             
             self.Filters = {
+                # The MTF filters were determined emprically and can probably be improved
                 'MTF': sps.zpk2tf([], [polar2z(.7,np.pi*12.5/20), polar2z(.7,np.pi*27.5/20)], 1.11)
             }
         elif system == 'PAL':
-            self.SysParams = SysParams_PAL
+            self.SysParams = SysParams_PAL.copy()
             self.DecoderParams = RFParams_PAL
             
             self.Filters = {
+                # PAL disks spin at a lower rate, so the MTF compenstation is steeper
                 'MTF': sps.zpk2tf([], [polar2z(.7,np.pi*10/20), polar2z(.7,np.pi*28/20)], 1.11)
             }
-
-        linelen = self.freq_hz/(1000000.0/self.SysParams['line_period'])
-        self.linelen = int(np.round(linelen))
             
-        self.analog_audio = analog_audio
+        self.SysParams['analog_audio'] = has_analog_audio
+
+        # Compute the input line length
+        linelen = self.freq_hz/(1000000.0/self.SysParams['line_period'])
+        self.linelen = int(np.round(linelen)) # TODO: search+replace to inlinelen
+        self.inlinelen = int(np.round(linelen))
+        
+        self.analog_audio = decode_analog_audio
             
         self.computevideofilters()
         if self.analog_audio: 
             self.computeaudiofilters()
             
     def computevideofilters(self):
+        """ Computes the FFT filters used for processing video.
+        """
         self.Filters = {}
         
         # Use some shorthand to compact the code.  good idea?  prolly not.
@@ -160,7 +188,7 @@ class RFDecode:
         filt_rfvideo = sps.butter(DP['video_bpf_order'], [DP['video_bpf'][0]/self.freq_hz_half, DP['video_bpf'][1]/self.freq_hz_half], btype='bandpass')
         SF['RFVideo'] = filtfft(filt_rfvideo, self.blocklen)
 
-        if SP['analog_audio']: 
+        if self.SysParams['analog_audio']: 
             cut_left = sps.butter(DP['audio_notchorder'], [(SP['audio_lfreq'] - DP['audio_notchwidth'])/self.freq_hz_half, (SP['audio_lfreq'] + DP['audio_notchwidth'])/self.freq_hz_half], btype='bandstop')
             SF['Fcutl'] = filtfft(cut_left, self.blocklen)
             cut_right = sps.butter(DP['audio_notchorder'], [(SP['audio_rfreq'] - DP['audio_notchwidth'])/self.freq_hz_half, (SP['audio_rfreq'] + DP['audio_notchwidth'])/self.freq_hz_half], btype='bandstop')
@@ -205,9 +233,11 @@ class RFDecode:
 
     # frequency domain slicers.  first and second stages use different ones...
     def audio_fdslice(self, freqdomain):
+        """ stage 1 frequency-domain decimation. """
         return np.concatenate([freqdomain[self.Filters['audio_fdslice_lo']], freqdomain[self.Filters['audio_fdslice_hi']]])
 
     def audio_fdslice2(self, freqdomain):
+        """ stage 1 frequency-domain decimation. """
         return np.concatenate([freqdomain[self.Filters['audio_fdslice2_lo']], freqdomain[self.Filters['audio_fdslice2_hi']]])
     
     def computeaudiofilters(self):
@@ -270,14 +300,31 @@ class RFDecode:
         adeemp_b, adeemp_a = sps.butter(1, [d75freq/(SF['freq_aud2']/2)], btype='lowpass')
         SF['audio_deemp2'] = filtfft([adeemp_b, adeemp_a],  self.blocklen // SF['audio_fdiv2'])
         
-        
     def iretohz(self, ire):
+        """ converts IRE (0 black, 100 white) to LD frequency per System Parameters.
+        
+        PAL does not use IRE, but rather 0v for SYNC, 0.3v for black, and 1.0v for white - but ld-decode does anyway...
+        """
         return self.SysParams['ire0'] + (self.SysParams['hz_ire'] * ire)
 
     def hztoire(self, hz):
+        """ Converts video HZ to IRE.  """
         return (hz - self.SysParams['ire0']) / self.SysParams['hz_ire']
     
     def demodblock(self, data, mtf_level = 0):
+        """ The core stage 1 demodulation function
+        
+        Parameters:
+        data: an array containing unfiltered RF data
+        mtf_level:  the amount of MTF compensation needed.  (typically between 0 and 0.5)
+        
+        Output format:  A tuple with two members:
+            video:  A numpy rec.array with channels for pure demod, 0.5mhz LPF, burst/pilot BPF, and a sync filter
+            audio:  Left and right stage 1 channels
+            
+        All output is in Laserdisc RF frequencies to be downconverted later.  This allows processing for wow(/flutter)
+        once the TBC works out the disk speed.
+        """
         indata_fft = np.fft.fft(data[:self.blocklen])
         indata_fft_filt = indata_fft * self.Filters['RFVideo']
 
@@ -299,6 +346,8 @@ class RFDecode:
         output_syncf = np.fft.ifft(np.fft.fft(output_sync) * self.Filters['FPsync']).real
 
         if self.system == 'PAL':
+            # PAL format includes a pilot signal. At some point NTSC color burst may be called pilot, since
+            # PAL's burst is not really used.
             out_videopilot = np.fft.ifft(demod_fft * self.Filters['FVideoPilot']).real
             rv_video = np.rec.array([out_video, out_video05, output_syncf, out_videoburst, out_videopilot], names=['demod', 'demod_05', 'demod_sync', 'demod_burst', 'demod_pilot'])
         else:
@@ -322,6 +371,7 @@ class RFDecode:
     # the frequency is reduced by 16/32x.
 
     def runfilter_audio_phase2(self, frame_audio, start):
+        """ runs second stage filtering.  FIXME: this duplicates code for L/R. """
         left = frame_audio['audio_left'][start:start+self.blocklen].copy() 
         left_fft = np.fft.fft(left)
         audio_out_fft = self.audio_fdslice2(left_fft) * self.Filters['audio_lpf2']
@@ -335,6 +385,7 @@ class RFDecode:
         return np.rec.array([left_out, right_out], names=['audio_left', 'audio_right'])
 
     def audio_phase2(self, field_audio):
+        """ The second phase audio filtering, which produces a ~200khz signal used for final downscaling """
         # this creates an output array with left/right channels.
         output_audio2 = np.zeros(len(field_audio['audio_left']) // self.Filters['audio_fdiv2'], dtype=field_audio.dtype)
 
@@ -411,17 +462,26 @@ class RFDecode:
         else:
             return output, None
 
-
 # right now defualt is 16/48, so not optimal :)
 def downscale_audio(audio, lineinfo, rf, linecount, timeoffset = 0, freq = 48000.0, scale=64):
     frametime = (rf.SysParams['line_period'] * linecount) / 1000000 
     soundgap = 1 / freq
 
+#    lineinfo = lineinfo.copy()
+    
+#    while (len(lineinfo) < linecount + 5):
+#        lineinfo.append(lineinfo[-1] + (lineinfo[-1] - lineinfo[-2]))
+
+    print('audio ', linecount, len(lineinfo))
+    
     # include one extra 'tick' to interpolate the last one and use as a return value
     # for the next frame
     arange = np.arange(timeoffset, frametime + soundgap, soundgap, dtype=np.double)
     locs = np.zeros(len(arange), dtype=np.float)
     swow = np.zeros(len(arange), dtype=np.float)
+    
+    lineloc = ((arange[-1] * 1000000) / rf.SysParams['line_period']) + 1    
+    print('a ', lineloc)
     
     for i, t in enumerate(arange):
         lineloc = ((t * 1000000) / rf.SysParams['line_period']) + 1
@@ -443,6 +503,7 @@ def downscale_audio(audio, lineinfo, rf, linecount, timeoffset = 0, freq = 48000
     output = np.zeros((2 * (len(arange) - 1)), dtype=np.int32)
     output16 = np.zeros((2 * (len(arange) - 1)), dtype=np.int16)
 
+    # FIXME: use the same Python routine used for video line scaling?  This proabably adds some jitter.
     # use two passes so the next location can be known
     for i in range(len(arange) - 1):    
         # rough linear approx for now
@@ -464,8 +525,8 @@ def downscale_audio(audio, lineinfo, rf, linecount, timeoffset = 0, freq = 48000
 
 #audb, offset, arange, locs = downscale_audio(fields[0].rawdecode[1], fields[0].linelocs, rfd, 262)
 
-# The Field class contains a common 
 class Field:
+    """ Common code for NTSC/PAL field-level TBC. """
 
     def usectoinpx(self, x):
         return x * self.rf.freq
@@ -508,15 +569,19 @@ class Field:
         # Determine first/second field
         # should this rely on what comes *after* the vsync too?
         line0 = None
-        for i in range(peaknum - 1, peaknum - 10, -1):
+        for i in range(peaknum - 10, peaknum + 1, 1):
             peak = ds[self.peaklist[i]]
-            prevpeak = ds[self.peaklist[i + 1]]
+            nextpeak = ds[self.peaklist[i + 1]]
 
-            if peak > .5 and line0 is None:
+            nextgap = self.peaklist[i + 1] - self.peaklist[i]
+
+            if line0 is None and nextpeak < .525 and inrange(nextgap, self.rf.inlinelen * .4, self.rf.inlinelen * .6):
                 line0 = i
 
-        return line0, (self.peaklist[line0 + 1] - self.peaklist[line0]) < (self.inlinelen * .75)     
+        vsgap = self.peaklist[peaknum] - self.peaklist[line0]
 
+        return line0, ds[self.peaklist[line0]] < .6
+    
     def determine_vsyncs(self):
         # find vsyncs from the peaklist
         ds = self.data[0]['demod_sync']
@@ -525,11 +590,13 @@ class Field:
         prevpeak = 1.0
         for i, p in enumerate(self.peaklist):
             peak = ds[p]
+            # XXX: write better detection code here
             if peak > .9 and prevpeak < .525:
                 vsyncs.append((i, *self.determine_field(i)))
 
             prevpeak = peak
-            
+        
+        print(vsyncs)
         return vsyncs
 
     def compute_linelocs(self):
@@ -543,7 +610,7 @@ class Field:
             # fill in as many missing lines as needed
             while (curline - linelocs[-1]) > (self.inlinelen * 1.95):
                 linelocs.append(linelocs[-1] + (linelocs[-1] - linelocs[-2]))
-            
+        
             if (curline - linelocs[-1]) > (self.inlinelen * 1.05):
                 linelocs.append(linelocs[-1] + self.inlinelen)
             elif (curline - linelocs[-1]) > (self.inlinelen * .95):
@@ -557,10 +624,10 @@ class Field:
 
         offset = 32 
 
-        err = [False] * len(self.linelocs1)
+        err = [False] * len(self.linelocs[0])
 
-        linelocs2 = self.linelocs1.copy()
-        for i in range(len(self.linelocs1)):
+        linelocs2 = self.linelocs[-1].copy()
+        for i in range(len(self.linelocs[0])):
             # First adjust the lineloc before the beginning of hsync - 
             # lines 1-9 are half-lines which need a smaller offset
             if i > 9:
@@ -611,7 +678,7 @@ class Field:
                 gap = self.rf.linelen
 
             linelocs2[i] = linelocs2[i + 1] - gap
-
+            
         # XXX2: more hack!  This one covers a bit at the end of a PAL field
         for i in range(300, len(linelocs2)):
             gap = linelocs2[i] - linelocs2[i - 1]
@@ -621,14 +688,30 @@ class Field:
 
             linelocs2[i] = linelocs2[i - 1] + gap
             
-            
-        return linelocs2, err  
-    
-    def downscale(self, lineinfo = None, outwidth = None, wow=True, channel='demod', audio = False):
+
+        return linelocs2, err    
+
+    def downscale_line(self, linenum, lineinfo = None, outwidth = None, wow=True, channel='demod'):
         if lineinfo is None:
-            lineinfo = self.linelocs
+            lineinfo = self.linelocs[-1]
         if outwidth is None:
             outwidth = self.outlinelen
+
+        scaled = scale(self.data[0][channel], lineinfo[linenum], lineinfo[linenum + 1], outwidth)
+
+        if wow:
+            linewow = (lineinfo[linenum + 1] - lineinfo[linenum]) / self.inlinelen
+            scaled *= linewow
+                
+        return scaled
+        
+    def downscale(self, lineinfo = None, outwidth = None, wow=True, channel='demod', audio = False, offset = 0):
+        if lineinfo is None:
+            lineinfo = self.linelocs[-1]
+        if outwidth is None:
+            outwidth = self.outlinelen
+            
+        lineinfoc = np.array(lineinfo, dtype=np.double) + offset
             
         dsout = np.zeros((self.linecount * outwidth), dtype=np.double)    
         dsaudio = None
@@ -636,21 +719,24 @@ class Field:
         sfactor = [None]
 
         for l in range(1, self.linecount):
-            scaled = scale(self.data[0][channel], lineinfo[l], lineinfo[l + 1], outwidth)
+            try:
+                scaled = scale(self.data[0][channel], lineinfoc[l], lineinfoc[l + 1], outwidth)
 
-            if wow:
-                linewow = (lineinfo[l + 1] - lineinfo[l]) / self.inlinelen
-                scaled *= linewow
+                if wow:
+                    linewow = (lineinfoc[l + 1] - lineinfoc[l]) / self.inlinelen
+                    scaled *= linewow
 
-            dsout[l * outwidth:(l + 1)*outwidth] = scaled
-
+                dsout[l * outwidth:(l + 1)*outwidth] = scaled
+            except:
+                pass
+                
         if audio and self.rf.analog_audio:
             self.dsaudio, self.audio_next_offset = downscale_audio(self.data[1], lineinfo, self.rf, self.linecount, self.audio_next_offset)
             
         return dsout, self.dsaudio
     
     def decodephillipscode(self, linenum):
-        linestart = self.linelocs[linenum]
+        linestart = self.linelocs[-1][linenum]
         data = self.data[0]['demod']
         curzc = calczc(data, int(linestart + self.usectoinpx(2)), self.rf.iretohz(50), _count=int(self.usectoinpx(12)))
 
@@ -690,6 +776,7 @@ class Field:
                     self.vbi['minutes'] += lc[4] * 10
                     self.vbi['minutes'] += lc[5]
                     self.vbi['isclv'] = True
+                    print('clv min ', self.vbi['minutes'])
                 elif lc[0] == 15: # CAV frame code
                     frame = (lc[1] & 7) * 10000
                     frame += (lc[2] * 1000)
@@ -697,6 +784,7 @@ class Field:
                     frame += (lc[4] * 10)
                     frame += lc[5] 
                     self.vbi['framenr'] = frame
+                    print('cav frame ', frame)
                 else:
                     h = lc[0] << 20
                     h |= lc[1] << 16
@@ -712,7 +800,7 @@ class Field:
                         self.vbi['clvframe'] = lc[4] * 10
                         self.vbi['clvframe'] += lc[5]
                         self.vbi['isclv'] = True
-                        #print('clv ', self.seconds, self.clvframe)
+                        print('clv s/f', self.seconds, self.clvframe)
 
                     htop = h >> 12
                     if htop == 0x8dc or htop == 0x8ba:
@@ -743,7 +831,7 @@ class Field:
         self.audio_next_offset = audio_offset
         
         if len(self.vsyncs) == 0:
-            self.nextfieldoffset = start + (self.rf.linelen * 200)
+            self.nextfieldoffset = start + self.rf.linelen
             print("way too short")
             return
         elif len(self.vsyncs) == 1:
@@ -754,18 +842,17 @@ class Field:
         #print(self.peaklist[self.vsyncs[0][1]], self.peaklist[self.vsyncs[1][1]])
         self.nextfieldoffset = self.peaklist[self.vsyncs[1][1]-10]
         
-        self.isfirst = self.vsyncs[0][2]
+        self.bottomfield = self.vsyncs[0][2]
         
         # On NTSC linecount is 262/263, PAL 312/313?
         self.linecount = self.rf.SysParams['frame_lines'] // 2
-        if not self.isfirst:
+        if not self.bottomfield:
             self.linecount += 1
         
-        self.linelocs1 = self.compute_linelocs()
-        self.linelocs2, self.errs2 = self.refine_linelocs_hsync()
+        self.linelocs = [self.compute_linelocs()]
+        linelocs2, self.errs2 = self.refine_linelocs_hsync()
+        self.linelocs.append(linelocs2)
 
-        self.linelocs = self.linelocs2
-        
         # VBI info
         self.isclv = False
         self.linecode = {}
@@ -782,58 +869,45 @@ class Field:
 # These classes extend Field to do PAL/NTSC specific TBC features.
 
 class FieldPAL(Field):
-    def refine_linelocs_pilot(self):
-        linelocsx = self.linelocs.copy()
+    def refine_linelocs_pilot(self, linelocs = None):
+        if linelocs is None:
+            linelocs = self.linelocs[1].copy()
+        else:
+            linelocs = linelocs.copy()
 
-        plen = self.rf.SysParams['outlinelen_pilot']
-        ds_pilot15, noaudio = self.downscale(outwidth=plen, channel='demod_pilot')
-        #ds_picture15, noaudio = self.downscale(outwidth=plen, channel='demod')
+        for l in range(len(linelocs)):
+            pilot = self.data[0]['demod'][int(linelocs[l]-self.usectoinpx(4.7)):int(linelocs[l])].copy()
+            pilot -= self.data[0]['demod_05'][int(linelocs[l]-self.usectoinpx(4.7))+32:int(linelocs[l])+32]
+            pilot = np.flip(pilot)
 
-        loffsets = np.full(len(linelocsx), np.nan, dtype=np.float32)
+            adjfreq = self.rf.freq
+            if l > 1:
+                adjfreq /= (linelocs[l] - linelocs[l - 1]) / self.rf.inlinelen
 
-        for l in range(1, self.linecount+1):
-            #pilot = ds_picture15[int((l*plen) - (4.3*15)):int((l*plen) - (.6*15))].copy()
-            pilot = ds_pilot15[int((l*plen) - (3.3*15)):int((l*plen) + (.6*15))].copy()
-
-            pilot -= np.mean(pilot)
-            pilot_std = np.std(pilot)
-
-            offsets = 0
-            oc = 0
             i = 0
+
+            offsets = []
+
             while i < len(pilot):
-                # use only low->high transitions since the low level is only valid in pilot signals
-                if pilot[i] < -np.std(pilot):
+                if inrange(pilot[i], -300000, -100000):
                     zc = calczc(pilot, i, 0)
-                    if zc:
-                        i = int(np.ceil(zc))
-                        offsets += zc - ((zc//4)*4)
-                        oc += 1
+
+                    if zc is not None:
+                        zcp = zc / (adjfreq / 3.75)
+                        #print(i, pilot[i], zc, zcp, np.round(zcp) - zcp)
+
+                        offsets.append(np.round(zcp) - zcp)
+
+                        i = np.int(zc + 1)
 
                 i += 1
 
-            if (oc):
-                offsets /= oc
-                loffsets[l] = offsets
-                #print(l, offsets)
+            if len(offsets) >= 3:
+                offsetmedian = np.median(offsets[1:-1])
+                #print(l, offsetmedian)
+                linelocs[l] += offsetmedian * (self.rf.freq / 3.75) * .25
 
-        tgt = np.round(np.median(loffsets[np.isnan(loffsets) == False]))
-        #print(tgt)
-
-        # Now correct offsets that are outside the expected range
-        loffsets[np.isnan(loffsets)] = 0
-        loffsets[np.where((loffsets - tgt) < -2)] += 4
-        loffsets[np.where((loffsets - tgt) > 2)] -= 4
-
-        for l in range(1, self.linecount):
-            if np.isnan(loffsets[l]):
-                continue
-
-            #print(l, (loffsets[l] - tgt) * (self.rf.freq / 15))
-            linelocsx[l] += (loffsets[l] - tgt) * (self.rf.freq / 15)
-            linelocsx[l] += 1
-
-        return linelocsx    
+        return linelocs
     
     def downscale(self, final = False, *args, **kwargs):
         dsout, dsaudio = super(FieldPAL, self).downscale(audio = final, *args, **kwargs)
@@ -855,7 +929,7 @@ class FieldPAL(Field):
         if not self.valid:
             return
         
-        self.linelocs = self.refine_linelocs_pilot()
+        self.linelocs.append(self.refine_linelocs_pilot())
         
         self.downscale(wow = True, final=True)
 
@@ -942,7 +1016,13 @@ class FieldNTSC(Field):
         return np.array(linelocs3), burstlevel#, phaseaverages
 
     def downscale(self, final = False, *args, **kwargs):
-        dsout, dsaudio = super(FieldNTSC, self).downscale(audio = final, *args, **kwargs)
+        if final:
+            shift33 = ((33.0 / 360.0) * np.pi) * .5
+            offset = (-1 - shift33) * (self.rf.freq / (4 * 315 / 88))
+        else:
+            offset = 0
+
+        dsout, dsaudio = super(FieldNTSC, self).downscale(audio = final, offset = offset, *args, **kwargs)
         
         if final:
             reduced = (dsout - self.rf.SysParams['ire0']) / self.rf.SysParams['hz_ire']
@@ -958,7 +1038,7 @@ class FieldNTSC(Field):
                     else:
                         lines16[((i + 0) * self.outlinelen)] = 32768
 
-                    clevel = .5/hz_ire_scale
+                    clevel = .4/hz_ire_scale
 
                     lines16[((i + 0) * self.outlinelen) + 1] = np.uint16(327.67 * clevel * np.abs(self.burstlevel[i]))
 
@@ -979,14 +1059,20 @@ class FieldNTSC(Field):
             return
         
         # This needs to be run twice to get optimal burst levels
-        self.linelocs3, self.burstlevel = self.refine_linelocs_burst(self.linelocs2)
-        self.linelocs4, self.burstlevel = self.refine_linelocs_burst(self.linelocs3)
+        linelocs3, self.burstlevel = self.refine_linelocs_burst(self.linelocs[-1])
+        self.linelocs.append(linelocs3)
+        linelocs4, self.burstlevel = self.refine_linelocs_burst(self.linelocs[-1])
+        self.linelocs.append(linelocs4)
         
         # Now adjust 33 degrees for color decoding
         shift33 = ((33.0 / 360.0) * np.pi) * .5
-        self.linelocs = self.apply_offsets(self.linelocs4, -1 - shift33)
+        #offset = (-1 - shift33) * (phaseoffset * (self.rf.freq / (4 * 315 / 88)))
+        self.linelocs.append(self.apply_offsets(self.linelocs[-1], -1 - shift33))
         
         self.downscale(wow = True, final=True)
+
+#fp2 = FieldPAL(rfd, rawdecode, 0)
+
 
 class Framer:
     def __init__(self, rf):
@@ -998,11 +1084,13 @@ class Framer:
             self.readlen = 1000000
             self.outlines = 610
             self.outwidth = 1052
+            self.bottomfieldfirst = False
         else:
             self.FieldClass = FieldNTSC
             self.readlen = 900000
             self.outlines = 505
             self.outwidth = 844
+            self.bottomfieldfirst = True
         
         self.audio_offset = 0
 
@@ -1016,13 +1104,13 @@ class Framer:
                 f = self.FieldClass(self.rf, rawdecode, 0, audio_offset = self.audio_offset)
                 nextsample = readsample + f.nextfieldoffset
             else:
-#                print(readsample, type(infile))
                 f = self.FieldClass(self.rf, infile, readsample)
                 nextsample = f.nextfieldoffset
                 if not f.valid and len(f.vsyncs) == 0:
                     return None, None
             
             if not f.valid:
+                print('invalid ', readsample, nextsample)
                 readsample = nextsample # f.nextfieldoffset
             else:
                 return f, nextsample # readsample + f.nextfieldoffset
@@ -1034,14 +1122,14 @@ class Framer:
                 vbi_merged[k] = fields[1].vbi[k]
                 
         if vbi_merged['seconds'] is not None:
-            fps = 30
+            fps = np.round() # XXX PAL
             vbi_merged['framenr'] = vbi_merged['minutes'] * 60 * fps
             vbi_merged['framenr'] += vbi_merged['seconds'] * fps
             vbi_merged['framenr'] += vbi_merged['clvframe']
                 
         return vbi_merged
 
-    def readframe(self, infile, sample, firstframe = False, CAV = False):
+    def readframe(self, infile, sample, firstframe = False, usePhilipsCode = False):
         fieldcount = 0
         fields = [None, None]
         audio = []
@@ -1056,20 +1144,21 @@ class Framer:
 
                 #tmpfield = f.downscale()
                 
-                print(f.isfirst, f.framenr)
-                if f.isfirst:
-                    fields[0] = f
-                else:
+                print(f.bottomfield, f.vbi['framenr'])
+                if f.bottomfield:
                     fields[1] = f
-                    
-                if not CAV and f.isfirst:
+                else:
+                    fields[0] = f
+                
+                if usePhilipsCode and (f.vbi['framenr'] or f.vbi['minutes']):
+                    fieldcount = 1
+                elif f.bottomfield == self.bottomfieldfirst:
                     fieldcount = 1
                 elif fieldcount == 1:
                     fieldcount = 2
-                elif CAV and f.vbi['framenr']:
-                        fieldcount = 1
-
+                
                 if (fieldcount or not firstframe) and f.dsaudio is not None:
+#                    print('a')
                     audio.append(f.dsaudio)
 
             else:
@@ -1082,19 +1171,15 @@ class Framer:
         else:
             conaudio = None
             
-        if fields[0].isfirst:
-            pictures = [fields[1].dspicture, fields[0].dspicture]
-        else:
-            pictures = [fields[0].dspicture, fields[1].dspicture]
-
         linecount = (min(fields[0].linecount, fields[1].linecount) * 2) - 20
 
         combined = np.zeros((self.outwidth * self.outlines), dtype=np.uint16)
+
         for i in range(0, linecount, 2):
             curline = (i // 2) + 10
-            combined[((i + 0) * self.outwidth):((i + 1) * self.outwidth)] = pictures[0][curline * fields[0].outlinelen: (curline * fields[0].outlinelen) + self.outwidth]
-            combined[((i + 1) * self.outwidth):((i + 2) * self.outwidth)] = pictures[1][curline * fields[0].outlinelen: (curline * fields[0].outlinelen) + self.outwidth]
+            combined[((i + 0) * self.outwidth):((i + 1) * self.outwidth)] = fields[0].dspicture[curline * fields[0].outlinelen: (curline * fields[0].outlinelen) + self.outwidth]
+            combined[((i + 1) * self.outwidth):((i + 2) * self.outwidth)] = fields[1].dspicture[curline * fields[0].outlinelen: (curline * fields[0].outlinelen) + self.outwidth]
         
         self.vbi = self.mergevbi(fields)
 
-        return combined, conaudio, sample #, audio
+        return combined, conaudio, sample, fields
