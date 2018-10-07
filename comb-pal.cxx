@@ -46,8 +46,8 @@ int dim = 2;
 
 //const double freq = 4.0;
 
-double irescale = 327.67;
-double irebase = 1;
+double irescale = 376.32;
+double irebase = 0;
 inline uint16_t ire_to_u16(double ire);
 
 // tunables
@@ -110,7 +110,7 @@ inline double u16_to_ire(uint16_t level)
 {
 	if (level == 0) return -100;
 	
-	return -60 + ((double)(level - irebase) / irescale); 
+	return -43.122874 + ((double)(level - irebase) / irescale); 
 }
 
 int cline = -1;
@@ -141,9 +141,9 @@ struct RGB {
 
 inline uint16_t ire_to_u16(double ire)
 {
-	if (ire <= -60) return 0;
+	if (ire <= -50) return 0;
 	
-	return clamp(((ire + 60) * irescale) + irebase, 1, 65535);
+	return clamp(((ire + 43.122874) * irescale) + irebase, 1, 65535);
 } 
 
 int write_locs = -1;
@@ -565,8 +565,9 @@ class Comb
 				if (fabs(angle[l + 1] - angle[l]) < 20) phasecount++; 
 			}
 			bool phase = phasecount > (tot / 2);
-
-			for (int l = firstline; l < in_y; l++) {
+			//cerr << "phase " << phase << endl; 
+			
+			for (int l = firstline; l < (in_y - 2); l++) {
 				double burstlev = 8; // Frame[f].rawbuffer[(l * in_x) + 1] / irescale;
 				uint16_t *line_output = &output[(in_x * 3 * (l - firstline))];
 				int o = 0;
@@ -602,18 +603,25 @@ class Comb
 				for (int h = 0; h < in_x; h++) {
 					RGB r;
 					YIQ yiq = cbuf[l].p[h + 0];
-
+					YIQ yiqp = cbuf[l - 2].p[h + 0];
+					
 //					yiq.i = (yiqp.i + yiq.i) / 1;
 //					yiq.q = (yiqp.q + yiq.q) / 1;
 
 					yiq.i *= (10 / aburstlev);
 					yiq.q *= (10 / aburstlev);
 					
+					yiqp.i *= (10 / aburstlev);
+					yiqp.q *= (10 / aburstlev);
+					
 					double i = yiq.i, q = yiq.q;
-
+					double ip = yiqp.i, qp = yiqp.q;
+				
 					int rotate = l % 4;
 					bool flip = (rotate == 1) || (rotate == 2);
 					if (phase) flip = !flip;
+
+					//flip = 1;
 
 					if (flip) {
 						yiq.i = -q;
@@ -859,7 +867,7 @@ class Comb
 			AdjustY(f, tbuf);
 			if (f_colorlpf) FilterIQ(tbuf, f);
 			DoYNR(f, tbuf);
-			DoCNR(f, tbuf);
+			//DoCNR(f, tbuf);
 			ToRGB(f, firstline, tbuf);
 	
 			PostProcess(f);
