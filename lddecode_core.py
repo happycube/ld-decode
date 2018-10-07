@@ -512,7 +512,7 @@ class Field:
             peak = ds[self.peaklist[i]]
             prevpeak = ds[self.peaklist[i + 1]]
 
-            if peak > .6 and line0 is None:
+            if peak > .5 and line0 is None:
                 line0 = i
 
         return line0, (self.peaklist[line0 + 1] - self.peaklist[line0]) < (self.inlinelen * .75)     
@@ -840,8 +840,8 @@ class FieldPAL(Field):
         
         if final:
             reduced = (dsout - self.rf.SysParams['ire0']) / self.rf.SysParams['hz_ire']
-            reduced += 20
-            out_scale = 65534.0 / 120
+            reduced += self.rf.SysParams['vsync_ire']
+            out_scale = np.double(0xd300 - 0x0100) / (100 + self.rf.SysParams['vsync_ire'])
             lines16 = np.uint16(np.clip(reduced * out_scale, 0, 65535) + 0.5)
             
             self.dspicture = lines16
