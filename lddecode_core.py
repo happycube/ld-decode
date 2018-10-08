@@ -956,15 +956,13 @@ class FieldNTSC(Field):
             pilot -= self.data[0]['demod_05'][begin+32:end+32]
 
             burstlevel[l] = np.max(np.abs(pilot))
-            if not inrange(burstlevel[l] / hz_ire_scale, 5, 60):
+            if not inrange(burstlevel[l] / hz_ire_scale, 5, 30):
                 burstlevel[l] = 0
                 continue        
 
             adjfreq = self.rf.freq
             if l > 1:
-                linegap = linelocs[l] - linelocs[l - 1]
-                ratio = linegap / self.rf.inlinelen
-                adjfreq /= linegap / ratio
+                adjfreq /= (linelocs[l] - linelocs[l - 1]) / self.rf.inlinelen
 
             # True:  hi->low, False: low->hi
             burstoffsets = {False: [], True:[]}
@@ -977,7 +975,7 @@ class FieldNTSC(Field):
                     if zc is not None:
                         zc_adj = zc + self.usectoinpx(0.5)
                         zcp = zc_adj / (adjfreq / fsc)
-                        #print(l, i, pilot[i], zc, zcp, np.round(zcp) - zcp)
+    #                    print(i, pilot[i], zc, zcp, np.round(zcp) - zcp)
 
                         burstoffsets[pilot[i] > 0].append(np.round(zcp) - zcp)
 
@@ -1002,16 +1000,16 @@ class FieldNTSC(Field):
             adjust = np.round(offset) - offset
             adjust /= 2
 
-            print('l', l, offset, adjust, adjust * (self.rf.freq / fsc) * .25)
+    #        print(l, offset, adjust, adjust * (self.rf.freq / fsc) * .25)
             linelocs[l] += adjust * (self.rf.freq / fsc) * 1
 
-        for l in range(11, len(linelocs) - 1):
+        for l in range(1, len(linelocs) - 1):
             if burstlevel[l] == 0:
                 gap = linelocs[l - 1] - linelocs[l - 2]
                 linelocs[l] = linelocs[l - 1] + gap
 
         return linelocs, burstlevel
-    
+
     def downscale(self, final = False, *args, **kwargs):
         if final:
             shift33 = ((33.0 / 360.0) * np.pi) * .5
