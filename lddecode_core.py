@@ -338,20 +338,21 @@ class RFDecode:
 
         out_video = np.fft.ifft(demod_fft * self.Filters['FVideo']).real
         out_video05 = np.fft.ifft(demod_fft * self.Filters['FVideo05']).real
-        out_videoburst = np.fft.ifft(demod_fft * self.Filters['FVideoBurst']).real
+        #out_videoburst = np.fft.ifft(demod_fft * self.Filters['FVideoBurst']).real
         
         # NTSC: filtering for vsync pulses from -55 to -25ire seems to work well even on rotted disks
         output_sync = inrange(out_video05, self.iretohz(-55), self.iretohz(-25))
         # Perform FFT convolution of above filter
         output_syncf = np.fft.ifft(np.fft.fft(output_sync) * self.Filters['FPsync']).real
 
-        if self.system == 'PAL':
+        if False: #self.system == 'PAL':
             # PAL format includes a pilot signal. At some point NTSC color burst may be called pilot, since
             # PAL's burst is not really used.
             out_videopilot = np.fft.ifft(demod_fft * self.Filters['FVideoPilot']).real
             rv_video = np.rec.array([out_video, out_video05, output_syncf, out_videoburst, out_videopilot], names=['demod', 'demod_05', 'demod_sync', 'demod_burst', 'demod_pilot'])
         else:
-            rv_video = np.rec.array([out_video, out_video05, output_syncf, out_videoburst], names=['demod', 'demod_05', 'demod_sync', 'demod_burst'])
+            #rv_video = np.rec.array([out_video, out_video05, output_syncf, out_videoburst], names=['demod', 'demod_05', 'demod_sync', 'demod_burst'])
+            rv_video = np.rec.array([out_video, out_video05, output_syncf], names=['demod', 'demod_05', 'demod_sync'])
 
         if self.analog_audio == False:
             return rv_video, None
@@ -936,84 +937,73 @@ class FieldPAL(Field):
 # These classes extend Field to do PAL/NTSC specific TBC features.
 
 class FieldNTSC(Field):
+    def refine_linelocs_burst(self, linelocs = None):
+        if linelocs is None:
+            linelocs = self.linelocs[1].copy()
+        else:
+            linelocs = linelocs.copy()
 
-    def refine_linelocs_burst(self, linelocs2):
-        hz_ire_scale = 1700000 / 140
+        fsc = self.rf.SysParams['fsc_mhz']     
+        hz_ire_scale = 1700000 / 140        
 
-        scaledburst, audio = self.downscale(outwidth=self.outlinelen, channel='demod_burst')
+        burstlevel = np.zeros_like(linelocs, dtype=np.float32)
 
-        linelocs3 = linelocs2.copy()
-        burstlevel = np.zeros_like(linelocs3, dtype=np.float32)
+        for l in range(len(linelocs)):
+            begin = int(linelocs[l]+self.usectoinpx(0.5))
+            end = int(linelocs[l]+self.usectoinpx(3.5))
 
-        # Compute the zero crossings first, and then determine if 
-        # alignment should be to the nearest odd/even pixel.  Having a 2px
-        # granularity seems to help (single frame) quality but may have issues
-        # later on... :P
+            pilot = self.data[0]['demod'][begin:end].copy()
+            pilot -= self.data[0]['demod_05'][begin+32:end+32]
 
-        phaseaverages = np.zeros([len(linelocs2), 2], dtype=np.double)
-
-        for l in range(self.linecount):
-            # Since each line is lined up to the beginning of HSYNC and this is 4fsc,
-            # we can scan the burst area explicitly (~0.6 to ~2.9usec)
-            ba = scaledburst[(self.outlinelen*l)+20:self.outlinelen*(l+0)+60].copy()
-            ba -= np.mean(ba)
-            burstlevel[l] = np.max(np.abs(ba))
-            #print(np.argmax(ba))
-
-            # max should be 20.  if there are any pixels > 30 there's probably a rot-spike
-            if (burstlevel[l] / hz_ire_scale) > 30:
+            burstlevel[l] = np.max(np.abs(pilot))
+            if not inrange(burstlevel[l] / hz_ire_scale, 5, 30):
                 burstlevel[l] = 0
-                continue
+                continue        
+
+            adjfreq = self.rf.freq
+            if l > 1:
+                adjfreq /= (linelocs[l] - linelocs[l - 1]) / self.rf.inlinelen
 
             # True:  hi->low, False: low->hi
             burstoffsets = {False: [], True:[]}
 
-            bi = 0
-            while bi < len(ba):
-                if np.abs(ba[bi]) > burstlevel[l] * .6:
-                    zc = calczc(ba, bi, 0)
+            i = 0
+            while i < len(pilot):
+                if inrange(np.abs(pilot[i]), 100000, 300000):
+                    zc = calczc(pilot, i, 0)
 
                     if zc is not None:
-                        offset = zc - ((np.floor(zc/4)*4) - 1)
-                        if offset > 3.5:
-                            offset -= 4
-                        burstoffsets[ba[bi] > 0].append(offset)
-                        bi = np.int(zc)
+                        zc_adj = zc + self.usectoinpx(0.5)
+                        zcp = zc_adj / (adjfreq / fsc)
+    #                    print(i, pilot[i], zc, zcp, np.round(zcp) - zcp)
 
-                bi += 1
+                        burstoffsets[pilot[i] > 0].append(np.round(zcp) - zcp)
+
+                        i = np.int(zc + 1)
+
+                i += 1
 
             if len(burstoffsets[False]) < 3 or len(burstoffsets[True]) < 3:
+                burstlevel[l] = 0
                 continue
 
             # Chop the first and last bursts since their phase can be off
             for v in [False, True]:
                 burstoffsets[v] = np.array(burstoffsets[v][1:-1])
 
-            # deal with the 180 degree per-line shift here, then choose the closer group to 2.
-            if l % 2:
-                phaseaverages[l] = (2 - np.mean(burstoffsets[True]), 2 - np.mean(burstoffsets[False]))
+            if np.median(burstoffsets[False]) < np.median(burstoffsets[True]):
+                offset = np.median(burstoffsets[False])
             else:
-                phaseaverages[l] = (2 - np.mean(burstoffsets[False]), 2 - np.mean(burstoffsets[True]))
+                offset = np.median(burstoffsets[True])
+                burstlevel[l] = -burstlevel[l]
 
-        # need to remove lines with no/bad colorburst to compute medians
-        phaseaverages_cut = phaseaverages[np.logical_or(phaseaverages[:,0] != 0, phaseaverages[:,1] != 0)]
-        if np.median(phaseaverages_cut[:,0]) < np.median(phaseaverages_cut[:,1]):
-            phasegroup = 0
-        else:
-            phasegroup = 1
+            adjust = np.round(offset) - offset
+            adjust /= 2
 
-        adjset = phaseaverages[:,phasegroup]
-        burstlevel[phasegroup::2] = -burstlevel[phasegroup::2]
+    #        print(l, offset, adjust, adjust * (self.rf.freq / fsc) * .25)
+            linelocs[l] += adjust * (self.rf.freq / fsc) * 1
 
-        for l in range(len(linelocs3)):
-            linelocs3[l] -= (adjset[l] + 1) * (40 / (4 * 315 / 88)) * .8
-
-        for l in range(1, len(linelocs3) - 1):
-            if burstlevel[l] == 0:
-                gap = linelocs3[l - 1] - linelocs3[l - 2]
-                linelocs3[l] = linelocs3[l - 1] + gap
-
-        return np.array(linelocs3), burstlevel#, phaseaverages
+        return linelocs, burstlevel
 
     def downscale(self, final = False, *args, **kwargs):
         if final:
