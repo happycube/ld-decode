@@ -1003,6 +1003,11 @@ class FieldNTSC(Field):
     #        print(l, offset, adjust, adjust * (self.rf.freq / fsc) * .25)
             linelocs[l] += adjust * (self.rf.freq / fsc) * 1
 
+        for l in range(1, len(linelocs) - 1):
+            if burstlevel[l] == 0:
+                gap = linelocs[l - 1] - linelocs[l - 2]
+                linelocs[l] = linelocs[l - 1] + gap
+
         return linelocs, burstlevel
 
     def downscale(self, final = False, *args, **kwargs):
