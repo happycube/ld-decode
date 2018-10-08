@@ -1056,8 +1056,6 @@ class FieldNTSC(Field):
         # This needs to be run twice to get optimal burst levels
         linelocs3, self.burstlevel = self.refine_linelocs_burst(self.linelocs[-1])
         self.linelocs.append(linelocs3)
-        linelocs4, self.burstlevel = self.refine_linelocs_burst(self.linelocs[-1])
-        self.linelocs.append(linelocs4)
         
         # Now adjust 33 degrees for color decoding
         shift33 = ((33.0 / 360.0) * np.pi) * .5
