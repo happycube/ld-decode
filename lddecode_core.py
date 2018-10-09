@@ -1,3 +1,5 @@
+# Note:  This is a work in progress based on the ld-decode-r3 notebook.  This may not (or might) be up to date.
+
 from base64 import b64encode
 import copy
 from datetime import datetime
@@ -29,12 +31,12 @@ SysParams_NTSC = {
     'fsc_mhz': (315.0 / 88.0),
     'pilot_mhz': (315.0 / 88.0),
     'frame_lines': 525,
-    
-    'hsync_length': 4.6,
 
     'ire0': 8100000,
     'hz_ire': 1700000 / 140.0,
 
+    # most NTSC disks have analog audio, except CD-V and a few Panasonic demos
+    'analog_audio': True,
     # From the spec - audio frequencies are multiples of the (color) line rate
     'audio_lfreq': (1000000*315/88/227.5) * 146.25,
     'audio_rfreq': (1000000*315/88/227.5) * 178.75,
@@ -45,9 +47,8 @@ SysParams_NTSC = {
 # In color NTSC, the line period was changed from 63.5 to 227.5 color cycles,
 # which works out to 63.5(with a bar on top) usec
 SysParams_NTSC['line_period'] = 1/(SysParams_NTSC['fsc_mhz']/227.5)
-SysParams_NTSC['FPS'] = 1000000/ (525 * SysParams_NTSC['line_period']) # ~29.976
+SysParams_NTSC['FPS'] = 1000000/ (525 * SysParams_NTSC['line_period'])
 
-# XXX: more a decoder/tbc parameter, but 4X FSC is a standard that makes comb filters easy
 SysParams_NTSC['outlinelen'] = calclinelen(SysParams_NTSC, 4, 'fsc_mhz')
 
 SysParams_PAL = {
@@ -58,11 +59,11 @@ SysParams_PAL = {
     'frame_lines': 625,
     'line_period': 64,
 
-    'hsync_length': 4.72,
-
     'ire0': 7100000,
     'hz_ire': 800000 / 100.0,
 
+    # only early PAL disks have analog audio
+    'analog_audio': True,
     # From the spec - audio frequencies are multiples of the (color) line rate
     'audio_lfreq': (1000000/64) * 43.75,
     'audio_rfreq': (1000000/64) * 68.25,
@@ -70,9 +71,9 @@ SysParams_PAL = {
     'philips_codelines': [19, 20, 21]
 }
 
-# XXX: even moreso, this is a decoder parameter
 SysParams_PAL['outlinelen'] = calclinelen(SysParams_PAL, 4, 'fsc_mhz')
 SysParams_PAL['outlinelen_pilot'] = calclinelen(SysParams_PAL, 4, 'pilot_mhz')
+
 
 SysParams_PAL['vsync_ire'] = .3 * (100 / .7)
 
@@ -111,34 +112,9 @@ RFParams_PAL = {
 }
 
 class RFDecode:
-    """ RF decoding phase.
-    This uses FFT-based overlapping/clipping to do filtering (TODO: try overlap-add?) - this should support
-    GPU acceleration when someone/I gets along to it.
-    
-    Dataflow:
-    
-    all: Incoming Data -> FFT
-    
-    video path: inFFT -> video-frequency BPF[/optional analog audio filters] -> hilbert transform -> demod-FFT
-        demod-FFT -> low-pass-filters -> video/0.5mhz/burst/[PAL only pilot]
-        
-    audio path (optional): inFFT -> split into L/R -> bandpass filters -> L/R stage 1
-        Stage 2 then decimates further (4X) and applies low pass filters.
-        
-    """
-    def __init__(self, inputfreq = 40, system = 'NTSC', blocklen = 16384, blockcut = 1024, decode_analog_audio = True, has_analog_audio = True):
-        """The constructor - sets up demodulation parameters and sets up (initial) filters.
-        
-        Keyword arguments:
-        inputfreq = frequency in Msps.  (NOTE: only tested with 40Msps at this time)
-        system = video system (string, 'NTSC' or 'PAL')
-        blocklen = FFT blocklen.  16384/16K seems ideal for software FFT.  GPU FFT should probably be larger
-        blockcut = FFT block cut (default 1024 can be smaller if analog audio decoding is not done)
-        decode_analog_audio = enable analog audio decoding
-        has_analog_audio = set to False for NTSC/CD-V and digital sound PAL disks.
-        """
-        self.blocklen = blocklen
-        self.blockcut = blockcut 
+    def __init__(self, inputfreq = 40, system = 'NTSC', blocklen_ = 16384, analog_audio = True):
+        self.blocklen = blocklen_
+        self.blockcut = 1024 # ???
         self.system = system
         
         freq = inputfreq
@@ -148,38 +124,30 @@ class RFDecode:
         self.freq_hz_half = self.freq * 1000000 / 2
         
         if system == 'NTSC':
-            self.SysParams = SysParams_NTSC.copy()
+            self.SysParams = SysParams_NTSC
             self.DecoderParams = RFParams_NTSC
             
             self.Filters = {
-                # The MTF filters were determined emprically and can probably be improved
                 'MTF': sps.zpk2tf([], [polar2z(.7,np.pi*12.5/20), polar2z(.7,np.pi*27.5/20)], 1.11)
             }
         elif system == 'PAL':
-            self.SysParams = SysParams_PAL.copy()
+            self.SysParams = SysParams_PAL
             self.DecoderParams = RFParams_PAL
             
             self.Filters = {
-                # PAL disks spin at a lower rate, so the MTF compenstation is steeper
                 'MTF': sps.zpk2tf([], [polar2z(.7,np.pi*10/20), polar2z(.7,np.pi*28/20)], 1.11)
             }
-            
-        self.SysParams['analog_audio'] = has_analog_audio
 
-        # Compute the input line length
         linelen = self.freq_hz/(1000000.0/self.SysParams['line_period'])
-        self.linelen = int(np.round(linelen)) # TODO: search+replace to inlinelen
-        self.inlinelen = int(np.round(linelen))
-        
-        self.analog_audio = decode_analog_audio
+        self.linelen = int(np.round(linelen))
+            
+        self.analog_audio = analog_audio
             
         self.computevideofilters()
         if self.analog_audio: 
             self.computeaudiofilters()
             
     def computevideofilters(self):
-        """ Computes the FFT filters used for processing video.
-        """
         self.Filters = {}
         
         # Use some shorthand to compact the code.  good idea?  prolly not.
@@ -192,7 +160,7 @@ class RFDecode:
         filt_rfvideo = sps.butter(DP['video_bpf_order'], [DP['video_bpf'][0]/self.freq_hz_half, DP['video_bpf'][1]/self.freq_hz_half], btype='bandpass')
         SF['RFVideo'] = filtfft(filt_rfvideo, self.blocklen)
 
-        if self.SysParams['analog_audio']: 
+        if SP['analog_audio']: 
             cut_left = sps.butter(DP['audio_notchorder'], [(SP['audio_lfreq'] - DP['audio_notchwidth'])/self.freq_hz_half, (SP['audio_lfreq'] + DP['audio_notchwidth'])/self.freq_hz_half], btype='bandstop')
             SF['Fcutl'] = filtfft(cut_left, self.blocklen)
             cut_right = sps.butter(DP['audio_notchorder'], [(SP['audio_rfreq'] - DP['audio_notchwidth'])/self.freq_hz_half, (SP['audio_rfreq'] + DP['audio_notchwidth'])/self.freq_hz_half], btype='bandstop')
@@ -222,7 +190,6 @@ class RFDecode:
         F0_5 = sps.firwin(65, [0.5/self.freq_half], pass_zero=True)
         SF['F0_5'] = filtfft((F0_5, [1.0]), self.blocklen)
         SF['FVideo05'] = SF['Fvideo_lpf'] * SF['Fdeemp']  * SF['F0_5']
-        SF['FVideo05_delay'] = 32
 
         SF['Fburst'] = filtfft(sps.butter(1, [(SP['fsc_mhz']-.1)/self.freq_half, (SP['fsc_mhz']+.1)/self.freq_half], btype='bandpass'), self.blocklen) 
         SF['FVideoBurst'] = SF['Fvideo_lpf'] * SF['Fdeemp']  * SF['Fburst']
@@ -238,11 +205,9 @@ class RFDecode:
 
     # frequency domain slicers.  first and second stages use different ones...
     def audio_fdslice(self, freqdomain):
-        """ stage 1 frequency-domain decimation. """
         return np.concatenate([freqdomain[self.Filters['audio_fdslice_lo']], freqdomain[self.Filters['audio_fdslice_hi']]])
 
     def audio_fdslice2(self, freqdomain):
-        """ stage 1 frequency-domain decimation. """
         return np.concatenate([freqdomain[self.Filters['audio_fdslice2_lo']], freqdomain[self.Filters['audio_fdslice2_hi']]])
     
     def computeaudiofilters(self):
@@ -305,31 +270,14 @@ class RFDecode:
         adeemp_b, adeemp_a = sps.butter(1, [d75freq/(SF['freq_aud2']/2)], btype='lowpass')
         SF['audio_deemp2'] = filtfft([adeemp_b, adeemp_a],  self.blocklen // SF['audio_fdiv2'])
         
-    def iretohz(self, ire):
-        """ converts IRE (0 black, 100 white) to LD frequency per System Parameters.
         
-        PAL does not use IRE, but rather 0v for SYNC, 0.3v for black, and 1.0v for white - but ld-decode does anyway...
-        """
+    def iretohz(self, ire):
         return self.SysParams['ire0'] + (self.SysParams['hz_ire'] * ire)
 
     def hztoire(self, hz):
-        """ Converts video HZ to IRE.  """
         return (hz - self.SysParams['ire0']) / self.SysParams['hz_ire']
     
     def demodblock(self, data, mtf_level = 0):
-        """ The core stage 1 demodulation function
-        
-        Parameters:
-        data: an array containing unfiltered RF data
-        mtf_level:  the amount of MTF compensation needed.  (typically between 0 and 0.5)
-        
-        Output format:  A tuple with two members:
-            video:  A numpy rec.array with channels for pure demod, 0.5mhz LPF, burst/pilot BPF, and a sync filter
-            audio:  Left and right stage 1 channels
-            
-        All output is in Laserdisc RF frequencies to be downconverted later.  This allows processing for wow(/flutter)
-        once the TBC works out the disk speed.
-        """
         indata_fft = np.fft.fft(data[:self.blocklen])
         indata_fft_filt = indata_fft * self.Filters['RFVideo']
 
@@ -664,6 +612,16 @@ class Field:
 
             linelocs2[i] = linelocs2[i + 1] - gap
 
+        # XXX2: more hack!  This one covers a bit at the end of a PAL field
+        for i in range(len(linelocs2) - 10, len(linelocs2)):
+            gap = linelocs2[i] - linelocs2[i - 1]
+            #print(i, gap)
+            if not inrange(gap, self.rf.linelen - (self.rf.freq * .2), self.rf.linelen + (self.rf.freq * .2)):
+                gap = self.rf.linelen
+            
+            linelocs2[i] = linelocs2[i - 1] + gap
+                
+            
         return linelocs2, err  
     
     def downscale(self, lineinfo = None, outwidth = None, wow=True, channel='demod', audio = False):
