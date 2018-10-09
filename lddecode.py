@@ -36,7 +36,7 @@ outfile_audio = open(outname + '.pcm', 'wb')
 framer_ntsc = Framer(rfn)
 ca = []
 for f in range(0, num_frames):
-    combined, audio, nextsample, fields = framer_ntsc.readframe(fd, nextsample, f == 0)
+    combined, audio, nextsample = framer_ntsc.readframe(fd, nextsample, f == 0)
     
     print('frame ', framer_ntsc.vbi['framenr'])
     
