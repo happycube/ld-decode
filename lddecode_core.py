@@ -782,58 +782,45 @@ class Field:
 # These classes extend Field to do PAL/NTSC specific TBC features.
 
 class FieldPAL(Field):
-    def refine_linelocs_pilot(self):
-        linelocsx = self.linelocs.copy()
+    def refine_linelocs_pilot(self, linelocs = None):
+        if linelocs is None:
+            linelocs = self.linelocs2.copy()
+        else:
+            linelocs = linelocs.copy()
 
-        plen = self.rf.SysParams['outlinelen_pilot']
-        ds_pilot15, noaudio = self.downscale(outwidth=plen, channel='demod_pilot')
-        #ds_picture15, noaudio = self.downscale(outwidth=plen, channel='demod')
+        for l in range(len(linelocs)):
+            pilot = self.data[0]['demod'][int(linelocs[l]-self.usectoinpx(4.7)):int(linelocs[l])].copy()
+            pilot -= self.data[0]['demod_05'][int(linelocs[l]-self.usectoinpx(4.7))+32:int(linelocs[l])+32]
+            pilot = np.flip(pilot)
 
-        loffsets = np.full(len(linelocsx), np.nan, dtype=np.float32)
+            adjfreq = self.rf.freq
+            if l > 1:
+                adjfreq /= (linelocs[l] - linelocs[l - 1]) / self.rf.linelen
 
-        for l in range(1, self.linecount+1):
-            #pilot = ds_picture15[int((l*plen) - (4.3*15)):int((l*plen) - (.6*15))].copy()
-            pilot = ds_pilot15[int((l*plen) - (3.3*15)):int((l*plen) + (.6*15))].copy()
-
-            pilot -= np.mean(pilot)
-            pilot_std = np.std(pilot)
-
-            offsets = 0
-            oc = 0
             i = 0
+
+            offsets = []
+
             while i < len(pilot):
-                # use only low->high transitions since the low level is only valid in pilot signals
-                if pilot[i] < -np.std(pilot):
+                if inrange(pilot[i], -300000, -100000):
                     zc = calczc(pilot, i, 0)
-                    if zc:
-                        i = int(np.ceil(zc))
-                        offsets += zc - ((zc//4)*4)
-                        oc += 1
+
+                    if zc is not None:
+                        zcp = zc / (adjfreq / 3.75)
+                        #print(i, pilot[i], zc, zcp, np.round(zcp) - zcp)
+
+                        offsets.append(np.round(zcp) - zcp)
+
+                        i = np.int(zc + 1)
 
                 i += 1
 
-            if (oc):
-                offsets /= oc
-                loffsets[l] = offsets
-                #print(l, offsets)
+            if len(offsets) >= 3:
+                offsetmedian = np.median(offsets[1:-1])
+                #print(l, offsetmedian)
+                linelocs[l] += offsetmedian * (self.rf.freq / 3.75) * .25
 
-        tgt = np.round(np.median(loffsets[np.isnan(loffsets) == False]))
-        #print(tgt)
-
-        # Now correct offsets that are outside the expected range
-        loffsets[np.isnan(loffsets)] = 0
-        loffsets[np.where((loffsets - tgt) < -2)] += 4
-        loffsets[np.where((loffsets - tgt) > 2)] -= 4
-
-        for l in range(1, self.linecount):
-            if np.isnan(loffsets[l]):
-                continue
-
-            #print(l, (loffsets[l] - tgt) * (self.rf.freq / 15))
-            linelocsx[l] += (loffsets[l] - tgt) * (self.rf.freq / 15)
-            linelocsx[l] += 1
-
-        return linelocsx    
+        return linelocs    
     
     def downscale(self, final = False, *args, **kwargs):
         dsout, dsaudio = super(FieldPAL, self).downscale(audio = final, *args, **kwargs)
