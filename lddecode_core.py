@@ -29,6 +29,8 @@ SysParams_NTSC = {
     'fsc_mhz': (315.0 / 88.0),
     'pilot_mhz': (315.0 / 88.0),
     'frame_lines': 525,
+    
+    'hsync_length': 4.6,
 
     'ire0': 8100000,
     'hz_ire': 1700000 / 140.0,
@@ -55,6 +57,8 @@ SysParams_PAL = {
     'pilot_mhz': 3.75,
     'frame_lines': 625,
     'line_period': 64,
+
+    'hsync_length': 4.72,
 
     'ire0': 7100000,
     'hz_ire': 800000 / 100.0,
@@ -218,6 +222,7 @@ class RFDecode:
         F0_5 = sps.firwin(65, [0.5/self.freq_half], pass_zero=True)
         SF['F0_5'] = filtfft((F0_5, [1.0]), self.blocklen)
         SF['FVideo05'] = SF['Fvideo_lpf'] * SF['Fdeemp']  * SF['F0_5']
+        SF['FVideo05_delay'] = 32
 
         SF['Fburst'] = filtfft(sps.butter(1, [(SP['fsc_mhz']-.1)/self.freq_half, (SP['fsc_mhz']+.1)/self.freq_half], btype='bandpass'), self.blocklen) 
         SF['FVideoBurst'] = SF['Fvideo_lpf'] * SF['Fdeemp']  * SF['Fburst']
@@ -623,74 +628,86 @@ class Field:
         # Adjust line locations to end of HSYNC.
         # This causes issues for lines 1-9, where only the beginning is reliable :P
 
-        offset = 32 
+        offset05 = self.rf.Filters['FVideo05_delay']
 
         err = [False] * len(self.linelocs[0])
 
-        linelocs2 = self.linelocs[-1].copy()
+        # TODO: break out into a utility class?
+        validgaps = []
+        def getgap():
+            if len(validgaps) > 3:
+                #print(np.median(validgaps[-5:]))
+                return np.median(validgaps[-5:])
+            else:
+                return self.rf.linelen
+
+        linelocs2 = self.linelocs[0].copy()
         for i in range(len(self.linelocs[0])):
             # First adjust the lineloc before the beginning of hsync - 
             # lines 1-9 are half-lines which need a smaller offset
             if i > 9:
-                linelocs2[i] -= offset
+                linelocs2[i] -= offset05
             else:
-                linelocs2[i] -= 200 # search for *beginning* of hsync
+                linelocs2[i] -= offset05 + self.usectoinpx(5) # search for *beginning* of hsync
 
             zc = calczc(self.data[0]['demod_05'], linelocs2[i], self.rf.iretohz(-20), reverse=False, _count=400)
 
             #print(i, linelocs2[i], zc)
             if zc is not None:
-                linelocs2[i] = zc - 32
-                
-                origdata = self.data[0]['demod_05'][int(zc)-40:int(zc)+100]
+                zc -= offset05
+                linelocs2[i] = zc
+
+                origdata = self.data[0]['demod_05'][int(zc-self.usectoinpx(1)):int(zc+self.usectoinpx(3))]
 
                 if np.min(origdata) < self.rf.iretohz(-50):
                     err[i] = True
-
-                if i >= 10: # don't run this special adjustment code on vsync lines (yet?)
+                elif True or i >= 10: # don't run this special adjustment code on vsync lines (yet?)
                     # on some captures with high speed variation wow effects can mess up TBC.
                     # determine the low and high values and recompute zc along the middle
 
-                    low = np.mean(origdata[0:20])
-                    high = np.mean(origdata[100:120])
+                    low = np.mean(origdata[0:int(self.usectoinpx(.5))])
+                    high = np.mean(origdata[int(self.usectoinpx(2.5)):int(self.usectoinpx(3))])
 
                     zc2 = calczc(origdata, 0, (low + high) / 2, reverse=False, _count=len(origdata))
-                    zc2 += (int(zc)-40)
+                    if zc2 is not None:
+                        zc2 += int(zc)-self.usectoinpx(1)
+                        zc2 -= offset05
 
-                    linelocs2[i] = zc2 - 32
+                        linelocs2[i] = zc2 
             else:
                 err[i] = True
 
-            if i < 10:
-                linelocs2[i] += self.usectoinpx(4.72)
-
-            if i > 10 and err[i]:
-                gap = linelocs2[i - 1] - linelocs2[i - 2]
-                linelocs2[i] = linelocs2[i - 1] + gap
+            if i < 10: # adjust for using the beginning of sync.
+                linelocs2[i] += self.usectoinpx(self.rf.SysParams['hsync_length'])
+            elif i > 10 and err[i]:
+                #gap = linelocs2[i - 1] - linelocs2[i - 2]
+                linelocs2[i] = linelocs2[i - 1] + getgap()
                 #print(i, zc, lbinelocs2[i])
-                
+            else:
+                validgaps.append(linelocs2[i] - linelocs2[i - 1])
+
+        linelocs_out = linelocs2.copy()
+
         # XXX: HACK!
         # On both PAL and NTSC this gets it wrong for VSYNC areas.  They need to be *reasonably* 
         # accurate for analog audio, but are never seen in the picture.
         for i in range(8, -1, -1):
             gap = linelocs2[i + 1] - linelocs2[i]
-#            print(i, gap)
+    #            print(i, gap)
             if not inrange(gap, self.rf.linelen - (self.rf.freq * .2), self.rf.linelen + (self.rf.freq * .2)):
                 gap = self.rf.linelen
 
             linelocs2[i] = linelocs2[i + 1] - gap
-            
+
         # XXX2: more hack!  This one covers a bit at the end of a PAL field
-        for i in range(300, len(linelocs2)):
+        for i in range(10, len(linelocs2)):
             gap = linelocs2[i] - linelocs2[i - 1]
-            #print(i, gap)
-            if not inrange(gap, self.rf.linelen - (self.rf.freq * .2), self.rf.linelen + (self.rf.freq * .2)):
-                gap = self.rf.linelen
+            if not inrange(gap, self.rf.linelen - (self.rf.freq * .5), self.rf.linelen + (self.rf.freq * .5)):
+                gap = getgap() # self.rf.linelen
 
-            linelocs2[i] = linelocs2[i - 1] + gap
-            
+            linelocs_out[i] = linelocs_out[i - 1] + gap
 
-        return linelocs2, err    
+        return linelocs_out, err    
 
     def downscale_line(self, linenum, lineinfo = None, outwidth = None, wow=True, channel='demod'):
         if lineinfo is None:
@@ -956,13 +973,16 @@ class FieldNTSC(Field):
             pilot -= self.data[0]['demod_05'][begin+32:end+32]
 
             burstlevel[l] = np.max(np.abs(pilot))
-            if not inrange(burstlevel[l] / hz_ire_scale, 5, 30):
+            if not inrange(burstlevel[l] / hz_ire_scale, 5, 60):
                 burstlevel[l] = 0
                 continue        
 
             adjfreq = self.rf.freq
             if l > 1:
-                adjfreq /= (linelocs[l] - linelocs[l - 1]) / self.rf.inlinelen
+                linegap = linelocs[l] - linelocs[l - 1]
+                ratio = linegap / self.rf.inlinelen
+                adjfreq *= ratio
+                #print(l, ratio, adjfreq)
 
             # True:  hi->low, False: low->hi
             burstoffsets = {False: [], True:[]}
@@ -975,7 +995,7 @@ class FieldNTSC(Field):
                     if zc is not None:
                         zc_adj = zc + self.usectoinpx(0.5)
                         zcp = zc_adj / (adjfreq / fsc)
-    #                    print(i, pilot[i], zc, zcp, np.round(zcp) - zcp)
+                        #print(l, i, pilot[i], zc, zcp, np.round(zcp) - zcp)
 
                         burstoffsets[pilot[i] > 0].append(np.round(zcp) - zcp)
 
@@ -991,7 +1011,7 @@ class FieldNTSC(Field):
             for v in [False, True]:
                 burstoffsets[v] = np.array(burstoffsets[v][1:-1])
 
-            if np.median(burstoffsets[False]) < np.median(burstoffsets[True]):
+            if np.abs(np.median(burstoffsets[False])) < np.abs(np.median(burstoffsets[True])):
                 offset = np.median(burstoffsets[False])
             else:
                 offset = np.median(burstoffsets[True])
@@ -1000,10 +1020,10 @@ class FieldNTSC(Field):
             adjust = np.round(offset) - offset
             adjust /= 2
 
-    #        print(l, offset, adjust, adjust * (self.rf.freq / fsc) * .25)
+            #print('l', l, np.median(burstoffsets[False]), np.median(burstoffsets[True]), offset, adjust, adjust * (self.rf.freq / fsc) * .25)
             linelocs[l] += adjust * (self.rf.freq / fsc) * 1
 
-        for l in range(1, len(linelocs) - 1):
+        for l in range(11, len(linelocs) - 1):
             if burstlevel[l] == 0:
                 gap = linelocs[l - 1] - linelocs[l - 2]
                 linelocs[l] = linelocs[l - 1] + gap
