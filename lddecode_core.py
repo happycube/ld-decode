@@ -830,9 +830,9 @@ class FieldPAL(Field):
         
         if final:
             reduced = (dsout - self.rf.SysParams['ire0']) / self.rf.SysParams['hz_ire']
-            reduced += 20
-            out_scale = 65534.0 / 120
-            lines16 = np.uint16(np.clip(reduced * out_scale, 0, 65535) + 0.5)
+            reduced += self.rf.SysParams['vsync_ire']
+            out_scale = np.double(0xd300 - 0x0100) / (100 + self.rf.SysParams['vsync_ire'])
+            lines16 = np.uint16(np.clip(reduced * out_scale, 0, 65535) + 0.5)        
             
             self.dspicture = lines16
             return lines16, dsaudio
@@ -1087,4 +1087,4 @@ class Framer:
         
         self.vbi = self.mergevbi(fields)
 
-        return combined, conaudio, sample #, audio
+        return combined, conaudio, sample, fields #, audio
