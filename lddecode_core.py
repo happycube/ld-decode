@@ -41,7 +41,9 @@ SysParams_NTSC = {
     'audio_lfreq': (1000000*315/88/227.5) * 146.25,
     'audio_rfreq': (1000000*315/88/227.5) * 178.75,
     
-    'philips_codelines': [16, 17, 18]
+    'philips_codelines': [16, 17, 18],
+    
+    'topfirst': True,
 }
 
 # In color NTSC, the line period was changed from 63.5 to 227.5 color cycles,
@@ -68,7 +70,9 @@ SysParams_PAL = {
     'audio_lfreq': (1000000/64) * 43.75,
     'audio_rfreq': (1000000/64) * 68.25,
 
-    'philips_codelines': [19, 20, 21]
+    'philips_codelines': [19, 20, 21],
+    
+    'topfirst': False,    
 }
 
 SysParams_PAL['outlinelen'] = calclinelen(SysParams_PAL, 4, 'fsc_mhz')
@@ -515,7 +519,7 @@ class Field:
             if peak > .6 and line0 is None:
                 line0 = i
 
-        return line0, (self.peaklist[line0 + 1] - self.peaklist[line0]) < (self.inlinelen * .75)     
+        return line0, (self.peaklist[line0 + 1] - self.peaklist[line0]) > (self.inlinelen * .75)     
 
     def determine_vsyncs(self):
         # find vsyncs from the peaklist
@@ -697,6 +701,7 @@ class Field:
                     frame += (lc[4] * 10)
                     frame += lc[5] 
                     self.vbi['framenr'] = frame
+                    print("CAV ", frame)
                 else:
                     h = lc[0] << 20
                     h |= lc[1] << 16
@@ -754,11 +759,11 @@ class Field:
         #print(self.peaklist[self.vsyncs[0][1]], self.peaklist[self.vsyncs[1][1]])
         self.nextfieldoffset = self.peaklist[self.vsyncs[1][1]-10]
         
-        self.isfirst = self.vsyncs[0][2]
+        self.istop = self.vsyncs[0][2]
         
         # On NTSC linecount is 262/263, PAL 312/313?
         self.linecount = self.rf.SysParams['frame_lines'] // 2
-        if not self.isfirst:
+        if not self.istop:
             self.linecount += 1
         
         self.linelocs1 = self.compute_linelocs()
@@ -1043,13 +1048,13 @@ class Framer:
 
                 #tmpfield = f.downscale()
                 
-                print(f.isfirst, f.framenr)
-                if f.isfirst:
+                print(f.istop, f.vbi['framenr'])
+                if f.istop:
                     fields[0] = f
                 else:
                     fields[1] = f
                     
-                if not CAV and f.isfirst:
+                if not CAV and (f.istop == self.rf.SysParams['topfirst']):
                     fieldcount = 1
                 elif fieldcount == 1:
                     fieldcount = 2
@@ -1069,18 +1074,13 @@ class Framer:
         else:
             conaudio = None
             
-        if fields[0].isfirst:
-            pictures = [fields[1].dspicture, fields[0].dspicture]
-        else:
-            pictures = [fields[0].dspicture, fields[1].dspicture]
-
         linecount = (min(fields[0].linecount, fields[1].linecount) * 2) - 20
 
         combined = np.zeros((self.outwidth * self.outlines), dtype=np.uint16)
         for i in range(0, linecount, 2):
             curline = (i // 2) + 10
-            combined[((i + 0) * self.outwidth):((i + 1) * self.outwidth)] = pictures[0][curline * fields[0].outlinelen: (curline * fields[0].outlinelen) + self.outwidth]
-            combined[((i + 1) * self.outwidth):((i + 2) * self.outwidth)] = pictures[1][curline * fields[0].outlinelen: (curline * fields[0].outlinelen) + self.outwidth]
+            combined[((i + 0) * self.outwidth):((i + 1) * self.outwidth)] = fields[0].dspicture[curline * fields[0].outlinelen: (curline * fields[0].outlinelen) + self.outwidth]
+            combined[((i + 1) * self.outwidth):((i + 2) * self.outwidth)] = fields[1].dspicture[curline * fields[0].outlinelen: (curline * fields[0].outlinelen) + self.outwidth]
         
         self.vbi = self.mergevbi(fields)
 
