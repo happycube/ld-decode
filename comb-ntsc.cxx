@@ -57,15 +57,15 @@ const double dots_usec = dotclk / 1000000.0;
 // values for horizontal timings 
 //const double line_blanklen = 10.9 * dots_usec;
 
-double irescale = 327.67;
-double irebase = 1;
+double irescale = 358.4;
+double irebase = 0x400;
 inline uint16_t ire_to_u16(double ire);
 
 // tunables
 
 int linesout = 480;
 
-double brightness = 240;
+double brightness = 236;
 
 double black_ire = 7.5;
 int black_u16 = ire_to_u16(black_ire);
@@ -118,7 +118,7 @@ inline double u16_to_ire(uint16_t level)
 {
 	if (level == 0) return -100;
 	
-	return -60 + ((double)(level - irebase) / irescale); 
+	return -40 + ((double)(level - irebase) / irescale); 
 }
 
 int cline = -1;
@@ -149,9 +149,9 @@ struct RGB {
 
 inline uint16_t ire_to_u16(double ire)
 {
-	if (ire <= -60) return 0;
+	if (ire <= -40) return 0;
 	
-	return clamp(((ire + 60) * irescale) + irebase, 1, 65535);
+	return clamp(((ire + 40) * irescale) + irebase, 1, 65535);
 } 
 
 typedef struct cline {
