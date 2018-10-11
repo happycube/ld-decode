@@ -594,7 +594,7 @@ class Comb
 				uint16_t *line_output = &output[(out_x * 3 * (l - firstline))];
 				int o = 0;
 
-				if (burstlev > 5) {
+				if (burstlev > 3) {
 					if (aburstlev < 0) aburstlev = burstlev;	
 					aburstlev = (aburstlev * .99) + (burstlev * .01);
 				}
