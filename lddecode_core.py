@@ -34,8 +34,6 @@ SysParams_NTSC = {
 
     'ire0': 8100000,
     'hz_ire': 1700000 / 140.0,
-    
-    'vsync_ire': -40,
 
     # most NTSC disks have analog audio, except CD-V and a few Panasonic demos
     'analog_audio': True,
@@ -81,7 +79,7 @@ SysParams_PAL['outlinelen'] = calclinelen(SysParams_PAL, 4, 'fsc_mhz')
 SysParams_PAL['outlinelen_pilot'] = calclinelen(SysParams_PAL, 4, 'pilot_mhz')
 
 
-SysParams_PAL['vsync_ire'] = -.3 * (100 / .7)
+SysParams_PAL['vsync_ire'] = .3 * (100 / .7)
 
 RFParams_NTSC = {
     # The audio notch filters are important with DD v3.0+ boards
@@ -834,9 +832,9 @@ class FieldPAL(Field):
         
         if final:
             reduced = (dsout - self.rf.SysParams['ire0']) / self.rf.SysParams['hz_ire']
-            reduced -= self.rf.SysParams['vsync_ire']
-            out_scale = np.double(0xd300 - 0x0100) / (100 - self.rf.SysParams['vsync_ire'])
-            lines16 = np.uint16(np.clip((reduced * out_scale) + 256, 0, 65535) + 0.5)        
+            reduced += self.rf.SysParams['vsync_ire']
+            out_scale = np.double(0xd300 - 0x0100) / (100 + self.rf.SysParams['vsync_ire'])
+            lines16 = np.uint16(np.clip(reduced * out_scale, 0, 65535) + 0.5)        
             
             self.dspicture = lines16
             return lines16, dsaudio
@@ -917,7 +915,7 @@ class FieldNTSC(Field):
 
         # need to remove lines with no/bad colorburst to compute medians
         phaseaverages_cut = phaseaverages[np.logical_or(phaseaverages[:,0] != 0, phaseaverages[:,1] != 0)]
-        if np.median(phaseaverages_cut[:,0]) < np.median(phaseaverages_cut[:,1]):
+        if np.median(np.abs(phaseaverages_cut[:,0])) < np.median(np.abs(phaseaverages_cut[:,1])):
             phasegroup = 0
         else:
             phasegroup = 1
@@ -940,10 +938,10 @@ class FieldNTSC(Field):
         
         if final:
             reduced = (dsout - self.rf.SysParams['ire0']) / self.rf.SysParams['hz_ire']
-            reduced -= self.rf.SysParams['vsync_ire']
-            out_scale = np.double(0xc800 - 0x0400) / (100 - self.rf.SysParams['vsync_ire'])
-            lines16 = np.uint16(np.clip((reduced * out_scale) + 1024, 0, 65535) + 0.5)        
-
+            reduced += 40
+            out_scale = 65534.0 / 160
+            lines16 = np.uint16(np.clip(reduced * out_scale, 0, 65535) + 0.5)
+            
             if self.burstlevel is not None:
                 for i in range(1, self.linecount - 1):
                     hz_ire_scale = 1700000 / 140
@@ -952,8 +950,7 @@ class FieldNTSC(Field):
                     else:
                         lines16[((i + 0) * self.outlinelen)] = 32768
 
-                    #clevel = 1.17*hz_ire_scale
-                    clevel = (1/self.colorlevel)/ hz_ire_scale
+                    clevel = .5/hz_ire_scale
 
                     lines16[((i + 0) * self.outlinelen) + 1] = np.uint16(327.67 * clevel * np.abs(self.burstlevel[i]))
 
@@ -965,16 +962,8 @@ class FieldNTSC(Field):
     def apply_offsets(self, linelocs, phaseoffset, picoffset = 0):
         return np.array(linelocs) + picoffset + (phaseoffset * (self.rf.freq / (4 * 315 / 88)))
 
-    #def __init__(self, colorphase = -63, colorlevel = 1.17, *args, **kwargs):
     def __init__(self, *args, **kwargs):
         self.burstlevel = None
-
-        # GGV
-        self.colorphase = -63 # colorphase
-        self.colorlevel = 1.17 # colorlevel
-        # HE010
-        #self.colorphase = -50 # colorphase
-        #self.colorlevel = 1.45 # colorlevel
         
         super(FieldNTSC, self).__init__(*args, **kwargs)
         
@@ -985,16 +974,9 @@ class FieldNTSC(Field):
         self.linelocs3, self.burstlevel = self.refine_linelocs_burst(self.linelocs2)
         self.linelocs4, self.burstlevel = self.refine_linelocs_burst(self.linelocs3)
         
-        # Now adjust 33 degrees (-90 - 33) for color decoding
-        shift33 = self.colorphase * (np.pi / 180)
-        self.linelocs = self.apply_offsets(self.linelocs4, shift33)
-        #shift33 = -50 * (np.pi / 180)
-        #self.linelocs = self.apply_offsets(self.linelocs4, shift33)
-        
         # Now adjust 33 degrees for color decoding
-#        shift33 = ((33.0 / 360.0) * np.pi) * .5
-#        self.linelocs = self.apply_offsets(self.linelocs4, -1 - shift33)
-        
+        shift33 = ((33.0 / 360.0) * np.pi) * .5
+        self.linelocs = self.apply_offsets(self.linelocs4, -1 - shift33)
         
         self.downscale(wow = True, final=True)
 
