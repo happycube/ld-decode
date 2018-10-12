@@ -917,7 +917,7 @@ class FieldNTSC(Field):
 
         # need to remove lines with no/bad colorburst to compute medians
         phaseaverages_cut = phaseaverages[np.logical_or(phaseaverages[:,0] != 0, phaseaverages[:,1] != 0)]
-        if np.median(phaseaverages_cut[:,0]) < np.median(phaseaverages_cut[:,1]):
+        if np.abs(np.median(phaseaverages_cut[:,0])) < np.abs(np.median(phaseaverages_cut[:,1])):
             phasegroup = 0
         else:
             phasegroup = 1
