@@ -969,12 +969,18 @@ class FieldNTSC(Field):
     def __init__(self, *args, **kwargs):
         self.burstlevel = None
 
-        # GGV
-        self.colorphase = 57 # colorphase
-        self.colorlevel = 1.17 # colorlevel
         # HE010
-        self.colorphase = 90-0 # colorphase
+        self.colorphase = 90+1.5 # colorphase
         self.colorlevel = 1.45 # colorlevel
+
+        # GGV 21846/2950
+        #self.colorphase = 90+1.5 # colorphase
+        #self.colorlevel = 1.6 # colorlevel
+
+        # GGV ch 11 /X9
+        #self.colorphase = 90 # colorphase
+        #self.colorlevel = 1.6 # colorlevel
+        
         
         super(FieldNTSC, self).__init__(*args, **kwargs)
         
