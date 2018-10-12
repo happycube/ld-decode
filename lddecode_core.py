@@ -860,7 +860,7 @@ class FieldNTSC(Field):
     def refine_linelocs_burst(self, linelocs2):
         hz_ire_scale = 1700000 / 140
 
-        scaledburst, audio = self.downscale(outwidth=self.outlinelen, channel='demod_burst')
+        scaledburst, audio = self.downscale(outwidth=self.outlinelen, lineinfo=linelocs2, channel='demod_burst')
 
         linelocs3 = linelocs2.copy()
         burstlevel = np.zeros_like(linelocs3, dtype=np.float32)
@@ -926,7 +926,7 @@ class FieldNTSC(Field):
         burstlevel[phasegroup::2] = -burstlevel[phasegroup::2]
 
         for l in range(len(linelocs3)):
-            linelocs3[l] -= (adjset[l] + 1) * (40 / (4 * 315 / 88)) * .8
+            linelocs3[l] -= adjset[l] * (self.rf.freq / (4 * 315 / 88)) * 1
 
         for l in range(1, len(linelocs3) - 1):
             if burstlevel[l] == 0:
@@ -970,11 +970,11 @@ class FieldNTSC(Field):
         self.burstlevel = None
 
         # GGV
-        self.colorphase = -63 # colorphase
+        self.colorphase = 57 # colorphase
         self.colorlevel = 1.17 # colorlevel
         # HE010
-        #self.colorphase = -50 # colorphase
-        #self.colorlevel = 1.45 # colorlevel
+        self.colorphase = 90-0 # colorphase
+        self.colorlevel = 1.45 # colorlevel
         
         super(FieldNTSC, self).__init__(*args, **kwargs)
         
