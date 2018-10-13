@@ -153,6 +153,8 @@ class RFDecode:
         if self.analog_audio: 
             self.computeaudiofilters()
             
+        self.blockcut_end = self.Filters['F05_offset']
+            
     def computevideofilters(self):
         self.Filters = {}
         
@@ -194,8 +196,9 @@ class RFDecode:
         # additional filters:  0.5mhz and color burst
         # Using an FIR filter here to get tighter alignment
         F0_5 = sps.firwin(65, [0.5/self.freq_half], pass_zero=True)
-        SF['F0_5'] = filtfft((F0_5, [1.0]), self.blocklen)
-        SF['FVideo05'] = SF['Fvideo_lpf'] * SF['Fdeemp']  * SF['F0_5']
+        SF['F05_offset'] = 32
+        SF['F05'] = filtfft((F0_5, [1.0]), self.blocklen)
+        SF['FVideo05'] = SF['Fvideo_lpf'] * SF['Fdeemp']  * SF['F05']
 
         SF['Fburst'] = filtfft(sps.butter(1, [(SP['fsc_mhz']-.1)/self.freq_half, (SP['fsc_mhz']+.1)/self.freq_half], btype='bandpass'), self.blocklen) 
         SF['FVideoBurst'] = SF['Fvideo_lpf'] * SF['Fdeemp']  * SF['Fburst']
@@ -296,7 +299,10 @@ class RFDecode:
         demod_fft = np.fft.fft(demod)
 
         out_video = np.fft.ifft(demod_fft * self.Filters['FVideo']).real
+        
         out_video05 = np.fft.ifft(demod_fft * self.Filters['FVideo05']).real
+        out_video05 = np.roll(out_video05, -self.Filters['F05_offset'])
+
         out_videoburst = np.fft.ifft(demod_fft * self.Filters['FVideoBurst']).real
         
         # NTSC: filtering for vsync pulses from -55 to -25ire seems to work well even on rotted disks
@@ -377,7 +383,7 @@ class RFDecode:
         output = None
         output_audio = None
 
-        for i in range(start, end, self.blocklen - self.blockcut):
+        for i in range(start, end, self.blocklen - self.blockcut - self.blockcut_end):
             indata = loader(infile, i, self.blocklen)
             if indata is None:
                 break
@@ -393,7 +399,7 @@ class RFDecode:
             if i - start + (self.blocklen - self.blockcut) > len(output):
                 copylen = len(output) - (i - start)
             else:
-                copylen = self.blocklen - self.blockcut
+                copylen = self.blocklen - self.blockcut - self.blockcut_end
 
             output_slice = slice(i - start, i - start + copylen)
             tmp_slice = slice(self.blockcut, self.blockcut + copylen)
@@ -430,12 +436,19 @@ def downscale_audio(audio, lineinfo, rf, linecount, timeoffset = 0, freq = 48000
     swow = np.zeros(len(arange), dtype=np.float)
     
     for i, t in enumerate(arange):
-        lineloc = ((t * 1000000) / rf.SysParams['line_period']) + 1
+        linenum = np.int(((t * 1000000) / rf.SysParams['line_period']) + 1)
+        
+        lineloc_cur = lineinfo[np.int(linenum)]
+        try:
+            lineloc_next = lineinfo[np.int(linenum) + 1]
+        except:
+            print("WARNING: downscale_audio exceeding lineinfo ", np.int(linenum) + 1)
+            lineloc_next = lineloc_cur + rf.linelen
 
-        sampleloc = lineinfo[np.int(lineloc)]
-        sampleloc += (lineinfo[np.int(lineloc) + 1] - lineinfo[np.int(lineloc)]) * (lineloc - np.floor(lineloc))
+        sampleloc = lineloc_cur
+        sampleloc += (lineloc_next - lineloc_cur) * (linenum - np.floor(linenum))
 
-        swow[i] = ((lineinfo[int(lineloc) + 1] - lineinfo[int(lineloc)]) / rf.linelen)
+        swow[i] = ((lineloc_next - lineloc_cur) / rf.linelen)
         locs[i] = sampleloc / scale
         
         if False:        
@@ -552,9 +565,9 @@ class Field:
             while (curline - linelocs[-1]) > (self.inlinelen * 1.95):
                 linelocs.append(linelocs[-1] + (linelocs[-1] - linelocs[-2]))
             
-            if (curline - linelocs[-1]) > (self.inlinelen * 1.05):
+            if (curline - linelocs[-1]) > (self.inlinelen * 1.02):
                 linelocs.append(linelocs[-1] + self.inlinelen)
-            elif (curline - linelocs[-1]) > (self.inlinelen * .95):
+            elif (curline - linelocs[-1]) > (self.inlinelen * .98):
                 linelocs.append(curline)
                 
         return linelocs
@@ -563,46 +576,47 @@ class Field:
         # Adjust line locations to end of HSYNC.
         # This causes issues for lines 1-9, where only the beginning is reliable :P
 
-        offset = 32 
-
         err = [False] * len(self.linelocs1)
 
         linelocs2 = self.linelocs1.copy()
         for i in range(len(self.linelocs1)):
-            #if i == 106:
+    #        if i == 106:
     #            set_trace()
 
             # First adjust the lineloc before the beginning of hsync - 
             # lines 1-9 are half-lines which need a smaller offset
-            if i > 9:
-                linelocs2[i] -= offset
-            else:
+            if i < 9:
                 linelocs2[i] -= 200 # search for *beginning* of hsync
 
             zc = calczc(self.data[0]['demod_05'], linelocs2[i], self.rf.iretohz(-20), reverse=False, _count=400)
 
             #print(i, linelocs2[i], zc)
             if zc is not None:
-                linelocs2[i] = zc - 32
+                linelocs2[i] = zc 
 
-                origdata = self.data[0]['demod_05'][int(zc)-40:int(zc)+100]
+                if i >= 10:
+                    # sanity check 0.5mhz filtered HSYNC and colo[u]r burst area
 
-                if np.min(origdata) < self.rf.iretohz(-60):
-                    err[i] = True
-                elif i >= 10: # don't run this special adjustment code on vsync lines (yet?)
-                    # on some captures with high speed variation wow effects can mess up TBC.
-                    # determine the low and high values and recompute zc along the middle
+                    origdata_hsync = self.data[0]['demod_05'][int(zc-(self.rf.freq*1)):int(zc+(self.rf.freq*3))]
+                    origdata_burst = self.data[0]['demod_05'][int(zc+(self.rf.freq*1)):int(zc+(self.rf.freq*3))]
 
-                    low = np.mean(origdata[0:20])
-                    high = np.mean(origdata[100:120])
-
-                    zc2 = calczc(origdata, 0, (low + high) / 2, reverse=False, _count=len(origdata))
-                    zc2 += (int(zc)-40)
-
-                    if np.abs(zc2 - zc) < (self.rf.freq / 4):
-                        linelocs2[i] = zc2 - 32
-                    else:
+                    if ((np.min(origdata_hsync) < self.rf.iretohz(-60) or np.max(origdata_hsync) > self.rf.iretohz(20)) or 
+                           (np.min(origdata_burst) < self.rf.iretohz(-10) or np.max(origdata_burst) > self.rf.iretohz(10))):
                         err[i] = True
+                    else:
+                        # on some captures with high speed variation wow effects can mess up TBC.
+                        # determine the low and high values and recompute zc along the middle
+
+                        low = np.mean(origdata_hsync[0:20])
+                        high = np.mean(origdata_hsync[100:120])
+
+                        zc2 = calczc(origdata_hsync, 0, (low + high) / 2, reverse=False, _count=len(origdata_hsync))
+                        zc2 += (int(zc)-(self.rf.freq*1))
+
+                        if np.abs(zc2 - zc) < (self.rf.freq / 4):
+                            linelocs2[i] = zc2 
+                        else:
+                            err[i] = True
             else:
                 err[i] = True
 
@@ -616,7 +630,7 @@ class Field:
         # XXX: HACK!
         # On both PAL and NTSC this gets it wrong for VSYNC areas.  They need to be *reasonably* 
         # accurate for analog audio, but are never seen in the picture.
-        for i in range(8, -1, -1):
+        for i in range(9, -1, -1):
             gap = linelocs2[i + 1] - linelocs2[i]
     #            print(i, gap)
             if not inrange(gap, self.rf.linelen - (self.rf.freq * .2), self.rf.linelen + (self.rf.freq * .2)):
@@ -634,7 +648,7 @@ class Field:
             linelocs2[i] = linelocs2[i - 1] + gap
 
 
-        return linelocs2, err  
+        return linelocs2, err   
     
     def downscale(self, lineinfo = None, outwidth = None, wow=True, channel='demod', audio = False):
         if lineinfo is None:
