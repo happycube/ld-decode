@@ -16,6 +16,8 @@ import scipy as sp
 import scipy.signal as sps
 import scipy.fftpack as fftpack 
 
+from pdb import set_trace
+
 #internal libraries which may or may not get used
 import fdls
 from lddutils import *
@@ -532,6 +534,7 @@ class Field:
         for i, p in enumerate(self.peaklist):
             peak = ds[p]
             if peak > .9 and prevpeak < .525:
+                #set_trace()
                 rv = self.determine_field(i)
                 if rv is not None:
                     vsyncs.append((i, *rv))
