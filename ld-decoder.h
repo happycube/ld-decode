@@ -19,6 +19,10 @@
 
 using namespace std;
 
+//for macOS
+#ifndef M_PIl
+#define M_PIl M_PI
+#endif
 // From http://lists.apple.com/archives/perfoptimization-dev/2005/Jan/msg00051.html. 
 const double PI_FLOAT = M_PIl;
 const double PIBY2_FLOAT = (M_PIl/2.0); 
