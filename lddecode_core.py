@@ -569,6 +569,9 @@ class Field:
 
         linelocs2 = self.linelocs1.copy()
         for i in range(len(self.linelocs1)):
+            #if i == 106:
+    #            set_trace()
+
             # First adjust the lineloc before the beginning of hsync - 
             # lines 1-9 are half-lines which need a smaller offset
             if i > 9:
@@ -581,13 +584,12 @@ class Field:
             #print(i, linelocs2[i], zc)
             if zc is not None:
                 linelocs2[i] = zc - 32
-                
+
                 origdata = self.data[0]['demod_05'][int(zc)-40:int(zc)+100]
 
-                if np.min(origdata) < self.rf.iretohz(-50):
+                if np.min(origdata) < self.rf.iretohz(-60):
                     err[i] = True
-
-                if i >= 10: # don't run this special adjustment code on vsync lines (yet?)
+                elif i >= 10: # don't run this special adjustment code on vsync lines (yet?)
                     # on some captures with high speed variation wow effects can mess up TBC.
                     # determine the low and high values and recompute zc along the middle
 
@@ -597,7 +599,10 @@ class Field:
                     zc2 = calczc(origdata, 0, (low + high) / 2, reverse=False, _count=len(origdata))
                     zc2 += (int(zc)-40)
 
-                    linelocs2[i] = zc2 - 32
+                    if np.abs(zc2 - zc) < (self.rf.freq / 4):
+                        linelocs2[i] = zc2 - 32
+                    else:
+                        err[i] = True
             else:
                 err[i] = True
 
@@ -607,14 +612,13 @@ class Field:
             if i > 10 and err[i]:
                 gap = linelocs2[i - 1] - linelocs2[i - 2]
                 linelocs2[i] = linelocs2[i - 1] + gap
-                #print(i, zc, lbinelocs2[i])
-                
+
         # XXX: HACK!
         # On both PAL and NTSC this gets it wrong for VSYNC areas.  They need to be *reasonably* 
         # accurate for analog audio, but are never seen in the picture.
         for i in range(8, -1, -1):
             gap = linelocs2[i + 1] - linelocs2[i]
-#            print(i, gap)
+    #            print(i, gap)
             if not inrange(gap, self.rf.linelen - (self.rf.freq * .2), self.rf.linelen + (self.rf.freq * .2)):
                 gap = self.rf.linelen
 
@@ -626,10 +630,10 @@ class Field:
             #print(i, gap)
             if not inrange(gap, self.rf.linelen - (self.rf.freq * .2), self.rf.linelen + (self.rf.freq * .2)):
                 gap = self.rf.linelen
-            
+
             linelocs2[i] = linelocs2[i - 1] + gap
-                
-            
+
+
         return linelocs2, err  
     
     def downscale(self, lineinfo = None, outwidth = None, wow=True, channel='demod', audio = False):
