@@ -1019,13 +1019,12 @@ class Framer:
             self.FieldClass = FieldPAL
             self.readlen = 1000000
             self.outlines = 610
-            self.outwidth = 1052
         else:
             self.FieldClass = FieldNTSC
             self.readlen = 900000
             self.outlines = 505
-            self.outwidth = 844
         
+        self.outwidth = self.rf.SysParams['outlinelen']
         self.audio_offset = 0
 
     def readfield(self, infile, sample):

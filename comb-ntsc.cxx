@@ -163,9 +163,9 @@ int write_locs = -1;
 const int nframes = 3;	// 3 frames needed for 3D buffer - for now
 
 const int in_y = 505;
-const int in_x = 844;
+const int in_x = 910;
 //const int in_size = in_y * in_x;
-const int out_x = 844;
+const int out_x = 910;
 
 struct frame_t {
 	uint16_t rawbuffer[in_x * in_y];
@@ -600,7 +600,7 @@ class Comb
 				}
 //				cerr << "burst level " << burstlev << " mavg " << aburstlev << ' ' << 10 / aburstlev << ' ' << endl;
 
-				for (int h = 0; h < 844; h++) {
+				for (int h = 0; h < 910; h++) {
 					RGB r;
 					YIQ yiq = cbuf[l].p[h + 0];
 
@@ -696,7 +696,7 @@ class Comb
 			fcount++; 
 		}
 
-		void DrawFrame(uint16_t *obuf, int owidth = 844) {
+		void DrawFrame(uint16_t *obuf, int owidth = 910) {
 			for (int y = 0; y < 480; y++) {
 				for (int x = 0; x < owidth; x++) {
 					BGRoutput[(((y * owidth) + x) * 3) + 0] = obuf[(((y * owidth) + x) * 3) + 2];
@@ -736,7 +736,7 @@ class Comb
 			memset(output, 0, sizeof(output));
 		}
 
-		void WriteFrame(uint16_t *obuf, int owidth = 844, int fnum = 0) {
+		void WriteFrame(uint16_t *obuf, int owidth = 910, int fnum = 0) {
 			cerr << "WR" << fnum << endl;
 			if (!f_writeimages) {
 				if (!f_write8bit) {
@@ -844,7 +844,7 @@ class Comb
 			AdjustY(1, nbuf);
 			
 			for (int y = 24; y < 505; y++) {
-				for (int x = 50; x < 844; x++) {
+				for (int x = 50; x < 910; x++) {
 					double dy = 0, di = 0, dq = 0, diff = 0;
 
 					dy = fabs(pbuf[y].p[x].y - nbuf[y].p[x].y);
