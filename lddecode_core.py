@@ -815,18 +815,24 @@ class FieldPAL(Field):
         else:
             linelocs = linelocs.copy()
 
+        pilots = []
+        alloffsets = []
+        offsets = {}
+
+        # first pass: get median of all pilot positive zero crossings
         for l in range(len(linelocs)):
             pilot = self.data[0]['demod'][int(linelocs[l]-self.usectoinpx(4.7)):int(linelocs[l])].copy()
-            pilot -= self.data[0]['demod_05'][int(linelocs[l]-self.usectoinpx(4.7))+32:int(linelocs[l])+32]
+            pilot -= self.data[0]['demod_05'][int(linelocs[l]-self.usectoinpx(4.7)):int(linelocs[l])]
             pilot = np.flip(pilot)
+
+            pilots.append(pilot)
+            offsets[l] = []
 
             adjfreq = self.rf.freq
             if l > 1:
                 adjfreq /= (linelocs[l] - linelocs[l - 1]) / self.rf.linelen
 
             i = 0
-
-            offsets = []
 
             while i < len(pilot):
                 if inrange(pilot[i], -300000, -100000):
@@ -836,16 +842,31 @@ class FieldPAL(Field):
                         zcp = zc / (adjfreq / 3.75)
                         #print(i, pilot[i], zc, zcp, np.round(zcp) - zcp)
 
-                        offsets.append(np.round(zcp) - zcp)
+                        offsets[l].append(zcp - np.floor(zcp))
 
                         i = np.int(zc + 1)
 
                 i += 1
 
             if len(offsets) >= 3:
-                offsetmedian = np.median(offsets[1:-1])
-                #print(l, offsetmedian)
-                linelocs[l] += offsetmedian * (self.rf.freq / 3.75) * .25
+                offsets[l] = offsets[l][1:-1]
+                if i >= 11:
+                    alloffsets += offsets[l]
+            else:
+                offsets[l] = []
+
+        medianoffset = np.median(alloffsets)
+        #print(medianoffset)
+        if inrange(medianoffset, 0.25, 0.75):
+            tgt = .5
+        else:
+            tgt = 0
+
+        for l in range(len(linelocs)):
+            if offsets[l] != []:
+                #print(l, np.median(offsets[l]), tgt - np.median(offsets[l]))
+                adjustment = tgt - np.median(offsets[l])
+                linelocs[l] += adjustment * (self.rf.freq / 3.75) * .25
 
         return linelocs    
     
