@@ -436,13 +436,13 @@ def downscale_audio(audio, lineinfo, rf, linecount, timeoffset = 0, freq = 48000
     swow = np.zeros(len(arange), dtype=np.float)
     
     for i, t in enumerate(arange):
-        linenum = np.int(((t * 1000000) / rf.SysParams['line_period']) + 1)
+        linenum = (((t * 1000000) / rf.SysParams['line_period']) + 1)
         
         lineloc_cur = lineinfo[np.int(linenum)]
         try:
             lineloc_next = lineinfo[np.int(linenum) + 1]
         except:
-            print("WARNING: downscale_audio exceeding lineinfo ", np.int(linenum) + 1)
+            #print("WARNING: downscale_audio exceeding lineinfo ", np.int(linenum) + 1)
             lineloc_next = lineloc_cur + rf.linelen
 
         sampleloc = lineloc_cur
@@ -785,7 +785,7 @@ class Field:
         
         # On NTSC linecount is 262/263, PAL 312/313?
         self.linecount = self.rf.SysParams['frame_lines'] // 2
-        if not self.istop:
+        if self.istop:
             self.linecount += 1
         
         self.linelocs1 = self.compute_linelocs()
