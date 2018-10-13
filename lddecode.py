@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 from base64 import b64encode
 import copy
 from datetime import datetime
@@ -7,21 +7,26 @@ import io
 from io import BytesIO
 import os
 import sys
+import argparse
 
 from lddutils import *
 import lddecode_core
 from lddecode_core import *
 
-if len(sys.argv) != 5:
-    print("lddecode.py [input file] [output file] [start] [end]")
-    sys.exit(0)
-    
-filename = sys.argv[1]
-outname = sys.argv[2]
-firstframe = int(sys.argv[3])
-num_frames = int(sys.argv[4])
+parser = argparse.ArgumentParser(description='Extracts audio and video from raw RF laserdisc captures')
+parser.add_argument('infile', metavar='infile', type=str, help='source file')
+parser.add_argument('outfile', metavar='outfile', type=str, help='base name for destination files')
+parser.add_argument('--start', metavar='start', type=int, default=0, help='start at frame n (default is 0)')
+parser.add_argument('--length', metavar='length', type=int, default=100, help='limit length to n frames (default is 100)')
+parser.add_argument('--system', metavar='system', type=str, choices=['ntsc','pal'], default='ntsc', help='video system standard (ntsc/pal, default is ntsc)')
+args = parser.parse_args()
+filename = args.infile
+outname = args.outfile
+firstframe = args.start
+num_frames = args.length
+vid_standard = args.system.upper()
 
-rfn = RFDecode(system='NTSC')
+rfn = RFDecode(system=vid_standard)
 
 bytes_per_frame = int(rfn.freq_hz / rfn.SysParams['FPS']) + 1
 
