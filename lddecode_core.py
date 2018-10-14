@@ -771,11 +771,18 @@ class Field:
         
         if len(self.vsyncs) == 0:
             self.nextfieldoffset = start + (self.rf.linelen * 200)
-            print("way too short")
+            print("way too short at", start)
             return
         elif len(self.vsyncs) == 1:
-            self.nextfieldoffset = start + self.peaklist[self.vsyncs[0][1]-10]
-            print("too short")
+            jumpto = self.peaklist[self.vsyncs[0][1]-10]
+            self.nextfieldoffset = start + jumpto
+            
+            if jumpto == 0:
+                print("bad VSYNC found, jumping forward", start)
+                self.nextfieldoffset = start + (self.rf.linelen * 240)
+            else:
+                print("too short", start, jumpto, self.vsyncs)
+            
             return
         
         #print(self.peaklist[self.vsyncs[0][1]], self.peaklist[self.vsyncs[1][1]])
