@@ -794,6 +794,7 @@ class Field:
         self.processphilipscode()
         
         self.valid = True
+        self.tbcstart = self.peaklist[self.vsyncs[1][1]-10]
         
         return
 
@@ -1028,16 +1029,20 @@ class Framer:
                 rawdecode = self.rf.demod(infile, readsample, self.readlen)
                 f = self.FieldClass(self.rf, rawdecode, 0, audio_offset = self.audio_offset)
                 nextsample = readsample + f.nextfieldoffset
+                if not f.valid and len(f.vsyncs) == 0:
+                    nextsample = readsample + (self.rf.freq_hz * 10)
+                
             else:
                 f = self.FieldClass(self.rf, infile, readsample)
                 nextsample = f.nextfieldoffset
                 if not f.valid and len(f.vsyncs) == 0:
-                    return None, None
+                    nextsample = readsample + self.rf.freq_hz
+                    #return None, None
             
             if not f.valid:
                 readsample = nextsample # f.nextfieldoffset
             else:
-                return f, nextsample # readsample + f.nextfieldoffset
+                return f, readsample, nextsample # readsample + f.nextfieldoffset
         
     def mergevbi(self, fields):
         vbi_merged = copy.copy(fields[0].vbi)
@@ -1075,7 +1080,8 @@ class Framer:
         
         jumpto = 0
         while fieldcount < 2:
-            f, sample = self.readfield(infile, sample)
+            print(sample)
+            f, readsample, nextsample = self.readfield(infile, sample)
             
             if f is not None:
                 if f.istop:
@@ -1083,18 +1089,20 @@ class Framer:
                 else:
                     fields[1] = f
                     
-                if not CAV and (f.istop == self.rf.SysParams['topfirst']):
+                if ((not CAV and (f.istop == self.rf.SysParams['topfirst'])) or 
+                   (CAV and f.vbi['framenr'])):
                     fieldcount = 1
+                    firstsample = f.tbcstart + readsample
                 elif fieldcount == 1:
                     fieldcount = 2
-                elif CAV and f.vbi['framenr']:
-                        fieldcount = 1
 
                 if (fieldcount or not firstframe) and f.dsaudio is not None:
                     audio.append(f.dsaudio)
 
             else:
                 pass
+            
+            sample = nextsample
         
         if len(audio):
             conaudio = np.concatenate(audio)
@@ -1102,13 +1110,18 @@ class Framer:
         else:
             conaudio = None
         
-        combined = self.formatoutput(fields)
+        if self.full_decode:
+            combined = self.formatoutput(fields)
+        else:
+            combined = None
+            
         self.vbi = self.mergevbi(fields)
 
-        return combined, conaudio, sample, fields #, audio
+        return combined, conaudio, firstsample, sample, fields #, audio
 
-    def __init__(self, rf):
+    def __init__(self, rf, full_decode = True):
         self.rf = rf
+        self.full_decode = full_decode
 
         if self.rf.system == 'PAL':
             self.FieldClass = FieldPAL
@@ -1120,6 +1133,9 @@ class Framer:
             self.readlen = 900000
             self.outlines = 525
             self.clvfps = 30
+            
+        if not self.full_decode:
+            self.FieldClass = Field
         
         self.outwidth = self.rf.SysParams['outlinelen']
         self.audio_offset = 0
