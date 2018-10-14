@@ -778,7 +778,7 @@ class Field:
             self.nextfieldoffset = start + jumpto
             
             if jumpto == 0:
-                print("bad VSYNC found, jumping forward", start)
+                print("bad VSYNC found, jumping forward")
                 self.nextfieldoffset = start + (self.rf.linelen * 240)
             else:
                 print("too short", start, jumpto, self.vsyncs)
