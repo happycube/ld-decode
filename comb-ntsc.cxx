@@ -162,7 +162,7 @@ int write_locs = -1;
 
 const int nframes = 3;	// 3 frames needed for 3D buffer - for now
 
-const int in_y = 505;
+const int in_y = 525;
 const int in_x = 910;
 //const int in_size = in_y * in_x;
 const int out_x = 910;
@@ -210,7 +210,7 @@ class Comb
 		Filter *f_hpvy, *f_hpvi, *f_hpvq;
 
 		void FilterIQ(cline_t cbuf[in_y], int fnum) {
-			for (int l = 24; l < in_y; l++) {
+			for (int l = 44; l < in_y; l++) {
 				//uint16_t *line = &Frame[fnum].rawbuffer[l * in_x];	
 				//bool invertphase = (line[0] == 16384);
 
@@ -245,7 +245,7 @@ class Comb
 		// precompute 1D comb filter, used as a fallback for edges 
 		void Split1D(int fnum)
 		{
-			for (int l = 24; l < in_y; l++) {
+			for (int l = 44; l < in_y; l++) {
 				uint16_t *line = &Frame[fnum].rawbuffer[l * in_x];	
 				bool invertphase = (line[0] == 16384);
 
@@ -293,7 +293,7 @@ class Comb
 	
 		void Split2D(int f) 
 		{
-			for (int l = 24; l < in_y; l++) {
+			for (int l = 44; l < in_y; l++) {
 				uint16_t *pline = &Frame[f].rawbuffer[(l - 2) * in_x];	
 				uint16_t *line = &Frame[f].rawbuffer[l * in_x];	
 				uint16_t *nline = &Frame[f].rawbuffer[(l + 2) * in_x];	
@@ -368,7 +368,7 @@ class Comb
 
 		void Split3D(int f, bool opt_flow = false) 
 		{
-			for (int l = 24; l < in_y; l++) {
+			for (int l = 44; l < in_y; l++) {
 				uint16_t *line = &Frame[f].rawbuffer[l * in_x];	
 		
 				// shortcuts for previous/next 1D/pixel lines	
@@ -417,7 +417,7 @@ class Comb
 
 			memset(Frame[f].cbuf, 0, sizeof(cline_t) * in_y); 
 
-			for (int l = 24; l < in_y; l++) {
+			for (int l = 44; l < in_y; l++) {
 				double msel = 0.0, sel = 0.0;
 				uint16_t *line = &Frame[f].rawbuffer[l * in_x];	
 				bool invertphase = (line[0] == 16384);
@@ -552,41 +552,6 @@ class Comb
 			}
 		}
 		
-		uint32_t ReadPhillipsCode(uint16_t *line) {
-			int first_bit = -1 ;// (int)100 - (1.0 * dots_usec);
-			const double bitlen = 2.0 * dots_usec;
-			uint32_t out = 0;
-
-			// find first bit
-		
-			for (int i = 70; (first_bit == -1) && (i < 140); i++) {
-				if (u16_to_ire(line[i]) > 90) {
-					first_bit = i - (1.0 * dots_usec); 
-				}
-//				cerr << i << ' ' << line[i] << ' ' << u16_to_ire(line[i]) << ' ' << first_bit << endl;
-			}
-			if (first_bit < 0) return 0;
-
-			for (int i = 0; i < 24; i++) {
-				double val = 0;
-	
-			//	cerr << dots_usec << ' ' << (int)(first_bit + (bitlen * i) + dots_usec) << ' ' << (int)(first_bit + (bitlen * (i + 1))) << endl;	
-				for (int h = (int)(first_bit + (bitlen * i) + dots_usec); h < (int)(first_bit + (bitlen * (i + 1))); h++) {
-//					cerr << h << ' ' << line[h] << ' ' << endl;
-					val += u16_to_ire(line[h]); 
-				}
-
-//				cerr << "bit " << 23 - i << " " << val / dots_usec << ' ' << hex << out << dec << endl;	
-				if ((val / dots_usec) > 50) {
-					out |= (1 << (23 - i));
-				} 
-			}
-			cerr << "P " << curline << ' ' << hex << out << dec << endl;			
-
-			return out;
-		}
-
-
 		void ToRGB(int f, int firstline, cline_t cbuf[in_y]) {
 			// YIQ (YUV?) -> RGB conversion	
 			for (int l = firstline; l < in_y; l++) {
@@ -808,7 +773,7 @@ class Comb
 			Filter lp_3dqp({0.016282173233472, 0.046349864271587, 0.121506650149374, 0.199579915155249, 0.232562794380638, 0.199579915155249, 0.121506650149374, 0.046349864271587, 0.016282173233472}, {1.0});
 			Filter lp_3dqn({0.016282173233472, 0.046349864271587, 0.121506650149374, 0.199579915155249, 0.232562794380638, 0.199579915155249, 0.121506650149374, 0.046349864271587, 0.016282173233472}, {1.0});
 
-			for (int y = 24; y < 505; y++) {
+			for (int y = 24; y < 525; y++) {
 				uint16_t *line = &Frame[1].rawbuffer[y * in_x];	
 				uint16_t *linep = &Frame[0].rawbuffer[y * in_x];	
 				uint16_t *linen = &Frame[2].rawbuffer[y * in_x];	
@@ -843,7 +808,7 @@ class Comb
 			AdjustY(1, pbuf);
 			AdjustY(1, nbuf);
 			
-			for (int y = 24; y < 505; y++) {
+			for (int y = 24; y < 525; y++) {
 				for (int x = 50; x < 910; x++) {
 					double dy = 0, di = 0, dq = 0, diff = 0;
 
@@ -908,11 +873,11 @@ class Comb
 			if (f_colorlpf) FilterIQ(tbuf, f);
 
 			// copy VBI	
-			for (int l = 0; l < 24; l++) {
+			for (int l = 20; l < 44; l++) {
 				uint16_t *line = &Frame[f].rawbuffer[l * in_x];	
 					
 				for (int h = 4; h < 840; h++) {
-					tbuf[l].p[h].y = line[h]; 
+					tbuf[l - 20].p[h].y = line[h]; 
 				}
 			}
 

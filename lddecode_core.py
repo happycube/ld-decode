@@ -557,7 +557,7 @@ class Field:
         # Build actual line positions, skipping half-lines and adding padding as needed
         linelocs = [self.peaklist[self.vsyncs[0][1]]]
 
-        for curindex in range(self.vsyncs[0][1] + 1, self.vsyncs[1][0]):
+        for curindex in range(self.vsyncs[0][1] + 1, self.vsyncs[1][0] + 4):
             curline = self.peaklist[curindex]
             #print(curline)
 
@@ -650,7 +650,7 @@ class Field:
 
         return linelocs2, err   
     
-    def downscale(self, lineinfo = None, outwidth = None, wow=True, channel='demod', audio = False):
+    def downscale(self, lineoffset = 1, lineinfo = None, outwidth = None, wow=True, channel='demod', audio = False):
         if lineinfo is None:
             lineinfo = self.linelocs
         if outwidth is None:
@@ -661,14 +661,14 @@ class Field:
 
         sfactor = [None]
 
-        for l in range(1, self.linecount):
+        for l in range(lineoffset, self.linecount + lineoffset):
             scaled = scale(self.data[0][channel], lineinfo[l], lineinfo[l + 1], outwidth)
 
             if wow:
                 linewow = (lineinfo[l + 1] - lineinfo[l]) / self.inlinelen
                 scaled *= linewow
 
-            dsout[l * outwidth:(l + 1)*outwidth] = scaled
+            dsout[(l - lineoffset) * outwidth:(l + 1 - lineoffset)*outwidth] = scaled
 
         if audio and self.rf.analog_audio:
             self.dsaudio, self.audio_next_offset = downscale_audio(self.data[1], lineinfo, self.rf, self.linecount, self.audio_next_offset)
@@ -773,7 +773,7 @@ class Field:
             self.nextfieldoffset = start + (self.rf.linelen * 200)
             print("way too short at", start)
             return
-        elif len(self.vsyncs) == 1:
+        elif len(self.vsyncs) == 1 or len(self.peaklist) < self.vsyncs[1][1]+4:
             jumpto = self.peaklist[self.vsyncs[0][1]-10]
             self.nextfieldoffset = start + jumpto
             
@@ -878,7 +878,7 @@ class FieldPAL(Field):
         return linelocs    
     
     def downscale(self, final = False, *args, **kwargs):
-        dsout, dsaudio = super(FieldPAL, self).downscale(audio = final, *args, **kwargs)
+        dsout, dsaudio = super(FieldPAL, self).downscale(lineoffset = 3, audio = final, *args, **kwargs)
         
         if final:
             reduced = (dsout - self.rf.SysParams['ire0']) / self.rf.SysParams['hz_ire']
@@ -984,7 +984,7 @@ class FieldNTSC(Field):
         return np.array(linelocs3), burstlevel#, phaseaverages
 
     def downscale(self, final = False, *args, **kwargs):
-        dsout, dsaudio = super(FieldNTSC, self).downscale(audio = final, *args, **kwargs)
+        dsout, dsaudio = super(FieldNTSC, self).downscale(lineoffset = 1, audio = final, *args, **kwargs)
         
         if final:
             reduced = (dsout - self.rf.SysParams['ire0']) / self.rf.SysParams['hz_ire']
@@ -1053,22 +1053,6 @@ class FieldNTSC(Field):
         self.downscale(wow = True, final=True)
 
 class Framer:
-    def __init__(self, rf):
-        self.rf = rf
-
-        if self.rf.system == 'PAL':
-            print("PAL")
-            self.FieldClass = FieldPAL
-            self.readlen = 1000000
-            self.outlines = 610
-        else:
-            self.FieldClass = FieldNTSC
-            self.readlen = 900000
-            self.outlines = 505
-        
-        self.outwidth = self.rf.SysParams['outlinelen']
-        self.audio_offset = 0
-
     def readfield(self, infile, sample):
         readsample = sample
         print('starting at ', sample)
@@ -1103,7 +1087,24 @@ class Framer:
             vbi_merged['framenr'] += vbi_merged['clvframe']
                 
         return vbi_merged
+    
+    def formatoutput(self, fields):
+        linecount = (min(fields[0].linecount, fields[1].linecount) * 2) - 0
 
+        combined = np.zeros((self.outwidth * self.outlines), dtype=np.uint16)
+        for i in range(0, linecount, 2):
+            curline = (i // 2) + 0
+            combined[((i + 0) * self.outwidth):((i + 1) * self.outwidth)] = fields[0].dspicture[curline * fields[0].outlinelen: (curline * fields[0].outlinelen) + self.outwidth]
+            combined[((i + 1) * self.outwidth):((i + 2) * self.outwidth)] = fields[1].dspicture[curline * fields[0].outlinelen: (curline * fields[0].outlinelen) + self.outwidth]
+
+        # copy in the halfline.  bit hackish but so is the idea of a visible halfline ;)
+        lf = np.argmax([fields[0].linecount, fields[1].linecount])
+        curline = (linecount // 2) + 0
+        print(linecount, curline, np.max([fields[0].linecount, fields[1].linecount]))
+        combined[(linecount * self.outwidth):((linecount + 1) * self.outwidth)] = fields[lf].dspicture[curline * fields[0].outlinelen: (curline * fields[0].outlinelen) + self.outwidth]
+            
+        return combined
+    
     def readframe(self, infile, sample, firstframe = False, CAV = False):
         fieldcount = 0
         fields = [None, None]
@@ -1144,15 +1145,25 @@ class Framer:
             self.audio_offset = f.audio_next_offset
         else:
             conaudio = None
-            
-        linecount = (min(fields[0].linecount, fields[1].linecount) * 2) - 20
-
-        combined = np.zeros((self.outwidth * self.outlines), dtype=np.uint16)
-        for i in range(0, linecount, 2):
-            curline = (i // 2) + 10
-            combined[((i + 0) * self.outwidth):((i + 1) * self.outwidth)] = fields[0].dspicture[curline * fields[0].outlinelen: (curline * fields[0].outlinelen) + self.outwidth]
-            combined[((i + 1) * self.outwidth):((i + 2) * self.outwidth)] = fields[1].dspicture[curline * fields[0].outlinelen: (curline * fields[0].outlinelen) + self.outwidth]
         
+        combined = self.formatoutput(fields)
+            
         self.vbi = self.mergevbi(fields)
 
         return combined, conaudio, sample, fields #, audio
+
+    def __init__(self, rf):
+        self.rf = rf
+
+        if self.rf.system == 'PAL':
+            self.FieldClass = FieldPAL
+            self.readlen = 1000000
+            self.outlines = 625
+        else:
+            self.FieldClass = FieldNTSC
+            self.readlen = 900000
+            self.outlines = 525
+        
+        self.outwidth = self.rf.SysParams['outlinelen']
+        self.audio_offset = 0
+
