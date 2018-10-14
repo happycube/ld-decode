@@ -114,11 +114,10 @@ RFParams_PAL = {
 
     'video_lpf_freq': 4800000,
     'video_lpf_order': 5,
-    
 }
 
 class RFDecode:
-    def __init__(self, inputfreq = 40, system = 'NTSC', blocklen_ = 16384, analog_audio = True):
+    def __init__(self, inputfreq = 40, system = 'NTSC', blocklen_ = 16384, decode_analog_audio = True, have_analog_audio = True):
         self.blocklen = blocklen_
         self.blockcut = 1024 # ???
         self.system = system
@@ -147,10 +146,10 @@ class RFDecode:
         linelen = self.freq_hz/(1000000.0/self.SysParams['line_period'])
         self.linelen = int(np.round(linelen))
             
-        self.analog_audio = analog_audio
+        self.decode_analog_audio = decode_analog_audio
             
         self.computevideofilters()
-        if self.analog_audio: 
+        if self.decode_analog_audio: 
             self.computeaudiofilters()
             
         self.blockcut_end = self.Filters['F05_offset']
@@ -229,8 +228,6 @@ class RFDecode:
             audio_fdiv1 = 32 # this is good for 40mhz - 16 should be ideal for 28mhz
         else:
             audio_fdiv1 = 16
-            
-        SF['audio_fdiv1'] = audio_fdiv1
             
         afft_halfwidth = self.blocklen // (audio_fdiv1 * 2)
         arf_freq = self.freq_hz / (audio_fdiv1 / 2)
@@ -316,7 +313,7 @@ class RFDecode:
         else:
             rv_video = np.rec.array([out_video, out_video05, output_syncf, out_videoburst], names=['demod', 'demod_05', 'demod_sync', 'demod_burst'])
 
-        if self.analog_audio == False:
+        if self.decode_analog_audio == False:
             return rv_video, None
 
         # Audio phase 1
@@ -442,7 +439,6 @@ def downscale_audio(audio, lineinfo, rf, linecount, timeoffset = 0, freq = 48000
         try:
             lineloc_next = lineinfo[np.int(linenum) + 1]
         except:
-            #print("WARNING: downscale_audio exceeding lineinfo ", np.int(linenum) + 1)
             lineloc_next = lineloc_cur + rf.linelen
 
         sampleloc = lineloc_cur
@@ -504,12 +500,7 @@ class Field:
             peak = ds[i + peakloc]
 
             if peak > .2:
-                # TODO: validity check for lack of rot goes here?
-
-                # TODO: Work out adjustments for NTSC and PAL automagically
-                lineloc = i + peakloc + 0
-
-                peaklist.append(lineloc)
+                peaklist.append(i + peakloc)
 
                 # This allows all peaks to get caught properly
                 i += peakloc + int(self.rf.linelen * .4)
@@ -580,9 +571,6 @@ class Field:
 
         linelocs2 = self.linelocs1.copy()
         for i in range(len(self.linelocs1)):
-    #        if i == 106:
-    #            set_trace()
-
             # First adjust the lineloc before the beginning of hsync - 
             # lines 1-9 are half-lines which need a smaller offset
             if i < 9:
@@ -632,7 +620,6 @@ class Field:
         # accurate for analog audio, but are never seen in the picture.
         for i in range(9, -1, -1):
             gap = linelocs2[i + 1] - linelocs2[i]
-    #            print(i, gap)
             if not inrange(gap, self.rf.linelen - (self.rf.freq * .2), self.rf.linelen + (self.rf.freq * .2)):
                 gap = self.rf.linelen
 
@@ -641,7 +628,6 @@ class Field:
         # XXX2: more hack!  This one covers a bit at the end of a PAL field
         for i in range(len(linelocs2) - 10, len(linelocs2)):
             gap = linelocs2[i] - linelocs2[i - 1]
-            #print(i, gap)
             if not inrange(gap, self.rf.linelen - (self.rf.freq * .2), self.rf.linelen + (self.rf.freq * .2)):
                 gap = self.rf.linelen
 
@@ -670,7 +656,7 @@ class Field:
 
             dsout[(l - lineoffset) * outwidth:(l + 1 - lineoffset)*outwidth] = scaled
 
-        if audio and self.rf.analog_audio:
+        if audio and self.rf.decode_analog_audio:
             self.dsaudio, self.audio_next_offset = downscale_audio(self.data[1], lineinfo, self.rf, self.linecount, self.audio_next_offset)
             
         return dsout, self.dsaudio
@@ -723,7 +709,6 @@ class Field:
                     frame += (lc[4] * 10)
                     frame += lc[5] 
                     self.vbi['framenr'] = frame
-                    print("CAV ", frame)
                 else:
                     h = lc[0] << 20
                     h |= lc[1] << 16
@@ -743,7 +728,6 @@ class Field:
 
                     htop = h >> 12
                     if htop == 0x8dc or htop == 0x8ba:
-                        print('status code', h)
                         self.vbi['status'] = h
                     
                     if h == 0x87ffff:
@@ -771,26 +755,26 @@ class Field:
         
         if len(self.vsyncs) == 0:
             self.nextfieldoffset = start + (self.rf.linelen * 200)
-            print("way too short at", start)
+            #print("way too short at", start)
             return
         elif len(self.vsyncs) == 1 or len(self.peaklist) < self.vsyncs[1][1]+4:
             jumpto = self.peaklist[self.vsyncs[0][1]-10]
             self.nextfieldoffset = start + jumpto
             
             if jumpto == 0:
-                print("bad VSYNC found, jumping forward")
+                print("no/corrupt VSYNC found, jumping forward")
                 self.nextfieldoffset = start + (self.rf.linelen * 240)
             else:
-                print("too short", start, jumpto, self.vsyncs)
+                #print("too short", start, jumpto, self.vsyncs)
+                pass
             
             return
         
-        #print(self.peaklist[self.vsyncs[0][1]], self.peaklist[self.vsyncs[1][1]])
         self.nextfieldoffset = self.peaklist[self.vsyncs[1][1]-10]
         
         self.istop = self.vsyncs[0][2]
         
-        # On NTSC linecount is 262/263, PAL 312/313?
+        # On NTSC linecount is 262/263, PAL 312/313
         self.linecount = self.rf.SysParams['frame_lines'] // 2
         if self.istop:
             self.linecount += 1
@@ -1000,7 +984,6 @@ class FieldNTSC(Field):
                     else:
                         lines16[((i + 0) * self.outlinelen)] = 32768
 
-                    #clevel = 1.17*hz_ire_scale
                     clevel = (1/self.colorlevel)/ hz_ire_scale
 
                     lines16[((i + 0) * self.outlinelen) + 1] = np.uint16(327.67 * clevel * np.abs(self.burstlevel[i]))
@@ -1021,15 +1004,6 @@ class FieldNTSC(Field):
         self.colorphase = 90+1.5 # colorphase
         self.colorlevel = 1.45 # colorlevel
 
-        # GGV 21846/2950
-        #self.colorphase = 90+1.5 # colorphase
-        #self.colorlevel = 1.6 # colorlevel
-
-        # GGV ch 11 /X9
-        #self.colorphase = 90 # colorphase
-        #self.colorlevel = 1.6 # colorlevel
-        
-        
         super(FieldNTSC, self).__init__(*args, **kwargs)
         
         if not self.valid:
@@ -1042,20 +1016,12 @@ class FieldNTSC(Field):
         # Now adjust 33 degrees (-90 - 33) for color decoding
         shift33 = self.colorphase * (np.pi / 180)
         self.linelocs = self.apply_offsets(self.linelocs4, shift33 - 8)
-        #shift33 = -50 * (np.pi / 180)
-        #self.linelocs = self.apply_offsets(self.linelocs4, shift33)
-        
-        # Now adjust 33 degrees for color decoding
-#        shift33 = ((33.0 / 360.0) * np.pi) * .5
-#        self.linelocs = self.apply_offsets(self.linelocs4, -1 - shift33)
-        
         
         self.downscale(wow = True, final=True)
 
 class Framer:
     def readfield(self, infile, sample):
         readsample = sample
-        print('starting at ', sample)
         
         while True:
             if isinstance(infile, io.IOBase):
@@ -1063,7 +1029,6 @@ class Framer:
                 f = self.FieldClass(self.rf, rawdecode, 0, audio_offset = self.audio_offset)
                 nextsample = readsample + f.nextfieldoffset
             else:
-#                print(readsample, type(infile))
                 f = self.FieldClass(self.rf, infile, readsample)
                 nextsample = f.nextfieldoffset
                 if not f.valid and len(f.vsyncs) == 0:
@@ -1081,9 +1046,8 @@ class Framer:
                 vbi_merged[k] = fields[1].vbi[k]
                 
         if vbi_merged['seconds'] is not None:
-            fps = 30
-            vbi_merged['framenr'] = vbi_merged['minutes'] * 60 * fps
-            vbi_merged['framenr'] += vbi_merged['seconds'] * fps
+            vbi_merged['framenr'] = vbi_merged['minutes'] * 60 * self.clvfps
+            vbi_merged['framenr'] += vbi_merged['seconds'] * self.clvfps
             vbi_merged['framenr'] += vbi_merged['clvframe']
                 
         return vbi_merged
@@ -1100,7 +1064,6 @@ class Framer:
         # copy in the halfline.  bit hackish but so is the idea of a visible halfline ;)
         lf = np.argmax([fields[0].linecount, fields[1].linecount])
         curline = (linecount // 2) + 0
-        print(linecount, curline, np.max([fields[0].linecount, fields[1].linecount]))
         combined[(linecount * self.outwidth):((linecount + 1) * self.outwidth)] = fields[lf].dspicture[curline * fields[0].outlinelen: (curline * fields[0].outlinelen) + self.outwidth]
             
         return combined
@@ -1114,13 +1077,7 @@ class Framer:
         while fieldcount < 2:
             f, sample = self.readfield(infile, sample)
             
-            #return f, sample
-            
             if f is not None:
-
-                #tmpfield = f.downscale()
-                
-                print(f.istop, f.vbi['framenr'])
                 if f.istop:
                     fields[0] = f
                 else:
@@ -1137,7 +1094,6 @@ class Framer:
                     audio.append(f.dsaudio)
 
             else:
-                #print('possible error', sample)
                 pass
         
         if len(audio):
@@ -1147,7 +1103,6 @@ class Framer:
             conaudio = None
         
         combined = self.formatoutput(fields)
-            
         self.vbi = self.mergevbi(fields)
 
         return combined, conaudio, sample, fields #, audio
@@ -1159,10 +1114,12 @@ class Framer:
             self.FieldClass = FieldPAL
             self.readlen = 1000000
             self.outlines = 625
+            self.clvfps = 25
         else:
             self.FieldClass = FieldNTSC
             self.readlen = 900000
             self.outlines = 525
+            self.clvfps = 30
         
         self.outwidth = self.rf.SysParams['outlinelen']
         self.audio_offset = 0
