@@ -60,6 +60,10 @@ def findframe(infile, rf, target):
         offset = (samples_per_frame * (target - 1 - framer.vbi['framenr'])) 
         nextsample = rv[2] + offset
         rv = framer.readframe(infile, nextsample, CAV=iscav)
+        if rv[2] is None:
+            print("ERROR: Frame does not appear to exist.")
+            sys.exit()
+        
         print(framer.vbi)
         retry -= 1
 

@@ -381,10 +381,14 @@ class RFDecode:
         output_audio = None
 
         for i in range(start, end, self.blocklen - self.blockcut - self.blockcut_end):
-            indata = loader(infile, i, self.blocklen)
+            try:
+                indata = loader(infile, i, self.blocklen)
+            except:
+                return None
+            
             if indata is None:
-                break
-
+                return None
+            
             tmp_video, tmp_audio = self.demodblock(indata)
 
             # if the output hasn't been created yet, do it now using the 
@@ -737,6 +741,9 @@ class Field:
     # decoded_field: downscaled field
     # burstlevels: 
     def __init__(self, rf, rawdecode, start, audio_offset = 0, keepraw = True):
+        if rawdecode is None:
+            return None
+        
         self.data = rawdecode
         self.rf = rf
         self.start = start
@@ -1031,10 +1038,15 @@ class Framer:
         while True:
             if isinstance(infile, io.IOBase):
                 rawdecode = self.rf.demod(infile, readsample, self.readlen)
+                if rawdecode is None:
+                    return None, None, None
+                
                 f = self.FieldClass(self.rf, rawdecode, 0, audio_offset = self.audio_offset)
                 nextsample = readsample + f.nextfieldoffset
                 if not f.valid:
-                    if len(f.peaklist) < 100: 
+                    if rawdecode is None:
+                        return None, None, None
+                    elif len(f.peaklist) < 100: 
                         # No recognizable data - jump 10 seconds to get past possible spinup
                         nextsample = readsample + (self.rf.freq_hz * 10)
                     elif len(f.vsyncs) == 0:
@@ -1104,9 +1116,8 @@ class Framer:
 
                 if (fieldcount or not firstframe) and f.dsaudio is not None:
                     audio.append(f.dsaudio)
-
-            else:
-                pass
+            elif readsample is None:
+                return None, None, None, None
             
             sample = nextsample
         
