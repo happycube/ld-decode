@@ -719,7 +719,7 @@ class Field:
                     #print('%06x' % h)
                     
                     if lc[2] == 0xE: # seconds/frame goes here
-                        self.vbi['seconds'] = lc[1] - 10
+                        self.vbi['seconds'] = (lc[1] - 10) * 10
                         self.vbi['seconds'] += lc[3]
                         self.vbi['clvframe'] = lc[4] * 10
                         self.vbi['clvframe'] += lc[5]
@@ -779,8 +779,12 @@ class Field:
         if self.istop:
             self.linecount += 1
         
-        self.linelocs1 = self.compute_linelocs()
-        self.linelocs2, self.errs2 = self.refine_linelocs_hsync()
+        try:
+            self.linelocs1 = self.compute_linelocs()
+            self.linelocs2, self.errs2 = self.refine_linelocs_hsync()
+        except:
+            self.valid = False
+            return
 
         self.linelocs = self.linelocs2
         
@@ -1029,9 +1033,12 @@ class Framer:
                 rawdecode = self.rf.demod(infile, readsample, self.readlen)
                 f = self.FieldClass(self.rf, rawdecode, 0, audio_offset = self.audio_offset)
                 nextsample = readsample + f.nextfieldoffset
-                if not f.valid and len(f.vsyncs) == 0:
-                    nextsample = readsample + (self.rf.freq_hz * 10)
-                
+                if not f.valid:
+                    if len(f.peaklist) < 100: 
+                        # No recognizable data - jump 10 seconds to get past possible spinup
+                        nextsample = readsample + (self.rf.freq_hz * 10)
+                    elif len(f.vsyncs) == 0:
+                        nextsample = readsample + (self.rf.freq_hz * 1)
             else:
                 f = self.FieldClass(self.rf, infile, readsample)
                 nextsample = f.nextfieldoffset
@@ -1080,7 +1087,6 @@ class Framer:
         
         jumpto = 0
         while fieldcount < 2:
-            print(sample)
             f, readsample, nextsample = self.readfield(infile, sample)
             
             if f is not None:
@@ -1090,7 +1096,7 @@ class Framer:
                     fields[1] = f
                     
                 if ((not CAV and (f.istop == self.rf.SysParams['topfirst'])) or 
-                   (CAV and f.vbi['framenr'])):
+                   (CAV and (f.vbi['framenr'] or f.vbi['minutes']))):
                     fieldcount = 1
                     firstsample = f.tbcstart + readsample
                 elif fieldcount == 1:
@@ -1117,7 +1123,7 @@ class Framer:
             
         self.vbi = self.mergevbi(fields)
 
-        return combined, conaudio, firstsample, sample, fields #, audio
+        return combined, conaudio, sample, fields #, audio
 
     def __init__(self, rf, full_decode = True):
         self.rf = rf
@@ -1130,7 +1136,7 @@ class Framer:
             self.clvfps = 25
         else:
             self.FieldClass = FieldNTSC
-            self.readlen = 900000
+            self.readlen = 1000000
             self.outlines = 525
             self.clvfps = 30
             

@@ -16,7 +16,8 @@ from lddecode_core import *
 parser = argparse.ArgumentParser(description='Extracts audio and video from raw RF laserdisc captures')
 parser.add_argument('infile', metavar='infile', type=str, help='source file')
 parser.add_argument('outfile', metavar='outfile', type=str, help='base name for destination files')
-parser.add_argument('-s', '--start', metavar='start', type=int, default=0, help='start at frame n of capture (default is 0)')
+parser.add_argument('-s', '--start', metavar='start', type=int, default=0, help='rough jump to frame n of capture (default is 0)')
+parser.add_argument('-S', '--seek', metavar='seek', type=int, default=-1, help='rough jump to frame n of capture')
 parser.add_argument('-l', '--length', metavar='length', type=int, help='limit length to n frames')
 parser.add_argument('-p', '--pal', dest='pal', action='store_true', help='source is in PAL format')
 args = parser.parse_args()
@@ -38,10 +39,42 @@ if (infile_size // bytes_per_frame - firstframe) < 2:
 	exit(1)
 num_frames = req_frames if req_frames is not None else infile_size // bytes_per_frame - firstframe
 
+def findframe(infile, rf, target):
+    framer = Framer(rf, full_decode = False)
+    samples_per_frame = int(rf.freq_hz / rf.SysParams['FPS'])
+    
+    nextsample = 0
+    iscav = False
+    rv = framer.readframe(infile, nextsample, CAV=False)
+    print(framer.vbi)
+
+    # because of 29.97fps, there may be missing frames
+    if framer.vbi['isclv']:
+        tolerance = 1
+    else:
+        tolerance = 0
+        iscav = True
+
+    retry = 5
+    while np.abs(target - framer.vbi['framenr']) > tolerance and retry:
+        offset = (samples_per_frame * (target - 1 - framer.vbi['framenr'])) 
+        nextsample = rv[2] + offset
+        rv = framer.readframe(infile, nextsample, CAV=iscav)
+        print(framer.vbi)
+        retry -= 1
+
+    if np.abs(target - framer.vbi['framenr']) > tolerance:
+        print("WARNING: seeked to frame ", framer.vbi['framenr'])
+        
+    return nextsample
+
 fd = open(filename, 'rb')
 lddecode_core.loader = load_packed_data_4_40
 
-nextsample = firstframe * samples_per_frame
+if args.seek >= 0:
+    nextsample = findframe(fd, rfn, args.seek)
+else:
+    nextsample = firstframe * samples_per_frame
 
 outfile = open(outname + '.tbc', 'wb')
 outfile_audio = open(outname + '.pcm', 'wb')
@@ -57,7 +90,7 @@ for f in range(0, num_frames):
 	    ca.append(audio)
 	    
 	    outfile.write(combined)
-	    print(len(audio)//2)
+	    #print(len(audio)//2)
 	    outfile_audio.write(audio)
 	else:
 		if req_frames is not None:
