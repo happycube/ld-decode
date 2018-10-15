@@ -734,7 +734,7 @@ class Field:
                     #print('%06x' % h)
                     
                     if lc[2] == 0xE: # seconds/frame goes here
-                        self.vbi['seconds'] = lc[1] - 10
+                        self.vbi['seconds'] = (lc[1] - 10) * 10
                         self.vbi['seconds'] += lc[3]
                         self.vbi['clvframe'] = lc[4] * 10
                         self.vbi['clvframe'] += lc[5]
@@ -795,8 +795,13 @@ class Field:
         if self.istop:
             self.linecount += 1
         
-        self.linelocs1 = self.compute_linelocs()
-        self.linelocs2, self.errs2 = self.refine_linelocs_hsync()
+        try:
+            self.linelocs1 = self.compute_linelocs()
+            self.linelocs2, self.errs2 = self.refine_linelocs_hsync()
+        except:
+            print("Unable to decode frame")
+            self.valid = False
+            return
 
         self.linelocs = self.linelocs2
         
