@@ -550,21 +550,28 @@ class Field:
 
     def compute_linelocs(self):
         # Build actual line positions, skipping half-lines and adding padding as needed
+        ds = self.data[0]['demod_sync']
         linelocs = [self.peaklist[self.vsyncs[0][1]]]
 
         for curindex in range(self.vsyncs[0][1] + 1, self.vsyncs[1][0] + 4):
+            prevline = self.peaklist[curindex - 1]
             curline = self.peaklist[curindex]
             #print(curline)
 
             # fill in as many missing lines as needed
             while (curline - linelocs[-1]) > (self.inlinelen * 1.95):
                 linelocs.append(linelocs[-1] + (linelocs[-1] - linelocs[-2]))
-            
-            if (curline - linelocs[-1]) > (self.inlinelen * 1.025):
+
+            if inrange(ds[curline], .575, .8) and not inrange(ds[prevline], .575, .8):
+                tolerance = .1
+            else:
+                tolerance = .01
+
+            if (curline - linelocs[-1]) > (self.inlinelen * (1 + tolerance)):
                 linelocs.append(linelocs[-1] + self.inlinelen)
-            elif (curline - linelocs[-1]) > (self.inlinelen * .975):
+            elif (curline - linelocs[-1]) > (self.inlinelen * (1 - tolerance)):
                 linelocs.append(curline)
-                
+
         return linelocs
 
     def refine_linelocs_hsync(self):
