@@ -899,10 +899,13 @@ class FieldPAL(Field):
         
         if not self.valid:
             return
-        
-        self.linelocs = self.refine_linelocs_pilot()
-        
-        self.downscale(wow = True, final=True)
+
+        try:
+            self.linelocs = self.refine_linelocs_pilot()
+            self.downscale(wow = True, final=True)
+        except:
+            print("ERROR: Unable to decode frame, skipping")
+            self.valid = False
 
 # These classes extend Field to do PAL/NTSC specific TBC features.
 
