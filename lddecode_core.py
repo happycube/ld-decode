@@ -1027,16 +1027,21 @@ class FieldNTSC(Field):
         
         if not self.valid:
             return
+
+        try:
+
+            # This needs to be run twice to get optimal burst levels
+            self.linelocs3, self.burstlevel = self.refine_linelocs_burst(self.linelocs2)
+            self.linelocs4, self.burstlevel = self.refine_linelocs_burst(self.linelocs3)
+
+            # Now adjust 33 degrees (-90 - 33) for color decoding
+            shift33 = self.colorphase * (np.pi / 180)
+            self.linelocs = self.apply_offsets(self.linelocs4, shift33 - 8)
         
-        # This needs to be run twice to get optimal burst levels
-        self.linelocs3, self.burstlevel = self.refine_linelocs_burst(self.linelocs2)
-        self.linelocs4, self.burstlevel = self.refine_linelocs_burst(self.linelocs3)
-        
-        # Now adjust 33 degrees (-90 - 33) for color decoding
-        shift33 = self.colorphase * (np.pi / 180)
-        self.linelocs = self.apply_offsets(self.linelocs4, shift33 - 8)
-        
-        self.downscale(wow = True, final=True)
+            self.downscale(wow = True, final=True)
+        except:
+            print("ERROR: Unable to decode frame, skipping")
+            self.valid = False
 
 class Framer:
     def readfield(self, infile, sample):
