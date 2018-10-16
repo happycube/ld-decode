@@ -553,6 +553,26 @@ class Field:
         ds = self.data[0]['demod_sync']
         linelocs = [self.peaklist[self.vsyncs[0][1]]]
 
+        # get medians for equalization pulses
+        ds_eq = []
+        for curindex in range(self.vsyncs[0][1] + 1, self.vsyncs[0][1] + 20):
+            curline = self.peaklist[curindex]
+            if inrange(ds[curline], 0.4, 0.55):
+                #print(curindex, ds[curline])
+                ds_eq.append(ds[curline])
+
+        ds_hsync = []
+        for curindex in range(self.vsyncs[0][1] + 20, self.vsyncs[1][0] + 4):
+            curline = self.peaklist[curindex]
+            if inrange(ds[curline], 0.6, 0.8):
+                #print(curindex, ds[curline])
+                ds_hsync.append(ds[curline])
+
+        ds_hsync_median = np.median(ds_hsync)
+        hslow = ds_hsync_median - .01
+        hshigh = ds_hsync_median + .01
+        #print(ds_hsync_median)
+
         for curindex in range(self.vsyncs[0][1] + 1, self.vsyncs[1][0] + 4):
             prevline = self.peaklist[curindex - 1]
             curline = self.peaklist[curindex]
@@ -562,7 +582,8 @@ class Field:
             while (curline - linelocs[-1]) > (self.inlinelen * 1.95):
                 linelocs.append(linelocs[-1] + (linelocs[-1] - linelocs[-2]))
 
-            if inrange(ds[curline], .575, .8) and not inrange(ds[prevline], .575, .8):
+            if inrange(ds[curline], hslow, hshigh) and not inrange(ds[prevline], hslow, hshigh):
+                #print('t')
                 tolerance = .1
             else:
                 tolerance = .01
@@ -932,10 +953,10 @@ class FieldNTSC(Field):
             ba = scaledburst[(self.outlinelen*l)+20:self.outlinelen*(l+0)+60].copy()
             ba -= np.mean(ba)
             burstlevel[l] = np.max(np.abs(ba))
-            #print(np.argmax(ba))
+            #print(l, burstlevel[l], np.std(ba) / hz_ire_scale)
 
             # max should be 20.  if there are any pixels > 30 there's probably a rot-spike
-            if (burstlevel[l] / hz_ire_scale) > 30:
+            if ((burstlevel[l] / hz_ire_scale) > 30) or (np.std(ba) / hz_ire_scale) < 3:
                 burstlevel[l] = 0
                 continue
 
@@ -980,9 +1001,13 @@ class FieldNTSC(Field):
         burstlevel[phasegroup::2] = -burstlevel[phasegroup::2]
 
         for l in range(len(linelocs3)):
+            if np.abs(adjset[l]) > 2:
+                burstlevel[l] = 0
+                continue
+
             linelocs3[l] -= adjset[l] * (self.rf.freq / (4 * 315 / 88)) * 1
 
-        for l in range(1, len(linelocs3) - 1):
+        for l in range(2, len(linelocs3) - 1):
             if burstlevel[l] == 0:
                 gap = linelocs3[l - 1] - linelocs3[l - 2]
                 linelocs3[l] = linelocs3[l - 1] + gap
