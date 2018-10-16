@@ -560,9 +560,9 @@ class Field:
             while (curline - linelocs[-1]) > (self.inlinelen * 1.95):
                 linelocs.append(linelocs[-1] + (linelocs[-1] - linelocs[-2]))
             
-            if (curline - linelocs[-1]) > (self.inlinelen * 1.02):
+            if (curline - linelocs[-1]) > (self.inlinelen * 1.025):
                 linelocs.append(linelocs[-1] + self.inlinelen)
-            elif (curline - linelocs[-1]) > (self.inlinelen * .98):
+            elif (curline - linelocs[-1]) > (self.inlinelen * .975):
                 linelocs.append(curline)
                 
         return linelocs
@@ -1100,6 +1100,7 @@ class Framer:
         jumpto = 0
         while fieldcount < 2:
             f, readsample, nextsample = self.readfield(infile, sample)
+            print(sample, nextsample)
             
             if f is not None:
                 if f.istop:
