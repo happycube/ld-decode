@@ -549,51 +549,54 @@ class Field:
         return vsyncs
 
     def compute_linelocs(self):
-        # Build actual line positions, skipping half-lines and adding padding as needed
         ds = self.data[0]['demod_sync']
-        linelocs = [self.peaklist[self.vsyncs[0][1]]]
 
-        # get medians for equalization pulses
-        ds_eq = []
-        for curindex in range(self.vsyncs[0][1] + 1, self.vsyncs[0][1] + 20):
-            curline = self.peaklist[curindex]
-            if inrange(ds[curline], 0.4, 0.55):
-                #print(curindex, ds[curline])
-                ds_eq.append(ds[curline])
+        plist = self.peaklist
+        plevel = [ds[p] for p in self.peaklist]
 
-        ds_hsync = []
-        for curindex in range(self.vsyncs[0][1] + 20, self.vsyncs[1][0] + 4):
-            curline = self.peaklist[curindex]
-            if inrange(ds[curline], 0.6, 0.8):
-                #print(curindex, ds[curline])
-                ds_hsync.append(ds[curline])
+        plevel_hsync = [ds[p] for p in self.peaklist if inrange(ds[p], 0.6, 0.8)]
+        med_hsync = np.median(plevel_hsync)
+        std_hsync = np.std(plevel_hsync)
 
-        ds_hsync_median = np.median(ds_hsync)
-        hslow = ds_hsync_median - .01
-        hshigh = ds_hsync_median + .01
-        #print(ds_hsync_median)
+        hsync_tolerance = max(np.std(plevel_hsync) * 2, .01)
 
-        for curindex in range(self.vsyncs[0][1] + 1, self.vsyncs[1][0] + 4):
-            prevline = self.peaklist[curindex - 1]
-            curline = self.peaklist[curindex]
-            #print(curline)
+        # note: this is chopped on output, so allocating too many lines is OK
+        linelocs = {}
 
-            # fill in as many missing lines as needed
-            while (curline - linelocs[-1]) > (self.inlinelen * 1.95):
-                linelocs.append(linelocs[-1] + (linelocs[-1] - linelocs[-2]))
+        for i in range(0, self.vsyncs[1][1]): #self.vsyncs[1][1]):
+            #print(i, plevel[i])
+            if (inrange(plevel[i], med_hsync - hsync_tolerance, med_hsync + hsync_tolerance)):
+                linenum = int(np.round((plist[i] - plist[self.vsyncs[0][1]]) / self.inlinelen))
+                linelocs[linenum] = plist[i]
 
-            if inrange(ds[curline], hslow, hshigh) and not inrange(ds[prevline], hslow, hshigh):
-                #print('t')
-                tolerance = .1
-            else:
-                tolerance = .01
+        linelocs2 = copy.deepcopy(linelocs)
 
-            if (curline - linelocs[-1]) > (self.inlinelen * (1 + tolerance)):
-                linelocs.append(linelocs[-1] + self.inlinelen)
-            elif (curline - linelocs[-1]) > (self.inlinelen * (1 - tolerance)):
-                linelocs.append(curline)
+        for l in range(1, self.linecount + 5):
+            if l not in linelocs:
+                prev_valid = None
+                next_valid = None
 
-        return linelocs
+                for i in range(l, -10, -1):
+                    if i in linelocs:
+                        prev_valid = i
+                        break
+                for i in range(l, self.linecount + 1):
+                    if i in linelocs:
+                        next_valid = i
+                        break
+
+                if next_valid is not None:
+                    avglen = (linelocs[next_valid] - linelocs[prev_valid]) / (next_valid - prev_valid)
+                    #print(prev_valid, next_valid, avglen)
+                    linelocs2[l] = linelocs[prev_valid] + (avglen * (l - prev_valid))
+                else:
+                    avglen = linelocs[prev_valid] - linelocs2[prev_valid - 1]
+                    linelocs2[l] = linelocs[prev_valid] + (avglen * (l - prev_valid))
+
+                #print(l, linelocs2[l], linelocs[10], prev_valid, next_valid)
+
+        rv = [linelocs2[l] for l in range(1, self.linecount + 5)]
+        return rv
 
     def refine_linelocs_hsync(self):
         # Adjust line locations to end of HSYNC.
@@ -818,6 +821,7 @@ class Field:
             self.linelocs1 = self.compute_linelocs()
             self.linelocs2, self.errs2 = self.refine_linelocs_hsync()
         except:
+            print('lineloc compute error')
             self.valid = False
             return
 
@@ -1054,6 +1058,7 @@ class FieldNTSC(Field):
         super(FieldNTSC, self).__init__(*args, **kwargs)
         
         if not self.valid:
+            print('not valid')
             return
 
         try:
