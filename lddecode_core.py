@@ -522,13 +522,14 @@ class Field:
         # Determine first/second field
         # should this rely on what comes *after* the vsync too?
         line0 = None
-        for i in range(peaknum - 1, peaknum - 10, -1):
+        for i in range(peaknum - 1, peaknum - 20, -1):
             peak = ds[self.peaklist[i]]
             prevpeak = ds[self.peaklist[i + 1]]
 
             if peak > .6 and line0 is None:
                 line0 = i
-
+                break
+                
         return line0, (self.peaklist[line0 + 1] - self.peaklist[line0]) > (self.inlinelen * .75)     
 
     def determine_vsyncs(self):
@@ -563,11 +564,31 @@ class Field:
         # note: this is chopped on output, so allocating too many lines is OK
         linelocs = {}
 
+        linelens = [self.inlinelen]
+        prevlineidx = None
         for i in range(0, self.vsyncs[1][1]): #self.vsyncs[1][1]):
             #print(i, plevel[i])
+            med_linelen = np.median(linelens[-25:])
+
             if (inrange(plevel[i], med_hsync - hsync_tolerance, med_hsync + hsync_tolerance)):
-                linenum = int(np.round((plist[i] - plist[self.vsyncs[0][1]]) / self.inlinelen))
+                if prevlineidx is not None:
+                    linegap = plist[i] - plist[prevlineidx]
+
+                    if inrange(linegap / self.inlinelen, .98, 1.02):
+                        linelens.append(linegap)
+                        linenum = prevlinenum + 1
+                    else:
+                        linenum = prevlinenum + int(np.round((plist[i] - plist[prevlineidx]) / med_linelen))
+                else:
+                    linenum = int(np.round((plist[i] - plist[self.vsyncs[0][1]]) / med_linelen))
+
+
                 linelocs[linenum] = plist[i]
+
+                prevlineidx = i
+                prevlinenum = linenum
+
+                #print(linenum, plist[i], ((plist[i] - plist[self.vsyncs[0][1]]) / med_linelen), med_linelen)
 
         linelocs2 = copy.deepcopy(linelocs)
 
@@ -593,7 +614,7 @@ class Field:
                     avglen = linelocs[prev_valid] - linelocs2[prev_valid - 1]
                     linelocs2[l] = linelocs[prev_valid] + (avglen * (l - prev_valid))
 
-                #print(l, linelocs2[l], linelocs[10], prev_valid, next_valid)
+                #print(l, linelocs2[l] - linelocs2[l - 1], avglen, linelocs2[l], linelocs[10], prev_valid, next_valid)
 
         rv = [linelocs2[l] for l in range(1, self.linecount + 5)]
         return rv
