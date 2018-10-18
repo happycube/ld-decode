@@ -39,12 +39,11 @@ if (infile_size // bytes_per_frame - firstframe) < 2:
 	exit(1)
 num_frames = req_frames if req_frames is not None else infile_size // bytes_per_frame - firstframe
 
-def findframe(infile, rf, target):
+def findframe(infile, rf, target, nextsample = 0):
     framer = Framer(rf, full_decode = False)
     samples_per_frame = int(rf.freq_hz / rf.SysParams['FPS'])
     framer.vbi = {'framenr': None}
     
-    nextsample = 0
     iscav = False
     
     retry = 5
@@ -84,7 +83,7 @@ fd = open(filename, 'rb')
 lddecode_core.loader = load_packed_data_4_40
 
 if args.seek >= 0:
-    nextsample = findframe(fd, rfn, args.seek)
+    nextsample = findframe(fd, rfn, args.seek, firstframe * samples_per_frame)
 else:
     nextsample = firstframe * samples_per_frame
 
