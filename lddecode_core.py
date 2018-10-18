@@ -532,15 +532,33 @@ class Field:
                 
         return line0, (self.peaklist[line0 + 1] - self.peaklist[line0]) > (self.inlinelen * .75)     
 
+    def get_hsync_median(self):
+        ''' Returns the median and tolerance levels for filtered hsync pulses '''
+        
+        ds = self.data[0]['demod_sync']
+
+        plist = self.peaklist
+        plevel = [ds[p] for p in self.peaklist]
+
+        plevel_hsync = [ds[p] for p in self.peaklist if inrange(ds[p], 0.6, 0.8)]
+        med_hsync = np.median(plevel_hsync)
+        std_hsync = np.std(plevel_hsync)
+
+        hsync_tolerance = max(np.std(plevel_hsync) * 2, .01)
+
+        return med_hsync, hsync_tolerance
+        
     def determine_vsyncs(self):
         # find vsyncs from the peaklist
         ds = self.data[0]['demod_sync']
         vsyncs = []
 
+        med_hsync, hsync_tolerance = self.get_hsync_median()
+        
         prevpeak = 1.0
         for i, p in enumerate(self.peaklist):
             peak = ds[p]
-            if peak > .9 and prevpeak < .525:
+            if peak > .9 and prevpeak < med_hsync - (hsync_tolerance * 2):
                 rv = self.determine_field(i)
                 if rv is not None:
                     vsyncs.append((i, *rv))
@@ -555,12 +573,8 @@ class Field:
         plist = self.peaklist
         plevel = [ds[p] for p in self.peaklist]
 
-        plevel_hsync = [ds[p] for p in self.peaklist if inrange(ds[p], 0.6, 0.8)]
-        med_hsync = np.median(plevel_hsync)
-        std_hsync = np.std(plevel_hsync)
-
-        hsync_tolerance = max(np.std(plevel_hsync) * 2, .01)
-
+        med_hsync, hsync_tolerance = self.get_hsync_median()
+        
         # note: this is chopped on output, so allocating too many lines is OK
         linelocs = {}
 
