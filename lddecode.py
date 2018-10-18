@@ -20,12 +20,18 @@ parser.add_argument('-s', '--start', metavar='start', type=int, default=0, help=
 parser.add_argument('-S', '--seek', metavar='seek', type=int, default=-1, help='rough jump to frame n of capture')
 parser.add_argument('-l', '--length', metavar='length', type=int, help='limit length to n frames')
 parser.add_argument('-p', '--pal', dest='pal', action='store_true', help='source is in PAL format')
+parser.add_argument('-n', '--ntsc', dest='ntsc', action='store_true', help='source is in NTSC format')
+
 args = parser.parse_args()
 filename = args.infile
 outname = args.outfile
 firstframe = args.start
 req_frames = args.length
 vid_standard = 'PAL' if args.pal else 'NTSC'
+
+if args.pal and args.ntsc:
+    print("ERROR: Can only be PAL or NTSC")
+    exit(1)
 
 rfn = RFDecode(system=vid_standard)
 
