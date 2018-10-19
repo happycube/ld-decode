@@ -106,14 +106,14 @@ RFParams_PAL = {
     'audio_notchwidth': 200000,
     'audio_notchorder': 2,
 
-    'video_deemp': (100*.32, 400*.32),
+    'video_deemp': (100*.34, 400*.34),
 
     # XXX: guessing here!
-    'video_bpf': (2600000, 12500000),
-    'video_bpf_order': 3,
+    'video_bpf': (2500000, 12500000),
+    'video_bpf_order': 1,
 
     'video_lpf_freq': 4800000,
-    'video_lpf_order': 5,
+    'video_lpf_order': 9,
 }
 
 class RFDecode:
@@ -1180,7 +1180,10 @@ class Framer:
         jumpto = 0
         while fieldcount < 2:
             f, readsample, nextsample = self.readfield(infile, sample)
-            print(sample, nextsample)
+            if f is not None:
+                print(sample, nextsample, f is not None, f.istop)
+            else:
+                print(sample, nextsample, f is not None)
             
             if f is not None:
                 if f.istop:
