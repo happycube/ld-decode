@@ -483,7 +483,7 @@ class Comb
 		}
 		
 		void DoCNR(int f, cline_t cbuf[in_y], double min = -1.0) {
-			int firstline = (linesout == in_y) ? 20 : 43;
+			int firstline = (linesout == in_y) ? 20 : 42;
 	
 			if (nr_c < min) nr_c = min;
 			if (nr_c <= 0) return;
@@ -521,7 +521,7 @@ class Comb
 		}
 					
 		void DoYNR(int f, cline_t cbuf[in_y], double min = -1.0) {
-			int firstline = (linesout == in_y) ? 20 : 43;
+			int firstline = (linesout == in_y) ? 20 : 42;
 
 			if (nr_y < min) nr_y = min;
 
@@ -733,7 +733,7 @@ class Comb
 		}
 
 		void AdjustY(int f, cline_t cbuf[in_y]) {
-			int firstline = (linesout == in_y) ? 20 : 44;
+			int firstline = (linesout == in_y) ? 20 : 42;
 			// remove color data from baseband (Y)	
 			for (int l = firstline; l < in_y; l++) {
 				bool invertphase = (Frame[f].rawbuffer[l * in_x] == 16384);
@@ -833,7 +833,7 @@ class Comb
 		// buffer: in_xxin_y uint16_t array
 		void Process(uint16_t *buffer, int dim = 2)
 		{
-			int firstline = (linesout == in_y) ? 20 : 45;
+			int firstline = (linesout == in_y) ? 20 : 42;
 			int f = (dim == 3) ? 1 : 0;
 
 			cerr << "P " << f << ' ' << dim << endl;

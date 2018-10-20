@@ -45,46 +45,6 @@ if (infile_size // bytes_per_frame - firstframe) < 2:
 	exit(1)
 num_frames = req_frames if req_frames is not None else infile_size // bytes_per_frame - firstframe
 
-def findframe(infile, rf, target, nextsample = 0):
-    framer = Framer(rf, full_decode = False)
-    samples_per_frame = int(rf.freq_hz / rf.SysParams['FPS'])
-    framer.vbi = {'framenr': None}
-    
-    iscav = False
-    
-    retry = 5
-    while framer.vbi['framenr'] is None and retry:
-        rv = framer.readframe(infile, nextsample, CAV=False)
-        print(rv, framer.vbi)
-
-        # because of 29.97fps, there may be missing frames
-        if framer.vbi['isclv']:
-            tolerance = 1
-        else:
-            tolerance = 0
-            iscav = True
-            
-        # This jumps forward 10 seconds on failure
-        nextsample = rv[2] + (samples_per_frame * 300)
-        retry -= 1
-        
-    if retry == 0 and framer.vbi['framenr'] is None:
-        print("Unable to find first frame")
-        return None
-
-    retry = 5
-    while np.abs(target - framer.vbi['framenr']) > tolerance and retry:
-        offset = (samples_per_frame * (target - 1 - framer.vbi['framenr'])) 
-        nextsample = rv[2] + offset
-        rv = framer.readframe(infile, nextsample, CAV=iscav)
-        print(framer.vbi)
-        retry -= 1
-
-    if np.abs(target - framer.vbi['framenr']) > tolerance:
-        print("WARNING: seeked to frame ", framer.vbi['framenr'])
-        
-    return nextsample
-
 fd = open(filename, 'rb')
 lddecode_core.loader = load_packed_data_4_40
 

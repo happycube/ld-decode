@@ -1241,3 +1241,46 @@ class Framer:
         self.outwidth = self.rf.SysParams['outlinelen']
         self.audio_offset = 0
 
+# Helper functions that rely on the classes above go here
+
+def findframe(infile, rf, target, nextsample = 0):
+    ''' Locate the sample # of the target frame. '''
+    framer = Framer(rf, full_decode = False)
+    samples_per_frame = int(rf.freq_hz / rf.SysParams['FPS'])
+    framer.vbi = {'framenr': None}
+    
+    iscav = False
+    
+    # First find a stable frame to seek *from*
+    retry = 5
+    while framer.vbi['framenr'] is None and retry:
+        rv = framer.readframe(infile, nextsample, CAV=False)
+        print(rv, framer.vbi)
+
+        # because of 29.97fps, there may be missing frames
+        if framer.vbi['isclv']:
+            tolerance = 1
+        else:
+            tolerance = 0
+            iscav = True
+            
+        # Jump forward ~10 seconds on failure
+        nextsample = rv[2] + (rf.freq_hz * 10)
+        retry -= 1
+        
+    if retry == 0 and framer.vbi['framenr'] is None:
+        print("SEEK ERROR: Unable to find a usable frame")
+        return None
+
+    retry = 5
+    while np.abs(target - framer.vbi['framenr']) > tolerance and retry:
+        offset = (samples_per_frame * (target - 1 - framer.vbi['framenr'])) 
+        nextsample = rv[2] + offset
+        rv = framer.readframe(infile, nextsample, CAV=iscav)
+        print(framer.vbi)
+        retry -= 1
+
+    if np.abs(target - framer.vbi['framenr']) > tolerance:
+        print("SEEK WARNING: seeked to frame {0} instead of {1}".format(framer.vbi['framenr'], target))
+        
+    return nextsample
