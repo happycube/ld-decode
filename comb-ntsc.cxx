@@ -304,7 +304,7 @@ class Comb
 		
 				// 2D filtering.  can't do top or bottom line - calced between 1d and 3d because this is
 				// filtered 
-				if ((l >= 4) && (l <= 503)) {
+				if ((l >= 4) && (l < 524)) {
 					for (int h = 18; h < 840; h++) {
 						double tc1;
 					
@@ -356,7 +356,7 @@ class Comb
 				}
 
 				for (int h = 4; h < 840; h++) {
-					if ((l >= 2) && (l <= 502)) {
+					if ((l >= 2) && (l <= 523)) {
 						Frame[f].combk[1][l][h] *= 1 - Frame[f].combk[2][l][h];
 					}
 					
@@ -401,7 +401,7 @@ class Comb
 //						cerr << "3DC " << h << ' ' << k2 << ' ' << adj << ' ' << k[h] << endl;
 					}
 				
-					if ((l >= 2) && (l <= 502)) {
+					if ((l >= 2) && (l <= 523)) {
 						Frame[f].combk[1][l][h] = 1 - Frame[f].combk[2][l][h];
 					}
 					
@@ -471,7 +471,7 @@ class Comb
 					}
 				}
 
-				if (f_debug2d && (l >= 6) && (l <= 500)) {
+				if (f_debug2d && (l >= 6) && (l <= 523)) {
 					cerr << l << ' ' << msel / (840 - 4) << " ME " << sel / (840 - 4) << endl; 
 					mse += msel / (840 - 4);
 					me += sel / (840 - 4);
