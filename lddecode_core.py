@@ -513,27 +513,8 @@ class Field:
                 
         return peaklist
 
-    def determine_field(self, peaknum):
-        if peaknum < 11:
-            return None
-
-        ds = self.data[0]['demod_sync']    
-
-        # Determine first/second field
-        # should this rely on what comes *after* the vsync too?
-        line0 = None
-        for i in range(peaknum - 1, peaknum - 20, -1):
-            peak = ds[self.peaklist[i]]
-            prevpeak = ds[self.peaklist[i + 1]]
-
-            if peak > .6 and line0 is None:
-                line0 = i
-                break
-                
-        return line0, (self.peaklist[line0 + 1] - self.peaklist[line0]) > (self.inlinelen * .75)     
-
     def get_hsync_median(self):
-        ''' Returns the median and tolerance levels for filtered hsync pulses '''
+        ''' Sets the median and tolerance levels for filtered hsync pulses '''
         
         ds = self.data[0]['demod_sync']
 
@@ -541,13 +522,61 @@ class Field:
         plevel = [ds[p] for p in self.peaklist]
 
         plevel_hsync = [ds[p] for p in self.peaklist if inrange(ds[p], 0.6, 0.8)]
-        med_hsync = np.median(plevel_hsync)
-        std_hsync = np.std(plevel_hsync)
+        self.med_hsync = np.median(plevel_hsync)
+        self.std_hsync = np.std(plevel_hsync)
 
-        hsync_tolerance = max(np.std(plevel_hsync) * 2, .01)
+        self.hsync_tolerance = max(np.std(plevel_hsync) * 2, .01)
 
-        return med_hsync, hsync_tolerance
+        return self.med_hsync, self.hsync_tolerance
+    
+    def is_regular_hsync(self, peaknum):
+        if peaknum >= len(self.peaklist):
+            print('e')
+            return False
         
+        if self.peaklist[peaknum] > len(self.data[0]['demod_sync']):
+            print('e2')
+            return False
+
+        plevel = self.data[0]['demod_sync'][self.peaklist[peaknum]]
+        return inrange(plevel, self.med_hsync - self.hsync_tolerance, self.med_hsync + self.hsync_tolerance)
+        
+    def determine_field(self, peaknum):
+        if peaknum < 11:
+            return None
+
+        vote = 0
+
+        ds = self.data[0]['demod_sync']    
+
+        # Determine first/second field
+        # should this rely on what comes *after* the vsync too?
+        line0 = None
+        gap1 = None
+        for i in range(peaknum - 1, peaknum - 20, -1):
+            if self.is_regular_hsync(i) and line0 is None:
+                line0 = i
+                gap1 = (self.peaklist[line0 + 1] - self.peaklist[line0])
+                break
+
+        if gap1 is not None and gap1 > (self.inlinelen * .75):
+            vote -= 1
+
+        linee = None
+        gap2 = None
+        for i in range(peaknum, peaknum + 20, 1):
+            if self.is_regular_hsync(i)  and linee is None:
+                linee = i
+                gap2 = (self.peaklist[linee] - self.peaklist[linee - 1])
+                break
+
+        if gap2 is not None and gap2 > (self.inlinelen * .75):
+            vote += 1
+
+        #print(line0, self.peaklist[line0], linee, gap1, gap2, vote)
+
+        return line0, vote    
+    
     def determine_vsyncs(self):
         # find vsyncs from the peaklist
         ds = self.data[0]['demod_sync']
@@ -559,21 +588,36 @@ class Field:
         for i, p in enumerate(self.peaklist):
             peak = ds[p]
             if peak > .9 and prevpeak < med_hsync - (hsync_tolerance * 2):
-                rv = self.determine_field(i)
-                if rv is not None:
-                    vsyncs.append((i, *rv))
+                line0, vote = self.determine_field(i)
+                if line0 is not None:
+                    vsyncs.append((i, line0, vote))
 
             prevpeak = peak
             
-        return vsyncs
+        # punt early if there's 0 or 1 vsyncs, this is invalid
+        if len(vsyncs) < 2:
+            return vsyncs
+        
+        va = np.array(vsyncs)
+        
+#        if self.is_second: # the first frame being top is a vote against the second being one
+#            va[0][2] -= 1
+
+        for i in range(0, len(vsyncs)):
+            # see if determine_field (partially) failed.  use hints from input and other data
+            if va[i][2] == 0:
+                #print("vsync vote needed", i)
+                if (i < len(vsyncs) - 1) and vsyncs[i + 1][2] != 0:
+                    va[i][2] = -va[i + 1][2]
+                elif (i >= 1) and vsyncs[i - 1][2] != 0:
+                    va[i][2] = -va[i - 1][2]
+                    
+            va[i][2] = va[i][2] < 0
+
+        return va
 
     def compute_linelocs(self):
-        ds = self.data[0]['demod_sync']
-
         plist = self.peaklist
-        plevel = [ds[p] for p in self.peaklist]
-
-        med_hsync, hsync_tolerance = self.get_hsync_median()
         
         # note: this is chopped on output, so allocating too many lines is OK
         linelocs = {}
@@ -584,7 +628,7 @@ class Field:
             #print(i, plevel[i])
             med_linelen = np.median(linelens[-25:])
 
-            if (inrange(plevel[i], med_hsync - hsync_tolerance, med_hsync + hsync_tolerance)):
+            if (self.is_regular_hsync(i)):
                 if prevlineidx is not None:
                     linegap = plist[i] - plist[prevlineidx]
 
@@ -1112,7 +1156,7 @@ class FieldNTSC(Field):
             self.valid = False
 
 class Framer:
-    def readfield(self, infile, sample):
+    def readfield(self, infile, sample, fieldcount = 0):
         readsample = sample
         
         while True:
@@ -1179,7 +1223,7 @@ class Framer:
         
         jumpto = 0
         while fieldcount < 2:
-            f, readsample, nextsample = self.readfield(infile, sample)
+            f, readsample, nextsample = self.readfield(infile, sample, fieldcount)
             if f is not None:
                 print(sample, nextsample, f is not None, f.istop)
             else:
