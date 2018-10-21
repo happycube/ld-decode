@@ -606,7 +606,7 @@ class Field:
         for i in range(0, len(vsyncs)):
             # see if determine_field (partially) failed.  use hints from input and other data
             if va[i][2] == 0:
-                #print("vsync vote needed", i)
+                print("vsync vote needed", i)
                 if (i < len(vsyncs) - 1) and vsyncs[i + 1][2] != 0:
                     va[i][2] = -va[i + 1][2]
                 elif (i >= 1) and vsyncs[i - 1][2] != 0:
@@ -1092,8 +1092,7 @@ class FieldNTSC(Field):
 
         for l in range(2, len(linelocs3) - 1):
             if burstlevel[l] == 0:
-                gap = linelocs3[l - 1] - linelocs3[l - 2]
-                linelocs3[l] = linelocs3[l - 1] + gap
+                linelocs3[l] = (linelocs3[l - 1] + linelocs3[l + 1]) / 2
 
         return np.array(linelocs3), burstlevel#, phaseaverages
 
