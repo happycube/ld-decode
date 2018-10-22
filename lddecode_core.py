@@ -531,11 +531,9 @@ class Field:
     
     def is_regular_hsync(self, peaknum):
         if peaknum >= len(self.peaklist):
-            print('e')
             return False
         
         if self.peaklist[peaknum] > len(self.data[0]['demod_sync']):
-            print('e2')
             return False
 
         plevel = self.data[0]['demod_sync'][self.peaklist[peaknum]]
@@ -560,7 +558,11 @@ class Field:
                 break
 
         if gap1 is not None and gap1 > (self.inlinelen * .75):
-            vote -= 1
+            # With PAL both gap lines are the same length for each field type
+            if self.rf.system == 'NTSC':
+                vote -= 1
+            else:
+                vote -= 1
 
         linee = None
         gap2 = None
@@ -571,6 +573,12 @@ class Field:
                 break
 
         if gap2 is not None and gap2 > (self.inlinelen * .75):
+            if self.rf.system == 'NTSC':
+                vote += 1
+            else:
+                vote -= 1
+                
+        if self.rf.system == 'PAL':
             vote += 1
 
         #print(line0, self.peaklist[line0], linee, gap1, gap2, vote)
@@ -612,6 +620,13 @@ class Field:
                 elif (i >= 1) and vsyncs[i - 1][2] != 0:
                     va[i][2] = -va[i - 1][2]
                     
+                # override the earlier last-good-line detection
+                # XXX: not tested on PAL failures
+                if self.rf.system == 'PAL':
+                    va[i][1] = va[i][0] - 6
+                else:
+                    va[i][1] = va[i][0] - 7
+                    
             va[i][2] = va[i][2] < 0
 
         return va
@@ -622,13 +637,21 @@ class Field:
         # note: this is chopped on output, so allocating too many lines is OK
         linelocs = {}
 
+        firstvisidx = None
+        for i in range(0, self.vsyncs[1][1]): #self.vsyncs[1][1]):
+            if i > self.vsyncs[0][0] and firstvisidx is None:
+                print(i, plist[i], plist[self.vsyncs[0][1]])
+                firstvisidx = i
+
+                break
+
         linelens = [self.inlinelen]
         prevlineidx = None
         for i in range(0, self.vsyncs[1][1]): #self.vsyncs[1][1]):
-            #print(i, plevel[i])
             med_linelen = np.median(linelens[-25:])
 
             if (self.is_regular_hsync(i)):
+                
                 if prevlineidx is not None:
                     linegap = plist[i] - plist[prevlineidx]
 
