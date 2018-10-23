@@ -293,7 +293,7 @@ class Comb
 	
 		void Split2D(int f) 
 		{
-			for (int l = 44; l < in_y; l++) {
+			for (int l = 40; l < in_y; l++) {
 				uint16_t *pline = &Frame[f].rawbuffer[(l - 2) * in_x];	
 				uint16_t *line = &Frame[f].rawbuffer[l * in_x];	
 				uint16_t *nline = &Frame[f].rawbuffer[(l + 2) * in_x];	
@@ -368,7 +368,7 @@ class Comb
 
 		void Split3D(int f, bool opt_flow = false) 
 		{
-			for (int l = 44; l < in_y; l++) {
+			for (int l = 40; l < in_y; l++) {
 				uint16_t *line = &Frame[f].rawbuffer[l * in_x];	
 		
 				// shortcuts for previous/next 1D/pixel lines	
