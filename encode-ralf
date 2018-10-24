@@ -1,6 +1,6 @@
 # ralf includes a bit of extra data on each side - will be useful for seeking and limits later
-python3 lddecode.py ralf_side1_6x_2018-10-09_21-41-14.lds ralf 7 244
-
+python3 lddecode.py ralf_side1_6x_2018-10-09_21-41-14.lds ralf -s 7 -l 244
+#
 # -I 0 sets ire to 0, HE-010 is a Japanese LD
 cat ralf.tbc | ./comb -d 3 -I 0 > ralf.rgb
 
