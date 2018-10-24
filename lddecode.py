@@ -65,7 +65,9 @@ else:
 if args.cut:
     print(args.seek, args.end)
     outfile = open(outname + '.r16', 'wb')
+    
     lastsample = findframe(fd, rfn, args.end, nextsample)
+    lastsample += int(samples_per_frame * .25)
     
     for i in range(nextsample, lastsample, 16384):
         l = lastsample - i

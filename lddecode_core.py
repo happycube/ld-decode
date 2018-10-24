@@ -1,4 +1,4 @@
-# Note:  This is a work in progress based on the ld-decode-r3 notebook.  This may not (or might) be up to date.
+
 
 from base64 import b64encode
 import copy
@@ -589,6 +589,9 @@ class Field:
         # find vsyncs from the peaklist
         ds = self.data[0]['demod_sync']
         vsyncs = []
+        
+        if len(self.peaklist) < 200:
+            return []
 
         med_hsync, hsync_tolerance = self.get_hsync_median()
         
@@ -608,9 +611,6 @@ class Field:
         
         va = np.array(vsyncs)
         
-#        if self.is_second: # the first frame being top is a vote against the second being one
-#            va[0][2] -= 1
-
         for i in range(0, len(vsyncs)):
             # see if determine_field (partially) failed.  use hints from input and other data
             if va[i][2] == 0:
@@ -640,7 +640,7 @@ class Field:
         firstvisidx = None
         for i in range(0, self.vsyncs[1][1]): #self.vsyncs[1][1]):
             if i > self.vsyncs[0][0] and firstvisidx is None:
-                print(i, plist[i], plist[self.vsyncs[0][1]])
+                #print(i, plist[i], plist[self.vsyncs[0][1]])
                 firstvisidx = i
 
                 break
