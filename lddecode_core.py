@@ -388,7 +388,7 @@ class RFDecode:
             
             if indata is None:
                 return None
-            
+
             tmp_video, tmp_audio = self.demodblock(indata)
 
             # if the output hasn't been created yet, do it now using the 
@@ -923,7 +923,7 @@ class Field:
             self.linelocs1 = self.compute_linelocs()
             self.linelocs2, self.errs2 = self.refine_linelocs_hsync()
         except:
-            print('lineloc compute error')
+            print("Unable to decode frame")
             self.valid = False
             return
 
