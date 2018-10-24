@@ -293,7 +293,7 @@ class Comb
 	
 		void Split2D(int f) 
 		{
-			for (int l = 40; l < in_y; l++) {
+			for (int l = 36; l < in_y; l++) {
 				uint16_t *pline = &Frame[f].rawbuffer[(l - 2) * in_x];	
 				uint16_t *line = &Frame[f].rawbuffer[l * in_x];	
 				uint16_t *nline = &Frame[f].rawbuffer[(l + 2) * in_x];	
@@ -368,7 +368,7 @@ class Comb
 
 		void Split3D(int f, bool opt_flow = false) 
 		{
-			for (int l = 40; l < in_y; l++) {
+			for (int l = 36; l < in_y; l++) {
 				uint16_t *line = &Frame[f].rawbuffer[l * in_x];	
 		
 				// shortcuts for previous/next 1D/pixel lines	
@@ -417,7 +417,7 @@ class Comb
 
 			memset(Frame[f].cbuf, 0, sizeof(cline_t) * in_y); 
 
-			for (int l = 44; l < in_y; l++) {
+			for (int l = 36; l < in_y; l++) {
 				double msel = 0.0, sel = 0.0;
 				uint16_t *line = &Frame[f].rawbuffer[l * in_x];	
 				bool invertphase = (line[0] == 16384);
@@ -483,7 +483,7 @@ class Comb
 		}
 		
 		void DoCNR(int f, cline_t cbuf[in_y], double min = -1.0) {
-			int firstline = (linesout == in_y) ? 20 : 42;
+			int firstline = (linesout == in_y) ? 20 : 38;
 	
 			if (nr_c < min) nr_c = min;
 			if (nr_c <= 0) return;
@@ -521,7 +521,7 @@ class Comb
 		}
 					
 		void DoYNR(int f, cline_t cbuf[in_y], double min = -1.0) {
-			int firstline = (linesout == in_y) ? 20 : 42;
+			int firstline = (linesout == in_y) ? 20 : 38;
 
 			if (nr_y < min) nr_y = min;
 
@@ -603,7 +603,7 @@ class Comb
 			static int fcount = 0;
 			//int fnum = 0;		
 	
-			const int cysize = 242;
+			const int cysize = 252;
 			const int cxsize = in_x - 70;
 	
 			uint16_t fieldbuf[in_x * cysize];
@@ -622,7 +622,7 @@ class Comb
 						fieldbuf[(y * cxsize) + x] = cbuf[23 + field + (y * 2)].p[70 + x].y;
 					}
 				}
-				pic = Mat(242, cxsize, CV_16UC1, fieldbuf);
+				pic = Mat(252, cxsize, CV_16UC1, fieldbuf);
 				if (fcount) calcOpticalFlowFarneback(pic, prev[field], flow[field], 0.5, 4, 60, 3, 7, 1.5, (fcount > 1) ? OPTFLOW_USE_INITIAL_FLOW : 0);
 				prev[field] = pic.clone();
 			}
@@ -733,7 +733,7 @@ class Comb
 		}
 
 		void AdjustY(int f, cline_t cbuf[in_y]) {
-			int firstline = (linesout == in_y) ? 20 : 42;
+			int firstline = (linesout == in_y) ? 20 : 38;
 			// remove color data from baseband (Y)	
 			for (int l = firstline; l < in_y; l++) {
 				bool invertphase = (Frame[f].rawbuffer[l * in_x] == 16384);
@@ -833,7 +833,7 @@ class Comb
 		// buffer: in_xxin_y uint16_t array
 		void Process(uint16_t *buffer, int dim = 2)
 		{
-			int firstline = (linesout == in_y) ? 20 : 42;
+			int firstline = (linesout == in_y) ? 20 : 38;
 			int f = (dim == 3) ? 1 : 0;
 
 			cerr << "P " << f << ' ' << dim << endl;
