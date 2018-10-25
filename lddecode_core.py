@@ -388,7 +388,7 @@ class RFDecode:
             
             if indata is None:
                 return None
-
+            
             tmp_video, tmp_audio = self.demodblock(indata)
 
             # if the output hasn't been created yet, do it now using the 
@@ -713,19 +713,22 @@ class Field:
             if i < 9:
                 linelocs2[i] -= 200 # search for *beginning* of hsync
 
+            ll1 = linelocs2[i]
             zc = calczc(self.data[0]['demod_05'], linelocs2[i], self.rf.iretohz(-20), reverse=False, _count=400)
 
-            #print(i, linelocs2[i], zc)
             if zc is not None:
                 linelocs2[i] = zc 
 
                 if i >= 10:
                     # sanity check 0.5mhz filtered HSYNC and colo[u]r burst area
 
+                    # it's possible that the zero crossing is thrown by bad data, so look at original peak
+                    origdata_hsync1 = self.data[0]['demod_05'][int(ll1-(self.rf.freq*2)):int(ll1+(self.rf.freq*2))]
                     origdata_hsync = self.data[0]['demod_05'][int(zc-(self.rf.freq*1)):int(zc+(self.rf.freq*3))]
                     origdata_burst = self.data[0]['demod_05'][int(zc+(self.rf.freq*1)):int(zc+(self.rf.freq*3))]
 
                     if ((np.min(origdata_hsync) < self.rf.iretohz(-60) or np.max(origdata_hsync) > self.rf.iretohz(20)) or 
+                           (np.min(origdata_hsync1) < self.rf.iretohz(-60) or np.max(origdata_hsync1) > self.rf.iretohz(100)) or 
                            (np.min(origdata_burst) < self.rf.iretohz(-10) or np.max(origdata_burst) > self.rf.iretohz(10))):
                         err[i] = True
                     else:
@@ -769,7 +772,6 @@ class Field:
                 gap = self.rf.linelen
 
             linelocs2[i] = linelocs2[i - 1] + gap
-
 
         return linelocs2, err   
     
@@ -923,7 +925,7 @@ class Field:
             self.linelocs1 = self.compute_linelocs()
             self.linelocs2, self.errs2 = self.refine_linelocs_hsync()
         except:
-            print("Unable to decode frame")
+            print('unable to decode frame')
             self.valid = False
             return
 
