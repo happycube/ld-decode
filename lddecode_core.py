@@ -633,7 +633,7 @@ class Field:
 
     def compute_linelocs(self):
         plist = self.peaklist
-        
+
         # note: this is chopped on output, so allocating too many lines is OK
         linelocs = {}
 
@@ -651,7 +651,7 @@ class Field:
             med_linelen = np.median(linelens[-25:])
 
             if (self.is_regular_hsync(i)):
-                
+
                 if prevlineidx is not None:
                     linegap = plist[i] - plist[prevlineidx]
 
@@ -697,26 +697,30 @@ class Field:
 
                 #print(l, linelocs2[l] - linelocs2[l - 1], avglen, linelocs2[l], linelocs[10], prev_valid, next_valid)
 
-        rv = [linelocs2[l] for l in range(1, self.linecount + 5)]
-        return rv
+        rv_ll = [linelocs2[l] for l in range(1, self.linecount + 5)]
+        rv_err = [l not in linelocs for l in range(1, self.linecount + 5)]
+        
+        for i in range(0, 10):
+            rv_err[i] = False
+
+        return rv_ll, rv_err
 
     def refine_linelocs_hsync(self):
         # Adjust line locations to end of HSYNC.
         # This causes issues for lines 1-9, where only the beginning is reliable :P
 
-        err = [False] * len(self.linelocs1)
-
         linelocs2 = self.linelocs1.copy()
         for i in range(len(self.linelocs1)):
             # First adjust the lineloc before the beginning of hsync - 
             # lines 1-9 are half-lines which need a smaller offset
+            
             if i < 9:
                 linelocs2[i] -= 200 # search for *beginning* of hsync
 
             ll1 = linelocs2[i]
             zc = calczc(self.data[0]['demod_05'], linelocs2[i], self.rf.iretohz(-20), reverse=False, _count=400)
 
-            if zc is not None:
+            if zc is not None and not self.linebad[i]:
                 linelocs2[i] = zc 
 
                 if i >= 10:
@@ -730,7 +734,7 @@ class Field:
                     if ((np.min(origdata_hsync) < self.rf.iretohz(-60) or np.max(origdata_hsync) > self.rf.iretohz(20)) or 
                            (np.min(origdata_hsync1) < self.rf.iretohz(-60) or np.max(origdata_hsync1) > self.rf.iretohz(100)) or 
                            (np.min(origdata_burst) < self.rf.iretohz(-10) or np.max(origdata_burst) > self.rf.iretohz(10))):
-                        err[i] = True
+                        self.linebad[i] = True
                     else:
                         # on some captures with high speed variation wow effects can mess up TBC.
                         # determine the low and high values and recompute zc along the middle
@@ -744,14 +748,14 @@ class Field:
                         if np.abs(zc2 - zc) < (self.rf.freq / 4):
                             linelocs2[i] = zc2 
                         else:
-                            err[i] = True
+                            self.linebad[i] = True
             else:
-                err[i] = True
+                self.linebad[i] = True
 
             if i < 10:
                 linelocs2[i] += self.usectoinpx(4.72)
 
-            if i > 10 and err[i]:
+            if i > 10 and self.linebad[i]:
                 gap = linelocs2[i - 1] - linelocs2[i - 2]
                 linelocs2[i] = linelocs2[i - 1] + gap
 
@@ -773,7 +777,7 @@ class Field:
 
             linelocs2[i] = linelocs2[i - 1] + gap
 
-        return linelocs2, err   
+        return linelocs2
     
     def downscale(self, lineoffset = 1, lineinfo = None, outwidth = None, wow=True, channel='demod', audio = False):
         if lineinfo is None:
@@ -922,8 +926,8 @@ class Field:
             self.linecount += 1
         
         try:
-            self.linelocs1 = self.compute_linelocs()
-            self.linelocs2, self.errs2 = self.refine_linelocs_hsync()
+            self.linelocs1, self.linebad = self.compute_linelocs()
+            self.linelocs2 = self.refine_linelocs_hsync()
         except:
             print('unable to decode frame')
             self.valid = False
