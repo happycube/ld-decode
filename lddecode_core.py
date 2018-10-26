@@ -614,12 +614,14 @@ class Field:
         for i in range(0, len(vsyncs)):
             # see if determine_field (partially) failed.  use hints from input and other data
             if va[i][2] == 0:
+                va[i][1] = -1
                 print("vsync vote needed", i)
                 if (i < len(vsyncs) - 1) and vsyncs[i + 1][2] != 0:
                     va[i][2] = -va[i + 1][2]
                 elif (i >= 1) and vsyncs[i - 1][2] != 0:
                     va[i][2] = -va[i - 1][2]
                     
+            if va[i][1] <= 0:
                 # override the earlier last-good-line detection
                 # XXX: not tested on PAL failures
                 if self.rf.system == 'PAL':
