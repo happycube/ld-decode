@@ -687,7 +687,10 @@ class Field:
                         next_valid = i
                         break
 
-                if next_valid is not None:
+                if prev_valid is None:
+                    avglen = self.inlinelen
+                    linelocs2[l] = linelocs[next_valid] - (avglen * (next_valid - l))
+                elif next_valid is not None:
                     avglen = (linelocs[next_valid] - linelocs[prev_valid]) / (next_valid - prev_valid)
                     #print(prev_valid, next_valid, avglen)
                     linelocs2[l] = linelocs[prev_valid] + (avglen * (l - prev_valid))
