@@ -286,6 +286,9 @@ class RFDecode:
         return (hz - self.SysParams['ire0']) / self.SysParams['hz_ire']
     
     def demodblock(self, data, mtf_level = 0):
+        if self.system == 'NTSC': # calibrated off GGV
+            mtf_level *= .315
+            
         indata_fft = np.fft.fft(data[:self.blocklen])
         indata_fft_filt = indata_fft * self.Filters['RFVideo']
 
