@@ -97,7 +97,7 @@ RFParams_NTSC = {
 
     # This can easily be pushed up to 4.5mhz or even a bit higher. 
     # A sharp 4.8-5.0 is probably the maximum before the audio carriers bleed into 0IRE.
-    'video_lpf_freq': 4200000,   # in mhz
+    'video_lpf_freq': 4800000,   # in mhz
     'video_lpf_order': 5 # butterworth filter order
 }
 
@@ -117,7 +117,7 @@ RFParams_PAL = {
 }
 
 class RFDecode:
-    def __init__(self, inputfreq = 40, system = 'NTSC', blocklen_ = 16384, decode_analog_audio = True, have_analog_audio = True, mtf_adjustment = 1.0):
+    def __init__(self, inputfreq = 40, system = 'NTSC', blocklen_ = 16384, decode_analog_audio = True, have_analog_audio = True, mtf_mult = 1.0, mtf_offset = 0):
         self.blocklen = blocklen_
         self.blockcut = 1024 # ???
         self.system = system
@@ -128,12 +128,13 @@ class RFDecode:
         self.freq_hz = self.freq * 1000000
         self.freq_hz_half = self.freq * 1000000 / 2
         
-        self.mtf_adjustment = mtf_adjustment
+        self.mtf_mult = mtf_mult
+        self.mtf_offset = mtf_offset
         
         if system == 'NTSC':
             self.SysParams = SysParams_NTSC
             self.DecoderParams = RFParams_NTSC
-            self.mtf_adjustment *= .32
+            self.mtf_mult *= .32
         elif system == 'PAL':
             self.SysParams = SysParams_PAL
             self.DecoderParams = RFParams_PAL
@@ -289,7 +290,8 @@ class RFDecode:
         return (hz - self.SysParams['ire0']) / self.SysParams['hz_ire']
     
     def demodblock(self, data, mtf_level = 0):
-        mtf_level *= self.mtf_adjustment
+        mtf_level *= self.mtf_mult
+        mtf_level += self.mtf_offset
             
         indata_fft = np.fft.fft(data[:self.blocklen])
         indata_fft_filt = indata_fft * self.Filters['RFVideo']
