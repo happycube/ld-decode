@@ -23,6 +23,7 @@ parser.add_argument('-l', '--length', metavar='length', type=int, help='limit le
 parser.add_argument('-p', '--pal', dest='pal', action='store_true', help='source is in PAL format')
 parser.add_argument('-n', '--ntsc', dest='ntsc', action='store_true', help='source is in NTSC format')
 parser.add_argument('-c', '--cut', dest='cut', action='store_true', help='cut (to r16) instead of decode')
+parser.add_argument('-m', '--MTF', metavar='mtf', type=float, default=1.0, help='mtf compensation adjustment')
 
 args = parser.parse_args()
 print(args)
@@ -36,7 +37,7 @@ if args.pal and args.ntsc:
     print("ERROR: Can only be PAL or NTSC")
     exit(1)
 
-rfn = RFDecode(system=vid_standard)
+rfn = RFDecode(system=vid_standard, mtf_adjustment = args.MTF)
 
 samples_per_frame = int(rfn.freq_hz / rfn.SysParams['FPS']) + 1
 bytes_per_frame = samples_per_frame * 5 // 4  # for 10-bit packed files
