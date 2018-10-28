@@ -106,13 +106,13 @@ RFParams_PAL = {
     'audio_notchwidth': 200000,
     'audio_notchorder': 2,
 
-    'video_deemp': (100*.34, 400*.34),
+    'video_deemp': (100*.4, 400*.4),
 
     # XXX: guessing here!
-    'video_bpf': (2500000, 12500000),
-    'video_bpf_order': 1,
+    'video_bpf': (2500000, 14500000),
+    'video_bpf_order': 3,
 
-    'video_lpf_freq': 4800000,
+    'video_lpf_freq': 5200000,
     'video_lpf_order': 9,
 }
 
