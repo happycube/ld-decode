@@ -131,31 +131,33 @@ class RFDecode:
         if system == 'NTSC':
             self.SysParams = SysParams_NTSC
             self.DecoderParams = RFParams_NTSC
-            
-            self.Filters = {
-                'MTF': sps.zpk2tf([], [polar2z(.7,np.pi*12.5/20), polar2z(.7,np.pi*27.5/20)], 1.11)
-            }
         elif system == 'PAL':
             self.SysParams = SysParams_PAL
             self.DecoderParams = RFParams_PAL
-            
-            self.Filters = {
-                'MTF': sps.zpk2tf([], [polar2z(.7,np.pi*10/20), polar2z(.7,np.pi*28/20)], 1.11)
-            }
 
         linelen = self.freq_hz/(1000000.0/self.SysParams['line_period'])
         self.linelen = int(np.round(linelen))
             
         self.decode_analog_audio = decode_analog_audio
+
+        self.computefilters()    
             
+        self.blockcut_end = self.Filters['F05_offset']
+
+    def computefilters(self):
         self.computevideofilters()
         if self.decode_analog_audio: 
             self.computeaudiofilters()
-            
-        self.blockcut_end = self.Filters['F05_offset']
-            
+
     def computevideofilters(self):
-        self.Filters = {}
+        if self.system == 'NTSC':
+            self.Filters = {
+                'MTF': filtfft(sps.zpk2tf([], [polar2z(.7,np.pi*12.5/20), polar2z(.7,np.pi*27.5/20)], 1.11), self.blocklen)
+            }
+        elif self.system == 'PAL':
+            self.Filters = {
+                'MTF': filtfft(sps.zpk2tf([], [polar2z(.7,np.pi*10/20), polar2z(.7,np.pi*28/20)], 1.11), self.blocklen)
+            }
         
         # Use some shorthand to compact the code.  good idea?  prolly not.
         SF = self.Filters
@@ -368,7 +370,7 @@ class RFDecode:
 
         return output_audio2    
 
-    def demod(self, infile, start, length):
+    def demod(self, infile, start, length, mtf_level = 0):
         end = int(start + length) + 1
 
         if (start > self.blockcut):
@@ -389,7 +391,7 @@ class RFDecode:
             if indata is None:
                 return None
             
-            tmp_video, tmp_audio = self.demodblock(indata)
+            tmp_video, tmp_audio = self.demodblock(indata, mtf_level = mtf_level)
 
             # if the output hasn't been created yet, do it now using the 
             # data types returned by dodemod (should be faster than multiple
@@ -1194,7 +1196,7 @@ class Framer:
         
         while True:
             if isinstance(infile, io.IOBase):
-                rawdecode = self.rf.demod(infile, readsample, self.readlen)
+                rawdecode = self.rf.demod(infile, readsample, self.readlen, self.mtf_level)
                 if rawdecode is None:
                     return None, None, None
                 
@@ -1295,6 +1297,17 @@ class Framer:
             
         self.vbi = self.mergevbi(fields)
 
+        if not f.vbi['isclv'] and f.vbi['framenr'] is not None:
+            newmtf = 1 - (f.vbi['framenr'] / 10000)
+            if newmtf < 0:
+                newmtf = 0
+                
+            oldmtf = self.mtf_level
+            self.mtf_level = newmtf
+            
+            if np.abs(newmtf - oldmtf) > .1:
+                return self.readframe(infile, sample, firstframe, CAV)
+        
         return combined, conaudio, sample, fields #, audio
 
     def __init__(self, rf, full_decode = True):
@@ -1317,6 +1330,8 @@ class Framer:
         
         self.outwidth = self.rf.SysParams['outlinelen']
         self.audio_offset = 0
+        
+        self.mtf_level = 1
 
 # Helper functions that rely on the classes above go here
 
