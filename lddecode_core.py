@@ -101,7 +101,8 @@ RFParams_NTSC = {
     'video_lpf_order': 5 # butterworth filter order
 }
 
-RFParams_PAL = {
+# might not work right
+RFParams_PAL2 = {
     # The audio notch filters are important with DD v3.0+ boards
     'audio_notchwidth': 200000,
     'audio_notchorder': 2,
@@ -115,6 +116,38 @@ RFParams_PAL = {
     'video_lpf_freq': 5200000,
     'video_lpf_order': 9,
 }
+
+RFParams_PAL = {
+    # The audio notch filters are important with DD v3.0+ boards
+    'audio_notchwidth': 200000,
+    'audio_notchorder': 2,
+
+    'video_deemp': (100*.34, 400*.34),
+
+    # XXX: guessing here!
+    'video_bpf': (2500000, 12500000),
+    'video_bpf_order': 1,
+
+    'video_lpf_freq': 4800000,
+    'video_lpf_order': 9,
+}
+
+
+RFParams_PAL2 = {
+    # The audio notch filters are important with DD v3.0+ boards
+    'audio_notchwidth': 200000,
+    'audio_notchorder': 2,
+
+    'video_deemp': (100*.32, 400*.32),
+
+    # XXX: guessing here!
+    'video_bpf': (2500000, 13500000),
+    'video_bpf_order': 3,
+
+    'video_lpf_freq': 4800000,
+    'video_lpf_order': 9,
+}
+
 
 class RFDecode:
     def __init__(self, inputfreq = 40, system = 'NTSC', blocklen_ = 16384, decode_analog_audio = True, have_analog_audio = True, mtf_mult = 1.0, mtf_offset = 0):
