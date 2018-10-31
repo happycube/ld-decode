@@ -167,7 +167,7 @@ class RFDecode:
         if system == 'NTSC':
             self.SysParams = SysParams_NTSC
             self.DecoderParams = RFParams_NTSC
-            self.mtf_mult *= .32
+            self.mtf_mult *= .7
         elif system == 'PAL':
             self.SysParams = SysParams_PAL
             self.DecoderParams = RFParams_PAL
@@ -1339,7 +1339,6 @@ class Framer:
         
         if not self.vbi['isclv'] and self.vbi['framenr'] is not None:
             newmtf = 1 - (self.vbi['framenr'] / 10000)
-            print(newmtf)
             if newmtf < 0:
                 newmtf = 0
                 
