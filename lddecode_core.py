@@ -1336,9 +1336,10 @@ class Framer:
             combined = None
             
         self.vbi = self.mergevbi(fields)
-
-        if not f.vbi['isclv'] and f.vbi['framenr'] is not None:
-            newmtf = 1 - (f.vbi['framenr'] / 10000)
+        
+        if not self.vbi['isclv'] and self.vbi['framenr'] is not None:
+            newmtf = 1 - (self.vbi['framenr'] / 10000)
+            print(newmtf)
             if newmtf < 0:
                 newmtf = 0
                 
