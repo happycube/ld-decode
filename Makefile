@@ -29,7 +29,7 @@ deemp.h: filtermaker.py
 	python3 filtermaker.py > deemp.h
 
 comb-ntsc: comb-ntsc.cxx deemp.h
-	clang++ -lfann -std=c++11  -Wall $(CFLAGS) $(OPENCV_LIBS) -o comb-ntsc comb-ntsc.cxx
+	clang++ -std=c++11  -Wall $(CFLAGS) $(OPENCV_LIBS) -o comb-ntsc comb-ntsc.cxx
 	cp comb-ntsc comb
 
 comb: comb-ntsc

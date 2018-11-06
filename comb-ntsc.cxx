@@ -49,10 +49,10 @@ int f_debugline = -1000;
 int dim = 2;
 
 // NTSC properties
-const double freq = 4.0;
+//const double freq = 4.0;
 
-const double dotclk = (1000000.0*(315.0/88.0)*freq); 
-const double dots_usec = dotclk / 1000000.0; 
+//const double dotclk = (1000000.0*(315.0/88.0)*freq); 
+// const double dots_usec = dotclk / 1000000.0; 
 
 // values for horizontal timings 
 //const double line_blanklen = 10.9 * dots_usec;

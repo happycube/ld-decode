@@ -6,8 +6,6 @@
 
 using namespace std;
 
-const double freq = 48000.0;
-
 double clamp(double v, double low, double high)
 {
         if (v < low) return low;
