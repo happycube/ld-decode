@@ -964,8 +964,13 @@ int main(int argc, char *argv[])
 	char out_filename[256] = "";
 
 	cerr << std::setprecision(10);
-	cerr << argc << endl;
-	cerr << strncmp(argv[1], "-", 1) << endl;
+//	cerr << argc << endl;
+	// cerr << strncmp(argv[1], "-", 1) << endl;
+
+	if (argc == 1) {
+		usage();
+       		return -1;
+	}		
 
 	opterr = 0;
 	
