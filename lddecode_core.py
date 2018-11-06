@@ -1223,7 +1223,7 @@ class FieldNTSC(Field):
 
             # Now adjust 33 degrees (-90 - 33) for color decoding
             shift33 = self.colorphase * (np.pi / 180)
-            self.linelocs = self.apply_offsets(self.linelocs4, shift33 - 8)
+            self.linelocs = self.apply_offsets(self.linelocs4, shift33)
         
             self.downscale(wow = True, final=True)
         except:
