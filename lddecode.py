@@ -25,6 +25,7 @@ parser.add_argument('-n', '--ntsc', dest='ntsc', action='store_true', help='sour
 parser.add_argument('-c', '--cut', dest='cut', action='store_true', help='cut (to r16) instead of decode')
 parser.add_argument('-m', '--MTF', metavar='mtf', type=float, default=1.0, help='mtf compensation multiplier')
 parser.add_argument('--MTF_offset', metavar='mtf_offset', type=float, default=0.0, help='mtf compensation offset')
+parser.add_argument('-f', '--field', dest='field', action='store_true', help='output fields')
 
 args = parser.parse_args()
 print(args)
@@ -38,9 +39,10 @@ if args.pal and args.ntsc:
     print("ERROR: Can only be PAL or NTSC")
     exit(1)
 
-rfn = RFDecode(system=vid_standard, mtf_mult = args.MTF, mtf_offset = args.MTF_offset)
+rf = RFDecode(system=vid_standard, mtf_mult = args.MTF, mtf_offset = args.MTF_offset)
 
-samples_per_frame = int(rfn.freq_hz / rfn.SysParams['FPS']) + 1
+samples_per_frame = int(rf.freq_hz / rf.SysParams['FPS']) + 1
+samples_per_field = int(rf.freq_hz / (rf.SysParams['FPS'] * 2)) + 1
 bytes_per_frame = samples_per_frame * 5 // 4  # for 10-bit packed files
 
 # make sure we have at least two frames' worth of data (so we can be sure we will get at least one full frame)
@@ -60,7 +62,7 @@ elif filename[-3:] == 'r16':
     lddecode_core.loader = load_unpacked_data_s16
 
 if args.seek >= 0:
-    nextsample = findframe(fd, rfn, args.seek, firstframe * samples_per_frame)
+    nextsample = findframe(fd, rf, args.seek, firstframe * samples_per_frame)
 else:
     nextsample = firstframe * samples_per_frame
 
@@ -68,7 +70,7 @@ if args.cut:
     print(args.seek, args.end)
     outfile = open(outname + '.r16', 'wb')
     
-    lastsample = findframe(fd, rfn, args.end, nextsample)
+    lastsample = findframe(fd, rf, args.end, nextsample)
     lastsample += int(samples_per_frame * .25)
     
     for i in range(nextsample, lastsample, 16384):
@@ -85,23 +87,48 @@ if args.cut:
 outfile = open(outname + '.tbc', 'wb')
 outfile_audio = open(outname + '.pcm', 'wb')
 
-framer_ntsc = Framer(rfn)
-ca = []
-for f in range(0, num_frames):
-	if fd.tell() + bytes_per_frame * 1.05 <= infile_size:  # 1.05 gives us a little slack in case the frame is long
-	    combined, audio, nextsample, fields = framer_ntsc.readframe(fd, nextsample, f == 0)
-	    
-	    print('frame ', framer_ntsc.vbi['framenr'])
-	    
-	    ca.append(audio)
-	    
-	    outfile.write(combined)
-	    #print(len(audio)//2)
-	    outfile_audio.write(audio)
-	else:
-		if req_frames is not None:
-			print('Warning: end of file reached before requested number of frames were decoded')
-		break
+if not args.field:
+    framer = Framer(rf)
+    ca = []
+    for f in range(0, num_frames):
+        if fd.tell() + bytes_per_frame * 1.05 <= infile_size:  # 1.05 gives us a little slack in case the frame is long
+            combined, audio, nextsample, fields = framer.readframe(fd, nextsample, f == 0)
+
+            print('frame ', framer.vbi['framenr'])
+
+            ca.append(audio)
+
+            outfile.write(combined)
+            #print(len(audio)//2)
+            outfile_audio.write(audio)
+        else:
+            if req_frames is not None:
+                print('Warning: end of file reached before requested number of frames were decoded')
+            break
+else:
+    FieldClass = FieldPAL if args.pal else FieldNTSC
+    linesout = (rf.SysParams['frame_lines'] // 2) + 1
+    fieldsread = 0
+
+    while fieldsread < (num_frames * 2):
+        readlen = (samples_per_field * 1.1) if fieldsread else (samples_per_field * 2)
+        rawdecode = rf.demod(fd, nextsample, readlen)
+
+        field = FieldClass(rf, rawdecode, 0)
+
+        if field is not None:    
+            picture, audio = field.downscale(linesout = linesout, final=True)
+
+            outfile.write(picture)
+            outfile_audio.write(audio)
+
+            nextsample += field.nextfieldoffset
+            fieldsread += 1
+            print(fieldsread, nextsample)
+        else:
+            print('skipping two fields')
+            nextsample += (bytes_per_field * 2)    
+    
 
 #draw_raw_bwimage(combined, outwidth, 610, hscale=2, vscale=2)
 

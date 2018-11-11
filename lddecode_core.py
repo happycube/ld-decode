@@ -691,7 +691,7 @@ class Field:
 
         linelens = [self.inlinelen]
         prevlineidx = None
-        for i in range(0, self.vsyncs[1][1]): #self.vsyncs[1][1]):
+        for i in range(0, self.vsyncs[1][1] + 0): #self.vsyncs[1][1]):
             med_linelen = np.median(linelens[-25:])
 
             if (self.is_regular_hsync(i)):
@@ -717,7 +717,7 @@ class Field:
 
         linelocs2 = copy.deepcopy(linelocs)
 
-        for l in range(1, self.linecount + 5):
+        for l in range(1, self.linecount + 6):
             if l not in linelocs:
                 prev_valid = None
                 next_valid = None
@@ -744,8 +744,8 @@ class Field:
 
                 #print(l, linelocs2[l] - linelocs2[l - 1], avglen, linelocs2[l], linelocs[10], prev_valid, next_valid)
 
-        rv_ll = [linelocs2[l] for l in range(1, self.linecount + 5)]
-        rv_err = [l not in linelocs for l in range(1, self.linecount + 5)]
+        rv_ll = [linelocs2[l] for l in range(1, self.linecount + 6)]
+        rv_err = [l not in linelocs for l in range(1, self.linecount + 6)]
         
         for i in range(0, 10):
             rv_err[i] = False
@@ -826,18 +826,22 @@ class Field:
 
         return linelocs2
     
-    def downscale(self, lineoffset = 1, lineinfo = None, outwidth = None, wow=True, channel='demod', audio = False):
+    def downscale(self, lineoffset = 1, lineinfo = None, linesout = None, outwidth = None, wow=True, channel='demod', audio = False):
         if lineinfo is None:
             lineinfo = self.linelocs
         if outwidth is None:
             outwidth = self.outlinelen
+        if linesout is None:
+            linesout = self.linecount
             
-        dsout = np.zeros((self.linecount * outwidth), dtype=np.double)    
+        #print(lineoffset, linesout, self.linecount, len(self.linelocs2), len(self.linelocs))
+            
+        dsout = np.zeros((linesout * outwidth), dtype=np.double)    
         dsaudio = None
 
         sfactor = [None]
-
-        for l in range(lineoffset, self.linecount + lineoffset):
+        
+        for l in range(lineoffset, linesout + lineoffset):
             scaled = scale(self.data[0][channel], lineinfo[l], lineinfo[l + 1], outwidth)
 
             if wow:
