@@ -107,6 +107,7 @@ if not args.field:
             break
 else:
     FieldClass = FieldPAL if args.pal else FieldNTSC
+    lineoffset = 3 if args.pal else 0
     linesout = (rf.SysParams['frame_lines'] // 2) + 1
     fieldsread = 0
 
@@ -117,7 +118,7 @@ else:
         field = FieldClass(rf, rawdecode, 0)
 
         if field is not None:    
-            picture, audio = field.downscale(linesout = linesout, final=True)
+            picture, audio = field.downscale(linesout = linesout, lineoffset = lineoffset, final=True)
 
             outfile.write(picture)
             outfile_audio.write(audio)
