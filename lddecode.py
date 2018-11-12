@@ -125,7 +125,7 @@ else:
 
             nextsample += field.nextfieldoffset
             fieldsread += 1
-            print(fieldsread, nextsample)
+            print(fieldsread, nextsample, field.istop)
         else:
             print('skipping two fields')
             nextsample += (bytes_per_field * 2)    
