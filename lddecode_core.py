@@ -826,14 +826,16 @@ class Field:
 
         return linelocs2
     
-    def downscale(self, lineoffset = 1, lineinfo = None, linesout = None, outwidth = None, wow=True, channel='demod', audio = False):
+    def downscale(self, lineoffset = None, lineinfo = None, linesout = None, outwidth = None, wow=True, channel='demod', audio = False):
         if lineinfo is None:
             lineinfo = self.linelocs
         if outwidth is None:
             outwidth = self.outlinelen
         if linesout is None:
             linesout = self.linecount
-            
+        if lineoffset is None:
+            lineoffset = 3 if self.rf.system == 'PAL' else 1
+
         #print(lineoffset, linesout, self.linecount, len(self.linelocs2), len(self.linelocs))
             
         dsout = np.zeros((linesout * outwidth), dtype=np.double)    
@@ -1065,7 +1067,7 @@ class FieldPAL(Field):
         return linelocs    
     
     def downscale(self, final = False, *args, **kwargs):
-        dsout, dsaudio = super(FieldPAL, self).downscale(lineoffset = 3, audio = final, *args, **kwargs)
+        dsout, dsaudio = super(FieldPAL, self).downscale(audio = final, *args, **kwargs)
         
         if final:
             reduced = (dsout - self.rf.SysParams['ire0']) / self.rf.SysParams['hz_ire']
