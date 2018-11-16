@@ -118,7 +118,10 @@ else:
         field = FieldClass(rf, rawdecode, 0)
 
         if field is not None:    
-            picture, audio = field.downscale(linesout = linesout, lineoffset = lineoffset, final=True)
+            lo = lineoffset
+            if args.pal and field.istop:
+                lo += 1
+            picture, audio = field.downscale(linesout = linesout, lineoffset = lo, final=True)
 
             outfile.write(picture)
             outfile_audio.write(audio)
