@@ -43,7 +43,7 @@ SysParams_NTSC = {
     'audio_lfreq': (1000000*315/88/227.5) * 146.25,
     'audio_rfreq': (1000000*315/88/227.5) * 178.75,
     
-    'philips_codelines': [16, 17, 18],
+    'philips_codelines': [15, 16, 17],
     
     'topfirst': True,
 }
@@ -101,22 +101,6 @@ RFParams_NTSC = {
     'video_lpf_order': 5 # butterworth filter order
 }
 
-# might not work right
-RFParams_PAL2 = {
-    # The audio notch filters are important with DD v3.0+ boards
-    'audio_notchwidth': 200000,
-    'audio_notchorder': 2,
-
-    'video_deemp': (100*.4, 400*.4),
-
-    # XXX: guessing here!
-    'video_bpf': (2500000, 14500000),
-    'video_bpf_order': 3,
-
-    'video_lpf_freq': 5200000,
-    'video_lpf_order': 9,
-}
-
 RFParams_PAL = {
     # The audio notch filters are important with DD v3.0+ boards
     'audio_notchwidth': 200000,
@@ -131,23 +115,6 @@ RFParams_PAL = {
     'video_lpf_freq': 4800000,
     'video_lpf_order': 9,
 }
-
-
-RFParams_PAL2 = {
-    # The audio notch filters are important with DD v3.0+ boards
-    'audio_notchwidth': 200000,
-    'audio_notchorder': 2,
-
-    'video_deemp': (100*.32, 400*.32),
-
-    # XXX: guessing here!
-    'video_bpf': (2500000, 13500000),
-    'video_bpf_order': 3,
-
-    'video_lpf_freq': 4800000,
-    'video_lpf_order': 9,
-}
-
 
 class RFDecode:
     def __init__(self, inputfreq = 40, system = 'NTSC', blocklen_ = 16384, decode_analog_audio = True, have_analog_audio = True, mtf_mult = 1.0, mtf_offset = 0):
@@ -410,7 +377,7 @@ class RFDecode:
 
         return output_audio2    
 
-    def demod(self, infile, start, length, mtf_level = 0):
+    def demod(self, indata, start, length, mtf_level = 0):
         end = int(start + length) + 1
 
         if (start > self.blockcut):
@@ -422,16 +389,13 @@ class RFDecode:
         output = None
         output_audio = None
 
-        for i in range(start, end, self.blocklen - self.blockcut - self.blockcut_end):
-            try:
-                indata = loader(infile, i, self.blocklen)
-            except:
-                return None
-            
-            if indata is None:
-                return None
-            
-            tmp_video, tmp_audio = self.demodblock(indata, mtf_level = mtf_level)
+        blocklen_overlap = self.blocklen - self.blockcut - self.blockcut_end
+        for i in range(start, end, blocklen_overlap):
+            # XXX: process last block with 0 padding
+            if (i + blocklen_overlap) > end:
+                break
+
+            tmp_video, tmp_audio = self.demodblock(indata[i:i+self.blocklen], mtf_level = mtf_level)
 
             # if the output hasn't been created yet, do it now using the 
             # data types returned by dodemod (should be faster than multiple
@@ -691,7 +655,7 @@ class Field:
 
         linelens = [self.inlinelen]
         prevlineidx = None
-        for i in range(0, self.vsyncs[1][1] + 0): #self.vsyncs[1][1]):
+        for i in range(0, self.vsyncs[1][1] + 0): 
             med_linelen = np.median(linelens[-25:])
 
             if (self.is_regular_hsync(i)):
@@ -872,66 +836,17 @@ class Field:
 
         if valid:
             bitset = [z[1] for z in zc]
-            linecode = []
+            linecode = 0
+
             for b in range(0, 24, 4):
-                linecode.append((np.packbits(bitset[b:b+4]) >> 4)[0])
+                #linecode.append((np.packbits(bitset[b:b+4]) >> 4)[0])
+                linecode *= 0x10
+                linecode += (np.packbits(bitset[b:b+4]) >> 4)[0]
+
             return linecode
         
         return None
 
-    def processphilipscode(self):
-        self.vbi = {
-            'minutes': None,
-            'seconds': None,
-            'clvframe': None,
-            'framenr': None,
-            'statuscode': None,
-            'status': None,
-            'isclv': False,
-        }
-        
-        for l in self.rf.SysParams['philips_codelines']:
-            if self.linecode[l] is not None:
-                lc = self.linecode[l]
-                if lc[0] == 15 and lc[2] == 13: # CLV time code
-                    self.vbi['minutes'] = 60 * lc[1]
-                    self.vbi['minutes'] += lc[4] * 10
-                    self.vbi['minutes'] += lc[5]
-                    self.vbi['isclv'] = True
-                elif lc[0] == 15: # CAV frame code
-                    frame = (lc[1] & 7) * 10000
-                    frame += (lc[2] * 1000)
-                    frame += (lc[3] * 100)
-                    frame += (lc[4] * 10)
-                    frame += lc[5] 
-                    self.vbi['framenr'] = frame
-                else:
-                    h = lc[0] << 20
-                    h |= lc[1] << 16
-                    h |= lc[2] << 12
-                    h |= lc[3] << 8
-                    h |= lc[4] << 4
-                    h |= lc[5] 
-                    #print('%06x' % h)
-                    
-                    if lc[2] == 0xE: # seconds/frame goes here
-                        self.vbi['seconds'] = (lc[1] - 10) * 10
-                        self.vbi['seconds'] += lc[3]
-                        self.vbi['clvframe'] = lc[4] * 10
-                        self.vbi['clvframe'] += lc[5]
-                        self.vbi['isclv'] = True
-                        #print('clv ', self.seconds, self.clvframe)
-
-                    htop = h >> 12
-                    if htop == 0x8dc or htop == 0x8ba:
-                        self.vbi['status'] = h
-                    
-                    if h == 0x87ffff:
-                        self.vbi['isclv'] = True 
-
-    # what you actually want from this:
-    # decoded_field: downscaled field
-    # burstlevels: 
     def __init__(self, rf, rawdecode, start, audio_offset = 0, keepraw = True):
         if rawdecode is None:
             return None
@@ -963,9 +878,6 @@ class Field:
             if jumpto == 0:
                 print("no/corrupt VSYNC found, jumping forward")
                 self.nextfieldoffset = start + (self.rf.linelen * 240)
-            else:
-                #print("too short", start, jumpto, self.vsyncs)
-                pass
             
             return
         
@@ -989,14 +901,25 @@ class Field:
         self.linelocs = self.linelocs2
         
         # VBI info
-        self.isclv = False
-        self.linecode = {}
-        self.framenr = None
+        self.linecode = []
+        self.isFirstField = False
+        self.cavFrame = None
         for l in self.rf.SysParams['philips_codelines']:
-            self.linecode[l] = self.decodephillipscode(l)
+            self.linecode.append(self.decodephillipscode(l))
+            if self.linecode[-1] is not None:
+                print('lc', l, hex(self.linecode[-1]))
+                # For either CAV or CLV, 0xfxxxx means this is the first field
+                # All the data we *really* need here (for now) is the CAV frame # 
+                if (self.linecode[-1] & 0xf00000) == 0xf00000:
+                    self.isFirstField = True
+
+                    fnum = 0
+                    for y in range(16, -1, -4):
+                        fnum *= 10
+                        fnum += self.linecode[-1] >> y & 0x0f
+                    
+                    self.cavFrame = fnum if fnum < 80000 else fnum - 80000
             
-        self.processphilipscode()
-        
         self.valid = True
         self.tbcstart = self.peaklist[self.vsyncs[1][1]-10]
         
@@ -1207,7 +1130,6 @@ class FieldNTSC(Field):
     def apply_offsets(self, linelocs, phaseoffset, picoffset = 0):
         return np.array(linelocs) + picoffset + (phaseoffset * (self.rf.freq / (4 * 315 / 88)))
 
-    #def __init__(self, colorphase = -63, colorlevel = 1.17, *args, **kwargs):
     def __init__(self, *args, **kwargs):
         self.burstlevel = None
 
@@ -1269,17 +1191,7 @@ class Framer:
                 return f, readsample, nextsample # readsample + f.nextfieldoffset
         
     def mergevbi(self, fields):
-        vbi_merged = copy.copy(fields[0].vbi)
-        for k in vbi_merged.keys():
-            if fields[1].vbi[k] is not None:
-                vbi_merged[k] = fields[1].vbi[k]
-                
-        if vbi_merged['seconds'] is not None:
-            vbi_merged['framenr'] = vbi_merged['minutes'] * 60 * self.clvfps
-            vbi_merged['framenr'] += vbi_merged['seconds'] * self.clvfps
-            vbi_merged['framenr'] += vbi_merged['clvframe']
-                
-        return vbi_merged
+        return fields[0].vbi
     
     def formatoutput(self, fields):
         linecount = (min(fields[0].linecount, fields[1].linecount) * 2) - 0
@@ -1302,7 +1214,6 @@ class Framer:
         fields = [None, None]
         audio = []
         
-        jumpto = 0
         while fieldcount < 2:
             f, readsample, nextsample = self.readfield(infile, sample, fieldcount)
             if f is not None:

@@ -1,4 +1,5 @@
-(this is going to be rev2/v0.4.0, but still has some issues)
+
+THIS IS NOT A WORKING BRANCH YET!
 
 For more documentation check the wiki (here) on github:
 
