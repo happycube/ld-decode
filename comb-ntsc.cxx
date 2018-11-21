@@ -833,7 +833,7 @@ class Comb
 		// buffer: in_xxin_y uint16_t array
 		void Process(uint16_t *buffer, int dim = 2)
 		{
-			int firstline = (linesout == in_y) ? 20 : 40;
+			int firstline = (linesout == in_y) ? 20 : 42;
 			int f = (dim == 3) ? 1 : 0;
 
 			cerr << "P " << f << ' ' << dim << endl;

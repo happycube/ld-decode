@@ -1113,7 +1113,7 @@ class FieldNTSC(Field):
             if self.burstlevel is not None:
                 for i in range(1, self.linecount - 1):
                     hz_ire_scale = 1700000 / 140
-                    if self.burstlevel[i] > 0:
+                    if self.burstlevel[i] < 0:
                         lines16[((i + 0) * self.outlinelen)] = 16384
                     else:
                         lines16[((i + 0) * self.outlinelen)] = 32768
@@ -1151,149 +1151,151 @@ class FieldNTSC(Field):
 
             # Now adjust 33 degrees (-90 - 33) for color decoding
             shift33 = self.colorphase * (np.pi / 180)
-            self.linelocs = self.apply_offsets(self.linelocs4, shift33)
+            self.linelocs = self.apply_offsets(self.linelocs4, shift33 - 4)
         
             self.downscale(wow = True, final=True)
         except:
             print("ERROR: Unable to decode frame, skipping")
             self.valid = False
 
-class Framer:
-    def readfield(self, infile, sample, fieldcount = 0):
-        readsample = sample
-        
-        while True:
-            if isinstance(infile, io.IOBase):
-                rawdecode = self.rf.demod(infile, readsample, self.readlen, self.mtf_level)
-                if rawdecode is None:
-                    return None, None, None
-                
-                f = self.FieldClass(self.rf, rawdecode, 0, audio_offset = self.audio_offset)
-                nextsample = readsample + f.nextfieldoffset
-                if not f.valid:
-                    if rawdecode is None:
-                        return None, None, None
-                    elif len(f.peaklist) < 100: 
-                        # No recognizable data - jump 10 seconds to get past possible spinup
-                        nextsample = readsample + (self.rf.freq_hz * 10)
-                    elif len(f.vsyncs) == 0:
-                        nextsample = readsample + (self.rf.freq_hz * 1)
-            else:
-                f = self.FieldClass(self.rf, infile, readsample)
-                nextsample = f.nextfieldoffset
-                if not f.valid and len(f.vsyncs) == 0:
-                    nextsample = readsample + self.rf.freq_hz
-                    #return None, None
-            
-            if not f.valid:
-                readsample = nextsample # f.nextfieldoffset
-            else:
-                return f, readsample, nextsample # readsample + f.nextfieldoffset
-        
-    def mergevbi(self, fields):
-        return fields[0].vbi
+class LDdecode:
     
-    def formatoutput(self, fields):
-        linecount = (min(fields[0].linecount, fields[1].linecount) * 2) - 0
+    def __init__(self, fname_in, fname_out, freader, analog_audio = True, frameoutput = False, system = 'NTSC'):
+        self.infile = open(fname_in, 'rb')
+        self.freader = freader
+        
+        self.outfile_video = open(fname_out + '.tbc', 'wb')
+        self.outfile_json = open(fname_out + '.json', 'wb')
+        self.outfile_audio = open(fname_out + '.pcm', 'wb') if analog_audio else None
+        
+        self.analog_audio = analog_audio
+        self.frameoutput = frameoutput
+        self.firstfield = None # In frame output mode, the first field goes here
 
-        combined = np.zeros((self.outwidth * self.outlines), dtype=np.uint16)
-        for i in range(0, linecount, 2):
-            curline = (i // 2) + 0
-            combined[((i + 0) * self.outwidth):((i + 1) * self.outwidth)] = fields[0].dspicture[curline * fields[0].outlinelen: (curline * fields[0].outlinelen) + self.outwidth]
-            combined[((i + 1) * self.outwidth):((i + 2) * self.outwidth)] = fields[1].dspicture[curline * fields[0].outlinelen: (curline * fields[0].outlinelen) + self.outwidth]
+        if system == 'PAL':
+            self.rf = RFDecode(system = 'PAL', decode_analog_audio=analog_audio)
+            self.FieldClass = FieldPAL
+            self.readlen = self.rf.linelen * 350
+            self.outlineoffset = 2
+            self.clvfps = 25
+        else: # NTSC
+            self.rf = RFDecode(system = 'NTSC', decode_analog_audio=analog_audio)
+            self.FieldClass = FieldNTSC
+            self.readlen = self.rf.linelen * 300
+            self.outlineoffset = 0
+            self.clvfps = 30
+        
+        self.output_lines = (self.rf.SysParams['frame_lines'] // 2) + 1
+        
+        self.bytes_per_frame = int(self.rf.freq_hz / self.rf.SysParams['FPS'])
+        self.bytes_per_field = int(self.rf.freq_hz / (self.rf.SysParams['FPS'] * 2)) + 1
+        self.outwidth = self.rf.SysParams['outlinelen']
 
-        # copy in the halfline.  bit hackish but so is the idea of a visible halfline ;)
-        lf = np.argmax([fields[0].linecount, fields[1].linecount])
-        curline = (linecount // 2) + 0
-        combined[(linecount * self.outwidth):((linecount + 1) * self.outwidth)] = fields[lf].dspicture[curline * fields[0].outlinelen: (curline * fields[0].outlinelen) + self.outwidth]
-            
-        return combined
+        self.fdoffset = 0
+        self.audio_offset = 0
+        self.mtf_level = 1
+        
+    def roughseek(self, fieldnr):
+        self.fdoffset = fieldnr * self.bytes_per_field
     
-    def readframe(self, infile, sample, firstframe = False, CAV = False):
-        fieldcount = 0
-        fields = [None, None]
-        audio = []
-        
-        while fieldcount < 2:
-            f, readsample, nextsample = self.readfield(infile, sample, fieldcount)
-            if f is not None:
-                print(sample, nextsample, f is not None, f.istop)
-            else:
-                print(sample, nextsample, f is not None)
-            
-            if f is not None:
-                if f.istop:
-                    fields[0] = f
-                else:
-                    fields[1] = f
-                    
-                if ((not CAV and (f.istop == self.rf.SysParams['topfirst'])) or 
-                   (CAV and (f.vbi['framenr'] or f.vbi['minutes']))):
-                    fieldcount = 1
-                    firstsample = f.tbcstart + readsample
-                elif fieldcount == 1:
-                    fieldcount = 2
-
-                if (fieldcount or not firstframe) and f.dsaudio is not None:
-                    audio.append(f.dsaudio)
-            elif readsample is None:
-                return None, None, None, None
-            
-            sample = nextsample
-        
-        if len(audio):
-            conaudio = np.concatenate(audio)
-            self.audio_offset = f.audio_next_offset
-        else:
-            conaudio = None
-        
-        if self.full_decode:
-            combined = self.formatoutput(fields)
-        else:
-            combined = None
-            
-        self.vbi = self.mergevbi(fields)
-        
-        if not self.vbi['isclv'] and self.vbi['framenr'] is not None:
-            newmtf = 1 - (self.vbi['framenr'] / 10000)
+    def checkMTF(self, field):
+        if field.cavFrame is not None:
+            newmtf = 1 - (field.cavFrame / 10000)
             if newmtf < 0:
                 newmtf = 0
-                
             oldmtf = self.mtf_level
             self.mtf_level = newmtf
+
+            if np.abs(newmtf - oldmtf) > .1: # redo field if too much adjustment
+                return False
             
-            if np.abs(newmtf - oldmtf) > .1:
-                return self.readframe(infile, sample, firstframe, CAV)
+        return True
+    
+    def decodefield(self):
+        ''' returns field object if valid, and the offset to the next decode '''
+        readloc = self.fdoffset - self.rf.blockcut
+        if readloc < 0:
+            readloc = 0
+            
+        indata = self.freader(self.infile, readloc, self.readlen)
         
-        return combined, conaudio, sample, fields #, audio
-
-    def __init__(self, rf, full_decode = True):
-        self.rf = rf
-        self.full_decode = full_decode
-
-        if self.rf.system == 'PAL':
-            self.FieldClass = FieldPAL
-            self.readlen = 1000000
-            self.outlines = 625
-            self.clvfps = 25
+        rawdecode = self.rf.demod(indata, self.rf.blockcut, self.readlen, self.mtf_level)
+        if rawdecode is None:
+            print("Failed to read data")
+            return None, None
+        
+        f = self.FieldClass(self.rf, rawdecode, 0, audio_offset = self.audio_offset)
+        
+        if not f.valid:
+            if len(f.peaklist) < 100: 
+                # No recognizable data - jump 10 seconds to get past possible spinup
+                printf("No recognizable data - jumping 10 seconds")
+                return None, self.rf.freq_hz * 10
+            elif len(f.vsyncs) == 0:
+                # Some recognizable data - possibly from a player seek
+                printf("Bad data - jumping one second")
+                return None, self.rf.freq_hz * 1
         else:
-            self.FieldClass = FieldNTSC
-            self.readlen = 1000000
-            self.outlines = 525
-            self.clvfps = 30
+            self.audio_offset = f.audio_next_offset
+            print(f.isFirstField, f.cavFrame)
             
-        if not self.full_decode:
-            self.FieldClass = Field
+        return f, f.nextfieldoffset
         
-        self.outwidth = self.rf.SysParams['outlinelen']
-        self.audio_offset = 0
+    def readfield(self):
+        # pretty much a retry-ing wrapper around decodefield with MTF checking
+        done = False
         
-        self.mtf_level = 1
+        while done == False:
+            f, offset = self.decodefield()
+            self.fdoffset += offset
+            
+            if f is not None and f.valid:
+                if self.checkMTF(f):
+                    done = True
+                else:
+                    # redo field
+                    self.fdoffset -= offset
+                 
+        if f is not None:
+            self.processfield(f)
+            
+        return f
+            
+    def processfield(self, f):
+        picture, audio = f.downscale(linesout = self.output_lines, lineoffset = self.outlineoffset, final=True)
+            
+        if audio is not None and self.outfile_audio is not None:
+            self.outfile_audio.write(audio)
+            
+        if self.frameoutput == False:
+            self.outfile_video.write(picture)
+        else:
+            if self.firstfield is not None:
+                self.writeframe(self.firstfield, picture)
+            elif f.isFirstField:
+                self.firstfield = picture
+                
+    def writeframe(self, f1, f2):
+        linecount = self.rf.SysParams['frame_lines']
+        combined = np.zeros((self.outwidth * linecount), dtype=np.uint16)
+        
+        for i in range(0, linecount-1, 2):
+            curline = (i // 2) + 0
+            combined[((i + 0) * self.outwidth):((i + 1) * self.outwidth)] = f1[curline * self.outwidth: ((curline + 1) * self.outwidth)]
+            combined[((i + 1) * self.outwidth):((i + 2) * self.outwidth)] = f1[curline * self.outwidth: ((curline + 1) * self.outwidth)]
+
+        # need to copy in the last line here, i think it's different ntsc/pal
+        self.outfile_video.write(combined)
+
+        self.firstfield = None
 
 # Helper functions that rely on the classes above go here
 
 def findframe(infile, rf, target, nextsample = 0):
     ''' Locate the sample # of the target frame. '''
+
+    return
+
     framer = Framer(rf, full_decode = False)
     samples_per_frame = int(rf.freq_hz / rf.SysParams['FPS'])
     framer.vbi = {'framenr': None}
