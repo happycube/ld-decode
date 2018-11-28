@@ -489,7 +489,7 @@ def downscale_audio(audio, lineinfo, rf, linecount, timeoffset = 0, freq = 48000
 
 #audb, offset, arange, locs = downscale_audio(fields[0].rawdecode[1], fields[0].linelocs, rfd, 262)
 
-# The Field class contains a common 
+# The Field class contains common features used by NTSC and PAL
 class Field:
 
     def usectoinpx(self, x):
@@ -722,14 +722,9 @@ class Field:
 
         linelocs2 = self.linelocs1.copy()
         for i in range(len(self.linelocs1)):
-            # First adjust the lineloc before the beginning of hsync - 
-            # lines 1-9 are half-lines which need a smaller offset
-            
-            if i < 9:
-                linelocs2[i] -= 200 # search for *beginning* of hsync
 
-            ll1 = linelocs2[i]
-            zc = calczc(self.data[0]['demod_05'], linelocs2[i], self.rf.iretohz(-20), reverse=False, _count=400)
+            ll1 = self.linelocs1[i] - self.usectoinpx(5.5)
+            zc = calczc(self.data[0]['demod_05'], ll1, self.rf.iretohz(-20), reverse=False, _count=400)
 
             if zc is not None and not self.linebad[i]:
                 linelocs2[i] = zc 
@@ -740,53 +735,35 @@ class Field:
                     # it's possible that the zero crossing is thrown by bad data, so look at original peak
                     origdata_hsync1 = self.data[0]['demod_05'][int(ll1-(self.rf.freq*2)):int(ll1+(self.rf.freq*2))]
                     origdata_hsync = self.data[0]['demod_05'][int(zc-(self.rf.freq*1)):int(zc+(self.rf.freq*3))]
-                    origdata_burst = self.data[0]['demod_05'][int(zc+(self.rf.freq*1)):int(zc+(self.rf.freq*3))]
+                    origdata_burst = self.data[0]['demod_05'][int(zc+(self.rf.freq*5.7)):int(zc+(self.rf.freq*8.7))]
 
-                    if ((np.min(origdata_hsync) < self.rf.iretohz(-60) or np.max(origdata_hsync) > self.rf.iretohz(20)) or 
+    #                print(i, np.min(origdata_burst), np.max(origdata_burst))
+
+                    if False and ((np.min(origdata_hsync) < self.rf.iretohz(-60) or np.max(origdata_hsync) > self.rf.iretohz(20)) or 
                            (np.min(origdata_hsync1) < self.rf.iretohz(-60) or np.max(origdata_hsync1) > self.rf.iretohz(100)) or 
                            (np.min(origdata_burst) < self.rf.iretohz(-10) or np.max(origdata_burst) > self.rf.iretohz(10))):
                         self.linebad[i] = True
+    #                    print('lb', i, ll1, zc)
                     else:
                         # on some captures with high speed variation wow effects can mess up TBC.
                         # determine the low and high values and recompute zc along the middle
 
-                        low = np.mean(origdata_hsync[0:20])
-                        high = np.mean(origdata_hsync[100:120])
+                        high = np.mean(origdata_hsync[0:20])
+                        low = np.mean(origdata_hsync[100:120])
 
                         zc2 = calczc(origdata_hsync, 0, (low + high) / 2, reverse=False, _count=len(origdata_hsync))
                         zc2 += (int(zc)-(self.rf.freq*1))
 
                         if np.abs(zc2 - zc) < (self.rf.freq / 4):
-                            linelocs2[i] = zc2 
+                            linelocs2[i] = zc
                         else:
                             self.linebad[i] = True
             else:
                 self.linebad[i] = True
 
-            if i < 10:
-                linelocs2[i] += self.usectoinpx(4.72)
-
             if i > 10 and self.linebad[i]:
                 gap = linelocs2[i - 1] - linelocs2[i - 2]
                 linelocs2[i] = linelocs2[i - 1] + gap
-
-        # XXX: HACK!
-        # On both PAL and NTSC this gets it wrong for VSYNC areas.  They need to be *reasonably* 
-        # accurate for analog audio, but are never seen in the picture.
-        for i in range(9, -1, -1):
-            gap = linelocs2[i + 1] - linelocs2[i]
-            if not inrange(gap, self.rf.linelen - (self.rf.freq * .2), self.rf.linelen + (self.rf.freq * .2)):
-                gap = self.rf.linelen
-
-            linelocs2[i] = linelocs2[i + 1] - gap
-
-        # XXX2: more hack!  This one covers a bit at the end of a PAL field
-        for i in range(len(linelocs2) - 10, len(linelocs2)):
-            gap = linelocs2[i] - linelocs2[i - 1]
-            if not inrange(gap, self.rf.linelen - (self.rf.freq * .2), self.rf.linelen + (self.rf.freq * .2)):
-                gap = self.rf.linelen
-
-            linelocs2[i] = linelocs2[i - 1] + gap
 
         return linelocs2
     
@@ -940,8 +917,8 @@ class FieldPAL(Field):
 
         # first pass: get median of all pilot positive zero crossings
         for l in range(len(linelocs)):
-            pilot = self.data[0]['demod'][int(linelocs[l]-self.usectoinpx(4.7)):int(linelocs[l])].copy()
-            pilot -= self.data[0]['demod_05'][int(linelocs[l]-self.usectoinpx(4.7)):int(linelocs[l])]
+            pilot = self.data[0]['demod'][int(linelocs[l]):int(linelocs[l]+self.usectoinpx(4.7))].copy()
+            pilot -= self.data[0]['demod_05'][int(linelocs[l]):int(linelocs[l]+self.usectoinpx(4.7))]
             pilot = np.flip(pilot)
 
             pilots.append(pilot)
@@ -987,8 +964,8 @@ class FieldPAL(Field):
                 adjustment = tgt - np.median(offsets[l])
                 linelocs[l] += adjustment * (self.rf.freq / 3.75) * .25
 
-        return linelocs    
-    
+        return linelocs  
+
     def downscale(self, final = False, *args, **kwargs):
         dsout, dsaudio = super(FieldPAL, self).downscale(audio = final, *args, **kwargs)
         
@@ -1020,6 +997,7 @@ class FieldPAL(Field):
 
 class FieldNTSC(Field):
 
+
     def refine_linelocs_burst(self, linelocs2):
         hz_ire_scale = 1700000 / 140
 
@@ -1037,8 +1015,12 @@ class FieldNTSC(Field):
 
         for l in range(self.linecount):
             # Since each line is lined up to the beginning of HSYNC and this is 4fsc,
-            # we can scan the burst area explicitly (~0.6 to ~2.9usec)
-            ba = scaledburst[(self.outlinelen*l)+20:self.outlinelen*(l+0)+60].copy()
+            # we can scan the burst area explicitly (4.7+~0.6 to 4.7+~2.9usec)
+            lstart = self.outlinelen * l
+            bbeg = int(self.usectoinpx(4.7+0.6))
+            bend = int(self.usectoinpx(4.7+2.9))
+
+            ba = scaledburst[lstart+bbeg:lstart+bend].copy()
             ba -= np.mean(ba)
             burstlevel[l] = np.max(np.abs(ba))
             #print(l, burstlevel[l], np.std(ba) / hz_ire_scale)
