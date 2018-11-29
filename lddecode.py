@@ -26,6 +26,7 @@ parser.add_argument('-c', '--cut', dest='cut', action='store_true', help='cut (t
 parser.add_argument('-m', '--MTF', metavar='mtf', type=float, default=1.0, help='mtf compensation multiplier')
 parser.add_argument('--MTF_offset', metavar='mtf_offset', type=float, default=0.0, help='mtf compensation offset')
 parser.add_argument('-f', '--field', dest='field', action='store_true', help='output fields')
+parser.add_argument('-C', '--CAV', dest='CAV', action='store_true', help='use CAV')
 
 args = parser.parse_args()
 print(args)
@@ -92,7 +93,7 @@ if not args.field:
     ca = []
     for f in range(0, num_frames):
         if fd.tell() + bytes_per_frame * 1.05 <= infile_size:  # 1.05 gives us a little slack in case the frame is long
-            combined, audio, nextsample, fields = framer.readframe(fd, nextsample, f == 0)
+            combined, audio, nextsample, fields = framer.readframe(fd, nextsample, f == 0, CAV=args.CAV)
 
             print('frame ', framer.vbi['framenr'])
 
