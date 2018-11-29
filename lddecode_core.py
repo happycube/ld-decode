@@ -72,7 +72,8 @@ SysParams_PAL = {
     'audio_lfreq': (1000000/64) * 43.75,
     'audio_rfreq': (1000000/64) * 68.25,
 
-    'philips_codelines': [19, 20, 21],
+    # slight flaw:  different vbi lines in this phase
+    'philips_codelines': [17, 18, 19, 20],
     
     'topfirst': False,    
 }
@@ -775,7 +776,7 @@ class Field:
         if linesout is None:
             linesout = self.linecount
         if lineoffset is None:
-            lineoffset = 3 if self.rf.system == 'PAL' else 1
+            lineoffset = 3 if self.rf.system == 'PAL' else 0
 
         #print(lineoffset, linesout, self.linecount, len(self.linelocs2), len(self.linelocs))
             
@@ -967,6 +968,8 @@ class FieldPAL(Field):
         return linelocs  
 
     def downscale(self, final = False, *args, **kwargs):
+        print(kwargs)
+        kwargs['lineoffset'] = 3 if self.istop else 2
         dsout, dsaudio = super(FieldPAL, self).downscale(audio = final, *args, **kwargs)
         
         if final:
@@ -1083,7 +1086,7 @@ class FieldNTSC(Field):
 
         return np.array(linelocs3), burstlevel#, phaseaverages
 
-    def downscale(self, lineoffset = 1, final = False, *args, **kwargs):
+    def downscale(self, lineoffset = 0, final = False, *args, **kwargs):
         dsout, dsaudio = super(FieldNTSC, self).downscale(lineoffset = lineoffset, audio = final, *args, **kwargs)
         
         if final:
