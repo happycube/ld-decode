@@ -1,5 +1,3 @@
-
-
 from base64 import b64encode
 import copy
 from datetime import datetime
@@ -283,7 +281,6 @@ class RFDecode:
         adeemp_b, adeemp_a = sps.butter(1, [d75freq/(SF['freq_aud2']/2)], btype='lowpass')
         SF['audio_deemp2'] = filtfft([adeemp_b, adeemp_a],  self.blocklen // SF['audio_fdiv2'])
         
-        
     def iretohz(self, ire):
         return self.SysParams['ire0'] + (self.SysParams['hz_ire'] * ire)
 
@@ -380,11 +377,7 @@ class RFDecode:
 
     def demod(self, indata, start, length, mtf_level = 0):
         end = int(start + length) + 1
-
-        if (start > self.blockcut):
-            start = int(start - self.blockcut)
-        else:
-            start = 0 # should this be an error?  prolly.
+        start = int(start - self.blockcut) if (start > self.blockcut) else 0
 
         # set a placeholder
         output = None
@@ -430,7 +423,6 @@ class RFDecode:
             return output, self.audio_phase2(output_audio)
         else:
             return output, None
-
 
 # right now defualt is 16/48, so not optimal :)
 def downscale_audio(audio, lineinfo, rf, linecount, timeoffset = 0, freq = 48000.0, scale=64):
@@ -488,11 +480,8 @@ def downscale_audio(audio, lineinfo, rf, linecount, timeoffset = 0, freq = 48000
             
     return output16, arange[-1] - frametime
 
-#audb, offset, arange, locs = downscale_audio(fields[0].rawdecode[1], fields[0].linelocs, rfd, 262)
-
 # The Field class contains common features used by NTSC and PAL
 class Field:
-
     def usectoinpx(self, x):
         return x * self.rf.freq
     
@@ -565,11 +554,7 @@ class Field:
                 break
 
         if gap1 is not None and gap1 > (self.inlinelen * .75):
-            # With PAL both gap lines are the same length for each field type
-            if self.rf.system == 'NTSC':
-                vote -= 1
-            else:
-                vote -= 1
+            vote -= 1
 
         linee = None
         gap2 = None
@@ -660,7 +645,6 @@ class Field:
             med_linelen = np.median(linelens[-25:])
 
             if (self.is_regular_hsync(i)):
-
                 if prevlineidx is not None:
                     linegap = plist[i] - plist[prevlineidx]
 
@@ -672,13 +656,10 @@ class Field:
                 else:
                     linenum = int(np.round((plist[i] - plist[self.vsyncs[0][1]]) / med_linelen))
 
-
                 linelocs[linenum] = plist[i]
 
                 prevlineidx = i
                 prevlinenum = linenum
-
-                #print(linenum, plist[i], ((plist[i] - plist[self.vsyncs[0][1]]) / med_linelen), med_linelen)
 
         linelocs2 = copy.deepcopy(linelocs)
 
@@ -701,13 +682,10 @@ class Field:
                     linelocs2[l] = linelocs[next_valid] - (avglen * (next_valid - l))
                 elif next_valid is not None:
                     avglen = (linelocs[next_valid] - linelocs[prev_valid]) / (next_valid - prev_valid)
-                    #print(prev_valid, next_valid, avglen)
                     linelocs2[l] = linelocs[prev_valid] + (avglen * (l - prev_valid))
                 else:
                     avglen = linelocs[prev_valid] - linelocs2[prev_valid - 1]
                     linelocs2[l] = linelocs[prev_valid] + (avglen * (l - prev_valid))
-
-                #print(l, linelocs2[l] - linelocs2[l - 1], avglen, linelocs2[l], linelocs[10], prev_valid, next_valid)
 
         rv_ll = [linelocs2[l] for l in range(1, self.linecount + 6)]
         rv_err = [l not in linelocs for l in range(1, self.linecount + 6)]
@@ -738,13 +716,10 @@ class Field:
                     origdata_hsync = self.data[0]['demod_05'][int(zc-(self.rf.freq*1)):int(zc+(self.rf.freq*3))]
                     origdata_burst = self.data[0]['demod_05'][int(zc+(self.rf.freq*5.7)):int(zc+(self.rf.freq*8.7))]
 
-    #                print(i, np.min(origdata_burst), np.max(origdata_burst))
-
                     if False and ((np.min(origdata_hsync) < self.rf.iretohz(-60) or np.max(origdata_hsync) > self.rf.iretohz(20)) or 
                            (np.min(origdata_hsync1) < self.rf.iretohz(-60) or np.max(origdata_hsync1) > self.rf.iretohz(100)) or 
                            (np.min(origdata_burst) < self.rf.iretohz(-10) or np.max(origdata_burst) > self.rf.iretohz(10))):
                         self.linebad[i] = True
-    #                    print('lb', i, ll1, zc)
                     else:
                         # on some captures with high speed variation wow effects can mess up TBC.
                         # determine the low and high values and recompute zc along the middle
@@ -768,18 +743,17 @@ class Field:
 
         return linelocs2
     
-    def downscale(self, lineoffset = None, lineinfo = None, linesout = None, outwidth = None, wow=True, channel='demod', audio = False):
+    def downscale(self, lineoffset = 0, lineinfo = None, linesout = None, outwidth = None, wow=True, channel='demod', audio = False):
+        ''' 
+        lineoffset: for NTSC the first line is the first containing the equalizing pulse (0), but for PAL fields start with the first VSYNC pulse (2 or 3).
+        '''
         if lineinfo is None:
             lineinfo = self.linelocs
         if outwidth is None:
             outwidth = self.outlinelen
         if linesout is None:
             linesout = self.linecount
-        if lineoffset is None:
-            lineoffset = 3 if self.rf.system == 'PAL' else 0
 
-        #print(lineoffset, linesout, self.linecount, len(self.linelocs2), len(self.linelocs))
-            
         dsout = np.zeros((linesout * outwidth), dtype=np.double)    
         dsaudio = None
 
@@ -817,7 +791,6 @@ class Field:
             linecode = 0
 
             for b in range(0, 24, 4):
-                #linecode.append((np.packbits(bitset[b:b+4]) >> 4)[0])
                 linecode *= 0x10
                 linecode += (np.packbits(bitset[b:b+4]) >> 4)[0]
 
@@ -937,10 +910,7 @@ class FieldPAL(Field):
 
                     if zc is not None:
                         zcp = zc / (adjfreq / 3.75)
-                        #print(i, pilot[i], zc, zcp, np.round(zcp) - zcp)
-
                         offsets[l].append(zcp - np.floor(zcp))
-
                         i = np.int(zc + 1)
 
                 i += 1
@@ -953,7 +923,6 @@ class FieldPAL(Field):
                 offsets[l] = []
 
         medianoffset = np.median(alloffsets)
-        #print(medianoffset)
         if inrange(medianoffset, 0.25, 0.75):
             tgt = .5
         else:
@@ -961,14 +930,13 @@ class FieldPAL(Field):
 
         for l in range(len(linelocs)):
             if offsets[l] != []:
-                #print(l, np.median(offsets[l]), tgt - np.median(offsets[l]))
                 adjustment = tgt - np.median(offsets[l])
                 linelocs[l] += adjustment * (self.rf.freq / 3.75) * .25
 
         return linelocs  
 
     def downscale(self, final = False, *args, **kwargs):
-        print(kwargs)
+        # For PAL, each field starts with the line containing the first full VSYNC pulse
         kwargs['lineoffset'] = 3 if self.istop else 2
         dsout, dsaudio = super(FieldPAL, self).downscale(audio = final, *args, **kwargs)
         
@@ -999,8 +967,6 @@ class FieldPAL(Field):
 # These classes extend Field to do PAL/NTSC specific TBC features.
 
 class FieldNTSC(Field):
-
-
     def refine_linelocs_burst(self, linelocs2):
         hz_ire_scale = 1700000 / 140
 
@@ -1098,13 +1064,9 @@ class FieldNTSC(Field):
             if self.burstlevel is not None:
                 for i in range(1, self.linecount - 1):
                     hz_ire_scale = 1700000 / 140
-                    if self.burstlevel[i] < 0:
-                        lines16[((i + 0) * self.outlinelen)] = 16384
-                    else:
-                        lines16[((i + 0) * self.outlinelen)] = 32768
-
                     clevel = (1/self.colorlevel)/ hz_ire_scale
 
+                    lines16[((i + 0) * self.outlinelen)] = 16384 if (self.burstlevel[i] < 0) else 32768
                     lines16[((i + 0) * self.outlinelen) + 1] = np.uint16(327.67 * clevel * np.abs(self.burstlevel[i]))
 
             self.dspicture = lines16
@@ -1185,9 +1147,7 @@ class LDdecode:
     
     def checkMTF(self, field):
         if field.cavFrame is not None:
-            newmtf = 1 - (field.cavFrame / 10000)
-            if newmtf < 0:
-                newmtf = 0
+            newmtf = 1 - (field.cavFrame / 10000) if field.cavFrame < 10000 else 0
             oldmtf = self.mtf_level
             self.mtf_level = newmtf
 
