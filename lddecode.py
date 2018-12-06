@@ -25,7 +25,7 @@ parser.add_argument('-n', '--ntsc', dest='ntsc', action='store_true', help='sour
 #parser.add_argument('-c', '--cut', dest='cut', action='store_true', help='cut (to r16) instead of decode')
 #parser.add_argument('-m', '--MTF', metavar='mtf', type=float, default=1.0, help='mtf compensation multiplier')
 #parser.add_argument('--MTF_offset', metavar='mtf_offset', type=float, default=0.0, help='mtf compensation offset')
-parser.add_argument('-f', '--field', dest='field', action='store_true', help='output fields')
+parser.add_argument('-f', '--frame', dest='frame', action='store_true', help='output frames')
 
 args = parser.parse_args()
 print(args)
@@ -56,7 +56,7 @@ elif filename[-3:] == 'r16':
     loader = load_unpacked_data_s16
     
 system = 'PAL' if args.pal else 'NTSC'
-foutput = True if not args.field else False
+foutput = False if not args.frame else True
     
 ldd = LDdecode(filename, outname, loader, frameoutput=foutput, system=system)
 ldd.roughseek(firstframe * 2)
