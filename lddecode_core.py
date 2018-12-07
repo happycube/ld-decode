@@ -701,7 +701,7 @@ class Field:
         for i in range(len(self.linelocs1)):
             # Find beginning of hsync (linelocs1 is generally in the middle)
             ll1 = self.linelocs1[i] - self.usectoinpx(5.5)
-            zc = calczc(self.data[0]['demod'], ll1, self.rf.iretohz(-20), reverse=False, _count=400)
+            zc = calczc(self.data[0]['demod_05'], ll1, self.rf.iretohz(-20), reverse=False, _count=400)
 
             if zc is not None and not self.linebad[i]:
                 linelocs2[i] = zc 
@@ -714,7 +714,7 @@ class Field:
                     porch_level = np.median(self.data[0]['demod_05'][int(zc+(self.rf.freq*8)):int(zc+(self.rf.freq*9))])
                     sync_level = np.median(self.data[0]['demod_05'][int(zc+(self.rf.freq*1)):int(zc+(self.rf.freq*2.5))])
 
-                    zc2 = calczc(self.data[0]['demod'], ll1, (porch_level + sync_level) / 2, reverse=False, _count=400)
+                    zc2 = calczc(self.data[0]['demod_05'], ll1, (porch_level + sync_level) / 2, reverse=False, _count=400)
 
                     #print(porch_level, sync_level, zc, zc2)
 
@@ -956,90 +956,54 @@ class FieldPAL(Field):
 # These classes extend Field to do PAL/NTSC specific TBC features.
 
 class FieldNTSC(Field):
-    def refine_linelocs_burst(self, linelocs2):
-        hz_ire_scale = 1700000 / 140
+    def refine_linelocs_burst(self, linelocs = None):
+        if linelocs is None:
+            linelocs = self.linelocs2
 
-        scaledburst, audio = self.downscale(outwidth=self.outlinelen, lineinfo=linelocs2, channel='demod_burst', lineoffset = 0)
+        linelocs_adj = linelocs.copy()
+        burstlevel = np.zeros_like(linelocs_adj, dtype=np.float32)
 
-        linelocs3 = linelocs2.copy()
-        burstlevel = np.zeros_like(linelocs3, dtype=np.float32)
+        bstime = 17*(1 / self.rf.SysParams['fsc_mhz'])
+        bmed = []
 
-        # Compute the zero crossings first, and then determine if 
-        # alignment should be to the nearest odd/even pixel.  Having a 2px
-        # granularity seems to help (single frame) quality but may have issues
-        # later on... :P
+        for l in range(10, 262):
+            # calczc works from integers, so get the start and remainder
+            s = int(linelocs[l])
+            s_rem = linelocs[l] - s
 
-        phaseaverages = np.zeros([len(linelocs2), 2], dtype=np.double)
+            # compute adjusted frequency from neighboring line lengths
+            lfreq = self.rf.freq * (((self.linelocs2[l+1] - self.linelocs2[l-1]) / 2) / self.rf.linelen)
 
-        for l in range(self.linecount):
-            # Since each line is lined up to the beginning of HSYNC and this is 4fsc,
-            # we can scan the burst area explicitly (4.7+~0.6 to 4.7+~2.9usec)
-            lstart = self.outlinelen * l
-            bbeg = int(self.usectoinpx(4.7+0.6))
-            bend = int(self.usectoinpx(4.7+2.9))
+            bstart = int(bstime * lfreq)
+            bend = int(8.8 * lfreq)
 
-            ba = scaledburst[lstart+bbeg:lstart+bend].copy()
-            ba -= np.mean(ba)
-            burstlevel[l] = np.max(np.abs(ba))
-            #print(l, burstlevel[l], np.std(ba) / hz_ire_scale)
+            # copy and get the mean of the burst area to factor out wow/flutter
+            burstarea = self.data[0]['demod_burst'][s+bstart:s+bend].copy()
+            burstarea -= np.mean(burstarea)
+            
+            burstlevel[l] = np.max(np.abs(burstarea))
 
-            # max should be 20.  if there are any pixels > 30 there's probably a rot-spike
-            if ((burstlevel[l] / hz_ire_scale) > 30) or (np.std(ba) / hz_ire_scale) < 3:
-                burstlevel[l] = 0
-                continue
-
-            # True:  hi->low, False: low->hi
-            burstoffsets = {False: [], True:[]}
-
-            bi = 0
-            while bi < len(ba):
-                if np.abs(ba[bi]) > burstlevel[l] * .6:
-                    zc = calczc(ba, bi, 0)
-
+            i = 0
+            zc_bursts = {False: [], True: []}
+            while i < (len(burstarea) - 1):
+                if np.abs(burstarea[i]) > (8 * self.rf.SysParams['hz_ire']):
+                    zc = calczc(burstarea, i, 0)
                     if zc is not None:
-                        offset = zc - ((np.floor(zc/4)*4) - 1)
-                        if offset > 3.5:
-                            offset -= 4
-                        burstoffsets[ba[bi] > 0].append(offset)
-                        bi = np.int(zc)
+                        zc_burst = ((bstart+zc-s_rem) / lfreq) / (1 / self.rf.SysParams['fsc_mhz'])
+                        zc_bursts[burstarea[i] < 0].append(np.round(zc_burst) - zc_burst)
+                        i = int(zc) + 1
 
-                bi += 1
+                i += 1
 
-            if len(burstoffsets[False]) < 3 or len(burstoffsets[True]) < 3:
-                continue
+            amed_falling = np.median(np.abs(zc_bursts[False][1:-1]))
+            amed_rising = np.median(np.abs(zc_bursts[True][1:-1]))
 
-            # Chop the first and last bursts since their phase can be off
-            for v in [False, True]:
-                burstoffsets[v] = np.array(burstoffsets[v][1:-1])
+            edge = False if amed_falling < amed_rising else True
 
-            # deal with the 180 degree per-line shift here, then choose the closer group to 2.
-            if l % 2:
-                phaseaverages[l] = (2 - np.mean(burstoffsets[True]), 2 - np.mean(burstoffsets[False]))
-            else:
-                phaseaverages[l] = (2 - np.mean(burstoffsets[False]), 2 - np.mean(burstoffsets[True]))
+    #        print(l, np.median(zc_bursts[edge]), np.median(zc_bursts[edge]) * lfreq * (1 / self.rf.SysParams['fsc_mhz']))
+            linelocs_adj[l] -= np.median(zc_bursts[edge]) * lfreq * (1 / self.rf.SysParams['fsc_mhz'])
 
-        # need to remove lines with no/bad colorburst to compute medians
-        phaseaverages_cut = phaseaverages[np.logical_or(phaseaverages[:,0] != 0, phaseaverages[:,1] != 0)]
-        if np.abs(np.median(phaseaverages_cut[:,0])) < np.abs(np.median(phaseaverages_cut[:,1])):
-            phasegroup = 0
-        else:
-            phasegroup = 1
-
-        adjset = phaseaverages[:,phasegroup]
-        burstlevel[phasegroup::2] = -burstlevel[phasegroup::2]
-
-        for l in range(len(linelocs3)):
-            if np.abs(adjset[l]) > 2:
-                burstlevel[l] = 0
-                continue
-
-            linelocs3[l] -= adjset[l] * (self.rf.freq / (4 * 315 / 88)) * 1
-
-        for l in range(2, len(linelocs3) - 1):
-            if burstlevel[l] == 0:
-                linelocs3[l] = (linelocs3[l - 1] + linelocs3[l + 1]) / 2
-
-        return np.array(linelocs3), burstlevel#, phaseaverages
+        return linelocs_adj, burstlevel
 
     def downscale(self, lineoffset = 0, final = False, *args, **kwargs):
         dsout, dsaudio = super(FieldNTSC, self).downscale(lineoffset = lineoffset, audio = final, *args, **kwargs)
@@ -1086,7 +1050,7 @@ class FieldNTSC(Field):
 
             # Now adjust 33 degrees (-90 - 33) for color decoding
             shift33 = self.colorphase * (np.pi / 180)
-            self.linelocs = self.apply_offsets(self.linelocs2, shift33 - 4)
+            self.linelocs = self.apply_offsets(self.linelocs3, shift33 - 4)
         
             self.downscale(wow = True, final=True)
         except:
