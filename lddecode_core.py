@@ -696,53 +696,42 @@ class Field:
         return rv_ll, rv_err
 
     def refine_linelocs_hsync(self):
-        # Adjust line locations to end of HSYNC.
-        # This causes issues for lines 1-9, where only the beginning is reliable :P
-
         linelocs2 = self.linelocs1.copy()
-        for i in range(len(self.linelocs1)):
 
+        for i in range(len(self.linelocs1)):
+            # Find beginning of hsync (linelocs1 is generally in the middle)
             ll1 = self.linelocs1[i] - self.usectoinpx(5.5)
-            zc = calczc(self.data[0]['demod_05'], ll1, self.rf.iretohz(-20), reverse=False, _count=400)
+            zc = calczc(self.data[0]['demod'], ll1, self.rf.iretohz(-20), reverse=False, _count=400)
 
             if zc is not None and not self.linebad[i]:
                 linelocs2[i] = zc 
 
-                if i >= 10:
-                    # sanity check 0.5mhz filtered HSYNC and colo[u]r burst area
+                # The hsync area, burst, and porches should not leave -50 to 30 IRE (on PAL or NTSC)
+                hsync_area = self.data[0]['demod'][int(zc-(self.rf.freq*1.25)):int(zc+(self.rf.freq*8))]
+                if np.min(hsync_area) < self.rf.iretohz(-55) or np.max(hsync_area) > self.rf.iretohz(30):
+                    self.linebad[i] = True
+                else:
+                    porch_level = np.median(self.data[0]['demod_05'][int(zc+(self.rf.freq*8)):int(zc+(self.rf.freq*9))])
+                    sync_level = np.median(self.data[0]['demod_05'][int(zc+(self.rf.freq*1)):int(zc+(self.rf.freq*2.5))])
 
-                    # it's possible that the zero crossing is thrown by bad data, so look at original peak
-                    origdata_hsync1 = self.data[0]['demod_05'][int(ll1-(self.rf.freq*2)):int(ll1+(self.rf.freq*2))]
-                    origdata_hsync = self.data[0]['demod_05'][int(zc-(self.rf.freq*1)):int(zc+(self.rf.freq*3))]
-                    origdata_burst = self.data[0]['demod_05'][int(zc+(self.rf.freq*5.7)):int(zc+(self.rf.freq*8.7))]
+                    zc2 = calczc(self.data[0]['demod'], ll1, (porch_level + sync_level) / 2, reverse=False, _count=400)
 
-                    if False and ((np.min(origdata_hsync) < self.rf.iretohz(-60) or np.max(origdata_hsync) > self.rf.iretohz(20)) or 
-                           (np.min(origdata_hsync1) < self.rf.iretohz(-60) or np.max(origdata_hsync1) > self.rf.iretohz(100)) or 
-                           (np.min(origdata_burst) < self.rf.iretohz(-10) or np.max(origdata_burst) > self.rf.iretohz(10))):
-                        self.linebad[i] = True
+                    #print(porch_level, sync_level, zc, zc2)
+
+                    # any wild variation here indicates a failure
+                    if np.abs(zc2 - zc) < (self.rf.freq / 4):
+                        linelocs2[i] = zc2
                     else:
-                        # on some captures with high speed variation wow effects can mess up TBC.
-                        # determine the low and high values and recompute zc along the middle
-
-                        high = np.mean(origdata_hsync[0:20])
-                        low = np.mean(origdata_hsync[100:120])
-
-                        zc2 = calczc(origdata_hsync, 0, (low + high) / 2, reverse=False, _count=len(origdata_hsync))
-                        zc2 += (int(zc)-(self.rf.freq*1))
-
-                        if np.abs(zc2 - zc) < (self.rf.freq / 4):
-                            linelocs2[i] = zc
-                        else:
-                            self.linebad[i] = True
+                        self.linebad[i] = True
             else:
                 self.linebad[i] = True
 
-            if i > 10 and self.linebad[i]:
+            if (i >= 2) and self.linebad[i]:
                 gap = linelocs2[i - 1] - linelocs2[i - 2]
                 linelocs2[i] = linelocs2[i - 1] + gap
 
         return linelocs2
-    
+
     def downscale(self, lineoffset = 0, lineinfo = None, linesout = None, outwidth = None, wow=True, channel='demod', audio = False):
         ''' 
         lineoffset: for NTSC the first line is the first containing the equalizing pulse (0), but for PAL fields start with the first VSYNC pulse (2 or 3).
@@ -1094,11 +1083,10 @@ class FieldNTSC(Field):
 
             # This needs to be run twice to get optimal burst levels
             self.linelocs3, self.burstlevel = self.refine_linelocs_burst(self.linelocs2)
-            self.linelocs4, self.burstlevel = self.refine_linelocs_burst(self.linelocs3)
 
             # Now adjust 33 degrees (-90 - 33) for color decoding
             shift33 = self.colorphase * (np.pi / 180)
-            self.linelocs = self.apply_offsets(self.linelocs4, shift33 - 4)
+            self.linelocs = self.apply_offsets(self.linelocs2, shift33 - 4)
         
             self.downscale(wow = True, final=True)
         except:
@@ -1174,11 +1162,11 @@ class LDdecode:
         if not f.valid:
             if len(f.peaklist) < 100: 
                 # No recognizable data - jump 10 seconds to get past possible spinup
-                printf("No recognizable data - jumping 10 seconds")
+                print("No recognizable data - jumping 10 seconds")
                 return None, self.rf.freq_hz * 10
             elif len(f.vsyncs) == 0:
                 # Some recognizable data - possibly from a player seek
-                printf("Bad data - jumping one second")
+                print("Bad data - jumping one second")
                 return None, self.rf.freq_hz * 1
         else:
             self.audio_offset = f.audio_next_offset
