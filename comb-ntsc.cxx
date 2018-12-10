@@ -896,7 +896,7 @@ class Comb
 			uint16_t *fbuf = Frame[fnum].rawbuffer;
 
 			int rout_x = f_wide ? out_x : 744;
-			int roffset = f_wide ? 0 : 70;
+			int roffset = f_wide ? 0 : 120;
 
 			if (!f_pulldown) {
 				fstart = 0;

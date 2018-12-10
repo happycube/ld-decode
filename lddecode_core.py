@@ -999,6 +999,9 @@ class FieldNTSC(Field):
             amed_rising = np.median(np.abs(zc_bursts[True][1:-1]))
 
             edge = False if amed_falling < amed_rising else True
+            
+            if edge:
+                burstlevel[l] = -burstlevel[l]
 
     #        print(l, np.median(zc_bursts[edge]), np.median(zc_bursts[edge]) * lfreq * (1 / self.rf.SysParams['fsc_mhz']))
             linelocs_adj[l] -= np.median(zc_bursts[edge]) * lfreq * (1 / self.rf.SysParams['fsc_mhz'])
@@ -1050,7 +1053,7 @@ class FieldNTSC(Field):
 
             # Now adjust 33 degrees (-90 - 33) for color decoding
             shift33 = self.colorphase * (np.pi / 180)
-            self.linelocs = self.apply_offsets(self.linelocs3, shift33 - 4)
+            self.linelocs = self.apply_offsets(self.linelocs3, -shift33 - 2)
         
             self.downscale(wow = True, final=True)
         except:
