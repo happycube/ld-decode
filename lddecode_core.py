@@ -1006,6 +1006,10 @@ class FieldNTSC(Field):
     #        print(l, np.median(zc_bursts[edge]), np.median(zc_bursts[edge]) * lfreq * (1 / self.rf.SysParams['fsc_mhz']))
             linelocs_adj[l] -= np.median(zc_bursts[edge]) * lfreq * (1 / self.rf.SysParams['fsc_mhz'])
 
+            if np.isnan(linelocs_adj[l]):
+                print('nan', l)
+                linelocs_adj[l] = linelocs[l]
+
         return linelocs_adj, burstlevel
 
     def downscale(self, lineoffset = 0, final = False, *args, **kwargs):
@@ -1047,7 +1051,6 @@ class FieldNTSC(Field):
             return
 
         try:
-
             # This needs to be run twice to get optimal burst levels
             self.linelocs3, self.burstlevel = self.refine_linelocs_burst(self.linelocs2)
 
@@ -1135,6 +1138,7 @@ class LDdecode:
                 # Some recognizable data - possibly from a player seek
                 print("Bad data - jumping one second")
                 return None, self.rf.freq_hz * 1
+            return f, f.nextfieldoffset                
         else:
             self.audio_offset = f.audio_next_offset
             print(f.isFirstField, f.cavFrame)
@@ -1143,10 +1147,12 @@ class LDdecode:
         
     def readfield(self):
         # pretty much a retry-ing wrapper around decodefield with MTF checking
+        self.curframe = None
         done = False
         
         while done == False:
             f, offset = self.decodefield()
+            self.curframe = f
             self.fdoffset += offset
             
             if f is not None and f.valid:
