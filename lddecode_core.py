@@ -987,7 +987,7 @@ class FieldNTSC(Field):
             burstarea = self.data[0]['demod_burst'][s+bstart:s+bend].copy()
             burstarea -= np.mean(burstarea)
 
-            burstlevel[l] = np.max(np.abs(burstarea)) / 2
+            burstlevel[l] = np.max(np.abs(burstarea)) / 1
 
             i = 0
             zc_bursts[l] = {False: [], True: []}
@@ -1071,7 +1071,7 @@ class FieldNTSC(Field):
                     hz_ire_scale = 1700000 / 140
                     clevel = (1/self.colorlevel)/ hz_ire_scale
 
-                    lines16[((i + 0) * self.outlinelen)] = 16384 if (self.burstlevel[i] < 0) else 32768
+                    lines16[((i + 0) * self.outlinelen)] = 16384 if (self.burstlevel[i] > 0) else 32768
                     lines16[((i + 0) * self.outlinelen) + 1] = np.uint16(327.67 * clevel * np.abs(self.burstlevel[i]))
 
             self.dspicture = lines16
@@ -1087,6 +1087,7 @@ class FieldNTSC(Field):
 
         # HE010
         self.colorphase = 90+1.5 # colorphase
+        self.colorphase = 77 # colorphase
         self.colorlevel = 1.45 # colorlevel
 
         super(FieldNTSC, self).__init__(*args, **kwargs)
@@ -1101,7 +1102,8 @@ class FieldNTSC(Field):
 
             # Now adjust 33 degrees (-90 - 33) for color decoding
             shift33 = self.colorphase * (np.pi / 180)
-            self.linelocs = self.apply_offsets(self.linelocs3, -shift33 - 2)
+            #self.linelocs = self.apply_offsets(self.linelocs3, -shift33 - 2)
+            self.linelocs = self.apply_offsets(self.linelocs3, -shift33 - 0)
         
             self.downscale(wow = True, final=True)
         except:
