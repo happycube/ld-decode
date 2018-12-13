@@ -221,7 +221,7 @@ class Comb
 
 				double filti = 0, filtq = 0;
 
-				for (int h = 4; h < 840; h++) {
+				for (int h = 4; h < 910; h++) {
 					int phase = h % 4;
 					
 					switch (phase) {
@@ -255,7 +255,7 @@ class Comb
 				Filter f_1dq(f_colorlpq);
 				int f_toffset = 16;
 
-				for (int h = 4; h < 840; h++) {
+				for (int h = 4; h < 910; h++) {
 					int phase = h % 4;
 					double tc1 = (((line[h + 2] + line[h - 2]) / 2) - line[h]); 
 					double tc1f = 0, tsi = 0, tsq = 0;
@@ -305,7 +305,7 @@ class Comb
 				// 2D filtering.  can't do top or bottom line - calced between 1d and 3d because this is
 				// filtered 
 				if ((l >= 4) && (l < 524)) {
-					for (int h = 18; h < 840; h++) {
+					for (int h = 18; h < 910; h++) {
 						double tc1;
 					
 						double kp, kn;
@@ -355,7 +355,7 @@ class Comb
 					}
 				}
 
-				for (int h = 4; h < 840; h++) {
+				for (int h = 4; h < 910; h++) {
 					if ((l >= 2) && (l <= 523)) {
 						Frame[f].combk[1][l][h] *= 1 - Frame[f].combk[2][l][h];
 					}
@@ -380,7 +380,7 @@ class Comb
 
 				// need to prefilter K using a LPF
 				double _k[in_x];
-				for (int h = 4; (dim >= 3) && (h < 840); h++) {
+				for (int h = 4; (dim >= 3) && (h < 910); h++) {
 					int adr = (l * in_x) + h;
 
 					double __k = abs(Frame[0].rawbuffer[adr] - Frame[2].rawbuffer[adr]); 
@@ -390,7 +390,7 @@ class Comb
 					if (h >= 836) _k[h] = __k;
 				}
 	
-				for (int h = 4; h < 840; h++) {
+				for (int h = 4; h < 910; h++) {
 					if (opt_flow) {
 						Frame[f].clpbuffer[2][l][h] = (p3line[h] - line[h]); 
 					} else {
@@ -427,7 +427,7 @@ class Comb
 //				if (f_neuralnet) invertphase = true;
 
 				double si = 0, sq = 0;
-				for (int h = 4; h < 840; h++) {
+				for (int h = 4; h < 910; h++) {
 					int phase = h % 4;
 					double cavg = 0;
 
@@ -472,9 +472,9 @@ class Comb
 				}
 
 				if (f_debug2d && (l >= 6) && (l <= 523)) {
-					cerr << l << ' ' << msel / (840 - 4) << " ME " << sel / (840 - 4) << endl; 
-					mse += msel / (840 - 4);
-					me += sel / (840 - 4);
+					cerr << l << ' ' << msel / (910 - 4) << " ME " << sel / (910 - 4) << endl; 
+					mse += msel / (910 - 4);
+					me += sel / (910 - 4);
 				}
 			}
 			if (f_debug2d) {
@@ -492,12 +492,12 @@ class Comb
 				YIQ hplinef[in_x + 32];
 				cline_t *input = &cbuf[l];
 
-				for (int h = 60; h <= 842; h++) {
+				for (int h = 60; h <= 910; h++) {
 					hplinef[h].i = f_hpi->feed(input->p[h].i);
 					hplinef[h].q = f_hpq->feed(input->p[h].q);
 				}
 				
-				for (int h = 60; h < 842; h++) {
+				for (int h = 60; h < 910; h++) {
 					double ai = hplinef[h + 12].i;
 					double aq = hplinef[h + 12].q;
 
@@ -531,11 +531,11 @@ class Comb
 				YIQ hplinef[in_x + 32];
 				cline_t *input = &cbuf[l];
 
-				for (int h = 40; h <= 843; h++) {
+				for (int h = 40; h < 910; h++) {
 					hplinef[h].y = f_hpy->feed(input->p[h].y);
 				}
 				
-				for (int h = 40; h < 843; h++) {
+				for (int h = 40; h < 910; h++) {
 					double a = hplinef[h + 12].y;
 
 					if (l == (f_debugline + 25)) {
@@ -739,7 +739,7 @@ class Comb
 				bool invertphase = (Frame[f].rawbuffer[l * in_x] == 16384);
 				if (f_phaseinvert) invertphase = !invertphase;
 
-				for (int h = 2; h < 842; h++) {
+				for (int h = 2; h < 910; h++) {
 					double comp;	
 					int phase = h % 4;
 
@@ -780,7 +780,7 @@ class Comb
 				bool invertphase = (line[0] == 16384);
 				if (f_phaseinvert) invertphase = !invertphase;
 
-				for (int x = 60; x < 830; x++) {
+				for (int x = 60; x < 910; x++) {
 					int phase = x % 4;
 					double tcp = (linep[x] - line[x]); 
 					double tcn = (linen[x] - line[x]); 
@@ -876,7 +876,7 @@ class Comb
 			for (int l = 20; l < firstline; l++) {
 				uint16_t *line = &Frame[f].rawbuffer[l * in_x];	
 					
-				for (int h = 4; h < 840; h++) {
+				for (int h = 4; h < 910; h++) {
 					tbuf[l - 20].p[h].y = line[h]; 
 				}
 			}
@@ -896,7 +896,7 @@ class Comb
 			uint16_t *fbuf = Frame[fnum].rawbuffer;
 
 			int rout_x = f_wide ? out_x : 744;
-			int roffset = f_wide ? 0 : 120;
+			int roffset = f_wide ? 0 : 140;
 
 			if (!f_pulldown) {
 				fstart = 0;
