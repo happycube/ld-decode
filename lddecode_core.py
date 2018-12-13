@@ -969,6 +969,8 @@ class FieldNTSC(Field):
         zc_bursts = {}
         # Counter for which lines have + polarity.  TRACKS 1-BASED LINE #'s
         phase_votes = {'odd': 0, 'even': 0}
+
+        badlines = np.full(266, False)
         
         for l in range(1, 266):
             # calczc works from integers, so get the start and remainder
@@ -985,7 +987,7 @@ class FieldNTSC(Field):
             burstarea = self.data[0]['demod_burst'][s+bstart:s+bend].copy()
             burstarea -= np.mean(burstarea)
 
-            burstlevel[l] = np.max(np.abs(burstarea))
+            burstlevel[l] = np.max(np.abs(burstarea)) / 2
 
             i = 0
             zc_bursts[l] = {False: [], True: []}
@@ -1009,7 +1011,9 @@ class FieldNTSC(Field):
             amed_rising = np.median(np.abs(zc_bursts[l][True]))
             edge = False if amed_falling < amed_rising else True
 
-            if np.abs(amed_falling - amed_rising) > .1 and edge:
+            if np.abs(amed_falling - amed_rising) < .08:
+                badlines[l] = True
+            elif np.abs(amed_falling - amed_rising) > .1 and edge:
                 if not (l % 2):
                     phase_votes['odd'] += 1
                 else:
@@ -1023,7 +1027,6 @@ class FieldNTSC(Field):
             print("WARNING: matching # of + crossling lines?")
             field14 = False # use prev field?
             
-        badlines = np.full(266, False)
         for l in range(9, 266):
             if (field14 and not (l % 2)) or (not field14 and (l % 2)):
                 edge = True
@@ -1050,8 +1053,8 @@ class FieldNTSC(Field):
             if prevgood > 8 and nextgood < 265:
                 gap = (linelocs_adj[nextgood] - linelocs_adj[prevgood]) / (nextgood - prevgood)
                 #print(l, prevgood, nextgood, gap + linelocs_adj[prevgood], linelocs[l])
-                linelocs_adj[l] = linelocs_adj[prevgood] + (gap * (l - prevgood))
-
+                linelocs_adj[l] = (gap * (l - prevgood)) + linelocs_adj[prevgood]
+                
         return linelocs_adj, burstlevel
 
     def downscale(self, lineoffset = 0, final = False, *args, **kwargs):
@@ -1230,7 +1233,7 @@ class LDdecode:
         for i in range(0, linecount-1, 2):
             curline = (i // 2) + 0
             combined[((i + 0) * self.outwidth):((i + 1) * self.outwidth)] = f1[curline * self.outwidth: ((curline + 1) * self.outwidth)]
-            combined[((i + 1) * self.outwidth):((i + 2) * self.outwidth)] = f1[curline * self.outwidth: ((curline + 1) * self.outwidth)]
+            combined[((i + 1) * self.outwidth):((i + 2) * self.outwidth)] = f2[curline * self.outwidth: ((curline + 1) * self.outwidth)]
 
         # need to copy in the last line here, i think it's different ntsc/pal
         self.outfile_video.write(combined)
