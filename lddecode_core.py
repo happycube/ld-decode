@@ -966,7 +966,11 @@ class FieldNTSC(Field):
         bstime = 17*(1 / self.rf.SysParams['fsc_mhz'])
         bmed = []
 
-        for l in range(10, 262):
+        zc_bursts = {}
+        # Counter for which lines have + polarity.  TRACKS 1-BASED LINE #'s
+        phase_votes = {'odd': 0, 'even': 0}
+        
+        for l in range(1, 266):
             # calczc works from integers, so get the start and remainder
             s = int(linelocs[l])
             s_rem = linelocs[l] - s
@@ -980,35 +984,73 @@ class FieldNTSC(Field):
             # copy and get the mean of the burst area to factor out wow/flutter
             burstarea = self.data[0]['demod_burst'][s+bstart:s+bend].copy()
             burstarea -= np.mean(burstarea)
-            
+
             burstlevel[l] = np.max(np.abs(burstarea))
 
             i = 0
-            zc_bursts = {False: [], True: []}
+            zc_bursts[l] = {False: [], True: []}
+
             while i < (len(burstarea) - 1):
                 if np.abs(burstarea[i]) > (8 * self.rf.SysParams['hz_ire']):
                     zc = calczc(burstarea, i, 0)
                     if zc is not None:
                         zc_burst = ((bstart+zc-s_rem) / lfreq) / (1 / self.rf.SysParams['fsc_mhz'])
-                        zc_bursts[burstarea[i] < 0].append(np.round(zc_burst) - zc_burst)
+                        zc_bursts[l][burstarea[i] < 0].append(np.round(zc_burst) - zc_burst)
+                        #print(zc, np.round(zc_burst) - zc_burst)
                         i = int(zc) + 1
 
                 i += 1
+                
+            # If the burst is so corrupt one ZC type is missing, punt.
+            if (len(zc_bursts[l][False]) == 0) or (len(zc_bursts[l][True]) == 0):
+                continue
 
-            amed_falling = np.median(np.abs(zc_bursts[False][1:-1]))
-            amed_rising = np.median(np.abs(zc_bursts[True][1:-1]))
-
+            amed_falling = np.median(np.abs(zc_bursts[l][False]))
+            amed_rising = np.median(np.abs(zc_bursts[l][True]))
             edge = False if amed_falling < amed_rising else True
+
+            if np.abs(amed_falling - amed_rising) > .1 and edge:
+                if not (l % 2):
+                    phase_votes['odd'] += 1
+                else:
+                    phase_votes['even'] += 1
+
+        if phase_votes['even'] > phase_votes['odd']:
+            field14 = False
+        elif phase_votes['even'] < phase_votes['odd']:
+            field14 = True
+        else:
+            print("WARNING: matching # of + crossling lines?")
+            field14 = False # use prev field?
+            
+        badlines = np.full(266, False)
+        for l in range(9, 266):
+            if (field14 and not (l % 2)) or (not field14 and (l % 2)):
+                edge = True
+            else:
+                edge = False
             
             if edge:
                 burstlevel[l] = -burstlevel[l]
 
-    #        print(l, np.median(zc_bursts[edge]), np.median(zc_bursts[edge]) * lfreq * (1 / self.rf.SysParams['fsc_mhz']))
-            linelocs_adj[l] -= np.median(zc_bursts[edge]) * lfreq * (1 / self.rf.SysParams['fsc_mhz'])
+            if np.isnan(linelocs_adj[l]) or len(zc_bursts[l][edge]) == 0:
+                #print('err', l, linelocs_adj[l])
+                badlines[l] = True
+            else:
+                linelocs_adj[l] -= np.median(zc_bursts[l][edge]) * lfreq * (1 / self.rf.SysParams['fsc_mhz'])
 
-            if np.isnan(linelocs_adj[l]):
-                print('nan', l)
-                linelocs_adj[l] = linelocs[l]
+        for l in np.where(badlines == True)[0]:
+            prevgood = l - 1
+            nextgood = l + 1
+            while prevgood > 8 and badlines[prevgood]:
+                prevgood -= 1
+            while nextgood < 265 and badlines[nextgood]:
+                nextgood += 1
+                
+            if prevgood > 8 and nextgood < 265:
+                gap = (linelocs_adj[nextgood] - linelocs_adj[prevgood]) / (nextgood - prevgood)
+                #print(l, prevgood, nextgood, gap + linelocs_adj[prevgood], linelocs[l])
+                linelocs_adj[l] = linelocs_adj[prevgood] + (gap * (l - prevgood))
 
         return linelocs_adj, burstlevel
 
