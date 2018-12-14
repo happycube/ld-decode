@@ -973,6 +973,10 @@ class FieldNTSC(Field):
         badlines = np.full(266, False)
         
         for l in range(1, 266):
+#            if self.linebad[l]:
+                #badlines[l] = True
+                #continue
+
             # calczc works from integers, so get the start and remainder
             s = int(linelocs[l])
             s_rem = linelocs[l] - s
@@ -1036,7 +1040,7 @@ class FieldNTSC(Field):
             if edge:
                 burstlevel[l] = -burstlevel[l]
 
-            if np.isnan(linelocs_adj[l]) or len(zc_bursts[l][edge]) == 0:
+            if np.isnan(linelocs_adj[l]) or len(zc_bursts[l][edge]) == 0 or self.linebad[l]:
                 #print('err', l, linelocs_adj[l])
                 badlines[l] = True
             else:
