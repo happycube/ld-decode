@@ -8,6 +8,7 @@ from io import BytesIO
 import os
 import sys
 import argparse
+import json
 
 from lddutils import *
 import lddecode_core
@@ -62,5 +63,13 @@ ldd = LDdecode(filename, outname, loader, frameoutput=foutput, system=system)
 ldd.roughseek(firstframe * 2)
 
 for i in range(0, req_frames * 2):
-    ldd.readfield()
+    f = ldd.readfield()
 
+    jsondict = ldd.build_json(f)
+    
+    fp = open(outname + '.json.tmp', 'w')
+    json.dump(jsondict, fp, indent=4)
+    fp.write('\n')
+    fp.close()
+    
+    os.rename(outname + '.json.tmp', outname + '.json')

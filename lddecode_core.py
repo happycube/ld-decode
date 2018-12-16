@@ -924,19 +924,21 @@ class FieldPAL(Field):
 
         return linelocs  
 
+    def hz_to_ooutput(self, input):
+        reduced = (input - self.rf.SysParams['ire0']) / self.rf.SysParams['hz_ire']
+        reduced -= self.rf.SysParams['vsync_ire']
+        out_scale = np.double(0xd300 - 0x0100) / (100 - self.rf.SysParams['vsync_ire'])
+
+        return np.uint16(np.clip((reduced * out_scale) + 256, 0, 65535) + 0.5)
+
     def downscale(self, final = False, *args, **kwargs):
         # For PAL, each field starts with the line containing the first full VSYNC pulse
         kwargs['lineoffset'] = 3 if self.istop else 2
         dsout, dsaudio = super(FieldPAL, self).downscale(audio = final, *args, **kwargs)
         
         if final:
-            reduced = (dsout - self.rf.SysParams['ire0']) / self.rf.SysParams['hz_ire']
-            reduced -= self.rf.SysParams['vsync_ire']
-            out_scale = np.double(0xd300 - 0x0100) / (100 - self.rf.SysParams['vsync_ire'])
-            lines16 = np.uint16(np.clip((reduced * out_scale) + 256, 0, 65535) + 0.5)        
-            
-            self.dspicture = lines16
-            return lines16, dsaudio
+            self.dspicture = self.hz_to_ooutput(dsout)
+            return self.dspicture, dsaudio
                     
         return dsout, dsaudio
     
@@ -1061,14 +1063,17 @@ class FieldNTSC(Field):
                 
         return linelocs_adj, burstlevel
 
+    def hz_to_ooutput(self, input):
+        reduced = (input - self.rf.SysParams['ire0']) / self.rf.SysParams['hz_ire']
+        reduced -= self.rf.SysParams['vsync_ire']
+        out_scale = np.double(0xc800 - 0x0400) / (100 - self.rf.SysParams['vsync_ire'])
+        return np.uint16(np.clip((reduced * out_scale) + 1024, 0, 65535) + 0.5)
+
     def downscale(self, lineoffset = 0, final = False, *args, **kwargs):
         dsout, dsaudio = super(FieldNTSC, self).downscale(lineoffset = lineoffset, audio = final, *args, **kwargs)
         
         if final:
-            reduced = (dsout - self.rf.SysParams['ire0']) / self.rf.SysParams['hz_ire']
-            reduced -= self.rf.SysParams['vsync_ire']
-            out_scale = np.double(0xc800 - 0x0400) / (100 - self.rf.SysParams['vsync_ire'])
-            lines16 = np.uint16(np.clip((reduced * out_scale) + 1024, 0, 65535) + 0.5)        
+            lines16 = self.hz_to_ooutput(dsout)
 
             if self.burstlevel is not None:
                 for i in range(1, self.linecount - 1):
@@ -1150,6 +1155,8 @@ class LDdecode:
         self.fdoffset = 0
         self.audio_offset = 0
         self.mtf_level = 1
+
+        self.fieldinfo = []
         
     def roughseek(self, fieldnr):
         self.fdoffset = fieldnr * self.bytes_per_field
@@ -1198,12 +1205,12 @@ class LDdecode:
         
     def readfield(self):
         # pretty much a retry-ing wrapper around decodefield with MTF checking
-        self.curframe = None
+        self.curfield = None
         done = False
         
         while done == False:
             f, offset = self.decodefield()
-            self.curframe = f
+            self.curfield = f
             self.fdoffset += offset
             
             if f is not None and f.valid:
@@ -1224,6 +1231,9 @@ class LDdecode:
         if audio is not None and self.outfile_audio is not None:
             self.outfile_audio.write(audio)
             
+        fi = {'isFirstField': f.isFirstField, 'syncConf': 75, 'seqNo': len(self.fieldinfo) + 1}
+        self.fieldinfo.append(fi)
+
         if self.frameoutput == False:
             self.outfile_video.write(picture)
         else:
@@ -1245,6 +1255,46 @@ class LDdecode:
         self.outfile_video.write(combined)
 
         self.firstfield = None
+
+    def build_json(self, f):
+        jout = {}
+        jout['pcmAudioParameters'] = {'bits':16, 'isLittleEndian': True, 'isSigned': True, 'sampleRate': 48000}
+
+        vp = {}
+
+        vp['numberOfSequentialFields'] = len(self.fieldinfo)
+        
+        vp['isSourcePal'] = True if f.rf.system == 'PAL' else False
+        vp['isFieldOrderEvenOdd'] = False if f.rf.system == 'PAL' else True
+        vp['isFieldOrderValid'] = True
+
+        vp['fsc'] = int(f.rf.SysParams['fsc_mhz'] * 1000000)
+        vp['fieldWidth'] = f.rf.SysParams['outlinelen']
+        vp['sampleRate'] = vp['fsc'] * 4
+        vp['samplesPerUs'] = vp['sampleRate'] / 1000000
+        spu = vp['samplesPerUs']
+
+        vp['black16bIre'] = np.float(f.hz_to_ooutput(f.rf.iretohz(0)))
+        vp['white16bIre'] = np.float(f.hz_to_ooutput(f.rf.iretohz(100)))
+
+        if f.rf.system == 'NTSC':
+            vp['fieldHeight'] = 263
+            badj = 0 # TODO: put the IQ shift here in px
+            vp['colourBurstStart'] = np.round((5.3 * spu) + badj)
+            vp['colourBurstEnd'] = np.round((7.8 * spu) + badj)
+            vp['blackLevelStart'] = np.round((8.2 * spu) + badj)
+            vp['blackLevelEnd'] = np.round((9.2 * spu) + badj)
+            vp['activeVideoStart'] = np.round((9.4 * spu) + badj)
+            vp['activeVideoEnd'] = np.round(((63.55 - 1.5) * spu) + badj)
+        else: # PAL
+            vp['fieldHeight'] = 313
+            out_scale = np.double(0xd300 - 0x0100) / (100 - self.rf.SysParams['vsync_ire'])
+
+        jout['videoParameters'] = vp
+        
+        jout['fields'] = self.fieldinfo.copy()
+
+        return jout
 
 # Helper functions that rely on the classes above go here
 
