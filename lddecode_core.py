@@ -1232,6 +1232,7 @@ class LDdecode:
             self.outfile_audio.write(audio)
             
         fi = {'isFirstField': f.isFirstField, 'syncConf': 75, 'seqNo': len(self.fieldinfo) + 1}
+        fi['isEven'] = fi['isFirstField'] if f.rf.system == 'NTSC' else not fi['isFirstField']
         self.fieldinfo.append(fi)
 
         if self.frameoutput == False:
