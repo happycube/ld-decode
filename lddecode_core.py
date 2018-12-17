@@ -708,7 +708,7 @@ class Field:
                 linelocs2[i] = zc 
 
                 # The hsync area, burst, and porches should not leave -50 to 30 IRE (on PAL or NTSC)
-                hsync_area = self.data[0]['demod'][int(zc-(self.rf.freq*1.25)):int(zc+(self.rf.freq*8))]
+                hsync_area = self.data[0]['demod_05'][int(zc-(self.rf.freq*1.25)):int(zc+(self.rf.freq*8))]
                 if np.min(hsync_area) < self.rf.iretohz(-55) or np.max(hsync_area) > self.rf.iretohz(30):
                     self.linebad[i] = True
                 else:
