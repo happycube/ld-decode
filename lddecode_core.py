@@ -925,6 +925,25 @@ class FieldPAL(Field):
 
         return linelocs  
 
+    def calc_burstlevels(self):
+        burstlevel = np.zeros(314)
+
+        for l in range(2, 313):
+            # compute adjusted frequency from neighboring line lengths
+            lfreq = self.rf.freq * (((self.linelocs[l+1] - self.linelocs[l-1]) / 2) / self.rf.linelen)
+
+            bstart = int(6 * lfreq) # int(5.6 * lfreq)
+            bend = int(9 * lfreq) #int(8.05 * lfreq)
+            #bstart = int(5.6 * lfreq)
+            #bend = int(8.05 * lfreq)
+
+            burstarea = self.data[0]['demod_burst'][int(self.linelocs[l])+bstart:int(self.linelocs[l])+bend].copy()
+            burstarea -= np.mean(burstarea)
+
+            burstlevel[l] = np.max(np.abs(burstarea)) / 1
+
+        return burstlevel / self.rf.SysParams['hz_ire']
+
     def hz_to_ooutput(self, input):
         reduced = (input - self.rf.SysParams['ire0']) / self.rf.SysParams['hz_ire']
         reduced -= self.rf.SysParams['vsync_ire']
@@ -951,6 +970,7 @@ class FieldPAL(Field):
 
         try:
             self.linelocs = self.refine_linelocs_pilot()
+            self.burstlevel = self.calc_burstlevels()
             self.downscale(wow = True, final=True)
         except:
             print("ERROR: Unable to decode frame, skipping")
@@ -1232,7 +1252,7 @@ class LDdecode:
         if audio is not None and self.outfile_audio is not None:
             self.outfile_audio.write(audio)
             
-        fi = {'isEven': f.isFirstField, 'syncConf': 75, 'seqNo': len(self.fieldinfo) + 1}
+        fi = {'isEven': f.isFirstField, 'syncConf': 75, 'seqNo': len(self.fieldinfo) + 1, 'medianBurstIRE': np.median(f.burstlevel)}
         #fi['isEven'] = fi['isFirstField'] if f.rf.system == 'NTSC' else not fi['isFirstField']
         self.fieldinfo.append(fi)
 
