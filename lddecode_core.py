@@ -56,6 +56,7 @@ SysParams_NTSC['outlinelen'] = calclinelen(SysParams_NTSC, 4, 'fsc_mhz')
 SysParams_PAL = {
     'FPS': 25,
     
+    # from wiki: 283.75 × 15625 Hz + 25 Hz = 4.43361875 MHz
     'fsc_mhz': ((1/64) * 283.75) + (25/1000000),
     'pilot_mhz': 3.75,
     'frame_lines': 625,
@@ -1231,8 +1232,8 @@ class LDdecode:
         if audio is not None and self.outfile_audio is not None:
             self.outfile_audio.write(audio)
             
-        fi = {'isFirstField': f.isFirstField, 'syncConf': 75, 'seqNo': len(self.fieldinfo) + 1}
-        fi['isEven'] = fi['isFirstField'] if f.rf.system == 'NTSC' else not fi['isFirstField']
+        fi = {'isEven': f.isFirstField, 'syncConf': 75, 'seqNo': len(self.fieldinfo) + 1}
+        #fi['isEven'] = fi['isFirstField'] if f.rf.system == 'NTSC' else not fi['isFirstField']
         self.fieldinfo.append(fi)
 
         if self.frameoutput == False:
@@ -1289,7 +1290,13 @@ class LDdecode:
             vp['activeVideoEnd'] = np.round(((63.55 - 1.5) * spu) + badj)
         else: # PAL
             vp['fieldHeight'] = 313
-            out_scale = np.double(0xd300 - 0x0100) / (100 - self.rf.SysParams['vsync_ire'])
+            badj = 0 # TODO: put the IQ shift here in px
+            vp['colourBurstStart'] = np.round((5.6 * spu) + badj)
+            vp['colourBurstEnd'] = np.round((7.85 * spu) + badj)
+            vp['blackLevelStart'] = np.round((8.2 * spu) + badj)
+            vp['blackLevelEnd'] = np.round((10 * spu) + badj)
+            vp['activeVideoStart'] = np.round((10.5 * spu) + badj)
+            vp['activeVideoEnd'] = np.round(((64 - 1.5) * spu) + badj)
 
         jout['videoParameters'] = vp
         
