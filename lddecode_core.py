@@ -702,7 +702,7 @@ class Field:
         for i in range(len(self.linelocs1)):
             # Find beginning of hsync (linelocs1 is generally in the middle)
             ll1 = self.linelocs1[i] - self.usectoinpx(5.5)
-            zc = calczc(self.data[0]['demod_05'], ll1, self.rf.iretohz(-20), reverse=False, _count=400)
+            zc = calczc(self.data[0]['demod_05'], ll1, self.rf.iretohz(self.rf.SysParams['vsync_ire'] / 2), reverse=False, _count=400)
 
             if zc is not None and not self.linebad[i]:
                 linelocs2[i] = zc 
