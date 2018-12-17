@@ -67,9 +67,9 @@ for i in range(0, req_frames * 2):
 
     jsondict = ldd.build_json(f)
     
-    fp = open(outname + '.json.tmp', 'w')
+    fp = open(outname + '.tbc.json.tmp', 'w')
     json.dump(jsondict, fp, indent=4)
     fp.write('\n')
     fp.close()
     
-    os.rename(outname + '.json.tmp', outname + '.json')
+    os.rename(outname + '.tbc.json.tmp', outname + '.tbc.json')
