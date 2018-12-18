@@ -1082,6 +1082,8 @@ class FieldNTSC(Field):
                 #print(l, prevgood, nextgood, gap + linelocs_adj[prevgood], linelocs[l])
                 linelocs_adj[l] = (gap * (l - prevgood)) + linelocs_adj[prevgood]
                 
+        self.field14 = field14
+
         return linelocs_adj, burstlevel
 
     def hz_to_ooutput(self, input):
@@ -1149,7 +1151,7 @@ class LDdecode:
         self.freader = freader
         
         self.outfile_video = open(fname_out + '.tbc', 'wb')
-        self.outfile_json = open(fname_out + '.json', 'wb')
+        #self.outfile_json = open(fname_out + '.json', 'wb')
         self.outfile_audio = open(fname_out + '.pcm', 'wb') if analog_audio else None
         
         self.analog_audio = analog_audio
@@ -1256,6 +1258,13 @@ class LDdecode:
             
         fi = {'isEven': f.isFirstField, 'syncConf': 75, 'seqNo': len(self.fieldinfo) + 1, 'medianBurstIRE': f.burstmedian}
         #fi['isEven'] = fi['isFirstField'] if f.rf.system == 'NTSC' else not fi['isFirstField']
+
+        if f.rf.system == 'NTSC':
+            if f.isFirstField:
+                fi['NTSCFieldID'] = 1 if f.field14 else 3
+            else:
+                fi['NTSCFieldID'] = 4 if f.field14 else 2
+
         self.fieldinfo.append(fi)
 
         if self.frameoutput == False:
