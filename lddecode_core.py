@@ -1261,9 +1261,9 @@ class LDdecode:
 
         if f.rf.system == 'NTSC':
             if f.isFirstField:
-                fi['NTSCFieldID'] = 1 if f.field14 else 3
+                fi['ntscFieldID'] = 1 if f.field14 else 3
             else:
-                fi['NTSCFieldID'] = 4 if f.field14 else 2
+                fi['ntscFieldID'] = 4 if f.field14 else 2
 
         self.fieldinfo.append(fi)
 
