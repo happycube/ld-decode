@@ -1119,7 +1119,7 @@ class FieldNTSC(Field):
 
         # HE010
         self.colorphase = 90+1.5 # colorphase
-        self.colorphase = 77 # colorphase
+        self.colorphase = 84 # colorphase
         self.colorlevel = 1.45 # colorlevel
 
         super(FieldNTSC, self).__init__(*args, **kwargs)
