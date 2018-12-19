@@ -2,7 +2,7 @@
 
 # Note: Targets do not include auto-generated .h files, which means
 #       that make clean will not remove them.
-TARGETS=cx comb-ntsc ddpack ddunpack #tbc
+TARGETS=cx #comb-ntsc ddpack ddunpack tbc
 
 CFLAGS=-g -O2 -fno-omit-frame-pointer -march=native
 OPENCV_LIBS=-lopencv_core -lopencv_highgui -lopencv_imgproc -lopencv_video
