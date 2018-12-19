@@ -86,8 +86,8 @@ int main(int argc, char *argv[])
                 "ld-comb-pal - PAL colourisation filter for ld-decode\n"
                 "\n"
                 "(c)2018 Simon Inns\n"
-                "GPLv3 Open-Source - https://www.domesday86.com\n"
-                "Contains PALcolour: Copyright (C) 2018  William Andrew Steer");
+                "Contains PALcolour: Copyright (C) 2018  William Andrew Steer\n"
+                "GPLv3 Open-Source - github: https://github.com/happycube/ld-decode");
     parser.addHelpOption();
     parser.addVersionOption();
 

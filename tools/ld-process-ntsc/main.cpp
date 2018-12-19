@@ -86,7 +86,7 @@ int main(int argc, char *argv[])
                 "ld-process-ntsc - IEC NTSC specific processor for ld-decode\n"
                 "\n"
                 "(c)2018 Simon Inns\n"
-                "GPLv3 Open-Source - https://www.domesday86.com");
+                "GPLv3 Open-Source - github: https://github.com/happycube/ld-decode");
     parser.addHelpOption();
     parser.addVersionOption();
 

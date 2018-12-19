@@ -85,7 +85,7 @@ int main(int argc, char *argv[])
         "ld-analyse - TBC output analysis\n"
         "\n"
         "(c)2018 Simon Inns\n"
-        "GPLv3 Open-Source - github: https://github.com/simoninns/ld-colourfilter");
+        "GPLv3 Open-Source - github: https://github.com/happycube/ld-decode");
     parser.addHelpOption();
     parser.addVersionOption();
 

@@ -88,7 +88,7 @@ int main(int argc, char *argv[])
                 "\n"
                 "(c)2018 Chad Page\n"
                 "(c)2018 Simon Inns\n"
-                "GPLv3 Open-Source - github: TBA");
+                "GPLv3 Open-Source - github: https://github.com/happycube/ld-decode");
     parser.addHelpOption();
     parser.addVersionOption();
 
