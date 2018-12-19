@@ -6,7 +6,7 @@ ld-decode-tools is a suite of applications for processing the .tbc output from l
 
 Clone the ld-decode git repo.
 
-From the ld-decode-tools directory type 'qmake' followed by 'make all'.  Once all of the applications are compiled use 'sudo make install' to install and 'sudo make uninstall' to remove.
+From the tools directory type 'qmake' followed by 'make all'.  Once all of the applications are compiled use 'sudo make install' to install and 'sudo make uninstall' to remove.
 
 Note: The ld-decode-tools.pro qmake project file is designed only for command line compilation with Ubuntu.  The individual application .pro files can be used within the Qt Creator IDE (you should build ld-decode-shared first in order to make a local copy of the required shared libraries).
 
