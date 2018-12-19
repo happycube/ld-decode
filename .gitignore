@@ -13,6 +13,9 @@ tbc
 numpy
 scipy
 
+# Some odd python thing
+__pycache__
+
 # Prerequisites
 *.d
 

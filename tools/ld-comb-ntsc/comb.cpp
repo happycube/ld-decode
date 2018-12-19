@@ -235,29 +235,29 @@ void Comb::filterIQ(QVector<yiqLine_t> &yiqBuffer)
 void Comb::split1D(qint32 currentFrameBuffer)
 {
     qint32 frameHeight = ((configuration.fieldHeight * 2) - 1);
-//    qint32 topLinePhase = frameBuffer[currentFrameBuffer].topFieldPhaseID;
-//    qint32 bottomLinePhase = frameBuffer[currentFrameBuffer].bottomFieldPhaseID;
+
+    bool topInvertphase = false;
+    bool bottomInvertphase = false;
+    bool invertphase = false;
+
+    if (frameBuffer[currentFrameBuffer].topFieldPhaseID == 1 || frameBuffer[currentFrameBuffer].topFieldPhaseID == 4)
+        topInvertphase = true;
+
+    if (frameBuffer[currentFrameBuffer].bottomFieldPhaseID == 2 || frameBuffer[currentFrameBuffer].bottomFieldPhaseID == 3)
+        bottomInvertphase = true;
 
     for (qint32 lineNumber = configuration.firstVisibleFrameLine; lineNumber < frameHeight; lineNumber++) {
         // Get a pointer to the line's data
         quint16 *line = reinterpret_cast<quint16 *>(frameBuffer[currentFrameBuffer].rawbuffer.data() + (lineNumber * configuration.fieldWidth) * 2);
-        bool invertphase = (line[0] == 16384); // FIX THIS!
 
-//        // Determine if the line phase should be inverted
-//        bool invertphase = false;
-//        if ((lineNumber % 2) == 0) {
-//            if (topLinePhase == 1 || topLinePhase == 3) invertphase = true;
-
-//            // Increment the phase
-//            topLinePhase++;
-//            if (topLinePhase > 4) topLinePhase = 1;
-//        } else {
-//            if (bottomLinePhase == 2 || bottomLinePhase == 4) invertphase = true;
-
-//            // Increment the phase
-//            bottomLinePhase++;
-//            if (bottomLinePhase > 4) bottomLinePhase = 1;
-//        }
+        // Determine if the line phase should be inverted
+        if ((lineNumber % 2) == 0) {
+            topInvertphase = !topInvertphase;
+            invertphase = topInvertphase;
+        } else {
+            bottomInvertphase = !bottomInvertphase;
+            invertphase = bottomInvertphase;
+        }
 
         Filter f_1di(f_colorlpi);
         Filter f_1dq(f_colorlpq);
@@ -423,8 +423,16 @@ void Comb::split3D(qint32 currentFrameBuffer, bool opt_flow)
 void Comb::splitIQ(qint32 currentFrameBuffer)
 {
     qint32 frameHeight = ((configuration.fieldHeight * 2) - 1);
-//    qint32 topLinePhase = frameBuffer[currentFrameBuffer].topFieldPhaseID;
-//    qint32 bottomLinePhase = frameBuffer[currentFrameBuffer].bottomFieldPhaseID;
+
+    bool topInvertphase = false;
+    bool bottomInvertphase = false;
+    bool invertphase = false;
+
+    if (frameBuffer[currentFrameBuffer].topFieldPhaseID == 1 || frameBuffer[currentFrameBuffer].topFieldPhaseID == 4)
+        topInvertphase = true;
+
+    if (frameBuffer[currentFrameBuffer].bottomFieldPhaseID == 2 || frameBuffer[currentFrameBuffer].bottomFieldPhaseID == 3)
+        bottomInvertphase = true;
 
     // Clear the target frame YIQ buffer
     frameBuffer[currentFrameBuffer].yiqBuffer.clear();
@@ -433,23 +441,15 @@ void Comb::splitIQ(qint32 currentFrameBuffer)
     for (qint32 lineNumber = configuration.firstVisibleFrameLine; lineNumber < frameHeight; lineNumber++) {
         // Get a pointer to the line's data
         quint16 *line = reinterpret_cast<quint16 *>(frameBuffer[currentFrameBuffer].rawbuffer.data() + (lineNumber * configuration.fieldWidth) * 2);
-        bool invertphase = (line[0] == 16384); // FIX THIS!
 
-//        // Determine if the line phase should be inverted
-//        bool invertphase = false;
-//        if ((lineNumber % 2) == 0) {
-//            if (topLinePhase == 1 || topLinePhase == 3) invertphase = true;
-
-//            // Increment the phase
-//            topLinePhase++;
-//            if (topLinePhase > 4) topLinePhase = 1;
-//        } else {
-//            if (bottomLinePhase == 2 || bottomLinePhase == 4) invertphase = true;
-
-//            // Increment the phase
-//            bottomLinePhase++;
-//            if (bottomLinePhase > 4) bottomLinePhase = 1;
-//        }
+        // Determine if the line phase should be inverted
+        if ((lineNumber % 2) == 0) {
+            topInvertphase = !topInvertphase;
+            invertphase = topInvertphase;
+        } else {
+            bottomInvertphase = !bottomInvertphase;
+            invertphase = bottomInvertphase;
+        }
 
         qreal si = 0, sq = 0;
         for (qint32 h = configuration.activeVideoStart; h < configuration.activeVideoEnd; h++) {
@@ -675,29 +675,28 @@ void Comb::opticalFlow3D(QVector<yiqLine_t> yiqBuffer)
 void Comb::adjustY(qint32 currentFrameBuffer, QVector<yiqLine_t> &yiqBuffer)
 {
     qint32 frameHeight = ((configuration.fieldHeight * 2) - 1);
-//    qint32 topLinePhase = frameBuffer[currentFrameBuffer].topFieldPhaseID;
-//    qint32 bottomLinePhase = frameBuffer[currentFrameBuffer].bottomFieldPhaseID;
+
+    bool topInvertphase = false;
+    bool bottomInvertphase = false;
+    bool invertphase = false;
+
+    if (frameBuffer[currentFrameBuffer].topFieldPhaseID == 1 || frameBuffer[currentFrameBuffer].topFieldPhaseID == 4)
+        topInvertphase = true;
+
+    if (frameBuffer[currentFrameBuffer].bottomFieldPhaseID == 2 || frameBuffer[currentFrameBuffer].bottomFieldPhaseID == 3)
+        bottomInvertphase = true;
 
     // remove color data from baseband (Y)
-    for (qint32 lineNumber = 0; lineNumber < frameHeight; lineNumber++) {
-        quint16 *line = reinterpret_cast<quint16 *>(frameBuffer[currentFrameBuffer].rawbuffer.data() + (lineNumber * configuration.fieldWidth) * 2);
-        bool invertphase = (line[0] == 16384); // FIX THIS!
-
-//        // Determine if the line phase should be inverted
-//        bool invertphase = false;
-//        if ((lineNumber % 2) == 0) {
-//            if (topLinePhase == 1 || topLinePhase == 3) invertphase = true;
-
-//            // Increment the phase
-//            topLinePhase++;
-//            if (topLinePhase > 4) topLinePhase = 1;
-//        } else {
-//            if (bottomLinePhase == 2 || bottomLinePhase == 4) invertphase = true;
-
-//            // Increment the phase
-//            bottomLinePhase++;
-//            if (bottomLinePhase > 4) bottomLinePhase = 1;
-//        }
+    //for (qint32 lineNumber = 0; lineNumber < frameHeight; lineNumber++) {
+    for (qint32 lineNumber = configuration.firstVisibleFrameLine; lineNumber < frameHeight; lineNumber++) {
+        // Determine if the line phase should be inverted
+        if ((lineNumber % 2) == 0) {
+            topInvertphase = !topInvertphase;
+            invertphase = topInvertphase;
+        } else {
+            bottomInvertphase = !bottomInvertphase;
+            invertphase = bottomInvertphase;
+        }
 
         for (qint32 h = configuration.activeVideoStart; h < configuration.activeVideoEnd; h++) {
             qreal comp = 0;
