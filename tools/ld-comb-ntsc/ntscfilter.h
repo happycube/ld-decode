@@ -45,7 +45,7 @@ public:
 
     bool process(QString inputFileName, QString outputFileName, qint32 startFrame, qint32 length, qint32 filterDepth = 2,
                  bool blackAndWhite = false, bool adaptive2d = true, bool opticalFlow = true,
-                 bool cropOutput = false, qint32 debugLine = -1);
+                 bool cropOutput = false);
 
 signals:
 
@@ -56,6 +56,8 @@ private:
     SourceVideo sourceVideo;
 
     qint32 getAvailableNumberOfFrames(void);
+    qint32 getFirstFieldNumber(qint32 frameNumber);
+    qint32 getSecondFieldNumber(qint32 frameNumber);
 };
 
 #endif // NTSCFILTER_H

@@ -56,7 +56,6 @@ public:
         bool colorlpf;
         bool colorlpf_hq;
         bool opticalflow;
-        qint32 debugLine;
         qint32 filterDepth;
 
         qint32 fieldWidth;
@@ -118,8 +117,8 @@ private:
         QVector<yiqLine_t> yiqBuffer;
 
         qreal burstLevel;
-        qint32 topFieldPhaseID;
-        qint32 bottomFieldPhaseID;
+        qint32 firstFieldPhaseID;
+        qint32 secondFieldPhaseID;
     };
 
     QVector<frame_t> frameBuffer;

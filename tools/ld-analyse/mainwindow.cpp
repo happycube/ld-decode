@@ -220,7 +220,7 @@ qint32 MainWindow::getFirstFieldNumber(qint32 frameNumber)
 
     // Range check the field number
     if (secondFieldNumber > sourceVideo.getNumberOfAvailableFields()) {
-        qCritical() << "MainWindow::getSecondFieldNumber(): Second field number exceed the available number of fields!";
+        qCritical() << "MainWindow::getFirstFieldNumber(): Second field number exceed the available number of fields!";
         return 2;
     }
 
@@ -259,7 +259,7 @@ qint32 MainWindow::getSecondFieldNumber(qint32 frameNumber)
 
     // Range check the field number
     if (firstFieldNumber > sourceVideo.getNumberOfAvailableFields()) {
-        qCritical() << "MainWindow::getFirstFieldNumber(): First field number exceed the available number of fields!";
+        qCritical() << "MainWindow::getSecondFieldNumber(): First field number exceed the available number of fields!";
         return 1;
     }
 

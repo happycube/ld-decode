@@ -138,12 +138,6 @@ int main(int argc, char *argv[])
                                        QCoreApplication::translate("main", "Crop the output video"));
     parser.addOption(cropOutputOption);
 
-    // Option to specify a line to be blacked out (-i)
-    QCommandLineOption debugLineOption(QStringList() << "i" << "debugline",
-                QCoreApplication::translate("main", "Debug the selected line - extra prints for that line and blacks it out"),
-                QCoreApplication::translate("main", "line number 1 to 525"));
-    parser.addOption(debugLineOption);
-
     // Positional argument to specify input video file
     parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input TBC file"));
 
@@ -161,18 +155,6 @@ int main(int argc, char *argv[])
     if (parser.isSet(noAdaptive2dOption)) adaptive2d = false;
     bool opticalFlow = true;
     if (parser.isSet(noOpticalFlowOption)) opticalFlow = false;
-
-    qint32 debugLine = -1000;
-    if (parser.isSet(debugLineOption)) {
-        debugLine = parser.value(debugLineOption).toInt();
-
-        // Range check the parameter
-        if (debugLine < 1 || debugLine > 525) {
-            // Quit with error
-            qCritical("Error: The debug line specified is out of range!");
-            return -1;
-        }
-    }
 
     qint32 filterDepth = 2;
     if (parser.isSet(filterDepthParameterOption)) {
@@ -230,7 +212,7 @@ int main(int argc, char *argv[])
     // Process the input file
     ntscFilter.process(inputFileName, outputFileName,
                        startFrame, length,
-                       filterDepth, blackAndWhite, adaptive2d, opticalFlow, crop, debugLine);
+                       filterDepth, blackAndWhite, adaptive2d, opticalFlow, crop);
 
     // Quit with success
     return 0;
