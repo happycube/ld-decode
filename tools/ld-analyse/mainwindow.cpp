@@ -58,9 +58,13 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     // Set up the VBI dialogue
     vbiDialog = new VbiDialog(this);
 
+    // Set up the NTSC dialogue
+    ntscDialog = new NtscDialog(this);
+
     // Load the window geometry from the configuration
     restoreGeometry(configuration->getMainWindowGeometry());
     vbiDialog->restoreGeometry(configuration->getVbiDialogGeometry());
+    ntscDialog->restoreGeometry(configuration->getNtscDialogGeometry());
     oscilloscopeDialog->restoreGeometry(configuration->getOscilloscopeDialogGeometry());
 
     // Set up the GUI
@@ -77,6 +81,7 @@ MainWindow::~MainWindow()
     // Save the window geometry to the configuration
     configuration->setMainWindowGeometry(saveGeometry());
     configuration->setVbiDialogGeometry(vbiDialog->saveGeometry());
+    configuration->setNtscDialogGeometry(ntscDialog->saveGeometry());
     configuration->setOscilloscopeDialogGeometry(oscilloscopeDialog->saveGeometry());
     configuration->writeConfiguration();
 
@@ -340,6 +345,9 @@ void MainWindow::showFrame(qint32 frameNumber, bool showActiveVideoArea, bool hi
     // Update the VBI dialogue
     vbiDialog->updateVbi(topField, bottomField);
 
+    // Update the NTSC dialogue
+    ntscDialog->updateNtsc(topField, bottomField);
+
     // Add the QImage to the QLabel in the dialogue
     ui->frameViewerLabel->clear();
     ui->frameViewerLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
@@ -571,6 +579,12 @@ void MainWindow::on_actionVBI_triggered()
     vbiDialog->show();
 }
 
+void MainWindow::on_actionNTSC_triggered()
+{
+    // Show the NTSC dialogue
+    ntscDialog->show();
+}
+
 // Mouse press event handler
 void MainWindow::mousePressEvent(QMouseEvent *event)
 {
@@ -652,3 +666,5 @@ void MainWindow::updateOscilloscopeDialogue(qint32 frameNumber, qint32 scanLine)
                                        sourceVideo.getVideoField(topFieldNumber + 1)->getFieldData(),
                                        videoParameters, scanLine);
 }
+
+

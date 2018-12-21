@@ -30,20 +30,23 @@ SOURCES += \
     oscilloscopedialog.cpp \
     aboutdialog.cpp \
     vbidialog.cpp \
-    configuration.cpp
+    configuration.cpp \
+    ntscdialog.cpp
 
 HEADERS += \
         mainwindow.h \
     oscilloscopedialog.h \
     aboutdialog.h \
     vbidialog.h \
-    configuration.h
+    configuration.h \
+    ntscdialog.h
 
 FORMS += \
         mainwindow.ui \
     oscilloscopedialog.ui \
     aboutdialog.ui \
-    vbidialog.ui
+    vbidialog.ui \
+    ntscdialog.ui
 
 MYDLLDIR = $$IN_PWD/../library
 

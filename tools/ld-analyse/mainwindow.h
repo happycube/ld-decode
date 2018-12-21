@@ -40,6 +40,7 @@
 #include "oscilloscopedialog.h"
 #include "aboutdialog.h"
 #include "vbidialog.h"
+#include "ntscdialog.h"
 #include "configuration.h"
 
 namespace Ui {
@@ -69,6 +70,8 @@ private slots:
     void mousePressEvent(QMouseEvent *event);
     void scanLineChangedSignalHandler(qint32 scanLine);
 
+    void on_actionNTSC_triggered();
+
 private:
     Ui::MainWindow *ui;
 
@@ -76,6 +79,7 @@ private:
     OscilloscopeDialog *oscilloscopeDialog;
     AboutDialog *aboutDialog;
     VbiDialog *vbiDialog;
+    NtscDialog *ntscDialog;
 
     // Class globals
     Configuration *configuration;

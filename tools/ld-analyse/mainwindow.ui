@@ -469,7 +469,7 @@
      <x>0</x>
      <y>0</y>
      <width>600</width>
-     <height>22</height>
+     <height>21</height>
     </rect>
    </property>
    <widget class="QMenu" name="menuFile">
@@ -486,6 +486,7 @@
     </property>
     <addaction name="actionLine_scope"/>
     <addaction name="actionVBI"/>
+    <addaction name="actionNTSC"/>
    </widget>
    <widget class="QMenu" name="menuHelp">
     <property name="title">
@@ -521,6 +522,11 @@
   <action name="actionVBI">
    <property name="text">
     <string>VBI...</string>
+   </property>
+  </action>
+  <action name="actionNTSC">
+   <property name="text">
+    <string>NTSC...</string>
    </property>
   </action>
  </widget>
