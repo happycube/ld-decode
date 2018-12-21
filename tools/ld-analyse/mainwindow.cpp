@@ -173,29 +173,18 @@ void MainWindow::updateGuiUnloaded(void)
 // Method to get the available number of frames
 qint32 MainWindow::getAvailableNumberOfFrames(void)
 {
-    // Get the video parameter metadata
-    LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
+    qint32 frameOffset = 0;
 
-    // Determine the first and second fields for the frame number
-    qint32 fieldNumberOffset = 0;
+    // It's possible that the TBC file will start on the wrong field, so we have to allow for
+    // that here by skipping a field if the order isn't right
+    if (ldDecodeMetaData.getVideoParameters().isFieldOrderEvenOdd && !ldDecodeMetaData.getField(1).isEven) frameOffset++;
+    else if (!ldDecodeMetaData.getVideoParameters().isFieldOrderEvenOdd && ldDecodeMetaData.getField(1).isEven) frameOffset++;
 
-    if (videoParameters.isFieldOrderEvenOdd) {
-        // Top frame should be even, so if the current topField is odd, increment it by one
-        if (!ldDecodeMetaData.getField(1).isEven) {
-            fieldNumberOffset++;
-        }
-    } else {
-        // Top frame should be odd, so if the current topField is even, increment it by one
-        if (ldDecodeMetaData.getField(1).isEven) {
-            fieldNumberOffset++;
-        }
-    }
-
-    return (sourceVideo.getNumberOfAvailableFields() - fieldNumberOffset) / 2;
+    return (sourceVideo.getNumberOfAvailableFields() / 2) - frameOffset;
 }
 
-// Method to display a sequential frame
-void MainWindow::showFrame(qint32 frameNumber, bool showActiveVideoArea, bool highlightDropOuts)
+// Method to get the first and second field numbers based on the frame number
+qint32 MainWindow::getFirstFieldNumber(qint32 frameNumber)
 {
     // Get the video parameter metadata
     LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
@@ -220,18 +209,78 @@ void MainWindow::showFrame(qint32 frameNumber, bool showActiveVideoArea, bool hi
         // First field is always odd...
         firstFieldNumber++;
         secondFieldNumber++;
-        qDebug() << "MainWindow::showFrame(): TBC file has an extra field at the start (out of field order) - skipping";
+        qDebug() << "MainWindow::getFirstFieldNumber(): TBC file has an extra field at the start (out of field order) - skipping";
     }
 
-    // Range check the field numbers
+    // Range check the field number
     if (firstFieldNumber > sourceVideo.getNumberOfAvailableFields()) {
-        qDebug() << "MainWindow::showFrame(): First field number exceed the available number of fields!";
-        return;
+        qCritical() << "MainWindow::getFirstFieldNumber(): First field number exceed the available number of fields!";
+        return 1;
     }
+
+    // Range check the field number
     if (secondFieldNumber > sourceVideo.getNumberOfAvailableFields()) {
-        qDebug() << "MainWindow::showFrame(): Second field number exceed the available number of fields!";
-        return;
+        qCritical() << "MainWindow::getSecondFieldNumber(): Second field number exceed the available number of fields!";
+        return 2;
     }
+
+    // Reverse the field ordering for PAL sources
+    if (videoParameters.isSourcePal) return secondFieldNumber;
+
+    return firstFieldNumber;
+}
+
+qint32 MainWindow::getSecondFieldNumber(qint32 frameNumber)
+{
+    // Get the video parameter metadata
+    LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
+
+    // Point at the first field in the TBC file (according to the current frame number)
+    qint32 firstFieldNumber; // = (frameNumber * 2);
+    qint32 secondFieldNumber;
+
+    if (videoParameters.isFieldOrderEvenOdd) {
+        // TBC Field order is even then odd, so we get second field followed by first field
+        secondFieldNumber = (frameNumber * 2) - 1;
+        firstFieldNumber = secondFieldNumber + 1;
+    } else {
+        // TBC Field order is odd then even, so we get first field followed by second field
+        firstFieldNumber = (frameNumber * 2) - 1;
+        secondFieldNumber = firstFieldNumber + 1;
+    }
+
+    // It's possible that the TBC file will start on the wrong field, so we have to allow for
+    // that here by skipping a field if the order isn't right
+    if (ldDecodeMetaData.getField(firstFieldNumber).isEven) {
+        // First field is always odd...
+        firstFieldNumber++;
+        secondFieldNumber++;
+    }
+
+    // Range check the field number
+    if (firstFieldNumber > sourceVideo.getNumberOfAvailableFields()) {
+        qCritical() << "MainWindow::getFirstFieldNumber(): First field number exceed the available number of fields!";
+        return 1;
+    }
+
+    // Range check the field number
+    if (secondFieldNumber > sourceVideo.getNumberOfAvailableFields()) {
+        qCritical() << "MainWindow::getSecondFieldNumber(): Second field number exceed the available number of fields!";
+        return 2;
+    }
+
+    // Reverse the field ordering for PAL sources
+    if (videoParameters.isSourcePal) return firstFieldNumber;
+
+    return secondFieldNumber;
+}
+
+// Method to display a sequential frame
+void MainWindow::showFrame(qint32 frameNumber, bool showActiveVideoArea, bool highlightDropOuts)
+{
+    // Get the required field numbers
+    qint32 firstFieldNumber = getFirstFieldNumber(frameNumber);
+    qint32 secondFieldNumber = getSecondFieldNumber(frameNumber);
 
     qDebug() << "MainWindow::showFrame(): Frame number" << frameNumber << "has an first-field of" << firstFieldNumber <<
                 "and an second field of" << secondFieldNumber;
@@ -248,6 +297,8 @@ void MainWindow::showFrame(qint32 frameNumber, bool showActiveVideoArea, bool hi
     ui->secondFieldLabel->setText(QString::number(secondFieldNumber));
 
     // Show the field order
+    LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
+
     if (videoParameters.isFieldOrderValid) {
         if (videoParameters.isFieldOrderEvenOdd) ui->fieldOrderLabel->setText(tr("Even/Odd"));
         else ui->fieldOrderLabel->setText(tr("Odd/Even"));
@@ -311,8 +362,7 @@ void MainWindow::showFrame(qint32 frameNumber, bool showActiveVideoArea, bool hi
             qint32 endx = firstField.dropOuts.endx[dropOutIndex];
             qint32 fieldLine = firstField.dropOuts.fieldLine[dropOutIndex];
 
-            if (videoParameters.isSourcePal) imagePainter.drawLine(startx, ((fieldLine - 1) * 2), endx, ((fieldLine - 1) * 2));
-            else imagePainter.drawLine(startx, ((fieldLine - 1) * 2) + 1, endx, ((fieldLine - 1) * 2) + 1);
+            imagePainter.drawLine(startx, ((fieldLine - 1) * 2) + 1, endx, ((fieldLine - 1) * 2) + 1);
         }
 
         // Draw the drop out data for the second field
@@ -322,8 +372,7 @@ void MainWindow::showFrame(qint32 frameNumber, bool showActiveVideoArea, bool hi
             qint32 endx = secondField.dropOuts.endx[dropOutIndex];
             qint32 fieldLine = secondField.dropOuts.fieldLine[dropOutIndex];
 
-            if (videoParameters.isSourcePal) imagePainter.drawLine(startx, ((fieldLine - 1) * 2) + 1, endx, ((fieldLine - 1) * 2) + 1);
-            else imagePainter.drawLine(startx, ((fieldLine - 1) * 2), endx, ((fieldLine - 1) * 2));
+            imagePainter.drawLine(startx, ((fieldLine - 1) * 2), endx, ((fieldLine - 1) * 2));
         }
 
         // End the painter object
@@ -647,31 +696,12 @@ void MainWindow::updateOscilloscopeDialogue(qint32 frameNumber, qint32 scanLine)
     LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
 
     // Determine the first and second fields for the frame number
-    qint32 firstFieldNumber = (frameNumber * 2) - 1;
-
-    if (videoParameters.isFieldOrderEvenOdd) {
-        // First field should be even, so if the current first field is odd, increment it by one
-        if (!ldDecodeMetaData.getField(firstFieldNumber).isEven) {
-            firstFieldNumber++;
-            qDebug() << "MainWindow::updateOscilloscopeDialogue(): First field is out of frame order - ignoring";
-        }
-    } else {
-        // First field should be odd, so if the current first field is even, increment it by one
-        if (ldDecodeMetaData.getField(firstFieldNumber).isEven) {
-            firstFieldNumber++;
-            qDebug() << "MainWindow::updateOscilloscopeDialogue(): First field is out of frame order - ignoring";
-        }
-    }
-
-    // Range check the second field number
-    if (firstFieldNumber + 1 > sourceVideo.getNumberOfAvailableFields()) {
-        qDebug() << "MainWindow::updateOscilloscopeDialogue(): Second field number exceed the available number of fields!";
-        return;
-    }
+    qint32 firstFieldNumber = getFirstFieldNumber(frameNumber);
+    qint32 secondFieldNumber = getSecondFieldNumber(frameNumber);
 
     // Update the oscilloscope dialogue
     oscilloscopeDialog->showTraceImage(sourceVideo.getVideoField(firstFieldNumber)->getFieldData(),
-                                       sourceVideo.getVideoField(firstFieldNumber + 1)->getFieldData(),
+                                       sourceVideo.getVideoField(secondFieldNumber)->getFieldData(),
                                        videoParameters, scanLine);
 }
 

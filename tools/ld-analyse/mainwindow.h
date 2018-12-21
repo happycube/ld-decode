@@ -94,6 +94,9 @@ private:
     void updateGuiUnloaded(void);
 
     qint32 getAvailableNumberOfFrames(void);
+    qint32 getFirstFieldNumber(qint32 frameNumber);
+    qint32 getSecondFieldNumber(qint32 frameNumber);
+
     void showFrame(qint32 frameNumber, bool showOverScan, bool highlightDropOuts);
     void hideFrame(void);
 
