@@ -97,7 +97,7 @@ private:
     void showFrame(qint32 frameNumber, bool showOverScan, bool highlightDropOuts);
     void hideFrame(void);
 
-    QImage generateQImage(qint32 topFieldNumber, qint32 bottomFieldNumber);
+    QImage generateQImage(qint32 firstFieldNumber, qint32 secondFieldNumber);
 
     void loadTbcFile(QString inputFileName);
     void updateOscilloscopeDialogue(qint32 frameNumber, qint32 scanLine);

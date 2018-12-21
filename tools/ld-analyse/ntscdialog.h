@@ -41,7 +41,7 @@ public:
     explicit NtscDialog(QWidget *parent = nullptr);
     ~NtscDialog();
 
-    void updateNtsc(LdDecodeMetaData::Field topField, LdDecodeMetaData::Field bottomField);
+    void updateNtsc(LdDecodeMetaData::Field firstField, LdDecodeMetaData::Field secondField);
 
 private:
     Ui::NtscDialog *ui;

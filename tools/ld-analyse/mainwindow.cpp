@@ -176,7 +176,7 @@ qint32 MainWindow::getAvailableNumberOfFrames(void)
     // Get the video parameter metadata
     LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
 
-    // Determine the top and bottom fields for the frame number
+    // Determine the first and second fields for the frame number
     qint32 fieldNumberOffset = 0;
 
     if (videoParameters.isFieldOrderEvenOdd) {
@@ -200,42 +200,51 @@ void MainWindow::showFrame(qint32 frameNumber, bool showActiveVideoArea, bool hi
     // Get the video parameter metadata
     LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
 
-    // Determine the top and bottom fields for the frame number
-    qint32 topFieldNumber = (frameNumber * 2) - 1;
+    // Determine the first and second fields for the frame number
+    qint32 firstFieldNumber = (frameNumber * 2) - 1;
+    qint32 secondFieldNumber = firstFieldNumber + 1;
 
     if (videoParameters.isFieldOrderEvenOdd) {
         // Top frame should be even, so if the current topField is odd, increment it by one
-        if (!ldDecodeMetaData.getField(topFieldNumber).isEven) {
-            topFieldNumber++;
-            qDebug() << "MainWindow::showFrame(): First field is out of frame order - ignoring";
+        if (!ldDecodeMetaData.getField(firstFieldNumber).isEven) { // Expected even, got odd
+            qDebug() << "MainWindow::showFrame(): First field" << firstFieldNumber << "is out of frame order (expected even) - ignoring";
+            firstFieldNumber++;
+            secondFieldNumber = firstFieldNumber + 1;
         }
     } else {
         // Top frame should be odd, so if the current topField is even, increment it by one
-        if (ldDecodeMetaData.getField(topFieldNumber).isEven) {
-            topFieldNumber++;
-            qDebug() << "MainWindow::showFrame(): First field is out of frame order - ignoring";
+        if (ldDecodeMetaData.getField(firstFieldNumber).isEven) { // Expected odd, got even
+            qDebug() << "MainWindow::showFrame(): First field" << firstFieldNumber << "is out of frame order (expected odd) - ignoring";
+            firstFieldNumber++;
+            secondFieldNumber = firstFieldNumber + 1;
         }
     }
 
-    // Range check the bottom field number
-    if (topFieldNumber + 1 > sourceVideo.getNumberOfAvailableFields()) {
-        qDebug() << "MainWindow::showFrame(): Bottom field number exceed the available number of fields!";
+    // Range check the second field number
+    if (secondFieldNumber > sourceVideo.getNumberOfAvailableFields()) {
+        qDebug() << "MainWindow::showFrame(): Second field number exceed the available number of fields!";
         return;
     }
 
-    qDebug() << "MainWindow::showFrame(): Frame number" << frameNumber << "has a top-field of" << topFieldNumber <<
-                "and a bottom field of" << topFieldNumber + 1;
+    if (ldDecodeMetaData.getField(firstFieldNumber).isEven) {
+        qDebug() << "MainWindow::showFrame(): Frame number" << frameNumber << "has an even first-field of" << firstFieldNumber <<
+                    "and an odd second field of" << secondFieldNumber;
+    } else {
+        qDebug() << "MainWindow::showFrame(): Frame number" << frameNumber << "has an odd first-field of" << firstFieldNumber <<
+                    "and an even second field of" << secondFieldNumber;
+    }
+
 
     // Get a QImage for the frame
-    QImage frameImage = generateQImage(topFieldNumber, topFieldNumber + 1);
+    QImage frameImage = generateQImage(firstFieldNumber, secondFieldNumber);
 
     // Get the field metadata
-    LdDecodeMetaData::Field topField = ldDecodeMetaData.getField(topFieldNumber);
-    LdDecodeMetaData::Field bottomField = ldDecodeMetaData.getField(topFieldNumber + 1);
+    LdDecodeMetaData::Field firstField = ldDecodeMetaData.getField(firstFieldNumber);
+    LdDecodeMetaData::Field secondField = ldDecodeMetaData.getField(secondFieldNumber);
 
     // Show the field numbers
-    ui->topFieldLabel->setText(QString::number(topFieldNumber));
-    ui->bottomFieldLabel->setText(QString::number(topFieldNumber + 1));
+    ui->firstFieldLabel->setText(QString::number(firstFieldNumber));
+    ui->secondFieldLabel->setText(QString::number(secondFieldNumber));
 
     // Show the field order
     if (videoParameters.isFieldOrderValid) {
@@ -294,23 +303,23 @@ void MainWindow::showFrame(qint32 frameNumber, bool showActiveVideoArea, bool hi
         QPainter imagePainter;
         imagePainter.begin(&frameImage);
 
-        // Draw the drop out data for the top field
+        // Draw the drop out data for the first field
         imagePainter.setPen(Qt::red);
-        for (qint32 dropOutIndex = 0; dropOutIndex < topField.dropOuts.startx.size(); dropOutIndex++) {
-            qint32 startx = topField.dropOuts.startx[dropOutIndex];
-            qint32 endx = topField.dropOuts.endx[dropOutIndex];
-            qint32 fieldLine = topField.dropOuts.fieldLine[dropOutIndex];
+        for (qint32 dropOutIndex = 0; dropOutIndex < firstField.dropOuts.startx.size(); dropOutIndex++) {
+            qint32 startx = firstField.dropOuts.startx[dropOutIndex];
+            qint32 endx = firstField.dropOuts.endx[dropOutIndex];
+            qint32 fieldLine = firstField.dropOuts.fieldLine[dropOutIndex];
 
             if (videoParameters.isSourcePal) imagePainter.drawLine(startx, ((fieldLine - 1) * 2), endx, ((fieldLine - 1) * 2));
             else imagePainter.drawLine(startx, ((fieldLine - 1) * 2) + 1, endx, ((fieldLine - 1) * 2) + 1);
         }
 
-        // Draw the drop out data for the bottom field
+        // Draw the drop out data for the second field
         imagePainter.setPen(Qt::blue);
-        for (qint32 dropOutIndex = 0; dropOutIndex < bottomField.dropOuts.startx.size(); dropOutIndex++) {
-            qint32 startx = bottomField.dropOuts.startx[dropOutIndex];
-            qint32 endx = bottomField.dropOuts.endx[dropOutIndex];
-            qint32 fieldLine = bottomField.dropOuts.fieldLine[dropOutIndex];
+        for (qint32 dropOutIndex = 0; dropOutIndex < secondField.dropOuts.startx.size(); dropOutIndex++) {
+            qint32 startx = secondField.dropOuts.startx[dropOutIndex];
+            qint32 endx = secondField.dropOuts.endx[dropOutIndex];
+            qint32 fieldLine = secondField.dropOuts.fieldLine[dropOutIndex];
 
             if (videoParameters.isSourcePal) imagePainter.drawLine(startx, ((fieldLine - 1) * 2) + 1, endx, ((fieldLine - 1) * 2) + 1);
             else imagePainter.drawLine(startx, ((fieldLine - 1) * 2), endx, ((fieldLine - 1) * 2));
@@ -320,22 +329,22 @@ void MainWindow::showFrame(qint32 frameNumber, bool showActiveVideoArea, bool hi
         imagePainter.end();
     }
 
-    // Add the top field VBI data to the dialogue
-    if (topField.vbi.inUse) {
-        ui->even0VbiLabel->setText("0x" + QString::number(topField.vbi.vbi16, 16));
-        ui->even1VbiLabel->setText("0x" + QString::number(topField.vbi.vbi17, 16));
-        ui->even2VbiLabel->setText("0x" + QString::number(topField.vbi.vbi18, 16));
+    // Add the first field VBI data to the dialogue
+    if (firstField.vbi.inUse) {
+        ui->even0VbiLabel->setText("0x" + QString::number(firstField.vbi.vbi16, 16));
+        ui->even1VbiLabel->setText("0x" + QString::number(firstField.vbi.vbi17, 16));
+        ui->even2VbiLabel->setText("0x" + QString::number(firstField.vbi.vbi18, 16));
     } else {
         ui->even0VbiLabel->setText("Not present");
         ui->even1VbiLabel->setText("Not present");
         ui->even2VbiLabel->setText("Not present");
     }
 
-    // Add the bottom field VBI data to the dialogue
-    if (bottomField.vbi.inUse) {
-        ui->odd0VbiLabel->setText("0x" + QString::number(bottomField.vbi.vbi16, 16));
-        ui->odd1VbiLabel->setText("0x" + QString::number(bottomField.vbi.vbi17, 16));
-        ui->odd2VbiLabel->setText("0x" + QString::number(bottomField.vbi.vbi18, 16));
+    // Add the second field VBI data to the dialogue
+    if (secondField.vbi.inUse) {
+        ui->odd0VbiLabel->setText("0x" + QString::number(secondField.vbi.vbi16, 16));
+        ui->odd1VbiLabel->setText("0x" + QString::number(secondField.vbi.vbi17, 16));
+        ui->odd2VbiLabel->setText("0x" + QString::number(secondField.vbi.vbi18, 16));
     } else {
         ui->odd0VbiLabel->setText("Not present");
         ui->odd1VbiLabel->setText("Not present");
@@ -343,10 +352,10 @@ void MainWindow::showFrame(qint32 frameNumber, bool showActiveVideoArea, bool hi
     }
 
     // Update the VBI dialogue
-    vbiDialog->updateVbi(topField, bottomField);
+    vbiDialog->updateVbi(firstField, secondField);
 
     // Update the NTSC dialogue
-    ntscDialog->updateNtsc(topField, bottomField);
+    ntscDialog->updateNtsc(firstField, secondField);
 
     // Add the QImage to the QLabel in the dialogue
     ui->frameViewerLabel->clear();
@@ -365,7 +374,7 @@ void MainWindow::showFrame(qint32 frameNumber, bool showActiveVideoArea, bool hi
 }
 
 // Method to create a QImage for a source video frame
-QImage MainWindow::generateQImage(qint32 topFieldNumber, qint32 bottomFieldNumber)
+QImage MainWindow::generateQImage(qint32 firstFieldNumber, qint32 secondFieldNumber)
 {
     // Generate the QImage for the frame
 
@@ -373,14 +382,14 @@ QImage MainWindow::generateQImage(qint32 topFieldNumber, qint32 bottomFieldNumbe
     LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
 
     // Get the raw data for the fields
-    QByteArray topFieldData = sourceVideo.getVideoField(topFieldNumber)->getFieldData();
-    QByteArray bottomFieldData = sourceVideo.getVideoField(bottomFieldNumber)->getFieldData();
+    QByteArray firstFieldData = sourceVideo.getVideoField(firstFieldNumber)->getFieldData();
+    QByteArray secondFieldData = sourceVideo.getVideoField(secondFieldNumber)->getFieldData();
 
     // Calculate the frame height
     qint32 frameHeight = (videoParameters.fieldHeight * 2) - 1;
 
-    qDebug() << "MainWindow::generateQImage(): Generating a QImage with topField =" << topFieldNumber <<
-                "and bottomField =" << bottomFieldNumber << "(" << videoParameters.fieldWidth << "x" <<
+    qDebug() << "MainWindow::generateQImage(): Generating a QImage with first field =" << firstFieldNumber <<
+                "and second field =" << secondFieldNumber << "(" << videoParameters.fieldWidth << "x" <<
                 frameHeight << ")";
 
     // Create a QImage
@@ -392,19 +401,17 @@ QImage MainWindow::generateQImage(qint32 topFieldNumber, qint32 bottomFieldNumbe
         qint32 startPointer = (y / 2) * videoParameters.fieldWidth * 2;
         qint32 length = videoParameters.fieldWidth * 2;
 
-        QByteArray topLineData = topFieldData.mid(startPointer, length);
-        QByteArray bottomLineData = bottomFieldData.mid(startPointer, length);
+        QByteArray firstLineData = firstFieldData.mid(startPointer, length);
+        QByteArray secondLineData = secondFieldData.mid(startPointer, length);
 
         for (qint32 x = 0; x < videoParameters.fieldWidth; x++) {
             // Take just the MSB of the input data
             qint32 dp = x * 2;
             uchar pixelValue;
             if (y % 2) {
-                if (videoParameters.isSourcePal) pixelValue = static_cast<uchar>(bottomLineData[dp + 1]);
-                else pixelValue = static_cast<uchar>(topLineData[dp + 1]);
+                pixelValue = static_cast<uchar>(firstLineData[dp + 1]);
             } else {
-                if (videoParameters.isSourcePal) pixelValue = static_cast<uchar>(topLineData[dp + 1]);
-                else pixelValue = static_cast<uchar>(bottomLineData[dp + 1]);
+                pixelValue = static_cast<uchar>(secondLineData[dp + 1]);
             }
 
             qint32 xpp = x * 3;
@@ -638,32 +645,32 @@ void MainWindow::updateOscilloscopeDialogue(qint32 frameNumber, qint32 scanLine)
     // Get the video parameter metadata
     LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
 
-    // Determine the top and bottom fields for the frame number
-    qint32 topFieldNumber = (frameNumber * 2) - 1;
+    // Determine the first and second fields for the frame number
+    qint32 firstFieldNumber = (frameNumber * 2) - 1;
 
     if (videoParameters.isFieldOrderEvenOdd) {
-        // Top frame should be even, so if the current topField is odd, increment it by one
-        if (!ldDecodeMetaData.getField(topFieldNumber).isEven) {
-            topFieldNumber++;
+        // First field should be even, so if the current first field is odd, increment it by one
+        if (!ldDecodeMetaData.getField(firstFieldNumber).isEven) {
+            firstFieldNumber++;
             qDebug() << "MainWindow::updateOscilloscopeDialogue(): First field is out of frame order - ignoring";
         }
     } else {
-        // Top frame should be odd, so if the current topField is even, increment it by one
-        if (ldDecodeMetaData.getField(topFieldNumber).isEven) {
-            topFieldNumber++;
+        // First field should be odd, so if the current first field is even, increment it by one
+        if (ldDecodeMetaData.getField(firstFieldNumber).isEven) {
+            firstFieldNumber++;
             qDebug() << "MainWindow::updateOscilloscopeDialogue(): First field is out of frame order - ignoring";
         }
     }
 
-    // Range check the bottom field number
-    if (topFieldNumber + 1 > sourceVideo.getNumberOfAvailableFields()) {
-        qDebug() << "MainWindow::updateOscilloscopeDialogue(): Bottom field number exceed the available number of fields!";
+    // Range check the second field number
+    if (firstFieldNumber + 1 > sourceVideo.getNumberOfAvailableFields()) {
+        qDebug() << "MainWindow::updateOscilloscopeDialogue(): Second field number exceed the available number of fields!";
         return;
     }
 
     // Update the oscilloscope dialogue
-    oscilloscopeDialog->showTraceImage(sourceVideo.getVideoField(topFieldNumber)->getFieldData(),
-                                       sourceVideo.getVideoField(topFieldNumber + 1)->getFieldData(),
+    oscilloscopeDialog->showTraceImage(sourceVideo.getVideoField(firstFieldNumber)->getFieldData(),
+                                       sourceVideo.getVideoField(firstFieldNumber + 1)->getFieldData(),
                                        videoParameters, scanLine);
 }
 

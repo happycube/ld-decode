@@ -37,11 +37,11 @@ NtscDialog::~NtscDialog()
     delete ui;
 }
 
-void NtscDialog::updateNtsc(LdDecodeMetaData::Field topField, LdDecodeMetaData::Field bottomField)
+void NtscDialog::updateNtsc(LdDecodeMetaData::Field firstField, LdDecodeMetaData::Field secondField)
 {
     qDebug() << "NtscDialog::updateNtsc(): Called";
 
-    if (!topField.ntsc.inUse && !bottomField.ntsc.inUse) {
+    if (!firstField.ntsc.inUse && !secondField.ntsc.inUse) {
         ui->fmCodeDataLabel->setText("Invalid");
         ui->fieldFlagLabel->setText("Invalid");
         ui->whiteFlagLabel->setText("Invalid");
@@ -53,25 +53,33 @@ void NtscDialog::updateNtsc(LdDecodeMetaData::Field topField, LdDecodeMetaData::
     QString fieldFlag;
     QString whiteFlag;
 
-    if (topField.ntsc.inUse) {
-        if (topField.ntsc.isFmCodeDataValid) fmCodeData = QString::number(topField.ntsc.fmCodeData) + " / ";
-        else fmCodeData = "None / ";
+    if (firstField.ntsc.inUse) {
+        if (firstField.ntsc.isFmCodeDataValid) {
+            fmCodeData = QString::number(firstField.ntsc.fmCodeData) + " / ";
 
-        if (topField.ntsc.fieldFlag) fieldFlag = "First field / ";
-        else fieldFlag = "Second field / ";
+            if (firstField.ntsc.fieldFlag) fieldFlag = "True / ";
+            else fieldFlag = "False / ";
+        } else {
+            fmCodeData = "None / ";
+            fieldFlag = "None / ";
+        }
 
-        if (topField.ntsc.whiteFlag) whiteFlag = "White / ";
+        if (firstField.ntsc.whiteFlag) whiteFlag = "White / ";
         else whiteFlag = "Black / ";
     }
 
-    if (bottomField.ntsc.inUse) {
-        if (bottomField.ntsc.isFmCodeDataValid) fmCodeData += QString::number(bottomField.ntsc.fmCodeData);
-        else fmCodeData += "None";
+    if (secondField.ntsc.inUse) {
+        if (secondField.ntsc.isFmCodeDataValid) {
+            fmCodeData += QString::number(secondField.ntsc.fmCodeData);
 
-        if (bottomField.ntsc.fieldFlag) fieldFlag += "First field";
-        else fieldFlag += "Second field";
+            if (secondField.ntsc.fieldFlag) fieldFlag += "True";
+            else fieldFlag += "False";
+        } else {
+            fmCodeData += "None";
+            fieldFlag += "None";
+        }
 
-        if (bottomField.ntsc.whiteFlag) whiteFlag += "White";
+        if (secondField.ntsc.whiteFlag) whiteFlag += "White";
         else whiteFlag += "Black";
     }
 

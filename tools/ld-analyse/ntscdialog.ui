@@ -45,7 +45,7 @@
     </rect>
    </property>
    <property name="text">
-    <string>Field Flag:</string>
+    <string>First field Flag:</string>
    </property>
    <property name="alignment">
     <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>

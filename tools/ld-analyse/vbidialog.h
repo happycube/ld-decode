@@ -41,7 +41,7 @@ public:
     explicit VbiDialog(QWidget *parent = nullptr);
     ~VbiDialog();
 
-    void updateVbi(LdDecodeMetaData::Field topField, LdDecodeMetaData::Field bottomField);
+    void updateVbi(LdDecodeMetaData::Field firstField, LdDecodeMetaData::Field secondField);
 
 private:
     Ui::VbiDialog *ui;
