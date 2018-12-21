@@ -1264,6 +1264,8 @@ class LDdecode:
                 fi['fieldPhaseID'] = 1 if f.field14 else 3
             else:
                 fi['fieldPhaseID'] = 4 if f.field14 else 2
+        else: # PAL
+            fi['isEven'] = not fi['isEven']
 
         self.fieldinfo.append(fi)
 
