@@ -52,6 +52,8 @@ public:
     QByteArray getMainWindowGeometry(void);
     void setVbiDialogGeometry(QByteArray vbiDialogGeometry);
     QByteArray getVbiDialogGeometry(void);
+    void setNtscDialogGeometry(QByteArray ntscDialogGeometry);
+    QByteArray getNtscDialogGeometry(void);
     void setOscilloscopeDialogGeometry(QByteArray oscilloscopeDialogGeometry);
     QByteArray getOscilloscopeDialogGeometry(void);
 
@@ -71,6 +73,7 @@ private:
     struct Windows {
         QByteArray mainWindowGeometry;
         QByteArray vbiDialogGeometry;
+        QByteArray ntscDialogGeometry;
         QByteArray oscilloscopeDialogGeometry;
     };
 

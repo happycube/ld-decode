@@ -37,11 +37,11 @@ VbiDialog::~VbiDialog()
     delete ui;
 }
 
-void VbiDialog::updateVbi(LdDecodeMetaData::Field topField, LdDecodeMetaData::Field bottomField)
+void VbiDialog::updateVbi(LdDecodeMetaData::Field firstField, LdDecodeMetaData::Field secondField)
 {
     qDebug() << "VbiDialog::updateVbi(): Called";
 
-    if (!topField.vbi.inUse && !bottomField.vbi.inUse) {
+    if (!firstField.vbi.inUse && !secondField.vbi.inUse) {
         // VBI data is not valid
         ui->discTypeLabel->setText("Invalid");
         ui->leadInLabel->setText("Invalid");
@@ -74,127 +74,127 @@ void VbiDialog::updateVbi(LdDecodeMetaData::Field topField, LdDecodeMetaData::Fi
         return;
     }
 
-    if (topField.vbi.type != LdDecodeMetaData::VbiDiscTypes::unknownDiscType) {
-        if (topField.vbi.type == LdDecodeMetaData::VbiDiscTypes::cav) ui->discTypeLabel->setText("CAV");
-        if (topField.vbi.type == LdDecodeMetaData::VbiDiscTypes::clv) ui->discTypeLabel->setText("CLV");
+    if (firstField.vbi.type != LdDecodeMetaData::VbiDiscTypes::unknownDiscType) {
+        if (firstField.vbi.type == LdDecodeMetaData::VbiDiscTypes::cav) ui->discTypeLabel->setText("CAV");
+        if (firstField.vbi.type == LdDecodeMetaData::VbiDiscTypes::clv) ui->discTypeLabel->setText("CLV");
     } else {
-        if (bottomField.vbi.type == LdDecodeMetaData::VbiDiscTypes::cav) ui->discTypeLabel->setText("CAV");
-        if (bottomField.vbi.type == LdDecodeMetaData::VbiDiscTypes::clv) ui->discTypeLabel->setText("CLV");
-        if (bottomField.vbi.type == LdDecodeMetaData::VbiDiscTypes::unknownDiscType) ui->discTypeLabel->setText("Unknown");
+        if (secondField.vbi.type == LdDecodeMetaData::VbiDiscTypes::cav) ui->discTypeLabel->setText("CAV");
+        if (secondField.vbi.type == LdDecodeMetaData::VbiDiscTypes::clv) ui->discTypeLabel->setText("CLV");
+        if (secondField.vbi.type == LdDecodeMetaData::VbiDiscTypes::unknownDiscType) ui->discTypeLabel->setText("Unknown");
     }
 
-    if (topField.vbi.leadIn || bottomField.vbi.leadIn) ui->leadInLabel->setText("Yes");
+    if (firstField.vbi.leadIn || secondField.vbi.leadIn) ui->leadInLabel->setText("Yes");
     else ui->leadInLabel->setText("No");
 
-    if (topField.vbi.leadOut || bottomField.vbi.leadOut) ui->leadOutLabel->setText("Yes");
+    if (firstField.vbi.leadOut || secondField.vbi.leadOut) ui->leadOutLabel->setText("Yes");
     else ui->leadOutLabel->setText("No");
 
-    if (topField.vbi.userCode.isEmpty() && bottomField.vbi.userCode.isEmpty()) ui->userCodeLabel->setText("Not present");
+    if (firstField.vbi.userCode.isEmpty() && secondField.vbi.userCode.isEmpty()) ui->userCodeLabel->setText("Not present");
     else {
-        if (!topField.vbi.userCode.isEmpty()) ui->userCodeLabel->setText(topField.vbi.userCode);
-        else ui->userCodeLabel->setText(bottomField.vbi.userCode);
+        if (!firstField.vbi.userCode.isEmpty()) ui->userCodeLabel->setText(firstField.vbi.userCode);
+        else ui->userCodeLabel->setText(secondField.vbi.userCode);
     }
 
-    if (topField.vbi.picNo != -1) ui->pictureNumberLabel->setText(QString::number(topField.vbi.picNo));
-    else if (bottomField.vbi.picNo != -1) ui->pictureNumberLabel->setText(QString::number(bottomField.vbi.picNo));
+    if (firstField.vbi.picNo != -1) ui->pictureNumberLabel->setText(QString::number(firstField.vbi.picNo));
+    else if (secondField.vbi.picNo != -1) ui->pictureNumberLabel->setText(QString::number(secondField.vbi.picNo));
     else ui->pictureNumberLabel->setText("Unknown");
 
-    if (topField.vbi.picStop || bottomField.vbi.picStop) ui->pictureStopCodeLabel->setText("Yes");
+    if (firstField.vbi.picStop || secondField.vbi.picStop) ui->pictureStopCodeLabel->setText("Yes");
     else ui->pictureStopCodeLabel->setText("No");
 
-    if (topField.vbi.chNo != -1) ui->chapterNumberLabel->setText(QString::number(topField.vbi.chNo));
-    if (bottomField.vbi.chNo != -1) ui->chapterNumberLabel->setText(QString::number(bottomField.vbi.chNo));
+    if (firstField.vbi.chNo != -1) ui->chapterNumberLabel->setText(QString::number(firstField.vbi.chNo));
+    if (secondField.vbi.chNo != -1) ui->chapterNumberLabel->setText(QString::number(secondField.vbi.chNo));
     else ui->chapterNumberLabel->setText("Unknown");
 
-    if (topField.vbi.timeCode.hr != -1 && topField.vbi.timeCode.min != -1) {
-        ui->clvTimeCodeLabel->setText(QString::number(topField.vbi.timeCode.hr) + ":" + QString::number(topField.vbi.timeCode.min));
-    } else if (bottomField.vbi.timeCode.hr != -1 && bottomField.vbi.timeCode.min != -1) {
-        ui->clvTimeCodeLabel->setText(QString::number(bottomField.vbi.timeCode.hr) + ":" + QString::number(bottomField.vbi.timeCode.min));
+    if (firstField.vbi.timeCode.hr != -1 && firstField.vbi.timeCode.min != -1) {
+        ui->clvTimeCodeLabel->setText(QString::number(firstField.vbi.timeCode.hr) + ":" + QString::number(firstField.vbi.timeCode.min));
+    } else if (secondField.vbi.timeCode.hr != -1 && secondField.vbi.timeCode.min != -1) {
+        ui->clvTimeCodeLabel->setText(QString::number(secondField.vbi.timeCode.hr) + ":" + QString::number(secondField.vbi.timeCode.min));
     } else ui->clvTimeCodeLabel->setText("Unknown");
 
-    if (topField.vbi.clvPicNo.sec != -1 && topField.vbi.clvPicNo.picNo != -1) {
-        ui->clvPictureNumberLabel->setText(QString::number(topField.vbi.clvPicNo.sec) + "." + QString::number(topField.vbi.clvPicNo.picNo));
-    } else if (bottomField.vbi.clvPicNo.sec != -1 && bottomField.vbi.clvPicNo.picNo != -1) {
-        ui->clvPictureNumberLabel->setText(QString::number(bottomField.vbi.clvPicNo.sec) + "." + QString::number(bottomField.vbi.clvPicNo.picNo));
+    if (firstField.vbi.clvPicNo.sec != -1 && firstField.vbi.clvPicNo.picNo != -1) {
+        ui->clvPictureNumberLabel->setText(QString::number(firstField.vbi.clvPicNo.sec) + "." + QString::number(firstField.vbi.clvPicNo.picNo));
+    } else if (secondField.vbi.clvPicNo.sec != -1 && secondField.vbi.clvPicNo.picNo != -1) {
+        ui->clvPictureNumberLabel->setText(QString::number(secondField.vbi.clvPicNo.sec) + "." + QString::number(secondField.vbi.clvPicNo.picNo));
     } else {
         ui->clvPictureNumberLabel->setText("Unknown");
     }
 
     // Display original programme status
-    if (topField.vbi.statusCode.valid) {
-        if (topField.vbi.statusCode.cx) ui->cxLabel->setText("On");
+    if (firstField.vbi.statusCode.valid) {
+        if (firstField.vbi.statusCode.cx) ui->cxLabel->setText("On");
         else ui->cxLabel->setText("Off");
 
-        if (topField.vbi.statusCode.size) ui->discSizeLabel->setText("12 inch disc");
+        if (firstField.vbi.statusCode.size) ui->discSizeLabel->setText("12 inch disc");
         else ui->discSizeLabel->setText("8 inch disc");
 
-        if (topField.vbi.statusCode.side) ui->discSideLabel->setText("Side 1");
+        if (firstField.vbi.statusCode.side) ui->discSideLabel->setText("Side 1");
         else ui->discSideLabel->setText("Side 2");
 
-        if (topField.vbi.statusCode.teletext) ui->teletextLabel->setText("Present on disc");
+        if (firstField.vbi.statusCode.teletext) ui->teletextLabel->setText("Present on disc");
         else ui->teletextLabel->setText("Not present on disc");
 
-        if (topField.vbi.statusCode.dump) ui->programmeDumpLabel->setText("Yes");
+        if (firstField.vbi.statusCode.dump) ui->programmeDumpLabel->setText("Yes");
         else ui->programmeDumpLabel->setText("No");
 
-        if (topField.vbi.statusCode.fm) ui->fmFmMultiplexLabel->setText("Yes");
+        if (firstField.vbi.statusCode.fm) ui->fmFmMultiplexLabel->setText("Yes");
         else ui->fmFmMultiplexLabel->setText("No");
 
-        if (topField.vbi.statusCode.digital) ui->digitalLabel->setText("Yes");
+        if (firstField.vbi.statusCode.digital) ui->digitalLabel->setText("Yes");
         else ui->digitalLabel->setText("No");
 
-        if (topField.vbi.statusCode.parity) ui->parityCorrectLabel->setText("Yes");
+        if (firstField.vbi.statusCode.parity) ui->parityCorrectLabel->setText("Yes");
         else ui->parityCorrectLabel->setText("No");
 
-        if (topField.vbi.statusCode.soundMode ==  0) ui->soundModeLabel->setText("Stereo");
-        if (topField.vbi.statusCode.soundMode ==  1) ui->soundModeLabel->setText("Mono");
-        if (topField.vbi.statusCode.soundMode ==  2) ui->soundModeLabel->setText("Audio sub-carriers off");
-        if (topField.vbi.statusCode.soundMode ==  3) ui->soundModeLabel->setText("Bilingual");
-        if (topField.vbi.statusCode.soundMode ==  4) ui->soundModeLabel->setText("Stereo_Stereo");
-        if (topField.vbi.statusCode.soundMode ==  5) ui->soundModeLabel->setText("Stereo_Bilingual");
-        if (topField.vbi.statusCode.soundMode ==  6) ui->soundModeLabel->setText("Cross Channel Stereo");
-        if (topField.vbi.statusCode.soundMode ==  7) ui->soundModeLabel->setText("Bilingual_Bilingual");
-        if (topField.vbi.statusCode.soundMode ==  8) ui->soundModeLabel->setText("Mono dump");
-        if (topField.vbi.statusCode.soundMode ==  9) ui->soundModeLabel->setText("Stereo dump");
-        if (topField.vbi.statusCode.soundMode == 10) ui->soundModeLabel->setText("Bilingual dump");
-        if (topField.vbi.statusCode.soundMode == 11) ui->soundModeLabel->setText("Future use/unknown");
-    } else if (bottomField.vbi.statusCode.valid) {
-        if (bottomField.vbi.statusCode.cx) ui->cxLabel->setText("On");
+        if (firstField.vbi.statusCode.soundMode ==  0) ui->soundModeLabel->setText("Stereo");
+        if (firstField.vbi.statusCode.soundMode ==  1) ui->soundModeLabel->setText("Mono");
+        if (firstField.vbi.statusCode.soundMode ==  2) ui->soundModeLabel->setText("Audio sub-carriers off");
+        if (firstField.vbi.statusCode.soundMode ==  3) ui->soundModeLabel->setText("Bilingual");
+        if (firstField.vbi.statusCode.soundMode ==  4) ui->soundModeLabel->setText("Stereo_Stereo");
+        if (firstField.vbi.statusCode.soundMode ==  5) ui->soundModeLabel->setText("Stereo_Bilingual");
+        if (firstField.vbi.statusCode.soundMode ==  6) ui->soundModeLabel->setText("Cross Channel Stereo");
+        if (firstField.vbi.statusCode.soundMode ==  7) ui->soundModeLabel->setText("Bilingual_Bilingual");
+        if (firstField.vbi.statusCode.soundMode ==  8) ui->soundModeLabel->setText("Mono dump");
+        if (firstField.vbi.statusCode.soundMode ==  9) ui->soundModeLabel->setText("Stereo dump");
+        if (firstField.vbi.statusCode.soundMode == 10) ui->soundModeLabel->setText("Bilingual dump");
+        if (firstField.vbi.statusCode.soundMode == 11) ui->soundModeLabel->setText("Future use/unknown");
+    } else if (secondField.vbi.statusCode.valid) {
+        if (secondField.vbi.statusCode.cx) ui->cxLabel->setText("On");
         else ui->cxLabel->setText("Off");
 
-        if (bottomField.vbi.statusCode.size) ui->discSizeLabel->setText("12 inch disc");
+        if (secondField.vbi.statusCode.size) ui->discSizeLabel->setText("12 inch disc");
         else ui->discSizeLabel->setText("8 inch disc");
 
-        if (bottomField.vbi.statusCode.side) ui->discSideLabel->setText("Side 1");
+        if (secondField.vbi.statusCode.side) ui->discSideLabel->setText("Side 1");
         else ui->discSideLabel->setText("Side 2");
 
-        if (bottomField.vbi.statusCode.teletext) ui->teletextLabel->setText("Present on disc");
+        if (secondField.vbi.statusCode.teletext) ui->teletextLabel->setText("Present on disc");
         else ui->teletextLabel->setText("Not present on disc");
 
-        if (bottomField.vbi.statusCode.dump) ui->programmeDumpLabel->setText("Yes");
+        if (secondField.vbi.statusCode.dump) ui->programmeDumpLabel->setText("Yes");
         else ui->programmeDumpLabel->setText("No");
 
-        if (bottomField.vbi.statusCode.fm) ui->fmFmMultiplexLabel->setText("Yes");
+        if (secondField.vbi.statusCode.fm) ui->fmFmMultiplexLabel->setText("Yes");
         else ui->fmFmMultiplexLabel->setText("No");
 
-        if (bottomField.vbi.statusCode.digital) ui->digitalLabel->setText("Yes");
+        if (secondField.vbi.statusCode.digital) ui->digitalLabel->setText("Yes");
         else ui->digitalLabel->setText("No");
 
-        if (bottomField.vbi.statusCode.parity) ui->parityCorrectLabel->setText("Yes");
+        if (secondField.vbi.statusCode.parity) ui->parityCorrectLabel->setText("Yes");
         else ui->parityCorrectLabel->setText("No");
 
-        if (bottomField.vbi.statusCode.soundMode ==  0) ui->soundModeLabel->setText("Stereo");
-        if (bottomField.vbi.statusCode.soundMode ==  1) ui->soundModeLabel->setText("Mono");
-        if (bottomField.vbi.statusCode.soundMode ==  2) ui->soundModeLabel->setText("Audio sub-carriers off");
-        if (bottomField.vbi.statusCode.soundMode ==  3) ui->soundModeLabel->setText("Bilingual");
-        if (bottomField.vbi.statusCode.soundMode ==  4) ui->soundModeLabel->setText("Stereo_Stereo");
-        if (bottomField.vbi.statusCode.soundMode ==  5) ui->soundModeLabel->setText("Stereo_Bilingual");
-        if (bottomField.vbi.statusCode.soundMode ==  6) ui->soundModeLabel->setText("Cross Channel Stereo");
-        if (bottomField.vbi.statusCode.soundMode ==  7) ui->soundModeLabel->setText("Bilingual_Bilingual");
-        if (bottomField.vbi.statusCode.soundMode ==  8) ui->soundModeLabel->setText("Mono dump");
-        if (bottomField.vbi.statusCode.soundMode ==  9) ui->soundModeLabel->setText("Stereo dump");
-        if (bottomField.vbi.statusCode.soundMode == 10) ui->soundModeLabel->setText("Bilingual dump");
-        if (bottomField.vbi.statusCode.soundMode == 11) ui->soundModeLabel->setText("Future use/unknown");
+        if (secondField.vbi.statusCode.soundMode ==  0) ui->soundModeLabel->setText("Stereo");
+        if (secondField.vbi.statusCode.soundMode ==  1) ui->soundModeLabel->setText("Mono");
+        if (secondField.vbi.statusCode.soundMode ==  2) ui->soundModeLabel->setText("Audio sub-carriers off");
+        if (secondField.vbi.statusCode.soundMode ==  3) ui->soundModeLabel->setText("Bilingual");
+        if (secondField.vbi.statusCode.soundMode ==  4) ui->soundModeLabel->setText("Stereo_Stereo");
+        if (secondField.vbi.statusCode.soundMode ==  5) ui->soundModeLabel->setText("Stereo_Bilingual");
+        if (secondField.vbi.statusCode.soundMode ==  6) ui->soundModeLabel->setText("Cross Channel Stereo");
+        if (secondField.vbi.statusCode.soundMode ==  7) ui->soundModeLabel->setText("Bilingual_Bilingual");
+        if (secondField.vbi.statusCode.soundMode ==  8) ui->soundModeLabel->setText("Mono dump");
+        if (secondField.vbi.statusCode.soundMode ==  9) ui->soundModeLabel->setText("Stereo dump");
+        if (secondField.vbi.statusCode.soundMode == 10) ui->soundModeLabel->setText("Bilingual dump");
+        if (secondField.vbi.statusCode.soundMode == 11) ui->soundModeLabel->setText("Future use/unknown");
     } else {
         ui->cxLabel->setText("Invalid");
         ui->discSizeLabel->setText("Invalid");
@@ -208,68 +208,68 @@ void VbiDialog::updateVbi(LdDecodeMetaData::Field topField, LdDecodeMetaData::Fi
     }
 
     // Display programme status amendment 2
-    if (topField.vbi.statusCodeAm2.valid) {
-        if (topField.vbi.statusCodeAm2.cx) ui->cxLabelAm2->setText("On");
+    if (firstField.vbi.statusCodeAm2.valid) {
+        if (firstField.vbi.statusCodeAm2.cx) ui->cxLabelAm2->setText("On");
         else ui->cxLabelAm2->setText("Off");
 
-        if (topField.vbi.statusCodeAm2.size) ui->discSizeLabelAm2->setText("12 inch disc");
+        if (firstField.vbi.statusCodeAm2.size) ui->discSizeLabelAm2->setText("12 inch disc");
         else ui->discSizeLabelAm2->setText("8 inch disc");
 
-        if (topField.vbi.statusCodeAm2.side) ui->discSideLabelAm2->setText("Side 1");
+        if (firstField.vbi.statusCodeAm2.side) ui->discSideLabelAm2->setText("Side 1");
         else ui->discSideLabelAm2->setText("Side 2");
 
-        if (topField.vbi.statusCodeAm2.teletext) ui->teletextLabelAm2->setText("Present on disc");
+        if (firstField.vbi.statusCodeAm2.teletext) ui->teletextLabelAm2->setText("Present on disc");
         else ui->teletextLabelAm2->setText("Not present on disc");
 
-        if (topField.vbi.statusCodeAm2.copy) ui->copyAllowedLabelAm2->setText("Yes");
+        if (firstField.vbi.statusCodeAm2.copy) ui->copyAllowedLabelAm2->setText("Yes");
         else ui->copyAllowedLabelAm2->setText("No");
 
-        if (topField.vbi.statusCodeAm2.standard) ui->standardVideoLabelAm2->setText("Yes");
+        if (firstField.vbi.statusCodeAm2.standard) ui->standardVideoLabelAm2->setText("Yes");
         else ui->standardVideoLabelAm2->setText("No");
 
-        if (topField.vbi.statusCodeAm2.soundMode ==  0) ui->soundModeLabelAm2->setText("Stereo");
-        if (topField.vbi.statusCodeAm2.soundMode ==  1) ui->soundModeLabelAm2->setText("Mono");
-        if (topField.vbi.statusCodeAm2.soundMode ==  2) ui->soundModeLabelAm2->setText("Audio sub-carriers off");
-        if (topField.vbi.statusCodeAm2.soundMode ==  3) ui->soundModeLabelAm2->setText("Bilingual");
-        if (topField.vbi.statusCodeAm2.soundMode ==  4) ui->soundModeLabelAm2->setText("Stereo_Stereo");
-        if (topField.vbi.statusCodeAm2.soundMode ==  5) ui->soundModeLabelAm2->setText("Stereo_Bilingual");
-        if (topField.vbi.statusCodeAm2.soundMode ==  6) ui->soundModeLabelAm2->setText("Cross Channel Stereo");
-        if (topField.vbi.statusCodeAm2.soundMode ==  7) ui->soundModeLabelAm2->setText("Bilingual_Bilingual");
-        if (topField.vbi.statusCodeAm2.soundMode ==  8) ui->soundModeLabelAm2->setText("Mono dump");
-        if (topField.vbi.statusCodeAm2.soundMode ==  9) ui->soundModeLabelAm2->setText("Stereo dump");
-        if (topField.vbi.statusCodeAm2.soundMode == 10) ui->soundModeLabelAm2->setText("Bilingual dump");
-        if (topField.vbi.statusCodeAm2.soundMode == 11) ui->soundModeLabelAm2->setText("Future use/unknown");
-    } else if (bottomField.vbi.statusCodeAm2.valid) {
-        if (bottomField.vbi.statusCodeAm2.cx) ui->cxLabelAm2->setText("On");
+        if (firstField.vbi.statusCodeAm2.soundMode ==  0) ui->soundModeLabelAm2->setText("Stereo");
+        if (firstField.vbi.statusCodeAm2.soundMode ==  1) ui->soundModeLabelAm2->setText("Mono");
+        if (firstField.vbi.statusCodeAm2.soundMode ==  2) ui->soundModeLabelAm2->setText("Audio sub-carriers off");
+        if (firstField.vbi.statusCodeAm2.soundMode ==  3) ui->soundModeLabelAm2->setText("Bilingual");
+        if (firstField.vbi.statusCodeAm2.soundMode ==  4) ui->soundModeLabelAm2->setText("Stereo_Stereo");
+        if (firstField.vbi.statusCodeAm2.soundMode ==  5) ui->soundModeLabelAm2->setText("Stereo_Bilingual");
+        if (firstField.vbi.statusCodeAm2.soundMode ==  6) ui->soundModeLabelAm2->setText("Cross Channel Stereo");
+        if (firstField.vbi.statusCodeAm2.soundMode ==  7) ui->soundModeLabelAm2->setText("Bilingual_Bilingual");
+        if (firstField.vbi.statusCodeAm2.soundMode ==  8) ui->soundModeLabelAm2->setText("Mono dump");
+        if (firstField.vbi.statusCodeAm2.soundMode ==  9) ui->soundModeLabelAm2->setText("Stereo dump");
+        if (firstField.vbi.statusCodeAm2.soundMode == 10) ui->soundModeLabelAm2->setText("Bilingual dump");
+        if (firstField.vbi.statusCodeAm2.soundMode == 11) ui->soundModeLabelAm2->setText("Future use/unknown");
+    } else if (secondField.vbi.statusCodeAm2.valid) {
+        if (secondField.vbi.statusCodeAm2.cx) ui->cxLabelAm2->setText("On");
         else ui->cxLabelAm2->setText("Off");
 
-        if (bottomField.vbi.statusCodeAm2.size) ui->discSizeLabelAm2->setText("12 inch disc");
+        if (secondField.vbi.statusCodeAm2.size) ui->discSizeLabelAm2->setText("12 inch disc");
         else ui->discSizeLabelAm2->setText("8 inch disc");
 
-        if (bottomField.vbi.statusCodeAm2.side) ui->discSideLabelAm2->setText("Side 1");
+        if (secondField.vbi.statusCodeAm2.side) ui->discSideLabelAm2->setText("Side 1");
         else ui->discSideLabelAm2->setText("Side 2");
 
-        if (bottomField.vbi.statusCodeAm2.teletext) ui->teletextLabelAm2->setText("Present on disc");
+        if (secondField.vbi.statusCodeAm2.teletext) ui->teletextLabelAm2->setText("Present on disc");
         else ui->teletextLabelAm2->setText("Not present on disc");
 
-        if (bottomField.vbi.statusCodeAm2.copy) ui->copyAllowedLabelAm2->setText("Yes");
+        if (secondField.vbi.statusCodeAm2.copy) ui->copyAllowedLabelAm2->setText("Yes");
         else ui->copyAllowedLabelAm2->setText("No");
 
-        if (bottomField.vbi.statusCodeAm2.standard) ui->standardVideoLabelAm2->setText("Yes");
+        if (secondField.vbi.statusCodeAm2.standard) ui->standardVideoLabelAm2->setText("Yes");
         else ui->standardVideoLabelAm2->setText("No");
 
-        if (bottomField.vbi.statusCodeAm2.soundMode ==  0) ui->soundModeLabelAm2->setText("Stereo");
-        if (bottomField.vbi.statusCodeAm2.soundMode ==  1) ui->soundModeLabelAm2->setText("Mono");
-        if (bottomField.vbi.statusCodeAm2.soundMode ==  2) ui->soundModeLabelAm2->setText("Audio sub-carriers off");
-        if (bottomField.vbi.statusCodeAm2.soundMode ==  3) ui->soundModeLabelAm2->setText("Bilingual");
-        if (bottomField.vbi.statusCodeAm2.soundMode ==  4) ui->soundModeLabelAm2->setText("Stereo_Stereo");
-        if (bottomField.vbi.statusCodeAm2.soundMode ==  5) ui->soundModeLabelAm2->setText("Stereo_Bilingual");
-        if (bottomField.vbi.statusCodeAm2.soundMode ==  6) ui->soundModeLabelAm2->setText("Cross Channel Stereo");
-        if (bottomField.vbi.statusCodeAm2.soundMode ==  7) ui->soundModeLabelAm2->setText("Bilingual_Bilingual");
-        if (bottomField.vbi.statusCodeAm2.soundMode ==  8) ui->soundModeLabelAm2->setText("Mono dump");
-        if (bottomField.vbi.statusCodeAm2.soundMode ==  9) ui->soundModeLabelAm2->setText("Stereo dump");
-        if (bottomField.vbi.statusCodeAm2.soundMode == 10) ui->soundModeLabelAm2->setText("Bilingual dump");
-        if (bottomField.vbi.statusCodeAm2.soundMode == 11) ui->soundModeLabelAm2->setText("Future use/unknown");
+        if (secondField.vbi.statusCodeAm2.soundMode ==  0) ui->soundModeLabelAm2->setText("Stereo");
+        if (secondField.vbi.statusCodeAm2.soundMode ==  1) ui->soundModeLabelAm2->setText("Mono");
+        if (secondField.vbi.statusCodeAm2.soundMode ==  2) ui->soundModeLabelAm2->setText("Audio sub-carriers off");
+        if (secondField.vbi.statusCodeAm2.soundMode ==  3) ui->soundModeLabelAm2->setText("Bilingual");
+        if (secondField.vbi.statusCodeAm2.soundMode ==  4) ui->soundModeLabelAm2->setText("Stereo_Stereo");
+        if (secondField.vbi.statusCodeAm2.soundMode ==  5) ui->soundModeLabelAm2->setText("Stereo_Bilingual");
+        if (secondField.vbi.statusCodeAm2.soundMode ==  6) ui->soundModeLabelAm2->setText("Cross Channel Stereo");
+        if (secondField.vbi.statusCodeAm2.soundMode ==  7) ui->soundModeLabelAm2->setText("Bilingual_Bilingual");
+        if (secondField.vbi.statusCodeAm2.soundMode ==  8) ui->soundModeLabelAm2->setText("Mono dump");
+        if (secondField.vbi.statusCodeAm2.soundMode ==  9) ui->soundModeLabelAm2->setText("Stereo dump");
+        if (secondField.vbi.statusCodeAm2.soundMode == 10) ui->soundModeLabelAm2->setText("Bilingual dump");
+        if (secondField.vbi.statusCodeAm2.soundMode == 11) ui->soundModeLabelAm2->setText("Future use/unknown");
     } else {
         ui->cxLabelAm2->setText("Invalid");
         ui->discSizeLabelAm2->setText("Invalid");

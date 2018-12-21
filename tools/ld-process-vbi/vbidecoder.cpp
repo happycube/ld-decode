@@ -88,57 +88,6 @@ bool VbiDecoder::process(QString inputFileName)
         qDebug() << "VbiDecoder::process(): Updating metadata for field" << fieldNumber;
     }
 
-    // Determine field order for the video based on the VBI
-    bool determinationComplete = false;
-    for (qint32 fieldNumber = 1; fieldNumber <= sourceVideo.getNumberOfAvailableFields(); fieldNumber++) {
-        LdDecodeMetaData::Field field = ldDecodeMetaData.getField(fieldNumber);
-
-        if (field.vbi.type != LdDecodeMetaData::VbiDiscTypes::unknownDiscType) {
-            // Is the disc CAV or CLV?
-            if (field.vbi.type == LdDecodeMetaData::VbiDiscTypes::cav) {
-                // Does the field have a valid picture number?
-                if (field.vbi.picNo != -1) {
-                    qDebug() << "VbiDecoder::process(): Valid CAV picture number found in field" << fieldNumber;
-                    // This is the first field in the frame
-                    if (field.isEven) {
-                        // This field is even, so field order is even/odd
-                        videoParameters.isFieldOrderEvenOdd = true;
-                        determinationComplete = true;
-                    } else {
-                        // This field is odd, so field order is odd/even
-                        videoParameters.isFieldOrderEvenOdd = false;
-                        determinationComplete = true;
-                    }
-                }
-            } else {
-                // Does the field have a valid CLV programme time code?
-                if (field.vbi.timeCode.hr != -1) {
-                    qDebug() << "VbiDecoder::process(): Valid CLV programme time code found in field" << fieldNumber;
-                    // This is the first field in the frame
-                    if (field.isEven) {
-                        // This field is even, so field order is even/odd
-                        videoParameters.isFieldOrderEvenOdd = true;
-                        determinationComplete = true;
-                    } else {
-                        // This field is odd, so field order is odd/even
-                        videoParameters.isFieldOrderEvenOdd = false;
-                        determinationComplete = true;
-                    }
-                }
-            }
-        }
-
-        // Done?
-        if (determinationComplete) break;
-    }
-
-    if (determinationComplete) {
-        if (videoParameters.isFieldOrderEvenOdd) qInfo() << "Field order is Even then Odd";
-        else qInfo() << "Field order is Odd then Even";
-        videoParameters.isFieldOrderValid = true;
-        ldDecodeMetaData.setVideoParameters(videoParameters);
-    } else qInfo() << "Field order could not be determined from the VBI data";
-
     // Write the metadata file
     QString outputFileName = inputFileName + ".json";
     ldDecodeMetaData.write(outputFileName);

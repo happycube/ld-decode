@@ -1,6 +1,6 @@
 /************************************************************************
 
-    vbidialog.h
+    ntscdialog.h
 
     ld-analyse - TBC output analysis
     Copyright (C) 2018 Simon Inns
@@ -22,29 +22,29 @@
 
 ************************************************************************/
 
-#ifndef VBIDIALOG_H
-#define VBIDIALOG_H
+#ifndef NTSCDIALOG_H
+#define NTSCDIALOG_H
 
 #include <QDialog>
 
 #include "lddecodemetadata.h"
 
 namespace Ui {
-class VbiDialog;
+class NtscDialog;
 }
 
-class VbiDialog : public QDialog
+class NtscDialog : public QDialog
 {
     Q_OBJECT
 
 public:
-    explicit VbiDialog(QWidget *parent = nullptr);
-    ~VbiDialog();
+    explicit NtscDialog(QWidget *parent = nullptr);
+    ~NtscDialog();
 
-    void updateVbi(LdDecodeMetaData::Field firstField, LdDecodeMetaData::Field secondField);
+    void updateNtsc(LdDecodeMetaData::Field firstField, LdDecodeMetaData::Field secondField);
 
 private:
-    Ui::VbiDialog *ui;
+    Ui::NtscDialog *ui;
 };
 
-#endif // VBIDIALOG_H
+#endif // NTSCDIALOG_H

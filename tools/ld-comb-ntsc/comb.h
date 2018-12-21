@@ -38,6 +38,12 @@
 #include "yiq.h"
 #include "rgb.h"
 
+// Fix required for Mac OS compilation - environment doesn't seem to set up
+// the expected definitions properly
+#ifndef M_PIl
+#define M_PIl 0xc.90fdaa22168c235p-2L
+#endif
+
 class Comb
 {
 public:

@@ -52,7 +52,7 @@ OscilloscopeDialog::~OscilloscopeDialog()
     delete ui;
 }
 
-void OscilloscopeDialog::showTraceImage(QByteArray topFieldData, QByteArray bottomFieldData, LdDecodeMetaData::VideoParameters videoParameters, qint32 scanLine)
+void OscilloscopeDialog::showTraceImage(QByteArray firstFieldData, QByteArray secondFieldData, LdDecodeMetaData::VideoParameters videoParameters, qint32 scanLine)
 {
     qDebug() << "OscilloscopeDialog::showTraceImage(): Called for scan-line" << scanLine;
 
@@ -75,17 +75,17 @@ void OscilloscopeDialog::showTraceImage(QByteArray topFieldData, QByteArray bott
     // Set the dialogue title based on the scan-line
     QString windowTitle;
     if (isFieldTop) {
-        windowTitle = "Oscilloscope trace for scan-line #" + QString::number(scanLine) + " (Top field line #" + QString::number(fieldLine) + ")";
+        windowTitle = "Oscilloscope trace for scan-line #" + QString::number(scanLine) + " (First field line #" + QString::number(fieldLine) + ")";
     } else {
-        windowTitle = "Oscilloscope trace for scan-line #" + QString::number(scanLine) + " (Bottom field line #" + QString::number(fieldLine) + ")";
+        windowTitle = "Oscilloscope trace for scan-line #" + QString::number(scanLine) + " (Second field line #" + QString::number(fieldLine) + ")";
     }
 
     this->setWindowTitle(windowTitle);
 
     // Always take the raw frame data (without DOC)
     QImage traceImage;
-    if (isFieldTop) traceImage = getFieldLineTraceImage(topFieldData, videoParameters, fieldLine);
-    else traceImage = getFieldLineTraceImage(bottomFieldData, videoParameters, fieldLine);
+    if (isFieldTop) traceImage = getFieldLineTraceImage(firstFieldData, videoParameters, fieldLine);
+    else traceImage = getFieldLineTraceImage(secondFieldData, videoParameters, fieldLine);
 
     // Add the QImage to the QLabel in the dialogue
     ui->scopeLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);

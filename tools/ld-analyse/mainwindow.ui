@@ -329,12 +329,12 @@
          <rect>
           <x>10</x>
           <y>30</y>
-          <width>71</width>
+          <width>91</width>
           <height>21</height>
          </rect>
         </property>
         <property name="text">
-         <string>Top field:</string>
+         <string>First field:</string>
         </property>
         <property name="alignment">
          <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
@@ -345,12 +345,12 @@
          <rect>
           <x>10</x>
           <y>50</y>
-          <width>71</width>
+          <width>91</width>
           <height>21</height>
          </rect>
         </property>
         <property name="text">
-         <string>Btm field:</string>
+         <string>Second field:</string>
         </property>
         <property name="alignment">
          <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
@@ -361,23 +361,23 @@
          <rect>
           <x>10</x>
           <y>70</y>
-          <width>71</width>
+          <width>91</width>
           <height>21</height>
          </rect>
         </property>
         <property name="text">
-         <string>Order:</string>
+         <string>TBC Order:</string>
         </property>
         <property name="alignment">
          <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
         </property>
        </widget>
-       <widget class="QLabel" name="topFieldLabel">
+       <widget class="QLabel" name="firstFieldLabel">
         <property name="geometry">
          <rect>
-          <x>90</x>
+          <x>110</x>
           <y>30</y>
-          <width>121</width>
+          <width>101</width>
           <height>21</height>
          </rect>
         </property>
@@ -385,12 +385,12 @@
          <string>None</string>
         </property>
        </widget>
-       <widget class="QLabel" name="bottomFieldLabel">
+       <widget class="QLabel" name="secondFieldLabel">
         <property name="geometry">
          <rect>
-          <x>90</x>
+          <x>110</x>
           <y>50</y>
-          <width>121</width>
+          <width>101</width>
           <height>21</height>
          </rect>
         </property>
@@ -401,9 +401,9 @@
        <widget class="QLabel" name="fieldOrderLabel">
         <property name="geometry">
          <rect>
-          <x>90</x>
+          <x>110</x>
           <y>70</y>
-          <width>121</width>
+          <width>101</width>
           <height>21</height>
          </rect>
         </property>
@@ -469,7 +469,7 @@
      <x>0</x>
      <y>0</y>
      <width>600</width>
-     <height>22</height>
+     <height>21</height>
     </rect>
    </property>
    <widget class="QMenu" name="menuFile">
@@ -486,6 +486,7 @@
     </property>
     <addaction name="actionLine_scope"/>
     <addaction name="actionVBI"/>
+    <addaction name="actionNTSC"/>
    </widget>
    <widget class="QMenu" name="menuHelp">
     <property name="title">
@@ -521,6 +522,11 @@
   <action name="actionVBI">
    <property name="text">
     <string>VBI...</string>
+   </property>
+  </action>
+  <action name="actionNTSC">
+   <property name="text">
+    <string>NTSC...</string>
    </property>
   </action>
  </widget>
