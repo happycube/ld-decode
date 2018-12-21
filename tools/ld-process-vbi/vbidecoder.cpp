@@ -88,17 +88,6 @@ bool VbiDecoder::process(QString inputFileName)
         qDebug() << "VbiDecoder::process(): Updating metadata for field" << fieldNumber;
     }
 
-    // Determine field order for the video
-    if (videoParameters.isSourcePal) {
-        videoParameters.isFieldOrderEvenOdd = false;
-        qInfo() << "PAL SD Field order is Odd then Even";
-    } else {
-        videoParameters.isFieldOrderEvenOdd = true;
-        qInfo() << "NTSC SD Field order is Even then Odd";
-    }
-    videoParameters.isFieldOrderValid = true;
-    ldDecodeMetaData.setVideoParameters(videoParameters);
-
     // Write the metadata file
     QString outputFileName = inputFileName + ".json";
     ldDecodeMetaData.write(outputFileName);

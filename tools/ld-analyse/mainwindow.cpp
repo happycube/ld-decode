@@ -200,40 +200,41 @@ void MainWindow::showFrame(qint32 frameNumber, bool showActiveVideoArea, bool hi
     // Get the video parameter metadata
     LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
 
-    // Determine the first and second fields for the frame number
-    qint32 firstFieldNumber = (frameNumber * 2) - 1;
-    qint32 secondFieldNumber = firstFieldNumber + 1;
+    // Point at the first field in the TBC file (according to the current frame number)
+    qint32 firstFieldNumber; // = (frameNumber * 2);
+    qint32 secondFieldNumber;
 
     if (videoParameters.isFieldOrderEvenOdd) {
-        // Top frame should be even, so if the current topField is odd, increment it by one
-        if (!ldDecodeMetaData.getField(firstFieldNumber).isEven) { // Expected even, got odd
-            qDebug() << "MainWindow::showFrame(): First field" << firstFieldNumber << "is out of frame order (expected even) - ignoring";
-            firstFieldNumber++;
-            secondFieldNumber = firstFieldNumber + 1;
-        }
+        // TBC Field order is even then odd, so we get second field followed by first field
+        secondFieldNumber = (frameNumber * 2) - 1;
+        firstFieldNumber = secondFieldNumber + 1;
     } else {
-        // Top frame should be odd, so if the current topField is even, increment it by one
-        if (ldDecodeMetaData.getField(firstFieldNumber).isEven) { // Expected odd, got even
-            qDebug() << "MainWindow::showFrame(): First field" << firstFieldNumber << "is out of frame order (expected odd) - ignoring";
-            firstFieldNumber++;
-            secondFieldNumber = firstFieldNumber + 1;
-        }
+        // TBC Field order is odd then even, so we get first field followed by second field
+        firstFieldNumber = (frameNumber * 2) - 1;
+        secondFieldNumber = firstFieldNumber + 1;
     }
 
-    // Range check the second field number
+    // It's possible that the TBC file will start on the wrong field, so we have to allow for
+    // that here by skipping a field if the order isn't right
+    if (ldDecodeMetaData.getField(firstFieldNumber).isEven) {
+        // First field is always odd...
+        firstFieldNumber++;
+        secondFieldNumber++;
+        qDebug() << "MainWindow::showFrame(): TBC file has an extra field at the start (out of field order) - skipping";
+    }
+
+    // Range check the field numbers
+    if (firstFieldNumber > sourceVideo.getNumberOfAvailableFields()) {
+        qDebug() << "MainWindow::showFrame(): First field number exceed the available number of fields!";
+        return;
+    }
     if (secondFieldNumber > sourceVideo.getNumberOfAvailableFields()) {
         qDebug() << "MainWindow::showFrame(): Second field number exceed the available number of fields!";
         return;
     }
 
-    if (ldDecodeMetaData.getField(firstFieldNumber).isEven) {
-        qDebug() << "MainWindow::showFrame(): Frame number" << frameNumber << "has an even first-field of" << firstFieldNumber <<
-                    "and an odd second field of" << secondFieldNumber;
-    } else {
-        qDebug() << "MainWindow::showFrame(): Frame number" << frameNumber << "has an odd first-field of" << firstFieldNumber <<
-                    "and an even second field of" << secondFieldNumber;
-    }
-
+    qDebug() << "MainWindow::showFrame(): Frame number" << frameNumber << "has an first-field of" << firstFieldNumber <<
+                "and an second field of" << secondFieldNumber;
 
     // Get a QImage for the frame
     QImage frameImage = generateQImage(firstFieldNumber, secondFieldNumber);
@@ -507,7 +508,7 @@ void MainWindow::loadTbcFile(QString inputFileName)
 // Load a TBC file based on the file selection from the GUI
 void MainWindow::on_actionOpen_TBC_file_triggered()
 {
-    qDebug() << "MainWindow::on_actionOpen_PAL_file_triggered(): Called";
+    qDebug() << "MainWindow::on_actionOpen_TBC_file_triggered(): Called";
 
     QString inputFileName = QFileDialog::getOpenFileName(this,
                 tr("Open TBC file"),
