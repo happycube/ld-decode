@@ -70,10 +70,10 @@ private:
     qint32 videoEnd;
 
     // Input data buffers
-    QByteArray topFieldData;
-    QByteArray bottomFieldData;
-    QByteArray tsTopFieldData;
-    QByteArray tsBottomFieldData;
+    QByteArray firstFieldData;
+    QByteArray secondFieldData;
+    QByteArray tsFirstFieldData;
+    QByteArray tsSecondFieldData;
     QByteArray outputData;
     QByteArray rgbOutputData;
 

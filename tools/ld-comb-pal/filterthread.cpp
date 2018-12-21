@@ -82,13 +82,13 @@ FilterThread::~FilterThread()
     delete palColour;
 }
 
-void FilterThread::startFilter(QByteArray topFieldParam, QByteArray bottomFieldParam, qreal burstMedianIreParam)
+void FilterThread::startFilter(QByteArray firstFieldParam, QByteArray secondFieldParam, qreal burstMedianIreParam)
 {
     QMutexLocker locker(&mutex);
 
     // Move all the parameters to be local
-    topFieldData = topFieldParam;
-    bottomFieldData = bottomFieldParam;
+    firstFieldData = firstFieldParam;
+    secondFieldData = secondFieldParam;
     burstMedianIre = burstMedianIreParam;
 
     // Is the run process already running?
@@ -121,8 +121,8 @@ void FilterThread::run()
         if (isProcessing) {
             // Lock and copy all parameters to 'thread-safe' variables
             mutex.lock();
-            tsTopFieldData = topFieldData;
-            tsBottomFieldData = bottomFieldData;
+            tsFirstFieldData = firstFieldData;
+            tsSecondFieldData = secondFieldData;
             mutex.unlock();
 
             // Calculate the saturation level from the burst median IRE
@@ -131,7 +131,7 @@ void FilterThread::run()
             qreal tSaturation = 125.0 + ((100.0 / 20.0) * (20.0 - burstMedianIre));
 
             // Perform the PALcolour filtering
-            outputData = palColour->performDecode(tsTopFieldData, tsBottomFieldData, 100, static_cast<qint32>(tSaturation));
+            outputData = palColour->performDecode(tsFirstFieldData, tsSecondFieldData, 100, static_cast<qint32>(tSaturation));
 
             // The PAL colour library outputs the whole frame, so here we have to strip all the non-visible stuff to just get the
             // actual required image - it would be better if PALcolour gave back only the required RGB, but it's not my library.

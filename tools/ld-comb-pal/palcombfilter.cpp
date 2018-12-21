@@ -29,6 +29,111 @@ PalCombFilter::PalCombFilter(QObject *parent) : QObject(parent)
 
 }
 
+// Method to get the available number of frames
+qint32 PalCombFilter::getAvailableNumberOfFrames(void)
+{
+    qint32 frameOffset = 0;
+
+    // It's possible that the TBC file will start on the wrong field, so we have to allow for
+    // that here by skipping a field if the order isn't right
+    if (ldDecodeMetaData.getVideoParameters().isFieldOrderEvenOdd && !ldDecodeMetaData.getField(1).isEven) frameOffset++;
+    else if (!ldDecodeMetaData.getVideoParameters().isFieldOrderEvenOdd && ldDecodeMetaData.getField(1).isEven) frameOffset++;
+
+    return (sourceVideo.getNumberOfAvailableFields() / 2) - frameOffset;
+}
+
+// Method to get the first and second field numbers based on the frame number
+qint32 PalCombFilter::getFirstFieldNumber(qint32 frameNumber)
+{
+    // Get the video parameter metadata
+    LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
+
+    // Point at the first field in the TBC file (according to the current frame number)
+    qint32 firstFieldNumber; // = (frameNumber * 2);
+    qint32 secondFieldNumber;
+
+    if (videoParameters.isFieldOrderEvenOdd) {
+        // TBC Field order is even then odd, so we get second field followed by first field
+        secondFieldNumber = (frameNumber * 2) - 1;
+        firstFieldNumber = secondFieldNumber + 1;
+    } else {
+        // TBC Field order is odd then even, so we get first field followed by second field
+        firstFieldNumber = (frameNumber * 2) - 1;
+        secondFieldNumber = firstFieldNumber + 1;
+    }
+
+    // It's possible that the TBC file will start on the wrong field, so we have to allow for
+    // that here by skipping a field if the order isn't right
+    if (ldDecodeMetaData.getField(firstFieldNumber).isEven) {
+        // First field is always odd...
+        firstFieldNumber++;
+        secondFieldNumber++;
+        qDebug() << "MainWindow::getFirstFieldNumber(): TBC file has an extra field at the start (out of field order) - skipping";
+    }
+
+    // Range check the field number
+    if (firstFieldNumber > sourceVideo.getNumberOfAvailableFields()) {
+        qCritical() << "PalCombFilter::getFirstFieldNumber(): First field number exceed the available number of fields!";
+        return 1;
+    }
+
+    // Range check the field number
+    if (secondFieldNumber > sourceVideo.getNumberOfAvailableFields()) {
+        qCritical() << "PalCombFilter::getFirstFieldNumber(): Second field number exceed the available number of fields!";
+        return 2;
+    }
+
+    // Reverse the field ordering for PAL sources
+    if (videoParameters.isSourcePal) return secondFieldNumber;
+
+    return firstFieldNumber;
+}
+
+qint32 PalCombFilter::getSecondFieldNumber(qint32 frameNumber)
+{
+    // Get the video parameter metadata
+    LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
+
+    // Point at the first field in the TBC file (according to the current frame number)
+    qint32 firstFieldNumber; // = (frameNumber * 2);
+    qint32 secondFieldNumber;
+
+    if (videoParameters.isFieldOrderEvenOdd) {
+        // TBC Field order is even then odd, so we get second field followed by first field
+        secondFieldNumber = (frameNumber * 2) - 1;
+        firstFieldNumber = secondFieldNumber + 1;
+    } else {
+        // TBC Field order is odd then even, so we get first field followed by second field
+        firstFieldNumber = (frameNumber * 2) - 1;
+        secondFieldNumber = firstFieldNumber + 1;
+    }
+
+    // It's possible that the TBC file will start on the wrong field, so we have to allow for
+    // that here by skipping a field if the order isn't right
+    if (ldDecodeMetaData.getField(firstFieldNumber).isEven) {
+        // First field is always odd...
+        firstFieldNumber++;
+        secondFieldNumber++;
+    }
+
+    // Range check the field number
+    if (firstFieldNumber > sourceVideo.getNumberOfAvailableFields()) {
+        qCritical() << "PalCombFilter::getSecondFieldNumber(): First field number exceed the available number of fields!";
+        return 1;
+    }
+
+    // Range check the field number
+    if (secondFieldNumber > sourceVideo.getNumberOfAvailableFields()) {
+        qCritical() << "PalCombFilter::getSecondFieldNumber(): Second field number exceed the available number of fields!";
+        return 2;
+    }
+
+    // Reverse the field ordering for PAL sources
+    if (videoParameters.isSourcePal) return firstFieldNumber;
+
+    return secondFieldNumber;
+}
+
 bool PalCombFilter::process(QString inputFileName, QString outputFileName, qint32 startFrame, qint32 length, bool isVP415CropSet)
 {
     qint32 maxThreads = 16;
@@ -139,51 +244,27 @@ bool PalCombFilter::process(QString inputFileName, QString outputFileName, qint3
         if ((frameNumber +  maxThreads) > length + (startFrame - 1)) maxThreads = (length + startFrame) - frameNumber;
 
         QByteArray rgbOutputData;
-        QVector<SourceField*> sourceTopFields;
-        QVector<SourceField*> sourceBottomFields;
+        QVector<SourceField*> sourceFirstFields;
+        QVector<SourceField*> sourceSecondFields;
         QVector<qreal> burstMedianIre;
-        sourceTopFields.resize(maxThreads);
-        sourceBottomFields.resize(maxThreads);
+        sourceFirstFields.resize(maxThreads);
+        sourceSecondFields.resize(maxThreads);
         burstMedianIre.resize(maxThreads);
 
         // Perform filtering
         for (qint32 i = 0; i < maxThreads; i++) {
-            // Determine the top and bottom fields for the frame number
-            qint32 topFieldNumber = ((frameNumber + i) * 2) - 1;
-
-            // It's possible that the first field will not be correct according to the frame ordering
-            // If it's wrong, we increment the initial field number by one
-            if (videoParameters.isFieldOrderEvenOdd) {
-                // Top frame should be even, so if the current topField is odd, increment it by one
-                if (!ldDecodeMetaData.getField(topFieldNumber).isEven) {
-                    topFieldNumber++;
-                    qDebug() << "PalCombFilter::process(): First field is out of frame order - ignoring";
-                }
-            } else {
-                // Top frame should be odd, so if the current topField is even, increment it by one
-                if (ldDecodeMetaData.getField(topFieldNumber).isEven) {
-                    topFieldNumber++;
-                    qDebug() << "PalCombFilter::process(): First field is out of frame order - ignoring";
-                }
-            }
-
-            // Set the bottom field number (which is always topFieldNumber + 1)
-            qint32 bottomFieldNumber = topFieldNumber + 1;
-
-            // Range check the bottom field number (which is always topFieldNumber + 1)
-            if (bottomFieldNumber > sourceVideo.getNumberOfAvailableFields()) {
-                qDebug() << "PalCombFilter::process(): Bottom field number exceed the available number of fields!";
-                break;
-            }
+            // Determine the first and second fields for the frame number
+            qint32 firstFieldNumber = getFirstFieldNumber(frameNumber + i);
+            qint32 secondFieldNumber = getSecondFieldNumber(frameNumber + i);
 
             // Show what we are about to process
-            qDebug() << "PalCombFilter::process(): Frame number" << frameNumber + i << "has a top-field of" << topFieldNumber <<
-                        "and a bottom field of" << bottomFieldNumber;
+            qDebug() << "PalCombFilter::process(): Frame number" << frameNumber + i << "has a first-field of" << firstFieldNumber <<
+                        "and a second field of" << secondFieldNumber;
 
-            sourceTopFields[i] = sourceVideo.getVideoField(topFieldNumber);
-            sourceBottomFields[i] = sourceVideo.getVideoField(bottomFieldNumber);
-            burstMedianIre[i] = ldDecodeMetaData.getField(topFieldNumber).medianBurstIRE;
-            filterThreads[i]->startFilter(sourceTopFields[i]->getFieldData(), sourceBottomFields[i]->getFieldData(), burstMedianIre[i]);
+            sourceFirstFields[i] = sourceVideo.getVideoField(firstFieldNumber);
+            sourceSecondFields[i] = sourceVideo.getVideoField(secondFieldNumber);
+            burstMedianIre[i] = ldDecodeMetaData.getField(firstFieldNumber).medianBurstIRE;
+            filterThreads[i]->startFilter(sourceFirstFields[i]->getFieldData(), sourceSecondFields[i]->getFieldData(), burstMedianIre[i]);
         }
 
         for (qint32 i = 0; i < maxThreads; i++) {
@@ -216,28 +297,4 @@ bool PalCombFilter::process(QString inputFileName, QString outputFileName, qint3
     targetVideo.close();
 
     return true;
-}
-
-// Method to get the available number of frames
-qint32 PalCombFilter::getAvailableNumberOfFrames(void)
-{
-    // Get the video parameter metadata
-    LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
-
-    // Determine the top and bottom fields for the frame number
-    qint32 fieldNumberOffset = 0;
-
-    if (videoParameters.isFieldOrderEvenOdd) {
-        // Top frame should be even, so if the current topField is odd, increment it by one
-        if (!ldDecodeMetaData.getField(1).isEven) {
-            fieldNumberOffset++;
-        }
-    } else {
-        // Top frame should be odd, so if the current topField is even, increment it by one
-        if (ldDecodeMetaData.getField(1).isEven) {
-            fieldNumberOffset++;
-        }
-    }
-
-    return (sourceVideo.getNumberOfAvailableFields() - fieldNumberOffset) / 2;
 }

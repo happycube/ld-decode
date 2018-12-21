@@ -50,6 +50,8 @@ private:
     SourceVideo sourceVideo;
 
     qint32 getAvailableNumberOfFrames(void);
+    qint32 getFirstFieldNumber(qint32 frameNumber);
+    qint32 getSecondFieldNumber(qint32 frameNumber);
 };
 
 #endif // PALCOMBFILTER_H

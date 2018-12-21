@@ -119,7 +119,7 @@ void PalColour::buildLookUpTables(void)
 //
 // Note: This method does not clear the output array before writing to it; if there is garbage
 // in the allocated memory, it will be in the output with the decoded image on top.
-QByteArray PalColour::performDecode(QByteArray topFieldData, QByteArray bottomFieldData, qint32 brightness, qint32 saturation)
+QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray secondFieldData, qint32 brightness, qint32 saturation)
 {
     // Calculate the frame height
     qint32 frameHeight = (videoParameters.fieldHeight * 2) - 1;
@@ -131,7 +131,7 @@ QByteArray PalColour::performDecode(QByteArray topFieldData, QByteArray bottomFi
     // NB 1.75 is nominal scaling factor for full-range digitised composite (with sync at code 0 or 1,
     // blanking at code 64 (40h), and peak white at code 211 (d3h) to give 0-255 RGB.
 
-    if (!topFieldData.isNull() && !bottomFieldData.isNull()) {
+    if (!firstFieldData.isNull() && !secondFieldData.isNull()) {
         // Step 2:
         uint8_t *buffer, *b1, *b2, *b3, *b4, *b5, *b6, Y[MAX_WIDTH];
 
@@ -145,8 +145,8 @@ QByteArray PalColour::performDecode(QByteArray topFieldData, QByteArray bottomFi
         qint32 Vsw; // this will represent the PAL Vswitch state later on...
 
         // Since we're not using Image objects, we need a pointer to the image data
-        uint8_t *topFieldDataPointer = reinterpret_cast<uint8_t*>(topFieldData.data());
-        uint8_t *bottomFieldDataPointer = reinterpret_cast<uint8_t*>(bottomFieldData.data());
+        uint8_t *topFieldDataPointer = reinterpret_cast<uint8_t*>(secondFieldData.data());
+        uint8_t *bottomFieldDataPointer = reinterpret_cast<uint8_t*>(firstFieldData.data());
 
         for (qint32 field = 0; field < 2; field++) {
             for (qint32 fieldLine = 3; fieldLine < (videoParameters.fieldHeight - 3); fieldLine++) {
