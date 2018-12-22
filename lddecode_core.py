@@ -1038,7 +1038,7 @@ class FieldNTSC(Field):
             amed_rising = np.median(np.abs(zc_bursts[l][True]))
             edge = False if amed_falling < amed_rising else True
 
-            if np.abs(amed_falling - amed_rising) < .08:
+            if np.abs(amed_falling - amed_rising) < .05:
                 badlines[l] = True
             elif np.abs(amed_falling - amed_rising) > .1 and edge:
                 if not (l % 2):
@@ -1046,10 +1046,12 @@ class FieldNTSC(Field):
                 else:
                     phase_votes['even'] += 1
 
+        #print(phase_votes)
+
         if phase_votes['even'] > phase_votes['odd']:
-            field14 = False
-        elif phase_votes['even'] < phase_votes['odd']:
             field14 = True
+        elif phase_votes['even'] < phase_votes['odd']:
+            field14 = False
         else:
             print("WARNING: matching # of + crossling lines?")
             field14 = False # use prev field?
