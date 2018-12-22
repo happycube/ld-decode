@@ -42,6 +42,8 @@
 #include "vbidialog.h"
 #include "ntscdialog.h"
 #include "configuration.h"
+#include "../ld-comb-pal/palcolour.h"
+#include "../ld-comb-ntsc/comb.h"
 
 namespace Ui {
 class MainWindow;
@@ -71,6 +73,10 @@ private slots:
     void scanLineChangedSignalHandler(qint32 scanLine);
 
     void on_actionNTSC_triggered();
+
+    void on_combFilterPushButton_clicked();
+
+    void on_sourcePushButton_clicked();
 
 private:
     Ui::MainWindow *ui;

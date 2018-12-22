@@ -31,7 +31,12 @@ SOURCES += \
     aboutdialog.cpp \
     vbidialog.cpp \
     configuration.cpp \
-    ntscdialog.cpp
+    ntscdialog.cpp \
+    ../ld-comb-pal/palcolour.cpp \
+    ../ld-comb-ntsc/comb.cpp \
+    ../ld-comb-ntsc/filter.cpp \
+    ../ld-comb-ntsc/rgb.cpp \
+    ../ld-comb-ntsc/yiq.cpp
 
 HEADERS += \
         mainwindow.h \
@@ -39,7 +44,12 @@ HEADERS += \
     aboutdialog.h \
     vbidialog.h \
     configuration.h \
-    ntscdialog.h
+    ntscdialog.h \
+    ../ld-comb-pal/palcolour.h \
+    ../ld-comb-ntsc/comb.h \
+    ../ld-comb-ntsc/filter.h \
+    ../ld-comb-ntsc/rgb.h \
+    ../ld-comb-ntsc/yiq.h
 
 FORMS += \
         mainwindow.ui \
@@ -66,3 +76,7 @@ else: unix:!android: target.path = /usr/local/bin/
 
 RESOURCES += \
     ld-analyse-resources.qrc
+
+INCLUDEPATH += "/usr/local/include/opencv"
+LIBS += -L"/usr/local/lib"
+LIBS += -lopencv_core -lopencv_imgcodecs -lopencv_highgui -lopencv_imgproc -lopencv_video

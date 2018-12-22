@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>600</width>
-    <height>450</height>
+    <height>475</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -19,7 +19,7 @@
   <property name="minimumSize">
    <size>
     <width>600</width>
-    <height>450</height>
+    <height>475</height>
    </size>
   </property>
   <property name="windowTitle">
@@ -129,7 +129,7 @@
        <property name="geometry">
         <rect>
          <x>10</x>
-         <y>99</y>
+         <y>130</y>
          <width>221</width>
          <height>161</height>
         </rect>
@@ -316,7 +316,7 @@
        <property name="geometry">
         <rect>
          <x>10</x>
-         <y>270</y>
+         <y>300</y>
          <width>221</width>
          <height>101</height>
         </rect>
@@ -411,6 +411,32 @@
          <string>None</string>
         </property>
        </widget>
+      </widget>
+      <widget class="QPushButton" name="combFilterPushButton">
+       <property name="geometry">
+        <rect>
+         <x>10</x>
+         <y>100</y>
+         <width>101</width>
+         <height>24</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>Comb Filter</string>
+       </property>
+      </widget>
+      <widget class="QPushButton" name="sourcePushButton">
+       <property name="geometry">
+        <rect>
+         <x>120</x>
+         <y>100</y>
+         <width>101</width>
+         <height>24</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>Source</string>
+       </property>
       </widget>
      </widget>
     </item>
