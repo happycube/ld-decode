@@ -1276,6 +1276,8 @@ class LDdecode:
         else: # PAL
             fi['isEven'] = not fi['isEven']
 
+        fi['isEven'] = 1 if fi['isEven'] else 0
+
         self.fieldinfo.append(fi)
 
         if self.frameoutput == False:
