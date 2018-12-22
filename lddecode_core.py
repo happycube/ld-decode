@@ -1258,14 +1258,13 @@ class LDdecode:
         if audio is not None and self.outfile_audio is not None:
             self.outfile_audio.write(audio)
             
-        fi = {'isEven': f.isFirstField, 'syncConf': 75, 'seqNo': len(self.fieldinfo) + 1, 'medianBurstIRE': f.burstmedian}
-        #fi['isEven'] = fi['isFirstField'] if f.rf.system == 'NTSC' else not fi['isFirstField']
+        fi = {'isEven': f.vsyncs[0][2] == 0, 'syncConf': 75, 'seqNo': len(self.fieldinfo) + 1, 'medianBurstIRE': f.burstmedian}
 
         if f.rf.system == 'NTSC':
-            if f.isFirstField:
-                fi['fieldPhaseID'] = 1 if f.field14 else 3
-            else:
+            if fi['isEven']:
                 fi['fieldPhaseID'] = 4 if f.field14 else 2
+            else:
+                fi['fieldPhaseID'] = 1 if f.field14 else 3
         else: # PAL
             fi['isEven'] = not fi['isEven']
 
