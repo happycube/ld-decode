@@ -1172,7 +1172,8 @@ class LDdecode:
             self.readlen = self.rf.linelen * 300
             self.outlineoffset = 0
             self.clvfps = 30
-        
+
+        self.prevPhaseID = None
         self.output_lines = (self.rf.SysParams['frame_lines'] // 2) + 1
         
         self.bytes_per_frame = int(self.rf.freq_hz / self.rf.SysParams['FPS'])
@@ -1265,6 +1266,13 @@ class LDdecode:
                 fi['fieldPhaseID'] = 4 if f.field14 else 2
             else:
                 fi['fieldPhaseID'] = 1 if f.field14 else 3
+
+            if self.prevPhaseID:
+                if not ((fi['fieldPhaseID'] == 1 and self.prevPhaseID == 4) or
+                        (fi['fieldPhaseID'] == self.prevPhaseID + 1)):
+                    print('WARNING: NTSC field phaseID sequence mismatch')
+
+            self.prevPhaseID = fi['fieldPhaseID']
         else: # PAL
             fi['isEven'] = not fi['isEven']
 
