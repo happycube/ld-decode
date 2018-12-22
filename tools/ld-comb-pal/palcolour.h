@@ -62,7 +62,7 @@ private:
     double yfilt[4][arraySize + 1];
     double cdiv;
     double ydiv;
-    int32_t refAmpl;
+    double refAmpl;
 
     // Method to build the required look-up tables
     void buildLookUpTables(void);

@@ -45,7 +45,7 @@ PalColour::PalColour(LdDecodeMetaData::VideoParameters videoParametersParam, QOb
 void PalColour::buildLookUpTables(void)
 {
     // Step 1: create sine/cosine lookups
-    refAmpl = 128;    // original scaling for integer math
+    refAmpl = 1.28;
 
     double rad;
     for (qint32 i = 0; i < videoParameters.fieldWidth; i++)
@@ -116,6 +116,7 @@ void PalColour::buildLookUpTables(void)
 }
 
 // Performs a decode of the 16-bit greyscale input frame and produces a RGB 16-16-16-bit output frame
+// with 16 bit processing
 //
 // Note: This method does not clear the output array before writing to it; if there is garbage
 // in the allocated memory, it will be in the output with the decoded image on top.
@@ -133,7 +134,7 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
 
     if (!firstFieldData.isNull() && !secondFieldData.isNull()) {
         // Step 2:
-        uint8_t *buffer, *b1, *b2, *b3, *b4, *b5, *b6, Y[MAX_WIDTH];
+        quint16 Y[MAX_WIDTH];
 
         // were all short ints
         double pu[MAX_WIDTH], qu[MAX_WIDTH], pv[MAX_WIDTH], qv[MAX_WIDTH], py[MAX_WIDTH], qy[MAX_WIDTH];
@@ -144,41 +145,52 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
 
         qint32 Vsw; // this will represent the PAL Vswitch state later on...
 
-        // Since we're not using Image objects, we need a pointer to the image data
-        uint8_t *topFieldDataPointer = reinterpret_cast<uint8_t*>(secondFieldData.data());
-        uint8_t *bottomFieldDataPointer = reinterpret_cast<uint8_t*>(firstFieldData.data());
+        // Since we're not using Image objects, we need a pointer to the 16-bit image data
+        quint16 *topFieldDataPointer = reinterpret_cast<quint16*>(secondFieldData.data());
+        quint16 *bottomFieldDataPointer = reinterpret_cast<quint16*>(firstFieldData.data());
+
+        // Define the 16-bit line buffers
+        quint16 b0[MAX_WIDTH];
+        quint16 b1[MAX_WIDTH];
+        quint16 b2[MAX_WIDTH];
+        quint16 b3[MAX_WIDTH];
+        quint16 b4[MAX_WIDTH];
+        quint16 b5[MAX_WIDTH];
+        quint16 b6[MAX_WIDTH];
 
         for (qint32 field = 0; field < 2; field++) {
             for (qint32 fieldLine = 3; fieldLine < (videoParameters.fieldHeight - 3); fieldLine++) {
                 if (field == 0) {
-                    buffer = topFieldDataPointer + (fieldLine * (videoParameters.fieldWidth * 2)); // Current scan-line
-                    b1 = topFieldDataPointer + ((fieldLine - 1) * (videoParameters.fieldWidth * 2)); // Current scan-line minus 1
-                    b2 = topFieldDataPointer + ((fieldLine + 1) * (videoParameters.fieldWidth * 2)); // Current scan-line plus 1
-                    b3 = topFieldDataPointer + ((fieldLine - 2) * (videoParameters.fieldWidth * 2)); // Current scan-line minus 2
-                    b4 = topFieldDataPointer + ((fieldLine + 2) * (videoParameters.fieldWidth * 2)); // Current scan-line plus 2
-                    b5 = topFieldDataPointer + ((fieldLine - 3) * (videoParameters.fieldWidth * 2)); // Current scan-line minus 3
-                    b6 = topFieldDataPointer + ((fieldLine + 3) * (videoParameters.fieldWidth * 2)); // Current scan-line plus 3
+                    for (qint32 x = 0; x < videoParameters.fieldWidth; x++) {
+                        b0[x] = topFieldDataPointer[ (fieldLine      * (videoParameters.fieldWidth)) + x];
+                        b1[x] = topFieldDataPointer[((fieldLine - 1) * (videoParameters.fieldWidth)) + x];
+                        b2[x] = topFieldDataPointer[((fieldLine + 1) * (videoParameters.fieldWidth)) + x];
+                        b3[x] = topFieldDataPointer[((fieldLine - 2) * (videoParameters.fieldWidth)) + x];
+                        b4[x] = topFieldDataPointer[((fieldLine + 2) * (videoParameters.fieldWidth)) + x];
+                        b5[x] = topFieldDataPointer[((fieldLine - 3) * (videoParameters.fieldWidth)) + x];
+                        b6[x] = topFieldDataPointer[((fieldLine + 3) * (videoParameters.fieldWidth)) + x];
+                    }
                 } else {
-                    buffer = bottomFieldDataPointer + (fieldLine * (videoParameters.fieldWidth * 2)); // Current scan-line
-                    b1 = bottomFieldDataPointer + ((fieldLine - 1) * (videoParameters.fieldWidth * 2)); // Current scan-line minus 1
-                    b2 = bottomFieldDataPointer + ((fieldLine + 1) * (videoParameters.fieldWidth * 2)); // Current scan-line plus 1
-                    b3 = bottomFieldDataPointer + ((fieldLine - 2) * (videoParameters.fieldWidth * 2)); // Current scan-line minus 2
-                    b4 = bottomFieldDataPointer + ((fieldLine + 2) * (videoParameters.fieldWidth * 2)); // Current scan-line plus 2
-                    b5 = bottomFieldDataPointer + ((fieldLine - 3) * (videoParameters.fieldWidth * 2)); // Current scan-line minus 3
-                    b6 = bottomFieldDataPointer + ((fieldLine + 3) * (videoParameters.fieldWidth * 2)); // Current scan-line plus 3
+                    for (qint32 x = 0; x < videoParameters.fieldWidth; x++) {
+                        b0[x] = bottomFieldDataPointer[ (fieldLine      * (videoParameters.fieldWidth)) + x];
+                        b1[x] = bottomFieldDataPointer[((fieldLine - 1) * (videoParameters.fieldWidth)) + x];
+                        b2[x] = bottomFieldDataPointer[((fieldLine + 1) * (videoParameters.fieldWidth)) + x];
+                        b3[x] = bottomFieldDataPointer[((fieldLine - 2) * (videoParameters.fieldWidth)) + x];
+                        b4[x] = bottomFieldDataPointer[((fieldLine + 2) * (videoParameters.fieldWidth)) + x];
+                        b5[x] = bottomFieldDataPointer[((fieldLine - 3) * (videoParameters.fieldWidth)) + x];
+                        b6[x] = bottomFieldDataPointer[((fieldLine + 3) * (videoParameters.fieldWidth)) + x];
+                    }
                 }
 
                 for (qint32 i = 0; i < videoParameters.fieldWidth; i++) {
-                    qint32 sf = (i * 2) + 1; // Simon: Take MSB from source image 16-bit value as 8-bit input (not portable at all)
+                    m[i]=b0[i]*sine[i]; n[i]=b0[i]*cosine[i];
 
-                    m[i]=buffer[sf]*sine[i]; n[i]=buffer[sf]*cosine[i];
-
-                    m1[i]=b1[sf]*sine[i];  n1[i]=b1[sf]*cosine[i];
-                    m2[i]=b2[sf]*sine[i];  n2[i]=b2[sf]*cosine[i];
-                    m3[i]=b3[sf]*sine[i];  n3[i]=b3[sf]*cosine[i];
-                    m4[i]=b4[sf]*sine[i];  n4[i]=b4[sf]*cosine[i];
-                    m5[i]=b5[sf]*sine[i];  n5[i]=b5[sf]*cosine[i];
-                    m6[i]=b6[sf]*sine[i];  n6[i]=b6[sf]*cosine[i];
+                    m1[i]=b1[i]*sine[i];  n1[i]=b1[i]*cosine[i];
+                    m2[i]=b2[i]*sine[i];  n2[i]=b2[i]*cosine[i];
+                    m3[i]=b3[i]*sine[i];  n3[i]=b3[i]*cosine[i];
+                    m4[i]=b4[i]*sine[i];  n4[i]=b4[i]*cosine[i];
+                    m5[i]=b5[i]*sine[i];  n5[i]=b5[i]*cosine[i];
+                    m6[i]=b6[i]*sine[i];  n6[i]=b6[i]*cosine[i];
                 }
 
                 // Find absolute burst phase
@@ -191,10 +203,12 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
 
                 // this is a classic "product-" or "synchronous demodulation" operation. We "detect" the burst relative to the arbitrary sine[] and cosine[] reference phases
                 qint32 bp=0, bq=0, bpo=0, bqo=0;
-                if (videoParameters.isSourcePal)
-                    for (qint32 i=videoParameters.colourBurstStart; i<videoParameters.colourBurstEnd; i++) { bp+=(m[i]-(m3[i]+m4[i])/2)/2; bq+=(n[i]-(n3[i]+n4[i])/2)/2; bpo+=(m2[i]-m1[i])/2; bqo+=(n2[i]-n1[i])/2; }
-                else // if NTSC
-                    for (qint32 i=videoParameters.colourBurstStart; i<videoParameters.colourBurstEnd; i++) { bp+=(m[i]-(m1[i]+m2[i])/2)/2; bq+=(n[i]-(n1[i]+n2[i])/2)/2; }
+                for (qint32 i=videoParameters.colourBurstStart; i<videoParameters.colourBurstEnd; i++) {
+                    bp+=(m[i]-(m3[i]+m4[i])/2)/2;
+                    bq+=(n[i]-(n3[i]+n4[i])/2)/2;
+                    bpo+=(m2[i]-m1[i])/2;
+                    bqo+=(n2[i]-n1[i])/2;
+                }
 
                 bp/=(videoParameters.colourBurstEnd-videoParameters.colourBurstStart);  bq/=(videoParameters.colourBurstEnd-videoParameters.colourBurstStart);  // normalises those sums
                 bpo/=(videoParameters.colourBurstEnd-videoParameters.colourBurstStart); bqo/=(videoParameters.colourBurstEnd-videoParameters.colourBurstStart); // normalises those sums
@@ -202,20 +216,21 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
                 // Generate V-switch phase - I forget exactly why this works, but it's essentially comparing the vector magnitude /difference/ between the
                 // phases of the burst on the present line and previous line to the magnitude of the burst. This may effectively be a dot-product operation...
                 if (((bp-bpo)*(bp-bpo)+(bq-bqo)*(bq-bqo))<(bp*bp+bq*bq)*2) Vsw=1; else Vsw=-1;
-                if (!videoParameters.isSourcePal) Vsw=1; // for NTSC there is no V-switch
 
                 // NB bp and bq will be of the order of 1000. CHECK!!
-                if (videoParameters.isSourcePal) {
-                    bp=(bp-bqo)/2;
-                    bq=(bq+bpo)/2;
-                }
+                bp=(bp-bqo)/2;
+                bq=(bq+bpo)/2;
+
                 // ave the phase of burst from two lines to get -U (reference) phase out (burst phase is (-U +/-V)
                 // if NTSC then leave bp as-is, we take bp,bq as the underlying -U (reference) phase.
 
                 //qint32 norm=sqrt(bp*bp+bq*bq)*refAmpl*16; // 16 empirical scaling factor
                 double norm=sqrt(bp*bp+bq*bq); // TRIAL - 7 Oct 2005
 
-                if (norm<130000) norm=130000;   // kill colour if burst too weak!  magic number 130000 !!! check!
+                // kill colour if burst too weak!  magic number 130000 !!! check!
+                if (norm<(130000 / 128)) {
+                    norm=130000 / 128;
+                }
 
                 // p & q should be sine/cosine components' amplitudes
                 // NB: Multiline averaging/filtering assumes perfect
@@ -235,44 +250,22 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
                     //  subcarrier if *any* phase-shifts!
 
                     qint32 l,r;
-                    if (videoParameters.isSourcePal)
+
+                    for (qint32 b = 0; b <= arraySize; b++)
                     {
-                        for (qint32 b = 0; b <= arraySize; b++)
-                        {
-                            l=i-b; r=i+b;
+                        l=i-b; r=i+b;
 
-                            PU+=(m[r]+m[l])*cfilt[0][b]+(+n1[r]+n1[l]-n2[l]-n2[r])*cfilt[1][b]-(m3[l]+m3[r]+m4[l]+m4[r])*cfilt[2][b]+(-n5[r]-n5[l]+n6[l]+n6[r])*cfilt[3][b];
-                            QU+=(n[r]+n[l])*cfilt[0][b]+(-m1[r]-m1[l]+m2[l]+m2[r])*cfilt[1][b]-(n3[l]+n3[r]+n4[l]+n4[r])*cfilt[2][b]+(+m5[r]+m5[l]-m6[l]-m6[r])*cfilt[3][b];
-                            PV+=(m[r]+m[l])*cfilt[0][b]+(-n1[r]-n1[l]+n2[l]+n2[r])*cfilt[1][b]-(m3[l]+m3[r]+m4[l]+m4[r])*cfilt[2][b]+(+n5[r]+n5[l]-n6[l]-n6[r])*cfilt[3][b];
-                            QV+=(n[r]+n[l])*cfilt[0][b]+(+m1[r]+m1[l]-m2[l]-m2[r])*cfilt[1][b]-(n3[l]+n3[r]+n4[l]+n4[r])*cfilt[2][b]+(-m5[r]-m5[l]+m6[l]+m6[r])*cfilt[3][b];
+                        PU+=(m[r]+m[l])*cfilt[0][b]+(+n1[r]+n1[l]-n2[l]-n2[r])*cfilt[1][b]-(m3[l]+m3[r]+m4[l]+m4[r])*cfilt[2][b]+(-n5[r]-n5[l]+n6[l]+n6[r])*cfilt[3][b];
+                        QU+=(n[r]+n[l])*cfilt[0][b]+(-m1[r]-m1[l]+m2[l]+m2[r])*cfilt[1][b]-(n3[l]+n3[r]+n4[l]+n4[r])*cfilt[2][b]+(+m5[r]+m5[l]-m6[l]-m6[r])*cfilt[3][b];
+                        PV+=(m[r]+m[l])*cfilt[0][b]+(-n1[r]-n1[l]+n2[l]+n2[r])*cfilt[1][b]-(m3[l]+m3[r]+m4[l]+m4[r])*cfilt[2][b]+(+n5[r]+n5[l]-n6[l]-n6[r])*cfilt[3][b];
+                        QV+=(n[r]+n[l])*cfilt[0][b]+(+m1[r]+m1[l]-m2[l]-m2[r])*cfilt[1][b]-(n3[l]+n3[r]+n4[l]+n4[r])*cfilt[2][b]+(-m5[r]-m5[l]+m6[l]+m6[r])*cfilt[3][b];
 
-                            PY+=(m[r]+m[l])*yfilt[0][b]-(m3[l]+m3[r]+m4[l]+m4[r])*yfilt[2][b];  // note omission of yfilt[1] and [3] for PAL
-                            QY+=(n[r]+n[l])*yfilt[0][b]-(n3[l]+n3[r]+n4[l]+n4[r])*yfilt[2][b];  // note omission of yfilt[1] and [3] for PAL
-                        }
-                        pu[i]=PU/cdiv; qu[i]=QU/cdiv;
-                        pv[i]=PV/cdiv; qv[i]=QV/cdiv;
-                        py[i]=PY/ydiv; qy[i]=QY/ydiv;
-                    } else // if NTSC
-                    {
-                        for (qint32 b = 0; b <= arraySize; b++)
-                        {
-                            l=i-b; r=i+b;
-
-                            PU+=(m[r]+m[l])*cfilt[0][b]-(+m1[r]+m1[l]+m2[l]+m2[r])*cfilt[1][b]+(m3[l]+m3[r]+m4[l]+m4[r])*cfilt[2][b]-(m5[r]+m5[l]+m6[l]+m6[r])*cfilt[3][b];
-                            QU+=(n[r]+n[l])*cfilt[0][b]-(+n1[r]+n1[l]+n2[l]+n2[r])*cfilt[1][b]+(n3[l]+n3[r]+n4[l]+n4[r])*cfilt[2][b]-(n5[r]+n5[l]+n6[l]+n6[r])*cfilt[3][b];
-                            PV+=(m[r]+m[l])*cfilt[0][b]-(+m1[r]+m1[l]+m2[l]+m2[r])*cfilt[1][b]+(m3[l]+m3[r]+m4[l]+m4[r])*cfilt[2][b]-(m5[r]+m5[l]+m6[l]+m6[r])*cfilt[3][b];
-                            QV+=(n[r]+n[l])*cfilt[0][b]-(+n1[r]+n1[l]+n2[l]+n2[r])*cfilt[1][b]+(n3[l]+n3[r]+n4[l]+n4[r])*cfilt[2][b]-(n5[r]+n5[l]+n6[l]+n6[r])*cfilt[3][b];
-
-                            // PY+=(m[r]+m[l])*yfilt[0][b]+(m3[l]+m3[r]+m4[l]+m4[r])*yfilt[2][b];  // blurrier for NTSC as luma is in same "phase" as chroma for next-but-one lines
-                            // QY+=(n[r]+n[l])*yfilt[0][b]+(n3[l]+n3[r]+n4[l]+n4[r])*yfilt[2][b];  // blurrier for NTSC as luma is in same "phase" as chroma for next-but-one lines
-                            PY+=(m[r]+m[l])*yfilt[0][b]-(m1[l]+m1[r]+m2[l]+m2[r])*yfilt[1][b];  // for NTSC sharper as luma/chroma out of phase for adjacent lines
-                            QY+=(n[r]+n[l])*yfilt[0][b]-(n1[l]+n1[r]+n2[l]+n2[r])*yfilt[1][b];  // for NTSC sharper as luma/chroma out of phase for adjacent lines
-
-                        }
-                        pu[i]=PU/cdiv; qu[i]=QU/cdiv;
-                        pv[i]=PV/cdiv; qv[i]=QV/cdiv;
-                        py[i]=PY/ydiv; qy[i]=QY/ydiv;
+                        PY+=(m[r]+m[l])*yfilt[0][b]-(m3[l]+m3[r]+m4[l]+m4[r])*yfilt[2][b];  // note omission of yfilt[1] and [3] for PAL
+                        QY+=(n[r]+n[l])*yfilt[0][b]-(n3[l]+n3[r]+n4[l]+n4[r])*yfilt[2][b];  // note omission of yfilt[1] and [3] for PAL
                     }
+                    pu[i]=PU/cdiv; qu[i]=QU/cdiv;
+                    pv[i]=PV/cdiv; qv[i]=QV/cdiv;
+                    py[i]=PY/ydiv; qy[i]=QY/ydiv;
                 }
 
                 // Obtain the black level from the "back porch"
@@ -280,30 +273,25 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
                 // Bkstart and Bkend define the zone of the back-porch, used for blacklevel reference
                 qint32 blacklevel=0;
                 for (qint32 i = videoParameters.blackLevelStart; i < videoParameters.blackLevelEnd; i++) {
-                    qint32 sf = (i * 2) + 1; // Simon: Take MSB from source image 16-bit value as 8-bit input (not portable at all)
-                    blacklevel+=buffer[sf]+b1[sf]+b2[sf]+b3[sf]+b4[sf];
+                    blacklevel+=b0[i]+b1[i]+b2[i]+b3[i]+b4[i];
                 }
-                if (!videoParameters.isSourcePal) blacklevel*=(47.5/40); // NTSC fix for pedestal / set-up!
-                blacklevel/=(videoParameters.blackLevelEnd-videoParameters.blackLevelStart)*5;
+                blacklevel /= (videoParameters.blackLevelEnd - videoParameters.blackLevelStart) * 5;
 
-                qint32 normalise=refAmpl*refAmpl/2;     // refAmpl is the integer sinewave amplitude
+                double normalise = (refAmpl * refAmpl / 2);     // refAmpl is the integer sinewave amplitude
 
                 // Generate the luminance (Y), by filtering out Fsc (by re-synthesising the detected py qy and subtracting), and subtracting the black-level
                 for (qint32 i=videoParameters.activeVideoStart; i < videoParameters.activeVideoEnd; i++) {
-                    qint32 sf = (i * 2) + 1; // Simon: Take MSB from source image 16-bit value as 8-bit input (not portable at all)
-
-                    qint32 tmp = static_cast<qint32>(buffer[sf]-(py[i]*sine[i]+qy[i]*cosine[i])/normalise -blacklevel);
-                    if (tmp<0) tmp=0;
-                    if (tmp>255) tmp=255;
-                    Y[i]=static_cast<uint8_t>(tmp);
+                    qint32 tmp = static_cast<qint32>(b0[i]-(py[i]*sine[i]+qy[i]*cosine[i]) / normalise - blacklevel);
+                    if (tmp < 0) tmp = 0;
+                    if (tmp > 65535) tmp = 65535;
+                    Y[i] = static_cast<quint16>(tmp);
                 }
 
-                // Define scan line pointer to output buffer
-                uint8_t *ptr = reinterpret_cast<uint8_t*>(outputFrame.data() + (((fieldLine * 2) + field) * videoParameters.fieldWidth * 6));
+                // Define scan line pointer to output buffer using 16 bit unsigned words
+                quint16 *ptr = reinterpret_cast<quint16*>(outputFrame.data() + (((fieldLine * 2) + field) * videoParameters.fieldWidth * 6));
 
-                // 'saturation' is a user saturation control, nom. 100%
-                double scaledSaturation = (saturation / 100.0) / (norm / 2.0);  // 'norm' normalises bp and bq to 1
-                // the '2' is arbitrary until I can work out a physical reason for it!
+                // 'saturation' is a user saturation control, nom. 100% - scaled to 16-bit (*256)
+                double scaledSaturation = (saturation / 100.0) / norm;  // 'norm' normalises bp and bq to 1
                 for (qint32 i = videoParameters.activeVideoStart; i < videoParameters.activeVideoEnd; i++)
                 {
                     qint32 R, G, B;
@@ -311,27 +299,28 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
 
                     // the next two lines "rotate" the p&q components (at the arbitrary sine/cosine reference phase) backwards by the
                     // burst phase (relative to the arb phase), in order to recover U and V. The Vswitch is applied to flip the V-phase on alternate lines for PAL
-                    U=-((pu[i]*bp+qu[i]*bq)) *scaledSaturation;
-                    V=-(Vsw*(qv[i]*bp-pv[i]*bq)) *scaledSaturation;
+                    U =- ((pu[i]*bp+qu[i]*bq)) * scaledSaturation;
+                    V =- (Vsw*(qv[i]*bp-pv[i]*bq)) * scaledSaturation;
 
                     // These magic numbers below come from the PAL matrices (I ought to have a reference for these. Tancock and/or Rec.470, I expect)
-                    // Simon: Scaled output RGB to 16-bit values
-                    R=static_cast<qint32>(scaledBrightness*(Y[i]+1.14*V) * 256);          if (R<0) R=0; if (R>65535) R=65535;
-                    G=static_cast<qint32>(scaledBrightness*(Y[i]-0.581*V-0.394*U) * 256); if (G<0) G=0; if (G>65535) G=65535;  // coefficients corrected 10 Sept 2004
-                    B=static_cast<qint32>(scaledBrightness*(Y[i]+2.03*U) * 256);          if (B<0) B=0; if (B>65535) B=65535;
-                    // note however that since U and V have been scaled (relative to the burst), they *should* be "absolute"... (indep of HF gain or overall capture levels)
-                    //  ... if "bright" is used to compensate for capture-levels, then the saturation seems to go amiss.
-                    //  ... possibly "bright" should only multiply Y[i] and not also U and V - or maybe "norm" isn't working as it's supposed to?
-                    //  Needs some detailed analysis!
+                    R = static_cast<qint32>(scaledBrightness * (Y[i] + 1.14 * V));
+                    G = static_cast<qint32>(scaledBrightness * (Y[i] - 0.581 * V - 0.394 * U));
+                    B = static_cast<qint32>(scaledBrightness * (Y[i] + 2.03 * U));
+
+                    // Range check the results
+                    if (R < 0) R = 0;
+                    if (R > 65535) R = 65535;
+                    if (G < 0) G = 0;
+                    if (G > 65535) G = 65535;
+                    if (B < 0) B = 0;
+                    if (B > 65535) B = 65535;
 
                     // Pack the data back into the RGB 16/16/16 buffer
-                    qint32 pp = i * 6;
-                    ptr[pp+0] = static_cast<uint8_t>((R & 0x00FF));        // Red LSB
-                    ptr[pp+1] = static_cast<uint8_t>((R & 0xFF00) >> 8);   // Red MSB
-                    ptr[pp+2] = static_cast<uint8_t>((G & 0x00FF));        // Green LSB
-                    ptr[pp+3] = static_cast<uint8_t>((G & 0xFF00) >> 8);   // Green MSB
-                    ptr[pp+4] = static_cast<uint8_t>((B & 0x00FF));        // Blue LSB
-                    ptr[pp+5] = static_cast<uint8_t>((B & 0xFF00) >> 8);   // Blue MSB
+                    qint32 pp = i * 3; // 3 words per pixel
+                    ptr[pp+0] = static_cast<quint16>(R);
+                    ptr[pp+1] = static_cast<quint16>(G);
+                    ptr[pp+2] = static_cast<quint16>(B);
+
                 }
             }
         }

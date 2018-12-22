@@ -128,7 +128,7 @@ void FilterThread::run()
             // Calculate the saturation level from the burst median IRE
             // Note: This code works as a temporary MTF compensator whilst ld-decode gets
             // real MTF compensation added to it.
-            qreal tSaturation = 125.0 + ((100.0 / 20.0) * (20.0 - burstMedianIre));
+            qreal tSaturation = 100.0 + ((100.0 / 20.0) * (20.0 - burstMedianIre));
 
             // Perform the PALcolour filtering
             outputData = palColour->performDecode(tsFirstFieldData, tsSecondFieldData, 100, static_cast<qint32>(tSaturation));
