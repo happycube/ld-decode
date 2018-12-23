@@ -233,10 +233,10 @@ void Comb::split1D(qint32 currentFrameBuffer)
     bool bottomInvertphase = false;
     bool invertphase = false;
 
-    if (frameBuffer[currentFrameBuffer].firstFieldPhaseID == 1 || frameBuffer[currentFrameBuffer].firstFieldPhaseID == 4)
+    if (frameBuffer[currentFrameBuffer].firstFieldPhaseID == 2 || frameBuffer[currentFrameBuffer].firstFieldPhaseID == 3)
         topInvertphase = true;
 
-    if (frameBuffer[currentFrameBuffer].secondFieldPhaseID == 2 || frameBuffer[currentFrameBuffer].secondFieldPhaseID == 3)
+    if (frameBuffer[currentFrameBuffer].secondFieldPhaseID == 1 || frameBuffer[currentFrameBuffer].secondFieldPhaseID == 4)
         bottomInvertphase = true;
 
     for (qint32 lineNumber = configuration.firstVisibleFrameLine; lineNumber < frameHeight; lineNumber++) {
@@ -417,10 +417,10 @@ void Comb::splitIQ(qint32 currentFrameBuffer)
     bool bottomInvertphase = false;
     bool invertphase = false;
 
-    if (frameBuffer[currentFrameBuffer].firstFieldPhaseID == 1 || frameBuffer[currentFrameBuffer].firstFieldPhaseID == 4)
+    if (frameBuffer[currentFrameBuffer].firstFieldPhaseID == 2 || frameBuffer[currentFrameBuffer].firstFieldPhaseID == 3)
         topInvertphase = true;
 
-    if (frameBuffer[currentFrameBuffer].secondFieldPhaseID == 2 || frameBuffer[currentFrameBuffer].secondFieldPhaseID == 3)
+    if (frameBuffer[currentFrameBuffer].secondFieldPhaseID == 1 || frameBuffer[currentFrameBuffer].secondFieldPhaseID == 4)
         bottomInvertphase = true;
 
     // Clear the target frame YIQ buffer
@@ -657,10 +657,10 @@ void Comb::adjustY(qint32 currentFrameBuffer, QVector<yiqLine_t> &yiqBuffer)
     bool bottomInvertphase = false;
     bool invertphase = false;
 
-    if (frameBuffer[currentFrameBuffer].firstFieldPhaseID == 1 || frameBuffer[currentFrameBuffer].firstFieldPhaseID == 4)
+    if (frameBuffer[currentFrameBuffer].firstFieldPhaseID == 2 || frameBuffer[currentFrameBuffer].firstFieldPhaseID == 3)
         topInvertphase = true;
 
-    if (frameBuffer[currentFrameBuffer].secondFieldPhaseID == 2 || frameBuffer[currentFrameBuffer].secondFieldPhaseID == 3)
+    if (frameBuffer[currentFrameBuffer].secondFieldPhaseID == 1 || frameBuffer[currentFrameBuffer].secondFieldPhaseID == 4)
         bottomInvertphase = true;
 
     // remove color data from baseband (Y)
