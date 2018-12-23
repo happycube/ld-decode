@@ -1069,7 +1069,7 @@ class FieldNTSC(Field):
                 #print('err', l, linelocs_adj[l])
                 badlines[l] = True
             else:
-                linelocs_adj[l] -= np.median(zc_bursts[l][edge]) * lfreq * (1 / self.rf.SysParams['fsc_mhz'])
+                linelocs_adj[l] -= np.median(zc_bursts[l][not edge]) * lfreq * (1 / self.rf.SysParams['fsc_mhz'])
 
         for l in np.where(badlines == True)[0]:
             prevgood = l - 1
