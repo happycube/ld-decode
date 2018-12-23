@@ -1276,7 +1276,8 @@ class LDdecode:
         else: # PAL
             fi['isEven'] = not fi['isEven']
 
-        fi['isEven'] = 1 if fi['isEven'] else 0
+        # XXX: for some reason this became type bool_ which doesn't JSONize
+        fi['isEven'] = True if fi['isEven'] else False
 
         self.fieldinfo.append(fi)
 
