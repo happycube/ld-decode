@@ -1065,7 +1065,7 @@ class FieldNTSC(Field):
             if edge:
                 burstlevel[l] = -burstlevel[l]
 
-            if np.isnan(linelocs_adj[l]) or len(zc_bursts[l][edge]) == 0 or self.linebad[l]:
+            if np.isnan(linelocs_adj[l]) or len(zc_bursts[l][not edge]) == 0 or self.linebad[l]:
                 #print('err', l, linelocs_adj[l])
                 badlines[l] = True
             else:
