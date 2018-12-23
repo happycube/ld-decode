@@ -431,9 +431,9 @@ QImage MainWindow::generateQImage(qint32 firstFieldNumber, qint32 secondFieldNum
             qint32 dp = x * 2;
             uchar pixelValue;
             if (y % 2) {
-                pixelValue = static_cast<uchar>(firstLineData[dp + 1]);
-            } else {
                 pixelValue = static_cast<uchar>(secondLineData[dp + 1]);
+            } else {
+                pixelValue = static_cast<uchar>(firstLineData[dp + 1]);
             }
 
             qint32 xpp = x * 3;

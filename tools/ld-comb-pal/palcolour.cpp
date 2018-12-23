@@ -146,8 +146,8 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
         qint32 Vsw; // this will represent the PAL Vswitch state later on...
 
         // Since we're not using Image objects, we need a pointer to the 16-bit image data
-        quint16 *topFieldDataPointer = reinterpret_cast<quint16*>(secondFieldData.data());
-        quint16 *bottomFieldDataPointer = reinterpret_cast<quint16*>(firstFieldData.data());
+        quint16 *topFieldDataPointer = reinterpret_cast<quint16*>(firstFieldData.data());
+        quint16 *bottomFieldDataPointer = reinterpret_cast<quint16*>(secondFieldData.data());
 
         // Define the 16-bit line buffers
         quint16 b0[MAX_WIDTH];
