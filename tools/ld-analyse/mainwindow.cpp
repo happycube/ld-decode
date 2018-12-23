@@ -334,7 +334,7 @@ void MainWindow::showFrame(qint32 frameNumber, bool showActiveVideoArea, bool hi
             qint32 endx = firstField.dropOuts.endx[dropOutIndex];
             qint32 fieldLine = firstField.dropOuts.fieldLine[dropOutIndex];
 
-            imagePainter.drawLine(startx, ((fieldLine - 1) * 2) + 1, endx, ((fieldLine - 1) * 2) + 1);
+            imagePainter.drawLine(startx, ((fieldLine - 1) * 2), endx, ((fieldLine - 1) * 2));
         }
 
         // Draw the drop out data for the second field
@@ -344,7 +344,7 @@ void MainWindow::showFrame(qint32 frameNumber, bool showActiveVideoArea, bool hi
             qint32 endx = secondField.dropOuts.endx[dropOutIndex];
             qint32 fieldLine = secondField.dropOuts.fieldLine[dropOutIndex];
 
-            imagePainter.drawLine(startx, ((fieldLine - 1) * 2), endx, ((fieldLine - 1) * 2));
+            imagePainter.drawLine(startx, ((fieldLine - 1) * 2) + 1, endx, ((fieldLine - 1) * 2) + 1);
         }
 
         // End the painter object
