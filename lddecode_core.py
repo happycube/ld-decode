@@ -1046,21 +1046,22 @@ class FieldNTSC(Field):
                 else:
                     phase_votes['even'] += 1
 
-        #print(phase_votes)
 
         if phase_votes['even'] > phase_votes['odd']:
-            field14 = False
-        elif phase_votes['even'] < phase_votes['odd']:
             field14 = True
+        elif phase_votes['even'] < phase_votes['odd']:
+            field14 = False
         else:
             print("WARNING: matching # of + crossling lines?")
             field14 = False # use prev field?
             
+        #print(phase_votes, field14)
+
         for l in range(9, 266):
             if (field14 and not (l % 2)) or (not field14 and (l % 2)):
-                edge = True
-            else:
                 edge = False
+            else:
+                edge = True
             
             if edge:
                 burstlevel[l] = -burstlevel[l]
