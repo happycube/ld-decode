@@ -1049,9 +1049,9 @@ class FieldNTSC(Field):
         #print(phase_votes)
 
         if phase_votes['even'] > phase_votes['odd']:
-            field14 = True
-        elif phase_votes['even'] < phase_votes['odd']:
             field14 = False
+        elif phase_votes['even'] < phase_votes['odd']:
+            field14 = True
         else:
             print("WARNING: matching # of + crossling lines?")
             field14 = False # use prev field?
@@ -1065,11 +1065,11 @@ class FieldNTSC(Field):
             if edge:
                 burstlevel[l] = -burstlevel[l]
 
-            if np.isnan(linelocs_adj[l]) or len(zc_bursts[l][not edge]) == 0 or self.linebad[l]:
+            if np.isnan(linelocs_adj[l]) or len(zc_bursts[l][edge]) == 0 or self.linebad[l]:
                 #print('err', l, linelocs_adj[l])
                 badlines[l] = True
             else:
-                linelocs_adj[l] -= np.median(zc_bursts[l][not edge]) * lfreq * (1 / self.rf.SysParams['fsc_mhz'])
+                linelocs_adj[l] -= np.median(zc_bursts[l][edge]) * lfreq * (1 / self.rf.SysParams['fsc_mhz'])
 
         for l in np.where(badlines == True)[0]:
             prevgood = l - 1
