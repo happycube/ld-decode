@@ -73,10 +73,9 @@ private slots:
     void scanLineChangedSignalHandler(qint32 scanLine);
 
     void on_actionNTSC_triggered();
-
     void on_combFilterPushButton_clicked();
-
     void on_sourcePushButton_clicked();
+    void on_frameHorizontalSlider_valueChanged(int value);
 
 private:
     Ui::MainWindow *ui;

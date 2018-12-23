@@ -93,10 +93,13 @@ MainWindow::~MainWindow()
 // Method to update the GUI when a file is loaded
 void MainWindow::updateGuiLoaded(void)
 {
-    // Disable the frame controls
+    // Enable the frame controls
     ui->frameNumberSpinBox->setEnabled(true);
     ui->previousPushButton->setEnabled(true);
     ui->nextPushButton->setEnabled(true);
+    ui->frameHorizontalSlider->setEnabled(true);
+    ui->combFilterPushButton->setEnabled(true);
+    ui->sourcePushButton->setEnabled(true);
 
     // Disable the option check boxes
     ui->highlightDropOutsCheckBox->setEnabled(true);
@@ -107,6 +110,10 @@ void MainWindow::updateGuiLoaded(void)
     ui->frameNumberSpinBox->setMinimum(1);
     ui->frameNumberSpinBox->setMaximum(getAvailableNumberOfFrames());
     ui->frameNumberSpinBox->setValue(currentFrameNumber);
+    ui->frameHorizontalSlider->setMinimum(1);
+    ui->frameHorizontalSlider->setMaximum(getAvailableNumberOfFrames());
+    ui->frameHorizontalSlider->setPageStep(getAvailableNumberOfFrames() / 100);
+    ui->frameHorizontalSlider->setValue(currentFrameNumber);
 
     // Enable the VBI data groupbox
     ui->vbiGroupBox->setEnabled(true);
@@ -132,6 +139,9 @@ void MainWindow::updateGuiUnloaded(void)
     ui->frameNumberSpinBox->setEnabled(false);
     ui->previousPushButton->setEnabled(false);
     ui->nextPushButton->setEnabled(false);
+    ui->frameHorizontalSlider->setEnabled(false);
+    ui->combFilterPushButton->setEnabled(false);
+    ui->sourcePushButton->setEnabled(false);
 
     // Disable the option check boxes
     ui->highlightDropOutsCheckBox->setEnabled(false);
@@ -140,6 +150,7 @@ void MainWindow::updateGuiUnloaded(void)
     // Update the current frame number
     currentFrameNumber = 1;
     ui->frameNumberSpinBox->setValue(currentFrameNumber);
+    ui->frameHorizontalSlider->setValue(currentFrameNumber);
 
     // Allow the next and previous frame buttons to auto-repeat
     ui->previousPushButton->setAutoRepeat(true);
@@ -580,6 +591,7 @@ void MainWindow::on_previousPushButton_clicked()
         currentFrameNumber = 1;
     } else {
         ui->frameNumberSpinBox->setValue(currentFrameNumber);
+        ui->frameHorizontalSlider->setValue(currentFrameNumber);
         showFrame(currentFrameNumber, ui->showActiveVideoCheckBox->isChecked(), ui->highlightDropOutsCheckBox->isChecked());
     }
 }
@@ -592,6 +604,7 @@ void MainWindow::on_nextPushButton_clicked()
         currentFrameNumber = getAvailableNumberOfFrames();
     } else {
         ui->frameNumberSpinBox->setValue(currentFrameNumber);
+        ui->frameHorizontalSlider->setValue(currentFrameNumber);
         showFrame(currentFrameNumber, ui->showActiveVideoCheckBox->isChecked(), ui->highlightDropOutsCheckBox->isChecked());
     }
 }
@@ -603,9 +616,27 @@ void MainWindow::on_frameNumberSpinBox_editingFinished()
         if (ui->frameNumberSpinBox->value() < 1) ui->frameNumberSpinBox->setValue(1);
         if (ui->frameNumberSpinBox->value() > sourceVideo.getNumberOfAvailableFields()) ui->frameNumberSpinBox->setValue(getAvailableNumberOfFrames());
         currentFrameNumber = ui->frameNumberSpinBox->value();
+        ui->frameHorizontalSlider->setValue(currentFrameNumber);
         showFrame(currentFrameNumber, ui->showActiveVideoCheckBox->isChecked(), ui->highlightDropOutsCheckBox->isChecked());
     }
 }
+
+// Frame slider value has changed
+void MainWindow::on_frameHorizontalSlider_valueChanged(int value)
+{
+    (void)value;
+    qDebug() << "MainWindow::on_frameHorizontalSlider_valueChanged(): Called";
+
+    currentFrameNumber = ui->frameHorizontalSlider->value();
+
+    // If the spinbox is enabled, we can update the current frame number
+    // otherwisew we just ignore this
+    if (ui->frameNumberSpinBox->isEnabled()) {
+        ui->frameNumberSpinBox->setValue(currentFrameNumber);
+        showFrame(currentFrameNumber, ui->showActiveVideoCheckBox->isChecked(), ui->highlightDropOutsCheckBox->isChecked());
+    }
+}
+
 
 void MainWindow::on_showActiveVideoCheckBox_clicked()
 {
@@ -829,4 +860,5 @@ void MainWindow::updateOscilloscopeDialogue(qint32 frameNumber, qint32 scanLine)
                                        sourceVideo.getVideoField(secondFieldNumber)->getFieldData(),
                                        videoParameters, scanLine);
 }
+
 
