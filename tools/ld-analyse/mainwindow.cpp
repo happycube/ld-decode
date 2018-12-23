@@ -117,6 +117,7 @@ void MainWindow::updateGuiLoaded(void)
     // Enable menu options
     ui->actionLine_scope->setEnabled(true);
     ui->actionVBI->setEnabled(true);
+    ui->actionNTSC->setEnabled(true);
 
     // Show the current frame
     showFrame(currentFrameNumber, ui->showActiveVideoCheckBox->isChecked(), ui->highlightDropOutsCheckBox->isChecked());
@@ -163,6 +164,7 @@ void MainWindow::updateGuiUnloaded(void)
     // Disable menu options
     ui->actionLine_scope->setEnabled(false);
     ui->actionVBI->setEnabled(false);
+    ui->actionNTSC->setEnabled(false);
 
     // Hide the displayed frame
     hideFrame();
@@ -385,9 +387,9 @@ void MainWindow::showFrame(qint32 frameNumber, bool showActiveVideoArea, bool hi
         ui->even1VbiLabel->setText("0x" + QString::number(firstField.vbi.vbi17, 16));
         ui->even2VbiLabel->setText("0x" + QString::number(firstField.vbi.vbi18, 16));
     } else {
-        ui->even0VbiLabel->setText("Not present");
-        ui->even1VbiLabel->setText("Not present");
-        ui->even2VbiLabel->setText("Not present");
+        ui->even0VbiLabel->setText("No metadata");
+        ui->even1VbiLabel->setText("No metadata");
+        ui->even2VbiLabel->setText("No metadata");
     }
 
     // Add the second field VBI data to the dialogue
@@ -396,9 +398,9 @@ void MainWindow::showFrame(qint32 frameNumber, bool showActiveVideoArea, bool hi
         ui->odd1VbiLabel->setText("0x" + QString::number(secondField.vbi.vbi17, 16));
         ui->odd2VbiLabel->setText("0x" + QString::number(secondField.vbi.vbi18, 16));
     } else {
-        ui->odd0VbiLabel->setText("Not present");
-        ui->odd1VbiLabel->setText("Not present");
-        ui->odd2VbiLabel->setText("Not present");
+        ui->odd0VbiLabel->setText("No metadata");
+        ui->odd1VbiLabel->setText("No metadata");
+        ui->odd2VbiLabel->setText("No metadata");
     }
 
     // Update the VBI dialogue

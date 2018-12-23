@@ -42,9 +42,9 @@ void NtscDialog::updateNtsc(LdDecodeMetaData::Field firstField, LdDecodeMetaData
     qDebug() << "NtscDialog::updateNtsc(): Called";
 
     if (!firstField.ntsc.inUse && !secondField.ntsc.inUse) {
-        ui->fmCodeDataLabel->setText("Invalid");
-        ui->fieldFlagLabel->setText("Invalid");
-        ui->whiteFlagLabel->setText("Invalid");
+        ui->fmCodeDataLabel->setText("No metadata");
+        ui->fieldFlagLabel->setText("No metadata");
+        ui->whiteFlagLabel->setText("No metadata");
 
         return;
     }

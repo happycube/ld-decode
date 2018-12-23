@@ -77,7 +77,7 @@
     </rect>
    </property>
    <property name="text">
-    <string>Unavailable</string>
+    <string>No metadata</string>
    </property>
    <property name="alignment">
     <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
@@ -93,7 +93,7 @@
     </rect>
    </property>
    <property name="text">
-    <string>Unavailable</string>
+    <string>No metadata</string>
    </property>
    <property name="alignment">
     <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
@@ -109,7 +109,7 @@
     </rect>
    </property>
    <property name="text">
-    <string>Unavailable</string>
+    <string>No metadata</string>
    </property>
    <property name="alignment">
     <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>

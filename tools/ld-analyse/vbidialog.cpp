@@ -43,33 +43,33 @@ void VbiDialog::updateVbi(LdDecodeMetaData::Field firstField, LdDecodeMetaData::
 
     if (!firstField.vbi.inUse && !secondField.vbi.inUse) {
         // VBI data is not valid
-        ui->discTypeLabel->setText("Invalid");
-        ui->leadInLabel->setText("Invalid");
-        ui->leadOutLabel->setText("Invalid");
-        ui->userCodeLabel->setText("Invalid");
-        ui->pictureNumberLabel->setText("Invalid");
-        ui->pictureStopCodeLabel->setText("Invalid");
-        ui->chapterNumberLabel->setText("Invalid");
-        ui->clvTimeCodeLabel->setText("Invalid");
-        ui->clvPictureNumberLabel->setText("Invalid");
+        ui->discTypeLabel->setText("No metadata");
+        ui->leadInLabel->setText("No metadata");
+        ui->leadOutLabel->setText("No metadata");
+        ui->userCodeLabel->setText("No metadata");
+        ui->pictureNumberLabel->setText("No metadata");
+        ui->pictureStopCodeLabel->setText("No metadata");
+        ui->chapterNumberLabel->setText("No metadata");
+        ui->clvTimeCodeLabel->setText("No metadata");
+        ui->clvPictureNumberLabel->setText("No metadata");
 
-        ui->cxLabel->setText("Invalid");
-        ui->discSizeLabel->setText("Invalid");
-        ui->discSideLabel->setText("Invalid");
-        ui->teletextLabel->setText("Invalid");
-        ui->programmeDumpLabel->setText("Invalid");
-        ui->fmFmMultiplexLabel->setText("Invalid");
-        ui->digitalLabel->setText("Invalid");
-        ui->parityCorrectLabel->setText("Invalid");
-        ui->soundModeLabel->setText("Invalid");
+        ui->cxLabel->setText("No metadata");
+        ui->discSizeLabel->setText("No metadata");
+        ui->discSideLabel->setText("No metadata");
+        ui->teletextLabel->setText("No metadata");
+        ui->programmeDumpLabel->setText("No metadata");
+        ui->fmFmMultiplexLabel->setText("No metadata");
+        ui->digitalLabel->setText("No metadata");
+        ui->parityCorrectLabel->setText("No metadata");
+        ui->soundModeLabel->setText("No metadata");
 
-        ui->cxLabelAm2->setText("Invalid");
-        ui->discSizeLabelAm2->setText("Invalid");
-        ui->discSideLabelAm2->setText("Invalid");
-        ui->teletextLabelAm2->setText("Invalid");
-        ui->copyAllowedLabelAm2->setText("Invalid");
-        ui->standardVideoLabelAm2->setText("Invalid");
-        ui->soundModeLabelAm2->setText("Invalid");
+        ui->cxLabelAm2->setText("No metadata");
+        ui->discSizeLabelAm2->setText("No metadata");
+        ui->discSideLabelAm2->setText("No metadata");
+        ui->teletextLabelAm2->setText("No metadata");
+        ui->copyAllowedLabelAm2->setText("No metadata");
+        ui->standardVideoLabelAm2->setText("No metadata");
+        ui->soundModeLabelAm2->setText("No metadata");
 
         return;
     }

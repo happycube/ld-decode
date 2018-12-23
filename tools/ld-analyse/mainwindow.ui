@@ -195,7 +195,7 @@
          </rect>
         </property>
         <property name="text">
-         <string>Not present</string>
+         <string>No metadata</string>
         </property>
        </widget>
        <widget class="QLabel" name="even1VbiLabel">
@@ -208,7 +208,7 @@
          </rect>
         </property>
         <property name="text">
-         <string>Not present</string>
+         <string>No metadata</string>
         </property>
        </widget>
        <widget class="QLabel" name="even2VbiLabel">
@@ -221,7 +221,7 @@
          </rect>
         </property>
         <property name="text">
-         <string>Not present</string>
+         <string>No metadata</string>
         </property>
        </widget>
        <widget class="QLabel" name="label_4">
@@ -282,7 +282,7 @@
          </rect>
         </property>
         <property name="text">
-         <string>Not present</string>
+         <string>No metadata</string>
         </property>
        </widget>
        <widget class="QLabel" name="odd1VbiLabel">
@@ -295,7 +295,7 @@
          </rect>
         </property>
         <property name="text">
-         <string>Not present</string>
+         <string>No metadata</string>
         </property>
        </widget>
        <widget class="QLabel" name="odd2VbiLabel">
@@ -308,7 +308,7 @@
          </rect>
         </property>
         <property name="text">
-         <string>Not present</string>
+         <string>No metadata</string>
         </property>
        </widget>
       </widget>
