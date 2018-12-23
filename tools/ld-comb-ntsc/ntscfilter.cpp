@@ -37,8 +37,7 @@ qint32 NtscFilter::getAvailableNumberOfFrames(void)
 
     // It's possible that the TBC file will start on the wrong field, so we have to allow for
     // that here by skipping a field if the order isn't right
-    if (ldDecodeMetaData.getVideoParameters().isFieldOrderEvenOdd && !ldDecodeMetaData.getField(1).isEven) frameOffset++;
-    else if (!ldDecodeMetaData.getVideoParameters().isFieldOrderEvenOdd && ldDecodeMetaData.getField(1).isEven) frameOffset++;
+    if (!ldDecodeMetaData.getField(1).isFirstField) frameOffset++;
 
     return (sourceVideo.getNumberOfAvailableFields() / 2) - frameOffset;
 }
@@ -46,27 +45,13 @@ qint32 NtscFilter::getAvailableNumberOfFrames(void)
 // Method to get the first and second field numbers based on the frame number
 qint32 NtscFilter::getFirstFieldNumber(qint32 frameNumber)
 {
-    // Get the video parameter metadata
-    LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
-
     // Point at the first field in the TBC file (according to the current frame number)
-    qint32 firstFieldNumber; // = (frameNumber * 2);
-    qint32 secondFieldNumber;
-
-    if (videoParameters.isFieldOrderEvenOdd) {
-        // TBC Field order is even then odd, so we get second field followed by first field
-        secondFieldNumber = (frameNumber * 2) - 1;
-        firstFieldNumber = secondFieldNumber + 1;
-    } else {
-        // TBC Field order is odd then even, so we get first field followed by second field
-        firstFieldNumber = (frameNumber * 2) - 1;
-        secondFieldNumber = firstFieldNumber + 1;
-    }
+    qint32 firstFieldNumber = (frameNumber * 2) - 1;
+    qint32 secondFieldNumber = firstFieldNumber + 1;
 
     // It's possible that the TBC file will start on the wrong field, so we have to allow for
     // that here by skipping a field if the order isn't right
-    if (ldDecodeMetaData.getField(firstFieldNumber).isEven) {
-        // First field is always odd...
+    if (!ldDecodeMetaData.getField(firstFieldNumber).isFirstField) {
         firstFieldNumber++;
         secondFieldNumber++;
         qDebug() << "NtscFilter::getFirstFieldNumber(): TBC file has an extra field at the start (out of field order) - skipping";
@@ -80,46 +65,30 @@ qint32 NtscFilter::getFirstFieldNumber(qint32 frameNumber)
 
     // Range check the field number
     if (secondFieldNumber > sourceVideo.getNumberOfAvailableFields()) {
-        qCritical() << "NtscFilter::getSecondFieldNumber(): Second field number exceed the available number of fields!";
+        qCritical() << "NtscFilter::getFirstFieldNumber(): Second field number exceed the available number of fields!";
         return 2;
     }
-
-    // Reverse the field ordering for PAL sources
-    if (videoParameters.isSourcePal) return secondFieldNumber;
 
     return firstFieldNumber;
 }
 
 qint32 NtscFilter::getSecondFieldNumber(qint32 frameNumber)
 {
-    // Get the video parameter metadata
-    LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
-
     // Point at the first field in the TBC file (according to the current frame number)
-    qint32 firstFieldNumber; // = (frameNumber * 2);
-    qint32 secondFieldNumber;
-
-    if (videoParameters.isFieldOrderEvenOdd) {
-        // TBC Field order is even then odd, so we get second field followed by first field
-        secondFieldNumber = (frameNumber * 2) - 1;
-        firstFieldNumber = secondFieldNumber + 1;
-    } else {
-        // TBC Field order is odd then even, so we get first field followed by second field
-        firstFieldNumber = (frameNumber * 2) - 1;
-        secondFieldNumber = firstFieldNumber + 1;
-    }
+    qint32 firstFieldNumber = (frameNumber * 2) - 1;
+    qint32 secondFieldNumber = firstFieldNumber + 1;
 
     // It's possible that the TBC file will start on the wrong field, so we have to allow for
     // that here by skipping a field if the order isn't right
-    if (ldDecodeMetaData.getField(firstFieldNumber).isEven) {
-        // First field is always odd...
+    if (!ldDecodeMetaData.getField(firstFieldNumber).isFirstField) {
         firstFieldNumber++;
         secondFieldNumber++;
+        qDebug() << "NtscFilter::getSecondFieldNumber(): TBC file has an extra field at the start (out of field order) - skipping";
     }
 
     // Range check the field number
     if (firstFieldNumber > sourceVideo.getNumberOfAvailableFields()) {
-        qCritical() << "NtscFilter::getFirstFieldNumber(): First field number exceed the available number of fields!";
+        qCritical() << "NtscFilter::getSecondFieldNumber(): First field number exceed the available number of fields!";
         return 1;
     }
 
@@ -128,9 +97,6 @@ qint32 NtscFilter::getSecondFieldNumber(qint32 frameNumber)
         qCritical() << "NtscFilter::getSecondFieldNumber(): Second field number exceed the available number of fields!";
         return 2;
     }
-
-    // Reverse the field ordering for PAL sources
-    if (videoParameters.isSourcePal) return firstFieldNumber;
 
     return secondFieldNumber;
 }

@@ -70,8 +70,8 @@ bool NtscProcess::process(QString inputFileName)
 
         // Get the existing field data from the metadata
         LdDecodeMetaData::Field field = ldDecodeMetaData.getField(fieldNumber);
-        if (field.isEven) qInfo() << "Processing field" << fieldNumber << "(Even)";
-        else  qInfo() << "Processing field" << fieldNumber << "(Odd)";
+        if (field.isFirstField) qInfo() << "Processing field" << fieldNumber << "(first)";
+        else  qInfo() << "Processing field" << fieldNumber << "(second)";
 
         // Get the 40-bit FM coded data from the field lines
         fmDecode = fmCode.fmDecoder(getActiveVideoLine(sourceField, 10, videoParameters), videoParameters);

@@ -67,8 +67,6 @@ bool LdDecodeMetaData::read(QString fileName)
 
         metaData.videoParameters.numberOfSequentialFields = jsonVideoParameters["numberOfSequentialFields"].toInt();
         metaData.videoParameters.isSourcePal = jsonVideoParameters["isSourcePal"].toBool();
-        metaData.videoParameters.isFieldOrderValid = jsonVideoParameters["isFieldOrderValid"].toBool();
-        metaData.videoParameters.isFieldOrderEvenOdd = jsonVideoParameters["isFieldOrderEvenOdd"].toBool();
 
         metaData.videoParameters.colourBurstStart = jsonVideoParameters["colourBurstStart"].toInt();
         metaData.videoParameters.colourBurstEnd = jsonVideoParameters["colourBurstEnd"].toInt();
@@ -116,7 +114,7 @@ bool LdDecodeMetaData::read(QString fileName)
 
             fieldData.seqNo = field["seqNo"].toInt();
 
-            fieldData.isEven = field["isEven"].toBool();
+            fieldData.isFirstField = field["isFirstField"].toBool();
             fieldData.syncConf = field["syncConf"].toInt();
             fieldData.medianBurstIRE = field["medianBurstIRE"].toDouble();
             fieldData.fieldPhaseID = field["fieldPhaseID"].toInt();
@@ -328,8 +326,6 @@ bool LdDecodeMetaData::write(QString fileName)
     // Write the video paramters
     jsonVideoParameters.insert("numberOfSequentialFields", metaData.videoParameters.numberOfSequentialFields);
     jsonVideoParameters.insert("isSourcePal", metaData.videoParameters.isSourcePal);
-    jsonVideoParameters.insert("isFieldOrderValid", metaData.videoParameters.isFieldOrderValid);
-    jsonVideoParameters.insert("isFieldOrderEvenOdd", metaData.videoParameters.isFieldOrderEvenOdd);
 
     jsonVideoParameters.insert("colourBurstStart", metaData.videoParameters.colourBurstStart);
     jsonVideoParameters.insert("colourBurstEnd", metaData.videoParameters.colourBurstEnd);
@@ -372,7 +368,7 @@ bool LdDecodeMetaData::write(QString fileName)
 
             field.insert("seqNo", metaData.fields[fieldNumber].seqNo);
 
-            field.insert("isEven", metaData.fields[fieldNumber].isEven);
+            field.insert("isFirstField", metaData.fields[fieldNumber].isFirstField);
             field.insert("syncConf", metaData.fields[fieldNumber].syncConf);
             field.insert("medianBurstIRE", metaData.fields[fieldNumber].medianBurstIRE);
             field.insert("fieldPhaseID", metaData.fields[fieldNumber].fieldPhaseID);

@@ -123,8 +123,6 @@ public:
         qint32 numberOfSequentialFields;
 
         bool isSourcePal;
-        bool isFieldOrderValid;
-        bool isFieldOrderEvenOdd;
 
         qint32 colourBurstStart;
         qint32 colourBurstEnd;
@@ -177,7 +175,7 @@ public:
     // Field metadata definition
     struct Field {
         qint32 seqNo;       // Note: This is the unique primary-key
-        bool isEven;
+        bool isFirstField;
         qint32 syncConf;
         qreal medianBurstIRE;
         qint32 fieldPhaseID;

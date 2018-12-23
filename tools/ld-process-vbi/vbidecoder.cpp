@@ -61,8 +61,8 @@ bool VbiDecoder::process(QString inputFileName)
 
         // Get the existing field data from the metadata
         LdDecodeMetaData::Field field = ldDecodeMetaData.getField(fieldNumber);
-        if (field.isEven) qDebug() << "VbiDecoder::process(): Getting metadata for field" << fieldNumber << "(Even)";
-        else  qDebug() << "VbiDecoder::process(): Getting metadata for field" << fieldNumber << "(Odd)";
+        if (field.isFirstField) qDebug() << "VbiDecoder::process(): Getting metadata for field" << fieldNumber << "(first)";
+        else  qDebug() << "VbiDecoder::process(): Getting metadata for field" << fieldNumber << "(second)";
 
         // Determine the 16-bit zero-crossing point
         qint32 zcPoint = videoParameters.white16bIre - videoParameters.black16bIre;
