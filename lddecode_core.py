@@ -1260,13 +1260,17 @@ class LDdecode:
         if audio is not None and self.outfile_audio is not None:
             self.outfile_audio.write(audio)
             
-        fi = {'isEven': f.vsyncs[0][2] == 0, 'syncConf': 75, 'seqNo': len(self.fieldinfo) + 1, 'medianBurstIRE': f.burstmedian}
+        # isFirstField has been compared against line 6 PAL and line 9 NTSC
+        fi = {'isFirstField': f.vsyncs[0][2] == (1 if f.rf.system == 'NTSC' else 0), 
+              'syncConf': 75, 
+              'seqNo': len(self.fieldinfo) + 1, 
+              'medianBurstIRE': f.burstmedian}
 
         if f.rf.system == 'NTSC':
-            if fi['isEven']:
-                fi['fieldPhaseID'] = 4 if f.field14 else 2
-            else:
+            if fi['isFirstField']:
                 fi['fieldPhaseID'] = 1 if f.field14 else 3
+            else:
+                fi['fieldPhaseID'] = 4 if f.field14 else 2
 
             if self.prevPhaseID:
                 if not ((fi['fieldPhaseID'] == 1 and self.prevPhaseID == 4) or
@@ -1274,11 +1278,6 @@ class LDdecode:
                     print('WARNING: NTSC field phaseID sequence mismatch')
 
             self.prevPhaseID = fi['fieldPhaseID']
-        else: # PAL
-            fi['isEven'] = not fi['isEven']
-
-        # XXX: for some reason this became type bool_ which doesn't JSONize
-        fi['isEven'] = True if fi['isEven'] else False
 
         self.fieldinfo.append(fi)
 
