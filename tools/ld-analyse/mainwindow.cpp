@@ -701,7 +701,7 @@ void MainWindow::on_combFilterPushButton_clicked()
         // Calculate the saturation level from the burst median IRE
         // Note: This code works as a temporary MTF compensator whilst ld-decode gets
         // real MTF compensation added to it.
-        qreal tSaturation = 100.0 + ((100.0 / 20.0) * (20.0 - ldDecodeMetaData.getField(firstFieldNumber).medianBurstIRE));
+        qreal tSaturation = 125.0 + ((100.0 / 20.0) * (20.0 - ldDecodeMetaData.getField(firstFieldNumber).medianBurstIRE));
 
         // Perform the PALcolour filtering (output is RGB 16-16-16)
         PalColour palColour(videoParameters);
