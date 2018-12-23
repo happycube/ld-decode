@@ -1279,6 +1279,10 @@ class LDdecode:
 
             self.prevPhaseID = fi['fieldPhaseID']
 
+        # XXX: straight not returns unserializable bool_
+        fi['isFirstField'] = True if fi['isFirstField'] else False
+        fi['isEven'] = False if fi['isFirstField'] else True
+
         self.fieldinfo.append(fi)
 
         if self.frameoutput == False:
