@@ -845,21 +845,26 @@ class Field:
         self.linecode = []
         self.isFirstField = False
         self.cavFrame = None
+        self.isCLV = False
+        
         for l in self.rf.SysParams['philips_codelines']:
             self.linecode.append(self.decodephillipscode(l))
             if self.linecode[-1] is not None:
                 print('lc', l, hex(self.linecode[-1]))
                 # For either CAV or CLV, 0xfxxxx means this is the first field
-                # All the data we *really* need here (for now) is the CAV frame # 
                 if (self.linecode[-1] & 0xf00000) == 0xf00000:
                     self.isFirstField = True
 
-                    fnum = 0
-                    for y in range(16, -1, -4):
-                        fnum *= 10
-                        fnum += self.linecode[-1] >> y & 0x0f
-                    
-                    self.cavFrame = fnum if fnum < 80000 else fnum - 80000
+                    if  (self.linecode[-1] & 0xf0dd00) != 0xf0dd00: # CAV
+                        # All the data we *really* need here (for now) is the CAV frame # 
+                        fnum = 0
+                        for y in range(16, -1, -4):
+                            fnum *= 10
+                            fnum += self.linecode[-1] >> y & 0x0f
+                        
+                        self.cavFrame = fnum if fnum < 80000 else fnum - 80000
+                else:
+                    self.isCLV = True
             
         self.valid = True
         self.tbcstart = self.peaklist[self.vsyncs[1][1]-10]
