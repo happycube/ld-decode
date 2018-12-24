@@ -608,13 +608,14 @@ class Field:
             # see if determine_field (partially) failed.  use hints from input and other data
             if va[i][2] == 0:
                 va[i][1] = -1
-                print("vsync vote needed", i)
+                self.sync_confidence = 50
                 if (i < len(vsyncs) - 1) and vsyncs[i + 1][2] != 0:
                     va[i][2] = -va[i + 1][2]
                 elif (i >= 1) and vsyncs[i - 1][2] != 0:
                     va[i][2] = -va[i - 1][2]
                     
             if va[i][1] <= 0:
+                self.sync_confidence = 25
                 # override the earlier last-good-line detection
                 # XXX: not tested on PAL failures
                 if self.rf.system == 'PAL':
@@ -807,7 +808,9 @@ class Field:
         self.dspicture = None
         self.dsaudio = None
         self.audio_next_offset = audio_offset
-        
+
+        self.sync_confidence = 75
+
         if len(self.vsyncs) == 0:
             self.nextfieldoffset = start + (self.rf.linelen * 200)
             #print("way too short at", start)
@@ -846,7 +849,7 @@ class Field:
         self.isFirstField = False
         self.cavFrame = None
         self.isCLV = False
-        
+
         for l in self.rf.SysParams['philips_codelines']:
             self.linecode.append(self.decodephillipscode(l))
             if self.linecode[-1] is not None:
@@ -1267,7 +1270,7 @@ class LDdecode:
             
         # isFirstField has been compared against line 6 PAL and line 9 NTSC
         fi = {'isFirstField': f.vsyncs[0][2] == (1 if f.rf.system == 'NTSC' else 0), 
-              'syncConf': 75, 
+              'syncConf': f.sync_confidence, 
               'seqNo': len(self.fieldinfo) + 1, 
               'medianBurstIRE': f.burstmedian}
 
