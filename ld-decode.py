@@ -20,7 +20,7 @@ parser.add_argument('outfile', metavar='outfile', type=str, help='base name for 
 parser.add_argument('-s', '--start', metavar='start', type=int, default=0, help='rough jump to frame n of capture (default is 0)')
 #parser.add_argument('-S', '--seek', metavar='seek', type=int, default=-1, help='seek to frame n of capture')
 #parser.add_argument('-E', '--end', metavar='end', type=int, default=-1, help='cutting: last frame')
-parser.add_argument('-l', '--length', metavar='length', type=int, help='limit length to n frames')
+parser.add_argument('-l', '--length', metavar='length', type=int, default = 1, help='limit length to n frames')
 parser.add_argument('-p', '--pal', dest='pal', action='store_true', help='source is in PAL format')
 parser.add_argument('-n', '--ntsc', dest='ntsc', action='store_true', help='source is in NTSC format')
 #parser.add_argument('-c', '--cut', dest='cut', action='store_true', help='cut (to r16) instead of decode')
