@@ -1200,6 +1200,7 @@ class LDdecode:
         self.fieldinfo = []
         
     def roughseek(self, fieldnr):
+        self.prevPhaseID = None
         self.fdoffset = fieldnr * self.bytes_per_field
     
     def checkMTF(self, field):
@@ -1230,9 +1231,9 @@ class LDdecode:
         
         if not f.valid:
             if len(f.peaklist) < 100: 
-                # No recognizable data - jump 10 seconds to get past possible spinup
-                print("No recognizable data - jumping 10 seconds")
-                return None, self.rf.freq_hz * 10
+                # No recognizable data - jump 30 seconds to get past possible spinup
+                print("No recognizable data - jumping 30 seconds")
+                return None, self.rf.freq_hz * 30
             elif len(f.vsyncs) == 0:
                 # Some recognizable data - possibly from a player seek
                 print("Bad data - jumping one second")
@@ -1337,14 +1338,19 @@ class LDdecode:
         if self.frameoutput == False and squelch == False:
             self.outfile_video.write(picture)
 
+        self.frameNumber = None
+        self.earlyCLV = False
+
         if self.firstfield is not None:
             # process VBI frame info data
             self.frameNumber = self.decodeFrameNumber(self.firstfield, f)
+            self.earlyCLV = False
 
             rawloc = np.floor((self.readloc / self.bytes_per_field) / 2)
             if f.isCLV and self.frameNumber is not None:
                 print("file frame %d CLV timecode %d:%.2d.%.2d frame %d" % (rawloc, self.clvMinutes, self.clvSeconds, self.clvFrameNum, self.frameNumber))
             elif f.isCLV: # early CLV
+                self.earlyCLV = True
                 print("file frame %d early-CLV minute %d" % (rawloc, self.clvMinutes))
             else:
                 print("file frame %d CAV frame %d" % (rawloc, self.frameNumber))
@@ -1413,6 +1419,53 @@ class LDdecode:
         jout['fields'] = self.fieldinfo.copy()
 
         return jout
+
+    # seek support function
+    def seek_getframenr(self, start):
+        self.roughseek(start * 2)
+        done = False
+
+        while done == False:
+            f, offset = self.decodefield()
+            self.curfield = f
+            self.fdoffset += offset
+
+            if f is not None and f.valid:
+                self.processfield(f, squelch=True)
+
+                if self.earlyCLV:
+                    print("ERROR: Cannot seek in early CLV disks w/o timecode")
+                    done = True
+                    
+                    return None
+                elif self.frameNumber is not None:
+                    #print(self.frameNumber)
+                    done = True
+                    
+                    return self.frameNumber
+        
+        return False
+        
+    def seek(self, start, target):
+        cur = start
+        
+        print("Beginning seek")
+        
+        for retries in range(5):
+            fnr = self.seek_getframenr(cur)
+            if fnr is None:
+                return None
+            else:
+                if fnr == target: # or (self.curfield.isCLV and np.abs(fnr - target) < 2):
+                    print("Finished seek")
+                    self.roughseek(cur * 2)
+                    return cur
+                else:
+                    cur += (target - fnr) - 0
+                
+        print("Finished seeking")
+        return cur - 0
+
 
 # Helper functions that rely on the classes above go here
 
