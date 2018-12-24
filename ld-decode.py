@@ -66,7 +66,7 @@ ldd.roughseek(firstframe * 2)
 if system == 'NTSC' and not args.ntscj:
     ldd.blackIRE = 7.5
     
-print(ldd.blackIRE)
+#print(ldd.blackIRE)
 
 if args.seek != -1:
     ldd.seek(firstframe, args.seek)
