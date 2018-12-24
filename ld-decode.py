@@ -27,6 +27,7 @@ parser.add_argument('-n', '--ntsc', dest='ntsc', action='store_true', help='sour
 parser.add_argument('-m', '--MTF', metavar='mtf', type=float, default=1.0, help='mtf compensation multiplier')
 parser.add_argument('--MTF_offset', metavar='mtf_offset', type=float, default=0.0, help='mtf compensation offset')
 parser.add_argument('-f', '--frame', dest='frame', action='store_true', help='output frames')
+parser.add_argument('--NTSCJ', dest='ntscj', action='store_true', help='source is in NTSC-J (IRE 0 black) format')
 
 args = parser.parse_args()
 print(args)
@@ -61,6 +62,11 @@ foutput = False if not args.frame else True
     
 ldd = LDdecode(filename, outname, loader, frameoutput=foutput, system=system)
 ldd.roughseek(firstframe * 2)
+
+if system == 'NTSC' and not args.ntscj:
+    ldd.blackIRE = 7.5
+    
+print(ldd.blackIRE)
 
 if args.seek != -1:
     ldd.seek(firstframe, args.seek)

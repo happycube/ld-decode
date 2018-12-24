@@ -1164,6 +1164,8 @@ class LDdecode:
     def __init__(self, fname_in, fname_out, freader, analog_audio = True, frameoutput = False, system = 'NTSC'):
         self.infile = open(fname_in, 'rb')
         self.freader = freader
+
+        self.blackIRE = 0
         
         self.outfile_video = open(fname_out + '.tbc', 'wb')
         #self.outfile_json = open(fname_out + '.json', 'wb')
@@ -1392,7 +1394,7 @@ class LDdecode:
         vp['samplesPerUs'] = vp['sampleRate'] / 1000000
         spu = vp['samplesPerUs']
 
-        vp['black16bIre'] = np.float(f.hz_to_ooutput(f.rf.iretohz(0)))
+        vp['black16bIre'] = np.float(f.hz_to_ooutput(f.rf.iretohz(self.blackIRE)))
         vp['white16bIre'] = np.float(f.hz_to_ooutput(f.rf.iretohz(100)))
 
         if f.rf.system == 'NTSC':
