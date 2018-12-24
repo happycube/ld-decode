@@ -1281,7 +1281,7 @@ class LDdecode:
 
         # XXX: straight not returns unserializable bool_
         fi['isFirstField'] = True if fi['isFirstField'] else False
-        fi['isEven'] = False if fi['isFirstField'] else True
+        #fi['isEven'] = False if fi['isFirstField'] else True
 
         self.fieldinfo.append(fi)
 
@@ -1316,8 +1316,6 @@ class LDdecode:
         vp['numberOfSequentialFields'] = len(self.fieldinfo)
         
         vp['isSourcePal'] = True if f.rf.system == 'PAL' else False
-        vp['isFieldOrderEvenOdd'] = False if f.rf.system == 'PAL' else True
-        vp['isFieldOrderValid'] = True
 
         vp['fsc'] = int(f.rf.SysParams['fsc_mhz'] * 1000000)
         vp['fieldWidth'] = f.rf.SysParams['outlinelen']
