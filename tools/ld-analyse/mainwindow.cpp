@@ -61,10 +61,14 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     // Set up the NTSC dialogue
     ntscDialog = new NtscDialog(this);
 
+    // Set up the video metadata dialogue
+    videoMetadataDialog = new VideoMetadataDialog(this);
+
     // Load the window geometry from the configuration
     restoreGeometry(configuration->getMainWindowGeometry());
     vbiDialog->restoreGeometry(configuration->getVbiDialogGeometry());
     ntscDialog->restoreGeometry(configuration->getNtscDialogGeometry());
+    videoMetadataDialog->restoreGeometry(configuration->getVideoMetadataDialogGeometry());
     oscilloscopeDialog->restoreGeometry(configuration->getOscilloscopeDialogGeometry());
 
     // Set up the GUI
@@ -82,6 +86,7 @@ MainWindow::~MainWindow()
     configuration->setMainWindowGeometry(saveGeometry());
     configuration->setVbiDialogGeometry(vbiDialog->saveGeometry());
     configuration->setNtscDialogGeometry(ntscDialog->saveGeometry());
+    configuration->setVideoMetadataDialogGeometry(videoMetadataDialog->saveGeometry());
     configuration->setOscilloscopeDialogGeometry(oscilloscopeDialog->saveGeometry());
     configuration->writeConfiguration();
 
@@ -104,8 +109,6 @@ void MainWindow::updateGuiLoaded(void)
     // Enable the option check boxes
     ui->highlightDropOutsCheckBox->setEnabled(true);
     ui->showActiveVideoCheckBox->setEnabled(true);
-    if (ldDecodeMetaData.getVideoParameters().isSourcePal) ui->ntscjCheckBox->setEnabled(false);
-    else ui->ntscjCheckBox->setEnabled(true);
 
     // Update the current frame number
     currentFrameNumber = 1;
@@ -127,6 +130,7 @@ void MainWindow::updateGuiLoaded(void)
     ui->actionLine_scope->setEnabled(true);
     ui->actionVBI->setEnabled(true);
     ui->actionNTSC->setEnabled(true);
+    ui->actionVideo_metadata->setEnabled(true);
 
     // Show the current frame
     showFrame(currentFrameNumber, ui->showActiveVideoCheckBox->isChecked(), ui->highlightDropOutsCheckBox->isChecked());
@@ -148,7 +152,6 @@ void MainWindow::updateGuiUnloaded(void)
     // Disable the option check boxes
     ui->highlightDropOutsCheckBox->setEnabled(false);
     ui->showActiveVideoCheckBox->setEnabled(false);
-    ui->ntscjCheckBox->setEnabled(false);
 
     // Update the current frame number
     currentFrameNumber = 1;
@@ -179,6 +182,7 @@ void MainWindow::updateGuiUnloaded(void)
     ui->actionLine_scope->setEnabled(false);
     ui->actionVBI->setEnabled(false);
     ui->actionNTSC->setEnabled(false);
+    ui->actionVideo_metadata->setEnabled(false);
 
     // Hide the displayed frame
     hideFrame();
@@ -381,6 +385,9 @@ void MainWindow::showFrame(qint32 frameNumber, bool showActiveVideoArea, bool hi
 
     // Update the NTSC dialogue
     ntscDialog->updateNtsc(firstField, secondField);
+
+    // Update the metadata dialogue
+    videoMetadataDialog->updateMetaData(videoParameters);
 
     // Add the QImage to the QLabel in the dialogue
     ui->frameViewerLabel->clear();
@@ -617,6 +624,11 @@ void MainWindow::on_actionAbout_ld_analyse_triggered()
     aboutDialog->show();
 }
 
+// Display video metadata dialogue triggered
+void MainWindow::on_actionVideo_metadata_triggered()
+{
+    videoMetadataDialog->show();
+}
 
 void MainWindow::on_actionVBI_triggered()
 {
@@ -699,11 +711,6 @@ void MainWindow::on_combFilterPushButton_clicked()
         // Set the IRE levels
         configuration.blackIre = videoParameters.black16bIre;
         configuration.whiteIre = videoParameters.white16bIre;
-
-        // Temporary fix for NTSC_J - To be removed!
-        if (ui->ntscjCheckBox->isChecked() && !ldDecodeMetaData.getVideoParameters().isSourcePal) {
-            configuration.blackIre = 40 * 256;
-        }
 
         // Update the comb filter object's configuration
         comb.setConfiguration(configuration);
@@ -820,5 +827,6 @@ void MainWindow::updateOscilloscopeDialogue(qint32 frameNumber, qint32 scanLine)
                                        sourceVideo.getVideoField(secondFieldNumber)->getFieldData(),
                                        videoParameters, scanLine);
 }
+
 
 

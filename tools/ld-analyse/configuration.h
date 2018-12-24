@@ -56,6 +56,8 @@ public:
     QByteArray getNtscDialogGeometry(void);
     void setOscilloscopeDialogGeometry(QByteArray oscilloscopeDialogGeometry);
     QByteArray getOscilloscopeDialogGeometry(void);
+    void setVideoMetadataDialogGeometry(QByteArray videoMetadataDialogGeometry);
+    QByteArray getVideoMetadataDialogGeometry(void);
 
 signals:
 
@@ -74,6 +76,7 @@ private:
         QByteArray mainWindowGeometry;
         QByteArray vbiDialogGeometry;
         QByteArray ntscDialogGeometry;
+        QByteArray videoMetadataDialogGeometry;
         QByteArray oscilloscopeDialogGeometry;
     };
 

@@ -45,7 +45,7 @@ public:
 
     bool process(QString inputFileName, QString outputFileName, qint32 startFrame, qint32 length, qint32 filterDepth = 2,
                  bool blackAndWhite = false, bool adaptive2d = true, bool opticalFlow = true,
-                 bool cropOutput = false);
+                 bool cropOutput = false, qint32 overrideBlack16Ire = -1);
 
 signals:
 
