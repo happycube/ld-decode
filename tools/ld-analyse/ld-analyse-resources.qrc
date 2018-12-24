@@ -1,0 +1,7 @@
+<RCC>
+    <qresource prefix="/icons">
+        <file>Graphics/ld-analyse logo 64px.png</file>
+        <file>Graphics/ld-analyse logo 128px.png</file>
+        <file>Graphics/ld-analyse logo 256px.png</file>
+    </qresource>
+</RCC>

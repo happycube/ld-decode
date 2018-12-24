@@ -1,0 +1,8 @@
+# ralf includes a bit of extra data on each side - will be useful for seeking and limits later
+python3 lddecode.py ralf_side1_6x_2018-10-09_21-41-14.lds ralf -s 7 -l 244
+#
+# -I 0 sets ire to 0, HE-010 is a Japanese LD
+cat ralf.tbc | ./comb -d 3 -I 0 > ralf.rgb
+
+# This can be improved still - not all players like this interlaced MPEG-4 format
+rm ralf.avi ; ffmpeg -f s16le -ar 48k -ac 2 -i ralf.pcm -f rawvideo -r 30000/1001 -pix_fmt rgb48 -s 744x480 -i ralf.rgb -b:v 15000k -aspect 4:3 -vcodec mpeg4 -flags +ilme+ildct ralf.avi

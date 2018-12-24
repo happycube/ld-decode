@@ -1,0 +1,54 @@
+ld-decode v0.5 (Beta 0) README/Release Notes:
+
+	This is a suite of programs that together decode Laserdiscs with 
+analog audio.
+
+Programs included:
+
+- ld-decoder.py converts the raw RF into non-time base corrected NTSC video.
+
+- audio(-g2.cxx) decodes audio.  This will be rolled into ld-decoder.py fully
+in the near? future.
+
+- ntsc-g2.cxx (ntsc) carries out time base correction of both audio and video.
+
+- cx(-expander) is an early pass at CX audio decoding/expansion.
+
+- comb(-g2.cxx) is a 3D-capable comb filter.  It also decodes the vertical info
+on Laserdiscs, mostly to support CAV frame mode. 
+
+Helpers:
+
+- encodei and encodep script all the above programs so you can actually make 
+.avi's et al.
+
+- FDLS.py is my version of Greg Berchin's FDLS filter creation algorithm.  I use
+it to adjust the deemphasis filter strength from 1/3 to -10Db (.31something)
+
+- filtermaker.py uses scipy's signal stuff (and FDLS) to generate the filters the
+C program uses. 
+
+	The code itself is still a convoluted mess.  Hopefully that will be
+fixed for 0.6/beta 1. :)
+
+	All code except FDLS.py (under scipy license) are licensed under LGPL2.
+
+---
+
+	I use cxadc-linux3 with a VGA amplifier box (which I figured has
+sufficient bandwidth to capture the 14-15mhz Laserdisc RF signal) to
+capture the raw LD data.  A future project may provide an easier way to
+do this.
+
+	To use:
+
+encode[i or p] (raw data file) (index) (length) (filemame)
+
+encodep uses the white flag data embedded into many CAV releases to produce
+a 24P output.  It also upscales to 1440x1080 for better recompression with
+YouTube.
+
+Example used with Rock Adventure side 2:
+
+sh encodep-mp4 /mnt2/ld/rock-side2h.raw 110000000 37787734272 rock2
+
