@@ -101,9 +101,11 @@ void MainWindow::updateGuiLoaded(void)
     ui->combFilterPushButton->setEnabled(true);
     ui->sourcePushButton->setEnabled(true);
 
-    // Disable the option check boxes
+    // Enable the option check boxes
     ui->highlightDropOutsCheckBox->setEnabled(true);
     ui->showActiveVideoCheckBox->setEnabled(true);
+    if (ldDecodeMetaData.getVideoParameters().isSourcePal) ui->ntscjCheckBox->setEnabled(false);
+    else ui->ntscjCheckBox->setEnabled(true);
 
     // Update the current frame number
     currentFrameNumber = 1;
@@ -146,6 +148,7 @@ void MainWindow::updateGuiUnloaded(void)
     // Disable the option check boxes
     ui->highlightDropOutsCheckBox->setEnabled(false);
     ui->showActiveVideoCheckBox->setEnabled(false);
+    ui->ntscjCheckBox->setEnabled(false);
 
     // Update the current frame number
     currentFrameNumber = 1;
@@ -696,6 +699,11 @@ void MainWindow::on_combFilterPushButton_clicked()
         // Set the IRE levels
         configuration.blackIre = videoParameters.black16bIre;
         configuration.whiteIre = videoParameters.white16bIre;
+
+        // Temporary fix for NTSC_J - To be removed!
+        if (ui->ntscjCheckBox->isChecked()) {
+            configuration.blackIre = 40 * 256;
+        }
 
         // Update the comb filter object's configuration
         comb.setConfiguration(configuration);
