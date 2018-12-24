@@ -608,13 +608,14 @@ class Field:
             # see if determine_field (partially) failed.  use hints from input and other data
             if va[i][2] == 0:
                 va[i][1] = -1
-                print("vsync vote needed", i)
+                self.sync_confidence = 50
                 if (i < len(vsyncs) - 1) and vsyncs[i + 1][2] != 0:
                     va[i][2] = -va[i + 1][2]
                 elif (i >= 1) and vsyncs[i - 1][2] != 0:
                     va[i][2] = -va[i - 1][2]
                     
             if va[i][1] <= 0:
+                self.sync_confidence = 25
                 # override the earlier last-good-line detection
                 # XXX: not tested on PAL failures
                 if self.rf.system == 'PAL':
@@ -807,7 +808,9 @@ class Field:
         self.dspicture = None
         self.dsaudio = None
         self.audio_next_offset = audio_offset
-        
+
+        self.sync_confidence = 75
+
         if len(self.vsyncs) == 0:
             self.nextfieldoffset = start + (self.rf.linelen * 200)
             #print("way too short at", start)
@@ -845,21 +848,30 @@ class Field:
         self.linecode = []
         self.isFirstField = False
         self.cavFrame = None
+        self.isCLV = False
+
         for l in self.rf.SysParams['philips_codelines']:
             self.linecode.append(self.decodephillipscode(l))
+            
             if self.linecode[-1] is not None:
-                print('lc', l, hex(self.linecode[-1]))
+                #print('lc', l, hex(self.linecode[-1]))
                 # For either CAV or CLV, 0xfxxxx means this is the first field
-                # All the data we *really* need here (for now) is the CAV frame # 
                 if (self.linecode[-1] & 0xf00000) == 0xf00000:
                     self.isFirstField = True
 
-                    fnum = 0
-                    for y in range(16, -1, -4):
-                        fnum *= 10
-                        fnum += self.linecode[-1] >> y & 0x0f
-                    
-                    self.cavFrame = fnum if fnum < 80000 else fnum - 80000
+                    if  (self.linecode[-1] & 0xf0dd00) != 0xf0dd00: # CAV
+                        # All the data we *really* need here (for now) is the CAV frame # 
+                        fnum = 0
+                        for y in range(16, -1, -4):
+                            fnum *= 10
+                            fnum += self.linecode[-1] >> y & 0x0f
+                        
+                        self.cavFrame = fnum if fnum < 80000 else fnum - 80000
+                    else:
+                        self.isCLV = True
+
+                if self.linecode[-1] == 0x87FFFF:
+                    self.isCLV = True
             
         self.valid = True
         self.tbcstart = self.peaklist[self.vsyncs[1][1]-10]
@@ -1128,7 +1140,7 @@ class FieldNTSC(Field):
         super(FieldNTSC, self).__init__(*args, **kwargs)
         
         if not self.valid:
-            print('not valid')
+            #print('not valid')
             return
 
         try:
@@ -1188,6 +1200,7 @@ class LDdecode:
         self.fieldinfo = []
         
     def roughseek(self, fieldnr):
+        self.prevPhaseID = None
         self.fdoffset = fieldnr * self.bytes_per_field
     
     def checkMTF(self, field):
@@ -1203,11 +1216,11 @@ class LDdecode:
     
     def decodefield(self):
         ''' returns field object if valid, and the offset to the next decode '''
-        readloc = self.fdoffset - self.rf.blockcut
-        if readloc < 0:
-            readloc = 0
+        self.readloc = self.fdoffset - self.rf.blockcut
+        if self.readloc < 0:
+            self.readloc = 0
             
-        indata = self.freader(self.infile, readloc, self.readlen)
+        indata = self.freader(self.infile, self.readloc, self.readlen)
         
         rawdecode = self.rf.demod(indata, self.rf.blockcut, self.readlen, self.mtf_level)
         if rawdecode is None:
@@ -1218,9 +1231,9 @@ class LDdecode:
         
         if not f.valid:
             if len(f.peaklist) < 100: 
-                # No recognizable data - jump 10 seconds to get past possible spinup
-                print("No recognizable data - jumping 10 seconds")
-                return None, self.rf.freq_hz * 10
+                # No recognizable data - jump 30 seconds to get past possible spinup
+                print("No recognizable data - jumping 30 seconds")
+                return None, self.rf.freq_hz * 30
             elif len(f.vsyncs) == 0:
                 # Some recognizable data - possibly from a player seek
                 print("Bad data - jumping one second")
@@ -1228,7 +1241,7 @@ class LDdecode:
             return f, f.nextfieldoffset                
         else:
             self.audio_offset = f.audio_next_offset
-            print(f.isFirstField, f.cavFrame)
+            #print(f.isFirstField, f.cavFrame)
             
         return f, f.nextfieldoffset
         
@@ -1253,16 +1266,54 @@ class LDdecode:
             self.processfield(f)
             
         return f
+
+    # For now only decode frame # to help with seeking
+    def decodeFrameNumber(self, f1, f2):
+        # CLV
+        self.clvMinutes = None
+        self.clvSeconds = None
+        self.clvFrameNum = None
+        # CAV
+        fnum = None
+        for l in f1.linecode + f2.linecode:
+            if l is None:
+                continue
+            #print(hex(l))
+ 
+            if (l & 0xf0dd00) == 0xf0dd00: # CLV minutes/hours
+                self.clvMinutes = (l & 0xf) + (((l >> 4) & 0xf) * 10) + (((l >> 16) & 0xf) * 60)
+                #print('CLV', mins)
+            elif (l & 0xf00000) == 0xf00000: # CAV frame
+                # All the data we *really* need here (for now) is the CAV frame # 
+                fnum = 0
+                for y in range(16, -1, -4):
+                    fnum *= 10
+                    fnum += l >> y & 0x0f
+                    
+                    fnum = fnum if fnum < 80000 else fnum - 80000
+            elif (l & 0x80f000) == 0x80e000: # CLV picture #
+                self.clvSeconds = (((l >> 16) & 0xf) - 10) * 10
+                self.clvSeconds += ((l >> 8) & 0xf)
+
+                self.clvFrameNum = ((l >> 4) & 0xf) * 10
+                self.clvFrameNum += (l & 0xf)
+
+        if fnum: # CAV
+            return fnum
+        elif self.clvSeconds is not None and self.clvFrameNum is not None: # CLV with frame metadata
+            return (((self.clvMinutes * 60) + self.clvSeconds) * self.clvfps) + self.clvFrameNum
+        else:
+            return None #seeking won't work w/minutes only
             
-    def processfield(self, f):
+    def processfield(self, f, squelch = False):
         picture, audio = f.downscale(linesout = self.output_lines, lineoffset = self.outlineoffset, final=True)
             
-        if audio is not None and self.outfile_audio is not None:
+        if squelch == False and audio is not None and self.outfile_audio is not None:
             self.outfile_audio.write(audio)
             
         # isFirstField has been compared against line 6 PAL and line 9 NTSC
         fi = {'isFirstField': f.vsyncs[0][2] == (1 if f.rf.system == 'NTSC' else 0), 
-              'syncConf': 75, 
+              'syncConf': f.sync_confidence, 
               'seqNo': len(self.fieldinfo) + 1, 
               'medianBurstIRE': f.burstmedian}
 
@@ -1281,17 +1332,37 @@ class LDdecode:
 
         # XXX: straight not returns unserializable bool_
         fi['isFirstField'] = True if fi['isFirstField'] else False
-        #fi['isEven'] = False if fi['isFirstField'] else True
 
         self.fieldinfo.append(fi)
 
-        if self.frameoutput == False:
+        if self.frameoutput == False and squelch == False:
             self.outfile_video.write(picture)
-        else:
-            if self.firstfield is not None:
-                self.writeframe(self.firstfield, picture)
-            elif f.isFirstField:
-                self.firstfield = picture
+
+        self.frameNumber = None
+        self.earlyCLV = False
+
+        if self.firstfield is not None:
+            # process VBI frame info data
+            self.frameNumber = self.decodeFrameNumber(self.firstfield, f)
+            self.earlyCLV = False
+
+            rawloc = np.floor((self.readloc / self.bytes_per_field) / 2)
+            if f.isCLV and self.frameNumber is not None:
+                print("file frame %d CLV timecode %d:%.2d.%.2d frame %d" % (rawloc, self.clvMinutes, self.clvSeconds, self.clvFrameNum, self.frameNumber))
+            elif f.isCLV: # early CLV
+                self.earlyCLV = True
+                print("file frame %d early-CLV minute %d" % (rawloc, self.clvMinutes))
+            else:
+                print("file frame %d CAV frame %d" % (rawloc, self.frameNumber))
+
+            if self.frameoutput == True and squelch == False:
+                self.writeframe(self.firstfield_picture, picture)
+
+            self.firstfield = None
+            self.firstfield_picture = None
+        elif f.isFirstField:
+            self.firstfield = f
+            self.firstfield_picture = picture
                 
     def writeframe(self, f1, f2):
         linecount = self.rf.SysParams['frame_lines']
@@ -1304,8 +1375,6 @@ class LDdecode:
 
         # need to copy in the last line here, i think it's different ntsc/pal
         self.outfile_video.write(combined)
-
-        self.firstfield = None
 
     def build_json(self, f):
         jout = {}
@@ -1351,49 +1420,49 @@ class LDdecode:
 
         return jout
 
-# Helper functions that rely on the classes above go here
+    # seek support function
+    def seek_getframenr(self, start):
+        self.roughseek(start * 2)
+        done = False
 
-def findframe(infile, rf, target, nextsample = 0):
-    ''' Locate the sample # of the target frame. '''
+        while done == False:
+            f, offset = self.decodefield()
+            self.curfield = f
+            self.fdoffset += offset
 
-    return
+            if f is not None and f.valid:
+                self.processfield(f, squelch=True)
 
-    framer = Framer(rf, full_decode = False)
-    samples_per_frame = int(rf.freq_hz / rf.SysParams['FPS'])
-    framer.vbi = {'framenr': None}
-    
-    iscav = False
-    
-    # First find a stable frame to seek *from*
-    retry = 5
-    while framer.vbi['framenr'] is None and retry:
-        rv = framer.readframe(infile, nextsample, CAV=False)
-        print(rv, framer.vbi)
-
-        # because of 29.97fps, there may be missing frames
-        if framer.vbi['isclv']:
-            tolerance = 1
-        else:
-            tolerance = 0
-            iscav = True
-            
-        # Jump forward ~10 seconds on failure
-        nextsample = rv[2] + (rf.freq_hz * 10)
-        retry -= 1
+                if self.earlyCLV:
+                    print("ERROR: Cannot seek in early CLV disks w/o timecode")
+                    done = True
+                    
+                    return None
+                elif self.frameNumber is not None:
+                    #print(self.frameNumber)
+                    done = True
+                    
+                    return self.frameNumber
         
-    if retry == 0 and framer.vbi['framenr'] is None:
-        print("SEEK ERROR: Unable to find a usable frame")
-        return None
-
-    retry = 5
-    while np.abs(target - framer.vbi['framenr']) > tolerance and retry:
-        offset = (samples_per_frame * (target - 1 - framer.vbi['framenr'])) 
-        nextsample = rv[2] + offset
-        rv = framer.readframe(infile, nextsample, CAV=iscav)
-        print(framer.vbi)
-        retry -= 1
-
-    if np.abs(target - framer.vbi['framenr']) > tolerance:
-        print("SEEK WARNING: seeked to frame {0} instead of {1}".format(framer.vbi['framenr'], target))
+        return False
         
-    return nextsample
+    def seek(self, start, target):
+        cur = start
+        
+        print("Beginning seek")
+        
+        for retries in range(5):
+            fnr = self.seek_getframenr(cur)
+            if fnr is None:
+                return None
+            else:
+                if fnr == target: # or (self.curfield.isCLV and np.abs(fnr - target) < 2):
+                    print("Finished seek")
+                    self.roughseek(cur * 2)
+                    return cur
+                else:
+                    cur += (target - fnr) - 0
+                
+        print("Finished seeking")
+        return cur - 0
+
