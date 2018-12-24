@@ -701,7 +701,7 @@ void MainWindow::on_combFilterPushButton_clicked()
         configuration.whiteIre = videoParameters.white16bIre;
 
         // Temporary fix for NTSC_J - To be removed!
-        if (ui->ntscjCheckBox->isChecked()) {
+        if (ui->ntscjCheckBox->isChecked() && !ldDecodeMetaData.getVideoParameters().isSourcePal) {
             configuration.blackIre = 40 * 256;
         }
 
