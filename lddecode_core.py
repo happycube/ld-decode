@@ -852,8 +852,9 @@ class Field:
 
         for l in self.rf.SysParams['philips_codelines']:
             self.linecode.append(self.decodephillipscode(l))
+            
             if self.linecode[-1] is not None:
-                print('lc', l, hex(self.linecode[-1]))
+                #print('lc', l, hex(self.linecode[-1]))
                 # For either CAV or CLV, 0xfxxxx means this is the first field
                 if (self.linecode[-1] & 0xf00000) == 0xf00000:
                     self.isFirstField = True
@@ -866,7 +867,10 @@ class Field:
                             fnum += self.linecode[-1] >> y & 0x0f
                         
                         self.cavFrame = fnum if fnum < 80000 else fnum - 80000
-                else:
+                    else:
+                        self.isCLV = True
+
+                if self.linecode[-1] == 0x87FFFF:
                     self.isCLV = True
             
         self.valid = True
@@ -1136,7 +1140,7 @@ class FieldNTSC(Field):
         super(FieldNTSC, self).__init__(*args, **kwargs)
         
         if not self.valid:
-            print('not valid')
+            #print('not valid')
             return
 
         try:
@@ -1211,11 +1215,11 @@ class LDdecode:
     
     def decodefield(self):
         ''' returns field object if valid, and the offset to the next decode '''
-        readloc = self.fdoffset - self.rf.blockcut
-        if readloc < 0:
-            readloc = 0
+        self.readloc = self.fdoffset - self.rf.blockcut
+        if self.readloc < 0:
+            self.readloc = 0
             
-        indata = self.freader(self.infile, readloc, self.readlen)
+        indata = self.freader(self.infile, self.readloc, self.readlen)
         
         rawdecode = self.rf.demod(indata, self.rf.blockcut, self.readlen, self.mtf_level)
         if rawdecode is None:
@@ -1236,7 +1240,7 @@ class LDdecode:
             return f, f.nextfieldoffset                
         else:
             self.audio_offset = f.audio_next_offset
-            print(f.isFirstField, f.cavFrame)
+            #print(f.isFirstField, f.cavFrame)
             
         return f, f.nextfieldoffset
         
@@ -1261,11 +1265,49 @@ class LDdecode:
             self.processfield(f)
             
         return f
+
+    # For now only decode frame # to help with seeking
+    def decodeFrameNumber(self, f1, f2):
+        # CLV
+        self.clvMinutes = None
+        self.clvSeconds = None
+        self.clvFrameNum = None
+        # CAV
+        fnum = None
+        for l in f1.linecode + f2.linecode:
+            if l is None:
+                continue
+            #print(hex(l))
+ 
+            if (l & 0xf0dd00) == 0xf0dd00: # CLV minutes/hours
+                self.clvMinutes = (l & 0xf) + (((l >> 4) & 0xf) * 10) + (((l >> 16) & 0xf) * 60)
+                #print('CLV', mins)
+            elif (l & 0xf00000) == 0xf00000: # CAV frame
+                # All the data we *really* need here (for now) is the CAV frame # 
+                fnum = 0
+                for y in range(16, -1, -4):
+                    fnum *= 10
+                    fnum += l >> y & 0x0f
+                    
+                    fnum = fnum if fnum < 80000 else fnum - 80000
+            elif (l & 0x80f000) == 0x80e000: # CLV picture #
+                self.clvSeconds = (((l >> 16) & 0xf) - 10) * 10
+                self.clvSeconds += ((l >> 8) & 0xf)
+
+                self.clvFrameNum = ((l >> 4) & 0xf) * 10
+                self.clvFrameNum += (l & 0xf)
+
+        if fnum: # CAV
+            return fnum
+        elif self.clvSeconds is not None and self.clvFrameNum is not None: # CLV with frame metadata
+            return (((self.clvMinutes * 60) + self.clvSeconds) * self.clvfps) + self.clvFrameNum
+        else:
+            return None #seeking won't work w/minutes only
             
-    def processfield(self, f):
+    def processfield(self, f, squelch = False):
         picture, audio = f.downscale(linesout = self.output_lines, lineoffset = self.outlineoffset, final=True)
             
-        if audio is not None and self.outfile_audio is not None:
+        if squelch == False and audio is not None and self.outfile_audio is not None:
             self.outfile_audio.write(audio)
             
         # isFirstField has been compared against line 6 PAL and line 9 NTSC
@@ -1289,17 +1331,32 @@ class LDdecode:
 
         # XXX: straight not returns unserializable bool_
         fi['isFirstField'] = True if fi['isFirstField'] else False
-        #fi['isEven'] = False if fi['isFirstField'] else True
 
         self.fieldinfo.append(fi)
 
-        if self.frameoutput == False:
+        if self.frameoutput == False and squelch == False:
             self.outfile_video.write(picture)
-        else:
-            if self.firstfield is not None:
-                self.writeframe(self.firstfield, picture)
-            elif f.isFirstField:
-                self.firstfield = picture
+
+        if self.firstfield is not None:
+            # process VBI frame info data
+            self.frameNumber = self.decodeFrameNumber(self.firstfield, f)
+
+            rawloc = np.floor((self.readloc / self.bytes_per_field) / 2)
+            if f.isCLV and self.frameNumber is not None:
+                print("file frame %d CLV timecode %d:%.2d.%.2d frame %d" % (rawloc, self.clvMinutes, self.clvSeconds, self.clvFrameNum, self.frameNumber))
+            elif f.isCLV: # early CLV
+                print("file frame %d early-CLV minute %d" % (rawloc, self.clvMinutes))
+            else:
+                print("file frame %d CAV frame %d" % (rawloc, self.frameNumber))
+
+            if self.frameoutput == True and squelch == False:
+                self.writeframe(self.firstfield_picture, picture)
+
+            self.firstfield = None
+            self.firstfield_picture = None
+        elif f.isFirstField:
+            self.firstfield = f
+            self.firstfield_picture = picture
                 
     def writeframe(self, f1, f2):
         linecount = self.rf.SysParams['frame_lines']
@@ -1312,8 +1369,6 @@ class LDdecode:
 
         # need to copy in the last line here, i think it's different ntsc/pal
         self.outfile_video.write(combined)
-
-        self.firstfield = None
 
     def build_json(self, f):
         jout = {}
