@@ -70,6 +70,7 @@ void Configuration::writeConfiguration(void)
     configuration->setValue("mainWindowGeometry", settings.windows.mainWindowGeometry);
     configuration->setValue("vbiDialogGeometry", settings.windows.vbiDialogGeometry);
     configuration->setValue("ntscDialogGeometry", settings.windows.ntscDialogGeometry);
+    configuration->setValue("videoMetadataDialogGeometry", settings.windows.videoMetadataDialogGeometry);
     configuration->setValue("oscilloscopeDialogGeometry", settings.windows.oscilloscopeDialogGeometry);
     configuration->endGroup();
 
@@ -95,6 +96,7 @@ void Configuration::readConfiguration(void)
     settings.windows.mainWindowGeometry = configuration->value("mainWindowGeometry").toByteArray();
     settings.windows.vbiDialogGeometry = configuration->value("vbiDialogGeometry").toByteArray();
     settings.windows.ntscDialogGeometry = configuration->value("ntscDialogGeometry").toByteArray();
+    settings.windows.videoMetadataDialogGeometry = configuration->value("videoMetadataDialogGeometry").toByteArray();
     settings.windows.oscilloscopeDialogGeometry = configuration->value("oscilloscopeDialogGeometry").toByteArray();
     configuration->endGroup();
 }
@@ -111,6 +113,7 @@ void Configuration::setDefault(void)
     settings.windows.mainWindowGeometry = QByteArray();
     settings.windows.vbiDialogGeometry = QByteArray();
     settings.windows.ntscDialogGeometry = QByteArray();
+    settings.windows.videoMetadataDialogGeometry = QByteArray();
     settings.windows.oscilloscopeDialogGeometry = QByteArray();
 
     // Write the configuration
@@ -169,6 +172,16 @@ void Configuration::setOscilloscopeDialogGeometry(QByteArray oscilloscopeDialogG
 QByteArray Configuration::getOscilloscopeDialogGeometry(void)
 {
     return settings.windows.oscilloscopeDialogGeometry;
+}
+
+void Configuration::setVideoMetadataDialogGeometry(QByteArray videoMetadataDialogGeometry)
+{
+    settings.windows.videoMetadataDialogGeometry = videoMetadataDialogGeometry;
+}
+
+QByteArray Configuration::getVideoMetadataDialogGeometry(void)
+{
+    return settings.windows.videoMetadataDialogGeometry;
 }
 
 

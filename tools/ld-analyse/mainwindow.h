@@ -41,6 +41,7 @@
 #include "aboutdialog.h"
 #include "vbidialog.h"
 #include "ntscdialog.h"
+#include "videometadatadialog.h"
 #include "configuration.h"
 #include "../ld-comb-pal/palcolour.h"
 #include "../ld-comb-ntsc/comb.h"
@@ -77,6 +78,8 @@ private slots:
     void on_sourcePushButton_clicked();
     void on_frameHorizontalSlider_valueChanged(int value);
 
+    void on_actionVideo_metadata_triggered();
+
 private:
     Ui::MainWindow *ui;
 
@@ -85,6 +88,7 @@ private:
     AboutDialog *aboutDialog;
     VbiDialog *vbiDialog;
     NtscDialog *ntscDialog;
+    VideoMetadataDialog *videoMetadataDialog;
 
     // Class globals
     Configuration *configuration;

@@ -36,7 +36,8 @@ SOURCES += \
     ../ld-comb-ntsc/comb.cpp \
     ../ld-comb-ntsc/filter.cpp \
     ../ld-comb-ntsc/rgb.cpp \
-    ../ld-comb-ntsc/yiq.cpp
+    ../ld-comb-ntsc/yiq.cpp \
+    videometadatadialog.cpp
 
 HEADERS += \
         mainwindow.h \
@@ -49,14 +50,16 @@ HEADERS += \
     ../ld-comb-ntsc/comb.h \
     ../ld-comb-ntsc/filter.h \
     ../ld-comb-ntsc/rgb.h \
-    ../ld-comb-ntsc/yiq.h
+    ../ld-comb-ntsc/yiq.h \
+    videometadatadialog.h
 
 FORMS += \
         mainwindow.ui \
     oscilloscopedialog.ui \
     aboutdialog.ui \
     vbidialog.ui \
-    ntscdialog.ui
+    ntscdialog.ui \
+    videometadatadialog.ui
 
 MYDLLDIR = $$IN_PWD/../library
 
