@@ -113,11 +113,11 @@ void MainWindow::updateGuiLoaded(void)
     // Update the current frame number
     currentFrameNumber = 1;
     ui->frameNumberSpinBox->setMinimum(1);
-    ui->frameNumberSpinBox->setMaximum(getAvailableNumberOfFrames());
+    ui->frameNumberSpinBox->setMaximum(ldDecodeMetaData.getNumberOfFrames());
     ui->frameNumberSpinBox->setValue(currentFrameNumber);
     ui->frameHorizontalSlider->setMinimum(1);
-    ui->frameHorizontalSlider->setMaximum(getAvailableNumberOfFrames());
-    ui->frameHorizontalSlider->setPageStep(getAvailableNumberOfFrames() / 100);
+    ui->frameHorizontalSlider->setMaximum(ldDecodeMetaData.getNumberOfFrames());
+    ui->frameHorizontalSlider->setPageStep(ldDecodeMetaData.getNumberOfFrames() / 100);
     ui->frameHorizontalSlider->setValue(currentFrameNumber);
 
     // Enable the VBI data groupbox
@@ -190,83 +190,12 @@ void MainWindow::updateGuiUnloaded(void)
     isFileOpen = false;
 }
 
-// Method to get the available number of frames
-qint32 MainWindow::getAvailableNumberOfFrames(void)
-{
-    qint32 frameOffset = 0;
-
-    // It's possible that the TBC file will start on the wrong field, so we have to allow for
-    // that here by skipping a field if the order isn't right
-    if (!ldDecodeMetaData.getField(1).isFirstField) frameOffset++;
-
-    return (sourceVideo.getNumberOfAvailableFields() / 2) - frameOffset;
-}
-
-// Method to get the first and second field numbers based on the frame number
-qint32 MainWindow::getFirstFieldNumber(qint32 frameNumber)
-{
-    // Point at the first field in the TBC file (according to the current frame number)
-    qint32 firstFieldNumber = (frameNumber * 2) - 1;
-    qint32 secondFieldNumber = firstFieldNumber + 1;
-
-    // It's possible that the TBC file will start on the wrong field, so we have to allow for
-    // that here by skipping a field if the order isn't right
-    if (!ldDecodeMetaData.getField(firstFieldNumber).isFirstField) {
-        firstFieldNumber++;
-        secondFieldNumber++;
-        qDebug() << "MainWindow::getFirstFieldNumber(): TBC file has an extra field at the start (out of field order) - skipping";
-    }
-
-    // Range check the field number
-    if (firstFieldNumber > sourceVideo.getNumberOfAvailableFields()) {
-        qCritical() << "MainWindow::getFirstFieldNumber(): First field number exceed the available number of fields!";
-        return 1;
-    }
-
-    // Range check the field number
-    if (secondFieldNumber > sourceVideo.getNumberOfAvailableFields()) {
-        qCritical() << "MainWindow::getFirstFieldNumber(): Second field number exceed the available number of fields!";
-        return 2;
-    }
-
-    return firstFieldNumber;
-}
-
-qint32 MainWindow::getSecondFieldNumber(qint32 frameNumber)
-{
-    // Point at the first field in the TBC file (according to the current frame number)
-    qint32 firstFieldNumber = (frameNumber * 2) - 1;
-    qint32 secondFieldNumber = firstFieldNumber + 1;
-
-    // It's possible that the TBC file will start on the wrong field, so we have to allow for
-    // that here by skipping a field if the order isn't right
-    if (!ldDecodeMetaData.getField(firstFieldNumber).isFirstField) {
-        firstFieldNumber++;
-        secondFieldNumber++;
-        qDebug() << "MainWindow::getSecondFieldNumber(): TBC file has an extra field at the start (out of field order) - skipping";
-    }
-
-    // Range check the field number
-    if (firstFieldNumber > sourceVideo.getNumberOfAvailableFields()) {
-        qCritical() << "MainWindow::getSecondFieldNumber(): First field number exceed the available number of fields!";
-        return 1;
-    }
-
-    // Range check the field number
-    if (secondFieldNumber > sourceVideo.getNumberOfAvailableFields()) {
-        qCritical() << "MainWindow::getSecondFieldNumber(): Second field number exceed the available number of fields!";
-        return 2;
-    }
-
-    return secondFieldNumber;
-}
-
 // Method to display a sequential frame
 void MainWindow::showFrame(qint32 frameNumber, bool showActiveVideoArea, bool highlightDropOuts)
 {
     // Get the required field numbers
-    qint32 firstFieldNumber = getFirstFieldNumber(frameNumber);
-    qint32 secondFieldNumber = getSecondFieldNumber(frameNumber);
+    qint32 firstFieldNumber = ldDecodeMetaData.getFirstFieldNumber(frameNumber);
+    qint32 secondFieldNumber = ldDecodeMetaData.getSecondFieldNumber(frameNumber);
 
     qDebug() << "MainWindow::showFrame(): Frame number" << frameNumber << "has a first-field of" << firstFieldNumber <<
                 "and a second field of" << secondFieldNumber;
@@ -510,7 +439,7 @@ void MainWindow::loadTbcFile(QString inputFileName)
             if (videoParameters.isSourcePal) statusText += "PAL";
             else statusText += "NTSC";
             statusText += " source loaded with ";
-            statusText += QString::number(getAvailableNumberOfFrames());
+            statusText += QString::number(ldDecodeMetaData.getNumberOfFrames());
             statusText += " sequential frames available";
             sourceVideoStatus.setText(statusText);
 
@@ -562,8 +491,8 @@ void MainWindow::on_previousPushButton_clicked()
 void MainWindow::on_nextPushButton_clicked()
 {
     currentFrameNumber++;
-    if (currentFrameNumber > getAvailableNumberOfFrames()) {
-        currentFrameNumber = getAvailableNumberOfFrames();
+    if (currentFrameNumber > ldDecodeMetaData.getNumberOfFrames()) {
+        currentFrameNumber = ldDecodeMetaData.getNumberOfFrames();
     } else {
         ui->frameNumberSpinBox->setValue(currentFrameNumber);
         ui->frameHorizontalSlider->setValue(currentFrameNumber);
@@ -576,7 +505,7 @@ void MainWindow::on_frameNumberSpinBox_editingFinished()
 {
     if (ui->frameNumberSpinBox->value() != currentFrameNumber) {
         if (ui->frameNumberSpinBox->value() < 1) ui->frameNumberSpinBox->setValue(1);
-        if (ui->frameNumberSpinBox->value() > sourceVideo.getNumberOfAvailableFields()) ui->frameNumberSpinBox->setValue(getAvailableNumberOfFrames());
+        if (ui->frameNumberSpinBox->value() > sourceVideo.getNumberOfAvailableFields()) ui->frameNumberSpinBox->setValue(ldDecodeMetaData.getNumberOfFrames());
         currentFrameNumber = ui->frameNumberSpinBox->value();
         ui->frameHorizontalSlider->setValue(currentFrameNumber);
         showFrame(currentFrameNumber, ui->showActiveVideoCheckBox->isChecked(), ui->highlightDropOutsCheckBox->isChecked());
@@ -662,8 +591,8 @@ void MainWindow::on_combFilterPushButton_clicked()
         lastActiveScanLine = 617;
 
         // Determine the first and second fields for the frame number
-        qint32 firstFieldNumber = getFirstFieldNumber(currentFrameNumber);
-        qint32 secondFieldNumber = getSecondFieldNumber(currentFrameNumber);
+        qint32 firstFieldNumber = ldDecodeMetaData.getFirstFieldNumber(currentFrameNumber);
+        qint32 secondFieldNumber = ldDecodeMetaData.getSecondFieldNumber(currentFrameNumber);
 
         // Calculate the saturation level from the burst median IRE
         // Note: This code works as a temporary MTF compensator whilst ld-decode gets
@@ -682,8 +611,8 @@ void MainWindow::on_combFilterPushButton_clicked()
         lastActiveScanLine = 525;
 
         // Determine the first and second fields for the frame number
-        qint32 firstFieldNumber = getFirstFieldNumber(currentFrameNumber);
-        qint32 secondFieldNumber = getSecondFieldNumber(currentFrameNumber);
+        qint32 firstFieldNumber = ldDecodeMetaData.getFirstFieldNumber(currentFrameNumber);
+        qint32 secondFieldNumber = ldDecodeMetaData.getSecondFieldNumber(currentFrameNumber);
 
         // Create the comb filter object
         Comb comb;
@@ -819,8 +748,8 @@ void MainWindow::updateOscilloscopeDialogue(qint32 frameNumber, qint32 scanLine)
     LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
 
     // Determine the first and second fields for the frame number
-    qint32 firstFieldNumber = getFirstFieldNumber(frameNumber);
-    qint32 secondFieldNumber = getSecondFieldNumber(frameNumber);
+    qint32 firstFieldNumber = ldDecodeMetaData.getFirstFieldNumber(frameNumber);
+    qint32 secondFieldNumber = ldDecodeMetaData.getSecondFieldNumber(frameNumber);
 
     // Update the oscilloscope dialogue
     oscilloscopeDialog->showTraceImage(sourceVideo.getVideoField(firstFieldNumber)->getFieldData(),
