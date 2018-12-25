@@ -1335,10 +1335,11 @@ class LDdecode:
         # XXX: straight not returns unserializable bool_
         fi['isFirstField'] = True if fi['isFirstField'] else False
 
-        self.fieldinfo.append(fi)
+        if squelch == False:
+            self.fieldinfo.append(fi)
 
-        if self.frameoutput == False and squelch == False:
-            self.outfile_video.write(picture)
+            if self.frameoutput == False:
+                self.outfile_video.write(picture)
 
         self.frameNumber = None
         self.earlyCLV = False
