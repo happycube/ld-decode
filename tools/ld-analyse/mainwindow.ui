@@ -386,30 +386,33 @@
         </property>
        </widget>
       </widget>
-      <widget class="QPushButton" name="combFilterPushButton">
+      <widget class="QRadioButton" name="sourceRadioButton">
        <property name="geometry">
         <rect>
          <x>10</x>
          <y>100</y>
-         <width>101</width>
-         <height>24</height>
-        </rect>
-       </property>
-       <property name="text">
-        <string>Comb Filter</string>
-       </property>
-      </widget>
-      <widget class="QPushButton" name="sourcePushButton">
-       <property name="geometry">
-        <rect>
-         <x>120</x>
-         <y>100</y>
-         <width>101</width>
-         <height>24</height>
+         <width>81</width>
+         <height>22</height>
         </rect>
        </property>
        <property name="text">
         <string>Source</string>
+       </property>
+       <property name="checked">
+        <bool>true</bool>
+       </property>
+      </widget>
+      <widget class="QRadioButton" name="combFilterRadioButton">
+       <property name="geometry">
+        <rect>
+         <x>90</x>
+         <y>100</y>
+         <width>101</width>
+         <height>22</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>Comb filter</string>
        </property>
       </widget>
      </widget>

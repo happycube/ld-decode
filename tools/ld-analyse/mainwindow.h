@@ -75,13 +75,11 @@ private slots:
     void scanLineChangedSignalHandler(qint32 scanLine);
 
     void on_actionNTSC_triggered();
-    void on_combFilterPushButton_clicked();
-    void on_sourcePushButton_clicked();
     void on_frameHorizontalSlider_valueChanged(int value);
-
     void on_actionVideo_metadata_triggered();
-
     void on_action1_1_Frame_size_triggered();
+    void on_sourceRadioButton_clicked();
+    void on_combFilterRadioButton_clicked();
 
 private:
     Ui::MainWindow *ui;

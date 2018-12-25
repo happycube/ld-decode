@@ -102,8 +102,8 @@ void MainWindow::updateGuiLoaded(void)
     ui->previousPushButton->setEnabled(true);
     ui->nextPushButton->setEnabled(true);
     ui->frameHorizontalSlider->setEnabled(true);
-    ui->combFilterPushButton->setEnabled(true);
-    ui->sourcePushButton->setEnabled(true);
+    ui->combFilterRadioButton->setEnabled(true);
+    ui->sourceRadioButton->setEnabled(true);
 
     // Enable the option check boxes
     ui->highlightDropOutsCheckBox->setEnabled(true);
@@ -146,8 +146,8 @@ void MainWindow::updateGuiUnloaded(void)
     ui->previousPushButton->setEnabled(false);
     ui->nextPushButton->setEnabled(false);
     ui->frameHorizontalSlider->setEnabled(false);
-    ui->combFilterPushButton->setEnabled(false);
-    ui->sourcePushButton->setEnabled(false);
+    ui->combFilterRadioButton->setEnabled(false);
+    ui->sourceRadioButton->setEnabled(false);
 
     // Disable the option check boxes
     ui->highlightDropOutsCheckBox->setEnabled(false);
@@ -356,29 +356,129 @@ QImage MainWindow::generateQImage(qint32 firstFieldNumber, qint32 secondFieldNum
     // Create a QImage
     QImage frameImage = QImage(videoParameters.fieldWidth, frameHeight, QImage::Format_RGB888);
 
-    // Copy the raw 16-bit grayscale data into the RGB888 QImage
-    for (qint32 y = 0; y < frameHeight; y++) {
-        // Extract the current scan line data from the frame
-        qint32 startPointer = (y / 2) * videoParameters.fieldWidth * 2;
-        qint32 length = videoParameters.fieldWidth * 2;
+    if (ui->sourceRadioButton->isChecked()) {
+        // Copy the raw 16-bit grayscale data into the RGB888 QImage
+        for (qint32 y = 0; y < frameHeight; y++) {
+            // Extract the current scan line data from the frame
+            qint32 startPointer = (y / 2) * videoParameters.fieldWidth * 2;
+            qint32 length = videoParameters.fieldWidth * 2;
 
-        QByteArray firstLineData = firstFieldData.mid(startPointer, length);
-        QByteArray secondLineData = secondFieldData.mid(startPointer, length);
+            QByteArray firstLineData = firstFieldData.mid(startPointer, length);
+            QByteArray secondLineData = secondFieldData.mid(startPointer, length);
 
-        for (qint32 x = 0; x < videoParameters.fieldWidth; x++) {
-            // Take just the MSB of the input data
-            qint32 dp = x * 2;
-            uchar pixelValue;
-            if (y % 2) {
-                pixelValue = static_cast<uchar>(secondLineData[dp + 1]);
-            } else {
-                pixelValue = static_cast<uchar>(firstLineData[dp + 1]);
+            for (qint32 x = 0; x < videoParameters.fieldWidth; x++) {
+                // Take just the MSB of the input data
+                qint32 dp = x * 2;
+                uchar pixelValue;
+                if (y % 2) {
+                    pixelValue = static_cast<uchar>(secondLineData[dp + 1]);
+                } else {
+                    pixelValue = static_cast<uchar>(firstLineData[dp + 1]);
+                }
+
+                qint32 xpp = x * 3;
+                *(frameImage.scanLine(y) + xpp + 0) = static_cast<uchar>(pixelValue); // R
+                *(frameImage.scanLine(y) + xpp + 1) = static_cast<uchar>(pixelValue); // G
+                *(frameImage.scanLine(y) + xpp + 2) = static_cast<uchar>(pixelValue); // B
             }
+        }
+    } else {
+        qint32 firstActiveScanLine = 44;
+        qint32 lastActiveScanLine = 617;
+        QByteArray outputData;
 
-            qint32 xpp = x * 3;
-            *(frameImage.scanLine(y) + xpp + 0) = static_cast<uchar>(pixelValue); // R
-            *(frameImage.scanLine(y) + xpp + 1) = static_cast<uchar>(pixelValue); // G
-            *(frameImage.scanLine(y) + xpp + 2) = static_cast<uchar>(pixelValue); // B
+        // Perform a PAL 2D comb filter on the current frame
+        if (videoParameters.isSourcePal) {
+            // PAL source
+
+            // Set the first and last active scan line
+            firstActiveScanLine = 44;
+            lastActiveScanLine = 617;
+
+            // Determine the first and second fields for the frame number
+            qint32 firstFieldNumber = ldDecodeMetaData.getFirstFieldNumber(currentFrameNumber);
+            qint32 secondFieldNumber = ldDecodeMetaData.getSecondFieldNumber(currentFrameNumber);
+
+            // Calculate the saturation level from the burst median IRE
+            // Note: This code works as a temporary MTF compensator whilst ld-decode gets
+            // real MTF compensation added to it.
+            qreal tSaturation = 125.0 + ((100.0 / 20.0) * (20.0 - ldDecodeMetaData.getField(firstFieldNumber).medianBurstIRE));
+
+            // Perform the PALcolour filtering (output is RGB 16-16-16)
+            PalColour palColour(videoParameters);
+            outputData = palColour.performDecode(sourceVideo.getVideoField(firstFieldNumber)->getFieldData(), sourceVideo.getVideoField(secondFieldNumber)->getFieldData(),
+                                                  100, static_cast<qint32>(tSaturation));
+        } else {
+            // NTSC source
+
+            // Set the first and last active scan line
+            firstActiveScanLine = 43;
+            lastActiveScanLine = 525;
+
+            // Determine the first and second fields for the frame number
+            qint32 firstFieldNumber = ldDecodeMetaData.getFirstFieldNumber(currentFrameNumber);
+            qint32 secondFieldNumber = ldDecodeMetaData.getSecondFieldNumber(currentFrameNumber);
+
+            // Create the comb filter object
+            Comb comb;
+
+            // Get the default configuration for the comb filter
+            Comb::Configuration configuration = comb.getConfiguration();
+
+            // Set the comb filter configuration
+            configuration.filterDepth = 2;
+            configuration.blackAndWhite = false;
+            configuration.adaptive2d = false;
+            configuration.opticalflow = false;
+
+            // Set the input buffer dimensions configuration
+            configuration.fieldWidth = videoParameters.fieldWidth;
+            configuration.fieldHeight = videoParameters.fieldHeight;
+
+            // Set the active video range
+            configuration.activeVideoStart = videoParameters.activeVideoStart;
+            configuration.activeVideoEnd = videoParameters.activeVideoEnd;
+
+            // Set the first frame scan line which contains active video
+            configuration.firstVisibleFrameLine = firstActiveScanLine;
+
+            // Set the IRE levels
+            configuration.blackIre = videoParameters.black16bIre;
+            configuration.whiteIre = videoParameters.white16bIre;
+
+            // Update the comb filter object's configuration
+            comb.setConfiguration(configuration);
+
+            outputData = comb.process(sourceVideo.getVideoField(firstFieldNumber)->getFieldData(), sourceVideo.getVideoField(secondFieldNumber)->getFieldData(),
+                                                            ldDecodeMetaData.getField(firstFieldNumber).medianBurstIRE,
+                                                            ldDecodeMetaData.getField(firstFieldNumber).fieldPhaseID,
+                                                            ldDecodeMetaData.getField(secondFieldNumber).fieldPhaseID);
+        }
+
+        // Fill the QImage with black
+        frameImage.fill(Qt::black);
+
+        // Copy the RGB16-16-16 data into the RGB888 QImage
+        for (qint32 y = firstActiveScanLine; y < lastActiveScanLine; y++) {
+            // Extract the current scan line data from the frame
+            qint32 startPointer = y * videoParameters.fieldWidth * 6;
+            qint32 length = videoParameters.fieldWidth * 6;
+
+            QByteArray rgbData = outputData.mid(startPointer, length);
+
+            for (qint32 x = videoParameters.activeVideoStart; x < videoParameters.activeVideoEnd; x++) {
+                // Take just the MSB of the input data
+                qint32 dp = x * 6;
+
+                uchar pixelValueR = static_cast<uchar>(rgbData[dp + 1]);
+                uchar pixelValueG = static_cast<uchar>(rgbData[dp + 3]);
+                uchar pixelValueB = static_cast<uchar>(rgbData[dp + 5]);
+
+                qint32 xpp = x * 3;
+                *(frameImage.scanLine(y) + xpp + 0) = static_cast<uchar>(pixelValueR); // R
+                *(frameImage.scanLine(y) + xpp + 1) = static_cast<uchar>(pixelValueG); // G
+                *(frameImage.scanLine(y) + xpp + 2) = static_cast<uchar>(pixelValueB); // B
+            }
         }
     }
 
@@ -581,123 +681,15 @@ void MainWindow::on_action1_1_Frame_size_triggered()
     this->resize(sizeHint());
 }
 
-// Comb Filter button clicked
-void MainWindow::on_combFilterPushButton_clicked()
+// Display source image radio button clicked
+void MainWindow::on_sourceRadioButton_clicked()
 {
-    // Get the video parameter metadata
-    LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
-
-    qint32 frameHeight = (videoParameters.fieldHeight * 2) - 1;
-    qint32 firstActiveScanLine = 44;
-    qint32 lastActiveScanLine = 617;
-    QByteArray outputData;
-
-    // Perform a PAL 2D comb filter on the current frame
-    if (videoParameters.isSourcePal) {
-        // PAL source
-
-        // Set the first and last active scan line
-        firstActiveScanLine = 44;
-        lastActiveScanLine = 617;
-
-        // Determine the first and second fields for the frame number
-        qint32 firstFieldNumber = ldDecodeMetaData.getFirstFieldNumber(currentFrameNumber);
-        qint32 secondFieldNumber = ldDecodeMetaData.getSecondFieldNumber(currentFrameNumber);
-
-        // Calculate the saturation level from the burst median IRE
-        // Note: This code works as a temporary MTF compensator whilst ld-decode gets
-        // real MTF compensation added to it.
-        qreal tSaturation = 125.0 + ((100.0 / 20.0) * (20.0 - ldDecodeMetaData.getField(firstFieldNumber).medianBurstIRE));
-
-        // Perform the PALcolour filtering (output is RGB 16-16-16)
-        PalColour palColour(videoParameters);
-        outputData = palColour.performDecode(sourceVideo.getVideoField(firstFieldNumber)->getFieldData(), sourceVideo.getVideoField(secondFieldNumber)->getFieldData(),
-                                              100, static_cast<qint32>(tSaturation));
-    } else {
-        // NTSC source
-
-        // Set the first and last active scan line
-        firstActiveScanLine = 43;
-        lastActiveScanLine = 525;
-
-        // Determine the first and second fields for the frame number
-        qint32 firstFieldNumber = ldDecodeMetaData.getFirstFieldNumber(currentFrameNumber);
-        qint32 secondFieldNumber = ldDecodeMetaData.getSecondFieldNumber(currentFrameNumber);
-
-        // Create the comb filter object
-        Comb comb;
-
-        // Get the default configuration for the comb filter
-        Comb::Configuration configuration = comb.getConfiguration();
-
-        // Set the comb filter configuration
-        configuration.filterDepth = 2;
-        configuration.blackAndWhite = false;
-        configuration.adaptive2d = false;
-        configuration.opticalflow = false;
-
-        // Set the input buffer dimensions configuration
-        configuration.fieldWidth = videoParameters.fieldWidth;
-        configuration.fieldHeight = videoParameters.fieldHeight;
-
-        // Set the active video range
-        configuration.activeVideoStart = videoParameters.activeVideoStart;
-        configuration.activeVideoEnd = videoParameters.activeVideoEnd;
-
-        // Set the first frame scan line which contains active video
-        configuration.firstVisibleFrameLine = firstActiveScanLine;
-
-        // Set the IRE levels
-        configuration.blackIre = videoParameters.black16bIre;
-        configuration.whiteIre = videoParameters.white16bIre;
-
-        // Update the comb filter object's configuration
-        comb.setConfiguration(configuration);
-
-        outputData = comb.process(sourceVideo.getVideoField(firstFieldNumber)->getFieldData(), sourceVideo.getVideoField(secondFieldNumber)->getFieldData(),
-                                                        ldDecodeMetaData.getField(firstFieldNumber).medianBurstIRE,
-                                                        ldDecodeMetaData.getField(firstFieldNumber).fieldPhaseID,
-                                                        ldDecodeMetaData.getField(secondFieldNumber).fieldPhaseID);
-    }
-
-    // Create a QImage
-    QImage frameImage = QImage(videoParameters.fieldWidth, frameHeight, QImage::Format_RGB888);
-    frameImage.fill(Qt::black);
-
-    // Copy the raw 16-bit grayscale data into the RGB888 QImage
-    for (qint32 y = firstActiveScanLine; y < lastActiveScanLine; y++) {
-        // Extract the current scan line data from the frame
-        qint32 startPointer = y * videoParameters.fieldWidth * 6;
-        qint32 length = videoParameters.fieldWidth * 6;
-
-        QByteArray rgbData = outputData.mid(startPointer, length);
-
-        for (qint32 x = videoParameters.activeVideoStart; x < videoParameters.activeVideoEnd; x++) {
-            // Take just the MSB of the input data
-            qint32 dp = x * 6;
-
-            uchar pixelValueR = static_cast<uchar>(rgbData[dp + 1]);
-            uchar pixelValueG = static_cast<uchar>(rgbData[dp + 3]);
-            uchar pixelValueB = static_cast<uchar>(rgbData[dp + 5]);
-
-            qint32 xpp = x * 3;
-            *(frameImage.scanLine(y) + xpp + 0) = static_cast<uchar>(pixelValueR); // R
-            *(frameImage.scanLine(y) + xpp + 1) = static_cast<uchar>(pixelValueG); // G
-            *(frameImage.scanLine(y) + xpp + 2) = static_cast<uchar>(pixelValueB); // B
-        }
-    }
-
-    // Add the QImage to the QLabel in the dialogue
-    ui->frameViewerLabel->clear();
-    ui->frameViewerLabel->setSizePolicy(QSizePolicy::MinimumExpanding, QSizePolicy::MinimumExpanding);
-    ui->frameViewerLabel->setAlignment(Qt::AlignCenter);
-    ui->frameViewerLabel->setMinimumSize(frameImage.width(), frameImage.height());
-    ui->frameViewerLabel->setScaledContents(false);
-    ui->frameViewerLabel->setPixmap(QPixmap::fromImage(frameImage));
+    // Show the current frame
+    showFrame(currentFrameNumber, ui->showActiveVideoCheckBox->isChecked(), ui->highlightDropOutsCheckBox->isChecked());
 }
 
-// Source button clicked
-void MainWindow::on_sourcePushButton_clicked()
+// Display com
+void MainWindow::on_combFilterRadioButton_clicked()
 {
     // Show the current frame
     showFrame(currentFrameNumber, ui->showActiveVideoCheckBox->isChecked(), ui->highlightDropOutsCheckBox->isChecked());
@@ -718,12 +710,6 @@ void MainWindow::mousePressEvent(QMouseEvent *event)
     qint32 frameHeight = (videoParameters.fieldHeight * 2) - 1;
 
     // Check that the mouse click is within bounds of the current picture
-
-//    if (origin.x() + 1 >= 0 &&
-//            origin.y() >= 1 &&
-//            origin.x() + 1 <= videoParameters.fieldWidth &&
-//            origin.y() <= frameHeight) {
-
     qint32 offset = (ui->frameViewerLabel->height() - ui->frameViewerLabel->pixmap()->height()) / 2;
 
     if (origin.x() + 1 >= 0 &&
@@ -781,8 +767,5 @@ void MainWindow::updateOscilloscopeDialogue(qint32 frameNumber, qint32 scanLine)
                                        sourceVideo.getVideoField(secondFieldNumber)->getFieldData(),
                                        videoParameters, scanLine);
 }
-
-
-
 
 
