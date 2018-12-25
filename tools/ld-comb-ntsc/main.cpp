@@ -138,12 +138,6 @@ int main(int argc, char *argv[])
                                        QCoreApplication::translate("main", "Crop the output video"));
     parser.addOption(cropOutputOption);
 
-    // Option to override the 16-bit black IRE level (-s)
-    QCommandLineOption black16IreOption(QStringList() << "i" << "black16IRE",
-                                        QCoreApplication::translate("main", "Override the 16-bit black IRE level"),
-                                        QCoreApplication::translate("main", "number 0-65535"));
-    parser.addOption(black16IreOption);
-
     // Positional argument to specify input video file
     parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input TBC file"));
 
@@ -197,18 +191,6 @@ int main(int argc, char *argv[])
         }
     }
 
-    qint32 overrideBlack16Ire = -1;
-    if (parser.isSet(black16IreOption)) {
-        overrideBlack16Ire = parser.value(black16IreOption).toInt();
-
-        // Range check the parameter
-        if (overrideBlack16Ire < 0 || overrideBlack16Ire > 65535) {
-            // Quit with error
-            qCritical("Error: The 16-bit black IRE specified is out of range!");
-            return -1;
-        }
-    }
-
     QString inputFileName;
     QString outputFileName;
     QStringList positionalArguments = parser.positionalArguments();
@@ -230,8 +212,8 @@ int main(int argc, char *argv[])
     // Process the input file
     ntscFilter.process(inputFileName, outputFileName,
                        startFrame, length,
-                       filterDepth, blackAndWhite, adaptive2d, opticalFlow, crop,
-                       overrideBlack16Ire);
+                       filterDepth, blackAndWhite, adaptive2d, opticalFlow, crop
+                       );
 
     // Quit with success
     return 0;

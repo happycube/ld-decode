@@ -34,7 +34,7 @@ bool NtscFilter::process(QString inputFileName, QString outputFileName,
                          qint32 startFrame, qint32 length,
                          qint32 filterDepth, bool blackAndWhite,
                          bool adaptive2d, bool opticalFlow,
-                         bool cropOutput, qint32 overrideBlack16Ire)
+                         bool cropOutput)
 {
     // Open the source video metadata
     if (!ldDecodeMetaData.read(inputFileName + ".json")) {
@@ -154,7 +154,6 @@ bool NtscFilter::process(QString inputFileName, QString outputFileName,
     // Set the IRE levels
     configuration.blackIre = videoParameters.black16bIre;
     configuration.whiteIre = videoParameters.white16bIre;
-    if (overrideBlack16Ire != -1) configuration.blackIre = overrideBlack16Ire;
 
     // Update the comb filter object's configuration
     comb.setConfiguration(configuration);
@@ -172,8 +171,6 @@ bool NtscFilter::process(QString inputFileName, QString outputFileName,
     qInfo() << "Filter configuration: Black & white output =" << blackAndWhite;
     qInfo() << "Filter configuration: Adaptive 2D =" << adaptive2d;
     qInfo() << "Filter configuration: Optical flow =" << opticalFlow;
-
-    if (overrideBlack16Ire != -1) qInfo() << "Overriding JSON Black16IRE with" << overrideBlack16Ire;
 
     // Process the frames
     QElapsedTimer totalTimer;
