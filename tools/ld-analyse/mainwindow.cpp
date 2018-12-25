@@ -71,7 +71,6 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     videoMetadataDialog->restoreGeometry(configuration->getVideoMetadataDialogGeometry());
     oscilloscopeDialog->restoreGeometry(configuration->getOscilloscopeDialogGeometry());
 
-    // Set up the GUI
     updateGuiUnloaded();
 
     // Was a filename specified on the command line?
@@ -131,6 +130,7 @@ void MainWindow::updateGuiLoaded(void)
     ui->actionVBI->setEnabled(true);
     ui->actionNTSC->setEnabled(true);
     ui->actionVideo_metadata->setEnabled(true);
+    ui->action1_1_Frame_size->setEnabled(true);
 
     // Show the current frame
     showFrame(currentFrameNumber, ui->showActiveVideoCheckBox->isChecked(), ui->highlightDropOutsCheckBox->isChecked());
@@ -183,6 +183,7 @@ void MainWindow::updateGuiUnloaded(void)
     ui->actionVBI->setEnabled(false);
     ui->actionNTSC->setEnabled(false);
     ui->actionVideo_metadata->setEnabled(false);
+    ui->action1_1_Frame_size->setEnabled(false);
 
     // Hide the displayed frame
     hideFrame();
@@ -320,10 +321,9 @@ void MainWindow::showFrame(qint32 frameNumber, bool showActiveVideoArea, bool hi
 
     // Add the QImage to the QLabel in the dialogue
     ui->frameViewerLabel->clear();
-    ui->frameViewerLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    ui->frameViewerLabel->setSizePolicy(QSizePolicy::MinimumExpanding, QSizePolicy::MinimumExpanding);
     ui->frameViewerLabel->setAlignment(Qt::AlignCenter);
     ui->frameViewerLabel->setMinimumSize(frameImage.width(), frameImage.height());
-    ui->frameViewerLabel->setMaximumSize(frameImage.width(), frameImage.height());
     ui->frameViewerLabel->setScaledContents(false);
     ui->frameViewerLabel->setPixmap(QPixmap::fromImage(frameImage));
 
@@ -516,6 +516,8 @@ void MainWindow::on_frameNumberSpinBox_editingFinished()
 void MainWindow::on_frameHorizontalSlider_valueChanged(int value)
 {
     (void)value;
+
+    if (!isFileOpen) return;
     qDebug() << "MainWindow::on_frameHorizontalSlider_valueChanged(): Called";
 
     currentFrameNumber = ui->frameHorizontalSlider->value();
@@ -569,6 +571,14 @@ void MainWindow::on_actionNTSC_triggered()
 {
     // Show the NTSC dialogue
     ntscDialog->show();
+}
+
+// Adjust the window to show the frame at 1:1 zoom
+void MainWindow::on_action1_1_Frame_size_triggered()
+{
+    this->resize(minimumSizeHint());
+    this->adjustSize();
+    this->resize(sizeHint());
 }
 
 // Comb Filter button clicked
@@ -679,10 +689,9 @@ void MainWindow::on_combFilterPushButton_clicked()
 
     // Add the QImage to the QLabel in the dialogue
     ui->frameViewerLabel->clear();
-    ui->frameViewerLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    ui->frameViewerLabel->setSizePolicy(QSizePolicy::MinimumExpanding, QSizePolicy::MinimumExpanding);
     ui->frameViewerLabel->setAlignment(Qt::AlignCenter);
     ui->frameViewerLabel->setMinimumSize(frameImage.width(), frameImage.height());
-    ui->frameViewerLabel->setMaximumSize(frameImage.width(), frameImage.height());
     ui->frameViewerLabel->setScaledContents(false);
     ui->frameViewerLabel->setPixmap(QPixmap::fromImage(frameImage));
 }
@@ -697,6 +706,8 @@ void MainWindow::on_sourcePushButton_clicked()
 // Mouse press event handler
 void MainWindow::mousePressEvent(QMouseEvent *event)
 {
+    if (!isFileOpen) return;
+
     // Get the mouse position relative to our scene
     QPoint origin = ui->frameViewerLabel->mapFromGlobal(QCursor::pos());
 
@@ -707,23 +718,37 @@ void MainWindow::mousePressEvent(QMouseEvent *event)
     qint32 frameHeight = (videoParameters.fieldHeight * 2) - 1;
 
     // Check that the mouse click is within bounds of the current picture
+
+//    if (origin.x() + 1 >= 0 &&
+//            origin.y() >= 1 &&
+//            origin.x() + 1 <= videoParameters.fieldWidth &&
+//            origin.y() <= frameHeight) {
+
+    qint32 offset = (ui->frameViewerLabel->height() - ui->frameViewerLabel->pixmap()->height()) / 2;
+
     if (origin.x() + 1 >= 0 &&
             origin.y() >= 1 &&
-            origin.x() + 1 <= videoParameters.fieldWidth &&
-            origin.y() <= frameHeight) {
+            origin.x() + 1 <= ui->frameViewerLabel->width() &&
+            origin.y() <= ui->frameViewerLabel->height()) {
 
-        qDebug() << "MainWindow::mousePressEvent():" << origin.x() << "x" << origin.y();
+        qDebug() << "frameViewerLabel h =" << ui->frameViewerLabel->height();
+        qDebug() << "pixmap h =" << ui->frameViewerLabel->pixmap()->height();
+        qDebug() << "offset =" << offset;
 
-        if (isFileOpen) {
+        qreal unscaledY = (static_cast<qreal>(frameHeight) / static_cast<qreal>(ui->frameViewerLabel->pixmap()->height())) * static_cast<qreal>(origin.y() - offset);
+
+        if (unscaledY > 1 && unscaledY <= frameHeight) {
+            qDebug() << "MainWindow::mousePressEvent():" << origin.x() << "x" << origin.y() << ": Unscaled y =" << static_cast<qint32>(unscaledY);
+
             // Show the oscilloscope dialogue for the selected scan-line
-            updateOscilloscopeDialogue(currentFrameNumber, origin.y());
+            updateOscilloscopeDialogue(currentFrameNumber, static_cast<qint32>(unscaledY));
             oscilloscopeDialog->show();
 
             // Remember the last line rendered
             lastScopeLine = origin.y();
-        }
 
-        event->accept();
+            event->accept();
+        }
     }
 }
 
@@ -756,6 +781,8 @@ void MainWindow::updateOscilloscopeDialogue(qint32 frameNumber, qint32 scanLine)
                                        sourceVideo.getVideoField(secondFieldNumber)->getFieldData(),
                                        videoParameters, scanLine);
 }
+
+
 
 
 

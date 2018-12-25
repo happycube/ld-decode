@@ -37,7 +37,8 @@ SOURCES += \
     ../ld-comb-ntsc/filter.cpp \
     ../ld-comb-ntsc/rgb.cpp \
     ../ld-comb-ntsc/yiq.cpp \
-    videometadatadialog.cpp
+    videometadatadialog.cpp \
+    frameqlabel.cpp
 
 HEADERS += \
         mainwindow.h \
@@ -51,7 +52,8 @@ HEADERS += \
     ../ld-comb-ntsc/filter.h \
     ../ld-comb-ntsc/rgb.h \
     ../ld-comb-ntsc/yiq.h \
-    videometadatadialog.h
+    videometadatadialog.h \
+    frameqlabel.h
 
 FORMS += \
         mainwindow.ui \

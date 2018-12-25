@@ -43,6 +43,7 @@
 #include "ntscdialog.h"
 #include "videometadatadialog.h"
 #include "configuration.h"
+#include "frameqlabel.h"
 #include "../ld-comb-pal/palcolour.h"
 #include "../ld-comb-ntsc/comb.h"
 
@@ -79,6 +80,8 @@ private slots:
     void on_frameHorizontalSlider_valueChanged(int value);
 
     void on_actionVideo_metadata_triggered();
+
+    void on_action1_1_Frame_size_triggered();
 
 private:
     Ui::MainWindow *ui;
