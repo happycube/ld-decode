@@ -30,77 +30,6 @@ NtscFilter::NtscFilter(QObject *parent) : QObject(parent)
 
 }
 
-// Method to get the available number of frames
-qint32 NtscFilter::getAvailableNumberOfFrames(void)
-{
-    qint32 frameOffset = 0;
-
-    // It's possible that the TBC file will start on the wrong field, so we have to allow for
-    // that here by skipping a field if the order isn't right
-    if (!ldDecodeMetaData.getField(1).isFirstField) frameOffset++;
-
-    return (sourceVideo.getNumberOfAvailableFields() / 2) - frameOffset;
-}
-
-// Method to get the first and second field numbers based on the frame number
-qint32 NtscFilter::getFirstFieldNumber(qint32 frameNumber)
-{
-    // Point at the first field in the TBC file (according to the current frame number)
-    qint32 firstFieldNumber = (frameNumber * 2) - 1;
-    qint32 secondFieldNumber = firstFieldNumber + 1;
-
-    // It's possible that the TBC file will start on the wrong field, so we have to allow for
-    // that here by skipping a field if the order isn't right
-    if (!ldDecodeMetaData.getField(firstFieldNumber).isFirstField) {
-        firstFieldNumber++;
-        secondFieldNumber++;
-        qDebug() << "NtscFilter::getFirstFieldNumber(): TBC file has an extra field at the start (out of field order) - skipping";
-    }
-
-    // Range check the field number
-    if (firstFieldNumber > sourceVideo.getNumberOfAvailableFields()) {
-        qCritical() << "NtscFilter::getFirstFieldNumber(): First field number exceed the available number of fields!";
-        return 1;
-    }
-
-    // Range check the field number
-    if (secondFieldNumber > sourceVideo.getNumberOfAvailableFields()) {
-        qCritical() << "NtscFilter::getFirstFieldNumber(): Second field number exceed the available number of fields!";
-        return 2;
-    }
-
-    return firstFieldNumber;
-}
-
-qint32 NtscFilter::getSecondFieldNumber(qint32 frameNumber)
-{
-    // Point at the first field in the TBC file (according to the current frame number)
-    qint32 firstFieldNumber = (frameNumber * 2) - 1;
-    qint32 secondFieldNumber = firstFieldNumber + 1;
-
-    // It's possible that the TBC file will start on the wrong field, so we have to allow for
-    // that here by skipping a field if the order isn't right
-    if (!ldDecodeMetaData.getField(firstFieldNumber).isFirstField) {
-        firstFieldNumber++;
-        secondFieldNumber++;
-        qDebug() << "NtscFilter::getSecondFieldNumber(): TBC file has an extra field at the start (out of field order) - skipping";
-    }
-
-    // Range check the field number
-    if (firstFieldNumber > sourceVideo.getNumberOfAvailableFields()) {
-        qCritical() << "NtscFilter::getSecondFieldNumber(): First field number exceed the available number of fields!";
-        return 1;
-    }
-
-    // Range check the field number
-    if (secondFieldNumber > sourceVideo.getNumberOfAvailableFields()) {
-        qCritical() << "NtscFilter::getSecondFieldNumber(): Second field number exceed the available number of fields!";
-        return 2;
-    }
-
-    return secondFieldNumber;
-}
-
 bool NtscFilter::process(QString inputFileName, QString outputFileName,
                          qint32 startFrame, qint32 length,
                          qint32 filterDepth, bool blackAndWhite,
@@ -173,18 +102,18 @@ bool NtscFilter::process(QString inputFileName, QString outputFileName,
     // If no startFrame parameter was specified, set the start frame to 1
     if (startFrame == -1) startFrame = 1;
 
-    if (startFrame > getAvailableNumberOfFrames()) {
-        qInfo() << "Specified start frame is out of bounds, only" << getAvailableNumberOfFrames() << "frames available";
+    if (startFrame > ldDecodeMetaData.getNumberOfFrames()) {
+        qInfo() << "Specified start frame is out of bounds, only" << ldDecodeMetaData.getNumberOfFrames() << "frames available";
         return false;
     }
 
     // If no length parameter was specified set the length to the number of available frames
     if (length == -1) {
-        length = getAvailableNumberOfFrames() - (startFrame - 1);
+        length = ldDecodeMetaData.getNumberOfFrames() - (startFrame - 1);
     } else {
-        if (length + (startFrame - 1) > getAvailableNumberOfFrames()) {
-            qInfo() << "Specified length of" << length << "exceeds the number of available frames, setting to" << getAvailableNumberOfFrames() - (startFrame - 1);
-            length = getAvailableNumberOfFrames() - (startFrame - 1);
+        if (length + (startFrame - 1) > ldDecodeMetaData.getNumberOfFrames()) {
+            qInfo() << "Specified length of" << length << "exceeds the number of available frames, setting to" << ldDecodeMetaData.getNumberOfFrames() - (startFrame - 1);
+            length = ldDecodeMetaData.getNumberOfFrames() - (startFrame - 1);
         }
     }
 
@@ -254,8 +183,8 @@ bool NtscFilter::process(QString inputFileName, QString outputFileName,
         timer.start();
 
         // Determine the top and bottom fields for the frame number
-        qint32 firstFieldNumber = getFirstFieldNumber(frameNumber);
-        qint32 secondFieldNumber = getSecondFieldNumber(frameNumber);
+        qint32 firstFieldNumber = ldDecodeMetaData.getFirstFieldNumber(frameNumber);
+        qint32 secondFieldNumber = ldDecodeMetaData.getSecondFieldNumber(frameNumber);
 
         // Filter the frame
         QByteArray rgbOutputData = comb.process(sourceVideo.getVideoField(firstFieldNumber)->getFieldData(), sourceVideo.getVideoField(secondFieldNumber)->getFieldData(),

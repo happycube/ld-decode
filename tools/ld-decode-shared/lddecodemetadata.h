@@ -208,7 +208,10 @@ public:
     void appendField(Field fieldParam);
     void updateField(Field fieldParam, qint32 sequentialFrameNumber);
 
-    qint32 getNumberOfSequentialFields(void);
+    qint32 getNumberOfFields(void);
+    qint32 getNumberOfFrames(void);
+    qint32 getFirstFieldNumber(qint32 frameNumber);
+    qint32 getSecondFieldNumber(qint32 frameNumber);
 
 signals:
 
