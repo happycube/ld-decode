@@ -550,8 +550,10 @@ QByteArray Comb::yiqToRgbFrame(qint32 currentFrameBuffer, QVector<yiqLine_t> yiq
         quint16 *line_output = reinterpret_cast<quint16 *>(rgbOutputFrame.data() + ((configuration.fieldWidth * 3 * lineNumber) * 2));
 
         // Offset the output by the activeVideoStart to keep the output frame
-        // in the same x position as the input video frame
-        qint32 o = configuration.activeVideoStart * 3;
+        // in the same x position as the input video frame (the +6 realigns the output
+        // to the source frame; not sure where the 2 pixel offset is coming from, but
+        // it's really not important)
+        qint32 o = (configuration.activeVideoStart * 3) + 6;
 
         if (frameBuffer[currentFrameBuffer].burstLevel > 3) {
             if (aburstlev < 0) aburstlev = frameBuffer[currentFrameBuffer].burstLevel;
