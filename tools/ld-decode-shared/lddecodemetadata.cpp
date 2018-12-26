@@ -78,8 +78,6 @@ bool LdDecodeMetaData::read(QString fileName)
         metaData.videoParameters.white16bIre = jsonVideoParameters["white16bIre"].toInt();
         metaData.videoParameters.black16bIre = jsonVideoParameters["black16bIre"].toInt();
 
-        metaData.videoParameters.samplesPerUs = jsonVideoParameters["samplesPerUs"].toDouble();
-
         metaData.videoParameters.fieldWidth = jsonVideoParameters["fieldWidth"].toInt();
         metaData.videoParameters.fieldHeight = jsonVideoParameters["fieldHeight"].toInt();
         metaData.videoParameters.sampleRate = jsonVideoParameters["sampleRate"].toInt();
@@ -137,7 +135,7 @@ bool LdDecodeMetaData::read(QString fileName)
                 fieldData.vbi.vbi17 = vbi["vbi17"].toInt();
                 fieldData.vbi.vbi18 = vbi["vbi18"].toInt();
 
-                switch(vbi["discType"].toInt()) {
+                switch(vbi["type"].toInt()) {
                 case 0:
                     fieldData.vbi.type = LdDecodeMetaData::VbiDiscTypes::unknownDiscType;
                     break;
@@ -336,8 +334,6 @@ bool LdDecodeMetaData::write(QString fileName)
 
     jsonVideoParameters.insert("white16bIre", metaData.videoParameters.white16bIre);
     jsonVideoParameters.insert("black16bIre", metaData.videoParameters.black16bIre);
-
-    jsonVideoParameters.insert("samplesPerUs", metaData.videoParameters.samplesPerUs);
 
     jsonVideoParameters.insert("fieldWidth", metaData.videoParameters.fieldWidth);
     jsonVideoParameters.insert("fieldHeight", metaData.videoParameters.fieldHeight);

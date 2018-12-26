@@ -48,7 +48,7 @@ FmCode::FmDecode FmCode::fmDecoder(QByteArray lineData, LdDecodeMetaData::VideoP
     QVector<bool> fmData = getTransitionMap(lineData, zcPoint);
 
     // Get the number of samples for 0.75us
-    qreal fSamples = videoParameters.samplesPerUs * 0.75;
+    qreal fSamples = (videoParameters.sampleRate / 1000000) * 0.75;
     qint32 samples = static_cast<qint32>(fSamples);
 
     // Keep track of the number of bits decoded

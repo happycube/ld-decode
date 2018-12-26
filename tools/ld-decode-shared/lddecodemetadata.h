@@ -134,8 +134,6 @@ public:
         qint32 white16bIre;
         qint32 black16bIre;
 
-        qreal samplesPerUs;
-
         qint32 fieldWidth;
         qint32 fieldHeight;
         qint32 sampleRate;
