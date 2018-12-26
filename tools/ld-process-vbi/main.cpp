@@ -2,7 +2,7 @@
 
     main.cpp
 
-    ld-process-vbi - VBI processor for ld-decode
+    ld-process-vbi - VBI and IEC NTSC specific processor for ld-decode
     Copyright (C) 2018 Simon Inns
 
     This file is part of ld-decode-tools.
@@ -77,13 +77,13 @@ int main(int argc, char *argv[])
 
     // Set application name and version
     QCoreApplication::setApplicationName("ld-process-vbi");
-    QCoreApplication::setApplicationVersion("1.1");
+    QCoreApplication::setApplicationVersion("1.2");
     QCoreApplication::setOrganizationDomain("domesday86.com");
 
     // Set up the command line parser
     QCommandLineParser parser;
     parser.setApplicationDescription(
-                "ld-process-vbi - VBI processor for ld-decode\n"
+                "ld-process-vbi - VBI and IEC NTSC specific processor for ld-decode\n"
                 "\n"
                 "(c)2018 Simon Inns\n"
                 "GPLv3 Open-Source - github: https://github.com/happycube/ld-decode");

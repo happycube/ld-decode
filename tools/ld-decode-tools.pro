@@ -5,6 +5,5 @@ SUBDIRS = ld-decode-shared \
           ld-process-vbi \
 	  ld-comb-pal \
           ld-analyse \
-          ld-process-ntsc \
 	  ld-comb-ntsc
 

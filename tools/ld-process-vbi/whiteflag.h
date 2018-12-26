@@ -1,13 +1,13 @@
 /************************************************************************
 
-    ntscprocess.h
+    whiteflag.h
 
-    ld-process-ntsc - IEC NTSC specific processor for ld-decode
+    ld-process-vbi - VBI and IEC NTSC specific processor for ld-decode
     Copyright (C) 2018 Simon Inns
 
     This file is part of ld-decode-tools.
 
-    ld-process-ntsc is free software: you can redistribute it and/or
+    ld-process-vbi is free software: you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
     published by the Free Software Foundation, either version 3 of the
     License, or (at your option) any later version.
@@ -22,31 +22,25 @@
 
 ************************************************************************/
 
-#ifndef NTSCPROCESS_H
-#define NTSCPROCESS_H
-
-#include <QObject>
+#ifndef WHITEFLAG_H
+#define WHITEFLAG_H
 
 #include "sourcevideo.h"
 #include "lddecodemetadata.h"
-#include "fmcode.h"
-#include "whiteflag.h"
 
-class NtscProcess : public QObject
+#include <QObject>
+
+class WhiteFlag : public QObject
 {
     Q_OBJECT
 public:
-    explicit NtscProcess(QObject *parent = nullptr);
+    explicit WhiteFlag(QObject *parent = nullptr);
 
-    bool process(QString inputFileName);
+    bool getWhiteFlag(QByteArray lineData, LdDecodeMetaData::VideoParameters videoParameters);
 
 signals:
 
 public slots:
-
-private:
-    QByteArray getActiveVideoLine(SourceField *sourceField, qint32 fieldLine,
-                                            LdDecodeMetaData::VideoParameters videoParameters);
 };
 
-#endif // NTSCPROCESS_H
+#endif // WHITEFLAG_H

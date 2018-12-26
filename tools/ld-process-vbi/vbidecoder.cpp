@@ -2,7 +2,7 @@
 
     vbidecoder.cpp
 
-    ld-process-vbi - VBI processor for ld-decode
+    ld-process-vbi - VBI and IEC NTSC specific processor for ld-decode
     Copyright (C) 2018 Simon Inns
 
     This file is part of ld-decode-tools.
@@ -51,10 +51,14 @@ bool VbiDecoder::process(QString inputFileName)
         return false;
     }
 
-    // Process the VBI data for the fields
+    // Process the VBI and NTSC data for the fields
     for (qint32 fieldNumber = 1; fieldNumber <= sourceVideo.getNumberOfAvailableFields(); fieldNumber++) {
         SourceField *sourceField;
         VbiDecoder vbiDecoder;
+        FmCode fmCode;
+        FmCode::FmDecode fmDecode;
+        bool isWhiteFlag = false;
+        WhiteFlag whiteFlag;
 
         // Get the source field
         sourceField = sourceVideo.getVideoField(fieldNumber);
@@ -81,6 +85,30 @@ bool VbiDecoder::process(QString inputFileName)
 
         // Translate the VBI data into a decoded VBI object
         field.vbi = translateVbi(field.vbi.vbi16, field.vbi.vbi17, field.vbi.vbi18);
+
+        // Process NTSC specific data if source type is NTSC
+        if (!videoParameters.isSourcePal) {
+            // Get the 40-bit FM coded data from the field lines
+            fmDecode = fmCode.fmDecoder(getActiveVideoLine(sourceField, 10, videoParameters), videoParameters);
+
+            // Get the white flag from the field lines
+            isWhiteFlag = whiteFlag.getWhiteFlag(getActiveVideoLine(sourceField, 11, videoParameters), videoParameters);
+
+            // Update the metadata
+            if (fmDecode.receiverClockSyncBits != 0) {
+                field.ntsc.isFmCodeDataValid = true;
+                field.ntsc.fmCodeData = static_cast<qint32>(fmDecode.data);
+                if (fmDecode.videoFieldIndicator == 1) field.ntsc.fieldFlag = true;
+                else field.ntsc.fieldFlag = false;
+            } else {
+                field.ntsc.isFmCodeDataValid = false;
+                field.ntsc.fmCodeData = -1;
+                field.ntsc.fieldFlag = false;
+            }
+
+            field.ntsc.whiteFlag = isWhiteFlag;
+            field.ntsc.inUse = true;
+        }
 
         // Update the metadata for the field
         field.vbi.inUse = true;
