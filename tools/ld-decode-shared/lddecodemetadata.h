@@ -220,6 +220,7 @@ public slots:
 private:
     bool isMetaDataValid;
     MetaData metaData;
+    qint32 getFieldNumber(qint32 frameNumber, qint32 field);
 };
 
 #endif // LDDECODEMETADATA_H

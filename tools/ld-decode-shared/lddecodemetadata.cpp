@@ -642,8 +642,8 @@ qint32 LdDecodeMetaData::getNumberOfFrames(void)
     return (getNumberOfFields() / 2) - frameOffset;
 }
 
-// Method to get the first field number based on the frame number
-qint32 LdDecodeMetaData::getFirstFieldNumber(qint32 frameNumber)
+// Method to get the first and second field numbers based on the frame number
+qint32 LdDecodeMetaData::getFieldNumber(qint32 frameNumber, qint32 field)
 {
     // Point at the first field in the TBC file (according to the current frame number)
     qint32 firstFieldNumber = (frameNumber * 2) - 1;
@@ -651,53 +651,59 @@ qint32 LdDecodeMetaData::getFirstFieldNumber(qint32 frameNumber)
 
     // It's possible that the TBC file will start on the wrong field, so we have to allow for
     // that here by skipping a field if the order isn't right
+    bool skippingField = false;
     if (!getField(firstFieldNumber).isFirstField) {
         firstFieldNumber++;
         secondFieldNumber++;
-        qDebug() << "LdDecodeMetaData::getFirstFieldNumber(): TBC file has an extra field at the start (out of field order) - skipping";
+        skippingField = true;
     }
+
+    // Is VBI data available?
+    LdDecodeMetaData::Vbi secondFieldVbi = getField(secondFieldNumber).vbi;
+
+    if (secondFieldVbi.inUse) {
+        if (secondFieldVbi.picNo != -1 || secondFieldVbi.timeCode.min != -1) {
+            // If picture number or time-code information is in the second field, we need to flip the
+            // field order (used for some NTSC CAV/CLV and when pull-down frames are included)
+            if (firstFieldNumber > 1) {
+                secondFieldNumber = firstFieldNumber - 1;
+                firstFieldNumber = secondFieldNumber + 1;
+                skippingField = false;
+            } else {
+                qDebug() << "LdDecodeMetaData::getFieldNumber(): Warning... missing initial field, cannot correct field order correctly!";
+            }
+
+            // Only output debug for field 2 (to prevent multiple debug output)
+            if (field == 2) qDebug() << "LdDecodeMetaData::getFieldNumber(): Reversing field order due to VBI picture number/timecode found in second field";
+        }
+    }
+
+    // Only output debug for field 2 (to prevent multiple debug output)
+    if (skippingField && field == 2) qDebug() << "LdDecodeMetaData::getFieldNumber(): TBC file has an extra field at the start (out of field order) - skipping";
 
     // Range check the field number
     if (firstFieldNumber > getNumberOfFields()) {
-        qCritical() << "LdDecodeMetaData::getFirstFieldNumber(): First field number exceed the available number of fields!";
+        qCritical() << "LdDecodeMetaData::getFieldNumber(): First field number exceed the available number of fields!";
         return -1;
     }
 
     // Range check the field number
     if (secondFieldNumber > getNumberOfFields()) {
-        qCritical() << "LdDecodeMetaData::getFirstFieldNumber(): Second field number exceed the available number of fields!";
+        qCritical() << "LdDecodeMetaData::getFieldNumber(): Second field number exceed the available number of fields!";
         return -1;
     }
 
-    return firstFieldNumber;
+    if (field == 1) return firstFieldNumber; else return secondFieldNumber;
+}
+
+// Method to get the first field number based on the frame number
+qint32 LdDecodeMetaData::getFirstFieldNumber(qint32 frameNumber)
+{
+    return getFieldNumber(frameNumber, 1);
 }
 
 // Method to get the second field number based on the frame number
 qint32 LdDecodeMetaData::getSecondFieldNumber(qint32 frameNumber)
 {
-    // Point at the first field in the TBC file (according to the current frame number)
-    qint32 firstFieldNumber = (frameNumber * 2) - 1;
-    qint32 secondFieldNumber = firstFieldNumber + 1;
-
-    // It's possible that the TBC file will start on the wrong field, so we have to allow for
-    // that here by skipping a field if the order isn't right
-    if (!getField(firstFieldNumber).isFirstField) {
-        firstFieldNumber++;
-        secondFieldNumber++;
-        qDebug() << "LdDecodeMetaData::getSecondFieldNumber(): TBC file has an extra field at the start (out of field order) - skipping";
-    }
-
-    // Range check the field number
-    if (firstFieldNumber > getNumberOfFields()) {
-        qCritical() << "LdDecodeMetaData::getSecondFieldNumber(): First field number exceed the available number of fields!";
-        return -1;
-    }
-
-    // Range check the field number
-    if (secondFieldNumber > getNumberOfFields()) {
-        qCritical() << "LdDecodeMetaData::getSecondFieldNumber(): Second field number exceed the available number of fields!";
-        return -1;
-    }
-
-    return secondFieldNumber;
+    return getFieldNumber(frameNumber, 2);
 }
