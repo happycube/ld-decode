@@ -119,11 +119,9 @@ void MainWindow::updateGuiLoaded(void)
     ui->frameHorizontalSlider->setPageStep(ldDecodeMetaData.getNumberOfFrames() / 100);
     ui->frameHorizontalSlider->setValue(currentFrameNumber);
 
-    // Enable the VBI data groupbox
-    ui->vbiGroupBox->setEnabled(true);
-
-    // Enable the frame info group box
-    ui->frameGroupBox->setEnabled(true);
+    // Enable the field information groupboxes
+    ui->firstFieldGroupBox->setEnabled(true);
+    ui->secondFieldGroupBox->setEnabled(true);
 
     // Enable menu options
     ui->actionLine_scope->setEnabled(true);
@@ -166,11 +164,9 @@ void MainWindow::updateGuiUnloaded(void)
     ui->nextPushButton->setAutoRepeatDelay(500);
     ui->nextPushButton->setAutoRepeatInterval(10);
 
-    // Disable the VBI data groupbox
-    ui->vbiGroupBox->setEnabled(false);
-
-    // Disable the frame info group box
-    ui->frameGroupBox->setEnabled(false);
+    // Disable the field information groupboxes
+    ui->firstFieldGroupBox->setEnabled(false);
+    ui->secondFieldGroupBox->setEnabled(false);
 
     // Set the window title
     this->setWindowTitle(tr("ld-analyse"));
@@ -299,6 +295,24 @@ void MainWindow::showFrame(qint32 frameNumber, bool showActiveVideoArea, bool hi
         ui->even2VbiLabel->setText("No metadata");
     }
 
+    // Add the first field sync confidence field to the dialogue
+    ui->firstFieldSyncConfLabel->setText(QString::number(firstField.syncConf) + "%");
+
+    // Add the first field drop out data to the dialogue
+    if (firstField.dropOuts.startx.size() > 0) {
+        ui->firstFieldDropoutsLabel->setText(QString::number(firstField.dropOuts.startx.size()));
+
+        // Calculate the total length of the dropouts
+        qint32 doLength = 0;
+        for (qint32 i = 0; i < firstField.dropOuts.startx.size(); i++) {
+            doLength += firstField.dropOuts.endx[i] - firstField.dropOuts.startx[i];
+        }
+        ui->firstFieldDoLengthLabel->setText(QString::number(doLength));
+    } else {
+        ui->firstFieldDropoutsLabel->setText("0");
+        ui->firstFieldDoLengthLabel->setText("0");
+    }
+
     // Add the second field VBI data to the dialogue
     if (secondField.vbi.inUse) {
         ui->odd0VbiLabel->setText("0x" + QString::number(secondField.vbi.vbi16, 16));
@@ -308,6 +322,24 @@ void MainWindow::showFrame(qint32 frameNumber, bool showActiveVideoArea, bool hi
         ui->odd0VbiLabel->setText("No metadata");
         ui->odd1VbiLabel->setText("No metadata");
         ui->odd2VbiLabel->setText("No metadata");
+    }
+
+    // Add the second field sync confidence field to the dialogue
+    ui->secondFieldSyncConfLabel->setText(QString::number(secondField.syncConf) + "%");
+
+    // Add the second field drop out data to the dialogue
+    if (secondField.dropOuts.startx.size() > 0) {
+        ui->secondFieldDropoutsLabel->setText(QString::number(secondField.dropOuts.startx.size()));
+
+        // Calculate the total length of the dropouts
+        qint32 doLength = 0;
+        for (qint32 i = 0; i < secondField.dropOuts.startx.size(); i++) {
+            doLength += secondField.dropOuts.endx[i] - secondField.dropOuts.startx[i];
+        }
+        ui->secondFieldDoLengthLabel->setText(QString::number(doLength));
+    } else {
+        ui->secondFieldDropoutsLabel->setText("0");
+        ui->secondFieldDoLengthLabel->setText("0");
     }
 
     // Update the VBI dialogue
