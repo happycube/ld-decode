@@ -426,6 +426,10 @@ QImage MainWindow::generateQImage(qint32 firstFieldNumber, qint32 secondFieldNum
     // Create a QImage
     QImage frameImage = QImage(videoParameters.fieldWidth, frameHeight, QImage::Format_RGB888);
 
+    // Define the data buffers
+    QByteArray firstLineData;
+    QByteArray secondLineData;
+
     if (ui->sourceRadioButton->isChecked()) {
         // Copy the raw 16-bit grayscale data into the RGB888 QImage
         for (qint32 y = 0; y < frameHeight; y++) {
@@ -433,8 +437,8 @@ QImage MainWindow::generateQImage(qint32 firstFieldNumber, qint32 secondFieldNum
             qint32 startPointer = (y / 2) * videoParameters.fieldWidth * 2;
             qint32 length = videoParameters.fieldWidth * 2;
 
-            QByteArray firstLineData = firstFieldData.mid(startPointer, length);
-            QByteArray secondLineData = secondFieldData.mid(startPointer, length);
+            firstLineData = firstFieldData.mid(startPointer, length);
+            secondLineData = secondFieldData.mid(startPointer, length);
 
             for (qint32 x = 0; x < videoParameters.fieldWidth; x++) {
                 // Take just the MSB of the input data
@@ -468,7 +472,7 @@ QImage MainWindow::generateQImage(qint32 firstFieldNumber, qint32 secondFieldNum
             qreal tSaturation = 125.0 + ((100.0 / 20.0) * (20.0 - ldDecodeMetaData.getField(firstFieldNumber).medianBurstIRE));
 
             // Perform the PALcolour filtering (output is RGB 16-16-16)
-            outputData = palColour.performDecode(sourceVideo.getVideoField(firstFieldNumber)->getFieldData(), sourceVideo.getVideoField(secondFieldNumber)->getFieldData(),
+            outputData = palColour.performDecode(firstFieldData, secondFieldData,
                                                   100, static_cast<qint32>(tSaturation));
         } else {
             // NTSC source
@@ -477,7 +481,7 @@ QImage MainWindow::generateQImage(qint32 firstFieldNumber, qint32 secondFieldNum
             firstActiveScanLine = 43;
             lastActiveScanLine = 525;
 
-            outputData = ntscColour.process(sourceVideo.getVideoField(firstFieldNumber)->getFieldData(), sourceVideo.getVideoField(secondFieldNumber)->getFieldData(),
+            outputData = ntscColour.process(firstFieldData, secondFieldData,
                                                             ldDecodeMetaData.getField(firstFieldNumber).medianBurstIRE,
                                                             ldDecodeMetaData.getField(firstFieldNumber).fieldPhaseID,
                                                             ldDecodeMetaData.getField(secondFieldNumber).fieldPhaseID);

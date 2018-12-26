@@ -53,6 +53,7 @@ void PalColour::buildLookUpTables(void)
 {
     // Step 1: create sine/cosine lookups
     refAmpl = 1.28;
+    normalise = (refAmpl * refAmpl / 2);     // refAmpl is the integer sinewave amplitude
 
     double rad;
     for (qint32 i = 0; i < videoParameters.fieldWidth; i++)
@@ -120,6 +121,10 @@ void PalColour::buildLookUpTables(void)
         ydiv+=yfilt[0][f]+2*yfilt[1][f]+2*yfilt[2][f]+2*yfilt[3][f];
     }
     cdiv*=2; ydiv*=2;
+
+    // Calculate the frame height and resize the output buffer
+    qint32 frameHeight = (videoParameters.fieldHeight * 2) - 1;
+    outputFrame.resize(videoParameters.fieldWidth * frameHeight * 6);
 }
 
 // Performs a decode of the 16-bit greyscale input frame and produces a RGB 16-16-16-bit output frame
@@ -134,12 +139,6 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
         qDebug() << "PalColour::performDecode(): Called, but the object has not been configured";
         return nullptr;
     }
-
-    // Calculate the frame height
-    qint32 frameHeight = (videoParameters.fieldHeight * 2) - 1;
-
-    QByteArray outputFrame;
-    outputFrame.resize(videoParameters.fieldWidth * frameHeight * 6);
 
     double scaledBrightness = 1.75 * brightness / 100.0;
     // NB 1.75 is nominal scaling factor for full-range digitised composite (with sync at code 0 or 1,
@@ -290,8 +289,6 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
                 }
                 blacklevel /= (videoParameters.blackLevelEnd - videoParameters.blackLevelStart) * 5;
 
-                double normalise = (refAmpl * refAmpl / 2);     // refAmpl is the integer sinewave amplitude
-
                 // Generate the luminance (Y), by filtering out Fsc (by re-synthesising the detected py qy and subtracting), and subtracting the black-level
                 for (qint32 i=videoParameters.activeVideoStart; i < videoParameters.activeVideoEnd; i++) {
                     qint32 tmp = static_cast<qint32>(b0[i]-(py[i]*sine[i]+qy[i]*cosine[i]) / normalise - blacklevel);
@@ -305,11 +302,11 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
 
                 // 'saturation' is a user saturation control, nom. 100% - scaled to 16-bit (*256)
                 double scaledSaturation = (saturation / 100.0) / norm;  // 'norm' normalises bp and bq to 1
+                qint32 R, G, B;
+                double U, V;
+
                 for (qint32 i = videoParameters.activeVideoStart; i < videoParameters.activeVideoEnd; i++)
                 {
-                    qint32 R, G, B;
-                    double U, V;
-
                     // the next two lines "rotate" the p&q components (at the arbitrary sine/cosine reference phase) backwards by the
                     // burst phase (relative to the arb phase), in order to recover U and V. The Vswitch is applied to flip the V-phase on alternate lines for PAL
                     U =- ((pu[i]*bp+qu[i]*bq)) * scaledSaturation;

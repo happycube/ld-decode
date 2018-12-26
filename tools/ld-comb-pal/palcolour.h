@@ -64,6 +64,8 @@ private:
     double cdiv;
     double ydiv;
     double refAmpl;
+    double normalise;
+    QByteArray outputFrame;
 
     bool configurationSet;
 
