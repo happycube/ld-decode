@@ -31,13 +31,20 @@
 
 #include "palcolour.h"
 
-PalColour::PalColour(LdDecodeMetaData::VideoParameters videoParametersParam, QObject *parent) : QObject(parent)
+PalColour::PalColour(QObject *parent) : QObject(parent)
+{
+    configurationSet = false;
+}
+
+void PalColour::updateConfiguration(LdDecodeMetaData::VideoParameters videoParametersParam)
 {
     // Copy the configuration parameters
     videoParameters = videoParametersParam;
 
     // Build the look-up tables
     buildLookUpTables();
+
+    configurationSet = true;
 }
 
 // Private method to build the look up tables
@@ -122,6 +129,12 @@ void PalColour::buildLookUpTables(void)
 // in the allocated memory, it will be in the output with the decoded image on top.
 QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray secondFieldData, qint32 brightness, qint32 saturation)
 {
+    // Ensure the object has been configured
+    if (!configurationSet) {
+        qDebug() << "PalColour::performDecode(): Called, but the object has not been configured";
+        return nullptr;
+    }
+
     // Calculate the frame height
     qint32 frameHeight = (videoParameters.fieldHeight * 2) - 1;
 

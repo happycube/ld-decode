@@ -33,7 +33,7 @@ FilterThread::FilterThread(LdDecodeMetaData::VideoParameters videoParametersPara
     // Configure PAL colour
     videoParameters = videoParametersParam;
     isVP415CropSet = isVP415CropSetParam;
-    palColour = new PalColour(videoParameters);
+    palColour.updateConfiguration(videoParameters);
 
     // Calculate the frame height
     qint32 frameHeight = (videoParameters.fieldHeight * 2) - 1;
@@ -78,8 +78,6 @@ FilterThread::~FilterThread()
     mutex.unlock();
 
     wait();
-
-    delete palColour;
 }
 
 void FilterThread::startFilter(QByteArray firstFieldParam, QByteArray secondFieldParam, qreal burstMedianIreParam)
@@ -131,7 +129,7 @@ void FilterThread::run()
             qreal tSaturation = 125.0 + ((100.0 / 20.0) * (20.0 - burstMedianIre));
 
             // Perform the PALcolour filtering
-            outputData = palColour->performDecode(tsFirstFieldData, tsSecondFieldData, 100, static_cast<qint32>(tSaturation));
+            outputData = palColour.performDecode(tsFirstFieldData, tsSecondFieldData, 100, static_cast<qint32>(tSaturation));
 
             // The PAL colour library outputs the whole frame, so here we have to strip all the non-visible stuff to just get the
             // actual required image - it would be better if PALcolour gave back only the required RGB, but it's not my library.

@@ -99,6 +99,8 @@ private:
     qint32 currentFrameNumber;
     qint32 lastScopeLine;
     bool isFileOpen;
+    PalColour palColour;
+    Comb ntscColour;
 
     void updateGuiLoaded(void);
     void updateGuiUnloaded(void);

@@ -59,7 +59,7 @@ private:
     bool abort;
 
     // PAL colour object
-    PalColour *palColour;
+    PalColour palColour;
     LdDecodeMetaData::VideoParameters videoParameters;
     bool isVP415CropSet;
 

@@ -97,6 +97,9 @@ MainWindow::~MainWindow()
 // Method to update the GUI when a file is loaded
 void MainWindow::updateGuiLoaded(void)
 {
+    // Get the video parameters
+    LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
+
     // Enable the frame controls
     ui->frameNumberSpinBox->setEnabled(true);
     ui->previousPushButton->setEnabled(true);
@@ -129,6 +132,41 @@ void MainWindow::updateGuiLoaded(void)
     ui->actionNTSC->setEnabled(true);
     ui->actionVideo_metadata->setEnabled(true);
     ui->action1_1_Frame_size->setEnabled(true);
+
+    // Configure the comb-filter
+    if (ldDecodeMetaData.getVideoParameters().isSourcePal) {
+        palColour.updateConfiguration(videoParameters);
+    } else {
+        // Set the first active scan line
+        qint32 firstActiveScanLine = 43;
+
+        // Get the default configuration for the comb filter
+        Comb::Configuration configuration = ntscColour.getConfiguration();
+
+        // Set the comb filter configuration
+        configuration.filterDepth = 2;
+        configuration.blackAndWhite = false;
+        configuration.adaptive2d = false;
+        configuration.opticalflow = false;
+
+        // Set the input buffer dimensions configuration
+        configuration.fieldWidth = videoParameters.fieldWidth;
+        configuration.fieldHeight = videoParameters.fieldHeight;
+
+        // Set the active video range
+        configuration.activeVideoStart = videoParameters.activeVideoStart;
+        configuration.activeVideoEnd = videoParameters.activeVideoEnd;
+
+        // Set the first frame scan line which contains active video
+        configuration.firstVisibleFrameLine = firstActiveScanLine;
+
+        // Set the IRE levels
+        configuration.blackIre = videoParameters.black16bIre;
+        configuration.whiteIre = videoParameters.white16bIre;
+
+        // Update the comb filter object's configuration
+        ntscColour.setConfiguration(configuration);
+    }
 
     // Show the current frame
     showFrame(currentFrameNumber, ui->showActiveVideoCheckBox->isChecked(), ui->highlightDropOutsCheckBox->isChecked());
@@ -415,6 +453,7 @@ QImage MainWindow::generateQImage(qint32 firstFieldNumber, qint32 secondFieldNum
             }
         }
     } else {
+        // Set the first and last active scan line (for PAL)
         qint32 firstActiveScanLine = 44;
         qint32 lastActiveScanLine = 617;
         QByteArray outputData;
@@ -423,21 +462,12 @@ QImage MainWindow::generateQImage(qint32 firstFieldNumber, qint32 secondFieldNum
         if (videoParameters.isSourcePal) {
             // PAL source
 
-            // Set the first and last active scan line
-            firstActiveScanLine = 44;
-            lastActiveScanLine = 617;
-
-            // Determine the first and second fields for the frame number
-            qint32 firstFieldNumber = ldDecodeMetaData.getFirstFieldNumber(currentFrameNumber);
-            qint32 secondFieldNumber = ldDecodeMetaData.getSecondFieldNumber(currentFrameNumber);
-
             // Calculate the saturation level from the burst median IRE
             // Note: This code works as a temporary MTF compensator whilst ld-decode gets
             // real MTF compensation added to it.
             qreal tSaturation = 125.0 + ((100.0 / 20.0) * (20.0 - ldDecodeMetaData.getField(firstFieldNumber).medianBurstIRE));
 
             // Perform the PALcolour filtering (output is RGB 16-16-16)
-            PalColour palColour(videoParameters);
             outputData = palColour.performDecode(sourceVideo.getVideoField(firstFieldNumber)->getFieldData(), sourceVideo.getVideoField(secondFieldNumber)->getFieldData(),
                                                   100, static_cast<qint32>(tSaturation));
         } else {
@@ -447,41 +477,7 @@ QImage MainWindow::generateQImage(qint32 firstFieldNumber, qint32 secondFieldNum
             firstActiveScanLine = 43;
             lastActiveScanLine = 525;
 
-            // Determine the first and second fields for the frame number
-            qint32 firstFieldNumber = ldDecodeMetaData.getFirstFieldNumber(currentFrameNumber);
-            qint32 secondFieldNumber = ldDecodeMetaData.getSecondFieldNumber(currentFrameNumber);
-
-            // Create the comb filter object
-            Comb comb;
-
-            // Get the default configuration for the comb filter
-            Comb::Configuration configuration = comb.getConfiguration();
-
-            // Set the comb filter configuration
-            configuration.filterDepth = 2;
-            configuration.blackAndWhite = false;
-            configuration.adaptive2d = false;
-            configuration.opticalflow = false;
-
-            // Set the input buffer dimensions configuration
-            configuration.fieldWidth = videoParameters.fieldWidth;
-            configuration.fieldHeight = videoParameters.fieldHeight;
-
-            // Set the active video range
-            configuration.activeVideoStart = videoParameters.activeVideoStart;
-            configuration.activeVideoEnd = videoParameters.activeVideoEnd;
-
-            // Set the first frame scan line which contains active video
-            configuration.firstVisibleFrameLine = firstActiveScanLine;
-
-            // Set the IRE levels
-            configuration.blackIre = videoParameters.black16bIre;
-            configuration.whiteIre = videoParameters.white16bIre;
-
-            // Update the comb filter object's configuration
-            comb.setConfiguration(configuration);
-
-            outputData = comb.process(sourceVideo.getVideoField(firstFieldNumber)->getFieldData(), sourceVideo.getVideoField(secondFieldNumber)->getFieldData(),
+            outputData = ntscColour.process(sourceVideo.getVideoField(firstFieldNumber)->getFieldData(), sourceVideo.getVideoField(secondFieldNumber)->getFieldData(),
                                                             ldDecodeMetaData.getField(firstFieldNumber).medianBurstIRE,
                                                             ldDecodeMetaData.getField(firstFieldNumber).fieldPhaseID,
                                                             ldDecodeMetaData.getField(secondFieldNumber).fieldPhaseID);

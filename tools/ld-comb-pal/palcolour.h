@@ -41,7 +41,8 @@ class PalColour : public QObject
     Q_OBJECT
 
 public:
-    explicit PalColour(LdDecodeMetaData::VideoParameters videoParametersParam, QObject *parent = nullptr);
+    explicit PalColour(QObject *parent = nullptr);
+    void updateConfiguration(LdDecodeMetaData::VideoParameters videoParametersParam);
 
     // Method to perform the colour decoding
     QByteArray performDecode(QByteArray topFieldData, QByteArray bottomFieldData, qint32 brightness, qint32 saturation);
@@ -63,6 +64,8 @@ private:
     double cdiv;
     double ydiv;
     double refAmpl;
+
+    bool configurationSet;
 
     // Method to build the required look-up tables
     void buildLookUpTables(void);
