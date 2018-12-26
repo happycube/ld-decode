@@ -74,9 +74,7 @@ if args.seek != -1:
 ldd.rf.mtf_mult = args.MTF
 ldd.rf.mtf_offset = args.MTF_offset
 
-for i in range(0, req_frames * 2):
-    f = ldd.readfield()
-
+def write_json(ldd, outname):
     jsondict = ldd.build_json(f)
     
     fp = open(outname + '.tbc.json.tmp', 'w')
@@ -85,3 +83,11 @@ for i in range(0, req_frames * 2):
     fp.close()
     
     os.rename(outname + '.tbc.json.tmp', outname + '.tbc.json')
+
+for i in range(0, req_frames * 2):
+    f = ldd.readfield()
+
+    if i < 5 or ((i % 10) == 0):
+        print('write json')
+        write_json(ldd, outname)
+        
