@@ -26,6 +26,8 @@
 #define PROCESSCAV_H
 
 #include <QObject>
+#include <algorithm>
+#include <QVector>
 
 #include "sourcevideo.h"
 #include "lddecodemetadata.h"
@@ -43,7 +45,11 @@ signals:
 public slots:
 
 private:
-
+    typedef struct {
+        qint32 frameNumber;
+        qint32 firstField;
+        qint32 secondField;
+    } frame;
 };
 
 #endif // PROCESSCAV_H
