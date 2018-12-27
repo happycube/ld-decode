@@ -121,7 +121,7 @@ int main(int argc, char *argv[])
 
     // Perform the processing
     ProcessCav processCav;
-    processCav.process(inputFileName);
+    processCav.process(inputFileName, -1); // -1 = work out the first frame number automatically
 
     // Quit with success
     return 0;

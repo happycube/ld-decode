@@ -38,7 +38,7 @@ class ProcessCav : public QObject
 public:
     explicit ProcessCav(QObject *parent = nullptr);
 
-    bool process(QString inputFileName);
+    bool process(QString inputFileName, qint32 firstFrameNumber);
 
 signals:
 
@@ -47,6 +47,7 @@ public slots:
 private:
     typedef struct {
         qint32 frameNumber;
+        qint32 seqFrameNumber;
         qint32 firstField;
         qint32 secondField;
     } frame;
