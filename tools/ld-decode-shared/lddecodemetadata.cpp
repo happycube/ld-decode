@@ -607,6 +607,57 @@ void LdDecodeMetaData::setPcmAudioParameters(LdDecodeMetaData::PcmAudioParameter
 
 LdDecodeMetaData::Field LdDecodeMetaData::getField(qint32 sequentialFieldNumber)
 {
+    if ((sequentialFieldNumber - 1) >= metaData.fields.size()) {
+        qCritical() << "LdDecodeMetaData::getField(): Requested field number" << sequentialFieldNumber << "out of bounds!";
+
+        // We have to construct a dummy result to prevent segfaults on return
+        LdDecodeMetaData::Field field;
+        field.seqNo = -1;
+        field.isFirstField = false;
+        field.syncConf = -1;
+        field.medianBurstIRE = -1;
+        field.fieldPhaseID = -1;
+        field.vits.inUse = false;
+        field.vbi.inUse = false;
+        field.vbi.vbi16 = -1;
+        field.vbi.vbi17 = -1;
+        field.vbi.vbi18 = -1;
+        field.vbi.type = LdDecodeMetaData::VbiDiscTypes::unknownDiscType;
+        field.vbi.leadIn = false;
+        field.vbi.leadOut = false;
+        field.vbi.picNo = -1;
+        field.vbi.picStop = false;
+        field.vbi.chNo = -1;
+        field.vbi.timeCode.hr = -1;
+        field.vbi.timeCode.min = -1;
+        field.vbi.clvPicNo.sec = -1;
+        field.vbi.clvPicNo.picNo = -1;
+        field.vbi.statusCode.cx = false;
+        field.vbi.statusCode.fm = false;
+        field.vbi.statusCode.dump = false;
+        field.vbi.statusCode.side = false;
+        field.vbi.statusCode.size = false;
+        field.vbi.statusCode.valid = false;
+        field.vbi.statusCode.parity = false;
+        field.vbi.statusCode.digital = false;
+        field.vbi.statusCode.teletext = false;
+        field.vbi.statusCode.soundMode = LdDecodeMetaData::VbiSoundModes::futureUse;
+        field.vbi.statusCodeAm2.cx = false;
+        field.vbi.statusCodeAm2.copy = false;
+        field.vbi.statusCodeAm2.side = false;
+        field.vbi.statusCodeAm2.size = false;
+        field.vbi.statusCodeAm2.valid = false;
+        field.vbi.statusCodeAm2.standard = false;
+        field.vbi.statusCodeAm2.teletext = false;
+        field.vbi.statusCodeAm2.soundMode = LdDecodeMetaData::VbiSoundModes::futureUse;
+        field.ntsc.inUse = false;
+        field.ntsc.fieldFlag = false;
+        field.ntsc.whiteFlag = false;
+        field.ntsc.fmCodeData = -1;
+        field.ntsc.isFmCodeDataValid = false;
+
+        return field;
+    }
     return metaData.fields[sequentialFieldNumber - 1];
 }
 
@@ -617,6 +668,10 @@ void LdDecodeMetaData::appendField(LdDecodeMetaData::Field fieldParam)
 
 void LdDecodeMetaData::updateField(LdDecodeMetaData::Field fieldParam, qint32 sequentialFieldNumber)
 {
+    if ((sequentialFieldNumber - 1) >= metaData.fields.size()) {
+        qCritical() << "LdDecodeMetaData::updateField(): Requested field number" << sequentialFieldNumber << "out of bounds!";
+        return;
+    }
     metaData.fields[sequentialFieldNumber - 1] = fieldParam;
 }
 

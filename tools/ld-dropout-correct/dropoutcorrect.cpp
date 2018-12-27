@@ -60,8 +60,15 @@ bool DropOutCorrect::process(QString inputFileName, QString outputFileName)
             return false;
     }
 
+    // Check TBC and JSON field numbers match
+    if (sourceVideo.getNumberOfAvailableFields() != ldDecodeMetaData.getNumberOfFields()) {
+        qInfo() << "Warning: TBC file contains" << sourceVideo.getNumberOfAvailableFields() <<
+                   "fields but the JSON indicates" << ldDecodeMetaData.getNumberOfFields() <<
+                   "fields - some fields will be ignored";
+    }
+
     // Process the fields
-    for (qint32 fieldNumber = 1; fieldNumber <= sourceVideo.getNumberOfAvailableFields(); fieldNumber++) {
+    for (qint32 fieldNumber = 1; fieldNumber <= ldDecodeMetaData.getNumberOfFields(); fieldNumber++) {
         SourceField *sourceField;
 
         // Get the source frame

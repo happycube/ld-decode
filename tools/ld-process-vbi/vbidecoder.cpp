@@ -51,8 +51,15 @@ bool VbiDecoder::process(QString inputFileName)
         return false;
     }
 
+    // Check TBC and JSON field numbers match
+    if (sourceVideo.getNumberOfAvailableFields() != ldDecodeMetaData.getNumberOfFields()) {
+        qInfo() << "Warning: TBC file contains" << sourceVideo.getNumberOfAvailableFields() <<
+                   "fields but the JSON indicates" << ldDecodeMetaData.getNumberOfFields() <<
+                   "fields - some fields will be ignored";
+    }
+
     // Process the VBI and NTSC data for the fields
-    for (qint32 fieldNumber = 1; fieldNumber <= sourceVideo.getNumberOfAvailableFields(); fieldNumber++) {
+    for (qint32 fieldNumber = 1; fieldNumber <= ldDecodeMetaData.getNumberOfFields(); fieldNumber++) {
         SourceField *sourceField;
         VbiDecoder vbiDecoder;
         FmCode fmCode;
@@ -65,6 +72,7 @@ bool VbiDecoder::process(QString inputFileName)
 
         // Get the existing field data from the metadata
         LdDecodeMetaData::Field field = ldDecodeMetaData.getField(fieldNumber);
+
         if (field.isFirstField) qDebug() << "VbiDecoder::process(): Getting metadata for field" << fieldNumber << "(first)";
         else  qDebug() << "VbiDecoder::process(): Getting metadata for field" << fieldNumber << "(second)";
 

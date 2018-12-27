@@ -68,9 +68,16 @@ bool DropOutDetector::process(QString inputFileName)
         return false;
     }
 
+    // Check TBC and JSON field numbers match
+    if (sourceVideo.getNumberOfAvailableFields() != ldDecodeMetaData.getNumberOfFields()) {
+        qInfo() << "Warning: TBC file contains" << sourceVideo.getNumberOfAvailableFields() <<
+                   "fields but the JSON indicates" << ldDecodeMetaData.getNumberOfFields() <<
+                   "fields - some fields will be ignored";
+    }
+
     // Process the fields
     SourceField *sourceField;
-    for (qint32 fieldNumber = 1; fieldNumber <= sourceVideo.getNumberOfAvailableFields(); fieldNumber++) {
+    for (qint32 fieldNumber = 1; fieldNumber <= ldDecodeMetaData.getNumberOfFields(); fieldNumber++) {
         // Get the source frame
         sourceField = sourceVideo.getVideoField(fieldNumber);
 
