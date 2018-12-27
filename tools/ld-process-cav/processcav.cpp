@@ -29,7 +29,7 @@ ProcessCav::ProcessCav(QObject *parent) : QObject(parent)
 
 }
 
-bool ProcessCav::process(QString inputFileName, qint32 firstFrameNumber)
+bool ProcessCav::process(QString inputFileName, QString outputFileName, qint32 firstFrameNumber)
 {
     LdDecodeMetaData ldDecodeMetaData;
     SourceVideo sourceVideo;
@@ -121,18 +121,38 @@ bool ProcessCav::process(QString inputFileName, qint32 firstFrameNumber)
         if (tempFrame.frameNumber != 123456) {
             // Range check the frame number to see if the number is valid (will only catch
             // corrupt VBI outside of normal frame range...)
-            if (tempFrame.frameNumber < firstFrameNumber || tempFrame.frameNumber > 55000) {
+            if (tempFrame.frameNumber < firstFrameNumber || tempFrame.frameNumber > 60000) {
                 qInfo() << "Sequential frame" << seqNumber << "[" << tempFrame.firstField << "/" << tempFrame.secondField << "] Has a corrupt VBI picture number of " << tempFrame.frameNumber;
                 tempFrame.frameNumber = 123456;
             }
         }
 
+        // Check for a picture stop-code
+        if (firstFieldData.vbi.picStop || secondFieldData.vbi.picStop) {
+            qInfo() << "Found stop code in sequential frame" << seqNumber;
+            tempFrame.stopCode = true;
+        } else tempFrame.stopCode = false;
+
         // Append the record to our array (regardless of if we could get a frame number)
+        tempFrame.fakeFrame = false;
         availableFrames.append(tempFrame);
     }
 
-    // Note: This will be fooled by duplicate frames!  We should probably looks for duplicates before doing a
-    // frame gap analysis...
+    // Look for frame repetition caused by stop-codes during capture
+    qInfo() << "Looking for duplicate frames caused by stop-codes:";
+    qint32 seqNumber = 0;
+    while (seqNumber < availableFrames.size() - 1) {
+        if (availableFrames[seqNumber].stopCode) {
+            // Current frame has a stop-code remove any repeating frames that follow it
+            while (availableFrames[seqNumber + 1].frameNumber == availableFrames[seqNumber].frameNumber &&
+                   availableFrames[seqNumber + 1].stopCode) {
+                qInfo() << "Removing stop-code repeated frame" << availableFrames[seqNumber].frameNumber << "[" << availableFrames[seqNumber + 1].seqFrameNumber << "]";
+                availableFrames.remove(seqNumber + 1);
+            }
+        }
+
+        seqNumber++;
+    }
 
     // Check for any frames that are out of sequence (or have missing frame numbers) and try to guess the
     // frame number based on the adjacent frames
@@ -167,23 +187,86 @@ bool ProcessCav::process(QString inputFileName, qint32 firstFrameNumber)
     qInfo() << "Sorting the available frames into numerical order:";
     std::sort(availableFrames.begin(), availableFrames.end(), [](const frame& a, const frame& b) { return a.frameNumber < b.frameNumber; });
 
+    // Check for duplicate frames
+    qInfo() << "Checking for (and removing) duplicate frames:";
+    seqNumber = 0;
+    while (seqNumber < availableFrames.size() - 1) {
+        while (availableFrames[seqNumber + 1].frameNumber == availableFrames[seqNumber].frameNumber) {
+            qInfo() << "Removing duplicate frame" << availableFrames[seqNumber].frameNumber << "[" << availableFrames[seqNumber + 1].seqFrameNumber << "]";
+            availableFrames.remove(seqNumber + 1);
+        }
+
+        seqNumber++;
+    }
+
     // Check final sorted frames for continuity
-    qInfo() << "Checking the sorted frames for continuity:";
+    qInfo() << "Checking the sorted frames for continuity and adding in blank filler frames:";
     qint32 currentFrameNumber = availableFrames[0].frameNumber;
     for (qint32 seqNumber = 1; seqNumber < availableFrames.size(); seqNumber++) {
-        if (availableFrames[seqNumber].frameNumber != 123456) {
+        if (availableFrames[seqNumber].frameNumber != 123456 && !availableFrames[seqNumber].fakeFrame) {
             if (availableFrames[seqNumber].frameNumber != currentFrameNumber + 1) {
                 qint32 missingFrames = (availableFrames[seqNumber].frameNumber - currentFrameNumber) - 1;
-                if (missingFrames > 1) qInfo() << "Missing" << missingFrames << "frames - starting from" << currentFrameNumber + 1 << "[ should be after sequential frame" << availableFrames[seqNumber - 1].seqFrameNumber << "]";
-                else qInfo() << "Missing frame number" << currentFrameNumber + 1 << "[ should be after sequential frame" << availableFrames[seqNumber - 1].seqFrameNumber << "]";
+                if (missingFrames > 1) {
+                    qInfo() << "Missing" << missingFrames << "frames - starting from" << currentFrameNumber + 1 << "[ should be after sequential frame" << availableFrames[seqNumber - 1].seqFrameNumber << "]";
+
+                    // Add the missing frames
+                    for (qint32 counter = 0; counter < missingFrames; counter++) {
+                        frame tempFrame;
+                        tempFrame.frameNumber = currentFrameNumber + 1 + counter;
+                        tempFrame.firstField = -1;
+                        tempFrame.secondField = -1;
+                        tempFrame.seqFrameNumber = -1;
+                        tempFrame.fakeFrame = true;
+                        availableFrames.append(tempFrame);
+                    }
+                } else {
+                    qInfo() << "Missing frame number" << currentFrameNumber + 1 << "[ should be after sequential frame" << availableFrames[seqNumber - 1].seqFrameNumber << "]";
+
+                    // Add a blank frame
+                    frame tempFrame;
+                    tempFrame.frameNumber = currentFrameNumber + 1;
+                    tempFrame.firstField = -1;
+                    tempFrame.secondField = -1;
+                    tempFrame.seqFrameNumber = -1;
+                    tempFrame.fakeFrame = true;
+                    availableFrames.append(tempFrame);
+                }
             }
 
             currentFrameNumber = availableFrames[seqNumber].frameNumber;
         }
     }
 
+    // Sort the resulting frames into numerical order according to the VBI frame number
+    qInfo() << "Sorting the final frames into numerical order:";
+    std::sort(availableFrames.begin(), availableFrames.end(), [](const frame& a, const frame& b) { return a.frameNumber < b.frameNumber; });
+
+    qInfo() << "Results:";
+    qInfo() << "First frame number =" << availableFrames[0].frameNumber;
+    qInfo() << "Last frame number =" << availableFrames[availableFrames.size() - 1].frameNumber;
+    qInfo() << "Total number of frames =" << availableFrames.size();
+
+    if (outputFileName.isEmpty()) {
+        qInfo() << "No output file name specified - All done";
+        return true;
+    }
+
+//    // Generate JSON metadata file
+//    LdDecodeMetaData outputMetadata;
+
+//    // Copy all the non-frame related data from the original metadata
+//    LdDecodeMetaData::VideoParameters existingVideoParameters = ldDecodeMetaData.getVideoParameters();
+//    existingVideoParameters.numberOfSequentialFields = availableFrames.size() * 2;
+//    outputMetadata.setVideoParameters(existingVideoParameters);
+//    outputMetadata.setPcmAudioParameters(ldDecodeMetaData.getPcmAudioParameters());
+
+//    // Now add the fields to the metadata
+//    for (qint32 counter = 0; counter < availableFrames.size(); counter ++) {
+//        LdDecodeMetaData::Field firstField;
+//        LdDecodeMetaData::Field secondField;
 
 
+//    }
 
     // Write the metadata file
 //    QString outputFileName = inputFileName + ".json";

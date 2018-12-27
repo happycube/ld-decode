@@ -38,7 +38,7 @@ class ProcessCav : public QObject
 public:
     explicit ProcessCav(QObject *parent = nullptr);
 
-    bool process(QString inputFileName, qint32 firstFrameNumber);
+    bool process(QString inputFileName, QString outputFileName, qint32 firstFrameNumber);
 
 signals:
 
@@ -50,6 +50,8 @@ private:
         qint32 seqFrameNumber;
         qint32 firstField;
         qint32 secondField;
+        bool stopCode;
+        bool fakeFrame;
     } frame;
 };
 

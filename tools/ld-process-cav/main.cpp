@@ -95,8 +95,17 @@ int main(int argc, char *argv[])
                                        QCoreApplication::translate("main", "Show debug"));
     parser.addOption(showDebugOption);
 
+    // Option to select initial frame number (-i)
+    QCommandLineOption initialFrameOption(QStringList() << "i" << "initialFrame",
+                                        QCoreApplication::translate("main", "Specify the initial frame number of the input TBC"),
+                                        QCoreApplication::translate("main", "number"));
+    parser.addOption(initialFrameOption);
+
     // Positional argument to specify input video file
     parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input TBC file"));
+
+    // Positional argument to specify output video file
+    parser.addPositionalArgument("output", QCoreApplication::translate("main", "Specify output TBC file (omit for processing only)"));
 
     // Process the command line options and arguments given by the user
     parser.process(a);
@@ -110,10 +119,31 @@ int main(int argc, char *argv[])
     QStringList positionalArguments = parser.positionalArguments();
     if (positionalArguments.count() == 1) {
         inputFileName = positionalArguments.at(0);
+        outputFileName = "";
+    } else if (positionalArguments.count() == 2) {
+        inputFileName = positionalArguments.at(0);
+        outputFileName = positionalArguments.at(1);
     } else {
         // Quit with error
         qCritical("You must specify an input TBC file");
         return -1;
+    }
+
+    if (inputFileName == outputFileName) {
+        // Quit with error
+        qCritical("Input and output files cannot be the same");
+        return -1;
+    }
+
+    qint32 initialFrame = -1;
+    if (parser.isSet(initialFrameOption)) {
+        initialFrame = parser.value(initialFrameOption).toInt();
+
+        if (initialFrame < 1) {
+            // Quit with error
+            qCritical("Specified initial frame number must be at least 1");
+            return -1;
+        }
     }
 
     // Process the command line options
@@ -121,7 +151,7 @@ int main(int argc, char *argv[])
 
     // Perform the processing
     ProcessCav processCav;
-    processCav.process(inputFileName, -1); // -1 = work out the first frame number automatically
+    processCav.process(inputFileName, outputFileName, initialFrame); // -1 = work out the first frame number automatically
 
     // Quit with success
     return 0;
