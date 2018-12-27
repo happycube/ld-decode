@@ -57,8 +57,27 @@ private:
     };
 
     QVector<DropOutLocation> setDropOutLocation(QVector<DropOutLocation> dropOuts, LdDecodeMetaData::VideoParameters videoParameters);
-    QByteArray replaceDropOuts(QVector<DropOutLocation> dropOuts, LdDecodeMetaData::VideoParameters videoParameters,
-                                         QByteArray sourceFrameData);
+    void replaceDropOuts(QVector<DropOutCorrect::DropOutLocation> firstFieldDropouts,
+                                               QVector<DropOutCorrect::DropOutLocation> secondFieldDropouts, LdDecodeMetaData::VideoParameters videoParameters,
+                                               QByteArray sourceFirstFieldData, QByteArray sourceSecondFieldData,
+                                               QByteArray *targetFirstFieldData, QByteArray *targetSecondFieldData);
+
+    void replaceActiveVideoDropouts(QVector<DropOutCorrect::DropOutLocation> fieldDropouts,
+                                                   qint32 firstActiveFieldLine, qint32 lastActiveFieldLine,
+                                                   QByteArray sourceFieldData,
+                                                   QByteArray *targetFieldData,
+                                                   LdDecodeMetaData::VideoParameters videoParameters);
+
+    void replaceBlackLevelDropouts(QVector<DropOutCorrect::DropOutLocation> firstFieldDropouts,
+                                                   qint32 firstActiveFieldLine, qint32 lastActiveFieldLine,
+                                                   QByteArray sourceFirstFieldData,
+                                                   QByteArray *targetFieldData, LdDecodeMetaData::VideoParameters videoParameters);
+
+    void replaceColourBurstDropouts(QVector<DropOutCorrect::DropOutLocation> fieldDropouts,
+                                                   qint32 firstActiveFieldLine, qint32 lastActiveFieldLine,
+                                                   QByteArray sourceFieldData,
+                                                   QByteArray *targetFieldData,
+                                                   LdDecodeMetaData::VideoParameters videoParameters);
 };
 
 #endif // DROPOUTCORRECT_H
