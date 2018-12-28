@@ -136,7 +136,6 @@ bool DropOutCorrect::process(QString inputFileName, QString outputFileName)
 
             if (firstFieldDropOuts[doCounter].location == Location::unknown) locationText = "Unknown";
             else if (firstFieldDropOuts[doCounter].location == Location::colourBurst) locationText = "Colour burst";
-            else if (firstFieldDropOuts[doCounter].location == Location::black) locationText = "Black level";
             else locationText = "Active video";
 
             qDebug() << "DropOutDetector::process(): First field dropout [" << doCounter << "] -" <<
@@ -153,7 +152,6 @@ bool DropOutCorrect::process(QString inputFileName, QString outputFileName)
 
             if (secondFieldDropOuts[doCounter].location == Location::unknown) locationText = "Unknown";
             else if (secondFieldDropOuts[doCounter].location == Location::colourBurst) locationText = "Colour burst";
-            else if (secondFieldDropOuts[doCounter].location == Location::black) locationText = "Black level";
             else locationText = "Active video";
 
             qDebug() << "DropOutDetector::process(): Second field dropout [" << doCounter << "] -" <<
@@ -253,31 +251,10 @@ QVector<DropOutCorrect::DropOutLocation> DropOutCorrect::setDropOutLocation(QVec
                 }
             }
 
-            // Does the drop-out start in the black level area?
-            else if (dropOuts[index].startx > videoParameters.colourBurstEnd && dropOuts[index].startx <= videoParameters.blackLevelEnd) {
-                dropOuts[index].location = Location::black;
-
-                // Does the drop-out end in the black level area?
-                if (dropOuts[index].endx > videoParameters.blackLevelEnd) {
-                    // Split the drop-out in two
-                    DropOutLocation tempDropOut;
-                    tempDropOut.startx = videoParameters.blackLevelEnd + 1;
-                    tempDropOut.endx = dropOuts[index].endx;
-                    tempDropOut.fieldLine = dropOuts[index].fieldLine;
-                    tempDropOut.location = Location::visibleLine;
-                    dropOuts.append(tempDropOut);
-
-                    // Shorten the original drop out
-                    dropOuts[index].endx = videoParameters.blackLevelEnd;
-
-                    splitCount++;
-                }
-            }
-
             // Does the drop-out start in the active video area?
-            // Note: Here we use the black-level end as the active video start (to prevent a case where the
-            // drop out begins between the black level end and active video start and would go undetected)
-            else if (dropOuts[index].startx > videoParameters.blackLevelEnd && dropOuts[index].startx <= videoParameters.activeVideoEnd) {
+            // Note: Here we use the colour burst end as the active video start (to prevent a case where the
+            // drop out begins between the colour burst level end and active video start and would go undetected)
+            else if (dropOuts[index].startx > videoParameters.colourBurstEnd && dropOuts[index].startx <= videoParameters.activeVideoEnd) {
                 dropOuts[index].location = Location::visibleLine;
 
                 // Does the drop-out end in the active video area?
@@ -317,10 +294,6 @@ void DropOutCorrect::replaceDropOuts(QVector<DropOutCorrect::DropOutLocation> fi
     // Active video drop-out correction
     replaceActiveVideoDropouts(firstFieldDropouts, firstActiveFieldLine, lastActiveFieldLine, sourceFirstFieldData, targetFirstFieldData, videoParameters);
     replaceActiveVideoDropouts(secondFieldDropouts, firstActiveFieldLine, lastActiveFieldLine, sourceSecondFieldData, targetSecondFieldData, videoParameters);
-
-    // Black level
-    replaceBlackLevelDropouts(firstFieldDropouts, firstActiveFieldLine, lastActiveFieldLine, sourceFirstFieldData, targetFirstFieldData, videoParameters);
-    replaceBlackLevelDropouts(secondFieldDropouts, firstActiveFieldLine, lastActiveFieldLine, sourceSecondFieldData, targetSecondFieldData, videoParameters);
 
     // Colour burst
     replaceColourBurstDropouts(firstFieldDropouts, firstActiveFieldLine, lastActiveFieldLine, sourceFirstFieldData, targetFirstFieldData, videoParameters);
@@ -401,79 +374,6 @@ void DropOutCorrect::replaceActiveVideoDropouts(QVector<DropOutCorrect::DropOutL
     }
 }
 
-// Process dropouts in the black level area of the signal
-void DropOutCorrect::replaceBlackLevelDropouts(QVector<DropOutCorrect::DropOutLocation> fieldDropouts,
-                                               qint32 firstActiveFieldLine, qint32 lastActiveFieldLine,
-                                               QByteArray sourceFieldData,
-                                               QByteArray *targetFieldData,
-                                               LdDecodeMetaData::VideoParameters videoParameters)
-{
-    for (qint32 index = 0; index < fieldDropouts.size(); index++) {
-        if (fieldDropouts[index].location == Location::black) {
-            // Find a good source for replacement
-            bool foundSource = false;
-            qint32 stepAmount = 2; // Move two field-lines at a time
-
-            // Look up the picture
-            qint32 sourceLine = fieldDropouts[index].fieldLine - stepAmount;
-            while (sourceLine > firstActiveFieldLine && foundSource == false) {
-                // Is there a drop out on the proposed source line?
-                foundSource = true;
-                for (qint32 sourceIndex = 0; sourceIndex < fieldDropouts.size(); sourceIndex++) {
-                    if (fieldDropouts[sourceIndex].fieldLine == sourceLine) {
-                        // Does the start<->end range overlap?
-                        if ((fieldDropouts[sourceIndex].endx - fieldDropouts[index].startx >= 0) && (fieldDropouts[index].endx - fieldDropouts[sourceIndex].startx >= 0)) {
-                            // Overlap
-                            sourceLine -= stepAmount;
-                            foundSource = false;
-                        } else {
-                            foundSource = true; // Use the current source line
-                            break;
-                        }
-                    }
-                }
-            }
-
-            // Did we find a good source line?
-            if (!foundSource) {
-                // Look down the picture
-                sourceLine = fieldDropouts[index].fieldLine + stepAmount;
-                while (sourceLine < lastActiveFieldLine && foundSource == false) {
-                    // Is there a drop out on the proposed source line?
-                    foundSource = true;
-                    for (qint32 sourceIndex = 0; sourceIndex < fieldDropouts.size(); sourceIndex++) {
-                        if (fieldDropouts[sourceIndex].fieldLine == sourceLine) {
-                            // Does the start<->end range overlap?
-                            if ((fieldDropouts[sourceIndex].endx - fieldDropouts[index].startx >= 0) && (fieldDropouts[index].endx - fieldDropouts[sourceIndex].startx >= 0)) {
-                                // Overlap
-                                sourceLine += stepAmount;
-                                foundSource = false;
-                            } else {
-                                foundSource = true; // Use the current source line
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-
-            // If we still haven't found a good source, give up...
-            if (!foundSource) sourceLine = fieldDropouts[index].fieldLine - stepAmount;
-
-            // Replace the drop-out
-            for (qint32 pixel = fieldDropouts[index].startx; pixel < fieldDropouts[index].endx; pixel++) {
-                *(targetFieldData->data() + (((fieldDropouts[index].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2))) =
-                        *(sourceFieldData.data() + (((sourceLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2)));
-                *(targetFieldData->data() + (((fieldDropouts[index].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2) + 1)) =
-                        *(sourceFieldData.data() + (((sourceLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2) + 1));
-            }
-
-            qDebug() << "DropOutCorrect::replaceBlackLevelDropouts(): Black-level - Field-line" << fieldDropouts[index].fieldLine << "replacing" <<
-                        fieldDropouts[index].startx << "to" << fieldDropouts[index].endx << "from source field-line" << sourceLine;
-        }
-    }
-}
-
 // Process dropouts in the colour burst area of the signal
 void DropOutCorrect::replaceColourBurstDropouts(QVector<DropOutCorrect::DropOutLocation> fieldDropouts,
                                                qint32 firstActiveFieldLine, qint32 lastActiveFieldLine,
@@ -485,8 +385,8 @@ void DropOutCorrect::replaceColourBurstDropouts(QVector<DropOutCorrect::DropOutL
         if (fieldDropouts[index].location == Location::colourBurst) {
             // Find a good source for replacement
             bool foundSource = false;
-            qint32 stepAmount = 8; // Move eight field-lines at a time (to maintain phase)
-            if (!videoParameters.isSourcePal) stepAmount = 1; // For NTSC correction
+            qint32 stepAmount = 8; // Move eight field-lines at a time (to maintain PAL phase)
+            if (!videoParameters.isSourcePal) stepAmount = 4; // Move four field-lines at a time (to maintain NTSC phase)
 
             // Look up the picture
             qint32 sourceLine = fieldDropouts[index].fieldLine - stepAmount;

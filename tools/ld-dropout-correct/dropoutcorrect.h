@@ -45,7 +45,6 @@ private:
     enum Location {
         visibleLine,
         colourBurst,
-        black,
         unknown
     };
 

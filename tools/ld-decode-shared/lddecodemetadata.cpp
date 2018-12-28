@@ -70,8 +70,6 @@ bool LdDecodeMetaData::read(QString fileName)
 
         metaData.videoParameters.colourBurstStart = jsonVideoParameters["colourBurstStart"].toInt();
         metaData.videoParameters.colourBurstEnd = jsonVideoParameters["colourBurstEnd"].toInt();
-        metaData.videoParameters.blackLevelStart = jsonVideoParameters["blackLevelStart"].toInt();
-        metaData.videoParameters.blackLevelEnd = jsonVideoParameters["blackLevelEnd"].toInt();
         metaData.videoParameters.activeVideoStart = jsonVideoParameters["activeVideoStart"].toInt();
         metaData.videoParameters.activeVideoEnd = jsonVideoParameters["activeVideoEnd"].toInt();
 
@@ -327,8 +325,6 @@ bool LdDecodeMetaData::write(QString fileName)
 
     jsonVideoParameters.insert("colourBurstStart", metaData.videoParameters.colourBurstStart);
     jsonVideoParameters.insert("colourBurstEnd", metaData.videoParameters.colourBurstEnd);
-    jsonVideoParameters.insert("blackLevelStart", metaData.videoParameters.blackLevelStart);
-    jsonVideoParameters.insert("blackLevelEnd", metaData.videoParameters.blackLevelEnd);
     jsonVideoParameters.insert("activeVideoStart", metaData.videoParameters.activeVideoStart);
     jsonVideoParameters.insert("activeVideoEnd", metaData.videoParameters.activeVideoEnd);
 

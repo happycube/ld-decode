@@ -126,8 +126,6 @@ public:
 
         qint32 colourBurstStart;
         qint32 colourBurstEnd;
-        qint32 blackLevelStart;
-        qint32 blackLevelEnd;
         qint32 activeVideoStart;
         qint32 activeVideoEnd;
 
