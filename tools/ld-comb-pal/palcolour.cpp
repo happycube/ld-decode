@@ -280,18 +280,9 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
                     py[i]=PY/ydiv; qy[i]=QY/ydiv;
                 }
 
-                // Obtain the black level from the "back porch"
-                // we average over the present line, and two lines above and below to get a good average and avoid "banding"
-                // Bkstart and Bkend define the zone of the back-porch, used for blacklevel reference
-                qint32 blacklevel=0;
-                for (qint32 i = videoParameters.blackLevelStart; i < videoParameters.blackLevelEnd; i++) {
-                    blacklevel+=b0[i]+b1[i]+b2[i]+b3[i]+b4[i];
-                }
-                blacklevel /= (videoParameters.blackLevelEnd - videoParameters.blackLevelStart) * 5;
-
                 // Generate the luminance (Y), by filtering out Fsc (by re-synthesising the detected py qy and subtracting), and subtracting the black-level
                 for (qint32 i=videoParameters.activeVideoStart; i < videoParameters.activeVideoEnd; i++) {
-                    qint32 tmp = static_cast<qint32>(b0[i]-(py[i]*sine[i]+qy[i]*cosine[i]) / normalise - blacklevel);
+                    qint32 tmp = static_cast<qint32>(b0[i]-(py[i]*sine[i]+qy[i]*cosine[i]) / normalise - videoParameters.black16bIre);
                     if (tmp < 0) tmp = 0;
                     if (tmp > 65535) tmp = 65535;
                     Y[i] = static_cast<quint16>(tmp);
