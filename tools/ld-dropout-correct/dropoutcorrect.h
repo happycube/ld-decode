@@ -35,7 +35,7 @@ class DropOutCorrect : public QObject
     Q_OBJECT
 public:
     explicit DropOutCorrect(QObject *parent = nullptr);
-    bool process(QString inputFileName, QString outputFileName);
+    bool process(QString inputFileName, QString outputFileName, bool isIntrafield);
 
 signals:
 
@@ -55,28 +55,17 @@ private:
         Location location;
     };
 
-    QVector<DropOutLocation> setDropOutLocation(QVector<DropOutLocation> dropOuts, LdDecodeMetaData::VideoParameters videoParameters);
-    void replaceDropOuts(QVector<DropOutCorrect::DropOutLocation> firstFieldDropouts,
-                                               QVector<DropOutCorrect::DropOutLocation> secondFieldDropouts, LdDecodeMetaData::VideoParameters videoParameters,
-                                               QByteArray sourceFirstFieldData, QByteArray sourceSecondFieldData,
-                                               QByteArray *targetFirstFieldData, QByteArray *targetSecondFieldData);
+    struct Replacement {
+        bool isFirstField;
+        qint32 fieldLine;
+    };
 
-    void replaceActiveVideoDropouts(QVector<DropOutCorrect::DropOutLocation> fieldDropouts,
-                                                   qint32 firstActiveFieldLine, qint32 lastActiveFieldLine,
-                                                   QByteArray sourceFieldData,
-                                                   QByteArray *targetFieldData,
-                                                   LdDecodeMetaData::VideoParameters videoParameters);
+    LdDecodeMetaData ldDecodeMetaData;
+    LdDecodeMetaData::VideoParameters videoParameters;
 
-    void replaceBlackLevelDropouts(QVector<DropOutCorrect::DropOutLocation> firstFieldDropouts,
-                                                   qint32 firstActiveFieldLine, qint32 lastActiveFieldLine,
-                                                   QByteArray sourceFirstFieldData,
-                                                   QByteArray *targetFieldData, LdDecodeMetaData::VideoParameters videoParameters);
-
-    void replaceColourBurstDropouts(QVector<DropOutCorrect::DropOutLocation> fieldDropouts,
-                                                   qint32 firstActiveFieldLine, qint32 lastActiveFieldLine,
-                                                   QByteArray sourceFieldData,
-                                                   QByteArray *targetFieldData,
-                                                   LdDecodeMetaData::VideoParameters videoParameters);
+    QVector<DropOutLocation> populateDropoutsVector(LdDecodeMetaData::Field field);
+    QVector<DropOutLocation> setDropOutLocations(QVector<DropOutLocation> dropOuts);
+    qint32 findReplacementLine(QVector<DropOutLocation>dropOuts, qint32 dropOutIndex, qint32 stepAmount);
 };
 
 #endif // DROPOUTCORRECT_H
