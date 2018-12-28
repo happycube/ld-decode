@@ -345,6 +345,8 @@ qint32 DropOutCorrect::findReplacementLine(QVector<DropOutLocation>dropOuts, qin
     }
     if (!downFoundSource) downSourceLine = -1;
 
+    qint32 upDistance = dropOuts[dropOutIndex].fieldLine - upSourceLine;
+    qint32 downDistance = downSourceLine - dropOuts[dropOutIndex].fieldLine;
     qint32 sourceLine;
     if (!upFoundSource && !downFoundSource) {
         // We didn't find a good replacement source in either direction
@@ -357,8 +359,12 @@ qint32 DropOutCorrect::findReplacementLine(QVector<DropOutLocation>dropOuts, qin
         sourceLine = downSourceLine;
     } else {
         // We found a replacement in both directions, pick the closest
-        if (upSourceLine < downSourceLine) sourceLine = upSourceLine;
-        else sourceLine = downSourceLine;
+        if (upDistance < downDistance)
+        {
+            sourceLine = upSourceLine;
+        } else {
+            sourceLine = downSourceLine;
+        }
     }
 
     return sourceLine;
