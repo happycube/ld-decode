@@ -692,24 +692,31 @@ qint32 LdDecodeMetaData::getNumberOfFrames(void)
 // Method to get the first and second field numbers based on the frame number
 qint32 LdDecodeMetaData::getFieldNumber(qint32 frameNumber, qint32 field)
 {
-    // Point at the first field in the TBC file (according to the current frame number)
-    qint32 firstFieldNumber = (frameNumber * 2) - 1;
-    qint32 secondFieldNumber = firstFieldNumber + 1;
-    LdDecodeMetaData::Vbi firstFieldVbi = getField(firstFieldNumber).vbi;
 
-    // Ensure that the first sequential field in the TBC file has 'isFirstField' set
-    if (!getField(1).isFirstField) {
-        if (firstFieldVbi.inUse && (firstFieldVbi.picNo == -1 && firstFieldVbi.timeCode.min == -1)) {
-            // If the first sequential field isFirstField = false AND the current first field doesn't have a time-code or
-            // CAV picture number set; advance one field (TBC file is out of field order)
-            firstFieldNumber++;
-            secondFieldNumber++;
-        } else {
-            // If the first sequential field isFirstField = false AND the current first field does have a time-code or
-            // CAV picture number set; filp the frame order (source has reversed field order)
-            qint32 temp = firstFieldNumber;
-            firstFieldNumber = secondFieldNumber;
-            secondFieldNumber = temp;
+    qint32 firstFieldNumber = 0;
+    qint32 secondFieldNumber = 0;
+
+    // Calculate the first and last fields based on the position in the TBC
+    // Note: For NTSC ld-decode outputs field pairs as secondField, firstField
+    //       For PAL the order is firstField, secondField
+    if (getVideoParameters().isSourcePal) {
+        firstFieldNumber = (frameNumber * 2) - 1;
+        secondFieldNumber = firstFieldNumber + 1;
+    } else {
+        secondFieldNumber = (frameNumber * 2) - 1;
+        firstFieldNumber = secondFieldNumber + 1;
+    }
+
+    // Verify that the first field has isFirstField set, if not increment the
+    // chosen first field until it does
+    while (!getField(firstFieldNumber).isFirstField) {
+        firstFieldNumber++;
+        secondFieldNumber++;
+
+        // Give up if we reach the end of the available fields
+        if (firstFieldNumber > getNumberOfFields() || secondFieldNumber > getNumberOfFields()) {
+            qCritical() << "Attempting to get field number failed - no isFirstField in JSON before end of file";
+            break;
         }
     }
 
