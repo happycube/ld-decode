@@ -87,7 +87,7 @@ def write_json(ldd, outname):
 for i in range(0, req_frames * 2):
     f = ldd.readfield()
 
-    if i < 5 or ((i % 10) == 0):
-        print('write json')
+    if i < 100 or ((i % 1000) == 0):
+        #print('write json')
         write_json(ldd, outname)
         
