@@ -85,7 +85,12 @@ def write_json(ldd, outname):
     os.rename(outname + '.tbc.json.tmp', outname + '.tbc.json')
 
 for i in range(0, req_frames * 2):
-    f = ldd.readfield()
+    try:
+        f = ldd.readfield()
+    except:
+        print("aborted")
+        write_json(ldd, outname)
+        exit(1)
 
     if i < 100 or ((i % 1000) == 0):
         #print('write json')
