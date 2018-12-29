@@ -42,8 +42,6 @@ SysParams_NTSC = {
     'audio_rfreq': (1000000*315/88/227.5) * 178.75,
     
     'philips_codelines': [15, 16, 17],
-    
-    'topfirst': True,
 }
 
 # In color NTSC, the line period was changed from 63.5 to 227.5 color cycles,
@@ -73,8 +71,6 @@ SysParams_PAL = {
 
     # slight flaw:  different vbi lines in this phase
     'philips_codelines': [17, 18, 19, 20],
-    
-    'topfirst': False,    
 }
 
 SysParams_PAL['outlinelen'] = calclinelen(SysParams_PAL, 4, 'fsc_mhz')
@@ -536,48 +532,6 @@ class Field:
         plevel = self.data[0]['demod_sync'][self.peaklist[peaknum]]
         return inrange(plevel, self.med_hsync - self.hsync_tolerance, self.med_hsync + self.hsync_tolerance)
         
-    def determine_field(self, peaknum):
-        if peaknum < 11:
-            return None
-
-        vote = 0
-
-        ds = self.data[0]['demod_sync']    
-
-        # Determine first/second field
-        # should this rely on what comes *after* the vsync too?
-        line0 = None
-        gap1 = None
-        for i in range(peaknum - 1, peaknum - 20, -1):
-            if self.is_regular_hsync(i) and line0 is None:
-                line0 = i
-                gap1 = (self.peaklist[line0 + 1] - self.peaklist[line0])
-                break
-
-        if gap1 is not None and gap1 > (self.inlinelen * .75):
-            vote -= 1
-
-        linee = None
-        gap2 = None
-        for i in range(peaknum, peaknum + 20, 1):
-            if self.is_regular_hsync(i)  and linee is None:
-                linee = i
-                gap2 = (self.peaklist[linee] - self.peaklist[linee - 1])
-                break
-
-        if gap2 is not None and gap2 > (self.inlinelen * .75):
-            if self.rf.system == 'NTSC':
-                vote += 1
-            else:
-                vote -= 1
-                
-        if self.rf.system == 'PAL':
-            vote += 1
-
-        #print(line0, self.peaklist[line0], linee, gap1, gap2, vote)
-
-        return line0, vote    
-    
     def determine_vsyncs(self):
         # find vsyncs from the peaklist
         ds = self.data[0]['demod_sync']
@@ -589,43 +543,24 @@ class Field:
         med_hsync, hsync_tolerance = self.get_hsync_median()
         
         prevpeak = 1.0
-        for i, p in enumerate(self.peaklist):
+        for peaknum, p in enumerate(self.peaklist):
             peak = ds[p]
+
             if peak > .9 and prevpeak < med_hsync - (hsync_tolerance * 2):
-                line0, vote = self.determine_field(i)
+                line0 = None
+
+                # find the last 'regular line' - XXX: make more robust against corruption?
+                for i in range(peaknum - 1, peaknum - 20, -1):
+                    if self.is_regular_hsync(i) and line0 is None:
+                        line0 = i
+
                 if line0 is not None:
-                    vsyncs.append((i, line0, vote))
+                    vsyncs.append((peaknum, line0))
 
             prevpeak = peak
             
-        # punt early if there's 0 or 1 vsyncs, this is invalid
-        if len(vsyncs) < 2:
-            return vsyncs
-        
         va = np.array(vsyncs)
-        
-        for i in range(0, len(vsyncs)):
-            # see if determine_field (partially) failed.  use hints from input and other data
-            if va[i][2] == 0:
-                va[i][1] = -1
-                self.sync_confidence = 50
-                if (i < len(vsyncs) - 1) and vsyncs[i + 1][2] != 0:
-                    va[i][2] = -va[i + 1][2]
-                elif (i >= 1) and vsyncs[i - 1][2] != 0:
-                    va[i][2] = -va[i - 1][2]
-                    
-            if va[i][1] <= 0:
-                self.sync_confidence = 25
-                # override the earlier last-good-line detection
-                # XXX: not tested on PAL failures
-                if self.rf.system == 'PAL':
-                    va[i][1] = va[i][0] - 6
-                else:
-                    va[i][1] = va[i][0] - 7
-                    
-            va[i][2] = va[i][2] < 0
-
-        return va
+        return va        
 
     def compute_linelocs(self):
         plist = self.peaklist
@@ -696,6 +631,25 @@ class Field:
             rv_err[i] = False
 
         return rv_ll, rv_err
+
+    # The line format built up by the Field class starts with the first eq pulse on a new
+    # line (based off the previous last regular line)
+
+    # For NTSC, top field can be determined by the second half of 0-based line 2 being 0IRE
+    # For PAL, it is the first half of line 2 being VSYNC
+
+    def is_firstfield(self):
+        window_begin = .6 if self.rf.system == 'NTSC' else .1
+
+        l = 2
+        beg = int(self.linelocs2[l] + ((self.linelocs2[l+1] - self.linelocs2[l]) * window_begin))
+        end = int(self.linelocs2[l] + ((self.linelocs2[l+1] - self.linelocs2[l]) * (window_begin + .25)))
+
+        window_ire = self.rf.hztoire(np.mean(self.data[0]['demod_05'][int(beg):int(end)]))
+
+        flagged = inrange(window_ire, self.rf.SysParams['vsync_ire'] - 5, self.rf.SysParams['vsync_ire'] + 5)
+        
+        return not flagged if self.rf.system == 'NTSC' else flagged
 
     def refine_linelocs_hsync(self):
         linelocs2 = self.linelocs1.copy()
@@ -827,12 +781,8 @@ class Field:
         
         self.nextfieldoffset = self.peaklist[self.vsyncs[1][1]-10]
         
-        self.istop = self.vsyncs[0][2]
-        
-        # On NTSC linecount is 262/263, PAL 312/313
-        self.linecount = self.rf.SysParams['frame_lines'] // 2
-        if self.istop:
-            self.linecount += 1
+        # On NTSC linecount rounds up to 263, and PAL 313
+        self.linecount = (self.rf.SysParams['frame_lines'] // 2) + 1
         
         self.linelocs1, self.linebad = self.compute_linelocs()
         self.linelocs2 = self.refine_linelocs_hsync()
@@ -841,7 +791,7 @@ class Field:
         
         # VBI info
         self.linecode = []
-        self.isFirstField = False
+        self.isFirstField = self.is_firstfield()
         self.cavFrame = None
         self.isCLV = False
 
@@ -870,7 +820,7 @@ class Field:
             
         self.valid = True
         self.tbcstart = self.peaklist[self.vsyncs[1][1]-10]
-        
+
         return
 
 # These classes extend Field to do PAL/NTSC specific TBC features.
@@ -960,7 +910,7 @@ class FieldPAL(Field):
 
     def downscale(self, final = False, *args, **kwargs):
         # For PAL, each field starts with the line containing the first full VSYNC pulse
-        kwargs['lineoffset'] = 3 if self.istop else 2
+        kwargs['lineoffset'] = 3 if self.isFirstField else 2
         dsout, dsaudio = super(FieldPAL, self).downscale(audio = final, *args, **kwargs)
         
         if final:
@@ -1298,7 +1248,7 @@ class LDdecode:
             self.outfile_audio.write(audio)
             
         # isFirstField has been compared against line 6 PAL and line 9 NTSC
-        fi = {'isFirstField': f.vsyncs[0][2] == (1 if f.rf.system == 'NTSC' else 0), 
+        fi = {'isFirstField': f.isFirstField, 
               'syncConf': f.sync_confidence, 
               'seqNo': len(self.fieldinfo) + 1, 
               'medianBurstIRE': f.burstmedian}
