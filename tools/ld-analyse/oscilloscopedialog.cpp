@@ -163,9 +163,6 @@ QImage OscilloscopeDialog::getFieldLineTraceImage(QByteArray fieldLineData, LdDe
     scopePainter.setPen(Qt::blue);
     scopePainter.drawLine(videoParameters.colourBurstStart, 0, videoParameters.colourBurstStart, scopeHeight);
     scopePainter.drawLine(videoParameters.colourBurstEnd, 0, videoParameters.colourBurstEnd, scopeHeight);
-    scopePainter.setPen(Qt::green);
-    scopePainter.drawLine(videoParameters.blackLevelStart, 0, videoParameters.blackLevelStart, scopeHeight);
-    scopePainter.drawLine(videoParameters.blackLevelEnd, 0, videoParameters.blackLevelEnd, scopeHeight);
     scopePainter.setPen(Qt::cyan);
     scopePainter.drawLine(videoParameters.activeVideoStart, 0, videoParameters.activeVideoStart, scopeHeight);
     scopePainter.drawLine(videoParameters.activeVideoEnd, 0, videoParameters.activeVideoEnd, scopeHeight);
@@ -235,7 +232,7 @@ QImage OscilloscopeDialog::getFieldLineTraceImage(QByteArray fieldLineData, LdDe
             if (xPosition != 0) {
                 // Non-active video area YC is yellow, active is white
                 if (!showY && !showC) scopePainter.setPen(Qt::white); else scopePainter.setPen(Qt::darkGray);
-                if (xPosition < videoParameters.blackLevelEnd || xPosition > videoParameters.activeVideoEnd) scopePainter.setPen(Qt::yellow);
+                if (xPosition < videoParameters.colourBurstEnd || xPosition > videoParameters.activeVideoEnd) scopePainter.setPen(Qt::yellow);
 
                 // Draw a line from the last YC signal to the current one
                 scopePainter.drawLine(xPosition - 1, lastSignalLevelYC, xPosition, signalLevelYC);
@@ -251,7 +248,7 @@ QImage OscilloscopeDialog::getFieldLineTraceImage(QByteArray fieldLineData, LdDe
 
             if (xPosition != 0) {
                 // Draw a line from the last Y signal to the current one (signal green, out of range in yellow)
-                if (xPosition > videoParameters.blackLevelEnd && xPosition < videoParameters.activeVideoEnd) {
+                if (xPosition > videoParameters.colourBurstEnd && xPosition < videoParameters.activeVideoEnd) {
                     if (signalLevelC > blackIre || signalLevelC < whiteIre) scopePainter.setPen(Qt::yellow);
                     else scopePainter.setPen(Qt::green);
                     scopePainter.drawLine(xPosition - 1, lastSignalLevelC, xPosition, signalLevelC);
@@ -268,7 +265,7 @@ QImage OscilloscopeDialog::getFieldLineTraceImage(QByteArray fieldLineData, LdDe
 
             if (xPosition != 0) {
                 // Draw a line from the last Y signal to the current one (signal white, out of range in red)
-                if (xPosition > videoParameters.blackLevelEnd && xPosition < videoParameters.activeVideoEnd) {
+                if (xPosition > videoParameters.colourBurstEnd && xPosition < videoParameters.activeVideoEnd) {
                     if (signalLevelY > blackIre || signalLevelY < whiteIre) scopePainter.setPen(Qt::red);
                     else scopePainter.setPen(Qt::white);
                     scopePainter.drawLine(xPosition - 1, lastSignalLevelY, xPosition, signalLevelY);

@@ -748,8 +748,8 @@ QByteArray VbiDecoder::getActiveVideoLine(SourceField *sourceField, qint32 field
         return QByteArray();
     }
 
-    qint32 startPointer = ((fieldLine - 1) * videoParameters.fieldWidth * 2) + (videoParameters.blackLevelEnd * 2);
-    qint32 length = (videoParameters.activeVideoEnd - videoParameters.blackLevelEnd) * 2;
+    qint32 startPointer = ((fieldLine - 1) * videoParameters.fieldWidth * 2) + (videoParameters.activeVideoStart * 2);
+    qint32 length = (videoParameters.activeVideoEnd - videoParameters.activeVideoStart) * 2;
 
     return sourceField->getFieldData().mid(startPointer, length);
 }

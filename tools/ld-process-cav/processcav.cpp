@@ -51,6 +51,24 @@ bool ProcessCav::process(QString inputFileName, QString outputFileName, qint32 f
         return false;
     }
 
+    // Sanity check the input file for isFirstField continuity
+    bool isFirstField = false;
+    qint32 errorCounter = 0;
+    for (qint32 fieldNumber = 1; fieldNumber <= ldDecodeMetaData.getNumberOfFields(); fieldNumber++) {
+        if (fieldNumber == 1) {
+            isFirstField = ldDecodeMetaData.getField(fieldNumber).isFirstField;
+            qDebug() << "ProcessCav::process(): Initial field has isFirstField =" << isFirstField;
+        } else {
+            if (ldDecodeMetaData.getField(fieldNumber).isFirstField == isFirstField) {
+                qInfo() << "Field #" << fieldNumber << "has isFirstField out of sequence";
+                errorCounter++;
+            } else {
+                isFirstField = !isFirstField;
+            }
+        }
+    }
+    qInfo() << "Found" << errorCounter << "instances of isFieldFirst out of sequence";
+
     // Read the available frames into an array read for sorting
     QVector<frame> availableFrames;
 
@@ -201,6 +219,7 @@ bool ProcessCav::process(QString inputFileName, QString outputFileName, qint32 f
 
     // Check final sorted frames for continuity
     qInfo() << "Checking the sorted frames for continuity and adding in blank filler frames:";
+    errorCounter = 0;
     qint32 currentFrameNumber = availableFrames[0].frameNumber;
     for (qint32 seqNumber = 1; seqNumber < availableFrames.size(); seqNumber++) {
         if (availableFrames[seqNumber].frameNumber != 123456 && !availableFrames[seqNumber].fakeFrame) {
@@ -208,6 +227,7 @@ bool ProcessCav::process(QString inputFileName, QString outputFileName, qint32 f
                 qint32 missingFrames = (availableFrames[seqNumber].frameNumber - currentFrameNumber) - 1;
                 if (missingFrames > 1) {
                     qInfo() << "Missing" << missingFrames << "frames - starting from" << currentFrameNumber + 1 << "[ should be after sequential frame" << availableFrames[seqNumber - 1].seqFrameNumber << "]";
+                    errorCounter += missingFrames;
 
                     // Add the missing frames
                     for (qint32 counter = 0; counter < missingFrames; counter++) {
@@ -221,6 +241,7 @@ bool ProcessCav::process(QString inputFileName, QString outputFileName, qint32 f
                     }
                 } else {
                     qInfo() << "Missing frame number" << currentFrameNumber + 1 << "[ should be after sequential frame" << availableFrames[seqNumber - 1].seqFrameNumber << "]";
+                    errorCounter++;
 
                     // Add a blank frame
                     frame tempFrame;
@@ -236,6 +257,7 @@ bool ProcessCav::process(QString inputFileName, QString outputFileName, qint32 f
             currentFrameNumber = availableFrames[seqNumber].frameNumber;
         }
     }
+    qInfo() << "A total number of" << errorCounter << "frames are missing from the sequence";
 
     // Sort the resulting frames into numerical order according to the VBI frame number
     qInfo() << "Sorting the final frames into numerical order:";
