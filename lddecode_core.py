@@ -518,7 +518,7 @@ class Field:
         self.med_hsync = np.median(plevel_hsync)
         self.std_hsync = np.std(plevel_hsync)
 
-        self.hsync_tolerance = max(np.std(plevel_hsync) * 2, .01)
+        self.hsync_tolerance = max(np.std(plevel_hsync) * 3, .01)
 
         return self.med_hsync, self.hsync_tolerance
     
@@ -554,8 +554,11 @@ class Field:
                     if self.is_regular_hsync(i) and line0 is None:
                         line0 = i
 
-                if line0 is not None:
-                    vsyncs.append((peaknum, line0))
+                if line0 == -1:
+                    line0 = peaknum - 7
+                    self.sync_confidence = 0
+
+                vsyncs.append((peaknum, line0))
 
             prevpeak = peak
             
@@ -755,6 +758,7 @@ class Field:
         self.outlinelen = self.rf.SysParams['outlinelen']
         
         self.valid = False
+        self.sync_confidence = 75
         
         self.peaklist = self.get_syncpeaks()
         self.vsyncs = self.determine_vsyncs()
@@ -762,8 +766,6 @@ class Field:
         self.dspicture = None
         self.dsaudio = None
         self.audio_next_offset = audio_offset
-
-        self.sync_confidence = 75
 
         if len(self.vsyncs) == 0:
             self.nextfieldoffset = start + (self.rf.linelen * 200)
@@ -784,6 +786,8 @@ class Field:
         # On NTSC linecount rounds up to 263, and PAL 313
         self.linecount = (self.rf.SysParams['frame_lines'] // 2) + 1
         
+        #print(self.vsyncs)
+
         self.linelocs1, self.linebad = self.compute_linelocs()
         self.linelocs2 = self.refine_linelocs_hsync()
 
