@@ -518,7 +518,7 @@ class Field:
         self.med_hsync = np.median(plevel_hsync)
         self.std_hsync = np.std(plevel_hsync)
 
-        self.hsync_tolerance = max(np.std(plevel_hsync) * 3, .01)
+        self.hsync_tolerance = max(np.std(plevel_hsync) * 3, .02)
 
         return self.med_hsync, self.hsync_tolerance
     
