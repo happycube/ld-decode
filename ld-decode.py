@@ -98,3 +98,4 @@ for i in range(0, req_frames * 2):
         #print('write json')
         write_json(ldd, outname)
         
+write_json(ldd, outname)
