@@ -9,6 +9,7 @@ import os
 import sys
 import argparse
 import json
+import traceback
 
 from lddutils import *
 import lddecode_core
@@ -87,8 +88,9 @@ def write_json(ldd, outname):
 for i in range(0, req_frames * 2):
     try:
         f = ldd.readfield()
-    except:
-        print("aborted")
+    except Exception as err:
+        #print("aborted")
+        traceback.print_tb(err.__traceback__)
         write_json(ldd, outname)
         exit(1)
 

@@ -721,7 +721,7 @@ class Field:
                     #print(porch_level, sync_level, zc, zc2)
 
                     # any wild variation here indicates a failure
-                    if np.abs(zc2 - zc) < (self.rf.freq / 4):
+                    if zc2 is not None and np.abs(zc2 - zc) < (self.rf.freq / 4):
                         linelocs2[i] = zc2
                     else:
                         self.linebad[i] = True
@@ -834,13 +834,8 @@ class Field:
         if self.istop:
             self.linecount += 1
         
-        try:
-            self.linelocs1, self.linebad = self.compute_linelocs()
-            self.linelocs2 = self.refine_linelocs_hsync()
-        except:
-            print('unable to decode frame')
-            self.valid = False
-            return
+        self.linelocs1, self.linebad = self.compute_linelocs()
+        self.linelocs2 = self.refine_linelocs_hsync()
 
         self.linelocs = self.linelocs2
         
@@ -980,13 +975,9 @@ class FieldPAL(Field):
         if not self.valid:
             return
 
-        try:
-            self.linelocs = self.refine_linelocs_pilot()
-            self.burstmedian = self.calc_burstmedian()
-            self.downscale(wow = True, final=True)
-        except:
-            print("ERROR: Unable to decode frame, skipping")
-            self.valid = False
+        self.linelocs = self.refine_linelocs_pilot()
+        self.burstmedian = self.calc_burstmedian()
+        self.downscale(wow = True, final=True)
 
 # These classes extend Field to do PAL/NTSC specific TBC features.
 
@@ -1143,21 +1134,14 @@ class FieldNTSC(Field):
             #print('not valid')
             return
 
-        try:
-            # This needs to be run twice to get optimal burst levels
-            self.linelocs3, self.burstlevel = self.refine_linelocs_burst(self.linelocs2)
+        self.linelocs3, self.burstlevel = self.refine_linelocs_burst(self.linelocs2)
+        self.burstmedian = np.median(np.abs(self.burstlevel)) / self.rf.SysParams['hz_ire']
 
-            self.burstmedian = np.median(np.abs(self.burstlevel)) / self.rf.SysParams['hz_ire']
-
-            # Now adjust 33 degrees (-90 - 33) for color decoding
-            shift33 = self.colorphase * (np.pi / 180)
-            #self.linelocs = self.apply_offsets(self.linelocs3, -shift33 - 2)
-            self.linelocs = self.apply_offsets(self.linelocs3, -shift33 - 0)
+        # Now adjust 33 degrees (-90 - 33) for color decoding
+        shift33 = self.colorphase * (np.pi / 180)
+        self.linelocs = self.apply_offsets(self.linelocs3, -shift33 - 0)
         
-            self.downscale(wow = True, final=True)
-        except:
-            print("ERROR: Unable to decode frame, skipping")
-            self.valid = False
+        self.downscale(wow = True, final=True)
 
 class LDdecode:
     
