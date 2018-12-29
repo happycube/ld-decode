@@ -515,14 +515,13 @@ class Field:
         plevel = [ds[p] for p in self.peaklist]
 
         plevel_hsync = [ds[p] for p in self.peaklist if inrange(ds[p], 0.6, 0.8)]
-        self.med_hsync = np.median(plevel_hsync)
-        self.std_hsync = np.std(plevel_hsync)
+        med_hsync = np.median(plevel_hsync)
 
-        self.hsync_tolerance = max(np.std(plevel_hsync) * 3, .02)
+        hsync_tolerance = max(np.std(plevel_hsync) * 2, .01)
 
-        return self.med_hsync, self.hsync_tolerance
+        return med_hsync, hsync_tolerance
     
-    def is_regular_hsync(self, peaknum):
+    def is_regular_hsync(self, peaknum, tolerance_mult = 1.0):
         if peaknum >= len(self.peaklist):
             return False
         
@@ -530,7 +529,10 @@ class Field:
             return False
 
         plevel = self.data[0]['demod_sync'][self.peaklist[peaknum]]
-        return inrange(plevel, self.med_hsync - self.hsync_tolerance, self.med_hsync + self.hsync_tolerance)
+
+        tolerance = self.hsync_tolerance * tolerance_mult
+
+        return inrange(plevel, self.med_hsync - tolerance, self.med_hsync + tolerance)
         
     def determine_vsyncs(self):
         # find vsyncs from the peaklist
@@ -540,18 +542,16 @@ class Field:
         if len(self.peaklist) < 200:
             return []
 
-        med_hsync, hsync_tolerance = self.get_hsync_median()
-        
         prevpeak = 1.0
         for peaknum, p in enumerate(self.peaklist):
             peak = ds[p]
 
-            if peak > .9 and prevpeak < med_hsync - (hsync_tolerance * 2):
+            if peak > .9 and prevpeak < self.med_hsync - (self.hsync_tolerance * 4.0):
                 line0 = None
 
-                # find the last 'regular line' - XXX: make more robust against corruption?
+                # find the last 'regular line'
                 for i in range(peaknum - 1, peaknum - 20, -1):
-                    if self.is_regular_hsync(i) and line0 is None:
+                    if self.is_regular_hsync(i, 4.0) and line0 is None:
                         line0 = i
 
                 if line0 == -1:
@@ -761,6 +761,7 @@ class Field:
         self.sync_confidence = 75
         
         self.peaklist = self.get_syncpeaks()
+        self.med_hsync, self.hsync_tolerance = self.get_hsync_median()
         self.vsyncs = self.determine_vsyncs()
 
         self.dspicture = None
