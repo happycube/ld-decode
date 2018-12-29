@@ -554,7 +554,7 @@ class Field:
                     if self.is_regular_hsync(i, 4.0) and line0 is None:
                         line0 = i
 
-                if line0 == -1:
+                if (line0 is None) or (line0 == -1):
                     line0 = peaknum - 7
                     self.sync_confidence = 0
 
@@ -915,7 +915,7 @@ class FieldPAL(Field):
 
     def downscale(self, final = False, *args, **kwargs):
         # For PAL, each field starts with the line containing the first full VSYNC pulse
-        kwargs['lineoffset'] = 3 if self.isFirstField else 2
+        kwargs['lineoffset'] = 2 if self.isFirstField else 3
         dsout, dsaudio = super(FieldPAL, self).downscale(audio = final, *args, **kwargs)
         
         if final:
