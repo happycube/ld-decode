@@ -268,7 +268,7 @@ class RFDecode:
         SF['audio_fdslice2_lo'] = slice(0, self.blocklen//(audio_fdiv2*2))
         SF['audio_fdslice2_hi'] = slice(self.blocklen-self.blocklen//(audio_fdiv2*2), self.blocklen)
 
-        SF['audio_lpf2'] = filtfft([sps.firwin(65, [21000/(SF['freq_aud2']/2)]), [1.0]], self.blocklen // SF['audio_fdiv2'])
+        SF['audio_lpf2'] = filtfft([sps.firwin(65, [21000/(SF['freq_aud2']/2)]), [1.0]], self.blocklen // (SF['audio_fdiv2'] * 1))
 
         # convert 75usec into the exact -3dB frequency
         d75freq = 1000000/(2*pi*75)
@@ -337,6 +337,7 @@ class RFDecode:
     def runfilter_audio_phase2(self, frame_audio, start):
         left = frame_audio['audio_left'][start:start+self.blocklen].copy() 
         left_fft = np.fft.fft(left)
+        #print(self.audio_fdslice2(left_fft).shape)
         audio_out_fft = self.audio_fdslice2(left_fft) * self.Filters['audio_lpf2']
         left_out = np.fft.ifft(audio_out_fft).real / self.Filters['audio_fdiv2']
 
@@ -1249,9 +1250,9 @@ class LDdecode:
     def processfield(self, f, squelch = False):
         picture, audio = f.downscale(linesout = self.output_lines, lineoffset = self.outlineoffset, final=True)
             
-        if squelch == False and audio is not None and self.outfile_audio is not None:
-            self.outfile_audio.write(audio)
-            
+        if len(self.fieldinfo) == 0 and not f.isFirstField:
+            return
+
         # isFirstField has been compared against line 6 PAL and line 9 NTSC
         fi = {'isFirstField': f.isFirstField, 
               'syncConf': f.sync_confidence, 
@@ -1280,6 +1281,9 @@ class LDdecode:
             if self.frameoutput == False:
                 self.outfile_video.write(picture)
 
+            if audio is not None and self.outfile_audio is not None:
+                self.outfile_audio.write(audio)
+
         self.frameNumber = None
         self.earlyCLV = False
 
@@ -1294,8 +1298,10 @@ class LDdecode:
             elif f.isCLV: # early CLV
                 self.earlyCLV = True
                 print("file frame %d early-CLV minute %d" % (rawloc, self.clvMinutes))
-            else:
+            elif self.frameNumber:
                 print("file frame %d CAV frame %d" % (rawloc, self.frameNumber))
+            else:
+                print("file frame %d unknown" % (rawloc))
 
             if self.frameoutput == True and squelch == False:
                 self.writeframe(self.firstfield_picture, picture)
