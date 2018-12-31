@@ -18,7 +18,8 @@ SOURCES += \
         main.cpp \
     vbidecoder.cpp \
     fmcode.cpp \
-    whiteflag.cpp
+    whiteflag.cpp \
+    vbicorrector.cpp
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin
@@ -39,4 +40,5 @@ win32:LIBS += $$quote($$MYDLLDIR/ld-decode-shared.dll)
 HEADERS += \
     vbidecoder.h \
     fmcode.h \
-    whiteflag.h
+    whiteflag.h \
+    vbicorrector.h
