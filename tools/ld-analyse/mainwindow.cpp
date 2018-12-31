@@ -566,6 +566,30 @@ void MainWindow::loadTbcFile(QString inputFileName)
         } else {
             // Both the video and metadata files are now open
 
+            // Sanity check the input file for isFirstField continuity
+            bool isFirstField = false;
+            qint32 errorCounter = 0;
+            for (qint32 fieldNumber = 1; fieldNumber <= ldDecodeMetaData.getNumberOfFields(); fieldNumber++) {
+                if (fieldNumber == 1) {
+                    isFirstField = ldDecodeMetaData.getField(fieldNumber).isFirstField;
+                    qDebug() << "MainWindow::loadTbcFile(): Initial field has isFirstField =" << isFirstField;
+                } else {
+                    if (ldDecodeMetaData.getField(fieldNumber).isFirstField == isFirstField) {
+                        qDebug() << "MainWindow::loadTbcFile(): Field #" << fieldNumber << "has isFirstField out of sequence";
+                        errorCounter++;
+                    } else {
+                        isFirstField = !isFirstField;
+                    }
+                }
+            }
+
+            // Show an error message if required
+            if (errorCounter != 0) {
+                QMessageBox messageBox;
+                messageBox.warning(this, "Warning","The JSON first field flag for the input file is not consistent.  Frames may not render correctly!");
+                messageBox.setFixedSize(500, 200);
+            }
+
             // Update the status bar
             QString statusText;
             if (videoParameters.isSourcePal) statusText += "PAL";
