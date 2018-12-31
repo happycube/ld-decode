@@ -65,7 +65,7 @@ private:
 
     QVector<DropOutLocation> populateDropoutsVector(LdDecodeMetaData::Field field);
     QVector<DropOutLocation> setDropOutLocations(QVector<DropOutLocation> dropOuts);
-    qint32 findReplacementLine(QVector<DropOutLocation>dropOuts, qint32 dropOutIndex, qint32 stepAmount);
+    Replacement findReplacementLine(QVector<DropOutLocation>firstFieldDropouts, QVector<DropOutLocation> secondFieldDropouts, qint32 dropOutIndex, bool isColourBurst);
 };
 
 #endif // DROPOUTCORRECT_H
