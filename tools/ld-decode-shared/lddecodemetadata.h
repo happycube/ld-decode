@@ -202,7 +202,7 @@ public:
 
     Field getField(qint32 sequentialFieldNumber);
     void appendField(Field fieldParam);
-    void updateField(Field fieldParam, qint32 sequentialFrameNumber);
+    void updateField(Field fieldParam, qint32 sequentialFieldNumber);
 
     qint32 getNumberOfFields(void);
     qint32 getNumberOfFrames(void);
