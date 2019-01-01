@@ -938,27 +938,22 @@ class FieldPAL(Field):
 # These classes extend Field to do PAL/NTSC specific TBC features.
 
 class FieldNTSC(Field):
-    def refine_linelocs_burst(self, linelocs = None):
-        if linelocs is None:
-            linelocs = self.linelocs2
-
-        linelocs_adj = linelocs.copy()
-        burstlevel = np.zeros_like(linelocs_adj, dtype=np.float32)
-
+    # XXX: This is a very bad refactoring!
+    def compute_burst_offsets(self, linelocs):
+        badlines = np.full(266, False)
+        
+        linelocs_adj = linelocs
+        
         bstime = 17*(1 / self.rf.SysParams['fsc_mhz'])
         bmed = []
 
+        burstlevel = np.zeros_like(linelocs_adj, dtype=np.float32)
+        
         zc_bursts = {}
         # Counter for which lines have + polarity.  TRACKS 1-BASED LINE #'s
-        phase_votes = {'odd': 0, 'even': 0}
+        phase_votes = {'odd': 0, 'even': 0, 'dodgy': 0}
 
-        badlines = np.full(266, False)
-        
         for l in range(1, 266):
-#            if self.linebad[l]:
-                #badlines[l] = True
-                #continue
-
             # calczc works from integers, so get the start and remainder
             s = int(linelocs[l])
             s_rem = linelocs[l] - s
@@ -988,40 +983,55 @@ class FieldNTSC(Field):
                         i = int(zc) + 1
 
                 i += 1
-                
+
             # If the burst is so corrupt one ZC type is missing, punt.
             if (len(zc_bursts[l][False]) == 0) or (len(zc_bursts[l][True]) == 0):
+                #print('missing type', l)
                 continue
 
             amed_falling = np.median(np.abs(zc_bursts[l][False]))
             amed_rising = np.median(np.abs(zc_bursts[l][True]))
             edge = False if amed_falling < amed_rising else True
 
+            #print('err', l, amed_falling, amed_rising)
             if np.abs(amed_falling - amed_rising) < .05:
                 badlines[l] = True
+                phase_votes['dodgy'] += 1
             elif np.abs(amed_falling - amed_rising) > .1 and edge:
                 if not (l % 2):
                     phase_votes['odd'] += 1
                 else:
                     phase_votes['even'] += 1
+        
+        return zc_bursts, phase_votes, burstlevel, badlines
 
+    def refine_linelocs_burst(self, linelocs = None):
+        if linelocs is None:
+            linelocs = self.linelocs2
+
+        linelocs_adj = linelocs.copy()
+        burstlevel = np.zeros_like(linelocs_adj, dtype=np.float32)
+
+        zc_bursts, phase_votes, burstlevel, badlines = self.compute_burst_offsets(linelocs_adj)
+        if phase_votes['dodgy'] > 25:
+            #print("WARNING: applying 90 degree line adjustment for burst processing")
+            linelocs_adj = [l + (self.rf.linelen * (.25 / 227.5)) for l in linelocs_adj]
+            zc_bursts, phase_votes, burstlevel, badlines = self.compute_burst_offsets(linelocs_adj)
 
         if phase_votes['even'] > phase_votes['odd']:
             field14 = True
         elif phase_votes['even'] < phase_votes['odd']:
             field14 = False
         else:
-            print("WARNING: matching # of + crossling lines?")
+            print("WARNING: matching # of + crossing lines?")
             field14 = False # use prev field?
-            
-        #print(phase_votes, field14)
 
         for l in range(9, 266):
             if (field14 and not (l % 2)) or (not field14 and (l % 2)):
                 edge = False
             else:
                 edge = True
-            
+
             if edge:
                 burstlevel[l] = -burstlevel[l]
 
@@ -1029,6 +1039,7 @@ class FieldNTSC(Field):
                 #print('err', l, linelocs_adj[l])
                 badlines[l] = True
             else:
+                lfreq = self.rf.freq * (((self.linelocs2[l+1] - self.linelocs2[l-1]) / 2) / self.rf.linelen)
                 linelocs_adj[l] -= np.median(zc_bursts[l][edge]) * lfreq * (1 / self.rf.SysParams['fsc_mhz'])
 
         for l in np.where(badlines == True)[0]:
@@ -1038,16 +1049,16 @@ class FieldNTSC(Field):
                 prevgood -= 1
             while nextgood < 265 and badlines[nextgood]:
                 nextgood += 1
-                
+
             if prevgood > 8 and nextgood < 265:
                 gap = (linelocs_adj[nextgood] - linelocs_adj[prevgood]) / (nextgood - prevgood)
                 #print(l, prevgood, nextgood, gap + linelocs_adj[prevgood], linelocs[l])
                 linelocs_adj[l] = (gap * (l - prevgood)) + linelocs_adj[prevgood]
-                
+
         self.field14 = field14
 
         return linelocs_adj, burstlevel
-
+        
     def hz_to_ooutput(self, input):
         reduced = (input - self.rf.SysParams['ire0']) / self.rf.SysParams['hz_ire']
         reduced -= self.rf.SysParams['vsync_ire']
@@ -1129,6 +1140,7 @@ class LDdecode:
             self.clvfps = 30
 
         self.prevPhaseID = None
+        self.prevFirstField = None
         self.output_lines = (self.rf.SysParams['frame_lines'] // 2) + 1
         
         self.bytes_per_frame = int(self.rf.freq_hz / self.rf.SysParams['FPS'])
@@ -1250,9 +1262,6 @@ class LDdecode:
     def processfield(self, f, squelch = False):
         picture, audio = f.downscale(linesout = self.output_lines, lineoffset = self.outlineoffset, final=True)
             
-#        if len(self.fieldinfo) == 0 and not f.isFirstField:
-#            return
-
         # isFirstField has been compared against line 6 PAL and line 9 NTSC
         fi = {'isFirstField': f.isFirstField, 
               'syncConf': f.sync_confidence, 
@@ -1270,10 +1279,11 @@ class LDdecode:
                         (fi['fieldPhaseID'] == self.prevPhaseID + 1)):
                     print('WARNING: NTSC field phaseID sequence mismatch')
 
-            self.prevPhaseID = fi['fieldPhaseID']
+                if self.prevFirstField == fi['isFirstField']:
+                    print('WARNING!  isFirstField stuck between fields')
 
-        # XXX: straight not returns unserializable bool_
-        fi['isFirstField'] = True if fi['isFirstField'] else False
+            self.prevPhaseID = fi['fieldPhaseID']
+            self.prevFirstField = fi['isFirstField']
 
         if squelch == False:
             self.fieldinfo.append(fi)
