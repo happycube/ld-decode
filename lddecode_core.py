@@ -808,7 +808,7 @@ class Field:
                 #print('lc', l, hex(self.linecode[-1]))
                 # For either CAV or CLV, 0xfxxxx means this is the first field
                 if (self.linecode[-1] & 0xf00000) == 0xf00000:
-                    self.isFirstField = True
+                    #self.isFirstField = True
 
                     if  (self.linecode[-1] & 0xf0dd00) != 0xf0dd00: # CAV
                         # All the data we *really* need here (for now) is the CAV frame # 
@@ -1250,8 +1250,8 @@ class LDdecode:
     def processfield(self, f, squelch = False):
         picture, audio = f.downscale(linesout = self.output_lines, lineoffset = self.outlineoffset, final=True)
             
-        if len(self.fieldinfo) == 0 and not f.isFirstField:
-            return
+#        if len(self.fieldinfo) == 0 and not f.isFirstField:
+#            return
 
         # isFirstField has been compared against line 6 PAL and line 9 NTSC
         fi = {'isFirstField': f.isFirstField, 
