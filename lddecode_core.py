@@ -1263,7 +1263,7 @@ class LDdecode:
         picture, audio = f.downscale(linesout = self.output_lines, lineoffset = self.outlineoffset, final=True)
             
         # isFirstField has been compared against line 6 PAL and line 9 NTSC
-        fi = {'isFirstField': f.isFirstField, 
+        fi = {'isFirstField': True if f.isFirstField else False, 
               'syncConf': f.sync_confidence, 
               'seqNo': len(self.fieldinfo) + 1, 
               'medianBurstIRE': f.burstmedian}
