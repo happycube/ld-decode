@@ -1164,6 +1164,7 @@ class LDdecode:
             self.mtf_level = newmtf
 
             if np.abs(newmtf - oldmtf) > .1: # redo field if too much adjustment
+                #print(newmtf, oldmtf, field.cavFrame)
                 return False
             
         return True
@@ -1203,6 +1204,7 @@ class LDdecode:
         # pretty much a retry-ing wrapper around decodefield with MTF checking
         self.curfield = None
         done = False
+        MTFadjusted = False
         
         while done == False:
             f, offset = self.decodefield()
@@ -1210,10 +1212,11 @@ class LDdecode:
             self.fdoffset += offset
             
             if f is not None and f.valid:
-                if self.checkMTF(f):
+                if self.checkMTF(f) or MTFadjusted:
                     done = True
                 else:
                     # redo field
+                    MTFadjusted = True
                     self.fdoffset -= offset
                  
         if f is not None:
