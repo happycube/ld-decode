@@ -35,7 +35,7 @@ class DropOutCorrect : public QObject
     Q_OBJECT
 public:
     explicit DropOutCorrect(QObject *parent = nullptr);
-    bool process(QString inputFileName, QString outputFileName, bool isIntrafield);
+    bool process(QString inputFileName, QString outputFileName, bool reverse);
 
 signals:
 

@@ -29,15 +29,20 @@ DropOutCorrect::DropOutCorrect(QObject *parent) : QObject(parent)
 
 }
 
-bool DropOutCorrect::process(QString inputFileName, QString outputFileName, bool isIntrafield)
+bool DropOutCorrect::process(QString inputFileName, QString outputFileName, bool reverse)
 {
     SourceVideo sourceVideo;
-    (void)isIntrafield; // NOTE: Placeholder
 
     // Open the source video metadata
     if (!ldDecodeMetaData.read(inputFileName + ".json")) {
         qInfo() << "Unable to open ld-decode metadata file";
         return false;
+    }
+
+    // Reverse field order if required
+    if (reverse) {
+        qInfo() << "Expected field order is reversed to second field/first field";
+        ldDecodeMetaData.setIsFirstFieldFirst(false);
     }
 
     videoParameters = ldDecodeMetaData.getVideoParameters();
