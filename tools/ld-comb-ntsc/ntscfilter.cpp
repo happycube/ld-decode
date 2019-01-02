@@ -223,6 +223,12 @@ bool NtscFilter::process(QString inputFileName, QString outputFileName,
                     "/" << secondFieldNumber << ") -" << fps << "FPS";
     }
 
+    // Show processing summary
+    qInfo() << "Processed" << length + (startFrame - 1) << "frames into" <<
+               static_cast<qint32>(cropVideoEnd) - static_cast<qint32>(cropVideoStart) << "x" <<
+               static_cast<qint32>(cropLastActiveScanLine) - static_cast<qint32>(cropFirstActiveScanLine) <<
+               "RGB16-16-16 frames";
+
     // Close the input and output files
     sourceVideo.close();
     targetVideo.close();

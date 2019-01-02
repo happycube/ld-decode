@@ -191,6 +191,11 @@ bool PalCombFilter::process(QString inputFileName, QString outputFileName, qint3
     qInfo() << "Processing complete -" << length + (startFrame - 1) << "frames in" << totalSecs << "seconds (" <<
                (length + (startFrame - 1)) / totalSecs << "FPS )";
 
+    // Show processing summary
+    qInfo() << "Processed" << length + (startFrame - 1) << "frames into" <<
+               videoEnd - videoStart << "x" << lastActiveScanLine - firstActiveScanLine <<
+               "RGB16-16-16 frames";
+
     // Close the source video
     sourceVideo.close();
 
