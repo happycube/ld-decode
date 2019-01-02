@@ -31,7 +31,7 @@ NtscFilter::NtscFilter(QObject *parent) : QObject(parent)
 }
 
 bool NtscFilter::process(QString inputFileName, QString outputFileName,
-                         qint32 startFrame, qint32 length,
+                         qint32 startFrame, qint32 length, bool reverse,
                          qint32 filterDepth, bool blackAndWhite,
                          bool adaptive2d, bool opticalFlow,
                          bool cropOutput)
@@ -40,6 +40,12 @@ bool NtscFilter::process(QString inputFileName, QString outputFileName,
     if (!ldDecodeMetaData.read(inputFileName + ".json")) {
         qInfo() << "Unable to open ld-decode metadata file";
         return false;
+    }
+
+    // Reverse field order if required
+    if (reverse) {
+        qInfo() << "Expected field order is reversed to second field/first field";
+        ldDecodeMetaData.setIsFirstFieldFirst(false);
     }
 
     LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();

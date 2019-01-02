@@ -37,7 +37,7 @@ class PalCombFilter : public QObject
     Q_OBJECT
 public:
     explicit PalCombFilter(QObject *parent = nullptr);
-    bool process(QString inputFileName, QString outputFileName, qint32 startFrame, qint32 length, bool isVP415CropSet);
+    bool process(QString inputFileName, QString outputFileName, qint32 startFrame, qint32 length, bool isVP415CropSet, bool reverse);
 
 signals:
 

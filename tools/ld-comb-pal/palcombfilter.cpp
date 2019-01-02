@@ -29,7 +29,7 @@ PalCombFilter::PalCombFilter(QObject *parent) : QObject(parent)
 
 }
 
-bool PalCombFilter::process(QString inputFileName, QString outputFileName, qint32 startFrame, qint32 length, bool isVP415CropSet)
+bool PalCombFilter::process(QString inputFileName, QString outputFileName, qint32 startFrame, qint32 length, bool isVP415CropSet, bool reverse)
 {
     qint32 maxThreads = 16;
 
@@ -37,6 +37,12 @@ bool PalCombFilter::process(QString inputFileName, QString outputFileName, qint3
     if (!ldDecodeMetaData.read(inputFileName + ".json")) {
         qInfo() << "Unable to open ld-decode metadata file";
         return false;
+    }
+
+    // Reverse field order if required
+    if (reverse) {
+        qInfo() << "Expected field order is reversed to second field/first field";
+        ldDecodeMetaData.setIsFirstFieldFirst(false);
     }
 
     LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();

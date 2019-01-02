@@ -108,6 +108,11 @@ int main(int argc, char *argv[])
                                         QCoreApplication::translate("main", "number"));
     parser.addOption(lengthOption);
 
+    // Option to reverse the field order (-r)
+    QCommandLineOption setReverseOption(QStringList() << "r" << "reverse",
+                                       QCoreApplication::translate("main", "Reverse the field order to second/first (default first/second)"));
+    parser.addOption(setReverseOption);
+
     // Option to crop output to VP415 dimensions (-c)
     QCommandLineOption showCropOption(QStringList() << "c" << "crop",
                                        QCoreApplication::translate("main", "Crop output to VP415 dimensions"));
@@ -125,6 +130,7 @@ int main(int argc, char *argv[])
     // Get the options from the parser
     bool isDebugOn = parser.isSet(showDebugOption);
     bool isVP415CropSet = parser.isSet(showCropOption);
+    bool reverse = parser.isSet(setReverseOption);
 
     // Get the arguments from the parser
     QString inputFileName;
@@ -173,7 +179,7 @@ int main(int argc, char *argv[])
 
     // Perform the processing
     PalCombFilter palCombFilter;
-    palCombFilter.process(inputFileName, outputFileName, startFrame, length, isVP415CropSet);
+    palCombFilter.process(inputFileName, outputFileName, startFrame, length, isVP415CropSet, reverse);
 
     // Quit with success
     return 0;

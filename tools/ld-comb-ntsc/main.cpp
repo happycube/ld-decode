@@ -118,6 +118,11 @@ int main(int argc, char *argv[])
                                         QCoreApplication::translate("main", "number"));
     parser.addOption(lengthOption);
 
+    // Option to reverse the field order (-r)
+    QCommandLineOption setReverseOption(QStringList() << "r" << "reverse",
+                                       QCoreApplication::translate("main", "Reverse the field order to second/first (default first/second)"));
+    parser.addOption(setReverseOption);
+
     // Option to set the black and white output flag (causes output to be black and white) (-b)
     QCommandLineOption setBwModeOption(QStringList() << "b" << "blackandwhite",
                                        QCoreApplication::translate("main", "Output in black and white"));
@@ -149,6 +154,7 @@ int main(int argc, char *argv[])
 
     // Get the settings from the parser
     showDebug = parser.isSet(showDebugOption);
+    bool reverse = parser.isSet(setReverseOption);
     bool blackAndWhite = parser.isSet(setBwModeOption);
     bool crop = parser.isSet(cropOutputOption);
     bool adaptive2d = true;
@@ -211,7 +217,7 @@ int main(int argc, char *argv[])
 
     // Process the input file
     ntscFilter.process(inputFileName, outputFileName,
-                       startFrame, length,
+                       startFrame, length, reverse,
                        filterDepth, blackAndWhite, adaptive2d, opticalFlow, crop
                        );
 
