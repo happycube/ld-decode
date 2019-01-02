@@ -1347,7 +1347,6 @@ class LDdecode:
         vp['fsc'] = int(f.rf.SysParams['fsc_mhz'] * 1000000)
         vp['fieldWidth'] = f.rf.SysParams['outlinelen']
         vp['sampleRate'] = vp['fsc'] * 4
-        vp['samplesPerUs'] = vp['sampleRate'] / 1000000
         spu = vp['samplesPerUs']
 
         vp['black16bIre'] = np.float(f.hz_to_ooutput(f.rf.iretohz(self.blackIRE)))
@@ -1358,8 +1357,6 @@ class LDdecode:
             badj = 0 # TODO: put the IQ shift here in px
             vp['colourBurstStart'] = np.round((5.3 * spu) + badj)
             vp['colourBurstEnd'] = np.round((7.8 * spu) + badj)
-            vp['blackLevelStart'] = np.round((8.2 * spu) + badj)
-            vp['blackLevelEnd'] = np.round((9.2 * spu) + badj)
             vp['activeVideoStart'] = np.round((9.4 * spu) + badj)
             vp['activeVideoEnd'] = np.round(((63.55 - 1.5) * spu) + badj)
         else: # PAL
@@ -1367,8 +1364,6 @@ class LDdecode:
             badj = 0 # TODO: put the IQ shift here in px
             vp['colourBurstStart'] = np.round((5.6 * spu) + badj)
             vp['colourBurstEnd'] = np.round((7.85 * spu) + badj)
-            vp['blackLevelStart'] = np.round((8.2 * spu) + badj)
-            vp['blackLevelEnd'] = np.round((10 * spu) + badj)
             vp['activeVideoStart'] = np.round((10.5 * spu) + badj)
             vp['activeVideoEnd'] = np.round(((64 - 1.5) * spu) + badj)
 
