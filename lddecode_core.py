@@ -1350,7 +1350,7 @@ class LDdecode:
         vp['fsc'] = int(f.rf.SysParams['fsc_mhz'] * 1000000)
         vp['fieldWidth'] = f.rf.SysParams['outlinelen']
         vp['sampleRate'] = vp['fsc'] * 4
-        spu = vp['samplesPerUs']
+        spu = vp['sampleRate'] / 1000000
 
         vp['black16bIre'] = np.float(f.hz_to_ooutput(f.rf.iretohz(self.blackIRE)))
         vp['white16bIre'] = np.float(f.hz_to_ooutput(f.rf.iretohz(100)))
