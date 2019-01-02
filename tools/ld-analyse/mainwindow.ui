@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>1234</width>
-    <height>640</height>
+    <height>665</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -19,7 +19,7 @@
   <property name="minimumSize">
    <size>
     <width>900</width>
-    <height>640</height>
+    <height>665</height>
    </size>
   </property>
   <property name="windowTitle">
@@ -132,7 +132,7 @@
        <property name="geometry">
         <rect>
          <x>10</x>
-         <y>130</y>
+         <y>160</y>
          <width>221</width>
          <height>211</height>
         </rect>
@@ -393,7 +393,7 @@
        <property name="geometry">
         <rect>
          <x>10</x>
-         <y>350</y>
+         <y>380</y>
          <width>221</width>
          <height>211</height>
         </rect>
@@ -620,6 +620,19 @@
          <string>No metadata</string>
         </property>
        </widget>
+      </widget>
+      <widget class="QCheckBox" name="reverseFieldOrderCheckBox">
+       <property name="geometry">
+        <rect>
+         <x>10</x>
+         <y>130</y>
+         <width>221</width>
+         <height>22</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>Reverse still-frame field order</string>
+       </property>
       </widget>
      </widget>
     </item>

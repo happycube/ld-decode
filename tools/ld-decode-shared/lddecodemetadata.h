@@ -209,6 +209,9 @@ public:
     qint32 getFirstFieldNumber(qint32 frameNumber);
     qint32 getSecondFieldNumber(qint32 frameNumber);
 
+    void setIsFirstFieldFirst(bool flag);
+    bool getIsFirstFieldFirst(void);
+
 signals:
 
 public slots:
@@ -216,6 +219,7 @@ public slots:
 private:
     bool isMetaDataValid;
     MetaData metaData;
+    bool isFirstFieldFirst;
     qint32 getFieldNumber(qint32 frameNumber, qint32 field);
 };
 

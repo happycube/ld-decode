@@ -111,14 +111,17 @@ void MainWindow::updateGuiLoaded(void)
     // Enable the option check boxes
     ui->highlightDropOutsCheckBox->setEnabled(true);
     ui->showActiveVideoCheckBox->setEnabled(true);
+    ui->reverseFieldOrderCheckBox->setEnabled(true);
 
     // Update the current frame number
     currentFrameNumber = 1;
     ui->frameNumberSpinBox->setMinimum(1);
     ui->frameNumberSpinBox->setMaximum(ldDecodeMetaData.getNumberOfFrames());
+    currentFrameNumber = 1;
     ui->frameNumberSpinBox->setValue(currentFrameNumber);
     ui->frameHorizontalSlider->setMinimum(1);
     ui->frameHorizontalSlider->setMaximum(ldDecodeMetaData.getNumberOfFrames());
+    currentFrameNumber = 1;
     ui->frameHorizontalSlider->setPageStep(ldDecodeMetaData.getNumberOfFrames() / 100);
     ui->frameHorizontalSlider->setValue(currentFrameNumber);
 
@@ -168,6 +171,15 @@ void MainWindow::updateGuiLoaded(void)
         ntscColour.setConfiguration(configuration);
     }
 
+    // Update the status bar
+    QString statusText;
+    if (videoParameters.isSourcePal) statusText += "PAL";
+    else statusText += "NTSC";
+    statusText += " source loaded with ";
+    statusText += QString::number(ldDecodeMetaData.getNumberOfFrames());
+    statusText += " sequential frames available";
+    sourceVideoStatus.setText(statusText);
+
     // Show the current frame
     showFrame(currentFrameNumber, ui->showActiveVideoCheckBox->isChecked(), ui->highlightDropOutsCheckBox->isChecked());
 
@@ -188,11 +200,17 @@ void MainWindow::updateGuiUnloaded(void)
     // Disable the option check boxes
     ui->highlightDropOutsCheckBox->setEnabled(false);
     ui->showActiveVideoCheckBox->setEnabled(false);
+    ui->reverseFieldOrderCheckBox->setEnabled(false);
+    ui->highlightDropOutsCheckBox->setChecked(false);
+    ui->showActiveVideoCheckBox->setChecked(false);
+    ui->reverseFieldOrderCheckBox->setChecked(false);
 
     // Update the current frame number
     currentFrameNumber = 1;
     ui->frameNumberSpinBox->setValue(currentFrameNumber);
+    currentFrameNumber = 1;
     ui->frameHorizontalSlider->setValue(currentFrameNumber);
+    currentFrameNumber = 1;
 
     // Allow the next and previous frame buttons to auto-repeat
     ui->previousPushButton->setAutoRepeat(true);
@@ -231,6 +249,22 @@ void MainWindow::showFrame(qint32 frameNumber, bool showActiveVideoArea, bool hi
     // Get the required field numbers
     qint32 firstFieldNumber = ldDecodeMetaData.getFirstFieldNumber(frameNumber);
     qint32 secondFieldNumber = ldDecodeMetaData.getSecondFieldNumber(frameNumber);
+
+    // Make sure we have a valid response from the frame determination
+    if (firstFieldNumber == -1 || secondFieldNumber == -1) {
+        QMessageBox messageBox;
+        messageBox.warning(this, "Warning","Could not determine field numbers - check the debug!");
+        messageBox.setFixedSize(500, 200);
+
+        // Jump back one frame
+        if (frameNumber != 1) {
+            frameNumber--;
+
+            firstFieldNumber = ldDecodeMetaData.getFirstFieldNumber(frameNumber);
+            secondFieldNumber = ldDecodeMetaData.getSecondFieldNumber(frameNumber);
+        }
+        qDebug() << "MainWindow::showFrame(): Jumping back one frame due to error";
+    }
 
     qDebug() << "MainWindow::showFrame(): Frame number" << frameNumber << "has a first-field of" << firstFieldNumber <<
                 "and a second field of" << secondFieldNumber;
@@ -533,6 +567,9 @@ void MainWindow::on_actionExit_triggered()
 // Load a TBC file based on the passed file name
 void MainWindow::loadTbcFile(QString inputFileName)
 {
+    // Update the GUI
+    updateGuiUnloaded();
+
     qInfo() << "Opening TBC filename =" << inputFileName;
 
     // Open the TBC metadata file
@@ -544,14 +581,14 @@ void MainWindow::loadTbcFile(QString inputFileName)
         QMessageBox messageBox;
         messageBox.critical(this, "Error","Could not open TBC JSON metadata file for the TBC input file!");
         messageBox.setFixedSize(500, 200);
-
-        // Update the GUI
-        updateGuiUnloaded();
     } else {
-        // Opened meta data file, now open TBC source video file
+        // Get the video parameters from the metadata
         LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
+
+        // Close current source video (if open)
         sourceVideo.close();
 
+        // Open the new source video
         if (!sourceVideo.open(inputFileName, videoParameters.fieldWidth * videoParameters.fieldHeight)) {
             // Open failed
             qWarning() << "Open TBC file failed for filename" << inputFileName;
@@ -560,9 +597,6 @@ void MainWindow::loadTbcFile(QString inputFileName)
             QMessageBox messageBox;
             messageBox.critical(this, "Error","Could not open TBC video file!");
             messageBox.setFixedSize(500, 200);
-
-            // Update the GUI
-            updateGuiUnloaded();
         } else {
             // Both the video and metadata files are now open
 
@@ -589,15 +623,6 @@ void MainWindow::loadTbcFile(QString inputFileName)
                 messageBox.warning(this, "Warning","The JSON first field flag for the input file is not consistent.  Frames may not render correctly!");
                 messageBox.setFixedSize(500, 200);
             }
-
-            // Update the status bar
-            QString statusText;
-            if (videoParameters.isSourcePal) statusText += "PAL";
-            else statusText += "NTSC";
-            statusText += " source loaded with ";
-            statusText += QString::number(ldDecodeMetaData.getNumberOfFrames());
-            statusText += " sequential frames available";
-            sourceVideoStatus.setText(statusText);
 
             // Update the configuration for the source directory
             QFileInfo inFileInfo(inputFileName);
@@ -737,16 +762,30 @@ void MainWindow::on_action1_1_Frame_size_triggered()
     this->resize(sizeHint());
 }
 
-// Display source image radio button clicked
+// Display source frame radio button clicked
 void MainWindow::on_sourceRadioButton_clicked()
 {
     // Show the current frame
     showFrame(currentFrameNumber, ui->showActiveVideoCheckBox->isChecked(), ui->highlightDropOutsCheckBox->isChecked());
 }
 
-// Display com
+// Display comb-filtered frame
 void MainWindow::on_combFilterRadioButton_clicked()
 {
+    // Show the current frame
+    showFrame(currentFrameNumber, ui->showActiveVideoCheckBox->isChecked(), ui->highlightDropOutsCheckBox->isChecked());
+}
+
+void MainWindow::on_reverseFieldOrderCheckBox_stateChanged(int arg1)
+{
+    (void)arg1;
+
+    if (ui->reverseFieldOrderCheckBox->isChecked()) ldDecodeMetaData.setIsFirstFieldFirst(false);
+        else ldDecodeMetaData.setIsFirstFieldFirst(true);
+
+    // If the TBC field order is changed, the number of available frames can change, so we need to update the GUI
+    updateGuiLoaded();
+
     // Show the current frame
     showFrame(currentFrameNumber, ui->showActiveVideoCheckBox->isChecked(), ui->highlightDropOutsCheckBox->isChecked());
 }
@@ -823,5 +862,4 @@ void MainWindow::updateOscilloscopeDialogue(qint32 frameNumber, qint32 scanLine)
                                        sourceVideo.getVideoField(secondFieldNumber)->getFieldData(),
                                        videoParameters, scanLine);
 }
-
 

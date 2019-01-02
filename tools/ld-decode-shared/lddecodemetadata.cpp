@@ -26,7 +26,8 @@
 
 LdDecodeMetaData::LdDecodeMetaData(QObject *parent) : QObject(parent)
 {
-
+    // Set defaults
+    isFirstFieldFirst = false;
 }
 
 // This method opens the JSON metadata file and reads the content into the
@@ -306,6 +307,32 @@ bool LdDecodeMetaData::read(QString fileName)
     }  else {
         qDebug() << "LdDecodeMetaData::read(): fields object is not defined";
     }
+
+    // Determine the available number of field pairs (which should be the same as the
+    // available number of frames) - This is just for debug really
+    bool isFirstField = false;
+    qint32 errorCounter = 0;
+    qint32 firstFieldCounter = 0;
+    qint32 secondFieldCounter = 0;
+    for (qint32 fieldNumber = 1; fieldNumber <= getNumberOfFields(); fieldNumber++) {
+        if (fieldNumber == 1) {
+            isFirstField = getField(fieldNumber).isFirstField;
+            qDebug() << "LdDecodeMetaData::read(): Initial field has isFirstField =" << isFirstField;
+        } else {
+            if (getField(fieldNumber).isFirstField == isFirstField) {
+                qDebug() << "LdDecodeMetaData::read(): Field #" << fieldNumber << "has isFirstField out of sequence - TBC input file is broken";
+                errorCounter++;
+            } else {
+                isFirstField = !isFirstField;
+            }
+        }
+
+        if (getField(fieldNumber).isFirstField) firstFieldCounter++; else secondFieldCounter++;
+    }
+    qDebug() << "LdDecodeMetaData::read(): TBC file has" << firstFieldCounter << "first fields and" << secondFieldCounter << "second fields with" << errorCounter << "sequence errors";
+
+    // Default to the standard still-frame field order (of first field first)
+    isFirstFieldFirst = true;
 
     return true;
 }
@@ -603,7 +630,7 @@ void LdDecodeMetaData::setPcmAudioParameters(LdDecodeMetaData::PcmAudioParameter
 
 LdDecodeMetaData::Field LdDecodeMetaData::getField(qint32 sequentialFieldNumber)
 {
-    if ((sequentialFieldNumber - 1) >= metaData.fields.size()) {
+    if ((sequentialFieldNumber - 1) >= metaData.fields.size() || sequentialFieldNumber < 1) {
         qCritical() << "LdDecodeMetaData::getField(): Requested field number" << sequentialFieldNumber << "out of bounds!";
 
         // We have to construct a dummy result to prevent segfaults on return
@@ -664,7 +691,7 @@ void LdDecodeMetaData::appendField(LdDecodeMetaData::Field fieldParam)
 
 void LdDecodeMetaData::updateField(LdDecodeMetaData::Field fieldParam, qint32 sequentialFieldNumber)
 {
-    if ((sequentialFieldNumber - 1) >= metaData.fields.size()) {
+    if ((sequentialFieldNumber - 1) >= metaData.fields.size() || sequentialFieldNumber < 1) {
         qCritical() << "LdDecodeMetaData::updateField(): Requested field number" << sequentialFieldNumber << "out of bounds!";
         return;
     }
@@ -677,38 +704,51 @@ qint32 LdDecodeMetaData::getNumberOfFields(void)
     return metaData.fields.size();
 }
 
-// Method to get the available number of frames
+// Method to get the available number of still-frames
 qint32 LdDecodeMetaData::getNumberOfFrames(void)
 {
     qint32 frameOffset = 0;
 
-    // It's possible that the TBC file will start on the wrong field, so we have to allow for
-    // that here by skipping a field if the order isn't right
-    if (!getField(1).isFirstField) frameOffset++;
+    // If the first field in the TBC input isn't the expected first field,
+    // skip it when counting the number of still-frames
+    if (isFirstFieldFirst) {
+        // Expecting first field first
+        if (!getField(1).isFirstField) frameOffset = 1;
+    } else {
+        // Expecting second field first
+        if (getField(1).isFirstField) frameOffset = 1;
+    }
 
     return (getNumberOfFields() / 2) - frameOffset;
 }
 
 // Method to get the first and second field numbers based on the frame number
+// If field = 1 return the firstField, otherwise return second field
 qint32 LdDecodeMetaData::getFieldNumber(qint32 frameNumber, qint32 field)
 {
-
     qint32 firstFieldNumber = 0;
     qint32 secondFieldNumber = 0;
 
+    // Verify the frame number
+    if (frameNumber < 1) {
+        qCritical() << "Invalid frame number, cannot determine fields";
+        return -1;
+    }
+
     // Calculate the first and last fields based on the position in the TBC
-    // Note: For NTSC ld-decode outputs field pairs as secondField, firstField
-    //       For PAL the order is firstField, secondField
-    if (getVideoParameters().isSourcePal) {
+    if (isFirstFieldFirst) {
+        // Expecting TBC file to provide still-frames as first field / second field
         firstFieldNumber = (frameNumber * 2) - 1;
         secondFieldNumber = firstFieldNumber + 1;
     } else {
+        // Expecting TBC file to provide still-frames as second field / first field
         secondFieldNumber = (frameNumber * 2) - 1;
         firstFieldNumber = secondFieldNumber + 1;
     }
 
-    // Verify that the first field has isFirstField set, if not increment the
-    // chosen first field until it does
+    // If the field number pointed to by firstFieldNumber doesn't have
+    // isFirstField set, move forward field by field until the current
+    // field does
     while (!getField(firstFieldNumber).isFirstField) {
         firstFieldNumber++;
         secondFieldNumber++;
@@ -716,6 +756,8 @@ qint32 LdDecodeMetaData::getFieldNumber(qint32 frameNumber, qint32 field)
         // Give up if we reach the end of the available fields
         if (firstFieldNumber > getNumberOfFields() || secondFieldNumber > getNumberOfFields()) {
             qCritical() << "Attempting to get field number failed - no isFirstField in JSON before end of file";
+            firstFieldNumber = -1;
+            secondFieldNumber = -1;
             break;
         }
     }
@@ -723,13 +765,20 @@ qint32 LdDecodeMetaData::getFieldNumber(qint32 frameNumber, qint32 field)
     // Range check the first field number
     if (firstFieldNumber > getNumberOfFields()) {
         qCritical() << "LdDecodeMetaData::getFieldNumber(): First field number exceed the available number of fields!";
-        return -1;
+        firstFieldNumber = -1;
+        secondFieldNumber = -1;
     }
 
     // Range check the second field number
     if (secondFieldNumber > getNumberOfFields()) {
         qCritical() << "LdDecodeMetaData::getFieldNumber(): Second field number exceed the available number of fields!";
-        return -1;
+        firstFieldNumber = -1;
+        secondFieldNumber = -1;
+    }
+
+    // Test for a buggy TBC file...
+    if (getField(secondFieldNumber).isFirstField) {
+        qCritical() << "LdDecodeMetaData::getFieldNumber(): Both of the determined fields have isFirstField set - the TBC source video is probably broken...";
     }
 
     if (field == 1) return firstFieldNumber; else return secondFieldNumber;
@@ -745,4 +794,16 @@ qint32 LdDecodeMetaData::getFirstFieldNumber(qint32 frameNumber)
 qint32 LdDecodeMetaData::getSecondFieldNumber(qint32 frameNumber)
 {
     return getFieldNumber(frameNumber, 2);
+}
+
+// Method to set the isFirstFieldFirst flag
+void LdDecodeMetaData::setIsFirstFieldFirst(bool flag)
+{
+    isFirstFieldFirst = flag;
+}
+
+// Method to get the isFirstFieldFirst flag
+bool LdDecodeMetaData::getIsFirstFieldFirst(void)
+{
+    return isFirstFieldFirst;
 }

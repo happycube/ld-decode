@@ -80,6 +80,7 @@ private slots:
     void on_action1_1_Frame_size_triggered();
     void on_sourceRadioButton_clicked();
     void on_combFilterRadioButton_clicked();
+    void on_reverseFieldOrderCheckBox_stateChanged(int arg1);
 
 private:
     Ui::MainWindow *ui;
