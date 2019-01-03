@@ -938,62 +938,70 @@ class FieldPAL(Field):
 # These classes extend Field to do PAL/NTSC specific TBC features.
 
 class FieldNTSC(Field):
-    # XXX: This is a very bad refactoring!
+    def compute_line_bursts(self, linelocs, line):
+        '''
+        Compute the zero crossing for the given line using calczc
+        '''
+        # calczc works from integers, so get the start and remainder
+        s = int(linelocs[line])
+        s_rem = linelocs[line] - s
+
+        # compute adjusted frequency from neighboring line lengths
+        lfreq = self.rf.freq * (((self.linelocs2[line+1] - self.linelocs2[line-1]) / 2) / self.rf.linelen)
+
+        # compute approximate burst beginning/end
+        bstime = 17 * (1 / self.rf.SysParams['fsc_mhz']) # approx start of burst in usecs
+
+        bstart = int(bstime * lfreq)
+        bend = int(8.8 * lfreq)
+
+        # copy and get the mean of the burst area to factor out wow/flutter
+        burstarea = self.data[0]['demod_burst'][s+bstart:s+bend].copy()
+        if len(burstarea) == 0:
+            print("oops")
+        burstarea -= np.mean(burstarea)
+
+        burstlevel = np.max(np.abs(burstarea)) / 1
+
+        i = 0
+        zc_bursts = {False: [], True: []}
+
+        while i < (len(burstarea) - 1):
+            if np.abs(burstarea[i]) > (8 * self.rf.SysParams['hz_ire']):
+                zc = calczc(burstarea, i, 0)
+                if zc is not None:
+                    zc_burst = ((bstart+zc-s_rem) / lfreq) / (1 / self.rf.SysParams['fsc_mhz'])
+                    zc_bursts[burstarea[i] < 0].append(np.round(zc_burst) - zc_burst)
+                    #print(zc, np.round(zc_burst) - zc_burst)
+                    i = int(zc) + 1
+
+            i += 1
+            
+        return zc_bursts, burstlevel
+
     def compute_burst_offsets(self, linelocs):
         badlines = np.full(266, False)
-        
+
         linelocs_adj = linelocs
-        
-        bstime = 17*(1 / self.rf.SysParams['fsc_mhz'])
+
         bmed = []
 
         burstlevel = np.zeros_like(linelocs_adj, dtype=np.float32)
-        
+
         zc_bursts = {}
         # Counter for which lines have + polarity.  TRACKS 1-BASED LINE #'s
         phase_votes = {'odd': 0, 'even': 0, 'dodgy': 0}
 
         for l in range(1, 266):
-            # calczc works from integers, so get the start and remainder
-            s = int(linelocs[l])
-            s_rem = linelocs[l] - s
+            zc_bursts[l], burstlevel[l] = self.compute_line_bursts(linelocs, l)
 
-            # compute adjusted frequency from neighboring line lengths
-            lfreq = self.rf.freq * (((self.linelocs2[l+1] - self.linelocs2[l-1]) / 2) / self.rf.linelen)
-
-            bstart = int(bstime * lfreq)
-            bend = int(8.8 * lfreq)
-
-            # copy and get the mean of the burst area to factor out wow/flutter
-            burstarea = self.data[0]['demod_burst'][s+bstart:s+bend].copy()
-            burstarea -= np.mean(burstarea)
-
-            burstlevel[l] = np.max(np.abs(burstarea)) / 1
-
-            i = 0
-            zc_bursts[l] = {False: [], True: []}
-
-            while i < (len(burstarea) - 1):
-                if np.abs(burstarea[i]) > (8 * self.rf.SysParams['hz_ire']):
-                    zc = calczc(burstarea, i, 0)
-                    if zc is not None:
-                        zc_burst = ((bstart+zc-s_rem) / lfreq) / (1 / self.rf.SysParams['fsc_mhz'])
-                        zc_bursts[l][burstarea[i] < 0].append(np.round(zc_burst) - zc_burst)
-                        #print(zc, np.round(zc_burst) - zc_burst)
-                        i = int(zc) + 1
-
-                i += 1
-
-            # If the burst is so corrupt one ZC type is missing, punt.
-            if (len(zc_bursts[l][False]) == 0) or (len(zc_bursts[l][True]) == 0):
-                #print('missing type', l)
+            if (len(zc_bursts[l][True]) == 0) or (len(zc_bursts[l][False]) == 0):
                 continue
 
             amed_falling = np.median(np.abs(zc_bursts[l][False]))
             amed_rising = np.median(np.abs(zc_bursts[l][True]))
             edge = False if amed_falling < amed_rising else True
 
-            #print('err', l, amed_falling, amed_rising)
             if np.abs(amed_falling - amed_rising) < .05:
                 badlines[l] = True
                 phase_votes['dodgy'] += 1
@@ -1002,7 +1010,7 @@ class FieldNTSC(Field):
                     phase_votes['odd'] += 1
                 else:
                     phase_votes['even'] += 1
-        
+
         return zc_bursts, phase_votes, burstlevel, badlines
 
     def refine_linelocs_burst(self, linelocs = None):
@@ -1013,52 +1021,49 @@ class FieldNTSC(Field):
         burstlevel = np.zeros_like(linelocs_adj, dtype=np.float32)
 
         zc_bursts, phase_votes, burstlevel, badlines = self.compute_burst_offsets(linelocs_adj)
-        if phase_votes['dodgy'] > 25:
-            #print("WARNING: applying 90 degree line adjustment for burst processing")
-            linelocs_adj = [l + (self.rf.linelen * (.25 / 227.5)) for l in linelocs_adj]
-            zc_bursts, phase_votes, burstlevel, badlines = self.compute_burst_offsets(linelocs_adj)
 
-        if phase_votes['even'] > phase_votes['odd']:
-            field14 = True
-        elif phase_votes['even'] < phase_votes['odd']:
-            field14 = False
-        else:
-            print("WARNING: matching # of + crossing lines?")
-            field14 = False # use prev field?
+        if phase_votes['dodgy'] > 25 or (phase_votes['even'] == phase_votes['odd']):
+            #print("WARNING: applying 90 degree line adjustment for burst processing")
+            linelocs_plus90 = [l + (self.rf.linelen * (.25 / 227.5)) for l in linelocs_adj]
+            zc_bursts, phase_votes, burstlevel, badlines = self.compute_burst_offsets(linelocs_plus90)
+
+        field14 = phase_votes['even'] > phase_votes['odd']
 
         for l in range(9, 266):
-            if (field14 and not (l % 2)) or (not field14 and (l % 2)):
-                edge = False
-            else:
-                edge = True
+            edge = not ((field14 and not (l % 2)) or (not field14 and (l % 2)))
 
             if edge:
                 burstlevel[l] = -burstlevel[l]
 
-            if np.isnan(linelocs_adj[l]) or len(zc_bursts[l][edge]) == 0 or self.linebad[l]:
+            if np.isnan(linelocs_adj[l]) or len(zc_bursts[l][edge]) == 0 or self.linebad[l] or badlines[l]:
                 #print('err', l, linelocs_adj[l])
-                badlines[l] = True
+                self.linebad[l] = True
             else:
                 lfreq = self.rf.freq * (((self.linelocs2[l+1] - self.linelocs2[l-1]) / 2) / self.rf.linelen)
                 linelocs_adj[l] -= np.median(zc_bursts[l][edge]) * lfreq * (1 / self.rf.SysParams['fsc_mhz'])
 
-        for l in np.where(badlines == True)[0]:
-            prevgood = l - 1
-            nextgood = l + 1
-            while prevgood > 8 and badlines[prevgood]:
-                prevgood -= 1
-            while nextgood < 265 and badlines[nextgood]:
-                nextgood += 1
-
-            if prevgood > 8 and nextgood < 265:
-                gap = (linelocs_adj[nextgood] - linelocs_adj[prevgood]) / (nextgood - prevgood)
-                #print(l, prevgood, nextgood, gap + linelocs_adj[prevgood], linelocs[l])
-                linelocs_adj[l] = (gap * (l - prevgood)) + linelocs_adj[prevgood]
-
         self.field14 = field14
 
         return linelocs_adj, burstlevel
-        
+
+    def fix_badlines(self, linelocs = None):
+        if linelocs is None:
+            linelocs = self.linelocs3.copy()
+            
+        for l in np.where(self.linebad == True)[0]:
+            prevgood = l - 1
+            nextgood = l + 1
+            while prevgood > 8 and self.linebad[prevgood]:
+                prevgood -= 1
+            while nextgood < 265 and self.linebad[nextgood]:
+                nextgood += 1
+
+            if prevgood > 8 and nextgood < 265:
+                gap = (linelocs[nextgood] - linelocs[prevgood]) / (nextgood - prevgood)
+                linelocs[l] = (gap * (l - prevgood)) + linelocs[prevgood]
+                
+        return linelocs
+
     def hz_to_ooutput(self, input):
         reduced = (input - self.rf.SysParams['ire0']) / self.rf.SysParams['hz_ire']
         reduced -= self.rf.SysParams['vsync_ire']
@@ -1102,6 +1107,8 @@ class FieldNTSC(Field):
             return
 
         self.linelocs3, self.burstlevel = self.refine_linelocs_burst(self.linelocs2)
+        self.linelocs3 = self.fix_badlines(self.linelocs3)
+
         self.burstmedian = np.median(np.abs(self.burstlevel)) / self.rf.SysParams['hz_ire']
 
         # Now adjust 33 degrees (-90 - 33) for color decoding
