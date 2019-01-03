@@ -1024,8 +1024,10 @@ class FieldNTSC(Field):
 
         if phase_votes['dodgy'] > 25 or (phase_votes['even'] == phase_votes['odd']):
             #print("WARNING: applying 90 degree line adjustment for burst processing")
-            linelocs_plus90 = [l + (self.rf.linelen * (.25 / 227.5)) for l in linelocs_adj]
-            zc_bursts, phase_votes, burstlevel, badlines = self.compute_burst_offsets(linelocs_plus90)
+            #print(phase_votes)
+            linelocs_adj = [l + (self.rf.linelen * (.25 / 227.5)) for l in linelocs_adj]
+            zc_bursts, phase_votes, burstlevel, badlines = self.compute_burst_offsets(linelocs_adj)
+            #print(phase_votes)
 
         field14 = phase_votes['even'] > phase_votes['odd']
 
