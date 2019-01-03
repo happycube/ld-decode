@@ -81,18 +81,18 @@ bool VbiDecoder::process(QString inputFileName)
 
         // Get the VBI data from the field lines
         qDebug() << "VbiDecoder::process(): Getting field-lines for field" << fieldNumber;
-        field.vbi.vbi16 = manchesterDecoder(getActiveVideoLine(sourceField, 16, videoParameters), zcPoint, videoParameters);
-        field.vbi.vbi17 = manchesterDecoder(getActiveVideoLine(sourceField, 17, videoParameters), zcPoint, videoParameters);
-        field.vbi.vbi18 = manchesterDecoder(getActiveVideoLine(sourceField, 18, videoParameters), zcPoint, videoParameters);
+        field.vbi.vbiData[0] = manchesterDecoder(getActiveVideoLine(sourceField, 16, videoParameters), zcPoint, videoParameters);
+        field.vbi.vbiData[1] = manchesterDecoder(getActiveVideoLine(sourceField, 17, videoParameters), zcPoint, videoParameters);
+        field.vbi.vbiData[2] = manchesterDecoder(getActiveVideoLine(sourceField, 18, videoParameters), zcPoint, videoParameters);
 
         // Show the VBI data as hexadecimal
         qInfo() << "Processing field" << fieldNumber <<
-                    "16 =" << QString::number(field.vbi.vbi16, 16) <<
-                    "17 =" << QString::number(field.vbi.vbi17, 16) <<
-                    "18 =" << QString::number(field.vbi.vbi18, 16);
+                    "16 =" << QString::number(field.vbi.vbiData[0], 16) <<
+                    "17 =" << QString::number(field.vbi.vbiData[1], 16) <<
+                    "18 =" << QString::number(field.vbi.vbiData[2], 16);
 
         // Translate the VBI data into a decoded VBI object
-        field.vbi = translateVbi(field.vbi.vbi16, field.vbi.vbi17, field.vbi.vbi18);
+        field.vbi = translateVbi(field.vbi.vbiData[0], field.vbi.vbiData[1], field.vbi.vbiData[2]);
 
         // Process NTSC specific data if source type is NTSC
         if (!videoParameters.isSourcePal) {
@@ -140,41 +140,37 @@ LdDecodeMetaData::Vbi VbiDecoder::translateVbi(qint32 vbi16, qint32 vbi17, qint3
 {
     LdDecodeMetaData::Vbi vbi;
 
-    // Set defaults
-    vbi.vbi16 = vbi16;
-    vbi.vbi17 = vbi17;
-    vbi.vbi18 = vbi18;
+    // Default VBI
+    vbi.inUse = false;
+    vbi.vbiData.resize(3);
+    vbi.vbiData[0] = vbi16;
+    vbi.vbiData[1] = vbi17;
+    vbi.vbiData[2] = vbi18;
     vbi.type = LdDecodeMetaData::VbiDiscTypes::unknownDiscType;
-    vbi.leadIn = false;
-    vbi.leadOut = false;
     vbi.userCode = "";
     vbi.picNo = -1;
-    vbi.picStop = false;
     vbi.chNo = -1;
-    vbi.timeCode.hr = -1;
-    vbi.timeCode.min = -1;
+    vbi.clvHr = -1;
+    vbi.clvMin = -1;
+    vbi.clvSec = -1;
+    vbi.clvPicNo = -1;
+    vbi.soundMode = LdDecodeMetaData::VbiSoundModes::futureUse;
+    vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::futureUse;
 
-    vbi.statusCode.valid = false;
-    vbi.statusCode.cx = false;
-    vbi.statusCode.size = false;
-    vbi.statusCode.side = false;
-    vbi.statusCode.teletext = false;
-    vbi.statusCode.dump = false;
-    vbi.statusCode.fm = false;
-    vbi.statusCode.digital = false;
-    vbi.statusCode.soundMode = LdDecodeMetaData::VbiSoundModes::futureUse;
-    vbi.statusCode.parity = false;
-
-    vbi.statusCodeAm2.valid = false;
-    vbi.statusCodeAm2.cx = false;
-    vbi.statusCodeAm2.size = false;
-    vbi.statusCodeAm2.side = false;
-    vbi.statusCodeAm2.teletext = false;
-    vbi.statusCodeAm2.copy = false;
-    vbi.statusCodeAm2.soundMode = LdDecodeMetaData::VbiSoundModes::futureUse;
-
-    vbi.clvPicNo.sec = -1;
-    vbi.clvPicNo.picNo = -1;
+    // Default VBI Flags
+    vbi.leadIn = false;
+    vbi.leadOut = false;
+    vbi.picStop = false;
+    vbi.cx = false;
+    vbi.size = false;
+    vbi.side = false;
+    vbi.teletext = false;
+    vbi.dump = false;
+    vbi.fm = false;
+    vbi.digital = false;
+    vbi.parity = false;
+    vbi.copyAm2 = false;
+    vbi.standardAm2 = false;
 
     // IEC 60857-1986 - 10.1.1 Lead-in --------------------------------------------------------------------------------
 
@@ -256,27 +252,27 @@ LdDecodeMetaData::Vbi VbiDecoder::translateVbi(qint32 vbi16, qint32 vbi17, qint3
     bool clvProgrammeTimeCodeAvailable = false;
     // Check for programme time code on lines 17 and 18
     if ( (vbi17 & 0xF0FF00) == 0xF0DD00 ) {
-        vbi.timeCode.hr = (vbi17 & 0x0F0000) >> 16;
-        vbi.timeCode.min = (vbi17 & 0x0000FF);
+        vbi.clvHr = (vbi17 & 0x0F0000) >> 16;
+        vbi.clvMin = (vbi17 & 0x0000FF);
         clvProgrammeTimeCodeAvailable = true;
     } else if ( (vbi18 & 0xF0FF00) == 0xF0DD00 ) {
-        vbi.timeCode.hr = (vbi18 & 0x0F0000) >> 16;
-        vbi.timeCode.min = (vbi18 & 0x0000FF);
+        vbi.clvHr = (vbi18 & 0x0F0000) >> 16;
+        vbi.clvMin = (vbi18 & 0x0000FF);
         clvProgrammeTimeCodeAvailable = true;
     }
 
     if (clvProgrammeTimeCodeAvailable) {
         // Perform BCD conversion
-        vbi.timeCode.hr =
-                (   10 * ((vbi.timeCode.hr & 0x000F0) / 16)) +
-                (        ((vbi.timeCode.hr & 0x0000F)));
-        vbi.timeCode.min =
-                (   10 * ((vbi.timeCode.min & 0x000F0) / 16)) +
-                (        ((vbi.timeCode.min & 0x0000F)));
+        vbi.clvHr =
+                (   10 * ((vbi.clvHr & 0x000F0) / 16)) +
+                (        ((vbi.clvHr & 0x0000F)));
+        vbi.clvMin =
+                (   10 * ((vbi.clvMin & 0x000F0) / 16)) +
+                (        ((vbi.clvMin & 0x0000F)));
 
         qDebug() << "VbiDecoder::translateVbi(): VBI CLV programme time code is" <<
-                    vbi.timeCode.hr << "hours," <<
-                    vbi.timeCode.min << "minutes";
+                    vbi.clvHr << "hours," <<
+                    vbi.clvMin << "minutes";
     }
 
     // IEC 60857-1986 - 10.1.7 Constant linear velocity code ----------------------------------------------------------
@@ -301,15 +297,13 @@ LdDecodeMetaData::Vbi VbiDecoder::translateVbi(qint32 vbi16, qint32 vbi17, qint3
 
     if (statusCode != 0) {
         // Programme status code is available, decode it...
-        vbi.statusCode.valid = true;
-
         // CX sound on or off?
         if ((statusCode & 0x0FF000) == 0x0DC000) {
             qDebug() << "VbiDecoder::translateVbi(): VBI CX sound is on";
-            vbi.statusCode.cx = true;
+            vbi.cx = true;
         } else {
             qDebug() << "VbiDecoder::translateVbi(): VBI CX sound is off";
-            vbi.statusCode.cx = false;
+            vbi.cx = false;
         }
 
         // Get the x3, x4 and x5 parameters
@@ -319,48 +313,47 @@ LdDecodeMetaData::Vbi VbiDecoder::translateVbi(qint32 vbi16, qint32 vbi17, qint3
 
         quint32 x4Check = hammingCode(x4, x5);
         if (x4 == x4Check) {
-            vbi.statusCode.parity = true;
+            vbi.parity = true;
             qDebug() << "VbiDecoder::translateVbi(): VBI Programme status parity check passed";
         } else {
-            vbi.statusCode.parity = false;
-            qDebug() << "VbiDecoder::translateVbi(): VBI Programme status parity check failed - x4 =" << x4 << "corrected to" << x4Check;
-            x4 = x4Check; // Replace data with corrected version
+            vbi.parity = false;
+            qDebug() << "VbiDecoder::translateVbi(): VBI Programme status parity check failed - Probably an ammendment2 VBI";
         }
 
         // Get the disc size (12 inch or 8 inch) from x31
         if ((x3 & 0x08) == 0x08) {
             qDebug() << "VbiDecoder::translateVbi(): VBI Laserdisc is 8 inch";
-            vbi.statusCode.size = false;
+            vbi.size = false;
         } else {
             qDebug() << "VbiDecoder::translateVbi(): VBI Laserdisc is 12 inch";
-            vbi.statusCode.size = true;
+            vbi.size = true;
         }
 
         // Get the disc side (first or second) from x32
         if ((x3 & 0x04) == 0x04) {
             qDebug() << "VbiDecoder::translateVbi(): VBI Laserdisc side 2";
-            vbi.statusCode.side = false;
+            vbi.side = false;
         } else {
             qDebug() << "VbiDecoder::translateVbi(): VBI Laserdisc side 1";
-            vbi.statusCode.side = true;
+            vbi.side = true;
         }
 
         // Get the teletext presence (present or not present) from x33
         if ((x3 & 0x02) == 0x02) {
             qDebug() << "VbiDecoder::translateVbi(): VBI Disc contains teletext";
-            vbi.statusCode.teletext = true;
+            vbi.teletext = true;
         } else {
             qDebug() << "VbiDecoder::translateVbi(): VBI Disc does not contain teletext";
-            vbi.statusCode.teletext = false;
+            vbi.teletext = false;
         }
 
         // Get the analogue/digital video flag from x42
         if ((x4 & 0x04) == 0x04) {
             qDebug() << "VbiDecoder::translateVbi(): VBI Video data is digital";
-            vbi.statusCode.digital = true;
+            vbi.digital = true;
         } else {
             qDebug() << "VbiDecoder::translateVbi(): VBI Video data is analogue";
-            vbi.statusCode.digital = false;
+            vbi.digital = false;
         }
 
         // The audio channel status is given by x41, x34, x43 and x44 combined
@@ -375,109 +368,107 @@ LdDecodeMetaData::Vbi VbiDecoder::translateVbi(qint32 vbi16, qint32 vbi17, qint3
         // Configure according to the audio status code
         switch(audioStatus) {
         case 0:
-            vbi.statusCode.dump = false;
-            vbi.statusCode.fm = false;
-            vbi.statusCode.soundMode = LdDecodeMetaData::VbiSoundModes::stereo;
+            vbi.dump = false;
+            vbi.fm = false;
+            vbi.soundMode = LdDecodeMetaData::VbiSoundModes::stereo;
             qDebug() << "VbiDecoder::translateVbi(): VBI audio status 0 - isProgrammeDump = false - isFmFmMultiplex = false - soundMode = stereo";
             break;
         case 1:
-            vbi.statusCode.dump = false;
-            vbi.statusCode.fm = false;
-            vbi.statusCode.soundMode = LdDecodeMetaData::VbiSoundModes::mono;
+            vbi.dump = false;
+            vbi.fm = false;
+            vbi.soundMode = LdDecodeMetaData::VbiSoundModes::mono;
             qDebug() << "VbiDecoder::translateVbi(): VBI audio status 1 - isProgrammeDump = false - isFmFmMultiplex = false - soundMode = mono";
             break;
         case 2:
-            vbi.statusCode.dump = false;
-            vbi.statusCode.fm = false;
-            vbi.statusCode.soundMode = LdDecodeMetaData::VbiSoundModes::futureUse;
+            vbi.dump = false;
+            vbi.fm = false;
+            vbi.soundMode = LdDecodeMetaData::VbiSoundModes::futureUse;
             qDebug() << "VbiDecoder::translateVbi(): VBI audio status 2 - isProgrammeDump = false - isFmFmMultiplex = false - soundMode = futureUse";
             break;
         case 3:
-            vbi.statusCode.dump = false;
-            vbi.statusCode.fm = false;
-            vbi.statusCode.soundMode = LdDecodeMetaData::VbiSoundModes::bilingual;
+            vbi.dump = false;
+            vbi.fm = false;
+            vbi.soundMode = LdDecodeMetaData::VbiSoundModes::bilingual;
             qDebug() << "VbiDecoder::translateVbi(): VBI audio status 3 - isProgrammeDump = false - isFmFmMultiplex = false - soundMode = bilingual";
             break;
         case 4:
-            vbi.statusCode.dump = false;
-            vbi.statusCode.fm = true;
-            vbi.statusCode.soundMode = LdDecodeMetaData::VbiSoundModes::stereo_stereo;
+            vbi.dump = false;
+            vbi.fm = true;
+            vbi.soundMode = LdDecodeMetaData::VbiSoundModes::stereo_stereo;
             qDebug() << "VbiDecoder::translateVbi(): VBI audio status 4 - isProgrammeDump = false - isFmFmMultiplex = true - soundMode = stereo_stereo";
             break;
         case 5:
-            vbi.statusCode.dump = false;
-            vbi.statusCode.fm = true;
-            vbi.statusCode.soundMode = LdDecodeMetaData::VbiSoundModes::stereo_bilingual;
+            vbi.dump = false;
+            vbi.fm = true;
+            vbi.soundMode = LdDecodeMetaData::VbiSoundModes::stereo_bilingual;
             qDebug() << "VbiDecoder::translateVbi(): VBI audio status 5 - isProgrammeDump = false - isFmFmMultiplex = true - soundMode = stereo_bilingual";
             break;
         case 6:
-            vbi.statusCode.dump = false;
-            vbi.statusCode.fm = true;
-            vbi.statusCode.soundMode = LdDecodeMetaData::VbiSoundModes::crossChannelStereo;
+            vbi.dump = false;
+            vbi.fm = true;
+            vbi.soundMode = LdDecodeMetaData::VbiSoundModes::crossChannelStereo;
             qDebug() << "VbiDecoder::translateVbi(): VBI audio status 6 - isProgrammeDump = false - isFmFmMultiplex = true - soundMode = crossChannelStereo";
             break;
         case 7:
-            vbi.statusCode.dump = false;
-            vbi.statusCode.fm = true;
-            vbi.statusCode.soundMode = LdDecodeMetaData::VbiSoundModes::bilingual_bilingual;
+            vbi.dump = false;
+            vbi.fm = true;
+            vbi.soundMode = LdDecodeMetaData::VbiSoundModes::bilingual_bilingual;
             qDebug() << "VbiDecoder::translateVbi(): VBI audio status 7 - isProgrammeDump = false - isFmFmMultiplex = true - soundMode = bilingual_bilingual";
             break;
         case 8:
-            vbi.statusCode.dump = true;
-            vbi.statusCode.fm = false;
-            vbi.statusCode.soundMode = LdDecodeMetaData::VbiSoundModes::mono_dump;
+            vbi.dump = true;
+            vbi.fm = false;
+            vbi.soundMode = LdDecodeMetaData::VbiSoundModes::mono_dump;
             qDebug() << "VbiDecoder::translateVbi(): VBI audio status 8 - isProgrammeDump = true - isFmFmMultiplex = false - soundMode = mono_dump";
             break;
         case 9:
-            vbi.statusCode.dump = true;
-            vbi.statusCode.fm = false;
-            vbi.statusCode.soundMode = LdDecodeMetaData::VbiSoundModes::mono_dump;
+            vbi.dump = true;
+            vbi.fm = false;
+            vbi.soundMode = LdDecodeMetaData::VbiSoundModes::mono_dump;
             qDebug() << "VbiDecoder::translateVbi(): VBI audio status 9 - isProgrammeDump = true - isFmFmMultiplex = false - soundMode = mono_dump";
             break;
         case 10:
-            vbi.statusCode.dump = true;
-            vbi.statusCode.fm = false;
-            vbi.statusCode.soundMode = LdDecodeMetaData::VbiSoundModes::futureUse;
+            vbi.dump = true;
+            vbi.fm = false;
+            vbi.soundMode = LdDecodeMetaData::VbiSoundModes::futureUse;
             qDebug() << "VbiDecoder::translateVbi(): VBI audio status 10 - isProgrammeDump = true - isFmFmMultiplex = false - soundMode = futureUse";
             break;
         case 11:
-            vbi.statusCode.dump = true;
-            vbi.statusCode.fm = false;
-            vbi.statusCode.soundMode = LdDecodeMetaData::VbiSoundModes::mono_dump;
+            vbi.dump = true;
+            vbi.fm = false;
+            vbi.soundMode = LdDecodeMetaData::VbiSoundModes::mono_dump;
             qDebug() << "VbiDecoder::translateVbi(): VBI audio status 11 - isProgrammeDump = true - isFmFmMultiplex = false - soundMode = mono_dump";
             break;
         case 12:
-            vbi.statusCode.dump = true;
-            vbi.statusCode.fm = true;
-            vbi.statusCode.soundMode = LdDecodeMetaData::VbiSoundModes::stereo_dump;
+            vbi.dump = true;
+            vbi.fm = true;
+            vbi.soundMode = LdDecodeMetaData::VbiSoundModes::stereo_dump;
             qDebug() << "VbiDecoder::translateVbi(): VBI audio status 12 - isProgrammeDump = true - isFmFmMultiplex = true - soundMode = stereo_dump";
             break;
         case 13:
-            vbi.statusCode.dump = true;
-            vbi.statusCode.fm = true;
-            vbi.statusCode.soundMode = LdDecodeMetaData::VbiSoundModes::stereo_dump;
+            vbi.dump = true;
+            vbi.fm = true;
+            vbi.soundMode = LdDecodeMetaData::VbiSoundModes::stereo_dump;
             qDebug() << "VbiDecoder::translateVbi(): VBI audio status 13 - isProgrammeDump = true - isFmFmMultiplex = true - soundMode = stereo_dump";
             break;
         case 14:
-            vbi.statusCode.dump = true;
-            vbi.statusCode.fm = true;
-            vbi.statusCode.soundMode = LdDecodeMetaData::VbiSoundModes::bilingual_dump;
+            vbi.dump = true;
+            vbi.fm = true;
+            vbi.soundMode = LdDecodeMetaData::VbiSoundModes::bilingual_dump;
             qDebug() << "VbiDecoder::translateVbi(): VBI audio status 14 - isProgrammeDump = true - isFmFmMultiplex = true - soundMode = bilingual_dump";
             break;
         case 15:
-            vbi.statusCode.dump = true;
-            vbi.statusCode.fm = true;
-            vbi.statusCode.soundMode = LdDecodeMetaData::VbiSoundModes::bilingual_dump;
+            vbi.dump = true;
+            vbi.fm = true;
+            vbi.soundMode = LdDecodeMetaData::VbiSoundModes::bilingual_dump;
             qDebug() << "VbiDecoder::translateVbi(): VBI audio status 15 - isProgrammeDump = true - isFmFmMultiplex = true - soundMode = bilingual_dump";
             break;
         default:
             qDebug() << "VbiDecoder::translateVbi(): VBI - Invalid audio status code!";
-            vbi.statusCode.dump = false;
-            vbi.statusCode.fm = false;
-            vbi.statusCode.soundMode = LdDecodeMetaData::VbiSoundModes::stereo;
+            vbi.dump = false;
+            vbi.fm = false;
+            vbi.soundMode = LdDecodeMetaData::VbiSoundModes::stereo;
         }
-    } else {
-        vbi.statusCode.valid = false;
     }
 
     // IEC 60857-1986 - 10.1.8 Programme status code (IEC Amendment 2) ------------------------------------------------
@@ -490,56 +481,20 @@ LdDecodeMetaData::Vbi VbiDecoder::translateVbi(qint32 vbi16, qint32 vbi17, qint3
 
     if (statusCodeAm2 != 0) {
         // Programme status code is available, decode it...
-        vbi.statusCodeAm2.valid = true;
-
-        // CX sound on or off?
-        if ((statusCode & 0x0FF000) == 0x0DC000) {
-            qDebug() << "VbiDecoder::translateVbi(): VBI (Am2) CX sound is on";
-            vbi.statusCodeAm2.cx = true;
-        } else {
-            qDebug() << "VbiDecoder::translateVbi(): VBI (Am2) CX sound is off";
-            vbi.statusCodeAm2.cx = false;
-        }
+        // Only fields specific to Am2 will be decoded
 
         // Get the x3, x4 and x5 parameters
         quint32 x3 = (statusCode & 0x000F00) >> 8;
         quint32 x4 = (statusCode & 0x0000F0) >> 4;
         //quint32 x5 = (statusCode & 0x00000F);
 
-        // Get the disc size (12 inch or 8 inch) from x31
-        if ((x3 & 0x08) == 0x08) {
-            qDebug() << "VbiDecoder::translateVbi(): VBI (Am2) Laserdisc is 8 inch";
-            vbi.statusCodeAm2.size = false;
-        } else {
-            qDebug() << "VbiDecoder::translateVbi(): VBI (Am2) Laserdisc is 12 inch";
-            vbi.statusCodeAm2.size = true;
-        }
-
-        // Get the disc side (first or second) from x32
-        if ((x3 & 0x04) == 0x04) {
-            qDebug() << "VbiDecoder::translateVbi(): VBI (Am2) Laserdisc side 2";
-            vbi.statusCodeAm2.side = false;
-        } else {
-            qDebug() << "VbiDecoder::translateVbi(): VBI (Am2) Laserdisc side 1";
-            vbi.statusCodeAm2.side = true;
-        }
-
-        // Get the teletext presence (present or not present) from x33
-        if ((x3 & 0x02) == 0x02) {
-            qDebug() << "VbiDecoder::translateVbi(): VBI (Am2) Disc contains teletext";
-            vbi.statusCodeAm2.teletext = true;
-        } else {
-            qDebug() << "VbiDecoder::translateVbi(): VBI (Am2) Disc does not contain teletext";
-            vbi.statusCodeAm2.teletext = false;
-        }
-
         // Get the copy/no copy flag from x34
         if ((x3 & 0x01) == 0x01) {
             qDebug() << "VbiDecoder::translateVbi(): VBI (Am2) Copy permitted";
-            vbi.statusCodeAm2.copy = true;
+            vbi.copyAm2 = true;
         } else {
             qDebug() << "VbiDecoder::translateVbi(): VBI (Am2) Copy prohibited";
-            vbi.statusCodeAm2.copy = false;
+            vbi.copyAm2 = false;
         }
 
         // The audio channel status is given by x41, x42, x43 and x44 combined
@@ -554,92 +509,90 @@ LdDecodeMetaData::Vbi VbiDecoder::translateVbi(qint32 vbi16, qint32 vbi17, qint3
         // Configure according to the audio status code
         switch(audioStatus) {
         case 0:
-            vbi.statusCodeAm2.standard = true;
-            vbi.statusCodeAm2.soundMode = LdDecodeMetaData::VbiSoundModes::stereo;
+            vbi.standardAm2 = true;
+            vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::stereo;
             qDebug() << "VbiDecoder::translateVbi(): VBI (Am2) audio status 0 - isVideoSignalStandard = true - soundMode = stereo";
             break;
         case 1:
-            vbi.statusCodeAm2.standard = true;
-            vbi.statusCodeAm2.soundMode = LdDecodeMetaData::VbiSoundModes::mono;
+            vbi.standardAm2 = true;
+            vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::mono;
             qDebug() << "VbiDecoder::translateVbi(): VBI (Am2) audio status 1 - isVideoSignalStandard = true - soundMode = mono";
             break;
         case 2:
-            vbi.statusCodeAm2.standard = false;
-            vbi.statusCodeAm2.soundMode = LdDecodeMetaData::VbiSoundModes::futureUse;
+            vbi.standardAm2 = false;
+            vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::futureUse;
             qDebug() << "VbiDecoder::translateVbi(): VBI (Am2) audio status 2 - isVideoSignalStandard = false - soundMode = futureUse";
             break;
         case 3:
-            vbi.statusCodeAm2.standard = true;
-            vbi.statusCodeAm2.soundMode = LdDecodeMetaData::VbiSoundModes::bilingual;
+            vbi.standardAm2 = true;
+            vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::bilingual;
             qDebug() << "VbiDecoder::translateVbi(): VBI (Am2) audio status 3 - isVideoSignalStandard = true - soundMode = bilingual";
             break;
         case 4:
-            vbi.statusCodeAm2.standard = false;
-            vbi.statusCodeAm2.soundMode = LdDecodeMetaData::VbiSoundModes::futureUse;
+            vbi.standardAm2 = false;
+            vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::futureUse;
             qDebug() << "VbiDecoder::translateVbi(): VBI (Am2) audio status 4 - isVideoSignalStandard = false - soundMode = futureUse";
             break;
         case 5:
-            vbi.statusCodeAm2.standard = false;
-            vbi.statusCodeAm2.soundMode = LdDecodeMetaData::VbiSoundModes::futureUse;
+            vbi.standardAm2 = false;
+            vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::futureUse;
             qDebug() << "VbiDecoder::translateVbi(): VBI (Am2) audio status 5 - isVideoSignalStandard = false - soundMode = futureUse";
             break;
         case 6:
-            vbi.statusCodeAm2.standard = false;
-            vbi.statusCodeAm2.soundMode = LdDecodeMetaData::VbiSoundModes::futureUse;
+            vbi.standardAm2 = false;
+            vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::futureUse;
             qDebug() << "VbiDecoder::translateVbi(): VBI (Am2) audio status 6 - isVideoSignalStandard = false - soundMode = futureUse";
             break;
         case 7:
-            vbi.statusCodeAm2.standard = false;
-            vbi.statusCodeAm2.soundMode = LdDecodeMetaData::VbiSoundModes::futureUse;
+            vbi.standardAm2 = false;
+            vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::futureUse;
             qDebug() << "VbiDecoder::translateVbi(): VBI (Am2) audio status 7 - isVideoSignalStandard = false - soundMode = futureUse";
             break;
         case 8:
-            vbi.statusCodeAm2.standard = true;
-            vbi.statusCodeAm2.soundMode = LdDecodeMetaData::VbiSoundModes::mono_dump;
+            vbi.standardAm2 = true;
+            vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::mono_dump;
             qDebug() << "VbiDecoder::translateVbi(): VBI (Am2) audio status 8 - isVideoSignalStandard = true - soundMode = mono_dump";
             break;
         case 9:
-            vbi.statusCodeAm2.standard = false;
-            vbi.statusCodeAm2.soundMode = LdDecodeMetaData::VbiSoundModes::futureUse;
+            vbi.standardAm2 = false;
+            vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::futureUse;
             qDebug() << "VbiDecoder::translateVbi(): VBI (Am2) audio status 9 - isVideoSignalStandard = false - soundMode = futureUse";
             break;
         case 10:
-            vbi.statusCodeAm2.standard = false;
-            vbi.statusCodeAm2.soundMode = LdDecodeMetaData::VbiSoundModes::futureUse;
+            vbi.standardAm2 = false;
+            vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::futureUse;
             qDebug() << "VbiDecoder::translateVbi(): VBI (Am2) audio status 10 - isVideoSignalStandard = false - soundMode = futureUse";
             break;
         case 11:
-            vbi.statusCodeAm2.standard = false;
-            vbi.statusCodeAm2.soundMode = LdDecodeMetaData::VbiSoundModes::futureUse;
+            vbi.standardAm2 = false;
+            vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::futureUse;
             qDebug() << "VbiDecoder::translateVbi(): VBI (Am2) audio status 11 - isVideoSignalStandard = false - soundMode = futureUse";
             break;
         case 12:
-            vbi.statusCodeAm2.standard = false;
-            vbi.statusCodeAm2.soundMode = LdDecodeMetaData::VbiSoundModes::futureUse;
+            vbi.standardAm2 = false;
+            vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::futureUse;
             qDebug() << "VbiDecoder::translateVbi(): VBI (Am2) audio status 12 - isVideoSignalStandard = false - soundMode = futureUse";
             break;
         case 13:
-            vbi.statusCodeAm2.standard = false;
-            vbi.statusCodeAm2.soundMode = LdDecodeMetaData::VbiSoundModes::futureUse;
+            vbi.standardAm2 = false;
+            vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::futureUse;
             qDebug() << "VbiDecoder::translateVbi(): VBI (Am2) audio status 13 - isVideoSignalStandard = false - soundMode = futureUse";
             break;
         case 14:
-            vbi.statusCodeAm2.standard = false;
-            vbi.statusCodeAm2.soundMode = LdDecodeMetaData::VbiSoundModes::futureUse;
+            vbi.standardAm2 = false;
+            vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::futureUse;
             qDebug() << "VbiDecoder::translateVbi(): VBI (Am2) audio status 14 - isVideoSignalStandard = false - soundMode = futureUse";
             break;
         case 15:
-            vbi.statusCodeAm2.standard = false;
-            vbi.statusCodeAm2.soundMode = LdDecodeMetaData::VbiSoundModes::futureUse;
+            vbi.standardAm2 = false;
+            vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::futureUse;
             qDebug() << "VbiDecoder::translateVbi(): VBI (Am2) audio status 15 - isVideoSignalStandard = false - soundMode = futureUse";
             break;
         default:
-            vbi.statusCodeAm2.standard = false;
-            vbi.statusCodeAm2.soundMode = LdDecodeMetaData::VbiSoundModes::stereo;
+            vbi.standardAm2 = false;
+            vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::stereo;
             qDebug() << "VbiDecoder::translateVbi(): VBI (Am2) - Invalid audio status code!";
         }
-    } else {
-        vbi.statusCodeAm2.valid = false;
     }
 
     // IEC 60857-1986 - 10.1.9 Users code -----------------------------------------------------------------------------
@@ -681,12 +634,12 @@ LdDecodeMetaData::Vbi VbiDecoder::translateVbi(qint32 vbi16, qint32 vbi17, qint3
         qint32 x4   = (clvPictureNumber & 0x0000F0) >> 4;
         qint32 x5   = (clvPictureNumber & 0x00000F);
 
-        vbi.clvPicNo.sec = ((x1 - 10) * 10) + x3;
-        vbi.clvPicNo.picNo = (x4  * 10) + x5;
+        vbi.clvSec = ((x1 - 10) * 10) + x3;
+        vbi.clvPicNo = (x4  * 10) + x5;
 
         qDebug() << "VbiDecoder::translateVbi(): VBI CLV picture number is" <<
-                    vbi.clvPicNo.sec << "seconds," <<
-                    vbi.clvPicNo.picNo << "picture number";
+                    vbi.clvSec << "seconds," <<
+                    vbi.clvPicNo << "picture number";
     }
 
     return vbi;
