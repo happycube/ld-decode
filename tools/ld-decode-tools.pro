@@ -6,6 +6,8 @@ SUBDIRS = ld-decode-shared \
 	  ld-comb-pal \
           ld-analyse \
 	  ld-comb-ntsc \
-          ld-process-cav
+          ld-process-cav \
+          ld-process-audio
+
 
 
