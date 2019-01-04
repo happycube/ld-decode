@@ -130,9 +130,10 @@ bool LdDecodeMetaData::read(QString fileName)
                 // Mark VBI as in use
                 fieldData.vbi.inUse = true;
 
-                fieldData.vbi.vbi16 = vbi["vbi16"].toInt();
-                fieldData.vbi.vbi17 = vbi["vbi17"].toInt();
-                fieldData.vbi.vbi18 = vbi["vbi18"].toInt();
+                QJsonArray jsonVbiData = vbi["vbiData"].toArray();
+                fieldData.vbi.vbiData.append(jsonVbiData[0].toInt()); // Line 16
+                fieldData.vbi.vbiData.append(jsonVbiData[1].toInt()); // Line 17
+                fieldData.vbi.vbiData.append(jsonVbiData[2].toInt()); // Line 18
 
                 switch(vbi["type"].toInt()) {
                 case 0:
@@ -148,126 +149,115 @@ bool LdDecodeMetaData::read(QString fileName)
                     fieldData.vbi.type = LdDecodeMetaData::VbiDiscTypes::unknownDiscType;
                 }
 
-                fieldData.vbi.leadIn = vbi["leadIn"].toBool();
-                fieldData.vbi.leadOut = vbi["leadOut"].toBool();
                 fieldData.vbi.userCode = vbi["userCode"].toString();
                 fieldData.vbi.picNo = vbi["picNo"].toInt();
-                fieldData.vbi.picStop = vbi["picStop"].toBool();
                 fieldData.vbi.chNo = vbi["chNo"].toInt();
+                fieldData.vbi.clvHr = vbi["clvHr"].toInt();
+                fieldData.vbi.clvMin = vbi["clvMin"].toInt();
+                fieldData.vbi.clvSec = vbi["clvSec"].toInt();
+                fieldData.vbi.clvPicNo = vbi["clvPicNo"].toInt();
 
-                QJsonObject timeCode = vbi["timeCode"].toObject();
-                fieldData.vbi.timeCode.hr = timeCode["hr"].toInt();
-                fieldData.vbi.timeCode.min = timeCode["min"].toInt();
-
-                // Original programme status code
-                QJsonObject statusCode = vbi["statusCode"].toObject();
-                fieldData.vbi.statusCode.valid = statusCode["valid"].toBool();
-                fieldData.vbi.statusCode.cx = statusCode["cx"].toBool();
-                fieldData.vbi.statusCode.size = statusCode["size"].toBool();
-                fieldData.vbi.statusCode.side = statusCode["side"].toBool();
-                fieldData.vbi.statusCode.teletext = statusCode["teletext"].toBool();
-                fieldData.vbi.statusCode.dump = statusCode["dump"].toBool();
-                fieldData.vbi.statusCode.fm = statusCode["fm"].toBool();
-                fieldData.vbi.statusCode.digital = statusCode["digital"].toBool();
-
-                switch (statusCode["soundMode"].toInt()) {
+                switch (vbi["soundMode"].toInt()) {
                 case 0:
-                    fieldData.vbi.statusCode.soundMode = LdDecodeMetaData::VbiSoundModes::stereo;
+                    fieldData.vbi.soundMode = LdDecodeMetaData::VbiSoundModes::stereo;
                     break;
                 case 1:
-                    fieldData.vbi.statusCode.soundMode = LdDecodeMetaData::VbiSoundModes::mono;
+                    fieldData.vbi.soundMode = LdDecodeMetaData::VbiSoundModes::mono;
                     break;
                 case 2:
-                    fieldData.vbi.statusCode.soundMode = LdDecodeMetaData::VbiSoundModes::audioSubCarriersOff;
+                    fieldData.vbi.soundMode = LdDecodeMetaData::VbiSoundModes::audioSubCarriersOff;
                     break;
                 case 3:
-                    fieldData.vbi.statusCode.soundMode = LdDecodeMetaData::VbiSoundModes::bilingual;
+                    fieldData.vbi.soundMode = LdDecodeMetaData::VbiSoundModes::bilingual;
                     break;
                 case 4:
-                    fieldData.vbi.statusCode.soundMode = LdDecodeMetaData::VbiSoundModes::stereo_stereo;
+                    fieldData.vbi.soundMode = LdDecodeMetaData::VbiSoundModes::stereo_stereo;
                     break;
                 case 5:
-                    fieldData.vbi.statusCode.soundMode = LdDecodeMetaData::VbiSoundModes::stereo_bilingual;
+                    fieldData.vbi.soundMode = LdDecodeMetaData::VbiSoundModes::stereo_bilingual;
                     break;
                 case 6:
-                    fieldData.vbi.statusCode.soundMode = LdDecodeMetaData::VbiSoundModes::crossChannelStereo;
+                    fieldData.vbi.soundMode = LdDecodeMetaData::VbiSoundModes::crossChannelStereo;
                     break;
                 case 7:
-                    fieldData.vbi.statusCode.soundMode = LdDecodeMetaData::VbiSoundModes::bilingual_bilingual;
+                    fieldData.vbi.soundMode = LdDecodeMetaData::VbiSoundModes::bilingual_bilingual;
                     break;
                 case 8:
-                    fieldData.vbi.statusCode.soundMode = LdDecodeMetaData::VbiSoundModes::mono_dump;
+                    fieldData.vbi.soundMode = LdDecodeMetaData::VbiSoundModes::mono_dump;
                     break;
                 case 9:
-                    fieldData.vbi.statusCode.soundMode = LdDecodeMetaData::VbiSoundModes::stereo_dump;
+                    fieldData.vbi.soundMode = LdDecodeMetaData::VbiSoundModes::stereo_dump;
                     break;
                 case 10:
-                    fieldData.vbi.statusCode.soundMode = LdDecodeMetaData::VbiSoundModes::bilingual_dump;
+                    fieldData.vbi.soundMode = LdDecodeMetaData::VbiSoundModes::bilingual_dump;
                     break;
                 case 11:
-                    fieldData.vbi.statusCode.soundMode = LdDecodeMetaData::VbiSoundModes::futureUse;
+                    fieldData.vbi.soundMode = LdDecodeMetaData::VbiSoundModes::futureUse;
                     break;
                 default:
-                    fieldData.vbi.statusCode.soundMode = LdDecodeMetaData::VbiSoundModes::futureUse;
-                    break;
-                }
-                fieldData.vbi.statusCode.parity = statusCode["parity"].toBool();
-
-                // Amendment 2 programme status code
-                QJsonObject statusCodeAm2 = vbi["statusCodeAm2"].toObject();
-                fieldData.vbi.statusCodeAm2.valid = statusCodeAm2["valid"].toBool();
-                fieldData.vbi.statusCodeAm2.cx = statusCodeAm2["cx"].toBool();
-                fieldData.vbi.statusCodeAm2.size = statusCodeAm2["size"].toBool();
-                fieldData.vbi.statusCodeAm2.side = statusCodeAm2["side"].toBool();
-                fieldData.vbi.statusCodeAm2.teletext = statusCodeAm2["teletext"].toBool();
-                fieldData.vbi.statusCodeAm2.copy = statusCodeAm2["copy"].toBool();
-                fieldData.vbi.statusCodeAm2.standard = statusCodeAm2["standard"].toBool();
-
-                switch (statusCodeAm2["soundMode"].toInt()) {
-                case 0:
-                    fieldData.vbi.statusCodeAm2.soundMode = LdDecodeMetaData::VbiSoundModes::stereo;
-                    break;
-                case 1:
-                    fieldData.vbi.statusCodeAm2.soundMode = LdDecodeMetaData::VbiSoundModes::mono;
-                    break;
-                case 2:
-                    fieldData.vbi.statusCodeAm2.soundMode = LdDecodeMetaData::VbiSoundModes::audioSubCarriersOff;
-                    break;
-                case 3:
-                    fieldData.vbi.statusCodeAm2.soundMode = LdDecodeMetaData::VbiSoundModes::bilingual;
-                    break;
-                case 4:
-                    fieldData.vbi.statusCodeAm2.soundMode = LdDecodeMetaData::VbiSoundModes::stereo_stereo;
-                    break;
-                case 5:
-                    fieldData.vbi.statusCodeAm2.soundMode = LdDecodeMetaData::VbiSoundModes::stereo_bilingual;
-                    break;
-                case 6:
-                    fieldData.vbi.statusCodeAm2.soundMode = LdDecodeMetaData::VbiSoundModes::crossChannelStereo;
-                    break;
-                case 7:
-                    fieldData.vbi.statusCodeAm2.soundMode = LdDecodeMetaData::VbiSoundModes::bilingual_bilingual;
-                    break;
-                case 8:
-                    fieldData.vbi.statusCodeAm2.soundMode = LdDecodeMetaData::VbiSoundModes::mono_dump;
-                    break;
-                case 9:
-                    fieldData.vbi.statusCodeAm2.soundMode = LdDecodeMetaData::VbiSoundModes::stereo_dump;
-                    break;
-                case 10:
-                    fieldData.vbi.statusCodeAm2.soundMode = LdDecodeMetaData::VbiSoundModes::bilingual_dump;
-                    break;
-                case 11:
-                    fieldData.vbi.statusCodeAm2.soundMode = LdDecodeMetaData::VbiSoundModes::futureUse;
-                    break;
-                default:
-                    fieldData.vbi.statusCodeAm2.soundMode = LdDecodeMetaData::VbiSoundModes::futureUse;
+                    fieldData.vbi.soundMode = LdDecodeMetaData::VbiSoundModes::futureUse;
                     break;
                 }
 
-                QJsonObject clvPicNo = vbi["clvPicNo"].toObject();
-                fieldData.vbi.clvPicNo.sec = clvPicNo["sec"].toInt();
-                fieldData.vbi.clvPicNo.picNo = clvPicNo["picNo"].toInt();
+                switch (vbi["soundModeAm2"].toInt()) {
+                case 0:
+                    fieldData.vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::stereo;
+                    break;
+                case 1:
+                    fieldData.vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::mono;
+                    break;
+                case 2:
+                    fieldData.vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::audioSubCarriersOff;
+                    break;
+                case 3:
+                    fieldData.vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::bilingual;
+                    break;
+                case 4:
+                    fieldData.vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::stereo_stereo;
+                    break;
+                case 5:
+                    fieldData.vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::stereo_bilingual;
+                    break;
+                case 6:
+                    fieldData.vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::crossChannelStereo;
+                    break;
+                case 7:
+                    fieldData.vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::bilingual_bilingual;
+                    break;
+                case 8:
+                    fieldData.vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::mono_dump;
+                    break;
+                case 9:
+                    fieldData.vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::stereo_dump;
+                    break;
+                case 10:
+                    fieldData.vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::bilingual_dump;
+                    break;
+                case 11:
+                    fieldData.vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::futureUse;
+                    break;
+                default:
+                    fieldData.vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::futureUse;
+                    break;
+                }
+
+                // Get the boolean flags field (contains 13 boolean flags from the VBI)
+                qint32 booleanFlags = vbi["flags"].toInt();
+
+                // Interpret the flags
+                fieldData.vbi.leadIn =      ((booleanFlags & 0x0001) == 0x0001);
+                fieldData.vbi.leadOut =     ((booleanFlags & 0x0002) == 0x0002);
+                fieldData.vbi.picStop =     ((booleanFlags & 0x0004) == 0x0004);
+                fieldData.vbi.cx =          ((booleanFlags & 0x0008) == 0x0008);
+                fieldData.vbi.size =        ((booleanFlags & 0x0010) == 0x0010);
+                fieldData.vbi.side =        ((booleanFlags & 0x0020) == 0x0020);
+                fieldData.vbi.teletext =    ((booleanFlags & 0x0040) == 0x0040);
+                fieldData.vbi.dump =        ((booleanFlags & 0x0080) == 0x0080);
+                fieldData.vbi.fm =          ((booleanFlags & 0x0100) == 0x0100);
+                fieldData.vbi.digital =     ((booleanFlags & 0x0200) == 0x0200);
+                fieldData.vbi.parity =      ((booleanFlags & 0x0400) == 0x0400);
+                fieldData.vbi.copyAm2 =     ((booleanFlags & 0x0800) == 0x0800);
+                fieldData.vbi.standardAm2 = ((booleanFlags & 0x1000) == 0x1000);
             } else {
                 // Mark VBI as undefined
                 fieldData.vbi.inUse = false;
@@ -405,9 +395,11 @@ bool LdDecodeMetaData::write(QString fileName)
             if (metaData.fields[fieldNumber].vbi.inUse) {
                 QJsonObject vbi;
 
-                vbi.insert("vbi16", metaData.fields[fieldNumber].vbi.vbi16);
-                vbi.insert("vbi17", metaData.fields[fieldNumber].vbi.vbi17);
-                vbi.insert("vbi18", metaData.fields[fieldNumber].vbi.vbi18);
+                QJsonArray vbiData;
+                vbiData.append(metaData.fields[fieldNumber].vbi.vbiData[0]);
+                vbiData.append(metaData.fields[fieldNumber].vbi.vbiData[1]);
+                vbiData.append(metaData.fields[fieldNumber].vbi.vbiData[2]);
+                vbi.insert("vbiData", vbiData);
 
                 switch(metaData.fields[fieldNumber].vbi.type) {
                 case LdDecodeMetaData::VbiDiscTypes::unknownDiscType:
@@ -421,124 +413,110 @@ bool LdDecodeMetaData::write(QString fileName)
                     break;
                 }
 
-                vbi.insert("leadIn", metaData.fields[fieldNumber].vbi.leadIn);
-                vbi.insert("leadOut", metaData.fields[fieldNumber].vbi.leadOut);
                 vbi.insert("userCode", metaData.fields[fieldNumber].vbi.userCode);
                 vbi.insert("picNo", metaData.fields[fieldNumber].vbi.picNo);
-                vbi.insert("picStop", metaData.fields[fieldNumber].vbi.picStop);
                 vbi.insert("chNo", metaData.fields[fieldNumber].vbi.chNo);
+                vbi.insert("clvHr", metaData.fields[fieldNumber].vbi.clvHr);
+                vbi.insert("clvMin", metaData.fields[fieldNumber].vbi.clvMin);
+                vbi.insert("clvSec", metaData.fields[fieldNumber].vbi.clvSec);
+                vbi.insert("clvPicNo", metaData.fields[fieldNumber].vbi.clvPicNo);
 
-                QJsonObject timeCode;
-                timeCode.insert("hr", metaData.fields[fieldNumber].vbi.timeCode.hr);
-                timeCode.insert("min", metaData.fields[fieldNumber].vbi.timeCode.min);
-                vbi.insert("timeCode", timeCode);
-
-                // Original programme status code
-                QJsonObject statusCode;
-                statusCode.insert("valid", metaData.fields[fieldNumber].vbi.statusCode.valid);
-                statusCode.insert("cx", metaData.fields[fieldNumber].vbi.statusCode.cx);
-                statusCode.insert("size", metaData.fields[fieldNumber].vbi.statusCode.size);
-                statusCode.insert("side", metaData.fields[fieldNumber].vbi.statusCode.side);
-                statusCode.insert("teletext", metaData.fields[fieldNumber].vbi.statusCode.teletext);
-                statusCode.insert("dump", metaData.fields[fieldNumber].vbi.statusCode.dump);
-                statusCode.insert("fm", metaData.fields[fieldNumber].vbi.statusCode.fm);
-                statusCode.insert("digital", metaData.fields[fieldNumber].vbi.statusCode.digital);
-
-                switch (metaData.fields[fieldNumber].vbi.statusCode.soundMode) {
+                switch (metaData.fields[fieldNumber].vbi.soundMode) {
                 case LdDecodeMetaData::VbiSoundModes::stereo:
-                    statusCode.insert("soundMode", 0);
+                    vbi.insert("soundMode", 0);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::mono:
-                    statusCode.insert("soundMode", 1);
+                    vbi.insert("soundMode", 1);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::audioSubCarriersOff:
-                    statusCode.insert("soundMode", 2);
+                    vbi.insert("soundMode", 2);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::bilingual:
-                    statusCode.insert("soundMode", 3);
+                    vbi.insert("soundMode", 3);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::stereo_stereo:
-                    statusCode.insert("soundMode", 4);
+                    vbi.insert("soundMode", 4);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::stereo_bilingual:
-                    statusCode.insert("soundMode", 5);
+                    vbi.insert("soundMode", 5);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::crossChannelStereo:
-                    statusCode.insert("soundMode", 6);
+                    vbi.insert("soundMode", 6);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::bilingual_bilingual:
-                    statusCode.insert("soundMode", 7);
+                    vbi.insert("soundMode", 7);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::mono_dump:
-                    statusCode.insert("soundMode", 8);
+                    vbi.insert("soundMode", 8);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::stereo_dump:
-                    statusCode.insert("soundMode", 9);
+                    vbi.insert("soundMode", 9);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::bilingual_dump:
-                    statusCode.insert("soundMode", 10);
+                    vbi.insert("soundMode", 10);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::futureUse:
-                    statusCode.insert("soundMode", 11);
+                    vbi.insert("soundMode", 11);
                     break;
                 }
-                statusCode["parity"] = metaData.fields[fieldNumber].vbi.statusCode.parity;
-                vbi.insert("statusCode", statusCode);
 
-                // Amendment 2 programme status code
-                QJsonObject statusCodeAm2;
-                statusCodeAm2.insert("valid", metaData.fields[fieldNumber].vbi.statusCodeAm2.valid);
-                statusCodeAm2.insert("cx", metaData.fields[fieldNumber].vbi.statusCodeAm2.cx);
-                statusCodeAm2.insert("size", metaData.fields[fieldNumber].vbi.statusCodeAm2.size);
-                statusCodeAm2.insert("side", metaData.fields[fieldNumber].vbi.statusCodeAm2.side);
-                statusCodeAm2.insert("teletext", metaData.fields[fieldNumber].vbi.statusCodeAm2.teletext);
-                statusCodeAm2.insert("copy", metaData.fields[fieldNumber].vbi.statusCodeAm2.copy);
-                statusCodeAm2.insert("standard", metaData.fields[fieldNumber].vbi.statusCodeAm2.standard);
-
-                switch (metaData.fields[fieldNumber].vbi.statusCodeAm2.soundMode) {
+                switch (metaData.fields[fieldNumber].vbi.soundModeAm2) {
                 case LdDecodeMetaData::VbiSoundModes::stereo:
-                    statusCodeAm2.insert("soundMode", 0);
+                    vbi.insert("soundModeAm2", 0);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::mono:
-                    statusCodeAm2.insert("soundMode", 1);
+                    vbi.insert("soundModeAm2", 1);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::audioSubCarriersOff:
-                    statusCodeAm2.insert("soundMode", 2);
+                    vbi.insert("soundModeAm2", 2);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::bilingual:
-                    statusCodeAm2.insert("soundMode", 3);
+                    vbi.insert("soundModeAm2", 3);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::stereo_stereo:
-                    statusCodeAm2.insert("soundMode", 4);
+                    vbi.insert("soundModeAm2", 4);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::stereo_bilingual:
-                    statusCodeAm2.insert("soundMode", 5);
+                    vbi.insert("soundModeAm2", 5);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::crossChannelStereo:
-                    statusCodeAm2.insert("soundMode", 6);
+                    vbi.insert("soundModeAm2", 6);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::bilingual_bilingual:
-                    statusCodeAm2.insert("soundMode", 7);
+                    vbi.insert("soundModeAm2", 7);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::mono_dump:
-                    statusCodeAm2.insert("soundMode", 8);
+                    vbi.insert("soundModeAm2", 8);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::stereo_dump:
-                    statusCodeAm2.insert("soundMode", 9);
+                    vbi.insert("soundModeAm2", 9);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::bilingual_dump:
-                    statusCodeAm2.insert("soundMode", 10);
+                    vbi.insert("soundModeAm2", 10);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::futureUse:
-                    statusCodeAm2.insert("soundMode", 11);
+                    vbi.insert("soundModeAm2", 11);
                     break;
                 }
-                vbi.insert("statusCodeAm2", statusCodeAm2);
 
-                QJsonObject clvPicNo;
-                clvPicNo.insert("sec", metaData.fields[fieldNumber].vbi.clvPicNo.sec);
-                clvPicNo.insert("picNo", metaData.fields[fieldNumber].vbi.clvPicNo.picNo);
-                vbi.insert("clvPicNo", clvPicNo);
+                // Convert the vitual flag booleans to the flags integer
+                qint32 flags = 0;
+                if (metaData.fields[fieldNumber].vbi.leadIn)        flags += 0x0001;
+                if (metaData.fields[fieldNumber].vbi.leadOut)       flags += 0x0002;
+                if (metaData.fields[fieldNumber].vbi.picStop)       flags += 0x0004;
+                if (metaData.fields[fieldNumber].vbi.cx)            flags += 0x0008;
+                if (metaData.fields[fieldNumber].vbi.size)          flags += 0x0010;
+                if (metaData.fields[fieldNumber].vbi.side)          flags += 0x0020;
+                if (metaData.fields[fieldNumber].vbi.teletext)      flags += 0x0040;
+                if (metaData.fields[fieldNumber].vbi.dump)          flags += 0x0080;
+                if (metaData.fields[fieldNumber].vbi.fm)            flags += 0x0100;
+                if (metaData.fields[fieldNumber].vbi.digital)       flags += 0x0200;
+                if (metaData.fields[fieldNumber].vbi.parity)        flags += 0x0400;
+                if (metaData.fields[fieldNumber].vbi.copyAm2)       flags += 0x0800;
+                if (metaData.fields[fieldNumber].vbi.standardAm2)   flags += 0x1000;
+
+                // Insert the flags into the VBI JSON
+                vbi.insert("flags", flags);
 
                 // Add the vbi to the field
                 field.insert("vbi", vbi);
@@ -602,77 +580,87 @@ bool LdDecodeMetaData::write(QString fileName)
         return false;
     }
 
-    jsonFileHandle.write(document.toJson(QJsonDocument::Indented));
+    jsonFileHandle.write(document.toJson(QJsonDocument::Compact));
     jsonFileHandle.close();
 
     return true;
 }
 
+// This method returns the videoParameters metadata
 LdDecodeMetaData::VideoParameters LdDecodeMetaData::getVideoParameters(void)
 {
     return metaData.videoParameters;
 }
 
+// This method sets the videoParameters metadata
 void LdDecodeMetaData::setVideoParameters (LdDecodeMetaData::VideoParameters videoParametersParam)
 {
     metaData.videoParameters = videoParametersParam;
 }
 
+// This method returns the pcmAudioParameters metadata
 LdDecodeMetaData::PcmAudioParameters LdDecodeMetaData::getPcmAudioParameters(void)
 {
     return metaData.pcmAudioParameters;
 }
 
+// This method sets the pcmAudioParameters metadata
 void LdDecodeMetaData::setPcmAudioParameters(LdDecodeMetaData::PcmAudioParameters pcmAudioParam)
 {
     metaData.pcmAudioParameters = pcmAudioParam;
 }
 
+// This method gets the metadata for the specified sequential field number
 LdDecodeMetaData::Field LdDecodeMetaData::getField(qint32 sequentialFieldNumber)
 {
     if ((sequentialFieldNumber - 1) >= metaData.fields.size() || sequentialFieldNumber < 1) {
         qCritical() << "LdDecodeMetaData::getField(): Requested field number" << sequentialFieldNumber << "out of bounds!";
 
         // We have to construct a dummy result to prevent segfaults on return
+
+        // Field
         LdDecodeMetaData::Field field;
         field.seqNo = -1;
         field.isFirstField = false;
         field.syncConf = -1;
         field.medianBurstIRE = -1;
         field.fieldPhaseID = -1;
+
+        // VITS
         field.vits.inUse = false;
+
+        // VBI
         field.vbi.inUse = false;
-        field.vbi.vbi16 = -1;
-        field.vbi.vbi17 = -1;
-        field.vbi.vbi18 = -1;
+        field.vbi.vbiData.append(-1);
+        field.vbi.vbiData.append(-1);
+        field.vbi.vbiData.append(-1);
         field.vbi.type = LdDecodeMetaData::VbiDiscTypes::unknownDiscType;
+        field.vbi.userCode = "";
+        field.vbi.picNo = -1;
+        field.vbi.chNo = -1;
+        field.vbi.clvHr = -1;
+        field.vbi.clvMin = -1;
+        field.vbi.clvSec = -1;
+        field.vbi.clvPicNo = -1;
+        field.vbi.soundMode = LdDecodeMetaData::VbiSoundModes::futureUse;
+        field.vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::futureUse;
+
+        // VBI Flags
         field.vbi.leadIn = false;
         field.vbi.leadOut = false;
-        field.vbi.picNo = -1;
         field.vbi.picStop = false;
-        field.vbi.chNo = -1;
-        field.vbi.timeCode.hr = -1;
-        field.vbi.timeCode.min = -1;
-        field.vbi.clvPicNo.sec = -1;
-        field.vbi.clvPicNo.picNo = -1;
-        field.vbi.statusCode.cx = false;
-        field.vbi.statusCode.fm = false;
-        field.vbi.statusCode.dump = false;
-        field.vbi.statusCode.side = false;
-        field.vbi.statusCode.size = false;
-        field.vbi.statusCode.valid = false;
-        field.vbi.statusCode.parity = false;
-        field.vbi.statusCode.digital = false;
-        field.vbi.statusCode.teletext = false;
-        field.vbi.statusCode.soundMode = LdDecodeMetaData::VbiSoundModes::futureUse;
-        field.vbi.statusCodeAm2.cx = false;
-        field.vbi.statusCodeAm2.copy = false;
-        field.vbi.statusCodeAm2.side = false;
-        field.vbi.statusCodeAm2.size = false;
-        field.vbi.statusCodeAm2.valid = false;
-        field.vbi.statusCodeAm2.standard = false;
-        field.vbi.statusCodeAm2.teletext = false;
-        field.vbi.statusCodeAm2.soundMode = LdDecodeMetaData::VbiSoundModes::futureUse;
+        field.vbi.cx = false;
+        field.vbi.size = false;
+        field.vbi.side = false;
+        field.vbi.teletext = false;
+        field.vbi.dump = false;
+        field.vbi.fm = false;
+        field.vbi.digital = false;
+        field.vbi.parity = false;
+        field.vbi.copyAm2 = false;
+        field.vbi.standardAm2 = false;
+
+        // NTSC
         field.ntsc.inUse = false;
         field.ntsc.fieldFlag = false;
         field.ntsc.whiteFlag = false;
@@ -681,14 +669,22 @@ LdDecodeMetaData::Field LdDecodeMetaData::getField(qint32 sequentialFieldNumber)
 
         return field;
     }
+
+    // Resize the VBI data fields to prevent assert issues downstream
+    if (metaData.fields[sequentialFieldNumber - 1].vbi.vbiData.size() != 3)
+        metaData.fields[sequentialFieldNumber - 1].vbi.vbiData.resize(3);
+
     return metaData.fields[sequentialFieldNumber - 1];
 }
 
+// This method appends a new field to the existing metadata
 void LdDecodeMetaData::appendField(LdDecodeMetaData::Field fieldParam)
 {
+    metaData.videoParameters.numberOfSequentialFields++;
     metaData.fields.append(fieldParam);
 }
 
+// This method updates an existing field with new metadata
 void LdDecodeMetaData::updateField(LdDecodeMetaData::Field fieldParam, qint32 sequentialFieldNumber)
 {
     if ((sequentialFieldNumber - 1) >= metaData.fields.size() || sequentialFieldNumber < 1) {
@@ -698,11 +694,71 @@ void LdDecodeMetaData::updateField(LdDecodeMetaData::Field fieldParam, qint32 se
     metaData.fields[sequentialFieldNumber - 1] = fieldParam;
 }
 
-// Method to get the available number of fields
+// Method to get the available number of fields (according to the metadata)
 qint32 LdDecodeMetaData::getNumberOfFields(void)
 {
     return metaData.fields.size();
 }
+
+// A note about fields, frames and still-frames:
+//
+// There is a lot of confusing terminology around fields and the order in which
+// they should be combined to make a 'frame'.  Basically, (taking NTSC as an example)
+// a frame consists of frame lines numbered from 1 to 525.  A frame is made from two
+// fields, one field contains field lines 1 to 262.5 and another 263 to 525 (although
+// for convenence the 'half-lines' are usually treated as one full line and ignored
+// so both fields contain a total of 263 lines of which 1 is ignored).
+//
+// When a frame is created, the field containing field lines 1-263 is interlaced
+// with the field containing 263-525 creating a frame with field lines 1, 263, 2, 264
+// and so on.  This 'frame' is then considered to contain frame lines 1-525.
+//
+// The field containing the first line of the frame is called the 'first field' and
+// the field containing the second line of the frame is called the 'second field'.
+//
+// However, other names exist:
+//
+// Even/Odd - where the 'odd' field contains the odd line numbers 1, 3, 5, etc. This is
+// the same as the 'first' field so odd = first and even = second.
+//
+// Upper/lower - where the 'upper' field contains the upper-part of each combination.
+// This is the same as the first field so upper = first and lower = second.
+//
+// With a standard TV, as long as one field is first and the other is second, the only
+// thing a TV requires is that the sequence of fields is constant.  They are simply
+// displayed one set of fields after another to form a frame which is part of a
+// moving image.
+//
+// This is an issue for 'still-frames' as, if the video sequence consists of
+// still images (rather than motion), pausing at any given point can result in a
+// frame containing a first field from one image and a second field from another
+// as there is no concept of 'frame' in the video (just a sequence of first and
+// second fields).
+//
+// Since digital formats are frame based (not field) this is an issue, as there
+// is no way (from the video data) to tell how to combine fields into a
+// still-frame (rather than just 'a frame').  The LaserDisc mastering could be
+// in the order first field/second field = still-frame or second field/first field
+// = still frame.
+//
+// This is why the following methods use the "isFirstFieldFirst" flag (which is
+// a little confusing in itself).
+//
+// There are two ways to determine the 'isFirstFieldFirst'.  The first method is by
+// user observation (it's pretty clear on a still-frame when it is wrong), the other
+// (used by LaserDisc players) is to look for a CAV picture number in the VBI data
+// of the field.  The IEC specification states that the picture number should only be
+// in the first field of a frame. (Note: CLV discs don't really have to follow this
+// as there are no 'still-frames' allowed by the original format).
+//
+// This gets even more confusing for NTSC discs using pull-down, where the sequence
+// of fields making up the frames isn't even, so some field-pairs aren't considered
+// to contain the first field of a still-frame (and when pausing the LaserDisc
+// player will never use certain fields to render the still-frame).  Wikipedia is
+// your friend if you want to learn more about it.
+//
+// Determining the correct setting of 'isFirstFieldFirst' is therefore outside of
+// the shared-library scope.
 
 // Method to get the available number of still-frames
 qint32 LdDecodeMetaData::getNumberOfFrames(void)

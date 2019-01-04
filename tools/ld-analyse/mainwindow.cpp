@@ -358,9 +358,9 @@ void MainWindow::showFrame(qint32 frameNumber, bool showActiveVideoArea, bool hi
 
     // Add the first field VBI data to the dialogue
     if (firstField.vbi.inUse) {
-        ui->even0VbiLabel->setText("0x" + QString::number(firstField.vbi.vbi16, 16));
-        ui->even1VbiLabel->setText("0x" + QString::number(firstField.vbi.vbi17, 16));
-        ui->even2VbiLabel->setText("0x" + QString::number(firstField.vbi.vbi18, 16));
+        ui->even0VbiLabel->setText("0x" + QString::number(firstField.vbi.vbiData[0], 16));
+        ui->even1VbiLabel->setText("0x" + QString::number(firstField.vbi.vbiData[1], 16));
+        ui->even2VbiLabel->setText("0x" + QString::number(firstField.vbi.vbiData[2], 16));
     } else {
         ui->even0VbiLabel->setText("No metadata");
         ui->even1VbiLabel->setText("No metadata");
@@ -387,9 +387,9 @@ void MainWindow::showFrame(qint32 frameNumber, bool showActiveVideoArea, bool hi
 
     // Add the second field VBI data to the dialogue
     if (secondField.vbi.inUse) {
-        ui->odd0VbiLabel->setText("0x" + QString::number(secondField.vbi.vbi16, 16));
-        ui->odd1VbiLabel->setText("0x" + QString::number(secondField.vbi.vbi17, 16));
-        ui->odd2VbiLabel->setText("0x" + QString::number(secondField.vbi.vbi18, 16));
+        ui->odd0VbiLabel->setText("0x" + QString::number(secondField.vbi.vbiData[0], 16));
+        ui->odd1VbiLabel->setText("0x" + QString::number(secondField.vbi.vbiData[1], 16));
+        ui->odd2VbiLabel->setText("0x" + QString::number(secondField.vbi.vbiData[2], 16));
     } else {
         ui->odd0VbiLabel->setText("No metadata");
         ui->odd1VbiLabel->setText("No metadata");
