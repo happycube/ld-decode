@@ -651,7 +651,7 @@ class Field:
 
         window_ire = self.rf.hztoire(np.mean(self.data[0]['demod_05'][int(beg):int(end)]))
 
-        flagged = inrange(window_ire, self.rf.SysParams['vsync_ire'] - 20, self.rf.SysParams['vsync_ire'] + 10)
+        flagged = inrange(window_ire, self.rf.SysParams['vsync_ire'] - 80, self.rf.SysParams['vsync_ire'] + 10)
         
         return not flagged if self.rf.system == 'NTSC' else flagged
 
@@ -1135,6 +1135,8 @@ class LDdecode:
         self.frameoutput = frameoutput
         self.firstfield = None # In frame output mode, the first field goes here
 
+        self.fieldloc = 0
+
         if system == 'PAL':
             self.rf = RFDecode(system = 'PAL', decode_analog_audio=analog_audio)
             self.FieldClass = FieldPAL
@@ -1216,6 +1218,7 @@ class LDdecode:
         MTFadjusted = False
         
         while done == False:
+            self.fieldloc = self.fdoffset
             f, offset = self.decodefield()
             self.curfield = f
             self.fdoffset += offset
@@ -1278,6 +1281,7 @@ class LDdecode:
         fi = {'isFirstField': True if f.isFirstField else False, 
               'syncConf': f.sync_confidence, 
               'seqNo': len(self.fieldinfo) + 1, 
+              #'diskLoc': self.fieldloc / self.bytes_per_field,
               'medianBurstIRE': f.burstmedian}
 
         if f.rf.system == 'NTSC':
