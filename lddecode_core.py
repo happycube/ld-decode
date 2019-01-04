@@ -649,7 +649,7 @@ class Field:
         beg = int(self.linelocs2[l] + ((self.linelocs2[l+1] - self.linelocs2[l]) * window_begin))
         end = int(self.linelocs2[l] + ((self.linelocs2[l+1] - self.linelocs2[l]) * (window_begin + .25)))
 
-        window_ire = self.rf.hztoire(np.mean(self.data[0]['demod_05'][int(beg):int(end)]))
+        window_ire = self.rf.hztoire(np.median(self.data[0]['demod_05'][int(beg):int(end)]))
 
         flagged = inrange(window_ire, self.rf.SysParams['vsync_ire'] - 80, self.rf.SysParams['vsync_ire'] / 2.0)
         
