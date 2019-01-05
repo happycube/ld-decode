@@ -138,11 +138,6 @@ int main(int argc, char *argv[])
                                        QCoreApplication::translate("main", "Do not use optical flow processing (for 3D filter depth)"));
     parser.addOption(noOpticalFlowOption);
 
-    // Option to set the crop flag (-c)
-    QCommandLineOption cropOutputOption(QStringList() << "c" << "crop",
-                                       QCoreApplication::translate("main", "Crop the output video"));
-    parser.addOption(cropOutputOption);
-
     // Positional argument to specify input video file
     parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input TBC file"));
 
@@ -156,7 +151,6 @@ int main(int argc, char *argv[])
     showDebug = parser.isSet(showDebugOption);
     bool reverse = parser.isSet(setReverseOption);
     bool blackAndWhite = parser.isSet(setBwModeOption);
-    bool crop = parser.isSet(cropOutputOption);
     bool adaptive2d = true;
     if (parser.isSet(noAdaptive2dOption)) adaptive2d = false;
     bool opticalFlow = true;
@@ -218,8 +212,7 @@ int main(int argc, char *argv[])
     // Process the input file
     ntscFilter.process(inputFileName, outputFileName,
                        startFrame, length, reverse,
-                       filterDepth, blackAndWhite, adaptive2d, opticalFlow, crop
-                       );
+                       filterDepth, blackAndWhite, adaptive2d, opticalFlow);
 
     // Quit with success
     return 0;

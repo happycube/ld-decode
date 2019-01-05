@@ -24,7 +24,7 @@
 
 #include "filterthread.h"
 
-FilterThread::FilterThread(LdDecodeMetaData::VideoParameters videoParametersParam, bool isVP415CropSetParam, QObject *parent) : QThread(parent)
+FilterThread::FilterThread(LdDecodeMetaData::VideoParameters videoParametersParam, QObject *parent) : QThread(parent)
 {
     // Thread control variables
     isProcessing = false;
@@ -32,7 +32,6 @@ FilterThread::FilterThread(LdDecodeMetaData::VideoParameters videoParametersPara
 
     // Configure PAL colour
     videoParameters = videoParametersParam;
-    isVP415CropSet = isVP415CropSetParam;
     palColour.updateConfiguration(videoParameters);
 
     // Calculate the frame height
@@ -45,19 +44,6 @@ FilterThread::FilterThread(LdDecodeMetaData::VideoParameters videoParametersPara
     lastActiveScanLine = 617;
     videoStart = videoParameters.activeVideoStart;
     videoEnd = videoParameters.activeVideoEnd;
-
-    // Calculate the VP415 video extents
-    qreal vp415FirstActiveScanLine = firstActiveScanLine + ((frameHeight / 100) * 1.0);
-    qreal vp415LastActiveScanLine = lastActiveScanLine - ((frameHeight / 100) * 1.0);
-    qreal vp415VideoStart = videoParameters.activeVideoStart + ((videoParameters.fieldWidth / 100) * 1.0);
-    qreal vp415VideoEnd = videoParameters.activeVideoEnd - ((videoParameters.fieldWidth / 100) * 1.0);
-
-    if (isVP415CropSet) {
-        firstActiveScanLine = static_cast<qint32>(vp415FirstActiveScanLine);
-        lastActiveScanLine = static_cast<qint32>(vp415LastActiveScanLine);
-        videoStart = static_cast<qint32>(vp415VideoStart);
-        videoEnd = static_cast<qint32>(vp415VideoEnd);
-    }
 
     // Make sure output height is even (better for ffmpeg processing)
     if (((lastActiveScanLine - firstActiveScanLine) % 2) != 0) {
@@ -134,6 +120,14 @@ void FilterThread::run()
             // The PAL colour library outputs the whole frame, so here we have to strip all the non-visible stuff to just get the
             // actual required image - it would be better if PALcolour gave back only the required RGB, but it's not my library.
             rgbOutputData.clear();
+
+            // Add additional output lines to ensure the output height is 576 lines
+            QByteArray blankLine;
+            blankLine.resize((videoEnd - videoStart) * 6 );
+            blankLine.fill(0);
+            for (qint32 y = 0; y < 576 - (lastActiveScanLine - firstActiveScanLine); y++) {
+                rgbOutputData.append(blankLine);
+            }
 
             // Since PALcolour uses +-3 scan-lines to colourise, the final lines before the non-visible area may not come out quite
             // right, but we're including them here anyway.

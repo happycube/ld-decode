@@ -113,11 +113,6 @@ int main(int argc, char *argv[])
                                        QCoreApplication::translate("main", "Reverse the field order to second/first (default first/second)"));
     parser.addOption(setReverseOption);
 
-    // Option to crop output to VP415 dimensions (-c)
-    QCommandLineOption showCropOption(QStringList() << "c" << "crop",
-                                       QCoreApplication::translate("main", "Crop output to VP415 dimensions"));
-    parser.addOption(showCropOption);
-
     // Positional argument to specify input video file
     parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input TBC file"));
 
@@ -129,7 +124,6 @@ int main(int argc, char *argv[])
 
     // Get the options from the parser
     bool isDebugOn = parser.isSet(showDebugOption);
-    bool isVP415CropSet = parser.isSet(showCropOption);
     bool reverse = parser.isSet(setReverseOption);
 
     // Get the arguments from the parser
@@ -179,7 +173,7 @@ int main(int argc, char *argv[])
 
     // Perform the processing
     PalCombFilter palCombFilter;
-    palCombFilter.process(inputFileName, outputFileName, startFrame, length, isVP415CropSet, reverse);
+    palCombFilter.process(inputFileName, outputFileName, startFrame, length, reverse);
 
     // Quit with success
     return 0;
