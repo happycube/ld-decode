@@ -140,9 +140,10 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
         return nullptr;
     }
 
+    // Note: 1.75 is the nominal scaling factor of 75% amplitude for full-range digitised
+    // composite (with sync at code 0 or 1, blanking at code 64 (40h), and peak white at
+    // code 211 (d3h) to give 0-255 RGB).
     double scaledBrightness = 1.75 * brightness / 100.0;
-    // NB 1.75 is nominal scaling factor for full-range digitised composite (with sync at code 0 or 1,
-    // blanking at code 64 (40h), and peak white at code 211 (d3h) to give 0-255 RGB.
 
     if (!firstFieldData.isNull() && !secondFieldData.isNull()) {
         // Step 2:
@@ -291,24 +292,26 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
                 // Define scan line pointer to output buffer using 16 bit unsigned words
                 quint16 *ptr = reinterpret_cast<quint16*>(outputFrame.data() + (((fieldLine * 2) + field) * videoParameters.fieldWidth * 6));
 
-                // 'saturation' is a user saturation control, nom. 100% - scaled to 16-bit (*256)
-                double scaledSaturation = (saturation / 100.0) / norm;  // 'norm' normalises bp and bq to 1
-                qint32 R, G, B;
-                double U, V;
+                // 'saturation' is a user saturation control, nom. 100%
+                double scaledSaturation = (saturation / 50.0) / norm;  // 'norm' normalises bp and bq to 1
+                double R, G, B;
+                double rY, rU, rV;
 
                 for (qint32 i = videoParameters.activeVideoStart; i < videoParameters.activeVideoEnd; i++)
                 {
                     // the next two lines "rotate" the p&q components (at the arbitrary sine/cosine reference phase) backwards by the
                     // burst phase (relative to the arb phase), in order to recover U and V. The Vswitch is applied to flip the V-phase on alternate lines for PAL
-                    U =- ((pu[i]*bp+qu[i]*bq)) * scaledSaturation;
-                    V =- (Vsw*(qv[i]*bp-pv[i]*bq)) * scaledSaturation;
+                    // The scaledBrightness provides 75% amplitude (x1.75)
+                    rY = Y[i] * scaledBrightness;
+                    rU = (-((pu[i]*bp+qu[i]*bq)) * scaledSaturation);
+                    rV = (-(Vsw*(qv[i]*bp-pv[i]*bq)) * scaledSaturation);
 
-                    // These magic numbers below come from the PAL matrices (I ought to have a reference for these. Tancock and/or Rec.470, I expect)
-                    R = static_cast<qint32>(scaledBrightness * (Y[i] + 1.14 * V));
-                    G = static_cast<qint32>(scaledBrightness * (Y[i] - 0.581 * V - 0.394 * U));
-                    B = static_cast<qint32>(scaledBrightness * (Y[i] + 2.03 * U));
+                    // This conversion is taken from Video Demystified (5th edition) page 18
+                    R = ( rY + (1.140 * rV) );
+                    G = ( rY - (0.395 * rU) - (0.581 * rV) );
+                    B = ( rY + (2.032 * rU) );
 
-                    // Range check the results
+                    // Saturate the levels at 0 and 100% in order to prevent range overflow
                     if (R < 0) R = 0;
                     if (R > 65535) R = 65535;
                     if (G < 0) G = 0;
