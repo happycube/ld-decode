@@ -102,23 +102,21 @@ void PalColour::buildLookUpTables(void)
         qint32 d;
         if (f==0) d=2; else d=1; // divider because we're only making half a filter-kernel and the zero-th poqint32 is counted twice later.
 
-        cfilt[0][f]=256*(1+cos(M_PI*fc/ca))/d;
-        cfilt[1][f]=256*(1+cos(M_PI*ff/ca))/d;
-        cfilt[2][f]=256*(1+cos(M_PI*fff/ca))/d;
-        cfilt[3][f]=256*(1+cos(M_PI*ffff/ca))/d;
+        cfilt0[f]=256*(1+cos(M_PI*fc/ca))/d;
+        cfilt1[f]=256*(1+cos(M_PI*ff/ca))/d;
+        cfilt2[f]=256*(1+cos(M_PI*fff/ca))/d;
+        cfilt3[f]=256*(1+cos(M_PI*ffff/ca))/d;
 
-        cdiv+=cfilt[0][f]+2*cfilt[1][f]+2*cfilt[2][f]+2*cfilt[3][f];
+        cdiv+=cfilt0[f]+2*cfilt1[f]+2*cfilt2[f]+2*cfilt3[f];
 
         double  fy=f; if (fy>ya) fy=ya;
         double ffy=sqrt(f*f+2*2); if (ffy>ya) ffy=ya;
         double fffy=sqrt(f*f+4*4); if (fffy>ya) fffy=ya;
 
-        yfilt[0][f]=256*(1+cos(M_PI*fy/ya))/d;
-        yfilt[1][f]=0.3*256*(1+cos(M_PI*ffy/ya))/d; // only used for NTSC, NB making the 0.3 closer to a half would increase sharpness, but at the cost of more residual luma patterning
-        yfilt[2][f]=0.2*256*(1+cos(M_PI*fffy/ya))/d;  // only used for PAL NB 0.2 makes much less sensitive to adjacent lines and reduces castellations and residual dot patterning
-        yfilt[3][f]=0;
-        if (videoParameters.isSourcePal) yfilt[1][f]=0; else yfilt[2][f]=0;
-        ydiv+=yfilt[0][f]+2*yfilt[1][f]+2*yfilt[2][f]+2*yfilt[3][f];
+        yfilt0[f]=256*(1+cos(M_PI*fy/ya))/d;
+        yfilt2[f]=0.2*256*(1+cos(M_PI*fffy/ya))/d;  // only used for PAL NB 0.2 makes much less sensitive to adjacent lines and reduces castellations and residual dot patterning
+
+        ydiv+=yfilt0[f]+2*0+2*yfilt2[f]+2*0;
     }
     cdiv*=2; ydiv*=2;
 
@@ -163,39 +161,39 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
         quint16 *bottomFieldDataPointer = reinterpret_cast<quint16*>(secondFieldData.data());
 
         // Define the 16-bit line buffers
-        quint16 b0[MAX_WIDTH];
-        quint16 b1[MAX_WIDTH];
-        quint16 b2[MAX_WIDTH];
-        quint16 b3[MAX_WIDTH];
-        quint16 b4[MAX_WIDTH];
-        quint16 b5[MAX_WIDTH];
-        quint16 b6[MAX_WIDTH];
+        quint16 *b0 = nullptr;
+        quint16 *b1 = nullptr;
+        quint16 *b2 = nullptr;
+        quint16 *b3 = nullptr;
+        quint16 *b4 = nullptr;
+        quint16 *b5 = nullptr;
+        quint16 *b6 = nullptr;
 
         for (qint32 field = 0; field < 2; field++) {
-            for (qint32 fieldLine = 3; fieldLine < (videoParameters.fieldHeight - 3); fieldLine++) {
+            for (qint32 fieldLine = 3; fieldLine < (videoParameters.fieldHeight - 4); fieldLine++) {
                 if (field == 0) {
-                    for (qint32 x = 0; x < videoParameters.fieldWidth; x++) {
-                        b0[x] = topFieldDataPointer[ (fieldLine      * (videoParameters.fieldWidth)) + x];
-                        b1[x] = topFieldDataPointer[((fieldLine - 1) * (videoParameters.fieldWidth)) + x];
-                        b2[x] = topFieldDataPointer[((fieldLine + 1) * (videoParameters.fieldWidth)) + x];
-                        b3[x] = topFieldDataPointer[((fieldLine - 2) * (videoParameters.fieldWidth)) + x];
-                        b4[x] = topFieldDataPointer[((fieldLine + 2) * (videoParameters.fieldWidth)) + x];
-                        b5[x] = topFieldDataPointer[((fieldLine - 3) * (videoParameters.fieldWidth)) + x];
-                        b6[x] = topFieldDataPointer[((fieldLine + 3) * (videoParameters.fieldWidth)) + x];
+                    for (qint32 x = videoParameters.colourBurstStart; x < videoParameters.fieldWidth; x++) {
+                        b0 = topFieldDataPointer+ (fieldLine      * (videoParameters.fieldWidth)) + x;
+                        b1 = topFieldDataPointer+((fieldLine - 1) * (videoParameters.fieldWidth)) + x;
+                        b2 = topFieldDataPointer+((fieldLine + 1) * (videoParameters.fieldWidth)) + x;
+                        b3 = topFieldDataPointer+((fieldLine - 2) * (videoParameters.fieldWidth)) + x;
+                        b4 = topFieldDataPointer+((fieldLine + 2) * (videoParameters.fieldWidth)) + x;
+                        b5 = topFieldDataPointer+((fieldLine - 3) * (videoParameters.fieldWidth)) + x;
+                        b6 = topFieldDataPointer+((fieldLine + 3) * (videoParameters.fieldWidth)) + x;
                     }
                 } else {
-                    for (qint32 x = 0; x < videoParameters.fieldWidth; x++) {
-                        b0[x] = bottomFieldDataPointer[ (fieldLine      * (videoParameters.fieldWidth)) + x];
-                        b1[x] = bottomFieldDataPointer[((fieldLine - 1) * (videoParameters.fieldWidth)) + x];
-                        b2[x] = bottomFieldDataPointer[((fieldLine + 1) * (videoParameters.fieldWidth)) + x];
-                        b3[x] = bottomFieldDataPointer[((fieldLine - 2) * (videoParameters.fieldWidth)) + x];
-                        b4[x] = bottomFieldDataPointer[((fieldLine + 2) * (videoParameters.fieldWidth)) + x];
-                        b5[x] = bottomFieldDataPointer[((fieldLine - 3) * (videoParameters.fieldWidth)) + x];
-                        b6[x] = bottomFieldDataPointer[((fieldLine + 3) * (videoParameters.fieldWidth)) + x];
+                    for (qint32 x = videoParameters.colourBurstStart; x < videoParameters.fieldWidth; x++) {
+                        b0 = bottomFieldDataPointer+ (fieldLine      * (videoParameters.fieldWidth)) + x;
+                        b1 = bottomFieldDataPointer+((fieldLine - 1) * (videoParameters.fieldWidth)) + x;
+                        b2 = bottomFieldDataPointer+((fieldLine + 1) * (videoParameters.fieldWidth)) + x;
+                        b3 = bottomFieldDataPointer+((fieldLine - 2) * (videoParameters.fieldWidth)) + x;
+                        b4 = bottomFieldDataPointer+((fieldLine + 2) * (videoParameters.fieldWidth)) + x;
+                        b5 = bottomFieldDataPointer+((fieldLine - 3) * (videoParameters.fieldWidth)) + x;
+                        b6 = bottomFieldDataPointer+((fieldLine + 3) * (videoParameters.fieldWidth)) + x;
                     }
                 }
 
-                for (qint32 i = 0; i < videoParameters.fieldWidth; i++) {
+                for (qint32 i = videoParameters.colourBurstStart; i < videoParameters.fieldWidth; i++) {
                     m[i]=b0[i]*sine[i]; n[i]=b0[i]*cosine[i];
 
                     m1[i]=b1[i]*sine[i];  n1[i]=b1[i]*cosine[i];
@@ -268,13 +266,13 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
                     {
                         l=i-b; r=i+b;
 
-                        PU+=(m[r]+m[l])*cfilt[0][b]+(+n1[r]+n1[l]-n2[l]-n2[r])*cfilt[1][b]-(m3[l]+m3[r]+m4[l]+m4[r])*cfilt[2][b]+(-n5[r]-n5[l]+n6[l]+n6[r])*cfilt[3][b];
-                        QU+=(n[r]+n[l])*cfilt[0][b]+(-m1[r]-m1[l]+m2[l]+m2[r])*cfilt[1][b]-(n3[l]+n3[r]+n4[l]+n4[r])*cfilt[2][b]+(+m5[r]+m5[l]-m6[l]-m6[r])*cfilt[3][b];
-                        PV+=(m[r]+m[l])*cfilt[0][b]+(-n1[r]-n1[l]+n2[l]+n2[r])*cfilt[1][b]-(m3[l]+m3[r]+m4[l]+m4[r])*cfilt[2][b]+(+n5[r]+n5[l]-n6[l]-n6[r])*cfilt[3][b];
-                        QV+=(n[r]+n[l])*cfilt[0][b]+(+m1[r]+m1[l]-m2[l]-m2[r])*cfilt[1][b]-(n3[l]+n3[r]+n4[l]+n4[r])*cfilt[2][b]+(-m5[r]-m5[l]+m6[l]+m6[r])*cfilt[3][b];
+                        PU+=(m[r]+m[l])*cfilt0[b]+(+n1[r]+n1[l]-n2[l]-n2[r])*cfilt1[b]-(m3[l]+m3[r]+m4[l]+m4[r])*cfilt2[b]+(-n5[r]-n5[l]+n6[l]+n6[r])*cfilt3[b];
+                        QU+=(n[r]+n[l])*cfilt0[b]+(-m1[r]-m1[l]+m2[l]+m2[r])*cfilt1[b]-(n3[l]+n3[r]+n4[l]+n4[r])*cfilt2[b]+(+m5[r]+m5[l]-m6[l]-m6[r])*cfilt3[b];
+                        PV+=(m[r]+m[l])*cfilt0[b]+(-n1[r]-n1[l]+n2[l]+n2[r])*cfilt1[b]-(m3[l]+m3[r]+m4[l]+m4[r])*cfilt2[b]+(+n5[r]+n5[l]-n6[l]-n6[r])*cfilt3[b];
+                        QV+=(n[r]+n[l])*cfilt0[b]+(+m1[r]+m1[l]-m2[l]-m2[r])*cfilt1[b]-(n3[l]+n3[r]+n4[l]+n4[r])*cfilt2[b]+(-m5[r]-m5[l]+m6[l]+m6[r])*cfilt3[b];
 
-                        PY+=(m[r]+m[l])*yfilt[0][b]-(m3[l]+m3[r]+m4[l]+m4[r])*yfilt[2][b];  // note omission of yfilt[1] and [3] for PAL
-                        QY+=(n[r]+n[l])*yfilt[0][b]-(n3[l]+n3[r]+n4[l]+n4[r])*yfilt[2][b];  // note omission of yfilt[1] and [3] for PAL
+                        PY+=(m[r]+m[l])*yfilt0[b]-(m3[l]+m3[r]+m4[l]+m4[r])*yfilt2[b];  // note omission of yfilt[1] and [3] for PAL
+                        QY+=(n[r]+n[l])*yfilt0[b]-(n3[l]+n3[r]+n4[l]+n4[r])*yfilt2[b];  // note omission of yfilt[1] and [3] for PAL
                     }
                     pu[i]=PU/cdiv; qu[i]=QU/cdiv;
                     pv[i]=PV/cdiv; qv[i]=QV/cdiv;
