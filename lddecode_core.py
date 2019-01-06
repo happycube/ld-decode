@@ -424,12 +424,14 @@ class RFDecode:
 
 # right now defualt is 16/48, so not optimal :)
 def downscale_audio(audio, lineinfo, rf, linecount, timeoffset = 0, freq = 48000.0, scale=64):
-    frametime = (rf.SysParams['line_period'] * linecount) / 1000000 
+    frametime = 1 / (rf.SysParams['FPS'] * 2)
+    #print(frametime)
     soundgap = 1 / freq
 
     # include one extra 'tick' to interpolate the last one and use as a return value
     # for the next frame
-    arange = np.arange(timeoffset, frametime + soundgap, soundgap, dtype=np.double)
+    arange = np.arange(timeoffset, frametime + (soundgap / 2), soundgap, dtype=np.double)
+    #print(arange[-1])
     locs = np.zeros(len(arange), dtype=np.float)
     swow = np.zeros(len(arange), dtype=np.float)
     
@@ -477,7 +479,7 @@ def downscale_audio(audio, lineinfo, rf, linecount, timeoffset = 0, freq = 48000
     np.clip(output, -32766, 32766, out=output16)
             
     return output16, arange[-1] - frametime
-
+    
 # The Field class contains common features used by NTSC and PAL
 class Field:
     def usectoinpx(self, x):
@@ -735,7 +737,7 @@ class Field:
             dsout[(l - lineoffset) * outwidth:(l + 1 - lineoffset)*outwidth] = scaled
 
         if audio and self.rf.decode_analog_audio:
-            self.dsaudio, self.audio_next_offset = downscale_audio(self.data[1], lineinfo, self.rf, self.linecount, self.audio_next_offset)
+            self.dsaudio, self.audio_next_offset = downscale_audio(self.data[1], lineinfo, self.rf, self.linecount, self.audio_offset)
             
         return dsout, self.dsaudio
     
@@ -784,7 +786,7 @@ class Field:
 
         self.dspicture = None
         self.dsaudio = None
-        self.audio_next_offset = audio_offset
+        self.audio_offset = audio_offset
 
         if len(self.vsyncs) == 0:
             self.nextfieldoffset = start + (self.rf.linelen * 200)
@@ -1301,6 +1303,9 @@ class LDdecode:
               #'diskLoc': np.round((self.fieldloc / self.bytes_per_field) * 10) / 10,
               'medianBurstIRE': f.burstmedian}
 
+        # This is a bitmap, not a counter
+        decodeFaults = 0
+
         if f.rf.system == 'NTSC':
             if fi['isFirstField']:
                 fi['fieldPhaseID'] = 1 if f.field14 else 3
@@ -1311,12 +1316,17 @@ class LDdecode:
                 if not ((fi['fieldPhaseID'] == 1 and self.prevPhaseID == 4) or
                         (fi['fieldPhaseID'] == self.prevPhaseID + 1)):
                     print('WARNING: NTSC field phaseID sequence mismatch')
-
-                if self.prevFirstField == fi['isFirstField']:
-                    print('WARNING!  isFirstField stuck between fields')
+                    decodeFaults |= 2
 
             self.prevPhaseID = fi['fieldPhaseID']
-            self.prevFirstField = fi['isFirstField']
+
+        if len(self.fieldinfo) and self.prevFirstField == fi['isFirstField']:
+            print('WARNING!  isFirstField stuck between fields')
+            decodeFaults |= 1
+
+        self.prevFirstField = fi['isFirstField']
+
+        fi['decodeFaults'] = decodeFaults
 
         if squelch == False:
             self.fieldinfo.append(fi)
