@@ -25,8 +25,8 @@ parser.add_argument('-l', '--length', metavar='length', type=int, default = 1, h
 parser.add_argument('-p', '--pal', dest='pal', action='store_true', help='source is in PAL format')
 parser.add_argument('-n', '--ntsc', dest='ntsc', action='store_true', help='source is in NTSC format')
 #parser.add_argument('-c', '--cut', dest='cut', action='store_true', help='cut (to r16) instead of decode')
-parser.add_argument('-m', '--MTF', metavar='mtf', type=float, default=1.0, help='mtf compensation multiplier')
-parser.add_argument('--MTF_offset', metavar='mtf_offset', type=float, default=0.0, help='mtf compensation offset')
+parser.add_argument('-m', '--MTF', metavar='mtf', type=float, default=None, help='mtf compensation multiplier')
+parser.add_argument('--MTF_offset', metavar='mtf_offset', type=float, default=None, help='mtf compensation offset')
 parser.add_argument('-f', '--frame', dest='frame', action='store_true', help='output frames')
 parser.add_argument('--NTSCJ', dest='ntscj', action='store_true', help='source is in NTSC-J (IRE 0 black) format')
 
@@ -72,8 +72,11 @@ if system == 'NTSC' and not args.ntscj:
 if args.seek != -1:
     ldd.seek(firstframe, args.seek)
 
-ldd.rf.mtf_mult = args.MTF
-ldd.rf.mtf_offset = args.MTF_offset
+if args.MTF is not None:
+    ldd.rf.mtf_mult = args.MTF
+
+if args.MTF_offset is not None:
+    ldd.rf.mtf_offset = args.MTF_offset
 
 def write_json(ldd, outname):
     jsondict = ldd.build_json(f)
@@ -91,7 +94,6 @@ for i in range(0, req_frames * 2):
     except Exception as err:
         #print("aborted")
         traceback.print_tb(err.__traceback__)
-        print("aborted")
         write_json(ldd, outname)
         exit(1)
 
