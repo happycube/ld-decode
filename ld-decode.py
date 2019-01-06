@@ -91,6 +91,7 @@ for i in range(0, req_frames * 2):
     except Exception as err:
         #print("aborted")
         traceback.print_tb(err.__traceback__)
+        print("aborted")
         write_json(ldd, outname)
         exit(1)
 

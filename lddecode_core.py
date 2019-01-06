@@ -525,15 +525,31 @@ class Field:
     def is_regular_hsync(self, peaknum, tolerance_mult = 1.0):
         if peaknum >= len(self.peaklist):
             return False
-        
+
         if self.peaklist[peaknum] > len(self.data[0]['demod_sync']):
             return False
 
+        # The first detection technique uses demod_sync to determine if a LPF of demod_05
+        # is within the acceptable range
         plevel = self.data[0]['demod_sync'][self.peaklist[peaknum]]
 
         tolerance = self.hsync_tolerance * tolerance_mult
+        f1 = inrange(plevel, self.med_hsync - tolerance, self.med_hsync + tolerance)
 
-        return inrange(plevel, self.med_hsync - tolerance, self.med_hsync + tolerance)
+        # The second technique is used for non-VSYNC pulses (aside from the first which lacks data)
+        # (i.e. most of the time)
+
+        # It looks at 0.5mhz filtered demodulation to count the amount of time under 50% SYNC
+        check_begin = int(self.peaklist[peaknum]-self.usectoinpx(5))
+        check_end = int(self.peaklist[peaknum]+self.usectoinpx(2))
+        timeunder = np.sum(self.data[0]['demod_05'][check_begin:check_end] < self.rf.iretohz(self.rf.SysParams['vsync_ire'] / 2))
+
+        f2 = (self.inpxtousec(timeunder) > (4.7 * .75))
+
+#        if f1 != f2:
+            #print(peaknum, plevel, tolerance, self.inpxtousec(timeunder), f1, f2)
+        
+        return f2 if ((peaknum != 0) and (plevel < .9)) else f1
         
     def determine_vsyncs(self):
         # find vsyncs from the peaklist
@@ -556,6 +572,7 @@ class Field:
                         line0 = i
 
                 if (line0 is None) or (line0 == -1):
+                    print('override')
                     line0 = peaknum - 7
                     self.sync_confidence = 0
 
@@ -1260,6 +1277,8 @@ class LDdecode:
                     fnum += l >> y & 0x0f
                     
                     fnum = fnum if fnum < 80000 else fnum - 80000
+
+                return fnum
             elif (l & 0x80f000) == 0x80e000: # CLV picture #
                 self.clvSeconds = (((l >> 16) & 0xf) - 10) * 10
                 self.clvSeconds += ((l >> 8) & 0xf)
@@ -1267,12 +1286,10 @@ class LDdecode:
                 self.clvFrameNum = ((l >> 4) & 0xf) * 10
                 self.clvFrameNum += (l & 0xf)
 
-        if fnum: # CAV
-            return fnum
-        elif self.clvSeconds is not None and self.clvFrameNum is not None: # CLV with frame metadata
-            return (((self.clvMinutes * 60) + self.clvSeconds) * self.clvfps) + self.clvFrameNum
-        else:
-            return None #seeking won't work w/minutes only
+                if self.clvMinutes is not None:
+                    return (((self.clvMinutes * 60) + self.clvSeconds) * self.clvfps) + self.clvFrameNum
+
+        return None #seeking won't work w/minutes only
             
     def processfield(self, f, squelch = False):
         picture, audio = f.downscale(linesout = self.output_lines, lineoffset = self.outlineoffset, final=True)
@@ -1281,7 +1298,7 @@ class LDdecode:
         fi = {'isFirstField': True if f.isFirstField else False, 
               'syncConf': f.sync_confidence, 
               'seqNo': len(self.fieldinfo) + 1, 
-              #'diskLoc': self.fieldloc / self.bytes_per_field,
+              #'diskLoc': np.round((self.fieldloc / self.bytes_per_field) * 10) / 10,
               'medianBurstIRE': f.burstmedian}
 
         if f.rf.system == 'NTSC':
