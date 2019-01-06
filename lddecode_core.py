@@ -479,7 +479,7 @@ def downscale_audio(audio, lineinfo, rf, linecount, timeoffset = 0, freq = 48000
     np.clip(output, -32766, 32766, out=output16)
             
     return output16, arange[-1] - frametime
-    
+
 # The Field class contains common features used by NTSC and PAL
 class Field:
     def usectoinpx(self, x):
@@ -1300,6 +1300,7 @@ class LDdecode:
         fi = {'isFirstField': True if f.isFirstField else False, 
               'syncConf': f.sync_confidence, 
               'seqNo': len(self.fieldinfo) + 1, 
+              'audioSamples': len(audio) / 2,
               #'diskLoc': np.round((self.fieldloc / self.bytes_per_field) * 10) / 10,
               'medianBurstIRE': f.burstmedian}
 
