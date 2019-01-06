@@ -39,7 +39,7 @@ class FilterThread : public QThread
 {
     Q_OBJECT
 public:
-    explicit FilterThread(LdDecodeMetaData::VideoParameters videoParametersParam, bool isVP415CropSetParam, QObject *parent = nullptr);
+    explicit FilterThread(LdDecodeMetaData::VideoParameters videoParametersParam, QObject *parent = nullptr);
     ~FilterThread() override;
 
     void startFilter(QByteArray topFieldParam, QByteArray bottomFieldParam, qreal burstMedianIreParam);
@@ -61,7 +61,6 @@ private:
     // PAL colour object
     PalColour palColour;
     LdDecodeMetaData::VideoParameters videoParameters;
-    bool isVP415CropSet;
 
     // Video extent for cropping
     qint32 firstActiveScanLine;

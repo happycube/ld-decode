@@ -29,7 +29,7 @@ PalCombFilter::PalCombFilter(QObject *parent) : QObject(parent)
 
 }
 
-bool PalCombFilter::process(QString inputFileName, QString outputFileName, qint32 startFrame, qint32 length, bool isVP415CropSet, bool reverse)
+bool PalCombFilter::process(QString inputFileName, QString outputFileName, qint32 startFrame, qint32 length, bool reverse)
 {
     qint32 maxThreads = 16;
 
@@ -56,29 +56,9 @@ bool PalCombFilter::process(QString inputFileName, QString outputFileName, qint3
     // Calculate the frame height
     qint32 frameHeight = (videoParameters.fieldHeight * 2) - 1;
 
-    // Set the first and last active scan line
-    qint32 firstActiveScanLine = 44;
-    qint32 lastActiveScanLine = 617;
+    // Set the width of the active scan line
     qint32 videoStart = videoParameters.activeVideoStart;
     qint32 videoEnd = videoParameters.activeVideoEnd;
-
-    // Calculate the VP415 video extents
-    qreal vp415FirstActiveScanLine = firstActiveScanLine + ((frameHeight / 100) * 1.0);
-    qreal vp415LastActiveScanLine = lastActiveScanLine - ((frameHeight / 100) * 1.0);
-    qreal vp415VideoStart = videoParameters.activeVideoStart + ((videoParameters.fieldWidth / 100) * 1.0);
-    qreal vp415VideoEnd = videoParameters.activeVideoEnd - ((videoParameters.fieldWidth / 100) * 1.0);
-
-    if (isVP415CropSet) {
-        firstActiveScanLine = static_cast<qint32>(vp415FirstActiveScanLine);
-        lastActiveScanLine = static_cast<qint32>(vp415LastActiveScanLine);
-        videoStart = static_cast<qint32>(vp415VideoStart);
-        videoEnd = static_cast<qint32>(vp415VideoEnd);
-    }
-
-    // Make sure output height is even (better for ffmpeg processing)
-    if (((lastActiveScanLine - firstActiveScanLine) % 2) != 0) {
-       lastActiveScanLine--;
-    }
 
     // Make sure output width is even (better for ffmpeg processing)
     if (((videoEnd - videoStart) % 2) != 0) {
@@ -87,14 +67,13 @@ bool PalCombFilter::process(QString inputFileName, QString outputFileName, qint3
 
     // Show output information to the user
     qInfo() << "Input video of" << videoParameters.fieldWidth << "x" << frameHeight <<
-                   "will be colourised and trimmed to" << videoEnd - videoStart << "x" <<
-                   lastActiveScanLine - firstActiveScanLine;
+                   "will be colourised and trimmed to" << videoEnd - videoStart << "x 576";
 
     // Define a vector of filtering threads to process the video
     QVector<FilterThread*> filterThreads;
     filterThreads.resize(maxThreads);
     for (qint32 i = 0; i < maxThreads; i++) {
-        filterThreads[i] = new FilterThread(videoParameters, isVP415CropSet);
+        filterThreads[i] = new FilterThread(videoParameters);
     }
 
     // Open the source video file
@@ -193,7 +172,7 @@ bool PalCombFilter::process(QString inputFileName, QString outputFileName, qint3
 
     // Show processing summary
     qInfo() << "Processed" << length + (startFrame - 1) << "frames into" <<
-               videoEnd - videoStart << "x" << lastActiveScanLine - firstActiveScanLine <<
+               videoEnd - videoStart << "x 576" <<
                "RGB16-16-16 frames";
 
     // Close the source video
