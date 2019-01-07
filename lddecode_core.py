@@ -1300,7 +1300,7 @@ class LDdecode:
         fi = {'isFirstField': True if f.isFirstField else False, 
               'syncConf': f.sync_confidence, 
               'seqNo': len(self.fieldinfo) + 1, 
-              'audioSamples': len(audio) / 2,
+              'audioSamples': int(len(audio) / 2),
               #'diskLoc': np.round((self.fieldloc / self.bytes_per_field) * 10) / 10,
               'medianBurstIRE': f.burstmedian}
 
