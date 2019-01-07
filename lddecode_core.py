@@ -424,7 +424,8 @@ class RFDecode:
 
 # right now defualt is 16/48, so not optimal :)
 def downscale_audio(audio, lineinfo, rf, linecount, timeoffset = 0, freq = 48000.0, scale=64):
-    frametime = 1 / (rf.SysParams['FPS'] * 2)
+    #frametime = 1 / (rf.SysParams['FPS'] * 2)
+    frametime = linecount / (1000000 / rf.SysParams['line_period'])
     #print(frametime)
     soundgap = 1 / freq
 
@@ -720,7 +721,8 @@ class Field:
         if outwidth is None:
             outwidth = self.outlinelen
         if linesout is None:
-            linesout = self.linecount
+            #linesout = self.linecount
+            linesout = 263 if self.rf.system == 'NTSC' else 313
 
         dsout = np.zeros((linesout * outwidth), dtype=np.double)    
         dsaudio = None
@@ -952,6 +954,9 @@ class FieldPAL(Field):
 
         self.linelocs = self.refine_linelocs_pilot()
         self.burstmedian = self.calc_burstmedian()
+
+        self.linecount = 312 if self.isFirstField else 313
+
         self.downscale(wow = True, final=True)
 
 # These classes extend Field to do PAL/NTSC specific TBC features.
@@ -1136,6 +1141,8 @@ class FieldNTSC(Field):
         shift33 = self.colorphase * (np.pi / 180)
         self.linelocs = self.apply_offsets(self.linelocs3, -shift33 - 0)
         
+        self.linecount = 263 if self.isFirstField else 262
+
         self.downscale(wow = True, final=True)
 
 class LDdecode:
