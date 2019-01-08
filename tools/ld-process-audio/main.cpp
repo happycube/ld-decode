@@ -95,17 +95,29 @@ int main(int argc, char *argv[])
                                        QCoreApplication::translate("main", "Show debug"));
     parser.addOption(showDebugOption);
 
+    QCommandLineOption outputLabelsOption(QStringList() << "l" << "label",
+                                       QCoreApplication::translate("main", "Output Audacity label metadata file"));
+    parser.addOption(outputLabelsOption);
+
+    QCommandLineOption labelEveryFieldOption(QStringList() << "v" << "verbose",
+                                       QCoreApplication::translate("main", "Verbose Audacity labelling"));
+    parser.addOption(labelEveryFieldOption);
+
+    QCommandLineOption silenceOption(QStringList() << "s" << "silence",
+                                       QCoreApplication::translate("main", "Silence audio according to VBI data"));
+    parser.addOption(silenceOption);
+
     // Positional argument to specify input video file
     parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input TBC file"));
-
-    // Positional argument to specify output video file
-    parser.addPositionalArgument("output", QCoreApplication::translate("main", "Specify output TBC file"));
 
     // Process the command line options and arguments given by the user
     parser.process(a);
 
     // Get the options from the parser
     bool isDebugOn = parser.isSet(showDebugOption);
+    bool outputLabels = parser.isSet(outputLabelsOption);
+    bool silenceAudio = parser.isSet(silenceOption);
+    bool labelEveryField = parser.isSet(labelEveryFieldOption);
 
     // Get the arguments from the parser
     QString inputFileName;
@@ -115,7 +127,7 @@ int main(int argc, char *argv[])
         inputFileName = positionalArguments.at(0);
     } else {
         // Quit with error
-        qCritical("You must specify input and output TBC files");
+        qCritical("You must specify the input TBC file");
         return -1;
     }
 
@@ -124,7 +136,7 @@ int main(int argc, char *argv[])
 
     // Perform the processing
     ProcessAudio processAudio;
-    processAudio.process(inputFileName);
+    processAudio.process(inputFileName, outputLabels, silenceAudio, labelEveryField);
 
     // Quit with success
     return 0;
