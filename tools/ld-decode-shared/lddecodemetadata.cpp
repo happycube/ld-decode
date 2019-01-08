@@ -3,7 +3,7 @@
     lddecodemetadata.cpp
 
     ld-decode-tools shared library
-    Copyright (C) 2018 Simon Inns
+    Copyright (C) 2018-2019 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -115,6 +115,7 @@ bool LdDecodeMetaData::read(QString fileName)
             fieldData.syncConf = field["syncConf"].toInt();
             fieldData.medianBurstIRE = field["medianBurstIRE"].toDouble();
             fieldData.fieldPhaseID = field["fieldPhaseID"].toInt();
+            fieldData.audioSamples = field["audioSamples"].toInt();
 
             QJsonObject vits = field["vits"].toObject();
             if (!vits.isEmpty()) {
@@ -381,6 +382,7 @@ bool LdDecodeMetaData::write(QString fileName)
             field.insert("syncConf", metaData.fields[fieldNumber].syncConf);
             field.insert("medianBurstIRE", metaData.fields[fieldNumber].medianBurstIRE);
             field.insert("fieldPhaseID", metaData.fields[fieldNumber].fieldPhaseID);
+            field.insert("audioSamples", metaData.fields[fieldNumber].audioSamples);
 
             // Write the VITS data if in use
             if (metaData.fields[fieldNumber].vits.inUse) {
@@ -625,6 +627,7 @@ LdDecodeMetaData::Field LdDecodeMetaData::getField(qint32 sequentialFieldNumber)
         field.syncConf = -1;
         field.medianBurstIRE = -1;
         field.fieldPhaseID = -1;
+        field.audioSamples = -1;
 
         // VITS
         field.vits.inUse = false;

@@ -49,12 +49,16 @@ private:
 
     QFile *audioInputFile;
     QFile *audioOutputFile;
+    QFile *audacityOutputFile;
 
     struct AudioData {
         qint16 left;
         qint16 right;
     };
 
+    QVector<qint64> sampleStartPosition;
+
+    QVector<ProcessAudio::AudioData> correctAudioDropout(qint32 startSample, qint32 endSample, QVector<ProcessAudio::AudioData> audioData);
     QVector<ProcessAudio::AudioData> silenceAudioSample(QVector<ProcessAudio::AudioData> audioData);
     void writeFieldAudio(QVector<ProcessAudio::AudioData> audioData);
     QVector<ProcessAudio::AudioData> readFieldAudio(qint32 fieldNumber);
@@ -62,6 +66,9 @@ private:
     void closeInputAudioFile(void);
     bool openOutputAudioFile(QString filename);
     void closeOutputAudioFile(void);
+    bool openAudacityMetadataFile(QString filename);
+    void closeAudacityMetadataFile(void);
+    void writeAudacityMetadataLabel(qint64 startSample, qint64 endSample, QString description);
 };
 
 #endif // PROCESSAUDIO_H

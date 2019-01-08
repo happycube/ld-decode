@@ -3,7 +3,7 @@
     lddecodemetadata.h
 
     ld-decode-tools shared library
-    Copyright (C) 2018 Simon Inns
+    Copyright (C) 2018-2019 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -152,6 +152,7 @@ public:
         qint32 syncConf;
         qreal medianBurstIRE;
         qint32 fieldPhaseID;
+        qint32 audioSamples;
 
         Vits vits;
         Vbi vbi;
