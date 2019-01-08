@@ -149,25 +149,26 @@ void ProcessAudio::getFieldAudioDropouts(qint32 fieldNumber, qint32 minimumDropo
     LdDecodeMetaData::DropOuts dropouts = ldDecodeMetaData.getField(fieldNumber).dropOuts;;
 
     for (qint32 dropoutNumber = 0; dropoutNumber < dropouts.startx.size(); dropoutNumber++) {
-
         AudioDropout audioDropout;
 
-        // Work around for JSON field height issue
-        qint32 workAroundFieldHeight = 0;
+        // Calculate the number of field lines represented by the field's audio samples
+        qint32 linesInFieldAudio;
         if (videoParameters.isSourcePal) {
-            if (ldDecodeMetaData.getField(fieldNumber).isFirstField) workAroundFieldHeight = 312;
-            else workAroundFieldHeight = 313;
+            qreal samplesPerLine = ldDecodeMetaData.getPcmAudioParameters().sampleRate / 25.0 / 625.0;
+            linesInFieldAudio = qRound(static_cast<qreal>(ldDecodeMetaData.getField(fieldNumber).audioSamples) / samplesPerLine);
         } else {
-            if (ldDecodeMetaData.getField(fieldNumber).isFirstField) workAroundFieldHeight = 262;
-            else workAroundFieldHeight = 263;
+            qreal samplesPerLine = ldDecodeMetaData.getPcmAudioParameters().sampleRate / (30000.0 / 1001.0) / 525.0;
+            linesInFieldAudio = qRound(static_cast<qreal>(ldDecodeMetaData.getField(fieldNumber).audioSamples) / samplesPerLine);
         }
 
         // Calculate the start and end audio sample for the dropout
 
         // Samples per field / field height = samples per field line
-        qreal samplesPerLine = static_cast<qreal>(ldDecodeMetaData.getField(fieldNumber).audioSamples / static_cast<qreal>(workAroundFieldHeight));
+        qreal samplesPerLine = static_cast<qreal>(ldDecodeMetaData.getField(fieldNumber).audioSamples / static_cast<qreal>(linesInFieldAudio));
 
         // There seems to be some form of calculation mismatch going on... this works around it, but I need to find the root-cause
+        // Note: This is probably due to the inaccuracy of the dropout detection and should be revisited once its been correctly
+        // implemented by ld-decode.
         qreal startOfLine =  (samplesPerLine * (dropouts.fieldLine[dropoutNumber] + 2));
         if (ldDecodeMetaData.getField(fieldNumber).isFirstField) startOfLine = (samplesPerLine * (dropouts.fieldLine[dropoutNumber] + 1));
 
