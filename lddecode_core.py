@@ -730,13 +730,18 @@ class Field:
         sfactor = [None]
         
         for l in range(lineoffset, linesout + lineoffset):
-            scaled = scale(self.data[0][channel], lineinfo[l], lineinfo[l + 1], outwidth)
+            #print(l, lineinfo[l], lineinfo[l+1])
+            if lineinfo[l + 1] > lineinfo[l]:
+                scaled = scale(self.data[0][channel], lineinfo[l], lineinfo[l + 1], outwidth)
 
-            if wow:
-                linewow = (lineinfo[l + 1] - lineinfo[l]) / self.inlinelen
-                scaled *= linewow
+                if wow:
+                    linewow = (lineinfo[l + 1] - lineinfo[l]) / self.inlinelen
+                    scaled *= linewow
 
-            dsout[(l - lineoffset) * outwidth:(l + 1 - lineoffset)*outwidth] = scaled
+                dsout[(l - lineoffset) * outwidth:(l + 1 - lineoffset)*outwidth] = scaled
+            else:
+                print("WARNING: TBC failure at line", l)
+                dsout[(l - lineoffset) * outwidth:(l + 1 - lineoffset)*outwidth] = self.rf.SysParams['ire0']
 
         if audio and self.rf.decode_analog_audio:
             self.dsaudio, self.audio_next_offset = downscale_audio(self.data[1], lineinfo, self.rf, self.linecount, self.audio_offset)
@@ -1143,7 +1148,11 @@ class FieldNTSC(Field):
         
         self.linecount = 263 if self.isFirstField else 262
 
-        self.downscale(wow = True, final=True)
+        try:
+            self.downscale(wow = True, final=True)
+        except:
+            print("huh")
+            #pass
 
 class LDdecode:
     
@@ -1221,6 +1230,8 @@ class LDdecode:
         
         f = self.FieldClass(self.rf, rawdecode, 0, audio_offset = self.audio_offset)
         
+        self.curfield = f
+
         if not f.valid:
             if len(f.peaklist) < 100: 
                 # No recognizable data - jump 30 seconds to get past possible spinup
