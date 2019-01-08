@@ -130,6 +130,10 @@ private:
     QFile *inputFileHandle;
     QFile *outputFileHandle;
 
+    // Globals used by the opticalFlow3D method
+    cv::Mat prev[2];
+    cv::Mat flow[2];
+
     void postConfigurationTasks(void);
 
     void filterIQ(QVector<yiqLine_t> &yiqBuffer);
@@ -140,7 +144,7 @@ private:
     void doCNR(QVector<yiqLine_t> &yiqBuffer, qreal min = -1.0);
     void doYNR(QVector<yiqLine_t> &yiqBuffer, qreal min = -1.0);
     QByteArray yiqToRgbFrame(qint32 currentFrameBuffer, QVector<yiqLine_t> yiqBuffer);
-    void opticalFlow3D(QVector<yiqLine_t> yiqBuffer);
+    void opticalFlow3D(QVector<yiqLine_t> yiqBuffer, qint32 frameCounter);
     void adjustY(qint32 currentFrameBuffer, QVector<yiqLine_t> &yiqBuffer);
 
     qreal clamp(qreal v, qreal low, qreal high);
