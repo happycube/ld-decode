@@ -37,7 +37,7 @@ class ProcessAudio : public QObject
 public:
     explicit ProcessAudio(QObject *parent = nullptr);
 
-    bool process(QString inputFileName);
+    bool process(QString inputFileName, bool outputLabels, bool silenceAudio, bool labelEveryField);
 
 signals:
 
@@ -56,18 +56,32 @@ private:
         qint16 right;
     };
 
+    struct AudioDropout {
+        qint32 startSample;
+        qint32 endSample;
+    };
+
+    QVector<AudioData> fieldAudioData;
+    QVector<AudioDropout> fieldAudioDropouts;
     QVector<qint64> sampleStartPosition;
 
-    QVector<ProcessAudio::AudioData> correctAudioDropout(qint32 startSample, qint32 endSample, QVector<ProcessAudio::AudioData> audioData);
-    QVector<ProcessAudio::AudioData> silenceAudioSample(QVector<ProcessAudio::AudioData> audioData);
-    void writeFieldAudio(QVector<ProcessAudio::AudioData> audioData);
-    QVector<ProcessAudio::AudioData> readFieldAudio(qint32 fieldNumber);
+    bool fieldContainsAnalogueAudio(qint32 fieldNumber);
+    void getFieldAudioDropouts(qint32 fieldNumber, qint32 minimumDropoutLength);
+    void correctAudioDropout(qint32 fieldNumber, qint32 startSample, qint32 endSample);
+    void silenceAudioSample(void);
+
+    void writeFieldAudio(void);
+    QVector<AudioData> readFieldAudio(qint32 fieldNumber);
+
     bool openInputAudioFile(QString filename);
     void closeInputAudioFile(void);
+
     bool openOutputAudioFile(QString filename);
     void closeOutputAudioFile(void);
+
     bool openAudacityMetadataFile(QString filename);
     void closeAudacityMetadataFile(void);
+    void writeAudacityLabels(qint32 fieldNumber, bool labelEveryField);
     void writeAudacityMetadataLabel(qint64 startSample, qint64 endSample, QString description);
 };
 

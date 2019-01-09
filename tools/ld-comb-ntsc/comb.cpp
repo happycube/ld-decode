@@ -118,12 +118,12 @@ QByteArray Comb::process(QByteArray firstFieldInputBuffer, QByteArray secondFiel
 
     if (configuration.filterDepth == 3) {
         // Perform optical flow detection?
-        if (configuration.opticalflow && (frameCounter >= 1)) {
+        if (configuration.opticalflow && (frameCounter > 0)) {
             tempYiqBuffer = frameBuffer[0].yiqBuffer;
             adjustY(0, tempYiqBuffer);
             doYNR(tempYiqBuffer, 4);
             doCNR(tempYiqBuffer, 4);
-            opticalFlow3D(tempYiqBuffer);
+            opticalFlow3D(tempYiqBuffer, frameCounter);
         }
 
         // If filterDepth is 3, make sure we have 3 frames before processing further
@@ -581,30 +581,24 @@ QByteArray Comb::yiqToRgbFrame(qint32 currentFrameBuffer, QVector<yiqLine_t> yiq
 }
 
 // Perform optical flow detection
-void Comb::opticalFlow3D(QVector<yiqLine_t> yiqBuffer)
+void Comb::opticalFlow3D(QVector<yiqLine_t> yiqBuffer, qint32 frameCounter)
 {
-    qint32 frameHeight = ((configuration.fieldHeight * 2) - 1);
-
-    static cv::Mat prev[2];
-    static cv::Mat flow[2];
-    static qint32 fcount = 0;
-
     const qint32 cysize = 252; // Field height extent?
     const qint32 cxsize = max_x - 70; // Field width extent?
 
     quint16 fieldbuf[max_x * cysize];
     quint16 flowmap[max_y][cxsize];
 
+    // Note: No check on the unmanaged memsets below; probably should add some (or remove the memsets)
     memset(fieldbuf, 0, sizeof(fieldbuf));
     memset(flowmap, 0, sizeof(flowmap));
 
-    // Note: No check on the unmanaged memsets above; probably should add some (or remove the memsets)
-
     qint32 y;
-
     cv::Mat pic;
 
     for (qint32 field = 0; field < 2; field++) {
+
+        // Split the frame back into two fields for optical flow detection
         for (y = 0; y < cysize; y++) {
             for (qint32 x = 0; x < cxsize; x++) {
                 // Note: this was overflowing to line 525 in the original code...
@@ -612,15 +606,18 @@ void Comb::opticalFlow3D(QVector<yiqLine_t> yiqBuffer)
                 if (cbufLine < yiqBuffer.size()) fieldbuf[(y * cxsize) + x] = static_cast<quint16>(yiqBuffer[cbufLine].pixel[70 + x].y);
             }
         }
+
         pic = cv::Mat(252, cxsize, CV_16UC1, fieldbuf);
-        if (fcount) calcOpticalFlowFarneback(pic, prev[field], flow[field], 0.5, 4, 60, 3, 7, 1.5, (fcount > 1) ? cv::OPTFLOW_USE_INITIAL_FLOW : 0);
+        if (frameCounter > 1) {
+            calcOpticalFlowFarneback(pic, prev[field], flow[field], 0.5, 4, 60, 3, 7, 1.5, (frameCounter > 2) ? cv::OPTFLOW_USE_INITIAL_FLOW : 0);
+        }
         prev[field] = pic.clone();
     }
 
     qreal min = p_3dcore;  // 0.0
     qreal max = p_3drange; // 0.5
 
-    if (fcount) {
+    if (frameCounter > 1) {
         for (y = 0; y < cysize; y++) {
             for (qint32 x = 0; x < cxsize; x++) {
                 const cv::Point2f& flowpoint1 = flow[0].at<cv::Point2f>(y, x);
@@ -630,24 +627,14 @@ void Comb::opticalFlow3D(QVector<yiqLine_t> yiqBuffer)
                                             static_cast<double>(flowpoint1.x) * 2) - min) / max, 0, 1);
                 qreal c2 = 1 - clamp((ctor(static_cast<double>(flowpoint2.y),
                                             static_cast<double>(flowpoint2.x) * 2) - min) / max, 0, 1);
-
                 qreal c = (c1 < c2) ? c1 : c2;
-
-                // HACK:  This goes around a 1-frame delay
-                frameBuffer[1].combk[2][(y * 2)][70 + x] = c;
-                frameBuffer[1].combk[2][(y * 2) + 1][70 + x] = c;
 
                 quint16 fm = static_cast<quint16>(clamp(c * 65535, 0, 65535));
                 flowmap[(y * 2)][0 + x] = fm;
                 flowmap[(y * 2) + 1][0 + x] = fm;
             }
         }
-
-        cv::Mat fpic = cv::Mat(frameHeight - 23, cxsize, CV_16UC1, flowmap);
-        cv::Mat rpic;
-        cv::resize(fpic, rpic, cv::Size(1280,960));
     }
-    fcount++;
 }
 
 // Remove the colour data from the baseband (Y)

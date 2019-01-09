@@ -94,6 +94,9 @@ bool NtscFilter::process(QString inputFileName, QString outputFileName,
     if (length == -1) {
         length = ldDecodeMetaData.getNumberOfFrames() - (startFrame - 1);
     } else {
+        // If filterdepth 3 is specified, we need 2 extra frames to get the specified length
+        if (filterDepth == 3) length += 2;
+
         if (length + (startFrame - 1) > ldDecodeMetaData.getNumberOfFrames()) {
             qInfo() << "Specified length of" << length << "exceeds the number of available frames, setting to" << ldDecodeMetaData.getNumberOfFrames() - (startFrame - 1);
             length = ldDecodeMetaData.getNumberOfFrames() - (startFrame - 1);
@@ -209,8 +212,14 @@ bool NtscFilter::process(QString inputFileName, QString outputFileName,
     }
 
     // Show processing summary
-    qInfo() << "Processed" << length + (startFrame - 1) << "frames into" <<
-               static_cast<qint32>(videoEnd) - static_cast<qint32>(videoStart) << "x 486 RGB16-16-16 frames";
+    if (configuration.filterDepth != 3) {
+        qInfo() << "Processed" << length << "frames into" <<
+                   static_cast<qint32>(videoEnd) - static_cast<qint32>(videoStart) << "x 486 RGB16-16-16 frames";
+    } else {
+        qInfo() << "Processed" << length - 2 << "frames (+2 due to 3D filter) into" <<
+                   static_cast<qint32>(videoEnd) - static_cast<qint32>(videoStart) << "x 486 RGB16-16-16 frames";
+    }
+
 
     // Close the input and output files
     sourceVideo.close();

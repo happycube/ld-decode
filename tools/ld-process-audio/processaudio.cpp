@@ -29,7 +29,7 @@ ProcessAudio::ProcessAudio(QObject *parent) : QObject(parent)
 
 }
 
-bool ProcessAudio::process(QString inputFileName)
+bool ProcessAudio::process(QString inputFileName, bool outputLabels, bool silenceAudio, bool labelEveryField)
 {
     // Open the source video metadata
     if (!ldDecodeMetaData.read(inputFileName + ".json")) {
@@ -46,6 +46,7 @@ bool ProcessAudio::process(QString inputFileName)
     qInfo() << "Input tbc file is:" << inputFileName;
     qInfo() << "Input pcm file is:" << inputAudioFilename;
     qInfo() << "Output pcm file is:" << outputAudioFilename;
+    if (outputLabels) qInfo() << "Output Audacity label file is:" << outputAudacityFilename;
 
     if (!openInputAudioFile(inputAudioFilename)) {
         qInfo() << "Could not open the source PCM audio file";
@@ -57,93 +58,152 @@ bool ProcessAudio::process(QString inputFileName)
         return false;
     }
 
-    if (!openAudacityMetadataFile(outputAudacityFilename)) {
-        qInfo() << "Could not open the target audacity metadata file";
-        return false;
+    if (outputLabels) {
+        if (!openAudacityMetadataFile(outputAudacityFilename)) {
+            qInfo() << "Could not open the target audacity metadata file";
+            return false;
+        }
     }
 
     // Process the field sample positions
     for (qint32 fieldNumber = 1; fieldNumber <= ldDecodeMetaData.getNumberOfFields(); fieldNumber++) {
-    //for (qint32 fieldNumber = 1; fieldNumber <= 10; fieldNumber++) {
-        QVector<AudioData> audioData;
 
         // Read a field of audio data
-        audioData = readFieldAudio(fieldNumber);
+        fieldAudioData = readFieldAudio(fieldNumber);
 
-        if (audioData.isEmpty()) {
+        // Check that audio data was available
+        if (fieldAudioData.isEmpty()) {
             qCritical() << "Hit end of audio data when expecting more...";
             break;
         }
 
-        // Only output meta data for fields that have dropouts
-        if (ldDecodeMetaData.getField(fieldNumber).dropOuts.startx.size() > 0) {
-            qint64 startSample = sampleStartPosition[fieldNumber];
-            qint64 endSample = startSample + ldDecodeMetaData.getField(fieldNumber).audioSamples - 1;
+        // If we are not silencing audio, always decide field contains analogue audio; otherwise
+        // we use the VBI to see if the field should contain audio or not
+        bool fieldContainsAudio;
+        if (!silenceAudio) fieldContainsAudio = true;
+        else fieldContainsAudio = fieldContainsAnalogueAudio(fieldNumber);
 
-            qInfo() << "Processing field" << fieldNumber << "- audio sample position =" << startSample << "-" << endSample;
+        // If the field isn't silenced due to VBI data, perform dropout correction of the audio
+        if (fieldContainsAudio) {
+            // Generate a list of audio dropouts for the field
+            getFieldAudioDropouts(fieldNumber, 1);
 
-            // Write the field's start and end sample position to the audacity label metadata
-            writeAudacityMetadataLabel(startSample, endSample, "F#" + QString::number(fieldNumber));
+            // Output Audacity label metadata for the field
+            if (outputLabels) writeAudacityLabels(fieldNumber, labelEveryField);
 
-            // Write the field's dropouts to the audacity label metadata
-            LdDecodeMetaData::DropOuts dropouts = ldDecodeMetaData.getField(fieldNumber).dropOuts;;
-            for (qint32 dropoutNumber = 0; dropoutNumber < dropouts.startx.size(); dropoutNumber++) {
-
-                // Work around for JSON field height issue
-                qint32 workAroundFieldHeight = 0;
-                if (videoParameters.isSourcePal) {
-                    if (ldDecodeMetaData.getField(fieldNumber).isFirstField) workAroundFieldHeight = 312;
-                    else workAroundFieldHeight = 313;
-                } else {
-                    if (ldDecodeMetaData.getField(fieldNumber).isFirstField) workAroundFieldHeight = 262;
-                    else workAroundFieldHeight = 263;
-                }
-
-                // Calculate the start and end audio sample for the dropout
-
-                // Samples per field / field height = samples per field line
-                qreal samplesPerLine = static_cast<qreal>(ldDecodeMetaData.getField(fieldNumber).audioSamples / static_cast<qreal>(workAroundFieldHeight));
-
-                // There seems to be some form of calculation mismatch going on... this works around it, but I need to find the root-cause
-                qreal startOfLine = startSample + (samplesPerLine * (dropouts.fieldLine[dropoutNumber] + 2));
-                if (ldDecodeMetaData.getField(fieldNumber).isFirstField) startOfLine = startSample + (samplesPerLine * (dropouts.fieldLine[dropoutNumber] + 1));
-
-                // Calculate absolute position of dropout in the sample
-                qreal startOfDropout = startOfLine + ((samplesPerLine / static_cast<qreal>(ldDecodeMetaData.getVideoParameters().fieldWidth)) * static_cast<qreal>(dropouts.startx[dropoutNumber]));
-                qreal endOfDropout = startOfLine + ((samplesPerLine / static_cast<qreal>(ldDecodeMetaData.getVideoParameters().fieldWidth)) * static_cast<qreal>(dropouts.endx[dropoutNumber]));
-
-                qDebug() << "Field #" << fieldNumber << "- dropout #" << dropoutNumber << "line #" << dropouts.fieldLine[dropoutNumber] <<
-                            "startSample =" << static_cast<qint64>(startOfDropout) << "endSample =" << static_cast<qint64>(endOfDropout);
-
-                writeAudacityMetadataLabel(static_cast<qint64>(startOfDropout), static_cast<qint64>(endOfDropout), "DO#" + QString::number(dropoutNumber));
-
-                // Correct the dropout
-
-                // Calcualte the relative position of the dropout within the field
-                startOfLine = (samplesPerLine * (dropouts.fieldLine[dropoutNumber] + 2));
-                if (ldDecodeMetaData.getField(fieldNumber).isFirstField) startOfLine = (samplesPerLine * (dropouts.fieldLine[dropoutNumber] + 1));
-                startOfDropout = startOfLine + ((samplesPerLine / static_cast<qreal>(ldDecodeMetaData.getVideoParameters().fieldWidth)) * static_cast<qreal>(dropouts.startx[dropoutNumber]));
-                endOfDropout = startOfLine + ((samplesPerLine / static_cast<qreal>(ldDecodeMetaData.getVideoParameters().fieldWidth)) * static_cast<qreal>(dropouts.endx[dropoutNumber]));
-
-                qDebug() << "Correcting field" << fieldNumber << "samples" << static_cast<qint32>(startOfDropout) << "-" << static_cast<qint32>(endOfDropout);
-                audioData = correctAudioDropout(static_cast<qint32>(startOfDropout), static_cast<qint32>(endOfDropout), audioData);
+            // Correct the audio dropouts
+            for (qint32 dropout = 0; dropout < fieldAudioDropouts.size(); dropout++) {
+                correctAudioDropout(fieldNumber, fieldAudioDropouts[dropout].startSample, fieldAudioDropouts[dropout].endSample);
             }
+        } else {
+            // Silence the field
+            silenceAudioSample();
         }
 
-        // Write the audio data for the current field
-        writeFieldAudio(audioData);
+        // Write the field audio data
+        writeFieldAudio();
+
+        // Output information for the user
+        if (fieldAudioDropouts.size() != 0) {
+            if (fieldContainsAudio) qInfo() << "Field" << fieldNumber << "has" << fieldAudioDropouts.size() << "audio dropouts";
+            else qInfo() << "Field" << fieldNumber << "has no analogue audio";
+        }
     }
 
-    // Close the analogue audio .pcm files
+    // Close the files
     closeInputAudioFile();
     closeOutputAudioFile();
-    closeAudacityMetadataFile();
+    if (outputLabels) closeAudacityMetadataFile();
 
     return true;
 }
 
+// Private methods ----------------------------------------------------------------------------------------------------
+
+// Method to determine (using VBI) if field contains analogue audio
+bool ProcessAudio::fieldContainsAnalogueAudio(qint32 fieldNumber)
+{
+    // Get the sound format for the current field from the VBI data (if available)
+    if (!ldDecodeMetaData.getField(fieldNumber).vbi.inUse) {
+        // No VBI metadata is available; assume the field contains analogue audio
+        return true;
+    }
+
+    // To be on the safe-side we check for VBI data that indicates the field definately
+    // doesn't have analogue audio data
+    if (ldDecodeMetaData.getField(fieldNumber).vbi.soundMode == LdDecodeMetaData::VbiSoundModes::futureUse ||
+            ldDecodeMetaData.getField(fieldNumber).vbi.soundMode == LdDecodeMetaData::VbiSoundModes::audioSubCarriersOff) {
+        // No audio
+        return false;
+    }
+
+    return true;
+}
+
+// Method to convert video dropouts into audio dropouts
+void ProcessAudio::getFieldAudioDropouts(qint32 fieldNumber, qint32 minimumDropoutLength)
+{
+    fieldAudioDropouts.clear();
+
+    // Process the video dropout records into audio dropout records
+    LdDecodeMetaData::DropOuts dropouts = ldDecodeMetaData.getField(fieldNumber).dropOuts;;
+
+    for (qint32 dropoutNumber = 0; dropoutNumber < dropouts.startx.size(); dropoutNumber++) {
+        AudioDropout audioDropout;
+
+        // Calculate the number of field lines represented by the field's audio samples
+        qint32 linesInFieldAudio;
+        if (videoParameters.isSourcePal) {
+            qreal samplesPerLine = ldDecodeMetaData.getPcmAudioParameters().sampleRate / 25.0 / 625.0;
+            linesInFieldAudio = qRound(static_cast<qreal>(ldDecodeMetaData.getField(fieldNumber).audioSamples) / samplesPerLine);
+        } else {
+            qreal samplesPerLine = ldDecodeMetaData.getPcmAudioParameters().sampleRate / (30000.0 / 1001.0) / 525.0;
+            linesInFieldAudio = qRound(static_cast<qreal>(ldDecodeMetaData.getField(fieldNumber).audioSamples) / samplesPerLine);
+        }
+
+        // Calculate the start and end audio sample for the dropout
+
+        // Samples per field / field height = samples per field line
+        qreal samplesPerLine = static_cast<qreal>(ldDecodeMetaData.getField(fieldNumber).audioSamples / static_cast<qreal>(linesInFieldAudio));
+
+        // There seems to be some form of calculation mismatch going on... this works around it, but I need to find the root-cause
+        // Note: This is probably due to the inaccuracy of the dropout detection and should be revisited once its been correctly
+        // implemented by ld-decode.
+        qreal startOfLine =  (samplesPerLine * (dropouts.fieldLine[dropoutNumber] + 2));
+        if (ldDecodeMetaData.getField(fieldNumber).isFirstField) startOfLine = (samplesPerLine * (dropouts.fieldLine[dropoutNumber] + 1));
+
+        // Calculate field position of dropout in the sample
+        qreal startOfDropout = startOfLine + ((samplesPerLine / static_cast<qreal>(ldDecodeMetaData.getVideoParameters().fieldWidth)) * static_cast<qreal>(dropouts.startx[dropoutNumber]));
+        qreal endOfDropout = startOfLine + ((samplesPerLine / static_cast<qreal>(ldDecodeMetaData.getVideoParameters().fieldWidth)) * static_cast<qreal>(dropouts.endx[dropoutNumber]));
+
+        audioDropout.startSample = static_cast<qint32>(startOfDropout);
+        audioDropout.endSample = static_cast<qint32>(endOfDropout);
+
+        // Ensure that the dropout is of the minimum allowed length
+        if ((audioDropout.endSample - audioDropout.startSample) < minimumDropoutLength) {
+            audioDropout.endSample += minimumDropoutLength - (audioDropout.endSample - audioDropout.startSample);
+        }
+
+        // Can the dropout be concatenated with or within an existing dropout?
+        bool duplicate = false;
+        for (qint32 count = 0; count < fieldAudioDropouts.size(); count++) {
+            if ((audioDropout.startSample >= fieldAudioDropouts[count].startSample) && (audioDropout.startSample - 1 <= fieldAudioDropouts[count].endSample)) {
+                // If the current dropout end is further than the existing one, extend the existing dropout
+                if (audioDropout.endSample > fieldAudioDropouts[count].endSample) fieldAudioDropouts[count].endSample = audioDropout.endSample;
+                duplicate = true;
+                break;
+            }
+        }
+
+        // Store the dropout
+        if (!duplicate) {
+            fieldAudioDropouts.append(audioDropout);
+        }
+    }
+}
+
 // Method to correct an audio sample
-QVector<ProcessAudio::AudioData> ProcessAudio::correctAudioDropout(qint32 startSample, qint32 endSample, QVector<ProcessAudio::AudioData> audioData)
+void ProcessAudio::correctAudioDropout(qint32 fieldNumber, qint32 startSample, qint32 endSample)
 {
     qint32 startLeftValue = 0;
     qint32 endLeftValue = 0;
@@ -153,31 +213,43 @@ QVector<ProcessAudio::AudioData> ProcessAudio::correctAudioDropout(qint32 startS
     qint32 endRightValue = 0;
     qreal stepRightValue = 0;
 
-    // This sets the minimum number of samples to correct for any given dropout
-    qint32 minimumDistance = 3;
-
-    qint32 numberOfSamples = (endSample - startSample) + minimumDistance;
+    qint32 numberOfSamples = (endSample - startSample);
 
     if (startSample > 0) {
-        startLeftValue = audioData[startSample - 1].left;
-        startRightValue = audioData[startSample - 1].right;
+        startLeftValue = fieldAudioData[startSample - 1].left;
+        startRightValue = fieldAudioData[startSample - 1].right;
     }
 
-    if ((endSample + minimumDistance) < audioData.size()) {
-        endLeftValue = audioData[endSample + 1 + minimumDistance].left;
-        endRightValue = audioData[endSample + 1 + minimumDistance].right;
+    if (endSample < fieldAudioData.size()) {
+        endLeftValue = fieldAudioData[endSample + 1].left;
+        endRightValue = fieldAudioData[endSample + 1].right;
     }
 
     // Underflow check for start sample
     if (startSample == 0) {
-        startLeftValue = endLeftValue;
-        startRightValue = endRightValue;
+        // Get the end sample from the previous field
+        if (fieldNumber != 1) {
+            QVector<AudioData> previousFieldAudioData = readFieldAudio(fieldNumber - 1);
+            startLeftValue = previousFieldAudioData[previousFieldAudioData.size()].left;
+            startRightValue = previousFieldAudioData[previousFieldAudioData.size()].right;
+        } else {
+            // There is no previous field, so there's not much that can be done
+            startLeftValue = endLeftValue;
+            startRightValue = endRightValue;
+        }
     }
 
     // Overflow check for end sample
-    if ((endSample + minimumDistance) >= audioData.size()) {
-        endLeftValue = startLeftValue;
-        endRightValue = startRightValue;
+    if (endSample >= fieldAudioData.size()) {
+        if (fieldNumber <= ldDecodeMetaData.getNumberOfFields()) {
+            QVector<AudioData> previousFieldAudioData = readFieldAudio(fieldNumber + 1);
+            startLeftValue = previousFieldAudioData[0].left;
+            startRightValue = previousFieldAudioData[0].right;
+        } else {
+            // There is no next field, so there's not much that can be done
+            endLeftValue = startLeftValue;
+            endRightValue = startRightValue;
+        }
     }
 
     stepLeftValue = static_cast<qreal>(endLeftValue - startLeftValue) / static_cast<qreal>(numberOfSamples);
@@ -186,57 +258,53 @@ QVector<ProcessAudio::AudioData> ProcessAudio::correctAudioDropout(qint32 startS
     qreal currentLeftValue = startLeftValue + stepLeftValue;
     qreal currentRightValue = startRightValue + stepRightValue;
 
-    for (qint32 sampleNumber = startSample; sampleNumber <= endSample + minimumDistance; sampleNumber++) {
-        audioData[sampleNumber].left = static_cast<qint16>(currentLeftValue);
-        audioData[sampleNumber].right = static_cast<qint16>(currentRightValue);
+    for (qint32 sampleNumber = startSample; sampleNumber <= endSample; sampleNumber++) {
+        fieldAudioData[sampleNumber].left = static_cast<qint16>(currentLeftValue);
+        fieldAudioData[sampleNumber].right = static_cast<qint16>(currentRightValue);
 
         currentLeftValue += stepLeftValue;
         currentRightValue += stepRightValue;
     }
-
-    return audioData;
 }
 
 // Method to silence an audio sample
-QVector<ProcessAudio::AudioData> ProcessAudio::silenceAudioSample(QVector<ProcessAudio::AudioData> audioData)
+void ProcessAudio::silenceAudioSample(void)
 {
-    for (qint32 sampleNumber = 0; sampleNumber < audioData.size(); sampleNumber++) {
-        audioData[sampleNumber].left = 0;
-        audioData[sampleNumber].right = 0;
+    for (qint32 sampleNumber = 0; sampleNumber < fieldAudioData.size(); sampleNumber++) {
+        fieldAudioData[sampleNumber].left = 0;
+        fieldAudioData[sampleNumber].right = 0;
     }
-
-    return audioData;
 }
 
 // Method to write the audio data for a field
-void ProcessAudio::writeFieldAudio(QVector<ProcessAudio::AudioData> audioData)
+void ProcessAudio::writeFieldAudio(void)
 {
     QByteArray rawData;
-    rawData.resize(audioData.size() * 4);
+    rawData.resize(fieldAudioData.size() * 4);
 
     // Copy the fieldAudio vector into the raw data array
     qint16 *dataPointer = reinterpret_cast<qint16*>(rawData.data());
     qint32 rawDataPointer = 0;
-    for (qint32 samplePointer = 0; samplePointer < audioData.size(); samplePointer++) {
-        dataPointer[rawDataPointer++] = audioData[samplePointer].left;
-        dataPointer[rawDataPointer++] = audioData[samplePointer].right;
+    for (qint32 samplePointer = 0; samplePointer < fieldAudioData.size(); samplePointer++) {
+        dataPointer[rawDataPointer++] = fieldAudioData[samplePointer].left;
+        dataPointer[rawDataPointer++] = fieldAudioData[samplePointer].right;
     }
 
     // Write the raw data array to disc
     if (!audioOutputFile->write(rawData.data(), rawData.size())) {
         qWarning() << "Writing to output audio file failed!";
+        return;
     }
 }
 
 // Method to get the audio data for a field
 QVector<ProcessAudio::AudioData> ProcessAudio::readFieldAudio(qint32 fieldNumber)
 {
-    QVector<AudioData> fieldAudio;
+    QVector<AudioData> readAudioData;
     videoParameters = ldDecodeMetaData.getVideoParameters();
 
     if (fieldNumber < 1 || fieldNumber > ldDecodeMetaData.getNumberOfFields()) {
         qCritical() << "ProcessAudio::readFieldAudio(): Requested field" << fieldNumber << "is out of bounds!";
-        return fieldAudio;
     }
 
     // Audio data is:
@@ -250,11 +318,12 @@ QVector<ProcessAudio::AudioData> ProcessAudio::readFieldAudio(qint32 fieldNumber
     qint64 requiredPosition = static_cast<qint64>(sampleStartPosition[fieldNumber] * 4);
         if (!audioInputFile->seek(requiredPosition)) {
             qWarning() << "Source audio seek to requested field number" << fieldNumber << "failed!";
-            return fieldAudio;
+            readAudioData.clear();
+            return readAudioData;
     }
 
     // Resize the audio data to the length of the field
-    fieldAudio.resize(ldDecodeMetaData.getField(fieldNumber).audioSamples);
+    readAudioData.resize(ldDecodeMetaData.getField(fieldNumber).audioSamples);
 
     // Read the audio data
     QByteArray rawData;
@@ -281,18 +350,18 @@ QVector<ProcessAudio::AudioData> ProcessAudio::readFieldAudio(qint32 fieldNumber
         }
 
         // Return with empty data
-        fieldAudio.clear();
-        return fieldAudio;
+        readAudioData.clear();
+        return readAudioData;
     }
 
-    // Copy the raw data into the fieldAudio vector
+    // Copy the raw data into the audioData vector
     qint16 *dataPointer = reinterpret_cast<qint16*>(rawData.data());
     for (qint32 samplePointer = 0; samplePointer < ldDecodeMetaData.getField(fieldNumber).audioSamples; samplePointer++) {
-        fieldAudio[samplePointer].left = dataPointer[(samplePointer * 2)];
-        fieldAudio[samplePointer].right = dataPointer[(samplePointer * 2) + 1];
+        readAudioData[samplePointer].left = dataPointer[(samplePointer * 2)];
+        readAudioData[samplePointer].right = dataPointer[(samplePointer * 2) + 1];
     }
 
-    return fieldAudio;
+    return readAudioData;
 }
 
 // Method to open a ld-decode PCM audio file as input
@@ -373,6 +442,26 @@ void ProcessAudio::closeAudacityMetadataFile(void)
     audacityOutputFile->close();
 }
 
+void ProcessAudio::writeAudacityLabels(qint32 fieldNumber, bool labelEveryField)
+{
+    if (!labelEveryField && (ldDecodeMetaData.getField(fieldNumber).dropOuts.startx.size() == 0)) {
+        // Field does not contain any dropouts, so no need to write anything
+        return;
+    }
+
+    // Write the field's start and end sample position to the audacity label metadata
+    qint64 fieldStartSample = sampleStartPosition[fieldNumber];
+    qint64 fieldEndSample = fieldStartSample + ldDecodeMetaData.getField(fieldNumber).audioSamples - 1;
+    writeAudacityMetadataLabel(fieldStartSample, fieldEndSample, "F#" + QString::number(fieldNumber));
+
+    // Write the field's dropouts to the audacity label metadata
+    for (qint32 dropoutNumber = 0; dropoutNumber < fieldAudioDropouts.size(); dropoutNumber++) {
+        writeAudacityMetadataLabel(fieldAudioDropouts[dropoutNumber].startSample + fieldStartSample,
+                                   fieldAudioDropouts[dropoutNumber].endSample + fieldStartSample,
+                                   "DO#" + QString::number(dropoutNumber));
+    }
+}
+
 // Method to write a metadata label in Audacity format
 void ProcessAudio::writeAudacityMetadataLabel(qint64 startSample, qint64 endSample, QString description)
 {
@@ -384,11 +473,4 @@ void ProcessAudio::writeAudacityMetadataLabel(qint64 startSample, qint64 endSamp
     QTextStream stream(audacityOutputFile);
     stream << QString::number(startSecond, 'f', 10) << "\t" << QString::number(endSecond, 'f', 10) << "\t" << description << endl;
 }
-
-
-
-
-
-
-
 
