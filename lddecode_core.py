@@ -712,6 +712,25 @@ class Field:
 
         return linelocs2
 
+    def fix_badlines(self, linelocs_in):
+        linelocs = linelocs_in.copy()
+
+        for l in np.where(self.linebad == True)[0]:
+            prevgood = l - 1
+            nextgood = l + 1
+
+            while prevgood >= 0 and self.linebad[prevgood]:
+                prevgood -= 1
+
+            while nextgood < len(linelocs) and self.linebad[nextgood]:
+                nextgood += 1
+
+            if prevgood >=0 and nextgood < len(linelocs):
+                gap = (linelocs[nextgood] - linelocs[prevgood]) / (nextgood - prevgood)
+                linelocs[l] = (gap * (l - prevgood)) + linelocs[prevgood]
+                
+        return linelocs
+
     def downscale(self, lineoffset = 0, lineinfo = None, linesout = None, outwidth = None, wow=True, channel='demod', audio = False):
         ''' 
         lineoffset: for NTSC the first line is the first containing the equalizing pulse (0), but for PAL fields start with the first VSYNC pulse (2 or 3).
@@ -958,6 +977,8 @@ class FieldPAL(Field):
             return
 
         self.linelocs = self.refine_linelocs_pilot()
+        self.linelocs = self.fix_badlines(self.linelocs)
+
         self.burstmedian = self.calc_burstmedian()
 
         self.linecount = 312 if self.isFirstField else 313
@@ -1076,24 +1097,6 @@ class FieldNTSC(Field):
         self.field14 = field14
 
         return linelocs_adj, burstlevel
-
-    def fix_badlines(self, linelocs = None):
-        if linelocs is None:
-            linelocs = self.linelocs3.copy()
-            
-        for l in np.where(self.linebad == True)[0]:
-            prevgood = l - 1
-            nextgood = l + 1
-            while prevgood > 8 and self.linebad[prevgood]:
-                prevgood -= 1
-            while nextgood < 265 and self.linebad[nextgood]:
-                nextgood += 1
-
-            if prevgood > 8 and nextgood < 265:
-                gap = (linelocs[nextgood] - linelocs[prevgood]) / (nextgood - prevgood)
-                linelocs[l] = (gap * (l - prevgood)) + linelocs[prevgood]
-                
-        return linelocs
 
     def hz_to_ooutput(self, input):
         reduced = (input - self.rf.SysParams['ire0']) / self.rf.SysParams['hz_ire']
