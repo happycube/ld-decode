@@ -188,34 +188,34 @@ void VbiDialog::updateVbi(LdDecodeMetaData::Field firstField, LdDecodeMetaData::
     if (firstField.vbi.teletext || secondField.vbi.teletext) ui->teletextLabelAm2->setText("Present on disc");
     else ui->teletextLabelAm2->setText("Not present on disc");
 
-    if ((firstField.vbi.soundMode == LdDecodeMetaData::VbiSoundModes::futureUse) && (secondField.vbi.soundMode == LdDecodeMetaData::VbiSoundModes::futureUse)) {
-        ui->soundModeLabel->setText("Future use/unknown");
-    } else if (firstField.vbi.soundMode != LdDecodeMetaData::VbiSoundModes::futureUse) {
-        if (firstField.vbi.soundMode == LdDecodeMetaData::VbiSoundModes::stereo) ui->soundModeLabelAm2->setText("Stereo");
-        if (firstField.vbi.soundMode == LdDecodeMetaData::VbiSoundModes::mono) ui->soundModeLabelAm2->setText("Mono");
-        if (firstField.vbi.soundMode == LdDecodeMetaData::VbiSoundModes::audioSubCarriersOff) ui->soundModeLabelAm2->setText("Audio sub-carriers off");
-        if (firstField.vbi.soundMode == LdDecodeMetaData::VbiSoundModes::bilingual) ui->soundModeLabelAm2->setText("Bilingual");
-        if (firstField.vbi.soundMode == LdDecodeMetaData::VbiSoundModes::stereo_stereo) ui->soundModeLabelAm2->setText("Stereo_Stereo");
-        if (firstField.vbi.soundMode == LdDecodeMetaData::VbiSoundModes::stereo_bilingual) ui->soundModeLabelAm2->setText("Stereo_Bilingual");
-        if (firstField.vbi.soundMode == LdDecodeMetaData::VbiSoundModes::crossChannelStereo) ui->soundModeLabelAm2->setText("Cross Channel Stereo");
-        if (firstField.vbi.soundMode == LdDecodeMetaData::VbiSoundModes::bilingual_bilingual) ui->soundModeLabelAm2->setText("Bilingual_Bilingual");
-        if (firstField.vbi.soundMode == LdDecodeMetaData::VbiSoundModes::mono_dump) ui->soundModeLabelAm2->setText("Mono dump");
-        if (firstField.vbi.soundMode == LdDecodeMetaData::VbiSoundModes::stereo_dump) ui->soundModeLabelAm2->setText("Stereo dump");
-        if (firstField.vbi.soundMode == LdDecodeMetaData::VbiSoundModes::bilingual_dump) ui->soundModeLabelAm2->setText("Bilingual dump");
-        if (firstField.vbi.soundMode == LdDecodeMetaData::VbiSoundModes::futureUse) ui->soundModeLabelAm2->setText("Future use/unknown");
+    if ((firstField.vbi.soundModeAm2 == LdDecodeMetaData::VbiSoundModes::futureUse) && (secondField.vbi.soundModeAm2 == LdDecodeMetaData::VbiSoundModes::futureUse)) {
+        ui->soundModeLabelAm2->setText("Future use/unknown");
+    } else if (firstField.vbi.soundModeAm2 != LdDecodeMetaData::VbiSoundModes::futureUse) {
+        if (firstField.vbi.soundModeAm2 == LdDecodeMetaData::VbiSoundModes::stereo) ui->soundModeLabelAm2->setText("Stereo");
+        if (firstField.vbi.soundModeAm2 == LdDecodeMetaData::VbiSoundModes::mono) ui->soundModeLabelAm2->setText("Mono");
+        if (firstField.vbi.soundModeAm2 == LdDecodeMetaData::VbiSoundModes::audioSubCarriersOff) ui->soundModeLabelAm2->setText("Audio sub-carriers off");
+        if (firstField.vbi.soundModeAm2 == LdDecodeMetaData::VbiSoundModes::bilingual) ui->soundModeLabelAm2->setText("Bilingual");
+        if (firstField.vbi.soundModeAm2 == LdDecodeMetaData::VbiSoundModes::stereo_stereo) ui->soundModeLabelAm2->setText("Stereo_Stereo");
+        if (firstField.vbi.soundModeAm2 == LdDecodeMetaData::VbiSoundModes::stereo_bilingual) ui->soundModeLabelAm2->setText("Stereo_Bilingual");
+        if (firstField.vbi.soundModeAm2 == LdDecodeMetaData::VbiSoundModes::crossChannelStereo) ui->soundModeLabelAm2->setText("Cross Channel Stereo");
+        if (firstField.vbi.soundModeAm2 == LdDecodeMetaData::VbiSoundModes::bilingual_bilingual) ui->soundModeLabelAm2->setText("Bilingual_Bilingual");
+        if (firstField.vbi.soundModeAm2 == LdDecodeMetaData::VbiSoundModes::mono_dump) ui->soundModeLabelAm2->setText("Mono dump");
+        if (firstField.vbi.soundModeAm2 == LdDecodeMetaData::VbiSoundModes::stereo_dump) ui->soundModeLabelAm2->setText("Stereo dump");
+        if (firstField.vbi.soundModeAm2 == LdDecodeMetaData::VbiSoundModes::bilingual_dump) ui->soundModeLabelAm2->setText("Bilingual dump");
+        if (firstField.vbi.soundModeAm2 == LdDecodeMetaData::VbiSoundModes::futureUse) ui->soundModeLabelAm2->setText("Future use/unknown");
     } else {
-        if (secondField.vbi.soundMode == LdDecodeMetaData::VbiSoundModes::stereo) ui->soundModeLabelAm2->setText("Stereo");
-        if (secondField.vbi.soundMode == LdDecodeMetaData::VbiSoundModes::mono) ui->soundModeLabelAm2->setText("Mono");
-        if (secondField.vbi.soundMode == LdDecodeMetaData::VbiSoundModes::audioSubCarriersOff) ui->soundModeLabelAm2->setText("Audio sub-carriers off");
-        if (secondField.vbi.soundMode == LdDecodeMetaData::VbiSoundModes::bilingual) ui->soundModeLabelAm2->setText("Bilingual");
-        if (secondField.vbi.soundMode == LdDecodeMetaData::VbiSoundModes::stereo_stereo) ui->soundModeLabelAm2->setText("Stereo_Stereo");
-        if (secondField.vbi.soundMode == LdDecodeMetaData::VbiSoundModes::stereo_bilingual) ui->soundModeLabelAm2->setText("Stereo_Bilingual");
-        if (secondField.vbi.soundMode == LdDecodeMetaData::VbiSoundModes::crossChannelStereo) ui->soundModeLabelAm2->setText("Cross Channel Stereo");
-        if (secondField.vbi.soundMode == LdDecodeMetaData::VbiSoundModes::bilingual_bilingual) ui->soundModeLabelAm2->setText("Bilingual_Bilingual");
-        if (secondField.vbi.soundMode == LdDecodeMetaData::VbiSoundModes::mono_dump) ui->soundModeLabelAm2->setText("Mono dump");
-        if (secondField.vbi.soundMode == LdDecodeMetaData::VbiSoundModes::stereo_dump) ui->soundModeLabelAm2->setText("Stereo dump");
-        if (secondField.vbi.soundMode == LdDecodeMetaData::VbiSoundModes::bilingual_dump) ui->soundModeLabelAm2->setText("Bilingual dump");
-        if (secondField.vbi.soundMode == LdDecodeMetaData::VbiSoundModes::futureUse) ui->soundModeLabelAm2->setText("Future use/unknown");
+        if (secondField.vbi.soundModeAm2 == LdDecodeMetaData::VbiSoundModes::stereo) ui->soundModeLabelAm2->setText("Stereo");
+        if (secondField.vbi.soundModeAm2 == LdDecodeMetaData::VbiSoundModes::mono) ui->soundModeLabelAm2->setText("Mono");
+        if (secondField.vbi.soundModeAm2 == LdDecodeMetaData::VbiSoundModes::audioSubCarriersOff) ui->soundModeLabelAm2->setText("Audio sub-carriers off");
+        if (secondField.vbi.soundModeAm2 == LdDecodeMetaData::VbiSoundModes::bilingual) ui->soundModeLabelAm2->setText("Bilingual");
+        if (secondField.vbi.soundModeAm2 == LdDecodeMetaData::VbiSoundModes::stereo_stereo) ui->soundModeLabelAm2->setText("Stereo_Stereo");
+        if (secondField.vbi.soundModeAm2 == LdDecodeMetaData::VbiSoundModes::stereo_bilingual) ui->soundModeLabelAm2->setText("Stereo_Bilingual");
+        if (secondField.vbi.soundModeAm2 == LdDecodeMetaData::VbiSoundModes::crossChannelStereo) ui->soundModeLabelAm2->setText("Cross Channel Stereo");
+        if (secondField.vbi.soundModeAm2 == LdDecodeMetaData::VbiSoundModes::bilingual_bilingual) ui->soundModeLabelAm2->setText("Bilingual_Bilingual");
+        if (secondField.vbi.soundModeAm2 == LdDecodeMetaData::VbiSoundModes::mono_dump) ui->soundModeLabelAm2->setText("Mono dump");
+        if (secondField.vbi.soundModeAm2 == LdDecodeMetaData::VbiSoundModes::stereo_dump) ui->soundModeLabelAm2->setText("Stereo dump");
+        if (secondField.vbi.soundModeAm2 == LdDecodeMetaData::VbiSoundModes::bilingual_dump) ui->soundModeLabelAm2->setText("Bilingual dump");
+        if (secondField.vbi.soundModeAm2 == LdDecodeMetaData::VbiSoundModes::futureUse) ui->soundModeLabelAm2->setText("Future use/unknown");
     }
 
     if (firstField.vbi.copyAm2 || secondField.vbi.copyAm2) ui->copyAllowedLabelAm2->setText("Yes");
