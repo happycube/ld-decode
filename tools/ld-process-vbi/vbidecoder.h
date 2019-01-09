@@ -47,7 +47,7 @@ public slots:
 private:
     QByteArray getActiveVideoLine(SourceField *sourceFrame, qint32 scanLine, LdDecodeMetaData::VideoParameters videoParameters);
     LdDecodeMetaData::Vbi translateVbi(qint32 vbi16, qint32 vbi17, qint32 vbi18);
-    quint32 hammingCode(quint32 x4, quint32 x5);
+    bool parity(quint32 x4, quint32 x5);
     qint32 manchesterDecoder(QByteArray lineData, qint32 zcPoint, LdDecodeMetaData::VideoParameters videoParameters);
     QVector<bool> getTransitionMap(QByteArray lineData, qint32 zcPoint);
 };
