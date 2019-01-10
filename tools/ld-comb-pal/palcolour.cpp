@@ -288,7 +288,7 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
                 }
 
                 // Define scan line pointer to output buffer using 16 bit unsigned words
-                quint16 *ptr = reinterpret_cast<quint16*>(outputFrame.data() + (((fieldLine * 2) + field) * videoParameters.fieldWidth * 6));
+                quint16 *ptr = reinterpret_cast<quint16*>(outputFrame.data() + (((fieldLine * 2) + field + 2) * videoParameters.fieldWidth * 6));
 
                 // 'saturation' is a user saturation control, nom. 100%
                 double scaledSaturation = (saturation / 50.0) / norm;  // 'norm' normalises bp and bq to 1
