@@ -887,8 +887,6 @@ LdDecodeMetaData::VbiDiscTypes LdDecodeMetaData::getDiscTypeFromVbi(void)
         }
     }
 
-    qDebug() << "LdDecodeMetaData::getDiscTypeFromVbi(): Got CAV =" << cavCount << "CLV =" << clvCount;
-
     if (cavCount == 0 && clvCount == 0) {
         // There is no way to know the disc type
         return LdDecodeMetaData::VbiDiscTypes::unknownDiscType;

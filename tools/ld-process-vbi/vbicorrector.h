@@ -44,8 +44,10 @@ public slots:
 private:
     LdDecodeMetaData ldDecodeMetaData;
 
-    qint32 getFrameNumber(qint32 frameSeqNumber);
-    void setFrameNumber(qint32 frameSeqNumber, qint32 vbiFrameNumber);
+    qint32 getCavFrameNumber(qint32 frameSeqNumber);
+    void setCavFrameNumber(qint32 frameSeqNumber, qint32 vbiFrameNumber);
+    qint32 getClvFrameNumber(qint32 frameSeqNumber);
+    void setClvFrameNumber(qint32 frameSeqNumber, qint32 clvFrameNumber);
 };
 
 #endif // VBICORRECTOR_H
