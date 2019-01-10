@@ -270,6 +270,9 @@ LdDecodeMetaData::Vbi VbiDecoder::translateVbi(qint32 vbi16, qint32 vbi17, qint3
                 (   10 * ((vbi.clvMin & 0x000F0) / 16)) +
                 (        ((vbi.clvMin & 0x0000F)));
 
+        // Set the type to CLV for the field as well
+        vbi.type = LdDecodeMetaData::VbiDiscTypes::clv;
+
         qDebug() << "VbiDecoder::translateVbi(): VBI CLV programme time code is" <<
                     vbi.clvHr << "hours," <<
                     vbi.clvMin << "minutes";
@@ -277,15 +280,12 @@ LdDecodeMetaData::Vbi VbiDecoder::translateVbi(qint32 vbi16, qint32 vbi17, qint3
 
     // IEC 60857-1986 - 10.1.7 Constant linear velocity code ----------------------------------------------------------
 
-    // Check for CLV code on line 17
+    // Check for CLV code on line 17 (note: this will be overwritten later if a CLV time code is found)
     vbi.type = LdDecodeMetaData::VbiDiscTypes::cav;
 
     if ( vbi17 == 0x87FFFF ) {
         vbi.type = LdDecodeMetaData::VbiDiscTypes::clv;
     } else vbi.type = LdDecodeMetaData::VbiDiscTypes::cav;
-
-    if (vbi.type == LdDecodeMetaData::VbiDiscTypes::cav) qDebug() << "VbiDecoder::translateVbi(): VBI Disc type is CAV";
-    else qDebug() << "VbiDecoder::translateVbi(): VBI Disc type is CLV";
 
     // IEC 60857-1986 - 10.1.8 Programme status code ------------------------------------------------------------------
 
@@ -636,10 +636,17 @@ LdDecodeMetaData::Vbi VbiDecoder::translateVbi(qint32 vbi16, qint32 vbi17, qint3
         vbi.clvSec = ((x1 - 10) * 10) + x3;
         vbi.clvPicNo = (x4  * 10) + x5;
 
+        // Set the type to CLV for the field as well
+        vbi.type = LdDecodeMetaData::VbiDiscTypes::clv;
+
         qDebug() << "VbiDecoder::translateVbi(): VBI CLV picture number is" <<
                     vbi.clvSec << "seconds," <<
                     vbi.clvPicNo << "picture number";
     }
+
+    // Output the disc type here, as the CLV time-code determination can change it
+    if (vbi.type == LdDecodeMetaData::VbiDiscTypes::cav) qDebug() << "VbiDecoder::translateVbi(): VBI Disc type is CAV";
+    else qDebug() << "VbiDecoder::translateVbi(): VBI Disc type is CLV";
 
     return vbi;
 }

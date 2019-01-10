@@ -47,6 +47,12 @@ bool VbiCorrector::process(QString inputFileName)
         return false;
     }
 
+    // Check the disc type
+    if (ldDecodeMetaData.getDiscTypeFromVbi() != LdDecodeMetaData::VbiDiscTypes::cav) {
+        qCritical() << "Correction only works for CAV discs at the moment... Cannot perform correction!";
+        return false;
+    }
+
     // Get the first frame number
 
     // Get the first and second field numbers for the frame

@@ -866,3 +866,45 @@ bool LdDecodeMetaData::getIsFirstFieldFirst(void)
 {
     return isFirstFieldFirst;
 }
+
+// Method to get the current disc type (CAV/CLV/Unknown) based on the VBI data
+LdDecodeMetaData::VbiDiscTypes LdDecodeMetaData::getDiscTypeFromVbi(void)
+{
+    // Note: Due to factors like lead-in frames having invalid disc types, it's a good
+    // idea to look at more than 1 field when determining the disc type
+
+    // Check 20 fields (or the maximum available if less than 20)
+    qint32 fieldsToCheck = 20;
+    if (getNumberOfFields() < fieldsToCheck) fieldsToCheck = getNumberOfFields();
+
+    qint32 cavCount = 0;
+    qint32 clvCount = 0;
+    for (qint32 fieldNumber = 1; fieldNumber <= fieldsToCheck; fieldNumber++) {
+        // Ignore lead-in and lead-out fields
+        if (!(metaData.fields[fieldNumber].vbi.leadIn || metaData.fields[fieldNumber].vbi.leadOut)) {
+            if (metaData.fields[fieldNumber].vbi.type == LdDecodeMetaData::VbiDiscTypes::cav) cavCount++;
+            if (metaData.fields[fieldNumber].vbi.type == LdDecodeMetaData::VbiDiscTypes::clv) clvCount++;
+        }
+    }
+
+    qDebug() << "LdDecodeMetaData::getDiscTypeFromVbi(): Got CAV =" << cavCount << "CLV =" << clvCount;
+
+    if (cavCount == 0 && clvCount == 0) {
+        // There is no way to know the disc type
+        return LdDecodeMetaData::VbiDiscTypes::unknownDiscType;
+    }
+
+    if (cavCount == clvCount) {
+        // There is no way to know the disc type
+        return LdDecodeMetaData::VbiDiscTypes::unknownDiscType;
+    }
+
+    if (cavCount > clvCount) return LdDecodeMetaData::VbiDiscTypes::cav;
+
+    return LdDecodeMetaData::VbiDiscTypes::clv;
+}
+
+
+
+
+

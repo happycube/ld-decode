@@ -190,6 +190,8 @@ public:
     void setIsFirstFieldFirst(bool flag);
     bool getIsFirstFieldFirst(void);
 
+    VbiDiscTypes getDiscTypeFromVbi(void);
+
 signals:
 
 public slots:
