@@ -211,10 +211,9 @@ LdDecodeMetaData::Vbi VbiDecoder::translateVbi(qint32 vbi16, qint32 vbi17, qint3
             (        ((bcdPictureNumber & 0x0000F)));
 
         // IEC 60856 amendment 2 states maximum picture number is 79,999
-        if (vbi.picNo > 0 && vbi.picNo < 80000) {
-            qDebug() << "VbiDecoder::translateVbi(): VBI picture number is" << vbi.picNo;
-        } else {
-            qDebug() << "VbiDecoder::translateVbi(): VBI picture number is" << vbi.picNo << "(out of range!)";
+        if (vbi.picNo <= 0 && vbi.picNo >= 80000) {
+            qDebug() << "VbiDecoder::translateVbi(): VBI picture number is" << vbi.picNo << "(out of range - set to invalid!)";
+            vbi.picNo = -1;
         }
     }
 
@@ -230,7 +229,8 @@ LdDecodeMetaData::Vbi VbiDecoder::translateVbi(qint32 vbi16, qint32 vbi17, qint3
     // IEC 60857-1986 - 10.1.5 Chapter numbers ------------------------------------------------------------------------
 
     // Check for chapter number on lines 17 and 18
-    quint32 bcdChapterNumber = 0;
+    // Note: The allowed chapter number range is 0 to 79
+    quint32 bcdChapterNumber = 80;
 
     if ( (vbi17 & 0xF00FFF) == 0x800DDD ) {
         bcdChapterNumber = (vbi17 & 0x07F000) >> 12;
@@ -238,13 +238,15 @@ LdDecodeMetaData::Vbi VbiDecoder::translateVbi(qint32 vbi16, qint32 vbi17, qint3
         bcdChapterNumber = (vbi18 & 0x07F000) >> 12;
     }
 
-    if (bcdChapterNumber != 0) {
+    if (bcdChapterNumber < 80) {
         // Peform BCD to integer conversion:
         vbi.chNo =
                 (   10 * ((bcdChapterNumber & 0x000F0) / 16)) +
                 (        ((bcdChapterNumber & 0x0000F)));
 
         qDebug() << "VbiDecoder::translateVbi(): VBI Chapter number is" << vbi.chNo;
+    } else {
+        qDebug() << "VbiDecoder::translateVbi(): VBI Chapter number not found";
     }
 
     // IEC 60857-1986 - 10.1.6 Programme time code --------------------------------------------------------------------
@@ -613,7 +615,7 @@ LdDecodeMetaData::Vbi VbiDecoder::translateVbi(qint32 vbi16, qint32 vbi17, qint3
 
         // Add the two results together to get the user code
         vbi.userCode = QString::number(x1, 16).toUpper() + QString::number(x3x4x5, 16).toUpper();
-        qDebug() << "VBI user code is" << vbi.userCode;
+        qDebug() << "VbiDecoder::translateVbi(): VBI user code is" << vbi.userCode;
     }
 
     // IEC 60857-1986 - 10.1.10 CLV picture number --------------------------------------------------------------------
@@ -645,8 +647,15 @@ LdDecodeMetaData::Vbi VbiDecoder::translateVbi(qint32 vbi16, qint32 vbi17, qint3
     }
 
     // Output the disc type here, as the CLV time-code determination can change it
-    if (vbi.type == LdDecodeMetaData::VbiDiscTypes::cav) qDebug() << "VbiDecoder::translateVbi(): VBI Disc type is CAV";
-    else qDebug() << "VbiDecoder::translateVbi(): VBI Disc type is CLV";
+    if (vbi.type == LdDecodeMetaData::VbiDiscTypes::cav) {
+        qDebug() << "VbiDecoder::translateVbi(): VBI Disc type is CAV";
+        qDebug() << "VbiDecoder::translateVbi(): VBI picture number is" << vbi.picNo;
+    } else {
+        qDebug() << "VbiDecoder::translateVbi(): VBI Disc type is CLV";
+
+        // Invalidate the CAV picture number
+        vbi.picNo = -1;
+    }
 
     return vbi;
 }

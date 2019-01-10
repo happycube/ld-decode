@@ -103,7 +103,7 @@ void VbiDialog::updateVbi(LdDecodeMetaData::Field firstField, LdDecodeMetaData::
     else ui->pictureStopCodeLabel->setText("No");
 
     if (firstField.vbi.chNo != -1) ui->chapterNumberLabel->setText(QString::number(firstField.vbi.chNo));
-    if (secondField.vbi.chNo != -1) ui->chapterNumberLabel->setText(QString::number(secondField.vbi.chNo));
+    else if (secondField.vbi.chNo != -1) ui->chapterNumberLabel->setText(QString::number(secondField.vbi.chNo));
     else ui->chapterNumberLabel->setText("Unknown");
 
     if (firstField.vbi.clvHr != -1 && firstField.vbi.clvMin != -1) {
