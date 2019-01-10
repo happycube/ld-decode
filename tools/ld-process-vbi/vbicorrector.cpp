@@ -3,7 +3,7 @@
     vbicorrector.cpp
 
     ld-process-vbi - VBI and IEC NTSC specific processor for ld-decode
-    Copyright (C) 2018 Simon Inns
+    Copyright (C) 2018-2019 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -71,6 +71,19 @@ bool VbiCorrector::process(QString inputFileName)
     }
     qInfo() << "Determined first frame number to be #" << firstFrameNumber;
 
+    // Get the sound mode of the first frame
+    LdDecodeMetaData::VbiSoundModes firstFieldSoundMode = ldDecodeMetaData.getField(firstField).vbi.soundMode;
+    LdDecodeMetaData::VbiSoundModes secondFieldSoundMode = ldDecodeMetaData.getField(secondField).vbi.soundMode;
+
+    bool correctSoundMode = true;
+    if (firstFieldSoundMode != secondFieldSoundMode) {
+        qInfo() << "Cannot determine the sound mode of the first frame - will not correct sound mode";
+        correctSoundMode = false;
+    }
+
+    // Store the current sound mode
+    LdDecodeMetaData::VbiSoundModes currentSoundMode = firstFieldSoundMode;
+
     // Create a back-up of the JSON metadata
     qInfo() << "This feature is experimental; creating a back-up of the JSON metadata...";
     QString outputFileName = inputFileName + ".json.bup";
@@ -81,16 +94,24 @@ bool VbiCorrector::process(QString inputFileName)
     // Note: Will not work correctly for NTSC will pull down (as the pull down frames have no frame number)
     qInfo() << "Checking for frame numbers that are out of sequence:";
     qint32 correctedFrameNumber;
-    qint32 errorCount = 0;
+    qint32 videoErrorCount = 0;
+    qint32 audioErrorCount = 0;
     for (qint32 seqNumber = 2; seqNumber < ldDecodeMetaData.getNumberOfFrames(); seqNumber++) {
+        firstField = ldDecodeMetaData.getFirstFieldNumber(seqNumber);
+        secondField = ldDecodeMetaData.getSecondFieldNumber(seqNumber);
+
+        LdDecodeMetaData::Field firstFieldData = ldDecodeMetaData.getField(firstField);
+        LdDecodeMetaData::Field secondFieldData = ldDecodeMetaData.getField(secondField);
+
+        // Video frame number correction
         // Try up to a distance of 5 frames to find the sequence
         for (qint32 gap = 1; gap < 5; gap++) {
             if (getFrameNumber(seqNumber) != (getFrameNumber(seqNumber - 1) + 1)) {
                 if (getFrameNumber(seqNumber - 1) == (getFrameNumber(seqNumber + gap) - (gap + 1))) {
                     correctedFrameNumber = getFrameNumber(seqNumber - 1) + 1;
 
-                    qInfo() << "Correction to seq. frame" << seqNumber << "[" << ldDecodeMetaData.getFirstFieldNumber(seqNumber)
-                            << "/" << ldDecodeMetaData.getSecondFieldNumber(seqNumber) << "]:";
+                    qInfo() << "Correction to seq. frame" << seqNumber << "[" << firstField
+                            << "/" << secondField << "]:";
                     qInfo() << "  Seq. frame" << seqNumber - 1 << "has a VBI frame number of" << getFrameNumber(seqNumber -1);
                     qInfo() << "  Seq. frame" << seqNumber << "has a VBI frame number of" << getFrameNumber(seqNumber);
                     qInfo() << "  Seq. frame" << seqNumber + gap << "has a VBI frame number of" << getFrameNumber(seqNumber + gap);
@@ -98,16 +119,87 @@ bool VbiCorrector::process(QString inputFileName)
                     qInfo() << "  VBI frame number corrected to" << correctedFrameNumber;
                     setFrameNumber(seqNumber, correctedFrameNumber);
 
-                    errorCount++;
+                    videoErrorCount++;
                     break; // done
+                }
+            }
+        }
+
+        // Audio sound mode correction
+        if (correctSoundMode) {
+            firstFieldSoundMode = firstFieldData.vbi.soundMode;
+            secondFieldSoundMode = secondFieldData.vbi.soundMode;
+
+            // Do both fields have the same sound mode?
+            if (firstFieldSoundMode != secondFieldSoundMode) {
+                if (firstFieldData.vbi.soundMode == currentSoundMode) {
+                    qInfo() << "  Seq. frame" << seqNumber << " does not have matching sound modes - using firstField data (matches current sound mode)";
+                    secondFieldData.vbi.soundMode = firstFieldData.vbi.soundMode;
+
+                    // Update the metadata
+                    ldDecodeMetaData.updateField(secondFieldData, secondField);
+                } else if (secondFieldData.vbi.soundMode == currentSoundMode) {
+                    qInfo() << "  Seq. frame" << seqNumber << " does not have matching sound modes - using secondField data (matches current sound mode)";
+                    firstFieldData.vbi.soundMode = secondFieldData.vbi.soundMode;
+
+                    // Update the metadata
+                    ldDecodeMetaData.updateField(firstFieldData, firstField);
+                } else {
+                    qInfo() << "  Seq. frame" << seqNumber << " does not have matching sound modes - using firstField data only (neither field matches current sound mode)";
+                    secondFieldData.vbi.soundMode = firstFieldData.vbi.soundMode;
+
+                    // Update the metadata
+                    ldDecodeMetaData.updateField(secondFieldData, secondField);
+                }
+
+                audioErrorCount++;
+            }
+
+            // Does the current frame's sound mode match the previous frame's?
+            if (firstFieldData.vbi.soundMode != currentSoundMode) {
+                qInfo() << "  Seq. frame" << seqNumber << " sound mode does not match previous frame";
+
+                // If the sound mode doesn't match it can be for one of two reasons; either the
+                // sound mode has changed (which is very likely to remain changed for many frames) or
+                // there is a glitch in the VBI data in which case the sound mode will jump around
+                // randomly for a few frames.  Here we correct by taking the current fields's sound
+                // mode and comparing it to a number of subsequent fields; if it is not consistent
+                // we correct based on the sound mode of the previous frame.
+
+                qint32 fieldsToCheck = 20;
+                if ((seqNumber + fieldsToCheck) > ldDecodeMetaData.getNumberOfFields()) {
+                    // We don't have enough remaining fields to do a full check
+                    fieldsToCheck = ldDecodeMetaData.getNumberOfFields() - seqNumber;
+                }
+
+                qint32 matches = 0;
+                for (qint32 counter = 1; counter < fieldsToCheck; counter++) {
+                    if (ldDecodeMetaData.getField(firstField + counter).vbi.soundMode == firstFieldSoundMode) matches++;
+                }
+
+                if (matches > (fieldsToCheck / 2)) {
+                    // Matched, change sound mode
+                    currentSoundMode = firstFieldSoundMode;
+                } else {
+                    // Did not match, correct current sound mode
+                    firstFieldData.vbi.soundMode = currentSoundMode;
+                    secondFieldData.vbi.soundMode = currentSoundMode;
+
+                    // Update the metadata
+                    ldDecodeMetaData.updateField(firstFieldData, firstField);
+                    ldDecodeMetaData.updateField(secondFieldData, secondField);
+
+                    qInfo() << "  Seq. frame" << seqNumber << "corrected sound mode";
+
+                    audioErrorCount++;
                 }
             }
         }
     }
 
     // Only write out the new JSON file if frames were corrected
-    if (errorCount != 0) {
-        qInfo() << "Corrected" << errorCount << "VBI frame numbers - writing new JSON metadata file...";
+    if (videoErrorCount != 0 || audioErrorCount != 0) {
+        qInfo() << "Corrected" << videoErrorCount << "VBI frame numbers and" << audioErrorCount << "sound modes - writing new JSON metadata file...";
 
         // Back-up the metadata file
         outputFileName = inputFileName + ".json";

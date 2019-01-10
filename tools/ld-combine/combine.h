@@ -1,13 +1,13 @@
 /************************************************************************
 
-    processcav.h
+    combine.h
 
-    ld-process-cav - CAV disc processing for ld-decode
-    Copyright (C) 2018 Simon Inns
+    ld-combine - Combine TBC files
+    Copyright (C) 2019 Simon Inns
 
     This file is part of ld-decode-tools.
 
-    ld-process-cav is free software: you can redistribute it and/or
+    ld-combine is free software: you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
     published by the Free Software Foundation, either version 3 of the
     License, or (at your option) any later version.
@@ -22,37 +22,31 @@
 
 ************************************************************************/
 
-#ifndef PROCESSCAV_H
-#define PROCESSCAV_H
+#ifndef COMBINE_H
+#define COMBINE_H
 
 #include <QObject>
-#include <algorithm>
-#include <QVector>
 
 #include "sourcevideo.h"
 #include "lddecodemetadata.h"
 
-class ProcessCav : public QObject
+class Combine : public QObject
 {
     Q_OBJECT
 public:
-    explicit ProcessCav(QObject *parent = nullptr);
+    explicit Combine(QObject *parent = nullptr);
 
-    bool process(QString inputFileName, QString outputFileName, qint32 firstFrameNumber);
+    bool process(QString primaryFilename, QString secondaryFilename, QString outputFilename);
 
 signals:
 
 public slots:
 
 private:
-    typedef struct {
-        qint32 frameNumber;
-        qint32 seqFrameNumber;
-        qint32 firstField;
-        qint32 secondField;
-        bool stopCode;
-        bool fakeFrame;
-    } frame;
+    LdDecodeMetaData primaryLdDecodeMetaData;
+    LdDecodeMetaData::VideoParameters primaryVideoParameters;
+    LdDecodeMetaData secondaryLdDecodeMetaData;
+    LdDecodeMetaData::VideoParameters secondaryVideoParameters;
 };
 
-#endif // PROCESSCAV_H
+#endif // COMBINE_H

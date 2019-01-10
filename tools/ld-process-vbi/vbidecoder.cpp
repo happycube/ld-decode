@@ -311,8 +311,7 @@ LdDecodeMetaData::Vbi VbiDecoder::translateVbi(qint32 vbi16, qint32 vbi17, qint3
         quint32 x4 = (statusCode & 0x0000F0) >> 4;
         quint32 x5 = (statusCode & 0x00000F);
 
-        quint32 x4Check = hammingCode(x4, x5);
-        if (x4 == x4Check) {
+        if (parity(x4, x5)) {
             vbi.parity = true;
             qDebug() << "VbiDecoder::translateVbi(): VBI Programme status parity check passed";
         } else {
@@ -501,7 +500,7 @@ LdDecodeMetaData::Vbi VbiDecoder::translateVbi(qint32 vbi16, qint32 vbi17, qint3
         // (giving 16 possible audio status results)
         quint32 audioStatus = 0;
         if ((x4 & 0x08) == 0x08) audioStatus += 8; // X41 X42 X43 X44
-        if ((x4 & 0x04) == 0x01) audioStatus += 4;
+        if ((x4 & 0x04) == 0x04) audioStatus += 4;
         if ((x4 & 0x02) == 0x02) audioStatus += 2;
         if ((x4 & 0x01) == 0x01) audioStatus += 1;
         qDebug() << "VbiDecoder::translateVbi(): VBI (Am2) Programme status code - audio status is" << audioStatus;
@@ -645,50 +644,42 @@ LdDecodeMetaData::Vbi VbiDecoder::translateVbi(qint32 vbi16, qint32 vbi17, qint3
     return vbi;
 }
 
-// Private method to verifiy hamming code
-quint32 VbiDecoder::hammingCode(quint32 x4, quint32 x5)
+// Private method to verifiy parity
+bool VbiDecoder::parity(quint32 x4, quint32 x5)
 {
-    // Hamming code parity check and correction
+    // X51 is the parity with X41, X42 and X44
+    // X52 is the parity with X41, X43 and X44
+    // X53 is the parity with X42, X43 and X44
 
-    // X4 is a1, a2, a3, a4
-    // X5 is c1, c2, c3
-    // U = a1, a2, a3, a4, c1, c2, c3
-    quint32 u[7];
+    // Get the parity bits from X5
+    qint32 x51, x52, x53;
+    if ((x5 & 0x8) == 0x8) x51 = 1; else x51 = 0;
+    if ((x5 & 0x4) == 0x4) x52 = 1; else x52 = 0;
+    if ((x5 & 0x2) == 0x2) x53 = 1; else x53 = 0;
 
-    if ((x4 & 0x8) == 0x8) u[6] = 1; else u[6] = 0;
-    if ((x4 & 0x4) == 0x4) u[5] = 1; else u[5] = 0;
-    if ((x4 & 0x2) == 0x2) u[4] = 1; else u[4] = 0;
-    if ((x4 & 0x1) == 0x1) u[3] = 1; else u[3] = 0;
-    if ((x5 & 0x8) == 0x8) u[2] = 1; else u[2] = 0;
-    if ((x5 & 0x4) == 0x4) u[1] = 1; else u[1] = 0;
-    if ((x5 & 0x2) == 0x2) u[0] = 1; else u[0] = 0;
+    // Get the data bits from X4
+    qint32 x41, x42, x43, x44;
+    if ((x4 & 0x8) == 0x8) x41 = 1; else x41 = 0;
+    if ((x4 & 0x4) == 0x4) x42 = 1; else x42 = 0;
+    if ((x4 & 0x2) == 0x2) x43 = 1; else x43 = 0;
+    if ((x4 & 0x1) == 0x1) x44 = 1; else x44 = 0;
 
-    quint32 c, c1, c2, c3;
-    c1 = u[6] ^ u[4] ^ u[2] ^ u[0];
-    c2 = u[5] ^ u[4] ^ u[1] ^ u[0];
-    c3 = u[3] ^ u[2] ^ u[1] ^ u[0];
+    // Count the data bits according to the IEC specification
+    qint32 x51count = x41 + x42 + x44;
+    qint32 x52count = x41 + x43 + x44;
+    qint32 x53count = x42 + x43 + x44;
 
-    c = c3 * 4 + c2 * 2 + c1;
+    // Check if the parity is correct
+    bool x51p = false;
+    bool x52p = false;
+    bool x53p = false;
 
-    if (c == 0) {
-        // Check successful
-        return x4;
-    } else {
-        // Check unsuccessful
+    if ((((x51count % 2) == 0) && (x51 == 0)) || (((x51count % 2) != 0) && (x51 != 0))) x51p = true;
+    if ((((x52count % 2) == 0) && (x51 == 0)) || (((x52count % 2) != 0) && (x52 != 0))) x52p = true;
+    if ((((x53count % 2) == 0) && (x51 == 0)) || (((x53count % 2) != 0) && (x53 != 0))) x53p = true;
 
-        // Correct the bit
-        if(u[7 - c] == 0) u[7 - c] = 1;
-        else u[7 - c] = 0;
-
-        quint32 x4Corrected = 0;
-        if (u[6] == 1) x4Corrected += 8;
-        if (u[5] == 1) x4Corrected += 4;
-        if (u[4] == 1) x4Corrected += 2;
-        if (u[3] == 1) x4Corrected += 1;
-
-        qDebug() << "VbiDecoder::hammingCode():" << x4 << "corrected to" << x4Corrected << "due to error in bit" << c;
-        return x4Corrected;
-    }
+    if (x51p && x52p && x53p) return true;
+    return false;
 }
 
 // Private method to get a single scanline of greyscale data
