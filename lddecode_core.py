@@ -792,10 +792,11 @@ class Field:
         
         return None
 
-    def __init__(self, rf, rawdecode, start, audio_offset = 0, keepraw = True):
+    def __init__(self, rf, rawdata, rawdecode, start, audio_offset = 0, keepraw = True):
         if rawdecode is None:
             return None
         
+        self.rawdata = rawdata
         self.data = rawdecode
         self.rf = rf
         self.start = start
@@ -1231,7 +1232,7 @@ class LDdecode:
             print("Failed to read data")
             return None, None
         
-        f = self.FieldClass(self.rf, rawdecode, 0, audio_offset = self.audio_offset)
+        f = self.FieldClass(self.rf, indata, rawdecode, 0, audio_offset = self.audio_offset)
         
         self.curfield = f
 
@@ -1309,8 +1310,8 @@ class LDdecode:
                 self.clvFrameNum = ((l >> 4) & 0xf) * 10
                 self.clvFrameNum += (l & 0xf)
 
-                if self.clvMinutes is not None:
-                    return (((self.clvMinutes * 60) + self.clvSeconds) * self.clvfps) + self.clvFrameNum
+            if self.clvMinutes is not None and self.clvSeconds is not None: # newer CLV
+                return (((self.clvMinutes * 60) + self.clvSeconds) * self.clvfps) + self.clvFrameNum
 
         return None #seeking won't work w/minutes only
             
