@@ -1371,7 +1371,7 @@ class LDdecode:
             rawloc = np.floor((self.readloc / self.bytes_per_field) / 2)
             if f.isCLV and self.frameNumber is not None:
                 print("file frame %d CLV timecode %d:%.2d.%.2d frame %d" % (rawloc, self.clvMinutes, self.clvSeconds, self.clvFrameNum, self.frameNumber))
-            elif f.isCLV: # early CLV
+            elif f.isCLV and self.clvMinutes is not None: # early CLV
                 self.earlyCLV = True
                 print("file frame %d early-CLV minute %d" % (rawloc, self.clvMinutes))
             elif self.frameNumber:
