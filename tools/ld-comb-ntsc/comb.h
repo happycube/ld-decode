@@ -57,6 +57,7 @@ public:
         bool colorlpf_hq;
         bool opticalflow;
         qint32 filterDepth;
+        bool whitePoint100;
 
         qint32 fieldWidth;
         qint32 fieldHeight;

@@ -128,6 +128,11 @@ int main(int argc, char *argv[])
                                        QCoreApplication::translate("main", "Output in black and white"));
     parser.addOption(setBwModeOption);
 
+    // Option to set the white point to 100% (rather than 75%)
+    QCommandLineOption setMaxWhitePoint(QStringList() << "w" << "white",
+                                       QCoreApplication::translate("main", "Use 100% white-point (default 75%)"));
+    parser.addOption(setMaxWhitePoint);
+
     // Option to set the no adaptive 2d flag (-n)
     QCommandLineOption noAdaptive2dOption(QStringList() << "n" << "noadaptive2d",
                                        QCoreApplication::translate("main", "Do not use adaptive 2D processing (for 3D filter depth)"));
@@ -151,6 +156,8 @@ int main(int argc, char *argv[])
     showDebug = parser.isSet(showDebugOption);
     bool reverse = parser.isSet(setReverseOption);
     bool blackAndWhite = parser.isSet(setBwModeOption);
+    bool whitePoint = parser.isSet(setMaxWhitePoint);
+
     bool adaptive2d = true;
     if (parser.isSet(noAdaptive2dOption)) adaptive2d = false;
     bool opticalFlow = true;
@@ -212,7 +219,7 @@ int main(int argc, char *argv[])
     // Process the input file
     ntscFilter.process(inputFileName, outputFileName,
                        startFrame, length, reverse,
-                       filterDepth, blackAndWhite, adaptive2d, opticalFlow);
+                       filterDepth, blackAndWhite, adaptive2d, opticalFlow, whitePoint);
 
     // Quit with success
     return 0;

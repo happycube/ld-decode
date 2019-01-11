@@ -33,7 +33,7 @@ NtscFilter::NtscFilter(QObject *parent) : QObject(parent)
 bool NtscFilter::process(QString inputFileName, QString outputFileName,
                          qint32 startFrame, qint32 length, bool reverse,
                          qint32 filterDepth, bool blackAndWhite,
-                         bool adaptive2d, bool opticalFlow)
+                         bool adaptive2d, bool opticalFlow, bool whitePoint)
 {
     // Open the source video metadata
     if (!ldDecodeMetaData.read(inputFileName + ".json")) {
@@ -125,6 +125,7 @@ bool NtscFilter::process(QString inputFileName, QString outputFileName,
     configuration.blackAndWhite = blackAndWhite;
     configuration.adaptive2d = adaptive2d;
     configuration.opticalflow = opticalFlow;
+    configuration.whitePoint100 = whitePoint;
 
     // Set the input buffer dimensions configuration
     configuration.fieldWidth = videoParameters.fieldWidth;

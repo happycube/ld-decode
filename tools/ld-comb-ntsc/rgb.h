@@ -35,13 +35,14 @@ class RGB
 {
 public:
     double r, g, b;
-    RGB(double whiteIreParam, double blackIreParam);
+    RGB(double whiteIreParam, double blackIreParam, bool whitePoint100Param);
 
     void conv(YIQ _y, qreal colourBurstMedian);
 
 private:
     double blackIreLevel;
     double whiteIreLevel;
+    bool whitePoint100;
 
     double clamp(double v, double low, double high);
     double scaleY(double level);

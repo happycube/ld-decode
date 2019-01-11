@@ -41,6 +41,7 @@ Comb::Comb() {
     configuration.colorlpf_hq = true;
     configuration.opticalflow = true;
     configuration.filterDepth = 2;
+    configuration.whitePoint100 = false;
 
     // These are the overall dimensions of the input frame
     configuration.fieldWidth = 910;
@@ -556,7 +557,7 @@ QByteArray Comb::yiqToRgbFrame(qint32 currentFrameBuffer, QVector<yiqLine_t> yiq
 
         // Fill the output frame with the RGB values
         for (qint32 h = configuration.activeVideoStart; h < configuration.activeVideoEnd; h++) {
-            RGB r(configuration.whiteIre, configuration.blackIre);
+            RGB r(configuration.whiteIre, configuration.blackIre, configuration.whitePoint100);
             YIQ yiq = yiqBuffer[lineNumber].pixel[h];
 
             cline = lineNumber;
