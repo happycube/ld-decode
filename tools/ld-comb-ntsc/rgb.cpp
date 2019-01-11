@@ -25,11 +25,12 @@
 
 #include "rgb.h"
 
-RGB::RGB(double whiteIreParam, double blackIreParam, bool whitePoint100Param)
+RGB::RGB(double whiteIreParam, double blackIreParam, bool whitePoint100Param, bool blackAndWhiteParam)
 {
     blackIreLevel = blackIreParam; // 0 or 7.5 IRE 16-bit level
     whiteIreLevel = whiteIreParam; // 100 IRE 16-bit level
     whitePoint100 = whitePoint100Param; // true = using 100% white point, false = 75%
+    blackAndWhite = blackAndWhiteParam; // true = output in black and white only
 }
 
 void RGB::conv(YIQ _y, qreal colourBurstMedian)
@@ -50,6 +51,12 @@ void RGB::conv(YIQ _y, qreal colourBurstMedian)
 
     i *= saturationCompensation;
     q *= saturationCompensation;
+
+    if (blackAndWhite) {
+        // Remove the colour components
+        i = 0;
+        q = 0;
+    }
 
     // YIQ to RGB colour-space conversion (from page 18
     // of Video Demystified, 5th edition)
