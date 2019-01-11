@@ -454,10 +454,10 @@ void Comb::splitIQ(qint32 currentFrameBuffer)
             if (!invertphase) cavg = -cavg;
 
             switch (phase) {
-                case 0: si = cavg; break;
-                case 1: sq = -cavg; break;
-                case 2: si = -cavg; break;
-                case 3: sq = cavg; break;
+                case 0: sq = cavg; break;
+                case 1: si = -cavg; break;
+                case 2: sq = -cavg; break;
+                case 3: si = cavg; break;
                 default: break;
             }
 
@@ -671,10 +671,10 @@ void Comb::adjustY(qint32 currentFrameBuffer, QVector<yiqLine_t> &yiqBuffer)
             YIQ y = yiqBuffer[lineNumber].pixel[h + 2];
 
             switch (phase) {
-                case 0: comp = y.i; break;
-                case 1: comp = -y.q; break;
-                case 2: comp = -y.i; break;
-                case 3: comp = y.q; break;
+                case 0: comp = y.q; break;
+                case 1: comp = -y.i; break;
+                case 2: comp = -y.q; break;
+                case 3: comp = y.i; break;
                 default: break;
             }
 

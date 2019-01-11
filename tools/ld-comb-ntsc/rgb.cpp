@@ -37,12 +37,16 @@ void RGB::conv(YIQ _y)
     YIQ t;
 
     double y = u16_to_ire(_y.y);
-    double q = +(_y.i) / ireScale;
-    double i = +(_y.q) / ireScale;
+    double q = +(_y.q) / ireScale;
+    double i = +(_y.i) / ireScale;
 
+    // YIQ to RGB colour-space conversion (from page 18
+    // of Video Demystified, 5th edition)
+    //
+    // For RGB 0-255: Y 0-255. I 0- +-152. Q 0- +-134
     r = y + (0.956 * i) + (0.621 * q);
     g = y - (0.272 * i) - (0.647 * q);
-    b = y - (1.106 * i) + (1.703 * q);
+    b = y - (1.107 * i) + (1.704 * q);
 
     r = clamp(r * whiteIreLevel, 0, 65535);
     g = clamp(g * whiteIreLevel, 0, 65535);
