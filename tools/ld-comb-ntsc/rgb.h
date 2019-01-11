@@ -37,16 +37,14 @@ public:
     double r, g, b;
     RGB(double whiteIreParam, double blackIreParam);
 
-    void conv(YIQ _y);
+    void conv(YIQ _y, qreal colourBurstMedian);
 
 private:
     double blackIreLevel;
-    double ireScale;
     double whiteIreLevel;
-    double irebase;
 
     double clamp(double v, double low, double high);
-    double u16_to_ire(double level);
+    double scaleY(double level);
 };
 
 #endif // RGB_H

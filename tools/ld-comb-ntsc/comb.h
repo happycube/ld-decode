@@ -100,7 +100,6 @@ private:
     qreal nr_y; // Used by doYNR method
 
     // Internal globals
-    qreal aburstlev; // average color burst (used by yiqToRgbFrame method to track average between calls)
     qint32 cline = -1; // used by yiqToRgbFrame method
 
     // Input frame buffer definitions

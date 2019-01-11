@@ -104,9 +104,9 @@ QByteArray Comb::process(QByteArray firstFieldInputBuffer, QByteArray secondFiel
         fieldLine++;
     }
 
-    // Set the frames burst median (IRE)
-    // Note: the /2 seems to make the colour correct again... not sure why...
-    frameBuffer[0].burstLevel = burstMedianIre / 2;
+    // Set the frames burst median (IRE) - This is used by yiqToRgbFrame to tweak the colour
+    // saturation levels (compensating for MTF issues)
+    frameBuffer[0].burstLevel = burstMedianIre;
 
     // Set the phase IDs for the frame
     frameBuffer[0].firstFieldPhaseID = firstFieldPhaseID;
@@ -164,7 +164,6 @@ void Comb::postConfigurationTasks(void)
     nr_y = 1.0;
     nr_c *= irescale; // Always 0?
     nr_y *= irescale;
-    aburstlev = -1;
 
     // Calculate some 2D/3D processing configuration parameters
     p_3dcore = -1;
@@ -555,20 +554,13 @@ QByteArray Comb::yiqToRgbFrame(qint32 currentFrameBuffer, QVector<yiqLine_t> yiq
         // it's really not important)
         qint32 o = (configuration.activeVideoStart * 3) + 6;
 
-        if (frameBuffer[currentFrameBuffer].burstLevel > 3) {
-            if (aburstlev < 0) aburstlev = frameBuffer[currentFrameBuffer].burstLevel;
-            aburstlev = (aburstlev * .99) + (frameBuffer[currentFrameBuffer].burstLevel * .01); // Magic numbers...
-        }
-
+        // Fill the output frame with the RGB values
         for (qint32 h = configuration.activeVideoStart; h < configuration.activeVideoEnd; h++) {
             RGB r(configuration.whiteIre, configuration.blackIre);
             YIQ yiq = yiqBuffer[lineNumber].pixel[h];
 
-            yiq.i *= (10 / aburstlev);
-            yiq.q *= (10 / aburstlev);
-
             cline = lineNumber;
-            r.conv(yiq);
+            r.conv(yiq, frameBuffer[currentFrameBuffer].burstLevel);
 
             line_output[o++] = static_cast<quint16>(r.r);
             line_output[o++] = static_cast<quint16>(r.g);
