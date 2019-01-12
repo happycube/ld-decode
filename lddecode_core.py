@@ -1041,7 +1041,7 @@ class FieldNTSC(Field):
 
         zc_bursts = {}
         # Counter for which lines have + polarity.  TRACKS 1-BASED LINE #'s
-        phase_votes = {'odd': 0, 'even': 0, 'dodgy': 0}
+        bursts = {'odd': [], 'even': []}
 
         for l in range(1, 266):
             zc_bursts[l], burstlevel[l] = self.compute_line_bursts(linelocs, l)
@@ -1049,20 +1049,29 @@ class FieldNTSC(Field):
             if (len(zc_bursts[l][True]) == 0) or (len(zc_bursts[l][False]) == 0):
                 continue
 
-            amed_falling = np.median(np.abs(zc_bursts[l][False]))
-            amed_rising = np.median(np.abs(zc_bursts[l][True]))
-            edge = False if amed_falling < amed_rising else True
+            if ((l + 1) % 2):
+                bursts['odd'].append(zc_bursts[l][True])
+                bursts['even'].append(zc_bursts[l][False])
+            else:
+                bursts['even'].append(zc_bursts[l][True])
+                bursts['odd'].append(zc_bursts[l][False])
 
-            if np.abs(amed_falling - amed_rising) < .05:
-                badlines[l] = True
-                phase_votes['dodgy'] += 1
-            elif np.abs(amed_falling - amed_rising) > .1 and edge:
-                if not (l % 2):
-                    phase_votes['odd'] += 1
-                else:
-                    phase_votes['even'] += 1
+        bursts_arr = {}
+        bursts_arr[True] = np.concatenate(bursts['even'])
+        bursts_arr[False] = np.concatenate(bursts['odd'])
 
-        return zc_bursts, phase_votes, burstlevel, badlines
+        #print(np.median(bursts_arr[True]), np.median(bursts_arr[False]))
+
+        amed = {}
+        amed[True] = np.abs(np.median(bursts_arr[True]))
+        amed[False] = np.abs(np.median(bursts_arr[False]))
+
+        closer = amed[True] < amed[False]
+
+        valid = amed[closer] + np.std(bursts_arr[closer]) < amed[not closer]
+        valid = valid and (np.abs(amed[True] - amed[False]) > .05)
+
+        return valid, zc_bursts, closer, burstlevel, badlines
 
     def refine_linelocs_burst(self, linelocs = None):
         if linelocs is None:
@@ -1071,16 +1080,17 @@ class FieldNTSC(Field):
         linelocs_adj = linelocs.copy()
         burstlevel = np.zeros_like(linelocs_adj, dtype=np.float32)
 
-        zc_bursts, phase_votes, burstlevel, badlines = self.compute_burst_offsets(linelocs_adj)
+        valid, zc_bursts, field14, burstlevel, badlines = self.compute_burst_offsets(linelocs_adj)
 
-        if phase_votes['dodgy'] > 25 or (phase_votes['even'] == phase_votes['odd']):
+        if not valid or self.burst90 == True:
             #print("WARNING: applying 90 degree line adjustment for burst processing")
             #print(phase_votes)
+            self.burst90 = True
             linelocs_adj = [l + (self.rf.linelen * (.25 / 227.5)) for l in linelocs_adj]
-            zc_bursts, phase_votes, burstlevel, badlines = self.compute_burst_offsets(linelocs_adj)
+            valid, zc_bursts, field14, burstlevel, badlines = self.compute_burst_offsets(linelocs_adj)
             #print(phase_votes)
-
-        field14 = phase_votes['even'] > phase_votes['odd']
+        else:
+            self.burst90 = False
 
         for l in range(9, 266):
             edge = not ((field14 and not (l % 2)) or (not field14 and (l % 2)))
@@ -1129,6 +1139,7 @@ class FieldNTSC(Field):
 
     def __init__(self, *args, **kwargs):
         self.burstlevel = None
+        self.burst90 = False
 
         # HE010
         self.colorphase = 90+1.5 # colorphase
