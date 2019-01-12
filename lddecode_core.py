@@ -1084,15 +1084,23 @@ class FieldNTSC(Field):
 
         if not valid or self.burst90 == True:
             #print("WARNING: applying 90 degree line adjustment for burst processing")
-            #print(phase_votes)
             self.burst90 = True
             linelocs_adj = [l + (self.rf.linelen * (.25 / 227.5)) for l in linelocs_adj]
             valid, zc_bursts, field14, burstlevel, badlines = self.compute_burst_offsets(linelocs_adj)
-            #print(phase_votes)
         else:
             self.burst90 = False
 
-        for l in range(9, 266):
+        burstlevel_median = np.median(np.abs(burstlevel))
+
+        skipped = []
+        adjs = []
+
+        for l in range(1, 266):
+            if l < 8 and (np.abs(burstlevel[l]) < (burstlevel_median / 2)):
+                # it's only *advised* that disks have burst in the VSYNC area...
+                skipped.append(l)
+                continue
+
             edge = not ((field14 and not (l % 2)) or (not field14 and (l % 2)))
 
             if edge:
@@ -1101,9 +1109,16 @@ class FieldNTSC(Field):
             if np.isnan(linelocs_adj[l]) or len(zc_bursts[l][edge]) == 0 or self.linebad[l] or badlines[l]:
                 #print('err', l, linelocs_adj[l])
                 self.linebad[l] = True
+                skipped.append(l)
             else:
                 lfreq = self.rf.freq * (((self.linelocs2[l+1] - self.linelocs2[l-1]) / 2) / self.rf.linelen)
-                linelocs_adj[l] -= np.median(zc_bursts[l][edge]) * lfreq * (1 / self.rf.SysParams['fsc_mhz'])
+                adjs.append(-(np.median(zc_bursts[l][edge]) * lfreq * (1 / self.rf.SysParams['fsc_mhz'])))
+                linelocs_adj[l] += adjs[-1]
+
+        adjs_median = np.median(adjs)
+        for l in skipped:
+            #print(l, adjs_median)
+            linelocs_adj[l] += adjs_median
 
         self.field14 = field14
 
@@ -1336,7 +1351,7 @@ class LDdecode:
               'syncConf': f.sync_confidence, 
               'seqNo': len(self.fieldinfo) + 1, 
               'audioSamples': int(len(audio) / 2),
-              #'diskLoc': np.round((self.fieldloc / self.bytes_per_field) * 10) / 10,
+#              'diskLoc': np.round((self.fieldloc / self.bytes_per_field) * 10) / 10,
               'medianBurstIRE': f.burstmedian}
 
         # This is a bitmap, not a counter
