@@ -902,7 +902,69 @@ LdDecodeMetaData::VbiDiscTypes LdDecodeMetaData::getDiscTypeFromVbi(void)
     return LdDecodeMetaData::VbiDiscTypes::clv;
 }
 
+// Method to convert a CLV time code into an equivalent frame number (to make
+// processing the timecodes easier)
+qint32 LdDecodeMetaData::convertClvTimecodeToFrameNumber(LdDecodeMetaData::ClvTimecode clvTimeCode)
+{
+    // Calculate the frame number
+    qint32 frameNumber = -1;
 
+    if (clvTimeCode.hours != -1) {
+        if (metaData.videoParameters.isSourcePal) frameNumber += clvTimeCode.hours * 3600 * 25;
+        else frameNumber += clvTimeCode.hours * 3600 * 30;
+    }
 
+    if (clvTimeCode.minutes != -1) {
+        if (metaData.videoParameters.isSourcePal) frameNumber += clvTimeCode.minutes * 60 * 25;
+        else frameNumber += clvTimeCode.minutes * 60 * 30;
+    }
 
+    if (clvTimeCode.seconds != -1) {
+        if (metaData.videoParameters.isSourcePal) frameNumber += clvTimeCode.seconds * 25;
+        else frameNumber += clvTimeCode.seconds * 30;
+    }
+
+    if (clvTimeCode.pictureNumber != -1) {
+        frameNumber += clvTimeCode.pictureNumber;
+    }
+
+    return frameNumber;
+}
+
+// Method to convert a frame number into an equivalent CLV timecode
+LdDecodeMetaData::ClvTimecode LdDecodeMetaData::convertFrameNumberToClvTimecode(qint32 frameNumber)
+{
+    ClvTimecode clvTimecode;
+
+    clvTimecode.hours = 0;
+    clvTimecode.minutes = 0;
+    clvTimecode.seconds = 0;
+    clvTimecode.pictureNumber = 0;
+
+    if (metaData.videoParameters.isSourcePal) {
+        clvTimecode.hours = frameNumber / (3600 * 25);
+        frameNumber -= clvTimecode.hours * (3600 * 25);
+
+        clvTimecode.minutes = frameNumber / (60 * 25);
+        frameNumber -= clvTimecode.minutes * (60 * 25);
+
+        clvTimecode.seconds = frameNumber / 25;
+        frameNumber -= clvTimecode.seconds * 25;
+
+        clvTimecode.pictureNumber = frameNumber;
+    } else {
+        clvTimecode.hours = frameNumber / (3600 * 30);
+        frameNumber -= clvTimecode.hours * (3600 * 30);
+
+        clvTimecode.minutes = frameNumber / (60 * 30);
+        frameNumber -= clvTimecode.minutes * (60 * 30);
+
+        clvTimecode.seconds = frameNumber / 30;
+        frameNumber -= clvTimecode.seconds * 30;
+
+        clvTimecode.pictureNumber = frameNumber;
+    }
+
+    return clvTimecode;
+}
 

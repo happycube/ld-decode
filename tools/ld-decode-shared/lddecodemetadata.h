@@ -167,6 +167,14 @@ public:
         QVector<Field> fields;
     };
 
+    // CLV timecode (used by frame number conversion methods)
+    struct ClvTimecode {
+        qint32 hours;
+        qint32 minutes;
+        qint32 seconds;
+        qint32 pictureNumber;
+    };
+
     explicit LdDecodeMetaData(QObject *parent = nullptr);
 
     bool read(QString fileName);
@@ -191,6 +199,9 @@ public:
     bool getIsFirstFieldFirst(void);
 
     VbiDiscTypes getDiscTypeFromVbi(void);
+
+    qint32 convertClvTimecodeToFrameNumber(LdDecodeMetaData::ClvTimecode clvTimeCode);
+    LdDecodeMetaData::ClvTimecode convertFrameNumberToClvTimecode(qint32 clvFrameNumber);
 
 signals:
 

@@ -51,7 +51,6 @@ void VbiDialog::updateVbi(LdDecodeMetaData::Field firstField, LdDecodeMetaData::
         ui->pictureStopCodeLabel->setText("No metadata");
         ui->chapterNumberLabel->setText("No metadata");
         ui->clvTimeCodeLabel->setText("No metadata");
-        ui->clvPictureNumberLabel->setText("No metadata");
 
         ui->cxLabel->setText("No metadata");
         ui->discSizeLabel->setText("No metadata");
@@ -89,7 +88,7 @@ void VbiDialog::updateVbi(LdDecodeMetaData::Field firstField, LdDecodeMetaData::
     if (firstField.vbi.leadOut || secondField.vbi.leadOut) ui->leadOutLabel->setText("Yes");
     else ui->leadOutLabel->setText("No");
 
-    if (firstField.vbi.userCode.isEmpty() && secondField.vbi.userCode.isEmpty()) ui->userCodeLabel->setText("Not present");
+    if (firstField.vbi.userCode.isEmpty() && secondField.vbi.userCode.isEmpty()) ui->userCodeLabel->setText("None");
     else {
         if (!firstField.vbi.userCode.isEmpty()) ui->userCodeLabel->setText(firstField.vbi.userCode);
         else ui->userCodeLabel->setText(secondField.vbi.userCode);
@@ -106,19 +105,28 @@ void VbiDialog::updateVbi(LdDecodeMetaData::Field firstField, LdDecodeMetaData::
     else if (secondField.vbi.chNo != -1) ui->chapterNumberLabel->setText(QString::number(secondField.vbi.chNo));
     else ui->chapterNumberLabel->setText("Unknown");
 
-    if (firstField.vbi.clvHr != -1 && firstField.vbi.clvMin != -1) {
-        ui->clvTimeCodeLabel->setText(QString::number(firstField.vbi.clvHr) + ":" + QString::number(firstField.vbi.clvMin));
-    } else if (secondField.vbi.clvHr != -1 && secondField.vbi.clvMin != -1) {
-        ui->clvTimeCodeLabel->setText(QString::number(secondField.vbi.clvHr) + ":" + QString::number(secondField.vbi.clvMin));
-    } else ui->clvTimeCodeLabel->setText("Unknown");
+    QString clvTimecodeString;
+    if (firstField.vbi.clvHr != -1 || firstField.vbi.clvMin != -1 || firstField.vbi.clvSec != -1 || firstField.vbi.clvPicNo != -1 ||
+            secondField.vbi.clvHr != -1 || secondField.vbi.clvMin != -1 || secondField.vbi.clvSec != -1 || secondField.vbi.clvPicNo != -1 ) {
+        if (firstField.vbi.clvHr != -1 && firstField.vbi.clvMin != -1) {
+            clvTimecodeString = QString("%1").arg(firstField.vbi.clvHr, 2, 10, QChar('0')) + ":" + QString("%1").arg(firstField.vbi.clvMin, 2, 10, QChar('0')) + ":";
+        } else if (secondField.vbi.clvHr != -1 && secondField.vbi.clvMin != -1) {
+            clvTimecodeString = QString("%1").arg(secondField.vbi.clvHr, 2, 10, QChar('0')) + ":" + QString("%1").arg(secondField.vbi.clvMin, 2, 10, QChar('0')) + ":";
+        } else clvTimecodeString = "xx:xx:";
 
-    if (firstField.vbi.clvSec != -1 && firstField.vbi.clvPicNo != -1) {
-        ui->clvPictureNumberLabel->setText(QString::number(firstField.vbi.clvSec) + "." + QString::number(firstField.vbi.clvPicNo));
-    } else if (secondField.vbi.clvSec != -1 && secondField.vbi.clvPicNo != -1) {
-        ui->clvPictureNumberLabel->setText(QString::number(secondField.vbi.clvSec) + "." + QString::number(secondField.vbi.clvPicNo));
-    } else {
-        ui->clvPictureNumberLabel->setText("Unknown");
-    }
+        if (firstField.vbi.clvSec != -1 && firstField.vbi.clvPicNo != -1) {
+            clvTimecodeString += QString("%1").arg(firstField.vbi.clvSec, 2, 10, QChar('0')) + "." + QString("%1").arg(firstField.vbi.clvPicNo, 2, 10, QChar('0'));
+        } else if (secondField.vbi.clvSec != -1 && secondField.vbi.clvPicNo != -1) {
+            clvTimecodeString += QString("%1").arg(secondField.vbi.clvSec, 2, 10, QChar('0')) + "." + QString("%1").arg(secondField.vbi.clvPicNo, 2, 10, QChar('0'));
+        } else clvTimecodeString += "xx.xx";
+    } else if (firstField.vbi.clvHr != -1 || firstField.vbi.clvMin != -1 || secondField.vbi.clvHr != -1 || secondField.vbi.clvMin != -1) {
+        if (firstField.vbi.clvHr != -1 && firstField.vbi.clvMin != -1) {
+            clvTimecodeString = QString("%1").arg(firstField.vbi.clvHr, 2, 10, QChar('0')) + ":" + QString("%1").arg(firstField.vbi.clvMin, 2, 10, QChar('0'));
+        } else if (secondField.vbi.clvHr != -1 && secondField.vbi.clvMin != -1) {
+            clvTimecodeString = QString("%1").arg(secondField.vbi.clvHr, 2, 10, QChar('0')) + ":" + QString("%1").arg(secondField.vbi.clvMin, 2, 10, QChar('0'));
+        } else clvTimecodeString = "xx:xx";
+    } else clvTimecodeString = "Unknown";
+    ui->clvTimeCodeLabel->setText(clvTimecodeString);
 
     // Display original programme status
     if (firstField.vbi.cx || secondField.vbi.cx) ui->cxLabel->setText("On");

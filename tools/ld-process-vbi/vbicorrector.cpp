@@ -312,89 +312,39 @@ qint32 VbiCorrector::getClvFrameNumber(qint32 frameSeqNumber)
     LdDecodeMetaData::Field firstFieldData = ldDecodeMetaData.getField(firstField);
     LdDecodeMetaData::Field secondFieldData = ldDecodeMetaData.getField(secondField);
 
-    qint32 hours = 0;
-    qint32 minutes = 0;
-    qint32 seconds = 0;
-    qint32 pictureNumber = 0;
+    LdDecodeMetaData::ClvTimecode clvTimecode;
+    clvTimecode.hours = 0;
+    clvTimecode.minutes = 0;
+    clvTimecode.seconds = 0;
+    clvTimecode.pictureNumber = 0;
 
     if (firstFieldData.vbi.inUse && firstFieldData.vbi.clvHr != -1) {
         // Get CLV data from the first field
-        hours = ldDecodeMetaData.getField(firstField).vbi.clvHr;
-        minutes = ldDecodeMetaData.getField(firstField).vbi.clvMin;
-        seconds = ldDecodeMetaData.getField(firstField).vbi.clvSec;
-        pictureNumber = ldDecodeMetaData.getField(firstField).vbi.clvPicNo;
+        clvTimecode.hours = ldDecodeMetaData.getField(firstField).vbi.clvHr;
+        clvTimecode.minutes = ldDecodeMetaData.getField(firstField).vbi.clvMin;
+        clvTimecode.seconds = ldDecodeMetaData.getField(firstField).vbi.clvSec;
+        clvTimecode.pictureNumber = ldDecodeMetaData.getField(firstField).vbi.clvPicNo;
     } else if (secondFieldData.vbi.inUse && secondFieldData.vbi.clvHr != -1) {
         // Got CLV data from the second field
-        hours = ldDecodeMetaData.getField(secondField).vbi.clvHr;
-        minutes = ldDecodeMetaData.getField(secondField).vbi.clvMin;
-        seconds = ldDecodeMetaData.getField(secondField).vbi.clvSec;
-        pictureNumber = ldDecodeMetaData.getField(secondField).vbi.clvPicNo;
+        clvTimecode.hours = ldDecodeMetaData.getField(secondField).vbi.clvHr;
+        clvTimecode.minutes = ldDecodeMetaData.getField(secondField).vbi.clvMin;
+        clvTimecode.seconds = ldDecodeMetaData.getField(secondField).vbi.clvSec;
+        clvTimecode.pictureNumber = ldDecodeMetaData.getField(secondField).vbi.clvPicNo;
     } else {
-        hours = -1;
-        minutes = -1;
-        seconds = -1;
-        pictureNumber = -1;
+        clvTimecode.hours = -1;
+        clvTimecode.minutes = -1;
+        clvTimecode.seconds = -1;
+        clvTimecode.pictureNumber = -1;
     }
 
     // Calculate the frame number
-    qint32 frameNumber = 0;
-    LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
-
-    if (hours != -1) {
-        if (videoParameters.isSourcePal) frameNumber += hours * 3600 * 25;
-        else frameNumber += hours * 3600 * 30;
-    }
-
-    if (minutes != -1) {
-        if (videoParameters.isSourcePal) frameNumber += minutes * 60 * 25;
-        else frameNumber += minutes * 60 * 30;
-    }
-
-    if (seconds != -1) {
-        if (videoParameters.isSourcePal) frameNumber += seconds * 25;
-        else frameNumber += seconds * 30;
-    }
-
-    if (pictureNumber != -1) {
-        frameNumber += pictureNumber;
-    }
-
-    return frameNumber;
+    return ldDecodeMetaData.convertClvTimecodeToFrameNumber(clvTimecode);
 }
 
 // Method to set the CLV tims code based on an equivalent frame number
 void VbiCorrector::setClvFrameNumber(qint32 frameSeqNumber, qint32 clvFrameNumber)
 {
-    qint32 hours = 0;
-    qint32 minutes = 0;
-    qint32 seconds = 0;
-    qint32 pictureNumber = 0;
-
-    LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
-
-    if (videoParameters.isSourcePal) {
-        hours = clvFrameNumber / (3600 * 25);
-        clvFrameNumber -= hours * (3600 * 25);
-
-        minutes = clvFrameNumber / (60 * 25);
-        clvFrameNumber -= minutes * (60 * 25);
-
-        seconds = clvFrameNumber / 25;
-        clvFrameNumber -= seconds * 25;
-
-        pictureNumber = clvFrameNumber;
-    } else {
-        hours = clvFrameNumber / (3600 * 30);
-        clvFrameNumber -= hours * (3600 * 30);
-
-        minutes = clvFrameNumber / (60 * 30);
-        clvFrameNumber -= minutes * (60 * 30);
-
-        seconds = clvFrameNumber / 30;
-        clvFrameNumber -= seconds * 30;
-
-        pictureNumber = clvFrameNumber;
-    }
+    LdDecodeMetaData::ClvTimecode clvTimecode = ldDecodeMetaData.convertFrameNumberToClvTimecode(clvFrameNumber);
 
     // Get the first and second field numbers for the frame
     qint32 firstField = ldDecodeMetaData.getFirstFieldNumber(frameSeqNumber);
@@ -406,29 +356,29 @@ void VbiCorrector::setClvFrameNumber(qint32 frameSeqNumber, qint32 clvFrameNumbe
 
     if (firstFieldData.vbi.inUse && firstFieldData.vbi.clvHr != -1) {
         // CLV timecode is in the first field
-        firstFieldData.vbi.clvHr = hours;
-        firstFieldData.vbi.clvMin = minutes;
-        firstFieldData.vbi.clvSec = seconds;
-        firstFieldData.vbi.clvPicNo = pictureNumber;
+        firstFieldData.vbi.clvHr = clvTimecode.hours;
+        firstFieldData.vbi.clvMin = clvTimecode.minutes;
+        firstFieldData.vbi.clvSec = clvTimecode.seconds;
+        firstFieldData.vbi.clvPicNo = clvTimecode.pictureNumber;
     } else if (secondFieldData.vbi.inUse && secondFieldData.vbi.clvHr != -1) {
         // CLV timecode is in the second field
-        secondFieldData.vbi.clvHr = hours;
-        secondFieldData.vbi.clvMin = minutes;
-        secondFieldData.vbi.clvSec = seconds;
-        secondFieldData.vbi.clvPicNo = pictureNumber;
+        secondFieldData.vbi.clvHr = clvTimecode.hours;
+        secondFieldData.vbi.clvMin = clvTimecode.minutes;
+        secondFieldData.vbi.clvSec = clvTimecode.seconds;
+        secondFieldData.vbi.clvPicNo = clvTimecode.pictureNumber;
     } else {
         // Couldn't get the CLV hour for the sequential frame number
         // So we'll use isFirstField to identify the most likely target field
         if (firstFieldData.isFirstField) {
-            firstFieldData.vbi.clvHr = hours;
-            firstFieldData.vbi.clvMin = minutes;
-            firstFieldData.vbi.clvSec = seconds;
-            firstFieldData.vbi.clvPicNo = pictureNumber;
+            firstFieldData.vbi.clvHr = clvTimecode.hours;
+            firstFieldData.vbi.clvMin = clvTimecode.minutes;
+            firstFieldData.vbi.clvSec = clvTimecode.seconds;
+            firstFieldData.vbi.clvPicNo = clvTimecode.pictureNumber;
         } else {
-            secondFieldData.vbi.clvHr = hours;
-            secondFieldData.vbi.clvMin = minutes;
-            secondFieldData.vbi.clvSec = seconds;
-            secondFieldData.vbi.clvPicNo = pictureNumber;
+            secondFieldData.vbi.clvHr = clvTimecode.hours;
+            secondFieldData.vbi.clvMin = clvTimecode.minutes;
+            secondFieldData.vbi.clvSec = clvTimecode.seconds;
+            secondFieldData.vbi.clvPicNo = clvTimecode.pictureNumber;
         }
     }
 
