@@ -128,9 +128,9 @@ int main(int argc, char *argv[])
                                        QCoreApplication::translate("main", "Output in black and white"));
     parser.addOption(setBwModeOption);
 
-    // Option to set the white point to 100% (rather than 75%)
+    // Option to set the white point to 75% (rather than 100%)
     QCommandLineOption setMaxWhitePoint(QStringList() << "w" << "white",
-                                       QCoreApplication::translate("main", "Use 100% white-point (default 75%)"));
+                                       QCoreApplication::translate("main", "Use 75% white-point (default 100%)"));
     parser.addOption(setMaxWhitePoint);
 
     // Option to set the no adaptive 2d flag (-n)

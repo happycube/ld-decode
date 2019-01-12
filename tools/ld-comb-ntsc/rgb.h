@@ -42,7 +42,7 @@ public:
 private:
     double blackIreLevel;
     double whiteIreLevel;
-    bool whitePoint100;
+    bool whitePoint75;
     bool blackAndWhite;
 
     double clamp(double v, double low, double high);

@@ -29,7 +29,7 @@ RGB::RGB(double whiteIreParam, double blackIreParam, bool whitePoint100Param, bo
 {
     blackIreLevel = blackIreParam; // 0 or 7.5 IRE 16-bit level
     whiteIreLevel = whiteIreParam; // 100 IRE 16-bit level
-    whitePoint100 = whitePoint100Param; // true = using 100% white point, false = 75%
+    whitePoint75 = whitePoint100Param; // false = using 100% white point, true = 75%
     blackAndWhite = blackAndWhiteParam; // true = output in black and white only
 }
 
@@ -47,7 +47,11 @@ void RGB::conv(YIQ _y, qreal colourBurstMedian)
     // Note: The colour burst median is the amplitude of the colour burst (divided
     // by two) measured by ld-decode.  Since the burst amplitude should be 40 IRE
     // this can be used to compensate the colour saturation loss due to MTF
-    qreal saturationCompensation = (20.0 / colourBurstMedian) * 2;
+    //
+    // Note: this calculations should be 20 / colourBurstMedian (meaning that the
+    // 'normal' colour burst median is 40 IRE (20 * 2).  At the moment this is
+    // over saturating, so we are using 28 IRE (14 * 2).
+    qreal saturationCompensation = (14.0 / colourBurstMedian) * 2;
 
     i *= saturationCompensation;
     q *= saturationCompensation;
@@ -88,7 +92,7 @@ double RGB::scaleY(double level)
 
     // NTSC uses a 75% white point; so here we scale the result by
     // 25% (making 100 IRE 25% over the maximum allowed white point)
-    if (!whitePoint100) result = (result/100) * 125;
+    if (whitePoint75) result = (result/100) * 125;
 
     // Now we clip the result back to the 16-bit range
     if (result < 0) result = 0;
