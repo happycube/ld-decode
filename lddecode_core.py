@@ -1175,6 +1175,8 @@ class LDdecode:
         self.infile = open(fname_in, 'rb')
         self.freader = freader
 
+        self.fields_written = 0
+
         self.blackIRE = 0
         
         self.outfile_video = open(fname_out + '.tbc', 'wb')
@@ -1367,6 +1369,7 @@ class LDdecode:
 
             if self.frameoutput == False:
                 self.outfile_video.write(picture)
+                self.fields_written += 1
 
             if audio is not None and self.outfile_audio is not None:
                 self.outfile_audio.write(audio)
@@ -1392,6 +1395,7 @@ class LDdecode:
 
             if self.frameoutput == True and squelch == False:
                 self.writeframe(self.firstfield_picture, picture)
+                self.fields_written += 2
 
             self.firstfield = None
             self.firstfield_picture = None

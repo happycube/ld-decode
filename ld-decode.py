@@ -88,7 +88,7 @@ def write_json(ldd, outname):
     
     os.rename(outname + '.tbc.json.tmp', outname + '.tbc.json')
 
-for i in range(0, req_frames * 2):
+while ldd.fields_written < (req_frames * 2):
     try:
         f = ldd.readfield()
     except Exception as err:
@@ -97,7 +97,9 @@ for i in range(0, req_frames * 2):
         write_json(ldd, outname)
         exit(1)
 
-    if i < 100 or ((i % 1000) == 0):
+#    print(ldd.fields_written)
+
+    if ldd.fields_written < 100 or ((ldd.fields_written % 500) == 0):
         #print('write json')
         write_json(ldd, outname)
         
