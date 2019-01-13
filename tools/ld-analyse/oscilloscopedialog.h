@@ -3,7 +3,7 @@
     oscilloscopedialog.cpp
 
     ld-analyse - TBC output analysis
-    Copyright (C) 2018 Simon Inns
+    Copyright (C) 2018-2019 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -45,7 +45,7 @@ public:
     explicit OscilloscopeDialog(QWidget *parent = nullptr);
     ~OscilloscopeDialog();
 
-    void showTraceImage(QByteArray topFieldData, QByteArray bottomFieldData, LdDecodeMetaData::VideoParameters videoParameters, qint32 scanLine);
+    void showTraceImage(QByteArray topFieldData, QByteArray bottomFieldData, LdDecodeMetaData *ldDecodeMetaData, qint32 scanLine, qint32 firstField, qint32 secondField);
 
 signals:
     void scanLineChanged(qint32 scanLine);
@@ -57,12 +57,13 @@ private slots:
     void on_YCcheckBox_clicked();
     void on_YcheckBox_clicked();
     void on_CcheckBox_clicked();
+    void on_dropoutsCheckBox_clicked();
 
 private:
     Ui::OscilloscopeDialog *ui;
     qint32 maximumScanLines;
 
-    QImage getFieldLineTraceImage(QByteArray rgbData, LdDecodeMetaData::VideoParameters frameParameters, qint32 fieldLine);
+    QImage getFieldLineTraceImage(QByteArray rgbData, LdDecodeMetaData::VideoParameters frameParameters, qint32 fieldLine, LdDecodeMetaData::DropOuts dropouts);
 };
 
 #endif // OSCILLOSCOPEDIALOG_H
