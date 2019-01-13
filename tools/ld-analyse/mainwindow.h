@@ -77,6 +77,7 @@ private slots:
 
     void on_actionNTSC_triggered();
     void on_actionDropout_analysis_triggered();
+    void on_actionSave_frame_as_PNG_triggered();
 
     void on_frameHorizontalSlider_valueChanged(int value);
     void on_actionVideo_metadata_triggered();

@@ -46,6 +46,8 @@ public:
     // Get and set methods - Directories
     void setSourceDirectory(QString sourceDirectory);
     QString getSourceDirectory(void);
+    void setPngDirectory(QString pngDirectory);
+    QString getPngDirectory(void);
 
     // Get and set methods - windows
     void setMainWindowGeometry(QByteArray mainWindowGeometry);
@@ -70,7 +72,8 @@ private:
 
     // Directories
     struct Directories {
-        QString sourceDirectory;
+        QString sourceDirectory; // Last used directory for .tbc files
+        QString pngDirectory; // Last used directory for .png files
     };
 
     // Window geometry and settings

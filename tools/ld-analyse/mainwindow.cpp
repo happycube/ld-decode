@@ -141,6 +141,7 @@ void MainWindow::updateGuiLoaded(void)
     ui->actionVideo_metadata->setEnabled(true);
     ui->action1_1_Frame_size->setEnabled(true);
     ui->actionDropout_analysis->setEnabled(true);
+    ui->actionSave_frame_as_PNG->setEnabled(true);
 
     // Configure the comb-filter
     if (ldDecodeMetaData.getVideoParameters().isSourcePal) {
@@ -246,6 +247,7 @@ void MainWindow::updateGuiUnloaded(void)
     ui->actionVideo_metadata->setEnabled(false);
     ui->action1_1_Frame_size->setEnabled(false);
     ui->actionDropout_analysis->setEnabled(false);
+    ui->actionSave_frame_as_PNG->setEnabled(false);
 
     // Hide the displayed frame
     hideFrame();
@@ -792,6 +794,50 @@ void MainWindow::on_combFilterRadioButton_clicked()
     showFrame(currentFrameNumber, ui->showActiveVideoCheckBox->isChecked(), ui->highlightDropOutsCheckBox->isChecked());
 }
 
+// Save current frame as PNG
+void MainWindow::on_actionSave_frame_as_PNG_triggered()
+{
+    qDebug() << "MainWindow::on_actionSave_frame_as_PNG_triggered(): Called";
+
+    // Create a suggestion for the filename
+    QString filenameSuggestion = configuration->getPngDirectory();
+    if (ldDecodeMetaData.getVideoParameters().isSourcePal) filenameSuggestion += tr("/frame_pal_");
+    else filenameSuggestion += tr("/frame_ntsc_");
+    if (ui->sourceRadioButton->isChecked()) filenameSuggestion += tr("source_");
+    else filenameSuggestion += tr("comb_");
+    filenameSuggestion += QString::number(currentFrameNumber) + tr(".png");
+
+    QString pngFilename = QFileDialog::getSaveFileName(this,
+                tr("Save PNG file"),
+                filenameSuggestion,
+                tr("PNG image (*.png);;All Files (*)"));
+
+    // Was a filename specified?
+    if (!pngFilename.isEmpty() && !pngFilename.isNull()) {
+        // Save the current frame as a PNG
+        qDebug() << "MainWindow::on_actionSave_frame_as_PNG_triggered(): Saving current frame as" << pngFilename;
+
+        // Get the required field numbers
+        qint32 firstFieldNumber = ldDecodeMetaData.getFirstFieldNumber(currentFrameNumber);
+        qint32 secondFieldNumber = ldDecodeMetaData.getSecondFieldNumber(currentFrameNumber);
+
+        // Generate the current frame and save it
+        if (!generateQImage(firstFieldNumber, secondFieldNumber).save(pngFilename)) {
+            qDebug() << "MainWindow::on_actionSave_frame_as_PNG_triggered(): Failed to save file as" << pngFilename;
+
+            QMessageBox messageBox;
+            messageBox.warning(this, "Warning","Could not save a PNG using the specified filename!");
+            messageBox.setFixedSize(500, 200);
+        }
+
+        // Update the configuration for the PNG directory
+        QFileInfo pngFileInfo(pngFilename);
+        configuration->setPngDirectory(pngFileInfo.absolutePath());
+        qDebug() << "MainWindow::on_actionSave_frame_as_PNG_triggered(): Setting PNG directory to:" << pngFileInfo.absolutePath();
+        configuration->writeConfiguration();
+    }
+}
+
 void MainWindow::on_reverseFieldOrderCheckBox_stateChanged(int arg1)
 {
     (void)arg1;
@@ -878,6 +924,8 @@ void MainWindow::updateOscilloscopeDialogue(qint32 frameNumber, qint32 scanLine)
                                        sourceVideo.getVideoField(secondFieldNumber)->getFieldData(),
                                        videoParameters, scanLine);
 }
+
+
 
 
 

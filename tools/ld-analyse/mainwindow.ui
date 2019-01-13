@@ -687,6 +687,8 @@
     </property>
     <addaction name="actionOpen_TBC_file"/>
     <addaction name="separator"/>
+    <addaction name="actionSave_frame_as_PNG"/>
+    <addaction name="separator"/>
     <addaction name="actionExit"/>
    </widget>
    <widget class="QMenu" name="menuWindow">
@@ -760,6 +762,11 @@
   <action name="actionDropout_analysis">
    <property name="text">
     <string>Dropout analysis...</string>
+   </property>
+  </action>
+  <action name="actionSave_frame_as_PNG">
+   <property name="text">
+    <string>Save frame as PNG...</string>
    </property>
   </action>
  </widget>

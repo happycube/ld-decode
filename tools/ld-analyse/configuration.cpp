@@ -63,6 +63,7 @@ void Configuration::writeConfiguration(void)
     // Directories
     configuration->beginGroup("directories");
     configuration->setValue("sourceDirectory", settings.directories.sourceDirectory);
+    configuration->setValue("pngDirectory", settings.directories.pngDirectory);
     configuration->endGroup();
 
     // Windows
@@ -90,6 +91,7 @@ void Configuration::readConfiguration(void)
     // Directories
     configuration->beginGroup("directories");
     settings.directories.sourceDirectory = configuration->value("sourceDirectory").toString();
+    settings.directories.pngDirectory = configuration->value("pngDirectory").toString();
     configuration->endGroup();
 
     // Windows
@@ -110,6 +112,7 @@ void Configuration::setDefault(void)
 
     // Directories
     settings.directories.sourceDirectory = QDir::homePath();
+    settings.directories.pngDirectory = QDir::homePath();
 
     // Windows
     settings.windows.mainWindowGeometry = QByteArray();
@@ -134,6 +137,16 @@ void Configuration::setSourceDirectory(QString sourceDirectory)
 QString Configuration::getSourceDirectory(void)
 {
     return settings.directories.sourceDirectory;
+}
+
+void Configuration::setPngDirectory(QString pngDirectory)
+{
+    settings.directories.pngDirectory = pngDirectory;
+}
+
+QString Configuration::getPngDirectory(void)
+{
+    return settings.directories.pngDirectory;
 }
 
 // Windows
