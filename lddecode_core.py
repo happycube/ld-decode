@@ -592,14 +592,6 @@ class Field:
         # note: this is chopped on output, so allocating too many lines is OK
         linelocs = {}
 
-        firstvisidx = None
-        for i in range(0, self.vsyncs[1][1]): #self.vsyncs[1][1]):
-            if i > self.vsyncs[0][0] and firstvisidx is None:
-                #print(i, plist[i], plist[self.vsyncs[0][1]])
-                firstvisidx = i
-
-                break
-
         linelens = [self.inlinelen]
         prevlineidx = None
         for i in range(0, self.vsyncs[1][1] + 0): 
@@ -615,7 +607,7 @@ class Field:
                     else:
                         linenum = prevlinenum + int(np.round((plist[i] - plist[prevlineidx]) / med_linelen))
                 else:
-                    linenum = int(np.round((plist[i] - plist[self.vsyncs[0][1]]) / med_linelen))
+                    linenum = int(np.round((plist[i] - plist[self.vsyncs[0][1]]) / med_linelen)) + 1
 
                 linelocs[linenum] = plist[i]
 
@@ -665,7 +657,7 @@ class Field:
     def is_firstfield(self):
         window_begin = .6 if self.rf.system == 'NTSC' else .1
 
-        l = 2
+        l = 3
         beg = int(self.linelocs2[l] + ((self.linelocs2[l+1] - self.linelocs2[l]) * window_begin))
         end = int(self.linelocs2[l] + ((self.linelocs2[l+1] - self.linelocs2[l]) * (window_begin + .25)))
 
@@ -731,7 +723,7 @@ class Field:
                 
         return linelocs
 
-    def downscale(self, lineoffset = 0, lineinfo = None, linesout = None, outwidth = None, wow=True, channel='demod', audio = False):
+    def downscale(self, lineoffset = 1, lineinfo = None, linesout = None, outwidth = None, wow=True, channel='demod', audio = False):
         ''' 
         lineoffset: for NTSC the first line is the first containing the equalizing pulse (0), but for PAL fields start with the first VSYNC pulse (2 or 3).
         '''
@@ -1018,6 +1010,7 @@ class FieldNTSC(Field):
         zc_bursts = {False: [], True: []}
 
         while i < (len(burstarea) - 1):
+            # ??? make this burstlevel / 2?  Need to try on soft signal disks (MIT)
             if np.abs(burstarea[i]) > (8 * self.rf.SysParams['hz_ire']):
                 zc = calczc(burstarea, i, 0)
                 if zc is not None:
@@ -1049,13 +1042,14 @@ class FieldNTSC(Field):
             if (len(zc_bursts[l][True]) == 0) or (len(zc_bursts[l][False]) == 0):
                 continue
 
-            if ((l + 1) % 2):
+            if (l % 2):
                 bursts['odd'].append(zc_bursts[l][True])
                 bursts['even'].append(zc_bursts[l][False])
             else:
                 bursts['even'].append(zc_bursts[l][True])
                 bursts['odd'].append(zc_bursts[l][False])
 
+        # Take the median of *all* zero crossings
         bursts_arr = {}
         bursts_arr[True] = np.concatenate(bursts['even'])
         bursts_arr[False] = np.concatenate(bursts['odd'])
@@ -1068,8 +1062,11 @@ class FieldNTSC(Field):
 
         closer = amed[True] < amed[False]
 
-        valid = amed[closer] + np.std(bursts_arr[closer]) < amed[not closer]
-        valid = valid and (np.abs(amed[True] - amed[False]) > .05)
+        # There are a few pathological disks (not-DV National Gallery of Art) which
+        # have a 90 degree phase offset.  If so, declare this not valid and force
+        # a rerun below
+        valid = (amed[closer] + np.std(bursts_arr[closer])) < amed[not closer]
+        valid = valid and (np.abs(amed[True] - amed[False]) > .01)
 
         return valid, zc_bursts, closer, burstlevel, badlines
 
@@ -1083,8 +1080,9 @@ class FieldNTSC(Field):
         valid, zc_bursts, field14, burstlevel, badlines = self.compute_burst_offsets(linelocs_adj)
 
         if not valid or self.burst90 == True:
-            #print("WARNING: applying 90 degree line adjustment for burst processing")
+            # ? Should this be sticky.  prolly.
             self.burst90 = True
+            # This performs a 90 degree phase adjustment to line locations.
             linelocs_adj = [l + (self.rf.linelen * (.25 / 227.5)) for l in linelocs_adj]
             valid, zc_bursts, field14, burstlevel, badlines = self.compute_burst_offsets(linelocs_adj)
         else:
@@ -1095,7 +1093,7 @@ class FieldNTSC(Field):
         skipped = []
         adjs = []
 
-        for l in range(1, 266):
+        for l in range(0, 266):
             if l < 8 and (np.abs(burstlevel[l]) < (burstlevel_median / 2)):
                 # it's only *advised* that disks have burst in the VSYNC area...
                 skipped.append(l)
@@ -1208,13 +1206,13 @@ class LDdecode:
             self.rf = RFDecode(system = 'PAL', decode_analog_audio=analog_audio)
             self.FieldClass = FieldPAL
             self.readlen = self.rf.linelen * 350
-            self.outlineoffset = 2
+            self.outlineoffset = 3
             self.clvfps = 25
         else: # NTSC
             self.rf = RFDecode(system = 'NTSC', decode_analog_audio=analog_audio)
             self.FieldClass = FieldNTSC
             self.readlen = self.rf.linelen * 300
-            self.outlineoffset = 0
+            self.outlineoffset = 1
             self.clvfps = 30
 
         self.prevPhaseID = None
