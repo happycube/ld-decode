@@ -58,6 +58,8 @@ public:
     QByteArray getOscilloscopeDialogGeometry(void);
     void setVideoMetadataDialogGeometry(QByteArray videoMetadataDialogGeometry);
     QByteArray getVideoMetadataDialogGeometry(void);
+    void setDropoutAnalysisDialogGeometry(QByteArray videoMetadataDialogGeometry);
+    QByteArray getDropoutAnalysisDialogGeometry(void);
 
 signals:
 
@@ -78,6 +80,7 @@ private:
         QByteArray ntscDialogGeometry;
         QByteArray videoMetadataDialogGeometry;
         QByteArray oscilloscopeDialogGeometry;
+        QByteArray dropoutAnalysisDialogGeometry;
     };
 
     // Overall settings structure

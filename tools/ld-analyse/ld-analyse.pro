@@ -4,7 +4,7 @@
 #
 #-------------------------------------------------
 
-QT       += core gui
+QT       += core gui charts
 
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
@@ -38,7 +38,8 @@ SOURCES += \
     ../ld-comb-ntsc/rgb.cpp \
     ../ld-comb-ntsc/yiq.cpp \
     videometadatadialog.cpp \
-    frameqlabel.cpp
+    frameqlabel.cpp \
+    dropoutanalysisdialog.cpp
 
 HEADERS += \
         mainwindow.h \
@@ -53,7 +54,8 @@ HEADERS += \
     ../ld-comb-ntsc/rgb.h \
     ../ld-comb-ntsc/yiq.h \
     videometadatadialog.h \
-    frameqlabel.h
+    frameqlabel.h \
+    dropoutanalysisdialog.h
 
 FORMS += \
         mainwindow.ui \
@@ -61,7 +63,8 @@ FORMS += \
     aboutdialog.ui \
     vbidialog.ui \
     ntscdialog.ui \
-    videometadatadialog.ui
+    videometadatadialog.ui \
+    dropoutanalysisdialog.ui
 
 MYDLLDIR = $$IN_PWD/../library
 

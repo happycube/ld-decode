@@ -697,6 +697,7 @@
     <addaction name="actionVBI"/>
     <addaction name="actionNTSC"/>
     <addaction name="actionVideo_metadata"/>
+    <addaction name="actionDropout_analysis"/>
    </widget>
    <widget class="QMenu" name="menuHelp">
     <property name="title">
@@ -754,6 +755,11 @@
   <action name="action1_1_Frame_size">
    <property name="text">
     <string>1:1 Frame size</string>
+   </property>
+  </action>
+  <action name="actionDropout_analysis">
+   <property name="text">
+    <string>Dropout analysis...</string>
    </property>
   </action>
  </widget>

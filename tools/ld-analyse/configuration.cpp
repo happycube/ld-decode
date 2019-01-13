@@ -72,6 +72,7 @@ void Configuration::writeConfiguration(void)
     configuration->setValue("ntscDialogGeometry", settings.windows.ntscDialogGeometry);
     configuration->setValue("videoMetadataDialogGeometry", settings.windows.videoMetadataDialogGeometry);
     configuration->setValue("oscilloscopeDialogGeometry", settings.windows.oscilloscopeDialogGeometry);
+    configuration->setValue("dropoutAnalysisDialogGeometry", settings.windows.dropoutAnalysisDialogGeometry);
     configuration->endGroup();
 
     // Sync the settings with disk
@@ -98,6 +99,7 @@ void Configuration::readConfiguration(void)
     settings.windows.ntscDialogGeometry = configuration->value("ntscDialogGeometry").toByteArray();
     settings.windows.videoMetadataDialogGeometry = configuration->value("videoMetadataDialogGeometry").toByteArray();
     settings.windows.oscilloscopeDialogGeometry = configuration->value("oscilloscopeDialogGeometry").toByteArray();
+    settings.windows.dropoutAnalysisDialogGeometry = configuration->value("dropoutAnalysisDialogGeometry").toByteArray();
     configuration->endGroup();
 }
 
@@ -115,6 +117,7 @@ void Configuration::setDefault(void)
     settings.windows.ntscDialogGeometry = QByteArray();
     settings.windows.videoMetadataDialogGeometry = QByteArray();
     settings.windows.oscilloscopeDialogGeometry = QByteArray();
+    settings.windows.dropoutAnalysisDialogGeometry = QByteArray();
 
     // Write the configuration
     writeConfiguration();
@@ -184,5 +187,13 @@ QByteArray Configuration::getVideoMetadataDialogGeometry(void)
     return settings.windows.videoMetadataDialogGeometry;
 }
 
+void Configuration::setDropoutAnalysisDialogGeometry(QByteArray dropoutAnalysisDialogGeometry)
+{
+    settings.windows.dropoutAnalysisDialogGeometry = dropoutAnalysisDialogGeometry;
+}
 
+QByteArray Configuration::getDropoutAnalysisDialogGeometry(void)
+{
+    return settings.windows.dropoutAnalysisDialogGeometry;
+}
 

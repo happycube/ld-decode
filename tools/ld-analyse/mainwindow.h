@@ -42,6 +42,7 @@
 #include "vbidialog.h"
 #include "ntscdialog.h"
 #include "videometadatadialog.h"
+#include "dropoutanalysisdialog.h"
 #include "configuration.h"
 #include "frameqlabel.h"
 #include "../ld-comb-pal/palcolour.h"
@@ -75,6 +76,8 @@ private slots:
     void scanLineChangedSignalHandler(qint32 scanLine);
 
     void on_actionNTSC_triggered();
+    void on_actionDropout_analysis_triggered();
+
     void on_frameHorizontalSlider_valueChanged(int value);
     void on_actionVideo_metadata_triggered();
     void on_action1_1_Frame_size_triggered();
@@ -91,6 +94,7 @@ private:
     VbiDialog *vbiDialog;
     NtscDialog *ntscDialog;
     VideoMetadataDialog *videoMetadataDialog;
+    DropoutAnalysisDialog *dropoutAnalysisDialog;
 
     // Class globals
     Configuration *configuration;

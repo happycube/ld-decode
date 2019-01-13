@@ -64,12 +64,16 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     // Set up the video metadata dialogue
     videoMetadataDialog = new VideoMetadataDialog(this);
 
+    // Set up the dropout analysis dialogue
+    dropoutAnalysisDialog = new DropoutAnalysisDialog(this);
+
     // Load the window geometry from the configuration
     restoreGeometry(configuration->getMainWindowGeometry());
     vbiDialog->restoreGeometry(configuration->getVbiDialogGeometry());
     ntscDialog->restoreGeometry(configuration->getNtscDialogGeometry());
     videoMetadataDialog->restoreGeometry(configuration->getVideoMetadataDialogGeometry());
     oscilloscopeDialog->restoreGeometry(configuration->getOscilloscopeDialogGeometry());
+    dropoutAnalysisDialog->restoreGeometry(configuration->getDropoutAnalysisDialogGeometry());
 
     updateGuiUnloaded();
 
@@ -87,6 +91,7 @@ MainWindow::~MainWindow()
     configuration->setNtscDialogGeometry(ntscDialog->saveGeometry());
     configuration->setVideoMetadataDialogGeometry(videoMetadataDialog->saveGeometry());
     configuration->setOscilloscopeDialogGeometry(oscilloscopeDialog->saveGeometry());
+    configuration->setDropoutAnalysisDialogGeometry(dropoutAnalysisDialog->saveGeometry());
     configuration->writeConfiguration();
 
     // Close the source video if open
@@ -135,6 +140,7 @@ void MainWindow::updateGuiLoaded(void)
     ui->actionNTSC->setEnabled(true);
     ui->actionVideo_metadata->setEnabled(true);
     ui->action1_1_Frame_size->setEnabled(true);
+    ui->actionDropout_analysis->setEnabled(true);
 
     // Configure the comb-filter
     if (ldDecodeMetaData.getVideoParameters().isSourcePal) {
@@ -179,6 +185,9 @@ void MainWindow::updateGuiLoaded(void)
     statusText += QString::number(ldDecodeMetaData.getNumberOfFrames());
     statusText += " sequential frames available";
     sourceVideoStatus.setText(statusText);
+
+    // Update the dropout analysis dialogue
+    dropoutAnalysisDialog->updateChart(&ldDecodeMetaData);
 
     // Show the current frame
     showFrame(currentFrameNumber, ui->showActiveVideoCheckBox->isChecked(), ui->highlightDropOutsCheckBox->isChecked());
@@ -236,6 +245,7 @@ void MainWindow::updateGuiUnloaded(void)
     ui->actionNTSC->setEnabled(false);
     ui->actionVideo_metadata->setEnabled(false);
     ui->action1_1_Frame_size->setEnabled(false);
+    ui->actionDropout_analysis->setEnabled(false);
 
     // Hide the displayed frame
     hideFrame();
@@ -754,6 +764,12 @@ void MainWindow::on_actionNTSC_triggered()
     ntscDialog->show();
 }
 
+void MainWindow::on_actionDropout_analysis_triggered()
+{
+    // Show the dropout analysis dialogue
+    dropoutAnalysisDialog->show();
+}
+
 // Adjust the window to show the frame at 1:1 zoom
 void MainWindow::on_action1_1_Frame_size_triggered()
 {
@@ -862,4 +878,6 @@ void MainWindow::updateOscilloscopeDialogue(qint32 frameNumber, qint32 scanLine)
                                        sourceVideo.getVideoField(secondFieldNumber)->getFieldData(),
                                        videoParameters, scanLine);
 }
+
+
 
