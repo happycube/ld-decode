@@ -963,12 +963,7 @@ class Field:
 
         return
 
-    def dropout_detect(self):
-        
-        rv_lines = []
-        rv_starts = []
-        rv_ends = []
-
+    def dropout_detect_rftiming(self):
         offset = self.rf.blockcut - int(np.round(self.rf.delays['video_rot']))
         raw = self.rawdata[offset:]
 
@@ -984,8 +979,7 @@ class Field:
 
         errlist = []
 
-        lineoffset = 2
-        checknext = self.linelocs[lineoffset]
+        checknext = self.linelocs[self.lineoffset]
 
         for e in errmap:
             if e < checknext:
@@ -998,6 +992,15 @@ class Field:
                 checknext = errend + 1
                 errlist.append((errstart, errend))
 
+        return errlist
+
+    def dropout_detect(self):
+        rv_lines = []
+        rv_starts = []
+        rv_ends = []
+
+        errlist = self.dropout_detect_rftiming()
+
         if len(errlist) == 0:
             return rv_lines, rv_starts, rv_ends
 
@@ -1007,6 +1010,8 @@ class Field:
         errlistc = errlist.copy()
         errlist_tbc = []
         curerr = errlistc.pop(0)
+
+        lineoffset = self.lineoffset
 
         for l in range(lineoffset, len(self.linelocs) - 1):
             while inrange(curerr[0], self.linelocs[l], self.linelocs[l + 1]):
