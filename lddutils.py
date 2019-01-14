@@ -262,7 +262,12 @@ def inrange(a, mi, ma):
 def sqsum(cmplx):
     return np.sqrt((cmplx.real ** 2) + (cmplx.imag ** 2))
 
-def calczc(data, _start_offset, target, edge='both', reverse=False, _count=10):
+def calczc(data, _start_offset, target, edge='both', _count=10, reverse=False):
+    
+    if reverse:
+        # Instead of actually implementing this in reverse, use numpy to flip data
+        return _start_offset - calczc(data[_start_offset::-1], 0, target, edge, _count)
+    
     start_offset = int(_start_offset)
     count = int(_count + 1)
     
@@ -274,6 +279,7 @@ def calczc(data, _start_offset, target, edge='both', reverse=False, _count=10):
 
     if edge == 'rising':
         locs = np.where(data[start_offset:start_offset+count] >= target)[0]
+        #print(locs)
         offset = 0
     else:
         locs = np.where(data[start_offset:start_offset+count] <= target)[0]
@@ -282,10 +288,7 @@ def calczc(data, _start_offset, target, edge='both', reverse=False, _count=10):
     if len(locs) == 0:
         return None
 
-    if reverse:
-        index = -1
-    else:
-        index = 0
+    index = 0
         
     x = start_offset + locs[index] #+ offset
     
