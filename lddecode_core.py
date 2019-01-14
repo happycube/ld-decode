@@ -986,10 +986,12 @@ class Field:
                 continue
 
             errstart = calczc(raw, e, med + std, _count=1024, reverse=True)
-            errend = calczc(raw, e, med + std, _count=1024, reverse=False) + self.rf.delays['video_rot_length']
+            errend = calczc(raw, e, med + std, _count=1024, reverse=False) 
 
             if errstart is not None and errend is not None:
                 checknext = errend + 1
+                
+                errend += self.rf.delays['video_rot_length']
                 errlist.append((errstart, errend))
 
         return errlist
