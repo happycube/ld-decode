@@ -1016,7 +1016,7 @@ class Field:
                 start_linepos = int(np.round(start_linepos * self.outlinelen))
 
                 end_rf_linepos = curerr[1] - self.linelocs[l]
-                end_linepos = start_rf_linepos / (self.linelocs[l + 1] - self.linelocs[l])
+                end_linepos = end_rf_linepos / (self.linelocs[l + 1] - self.linelocs[l])
                 end_linepos = int(np.round(end_linepos * self.outlinelen))
                 
                 if end_linepos > self.outlinelen:
