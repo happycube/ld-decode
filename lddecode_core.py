@@ -1021,15 +1021,15 @@ class Field:
                 
                 if end_linepos > self.outlinelen:
                     # need to output two dropouts
-                    rv_lines.append(l)
+                    rv_lines.append(l - lineoffset)
                     rv_starts.append(start_linepos)
                     rv_ends.append(self.outlinelen)
 
-                    rv_lines.append(l + (end_linepos // self.outlinelen))
+                    rv_lines.append(l - lineoffset + (end_linepos // self.outlinelen))
                     rv_starts.append(0)
                     rv_ends.append(np.remainder(end_linepos, self.outlinelen))
                 else:
-                    rv_lines.append(l)
+                    rv_lines.append(l - lineoffset)
                     rv_starts.append(start_linepos)
                     rv_ends.append(end_linepos)
                 
