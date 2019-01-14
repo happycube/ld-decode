@@ -266,7 +266,11 @@ def calczc(data, _start_offset, target, edge='both', _count=10, reverse=False):
     
     if reverse:
         # Instead of actually implementing this in reverse, use numpy to flip data
-        return _start_offset - calczc(data[_start_offset::-1], 0, target, edge, _count)
+        rev_zc = calczc(data[_start_offset::-1], 0, target, edge, _count)
+        if rev_zc is not None:
+            return _start_offset - rev_zc
+        else:
+            return None
     
     start_offset = int(_start_offset)
     count = int(_count + 1)
@@ -335,3 +339,18 @@ def unwrap_hilbert(hilbert, freq_hz):
     while np.max(tdangles2) > tau:
         tdangles2[tdangles2 > tau] -= tau
     return (tdangles2 * (freq_hz / tau))
+
+def genwave(rate, freq, initialphase = 0):
+    ''' Generate an FM waveform from target frequency data '''
+    out = np.zeros(len(rate), dtype=np.double)
+    
+    angle = initialphase
+    
+    for i in range(0, len(rate)):
+        angle += np.pi * (rate[i] / freq)
+        if angle > np.pi:
+            angle -= tau
+        
+        out[i] = np.sin(angle)
+        
+    return out
