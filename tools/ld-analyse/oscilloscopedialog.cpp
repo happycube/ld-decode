@@ -3,7 +3,7 @@
     oscilloscopedialog.cpp
 
     ld-analyse - TBC output analysis
-    Copyright (C) 2018 Simon Inns
+    Copyright (C) 2018-2019 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -52,9 +52,12 @@ OscilloscopeDialog::~OscilloscopeDialog()
     delete ui;
 }
 
-void OscilloscopeDialog::showTraceImage(QByteArray firstFieldData, QByteArray secondFieldData, LdDecodeMetaData::VideoParameters videoParameters, qint32 scanLine)
+void OscilloscopeDialog::showTraceImage(QByteArray firstFieldData, QByteArray secondFieldData, LdDecodeMetaData *ldDecodeMetaData, qint32 scanLine,
+                                        qint32 firstField, qint32 secondField)
 {
     qDebug() << "OscilloscopeDialog::showTraceImage(): Called for scan-line" << scanLine;
+
+    LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData->getVideoParameters();
 
     // Convert the scan line into field and field line
     bool isFieldTop = true;
@@ -82,10 +85,10 @@ void OscilloscopeDialog::showTraceImage(QByteArray firstFieldData, QByteArray se
 
     this->setWindowTitle(windowTitle);
 
-    // Always take the raw frame data (without DOC)
+    // Get the raw field data for the selected line
     QImage traceImage;
-    if (isFieldTop) traceImage = getFieldLineTraceImage(firstFieldData, videoParameters, fieldLine);
-    else traceImage = getFieldLineTraceImage(secondFieldData, videoParameters, fieldLine);
+    if (isFieldTop) traceImage = getFieldLineTraceImage(firstFieldData, videoParameters, fieldLine, ldDecodeMetaData->getField(firstField).dropOuts);
+    else traceImage = getFieldLineTraceImage(secondFieldData, videoParameters, fieldLine, ldDecodeMetaData->getField(secondField).dropOuts);
 
     // Add the QImage to the QLabel in the dialogue
     ui->scopeLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
@@ -106,7 +109,7 @@ void OscilloscopeDialog::showTraceImage(QByteArray firstFieldData, QByteArray se
     maximumScanLines = frameHeight;
 }
 
-QImage OscilloscopeDialog::getFieldLineTraceImage(QByteArray fieldLineData, LdDecodeMetaData::VideoParameters videoParameters, qint32 fieldLine)
+QImage OscilloscopeDialog::getFieldLineTraceImage(QByteArray fieldLineData, LdDecodeMetaData::VideoParameters videoParameters, qint32 fieldLine, LdDecodeMetaData::DropOuts dropouts)
 {
     qDebug() << "OscilloscopeDialog::getFieldLineTraceImage(): Called for field line" << fieldLine;
 
@@ -120,6 +123,7 @@ QImage OscilloscopeDialog::getFieldLineTraceImage(QByteArray fieldLineData, LdDe
     bool showYC = ui->YCcheckBox->isChecked();
     bool showY = ui->YcheckBox->isChecked();
     bool showC = ui->CcheckBox->isChecked();
+    bool showDropouts = ui->dropoutsCheckBox->isChecked();
 
     // These are fixed, but may be changed to options later
     qint32 scopeHeight = 512;
@@ -169,9 +173,11 @@ QImage OscilloscopeDialog::getFieldLineTraceImage(QByteArray fieldLineData, LdDe
 
     // Get the signal data
     QVector<qint32> signalDataYC; // Luminance (Y) and Chrominance (C) combined
+    QVector<bool> dropOutYC; // Drop out locations within YC data
     QVector<qint32> signalDataY; // Luminance (Y) only
     QVector<qint32> signalDataC; // Chrominance (C) only
     signalDataYC.resize(videoParameters.fieldWidth);
+    dropOutYC.resize(videoParameters.fieldWidth);
     signalDataY.resize(videoParameters.fieldWidth);
     signalDataC.resize(videoParameters.fieldWidth);
 
@@ -185,6 +191,13 @@ QImage OscilloscopeDialog::getFieldLineTraceImage(QByteArray fieldLineData, LdDe
         // Get the 16-bit YC value for the current pixel (frame data is numbered 0-624 or 0-524)
         uchar *pixelPointer =  reinterpret_cast<uchar*>(fieldLineData.data()) + ((fieldLine - 1) * videoParameters.fieldWidth * 2) + (xPosition * 2);
         signalDataYC[xPosition] = (pixelPointer[1] * 256) + pixelPointer[0];
+
+        dropOutYC[xPosition] = false;
+        for (qint32 doCount = 0; doCount < dropouts.startx.size(); doCount++) {
+            if (dropouts.fieldLine[doCount] == fieldLine) {
+                if (xPosition >= dropouts.startx[doCount] && xPosition <= dropouts.endx[doCount]) dropOutYC[xPosition] = true;
+            }
+        }
     }
 
     if (showY) {
@@ -233,6 +246,9 @@ QImage OscilloscopeDialog::getFieldLineTraceImage(QByteArray fieldLineData, LdDe
                 // Non-active video area YC is yellow, active is white
                 if (!showY && !showC) scopePainter.setPen(Qt::white); else scopePainter.setPen(Qt::darkGray);
                 if (xPosition < videoParameters.colourBurstEnd || xPosition > videoParameters.activeVideoEnd) scopePainter.setPen(Qt::yellow);
+
+                // Highlight dropouts
+                if (dropOutYC[xPosition] && showDropouts) scopePainter.setPen(Qt::red);
 
                 // Draw a line from the last YC signal to the current one
                 scopePainter.drawLine(xPosition - 1, lastSignalLevelYC, xPosition, signalLevelYC);
@@ -315,6 +331,11 @@ void OscilloscopeDialog::on_YcheckBox_clicked()
 }
 
 void OscilloscopeDialog::on_CcheckBox_clicked()
+{
+    emit scanLineChanged(ui->scanLineSpinBox->value());
+}
+
+void OscilloscopeDialog::on_dropoutsCheckBox_clicked()
 {
     emit scanLineChanged(ui->scanLineSpinBox->value());
 }

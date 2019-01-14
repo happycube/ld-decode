@@ -912,9 +912,6 @@ void MainWindow::scanLineChangedSignalHandler(qint32 scanLine)
 // Method to update the line oscilloscope based on the frame number and scan line
 void MainWindow::updateOscilloscopeDialogue(qint32 frameNumber, qint32 scanLine)
 {
-    // Get the video parameter metadata
-    LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
-
     // Determine the first and second fields for the frame number
     qint32 firstFieldNumber = ldDecodeMetaData.getFirstFieldNumber(frameNumber);
     qint32 secondFieldNumber = ldDecodeMetaData.getSecondFieldNumber(frameNumber);
@@ -922,7 +919,7 @@ void MainWindow::updateOscilloscopeDialogue(qint32 frameNumber, qint32 scanLine)
     // Update the oscilloscope dialogue
     oscilloscopeDialog->showTraceImage(sourceVideo.getVideoField(firstFieldNumber)->getFieldData(),
                                        sourceVideo.getVideoField(secondFieldNumber)->getFieldData(),
-                                       videoParameters, scanLine);
+                                       &ldDecodeMetaData, scanLine, firstFieldNumber, secondFieldNumber);
 }
 
 
