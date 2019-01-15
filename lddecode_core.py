@@ -1015,8 +1015,8 @@ class Field:
 
         lineoffset = self.lineoffset
 
-        for l in range(lineoffset, len(self.linelocs) - 1):
-            while inrange(curerr[0], self.linelocs[l], self.linelocs[l + 1]):
+        for l in range(lineoffset, self.linecount - 1):
+            while curerr is not None and inrange(curerr[0], self.linelocs[l], self.linelocs[l + 1]):
 
                 start_rf_linepos = curerr[0] - self.linelocs[l]
                 start_linepos = start_rf_linepos / (self.linelocs[l + 1] - self.linelocs[l])
@@ -1028,22 +1028,27 @@ class Field:
                 
                 if end_linepos > self.outlinelen:
                     # need to output two dropouts
-                    rv_lines.append(l - lineoffset + 1)
+                    rv_lines.append(l - lineoffset)
                     rv_starts.append(start_linepos)
-                    rv_ends.append(int(self.outlinelen))
+                    rv_ends.append(self.outlinelen)
 
-                    rv_lines.append(l - lineoffset + 1 + (end_linepos // self.outlinelen))
+                    rv_lines.append(l - lineoffset + (end_linepos // self.outlinelen))
                     rv_starts.append(0)
-                    rv_ends.append(int(np.remainder(end_linepos, self.outlinelen)))
+                    rv_ends.append(np.remainder(end_linepos, self.outlinelen))
                 else:
-                    rv_lines.append(l - lineoffset + 1)
+                    rv_lines.append(l - lineoffset)
                     rv_starts.append(start_linepos)
                     rv_ends.append(end_linepos)
                 
                 if len(errlistc):
                     curerr = errlistc.pop(0)
                 else:
-                    return rv_lines, rv_starts, rv_ends
+                    curerr = None
+
+        rv_lines = [l + 1 for l in rv_lines]
+        #print(np.max(rv_lines))
+        rv_starts = [int(s) for s in rv_starts]
+        rv_ends = [int(e) for e in rv_ends]
 
         return rv_lines, rv_starts, rv_ends
 
