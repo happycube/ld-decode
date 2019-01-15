@@ -45,7 +45,6 @@ CMakeLists.txt.user*
 /ld-analyse/ld-analyse
 /ld-comb-pal/ld-comb-pal
 /ld-dropout-correct/ld-dropout-correct
-/ld-dropout-detect/ld-dropout-detect
 /ld-process-vbi/ld-process-vbi
 /ld-process-ntsc/ld-process-ntsc
 /ld-comb-ntsc/ld-comb-ntsc
