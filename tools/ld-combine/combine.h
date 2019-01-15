@@ -43,10 +43,24 @@ signals:
 public slots:
 
 private:
+    SourceVideo primarySourceVideo;
+    SourceVideo secondarySourceVideo;
+
     LdDecodeMetaData primaryLdDecodeMetaData;
     LdDecodeMetaData::VideoParameters primaryVideoParameters;
     LdDecodeMetaData secondaryLdDecodeMetaData;
     LdDecodeMetaData::VideoParameters secondaryVideoParameters;
+
+    LdDecodeMetaData outputLdDecodeMetaData;
+
+    qint32 getMatchingSecondaryFrame(bool isDiscCav, qint32 seqFrameNumber);
+
+    qint32 getCavFrameNumber(qint32 frameSeqNumber, LdDecodeMetaData *ldDecodeMetaData);
+    qint32 getClvFrameNumber(qint32 frameSeqNumber, LdDecodeMetaData *ldDecodeMetaData);
+
+    QByteArray processField(qint32 primarySeqFieldNumber, qint32 secondarySeqFieldNumber);
+    qint32 assessLineQuality(LdDecodeMetaData::Field field, qint32 lineNumber);
+    QByteArray replaceVideoLineData(QByteArray primaryFieldData, QByteArray secondaryFieldData, qint32 lineNumber);
 };
 
 #endif // COMBINE_H
