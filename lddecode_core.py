@@ -990,7 +990,7 @@ class Field:
 
             if errstart is not None and errend is not None:
                 checknext = errend + 1
-                
+
                 errend += self.rf.delays['video_rot_length']
                 errlist.append((errstart, errend))
 
@@ -1020,23 +1020,23 @@ class Field:
 
                 start_rf_linepos = curerr[0] - self.linelocs[l]
                 start_linepos = start_rf_linepos / (self.linelocs[l + 1] - self.linelocs[l])
-                start_linepos = np.round(start_linepos * self.outlinelen)
+                start_linepos = int(start_linepos * self.outlinelen)
 
                 end_rf_linepos = curerr[1] - self.linelocs[l]
                 end_linepos = end_rf_linepos / (self.linelocs[l + 1] - self.linelocs[l])
-                end_linepos = np.round(end_linepos * self.outlinelen)
+                end_linepos = int(np.round(end_linepos * self.outlinelen))
                 
                 if end_linepos > self.outlinelen:
                     # need to output two dropouts
-                    rv_lines.append(l - lineoffset)
+                    rv_lines.append(l - lineoffset + 1)
                     rv_starts.append(start_linepos)
-                    rv_ends.append(self.outlinelen)
+                    rv_ends.append(int(self.outlinelen))
 
-                    rv_lines.append(l - lineoffset + (end_linepos // self.outlinelen))
+                    rv_lines.append(l - lineoffset + 1 + (end_linepos // self.outlinelen))
                     rv_starts.append(0)
-                    rv_ends.append(np.remainder(end_linepos, self.outlinelen))
+                    rv_ends.append(int(np.remainder(end_linepos, self.outlinelen)))
                 else:
-                    rv_lines.append(l - lineoffset)
+                    rv_lines.append(l - lineoffset + 1)
                     rv_starts.append(start_linepos)
                     rv_ends.append(end_linepos)
                 
@@ -1526,7 +1526,7 @@ class LDdecode:
 
         dropout_lines, dropout_starts, dropout_ends = f.dropout_detect()
 
-        fi['dropouts'] = {'fieldLine': dropout_lines, 'startx': dropout_starts, 'endx': dropout_ends}
+        fi['dropOuts'] = {'fieldLine': dropout_lines, 'startx': dropout_starts, 'endx': dropout_ends}
 
         # This is a bitmap, not a counter
         decodeFaults = 0
