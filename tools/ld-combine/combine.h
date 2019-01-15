@@ -53,6 +53,10 @@ private:
 
     LdDecodeMetaData outputLdDecodeMetaData;
 
+    qint32 linesReplaced;
+    qint32 dropoutsReplaced;
+    qint32 failedReplaced;
+
     qint32 getMatchingSecondaryFrame(bool isDiscCav, qint32 seqFrameNumber);
 
     qint32 getCavFrameNumber(qint32 frameSeqNumber, LdDecodeMetaData *ldDecodeMetaData);
@@ -61,6 +65,8 @@ private:
     QByteArray processField(qint32 primarySeqFieldNumber, qint32 secondarySeqFieldNumber);
     qint32 assessLineQuality(LdDecodeMetaData::Field field, qint32 lineNumber);
     QByteArray replaceVideoLineData(QByteArray primaryFieldData, QByteArray secondaryFieldData, qint32 lineNumber);
+    QByteArray replaceVideoDropoutData(QByteArray primaryFieldData, QByteArray secondaryFieldData,
+                                                qint32 lineNumber, qint32 startx, qint32 endx);
 };
 
 #endif // COMBINE_H
