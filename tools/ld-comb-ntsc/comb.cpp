@@ -90,7 +90,8 @@ QByteArray Comb::process(QByteArray firstFieldInputBuffer, QByteArray secondFiel
     QVector<yiqLine_t> tempYiqBuffer;
     tempYiqBuffer.resize(frameHeight);
 
-    qint32 currentFrameBuffer = (configuration.filterDepth == 3) ? 1 : 0; // Set f = 1 if filterdepth = 3 else f = 0
+    qint32 currentFrameBuffer = 0;
+    if (configuration.filterDepth == 3) currentFrameBuffer = 1;
 
     // Shift the frames in the buffer
     frameBuffer[2] = frameBuffer[1];
@@ -120,18 +121,11 @@ QByteArray Comb::process(QByteArray firstFieldInputBuffer, QByteArray secondFiel
     if (configuration.filterDepth == 3) {
         // Perform optical flow detection?
         if (configuration.opticalflow && (frameCounter > 0)) {
-            tempYiqBuffer = frameBuffer[0].yiqBuffer;
+            tempYiqBuffer = frameBuffer[0].yiqBuffer; // Set tempYiqBuffer to the previous frame
             adjustY(0, tempYiqBuffer);
             doYNR(tempYiqBuffer, 4);
             doCNR(tempYiqBuffer, 4);
             opticalFlow3D(tempYiqBuffer, frameCounter);
-        }
-
-        // If filterDepth is 3, make sure we have 3 frames before processing further
-        if (frameCounter < 2) {
-            frameCounter++;
-            // Just return an empty output buffer
-            return nullptr;
         }
 
         split3D(currentFrameBuffer, configuration.opticalflow);
@@ -147,6 +141,11 @@ QByteArray Comb::process(QByteArray firstFieldInputBuffer, QByteArray secondFiel
 
     // Convert the YIQ result to RGB
     QByteArray rgbOutputBuffer = yiqToRgbFrame(currentFrameBuffer, tempYiqBuffer);
+
+    // If this is the first frame of a 3D process; the frame offset is offset by 1
+    // i.e. the second frame contains the first frame's data
+    if (configuration.filterDepth >= 3 && frameCounter == 0) rgbOutputBuffer.clear();
+
     frameCounter++;
 
     return rgbOutputBuffer;

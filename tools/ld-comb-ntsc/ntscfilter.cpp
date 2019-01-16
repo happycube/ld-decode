@@ -94,9 +94,6 @@ bool NtscFilter::process(QString inputFileName, QString outputFileName,
     if (length == -1) {
         length = ldDecodeMetaData.getNumberOfFrames() - (startFrame - 1);
     } else {
-        // If filterdepth 3 is specified, we need 2 extra frames to get the specified length
-        if (filterDepth == 3) length += 2;
-
         if (length + (startFrame - 1) > ldDecodeMetaData.getNumberOfFrames()) {
             qInfo() << "Specified length of" << length << "exceeds the number of available frames, setting to" << ldDecodeMetaData.getNumberOfFrames() - (startFrame - 1);
             length = ldDecodeMetaData.getNumberOfFrames() - (startFrame - 1);
@@ -159,6 +156,10 @@ bool NtscFilter::process(QString inputFileName, QString outputFileName,
     qInfo() << "Filter configuration: Adaptive 2D =" << adaptive2d;
     qInfo() << "Filter configuration: Optical flow =" << opticalFlow;
 
+    // If the filter is 3D we need to add one additional frame to length to
+    // compensate for the processing
+    if (configuration.filterDepth == 3) length++;
+
     // Process the frames
     QElapsedTimer totalTimer;
     totalTimer.start();
@@ -176,7 +177,7 @@ bool NtscFilter::process(QString inputFileName, QString outputFileName,
                                                 ldDecodeMetaData.getField(firstFieldNumber).fieldPhaseID,
                                                 ldDecodeMetaData.getField(secondFieldNumber).fieldPhaseID);
 
-        // Check the output data isn't empty (the first two 3D processed frames are empty)
+        // Check the output data isn't empty
         if (!rgbOutputData.isEmpty()) {
             // The NTSC filter outputs the whole frame, so here we crop it to the required dimensions
             QByteArray croppedOutputData;
@@ -208,19 +209,27 @@ bool NtscFilter::process(QString inputFileName, QString outputFileName,
 
         // Show an update to the user
         qreal fps = 1.0 / (static_cast<qreal>(timer.elapsed()) / 1000.0);
-        qInfo() << "Processed Frame number" << frameNumber << "( fields" << firstFieldNumber <<
-                    "/" << secondFieldNumber << ") -" << fps << "FPS";
+
+        if (configuration.filterDepth < 3) {
+            qInfo() << "Processed Frame number" << frameNumber << "( fields" << firstFieldNumber <<
+                        "/" << secondFieldNumber << ") -" << fps << "FPS";
+        } else {
+            if (frameNumber > startFrame) {
+                // For 3D processing we're actually outputing the frame with an offset of 1, so here we
+                // adjust the output to the user to prevent confusion about which fields are in which frame
+                qInfo() << "Processed Frame number" << frameNumber - 1 << "( fields" << firstFieldNumber - 2 <<
+                            "/" << secondFieldNumber - 2 << ") -" << fps << "FPS";
+            } else {
+                qInfo() << "Buffered initial 3D frame processing data -" << fps << "FPS";;
+            }
+        }
     }
 
     // Show processing summary
-    if (configuration.filterDepth != 3) {
-        qInfo() << "Processed" << length << "frames into" <<
-                   static_cast<qint32>(videoEnd) - static_cast<qint32>(videoStart) << "x 486 RGB16-16-16 frames";
-    } else {
-        qInfo() << "Processed" << length - 2 << "frames (+2 due to 3D filter) into" <<
-                   static_cast<qint32>(videoEnd) - static_cast<qint32>(videoStart) << "x 486 RGB16-16-16 frames";
-    }
+    if (configuration.filterDepth == 3) length--;
 
+    qInfo() << "Processed" << length << "frames into" <<
+               static_cast<qint32>(videoEnd) - static_cast<qint32>(videoStart) << "x 486 RGB16-16-16 frames";
 
     // Close the input and output files
     sourceVideo.close();
