@@ -156,10 +156,6 @@ bool NtscFilter::process(QString inputFileName, QString outputFileName,
     qInfo() << "Filter configuration: Adaptive 2D =" << adaptive2d;
     qInfo() << "Filter configuration: Optical flow =" << opticalFlow;
 
-    // If the filter is 3D we need to add one additional frame to length to
-    // compensate for the processing
-    if (configuration.filterDepth == 3) length++;
-
     // Process the frames
     QElapsedTimer totalTimer;
     totalTimer.start();
@@ -209,25 +205,11 @@ bool NtscFilter::process(QString inputFileName, QString outputFileName,
 
         // Show an update to the user
         qreal fps = 1.0 / (static_cast<qreal>(timer.elapsed()) / 1000.0);
-
-        if (configuration.filterDepth < 3) {
-            qInfo() << "Processed Frame number" << frameNumber << "( fields" << firstFieldNumber <<
-                        "/" << secondFieldNumber << ") -" << fps << "FPS";
-        } else {
-            if (frameNumber > startFrame) {
-                // For 3D processing we're actually outputing the frame with an offset of 1, so here we
-                // adjust the output to the user to prevent confusion about which fields are in which frame
-                qInfo() << "Processed Frame number" << frameNumber - 1 << "( fields" << firstFieldNumber - 2 <<
-                            "/" << secondFieldNumber - 2 << ") -" << fps << "FPS";
-            } else {
-                qInfo() << "Buffered initial 3D frame processing data -" << fps << "FPS";;
-            }
-        }
+        qInfo() << "Processed Frame number" << frameNumber << "( fields" << firstFieldNumber <<
+                    "/" << secondFieldNumber << ") -" << fps << "FPS";
     }
 
     // Show processing summary
-    if (configuration.filterDepth == 3) length--;
-
     qInfo() << "Processed" << length << "frames into" <<
                static_cast<qint32>(videoEnd) - static_cast<qint32>(videoStart) << "x 486 RGB16-16-16 frames";
 

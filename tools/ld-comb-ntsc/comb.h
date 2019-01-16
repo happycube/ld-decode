@@ -139,7 +139,7 @@ private:
     void filterIQ(QVector<yiqLine_t> &yiqBuffer);
     void split1D(qint32 currentFrameBuffer);
     void split2D(qint32 currentFrameBuffer);
-    void split3D(qint32 currentFrameBuffer, bool opt_flow = false);
+    void split3D(qint32 currentFrameBuffer, bool useOpticalFlow = false);
     void splitIQ(qint32 currentFrameBuffer);
     void doCNR(QVector<yiqLine_t> &yiqBuffer, qreal min = -1.0);
     void doYNR(QVector<yiqLine_t> &yiqBuffer, qreal min = -1.0);

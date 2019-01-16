@@ -87,14 +87,15 @@ QByteArray Comb::process(QByteArray firstFieldInputBuffer, QByteArray secondFiel
 {
     qint32 frameHeight = ((configuration.fieldHeight * 2) - 1);
 
-    QVector<yiqLine_t> tempYiqBuffer;
-    tempYiqBuffer.resize(frameHeight);
-
+    // For 2D filtering the target frame buffer is 0, for 3D its 1
     qint32 currentFrameBuffer = 0;
     if (configuration.filterDepth == 3) currentFrameBuffer = 1;
 
+    QVector<yiqLine_t> tempYiqBuffer;
+    tempYiqBuffer.resize(frameHeight);
+
     // Shift the frames in the buffer
-    frameBuffer[2] = frameBuffer[1];
+    if (configuration.filterDepth == 3) frameBuffer[2] = frameBuffer[1]; // only needed for 3D processing
     frameBuffer[1] = frameBuffer[0];
 
     // Interlace the input fields and place in the frame's raw buffer
@@ -120,12 +121,12 @@ QByteArray Comb::process(QByteArray firstFieldInputBuffer, QByteArray secondFiel
 
     if (configuration.filterDepth == 3) {
         // Perform optical flow detection?
-        if (configuration.opticalflow && (frameCounter > 0)) {
+        if (configuration.opticalflow) {
             tempYiqBuffer = frameBuffer[0].yiqBuffer; // Set tempYiqBuffer to the previous frame
             adjustY(0, tempYiqBuffer);
             doYNR(tempYiqBuffer, 4);
             doCNR(tempYiqBuffer, 4);
-            opticalFlow3D(tempYiqBuffer, frameCounter);
+            if (frameCounter > 0) opticalFlow3D(tempYiqBuffer, frameCounter);
         }
 
         split3D(currentFrameBuffer, configuration.opticalflow);
@@ -142,12 +143,7 @@ QByteArray Comb::process(QByteArray firstFieldInputBuffer, QByteArray secondFiel
     // Convert the YIQ result to RGB
     QByteArray rgbOutputBuffer = yiqToRgbFrame(currentFrameBuffer, tempYiqBuffer);
 
-    // If this is the first frame of a 3D process; the frame offset is offset by 1
-    // i.e. the second frame contains the first frame's data
-    if (configuration.filterDepth >= 3 && frameCounter == 0) rgbOutputBuffer.clear();
-
     frameCounter++;
-
     return rgbOutputBuffer;
 }
 
@@ -319,6 +315,7 @@ void Comb::split2D(qint32 currentFrameBuffer)
                 kp = clamp(1 - (kp / p_2drange), 0, 1);
                 kn = clamp(1 - (kn / p_2drange), 0, 1);
 
+                // What is this doing?
                 if (!configuration.adaptive2d) kn = kp = 1.0;
 
                 qreal sc = 1.0;
@@ -357,7 +354,7 @@ void Comb::split2D(qint32 currentFrameBuffer)
 }
 
 // This could do with an explaination of what it is doing...
-void Comb::split3D(qint32 currentFrameBuffer, bool opt_flow)
+void Comb::split3D(qint32 currentFrameBuffer, bool useOpticalFlow)
 {
     qint32 frameHeight = ((configuration.fieldHeight * 2) - 1);
 
@@ -390,10 +387,12 @@ void Comb::split3D(qint32 currentFrameBuffer, bool opt_flow)
         }
 
         for (qint32 h = configuration.activeVideoStart; h < configuration.activeVideoEnd; h++) {
-            if (opt_flow) {
+            if (useOpticalFlow) {
                 frameBuffer[currentFrameBuffer].clpbuffer[2][lineNumber][h] = (p3line[h] - line[h]);
             } else {
                 frameBuffer[currentFrameBuffer].clpbuffer[2][lineNumber][h] = (((p3line[h] + n3line[h]) / 2) - line[h]);
+
+                // I think this is overwriting the 3D optical flow output; but it's very obscure...
                 frameBuffer[currentFrameBuffer].combk[2][lineNumber][h] = clamp(1 - ((_k[h] - (p_3dcore)) / p_3drange), 0, 1);
             }
 
@@ -575,17 +574,16 @@ void Comb::opticalFlow3D(QVector<yiqLine_t> yiqBuffer, qint32 frameCounter)
     const qint32 cxsize = max_x - 70; // Field width extent?
 
     quint16 fieldbuf[max_x * cysize];
-    quint16 flowmap[max_y][cxsize];
+    //quint16 flowmap[max_y][cxsize];
 
     // Note: No check on the unmanaged memsets below; probably should add some (or remove the memsets)
     memset(fieldbuf, 0, sizeof(fieldbuf));
-    memset(flowmap, 0, sizeof(flowmap));
+    //memset(flowmap, 0, sizeof(flowmap)); // Unused?
 
     qint32 y;
     cv::Mat pic;
 
     for (qint32 field = 0; field < 2; field++) {
-
         // Split the frame back into two fields for optical flow detection
         for (y = 0; y < cysize; y++) {
             for (qint32 x = 0; x < cxsize; x++) {
@@ -617,9 +615,14 @@ void Comb::opticalFlow3D(QVector<yiqLine_t> yiqBuffer, qint32 frameCounter)
                                             static_cast<double>(flowpoint2.x) * 2) - min) / max, 0, 1);
                 qreal c = (c1 < c2) ? c1 : c2;
 
-                quint16 fm = static_cast<quint16>(clamp(c * 65535, 0, 65535));
-                flowmap[(y * 2)][0 + x] = fm;
-                flowmap[(y * 2) + 1][0 + x] = fm;
+                // Place the resulting data into the 2nd frame buffer's combk[2]
+                frameBuffer[1].combk[2][(y * 2)][70 + x] = c;
+                frameBuffer[1].combk[2][(y * 2) + 1][70 + x] = c;
+
+                // This code doesn't seem to do anything...
+//                quint16 fm = static_cast<quint16>(clamp(c * 65535, 0, 65535));
+//                flowmap[(y * 2)][0 + x] = fm;
+//                flowmap[(y * 2) + 1][0 + x] = fm;
             }
         }
     }
