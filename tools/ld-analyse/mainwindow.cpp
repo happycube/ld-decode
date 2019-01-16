@@ -154,7 +154,7 @@ void MainWindow::updateGuiLoaded(void)
         Comb::Configuration configuration = ntscColour.getConfiguration();
 
         // Set the comb filter configuration
-        configuration.filterDepth = 2;
+        configuration.use3D = false;
         configuration.blackAndWhite = false;
         configuration.adaptive2d = false;
         configuration.opticalflow = false;
