@@ -43,7 +43,7 @@ class NtscFilter : public QObject
 public:
     explicit NtscFilter(QObject *parent = nullptr);
 
-    bool process(QString inputFileName, QString outputFileName, qint32 startFrame, qint32 length, bool reverse = false, qint32 filterDepth = 2,
+    bool process(QString inputFileName, QString outputFileName, qint32 startFrame, qint32 length, bool reverse = false, bool use3D = false,
                  bool blackAndWhite = false, bool adaptive2d = true, bool opticalFlow = true, bool whitePoint = false);
 
 signals:

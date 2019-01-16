@@ -100,11 +100,10 @@ int main(int argc, char *argv[])
                                        QCoreApplication::translate("main", "Show debug"));
     parser.addOption(showDebugOption);
 
-    // Option to specify the depth of the filter (2D or 3D) (-f)
-    QCommandLineOption filterDepthParameterOption(QStringList() << "f" << "filterdepth",
-                QCoreApplication::translate("main", "Specify the filter depth parameter (default is 2)"),
-                QCoreApplication::translate("main", "1 to 3"));
-    parser.addOption(filterDepthParameterOption);
+    // Option to select 3D filter (default is 2D) (-f)
+    QCommandLineOption filterDepthOption(QStringList() << "f" << "3dfilter",
+                                        QCoreApplication::translate("main", "Use 3D filtering (default is 2D"));
+    parser.addOption(filterDepthOption);
 
     // Option to select start frame (sequential) (-s)
     QCommandLineOption startFrameOption(QStringList() << "s" << "start",
@@ -157,23 +156,12 @@ int main(int argc, char *argv[])
     bool reverse = parser.isSet(setReverseOption);
     bool blackAndWhite = parser.isSet(setBwModeOption);
     bool whitePoint = parser.isSet(setMaxWhitePoint);
+    bool use3D = parser.isSet(filterDepthOption);
 
     bool adaptive2d = true;
     if (parser.isSet(noAdaptive2dOption)) adaptive2d = false;
     bool opticalFlow = true;
     if (parser.isSet(noOpticalFlowOption)) opticalFlow = false;
-
-    qint32 filterDepth = 2;
-    if (parser.isSet(filterDepthParameterOption)) {
-        filterDepth = parser.value(filterDepthParameterOption).toInt();
-
-        // Range check the parameter
-        if (filterDepth < 1 || filterDepth > 3) {
-            // Quit with error
-            qCritical("Error: The filter depth specified is out of range!");
-            return -1;
-        }
-    }
 
     qint32 startFrame = -1;
     qint32 length = -1;
@@ -219,7 +207,7 @@ int main(int argc, char *argv[])
     // Process the input file
     ntscFilter.process(inputFileName, outputFileName,
                        startFrame, length, reverse,
-                       filterDepth, blackAndWhite, adaptive2d, opticalFlow, whitePoint);
+                       use3D, blackAndWhite, adaptive2d, opticalFlow, whitePoint);
 
     // Quit with success
     return 0;

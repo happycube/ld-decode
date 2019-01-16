@@ -32,7 +32,7 @@ NtscFilter::NtscFilter(QObject *parent) : QObject(parent)
 
 bool NtscFilter::process(QString inputFileName, QString outputFileName,
                          qint32 startFrame, qint32 length, bool reverse,
-                         qint32 filterDepth, bool blackAndWhite,
+                         bool use3D, bool blackAndWhite,
                          bool adaptive2d, bool opticalFlow, bool whitePoint)
 {
     // Open the source video metadata
@@ -118,7 +118,7 @@ bool NtscFilter::process(QString inputFileName, QString outputFileName,
     Comb::Configuration configuration = comb.getConfiguration();
 
     // Set the comb filter configuration
-    configuration.filterDepth = filterDepth;
+    configuration.use3D = use3D;
     configuration.blackAndWhite = blackAndWhite;
     configuration.adaptive2d = adaptive2d;
     configuration.opticalflow = opticalFlow;
@@ -143,13 +143,7 @@ bool NtscFilter::process(QString inputFileName, QString outputFileName,
     comb.setConfiguration(configuration);
 
     // Show the filter type being used
-    if (configuration.filterDepth == 1) qInfo() << "Processing with 1D filter";
-    else if (configuration.filterDepth == 2) qInfo() << "Processing with 2D filter";
-    else if (configuration.filterDepth == 3) qInfo() << "Processing with 3D filter";
-    else {
-        qCritical() << "Error: Filter depth is invalid!";
-        return false;
-    }
+    if (use3D) qInfo() << "Processing with 3D filter"; else qInfo() << "Processing with 2D filter";
 
     // Show the filter configuration
     qInfo() << "Filter configuration: Black & white output =" << blackAndWhite;
