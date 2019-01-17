@@ -148,7 +148,8 @@ QByteArray Comb::process(QByteArray firstFieldInputBuffer, QByteArray secondFiel
         // Split the IQ values of the current frame
         splitIQ(0);
 
-        if (frameCounter > 0) { // Ensure we have at least 2 frames
+        // Ensure we have at least 2 frames before performing optical flow
+        if (frameCounter > 0) {
             // Make a copy of the current frame
             tempYiqBuffer = frameBuffer[0].yiqBuffer;
 
@@ -161,27 +162,39 @@ QByteArray Comb::process(QByteArray firstFieldInputBuffer, QByteArray secondFiel
             // Perform the optical flow method on the copy of the current frame (0)
             // This method writes back the result to frame buffer [1]
             opticalFlow3D(tempYiqBuffer, frameCounter);
+        }
 
-            // If we don't yet have 3 frames, then we are done
-            if (frameCounter < 2) {
-                rgbOutputBuffer.clear(); // return an empty buffer
-            } else {
-                split3D();  // Split 3D on frame buffer [1]
-                splitIQ(1); // Split QI on frame buffer [1]
+        // If we don't yet have 3 frames, then we cannot 3D filter
+        if (frameCounter < 2) {
+            // 2D filter
+            qDebug() << "Comb::process(): 2D fallback for initial frame" << frameCounter;
+            tempYiqBuffer = frameBuffer[0].yiqBuffer;
 
-                // Make a copy of frame buffer 1
-                tempYiqBuffer = frameBuffer[1].yiqBuffer;
+            // Process the copy of the current frame
+            adjustY(0, tempYiqBuffer);
+            if (configuration.colorlpf) filterIQ(tempYiqBuffer);
+            doYNR(tempYiqBuffer);
+            doCNR(tempYiqBuffer);
 
-                // Process the copy of the frame buffer; note: we have to pass the frame buffer number too
-                // for the frame's parameters as they are not copied into the tempYiqBuffer
-                adjustY(1, tempYiqBuffer);
-                if (configuration.colorlpf) filterIQ(tempYiqBuffer);
-                doYNR(tempYiqBuffer);
-                doCNR(tempYiqBuffer);
+            // Convert the YIQ result to RGB
+            rgbOutputBuffer = yiqToRgbFrame(0, tempYiqBuffer);
+        } else {
+            // 3D filter
+            split3D();  // Split 3D on frame buffer [1]
+            splitIQ(1); // Split QI on frame buffer [1]
 
-                // Convert the YIQ result to RGB
-                rgbOutputBuffer = yiqToRgbFrame(1, tempYiqBuffer);
-            }
+            // Make a copy of frame buffer 1
+            tempYiqBuffer = frameBuffer[1].yiqBuffer;
+
+            // Process the copy of the frame buffer; note: we have to pass the frame buffer number too
+            // for the frame's parameters as they are not copied into the tempYiqBuffer
+            adjustY(1, tempYiqBuffer);
+            if (configuration.colorlpf) filterIQ(tempYiqBuffer);
+            doYNR(tempYiqBuffer);
+            doCNR(tempYiqBuffer);
+
+            // Convert the YIQ result to RGB
+            rgbOutputBuffer = yiqToRgbFrame(1, tempYiqBuffer);
         }
     }
 
