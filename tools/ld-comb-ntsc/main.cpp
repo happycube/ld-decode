@@ -132,16 +132,6 @@ int main(int argc, char *argv[])
                                        QCoreApplication::translate("main", "Use 75% white-point (default 100%)"));
     parser.addOption(setMaxWhitePoint);
 
-    // Option to set the no adaptive 2d flag (-n)
-    QCommandLineOption noAdaptive2dOption(QStringList() << "n" << "noadaptive2d",
-                                       QCoreApplication::translate("main", "Do not use adaptive 2D processing (for 3D filter depth)"));
-    parser.addOption(noAdaptive2dOption);
-
-    // Option to set the no optical flow flag (-o)
-    QCommandLineOption noOpticalFlowOption(QStringList() << "o" << "noopticalflow",
-                                       QCoreApplication::translate("main", "Do not use optical flow processing (for 3D filter depth)"));
-    parser.addOption(noOpticalFlowOption);
-
     // Positional argument to specify input video file
     parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input TBC file"));
 
@@ -157,11 +147,6 @@ int main(int argc, char *argv[])
     bool blackAndWhite = parser.isSet(setBwModeOption);
     bool whitePoint = parser.isSet(setMaxWhitePoint);
     bool use3D = parser.isSet(filterDepthOption);
-
-    bool adaptive2d = true;
-    if (parser.isSet(noAdaptive2dOption)) adaptive2d = false;
-    bool opticalFlow = true;
-    if (parser.isSet(noOpticalFlowOption)) opticalFlow = false;
 
     qint32 startFrame = -1;
     qint32 length = -1;
@@ -207,7 +192,7 @@ int main(int argc, char *argv[])
     // Process the input file
     ntscFilter.process(inputFileName, outputFileName,
                        startFrame, length, reverse,
-                       use3D, blackAndWhite, adaptive2d, opticalFlow, whitePoint);
+                       use3D, blackAndWhite, whitePoint);
 
     // Quit with success
     return 0;

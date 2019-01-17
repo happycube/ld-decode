@@ -156,8 +156,6 @@ void MainWindow::updateGuiLoaded(void)
         // Set the comb filter configuration
         configuration.use3D = false;
         configuration.blackAndWhite = false;
-        configuration.adaptive2d = false;
-        configuration.opticalflow = false;
 
         // Set the input buffer dimensions configuration
         configuration.fieldWidth = videoParameters.fieldWidth;

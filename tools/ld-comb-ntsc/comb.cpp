@@ -36,12 +36,11 @@ Comb::Comb() {
 
     // Set default configuration
     configuration.blackAndWhite = false;
-    configuration.adaptive2d = true;
-    configuration.colorlpf = true;
-    configuration.colorlpf_hq = true;
-    configuration.opticalflow = true;
     configuration.use3D = false;
     configuration.whitePoint100 = false;
+
+    configuration.colorlpf = true; // Use as default
+    configuration.colorlpf_hq = true; // Use as default
 
     // These are the overall dimensions of the input frame
     configuration.fieldWidth = 910;
@@ -211,15 +210,12 @@ void Comb::postConfigurationTasks(void)
     p_2drange = 10 * irescale;
 
     // Calculations for 3D filter
-    if (configuration.opticalflow) {
-        if (p_3dcore < 0) p_3dcore = 0;
-        if (p_3drange < 0) p_3drange = 0.5;
-    } else {
-        if (p_3dcore < 0) p_3dcore = 1.25;
-        if (p_3drange < 0) p_3drange = 5.5;
-        p_3dcore *= irescale;
-        p_3drange *= irescale;
-    }
+//    if (p_3dcore < 0) p_3dcore = 0;
+//    if (p_3drange < 0) p_3drange = 0.5;
+    if (p_3dcore < 0) p_3dcore = 1.25;
+    if (p_3drange < 0) p_3drange = 5.5;
+    p_3dcore *= irescale;
+    p_3drange *= irescale;
 
     // Allocate the frame buffers
     if (configuration.use3D) frameBuffer.resize(3); // 3 buffers required for 3D processing
@@ -363,9 +359,6 @@ void Comb::split2D(qint32 currentFrameBuffer)
                 kp = clamp(1 - (kp / p_2drange), 0, 1);
                 kn = clamp(1 - (kn / p_2drange), 0, 1);
 
-                // What is this doing?
-                if (!configuration.adaptive2d) kn = kp = 1.0;
-
                 qreal sc = 1.0;
 
                 if ((kn > 0) || (kp > 0)) {
@@ -438,16 +431,9 @@ void Comb::split3D(void)
         }
 
         for (qint32 h = configuration.activeVideoStart; h < configuration.activeVideoEnd; h++) {
-            if (configuration.opticalflow) {
-                // Do this is optical flow is on
-                frameBuffer[1].clpbuffer[2][lineNumber][h] = (p3line[h] - line[h]);
-            } else {
-                // Do this if optical flow is off
-                frameBuffer[1].clpbuffer[2][lineNumber][h] = (((p3line[h] + n3line[h]) / 2) - line[h]);
-
-                // I think this is overwriting the 3D optical flow output; but it's very obscure...
-                frameBuffer[1].combk[2][lineNumber][h] = clamp(1 - ((_k[h] - (p_3dcore)) / p_3drange), 0, 1);
-            }
+            // Something to do with the optical flow detection...
+            frameBuffer[1].clpbuffer[2][lineNumber][h] = (((p3line[h] + n3line[h]) / 2) - line[h]);
+            frameBuffer[1].combk[2][lineNumber][h] = clamp(1 - ((_k[h] - (p_3dcore)) / p_3drange), 0, 1);
 
             if ((lineNumber >= 2) && (lineNumber <= (frameHeight - 2))) {
                 frameBuffer[1].combk[1][lineNumber][h] = 1 - frameBuffer[1].combk[2][lineNumber][h];

@@ -52,10 +52,8 @@ public:
     // Comb filter configuration parameters
     struct Configuration {
         bool blackAndWhite;
-        bool adaptive2d;
         bool colorlpf;
         bool colorlpf_hq;
-        bool opticalflow;
         bool use3D;
         bool whitePoint100;
 

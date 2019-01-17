@@ -32,8 +32,7 @@ NtscFilter::NtscFilter(QObject *parent) : QObject(parent)
 
 bool NtscFilter::process(QString inputFileName, QString outputFileName,
                          qint32 startFrame, qint32 length, bool reverse,
-                         bool use3D, bool blackAndWhite,
-                         bool adaptive2d, bool opticalFlow, bool whitePoint)
+                         bool use3D, bool blackAndWhite, bool whitePoint)
 {
     // Open the source video metadata
     if (!ldDecodeMetaData.read(inputFileName + ".json")) {
@@ -120,8 +119,6 @@ bool NtscFilter::process(QString inputFileName, QString outputFileName,
     // Set the comb filter configuration
     configuration.use3D = use3D;
     configuration.blackAndWhite = blackAndWhite;
-    configuration.adaptive2d = adaptive2d;
-    configuration.opticalflow = opticalFlow;
     configuration.whitePoint100 = whitePoint;
 
     // Set the input buffer dimensions configuration
@@ -143,12 +140,12 @@ bool NtscFilter::process(QString inputFileName, QString outputFileName,
     comb.setConfiguration(configuration);
 
     // Show the filter type being used
-    if (use3D) qInfo() << "Processing with 3D filter"; else qInfo() << "Processing with 2D filter";
+    if (use3D) qInfo() << "Filter configuration: 3D filter";
+    else qInfo() << "Filter configuration: 2D filter";
 
     // Show the filter configuration
     qInfo() << "Filter configuration: Black & white output =" << blackAndWhite;
-    qInfo() << "Filter configuration: Adaptive 2D =" << adaptive2d;
-    qInfo() << "Filter configuration: Optical flow =" << opticalFlow;
+    qInfo() << "Filter configuration: Use 75% white-point =" << whitePoint;
 
     // Process the frames
     QElapsedTimer totalTimer;
