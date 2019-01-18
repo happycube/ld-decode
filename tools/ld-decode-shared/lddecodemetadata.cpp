@@ -22,6 +22,7 @@
 
 ************************************************************************/
 
+#include "JsonWax/JsonWax.h"
 #include "lddecodemetadata.h"
 
 LdDecodeMetaData::LdDecodeMetaData(QObject *parent) : QObject(parent)
@@ -36,267 +37,248 @@ bool LdDecodeMetaData::read(QString fileName)
 {
     // Open the JSON file
     qDebug() << "LdDecodeMetaData::read(): Loading JSON file" << fileName;
-    QFile jsonFileHandle(fileName);
-
-    // Open the JSON file
-    if (!jsonFileHandle.open(QIODevice::ReadOnly)) {
-        qWarning("Could not open JSON file!");
-        return false;
-    }
-
-    // Read the file into our JSON document
-    QJsonDocument jsonDocument;
-    QString inputData;
-    inputData = jsonFileHandle.readAll();
-    jsonDocument = QJsonDocument::fromJson(inputData.toUtf8());
-    QJsonObject document = jsonDocument.object(); // Note: fix for Qt 5.9 compatibility
-
-    // Close the file
-    jsonFileHandle.close();
-
-    // Check input file is value
-    if (jsonDocument.isNull()) {
-        qWarning("Input JSON file could not be parsed!");
+    JsonWax json;
+    if (!json.loadFile(fileName)) {
+        qCritical("Opening JSON file failed: JSON file cannot be opened/does not exist");
         return false;
     }
 
     // Read the video paramters
-    if (!document["videoParameters"].isUndefined()) {
+    if (json.size({"videoParameters"}) > 0) {
         // Read the video parameters
-        QJsonObject jsonVideoParameters;
-        jsonVideoParameters = document["videoParameters"].toObject();
+        metaData.videoParameters.numberOfSequentialFields = json.value({"videoParameters", "numberOfSequentialFields"}).toInt();
+        metaData.videoParameters.isSourcePal = json.value({"videoParameters", "isSourcePal"}).toBool();
 
-        metaData.videoParameters.numberOfSequentialFields = jsonVideoParameters["numberOfSequentialFields"].toInt();
-        metaData.videoParameters.isSourcePal = jsonVideoParameters["isSourcePal"].toBool();
+        metaData.videoParameters.colourBurstStart = json.value({"videoParameters", "colourBurstStart"}).toInt();
+        metaData.videoParameters.colourBurstEnd = json.value({"videoParameters", "colourBurstEnd"}).toInt();
+        metaData.videoParameters.activeVideoStart = json.value({"videoParameters", "activeVideoStart"}).toInt();
+        metaData.videoParameters.activeVideoEnd = json.value({"videoParameters", "activeVideoEnd"}).toInt();
 
-        metaData.videoParameters.colourBurstStart = jsonVideoParameters["colourBurstStart"].toInt();
-        metaData.videoParameters.colourBurstEnd = jsonVideoParameters["colourBurstEnd"].toInt();
-        metaData.videoParameters.activeVideoStart = jsonVideoParameters["activeVideoStart"].toInt();
-        metaData.videoParameters.activeVideoEnd = jsonVideoParameters["activeVideoEnd"].toInt();
+        metaData.videoParameters.white16bIre = json.value({"videoParameters", "white16bIre"}).toInt();
+        metaData.videoParameters.black16bIre = json.value({"videoParameters", "black16bIre"}).toInt();
 
-        metaData.videoParameters.white16bIre = jsonVideoParameters["white16bIre"].toInt();
-        metaData.videoParameters.black16bIre = jsonVideoParameters["black16bIre"].toInt();
-
-        metaData.videoParameters.fieldWidth = jsonVideoParameters["fieldWidth"].toInt();
-        metaData.videoParameters.fieldHeight = jsonVideoParameters["fieldHeight"].toInt();
-        metaData.videoParameters.sampleRate = jsonVideoParameters["sampleRate"].toInt();
-        metaData.videoParameters.fsc = jsonVideoParameters["fsc"].toInt();
+        metaData.videoParameters.fieldWidth = json.value({"videoParameters", "fieldWidth"}).toInt();
+        metaData.videoParameters.fieldHeight = json.value({"videoParameters", "fieldHeight"}).toInt();
+        metaData.videoParameters.sampleRate = json.value({"videoParameters", "sampleRate"}).toInt();
+        metaData.videoParameters.fsc = json.value({"videoParameters", "fsc"}).toInt();
+        qDebug() << "LdDecodeMetaData::read(): videoParameters is defined";
     } else {
-        qDebug() << "LdDecodeMetaData::read(): videoParameters is not defined";
+        qCritical("Opening JSON file failed: videoParameters object is not defined");
+        return false;
     }
 
-    if (!document["pcmAudioParameters"].isUndefined()) {
+    if (json.size({"pcmAudioParameters"}) > 0) {
         // Read the PCM audio data
-        QJsonObject pcmAudioParameters = document["pcmAudioParameters"].toObject();
-
-        metaData.pcmAudioParameters.sampleRate = pcmAudioParameters["sampleRate"].toInt();
-        metaData.pcmAudioParameters.isLittleEndian = pcmAudioParameters["isLittleEndian"].toBool();
-        metaData.pcmAudioParameters.isSigned = pcmAudioParameters["isSigned"].toBool();
-        metaData.pcmAudioParameters.bits = pcmAudioParameters["bits"].toInt();
+        metaData.pcmAudioParameters.sampleRate = json.value({"pcmAudioParameters", "sampleRate"}).toInt();
+        metaData.pcmAudioParameters.isLittleEndian = json.value({"pcmAudioParameters", "isLittleEndian"}).toBool();
+        metaData.pcmAudioParameters.isSigned = json.value({"pcmAudioParameters", "isSigned"}).toBool();
+        metaData.pcmAudioParameters.bits = json.value({"pcmAudioParameters", "bits"}).toInt();
+        qDebug() << "LdDecodeMetaData::read(): pcmAudioParameters is defined";
     } else {
-        qDebug() << "LdDecodeMetaData::read(): pcmAudioParameters is not defined";
+        qCritical("Opening JSON file failed: pcmAudioParameters is not defined");
+        return false;
     }
 
-    QJsonArray jsonFields = document["fields"].toArray();
-    if (!jsonFields.isEmpty()) {
+    qint32 numberOfFields = json.size({"fields"});
+    qDebug() << "LdDecodeMetaData::read(): Found" << numberOfFields << "fields in the JSON document";
+    metaData.fields.resize(numberOfFields);
+    if (numberOfFields > 0) {
         // Read the fields
+        for (qint32 fieldNumber = 0; fieldNumber < numberOfFields; fieldNumber++) {
+            // Primary field values
+            metaData.fields[fieldNumber].seqNo = json.value({"fields", fieldNumber, "seqNo"}).toInt();
+            metaData.fields[fieldNumber].isFirstField = json.value({"fields", fieldNumber, "isFirstField"}).toBool();
+            metaData.fields[fieldNumber].syncConf = json.value({"fields", fieldNumber, "syncConf"}).toInt();
+            metaData.fields[fieldNumber].medianBurstIRE = json.value({"fields", fieldNumber, "medianBurstIRE"}).toDouble();
+            metaData.fields[fieldNumber].fieldPhaseID = json.value({"fields", fieldNumber, "fieldPhaseID"}).toInt();
+            metaData.fields[fieldNumber].audioSamples = json.value({"fields", fieldNumber, "audioSamples"}).toInt();
 
-        metaData.fields.resize(jsonFields.size());
-
-        for (qint32 fieldNumber = 0; fieldNumber < jsonFields.size(); fieldNumber++) {
-            Field fieldData;
-
-            QJsonObject field;
-            field = jsonFields[fieldNumber].toObject();
-
-            fieldData.seqNo = field["seqNo"].toInt();
-
-            fieldData.isFirstField = field["isFirstField"].toBool();
-            fieldData.syncConf = field["syncConf"].toInt();
-            fieldData.medianBurstIRE = field["medianBurstIRE"].toDouble();
-            fieldData.fieldPhaseID = field["fieldPhaseID"].toInt();
-            fieldData.audioSamples = field["audioSamples"].toInt();
-
-            QJsonObject vits = field["vits"].toObject();
-            if (!vits.isEmpty()) {
-                fieldData.vits.inUse = true;
-                fieldData.vits.snr = field["snr"].toDouble();
+            // VITS values
+            if (json.size({"fields", fieldNumber, "vits"}) > 0) {
+                metaData.fields[fieldNumber].vits.inUse = true;
+                metaData.fields[fieldNumber].vits.snr = json.value({"fields", fieldNumber, "vits", "snr"}).toDouble();
             } else {
                 // Mark VITS as undefined
-                fieldData.vits.inUse = false;
+                metaData.fields[fieldNumber].vits.inUse = false;
             }
 
-            QJsonObject vbi = field["vbi"].toObject();
-            if (!vbi.isEmpty()) {
+            // VBI values
+            if (json.size({"fields", fieldNumber, "vbi"}) > 0) {
                 // Mark VBI as in use
-                fieldData.vbi.inUse = true;
+                metaData.fields[fieldNumber].vbi.inUse = true;
 
-                QJsonArray jsonVbiData = vbi["vbiData"].toArray();
-                fieldData.vbi.vbiData.append(jsonVbiData[0].toInt()); // Line 16
-                fieldData.vbi.vbiData.append(jsonVbiData[1].toInt()); // Line 17
-                fieldData.vbi.vbiData.append(jsonVbiData[2].toInt()); // Line 18
+                metaData.fields[fieldNumber].vbi.vbiData.append(json.value({"fields", fieldNumber, "vbi", "vbiData", 0}).toInt()); // Line 16
+                metaData.fields[fieldNumber].vbi.vbiData.append(json.value({"fields", fieldNumber, "vbi", "vbiData", 1}).toInt()); // Line 17
+                metaData.fields[fieldNumber].vbi.vbiData.append(json.value({"fields", fieldNumber, "vbi", "vbiData", 2}).toInt()); // Line 18
 
-                switch(vbi["type"].toInt()) {
+                switch(json.value({"fields", fieldNumber, "vbi", "type"}).toInt()) {
                 case 0:
-                    fieldData.vbi.type = LdDecodeMetaData::VbiDiscTypes::unknownDiscType;
+                    metaData.fields[fieldNumber].vbi.type = LdDecodeMetaData::VbiDiscTypes::unknownDiscType;
                     break;
                 case 1 :
-                    fieldData.vbi.type = LdDecodeMetaData::VbiDiscTypes::clv;
+                    metaData.fields[fieldNumber].vbi.type = LdDecodeMetaData::VbiDiscTypes::clv;
                     break;
                 case 2 :
-                    fieldData.vbi.type = LdDecodeMetaData::VbiDiscTypes::cav;
+                    metaData.fields[fieldNumber].vbi.type = LdDecodeMetaData::VbiDiscTypes::cav;
                     break;
                 default:
-                    fieldData.vbi.type = LdDecodeMetaData::VbiDiscTypes::unknownDiscType;
+                    metaData.fields[fieldNumber].vbi.type = LdDecodeMetaData::VbiDiscTypes::unknownDiscType;
                 }
 
-                fieldData.vbi.userCode = vbi["userCode"].toString();
-                fieldData.vbi.picNo = vbi["picNo"].toInt();
-                fieldData.vbi.chNo = vbi["chNo"].toInt();
-                fieldData.vbi.clvHr = vbi["clvHr"].toInt();
-                fieldData.vbi.clvMin = vbi["clvMin"].toInt();
-                fieldData.vbi.clvSec = vbi["clvSec"].toInt();
-                fieldData.vbi.clvPicNo = vbi["clvPicNo"].toInt();
+                metaData.fields[fieldNumber].vbi.userCode = json.value({"fields", fieldNumber, "vbi", "userCode"}).toString();
+                metaData.fields[fieldNumber].vbi.picNo = json.value({"fields", fieldNumber, "vbi", "picNo"}).toInt();
+                metaData.fields[fieldNumber].vbi.chNo = json.value({"fields", fieldNumber, "vbi", "chNo"}).toInt();
+                metaData.fields[fieldNumber].vbi.clvHr = json.value({"fields", fieldNumber, "vbi", "clvHr"}).toInt();
+                metaData.fields[fieldNumber].vbi.clvMin = json.value({"fields", fieldNumber, "vbi", "clvMin"}).toInt();
+                metaData.fields[fieldNumber].vbi.clvSec = json.value({"fields", fieldNumber, "vbi", "clvSec"}).toInt();
+                metaData.fields[fieldNumber].vbi.clvPicNo = json.value({"fields", fieldNumber, "vbi", "clvPicNo"}).toInt();
 
-                switch (vbi["soundMode"].toInt()) {
+                switch (json.value({"fields", fieldNumber, "vbi", "soundMode"}).toInt()) {
                 case 0:
-                    fieldData.vbi.soundMode = LdDecodeMetaData::VbiSoundModes::stereo;
+                    metaData.fields[fieldNumber].vbi.soundMode = LdDecodeMetaData::VbiSoundModes::stereo;
                     break;
                 case 1:
-                    fieldData.vbi.soundMode = LdDecodeMetaData::VbiSoundModes::mono;
+                    metaData.fields[fieldNumber].vbi.soundMode = LdDecodeMetaData::VbiSoundModes::mono;
                     break;
                 case 2:
-                    fieldData.vbi.soundMode = LdDecodeMetaData::VbiSoundModes::audioSubCarriersOff;
+                    metaData.fields[fieldNumber].vbi.soundMode = LdDecodeMetaData::VbiSoundModes::audioSubCarriersOff;
                     break;
                 case 3:
-                    fieldData.vbi.soundMode = LdDecodeMetaData::VbiSoundModes::bilingual;
+                    metaData.fields[fieldNumber].vbi.soundMode = LdDecodeMetaData::VbiSoundModes::bilingual;
                     break;
                 case 4:
-                    fieldData.vbi.soundMode = LdDecodeMetaData::VbiSoundModes::stereo_stereo;
+                    metaData.fields[fieldNumber].vbi.soundMode = LdDecodeMetaData::VbiSoundModes::stereo_stereo;
                     break;
                 case 5:
-                    fieldData.vbi.soundMode = LdDecodeMetaData::VbiSoundModes::stereo_bilingual;
+                    metaData.fields[fieldNumber].vbi.soundMode = LdDecodeMetaData::VbiSoundModes::stereo_bilingual;
                     break;
                 case 6:
-                    fieldData.vbi.soundMode = LdDecodeMetaData::VbiSoundModes::crossChannelStereo;
+                    metaData.fields[fieldNumber].vbi.soundMode = LdDecodeMetaData::VbiSoundModes::crossChannelStereo;
                     break;
                 case 7:
-                    fieldData.vbi.soundMode = LdDecodeMetaData::VbiSoundModes::bilingual_bilingual;
+                    metaData.fields[fieldNumber].vbi.soundMode = LdDecodeMetaData::VbiSoundModes::bilingual_bilingual;
                     break;
                 case 8:
-                    fieldData.vbi.soundMode = LdDecodeMetaData::VbiSoundModes::mono_dump;
+                    metaData.fields[fieldNumber].vbi.soundMode = LdDecodeMetaData::VbiSoundModes::mono_dump;
                     break;
                 case 9:
-                    fieldData.vbi.soundMode = LdDecodeMetaData::VbiSoundModes::stereo_dump;
+                    metaData.fields[fieldNumber].vbi.soundMode = LdDecodeMetaData::VbiSoundModes::stereo_dump;
                     break;
                 case 10:
-                    fieldData.vbi.soundMode = LdDecodeMetaData::VbiSoundModes::bilingual_dump;
+                    metaData.fields[fieldNumber].vbi.soundMode = LdDecodeMetaData::VbiSoundModes::bilingual_dump;
                     break;
                 case 11:
-                    fieldData.vbi.soundMode = LdDecodeMetaData::VbiSoundModes::futureUse;
+                    metaData.fields[fieldNumber].vbi.soundMode = LdDecodeMetaData::VbiSoundModes::futureUse;
                     break;
                 default:
-                    fieldData.vbi.soundMode = LdDecodeMetaData::VbiSoundModes::futureUse;
+                    metaData.fields[fieldNumber].vbi.soundMode = LdDecodeMetaData::VbiSoundModes::futureUse;
                     break;
                 }
 
-                switch (vbi["soundModeAm2"].toInt()) {
+                switch (json.value({"fields", fieldNumber, "vbi", "soundModeAm2"}).toInt()) {
                 case 0:
-                    fieldData.vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::stereo;
+                    metaData.fields[fieldNumber].vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::stereo;
                     break;
                 case 1:
-                    fieldData.vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::mono;
+                    metaData.fields[fieldNumber].vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::mono;
                     break;
                 case 2:
-                    fieldData.vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::audioSubCarriersOff;
+                    metaData.fields[fieldNumber].vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::audioSubCarriersOff;
                     break;
                 case 3:
-                    fieldData.vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::bilingual;
+                    metaData.fields[fieldNumber].vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::bilingual;
                     break;
                 case 4:
-                    fieldData.vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::stereo_stereo;
+                    metaData.fields[fieldNumber].vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::stereo_stereo;
                     break;
                 case 5:
-                    fieldData.vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::stereo_bilingual;
+                    metaData.fields[fieldNumber].vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::stereo_bilingual;
                     break;
                 case 6:
-                    fieldData.vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::crossChannelStereo;
+                    metaData.fields[fieldNumber].vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::crossChannelStereo;
                     break;
                 case 7:
-                    fieldData.vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::bilingual_bilingual;
+                    metaData.fields[fieldNumber].vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::bilingual_bilingual;
                     break;
                 case 8:
-                    fieldData.vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::mono_dump;
+                    metaData.fields[fieldNumber].vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::mono_dump;
                     break;
                 case 9:
-                    fieldData.vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::stereo_dump;
+                    metaData.fields[fieldNumber].vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::stereo_dump;
                     break;
                 case 10:
-                    fieldData.vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::bilingual_dump;
+                    metaData.fields[fieldNumber].vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::bilingual_dump;
                     break;
                 case 11:
-                    fieldData.vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::futureUse;
+                    metaData.fields[fieldNumber].vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::futureUse;
                     break;
                 default:
-                    fieldData.vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::futureUse;
+                    metaData.fields[fieldNumber].vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::futureUse;
                     break;
                 }
 
                 // Get the boolean flags field (contains 13 boolean flags from the VBI)
-                qint32 booleanFlags = vbi["flags"].toInt();
+                qint32 booleanFlags = json.value({"fields", fieldNumber, "vbi", "flags"}).toInt();
 
                 // Interpret the flags
-                fieldData.vbi.leadIn =      ((booleanFlags & 0x0001) == 0x0001);
-                fieldData.vbi.leadOut =     ((booleanFlags & 0x0002) == 0x0002);
-                fieldData.vbi.picStop =     ((booleanFlags & 0x0004) == 0x0004);
-                fieldData.vbi.cx =          ((booleanFlags & 0x0008) == 0x0008);
-                fieldData.vbi.size =        ((booleanFlags & 0x0010) == 0x0010);
-                fieldData.vbi.side =        ((booleanFlags & 0x0020) == 0x0020);
-                fieldData.vbi.teletext =    ((booleanFlags & 0x0040) == 0x0040);
-                fieldData.vbi.dump =        ((booleanFlags & 0x0080) == 0x0080);
-                fieldData.vbi.fm =          ((booleanFlags & 0x0100) == 0x0100);
-                fieldData.vbi.digital =     ((booleanFlags & 0x0200) == 0x0200);
-                fieldData.vbi.parity =      ((booleanFlags & 0x0400) == 0x0400);
-                fieldData.vbi.copyAm2 =     ((booleanFlags & 0x0800) == 0x0800);
-                fieldData.vbi.standardAm2 = ((booleanFlags & 0x1000) == 0x1000);
+                metaData.fields[fieldNumber].vbi.leadIn =      ((booleanFlags & 0x0001) == 0x0001);
+                metaData.fields[fieldNumber].vbi.leadOut =     ((booleanFlags & 0x0002) == 0x0002);
+                metaData.fields[fieldNumber].vbi.picStop =     ((booleanFlags & 0x0004) == 0x0004);
+                metaData.fields[fieldNumber].vbi.cx =          ((booleanFlags & 0x0008) == 0x0008);
+                metaData.fields[fieldNumber].vbi.size =        ((booleanFlags & 0x0010) == 0x0010);
+                metaData.fields[fieldNumber].vbi.side =        ((booleanFlags & 0x0020) == 0x0020);
+                metaData.fields[fieldNumber].vbi.teletext =    ((booleanFlags & 0x0040) == 0x0040);
+                metaData.fields[fieldNumber].vbi.dump =        ((booleanFlags & 0x0080) == 0x0080);
+                metaData.fields[fieldNumber].vbi.fm =          ((booleanFlags & 0x0100) == 0x0100);
+                metaData.fields[fieldNumber].vbi.digital =     ((booleanFlags & 0x0200) == 0x0200);
+                metaData.fields[fieldNumber].vbi.parity =      ((booleanFlags & 0x0400) == 0x0400);
+                metaData.fields[fieldNumber].vbi.copyAm2 =     ((booleanFlags & 0x0800) == 0x0800);
+                metaData.fields[fieldNumber].vbi.standardAm2 = ((booleanFlags & 0x1000) == 0x1000);
             } else {
                 // Mark VBI as undefined
-                fieldData.vbi.inUse = false;
+                metaData.fields[fieldNumber].vbi.inUse = false;
             }
 
-            // Read the NTSC specific record
-            QJsonObject ntsc = field["ntsc"].toObject();
-            if (!ntsc.isEmpty()) {
+            // NTSC values
+            if (json.size({"fields", fieldNumber, "ntsc"}) > 0) {
                 // Mark as in use
-                fieldData.ntsc.inUse = true;
+                metaData.fields[fieldNumber].ntsc.inUse = true;
 
-                fieldData.ntsc.isFmCodeDataValid = ntsc["isFmCodeDataValid"].toBool();
-                fieldData.ntsc.fmCodeData = ntsc["fmCodeData"].toInt();
-                fieldData.ntsc.fieldFlag = ntsc["fieldFlag"].toBool();
-                fieldData.ntsc.whiteFlag = ntsc["whiteFlag"].toBool();
+                metaData.fields[fieldNumber].ntsc.isFmCodeDataValid = json.value({"fields", fieldNumber, "ntsc", "isFmCodeDataValid"}).toBool();
+                metaData.fields[fieldNumber].ntsc.fmCodeData = json.value({"fields", fieldNumber, "ntsc", "fmCodeData"}).toInt();
+                metaData.fields[fieldNumber].ntsc.fieldFlag = json.value({"fields", fieldNumber, "ntsc", "fieldFlag"}).toBool();
+                metaData.fields[fieldNumber].ntsc.whiteFlag = json.value({"fields", fieldNumber, "ntsc", "whiteFlag"}).toBool();
             } else {
                 // Mark ntscSpecific as undefined
-                fieldData.ntsc.inUse = false;
+                metaData.fields[fieldNumber].ntsc.inUse = false;
             }
 
-            // Read the drop-outs object
-            QJsonObject dropOuts = field["dropOuts"].toObject();
+            // dropOuts values
+            qint32 startxSize = json.size({"fields", fieldNumber, "dropOuts", "startx"});
+            qint32 endxSize = json.size({"fields", fieldNumber, "dropOuts", "endx"});
+            qint32 fieldLinesSize = json.size({"fields", fieldNumber, "dropOuts", "fieldLines"});
 
-            QJsonArray startx = dropOuts["startx"].toArray();
-            QJsonArray endx = dropOuts["endx"].toArray();
-            QJsonArray fieldLine = dropOuts["fieldLine"].toArray();
-
-            for (qint32 doCounter = 0; doCounter < startx.size(); doCounter++) {
-                fieldData.dropOuts.startx.append(startx[doCounter].toInt());
-                fieldData.dropOuts.endx.append(endx[doCounter].toInt());
-                fieldData.dropOuts.fieldLine.append(fieldLine[doCounter].toInt());
+            // Ensure that all three objects are the same size
+            if (startxSize != endxSize && startxSize != fieldLinesSize) {
+                qCritical("Opening JSON file failed: Dropouts object is illegal");
+                return false;
             }
 
-            // Insert field data into the vector
-            metaData.fields[fieldNumber] = fieldData;
+            if (startxSize > 0) {
+                metaData.fields[fieldNumber].dropOuts.startx.resize(startxSize);
+                metaData.fields[fieldNumber].dropOuts.endx.resize(startxSize);
+                metaData.fields[fieldNumber].dropOuts.fieldLine.resize(startxSize);
+
+                for (qint32 doCounter = 0; doCounter < startxSize; doCounter++) {
+                    metaData.fields[fieldNumber].dropOuts.startx[doCounter] = json.value({"fields", fieldNumber, "dropOuts", "startx", doCounter}).toInt();
+                    metaData.fields[fieldNumber].dropOuts.endx[doCounter] = json.value({"fields", fieldNumber, "dropOuts", "endx", doCounter}).toInt();
+                    metaData.fields[fieldNumber].dropOuts.fieldLine[doCounter] = json.value({"fields", fieldNumber, "dropOuts", "fieldLine", doCounter}).toInt();
+                }
+            }
         }
     }  else {
-        qDebug() << "LdDecodeMetaData::read(): fields object is not defined";
+        qCritical("Opening JSON file failed: No fields objects are defined");
+        return false;
     }
 
     // Determine the available number of field pairs (which should be the same as the
@@ -331,173 +313,161 @@ bool LdDecodeMetaData::read(QString fileName)
 // This method copies the metadata structure into a JSON metadata file
 bool LdDecodeMetaData::write(QString fileName)
 {
-    QJsonObject lddecodeJson;
-
-    // Write the video parameters and fields
-    QJsonObject jsonVideoParameters;
-    QJsonArray jsonFields;
+    // Define the JSON object
+    JsonWax json;
 
     // Write the video paramters
-    jsonVideoParameters.insert("numberOfSequentialFields", metaData.videoParameters.numberOfSequentialFields);
-    jsonVideoParameters.insert("isSourcePal", metaData.videoParameters.isSourcePal);
+    json.setValue({"videoParameters", "numberOfSequentialFields"}, metaData.videoParameters.numberOfSequentialFields);
 
-    jsonVideoParameters.insert("colourBurstStart", metaData.videoParameters.colourBurstStart);
-    jsonVideoParameters.insert("colourBurstEnd", metaData.videoParameters.colourBurstEnd);
-    jsonVideoParameters.insert("activeVideoStart", metaData.videoParameters.activeVideoStart);
-    jsonVideoParameters.insert("activeVideoEnd", metaData.videoParameters.activeVideoEnd);
+    json.setValue({"videoParameters", "numberOfSequentialFields"}, metaData.videoParameters.numberOfSequentialFields);
+    json.setValue({"videoParameters", "isSourcePal"}, metaData.videoParameters.isSourcePal);
 
-    jsonVideoParameters.insert("white16bIre", metaData.videoParameters.white16bIre);
-    jsonVideoParameters.insert("black16bIre", metaData.videoParameters.black16bIre);
+    json.setValue({"videoParameters", "colourBurstStart"}, metaData.videoParameters.colourBurstStart);
+    json.setValue({"videoParameters", "colourBurstEnd"}, metaData.videoParameters.colourBurstEnd);
+    json.setValue({"videoParameters", "activeVideoStart"}, metaData.videoParameters.activeVideoStart);
+    json.setValue({"videoParameters", "activeVideoEnd"}, metaData.videoParameters.activeVideoEnd);
 
-    jsonVideoParameters.insert("fieldWidth", metaData.videoParameters.fieldWidth);
-    jsonVideoParameters.insert("fieldHeight", metaData.videoParameters.fieldHeight);
-    jsonVideoParameters.insert("sampleRate", metaData.videoParameters.sampleRate);
-    jsonVideoParameters.insert("fsc", metaData.videoParameters.fsc);
+    json.setValue({"videoParameters", "white16bIre"}, metaData.videoParameters.white16bIre);
+    json.setValue({"videoParameters", "black16bIre"}, metaData.videoParameters.black16bIre);
 
-    // Add the video parameters to the parent object
-    lddecodeJson.insert("videoParameters", jsonVideoParameters);
+    json.setValue({"videoParameters", "fieldWidth"}, metaData.videoParameters.fieldWidth);
+    json.setValue({"videoParameters", "fieldHeight"}, metaData.videoParameters.fieldHeight);
+    json.setValue({"videoParameters", "sampleRate"}, metaData.videoParameters.sampleRate);
+    json.setValue({"videoParameters", "fsc"}, metaData.videoParameters.fsc);
 
     // Write the PCM audio parameters
-    QJsonObject pcmAudioParameters;
-    pcmAudioParameters.insert("sampleRate", metaData.pcmAudioParameters.sampleRate);
-    pcmAudioParameters.insert("isLittleEndian", metaData.pcmAudioParameters.isLittleEndian);
-    pcmAudioParameters.insert("isSigned", metaData.pcmAudioParameters.isSigned);
-    pcmAudioParameters.insert("bits", metaData.pcmAudioParameters.bits);
-
-    // Add the audio parameters to the parent object
-    lddecodeJson.insert("pcmAudioParameters", pcmAudioParameters);
+    json.setValue({"pcmAudioParameters", "sampleRate"}, metaData.pcmAudioParameters.sampleRate);
+    json.setValue({"pcmAudioParameters", "isLittleEndian"}, metaData.pcmAudioParameters.isLittleEndian);
+    json.setValue({"pcmAudioParameters", "isSigned"}, metaData.pcmAudioParameters.isSigned);
+    json.setValue({"pcmAudioParameters", "bits"}, metaData.pcmAudioParameters.bits);
 
     // Write the field data
     if (!metaData.fields.isEmpty()) {
-        QJsonArray fields;
-
         qDebug() << "LdDecodeMetaData::write(): metadata struct contains" << metaData.fields.size() << "fields";
 
         for (qint32 fieldNumber = 0; fieldNumber < metaData.fields.size(); fieldNumber++) {
-            QJsonObject field;
-
-            field.insert("seqNo", metaData.fields[fieldNumber].seqNo);
-
-            field.insert("isFirstField", metaData.fields[fieldNumber].isFirstField);
-            field.insert("syncConf", metaData.fields[fieldNumber].syncConf);
-            field.insert("medianBurstIRE", metaData.fields[fieldNumber].medianBurstIRE);
-            field.insert("fieldPhaseID", metaData.fields[fieldNumber].fieldPhaseID);
-            field.insert("audioSamples", metaData.fields[fieldNumber].audioSamples);
+            json.setValue({"fields", fieldNumber, "seqNo"}, metaData.fields[fieldNumber].seqNo);
+            json.setValue({"fields", fieldNumber, "isFirstField"}, metaData.fields[fieldNumber].isFirstField);
+            json.setValue({"fields", fieldNumber, "syncConf"}, metaData.fields[fieldNumber].syncConf);
+            json.setValue({"fields", fieldNumber, "medianBurstIRE"}, metaData.fields[fieldNumber].medianBurstIRE);
+            json.setValue({"fields", fieldNumber, "fieldPhaseID"}, metaData.fields[fieldNumber].fieldPhaseID);
+            json.setValue({"fields", fieldNumber, "audioSamples"}, metaData.fields[fieldNumber].audioSamples);
 
             // Write the VITS data if in use
             if (metaData.fields[fieldNumber].vits.inUse) {
-                QJsonObject vits;
-                vits.insert("snr", metaData.fields[fieldNumber].vits.snr);
-
-                // Add the vits to the field
-                field.insert("vits", vits);
+                json.setValue({"fields", fieldNumber, "vits", "snr"}, metaData.fields[fieldNumber].vits.snr);
             }
 
             // Write the VBI data if in use
             if (metaData.fields[fieldNumber].vbi.inUse) {
-                QJsonObject vbi;
+                // Validate the VBI data array
+                if (metaData.fields[fieldNumber].vbi.vbiData.size() != 3) {
+                    qDebug() << "LdDecodeMetaData::write(): Invalid vbiData array!  Setting to -1";
+                    metaData.fields[fieldNumber].vbi.vbiData.resize(3);
+                    metaData.fields[fieldNumber].vbi.vbiData[0] = -1;
+                    metaData.fields[fieldNumber].vbi.vbiData[1] = -1;
+                    metaData.fields[fieldNumber].vbi.vbiData[2] = -1;
+                }
 
-                QJsonArray vbiData;
-                vbiData.append(metaData.fields[fieldNumber].vbi.vbiData[0]);
-                vbiData.append(metaData.fields[fieldNumber].vbi.vbiData[1]);
-                vbiData.append(metaData.fields[fieldNumber].vbi.vbiData[2]);
-                vbi.insert("vbiData", vbiData);
+                json.setValue({"fields", fieldNumber, "vbi", "vbiData", 0}, metaData.fields[fieldNumber].vbi.vbiData[0]);
+                json.setValue({"fields", fieldNumber, "vbi", "vbiData", 1}, metaData.fields[fieldNumber].vbi.vbiData[1]);
+                json.setValue({"fields", fieldNumber, "vbi", "vbiData", 2}, metaData.fields[fieldNumber].vbi.vbiData[2]);
 
                 switch(metaData.fields[fieldNumber].vbi.type) {
                 case LdDecodeMetaData::VbiDiscTypes::unknownDiscType:
-                    vbi.insert("type", 0);
+                    json.setValue({"fields", fieldNumber, "vbi", "type"}, 0);
                     break;
                 case LdDecodeMetaData::VbiDiscTypes::clv:
-                    vbi.insert("type", 1);
+                    json.setValue({"fields", fieldNumber, "vbi", "type"}, 1);
                     break;
                 case LdDecodeMetaData::VbiDiscTypes::cav:
-                    vbi.insert("type", 2);
+                    json.setValue({"fields", fieldNumber, "vbi", "type"}, 2);
                     break;
                 }
 
-                vbi.insert("userCode", metaData.fields[fieldNumber].vbi.userCode);
-                vbi.insert("picNo", metaData.fields[fieldNumber].vbi.picNo);
-                vbi.insert("chNo", metaData.fields[fieldNumber].vbi.chNo);
-                vbi.insert("clvHr", metaData.fields[fieldNumber].vbi.clvHr);
-                vbi.insert("clvMin", metaData.fields[fieldNumber].vbi.clvMin);
-                vbi.insert("clvSec", metaData.fields[fieldNumber].vbi.clvSec);
-                vbi.insert("clvPicNo", metaData.fields[fieldNumber].vbi.clvPicNo);
+                json.setValue({"fields", fieldNumber, "vbi", "userCode"}, metaData.fields[fieldNumber].vbi.userCode);
+                json.setValue({"fields", fieldNumber, "vbi", "picNo"}, metaData.fields[fieldNumber].vbi.picNo);
+                json.setValue({"fields", fieldNumber, "vbi", "chNo"}, metaData.fields[fieldNumber].vbi.chNo);
+                json.setValue({"fields", fieldNumber, "vbi", "clvHr"}, metaData.fields[fieldNumber].vbi.clvHr);
+                json.setValue({"fields", fieldNumber, "vbi", "clvMin"}, metaData.fields[fieldNumber].vbi.clvMin);
+                json.setValue({"fields", fieldNumber, "vbi", "clvSec"}, metaData.fields[fieldNumber].vbi.clvSec);
+                json.setValue({"fields", fieldNumber, "vbi", "clvPicNo"}, metaData.fields[fieldNumber].vbi.clvPicNo);
 
                 switch (metaData.fields[fieldNumber].vbi.soundMode) {
                 case LdDecodeMetaData::VbiSoundModes::stereo:
-                    vbi.insert("soundMode", 0);
+                    json.setValue({"fields", fieldNumber, "vbi", "soundMode"}, 0);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::mono:
-                    vbi.insert("soundMode", 1);
+                    json.setValue({"fields", fieldNumber, "vbi", "soundMode"}, 1);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::audioSubCarriersOff:
-                    vbi.insert("soundMode", 2);
+                    json.setValue({"fields", fieldNumber, "vbi", "soundMode"}, 2);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::bilingual:
-                    vbi.insert("soundMode", 3);
+                    json.setValue({"fields", fieldNumber, "vbi", "soundMode"}, 3);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::stereo_stereo:
-                    vbi.insert("soundMode", 4);
+                    json.setValue({"fields", fieldNumber, "vbi", "soundMode"}, 4);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::stereo_bilingual:
-                    vbi.insert("soundMode", 5);
+                    json.setValue({"fields", fieldNumber, "vbi", "soundMode"}, 5);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::crossChannelStereo:
-                    vbi.insert("soundMode", 6);
+                    json.setValue({"fields", fieldNumber, "vbi", "soundMode"}, 6);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::bilingual_bilingual:
-                    vbi.insert("soundMode", 7);
+                    json.setValue({"fields", fieldNumber, "vbi", "soundMode"}, 7);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::mono_dump:
-                    vbi.insert("soundMode", 8);
+                    json.setValue({"fields", fieldNumber, "vbi", "soundMode"}, 8);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::stereo_dump:
-                    vbi.insert("soundMode", 9);
+                    json.setValue({"fields", fieldNumber, "vbi", "soundMode"}, 9);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::bilingual_dump:
-                    vbi.insert("soundMode", 10);
+                    json.setValue({"fields", fieldNumber, "vbi", "soundMode"}, 10);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::futureUse:
-                    vbi.insert("soundMode", 11);
+                    json.setValue({"fields", fieldNumber, "vbi", "soundMode"}, 11);
                     break;
                 }
 
                 switch (metaData.fields[fieldNumber].vbi.soundModeAm2) {
                 case LdDecodeMetaData::VbiSoundModes::stereo:
-                    vbi.insert("soundModeAm2", 0);
+                    json.setValue({"fields", fieldNumber, "vbi", "soundModeAm2"}, 0);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::mono:
-                    vbi.insert("soundModeAm2", 1);
+                    json.setValue({"fields", fieldNumber, "vbi", "soundModeAm2"}, 1);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::audioSubCarriersOff:
-                    vbi.insert("soundModeAm2", 2);
+                    json.setValue({"fields", fieldNumber, "vbi", "soundModeAm2"}, 2);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::bilingual:
-                    vbi.insert("soundModeAm2", 3);
+                    json.setValue({"fields", fieldNumber, "vbi", "soundModeAm2"}, 3);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::stereo_stereo:
-                    vbi.insert("soundModeAm2", 4);
+                    json.setValue({"fields", fieldNumber, "vbi", "soundModeAm2"}, 4);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::stereo_bilingual:
-                    vbi.insert("soundModeAm2", 5);
+                    json.setValue({"fields", fieldNumber, "vbi", "soundModeAm2"}, 5);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::crossChannelStereo:
-                    vbi.insert("soundModeAm2", 6);
+                    json.setValue({"fields", fieldNumber, "vbi", "soundModeAm2"}, 6);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::bilingual_bilingual:
-                    vbi.insert("soundModeAm2", 7);
+                    json.setValue({"fields", fieldNumber, "vbi", "soundModeAm2"}, 7);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::mono_dump:
-                    vbi.insert("soundModeAm2", 8);
+                    json.setValue({"fields", fieldNumber, "vbi", "soundModeAm2"}, 8);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::stereo_dump:
-                    vbi.insert("soundModeAm2", 9);
+                    json.setValue({"fields", fieldNumber, "vbi", "soundModeAm2"}, 9);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::bilingual_dump:
-                    vbi.insert("soundModeAm2", 10);
+                    json.setValue({"fields", fieldNumber, "vbi", "soundModeAm2"}, 10);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::futureUse:
-                    vbi.insert("soundModeAm2", 11);
+                    json.setValue({"fields", fieldNumber, "vbi", "soundModeAm2"}, 11);
                     break;
                 }
 
@@ -518,72 +488,37 @@ bool LdDecodeMetaData::write(QString fileName)
                 if (metaData.fields[fieldNumber].vbi.standardAm2)   flags += 0x1000;
 
                 // Insert the flags into the VBI JSON
-                vbi.insert("flags", flags);
-
-                // Add the vbi to the field
-                field.insert("vbi", vbi);
+                json.setValue({"fields", fieldNumber, "vbi", "flags"}, flags);
             }
 
             // Write the NTSC specific record if in use
             if (metaData.fields[fieldNumber].ntsc.inUse) {
-                QJsonObject ntsc;
-                ntsc.insert("isFmCodeDataValid", metaData.fields[fieldNumber].ntsc.isFmCodeDataValid);
+                json.setValue({"fields", fieldNumber, "ntsc", "isFmCodeDataValid"}, metaData.fields[fieldNumber].ntsc.isFmCodeDataValid);
                 if (metaData.fields[fieldNumber].ntsc.isFmCodeDataValid)
-                    ntsc.insert("fmCodeData", metaData.fields[fieldNumber].ntsc.fmCodeData);
-                else ntsc.insert("fmCodeData", -1);
-                ntsc.insert("fieldFlag", metaData.fields[fieldNumber].ntsc.fieldFlag);
-                ntsc.insert("whiteFlag", metaData.fields[fieldNumber].ntsc.whiteFlag);
-
-                // Add the NTSC specific data to the field
-                field.insert("ntsc", ntsc);
+                    json.setValue({"fields", fieldNumber, "ntsc", "fmCodeData"}, metaData.fields[fieldNumber].ntsc.fmCodeData);
+                else json.setValue({"fields", fieldNumber, "ntsc", "fmCodeData"}, -1);
+                json.setValue({"fields", fieldNumber, "ntsc", "fieldFlag"}, metaData.fields[fieldNumber].ntsc.fieldFlag);
+                json.setValue({"fields", fieldNumber, "ntsc", "whiteFlag"}, metaData.fields[fieldNumber].ntsc.whiteFlag);
             }
 
             // Write the drop-out records
             if (metaData.fields[fieldNumber].dropOuts.startx.size() != 0) {
-                QJsonObject dropOuts;
-                QJsonArray startx;
-                QJsonArray endx;
-                QJsonArray fieldLine;
-
                 // Populate the arrays with the drop out metadata
                 for (qint32 doCounter = 0; doCounter < metaData.fields[fieldNumber].dropOuts.startx.size(); doCounter++) {
-                    startx.append(metaData.fields[fieldNumber].dropOuts.startx[doCounter]);
-                    endx.append(metaData.fields[fieldNumber].dropOuts.endx[doCounter]);
-                    fieldLine.append(metaData.fields[fieldNumber].dropOuts.fieldLine[doCounter]);
+                    json.setValue({"fields", fieldNumber, "dropOuts", "startx", doCounter}, metaData.fields[fieldNumber].dropOuts.startx[doCounter]);
+                    json.setValue({"fields", fieldNumber, "dropOuts", "endx", doCounter}, metaData.fields[fieldNumber].dropOuts.endx[doCounter]);
+                    json.setValue({"fields", fieldNumber, "dropOuts", "fieldLine", doCounter}, metaData.fields[fieldNumber].dropOuts.fieldLine[doCounter]);
                 }
-
-                // Add the drop out arrays to the dropOuts object
-                dropOuts.insert("startx", startx);
-                dropOuts.insert("endx", endx);
-                dropOuts.insert("fieldLine", fieldLine);
-
-                // Add the drop-outs object to the field object
-                field.insert("dropOuts", dropOuts);
             }
-
-            // Insert field data into the field array
-            fields.insert(fieldNumber, field);
         }
-
-        // Add the fields to the parent object
-        lddecodeJson.insert("fields", fields);
     }
 
-    // Add the JSON data to the document
-    qDebug() << "Creating the JSON document";
-    QJsonDocument document(lddecodeJson);
-
-    // Write the json document to a file
-    qDebug() << "LdDecodeMetaData::write(): Saving JSON file" << fileName;
-    QFile jsonFileHandle(fileName);
-
-    if (!jsonFileHandle.open(QIODevice::WriteOnly)) {
-        qWarning("Could not save JSON file!");
+    // Write the JSON object to file
+    qDebug() << "LdDecodeMetaData::write(): Writing JSON metadata file";
+    if (!json.saveAs(fileName, JsonWax::Readable)) {
+        qCritical("Writing JSON file failed!");
         return false;
     }
-
-    jsonFileHandle.write(document.toJson(QJsonDocument::Compact));
-    jsonFileHandle.close();
 
     return true;
 }

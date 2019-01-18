@@ -59,10 +59,11 @@ FmCode::FmDecode FmCode::fmDecoder(QByteArray lineData, LdDecodeMetaData::VideoP
     while (x < fmData.size() && fmData[x] == false) {
         x++;
     }
-    qint32 lastTransistionX = x;
-    bool lastState = fmData[x];
 
     if (x < fmData.size()) {
+        qint32 lastTransistionX = x;
+        bool lastState = fmData[x];
+
         // Find the rest of the bits
         while (x < fmData.size() && decodeCount < 40) {
             // Find the next transition
