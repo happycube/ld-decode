@@ -3,7 +3,7 @@
     filterthread.h
 
     ld-comb-pal - PAL colourisation filter for ld-decode
-    Copyright (C) 2018 Simon Inns
+    Copyright (C) 2018-2019 Simon Inns
 
     This file is part of ld-decode-tools.
 

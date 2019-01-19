@@ -6,7 +6,7 @@
     a video signal
 
     Copyright (C) 2018  William Andrew Steer
-    Copyright (C) 2018 Simon Inns
+    Copyright (C) 2018-2019 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -328,7 +328,6 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
                     ptr[pp+0] = static_cast<quint16>(R);
                     ptr[pp+1] = static_cast<quint16>(G);
                     ptr[pp+2] = static_cast<quint16>(B);
-
                 }
             }
         }
