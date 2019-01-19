@@ -4,7 +4,7 @@
 
     ld-comb-ntsc - NTSC colourisation filter for ld-decode
     Copyright (C) 2018 Chad Page
-    Copyright (C) 2018 Simon Inns
+    Copyright (C) 2018-2019 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -102,7 +102,7 @@ int main(int argc, char *argv[])
 
     // Option to select 3D filter (default is 2D) (-f)
     QCommandLineOption filterDepthOption(QStringList() << "f" << "3dfilter",
-                                        QCoreApplication::translate("main", "Use 3D filtering (default is 2D"));
+                                        QCoreApplication::translate("main", "Use 3D filtering (default is 2D)"));
     parser.addOption(filterDepthOption);
 
     // Option to select start frame (sequential) (-s)

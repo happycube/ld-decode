@@ -95,6 +95,11 @@ int main(int argc, char *argv[])
                                        QCoreApplication::translate("main", "Show debug"));
     parser.addOption(showDebugOption);
 
+    // Option to reverse the field order (-r)
+    QCommandLineOption setReverseOption(QStringList() << "r" << "reverse",
+                                       QCoreApplication::translate("main", "Reverse the field order to second/first (default first/second)"));
+    parser.addOption(setReverseOption);
+
     // Positional argument to specify input video file
     parser.addPositionalArgument("primary", QCoreApplication::translate("main", "Specify primary input TBC file"));
     parser.addPositionalArgument("seconday", QCoreApplication::translate("main", "Specify secondary input TBC file"));
@@ -107,6 +112,7 @@ int main(int argc, char *argv[])
 
     // Get the options from the parser
     bool isDebugOn = parser.isSet(showDebugOption);
+    bool reverse = parser.isSet(setReverseOption);
 
     // Get the arguments from the parser
     QString primaryFilename;
@@ -134,7 +140,7 @@ int main(int argc, char *argv[])
 
     // Perform the processing
     Combine combine;
-    combine.process(primaryFilename, secondaryFilename, outputFilename);
+    combine.process(primaryFilename, secondaryFilename, outputFilename, reverse);
 
     // Quit with success
     return 0;

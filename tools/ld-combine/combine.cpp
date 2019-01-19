@@ -29,7 +29,7 @@ Combine::Combine(QObject *parent) : QObject(parent)
 
 }
 
-bool Combine::process(QString primaryFilename, QString secondaryFilename, QString outputFilename)
+bool Combine::process(QString primaryFilename, QString secondaryFilename, QString outputFilename, bool reverse)
 {
     linesReplaced = 0;
     dropoutsReplaced = 0;
@@ -51,6 +51,13 @@ bool Combine::process(QString primaryFilename, QString secondaryFilename, QStrin
     if (!outputLdDecodeMetaData.read(primaryFilename + ".json")) {
         qInfo() << "Unable to open ld-decode metadata file for the output file";
         return false;
+    }
+
+    // Reverse field order if required
+    if (reverse) {
+        qInfo() << "Expected field order is reversed to second field/first field";
+        primaryLdDecodeMetaData.setIsFirstFieldFirst(false);
+        secondaryLdDecodeMetaData.setIsFirstFieldFirst(false);
     }
 
     primaryVideoParameters = primaryLdDecodeMetaData.getVideoParameters();
@@ -155,12 +162,47 @@ bool Combine::process(QString primaryFilename, QString secondaryFilename, QStrin
     bool isDiscCav;
     if (primaryDiscType == LdDecodeMetaData::VbiDiscTypes::cav) isDiscCav = true; else isDiscCav = false;
 
+    // Scan for lead-in frames in the primary and secondary sources (as there may be preceeding duplicate frames)
+    qint32 primaryLeadinOffset = 0;
+    qint32 secondardLeadinOffset = 0;
+
+    qint32 endFrame = primaryLdDecodeMetaData.getNumberOfFrames();
+    if (endFrame > 100) endFrame = 100; // Limit lead-in search to 100 frames
+    for (qint32 primarySeqFrameNumber = 1; primarySeqFrameNumber <= endFrame; primarySeqFrameNumber++) {
+        // Get the sequential field numbers for the primary source frame
+        qint32 primaryFirstField = primaryLdDecodeMetaData.getFirstFieldNumber(primarySeqFrameNumber);
+        qint32 primarySecondField = primaryLdDecodeMetaData.getSecondFieldNumber(primarySeqFrameNumber);
+
+        if (primaryLdDecodeMetaData.getField(primaryFirstField).vbi.leadIn || primaryLdDecodeMetaData.getField(primarySecondField).vbi.leadIn)
+            primaryLeadinOffset = primarySeqFrameNumber;
+    }
+    primaryLeadinOffset++; // Move to the next frame to correct offset
+
+    endFrame = secondaryLdDecodeMetaData.getNumberOfFrames();
+    if (endFrame > 100) endFrame = 100; // Limit lead-in search to 100 frames
+    for (qint32 secondarySeqFrameNumber = 1; secondarySeqFrameNumber <= endFrame; secondarySeqFrameNumber++) {
+        // Get the sequential field numbers for the primary source frame
+        qint32 secondaryFirstField = secondaryLdDecodeMetaData.getFirstFieldNumber(secondarySeqFrameNumber);
+        qint32 secondarySecondField = secondaryLdDecodeMetaData.getSecondFieldNumber(secondarySeqFrameNumber);
+
+        if (secondaryLdDecodeMetaData.getField(secondaryFirstField).vbi.leadIn || secondaryLdDecodeMetaData.getField(secondarySecondField).vbi.leadIn)
+            secondardLeadinOffset = secondarySeqFrameNumber;
+    }
+    secondardLeadinOffset++; // Move to the next frame to correct offset
+
+    // Was a lead-in offset applied?
+    if (primaryLeadinOffset != 1) {
+        qInfo() << "Primary source contained lead-in frames, offsetting to frame" << primaryLeadinOffset;
+    }
+    if (secondardLeadinOffset != 1) {
+        qInfo() << "Secondary source contained lead-in frames, offsetting to frame" << secondardLeadinOffset;
+    }
+
+    // Main combination process starts here
     QByteArray firstFieldData;
     QByteArray secondFieldData;
-
-    // Process goes here
-    for (qint32 primarySeqFrameNumber = 1; primarySeqFrameNumber <= primaryLdDecodeMetaData.getNumberOfFrames(); primarySeqFrameNumber++) {
-        qint32 secondarySeqFrameNumber = getMatchingSecondaryFrame(isDiscCav, primarySeqFrameNumber);
+    for (qint32 primarySeqFrameNumber = primaryLeadinOffset; primarySeqFrameNumber <= primaryLdDecodeMetaData.getNumberOfFrames(); primarySeqFrameNumber++) {
+        qint32 secondarySeqFrameNumber = getMatchingSecondaryFrame(isDiscCav, primarySeqFrameNumber, secondardLeadinOffset);
 
         // Get the sequential field numbers for the primary source frame
         qint32 primaryFirstField = primaryLdDecodeMetaData.getFirstFieldNumber(primarySeqFrameNumber);
@@ -229,7 +271,7 @@ bool Combine::process(QString primaryFilename, QString secondaryFilename, QStrin
 
 // Method to work out the required field offset (for the secondary source) in order to match
 // the fields in the primary source
-qint32 Combine::getMatchingSecondaryFrame(bool isDiscCav, qint32 seqFrameNumber)
+qint32 Combine::getMatchingSecondaryFrame(bool isDiscCav, qint32 seqFrameNumber, qint32 leadinOffset)
 {
     qint32 matchingSeqFrameNumber = -1;
 
@@ -244,7 +286,7 @@ qint32 Combine::getMatchingSecondaryFrame(bool isDiscCav, qint32 seqFrameNumber)
     }
 
     // Now we search the secondary source looking for a matching VBI frame number
-    for (qint32 secondarySeqFrameNumber = 1; secondarySeqFrameNumber <= secondaryLdDecodeMetaData.getNumberOfFrames(); secondarySeqFrameNumber++) {
+    for (qint32 secondarySeqFrameNumber = leadinOffset; secondarySeqFrameNumber <= secondaryLdDecodeMetaData.getNumberOfFrames(); secondarySeqFrameNumber++) {
         qint32 secondaryVbiFrameNumber;
         if (isDiscCav) secondaryVbiFrameNumber = getCavFrameNumber(secondarySeqFrameNumber, &secondaryLdDecodeMetaData);
         else secondaryVbiFrameNumber = getClvFrameNumber(secondarySeqFrameNumber, &secondaryLdDecodeMetaData);
