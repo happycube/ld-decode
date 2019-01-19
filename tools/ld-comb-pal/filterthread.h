@@ -42,7 +42,7 @@ public:
     explicit FilterThread(LdDecodeMetaData::VideoParameters videoParametersParam, QObject *parent = nullptr);
     ~FilterThread() override;
 
-    void startFilter(QByteArray topFieldParam, QByteArray bottomFieldParam, qreal burstMedianIreParam);
+    void startFilter(QByteArray topFieldParam, QByteArray bottomFieldParam, qreal burstMedianIreParam, bool blackAndWhiteParam);
     QByteArray getResult(void);
     bool isBusy(void);
 
@@ -78,6 +78,9 @@ private:
 
     // Burst level data
     qreal burstMedianIre;
+
+    // Flags
+    bool blackAndWhite;
 };
 
 #endif // FILTERTHREAD_H

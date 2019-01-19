@@ -130,7 +130,7 @@ void PalColour::buildLookUpTables(void)
 //
 // Note: This method does not clear the output array before writing to it; if there is garbage
 // in the allocated memory, it will be in the output with the decoded image on top.
-QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray secondFieldData, qint32 brightness, qint32 saturation)
+QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray secondFieldData, qint32 brightness, qint32 saturation, bool blackAndWhite)
 {
     // Ensure the object has been configured
     if (!configurationSet) {
@@ -303,6 +303,12 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
                     rY = Y[i] * scaledBrightness;
                     rU = (-((pu[i]*bp+qu[i]*bq)) * scaledSaturation);
                     rV = (-(Vsw*(qv[i]*bp-pv[i]*bq)) * scaledSaturation);
+
+                    // Remove UV colour components if black and white (Y only) output is required
+                    if (blackAndWhite) {
+                        rU = 0;
+                        rV = 0;
+                    }
 
                     // This conversion is taken from Video Demystified (5th edition) page 18
                     R = ( rY + (1.140 * rV) );
