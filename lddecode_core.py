@@ -315,9 +315,9 @@ class RFDecode:
 
         if self.system == 'PAL':
             out_videopilot = np.fft.ifft(demod_fft * self.Filters['FVideoPilot']).real
-            rv_video = np.rec.array([out_video, out_video05, output_syncf, out_videoburst, out_videopilot], names=['demod', 'demod_05', 'demod_sync', 'demod_burst', 'demod_pilot'])
+            rv_video = np.rec.array([out_video, demod, out_video05, output_syncf, out_videoburst, out_videopilot], names=['demod', 'demod_raw', 'demod_05', 'demod_sync', 'demod_burst', 'demod_pilot'])
         else:
-            rv_video = np.rec.array([out_video, out_video05, output_syncf, out_videoburst], names=['demod', 'demod_05', 'demod_sync', 'demod_burst'])
+            rv_video = np.rec.array([out_video, demod, out_video05, output_syncf, out_videoburst], names=['demod', 'demod_raw', 'demod_05', 'demod_sync', 'demod_burst'])
 
         if self.decode_analog_audio == False:
             return rv_video, None
@@ -1392,8 +1392,6 @@ class LDdecode:
             self.readlen = self.rf.linelen * 300
             self.clvfps = 30
 
-        self.prevPhaseID = None
-        self.prevFirstField = None
         self.output_lines = (self.rf.SysParams['frame_lines'] // 2) + 1
         
         self.bytes_per_frame = int(self.rf.freq_hz / self.rf.SysParams['FPS'])
@@ -1403,6 +1401,9 @@ class LDdecode:
         self.fdoffset = 0
         self.audio_offset = 0
         self.mtf_level = 1
+
+        self.prevfield = None
+        self.curfield = None
 
         self.fieldinfo = []
         
@@ -1457,6 +1458,7 @@ class LDdecode:
         
     def readfield(self):
         # pretty much a retry-ing wrapper around decodefield with MTF checking
+        self.prevfield = self.curfield
         self.curfield = None
         done = False
         MTFadjusted = False
@@ -1521,12 +1523,14 @@ class LDdecode:
     def processfield(self, f, squelch = False):
         picture, audio = f.downscale(linesout = self.output_lines, final=True)
             
+        prevfi = self.fieldinfo[-1] if len(self.fieldinfo) else None
+
         # isFirstField has been compared against line 6 PAL and line 9 NTSC
         fi = {'isFirstField': True if f.isFirstField else False, 
               'syncConf': f.sync_confidence, 
               'seqNo': len(self.fieldinfo) + 1, 
               'audioSamples': int(len(audio) / 2),
-#              'diskLoc': np.round((self.fieldloc / self.bytes_per_field) * 10) / 10,
+              'diskLoc': np.round((self.fieldloc / self.bytes_per_field) * 10) / 10,
               'medianBurstIRE': f.burstmedian}
 
         dropout_lines, dropout_starts, dropout_ends = f.dropout_detect()
@@ -1542,19 +1546,22 @@ class LDdecode:
             else:
                 fi['fieldPhaseID'] = 4 if f.field14 else 2
 
-            if self.prevPhaseID:
-                if not ((fi['fieldPhaseID'] == 1 and self.prevPhaseID == 4) or
-                        (fi['fieldPhaseID'] == self.prevPhaseID + 1)):
+            if prevfi:
+                if not ((fi['fieldPhaseID'] == 1 and prevfi['fieldPhaseID'] == 4) or
+                        (fi['fieldPhaseID'] == prevfi['fieldPhaseID'] + 1)):
                     print('WARNING: NTSC field phaseID sequence mismatch')
                     decodeFaults |= 2
 
-            self.prevPhaseID = fi['fieldPhaseID']
-
-        if len(self.fieldinfo) and self.prevFirstField == fi['isFirstField']:
-            print('WARNING!  isFirstField stuck between fields')
-            decodeFaults |= 1
-
-        self.prevFirstField = fi['isFirstField']
+        if prevfi is not None and prevfi['isFirstField'] == fi['isFirstField']:
+            #print('WARNING!  isFirstField stuck between fields')
+            if inrange(fi['diskLoc'] - prevfi['diskLoc'], .95, 1.05):
+                decodeFaults |= 1
+                fi['isFirstField'] = not prevfi['isFirstField']
+                fi['syncConf'] = 10
+            else:
+                print('ERROR! Skipped field')
+                decodeFaults |= 4
+                fi['syncConf'] = 0
 
         fi['decodeFaults'] = decodeFaults
 
@@ -1655,6 +1662,8 @@ class LDdecode:
 
         while done == False:
             f, offset = self.decodefield()
+
+            self.prevfield = self.curfield
             self.curfield = f
             self.fdoffset += offset
 
