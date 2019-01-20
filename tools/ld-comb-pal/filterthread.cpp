@@ -3,7 +3,7 @@
     filterthread.cpp
 
     ld-comb-pal - PAL colourisation filter for ld-decode
-    Copyright (C) 2018 Simon Inns
+    Copyright (C) 2018-2019 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -66,7 +66,7 @@ FilterThread::~FilterThread()
     wait();
 }
 
-void FilterThread::startFilter(QByteArray firstFieldParam, QByteArray secondFieldParam, qreal burstMedianIreParam)
+void FilterThread::startFilter(QByteArray firstFieldParam, QByteArray secondFieldParam, qreal burstMedianIreParam, bool blackAndWhiteParam)
 {
     QMutexLocker locker(&mutex);
 
@@ -74,6 +74,7 @@ void FilterThread::startFilter(QByteArray firstFieldParam, QByteArray secondFiel
     firstFieldData = firstFieldParam;
     secondFieldData = secondFieldParam;
     burstMedianIre = burstMedianIreParam;
+    blackAndWhite = blackAndWhiteParam;
 
     // Is the run process already running?
     if (!isRunning()) {
@@ -115,7 +116,7 @@ void FilterThread::run()
             qreal tSaturation = 125.0 + ((100.0 / 20.0) * (20.0 - burstMedianIre));
 
             // Perform the PALcolour filtering
-            outputData = palColour.performDecode(tsFirstFieldData, tsSecondFieldData, 100, static_cast<qint32>(tSaturation));
+            outputData = palColour.performDecode(tsFirstFieldData, tsSecondFieldData, 100, static_cast<qint32>(tSaturation), blackAndWhite);
 
             // The PAL colour library outputs the whole frame, so here we have to strip all the non-visible stuff to just get the
             // actual required image - it would be better if PALcolour gave back only the required RGB, but it's not my library.

@@ -154,10 +154,8 @@ void MainWindow::updateGuiLoaded(void)
         Comb::Configuration configuration = ntscColour.getConfiguration();
 
         // Set the comb filter configuration
-        configuration.filterDepth = 2;
+        configuration.use3D = false;
         configuration.blackAndWhite = false;
-        configuration.adaptive2d = false;
-        configuration.opticalflow = false;
 
         // Set the input buffer dimensions configuration
         configuration.fieldWidth = videoParameters.fieldWidth;
@@ -519,7 +517,7 @@ QImage MainWindow::generateQImage(qint32 firstFieldNumber, qint32 secondFieldNum
 
             // Perform the PALcolour filtering (output is RGB 16-16-16)
             outputData = palColour.performDecode(firstFieldData, secondFieldData,
-                                                  100, static_cast<qint32>(tSaturation));
+                                                  100, static_cast<qint32>(tSaturation), false);
         } else {
             // NTSC source
 

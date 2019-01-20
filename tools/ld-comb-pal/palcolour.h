@@ -1,18 +1,13 @@
 /************************************************************************
 
-    palcombfilters.h
+    palcolour.h
 
-    ld-colourfilter - Analogue LaserDisc video colourisation
-    Copyright (C) 2018 Simon Inns
+    ld-comb-pal - PAL colourisation filter for ld-decode
+    Copyright (C) 2018-2019 Simon Inns
 
-    The PALcolour algorithm used in this class is:
-    Copyright (C) 2018 William Andrew Steer
-    http://techmind.org/vd/paldec.html
-    https://github.com/techmindorg/PALcolour
+    This file is part of ld-decode-tools.
 
-    This file is part of ld-colourfilter.
-
-    ld-colourfilter is free software: you can redistribute it and/or
+    ld-comb-pal is free software: you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
     published by the Free Software Foundation, either version 3 of the
     License, or (at your option) any later version.
@@ -45,7 +40,7 @@ public:
     void updateConfiguration(LdDecodeMetaData::VideoParameters videoParametersParam);
 
     // Method to perform the colour decoding
-    QByteArray performDecode(QByteArray topFieldData, QByteArray bottomFieldData, qint32 brightness, qint32 saturation);
+    QByteArray performDecode(QByteArray topFieldData, QByteArray bottomFieldData, qint32 brightness, qint32 saturation, bool blackAndWhite);
 
     // Replacements for #DEFINE values
     static const int MAX_WIDTH = 1135; // Simon: Maximum based on PAL width

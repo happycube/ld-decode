@@ -32,8 +32,7 @@ NtscFilter::NtscFilter(QObject *parent) : QObject(parent)
 
 bool NtscFilter::process(QString inputFileName, QString outputFileName,
                          qint32 startFrame, qint32 length, bool reverse,
-                         qint32 filterDepth, bool blackAndWhite,
-                         bool adaptive2d, bool opticalFlow, bool whitePoint)
+                         bool use3D, bool blackAndWhite, bool whitePoint)
 {
     // Open the source video metadata
     if (!ldDecodeMetaData.read(inputFileName + ".json")) {
@@ -94,9 +93,6 @@ bool NtscFilter::process(QString inputFileName, QString outputFileName,
     if (length == -1) {
         length = ldDecodeMetaData.getNumberOfFrames() - (startFrame - 1);
     } else {
-        // If filterdepth 3 is specified, we need 2 extra frames to get the specified length
-        if (filterDepth == 3) length += 2;
-
         if (length + (startFrame - 1) > ldDecodeMetaData.getNumberOfFrames()) {
             qInfo() << "Specified length of" << length << "exceeds the number of available frames, setting to" << ldDecodeMetaData.getNumberOfFrames() - (startFrame - 1);
             length = ldDecodeMetaData.getNumberOfFrames() - (startFrame - 1);
@@ -121,10 +117,8 @@ bool NtscFilter::process(QString inputFileName, QString outputFileName,
     Comb::Configuration configuration = comb.getConfiguration();
 
     // Set the comb filter configuration
-    configuration.filterDepth = filterDepth;
+    configuration.use3D = use3D;
     configuration.blackAndWhite = blackAndWhite;
-    configuration.adaptive2d = adaptive2d;
-    configuration.opticalflow = opticalFlow;
     configuration.whitePoint100 = whitePoint;
 
     // Set the input buffer dimensions configuration
@@ -146,18 +140,12 @@ bool NtscFilter::process(QString inputFileName, QString outputFileName,
     comb.setConfiguration(configuration);
 
     // Show the filter type being used
-    if (configuration.filterDepth == 1) qInfo() << "Processing with 1D filter";
-    else if (configuration.filterDepth == 2) qInfo() << "Processing with 2D filter";
-    else if (configuration.filterDepth == 3) qInfo() << "Processing with 3D filter";
-    else {
-        qCritical() << "Error: Filter depth is invalid!";
-        return false;
-    }
+    if (use3D) qInfo() << "Filter configuration: 3D filter";
+    else qInfo() << "Filter configuration: 2D filter";
 
     // Show the filter configuration
     qInfo() << "Filter configuration: Black & white output =" << blackAndWhite;
-    qInfo() << "Filter configuration: Adaptive 2D =" << adaptive2d;
-    qInfo() << "Filter configuration: Optical flow =" << opticalFlow;
+    qInfo() << "Filter configuration: Use 75% white-point =" << whitePoint;
 
     // Process the frames
     QElapsedTimer totalTimer;
@@ -176,7 +164,7 @@ bool NtscFilter::process(QString inputFileName, QString outputFileName,
                                                 ldDecodeMetaData.getField(firstFieldNumber).fieldPhaseID,
                                                 ldDecodeMetaData.getField(secondFieldNumber).fieldPhaseID);
 
-        // Check the output data isn't empty (the first two 3D processed frames are empty)
+        // Check the output data isn't empty
         if (!rgbOutputData.isEmpty()) {
             // The NTSC filter outputs the whole frame, so here we crop it to the required dimensions
             QByteArray croppedOutputData;
@@ -213,14 +201,8 @@ bool NtscFilter::process(QString inputFileName, QString outputFileName,
     }
 
     // Show processing summary
-    if (configuration.filterDepth != 3) {
-        qInfo() << "Processed" << length << "frames into" <<
-                   static_cast<qint32>(videoEnd) - static_cast<qint32>(videoStart) << "x 486 RGB16-16-16 frames";
-    } else {
-        qInfo() << "Processed" << length - 2 << "frames (+2 due to 3D filter) into" <<
-                   static_cast<qint32>(videoEnd) - static_cast<qint32>(videoStart) << "x 486 RGB16-16-16 frames";
-    }
-
+    qInfo() << "Processed" << length << "frames into" <<
+               static_cast<qint32>(videoEnd) - static_cast<qint32>(videoStart) << "x 486 RGB16-16-16 frames";
 
     // Close the input and output files
     sourceVideo.close();

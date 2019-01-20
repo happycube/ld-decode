@@ -6,7 +6,7 @@
     a video signal
 
     Copyright (C) 2018  William Andrew Steer
-    Copyright (C) 2018 Simon Inns
+    Copyright (C) 2018-2019 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -130,7 +130,7 @@ void PalColour::buildLookUpTables(void)
 //
 // Note: This method does not clear the output array before writing to it; if there is garbage
 // in the allocated memory, it will be in the output with the decoded image on top.
-QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray secondFieldData, qint32 brightness, qint32 saturation)
+QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray secondFieldData, qint32 brightness, qint32 saturation, bool blackAndWhite)
 {
     // Ensure the object has been configured
     if (!configurationSet) {
@@ -304,6 +304,12 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
                     rU = (-((pu[i]*bp+qu[i]*bq)) * scaledSaturation);
                     rV = (-(Vsw*(qv[i]*bp-pv[i]*bq)) * scaledSaturation);
 
+                    // Remove UV colour components if black and white (Y only) output is required
+                    if (blackAndWhite) {
+                        rU = 0;
+                        rV = 0;
+                    }
+
                     // This conversion is taken from Video Demystified (5th edition) page 18
                     R = ( rY + (1.140 * rV) );
                     G = ( rY - (0.395 * rU) - (0.581 * rV) );
@@ -322,7 +328,6 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
                     ptr[pp+0] = static_cast<quint16>(R);
                     ptr[pp+1] = static_cast<quint16>(G);
                     ptr[pp+2] = static_cast<quint16>(B);
-
                 }
             }
         }

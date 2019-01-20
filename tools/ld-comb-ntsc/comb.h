@@ -52,11 +52,9 @@ public:
     // Comb filter configuration parameters
     struct Configuration {
         bool blackAndWhite;
-        bool adaptive2d;
         bool colorlpf;
         bool colorlpf_hq;
-        bool opticalflow;
-        qint32 filterDepth;
+        bool use3D;
         bool whitePoint100;
 
         qint32 fieldWidth;
@@ -139,7 +137,7 @@ private:
     void filterIQ(QVector<yiqLine_t> &yiqBuffer);
     void split1D(qint32 currentFrameBuffer);
     void split2D(qint32 currentFrameBuffer);
-    void split3D(qint32 currentFrameBuffer, bool opt_flow = false);
+    void split3D(void);
     void splitIQ(qint32 currentFrameBuffer);
     void doCNR(QVector<yiqLine_t> &yiqBuffer, qreal min = -1.0);
     void doYNR(QVector<yiqLine_t> &yiqBuffer, qreal min = -1.0);

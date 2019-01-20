@@ -3,7 +3,7 @@
     palcombfilter.cpp
 
     ld-comb-pal - PAL colourisation filter for ld-decode
-    Copyright (C) 2018 Simon Inns
+    Copyright (C) 2018-2019 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -29,7 +29,7 @@ PalCombFilter::PalCombFilter(QObject *parent) : QObject(parent)
 
 }
 
-bool PalCombFilter::process(QString inputFileName, QString outputFileName, qint32 startFrame, qint32 length, bool reverse)
+bool PalCombFilter::process(QString inputFileName, QString outputFileName, qint32 startFrame, qint32 length, bool reverse, bool blackAndWhite)
 {
     qint32 maxThreads = 16;
 
@@ -144,7 +144,7 @@ bool PalCombFilter::process(QString inputFileName, QString outputFileName, qint3
             sourceFirstFields[i] = sourceVideo.getVideoField(firstFieldNumber);
             sourceSecondFields[i] = sourceVideo.getVideoField(secondFieldNumber);
             burstMedianIre[i] = ldDecodeMetaData.getField(firstFieldNumber).medianBurstIRE;
-            filterThreads[i]->startFilter(sourceFirstFields[i]->getFieldData(), sourceSecondFields[i]->getFieldData(), burstMedianIre[i]);
+            filterThreads[i]->startFilter(sourceFirstFields[i]->getFieldData(), sourceSecondFields[i]->getFieldData(), burstMedianIre[i], blackAndWhite);
         }
 
         for (qint32 i = 0; i < maxThreads; i++) {

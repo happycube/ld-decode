@@ -94,68 +94,74 @@ bool VbiCorrector::process(QString inputFileName)
         LdDecodeMetaData::Field firstFieldData = ldDecodeMetaData.getField(firstField);
         LdDecodeMetaData::Field secondFieldData = ldDecodeMetaData.getField(secondField);
 
-        if (discType == LdDecodeMetaData::VbiDiscTypes::cav) {
-            // CAV picture number correction
-            // Try up to a distance of 5 frames to find the sequence
-            for (qint32 gap = 1; gap < 5; gap++) {
-                if (getCavFrameNumber(seqNumber) != (getCavFrameNumber(seqNumber - 1) + 1)) {
-                    if (getCavFrameNumber(seqNumber - 1) == (getCavFrameNumber(seqNumber + gap) - (gap + 1))) {
-                        correctedFrameNumber = getCavFrameNumber(seqNumber - 1) + 1;
+        // Only process if fields aren't lead-in or lead-out
+        if ((!firstFieldData.vbi.leadIn) && (!firstFieldData.vbi.leadOut) && (!secondFieldData.vbi.leadIn) && (!secondFieldData.vbi.leadOut)) {
+            if (discType == LdDecodeMetaData::VbiDiscTypes::cav) {
+                // CAV picture number correction
+                // Try up to a distance of 5 frames to find the sequence
+                for (qint32 gap = 1; gap < 5; gap++) {
+                    if (getCavFrameNumber(seqNumber) != (getCavFrameNumber(seqNumber - 1) + 1)) {
+                        if (getCavFrameNumber(seqNumber - 1) == (getCavFrameNumber(seqNumber + gap) - (gap + 1))) {
+                            correctedFrameNumber = getCavFrameNumber(seqNumber - 1) + 1;
 
-                        if (correctedFrameNumber > 0 && correctedFrameNumber < 80000) {
-                            qInfo() << "Correction to seq. frame" << seqNumber << "[" << firstField
-                                    << "/" << secondField << "]:";
-                            qInfo() << "  Seq. frame" << seqNumber - 1 << "has a VBI frame number of" << getCavFrameNumber(seqNumber -1);
-                            qInfo() << "  Seq. frame" << seqNumber << "has a VBI frame number of" << getCavFrameNumber(seqNumber);
-                            qInfo() << "  Seq. frame" << seqNumber + gap << "has a VBI frame number of" << getCavFrameNumber(seqNumber + gap);
+                            if (correctedFrameNumber > 0 && correctedFrameNumber < 80000) {
+                                qInfo() << "Correction to seq. frame" << seqNumber << "[" << firstField
+                                        << "/" << secondField << "]:";
+                                qInfo() << "  Seq. frame" << seqNumber - 1 << "has a VBI frame number of" << getCavFrameNumber(seqNumber -1);
+                                qInfo() << "  Seq. frame" << seqNumber << "has a VBI frame number of" << getCavFrameNumber(seqNumber);
+                                qInfo() << "  Seq. frame" << seqNumber + gap << "has a VBI frame number of" << getCavFrameNumber(seqNumber + gap);
 
-                            qInfo() << "  VBI frame number corrected to" << correctedFrameNumber;
-                        } else {
-                            // Correction was out of range...
-                            qInfo() << "Correction to seq. frame" << seqNumber << "[" << firstField
-                                    << "/" << secondField << "]: was out of range, setting to invalid";
-                            correctedFrameNumber = -1;
+                                qInfo() << "  VBI frame number corrected to" << correctedFrameNumber;
+                            } else {
+                                // Correction was out of range...
+                                qInfo() << "Correction to seq. frame" << seqNumber << "[" << firstField
+                                        << "/" << secondField << "]: was out of range, setting to invalid";
+                                correctedFrameNumber = -1;
+                            }
+
+                            // Update the frame number
+                            setCavFrameNumber(seqNumber, correctedFrameNumber);
+
+                            videoErrorCount++;
+                            break; // done
                         }
+                    }
+                }
+            } else {
+                // CLV picture number correction
+                // Try up to a distance of 5 frames to find the sequence
+                for (qint32 gap = 1; gap < 5; gap++) {
+                    if (getClvFrameNumber(seqNumber) != (getClvFrameNumber(seqNumber - 1) + 1)) {
+                        if (getClvFrameNumber(seqNumber - 1) == (getClvFrameNumber(seqNumber + gap) - (gap + 1))) {
+                            correctedFrameNumber = getClvFrameNumber(seqNumber - 1) + 1;
 
-                        // Update the frame number
-                        setCavFrameNumber(seqNumber, correctedFrameNumber);
+                            if (correctedFrameNumber > 0) {
+                                qInfo() << "Correction to seq. frame" << seqNumber << "[" << firstField
+                                        << "/" << secondField << "]:";
+                                qInfo() << "  Seq. frame" << seqNumber - 1 << "has a CLV frame number of" << getClvFrameNumber(seqNumber -1);
+                                qInfo() << "  Seq. frame" << seqNumber << "has a CLV frame number of" << getClvFrameNumber(seqNumber);
+                                qInfo() << "  Seq. frame" << seqNumber + gap << "has a CLV frame number of" << getClvFrameNumber(seqNumber + gap);
 
-                        videoErrorCount++;
-                        break; // done
+                                qInfo() << "  CLV frame number corrected to" << correctedFrameNumber;
+                            } else {
+                                // Correction was out of range...
+                                qInfo() << "Correction to seq. frame" << seqNumber << "[" << firstField
+                                        << "/" << secondField << "]: was out of range, setting to invalid";
+                                correctedFrameNumber = -1;
+                            }
+
+                            // Update the frame number
+                            setClvFrameNumber(seqNumber, correctedFrameNumber);
+
+                            videoErrorCount++;
+                            break; // done
+                        }
                     }
                 }
             }
         } else {
-            // CLV picture number correction
-            // Try up to a distance of 5 frames to find the sequence
-            for (qint32 gap = 1; gap < 5; gap++) {
-                if (getClvFrameNumber(seqNumber) != (getClvFrameNumber(seqNumber - 1) + 1)) {
-                    if (getClvFrameNumber(seqNumber - 1) == (getClvFrameNumber(seqNumber + gap) - (gap + 1))) {
-                        correctedFrameNumber = getClvFrameNumber(seqNumber - 1) + 1;
-
-                        if (correctedFrameNumber > 0) {
-                            qInfo() << "Correction to seq. frame" << seqNumber << "[" << firstField
-                                    << "/" << secondField << "]:";
-                            qInfo() << "  Seq. frame" << seqNumber - 1 << "has a CLV frame number of" << getClvFrameNumber(seqNumber -1);
-                            qInfo() << "  Seq. frame" << seqNumber << "has a CLV frame number of" << getClvFrameNumber(seqNumber);
-                            qInfo() << "  Seq. frame" << seqNumber + gap << "has a CLV frame number of" << getClvFrameNumber(seqNumber + gap);
-
-                            qInfo() << "  CLV frame number corrected to" << correctedFrameNumber;
-                        } else {
-                            // Correction was out of range...
-                            qInfo() << "Correction to seq. frame" << seqNumber << "[" << firstField
-                                    << "/" << secondField << "]: was out of range, setting to invalid";
-                            correctedFrameNumber = -1;
-                        }
-
-                        // Update the frame number
-                        setClvFrameNumber(seqNumber, correctedFrameNumber);
-
-                        videoErrorCount++;
-                        break; // done
-                    }
-                }
-            }
+            // Marked as lead in or lead out
+            qInfo() << "  Seq. frame" << seqNumber << "was marked as lead-in/out - not performing correction";
         }
 
         // Audio sound mode correction

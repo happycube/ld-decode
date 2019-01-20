@@ -36,12 +36,11 @@ Comb::Comb() {
 
     // Set default configuration
     configuration.blackAndWhite = false;
-    configuration.adaptive2d = true;
-    configuration.colorlpf = true;
-    configuration.colorlpf_hq = true;
-    configuration.opticalflow = true;
-    configuration.filterDepth = 2;
+    configuration.use3D = false;
     configuration.whitePoint100 = false;
+
+    configuration.colorlpf = true; // Use as default
+    configuration.colorlpf_hq = true; // Use as default
 
     // These are the overall dimensions of the input frame
     configuration.fieldWidth = 910;
@@ -90,13 +89,13 @@ QByteArray Comb::process(QByteArray firstFieldInputBuffer, QByteArray secondFiel
     QVector<yiqLine_t> tempYiqBuffer;
     tempYiqBuffer.resize(frameHeight);
 
-    qint32 currentFrameBuffer = (configuration.filterDepth == 3) ? 1 : 0; // Set f = 1 if filterdepth = 3 else f = 0
+    if (configuration.use3D) {
+        // Shift the frames in the buffer (0 = newest frame, 2 = oldest)
+        frameBuffer[2] = frameBuffer[1];
+        frameBuffer[1] = frameBuffer[0];
+    }
 
-    // Shift the frames in the buffer
-    frameBuffer[2] = frameBuffer[1];
-    frameBuffer[1] = frameBuffer[0];
-
-    // Interlace the input fields and place in the frame's raw buffer
+    // Interlace the input fields and place in the frame[0]'s raw buffer
     qint32 fieldLine = 0;
     frameBuffer[0].rawbuffer.clear();
     for (qint32 frameLine = 0; frameLine < (configuration.fieldHeight * 2); frameLine += 2) {
@@ -113,42 +112,94 @@ QByteArray Comb::process(QByteArray firstFieldInputBuffer, QByteArray secondFiel
     frameBuffer[0].firstFieldPhaseID = firstFieldPhaseID;
     frameBuffer[0].secondFieldPhaseID = secondFieldPhaseID;
 
-    split1D(0);
-    if (configuration.filterDepth >= 2) split2D(0);
-    splitIQ(0);
+    // Define an output buffer
+    QByteArray rgbOutputBuffer;
 
-    if (configuration.filterDepth == 3) {
-        // Perform optical flow detection?
-        if (configuration.opticalflow && (frameCounter > 0)) {
+    // Process using 2D or 3D?
+    if (!configuration.use3D) {
+        // Perform 1D processing
+        split1D(0);
+
+        // Perform 2D processing
+        split2D(0);
+
+        // Split the IQ values
+        splitIQ(0);
+
+        // Copy the current frame to a temporary buffer, so operations on the frame do not
+        // alter the original data
+        tempYiqBuffer = frameBuffer[0].yiqBuffer;
+
+        // Process the copy of the current frame
+        adjustY(0, tempYiqBuffer);
+        if (configuration.colorlpf) filterIQ(tempYiqBuffer);
+        doYNR(tempYiqBuffer);
+        doCNR(tempYiqBuffer);
+
+        // Convert the YIQ result to RGB
+        rgbOutputBuffer = yiqToRgbFrame(0, tempYiqBuffer);
+    } else {
+        // Perform 1D processing on the current frame
+        split1D(0);
+
+        // Perform 2D processing on the current frame
+        split2D(0);
+
+        // Split the IQ values of the current frame
+        splitIQ(0);
+
+        // Ensure we have at least 2 frames before performing optical flow
+        if (frameCounter > 0) {
+            // Make a copy of the current frame
             tempYiqBuffer = frameBuffer[0].yiqBuffer;
+
+            // Process the copy of the current frame
             adjustY(0, tempYiqBuffer);
-            doYNR(tempYiqBuffer, 4);
-            doCNR(tempYiqBuffer, 4);
+            if (configuration.colorlpf) filterIQ(tempYiqBuffer);
+            doYNR(tempYiqBuffer);
+            doCNR(tempYiqBuffer);
+
+            // Perform the optical flow method on the copy of the current frame (0)
+            // This method writes back the result to frame buffer [1]
             opticalFlow3D(tempYiqBuffer, frameCounter);
         }
 
-        // If filterDepth is 3, make sure we have 3 frames before processing further
+        // If we don't yet have 3 frames, then we cannot 3D filter
         if (frameCounter < 2) {
-            frameCounter++;
-            // Just return an empty output buffer
-            return nullptr;
-        }
+            // 2D filter
+            qDebug() << "Comb::process(): 2D fallback for initial frame" << frameCounter;
+            tempYiqBuffer = frameBuffer[0].yiqBuffer;
 
-        split3D(currentFrameBuffer, configuration.opticalflow);
+            // Process the copy of the current frame
+            adjustY(0, tempYiqBuffer);
+            if (configuration.colorlpf) filterIQ(tempYiqBuffer);
+            doYNR(tempYiqBuffer);
+            doCNR(tempYiqBuffer);
+
+            // Convert the YIQ result to RGB
+            rgbOutputBuffer = yiqToRgbFrame(0, tempYiqBuffer);
+        } else {
+            // 3D filter
+            split3D();  // Split 3D on frame buffer [1]
+            splitIQ(1); // Split QI on frame buffer [1]
+
+            // Make a copy of frame buffer 1
+            tempYiqBuffer = frameBuffer[1].yiqBuffer;
+
+            // Process the copy of the frame buffer; note: we have to pass the frame buffer number too
+            // for the frame's parameters as they are not copied into the tempYiqBuffer
+            adjustY(1, tempYiqBuffer);
+            if (configuration.colorlpf) filterIQ(tempYiqBuffer);
+            doYNR(tempYiqBuffer);
+            doCNR(tempYiqBuffer);
+
+            // Convert the YIQ result to RGB
+            rgbOutputBuffer = yiqToRgbFrame(1, tempYiqBuffer);
+        }
     }
 
-    splitIQ(currentFrameBuffer);
-
-    tempYiqBuffer = frameBuffer[currentFrameBuffer].yiqBuffer;
-    adjustY(currentFrameBuffer, tempYiqBuffer);
-    if (configuration.colorlpf) filterIQ(tempYiqBuffer);
-    doYNR(tempYiqBuffer);
-    doCNR(tempYiqBuffer);
-
-    // Convert the YIQ result to RGB
-    QByteArray rgbOutputBuffer = yiqToRgbFrame(currentFrameBuffer, tempYiqBuffer);
+    // Return the output frame
     frameCounter++;
-
     return rgbOutputBuffer;
 }
 
@@ -160,6 +211,7 @@ void Comb::postConfigurationTasks(void)
 
     // Set the IRE scale
     irescale = (configuration.whiteIre - configuration.blackIre) / 100;
+    qDebug() << "Comb::postConfigurationTasks(): irescale is" << irescale;
 
     nr_c = 0.0;
     nr_y = 1.0;
@@ -167,28 +219,21 @@ void Comb::postConfigurationTasks(void)
     nr_y *= irescale;
 
     // Calculate some 2D/3D processing configuration parameters
-    p_3dcore = -1;
-    p_3drange = -1;
+    p_3dcore = 0; // no optical flow = 1.25
+    p_3drange = 0.5; // no optical flow = 5.5
     p_2drange = 10 * irescale;
 
-    // Calculations for 3D filter
-    if (configuration.opticalflow) {
-        if (p_3dcore < 0) p_3dcore = 0;
-        if (p_3drange < 0) p_3drange = 0.5;
-    } else {
-        if (p_3dcore < 0) p_3dcore = 1.25;
-        if (p_3drange < 0) p_3drange = 5.5;
-        p_3dcore *= irescale;
-        p_3drange *= irescale;
-    }
-
     // Allocate the frame buffers
-    frameBuffer.resize(3); // 3 buffers required for 3D processing
+    if (configuration.use3D) frameBuffer.resize(3); // 3 buffers required for 3D processing
+    else frameBuffer.resize(1);
 
     qint32 frameHeight = ((configuration.fieldHeight * 2) - 1);
-    frameBuffer[0].yiqBuffer.resize(frameHeight);
-    frameBuffer[1].yiqBuffer.resize(frameHeight);
-    frameBuffer[2].yiqBuffer.resize(frameHeight);
+
+    if (configuration.use3D) {
+        frameBuffer[0].yiqBuffer.resize(frameHeight);
+        frameBuffer[1].yiqBuffer.resize(frameHeight);
+        frameBuffer[2].yiqBuffer.resize(frameHeight);
+    } else frameBuffer[0].yiqBuffer.resize(frameHeight);
 
     // Reset the frame counter
     frameCounter = 0;
@@ -258,7 +303,7 @@ void Comb::split1D(qint32 currentFrameBuffer)
         // This offset is only applied if 1D processing is selected,
         // no idea why thought... but it causes an underflow since if
         // the activeVideoStart is less than f_toffset...
-        qint32 f_toffset = 16;
+        //qint32 f_toffset = 16;
 
         for (qint32 h = configuration.activeVideoStart; h < configuration.activeVideoEnd; h++) {
             qint32 phase = h % 4;
@@ -281,7 +326,7 @@ void Comb::split1D(qint32 currentFrameBuffer)
             }
 
             frameBuffer[currentFrameBuffer].clpbuffer[0][lineNumber][h] = tc1;
-            if (configuration.filterDepth == 1) frameBuffer[currentFrameBuffer].clpbuffer[0][lineNumber][h - f_toffset] = tc1f;
+            //if (configuration.filterDepth == 1) frameBuffer[currentFrameBuffer].clpbuffer[0][lineNumber][h - f_toffset] = tc1f;
 
             frameBuffer[currentFrameBuffer].combk[0][lineNumber][h] = 1;
         }
@@ -320,8 +365,6 @@ void Comb::split2D(qint32 currentFrameBuffer)
                 kp = clamp(1 - (kp / p_2drange), 0, 1);
                 kn = clamp(1 - (kn / p_2drange), 0, 1);
 
-                if (!configuration.adaptive2d) kn = kp = 1.0;
-
                 qreal sc = 1.0;
 
                 if ((kn > 0) || (kp > 0)) {
@@ -358,52 +401,52 @@ void Comb::split2D(qint32 currentFrameBuffer)
 }
 
 // This could do with an explaination of what it is doing...
-void Comb::split3D(qint32 currentFrameBuffer, bool opt_flow)
+// Removed the passed currentField as this always has to be 1, so it's not required
+// This method always writes back the result to frameBuffer[1]
+void Comb::split3D(void)
 {
     qint32 frameHeight = ((configuration.fieldHeight * 2) - 1);
 
     for (qint32 lineNumber = configuration.firstVisibleFrameLine; lineNumber < frameHeight; lineNumber++) {
-        quint16 *line = reinterpret_cast<quint16 *>(frameBuffer[currentFrameBuffer].rawbuffer.data() + (lineNumber * configuration.fieldWidth) * 2);
+        // Line points to the line in the current frame
+        quint16 *line = reinterpret_cast<quint16 *>(frameBuffer[1].rawbuffer.data() + (lineNumber * configuration.fieldWidth) * 2);
 
-        // shortcuts for previous/next 1D/pixel lines
+        // shortcuts for previous/next 1D/pixel frame lines
         quint16 *p3line = reinterpret_cast<quint16 *>(frameBuffer[0].rawbuffer.data() + (lineNumber * configuration.fieldWidth) * 2);
-        quint16 *n3line = reinterpret_cast<quint16 *>(frameBuffer[2].rawbuffer.data() + (lineNumber * configuration.fieldWidth) * 2);
+        //quint16 *n3line = reinterpret_cast<quint16 *>(frameBuffer[2].rawbuffer.data() + (lineNumber * configuration.fieldWidth) * 2);
 
-        Filter lp_3d({0.005719569452904, 0.009426612841315, 0.019748592575455, 0.036822680065252, 0.058983880135427, 0.082947830292278, 0.104489989820068,
-                      0.119454688318951, 0.124812312996699, 0.119454688318952, 0.104489989820068, 0.082947830292278, 0.058983880135427, 0.036822680065252,
-                      0.019748592575455, 0.009426612841315, 0.005719569452904}, {1.0});
+//        Filter lp_3d({0.005719569452904, 0.009426612841315, 0.019748592575455, 0.036822680065252, 0.058983880135427, 0.082947830292278, 0.104489989820068,
+//                      0.119454688318951, 0.124812312996699, 0.119454688318952, 0.104489989820068, 0.082947830292278, 0.058983880135427, 0.036822680065252,
+//                      0.019748592575455, 0.009426612841315, 0.005719569452904}, {1.0});
 
-        // need to prefilter K using a LPF
-        qreal _k[max_x];
-        for (qint32 h = configuration.activeVideoStart; (configuration.filterDepth >= 3) && (h < configuration.activeVideoEnd); h++) {
-            qint32 adr = (lineNumber * configuration.fieldWidth) + h;
+        // This code doesn't seem to do anything now the f_opticalflow config is removed?
+//        // need to prefilter K using a LPF
+//        qreal _k[max_x];
+//        for (qint32 h = configuration.activeVideoStart; (configuration.use3D) && (h < configuration.activeVideoEnd); h++) {
+//            qint32 adr = (lineNumber * configuration.fieldWidth) + h;
 
-            // Since the underlying raw buffer is a QByteArray we have to map the data points to quint16
-            quint16 *f0 = reinterpret_cast<quint16 *>(frameBuffer[0].rawbuffer.data() + (adr * 2));
-            quint16 *f1 = reinterpret_cast<quint16 *>(frameBuffer[1].rawbuffer.data() + (adr * 2));
-            quint16 *f2 = reinterpret_cast<quint16 *>(frameBuffer[2].rawbuffer.data() + (adr * 2));
+//            // Since the underlying raw buffer is a QByteArray we have to map the data points to quint16
+//            quint16 *f0 = reinterpret_cast<quint16 *>(frameBuffer[0].rawbuffer.data() + (adr * 2));
+//            quint16 *f1 = reinterpret_cast<quint16 *>(frameBuffer[1].rawbuffer.data() + (adr * 2));
+//            quint16 *f2 = reinterpret_cast<quint16 *>(frameBuffer[2].rawbuffer.data() + (adr * 2));
 
-            qreal __k = abs(f0[0] - f2[0]);
-            __k += abs((f1[0] - f2[0]) - (f1[0] - f0[0]));
+//            qreal __k = abs(f0[0] - f2[0]);
+//            __k += abs((f1[0] - f2[0]) - (f1[0] - f0[0]));
 
-            if (h > 12) _k[h - 8] = lp_3d.feed(__k);
-            if (h >= 836) _k[h] = __k;
-        }
+//            if (h > 12) _k[h - 8] = lp_3d.feed(__k);
+//            if (h >= 836) _k[h] = __k;
+//        }
 
         for (qint32 h = configuration.activeVideoStart; h < configuration.activeVideoEnd; h++) {
-            if (opt_flow) {
-                frameBuffer[currentFrameBuffer].clpbuffer[2][lineNumber][h] = (p3line[h] - line[h]);
-            } else {
-                frameBuffer[currentFrameBuffer].clpbuffer[2][lineNumber][h] = (((p3line[h] + n3line[h]) / 2) - line[h]);
-                frameBuffer[currentFrameBuffer].combk[2][lineNumber][h] = clamp(1 - ((_k[h] - (p_3dcore)) / p_3drange), 0, 1);
-            }
+            // Something to do with the optical flow detection...
+            frameBuffer[1].clpbuffer[2][lineNumber][h] = (p3line[h] - line[h]);
 
             if ((lineNumber >= 2) && (lineNumber <= (frameHeight - 2))) {
-                frameBuffer[currentFrameBuffer].combk[1][lineNumber][h] = 1 - frameBuffer[currentFrameBuffer].combk[2][lineNumber][h];
+                frameBuffer[1].combk[1][lineNumber][h] = 1 - frameBuffer[1].combk[2][lineNumber][h];
             }
 
             // 1D
-            frameBuffer[currentFrameBuffer].combk[0][lineNumber][h] = 1 - frameBuffer[currentFrameBuffer].combk[2][lineNumber][h] - frameBuffer[currentFrameBuffer].combk[1][lineNumber][h];
+            frameBuffer[1].combk[0][lineNumber][h] = 1 - frameBuffer[1].combk[2][lineNumber][h] - frameBuffer[1].combk[1][lineNumber][h];
         }
     }
 }
@@ -570,23 +613,22 @@ QByteArray Comb::yiqToRgbFrame(qint32 currentFrameBuffer, QVector<yiqLine_t> yiq
 }
 
 // Perform optical flow detection
+// Seems to be writing back the result into frame buffer [1]...
 void Comb::opticalFlow3D(QVector<yiqLine_t> yiqBuffer, qint32 frameCounter)
 {
     const qint32 cysize = 252; // Field height extent?
     const qint32 cxsize = max_x - 70; // Field width extent?
 
     quint16 fieldbuf[max_x * cysize];
-    quint16 flowmap[max_y][cxsize];
+    //quint16 flowmap[max_y][cxsize];
 
     // Note: No check on the unmanaged memsets below; probably should add some (or remove the memsets)
     memset(fieldbuf, 0, sizeof(fieldbuf));
-    memset(flowmap, 0, sizeof(flowmap));
 
     qint32 y;
     cv::Mat pic;
 
     for (qint32 field = 0; field < 2; field++) {
-
         // Split the frame back into two fields for optical flow detection
         for (y = 0; y < cysize; y++) {
             for (qint32 x = 0; x < cxsize; x++) {
@@ -618,9 +660,9 @@ void Comb::opticalFlow3D(QVector<yiqLine_t> yiqBuffer, qint32 frameCounter)
                                             static_cast<double>(flowpoint2.x) * 2) - min) / max, 0, 1);
                 qreal c = (c1 < c2) ? c1 : c2;
 
-                quint16 fm = static_cast<quint16>(clamp(c * 65535, 0, 65535));
-                flowmap[(y * 2)][0 + x] = fm;
-                flowmap[(y * 2) + 1][0 + x] = fm;
+                // Place the resulting data into the 2nd frame buffer's combk[2]
+                frameBuffer[1].combk[2][(y * 2)][70 + x] = c;
+                frameBuffer[1].combk[2][(y * 2) + 1][70 + x] = c;
             }
         }
     }
