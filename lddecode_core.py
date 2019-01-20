@@ -1363,7 +1363,7 @@ class FieldNTSC(Field):
 
 class LDdecode:
     
-    def __init__(self, fname_in, fname_out, freader, analog_audio = True, frameoutput = False, system = 'NTSC'):
+    def __init__(self, fname_in, fname_out, freader, analog_audio = True, frameoutput = False, system = 'NTSC', doDOD = True):
         self.infile = open(fname_in, 'rb')
         self.freader = freader
 
@@ -1404,6 +1404,8 @@ class LDdecode:
 
         self.prevfield = None
         self.curfield = None
+
+        self.doDOD = doDOD
 
         self.fieldinfo = []
         
@@ -1533,9 +1535,9 @@ class LDdecode:
               'diskLoc': np.round((self.fieldloc / self.bytes_per_field) * 10) / 10,
               'medianBurstIRE': f.burstmedian}
 
-        dropout_lines, dropout_starts, dropout_ends = f.dropout_detect()
-
-        fi['dropOuts'] = {'fieldLine': dropout_lines, 'startx': dropout_starts, 'endx': dropout_ends}
+        if self.doDOD:
+            dropout_lines, dropout_starts, dropout_ends = f.dropout_detect()
+            fi['dropOuts'] = {'fieldLine': dropout_lines, 'startx': dropout_starts, 'endx': dropout_ends}
 
         # This is a bitmap, not a counter
         decodeFaults = 0
