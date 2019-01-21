@@ -1051,7 +1051,7 @@ class Field:
 
         for e in errmap:
             if e > curerr[0] and e <= (curerr[1] + 10):
-                epad = curerr[0] + ((e - curerr[0]) * 3)
+                epad = curerr[0] + ((e - curerr[0]) * 2)
                 curerr = (curerr[0], epad)
             elif e > firsterr:
                 errlist.append(curerr)
