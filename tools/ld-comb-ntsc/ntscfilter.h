@@ -44,7 +44,7 @@ public:
     explicit NtscFilter(QObject *parent = nullptr);
 
     bool process(QString inputFileName, QString outputFileName, qint32 startFrame, qint32 length, bool reverse = false, bool use3D = false,
-                 bool blackAndWhite = false, bool whitePoint = false);
+                 bool blackAndWhite = false, bool whitePoint = false, bool oftest = false);
 
 signals:
 

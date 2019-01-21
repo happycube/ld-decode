@@ -56,6 +56,7 @@ public:
         bool colorlpf_hq;
         bool use3D;
         bool whitePoint100;
+        bool oftest;
 
         qint32 fieldWidth;
         qint32 fieldHeight;
@@ -120,6 +121,9 @@ private:
     };
 
     QVector<frame_t> frameBuffer;
+
+    // Buffer for the debug optical flow map
+    quint16 frameFlowMap[max_y][max_x];
 
     // Filter definitions for YNR and CNR noise reduction
     Filter *f_hpy, *f_hpi, *f_hpq;
