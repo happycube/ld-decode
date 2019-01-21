@@ -1012,7 +1012,7 @@ class Field:
         f = self
 
         # Do raw demod detection here
-        dod_margin_low = 700000
+        dod_margin_low = 1000000
         dod_margin_high = 300000
         iserr1 = inrange(f.data[0]['demod_raw'], f.rf.limits['viewable'][0] - dod_margin_low, f.rf.limits['viewable'][1] +  dod_margin_high) == False
 
