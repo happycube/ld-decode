@@ -424,10 +424,13 @@ class RFDecode:
         else:
             return output, None
 
-    def computedelays(rf, mtf_level = 0):
+    def computedelays(self, mtf_level = 0):
+
+        rf = self
+
         ''' Generate a fake signal and compute filter delays '''
         # mtf adjustment only shifts it by about .6px
-        
+
         filterset = rf.Filters
         # generate a fake signal and (try to ) decode it correctly :)
         #def calc_demodgaps(filterset):
@@ -436,15 +439,30 @@ class RFDecode:
         # set base level to black
         fakeoutput[:] = rf.iretohz(0)
 
-        synclen_short = 2.3 * rf.freq
-        synclen_full = 4.7 * rf.freq
+        synclen_short = int(2.3 * rf.freq)
+        synclen_full = int(4.7 * rf.freq)
         
-        # sync
-        fakeoutput[2000:2500] = rf.iretohz(rf.SysParams['vsync_ire'])
+        # sync 1 (used for gap determination)
+        fakeoutput[1500:1500+synclen_full] = rf.iretohz(rf.SysParams['vsync_ire'])
+        # sync 2 (used for pilot/rot level setting)
+        fakeoutput[2000:2000+synclen_full] = rf.iretohz(rf.SysParams['vsync_ire'])
 
+        porch_end = 2000+synclen_full + int(0.6 * rf.freq)
+        burst_end = porch_end + int(1.2 * rf.freq)
+
+        rate = np.full(burst_end-porch_end, rf.SysParams['fsc_mhz'], dtype=np.double)
+        fakeoutput[porch_end:burst_end] += (genwave(rate, rf.freq / 2) * rf.SysParams['hz_ire'] * 20)
+        
         # white
         fakeoutput[3000:3500] = rf.iretohz(100)
 
+        # white + burst
+        colorlen = 1500
+        fakeoutput[4500:5000] = rf.iretohz(100)
+
+        rate = np.full(5500-4200, rf.SysParams['fsc_mhz'], dtype=np.double)
+        fakeoutput[4200:5500] += (genwave(rate, rf.freq / 2) * rf.SysParams['hz_ire'] * 20)
+        
         # color burst/pilot.  not reimplemented yet
         if False:
             burstlen = int(18 * ((rf.freq / 2) / (315/88)) )
@@ -455,11 +473,20 @@ class RFDecode:
             rate = np.full(burstlen, (315/88.0), dtype=np.double)
             fakeoutput[0:0+burstlen] = 8100000 + (genwave(rate, rf.freq / 2) * 250000)
 
+        if rf.system == 'PAL':
+            rate = np.full(synclen_full, (315/88.0), dtype=np.double)
+            fakeoutput[2000:2000+synclen_full] = rf.iretohz(rf.SysParams['vsync_ire']) + (genwave(rate, rf.freq / 2) * rf.SysParams['hz_ire'] * rf.SysParams['vsync_ire'])
+
+    #        burstlen = int(64 * ((rf.freq / 2) / (315/88)) )
+    #        rate = np.full(burstlen, (315/88.0), dtype=np.double)
+    #        fakeoutput[0:0+burstlen] = 8100000 + (genwave(rate, rf.freq / 2) * 250000)
+            
+            
         # add filters to generate a fake signal
-        
+
         # NOTE: group pre-delay is not implemented, so the decoded signal
         # has issues settling down.  Emphasis is correct AFAIK
-        
+
         tmp = np.fft.fft(fakeoutput)
         tmp2 = tmp * (filterset['Fvideo_lpf'] ** 1)
         tmp3 = tmp2 * (filterset['Femp'] ** 1)
@@ -468,46 +495,30 @@ class RFDecode:
         fakeoutput_emp = np.fft.ifft(tmp3).real
 
         fakesignal = genwave(fakeoutput_emp, rf.freq_hz / 2)
-        
-        adj = 3200
-        #print(np.min(fakesignal), fakesignal[adj])
-        #fakesignal[3200] = -fakesignal[3200]
-        #fakesignal[3210] = -fakesignal[3210]
-        fakesignal[adj] = -2
-        
+
         fakedecode = rf.demodblock(fakesignal, mtf_level=mtf_level)
 
         # XXX: sync detector does NOT reflect actual sync detection, just regular filtering @ sync level
         # (but only regular filtering is needed for DOD)
-        dgap_sync = calczc(fakedecode[0]['demod'], 2000, rf.iretohz(rf.SysParams['vsync_ire'] / 2), _count=512) - 2000
-        dgap_sync += calczc(fakedecode[0]['demod'], 2500, rf.iretohz(rf.SysParams['vsync_ire'] / 2), _count=512) - 2500
-        dgap_sync /= 2
+        dgap_sync = calczc(fakedecode[0]['demod'], 1500, rf.iretohz(rf.SysParams['vsync_ire'] / 2), _count=512) - 1500
+    #    dgap_sync += calczc(fakedecode[0]['demod'], 2500, rf.iretohz(rf.SysParams['vsync_ire'] / 2), _count=512) - 2500
+    #    dgap_sync /= 2
 
         dgap_white = calczc(fakedecode[0]['demod'], 3000, rf.iretohz(50), _count=512) - 3000
-        dgap_white += calczc(fakedecode[0]['demod'], 3500, rf.iretohz(50), _count=512) - 3500
-        dgap_white /= 2
-        
+    #    dgap_white += calczc(fakedecode[0]['demod'], 3500, rf.iretohz(50), _count=512) - 3500
+    #    dgap_white /= 2
+
         rf.delays = {}
         rf.delays['video_sync'] = dgap_sync
         rf.delays['video_white'] = dgap_white
-
-        # for rot area determination, we don't know which direction it'll go at first,
-        # so take the absolute difference from 100IRE
-        data_rot = fakedecode[0]['demod'][3200:3500].copy()
-        data_rot = rf.hztoire(data_rot)
-        data_rot = np.abs(100 - data_rot)
         
-        rot_start = calczc(data_rot, 0, 5, _count=300)
-        rot_end = calczc(data_rot, 300, 5, _count=300, reverse=True)
-        rf.delays['video_rot'] = rot_start
-        rf.delays['video_rot_length'] = rot_end - rot_start
+        fdec_raw = fakedecode[0]['demod_raw']
+        
+        rf.limits = {}
+        rf.limits['sync'] = (np.min(fdec_raw[1400:2800]), np.max(fdec_raw[1400:2800]))
+        rf.limits['viewable'] = (np.min(fdec_raw[2900:6000]), np.max(fdec_raw[2900:6000]))
 
         return fakedecode, dgap_sync, dgap_white
-        
-        # Determine filter lag (mostly the length of the hilbert filter)
-        #dgap = calczc(fakedecode[0]['demod'], 950, rf.iretohz(-20), 256) - calczc(fakeoutput_emp, 950, rf.iretohz(-20), 500)
-
-        #return(dgap)            
 
 # right now defualt is 16/48, so not optimal :)
 def downscale_audio(audio, lineinfo, rf, linecount, timeoffset = 0, freq = 48000.0, scale=64):
@@ -996,12 +1007,63 @@ class Field:
 
         return errlist
 
-    def dropout_detect(self):
+    def dropout_detect_demod(self):
+        # current field
+        f = self
+
+        # Do raw demod detection here
+        dod_margin = 250000
+        iserr1 = inrange(f.data[0]['demod_raw'], f.rf.limits['viewable'][0] - dod_margin, f.rf.limits['viewable'][1] +  dod_margin) == False
+
+        # build sets of min/max valid levels 
+
+        # the base values are good for viewable-area signal
+        valid_min = np.full_like(f.data[0]['demod'], f.rf.iretohz(-30))
+        valid_max = np.full_like(f.data[0]['demod'], f.rf.iretohz(120))
+
+        # the minimum valid value during VSYNC is lower for PAL because of the pilot signal
+        minsync = -80 if self.rf.system == 'PAL' else -50
+
+        # lines 0-8 should cover both PAL and NTSC
+        for i in range(8):
+            valid_min[int(f.linelocs[i]):int(f.linelocs[i+1])] = f.rf.iretohz(minsync)
+            valid_max[int(f.linelocs[i]):int(f.linelocs[i+1])] = f.rf.iretohz(70)
+
+        for i in range(8, len(f.linelocs)):
+            l = f.linelocs[i]
+            # Could compute the estimated length of setup, but we can cut this a bit early...
+            valid_min[int(l-(f.rf.freq * .5)):int(l+(f.rf.freq * 8))] = f.rf.iretohz(minsync)
+            valid_max[int(l-(f.rf.freq * .5)):int(l+(f.rf.freq * 8))] = f.rf.iretohz(40)
+
+        iserr2 = f.data[0]['demod'] < valid_min
+        iserr2 |= f.data[0]['demod'] > valid_max
+
+        iserr = iserr1 | iserr2
+        
+        return iserr
+
+    def build_errlist(self, errmap):
+        errlist = []
+
+        firsterr = errmap[np.nonzero(errmap >= self.linelocs[self.lineoffset])[0][0]]
+        curerr = (firsterr, firsterr)
+
+        for e in errmap:
+            if e > curerr[0] and e <= (curerr[1] + 15):
+                curerr = (curerr[0], e)
+            elif e > firsterr:
+                errlist.append(curerr)
+                curerr = (e, e)
+                
+        return errlist
+
+
+    def dropout_errlist_to_tbc(self, errlist):
         rv_lines = []
         rv_starts = []
         rv_ends = []
 
-        errlist = self.dropout_detect_rftiming()
+        #errlist = self.dropout_detect_rftiming()
 
         if len(errlist) == 0:
             return rv_lines, rv_starts, rv_ends
@@ -1025,7 +1087,7 @@ class Field:
                 end_rf_linepos = curerr[1] - self.linelocs[l]
                 end_linepos = end_rf_linepos / (self.linelocs[l + 1] - self.linelocs[l])
                 end_linepos = int(np.round(end_linepos * self.outlinelen))
-                
+
                 if end_linepos > self.outlinelen:
                     # need to output two dropouts
                     rv_lines.append(l - lineoffset)
@@ -1039,7 +1101,7 @@ class Field:
                     rv_lines.append(l - lineoffset)
                     rv_starts.append(start_linepos)
                     rv_ends.append(end_linepos)
-                
+
                 if len(errlistc):
                     curerr = errlistc.pop(0)
                 else:
@@ -1051,6 +1113,13 @@ class Field:
         rv_ends = [int(e) for e in rv_ends]
 
         return rv_lines, rv_starts, rv_ends
+
+    def dropout_detect(self):
+        iserr = self.dropout_detect_demod()
+        errmap = np.nonzero(iserr)[0]
+        errlist = self.build_errlist(errmap)
+
+        return self.dropout_errlist_to_tbc(errlist)    
 
 # These classes extend Field to do PAL/NTSC specific TBC features.
 
