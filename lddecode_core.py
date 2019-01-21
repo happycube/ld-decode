@@ -1013,15 +1013,15 @@ class Field:
         f = self
 
         # Do raw demod detection here
-        dod_margin_low = 300000
-        dod_margin_high = 300000
+        dod_margin_low = 1500000
+        dod_margin_high = 1500000
         iserr1 = inrange(f.data[0]['demod_raw'], f.rf.limits['viewable'][0] - dod_margin_low, f.rf.limits['viewable'][1] +  dod_margin_high) == False
 
         # build sets of min/max valid levels 
 
         # the base values are good for viewable-area signal
         valid_min = np.full_like(f.data[0]['demod'], f.rf.iretohz(-30))
-        valid_max = np.full_like(f.data[0]['demod'], f.rf.iretohz(130))
+        valid_max = np.full_like(f.data[0]['demod'], f.rf.iretohz(140))
 
         # the minimum valid value during VSYNC is lower for PAL because of the pilot signal
         minsync = -80 if self.rf.system == 'PAL' else -50
