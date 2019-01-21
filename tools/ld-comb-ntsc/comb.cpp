@@ -39,6 +39,9 @@ Comb::Comb() {
     configuration.use3D = false;
     configuration.whitePoint100 = false;
 
+    // Optical flow test
+    configuration.oftest = false;
+
     configuration.colorlpf = true; // Use as default
     configuration.colorlpf_hq = true; // Use as default
 
@@ -219,8 +222,8 @@ void Comb::postConfigurationTasks(void)
     nr_y *= irescale;
 
     // Calculate some 2D/3D processing configuration parameters
-    p_3dcore = 0; // no optical flow = 1.25
-    p_3drange = 0.5; // no optical flow = 5.5
+    p_3dcore = 0; // no optical flow = 1.25, 0
+    p_3drange = 0.5; // no optical flow = 5.5, 0.5
     p_2drange = 10 * irescale;
 
     // Allocate the frame buffers
@@ -237,6 +240,9 @@ void Comb::postConfigurationTasks(void)
 
     // Reset the frame counter
     frameCounter = 0;
+
+    // Clear the flow map buffer if required
+    if (configuration.oftest) memset(frameFlowMap, 0, sizeof(frameFlowMap));
 }
 
 // Filter the IQ from the input YIQ line
@@ -379,7 +385,6 @@ void Comb::split2D(qint32 currentFrameBuffer)
                     }
                 }
 
-
                 tc1  = ((frameBuffer[currentFrameBuffer].clpbuffer[0][lineNumber][h] - p1line[h]) * kp * sc);
                 tc1 += ((frameBuffer[currentFrameBuffer].clpbuffer[0][lineNumber][h] - n1line[h]) * kn * sc);
                 tc1 /= (2 * 2);
@@ -413,29 +418,6 @@ void Comb::split3D(void)
 
         // shortcuts for previous/next 1D/pixel frame lines
         quint16 *p3line = reinterpret_cast<quint16 *>(frameBuffer[0].rawbuffer.data() + (lineNumber * configuration.fieldWidth) * 2);
-        //quint16 *n3line = reinterpret_cast<quint16 *>(frameBuffer[2].rawbuffer.data() + (lineNumber * configuration.fieldWidth) * 2);
-
-//        Filter lp_3d({0.005719569452904, 0.009426612841315, 0.019748592575455, 0.036822680065252, 0.058983880135427, 0.082947830292278, 0.104489989820068,
-//                      0.119454688318951, 0.124812312996699, 0.119454688318952, 0.104489989820068, 0.082947830292278, 0.058983880135427, 0.036822680065252,
-//                      0.019748592575455, 0.009426612841315, 0.005719569452904}, {1.0});
-
-        // This code doesn't seem to do anything now the f_opticalflow config is removed?
-//        // need to prefilter K using a LPF
-//        qreal _k[max_x];
-//        for (qint32 h = configuration.activeVideoStart; (configuration.use3D) && (h < configuration.activeVideoEnd); h++) {
-//            qint32 adr = (lineNumber * configuration.fieldWidth) + h;
-
-//            // Since the underlying raw buffer is a QByteArray we have to map the data points to quint16
-//            quint16 *f0 = reinterpret_cast<quint16 *>(frameBuffer[0].rawbuffer.data() + (adr * 2));
-//            quint16 *f1 = reinterpret_cast<quint16 *>(frameBuffer[1].rawbuffer.data() + (adr * 2));
-//            quint16 *f2 = reinterpret_cast<quint16 *>(frameBuffer[2].rawbuffer.data() + (adr * 2));
-
-//            qreal __k = abs(f0[0] - f2[0]);
-//            __k += abs((f1[0] - f2[0]) - (f1[0] - f0[0]));
-
-//            if (h > 12) _k[h - 8] = lp_3d.feed(__k);
-//            if (h >= 836) _k[h] = __k;
-//        }
 
         for (qint32 h = configuration.activeVideoStart; h < configuration.activeVideoEnd; h++) {
             // Something to do with the optical flow detection...
@@ -602,9 +584,20 @@ QByteArray Comb::yiqToRgbFrame(qint32 currentFrameBuffer, QVector<yiqLine_t> yiq
             cline = lineNumber;
             r.conv(yiq, frameBuffer[currentFrameBuffer].burstLevel);
 
+            qint32 oT = o;
             line_output[o++] = static_cast<quint16>(r.r);
             line_output[o++] = static_cast<quint16>(r.g);
             line_output[o++] = static_cast<quint16>(r.b);
+
+            // If we are in optical flow map test mode, superimpose the optical flow map
+            // over the frame output
+            if (configuration.oftest) {
+                if (frameFlowMap[lineNumber][h] != 0) {
+                    line_output[oT++] = static_cast<quint16>(frameFlowMap[lineNumber][h]);
+                    line_output[oT++] = static_cast<quint16>(frameFlowMap[lineNumber][h]);
+                    line_output[oT++] = static_cast<quint16>(frameFlowMap[lineNumber][h]);
+                }
+            }
         }
     }
 
@@ -617,13 +610,14 @@ QByteArray Comb::yiqToRgbFrame(qint32 currentFrameBuffer, QVector<yiqLine_t> yiq
 void Comb::opticalFlow3D(QVector<yiqLine_t> yiqBuffer, qint32 frameCounter)
 {
     const qint32 cysize = 252; // Field height extent?
-    const qint32 cxsize = max_x - 70; // Field width extent?
+    const qint32 cxsize = max_x - 70; // Field width extent? No idea what the '70' is doing...
 
+    // Create a buffer for the field
     quint16 fieldbuf[max_x * cysize];
-    //quint16 flowmap[max_y][cxsize];
 
-    // Note: No check on the unmanaged memsets below; probably should add some (or remove the memsets)
+    // Clear the field and flow map buffers
     memset(fieldbuf, 0, sizeof(fieldbuf));
+    if (configuration.oftest) memset(frameFlowMap, 0, sizeof(frameFlowMap));
 
     qint32 y;
     cv::Mat pic;
@@ -638,6 +632,7 @@ void Comb::opticalFlow3D(QVector<yiqLine_t> yiqBuffer, qint32 frameCounter)
             }
         }
 
+        // Calculate the optical flow map for the field
         pic = cv::Mat(252, cxsize, CV_16UC1, fieldbuf);
         if (frameCounter > 1) {
             calcOpticalFlowFarneback(pic, prev[field], flow[field], 0.5, 4, 60, 3, 7, 1.5, (frameCounter > 2) ? cv::OPTFLOW_USE_INITIAL_FLOW : 0);
@@ -663,6 +658,14 @@ void Comb::opticalFlow3D(QVector<yiqLine_t> yiqBuffer, qint32 frameCounter)
                 // Place the resulting data into the 2nd frame buffer's combk[2]
                 frameBuffer[1].combk[2][(y * 2)][70 + x] = c;
                 frameBuffer[1].combk[2][(y * 2) + 1][70 + x] = c;
+
+                // Produce optical flow debug output?
+                if (configuration.oftest) {
+                    // Place the data in the debug flow map (scaled for 16-bit values)
+                    uint16_t fm = static_cast<quint16>(clamp(c * 65535, 0, 65535));
+                    frameFlowMap[(y * 2)][70 + x] = fm;
+                    frameFlowMap[(y * 2) + 1][70 + x] = fm;
+                }
             }
         }
     }

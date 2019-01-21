@@ -132,6 +132,11 @@ int main(int argc, char *argv[])
                                        QCoreApplication::translate("main", "Use 75% white-point (default 100%)"));
     parser.addOption(setMaxWhitePoint);
 
+    // Option to output the optical flow results (for testing)
+    QCommandLineOption setOpticalFlowTest(QStringList() << "t" << "oftest",
+                                       QCoreApplication::translate("main", "Output an optical flow map for testing"));
+    parser.addOption(setOpticalFlowTest);
+
     // Positional argument to specify input video file
     parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input TBC file"));
 
@@ -147,6 +152,10 @@ int main(int argc, char *argv[])
     bool blackAndWhite = parser.isSet(setBwModeOption);
     bool whitePoint = parser.isSet(setMaxWhitePoint);
     bool use3D = parser.isSet(filterDepthOption);
+    bool oftest = parser.isSet(setOpticalFlowTest);
+
+    // If the optical flow test is on, ensure the 3D filter is in use
+    if (oftest) use3D = true;
 
     qint32 startFrame = -1;
     qint32 length = -1;
@@ -192,7 +201,7 @@ int main(int argc, char *argv[])
     // Process the input file
     ntscFilter.process(inputFileName, outputFileName,
                        startFrame, length, reverse,
-                       use3D, blackAndWhite, whitePoint);
+                       use3D, blackAndWhite, whitePoint, oftest);
 
     // Quit with success
     return 0;
