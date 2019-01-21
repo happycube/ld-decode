@@ -1012,8 +1012,9 @@ class Field:
         f = self
 
         # Do raw demod detection here
-        dod_margin = 250000
-        iserr1 = inrange(f.data[0]['demod_raw'], f.rf.limits['viewable'][0] - dod_margin, f.rf.limits['viewable'][1] +  dod_margin) == False
+        dod_margin_low = 700000
+        dod_margin_high = 300000
+        iserr1 = inrange(f.data[0]['demod_raw'], f.rf.limits['viewable'][0] - dod_margin_low, f.rf.limits['viewable'][1] +  dod_margin_high) == False
 
         # build sets of min/max valid levels 
 
@@ -1049,8 +1050,9 @@ class Field:
         curerr = (firsterr, firsterr)
 
         for e in errmap:
-            if e > curerr[0] and e <= (curerr[1] + 15):
-                curerr = (curerr[0], e)
+            if e > curerr[0] and e <= (curerr[1] + 10):
+                epad = curerr[0] + ((e - curerr[0]) * 3)
+                curerr = (curerr[0], epad)
             elif e > firsterr:
                 errlist.append(curerr)
                 curerr = (e, e)
