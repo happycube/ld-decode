@@ -50,6 +50,7 @@ SysParams_NTSC['line_period'] = 1/(SysParams_NTSC['fsc_mhz']/227.5)
 SysParams_NTSC['FPS'] = 1000000/ (525 * SysParams_NTSC['line_period'])
 
 SysParams_NTSC['outlinelen'] = calclinelen(SysParams_NTSC, 4, 'fsc_mhz')
+SysParams_NTSC['outfreq'] = 4 * SysParams_NTSC['fsc_mhz']
 
 SysParams_PAL = {
     'FPS': 25,
@@ -75,7 +76,7 @@ SysParams_PAL = {
 
 SysParams_PAL['outlinelen'] = calclinelen(SysParams_PAL, 4, 'fsc_mhz')
 SysParams_PAL['outlinelen_pilot'] = calclinelen(SysParams_PAL, 4, 'pilot_mhz')
-
+SysParams_PAL['outfreq'] = 4 * SysParams_PAL['fsc_mhz']
 
 SysParams_PAL['vsync_ire'] = -.3 * (100 / .7)
 
@@ -1012,7 +1013,7 @@ class Field:
         f = self
 
         # Do raw demod detection here
-        dod_margin_low = 1000000
+        dod_margin_low = 300000
         dod_margin_high = 300000
         iserr1 = inrange(f.data[0]['demod_raw'], f.rf.limits['viewable'][0] - dod_margin_low, f.rf.limits['viewable'][1] +  dod_margin_high) == False
 
@@ -1020,7 +1021,7 @@ class Field:
 
         # the base values are good for viewable-area signal
         valid_min = np.full_like(f.data[0]['demod'], f.rf.iretohz(-30))
-        valid_max = np.full_like(f.data[0]['demod'], f.rf.iretohz(120))
+        valid_max = np.full_like(f.data[0]['demod'], f.rf.iretohz(130))
 
         # the minimum valid value during VSYNC is lower for PAL because of the pilot signal
         minsync = -80 if self.rf.system == 'PAL' else -50
@@ -1110,7 +1111,6 @@ class Field:
                     curerr = None
 
         rv_lines = [l + 1 for l in rv_lines]
-        #print(np.max(rv_lines))
         rv_starts = [int(s) for s in rv_starts]
         rv_ends = [int(e) for e in rv_ends]
 
@@ -1121,7 +1121,24 @@ class Field:
         errmap = np.nonzero(iserr)[0]
         errlist = self.build_errlist(errmap)
 
-        return self.dropout_errlist_to_tbc(errlist)    
+        rvs = self.dropout_errlist_to_tbc(errlist)    
+
+        # filter out anything before the end of vsync
+        endvsync = int(4.7 * self.rf.SysParams['outfreq'])
+
+        rv_lines = []
+        rv_starts = []
+        rv_ends = []
+
+        for r in zip(rvs[0], rvs[1], rvs[2]):
+            if r[2] < endvsync:
+                continue
+            
+            rv_lines.append(r[0])
+            rv_starts.append(r[1] if r[1] > endvsync else endvsync)
+            rv_ends.append(r[2])
+
+        return rv_lines, rv_starts, rv_ends
 
 # These classes extend Field to do PAL/NTSC specific TBC features.
 
