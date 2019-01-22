@@ -990,7 +990,7 @@ class Field:
         # build sets of min/max valid levels 
 
         # the base values are good for viewable-area signal
-        valid_min = np.full_like(f.data[0]['demod'], f.rf.iretohz(-30))
+        valid_min = np.full_like(f.data[0]['demod'], f.rf.iretohz(-50))
         valid_max = np.full_like(f.data[0]['demod'], f.rf.iretohz(140))
 
         # the minimum valid value during VSYNC is lower for PAL because of the pilot signal
