@@ -198,7 +198,7 @@ class RFDecode:
         SF['FVideo'] = SF['Fvideo_lpf'] * SF['Fdeemp'] 
     
         # additional filters:  0.5mhz and color burst
-        # Using an FIR filter here to get tighter alignment
+        # Using an FIR filter here to get a known delay
         F0_5 = sps.firwin(65, [0.5/self.freq_half], pass_zero=True)
         SF['F05_offset'] = 32
         SF['F05'] = filtfft((F0_5, [1.0]), self.blocklen)
@@ -226,7 +226,7 @@ class RFDecode:
     def computeaudiofilters(self):
         SF = self.Filters
         SP = self.SysParams
-        DP = self.DecoderParams
+#        DP = self.DecoderParams
 
         # first stage audio filters
         if self.freq >= 32:
@@ -458,25 +458,13 @@ class RFDecode:
         fakeoutput[3000:3500] = rf.iretohz(100)
 
         # white + burst
-        colorlen = 1500
         fakeoutput[4500:5000] = rf.iretohz(100)
 
         rate = np.full(5500-4200, rf.SysParams['fsc_mhz'], dtype=np.double)
         fakeoutput[4200:5500] += (genwave(rate, rf.freq / 2) * rf.SysParams['hz_ire'] * 20)
         
-        # color burst/pilot.  not reimplemented yet
-        if False:
-            burstlen = int(18 * ((rf.freq / 2) / (315/88)) )
-            rate = np.full(burstlen, (315/88.0), dtype=np.double)
-            fakeoutput[1500:1500+burstlen] = 8100000 + (genwave(rate, rf.freq / 2) * 250000)
-
-            burstlen = int(64 * ((rf.freq / 2) / (315/88)) )
-            rate = np.full(burstlen, (315/88.0), dtype=np.double)
-            fakeoutput[0:0+burstlen] = 8100000 + (genwave(rate, rf.freq / 2) * 250000)
-
-        if rf.system == 'PAL':
-            rate = np.full(synclen_full, (315/88.0), dtype=np.double)
-            fakeoutput[2000:2000+synclen_full] = rf.iretohz(rf.SysParams['vsync_ire']) + (genwave(rate, rf.freq / 2) * rf.SysParams['hz_ire'] * rf.SysParams['vsync_ire'])
+        rate = np.full(synclen_full, rf.SysParams['fsc_mhz'], dtype=np.double)
+        fakeoutput[2000:2000+synclen_full] = rf.iretohz(rf.SysParams['vsync_ire']) + (genwave(rate, rf.freq / 2) * rf.SysParams['hz_ire'] * rf.SysParams['vsync_ire'])
 
     #        burstlen = int(64 * ((rf.freq / 2) / (315/88)) )
     #        rate = np.full(burstlen, (315/88.0), dtype=np.double)
@@ -492,7 +480,7 @@ class RFDecode:
         tmp2 = tmp * (filterset['Fvideo_lpf'] ** 1)
         tmp3 = tmp2 * (filterset['Femp'] ** 1)
 
-        fakeoutput_lpf = np.fft.ifft(tmp2).real
+        #fakeoutput_lpf = np.fft.ifft(tmp2).real
         fakeoutput_emp = np.fft.ifft(tmp3).real
 
         fakesignal = genwave(fakeoutput_emp, rf.freq_hz / 2)
@@ -549,14 +537,6 @@ def downscale_audio(audio, lineinfo, rf, linecount, timeoffset = 0, freq = 48000
 
         swow[i] = ((lineloc_next - lineloc_cur) / rf.linelen)
         locs[i] = sampleloc / scale
-        
-        if False:        
-            wowratio = 1 - (lineloc - np.floor(lineloc))
-            wow = (lineinfo[l + 1] - lineinfo[l]) / rf.linelen
-            swow[i] = wow[np.int(lineloc)] * (1 - wowratio)
-            swow[i] += wow[np.int(lineloc + 1 )] * (wowratio)
-
-            locs[i] = sampleloc / scale
 
     output = np.zeros((2 * (len(arange) - 1)), dtype=np.int32)
     output16 = np.zeros((2 * (len(arange) - 1)), dtype=np.int16)
@@ -582,11 +562,27 @@ def downscale_audio(audio, lineinfo, rf, linecount, timeoffset = 0, freq = 48000
 
 # The Field class contains common features used by NTSC and PAL
 class Field:
-    def usectoinpx(self, x):
-        return x * self.rf.freq
+    def get_linefreq(self, l = None):
+        if l is None:
+            return self.rf.freq
+        else:
+            return self.rf.freq * (((self.linelocs[l+1] - self.linelocs[l-1]) / 2) / self.rf.linelen)
+
+    def usectoinpx(self, x, line = None):
+        return x * self.get_linefreq(line)
     
-    def inpxtousec(self, x):
-        return x / self.rf.freq
+    def inpxtousec(self, x, line = None):
+        return x / self.get_linefreq(line)
+
+    def lineslice(self, l, begin = None, length = None):
+        ''' return a slice corresponding with pre-TBC line l '''
+        
+        _begin = self.linelocs[l] 
+        _begin += self.usectoinpx(begin, l) if begin is not None else 0
+
+        _length = self.usectoinpx(length, l) if length is not None else 1
+
+        return slice(int(np.round(_begin)), int(np.round(_begin + _length)))
     
     def get_syncpeaks(self):
         # This is done as a while loop so each peak lookup is aligned to the previous one
@@ -614,8 +610,8 @@ class Field:
         
         ds = self.data[0]['demod_sync']
 
-        plist = self.peaklist
-        plevel = [ds[p] for p in self.peaklist]
+#        plist = self.peaklist
+#        plevel = [ds[p] for p in self.peaklist]
 
         plevel_hsync = [ds[p] for p in self.peaklist if inrange(ds[p], 0.6, 0.8)]
         med_hsync = np.median(plevel_hsync)
@@ -840,10 +836,6 @@ class Field:
             linesout = 263 if self.rf.system == 'NTSC' else 313
 
         dsout = np.zeros((linesout * outwidth), dtype=np.double)    
-        dsaudio = None
-
-        sfactor = [None]
-
         lineoffset = self.lineoffset
 
         for l in range(lineoffset, linesout + lineoffset):
@@ -1075,7 +1067,6 @@ class Field:
 
         # copy the original list (for now?)
         errlistc = errlist.copy()
-        errlist_tbc = []
         curerr = errlistc.pop(0)
 
         lineoffset = self.lineoffset
@@ -1203,15 +1194,7 @@ class FieldPAL(Field):
         burstlevel = np.zeros(314)
 
         for l in range(2, 313):
-            # compute adjusted frequency from neighboring line lengths
-            lfreq = self.rf.freq * (((self.linelocs[l+1] - self.linelocs[l-1]) / 2) / self.rf.linelen)
-
-            bstart = int(6 * lfreq) # int(5.6 * lfreq)
-            bend = int(9 * lfreq) #int(8.05 * lfreq)
-            #bstart = int(5.6 * lfreq)
-            #bend = int(8.05 * lfreq)
-
-            burstarea = self.data[0]['demod_burst'][int(self.linelocs[l])+bstart:int(self.linelocs[l])+bend].copy()
+            burstarea = self.data[0]['demod_burst'][self.lineslice(l, 6, 9)].copy()
             burstarea -= np.mean(burstarea)
 
             burstlevel[l] = np.max(np.abs(burstarea)) / 1
@@ -1299,8 +1282,6 @@ class FieldNTSC(Field):
         badlines = np.full(266, False)
 
         linelocs_adj = linelocs
-
-        bmed = []
 
         burstlevel = np.zeros_like(linelocs_adj, dtype=np.float32)
 
@@ -1401,14 +1382,6 @@ class FieldNTSC(Field):
         if final:
             lines16 = self.hz_to_ooutput(dsout)
 
-            if self.burstlevel is not None:
-                for i in range(1, self.linecount - 1):
-                    hz_ire_scale = 1700000 / 140
-                    clevel = (1/self.colorlevel)/ hz_ire_scale
-
-                    lines16[((i + 0) * self.outlinelen)] = 16384 if (self.burstlevel[i] > 0) else 32768
-                    lines16[((i + 0) * self.outlinelen) + 1] = np.uint16(327.67 * clevel * np.abs(self.burstlevel[i]))
-
             self.dspicture = lines16
             return lines16, dsaudio
                     
@@ -1466,6 +1439,7 @@ class LDdecode:
         self.analog_audio = analog_audio
         self.frameoutput = frameoutput
         self.firstfield = None # In frame output mode, the first field goes here
+        self.firstfield_picture = None
 
         self.fieldloc = 0
 
