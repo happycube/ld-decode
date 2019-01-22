@@ -32,7 +32,7 @@ NtscFilter::NtscFilter(QObject *parent) : QObject(parent)
 
 bool NtscFilter::process(QString inputFileName, QString outputFileName,
                          qint32 startFrame, qint32 length, bool reverse,
-                         bool use3D, bool blackAndWhite, bool whitePoint, bool oftest)
+                         bool blackAndWhite, bool whitePoint)
 {
     // Open the source video metadata
     if (!ldDecodeMetaData.read(inputFileName + ".json")) {
@@ -117,7 +117,6 @@ bool NtscFilter::process(QString inputFileName, QString outputFileName,
     Comb::Configuration configuration = comb.getConfiguration();
 
     // Set the comb filter configuration
-    configuration.use3D = use3D;
     configuration.blackAndWhite = blackAndWhite;
     configuration.whitePoint100 = whitePoint;
 
@@ -136,22 +135,12 @@ bool NtscFilter::process(QString inputFileName, QString outputFileName,
     configuration.blackIre = videoParameters.black16bIre;
     configuration.whiteIre = videoParameters.white16bIre;
 
-    // Configure the optical flow test flag
-    configuration.oftest = oftest;
-
     // Update the comb filter object's configuration
     comb.setConfiguration(configuration);
-
-    // Show the filter type being used
-    if (use3D) qInfo() << "Filter configuration: 3D filter";
-    else qInfo() << "Filter configuration: 2D filter";
 
     // Show the filter configuration
     qInfo() << "Filter configuration: Black & white output =" << blackAndWhite;
     qInfo() << "Filter configuration: Use 75% white-point =" << whitePoint;
-
-    // Optical flow test?
-    if (oftest) qInfo() << "WARNING: Optical flow test mode is on.  Output will not be RGB!";
 
     // Process the frames
     QElapsedTimer totalTimer;
