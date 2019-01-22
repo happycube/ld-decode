@@ -1007,6 +1007,11 @@ class Field:
             valid_min[int(l-(f.rf.freq * .5)):int(l+(f.rf.freq * 8))] = f.rf.iretohz(minsync)
             valid_max[int(l-(f.rf.freq * .5)):int(l+(f.rf.freq * 8))] = f.rf.iretohz(40)
 
+            if self.rf.system == 'PAL':
+                # basically exclude the pilot signal altogether
+                valid_min[int(l-(f.rf.freq * .5)):int(l+(f.rf.freq * 4.7))] = f.rf.iretohz(-100)
+                valid_max[int(l-(f.rf.freq * .5)):int(l+(f.rf.freq * 4.7))] = f.rf.iretohz(120)
+
         iserr2 = f.data[0]['demod'] < valid_min
         iserr2 |= f.data[0]['demod'] > valid_max
 
