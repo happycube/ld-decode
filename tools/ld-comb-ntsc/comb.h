@@ -72,32 +72,35 @@ public:
 protected:
 
 private:
-    // Maximum supported input video frame size
-    static const qint32 max_x = 910;
-    static const qint32 max_y = 525;
-
     // Comb-filter configuration parameters
     Configuration configuration;
 
-    // Some form of IRE scaling, no idea what the magic number is though
+    // IRE scaling
     qreal irescale;
+
+    // Calculated frame height
+    qint32 frameHeight;
 
     // Input frame buffer definitions
     struct yiqLine_t {
-        YIQ pixel[max_x]; // One line of YIQ data
+        YIQ pixel[911]; // One line of YIQ data
     };
 
-    struct frame_t {
+    struct pixelLine_t {
+        qreal pixel[526][911]; // 526 is the maximum allowed field lines, 911 is the maximum field width
+    };
+
+    struct frameBuffer_t {
         QByteArray rawbuffer;
 
-        qreal clpbuffer[3][max_y][max_x];
-        qreal combk[3][max_y][max_x];
+        QVector<pixelLine_t> clpbuffer; // Unfiltered chroma for the current phase (can be I or Q)
+        QVector<pixelLine_t> combk; // K value
 
         QVector<yiqLine_t> yiqBuffer;
 
-        qreal burstLevel;
-        qint32 firstFieldPhaseID;
-        qint32 secondFieldPhaseID;
+        qreal burstLevel; // The median colour burst amplitude for the frame
+        qint32 firstFieldPhaseID; // The phase of the first field
+        qint32 secondFieldPhaseID; // The phase of the second field
     };
 
     // Input and output file handles
@@ -107,9 +110,9 @@ private:
     void postConfigurationTasks(void);
 
     void filterIQ(QVector<yiqLine_t> &yiqBuffer);
-    void split1D(frame_t *frameBuffer);
-    void split2D(frame_t *frameBuffer);
-    void splitIQ(frame_t *frameBuffer);
+    void split1D(frameBuffer_t *frameBuffer);
+    void split2D(frameBuffer_t *frameBuffer);
+    void splitIQ(frameBuffer_t *frameBuffer);
     void doCNR(QVector<yiqLine_t> &yiqBuffer);
     void doYNR(QVector<yiqLine_t> &yiqBuffer);
     QByteArray yiqToRgbFrame(QVector<yiqLine_t> yiqBuffer, qreal burstLevel);

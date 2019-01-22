@@ -154,7 +154,6 @@ void MainWindow::updateGuiLoaded(void)
         Comb::Configuration configuration = ntscColour.getConfiguration();
 
         // Set the comb filter configuration
-        configuration.use3D = false;
         configuration.blackAndWhite = false;
 
         // Set the input buffer dimensions configuration
