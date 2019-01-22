@@ -100,8 +100,6 @@ private:
         qint32 secondFieldPhaseID;
     };
 
-    QVector<frame_t> frameBuffer;
-
     // Input and output file handles
     QFile *inputFileHandle;
     QFile *outputFileHandle;
@@ -109,13 +107,13 @@ private:
     void postConfigurationTasks(void);
 
     void filterIQ(QVector<yiqLine_t> &yiqBuffer);
-    void split1D(qint32 currentFrameBuffer);
-    void split2D(qint32 currentFrameBuffer);
-    void splitIQ(qint32 currentFrameBuffer);
-    void doCNR(QVector<yiqLine_t> &yiqBuffer, qreal min = -1.0);
-    void doYNR(QVector<yiqLine_t> &yiqBuffer, qreal min = -1.0);
-    QByteArray yiqToRgbFrame(qint32 currentFrameBuffer, QVector<yiqLine_t> yiqBuffer);
-    void adjustY(qint32 currentFrameBuffer, QVector<yiqLine_t> &yiqBuffer);
+    void split1D(frame_t *frameBuffer);
+    void split2D(frame_t *frameBuffer);
+    void splitIQ(frame_t *frameBuffer);
+    void doCNR(QVector<yiqLine_t> &yiqBuffer);
+    void doYNR(QVector<yiqLine_t> &yiqBuffer);
+    QByteArray yiqToRgbFrame(QVector<yiqLine_t> yiqBuffer, qreal burstLevel);
+    void adjustY(QVector<yiqLine_t> &yiqBuffer, qint32 firstFieldPhaseID, qint32 secondFieldPhaseID);
 
     qreal clamp(qreal v, qreal low, qreal high);
     qreal atan2deg(qreal y, qreal x);

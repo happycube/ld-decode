@@ -78,7 +78,13 @@ void Comb::setConfiguration(Comb::Configuration configurationParam)
 QByteArray Comb::process(QByteArray firstFieldInputBuffer, QByteArray secondFieldInputBuffer, qreal burstMedianIre,
                          qint32 firstFieldPhaseID, qint32 secondFieldPhaseID)
 {
+    QVector<frame_t> frameBuffer;
+
+    // Allocate the frame buffers
+    frameBuffer.resize(1);
+
     qint32 frameHeight = ((configuration.fieldHeight * 2) - 1);
+    frameBuffer[0].yiqBuffer.resize(frameHeight);
 
     QVector<yiqLine_t> tempYiqBuffer;
     tempYiqBuffer.resize(frameHeight);
@@ -104,26 +110,26 @@ QByteArray Comb::process(QByteArray firstFieldInputBuffer, QByteArray secondFiel
     QByteArray rgbOutputBuffer;
 
     // Perform 1D processing
-    split1D(0);
+    split1D(&frameBuffer[0]);
 
     // Perform 2D processing
-    split2D(0);
+    split2D(&frameBuffer[0]);
 
     // Split the IQ values
-    splitIQ(0);
+    splitIQ(&frameBuffer[0]);
 
     // Copy the current frame to a temporary buffer, so operations on the frame do not
     // alter the original data
     tempYiqBuffer = frameBuffer[0].yiqBuffer;
 
     // Process the copy of the current frame
-    adjustY(0, tempYiqBuffer);
+    adjustY(tempYiqBuffer, frameBuffer[0].firstFieldPhaseID, frameBuffer[0].secondFieldPhaseID);
     if (configuration.colorlpf) filterIQ(tempYiqBuffer);
     doYNR(tempYiqBuffer);
     doCNR(tempYiqBuffer);
 
     // Convert the YIQ result to RGB
-    rgbOutputBuffer = yiqToRgbFrame(0, tempYiqBuffer);
+    rgbOutputBuffer = yiqToRgbFrame(tempYiqBuffer, frameBuffer[0].burstLevel);
 
     // Return the output frame
     return rgbOutputBuffer;
@@ -134,49 +140,12 @@ QByteArray Comb::process(QByteArray firstFieldInputBuffer, QByteArray secondFiel
 // Tasks to be performed if the configuration changes
 void Comb::postConfigurationTasks(void)
 {
-
     // Set the IRE scale
     irescale = (configuration.whiteIre - configuration.blackIre) / 100;
-
-    // Allocate the frame buffers
-    frameBuffer.resize(1);
-
-    qint32 frameHeight = ((configuration.fieldHeight * 2) - 1);
-    frameBuffer[0].yiqBuffer.resize(frameHeight);
-}
-
-// Filter the IQ from the input YIQ line
-void Comb::filterIQ(QVector<yiqLine_t> &yiqBuffer)
-{
-    qint32 frameHeight = ((configuration.fieldHeight * 2) - 1);
-
-    for (qint32 lineNumber = configuration.firstVisibleFrameLine; lineNumber < frameHeight; lineNumber++) {
-        Filter f_i(configuration.colorlpf_hq ? f_colorlpi : f_colorlpi);
-        Filter f_q(configuration.colorlpf_hq ? f_colorlpi : f_colorlpq);
-
-        qint32 qoffset = 2; // f_colorlpf_hq ? f_colorlpi_offset : f_colorlpq_offset;
-
-        qreal filti = 0, filtq = 0;
-
-        for (qint32 h = configuration.activeVideoStart; h < configuration.activeVideoEnd; h++) {
-            qint32 phase = h % 4;
-
-            switch (phase) {
-                case 0: filti = f_i.feed(yiqBuffer[lineNumber].pixel[h].i); break;
-                case 1: filtq = f_q.feed(yiqBuffer[lineNumber].pixel[h].q); break;
-                case 2: filti = f_i.feed(yiqBuffer[lineNumber].pixel[h].i); break;
-                case 3: filtq = f_q.feed(yiqBuffer[lineNumber].pixel[h].q); break;
-                default: break;
-            }
-
-            yiqBuffer[lineNumber].pixel[h - qoffset].i = filti;
-            yiqBuffer[lineNumber].pixel[h - qoffset].q = filtq;
-        }
-    }
 }
 
 // This could do with an explaination of what it is doing...
-void Comb::split1D(qint32 currentFrameBuffer)
+void Comb::split1D(frame_t *frameBuffer)
 {
     qint32 frameHeight = ((configuration.fieldHeight * 2) - 1);
 
@@ -184,15 +153,15 @@ void Comb::split1D(qint32 currentFrameBuffer)
     bool bottomInvertphase = false;
     bool invertphase = false;
 
-    if (frameBuffer[currentFrameBuffer].firstFieldPhaseID == 2 || frameBuffer[currentFrameBuffer].firstFieldPhaseID == 3)
+    if (frameBuffer->firstFieldPhaseID == 2 || frameBuffer->firstFieldPhaseID == 3)
         topInvertphase = true;
 
-    if (frameBuffer[currentFrameBuffer].secondFieldPhaseID == 1 || frameBuffer[currentFrameBuffer].secondFieldPhaseID == 4)
+    if (frameBuffer->secondFieldPhaseID == 1 || frameBuffer->secondFieldPhaseID == 4)
         bottomInvertphase = true;
 
     for (qint32 lineNumber = configuration.firstVisibleFrameLine; lineNumber < frameHeight; lineNumber++) {
         // Get a pointer to the line's data
-        quint16 *line = reinterpret_cast<quint16 *>(frameBuffer[currentFrameBuffer].rawbuffer.data() + (lineNumber * configuration.fieldWidth) * 2);
+        quint16 *line = reinterpret_cast<quint16 *>(frameBuffer->rawbuffer.data() + (lineNumber * configuration.fieldWidth) * 2);
 
         // Determine if the line phase should be inverted
         if ((lineNumber % 2) == 0) {
@@ -231,23 +200,21 @@ void Comb::split1D(qint32 currentFrameBuffer)
                 tc1f = -tc1f;
             }
 
-            frameBuffer[currentFrameBuffer].clpbuffer[0][lineNumber][h] = tc1;
-            //if (configuration.filterDepth == 1) frameBuffer[currentFrameBuffer].clpbuffer[0][lineNumber][h - f_toffset] = tc1f;
-
-            frameBuffer[currentFrameBuffer].combk[0][lineNumber][h] = 1;
+            frameBuffer->clpbuffer[0][lineNumber][h] = tc1;
+            frameBuffer->combk[0][lineNumber][h] = 1;
         }
     }
 }
 
 // This could do with an explaination of what it is doing...
-void Comb::split2D(qint32 currentFrameBuffer)
+void Comb::split2D(frame_t *frameBuffer)
 {
     qint32 frameHeight = ((configuration.fieldHeight * 2) - 1);
 
     for (qint32 lineNumber = configuration.firstVisibleFrameLine; lineNumber < frameHeight; lineNumber++) {
-        qreal *p1line = frameBuffer[currentFrameBuffer].clpbuffer[0][lineNumber - 2];
-        qreal *c1line = frameBuffer[currentFrameBuffer].clpbuffer[0][lineNumber];
-        qreal *n1line = frameBuffer[currentFrameBuffer].clpbuffer[0][lineNumber + 2];
+        qreal *p1line = frameBuffer->clpbuffer[0][lineNumber - 2];
+        qreal *c1line = frameBuffer->clpbuffer[0][lineNumber];
+        qreal *n1line = frameBuffer->clpbuffer[0][lineNumber + 2];
 
         // 2D filtering.  can't do top or bottom line - calculated between
         // 1d and 3d because this is filtered
@@ -285,28 +252,28 @@ void Comb::split2D(qint32 currentFrameBuffer)
                     }
                 }
 
-                tc1  = ((frameBuffer[currentFrameBuffer].clpbuffer[0][lineNumber][h] - p1line[h]) * kp * sc);
-                tc1 += ((frameBuffer[currentFrameBuffer].clpbuffer[0][lineNumber][h] - n1line[h]) * kn * sc);
+                tc1  = ((frameBuffer->clpbuffer[0][lineNumber][h] - p1line[h]) * kp * sc);
+                tc1 += ((frameBuffer->clpbuffer[0][lineNumber][h] - n1line[h]) * kn * sc);
                 tc1 /= (2 * 2);
 
-                frameBuffer[currentFrameBuffer].clpbuffer[1][lineNumber][h] = tc1;
-                frameBuffer[currentFrameBuffer].combk[1][lineNumber][h] = 1.0; // (sc * (kn + kp)) / 2.0;
+                frameBuffer->clpbuffer[1][lineNumber][h] = tc1;
+                frameBuffer->combk[1][lineNumber][h] = 1.0; // (sc * (kn + kp)) / 2.0;
             }
         }
 
         for (qint32 h = configuration.activeVideoStart; h < configuration.activeVideoEnd; h++) {
             if ((lineNumber >= 2) && (lineNumber <= (frameHeight - 2))) {
-                frameBuffer[currentFrameBuffer].combk[1][lineNumber][h] *= 1 - frameBuffer[currentFrameBuffer].combk[2][lineNumber][h];
+                frameBuffer->combk[1][lineNumber][h] *= 1 - frameBuffer->combk[2][lineNumber][h];
             }
 
             // 1D
-            frameBuffer[currentFrameBuffer].combk[0][lineNumber][h] = 1 - frameBuffer[currentFrameBuffer].combk[2][lineNumber][h] - frameBuffer[currentFrameBuffer].combk[1][lineNumber][h];
+            frameBuffer->combk[0][lineNumber][h] = 1 - frameBuffer->combk[2][lineNumber][h] - frameBuffer->combk[1][lineNumber][h];
         }
     }
 }
 
 // Spilt the I and Q
-void Comb::splitIQ(qint32 currentFrameBuffer)
+void Comb::splitIQ(frame_t *frameBuffer)
 {
     qint32 frameHeight = ((configuration.fieldHeight * 2) - 1);
 
@@ -314,19 +281,19 @@ void Comb::splitIQ(qint32 currentFrameBuffer)
     bool bottomInvertphase = false;
     bool invertphase = false;
 
-    if (frameBuffer[currentFrameBuffer].firstFieldPhaseID == 2 || frameBuffer[currentFrameBuffer].firstFieldPhaseID == 3)
+    if (frameBuffer->firstFieldPhaseID == 2 || frameBuffer->firstFieldPhaseID == 3)
         topInvertphase = true;
 
-    if (frameBuffer[currentFrameBuffer].secondFieldPhaseID == 1 || frameBuffer[currentFrameBuffer].secondFieldPhaseID == 4)
+    if (frameBuffer->secondFieldPhaseID == 1 || frameBuffer->secondFieldPhaseID == 4)
         bottomInvertphase = true;
 
     // Clear the target frame YIQ buffer
-    frameBuffer[currentFrameBuffer].yiqBuffer.clear();
-    frameBuffer[currentFrameBuffer].yiqBuffer.resize(frameHeight);
+    frameBuffer->yiqBuffer.clear();
+    frameBuffer->yiqBuffer.resize(frameHeight);
 
     for (qint32 lineNumber = configuration.firstVisibleFrameLine; lineNumber < frameHeight; lineNumber++) {
         // Get a pointer to the line's data
-        quint16 *line = reinterpret_cast<quint16 *>(frameBuffer[currentFrameBuffer].rawbuffer.data() + (lineNumber * configuration.fieldWidth) * 2);
+        quint16 *line = reinterpret_cast<quint16 *>(frameBuffer->rawbuffer.data() + (lineNumber * configuration.fieldWidth) * 2);
 
         // Determine if the line phase should be inverted
         if ((lineNumber % 2) == 0) {
@@ -342,9 +309,9 @@ void Comb::splitIQ(qint32 currentFrameBuffer)
             qint32 phase = h % 4;
             qreal cavg = 0;
 
-            cavg += (frameBuffer[currentFrameBuffer].clpbuffer[2][lineNumber][h] * frameBuffer[currentFrameBuffer].combk[2][lineNumber][h]);
-            cavg += (frameBuffer[currentFrameBuffer].clpbuffer[1][lineNumber][h] * frameBuffer[currentFrameBuffer].combk[1][lineNumber][h]);
-            cavg += (frameBuffer[currentFrameBuffer].clpbuffer[0][lineNumber][h] * frameBuffer[currentFrameBuffer].combk[0][lineNumber][h]);
+            cavg += (frameBuffer->clpbuffer[2][lineNumber][h] * frameBuffer->combk[2][lineNumber][h]);
+            cavg += (frameBuffer->clpbuffer[1][lineNumber][h] * frameBuffer->combk[1][lineNumber][h]);
+            cavg += (frameBuffer->clpbuffer[0][lineNumber][h] * frameBuffer->combk[0][lineNumber][h]);
 
             cavg /= 2;
 
@@ -358,15 +325,45 @@ void Comb::splitIQ(qint32 currentFrameBuffer)
                 default: break;
             }
 
-            frameBuffer[currentFrameBuffer].yiqBuffer[lineNumber].pixel[h].y = line[h];
-            frameBuffer[currentFrameBuffer].yiqBuffer[lineNumber].pixel[h].i = si;
-            frameBuffer[currentFrameBuffer].yiqBuffer[lineNumber].pixel[h].q = sq;
+            frameBuffer->yiqBuffer[lineNumber].pixel[h].y = line[h];
+            frameBuffer->yiqBuffer[lineNumber].pixel[h].i = si;
+            frameBuffer->yiqBuffer[lineNumber].pixel[h].q = sq;
+        }
+    }
+}
+
+// Filter the IQ from the input YIQ buffer
+void Comb::filterIQ(QVector<yiqLine_t> &yiqBuffer)
+{
+    qint32 frameHeight = ((configuration.fieldHeight * 2) - 1);
+
+    for (qint32 lineNumber = configuration.firstVisibleFrameLine; lineNumber < frameHeight; lineNumber++) {
+        Filter f_i(configuration.colorlpf_hq ? f_colorlpi : f_colorlpi);
+        Filter f_q(configuration.colorlpf_hq ? f_colorlpi : f_colorlpq);
+
+        qint32 qoffset = 2; // f_colorlpf_hq ? f_colorlpi_offset : f_colorlpq_offset;
+
+        qreal filti = 0, filtq = 0;
+
+        for (qint32 h = configuration.activeVideoStart; h < configuration.activeVideoEnd; h++) {
+            qint32 phase = h % 4;
+
+            switch (phase) {
+                case 0: filti = f_i.feed(yiqBuffer[lineNumber].pixel[h].i); break;
+                case 1: filtq = f_q.feed(yiqBuffer[lineNumber].pixel[h].q); break;
+                case 2: filti = f_i.feed(yiqBuffer[lineNumber].pixel[h].i); break;
+                case 3: filtq = f_q.feed(yiqBuffer[lineNumber].pixel[h].q); break;
+                default: break;
+            }
+
+            yiqBuffer[lineNumber].pixel[h - qoffset].i = filti;
+            yiqBuffer[lineNumber].pixel[h - qoffset].q = filtq;
         }
     }
 }
 
 // Some kind of noise reduction filter on the C?
-void Comb::doCNR(QVector<yiqLine_t> &yiqBuffer, qreal min)
+void Comb::doCNR(QVector<yiqLine_t> &yiqBuffer)
 {
     Filter f_hpi(f_nrc);
     Filter f_hpq(f_nrc);
@@ -374,8 +371,6 @@ void Comb::doCNR(QVector<yiqLine_t> &yiqBuffer, qreal min)
 
     // nr_c is some kind of noise reduction factor (I think)
     qreal nr_c = 0.0 * irescale;
-    if (nr_c < min) nr_c = min;
-    if (nr_c <= 0) return;
 
     for (qint32 lineNumber = configuration.firstVisibleFrameLine; lineNumber < frameHeight; lineNumber++) {
         YIQ hplinef[max_x + 32];
@@ -404,15 +399,13 @@ void Comb::doCNR(QVector<yiqLine_t> &yiqBuffer, qreal min)
 }
 
 // Some kind of noise reduction filter on the Y?
-void Comb::doYNR(QVector<yiqLine_t> &yiqBuffer, qreal min)
+void Comb::doYNR(QVector<yiqLine_t> &yiqBuffer)
 {
     Filter f_hpy(f_nr);
     qint32 frameHeight = ((configuration.fieldHeight * 2) - 1);
 
     // nr_y is some kind of noise reduction factor (I think)
     qreal nr_y = 1.0 * irescale;
-    if (nr_y < min) nr_y = min;
-    if (nr_y <= 0) return;
 
     for (qint32 lineNumber = configuration.firstVisibleFrameLine; lineNumber < frameHeight; lineNumber++) {
         YIQ hplinef[max_x + 32];
@@ -433,8 +426,8 @@ void Comb::doYNR(QVector<yiqLine_t> &yiqBuffer, qreal min)
     }
 }
 
-// Convert frame from YIQ to RGB
-QByteArray Comb::yiqToRgbFrame(qint32 currentFrameBuffer, QVector<yiqLine_t> yiqBuffer)
+// Convert buffer from YIQ to RGB
+QByteArray Comb::yiqToRgbFrame(QVector<yiqLine_t> yiqBuffer, qreal burstLevel)
 {
     qint32 frameHeight = ((configuration.fieldHeight * 2) - 1);
 
@@ -460,7 +453,7 @@ QByteArray Comb::yiqToRgbFrame(qint32 currentFrameBuffer, QVector<yiqLine_t> yiq
             RGB r(configuration.whiteIre, configuration.blackIre, configuration.whitePoint100, configuration.blackAndWhite);
             YIQ yiq = yiqBuffer[lineNumber].pixel[h];
 
-            r.conv(yiq, frameBuffer[currentFrameBuffer].burstLevel);
+            r.conv(yiq, burstLevel);
             line_output[o++] = static_cast<quint16>(r.r);
             line_output[o++] = static_cast<quint16>(r.g);
             line_output[o++] = static_cast<quint16>(r.b);
@@ -472,7 +465,7 @@ QByteArray Comb::yiqToRgbFrame(qint32 currentFrameBuffer, QVector<yiqLine_t> yiq
 }
 
 // Remove the colour data from the baseband (Y)
-void Comb::adjustY(qint32 currentFrameBuffer, QVector<yiqLine_t> &yiqBuffer)
+void Comb::adjustY(QVector<yiqLine_t> &yiqBuffer, qint32 firstFieldPhaseID, qint32 secondFieldPhaseID)
 {
     qint32 frameHeight = ((configuration.fieldHeight * 2) - 1);
 
@@ -480,10 +473,10 @@ void Comb::adjustY(qint32 currentFrameBuffer, QVector<yiqLine_t> &yiqBuffer)
     bool bottomInvertphase = false;
     bool invertphase = false;
 
-    if (frameBuffer[currentFrameBuffer].firstFieldPhaseID == 2 || frameBuffer[currentFrameBuffer].firstFieldPhaseID == 3)
+    if (firstFieldPhaseID == 2 || firstFieldPhaseID == 3)
         topInvertphase = true;
 
-    if (frameBuffer[currentFrameBuffer].secondFieldPhaseID == 1 || frameBuffer[currentFrameBuffer].secondFieldPhaseID == 4)
+    if (secondFieldPhaseID == 1 || secondFieldPhaseID == 4)
         bottomInvertphase = true;
 
     // remove color data from baseband (Y)
