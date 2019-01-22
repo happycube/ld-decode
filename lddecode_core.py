@@ -426,15 +426,11 @@ class RFDecode:
             return output, None
 
     def computedelays(self, mtf_level = 0):
+        ''' Generate a fake signal and compute filter delays '''
 
         rf = self
 
-        ''' Generate a fake signal and compute filter delays '''
-        # mtf adjustment only shifts it by about .6px
-
         filterset = rf.Filters
-        # generate a fake signal and (try to ) decode it correctly :)
-        #def calc_demodgaps(filterset):
         fakeoutput = np.zeros(rf.blocklen, dtype=np.double)
 
         # set base level to black
@@ -466,11 +462,6 @@ class RFDecode:
         rate = np.full(synclen_full, rf.SysParams['fsc_mhz'], dtype=np.double)
         fakeoutput[2000:2000+synclen_full] = rf.iretohz(rf.SysParams['vsync_ire']) + (genwave(rate, rf.freq / 2) * rf.SysParams['hz_ire'] * rf.SysParams['vsync_ire'])
 
-    #        burstlen = int(64 * ((rf.freq / 2) / (315/88)) )
-    #        rate = np.full(burstlen, (315/88.0), dtype=np.double)
-    #        fakeoutput[0:0+burstlen] = 8100000 + (genwave(rate, rf.freq / 2) * 250000)
-            
-            
         # add filters to generate a fake signal
 
         # NOTE: group pre-delay is not implemented, so the decoded signal
@@ -490,12 +481,7 @@ class RFDecode:
         # XXX: sync detector does NOT reflect actual sync detection, just regular filtering @ sync level
         # (but only regular filtering is needed for DOD)
         dgap_sync = calczc(fakedecode[0]['demod'], 1500, rf.iretohz(rf.SysParams['vsync_ire'] / 2), _count=512) - 1500
-    #    dgap_sync += calczc(fakedecode[0]['demod'], 2500, rf.iretohz(rf.SysParams['vsync_ire'] / 2), _count=512) - 2500
-    #    dgap_sync /= 2
-
         dgap_white = calczc(fakedecode[0]['demod'], 3000, rf.iretohz(50), _count=512) - 3000
-    #    dgap_white += calczc(fakedecode[0]['demod'], 3500, rf.iretohz(50), _count=512) - 3500
-    #    dgap_white /= 2
 
         rf.delays = {}
         rf.delays['video_sync'] = dgap_sync
@@ -574,10 +560,10 @@ class Field:
     def inpxtousec(self, x, line = None):
         return x / self.get_linefreq(line)
 
-    def lineslice(self, l, begin = None, length = None):
+    def lineslice(self, l, begin = None, length = None, linelocs = None):
         ''' return a slice corresponding with pre-TBC line l '''
         
-        _begin = self.linelocs[l] 
+        _begin = linelocs[l] if linelocs is not None else self.linelocs[l]
         _begin += self.usectoinpx(begin, l) if begin is not None else 0
 
         _length = self.usectoinpx(length, l) if length is not None else 1
@@ -610,9 +596,6 @@ class Field:
         
         ds = self.data[0]['demod_sync']
 
-#        plist = self.peaklist
-#        plevel = [ds[p] for p in self.peaklist]
-
         plevel_hsync = [ds[p] for p in self.peaklist if inrange(ds[p], 0.6, 0.8)]
         med_hsync = np.median(plevel_hsync)
 
@@ -627,14 +610,14 @@ class Field:
         if self.peaklist[peaknum] > len(self.data[0]['demod_sync']):
             return False
 
-        # The first detection technique uses demod_sync to determine if a LPF of demod_05
+        # The first detection technique (f1) uses demod_sync to determine if a LPF of demod_05
         # is within the acceptable range
         plevel = self.data[0]['demod_sync'][self.peaklist[peaknum]]
 
         tolerance = self.hsync_tolerance * tolerance_mult
         f1 = inrange(plevel, self.med_hsync - tolerance, self.med_hsync + tolerance)
 
-        # The second technique is used for non-VSYNC pulses (aside from the first which lacks data)
+        # The second technique (f2) is used for non-VSYNC pulses (aside from the first which lacks data)
         # (i.e. most of the time)
 
         # It looks at 0.5mhz filtered demodulation to count the amount of time under 50% SYNC
@@ -643,9 +626,6 @@ class Field:
         timeunder = np.sum(self.data[0]['demod_05'][check_begin:check_end] < self.rf.iretohz(self.rf.SysParams['vsync_ire'] / 2))
 
         f2 = (self.inpxtousec(timeunder) > (4.7 * .75))
-
-#        if f1 != f2:
-            #print(peaknum, plevel, tolerance, self.inpxtousec(timeunder), f1, f2)
         
         return f2 if ((peaknum != 0) and (plevel < .9)) else f1
         
@@ -670,7 +650,7 @@ class Field:
                         line0 = i
 
                 if (line0 is None) or (line0 == -1):
-                    print('override')
+                    print('WARNING: vsync detection override')
                     line0 = peaknum - 7
                     self.sync_confidence = 0
 
@@ -683,16 +663,14 @@ class Field:
 
     def compute_linelocs(self):
         plist = self.peaklist
-
-        # note: this is chopped on output, so allocating too many lines is OK
+        # use a ditionary so lines can be skipped, and there dosen't have to be a 
+        # cutoff...
         linelocs = {}
 
         firstvisidx = None
         for i in range(0, self.vsyncs[1][1]): #self.vsyncs[1][1]):
             if i > self.vsyncs[0][0] and firstvisidx is None:
-                #print(i, plist[i], plist[self.vsyncs[0][1]])
                 firstvisidx = i
-
                 break
 
         linelens = [self.inlinelen]
@@ -1019,11 +997,11 @@ class Field:
         minsync = -80 if self.rf.system == 'PAL' else -50
 
         # lines 0-8 should cover both PAL and NTSC
-        for i in range(8):
+        for i in range(9):
             valid_min[int(f.linelocs[i]):int(f.linelocs[i+1])] = f.rf.iretohz(minsync)
             valid_max[int(f.linelocs[i]):int(f.linelocs[i+1])] = f.rf.iretohz(70)
 
-        for i in range(8, len(f.linelocs)):
+        for i in range(9, len(f.linelocs)):
             l = f.linelocs[i]
             # Could compute the estimated length of setup, but we can cut this a bit early...
             valid_min[int(l-(f.rf.freq * .5)):int(l+(f.rf.freq * 8))] = f.rf.iretohz(minsync)
@@ -1114,7 +1092,10 @@ class Field:
 
         rvs = self.dropout_errlist_to_tbc(errlist)    
 
-        # filter out anything before the end of vsync
+        # filter out anything before the end of vsync        #except:
+            #print("huh")
+            #pass
+
         endvsync = int(4.7 * self.rf.SysParams['outfreq'])
 
         rv_lines = []
@@ -1204,6 +1185,7 @@ class FieldPAL(Field):
     def hz_to_ooutput(self, input):
         reduced = (input - self.rf.SysParams['ire0']) / self.rf.SysParams['hz_ire']
         reduced -= self.rf.SysParams['vsync_ire']
+        
         out_scale = np.double(0xd300 - 0x0100) / (100 - self.rf.SysParams['vsync_ire'])
 
         return np.uint16(np.clip((reduced * out_scale) + 256, 0, 65535) + 0.5)
@@ -1416,11 +1398,7 @@ class FieldNTSC(Field):
         
         self.linecount = 263 if self.isFirstField else 262
 
-#        try:
         self.downscale(wow = True, final=True)
-        #except:
-            #print("huh")
-            #pass
 
 class LDdecode:
     
