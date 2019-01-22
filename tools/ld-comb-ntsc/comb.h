@@ -29,10 +29,7 @@
 #include <QCoreApplication>
 #include <QDebug>
 #include <QFile>
-
-// OpenCV2 used by OpticalFlow3D method
-#include <opencv2/core/core.hpp>
-#include <opencv2/video/tracking.hpp>
+#include <QtMath>
 
 #include "filter.h"
 #include "yiq.h"
@@ -54,9 +51,7 @@ public:
         bool blackAndWhite;
         bool colorlpf;
         bool colorlpf_hq;
-        bool use3D;
         bool whitePoint100;
-        bool oftest;
 
         qint32 fieldWidth;
         qint32 fieldHeight;
@@ -84,23 +79,8 @@ private:
     // Comb-filter configuration parameters
     Configuration configuration;
 
-    // Processed frame counter
-    qint32 frameCounter;
-
-    // Some local configuration to do with 3D/2D processing...
-    qreal p_3dcore;
-    qreal p_3drange;
-    qreal p_2drange;
-
     // Some form of IRE scaling, no idea what the magic number is though
     qreal irescale;
-
-    // Tunables (more unknown local configuration parameters)
-    qreal nr_c; // Used by doCNR method
-    qreal nr_y; // Used by doYNR method
-
-    // Internal globals
-    qint32 cline = -1; // used by yiqToRgbFrame method
 
     // Input frame buffer definitions
     struct yiqLine_t {
@@ -122,31 +102,19 @@ private:
 
     QVector<frame_t> frameBuffer;
 
-    // Buffer for the debug optical flow map
-    quint16 frameFlowMap[max_y][max_x];
-
-    // Filter definitions for YNR and CNR noise reduction
-    Filter *f_hpy, *f_hpi, *f_hpq;
-
     // Input and output file handles
     QFile *inputFileHandle;
     QFile *outputFileHandle;
-
-    // Globals used by the opticalFlow3D method
-    cv::Mat prev[2];
-    cv::Mat flow[2];
 
     void postConfigurationTasks(void);
 
     void filterIQ(QVector<yiqLine_t> &yiqBuffer);
     void split1D(qint32 currentFrameBuffer);
     void split2D(qint32 currentFrameBuffer);
-    void split3D(void);
     void splitIQ(qint32 currentFrameBuffer);
     void doCNR(QVector<yiqLine_t> &yiqBuffer, qreal min = -1.0);
     void doYNR(QVector<yiqLine_t> &yiqBuffer, qreal min = -1.0);
     QByteArray yiqToRgbFrame(qint32 currentFrameBuffer, QVector<yiqLine_t> yiqBuffer);
-    void opticalFlow3D(QVector<yiqLine_t> yiqBuffer, qint32 frameCounter);
     void adjustY(qint32 currentFrameBuffer, QVector<yiqLine_t> &yiqBuffer);
 
     qreal clamp(qreal v, qreal low, qreal high);
