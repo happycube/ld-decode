@@ -38,26 +38,34 @@ void OpticalFlow::feedFrameY(YiqBuffer yiqBuffer)
     cv::Mat currentFrame = convertYtoMat(yiqBuffer.yValues());
 
     // Do we have an initial flowmap?
-    qint32 flowOptions = 0;
-    if (framesProcessed == 0) flowOptions = cv::OPTFLOW_USE_INITIAL_FLOW;
+    qint32 flowOptions = cv::OPTFLOW_USE_INITIAL_FLOW;
+    if (framesProcessed == 0) {
+        flowOptions = 0;
+        previousFrame = currentFrame.clone();
+    }
 
     // Perform the OpenCV compute dense optical flow (Gunnar Farneback’s algorithm)
-    calcOpticalFlowFarneback(currentFrame, previousFrame, flowMap, 0.5, 4, 60, 3, 7, 1.5, flowOptions);
+    if (framesProcessed > 1) {
+        calcOpticalFlowFarneback(currentFrame, previousFrame, flowMap, 0.5, 4, 60, 3, 7, 1.5, flowOptions);
+    }
 
     // Copy the current frame to the previous frame
     previousFrame = currentFrame.clone();
 
     framesProcessed++;
+    qDebug() << "OpticalFlow::feedFrameY(): Processed" << framesProcessed << "optical flow frames";
 }
 
 // Method to get the pixel K values (motion) for the frame
 QVector<qreal> OpticalFlow::motionK(void)
 {
     // Do we have any flow map data yet?
-    if (framesProcessed < 2) {
-        qDebug() << "OpticalFlow::getFlowMap(): Called, but the flow map is not initialised!";
+    if (framesProcessed < 3) {
+        qDebug() << "OpticalFlow::motionK(): Called, but the flow map is not initialised!";
         return QVector<qreal>();
     }
+
+    qDebug() << "OpticalFlow::motionK(): Called";
 
     QVector<qreal> kValues;
     kValues.resize(910 * 525);
@@ -65,7 +73,7 @@ QVector<qreal> OpticalFlow::motionK(void)
     for (qint32 y = 0; y < 525; y++) {
         for (qint32 x = 0; x < 910; x++) {
             // Get the value of the current point (cv::Point2f is a floating-point cv::Point_)
-            cv::Point2f flowpoint = flowMap.at<cv::Point2f>(y, x);
+            const cv::Point2f& flowpoint = flowMap.at<cv::Point2f>(y, x);
 
             // Get the point value, invert it and clamp it between 0.0 and 1.0
             kValues[(910 * y) + x] = 1 - clamp(convertCPointToReal(static_cast<qreal>(flowpoint.y), static_cast<qreal>(flowpoint.x)), 0, 1);
@@ -78,7 +86,7 @@ QVector<qreal> OpticalFlow::motionK(void)
 // Method to get the ready status of the flow map (true = initialised)
 bool OpticalFlow::isInitialised(void)
 {
-    if (framesProcessed < 2) return false;
+    if (framesProcessed < 3) return false;
 
     return true;
 }
@@ -87,6 +95,7 @@ bool OpticalFlow::isInitialised(void)
 cv::Mat OpticalFlow::convertYtoMat(QVector<qreal> yBuffer)
 {
     quint16 frame[910 * 525];
+    memset(frame, 0, sizeof(frame));
 
     // Check the size of the input buffer
     if (yBuffer.size() != (910 * 525)) {

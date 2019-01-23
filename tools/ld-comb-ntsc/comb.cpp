@@ -133,6 +133,7 @@ QByteArray Comb::process(QByteArray firstFieldInputBuffer, QByteArray secondFiel
 
 //    if (opticalFlow.isInitialised()) {
 //        qDebug() << "Optical flow process is initialised";
+//        QVector<qreal> test = opticalFlow.motionK();
 //    } else {
 //        qDebug() << "Optical flow process is NOT initialised";
 //    }

@@ -53,6 +53,8 @@ QVector<qreal> YiqBuffer::yValues(void)
 {
     QVector<qreal> yReturn;
 
+    qDebug() << "YiqBuffer::yValues():" << yiqLine.size() << "lines by" << yiqLine[0].width() << "pixels";
+
     for (qint32 line = 0; line < yiqLine.size(); line++) {
         for (qint32 pixel = 0; pixel < yiqLine[line].width(); pixel++) {
             yReturn.append(yiqLine[line].yiq[pixel].y);
