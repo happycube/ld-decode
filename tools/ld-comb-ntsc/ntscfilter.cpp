@@ -4,7 +4,7 @@
 
     ld-comb-ntsc - NTSC colourisation filter for ld-decode
     Copyright (C) 2018 Chad Page
-    Copyright (C) 2018 Simon Inns
+    Copyright (C) 2018-2019 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -32,7 +32,7 @@ NtscFilter::NtscFilter(QObject *parent) : QObject(parent)
 
 bool NtscFilter::process(QString inputFileName, QString outputFileName,
                          qint32 startFrame, qint32 length, bool reverse,
-                         bool blackAndWhite, bool whitePoint)
+                         bool blackAndWhite, bool whitePoint, bool use3D)
 {
     // Open the source video metadata
     if (!ldDecodeMetaData.read(inputFileName + ".json")) {
@@ -134,6 +134,9 @@ bool NtscFilter::process(QString inputFileName, QString outputFileName,
     // Set the IRE levels
     configuration.blackIre = videoParameters.black16bIre;
     configuration.whiteIre = videoParameters.white16bIre;
+
+    // Set the filter type
+    configuration.use3D = use3D;
 
     // Update the comb filter object's configuration
     comb.setConfiguration(configuration);

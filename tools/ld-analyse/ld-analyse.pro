@@ -39,7 +39,10 @@ SOURCES += \
     ../ld-comb-ntsc/yiq.cpp \
     videometadatadialog.cpp \
     frameqlabel.cpp \
-    dropoutanalysisdialog.cpp
+    dropoutanalysisdialog.cpp \
+    ../ld-comb-ntsc/yiqline.cpp \
+    ../ld-comb-ntsc/yiqbuffer.cpp \
+    ../ld-comb-ntsc/opticalflow.cpp
 
 HEADERS += \
         mainwindow.h \
@@ -55,7 +58,11 @@ HEADERS += \
     ../ld-comb-ntsc/yiq.h \
     videometadatadialog.h \
     frameqlabel.h \
-    dropoutanalysisdialog.h
+    dropoutanalysisdialog.h \
+    ../ld-comb-ntsc/yiqbuffer.h \
+    ../ld-comb-ntsc/yiqline.h \
+    ../ld-comb-ntsc/opticalflow.h \
+    ../ld-comb-ntsc/yiqbuffer.h
 
 FORMS += \
         mainwindow.ui \

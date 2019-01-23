@@ -1,6 +1,6 @@
 /************************************************************************
 
-    yiq.h
+    yiqline.h
 
     ld-comb-ntsc - NTSC colourisation filter for ld-decode
     Copyright (C) 2018 Chad Page
@@ -23,22 +23,15 @@
 
 ************************************************************************/
 
-#ifndef YIQ_H
-#define YIQ_H
+#include "yiqline.h"
 
-#include <QCoreApplication>
-
-class YIQ
+YiqLine::YiqLine()
 {
-public:
-    qreal y, i, q;
+    yiq.resize(910);
+}
 
-    YIQ(qreal _y = 0.0, qreal _i = 0.0, qreal _q = 0.0);
-    YIQ operator*=(qreal x);
-    YIQ operator+=(YIQ p);
-
-private:
-
-};
-
-#endif // YIQ_H
+// Overload the [] operator to return an indexed value
+YIQ& YiqLine::operator[] (const int index)
+{
+    return yiq[index];
+}

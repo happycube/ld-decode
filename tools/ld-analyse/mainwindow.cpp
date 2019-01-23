@@ -171,6 +171,9 @@ void MainWindow::updateGuiLoaded(void)
         configuration.blackIre = videoParameters.black16bIre;
         configuration.whiteIre = videoParameters.white16bIre;
 
+        // Set the filter mode
+        configuration.use3D = false;
+
         // Update the comb filter object's configuration
         ntscColour.setConfiguration(configuration);
     }
