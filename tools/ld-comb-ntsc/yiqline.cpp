@@ -1,6 +1,6 @@
 /************************************************************************
 
-    yiqline.h
+    yiqline.cpp
 
     ld-comb-ntsc - NTSC colourisation filter for ld-decode
     Copyright (C) 2018 Chad Page
@@ -27,11 +27,23 @@
 
 YiqLine::YiqLine()
 {
-    yiq.resize(910);
+    lineWidth = 910;
+    yiq.resize(lineWidth);
 }
 
 // Overload the [] operator to return an indexed value
 YIQ& YiqLine::operator[] (const int index)
 {
+    if (index > lineWidth || index < 0) {
+        qCritical() << "BUG: Out of bounds call to YiqLine with an index of" << index;
+        exit(EXIT_FAILURE);
+    }
+
     return yiq[index];
+}
+
+// Method to return the width of the lines within the YiqLine object
+qint32 YiqLine::width(void)
+{
+    return lineWidth;
 }

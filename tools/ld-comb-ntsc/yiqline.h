@@ -28,6 +28,7 @@
 
 #include <QCoreApplication>
 #include <QVector>
+#include <QDebug>
 
 #include "yiq.h"
 
@@ -36,8 +37,13 @@ class YiqLine
 public:
     YiqLine();
     YIQ& operator[] (const int index);
+    qint32 width(void);
 
     QVector<YIQ> yiq; // One line of YIQ data
+
+private:
+    qint32 lineWidth;
+
 };
 
 #endif // YIQLINE_H

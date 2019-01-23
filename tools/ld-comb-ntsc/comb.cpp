@@ -82,7 +82,7 @@ QByteArray Comb::process(QByteArray firstFieldInputBuffer, QByteArray secondFiel
                          qint32 firstFieldPhaseID, qint32 secondFieldPhaseID)
 {
     // Allocate the frame buffer
-    frameBuffer_t frameBuffer;
+    FrameBuffer frameBuffer;
     frameBuffer.combk.resize(3);
     frameBuffer.clpbuffer.resize(3);
 
@@ -128,6 +128,15 @@ QByteArray Comb::process(QByteArray firstFieldInputBuffer, QByteArray secondFiel
     doYNR(tempYiqBuffer);
     doCNR(tempYiqBuffer);
 
+    // Pass the YIQ frame to the optical flow process
+//    opticalFlow.feedFrameY(frameBuffer.yiqBuffer);
+
+//    if (opticalFlow.isInitialised()) {
+//        qDebug() << "Optical flow process is initialised";
+//    } else {
+//        qDebug() << "Optical flow process is NOT initialised";
+//    }
+
     // Convert the YIQ result to RGB
     rgbOutputBuffer = yiqToRgbFrame(tempYiqBuffer, frameBuffer.burstLevel);
 
@@ -148,7 +157,7 @@ void Comb::postConfigurationTasks(void)
 }
 
 // This could do with an explaination of what it is doing...
-void Comb::split1D(frameBuffer_t *frameBuffer)
+void Comb::split1D(FrameBuffer *frameBuffer)
 {
     bool topInvertphase = false;
     bool bottomInvertphase = false;
@@ -203,7 +212,7 @@ void Comb::split1D(frameBuffer_t *frameBuffer)
 }
 
 // This could do with an explaination of what it is doing...
-void Comb::split2D(frameBuffer_t *frameBuffer)
+void Comb::split2D(FrameBuffer *frameBuffer)
 {
     for (qint32 lineNumber = configuration.firstVisibleFrameLine; lineNumber < frameHeight; lineNumber++) {
         qreal *p1line = frameBuffer->clpbuffer[0].pixel[lineNumber - 2];
@@ -267,7 +276,7 @@ void Comb::split2D(frameBuffer_t *frameBuffer)
 }
 
 // Spilt the I and Q
-void Comb::splitIQ(frameBuffer_t *frameBuffer)
+void Comb::splitIQ(FrameBuffer *frameBuffer)
 {
     bool topInvertphase = false;
     bool bottomInvertphase = false;
