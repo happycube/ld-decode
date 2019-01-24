@@ -81,7 +81,7 @@ if args.MTF_offset is not None:
     ldd.rf.mtf_offset = args.MTF_offset
 
 def write_json(ldd, outname):
-    jsondict = ldd.build_json(f)
+    jsondict = ldd.build_json(ldd.curfield)
     
     fp = open(outname + '.tbc.json.tmp', 'w')
     json.dump(jsondict, fp, indent=4)
@@ -99,10 +99,14 @@ while ldd.fields_written < (req_frames * 2):
         write_json(ldd, outname)
         exit(1)
 
+    if f is None:
+        break
+
 #    print(ldd.fields_written)
 
     if ldd.fields_written < 100 or ((ldd.fields_written % 500) == 0):
         #print('write json')
         write_json(ldd, outname)
-        
+
+print("saving JSON and exiting")    
 write_json(ldd, outname)

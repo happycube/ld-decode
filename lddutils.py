@@ -160,6 +160,9 @@ def load_packed_data_3_32(infile, sample, readlen):
     inbuf = infile.read(needed)
     indata = np.fromstring(inbuf, 'uint32', len(inbuf) // 4)
 
+    if len(indata) < needed:
+        return None
+
     unpacked = np.zeros(len(indata) * 3, dtype=np.int16)
 
     # By using strides the unpacked data can be loaded with no additional copies
@@ -203,6 +206,9 @@ def load_packed_data_4_40(infile, sample, readlen):
 
     inbuf = infile.read(needed)
     indata = np.frombuffer(inbuf, 'uint8', len(inbuf))
+
+    if len(indata) < needed:
+        return None
 
     rot2 = np.right_shift(indata, 2)
 

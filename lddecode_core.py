@@ -1477,6 +1477,10 @@ class LDdecode:
             self.readloc = 0
             
         indata = self.freader(self.infile, self.readloc, self.readlen)
+
+        if indata is None:
+            print("Failed to read data")
+            return None, None
         
         rawdecode = self.rf.demod(indata, self.rf.blockcut, self.readlen, self.mtf_level)
         if rawdecode is None:
@@ -1506,13 +1510,18 @@ class LDdecode:
     def readfield(self):
         # pretty much a retry-ing wrapper around decodefield with MTF checking
         self.prevfield = self.curfield
-        self.curfield = None
+        #self.curfield = None
         done = False
         MTFadjusted = False
         
         while done == False:
             self.fieldloc = self.fdoffset
             f, offset = self.decodefield()
+
+            if f is None:
+                # EOF, probably
+                return None
+
             self.curfield = f
             self.fdoffset += offset
             
@@ -1535,12 +1544,15 @@ class LDdecode:
         self.clvMinutes = None
         self.clvSeconds = None
         self.clvFrameNum = None
+
         # CAV
         fnum = None
+        
         for l in f1.linecode + f2.linecode:
             if l is None:
                 continue
-            #print(hex(l))
+            
+            print(hex(l))
  
             if (l & 0xf0dd00) == 0xf0dd00: # CLV minutes/hours
                 self.clvMinutes = (l & 0xf) + (((l >> 4) & 0xf) * 10) + (((l >> 16) & 0xf) * 60)
