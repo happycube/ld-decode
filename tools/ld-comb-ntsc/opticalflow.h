@@ -47,7 +47,7 @@ public:
     };
 
     void feedFrameY(YiqBuffer yiqBuffer);
-    QVector<qreal> motionK(void);
+    void motionK(QVector<qreal> &kValues);
     bool isInitialised(void);
 
 private:
@@ -60,7 +60,7 @@ private:
 
     cv::Mat convertYtoMat(QVector<qreal> yBuffer);
     qreal clamp(qreal v, qreal low, qreal high);
-    qreal convertCPointToReal(qreal y, qreal x);
+    qreal calculateDistance(qreal yDifference, qreal xDifference);
 };
 
 #endif // OPTICALFLOW_H

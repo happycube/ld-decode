@@ -173,6 +173,7 @@ void MainWindow::updateGuiLoaded(void)
 
         // Set the filter mode
         configuration.use3D = false;
+        configuration.showOpticalFlowMap = false;
 
         // Update the comb filter object's configuration
         ntscColour.setConfiguration(configuration);

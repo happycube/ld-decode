@@ -28,7 +28,6 @@
 YiqLine::YiqLine()
 {
     lineWidth = 910;
-    yiq.resize(lineWidth);
 }
 
 // Overload the [] operator to return an indexed value

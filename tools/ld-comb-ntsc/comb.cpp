@@ -53,6 +53,7 @@ Comb::Comb() {
 
     // Set the filter type
     configuration.use3D = false;
+    configuration.showOpticalFlowMap = false;
 
     postConfigurationTasks();
 }
@@ -82,64 +83,94 @@ QByteArray Comb::process(QByteArray firstFieldInputBuffer, QByteArray secondFiel
                          qint32 firstFieldPhaseID, qint32 secondFieldPhaseID)
 {
     // Allocate the frame buffer
-    FrameBuffer frameBuffer;
-    frameBuffer.combk.resize(3);
-    frameBuffer.clpbuffer.resize(3);
+    FrameBuffer currentFrameBuffer;
+    currentFrameBuffer.clpbuffer.resize(3);
 
     // Allocate the temporary YIQ buffer
     YiqBuffer tempYiqBuffer;
 
+    // Allocate RGB output buffer
+    QByteArray rgbOutputBuffer;
+
     // Interlace the input fields and place in the frame[0]'s raw buffer
     qint32 fieldLine = 0;
-    frameBuffer.rawbuffer.clear();
+    currentFrameBuffer.rawbuffer.clear();
     for (qint32 frameLine = 0; frameLine < frameHeight; frameLine += 2) {
-        frameBuffer.rawbuffer.append(firstFieldInputBuffer.mid(fieldLine * configuration.fieldWidth * 2, configuration.fieldWidth * 2));
-        frameBuffer.rawbuffer.append(secondFieldInputBuffer.mid(fieldLine * configuration.fieldWidth * 2, configuration.fieldWidth * 2));
+        currentFrameBuffer.rawbuffer.append(firstFieldInputBuffer.mid(fieldLine * configuration.fieldWidth * 2, configuration.fieldWidth * 2));
+        currentFrameBuffer.rawbuffer.append(secondFieldInputBuffer.mid(fieldLine * configuration.fieldWidth * 2, configuration.fieldWidth * 2));
         fieldLine++;
     }
 
     // Set the frames burst median (IRE) - This is used by yiqToRgbFrame to tweak the colour
     // saturation levels (compensating for MTF issues)
-    frameBuffer.burstLevel = burstMedianIre;
+    currentFrameBuffer.burstLevel = burstMedianIre;
 
     // Set the phase IDs for the frame
-    frameBuffer.firstFieldPhaseID = firstFieldPhaseID;
-    frameBuffer.secondFieldPhaseID = secondFieldPhaseID;
+    currentFrameBuffer.firstFieldPhaseID = firstFieldPhaseID;
+    currentFrameBuffer.secondFieldPhaseID = secondFieldPhaseID;
 
-    // Define an output buffer
-    QByteArray rgbOutputBuffer;
+    // 2D or 3D comb filter processing?
+    if (!configuration.use3D) {
+        // 2D comb filter processing
 
-    // Perform 1D processing
-    split1D(&frameBuffer);
+        // Perform 1D processing
+        split1D(&currentFrameBuffer);
 
-    // Perform 2D processing
-    split2D(&frameBuffer);
+        // Perform 2D processing
+        split2D(&currentFrameBuffer);
 
-    // Split the IQ values
-    splitIQ(&frameBuffer);
+        // Split the IQ values
+        splitIQ(&currentFrameBuffer);
 
-    // Copy the current frame to a temporary buffer, so operations on the frame do not
-    // alter the original data
-    tempYiqBuffer = frameBuffer.yiqBuffer;
+        // Copy the current frame to a temporary buffer, so operations on the frame do not
+        // alter the original data
+        tempYiqBuffer = currentFrameBuffer.yiqBuffer;
 
-    // Process the copy of the current frame
-    adjustY(tempYiqBuffer, frameBuffer.firstFieldPhaseID, frameBuffer.secondFieldPhaseID);
-    if (configuration.colorlpf) filterIQ(frameBuffer.yiqBuffer);
-    doYNR(tempYiqBuffer);
-    doCNR(tempYiqBuffer);
+        // Process the copy of the current frame
+        adjustY(tempYiqBuffer, currentFrameBuffer.firstFieldPhaseID, currentFrameBuffer.secondFieldPhaseID);
+        if (configuration.colorlpf) filterIQ(currentFrameBuffer.yiqBuffer);
+        doYNR(tempYiqBuffer);
+        doCNR(tempYiqBuffer);
 
-    // Pass the YIQ frame to the optical flow process
-//    opticalFlow.feedFrameY(frameBuffer.yiqBuffer);
+        // Convert the YIQ result to RGB
+        rgbOutputBuffer = yiqToRgbFrame(tempYiqBuffer, currentFrameBuffer.burstLevel);
+    } else {
+        // 3D comb filter processing
 
-//    if (opticalFlow.isInitialised()) {
-//        qDebug() << "Optical flow process is initialised";
-//        QVector<qreal> test = opticalFlow.motionK();
-//    } else {
-//        qDebug() << "Optical flow process is NOT initialised";
-//    }
+        // Perform 1D processing
+        split1D(&currentFrameBuffer);
 
-    // Convert the YIQ result to RGB
-    rgbOutputBuffer = yiqToRgbFrame(tempYiqBuffer, frameBuffer.burstLevel);
+        // Perform 2D processing
+        split2D(&currentFrameBuffer);
+
+        // Perform 3D processing
+        //split3D(&currentFrameBuffer, &previousFrameBuffer);
+
+        // Split the IQ values
+        splitIQ(&currentFrameBuffer);
+
+        // Pass the YIQ frame to the optical flow process
+        opticalFlow.feedFrameY(currentFrameBuffer.yiqBuffer);
+
+        // Copy the current frame to a temporary buffer, so operations on the frame do not
+        // alter the original data
+        tempYiqBuffer = currentFrameBuffer.yiqBuffer;
+
+        // Process the copy of the current frame
+        adjustY(tempYiqBuffer, currentFrameBuffer.firstFieldPhaseID, currentFrameBuffer.secondFieldPhaseID);
+        if (configuration.colorlpf) filterIQ(currentFrameBuffer.yiqBuffer);
+        doYNR(tempYiqBuffer);
+        doCNR(tempYiqBuffer);
+
+        // Convert the YIQ result to RGB
+        rgbOutputBuffer = yiqToRgbFrame(tempYiqBuffer, currentFrameBuffer.burstLevel);
+
+        // Overlay the optical flow map if required
+        if (configuration.showOpticalFlowMap && opticalFlow.isInitialised()) overlayOpticalFlowMap(rgbOutputBuffer);
+
+        // Store the current frame
+        previousFrameBuffer = currentFrameBuffer;
+    }
 
     // Return the output frame
     return rgbOutputBuffer;
@@ -206,8 +237,8 @@ void Comb::split1D(FrameBuffer *frameBuffer)
                 tc1f = -tc1f;
             }
 
+            // Record the 1D C value
             frameBuffer->clpbuffer[0].pixel[lineNumber][h] = tc1;
-            frameBuffer->combk[0].pixel[lineNumber][h] = 1;
         }
     }
 }
@@ -216,9 +247,9 @@ void Comb::split1D(FrameBuffer *frameBuffer)
 void Comb::split2D(FrameBuffer *frameBuffer)
 {
     for (qint32 lineNumber = configuration.firstVisibleFrameLine; lineNumber < frameHeight; lineNumber++) {
-        qreal *p1line = frameBuffer->clpbuffer[0].pixel[lineNumber - 2];
-        qreal *c1line = frameBuffer->clpbuffer[0].pixel[lineNumber];
-        qreal *n1line = frameBuffer->clpbuffer[0].pixel[lineNumber + 2];
+        qreal *previousLine = frameBuffer->clpbuffer[0].pixel[lineNumber - 2];
+        qreal *currentLine = frameBuffer->clpbuffer[0].pixel[lineNumber];
+        qreal *nextLine = frameBuffer->clpbuffer[0].pixel[lineNumber + 2];
 
         // 2D filtering.  can't do top or bottom line - calculated between
         // 1d and 3d because this is filtered
@@ -228,12 +259,12 @@ void Comb::split2D(FrameBuffer *frameBuffer)
 
                 qreal kp, kn;
 
-                kp  = fabs(fabs(c1line[h]) - fabs(p1line[h])); // - fabs(c1line[h] * .20);
-                kp += fabs(fabs(c1line[h - 1]) - fabs(p1line[h - 1]));
-                kp -= (fabs(c1line[h]) + fabs(c1line[h - 1])) * .10;
-                kn  = fabs(fabs(c1line[h]) - fabs(n1line[h])); // - fabs(c1line[h] * .20);
-                kn += fabs(fabs(c1line[h - 1]) - fabs(n1line[h - 1]));
-                kn -= (fabs(c1line[h]) + fabs(n1line[h - 1])) * .10;
+                kp  = fabs(fabs(currentLine[h]) - fabs(previousLine[h])); // - fabs(c1line[h] * .20);
+                kp += fabs(fabs(currentLine[h - 1]) - fabs(previousLine[h - 1]));
+                kp -= (fabs(currentLine[h]) + fabs(currentLine[h - 1])) * .10;
+                kn  = fabs(fabs(currentLine[h]) - fabs(nextLine[h])); // - fabs(c1line[h] * .20);
+                kn += fabs(fabs(currentLine[h - 1]) - fabs(nextLine[h - 1]));
+                kn -= (fabs(currentLine[h]) + fabs(nextLine[h - 1])) * .10;
 
                 kp /= 2;
                 kn /= 2;
@@ -251,29 +282,29 @@ void Comb::split2D(FrameBuffer *frameBuffer)
                     sc = (2.0 / (kn + kp));// * max(kn * kn, kp * kp);
                     if (sc < 1.0) sc = 1.0;
                 } else {
-                    if ((fabs(fabs(p1line[h]) - fabs(n1line[h])) - fabs((n1line[h] + p1line[h]) * .2)) <= 0) {
+                    if ((fabs(fabs(previousLine[h]) - fabs(nextLine[h])) - fabs((nextLine[h] + previousLine[h]) * .2)) <= 0) {
                         kn = kp = 1;
                     }
                 }
 
-                tc1  = ((frameBuffer->clpbuffer[0].pixel[lineNumber][h] - p1line[h]) * kp * sc);
-                tc1 += ((frameBuffer->clpbuffer[0].pixel[lineNumber][h] - n1line[h]) * kn * sc);
-                tc1 /= (2 * 2);
+                tc1  = ((frameBuffer->clpbuffer[0].pixel[lineNumber][h] - previousLine[h]) * kp * sc);
+                tc1 += ((frameBuffer->clpbuffer[0].pixel[lineNumber][h] - nextLine[h]) * kn * sc);
+                tc1 /= 8; // Take the average C (was: tc1 /= (2 * 2); in the old code)
 
+                // Record the 2D C value
                 frameBuffer->clpbuffer[1].pixel[lineNumber][h] = tc1;
-                frameBuffer->combk[1].pixel[lineNumber][h] = 1.0; // (sc * (kn + kp)) / 2.0;
             }
-        }
-
-        for (qint32 h = configuration.activeVideoStart; h < configuration.activeVideoEnd; h++) {
-            if ((lineNumber >= 2) && (lineNumber <= (frameHeight - 2))) {
-                frameBuffer->combk[1].pixel[lineNumber][h] *= 1 - frameBuffer->combk[2].pixel[lineNumber][h];
-            }
-
-            // 1D
-            frameBuffer->combk[0].pixel[lineNumber][h] = 1 - frameBuffer->combk[2].pixel[lineNumber][h] - frameBuffer->combk[1].pixel[lineNumber][h];
         }
     }
+}
+
+// This could do with an explaination of what it is doing...
+// Only apply 3D processing to stationary pixels
+void Comb::split3D(FrameBuffer *currentFrame, FrameBuffer *previousFrame)
+{
+    (void)currentFrame;
+    (void)previousFrame;
+    // TO-DO
 }
 
 // Spilt the I and Q
@@ -308,13 +339,12 @@ void Comb::splitIQ(FrameBuffer *frameBuffer)
         qreal si = 0, sq = 0;
         for (qint32 h = configuration.activeVideoStart; h < configuration.activeVideoEnd; h++) {
             qint32 phase = h % 4;
-            qreal cavg = 0;
 
-            cavg += (frameBuffer->clpbuffer[2].pixel[lineNumber][h] * frameBuffer->combk[2].pixel[lineNumber][h]);
-            cavg += (frameBuffer->clpbuffer[1].pixel[lineNumber][h] * frameBuffer->combk[1].pixel[lineNumber][h]);
-            cavg += (frameBuffer->clpbuffer[0].pixel[lineNumber][h] * frameBuffer->combk[0].pixel[lineNumber][h]);
+            // DEV NOTE: This should probably use the 2D average for 2D and the 3D average for 3D? Since
+            // the 3D split should take into account the 3D C just like the 2D does for 1D...
+            qreal cavg = frameBuffer->clpbuffer[1].pixel[lineNumber][h]; // 2D C average
 
-            cavg /= 2; // Why is this 2 when 3 values are combined in the average?
+            //if (configuration.use3D) cavg = frameBuffer->clpbuffer[2].pixel[lineNumber][h]; // 3D C average
 
             if (!invertphase) cavg = -cavg;
 
@@ -437,7 +467,7 @@ QByteArray Comb::yiqToRgbFrame(YiqBuffer yiqBuffer, qreal burstLevel)
     // Perform YIQ to RGB conversion
     for (qint32 lineNumber = configuration.firstVisibleFrameLine; lineNumber < frameHeight; lineNumber++) {
         // Map the QByteArray data to an unsigned 16 bit pointer
-        quint16 *line_output = reinterpret_cast<quint16 *>(rgbOutputFrame.data() + ((configuration.fieldWidth * 3 * lineNumber) * 2));
+        quint16 *linePointer = reinterpret_cast<quint16 *>(rgbOutputFrame.data() + ((configuration.fieldWidth * 3 * lineNumber) * 2));
 
         // Offset the output by the activeVideoStart to keep the output frame
         // in the same x position as the input video frame (the +6 realigns the output
@@ -447,18 +477,51 @@ QByteArray Comb::yiqToRgbFrame(YiqBuffer yiqBuffer, qreal burstLevel)
 
         // Fill the output frame with the RGB values
         for (qint32 h = configuration.activeVideoStart; h < configuration.activeVideoEnd; h++) {
-            RGB r(configuration.whiteIre, configuration.blackIre, configuration.whitePoint100, configuration.blackAndWhite);
+            RGB rgb(configuration.whiteIre, configuration.blackIre, configuration.whitePoint100, configuration.blackAndWhite);
             YIQ yiq = yiqBuffer[lineNumber][h];
 
-            r.conv(yiq, burstLevel);
-            line_output[o++] = static_cast<quint16>(r.r);
-            line_output[o++] = static_cast<quint16>(r.g);
-            line_output[o++] = static_cast<quint16>(r.b);
+            // Convert YIQ to RGB colour space
+            rgb.conv(yiq, burstLevel);
+
+            // Place the RGB values in the output QByteArray
+            linePointer[o++] = static_cast<quint16>(rgb.r);
+            linePointer[o++] = static_cast<quint16>(rgb.g);
+            linePointer[o++] = static_cast<quint16>(rgb.b);
         }
     }
 
     // Return the RGB frame data
     return rgbOutputFrame;
+}
+
+// Convert buffer from YIQ to RGB
+void Comb::overlayOpticalFlowMap(QByteArray &rgbFrame)
+{
+    qDebug() << "Comb::overlayOpticalFlowMap(): Overlaying optical flow map onto RGB output";
+    QVector<qreal> motionKMap;
+    opticalFlow.motionK(motionKMap);
+
+    // Overlay the optical flow map on the output RGB
+    for (qint32 lineNumber = configuration.firstVisibleFrameLine; lineNumber < frameHeight; lineNumber++) {
+        // Map the QByteArray data to an unsigned 16 bit pointer
+        quint16 *linePointer = reinterpret_cast<quint16 *>(rgbFrame.data() + ((configuration.fieldWidth * 3 * lineNumber) * 2));
+
+        // Fill the output frame with the RGB values
+        for (qint32 h = configuration.activeVideoStart; h < configuration.activeVideoEnd; h++) {
+            if (motionKMap[(lineNumber * 910) + h] > 0) {
+                qint32 intensity = static_cast<qint32>(motionKMap[(lineNumber * 910) + h] * 20000);
+                // Make the RGB more purple to show where motion was detected
+                qint32 red = linePointer[(h * 3)] + intensity;
+                qint32 blue = linePointer[(h * 3) + 2] + intensity;
+
+                if (red > 65535) red = 65535;
+                if (blue > 65535) blue = 65535;
+
+                linePointer[(h * 3)] = static_cast<quint16>(red);
+                linePointer[(h * 3) + 2] = static_cast<quint16>(blue);
+            }
+        }
+    }
 }
 
 // Remove the colour data from the baseband (Y)

@@ -122,6 +122,11 @@ int main(int argc, char *argv[])
                                        QCoreApplication::translate("main", "Use 3D comb filter (default 2D)"));
     parser.addOption(set3DOption);
 
+    // Option to show the optical flow map (-o)
+    QCommandLineOption setShowOpticalFlowMapOption(QStringList() << "o" << "ofmap",
+                                       QCoreApplication::translate("main", "Show the optical flow map (only used for testing)"));
+    parser.addOption(setShowOpticalFlowMapOption);
+
     // Option to set the black and white output flag (causes output to be black and white) (-b)
     QCommandLineOption setBwModeOption(QStringList() << "b" << "blackandwhite",
                                        QCoreApplication::translate("main", "Output in black and white"));
@@ -147,6 +152,10 @@ int main(int argc, char *argv[])
     bool blackAndWhite = parser.isSet(setBwModeOption);
     bool whitePoint = parser.isSet(setMaxWhitePoint);
     bool use3D = parser.isSet(set3DOption);
+    bool showOpticalFlowMap = parser.isSet(setShowOpticalFlowMapOption);
+
+    // Force 3D mode if the optical flow map overlay is selected
+    if (showOpticalFlowMap) use3D = true;
 
     qint32 startFrame = -1;
     qint32 length = -1;
@@ -192,7 +201,8 @@ int main(int argc, char *argv[])
     // Process the input file
     ntscFilter.process(inputFileName, outputFileName,
                        startFrame, length, reverse,
-                       blackAndWhite, whitePoint, use3D);
+                       blackAndWhite, whitePoint, use3D,
+                       showOpticalFlowMap);
 
     // Quit with success
     return 0;

@@ -33,8 +33,11 @@ YiqBuffer::YiqBuffer(void)
 
 void YiqBuffer::clear(void)
 {
-    yiqLine.clear();
-    yiqLine.resize(bufferHeight);
+    for (qint32 counter = 0; counter < bufferHeight; counter++) {
+        yiqLine[counter].yiq->y = 0;
+        yiqLine[counter].yiq->i = 0;
+        yiqLine[counter].yiq->q = 0;
+    }
 }
 
 // Overload the [] operator to return an indexed value
@@ -53,9 +56,7 @@ QVector<qreal> YiqBuffer::yValues(void)
 {
     QVector<qreal> yReturn;
 
-    qDebug() << "YiqBuffer::yValues():" << yiqLine.size() << "lines by" << yiqLine[0].width() << "pixels";
-
-    for (qint32 line = 0; line < yiqLine.size(); line++) {
+    for (qint32 line = 0; line < bufferHeight; line++) {
         for (qint32 pixel = 0; pixel < yiqLine[line].width(); pixel++) {
             yReturn.append(yiqLine[line].yiq[pixel].y);
         }

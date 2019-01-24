@@ -39,7 +39,7 @@ public:
     YIQ& operator[] (const int index);
     qint32 width(void);
 
-    QVector<YIQ> yiq; // One line of YIQ data
+    YIQ yiq[910]; // One line of YIQ data
 
 private:
     qint32 lineWidth;
