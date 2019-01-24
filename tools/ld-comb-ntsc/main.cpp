@@ -123,7 +123,7 @@ int main(int argc, char *argv[])
     parser.addOption(set3DOption);
 
     // Option to show the optical flow map (-o)
-    QCommandLineOption setShowOpticalFlowMapOption(QStringList() << "o" << "ofmap",
+    QCommandLineOption setShowOpticalFlowMapOption(QStringList() << "o" << "oftest",
                                        QCoreApplication::translate("main", "Show the optical flow map (only used for testing)"));
     parser.addOption(setShowOpticalFlowMapOption);
 

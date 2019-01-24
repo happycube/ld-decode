@@ -99,9 +99,8 @@ void OpticalFlow::motionK(QVector<qreal> &kValues)
             // doubling the x distance)
             qreal pointValue = calculateDistance(static_cast<qreal>(flowpoint.y), static_cast<qreal>(flowpoint.x) * 2);
 
-            // 0.3 sets the sensitivity of the motion decision (more than 0.3 pixels displacement = in motion)
-            if (pointValue > 0.1) kValues[(910 * y) + x] = clamp(pointValue - 0.1, 0, 1); // Pixel moved
-            else kValues[(910 * y) + x] = 0; // Pixel didn't move
+            // *2 to increase the sensitivity of the detection
+            kValues[(910 * y) + x] = clamp(pointValue * 2, 0, 1); // Pixel moved
         }
     }
 }

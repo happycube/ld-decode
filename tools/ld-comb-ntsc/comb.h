@@ -109,7 +109,7 @@ private:
     // Optical flow processor
     OpticalFlow opticalFlow;
 
-    // Previous frame for 3D processing
+    // Previous and next frame for 3D processing
     FrameBuffer previousFrameBuffer;
 
     void postConfigurationTasks(void);

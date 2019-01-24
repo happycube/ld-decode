@@ -144,7 +144,7 @@ QByteArray Comb::process(QByteArray firstFieldInputBuffer, QByteArray secondFiel
         split2D(&currentFrameBuffer);
 
         // Perform 3D processing
-        //split3D(&currentFrameBuffer, &previousFrameBuffer);
+        split3D(&currentFrameBuffer, &previousFrameBuffer);
 
         // Split the IQ values
         splitIQ(&currentFrameBuffer);
@@ -289,7 +289,7 @@ void Comb::split2D(FrameBuffer *frameBuffer)
 
                 tc1  = ((frameBuffer->clpbuffer[0].pixel[lineNumber][h] - previousLine[h]) * kp * sc);
                 tc1 += ((frameBuffer->clpbuffer[0].pixel[lineNumber][h] - nextLine[h]) * kn * sc);
-                tc1 /= 8; // Take the average C (was: tc1 /= (2 * 2); in the old code)
+                tc1 /= 8; //(2 * 2);
 
                 // Record the 2D C value
                 frameBuffer->clpbuffer[1].pixel[lineNumber][h] = tc1;
@@ -302,9 +302,17 @@ void Comb::split2D(FrameBuffer *frameBuffer)
 // Only apply 3D processing to stationary pixels
 void Comb::split3D(FrameBuffer *currentFrame, FrameBuffer *previousFrame)
 {
-    (void)currentFrame;
-    (void)previousFrame;
-    // TO-DO
+    if (!opticalFlow.isInitialised()) return;
+
+    for (qint32 lineNumber = configuration.firstVisibleFrameLine; lineNumber < frameHeight; lineNumber++) {
+
+        quint16 *currentLine = reinterpret_cast<quint16 *>(currentFrame->rawbuffer.data() + (lineNumber * configuration.fieldWidth) * 2);
+        quint16 *previousLine = reinterpret_cast<quint16 *>(previousFrame->rawbuffer.data() + (lineNumber * configuration.fieldWidth) * 2);
+
+        for (qint32 h = configuration.activeVideoStart; h < configuration.activeVideoEnd; h++) {
+            currentFrame->clpbuffer[2].pixel[lineNumber][h] = (previousLine[h] - currentLine[h]);
+        }
+    }
 }
 
 // Spilt the I and Q
@@ -319,6 +327,10 @@ void Comb::splitIQ(FrameBuffer *frameBuffer)
 
     if (frameBuffer->secondFieldPhaseID == 1 || frameBuffer->secondFieldPhaseID == 4)
         bottomInvertphase = true;
+
+    // Get the flow map for 3D processing
+    QVector<qreal> motionKMap;
+    if (opticalFlow.isInitialised()) opticalFlow.motionK(motionKMap);
 
     // Clear the target frame YIQ buffer
     frameBuffer->yiqBuffer.clear();
@@ -340,11 +352,15 @@ void Comb::splitIQ(FrameBuffer *frameBuffer)
         for (qint32 h = configuration.activeVideoStart; h < configuration.activeVideoEnd; h++) {
             qint32 phase = h % 4;
 
-            // DEV NOTE: This should probably use the 2D average for 2D and the 3D average for 3D? Since
-            // the 3D split should take into account the 3D C just like the 2D does for 1D...
+            // Take the 2D C
             qreal cavg = frameBuffer->clpbuffer[1].pixel[lineNumber][h]; // 2D C average
 
-            //if (configuration.use3D) cavg = frameBuffer->clpbuffer[2].pixel[lineNumber][h]; // 3D C average
+            if (configuration.use3D && opticalFlow.isInitialised()) {
+                // Add the 3D C multiplied by 1-K (note: since 1-K is 0 to 1, the actually divides it)
+                // Note: K represents the amount of motion, so 1-K only applies 3D to pixels not in motion
+                cavg  = frameBuffer->clpbuffer[1].pixel[lineNumber][h] * motionKMap[(lineNumber * 910) + h];
+                cavg += frameBuffer->clpbuffer[2].pixel[lineNumber][h] * (1 - motionKMap[(lineNumber * 910) + h]);
+            }
 
             if (!invertphase) cavg = -cavg;
 
@@ -509,7 +525,7 @@ void Comb::overlayOpticalFlowMap(QByteArray &rgbFrame)
         // Fill the output frame with the RGB values
         for (qint32 h = configuration.activeVideoStart; h < configuration.activeVideoEnd; h++) {
             if (motionKMap[(lineNumber * 910) + h] > 0) {
-                qint32 intensity = static_cast<qint32>(motionKMap[(lineNumber * 910) + h] * 20000);
+                qint32 intensity = static_cast<qint32>(motionKMap[(lineNumber * 910) + h] * 32767);
                 // Make the RGB more purple to show where motion was detected
                 qint32 red = linePointer[(h * 3)] + intensity;
                 qint32 blue = linePointer[(h * 3) + 2] + intensity;
