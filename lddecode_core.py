@@ -1453,6 +1453,8 @@ class LDdecode:
         self.doDOD = doDOD
 
         self.fieldinfo = []
+
+        self.leadOut = False
         
     def roughseek(self, fieldnr):
         self.prevPhaseID = None
@@ -1552,9 +1554,11 @@ class LDdecode:
             if l is None:
                 continue
             
-            print(hex(l))
+            #print(hex(l))
  
-            if (l & 0xf0dd00) == 0xf0dd00: # CLV minutes/hours
+            if l == 0x80eeee: # lead-out reached
+                self.leadOut = True
+            elif (l & 0xf0dd00) == 0xf0dd00: # CLV minutes/hours
                 self.clvMinutes = (l & 0xf) + (((l >> 4) & 0xf) * 10) + (((l >> 16) & 0xf) * 60)
                 #print('CLV', mins)
             elif (l & 0xf00000) == 0xf00000: # CAV frame
@@ -1650,6 +1654,8 @@ class LDdecode:
                 print("file frame %d early-CLV minute %d" % (rawloc, self.clvMinutes))
             elif self.frameNumber:
                 print("file frame %d CAV frame %d" % (rawloc, self.frameNumber))
+            elif self.leadOut:
+                print("file frame %d lead out" % (rawloc))
             else:
                 print("file frame %d unknown" % (rawloc))
 

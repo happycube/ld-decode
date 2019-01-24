@@ -31,6 +31,8 @@ parser.add_argument('-f', '--frame', dest='frame', action='store_true', help='ou
 parser.add_argument('--NTSCJ', dest='ntscj', action='store_true', help='source is in NTSC-J (IRE 0 black) format')
 parser.add_argument('--noDOD', dest='nodod', action='store_true', default=False, help='enable dropout detector')
 
+parser.add_argument('--noleadout', dest='noleadout', action='store_true', default=False, help='enable dropout detector')
+
 
 args = parser.parse_args()
 print(args)
@@ -90,7 +92,9 @@ def write_json(ldd, outname):
     
     os.rename(outname + '.tbc.json.tmp', outname + '.tbc.json')
 
-while ldd.fields_written < (req_frames * 2):
+done = False
+
+while not done and ldd.fields_written < (req_frames * 2):
     try:
         f = ldd.readfield()
     except Exception as err:
@@ -99,8 +103,8 @@ while ldd.fields_written < (req_frames * 2):
         write_json(ldd, outname)
         exit(1)
 
-    if f is None:
-        break
+    if f is None or (args.noleadout == False and ldd.leadOut == True):
+        done = True
 
 #    print(ldd.fields_written)
 
