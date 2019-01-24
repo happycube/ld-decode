@@ -1,6 +1,6 @@
 /************************************************************************
 
-    yiq.h
+    yiqbuffer.h
 
     ld-comb-ntsc - NTSC colourisation filter for ld-decode
     Copyright (C) 2018 Chad Page
@@ -23,22 +23,28 @@
 
 ************************************************************************/
 
-#ifndef YIQ_H
-#define YIQ_H
+#ifndef YIQBUFFER_H
+#define YIQBUFFER_H
 
 #include <QCoreApplication>
+#include <QVector>
+#include <QDebug>
 
-class YIQ
+#include "yiqline.h"
+
+class YiqBuffer
 {
 public:
-    qreal y, i, q;
+    YiqBuffer();
 
-    YIQ(qreal _y = 0.0, qreal _i = 0.0, qreal _q = 0.0);
-    YIQ operator*=(qreal x);
-    YIQ operator+=(YIQ p);
+    void clear(void);
+    YiqLine& operator[] (const int index);
+    QVector<qreal> yValues(void);
 
 private:
+    qint32 bufferHeight;
 
+    QVector<YiqLine> yiqLine;
 };
 
-#endif // YIQ_H
+#endif // YIQBUFFER_H

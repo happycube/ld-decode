@@ -154,7 +154,6 @@ void MainWindow::updateGuiLoaded(void)
         Comb::Configuration configuration = ntscColour.getConfiguration();
 
         // Set the comb filter configuration
-        configuration.use3D = false;
         configuration.blackAndWhite = false;
 
         // Set the input buffer dimensions configuration
@@ -171,6 +170,9 @@ void MainWindow::updateGuiLoaded(void)
         // Set the IRE levels
         configuration.blackIre = videoParameters.black16bIre;
         configuration.whiteIre = videoParameters.white16bIre;
+
+        // Set the filter mode
+        configuration.use3D = false;
 
         // Update the comb filter object's configuration
         ntscColour.setConfiguration(configuration);

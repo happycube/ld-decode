@@ -1,6 +1,6 @@
 /************************************************************************
 
-    yiq.h
+    yiqline.cpp
 
     ld-comb-ntsc - NTSC colourisation filter for ld-decode
     Copyright (C) 2018 Chad Page
@@ -23,22 +23,27 @@
 
 ************************************************************************/
 
-#ifndef YIQ_H
-#define YIQ_H
+#include "yiqline.h"
 
-#include <QCoreApplication>
-
-class YIQ
+YiqLine::YiqLine()
 {
-public:
-    qreal y, i, q;
+    lineWidth = 910;
+    yiq.resize(lineWidth);
+}
 
-    YIQ(qreal _y = 0.0, qreal _i = 0.0, qreal _q = 0.0);
-    YIQ operator*=(qreal x);
-    YIQ operator+=(YIQ p);
+// Overload the [] operator to return an indexed value
+YIQ& YiqLine::operator[] (const int index)
+{
+    if (index > lineWidth || index < 0) {
+        qCritical() << "BUG: Out of bounds call to YiqLine with an index of" << index;
+        exit(EXIT_FAILURE);
+    }
 
-private:
+    return yiq[index];
+}
 
-};
-
-#endif // YIQ_H
+// Method to return the width of the lines within the YiqLine object
+qint32 YiqLine::width(void)
+{
+    return lineWidth;
+}

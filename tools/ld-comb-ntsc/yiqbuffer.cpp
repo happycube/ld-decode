@@ -1,6 +1,6 @@
 /************************************************************************
 
-    yiq.h
+    yiqbuffer.cpp
 
     ld-comb-ntsc - NTSC colourisation filter for ld-decode
     Copyright (C) 2018 Chad Page
@@ -23,22 +23,43 @@
 
 ************************************************************************/
 
-#ifndef YIQ_H
-#define YIQ_H
+#include "yiqbuffer.h"
 
-#include <QCoreApplication>
-
-class YIQ
+YiqBuffer::YiqBuffer(void)
 {
-public:
-    qreal y, i, q;
+    bufferHeight = 525;
+    yiqLine.resize(bufferHeight);
+}
 
-    YIQ(qreal _y = 0.0, qreal _i = 0.0, qreal _q = 0.0);
-    YIQ operator*=(qreal x);
-    YIQ operator+=(YIQ p);
+void YiqBuffer::clear(void)
+{
+    yiqLine.clear();
+    yiqLine.resize(bufferHeight);
+}
 
-private:
+// Overload the [] operator to return an indexed value
+YiqLine& YiqBuffer::operator[] (const int index)
+{
+    if (index > bufferHeight || index < 0) {
+        qCritical() << "BUG: Out of bounds call to YiqLine with an index of" << index;
+        exit(EXIT_FAILURE);
+    }
 
-};
+    return yiqLine[index];
+}
 
-#endif // YIQ_H
+// Return a qreal vector of the Y values in the YIQ buffer
+QVector<qreal> YiqBuffer::yValues(void)
+{
+    QVector<qreal> yReturn;
+
+    qDebug() << "YiqBuffer::yValues():" << yiqLine.size() << "lines by" << yiqLine[0].width() << "pixels";
+
+    for (qint32 line = 0; line < yiqLine.size(); line++) {
+        for (qint32 pixel = 0; pixel < yiqLine[line].width(); pixel++) {
+            yReturn.append(yiqLine[line].yiq[pixel].y);
+        }
+    }
+
+    return yReturn;
+}

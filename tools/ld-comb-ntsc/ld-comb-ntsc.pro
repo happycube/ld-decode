@@ -20,7 +20,10 @@ SOURCES += \
     rgb.cpp \
     yiq.cpp \
     filter.cpp \
-    ntscfilter.cpp
+    ntscfilter.cpp \
+    opticalflow.cpp \
+    yiqline.cpp \
+    yiqbuffer.cpp
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin
@@ -44,7 +47,10 @@ HEADERS += \
     yiq.h \
     filter.h \
     ntscfilter.h \
-    ../../deemp.h
+    ../../deemp.h \
+    opticalflow.h \
+    yiqline.h \
+    yiqbuffer.h
 
 INCLUDEPATH += "/usr/local/include/opencv"
 LIBS += -L"/usr/local/lib"

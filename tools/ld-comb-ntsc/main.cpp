@@ -87,7 +87,7 @@ int main(int argc, char *argv[])
                 "NTSC comb-filter application for ld-decode\n"
                 "\n"
                 "(c)2018 Chad Page\n"
-                "(c)2018 Simon Inns\n"
+                "(c)2018-2019 Simon Inns\n"
                 "GPLv3 Open-Source - github: https://github.com/happycube/ld-decode");
     parser.addHelpOption();
     parser.addVersionOption();
@@ -117,6 +117,11 @@ int main(int argc, char *argv[])
                                        QCoreApplication::translate("main", "Reverse the field order to second/first (default first/second)"));
     parser.addOption(setReverseOption);
 
+    // Option select 3D comb filter (-3)
+    QCommandLineOption set3DOption(QStringList() << "3" << "3d",
+                                       QCoreApplication::translate("main", "Use 3D comb filter (default 2D)"));
+    parser.addOption(set3DOption);
+
     // Option to set the black and white output flag (causes output to be black and white) (-b)
     QCommandLineOption setBwModeOption(QStringList() << "b" << "blackandwhite",
                                        QCoreApplication::translate("main", "Output in black and white"));
@@ -141,6 +146,7 @@ int main(int argc, char *argv[])
     bool reverse = parser.isSet(setReverseOption);
     bool blackAndWhite = parser.isSet(setBwModeOption);
     bool whitePoint = parser.isSet(setMaxWhitePoint);
+    bool use3D = parser.isSet(set3DOption);
 
     qint32 startFrame = -1;
     qint32 length = -1;
@@ -186,7 +192,7 @@ int main(int argc, char *argv[])
     // Process the input file
     ntscFilter.process(inputFileName, outputFileName,
                        startFrame, length, reverse,
-                       blackAndWhite, whitePoint);
+                       blackAndWhite, whitePoint, use3D);
 
     // Quit with success
     return 0;

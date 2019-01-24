@@ -1,6 +1,6 @@
 /************************************************************************
 
-    yiq.h
+    opticalflow.h
 
     ld-comb-ntsc - NTSC colourisation filter for ld-decode
     Copyright (C) 2018 Chad Page
@@ -23,22 +23,44 @@
 
 ************************************************************************/
 
-#ifndef YIQ_H
-#define YIQ_H
+#ifndef OPTICALFLOW_H
+#define OPTICALFLOW_H
 
 #include <QCoreApplication>
+#include <QDebug>
+#include <QtMath>
 
-class YIQ
+// OpenCV2
+#include <opencv2/core/core.hpp>
+#include <opencv2/video/tracking.hpp>
+
+#include "yiqbuffer.h"
+
+class OpticalFlow
 {
 public:
-    qreal y, i, q;
+    OpticalFlow();
 
-    YIQ(qreal _y = 0.0, qreal _i = 0.0, qreal _q = 0.0);
-    YIQ operator*=(qreal x);
-    YIQ operator+=(YIQ p);
+    // Input frame buffer definitions
+    struct yiqLine_t {
+        YIQ pixel[911]; // One line of YIQ data
+    };
+
+    void feedFrameY(YiqBuffer yiqBuffer);
+    QVector<qreal> motionK(void);
+    bool isInitialised(void);
 
 private:
 
+
+    // Globals used by the opticalFlow3D method
+    cv::Mat flowMap;
+    cv::Mat previousFrame;
+    qint32 framesProcessed;
+
+    cv::Mat convertYtoMat(QVector<qreal> yBuffer);
+    qreal clamp(qreal v, qreal low, qreal high);
+    qreal convertCPointToReal(qreal y, qreal x);
 };
 
-#endif // YIQ_H
+#endif // OPTICALFLOW_H
