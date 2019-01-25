@@ -804,6 +804,14 @@ class Field:
                 
         return linelocs
 
+    def computewow(self, lineinfo):
+        wow = np.ones(len(lineinfo))
+
+        for l in range(0, len(wow)-1):
+            wow[l] = (lineinfo[l + 1] - lineinfo[l]) / self.inlinelen
+
+        return wow
+
     def downscale(self, lineinfo = None, linesout = None, outwidth = None, wow=True, channel='demod', audio = False):
         if lineinfo is None:
             lineinfo = self.linelocs
@@ -816,14 +824,17 @@ class Field:
         dsout = np.zeros((linesout * outwidth), dtype=np.double)    
         lineoffset = self.lineoffset
 
+        if wow:
+            self.wowfactor = self.computewow(lineinfo)
+
         for l in range(lineoffset, linesout + lineoffset):
             #print(l, lineinfo[l], lineinfo[l+1])
             if lineinfo[l + 1] > lineinfo[l]:
                 scaled = scale(self.data[0][channel], lineinfo[l], lineinfo[l + 1], outwidth)
 
                 if wow:
-                    linewow = (lineinfo[l + 1] - lineinfo[l]) / self.inlinelen
-                    scaled *= linewow
+                    #linewow = (lineinfo[l + 1] - lineinfo[l]) / self.inlinelen
+                    scaled *= self.wowfactor[l] # linewow
 
                 dsout[(l - lineoffset) * outwidth:(l + 1 - lineoffset)*outwidth] = scaled
             else:
@@ -911,6 +922,8 @@ class Field:
 
         self.linelocs = self.linelocs2
         
+        self.wowfactor = np.ones_like(self.linelocs)
+
         # VBI info
         self.linecode = []
         self.isFirstField = self.is_firstfield()
@@ -1481,12 +1494,12 @@ class LDdecode:
         indata = self.freader(self.infile, self.readloc, self.readlen)
 
         if indata is None:
-            print("Failed to read data")
+            print("End of file")
             return None, None
         
         rawdecode = self.rf.demod(indata, self.rf.blockcut, self.readlen, self.mtf_level)
         if rawdecode is None:
-            print("Failed to read data")
+            print("Failed to demodulate data")
             return None, None
         
         f = self.FieldClass(self.rf, indata, rawdecode, 0, audio_offset = self.audio_offset)
