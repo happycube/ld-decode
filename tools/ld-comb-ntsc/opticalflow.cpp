@@ -38,10 +38,12 @@ void OpticalFlow::feedFrameY(YiqBuffer yiqBuffer)
     cv::Mat currentFrame = convertYtoMat(yiqBuffer.yValues());
 
     // Do we have an initial flowmap?
-    qint32 flowOptions = 0;
+    qint32 flowOptions = cv::OPTFLOW_FARNEBACK_GAUSSIAN;
+    //qint32 flowOptions = 0;
     if (framesProcessed == 0) {
         // No, so use the initial flow option
-        flowOptions = cv::OPTFLOW_USE_INITIAL_FLOW;
+        //flowOptions = cv::OPTFLOW_USE_INITIAL_FLOW;
+        flowOptions = cv::OPTFLOW_USE_INITIAL_FLOW | cv::OPTFLOW_FARNEBACK_GAUSSIAN;
     }
 
     // Perform the OpenCV compute dense optical flow (Gunnar Farneback’s algorithm)
@@ -63,7 +65,7 @@ void OpticalFlow::feedFrameY(YiqBuffer yiqBuffer)
         //              expansion; for poly_n=5, you can set poly_sigma=1.1, for poly_n=7, a good value would be poly_sigma=1.5.
         // flags - OPTFLOW_USE_INITIAL_FLOW or OPTFLOW_FARNEBACK_GAUSSIAN
 
-        calcOpticalFlowFarneback(currentFrame, previousFrame, flowMap, 0.5, 4, 60, 3, 7, 1.5, flowOptions);
+        calcOpticalFlowFarneback(currentFrame, previousFrame, flowMap, 0.5, 8, 20, 3, 7, 1.5, flowOptions);
     }
 
     // Copy the current frame to the previous frame
@@ -94,13 +96,10 @@ void OpticalFlow::motionK(QVector<qreal> &kValues)
 
             // Get the point's displacement value (how many pixels the point moved (pixel velocity) since the last frame)
             // Note: flowpoint.x is the x displacement and flowpoint.y is the y displacement
-            //
-            // Since a lot of video motion is panning, we double the sensitivty in the x direction (by
-            // doubling the x distance)
-            qreal pointValue = calculateDistance(static_cast<qreal>(flowpoint.y), static_cast<qreal>(flowpoint.x) * 2);
+            qreal pointValue = calculateDistance(static_cast<qreal>(flowpoint.y), static_cast<qreal>(flowpoint.x * 2));
 
-            // *2 to increase the sensitivity of the detection
-            kValues[(910 * y) + x] = clamp(pointValue * 2, 0, 1); // Pixel moved
+            // We take K so 1 = moving and 0 = stationary
+            kValues[(910 * y) + x] = clamp(pointValue, 0, 1); // Pixel moved
         }
     }
 }

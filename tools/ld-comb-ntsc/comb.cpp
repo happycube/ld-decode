@@ -149,9 +149,6 @@ QByteArray Comb::process(QByteArray firstFieldInputBuffer, QByteArray secondFiel
         // Split the IQ values
         splitIQ(&currentFrameBuffer);
 
-        // Pass the YIQ frame to the optical flow process
-        opticalFlow.feedFrameY(currentFrameBuffer.yiqBuffer);
-
         // Copy the current frame to a temporary buffer, so operations on the frame do not
         // alter the original data
         tempYiqBuffer = currentFrameBuffer.yiqBuffer;
@@ -161,6 +158,9 @@ QByteArray Comb::process(QByteArray firstFieldInputBuffer, QByteArray secondFiel
         if (configuration.colorlpf) filterIQ(currentFrameBuffer.yiqBuffer);
         doYNR(tempYiqBuffer);
         doCNR(tempYiqBuffer);
+
+        // Pass the YIQ frame to the optical flow process (which acts only on Y)
+        opticalFlow.feedFrameY(tempYiqBuffer);
 
         // Convert the YIQ result to RGB
         rgbOutputBuffer = yiqToRgbFrame(tempYiqBuffer, currentFrameBuffer.burstLevel);
@@ -310,7 +310,7 @@ void Comb::split3D(FrameBuffer *currentFrame, FrameBuffer *previousFrame)
         quint16 *previousLine = reinterpret_cast<quint16 *>(previousFrame->rawbuffer.data() + (lineNumber * configuration.fieldWidth) * 2);
 
         for (qint32 h = configuration.activeVideoStart; h < configuration.activeVideoEnd; h++) {
-            currentFrame->clpbuffer[2].pixel[lineNumber][h] = (previousLine[h] - currentLine[h]);
+            currentFrame->clpbuffer[2].pixel[lineNumber][h] = (previousLine[h] - currentLine[h]) / 2;
         }
     }
 }
@@ -356,10 +356,12 @@ void Comb::splitIQ(FrameBuffer *frameBuffer)
             qreal cavg = frameBuffer->clpbuffer[1].pixel[lineNumber][h]; // 2D C average
 
             if (configuration.use3D && opticalFlow.isInitialised()) {
-                // Add the 3D C multiplied by 1-K (note: since 1-K is 0 to 1, the actually divides it)
-                // Note: K represents the amount of motion, so 1-K only applies 3D to pixels not in motion
-                cavg  = frameBuffer->clpbuffer[1].pixel[lineNumber][h] * motionKMap[(lineNumber * 910) + h];
-                cavg += frameBuffer->clpbuffer[2].pixel[lineNumber][h] * (1 - motionKMap[(lineNumber * 910) + h]);
+                // The motionK map returns K (0 for stationary pixels to 1 for moving pixels)
+                cavg  = frameBuffer->clpbuffer[1].pixel[lineNumber][h] * motionKMap[(lineNumber * 910) + h]; // 2D mix
+                cavg += frameBuffer->clpbuffer[2].pixel[lineNumber][h] * (1 - motionKMap[(lineNumber * 910) + h]); // 3D mix
+
+                // Use only 3D (for testing!)
+                //cavg = frameBuffer->clpbuffer[2].pixel[lineNumber][h];
             }
 
             if (!invertphase) cavg = -cavg;
@@ -525,15 +527,22 @@ void Comb::overlayOpticalFlowMap(QByteArray &rgbFrame)
         // Fill the output frame with the RGB values
         for (qint32 h = configuration.activeVideoStart; h < configuration.activeVideoEnd; h++) {
             if (motionKMap[(lineNumber * 910) + h] > 0) {
-                qint32 intensity = static_cast<qint32>(motionKMap[(lineNumber * 910) + h] * 32767);
+                qint32 intensity = static_cast<qint32>(motionKMap[(lineNumber * 910) + h] * 65535);
                 // Make the RGB more purple to show where motion was detected
                 qint32 red = linePointer[(h * 3)] + intensity;
+                qint32 green = linePointer[(h * 3) + 2];
                 qint32 blue = linePointer[(h * 3) + 2] + intensity;
 
+//                qint32 red = intensity;
+//                qint32 green = intensity;
+//                qint32 blue = intensity;
+
                 if (red > 65535) red = 65535;
+                if (green > 65535) green = 65535;
                 if (blue > 65535) blue = 65535;
 
                 linePointer[(h * 3)] = static_cast<quint16>(red);
+                linePointer[(h * 3) + 1] = static_cast<quint16>(green);
                 linePointer[(h * 3) + 2] = static_cast<quint16>(blue);
             }
         }
