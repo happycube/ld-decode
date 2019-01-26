@@ -69,7 +69,7 @@ void Comb::setConfiguration(Comb::Configuration configurationParam)
 {
     // Range check the frame dimensions
     if (configuration.fieldWidth > 910) qCritical() << "Comb::Comb(): Frame width exceeds allowed maximum!";
-    if (((configuration.fieldHeight * 2) - 1) > 910) qCritical() << "Comb::Comb(): Frame height exceeds allowed maximum!";
+    if (((configuration.fieldHeight * 2) - 1) > 525) qCritical() << "Comb::Comb(): Frame height exceeds allowed maximum!";
 
     // Range check the video start
     if (configurationParam.activeVideoStart < 16) qCritical() << "Comb::Comb(): activeVideoStart must be > 16!";
@@ -91,6 +91,7 @@ QByteArray Comb::process(QByteArray firstFieldInputBuffer, QByteArray secondFiel
 
     // Allocate RGB output buffer
     QByteArray rgbOutputBuffer;
+    QByteArray bgrBuffer;
 
     // Interlace the input fields and place in the frame[0]'s raw buffer
     qint32 fieldLine = 0;
@@ -143,30 +144,38 @@ QByteArray Comb::process(QByteArray firstFieldInputBuffer, QByteArray secondFiel
         // Perform 2D processing
         split2D(&currentFrameBuffer);
 
+        // Split the IQ values (populates Y)
+        splitIQ(&currentFrameBuffer);
+
+        tempYiqBuffer = currentFrameBuffer.yiqBuffer;
+
+        // Process the copy of the current frame (needed for the Y image used by the optical flow)
+        adjustY(tempYiqBuffer, currentFrameBuffer.firstFieldPhaseID, currentFrameBuffer.secondFieldPhaseID);
+        if (configuration.colorlpf) filterIQ(currentFrameBuffer.yiqBuffer);
+        doYNR(tempYiqBuffer);
+        doCNR(tempYiqBuffer);
+
+        opticalFlow.denseOpticalFlow(currentFrameBuffer.yiqBuffer, currentFrameBuffer.kValues);
+
         // Perform 3D processing
         split3D(&currentFrameBuffer, &previousFrameBuffer);
 
         // Split the IQ values
         splitIQ(&currentFrameBuffer);
 
-        // Copy the current frame to a temporary buffer, so operations on the frame do not
-        // alter the original data
         tempYiqBuffer = currentFrameBuffer.yiqBuffer;
 
-        // Process the copy of the current frame
+        // Process the copy of the current frame (for final output now flow detection has been performed)
         adjustY(tempYiqBuffer, currentFrameBuffer.firstFieldPhaseID, currentFrameBuffer.secondFieldPhaseID);
         if (configuration.colorlpf) filterIQ(currentFrameBuffer.yiqBuffer);
         doYNR(tempYiqBuffer);
         doCNR(tempYiqBuffer);
 
-        // Pass the YIQ frame to the optical flow process (which acts only on Y)
-        opticalFlow.feedFrameY(tempYiqBuffer);
-
         // Convert the YIQ result to RGB
         rgbOutputBuffer = yiqToRgbFrame(tempYiqBuffer, currentFrameBuffer.burstLevel);
 
         // Overlay the optical flow map if required
-        if (configuration.showOpticalFlowMap && opticalFlow.isInitialised()) overlayOpticalFlowMap(rgbOutputBuffer);
+        if (configuration.showOpticalFlowMap) overlayOpticalFlowMap(currentFrameBuffer, rgbOutputBuffer);
 
         // Store the current frame
         previousFrameBuffer = currentFrameBuffer;
@@ -302,8 +311,6 @@ void Comb::split2D(FrameBuffer *frameBuffer)
 // Only apply 3D processing to stationary pixels
 void Comb::split3D(FrameBuffer *currentFrame, FrameBuffer *previousFrame)
 {
-    if (!opticalFlow.isInitialised()) return;
-
     for (qint32 lineNumber = configuration.firstVisibleFrameLine; lineNumber < frameHeight; lineNumber++) {
 
         quint16 *currentLine = reinterpret_cast<quint16 *>(currentFrame->rawbuffer.data() + (lineNumber * configuration.fieldWidth) * 2);
@@ -328,10 +335,6 @@ void Comb::splitIQ(FrameBuffer *frameBuffer)
     if (frameBuffer->secondFieldPhaseID == 1 || frameBuffer->secondFieldPhaseID == 4)
         bottomInvertphase = true;
 
-    // Get the flow map for 3D processing
-    QVector<qreal> motionKMap;
-    if (opticalFlow.isInitialised()) opticalFlow.motionK(motionKMap);
-
     // Clear the target frame YIQ buffer
     frameBuffer->yiqBuffer.clear();
 
@@ -355,10 +358,10 @@ void Comb::splitIQ(FrameBuffer *frameBuffer)
             // Take the 2D C
             qreal cavg = frameBuffer->clpbuffer[1].pixel[lineNumber][h]; // 2D C average
 
-            if (configuration.use3D && opticalFlow.isInitialised()) {
+            if (configuration.use3D && frameBuffer->kValues.size() != 0) {
                 // The motionK map returns K (0 for stationary pixels to 1 for moving pixels)
-                cavg  = frameBuffer->clpbuffer[1].pixel[lineNumber][h] * motionKMap[(lineNumber * 910) + h]; // 2D mix
-                cavg += frameBuffer->clpbuffer[2].pixel[lineNumber][h] * (1 - motionKMap[(lineNumber * 910) + h]); // 3D mix
+                cavg  = frameBuffer->clpbuffer[1].pixel[lineNumber][h] * frameBuffer->kValues[(lineNumber * 910) + h]; // 2D mix
+                cavg += frameBuffer->clpbuffer[2].pixel[lineNumber][h] * (1 - frameBuffer->kValues[(lineNumber * 910) + h]); // 3D mix
 
                 // Use only 3D (for testing!)
                 //cavg = frameBuffer->clpbuffer[2].pixel[lineNumber][h];
@@ -473,11 +476,11 @@ void Comb::doYNR(YiqBuffer &yiqBuffer)
     }
 }
 
-// Convert buffer from YIQ to RGB
+// Convert buffer from YIQ to RGB 16-16-16
 QByteArray Comb::yiqToRgbFrame(YiqBuffer yiqBuffer, qreal burstLevel)
 {
     QByteArray rgbOutputFrame;
-    rgbOutputFrame.resize((configuration.fieldWidth * frameHeight * 3) * 2); // * 3 for RGB 16-16-16)
+    rgbOutputFrame.resize((configuration.fieldWidth * frameHeight * 3) * 2); // * 3 * 2 for RGB 16-16-16)
 
     // Initialise the output frame
     rgbOutputFrame.fill(0);
@@ -513,11 +516,11 @@ QByteArray Comb::yiqToRgbFrame(YiqBuffer yiqBuffer, qreal burstLevel)
 }
 
 // Convert buffer from YIQ to RGB
-void Comb::overlayOpticalFlowMap(QByteArray &rgbFrame)
+void Comb::overlayOpticalFlowMap(FrameBuffer frameBuffer, QByteArray &rgbFrame)
 {
     qDebug() << "Comb::overlayOpticalFlowMap(): Overlaying optical flow map onto RGB output";
-    QVector<qreal> motionKMap;
-    opticalFlow.motionK(motionKMap);
+//    QVector<qreal> motionKMap;
+//    opticalFlow.motionK(motionKMap);
 
     // Overlay the optical flow map on the output RGB
     for (qint32 lineNumber = configuration.firstVisibleFrameLine; lineNumber < frameHeight; lineNumber++) {
@@ -526,25 +529,19 @@ void Comb::overlayOpticalFlowMap(QByteArray &rgbFrame)
 
         // Fill the output frame with the RGB values
         for (qint32 h = configuration.activeVideoStart; h < configuration.activeVideoEnd; h++) {
-            if (motionKMap[(lineNumber * 910) + h] > 0) {
-                qint32 intensity = static_cast<qint32>(motionKMap[(lineNumber * 910) + h] * 65535);
-                // Make the RGB more purple to show where motion was detected
-                qint32 red = linePointer[(h * 3)] + intensity;
-                qint32 green = linePointer[(h * 3) + 2];
-                qint32 blue = linePointer[(h * 3) + 2] + intensity;
+            qint32 intensity = static_cast<qint32>(frameBuffer.kValues[(lineNumber * 910) + h] * 65535);
+            // Make the RGB more purple to show where motion was detected
+            qint32 red = linePointer[(h * 3)] + intensity;
+            qint32 green = linePointer[(h * 3) + 2];
+            qint32 blue = linePointer[(h * 3) + 2] + intensity;
 
-//                qint32 red = intensity;
-//                qint32 green = intensity;
-//                qint32 blue = intensity;
+            if (red > 65535) red = 65535;
+            if (green > 65535) green = 65535;
+            if (blue > 65535) blue = 65535;
 
-                if (red > 65535) red = 65535;
-                if (green > 65535) green = 65535;
-                if (blue > 65535) blue = 65535;
-
-                linePointer[(h * 3)] = static_cast<quint16>(red);
-                linePointer[(h * 3) + 1] = static_cast<quint16>(green);
-                linePointer[(h * 3) + 2] = static_cast<quint16>(blue);
-            }
+            linePointer[(h * 3)] = static_cast<quint16>(red);
+            linePointer[(h * 3) + 1] = static_cast<quint16>(green);
+            linePointer[(h * 3) + 2] = static_cast<quint16>(blue);
         }
     }
 }

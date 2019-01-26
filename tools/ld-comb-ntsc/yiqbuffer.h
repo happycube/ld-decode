@@ -39,7 +39,6 @@ public:
 
     void clear(void);
     YiqLine& operator[] (const int index);
-    QVector<qreal> yValues(void);
 
 private:
     qint32 bufferHeight;

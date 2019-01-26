@@ -50,17 +50,3 @@ YiqLine& YiqBuffer::operator[] (const int index)
 
     return yiqLine[index];
 }
-
-// Return a qreal vector of the Y values in the YIQ buffer
-QVector<qreal> YiqBuffer::yValues(void)
-{
-    QVector<qreal> yReturn;
-
-    for (qint32 line = 0; line < bufferHeight; line++) {
-        for (qint32 pixel = 0; pixel < yiqLine[line].width(); pixel++) {
-            yReturn.append(yiqLine[line].yiq[pixel].y);
-        }
-    }
-
-    return yReturn;
-}

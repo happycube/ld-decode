@@ -94,7 +94,7 @@ private:
         QByteArray rawbuffer;
 
         QVector<PixelLine> clpbuffer; // Unfiltered chroma for the current phase (can be I or Q)
-
+        QVector<qreal> kValues;
         YiqBuffer yiqBuffer; // YIQ values for the frame
 
         qreal burstLevel; // The median colour burst amplitude for the frame
@@ -125,7 +125,7 @@ private:
     void doYNR(YiqBuffer &yiqBuffer);
 
     QByteArray yiqToRgbFrame(YiqBuffer yiqBuffer, qreal burstLevel);
-    void overlayOpticalFlowMap(QByteArray &rgbOutputFrame);
+    void overlayOpticalFlowMap(FrameBuffer frameBuffer, QByteArray &rgbOutputFrame);
     void adjustY(YiqBuffer &yiqBuffer, qint32 firstFieldPhaseID, qint32 secondFieldPhaseID);
 
     qreal clamp(qreal v, qreal low, qreal high);
