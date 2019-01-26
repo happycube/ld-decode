@@ -97,8 +97,12 @@ done = False
 while not done and ldd.fields_written < (req_frames * 2):
     try:
         f = ldd.readfield()
+    except KeyboardInterrupt as kbd:
+        print("Terminated, saving JSON and exiting")
+        write_json(ldd, outname)
+        exit(1)
     except Exception as err:
-        #print("aborted")
+        #print("aborted", err)
         traceback.print_tb(err.__traceback__)
         write_json(ldd, outname)
         exit(1)
