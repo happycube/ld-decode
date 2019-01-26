@@ -30,81 +30,59 @@ OpticalFlow::OpticalFlow()
     framesProcessed = 0;
 }
 
-// Feed a new frame to the optical flow map processing
+// Perform a dense optical flow analysis
 // Input is a vector of 16-bit Y values for the NTSC frame (910x525)
-void OpticalFlow::feedFrameY(YiqBuffer yiqBuffer)
+void OpticalFlow::denseOpticalFlow(YiqBuffer yiqBuffer, QVector<qreal> &kValues)
 {
     // Convert the buffer of Y values into an OpenCV n-dimensional dense array (cv::Mat)
-    cv::Mat currentFrame = convertYtoMat(yiqBuffer.yValues());
+    cv::Mat currentFrameGrey = convertYtoMat(yiqBuffer);
+    cv::Mat flow;
 
-    // Do we have an initial flowmap?
-    qint32 flowOptions = cv::OPTFLOW_USE_INITIAL_FLOW;
-    if (framesProcessed == 0) {
-        flowOptions = 0;
-        previousFrame = currentFrame.clone();
-    }
-
-    // Perform the OpenCV compute dense optical flow (Gunnar Farneback’s algorithm)
-    if (framesProcessed > 1) {
-        calcOpticalFlowFarneback(currentFrame, previousFrame, flowMap, 0.5, 4, 60, 3, 7, 1.5, flowOptions);
-    }
-
-    // Copy the current frame to the previous frame
-    previousFrame = currentFrame.clone();
-
-    framesProcessed++;
-    qDebug() << "OpticalFlow::feedFrameY(): Processed" << framesProcessed << "optical flow frames";
-}
-
-// Method to get the pixel K values (motion) for the frame
-QVector<qreal> OpticalFlow::motionK(void)
-{
-    // Do we have any flow map data yet?
-    if (framesProcessed < 3) {
-        qDebug() << "OpticalFlow::motionK(): Called, but the flow map is not initialised!";
-        return QVector<qreal>();
-    }
-
-    qDebug() << "OpticalFlow::motionK(): Called";
-
-    QVector<qreal> kValues;
     kValues.resize(910 * 525);
 
-    for (qint32 y = 0; y < 525; y++) {
-        for (qint32 x = 0; x < 910; x++) {
-            // Get the value of the current point (cv::Point2f is a floating-point cv::Point_)
-            const cv::Point2f& flowpoint = flowMap.at<cv::Point2f>(y, x);
+    // If we have no previous image, simply copy the current to previous (and set all K values to 1 for 2D)
+    if (framesProcessed > 0) {
+        // Perform the OpenCV compute dense optical flow (Gunnar Farneback’s algorithm)
+        cv::calcOpticalFlowFarneback(previousFrameGrey, currentFrameGrey, flow, 0.5, 4, 2, 3, 7, 1.5, 0);
 
-            // Get the point value, invert it and clamp it between 0.0 and 1.0
-            kValues[(910 * y) + x] = 1 - clamp(convertCPointToReal(static_cast<qreal>(flowpoint.y), static_cast<qreal>(flowpoint.x)), 0, 1);
+        // Apply a wide blur to the flow map to prevent the 3D filter from acting on small spots of the image;
+        // also helps a lot with sharp scene transitions and still-frame images due to the averaging effect
+        // on pixel velocity.
+        cv::GaussianBlur(flow, flow, cv::Size(21, 21), 0);
+
+        // Convert to K values
+        for (qint32 y = 0; y < 524; y++) {
+            for (qint32 x = 0; x < 910; x++) {
+                // Get the flow velocity at the current x, y point
+                const cv::Point2f flowatxy = flow.at<cv::Point2f>(y, x);
+
+                // Calculate the difference between x and y to get the relative velocity (in any direction)
+                // We multiply the x velocity by 2 in order to make the motion detection twice as sensitive
+                // in the X direction than the y
+                qreal velocity = calculateDistance(static_cast<qreal>(flowatxy.y), static_cast<qreal>(flowatxy.x) * 2);
+
+                kValues[(910 * y) + x] = clamp(velocity, 0, 1);
+            }
         }
-    }
+    } else kValues.fill(1);
 
-    return kValues;
-}
+    // Copy the current frame to the previous frame
+    currentFrameGrey.copyTo(previousFrameGrey);
 
-// Method to get the ready status of the flow map (true = initialised)
-bool OpticalFlow::isInitialised(void)
-{
-    if (framesProcessed < 3) return false;
-
-    return true;
+    framesProcessed++;
 }
 
 // Method to convert a qreal vector frame of Y values to an OpenCV n-dimensional dense array (cv::Mat)
-cv::Mat OpticalFlow::convertYtoMat(QVector<qreal> yBuffer)
+cv::Mat OpticalFlow::convertYtoMat(YiqBuffer yiqBuffer)
 {
     quint16 frame[910 * 525];
     memset(frame, 0, sizeof(frame));
 
-    // Check the size of the input buffer
-    if (yBuffer.size() != (910 * 525)) {
-        qDebug() << "OpticalFlow::convertYtoMat(): yBuffer size is" << yBuffer.size() << "- expected" << (910 * 525) << "!";
-    }
-
     // Firstly we have to convert the Y vector of real numbers into quint16 values for OpenCV
-    for (qint32 pixel = 0; pixel < yBuffer.size(); pixel++) {
-        frame[pixel] = static_cast<quint16>(yBuffer[pixel]);
+    for (qint32 line = 0; line < 525; line++) {
+        for (qint32 pixel = 0; pixel < 910; pixel++) {
+            frame[(line * 910) + pixel] = static_cast<quint16>(yiqBuffer[line][pixel].y);
+        }
     }
 
     // Return a Mat y * x in CV_16UC1 format
@@ -119,8 +97,9 @@ qreal OpticalFlow::clamp(qreal v, qreal low, qreal high)
         else return v;
 }
 
-// Method to convert a C point to a qreal value (more explaination required!)
-qreal OpticalFlow::convertCPointToReal(qreal y, qreal x)
+// This method calculates the distance between points where x is the difference between the x-coordinates
+// and y is the difference between the y coordinates
+qreal OpticalFlow::calculateDistance(qreal yDifference, qreal xDifference)
 {
-    return sqrt((y * y) + (x * x));
+    return sqrt((yDifference * yDifference) + (xDifference * xDifference));
 }

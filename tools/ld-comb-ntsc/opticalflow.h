@@ -30,7 +30,7 @@
 #include <QDebug>
 #include <QtMath>
 
-// OpenCV2
+// OpenCV3
 #include <opencv2/core/core.hpp>
 #include <opencv2/video/tracking.hpp>
 
@@ -46,21 +46,16 @@ public:
         YIQ pixel[911]; // One line of YIQ data
     };
 
-    void feedFrameY(YiqBuffer yiqBuffer);
-    QVector<qreal> motionK(void);
-    bool isInitialised(void);
+    void denseOpticalFlow(YiqBuffer yiqBuffer, QVector<qreal> &kValues);
 
 private:
-
-
     // Globals used by the opticalFlow3D method
-    cv::Mat flowMap;
-    cv::Mat previousFrame;
+    cv::Mat previousFrameGrey;
     qint32 framesProcessed;
 
-    cv::Mat convertYtoMat(QVector<qreal> yBuffer);
+    cv::Mat convertYtoMat(YiqBuffer yiqBuffer);
     qreal clamp(qreal v, qreal low, qreal high);
-    qreal convertCPointToReal(qreal y, qreal x);
+    qreal calculateDistance(qreal yDifference, qreal xDifference);
 };
 
 #endif // OPTICALFLOW_H
