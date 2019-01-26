@@ -35,7 +35,7 @@ parser.add_argument('--noleadout', dest='noleadout', action='store_true', defaul
 
 
 args = parser.parse_args()
-print(args)
+#print(args)
 filename = args.infile
 outname = args.outfile
 firstframe = args.start
@@ -102,7 +102,10 @@ while not done and ldd.fields_written < (req_frames * 2):
         write_json(ldd, outname)
         exit(1)
     except Exception as err:
-        #print("aborted", err)
+        print("ERROR - please paste the following into a bug report:")
+        print("current sample: ", ldd.fdoffset)
+        print("arguments: ", args)
+        print("Exception: ", err, " Traceback:")
         traceback.print_tb(err.__traceback__)
         write_json(ldd, outname)
         exit(1)
