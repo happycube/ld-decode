@@ -1009,12 +1009,12 @@ class Field:
         # the minimum valid value during VSYNC is lower for PAL because of the pilot signal
         minsync = -80 if self.rf.system == 'PAL' else -50
 
-        # lines 0-8 should cover both PAL and NTSC
-        for i in range(9):
+        # these lines should cover both PAL and NTSC
+        for i in range(10):
             valid_min[int(f.linelocs[i]):int(f.linelocs[i+1])] = f.rf.iretohz(minsync)
             valid_max[int(f.linelocs[i]):int(f.linelocs[i+1])] = f.rf.iretohz(70)
 
-        for i in range(9, len(f.linelocs)):
+        for i in range(10, len(f.linelocs)):
             l = f.linelocs[i]
             # Could compute the estimated length of setup, but we can cut this a bit early...
             valid_min[int(l-(f.rf.freq * .5)):int(l+(f.rf.freq * 8))] = f.rf.iretohz(minsync)
