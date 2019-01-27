@@ -1018,14 +1018,14 @@ class Field:
         valid_max = np.full_like(f.data[0]['demod'], f.rf.iretohz(140))
 
         # the minimum valid value during VSYNC is lower for PAL because of the pilot signal
-        minsync = -80 if self.rf.system == 'PAL' else -50
+        minsync = -100 if self.rf.system == 'PAL' else -50
 
         # these lines should cover both PAL and NTSC
-        for i in range(6):
+        for i in range(6 + self.lineoffset):
             valid_min[int(f.linelocs[i]):int(f.linelocs[i+1])] = f.rf.iretohz(minsync)
             valid_max[int(f.linelocs[i]):int(f.linelocs[i+1])] = f.rf.iretohz(70)
 
-        for i in range(6, len(f.linelocs)):
+        for i in range(6 + self.lineoffset, len(f.linelocs)):
             l = f.linelocs[i]
             # Could compute the estimated length of setup, but we can cut this a bit early...
             valid_min[int(l-(f.rf.freq * .5)):int(l+(f.rf.freq * 8))] = f.rf.iretohz(minsync)
