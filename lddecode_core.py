@@ -45,7 +45,7 @@ SysParams_NTSC = {
 }
 
 # In color NTSC, the line period was changed from 63.5 to 227.5 color cycles,
-# which works out to 63.5(with a bar on top) usec
+# which works out to 63.555(with a bar on top) usec
 SysParams_NTSC['line_period'] = 1/(SysParams_NTSC['fsc_mhz']/227.5)
 SysParams_NTSC['FPS'] = 1000000/ (525 * SysParams_NTSC['line_period'])
 
@@ -1782,8 +1782,12 @@ class LDdecode:
         cur = start
         
         print("Beginning seek")
-        
-        for retries in range(5):
+
+        if not sys.warnoptions:
+            import warnings
+            warnings.simplefilter("ignore")
+
+        for retries in range(3):
             fnr = self.seek_getframenr(cur)
             cur = int((self.fieldloc / self.bytes_per_field) / 2)
             if fnr is None:
@@ -1797,5 +1801,7 @@ class LDdecode:
                     cur += (target - fnr) - 1
 
         print("Finished seeking")
-        return cur - 0
+#        if not sys.warnoptions:
+#            warnings.simplefilter("once")
 
+        return cur - 0
