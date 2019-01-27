@@ -3,7 +3,7 @@
     main.cpp
 
     ld-comb-pal - PAL colourisation filter for ld-decode
-    Copyright (C) 2018 Simon Inns
+    Copyright (C) 2018-2019 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -85,7 +85,7 @@ int main(int argc, char *argv[])
     parser.setApplicationDescription(
                 "ld-comb-pal - PAL colourisation filter for ld-decode\n"
                 "\n"
-                "(c)2018 Simon Inns\n"
+                "(c)2018-2019 Simon Inns\n"
                 "Contains PALcolour: Copyright (C) 2018  William Andrew Steer\n"
                 "GPLv3 Open-Source - github: https://github.com/happycube/ld-decode");
     parser.addHelpOption();
@@ -108,10 +108,15 @@ int main(int argc, char *argv[])
                                         QCoreApplication::translate("main", "number"));
     parser.addOption(lengthOption);
 
-    // Option to crop output to VP415 dimensions (-c)
-    QCommandLineOption showCropOption(QStringList() << "c" << "crop",
-                                       QCoreApplication::translate("main", "Crop output to VP415 dimensions"));
-    parser.addOption(showCropOption);
+    // Option to reverse the field order (-r)
+    QCommandLineOption setReverseOption(QStringList() << "r" << "reverse",
+                                       QCoreApplication::translate("main", "Reverse the field order to second/first (default first/second)"));
+    parser.addOption(setReverseOption);
+
+    // Option to set the black and white output flag (causes output to be black and white) (-b)
+    QCommandLineOption setBwModeOption(QStringList() << "b" << "blackandwhite",
+                                       QCoreApplication::translate("main", "Output in black and white"));
+    parser.addOption(setBwModeOption);
 
     // Positional argument to specify input video file
     parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input TBC file"));
@@ -124,7 +129,8 @@ int main(int argc, char *argv[])
 
     // Get the options from the parser
     bool isDebugOn = parser.isSet(showDebugOption);
-    bool isVP415CropSet = parser.isSet(showCropOption);
+    bool reverse = parser.isSet(setReverseOption);
+    bool blackAndWhite = parser.isSet(setBwModeOption);
 
     // Get the arguments from the parser
     QString inputFileName;
@@ -173,7 +179,7 @@ int main(int argc, char *argv[])
 
     // Perform the processing
     PalCombFilter palCombFilter;
-    palCombFilter.process(inputFileName, outputFileName, startFrame, length, isVP415CropSet);
+    palCombFilter.process(inputFileName, outputFileName, startFrame, length, reverse, blackAndWhite);
 
     // Quit with success
     return 0;

@@ -3,7 +3,7 @@
     filterthread.h
 
     ld-comb-pal - PAL colourisation filter for ld-decode
-    Copyright (C) 2018 Simon Inns
+    Copyright (C) 2018-2019 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -39,10 +39,10 @@ class FilterThread : public QThread
 {
     Q_OBJECT
 public:
-    explicit FilterThread(LdDecodeMetaData::VideoParameters videoParametersParam, bool isVP415CropSetParam, QObject *parent = nullptr);
+    explicit FilterThread(LdDecodeMetaData::VideoParameters videoParametersParam, QObject *parent = nullptr);
     ~FilterThread() override;
 
-    void startFilter(QByteArray topFieldParam, QByteArray bottomFieldParam, qreal burstMedianIreParam);
+    void startFilter(QByteArray topFieldParam, QByteArray bottomFieldParam, qreal burstMedianIreParam, bool blackAndWhiteParam);
     QByteArray getResult(void);
     bool isBusy(void);
 
@@ -59,9 +59,8 @@ private:
     bool abort;
 
     // PAL colour object
-    PalColour *palColour;
+    PalColour palColour;
     LdDecodeMetaData::VideoParameters videoParameters;
-    bool isVP415CropSet;
 
     // Video extent for cropping
     qint32 firstActiveScanLine;
@@ -79,6 +78,9 @@ private:
 
     // Burst level data
     qreal burstMedianIre;
+
+    // Flags
+    bool blackAndWhite;
 };
 
 #endif // FILTERTHREAD_H

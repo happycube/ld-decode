@@ -2,12 +2,12 @@
 
     main.cpp
 
-    ld-dropout-detect - Dropout detection for ld-decode
-    Copyright (C) 2018 Simon Inns
+    ld-combine - Combine TBC files
+    Copyright (C) 2019 Simon Inns
 
     This file is part of ld-decode-tools.
 
-    ld-dropout-detect is free software: you can redistribute it and/or
+    ld-combine is free software: you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
     published by the Free Software Foundation, either version 3 of the
     License, or (at your option) any later version.
@@ -27,7 +27,7 @@
 #include <QtGlobal>
 #include <QCommandLineParser>
 
-#include "dropoutdetector.h"
+#include "combine.h"
 
 // Global for debug output
 static bool showDebug = false;
@@ -76,16 +76,16 @@ int main(int argc, char *argv[])
     QCoreApplication a(argc, argv);
 
     // Set application name and version
-    QCoreApplication::setApplicationName("ld-dropout-detect");
-    QCoreApplication::setApplicationVersion("1.1");
+    QCoreApplication::setApplicationName("ld-combine");
+    QCoreApplication::setApplicationVersion("1.0");
     QCoreApplication::setOrganizationDomain("domesday86.com");
 
     // Set up the command line parser
     QCommandLineParser parser;
     parser.setApplicationDescription(
-                "ld-dropout-detect - Dropout detection for ld-decode\n"
+                "ld-combine - Combine TBC files\n"
                 "\n"
-                "(c)2018 Simon Inns\n"
+                "(c)2019 Simon Inns\n"
                 "GPLv3 Open-Source - github: https://github.com/happycube/ld-decode");
     parser.addHelpOption();
     parser.addVersionOption();
@@ -95,24 +95,43 @@ int main(int argc, char *argv[])
                                        QCoreApplication::translate("main", "Show debug"));
     parser.addOption(showDebugOption);
 
+    // Option to reverse the field order (-r)
+    QCommandLineOption setReverseOption(QStringList() << "r" << "reverse",
+                                       QCoreApplication::translate("main", "Reverse the field order to second/first (default first/second)"));
+    parser.addOption(setReverseOption);
+
     // Positional argument to specify input video file
-    parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input TBC file"));
+    parser.addPositionalArgument("primary", QCoreApplication::translate("main", "Specify primary input TBC file"));
+    parser.addPositionalArgument("seconday", QCoreApplication::translate("main", "Specify secondary input TBC file"));
+
+    // Positional argument to specify output video file
+    parser.addPositionalArgument("output", QCoreApplication::translate("main", "Specify output TBC file"));
 
     // Process the command line options and arguments given by the user
     parser.process(a);
 
     // Get the options from the parser
     bool isDebugOn = parser.isSet(showDebugOption);
+    bool reverse = parser.isSet(setReverseOption);
 
     // Get the arguments from the parser
-    QString inputFileName;
-    QString outputFileName;
+    QString primaryFilename;
+    QString secondaryFilename;
+    QString outputFilename;
     QStringList positionalArguments = parser.positionalArguments();
-    if (positionalArguments.count() == 1) {
-        inputFileName = positionalArguments.at(0);
+    if (positionalArguments.count() == 3) {
+        primaryFilename = positionalArguments.at(0);
+        secondaryFilename = positionalArguments.at(1);
+        outputFilename = positionalArguments.at(2);
     } else {
         // Quit with error
-        qCritical("You must specify an input TBC file");
+        qCritical("You must specify two input and one output TBC files");
+        return -1;
+    }
+
+    if (primaryFilename == outputFilename || secondaryFilename == outputFilename || primaryFilename == secondaryFilename) {
+        // Quit with error
+        qCritical("TBC file names cannot be the same");
         return -1;
     }
 
@@ -120,8 +139,8 @@ int main(int argc, char *argv[])
     if (isDebugOn) showDebug = true;
 
     // Perform the processing
-    DropOutDetector dropOutDetector;
-    dropOutDetector.process(inputFileName);
+    Combine combine;
+    combine.process(primaryFilename, secondaryFilename, outputFilename, reverse);
 
     // Quit with success
     return 0;

@@ -2,7 +2,7 @@
 
     main.cpp
 
-    ld-process-vbi - VBI processor for ld-decode
+    ld-process-vbi - VBI and IEC NTSC specific processor for ld-decode
     Copyright (C) 2018 Simon Inns
 
     This file is part of ld-decode-tools.
@@ -28,6 +28,7 @@
 #include <QCommandLineParser>
 
 #include "vbidecoder.h"
+#include "vbicorrector.h"
 
 // Global for debug output
 static bool showDebug = false;
@@ -77,13 +78,13 @@ int main(int argc, char *argv[])
 
     // Set application name and version
     QCoreApplication::setApplicationName("ld-process-vbi");
-    QCoreApplication::setApplicationVersion("1.1");
+    QCoreApplication::setApplicationVersion("1.2");
     QCoreApplication::setOrganizationDomain("domesday86.com");
 
     // Set up the command line parser
     QCommandLineParser parser;
     parser.setApplicationDescription(
-                "ld-process-vbi - VBI processor for ld-decode\n"
+                "ld-process-vbi - VBI and IEC NTSC specific processor for ld-decode\n"
                 "\n"
                 "(c)2018 Simon Inns\n"
                 "GPLv3 Open-Source - github: https://github.com/happycube/ld-decode");
@@ -95,6 +96,11 @@ int main(int argc, char *argv[])
                                        QCoreApplication::translate("main", "Show debug"));
     parser.addOption(showDebugOption);
 
+    // Option to perform VBI correction (-c)
+    QCommandLineOption showCorrectionOption(QStringList() << "c" << "correction",
+                                       QCoreApplication::translate("main", "Perform VBI frame number correction"));
+    parser.addOption(showCorrectionOption);
+
     // Positional argument to specify input video file
     parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input TBC file"));
 
@@ -103,6 +109,7 @@ int main(int argc, char *argv[])
 
     // Get the options from the parser
     bool isDebugOn = parser.isSet(showDebugOption);
+    bool isCorrection = parser.isSet(showCorrectionOption);
 
     // Get the arguments from the parser
     QString inputFileName;
@@ -119,8 +126,13 @@ int main(int argc, char *argv[])
     if (isDebugOn) showDebug = true;
 
     // Perform the processing
-    VbiDecoder vbiDecoder;
-    vbiDecoder.process(inputFileName);
+    if (!isCorrection) {
+        VbiDecoder vbiDecoder;
+        vbiDecoder.process(inputFileName);
+    } else {
+        VbiCorrector vbiCorrector;
+        vbiCorrector.process(inputFileName);
+    }
 
     // Quit with success
     return 0;

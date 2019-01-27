@@ -1,13 +1,13 @@
 /************************************************************************
 
-    whiteflag.cpp
+    whiteflag.h
 
-    ld-process-ntsc - IEC NTSC specific processor for ld-decode
+    ld-process-vbi - VBI and IEC NTSC specific processor for ld-decode
     Copyright (C) 2018 Simon Inns
 
     This file is part of ld-decode-tools.
 
-    ld-process-ntsc is free software: you can redistribute it and/or
+    ld-process-vbi is free software: you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
     published by the Free Software Foundation, either version 3 of the
     License, or (at your option) any later version.

@@ -16,7 +16,10 @@ DEFINES += QT_DEPRECATED_WARNINGS
 
 SOURCES += \
         main.cpp \
-    vbidecoder.cpp
+    vbidecoder.cpp \
+    fmcode.cpp \
+    whiteflag.cpp \
+    vbicorrector.cpp
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin
@@ -35,4 +38,7 @@ win32:LIBS += $$quote($$MYDLLDIR/ld-decode-shared.dll)
  unix:LIBS += $$quote(-L$$MYDLLDIR) -lld-decode-shared
 
 HEADERS += \
-    vbidecoder.h
+    vbidecoder.h \
+    fmcode.h \
+    whiteflag.h \
+    vbicorrector.h

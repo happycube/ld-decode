@@ -160,6 +160,9 @@ def load_packed_data_3_32(infile, sample, readlen):
     inbuf = infile.read(needed)
     indata = np.fromstring(inbuf, 'uint32', len(inbuf) // 4)
 
+    if len(indata) < needed:
+        return None
+
     unpacked = np.zeros(len(indata) * 3, dtype=np.int16)
 
     # By using strides the unpacked data can be loaded with no additional copies
@@ -203,6 +206,9 @@ def load_packed_data_4_40(infile, sample, readlen):
 
     inbuf = infile.read(needed)
     indata = np.frombuffer(inbuf, 'uint8', len(inbuf))
+
+    if len(indata) < needed:
+        return None
 
     rot2 = np.right_shift(indata, 2)
 
@@ -262,7 +268,16 @@ def inrange(a, mi, ma):
 def sqsum(cmplx):
     return np.sqrt((cmplx.real ** 2) + (cmplx.imag ** 2))
 
-def calczc(data, _start_offset, target, edge='both', reverse=False, _count=10):
+def calczc(data, _start_offset, target, edge='both', _count=10, reverse=False):
+    
+    if reverse:
+        # Instead of actually implementing this in reverse, use numpy to flip data
+        rev_zc = calczc(data[_start_offset::-1], 0, target, edge, _count)
+        if rev_zc is not None:
+            return _start_offset - rev_zc
+        else:
+            return None
+    
     start_offset = int(_start_offset)
     count = int(_count + 1)
     
@@ -274,6 +289,7 @@ def calczc(data, _start_offset, target, edge='both', reverse=False, _count=10):
 
     if edge == 'rising':
         locs = np.where(data[start_offset:start_offset+count] >= target)[0]
+        #print(locs)
         offset = 0
     else:
         locs = np.where(data[start_offset:start_offset+count] <= target)[0]
@@ -282,10 +298,7 @@ def calczc(data, _start_offset, target, edge='both', reverse=False, _count=10):
     if len(locs) == 0:
         return None
 
-    if reverse:
-        index = -1
-    else:
-        index = 0
+    index = 0
         
     x = start_offset + locs[index] #+ offset
     
@@ -332,3 +345,18 @@ def unwrap_hilbert(hilbert, freq_hz):
     while np.max(tdangles2) > tau:
         tdangles2[tdangles2 > tau] -= tau
     return (tdangles2 * (freq_hz / tau))
+
+def genwave(rate, freq, initialphase = 0):
+    ''' Generate an FM waveform from target frequency data '''
+    out = np.zeros(len(rate), dtype=np.double)
+    
+    angle = initialphase
+    
+    for i in range(0, len(rate)):
+        angle += np.pi * (rate[i] / freq)
+        if angle > np.pi:
+            angle -= tau
+        
+        out[i] = np.sin(angle)
+        
+    return out

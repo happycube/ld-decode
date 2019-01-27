@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>600</width>
-    <height>465</height>
+    <width>1234</width>
+    <height>665</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -18,8 +18,8 @@
   </property>
   <property name="minimumSize">
    <size>
-    <width>600</width>
-    <height>465</height>
+    <width>900</width>
+    <height>665</height>
    </size>
   </property>
   <property name="windowTitle">
@@ -37,6 +37,9 @@
     </size>
    </property>
    <layout class="QHBoxLayout" name="horizontalLayout_2">
+    <property name="sizeConstraint">
+     <enum>QLayout::SetDefaultConstraint</enum>
+    </property>
     <item>
      <widget class="QFrame" name="frame">
       <property name="minimumSize">
@@ -125,29 +128,122 @@
         <string>Show active video extent</string>
        </property>
       </widget>
-      <widget class="QGroupBox" name="vbiGroupBox">
+      <widget class="QGroupBox" name="firstFieldGroupBox">
        <property name="geometry">
         <rect>
          <x>10</x>
-         <y>140</y>
+         <y>160</y>
          <width>221</width>
-         <height>161</height>
+         <height>211</height>
         </rect>
        </property>
        <property name="title">
-        <string>VBI:</string>
+        <string>First field:</string>
        </property>
-       <widget class="QLabel" name="label">
+       <widget class="QLabel" name="label_7">
         <property name="geometry">
          <rect>
           <x>10</x>
           <y>30</y>
+          <width>81</width>
+          <height>21</height>
+         </rect>
+        </property>
+        <property name="text">
+         <string>Field #:</string>
+        </property>
+        <property name="alignment">
+         <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+        </property>
+       </widget>
+       <widget class="QLabel" name="firstFieldLabel">
+        <property name="geometry">
+         <rect>
+          <x>100</x>
+          <y>30</y>
+          <width>111</width>
+          <height>21</height>
+         </rect>
+        </property>
+        <property name="text">
+         <string>None</string>
+        </property>
+       </widget>
+       <widget class="QLabel" name="label_9">
+        <property name="geometry">
+         <rect>
+          <x>10</x>
+          <y>50</y>
+          <width>81</width>
+          <height>21</height>
+         </rect>
+        </property>
+        <property name="text">
+         <string>Sync Conf.:</string>
+        </property>
+        <property name="alignment">
+         <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+        </property>
+       </widget>
+       <widget class="QLabel" name="label_10">
+        <property name="geometry">
+         <rect>
+          <x>10</x>
+          <y>70</y>
+          <width>81</width>
+          <height>21</height>
+         </rect>
+        </property>
+        <property name="text">
+         <string>Dropouts:</string>
+        </property>
+        <property name="alignment">
+         <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+        </property>
+       </widget>
+       <widget class="QLabel" name="label_11">
+        <property name="geometry">
+         <rect>
+          <x>10</x>
+          <y>90</y>
+          <width>81</width>
+          <height>21</height>
+         </rect>
+        </property>
+        <property name="text">
+         <string>DO Length:</string>
+        </property>
+        <property name="alignment">
+         <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+        </property>
+       </widget>
+       <widget class="QLabel" name="label_15">
+        <property name="geometry">
+         <rect>
+          <x>10</x>
+          <y>120</y>
+          <width>51</width>
+          <height>21</height>
+         </rect>
+        </property>
+        <property name="text">
+         <string>VBI:</string>
+        </property>
+        <property name="alignment">
+         <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
+        </property>
+       </widget>
+       <widget class="QLabel" name="label">
+        <property name="geometry">
+         <rect>
+          <x>10</x>
+          <y>140</y>
           <width>31</width>
           <height>21</height>
          </rect>
         </property>
         <property name="text">
-         <string>f16:</string>
+         <string>16:</string>
         </property>
         <property name="alignment">
          <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
@@ -157,13 +253,13 @@
         <property name="geometry">
          <rect>
           <x>10</x>
-          <y>50</y>
+          <y>160</y>
           <width>31</width>
           <height>21</height>
          </rect>
         </property>
         <property name="text">
-         <string>f17:</string>
+         <string>17:</string>
         </property>
         <property name="alignment">
          <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
@@ -173,13 +269,13 @@
         <property name="geometry">
          <rect>
           <x>10</x>
-          <y>70</y>
+          <y>180</y>
           <width>31</width>
           <height>21</height>
          </rect>
         </property>
         <property name="text">
-         <string>f18:</string>
+         <string>18:</string>
         </property>
         <property name="alignment">
          <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
@@ -189,7 +285,7 @@
         <property name="geometry">
          <rect>
           <x>50</x>
-          <y>30</y>
+          <y>140</y>
           <width>161</width>
           <height>21</height>
          </rect>
@@ -202,7 +298,7 @@
         <property name="geometry">
          <rect>
           <x>50</x>
-          <y>50</y>
+          <y>160</y>
           <width>161</width>
           <height>21</height>
          </rect>
@@ -215,7 +311,7 @@
         <property name="geometry">
          <rect>
           <x>50</x>
-          <y>70</y>
+          <y>180</y>
           <width>161</width>
           <height>21</height>
          </rect>
@@ -224,17 +320,191 @@
          <string>No metadata</string>
         </property>
        </widget>
-       <widget class="QLabel" name="label_4">
+       <widget class="QLabel" name="firstFieldSyncConfLabel">
+        <property name="geometry">
+         <rect>
+          <x>100</x>
+          <y>50</y>
+          <width>111</width>
+          <height>21</height>
+         </rect>
+        </property>
+        <property name="text">
+         <string>None</string>
+        </property>
+       </widget>
+       <widget class="QLabel" name="firstFieldDropoutsLabel">
+        <property name="geometry">
+         <rect>
+          <x>100</x>
+          <y>70</y>
+          <width>111</width>
+          <height>21</height>
+         </rect>
+        </property>
+        <property name="text">
+         <string>No metadata</string>
+        </property>
+       </widget>
+       <widget class="QLabel" name="firstFieldDoLengthLabel">
+        <property name="geometry">
+         <rect>
+          <x>100</x>
+          <y>90</y>
+          <width>111</width>
+          <height>21</height>
+         </rect>
+        </property>
+        <property name="text">
+         <string>No metadata</string>
+        </property>
+       </widget>
+      </widget>
+      <widget class="QRadioButton" name="sourceRadioButton">
+       <property name="geometry">
+        <rect>
+         <x>10</x>
+         <y>100</y>
+         <width>81</width>
+         <height>22</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>Source</string>
+       </property>
+       <property name="checked">
+        <bool>true</bool>
+       </property>
+      </widget>
+      <widget class="QRadioButton" name="combFilterRadioButton">
+       <property name="geometry">
+        <rect>
+         <x>90</x>
+         <y>100</y>
+         <width>101</width>
+         <height>22</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>Comb filter</string>
+       </property>
+      </widget>
+      <widget class="QGroupBox" name="secondFieldGroupBox">
+       <property name="geometry">
+        <rect>
+         <x>10</x>
+         <y>380</y>
+         <width>221</width>
+         <height>211</height>
+        </rect>
+       </property>
+       <property name="title">
+        <string>Second field:</string>
+       </property>
+       <widget class="QLabel" name="label_8">
+        <property name="geometry">
+         <rect>
+          <x>10</x>
+          <y>30</y>
+          <width>81</width>
+          <height>21</height>
+         </rect>
+        </property>
+        <property name="text">
+         <string>Field #:</string>
+        </property>
+        <property name="alignment">
+         <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+        </property>
+       </widget>
+       <widget class="QLabel" name="secondFieldLabel">
+        <property name="geometry">
+         <rect>
+          <x>100</x>
+          <y>30</y>
+          <width>111</width>
+          <height>21</height>
+         </rect>
+        </property>
+        <property name="text">
+         <string>None</string>
+        </property>
+       </widget>
+       <widget class="QLabel" name="label_12">
+        <property name="geometry">
+         <rect>
+          <x>10</x>
+          <y>50</y>
+          <width>81</width>
+          <height>21</height>
+         </rect>
+        </property>
+        <property name="text">
+         <string>Sync Conf.:</string>
+        </property>
+        <property name="alignment">
+         <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+        </property>
+       </widget>
+       <widget class="QLabel" name="label_13">
+        <property name="geometry">
+         <rect>
+          <x>10</x>
+          <y>70</y>
+          <width>81</width>
+          <height>21</height>
+         </rect>
+        </property>
+        <property name="text">
+         <string>Dropouts:</string>
+        </property>
+        <property name="alignment">
+         <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+        </property>
+       </widget>
+       <widget class="QLabel" name="label_14">
         <property name="geometry">
          <rect>
           <x>10</x>
           <y>90</y>
+          <width>81</width>
+          <height>21</height>
+         </rect>
+        </property>
+        <property name="text">
+         <string>DO Length:</string>
+        </property>
+        <property name="alignment">
+         <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+        </property>
+       </widget>
+       <widget class="QLabel" name="label_16">
+        <property name="geometry">
+         <rect>
+          <x>10</x>
+          <y>120</y>
+          <width>51</width>
+          <height>21</height>
+         </rect>
+        </property>
+        <property name="text">
+         <string>VBI:</string>
+        </property>
+        <property name="alignment">
+         <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
+        </property>
+       </widget>
+       <widget class="QLabel" name="label_4">
+        <property name="geometry">
+         <rect>
+          <x>10</x>
+          <y>140</y>
           <width>31</width>
           <height>21</height>
          </rect>
         </property>
         <property name="text">
-         <string>s16:</string>
+         <string>16:</string>
         </property>
         <property name="alignment">
          <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
@@ -244,13 +514,13 @@
         <property name="geometry">
          <rect>
           <x>10</x>
-          <y>110</y>
+          <y>160</y>
           <width>31</width>
           <height>21</height>
          </rect>
         </property>
         <property name="text">
-         <string>s17:</string>
+         <string>17:</string>
         </property>
         <property name="alignment">
          <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
@@ -260,13 +530,13 @@
         <property name="geometry">
          <rect>
           <x>10</x>
-          <y>130</y>
+          <y>180</y>
           <width>31</width>
           <height>21</height>
          </rect>
         </property>
         <property name="text">
-         <string>s18:</string>
+         <string>18:</string>
         </property>
         <property name="alignment">
          <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
@@ -276,7 +546,7 @@
         <property name="geometry">
          <rect>
           <x>50</x>
-          <y>90</y>
+          <y>140</y>
           <width>161</width>
           <height>21</height>
          </rect>
@@ -289,7 +559,7 @@
         <property name="geometry">
          <rect>
           <x>50</x>
-          <y>110</y>
+          <y>160</y>
           <width>161</width>
           <height>21</height>
          </rect>
@@ -302,7 +572,7 @@
         <property name="geometry">
          <rect>
           <x>50</x>
-          <y>130</y>
+          <y>180</y>
           <width>161</width>
           <height>21</height>
          </rect>
@@ -311,102 +581,57 @@
          <string>No metadata</string>
         </property>
        </widget>
+       <widget class="QLabel" name="secondFieldSyncConfLabel">
+        <property name="geometry">
+         <rect>
+          <x>100</x>
+          <y>50</y>
+          <width>111</width>
+          <height>21</height>
+         </rect>
+        </property>
+        <property name="text">
+         <string>None</string>
+        </property>
+       </widget>
+       <widget class="QLabel" name="secondFieldDropoutsLabel">
+        <property name="geometry">
+         <rect>
+          <x>100</x>
+          <y>70</y>
+          <width>111</width>
+          <height>21</height>
+         </rect>
+        </property>
+        <property name="text">
+         <string>No metadata</string>
+        </property>
+       </widget>
+       <widget class="QLabel" name="secondFieldDoLengthLabel">
+        <property name="geometry">
+         <rect>
+          <x>100</x>
+          <y>90</y>
+          <width>111</width>
+          <height>21</height>
+         </rect>
+        </property>
+        <property name="text">
+         <string>No metadata</string>
+        </property>
+       </widget>
       </widget>
-      <widget class="QGroupBox" name="frameGroupBox">
+      <widget class="QCheckBox" name="reverseFieldOrderCheckBox">
        <property name="geometry">
         <rect>
          <x>10</x>
-         <y>310</y>
+         <y>130</y>
          <width>221</width>
-         <height>81</height>
-        </rect>
-       </property>
-       <property name="title">
-        <string>Frame:</string>
-       </property>
-       <widget class="QLabel" name="label_7">
-        <property name="geometry">
-         <rect>
-          <x>10</x>
-          <y>30</y>
-          <width>91</width>
-          <height>21</height>
-         </rect>
-        </property>
-        <property name="text">
-         <string>First field:</string>
-        </property>
-        <property name="alignment">
-         <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-        </property>
-       </widget>
-       <widget class="QLabel" name="label_8">
-        <property name="geometry">
-         <rect>
-          <x>10</x>
-          <y>50</y>
-          <width>91</width>
-          <height>21</height>
-         </rect>
-        </property>
-        <property name="text">
-         <string>Second field:</string>
-        </property>
-        <property name="alignment">
-         <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-        </property>
-       </widget>
-       <widget class="QLabel" name="firstFieldLabel">
-        <property name="geometry">
-         <rect>
-          <x>110</x>
-          <y>30</y>
-          <width>101</width>
-          <height>21</height>
-         </rect>
-        </property>
-        <property name="text">
-         <string>None</string>
-        </property>
-       </widget>
-       <widget class="QLabel" name="secondFieldLabel">
-        <property name="geometry">
-         <rect>
-          <x>110</x>
-          <y>50</y>
-          <width>101</width>
-          <height>21</height>
-         </rect>
-        </property>
-        <property name="text">
-         <string>None</string>
-        </property>
-       </widget>
-      </widget>
-      <widget class="QPushButton" name="combFilterPushButton">
-       <property name="geometry">
-        <rect>
-         <x>10</x>
-         <y>100</y>
-         <width>101</width>
-         <height>24</height>
+         <height>22</height>
         </rect>
        </property>
        <property name="text">
-        <string>Comb Filter</string>
-       </property>
-      </widget>
-      <widget class="QPushButton" name="sourcePushButton">
-       <property name="geometry">
-        <rect>
-         <x>120</x>
-         <y>100</y>
-         <width>101</width>
-         <height>24</height>
-        </rect>
-       </property>
-       <property name="text">
-        <string>Source</string>
+        <string>Reverse still-frame field order</string>
        </property>
       </widget>
      </widget>
@@ -415,31 +640,21 @@
      <layout class="QVBoxLayout" name="verticalLayout">
       <item>
        <layout class="QHBoxLayout" name="horizontalLayout">
+        <property name="sizeConstraint">
+         <enum>QLayout::SetDefaultConstraint</enum>
+        </property>
         <item>
-         <widget class="QLabel" name="frameViewerLabel">
+         <widget class="FrameQLabel" name="frameViewerLabel">
           <property name="minimumSize">
            <size>
-            <width>100</width>
-            <height>20</height>
+            <width>0</width>
+            <height>0</height>
            </size>
           </property>
           <property name="text">
            <string>Graphics Label</string>
           </property>
          </widget>
-        </item>
-        <item>
-         <spacer name="horizontalSpacer">
-          <property name="orientation">
-           <enum>Qt::Horizontal</enum>
-          </property>
-          <property name="sizeHint" stdset="0">
-           <size>
-            <width>40</width>
-            <height>20</height>
-           </size>
-          </property>
-         </spacer>
         </item>
        </layout>
       </item>
@@ -453,19 +668,6 @@
         </property>
        </widget>
       </item>
-      <item>
-       <spacer name="verticalSpacer">
-        <property name="orientation">
-         <enum>Qt::Vertical</enum>
-        </property>
-        <property name="sizeHint" stdset="0">
-         <size>
-          <width>20</width>
-          <height>40</height>
-         </size>
-        </property>
-       </spacer>
-      </item>
      </layout>
     </item>
    </layout>
@@ -475,7 +677,7 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>600</width>
+     <width>1234</width>
      <height>21</height>
     </rect>
    </property>
@@ -484,6 +686,8 @@
      <string>File</string>
     </property>
     <addaction name="actionOpen_TBC_file"/>
+    <addaction name="separator"/>
+    <addaction name="actionSave_frame_as_PNG"/>
     <addaction name="separator"/>
     <addaction name="actionExit"/>
    </widget>
@@ -495,6 +699,7 @@
     <addaction name="actionVBI"/>
     <addaction name="actionNTSC"/>
     <addaction name="actionVideo_metadata"/>
+    <addaction name="actionDropout_analysis"/>
    </widget>
    <widget class="QMenu" name="menuHelp">
     <property name="title">
@@ -502,7 +707,14 @@
     </property>
     <addaction name="actionAbout_ld_analyse"/>
    </widget>
+   <widget class="QMenu" name="menuView">
+    <property name="title">
+     <string>View</string>
+    </property>
+    <addaction name="action1_1_Frame_size"/>
+   </widget>
    <addaction name="menuFile"/>
+   <addaction name="menuView"/>
    <addaction name="menuWindow"/>
    <addaction name="menuHelp"/>
   </widget>
@@ -542,8 +754,30 @@
     <string>Video metadata...</string>
    </property>
   </action>
+  <action name="action1_1_Frame_size">
+   <property name="text">
+    <string>1:1 Frame size</string>
+   </property>
+  </action>
+  <action name="actionDropout_analysis">
+   <property name="text">
+    <string>Dropout analysis...</string>
+   </property>
+  </action>
+  <action name="actionSave_frame_as_PNG">
+   <property name="text">
+    <string>Save frame as PNG...</string>
+   </property>
+  </action>
  </widget>
  <layoutdefault spacing="6" margin="11"/>
+ <customwidgets>
+  <customwidget>
+   <class>FrameQLabel</class>
+   <extends>QLabel</extends>
+   <header>frameqlabel.h</header>
+  </customwidget>
+ </customwidgets>
  <resources>
   <include location="ld-analyse-resources.qrc"/>
  </resources>

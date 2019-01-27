@@ -4,7 +4,7 @@
 
     ld-comb-ntsc - NTSC colourisation filter for ld-decode
     Copyright (C) 2018 Chad Page
-    Copyright (C) 2018 Simon Inns
+    Copyright (C) 2018-2019 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -25,28 +25,54 @@
 
 #include "rgb.h"
 
-RGB::RGB(double whiteIreParam, double blackIreParam)
+RGB::RGB(double whiteIreParam, double blackIreParam, bool whitePoint100Param, bool blackAndWhiteParam)
 {
-    blackIreLevel = blackIreParam / 100;
-    whiteIreLevel = whiteIreParam / 100;
-    ireScale = whiteIreLevel - blackIreLevel;
+    blackIreLevel = blackIreParam; // 0 or 7.5 IRE 16-bit level
+    whiteIreLevel = whiteIreParam; // 100 IRE 16-bit level
+    whitePoint75 = whitePoint100Param; // false = using 100% white point, true = 75%
+    blackAndWhite = blackAndWhiteParam; // true = output in black and white only
 }
 
-void RGB::conv(YIQ _y)
+void RGB::conv(YIQ _y, qreal colourBurstMedian)
 {
-    YIQ t;
+    double y = _y.y;
+    double i = +(_y.i);
+    double q = +(_y.q);
 
-    double y = u16_to_ire(_y.y);
-    double q = +(_y.i) / ireScale;
-    double i = +(_y.q) / ireScale;
+    // Scale the Y to 0-65535 where 0 = blackIreLevel and 65535 = whiteIreLevel
+    y = scaleY(_y.y);
 
+    // Scale the I & Q components according to the colourburstMedian
+    //
+    // Note: The colour burst median is the amplitude of the colour burst (divided
+    // by two) measured by ld-decode.  Since the burst amplitude should be 40 IRE
+    // this can be used to compensate the colour saturation loss due to MTF
+    //
+    // Note: this calculations should be 20 / colourBurstMedian (meaning that the
+    // 'normal' colour burst median is 40 IRE (20 * 2).  At the moment this is
+    // over saturating, so we are using 28 IRE (14 * 2).
+    qreal saturationCompensation = (14.0 / colourBurstMedian) * 2;
+
+    i *= saturationCompensation;
+    q *= saturationCompensation;
+
+    if (blackAndWhite) {
+        // Remove the colour components
+        i = 0;
+        q = 0;
+    }
+
+    // YIQ to RGB colour-space conversion (from page 18
+    // of Video Demystified, 5th edition)
+    //
+    // For RGB 0-255: Y 0-255. I 0- +-152. Q 0- +-134 :
     r = y + (0.956 * i) + (0.621 * q);
     g = y - (0.272 * i) - (0.647 * q);
-    b = y - (1.106 * i) + (1.703 * q);
+    b = y - (1.107 * i) + (1.704 * q);
 
-    r = clamp(r * whiteIreLevel, 0, 65535);
-    g = clamp(g * whiteIreLevel, 0, 65535);
-    b = clamp(b * whiteIreLevel, 0, 65535);
+    r = clamp(r, 0, 65535);
+    g = clamp(g, 0, 65535);
+    b = clamp(b, 0, 65535);
 }
 
 // Private methods ----------------------------------------------------------------------------------------------------
@@ -58,10 +84,20 @@ double RGB::clamp(double v, double low, double high)
         else return v;
 }
 
-double RGB::u16_to_ire(double level)
+double RGB::scaleY(double level)
 {
-    if (level <= 0) return -100;
+    // Scale Y to according to the black to white interval
+    // (i.e. make the black level 0 and the white level 65535)
+    qreal result = ((level - blackIreLevel) / (blackIreLevel - whiteIreLevel)) * -65535;
 
-    return -40 + (static_cast<double>(level - blackIreLevel) / ireScale);
+    // NTSC uses a 75% white point; so here we scale the result by
+    // 25% (making 100 IRE 25% over the maximum allowed white point)
+    if (whitePoint75) result = (result/100) * 125;
+
+    // Now we clip the result back to the 16-bit range
+    if (result < 0) result = 0;
+    if (result > 65535) result = 65535;
+
+    return result;
 }
 

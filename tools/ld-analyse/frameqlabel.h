@@ -1,13 +1,13 @@
 /************************************************************************
 
-    fmcode.h
+    frameqlabel.h
 
-    ld-process-ntsc - IEC NTSC specific processor for ld-decode
+    ld-analyse - TBC output analysis
     Copyright (C) 2018 Simon Inns
 
     This file is part of ld-decode-tools.
 
-    ld-process-ntsc is free software: you can redistribute it and/or
+    ld-dropout-correct is free software: you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
     published by the Free Software Foundation, either version 3 of the
     License, or (at your option) any later version.
@@ -22,38 +22,30 @@
 
 ************************************************************************/
 
-#ifndef FMCODE_H
-#define FMCODE_H
+#ifndef FRAMEQLABEL_H
+#define FRAMEQLABEL_H
 
-#include <QObject>
+#include <QLabel>
+#include <QPixmap>
+#include <QResizeEvent>
 
-#include "sourcevideo.h"
-#include "lddecodemetadata.h"
-
-class FmCode : public QObject
+class FrameQLabel : public QLabel
 {
-    Q_OBJECT
 public:
-    struct FmDecode {
-        quint64 receiverClockSyncBits;
-        quint64 videoFieldIndicator;
-        quint64 leadingDataRecognitionBits;
-        quint64 data;
-        quint64 dataParityBit;
-        quint64 trailingDataRecognitionBits;
-    };
+    Q_OBJECT
 
-    explicit FmCode(QObject *parent = nullptr);
-
-    FmCode::FmDecode fmDecoder(QByteArray lineData, LdDecodeMetaData::VideoParameters videoParameters);
-
-signals:
+public:
+    explicit FrameQLabel(QWidget *parent = nullptr);
+    virtual qint32 heightForWidth(qint32 width) const;
+    virtual QSize sizeHint() const;
+    QPixmap scaledPixmap() const;
 
 public slots:
+    void setPixmap (const QPixmap &);
+    void resizeEvent(QResizeEvent *);
 
 private:
-    bool isEvenParity(quint64 data);
-    QVector<bool> getTransitionMap(QByteArray lineData, qint32 zcPoint);
+    QPixmap pix;
 };
 
-#endif // FMCODE_H
+#endif // FRAMEQLABEL_H

@@ -4,7 +4,7 @@
 
     ld-comb-ntsc - NTSC colourisation filter for ld-decode
     Copyright (C) 2018 Chad Page
-    Copyright (C) 2018 Simon Inns
+    Copyright (C) 2018-2019 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -87,7 +87,7 @@ int main(int argc, char *argv[])
                 "NTSC comb-filter application for ld-decode\n"
                 "\n"
                 "(c)2018 Chad Page\n"
-                "(c)2018 Simon Inns\n"
+                "(c)2018-2019 Simon Inns\n"
                 "GPLv3 Open-Source - github: https://github.com/happycube/ld-decode");
     parser.addHelpOption();
     parser.addVersionOption();
@@ -99,12 +99,6 @@ int main(int argc, char *argv[])
     QCommandLineOption showDebugOption(QStringList() << "d" << "debug",
                                        QCoreApplication::translate("main", "Show debug"));
     parser.addOption(showDebugOption);
-
-    // Option to specify the depth of the filter (2D or 3D) (-f)
-    QCommandLineOption filterDepthParameterOption(QStringList() << "f" << "filterdepth",
-                QCoreApplication::translate("main", "Specify the filter depth parameter (default is 2)"),
-                QCoreApplication::translate("main", "1 to 3"));
-    parser.addOption(filterDepthParameterOption);
 
     // Option to select start frame (sequential) (-s)
     QCommandLineOption startFrameOption(QStringList() << "s" << "start",
@@ -118,31 +112,30 @@ int main(int argc, char *argv[])
                                         QCoreApplication::translate("main", "number"));
     parser.addOption(lengthOption);
 
+    // Option to reverse the field order (-r)
+    QCommandLineOption setReverseOption(QStringList() << "r" << "reverse",
+                                       QCoreApplication::translate("main", "Reverse the field order to second/first (default first/second)"));
+    parser.addOption(setReverseOption);
+
+    // Option select 3D comb filter (-3)
+    QCommandLineOption set3DOption(QStringList() << "3" << "3d",
+                                       QCoreApplication::translate("main", "Use 3D comb filter (default 2D)"));
+    parser.addOption(set3DOption);
+
+    // Option to show the optical flow map (-o)
+    QCommandLineOption setShowOpticalFlowMapOption(QStringList() << "o" << "oftest",
+                                       QCoreApplication::translate("main", "Show the optical flow map (only used for testing)"));
+    parser.addOption(setShowOpticalFlowMapOption);
+
     // Option to set the black and white output flag (causes output to be black and white) (-b)
     QCommandLineOption setBwModeOption(QStringList() << "b" << "blackandwhite",
                                        QCoreApplication::translate("main", "Output in black and white"));
     parser.addOption(setBwModeOption);
 
-    // Option to set the no adaptive 2d flag (-n)
-    QCommandLineOption noAdaptive2dOption(QStringList() << "n" << "noadaptive2d",
-                                       QCoreApplication::translate("main", "Do not use adaptive 2D processing (for 3D filter depth)"));
-    parser.addOption(noAdaptive2dOption);
-
-    // Option to set the no optical flow flag (-o)
-    QCommandLineOption noOpticalFlowOption(QStringList() << "o" << "noopticalflow",
-                                       QCoreApplication::translate("main", "Do not use optical flow processing (for 3D filter depth)"));
-    parser.addOption(noOpticalFlowOption);
-
-    // Option to set the crop flag (-c)
-    QCommandLineOption cropOutputOption(QStringList() << "c" << "crop",
-                                       QCoreApplication::translate("main", "Crop the output video"));
-    parser.addOption(cropOutputOption);
-
-    // Option to override the 16-bit black IRE level (-s)
-    QCommandLineOption black16IreOption(QStringList() << "i" << "black16IRE",
-                                        QCoreApplication::translate("main", "Override the 16-bit black IRE level"),
-                                        QCoreApplication::translate("main", "number 0-65535"));
-    parser.addOption(black16IreOption);
+    // Option to set the white point to 75% (rather than 100%)
+    QCommandLineOption setMaxWhitePoint(QStringList() << "w" << "white",
+                                       QCoreApplication::translate("main", "Use 75% white-point (default 100%)"));
+    parser.addOption(setMaxWhitePoint);
 
     // Positional argument to specify input video file
     parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input TBC file"));
@@ -155,24 +148,14 @@ int main(int argc, char *argv[])
 
     // Get the settings from the parser
     showDebug = parser.isSet(showDebugOption);
+    bool reverse = parser.isSet(setReverseOption);
     bool blackAndWhite = parser.isSet(setBwModeOption);
-    bool crop = parser.isSet(cropOutputOption);
-    bool adaptive2d = true;
-    if (parser.isSet(noAdaptive2dOption)) adaptive2d = false;
-    bool opticalFlow = true;
-    if (parser.isSet(noOpticalFlowOption)) opticalFlow = false;
+    bool whitePoint = parser.isSet(setMaxWhitePoint);
+    bool use3D = parser.isSet(set3DOption);
+    bool showOpticalFlowMap = parser.isSet(setShowOpticalFlowMapOption);
 
-    qint32 filterDepth = 2;
-    if (parser.isSet(filterDepthParameterOption)) {
-        filterDepth = parser.value(filterDepthParameterOption).toInt();
-
-        // Range check the parameter
-        if (filterDepth < 1 || filterDepth > 3) {
-            // Quit with error
-            qCritical("Error: The filter depth specified is out of range!");
-            return -1;
-        }
-    }
+    // Force 3D mode if the optical flow map overlay is selected
+    if (showOpticalFlowMap) use3D = true;
 
     qint32 startFrame = -1;
     qint32 length = -1;
@@ -197,18 +180,6 @@ int main(int argc, char *argv[])
         }
     }
 
-    qint32 overrideBlack16Ire = -1;
-    if (parser.isSet(black16IreOption)) {
-        overrideBlack16Ire = parser.value(black16IreOption).toInt();
-
-        // Range check the parameter
-        if (overrideBlack16Ire < 0 || overrideBlack16Ire > 65535) {
-            // Quit with error
-            qCritical("Error: The 16-bit black IRE specified is out of range!");
-            return -1;
-        }
-    }
-
     QString inputFileName;
     QString outputFileName;
     QStringList positionalArguments = parser.positionalArguments();
@@ -229,9 +200,9 @@ int main(int argc, char *argv[])
 
     // Process the input file
     ntscFilter.process(inputFileName, outputFileName,
-                       startFrame, length,
-                       filterDepth, blackAndWhite, adaptive2d, opticalFlow, crop,
-                       overrideBlack16Ire);
+                       startFrame, length, reverse,
+                       blackAndWhite, whitePoint, use3D,
+                       showOpticalFlowMap);
 
     // Quit with success
     return 0;

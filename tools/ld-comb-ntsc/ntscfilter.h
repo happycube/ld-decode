@@ -4,7 +4,7 @@
 
     ld-comb-ntsc - NTSC colourisation filter for ld-decode
     Copyright (C) 2018 Chad Page
-    Copyright (C) 2018 Simon Inns
+    Copyright (C) 2018-2019 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -43,9 +43,8 @@ class NtscFilter : public QObject
 public:
     explicit NtscFilter(QObject *parent = nullptr);
 
-    bool process(QString inputFileName, QString outputFileName, qint32 startFrame, qint32 length, qint32 filterDepth = 2,
-                 bool blackAndWhite = false, bool adaptive2d = true, bool opticalFlow = true,
-                 bool cropOutput = false, qint32 overrideBlack16Ire = -1);
+    bool process(QString inputFileName, QString outputFileName, qint32 startFrame, qint32 length, bool reverse,
+                 bool blackAndWhite, bool whitePoint, bool use3D, bool showOpticalFlowMap);
 
 signals:
 

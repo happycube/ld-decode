@@ -1,13 +1,13 @@
 /************************************************************************
 
-    whiteflag.h
+    vbicorrector.h
 
-    ld-process-ntsc - IEC NTSC specific processor for ld-decode
+    ld-process-vbi - VBI and IEC NTSC specific processor for ld-decode
     Copyright (C) 2018 Simon Inns
 
     This file is part of ld-decode-tools.
 
-    ld-process-ntsc is free software: you can redistribute it and/or
+    ld-process-vbi is free software: you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
     published by the Free Software Foundation, either version 3 of the
     License, or (at your option) any later version.
@@ -22,25 +22,32 @@
 
 ************************************************************************/
 
-#ifndef WHITEFLAG_H
-#define WHITEFLAG_H
+#ifndef VBICORRECTOR_H
+#define VBICORRECTOR_H
+
+#include <QObject>
 
 #include "sourcevideo.h"
 #include "lddecodemetadata.h"
 
-#include <QObject>
-
-class WhiteFlag : public QObject
+class VbiCorrector : public QObject
 {
     Q_OBJECT
 public:
-    explicit WhiteFlag(QObject *parent = nullptr);
-
-    bool getWhiteFlag(QByteArray lineData, LdDecodeMetaData::VideoParameters videoParameters);
+    explicit VbiCorrector(QObject *parent = nullptr);
+    bool process(QString inputFileName);
 
 signals:
 
 public slots:
+
+private:
+    LdDecodeMetaData ldDecodeMetaData;
+
+    qint32 getCavFrameNumber(qint32 frameSeqNumber);
+    void setCavFrameNumber(qint32 frameSeqNumber, qint32 vbiFrameNumber);
+    qint32 getClvFrameNumber(qint32 frameSeqNumber);
+    void setClvFrameNumber(qint32 frameSeqNumber, qint32 clvFrameNumber);
 };
 
-#endif // WHITEFLAG_H
+#endif // VBICORRECTOR_H

@@ -3,7 +3,7 @@
     lddecodemetadata.h
 
     ld-decode-tools shared library
-    Copyright (C) 2018 Simon Inns
+    Copyright (C) 2018-2019 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -29,10 +29,10 @@
 
 #include <QObject>
 #include <QVector>
-#include <QJsonDocument>
-#include <QJsonObject>
-#include <QJsonArray>
-#include <QFile>
+//#include <QJsonDocument>
+//#include <QJsonObject>
+//#include <QJsonArray>
+//#include <QFile>
 #include <QDebug>
 
 class LDDECODESHAREDSHARED_EXPORT LdDecodeMetaData : public QObject
@@ -45,11 +45,6 @@ public:
         unknownDiscType,    // 0
         clv,                // 1
         cav                 // 2
-    };
-
-    struct vbiTimeCode {
-        qint32 hr;
-        qint32 min;
     };
 
     // VBI Sound modes
@@ -68,54 +63,36 @@ public:
         futureUse               // 11
     };
 
-    struct vbiStatusCode {
-        bool valid;                 // Ture = programme status code is valid
-        bool cx;                    // True = CX on, false = CX off
-        bool size;                  // True = 12" disc, false = 8" disc
-        bool side;                  // True = first side, false = second side
-        bool teletext;              // True = teletext present, false = teletext not present
-        bool dump;                  // True = programme dump on, false = programme dump off
-        bool fm;                    // True = FM-FM Multiplex on, false = FM-FM Multiplex off
-        bool digital;               // True = digital video, false = analogue video
-        VbiSoundModes soundMode;    // The sound mode (see IEC spec)
-        bool parity;                // True = status code had valid parity, false = status code is invalid
-    };
-
-    struct vbiStatusCodeAm2 {
-        bool valid;                 // Ture = programme status code is valid
-        bool cx;                    // True = CX on, false = CX off
-        bool size;                  // True = 12" disc, false = 8" disc
-        bool side;                  // True = first side, false = second side
-        bool teletext;              // True = teletext present, false = teletext not present
-        bool copy;                  // True = copy allowed, false = copy not allowed
-        bool standard;              // True = video signal is standard, false = video signal is future use
-        VbiSoundModes soundMode;    // The sound mode (see IEC spec amendment 2)
-    };
-
-    struct VbiClvPictureNumber {
-        qint32 sec;
-        qint32 picNo;
-    };
-
     // Overall container struct for VBI information
     struct Vbi {
         bool inUse;
 
-        qint32 vbi16;
-        qint32 vbi17;
-        qint32 vbi18;
-
+        QVector<qint32> vbiData;
         VbiDiscTypes type;
-        bool leadIn;
-        bool leadOut;
         QString userCode;
         qint32 picNo;
-        bool picStop;
         qint32 chNo;
-        vbiTimeCode timeCode;
-        vbiStatusCode statusCode;
-        vbiStatusCodeAm2 statusCodeAm2;
-        VbiClvPictureNumber clvPicNo;
+        qint32 clvHr;
+        qint32 clvMin;
+        qint32 clvSec;
+        qint32 clvPicNo;
+        VbiSoundModes soundMode;
+        VbiSoundModes soundModeAm2;
+
+        // Note: These booleans are virtual (and stored in a single int)
+        bool leadIn;
+        bool leadOut;
+        bool picStop;
+        bool cx;
+        bool size;
+        bool side;
+        bool teletext;
+        bool dump;
+        bool fm;
+        bool digital;
+        bool parity;
+        bool copyAm2;
+        bool standardAm2;
     };
 
     // Video metadata definition
@@ -126,15 +103,11 @@ public:
 
         qint32 colourBurstStart;
         qint32 colourBurstEnd;
-        qint32 blackLevelStart;
-        qint32 blackLevelEnd;
         qint32 activeVideoStart;
         qint32 activeVideoEnd;
 
         qint32 white16bIre;
         qint32 black16bIre;
-
-        qreal samplesPerUs;
 
         qint32 fieldWidth;
         qint32 fieldHeight;
@@ -179,6 +152,7 @@ public:
         qint32 syncConf;
         qreal medianBurstIRE;
         qint32 fieldPhaseID;
+        qint32 audioSamples;
 
         Vits vits;
         Vbi vbi;
@@ -191,6 +165,14 @@ public:
         VideoParameters videoParameters;
         PcmAudioParameters pcmAudioParameters;
         QVector<Field> fields;
+    };
+
+    // CLV timecode (used by frame number conversion methods)
+    struct ClvTimecode {
+        qint32 hours;
+        qint32 minutes;
+        qint32 seconds;
+        qint32 pictureNumber;
     };
 
     explicit LdDecodeMetaData(QObject *parent = nullptr);
@@ -206,12 +188,20 @@ public:
 
     Field getField(qint32 sequentialFieldNumber);
     void appendField(Field fieldParam);
-    void updateField(Field fieldParam, qint32 sequentialFrameNumber);
+    void updateField(Field fieldParam, qint32 sequentialFieldNumber);
 
     qint32 getNumberOfFields(void);
     qint32 getNumberOfFrames(void);
     qint32 getFirstFieldNumber(qint32 frameNumber);
     qint32 getSecondFieldNumber(qint32 frameNumber);
+
+    void setIsFirstFieldFirst(bool flag);
+    bool getIsFirstFieldFirst(void);
+
+    VbiDiscTypes getDiscTypeFromVbi(void);
+
+    qint32 convertClvTimecodeToFrameNumber(LdDecodeMetaData::ClvTimecode clvTimeCode);
+    LdDecodeMetaData::ClvTimecode convertFrameNumberToClvTimecode(qint32 clvFrameNumber);
 
 signals:
 
@@ -220,6 +210,8 @@ public slots:
 private:
     bool isMetaDataValid;
     MetaData metaData;
+    bool isFirstFieldFirst;
+    qint32 getFieldNumber(qint32 frameNumber, qint32 field);
 };
 
 #endif // LDDECODEMETADATA_H

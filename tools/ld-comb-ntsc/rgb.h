@@ -4,7 +4,7 @@
 
     ld-comb-ntsc - NTSC colourisation filter for ld-decode
     Copyright (C) 2018 Chad Page
-    Copyright (C) 2018 Simon Inns
+    Copyright (C) 2018-2019 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -35,18 +35,18 @@ class RGB
 {
 public:
     double r, g, b;
-    RGB(double whiteIreParam, double blackIreParam);
+    RGB(double whiteIreParam, double blackIreParam, bool whitePoint100Param, bool blackAndWhiteParam);
 
-    void conv(YIQ _y);
+    void conv(YIQ _y, qreal colourBurstMedian);
 
 private:
     double blackIreLevel;
-    double ireScale;
     double whiteIreLevel;
-    double irebase;
+    bool whitePoint75;
+    bool blackAndWhite;
 
     double clamp(double v, double low, double high);
-    double u16_to_ire(double level);
+    double scaleY(double level);
 };
 
 #endif // RGB_H

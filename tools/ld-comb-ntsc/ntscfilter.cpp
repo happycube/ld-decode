@@ -4,7 +4,7 @@
 
     ld-comb-ntsc - NTSC colourisation filter for ld-decode
     Copyright (C) 2018 Chad Page
-    Copyright (C) 2018 Simon Inns
+    Copyright (C) 2018-2019 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -31,15 +31,20 @@ NtscFilter::NtscFilter(QObject *parent) : QObject(parent)
 }
 
 bool NtscFilter::process(QString inputFileName, QString outputFileName,
-                         qint32 startFrame, qint32 length,
-                         qint32 filterDepth, bool blackAndWhite,
-                         bool adaptive2d, bool opticalFlow,
-                         bool cropOutput, qint32 overrideBlack16Ire)
+                         qint32 startFrame, qint32 length, bool reverse,
+                         bool blackAndWhite, bool whitePoint, bool use3D,
+                         bool showOpticalFlowMap)
 {
     // Open the source video metadata
     if (!ldDecodeMetaData.read(inputFileName + ".json")) {
         qInfo() << "Unable to open ld-decode metadata file";
         return false;
+    }
+
+    // Reverse field order if required
+    if (reverse) {
+        qInfo() << "Expected field order is reversed to second field/first field";
+        ldDecodeMetaData.setIsFirstFieldFirst(false);
     }
 
     LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
@@ -57,40 +62,18 @@ bool NtscFilter::process(QString inputFileName, QString outputFileName,
     qint32 firstActiveScanLine = 43;
     qint32 lastActiveScanLine = 525;
 
-    // Calculate the LaserDisc crop video extents (visible area extent reduced by 1%)
-    qreal tCropFirstActiveScanLine = firstActiveScanLine + ((frameHeight / 100) * 1.0);
-    qreal tCropLastActiveScanLine = lastActiveScanLine - ((frameHeight / 100) * 1.0);
-    qreal tCropVideoStart = videoParameters.activeVideoStart + ((videoParameters.fieldWidth / 100) * 1.0);
-    qreal tCropVideoEnd = videoParameters.activeVideoEnd - ((videoParameters.fieldWidth / 100) * 1.0);
-
     // Default to standard output size
-    qint32 cropFirstActiveScanLine = firstActiveScanLine;
-    qint32 cropLastActiveScanLine = lastActiveScanLine;
-    qint32 cropVideoStart = videoParameters.activeVideoStart;
-    qint32 cropVideoEnd = videoParameters.activeVideoEnd;
-
-    // Include additional cropping if required
-    if (cropOutput) {
-        cropFirstActiveScanLine = static_cast<qint32>(tCropFirstActiveScanLine);
-        cropLastActiveScanLine = static_cast<qint32>(tCropLastActiveScanLine);
-        cropVideoStart = static_cast<qint32>(tCropVideoStart);
-        cropVideoEnd = static_cast<qint32>(tCropVideoEnd);
-    }
-
-    // Make sure output height is even (better for ffmpeg processing)
-    if (((cropLastActiveScanLine - cropFirstActiveScanLine) % 2) != 0) {
-        cropLastActiveScanLine--;
-    }
+    qint32 videoStart = videoParameters.activeVideoStart;
+    qint32 videoEnd = videoParameters.activeVideoEnd;
 
     // Make sure output width is even (better for ffmpeg processing)
-    if (((cropVideoEnd - cropVideoStart) % 2) != 0) {
-        cropVideoEnd++;
+    if (((videoEnd - videoStart) % 2) != 0) {
+        videoEnd++;
     }
 
     // Show output information to the user
     qInfo() << "Input video of" << videoParameters.fieldWidth << "x" << frameHeight <<
-               "will be colourised and trimmed to" << static_cast<qint32>(cropVideoEnd) - static_cast<qint32>(cropVideoStart) << "x" <<
-               static_cast<qint32>(cropLastActiveScanLine) - static_cast<qint32>(cropFirstActiveScanLine);
+               "will be colourised and trimmed to" << static_cast<qint32>(videoEnd) - static_cast<qint32>(videoStart) << "x 486";
 
     // Open the source video file
     if (!sourceVideo.open(inputFileName, videoParameters.fieldWidth * videoParameters.fieldHeight)) {
@@ -135,10 +118,8 @@ bool NtscFilter::process(QString inputFileName, QString outputFileName,
     Comb::Configuration configuration = comb.getConfiguration();
 
     // Set the comb filter configuration
-    configuration.filterDepth = filterDepth;
     configuration.blackAndWhite = blackAndWhite;
-    configuration.adaptive2d = adaptive2d;
-    configuration.opticalflow = opticalFlow;
+    configuration.whitePoint100 = whitePoint;
 
     // Set the input buffer dimensions configuration
     configuration.fieldWidth = videoParameters.fieldWidth;
@@ -154,26 +135,17 @@ bool NtscFilter::process(QString inputFileName, QString outputFileName,
     // Set the IRE levels
     configuration.blackIre = videoParameters.black16bIre;
     configuration.whiteIre = videoParameters.white16bIre;
-    if (overrideBlack16Ire != -1) configuration.blackIre = overrideBlack16Ire;
+
+    // Set the filter type
+    configuration.use3D = use3D;
+    configuration.showOpticalFlowMap = showOpticalFlowMap;
 
     // Update the comb filter object's configuration
     comb.setConfiguration(configuration);
 
-    // Show the filter type being used
-    if (configuration.filterDepth == 1) qInfo() << "Processing with 1D filter";
-    else if (configuration.filterDepth == 2) qInfo() << "Processing with 2D filter";
-    else if (configuration.filterDepth == 3) qInfo() << "Processing with 3D filter";
-    else {
-        qCritical() << "Error: Filter depth is invalid!";
-        return false;
-    }
-
     // Show the filter configuration
     qInfo() << "Filter configuration: Black & white output =" << blackAndWhite;
-    qInfo() << "Filter configuration: Adaptive 2D =" << adaptive2d;
-    qInfo() << "Filter configuration: Optical flow =" << opticalFlow;
-
-    if (overrideBlack16Ire != -1) qInfo() << "Overriding JSON Black16IRE with" << overrideBlack16Ire;
+    qInfo() << "Filter configuration: Use 75% white-point =" << whitePoint;
 
     // Process the frames
     QElapsedTimer totalTimer;
@@ -192,14 +164,22 @@ bool NtscFilter::process(QString inputFileName, QString outputFileName,
                                                 ldDecodeMetaData.getField(firstFieldNumber).fieldPhaseID,
                                                 ldDecodeMetaData.getField(secondFieldNumber).fieldPhaseID);
 
-        // Check the output data isn't empty (the first two 3D processed frames are empty)
+        // Check the output data isn't empty
         if (!rgbOutputData.isEmpty()) {
             // The NTSC filter outputs the whole frame, so here we crop it to the required dimensions
             QByteArray croppedOutputData;
 
-            for (qint32 y = static_cast<qint32>(cropFirstActiveScanLine); y < static_cast<qint32>(cropLastActiveScanLine); y++) {
-                croppedOutputData.append(rgbOutputData.mid((y * videoParameters.fieldWidth * 6) + (static_cast<qint32>(cropVideoStart) * 6),
-                                                        ((static_cast<qint32>(cropVideoEnd) - static_cast<qint32>(cropVideoStart)) * 6)));
+            // Add additional output lines to ensure the output height is 480 lines
+            QByteArray blankLine;
+            blankLine.resize((videoEnd - videoStart) * 6 );
+            blankLine.fill(0);
+            for (qint32 y = 0; y < 486 - (lastActiveScanLine - firstActiveScanLine); y++) {
+                croppedOutputData.append(blankLine);
+            }
+
+            for (qint32 y = static_cast<qint32>(firstActiveScanLine); y < static_cast<qint32>(lastActiveScanLine); y++) {
+                croppedOutputData.append(rgbOutputData.mid((y * videoParameters.fieldWidth * 6) + (static_cast<qint32>(videoStart) * 6),
+                                                        ((static_cast<qint32>(videoEnd) - static_cast<qint32>(videoStart)) * 6)));
             }
 
             // Save the frame data to the output file
@@ -219,6 +199,10 @@ bool NtscFilter::process(QString inputFileName, QString outputFileName,
         qInfo() << "Processed Frame number" << frameNumber << "( fields" << firstFieldNumber <<
                     "/" << secondFieldNumber << ") -" << fps << "FPS";
     }
+
+    // Show processing summary
+    qInfo() << "Processed" << length << "frames into" <<
+               static_cast<qint32>(videoEnd) - static_cast<qint32>(videoStart) << "x 486 RGB16-16-16 frames";
 
     // Close the input and output files
     sourceVideo.close();

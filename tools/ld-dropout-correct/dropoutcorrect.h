@@ -35,7 +35,7 @@ class DropOutCorrect : public QObject
     Q_OBJECT
 public:
     explicit DropOutCorrect(QObject *parent = nullptr);
-    bool process(QString inputFileName, QString outputFileName);
+    bool process(QString inputFileName, QString outputFileName, bool reverse);
 
 signals:
 
@@ -45,7 +45,6 @@ private:
     enum Location {
         visibleLine,
         colourBurst,
-        black,
         unknown
     };
 
@@ -56,9 +55,17 @@ private:
         Location location;
     };
 
-    QVector<DropOutLocation> setDropOutLocation(QVector<DropOutLocation> dropOuts, LdDecodeMetaData::VideoParameters videoParameters);
-    QByteArray replaceDropOuts(QVector<DropOutLocation> dropOuts, LdDecodeMetaData::VideoParameters videoParameters,
-                                         QByteArray sourceFrameData);
+    struct Replacement {
+        bool isFirstField;
+        qint32 fieldLine;
+    };
+
+    LdDecodeMetaData ldDecodeMetaData;
+    LdDecodeMetaData::VideoParameters videoParameters;
+
+    QVector<DropOutLocation> populateDropoutsVector(LdDecodeMetaData::Field field);
+    QVector<DropOutLocation> setDropOutLocations(QVector<DropOutLocation> dropOuts);
+    Replacement findReplacementLine(QVector<DropOutLocation>firstFieldDropouts, QVector<DropOutLocation> secondFieldDropouts, qint32 dropOutIndex, bool isColourBurst);
 };
 
 #endif // DROPOUTCORRECT_H

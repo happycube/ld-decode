@@ -1,13 +1,13 @@
 /************************************************************************
 
-    ntscprocess.h
+    fmcode.h
 
-    ld-process-ntsc - IEC NTSC specific processor for ld-decode
+    ld-process-vbi - VBI and IEC NTSC specific processor for ld-decode
     Copyright (C) 2018 Simon Inns
 
     This file is part of ld-decode-tools.
 
-    ld-process-ntsc is free software: you can redistribute it and/or
+    ld-process-vbi is free software: you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
     published by the Free Software Foundation, either version 3 of the
     License, or (at your option) any later version.
@@ -22,31 +22,38 @@
 
 ************************************************************************/
 
-#ifndef NTSCPROCESS_H
-#define NTSCPROCESS_H
+#ifndef FMCODE_H
+#define FMCODE_H
 
 #include <QObject>
 
 #include "sourcevideo.h"
 #include "lddecodemetadata.h"
-#include "fmcode.h"
-#include "whiteflag.h"
 
-class NtscProcess : public QObject
+class FmCode : public QObject
 {
     Q_OBJECT
 public:
-    explicit NtscProcess(QObject *parent = nullptr);
+    struct FmDecode {
+        quint64 receiverClockSyncBits;
+        quint64 videoFieldIndicator;
+        quint64 leadingDataRecognitionBits;
+        quint64 data;
+        quint64 dataParityBit;
+        quint64 trailingDataRecognitionBits;
+    };
 
-    bool process(QString inputFileName);
+    explicit FmCode(QObject *parent = nullptr);
+
+    FmCode::FmDecode fmDecoder(QByteArray lineData, LdDecodeMetaData::VideoParameters videoParameters);
 
 signals:
 
 public slots:
 
 private:
-    QByteArray getActiveVideoLine(SourceField *sourceField, qint32 fieldLine,
-                                            LdDecodeMetaData::VideoParameters videoParameters);
+    bool isEvenParity(quint64 data);
+    QVector<bool> getTransitionMap(QByteArray lineData, qint32 zcPoint);
 };
 
-#endif // NTSCPROCESS_H
+#endif // FMCODE_H

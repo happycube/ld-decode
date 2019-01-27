@@ -1,13 +1,13 @@
 /************************************************************************
 
-    dropoutdetector.cpp
+    whiteflag.h
 
-    ld-dropout-detect - Dropout detection for ld-decode
+    ld-process-vbi - VBI and IEC NTSC specific processor for ld-decode
     Copyright (C) 2018 Simon Inns
 
     This file is part of ld-decode-tools.
 
-    ld-dropout-detect is free software: you can redistribute it and/or
+    ld-process-vbi is free software: you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
     published by the Free Software Foundation, either version 3 of the
     License, or (at your option) any later version.
@@ -22,37 +22,25 @@
 
 ************************************************************************/
 
-#ifndef DROPOUTDETECTOR_H
-#define DROPOUTDETECTOR_H
-
-#include <QObject>
+#ifndef WHITEFLAG_H
+#define WHITEFLAG_H
 
 #include "sourcevideo.h"
 #include "lddecodemetadata.h"
 
-class DropOutDetector : public QObject
+#include <QObject>
+
+class WhiteFlag : public QObject
 {
     Q_OBJECT
 public:
-    explicit DropOutDetector(QObject *parent = nullptr);
+    explicit WhiteFlag(QObject *parent = nullptr);
 
-    bool process(QString inputFileName);
+    bool getWhiteFlag(QByteArray lineData, LdDecodeMetaData::VideoParameters videoParameters);
 
 signals:
 
 public slots:
-
-private:
-    // Drop-out correction parameters
-    struct DocConfiguration {
-        qint32 postTriggerWidth;
-        qint32 preTriggerReplacement;
-        qint32 postTriggerReplacement;
-    };
-
-    DocConfiguration docConfiguration;
-
-    LdDecodeMetaData::DropOuts detectDropOuts(QByteArray sourceFieldData, LdDecodeMetaData::VideoParameters videoParameters);
 };
 
-#endif // DROPOUTDETECTOR_H
+#endif // WHITEFLAG_H

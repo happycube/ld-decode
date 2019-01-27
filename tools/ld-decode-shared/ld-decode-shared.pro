@@ -28,10 +28,14 @@ SOURCES += \
     sourcefield.cpp
 
 HEADERS += \
-        ld-decode-shared_global.h \ 
+    ld-decode-shared_global.h \
     sourcevideo.h \
     lddecodemetadata.h \
-    sourcefield.h
+    sourcefield.h \
+    JsonWax/JsonWax.h \
+    JsonWax/JsonWaxEditor.h \
+    JsonWax/JsonWaxParser.h \
+    JsonWax/JsonWaxSerializer.h
 
 unix {
     target.path = /usr/lib

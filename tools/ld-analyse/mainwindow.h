@@ -42,7 +42,9 @@
 #include "vbidialog.h"
 #include "ntscdialog.h"
 #include "videometadatadialog.h"
+#include "dropoutanalysisdialog.h"
 #include "configuration.h"
+#include "frameqlabel.h"
 #include "../ld-comb-pal/palcolour.h"
 #include "../ld-comb-ntsc/comb.h"
 
@@ -74,11 +76,15 @@ private slots:
     void scanLineChangedSignalHandler(qint32 scanLine);
 
     void on_actionNTSC_triggered();
-    void on_combFilterPushButton_clicked();
-    void on_sourcePushButton_clicked();
-    void on_frameHorizontalSlider_valueChanged(int value);
+    void on_actionDropout_analysis_triggered();
+    void on_actionSave_frame_as_PNG_triggered();
 
+    void on_frameHorizontalSlider_valueChanged(int value);
     void on_actionVideo_metadata_triggered();
+    void on_action1_1_Frame_size_triggered();
+    void on_sourceRadioButton_clicked();
+    void on_combFilterRadioButton_clicked();
+    void on_reverseFieldOrderCheckBox_stateChanged(int arg1);
 
 private:
     Ui::MainWindow *ui;
@@ -89,6 +95,7 @@ private:
     VbiDialog *vbiDialog;
     NtscDialog *ntscDialog;
     VideoMetadataDialog *videoMetadataDialog;
+    DropoutAnalysisDialog *dropoutAnalysisDialog;
 
     // Class globals
     Configuration *configuration;
@@ -98,6 +105,8 @@ private:
     qint32 currentFrameNumber;
     qint32 lastScopeLine;
     bool isFileOpen;
+    PalColour palColour;
+    Comb ntscColour;
 
     void updateGuiLoaded(void);
     void updateGuiUnloaded(void);

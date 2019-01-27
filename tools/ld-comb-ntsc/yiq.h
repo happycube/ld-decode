@@ -4,7 +4,7 @@
 
     ld-comb-ntsc - NTSC colourisation filter for ld-decode
     Copyright (C) 2018 Chad Page
-    Copyright (C) 2018 Simon Inns
+    Copyright (C) 2018-2019 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -31,10 +31,10 @@
 class YIQ
 {
 public:
-    double y, i, q;
+    qreal y, i, q;
 
-    YIQ(double _y = 0.0, double _i = 0.0, double _q = 0.0);
-    YIQ operator*=(double x);
+    YIQ(qreal _y = 0.0, qreal _i = 0.0, qreal _q = 0.0);
+    YIQ operator*=(qreal x);
     YIQ operator+=(YIQ p);
 
 private:

@@ -4,7 +4,7 @@
 
     ld-comb-ntsc - NTSC colourisation filter for ld-decode
     Copyright (C) 2018 Chad Page
-    Copyright (C) 2018 Simon Inns
+    Copyright (C) 2018-2019 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -29,14 +29,13 @@
 #include <QCoreApplication>
 #include <QDebug>
 #include <QFile>
-
-// OpenCV2 used by OpticalFlow3D method
-#include <opencv2/core/core.hpp>
-#include <opencv2/video/tracking.hpp>
+#include <QtMath>
 
 #include "filter.h"
 #include "yiq.h"
 #include "rgb.h"
+#include "opticalflow.h"
+#include "yiqbuffer.h"
 
 // Fix required for Mac OS compilation - environment doesn't seem to set up
 // the expected definitions properly
@@ -52,11 +51,11 @@ public:
     // Comb filter configuration parameters
     struct Configuration {
         bool blackAndWhite;
-        bool adaptive2d;
         bool colorlpf;
         bool colorlpf_hq;
-        bool opticalflow;
-        qint32 filterDepth;
+        bool whitePoint100;
+        bool use3D;
+        bool showOpticalFlowMap;
 
         qint32 fieldWidth;
         qint32 fieldHeight;
@@ -77,75 +76,60 @@ public:
 protected:
 
 private:
-    // Maximum supported input video frame size
-    static const qint32 max_x = 910;
-    static const qint32 max_y = 525;
-
     // Comb-filter configuration parameters
     Configuration configuration;
 
-    // Processed frame counter
-    qint32 frameCounter;
-
-    // Some local configuration to do with 3D/2D processing...
-    qreal p_3dcore;
-    qreal p_3drange;
-    qreal p_2drange;
-
-    // Some form of IRE scaling, no idea what the magic number is though
+    // IRE scaling
     qreal irescale;
 
-    // Tunables (more unknown local configuration parameters)
-    qreal nr_c; // Used by doCNR method
-    qreal nr_y; // Used by doYNR method
-
-    // Internal globals
-    qreal aburstlev; // average color burst (used by yiqToRgbFrame method to track average between calls)
-    qint32 cline = -1; // used by yiqToRgbFrame method
+    // Calculated frame height
+    qint32 frameHeight;
 
     // Input frame buffer definitions
-    struct yiqLine_t {
-        YIQ pixel[max_x]; // One line of YIQ data
+    struct PixelLine {
+        qreal pixel[526][911]; // 526 is the maximum allowed field lines, 911 is the maximum field width
     };
 
-    struct frame_t {
+    struct FrameBuffer {
         QByteArray rawbuffer;
 
-        qreal clpbuffer[3][max_y][max_x];
-        qreal combk[3][max_y][max_x];
+        QVector<PixelLine> clpbuffer; // Unfiltered chroma for the current phase (can be I or Q)
+        QVector<qreal> kValues;
+        YiqBuffer yiqBuffer; // YIQ values for the frame
 
-        QVector<yiqLine_t> yiqBuffer;
-
-        qreal burstLevel;
-        qint32 firstFieldPhaseID;
-        qint32 secondFieldPhaseID;
+        qreal burstLevel; // The median colour burst amplitude for the frame
+        qint32 firstFieldPhaseID; // The phase of the frame's first field
+        qint32 secondFieldPhaseID; // The phase of the frame's second field
     };
-
-    QVector<frame_t> frameBuffer;
-
-    // Filter definitions for YNR and CNR noise reduction
-    Filter *f_hpy, *f_hpi, *f_hpq;
 
     // Input and output file handles
     QFile *inputFileHandle;
     QFile *outputFileHandle;
 
+    // Optical flow processor
+    OpticalFlow opticalFlow;
+
+    // Previous and next frame for 3D processing
+    FrameBuffer previousFrameBuffer;
+
     void postConfigurationTasks(void);
 
-    void filterIQ(QVector<yiqLine_t> &yiqBuffer);
-    void split1D(qint32 currentFrameBuffer);
-    void split2D(qint32 currentFrameBuffer);
-    void split3D(qint32 currentFrameBuffer, bool opt_flow = false);
-    void splitIQ(qint32 currentFrameBuffer);
-    void doCNR(QVector<yiqLine_t> &yiqBuffer, qreal min = -1.0);
-    void doYNR(QVector<yiqLine_t> &yiqBuffer, qreal min = -1.0);
-    QByteArray yiqToRgbFrame(qint32 currentFrameBuffer, QVector<yiqLine_t> yiqBuffer);
-    void opticalFlow3D(QVector<yiqLine_t> yiqBuffer);
-    void adjustY(qint32 currentFrameBuffer, QVector<yiqLine_t> &yiqBuffer);
+    void split1D(FrameBuffer *frameBuffer);
+    void split2D(FrameBuffer *frameBuffer);
+    void split3D(FrameBuffer *currentFrame, FrameBuffer *previousFrame);
+
+    void filterIQ(YiqBuffer &yiqBuffer);
+    void splitIQ(FrameBuffer *frameBuffer);
+
+    void doCNR(YiqBuffer &yiqBuffer);
+    void doYNR(YiqBuffer &yiqBuffer);
+
+    QByteArray yiqToRgbFrame(YiqBuffer yiqBuffer, qreal burstLevel);
+    void overlayOpticalFlowMap(FrameBuffer frameBuffer, QByteArray &rgbOutputFrame);
+    void adjustY(YiqBuffer &yiqBuffer, qint32 firstFieldPhaseID, qint32 secondFieldPhaseID);
 
     qreal clamp(qreal v, qreal low, qreal high);
     qreal atan2deg(qreal y, qreal x);
-    qreal ctor(qreal r, qreal i);
 };
 
 #endif // COMB_H

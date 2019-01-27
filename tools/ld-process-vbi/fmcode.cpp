@@ -2,12 +2,12 @@
 
     fmcode.cpp
 
-    ld-process-ntsc - IEC NTSC specific processor for ld-decode
+    ld-process-vbi - VBI and IEC NTSC specific processor for ld-decode
     Copyright (C) 2018 Simon Inns
 
     This file is part of ld-decode-tools.
 
-    ld-process-ntsc is free software: you can redistribute it and/or
+    ld-process-vbi is free software: you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
     published by the Free Software Foundation, either version 3 of the
     License, or (at your option) any later version.
@@ -48,7 +48,7 @@ FmCode::FmDecode FmCode::fmDecoder(QByteArray lineData, LdDecodeMetaData::VideoP
     QVector<bool> fmData = getTransitionMap(lineData, zcPoint);
 
     // Get the number of samples for 0.75us
-    qreal fSamples = videoParameters.samplesPerUs * 0.75;
+    qreal fSamples = (videoParameters.sampleRate / 1000000) * 0.75;
     qint32 samples = static_cast<qint32>(fSamples);
 
     // Keep track of the number of bits decoded
@@ -59,10 +59,11 @@ FmCode::FmDecode FmCode::fmDecoder(QByteArray lineData, LdDecodeMetaData::VideoP
     while (x < fmData.size() && fmData[x] == false) {
         x++;
     }
-    qint32 lastTransistionX = x;
-    bool lastState = fmData[x];
 
     if (x < fmData.size()) {
+        qint32 lastTransistionX = x;
+        bool lastState = fmData[x];
+
         // Find the rest of the bits
         while (x < fmData.size() && decodeCount < 40) {
             // Find the next transition
