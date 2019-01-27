@@ -812,6 +812,17 @@ class Field:
 
         return wow
 
+        # early work on issue 37, hits a FutureWarning in scipy
+
+        # apply a simple 5-tap filter to the wowfactor
+        #filt = (0.1, 0.2, 0.4, 0.2, 0.1)
+        # do not use the first or last lines, which are often inaccurate...
+        #wf_filter = sps.lfilter(filt, (1.0), wow[1:-1])
+
+        # copy the valid new wowfactors (drop the first few lines since they were 0...)
+        #wf2 = copy.copy(wow)
+        #wf2[4:-3] = wf_filter[5:]
+
     def downscale(self, lineinfo = None, linesout = None, outwidth = None, wow=True, channel='demod', audio = False):
         if lineinfo is None:
             lineinfo = self.linelocs
@@ -1067,7 +1078,7 @@ class Field:
 
         lineoffset = self.lineoffset
 
-        for l in range(lineoffset, self.linecount - 1):
+        for l in range(lineoffset + 6, self.linecount - 1):
             while curerr is not None and inrange(curerr[0], self.linelocs[l], self.linelocs[l + 1]):
 
                 start_rf_linepos = curerr[0] - self.linelocs[l]
