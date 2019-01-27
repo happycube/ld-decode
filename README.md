@@ -1,5 +1,4 @@
-
-This is the working branch for rev4 development, hopefully done late January.  Issue tracker here: https://github.com/happycube/ld-decode/milestone/1
+This is now rev4, in freeze (mostly :) ) before an expected release Jan 31.
 
 For more documentation check the wiki (here) on github:
 
