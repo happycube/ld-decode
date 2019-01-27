@@ -561,12 +561,28 @@ class Field:
         return x / self.get_linefreq(line)
 
     def lineslice(self, l, begin = None, length = None, linelocs = None):
-        ''' return a slice corresponding with pre-TBC line l '''
+        ''' return a slice corresponding with pre-TBC line l, begin+length are uSecs '''
         
         _begin = linelocs[l] if linelocs is not None else self.linelocs[l]
         _begin += self.usectoinpx(begin, l) if begin is not None else 0
 
         _length = self.usectoinpx(length, l) if length is not None else 1
+
+        return slice(int(np.round(_begin)), int(np.round(_begin + _length)))
+
+    def usectooutpx(self, x):
+        return x * self.rf.SysParams['outfreq']
+
+    def outpxtousec(self, x):
+        return x / self.rf.SysParams['outfreq']
+
+    def lineslice_tbc(self, l, begin = None, length = None, linelocs = None):
+        ''' return a slice corresponding with pre-TBC line l '''
+        
+        _begin = self.rf.SysParams['outlinelen'] * l
+        _begin += self.usectooutpx(begin) if begin is not None else 0
+
+        _length = self.usectooutpx(length) if length is not None else 1
 
         return slice(int(np.round(_begin)), int(np.round(_begin + _length)))
     
@@ -894,6 +910,7 @@ class Field:
         self.inlinelen = self.rf.linelen
         self.outlinelen = self.rf.SysParams['outlinelen']
 
+        self.issue117 = -1 # XXX: will move to 1-based lines: issue #117
         self.lineoffset = 0 # true for NTSC, PAL is 2 or 3
         
         self.valid = False
@@ -1219,9 +1236,10 @@ class FieldPAL(Field):
         reduced = (input - self.rf.SysParams['ire0']) / self.rf.SysParams['hz_ire']
         reduced -= self.rf.SysParams['vsync_ire']
         
-        out_scale = np.double(0xd300 - 0x0100) / (100 - self.rf.SysParams['vsync_ire'])
+        return np.uint16(np.clip((reduced * self.out_scale) + 256, 0, 65535) + 0.5)
 
-        return np.uint16(np.clip((reduced * out_scale) + 256, 0, 65535) + 0.5)
+    def output_to_ire(self, output):
+        return ((output - 256) / self.out_scale) + self.rf.SysParams['vsync_ire']
 
     def downscale(self, final = False, *args, **kwargs):
         # For PAL, each field starts with the line containing the first full VSYNC pulse
@@ -1246,6 +1264,8 @@ class FieldPAL(Field):
 
         self.linecount = 312 if self.isFirstField else 313
         self.lineoffset = 2 if self.isFirstField else 3
+
+        self.out_scale = np.double(0xd300 - 0x0100) / (100 - self.rf.SysParams['vsync_ire'])
 
         self.downscale(wow = True, final=True)
 
@@ -1388,8 +1408,11 @@ class FieldNTSC(Field):
     def hz_to_ooutput(self, input):
         reduced = (input - self.rf.SysParams['ire0']) / self.rf.SysParams['hz_ire']
         reduced -= self.rf.SysParams['vsync_ire']
-        out_scale = np.double(0xc800 - 0x0400) / (100 - self.rf.SysParams['vsync_ire'])
-        return np.uint16(np.clip((reduced * out_scale) + 1024, 0, 65535) + 0.5)
+
+        return np.uint16(np.clip((reduced * self.out_scale) + 1024, 0, 65535) + 0.5)
+
+    def output_to_ire(self, output):
+        return ((output - 1024) / self.out_scale) + self.rf.SysParams['vsync_ire']
 
     def downscale(self, lineoffset = 0, final = False, *args, **kwargs):
         dsout, dsaudio = super(FieldNTSC, self).downscale(audio = final, *args, **kwargs)
@@ -1419,6 +1442,8 @@ class FieldNTSC(Field):
         if not self.valid:
             #print('not valid')
             return
+
+        self.out_scale = np.double(0xc800 - 0x0400) / (100 - self.rf.SysParams['vsync_ire'])
 
         self.linelocs3, self.burstlevel = self.refine_linelocs_burst(self.linelocs2)
         self.linelocs3 = self.fix_badlines(self.linelocs3)
@@ -1507,7 +1532,6 @@ class LDdecode:
             self.readloc = 0
             
         indata = self.freader(self.infile, self.readloc, self.readlen)
-        #print(self.readloc, self.readlen)
 
         if indata is None:
             print("End of file")
@@ -1611,7 +1635,60 @@ class LDdecode:
                 return (((self.clvMinutes * 60) + self.clvSeconds) * self.clvfps) + self.clvFrameNum
 
         return None #seeking won't work w/minutes only
-            
+
+    def calcsnr(self, f, snrslice):
+        data = f.output_to_ire(f.dspicture[snrslice])
+        
+#        signal = np.mean(data)
+        noise = np.std(data)
+#        print(signal, noise)
+
+        return 20 * np.log10(70 / noise)
+
+    def computeMetrics(self, f1, f2):
+        ''' perform after obtaining second field. '''
+
+        metrics = {}
+        if f1.rf.system == 'NTSC':
+            blackline = 13
+            wl_slice = f2.lineslice_tbc(20+f2.issue117, 13, 3)
+        else:
+            blackline = 22
+            wl_slice = f2.lineslice_tbc(19+f2.issue117, 14, 4)
+
+        metrics['whiteSNR'] = self.calcsnr(f2, wl_slice)
+
+        # compute black line SNR.  For PAL this is guaranteed to be a blanked line for disk only (P)SNR
+        blackline = 13 if f1.rf.system == 'NTSC' else 22
+        bl_slicetbc = f1.lineslice_tbc(blackline + f1.issue117, 10, 50)
+
+        # these metrics determine the effectiveness of the wow-filter
+        bl_slice1 = f1.lineslice(blackline + f1.lineoffset + f1.issue117, 10, 50)
+        bl_slice2 = f2.lineslice(blackline + f2.lineoffset + f2.issue117, 10, 50)
+        metrics['blackLineF1PreTBCIRE'] = f1.rf.hztoire(np.mean(f1.data[0]['demod'][bl_slice1]))
+        metrics['blackLineF2PreTBCIRE'] = f2.rf.hztoire(np.mean(f2.data[0]['demod'][bl_slice2]))
+
+        metrics['blackLineF1PostTBCIRE'] = f1.output_to_ire(np.mean(f1.dspicture[bl_slicetbc]))
+        metrics['blackLineF2PostTBCIRE'] = f2.output_to_ire(np.mean(f2.dspicture[bl_slicetbc]))
+
+        metrics['blackLineF1PSNR'] = self.calcsnr(f1, bl_slicetbc)
+        metrics['blackLineF2PSNR'] = self.calcsnr(f2, bl_slicetbc)
+
+
+        # for NTSC, use line 19 to determine 70IRE burst level for MTF compensation later
+        if f1.rf.system == 'NTSC':
+            sl_cburst = f1.lineslice_tbc(19 + f1.issue117, 4.7+.8, 2.4)
+            diff = (f1.dspicture[sl_cburst].astype(float) - f2.dspicture[sl_cburst].astype(float))/2
+
+            metrics['ntscLine19Burst0IRE'] = np.std(diff)/f1.out_scale
+
+            sl_cburst70 = f1.lineslice_tbc(19 + f1.issue117, 14, 20)
+            diff = (f1.dspicture[sl_cburst70].astype(float) - f2.dspicture[sl_cburst70].astype(float))/2
+
+            metrics['ntscLine19Burst70IRE'] = np.std(diff)/f1.out_scale
+
+        return metrics
+
     def processfield(self, f, squelch = False):
         picture, audio = f.downscale(linesout = self.output_lines, final=True)
             
@@ -1658,6 +1735,9 @@ class LDdecode:
         fi['decodeFaults'] = decodeFaults
 
         if squelch == False:
+            if self.firstfield is not None:
+                fi['vitsMetrics'] = self.computeMetrics(self.firstfield, f)
+
             self.fieldinfo.append(fi)
 
             if self.frameoutput == False:
@@ -1694,10 +1774,20 @@ class LDdecode:
 
             self.firstfield = None
             self.firstfield_picture = None
+
+            fi['frameNumber'] = int(self.frameNumber)
+
+            if f.isCLV:
+                fi['clvMinutes'] = int(self.clvMinutes)
+                if f.earlyCLV == False:
+                    fi['clvSeconds'] = int(self.clvSeconds)
+                    fi['clvFrameNr'] = int(self.clvFrameNum)
+
+
         elif f.isFirstField:
             self.firstfield = f
             self.firstfield_picture = picture
-                
+
     def writeframe(self, f1, f2):
         linecount = self.rf.SysParams['frame_lines']
         combined = np.zeros((self.outwidth * linecount), dtype=np.uint16)
