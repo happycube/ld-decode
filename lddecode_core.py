@@ -1021,9 +1021,13 @@ class Field:
         minsync = -100 if self.rf.system == 'PAL' else -50
 
         # these lines should cover both PAL and NTSC
+
+        # effectively disable during VSYNC
         for i in range(6 + self.lineoffset):
-            valid_min[int(f.linelocs[i]):int(f.linelocs[i+1])] = f.rf.iretohz(minsync)
-            valid_max[int(f.linelocs[i]):int(f.linelocs[i+1])] = f.rf.iretohz(70)
+#            valid_min[int(f.linelocs[i]):int(f.linelocs[i+1])] = f.rf.iretohz(minsync - 25)
+#            valid_max[int(f.linelocs[i]):int(f.linelocs[i+1])] = f.rf.iretohz(70)
+            valid_min[int(f.linelocs[i]):int(f.linelocs[i+1])] = f.rf.iretohz(-150)
+            valid_max[int(f.linelocs[i]):int(f.linelocs[i+1])] = f.rf.iretohz(150)
 
         for i in range(6 + self.lineoffset, len(f.linelocs)):
             l = f.linelocs[i]
@@ -1503,6 +1507,7 @@ class LDdecode:
             self.readloc = 0
             
         indata = self.freader(self.infile, self.readloc, self.readlen)
+        #print(self.readloc, self.readlen)
 
         if indata is None:
             print("End of file")
@@ -1750,6 +1755,7 @@ class LDdecode:
         done = False
 
         while done == False:
+            self.fieldloc = self.fdoffset
             f, offset = self.decodefield()
 
             self.prevfield = self.curfield
@@ -1779,6 +1785,7 @@ class LDdecode:
         
         for retries in range(5):
             fnr = self.seek_getframenr(cur)
+            cur = int((self.fieldloc / self.bytes_per_field) / 2)
             if fnr is None:
                 return None
             else:
@@ -1787,8 +1794,8 @@ class LDdecode:
                     self.roughseek(cur * 2)
                     return cur
                 else:
-                    cur += (target - fnr) - 0
-                
+                    cur += (target - fnr) - 1
+
         print("Finished seeking")
         return cur - 0
 
