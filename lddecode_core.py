@@ -1467,10 +1467,11 @@ class LDdecode:
         self.fields_written = 0
 
         self.blackIRE = 0
-        
-        self.outfile_video = open(fname_out + '.tbc', 'wb')
-        #self.outfile_json = open(fname_out + '.json', 'wb')
-        self.outfile_audio = open(fname_out + '.pcm', 'wb') if analog_audio else None
+
+        if fname_out is not None:        
+            self.outfile_video = open(fname_out + '.tbc', 'wb')
+            #self.outfile_json = open(fname_out + '.json', 'wb')
+            self.outfile_audio = open(fname_out + '.pcm', 'wb') if analog_audio else None
         
         self.analog_audio = analog_audio
         self.frameoutput = frameoutput
