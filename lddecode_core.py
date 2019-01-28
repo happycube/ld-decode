@@ -1781,7 +1781,7 @@ class LDdecode:
 
             if f.isCLV:
                 fi['clvMinutes'] = int(self.clvMinutes)
-                if f.earlyCLV == False:
+                if self.earlyCLV == False:
                     fi['clvSeconds'] = int(self.clvSeconds)
                     fi['clvFrameNr'] = int(self.clvFrameNum)
 
