@@ -1775,7 +1775,8 @@ class LDdecode:
             self.firstfield = None
             self.firstfield_picture = None
 
-            fi['frameNumber'] = int(self.frameNumber)
+            if self.frameNumber is not None:
+                fi['frameNumber'] = int(self.frameNumber)
 
             if f.isCLV:
                 fi['clvMinutes'] = int(self.clvMinutes)
