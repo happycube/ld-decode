@@ -86,6 +86,8 @@ endidx = ldd.fdoffset
 
 if args.outfile == '-':
     fd = sys.stdout
+    print("ERROR: stdout does not work yet, sorry")
+    exit(-1)
 else:
     fd = open(args.outfile, 'wb')
 
