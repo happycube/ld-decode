@@ -59,10 +59,10 @@ if args.MTF is not None:
 if args.MTF_offset is not None:
     ldd.rf.mtf_offset = args.MTF_offset
 
-startloc = args.start * 2
+startloc = args.start
 
 if args.seek != -1:
-    startloc = ldd.seek(args.start * 2, args.seek) 
+    startloc = ldd.seek(args.start, args.seek) 
     if startloc > 1:
         startloc -= 1
     
@@ -89,11 +89,17 @@ else:
 
 #print(startloc, endloc, startidx, endidx)
 
-for i in range(startidx, endidx, 16384):
+for i in range(startidx, endidx + 16384, 16384):
     l = endidx - i
-    l = 16384 if (l > 16384) else l
+
+    if l > 16384:
+        l = 16384
+    else:
+        break
+    #l = 16384 if (l > 16384) else l
 
     data = ldd.freader(ldd.infile, i, l)
+    #print(len(data))
     dataout = np.array(data, dtype=np.int16)
     fd.write(dataout)
 
