@@ -42,10 +42,6 @@ if args.pal and args.ntsc:
     print("ERROR: Can only be PAL or NTSC")
     exit(1)
 
-if args.seek == -1 or args.end == -1:
-    print("ERROR: -E and -S options must be supplied")
-    exit(1)
-
 if filename[-3:] == 'lds':
     loader = load_packed_data_4_40
 elif filename[-3:] == 'r30':
@@ -91,7 +87,7 @@ if args.outfile == '-':
 else:
     fd = open(args.outfile, 'wb')
 
-print(startloc, endloc, startidx, endidx)
+#print(startloc, endloc, startidx, endidx)
 
 for i in range(startidx, endidx, 16384):
     l = endidx - i
