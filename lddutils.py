@@ -138,6 +138,9 @@ def load_unpacked_data(infile, sample, readlen, sampletype):
     else:
         indata = np.fromstring(inbuf, 'uint8', len(inbuf))
     
+    if len(indata) < readlen:
+        return None
+
     return indata
 
 def load_unpacked_data_u8(infile, sample, readlen):
