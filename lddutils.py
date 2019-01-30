@@ -235,7 +235,11 @@ def load_packed_data_4_40(infile, sample, readlen):
     np.left_shift(unpacked[3::4], 8, out=unpacked[3::4])
     np.bitwise_or(unpacked[3::4], indata[4::5], out=unpacked[3::4])
 
-    return unpacked[offset:offset + readlen]
+    # convert back to original DdD 16-bit format (signed 16-bit, left shifted)
+    rv_unsigned = unpacked[offset:offset + readlen].copy()
+    rv_signed = np.left_shift(rv_unsigned.astype(np.int16) - 512, 6)
+    
+    return rv_signed
 
 
 
