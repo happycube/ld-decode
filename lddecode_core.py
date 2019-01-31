@@ -1652,12 +1652,39 @@ class LDdecode:
         metrics = {}
         if f1.rf.system == 'NTSC':
             blackline = 13
-            wl_slice = f2.lineslice_tbc(20+f2.issue117, 13, 3)
+
+            wl_slice = f2.lineslice_tbc(20+f2.issue117, 13, 2)
+            if inrange(np.mean(f2.output_to_ire(f2.dspicture[wl_slice])), 95, 108):
+                metrics['whiteSNR'] = self.calcsnr(f2, wl_slice)
+
+            # I've seen some clips with the 100IRE area in the back half - and none at all
+            wl20_slice = f1.lineslice_tbc(20+f1.issue117, 14, 12)
+            if not inrange(np.mean(f1.output_to_ire(f1.dspicture[wl20_slice])), 95, 108):
+                wl20_slice = f1.lineslice_tbc(20+f1.issue117, 52, 8)
+                if inrange(np.mean(f1.output_to_ire(f1.dspicture[wl20_slice])), 95, 108):
+                    wl20_slice = None
+
+            if wl20_slice is not None:
+                metrics['whiteSNR'] = self.calcsnr(f1, wl20_slice)
+
+            # check for a white flag
+            # later disks - and some film frames - don't have a white flag
+
+            wf_slice = f1.lineslice_tbc(11+f1.issue117, 15, 40)
+            if not inrange(np.mean(f1.output_to_ire(f1.dspicture[wf_slice])), 95, 108):
+                wf_slice = f2.lineslice_tbc(11+f2.issue117, 15, 40)
+                if not inrange(np.mean(f2.output_to_ire(f2.dspicture[wf_slice])), 95, 108):
+                    wf_slice = None
+                else:
+                    metrics['ntscWhiteFlagSNR'] = self.calcsnr(f2, wf_slice)
+            else:
+                metrics['ntscWhiteFlagSNR'] = self.calcsnr(f1, wf_slice)
+
         else:
             blackline = 22
+            
             wl_slice = f2.lineslice_tbc(19+f2.issue117, 14, 4)
-
-        metrics['whiteSNR'] = self.calcsnr(f2, wl_slice)
+            metrics['whiteSNR'] = self.calcsnr(f2, wl_slice)
 
         # compute black line SNR.  For PAL this is guaranteed to be a blanked line for disk only (P)SNR
         blackline = 13 if f1.rf.system == 'NTSC' else 22
