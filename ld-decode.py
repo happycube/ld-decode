@@ -29,7 +29,7 @@ parser.add_argument('-m', '--MTF', metavar='mtf', type=float, default=None, help
 parser.add_argument('--MTF_offset', metavar='mtf_offset', type=float, default=None, help='mtf compensation offset')
 parser.add_argument('-f', '--frame', dest='frame', action='store_true', help='output frames')
 parser.add_argument('--NTSCJ', dest='ntscj', action='store_true', help='source is in NTSC-J (IRE 0 black) format')
-parser.add_argument('--noDOD', dest='nodod', action='store_true', default=False, help='enable dropout detector')
+parser.add_argument('--noDOD', dest='nodod', action='store_true', default=False, help='disable dropout detector')
 
 parser.add_argument('--noleadout', dest='noleadout', action='store_true', default=False, help='continue decoding after lead-out seen')
 
