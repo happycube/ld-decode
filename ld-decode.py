@@ -31,7 +31,7 @@ parser.add_argument('-f', '--frame', dest='frame', action='store_true', help='ou
 parser.add_argument('--NTSCJ', dest='ntscj', action='store_true', help='source is in NTSC-J (IRE 0 black) format')
 parser.add_argument('--noDOD', dest='nodod', action='store_true', default=False, help='disable dropout detector')
 
-parser.add_argument('--noleadout', dest='noleadout', action='store_true', default=False, help='continue decoding after lead-out seen')
+parser.add_argument('--ignoreleadout', dest='ignoreleadout', action='store_true', default=False, help='continue decoding after lead-out seen')
 
 
 args = parser.parse_args()
@@ -110,7 +110,7 @@ while not done and ldd.fields_written < (req_frames * 2):
         write_json(ldd, outname)
         exit(1)
 
-    if f is None or (args.noleadout == False and ldd.leadOut == True):
+    if f is None or (args.ignoreleadout == False and ldd.leadOut == True):
         done = True
 
 #    print(ldd.fields_written)
