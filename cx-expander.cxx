@@ -29,8 +29,10 @@ double m14db = 0.199526231496888;
  *  - Per PR-8210 service manual, at 75% modulation should be 87.3% higher (914mVrms vs 488mVrms)
  */
 
-void Process(uint16_t *buf, int nsamp)
+void Process(int16_t *buf, int nsamp)
 {
+	int16_t obuf[nsamp * 2];
+
 	for (int i = 0; i < nsamp; i++) {
 		double left = (buf[i * 2] - 32768); 
 		double right = (buf[(i * 2 + 1)] - 32768); 
@@ -57,14 +59,13 @@ void Process(uint16_t *buf, int nsamp)
 		slow = (slow * .999985);
 		if (_max > slow) slow = min(_max, slow + (_max * .0020));	
 
-		const double factor = 6500;
+		// approximate 0dB point using ld-decode rev4
+		const double factor = 9300;
 
 		// XXX : there is currently some non-linearity in 1khz samples
 		double val = max(fast, slow * 1.00) - (factor * m14db);
 
 		if (val < 0) val = 0;
-
-		// 7200-1500=5500 is the (current) 0db point for val
 
 		left = orig_left * m14db;
 		right = orig_right * m14db;
@@ -78,21 +79,19 @@ void Process(uint16_t *buf, int nsamp)
 //		cerr << ' ' << _max << " F:" << fast << " S:" << slow << ' ' << val << " OUT " << left << ' ' << right << ' ' << left / orig_left << ' ' << right / orig_right << endl;
 
 		// need to reduce it to prevent clipping 
-		left *= .4;
-		right *= .4;
+		//left *= .55;
+		//right *= .55;
 	
-		uint16_t obuf[2];
-
-		obuf[0] = clamp(left + 32768, 0, 65535);
-		obuf[1] = clamp(right + 32768, 0, 65535);
-		write(1, obuf, 4);
+		obuf[(i * 2)] = clamp(left, -32767, 32767);
+		obuf[(i * 2) + 1] = clamp(right, -32767, 32767);
 	}
+	write(1, obuf, nsamp * 4);
 }
 
 // 1024 samples, 2 channels, 2 bytes/sample
 const int blen = 1024;
 
-uint16_t inbuf[blen * 2];
+int16_t inbuf[blen * 2];
 unsigned char *cinbuf = (unsigned char *)inbuf;
 
 int main(int argc, char *argv[])
