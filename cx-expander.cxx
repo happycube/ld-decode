@@ -20,6 +20,7 @@ int snum = 0;
 double slow = 0, fast = 0;
 
 double m14db = 0.199526231496888;
+double m22db = 0.07943282347242814; // 10 ** (-22 / 20)
 
 /* 
  *  Key CX notes for decoding:
@@ -33,9 +34,11 @@ void Process(int16_t *buf, int nsamp)
 {
 	int16_t obuf[nsamp * 2];
 
+	//cerr << fast << ' ' << slow << endl;
+
 	for (int i = 0; i < nsamp; i++) {
-		double left = (buf[i * 2] - 32768); 
-		double right = (buf[(i * 2 + 1)] - 32768); 
+		double left = (buf[i * 2] ); 
+		double right = (buf[(i * 2 + 1)] ); 
 
 		snum++;
 
@@ -60,21 +63,25 @@ void Process(int16_t *buf, int nsamp)
 		if (_max > slow) slow = min(_max, slow + (_max * .0020));	
 
 		// approximate 0dB point using ld-decode rev4
-		const double factor = 9300;
+		const double s0db = 15250;
+		//const double sm22db = s0db * m22db;
 
-		// XXX : there is currently some non-linearity in 1khz samples
-		double val = max(fast, slow * 1.00) - (factor * m14db);
+		double val = max(fast, slow * 1.00) / s0db;
 
-		if (val < 0) val = 0;
+		if (val < m22db) val = m22db;
 
-		left = orig_left * m14db;
-		right = orig_right * m14db;
+		left = orig_left * val;
+		right = orig_right * val;
 
-		left *= 1 + (val / (factor * m14db));
-		right *= 1 + (val / (factor * m14db));
+		if (0 && i == 0) {
+			cerr << orig_left << ' ' << max(fast, slow * 1.00) << ' ' << val << ' ' << left << endl;
+		}
 
-		left = f_left30.feed(left);
-		right = f_right30.feed(right);
+		//left *= 1 + (val / (factor * m28db));
+		//right *= 1 + (val / (factor * m28db));
+
+//		left = f_left30.feed(left);
+//		right = f_right30.feed(right);
 
 //		cerr << ' ' << _max << " F:" << fast << " S:" << slow << ' ' << val << " OUT " << left << ' ' << right << ' ' << left / orig_left << ' ' << right / orig_right << endl;
 
