@@ -1225,10 +1225,9 @@ class FieldPAL(Field):
         burstlevel = np.zeros(314)
 
         for l in range(2, 313):
-            burstarea = self.data[0]['demod_burst'][self.lineslice(l, 6, 9)].copy()
-            burstarea -= np.mean(burstarea)
+            burstarea = self.data[0]['demod_burst'][self.lineslice(l, 6, 3)].copy()
 
-            burstlevel[l] = np.max(np.abs(burstarea)) / 1
+            burstlevel[l] = np.std(burstarea) * np.sqrt(2)
 
         return np.median(burstlevel / self.rf.SysParams['hz_ire'])
 
@@ -1428,6 +1427,15 @@ class FieldNTSC(Field):
     def apply_offsets(self, linelocs, phaseoffset, picoffset = 0):
         return np.array(linelocs) + picoffset + (phaseoffset * (self.rf.freq / (4 * 315 / 88)))
 
+    def calc_burstmedian(self):
+        burstlevel = []
+
+        for l in range(10, 263):
+            burstarea = self.data[0]['demod'][self.lineslice(l, 5.5, 2.4)].copy()
+            burstlevel.append(np.std(burstarea) * np.sqrt(2))
+
+        return np.median(burstlevel) / self.rf.SysParams['hz_ire']
+
     def __init__(self, *args, **kwargs):
         self.burstlevel = None
         self.burst90 = False
@@ -1448,7 +1456,7 @@ class FieldNTSC(Field):
         self.linelocs3, self.burstlevel = self.refine_linelocs_burst(self.linelocs2)
         self.linelocs3 = self.fix_badlines(self.linelocs3)
 
-        self.burstmedian = np.median(np.abs(self.burstlevel)) / self.rf.SysParams['hz_ire']
+        self.burstmedian = self.calc_burstmedian()
 
         # Now adjust 33 degrees (-90 - 33) for color decoding
         shift33 = self.colorphase * (np.pi / 180)
@@ -1708,12 +1716,12 @@ class LDdecode:
             sl_cburst = f1.lineslice_tbc(19 + f1.issue117, 4.7+.8, 2.4)
             diff = (f1.dspicture[sl_cburst].astype(float) - f2.dspicture[sl_cburst].astype(float))/2
 
-            metrics['ntscLine19Burst0IRE'] = np.std(diff)/f1.out_scale
+            metrics['ntscLine19Burst0IRE'] = np.sqrt(2)*np.std(diff)/f1.out_scale
 
             sl_cburst70 = f1.lineslice_tbc(19 + f1.issue117, 14, 20)
             diff = (f1.dspicture[sl_cburst70].astype(float) - f2.dspicture[sl_cburst70].astype(float))/2
 
-            metrics['ntscLine19Burst70IRE'] = np.std(diff)/f1.out_scale
+            metrics['ntscLine19Burst70IRE'] = np.sqrt(2)*np.std(diff)/f1.out_scale
 
         return metrics
 
