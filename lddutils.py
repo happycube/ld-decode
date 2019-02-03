@@ -367,3 +367,7 @@ def genwave(rate, freq, initialphase = 0):
         out[i] = np.sin(angle)
         
     return out
+
+# slightly faster than np.std for short arrays
+def rms(arr):
+    return np.sqrt(np.mean(np.square(arr - np.mean(arr))))

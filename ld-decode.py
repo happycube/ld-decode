@@ -27,7 +27,6 @@ parser.add_argument('-n', '--ntsc', dest='ntsc', action='store_true', help='sour
 #parser.add_argument('-c', '--cut', dest='cut', action='store_true', help='cut (to r16) instead of decode')
 parser.add_argument('-m', '--MTF', metavar='mtf', type=float, default=None, help='mtf compensation multiplier')
 parser.add_argument('--MTF_offset', metavar='mtf_offset', type=float, default=None, help='mtf compensation offset')
-parser.add_argument('-f', '--frame', dest='frame', action='store_true', help='output frames')
 parser.add_argument('--NTSCJ', dest='ntscj', action='store_true', help='source is in NTSC-J (IRE 0 black) format')
 parser.add_argument('--noDOD', dest='nodod', action='store_true', default=False, help='disable dropout detector')
 
@@ -63,9 +62,8 @@ elif filename[-3:] == 'r16':
     loader = load_unpacked_data_s16
     
 system = 'PAL' if args.pal else 'NTSC'
-foutput = False if not args.frame else True
     
-ldd = LDdecode(filename, outname, loader, frameoutput=foutput, system=system, doDOD = not args.nodod)
+ldd = LDdecode(filename, outname, loader, system=system, doDOD = not args.nodod)
 ldd.roughseek(firstframe * 2)
 
 if system == 'NTSC' and not args.ntscj:
