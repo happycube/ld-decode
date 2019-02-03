@@ -1,4 +1,4 @@
-This is now rev4, in freeze (mostly :) ) before an expected release Jan 31.
+This is the WIP tree for rev5.  It may be utterly broken at any time until release.
 
 For more documentation check the wiki (here) on github:
 
