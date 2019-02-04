@@ -40,13 +40,16 @@ SysParams_NTSC = {
     # From the spec - audio frequencies are multiples of the (color) line rate
     'audio_lfreq': (1000000*315/88/227.5) * 146.25,
     'audio_rfreq': (1000000*315/88/227.5) * 178.75,
-    
-    'philips_codelines': [15, 16, 17],
+
+    'colorBurstUS': (5.3, 7.8),
+    'activeVideoUS': (10.5, 64-1.5),
 }
 
 # In color NTSC, the line period was changed from 63.5 to 227.5 color cycles,
 # which works out to 63.555(with a bar on top) usec
 SysParams_NTSC['line_period'] = 1/(SysParams_NTSC['fsc_mhz']/227.5)
+SysParams_NTSC['activeVideoUS'] = (10.5, SysParams_NTSC['line_period'] - 1.5)
+
 SysParams_NTSC['FPS'] = 1000000/ (525 * SysParams_NTSC['line_period'])
 
 SysParams_NTSC['outlinelen'] = calclinelen(SysParams_NTSC, 4, 'fsc_mhz')
@@ -70,8 +73,8 @@ SysParams_PAL = {
     'audio_lfreq': (1000000/64) * 43.75,
     'audio_rfreq': (1000000/64) * 68.25,
 
-    # slight flaw:  different vbi lines in this phase
-    'philips_codelines': [17, 18, 19, 20],
+    'colorBurstUS': (5.6, 7.85),
+    'activeVideoUS': (10.5, 64-1.5),
 }
 
 SysParams_PAL['outlinelen'] = calclinelen(SysParams_PAL, 4, 'fsc_mhz')
@@ -711,7 +714,7 @@ class Field:
 
         linelocs2 = copy.deepcopy(linelocs)
 
-        for l in range(1, self.linecount + 6):
+        for l in range(1, self.outlinecount + 6):
             if l not in linelocs:
                 prev_valid = None
                 next_valid = None
@@ -720,7 +723,7 @@ class Field:
                     if i in linelocs:
                         prev_valid = i
                         break
-                for i in range(l, self.linecount + 1):
+                for i in range(l, self.outlinecount + 1):
                     if i in linelocs:
                         next_valid = i
                         break
@@ -735,8 +738,8 @@ class Field:
                     avglen = linelocs[prev_valid] - linelocs2[prev_valid - 1]
                     linelocs2[l] = linelocs[prev_valid] + (avglen * (l - prev_valid))
 
-        rv_ll = [linelocs2[l] for l in range(1, self.linecount + 6)]
-        rv_err = [l not in linelocs for l in range(1, self.linecount + 6)]
+        rv_ll = [linelocs2[l] for l in range(1, self.outlinecount + 6)]
+        rv_err = [l not in linelocs for l in range(1, self.outlinecount + 6)]
         
         for i in range(0, 10):
             rv_err[i] = False
@@ -843,8 +846,8 @@ class Field:
         if outwidth is None:
             outwidth = self.outlinelen
         if linesout is None:
-            #linesout = self.linecount
-            linesout = 263 if self.rf.system == 'NTSC' else 313
+            # for video always output 263/313 lines
+            linesout = self.outlinecount
 
         dsout = np.zeros((linesout * outwidth), dtype=np.double)    
         lineoffset = self.lineoffset
@@ -939,10 +942,10 @@ class Field:
         self.nextfieldoffset = self.peaklist[self.vsyncs[1][1]-10]
         
         # On NTSC linecount rounds up to 263, and PAL 313
-        self.linecount = (self.rf.SysParams['frame_lines'] // 2) + 1
+        self.outlinecount = (self.rf.SysParams['frame_lines'] // 2) + 1
+        # this is eventually set to 262/263 and 312/313 for audio timing
+        self.linecount = None
         
-        #print(self.vsyncs)
-
         self.linelocs1, self.linebad = self.compute_linelocs()
         self.linelocs2 = self.refine_linelocs_hsync()
 
@@ -953,7 +956,7 @@ class Field:
         self.isFirstField = self.is_firstfield()
 
         # VBI info
-        self.linecode = [self.decodephillipscode(l) for l in self.rf.SysParams['philips_codelines']]
+        self.linecode = [self.decodephillipscode(l + self.issue117 + self.lineoffset) for l in [16, 17, 18]]
             
         self.valid = True
         self.tbcstart = self.peaklist[self.vsyncs[1][1]-10]
@@ -964,7 +967,7 @@ class Field:
         # current field
         f = self
 
-        # Do raw demod detection here
+        # Do raw demod detection here.  (This covers only extreme cases right now)
         dod_margin_low = 1500000
         dod_margin_high = 1500000
         iserr1 = inrange(f.data[0]['demod_raw'], f.rf.limits['viewable'][0] - dod_margin_low, f.rf.limits['viewable'][1] +  dod_margin_high) == False
@@ -993,6 +996,7 @@ class Field:
 
             if self.rf.system == 'PAL':
                 # basically exclude the pilot signal altogether
+                # This is needed even though HSYNC is excluded later, since failures are expanded
                 valid_min[int(l-(f.rf.freq * .5)):int(l+(f.rf.freq * 4.7))] = f.rf.iretohz(-100)
                 valid_max[int(l-(f.rf.freq * .5)):int(l+(f.rf.freq * 4.7))] = f.rf.iretohz(120)
 
@@ -1070,6 +1074,7 @@ class Field:
         rv_ends = []
 
         for r in rvs:
+            # exclude HSYNC from output
             if r[2] < endhsync:
                 continue
             
@@ -1313,7 +1318,6 @@ class FieldNTSC(Field):
 
         adjs_median = np.median(adjs)
         for l in skipped:
-            #print(l, adjs_median)
             linelocs_adj[l] += adjs_median
 
         self.field14 = field14
@@ -1569,53 +1573,66 @@ class LDdecode:
 
         return 20 * np.log10(70 / noise)
 
+    def computeMetricsNTSC(self, f1, f2, metrics):
+        wl_slice = f2.lineslice_tbc(20+f2.issue117, 13, 2)
+        if inrange(np.mean(f2.output_to_ire(f2.dspicture[wl_slice])), 95, 108):
+            metrics['whiteSNR'] = self.calcsnr(f2, wl_slice)
+
+        # I've seen some clips with the 100IRE area in the back half - and none at all
+        wl20_slice = f1.lineslice_tbc(20+f1.issue117, 14, 12)
+        if not inrange(np.mean(f1.output_to_ire(f1.dspicture[wl20_slice])), 95, 108):
+            wl20_slice = f1.lineslice_tbc(20+f1.issue117, 52, 8)
+            if inrange(np.mean(f1.output_to_ire(f1.dspicture[wl20_slice])), 95, 108):
+                wl20_slice = None
+
+        if wl20_slice is not None:
+            metrics['whiteSNR'] = self.calcsnr(f1, wl20_slice)
+
+        # check for a white flag
+        # later disks - and some film frames - don't have a white flag
+
+        wf_slice = f1.lineslice_tbc(11+f1.issue117, 15, 40)
+        if not inrange(np.mean(f1.output_to_ire(f1.dspicture[wf_slice])), 95, 108):
+            wf_slice = f2.lineslice_tbc(11+f2.issue117, 15, 40)
+            if not inrange(np.mean(f2.output_to_ire(f2.dspicture[wf_slice])), 95, 108):
+                wf_slice = None
+            else:
+                metrics['ntscWhiteFlagSNR'] = self.calcsnr(f2, wf_slice)
+        else:
+            metrics['ntscWhiteFlagSNR'] = self.calcsnr(f1, wf_slice)
+
+        # for NTSC, use line 19 to determine 70IRE burst level for MTF compensation later
+
+        sl_cburst = f1.lineslice_tbc(19 + f1.issue117, 4.7+.8, 2.4)
+        diff = (f1.dspicture[sl_cburst].astype(float) - f2.dspicture[sl_cburst].astype(float))/2
+
+        metrics['ntscLine19Burst0IRE'] = np.sqrt(2)*rms(diff)/f1.out_scale
+
+        sl_cburst70 = f1.lineslice_tbc(19 + f1.issue117, 14, 20)
+        diff = (f1.dspicture[sl_cburst70].astype(float) - f2.dspicture[sl_cburst70].astype(float))/2
+
+        metrics['ntscLine19Burst70IRE'] = np.sqrt(2)*rms(diff)/f1.out_scale
+
     def computeMetrics(self, f1, f2):
-        ''' perform after obtaining second field. '''
+        ''' This uses a complete video (not LD) frame '''
+
+        if not f1.isFirstField:
+            raise ValueError("computeMetrics f1 is not the first field")
 
         metrics = {}
         if f1.rf.system == 'NTSC':
-            blackline = 13
-
-            wl_slice = f2.lineslice_tbc(20+f2.issue117, 13, 2)
-            if inrange(np.mean(f2.output_to_ire(f2.dspicture[wl_slice])), 95, 108):
-                metrics['whiteSNR'] = self.calcsnr(f2, wl_slice)
-
-            # I've seen some clips with the 100IRE area in the back half - and none at all
-            wl20_slice = f1.lineslice_tbc(20+f1.issue117, 14, 12)
-            if not inrange(np.mean(f1.output_to_ire(f1.dspicture[wl20_slice])), 95, 108):
-                wl20_slice = f1.lineslice_tbc(20+f1.issue117, 52, 8)
-                if inrange(np.mean(f1.output_to_ire(f1.dspicture[wl20_slice])), 95, 108):
-                    wl20_slice = None
-
-            if wl20_slice is not None:
-                metrics['whiteSNR'] = self.calcsnr(f1, wl20_slice)
-
-            # check for a white flag
-            # later disks - and some film frames - don't have a white flag
-
-            wf_slice = f1.lineslice_tbc(11+f1.issue117, 15, 40)
-            if not inrange(np.mean(f1.output_to_ire(f1.dspicture[wf_slice])), 95, 108):
-                wf_slice = f2.lineslice_tbc(11+f2.issue117, 15, 40)
-                if not inrange(np.mean(f2.output_to_ire(f2.dspicture[wf_slice])), 95, 108):
-                    wf_slice = None
-                else:
-                    metrics['ntscWhiteFlagSNR'] = self.calcsnr(f2, wf_slice)
-            else:
-                metrics['ntscWhiteFlagSNR'] = self.calcsnr(f1, wf_slice)
-
+            self.computeMetricsNTSC(f1, f2, metrics)
         else:
-            blackline = 22
-            
             wl_slice = f2.lineslice_tbc(19+f2.issue117, 14, 4)
             metrics['whiteSNR'] = self.calcsnr(f2, wl_slice)
 
-        # compute black line SNR.  For PAL this is guaranteed to be a blanked line for disk only (P)SNR
+        # compute black line SNR.  For PAL line 22 is guaranteed to be blanked for a pure disk (P)SNR
         blackline = 14 if f1.rf.system == 'NTSC' else 22
-        bl_slicetbc = f1.lineslice_tbc(blackline + f1.issue117, 10, 50)
+        bl_slicetbc = f1.lineslice_tbc(blackline + f1.issue117, 12, 50)
 
         # these metrics determine the effectiveness of the wow-filter
-        bl_slice1 = f1.lineslice(blackline + f1.lineoffset + f1.issue117, 10, 50)
-        bl_slice2 = f2.lineslice(blackline + f2.lineoffset + f2.issue117, 10, 50)
+        bl_slice1 = f1.lineslice(blackline + f1.lineoffset + f1.issue117, 12, 50)
+        bl_slice2 = f2.lineslice(blackline + f2.lineoffset + f2.issue117, 12, 50)
         metrics['blackLineF1PreTBCIRE'] = f1.rf.hztoire(np.mean(f1.data[0]['demod'][bl_slice1]))
         metrics['blackLineF2PreTBCIRE'] = f2.rf.hztoire(np.mean(f2.data[0]['demod'][bl_slice2]))
 
@@ -1624,18 +1641,6 @@ class LDdecode:
 
         metrics['blackLineF1PSNR'] = self.calcsnr(f1, bl_slicetbc)
         metrics['blackLineF2PSNR'] = self.calcsnr(f2, bl_slicetbc)
-
-        # for NTSC, use line 19 to determine 70IRE burst level for MTF compensation later
-        if f1.rf.system == 'NTSC':
-            sl_cburst = f1.lineslice_tbc(19 + f1.issue117, 4.7+.8, 2.4)
-            diff = (f1.dspicture[sl_cburst].astype(float) - f2.dspicture[sl_cburst].astype(float))/2
-
-            metrics['ntscLine19Burst0IRE'] = np.sqrt(2)*np.std(diff)/f1.out_scale
-
-            sl_cburst70 = f1.lineslice_tbc(19 + f1.issue117, 14, 20)
-            diff = (f1.dspicture[sl_cburst70].astype(float) - f2.dspicture[sl_cburst70].astype(float))/2
-
-            metrics['ntscLine19Burst70IRE'] = np.sqrt(2)*np.std(diff)/f1.out_scale
 
         return metrics
 
@@ -1751,19 +1756,13 @@ class LDdecode:
         vp['black16bIre'] = np.float(f.hz_to_output(f.rf.iretohz(self.blackIRE)))
         vp['white16bIre'] = np.float(f.hz_to_output(f.rf.iretohz(100)))
 
-        if f.rf.system == 'NTSC':
-            vp['fieldHeight'] = 263
-            badj = 0 # TODO: put the IQ shift here in px
-            vp['colourBurstStart'] = np.round((5.3 * spu) + badj)
-            vp['colourBurstEnd'] = np.round((7.8 * spu) + badj)
-            vp['activeVideoStart'] = np.round((9.4 * spu) + badj)
-            vp['activeVideoEnd'] = np.round(((63.55 - 1.5) * spu) + badj)
-        else: # PAL
-            vp['fieldHeight'] = 313
-            vp['colourBurstStart'] = np.round((5.6 * spu))
-            vp['colourBurstEnd'] = np.round((7.85 * spu))
-            vp['activeVideoStart'] = np.round((10.5 * spu))
-            vp['activeVideoEnd'] = np.round(((64 - 1.5) * spu))
+        vp['fieldHeight'] = f.outlinecount
+
+        badj = 0 # TODO: put the IQ shift here in px on NTSC
+        vp['colourBurstStart'] = np.round((f.rf.SysParams['colorBurstUS'][0] * spu) + badj)
+        vp['colourBurstEnd'] = np.round((f.rf.SysParams['colorBurstUS'][1] * spu) + badj)
+        vp['activeVideoStart'] = np.round((f.rf.SysParams['activeVideoUS'][0] * spu) + badj)
+        vp['activeVideoEnd'] = np.round((f.rf.SysParams['activeVideoUS'][1] * spu) + badj)
 
         jout['videoParameters'] = vp
         
