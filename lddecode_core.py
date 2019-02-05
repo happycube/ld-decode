@@ -657,7 +657,7 @@ class Field:
         for peaknum, p in enumerate(self.peaklist):
             peak = ds[p]
 
-            if peak > .9 and prevpeak < self.med_hsync - (self.hsync_tolerance * 4.0):
+            if peaknum > 10 and peak > .9 and prevpeak < self.med_hsync - (self.hsync_tolerance * 4.0):
                 line0 = None
 
                 # find the last 'regular line'
