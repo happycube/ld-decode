@@ -5,7 +5,9 @@ SUBDIRS = ld-decode-shared \
 	  ld-comb-pal \
           ld-analyse \
 	  ld-comb-ntsc \
-	  ld-combine
+	  ld-combine \
+          ld-efm-sampletodata \
+
 
 
 
