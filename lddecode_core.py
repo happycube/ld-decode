@@ -117,7 +117,7 @@ RFParams_PAL = {
 }
 
 class RFDecode:
-    def __init__(self, inputfreq = 40, system = 'NTSC', blocklen_ = 16384, decode_analog_audio = True, have_analog_audio = True, mtf_mult = 1.0, mtf_offset = 0):
+    def __init__(self, inputfreq = 40, system = 'NTSC', blocklen_ = 16384, decode_digital_audio = True, decode_analog_audio = True, have_analog_audio = True, mtf_mult = 1.0, mtf_offset = 0):
         self.blocklen = blocklen_
         self.blockcut = 1024 # ???
         self.system = system
@@ -142,6 +142,7 @@ class RFDecode:
         linelen = self.freq_hz/(1000000.0/self.SysParams['line_period'])
         self.linelen = int(np.round(linelen))
             
+        self.decode_digital_audio = decode_digital_audio
         self.decode_analog_audio = decode_analog_audio
 
         self.computefilters()    
@@ -150,8 +151,13 @@ class RFDecode:
 
     def computefilters(self):
         self.computevideofilters()
+
         if self.decode_analog_audio: 
             self.computeaudiofilters()
+
+        if self.decode_digital_audio:
+            # same for both PAL and NTSC, AFAIK
+            self.Filters['Fefm'] = filtfft(sps.butter(8, (1.75 / self.freq_half)), self.blocklen)
 
         self.computedelays()
 
@@ -290,6 +296,8 @@ class RFDecode:
         return (hz - self.SysParams['ire0']) / self.SysParams['hz_ire']
     
     def demodblock(self, data, mtf_level = 0):
+        rv_efm = None
+
         mtf_level *= self.mtf_mult
         mtf_level += self.mtf_offset
             
@@ -322,8 +330,11 @@ class RFDecode:
         else:
             rv_video = np.rec.array([out_video, demod, out_video05, output_syncf, out_videoburst], names=['demod', 'demod_raw', 'demod_05', 'demod_sync', 'demod_burst'])
 
+        if self.decode_digital_audio == True:
+            rv_efm = np.fft.ifft(indata_fft * self.Filters['Fefm'])
+
         if self.decode_analog_audio == False:
-            return rv_video, None
+            return rv_video, None, rv_efm
 
         # Audio phase 1
         hilbert = np.fft.ifft(self.audio_fdslice(indata_fft) * self.Filters['audio_lfilt'])
@@ -334,7 +345,7 @@ class RFDecode:
 
         rv_audio = np.rec.array([audio_left, audio_right], names=['audio_left', 'audio_right'])
 
-        return rv_video, rv_audio
+        return rv_video, rv_audio, rv_efm
     
     # Second phase audio filtering.  This works on a whole field's samples, since 
     # the frequency is reduced by 16/32x.
@@ -385,6 +396,8 @@ class RFDecode:
         # set a placeholder
         output = None
         output_audio = None
+        output_efm = None
+        output_audio1 = None
 
         blocklen_overlap = self.blocklen - self.blockcut - self.blockcut_end
         for i in range(start, end, blocklen_overlap):
@@ -392,7 +405,7 @@ class RFDecode:
             if (i + blocklen_overlap) > end:
                 break
 
-            tmp_video, tmp_audio = self.demodblock(indata[i:i+self.blocklen], mtf_level = mtf_level)
+            tmp_video, tmp_audio, tmp_efm = self.demodblock(indata[i:i+self.blocklen], mtf_level = mtf_level)
 
             # if the output hasn't been created yet, do it now using the 
             # data types returned by dodemod (should be faster than multiple
@@ -410,22 +423,28 @@ class RFDecode:
 
             output[output_slice] = tmp_video[tmp_slice]
 
+            if tmp_efm is not None:
+                if output_efm is None:
+                    output_efm = np.zeros(end - start + 1, dtype=np.int16)
+
+                output_efm[output_slice] = tmp_efm[tmp_slice].real
+
             # repeat the above - but for audio
             if tmp_audio is not None:
                 audio_downscale = tmp_video.shape[0] // tmp_audio.shape[0]
 
-                if output_audio is None:
-                    output_audio = np.zeros(((end - start) // audio_downscale) + 1, dtype=tmp_audio.dtype)
+                if output_audio1 is None:
+                    output_audio1 = np.zeros(((end - start) // audio_downscale) + 1, dtype=tmp_audio.dtype)
 
-                output_slice = slice((i - start) // audio_downscale, (i - start + copylen) // audio_downscale)
-                tmp_slice = slice(self.blockcut // audio_downscale, (self.blockcut + copylen) // audio_downscale)
+                output_aslice = slice((i - start) // audio_downscale, (i - start + copylen) // audio_downscale)
+                tmp_aslice = slice(self.blockcut // audio_downscale, (self.blockcut + copylen) // audio_downscale)
 
-                output_audio[output_slice] = tmp_audio[tmp_slice]
+                output_audio1[output_aslice] = tmp_audio[tmp_aslice]
 
-        if tmp_audio is not None:
-            return output, self.audio_phase2(output_audio)
-        else:
-            return output, None
+        if output_audio1 is not None:
+            output_audio = self.audio_phase2(output_audio1)
+
+        return output, output_audio, output_efm
 
     def computedelays(self, mtf_level = 0):
         ''' Generate a fake signal and compute filter delays '''
@@ -658,7 +677,7 @@ class Field:
         for peaknum, p in enumerate(self.peaklist):
             peak = ds[p]
 
-            if peak > .9 and prevpeak < self.med_hsync - (self.hsync_tolerance * 4.0):
+            if peaknum > 8 and peak > .9 and prevpeak < self.med_hsync - (self.hsync_tolerance * 4.0):
                 line0 = None
 
                 # find the last 'regular line'
@@ -872,7 +891,12 @@ class Field:
         if audio and self.rf.decode_analog_audio:
             self.dsaudio, self.audio_next_offset = downscale_audio(self.data[1], lineinfo, self.rf, self.linecount, self.audio_offset)
             
-        return dsout, self.dsaudio
+        if self.rf.decode_digital_audio:
+            self.efmout = self.data[2][int(lineinfo[0]):int(lineinfo[self.linecount])]
+        else:
+            self.efmout = None
+
+        return dsout, self.dsaudio, self.efmout
     
     def decodephillipscode(self, linenum):
         linestart = self.linelocs[linenum]
@@ -1163,13 +1187,13 @@ class FieldPAL(Field):
 
     def downscale(self, final = False, *args, **kwargs):
         # For PAL, each field starts with the line containing the first full VSYNC pulse
-        dsout, dsaudio = super(FieldPAL, self).downscale(audio = final, *args, **kwargs)
+        dsout, dsaudio, dsefm = super(FieldPAL, self).downscale(audio = final, *args, **kwargs)
         
         if final:
             self.dspicture = self.hz_to_output(dsout)
-            return self.dspicture, dsaudio
+            return self.dspicture, dsaudio, dsefm
                     
-        return dsout, dsaudio
+        return dsout, dsaudio, dsefm
     
     def __init__(self, *args, **kwargs):
         super(FieldPAL, self).__init__(*args, **kwargs)
@@ -1334,15 +1358,15 @@ class FieldNTSC(Field):
         return ((output - 1024) / self.out_scale) + self.rf.SysParams['vsync_ire']
 
     def downscale(self, lineoffset = 0, final = False, *args, **kwargs):
-        dsout, dsaudio = super(FieldNTSC, self).downscale(audio = final, *args, **kwargs)
+        dsout, dsaudio, dsefm = super(FieldNTSC, self).downscale(audio = final, *args, **kwargs)
         
         if final:
             lines16 = self.hz_to_output(dsout)
 
             self.dspicture = lines16
-            return lines16, dsaudio
+            return lines16, dsaudio, dsefm
                     
-        return dsout, dsaudio
+        return dsout, dsaudio, dsefm
     
     def apply_offsets(self, linelocs, phaseoffset, picoffset = 0):
         return np.array(linelocs) + picoffset + (phaseoffset * (self.rf.freq / (4 * 315 / 88)))
@@ -1382,7 +1406,7 @@ class FieldNTSC(Field):
 
 class LDdecode:
     
-    def __init__(self, fname_in, fname_out, freader, analog_audio = True, system = 'NTSC', doDOD = True):
+    def __init__(self, fname_in, fname_out, freader, analog_audio = True, digital_audio = True, system = 'NTSC', doDOD = True):
         self.infile = open(fname_in, 'rb')
         self.freader = freader
 
@@ -1394,6 +1418,10 @@ class LDdecode:
             self.outfile_video = open(fname_out + '.tbc', 'wb')
             #self.outfile_json = open(fname_out + '.json', 'wb')
             self.outfile_audio = open(fname_out + '.pcm', 'wb') if analog_audio else None
+
+        self.digital_audio = digital_audio
+        if self.digital_audio:
+            self.outfile_efm = open(fname_out + '.efm', 'wb')
         
         self.analog_audio = analog_audio
         self.firstfield = None # In frame output mode, the first field goes here
@@ -1645,7 +1673,7 @@ class LDdecode:
         return metrics
 
     def processfield(self, f, squelch = False):
-        picture, audio = f.downscale(linesout = self.output_lines, final=True)
+        picture, audio, efm = f.downscale(linesout = self.output_lines, final=True)
             
         prevfi = self.fieldinfo[-1] if len(self.fieldinfo) else None
 
@@ -1700,6 +1728,9 @@ class LDdecode:
 
             if audio is not None and self.outfile_audio is not None:
                 self.outfile_audio.write(audio)
+
+            if self.digital_audio == True:
+                self.outfile_efm.write(efm)
 
         self.frameNumber = None
         self.earlyCLV = False
