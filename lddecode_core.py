@@ -929,7 +929,7 @@ class Field:
         self.inlinelen = self.rf.linelen
         self.outlinelen = self.rf.SysParams['outlinelen']
 
-        self.lineoffset = 0 # 0 is true for NTSC, PAL is 2 or 3
+        self.lineoffset = 1 # 0 is true for NTSC, PAL is 2 or 3
         
         self.valid = False
         self.sync_confidence = 75
@@ -1064,10 +1064,10 @@ class Field:
 
                 if end_linepos > self.outlinelen:
                     # need to output two dropouts
-                    dropouts.append((l - lineoffset, start_linepos, self.outlinelen))
-                    dropouts.append((l - lineoffset + (end_linepos // self.outlinelen), 0, np.remainder(end_linepos, self.outlinelen)))
+                    dropouts.append((l + 0 - lineoffset, start_linepos, self.outlinelen))
+                    dropouts.append((l + 0 - lineoffset + (end_linepos // self.outlinelen), 0, np.remainder(end_linepos, self.outlinelen)))
                 else:
-                    dropouts.append((l - lineoffset, start_linepos, end_linepos))
+                    dropouts.append((l + 0 - lineoffset, start_linepos, end_linepos))
 
                 if len(errlistc):
                     curerr = errlistc.pop(0)
@@ -1200,9 +1200,9 @@ class FieldPAL(Field):
         self.burstmedian = self.calc_burstmedian()
 
         self.linecount = 312 if self.isFirstField else 313
-        self.lineoffset = 2 if self.isFirstField else 3
+        self.lineoffset = 3 if self.isFirstField else 4
 
-        self.linecode = [self.decodephillipscode(l + self.lineoffset) for l in [16, 17, 18]]
+        self.linecode = [self.decodephillipscode(l + self.lineoffset - 1) for l in [16, 17, 18]]
 
         self.out_scale = np.double(0xd300 - 0x0100) / (100 - self.rf.SysParams['vsync_ire'])
 
@@ -1315,7 +1315,7 @@ class FieldNTSC(Field):
         skipped = []
         adjs = []
 
-        for l in range(2, 266):
+        for l in range(0, 266):
             if l < 8 and (np.abs(burstlevel[l]) < (burstlevel_median / 2)):
                 # it's only *advised* that disks have burst in the VSYNC area...
                 skipped.append(l)
@@ -1384,7 +1384,7 @@ class FieldNTSC(Field):
         if not self.valid:
             return
 
-        self.linecode = [self.decodephillipscode(l + self.lineoffset) for l in [16, 17, 18]]
+        self.linecode = [self.decodephillipscode(l + self.lineoffset - 1) for l in [16, 17, 18]]
 
         self.out_scale = np.double(0xc800 - 0x0400) / (100 - self.rf.SysParams['vsync_ire'])
 
