@@ -2,12 +2,12 @@
 
     main.cpp
 
-    ld-efm-sampletodata - EFM sample to data processor for ld-decode
+    ld-efm-decodedata - EFM data decoder for ld-decode
     Copyright (C) 2019 Simon Inns
 
     This file is part of ld-decode-tools.
 
-    ld-efm-sampletodata is free software: you can redistribute it and/or
+    ld-efm-decodedata is free software: you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
     published by the Free Software Foundation, either version 3 of the
     License, or (at your option) any later version.
@@ -76,14 +76,14 @@ int main(int argc, char *argv[])
     QCoreApplication a(argc, argv);
 
     // Set application name and version
-    QCoreApplication::setApplicationName("ld-efm-sampletodata");
+    QCoreApplication::setApplicationName("ld-efm-decodedata");
     QCoreApplication::setApplicationVersion("1.0");
     QCoreApplication::setOrganizationDomain("domesday86.com");
 
     // Set up the command line parser
     QCommandLineParser parser;
     parser.setApplicationDescription(
-                "ld-efm-sampletodata - EFM sample to data processor for ld-decode\n"
+                "ld-efm-decodedata - EFM data decoder for ld-decode\n"
                 "\n"
                 "(c)2019 Simon Inns\n"
                 "GPLv3 Open-Source - github: https://github.com/happycube/ld-decode");
@@ -96,10 +96,10 @@ int main(int argc, char *argv[])
     parser.addOption(showDebugOption);
 
     // Positional argument to specify input EFM file
-    parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input 40MSPS sampled EFM file"));
+    parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input F3 frame data file"));
 
     // Positional argument to specify output data file
-    parser.addPositionalArgument("output", QCoreApplication::translate("main", "Specify output F3 frame data file"));
+    parser.addPositionalArgument("output", QCoreApplication::translate("main", "Specify output decoded data file"));
 
     // Process the command line options and arguments given by the user
     parser.process(a);
@@ -116,7 +116,7 @@ int main(int argc, char *argv[])
         outputFilename = positionalArguments.at(1);
     } else {
         // Quit with error
-        qCritical("You must specify an input EFM sample file and an output data file");
+        qCritical("You must specify an input raw EFM data file and an output data file");
         return -1;
     }
 
