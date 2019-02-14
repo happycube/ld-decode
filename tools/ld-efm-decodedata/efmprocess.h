@@ -77,6 +77,9 @@ private:
     StateMachine sm_state_processSection(void);
     StateMachine sm_state_syncLost(void);
     StateMachine sm_state_complete(void);
+
+    quint16 crc16(char *addr, quint16 num);
+
 };
 
 #endif // EFMPROCESS_H

@@ -271,9 +271,19 @@ EfmProcess::StateMachine EfmProcess::sm_state_processSection(void)
         qSubcodeDebug += QString("%1").arg(qSubcode[byteC], 2, 16, QChar('0'));
     }
 
+    // CRC check the Q-channel - CRC is on control+mode+data 4+4+72 = 80 bits with 16-bit CRC (96 bits total)
+    char crcSource[10];
+    for (qint32 byteNo = 0; byteNo < 10; byteNo++) crcSource[byteNo] = static_cast<char>(qSubcode[byteNo]);
+    quint16 crcChecksum = static_cast<quint16>(~((qSubcode[10] << 8) + qSubcode[11])); // Inverted on disc
+    quint16 calcChecksum = crc16(crcSource, 10);
+
     // Show raw decoded subcode data in debug
     qDebug() << "EfmProcess::sm_state_processSection(): P-Subcode data:" << pSubcodeDebug;
-    qDebug() << "EfmProcess::sm_state_processSection(): Q-Subcode data:" << qSubcodeDebug;
+    if (crcChecksum == calcChecksum) {
+        qDebug() << "EfmProcess::sm_state_processSection(): Q-Subcode data:" << qSubcodeDebug << "CRC: Pass";
+    } else {
+        qDebug() << "EfmProcess::sm_state_processSection(): Q-Subcode data:" << qSubcodeDebug << "CRC: FAIL";
+    }
 
     return state_getNextSection;
 }
@@ -290,6 +300,21 @@ EfmProcess::StateMachine EfmProcess::sm_state_complete(void)
     return state_complete;
 }
 
+// Method to perform CRC16 (XMODEM)
+// Adapted from http://mdfs.net/Info/Comp/Comms/CRC16.htm
+quint16 EfmProcess::crc16(char *addr, quint16 num)
+{
+    qint32 i;
+    quint32 crc = 0;
 
+    for (; num > 0; num--) {
+        crc = crc ^ static_cast<quint32>(*addr++ << 8);
+        for (i = 0; i < 8; i++) {
+            crc = crc << 1;
+            if (crc & 0x10000) crc = (crc ^ 0x1021) & 0xFFFF;
+        }
+    }
 
+    return static_cast<quint16>(crc);
+}
 
