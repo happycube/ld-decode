@@ -31,7 +31,7 @@ EfmDecoder::EfmDecoder()
 }
 
 // This method takes a vector of T values and returns a byte array
-// of 8-bit decoded data (33 bytes per frame)
+// of 8-bit decoded data (33 bytes per F3 frame)
 QByteArray EfmDecoder::convertTvaluesToData(QVector<qint32> frameT)
 {
     // Firstly we have to make a bit-stream of the 588 channel bits including
@@ -66,22 +66,20 @@ QByteArray EfmDecoder::convertTvaluesToData(QVector<qint32> frameT)
     rawFrameData[bytePosition + 1] = static_cast<char>(byteData);
 
     // Secondly, we take the bit stream and extract just the EFM values it contains
-    // There are 33 EFM values per frame
+    // There are 33 EFM values per F3 frame
 
     // Composition of an EFM packet is as follows:
     //
     //  1 * (24 + 3) bits sync pattern         =  27
     //  1 * (14 + 3) bits control and display  =  17
-    // 16 * (14 + 3) Q data+parity             = 272
-    // 16 * (14 + 3) P data+parity             = 272
+    // 32 * (14 + 3) data+parity               = 544
     //                                   total = 588 bits
 
-    // Which demodulates to:
+    // Which demodulates to and F3 frame of:
     //
     // Sync Pattern (discarded)
     //  1 byte control
-    // 16 bytes Q data+parity
-    // 16 bytes P data+parity
+    // 32 bytes data+parity
     //
     // Total of 33 bytes
 
@@ -102,20 +100,43 @@ QByteArray EfmDecoder::convertTvaluesToData(QVector<qint32> frameT)
     // Thirdly we take each EFM value, look it up and replace it with the
     // 8-bit value it represents
     QByteArray outputData;
-    outputData.resize(33);
-    for (qint32 counter = 0; counter < 33; counter++) {
+    outputData.resize(34);
+
+    // Note: Each output F3 frame consists of 34 bytes.  1 byte of sync data and
+    // 33 bytes of actual F3 data.  We add the additional 1 byte so F3 frame
+    // sync can be performed later (it's not a real F3 data byte, but otherwise
+    // the SYNC0 and SYNC1 would be lost as they cannot be converted as EFM values)
+    outputData[0] = 0; // No sync
+    if (efmValues[0] == 0x801) outputData[0] = 0x01; // SYNC0
+    if (efmValues[0] == 0x012) outputData[0] = 0x02; // SYNC1
+
+    for (qint32 counter = 1; counter < 34; counter++) {
         qint32 result = -1;
 
-        for (qint32 lutPos = 0; lutPos < 256; lutPos++) {
-            if (efm2numberLUT[lutPos] == efmValues[counter]) {
-                outputData[counter] = static_cast<char>(lutPos);
-                result = 1;
-                break;
+        if (counter == 0 && efmValues[counter - 1] == 0x801) {
+            // SYNC0 indicator - output a 0
+            outputData[counter] = 0;
+            result = 1;
+            qDebug() << "EfmDecoder::convertTvaluesToData(): F3 SYNC0 indicator present";
+        } else if (counter == 0 && efmValues[counter - 1] == 0x012) {
+            // SYNC1 indicator - output a 0
+            outputData[counter] = 0;
+            result = 1;
+            qDebug() << "EfmDecoder::convertTvaluesToData(): F3 SYNC1 indicator present";
+        } else {
+            // Normal EFM - translate to 8-bit value
+            for (qint32 lutPos = 0; lutPos < 256; lutPos++) {
+                if (efm2numberLUT[lutPos] == efmValues[counter - 1]) {
+                    outputData[counter] = static_cast<char>(lutPos);
+                    result = 1;
+                    break;
+                }
             }
         }
 
         if (result == -1) {
             // To-Do: count the EFM decode failures for debug
+            qDebug() << "EfmDecoder::convertTvaluesToData(): 14-bit EFM value" << efmValues[counter -1] << "not found in translation look-up table";
             badDecodes++;
             outputData[counter] = 0;
         } else goodDecodes++;

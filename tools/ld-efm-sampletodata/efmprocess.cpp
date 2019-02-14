@@ -48,7 +48,7 @@ bool EfmProcess::process(QString inputFilename, QString outputFilename)
 
     // Show the result
     qreal percent = (100.0 / (efmDecoder.getGoodDecodes() + efmDecoder.getBadDecodes())) * efmDecoder.getGoodDecodes();
-    qInfo() << "Processed" << frameCounter << "EFM frames";
+    qInfo() << "Processed" << frameCounter << "F3 frames";
     qInfo() << "Total EFM words processed was" << efmDecoder.getGoodDecodes() + efmDecoder.getBadDecodes() << "with" <<
                efmDecoder.getGoodDecodes() << "good decodes and" << efmDecoder.getBadDecodes() << "bad decodes (success rate of" << percent << "%)";
 
@@ -386,7 +386,7 @@ EfmProcess::StateMachine EfmProcess::sm_state_processFrame(void)
 {
     qDebug() << "Current state: state_processFrame";
 
-    // Get the T values for the frame
+    // Get the T values for the F3 frame
     QVector<qint32> frameT;
 
     qreal frameSampleLength = 0;
@@ -406,14 +406,14 @@ EfmProcess::StateMachine EfmProcess::sm_state_processFrame(void)
         frameT.append(static_cast<qint32>(tEstimate));
 
         // Distribute the error over the remaining sample deltas to maintain the
-        // overall packet length
+        // overall frame length
         for (qint32 i = delta + 1; i < endSyncTransition; i++) {
             zcDeltas[i] -= (tError * samplesPerBit) / (endSyncTransition - (delta + 1));
         }
 
     }
     // Note: The 40.0 in the following is a sample rate of 40MSPS
-    qInfo() << "Processing frame #" << frameCounter << "with a sample length of" << frameSampleLength << "(" << 40.0 / samplesPerBit << "MHz )";
+    qInfo() << "Processing F3 frame #" << frameCounter << "with a sample length of" << frameSampleLength << "(" << 40.0 / samplesPerBit << "MHz )";
     frameCounter++;
 
     // Decode the T values into a bit-stream
