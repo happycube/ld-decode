@@ -250,15 +250,30 @@ EfmProcess::StateMachine EfmProcess::sm_state_processSection(void)
 {
     //qDebug() << "Current state: sm_state_processSection";
 
-    qint32 pCount = 0;
-    qint32 qCount = 0;
+    // Extract the subcodes - there are 8 subcodes containing 96 bits (12 bytes)
+    // per subcode.  Only subcodes p and q are supported by the cdrom standards
+    uchar pSubcode[12];
+    uchar qSubcode[12];
 
-    for (qint32 count = 0; count < 98; count++) {
-        if (f3Section[(count * 34) + 1] & 0x80) pCount++;
-        if (f3Section[(count * 34) + 1] & 0x40) qCount++;
+    QString pSubcodeDebug;
+    QString qSubcodeDebug;
+
+    qint32 sectionOffset = 2; // 0 and 1 are SYNC0 and SYNC1
+    for (qint32 byteC = 0; byteC < 12; byteC++) {
+        pSubcode[byteC] = 0;
+        qSubcode[byteC] = 0;
+        for (qint32 bitC = 7; bitC >= 0; bitC--) {
+            if (f3Section[(sectionOffset * 34) + 1] & 0x80) pSubcode[byteC] |= (1 << bitC);
+            if (f3Section[(sectionOffset * 34) + 1] & 0x40) qSubcode[byteC] |= (1 << bitC);
+            sectionOffset++;
+        }
+        pSubcodeDebug += QString("%1").arg(pSubcode[byteC], 2, 16, QChar('0'));
+        qSubcodeDebug += QString("%1").arg(qSubcode[byteC], 2, 16, QChar('0'));
     }
 
-    qDebug() << "EfmProcess::sm_state_processSection(): Q =" << qCount << "P =" << pCount;
+    // Show raw decoded subcode data in debug
+    qDebug() << "EfmProcess::sm_state_processSection(): P-Subcode data:" << pSubcodeDebug;
+    qDebug() << "EfmProcess::sm_state_processSection(): Q-Subcode data:" << qSubcodeDebug;
 
     return state_getNextSection;
 }

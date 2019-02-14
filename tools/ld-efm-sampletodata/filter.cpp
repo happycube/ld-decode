@@ -81,3 +81,4 @@ qreal Filter::channelEqualizerFir(qreal inputSample)
     for (i = 0; i <= ceNZeros; i++) sum += (ceXcoeffs[i] * ceXv[i]);
     return sum;
 }
+

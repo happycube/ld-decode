@@ -51,7 +51,10 @@ bool EfmProcess::process(QString inputFilename, QString outputFilename, qint32 m
     processStateMachine();
 
     // Show the result
-    qreal percent = (100.0 / (efmDecoder.getGoodDecodes() + efmDecoder.getBadDecodes())) * efmDecoder.getGoodDecodes();
+    qreal good = static_cast<qreal>(efmDecoder.getGoodDecodes());
+    qreal bad = static_cast<qreal>(efmDecoder.getBadDecodes());
+    qreal percent = (100.0 / (good + bad) * good);
+
     qInfo() << "Processed" << frameCounter << "F3 frames";
     qInfo() << "Total EFM words processed was" << efmDecoder.getGoodDecodes() + efmDecoder.getBadDecodes() << "with" <<
                efmDecoder.getGoodDecodes() << "good decodes and" << efmDecoder.getBadDecodes() << "bad decodes (success rate of" << percent << "%)";
@@ -136,7 +139,7 @@ QVector<qreal> EfmProcess::zeroCrossDetection(QVector<qint16> inputBuffer, QVect
             usedSamples = i;
         } else {
             // No zero-cross detected
-            distance += 1;
+            distance += 1.0;
         }
     }
 
