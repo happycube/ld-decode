@@ -29,8 +29,12 @@ EfmProcess::EfmProcess()
 
 }
 
-bool EfmProcess::process(QString inputFilename, QString outputFilename)
+bool EfmProcess::process(QString inputFilename, QString outputFilename, qint32 maxF3Param, bool verboseDecodeParam)
 {
+    // Store the configuration parameters
+    maxF3 = maxF3Param;
+    verboseDecode = verboseDecodeParam;
+
     // Open the input EFM sample file
     if (!openInputSampleFile(inputFilename)) {
         qCritical() << "Could not open sampled EFM input file!";
@@ -350,7 +354,7 @@ EfmProcess::StateMachine EfmProcess::sm_state_findFirstSync(void)
 
 EfmProcess::StateMachine EfmProcess::sm_state_findSecondSync(void)
 {
-    qDebug() << "Current state: state_findSecondSync";
+    //qDebug() << "Current state: state_findSecondSync";
 
     endSyncTransition = findSyncTransition(lastFrameWidth * 1.5);
 
@@ -362,7 +366,7 @@ EfmProcess::StateMachine EfmProcess::sm_state_findSecondSync(void)
         return state_findFirstSync;
     }
 
-    qDebug() << "EfmDecoder::sm_state_findSecondSync(): End of packet found at transition" << endSyncTransition;
+    //qDebug() << "EfmDecoder::sm_state_findSecondSync(): End of packet found at transition" << endSyncTransition;
 
     // Calculate the length of the frame in samples
     qreal endDelta = 0;
@@ -384,7 +388,7 @@ EfmProcess::StateMachine EfmProcess::sm_state_findSecondSync(void)
 
 EfmProcess::StateMachine EfmProcess::sm_state_processFrame(void)
 {
-    qDebug() << "Current state: state_processFrame";
+    //qDebug() << "Current state: state_processFrame";
 
     // Get the T values for the F3 frame
     QVector<qint32> frameT;
@@ -396,14 +400,21 @@ EfmProcess::StateMachine EfmProcess::sm_state_processFrame(void)
     qreal samplesPerBit = frameSampleLength / 588.0;
 
     qint32 tTotal = 0;
+    qreal tTotalRaw = 0;
     for (qint32 delta = 0; delta < endSyncTransition; delta++) {
 
         // Round the T estimate and calculate any error in the delta
         qreal tEstimate = qRound(zcDeltas[delta] / samplesPerBit);
         qreal tError = tEstimate - (zcDeltas[delta] / samplesPerBit);
 
+        tTotalRaw += zcDeltas[delta] / samplesPerBit;
         tTotal += tEstimate;
         frameT.append(static_cast<qint32>(tEstimate));
+
+        // Output verbose decoding debug?
+        if (verboseDecode) {
+            qDebug() << "EfmProcess::sm_state_processFrame(): T=" << tEstimate << "(" << zcDeltas[delta] / samplesPerBit << ")";
+        }
 
         // Distribute the error over the remaining sample deltas to maintain the
         // overall frame length
@@ -414,7 +425,19 @@ EfmProcess::StateMachine EfmProcess::sm_state_processFrame(void)
     }
     // Note: The 40.0 in the following is a sample rate of 40MSPS
     qInfo() << "Processing F3 frame #" << frameCounter << "with a sample length of" << frameSampleLength << "(" << 40.0 / samplesPerBit << "MHz )";
+
+    // Show the decode error margin in debug
+    qDebug() << "EfmProcess::sm_state_processFrame(): Raw T total was" << tTotalRaw << "- an error of" << tTotalRaw - 588.0 << "from the target of 588 channel bits";
+
     frameCounter++;
+
+    // Apply a processing frame limit
+    if (maxF3 != -1) {
+        if (frameCounter >= maxF3) {
+            qDebug() << "EfmProcess::sm_state_processFrame(): Hit maximum number of frames requested by --maxf3";
+            return state_complete;
+        }
+    }
 
     // Decode the T values into a bit-stream
     QByteArray outputData = efmDecoder.convertTvaluesToData(frameT);
