@@ -117,7 +117,7 @@ RFParams_PAL = {
 }
 
 class RFDecode:
-    def __init__(self, inputfreq = 40, system = 'NTSC', blocklen_ = 16384, decode_digital_audio = True, decode_analog_audio = True, have_analog_audio = True, mtf_mult = 1.0, mtf_offset = 0):
+    def __init__(self, inputfreq = 40, system = 'NTSC', blocklen_ = 16384, decode_digital_audio = False, decode_analog_audio = True, have_analog_audio = True, mtf_mult = 1.0, mtf_offset = 0):
         self.blocklen = blocklen_
         self.blockcut = 1024 # ???
         self.system = system
@@ -1414,14 +1414,13 @@ class LDdecode:
 
         self.blackIRE = 0
 
+        self.digital_audio = digital_audio
+
         if fname_out is not None:        
             self.outfile_video = open(fname_out + '.tbc', 'wb')
             #self.outfile_json = open(fname_out + '.json', 'wb')
             self.outfile_audio = open(fname_out + '.pcm', 'wb') if analog_audio else None
-
-        self.digital_audio = digital_audio
-        if self.digital_audio:
-            self.outfile_efm = open(fname_out + '.efm', 'wb')
+            self.outfile_efm = open(fname_out + '.efm', 'wb') if digital_audio else None
         
         self.analog_audio = analog_audio
         self.firstfield = None # In frame output mode, the first field goes here
