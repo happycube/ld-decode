@@ -703,12 +703,6 @@ class Field:
         # cutoff...
         linelocs = {}
 
-        firstvisidx = None
-        for i in range(0, self.vsyncs[1][1]): #self.vsyncs[1][1]):
-            if i > self.vsyncs[0][0] and firstvisidx is None:
-                firstvisidx = i
-                break
-
         linelens = [self.inlinelen]
         prevlineidx = None
         for i in range(0, self.vsyncs[1][1] + 0): 
@@ -724,7 +718,7 @@ class Field:
                     else:
                         linenum = prevlinenum + int(np.round((plist[i] - plist[prevlineidx]) / med_linelen))
                 else:
-                    linenum = int(np.round((plist[i] - plist[self.vsyncs[0][1]]) / med_linelen))
+                    linenum = int(np.round((plist[i] - plist[self.vsyncs[0][1] - 1]) / med_linelen))
 
                 linelocs[linenum] = plist[i]
 
@@ -774,7 +768,7 @@ class Field:
     def is_firstfield(self):
         window_begin = .6 if self.rf.system == 'NTSC' else .1
 
-        l = 2
+        l = 3
         beg = int(self.linelocs2[l] + ((self.linelocs2[l+1] - self.linelocs2[l]) * window_begin))
         end = int(self.linelocs2[l] + ((self.linelocs2[l+1] - self.linelocs2[l]) * (window_begin + .25)))
 
@@ -935,8 +929,7 @@ class Field:
         self.inlinelen = self.rf.linelen
         self.outlinelen = self.rf.SysParams['outlinelen']
 
-        self.issue117 = -1 # XXX: will move to 1-based lines: issue #117
-        self.lineoffset = 0 # true for NTSC, PAL is 2 or 3
+        self.lineoffset = 0 # 0 is true for NTSC, PAL is 2 or 3
         
         self.valid = False
         self.sync_confidence = 75
@@ -980,7 +973,7 @@ class Field:
         self.isFirstField = self.is_firstfield()
 
         # VBI info
-        self.linecode = [self.decodephillipscode(l + self.issue117 + self.lineoffset) for l in [16, 17, 18]]
+        #self.linecode = [self.decodephillipscode(l + self.lineoffset) for l in [16, 17, 18]]
             
         self.valid = True
         self.tbcstart = self.peaklist[self.vsyncs[1][1]-10]
@@ -1007,12 +1000,7 @@ class Field:
 
         # these lines should cover both PAL and NTSC
 
-        # effectively disable during VSYNC
-        for i in range(6 + self.lineoffset):
-            valid_min[int(f.linelocs[i]):int(f.linelocs[i+1])] = f.rf.iretohz(-150)
-            valid_max[int(f.linelocs[i]):int(f.linelocs[i+1])] = f.rf.iretohz(150)
-
-        for i in range(6 + self.lineoffset, len(f.linelocs)):
+        for i in range(0, len(f.linelocs)):
             l = f.linelocs[i]
             # Could compute the estimated length of setup, but we can cut this a bit early...
             valid_min[int(l-(f.rf.freq * .5)):int(l+(f.rf.freq * 8))] = f.rf.iretohz(minsync)
@@ -1023,6 +1011,11 @@ class Field:
                 # This is needed even though HSYNC is excluded later, since failures are expanded
                 valid_min[int(l-(f.rf.freq * .5)):int(l+(f.rf.freq * 4.7))] = f.rf.iretohz(-100)
                 valid_max[int(l-(f.rf.freq * .5)):int(l+(f.rf.freq * 4.7))] = f.rf.iretohz(120)
+
+        # effectively disable during VSYNC
+        for i in range(1, 7 + self.lineoffset):
+            valid_min[int(f.linelocs[i]):int(f.linelocs[i+1])] = f.rf.iretohz(-150)
+            valid_max[int(f.linelocs[i]):int(f.linelocs[i+1])] = f.rf.iretohz(150)
 
         iserr2 = f.data[0]['demod'] < valid_min
         iserr2 |= f.data[0]['demod'] > valid_max
@@ -1057,9 +1050,9 @@ class Field:
         errlistc = errlist.copy()
         curerr = errlistc.pop(0)
 
-        lineoffset = self.lineoffset + self.issue117
+        lineoffset = self.lineoffset
 
-        for l in range(lineoffset + 0, self.linecount - 1):
+        for l in range(lineoffset, self.linecount - 1):
             while curerr is not None and inrange(curerr[0], self.linelocs[l], self.linelocs[l + 1]):
                 start_rf_linepos = curerr[0] - self.linelocs[l]
                 start_linepos = start_rf_linepos / (self.linelocs[l + 1] - self.linelocs[l])
@@ -1170,7 +1163,7 @@ class FieldPAL(Field):
     def calc_burstmedian(self):
         burstlevel = np.zeros(314)
 
-        for l in range(2, 313):
+        for l in range(3, 313):
             burstarea = self.data[0]['demod'][self.lineslice(l, 6, 3)]
             burstlevel[l] = rms(burstarea) * np.sqrt(2)
 
@@ -1208,6 +1201,8 @@ class FieldPAL(Field):
 
         self.linecount = 312 if self.isFirstField else 313
         self.lineoffset = 2 if self.isFirstField else 3
+
+        self.linecode = [self.decodephillipscode(l + self.lineoffset) for l in [16, 17, 18]]
 
         self.out_scale = np.double(0xd300 - 0x0100) / (100 - self.rf.SysParams['vsync_ire'])
 
@@ -1274,12 +1269,12 @@ class FieldNTSC(Field):
             if (len(zc_bursts[l][True]) == 0) or (len(zc_bursts[l][False]) == 0):
                 continue
 
-            if ((l + self.issue117) % 2):
-                bursts['odd'].append(zc_bursts[l][True])
-                bursts['even'].append(zc_bursts[l][False])
-            else:
+            if not (l % 2):
                 bursts['even'].append(zc_bursts[l][True])
                 bursts['odd'].append(zc_bursts[l][False])
+            else:
+                bursts['odd'].append(zc_bursts[l][True])
+                bursts['even'].append(zc_bursts[l][False])
 
         bursts_arr = {}
         bursts_arr[True] = np.concatenate(bursts['even'])
@@ -1291,12 +1286,12 @@ class FieldNTSC(Field):
         amed[True] = np.abs(np.median(bursts_arr[True]))
         amed[False] = np.abs(np.median(bursts_arr[False]))
 
-        closer = amed[True] < amed[False]
+        field14 = amed[True] > amed[False]
 
-        valid = amed[closer] + np.std(bursts_arr[closer]) < amed[not closer]
+        valid = amed[field14] + np.std(bursts_arr[field14]) < amed[not field14]
         valid = valid and (np.abs(amed[True] - amed[False]) > .05)
 
-        return valid, zc_bursts, closer, burstlevel, badlines
+        return valid, zc_bursts, field14, burstlevel, badlines
 
     def refine_linelocs_burst(self, linelocs = None):
         if linelocs is None:
@@ -1320,13 +1315,13 @@ class FieldNTSC(Field):
         skipped = []
         adjs = []
 
-        for l in range(1, 266):
+        for l in range(2, 266):
             if l < 8 and (np.abs(burstlevel[l]) < (burstlevel_median / 2)):
                 # it's only *advised* that disks have burst in the VSYNC area...
                 skipped.append(l)
                 continue
 
-            edge = not ((field14 and not (l % 2)) or (not field14 and (l % 2)))
+            edge = not ((field14 and (l % 2)) or (not field14 and not (l % 2)))
 
             if edge:
                 burstlevel[l] = -burstlevel[l]
@@ -1372,7 +1367,7 @@ class FieldNTSC(Field):
         return np.array(linelocs) + picoffset + (phaseoffset * (self.rf.freq / (4 * 315 / 88)))
 
     def calc_burstmedian(self):
-        burstlevel = [self.get_burstlevel(l) for l in range(10, 263)]
+        burstlevel = [self.get_burstlevel(l) for l in range(11, 264)]
 
         return np.median(burstlevel) / self.rf.SysParams['hz_ire']
 
@@ -1388,6 +1383,8 @@ class FieldNTSC(Field):
         
         if not self.valid:
             return
+
+        self.linecode = [self.decodephillipscode(l + self.lineoffset) for l in [16, 17, 18]]
 
         self.out_scale = np.double(0xc800 - 0x0400) / (100 - self.rf.SysParams['vsync_ire'])
 
@@ -1406,7 +1403,7 @@ class FieldNTSC(Field):
 
 class LDdecode:
     
-    def __init__(self, fname_in, fname_out, freader, analog_audio = True, digital_audio = True, system = 'NTSC', doDOD = True):
+    def __init__(self, fname_in, fname_out, freader, analog_audio = True, digital_audio = False, system = 'NTSC', doDOD = True):
         self.infile = open(fname_in, 'rb')
         self.freader = freader
 
@@ -1414,27 +1411,27 @@ class LDdecode:
 
         self.blackIRE = 0
 
+        self.analog_audio = analog_audio
         self.digital_audio = digital_audio
 
         if fname_out is not None:        
             self.outfile_video = open(fname_out + '.tbc', 'wb')
-            #self.outfile_json = open(fname_out + '.json', 'wb')
+            #self.outfile_json = open(fname_out + '.json', 'wb')g
             self.outfile_audio = open(fname_out + '.pcm', 'wb') if analog_audio else None
             self.outfile_efm = open(fname_out + '.efm', 'wb') if digital_audio else None
         
-        self.analog_audio = analog_audio
         self.firstfield = None # In frame output mode, the first field goes here
         self.firstfield_picture = None
 
         self.fieldloc = 0
 
         if system == 'PAL':
-            self.rf = RFDecode(system = 'PAL', decode_analog_audio=analog_audio)
+            self.rf = RFDecode(system = 'PAL', decode_analog_audio=analog_audio, decode_digital_audio=digital_audio)
             self.FieldClass = FieldPAL
             self.readlen = self.rf.linelen * 350
             self.clvfps = 25
         else: # NTSC
-            self.rf = RFDecode(system = 'NTSC', decode_analog_audio=analog_audio)
+            self.rf = RFDecode(system = 'NTSC', decode_analog_audio=analog_audio, decode_digital_audio=digital_audio)
             self.FieldClass = FieldNTSC
             self.readlen = self.rf.linelen * 300
             self.clvfps = 30
@@ -1601,14 +1598,14 @@ class LDdecode:
         return 20 * np.log10(70 / noise)
 
     def computeMetricsNTSC(self, f1, f2, metrics):
-        wl_slice = f2.lineslice_tbc(20+f2.issue117, 13, 2)
+        wl_slice = f2.lineslice_tbc(20, 13, 2)
         if inrange(np.mean(f2.output_to_ire(f2.dspicture[wl_slice])), 95, 108):
             metrics['whiteSNR'] = self.calcsnr(f2, wl_slice)
 
         # I've seen some clips with the 100IRE area in the back half - and none at all
-        wl20_slice = f1.lineslice_tbc(20+f1.issue117, 14, 12)
+        wl20_slice = f1.lineslice_tbc(20, 14, 12)
         if not inrange(np.mean(f1.output_to_ire(f1.dspicture[wl20_slice])), 95, 108):
-            wl20_slice = f1.lineslice_tbc(20+f1.issue117, 52, 8)
+            wl20_slice = f1.lineslice_tbc(20, 52, 8)
             if inrange(np.mean(f1.output_to_ire(f1.dspicture[wl20_slice])), 95, 108):
                 wl20_slice = None
 
@@ -1618,9 +1615,9 @@ class LDdecode:
         # check for a white flag
         # later disks - and some film frames - don't have a white flag
 
-        wf_slice = f1.lineslice_tbc(11+f1.issue117, 15, 40)
+        wf_slice = f1.lineslice_tbc(11, 15, 40)
         if not inrange(np.mean(f1.output_to_ire(f1.dspicture[wf_slice])), 95, 108):
-            wf_slice = f2.lineslice_tbc(11+f2.issue117, 15, 40)
+            wf_slice = f2.lineslice_tbc(11, 15, 40)
             if not inrange(np.mean(f2.output_to_ire(f2.dspicture[wf_slice])), 95, 108):
                 wf_slice = None
             else:
@@ -1630,12 +1627,12 @@ class LDdecode:
 
         # for NTSC, use line 19 to determine 70IRE burst level for MTF compensation later
 
-        sl_cburst = f1.lineslice_tbc(19 + f1.issue117, 4.7+.8, 2.4)
+        sl_cburst = f1.lineslice_tbc(19, 4.7+.8, 2.4)
         diff = (f1.dspicture[sl_cburst].astype(float) - f2.dspicture[sl_cburst].astype(float))/2
 
         metrics['ntscLine19Burst0IRE'] = np.sqrt(2)*rms(diff)/f1.out_scale
 
-        sl_cburst70 = f1.lineslice_tbc(19 + f1.issue117, 14, 20)
+        sl_cburst70 = f1.lineslice_tbc(19, 14, 20)
         diff = (f1.dspicture[sl_cburst70].astype(float) - f2.dspicture[sl_cburst70].astype(float))/2
 
         metrics['ntscLine19Burst70IRE'] = np.sqrt(2)*rms(diff)/f1.out_scale
@@ -1650,16 +1647,16 @@ class LDdecode:
         if f1.rf.system == 'NTSC':
             self.computeMetricsNTSC(f1, f2, metrics)
         else:
-            wl_slice = f2.lineslice_tbc(19+f2.issue117, 14, 4)
+            wl_slice = f2.lineslice_tbc(19, 14, 4)
             metrics['whiteSNR'] = self.calcsnr(f2, wl_slice)
 
         # compute black line SNR.  For PAL line 22 is guaranteed to be blanked for a pure disk (P)SNR
         blackline = 14 if f1.rf.system == 'NTSC' else 22
-        bl_slicetbc = f1.lineslice_tbc(blackline + f1.issue117, 12, 50)
+        bl_slicetbc = f1.lineslice_tbc(blackline, 12, 50)
 
         # these metrics determine the effectiveness of the wow-filter
-        bl_slice1 = f1.lineslice(blackline + f1.lineoffset + f1.issue117, 12, 50)
-        bl_slice2 = f2.lineslice(blackline + f2.lineoffset + f2.issue117, 12, 50)
+        bl_slice1 = f1.lineslice(blackline + f1.lineoffset, 12, 50)
+        bl_slice2 = f2.lineslice(blackline + f2.lineoffset, 12, 50)
         metrics['blackLineF1PreTBCIRE'] = f1.rf.hztoire(np.mean(f1.data[0]['demod'][bl_slice1]))
         metrics['blackLineF2PreTBCIRE'] = f2.rf.hztoire(np.mean(f2.data[0]['demod'][bl_slice2]))
 
