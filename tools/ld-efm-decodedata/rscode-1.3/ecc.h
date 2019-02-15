@@ -46,9 +46,6 @@
 
 /****************************************************************/
 
-
-
-
 #define TRUE 1
 #define FALSE 0
 
@@ -98,3 +95,4 @@ void mult_polys(int dst[], int p1[], int p2[]);
 
 void copy_poly(int dst[], int src[]);
 void zero_poly(int poly[]);
+

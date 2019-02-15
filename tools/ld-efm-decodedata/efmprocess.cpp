@@ -39,8 +39,23 @@ bool EfmProcess::process(QString inputFilename, QString outputFilename)
         return false;
     }
 
-    // Perform the actual processing
-    processStateMachine();
+    // To do: make this read many frames at a time to speed up I/O
+    bool endOfFile = false;
+    while (!endOfFile) {
+        QByteArray f3Frame = readF3Frames(1);
+
+        // Decode the subcode, returns a true if the frame is SYNC1
+        // also returns the current reported qMode or -1 if unknown
+        decodeSubcode.process(f3Frame);
+
+        // Pass the frame and decoded subcode information to the audio processor
+        decodeAudio.process(f3Frame);
+
+        // Pass the frame and decoded subcode information to the data processor
+        //decodeData.feed(f3Frame, sync1, qMode);
+
+        if (f3Frame.isEmpty()) endOfFile = true;
+    }
 
     // Close the input F3 data file
     closeInputF3File();
@@ -107,186 +122,5 @@ void EfmProcess::closeOutputDataFile(void)
     outputFile->close();
 }
 
-void EfmProcess::processStateMachine(void)
-{
-    // Initialise the state machine
-    currentState = state_initial;
-    nextState = currentState;
 
-    missedSectionSyncCount = 0;
-
-    while (currentState != state_complete) {
-        currentState = nextState;
-
-        switch (currentState) {
-        case state_initial:
-            nextState = sm_state_initial();
-            break;
-        case state_getSync0:
-            nextState = sm_state_getSync0();
-            break;
-        case state_getSync1:
-            nextState = sm_state_getSync1();
-            break;
-        case state_getInitialSection:
-            nextState = sm_state_getInitialSection();
-            break;
-        case state_getNextSection:
-            nextState = sm_state_getNextSection();
-            break;
-        case state_processSection:
-            nextState = sm_state_processSection();
-            break;
-        case state_syncLost:
-            nextState = sm_state_syncLost();
-            break;
-        case state_complete:
-            nextState = sm_state_complete();
-            break;
-        }
-    }
-}
-
-EfmProcess::StateMachine EfmProcess::sm_state_initial(void)
-{
-    qDebug() << "Current state: sm_state_initial";
-    return state_getSync0;
-}
-
-EfmProcess::StateMachine EfmProcess::sm_state_getSync0(void)
-{
-    //qDebug() << "Current state: sm_state_getSync0";
-
-    // Read a F3 frame
-    f3FrameSync0 = readF3Frames(1);
-    if (f3FrameSync0.isEmpty()) return state_complete;
-
-    // Is it a SYNC0?
-    if (f3FrameSync0[0] == static_cast<char>(0x01)) {
-        qDebug() << "EfmProcess::sm_state_getSync0(): SYNC0 found";
-        return state_getSync1;
-    }
-
-    return state_getSync0;
-}
-
-EfmProcess::StateMachine EfmProcess::sm_state_getSync1(void)
-{
-    qDebug() << "Current state: sm_state_getSync1";
-
-    // Read a F3 frame
-    f3FrameSync1 = readF3Frames(1);
-    if (f3FrameSync1.isEmpty()) return state_complete;
-
-    // Is it a SYNC0?
-    if (f3FrameSync1[0] == static_cast<char>(0x02)) {
-        qDebug() << "EfmProcess::sm_state_getSync1(): SYNC1 found";
-        return state_getInitialSection;
-    }
-
-    return state_getSync0;
-}
-
-EfmProcess::StateMachine EfmProcess::sm_state_getInitialSection(void)
-{
-    qDebug() << "Current state: sm_state_getInitialSection";
-
-    // Since we've already read two F3 frames looking for the sync, we
-    // need to construct the initial section using the two F3 frames
-    // that have been read already
-    f3Section.clear();
-    f3Section.append(f3FrameSync0);
-    f3Section.append(f3FrameSync1);
-
-    // Read the rest of the section (sync0, sync1 and then 96 bytes)
-    f3Section.append(readF3Frames(96));
-    if (f3Section.size() != (98 * 34)) {
-        qDebug() << "EfmProcess::sm_state_getInitialSection(): Couldn't get complete section, size was" <<
-                    f3Section.size() << "bytes";
-        return state_complete;
-    }
-
-    return state_processSection;
-}
-
-EfmProcess::StateMachine EfmProcess::sm_state_getNextSection(void)
-{
-    //qDebug() << "Current state: sm_state_getNextSection";
-
-    // Read the next frame
-    f3Section = readF3Frames(98);
-    if (f3Section.size() != (98 * 34)) {
-        qDebug() << "EfmProcess::sm_state_getNextSection(): Couldn't get complete section, size was" <<
-                    f3Section.size() << "bytes";
-        return state_complete;
-    }
-
-    // Check for sync
-    if (f3Section[0] == static_cast<char>(0x01) && f3Section[34] == static_cast<char>(0x02)) {
-        qDebug() << "EfmProcess::sm_state_getNextSection(): Section SYNC0 and SYNC1 are valid";
-        missedSectionSyncCount = 0;
-    } else {
-        if (f3Section[0] == static_cast<char>(0x01)) {
-            qDebug() << "EfmProcess::sm_state_getNextSection(): Only SYNC0 is valid for the section";
-            missedSectionSyncCount = 0;
-        } else if (f3Section[34] == static_cast<char>(0x02)) {
-            qDebug() << "EfmProcess::sm_state_getNextSection(): Only SYNC1 is valid for the section";
-            missedSectionSyncCount = 0;
-        } else {
-            qDebug() << "EfmProcess::sm_state_getNextSection(): Section does not have valid sync";
-            missedSectionSyncCount++;
-        }
-    }
-
-    // If we've completely missed two syncs in a row, change to the lost sync state
-    if (missedSectionSyncCount == 2) {
-        return state_syncLost;
-    }
-
-    return state_processSection;
-}
-
-EfmProcess::StateMachine EfmProcess::sm_state_processSection(void)
-{
-    //qDebug() << "Current state: sm_state_processSection";
-
-    // Extract the subcodes - there are 8 subcodes containing 96 bits (12 bytes)
-    // per subcode.  Only subcodes p and q are supported by the cdrom standards
-    uchar pSubcode[12];
-    uchar qSubcode[12];
-
-    QString pSubcodeDebug;
-    QString qSubcodeDebug;
-
-    qint32 sectionOffset = 2; // 0 and 1 are SYNC0 and SYNC1
-    for (qint32 byteC = 0; byteC < 12; byteC++) {
-        pSubcode[byteC] = 0;
-        qSubcode[byteC] = 0;
-        for (qint32 bitC = 7; bitC >= 0; bitC--) {
-            if (f3Section[(sectionOffset * 34) + 1] & 0x80) pSubcode[byteC] |= (1 << bitC);
-            if (f3Section[(sectionOffset * 34) + 1] & 0x40) qSubcode[byteC] |= (1 << bitC);
-            sectionOffset++;
-        }
-        pSubcodeDebug += QString("%1").arg(pSubcode[byteC], 2, 16, QChar('0'));
-        qSubcodeDebug += QString("%1").arg(qSubcode[byteC], 2, 16, QChar('0'));
-    }
-
-    // Decode the subcodes
-    DecodeSubcode decodeSubcode;
-    decodeSubcode.decodeQ(qSubcode);
-
-    return state_getNextSection;
-}
-
-EfmProcess::StateMachine EfmProcess::sm_state_syncLost(void)
-{
-    qDebug() << "Current state: sm_state_syncLost";
-    return state_getSync0;
-}
-
-EfmProcess::StateMachine EfmProcess::sm_state_complete(void)
-{
-    qDebug() << "Current state: sm_state_complete";
-    return state_complete;
-}
 

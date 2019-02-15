@@ -22,7 +22,8 @@ SOURCES += \
     rscode-1.3/galois.c \
     rscode-1.3/rs.c \
     errorcorrection.cpp \
-    decodesubcode.cpp
+    decodesubcode.cpp \
+    decodeaudio.cpp
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin
@@ -33,7 +34,8 @@ HEADERS += \
     efmprocess.h \
     rscode-1.3/ecc.h \
     errorcorrection.h \
-    decodesubcode.h
+    decodesubcode.h \
+    decodeaudio.h
 
 DISTFILES += \
     rscode-1.3/README.md

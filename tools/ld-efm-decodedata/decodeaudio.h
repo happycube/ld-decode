@@ -1,6 +1,6 @@
 /************************************************************************
 
-    decodesubcode.h
+    decodeaudio.h
 
     ld-efm-decodedata - EFM data decoder for ld-decode
     Copyright (C) 2019 Simon Inns
@@ -22,67 +22,46 @@
 
 ************************************************************************/
 
-#ifndef DECODESUBCODE_H
-#define DECODESUBCODE_H
+#ifndef DECODEAUDIO_H
+#define DECODEAUDIO_H
 
 #include <QCoreApplication>
 #include <QDebug>
 
-class DecodeSubcode
+// Include the rscode C library
+extern "C" {
+  #include "rscode-1.3/ecc.h"
+}
+
+class DecodeAudio
 {
 public:
-    DecodeSubcode();
-
-    // Available Q Modes
-    enum QModes {
-        qMode_0,
-        qMode_1,
-        qMode_2,
-        qMode_3,
-        qMode_4,
-        qMode_unknown
-    };
+    DecodeAudio();
 
     void process(QByteArray f3FrameParam);
-    QModes getQMode(void);
 
 private:
-    void decodeQ(uchar *qSubcode);
-    QString bcdToQString(qint32 bcd);
-    qint32 bcdToInteger(qint32 bcd);
-    quint16 crc16(char *addr, quint16 num);
-
-    QModes currentQMode;
-    QModes previousQMode;
+    void interleaveFrameData(QByteArray f3Frame0, QByteArray f3Frame1, uchar *c1Data);
+    void hexDump(QString title, uchar *data, qint32 length);
 
     // State machine state definitions
     enum StateMachine {
         state_initial,
-        state_getSync0,
-        state_getSync1,
-        state_getInitialSection,
-        state_getNextSection,
-        state_processSection,
-        state_syncLost
+        state_processC1,
+        state_processC2,
+        state_processAudio
     };
 
     StateMachine currentState;
     StateMachine nextState;
     bool waitingForF3frame;
-
     QByteArray currentF3Frame;
-    QVector<QByteArray> f3Section;
-
-    qint32 frameCounter;
-    qint32 missedSectionSyncCount;
+    QByteArray previousF3Frame;
 
     StateMachine sm_state_initial(void);
-    StateMachine sm_state_getSync0(void);
-    StateMachine sm_state_getSync1(void);
-    StateMachine sm_state_getInitialSection(void);
-    StateMachine sm_state_getNextSection(void);
-    StateMachine sm_state_processSection(void);
-    StateMachine sm_state_syncLost(void);
+    StateMachine sm_state_processC1(void);
+    StateMachine sm_state_processC2(void);
+    StateMachine sm_state_processAudio(void);
 };
 
-#endif // DECODESUBCODE_H
+#endif // DECODEAUDIO_H

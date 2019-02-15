@@ -31,6 +31,7 @@
 #include <QDataStream>
 
 #include "decodesubcode.h"
+#include "decodeaudio.h"
 
 class EfmProcess
 {
@@ -43,26 +44,10 @@ private:
     QFile* inputFile;
     QFile* outputFile;
 
-    // State machine state definitions
-    enum StateMachine {
-        state_initial,
-        state_getSync0,
-        state_getSync1,
-        state_getInitialSection,
-        state_getNextSection,
-        state_processSection,
-        state_syncLost,
-        state_complete
-    };
+    DecodeSubcode decodeSubcode;
+    DecodeAudio decodeAudio;
 
-    StateMachine currentState;
-    StateMachine nextState;
 
-    QByteArray f3FrameSync0;
-    QByteArray f3FrameSync1;
-    QByteArray f3Section;
-
-    qint32 missedSectionSyncCount;
 
     bool openInputF3File(QString filename);
     void closeInputF3File(void);
@@ -70,15 +55,7 @@ private:
     bool openOutputDataFile(QString filename);
     void closeOutputDataFile(void);
 
-    void processStateMachine(void);
-    StateMachine sm_state_initial(void);
-    StateMachine sm_state_getSync0(void);
-    StateMachine sm_state_getSync1(void);
-    StateMachine sm_state_getInitialSection(void);
-    StateMachine sm_state_getNextSection(void);
-    StateMachine sm_state_processSection(void);
-    StateMachine sm_state_syncLost(void);
-    StateMachine sm_state_complete(void);
+
 };
 
 #endif // EFMPROCESS_H
