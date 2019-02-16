@@ -1,6 +1,6 @@
 /************************************************************************
 
-    efmprocess.cpp
+    decodeaudio.h
 
     ld-efm-decodedata - EFM data decoder for ld-decode
     Copyright (C) 2019 Simon Inns
@@ -22,40 +22,46 @@
 
 ************************************************************************/
 
-#ifndef EFMPROCESS_H
-#define EFMPROCESS_H
+#ifndef DECODEAUDIO_H
+#define DECODEAUDIO_H
 
 #include <QCoreApplication>
 #include <QDebug>
-#include <QFile>
-#include <QDataStream>
 
-#include "decodesubcode.h"
-#include "decodeaudio.h"
+// Include the rscode C library
+extern "C" {
+  #include "rscode-1.3/ecc.h"
+}
 
-class EfmProcess
+class DecodeAudio
 {
 public:
-    EfmProcess();
+    DecodeAudio();
 
-    bool process(QString inputFilename, QString outputFilename);
+    void process(QByteArray f3FrameParam);
 
 private:
-    QFile* inputFile;
-    QFile* outputFile;
+    void interleaveFrameData(QByteArray f3Frame0, QByteArray f3Frame1, uchar *c1Data);
+    void hexDump(QString title, uchar *data, qint32 length);
 
-    DecodeSubcode decodeSubcode;
-    DecodeAudio decodeAudio;
+    // State machine state definitions
+    enum StateMachine {
+        state_initial,
+        state_processC1,
+        state_processC2,
+        state_processAudio
+    };
 
+    StateMachine currentState;
+    StateMachine nextState;
+    bool waitingForF3frame;
+    QByteArray currentF3Frame;
+    QByteArray previousF3Frame;
 
-
-    bool openInputF3File(QString filename);
-    void closeInputF3File(void);
-    QByteArray readF3Frames(qint32 numberOfFrames);
-    bool openOutputDataFile(QString filename);
-    void closeOutputDataFile(void);
-
-
+    StateMachine sm_state_initial(void);
+    StateMachine sm_state_processC1(void);
+    StateMachine sm_state_processC2(void);
+    StateMachine sm_state_processAudio(void);
 };
 
-#endif // EFMPROCESS_H
+#endif // DECODEAUDIO_H

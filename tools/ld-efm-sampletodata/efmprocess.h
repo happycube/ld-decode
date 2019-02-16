@@ -38,7 +38,7 @@ class EfmProcess
 public:
     EfmProcess();
 
-    bool process(QString inputFilename, QString outputFilename);
+    bool process(QString inputFilename, QString outputFilename, qint32 maxF3Param, bool verboseDecodeParam);
 
 private:
     QFile* inputFile;
@@ -46,6 +46,9 @@ private:
 
     Filter filter;
     EfmDecoder efmDecoder;
+
+    qint32 maxF3;
+    bool verboseDecode;
 
     // State machine state definitions
     enum StateMachine {

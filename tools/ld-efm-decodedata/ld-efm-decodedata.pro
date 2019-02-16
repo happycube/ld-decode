@@ -21,7 +21,9 @@ SOURCES += \
     rscode-1.3/crcgen.c \
     rscode-1.3/galois.c \
     rscode-1.3/rs.c \
-    errorcorrection.cpp
+    errorcorrection.cpp \
+    decodesubcode.cpp \
+    decodeaudio.cpp
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin
@@ -31,7 +33,9 @@ else: unix:!android: target.path = /usr/local/bin/
 HEADERS += \
     efmprocess.h \
     rscode-1.3/ecc.h \
-    errorcorrection.h
+    errorcorrection.h \
+    decodesubcode.h \
+    decodeaudio.h
 
 DISTFILES += \
     rscode-1.3/README.md
