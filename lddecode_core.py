@@ -134,7 +134,7 @@ class RFDecode:
         if system == 'NTSC':
             self.SysParams = SysParams_NTSC
             self.DecoderParams = RFParams_NTSC
-            self.mtf_mult *= .7
+            #self.mtf_mult *= .7
         elif system == 'PAL':
             self.SysParams = SysParams_PAL
             self.DecoderParams = RFParams_PAL
@@ -299,6 +299,8 @@ class RFDecode:
         rv_efm = None
 
         mtf_level *= self.mtf_mult
+        if self.system == 'NTSC':
+            mtf_level *= .7
         mtf_level += self.mtf_offset
             
         indata_fft = np.fft.fft(data[:self.blocklen])
@@ -599,7 +601,7 @@ class Field:
     def lineslice_tbc(self, l, begin = None, length = None, linelocs = None):
         ''' return a slice corresponding with pre-TBC line l '''
         
-        _begin = self.rf.SysParams['outlinelen'] * l
+        _begin = self.rf.SysParams['outlinelen'] * (l - 1)
         _begin += self.usectooutpx(begin) if begin is not None else 0
 
         _length = self.usectooutpx(length) if length is not None else 1
