@@ -1326,8 +1326,6 @@ class FieldNTSC(Field):
         else:
             self.burst90 = False
 
-        burstlevel_median = np.median(np.abs(burstlevel))
-
         skipped = []
         adjs = []
 
@@ -1339,7 +1337,7 @@ class FieldNTSC(Field):
             if self.linebad[l]:
                 continue
 
-            edge = ((field14 and (l % 2)) or (not field14 and not (l % 2)))
+            edge = not ((field14 and (l % 2)) or (not field14 and not (l % 2)))
 
 #            if edge:
                 #burstlevel[l] = -burstlevel[l]
@@ -1355,7 +1353,7 @@ class FieldNTSC(Field):
                     lfreq = self.rf.freq * (((self.linelocs2[l+1] - self.linelocs2[l-0]) / 1) / self.rf.linelen)
                 elif l >= 262:
                     lfreq = self.rf.freq * (((self.linelocs2[l+0] - self.linelocs2[l-1]) / 1) / self.rf.linelen)
-                adjs.append(-(np.median(zc_bursts[l][edge]) * lfreq * (1 / self.rf.SysParams['fsc_mhz'])))
+                adjs.append(-(np.median(zc_bursts[l][not edge]) * lfreq * (1 / self.rf.SysParams['fsc_mhz'])))
                 linelocs_adj[l] += adjs[-1]
 
         adjs_median = np.median(adjs)
@@ -1401,6 +1399,7 @@ class FieldNTSC(Field):
         # HE010
         self.colorphase = 90+1.5 # colorphase
         self.colorphase = 84 # colorphase
+        self.colorphase = -33 # colorphase
 
         super(FieldNTSC, self).__init__(*args, **kwargs)
         
