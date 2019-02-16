@@ -571,7 +571,7 @@ def downscale_audio(audio, lineinfo, rf, linecount, timeoffset = 0, freq = 48000
 # The Field class contains common features used by NTSC and PAL
 class Field:
     def get_linefreq(self, l = None):
-        if l is None:
+        if l is None or l == 0:
             return self.rf.freq
         else:
             return self.rf.freq * (((self.linelocs[l+1] - self.linelocs[l-1]) / 2) / self.rf.linelen)
@@ -1213,8 +1213,10 @@ class FieldPAL(Field):
 # These classes extend Field to do PAL/NTSC specific TBC features.
 
 class FieldNTSC(Field):
-    def get_burstlevel(self, l):
-        burstarea = self.data[0]['demod'][self.lineslice(l, 5.5, 2.4)].copy()
+
+    def get_burstlevel(self, l, linelocs = None):
+        burstarea = self.data[0]['demod'][self.lineslice(l, 5.5, 2.4, linelocs)].copy()
+
         return rms(burstarea) * np.sqrt(2)
 
     def compute_line_bursts(self, linelocs, line):
@@ -1226,7 +1228,10 @@ class FieldNTSC(Field):
         s_rem = linelocs[line] - s
 
         # compute adjusted frequency from neighboring line lengths
-        lfreq = self.rf.freq * (((self.linelocs2[line+1] - self.linelocs2[line-1]) / 2) / self.rf.linelen)
+        if line > 0:
+            lfreq = self.rf.freq * (((self.linelocs2[line+1] - self.linelocs2[line-1]) / 2) / self.rf.linelen)
+        else:
+            lfreq = self.rf.freq * (((self.linelocs2[line+1] - self.linelocs2[line])) / self.rf.linelen)
 
         # compute approximate burst beginning/end
         bstime = 17 * (1 / self.rf.SysParams['fsc_mhz']) # approx start of burst in usecs
@@ -1234,12 +1239,16 @@ class FieldNTSC(Field):
         bstart = int(bstime * lfreq)
         bend = int(8.8 * lfreq)
 
+        zc_bursts = {False: [], True: []}
+
         # copy and get the mean of the burst area to factor out wow/flutter
         burstarea = self.data[0]['demod_burst'][s+bstart:s+bend].copy()
+        if len(burstarea) == 0:
+            print('WARN', line, s + bstart, s + bend, linelocs[line])
+            return zc_bursts
         burstarea -= np.mean(burstarea)
 
         i = 0
-        zc_bursts = {False: [], True: []}
 
         while i < (len(burstarea) - 1):
             if np.abs(burstarea[i]) > (8 * self.rf.SysParams['hz_ire']):
@@ -1250,7 +1259,7 @@ class FieldNTSC(Field):
                     i = int(zc) + 1
 
             i += 1
-            
+
         return zc_bursts
 
     def compute_burst_offsets(self, linelocs):
@@ -1264,9 +1273,9 @@ class FieldNTSC(Field):
         # Counter for which lines have + polarity.  TRACKS 1-BASED LINE #'s
         bursts = {'odd': [], 'even': []}
 
-        for l in range(1, 266):
+        for l in range(0, 266):
             zc_bursts[l] = self.compute_line_bursts(linelocs, l)
-            burstlevel[l] = self.get_burstlevel(l)
+            burstlevel[l] = self.get_burstlevel(l, linelocs)
 
             if (len(zc_bursts[l][True]) == 0) or (len(zc_bursts[l][False]) == 0):
                 continue
@@ -1317,10 +1326,12 @@ class FieldNTSC(Field):
         skipped = []
         adjs = []
 
+        for l in range(1, 9):
+            self.linebad[l] = True
+            skipped.append(l)
+
         for l in range(0, 266):
-            if l < 8 and (np.abs(burstlevel[l]) < (burstlevel_median / 2)):
-                # it's only *advised* that disks have burst in the VSYNC area...
-                skipped.append(l)
+            if self.linebad[l]:
                 continue
 
             edge = not ((field14 and (l % 2)) or (not field14 and not (l % 2)))
@@ -1333,7 +1344,10 @@ class FieldNTSC(Field):
                 self.linebad[l] = True
                 skipped.append(l)
             else:
-                lfreq = self.rf.freq * (((self.linelocs2[l+1] - self.linelocs2[l-1]) / 2) / self.rf.linelen)
+                if l > 0:
+                    lfreq = self.rf.freq * (((self.linelocs2[l+1] - self.linelocs2[l-1]) / 2) / self.rf.linelen)
+                else:
+                    lfreq = self.rf.freq * (((self.linelocs2[l+1] - self.linelocs2[l-0]) / 1) / self.rf.linelen)
                 adjs.append(-(np.median(zc_bursts[l][edge]) * lfreq * (1 / self.rf.SysParams['fsc_mhz'])))
                 linelocs_adj[l] += adjs[-1]
 
@@ -1601,14 +1615,14 @@ class LDdecode:
 
     def computeMetricsNTSC(self, f1, f2, metrics):
         wl_slice = f2.lineslice_tbc(20, 13, 2)
-        if inrange(np.mean(f2.output_to_ire(f2.dspicture[wl_slice])), 95, 108):
+        if inrange(np.mean(f2.output_to_ire(f2.dspicture[wl_slice])), 90, 110):
             metrics['whiteSNR'] = self.calcsnr(f2, wl_slice)
 
-        # I've seen some clips with the 100IRE area in the back half - and none at all
+        # I've seen some clips with the 100IRE area in the back half of line 20- and none at all
         wl20_slice = f1.lineslice_tbc(20, 14, 12)
-        if not inrange(np.mean(f1.output_to_ire(f1.dspicture[wl20_slice])), 95, 108):
+        if not inrange(np.mean(f1.output_to_ire(f1.dspicture[wl20_slice])), 90, 110):
             wl20_slice = f1.lineslice_tbc(20, 52, 8)
-            if inrange(np.mean(f1.output_to_ire(f1.dspicture[wl20_slice])), 95, 108):
+            if not inrange(np.mean(f1.output_to_ire(f1.dspicture[wl20_slice])), 90, 110):
                 wl20_slice = None
 
         if wl20_slice is not None:
