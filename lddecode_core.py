@@ -157,7 +157,7 @@ class RFDecode:
 
         if self.decode_digital_audio:
             # same for both PAL and NTSC, AFAIK
-            self.Filters['Fefm'] = filtfft(sps.butter(8, (1.6 / self.freq_half)), self.blocklen)
+            self.Filters['Fefm'] = filtfft(sps.ellip(7, .5, 26, (1.75 / self.freq_half)), self.blocklen)
 
         self.computedelays()
 
