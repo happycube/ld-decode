@@ -1228,10 +1228,13 @@ class FieldNTSC(Field):
         s_rem = linelocs[line] - s
 
         # compute adjusted frequency from neighboring line lengths
-        if line > 0:
-            lfreq = self.rf.freq * (((self.linelocs2[line+1] - self.linelocs2[line-1]) / 2) / self.rf.linelen)
-        else:
-            lfreq = self.rf.freq * (((self.linelocs2[line+1] - self.linelocs2[line])) / self.rf.linelen)
+        l = 0
+        if l > 0:
+            lfreq = self.rf.freq * (((self.linelocs2[l+1] - self.linelocs2[l-1]) / 2) / self.rf.linelen)
+        elif l == 0:
+            lfreq = self.rf.freq * (((self.linelocs2[l+1] - self.linelocs2[l-0]) / 1) / self.rf.linelen)
+        elif l >= 262:
+            lfreq = self.rf.freq * (((self.linelocs2[l+0] - self.linelocs2[l-1]) / 1) / self.rf.linelen)
 
         # compute approximate burst beginning/end
         bstime = 17 * (1 / self.rf.SysParams['fsc_mhz']) # approx start of burst in usecs
@@ -1298,6 +1301,8 @@ class FieldNTSC(Field):
         amed[False] = np.abs(np.median(bursts_arr[False]))
 
         field14 = amed[True] > amed[False]
+        self.amed = amed
+        self.zc_bursts = zc_bursts
 
         valid = amed[field14] + np.std(bursts_arr[field14]) < amed[not field14]
         valid = valid and (np.abs(amed[True] - amed[False]) > .05)
@@ -1334,10 +1339,10 @@ class FieldNTSC(Field):
             if self.linebad[l]:
                 continue
 
-            edge = not ((field14 and (l % 2)) or (not field14 and not (l % 2)))
+            edge = ((field14 and (l % 2)) or (not field14 and not (l % 2)))
 
-            if edge:
-                burstlevel[l] = -burstlevel[l]
+#            if edge:
+                #burstlevel[l] = -burstlevel[l]
 
             if np.isnan(linelocs_adj[l]) or len(zc_bursts[l][edge]) == 0 or self.linebad[l] or badlines[l]:
                 #print('err', l, linelocs_adj[l])
@@ -1346,8 +1351,10 @@ class FieldNTSC(Field):
             else:
                 if l > 0:
                     lfreq = self.rf.freq * (((self.linelocs2[l+1] - self.linelocs2[l-1]) / 2) / self.rf.linelen)
-                else:
+                elif l == 0:
                     lfreq = self.rf.freq * (((self.linelocs2[l+1] - self.linelocs2[l-0]) / 1) / self.rf.linelen)
+                elif l >= 262:
+                    lfreq = self.rf.freq * (((self.linelocs2[l+0] - self.linelocs2[l-1]) / 1) / self.rf.linelen)
                 adjs.append(-(np.median(zc_bursts[l][edge]) * lfreq * (1 / self.rf.SysParams['fsc_mhz'])))
                 linelocs_adj[l] += adjs[-1]
 
