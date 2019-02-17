@@ -1300,7 +1300,7 @@ class FieldNTSC(Field):
         amed[True] = np.abs(np.median(bursts_arr[True]))
         amed[False] = np.abs(np.median(bursts_arr[False]))
 
-        field14 = amed[True] > amed[False]
+        field14 = amed[True] < amed[False]
         self.amed = amed
         self.zc_bursts = zc_bursts
 
@@ -1399,7 +1399,7 @@ class FieldNTSC(Field):
         # HE010
         self.colorphase = 90+1.5 # colorphase
         self.colorphase = 84 # colorphase
-        self.colorphase = -33 # colorphase
+        self.colorphase = -21 # colorphase
 
         super(FieldNTSC, self).__init__(*args, **kwargs)
         
