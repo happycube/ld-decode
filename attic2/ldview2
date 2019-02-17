@@ -1,2 +1,0 @@
-#!/bin/bash
-python2 ld-decoder.py -s 2 -S $1 $2 $3 | ./tbc-ntsc - 2> /dev/null | ./comb -d 2 -m -L -Q - > /dev/null

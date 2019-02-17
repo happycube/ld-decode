@@ -1,4 +1,0 @@
-#!/bin/bash
-
-# params: infile outfile (no suffixes) 
-rm $2.avi ; cat $1.tbc | ./comb -d 3 -I 0 - 2> /dev/null | buffer -s 256000 -b 2048 | ffmpeg -f s16le -ar 48k -ac 2 -i $1.pcm -f rawvideo -r 30000/1001 -pix_fmt rgb48 -s 744x480 -i /dev/stdin -b:v 15000k -aspect 4:3 -vcodec mpeg4 -flags +ilme+ildct $2.avi
