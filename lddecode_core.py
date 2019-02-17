@@ -1326,44 +1326,41 @@ class FieldNTSC(Field):
         else:
             self.burst90 = False
 
-        skipped = []
-        adjs = []
+        adjs = {}
 
         for l in range(1, 9):
             self.linebad[l] = True
-            skipped.append(l)
 
+        # compute the adjustments for each line but *do not* apply, so
+        # outliers can be bypassed
         for l in range(0, 266):
             if self.linebad[l]:
                 continue
 
             edge = not ((field14 and (l % 2)) or (not field14 and not (l % 2)))
 
-#            if edge:
-                #burstlevel[l] = -burstlevel[l]
-
-            if np.isnan(linelocs_adj[l]) or len(zc_bursts[l][not edge]) == 0 or self.linebad[l] or badlines[l]:
-                #print('err', l, linelocs_adj[l])
-                self.linebad[l] = True
-                skipped.append(l)
-            else:
+            if not (np.isnan(linelocs_adj[l]) or len(zc_bursts[l][not edge]) == 0 or self.linebad[l] or badlines[l]):
                 if l > 0:
                     lfreq = self.rf.freq * (((self.linelocs2[l+1] - self.linelocs2[l-1]) / 2) / self.rf.linelen)
                 elif l == 0:
                     lfreq = self.rf.freq * (((self.linelocs2[l+1] - self.linelocs2[l-0]) / 1) / self.rf.linelen)
                 elif l >= 262:
                     lfreq = self.rf.freq * (((self.linelocs2[l+0] - self.linelocs2[l-1]) / 1) / self.rf.linelen)
-                
-                adjs.append(-(np.median(zc_bursts[l][not edge]) * lfreq * (1 / self.rf.SysParams['fsc_mhz'])))
-                linelocs_adj[l] += adjs[-1]
 
-        adjs_median = np.median(adjs)
-        for l in skipped:
-            linelocs_adj[l] += adjs_median
+                adjs[l] = -(np.median(zc_bursts[l][not edge]) * lfreq * (1 / self.rf.SysParams['fsc_mhz']))
+
+        adjs_median = np.median([adjs[a] for a in adjs])
+        
+        for l in range(0, 266):
+            if l in adjs and inrange(adjs[l] - adjs_median, -2, 2):
+                linelocs_adj[l] += adjs[l]
+            else:
+                linelocs_adj[l] += adjs_median
+                self.linebad[l] = True
 
         self.field14 = field14
 
-        return linelocs_adj, burstlevel
+        return linelocs_adj, burstlevel#, adjs
 
     def hz_to_output(self, input):
         reduced = (input - self.rf.SysParams['ire0']) / self.rf.SysParams['hz_ire']
