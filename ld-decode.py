@@ -61,7 +61,9 @@ elif filename[-3:] == 'r30':
     loader = load_packed_data_3_32
 elif filename[-3:] == 'r16':
     loader = load_unpacked_data_s16
-    
+else:
+    loader = load_packed_data_4_40
+
 system = 'PAL' if args.pal else 'NTSC'
     
 ldd = LDdecode(filename, outname, loader, digital_audio = args.efm, system=system, doDOD = not args.nodod)
