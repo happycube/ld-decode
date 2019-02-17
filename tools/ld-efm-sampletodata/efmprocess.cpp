@@ -393,44 +393,54 @@ EfmProcess::StateMachine EfmProcess::sm_state_processFrame(void)
 {
     //qDebug() << "Current state: state_processFrame";
 
-    // Get the T values for the F3 frame
-    QVector<qint32> frameT;
 
+
+    // Calculate the samples per bit based on the frame's sync to sync length
     qreal frameSampleLength = 0;
     for (qint32 delta = 0; delta < endSyncTransition; delta++) {
         frameSampleLength += zcDeltas[delta];
     }
     qreal samplesPerBit = frameSampleLength / 588.0;
 
+    // Quantize the delta's based on the expected T1 clock and store the
+    // T values for the F3 frame
+
+    QVector<qint32> frameT;
     qint32 tTotal = 0;
-    qreal tTotalRaw = 0;
+
     for (qint32 delta = 0; delta < endSyncTransition; delta++) {
+        qreal tValue = zcDeltas[delta] / samplesPerBit;
 
-        // Round the T estimate and calculate any error in the delta
-        qreal tEstimate = qRound(zcDeltas[delta] / samplesPerBit);
-        qreal tError = tEstimate - (zcDeltas[delta] / samplesPerBit);
+        // T11 Sync RL push
+        if ((delta < 2) && (tValue < 11.0)) tValue = 11.0;
 
-        tTotalRaw += zcDeltas[delta] / samplesPerBit;
-        tTotal += tEstimate;
-        frameT.append(static_cast<qint32>(tEstimate));
+        // T2 RL push
+        if (tValue < 3.0) tValue = 3.0;
+
+        // T12 RL push
+        if (tValue > 11.0) tValue = 11.0;
+
+        // Calculate distance to nearest T bit clock
+        qreal newDelta = qRound(tValue) * samplesPerBit;
+        qreal sampError = (newDelta) - (zcDeltas[delta]);
+
+        if (verboseDecode) qDebug() << "Delta #" << delta << "tValue =" << tValue << "zcDelta[] =" << zcDeltas[delta] << "new delta =" << newDelta << "sampError =" << sampError;
+
+        // Update the delta values
+        zcDeltas[delta] = newDelta;
+        if (delta < endSyncTransition) zcDeltas[delta+1] -= sampError;
+
+        // Now store the resulting T value
+        qreal tCorrectedValue = zcDeltas[delta] / samplesPerBit;
+        tTotal += tCorrectedValue;
+        frameT.append(static_cast<qint32>(tCorrectedValue));
 
         // Output verbose decoding debug?
-        if (verboseDecode) {
-            qDebug() << "EfmProcess::sm_state_processFrame(): T=" << tEstimate << "(" << zcDeltas[delta] / samplesPerBit << ")";
-        }
-
-        // Distribute the error over the remaining sample deltas to maintain the
-        // overall frame length
-        for (qint32 i = delta + 1; i < endSyncTransition; i++) {
-            zcDeltas[i] -= (tError * samplesPerBit) / (endSyncTransition - (delta + 1));
-        }
-
+        if (verboseDecode) qDebug() << "EfmProcess::sm_state_processFrame(): Delta #" << delta << "T =" << tCorrectedValue;
     }
-    // Note: The 40.0 in the following is a sample rate of 40MSPS
-    qInfo() << "Processing F3 frame #" << frameCounter << "with a sample length of" << frameSampleLength << "(" << 40.0 / samplesPerBit << "MHz )";
 
-    // Show the decode error margin in debug
-    qDebug() << "EfmProcess::sm_state_processFrame(): Raw T total was" << tTotalRaw << "- an error of" << tTotalRaw - 588.0 << "from the target of 588 channel bits";
+    // Note: The 40.0 in the following is a sample rate of 40MSPS
+    qInfo() << "F3 frame #" << frameCounter << "with a sample length of" << frameSampleLength << "(" << 40.0 / samplesPerBit << "MHz ) - T total was" << tTotal;
 
     frameCounter++;
 

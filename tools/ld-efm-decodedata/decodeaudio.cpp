@@ -84,20 +84,17 @@ DecodeAudio::StateMachine DecodeAudio::sm_state_processC1(void)
     uchar c1Data[32];
     interleaveFrameData(previousF3Frame, currentF3Frame, c1Data);
 
-    uchar testCode[32];
-    encode_data(c1Data, 28, testCode);
-    hexDump("orig[] : ", c1Data, 32);
-    hexDump("enco[] : ", testCode, 32);
-    qDebug() << "--------------------------------------------------------------------------------------------------";
+    // Initialise the error correction library
+    initialize_ecc();
 
     // RS is 32, 28 (i.e. 28 bytes of data with 4 bytes of parity)
-    initialize_ecc();
     decode_data(c1Data, 32); // Message length including parity
 
+    // Check the syndrome to see if there were errors in the data
     if (check_syndrome() != 0) {
-        //qDebug() << "DecodeAudio::sm_state_processC1(): C1 CIRC Failed!";
+        //qDebug() << "DecodeAudio::sm_state_processC1(): C1 CIRC Failed! check_syndrome =" << check_syndrome() << "******************************************************";
     } else {
-        qDebug() << "DecodeAudio::sm_state_processC1(): C1 CIRC Passed! ***************************************************";
+        qDebug() << "DecodeAudio::sm_state_processC1(): C1 CIRC Passed! ===========================================================";
     }
 
     // Store the frame and get a new frame
@@ -125,53 +122,27 @@ DecodeAudio::StateMachine DecodeAudio::sm_state_processAudio(void)
 
 // Utility methods ----------------------------------------------------------------------------------------------------
 
-// Interleave frame0 (WmA bits) and frame1 (WmB bits) and invert parity
-void DecodeAudio::interleaveFrameData(QByteArray f3Frame0, QByteArray f3Frame1, uchar *c1Data)
+// Interleave current and previous F3 frame symbols and then invert parity words
+void DecodeAudio::interleaveFrameData(QByteArray previousF3Frame, QByteArray currentF3Frame, uchar *c1Data)
 {
-    // frame0 user data provides WmA and frame1 user data provides WmB
-
-    // Get the user data from frame0 and frame1
-    uchar userData0[32];
-    uchar userData1[32];
-
-    for (qint32 byteC = 0; byteC < 32; byteC++) {
-        userData0[byteC] = static_cast<uchar>(f3Frame0[byteC + 2]);
-        userData1[byteC] = static_cast<uchar>(f3Frame1[byteC + 2]);
-    }
-
-    //hexDump("userData0[] : ", userData0, 32);
-    //hexDump("userData1[] : ", userData1, 32);
-
-    // Interleave the user data - result is even bits from userData0 and odd bits from userData1
-    for (qint32 byteC = 0; byteC < 32; byteC++) {
-        uchar byte = 0;
-
-        // Take WmA from userData0 and WmB from userData1
-        byte |= ((1 << 7) & userData0[byteC]);
-        byte |= ((1 << 6) & userData1[byteC]);
-        byte |= ((1 << 5) & userData0[byteC]);
-        byte |= ((1 << 4) & userData1[byteC]);
-        byte |= ((1 << 3) & userData0[byteC]);
-        byte |= ((1 << 2) & userData1[byteC]);
-        byte |= ((1 << 1) & userData0[byteC]);
-        byte |= ((1 << 0) & userData1[byteC]);
-
-        c1Data[byteC] = byte;
+    // Interleave the symbols
+    for (qint32 byteC = 0; byteC < 32; byteC += 2) {
+        c1Data[byteC] = static_cast<uchar>(currentF3Frame[byteC + 2]);
+        c1Data[byteC+1] = static_cast<uchar>(previousF3Frame[byteC + 1 + 2]);
+        // +2 as F3Frame has 2 additional sync bits before user data
     }
 
     // Invert the Qm parity bits
-    c1Data[12] = c1Data[12] ^ 0xFF;
-    c1Data[13] = c1Data[13] ^ 0xFF;
-    c1Data[14] = c1Data[14] ^ 0xFF;
-    c1Data[15] = c1Data[15] ^ 0xFF;
+    c1Data[12] = ~c1Data[12];
+    c1Data[13] = ~c1Data[13];
+    c1Data[14] = ~c1Data[14];
+    c1Data[15] = ~c1Data[15];
 
     // Invert the Pm parity bits
-    c1Data[28] = c1Data[28] ^ 0xFF;
-    c1Data[29] = c1Data[29] ^ 0xFF;
-    c1Data[30] = c1Data[30] ^ 0xFF;
-    c1Data[31] = c1Data[31] ^ 0xFF;
-
-    //hexDump("   c1Data[] : ", c1Data, 32);
+    c1Data[28] = ~c1Data[28];
+    c1Data[29] = ~c1Data[29];
+    c1Data[30] = ~c1Data[30];
+    c1Data[31] = ~c1Data[31];
 }
 
 void DecodeAudio::hexDump(QString title, uchar *data, qint32 length)
@@ -187,13 +158,3 @@ void DecodeAudio::hexDump(QString title, uchar *data, qint32 length)
     qDebug().noquote() << output;
 }
 
-// Method to process audio data.  Note: 109 frames are required for C2
-// level error correction, so this is the minimum we can process
-
-// The received demodulated frame enters the CIRC decoder with all symbols at the same time,
-// in parallel. The data decoding begins with a  1-symbol delay performed upon all even-numbered symbols.
-// Two frames are therefore needed at this stage to rebuild an original undelayed 28-symbol frame.
-// These delays, introduced during the encoding process, improve the correction of small burst errors
-// by spreading two adjacent corrupt symbols over two user frames.
-
-// The next operation reverses the polarity of the parity symbols in a bit-wise manner.

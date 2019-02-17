@@ -171,7 +171,7 @@ DecodeSubcode::StateMachine DecodeSubcode::sm_state_getNextSection(void)
             qDebug() << "DecodeSubcode::sm_state_getNextSection(): Section SYNC0 and SYNC1 are valid";
             missedSectionSyncCount = 0;
         } else {
-            qDebug() << "DecodeSubcode::sm_state_getNextSection(): Section SYNC0 and SYNC1 are invalid";
+            qDebug() << "DecodeSubcode::sm_state_getNextSection(): Section SYNC0 and/or SYNC1 are INVALID";
             missedSectionSyncCount++;
 
             // If we have missed 4 syncs in a row, consider the sync as lost
@@ -246,7 +246,7 @@ void DecodeSubcode::decodeQ(uchar *qSubcode)
 
     // Is the Q subcode valid?
     if (crcChecksum != calcChecksum) {
-        qDebug() << "DecodeSubcode::decodeQ(): Q Subcode failed CRC check - invalid";
+        qDebug() << "DecodeSubcode::decodeQ(): Q Subcode failed CRC check - INVALID Q SUBCODE";
         currentQMode = qMode_unknown;
         return;
     }
