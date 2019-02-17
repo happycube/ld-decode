@@ -1066,10 +1066,10 @@ class Field:
 
                 if end_linepos > self.outlinelen:
                     # need to output two dropouts
-                    dropouts.append((l + 0 - lineoffset, start_linepos, self.outlinelen))
-                    dropouts.append((l + 0 - lineoffset + (end_linepos // self.outlinelen), 0, np.remainder(end_linepos, self.outlinelen)))
+                    dropouts.append((l + lineoffset, start_linepos, self.outlinelen))
+                    dropouts.append((l + lineoffset + (end_linepos // self.outlinelen), 0, np.remainder(end_linepos, self.outlinelen)))
                 else:
-                    dropouts.append((l + 0 - lineoffset, start_linepos, end_linepos))
+                    dropouts.append((l + lineoffset, start_linepos, end_linepos))
 
                 if len(errlistc):
                     curerr = errlistc.pop(0)
@@ -1097,7 +1097,7 @@ class Field:
             if r[2] < endhsync:
                 continue
             
-            rv_lines.append(r[0])
+            rv_lines.append(r[0] + 1)
             rv_starts.append(int(r[1]) if r[1] > endhsync else endhsync)
             rv_ends.append(int(r[2]))
 
