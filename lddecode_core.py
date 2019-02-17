@@ -1342,7 +1342,7 @@ class FieldNTSC(Field):
 #            if edge:
                 #burstlevel[l] = -burstlevel[l]
 
-            if np.isnan(linelocs_adj[l]) or len(zc_bursts[l][edge]) == 0 or self.linebad[l] or badlines[l]:
+            if np.isnan(linelocs_adj[l]) or len(zc_bursts[l][not edge]) == 0 or self.linebad[l] or badlines[l]:
                 #print('err', l, linelocs_adj[l])
                 self.linebad[l] = True
                 skipped.append(l)
@@ -1353,6 +1353,7 @@ class FieldNTSC(Field):
                     lfreq = self.rf.freq * (((self.linelocs2[l+1] - self.linelocs2[l-0]) / 1) / self.rf.linelen)
                 elif l >= 262:
                     lfreq = self.rf.freq * (((self.linelocs2[l+0] - self.linelocs2[l-1]) / 1) / self.rf.linelen)
+                
                 adjs.append(-(np.median(zc_bursts[l][not edge]) * lfreq * (1 / self.rf.SysParams['fsc_mhz'])))
                 linelocs_adj[l] += adjs[-1]
 
