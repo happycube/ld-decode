@@ -1097,7 +1097,7 @@ class Field:
             if r[2] < endhsync:
                 continue
             
-            rv_lines.append(r[0] + 1)
+            rv_lines.append(r[0] - 1)
             rv_starts.append(int(r[1]) if r[1] > endhsync else endhsync)
             rv_ends.append(int(r[2]))
 
