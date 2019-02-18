@@ -26,7 +26,7 @@
 
 EfmProcess::EfmProcess()
 {
-
+    decodeSubcode.setVerboseDebug(false);
 }
 
 bool EfmProcess::process(QString inputFilename, QString outputFilename)
