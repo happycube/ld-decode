@@ -451,12 +451,11 @@ EfmProcess::StateMachine EfmProcess::sm_state_processFrame(void)
     }
 
     // Decode the T values into a bit-stream
-    QByteArray outputData = efmDecoder.convertTvaluesToData(frameT);
+    uchar outputData[34];
+    efmDecoder.convertTvaluesToData(frameT, outputData);
 
     // Write the bit-stream to the output data file
-    if (outputFile->write(outputData) != outputData.size()) {
-        qCritical() << "EfmProcess::sm_state_processFrame(): Writing to the output file failed!";
-    }
+    outputFile->write(reinterpret_cast<const char *>(outputData), 34);
 
     // Discard all transitions up to the sync end
     removeZcDeltas(endSyncTransition);

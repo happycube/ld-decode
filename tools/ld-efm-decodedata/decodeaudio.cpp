@@ -104,17 +104,17 @@ DecodeAudio::StateMachine DecodeAudio::sm_state_processC1(void)
 
     // Perform error correction
     if (check_syndrome() != 0) {
-//        // Attempt to correct any corrupted symbols
-//        if (correct_errors_erasures(c1Symbols, 32, nerasures, erasures) == 1) {
-//            // Correction successful, symbols are valid
-//            c1SymbolsValid = true;
-//        }
+        // Attempt to correct any corrupted symbols
+        if (correct_errors_erasures(c1Symbols, 32, nerasures, erasures) == 1) {
+            // Correction successful, symbols are valid
+            c1SymbolsValid = true;
+        }
     } else {
         // Symbols are valid
         c1SymbolsValid = true;
     }
 
-    if (c1SymbolsValid) qDebug() << "Valid C1 *********************";
+    //if (c1SymbolsValid) qDebug() << "Valid C1 *********************";
     //else qDebug() << "Invalid C1";
 
     // Store the frame and get a new frame
@@ -173,8 +173,8 @@ DecodeAudio::StateMachine DecodeAudio::sm_state_processC2(void)
             c2BufferValid = true;
         }
 
-        //if (c2BufferValid) qDebug() << "DecodeAudio::sm_state_processC2(): C2 CIRC success -----------------------------------------------------------------------";
-        //else qDebug() << "DecodeAudio::sm_state_processC2(): C2 CIRC failed, nerasures =" << nerasures;
+        if (c2BufferValid) qDebug() << "DecodeAudio::sm_state_processC2(): C2 CIRC success -----------------------------------------------------------------------";
+        else qDebug() << "DecodeAudio::sm_state_processC2(): C2 CIRC failed, nerasures =" << nerasures;
     }
 
     return state_processAudio;

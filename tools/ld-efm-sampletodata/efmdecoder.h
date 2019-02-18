@@ -33,7 +33,7 @@ class EfmDecoder
 public:
     EfmDecoder();
 
-    QByteArray convertTvaluesToData(QVector<qint32> frameT);
+    void convertTvaluesToData(QVector<qint32> frameT, uchar *outputData);
     qint32 getGoodDecodes(void);
     qint32 getBadDecodes(void);
 
@@ -80,7 +80,8 @@ private:
     qint32 goodDecodes;
     qint32 badDecodes;
 
-    quint32 getBits(QByteArray rawData, qint32 bitIndex, qint32 width);
+    quint32 getBits(uchar *rawData, qint32 bitIndex, qint32 width);
+    void hexDump(QString title, uchar *data, qint32 length);
 };
 
 #endif // EFMDECODER_H
