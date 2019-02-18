@@ -1228,13 +1228,12 @@ class FieldNTSC(Field):
         s_rem = linelocs[line] - s
 
         # compute adjusted frequency from neighboring line lengths
-        l = 0
-        if l > 0:
-            lfreq = self.rf.freq * (((self.linelocs2[l+1] - self.linelocs2[l-1]) / 2) / self.rf.linelen)
-        elif l == 0:
-            lfreq = self.rf.freq * (((self.linelocs2[l+1] - self.linelocs2[l-0]) / 1) / self.rf.linelen)
-        elif l >= 262:
-            lfreq = self.rf.freq * (((self.linelocs2[l+0] - self.linelocs2[l-1]) / 1) / self.rf.linelen)
+        if line > 0:
+            lfreq = self.rf.freq * (((self.linelocs2[line+1] - self.linelocs2[line-1]) / 2) / self.rf.linelen)
+        elif line == 0:
+            lfreq = self.rf.freq * (((self.linelocs2[line+1] - self.linelocs2[line-0]) / 1) / self.rf.linelen)
+        elif line >= 262:
+            lfreq = self.rf.freq * (((self.linelocs2[line+0] - self.linelocs2[line-1]) / 1) / self.rf.linelen)
 
         # compute approximate burst beginning/end
         bstime = 17 * (1 / self.rf.SysParams['fsc_mhz']) # approx start of burst in usecs
@@ -1252,7 +1251,6 @@ class FieldNTSC(Field):
         burstarea -= np.mean(burstarea)
 
         i = 0
-
         while i < (len(burstarea) - 1):
             if np.abs(burstarea[i]) > (8 * self.rf.SysParams['hz_ire']):
                 zc = calczc(burstarea, i, 0)
