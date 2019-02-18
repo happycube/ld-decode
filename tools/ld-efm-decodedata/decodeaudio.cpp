@@ -32,6 +32,9 @@ DecodeAudio::DecodeAudio()
 
     currentF3Frame.clear();
     previousF3Frame.clear();
+
+    // Initialise the error correction library
+    initialize_ecc();
 }
 
 void DecodeAudio::process(QByteArray f3FrameParam)
@@ -76,45 +79,119 @@ DecodeAudio::StateMachine DecodeAudio::sm_state_initial(void)
     return state_processC1;
 }
 
+// Process the C1 level error correction
 DecodeAudio::StateMachine DecodeAudio::sm_state_processC1(void)
 {
     //qDebug() << "DecodeAudio::sm_state_processC1(): Called";
 
-    // Process the C1
-    uchar c1Data[32];
-    interleaveFrameData(previousF3Frame, currentF3Frame, c1Data);
+    // Interleave the current and previous frame to generate the C1 symbols
+    interleaveC1Data(previousF3Frame, currentF3Frame, c1Symbols);
 
-    // Initialise the error correction library
-    initialize_ecc();
-
-    // RS is 32, 28 (i.e. 28 bytes of data with 4 bytes of parity)
-    decode_data(c1Data, 32); // Message length including parity
+    // RS is 32, 28 (i.e. 28 symbols (bytes) of data with 4 bytes of parity)
+    decode_data(c1Symbols, 32); // Message length including parity
 
     // Check the syndrome to see if there were errors in the data
+    qint32 erasures[16];
+    qint32 nerasures = 0;
+    c1SymbolsValid = false;
+
+    // Perform error correction (we can correct 2 errors at the most)
     if (check_syndrome() != 0) {
-        //qDebug() << "DecodeAudio::sm_state_processC1(): C1 CIRC Failed! check_syndrome =" << check_syndrome() << "******************************************************";
+        for (qint32 eccLoop = 0; eccLoop < 2; eccLoop++) {
+            // Attempt to correct any corrupted symbols
+            correct_errors_erasures(c1Symbols, 32, nerasures, erasures);
+
+            // Decode again to test correction
+            decode_data(c1Symbols, 32);
+
+            // Was the correction successful?
+            if (check_syndrome() == 0) {
+                // Correction successful, symbols are valid
+                c1SymbolsValid = true;
+                break;
+            }
+        }
     } else {
-        qDebug() << "DecodeAudio::sm_state_processC1(): C1 CIRC Passed! ===========================================================";
+        // Symbols are valid
+        c1SymbolsValid = true;
     }
 
     // Store the frame and get a new frame
     previousF3Frame = currentF3Frame;
     waitingForF3frame = true;
 
-    return state_processC1;
+    // Process C2 stage
+    return state_processC2;
 }
 
 DecodeAudio::StateMachine DecodeAudio::sm_state_processC2(void)
 {
-    qDebug() << "DecodeAudio::sm_state_processC2(): Called";
+    //qDebug() << "DecodeAudio::sm_state_processC2(): Called";
+    c2BufferValid = false;
 
-    // Now the C2 is complete, process the audio
+    // Place the C1 symbols in the C1 delay buffer
+    C2Buffer c2Entry;
+    for (qint32 byteC = 0; byteC < 28; byteC++) c2Entry.c1Symbols[byteC] = c1Symbols[byteC];
+    c2Entry.c1SymbolsValid = c1SymbolsValid;
+    c1DelayBuffer.append(c2Entry);
+
+    // If the buffer is full, remove the first entry so it's always 109 C1s long
+    if (c1DelayBuffer.size() > 109) {
+        c1DelayBuffer.removeFirst();
+    }
+
+    // If we have 109 C1s then we can process the C2 ECC
+    if (c1DelayBuffer.size() == 109) {
+        uchar c2Buffer[28];
+        bool c2BufferErasures[28];
+        getC2Data(c2Buffer, c2BufferErasures);
+        moveC2ParitySymbols(c2Buffer, c2BufferErasures);
+
+        // Prepare the erasures in the format required by rscode-1.3
+        qint32 erasures[28];
+        qint32 nerasures = 0;
+        for (qint32 count = 0; count < 28; count++) {
+            if (c2BufferErasures[count]) {
+                // Symbol is erased
+                erasures[nerasures] = 27 - count;
+                nerasures++;
+            }
+        }
+
+        // Perform the C2 decode
+        decode_data(c2Buffer, 28);
+
+        // Perform error correction (we can correct 4 errors at the most)
+        if (check_syndrome() != 0) {
+            for (qint32 eccLoop = 0; eccLoop < 4; eccLoop++) {
+                // Attempt to correct any corrupted symbols
+                correct_errors_erasures(c2Buffer, 28, nerasures, erasures);
+
+                // Decode again to test correction
+                decode_data(c2Buffer, 28);
+
+                // Was the correction successful?
+                if (check_syndrome() == 0) {
+                    // Correction successful, symbols are valid
+                    c2BufferValid = true;
+                    break;
+                }
+            }
+        } else {
+            // Symbols are valid
+            c2BufferValid = true;
+        }
+
+        if (c2BufferValid) qDebug() << "DecodeAudio::sm_state_processC2(): C2 CIRC success -----------------------------------------------------------------------";
+        else qDebug() << "DecodeAudio::sm_state_processC2(): C2 CIRC failed, nerasures =" << nerasures;
+    }
+
     return state_processAudio;
 }
 
 DecodeAudio::StateMachine DecodeAudio::sm_state_processAudio(void)
 {
-    qDebug() << "DecodeAudio::sm_state_processAudio(): Called";
+    //if (c2SymbolsValid) qDebug() << "DecodeAudio::sm_state_processAudio(): Called with valid C2 =====================================================================================";
 
     // Discard the C2 and get the next C1
     return state_processC1;
@@ -123,7 +200,7 @@ DecodeAudio::StateMachine DecodeAudio::sm_state_processAudio(void)
 // Utility methods ----------------------------------------------------------------------------------------------------
 
 // Interleave current and previous F3 frame symbols and then invert parity words
-void DecodeAudio::interleaveFrameData(QByteArray previousF3Frame, QByteArray currentF3Frame, uchar *c1Data)
+void DecodeAudio::interleaveC1Data(QByteArray previousF3Frame, QByteArray currentF3Frame, uchar *c1Data)
 {
     // Interleave the symbols
     for (qint32 byteC = 0; byteC < 32; byteC += 2) {
@@ -145,6 +222,59 @@ void DecodeAudio::interleaveFrameData(QByteArray previousF3Frame, QByteArray cur
     c1Data[31] = ~c1Data[31];
 }
 
+// Gets the C2 data from the C1 buffer by applying delay lines of unequal length
+// according to fig. 13 in IEC 60908
+void DecodeAudio::getC2Data(uchar *symBuffer, bool *isErasure)
+{
+    // Longest delay is 27 * 4 = 108
+    for (qint32 byteC = 0; byteC < 28; byteC++) {
+
+        qint32 delayC1Line = (108 - ((27 - byteC) * 4));
+        symBuffer[byteC] = c1DelayBuffer[delayC1Line].c1Symbols[byteC];
+        if (c1DelayBuffer[delayC1Line].c1SymbolsValid) {
+            isErasure[byteC] = true;
+        } else {
+            isErasure[byteC] = false;
+        }
+    }
+}
+
+// Move the C2 parity symbols to the end of the C2 symbols
+void DecodeAudio::moveC2ParitySymbols(uchar *symBuffer, bool *isErasure)
+{
+    uchar symTemp[28];
+    bool isErasureTemp[28];
+
+    // Move the first 12 words
+    for (qint32 byteC = 0; byteC < 12; byteC++) {
+        symTemp[byteC] = symBuffer[byteC];
+        isErasureTemp[byteC] = isErasure[byteC];
+    }
+
+    // Move the last 12 words
+    for (qint32 byteC = 16; byteC < 28; byteC++) {
+        symTemp[byteC - 4] = symBuffer[byteC];
+        isErasureTemp[byteC - 4] = isErasure[byteC];
+    }
+
+    // Move the 4 parity words
+    symTemp[24] = symBuffer[12];
+    symTemp[25] = symBuffer[13];
+    symTemp[26] = symBuffer[14];
+    symTemp[27] = symBuffer[15];
+
+    isErasureTemp[24] = isErasure[12];
+    isErasureTemp[25] = isErasure[13];
+    isErasureTemp[26] = isErasure[14];
+    isErasureTemp[27] = isErasure[15];
+
+    // Copy the temporary data to the primary data
+    for (qint32 byteC = 0; byteC < 28; byteC++) {
+        symBuffer[byteC] = symTemp[byteC];
+        isErasure[byteC] = isErasureTemp[byteC];
+    }
+}
+
 void DecodeAudio::hexDump(QString title, uchar *data, qint32 length)
 {
     QString output;
@@ -157,4 +287,39 @@ void DecodeAudio::hexDump(QString title, uchar *data, qint32 length)
 
     qDebug().noquote() << output;
 }
+
+// Note: not complete - to-do
+void DecodeAudio::deInterleaveC2(void)
+{
+    // Also needs 2 frame delay
+
+    //        // Note: This is according to IEC60908 Figure 13 - CIRC decoder
+    //        c2symbols[ 0] =  c2BufferCurrent[ 0];
+    //        c2symbols[ 1] =  c2BufferCurrent[ 1];
+    //        c2symbols[ 2] =  c2BufferCurrent[ 6];
+    //        c2symbols[ 3] =  c2BufferCurrent[ 7];
+    //        c2symbols[ 4] = c2BufferPrevious[16];
+    //        c2symbols[ 5] = c2BufferPrevious[17];
+    //        c2symbols[ 6] = c2BufferPrevious[22];
+    //        c2symbols[ 7] = c2BufferPrevious[23];
+    //        c2symbols[ 8] =  c2BufferCurrent[ 2];
+    //        c2symbols[ 9] =  c2BufferCurrent[ 3];
+    //        c2symbols[10] =  c2BufferCurrent[ 8];
+    //        c2symbols[11] =  c2BufferCurrent[ 9];
+    //        c2symbols[12] = c2BufferPrevious[18];
+    //        c2symbols[13] = c2BufferPrevious[19];
+    //        c2symbols[14] = c2BufferPrevious[24];
+    //        c2symbols[15] = c2BufferPrevious[25];
+    //        c2symbols[16] =  c2BufferCurrent[ 4];
+    //        c2symbols[17] =  c2BufferCurrent[ 5];
+    //        c2symbols[18] =  c2BufferCurrent[10];
+    //        c2symbols[19] =  c2BufferCurrent[11];
+    //        c2symbols[20] = c2BufferPrevious[20];
+    //        c2symbols[21] = c2BufferPrevious[21];
+    //        c2symbols[22] = c2BufferPrevious[26];
+    //        c2symbols[23] = c2BufferPrevious[27];
+}
+
+
+
 

@@ -41,8 +41,23 @@ public:
     void process(QByteArray f3FrameParam);
 
 private:
-    void interleaveFrameData(QByteArray f3Frame0, QByteArray f3Frame1, uchar *c1Data);
+    void interleaveC1Data(QByteArray f3Frame0, QByteArray f3Frame1, uchar *c1Data);
+    void getC2Data(uchar *symBuffer, bool *isErasure);
     void hexDump(QString title, uchar *data, qint32 length);
+    void moveC2ParitySymbols(uchar *symBuffer, bool *isErasure);
+    void deInterleaveC2(void);
+
+    // C1 ECC buffer
+    uchar c1Symbols[32];
+    bool c1SymbolsValid;
+
+    // C2 ECC buffer
+    struct C2Buffer {
+        uchar c1Symbols[28];
+        bool c1SymbolsValid;
+    };
+    QVector<C2Buffer> c1DelayBuffer;
+    bool c2BufferValid;
 
     // State machine state definitions
     enum StateMachine {
