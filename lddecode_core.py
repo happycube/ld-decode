@@ -88,8 +88,7 @@ RFParams_NTSC = {
     'audio_notchwidth': 350000,
     'audio_notchorder': 2,
 
-    # (note:  i don't know how to handle these values perfectly yet!)
-    'video_deemp': (120*.32, 320*.32), # On some captures this is as low as .55.
+    'video_deemp': (120*.32, 320*.32),
 
     # This BPF is similar but not *quite* identical to what Pioneer did
     'video_bpf': [3500000, 13200000],
@@ -106,7 +105,7 @@ RFParams_PAL = {
     'audio_notchwidth': 200000,
     'audio_notchorder': 2,
 
-    'video_deemp': (100*.34, 400*.34),
+    'video_deemp': (100*.30, 400*.30),
 
     # XXX: guessing here!
     'video_bpf': (2500000, 12500000),
@@ -585,10 +584,13 @@ class Field:
     def lineslice(self, l, begin = None, length = None, linelocs = None):
         ''' return a slice corresponding with pre-TBC line l, begin+length are uSecs '''
         
-        _begin = linelocs[l] if linelocs is not None else self.linelocs[l]
-        _begin += self.usectoinpx(begin, l) if begin is not None else 0
+        # for PAL, each field has a different offset so normalize that
+        l_adj = l + self.lineoffset
 
-        _length = self.usectoinpx(length, l) if length is not None else 1
+        _begin = linelocs[l_adj] if linelocs is not None else self.linelocs[l_adj]
+        _begin += self.usectoinpx(begin, l_adj) if begin is not None else 0
+
+        _length = self.usectoinpx(length, l_adj) if length is not None else 1
 
         return slice(int(np.round(_begin)), int(np.round(_begin + _length)))
 
@@ -865,7 +867,8 @@ class Field:
             linesout = self.outlinecount
 
         dsout = np.zeros((linesout * outwidth), dtype=np.double)    
-        lineoffset = self.lineoffset
+        # self.lineoffset is an adjustment for 0-based lines *before* downscaling so add 1 here
+        lineoffset = self.lineoffset + 1
 
         if wow:
             self.wowfactor = self.computewow(lineinfo)
@@ -931,7 +934,7 @@ class Field:
         self.inlinelen = self.rf.linelen
         self.outlinelen = self.rf.SysParams['outlinelen']
 
-        self.lineoffset = 1 # 0 is true for NTSC, PAL is 2 or 3
+        self.lineoffset = 0
         
         self.valid = False
         self.sync_confidence = 75
@@ -1202,9 +1205,9 @@ class FieldPAL(Field):
         self.burstmedian = self.calc_burstmedian()
 
         self.linecount = 312 if self.isFirstField else 313
-        self.lineoffset = 3 if self.isFirstField else 4
+        self.lineoffset = 2 if self.isFirstField else 3
 
-        self.linecode = [self.decodephillipscode(l + self.lineoffset - 1) for l in [16, 17, 18]]
+        self.linecode = [self.decodephillipscode(l + self.lineoffset) for l in [17, 18, 19]]
 
         self.out_scale = np.double(0xd300 - 0x0100) / (100 - self.rf.SysParams['vsync_ire'])
 
@@ -1676,8 +1679,8 @@ class LDdecode:
         bl_slicetbc = f1.lineslice_tbc(blackline, 12, 50)
 
         # these metrics determine the effectiveness of the wow-filter
-        bl_slice1 = f1.lineslice(blackline + f1.lineoffset, 12, 50)
-        bl_slice2 = f2.lineslice(blackline + f2.lineoffset, 12, 50)
+        bl_slice1 = f1.lineslice(blackline, 12, 50)
+        bl_slice2 = f2.lineslice(blackline, 12, 50)
         metrics['blackLineF1PreTBCIRE'] = f1.rf.hztoire(np.mean(f1.data[0]['demod'][bl_slice1]))
         metrics['blackLineF2PreTBCIRE'] = f2.rf.hztoire(np.mean(f2.data[0]['demod'][bl_slice2]))
 
