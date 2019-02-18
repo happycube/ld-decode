@@ -943,6 +943,7 @@ class Field:
         self.dspicture = None
         self.dsaudio = None
         self.audio_offset = audio_offset
+        self.audio_next_offset = audio_offset
 
         if len(self.vsyncs) == 0:
             self.nextfieldoffset = start + (self.rf.linelen * 200)
@@ -1698,7 +1699,7 @@ class LDdecode:
         fi = {'isFirstField': True if f.isFirstField else False, 
               'syncConf': f.sync_confidence, 
               'seqNo': len(self.fieldinfo) + 1, 
-              'audioSamples': int(len(audio) / 2),
+              'audioSamples': 0 if audio is None else int(len(audio) / 2),
               'diskLoc': np.round((self.fieldloc / self.bytes_per_field) * 10) / 10,
               'medianBurstIRE': f.burstmedian}
 
