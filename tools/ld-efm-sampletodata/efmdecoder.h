@@ -42,7 +42,7 @@ private:
     // zeros to 16-bit) corresponding to 0 to 255.  The represented number is
     // given by the position in the array (i.e. position 0 = EFM code for
     // decimal 0 and so on).
-    const qint32 efm2numberLUT[256] = {
+    const quint32 efm2numberLUT[256] = {
         0x1220, 0x2100, 0x2420, 0x2220, 0x1100, 0x0110, 0x0420, 0x0900, //   8 (7)
         0x1240, 0x2040, 0x2440, 0x2240, 0x1040, 0x0040, 0x0440, 0x0840, //  16
         0x2020, 0x2080, 0x2480, 0x0820, 0x1080, 0x0080, 0x0480, 0x0880, //  24
@@ -80,7 +80,7 @@ private:
     qint32 goodDecodes;
     qint32 badDecodes;
 
-    qint32 getBits(QByteArray rawData, qint32 bitIndex, qint32 width);
+    quint32 getBits(QByteArray rawData, qint32 bitIndex, qint32 width);
 };
 
 #endif // EFMDECODER_H

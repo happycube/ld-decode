@@ -393,8 +393,6 @@ EfmProcess::StateMachine EfmProcess::sm_state_processFrame(void)
 {
     //qDebug() << "Current state: state_processFrame";
 
-
-
     // Calculate the samples per bit based on the frame's sync to sync length
     qreal frameSampleLength = 0;
     for (qint32 delta = 0; delta < endSyncTransition; delta++) {
@@ -440,7 +438,7 @@ EfmProcess::StateMachine EfmProcess::sm_state_processFrame(void)
     }
 
     // Note: The 40.0 in the following is a sample rate of 40MSPS
-    qInfo() << "F3 frame #" << frameCounter << "with a sample length of" << frameSampleLength << "(" << 40.0 / samplesPerBit << "MHz ) - T total was" << tTotal;
+    qInfo() << "F3 frame #" << frameCounter << "with a sample length of" << frameSampleLength << "(" << 40 / samplesPerBit << "MHz ) - T total was" << tTotal;
 
     frameCounter++;
 
@@ -456,7 +454,9 @@ EfmProcess::StateMachine EfmProcess::sm_state_processFrame(void)
     QByteArray outputData = efmDecoder.convertTvaluesToData(frameT);
 
     // Write the bit-stream to the output data file
-    outputFile->write(outputData);
+    if (outputFile->write(outputData) != outputData.size()) {
+        qCritical() << "EfmProcess::sm_state_processFrame(): Writing to the output file failed!";
+    }
 
     // Discard all transitions up to the sync end
     removeZcDeltas(endSyncTransition);

@@ -83,7 +83,7 @@ QByteArray EfmDecoder::convertTvaluesToData(QVector<qint32> frameT)
     //
     // Total of 33 bytes
 
-    QVector<qint32> efmValues;
+    QVector<quint32> efmValues;
     efmValues.resize(33);
     qint32 currentBit = 0;
 
@@ -113,19 +113,12 @@ QByteArray EfmDecoder::convertTvaluesToData(QVector<qint32> frameT)
     for (qint32 counter = 1; counter < 34; counter++) {
         qint32 result = -1;
 
-        if (counter == 0 && efmValues[counter - 1] == 0x801) {
-            // SYNC0 indicator - output a 0
+        if (counter == 1 && (efmValues[0] == 0x801 || efmValues[0] == 0x012)) {
+            // Sync bit, can't translate, so set data to 0
             outputData[counter] = 0;
-            result = 1;
-            qDebug() << "EfmDecoder::convertTvaluesToData(): F3 SYNC0 indicator present";
-        } else if (counter == 0 && efmValues[counter - 1] == 0x012) {
-            // SYNC1 indicator - output a 0
-            outputData[counter] = 0;
-            result = 1;
-            qDebug() << "EfmDecoder::convertTvaluesToData(): F3 SYNC1 indicator present";
         } else {
             // Normal EFM - translate to 8-bit value
-            for (qint32 lutPos = 0; lutPos < 256; lutPos++) {
+            for (quint32 lutPos = 0; lutPos < 256; lutPos++) {
                 if (efm2numberLUT[lutPos] == efmValues[counter - 1]) {
                     outputData[counter] = static_cast<char>(lutPos);
                     result = 1;
@@ -159,14 +152,14 @@ qint32 EfmDecoder::getBadDecodes(void)
 
 // Method to get 'width' bits (max 32) from a byte array starting from
 // bit 'bitIndex'
-qint32 EfmDecoder::getBits(QByteArray rawData, qint32 bitIndex, qint32 width)
+quint32 EfmDecoder::getBits(QByteArray rawData, qint32 bitIndex, qint32 width)
 {
     qint32 byteIndex = bitIndex / 8;
     qint32 bitInByteIndex = 7 - (bitIndex % 8);
 
-    qint32 result = 0;
+    quint32 result = 0;
     for (qint32 nBits = width - 1; nBits > -1; nBits--) {
-        if (rawData[byteIndex] & (1 << bitInByteIndex)) result += (1 << nBits);
+        if (static_cast<uchar>(rawData[byteIndex]) & (1 << bitInByteIndex)) result += (1 << nBits);
 
         bitInByteIndex--;
         if (bitInByteIndex < 0) {

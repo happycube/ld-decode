@@ -32,6 +32,8 @@ DecodeAudio::DecodeAudio()
 
     currentF3Frame.clear();
     previousF3Frame.clear();
+    currentF3Frame.resize(32);
+    previousF3Frame.resize(32);
 
     // Initialise the error correction library
     initialize_ecc();
@@ -39,10 +41,15 @@ DecodeAudio::DecodeAudio()
 
 void DecodeAudio::process(QByteArray f3FrameParam)
 {
-    // Ensure the F3 frame isn't empty
-    if (f3FrameParam.isEmpty()) return;
+    // Ensure the F3 frame is the correct length
+    if (f3FrameParam.size() != 34) {
+        qDebug() << "DecodeAudio::process(): Invalid F3 frame parameter (not 34 bytes!)";
+        return;
+    }
 
-    currentF3Frame = f3FrameParam;
+    // Get the 32 bytes of user-data from the frame parameter
+    // 0 is the sync indicator, 1 is the subcode and 2-34 is the data
+    for (qint32 byteC = 0; byteC < 32; byteC++) currentF3Frame[byteC] = f3FrameParam[byteC + 2];
 
     // Since we have a new F3 frame, clear the waiting flag
     waitingForF3frame = false;
@@ -88,33 +95,27 @@ DecodeAudio::StateMachine DecodeAudio::sm_state_processC1(void)
     interleaveC1Data(previousF3Frame, currentF3Frame, c1Symbols);
 
     // RS is 32, 28 (i.e. 28 symbols (bytes) of data with 4 bytes of parity)
-    decode_data(c1Symbols, 32); // Message length including parity
+    decode_data(c1Symbols, 32); // Message length including parity (28 + 4)
 
     // Check the syndrome to see if there were errors in the data
     qint32 erasures[16];
     qint32 nerasures = 0;
     c1SymbolsValid = false;
 
-    // Perform error correction (we can correct 2 errors at the most)
+    // Perform error correction
     if (check_syndrome() != 0) {
-        for (qint32 eccLoop = 0; eccLoop < 2; eccLoop++) {
-            // Attempt to correct any corrupted symbols
-            correct_errors_erasures(c1Symbols, 32, nerasures, erasures);
-
-            // Decode again to test correction
-            decode_data(c1Symbols, 32);
-
-            // Was the correction successful?
-            if (check_syndrome() == 0) {
-                // Correction successful, symbols are valid
-                c1SymbolsValid = true;
-                break;
-            }
-        }
+//        // Attempt to correct any corrupted symbols
+//        if (correct_errors_erasures(c1Symbols, 32, nerasures, erasures) == 1) {
+//            // Correction successful, symbols are valid
+//            c1SymbolsValid = true;
+//        }
     } else {
         // Symbols are valid
         c1SymbolsValid = true;
     }
+
+    if (c1SymbolsValid) qDebug() << "Valid C1 *********************";
+    //else qDebug() << "Invalid C1";
 
     // Store the frame and get a new frame
     previousF3Frame = currentF3Frame;
@@ -145,7 +146,6 @@ DecodeAudio::StateMachine DecodeAudio::sm_state_processC2(void)
         uchar c2Buffer[28];
         bool c2BufferErasures[28];
         getC2Data(c2Buffer, c2BufferErasures);
-        moveC2ParitySymbols(c2Buffer, c2BufferErasures);
 
         // Prepare the erasures in the format required by rscode-1.3
         qint32 erasures[28];
@@ -163,27 +163,18 @@ DecodeAudio::StateMachine DecodeAudio::sm_state_processC2(void)
 
         // Perform error correction (we can correct 4 errors at the most)
         if (check_syndrome() != 0) {
-            for (qint32 eccLoop = 0; eccLoop < 4; eccLoop++) {
-                // Attempt to correct any corrupted symbols
-                correct_errors_erasures(c2Buffer, 28, nerasures, erasures);
-
-                // Decode again to test correction
-                decode_data(c2Buffer, 28);
-
-                // Was the correction successful?
-                if (check_syndrome() == 0) {
-                    // Correction successful, symbols are valid
-                    c2BufferValid = true;
-                    break;
-                }
+            // Attempt to correct any corrupted symbols
+            if (correct_errors_erasures(c2Buffer, 28, nerasures, erasures) == 1) {
+                // Correction successful, symbols are valid
+                c2BufferValid = true;
             }
         } else {
             // Symbols are valid
             c2BufferValid = true;
         }
 
-        if (c2BufferValid) qDebug() << "DecodeAudio::sm_state_processC2(): C2 CIRC success -----------------------------------------------------------------------";
-        else qDebug() << "DecodeAudio::sm_state_processC2(): C2 CIRC failed, nerasures =" << nerasures;
+        //if (c2BufferValid) qDebug() << "DecodeAudio::sm_state_processC2(): C2 CIRC success -----------------------------------------------------------------------";
+        //else qDebug() << "DecodeAudio::sm_state_processC2(): C2 CIRC failed, nerasures =" << nerasures;
     }
 
     return state_processAudio;
@@ -204,9 +195,8 @@ void DecodeAudio::interleaveC1Data(QByteArray previousF3Frame, QByteArray curren
 {
     // Interleave the symbols
     for (qint32 byteC = 0; byteC < 32; byteC += 2) {
-        c1Data[byteC] = static_cast<uchar>(currentF3Frame[byteC + 2]);
-        c1Data[byteC+1] = static_cast<uchar>(previousF3Frame[byteC + 1 + 2]);
-        // +2 as F3Frame has 2 additional sync bits before user data
+        c1Data[byteC] = static_cast<uchar>(currentF3Frame[byteC]);
+        c1Data[byteC+1] = static_cast<uchar>(previousF3Frame[byteC + 1]);
     }
 
     // Invert the Qm parity bits
@@ -240,6 +230,7 @@ void DecodeAudio::getC2Data(uchar *symBuffer, bool *isErasure)
 }
 
 // Move the C2 parity symbols to the end of the C2 symbols
+// Note: I don't think this is required
 void DecodeAudio::moveC2ParitySymbols(uchar *symBuffer, bool *isErasure)
 {
     uchar symTemp[28];

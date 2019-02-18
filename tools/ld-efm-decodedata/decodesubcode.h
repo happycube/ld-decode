@@ -43,6 +43,7 @@ public:
         qMode_unknown
     };
 
+    void setVerboseDebug(bool verboseDebug);
     void process(QByteArray f3FrameParam);
     QModes getQMode(void);
 
@@ -51,6 +52,8 @@ private:
     QString bcdToQString(qint32 bcd);
     qint32 bcdToInteger(qint32 bcd);
     quint16 crc16(char *addr, quint16 num);
+
+    bool verbose;
 
     QModes currentQMode;
     QModes previousQMode;
