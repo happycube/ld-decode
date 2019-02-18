@@ -61,6 +61,8 @@ elif filename[-3:] == 'r30':
     loader = load_packed_data_3_32
 elif filename[-3:] == 'r16':
     loader = load_unpacked_data_s16
+elif filename[-2:] == 'r8':
+    loader = load_unpacked_data_u8
 else:
     loader = load_packed_data_4_40
 
