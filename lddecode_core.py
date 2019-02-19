@@ -108,11 +108,11 @@ RFParams_PAL = {
     'video_deemp': (100*.30, 400*.30),
 
     # XXX: guessing here!
-    'video_bpf': (2500000, 12500000),
+    'video_bpf': (2700000, 13500000),
     'video_bpf_order': 1,
 
     'video_lpf_freq': 4800000,
-    'video_lpf_order': 9,
+    'video_lpf_order': 7,
 }
 
 class RFDecode:
@@ -1438,14 +1438,21 @@ class LDdecode:
         self.analog_audio = analog_audio
         self.digital_audio = digital_audio
 
+        self.outfile_json = None
+
         if fname_out is not None:        
             self.outfile_video = open(fname_out + '.tbc', 'wb')
-            #self.outfile_json = open(fname_out + '.json', 'wb')g
+            #self.outfile_json = open(fname_out + '.json', 'wb')
             self.outfile_audio = open(fname_out + '.pcm', 'wb') if analog_audio else None
             self.outfile_efm = open(fname_out + '.efm', 'wb') if digital_audio else None
-        
+        else:
+            self.outfile_video = None
+            self.outfile_audio = None
+            self.outfile_efm = None
+
+        self.fname_out = fname_out
+
         self.firstfield = None # In frame output mode, the first field goes here
-        self.firstfield_picture = None
 
         self.fieldloc = 0
 
@@ -1481,6 +1488,27 @@ class LDdecode:
 
         self.isCLV = None
         
+    def close(self):
+        ''' deletes all open files, so it's possible to pickle an LDDecode object '''
+        del self.infile
+        self.infile = None
+
+        if self.outfile_video is not None:
+            del self.outfile_video
+            self.outfile_video = None
+
+        if self.outfile_audio is not None:
+            del self.outfile_audio
+            self.outfile_audio = None
+
+        if self.outfile_json is not None:
+            del self.outfile_json
+            self.outfile_json = None
+
+        if self.outfile_efm is not None:
+            del self.outfile_efm
+            self.outfile_efm = None
+
     def roughseek(self, fieldnr):
         self.prevPhaseID = None
         self.fdoffset = fieldnr * self.bytes_per_field
@@ -1737,7 +1765,7 @@ class LDdecode:
 
         fi['decodeFaults'] = decodeFaults
 
-        if squelch == False:
+        if squelch == False and self.fname_out is not None:
             if self.firstfield is not None:
                 fi['vitsMetrics'] = self.computeMetrics(self.firstfield, f)
 
@@ -1775,7 +1803,6 @@ class LDdecode:
                 print("file frame %d unknown" % (rawloc))
 
             self.firstfield = None
-            self.firstfield_picture = None
 
             if self.frameNumber is not None:
                 fi['frameNumber'] = int(self.frameNumber)
@@ -1787,7 +1814,6 @@ class LDdecode:
                     fi['clvFrameNr'] = int(self.clvFrameNum)
         elif f.isFirstField:
             self.firstfield = f
-            self.firstfield_picture = picture
 
     def build_json(self, f):
         jout = {}
