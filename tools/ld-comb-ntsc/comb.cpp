@@ -35,6 +35,9 @@ Comb::Comb() {
 
     configuration.colorlpf = true; // Use as default
     configuration.colorlpf_hq = true; // Use as default
+    
+    configuration.cNRLevel = 0.0;
+    configuration.yNRLevel = 1.0;
 
     // These are the overall dimensions of the input frame
     configuration.fieldWidth = 910;
@@ -386,14 +389,24 @@ void Comb::filterIQ(YiqBuffer &yiqBuffer)
     }
 }
 
-// Some kind of noise reduction filter on the C?
+/*
+ * This applies an FIR coring filter to both I and Q color channels.  It's a simple (crude?) NR technique used
+ * by LD players, but effective especially on the Y/luma channel.
+ *
+ * A coring filter removes high frequency components (.4mhz chroma, 2.8mhz luma) of a signal up to a certain point,
+ * which removes small high frequency noise.
+ */
+
 void Comb::doCNR(YiqBuffer &yiqBuffer)
 {
+    if (configuration.cNRLevel == 0) return;
+
+    // f_nrc is a 24-tap FIR filter.
     Filter f_hpi(f_nrc);
     Filter f_hpq(f_nrc);
 
-    // nr_c is some kind of noise reduction factor (I think)
-    qreal nr_c = 0.0 * irescale;
+    // nr_c is the coring level
+    qreal nr_c = configuration.cNRLevel * irescale;
 
     QVector<YIQ> hplinef;
     hplinef.resize(configuration.fieldWidth + 32);
@@ -405,6 +418,7 @@ void Comb::doCNR(YiqBuffer &yiqBuffer)
         }
 
         for (qint32 h = configuration.activeVideoStart; h < configuration.activeVideoEnd; h++) {
+            // Offset by 12 to cover the filter delay
             qreal ai = hplinef[h + 12].i;
             qreal aq = hplinef[h + 12].q;
 
@@ -422,13 +436,14 @@ void Comb::doCNR(YiqBuffer &yiqBuffer)
     }
 }
 
-// Some kind of noise reduction filter on the Y?
 void Comb::doYNR(YiqBuffer &yiqBuffer)
 {
+    if (configuration.yNRLevel == 0) return;
+
     Filter f_hpy(f_nr);
 
-    // nr_y is some kind of noise reduction factor (I think)
-    qreal nr_y = 1.0 * irescale;
+    // nr_y is the coring level
+    qreal nr_y = configuration.yNRLevel * irescale;
 
     QVector<YIQ> hplinef;
     hplinef.resize(configuration.fieldWidth + 32);
