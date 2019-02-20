@@ -33,9 +33,14 @@ class EfmDecoder
 public:
     EfmDecoder();
 
-    void convertTvaluesToData(QVector<qint32> frameT, uchar *outputData);
-    qint32 getGoodDecodes(void);
-    qint32 getBadDecodes(void);
+    qint32 getPass1(void);
+    qint32 getPass2(void);
+    qint32 getFailed(void);
+    qint32 getFailedEfmTranslations(void);
+
+    qint32 f3FramesReady(void);
+    QByteArray getF3Frames(void);
+    bool process(QVector<qreal> &zcDeltas);
 
 private:
     // The following table provides the 10-bit EFM code (padded with leading
@@ -77,11 +82,49 @@ private:
         0x1212, 0x2012, 0x2412, 0x2212, 0x1012, 0x0212, 0x0412, 0x0812  // 256 (255)
     };
 
-    qint32 goodDecodes;
-    qint32 badDecodes;
+    // Decode success tracking
+    qint32 decodePass1;
+    qint32 decodePass2;
+    qint32 decodeFailed;
 
+    qint32 efmTranslationFail;
+
+    // Output F3 Frame data
+    struct f3Frame {
+        uchar outputF3Data[34];
+    };
+    QVector<f3Frame> f3Frames;
+
+    // State machine state definitions
+    enum StateMachine {
+        state_initial,
+        state_findFirstSync,
+        state_findSecondSync,
+        state_processFrame
+    };
+
+    StateMachine currentState;
+    StateMachine nextState;
+    bool waitingForDeltas;
+
+    qreal minimumFrameWidthInSamples;
+    qreal lastFrameWidth;
+
+    qint32 endSyncTransition;
+
+    StateMachine sm_state_initial(void);
+    StateMachine sm_state_findFirstSync(QVector<qreal> &zcDeltas);
+    StateMachine sm_state_findSecondSync(QVector<qreal> &zcDeltas);
+    StateMachine sm_state_processFrame(QVector<qreal> &zcDeltas);
+
+    // Utility methods
+    qreal estimateInitialFrameWidth(QVector<qreal> zcDeltas);
+    qint32 findSyncTransition(qreal approximateFrameWidth, QVector<qreal> &zcDeltas);
+    void removeZcDeltas(qint32 number, QVector<qreal> &zcDeltas);
+
+    void convertTvaluesToData(QVector<qint32> frameT, uchar* outputData);
     quint32 getBits(uchar *rawData, qint32 bitIndex, qint32 width);
-    void hexDump(QString title, uchar *data, qint32 length);
+    QString dataToString(uchar *data, qint32 length);
 };
 
 #endif // EFMDECODER_H

@@ -26,14 +26,15 @@
 
 EfmProcess::EfmProcess()
 {
-
+    // Default ZC detector state
+    zcFirstRun = true;
+    zcPreviousInput = 0;
 }
 
-bool EfmProcess::process(QString inputFilename, QString outputFilename, qint32 maxF3Param, bool verboseDecodeParam)
+bool EfmProcess::process(QString inputFilename, QString outputFilename)
 {
-    // Store the configuration parameters
-    maxF3 = maxF3Param;
-    verboseDecode = verboseDecodeParam;
+    Filter filter;
+    EfmDecoder efmDecoder;
 
     // Open the input EFM sample file
     if (!openInputSampleFile(inputFilename)) {
@@ -47,23 +48,162 @@ bool EfmProcess::process(QString inputFilename, QString outputFilename, qint32 m
         return false;
     }
 
-    // Perform the actual processing
-    processStateMachine();
+    // Create a data stream for both input and output
+    QDataStream inputStream(inputFile);
+    inputStream.setByteOrder(QDataStream::LittleEndian);
 
-    // Show the result
-    qreal good = static_cast<qreal>(efmDecoder.getGoodDecodes());
-    qreal bad = static_cast<qreal>(efmDecoder.getBadDecodes());
-    qreal percent = (100.0 / (good + bad) * good);
+    // Define the buffer size for input reads
+    qint32 bufferSize = 1024 * 1024;
+    QVector<qint16> inputBuffer;
+    inputBuffer.resize(bufferSize);
+    QVector<qint16> zeroBuffer;
+    zeroBuffer.resize(bufferSize);
 
-    qInfo() << "Processed" << frameCounter << "F3 frames";
-    qInfo() << "Total EFM words processed was" << efmDecoder.getGoodDecodes() + efmDecoder.getBadDecodes() << "with" <<
-               efmDecoder.getGoodDecodes() << "good decodes and" << efmDecoder.getBadDecodes() << "bad decodes (success rate of" << percent << "%)";
+    // Vector to store the resulting zero-cross detected transition deltas
+    QVector<qreal> zcDeltas;
+
+    // Fill the filter with samples (to align input data with filter output), if there is a filter delay
+    if (filter.getLpFilterDelay() > 0) {
+        qint32 readSamples = fillInputBuffer(inputStream, inputBuffer, filter.getLpFilterDelay());
+        if (readSamples < filter.getLpFilterDelay()) {
+            qDebug() << "Input sample file too small to process!";
+            return false;
+        }
+        // Apply the channel equalizer filter
+        inputBuffer = filter.channelEqualizer(inputBuffer);
+
+        // Apply the low-pass filter to get the zero values for the input sample
+        zeroBuffer = filter.lpFilter(inputBuffer);
+    }
+
+    // Main sample processing loop
+    bool endOfFile = false;
+    qint32 samplesProcessed = 0;
+    qint32 framesProcessed = 0;
+    while(!endOfFile) {
+        qint32 readSamples = fillInputBuffer(inputStream, inputBuffer, bufferSize);
+
+        // Apply the channel equalizer filter
+        inputBuffer = filter.channelEqualizer(inputBuffer);
+
+        if (readSamples == 0) {
+            endOfFile = true;
+            qDebug() << "EfmProcess::process(): End of file";
+        } else {
+            // Apply the low-pass filter to get the zero values for the input sample
+            zeroBuffer = filter.lpFilter(inputBuffer);
+
+            // Perform ZC detection
+            zeroCrossDetection(inputBuffer, zeroBuffer, zcDeltas);
+            qDebug() << "Number of buffered deltas =" << zcDeltas.size();
+
+            // Decode the EFM
+            efmDecoder.process(zcDeltas);
+
+            // F3 Frame ready for writing?
+            if (efmDecoder.f3FramesReady() > 0) {
+                framesProcessed += efmDecoder.f3FramesReady();
+
+                // Write the F3 frames to the output file
+                QByteArray framesToWrite = efmDecoder.getF3Frames();
+                outputFile->write(framesToWrite, framesToWrite.size());
+            }
+
+            samplesProcessed += readSamples;
+            qInfo() << "Processed" << samplesProcessed << "samples into" << framesProcessed << "F3 frames";
+        }
+    }
+
+    qreal totalFrames = efmDecoder.getPass1() + efmDecoder.getPass2() + efmDecoder.getFailed();
+    qreal pass1Percent = (100.0 / totalFrames) * efmDecoder.getPass1();
+    qreal pass2Percent = (100.0 / totalFrames) * efmDecoder.getPass2();
+    qreal failedPercent = (100.0 / totalFrames) * efmDecoder.getFailed();
+
+    qInfo() << "Decoding complete - Processed" << static_cast<qint32>(totalFrames) << "F3 frames with" <<
+               efmDecoder.getPass1() << "pass 1 decodes and" << efmDecoder.getPass2() << "pass 2 decodes and" <<
+               efmDecoder.getFailed() << "failed decodes";
+    qInfo() << pass1Percent << "% pass 1," << pass2Percent << "% pass 2 and" << failedPercent << "% failed.";
+    qInfo() << efmDecoder.getFailedEfmTranslations() << "EFM translations failed.";
 
     // Close the files
     closeInputSampleFile();
     closeOutputDataFile();
 
+    // Successful
     return true;
+}
+
+// This method performs interpolated zero-crossing detection and stores the
+// result as an array of sample deltas (the number of samples between each
+// zero-crossing).  Interpolation of the zero-crossing point provides a
+// result with sub-sample resolution.
+//
+// Since the EFM data is NRZI (non-return to zero inverted) the polarity of the input
+// signal is not important (only the frequency); therefore we can simply
+// store the delta information.  Storing the information as deltas allows
+// us to maintain sample data resolution without the need to interpolate to
+// achieve a higher sample rate (so this method is both accurate and
+// extremely processor and memory efficient)
+void EfmProcess::zeroCrossDetection(QVector<qint16> inputBuffer, QVector<qint16> zeroBuffer, QVector<qreal> &zcDeltas)
+{
+    if (zcFirstRun) {
+        zcPreviousInput = 0;
+        zcFirstRun = false;
+        prevDirection = false; // Down
+    }
+
+    qreal distance = 0;
+    for (qint32 i = 0; i < inputBuffer.size(); i++) {
+        qint16 vPrev = zcPreviousInput;
+        qint16 vCurr = inputBuffer[i];
+        //qint16 vNext = inputBuffer[i+1];
+
+        bool xup = false;
+        bool xdn = false;
+
+        // Possing zero-cross up or down?
+        if (vPrev < zeroBuffer[i] && vCurr >= zeroBuffer[i]) xup = true;
+        if (vPrev > zeroBuffer[i] && vCurr <= zeroBuffer[i]) xdn = true;
+
+        // Check ZC direction against previous
+        if (prevDirection && xup) xup = false;
+        if (!prevDirection && xdn) xdn = false;
+
+        // Store the current direction as the previous
+        if (xup) prevDirection = true;
+        if (xdn) prevDirection = false;
+
+        if (xup || xdn) {
+            // Interpolate to get the ZC sub-sample position fraction
+            qreal prev = static_cast<qreal>(vPrev);
+            qreal curr = static_cast<qreal>(vCurr);
+            qreal fraction = (-prev) / (curr - prev);
+
+            zcDeltas.append(distance + fraction);
+            distance = 1.0 - fraction;
+        } else {
+            // No ZC, increase delta by 1 sample
+            distance += 1.0;
+        }
+
+        // Keep the previous input (so we can work across buffer boundaries)
+        zcPreviousInput = inputBuffer[i];
+    }
+}
+
+// Method to fill the input buffer with samples
+qint32 EfmProcess::fillInputBuffer(QDataStream &inputStream, QVector<qint16> &inputBuffer, qint32 samples)
+{
+    // Read the input sample data
+    qint32 readSamples = 0;
+    qint16 x = 0;
+    while((!inputStream.atEnd() && readSamples < samples)) {
+        inputStream >> x;
+        inputBuffer[readSamples] = x;
+        readSamples++;
+    }
+
+    return readSamples;
 }
 
 // Method to open the input EFM sample for reading
@@ -106,365 +246,4 @@ void EfmProcess::closeOutputDataFile(void)
 {
     // Close the output file
     outputFile->close();
-}
-
-// This method performs interpolated zero-crossing detection and stores the
-// result as an array of sample deltas (the number of samples between each
-// zero-crossing).  Interpolation of the zero-crossing point provides a
-// result with sub-sample resolution.
-//
-// Since the EFM data is NRZI (non-return to zero inverted) the polarity of the input
-// signal is not important (only the frequency); therefore we can simply
-// store the delta information.  Storing the information as deltas allows
-// us to maintain sample data resolution without the need to interpolate to
-// achieve a higher sample rate (so this method is both accurate and
-// extremely processor and memory efficient)
-QVector<qreal> EfmProcess::zeroCrossDetection(QVector<qint16> inputBuffer, QVector<qreal> &zcDeltas, qint32 &usedSamples)
-{
-    usedSamples = 0;
-
-    qreal distance = 0;
-    for (qint32 i = 1; i < inputBuffer.size(); i++) {
-        // Is the preceeding sample below zero and the following above?
-        if ((inputBuffer[i-1] < 0 && inputBuffer[i] >= 0) || (inputBuffer[i-1] > 0 && inputBuffer[i] <= 0)) {
-            // Zero-cross detected
-
-            // Interpolate to get the ZC sub-sample position fraction
-            qreal previous = static_cast<qreal>(inputBuffer[i-1]);
-            qreal current = static_cast<qreal>(inputBuffer[i]);
-            qreal fraction = (-previous) / (current - previous);
-
-            zcDeltas.append(distance + fraction);
-            distance = 1.0 - fraction;
-            usedSamples = i;
-        } else {
-            // No zero-cross detected
-            distance += 1.0;
-        }
-    }
-
-    return zcDeltas;
-}
-
-bool EfmProcess::fillWindowedBuffer(void)
-{
-    // Create a data stream from the input file
-    QDataStream inputStream(inputFile);
-    inputStream.setByteOrder(QDataStream::LittleEndian);
-
-    // Read the input sample data
-    inputBuffer.clear();
-    qint32 readSamples = inputBuffer.size();
-    qint16 x = 0;
-    while((!inputStream.atEnd()) && (readSamples < ((1024 * 1024) / 2))) {
-        inputStream >> x;
-        inputBuffer.append(x);
-        readSamples++;
-    }
-
-    // Did we get any input sample data?
-    if (readSamples > 0) {
-        // Apply the ISI correction filter to the input sample buffer
-        inputBuffer = filter.channelEqualizer(inputBuffer);
-
-        // Apply the DC offset correction filter to the input sample buffer
-        inputBuffer = filter.dcBlocking(inputBuffer);
-
-        // Append the filtered input data to the windowed buffer
-        for (qint32 count = 0; count < inputBuffer.size(); count++) windowedBuffer.append(inputBuffer[count]);
-
-        // Zero cross detect the sample data and convert to ZC sample deltas
-        qint32 usedSamples = 0;
-        zeroCrossDetection(windowedBuffer, zcDeltas, usedSamples);
-
-        // Remove the used samples from the filtered input buffer
-        if (usedSamples == windowedBuffer.size()) {
-            windowedBuffer.clear();
-        } else {
-            // Since there are usually a lot of samples to remove, it's faster to do this
-            // by copying rather than using the .removefirst QVector method...
-            QVector<qint16> temp = windowedBuffer;
-            windowedBuffer.clear();
-            windowedBuffer.resize(temp.size() - usedSamples);
-            qint32 pointer = 0;
-            for (qint32 count = usedSamples; count < temp.size(); count++) {
-                windowedBuffer[pointer] = temp[count];
-                pointer++;
-            }
-        }
-
-        return true;
-    }
-
-    return false;
-}
-
-// This method is based on US patent 6,118,393 which states that the T average
-// within a frame is 5; therefore by dividing the frequency by 117 (588/5)
-// you get the average length of an EFM frame based on the (unknown) clock
-// speed of the EFM data
-qreal EfmProcess::estimateInitialFrameWidth(QVector<qreal> zcDeltas)
-{
-    qreal approximateFrameWidth = 0;
-
-    qint32 deltaPos = 0;
-    while (deltaPos < 117) {
-        approximateFrameWidth += zcDeltas[deltaPos];
-        deltaPos++;
-    }
-
-    return approximateFrameWidth;
-}
-
-// This method finds the next sync transition.  Since the sync pulse is two T11 intervals
-// we can find it by summing pairs of transition deltas and looking for the longest combined
-// delta.  Using an estimation of the frame length means we shouldn't see two sync patterns
-// in the same data set.
-qint32 EfmProcess::findSyncTransition(qreal approximateFrameWidth)
-{
-    qreal totalTime = 0;
-    qreal longestInterval = 0;
-    qint32 syncPosition = -1;
-    qint32 deltaPos = 0;
-
-    while (totalTime < approximateFrameWidth) {
-        qreal interval = zcDeltas[deltaPos] + zcDeltas[deltaPos + 1];
-
-        // Ignore the first 2 delta positions (so we don't trigger on the start
-        // of frame sync pattern)
-        if (interval > longestInterval && deltaPos > 1) {
-            longestInterval = interval;
-            syncPosition = deltaPos;
-        }
-
-        totalTime += zcDeltas[deltaPos];
-        deltaPos++;
-
-        if (deltaPos == (zcDeltas.size() - 1)) {
-            // Not enough data - give up
-            syncPosition = -1;
-            qDebug() << "EfmDecoder::findSyncTransition(): Available data is too short; need more data to process";
-            break;
-        }
-    }
-
-    return syncPosition;
-}
-
-// Method to remove deltas from the start of the buffer
-void EfmProcess::removeZcDeltas(qint32 number)
-{
-    if (number > zcDeltas.size()) {
-        zcDeltas.clear();
-    } else {
-        for (qint32 count = 0; count < number; count++) zcDeltas.removeFirst();
-    }
-}
-
-
-void EfmProcess::processStateMachine(void)
-{
-    // Initialise the state machine
-    currentState = state_initial;
-    nextState = currentState;
-    frameCounter = 0;
-
-    while (currentState != state_complete) {
-        currentState = nextState;
-
-        switch (currentState) {
-        case state_initial:
-            nextState = sm_state_initial();
-            break;
-        case state_getDataFirstSync:
-            nextState = sm_state_getDataFirstSync();
-            break;
-        case state_getDataSecondSync:
-            nextState = sm_state_getDataSecondSync();
-            break;
-        case state_findFirstSync:
-            nextState = sm_state_findFirstSync();
-            break;
-        case state_findSecondSync:
-            nextState = sm_state_findSecondSync();
-            break;
-        case state_processFrame:
-            nextState = sm_state_processFrame();
-            break;
-        case state_complete:
-            nextState = sm_state_complete();
-            break;
-        }
-    }
-}
-
-EfmProcess::StateMachine EfmProcess::sm_state_initial(void)
-{
-    //qDebug() << "Current state: state_initial";
-
-    return state_getDataFirstSync;
-}
-
-EfmProcess::StateMachine EfmProcess::sm_state_getDataFirstSync(void)
-{
-    qDebug() << "Current state: state_getDataFirstSync";
-
-    if (fillWindowedBuffer()) return state_findFirstSync;
-
-    // No more data
-    qDebug() << "EfmProcess::sm_state_getDataFirstSync(): No more data available from input sample";
-    return state_complete;
-}
-
-EfmProcess::StateMachine EfmProcess::sm_state_getDataSecondSync(void)
-{
-    qDebug() << "Current state: state_getDataSecondSync";
-
-    if (fillWindowedBuffer()) return state_findSecondSync;
-
-    // No more data
-    qDebug() << "EfmProcess::sm_state_getDataSecondSync(): No more data available from input sample";
-    return state_complete;
-}
-
-EfmProcess::StateMachine EfmProcess::sm_state_findFirstSync(void)
-{
-    qDebug() << "Current state: state_findFirstSync";
-
-    minimumFrameWidthInSamples = estimateInitialFrameWidth(zcDeltas);
-    lastFrameWidth = estimateInitialFrameWidth(zcDeltas);
-    qint32 startSyncTransition = findSyncTransition(lastFrameWidth * 1.5);
-
-    if (startSyncTransition == -1) {
-        qDebug() << "EfmDecoder::sm_state_findFirstSync(): No initial sync found!";
-
-        // Discard the transitions already tested and try again
-        removeZcDeltas(265); // 117 * 1.5
-
-        // Try again
-        if (zcDeltas.size() < 250) return state_getDataFirstSync;
-        return state_findFirstSync;
-    }
-
-    qDebug() << "EfmDecoder::sm_state_findFirstSync(): Initial sync found at transition" << startSyncTransition;
-
-    // Discard all transitions up to the sync start (so the first delta in
-    // zcDeltaTime is the start of the frame)
-    removeZcDeltas(startSyncTransition);
-
-    return state_findSecondSync;
-}
-
-EfmProcess::StateMachine EfmProcess::sm_state_findSecondSync(void)
-{
-    //qDebug() << "Current state: state_findSecondSync";
-
-    endSyncTransition = findSyncTransition(lastFrameWidth * 1.5);
-
-    if (endSyncTransition == -1) {
-        // Did we fail due to lack of data?
-        if (zcDeltas.size() < 250) return state_getDataSecondSync;
-
-        qDebug() << "EfmDecoder::sm_state_findSecondSync(): Could not find second sync!";
-        return state_findFirstSync;
-    }
-
-    //qDebug() << "EfmDecoder::sm_state_findSecondSync(): End of packet found at transition" << endSyncTransition;
-
-    // Calculate the length of the frame in samples
-    qreal endDelta = 0;
-    for (qint32 deltaPos = 0; deltaPos < endSyncTransition; deltaPos++) {
-        endDelta += zcDeltas[deltaPos];
-    }
-
-    // Store the previous frame width
-    lastFrameWidth = endDelta;
-
-    // Recover from a false positive frame sync pattern
-    if (lastFrameWidth < minimumFrameWidthInSamples) {
-        lastFrameWidth = minimumFrameWidthInSamples;
-        qDebug() << "EfmDecoder::sm_state_findSecondSync(): Frame width is below the minimum expected length!";
-    }
-
-    return state_processFrame;
-}
-
-EfmProcess::StateMachine EfmProcess::sm_state_processFrame(void)
-{
-    //qDebug() << "Current state: state_processFrame";
-
-    // Calculate the samples per bit based on the frame's sync to sync length
-    qreal frameSampleLength = 0;
-    for (qint32 delta = 0; delta < endSyncTransition; delta++) {
-        frameSampleLength += zcDeltas[delta];
-    }
-    qreal samplesPerBit = frameSampleLength / 588.0;
-
-    // Quantize the delta's based on the expected T1 clock and store the
-    // T values for the F3 frame
-
-    QVector<qint32> frameT;
-    qint32 tTotal = 0;
-
-    for (qint32 delta = 0; delta < endSyncTransition; delta++) {
-        qreal tValue = zcDeltas[delta] / samplesPerBit;
-
-        // T11 Sync RL push
-        if ((delta < 2) && (tValue < 11.0)) tValue = 11.0;
-
-        // T2 RL push
-        if (tValue < 3.0) tValue = 3.0;
-
-        // T12 RL push
-        if (tValue > 11.0) tValue = 11.0;
-
-        // Calculate distance to nearest T bit clock
-        qreal newDelta = qRound(tValue) * samplesPerBit;
-        qreal sampError = (newDelta) - (zcDeltas[delta]);
-
-        if (verboseDecode) qDebug() << "Delta #" << delta << "tValue =" << tValue << "zcDelta[] =" << zcDeltas[delta] << "new delta =" << newDelta << "sampError =" << sampError;
-
-        // Update the delta values
-        zcDeltas[delta] = newDelta;
-        if (delta < endSyncTransition) zcDeltas[delta+1] -= sampError;
-
-        // Now store the resulting T value
-        qreal tCorrectedValue = zcDeltas[delta] / samplesPerBit;
-        tTotal += tCorrectedValue;
-        frameT.append(static_cast<qint32>(tCorrectedValue));
-
-        // Output verbose decoding debug?
-        if (verboseDecode) qDebug() << "EfmProcess::sm_state_processFrame(): Delta #" << delta << "T =" << tCorrectedValue;
-    }
-
-    // Note: The 40.0 in the following is a sample rate of 40MSPS
-    qInfo() << "F3 frame #" << frameCounter << "with a sample length of" << frameSampleLength << "(" << 40 / samplesPerBit << "MHz ) - T total was" << tTotal;
-
-    frameCounter++;
-
-    // Apply a processing frame limit
-    if (maxF3 != -1) {
-        if (frameCounter >= maxF3) {
-            qDebug() << "EfmProcess::sm_state_processFrame(): Hit maximum number of frames requested by --maxf3";
-            return state_complete;
-        }
-    }
-
-    // Decode the T values into a bit-stream
-    uchar outputData[34];
-    efmDecoder.convertTvaluesToData(frameT, outputData);
-
-    // Write the bit-stream to the output data file
-    outputFile->write(reinterpret_cast<const char *>(outputData), 34);
-
-    // Discard all transitions up to the sync end
-    removeZcDeltas(endSyncTransition);
-
-    return state_findSecondSync;
-}
-
-EfmProcess::StateMachine EfmProcess::sm_state_complete(void)
-{
-    qDebug() << "Current state: state_complete";
-    return state_complete;
 }

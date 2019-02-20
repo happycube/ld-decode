@@ -29,33 +29,19 @@ Filter::Filter()
 
 }
 
-// This method is based on the public domain code available from:
-// https://dspguru.com/dsp/tricks/fixed-point-dc-blocking-filter-with-noise-shaping/
-QVector<qint16> Filter::dcBlocking(QVector<qint16> x)
+// This filter is currently just a dummy.  None of the input samples seem to have DC offset...
+QVector<qint16> Filter::lpFilter(QVector<qint16> inputSample)
 {
-    // let's say sizeof(short) = 2 (16 bits) and sizeof(long) = 4 (32 bits)
-    QVector<qint16> y;
-    y.resize(x.size());
+    QVector<qint16> outputSample;
+    outputSample.resize(inputSample.size());
+    outputSample.fill(0);
 
-    qint32 acc, A, prev_x, prev_y;
-    qreal pole;
-    qint32 n;
-    pole = 0.9999;
-    A = static_cast<qint32>(32768.0 * (1.0 - pole));
-    acc = 0;
-    prev_x = 0;
-    prev_y = 0;
-    for (n=0; n < x.size(); n++) {
-        acc   -= prev_x;
-        prev_x = x[n]<<15;
-        acc   += prev_x;
-        acc   -= A*prev_y;
-        prev_y = acc>>15;               // quantization happens here
-        y[n]   = static_cast<qint16>(prev_y);
-        // acc has y[n] in upper 17 bits and -e[n] in lower 15 bits
-    }
+    return outputSample;
+}
 
-    return y;
+qint32 Filter::getLpFilterDelay(void)
+{
+    return 0;
 }
 
 // Method to feed the channelEqualizer FIR filter
@@ -81,4 +67,3 @@ qreal Filter::channelEqualizerFir(qreal inputSample)
     for (i = 0; i <= ceNZeros; i++) sum += (ceXcoeffs[i] * ceXv[i]);
     return sum;
 }
-
