@@ -101,23 +101,12 @@ int main(int argc, char *argv[])
     // Positional argument to specify output data file
     parser.addPositionalArgument("output", QCoreApplication::translate("main", "Specify output F3 frame data file"));
 
-    // Option to select length (-m)
-    QCommandLineOption maxF3Option(QStringList() << "m" << "maxf3",
-                                        QCoreApplication::translate("main", "Specify the maximum number of F3 frames to process"),
-                                        QCoreApplication::translate("main", "number"));
-    parser.addOption(maxF3Option);
-
-    // Option to show verbose decoding (-a)
-    QCommandLineOption verboseDecodeOption(QStringList() << "a" << "verbose",
-                                       QCoreApplication::translate("main", "Show verbose decoding information (debug)"));
-    parser.addOption(verboseDecodeOption);
-
     // Process the command line options and arguments given by the user
     parser.process(a);
 
     // Get the options from the parser
     bool isDebugOn = parser.isSet(showDebugOption);
-    bool verboseDecode = parser.isSet(verboseDecodeOption);
+    //bool verboseDecode = parser.isSet(verboseDecodeOption);
 
     // Get the arguments from the parser
     QString inputFilename;
@@ -138,23 +127,12 @@ int main(int argc, char *argv[])
         return -1;
     }
 
-    qint32 maxF3 = -1;
-    if (parser.isSet(maxF3Option)) {
-        maxF3 = parser.value(maxF3Option).toInt();
-
-        if (maxF3 < 1) {
-            // Quit with error
-            qCritical("Specified maximum number of F3 frames must be greater than zero");
-            return -1;
-        }
-    }
-
     // Process the command line options
     if (isDebugOn) showDebug = true;
 
     // Perform the processing
     EfmProcess efmProcess;
-    efmProcess.process(inputFilename, outputFilename, maxF3, verboseDecode);
+    efmProcess.process(inputFilename, outputFilename);
 
     // Quit with success
     return 0;

@@ -38,59 +38,23 @@ class EfmProcess
 public:
     EfmProcess();
 
-    bool process(QString inputFilename, QString outputFilename, qint32 maxF3Param, bool verboseDecodeParam);
+    bool process(QString inputFilename, QString outputFilename);
 
 private:
     QFile* inputFile;
     QFile* outputFile;
 
-    Filter filter;
-    EfmDecoder efmDecoder;
+    // ZC detector state
+    bool zcFirstRun;
+    qint16 zcPreviousInput;
+    bool prevDirection;
 
-    qint32 maxF3;
-    bool verboseDecode;
-
-    // State machine state definitions
-    enum StateMachine {
-        state_initial,
-        state_getDataFirstSync,
-        state_getDataSecondSync,
-        state_findFirstSync,
-        state_findSecondSync,
-        state_processFrame,
-        state_complete
-    };
-
-    StateMachine currentState;
-    StateMachine nextState;
-
-    QVector<qint16> inputBuffer;
-    QVector<qint16> windowedBuffer;
-    QVector<qreal> zcDeltas;
-    qreal minimumFrameWidthInSamples;
-    qreal lastFrameWidth;
-    qint32 endSyncTransition;
-    qint32 frameCounter;
-
-    void processStateMachine(void);
-    StateMachine sm_state_initial(void);
-    StateMachine sm_state_getDataFirstSync(void);
-    StateMachine sm_state_getDataSecondSync(void);
-    StateMachine sm_state_findFirstSync(void);
-    StateMachine sm_state_findSecondSync(void);
-    StateMachine sm_state_processFrame(void);
-    StateMachine sm_state_complete(void);
-
+    void zeroCrossDetection(QVector<qint16> inputBuffer, QVector<qint16> zeroBuffer, QVector<qreal> &zcDeltas);
+    qint32 fillInputBuffer(QDataStream &inputStream, QVector<qint16> &inputBuffer, qint32 samples);
     bool openInputSampleFile(QString filename);
     void closeInputSampleFile(void);
     bool openOutputDataFile(QString filename);
     void closeOutputDataFile(void);
-
-    QVector<qreal> zeroCrossDetection(QVector<qint16> inputBuffer, QVector<qreal> &zcDeltas, qint32 &usedSamples);
-    qreal estimateInitialFrameWidth(QVector<qreal> zcDeltas);
-    qint32 findSyncTransition(qreal approximateFrameWidth);
-    void removeZcDeltas(qint32 number);
-    bool fillWindowedBuffer(void);
 };
 
 #endif // EFMPROCESS_H
