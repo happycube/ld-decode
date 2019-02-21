@@ -35,32 +35,47 @@ class DecodeAudio
 public:
     DecodeAudio();
 
+    QByteArray getOutputData(void);
     void process(QByteArray f3FrameParam);
 
 private:
     void interleaveC1Data(QByteArray f3Frame0, QByteArray f3Frame1, uchar *c1Data);
     void getC2Data(uchar *symBuffer, bool *isErasure);
     QString dataToString(uchar *data, qint32 length);
-    void deInterleaveC2(void);
+    void deInterleaveC2(uchar *outputData);
 
     // CIRC FEC class
     ReedSolomon reedSolomon;
 
     // C1 ECC buffer
-    uchar c1Symbols[32];
-    bool c1SymbolsValid;
+    uchar c1Data[32];
+    bool c1DataValid;
     qint32 validC1Count;
     qint32 invalidC1Count;
 
-    // C2 ECC buffer
-    struct C2Buffer {
+    // C1 ECC delay buffer
+    struct C1Buffer {
         uchar c1Symbols[28];
         bool c1SymbolsValid;
     };
-    QVector<C2Buffer> c1DelayBuffer;
-    bool c2BufferValid;
+    QVector<C1Buffer> c1DelayBuffer;
+    bool c2DataValid;
     qint32 validC2Count;
     qint32 invalidC2Count;
+
+    // C2 EEC buffer
+    uchar c2Data[28];
+    bool c2DataErasures[28];
+
+    // C2 De-interleave delay buffer
+    struct C2Buffer {
+        uchar c2Symbols[28];
+        bool c2SymbolsValid;
+    };
+    QVector<C2Buffer> c2DelayBuffer;
+
+    // Output data buffer
+    QByteArray outputDataBuffer;
 
     // State machine state definitions
     enum StateMachine {

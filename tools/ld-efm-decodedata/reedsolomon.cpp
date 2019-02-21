@@ -30,8 +30,11 @@
 #include <ezpwd/definitions>
 
 // CD-ROM specific CIRC configuration for Reed-Solomon forward error correction
-template < size_t SYMBOLS, size_t PAYLOAD > struct CDRS;
-template < size_t PAYLOAD > struct CDRS<255, PAYLOAD> : public __RS(CDRS, uint8_t, 255, PAYLOAD, 0x11d, 0,  1);
+template < size_t SYMBOLS, size_t PAYLOAD > struct C1RS;
+template < size_t PAYLOAD > struct C1RS<255, PAYLOAD> : public __RS(C1RS, uint8_t, 255, PAYLOAD, 0x11d, 0,  1);
+
+template < size_t SYMBOLS, size_t PAYLOAD > struct C2RS;
+template < size_t PAYLOAD > struct C2RS<255, PAYLOAD> : public __RS(C2RS, uint8_t, 255, PAYLOAD, 0x11d, 0,  1);
 
 ReedSolomon::ReedSolomon()
 {
@@ -53,7 +56,7 @@ bool ReedSolomon::decodeC1(unsigned char *inData)
     for (size_t byteC = 0; byteC < 32; byteC++) data[byteC] = inData[byteC];
 
     // Initialise the error corrector
-    CDRS<255,255-4> rs; // Up to 251 symbols data load with 4 symbols parity RS(32,28)
+    C1RS<255,255-4> rs; // Up to 251 symbols data load with 4 symbols parity RS(32,28)
 
     // Perform decode
     int fixed = rs.decode(data);
@@ -72,21 +75,15 @@ bool ReedSolomon::decodeC1(unsigned char *inData)
 // To-Do: handle erasures correctly
 bool ReedSolomon::decodeC2(uchar *inData, bool *inErasures)
 {
-    // Copy the ingress data into a vector and the erasures
+    // Copy the ingress data into a vector
     std::vector<uint8_t> data;
     data.resize(28);
-    std::vector<int> erasures;
     for (size_t byteC = 0; byteC < 28; byteC++) {
         data[byteC] = inData[byteC];
-
-        // Add the erasures (up to 4 maximum can be fixed)
-        if (inErasures[byteC] && erasures.size() < 4) erasures.push_back(static_cast<int>(byteC));
     }
 
-    std::vector<int> position;
-
     // Initialise the error corrector
-    CDRS<255,255-4> rs; // Up to 251 symbols data load with 4 symbols parity RS(28,24)
+    C2RS<255,255-4> rs; // Up to 251 symbols data load with 4 symbols parity RS(28,24)
 
     // Perform decode
     int fixed = rs.decode(data); // This doesn't seem to work -> , erasures, &position);

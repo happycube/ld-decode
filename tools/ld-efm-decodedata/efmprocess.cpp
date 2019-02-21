@@ -31,15 +31,18 @@ EfmProcess::EfmProcess()
 
 bool EfmProcess::process(QString inputFilename, QString outputFilename)
 {
-    (void) outputFilename;
-
     // Open the input F3 data file
     if (!openInputF3File(inputFilename)) {
         qCritical() << "Could not open F3 data input file!";
         return false;
     }
 
-    // To do: make this read many frames at a time to speed up I/O
+    // Open the output data file
+    if (!openOutputDataFile(outputFilename)) {
+        qCritical() << "Could not open data output file!";
+        return false;
+    }
+
     bool endOfFile = false;
     while (!endOfFile) {
         QByteArray f3Frame = readF3Frames(1);
@@ -51,14 +54,18 @@ bool EfmProcess::process(QString inputFilename, QString outputFilename)
         // Pass the frame and decoded subcode information to the audio processor
         decodeAudio.process(f3Frame);
 
-        // Pass the frame and decoded subcode information to the data processor
-        //decodeData.feed(f3Frame, sync1, qMode);
+        // Get the audio output data
+        QByteArray outputData = decodeAudio.getOutputData();
+        if (outputData.size() > 0) {
+            outputFile->write(outputData);
+        }
 
         if (f3Frame.isEmpty()) endOfFile = true;
     }
 
-    // Close the input F3 data file
+    // Close the open files
     closeInputF3File();
+    closeOutputDataFile();
     return true;
 }
 

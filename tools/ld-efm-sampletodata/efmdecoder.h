@@ -40,7 +40,7 @@ public:
 
     qint32 f3FramesReady(void);
     QByteArray getF3Frames(void);
-    bool process(QVector<qreal> &zcDeltas);
+    void process(QVector<qreal> &zcDeltas);
 
 private:
     // The following table provides the 10-bit EFM code (padded with leading

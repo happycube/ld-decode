@@ -88,7 +88,7 @@ QByteArray EfmDecoder::getF3Frames(void)
 }
 
 // Process the state machine
-bool EfmDecoder::process(QVector<qreal> &zcDeltas)
+void EfmDecoder::process(QVector<qreal> &zcDeltas)
 {
     waitingForDeltas = false;
 
@@ -110,9 +110,6 @@ bool EfmDecoder::process(QVector<qreal> &zcDeltas)
             break;
         }
     }
-
-    // Frame waiting?
-    return false;
 }
 
 EfmDecoder::StateMachine EfmDecoder::sm_state_initial(void)

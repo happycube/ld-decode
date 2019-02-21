@@ -42,6 +42,14 @@ DecodeAudio::DecodeAudio()
     invalidC2Count = 0;
 }
 
+// Get the F3 frame
+QByteArray DecodeAudio::getOutputData(void)
+{
+    QByteArray outputData = outputDataBuffer;
+    outputDataBuffer.clear();
+    return outputData;
+}
+
 void DecodeAudio::process(QByteArray f3FrameParam)
 {
     // Ensure the F3 frame is the correct length
@@ -94,17 +102,17 @@ DecodeAudio::StateMachine DecodeAudio::sm_state_processC1(void)
 {
     //qDebug() << "DecodeAudio::sm_state_processC1(): Called";
 
-    // Interleave the current and previous frame to generate the C1 symbols
-    interleaveC1Data(previousF3Frame, currentF3Frame, c1Symbols);
+    // Interleave the current and previous frame to generate the C1 data
+    interleaveC1Data(previousF3Frame, currentF3Frame, c1Data);
 
     // Perform the Reed-Solomon CIRC
-    if (reedSolomon.decodeC1(c1Symbols)) {
+    if (reedSolomon.decodeC1(c1Data)) {
         validC1Count++;
-        c1SymbolsValid = true;
+        c1DataValid = true;
         //qDebug() << "DecodeAudio::sm_state_processC1(): Valid C1 #" << validC1Count;
     } else {
         invalidC1Count++;
-        c1SymbolsValid = false;
+        c1DataValid = false;
         //qDebug() << "DecodeAudio::sm_state_processC1(): Invalid C1 #" << invalidC1Count;
     }
 
@@ -119,13 +127,13 @@ DecodeAudio::StateMachine DecodeAudio::sm_state_processC1(void)
 DecodeAudio::StateMachine DecodeAudio::sm_state_processC2(void)
 {
     //qDebug() << "DecodeAudio::sm_state_processC2(): Called";
-    c2BufferValid = false;
+    c2DataValid = false;
 
-    // Place the C1 symbols in the C1 delay buffer
-    C2Buffer c2Entry;
-    for (qint32 byteC = 0; byteC < 28; byteC++) c2Entry.c1Symbols[byteC] = c1Symbols[byteC];
-    c2Entry.c1SymbolsValid = c1SymbolsValid;
-    c1DelayBuffer.append(c2Entry);
+    // Place the C1 data in the C1 delay buffer
+    C1Buffer c1BufferEntry;
+    for (qint32 byteC = 0; byteC < 28; byteC++) c1BufferEntry.c1Symbols[byteC] = c1Data[byteC];
+    c1BufferEntry.c1SymbolsValid = c1DataValid;
+    c1DelayBuffer.append(c1BufferEntry);
 
     // If the buffer is full, remove the first entry so it's always 109 C1s long
     if (c1DelayBuffer.size() > 109) {
@@ -134,22 +142,19 @@ DecodeAudio::StateMachine DecodeAudio::sm_state_processC2(void)
 
     // If we have 109 C1s then we can process the C2 ECC
     if (c1DelayBuffer.size() == 109) {
-
         // Get the C2 Data
-        uchar c2Buffer[28];
-        bool c2BufferErasures[28];
-        getC2Data(c2Buffer, c2BufferErasures);
+        getC2Data(c2Data, c2DataErasures);
 
         // Perform the Reed-Solomon CIRC
-        if (reedSolomon.decodeC2(c2Buffer, c2BufferErasures)) {
+        if (reedSolomon.decodeC2(c2Data, c2DataErasures)) {
             // C2 Success
             validC2Count++;
-            c2BufferValid = true;
+            c2DataValid = true;
             qDebug() << "DecodeAudio::sm_state_processC2(): Valid C2 #" << validC2Count;
         } else {
             // C2 Failure
             invalidC2Count++;
-            c2BufferValid = false;
+            c2DataValid = false;
             qDebug() << "DecodeAudio::sm_state_processC2(): Invalid C2 #" << invalidC2Count;
         }
     }
@@ -159,7 +164,29 @@ DecodeAudio::StateMachine DecodeAudio::sm_state_processC2(void)
 
 DecodeAudio::StateMachine DecodeAudio::sm_state_processAudio(void)
 {
-    //if (c2SymbolsValid) qDebug() << "DecodeAudio::sm_state_processAudio(): Called with valid C2 =====================================================================================";
+    // Place the C2 data in the C2 delay buffer
+    C2Buffer c2BufferEntry;
+    for (qint32 byteC = 0; byteC < 28; byteC++) c2BufferEntry.c2Symbols[byteC] = c2Data[byteC];
+    c2BufferEntry.c2SymbolsValid = c2DataValid;
+    c2DelayBuffer.append(c2BufferEntry);
+
+    // If the buffer is full, remove the first entry so it's always 3 C2s long
+    if (c2DelayBuffer.size() > 3) {
+        c2DelayBuffer.removeFirst();
+    }
+
+    // If we have 3 C2s then we can perform de-interleaving to recover the original data
+    if (c2DelayBuffer.size() == 3) {
+        uchar outputData[24];
+        deInterleaveC2(outputData);
+
+        // Save the output data in the output data buffer
+        qint32 odbPointer = outputDataBuffer.size();
+        outputDataBuffer.resize(outputDataBuffer.size() + 24);
+        for (qint32 byteC = 0; byteC < 24; byteC++) {
+            outputDataBuffer[byteC + odbPointer] = static_cast<char>(outputData[byteC]);
+        }
+    }
 
     // Discard the C2 and get the next C1
     return state_processC1;
@@ -222,35 +249,43 @@ QString DecodeAudio::dataToString(uchar *data, qint32 length)
 }
 
 // Note: not complete - to-do
-void DecodeAudio::deInterleaveC2(void)
+void DecodeAudio::deInterleaveC2(uchar *outputData)
 {
-    // Also needs 2 frame delay
+    // Note: This is according to IEC60908 Figure 13 - CIRC decoder
+    // Buffer 2 is current, buffer 0 is 2-frame delays behind
+    qint32 curr = 2;
+    qint32 prev = 1;
 
-    //        // Note: This is according to IEC60908 Figure 13 - CIRC decoder
-    //        c2symbols[ 0] =  c2BufferCurrent[ 0];
-    //        c2symbols[ 1] =  c2BufferCurrent[ 1];
-    //        c2symbols[ 2] =  c2BufferCurrent[ 6];
-    //        c2symbols[ 3] =  c2BufferCurrent[ 7];
-    //        c2symbols[ 4] = c2BufferPrevious[16];
-    //        c2symbols[ 5] = c2BufferPrevious[17];
-    //        c2symbols[ 6] = c2BufferPrevious[22];
-    //        c2symbols[ 7] = c2BufferPrevious[23];
-    //        c2symbols[ 8] =  c2BufferCurrent[ 2];
-    //        c2symbols[ 9] =  c2BufferCurrent[ 3];
-    //        c2symbols[10] =  c2BufferCurrent[ 8];
-    //        c2symbols[11] =  c2BufferCurrent[ 9];
-    //        c2symbols[12] = c2BufferPrevious[18];
-    //        c2symbols[13] = c2BufferPrevious[19];
-    //        c2symbols[14] = c2BufferPrevious[24];
-    //        c2symbols[15] = c2BufferPrevious[25];
-    //        c2symbols[16] =  c2BufferCurrent[ 4];
-    //        c2symbols[17] =  c2BufferCurrent[ 5];
-    //        c2symbols[18] =  c2BufferCurrent[10];
-    //        c2symbols[19] =  c2BufferCurrent[11];
-    //        c2symbols[20] = c2BufferPrevious[20];
-    //        c2symbols[21] = c2BufferPrevious[21];
-    //        c2symbols[22] = c2BufferPrevious[26];
-    //        c2symbols[23] = c2BufferPrevious[27];
+    // Note: This drops the parity leaving 24 bytes of data (12 words of 16 bits)
+    outputData[ 0] = c2DelayBuffer[curr].c2Symbols[ 0];
+    outputData[ 1] = c2DelayBuffer[curr].c2Symbols[ 1];
+    outputData[ 2] = c2DelayBuffer[curr].c2Symbols[ 6];
+    outputData[ 3] = c2DelayBuffer[curr].c2Symbols[ 7];
+
+    outputData[ 4] = c2DelayBuffer[prev].c2Symbols[16];
+    outputData[ 5] = c2DelayBuffer[prev].c2Symbols[17];
+    outputData[ 6] = c2DelayBuffer[prev].c2Symbols[22];
+    outputData[ 7] = c2DelayBuffer[prev].c2Symbols[23];
+
+    outputData[ 8] = c2DelayBuffer[curr].c2Symbols[ 2];
+    outputData[ 9] = c2DelayBuffer[curr].c2Symbols[ 3];
+    outputData[10] = c2DelayBuffer[curr].c2Symbols[ 8];
+    outputData[11] = c2DelayBuffer[curr].c2Symbols[ 9];
+
+    outputData[12] = c2DelayBuffer[prev].c2Symbols[18];
+    outputData[13] = c2DelayBuffer[prev].c2Symbols[19];
+    outputData[14] = c2DelayBuffer[prev].c2Symbols[24];
+    outputData[15] = c2DelayBuffer[prev].c2Symbols[25];
+
+    outputData[16] = c2DelayBuffer[curr].c2Symbols[ 4];
+    outputData[17] = c2DelayBuffer[curr].c2Symbols[ 5];
+    outputData[18] = c2DelayBuffer[curr].c2Symbols[10];
+    outputData[19] = c2DelayBuffer[curr].c2Symbols[11];
+
+    outputData[20] = c2DelayBuffer[prev].c2Symbols[20];
+    outputData[21] = c2DelayBuffer[prev].c2Symbols[21];
+    outputData[22] = c2DelayBuffer[prev].c2Symbols[26];
+    outputData[23] = c2DelayBuffer[prev].c2Symbols[27];
 }
 
 
