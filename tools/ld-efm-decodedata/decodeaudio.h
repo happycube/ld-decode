@@ -28,10 +28,7 @@
 #include <QCoreApplication>
 #include <QDebug>
 
-// Include the rscode C library
-extern "C" {
-  #include "rscode-1.3/ecc.h"
-}
+#include "reedsolomon.h"
 
 class DecodeAudio
 {
@@ -43,13 +40,18 @@ public:
 private:
     void interleaveC1Data(QByteArray f3Frame0, QByteArray f3Frame1, uchar *c1Data);
     void getC2Data(uchar *symBuffer, bool *isErasure);
-    void hexDump(QString title, uchar *data, qint32 length);
+    QString dataToString(uchar *data, qint32 length);
     void moveC2ParitySymbols(uchar *symBuffer, bool *isErasure);
     void deInterleaveC2(void);
+
+    // CIRC FEC class
+    ReedSolomon reedSolomon;
 
     // C1 ECC buffer
     uchar c1Symbols[32];
     bool c1SymbolsValid;
+    qint32 validC1Count;
+    qint32 invalidC1Count;
 
     // C2 ECC buffer
     struct C2Buffer {

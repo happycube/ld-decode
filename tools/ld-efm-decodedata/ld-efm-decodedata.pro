@@ -17,13 +17,9 @@ DEFINES += QT_DEPRECATED_WARNINGS
 SOURCES += \
         main.cpp \
     efmprocess.cpp \
-    rscode-1.3/berlekamp.c \
-    rscode-1.3/crcgen.c \
-    rscode-1.3/galois.c \
-    rscode-1.3/rs.c \
-    errorcorrection.cpp \
     decodesubcode.cpp \
-    decodeaudio.cpp
+    decodeaudio.cpp \
+    reedsolomon.cpp
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin
@@ -32,10 +28,20 @@ else: unix:!android: target.path = /usr/local/bin/
 
 HEADERS += \
     efmprocess.h \
-    rscode-1.3/ecc.h \
-    errorcorrection.h \
     decodesubcode.h \
-    decodeaudio.h
+    decodeaudio.h \
+    reedsolomon.h \
+    ezpwd/asserter \
+    ezpwd/bch \
+    ezpwd/bch_base \
+    ezpwd/corrector \
+    ezpwd/definitions \
+    ezpwd/ezcod \
+    ezpwd/output \
+    ezpwd/rs \
+    ezpwd/serialize \
+    ezpwd/serialize_definitions \
+    ezpwd/timeofday
 
 DISTFILES += \
-    rscode-1.3/README.md
+    ezpwd/rs_base

@@ -291,7 +291,8 @@ EfmDecoder::StateMachine EfmDecoder::sm_state_processFrame(QVector<qreal> &zcDel
         }
         if (tTotal == 588) {
             if (syncCorrection != 0 || t2push !=0 || t11push != 0) {
-                qDebug() << "EfmDecoder::sm_state_processFrame(): F3 Pass 2 decode ok - Freq" << 40.0 / samplesPerBit << "T2 push =" << t2push << "T11 push =" << t11push << "Sync corr =" << syncCorrection;
+                qDebug() << "EfmDecoder::sm_state_processFrame(): F3 Pass 2 decode ok - Freq" << 40.0 / samplesPerBit <<
+                            "T2 push =" << t2push << "T11 push =" << t11push << "Sync corr =" << syncCorrection;
                 decodePass2++;
             } else {
                 qDebug() << "EfmDecoder::sm_state_processFrame(): F3 Pass 2 decode ok - Freq" << 40.0 / samplesPerBit;
@@ -389,30 +390,37 @@ void EfmDecoder::convertTvaluesToData(QVector<qint32> frameT, uchar* outputData)
     uchar rawFrameData[74];
     for (qint32 byteC = 0; byteC < 74; byteC++) rawFrameData[byteC] = 0;
 
-    qint32 bitPosition = 0;
+    qint32 bitPosition = 7;
     qint32 bytePosition = 0;
     uchar byteData = 0;
 
+    // Verify that the input values add up to 588 bits
+    qint32 bitCount = 0;
+    for (qint32 tNumber = 0; tNumber < frameT.size(); tNumber++) {
+        bitCount += frameT[tNumber];
+        //qDebug() << "frameT =" << frameT[tNumber];
+    }
+
+    if (bitCount != 588) qDebug() << "EfmDecoder::convertTvaluesToData(): Illegal F3 frame length";
+
     for (qint32 tPosition = 0; tPosition < frameT.size(); tPosition++) {
         for (qint32 bitCount = 0; bitCount < frameT[tPosition]; bitCount++) {
+            if (bitCount == 0) byteData |= (1 << bitPosition);
+            bitPosition--;
 
-            if (bitCount == 0) byteData += 1; else byteData += 0;
-
-            bitPosition++;
-            if (bitPosition > 7) {
+            if (bitPosition < 0) {
                 rawFrameData[bytePosition] = byteData;
                 byteData = 0;
-                bitPosition = 0;
+                bitPosition = 7;
                 bytePosition++;
-            } else {
-                byteData = static_cast<uchar>(byteData << 1);
             }
         }
     }
 
-    // Process the last nibble (to make 73.5 bytes into 74)
-    byteData = static_cast<uchar>(byteData << (7 - bitPosition));
+    // Add in the last nybble to get from 73.5 to 74 bytes
     rawFrameData[bytePosition] = byteData;
+
+    //qDebug() << "F3Frame data:" << dataToString(rawFrameData, 74);
 
     // Secondly, we take the bit stream and extract just the EFM values it contains
     // There are 33 EFM values per F3 frame
@@ -444,6 +452,7 @@ void EfmDecoder::convertTvaluesToData(QVector<qint32> frameT, uchar* outputData)
     for (qint32 counter = 0; counter < 33; counter++) {
         efmValues[counter] = getBits(rawFrameData, currentBit, 14);
         currentBit += 14 + 3; // the value plus 3 merging bits
+        //qDebug() << "efmValues =" << efmValues[counter];
     }
 
     // Thirdly we take each EFM value, look it up and replace it with the
@@ -476,11 +485,13 @@ void EfmDecoder::convertTvaluesToData(QVector<qint32> frameT, uchar* outputData)
 
         if (result == -1) {
             // To-Do: count the EFM decode failures for debug
-            qDebug() << "EfmDecoder::convertTvaluesToData(): 14-bit EFM value" << efmValues[counter -1] << "not found in translation look-up table";
+            qDebug() << "EfmDecoder::convertTvaluesToData(): 14-bit EFM value" << efmValues[counter - 1] << "not found in translation look-up table";
             efmTranslationFail++;
             outputData[counter] = 0;
         }
     }
+
+    //qDebug() << "Output data =" << dataToString(outputData, 34);
 }
 
 // Method to get 'width' bits (max 32) from a byte array starting from
