@@ -37,6 +37,9 @@ DecodeAudio::DecodeAudio()
 
     validC1Count = 0;
     invalidC1Count = 0;
+
+    validC2Count = 0;
+    invalidC2Count = 0;
 }
 
 void DecodeAudio::process(QByteArray f3FrameParam)
@@ -98,11 +101,11 @@ DecodeAudio::StateMachine DecodeAudio::sm_state_processC1(void)
     if (reedSolomon.decodeC1(c1Symbols)) {
         validC1Count++;
         c1SymbolsValid = true;
-        qDebug() << "DecodeAudio::sm_state_processC1(): Valid C1 #" << validC1Count;
+        //qDebug() << "DecodeAudio::sm_state_processC1(): Valid C1 #" << validC1Count;
     } else {
         invalidC1Count++;
         c1SymbolsValid = false;
-        qDebug() << "DecodeAudio::sm_state_processC1(): Invalid C1 #" << invalidC1Count;
+        //qDebug() << "DecodeAudio::sm_state_processC1(): Invalid C1 #" << invalidC1Count;
     }
 
     // Store the frame and get a new frame
@@ -129,41 +132,27 @@ DecodeAudio::StateMachine DecodeAudio::sm_state_processC2(void)
         c1DelayBuffer.removeFirst();
     }
 
-//    // If we have 109 C1s then we can process the C2 ECC
-//    if (c1DelayBuffer.size() == 109) {
-//        uchar c2Buffer[28];
-//        bool c2BufferErasures[28];
-//        getC2Data(c2Buffer, c2BufferErasures);
+    // If we have 109 C1s then we can process the C2 ECC
+    if (c1DelayBuffer.size() == 109) {
 
-//        // Prepare the erasures in the format required by rscode-1.3
-//        qint32 erasures[28];
-//        qint32 nerasures = 0;
-//        for (qint32 count = 0; count < 28; count++) {
-//            if (c2BufferErasures[count]) {
-//                // Symbol is erased
-//                erasures[nerasures] = 27 - count;
-//                nerasures++;
-//            }
-//        }
+        // Get the C2 Data
+        uchar c2Buffer[28];
+        bool c2BufferErasures[28];
+        getC2Data(c2Buffer, c2BufferErasures);
 
-//        // Perform the C2 decode
-//        decode_data(c2Buffer, 28);
-
-//        // Perform error correction (we can correct 4 errors at the most)
-//        if (check_syndrome() != 0) {
-//            // Attempt to correct any corrupted symbols
-//            if (correct_errors_erasures(c2Buffer, 28, nerasures, erasures) == 1) {
-//                // Correction successful, symbols are valid
-//                c2BufferValid = true;
-//            }
-//        } else {
-//            // Symbols are valid
-//            c2BufferValid = true;
-//        }
-
-//        //if (c2BufferValid) qDebug() << "DecodeAudio::sm_state_processC2(): C2 CIRC success -----------------------------------------------------------------------";
-//        //else qDebug() << "DecodeAudio::sm_state_processC2(): C2 CIRC failed, nerasures =" << nerasures;
-//    }
+        // Perform the Reed-Solomon CIRC
+        if (reedSolomon.decodeC2(c2Buffer, c2BufferErasures)) {
+            // C2 Success
+            validC2Count++;
+            c2BufferValid = true;
+            qDebug() << "DecodeAudio::sm_state_processC2(): Valid C2 #" << validC2Count;
+        } else {
+            // C2 Failure
+            invalidC2Count++;
+            c2BufferValid = false;
+            qDebug() << "DecodeAudio::sm_state_processC2(): Invalid C2 #" << invalidC2Count;
+        }
+    }
 
     return state_processAudio;
 }
@@ -217,43 +206,6 @@ void DecodeAudio::getC2Data(uchar *symBuffer, bool *isErasure)
         } else {
             isErasure[byteC] = false;
         }
-    }
-}
-
-// Move the C2 parity symbols to the end of the C2 symbols
-// Note: I don't think this is required
-void DecodeAudio::moveC2ParitySymbols(uchar *symBuffer, bool *isErasure)
-{
-    uchar symTemp[28];
-    bool isErasureTemp[28];
-
-    // Move the first 12 words
-    for (qint32 byteC = 0; byteC < 12; byteC++) {
-        symTemp[byteC] = symBuffer[byteC];
-        isErasureTemp[byteC] = isErasure[byteC];
-    }
-
-    // Move the last 12 words
-    for (qint32 byteC = 16; byteC < 28; byteC++) {
-        symTemp[byteC - 4] = symBuffer[byteC];
-        isErasureTemp[byteC - 4] = isErasure[byteC];
-    }
-
-    // Move the 4 parity words
-    symTemp[24] = symBuffer[12];
-    symTemp[25] = symBuffer[13];
-    symTemp[26] = symBuffer[14];
-    symTemp[27] = symBuffer[15];
-
-    isErasureTemp[24] = isErasure[12];
-    isErasureTemp[25] = isErasure[13];
-    isErasureTemp[26] = isErasure[14];
-    isErasureTemp[27] = isErasure[15];
-
-    // Copy the temporary data to the primary data
-    for (qint32 byteC = 0; byteC < 28; byteC++) {
-        symBuffer[byteC] = symTemp[byteC];
-        isErasure[byteC] = isErasureTemp[byteC];
     }
 }
 

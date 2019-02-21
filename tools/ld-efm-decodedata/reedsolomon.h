@@ -36,6 +36,7 @@ public:
     ReedSolomon();
 
     bool decodeC1(unsigned char *inData);
+    bool decodeC2(uchar *inData, bool *inErasures);
 
 private:
     QString dataToString(std::vector<uint8_t> data);
@@ -43,6 +44,10 @@ private:
     qint32 c1Passed;
     qint32 c1Corrected;
     qint32 c1Failed;
+
+    qint32 c2Passed;
+    qint32 c2Corrected;
+    qint32 c2Failed;
 };
 
 #endif // REEDSOLOMON_H

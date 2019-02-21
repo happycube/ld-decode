@@ -41,7 +41,6 @@ private:
     void interleaveC1Data(QByteArray f3Frame0, QByteArray f3Frame1, uchar *c1Data);
     void getC2Data(uchar *symBuffer, bool *isErasure);
     QString dataToString(uchar *data, qint32 length);
-    void moveC2ParitySymbols(uchar *symBuffer, bool *isErasure);
     void deInterleaveC2(void);
 
     // CIRC FEC class
@@ -60,6 +59,8 @@ private:
     };
     QVector<C2Buffer> c1DelayBuffer;
     bool c2BufferValid;
+    qint32 validC2Count;
+    qint32 invalidC2Count;
 
     // State machine state definitions
     enum StateMachine {

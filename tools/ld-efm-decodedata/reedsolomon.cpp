@@ -38,8 +38,13 @@ ReedSolomon::ReedSolomon()
     c1Passed = 0;
     c1Corrected = 0;
     c1Failed = 0;
+
+    c2Passed = 0;
+    c2Corrected = 0;
+    c2Failed = 0;
 }
 
+// Perform a C1 level error check and correction
 bool ReedSolomon::decodeC1(unsigned char *inData)
 {
     // Copy the ingress data into a vector
@@ -48,7 +53,7 @@ bool ReedSolomon::decodeC1(unsigned char *inData)
     for (size_t byteC = 0; byteC < 32; byteC++) data[byteC] = inData[byteC];
 
     // Initialise the error corrector
-    CDRS<255,255-4> rs; // Up to 251 symbols data load; adds 4 symbols parity RS(32,28)
+    CDRS<255,255-4> rs; // Up to 251 symbols data load with 4 symbols parity RS(32,28)
 
     // Perform decode
     int fixed = rs.decode(data);
@@ -60,6 +65,39 @@ bool ReedSolomon::decodeC1(unsigned char *inData)
 
     // C1 failed
     c1Failed++;
+    return false;
+}
+
+// Perform a C2 level error check and correction
+// To-Do: handle erasures correctly
+bool ReedSolomon::decodeC2(uchar *inData, bool *inErasures)
+{
+    // Copy the ingress data into a vector and the erasures
+    std::vector<uint8_t> data;
+    data.resize(28);
+    std::vector<int> erasures;
+    for (size_t byteC = 0; byteC < 28; byteC++) {
+        data[byteC] = inData[byteC];
+
+        // Add the erasures (up to 4 maximum can be fixed)
+        if (inErasures[byteC] && erasures.size() < 4) erasures.push_back(static_cast<int>(byteC));
+    }
+
+    std::vector<int> position;
+
+    // Initialise the error corrector
+    CDRS<255,255-4> rs; // Up to 251 symbols data load with 4 symbols parity RS(28,24)
+
+    // Perform decode
+    int fixed = rs.decode(data); // This doesn't seem to work -> , erasures, &position);
+
+    // Did C2 pass?
+    if (fixed == 0) c2Passed++;
+    if (fixed > 0)  c2Corrected++;
+    if (fixed >= 0) return true;
+
+    // C2 failed
+    c2Failed++;
     return false;
 }
 
