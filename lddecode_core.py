@@ -24,7 +24,7 @@ def calclinelen(SP, mult, mhz):
         
     return int(np.round(SP['line_period'] * mhz * mult)) 
 
-# These are invariant parameters 
+# These are invariant parameters for PAL and NTSC
 SysParams_NTSC = {
     'fsc_mhz': (315.0 / 88.0),
     'pilot_mhz': (315.0 / 88.0),
@@ -58,7 +58,7 @@ SysParams_NTSC['outfreq'] = 4 * SysParams_NTSC['fsc_mhz']
 SysParams_PAL = {
     'FPS': 25,
     
-    # from wiki: 283.75 × 15625 Hz + 25 Hz = 4.43361875 MHz
+    # from wikipedia: 283.75 × 15625 Hz + 25 Hz = 4.43361875 MHz
     'fsc_mhz': ((1/64) * 283.75) + (25/1000000),
     'pilot_mhz': 3.75,
     'frame_lines': 625,
@@ -69,7 +69,7 @@ SysParams_PAL = {
 
     # only early PAL disks have analog audio
     'analog_audio': True,
-    # From the spec - audio frequencies are multiples of the (color) line rate
+    # From the spec - audio frequencies are multiples of the (colour) line rate
     'audio_lfreq': (1000000/64) * 43.75,
     'audio_rfreq': (1000000/64) * 68.25,
 
@@ -131,12 +131,11 @@ class RFDecode:
         self.mtf_offset = mtf_offset
         
         if system == 'NTSC':
-            self.SysParams = SysParams_NTSC
-            self.DecoderParams = RFParams_NTSC
-            #self.mtf_mult *= .7
+            self.SysParams = copy.deepcopy(SysParams_NTSC)
+            self.DecoderParams = copy.deepcopy(RFParams_NTSC)
         elif system == 'PAL':
-            self.SysParams = SysParams_PAL
-            self.DecoderParams = RFParams_PAL
+            self.SysParams = copy.deepcopy(SysParams_PAL)
+            self.DecoderParams = copy.deepcopy(RFParams_PAL)
 
         linelen = self.freq_hz/(1000000.0/self.SysParams['line_period'])
         self.linelen = int(np.round(linelen))
@@ -145,8 +144,6 @@ class RFDecode:
         self.decode_analog_audio = decode_analog_audio
 
         self.computefilters()    
-            
-        self.blockcut_end = self.Filters['F05_offset']
 
     def computefilters(self):
         self.computevideofilters()
@@ -159,6 +156,7 @@ class RFDecode:
             self.Filters['Fefm'] = filtfft(sps.ellip(7, .5, 26, (1.75 / self.freq_half)), self.blocklen)
 
         self.computedelays()
+        self.blockcut_end = self.Filters['F05_offset']
 
     def computevideofilters(self):
         if self.system == 'NTSC':
@@ -526,7 +524,6 @@ def downscale_audio(audio, lineinfo, rf, linecount, timeoffset = 0, freq = 48000
     # include one extra 'tick' to interpolate the last one and use as a return value
     # for the next frame
     arange = np.arange(timeoffset, frametime + (soundgap / 2), soundgap, dtype=np.double)
-    #print(arange[-1])
     locs = np.zeros(len(arange), dtype=np.float)
     swow = np.zeros(len(arange), dtype=np.float)
     
@@ -548,11 +545,9 @@ def downscale_audio(audio, lineinfo, rf, linecount, timeoffset = 0, freq = 48000
     output = np.zeros((2 * (len(arange) - 1)), dtype=np.int32)
     output16 = np.zeros((2 * (len(arange) - 1)), dtype=np.int16)
 
-    # use two passes so the next location can be known
     for i in range(len(arange) - 1):    
-        # rough linear approx for now
-        output_left = audio['audio_left'][np.int(locs[i])]
-        output_right = audio['audio_right'][np.int(locs[i])]
+        output_left = np.mean(audio['audio_left'][np.int(locs[i]):np.int(locs[i+1])])
+        output_right = np.mean(audio['audio_right'][np.int(locs[i]):np.int(locs[i+1])])
 
         output_left *= swow[i]
         output_right *= swow[i]
@@ -600,13 +595,17 @@ class Field:
     def outpxtousec(self, x):
         return x / self.rf.SysParams['outfreq']
 
-    def lineslice_tbc(self, l, begin = None, length = None, linelocs = None):
+    def lineslice_tbc(self, l, begin = None, length = None, linelocs = None, keepphase = False):
         ''' return a slice corresponding with pre-TBC line l '''
         
         _begin = self.rf.SysParams['outlinelen'] * (l - 1)
-        _begin += self.usectooutpx(begin) if begin is not None else 0
 
-        _length = self.usectooutpx(length) if length is not None else 1
+        begin_offset = self.usectooutpx(begin) if begin is not None else 0
+        if keepphase:
+            begin_offset = (begin_offset // 4) * 4
+
+        _begin += begin_offset 
+        _length = self.usectooutpx(length) if length is not None else self.rf.SysParams['outlinelen']
 
         return slice(int(np.round(_begin)), int(np.round(_begin + _length)))
     
@@ -803,8 +802,6 @@ class Field:
 
                     zc2 = calczc(self.data[0]['demod_05'], ll1, (porch_level + sync_level) / 2, reverse=False, _count=400)
 
-                    #print(porch_level, sync_level, zc, zc2)
-
                     # any wild variation here indicates a failure
                     if zc2 is not None and np.abs(zc2 - zc) < (self.rf.freq / 4):
                         linelocs2[i] = zc2
@@ -832,7 +829,7 @@ class Field:
             while nextgood < len(linelocs) and self.linebad[nextgood]:
                 nextgood += 1
 
-            if prevgood >=0 and nextgood < len(linelocs):
+            if prevgood >= 0 and nextgood < len(linelocs):
                 gap = (linelocs[nextgood] - linelocs[prevgood]) / (nextgood - prevgood)
                 linelocs[l] = (gap * (l - prevgood)) + linelocs[prevgood]
                 
@@ -979,8 +976,6 @@ class Field:
         self.isFirstField = self.is_firstfield()
 
         # VBI info
-        #self.linecode = [self.decodephillipscode(l + self.lineoffset) for l in [16, 17, 18]]
-            
         self.valid = True
         self.tbcstart = self.peaklist[self.vsyncs[1][1]-10]
 
@@ -1325,8 +1320,6 @@ class FieldNTSC(Field):
             self.burst90 = True
             linelocs_adj = [l + (self.rf.linelen * (.25 / 227.5)) for l in linelocs_adj]
             valid, zc_bursts, field14, burstlevel, badlines = self.compute_burst_offsets(linelocs_adj)
-        else:
-            self.burst90 = False
 
         adjs = {}
 
@@ -1352,7 +1345,6 @@ class FieldNTSC(Field):
                 adjs[l] = -(np.median(zc_bursts[l][edge]) * lfreq * (1 / self.rf.SysParams['fsc_mhz']))
 
         adjs_median = np.median([adjs[a] for a in adjs])
-        #print(adjs_median)
         
         for l in range(0, 266):
             if l in adjs and inrange(adjs[l] - adjs_median, -2, 2):
@@ -1362,6 +1354,11 @@ class FieldNTSC(Field):
                 self.linebad[l] = True
 
         self.field14 = field14
+
+        if self.isFirstField:
+            self.fieldPhaseID = 1 if self.field14 else 3
+        else:
+            self.fieldPhaseID = 4 if self.field14 else 2
 
         return linelocs_adj, burstlevel#, adjs
     
@@ -1385,24 +1382,17 @@ class FieldNTSC(Field):
                     
         return dsout, dsaudio, dsefm
     
-    def apply_offsets(self, linelocs, phaseoffset, picoffset = 0):
-        return np.array(linelocs) + picoffset + (phaseoffset * (self.rf.freq / (4 * 315 / 88)))
-
     def calc_burstmedian(self):
         burstlevel = [self.get_burstlevel(l) for l in range(11, 264)]
 
         return np.median(burstlevel) / self.rf.SysParams['hz_ire']
 
+    def apply_offsets(self, linelocs, phaseoffset, picoffset = 0):
+        return np.array(linelocs) + picoffset + (phaseoffset * (self.rf.freq / (4 * 315 / 88)))
+
     def __init__(self, *args, **kwargs):
         self.burstlevel = None
         self.burst90 = False
-
-        # HE010
-        self.colorphase = 90+1.5 # colorphase
-        self.colorphase = 77 # colorphase
-        self.colorphase = 90 # colorphase
-        self.colorphase = 80 # colorphase
-        #self.colorphase = -21 # colorphase
 
         super(FieldNTSC, self).__init__(*args, **kwargs)
         
@@ -1418,13 +1408,99 @@ class FieldNTSC(Field):
 
         self.burstmedian = self.calc_burstmedian()
 
+        # Now adjust 33 degrees to get the downscaled image onto I/Q color axis
+        # self.linelocs = np.array(self.linelocs3) + ((33/360.0) * (63.555555/227.5) * self.rf.freq)
         # Now adjust 33 degrees (-90 - 33) for color decoding
-        shift33 = self.colorphase * (np.pi / 180)
-        self.linelocs = self.apply_offsets(self.linelocs3, -shift33 - 0)
+        shift33 = 84 * (np.pi / 180)
+        self.linelocs = self.apply_offsets(self.linelocs3, -shift33 - 0)        
         
         self.linecount = 263 if self.isFirstField else 262
 
         self.downscale(wow = True, final=True)
+
+class CombNTSC:
+    ''' *partial* NTSC comb filter class - only enough to do VITS calculations ATM '''
+    
+    def __init__(self, field):
+        self.field = field
+
+    def getlinephase(self, line):
+        ''' determine if a line has positive color burst phase '''
+        fieldID = self.field.fieldPhaseID
+        
+        fieldPositivePhase = (fieldID == 1) | (fieldID == 4)
+        
+        return fieldPositivePhase if ((line % 2) == 0) else not fieldPositivePhase
+
+    def buildCBuffer(self, subset = None):
+        ''' 
+        prev_field: Compute values for previous field
+        subset: a slice computed by lineslice_tbc (default: whole field) 
+        
+        NOTE:  first and last two returned values will be zero, so slice accordingly
+        '''
+        
+        data = self.field.dspicture
+        
+        if subset:
+            data = data[subset]
+            
+        # this is a translation of this code from tools/ld-comb-ntsc/comb.cxx:
+        #
+        # for (qint32 h = configuration.activeVideoStart; h < configuration.activeVideoEnd; h++) {
+        #  qreal tc1 = (((line[h + 2] + line[h - 2]) / 2) - line[h]);
+                        
+        fldata = data.astype(np.float32)
+        cbuffer = np.zeros_like(fldata)
+        
+        cbuffer[2:-2] = (fldata[:-4] + fldata[4:]) / 2
+        cbuffer[2:-2] -= fldata[2:-2]
+        
+        return cbuffer
+
+    def splitIQ(self, cbuffer, line = 0):
+        ''' 
+        NOTE:  currently? only works on one line
+        
+        This returns normalized I and Q arrays, each one half the length of cbuffer 
+        '''
+        linephase = self.getlinephase(line)
+        
+        si = cbuffer[::2].copy()
+        sq = cbuffer[1::2].copy()
+
+        if linephase:
+            si[0::2] = -si[0::2]
+            sq[1::2] = -sq[1::2]
+        else:
+            si[1::2] = -si[1::2]
+            sq[0::2] = -sq[0::2]
+    
+        return si, sq
+    
+    def calcLine19Info(self):
+        ''' returns color burst phase (ideally 147 degrees) and (unfiltered!) SNR '''
+        
+        # Don't need the whole line here, but start at 0 to definitely have an even #
+        l19_slice = self.field.lineslice_tbc(19, 0, 40)
+
+        cbuffer = self.buildCBuffer(l19_slice)
+        si, sq = self.splitIQ(cbuffer, 19)
+
+        sl = slice(110,230)
+        cdata = np.sqrt((si[sl] ** 2.0) + (sq[sl] ** 2.0))
+
+        phase = np.arctan2(np.mean(si[sl]),np.mean(sq[sl]))*180/np.pi
+        if phase < 0:
+            phase += 360
+
+        # compute SNR
+        signal = np.mean(cdata)
+        noise = np.std(cdata)
+
+        snr = 20 * np.log10(signal / noise)
+        
+        return phase, snr
 
 class LDdecode:
     
@@ -1660,7 +1736,10 @@ class LDdecode:
         if not inrange(np.mean(f1.output_to_ire(f1.dspicture[wl20_slice])), 90, 110):
             wl20_slice = f1.lineslice_tbc(20, 52, 8)
             if not inrange(np.mean(f1.output_to_ire(f1.dspicture[wl20_slice])), 90, 110):
-                wl20_slice = None
+                # only seen on GGV
+                wl20_slice = f1.lineslice_tbc(13, 13, 15)
+                if not inrange(np.mean(f1.output_to_ire(f1.dspicture[wl20_slice])), 90, 110):
+                    wl20_slice = None
 
         if wl20_slice is not None:
             metrics['whiteSNR'] = self.calcsnr(f1, wl20_slice)
@@ -1679,7 +1758,6 @@ class LDdecode:
             metrics['ntscWhiteFlagSNR'] = self.calcsnr(f1, wf_slice)
 
         # for NTSC, use line 19 to determine 70IRE burst level for MTF compensation later
-
         sl_cburst = f1.lineslice_tbc(19, 4.7+.8, 2.4)
         diff = (f1.dspicture[sl_cburst].astype(float) - f2.dspicture[sl_cburst].astype(float))/2
 
@@ -1689,6 +1767,16 @@ class LDdecode:
         diff = (f1.dspicture[sl_cburst70].astype(float) - f2.dspicture[sl_cburst70].astype(float))/2
 
         metrics['ntscLine19Burst70IRE'] = np.sqrt(2)*rms(diff)/f1.out_scale
+
+        comb1 = CombNTSC(f1)
+        phase1, snr1 = comb1.calcLine19Info()
+        metrics['ntscF1Line19ColorPhase'] = phase1
+        metrics['ntscF1Line19ColorRawSNR'] = snr1
+
+        comb2 = CombNTSC(f2)
+        phase2, snr2 = comb2.calcLine19Info()
+        metrics['ntscF2Line19ColorPhase'] = phase2
+        metrics['ntscF2Line19ColorRawSNR'] = snr2
 
     def computeMetrics(self, f1, f2):
         ''' This uses a complete video (not LD) frame '''
@@ -1742,10 +1830,7 @@ class LDdecode:
         decodeFaults = 0
 
         if f.rf.system == 'NTSC':
-            if fi['isFirstField']:
-                fi['fieldPhaseID'] = 1 if f.field14 else 3
-            else:
-                fi['fieldPhaseID'] = 4 if f.field14 else 2
+            fi['fieldPhaseID'] = f.fieldPhaseID
 
             if prevfi:
                 if not ((fi['fieldPhaseID'] == 1 and prevfi['fieldPhaseID'] == 4) or
@@ -1766,20 +1851,21 @@ class LDdecode:
 
         fi['decodeFaults'] = decodeFaults
 
-        if squelch == False and self.fname_out is not None:
+        if squelch == False:
             if self.firstfield is not None:
                 fi['vitsMetrics'] = self.computeMetrics(self.firstfield, f)
 
             self.fieldinfo.append(fi)
 
-            self.outfile_video.write(picture)
-            self.fields_written += 1
+            if self.fname_out is not None:
+                self.outfile_video.write(picture)
+                self.fields_written += 1
 
-            if audio is not None and self.outfile_audio is not None:
-                self.outfile_audio.write(audio)
+                if audio is not None and self.outfile_audio is not None:
+                    self.outfile_audio.write(audio)
 
-            if self.digital_audio == True:
-                self.outfile_efm.write(efm)
+                if self.digital_audio == True:
+                    self.outfile_efm.write(efm)
 
         self.frameNumber = None
         self.earlyCLV = False
