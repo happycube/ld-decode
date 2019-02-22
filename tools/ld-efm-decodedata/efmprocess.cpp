@@ -31,15 +31,20 @@ EfmProcess::EfmProcess()
 
 bool EfmProcess::process(QString inputFilename, QString outputFilename)
 {
-    (void) outputFilename;
-
     // Open the input F3 data file
     if (!openInputF3File(inputFilename)) {
         qCritical() << "Could not open F3 data input file!";
         return false;
     }
 
-    // To do: make this read many frames at a time to speed up I/O
+    // Open the output data file
+    if (!openOutputDataFile(outputFilename)) {
+        qCritical() << "Could not open data output file!";
+        return false;
+    }
+    QDataStream outStream(outputFile);
+    outStream.setByteOrder(QDataStream::LittleEndian);
+
     bool endOfFile = false;
     while (!endOfFile) {
         QByteArray f3Frame = readF3Frames(1);
@@ -51,14 +56,29 @@ bool EfmProcess::process(QString inputFilename, QString outputFilename)
         // Pass the frame and decoded subcode information to the audio processor
         decodeAudio.process(f3Frame);
 
-        // Pass the frame and decoded subcode information to the data processor
-        //decodeData.feed(f3Frame, sync1, qMode);
+        // Get the audio output data
+        QByteArray outputData = decodeAudio.getOutputData();
+        if (outputData.size() > 0) {
+            // Save the audio data as little-endian stereo LLRRLLRR etc
+            for (qint32 byteC = 0; byteC < 24; byteC += 4) {
+                // 1 0 3 2
+                outStream << static_cast<uchar>(outputData[byteC + 1])
+                 << static_cast<uchar>(outputData[byteC + 0])
+                 << static_cast<uchar>(outputData[byteC + 3])
+                 << static_cast<uchar>(outputData[byteC + 2]);
+            }
+        }
 
         if (f3Frame.isEmpty()) endOfFile = true;
     }
 
-    // Close the input F3 data file
+    qInfo() << "Processing complete";
+    qInfo() << "Total C1:" << decodeAudio.getValidC1Count() + decodeAudio.getInvalidC1Count() << "(with" << decodeAudio.getInvalidC1Count() << "failures)";
+    qInfo() << "Total C2:" << decodeAudio.getValidC2Count() + decodeAudio.getInvalidC2Count() << "(with" << decodeAudio.getInvalidC2Count() << "failures)";
+
+    // Close the open files
     closeInputF3File();
+    closeOutputDataFile();
     return true;
 }
 

@@ -1,6 +1,6 @@
 /************************************************************************
 
-    errorcorrection.h
+    reedsolomon.cpp
 
     ld-efm-decodedata - EFM data decoder for ld-decode
     Copyright (C) 2019 Simon Inns
@@ -22,27 +22,32 @@
 
 ************************************************************************/
 
-#ifndef ERRORCORRECTION_H
-#define ERRORCORRECTION_H
+#ifndef REEDSOLOMON_H
+#define REEDSOLOMON_H
 
 #include <QCoreApplication>
 #include <QDebug>
 
-// Include the rscode C library
-extern "C" {
-  #include "rscode-1.3/ecc.h"
-}
 
-class ErrorCorrection
+
+class ReedSolomon
 {
 public:
-    ErrorCorrection();
-    void checkP(qint32 data[]);
-    void checkQ(qint32 data[]);
+    ReedSolomon();
+
+    bool decodeC1(unsigned char *inData);
+    bool decodeC2(uchar *inData, bool *inErasures);
 
 private:
-    void test(void);
-    void addByteError(int err, int loc, unsigned char *dst);
+    QString dataToString(std::vector<uint8_t> data);
+
+    qint32 c1Passed;
+    qint32 c1Corrected;
+    qint32 c1Failed;
+
+    qint32 c2Passed;
+    qint32 c2Corrected;
+    qint32 c2Failed;
 };
 
-#endif // ERRORCORRECTION_H
+#endif // REEDSOLOMON_H

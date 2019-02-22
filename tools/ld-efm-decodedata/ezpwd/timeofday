@@ -1,0 +1,90 @@
+/*
+ * Ezpwd Reed-Solomon -- Reed-Solomon encoder / decoder library
+ *
+ * Copyright (c) 2017, Hard Consulting Corporation.
+ *
+ * Ezpwd Reed-Solomon is free software: you can redistribute it and/or modify it under the terms of
+ * the GNU General Public License as published by the Free Software Foundation, either version 3 of
+ * the License, or (at your option) any later version.  See the LICENSE file at the top of the
+ * source tree.  Ezpwd Reed-Solomon is also available under Commercial license.  The Djelic BCH code
+ * under djelic/ and the c++/ezpwd/bch_base wrapper is redistributed under the terms of the GPLv2+,
+ * regardless of the overall licensing terms.
+ *
+ * Ezpwd Reed-Solomon is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See
+ * the GNU General Public License for more details.
+ */
+
+#ifndef _EZPWD_TIMEOFDAY
+#define _EZPWD_TIMEOFDAY
+
+#include <sys/time.h>
+
+// 
+// ezpwd::timeofday 	-- Return current time.
+// ezpwd::epoch    	-- The UNIX epoch.
+// ezpwd::seconds	-- convert timeval to a real-valued seconds
+// <timeval> < <timeval>-- less-than comparison on timevals
+// <timeval> - <timeval>-- difference on timevals
+//
+namespace ezpwd {
+    inline
+    timeval			timeofday()
+    {
+	timeval			tv;
+	::gettimeofday( &tv, NULL );
+	return tv;
+    }
+
+    timeval				epoch()
+    {
+	timeval			tv;
+	tv.tv_sec			= 0;
+	tv.tv_usec			= 0;
+	return tv;
+    }
+
+    inline
+    double				seconds( const timeval &rhs )
+    {
+	return rhs.tv_usec / 1000000.0 + rhs.tv_sec;
+    }
+} // namespace ezpwd
+
+inline
+bool				operator<(
+				    const timeval      &lhs,
+				    const timeval      &rhs )
+{
+    return ( lhs.tv_sec 		<  rhs.tv_sec
+	     || (( lhs.tv_sec		== rhs.tv_sec )
+		 && ( lhs.tv_usec 	<  rhs.tv_usec )));
+}
+
+inline
+timeval				operator-(
+				    const timeval      &lhs,
+				    timeval             rhs ) // copy; adjusted...
+{
+    timeval			result;
+    if ( lhs < rhs ) {
+	result				= ezpwd::epoch();
+    } else {
+	// See http://www.gnu.org/software/libc/manual/html_node/Elapsed-Time.html
+	if ( lhs.tv_usec < rhs.tv_usec ) {
+	    int 		sec	= ( rhs.tv_usec - lhs.tv_usec ) / 1000000 + 1;
+	    rhs.tv_usec		       -= sec * 1000000;
+	    rhs.tv_sec		       += sec;
+	}
+	if ( lhs.tv_usec - rhs.tv_usec > 1000000 ) {
+	    int 		sec	= ( lhs.tv_usec - rhs.tv_usec ) / 1000000;
+	    rhs.tv_usec 	       += sec * 1000000;
+	    rhs.tv_sec		       -= sec;
+	}
+	result.tv_sec			= lhs.tv_sec  - rhs.tv_sec;
+	result.tv_usec			= lhs.tv_usec - rhs.tv_usec;
+    }
+    return result;
+}
+
+#endif // _EZPWD_TIMEOFDAY
