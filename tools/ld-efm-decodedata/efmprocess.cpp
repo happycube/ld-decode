@@ -42,6 +42,8 @@ bool EfmProcess::process(QString inputFilename, QString outputFilename)
         qCritical() << "Could not open data output file!";
         return false;
     }
+    QDataStream outStream(outputFile);
+    outStream.setByteOrder(QDataStream::LittleEndian);
 
     bool endOfFile = false;
     while (!endOfFile) {
@@ -57,11 +59,22 @@ bool EfmProcess::process(QString inputFilename, QString outputFilename)
         // Get the audio output data
         QByteArray outputData = decodeAudio.getOutputData();
         if (outputData.size() > 0) {
-            outputFile->write(outputData);
+            // Save the audio data as little-endian stereo LLRRLLRR etc
+            for (qint32 byteC = 0; byteC < 24; byteC += 4) {
+                // 1 0 3 2
+                outStream << static_cast<uchar>(outputData[byteC + 1])
+                 << static_cast<uchar>(outputData[byteC + 0])
+                 << static_cast<uchar>(outputData[byteC + 3])
+                 << static_cast<uchar>(outputData[byteC + 2]);
+            }
         }
 
         if (f3Frame.isEmpty()) endOfFile = true;
     }
+
+    qInfo() << "Processing complete";
+    qInfo() << "Total C1:" << decodeAudio.getValidC1Count() + decodeAudio.getInvalidC1Count() << "(with" << decodeAudio.getInvalidC1Count() << "failures)";
+    qInfo() << "Total C2:" << decodeAudio.getValidC2Count() + decodeAudio.getInvalidC2Count() << "(with" << decodeAudio.getInvalidC2Count() << "failures)";
 
     // Close the open files
     closeInputF3File();

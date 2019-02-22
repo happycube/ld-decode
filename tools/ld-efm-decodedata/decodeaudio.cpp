@@ -50,6 +50,30 @@ QByteArray DecodeAudio::getOutputData(void)
     return outputData;
 }
 
+// Get the C1 statistic
+qint32 DecodeAudio::getValidC1Count(void)
+{
+    return validC1Count;
+}
+
+// Get the C1 statistic
+qint32 DecodeAudio::getInvalidC1Count(void)
+{
+    return invalidC1Count;
+}
+
+// Get the C2 statistic
+qint32 DecodeAudio::getValidC2Count(void)
+{
+    return validC2Count;
+}
+
+// Get the C2 statistic
+qint32 DecodeAudio::getInvalidC2Count(void)
+{
+    return invalidC2Count;
+}
+
 void DecodeAudio::process(QByteArray f3FrameParam)
 {
     // Ensure the F3 frame is the correct length
@@ -228,24 +252,15 @@ void DecodeAudio::getC2Data(uchar *symBuffer, bool *isErasure)
 
         qint32 delayC1Line = (108 - ((27 - byteC) * 4));
         symBuffer[byteC] = c1DelayBuffer[delayC1Line].c1Symbols[byteC];
+
+        // If the C1 symbol is valid, mark C2 symbol as valid
+        // otherwise, mark it as an erasure
         if (c1DelayBuffer[delayC1Line].c1SymbolsValid) {
-            isErasure[byteC] = true;
-        } else {
             isErasure[byteC] = false;
+        } else {
+            isErasure[byteC] = true;
         }
     }
-}
-
-// This method is for debug and outputs an array of 8-bit unsigned data as a hex string
-QString DecodeAudio::dataToString(uchar *data, qint32 length)
-{
-    QString output;
-
-    for (qint32 count = 0; count < length; count++) {
-        output += QString("%1").arg(data[count], 2, 16, QChar('0'));
-    }
-
-    return output;
 }
 
 // Note: not complete - to-do
@@ -253,8 +268,8 @@ void DecodeAudio::deInterleaveC2(uchar *outputData)
 {
     // Note: This is according to IEC60908 Figure 13 - CIRC decoder
     // Buffer 2 is current, buffer 0 is 2-frame delays behind
-    qint32 curr = 2;
-    qint32 prev = 1;
+    qint32 curr = 2; // C2 0-frame delay
+    qint32 prev = 0; // C2 2=frame delay
 
     // Note: This drops the parity leaving 24 bytes of data (12 words of 16 bits)
     outputData[ 0] = c2DelayBuffer[curr].c2Symbols[ 0];
@@ -288,6 +303,14 @@ void DecodeAudio::deInterleaveC2(uchar *outputData)
     outputData[23] = c2DelayBuffer[prev].c2Symbols[27];
 }
 
+// This method is for debug and outputs an array of 8-bit unsigned data as a hex string
+QString DecodeAudio::dataToString(uchar *data, qint32 length)
+{
+    QString output;
 
+    for (qint32 count = 0; count < length; count++) {
+        output += QString("%1").arg(data[count], 2, 16, QChar('0'));
+    }
 
-
+    return output;
+}

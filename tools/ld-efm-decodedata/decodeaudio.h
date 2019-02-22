@@ -35,6 +35,11 @@ class DecodeAudio
 public:
     DecodeAudio();
 
+    qint32 getValidC1Count(void);
+    qint32 getInvalidC1Count(void);
+    qint32 getValidC2Count(void);
+    qint32 getInvalidC2Count(void);
+
     QByteArray getOutputData(void);
     void process(QByteArray f3FrameParam);
 
