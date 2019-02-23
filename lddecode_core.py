@@ -1388,6 +1388,7 @@ class FieldNTSC(Field):
         return np.median(burstlevel) / self.rf.SysParams['hz_ire']
 
     def apply_offsets(self, linelocs, phaseoffset, picoffset = 0):
+        #print((phaseoffset * (self.rf.freq / (4 * 315 / 88))))
         return np.array(linelocs) + picoffset + (phaseoffset * (self.rf.freq / (4 * 315 / 88)))
 
     def __init__(self, *args, **kwargs):
@@ -1466,10 +1467,10 @@ class CombNTSC:
         '''
         linephase = self.getlinephase(line)
         
-        si = cbuffer[::2].copy()
-        sq = cbuffer[1::2].copy()
+        sq = cbuffer[::2].copy()
+        si = cbuffer[1::2].copy()
 
-        if linephase:
+        if not linephase:
             si[0::2] = -si[0::2]
             sq[1::2] = -sq[1::2]
         else:
