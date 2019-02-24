@@ -67,6 +67,9 @@ public:
 
         qint32 blackIre;
         qint32 whiteIre;
+
+        qreal cNRLevel;
+        qreal yNRLevel;
     };
 
     Configuration getConfiguration(void);
