@@ -153,7 +153,8 @@ class RFDecode:
 
         if self.decode_digital_audio:
             # same for both PAL and NTSC, AFAIK
-            self.Filters['Fefm'] = filtfft(sps.ellip(7, .5, 26, (1.75 / self.freq_half)), self.blocklen)
+            #self.Filters['Fefm'] = filtfft(sps.ellip(7, .5, 26, (1.75 / self.freq_half)), self.blocklen)
+            self.Filters['Fefm'] = filtfft(sps.ellip(5, 1, 60, [0.1 / ldd.rf.freq_half,1.75 / ldd.rf.freq_half], btype='bandpass'), self.blocklen)
 
         self.computedelays()
         self.blockcut_end = self.Filters['F05_offset']
@@ -1731,6 +1732,8 @@ class LDdecode:
         wl_slice = f2.lineslice_tbc(20, 13, 2)
         if inrange(np.mean(f2.output_to_ire(f2.dspicture[wl_slice])), 90, 110):
             metrics['whiteSNR'] = self.calcsnr(f2, wl_slice)
+            metrics['whiteIRE'] = np.mean(f2.output_to_ire(f2.dspicture[wl_slice]))
+            #metrics['whiteIRE'] = f2.rf.hztoire(np.mean(f2.data[0]['demod'][wl_slice]))
 
         # I've seen some clips with the 100IRE area in the back half of line 20- and none at all
         wl20_slice = f1.lineslice_tbc(20, 14, 12)
@@ -1744,14 +1747,15 @@ class LDdecode:
 
         if wl20_slice is not None:
             metrics['whiteSNR'] = self.calcsnr(f1, wl20_slice)
+            metrics['whiteIRE'] = np.mean(f1.output_to_ire(f1.dspicture[wl20_slice]))
 
         # check for a white flag
         # later disks - and some film frames - don't have a white flag
 
         wf_slice = f1.lineslice_tbc(11, 15, 40)
-        if not inrange(np.mean(f1.output_to_ire(f1.dspicture[wf_slice])), 95, 108):
+        if not inrange(np.mean(f1.output_to_ire(f1.dspicture[wf_slice])), 92, 108):
             wf_slice = f2.lineslice_tbc(11, 15, 40)
-            if not inrange(np.mean(f2.output_to_ire(f2.dspicture[wf_slice])), 95, 108):
+            if not inrange(np.mean(f2.output_to_ire(f2.dspicture[wf_slice])), 92, 108):
                 wf_slice = None
             else:
                 metrics['ntscWhiteFlagSNR'] = self.calcsnr(f2, wf_slice)
