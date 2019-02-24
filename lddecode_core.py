@@ -91,13 +91,13 @@ RFParams_NTSC = {
     'video_deemp': (120*.32, 320*.32),
 
     # This BPF is similar but not *quite* identical to what Pioneer did
-    'video_bpf': [3500000, 13200000],
-    'video_bpf_order': 3,
+    'video_bpf': [3400000, 13800000],
+    'video_bpf_order': 4,
 
     # This can easily be pushed up to 4.5mhz or even a bit higher. 
     # A sharp 4.8-5.0 is probably the maximum before the audio carriers bleed into 0IRE.
-    'video_lpf_freq': 4800000,   # in mhz
-    'video_lpf_order': 5 # butterworth filter order
+    'video_lpf_freq': 4500000,   # in mhz
+    'video_lpf_order': 6 # butterworth filter order
 }
 
 RFParams_PAL = {
