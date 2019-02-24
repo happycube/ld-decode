@@ -1425,6 +1425,7 @@ class CombNTSC:
     
     def __init__(self, field):
         self.field = field
+        self.cbuffer = self.buildCBuffer()
 
     def getlinephase(self, line):
         ''' determine if a line has positive color burst phase '''
@@ -1480,13 +1481,17 @@ class CombNTSC:
     
         return si, sq
     
-    def calcLine19Info(self):
+    def calcLine19Info(self, comb_field2 = None):
         ''' returns color burst phase (ideally 147 degrees) and (unfiltered!) SNR '''
         
         # Don't need the whole line here, but start at 0 to definitely have an even #
         l19_slice = self.field.lineslice_tbc(19, 0, 40)
 
-        cbuffer = self.buildCBuffer(l19_slice)
+        cbuffer = self.cbuffer[l19_slice]
+        if comb_field2 is not None:
+            cbuffer -= comb_field2.cbuffer[l19_slice]
+            cbuffer /= 2
+            
         si, sq = self.splitIQ(cbuffer, 19)
 
         sl = slice(110,230)
@@ -1502,7 +1507,7 @@ class CombNTSC:
 
         snr = 20 * np.log10(signal / noise)
         
-        return phase, snr
+        return signal / (2 * self.field.out_scale), phase, snr
 
 class LDdecode:
     
@@ -1771,17 +1776,23 @@ class LDdecode:
         sl_cburst70 = f1.lineslice_tbc(19, 14, 20)
         diff = (f1.dspicture[sl_cburst70].astype(float) - f2.dspicture[sl_cburst70].astype(float))/2
 
-        metrics['ntscLine19Burst70IRE'] = np.sqrt(2)*rms(diff)/f1.out_scale
+#        metrics['ntscLineF119Burst70IRE'] = np.sqrt(2)*rms(diff)/f1.out_scale
 
         comb1 = CombNTSC(f1)
-        phase1, snr1 = comb1.calcLine19Info()
+        level1, phase1, snr1 = comb1.calcLine19Info()
+#        metrics['ntscLineF119Burst70IREa'] = level1
         metrics['ntscF1Line19ColorPhase'] = phase1
         metrics['ntscF1Line19ColorRawSNR'] = snr1
 
         comb2 = CombNTSC(f2)
-        phase2, snr2 = comb2.calcLine19Info()
+        level2, phase2, snr2 = comb2.calcLine19Info()
         metrics['ntscF2Line19ColorPhase'] = phase2
         metrics['ntscF2Line19ColorRawSNR'] = snr2
+
+        level3d, phase3d, snr3d = comb2.calcLine19Info(comb1)
+        metrics['ntscLine19Burst70IRE'] = level3d
+        metrics['ntscLine19ColorPhase'] = phase3d
+        metrics['ntscLine19ColorRawSNR'] = snr3d
 
     def computeMetrics(self, f1, f2):
         ''' This uses a complete video (not LD) frame '''
