@@ -29,6 +29,9 @@ EfmProcess::EfmProcess()
     // Default ZC detector state
     zcFirstRun = true;
     zcPreviousInput = 0;
+
+    // Initialise the PLL
+    pll = new Pll_t(pllResult);
 }
 
 bool EfmProcess::process(QString inputFilename, QString outputFilename)
@@ -56,25 +59,10 @@ bool EfmProcess::process(QString inputFilename, QString outputFilename)
     qint32 bufferSize = 1024 * 1024;
     QVector<qint16> inputBuffer;
     inputBuffer.resize(bufferSize);
-    QVector<qint16> zeroBuffer;
-    zeroBuffer.resize(bufferSize);
 
     // Vector to store the resulting zero-cross detected transition deltas
-    QVector<qreal> zcDeltas;
+    QVector<qint32> zcDeltas;
 
-    // Fill the filter with samples (to align input data with filter output), if there is a filter delay
-    if (filter.getLpFilterDelay() > 0) {
-        qint32 readSamples = fillInputBuffer(inputStream, inputBuffer, filter.getLpFilterDelay());
-        if (readSamples < filter.getLpFilterDelay()) {
-            qDebug() << "Input sample file too small to process!";
-            return false;
-        }
-        // Apply the channel equalizer filter
-        inputBuffer = filter.channelEqualizer(inputBuffer);
-
-        // Apply the low-pass filter to get the zero values for the input sample
-        zeroBuffer = filter.lpFilter(inputBuffer);
-    }
 
     // Main sample processing loop
     bool endOfFile = false;
@@ -90,15 +78,11 @@ bool EfmProcess::process(QString inputFilename, QString outputFilename)
             endOfFile = true;
             qDebug() << "EfmProcess::process(): End of file";
         } else {
-            // Apply the low-pass filter to get the zero values for the input sample
-            zeroBuffer = filter.lpFilter(inputBuffer);
-
             // Perform ZC detection
-            zeroCrossDetection(inputBuffer, zeroBuffer, zcDeltas);
-            qDebug() << "Number of buffered deltas =" << zcDeltas.size();
+            performPll(inputBuffer);
 
             // Decode the EFM
-            efmDecoder.process(zcDeltas);
+            efmDecoder.process(pllResult);
 
             // F3 Frame ready for writing?
             if (efmDecoder.f3FramesReady() > 0) {
@@ -114,15 +98,14 @@ bool EfmProcess::process(QString inputFilename, QString outputFilename)
         }
     }
 
-    qreal totalFrames = efmDecoder.getPass1() + efmDecoder.getPass2() + efmDecoder.getFailed();
-    qreal pass1Percent = (100.0 / totalFrames) * efmDecoder.getPass1();
-    qreal pass2Percent = (100.0 / totalFrames) * efmDecoder.getPass2();
+    qreal totalFrames = efmDecoder.getPass() + efmDecoder.getFailed();
+    qreal pass1Percent = (100.0 / totalFrames) * efmDecoder.getPass();
     qreal failedPercent = (100.0 / totalFrames) * efmDecoder.getFailed();
 
     qInfo() << "Decoding complete - Processed" << static_cast<qint32>(totalFrames) << "F3 frames with" <<
-               efmDecoder.getPass1() << "pass 1 decodes and" << efmDecoder.getPass2() << "pass 2 decodes and" <<
+               efmDecoder.getPass() << "pass 1 decodes and" <<
                efmDecoder.getFailed() << "failed decodes";
-    qInfo() << pass1Percent << "% pass 1," << pass2Percent << "% pass 2 and" << failedPercent << "% failed.";
+    qInfo() << pass1Percent << "% pass and" << failedPercent << "% failed.";
     qInfo() << efmDecoder.getFailedEfmTranslations() << "EFM translations failed.";
 
     // Close the files
@@ -134,17 +117,16 @@ bool EfmProcess::process(QString inputFilename, QString outputFilename)
 }
 
 // This method performs interpolated zero-crossing detection and stores the
-// result as an array of sample deltas (the number of samples between each
+// result a sample deltas (the number of samples between each
 // zero-crossing).  Interpolation of the zero-crossing point provides a
 // result with sub-sample resolution.
 //
-// Since the EFM data is NRZI (non-return to zero inverted) the polarity of the input
+// Since the EFM data is NRZ-I (non-return to zero inverted) the polarity of the input
 // signal is not important (only the frequency); therefore we can simply
-// store the delta information.  Storing the information as deltas allows
-// us to maintain sample data resolution without the need to interpolate to
-// achieve a higher sample rate (so this method is both accurate and
-// extremely processor and memory efficient)
-void EfmProcess::zeroCrossDetection(QVector<qint16> inputBuffer, QVector<qint16> zeroBuffer, QVector<qreal> &zcDeltas)
+// store the delta information.  The resulting delta information is fed to the
+// phase-locked loop which is responsible for correcting jitter errors from the ZC
+// detection process.
+void EfmProcess::performPll(QVector<qint16> inputBuffer)
 {
     if (zcFirstRun) {
         zcPreviousInput = 0;
@@ -152,7 +134,7 @@ void EfmProcess::zeroCrossDetection(QVector<qint16> inputBuffer, QVector<qint16>
         prevDirection = false; // Down
     }
 
-    qreal distance = 0;
+    qreal delta = 0;
     for (qint32 i = 0; i < inputBuffer.size(); i++) {
         qint16 vPrev = zcPreviousInput;
         qint16 vCurr = inputBuffer[i];
@@ -162,8 +144,8 @@ void EfmProcess::zeroCrossDetection(QVector<qint16> inputBuffer, QVector<qint16>
         bool xdn = false;
 
         // Possing zero-cross up or down?
-        if (vPrev < zeroBuffer[i] && vCurr >= zeroBuffer[i]) xup = true;
-        if (vPrev > zeroBuffer[i] && vCurr <= zeroBuffer[i]) xdn = true;
+        if (vPrev < 0 && vCurr >= 0) xup = true;
+        if (vPrev > 0 && vCurr <= 0) xdn = true;
 
         // Check ZC direction against previous
         if (prevDirection && xup) xup = false;
@@ -179,11 +161,15 @@ void EfmProcess::zeroCrossDetection(QVector<qint16> inputBuffer, QVector<qint16>
             qreal curr = static_cast<qreal>(vCurr);
             qreal fraction = (-prev) / (curr - prev);
 
-            zcDeltas.append(distance + fraction);
-            distance = 1.0 - fraction;
+            // Feed the result to the PLL
+            pll->pushEdge(delta + fraction);
+
+            // Offset the next delta by the fractional part of the result
+            // in order to maintain accuracy
+            delta = 1.0 - fraction;
         } else {
             // No ZC, increase delta by 1 sample
-            distance += 1.0;
+            delta += 1.0;
         }
 
         // Keep the previous input (so we can work across buffer boundaries)

@@ -33,14 +33,13 @@ class EfmDecoder
 public:
     EfmDecoder();
 
-    qint32 getPass1(void);
-    qint32 getPass2(void);
+    qint32 getPass(void);
     qint32 getFailed(void);
     qint32 getFailedEfmTranslations(void);
 
     qint32 f3FramesReady(void);
     QByteArray getF3Frames(void);
-    void process(QVector<qreal> &zcDeltas);
+    void process(QVector<qint32> &pllResult);
 
 private:
     // The following table provides the 10-bit EFM code (padded with leading
@@ -83,8 +82,7 @@ private:
     };
 
     // Decode success tracking
-    qint32 decodePass1;
-    qint32 decodePass2;
+    qint32 decodePass;
     qint32 decodeFailed;
 
     qint32 efmTranslationFail;
@@ -113,14 +111,14 @@ private:
     qint32 endSyncTransition;
 
     StateMachine sm_state_initial(void);
-    StateMachine sm_state_findFirstSync(QVector<qreal> &zcDeltas);
-    StateMachine sm_state_findSecondSync(QVector<qreal> &zcDeltas);
-    StateMachine sm_state_processFrame(QVector<qreal> &zcDeltas);
+    StateMachine sm_state_findFirstSync(QVector<qint32> &pllResult);
+    StateMachine sm_state_findSecondSync(QVector<qint32> &pllResult);
+    StateMachine sm_state_processFrame(QVector<qint32> &pllResult);
 
     // Utility methods
     qreal estimateInitialFrameWidth(QVector<qreal> zcDeltas);
     qint32 findSyncTransition(qreal approximateFrameWidth, QVector<qreal> &zcDeltas);
-    void removeZcDeltas(qint32 number, QVector<qreal> &zcDeltas);
+    void removePllResults(qint32 number, QVector<qint32> &pllResult);
 
     void convertTvaluesToData(QVector<qint32> frameT, uchar* outputData);
     quint32 getBits(uchar *rawData, qint32 bitIndex, qint32 width);

@@ -32,22 +32,15 @@ EfmDecoder::EfmDecoder()
     waitingForDeltas = false;
 
     // Default the success tracking variables
-    decodePass1 = 0;
-    decodePass2 = 0;
+    decodePass = 0;
     decodeFailed = 0;
     efmTranslationFail = 0;
 }
 
 // Get the number of decodes that passed one the first try
-qint32 EfmDecoder::getPass1(void)
+qint32 EfmDecoder::getPass(void)
 {
-    return decodePass1;
-}
-
-// Get the number of decodes that passed after timing correction
-qint32 EfmDecoder::getPass2(void)
-{
-    return decodePass2;
+    return decodePass;
 }
 
 // Get the number of decodes that failed
@@ -88,7 +81,7 @@ QByteArray EfmDecoder::getF3Frames(void)
 }
 
 // Process the state machine
-void EfmDecoder::process(QVector<qreal> &zcDeltas)
+void EfmDecoder::process(QVector<qint32> &pllResult)
 {
     waitingForDeltas = false;
 
@@ -100,13 +93,13 @@ void EfmDecoder::process(QVector<qreal> &zcDeltas)
             nextState = sm_state_initial();
             break;
         case state_findFirstSync:
-            nextState = sm_state_findFirstSync(zcDeltas);
+            nextState = sm_state_findFirstSync(pllResult);
             break;
         case state_findSecondSync:
-            nextState = sm_state_findSecondSync(zcDeltas);
+            nextState = sm_state_findSecondSync(pllResult);
             break;
         case state_processFrame:
-            nextState = sm_state_processFrame(zcDeltas);
+            nextState = sm_state_processFrame(pllResult);
             break;
         }
     }
@@ -117,194 +110,135 @@ EfmDecoder::StateMachine EfmDecoder::sm_state_initial(void)
     return state_findFirstSync;
 }
 
-EfmDecoder::StateMachine EfmDecoder::sm_state_findFirstSync(QVector<qreal> &zcDeltas)
+EfmDecoder::StateMachine EfmDecoder::sm_state_findFirstSync(QVector<qint32> &pllResult)
 {
-    minimumFrameWidthInSamples = estimateInitialFrameWidth(zcDeltas);
-    lastFrameWidth = estimateInitialFrameWidth(zcDeltas);
-    qint32 startSyncTransition = findSyncTransition(lastFrameWidth * 1.5, zcDeltas);
+    // Find the first T11+T11 start of frame sync pattern
+    qint32 startSyncTransition = -1;
+    for (qint32 i = 0; i < pllResult.size() - 1; i++) {
+        if (pllResult[i] >= 11 && pllResult[i + 1] >= 11) {
+            startSyncTransition = i;
+            break;
+        }
+    }
 
     if (startSyncTransition == -1) {
         qDebug() << "EfmDecoder::sm_state_findFirstSync(): No initial sync found!";
 
         // Discard the transitions already tested and try again
-        removeZcDeltas(265, zcDeltas); // 117 * 1.5
+        removePllResults(pllResult.size() - 1, pllResult);
 
-        // Ensure we have enough deltas available for the next attempt
-        if (zcDeltas.size() < 265) {
-            // Indicate that more deltas are required and stay
-            // in this state
-            waitingForDeltas = true;
-            return state_findFirstSync;
-        }
-
-        // We still have enough deltas, so just try again
+        waitingForDeltas = true;
         return state_findFirstSync;
     }
 
     qDebug() << "EfmDecoder::sm_state_findFirstSync(): Initial sync found at transition" << startSyncTransition;
 
-    // Discard all transitions up to the sync start (so the first delta in
-    // zcDeltaTime is the start of the frame)
-    removeZcDeltas(startSyncTransition, zcDeltas);
+    // Discard all transitions up to the sync start (so the pllResult is the start of frame T11)
+    removePllResults(startSyncTransition, pllResult);
 
     // Move to the find second sync state
     return state_findSecondSync;
 }
 
-EfmDecoder::StateMachine EfmDecoder::sm_state_findSecondSync(QVector<qreal> &zcDeltas)
+EfmDecoder::StateMachine EfmDecoder::sm_state_findSecondSync(QVector<qint32> &pllResult)
 {
-    endSyncTransition = findSyncTransition(lastFrameWidth * 1.5, zcDeltas);
+    // Find the next T11+T11 start of frame sync pattern
+    endSyncTransition = -1;
+    qint32 tTotal = 11; // Include first T11 sync value
+    qint32 i = 0;
+    //qDebug() << "T#" << i << "=" << pllResult[i];
+    for (i = 1; i < pllResult.size() - 1; i++) {
+        // T3 push?
+        if (pllResult[i] < 3) pllResult[i] = 3;
 
-    if (endSyncTransition == -1) {
-        // Did we fail due to lack of data?
-        if (zcDeltas.size() < 265) {
-            // Indicate that more deltas are required and stay in this state
-            waitingForDeltas = true;
-            return state_findSecondSync;
+        // T11 push?
+        if (pllResult[i] > 11) pllResult[i] = 11;
+
+        // Recover a bad sync
+        if (i == 1) pllResult[i] = 11;
+
+        //qDebug() << "T#" << i << "=" << pllResult[i];
+
+        // Avoid false-positive sync by only checking once the T total is greater
+        // than 570
+        if (tTotal > 570) {
+            if (pllResult[i] == 11 && pllResult[i + 1] == 11) {
+                endSyncTransition = i;
+                break;
+            }
         }
 
-        // The second sync wasn't there... Move back to the find first sync state
-        qDebug() << "EfmDecoder::sm_state_findSecondSync(): Could not find second sync!";
+        // Check for overflow...
+        if (tTotal > 588) {
+            // Check for bad sync
+            if (pllResult[i-1] >= 10 && pllResult[i] >= 10) {
+                endSyncTransition = i - 1;
+                tTotal -= pllResult[i];
+                qDebug() << "EfmDecoder::sm_state_findSecondSync(): Got a bad sync, but recovered ok";
+            } else {
+                qDebug() << "EfmDecoder::sm_state_findSecondSync(): Sync has been lost!";
+                endSyncTransition = -2;
+            }
+
+            break;
+        }
+
+        tTotal += pllResult[i];
+    }
+
+    // If endSyncTransition is -2, it wasn't possible to find the end sync for the current
+    // frame and sync has been lost
+    if (endSyncTransition == -2) {
+        // Drop the first 2 transitions to prevent resync to the current frame
+        removePllResults(2, pllResult);
+
+        // Resync...
         return state_findFirstSync;
     }
 
-    // Calculate the length of the frame in samples
-    qreal endDelta = 0;
-    for (qint32 deltaPos = 0; deltaPos < endSyncTransition; deltaPos++) {
-        endDelta += zcDeltas[deltaPos];
+    // If endSyncTransition is -1 we ran out of data before finding the
+    // sync.
+    if (endSyncTransition == -1) {
+        // Indicate that more deltas are required and stay in this state
+        waitingForDeltas = true;
+        return state_findSecondSync;
     }
 
-    //qDebug() << "EfmDecoder::sm_state_findSecondSync(): End of packet found at transition" << endSyncTransition << "( samples =" << endDelta << ")";
+    qDebug() << "EfmDecoder::sm_state_findSecondSync(): End of packet found at transition" << endSyncTransition << "T total =" << tTotal;
 
     // Check the maximum and minimum ranges of transitions within a frame
     // The minimum is T11, T11, T6 and then all T10s = 59 transitions
     // The maximum is T11, T11, T5 and then all T3s =  190 transitions
     if (endSyncTransition < 59 || endSyncTransition > 190) {
         qDebug() << "EfmDecoder::sm_state_findSecondSync(): Warning! - Number of transitions in frame is out of range!";
-    }
-
-    // Store the previous frame width
-    lastFrameWidth = endDelta;
-
-    // Sanity check the frame
-    if (lastFrameWidth < minimumFrameWidthInSamples) {
-        lastFrameWidth = minimumFrameWidthInSamples;
-        qDebug() << "EfmDecoder::sm_state_findSecondSync(): Warning! - Frame width is below the minimum expected sample length; possible sync missed";
+        removePllResults(endSyncTransition, pllResult);
+        return state_findFirstSync;
     }
 
     // Move to the process frame state
     return state_processFrame;
 }
 
-EfmDecoder::StateMachine EfmDecoder::sm_state_processFrame(QVector<qreal> &zcDeltas)
+EfmDecoder::StateMachine EfmDecoder::sm_state_processFrame(QVector<qint32> &pllResult)
 {
-    // Calculate the samples per bit based on the frame's sync to sync length
-    qreal frameSampleLength = 0;
-    for (qint32 delta = 0; delta < endSyncTransition; delta++) {
-        frameSampleLength += zcDeltas[delta];
-    }
-    qreal samplesPerBit = frameSampleLength / 588.0;
-
-    // Pass 1 decode
-    qint32 syncCorrection = 0;
-    qint32 t2push = 0;
-    qint32 t11push = 0;
     QVector<qint32> frameT;
     qint32 tTotal = 0;
     for (qint32 delta = 0; delta < endSyncTransition; delta++) {
-        qreal tValue = zcDeltas[delta] / samplesPerBit;
-
-        qint32 value = qRound(tValue);
-
-        // The first 2 deltas are T11 syncs
-        if (delta < 2 && value != 11) {
-            value = 11;
-            syncCorrection++;
-        }
-
-        // Push T1 to T2 results to T3
-        if (value < 3) {
-            value = 3;
-            t2push++;
-        }
-
-        // Push T12+ results to T11
-        if (value > 11) {
-            value = 11;
-            t11push++;
-        }
+        qint32 value = pllResult[delta];
 
         tTotal += value;
         frameT.append(static_cast<qint32>(value));
     }
     if (tTotal == 588) {
-        if (syncCorrection != 0 || t2push !=0 || t11push != 0) {
-            qDebug() << "EfmDecoder::sm_state_processFrame(): F3 Pass 1 decode ok - Freq" << 40.0 / samplesPerBit << "T2 push =" << t2push << "T11 push =" << t11push << "Sync corr =" << syncCorrection;
-            decodePass1++;
-        } else {
-            qDebug() << "EfmDecoder::sm_state_processFrame(): F3 Pass 1 decode ok - Freq" << 40.0 / samplesPerBit;
-            decodePass1++;
-        }
+        qDebug() << "EfmDecoder::sm_state_processFrame(): F3 Pass 1 decode ok";
+        decodePass++;
     } else {
-        // Pass 2 decode
-        syncCorrection = 0;
-        t2push = 0;
-        t11push = 0;
-        frameT.clear();
-        tTotal = 0;
-        for (qint32 delta = 0; delta < endSyncTransition; delta++) {
-            qreal tValue = zcDeltas[delta] / samplesPerBit;
-
-            // The first 2 deltas are T11 syncs
-            if ((delta < 2) && (tValue < 10.5)) {
-                tValue = 10.5;
-                syncCorrection++;
-            }
-
-            // Push T1 to T2 results to T3
-            if (tValue < 2.5) {
-                tValue = 2.5;
-                t2push++;
-            }
-
-            // Push T12+ results to T11
-            if (tValue > 11.49) {
-                tValue = 11.49;
-                t11push++;
-            }
-
-            // Calculate distance to nearest T bit clock
-            qreal newDelta = qRound(tValue) * samplesPerBit;
-            qreal sampError = (newDelta) - (zcDeltas[delta]);
-
-            // Update the delta values
-            zcDeltas[delta] = newDelta;
-            if (delta < endSyncTransition) zcDeltas[delta+1] -= sampError;
-
-            // Now store the resulting T value
-            qreal tCorrectedValue = zcDeltas[delta] / samplesPerBit;
-            tTotal += tCorrectedValue;
-            frameT.append(static_cast<qint32>(tCorrectedValue));
-        }
-        if (tTotal == 588) {
-            if (syncCorrection != 0 || t2push !=0 || t11push != 0) {
-                qDebug() << "EfmDecoder::sm_state_processFrame(): F3 Pass 2 decode ok - Freq" << 40.0 / samplesPerBit <<
-                            "T2 push =" << t2push << "T11 push =" << t11push << "Sync corr =" << syncCorrection;
-                decodePass2++;
-            } else {
-                qDebug() << "EfmDecoder::sm_state_processFrame(): F3 Pass 2 decode ok - Freq" << 40.0 / samplesPerBit;
-                decodePass2++;
-            }
-        } else {
-            // Pass 1 and pass 2 decode failed... Just give up and truncate/expand
-            qint32 errorMargin = 588 - tTotal;
-            qDebug() << "EfmDecoder::sm_state_processFrame(): Decode FAILED - error =" << errorMargin << " T =" << tTotal;
-            decodeFailed++;
-        }
+        qDebug() << "EfmDecoder::sm_state_processFrame(): F3 Bad frame T =" << tTotal;
+        decodeFailed++;
     }
 
     // Discard all transitions up to the sync end
-    removeZcDeltas(endSyncTransition, zcDeltas);
+    removePllResults(endSyncTransition, pllResult);
 
     // Translate the frame T results into an F3 frame
     f3Frames.resize(f3Frames.size() + 1);
@@ -316,65 +250,13 @@ EfmDecoder::StateMachine EfmDecoder::sm_state_processFrame(QVector<qreal> &zcDel
 
 // Utility functions --------------------------------------------------------------------------------------------------
 
-// This method is based on US patent 6,118,393 which states that the T average
-// within a frame is 5; therefore by dividing the frequency by 117 (588/5)
-// you get the average length of an EFM frame based on the (unknown) clock
-// speed of the EFM data
-qreal EfmDecoder::estimateInitialFrameWidth(QVector<qreal> zcDeltas)
-{
-    qreal approximateFrameWidth = 0;
-
-    qint32 deltaPos = 0;
-    while (deltaPos < 117) {
-        approximateFrameWidth += zcDeltas[deltaPos];
-        deltaPos++;
-    }
-
-    return approximateFrameWidth;
-}
-
-// This method finds the next sync transition.  Since the sync pulse is two T11 intervals
-// we can find it by summing pairs of transition deltas and looking for the longest combined
-// delta.  Using an estimation of the frame length means we shouldn't see two sync patterns
-// in the same data set.
-qint32 EfmDecoder::findSyncTransition(qreal approximateFrameWidth, QVector<qreal> &zcDeltas)
-{
-    qreal totalTime = 0;
-    qreal longestInterval = 0;
-    qint32 syncPosition = -1;
-    qint32 deltaPos = 0;
-
-    while (totalTime < approximateFrameWidth) {
-        qreal interval = zcDeltas[deltaPos] + zcDeltas[deltaPos + 1];
-
-        // Ignore the first 2 delta positions (so we don't trigger on the start
-        // of frame sync pattern)
-        if (interval > longestInterval && deltaPos > 1) {
-            longestInterval = interval;
-            syncPosition = deltaPos;
-        }
-
-        totalTime += zcDeltas[deltaPos];
-        deltaPos++;
-
-        if (deltaPos == (zcDeltas.size() - 1)) {
-            // Not enough data - give up
-            syncPosition = -1;
-            //qDebug() << "EfmDecoder::findSyncTransition(): Available data is too short; need more data to process";
-            break;
-        }
-    }
-
-    return syncPosition;
-}
-
 // Method to remove deltas from the start of the buffer
-void EfmDecoder::removeZcDeltas(qint32 number, QVector<qreal> &zcDeltas)
+void EfmDecoder::removePllResults(qint32 number, QVector<qint32> &pllResult)
 {
-    if (number > zcDeltas.size()) {
-        zcDeltas.clear();
+    if (number > pllResult.size()) {
+        pllResult.clear();
     } else {
-        for (qint32 count = 0; count < number; count++) zcDeltas.removeFirst();
+        for (qint32 count = 0; count < number; count++) pllResult.removeFirst();
     }
 }
 
