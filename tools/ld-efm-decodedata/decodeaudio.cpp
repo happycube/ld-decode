@@ -179,7 +179,7 @@ DecodeAudio::StateMachine DecodeAudio::sm_state_processC2(void)
             // C2 Failure
             invalidC2Count++;
             c2DataValid = false;
-            qDebug() << "DecodeAudio::sm_state_processC2(): Invalid C2 #" << invalidC2Count;
+            qDebug() << "DecodeAudio::sm_state_processC2(): Invalid C2 #" << invalidC2Count << "-------------------------------------------------------";
         }
     }
 

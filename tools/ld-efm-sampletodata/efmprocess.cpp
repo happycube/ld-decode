@@ -60,10 +60,6 @@ bool EfmProcess::process(QString inputFilename, QString outputFilename)
     QVector<qint16> inputBuffer;
     inputBuffer.resize(bufferSize);
 
-    // Vector to store the resulting zero-cross detected transition deltas
-    QVector<qint32> zcDeltas;
-
-
     // Main sample processing loop
     bool endOfFile = false;
     qint32 samplesProcessed = 0;
@@ -78,7 +74,7 @@ bool EfmProcess::process(QString inputFilename, QString outputFilename)
             endOfFile = true;
             qDebug() << "EfmProcess::process(): End of file";
         } else {
-            // Perform ZC detection
+            // Perform ZC detection and feed the PLL
             performPll(inputBuffer);
 
             // Decode the EFM
@@ -103,9 +99,10 @@ bool EfmProcess::process(QString inputFilename, QString outputFilename)
     qreal failedPercent = (100.0 / totalFrames) * efmDecoder.getFailed();
 
     qInfo() << "Decoding complete - Processed" << static_cast<qint32>(totalFrames) << "F3 frames with" <<
-               efmDecoder.getPass() << "pass 1 decodes and" <<
+               efmDecoder.getPass() << "successful decodes and" <<
                efmDecoder.getFailed() << "failed decodes";
     qInfo() << pass1Percent << "% pass and" << failedPercent << "% failed.";
+    qInfo() << efmDecoder.getSyncLoss() << "sync loss events";
     qInfo() << efmDecoder.getFailedEfmTranslations() << "EFM translations failed.";
 
     // Close the files
@@ -128,17 +125,19 @@ bool EfmProcess::process(QString inputFilename, QString outputFilename)
 // detection process.
 void EfmProcess::performPll(QVector<qint16> inputBuffer)
 {
+    // In order to hold state over buffer read boundaries, we keep
+    // global track of the direction and delta information
     if (zcFirstRun) {
-        zcPreviousInput = 0;
         zcFirstRun = false;
+
+        zcPreviousInput = 0;
         prevDirection = false; // Down
+        delta = 0;
     }
 
-    qreal delta = 0;
     for (qint32 i = 0; i < inputBuffer.size(); i++) {
         qint16 vPrev = zcPreviousInput;
         qint16 vCurr = inputBuffer[i];
-        //qint16 vNext = inputBuffer[i+1];
 
         bool xup = false;
         bool xdn = false;
@@ -161,7 +160,7 @@ void EfmProcess::performPll(QVector<qint16> inputBuffer)
             qreal curr = static_cast<qreal>(vCurr);
             qreal fraction = (-prev) / (curr - prev);
 
-            // Feed the result to the PLL
+            // Feed the sub-sample accurate result to the PLL
             pll->pushEdge(delta + fraction);
 
             // Offset the next delta by the fractional part of the result
@@ -180,12 +179,10 @@ void EfmProcess::performPll(QVector<qint16> inputBuffer)
 // Method to fill the input buffer with samples
 qint32 EfmProcess::fillInputBuffer(QDataStream &inputStream, QVector<qint16> &inputBuffer, qint32 samples)
 {
-    // Read the input sample data
+    // Read the input sample data as 16-bit signed integers
     qint32 readSamples = 0;
-    qint16 x = 0;
     while((!inputStream.atEnd() && readSamples < samples)) {
-        inputStream >> x;
-        inputBuffer[readSamples] = x;
+        inputStream >> inputBuffer[readSamples];
         readSamples++;
     }
 

@@ -43,7 +43,6 @@ private:
     QVector<qint32> &result;
     qreal currentPeriod, phaseAdjust, refClockTime;
     qint32 frequencyHysteresis;
-
     qint32 tCounter;
 
     void pushTValue(qint32 bit);

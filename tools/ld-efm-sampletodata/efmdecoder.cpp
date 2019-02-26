@@ -34,6 +34,7 @@ EfmDecoder::EfmDecoder()
     // Default the success tracking variables
     decodePass = 0;
     decodeFailed = 0;
+    syncLoss = 0;
     efmTranslationFail = 0;
 }
 
@@ -47,6 +48,12 @@ qint32 EfmDecoder::getPass(void)
 qint32 EfmDecoder::getFailed(void)
 {
     return decodeFailed;
+}
+
+// Get the number of sync losses
+qint32 EfmDecoder::getSyncLoss(void)
+{
+    return syncLoss;
 }
 
 // Get the number of EFM translations that failed
@@ -176,7 +183,7 @@ EfmDecoder::StateMachine EfmDecoder::sm_state_findSecondSync(QVector<qint32> &pl
                 tTotal -= pllResult[i];
                 qDebug() << "EfmDecoder::sm_state_findSecondSync(): Got a bad sync, but recovered ok";
             } else {
-                qDebug() << "EfmDecoder::sm_state_findSecondSync(): Sync has been lost!";
+                qDebug() << "EfmDecoder::sm_state_findSecondSync(): Sync has been lost! T=" << tTotal;
                 endSyncTransition = -2;
             }
 
@@ -193,6 +200,7 @@ EfmDecoder::StateMachine EfmDecoder::sm_state_findSecondSync(QVector<qint32> &pl
         removePllResults(2, pllResult);
 
         // Resync...
+        syncLoss++;
         return state_findFirstSync;
     }
 
@@ -204,16 +212,7 @@ EfmDecoder::StateMachine EfmDecoder::sm_state_findSecondSync(QVector<qint32> &pl
         return state_findSecondSync;
     }
 
-    qDebug() << "EfmDecoder::sm_state_findSecondSync(): End of packet found at transition" << endSyncTransition << "T total =" << tTotal;
-
-    // Check the maximum and minimum ranges of transitions within a frame
-    // The minimum is T11, T11, T6 and then all T10s = 59 transitions
-    // The maximum is T11, T11, T5 and then all T3s =  190 transitions
-    if (endSyncTransition < 59 || endSyncTransition > 190) {
-        qDebug() << "EfmDecoder::sm_state_findSecondSync(): Warning! - Number of transitions in frame is out of range!";
-        removePllResults(endSyncTransition, pllResult);
-        return state_findFirstSync;
-    }
+    //qDebug() << "EfmDecoder::sm_state_findSecondSync(): End of F3 frame found at transition" << endSyncTransition << "T total =" << tTotal;
 
     // Move to the process frame state
     return state_processFrame;
@@ -230,17 +229,17 @@ EfmDecoder::StateMachine EfmDecoder::sm_state_processFrame(QVector<qint32> &pllR
         frameT.append(static_cast<qint32>(value));
     }
     if (tTotal == 588) {
-        qDebug() << "EfmDecoder::sm_state_processFrame(): F3 Pass 1 decode ok";
+        qDebug() << "EfmDecoder::sm_state_processFrame(): F3 frame length ok";
         decodePass++;
     } else {
-        qDebug() << "EfmDecoder::sm_state_processFrame(): F3 Bad frame T =" << tTotal;
+        qDebug() << "EfmDecoder::sm_state_processFrame(): F3 frame length incorrect T =" << tTotal;
         decodeFailed++;
     }
 
     // Discard all transitions up to the sync end
     removePllResults(endSyncTransition, pllResult);
 
-    // Translate the frame T results into an F3 frame
+    // Translate the F3 frame T results into a bit-stream of data
     f3Frames.resize(f3Frames.size() + 1);
     convertTvaluesToData(frameT, f3Frames[f3Frames.size() - 1].outputF3Data);
 

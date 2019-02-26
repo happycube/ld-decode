@@ -49,6 +49,7 @@ private:
     bool zcFirstRun;
     qint16 zcPreviousInput;
     bool prevDirection;
+    qreal delta;
 
     // Initialise the PLL
     QVector<qint32> pllResult;

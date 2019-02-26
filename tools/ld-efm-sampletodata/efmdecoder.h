@@ -35,6 +35,7 @@ public:
 
     qint32 getPass(void);
     qint32 getFailed(void);
+    qint32 getSyncLoss(void);
     qint32 getFailedEfmTranslations(void);
 
     qint32 f3FramesReady(void);
@@ -84,6 +85,7 @@ private:
     // Decode success tracking
     qint32 decodePass;
     qint32 decodeFailed;
+    qint32 syncLoss;
 
     qint32 efmTranslationFail;
 

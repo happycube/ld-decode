@@ -33,8 +33,8 @@ Pll_t::Pll_t(QVector<qint32> &_result) : result(_result)
     // Configuration
     basePeriod = 40000000 / 4321800; // T1 clock period 40MSPS / bit-rate
 
-    minimumPeriod  = basePeriod * 0.75; // -25% minimum
-    maximumPeriod  = basePeriod * 1.25; // +25% maximum
+    minimumPeriod  = basePeriod * 0.90; // -10% minimum
+    maximumPeriod  = basePeriod * 1.10; // +10% maximum
     periodAdjustBase = basePeriod * 0.001; // Clock adjustment step
 
     // Working parameter defaults
@@ -42,7 +42,6 @@ Pll_t::Pll_t(QVector<qint32> &_result) : result(_result)
     frequencyHysteresis = 0;
     phaseAdjust = 0;
     refClockTime = 0;
-
     tCounter = 1;
 }
 
@@ -69,7 +68,7 @@ void Pll_t::pushEdge(qreal sampleDelta)
             pushTValue(0);
         } else {
             qreal delta = sampleDelta - (next - currentPeriod / 2.0);
-            phaseAdjust = delta * 0.1; // 0.65
+            phaseAdjust = delta * 0.05;
 
             // Adjust frequency based on error
             if(delta < 0) {
@@ -89,9 +88,9 @@ void Pll_t::pushEdge(qreal sampleDelta)
                     qreal aper = periodAdjustBase * delta / currentPeriod;
                     currentPeriod += aper;
 
-                    if(currentPeriod < minimumPeriod) {
+                    if (currentPeriod < minimumPeriod) {
                         currentPeriod = minimumPeriod;
-                    } else if(currentPeriod > maximumPeriod) {
+                    } else if (currentPeriod > maximumPeriod) {
                         currentPeriod = maximumPeriod;
                     }
                 }

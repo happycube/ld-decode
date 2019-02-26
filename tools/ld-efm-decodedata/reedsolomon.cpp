@@ -60,19 +60,16 @@ bool ReedSolomon::decodeC1(unsigned char *inData)
 
     // Perform decode
     int fixed = rs.decode(data);
-    qDebug() << "ReedSolomon::decodeC1(): fixed =" << fixed;
+
+    // Copy back the corrected data
+    for (size_t byteC = 0; byteC < 32; byteC++) inData[byteC] = data[byteC];
 
     // Did C1 pass?
     if (fixed == 0) c1Passed++;
     if (fixed > 0)  c1Corrected++;
     if (fixed >= 0) {
-        // Copy back the corrected data
-        for (size_t byteC = 0; byteC < 32; byteC++) inData[byteC] = data[byteC];
         return true;
     }
-
-    // Clear the incorrect data
-    for (size_t byteC = 0; byteC < 28; byteC++) inData[byteC] = 0;
 
     // C1 failed
     c1Failed++;
@@ -89,9 +86,8 @@ bool ReedSolomon::decodeC2(uchar *inData, bool *inErasures)
     data.resize(28);
     for (size_t byteC = 0; byteC < 28; byteC++) {
         data[byteC] = inData[byteC];
-        if (inErasures[byteC]) erasures.push_back(static_cast<int>(byteC));
+        if (erasures.size() < 4 && inErasures[byteC]) erasures.push_back(static_cast<int>(byteC));
     }
-    if (erasures.size() > 0) qDebug() << "ReedSolomon::decodeC2(): Got" << erasures.size() << "erasures";
 
     // Up to 4 erasures can be fixed
     int fixed = -1;
@@ -104,12 +100,13 @@ bool ReedSolomon::decodeC2(uchar *inData, bool *inErasures)
         fixed = rs.decode(data, erasures, &position);
     }
 
+    // Copy back the corrected data
+    for (size_t byteC = 0; byteC < 28; byteC++) inData[byteC] = data[byteC];
+
     // Did C2 pass?
     if (fixed == 0) c2Passed++;
     if (fixed > 0)  c2Corrected++;
     if (fixed >= 0) {
-        // Copy back the corrected data
-        for (size_t byteC = 0; byteC < 28; byteC++) inData[byteC] = data[byteC];
         return true;
     }
 
