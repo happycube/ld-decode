@@ -67,6 +67,9 @@ bool EfmProcess::process(QString inputFilename, QString outputFilename)
     while(!endOfFile) {
         qint32 readSamples = fillInputBuffer(inputStream, inputBuffer, bufferSize);
 
+        // Apply the DC blocker filter
+        //inputBuffer = filter.dcBlocker(inputBuffer);
+
         // Apply the channel equalizer filter
         inputBuffer = filter.channelEqualizer(inputBuffer);
 

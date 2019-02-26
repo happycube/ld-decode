@@ -36,6 +36,7 @@ EfmDecoder::EfmDecoder()
     decodeFailed = 0;
     syncLoss = 0;
     efmTranslationFail = 0;
+    poorSync = 0;
 }
 
 // Get the number of decodes that passed one the first try
@@ -99,11 +100,17 @@ void EfmDecoder::process(QVector<qint32> &pllResult)
         case state_initial:
             nextState = sm_state_initial();
             break;
-        case state_findFirstSync:
-            nextState = sm_state_findFirstSync(pllResult);
+        case state_findInitialSyncStage1:
+            nextState = sm_state_findInitialSyncStage1(pllResult);
+            break;
+        case state_findInitialSyncStage2:
+            nextState = sm_state_findInitialSyncStage2(pllResult);
             break;
         case state_findSecondSync:
             nextState = sm_state_findSecondSync(pllResult);
+            break;
+        case state_syncLost:
+            nextState = sm_state_syncLost();
             break;
         case state_processFrame:
             nextState = sm_state_processFrame(pllResult);
@@ -114,94 +121,148 @@ void EfmDecoder::process(QVector<qint32> &pllResult)
 
 EfmDecoder::StateMachine EfmDecoder::sm_state_initial(void)
 {
-    return state_findFirstSync;
+    return state_findInitialSyncStage1;
 }
 
-EfmDecoder::StateMachine EfmDecoder::sm_state_findFirstSync(QVector<qint32> &pllResult)
+// Search for the first T11+T11 sync pattern in the input buffer
+EfmDecoder::StateMachine EfmDecoder::sm_state_findInitialSyncStage1(QVector<qint32> &pllResult)
 {
-    // Find the first T11+T11 start of frame sync pattern
+    // Find the first T11+T11 sync pattern in the input buffer
     qint32 startSyncTransition = -1;
+
     for (qint32 i = 0; i < pllResult.size() - 1; i++) {
-        if (pllResult[i] >= 11 && pllResult[i + 1] >= 11) {
+        if (pllResult[i] == 11 && pllResult[i + 1] == 11) {
             startSyncTransition = i;
             break;
         }
     }
 
     if (startSyncTransition == -1) {
-        qDebug() << "EfmDecoder::sm_state_findFirstSync(): No initial sync found!";
+        qDebug() << "EfmDecoder::sm_state_findInitialSyncStage1(): No initial sync found in input buffer, requesting more data";
 
         // Discard the transitions already tested and try again
         removePllResults(pllResult.size() - 1, pllResult);
 
         waitingForDeltas = true;
-        return state_findFirstSync;
+        return state_findInitialSyncStage1;
     }
 
-    qDebug() << "EfmDecoder::sm_state_findFirstSync(): Initial sync found at transition" << startSyncTransition;
+    qDebug() << "EfmDecoder::sm_state_findInitialSyncStage1(): Initial sync found at transition" << startSyncTransition;
 
     // Discard all transitions up to the sync start (so the pllResult is the start of frame T11)
     removePllResults(startSyncTransition, pllResult);
 
-    // Move to the find second sync state
-    return state_findSecondSync;
+    // Move to find initial sync stage 2
+    return state_findInitialSyncStage2;
+}
+
+EfmDecoder::StateMachine EfmDecoder::sm_state_findInitialSyncStage2(QVector<qint32> &pllResult)
+{
+    // Find the next T11+T11 sync pattern in the input buffer
+    endSyncTransition = -1;
+    qint32 tTotal = 11;
+
+    for (qint32 i = 1; i < pllResult.size() - 1; i++) {
+        if (pllResult[i] == 11 && pllResult[i + 1] == 11) {
+            endSyncTransition = i;
+            break;
+        }
+        tTotal += pllResult[i];
+    }
+
+    if (endSyncTransition == -1) {
+        qDebug() << "EfmDecoder::sm_state_findInitialSyncStage2(): No second sync found in input buffer, requesting more data.  T =" << tTotal;
+
+        waitingForDeltas = true;
+        return state_findInitialSyncStage2;
+    }
+
+    qDebug() << "EfmDecoder::sm_state_findInitialSyncStage2(): Found second initial sync at" << endSyncTransition;
+
+    // Is the frame length valid?
+    if (tTotal != 588) {
+        // Discard the transitions already tested and try again
+        qDebug() << "EfmDecoder::sm_state_findInitialSyncStage2(): Invalid T length of" << tTotal << " - trying again";
+        removePllResults(endSyncTransition, pllResult);
+        return state_findInitialSyncStage2;
+    }
+
+    qDebug() << "Found first F3 frame with a valid length of 588 bits";
+    return state_processFrame;
 }
 
 EfmDecoder::StateMachine EfmDecoder::sm_state_findSecondSync(QVector<qint32> &pllResult)
 {
-    // Find the next T11+T11 start of frame sync pattern
+    // Find the next T11+T11 sync pattern in the input buffer
     endSyncTransition = -1;
-    qint32 tTotal = 11; // Include first T11 sync value
-    qint32 i = 0;
-    //qDebug() << "T#" << i << "=" << pllResult[i];
-    for (i = 1; i < pllResult.size() - 1; i++) {
+    qint32 tTotal = 11;
+    //qDebug() << "T# 0 =" << pllResult[0];
+    for (qint32 i = 1; i < pllResult.size() - 1; i++) {
         // T3 push?
         if (pllResult[i] < 3) pllResult[i] = 3;
 
         // T11 push?
         if (pllResult[i] > 11) pllResult[i] = 11;
 
-        // Recover a bad sync
+        // Correct poor sync?
         if (i == 1) pllResult[i] = 11;
 
         //qDebug() << "T#" << i << "=" << pllResult[i];
 
-        // Avoid false-positive sync by only checking once the T total is greater
-        // than 570
-        if (tTotal > 570) {
-            if (pllResult[i] == 11 && pllResult[i + 1] == 11) {
+        // Sync?
+        if (pllResult[i] == 11 && pllResult[i + 1] == 11 && tTotal > 570) {
+            endSyncTransition = i;
+            poorSync = 0;
+            break;
+        }
+
+        // Frame length exceeded without sync detection?
+        if (tTotal > 588) {
+            tTotal -= pllResult[i];
+            qDebug() << "tTotal exceeded T =" << tTotal << " - poor sync #" << poorSync << "detected";
+            poorSync++;
+
+            // Rather than loosing sync, we attempt to recover by guessing at the correct
+            // sync position
+
+            // Low sync values?
+            if (pllResult[i] >= 10 && pllResult[i + 1] >= 10) {
+                qDebug() << "Poor sync - Low sync values";
                 endSyncTransition = i;
                 break;
             }
-        }
 
-        // Check for overflow...
-        if (tTotal > 588) {
-            // Check for bad sync
-            if (pllResult[i-1] >= 10 && pllResult[i] >= 10) {
+            // Sync off by -1?
+            if (pllResult[i - 1] >= 10 && pllResult[i] >= 10) {
+                qDebug() << "Poor sync - Off by -1";
                 endSyncTransition = i - 1;
-                tTotal -= pllResult[i];
-                qDebug() << "EfmDecoder::sm_state_findSecondSync(): Got a bad sync, but recovered ok";
-            } else {
-                qDebug() << "EfmDecoder::sm_state_findSecondSync(): Sync has been lost! T=" << tTotal;
-                endSyncTransition = -2;
+                break;
             }
 
+            // Sync off by +1?
+            if (i + 2 < pllResult.size()) {
+                if (pllResult[i + 1] >= 10 && pllResult[i + 2] >= 10) {
+                    qDebug() << "Poor sync - Off by +1";
+                    endSyncTransition = i + 1;
+                    break;
+                }
+            }
+
+            // Sync off by +2?
+            if (i + 3 < pllResult.size()) {
+                if (pllResult[i + 2] >= 10 && pllResult[i + 3] >= 10) {
+                    qDebug() << "Poor sync - Off by +2";
+                    endSyncTransition = i + 2;
+                    break;
+                }
+            }
+
+            qDebug() << "Poor sync - no sync at all";
+            endSyncTransition = i-1;
             break;
         }
 
         tTotal += pllResult[i];
-    }
-
-    // If endSyncTransition is -2, it wasn't possible to find the end sync for the current
-    // frame and sync has been lost
-    if (endSyncTransition == -2) {
-        // Drop the first 2 transitions to prevent resync to the current frame
-        removePllResults(2, pllResult);
-
-        // Resync...
-        syncLoss++;
-        return state_findFirstSync;
     }
 
     // If endSyncTransition is -1 we ran out of data before finding the
@@ -212,10 +273,24 @@ EfmDecoder::StateMachine EfmDecoder::sm_state_findSecondSync(QVector<qint32> &pl
         return state_findSecondSync;
     }
 
+    // Hit limit of poor sync detections?
+    if (poorSync > 16) {
+        poorSync = 0;
+        qDebug() << "Too many poor sync detections (>16) - sync lost";
+        return state_syncLost;
+    }
+
     //qDebug() << "EfmDecoder::sm_state_findSecondSync(): End of F3 frame found at transition" << endSyncTransition << "T total =" << tTotal;
 
     // Move to the process frame state
     return state_processFrame;
+}
+
+EfmDecoder::StateMachine EfmDecoder::sm_state_syncLost(void)
+{
+    qDebug() << "EfmDecoder::sm_state_syncLost(): SYNC was completely lost! ------------------------------------------------------------";
+    syncLoss++;
+    return state_findInitialSyncStage1;
 }
 
 EfmDecoder::StateMachine EfmDecoder::sm_state_processFrame(QVector<qint32> &pllResult)
@@ -229,7 +304,7 @@ EfmDecoder::StateMachine EfmDecoder::sm_state_processFrame(QVector<qint32> &pllR
         frameT.append(static_cast<qint32>(value));
     }
     if (tTotal == 588) {
-        qDebug() << "EfmDecoder::sm_state_processFrame(): F3 frame length ok";
+        //qDebug() << "EfmDecoder::sm_state_processFrame(): F3 frame length ok";
         decodePass++;
     } else {
         qDebug() << "EfmDecoder::sm_state_processFrame(): F3 frame length incorrect T =" << tTotal;

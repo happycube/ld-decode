@@ -33,9 +33,9 @@ Pll_t::Pll_t(QVector<qint32> &_result) : result(_result)
     // Configuration
     basePeriod = 40000000 / 4321800; // T1 clock period 40MSPS / bit-rate
 
-    minimumPeriod  = basePeriod * 0.90; // -10% minimum
-    maximumPeriod  = basePeriod * 1.10; // +10% maximum
-    periodAdjustBase = basePeriod * 0.001; // Clock adjustment step
+    minimumPeriod  = basePeriod * 0.75; // -25% minimum
+    maximumPeriod  = basePeriod * 1.25; // +25% maximum
+    periodAdjustBase = basePeriod * 0.0001; // Clock adjustment step
 
     // Working parameter defaults
     currentPeriod = basePeriod;

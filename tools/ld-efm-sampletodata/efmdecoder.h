@@ -87,6 +87,7 @@ private:
     qint32 decodeFailed;
     qint32 syncLoss;
 
+    qint32 poorSync;
     qint32 efmTranslationFail;
 
     // Output F3 Frame data
@@ -98,8 +99,10 @@ private:
     // State machine state definitions
     enum StateMachine {
         state_initial,
-        state_findFirstSync,
+        state_findInitialSyncStage1,
+        state_findInitialSyncStage2,
         state_findSecondSync,
+        state_syncLost,
         state_processFrame
     };
 
@@ -113,13 +116,13 @@ private:
     qint32 endSyncTransition;
 
     StateMachine sm_state_initial(void);
-    StateMachine sm_state_findFirstSync(QVector<qint32> &pllResult);
+    StateMachine sm_state_findInitialSyncStage1(QVector<qint32> &pllResult);
+    StateMachine sm_state_findInitialSyncStage2(QVector<qint32> &pllResult);
     StateMachine sm_state_findSecondSync(QVector<qint32> &pllResult);
+    StateMachine sm_state_syncLost(void);
     StateMachine sm_state_processFrame(QVector<qint32> &pllResult);
 
     // Utility methods
-    qreal estimateInitialFrameWidth(QVector<qreal> zcDeltas);
-    qint32 findSyncTransition(qreal approximateFrameWidth, QVector<qreal> &zcDeltas);
     void removePllResults(qint32 number, QVector<qint32> &pllResult);
 
     void convertTvaluesToData(QVector<qint32> frameT, uchar* outputData);
