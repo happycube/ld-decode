@@ -18,7 +18,8 @@ SOURCES += \
         main.cpp \
     efmprocess.cpp \
     filter.cpp \
-    efmdecoder.cpp
+    efmdecoder.cpp \
+    phaselockedloop.cpp
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin
@@ -28,4 +29,5 @@ else: unix:!android: target.path = /usr/local/bin/
 HEADERS += \
     efmprocess.h \
     filter.h \
-    efmdecoder.h
+    efmdecoder.h \
+    phaselockedloop.h

@@ -56,7 +56,7 @@ makelds = True if outname[-3:] == 'lds' else False
     
 system = 'PAL' if args.pal else 'NTSC'
     
-ldd = LDdecode(filename, None, loader, frameoutput=False, system=system, doDOD = False)
+ldd = LDdecode(filename, None, loader, system=system, doDOD = False)
 
 if args.MTF is not None:
     ldd.rf.mtf_mult = args.MTF

@@ -1,6 +1,6 @@
 /************************************************************************
 
-    efmprocess.cpp
+    phaselockedloop.h
 
     ld-efm-sampletodata - EFM sample to data processor for ld-decode
     Copyright (C) 2019 Simon Inns
@@ -22,44 +22,31 @@
 
 ************************************************************************/
 
-#ifndef EFMPROCESS_H
-#define EFMPROCESS_H
+#ifndef PHASELOCKEDLOOP_H
+#define PHASELOCKEDLOOP_H
 
 #include <QCoreApplication>
 #include <QDebug>
-#include <QFile>
-#include <QDataStream>
 
-#include "filter.h"
-#include "efmdecoder.h"
-#include "phaselockedloop.h"
-
-class EfmProcess
+class Pll_t
 {
 public:
-    EfmProcess();
-
-    bool process(QString inputFilename, QString outputFilename);
+    Pll_t(QVector<qint32> &_result);
+    void pushEdge(qreal sampleDelta);
 
 private:
-    QFile* inputFile;
-    QFile* outputFile;
+    qreal basePeriod;
+    qreal minimumPeriod;
+    qreal maximumPeriod;
+    qreal periodAdjustBase;
 
-    // ZC detector state
-    bool zcFirstRun;
-    qint16 zcPreviousInput;
-    bool prevDirection;
+    QVector<qint32> &result;
+    qreal currentPeriod, phaseAdjust, refClockTime;
+    qint32 frequencyHysteresis;
 
-    // Initialise the PLL
-    QVector<qint32> pllResult;
-    Pll_t *pll;
+    qint32 tCounter;
 
-    void performPll(QVector<qint16> inputBuffer);
-    qint32 fillInputBuffer(QDataStream &inputStream, QVector<qint16> &inputBuffer, qint32 samples);
-    bool openInputSampleFile(QString filename);
-    void closeInputSampleFile(void);
-    bool openOutputDataFile(QString filename);
-    void closeOutputDataFile(void);
+    void pushTValue(qint32 bit);
 };
 
-#endif // EFMPROCESS_H
+#endif // PHASELOCKEDLOOP_H
