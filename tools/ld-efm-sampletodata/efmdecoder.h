@@ -40,7 +40,7 @@ public:
 
     qint32 f3FramesReady(void);
     QByteArray getF3Frames(void);
-    void process(QVector<qint32> &pllResult);
+    void process(QVector<qint8> &pllResult);
 
 private:
     // The following table provides the 10-bit EFM code (padded with leading
@@ -116,14 +116,14 @@ private:
     qint32 endSyncTransition;
 
     StateMachine sm_state_initial(void);
-    StateMachine sm_state_findInitialSyncStage1(QVector<qint32> &pllResult);
-    StateMachine sm_state_findInitialSyncStage2(QVector<qint32> &pllResult);
-    StateMachine sm_state_findSecondSync(QVector<qint32> &pllResult);
+    StateMachine sm_state_findInitialSyncStage1(QVector<qint8> &pllResult);
+    StateMachine sm_state_findInitialSyncStage2(QVector<qint8> &pllResult);
+    StateMachine sm_state_findSecondSync(QVector<qint8> &pllResult);
     StateMachine sm_state_syncLost(void);
-    StateMachine sm_state_processFrame(QVector<qint32> &pllResult);
+    StateMachine sm_state_processFrame(QVector<qint8> &pllResult);
 
     // Utility methods
-    void removePllResults(qint32 number, QVector<qint32> &pllResult);
+    void removePllResults(qint32 number, QVector<qint8> &pllResult);
 
     void convertTvaluesToData(QVector<qint32> frameT, uchar* outputData);
     quint32 getBits(uchar *rawData, qint32 bitIndex, qint32 width);

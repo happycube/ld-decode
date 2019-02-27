@@ -137,7 +137,7 @@ DecodeAudio::StateMachine DecodeAudio::sm_state_processC1(void)
     } else {
         invalidC1Count++;
         c1DataValid = false;
-        //qDebug() << "DecodeAudio::sm_state_processC1(): Invalid C1 #" << invalidC1Count;
+        qDebug() << "DecodeAudio::sm_state_processC1(): Invalid C1 #" << invalidC1Count;
     }
 
     // Store the frame and get a new frame
@@ -179,8 +179,11 @@ DecodeAudio::StateMachine DecodeAudio::sm_state_processC2(void)
             // C2 Failure
             invalidC2Count++;
             c2DataValid = false;
-            qDebug() << "DecodeAudio::sm_state_processC2(): Invalid C2 #" << invalidC2Count << "-------------------------------------------------------";
+            qDebug() << "DecodeAudio::sm_state_processC2(): Invalid C2 #" << invalidC2Count;
         }
+    } else {
+        // Since the C1 delay buffer isn't full, we can't process audio yet
+        return state_processC1;
     }
 
     return state_processAudio;
@@ -272,35 +275,74 @@ void DecodeAudio::deInterleaveC2(uchar *outputData)
     qint32 prev = 0; // C2 2=frame delay
 
     // Note: This drops the parity leaving 24 bytes of data (12 words of 16 bits)
-    outputData[ 0] = c2DelayBuffer[curr].c2Symbols[ 0];
-    outputData[ 1] = c2DelayBuffer[curr].c2Symbols[ 1];
-    outputData[ 2] = c2DelayBuffer[curr].c2Symbols[ 6];
-    outputData[ 3] = c2DelayBuffer[curr].c2Symbols[ 7];
 
-    outputData[ 4] = c2DelayBuffer[prev].c2Symbols[16];
-    outputData[ 5] = c2DelayBuffer[prev].c2Symbols[17];
-    outputData[ 6] = c2DelayBuffer[prev].c2Symbols[22];
-    outputData[ 7] = c2DelayBuffer[prev].c2Symbols[23];
+    if (c2DelayBuffer[curr].c2SymbolsValid) {
+        outputData[ 0] = c2DelayBuffer[curr].c2Symbols[ 0];
+        outputData[ 1] = c2DelayBuffer[curr].c2Symbols[ 1];
+        outputData[ 2] = c2DelayBuffer[curr].c2Symbols[ 6];
+        outputData[ 3] = c2DelayBuffer[curr].c2Symbols[ 7];
 
-    outputData[ 8] = c2DelayBuffer[curr].c2Symbols[ 2];
-    outputData[ 9] = c2DelayBuffer[curr].c2Symbols[ 3];
-    outputData[10] = c2DelayBuffer[curr].c2Symbols[ 8];
-    outputData[11] = c2DelayBuffer[curr].c2Symbols[ 9];
+        outputData[ 8] = c2DelayBuffer[curr].c2Symbols[ 2];
+        outputData[ 9] = c2DelayBuffer[curr].c2Symbols[ 3];
+        outputData[10] = c2DelayBuffer[curr].c2Symbols[ 8];
+        outputData[11] = c2DelayBuffer[curr].c2Symbols[ 9];
 
-    outputData[12] = c2DelayBuffer[prev].c2Symbols[18];
-    outputData[13] = c2DelayBuffer[prev].c2Symbols[19];
-    outputData[14] = c2DelayBuffer[prev].c2Symbols[24];
-    outputData[15] = c2DelayBuffer[prev].c2Symbols[25];
+        outputData[16] = c2DelayBuffer[curr].c2Symbols[ 4];
+        outputData[17] = c2DelayBuffer[curr].c2Symbols[ 5];
+        outputData[18] = c2DelayBuffer[curr].c2Symbols[10];
+        outputData[19] = c2DelayBuffer[curr].c2Symbols[11];
+    } else {
+        // To-do: Audio error concealment
+        qDebug() << "DecodeAudio::deInterleaveC2(): Invalid audio data!";
+        outputData[ 0] = 0;
+        outputData[ 1] = 0;
+        outputData[ 2] = 0;
+        outputData[ 3] = 0;
 
-    outputData[16] = c2DelayBuffer[curr].c2Symbols[ 4];
-    outputData[17] = c2DelayBuffer[curr].c2Symbols[ 5];
-    outputData[18] = c2DelayBuffer[curr].c2Symbols[10];
-    outputData[19] = c2DelayBuffer[curr].c2Symbols[11];
+        outputData[ 8] = 0;
+        outputData[ 9] = 0;
+        outputData[10] = 0;
+        outputData[11] = 0;
 
-    outputData[20] = c2DelayBuffer[prev].c2Symbols[20];
-    outputData[21] = c2DelayBuffer[prev].c2Symbols[21];
-    outputData[22] = c2DelayBuffer[prev].c2Symbols[26];
-    outputData[23] = c2DelayBuffer[prev].c2Symbols[27];
+        outputData[16] = 0;
+        outputData[17] = 0;
+        outputData[18] = 0;
+        outputData[19] = 0;
+    }
+
+    if (c2DelayBuffer[prev].c2SymbolsValid) {
+        outputData[ 4] = c2DelayBuffer[prev].c2Symbols[16];
+        outputData[ 5] = c2DelayBuffer[prev].c2Symbols[17];
+        outputData[ 6] = c2DelayBuffer[prev].c2Symbols[22];
+        outputData[ 7] = c2DelayBuffer[prev].c2Symbols[23];
+
+        outputData[12] = c2DelayBuffer[prev].c2Symbols[18];
+        outputData[13] = c2DelayBuffer[prev].c2Symbols[19];
+        outputData[14] = c2DelayBuffer[prev].c2Symbols[24];
+        outputData[15] = c2DelayBuffer[prev].c2Symbols[25];
+
+        outputData[20] = c2DelayBuffer[prev].c2Symbols[20];
+        outputData[21] = c2DelayBuffer[prev].c2Symbols[21];
+        outputData[22] = c2DelayBuffer[prev].c2Symbols[26];
+        outputData[23] = c2DelayBuffer[prev].c2Symbols[27];
+    } else {
+        // To-do: Audio error concealment
+        qDebug() << "DecodeAudio::deInterleaveC2(): Invalid audio data!";
+        outputData[ 4] = 0;
+        outputData[ 5] = 0;
+        outputData[ 6] = 0;
+        outputData[ 7] = 0;
+
+        outputData[12] = 0;
+        outputData[13] = 0;
+        outputData[14] = 0;
+        outputData[15] = 0;
+
+        outputData[20] = 0;
+        outputData[21] = 0;
+        outputData[22] = 0;
+        outputData[23] = 0;
+    }
 }
 
 // This method is for debug and outputs an array of 8-bit unsigned data as a hex string

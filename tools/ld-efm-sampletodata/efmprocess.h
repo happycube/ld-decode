@@ -52,7 +52,7 @@ private:
     qreal delta;
 
     // Initialise the PLL
-    QVector<qint32> pllResult;
+    QVector<qint8> pllResult;
     Pll_t *pll;
 
     void performPll(QVector<qint16> inputBuffer);

@@ -28,7 +28,7 @@
 
 #include "phaselockedloop.h"
 
-Pll_t::Pll_t(QVector<qint32> &_result) : result(_result)
+Pll_t::Pll_t(QVector<qint8> &_result) : result(_result)
 {
     // Configuration
     basePeriod = 40000000 / 4321800; // T1 clock period 40MSPS / bit-rate
@@ -45,7 +45,7 @@ Pll_t::Pll_t(QVector<qint32> &_result) : result(_result)
     tCounter = 1;
 }
 
-void Pll_t::pushTValue(qint32 bit)
+void Pll_t::pushTValue(qint8 bit)
 {
     // If this is a 1, push the T delta
     if (bit) {
@@ -63,7 +63,10 @@ void Pll_t::pushEdge(qreal sampleDelta)
         qreal next = refClockTime + currentPeriod + phaseAdjust;
         refClockTime = next;
 
-        if(sampleDelta > next) {
+        // Note: the tCounter < 3 check causes an 'edge push' if T is 1 or 2 (which
+        // are invalid timing lengths for the NRZI data).  We also 'edge pull' values
+        // greater than T11
+        if((sampleDelta > next || tCounter < 3) && !(tCounter > 10)) {
             phaseAdjust = 0;
             pushTValue(0);
         } else {

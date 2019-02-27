@@ -31,7 +31,7 @@
 class Pll_t
 {
 public:
-    Pll_t(QVector<qint32> &_result);
+    Pll_t(QVector<qint8> &_result);
     void pushEdge(qreal sampleDelta);
 
 private:
@@ -40,12 +40,12 @@ private:
     qreal maximumPeriod;
     qreal periodAdjustBase;
 
-    QVector<qint32> &result;
+    QVector<qint8> &result;
     qreal currentPeriod, phaseAdjust, refClockTime;
     qint32 frequencyHysteresis;
-    qint32 tCounter;
+    qint8 tCounter;
 
-    void pushTValue(qint32 bit);
+    void pushTValue(qint8 bit);
 };
 
 #endif // PHASELOCKEDLOOP_H

@@ -89,7 +89,7 @@ QByteArray EfmDecoder::getF3Frames(void)
 }
 
 // Process the state machine
-void EfmDecoder::process(QVector<qint32> &pllResult)
+void EfmDecoder::process(QVector<qint8> &pllResult)
 {
     waitingForDeltas = false;
 
@@ -125,7 +125,7 @@ EfmDecoder::StateMachine EfmDecoder::sm_state_initial(void)
 }
 
 // Search for the first T11+T11 sync pattern in the input buffer
-EfmDecoder::StateMachine EfmDecoder::sm_state_findInitialSyncStage1(QVector<qint32> &pllResult)
+EfmDecoder::StateMachine EfmDecoder::sm_state_findInitialSyncStage1(QVector<qint8> &pllResult)
 {
     // Find the first T11+T11 sync pattern in the input buffer
     qint32 startSyncTransition = -1;
@@ -156,7 +156,7 @@ EfmDecoder::StateMachine EfmDecoder::sm_state_findInitialSyncStage1(QVector<qint
     return state_findInitialSyncStage2;
 }
 
-EfmDecoder::StateMachine EfmDecoder::sm_state_findInitialSyncStage2(QVector<qint32> &pllResult)
+EfmDecoder::StateMachine EfmDecoder::sm_state_findInitialSyncStage2(QVector<qint8> &pllResult)
 {
     // Find the next T11+T11 sync pattern in the input buffer
     endSyncTransition = -1;
@@ -191,96 +191,85 @@ EfmDecoder::StateMachine EfmDecoder::sm_state_findInitialSyncStage2(QVector<qint
     return state_processFrame;
 }
 
-EfmDecoder::StateMachine EfmDecoder::sm_state_findSecondSync(QVector<qint32> &pllResult)
+EfmDecoder::StateMachine EfmDecoder::sm_state_findSecondSync(QVector<qint8> &pllResult)
 {
-    // Find the next T11+T11 sync pattern in the input buffer
-    endSyncTransition = -1;
-    qint32 tTotal = 11;
-    //qDebug() << "T# 0 =" << pllResult[0];
-    for (qint32 i = 1; i < pllResult.size() - 1; i++) {
-        // T3 push?
-        if (pllResult[i] < 3) pllResult[i] = 3;
+    // Force the sync to be correct for this frame
+    //pllResult[0] = 11;
+    //pllResult[1] = 11;
 
-        // T11 push?
-        if (pllResult[i] > 11) pllResult[i] = 11;
-
-        // Correct poor sync?
-        if (i == 1) pllResult[i] = 11;
-
-        //qDebug() << "T#" << i << "=" << pllResult[i];
-
-        // Sync?
-        if (pllResult[i] == 11 && pllResult[i + 1] == 11 && tTotal > 570) {
-            endSyncTransition = i;
-            poorSync = 0;
-            break;
-        }
-
-        // Frame length exceeded without sync detection?
-        if (tTotal > 588) {
-            tTotal -= pllResult[i];
-            qDebug() << "tTotal exceeded T =" << tTotal << " - poor sync #" << poorSync << "detected";
-            poorSync++;
-
-            // Rather than loosing sync, we attempt to recover by guessing at the correct
-            // sync position
-
-            // Low sync values?
-            if (pllResult[i] >= 10 && pllResult[i + 1] >= 10) {
-                qDebug() << "Poor sync - Low sync values";
-                endSyncTransition = i;
-                break;
-            }
-
-            // Sync off by -1?
-            if (pllResult[i - 1] >= 10 && pllResult[i] >= 10) {
-                qDebug() << "Poor sync - Off by -1";
-                endSyncTransition = i - 1;
-                break;
-            }
-
-            // Sync off by +1?
-            if (i + 2 < pllResult.size()) {
-                if (pllResult[i + 1] >= 10 && pllResult[i + 2] >= 10) {
-                    qDebug() << "Poor sync - Off by +1";
-                    endSyncTransition = i + 1;
-                    break;
-                }
-            }
-
-            // Sync off by +2?
-            if (i + 3 < pllResult.size()) {
-                if (pllResult[i + 2] >= 10 && pllResult[i + 3] >= 10) {
-                    qDebug() << "Poor sync - Off by +2";
-                    endSyncTransition = i + 2;
-                    break;
-                }
-            }
-
-            qDebug() << "Poor sync - no sync at all";
-            endSyncTransition = i-1;
-            break;
-        }
-
+    // Get at least 588 bits of data
+    qint32 i = 0;
+    qint32 tTotal = 0;
+    while (i < pllResult.size() && tTotal < 588) {
         tTotal += pllResult[i];
+        i++;
     }
 
-    // If endSyncTransition is -1 we ran out of data before finding the
-    // sync.
-    if (endSyncTransition == -1) {
+    // Did we have enough data to reach a tTotal of 588?
+    if (tTotal < 588) {
+        qDebug() << "EfmDecoder::sm_state_findSecondSync(): Need more data to reach required tTotal";
         // Indicate that more deltas are required and stay in this state
         waitingForDeltas = true;
         return state_findSecondSync;
     }
 
+    // Do we have enough data to verify the sync position?
+    if ((pllResult.size() - i) < 2) {
+        qDebug() << "EfmDecoder::sm_state_findSecondSync(): Need more data to verify sync position";
+        // Indicate that more deltas are required and stay in this state
+        waitingForDeltas = true;
+        return state_findSecondSync;
+    }
+
+    // Is tTotal correct?
+    if (tTotal == 588) {
+        endSyncTransition = i;
+        poorSync = 0;
+    } else {
+        // Handle various possible sync issues in a (hopefully) smart way
+        if (pllResult[i] == 11 && pllResult[i + 1] == 11) {
+            qDebug() << "EfmDecoder::sm_state_findSecondSync(): Sync is in the right position and is valid - frame contains invalid T value";
+            endSyncTransition = i;
+            poorSync = 0;
+        } else if (pllResult[i - 1] == 11 && pllResult[i] == 11) {
+            qDebug() << "EfmDecoder::sm_state_findSecondSync(): Sync valid, but off by one transition backwards";
+            endSyncTransition = i - 1;
+            poorSync = 0;
+        } else if (pllResult[i - 1] >= 10 && pllResult[i] >= 10) {
+            qDebug() << "EfmDecoder::sm_state_findSecondSync(): Sync value low and off by one transition backwards";
+            endSyncTransition = i - 1;
+            poorSync = 0;
+        } else {
+            if (abs(tTotal - 588) < 3) {
+                qDebug() << "EfmDecoder::sm_state_findSecondSync(): tTotal was incorrect (" << tTotal << "), but error is less than T3, so nothing much to do about it";
+                endSyncTransition = i;
+                poorSync = 0;
+            } else if (abs(tTotal - 588) >= 3) {
+                    qDebug() << "EfmDecoder::sm_state_findSecondSync(): tTotal was incorrect (" << tTotal << "), moving end transition in attempt to correct";
+                    if (tTotal > 588) endSyncTransition = i - 1; else endSyncTransition = i;
+                    poorSync = 0;
+            } else if (pllResult[i] == 11 && pllResult[i + 1] == 11) {
+                qDebug() << "EfmDecoder::sm_state_findSecondSync(): Sync valid, but off by one transition forward";
+                endSyncTransition = i;
+                poorSync = 0;
+            } else if (pllResult[i] >= 10 && pllResult[i + 1] >= 10) {
+                qDebug() << "EfmDecoder::sm_state_findSecondSync(): Sync value low and off by one transition forward";
+                endSyncTransition = i;
+                poorSync = 0;
+            } else {
+                qDebug() << "EfmDecoder::sm_state_findSecondSync(): Sync appears to be missing causing an overshoot; dropping a T value and marking as poor sync #" << poorSync;
+                endSyncTransition = i;
+                poorSync++;
+            }
+        }
+    }
+
     // Hit limit of poor sync detections?
     if (poorSync > 16) {
         poorSync = 0;
-        qDebug() << "Too many poor sync detections (>16) - sync lost";
+        qDebug() << "EfmDecoder::sm_state_findSecondSync(): Too many poor sync detections (>16) - sync lost";
         return state_syncLost;
     }
-
-    //qDebug() << "EfmDecoder::sm_state_findSecondSync(): End of F3 frame found at transition" << endSyncTransition << "T total =" << tTotal;
 
     // Move to the process frame state
     return state_processFrame;
@@ -288,20 +277,27 @@ EfmDecoder::StateMachine EfmDecoder::sm_state_findSecondSync(QVector<qint32> &pl
 
 EfmDecoder::StateMachine EfmDecoder::sm_state_syncLost(void)
 {
-    qDebug() << "EfmDecoder::sm_state_syncLost(): SYNC was completely lost! ------------------------------------------------------------";
+    qDebug() << "EfmDecoder::sm_state_syncLost(): Sync was completely lost!";
     syncLoss++;
     return state_findInitialSyncStage1;
 }
 
-EfmDecoder::StateMachine EfmDecoder::sm_state_processFrame(QVector<qint32> &pllResult)
+EfmDecoder::StateMachine EfmDecoder::sm_state_processFrame(QVector<qint8> &pllResult)
 {
-    QVector<qint32> frameT;
+    QVector<qint32> frameT(endSyncTransition);
     qint32 tTotal = 0;
     for (qint32 delta = 0; delta < endSyncTransition; delta++) {
         qint32 value = pllResult[delta];
 
+        if (value < 3) {
+            qDebug() << "EfmDecoder::sm_state_processFrame(): Invalid T value <3";
+        }
+        if (value > 11) {
+            qDebug() << "EfmDecoder::sm_state_processFrame(): Invalid T value >11";
+        }
+
         tTotal += value;
-        frameT.append(static_cast<qint32>(value));
+        frameT[delta] = value;
     }
     if (tTotal == 588) {
         //qDebug() << "EfmDecoder::sm_state_processFrame(): F3 frame length ok";
@@ -325,7 +321,7 @@ EfmDecoder::StateMachine EfmDecoder::sm_state_processFrame(QVector<qint32> &pllR
 // Utility functions --------------------------------------------------------------------------------------------------
 
 // Method to remove deltas from the start of the buffer
-void EfmDecoder::removePllResults(qint32 number, QVector<qint32> &pllResult)
+void EfmDecoder::removePllResults(qint32 number, QVector<qint8> &pllResult)
 {
     if (number > pllResult.size()) {
         pllResult.clear();
@@ -340,21 +336,10 @@ void EfmDecoder::convertTvaluesToData(QVector<qint32> frameT, uchar* outputData)
 {
     // Firstly we have to make a bit-stream of the 588 channel bits including
     // all of the sync pattern and merge bits
-    uchar rawFrameData[74];
-    for (qint32 byteC = 0; byteC < 74; byteC++) rawFrameData[byteC] = 0;
-
+    uchar rawFrameData[80]; // 74 plus some overflow
     qint32 bitPosition = 7;
     qint32 bytePosition = 0;
     uchar byteData = 0;
-
-    // Verify that the input values add up to 588 bits
-    qint32 bitCount = 0;
-    for (qint32 tNumber = 0; tNumber < frameT.size(); tNumber++) {
-        bitCount += frameT[tNumber];
-        //qDebug() << "frameT =" << frameT[tNumber];
-    }
-
-    if (bitCount != 588) qDebug() << "EfmDecoder::convertTvaluesToData(): Illegal F3 frame length";
 
     for (qint32 tPosition = 0; tPosition < frameT.size(); tPosition++) {
         for (qint32 bitCount = 0; bitCount < frameT[tPosition]; bitCount++) {
@@ -385,7 +370,7 @@ void EfmDecoder::convertTvaluesToData(QVector<qint32> frameT, uchar* outputData)
     // 32 * (14 + 3) data+parity               = 544
     //                                   total = 588 bits
 
-    // Which demodulates to and F3 frame of:
+    // Which demodulates to an F3 frame of:
     //
     // Sync Pattern (discarded)
     //  1 byte control
@@ -393,8 +378,7 @@ void EfmDecoder::convertTvaluesToData(QVector<qint32> frameT, uchar* outputData)
     //
     // Total of 33 bytes
 
-    QVector<quint32> efmValues;
-    efmValues.resize(33);
+    quint32 efmValues[33];
     qint32 currentBit = 0;
 
     // Ignore the sync pattern (which is 24 bits plus 3 merging bits)
@@ -425,20 +409,21 @@ void EfmDecoder::convertTvaluesToData(QVector<qint32> frameT, uchar* outputData)
         if (counter == 1 && (efmValues[0] == 0x801 || efmValues[0] == 0x012)) {
             // Sync bit, can't translate, so set data to 0
             outputData[counter] = 0;
+            result = 1;
         } else {
             // Normal EFM - translate to 8-bit value
-            for (quint32 lutPos = 0; lutPos < 256; lutPos++) {
+            quint32 lutPos = 0;
+            while (lutPos < 256 && result != 1) {
                 if (efm2numberLUT[lutPos] == efmValues[counter - 1]) {
                     outputData[counter] = static_cast<uchar>(lutPos);
                     result = 1;
-                    break;
                 }
+                lutPos++;
             }
         }
 
         if (result == -1) {
-            // To-Do: count the EFM decode failures for debug
-            qDebug() << "EfmDecoder::convertTvaluesToData(): 14-bit EFM value" << efmValues[counter - 1] << "not found in translation look-up table";
+            qDebug() << "EfmDecoder::convertTvaluesToData(): 14-bit EFM value" << efmValues[counter - 1] << "not found in translation look-up table, position =" << counter;
             efmTranslationFail++;
             outputData[counter] = 0;
         }

@@ -56,7 +56,7 @@ bool EfmProcess::process(QString inputFilename, QString outputFilename)
     inputStream.setByteOrder(QDataStream::LittleEndian);
 
     // Define the buffer size for input reads
-    qint32 bufferSize = 1024 * 1024;
+    qint32 bufferSize = 1024 * 10240;
     QVector<qint16> inputBuffer;
     inputBuffer.resize(bufferSize);
 
