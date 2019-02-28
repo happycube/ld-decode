@@ -42,13 +42,13 @@ SysParams_NTSC = {
     'audio_rfreq': (1000000*315/88/227.5) * 178.75,
 
     'colorBurstUS': (5.3, 7.8),
-    'activeVideoUS': (10.5, 64-1.5),
+    'activeVideoUS': (9.45, 63.555-1.5),
 }
 
 # In color NTSC, the line period was changed from 63.5 to 227.5 color cycles,
 # which works out to 63.555(with a bar on top) usec
 SysParams_NTSC['line_period'] = 1/(SysParams_NTSC['fsc_mhz']/227.5)
-SysParams_NTSC['activeVideoUS'] = (10.5, SysParams_NTSC['line_period'] - 1.5)
+SysParams_NTSC['activeVideoUS'] = (9.45, SysParams_NTSC['line_period'] - 1.5)
 
 SysParams_NTSC['FPS'] = 1000000/ (525 * SysParams_NTSC['line_period'])
 
@@ -1389,7 +1389,7 @@ class FieldNTSC(Field):
         return np.median(burstlevel) / self.rf.SysParams['hz_ire']
 
     def apply_offsets(self, linelocs, phaseoffset, picoffset = 0):
-        #print((phaseoffset * (self.rf.freq / (4 * 315 / 88))))
+        #print(phaseoffset, (phaseoffset * (self.rf.freq / (4 * 315 / 88))))
         return np.array(linelocs) + picoffset + (phaseoffset * (self.rf.freq / (4 * 315 / 88)))
 
     def __init__(self, *args, **kwargs):
@@ -1938,7 +1938,7 @@ class LDdecode:
 
         vp['fieldHeight'] = f.outlinecount
 
-        badj = 0 # TODO: put the IQ shift here in px on NTSC
+        badj = -1.4 # current burst adjustment as of 2/27/19, update when #158 is fixed!
         vp['colourBurstStart'] = np.round((f.rf.SysParams['colorBurstUS'][0] * spu) + badj)
         vp['colourBurstEnd'] = np.round((f.rf.SysParams['colorBurstUS'][1] * spu) + badj)
         vp['activeVideoStart'] = np.round((f.rf.SysParams['activeVideoUS'][0] * spu) + badj)
