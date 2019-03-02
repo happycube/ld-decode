@@ -29,6 +29,7 @@
 #include <QDebug>
 #include <QFile>
 #include <QDataStream>
+#include <QElapsedTimer>
 
 #include "filter.h"
 #include "efmdecoder.h"
@@ -39,7 +40,7 @@ class EfmProcess
 public:
     EfmProcess();
 
-    bool process(QString inputFilename, QString outputFilename);
+    bool process(QString inputFilename, QString outputFilename, bool applyIsiFilter);
 
 private:
     QFile* inputFile;
@@ -55,8 +56,8 @@ private:
     QVector<qint8> pllResult;
     Pll_t *pll;
 
-    void performPll(QVector<qint16> inputBuffer);
-    qint32 fillInputBuffer(QDataStream &inputStream, QVector<qint16> &inputBuffer, qint32 samples);
+    void performPll(QByteArray buffer);
+    qint32 fillInputBuffer(QByteArray &inputBuffer, qint32 samples);
     bool openInputSampleFile(QString filename);
     void closeInputSampleFile(void);
     bool openOutputDataFile(QString filename);

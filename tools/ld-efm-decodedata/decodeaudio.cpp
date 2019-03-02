@@ -192,7 +192,7 @@ DecodeAudio::StateMachine DecodeAudio::sm_state_processC2(void)
             // C2 Failure
             invalidC2Count++;
             c2DataValid = false;
-            qDebug() << "DecodeAudio::sm_state_processC2(): Invalid C2 #" << invalidC2Count;
+            //qDebug() << "DecodeAudio::sm_state_processC2(): Invalid C2 #" << invalidC2Count;
         }
     } else {
         // Since the C1 delay buffer isn't full, we can't process audio yet
@@ -235,10 +235,10 @@ DecodeAudio::StateMachine DecodeAudio::sm_state_processAudio(void)
 // Utility methods ----------------------------------------------------------------------------------------------------
 
 // Interleave current and previous F3 frame symbols and then invert parity words
-void DecodeAudio::interleaveC1Data(QByteArray previousF3Frame, QByteArray currentF3Frame, uchar *c1Data)
+void DecodeAudio::interleaveC1Data(QByteArray previousF3, QByteArray currentF3, uchar *c1Data)
 {
-    uchar *prev = reinterpret_cast<uchar*>(previousF3Frame.data());
-    uchar *curr = reinterpret_cast<uchar*>(currentF3Frame.data());
+    uchar *prev = reinterpret_cast<uchar*>(previousF3.data());
+    uchar *curr = reinterpret_cast<uchar*>(currentF3.data());
 
     // Interleave the symbols
     for (qint32 byteC = 0; byteC < 32; byteC += 2) {

@@ -34,7 +34,7 @@ EfmProcess::EfmProcess()
     pll = new Pll_t(pllResult);
 }
 
-bool EfmProcess::process(QString inputFilename, QString outputFilename)
+bool EfmProcess::process(QString inputFilename, QString outputFilename, bool applyIsiFilter)
 {
     Filter filter;
     EfmDecoder efmDecoder;
@@ -51,29 +51,28 @@ bool EfmProcess::process(QString inputFilename, QString outputFilename)
         return false;
     }
 
-    // Create a data stream for both input and output
-    QDataStream inputStream(inputFile);
-    inputStream.setByteOrder(QDataStream::LittleEndian);
-
     // Define the buffer size for input reads
-    qint32 bufferSize = 1024 * 10240;
-    QVector<qint16> inputBuffer;
+    qint32 bufferSize = 1024 * 64;
+
+    QByteArray inputBuffer;
     inputBuffer.resize(bufferSize);
 
     // Main sample processing loop
     bool endOfFile = false;
     qint32 samplesProcessed = 0;
-    qint32 framesProcessed = 0;
-    while(!endOfFile) {
-        qint32 readSamples = fillInputBuffer(inputStream, inputBuffer, bufferSize);
+    qint32 loopCounter = 0;
+    qint32 totalFramesProcessed = 0;
+    QElapsedTimer totalTimer;
+    totalTimer.start();
 
-        // Apply the DC blocker filter
-        //inputBuffer = filter.dcBlocker(inputBuffer);
+    while(!endOfFile) {
+        // Fill the input buffer with samples
+        qint32 readBytes = fillInputBuffer(inputBuffer, bufferSize);
 
         // Apply the channel equalizer filter
-        inputBuffer = filter.channelEqualizer(inputBuffer);
+        if (applyIsiFilter) filter.channelEqualizer(inputBuffer);
 
-        if (readSamples == 0) {
+        if (readBytes == 0) {
             endOfFile = true;
             qDebug() << "EfmProcess::process(): End of file";
         } else {
@@ -85,17 +84,19 @@ bool EfmProcess::process(QString inputFilename, QString outputFilename)
 
             // F3 Frame ready for writing?
             if (efmDecoder.f3FramesReady() > 0) {
-                framesProcessed += efmDecoder.f3FramesReady();
+                totalFramesProcessed += efmDecoder.f3FramesReady();
 
                 // Write the F3 frames to the output file
                 QByteArray framesToWrite = efmDecoder.getF3Frames();
                 outputFile->write(framesToWrite, framesToWrite.size());
             }
 
-            samplesProcessed += readSamples;
-            qInfo() << "Processed" << samplesProcessed << "samples into" << framesProcessed << "F3 frames";
+            samplesProcessed += readBytes;
+            if (loopCounter++ % 200 == 0) qInfo() << "Processed" << totalFramesProcessed << "F3 frames";
         }
     }
+
+    qreal fps = totalFramesProcessed / (static_cast<qreal>(totalTimer.elapsed()) / 1000.0);
 
     qreal totalFrames = efmDecoder.getPass() + efmDecoder.getFailed();
     qreal pass1Percent = (100.0 / totalFrames) * efmDecoder.getPass();
@@ -103,7 +104,7 @@ bool EfmProcess::process(QString inputFilename, QString outputFilename)
 
     qInfo() << "Decoding complete - Processed" << static_cast<qint32>(totalFrames) << "F3 frames with" <<
                efmDecoder.getPass() << "successful decodes and" <<
-               efmDecoder.getFailed() << "failed decodes";
+               efmDecoder.getFailed() << "failed decodes at a rate of" << fps << "F3 frames/sec";
     qInfo() << pass1Percent << "% pass and" << failedPercent << "% failed.";
     qInfo() << efmDecoder.getSyncLoss() << "sync loss events";
     qInfo() << efmDecoder.getFailedEfmTranslations() << "EFM translations failed.";
@@ -126,8 +127,10 @@ bool EfmProcess::process(QString inputFilename, QString outputFilename)
 // store the delta information.  The resulting delta information is fed to the
 // phase-locked loop which is responsible for correcting jitter errors from the ZC
 // detection process.
-void EfmProcess::performPll(QVector<qint16> inputBuffer)
+void EfmProcess::performPll(QByteArray buffer)
 {
+    qint16 *inputBuffer = reinterpret_cast<qint16*>(buffer.data());
+
     // In order to hold state over buffer read boundaries, we keep
     // global track of the direction and delta information
     if (zcFirstRun) {
@@ -138,7 +141,7 @@ void EfmProcess::performPll(QVector<qint16> inputBuffer)
         delta = 0;
     }
 
-    for (qint32 i = 0; i < inputBuffer.size(); i++) {
+    for (qint32 i = 0; i < (buffer.size() / 2); i++) {
         qint16 vPrev = zcPreviousInput;
         qint16 vCurr = inputBuffer[i];
 
@@ -180,16 +183,12 @@ void EfmProcess::performPll(QVector<qint16> inputBuffer)
 }
 
 // Method to fill the input buffer with samples
-qint32 EfmProcess::fillInputBuffer(QDataStream &inputStream, QVector<qint16> &inputBuffer, qint32 samples)
+qint32 EfmProcess::fillInputBuffer(QByteArray &inputBuffer, qint32 bytesToRead)
 {
-    // Read the input sample data as 16-bit signed integers
-    qint32 readSamples = 0;
-    while((!inputStream.atEnd() && readSamples < samples)) {
-        inputStream >> inputBuffer[readSamples];
-        readSamples++;
-    }
+    qint64 bytesRead = inputFile->read(inputBuffer.data(), bytesToRead);
+    if (bytesToRead != bytesRead) inputBuffer.resize(static_cast<qint32>(bytesRead));
 
-    return readSamples;
+    return static_cast<qint32>(bytesRead);
 }
 
 // Method to open the input EFM sample for reading

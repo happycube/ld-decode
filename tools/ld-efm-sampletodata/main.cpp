@@ -95,6 +95,11 @@ int main(int argc, char *argv[])
                                        QCoreApplication::translate("main", "Show debug"));
     parser.addOption(showDebugOption);
 
+    // Option to apply ISI filter (-i)
+    QCommandLineOption applyFilterOption(QStringList() << "i" << "isi",
+                                       QCoreApplication::translate("main", "Apply ISI filter"));
+    parser.addOption(applyFilterOption);
+
     // Positional argument to specify input EFM file
     parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input 40MSPS sampled EFM file"));
 
@@ -106,7 +111,7 @@ int main(int argc, char *argv[])
 
     // Get the options from the parser
     bool isDebugOn = parser.isSet(showDebugOption);
-    //bool verboseDecode = parser.isSet(verboseDecodeOption);
+    bool applyIsiFilter = parser.isSet(applyFilterOption);
 
     // Get the arguments from the parser
     QString inputFilename;
@@ -132,7 +137,7 @@ int main(int argc, char *argv[])
 
     // Perform the processing
     EfmProcess efmProcess;
-    efmProcess.process(inputFilename, outputFilename);
+    efmProcess.process(inputFilename, outputFilename, applyIsiFilter);
 
     // Quit with success
     return 0;

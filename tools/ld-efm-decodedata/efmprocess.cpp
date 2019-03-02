@@ -52,27 +52,30 @@ bool EfmProcess::process(QString inputFilename, QString outputFilename)
     while (!endOfFile) {
         QByteArray f3Frame = readF3Frames(1);
 
-        // Decode the subcode, returns a true if the frame is SYNC1
-        // also returns the current reported qMode or -1 if unknown
-        decodeSubcode.process(f3Frame);
+        if (!f3Frame.isNull()) {
+            // Decode the subcode, returns a true if the frame is SYNC1
+            // also returns the current reported qMode or -1 if unknown
+            decodeSubcode.process(f3Frame);
 
-        // Pass the frame and decoded subcode information to the audio processor
-        decodeAudio.process(f3Frame);
+            // Pass the frame and decoded subcode information to the audio processor
+            decodeAudio.process(f3Frame);
 
-        // Get the audio output data
-        QByteArray outputData = decodeAudio.getOutputData();
-        if (outputData.size() > 0) {
-            // Save the audio data as little-endian stereo LLRRLLRR etc
-            for (qint32 byteC = 0; byteC < 24; byteC += 4) {
-                // 1 0 3 2
-                outStream << static_cast<uchar>(outputData[byteC + 1])
-                 << static_cast<uchar>(outputData[byteC + 0])
-                 << static_cast<uchar>(outputData[byteC + 3])
-                 << static_cast<uchar>(outputData[byteC + 2]);
+            // Get the audio output data
+            QByteArray outputData = decodeAudio.getOutputData();
+            if (!outputData.isEmpty()) {
+                // Save the audio data as little-endian stereo LLRRLLRR etc
+                for (qint32 byteC = 0; byteC < 24; byteC += 4) {
+                    // 1 0 3 2
+                    outStream << static_cast<uchar>(outputData[byteC + 1])
+                     << static_cast<uchar>(outputData[byteC + 0])
+                     << static_cast<uchar>(outputData[byteC + 3])
+                     << static_cast<uchar>(outputData[byteC + 2]);
+                }
             }
+        } else {
+            // No more data
+            endOfFile = true;
         }
-
-        if (f3Frame.isEmpty()) endOfFile = true;
     }
 
     qInfo() << "EFM Processing complete";

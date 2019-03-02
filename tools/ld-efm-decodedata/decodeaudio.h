@@ -46,7 +46,7 @@ public:
     void process(QByteArray f3FrameParam);
 
 private:
-    void interleaveC1Data(QByteArray f3Frame0, QByteArray f3Frame1, uchar *c1Data);
+    void interleaveC1Data(QByteArray previousF3, QByteArray currentF3, uchar *c1Data);
     void getC2Data(uchar *symBuffer, bool *isErasure);
     QString dataToString(uchar *data, qint32 length);
     void deInterleaveC2(uchar *outputData);

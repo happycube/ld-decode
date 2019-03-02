@@ -32,16 +32,9 @@ class Filter
 {
 public:
     Filter();
-    QVector<qint16> dcBlocker(QVector<qint16> inputSample);
-    QVector<qint16> channelEqualizer(QVector<qint16> inputSample);
+    void channelEqualizer(QByteArray &inputSample);
 
 private:
-    // DC blocker filter ----------------------------------------------------------------------------------------------
-
-    qint32 acc;
-    qint32 previousInputSample;
-    qint32 previousOutputSample;
-
     // Channel equalizer filter ---------------------------------------------------------------------------------------
 
     // M = Amount of over sampling

@@ -193,10 +193,6 @@ EfmDecoder::StateMachine EfmDecoder::sm_state_findInitialSyncStage2(QVector<qint
 
 EfmDecoder::StateMachine EfmDecoder::sm_state_findSecondSync(QVector<qint8> &pllResult)
 {
-    // Force the sync to be correct for this frame
-    //pllResult[0] = 11;
-    //pllResult[1] = 11;
-
     // Get at least 588 bits of data
     qint32 i = 0;
     qint32 tTotal = 0;
@@ -207,7 +203,7 @@ EfmDecoder::StateMachine EfmDecoder::sm_state_findSecondSync(QVector<qint8> &pll
 
     // Did we have enough data to reach a tTotal of 588?
     if (tTotal < 588) {
-        qDebug() << "EfmDecoder::sm_state_findSecondSync(): Need more data to reach required tTotal";
+        //qDebug() << "EfmDecoder::sm_state_findSecondSync(): Need more data to reach required tTotal";
         // Indicate that more deltas are required and stay in this state
         waitingForDeltas = true;
         return state_findSecondSync;
@@ -215,7 +211,7 @@ EfmDecoder::StateMachine EfmDecoder::sm_state_findSecondSync(QVector<qint8> &pll
 
     // Do we have enough data to verify the sync position?
     if ((pllResult.size() - i) < 2) {
-        qDebug() << "EfmDecoder::sm_state_findSecondSync(): Need more data to verify sync position";
+        //qDebug() << "EfmDecoder::sm_state_findSecondSync(): Need more data to verify sync position";
         // Indicate that more deltas are required and stay in this state
         waitingForDeltas = true;
         return state_findSecondSync;
