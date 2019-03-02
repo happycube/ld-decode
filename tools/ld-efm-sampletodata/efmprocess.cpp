@@ -34,7 +34,7 @@ EfmProcess::EfmProcess()
     pll = new Pll_t(pllResult);
 }
 
-bool EfmProcess::process(QString inputFilename, QString outputFilename, bool applyIsiFilter)
+bool EfmProcess::process(QString inputFilename, QString outputFilename, bool disableIsiFilter)
 {
     Filter filter;
     EfmDecoder efmDecoder;
@@ -70,7 +70,7 @@ bool EfmProcess::process(QString inputFilename, QString outputFilename, bool app
         qint32 readBytes = fillInputBuffer(inputBuffer, bufferSize);
 
         // Apply the channel equalizer filter
-        if (applyIsiFilter) filter.channelEqualizer(inputBuffer);
+        if (!disableIsiFilter) filter.fpChannelEqualizer(inputBuffer);
 
         if (readBytes == 0) {
             endOfFile = true;

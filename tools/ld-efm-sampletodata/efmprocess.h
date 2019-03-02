@@ -40,7 +40,7 @@ class EfmProcess
 public:
     EfmProcess();
 
-    bool process(QString inputFilename, QString outputFilename, bool applyIsiFilter);
+    bool process(QString inputFilename, QString outputFilename, bool disableIsiFilter);
 
 private:
     QFile* inputFile;
