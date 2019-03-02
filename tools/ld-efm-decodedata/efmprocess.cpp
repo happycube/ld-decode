@@ -26,7 +26,7 @@
 
 EfmProcess::EfmProcess()
 {
-    decodeSubcode.setVerboseDebug(false);
+
 }
 
 bool EfmProcess::process(QString inputFilename, QString outputFilename)
@@ -44,6 +44,9 @@ bool EfmProcess::process(QString inputFilename, QString outputFilename)
     }
     QDataStream outStream(outputFile);
     outStream.setByteOrder(QDataStream::LittleEndian);
+
+    qInfo() << "EFM input file is:" << inputFilename;
+    qInfo() << "Output file is:" << outputFilename;
 
     bool endOfFile = false;
     while (!endOfFile) {
@@ -72,9 +75,10 @@ bool EfmProcess::process(QString inputFilename, QString outputFilename)
         if (f3Frame.isEmpty()) endOfFile = true;
     }
 
-    qInfo() << "Processing complete";
+    qInfo() << "EFM Processing complete";
     qInfo() << "Total C1:" << decodeAudio.getValidC1Count() + decodeAudio.getInvalidC1Count() << "(with" << decodeAudio.getInvalidC1Count() << "failures)";
     qInfo() << "Total C2:" << decodeAudio.getValidC2Count() + decodeAudio.getInvalidC2Count() << "(with" << decodeAudio.getInvalidC2Count() << "failures)";
+    qInfo() << "Total audio samples:" << decodeAudio.getValidAudioSamplesCount() + decodeAudio.getInvalidAudioSamplesCount() << "(with" << decodeAudio.getInvalidAudioSamplesCount() << "failures)";
 
     // Close the open files
     closeInputF3File();

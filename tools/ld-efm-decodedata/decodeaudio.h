@@ -39,6 +39,8 @@ public:
     qint32 getInvalidC1Count(void);
     qint32 getValidC2Count(void);
     qint32 getInvalidC2Count(void);
+    qint32 getValidAudioSamplesCount(void);
+    qint32 getInvalidAudioSamplesCount(void);
 
     QByteArray getOutputData(void);
     void process(QByteArray f3FrameParam);
@@ -57,6 +59,8 @@ private:
     bool c1DataValid;
     qint32 validC1Count;
     qint32 invalidC1Count;
+    qint32 validAudioSampleCount;
+    qint32 invalidAudioSampleCount;
 
     // C1 ECC delay buffer
     struct C1Buffer {

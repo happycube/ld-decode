@@ -55,19 +55,30 @@ bool ReedSolomon::decodeC1(unsigned char *inData)
     data.resize(32);
     for (size_t byteC = 0; byteC < 32; byteC++) data[byteC] = inData[byteC];
 
+    // Just for testing...
+    std::vector<uint8_t> origData = data;
+
     // Initialise the error corrector
     C1RS<255,255-4> rs; // Up to 251 symbols data load with 4 symbols parity RS(32,28)
 
     // Perform decode
     int fixed = rs.decode(data);
 
+    if (fixed < 0) {
+        //qDebug() << "ReedSolomon::decodeC1(): C1 CIRC failed";
+
+        //qDebug() << "ReedSolomon::decodeC1(): Orig was" << dataToString(origData);
+        //qDebug() << "ReedSolomon::decodeC1(): Data was" << dataToString(data);
+
+    } else {
+        // Copy back the corrected data
+        for (size_t byteC = 0; byteC < 32; byteC++) inData[byteC] = data[byteC];
+    }
+
     // Did C1 pass?
     if (fixed == 0) c1Passed++;
     if (fixed > 0)  c1Corrected++;
     if (fixed >= 0) {
-        // Copy back the corrected data
-        for (size_t byteC = 0; byteC < 32; byteC++) inData[byteC] = data[byteC];
-
         return true;
     }
 
@@ -89,6 +100,9 @@ bool ReedSolomon::decodeC2(uchar *inData, bool *inErasures)
         if (inErasures[byteC]) erasures.push_back(static_cast<int>(byteC));
     }
 
+    // Just for testing...
+    std::vector<uint8_t> origData = data;
+
     // Up to 4 erasures can be fixed
     int fixed = -1;
     if (erasures.size() < 5) {
@@ -99,10 +113,18 @@ bool ReedSolomon::decodeC2(uchar *inData, bool *inErasures)
         std::vector<int> position;
         fixed = rs.decode(data, erasures, &position);
 
-        // Copy back the corrected data
-        for (size_t byteC = 0; byteC < 28; byteC++) inData[byteC] = data[byteC];
+        if (fixed < 0) {
+            //qDebug() << "ReedSolomon::decodeC2(): C2 CIRC failed" << erasures.size();
+
+            //qDebug() << "ReedSolomon::decodeC2(): Orig was" << dataToString(origData);
+            //qDebug() << "ReedSolomon::decodeC2(): Data was" << dataToString(data);
+
+        } else {
+            // Copy back the corrected data
+            for (size_t byteC = 0; byteC < 28; byteC++) inData[byteC] = data[byteC];
+        }
     } else {
-        qDebug() << "ReedSolomon::decodeC2(): Too many erasures, C2 invalid" << erasures.size();
+        //qDebug() << "ReedSolomon::decodeC2(): Too many erasures, C2 invalid" << erasures.size();
     }
 
     // Did C2 pass?

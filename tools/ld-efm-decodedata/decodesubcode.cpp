@@ -26,8 +26,6 @@
 
 DecodeSubcode::DecodeSubcode()
 {
-    verbose = false;
-
     // Initialise the state machine
     currentState = state_initial;
     nextState = currentState;
@@ -42,11 +40,6 @@ DecodeSubcode::DecodeSubcode()
     // Set the current QMode to the default
     currentQMode = qMode_unknown;
     previousQMode = currentQMode;
-}
-
-void DecodeSubcode::setVerboseDebug(bool verboseDebug)
-{
-    verbose = verboseDebug;
 }
 
 // Method to return the current Q Mode
@@ -108,7 +101,6 @@ void DecodeSubcode::process(QByteArray f3FrameParam)
 
 DecodeSubcode::StateMachine DecodeSubcode::sm_state_initial(void)
 {
-    if (verbose) qDebug() << "DecodeSubcode::sm_state_initial(): Current state: sm_state_initial";
     return state_getSync0;
 }
 
@@ -119,7 +111,6 @@ DecodeSubcode::StateMachine DecodeSubcode::sm_state_getSync0(void)
 
     // Does the current frame contain a SYNC0 marker?
     if (f3Section[frameCounter][0] == static_cast<char>(0x01)) {
-        if (verbose) qDebug() << "DecodeSubcode::sm_state_getSync0(): SYNC0 found";
         frameCounter++;
         waitingForF3frame = true;
         return state_getSync1;
@@ -139,7 +130,6 @@ DecodeSubcode::StateMachine DecodeSubcode::sm_state_getSync1(void)
 
     // Does the current frame contain a SYNC1 marker?
     if (f3Section[frameCounter][0] == static_cast<char>(0x02)) {
-        if (verbose) qDebug() << "DecodeSubcode::sm_state_getSync1(): SYNC1 found";
         frameCounter++;
         waitingForF3frame = true;
         return state_getInitialSection;
@@ -160,7 +150,6 @@ DecodeSubcode::StateMachine DecodeSubcode::sm_state_getInitialSection(void)
 
     // If we have 98 frames, the section is complete, process it
     if (frameCounter == 98) {
-        if (verbose) qDebug() << "DecodeSubcode::sm_state_getInitialSection(): 98 frames received - Section is complete";
         return state_processSection;
     }
 
@@ -178,10 +167,10 @@ DecodeSubcode::StateMachine DecodeSubcode::sm_state_getNextSection(void)
     // If we have 2 frames, check the sync pattern
     if (frameCounter == 2) {
         if (f3Section[0][0] == static_cast<char>(0x01) && f3Section[1][0] == static_cast<char>(0x02)) {
-            if (verbose) qDebug() << "DecodeSubcode::sm_state_getNextSection(): Section SYNC0 and SYNC1 are valid";
+            //qDebug() << "DecodeSubcode::sm_state_getNextSection(): Section SYNC0 and SYNC1 are valid";
             missedSectionSyncCount = 0;
         } else {
-            if (verbose) qDebug() << "DecodeSubcode::sm_state_getNextSection(): Section SYNC0 and/or SYNC1 are INVALID";
+            qDebug() << "DecodeSubcode::sm_state_getNextSection(): Section SYNC0 and/or SYNC1 are INVALID";
             missedSectionSyncCount++;
 
             // If we have missed 4 syncs in a row, consider the sync as lost
@@ -194,7 +183,6 @@ DecodeSubcode::StateMachine DecodeSubcode::sm_state_getNextSection(void)
 
     // If we have 98 frames, the section is complete, process it
     if (frameCounter == 98) {
-        if (verbose) qDebug() << "DecodeSubcode::sm_state_getNextSection(): 98 frames received - Section is complete";
         return state_processSection;
     }
 
@@ -233,7 +221,7 @@ DecodeSubcode::StateMachine DecodeSubcode::sm_state_processSection(void)
 
 DecodeSubcode::StateMachine DecodeSubcode::sm_state_syncLost(void)
 {
-    if (verbose) qDebug() << "DecodeSubcode::sm_state_syncLost(): Sync has been lost!";
+    qDebug() << "DecodeSubcode::sm_state_syncLost(): Subcode Sync has been lost!";
 
     // Discard all frames
     frameCounter = 0;
@@ -248,6 +236,8 @@ DecodeSubcode::StateMachine DecodeSubcode::sm_state_syncLost(void)
 // Returns the Q Mode field number (or -1 if the Mode is unknown)
 void DecodeSubcode::decodeQ(uchar *qSubcode)
 {
+    QString debugOut;
+
     // CRC check the Q-subcode - CRC is on control+mode+data 4+4+72 = 80 bits with 16-bit CRC (96 bits total)
     char crcSource[10];
     for (qint32 byteNo = 0; byteNo < 10; byteNo++) crcSource[byteNo] = static_cast<char>(qSubcode[byteNo]);
@@ -256,7 +246,7 @@ void DecodeSubcode::decodeQ(uchar *qSubcode)
 
     // Is the Q subcode valid?
     if (crcChecksum != calcChecksum) {
-        if (verbose) qDebug() << "DecodeSubcode::decodeQ(): Q Subcode failed CRC check - INVALID Q SUBCODE";
+        debugOut += "Q Subcode CRC failed - subcode is invalid";
         currentQMode = qMode_unknown;
         return;
     }
@@ -267,65 +257,65 @@ void DecodeSubcode::decodeQ(uchar *qSubcode)
 
     // Show Control field meaning
     switch(qControlField) {
-    case 0: if (verbose) qDebug() << "DecodeSubcode::decodeQ(): Control 0 (audio channels without pre-emphasis)";
+    case 0: debugOut += "Control 0 (audio no pre-emp)";
         break;
-    case 1: if (verbose) qDebug() << "DecodeSubcode::decodeQ(): Control 1 (audio channels with pre-emphasis 50/15us)";
+    case 1: debugOut += "Control 1 (audio delayed pre-emp)";
         break;
-    case 2: if (verbose) qDebug() << "DecodeSubcode::decodeQ(): Control 2 (audio channels without pre-emphasis)";
+    case 2: debugOut += "Control 2 (audio no pre-emp)";
         break;
-    case 3: if (verbose) qDebug() << "DecodeSubcode::decodeQ(): Control 3 (audio channels with pre-emphasis 50/15us)";
+    case 3: debugOut += "Control 3 (audio delayed pre-emp)";
         break;
-    case 4: if (verbose) qDebug() << "DecodeSubcode::decodeQ(): Control 4 (The user data is digital data and it shall not be copied)";
+    case 4: debugOut += "Control 4 (data no copy)";
         break;
-    case 6: if (verbose) qDebug() << "DecodeSubcode::decodeQ(): Control 5 (The user data is digital data and it may be copied)";
+    case 6: debugOut += "Control 6 (data with copy)";
         break;
-    default: if (verbose) qDebug() << "DecodeSubcode::decodeQ(): Control is unknown";
+    default: debugOut += "Control " + QString::number(qControlField) + " (unknown)";
     }
 
     // Show mode field meaning
     switch(qModeField) {
-    case 0: if (verbose) qDebug() << "DecodeSubcode::decodeQ(): Mode 0 for DATA-Q (typically used on non-CD information channels)";
+    case 0: debugOut += " - Mode 0 (non-CD)";
         currentQMode = qMode_0;
         break;
-    case 1: if (verbose) qDebug() << "DecodeSubcode::decodeQ(): Mode 1 for DATA-Q (Audio track/time information)";
-        if (verbose) qDebug().noquote().nospace() << "DecodeSubcode::decodeQ(): Track " << bcdToQString(qSubcode[1]) << " / Index " << bcdToQString(qSubcode[2]) <<
-                    " - Time (m:s.f): " << bcdToQString(qSubcode[3]) << ":" << bcdToQString(qSubcode[4]) << "." << bcdToQString(qSubcode[5]);
+    case 1: debugOut += " - Mode 1 (CD Audio) Trk/Idx " + bcdToQString(qSubcode[1]) + "/" + bcdToQString(qSubcode[2]) +
+                " - T: " + bcdToQString(qSubcode[3]) + ":" + bcdToQString(qSubcode[4]) + "." + bcdToQString(qSubcode[5]);
         currentQMode = qMode_1;
         break;
-    case 2: if (verbose) qDebug() << "DecodeSubcode::decodeQ(): Mode 2 for DATA-Q (Catalogue number of the disc)";
+    case 2: debugOut += " - Mode 2 (Catalogue number)";
         currentQMode = qMode_2;
         break;
-    case 3: if (verbose) qDebug() << "DecodeSubcode::decodeQ(): Mode 3 for DATA-Q (Unique number for an audio track)";
+    case 3: debugOut += " - Mode 3 (track ID)";
         currentQMode = qMode_3;
         break;
-    case 4: if (verbose) qDebug() << "DecodeSubcode::decodeQ(): Mode 4 for DATA-Q (Video track/time information)";
-        if (verbose) qDebug().noquote().nospace() << "DecodeSubcode::decodeQ(): Track " << bcdToQString(qSubcode[1]) << " / Index " << bcdToQString(qSubcode[2]) <<
-                    " - Time (m:s.f): " << bcdToQString(qSubcode[3]) << ":" << bcdToQString(qSubcode[4]) << "." << bcdToQString(qSubcode[5]);
+    case 4: debugOut += " - Mode 4 (Video Audio) Trk/Idx " + bcdToQString(qSubcode[1]) + "/" + bcdToQString(qSubcode[2]) +
+                " - T: " + bcdToQString(qSubcode[3]) + ":" + bcdToQString(qSubcode[4]) + "." + bcdToQString(qSubcode[5]);
         currentQMode = qMode_4;
 
         // qSubcode[7] is PFRAME
         switch (qSubcode[7]) {
-        case 10: if (verbose) qDebug() << "DecodeSubcode::decodeQ(): Video system: NTSC 'video single' with digital stereo sound";
+        case 10: debugOut += " - NTSC CDV stereo";
             break;
-        case 11: if (verbose) qDebug() << "DecodeSubcode::decodeQ(): Video system: NTSC 'video single' with digital bilingual sound";
+        case 11: debugOut += " - NTSC CDV bilingual";
             break;
-        case 12: if (verbose) qDebug() << "DecodeSubcode::decodeQ(): Video system: NTSC 'LV disc' with digital stereo sound";
+        case 12: debugOut += " - NTSC LV stereo";
             break;
-        case 13: if (verbose) qDebug() << "DecodeSubcode::decodeQ(): Video system: NTSC 'LV disc' with digital bilingual sound";
+        case 13: debugOut += " - NTSC LV bilingual";
             break;
-        case 20: if (verbose) qDebug() << "DecodeSubcode::decodeQ(): Video system: PAL 'video single' with digital stereo sound";
+        case 20: debugOut += " - PAL CDV stereo";
             break;
-        case 21: if (verbose) qDebug() << "DecodeSubcode::decodeQ(): Video system: PAL 'video single' with digital bilingual sound";
+        case 21: debugOut += " - PAL CDV bilingual";
             break;
-        case 22: if (verbose) qDebug() << "DecodeSubcode::decodeQ(): Video system: PAL 'LV disc' with digital stereo sound";
+        case 22: debugOut += " - PAL LV stereo";
             break;
-        case 23: if (verbose) qDebug() << "DecodeSubcode::decodeQ(): Video system: PAL 'LV disc' with digital bilingual sound";
+        case 23: debugOut += " - PAL LV bilingual";
             break;
-        default: if (verbose) qDebug() << "DecodeSubcode::decodeQ(): Video system: Unknown";
+        default: debugOut += " - Unknown";
         }
         break;
-    default: if (verbose) qDebug() << "DecodeSubcode::decodeQ(): Mode is unknown";
+    default: debugOut += " - Mode Unknown " + QString::number(qModeField);
     }
+
+    qDebug() << "DecodeSubcode::decodeQ():" << debugOut;
 }
 
 // Method to convert 2 digit BCD byte to 2 numeric characters

@@ -40,6 +40,9 @@ DecodeAudio::DecodeAudio()
 
     validC2Count = 0;
     invalidC2Count = 0;
+
+    validAudioSampleCount = 0;
+    invalidAudioSampleCount = 0;
 }
 
 // Get the F3 frame
@@ -72,6 +75,18 @@ qint32 DecodeAudio::getValidC2Count(void)
 qint32 DecodeAudio::getInvalidC2Count(void)
 {
     return invalidC2Count;
+}
+
+// Get the audio samples statistic
+qint32 DecodeAudio::getValidAudioSamplesCount(void)
+{
+    return validAudioSampleCount;
+}
+
+// Get the audio samples statistic
+qint32 DecodeAudio::getInvalidAudioSamplesCount(void)
+{
+    return invalidAudioSampleCount;
 }
 
 void DecodeAudio::process(QByteArray f3FrameParam)
@@ -112,8 +127,6 @@ void DecodeAudio::process(QByteArray f3FrameParam)
 
 DecodeAudio::StateMachine DecodeAudio::sm_state_initial(void)
 {
-    qDebug() << "DecodeAudio::sm_state_initial(): Called";
-
     // We need at least 2 frames to process a C1
     previousF3Frame = currentF3Frame;
     waitingForF3frame = true;
@@ -137,7 +150,7 @@ DecodeAudio::StateMachine DecodeAudio::sm_state_processC1(void)
     } else {
         invalidC1Count++;
         c1DataValid = false;
-        qDebug() << "DecodeAudio::sm_state_processC1(): Invalid C1 #" << invalidC1Count;
+        //qDebug() << "DecodeAudio::sm_state_processC1(): Invalid C1 #" << invalidC1Count;
     }
 
     // Store the frame and get a new frame
@@ -174,7 +187,7 @@ DecodeAudio::StateMachine DecodeAudio::sm_state_processC2(void)
             // C2 Success
             validC2Count++;
             c2DataValid = true;
-            qDebug() << "DecodeAudio::sm_state_processC2(): Valid C2 #" << validC2Count;
+            //qDebug() << "DecodeAudio::sm_state_processC2(): Valid C2 #" << validC2Count;
         } else {
             // C2 Failure
             invalidC2Count++;
@@ -275,8 +288,9 @@ void DecodeAudio::deInterleaveC2(uchar *outputData)
     qint32 prev = 0; // C2 2=frame delay
 
     // Note: This drops the parity leaving 24 bytes of data (12 words of 16 bits)
-
-    if (c2DelayBuffer[curr].c2SymbolsValid) {
+    if (c2DelayBuffer[curr].c2SymbolsValid && c2DelayBuffer[prev].c2SymbolsValid) {
+        // Audio data is valid
+        validAudioSampleCount++;
         outputData[ 0] = c2DelayBuffer[curr].c2Symbols[ 0];
         outputData[ 1] = c2DelayBuffer[curr].c2Symbols[ 1];
         outputData[ 2] = c2DelayBuffer[curr].c2Symbols[ 6];
@@ -291,26 +305,7 @@ void DecodeAudio::deInterleaveC2(uchar *outputData)
         outputData[17] = c2DelayBuffer[curr].c2Symbols[ 5];
         outputData[18] = c2DelayBuffer[curr].c2Symbols[10];
         outputData[19] = c2DelayBuffer[curr].c2Symbols[11];
-    } else {
-        // To-do: Audio error concealment
-        qDebug() << "DecodeAudio::deInterleaveC2(): Invalid audio data!";
-        outputData[ 0] = 0;
-        outputData[ 1] = 0;
-        outputData[ 2] = 0;
-        outputData[ 3] = 0;
 
-        outputData[ 8] = 0;
-        outputData[ 9] = 0;
-        outputData[10] = 0;
-        outputData[11] = 0;
-
-        outputData[16] = 0;
-        outputData[17] = 0;
-        outputData[18] = 0;
-        outputData[19] = 0;
-    }
-
-    if (c2DelayBuffer[prev].c2SymbolsValid) {
         outputData[ 4] = c2DelayBuffer[prev].c2Symbols[16];
         outputData[ 5] = c2DelayBuffer[prev].c2Symbols[17];
         outputData[ 6] = c2DelayBuffer[prev].c2Symbols[22];
@@ -326,8 +321,24 @@ void DecodeAudio::deInterleaveC2(uchar *outputData)
         outputData[22] = c2DelayBuffer[prev].c2Symbols[26];
         outputData[23] = c2DelayBuffer[prev].c2Symbols[27];
     } else {
-        // To-do: Audio error concealment
-        qDebug() << "DecodeAudio::deInterleaveC2(): Invalid audio data!";
+        // Audio data is invalid
+        //qDebug() << "DecodeAudio::deInterleaveC2(): Invalid audio sample data";
+        invalidAudioSampleCount++;
+        outputData[ 0] = 0;
+        outputData[ 1] = 0;
+        outputData[ 2] = 0;
+        outputData[ 3] = 0;
+
+        outputData[ 8] = 0;
+        outputData[ 9] = 0;
+        outputData[10] = 0;
+        outputData[11] = 0;
+
+        outputData[16] = 0;
+        outputData[17] = 0;
+        outputData[18] = 0;
+        outputData[19] = 0;
+
         outputData[ 4] = 0;
         outputData[ 5] = 0;
         outputData[ 6] = 0;
