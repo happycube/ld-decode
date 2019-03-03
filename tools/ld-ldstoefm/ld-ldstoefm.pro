@@ -16,10 +16,10 @@ DEFINES += QT_DEPRECATED_WARNINGS
 
 SOURCES += \
         main.cpp \
-    efmprocess.cpp \
-    decodesubcode.cpp \
-    decodeaudio.cpp \
-    reedsolomon.cpp
+    ldsprocess.cpp \
+    efmfilter.cpp \
+    isifilter.cpp \
+    pll.cpp
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin
@@ -27,21 +27,7 @@ else: unix:!android: target.path = /usr/local/bin/
 !isEmpty(target.path): INSTALLS += target
 
 HEADERS += \
-    efmprocess.h \
-    decodesubcode.h \
-    decodeaudio.h \
-    reedsolomon.h \
-    ezpwd/asserter \
-    ezpwd/bch \
-    ezpwd/bch_base \
-    ezpwd/corrector \
-    ezpwd/definitions \
-    ezpwd/ezcod \
-    ezpwd/output \
-    ezpwd/rs \
-    ezpwd/serialize \
-    ezpwd/serialize_definitions \
-    ezpwd/timeofday
-
-DISTFILES += \
-    ezpwd/rs_base
+    ldsprocess.h \
+    efmfilter.h \
+    isifilter.h \
+    pll.h

@@ -1,13 +1,13 @@
 /************************************************************************
 
-    filter.h
+    isifilter.h
 
-    ld-efm-sampletodata - EFM sample to data processor for ld-decode
+    ld-ldstoefm - LDS sample to EFM data processing
     Copyright (C) 2019 Simon Inns
 
     This file is part of ld-decode-tools.
 
-    ld-efm-sampletodata is free software: you can redistribute it and/or
+    ld-ldstoefm is free software: you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
     published by the Free Software Foundation, either version 3 of the
     License, or (at your option) any later version.
@@ -22,21 +22,26 @@
 
 ************************************************************************/
 
-#ifndef FILTER_H
-#define FILTER_H
+#ifndef ISIFILTER_H
+#define ISIFILTER_H
 
 #include <QCoreApplication>
 #include <QDebug>
 
-class Filter
+// Note: The ISI filter is a raised cosine filter that acts to pulse-shape
+// the EFM sample.  It is aligned based on T1/2 and should therefore
+// sharpen the edges of the EFM pulses whilst attenuating interference.
+
+class IsiFilter
 {
 public:
-    Filter();
-    void channelEqualizer(QByteArray &inputSample);
-    void fpChannelEqualizer(QByteArray &inputSample);
+    IsiFilter();
+
+    void floatIsiProcess(QByteArray &inputSample);
+    void fixedIsiProcess(QByteArray &inputSample);
 
 private:
-    // Channel equalizer filter ---------------------------------------------------------------------------------------
+    // Inter-Symbol Interference filter -------------------------------------------------------------------------------
 
     // M = Amount of over sampling
     // D = Number of symbols to be spanned by the impulse response
@@ -58,10 +63,9 @@ private:
     //    bits 	= 16
     //    logmin 	=
 
-    /* Digital filter designed by mkfilter/mkshape/gencode   A.J. Fisher
-       Command line: /www/usr/fisher/helpers/mkshape -c 5.4022500000e-02 7.5000000000e-01 81 -l */
+    /* Digital filter designed by mkfilter/mkshape/gencode   A.J. Fisher */
 
-    static const qint32 ceNZeros = 80;
+    static const qint32 ceNZeros = 80; // 81 taps
     static constexpr qreal ceGain = 9.241973877e+00;
     qreal ceXv[ceNZeros+1];
 
@@ -90,9 +94,9 @@ private:
     };
 
     // Method prototypes ----------------------------------------------------------------------------------------------
-    qreal channelEqualizerFir(qreal inputSample);
+    qreal floatingIsiFilter(qreal inputSample);
 
-    // Fixed point test (coeff scaled by 15 bits (32768))
+    // Fixed point version (coeff scaled by 15 bits (32768))
 
     static const qint32 fpTaps = 81;
     qint16 fpXv[fpTaps];
@@ -113,7 +117,7 @@ private:
         -53, -58, -48, -26, -1, 21, 34, 35
     };
 
-    qint16 fpChannelEqualizerFir(qint16 inputSample);
+    qint16 fixedIsiFilter(qint16 inputSample);
 };
 
-#endif // FILTER_H
+#endif // ISIFILTER_H

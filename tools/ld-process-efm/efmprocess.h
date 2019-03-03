@@ -1,13 +1,13 @@
 /************************************************************************
 
-    phaselockedloop.h
+    efmprocess.cpp
 
-    ld-efm-sampletodata - EFM sample to data processor for ld-decode
+    ld-process-efm - EFM data decoder
     Copyright (C) 2019 Simon Inns
 
     This file is part of ld-decode-tools.
 
-    ld-efm-sampletodata is free software: you can redistribute it and/or
+    ld-ldstoefm is free software: you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
     published by the Free Software Foundation, either version 3 of the
     License, or (at your option) any later version.
@@ -22,30 +22,38 @@
 
 ************************************************************************/
 
-#ifndef PHASELOCKEDLOOP_H
-#define PHASELOCKEDLOOP_H
+#ifndef EFMPROCESS_H
+#define EFMPROCESS_H
 
 #include <QCoreApplication>
 #include <QDebug>
+#include <QFile>
+#include <QDataStream>
 
-class Pll_t
+#include "f3framer.h"
+#include "decodesubcode.h"
+#include "decodeaudio.h"
+
+class EfmProcess
 {
 public:
-    Pll_t(QVector<qint8> &_result);
-    void pushEdge(qreal sampleDelta);
+    EfmProcess();
+
+    bool process(QString inputFilename, QString outputFilename, bool frameDebug);
 
 private:
-    qreal basePeriod;
-    qreal minimumPeriod;
-    qreal maximumPeriod;
-    qreal periodAdjustBase;
+    QFile *inputFileHandle;
+    QFile *outputFileHandle;
+    F3Framer f3Framer;
+    DecodeSubcode decodeSubcode;
+    DecodeAudio decodeAudio;
 
-    QVector<qint8> &result;
-    qreal currentPeriod, phaseAdjust, refClockTime;
-    qint32 frequencyHysteresis;
-    qint8 tCounter;
+    bool openInputFile(QString inputFileName);
+    void closeInputFile(void);
+    QByteArray readEfmData(qint32 bufferSize);
 
-    void pushTValue(qint8 bit);
+    bool openOutputDataFile(QString filename);
+    void closeOutputDataFile(void);
 };
 
-#endif // PHASELOCKEDLOOP_H
+#endif // EFMPROCESS_H

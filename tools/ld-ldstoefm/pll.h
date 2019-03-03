@@ -1,13 +1,13 @@
 /************************************************************************
 
-    reedsolomon.cpp
+    pll.h
 
-    ld-efm-decodedata - EFM data decoder for ld-decode
+    ld-ldstoefm - LDS sample to EFM data processing
     Copyright (C) 2019 Simon Inns
 
     This file is part of ld-decode-tools.
 
-    ld-efm-decodedata is free software: you can redistribute it and/or
+    ld-ldstoefm is free software: you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
     published by the Free Software Foundation, either version 3 of the
     License, or (at your option) any later version.
@@ -22,32 +22,39 @@
 
 ************************************************************************/
 
-#ifndef REEDSOLOMON_H
-#define REEDSOLOMON_H
+#ifndef PLL_H
+#define PLL_H
 
 #include <QCoreApplication>
 #include <QDebug>
 
-
-
-class ReedSolomon
+class Pll
 {
 public:
-    ReedSolomon();
+    Pll();
 
-    bool decodeC1(unsigned char *inData);
-    bool decodeC2(uchar *inData, bool *inErasures);
+    QByteArray process(QByteArray buffer);
 
 private:
-    QString dataToString(std::vector<uint8_t> data);
+    // ZC detector state
+    bool zcFirstRun;
+    qint16 zcPreviousInput;
+    bool prevDirection;
+    qreal delta;
 
-    qint32 c1Passed;
-    qint32 c1Corrected;
-    qint32 c1Failed;
+    // PLL state
+    QByteArray pllResult;
+    qreal basePeriod;
+    qreal minimumPeriod;
+    qreal maximumPeriod;
+    qreal periodAdjustBase;
 
-    qint32 c2Passed;
-    qint32 c2Corrected;
-    qint32 c2Failed;
+    qreal currentPeriod, phaseAdjust, refClockTime;
+    qint32 frequencyHysteresis;
+    qint8 tCounter;
+
+    void pushEdge(qreal sampleDelta);
+    void pushTValue(qint8 bit);
 };
 
-#endif // REEDSOLOMON_H
+#endif // PLL_H

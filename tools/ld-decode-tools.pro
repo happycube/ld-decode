@@ -6,8 +6,8 @@ SUBDIRS = ld-decode-shared \
           ld-analyse \
 	  ld-comb-ntsc \
 	  ld-combine \
-          ld-efm-sampletodata \
-          ld-efm-decodedata
+          ld-process-efm \
+          ld-ldstoefm
 
 
 

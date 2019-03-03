@@ -1,13 +1,13 @@
 /************************************************************************
 
-    efmprocess.cpp
+    ldsprocess.h
 
-    ld-efm-decodedata - EFM data decoder for ld-decode
+    ld-ldstoefm - LDS sample to EFM data processing
     Copyright (C) 2019 Simon Inns
 
     This file is part of ld-decode-tools.
 
-    ld-efm-decodedata is free software: you can redistribute it and/or
+    ld-ldstoefm is free software: you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
     published by the Free Software Foundation, either version 3 of the
     License, or (at your option) any later version.
@@ -22,40 +22,36 @@
 
 ************************************************************************/
 
-#ifndef EFMPROCESS_H
-#define EFMPROCESS_H
+#ifndef LDSPROCESS_H
+#define LDSPROCESS_H
 
 #include <QCoreApplication>
 #include <QDebug>
 #include <QFile>
-#include <QDataStream>
 
-#include "decodesubcode.h"
-#include "decodeaudio.h"
+#include "efmfilter.h"
+#include "isifilter.h"
+#include "pll.h"
 
-class EfmProcess
+class LdsProcess
 {
 public:
-    EfmProcess();
-
+    LdsProcess();
     bool process(QString inputFilename, QString outputFilename);
 
 private:
-    QFile* inputFile;
-    QFile* outputFile;
+    QFile *inputFileHandle;
+    QFile *outputFileHandle;
+    EfmFilter efmFilter;
+    IsiFilter isiFilter;
+    Pll pll;
 
-    DecodeSubcode decodeSubcode;
-    DecodeAudio decodeAudio;
+    bool openInputFile(QString inputFileName);
+    void closeInputFile(void);
+    bool openOutputFile(QString outputFileName);
+    void closeOutputFile(void);
 
-
-
-    bool openInputF3File(QString filename);
-    void closeInputF3File(void);
-    QByteArray readF3Frames(qint32 numberOfFrames);
-    bool openOutputDataFile(QString filename);
-    void closeOutputDataFile(void);
-
-
+    QByteArray readAndUnpackLdsFile(void);
 };
 
-#endif // EFMPROCESS_H
+#endif // LDSPROCESS_H

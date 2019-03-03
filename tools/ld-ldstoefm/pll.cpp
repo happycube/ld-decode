@@ -1,13 +1,13 @@
 /************************************************************************
 
-    phaselockedloop.cpp
+    pll.cpp
 
-    ld-efm-sampletodata - EFM sample to data processor for ld-decode
+    ld-ldstoefm - LDS sample to EFM data processing
     Copyright (C) 2019 Simon Inns
 
     This file is part of ld-decode-tools.
 
-    ld-efm-sampletodata is free software: you can redistribute it and/or
+    ld-ldstoefm is free software: you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
     published by the Free Software Foundation, either version 3 of the
     License, or (at your option) any later version.
@@ -22,22 +22,26 @@
 
 ************************************************************************/
 
-// Note: This PLL implementation is based on original code provided to
+// Note: The PLL implementation is based on original code provided to
 // the ld-decode project by Olivier “Sarayan” Galibert.  Many thanks
 // for the assistance!
 
-#include "phaselockedloop.h"
+#include "pll.h"
 
-Pll_t::Pll_t(QVector<qint8> &_result) : result(_result)
+Pll::Pll()
 {
-    // Configuration
+    // Default ZC detector state
+    zcFirstRun = true;
+    zcPreviousInput = 0;
+
+    // Default PLL state
     basePeriod = 40000000 / 4321800; // T1 clock period 40MSPS / bit-rate
 
     minimumPeriod  = basePeriod * 0.75; // -25% minimum
     maximumPeriod  = basePeriod * 1.25; // +25% maximum
     periodAdjustBase = basePeriod * 0.0001; // Clock adjustment step
 
-    // Working parameter defaults
+    // PLL Working parameter defaults
     currentPeriod = basePeriod;
     frequencyHysteresis = 0;
     phaseAdjust = 0;
@@ -45,11 +49,82 @@ Pll_t::Pll_t(QVector<qint8> &_result) : result(_result)
     tCounter = 1;
 }
 
-void Pll_t::pushTValue(qint8 bit)
+// This method performs interpolated zero-crossing detection and stores the
+// result a sample deltas (the number of samples between each
+// zero-crossing).  Interpolation of the zero-crossing point provides a
+// result with sub-sample resolution.
+//
+// Since the EFM data is NRZ-I (non-return to zero inverted) the polarity of the input
+// signal is not important (only the frequency); therefore we can simply
+// store the delta information.  The resulting delta information is fed to the
+// phase-locked loop which is responsible for correcting jitter errors from the ZC
+// detection process.
+QByteArray Pll::process(QByteArray buffer)
+{
+    // Input data is really qint16 wrapped in a byte array
+    qint16 *inputBuffer = reinterpret_cast<qint16*>(buffer.data());
+
+    // Clear the PLL result buffer
+    pllResult.clear();
+
+    // In order to hold state over buffer read boundaries, we keep
+    // global track of the direction and delta information
+    if (zcFirstRun) {
+        zcFirstRun = false;
+
+        zcPreviousInput = 0;
+        prevDirection = false; // Down
+        delta = 0;
+    }
+
+    for (qint32 i = 0; i < (buffer.size() / 2); i++) {
+        qint16 vPrev = zcPreviousInput;
+        qint16 vCurr = inputBuffer[i];
+
+        bool xup = false;
+        bool xdn = false;
+
+        // Possing zero-cross up or down?
+        if (vPrev < 0 && vCurr >= 0) xup = true;
+        if (vPrev > 0 && vCurr <= 0) xdn = true;
+
+        // Check ZC direction against previous
+        if (prevDirection && xup) xup = false;
+        if (!prevDirection && xdn) xdn = false;
+
+        // Store the current direction as the previous
+        if (xup) prevDirection = true;
+        if (xdn) prevDirection = false;
+
+        if (xup || xdn) {
+            // Interpolate to get the ZC sub-sample position fraction
+            qreal prev = static_cast<qreal>(vPrev);
+            qreal curr = static_cast<qreal>(vCurr);
+            qreal fraction = (-prev) / (curr - prev);
+
+            // Feed the sub-sample accurate result to the PLL
+            pushEdge(delta + fraction);
+
+            // Offset the next delta by the fractional part of the result
+            // in order to maintain accuracy
+            delta = 1.0 - fraction;
+        } else {
+            // No ZC, increase delta by 1 sample
+            delta += 1.0;
+        }
+
+        // Keep the previous input (so we can work across buffer boundaries)
+        zcPreviousInput = inputBuffer[i];
+    }
+
+    return pllResult;
+}
+
+void Pll::pushTValue(qint8 bit)
 {
     // If this is a 1, push the T delta
     if (bit) {
-        result.push_back(tCounter);
+        pllResult.push_back(tCounter);
         tCounter = 1;
     } else {
         tCounter++;
@@ -57,7 +132,7 @@ void Pll_t::pushTValue(qint8 bit)
 }
 
 // Called when a ZC happens on a sample number
-void Pll_t::pushEdge(qreal sampleDelta)
+void Pll::pushEdge(qreal sampleDelta)
 {
     while(sampleDelta >= refClockTime) {
         qreal next = refClockTime + currentPeriod + phaseAdjust;

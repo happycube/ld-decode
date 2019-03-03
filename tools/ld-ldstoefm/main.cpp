@@ -2,12 +2,12 @@
 
     main.cpp
 
-    ld-efm-decodedata - EFM data decoder for ld-decode
+    ld-ldstoefm - LDS sample to EFM data processing
     Copyright (C) 2019 Simon Inns
 
     This file is part of ld-decode-tools.
 
-    ld-efm-decodedata is free software: you can redistribute it and/or
+    ld-ldstoefm is free software: you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
     published by the Free Software Foundation, either version 3 of the
     License, or (at your option) any later version.
@@ -27,7 +27,7 @@
 #include <QtGlobal>
 #include <QCommandLineParser>
 
-#include "efmprocess.h"
+#include "ldsprocess.h"
 
 // Global for debug output
 static bool showDebug = false;
@@ -76,14 +76,14 @@ int main(int argc, char *argv[])
     QCoreApplication a(argc, argv);
 
     // Set application name and version
-    QCoreApplication::setApplicationName("ld-efm-decodedata");
+    QCoreApplication::setApplicationName("ld-ldstoefm");
     QCoreApplication::setApplicationVersion("1.0");
     QCoreApplication::setOrganizationDomain("domesday86.com");
 
     // Set up the command line parser
     QCommandLineParser parser;
     parser.setApplicationDescription(
-                "ld-efm-decodedata - EFM data decoder for ld-decode\n"
+                "ld-ldstoefm - LDS sample to EFM data processing\n"
                 "\n"
                 "(c)2019 Simon Inns\n"
                 "GPLv3 Open-Source - github: https://github.com/happycube/ld-decode");
@@ -96,10 +96,10 @@ int main(int argc, char *argv[])
     parser.addOption(showDebugOption);
 
     // Positional argument to specify input EFM file
-    parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input F3 frame data file"));
+    parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input 40MSPS sampled LDS file"));
 
     // Positional argument to specify output data file
-    parser.addPositionalArgument("output", QCoreApplication::translate("main", "Specify output decoded data file"));
+    parser.addPositionalArgument("output", QCoreApplication::translate("main", "Specify output EFM data file"));
 
     // Process the command line options and arguments given by the user
     parser.process(a);
@@ -116,7 +116,7 @@ int main(int argc, char *argv[])
         outputFilename = positionalArguments.at(1);
     } else {
         // Quit with error
-        qCritical("You must specify an input raw EFM data file and an output data file");
+        qCritical("You must specify an input LDS file and an output EFM file");
         return -1;
     }
 
@@ -130,8 +130,8 @@ int main(int argc, char *argv[])
     if (isDebugOn) showDebug = true;
 
     // Perform the processing
-    EfmProcess efmProcess;
-    efmProcess.process(inputFilename, outputFilename);
+    LdsProcess ldsProcess;
+    ldsProcess.process(inputFilename, outputFilename);
 
     // Quit with success
     return 0;

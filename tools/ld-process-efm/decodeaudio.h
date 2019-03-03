@@ -2,7 +2,7 @@
 
     decodeaudio.h
 
-    ld-efm-decodedata - EFM data decoder for ld-decode
+    ld-process-efm - EFM data decoder
     Copyright (C) 2019 Simon Inns
 
     This file is part of ld-decode-tools.

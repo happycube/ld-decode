@@ -1,13 +1,13 @@
 /************************************************************************
 
-    filter.cpp
+    isifilter.cpp
 
-    ld-efm-sampletodata - EFM sample to data processor for ld-decode
+    ld-ldstoefm - LDS sample to EFM data processing
     Copyright (C) 2019 Simon Inns
 
     This file is part of ld-decode-tools.
 
-    ld-efm-sampletodata is free software: you can redistribute it and/or
+    ld-ldstoefm is free software: you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
     published by the Free Software Foundation, either version 3 of the
     License, or (at your option) any later version.
@@ -22,9 +22,9 @@
 
 ************************************************************************/
 
-#include "filter.h"
+#include "isifilter.h"
 
-Filter::Filter()
+IsiFilter::IsiFilter()
 {
     // Test code - converts floating-point coeffs to fixed point
     // with 15 bit scaling
@@ -39,18 +39,18 @@ Filter::Filter()
     offset = 0;
 }
 
-// Method to feed the channelEqualizer FIR filter
-void Filter::channelEqualizer(QByteArray &inputSample)
+// Method to feed the ISI FIR filter
+void IsiFilter::floatIsiProcess(QByteArray &inputSample)
 {
     qint16 *input = reinterpret_cast<qint16*>(inputSample.data());
 
     for (qint32 sample = 0; sample < (inputSample.size() / 2); sample++) {
-        input[sample] = static_cast<qint16>(channelEqualizerFir(static_cast<qreal>(input[sample])));
+        input[sample] = static_cast<qint16>(floatingIsiFilter(static_cast<qreal>(input[sample])));
     }
 }
 
-// Channel Equalizer FIR filter
-qreal Filter::channelEqualizerFir(qreal inputSample)
+// ISI FIR filter (floating-point implementation)
+qreal IsiFilter::floatingIsiFilter(qreal inputSample)
 {
     qreal sum; qint32 i;
     for (i = 0; i < ceNZeros; i++) ceXv[i] = ceXv[i+1];
@@ -60,18 +60,18 @@ qreal Filter::channelEqualizerFir(qreal inputSample)
     return sum;
 }
 
-// Method to feed the channelEqualizer FIR filter (fixed-point implementation)
-void Filter::fpChannelEqualizer(QByteArray &inputSample)
+// Method to feed the ISI FIR filter (fixed-point implementation)
+void IsiFilter::fixedIsiProcess(QByteArray &inputSample)
 {
     qint16 *input = reinterpret_cast<qint16*>(inputSample.data());
 
     for (qint32 sample = 0; sample < (inputSample.size() / 2); sample++) {
-        input[sample] = fpChannelEqualizerFir(input[sample]);
+        input[sample] = fixedIsiFilter(input[sample]);
     }
 }
 
-// Channel Equalizer FIR filter (fixed-point implementation)
-qint16 Filter::fpChannelEqualizerFir(qint16 inputSample)
+// ISI FIR filter (fixed-point implementation)
+qint16 IsiFilter::fixedIsiFilter(qint16 inputSample)
 {
     qint16 *coeff     = fpCoeff;
     qint16 *coeff_end = fpCoeff + fpTaps;

@@ -2,12 +2,12 @@
 
     main.cpp
 
-    ld-efm-sampletodata - EFM sample to data processor for ld-decode
+    ld-process-efm - EFM data decoder
     Copyright (C) 2019 Simon Inns
 
     This file is part of ld-decode-tools.
 
-    ld-efm-sampletodata is free software: you can redistribute it and/or
+    ld-ldstoefm is free software: you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
     published by the Free Software Foundation, either version 3 of the
     License, or (at your option) any later version.
@@ -76,14 +76,14 @@ int main(int argc, char *argv[])
     QCoreApplication a(argc, argv);
 
     // Set application name and version
-    QCoreApplication::setApplicationName("ld-efm-sampletodata");
+    QCoreApplication::setApplicationName("ld-process-efm");
     QCoreApplication::setApplicationVersion("1.0");
     QCoreApplication::setOrganizationDomain("domesday86.com");
 
     // Set up the command line parser
     QCommandLineParser parser;
     parser.setApplicationDescription(
-                "ld-efm-sampletodata - EFM sample to data processor for ld-decode\n"
+                "ld-process-efm - EFM data decoder\n"
                 "\n"
                 "(c)2019 Simon Inns\n"
                 "GPLv3 Open-Source - github: https://github.com/happycube/ld-decode");
@@ -95,23 +95,23 @@ int main(int argc, char *argv[])
                                        QCoreApplication::translate("main", "Show debug"));
     parser.addOption(showDebugOption);
 
-    // Option to disable ISI filter (-i)
-    QCommandLineOption disableFilterOption(QStringList() << "i" << "isi",
-                                       QCoreApplication::translate("main", "Disable ISI filter"));
-    parser.addOption(disableFilterOption);
+    // Option to show F3 framing verbose debug (-f)
+    QCommandLineOption showFramingDebugOption(QStringList() << "f" << "verboseframing",
+                                       QCoreApplication::translate("main", "Show verbose framing debug"));
+    parser.addOption(showFramingDebugOption);
 
     // Positional argument to specify input EFM file
-    parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input 40MSPS sampled EFM file"));
+    parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input EFM data file"));
 
     // Positional argument to specify output data file
-    parser.addPositionalArgument("output", QCoreApplication::translate("main", "Specify output F3 frame data file"));
+    parser.addPositionalArgument("output", QCoreApplication::translate("main", "Specify output PCM audio file"));
 
     // Process the command line options and arguments given by the user
     parser.process(a);
 
     // Get the options from the parser
     bool isDebugOn = parser.isSet(showDebugOption);
-    bool disableIsiFilter = parser.isSet(disableFilterOption);
+    bool verboseFraming = parser.isSet(showFramingDebugOption);
 
     // Get the arguments from the parser
     QString inputFilename;
@@ -122,7 +122,7 @@ int main(int argc, char *argv[])
         outputFilename = positionalArguments.at(1);
     } else {
         // Quit with error
-        qCritical("You must specify an input EFM sample file and an output data file");
+        qCritical("You must specify an input EFM data file and an output audio PCM file");
         return -1;
     }
 
@@ -137,7 +137,7 @@ int main(int argc, char *argv[])
 
     // Perform the processing
     EfmProcess efmProcess;
-    efmProcess.process(inputFilename, outputFilename, disableIsiFilter);
+    efmProcess.process(inputFilename, outputFilename, verboseFraming);
 
     // Quit with success
     return 0;

@@ -50,6 +50,6 @@ CMakeLists.txt.user*
 /ld-comb-ntsc/ld-comb-ntsc
 /ld-process-audio/ld-process-audio
 /ld-combine/ld-combine
-/ld-efm-sampletodata/ld-efm-sampletodata
-/ld-efm-decodedata/ld-efm-decodedata
+/ld-process-efm/ld-process-efm
+/ld-ldstoefm/ld-ldstoefm
 
