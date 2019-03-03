@@ -39,7 +39,7 @@ public:
     qint32 getFailedEfmTranslations(void);
 
     qint32 f3FramesReady(void);
-    QByteArray getF3Frames(void);
+    void getF3Frames(QByteArray &f3FrameBuffer, QByteArray &f3ErasureBuffer);
     void process(QByteArray efmDataIn, bool verboseDebugParam);
 
 private:
@@ -99,6 +99,7 @@ private:
         // Output F3 Frame data
         struct f3Frame {
             uchar outputF3Data[34];
+            bool outputF3Erasures[34];
         };
         QVector<f3Frame> f3Frames;
 
@@ -131,7 +132,7 @@ private:
         // Utility methods
         void removePllResults(qint32 number);
 
-        void convertTvaluesToData(QVector<qint32> frameT, uchar* outputData);
+        void convertTvaluesToData(QVector<qint32> frameT, uchar* outputData, bool *outputErasures);
         quint32 getBits(uchar *rawData, qint32 bitIndex, qint32 width);
         QString dataToString(uchar *data, qint32 length);
 };

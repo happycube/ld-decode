@@ -48,31 +48,36 @@ ReedSolomon::ReedSolomon()
 }
 
 // Perform a C1 level error check and correction
-bool ReedSolomon::decodeC1(unsigned char *inData)
+bool ReedSolomon::decodeC1(uchar *inData, bool *inErasures)
 {
     // Copy the ingress data into a vector
     std::vector<uint8_t> data;
+    std::vector<int> erasures;
     data.resize(32);
-    for (size_t byteC = 0; byteC < 32; byteC++) data[byteC] = inData[byteC];
-
-    // Just for testing...
-    std::vector<uint8_t> origData = data;
-
-    // Initialise the error corrector
-    C1RS<255,255-4> rs; // Up to 251 symbols data load with 4 symbols parity RS(32,28)
+    for (size_t byteC = 0; byteC < 32; byteC++) {
+        data[byteC] = inData[byteC];
+        if (inErasures[byteC]) erasures.push_back(static_cast<int>(byteC));
+    }
 
     // Perform decode
-    int fixed = rs.decode(data);
+    int fixed = -1;
+    if (erasures.size() < 5) {
+        // Initialise the error corrector
+        C1RS<255,255-4> rs; // Up to 251 symbols data load with 4 symbols parity RS(32,28)
 
-    if (fixed < 0) {
-        //qDebug() << "ReedSolomon::decodeC1(): C1 CIRC failed";
+        // Perform decode
+        std::vector<int> position;
+        fixed = rs.decode(data, erasures, &position);
 
-        //qDebug() << "ReedSolomon::decodeC1(): Orig was" << dataToString(origData);
-        //qDebug() << "ReedSolomon::decodeC1(): Data was" << dataToString(data);
+        if (fixed < 0) {
+            //qDebug() << "ReedSolomon::decodeC1(): C1 CIRC failed #" << c1Failed;
+            //qDebug() << "ReedSolomon::decodeC1(): Data was" << dataToString(data);
 
-    } else {
-        // Copy back the corrected data
-        for (size_t byteC = 0; byteC < 32; byteC++) inData[byteC] = data[byteC];
+        } else {
+            //qDebug() << "ReedSolomon::decodeC1(): C1 CIRC successful with" << erasures.size() << "erasures" << c1Passed;
+            // Copy back the corrected data
+            for (size_t byteC = 0; byteC < 32; byteC++) inData[byteC] = data[byteC];
+        }
     }
 
     // Did C1 pass?
@@ -99,9 +104,6 @@ bool ReedSolomon::decodeC2(uchar *inData, bool *inErasures)
         data[byteC] = inData[byteC];
         if (inErasures[byteC]) erasures.push_back(static_cast<int>(byteC));
     }
-
-    // Just for testing...
-    std::vector<uint8_t> origData = data;
 
     // Up to 4 erasures can be fixed
     int fixed = -1;

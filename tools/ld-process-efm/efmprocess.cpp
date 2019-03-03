@@ -57,17 +57,21 @@ bool EfmProcess::process(QString inputFilename, QString outputFilename, bool fra
             qint32 availableFrames = f3Framer.f3FramesReady();
             if (availableFrames > 0) {
                 // F3 frames are ready for processing...
-                QByteArray f3Frames = f3Framer.getF3Frames();
+                QByteArray f3FrameBuffer;
+                QByteArray f3ErasureBuffer;
+                f3Framer.getF3Frames(f3FrameBuffer, f3ErasureBuffer);
 
                 // Process the available frames
                 for (qint32 i = 0; i < availableFrames; i++) {
-                    QByteArray f3Frame = f3Frames.mid(i * 34, 34);
+                    // Get a frame of data
+                    QByteArray f3Frame = f3FrameBuffer.mid(i * 34, 34);
+                    QByteArray f3Erasures = f3ErasureBuffer.mid(i * 34, 34);
 
                     // Decode the subcode channels
                     decodeSubcode.process(f3Frame);
 
                     // Decode the audio data
-                    decodeAudio.process(f3Frame);
+                    decodeAudio.process(f3Frame, f3Erasures);
 
                     // Get any available audio data
                     QByteArray audioData = decodeAudio.getOutputData();
