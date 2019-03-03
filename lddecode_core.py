@@ -152,12 +152,24 @@ class RFDecode:
             self.computeaudiofilters()
 
         if self.decode_digital_audio:
-            # same for both PAL and NTSC, AFAIK
-            #self.Filters['Fefm'] = filtfft(sps.ellip(7, .5, 26, (1.75 / self.freq_half)), self.blocklen)
-            self.Filters['Fefm'] = filtfft(sps.ellip(5, 1, 60, [0.1 / self.freq_half,1.75 / self.freq_half], btype='bandpass'), self.blocklen)
+            self.computeefmfilter()
 
         self.computedelays()
         self.blockcut_end = self.Filters['F05_offset']
+
+    def computeefmfilter(self):
+        ''' same for both PAL and NTSC LD's '''
+        filt = []
+
+        with open('efm_bpf_filter.txt', 'r') as fd:
+            l = fd.readline()
+            while len(l) > 1:
+                filt.append(float(l))
+                l = fd.readline()
+
+        # this filter is applied *backwards*
+        filt = filt[::-1]
+        self.Filters['Fefm'] = filtfft((filt, [1.0]), self.blocklen)
 
     def computevideofilters(self):
         if self.system == 'NTSC':
