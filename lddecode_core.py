@@ -1052,7 +1052,7 @@ class Field:
         errlistc = errlist.copy()
         curerr = errlistc.pop(0)
 
-        lineoffset = self.lineoffset
+        lineoffset = -self.lineoffset
 
         for l in range(lineoffset, self.linecount - 1):
             while curerr is not None and inrange(curerr[0], self.linelocs[l], self.linelocs[l + 1]):
