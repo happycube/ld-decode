@@ -26,13 +26,15 @@ parser.add_argument('-p', '--pal', dest='pal', action='store_true', help='source
 parser.add_argument('-n', '--ntsc', dest='ntsc', action='store_true', help='source is in NTSC format')
 #parser.add_argument('-c', '--cut', dest='cut', action='store_true', help='cut (to r16) instead of decode')
 parser.add_argument('-m', '--MTF', metavar='mtf', type=float, default=None, help='mtf compensation multiplier')
+parser.add_argument('-f', '--samplerate', dest='sample_rate', type=float, default=40, help='Sample rate of the input file (in MHz)')
+parser.add_argument('--cxadc', dest="sample_rate", action='store_const', const=(315.0 / 88.0) * 8.0,
+                    help='Sets sample rate to the one used by cxadc')
 parser.add_argument('--MTF_offset', metavar='mtf_offset', type=float, default=None, help='mtf compensation offset')
 parser.add_argument('--NTSCJ', dest='ntscj', action='store_true', help='source is in NTSC-J (IRE 0 black) format')
 parser.add_argument('--noDOD', dest='nodod', action='store_true', default=False, help='disable dropout detector')
 parser.add_argument('--EFM', dest='efm', action='store_true', default=False, help='Filter EFM output (WIP!)')
 parser.add_argument('--daa', dest='daa', action='store_true', default=False, help='Disable analog audio decoding')
 parser.add_argument('--ignoreleadout', dest='ignoreleadout', action='store_true', default=False, help='continue decoding after lead-out seen')
-
 
 args = parser.parse_args()
 #print(args)
@@ -68,7 +70,8 @@ else:
 
 system = 'PAL' if args.pal else 'NTSC'
     
-ldd = LDdecode(filename, outname, loader, analog_audio = not args.daa, digital_audio = args.efm, system=system, doDOD = not args.nodod)
+ldd = LDdecode(filename, outname, loader, analog_audio = not args.daa, digital_audio = args.efm,
+               system=system, doDOD = not args.nodod, sample_rate = args.sample_rate)
 ldd.roughseek(firstframe * 2)
 
 if system == 'NTSC' and not args.ntscj:
