@@ -26,218 +26,113 @@
 
 DecodeSubcode::DecodeSubcode()
 {
-    // Initialise the state machine
-    currentState = state_initial;
-    nextState = currentState;
 
-    frameCounter = 0;
-    missedSectionSyncCount = 0;
-
-    // Allocate space for the frames within the section buffer
-    f3Section.resize(98);
-    for (qint32 frameNo = 0; frameNo < 98; frameNo++) f3Section[frameNo].resize(34);
-
-    // Set the current QMode to the default
-    currentQMode = qMode_unknown;
-    previousQMode = currentQMode;
 }
 
-// Method to return the current Q Mode
-DecodeSubcode::QModes DecodeSubcode::getQMode(void)
+// This method decodes the subcode data
+// Right now it only looks at the Q channel, but it decodes all
+// 8 channels for future use
+//
+// Returns true if block contains audio and false if block contains data
+DecodeSubcode::QDecodeResult DecodeSubcode::decodeBlock(uchar *subcodeData)
 {
-    // If the current qMode is unknown, try to use the previous qMode
-    if (currentQMode == qMode_unknown) {
-        if (previousQMode != qMode_unknown) return previousQMode;
-    }
+    DecodeSubcode::QDecodeResult result = invalid;
 
-    previousQMode = currentQMode;
-    return currentQMode;
-}
-
-// State machine methods ----------------------------------------------------------------------------------------------
-
-void DecodeSubcode::process(QByteArray f3FrameParam)
-{
-    // Ensure the F3 frame is the correct length
-    if (f3FrameParam.size() != 34) {
-        qDebug() << "DecodeSubcode::process(): Invalid F3 frame parameter (not 34 bytes!)";
-        return;
-    }
-
-    currentF3Frame = f3FrameParam;
-
-    // Since we have a new F3 frame, clear the waiting flag
-    waitingForF3frame = false;
-
-    // Process the state machine until another F3 frame is required
-    while (!waitingForF3frame) {
-        currentState = nextState;
-
-        switch (currentState) {
-        case state_initial:
-            nextState = sm_state_initial();
-            break;
-        case state_getSync0:
-            nextState = sm_state_getSync0();
-            break;
-        case state_getSync1:
-            nextState = sm_state_getSync1();
-            break;
-        case state_getInitialSection:
-            nextState = sm_state_getInitialSection();
-            break;
-        case state_getNextSection:
-            nextState = sm_state_getNextSection();
-            break;
-        case state_processSection:
-            nextState = sm_state_processSection();
-            break;
-        case state_syncLost:
-            nextState = sm_state_syncLost();
-            break;
-        }
-    }
-}
-
-DecodeSubcode::StateMachine DecodeSubcode::sm_state_initial(void)
-{
-    return state_getSync0;
-}
-
-DecodeSubcode::StateMachine DecodeSubcode::sm_state_getSync0(void)
-{
-    // Read a F3 frame into the section
-    f3Section[frameCounter] = currentF3Frame;
-
-    // Does the current frame contain a SYNC0 marker?
-    if (f3Section[frameCounter][0] == static_cast<char>(0x01)) {
-        frameCounter++;
-        waitingForF3frame = true;
-        return state_getSync1;
-    }
-
-    // No SYNC0, discard current frame
-    frameCounter = 0;
-    waitingForF3frame = true;
-
-    return state_getSync0;
-}
-
-DecodeSubcode::StateMachine DecodeSubcode::sm_state_getSync1(void)
-{
-    // Read a F3 frame into the section
-    f3Section[frameCounter] = currentF3Frame;
-
-    // Does the current frame contain a SYNC1 marker?
-    if (f3Section[frameCounter][0] == static_cast<char>(0x02)) {
-        frameCounter++;
-        waitingForF3frame = true;
-        return state_getInitialSection;
-    }
-
-    // No SYNC1, discard current frames and go back to looking for a SYNC0
-    frameCounter = 0;
-    waitingForF3frame = true;
-
-    return state_getSync0;
-}
-
-DecodeSubcode::StateMachine DecodeSubcode::sm_state_getInitialSection(void)
-{
-    // Read a F3 frame into the section
-    f3Section[frameCounter] = currentF3Frame;
-    frameCounter++;
-
-    // If we have 98 frames, the section is complete, process it
-    if (frameCounter == 98) {
-        return state_processSection;
-    }
-
-    // Need more frames to complete section
-    waitingForF3frame = true;
-    return state_getInitialSection;
-}
-
-DecodeSubcode::StateMachine DecodeSubcode::sm_state_getNextSection(void)
-{
-    // Read a F3 frame into the section
-    f3Section[frameCounter] = currentF3Frame;
-    frameCounter++;
-
-    // If we have 2 frames, check the sync pattern
-    if (frameCounter == 2) {
-        if (f3Section[0][0] == static_cast<char>(0x01) && f3Section[1][0] == static_cast<char>(0x02)) {
-            //qDebug() << "DecodeSubcode::sm_state_getNextSection(): Section SYNC0 and SYNC1 are valid";
-            missedSectionSyncCount = 0;
-        } else {
-            qDebug() << "DecodeSubcode::sm_state_getNextSection(): Section SYNC0 and/or SYNC1 are INVALID";
-            missedSectionSyncCount++;
-
-            // If we have missed 4 syncs in a row, consider the sync as lost
-            if (missedSectionSyncCount == 4) {
-                missedSectionSyncCount = 0;
-                return state_syncLost;
-            }
-        }
-    }
-
-    // If we have 98 frames, the section is complete, process it
-    if (frameCounter == 98) {
-        return state_processSection;
-    }
-
-    // Need more frames to complete section
-    waitingForF3frame = true;
-    return state_getNextSection;
-}
-
-DecodeSubcode::StateMachine DecodeSubcode::sm_state_processSection(void)
-{
-    // Extract the subcodes - there are 8 subcodes containing 96 bits (12 bytes)
-    // per subcode.  Only subcodes p and q are supported by the CDROM standards
+    // Extract the subcode channels - there are 8 subcodes containing 96 bits (12 bytes)
+    // per subcode.  Only channels P and Q are supported by the red-book CD standards
     uchar pSubcode[12];
     uchar qSubcode[12];
+    uchar rSubcode[12];
+    uchar sSubcode[12];
+    uchar tSubcode[12];
+    uchar uSubcode[12];
+    uchar vSubcode[12];
+    uchar wSubcode[12];
 
-    qint32 frameNumber = 2; // 0 and 1 are SYNC0 and SYNC1
+    qint32 dataPointer = 2;
     for (qint32 byteC = 0; byteC < 12; byteC++) {
+        // Initialise the channel bytes
         pSubcode[byteC] = 0;
         qSubcode[byteC] = 0;
+        rSubcode[byteC] = 0;
+        sSubcode[byteC] = 0;
+        tSubcode[byteC] = 0;
+        uSubcode[byteC] = 0;
+        vSubcode[byteC] = 0;
+        wSubcode[byteC] = 0;
+
+        // Copy in the channel data from the subscode data
         for (qint32 bitC = 7; bitC >= 0; bitC--) {
-            if (f3Section[frameNumber][1] & 0x80) pSubcode[byteC] |= (1 << bitC);
-            if (f3Section[frameNumber][1] & 0x40) qSubcode[byteC] |= (1 << bitC);
-            frameNumber++;
+            if (subcodeData[dataPointer] & 0x80) pSubcode[byteC] |= (1 << bitC);
+            if (subcodeData[dataPointer] & 0x40) qSubcode[byteC] |= (1 << bitC);
+            if (subcodeData[dataPointer] & 0x20) rSubcode[byteC] |= (1 << bitC);
+            if (subcodeData[dataPointer] & 0x10) sSubcode[byteC] |= (1 << bitC);
+            if (subcodeData[dataPointer] & 0x08) tSubcode[byteC] |= (1 << bitC);
+            if (subcodeData[dataPointer] & 0x04) uSubcode[byteC] |= (1 << bitC);
+            if (subcodeData[dataPointer] & 0x02) vSubcode[byteC] |= (1 << bitC);
+            if (subcodeData[dataPointer] & 0x01) wSubcode[byteC] |= (1 << bitC);
+            dataPointer++;
         }
     }
 
-    // Decode the subcodes (for debug)
-    decodeQ(qSubcode);
+    // Verify the Q-channel payload is valid
+    bool qChannelValid = verifyQ(qSubcode);
 
-    // Discard section and get the next frame
-    frameCounter = 0;
-    waitingForF3frame = true;
+    // If the Q channel payload is valid, decode it
+    qint32 qMode = -1;
+    DecodeSubcode::QControl qControl;
+    if (qChannelValid) {
+        // Get the control parameters
+        qControl = decodeQControl(qSubcode);
 
-    return state_getNextSection;
+        // Get the Q Mode
+        qMode = decodeQAddress(qSubcode);
+
+        // Get the Q Mode parameters
+        if (qMode == 0) {
+            qDebug() << "DecodeSubcode::decode(): Q Mode 0: Not supported!";
+            result = data;
+        }
+        if (qMode == 1) {
+            qDebug() << "DecodeSubcode::decode(): Q Mode 1: Not supported!";
+            result = audio;
+        }
+        if (qMode == 2) {
+            qDebug() << "DecodeSubcode::decode(): Q Mode 2: Not supported!";
+            result = audio;
+        }
+        if (qMode == 3) {
+            qDebug() << "DecodeSubcode::decode(): Q Mode 3: Not supported!";
+            result = audio;
+        }
+        if (qMode == 4) {
+            decodeQDataMode4(qSubcode); // Q Mode 4 = Video audio
+            result = audio;
+        }
+
+        if (qMode == -1) qDebug() << "DecodeSubcode::decode(): Invalid Q Mode reported by subcode block!";
+    } else {
+        result = crcFailure;
+    }
+
+    return result;
 }
 
-DecodeSubcode::StateMachine DecodeSubcode::sm_state_syncLost(void)
+// Method to convert 2 digit BCD byte to 2 numeric characters
+QString DecodeSubcode::bcdToQString(uchar bcd)
 {
-    qDebug() << "DecodeSubcode::sm_state_syncLost(): Subcode Sync has been lost!";
-
-    // Discard all frames
-    frameCounter = 0;
-
-    // Return to looking for SYNC0
-    return state_getSync0;
+    return QString("%1").arg(bcdToInteger(bcd), 2, 10, QChar('0'));
 }
 
-// Utility methods ----------------------------------------------------------------------------------------------------
-
-// Method to decode the Q subcode
-// Returns the Q Mode field number (or -1 if the Mode is unknown)
-void DecodeSubcode::decodeQ(uchar *qSubcode)
+// Method to convert 2 digit BCD byte to an integer
+qint32 DecodeSubcode::bcdToInteger(uchar bcd)
 {
-    QString debugOut;
+   return (((bcd>>4)*10) + (bcd & 0xF));
+}
 
+// Method to CRC verify the Q subcode payload
+bool DecodeSubcode::verifyQ(uchar *qSubcode)
+{
     // CRC check the Q-subcode - CRC is on control+mode+data 4+4+72 = 80 bits with 16-bit CRC (96 bits total)
     char crcSource[10];
     for (qint32 byteNo = 0; byteNo < 10; byteNo++) crcSource[byteNo] = static_cast<char>(qSubcode[byteNo]);
@@ -246,88 +141,11 @@ void DecodeSubcode::decodeQ(uchar *qSubcode)
 
     // Is the Q subcode valid?
     if (crcChecksum != calcChecksum) {
-        debugOut += "Q Subcode CRC failed - subcode is invalid";
-        currentQMode = qMode_unknown;
-        return;
+        qDebug() << "DecodeSubcode::decodeQ(): Q Subcode CRC failed - Q subcode payload is invalid";
+        return false;
     }
 
-    // Q Subcode is valid; split it into fields
-    qint32 qControlField = (qSubcode[0] & 0xF0) >> 4;
-    qint32 qModeField = (qSubcode[0] & 0x0F);
-
-    // Show Control field meaning
-    switch(qControlField) {
-    case 0: debugOut += "Control 0 (audio no pre-emp)";
-        break;
-    case 1: debugOut += "Control 1 (audio delayed pre-emp)";
-        break;
-    case 2: debugOut += "Control 2 (audio no pre-emp)";
-        break;
-    case 3: debugOut += "Control 3 (audio delayed pre-emp)";
-        break;
-    case 4: debugOut += "Control 4 (data no copy)";
-        break;
-    case 6: debugOut += "Control 6 (data with copy)";
-        break;
-    default: debugOut += "Control " + QString::number(qControlField) + " (unknown)";
-    }
-
-    // Show mode field meaning
-    switch(qModeField) {
-    case 0: debugOut += " - Mode 0 (non-CD)";
-        currentQMode = qMode_0;
-        break;
-    case 1: debugOut += " - Mode 1 (CD Audio) Trk/Idx " + bcdToQString(qSubcode[1]) + "/" + bcdToQString(qSubcode[2]) +
-                " - T: " + bcdToQString(qSubcode[3]) + ":" + bcdToQString(qSubcode[4]) + "." + bcdToQString(qSubcode[5]);
-        currentQMode = qMode_1;
-        break;
-    case 2: debugOut += " - Mode 2 (Catalogue number)";
-        currentQMode = qMode_2;
-        break;
-    case 3: debugOut += " - Mode 3 (track ID)";
-        currentQMode = qMode_3;
-        break;
-    case 4: debugOut += " - Mode 4 (Video Audio) Trk/Idx " + bcdToQString(qSubcode[1]) + "/" + bcdToQString(qSubcode[2]) +
-                " - T: " + bcdToQString(qSubcode[3]) + ":" + bcdToQString(qSubcode[4]) + "." + bcdToQString(qSubcode[5]);
-        currentQMode = qMode_4;
-
-        // qSubcode[7] is PFRAME
-        switch (qSubcode[7]) {
-        case 10: debugOut += " - NTSC CDV stereo";
-            break;
-        case 11: debugOut += " - NTSC CDV bilingual";
-            break;
-        case 12: debugOut += " - NTSC LV stereo";
-            break;
-        case 13: debugOut += " - NTSC LV bilingual";
-            break;
-        case 20: debugOut += " - PAL CDV stereo";
-            break;
-        case 21: debugOut += " - PAL CDV bilingual";
-            break;
-        case 22: debugOut += " - PAL LV stereo";
-            break;
-        case 23: debugOut += " - PAL LV bilingual";
-            break;
-        default: debugOut += " - Unknown";
-        }
-        break;
-    default: debugOut += " - Mode Unknown " + QString::number(qModeField);
-    }
-
-    qDebug() << "DecodeSubcode::decodeQ():" << debugOut;
-}
-
-// Method to convert 2 digit BCD byte to 2 numeric characters
-QString DecodeSubcode::bcdToQString(qint32 bcd)
-{
-    return QString("%1").arg(bcdToInteger(bcd), 2, 10, QChar('0'));
-}
-
-// Method to convert 2 digit BCD byte to an integer
-qint32 DecodeSubcode::bcdToInteger(qint32 bcd)
-{
-   return (((bcd>>4)*10) + (bcd & 0xF));
+    return true;
 }
 
 // Method to perform CRC16 (XMODEM)
@@ -347,3 +165,98 @@ quint16 DecodeSubcode::crc16(char *addr, quint16 num)
 
     return static_cast<quint16>(crc);
 }
+
+// Method to decode the Q subcode CONTROL field
+DecodeSubcode::QControl DecodeSubcode::decodeQControl(uchar *qSubcode)
+{
+    DecodeSubcode::QControl qControl;
+
+    // Get the control payload
+    qint32 qControlField = (qSubcode[0] & 0xF0) >> 4;
+
+    // Control field values can be:
+    //
+    // x000 = 2-Channel/4-Channel
+    // 0x00 = audio/data
+    // 00x0 = Copy not permitted/copy permitted
+    // 000x = pre-emphasis off/pre-emphasis on
+
+    if ((qControlField & 0x08) == 0x08) qControl.isStereo = false; else qControl.isStereo = true;
+    if ((qControlField & 0x04) == 0x04) qControl.isAudio = false; else qControl.isAudio = true;
+    if ((qControlField & 0x02) == 0x02) qControl.isCopyProtected = false; else qControl.isCopyProtected = true;
+    if ((qControlField & 0x01) == 0x01) qControl.isNotPreEmp = false; else qControl.isNotPreEmp = true;
+
+//    QString debugOut;
+//    if (qControl.isStereo) debugOut += "2 Channel"; else debugOut += "4 Channel";
+//    if (qControl.isAudio) debugOut += " - Audio"; else debugOut += " - Data";
+//    if (qControl.isCopyProtected) debugOut += " - Copy protected"; else debugOut += " - Not copy protected";
+//    if (qControl.isNotPreEmp) debugOut += " - Pre-emphasis"; else debugOut += " - No pre-emphasis";
+//    qDebug() << "DecodeSubcode::decodeQControl():" << debugOut;
+
+    return qControl;
+}
+
+// Method to decode the Q subcode ADR field
+qint32 DecodeSubcode::decodeQAddress(uchar *qSubcode)
+{
+    // Get the Q Mode value
+    qint32 qMode = (qSubcode[0] & 0x0F);
+
+    // Range check
+    if (qMode < 0 || qMode > 4) qMode = -1;
+
+    return qMode;
+}
+
+// Method to decode Q subcode Mode 4 DATA-Q
+void DecodeSubcode::decodeQDataMode4(uchar *qSubcode)
+{
+    QString debugOut;
+
+    // Get the track number (TNO) field
+    qint32 tno = bcdToInteger(qSubcode[1]);
+
+    // Use TNO to detect lead-in, audio or lead-out
+    if (qSubcode[1] == 0xAA) {
+        // Lead out
+        debugOut += "Mode 4 (Video audio) Lead-out - ";
+        debugOut += "TNO=170 ";
+        debugOut += "X=" + bcdToQString(qSubcode[2]) + " ";
+        debugOut += "MIN=" + bcdToQString(qSubcode[3]) + " ";
+        debugOut += "SEC=" + bcdToQString(qSubcode[4]) + " ";
+        debugOut += "FRAME=" + bcdToQString(qSubcode[5]) + " ";
+        //debugOut += "ZERO=" + bcdToQString(qSubcode[6]) + " ";
+        debugOut += "AMIN=" + bcdToQString(qSubcode[7]) + " ";
+        debugOut += "ASEC=" + bcdToQString(qSubcode[8]) + " ";
+        debugOut += "AFRAME=" + bcdToQString(qSubcode[9]);
+    } else if (tno == 0) {
+        // Lead in
+        debugOut += "Mode 4 (Video audio) Lead-in - ";
+        debugOut += "TNO=" + bcdToQString(qSubcode[1]) + " ";
+        debugOut += "POINT=" + bcdToQString(qSubcode[2]) + " ";
+        debugOut += "MIN=" + bcdToQString(qSubcode[3]) + " ";
+        debugOut += "SEC=" + bcdToQString(qSubcode[4]) + " ";
+        debugOut += "FRAME=" + bcdToQString(qSubcode[5]) + " ";
+        //debugOut += "ZERO=" + bcdToQString(qSubcode[6]) + " ";
+        debugOut += "PMIN=" + bcdToQString(qSubcode[7]) + " ";
+        debugOut += "PSEC=" + bcdToQString(qSubcode[8]) + " ";
+        debugOut += "PFRAME=" + bcdToQString(qSubcode[9]);
+    } else {
+        // Audio
+        debugOut += "Mode 4 (Video audio) Audio - ";
+        debugOut += "TNO=" + bcdToQString(qSubcode[1]) + " ";
+        debugOut += "X=" + bcdToQString(qSubcode[2]) + " ";
+        debugOut += "MIN=" + bcdToQString(qSubcode[3]) + " ";
+        debugOut += "SEC=" + bcdToQString(qSubcode[4]) + " ";
+        debugOut += "FRAME=" + bcdToQString(qSubcode[5]) + " ";
+        //debugOut += "ZERO=" + bcdToQString(qSubcode[6]) + " ";
+        debugOut += "AMIN=" + bcdToQString(qSubcode[7]) + " ";
+        debugOut += "ASEC=" + bcdToQString(qSubcode[8]) + " ";
+        debugOut += "AFRAME=" + bcdToQString(qSubcode[9]);
+    }
+
+    qDebug().noquote() << "DecodeSubcode::decodeQDataMode4():" << debugOut;
+}
+
+
+

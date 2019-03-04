@@ -117,10 +117,7 @@ bool ReedSolomon::decodeC2(uchar *inData, bool *inErasures)
 
         if (fixed < 0) {
             //qDebug() << "ReedSolomon::decodeC2(): C2 CIRC failed" << erasures.size();
-
-            //qDebug() << "ReedSolomon::decodeC2(): Orig was" << dataToString(origData);
-            //qDebug() << "ReedSolomon::decodeC2(): Data was" << dataToString(data);
-
+            //qDebug() << "ReedSolomon::decodeC2(): Data2 was" << dataToString(data);
         } else {
             // Copy back the corrected data
             for (size_t byteC = 0; byteC < 28; byteC++) inData[byteC] = data[byteC];

@@ -31,6 +31,8 @@
 #include <QDataStream>
 
 #include "f3framer.h"
+#include "subcodeblock.h"
+
 #include "decodesubcode.h"
 #include "decodeaudio.h"
 
@@ -44,9 +46,14 @@ public:
 private:
     QFile *inputFileHandle;
     QFile *outputFileHandle;
+
     F3Framer f3Framer;
+    SubcodeBlock subcodeBlock;
+
     DecodeSubcode decodeSubcode;
     DecodeAudio decodeAudio;
+
+    void saveAudioData(QDataStream &outStream);
 
     bool openInputFile(QString inputFileName);
     void closeInputFile(void);

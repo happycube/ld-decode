@@ -20,7 +20,8 @@ SOURCES += \
     f3framer.cpp \
     decodeaudio.cpp \
     decodesubcode.cpp \
-    reedsolomon.cpp
+    reedsolomon.cpp \
+    subcodeblock.cpp
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin
@@ -43,7 +44,8 @@ HEADERS += \
     ezpwd/rs \
     ezpwd/serialize \
     ezpwd/serialize_definitions \
-    ezpwd/timeofday
+    ezpwd/timeofday \
+    subcodeblock.h
 
 DISTFILES += \
     ezpwd/rs_base

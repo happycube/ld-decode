@@ -43,7 +43,7 @@ public:
     qint32 getInvalidAudioSamplesCount(void);
 
     QByteArray getOutputData(void);
-    void process(QByteArray f3FrameParam, QByteArray f3ErasuresParam);
+    qint32 decodeBlock(uchar *blockData, uchar *blockErasures);
 
 private:
     void interleaveC1Data(QByteArray previousF3, QByteArray currentF3,

@@ -94,43 +94,45 @@ qint32 DecodeAudio::getInvalidAudioSamplesCount(void)
     return invalidAudioSampleCount;
 }
 
-void DecodeAudio::process(QByteArray f3FrameParam, QByteArray f3ErasuresParam)
+// Decode a subcode block of audio data
+qint32 DecodeAudio::decodeBlock(uchar *blockData, uchar *blockErasures)
 {
-    // Ensure the F3 frame is the correct length
-    if (f3FrameParam.size() != 34) {
-        qDebug() << "DecodeAudio::process(): Invalid F3 frame parameter (not 34 bytes!)";
-        return;
-    }
+    qint32 c1ErrorStart = invalidC1Count;
 
-    // Get the 32 bytes of user-data from the frame parameter
-    // 0 is the sync indicator, 1 is the subcode and 2-34 is the data
-    for (qint32 byteC = 0; byteC < 32; byteC++) {
-        currentF3Frame[byteC] = f3FrameParam[byteC + 2];
-        currentF3Erasures[byteC] = f3ErasuresParam[byteC + 2];
-    }
+    // Process the 98 frames of data (containing 32 bytes per frame) in the block
+    for (qint32 i = 0; i < 98; i++) {
+        // Copy the frame data from the block
+        for (qint32 byteC = 0; byteC < 32; byteC++) {
+            currentF3Frame[byteC] = static_cast<char>(blockData[(32 * i) + byteC]);
+            currentF3Erasures[byteC] = static_cast<char>(blockErasures[(32 * i) + byteC]);
+        }
 
-    // Since we have a new F3 frame, clear the waiting flag
-    waitingForF3frame = false;
+        // Since we have a new F3 frame, clear the waiting flag
+        waitingForF3frame = false;
 
-    // Process the state machine until another F3 frame is required
-    while (!waitingForF3frame) {
-        currentState = nextState;
+        // Process the state machine until another F3 frame is required
+        while (!waitingForF3frame) {
+            currentState = nextState;
 
-        switch (currentState) {
-        case state_initial:
-            nextState = sm_state_initial();
-            break;
-        case state_processC1:
-            nextState = sm_state_processC1();
-            break;
-        case state_processC2:
-            nextState = sm_state_processC2();
-            break;
-        case state_processAudio:
-            nextState = sm_state_processAudio();
-            break;
+            switch (currentState) {
+            case state_initial:
+                nextState = sm_state_initial();
+                break;
+            case state_processC1:
+                nextState = sm_state_processC1();
+                break;
+            case state_processC2:
+                nextState = sm_state_processC2();
+                break;
+            case state_processAudio:
+                nextState = sm_state_processAudio();
+                break;
+            }
         }
     }
+
+    // Return the number of C1 failures for this block
+    return invalidC1Count - c1ErrorStart;
 }
 
 DecodeAudio::StateMachine DecodeAudio::sm_state_initial(void)
@@ -161,7 +163,7 @@ DecodeAudio::StateMachine DecodeAudio::sm_state_processC1(void)
     } else {
         invalidC1Count++;
         c1DataValid = false;
-        //qDebug() << "DecodeAudio::sm_state_processC1(): Invalid C1 #" << invalidC1Count;
+        //qDebug() << "DecodeAudio::sm_state_processC1(): Invalid C1 #" << invalidC1Count << " - Valid C1 #" << validC1Count;
     }
 
     // Store the frame and get a new frame
@@ -204,7 +206,7 @@ DecodeAudio::StateMachine DecodeAudio::sm_state_processC2(void)
             // C2 Failure
             invalidC2Count++;
             c2DataValid = false;
-            //qDebug() << "DecodeAudio::sm_state_processC2(): Invalid C2 #" << invalidC2Count;
+            //qDebug() << "DecodeAudio::sm_state_processC2(): Invalid C2 #" << invalidC2Count << " - Valid C2 #" << validC2Count;
         }
     } else {
         // Since the C1 delay buffer isn't full, we can't process audio yet

@@ -29,6 +29,15 @@ EfmProcess::EfmProcess()
 
 }
 
+// The general process is as follows:
+//
+// 1. Convert the incoming 14-bit EFM data into 8-bit F3 frames
+// 2. Convert the F3 frames into subcode blocks
+// 3. Decode the subcode Q-channel (to determine the nature of the block's payload)
+// 4. Decode the block as audio or data based on the Q-channel block type
+// 5. Output the data or audio to file
+// 6. Rinse and repeat
+
 bool EfmProcess::process(QString inputFilename, QString outputFilename, bool frameDebug)
 {
     // Open the input file
@@ -46,6 +55,7 @@ bool EfmProcess::process(QString inputFilename, QString outputFilename, bool fra
     outStream.setByteOrder(QDataStream::LittleEndian);
 
     QByteArray efmData;
+    DecodeSubcode::QDecodeResult previousResult = DecodeSubcode::QDecodeResult::invalid;
     do {
         // Read the T value EFM data
         efmData = readEfmData(10240 * 4); // 40Kbytes
@@ -67,28 +77,51 @@ bool EfmProcess::process(QString inputFilename, QString outputFilename, bool fra
                     QByteArray f3Frame = f3FrameBuffer.mid(i * 34, 34);
                     QByteArray f3Erasures = f3ErasureBuffer.mid(i * 34, 34);
 
-                    // Decode the subcode channels
-                    decodeSubcode.process(f3Frame);
+                    // Process the F3 frames into subcode blocks
+                    subcodeBlock.process(f3Frame, f3Erasures);
 
-                    // Decode the audio data
-                    decodeAudio.process(f3Frame, f3Erasures);
+                    // Is a subcode block ready?
+                    if (subcodeBlock.blockReady()) {
+                        SubcodeBlock::Block block = subcodeBlock.getBlock();
 
-                    // Get any available audio data
-                    QByteArray audioData = decodeAudio.getOutputData();
-                    if (!audioData.isEmpty()) {
-                        // Save the audio data as little-endian stereo LLRRLLRR etc
-                        for (qint32 byteC = 0; byteC < 24; byteC += 4) {
-                            // 1 0 3 2
-                            outStream << static_cast<uchar>(audioData[byteC + 1])
-                             << static_cast<uchar>(audioData[byteC + 0])
-                             << static_cast<uchar>(audioData[byteC + 3])
-                             << static_cast<uchar>(audioData[byteC + 2]);
+                        // Decode the subcode data
+                        DecodeSubcode::QDecodeResult qResult = decodeSubcode.decodeBlock(block.subcode);
+
+                        // Check for failure
+                        if (qResult == DecodeSubcode::QDecodeResult::invalid || qResult == DecodeSubcode::QDecodeResult::crcFailure) {
+                            // Q channel decode failed... we need to decide if we treat the block as
+                            // valid data/audio, or if we drop the block
+
+                            // Was the block sync valid?
+                            if (block.sync0 || block.sync1) {
+                                // If there was a sync, we probably have valid EFM
+                                qDebug() << "EfmProcess::process(): Q Channel was invalid, but sync was good.  Using previous result";
+                                qResult = previousResult;
+                            } else {
+                                // Force loss of block decoding sync
+                                qDebug() << "EfmProcess::process(): Q Channel was invalid and sync was missing. Forcing loss of block sync (invalid EFM?)";
+                                subcodeBlock.forceSyncLoss();
+                            }
+                        } else {
+                            previousResult = qResult;
+                        }
+
+                        // If the subcode block contains audio data, decode it
+                        if (qResult == DecodeSubcode::QDecodeResult::audio) {
+                            // Decode
+                            qint32 c1Failures = decodeAudio.decodeBlock(block.data, block.erasures);
+                            if (c1Failures > (98 / 2)) {
+                                qDebug() << "EfmProcess::process(): Too many C1 failures from block - Input EFM was garbage (" << c1Failures << "errors caused ) - Forcing loss of block sync (invalid EFM)?";
+                                subcodeBlock.forceSyncLoss();
+                            }
+
+                            // Save any available sample data
+                            saveAudioData(outStream);
                         }
                     }
                 }
             }
         }
-
     } while (efmData.size() > 0);
 
     // Display the results from the F3 framing process
@@ -98,17 +131,23 @@ bool EfmProcess::process(QString inputFilename, QString outputFilename, bool fra
     qInfo() << "F3 Framing results: Processed" << static_cast<qint32>(totalFrames) << "F3 frames with" <<
                f3Framer.getPass() << "successful decodes and" <<
                f3Framer.getFailed() << "decodes with invalid frame length";
-    qInfo() << "F3 Framing results:" << pass1Percent << "% correct frame lengths and" << failedPercent << "% incorrect.";
-    qInfo() << "F3 Framing results:" << f3Framer.getSyncLoss() << "sync loss events";
-    qInfo() << "F3 Framing results:" << f3Framer.getFailedEfmTranslations() << "EFM 14 to 8-bit translation failures.";
+    qInfo() << "                   " << pass1Percent << "% correct frame lengths and" << failedPercent << "% incorrect.";
+    qInfo() << "                   " << f3Framer.getSyncLoss() << "sync loss events";
+    qInfo() << "                   " << f3Framer.getFailedEfmTranslations() << "EFM 14 to 8-bit translation failures.";
+
+    // Display the results from the subcode block process
+    qInfo() << "";
+    qInfo() << "Subcode block results:" << subcodeBlock.getTotalBlocks() << "blocks processed";
+    qInfo() << "                      " << subcodeBlock.getPoorSyncs() << "blocks missing SYNC0 and/or SYNC1";
+    qInfo() << "                      " << subcodeBlock.getSyncLosses() << "sync loss events";
 
     // Display the results from the audio decoding process
     qInfo() << "";
     qInfo() << "Audio decode results: Total processed C1s:" << decodeAudio.getValidC1Count() + decodeAudio.getInvalidC1Count() <<
                "(with" << decodeAudio.getInvalidC1Count() << "CIRC failures)";
-    qInfo() << "Audio decode results: Total processed C2s:" << decodeAudio.getValidC2Count() + decodeAudio.getInvalidC2Count() <<
+    qInfo() << "                      Total processed C2s:" << decodeAudio.getValidC2Count() + decodeAudio.getInvalidC2Count() <<
                "(with" << decodeAudio.getInvalidC2Count() << "CIRC failures)";
-    qInfo() << "Audio decode results: Total audio samples:" << decodeAudio.getValidAudioSamplesCount() + decodeAudio.getInvalidAudioSamplesCount() <<
+    qInfo() << "                      Total audio samples:" << decodeAudio.getValidAudioSamplesCount() + decodeAudio.getInvalidAudioSamplesCount() <<
                "(with" << decodeAudio.getInvalidAudioSamplesCount() << "unrecoverable samples)";
 
     qInfo() << "";
@@ -118,6 +157,30 @@ bool EfmProcess::process(QString inputFilename, QString outputFilename, bool fra
     closeInputFile();
 
     return true;
+}
+
+// Method to save any available audio data to file
+void EfmProcess::saveAudioData(QDataStream &outStream)
+{
+    // Get any available audio sample data
+    QByteArray audioData = decodeAudio.getOutputData();
+
+    // This test should never fail... but, hey, software...
+    if ((audioData.size() % 4) != 0) {
+        qCritical() << "EfmProcess::saveAudioData(): Audio data has an invalid length and will not save correctly.";
+        exit(1);
+    }
+
+    if (!audioData.isEmpty()) {
+        // Save the audio data as little-endian stereo LLRRLLRR etc
+        for (qint32 byteC = 0; byteC < audioData.size(); byteC += 4) {
+            // 1 0 3 2
+            outStream << static_cast<uchar>(audioData[byteC + 1])
+             << static_cast<uchar>(audioData[byteC + 0])
+             << static_cast<uchar>(audioData[byteC + 3])
+             << static_cast<uchar>(audioData[byteC + 2]);
+        }
+    }
 }
 
 // Method to open the input file for reading
