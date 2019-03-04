@@ -75,23 +75,27 @@ qint32 F3Framer::f3FramesReady(void)
     return f3Frames.size();
 }
 
-// Get the F3 frame
-QByteArray F3Framer::getF3Frames(void)
+// Get the F3 frame and the erasures
+void F3Framer::getF3Frames(QByteArray &f3FrameBuffer, QByteArray &f3ErasureBuffer)
 {
-    QByteArray outputData;
-    outputData.resize(f3Frames.size() * 34);
+    f3FrameBuffer.resize(f3Frames.size() * 34);
+    f3ErasureBuffer.resize(f3Frames.size() * 34);
 
     qint32 pointer = 0;
     for (qint32 frame = 0; frame < f3Frames.size(); frame++) {
         // Copy the 34 byte frame
         for (qint32 byteC = 0; byteC < 34; byteC++) {
-            outputData[pointer] = static_cast<char>(f3Frames[frame].outputF3Data[byteC]);
+            f3FrameBuffer[pointer] = static_cast<char>(f3Frames[frame].outputF3Data[byteC]);
+            if (f3Frames[frame].outputF3Erasures[byteC]) {
+                f3ErasureBuffer[pointer] = 1;
+            } else {
+                f3ErasureBuffer[pointer] = 0;
+            }
             pointer++;
         }
     }
 
     f3Frames.clear();
-    return outputData;
 }
 
 // Process the state machine
@@ -172,6 +176,8 @@ F3Framer::StateMachine F3Framer::sm_state_findInitialSyncStage2(void)
     endSyncTransition = -1;
     qint32 tTotal = 11;
 
+    qint32 searchLength = 588 * 4;
+
     for (qint32 i = 1; i < efmData.size() - 1; i++) {
         if (efmData[i] == static_cast<char>(11) && efmData[i + 1] == static_cast<char>(11)) {
             endSyncTransition = i;
@@ -179,13 +185,14 @@ F3Framer::StateMachine F3Framer::sm_state_findInitialSyncStage2(void)
         }
         tTotal += efmData[i];
 
-        if (tTotal > (588 * 100)) {
+        // If we are more than a few frame lengths out, give up
+        if (tTotal > searchLength) {
             endSyncTransition = i;
             break;
         }
     }
 
-    if (tTotal > (588 * 100)) {
+    if (tTotal > searchLength) {
         if (verboseDebug) qDebug() << "F3Framer::sm_state_findInitialSyncStage2(): No second sync found within a reasonable length, going back to look for new initial sync.  T =" << tTotal;
         removePllResults(endSyncTransition);
         return state_findInitialSyncStage1;
@@ -332,7 +339,7 @@ F3Framer::StateMachine F3Framer::sm_state_processFrame(void)
 
     // Translate the F3 frame T results into a bit-stream of data
     f3Frames.resize(f3Frames.size() + 1);
-    convertTvaluesToData(frameT, f3Frames[f3Frames.size() - 1].outputF3Data);
+    convertTvaluesToData(frameT, f3Frames[f3Frames.size() - 1].outputF3Data, f3Frames[f3Frames.size() - 1].outputF3Erasures);
 
     // Find the next sync position
     return state_findSecondSync;
@@ -353,7 +360,7 @@ void F3Framer::removePllResults(qint32 number)
 
 // This method takes a vector of T values and returns a byte array
 // of 8-bit decoded data (33 bytes per F3 frame)
-void F3Framer::convertTvaluesToData(QVector<qint32> frameT, uchar* outputData)
+void F3Framer::convertTvaluesToData(QVector<qint32> frameT, uchar* outputData, bool* outputErasures)
 {
     // Firstly we have to make a bit-stream of the 588 channel bits including
     // all of the sync pattern and merge bits
@@ -421,6 +428,7 @@ void F3Framer::convertTvaluesToData(QVector<qint32> frameT, uchar* outputData)
     // sync can be performed later (it's not a real F3 data byte, but otherwise
     // the SYNC0 and SYNC1 would be lost as they cannot be converted as EFM values)
     outputData[0] = 0; // No sync
+    outputErasures[0] = false;
     if (efmValues[0] == 0x801) outputData[0] = 0x01; // SYNC0
     if (efmValues[0] == 0x012) outputData[0] = 0x02; // SYNC1
 
@@ -430,6 +438,7 @@ void F3Framer::convertTvaluesToData(QVector<qint32> frameT, uchar* outputData)
         if (counter == 1 && (efmValues[0] == 0x801 || efmValues[0] == 0x012)) {
             // Sync bit, can't translate, so set data to 0
             outputData[counter] = 0;
+            outputErasures[counter] = false;
             result = 1;
         } else {
             // Normal EFM - translate to 8-bit value
@@ -437,6 +446,7 @@ void F3Framer::convertTvaluesToData(QVector<qint32> frameT, uchar* outputData)
             while (lutPos < 256 && result != 1) {
                 if (efm2numberLUT[lutPos] == efmValues[counter - 1]) {
                     outputData[counter] = static_cast<uchar>(lutPos);
+                    outputErasures[counter] = false;
                     result = 1;
                 }
                 lutPos++;
@@ -448,6 +458,7 @@ void F3Framer::convertTvaluesToData(QVector<qint32> frameT, uchar* outputData)
                         "not found in translation look-up table, position =" << counter;
             efmTranslationFail++;
             outputData[counter] = 0;
+            outputErasures[counter] = true;
         }
     }
 

@@ -35,6 +35,11 @@ DecodeAudio::DecodeAudio()
     currentF3Frame.resize(32);
     previousF3Frame.resize(32);
 
+    currentF3Erasures.clear();
+    previousF3Erasures.clear();
+    currentF3Erasures.resize(32);
+    previousF3Erasures.resize(32);
+
     validC1Count = 0;
     invalidC1Count = 0;
 
@@ -89,7 +94,7 @@ qint32 DecodeAudio::getInvalidAudioSamplesCount(void)
     return invalidAudioSampleCount;
 }
 
-void DecodeAudio::process(QByteArray f3FrameParam)
+void DecodeAudio::process(QByteArray f3FrameParam, QByteArray f3ErasuresParam)
 {
     // Ensure the F3 frame is the correct length
     if (f3FrameParam.size() != 34) {
@@ -99,7 +104,10 @@ void DecodeAudio::process(QByteArray f3FrameParam)
 
     // Get the 32 bytes of user-data from the frame parameter
     // 0 is the sync indicator, 1 is the subcode and 2-34 is the data
-    for (qint32 byteC = 0; byteC < 32; byteC++) currentF3Frame[byteC] = f3FrameParam[byteC + 2];
+    for (qint32 byteC = 0; byteC < 32; byteC++) {
+        currentF3Frame[byteC] = f3FrameParam[byteC + 2];
+        currentF3Erasures[byteC] = f3ErasuresParam[byteC + 2];
+    }
 
     // Since we have a new F3 frame, clear the waiting flag
     waitingForF3frame = false;
@@ -129,6 +137,7 @@ DecodeAudio::StateMachine DecodeAudio::sm_state_initial(void)
 {
     // We need at least 2 frames to process a C1
     previousF3Frame = currentF3Frame;
+    previousF3Erasures = currentF3Erasures;
     waitingForF3frame = true;
 
     return state_processC1;
@@ -140,10 +149,12 @@ DecodeAudio::StateMachine DecodeAudio::sm_state_processC1(void)
     //qDebug() << "DecodeAudio::sm_state_processC1(): Called";
 
     // Interleave the current and previous frame to generate the C1 data
-    interleaveC1Data(previousF3Frame, currentF3Frame, c1Data);
+    interleaveC1Data(previousF3Frame, currentF3Frame,
+                     previousF3Erasures, currentF3Erasures,
+                     c1Data, c1DataErasures);
 
     // Perform the Reed-Solomon CIRC
-    if (reedSolomon.decodeC1(c1Data)) {
+    if (reedSolomon.decodeC1(c1Data, c1DataErasures)) {
         validC1Count++;
         c1DataValid = true;
         //qDebug() << "DecodeAudio::sm_state_processC1(): Valid C1 #" << validC1Count;
@@ -155,6 +166,7 @@ DecodeAudio::StateMachine DecodeAudio::sm_state_processC1(void)
 
     // Store the frame and get a new frame
     previousF3Frame = currentF3Frame;
+    previousF3Erasures = currentF3Erasures;
     waitingForF3frame = true;
 
     // Process C2 stage
@@ -235,7 +247,9 @@ DecodeAudio::StateMachine DecodeAudio::sm_state_processAudio(void)
 // Utility methods ----------------------------------------------------------------------------------------------------
 
 // Interleave current and previous F3 frame symbols and then invert parity words
-void DecodeAudio::interleaveC1Data(QByteArray previousF3, QByteArray currentF3, uchar *c1Data)
+void DecodeAudio::interleaveC1Data(QByteArray previousF3, QByteArray currentF3,
+                                   QByteArray previousF3E, QByteArray currentF3E,
+                                   uchar *c1Data, bool *isErasure)
 {
     uchar *prev = reinterpret_cast<uchar*>(previousF3.data());
     uchar *curr = reinterpret_cast<uchar*>(currentF3.data());
@@ -243,7 +257,10 @@ void DecodeAudio::interleaveC1Data(QByteArray previousF3, QByteArray currentF3, 
     // Interleave the symbols
     for (qint32 byteC = 0; byteC < 32; byteC += 2) {
         c1Data[byteC] = curr[byteC];
-        c1Data[byteC+1] = prev[byteC + 1];
+        c1Data[byteC+1] = prev[byteC+1];
+
+        if (currentF3E[byteC] == static_cast<char>(1)) isErasure[byteC] = true; else isErasure[byteC] = false;
+        if (previousF3E[byteC+1] == static_cast<char>(1)) isErasure[byteC+1] = true; else isErasure[byteC+1] = false;
     }
 
     // Invert the Qm parity bits

@@ -33,7 +33,7 @@ class ReedSolomon
 public:
     ReedSolomon();
 
-    bool decodeC1(unsigned char *inData);
+    bool decodeC1(uchar *inData, bool *inErasures);
     bool decodeC2(uchar *inData, bool *inErasures);
 
 private:

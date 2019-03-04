@@ -43,10 +43,12 @@ public:
     qint32 getInvalidAudioSamplesCount(void);
 
     QByteArray getOutputData(void);
-    void process(QByteArray f3FrameParam);
+    void process(QByteArray f3FrameParam, QByteArray f3ErasuresParam);
 
 private:
-    void interleaveC1Data(QByteArray previousF3, QByteArray currentF3, uchar *c1Data);
+    void interleaveC1Data(QByteArray previousF3, QByteArray currentF3,
+                                       QByteArray previousF3E, QByteArray currentF3E,
+                                       uchar *c1Data, bool *isErasure);
     void getC2Data(uchar *symBuffer, bool *isErasure);
     QString dataToString(uchar *data, qint32 length);
     void deInterleaveC2(uchar *outputData);
@@ -56,6 +58,7 @@ private:
 
     // C1 ECC buffer
     uchar c1Data[32];
+    bool c1DataErasures[32];
     bool c1DataValid;
     qint32 validC1Count;
     qint32 invalidC1Count;
@@ -98,7 +101,9 @@ private:
     StateMachine nextState;
     bool waitingForF3frame;
     QByteArray currentF3Frame;
+    QByteArray currentF3Erasures;
     QByteArray previousF3Frame;
+    QByteArray previousF3Erasures;
 
     StateMachine sm_state_initial(void);
     StateMachine sm_state_processC1(void);
