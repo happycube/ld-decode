@@ -7,7 +7,7 @@
 
     This file is part of ld-decode-tools.
 
-    ld-efm-decodedata is free software: you can redistribute it and/or
+    ld-process-efm is free software: you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
     published by the Free Software Foundation, either version 3 of the
     License, or (at your option) any later version.
@@ -111,11 +111,11 @@ DecodeSubcode::QDecodeResult DecodeSubcode::decodeBlock(uchar *subcodeData)
             qFrameMode4.qControl = qControl;
 
             qDebug().noquote().nospace() << "DecodeSubcode::decode(): Track #" << qFrameMode4.tno << " "
-                                         << qFrameMode4.trackTime.toString("mm:ss") << "." << qFrameMode4.trackFrame;
+                                         << qFrameMode4.trackTime.toString("mm:ss.zzz");
             result = qMode4;
         }
 
-        if (qMode == -1) qDebug() << "DecodeSubcode::decode(): Invalid Q Mode reported by subcode block!";
+        //if (qMode == -1) qDebug() << "DecodeSubcode::decode(): Invalid Q Mode reported by subcode block!";
     } else {
         result = invalid;
     }
@@ -154,7 +154,7 @@ bool DecodeSubcode::verifyQ(uchar *qSubcode)
 
     // Is the Q subcode valid?
     if (crcChecksum != calcChecksum) {
-        qDebug() << "DecodeSubcode::decodeQ(): Q Subcode CRC failed - Q subcode payload is invalid";
+        //qDebug() << "DecodeSubcode::decodeQ(): Q Subcode CRC failed - Q subcode payload is invalid";
         return false;
     }
 
@@ -238,9 +238,9 @@ DecodeSubcode::QFrameMode4 DecodeSubcode::decodeQDataMode4(uchar *qSubcode)
         qFrameMode4Desc.tno = 170;
         qFrameMode4Desc.x = bcdToInteger(qSubcode[2]);
         qFrameMode4Desc.point = -1;
-        qFrameMode4Desc.trackTime = QTime(0, bcdToInteger(qSubcode[3]), bcdToInteger(qSubcode[4]));
+        qFrameMode4Desc.trackTime = QTime(0, bcdToInteger(qSubcode[3]), bcdToInteger(qSubcode[4]), bcdToInteger(qSubcode[5]));
         qFrameMode4Desc.trackFrame = bcdToInteger(qSubcode[5]);
-        qFrameMode4Desc.discTime = QTime(0, bcdToInteger(qSubcode[7]), bcdToInteger(qSubcode[8]));
+        qFrameMode4Desc.discTime = QTime(0, bcdToInteger(qSubcode[7]), bcdToInteger(qSubcode[8]), bcdToInteger(qSubcode[9]));
         qFrameMode4Desc.discFrame = bcdToInteger(qSubcode[9]);
         qFrameMode4Desc.isValid = true;
 
@@ -251,9 +251,9 @@ DecodeSubcode::QFrameMode4 DecodeSubcode::decodeQDataMode4(uchar *qSubcode)
         qFrameMode4Desc.tno = bcdToInteger(qSubcode[1]);
         qFrameMode4Desc.x = -1;
         qFrameMode4Desc.point = bcdToInteger(qSubcode[2]);
-        qFrameMode4Desc.trackTime = QTime(0, bcdToInteger(qSubcode[3]), bcdToInteger(qSubcode[4]));
+        qFrameMode4Desc.trackTime = QTime(0, bcdToInteger(qSubcode[3]), bcdToInteger(qSubcode[4]), bcdToInteger(qSubcode[5]));
         qFrameMode4Desc.trackFrame = bcdToInteger(qSubcode[5]);
-        qFrameMode4Desc.discTime = QTime(0, bcdToInteger(qSubcode[7]), bcdToInteger(qSubcode[8]));
+        qFrameMode4Desc.discTime = QTime(0, bcdToInteger(qSubcode[7]), bcdToInteger(qSubcode[8]), bcdToInteger(qSubcode[9]));
         qFrameMode4Desc.discFrame = bcdToInteger(qSubcode[9]);
         qFrameMode4Desc.isValid = true;
     } else {
@@ -263,9 +263,9 @@ DecodeSubcode::QFrameMode4 DecodeSubcode::decodeQDataMode4(uchar *qSubcode)
         qFrameMode4Desc.tno = bcdToInteger(qSubcode[1]);
         qFrameMode4Desc.x = bcdToInteger(qSubcode[2]);
         qFrameMode4Desc.point = -1;
-        qFrameMode4Desc.trackTime = QTime(0, bcdToInteger(qSubcode[3]), bcdToInteger(qSubcode[4]));
+        qFrameMode4Desc.trackTime = QTime(0, bcdToInteger(qSubcode[3]), bcdToInteger(qSubcode[4]), bcdToInteger(qSubcode[5]));
         qFrameMode4Desc.trackFrame = bcdToInteger(qSubcode[5]);
-        qFrameMode4Desc.discTime = QTime(0, bcdToInteger(qSubcode[7]), bcdToInteger(qSubcode[8]));
+        qFrameMode4Desc.discTime = QTime(0, bcdToInteger(qSubcode[7]), bcdToInteger(qSubcode[8]), bcdToInteger(qSubcode[9]));
         qFrameMode4Desc.discFrame = bcdToInteger(qSubcode[9]);
         qFrameMode4Desc.isValid = true;
     }
@@ -285,9 +285,9 @@ DecodeSubcode::QFrameMode4 DecodeSubcode::defaultQMode4(void)
     qFrameMode4Decr.qControl.isNotPreEmp = false;
 
     // Q Mode 4
-    qFrameMode4Decr.trackTime = QTime(0, 0, 0);
+    qFrameMode4Decr.trackTime = QTime(0, 0, 0, 0);
     qFrameMode4Decr.trackFrame = 0;
-    qFrameMode4Decr.discTime = QTime(0, 0, 0);
+    qFrameMode4Decr.discTime = QTime(0, 0, 0, 0);
     qFrameMode4Decr.discFrame = 0;
 
     qFrameMode4Decr.leadin = false;
