@@ -194,7 +194,7 @@ QByteArray LdsProcess::readAndUnpackLdsFile(void)
     QByteArray outputBuffer;
 
     // Input buffer must be divisible by 5 bytes due to 10-bit data format
-    qint32 bufferSizeInBytes = (64 * 1024 * 1024); // 64 MiB
+    qint32 bufferSizeInBytes = (20 * 1024 * 1024); // 20 MiB
     inputBuffer.resize(bufferSizeInBytes);
 
     // Every 5 input bytes is 4 output words (8 bytes)
