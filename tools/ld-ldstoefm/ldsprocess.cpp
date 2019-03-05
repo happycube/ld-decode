@@ -41,7 +41,7 @@ LdsProcess::LdsProcess()
 //  5. Use a PLL to extract the data from the ZC deltas
 //  6. Save the data to the output EFM data file
 
-bool LdsProcess::process(QString inputFilename, QString outputFilename)
+bool LdsProcess::process(QString inputFilename, QString outputFilename, bool outputSample, bool useFloatingPoint, bool noIsiFilter)
 {
     // Open the input file
     if (!openInputFile(inputFilename)) {
@@ -50,6 +50,13 @@ bool LdsProcess::process(QString inputFilename, QString outputFilename)
     }
     qint64 inputFileSize = (inputFileHandle->size() / 10) * 16;
     qint64 inputProcessed = 0;
+
+    // Warn if --sample has been selected
+    if (outputSample) qInfo() << "Writing output as a 16-bit signed sample of the filter output";
+
+    // Warn is --float has been selected
+    if (useFloatingPoint) qInfo() << "Using floating-point filter processing";
+    else qInfo() << "Using fixed-point filter processing";
 
     // Open the output file
     if (!openOutputFile(outputFilename)) {
@@ -68,27 +75,45 @@ bool LdsProcess::process(QString inputFilename, QString outputFilename)
 
             // Filter out everything from the LDS to leave just the EFM signal
             qDebug() << "LdsProcess::process(): Applying EFM extraction filter...";
-            efmFilter.process(ldsData);
+            if (useFloatingPoint) efmFilter.floatEfmProcess(ldsData);
+            else efmFilter.fixedEfmProcess(ldsData);
 
-            // Pulse shape the EFM data
-            qDebug() << "LdsProcess::process(): Applying ISI correction filter...";
-            isiFilter.floatIsiProcess(ldsData);
+            if (!noIsiFilter) {
+                // Pulse shape the EFM data
+                qDebug() << "LdsProcess::process(): Applying ISI correction filter...";
+                if (useFloatingPoint) isiFilter.floatIsiProcess(ldsData);
+                else isiFilter.fixedIsiProcess(ldsData);
+            }
 
-            // Use zero-cross detection and a PLL to get the T values from the EFM signal
-            qDebug() << "LdsProcess::process(): Performing EFM clock and data recovery...";
-            efmData = pll.process(ldsData);
+            // Output EFM data or sample (for testing)?
+            if (!outputSample) {
+                // Use zero-cross detection and a PLL to get the T values from the EFM signal
+                qDebug() << "LdsProcess::process(): Performing EFM clock and data recovery...";
+                efmData = pll.process(ldsData);
 
-            // Save the resulting T values as a byte stream to the output file
-            if (!outputFileHandle->write(reinterpret_cast<char *>(efmData.data()), efmData.size())) {
-                // File write failed
-                qCritical("Could not write to output file!");
-                closeInputFile();
-                closeOutputFile();
-                return false;
+                // Save the resulting T values as a byte stream to the output file
+                if (!outputFileHandle->write(reinterpret_cast<char *>(efmData.data()), efmData.size())) {
+                    // File write failed
+                    qCritical("Could not write to output file!");
+                    closeInputFile();
+                    closeOutputFile();
+                    return false;
+                }
+            } else {
+                // Save the filter output as a sample file (for testing filters)
+                if (!outputFileHandle->write(reinterpret_cast<char *>(ldsData.data()), ldsData.size())) {
+                    // File write failed
+                    qCritical("Could not write to output file!");
+                    closeInputFile();
+                    closeOutputFile();
+                    return false;
+                }
             }
 
             // Show a progress update to the user
-            qInfo() << "Processed" << inputProcessed / 1024 << "Kbytes of" << inputFileSize / 1024 << "KBytes";
+            //qInfo() << "Processed" << inputProcessed / 1024 << "Kbytes of" << inputFileSize / 1024 << "KBytes";
+            qreal percentage = (100.0 / static_cast<qreal>(inputFileSize)) * static_cast<qreal>(inputProcessed);
+            qInfo().nospace() << "Processed " << static_cast<qint32>(percentage) << "%";
         }
     } while (ldsData.size() > 0);
 
@@ -169,7 +194,7 @@ QByteArray LdsProcess::readAndUnpackLdsFile(void)
     QByteArray outputBuffer;
 
     // Input buffer must be divisible by 5 bytes due to 10-bit data format
-    qint32 bufferSizeInBytes = (20 * 1024 * 1024); // 20 MiB
+    qint32 bufferSizeInBytes = (64 * 1024 * 1024); // 64 MiB
     inputBuffer.resize(bufferSizeInBytes);
 
     // Every 5 input bytes is 4 output words (8 bytes)

@@ -45,12 +45,12 @@ void IsiFilter::floatIsiProcess(QByteArray &inputSample)
     qint16 *input = reinterpret_cast<qint16*>(inputSample.data());
 
     for (qint32 sample = 0; sample < (inputSample.size() / 2); sample++) {
-        input[sample] = static_cast<qint16>(floatingIsiFilter(static_cast<qreal>(input[sample])));
+        input[sample] = static_cast<qint16>(floatIsiFilter(static_cast<qreal>(input[sample])));
     }
 }
 
 // ISI FIR filter (floating-point implementation)
-qreal IsiFilter::floatingIsiFilter(qreal inputSample)
+qreal IsiFilter::floatIsiFilter(qreal inputSample)
 {
     qreal sum; qint32 i;
     for (i = 0; i < ceNZeros; i++) ceXv[i] = ceXv[i+1];

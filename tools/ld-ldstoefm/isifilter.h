@@ -94,7 +94,7 @@ private:
     };
 
     // Method prototypes ----------------------------------------------------------------------------------------------
-    qreal floatingIsiFilter(qreal inputSample);
+    qreal floatIsiFilter(qreal inputSample);
 
     // Fixed point version (coeff scaled by 15 bits (32768))
 

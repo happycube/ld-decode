@@ -193,7 +193,7 @@ bool EfmProcess::openInputFile(QString inputFileName)
         qDebug() << "Could not open " << inputFileName << "as input file";
         return false;
     }
-    qDebug() << "LdsProcess::openInputFile(): 10-bit input file is" << inputFileName << "and is" <<
+    qDebug() << "EfmProcess::openInputFile(): 10-bit input file is" << inputFileName << "and is" <<
                 inputFileHandle->size() << "bytes in length";
 
     // Exit with success

@@ -95,6 +95,21 @@ int main(int argc, char *argv[])
                                        QCoreApplication::translate("main", "Show debug"));
     parser.addOption(showDebugOption);
 
+    // Option to output filtered sample instead of EFM (for testing filters) (-s)
+    QCommandLineOption outputSampleOption(QStringList() << "s" << "sample",
+                                       QCoreApplication::translate("main", "Output sample instead of EFM (for testing only)"));
+    parser.addOption(outputSampleOption);
+
+    // Option to use floating-point filters instead of fixed-point (-f)
+    QCommandLineOption useFloatOption(QStringList() << "f" << "float",
+                                       QCoreApplication::translate("main", "Use floating-point filters instead of fixed-point"));
+    parser.addOption(useFloatOption);
+
+    // Do not apply ISI filter (-n)
+    QCommandLineOption noIsiOption(QStringList() << "n" << "noisi",
+                                       QCoreApplication::translate("main", "Do not apply ISI filter"));
+    parser.addOption(noIsiOption);
+
     // Positional argument to specify input EFM file
     parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input 40MSPS sampled LDS file"));
 
@@ -106,6 +121,9 @@ int main(int argc, char *argv[])
 
     // Get the options from the parser
     bool isDebugOn = parser.isSet(showDebugOption);
+    bool outputSample = parser.isSet(outputSampleOption);
+    bool useFloatingPoint = parser.isSet(useFloatOption);
+    bool noIsiFilter = parser.isSet(noIsiOption);
 
     // Get the arguments from the parser
     QString inputFilename;
@@ -131,7 +149,7 @@ int main(int argc, char *argv[])
 
     // Perform the processing
     LdsProcess ldsProcess;
-    ldsProcess.process(inputFilename, outputFilename);
+    ldsProcess.process(inputFilename, outputFilename, outputSample, useFloatingPoint, noIsiFilter);
 
     // Quit with success
     return 0;
