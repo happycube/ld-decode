@@ -88,7 +88,7 @@ bool EfmProcess::process(QString inputFilename, QString outputFilename, bool fra
                         DecodeSubcode::QDecodeResult qResult = decodeSubcode.decodeBlock(block.subcode);
 
                         // Check for failure
-                        if (qResult == DecodeSubcode::QDecodeResult::invalid || qResult == DecodeSubcode::QDecodeResult::crcFailure) {
+                        if (qResult == DecodeSubcode::QDecodeResult::invalid) {
                             // Q channel decode failed... we need to decide if we treat the block as
                             // valid data/audio, or if we drop the block
 
@@ -106,12 +106,12 @@ bool EfmProcess::process(QString inputFilename, QString outputFilename, bool fra
                             previousResult = qResult;
                         }
 
-                        // If the subcode block contains audio data, decode it
-                        if (qResult == DecodeSubcode::QDecodeResult::audio) {
+                        // QMode 4 (video audio)?
+                        if (qResult == DecodeSubcode::QDecodeResult::qMode4) {
                             // Decode
                             qint32 c1Failures = decodeAudio.decodeBlock(block.data, block.erasures);
                             if (c1Failures > (98 / 2)) {
-                                qDebug() << "EfmProcess::process(): Too many C1 failures from block - Input EFM was garbage (" << c1Failures << "errors caused ) - Forcing loss of block sync (invalid EFM)?";
+                                qDebug() << "EfmProcess::process(): Too many C1 failures from block - Input EFM was garbage (" << c1Failures << "C1 errors caused ) - Forcing loss of block sync (invalid EFM)?";
                                 subcodeBlock.forceSyncLoss();
                             }
 

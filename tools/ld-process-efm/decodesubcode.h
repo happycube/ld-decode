@@ -27,6 +27,7 @@
 
 #include <QCoreApplication>
 #include <QDebug>
+#include <QTime>
 
 class DecodeSubcode
 {
@@ -35,15 +36,13 @@ public:
 
     // Q-channel Decoding results
     enum QDecodeResult {
-        audio,          // Data payload is audio
-        data,           // Data payload is data
-        crcFailure,     // CRC check failed
-        invalid         // Some other error
+        qMode0,
+        qMode1,
+        qMode2,
+        qMode3,
+        qMode4,
+        invalid
     };
-
-    QDecodeResult decodeBlock(uchar *subcodeData);
-
-private:
 
     // Q-Channel control
     struct QControl {
@@ -53,6 +52,28 @@ private:
         bool isNotPreEmp;
     };
 
+    struct QFrameMode4 {
+        QControl qControl;
+        QTime trackTime;
+        qint32 trackFrame;
+        QTime discTime;
+        qint32 discFrame;
+        bool leadin;
+        bool leadout;
+
+        qint32 tno;
+        qint32 x;
+        qint32 point;
+
+        bool isValid;
+    };
+
+    QDecodeResult decodeBlock(uchar *subcodeData);
+    QFrameMode4 getQMode4(void);
+
+private:
+    QFrameMode4 qFrameMode4;
+
     QString bcdToQString(uchar bcd);
     qint32 bcdToInteger(uchar bcd);
     bool verifyQ(uchar *qSubcode);
@@ -61,7 +82,8 @@ private:
     QControl decodeQControl(uchar *qSubcode);
     qint32 decodeQAddress(uchar *qSubcode);
 
-    void decodeQDataMode4(uchar *qSubcode);
+    QFrameMode4 decodeQDataMode4(uchar *qSubcode);
+    QFrameMode4 defaultQMode4(void);
 
 };
 

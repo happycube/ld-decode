@@ -37,6 +37,7 @@ DecodeSubcode::DecodeSubcode()
 DecodeSubcode::QDecodeResult DecodeSubcode::decodeBlock(uchar *subcodeData)
 {
     DecodeSubcode::QDecodeResult result = invalid;
+    qFrameMode4 = defaultQMode4();
 
     // Extract the subcode channels - there are 8 subcodes containing 96 bits (12 bytes)
     // per subcode.  Only channels P and Q are supported by the red-book CD standards
@@ -91,32 +92,44 @@ DecodeSubcode::QDecodeResult DecodeSubcode::decodeBlock(uchar *subcodeData)
         // Get the Q Mode parameters
         if (qMode == 0) {
             qDebug() << "DecodeSubcode::decode(): Q Mode 0: Not supported!";
-            result = data;
+            result = qMode0;
         }
         if (qMode == 1) {
             qDebug() << "DecodeSubcode::decode(): Q Mode 1: Not supported!";
-            result = audio;
+            result = qMode1;
         }
         if (qMode == 2) {
             qDebug() << "DecodeSubcode::decode(): Q Mode 2: Not supported!";
-            result = audio;
+            result = qMode2;
         }
         if (qMode == 3) {
             qDebug() << "DecodeSubcode::decode(): Q Mode 3: Not supported!";
-            result = audio;
+            result = qMode3;
         }
         if (qMode == 4) {
-            decodeQDataMode4(qSubcode); // Q Mode 4 = Video audio
-            result = audio;
+            qFrameMode4 = decodeQDataMode4(qSubcode); // Q Mode 4 = Video audio
+            qFrameMode4.qControl = qControl;
+
+            qDebug().noquote().nospace() << "DecodeSubcode::decode(): Track #" << qFrameMode4.tno << " "
+                                         << qFrameMode4.trackTime.toString("mm:ss") << "." << qFrameMode4.trackFrame;
+            result = qMode4;
         }
 
         if (qMode == -1) qDebug() << "DecodeSubcode::decode(): Invalid Q Mode reported by subcode block!";
     } else {
-        result = crcFailure;
+        result = invalid;
     }
 
     return result;
 }
+
+// This method returns a Q Mode 4 descriptor
+DecodeSubcode::QFrameMode4 DecodeSubcode::getQMode4(void)
+{
+    return qFrameMode4;
+}
+
+// Private Methods ----------------------------------------------------------------------------------------------------
 
 // Method to convert 2 digit BCD byte to 2 numeric characters
 QString DecodeSubcode::bcdToQString(uchar bcd)
@@ -209,8 +222,9 @@ qint32 DecodeSubcode::decodeQAddress(uchar *qSubcode)
 }
 
 // Method to decode Q subcode Mode 4 DATA-Q
-void DecodeSubcode::decodeQDataMode4(uchar *qSubcode)
+DecodeSubcode::QFrameMode4 DecodeSubcode::decodeQDataMode4(uchar *qSubcode)
 {
+    DecodeSubcode::QFrameMode4 qFrameMode4Desc;
     QString debugOut;
 
     // Get the track number (TNO) field
@@ -219,44 +233,73 @@ void DecodeSubcode::decodeQDataMode4(uchar *qSubcode)
     // Use TNO to detect lead-in, audio or lead-out
     if (qSubcode[1] == 0xAA) {
         // Lead out
-        debugOut += "Mode 4 (Video audio) Lead-out - ";
-        debugOut += "TNO=170 ";
-        debugOut += "X=" + bcdToQString(qSubcode[2]) + " ";
-        debugOut += "MIN=" + bcdToQString(qSubcode[3]) + " ";
-        debugOut += "SEC=" + bcdToQString(qSubcode[4]) + " ";
-        debugOut += "FRAME=" + bcdToQString(qSubcode[5]) + " ";
-        //debugOut += "ZERO=" + bcdToQString(qSubcode[6]) + " ";
-        debugOut += "AMIN=" + bcdToQString(qSubcode[7]) + " ";
-        debugOut += "ASEC=" + bcdToQString(qSubcode[8]) + " ";
-        debugOut += "AFRAME=" + bcdToQString(qSubcode[9]);
+        qFrameMode4Desc.leadout = true;
+        qFrameMode4Desc.leadin = false;
+        qFrameMode4Desc.tno = 170;
+        qFrameMode4Desc.x = bcdToInteger(qSubcode[2]);
+        qFrameMode4Desc.point = -1;
+        qFrameMode4Desc.trackTime = QTime(0, bcdToInteger(qSubcode[3]), bcdToInteger(qSubcode[4]));
+        qFrameMode4Desc.trackFrame = bcdToInteger(qSubcode[5]);
+        qFrameMode4Desc.discTime = QTime(0, bcdToInteger(qSubcode[7]), bcdToInteger(qSubcode[8]));
+        qFrameMode4Desc.discFrame = bcdToInteger(qSubcode[9]);
+        qFrameMode4Desc.isValid = true;
+
     } else if (tno == 0) {
         // Lead in
-        debugOut += "Mode 4 (Video audio) Lead-in - ";
-        debugOut += "TNO=" + bcdToQString(qSubcode[1]) + " ";
-        debugOut += "POINT=" + bcdToQString(qSubcode[2]) + " ";
-        debugOut += "MIN=" + bcdToQString(qSubcode[3]) + " ";
-        debugOut += "SEC=" + bcdToQString(qSubcode[4]) + " ";
-        debugOut += "FRAME=" + bcdToQString(qSubcode[5]) + " ";
-        //debugOut += "ZERO=" + bcdToQString(qSubcode[6]) + " ";
-        debugOut += "PMIN=" + bcdToQString(qSubcode[7]) + " ";
-        debugOut += "PSEC=" + bcdToQString(qSubcode[8]) + " ";
-        debugOut += "PFRAME=" + bcdToQString(qSubcode[9]);
+        qFrameMode4Desc.leadout = false;
+        qFrameMode4Desc.leadin = true;
+        qFrameMode4Desc.tno = bcdToInteger(qSubcode[1]);
+        qFrameMode4Desc.x = -1;
+        qFrameMode4Desc.point = bcdToInteger(qSubcode[2]);
+        qFrameMode4Desc.trackTime = QTime(0, bcdToInteger(qSubcode[3]), bcdToInteger(qSubcode[4]));
+        qFrameMode4Desc.trackFrame = bcdToInteger(qSubcode[5]);
+        qFrameMode4Desc.discTime = QTime(0, bcdToInteger(qSubcode[7]), bcdToInteger(qSubcode[8]));
+        qFrameMode4Desc.discFrame = bcdToInteger(qSubcode[9]);
+        qFrameMode4Desc.isValid = true;
     } else {
         // Audio
-        debugOut += "Mode 4 (Video audio) Audio - ";
-        debugOut += "TNO=" + bcdToQString(qSubcode[1]) + " ";
-        debugOut += "X=" + bcdToQString(qSubcode[2]) + " ";
-        debugOut += "MIN=" + bcdToQString(qSubcode[3]) + " ";
-        debugOut += "SEC=" + bcdToQString(qSubcode[4]) + " ";
-        debugOut += "FRAME=" + bcdToQString(qSubcode[5]) + " ";
-        //debugOut += "ZERO=" + bcdToQString(qSubcode[6]) + " ";
-        debugOut += "AMIN=" + bcdToQString(qSubcode[7]) + " ";
-        debugOut += "ASEC=" + bcdToQString(qSubcode[8]) + " ";
-        debugOut += "AFRAME=" + bcdToQString(qSubcode[9]);
+        qFrameMode4Desc.leadout = false;
+        qFrameMode4Desc.leadin = false;
+        qFrameMode4Desc.tno = bcdToInteger(qSubcode[1]);
+        qFrameMode4Desc.x = bcdToInteger(qSubcode[2]);
+        qFrameMode4Desc.point = -1;
+        qFrameMode4Desc.trackTime = QTime(0, bcdToInteger(qSubcode[3]), bcdToInteger(qSubcode[4]));
+        qFrameMode4Desc.trackFrame = bcdToInteger(qSubcode[5]);
+        qFrameMode4Desc.discTime = QTime(0, bcdToInteger(qSubcode[7]), bcdToInteger(qSubcode[8]));
+        qFrameMode4Desc.discFrame = bcdToInteger(qSubcode[9]);
+        qFrameMode4Desc.isValid = true;
     }
 
-    qDebug().noquote() << "DecodeSubcode::decodeQDataMode4():" << debugOut;
+    return qFrameMode4Desc;
 }
 
+// This method creates an initialised Q Mode 4 descriptor
+DecodeSubcode::QFrameMode4 DecodeSubcode::defaultQMode4(void)
+{
+    DecodeSubcode::QFrameMode4 qFrameMode4Decr;
+
+    // Control
+    qFrameMode4Decr.qControl.isStereo = false;
+    qFrameMode4Decr.qControl.isAudio = false;
+    qFrameMode4Decr.qControl.isCopyProtected = false;
+    qFrameMode4Decr.qControl.isNotPreEmp = false;
+
+    // Q Mode 4
+    qFrameMode4Decr.trackTime = QTime(0, 0, 0);
+    qFrameMode4Decr.trackFrame = 0;
+    qFrameMode4Decr.discTime = QTime(0, 0, 0);
+    qFrameMode4Decr.discFrame = 0;
+
+    qFrameMode4Decr.leadin = false;
+    qFrameMode4Decr.leadout = false;
+
+    qFrameMode4Decr.tno = 0;
+    qFrameMode4Decr.x = 0;
+    qFrameMode4Decr.point = 0;
+
+    qFrameMode4Decr.isValid = false;
+
+    return qFrameMode4Decr;
+}
 
 
