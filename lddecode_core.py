@@ -1740,15 +1740,23 @@ class LDdecode:
     def calcsnr(self, f, snrslice):
         data = f.output_to_ire(f.dspicture[snrslice])
         
+        signal = np.mean(data)
+        noise = np.std(data)
+
+        return 20 * np.log10(signal / noise)
+
+    def calcpsnr(self, f, snrslice):
+        data = f.output_to_ire(f.dspicture[snrslice])
+        
 #        signal = np.mean(data)
         noise = np.std(data)
 
-        return 20 * np.log10(70 / noise)
+        return 20 * np.log10(100 / noise)
 
     def computeMetricsNTSC(self, f1, f2, metrics):
         wl_slice = f2.lineslice_tbc(20, 13, 2)
         if inrange(np.mean(f2.output_to_ire(f2.dspicture[wl_slice])), 90, 110):
-            metrics['whiteSNR'] = self.calcsnr(f2, wl_slice)
+            metrics['whiteSNR'] = self.calcpsnr(f2, wl_slice)
             metrics['whiteIRE'] = np.mean(f2.output_to_ire(f2.dspicture[wl_slice]))
             #metrics['whiteIRE'] = f2.rf.hztoire(np.mean(f2.data[0]['demod'][wl_slice]))
 
@@ -1763,7 +1771,7 @@ class LDdecode:
                     wl20_slice = None
 
         if wl20_slice is not None:
-            metrics['whiteSNR'] = self.calcsnr(f1, wl20_slice)
+            metrics['whiteSNR'] = self.calcpsnr(f1, wl20_slice)
             metrics['whiteIRE'] = np.mean(f1.output_to_ire(f1.dspicture[wl20_slice]))
 
         # check for a white flag
@@ -1775,9 +1783,9 @@ class LDdecode:
             if not inrange(np.mean(f2.output_to_ire(f2.dspicture[wf_slice])), 92, 108):
                 wf_slice = None
             else:
-                metrics['ntscWhiteFlagSNR'] = self.calcsnr(f2, wf_slice)
+                metrics['ntscWhiteFlagSNR'] = self.calcpsnr(f2, wf_slice)
         else:
-            metrics['ntscWhiteFlagSNR'] = self.calcsnr(f1, wf_slice)
+            metrics['ntscWhiteFlagSNR'] = self.calcpsnr(f1, wf_slice)
 
         # for NTSC, use line 19 to determine 70IRE burst level for MTF compensation later
         sl_cburst = f1.lineslice_tbc(19, 4.7+.8, 2.4)
@@ -1832,8 +1840,8 @@ class LDdecode:
         metrics['blackLineF1PostTBCIRE'] = f1.output_to_ire(np.mean(f1.dspicture[bl_slicetbc]))
         metrics['blackLineF2PostTBCIRE'] = f2.output_to_ire(np.mean(f2.dspicture[bl_slicetbc]))
 
-        metrics['blackLineF1PSNR'] = self.calcsnr(f1, bl_slicetbc)
-        metrics['blackLineF2PSNR'] = self.calcsnr(f2, bl_slicetbc)
+        metrics['blackLineF1PSNR'] = self.calcpsnr(f1, bl_slicetbc)
+        metrics['blackLineF2PSNR'] = self.calcpsnr(f2, bl_slicetbc)
 
         return metrics
 
