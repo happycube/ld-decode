@@ -26,6 +26,7 @@
 
 EfmProcess::EfmProcess()
 {
+    // Subcode block Q mode counters
     qMode0Count = 0;
     qMode1Count = 0;
     qMode2Count = 0;
@@ -100,6 +101,7 @@ bool EfmProcess::process(QString inputFilename, QString outputFilename, bool ver
                     // 1 = CD Audio, 2 = non-CD Audio (LaserDisc)
                     if (qMode == 1) qMode1Count++; else qMode4Count++;
 
+                    //qDebug() << "Track time:" << subcodeBlocks[i].getQMetadata().qMode4.trackTime.getTimeAsQString();
 
                     // If this is the first audio block after a sync, clear the
                     // audio decode C1 and C2 buffers to prevent corruption

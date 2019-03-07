@@ -28,6 +28,19 @@ SubcodeBlock::SubcodeBlock()
 {
     qMode = -1;
     firstAfterSync = false;
+
+    // Default the Q Metadata
+    qMetadata.qControl.isAudioNotData = false;
+    qMetadata.qControl.isStereoNotQuad = false;
+    qMetadata.qControl.isNoPreempNotPreemp = false;
+    qMetadata.qControl.isCopyProtectedNotUnprotected = false;
+    qMetadata.qMode4.x = 0;
+    qMetadata.qMode4.point = 0;
+    qMetadata.qMode4.discTime = TrackTime();
+    qMetadata.qMode4.trackTime = TrackTime();
+    qMetadata.qMode4.isLeadIn = false;
+    qMetadata.qMode4.isLeadOut = false;
+    qMetadata.qMode4.trackNumber = 0;
 }
 
 // Set the required 98 F3 frames for the subcode block
@@ -78,6 +91,12 @@ void SubcodeBlock::setF3Frames(QVector<F3Frame> f3FramesIn)
     if (verifyQ()) {
         // Decode the Q channel mode
         qMode = decodeQAddress();
+
+        // Decode the Q control
+        decodeQControl();
+
+        // If mode 4, decode the metadata
+        if (qMode == 4) decodeQDataMode4();
     } else {
         // Q channel mode is invalid
         qMode = -1;
@@ -124,6 +143,12 @@ void SubcodeBlock::setFirstAfterSync(bool parameter)
 bool SubcodeBlock::getFirstAfterSync(void)
 {
     return firstAfterSync;
+}
+
+// Method to get Q channel metadata
+SubcodeBlock::QMetadata SubcodeBlock::getQMetadata(void)
+{
+    return qMetadata;
 }
 
 // Private methods ----------------------------------------------------------------------------------------------------
@@ -174,4 +199,74 @@ qint32 SubcodeBlock::decodeQAddress(void)
     if (qMode < 0 || qMode > 4) qMode = -1;
 
     return qMode;
+}
+
+// Method to decode the Q subcode CONTROL field
+void SubcodeBlock::decodeQControl(void)
+{
+    // Get the control payload
+    qint32 qControlField = (qSubcode[0] & 0xF0) >> 4;
+
+    // Control field values can be:
+    //
+    // x000 = 2-Channel/4-Channel
+    // 0x00 = audio/data
+    // 00x0 = Copy not permitted/copy permitted
+    // 000x = pre-emphasis off/pre-emphasis on
+
+    if ((qControlField & 0x08) == 0x08) qMetadata.qControl.isStereoNotQuad = false;
+    else qMetadata.qControl.isStereoNotQuad = true;
+
+    if ((qControlField & 0x04) == 0x04) qMetadata.qControl.isAudioNotData = false;
+    else qMetadata.qControl.isAudioNotData = true;
+
+    if ((qControlField & 0x02) == 0x02) qMetadata.qControl.isCopyProtectedNotUnprotected = false;
+    else qMetadata.qControl.isCopyProtectedNotUnprotected = true;
+
+    if ((qControlField & 0x01) == 0x01) qMetadata.qControl.isNoPreempNotPreemp = false;
+    else qMetadata.qControl.isNoPreempNotPreemp = true;
+}
+
+// Method to decode Q subcode Mode 4 DATA-Q
+void SubcodeBlock::decodeQDataMode4(void)
+{
+    // Get the track number (TNO) field
+    qint32 tno = bcdToInteger(qSubcode[1]);
+
+    // Use TNO to detect lead-in, audio or lead-out
+    if (qSubcode[1] == 0xAA) {
+        // Lead out
+        qMetadata.qMode4.isLeadOut = true;
+        qMetadata.qMode4.isLeadIn = false;
+        qMetadata.qMode4.trackNumber = 170;
+        qMetadata.qMode4.x = bcdToInteger(qSubcode[2]);
+        qMetadata.qMode4.point = -1;
+        qMetadata.qMode4.trackTime = TrackTime(bcdToInteger(qSubcode[3]), bcdToInteger(qSubcode[4]), bcdToInteger(qSubcode[5]));
+        qMetadata.qMode4.discTime = TrackTime(bcdToInteger(qSubcode[7]), bcdToInteger(qSubcode[8]), bcdToInteger(qSubcode[9]));
+
+    } else if (tno == 0) {
+        // Lead in
+        qMetadata.qMode4.isLeadOut = false;
+        qMetadata.qMode4.isLeadIn = true;
+        qMetadata.qMode4.trackNumber = bcdToInteger(qSubcode[1]);
+        qMetadata.qMode4.x = -1;
+        qMetadata.qMode4.point = bcdToInteger(qSubcode[2]);
+        qMetadata.qMode4.trackTime = TrackTime(bcdToInteger(qSubcode[3]), bcdToInteger(qSubcode[4]), bcdToInteger(qSubcode[5]));
+        qMetadata.qMode4.discTime = TrackTime(bcdToInteger(qSubcode[7]), bcdToInteger(qSubcode[8]), bcdToInteger(qSubcode[9]));
+    } else {
+        // Audio
+        qMetadata.qMode4.isLeadOut = false;
+        qMetadata.qMode4.isLeadIn = false;
+        qMetadata.qMode4.trackNumber = bcdToInteger(qSubcode[1]);
+        qMetadata.qMode4.x = -1;
+        qMetadata.qMode4.point = bcdToInteger(qSubcode[2]);
+        qMetadata.qMode4.trackTime = TrackTime(bcdToInteger(qSubcode[3]), bcdToInteger(qSubcode[4]), bcdToInteger(qSubcode[5]));
+        qMetadata.qMode4.discTime = TrackTime(bcdToInteger(qSubcode[7]), bcdToInteger(qSubcode[8]), bcdToInteger(qSubcode[9]));
+    }
+}
+
+// Method to convert 2 digit BCD byte to an integer
+qint32 SubcodeBlock::bcdToInteger(uchar bcd)
+{
+   return (((bcd>>4)*10) + (bcd & 0xF));
 }

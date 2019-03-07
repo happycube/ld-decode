@@ -25,7 +25,8 @@ SOURCES += \
     decodedata.cpp \
     c1circ.cpp \
     c2circ.cpp \
-    c2deinterleave.cpp
+    c2deinterleave.cpp \
+    tracktime.cpp
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin
@@ -54,5 +55,6 @@ HEADERS += \
     ezpwd/timeofday \
     c1circ.h \
     c2circ.h \
-    c2deinterleave.h
+    c2deinterleave.h \
+    tracktime.h
 

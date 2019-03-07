@@ -29,6 +29,7 @@
 #include <QDebug>
 
 #include "f3frame.h"
+#include "tracktime.h"
 
 class SubcodeBlock
 {
@@ -46,14 +47,41 @@ public:
         channelW
     };
 
+    // Structure of the Q Control flags
+    struct QControl {
+        bool isStereoNotQuad;
+        bool isAudioNotData;
+        bool isCopyProtectedNotUnprotected;
+        bool isNoPreempNotPreemp;
+    };
+
+    // Structure of the Q mode 4 metadata
+    struct QMode4 {
+        bool isLeadIn;
+        bool isLeadOut;
+        qint32 trackNumber;
+        qint32 x;
+        qint32 point;
+        TrackTime trackTime;
+        TrackTime discTime;
+    };
+
+    struct QMetadata {
+        QControl qControl;
+        QMode4 qMode4;
+    };
+
     void setF3Frames(QVector<F3Frame> f3FramesIn);
     uchar *getChannelData(SubcodeBlock::Channels channel);
     F3Frame getFrame(qint32 frameNumber);
     qint32 getQMode(void);
     void setFirstAfterSync(bool parameter);
     bool getFirstAfterSync(void);
+    QMetadata getQMetadata(void);
 
 private:
+    QMetadata qMetadata;
+
     QVector<F3Frame> f3Frames;
     qint32 qMode;
     bool firstAfterSync;
@@ -71,6 +99,9 @@ private:
     bool verifyQ(void);
     quint16 crc16(char *addr, quint16 num);
     qint32 decodeQAddress(void);
+    void decodeQControl(void);
+    void decodeQDataMode4(void);
+    qint32 bcdToInteger(uchar bcd);
 
 };
 
