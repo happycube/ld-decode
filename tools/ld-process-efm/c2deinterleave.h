@@ -1,6 +1,6 @@
 /************************************************************************
 
-    decodeaudio.h
+    c2deinterleave.h
 
     ld-process-efm - EFM data decoder
     Copyright (C) 2019 Simon Inns
@@ -22,41 +22,38 @@
 
 ************************************************************************/
 
-#ifndef DECODEAUDIO_H
-#define DECODEAUDIO_H
+#ifndef C2DEINTERLEAVE_H
+#define C2DEINTERLEAVE_H
 
 #include <QCoreApplication>
 #include <QDebug>
-#include <QFile>
-#include <QDataStream>
 
-#include "subcodeblock.h"
-#include "f3frame.h"
-#include "c1circ.h"
-#include "c2circ.h"
-#include "c2deinterleave.h"
-
-class DecodeAudio
+class C2Deinterleave
 {
 public:
-    DecodeAudio();
-    ~DecodeAudio();
+    C2Deinterleave();
 
     void reportStatus(void);
-    bool openOutputFile(QString filename);
-    void closeOutputFile(void);
+    void pushC2(QByteArray dataSymbols, QByteArray errorSymbols);
+    QByteArray getDataSymbols(void);
+    QByteArray getErrorSymbols(void);
     void flush(void);
-    void process(SubcodeBlock subcodeBlock);
 
 private:
-    C1Circ c1Circ;
-    C2Circ c2Circ;
-    C2Deinterleave c2Deinterleave;
+    struct C2Element {
+        QByteArray c2Data;
+        QByteArray c2Error;
+    };
+    QVector<C2Element> c2DelayBuffer;
 
-    QFile *outputFileHandle;
-    QDataStream *outputStream;
+    QByteArray outputC2Data;
+    QByteArray outputC2Errors;
 
-    void writeAudioData(QByteArray audioData);
+    qint32 c2flushed;
+    qint32 validDeinterleavedC2s;
+    qint32 invalidDeinterleavedC2s;
+
+    void deinterleave(void);
 };
 
-#endif // DECODEAUDIO_H
+#endif // C2DEINTERLEAVE_H

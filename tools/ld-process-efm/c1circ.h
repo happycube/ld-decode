@@ -1,6 +1,6 @@
 /************************************************************************
 
-    decodeaudio.h
+    c1circ.h
 
     ld-process-efm - EFM data decoder
     Copyright (C) 2019 Simon Inns
@@ -22,41 +22,53 @@
 
 ************************************************************************/
 
-#ifndef DECODEAUDIO_H
-#define DECODEAUDIO_H
+#ifndef C1CIRC_H
+#define C1CIRC_H
 
 #include <QCoreApplication>
 #include <QDebug>
-#include <QFile>
-#include <QDataStream>
 
-#include "subcodeblock.h"
+#include <ezpwd/rs_base>
+#include <ezpwd/rs>
+
+// CD-ROM specific CIRC configuration for Reed-Solomon forward error correction
+template < size_t SYMBOLS, size_t PAYLOAD > struct C1RS;
+template < size_t PAYLOAD > struct C1RS<255, PAYLOAD> : public __RS(C1RS, uint8_t, 255, PAYLOAD, 0x11d, 0,  1);
+
 #include "f3frame.h"
-#include "c1circ.h"
-#include "c2circ.h"
-#include "c2deinterleave.h"
 
-class DecodeAudio
+class C1Circ
 {
 public:
-    DecodeAudio();
-    ~DecodeAudio();
+    C1Circ();
 
     void reportStatus(void);
-    bool openOutputFile(QString filename);
-    void closeOutputFile(void);
+    void pushF3Frame(F3Frame f3Frame);
+    QByteArray getDataSymbols(void);
+    QByteArray getErrorSymbols(void);
     void flush(void);
-    void process(SubcodeBlock subcodeBlock);
 
 private:
-    C1Circ c1Circ;
-    C2Circ c2Circ;
-    C2Deinterleave c2Deinterleave;
+    QByteArray currentF3Data;
+    QByteArray previousF3Data;
+    QByteArray currentF3Errors;
+    QByteArray previousF3Errors;
 
-    QFile *outputFileHandle;
-    QDataStream *outputStream;
+    QByteArray interleavedC1Data;
+    QByteArray interleavedC1Errors;
 
-    void writeAudioData(QByteArray audioData);
+    QByteArray outputC1Data;
+    QByteArray outputC1Errors;
+
+    qint32 c1BufferLevel;
+
+    qint32 c1Passed;
+    qint32 c1Corrected;
+    qint32 c1Failed;
+    qint32 c1flushed;
+
+    void interleave(void);
+    void errorCorrect(void);
 };
 
-#endif // DECODEAUDIO_H
+#endif // C1CIRC_H

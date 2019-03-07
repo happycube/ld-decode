@@ -26,363 +26,121 @@
 
 DecodeAudio::DecodeAudio()
 {
-    // Initialise the state machine
-    currentState = state_initial;
-    nextState = currentState;
 
-    currentF3Frame.clear();
-    previousF3Frame.clear();
-    currentF3Frame.resize(32);
-    previousF3Frame.resize(32);
-
-    currentF3Erasures.clear();
-    previousF3Erasures.clear();
-    currentF3Erasures.resize(32);
-    previousF3Erasures.resize(32);
-
-    validC1Count = 0;
-    invalidC1Count = 0;
-
-    validC2Count = 0;
-    invalidC2Count = 0;
-
-    validAudioSampleCount = 0;
-    invalidAudioSampleCount = 0;
 }
 
-// Get the F3 frame
-QByteArray DecodeAudio::getOutputData(void)
+DecodeAudio::~DecodeAudio()
 {
-    QByteArray outputData = outputDataBuffer;
-    outputDataBuffer.clear();
-    return outputData;
+
 }
 
-// Get the C1 statistic
-qint32 DecodeAudio::getValidC1Count(void)
+// Method to write status information to qInfo
+void DecodeAudio::reportStatus(void)
 {
-    return validC1Count;
+    // Show C1 CIRC status
+    c1Circ.reportStatus();
+
+    // Show C2 CIRC status
+    c2Circ.reportStatus();
+
+    // Show C2 Deinterleave status
+    c2Deinterleave.reportStatus();
 }
 
-// Get the C1 statistic
-qint32 DecodeAudio::getInvalidC1Count(void)
+// Method to open the audio output file
+bool DecodeAudio::openOutputFile(QString filename)
 {
-    return invalidC1Count;
+    // Open output file for writing
+    outputFileHandle = new QFile(filename);
+    if (!outputFileHandle->open(QIODevice::WriteOnly)) {
+        // Failed to open source sample file
+        qDebug() << "Could not open " << outputFileHandle << "as audio output file";
+        return false;
+    }
+    qDebug() << "DecodeAudio::openOutputFile(): Opened" << filename << "as audio output file";
+
+    // Create a data stream for the output file
+    outputStream = new QDataStream(outputFileHandle);
+    outputStream->setByteOrder(QDataStream::LittleEndian);
+
+    // Exit with success
+    return true;
 }
 
-// Get the C2 statistic
-qint32 DecodeAudio::getValidC2Count(void)
+// Method to close the audio output file
+void DecodeAudio::closeOutputFile(void)
 {
-    return validC2Count;
+    // Is an output file open?
+    if (outputFileHandle != nullptr) {
+        outputFileHandle->close();
+    }
+
+    // Clear the file handle pointer
+    delete outputFileHandle;
+    outputFileHandle = nullptr;
 }
 
-// Get the C2 statistic
-qint32 DecodeAudio::getInvalidC2Count(void)
+// Flush the C1 and C2 audio decode buffers
+void DecodeAudio::flush(void)
 {
-    return invalidC2Count;
+    // Flush all the decode buffers
+    c1Circ.flush();
+    c2Circ.flush();
+    c2Deinterleave.flush();
 }
 
-// Get the audio samples statistic
-qint32 DecodeAudio::getValidAudioSamplesCount(void)
+// Process a subcode block
+void DecodeAudio::process(SubcodeBlock subcodeBlock)
 {
-    return validAudioSampleCount;
-}
-
-// Get the audio samples statistic
-qint32 DecodeAudio::getInvalidAudioSamplesCount(void)
-{
-    return invalidAudioSampleCount;
-}
-
-// Decode a subcode block of audio data
-qint32 DecodeAudio::decodeBlock(uchar *blockData, uchar *blockErasures)
-{
-    qint32 c1ErrorStart = invalidC1Count;
-
-    // Process the 98 frames of data (containing 32 bytes per frame) in the block
+    // Process the 98 frames of the subcode block
     for (qint32 i = 0; i < 98; i++) {
-        // Copy the frame data from the block
-        for (qint32 byteC = 0; byteC < 32; byteC++) {
-            currentF3Frame[byteC] = static_cast<char>(blockData[(32 * i) + byteC]);
-            currentF3Erasures[byteC] = static_cast<char>(blockErasures[(32 * i) + byteC]);
-        }
+        // Process C1 CIRC
+        c1Circ.pushF3Frame(subcodeBlock.getFrame(i));
 
-        // Since we have a new F3 frame, clear the waiting flag
-        waitingForF3frame = false;
+        // Get C1 results (if available)
+        QByteArray c1DataSymbols = c1Circ.getDataSymbols();
+        QByteArray c1ErrorSymbols = c1Circ.getErrorSymbols();
 
-        // Process the state machine until another F3 frame is required
-        while (!waitingForF3frame) {
-            currentState = nextState;
+        // If we have C1 results, process C2
+        if (!c1DataSymbols.isEmpty()) {
+            // Process C2 CIRC
+            c2Circ.pushC1(c1DataSymbols, c1ErrorSymbols);
 
-            switch (currentState) {
-            case state_initial:
-                nextState = sm_state_initial();
-                break;
-            case state_processC1:
-                nextState = sm_state_processC1();
-                break;
-            case state_processC2:
-                nextState = sm_state_processC2();
-                break;
-            case state_processAudio:
-                nextState = sm_state_processAudio();
-                break;
+            // Get C2 results (if available)
+            QByteArray c2DataSymbols = c2Circ.getDataSymbols();
+            QByteArray c2ErrorSymbols = c2Circ.getErrorSymbols();
+
+            // Deinterleave the C2
+            c2Deinterleave.pushC2(c2DataSymbols, c2ErrorSymbols);
+
+            QByteArray c2DeinterleavedData = c2Deinterleave.getDataSymbols();
+            QByteArray c2DeinterleavedErrors = c2Deinterleave.getErrorSymbols();
+
+            // If we have deinterleaved C2s, process them
+            if (!c2DeinterleavedData.isEmpty()) {
+                writeAudioData(c2DeinterleavedData);
             }
         }
     }
-
-    // Return the number of C1 failures for this block
-    return invalidC1Count - c1ErrorStart;
 }
 
-DecodeAudio::StateMachine DecodeAudio::sm_state_initial(void)
+// Method to write any available audio data to file
+void DecodeAudio::writeAudioData(QByteArray audioData)
 {
-    // We need at least 2 frames to process a C1
-    previousF3Frame = currentF3Frame;
-    previousF3Erasures = currentF3Erasures;
-    waitingForF3frame = true;
-
-    return state_processC1;
-}
-
-// Process the C1 level error correction
-DecodeAudio::StateMachine DecodeAudio::sm_state_processC1(void)
-{
-    //qDebug() << "DecodeAudio::sm_state_processC1(): Called";
-
-    // Interleave the current and previous frame to generate the C1 data
-    interleaveC1Data(previousF3Frame, currentF3Frame,
-                     previousF3Erasures, currentF3Erasures,
-                     c1Data, c1DataErasures);
-
-    // Perform the Reed-Solomon CIRC
-    if (reedSolomon.decodeC1(c1Data, c1DataErasures)) {
-        validC1Count++;
-        c1DataValid = true;
-        //qDebug() << "DecodeAudio::sm_state_processC1(): Valid C1 #" << validC1Count;
-    } else {
-        invalidC1Count++;
-        c1DataValid = false;
-        //qDebug() << "DecodeAudio::sm_state_processC1(): Invalid C1 #" << invalidC1Count << " - Valid C1 #" << validC1Count;
+    // This test should never fail... but, hey, software...
+    if ((audioData.size() % 4) != 0) {
+        qCritical() << "DecodeAudio::writeAudioData(): Audio data has an invalid length and will not save correctly.";
+        exit(1);
     }
 
-    // Store the frame and get a new frame
-    previousF3Frame = currentF3Frame;
-    previousF3Erasures = currentF3Erasures;
-    waitingForF3frame = true;
-
-    // Process C2 stage
-    return state_processC2;
-}
-
-DecodeAudio::StateMachine DecodeAudio::sm_state_processC2(void)
-{
-    //qDebug() << "DecodeAudio::sm_state_processC2(): Called";
-    c2DataValid = false;
-
-    // Place the C1 data in the C1 delay buffer
-    C1Buffer c1BufferEntry;
-    for (qint32 byteC = 0; byteC < 28; byteC++) c1BufferEntry.c1Symbols[byteC] = c1Data[byteC];
-    c1BufferEntry.c1SymbolsValid = c1DataValid;
-    c1DelayBuffer.append(c1BufferEntry);
-
-    // If the buffer is full, remove the first entry so it's always 109 C1s long
-    if (c1DelayBuffer.size() > 109) {
-        c1DelayBuffer.removeFirst();
-    }
-
-    // If we have 109 C1s then we can process the C2 ECC
-    if (c1DelayBuffer.size() == 109) {
-        // Get the C2 Data
-        getC2Data(c2Data, c2DataErasures);
-
-        // Perform the Reed-Solomon CIRC
-        if (reedSolomon.decodeC2(c2Data, c2DataErasures)) {
-            // C2 Success
-            validC2Count++;
-            c2DataValid = true;
-            //qDebug() << "DecodeAudio::sm_state_processC2(): Valid C2 #" << validC2Count;
-        } else {
-            // C2 Failure
-            invalidC2Count++;
-            c2DataValid = false;
-            //qDebug() << "DecodeAudio::sm_state_processC2(): Invalid C2 #" << invalidC2Count << " - Valid C2 #" << validC2Count;
-        }
-    } else {
-        // Since the C1 delay buffer isn't full, we can't process audio yet
-        return state_processC1;
-    }
-
-    return state_processAudio;
-}
-
-DecodeAudio::StateMachine DecodeAudio::sm_state_processAudio(void)
-{
-    // Place the C2 data in the C2 delay buffer
-    C2Buffer c2BufferEntry;
-    for (qint32 byteC = 0; byteC < 28; byteC++) c2BufferEntry.c2Symbols[byteC] = c2Data[byteC];
-    c2BufferEntry.c2SymbolsValid = c2DataValid;
-    c2DelayBuffer.append(c2BufferEntry);
-
-    // If the buffer is full, remove the first entry so it's always 3 C2s long
-    if (c2DelayBuffer.size() > 3) {
-        c2DelayBuffer.removeFirst();
-    }
-
-    // If we have 3 C2s then we can perform de-interleaving to recover the original data
-    if (c2DelayBuffer.size() == 3) {
-        uchar outputData[24];
-        deInterleaveC2(outputData);
-
-        // Save the output data in the output data buffer
-        qint32 odbPointer = outputDataBuffer.size();
-        outputDataBuffer.resize(outputDataBuffer.size() + 24);
-        for (qint32 byteC = 0; byteC < 24; byteC++) {
-            outputDataBuffer[byteC + odbPointer] = static_cast<char>(outputData[byteC]);
+    if (!audioData.isEmpty()) {
+        // Save the audio data as little-endian stereo LLRRLLRR etc
+        for (qint32 byteC = 0; byteC < audioData.size(); byteC += 4) {
+            // 1 0 3 2
+            *outputStream << static_cast<uchar>(audioData[byteC + 1])
+             << static_cast<uchar>(audioData[byteC + 0])
+             << static_cast<uchar>(audioData[byteC + 3])
+             << static_cast<uchar>(audioData[byteC + 2]);
         }
     }
-
-    // Discard the C2 and get the next C1
-    return state_processC1;
-}
-
-// Utility methods ----------------------------------------------------------------------------------------------------
-
-// Interleave current and previous F3 frame symbols and then invert parity words
-void DecodeAudio::interleaveC1Data(QByteArray previousF3, QByteArray currentF3,
-                                   QByteArray previousF3E, QByteArray currentF3E,
-                                   uchar *c1Data, bool *isErasure)
-{
-    uchar *prev = reinterpret_cast<uchar*>(previousF3.data());
-    uchar *curr = reinterpret_cast<uchar*>(currentF3.data());
-
-    // Interleave the symbols
-    for (qint32 byteC = 0; byteC < 32; byteC += 2) {
-        c1Data[byteC] = curr[byteC];
-        c1Data[byteC+1] = prev[byteC+1];
-
-        if (currentF3E[byteC] == static_cast<char>(1)) isErasure[byteC] = true; else isErasure[byteC] = false;
-        if (previousF3E[byteC+1] == static_cast<char>(1)) isErasure[byteC+1] = true; else isErasure[byteC+1] = false;
-    }
-
-    // Invert the Qm parity bits
-    c1Data[12] ^= 0xFF;
-    c1Data[13] ^= 0xFF;
-    c1Data[14] ^= 0xFF;
-    c1Data[15] ^= 0xFF;
-
-    // Invert the Pm parity bits
-    c1Data[28] ^= 0xFF;
-    c1Data[29] ^= 0xFF;
-    c1Data[30] ^= 0xFF;
-    c1Data[31] ^= 0xFF;
-}
-
-// Gets the C2 data from the C1 buffer by applying delay lines of unequal length
-// according to fig. 13 in IEC 60908
-void DecodeAudio::getC2Data(uchar *symBuffer, bool *isErasure)
-{
-    // Longest delay is 27 * 4 = 108
-    for (qint32 byteC = 0; byteC < 28; byteC++) {
-
-        qint32 delayC1Line = (108 - ((27 - byteC) * 4));
-        symBuffer[byteC] = c1DelayBuffer[delayC1Line].c1Symbols[byteC];
-
-        // If the C1 symbol is valid, mark C2 symbol as valid
-        // otherwise, mark it as an erasure
-        if (c1DelayBuffer[delayC1Line].c1SymbolsValid) {
-            isErasure[byteC] = false;
-        } else {
-            isErasure[byteC] = true;
-        }
-    }
-}
-
-// Note: not complete - to-do
-void DecodeAudio::deInterleaveC2(uchar *outputData)
-{
-    // Note: This is according to IEC60908 Figure 13 - CIRC decoder
-    // Buffer 2 is current, buffer 0 is 2-frame delays behind
-    qint32 curr = 2; // C2 0-frame delay
-    qint32 prev = 0; // C2 2=frame delay
-
-    // Note: This drops the parity leaving 24 bytes of data (12 words of 16 bits)
-    if (c2DelayBuffer[curr].c2SymbolsValid && c2DelayBuffer[prev].c2SymbolsValid) {
-        // Audio data is valid
-        validAudioSampleCount++;
-        outputData[ 0] = c2DelayBuffer[curr].c2Symbols[ 0];
-        outputData[ 1] = c2DelayBuffer[curr].c2Symbols[ 1];
-        outputData[ 2] = c2DelayBuffer[curr].c2Symbols[ 6];
-        outputData[ 3] = c2DelayBuffer[curr].c2Symbols[ 7];
-
-        outputData[ 8] = c2DelayBuffer[curr].c2Symbols[ 2];
-        outputData[ 9] = c2DelayBuffer[curr].c2Symbols[ 3];
-        outputData[10] = c2DelayBuffer[curr].c2Symbols[ 8];
-        outputData[11] = c2DelayBuffer[curr].c2Symbols[ 9];
-
-        outputData[16] = c2DelayBuffer[curr].c2Symbols[ 4];
-        outputData[17] = c2DelayBuffer[curr].c2Symbols[ 5];
-        outputData[18] = c2DelayBuffer[curr].c2Symbols[10];
-        outputData[19] = c2DelayBuffer[curr].c2Symbols[11];
-
-        outputData[ 4] = c2DelayBuffer[prev].c2Symbols[16];
-        outputData[ 5] = c2DelayBuffer[prev].c2Symbols[17];
-        outputData[ 6] = c2DelayBuffer[prev].c2Symbols[22];
-        outputData[ 7] = c2DelayBuffer[prev].c2Symbols[23];
-
-        outputData[12] = c2DelayBuffer[prev].c2Symbols[18];
-        outputData[13] = c2DelayBuffer[prev].c2Symbols[19];
-        outputData[14] = c2DelayBuffer[prev].c2Symbols[24];
-        outputData[15] = c2DelayBuffer[prev].c2Symbols[25];
-
-        outputData[20] = c2DelayBuffer[prev].c2Symbols[20];
-        outputData[21] = c2DelayBuffer[prev].c2Symbols[21];
-        outputData[22] = c2DelayBuffer[prev].c2Symbols[26];
-        outputData[23] = c2DelayBuffer[prev].c2Symbols[27];
-    } else {
-        // Audio data is invalid
-        //qDebug() << "DecodeAudio::deInterleaveC2(): Invalid audio sample data";
-        invalidAudioSampleCount++;
-        outputData[ 0] = 0;
-        outputData[ 1] = 0;
-        outputData[ 2] = 0;
-        outputData[ 3] = 0;
-
-        outputData[ 8] = 0;
-        outputData[ 9] = 0;
-        outputData[10] = 0;
-        outputData[11] = 0;
-
-        outputData[16] = 0;
-        outputData[17] = 0;
-        outputData[18] = 0;
-        outputData[19] = 0;
-
-        outputData[ 4] = 0;
-        outputData[ 5] = 0;
-        outputData[ 6] = 0;
-        outputData[ 7] = 0;
-
-        outputData[12] = 0;
-        outputData[13] = 0;
-        outputData[14] = 0;
-        outputData[15] = 0;
-
-        outputData[20] = 0;
-        outputData[21] = 0;
-        outputData[22] = 0;
-        outputData[23] = 0;
-    }
-}
-
-// This method is for debug and outputs an array of 8-bit unsigned data as a hex string
-QString DecodeAudio::dataToString(uchar *data, qint32 length)
-{
-    QString output;
-
-    for (qint32 count = 0; count < length; count++) {
-        output += QString("%1").arg(data[count], 2, 16, QChar('0'));
-    }
-
-    return output;
 }

@@ -1,6 +1,6 @@
 /************************************************************************
 
-    efmprocess.cpp
+    efmprocess.h
 
     ld-process-efm - EFM data decoder
     Copyright (C) 2019 Simon Inns
@@ -28,12 +28,11 @@
 #include <QCoreApplication>
 #include <QDebug>
 #include <QFile>
-#include <QDataStream>
 
-#include "f3framer.h"
+#include "f3frame.h"
 #include "subcodeblock.h"
-
-#include "decodesubcode.h"
+#include "efmtof3frames.h"
+#include "f3framestosubcodeblocks.h"
 #include "decodeaudio.h"
 
 class EfmProcess
@@ -41,26 +40,18 @@ class EfmProcess
 public:
     EfmProcess();
 
-    bool process(QString inputFilename, QString outputFilename, bool frameDebug);
+    bool process(QString inputFilename, QString outputFilename);
 
 private:
     QFile *inputFileHandle;
-    QFile *outputFileHandle;
 
-    F3Framer f3Framer;
-    SubcodeBlock subcodeBlock;
-
-    DecodeSubcode decodeSubcode;
+    EfmToF3Frames efmToF3Frames;
+    F3FramesToSubcodeBlocks f3FramesToSubcodeBlocks;
     DecodeAudio decodeAudio;
-
-    void saveAudioData(QDataStream &outStream);
 
     bool openInputFile(QString inputFileName);
     void closeInputFile(void);
-    QByteArray readEfmData(qint32 bufferSize);
-
-    bool openOutputDataFile(QString filename);
-    void closeOutputDataFile(void);
+    QByteArray readEfmData(void);
 };
 
 #endif // EFMPROCESS_H

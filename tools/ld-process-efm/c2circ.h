@@ -1,6 +1,6 @@
 /************************************************************************
 
-    decodeaudio.h
+    c2circ.h
 
     ld-process-efm - EFM data decoder
     Copyright (C) 2019 Simon Inns
@@ -22,41 +22,50 @@
 
 ************************************************************************/
 
-#ifndef DECODEAUDIO_H
-#define DECODEAUDIO_H
+#ifndef C2CIRC_H
+#define C2CIRC_H
 
 #include <QCoreApplication>
 #include <QDebug>
-#include <QFile>
-#include <QDataStream>
 
-#include "subcodeblock.h"
-#include "f3frame.h"
-#include "c1circ.h"
-#include "c2circ.h"
-#include "c2deinterleave.h"
+#include <ezpwd/rs_base>
+#include <ezpwd/rs>
 
-class DecodeAudio
+// CD-ROM specific CIRC configuration for Reed-Solomon forward error correction
+template < size_t SYMBOLS, size_t PAYLOAD > struct C2RS;
+template < size_t PAYLOAD > struct C2RS<255, PAYLOAD> : public __RS(C2RS, uint8_t, 255, PAYLOAD, 0x11d, 0,  1);
+
+class C2Circ
 {
 public:
-    DecodeAudio();
-    ~DecodeAudio();
+    C2Circ();
 
     void reportStatus(void);
-    bool openOutputFile(QString filename);
-    void closeOutputFile(void);
+    void pushC1(QByteArray dataSymbols, QByteArray errorSymbols);
+    QByteArray getDataSymbols(void);
+    QByteArray getErrorSymbols(void);
     void flush(void);
-    void process(SubcodeBlock subcodeBlock);
 
 private:
-    C1Circ c1Circ;
-    C2Circ c2Circ;
-    C2Deinterleave c2Deinterleave;
+    struct C1Element {
+        QByteArray c1Data;
+        QByteArray c1Error;
+    };
+    QVector<C1Element> c1DelayBuffer;
 
-    QFile *outputFileHandle;
-    QDataStream *outputStream;
+    QByteArray interleavedC2Data;
+    QByteArray interleavedC2Errors;
 
-    void writeAudioData(QByteArray audioData);
+    QByteArray outputC2Data;
+    QByteArray outputC2Errors;
+
+    qint32 c2Passed;
+    qint32 c2Corrected;
+    qint32 c2Failed;
+    qint32 c2flushed;
+
+    void interleave(void);
+    void errorCorrect(void);
 };
 
-#endif // DECODEAUDIO_H
+#endif // C2CIRC_H

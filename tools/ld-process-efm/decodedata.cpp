@@ -1,6 +1,6 @@
 /************************************************************************
 
-    decodeaudio.h
+    decodedata.cpp
 
     ld-process-efm - EFM data decoder
     Copyright (C) 2019 Simon Inns
@@ -22,41 +22,9 @@
 
 ************************************************************************/
 
-#ifndef DECODEAUDIO_H
-#define DECODEAUDIO_H
+#include "decodedata.h"
 
-#include <QCoreApplication>
-#include <QDebug>
-#include <QFile>
-#include <QDataStream>
-
-#include "subcodeblock.h"
-#include "f3frame.h"
-#include "c1circ.h"
-#include "c2circ.h"
-#include "c2deinterleave.h"
-
-class DecodeAudio
+DecodeData::DecodeData()
 {
-public:
-    DecodeAudio();
-    ~DecodeAudio();
 
-    void reportStatus(void);
-    bool openOutputFile(QString filename);
-    void closeOutputFile(void);
-    void flush(void);
-    void process(SubcodeBlock subcodeBlock);
-
-private:
-    C1Circ c1Circ;
-    C2Circ c2Circ;
-    C2Deinterleave c2Deinterleave;
-
-    QFile *outputFileHandle;
-    QDataStream *outputStream;
-
-    void writeAudioData(QByteArray audioData);
-};
-
-#endif // DECODEAUDIO_H
+}

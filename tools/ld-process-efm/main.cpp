@@ -95,11 +95,6 @@ int main(int argc, char *argv[])
                                        QCoreApplication::translate("main", "Show debug"));
     parser.addOption(showDebugOption);
 
-    // Option to show F3 framing verbose debug (-f)
-    QCommandLineOption showFramingDebugOption(QStringList() << "f" << "verboseframing",
-                                       QCoreApplication::translate("main", "Show verbose framing debug"));
-    parser.addOption(showFramingDebugOption);
-
     // Positional argument to specify input EFM file
     parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input EFM data file"));
 
@@ -111,7 +106,6 @@ int main(int argc, char *argv[])
 
     // Get the options from the parser
     bool isDebugOn = parser.isSet(showDebugOption);
-    bool verboseFraming = parser.isSet(showFramingDebugOption);
 
     // Get the arguments from the parser
     QString inputFilename;
@@ -137,7 +131,7 @@ int main(int argc, char *argv[])
 
     // Perform the processing
     EfmProcess efmProcess;
-    efmProcess.process(inputFilename, outputFilename, verboseFraming);
+    efmProcess.process(inputFilename, outputFilename);
 
     // Quit with success
     return 0;

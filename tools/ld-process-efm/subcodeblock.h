@@ -28,62 +28,50 @@
 #include <QCoreApplication>
 #include <QDebug>
 
+#include "f3frame.h"
+
 class SubcodeBlock
 {
 public:
     SubcodeBlock();
 
-    struct Block {
-        uchar subcode[98];       // 98 bytes
-        uchar data[32 * 98];     // 3136 bytes
-        uchar erasures[32 * 98]; // 3136 bytes
-
-        bool sync0;
-        bool sync1;
+    enum Channels {
+        channelP,
+        channelQ,
+        channelR,
+        channelS,
+        channelT,
+        channelU,
+        channelV,
+        channelW
     };
 
-    bool blockReady(void);
-    Block getBlock(void);
-    qint32 getSyncLosses(void);
-    qint32 getTotalBlocks(void);
-    qint32 getPoorSyncs(void);
-    void forceSyncLoss(void);
-    void process(QByteArray f3FrameParam, QByteArray f3ErasuresParam);
+    void setF3Frames(QVector<F3Frame> f3FramesIn);
+    uchar *getChannelData(SubcodeBlock::Channels channel);
+    F3Frame getFrame(qint32 frameNumber);
+    qint32 getQMode(void);
+    void setFirstAfterSync(bool parameter);
+    bool getFirstAfterSync(void);
 
 private:
-    Block block;
+    QVector<F3Frame> f3Frames;
+    qint32 qMode;
+    bool firstAfterSync;
 
-    // State machine state definitions
-    enum StateMachine {
-        state_initial,
-        state_getSync0,
-        state_getSync1,
-        state_getInitialBlock,
-        state_getNextBlock,
-        state_syncLost
-    };
+    // Subcode channels
+    uchar pSubcode[12];
+    uchar qSubcode[12];
+    uchar rSubcode[12];
+    uchar sSubcode[12];
+    uchar tSubcode[12];
+    uchar uSubcode[12];
+    uchar vSubcode[12];
+    uchar wSubcode[12];
 
-    StateMachine currentState;
-    StateMachine nextState;
-    bool waitingForF3frame;
+    bool verifyQ(void);
+    quint16 crc16(char *addr, quint16 num);
+    qint32 decodeQAddress(void);
 
-    QByteArray currentF3Frame;
-    QByteArray currentF3Erasures;
-
-    qint32 frameCounter;
-    qint32 missedBlockSyncCount;
-    bool isBlockReady;
-
-    qint32 blockSyncLost;
-    qint32 totalBlocks;
-    qint32 poorSyncs;
-
-    StateMachine sm_state_initial(void);
-    StateMachine sm_state_getSync0(void);
-    StateMachine sm_state_getSync1(void);
-    StateMachine sm_state_getInitialBlock(void);
-    StateMachine sm_state_getNextBlock(void);
-    StateMachine sm_state_syncLost(void);
 };
 
 #endif // SUBCODEBLOCK_H
