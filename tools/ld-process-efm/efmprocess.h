@@ -40,7 +40,7 @@ class EfmProcess
 public:
     EfmProcess();
 
-    bool process(QString inputFilename, QString outputFilename);
+    bool process(QString inputFilename, QString outputFilename, bool verboseDebug);
 
 private:
     QFile *inputFileHandle;
@@ -49,9 +49,17 @@ private:
     F3FramesToSubcodeBlocks f3FramesToSubcodeBlocks;
     DecodeAudio decodeAudio;
 
+    qint32 qMode0Count;
+    qint32 qMode1Count;
+    qint32 qMode2Count;
+    qint32 qMode3Count;
+    qint32 qMode4Count;
+    qint32 qModeICount;
+
     bool openInputFile(QString inputFileName);
     void closeInputFile(void);
     QByteArray readEfmData(void);
+    void reportStatus(void);
 };
 
 #endif // EFMPROCESS_H

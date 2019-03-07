@@ -139,7 +139,7 @@ bool SubcodeBlock::verifyQ(void)
 
     // Is the Q subcode valid?
     if (crcChecksum != calcChecksum) {
-        qDebug() << "SubcodeBlock::decodeQ(): Q Subcode CRC failed - Q subcode payload is invalid";
+        //qDebug() << "SubcodeBlock::verifyQ(): Q Subcode CRC failed - Q subcode payload is invalid";
         return false;
     }
 

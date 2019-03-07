@@ -26,10 +26,15 @@
 
 EfmProcess::EfmProcess()
 {
-
+    qMode0Count = 0;
+    qMode1Count = 0;
+    qMode2Count = 0;
+    qMode3Count = 0;
+    qMode4Count = 0;
+    qModeICount = 0;
 }
 
-bool EfmProcess::process(QString inputFilename, QString outputFilename)
+bool EfmProcess::process(QString inputFilename, QString outputFilename, bool verboseDebug)
 {
     // Open the input file
     if (!openInputFile(inputFilename)) {
@@ -37,15 +42,24 @@ bool EfmProcess::process(QString inputFilename, QString outputFilename)
         return false;
     }
 
+    qint64 inputFileSize = inputFileHandle->size();
+    qint64 inputBytesProcessed = 0;
+    qint32 lastPercent = 0;
+
     // Open the audio decode output file
     decodeAudio.openOutputFile(outputFilename);
 
     // Open the data decode output file
     // To-do: data support
 
+    // Turn on verbose debug if required
+    if (verboseDebug) efmToF3Frames.setVerboseDebug(true);
+
     QByteArray efmBuffer;
     qint32 lastSeenQMode = -1;
     while ((efmBuffer = readEfmData()).size() != 0) {
+        inputBytesProcessed += efmBuffer.size();
+
         // Convert the EFM buffer data into F3 frames
         QVector<F3Frame> f3Frames = efmToF3Frames.convert(efmBuffer);
 
@@ -61,6 +75,7 @@ bool EfmProcess::process(QString inputFilename, QString outputFilename)
                 // sync)
                 qint32 qMode = subcodeBlocks[i].getQMode();
                 if (qMode == -1) {
+                    qModeICount++;
                     if (subcodeBlocks[i].getFirstAfterSync()) {
                         qMode = -1;
                     } else {
@@ -71,15 +86,20 @@ bool EfmProcess::process(QString inputFilename, QString outputFilename)
                 // Depending on the subcode Q Mode, process the subcode
                 if (qMode == 0) {
                     // Data
+                    qMode0Count++;
                     qDebug() << "EfmProcess::process(): Subcode block Q mode ia 0 - unsupported!";
                 } else if (qMode == 2) {
                     // Unique ID for disc
+                    qMode1Count++;
                     qDebug() << "EfmProcess::process(): Subcode block Q mode ia 2 - unsupported!";
                 } else if (qMode == 3) {
                     // Unique ID for track
+                    qMode3Count++;
                     qDebug() << "EfmProcess::process(): Subcode block Q mode ia 3 - unsupported!";
                 } else if (qMode == 1 || qMode == 4) {
                     // 1 = CD Audio, 2 = non-CD Audio (LaserDisc)
+                    if (qMode == 1) qMode1Count++; else qMode4Count++;
+
 
                     // If this is the first audio block after a sync, clear the
                     // audio decode C1 and C2 buffers to prevent corruption
@@ -95,12 +115,16 @@ bool EfmProcess::process(QString inputFilename, QString outputFilename)
             }
             // All done, process the next F3 frame
         }
+
+        // Show processing progress update to user
+        qint32 subcodesTotal = qMode0Count + qMode1Count + qMode2Count + qMode3Count + qMode4Count + qModeICount;;
+        qreal percent = (100.0 / static_cast<qreal>(inputFileSize)) * static_cast<qreal>(inputBytesProcessed);
+        if (static_cast<qint32>(percent) > lastPercent) qInfo().nospace() << "Processed " << static_cast<qint32>(percent) << "% of the input EFM (" << subcodesTotal << " subcodes)";
+        lastPercent = static_cast<qint32>(percent);
     }
 
     // Report on the status of the various processes
-    efmToF3Frames.reportStatus();
-    f3FramesToSubcodeBlocks.reportStatus();
-    decodeAudio.reportStatus();
+    reportStatus();
 
     // Close the input file
     closeInputFile();
@@ -154,4 +178,21 @@ QByteArray EfmProcess::readEfmData(void)
     if (bytesRead != bufferSize) outputData.resize(static_cast<qint32>(bytesRead));
 
     return outputData;
+}
+
+// Method to write status information to qInfo
+void EfmProcess::reportStatus(void)
+{
+    qInfo() << "EFM processing:";
+    qInfo() << "  Total number of Q subcodes processed =" << qMode0Count + qMode1Count + qMode2Count + qMode3Count + qMode4Count + qModeICount;
+    qInfo() << "  Q Mode 0 subcodes =" << qMode0Count << "(Data)";
+    qInfo() << "  Q Mode 1 subcodes =" << qMode1Count << "(CD Audio)";
+    qInfo() << "  Q Mode 2 subcodes =" << qMode2Count << "(Disc ID)";
+    qInfo() << "  Q Mode 3 subcodes =" << qMode3Count << "(Track ID)";
+    qInfo() << "  Q Mode 4 subcodes =" << qMode4Count << "(Non-CD Audio)";
+    qInfo() << "  Subcodes with failed CRC =" << qModeICount;
+
+    efmToF3Frames.reportStatus();
+    f3FramesToSubcodeBlocks.reportStatus();
+    decodeAudio.reportStatus();
 }

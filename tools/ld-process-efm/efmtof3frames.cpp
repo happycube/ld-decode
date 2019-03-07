@@ -38,7 +38,7 @@ EfmToF3Frames::EfmToF3Frames()
 
     firstF3AfterInitialSync = false;
 
-    verboseDebug = true;
+    verboseDebug = false;
 }
 
 // Method to write status information to qInfo
@@ -48,6 +48,12 @@ void EfmToF3Frames::reportStatus(void)
     qInfo() << "  Total number of F3 Frames =" << validFrameLength + invalidFrameLength;
     qInfo() << "  of which" << validFrameLength << "were 588 bits and" << invalidFrameLength << "were invalid lengths";
     qInfo() << "  Lost frame sync" << syncLoss << "times";
+}
+
+// Turn verbose debug on/off
+void EfmToF3Frames::setVerboseDebug(bool param)
+{
+    verboseDebug = param;
 }
 
 // Convert the EFM buffer data into F3 frames

@@ -35,6 +35,7 @@ class EfmToF3Frames
 public:
     EfmToF3Frames();
 
+    void setVerboseDebug(bool param);
     void reportStatus(void);
     QVector<F3Frame> convert(QByteArray efmDataIn);
 
