@@ -35,10 +35,10 @@ Pll::Pll()
     zcPreviousInput = 0;
 
     // Default PLL state
-    basePeriod = 40000000 / 4321800; // T1 clock period 40MSPS / bit-rate
+    basePeriod = 40000000.0 / 4321800.0; // T1 clock period 40MSPS / bit-rate
 
-    minimumPeriod  = basePeriod * 0.75; // -25% minimum
-    maximumPeriod  = basePeriod * 1.25; // +25% maximum
+    minimumPeriod  = basePeriod * 0.90; // -10% minimum
+    maximumPeriod  = basePeriod * 1.10; // +10% maximum
     periodAdjustBase = basePeriod * 0.0001; // Clock adjustment step
 
     // PLL Working parameter defaults
@@ -146,7 +146,7 @@ void Pll::pushEdge(qreal sampleDelta)
             pushTValue(0);
         } else {
             qreal delta = sampleDelta - (next - currentPeriod / 2.0);
-            phaseAdjust = delta * 0.05;
+            phaseAdjust = delta * 0.005;
 
             // Adjust frequency based on error
             if(delta < 0) {
@@ -180,4 +180,7 @@ void Pll::pushEdge(qreal sampleDelta)
     // Reset refClockTime ready for the next delta but
     // keep any error to maintain accuracy
     refClockTime = (refClockTime - sampleDelta);
+
+    // Use this debug if you want to monitor the PLL output frequency
+    //qDebug() << "Base =" << basePeriod << "current = " << currentPeriod;
 }
