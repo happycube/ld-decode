@@ -38,8 +38,8 @@ parser.add_argument('-n', '--ntsc', dest='ntsc', action='store_true',
 #parser.add_argument('--MTF_offset', metavar='mtf_offset', type=float, default=None, help='mtf compensation offset')
 parser.add_argument('--NTSCJ', dest='ntscj', action='store_true',
                     help='source is in NTSC-J (IRE 0 black) format')
-parser.add_argument('--noDOD', dest='nodod', action='store_true', default=False,
-                    help='disable dropout detector (Currently disabled for vhs)')
+#parser.add_argument('--noDOD', dest='nodod', action='store_true', default=False,
+#                    help='disable dropout detector (Currently disabled for vhs)')
 #parser.add_argument('--EFM', dest='efm', action='store_true', default=False, help='Filter EFM output (WIP!)')
 #parser.add_argument('--daa', dest='daa', action='store_true', default=False, help='Disable analog audio decoding')
 parser.add_argument('--cxadc', dest='cxadc', action='store_true', default=False,
@@ -72,7 +72,7 @@ system = 'PAL' if args.pal else 'NTSC'
 
 sample_freq = 40 if not args.cxadc else CXADC_FREQ
 
-vhsd = VHSDecode(filename, outname, loader, system=system, doDOD = not args.nodod,
+vhsd = VHSDecode(filename, outname, loader, system=system, doDOD = False,
                  inputfreq = sample_freq)
 vhsd.roughseek(firstframe * 2)
 
