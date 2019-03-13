@@ -24,266 +24,249 @@
 
 #include "subcodeblock.h"
 
-// Note: This class is responsible for separating F3 Frames into
-// subcode blocks.  Each subcoding block requires 98 F3 Frames.
-// There are 75 subcode blocks per second.
-//
-// Every subcode block contains 98 bytes of subcode information
-// and 98 * 32 bytes of channel data
-//
-// Subcode block sync is provided by two sync patterns S0 and S1
-// at the start of every block
-
 SubcodeBlock::SubcodeBlock()
 {
-    // Initialise the state machine
-    currentState = state_initial;
-    nextState = currentState;
+    qMode = -1;
+    firstAfterSync = false;
 
-    frameCounter = 0;
-    missedBlockSyncCount = 0;
-
-    block.sync0 = false;
-    block.sync1 = false;
-
-    isBlockReady = false;
-    blockSyncLost = 0;
-    totalBlocks = 0;
-    poorSyncs = 0;
+    // Default the Q Metadata
+    qMetadata.qControl.isAudioNotData = false;
+    qMetadata.qControl.isStereoNotQuad = false;
+    qMetadata.qControl.isNoPreempNotPreemp = false;
+    qMetadata.qControl.isCopyProtectedNotUnprotected = false;
+    qMetadata.qMode4.x = 0;
+    qMetadata.qMode4.point = 0;
+    qMetadata.qMode4.discTime = TrackTime();
+    qMetadata.qMode4.trackTime = TrackTime();
+    qMetadata.qMode4.isLeadIn = false;
+    qMetadata.qMode4.isLeadOut = false;
+    qMetadata.qMode4.trackNumber = 0;
 }
 
-// Method returns true if a block is ready
-bool SubcodeBlock::blockReady(void)
+// Set the required 98 F3 frames for the subcode block
+void SubcodeBlock::setF3Frames(QVector<F3Frame> f3FramesIn)
 {
-    return isBlockReady;
-}
-
-// Method to retrieve the processed block
-SubcodeBlock::Block SubcodeBlock::getBlock(void)
-{
-    isBlockReady = false;
-    return block;
-}
-
-// Method to retrieve the number of sync losses
-qint32 SubcodeBlock::getSyncLosses(void)
-{
-    return blockSyncLost;
-}
-
-// Method to retrieve the number of blocks processed
-qint32 SubcodeBlock::getTotalBlocks(void)
-{
-    return totalBlocks;
-}
-
-// Method to retrieve the number of blocks with sync0 and/or sync1 missing
-qint32 SubcodeBlock::getPoorSyncs(void)
-{
-    return poorSyncs;
-}
-
-// This method is used by higher level decodes to indicate that sync is lost
-// (based on invalid data or other detectable errors)
-void SubcodeBlock::forceSyncLoss(void)
-{
-    qDebug() << "SubcodeBlock::forceSyncLoss(): Forcing sync loss!";
-    nextState = state_syncLost;
-}
-
-// State machine methods ----------------------------------------------------------------------------------------------
-
-void SubcodeBlock::process(QByteArray f3FrameParam, QByteArray f3ErasuresParam)
-{
-    // Ensure the F3 frame is the correct length
-    if (f3FrameParam.size() != 34) {
-        qDebug() << "SubcodeBlock::process(): Invalid F3 frame passed (not 34 bytes!)";
+    // A subcode block requires 98 F3 Frames
+    if (f3FramesIn.size() != 98) {
+        qDebug() << "SubcodeBlock::setF3Frames(): A subcode block requires 98 F3 Frames!";
         return;
     }
 
-    // Copy the incoming F3 frame and erasure data
-    currentF3Frame = f3FrameParam;
-    currentF3Erasures = f3ErasuresParam;
+    // Store the F3 Frames
+    f3Frames = f3FramesIn;
 
-    // Since we have a new F3 frame, clear the waiting flag
-    waitingForF3frame = false;
+    // Interpret the subcode data
+    qint32 frame = 2;
+    for (qint32 byteC = 0; byteC < 12; byteC++) {
+        // Initialise the channel bytes
+        pSubcode[byteC] = 0;
+        qSubcode[byteC] = 0;
+        rSubcode[byteC] = 0;
+        sSubcode[byteC] = 0;
+        tSubcode[byteC] = 0;
+        uSubcode[byteC] = 0;
+        vSubcode[byteC] = 0;
+        wSubcode[byteC] = 0;
 
-    // Process the state machine until another F3 frame is required
-    while (!waitingForF3frame) {
-        currentState = nextState;
+        // Copy in the channel data from the subcode data
+        for (qint32 bitC = 7; bitC >= 0; bitC--) {
+            qint32 subcode = f3Frames[frame].getSubcodeSymbol();
 
-        switch (currentState) {
-        case state_initial:
-            nextState = sm_state_initial();
-            break;
-        case state_getSync0:
-            nextState = sm_state_getSync0();
-            break;
-        case state_getSync1:
-            nextState = sm_state_getSync1();
-            break;
-        case state_getInitialBlock:
-            nextState = sm_state_getInitialBlock();
-            break;
-        case state_getNextBlock:
-            nextState = sm_state_getNextBlock();
-            break;
-        case state_syncLost:
-            nextState = sm_state_syncLost();
-            break;
-        }
-    }
-}
-
-SubcodeBlock::StateMachine SubcodeBlock::sm_state_initial(void)
-{
-    return state_getSync0;
-}
-
-SubcodeBlock::StateMachine SubcodeBlock::sm_state_getSync0(void)
-{
-    // Does the current frame contain a SYNC0 marker?
-    if (currentF3Frame[0] == static_cast<char>(0x01)) {
-        // Copy the subcode data from the current F3 frame into the block
-        block.subcode[frameCounter] = static_cast<uchar>(currentF3Frame[1]);
-
-        // Copy the data and erasures from the current F3 frame into the block
-        for (qint32 i = 0; i < 32; i++) {
-            block.data[(frameCounter * 32) + i] = static_cast<uchar>(currentF3Frame[i + 2]);
-            block.erasures[(frameCounter * 32) + i] = static_cast<uchar>(currentF3Erasures[i + 2]);
-        }
-        block.sync0 = true;
-
-        frameCounter++;
-        waitingForF3frame = true;
-        return state_getSync1;
-    }
-
-    // No SYNC0, discard current frame
-    frameCounter = 0;
-    block.sync0 = false;
-    waitingForF3frame = true;
-
-    return state_getSync0;
-}
-
-SubcodeBlock::StateMachine SubcodeBlock::sm_state_getSync1(void)
-{
-    // Does the current F3 frame contain a SYNC1 marker?
-    if (currentF3Frame[0] == static_cast<char>(0x02)) {
-        // Copy the subcode data from the current F3 frame into the block
-        block.subcode[frameCounter] = static_cast<uchar>(currentF3Frame[1]);
-
-        // Copy the data and erasures from the current F3 frame into the block
-        for (qint32 i = 0; i < 32; i++) {
-            block.data[(frameCounter * 32) + i] = static_cast<uchar>(currentF3Frame[i + 2]);
-            block.erasures[(frameCounter * 32) + i] = static_cast<uchar>(currentF3Erasures[i + 2]);
-        }
-        block.sync1 = true;
-
-        frameCounter++;
-        waitingForF3frame = true;
-        return state_getInitialBlock;
-    }
-
-    // No SYNC1, discard current frames and go back to looking for a SYNC0
-    frameCounter = 0;
-    block.sync1 = false;
-    waitingForF3frame = true;
-
-    return state_getSync0;
-}
-
-SubcodeBlock::StateMachine SubcodeBlock::sm_state_getInitialBlock(void)
-{
-    // Copy the subcode data from the current F3 frame into the block
-    block.subcode[frameCounter] = static_cast<uchar>(currentF3Frame[1]);
-
-    // Copy the data and erasures from the current F3 frame into the block
-    for (qint32 i = 0; i < 32; i++) {
-        block.data[(frameCounter * 32) + i] = static_cast<uchar>(currentF3Frame[i + 2]);
-        block.erasures[(frameCounter * 32) + i] = static_cast<uchar>(currentF3Erasures[i + 2]);
-    }
-
-    frameCounter++;
-
-    // If we have 98 frames, the section is complete, process it
-    if (frameCounter == 98) {
-        isBlockReady = true;
-        totalBlocks++;
-        frameCounter = 0;
-        waitingForF3frame = true;
-        return state_getNextBlock;
-    }
-
-    // Need more frames to complete section
-    waitingForF3frame = true;
-    return state_getInitialBlock;
-}
-
-SubcodeBlock::StateMachine SubcodeBlock::sm_state_getNextBlock(void)
-{
-    // Copy the subcode data from the current F3 frame into the block
-    block.subcode[frameCounter] = static_cast<uchar>(currentF3Frame[1]);
-
-    // Copy the data and erasures from the current F3 frame into the block
-    for (qint32 i = 0; i < 32; i++) {
-        block.data[(frameCounter * 32) + i] = static_cast<uchar>(currentF3Frame[i + 2]);
-        block.erasures[(frameCounter * 32) + i] = static_cast<uchar>(currentF3Erasures[i + 2]);
-    }
-
-    // Check for sync markers
-    if (frameCounter == 0) {
-        if (currentF3Frame[0] == static_cast<char>(0x01)) block.sync0 = true; else block.sync0 = false;
-    }
-    if (frameCounter == 1) {
-        if (currentF3Frame[0] == static_cast<char>(0x02)) block.sync1 = true; else block.sync1 = false;
-    }
-
-    frameCounter++;
-
-    // If we have 2 frames in the current block, check the sync pattern
-    if (frameCounter == 2) {
-        if (block.sync0 && block.sync1) {
-            //qDebug() << "SubcodeBlock::sm_state_getNextSection(): Section SYNC0 and SYNC1 are valid";
-            missedBlockSyncCount = 0;
-        } else {
-            missedBlockSyncCount++;
-            poorSyncs++;
-            //qDebug() << "SubcodeBlock::sm_state_getNextBlock(): Section SYNC0 and/or SYNC1 are INVALID - missed sync #" << missedBlockSyncCount;
-
-            // If we have missed 4 syncs in a row, consider the sync as lost
-            if (missedBlockSyncCount == 4) {
-                missedBlockSyncCount = 0;
-                return state_syncLost;
-            }
+            if (subcode & 0x80) pSubcode[byteC] |= (1 << bitC);
+            if (subcode & 0x40) qSubcode[byteC] |= (1 << bitC);
+            if (subcode & 0x20) rSubcode[byteC] |= (1 << bitC);
+            if (subcode & 0x10) sSubcode[byteC] |= (1 << bitC);
+            if (subcode & 0x08) tSubcode[byteC] |= (1 << bitC);
+            if (subcode & 0x04) uSubcode[byteC] |= (1 << bitC);
+            if (subcode & 0x02) vSubcode[byteC] |= (1 << bitC);
+            if (subcode & 0x01) wSubcode[byteC] |= (1 << bitC);
+            frame++;
         }
     }
 
-    // If we have 98 frames, the section is complete, process it
-    if (frameCounter == 98) {
-        isBlockReady = true;
-        totalBlocks++;
-        frameCounter = 0;
-        waitingForF3frame = true;
-        return state_getNextBlock;
-    }
+    // The Q channel specifies how the blocks frame data should be used
+    // so we decode that here
 
-    // Need more frames to complete the block
-    waitingForF3frame = true;
-    return state_getNextBlock;
+    // Firstly we CRC the Q channel to ensure it contains valid data
+    if (verifyQ()) {
+        // Decode the Q channel mode
+        qMode = decodeQAddress();
+
+        // Decode the Q control
+        decodeQControl();
+
+        // If mode 4, decode the metadata
+        if (qMode == 4) decodeQDataMode4();
+    } else {
+        // Q channel mode is invalid
+        qMode = -1;
+    }
 }
 
-SubcodeBlock::StateMachine SubcodeBlock::sm_state_syncLost(void)
+// Return the channel data for a subcode channel
+uchar* SubcodeBlock::getChannelData(SubcodeBlock::Channels channel)
 {
-    qDebug() << "SubcodeBlock::sm_state_syncLost(): Subcode block sync has been lost!";
-    blockSyncLost++;
+    if (channel == channelP) return pSubcode;
+    if (channel == channelQ) return qSubcode;
+    if (channel == channelR) return rSubcode;
+    if (channel == channelS) return sSubcode;
+    if (channel == channelT) return tSubcode;
+    if (channel == channelU) return uSubcode;
+    if (channel == channelV) return vSubcode;
 
-    // Discard all F3 frames
-    frameCounter = 0;
-    block.sync0 = false;
-    block.sync1 = false;
+    // Return W
+    return wSubcode;
+}
 
-    // Return to looking for initial SYNC0
-    return state_getSync0;
+// Return an F3 frame for the subcode block
+F3Frame SubcodeBlock::getFrame(qint32 frameNumber)
+{
+    if (frameNumber < 0 || frameNumber > 97) return F3Frame();
+
+    return f3Frames[frameNumber];
+}
+
+// Method to determine the Q mode
+qint32 SubcodeBlock::getQMode(void)
+{
+    return qMode;
+}
+
+// Set flag to indicate if the subcode block is the first after the
+// initial sync (true) or a continuation of a subcode block sequence
+void SubcodeBlock::setFirstAfterSync(bool parameter)
+{
+    firstAfterSync = parameter;
+}
+
+// Get first after sync flag
+bool SubcodeBlock::getFirstAfterSync(void)
+{
+    return firstAfterSync;
+}
+
+// Method to get Q channel metadata
+SubcodeBlock::QMetadata SubcodeBlock::getQMetadata(void)
+{
+    return qMetadata;
+}
+
+// Private methods ----------------------------------------------------------------------------------------------------
+
+// Method to CRC verify the Q subcode channel
+bool SubcodeBlock::verifyQ(void)
+{
+    // CRC check the Q-subcode - CRC is on control+mode+data 4+4+72 = 80 bits with 16-bit CRC (96 bits total)
+    char crcSource[10];
+    for (qint32 byteNo = 0; byteNo < 10; byteNo++) crcSource[byteNo] = static_cast<char>(qSubcode[byteNo]);
+    quint16 crcChecksum = static_cast<quint16>(~((qSubcode[10] << 8) + qSubcode[11])); // Inverted on disc
+    quint16 calcChecksum = crc16(crcSource, 10);
+
+    // Is the Q subcode valid?
+    if (crcChecksum != calcChecksum) {
+        //qDebug() << "SubcodeBlock::verifyQ(): Q Subcode CRC failed - Q subcode payload is invalid";
+        return false;
+    }
+
+    return true;
+}
+
+// Method to perform CRC16 (XMODEM)
+// Adapted from http://mdfs.net/Info/Comp/Comms/CRC16.htm
+quint16 SubcodeBlock::crc16(char *addr, quint16 num)
+{
+    qint32 i;
+    quint32 crc = 0;
+
+    for (; num > 0; num--) {
+        crc = crc ^ static_cast<quint32>(*addr++ << 8);
+        for (i = 0; i < 8; i++) {
+            crc = crc << 1;
+            if (crc & 0x10000) crc = (crc ^ 0x1021) & 0xFFFF;
+        }
+    }
+
+    return static_cast<quint16>(crc);
+}
+
+// Method to decode the Q subcode ADR field
+qint32 SubcodeBlock::decodeQAddress(void)
+{
+    // Get the Q Mode value
+    qint32 qMode = (qSubcode[0] & 0x0F);
+
+    // Range check
+    if (qMode < 0 || qMode > 4) qMode = -1;
+
+    return qMode;
+}
+
+// Method to decode the Q subcode CONTROL field
+void SubcodeBlock::decodeQControl(void)
+{
+    // Get the control payload
+    qint32 qControlField = (qSubcode[0] & 0xF0) >> 4;
+
+    // Control field values can be:
+    //
+    // x000 = 2-Channel/4-Channel
+    // 0x00 = audio/data
+    // 00x0 = Copy not permitted/copy permitted
+    // 000x = pre-emphasis off/pre-emphasis on
+
+    if ((qControlField & 0x08) == 0x08) qMetadata.qControl.isStereoNotQuad = false;
+    else qMetadata.qControl.isStereoNotQuad = true;
+
+    if ((qControlField & 0x04) == 0x04) qMetadata.qControl.isAudioNotData = false;
+    else qMetadata.qControl.isAudioNotData = true;
+
+    if ((qControlField & 0x02) == 0x02) qMetadata.qControl.isCopyProtectedNotUnprotected = false;
+    else qMetadata.qControl.isCopyProtectedNotUnprotected = true;
+
+    if ((qControlField & 0x01) == 0x01) qMetadata.qControl.isNoPreempNotPreemp = false;
+    else qMetadata.qControl.isNoPreempNotPreemp = true;
+}
+
+// Method to decode Q subcode Mode 4 DATA-Q
+void SubcodeBlock::decodeQDataMode4(void)
+{
+    // Get the track number (TNO) field
+    qint32 tno = bcdToInteger(qSubcode[1]);
+
+    // Use TNO to detect lead-in, audio or lead-out
+    if (qSubcode[1] == 0xAA) {
+        // Lead out
+        qMetadata.qMode4.isLeadOut = true;
+        qMetadata.qMode4.isLeadIn = false;
+        qMetadata.qMode4.trackNumber = 170;
+        qMetadata.qMode4.x = bcdToInteger(qSubcode[2]);
+        qMetadata.qMode4.point = -1;
+        qMetadata.qMode4.trackTime = TrackTime(bcdToInteger(qSubcode[3]), bcdToInteger(qSubcode[4]), bcdToInteger(qSubcode[5]));
+        qMetadata.qMode4.discTime = TrackTime(bcdToInteger(qSubcode[7]), bcdToInteger(qSubcode[8]), bcdToInteger(qSubcode[9]));
+
+    } else if (tno == 0) {
+        // Lead in
+        qMetadata.qMode4.isLeadOut = false;
+        qMetadata.qMode4.isLeadIn = true;
+        qMetadata.qMode4.trackNumber = bcdToInteger(qSubcode[1]);
+        qMetadata.qMode4.x = -1;
+        qMetadata.qMode4.point = bcdToInteger(qSubcode[2]);
+        qMetadata.qMode4.trackTime = TrackTime(bcdToInteger(qSubcode[3]), bcdToInteger(qSubcode[4]), bcdToInteger(qSubcode[5]));
+        qMetadata.qMode4.discTime = TrackTime(bcdToInteger(qSubcode[7]), bcdToInteger(qSubcode[8]), bcdToInteger(qSubcode[9]));
+    } else {
+        // Audio
+        qMetadata.qMode4.isLeadOut = false;
+        qMetadata.qMode4.isLeadIn = false;
+        qMetadata.qMode4.trackNumber = bcdToInteger(qSubcode[1]);
+        qMetadata.qMode4.x = -1;
+        qMetadata.qMode4.point = bcdToInteger(qSubcode[2]);
+        qMetadata.qMode4.trackTime = TrackTime(bcdToInteger(qSubcode[3]), bcdToInteger(qSubcode[4]), bcdToInteger(qSubcode[5]));
+        qMetadata.qMode4.discTime = TrackTime(bcdToInteger(qSubcode[7]), bcdToInteger(qSubcode[8]), bcdToInteger(qSubcode[9]));
+    }
+}
+
+// Method to convert 2 digit BCD byte to an integer
+qint32 SubcodeBlock::bcdToInteger(uchar bcd)
+{
+   return (((bcd>>4)*10) + (bcd & 0xF));
 }

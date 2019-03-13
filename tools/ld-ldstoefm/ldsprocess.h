@@ -37,7 +37,7 @@ class LdsProcess
 {
 public:
     LdsProcess();
-    bool process(QString inputFilename, QString outputFilename, bool outputSample, bool useFloatingPoint, bool noIsiFilter);
+    bool process(QString inputFilename, QString outputFilename, bool outputSample, bool useFloatingPoint, bool noIsiFilter, qint32 percentToProcess);
 
 private:
     QFile *inputFileHandle;

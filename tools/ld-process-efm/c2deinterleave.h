@@ -1,6 +1,6 @@
 /************************************************************************
 
-    efmprocess.h
+    c2deinterleave.h
 
     ld-process-efm - EFM data decoder
     Copyright (C) 2019 Simon Inns
@@ -22,44 +22,38 @@
 
 ************************************************************************/
 
-#ifndef EFMPROCESS_H
-#define EFMPROCESS_H
+#ifndef C2DEINTERLEAVE_H
+#define C2DEINTERLEAVE_H
 
 #include <QCoreApplication>
 #include <QDebug>
-#include <QFile>
 
-#include "f3frame.h"
-#include "subcodeblock.h"
-#include "efmtof3frames.h"
-#include "f3framestosubcodeblocks.h"
-#include "decodeaudio.h"
-
-class EfmProcess
+class C2Deinterleave
 {
 public:
-    EfmProcess();
+    C2Deinterleave();
 
-    bool process(QString inputFilename, QString outputFilename, bool verboseDebug);
+    void reportStatus(void);
+    void pushC2(QByteArray dataSymbols, QByteArray errorSymbols);
+    QByteArray getDataSymbols(void);
+    QByteArray getErrorSymbols(void);
+    void flush(void);
 
 private:
-    QFile *inputFileHandle;
+    struct C2Element {
+        QByteArray c2Data;
+        QByteArray c2Error;
+    };
+    QVector<C2Element> c2DelayBuffer;
 
-    EfmToF3Frames efmToF3Frames;
-    F3FramesToSubcodeBlocks f3FramesToSubcodeBlocks;
-    DecodeAudio decodeAudio;
+    QByteArray outputC2Data;
+    QByteArray outputC2Errors;
 
-    qint32 qMode0Count;
-    qint32 qMode1Count;
-    qint32 qMode2Count;
-    qint32 qMode3Count;
-    qint32 qMode4Count;
-    qint32 qModeICount;
+    qint32 c2flushed;
+    qint32 validDeinterleavedC2s;
+    qint32 invalidDeinterleavedC2s;
 
-    bool openInputFile(QString inputFileName);
-    void closeInputFile(void);
-    QByteArray readEfmData(void);
-    void reportStatus(void);
+    void deinterleave(void);
 };
 
-#endif // EFMPROCESS_H
+#endif // C2DEINTERLEAVE_H

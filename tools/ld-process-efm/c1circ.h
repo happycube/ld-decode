@@ -1,6 +1,6 @@
 /************************************************************************
 
-    efmprocess.h
+    c1circ.h
 
     ld-process-efm - EFM data decoder
     Copyright (C) 2019 Simon Inns
@@ -22,44 +22,53 @@
 
 ************************************************************************/
 
-#ifndef EFMPROCESS_H
-#define EFMPROCESS_H
+#ifndef C1CIRC_H
+#define C1CIRC_H
 
 #include <QCoreApplication>
 #include <QDebug>
-#include <QFile>
+
+#include <ezpwd/rs_base>
+#include <ezpwd/rs>
+
+// CD-ROM specific CIRC configuration for Reed-Solomon forward error correction
+template < size_t SYMBOLS, size_t PAYLOAD > struct C1RS;
+template < size_t PAYLOAD > struct C1RS<255, PAYLOAD> : public __RS(C1RS, uint8_t, 255, PAYLOAD, 0x11d, 0,  1);
 
 #include "f3frame.h"
-#include "subcodeblock.h"
-#include "efmtof3frames.h"
-#include "f3framestosubcodeblocks.h"
-#include "decodeaudio.h"
 
-class EfmProcess
+class C1Circ
 {
 public:
-    EfmProcess();
+    C1Circ();
 
-    bool process(QString inputFilename, QString outputFilename, bool verboseDebug);
+    void reportStatus(void);
+    void pushF3Frame(F3Frame f3Frame);
+    QByteArray getDataSymbols(void);
+    QByteArray getErrorSymbols(void);
+    void flush(void);
 
 private:
-    QFile *inputFileHandle;
+    QByteArray currentF3Data;
+    QByteArray previousF3Data;
+    QByteArray currentF3Errors;
+    QByteArray previousF3Errors;
 
-    EfmToF3Frames efmToF3Frames;
-    F3FramesToSubcodeBlocks f3FramesToSubcodeBlocks;
-    DecodeAudio decodeAudio;
+    QByteArray interleavedC1Data;
+    QByteArray interleavedC1Errors;
 
-    qint32 qMode0Count;
-    qint32 qMode1Count;
-    qint32 qMode2Count;
-    qint32 qMode3Count;
-    qint32 qMode4Count;
-    qint32 qModeICount;
+    QByteArray outputC1Data;
+    QByteArray outputC1Errors;
 
-    bool openInputFile(QString inputFileName);
-    void closeInputFile(void);
-    QByteArray readEfmData(void);
-    void reportStatus(void);
+    qint32 c1BufferLevel;
+
+    qint32 c1Passed;
+    qint32 c1Corrected;
+    qint32 c1Failed;
+    qint32 c1flushed;
+
+    void interleave(void);
+    void errorCorrect(void);
 };
 
-#endif // EFMPROCESS_H
+#endif // C1CIRC_H

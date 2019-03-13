@@ -27,88 +27,36 @@
 
 #include <QCoreApplication>
 #include <QDebug>
+#include <QFile>
+#include <QDataStream>
 
-#include "reedsolomon.h"
+#include "subcodeblock.h"
+#include "f3frame.h"
+#include "c1circ.h"
+#include "c2circ.h"
+#include "c2deinterleave.h"
 
 class DecodeAudio
 {
 public:
     DecodeAudio();
+    ~DecodeAudio();
 
-    qint32 getValidC1Count(void);
-    qint32 getInvalidC1Count(void);
-    qint32 getValidC2Count(void);
-    qint32 getInvalidC2Count(void);
-    qint32 getValidAudioSamplesCount(void);
-    qint32 getInvalidAudioSamplesCount(void);
-
-    QByteArray getOutputData(void);
-    qint32 decodeBlock(uchar *blockData, uchar *blockErasures);
+    void reportStatus(void);
+    bool openOutputFile(QString filename);
+    void closeOutputFile(void);
+    void flush(void);
+    void process(SubcodeBlock subcodeBlock);
 
 private:
-    void interleaveC1Data(QByteArray previousF3, QByteArray currentF3,
-                                       QByteArray previousF3E, QByteArray currentF3E,
-                                       uchar *c1Data, bool *isErasure);
-    void getC2Data(uchar *symBuffer, bool *isErasure);
-    QString dataToString(uchar *data, qint32 length);
-    void deInterleaveC2(uchar *outputData);
+    C1Circ c1Circ;
+    C2Circ c2Circ;
+    C2Deinterleave c2Deinterleave;
 
-    // CIRC FEC class
-    ReedSolomon reedSolomon;
+    QFile *outputFileHandle;
+    QDataStream *outputStream;
 
-    // C1 ECC buffer
-    uchar c1Data[32];
-    bool c1DataErasures[32];
-    bool c1DataValid;
-    qint32 validC1Count;
-    qint32 invalidC1Count;
-    qint32 validAudioSampleCount;
-    qint32 invalidAudioSampleCount;
-
-    // C1 ECC delay buffer
-    struct C1Buffer {
-        uchar c1Symbols[28];
-        bool c1SymbolsValid;
-    };
-    QVector<C1Buffer> c1DelayBuffer;
-    bool c2DataValid;
-    qint32 validC2Count;
-    qint32 invalidC2Count;
-
-    // C2 EEC buffer
-    uchar c2Data[28];
-    bool c2DataErasures[28];
-
-    // C2 De-interleave delay buffer
-    struct C2Buffer {
-        uchar c2Symbols[28];
-        bool c2SymbolsValid;
-    };
-    QVector<C2Buffer> c2DelayBuffer;
-
-    // Output data buffer
-    QByteArray outputDataBuffer;
-
-    // State machine state definitions
-    enum StateMachine {
-        state_initial,
-        state_processC1,
-        state_processC2,
-        state_processAudio
-    };
-
-    StateMachine currentState;
-    StateMachine nextState;
-    bool waitingForF3frame;
-    QByteArray currentF3Frame;
-    QByteArray currentF3Erasures;
-    QByteArray previousF3Frame;
-    QByteArray previousF3Erasures;
-
-    StateMachine sm_state_initial(void);
-    StateMachine sm_state_processC1(void);
-    StateMachine sm_state_processC2(void);
-    StateMachine sm_state_processAudio(void);
+    void writeAudioData(QByteArray audioData);
 };
 
 #endif // DECODEAUDIO_H

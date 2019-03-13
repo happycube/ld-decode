@@ -110,6 +110,12 @@ int main(int argc, char *argv[])
                                        QCoreApplication::translate("main", "Do not apply ISI filter"));
     parser.addOption(noIsiOption);
 
+    // Option to limit the percentage of the input file to process
+    QCommandLineOption processPercentOption(QStringList() << "p" << "percent",
+                                        QCoreApplication::translate("main", "Specify the percent of the input file to process"),
+                                        QCoreApplication::translate("main", "percentage (1-100)"));
+    parser.addOption(processPercentOption);
+
     // Positional argument to specify input EFM file
     parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input 40MSPS sampled LDS file"));
 
@@ -144,12 +150,20 @@ int main(int argc, char *argv[])
         return -1;
     }
 
+    qint32 percentToProcess = 100;
+    if (parser.isSet(processPercentOption)) {
+        percentToProcess = parser.value(processPercentOption).toInt();
+        if (percentToProcess < 1) percentToProcess = 1;
+        if (percentToProcess > 100) percentToProcess = 100;
+    }
+
     // Process the command line options
     if (isDebugOn) showDebug = true;
 
     // Perform the processing
     LdsProcess ldsProcess;
-    ldsProcess.process(inputFilename, outputFilename, outputSample, useFloatingPoint, noIsiFilter);
+    ldsProcess.process(inputFilename, outputFilename, outputSample,
+                       useFloatingPoint, noIsiFilter, percentToProcess);
 
     // Quit with success
     return 0;

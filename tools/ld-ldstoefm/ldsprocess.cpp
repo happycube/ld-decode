@@ -41,7 +41,8 @@ LdsProcess::LdsProcess()
 //  5. Use a PLL to extract the data from the ZC deltas
 //  6. Save the data to the output EFM data file
 
-bool LdsProcess::process(QString inputFilename, QString outputFilename, bool outputSample, bool useFloatingPoint, bool noIsiFilter)
+bool LdsProcess::process(QString inputFilename, QString outputFilename, bool outputSample, bool useFloatingPoint,
+                         bool noIsiFilter, qint32 percentToProcess)
 {
     // Open the input file
     if (!openInputFile(inputFilename)) {
@@ -66,6 +67,7 @@ bool LdsProcess::process(QString inputFilename, QString outputFilename, bool out
 
     QByteArray ldsData;
     QByteArray efmData;
+    bool finished = false;
     do {
         // Get qint16 sample data from the 10-bit packed LDS file
         ldsData = readAndUnpackLdsFile();
@@ -114,8 +116,13 @@ bool LdsProcess::process(QString inputFilename, QString outputFilename, bool out
             //qInfo() << "Processed" << inputProcessed / 1024 << "Kbytes of" << inputFileSize / 1024 << "KBytes";
             qreal percentage = (100.0 / static_cast<qreal>(inputFileSize)) * static_cast<qreal>(inputProcessed);
             qInfo().nospace() << "Processed " << static_cast<qint32>(percentage) << "%";
+
+            // Limit input file processing if required
+            if (percentToProcess < 100) {
+                if (static_cast<qint32>(percentage) == percentToProcess) finished = true;
+            }
         }
-    } while (ldsData.size() > 0);
+    } while (ldsData.size() > 0 && !finished);
 
     // Close the input file
     closeInputFile();

@@ -17,11 +17,16 @@ DEFINES += QT_DEPRECATED_WARNINGS
 SOURCES += \
         main.cpp \
     efmprocess.cpp \
-    f3framer.cpp \
+    f3frame.cpp \
+    efmtof3frames.cpp \
+    subcodeblock.cpp \
+    f3framestosubcodeblocks.cpp \
     decodeaudio.cpp \
-    decodesubcode.cpp \
-    reedsolomon.cpp \
-    subcodeblock.cpp
+    decodedata.cpp \
+    c1circ.cpp \
+    c2circ.cpp \
+    c2deinterleave.cpp \
+    tracktime.cpp
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin
@@ -30,10 +35,12 @@ else: unix:!android: target.path = /usr/local/bin/
 
 HEADERS += \
     efmprocess.h \
-    f3framer.h \
+    f3frame.h \
+    efmtof3frames.h \
+    subcodeblock.h \
+    f3framestosubcodeblocks.h \
     decodeaudio.h \
-    decodesubcode.h \
-    reedsolomon.h \
+    decodedata.h \
     ezpwd/asserter \
     ezpwd/bch \
     ezpwd/bch_base \
@@ -42,10 +49,12 @@ HEADERS += \
     ezpwd/ezcod \
     ezpwd/output \
     ezpwd/rs \
+    ezpwd/rs_base \
     ezpwd/serialize \
     ezpwd/serialize_definitions \
     ezpwd/timeofday \
-    subcodeblock.h
+    c1circ.h \
+    c2circ.h \
+    c2deinterleave.h \
+    tracktime.h
 
-DISTFILES += \
-    ezpwd/rs_base

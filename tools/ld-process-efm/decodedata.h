@@ -1,6 +1,6 @@
 /************************************************************************
 
-    reedsolomon.cpp
+    decodedata.h
 
     ld-process-efm - EFM data decoder
     Copyright (C) 2019 Simon Inns
@@ -22,30 +22,14 @@
 
 ************************************************************************/
 
-#ifndef REEDSOLOMON_H
-#define REEDSOLOMON_H
+#ifndef DECODEDATA_H
+#define DECODEDATA_H
 
-#include <QCoreApplication>
-#include <QDebug>
 
-class ReedSolomon
+class DecodeData
 {
 public:
-    ReedSolomon();
-
-    bool decodeC1(uchar *inData, bool *inErasures);
-    bool decodeC2(uchar *inData, bool *inErasures);
-
-private:
-    QString dataToString(std::vector<uint8_t> data);
-
-    qint32 c1Passed;
-    qint32 c1Corrected;
-    qint32 c1Failed;
-
-    qint32 c2Passed;
-    qint32 c2Corrected;
-    qint32 c2Failed;
+    DecodeData();
 };
 
-#endif // REEDSOLOMON_H
+#endif // DECODEDATA_H
