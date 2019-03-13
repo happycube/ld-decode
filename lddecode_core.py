@@ -516,8 +516,9 @@ class RFDecode:
         dgap_white = calczc(fakedecode[0]['demod'], 3000, rf.iretohz(50), _count=512) - 3000
 
         rf.delays = {}
-        rf.delays['video_sync'] = dgap_sync
-        rf.delays['video_white'] = dgap_white
+        # factor in the 1k or so block cut as well, since we never *just* do demodblock
+        rf.delays['video_sync'] = dgap_sync - self.blockcut
+        rf.delays['video_white'] = dgap_white - self.blockcut
         
         fdec_raw = fakedecode[0]['demod_raw']
         
@@ -1297,8 +1298,8 @@ class FieldNTSC(Field):
                 bursts['even'].append(zc_bursts[l][True])
                 bursts['odd'].append(zc_bursts[l][False])
             else:
-                bursts['odd'].append(zc_bursts[l][True])
                 bursts['even'].append(zc_bursts[l][False])
+                bursts['odd'].append(zc_bursts[l][True])
 
         bursts_arr = {}
         bursts_arr[True] = np.concatenate(bursts['even'])
@@ -1549,7 +1550,6 @@ class LDdecode:
         self.fname_out = fname_out
 
         self.firstfield = None # In frame output mode, the first field goes here
-
         self.fieldloc = 0
 
         if system == 'PAL':
@@ -1581,8 +1581,8 @@ class LDdecode:
         self.fieldinfo = []
 
         self.leadOut = False
-
-        self.isCLV = None
+        self.isCLV = False
+        self.frameNumber = None
         
     def close(self):
         ''' deletes all open files, so it's possible to pickle an LDDecode object '''
@@ -1754,25 +1754,37 @@ class LDdecode:
         return 20 * np.log10(100 / noise)
 
     def computeMetricsNTSC(self, f1, f2, metrics):
-        wl_slice = f2.lineslice_tbc(20, 13, 2)
+        sl = (20, 13, 2)
+        wl_slice = f2.lineslice_tbc(*sl)
         if inrange(np.mean(f2.output_to_ire(f2.dspicture[wl_slice])), 90, 110):
             metrics['whiteSNR'] = self.calcpsnr(f2, wl_slice)
             metrics['whiteIRE'] = np.mean(f2.output_to_ire(f2.dspicture[wl_slice]))
-            #metrics['whiteIRE'] = f2.rf.hztoire(np.mean(f2.data[0]['demod'][wl_slice]))
+
+            rawslice = f2.lineslice(*sl)
+            rawdata = f2.rawdata[rawslice.start - int(self.rf.delays['video_white']):rawslice.stop - int(self.rf.delays['video_white'])]
+            metrics['whiteRFLevel'] = np.std(rawdata)
 
         # I've seen some clips with the 100IRE area in the back half of line 20- and none at all
-        wl20_slice = f1.lineslice_tbc(20, 14, 12)
+        sl = (20, 14, 12)
+        wl20_slice = f1.lineslice_tbc(*sl)
         if not inrange(np.mean(f1.output_to_ire(f1.dspicture[wl20_slice])), 90, 110):
-            wl20_slice = f1.lineslice_tbc(20, 52, 8)
+            sl = (20, 52, 8)
+            wl20_slice = f1.lineslice_tbc(*sl)
             if not inrange(np.mean(f1.output_to_ire(f1.dspicture[wl20_slice])), 90, 110):
                 # only seen on GGV
-                wl20_slice = f1.lineslice_tbc(13, 13, 15)
+                sl = (13, 13, 15)
+                wl20_slice = f1.lineslice_tbc(*sl)
                 if not inrange(np.mean(f1.output_to_ire(f1.dspicture[wl20_slice])), 90, 110):
                     wl20_slice = None
 
         if wl20_slice is not None:
             metrics['whiteSNR'] = self.calcpsnr(f1, wl20_slice)
             metrics['whiteIRE'] = np.mean(f1.output_to_ire(f1.dspicture[wl20_slice]))
+
+            rawslice = f1.lineslice(*sl)
+            rawdata = f1.rawdata[rawslice.start - int(self.rf.delays['video_white']):rawslice.stop - int(self.rf.delays['video_white'])]
+            metrics['whiteRFLevel'] = np.std(rawdata)
+
 
         # check for a white flag
         # later disks - and some film frames - don't have a white flag
@@ -1796,20 +1808,21 @@ class LDdecode:
         sl_cburst70 = f1.lineslice_tbc(19, 14, 20)
         diff = (f1.dspicture[sl_cburst70].astype(float) - f2.dspicture[sl_cburst70].astype(float))/2
 
-#        metrics['ntscLineF119Burst70IRE'] = np.sqrt(2)*rms(diff)/f1.out_scale
+        comb = []
+        for i in zip([1, 2], [f1, f2]):
+            comb.append(CombNTSC(i[1]))
+            level, phase, snr = comb[-1].calcLine19Info()
+            metrics['ntscF{0}Line19ColorPhase'.format(i[0])] = phase
+            metrics['ntscF{0}Line19ColorRawSNR'.format(i[0])] = snr
 
-        comb1 = CombNTSC(f1)
-        level1, phase1, snr1 = comb1.calcLine19Info()
-#        metrics['ntscLineF119Burst70IREa'] = level1
-        metrics['ntscF1Line19ColorPhase'] = phase1
-        metrics['ntscF1Line19ColorRawSNR'] = snr1
+            ire50_slice = i[1].lineslice_tbc(19, 36, 10)
+            metrics['ntscF{0}IRE50PSNR'.format(i[0])] = self.calcpsnr(i[1], ire50_slice)
 
-        comb2 = CombNTSC(f2)
-        level2, phase2, snr2 = comb2.calcLine19Info()
-        metrics['ntscF2Line19ColorPhase'] = phase2
-        metrics['ntscF2Line19ColorRawSNR'] = snr2
+            ire50_rawslice = i[1].lineslice(19, 36, 10)
+            rawdata = i[1].rawdata[ire50_rawslice.start - int(self.rf.delays['video_white']):ire50_rawslice.stop - int(self.rf.delays['video_white'])]
+            metrics['ntscF{0}IRE50RFLevel'.format(i[0])] = np.std(rawdata)
 
-        level3d, phase3d, snr3d = comb2.calcLine19Info(comb1)
+        level3d, phase3d, snr3d = comb[1].calcLine19Info(comb[0])
         metrics['ntscLine19Burst70IRE'] = level3d
         metrics['ntscLine19ColorPhase'] = phase3d
         metrics['ntscLine19ColorRawSNR'] = snr3d
@@ -1832,16 +1845,17 @@ class LDdecode:
         bl_slicetbc = f1.lineslice_tbc(blackline, 12, 50)
 
         # these metrics determine the effectiveness of the wow-filter
-        bl_slice1 = f1.lineslice(blackline, 12, 50)
-        bl_slice2 = f2.lineslice(blackline, 12, 50)
-        metrics['blackLineF1PreTBCIRE'] = f1.rf.hztoire(np.mean(f1.data[0]['demod'][bl_slice1]))
-        metrics['blackLineF2PreTBCIRE'] = f2.rf.hztoire(np.mean(f2.data[0]['demod'][bl_slice2]))
+        for i in zip([1, 2], [f1, f2]):
+            bl_slice = i[1].lineslice(blackline, 12, 50)
+    
+            delay = int(i[1].rf.delays['video_sync'])
+            bl_sliceraw = slice(bl_slice.start - delay, bl_slice.stop - delay)
+            metrics['blackLineF{0}RFLevel'.format(i[0])] = np.std(i[1].rawdata[bl_sliceraw])
 
-        metrics['blackLineF1PostTBCIRE'] = f1.output_to_ire(np.mean(f1.dspicture[bl_slicetbc]))
-        metrics['blackLineF2PostTBCIRE'] = f2.output_to_ire(np.mean(f2.dspicture[bl_slicetbc]))
+            metrics['blackLineF{0}PreTBCIRE'.format(i[0])] = i[1].rf.hztoire(np.mean(i[1].data[0]['demod'][bl_slice]))
+            metrics['blackLineF{0}PostTBCIRE'.format(i[0])] = i[1].output_to_ire(np.mean(i[1].dspicture[bl_slicetbc]))
 
-        metrics['blackLineF1PSNR'] = self.calcpsnr(f1, bl_slicetbc)
-        metrics['blackLineF2PSNR'] = self.calcpsnr(f2, bl_slicetbc)
+            metrics['blackLineF{0}PSNR'.format(i[0])] = self.calcpsnr(i[1], bl_slicetbc)
 
         return metrics
 
