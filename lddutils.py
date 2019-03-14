@@ -371,3 +371,15 @@ def genwave(rate, freq, initialphase = 0):
 # slightly faster than np.std for short arrays
 def rms(arr):
     return np.sqrt(np.mean(np.square(arr - np.mean(arr))))
+
+# MTF calculations
+def get_fmax(cavframe = 0, laser=780, na=0.5, fps=30):
+    loc = .055 + ((cavframe / 54000) * .090)
+    return (2*na/(laser/1000))*(2*np.pi*fps)*loc
+
+def compute_mtf(freq, cavframe = 0, laser=780, na=0.52):
+    fmax = get_fmax(cavframe, laser, na)
+    freq_mhz = freq / 1000000
+    
+    # from Compact Disc Technology AvHeitarō Nakajima, Hiroshi Ogawa page 17
+    return (2/np.pi)*(np.arccos(freq_mhz/fmax)-((freq_mhz/fmax)*np.sqrt(1-((freq_mhz/fmax)**2))))
