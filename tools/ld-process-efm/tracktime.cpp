@@ -24,6 +24,9 @@
 
 #include "tracktime.h"
 
+// Note: Class for handling A-MIN, A-SEC, A-FRAC and P-MIN, P-SEC, P-FRAC
+// time-codes as defined by clauses 22.3.3.5 and 22.3.4.2 of ECMA-130
+
 TrackTime::TrackTime(qint32 minutesParam, qint32 secondsParam, qint32 framesParam)
 {
     // Set the default track time

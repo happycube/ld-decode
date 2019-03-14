@@ -1,6 +1,6 @@
 /************************************************************************
 
-    decodedata.h
+    f2frame.h
 
     ld-process-efm - EFM data decoder
     Copyright (C) 2019 Simon Inns
@@ -22,14 +22,26 @@
 
 ************************************************************************/
 
-#ifndef DECODEDATA_H
-#define DECODEDATA_H
+#ifndef F2FRAME_H
+#define F2FRAME_H
 
+#include <QCoreApplication>
+#include <QDebug>
 
-class DecodeData
+#include "f3frame.h"
+
+class F2Frame
 {
 public:
-    DecodeData();
+    F2Frame();
+
+    void setData(QByteArray dataParam, QByteArray erasuresParam);
+    QByteArray getDataSymbols(void);
+    QByteArray getErrorSymbols(void);
+
+private:
+    QByteArray dataSymbols;
+    QByteArray errorSymbols;
 };
 
-#endif // DECODEDATA_H
+#endif // F2FRAME_H

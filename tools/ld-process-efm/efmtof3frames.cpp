@@ -22,7 +22,6 @@
 
 ************************************************************************/
 
-
 #include "efmtof3frames.h"
 
 EfmToF3Frames::EfmToF3Frames()

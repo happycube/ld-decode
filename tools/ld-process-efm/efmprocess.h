@@ -30,10 +30,12 @@
 #include <QFile>
 
 #include "f3frame.h"
-#include "subcodeblock.h"
+#include "f2frame.h"
+#include "section.h"
 #include "efmtof3frames.h"
-#include "f3framestosubcodeblocks.h"
-#include "decodeaudio.h"
+#include "f3tof2frames.h"
+#include "f3tosections.h"
+#include "f2framestoaudio.h"
 
 class EfmProcess
 {
@@ -46,8 +48,9 @@ private:
     QFile *inputFileHandle;
 
     EfmToF3Frames efmToF3Frames;
-    F3FramesToSubcodeBlocks f3FramesToSubcodeBlocks;
-    DecodeAudio decodeAudio;
+    F3ToF2Frames f3ToF2Frames;
+    F3ToSections f3ToSections;
+    F2FramesToAudio f2FramesToAudio;
 
     qint32 qMode0Count;
     qint32 qMode1Count;
@@ -56,6 +59,7 @@ private:
     qint32 qMode4Count;
     qint32 qModeICount;
 
+    void processSections(QVector<Section> sections);
     bool openInputFile(QString inputFileName);
     void closeInputFile(void);
     QByteArray readEfmData(void);

@@ -24,11 +24,13 @@
 
 #include "f3frame.h"
 
+// Note: Class for storing 'F3 frames' as defined by clause 18 of ECMA-130
+
 F3Frame::F3Frame()
 {
     isSync0 = false;
     isSync1 = false;
-    subcodeSymbol = -1;
+    subcodeSymbol = 0;
     firstAfterSync = false;
 
     dataSymbols.resize(32);
@@ -122,15 +124,15 @@ void F3Frame::setTValues(QVector<qint32> tValuesIn)
     // Decode the subcode symbol
     if (efmValues[0] == 0x801) {
         // Sync 0
-        subcodeSymbol = -1;
+        subcodeSymbol = 0;
         isSync0 = true;
     } else if (efmValues[0] == 0x012) {
         // Sync 1
-        subcodeSymbol = -1;
+        subcodeSymbol = 0;
         isSync1 = true;
     } else {
         // Normal subcode symbol
-        subcodeSymbol = translateEfm(efmValues[0]);
+        subcodeSymbol = static_cast<uchar>(translateEfm(efmValues[0]));
     }
 
     // Step 4:
@@ -165,8 +167,7 @@ QByteArray F3Frame::getErrorSymbols(void)
 }
 
 // This method returns the subcode symbol for the F3 frame
-// Note: Returns -1 if the subcode symbol is a SYNC0 or SYNC1
-qint32 F3Frame::getSubcodeSymbol(void)
+uchar F3Frame::getSubcodeSymbol(void)
 {
     return subcodeSymbol;
 }
@@ -206,7 +207,7 @@ qint32 F3Frame::translateEfm(qint32 efmValue)
 
     for (qint32 lutPos = 0; lutPos < 256; lutPos++) {
         if (efm2numberLUT[lutPos] == efmValue) {
-            result = static_cast<uchar>(lutPos);
+            result = lutPos;
             break;
         }
     }

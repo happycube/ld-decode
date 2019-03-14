@@ -1,6 +1,6 @@
 /************************************************************************
 
-    f3framestosubcodeblocks.h
+    f3tosections.cpp
 
     ld-process-efm - EFM data decoder
     Copyright (C) 2019 Simon Inns
@@ -22,37 +22,37 @@
 
 ************************************************************************/
 
-#ifndef F3FRAMESTOSUBCODEBLOCKS_H
-#define F3FRAMESTOSUBCODEBLOCKS_H
+#ifndef F3TOSECTIONS_H
+#define F3TOSECTIONS_H
 
 #include <QCoreApplication>
 #include <QDebug>
 
 #include "f3frame.h"
-#include "subcodeblock.h"
+#include "section.h"
 
-class F3FramesToSubcodeBlocks
+class F3ToSections
 {
 public:
-    F3FramesToSubcodeBlocks();
+    F3ToSections();
 
     void reportStatus(void);
-    QVector<SubcodeBlock> convert(QVector<F3Frame> f3FramesIn);
+    QVector<Section> convert(QVector<F3Frame> f3FramesIn);
 
 private:
-    // Subcode block buffer
-    QVector<SubcodeBlock> subcodeBlocks;
+    // Section buffer
+    QVector<Section> sections;
 
-    // F3 Frame buffer
-    QVector<F3Frame> f3Frames;
+    // Section subcode buffer
+    QByteArray sectionBuffer;
 
     // State machine state definitions
     enum StateMachine {
         state_initial,
         state_getSync0,
         state_getSync1,
-        state_getInitialBlock,
-        state_getNextBlock,
+        state_getInitialSection,
+        state_getNextSection,
         state_syncLost
     };
 
@@ -61,18 +61,20 @@ private:
     bool waitingForF3frame;
 
     F3Frame currentF3Frame;
+    bool sync0;
+    bool sync1;
 
-    qint32 missedBlockSyncCount;
-    qint32 blockSyncLost;
-    qint32 totalBlocks;
+    qint32 missedSectionSyncCount;
+    qint32 sectionSyncLost;
+    qint32 totalSections;
     qint32 poorSyncs;
 
     StateMachine sm_state_initial(void);
     StateMachine sm_state_getSync0(void);
     StateMachine sm_state_getSync1(void);
-    StateMachine sm_state_getInitialBlock(void);
-    StateMachine sm_state_getNextBlock(void);
+    StateMachine sm_state_getInitialSection(void);
+    StateMachine sm_state_getNextSection(void);
     StateMachine sm_state_syncLost(void);
 };
 
-#endif // F3FRAMESTOSUBCODEBLOCKS_H
+#endif // F3TOSECTIONS_H

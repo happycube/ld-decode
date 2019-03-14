@@ -19,14 +19,15 @@ SOURCES += \
     efmprocess.cpp \
     f3frame.cpp \
     efmtof3frames.cpp \
-    subcodeblock.cpp \
-    f3framestosubcodeblocks.cpp \
-    decodeaudio.cpp \
-    decodedata.cpp \
     c1circ.cpp \
     c2circ.cpp \
     c2deinterleave.cpp \
-    tracktime.cpp
+    tracktime.cpp \
+    f2frame.cpp \
+    f3tof2frames.cpp \
+    f2framestoaudio.cpp \
+    f3tosections.cpp \
+    section.cpp
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin
@@ -37,10 +38,6 @@ HEADERS += \
     efmprocess.h \
     f3frame.h \
     efmtof3frames.h \
-    subcodeblock.h \
-    f3framestosubcodeblocks.h \
-    decodeaudio.h \
-    decodedata.h \
     ezpwd/asserter \
     ezpwd/bch \
     ezpwd/bch_base \
@@ -56,5 +53,10 @@ HEADERS += \
     c1circ.h \
     c2circ.h \
     c2deinterleave.h \
-    tracktime.h
+    tracktime.h \
+    f2frame.h \
+    f3tof2frames.h \
+    f2framestoaudio.h \
+    f3tosections.h \
+    section.h
 

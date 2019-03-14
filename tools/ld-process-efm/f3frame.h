@@ -35,7 +35,7 @@ public:
     void setTValues(QVector<qint32> tValuesIn);
     QByteArray getDataSymbols(void);
     QByteArray getErrorSymbols(void);
-    qint32 getSubcodeSymbol(void);
+    uchar getSubcodeSymbol(void);
     bool isSubcodeSync0(void);
     bool isSubcodeSync1(void);
     void setFirstAfterSync(bool parameter);
@@ -44,7 +44,7 @@ public:
 private:
     QByteArray dataSymbols;
     QByteArray errorSymbols;
-    qint32 subcodeSymbol;
+    uchar subcodeSymbol;
     bool isSync0;
     bool isSync1;
     bool firstAfterSync;
