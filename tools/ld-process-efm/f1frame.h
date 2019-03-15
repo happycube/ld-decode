@@ -29,6 +29,7 @@
 #include <QDebug>
 
 #include "f2frame.h"
+#include "tracktime.h"
 
 class F1Frame
 {
@@ -37,9 +38,15 @@ public:
 
     void setData(QByteArray dataParam);
     QByteArray getDataSymbols(void);
+    qint32 getMode(void);
+    TrackTime getAddress(void);
 
 private:
     QByteArray dataSymbols;
+    qint32 bcdToInteger(uchar bcd);
+
+    qint32 sectorMode;
+    TrackTime sectorAddress;
 };
 
 #endif // F1FRAME_H

@@ -36,8 +36,41 @@ void F1Frame::setData(QByteArray dataParam)
 {
     // Descramble the input data according to ECMA-130 Annex B
     // and store as an F1 frame
-    // TODO
-    dataSymbols = dataParam;
+    quint16 shiftRegister = 0x0001; // 15-bits wide (0x0001 is the preset value)
+    for (qint32 byteC = 12; byteC < dataParam.size(); byteC++) {
+        uchar inputByte = static_cast<uchar>(dataParam[byteC]);
+        uchar outputByte = 0;
+
+        for (qint32 bitC = 0; bitC < 8; bitC++) {
+            // Get the input bit
+            uchar inputBit = ((inputByte) & (1 << bitC)) ? 1 : 0;
+
+            // Get the 1st and 2nd LSBs from the shift register
+            uchar s0 = ((shiftRegister) & (1 << 0)) ? 1 : 0;
+            uchar s1 = ((shiftRegister) & (1 << 1)) ? 1 : 0;
+
+            // Perform the two XOR operations
+            uchar xor1Result = s0 ^ s1;
+            uchar outputBit = inputBit ^ s0;
+
+            // Shift the register right by 1 bit
+            shiftRegister >>= 1;
+
+            // Push the XOR result into the MSB of the shift register
+            if (xor1Result != 0) shiftRegister += 16384; // Set bit 15
+
+            // Set the bit in the output byte
+            outputByte |= (outputBit << bitC);
+        }
+        // Store the output byte in the F1 frame data
+        dataSymbols[byteC - 12] = static_cast<char>(outputByte);
+    }
+
+    // Set the mode and the address for the F1 frame
+    sectorMode = dataSymbols[3];
+    sectorAddress.setTime(bcdToInteger(static_cast<uchar>(dataSymbols[0])),
+            bcdToInteger(static_cast<uchar>(dataSymbols[1])),
+            bcdToInteger(static_cast<uchar>(dataSymbols[2])));
 }
 
 // This method returns the 2340 data symbols for the F1 Frame
@@ -46,3 +79,20 @@ QByteArray F1Frame::getDataSymbols(void)
     return dataSymbols;
 }
 
+// Method to return the sector mode of the F1 frame
+qint32 F1Frame::getMode(void)
+{
+    return sectorMode;
+}
+
+// Method to return the sector address of the F1 frame
+TrackTime F1Frame::getAddress(void)
+{
+    return sectorAddress;
+}
+
+// Method to convert 2 digit BCD byte to an integer
+qint32 F1Frame::bcdToInteger(uchar bcd)
+{
+   return (((bcd>>4)*10) + (bcd & 0xF));
+}

@@ -77,6 +77,10 @@ bool EfmProcess::process(QString inputFilename, QString outputFilename, bool ver
         // Convert the F2 frames into F1 frames
         QVector<F1Frame> f1Frames = f2ToF1Frames.convert(f2Frames);
 
+        for (qint32 i = 0; i < f1Frames.size(); i++) {
+            qDebug() << "F1Frame mode =" << f1Frames[i].getMode() << "address =" << f1Frames[i].getAddress().getTimeAsQString();
+        }
+
         // Convert the F2 frames into audio
         f2FramesToAudio.convert(f2Frames);
 

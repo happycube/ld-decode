@@ -38,8 +38,8 @@ bool TrackTime::setTime(qint32 minutesParam, qint32 secondsParam, qint32 framesP
 {
     // Range check
     if (framesParam > 74 || framesParam < 0) return false;
-    if (secondsParam > 60 || secondsParam < 0) return false;
-    if (minutesParam > 120 || minutesParam < 0) return false;
+    if (secondsParam > 59 || secondsParam < 0) return false;
+    if (minutesParam > 99 || minutesParam < 0) return false;
 
     // Set the time
     trackFrames = framesParam + (secondsParam * 75) + (minutesParam * 60 * 75);
@@ -52,7 +52,7 @@ bool TrackTime::setTime(TrackTime::Time timeParam)
 {
     // Range check
     if (timeParam.frames > 74 || timeParam.frames < 0) return false;
-    if (timeParam.seconds > 60 || timeParam.seconds < 0) return false;
+    if (timeParam.seconds > 59 || timeParam.seconds < 0) return false;
     if (timeParam.minutes > 99 || timeParam.minutes < 0) return false;
 
     // Set the time
