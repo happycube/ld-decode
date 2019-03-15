@@ -27,7 +27,9 @@ SOURCES += \
     f3tof2frames.cpp \
     f2framestoaudio.cpp \
     f3tosections.cpp \
-    section.cpp
+    section.cpp \
+    f1frame.cpp \
+    f2tof1frames.cpp
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin
@@ -58,5 +60,7 @@ HEADERS += \
     f3tof2frames.h \
     f2framestoaudio.h \
     f3tosections.h \
-    section.h
+    section.h \
+    f1frame.h \
+    f2tof1frames.h
 

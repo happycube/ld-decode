@@ -37,17 +37,30 @@ F2Frame::F2Frame()
 
 void F2Frame::setData(QByteArray dataParam, QByteArray erasuresParam)
 {
-    dataSymbols = dataParam;
-    errorSymbols = erasuresParam;
+    // Add the F2 frame data to the F2 data buffer and swap the byte
+    // order (see ECMA-130 clause 16)
+    for (qint32 i = 0; i < dataParam.size(); i++) {
+        for (qint32 j = 0; j < 24; j += 2) {
+            dataSymbols[j] = dataParam[j+1];
+            dataSymbols[j+1] = dataParam[j];
+            errorSymbols[j] = erasuresParam[j+1];
+            errorSymbols[j+1] = erasuresParam[j];
+        }
+    }
+
+    // Note: According the ECMA-130 audio data doesn't require byte swapping
+    // however, since the required PCM sample format is little-endian (on a PC)
+    // it is required.  Therefore we do it to the F2 frame data to save having
+    // to perform the swapping twice (in the audio and data processing)
 }
 
-// This method returns the 24 data symbols for the F3 Frame
+// This method returns the 24 data symbols for the F2 Frame
 QByteArray F2Frame::getDataSymbols(void)
 {
     return dataSymbols;
 }
 
-// This method returns the 24 error symbols for the F3 Frame
+// This method returns the 24 error symbols for the F2 Frame
 QByteArray F2Frame::getErrorSymbols(void)
 {
     return errorSymbols;

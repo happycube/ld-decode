@@ -31,9 +31,11 @@
 
 #include "f3frame.h"
 #include "f2frame.h"
+#include "f1frame.h"
 #include "section.h"
 #include "efmtof3frames.h"
 #include "f3tof2frames.h"
+#include "f2tof1frames.h"
 #include "f3tosections.h"
 #include "f2framestoaudio.h"
 
@@ -49,6 +51,8 @@ private:
 
     EfmToF3Frames efmToF3Frames;
     F3ToF2Frames f3ToF2Frames;
+    F2ToF1Frames f2ToF1Frames;
+
     F3ToSections f3ToSections;
     F2FramesToAudio f2FramesToAudio;
 

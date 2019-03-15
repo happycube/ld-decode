@@ -48,10 +48,6 @@ bool F2FramesToAudio::openOutputFile(QString filename)
     }
     qDebug() << "F2FramesToAudio::openOutputFile(): Opened" << filename << "as audio output file";
 
-    // Create a data stream for the output file
-    outputStream = new QDataStream(outputFileHandle);
-    outputStream->setByteOrder(QDataStream::LittleEndian);
-
     // Exit with success
     return true;
 }
@@ -73,24 +69,7 @@ void F2FramesToAudio::closeOutputFile(void)
 void F2FramesToAudio::convert(QVector<F2Frame> f2Frames)
 {
     for (qint32 i = 0; i < f2Frames.size(); i++) {
-        QByteArray audioData = f2Frames[i].getDataSymbols();
-
-        // This test should never fail... but, hey, software...
-        if ((audioData.size() % 4) != 0) {
-            qCritical() << "F2FramesToAudio::convert(): Audio data has an invalid length and will not save correctly.";
-            exit(1);
-        }
-
-        if (!audioData.isEmpty()) {
-            // Save the audio data as little-endian stereo LLRRLLRR etc
-            for (qint32 byteC = 0; byteC < audioData.size(); byteC += 4) {
-                // 1 0 3 2
-                *outputStream << static_cast<uchar>(audioData[byteC + 1])
-                 << static_cast<uchar>(audioData[byteC + 0])
-                 << static_cast<uchar>(audioData[byteC + 3])
-                 << static_cast<uchar>(audioData[byteC + 2]);
-            }
-            audioSamples++;
-        }
+        outputFileHandle->write(f2Frames[i].getDataSymbols());
+        audioSamples++;
     }
 }

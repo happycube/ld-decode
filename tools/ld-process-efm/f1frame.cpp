@@ -1,6 +1,6 @@
 /************************************************************************
 
-    f2framestoaudio.h
+    f1frame.cpp
 
     ld-process-efm - EFM data decoder
     Copyright (C) 2019 Simon Inns
@@ -22,29 +22,27 @@
 
 ************************************************************************/
 
-#ifndef F2FRAMESTOAUDIO_H
-#define F2FRAMESTOAUDIO_H
+#include "f1frame.h"
 
-#include <QCoreApplication>
-#include <QDebug>
-#include <QFile>
-#include <QDataStream>
+// Note: Class for storing 'F1 frames' as defined by clause 16 of ECMA-130
 
-#include "f2frame.h"
-
-class F2FramesToAudio
+F1Frame::F1Frame()
 {
-public:
-    F2FramesToAudio();
+    dataSymbols.resize(2340);
+    dataSymbols.fill(0);
+}
 
-    void reportStatus(void);
-    bool openOutputFile(QString filename);
-    void closeOutputFile(void);
-    void convert(QVector<F2Frame> f2Frames);
+void F1Frame::setData(QByteArray dataParam)
+{
+    // Descramble the input data according to ECMA-130 Annex B
+    // and store as an F1 frame
+    // TODO
+    dataSymbols = dataParam;
+}
 
-private:
-    QFile *outputFileHandle;
-    qint32 audioSamples;
-};
+// This method returns the 2340 data symbols for the F1 Frame
+QByteArray F1Frame::getDataSymbols(void)
+{
+    return dataSymbols;
+}
 
-#endif // F2FRAMESTOAUDIO_H

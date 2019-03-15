@@ -35,6 +35,14 @@ EfmProcess::EfmProcess()
     qModeICount = 0;
 }
 
+// Note:
+//
+//   Audio is: EFM->F3->F2->Audio
+//    Data is: EFM->F3->F2->F1->Sector->Data
+// Section is: EFM->F3->Section
+//
+// See ECMA-130 for details
+
 bool EfmProcess::process(QString inputFilename, QString outputFilename, bool verboseDebug)
 {
     // Open the input file
@@ -65,6 +73,9 @@ bool EfmProcess::process(QString inputFilename, QString outputFilename, bool ver
 
         // Convert the F3 frames into F2 frames
         QVector<F2Frame> f2Frames = f3ToF2Frames.convert(f3Frames);
+
+        // Convert the F2 frames into F1 frames
+        QVector<F1Frame> f1Frames = f2ToF1Frames.convert(f2Frames);
 
         // Convert the F2 frames into audio
         f2FramesToAudio.convert(f2Frames);
@@ -190,6 +201,8 @@ void EfmProcess::reportStatus(void)
 
     efmToF3Frames.reportStatus();
     f3ToF2Frames.reportStatus();
+    f2ToF1Frames.reportStatus();
+
     f3ToSections.reportStatus();
     f2FramesToAudio.reportStatus();
 }
