@@ -32,6 +32,7 @@
 #include "f3frame.h"
 #include "f2frame.h"
 #include "f1frame.h"
+#include "sector.h"
 #include "section.h"
 #include "efmtof3frames.h"
 #include "f3tof2frames.h"

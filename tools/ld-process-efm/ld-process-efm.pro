@@ -29,7 +29,8 @@ SOURCES += \
     f3tosections.cpp \
     section.cpp \
     f1frame.cpp \
-    f2tof1frames.cpp
+    f2tof1frames.cpp \
+    sector.cpp
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin
@@ -62,5 +63,6 @@ HEADERS += \
     f3tosections.h \
     section.h \
     f1frame.h \
-    f2tof1frames.h
+    f2tof1frames.h \
+    sector.h
 
