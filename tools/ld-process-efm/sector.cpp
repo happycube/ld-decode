@@ -27,32 +27,24 @@
 Sector::Sector()
 {
     valid = false;
-
-    // Initialise EDC LUT
-    for(quint32 i = 0; i < 256; i++) {
-        quint32 edc = i;
-        for(quint32 j = 0; j < 8; j++) {
-        edc = (edc >> 1) ^ (edc & 1 ? 0xD8018001 : 0);
-        }
-
-        edc_lut[i] = edc;
-    }
 }
 
 // Method to set the sector's data from a F1 frame
 void Sector::setData(F1Frame f1Frame)
 {
+    // Get the f1 data symbols and represent as unsigned 8-bit
     QByteArray f1Data = f1Frame.getDataSymbols();
+    uchar* uF1Data = reinterpret_cast<uchar*>(f1Data.data());
 
     // Set the sector's address
     address.setTime(
-        bcdToInteger(static_cast<uchar>(f1Data[12])),
-        bcdToInteger(static_cast<uchar>(f1Data[13])),
-        bcdToInteger(static_cast<uchar>(f1Data[14]))
+        bcdToInteger(static_cast<uchar>(uF1Data[12])),
+        bcdToInteger(static_cast<uchar>(uF1Data[13])),
+        bcdToInteger(static_cast<uchar>(uF1Data[14]))
         );
 
     // Set the sector's mode
-    mode = f1Data[15];
+    mode = uF1Data[15];
 
     // Range check the mode and default to 1 if out of range
     if (mode < 0 || mode > 2) {
@@ -64,38 +56,36 @@ void Sector::setData(F1Frame f1Frame)
     if (mode == 0) {
         // Mode 0 sector
         // This is an empty sector filled with 2336 zeros
-        userData.resize(2336);
-        userData.fill(0);
+        userData.fill(0, 2336);
         valid = true;
     } else if (mode == 1) {
         // Mode 1 sector
         // This is a data sector with error correction
-        userData.resize(2048);
 
         // Perform CRC - since ECC is expensive on processing, we only
         // error correct sector data if the CRC fails
 
-        // Get the EDC word from the F1 data
-        edc =
-            ((static_cast<quint32>(f1Data[2064])) <<  0) |
-            ((static_cast<quint32>(f1Data[2065])) <<  8) |
-            ((static_cast<quint32>(f1Data[2066])) << 16) |
-            ((static_cast<quint32>(f1Data[2067])) << 24);
+        // Get the 32-bit EDC word from the F1 data
+        edcWord =
+            ((static_cast<quint32>(uF1Data[2064])) <<  0) |
+            ((static_cast<quint32>(uF1Data[2065])) <<  8) |
+            ((static_cast<quint32>(uF1Data[2066])) << 16) |
+            ((static_cast<quint32>(uF1Data[2067])) << 24);
 
         // Perform a CRC32 on bytes 0 to 2063 of the F1 frame
-        if (edc != edcCompute(0, reinterpret_cast<uchar*>(f1Data.data()), 2064)) {
+        if (edcWord != crc32(uF1Data, 2064)) {
             //qDebug() << "Sector::setData(): CRC32 failed";
 
             // Attempt error correction on sector
             // TO-DO
         } else {
-            //qDebug() << "Sector::setData(): CRC32 passed";
+            // EDC passed, data is valid.  Copy to sector user data (2048 bytes)
+            userData = f1Data.mid(16, 2048);
             valid = true;
         }
     } else if (mode == 2) {
         // Mode 2 sector
         // This is a 2336 byte data sector without error correction
-        userData.resize(2336);
         userData = f1Data.mid(16, 2336);
         valid = true;
     }
@@ -145,12 +135,15 @@ QString Sector::dataToString(QByteArray data)
     return output;
 }
 
-// CRC code used under GPLv3 from:
+// CRC code adapted and used under GPLv3 from:
 // https://github.com/claunia/edccchk/blob/master/edccchk.c
-quint32 Sector::edcCompute(quint32 edc, uchar *src, qint32 size)
+quint32 Sector::crc32(uchar *src, qint32 size)
 {
+    quint32 crc = 0;
+
     while(size--) {
-        edc = (edc >> 8) ^ edc_lut[(edc ^ (*src++)) & 0xFF];
+        crc = (crc >> 8) ^ crc32LUT[(crc ^ (*src++)) & 0xFF];
     }
-    return edc;
+
+    return crc;
 }
