@@ -38,9 +38,9 @@ void Sector::setData(F1Frame f1Frame)
 
     // Set the sector's address
     address.setTime(
-        bcdToInteger(static_cast<uchar>(uF1Data[12])),
-        bcdToInteger(static_cast<uchar>(uF1Data[13])),
-        bcdToInteger(static_cast<uchar>(uF1Data[14]))
+        bcdToInteger(uF1Data[12]),
+        bcdToInteger(uF1Data[13]),
+        bcdToInteger(uF1Data[14])
         );
 
     // Set the sector's mode
@@ -77,7 +77,7 @@ void Sector::setData(F1Frame f1Frame)
             //qDebug() << "Sector::setData(): CRC32 failed";
 
             // Attempt error correction on sector
-            // TO-DO
+
         } else {
             // EDC passed, data is valid.  Copy to sector user data (2048 bytes)
             userData = f1Data.mid(16, 2048);

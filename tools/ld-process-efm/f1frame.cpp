@@ -32,7 +32,7 @@ F1Frame::F1Frame()
     dataSymbols.fill(0);
 }
 
-void F1Frame::setData(QByteArray dataParam)
+void F1Frame::setData(QByteArray dataParam, QByteArray erasuresParam)
 {
     // Perform descramble using look-up table
     uchar* dataIn = reinterpret_cast<uchar*>(dataParam.data());
@@ -41,6 +41,9 @@ void F1Frame::setData(QByteArray dataParam)
     for (qint32 i = 0; i < dataParam.size(); i++) {
         dataOut[i] = dataIn[i] ^ scrambleTable[i];
     }
+
+    // Store erasures
+    erasureSymbols = erasuresParam;
 }
 
 // This method returns the 2352 data symbols for the F1 Frame
@@ -49,3 +52,8 @@ QByteArray F1Frame::getDataSymbols(void)
     return dataSymbols;
 }
 
+// This method returns the 2352 erasure symbols for the F1 Frame
+QByteArray F1Frame::getErrorSymbols(void)
+{
+    return erasureSymbols;
+}

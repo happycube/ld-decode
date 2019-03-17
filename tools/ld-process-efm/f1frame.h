@@ -36,12 +36,13 @@ class F1Frame
 public:
     F1Frame();
 
-    void setData(QByteArray dataParam);
+    void setData(QByteArray dataParam, QByteArray erasuresParam);
     QByteArray getDataSymbols(void);
+    QByteArray getErrorSymbols(void);
 
 private:
     QByteArray dataSymbols;
-    QByteArray dataSymbols1;
+    QByteArray erasureSymbols;
 };
 
 // See https://www.domesday86.com/?page_id=2678#CD_Sector_descrambling

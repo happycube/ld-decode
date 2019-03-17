@@ -48,6 +48,7 @@ private:
 
     // F1 data buffer
     QByteArray f2DataBuffer;
+    QByteArray f2ErrorBuffer;
 
     // State machine state definitions
     enum StateMachine {

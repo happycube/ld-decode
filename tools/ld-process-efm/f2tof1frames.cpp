@@ -64,6 +64,7 @@ QVector<F1Frame> F2ToF1Frames::convert(QVector<F2Frame> f2FramesIn)
     // Add the F2 frame data to the F2 data buffer
     for (qint32 i = 0; i < f2FramesIn.size(); i++) {
         f2DataBuffer.append(f2FramesIn[i].getDataSymbols());
+        f2ErrorBuffer.append(f2FramesIn[i].getErrorSymbols());
     }
 
     // Since we have a new F2 frames, clear the waiting flag
@@ -109,6 +110,7 @@ F2ToF1Frames::StateMachine F2ToF1Frames::sm_state_getInitialSync(void)
         // Sync pattern was not found, discard buffer and request
         // more F2 data
         f2DataBuffer.clear();
+        f2ErrorBuffer.clear();
         waitingForF2frames = true;
 
         return state_getInitialSync;
@@ -135,7 +137,7 @@ F2ToF1Frames::StateMachine F2ToF1Frames::sm_state_getInitialF1Frame(void)
 
     // Place the F1 frame data into a F1 frame object
     F1Frame tempF1Frame;
-    tempF1Frame.setData(f2DataBuffer.mid(0, 2352));
+    tempF1Frame.setData(f2DataBuffer.mid(0, 2352), f2ErrorBuffer.mid(0, 2352));
 
     // Append the F1 frame to the frame buffer
     f1FrameBuffer.append(tempF1Frame);
@@ -173,7 +175,7 @@ F2ToF1Frames::StateMachine F2ToF1Frames::sm_state_getNextF1Frame(void)
 
     // Place the F1 frame data into a F1 frame object
     F1Frame tempF1Frame;
-    tempF1Frame.setData(f2DataBuffer.mid(0, 2352));
+    tempF1Frame.setData(f2DataBuffer.mid(0, 2352), f2ErrorBuffer.mid(0, 2352));
 
     // Append the F1 frame to the frame buffer
     f1FrameBuffer.append(tempF1Frame);
@@ -192,14 +194,17 @@ F2ToF1Frames::StateMachine F2ToF1Frames::sm_state_syncLost(void)
     return state_getInitialSync;
 }
 
-// Method to remove F2 data from the start of the F2 data buffer
+// Method to remove F2 data from the start of the F2 data buffer (and the
+// F2 error buffer)
 void F2ToF1Frames::removeF2Data(qint32 number)
 {
     if (number > f2DataBuffer.size()) {
         f2DataBuffer.clear();
+        f2ErrorBuffer.clear();
     } else {
         // Shift the byte array back by 'number' elements
         f2DataBuffer.remove(0, number);
+        f2ErrorBuffer.remove(0, number);
     }
 }
 
