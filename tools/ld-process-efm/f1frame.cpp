@@ -34,45 +34,12 @@ F1Frame::F1Frame()
 
 void F1Frame::setData(QByteArray dataParam)
 {
-//    // Copy the 12 sync bytes
-//    for (qint32 i = 0; i < 12; i++) dataSymbols[i] = dataParam[i];
-
-//    // Descramble the input data according to ECMA-130 Annex B
-//    // and store as an F1 frame
-//    quint16 shiftRegister = 0x0001; // 15-bits wide (0x0001 is the preset value)
-//    for (qint32 byteC = 12; byteC < dataParam.size(); byteC++) {
-//        uchar inputByte = static_cast<uchar>(dataParam[byteC]);
-//        uchar outputByte = 0;
-
-//        for (qint32 bitC = 0; bitC < 8; bitC++) {
-//            // Get the input bit
-//            uchar inputBit = ((inputByte) & (1 << bitC)) ? 1 : 0;
-
-//            // Get the 1st and 2nd LSBs from the shift register
-//            uchar s0 = ((shiftRegister) & (1 << 0)) ? 1 : 0;
-//            uchar s1 = ((shiftRegister) & (1 << 1)) ? 1 : 0;
-
-//            // Perform the two XOR operations
-//            uchar xor1Result = s0 ^ s1;
-//            uchar outputBit = inputBit ^ s0;
-
-//            // Shift the register right by 1 bit
-//            shiftRegister >>= 1;
-
-//            // Push the XOR result into the MSB of the shift register
-//            if (xor1Result != 0) shiftRegister += 16384; // Set bit 15
-
-//            // Set the bit in the output byte
-//            outputByte |= (outputBit << bitC);
-//        }
-//        // Store the output byte in the F1 frame data
-//        dataSymbols1[byteC] = static_cast<char>(outputByte);
-//    }
-
-    // Fast LUT version
+    // Perform descramble using look-up table
     uchar* dataIn = reinterpret_cast<uchar*>(dataParam.data());
+    uchar* dataOut = reinterpret_cast<uchar*>(dataSymbols.data());
+
     for (qint32 i = 0; i < dataParam.size(); i++) {
-        dataSymbols[i] = static_cast<char>(dataIn[i] ^ scrambleTable[i]);
+        dataOut[i] = dataIn[i] ^ scrambleTable[i];
     }
 }
 

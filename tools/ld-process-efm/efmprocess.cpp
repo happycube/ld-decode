@@ -81,7 +81,11 @@ bool EfmProcess::process(QString inputFilename, QString outputFilename, bool ver
         for (qint32 i = 0; i < f1Frames.size(); i++) {
             Sector sector;
             sector.setData(f1Frames[i]);
-            qDebug() << "F1Frame mode =" << sector.getMode() << "address =" << sector.getAddress().getTimeAsQString();
+            if (sector.isValid()) {
+                qDebug() << "F1Frame mode =" << sector.getMode() << "address =" << sector.getAddress().getTimeAsQString();
+            } else {
+                qDebug() << "F1Frame mode =" << sector.getMode() << "address =" << sector.getAddress().getTimeAsQString() << "Invalid";
+            }
         }
 
         // Convert the F2 frames into audio
