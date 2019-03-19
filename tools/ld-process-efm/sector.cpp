@@ -36,6 +36,10 @@ void Sector::setData(F1Frame f1Frame)
     QByteArray f1Data = f1Frame.getDataSymbols();
     uchar* uF1Data = reinterpret_cast<uchar*>(f1Data.data());
 
+    // Get the F1 error symbols
+    QByteArray f1Erasures = f1Frame.getErrorSymbols();
+    uchar* uF1Erasures = reinterpret_cast<uchar*>(f1Erasures.data());
+
     // Set the sector's address
     address.setTime(
         bcdToInteger(uF1Data[12]),
@@ -74,10 +78,36 @@ void Sector::setData(F1Frame f1Frame)
 
         // Perform a CRC32 on bytes 0 to 2063 of the F1 frame
         if (edcWord != crc32(uF1Data, 2064)) {
-            //qDebug() << "Sector::setData(): CRC32 failed";
+            //qDebug() << "Sector::setData(): Initial EDC failed (CRC32 checksum incorrect)";
 
-            // Attempt error correction on sector
+            // Attempt Q and P error correction on sector
+            performQParityECC(uF1Data, uF1Erasures);
+            performPParityECC(uF1Data, uF1Erasures);
 
+            // Get the updated EDC word
+            edcWord =
+                ((static_cast<quint32>(uF1Data[2064])) <<  0) |
+                ((static_cast<quint32>(uF1Data[2065])) <<  8) |
+                ((static_cast<quint32>(uF1Data[2066])) << 16) |
+                ((static_cast<quint32>(uF1Data[2067])) << 24);
+
+            // Perform EDC again to confirm correction
+            if (edcWord != crc32(uF1Data, 2064)) {
+                qDebug() << "Sector::setData(): ECC error correction failed - Sector is corrupt!";
+                valid = false;
+            } else {
+                // EDC and ECC are now correct
+                qDebug() << "Sector::setData(): ECC error correction successful";
+                userData = f1Data.mid(16, 2048);
+                valid = true;
+
+                // Set the sector's address again (as the data has been updated)
+                address.setTime(
+                    bcdToInteger(uF1Data[12]),
+                    bcdToInteger(uF1Data[13]),
+                    bcdToInteger(uF1Data[14])
+                    );
+            }
         } else {
             // EDC passed, data is valid.  Copy to sector user data (2048 bytes)
             userData = f1Data.mid(16, 2048);
@@ -116,6 +146,159 @@ bool Sector::isValid(void)
 }
 
 // Private methods ----------------------------------------------------------------------------------------------------
+
+void Sector::performQParityECC(uchar *uF1Data, uchar *uF1Erasures)
+{
+    // Initialise the RS error corrector
+    QRS<255,255-2> qrs; // Up to 251 symbols data load with 2 symbols parity RS(45,43)
+
+    // Keep track of the number of successful corrections
+    qint32 successfulCorrections = 0;
+
+    // F1 Data is LSB then MSB
+    //
+    // RS code is Q(45,43)
+    // There are 104 bytes of Q-Parity (52 code words)
+    // Each Q field covers 12 to 2248 = 2236 bytes (2 * 1118)
+    // 2236 / 43 = 52 Q-parity words (= 104 Q-parity bytes)
+    //
+    // Calculations are based on ECMA-130 Annex A
+
+    // Ignore the 12 sync bytes
+    uF1Data += 12;
+    uF1Erasures += 12;
+
+    // Store the data and erasures in the form expected by the ezpwd library
+    std::vector<uchar> qField;
+    std::vector<int> qFieldErasures;
+    qField.resize(45); // 43 + 2 parity bytes = 45
+
+    // evenOdd = 0 = LSBs / evenOdd = 1 = MSBs
+    for (qint32 evenOdd = 0; evenOdd < 2; evenOdd++) {
+        for (qint32 Nq = 0; Nq < 26; Nq++) {
+            qFieldErasures.clear();
+            for (qint32 Mq = 0; Mq < 43; Mq++) {
+                // Get 43 byte codeword location
+                qint32 Vq = 2 * ((44 * Mq + 43 * Nq) % 1118) + evenOdd;
+                qField[static_cast<size_t>(Mq)] = uF1Data[Vq];
+
+                // Get codeword erasures if present
+                if (uF1Erasures[Vq] == 1) qFieldErasures.push_back(Mq);
+            }
+            // Get 2 byte parity location
+            qint32 qParityByte0 = 2 * ((43 * 26 + Nq) % 1118) + evenOdd;
+            qint32 qParityByte1 = 2 * ((44 * 26 + Nq) % 1118) + evenOdd;
+
+            // Note: Q-Parity data starts at 12 + 2236
+            qField[43] = uF1Data[qParityByte0 + 2236];
+            qField[44] = uF1Data[qParityByte1 + 2236];
+
+            // Perform RS decode/correction
+            if (qFieldErasures.size() > 2) qFieldErasures.clear();
+            std::vector<int> position;
+            int fixed = -1;
+            fixed = qrs.decode(qField, qFieldErasures, &position);
+
+            // If correction was successful add to success counter
+            // and copy back the corrected data
+            if (fixed >= 0) {
+                successfulCorrections++;
+
+                // Here we use the calculation in reverse to put the corrected
+                // data back into it's original position
+                for (qint32 Mq = 0; Mq < 43; Mq++) {
+                    qint32 Vq = 2 * ((44 * Mq + 43 * Nq) % 1118) + evenOdd;
+                    uF1Data[Vq] = qField[static_cast<size_t>(Mq)];
+                }
+            }
+        }
+    }
+
+    // Show Q-Parity correction result to debug
+    if (successfulCorrections >= 52) {
+        //qDebug() << "Sector::performQParityECC(): Q-Parity correction successful";
+
+    } else {
+        //qDebug() << "Sector::performQParityECC(): Q-Parity correction failed! Got" << successfulCorrections << "correct out of 52 possible codewords";
+    }
+
+    // Reset the pointers
+    uF1Data -= 12;
+    uF1Erasures -= 12;
+}
+
+void Sector::performPParityECC(uchar *uF1Data, uchar *uF1Erasures)
+{
+    // Initialise the RS error corrector
+    QRS<255,255-2> prs; // Up to 251 symbols data load with 2 symbols parity RS(26,24)
+
+    // Keep track of the number of successful corrections
+    qint32 successfulCorrections = 0;
+
+    // F1 Data is LSB then MSB
+    //
+    // RS code is P(26,24)
+    // There are 172 bytes of P-Parity (86 code words)
+    // Each P field covers 12 to 2076 = 2064 bytes (2 * 1032)
+    // 2064 / 24 = 86 P-parity words (= 172 P-parity bytes)
+    //
+    // Calculations are based on ECMA-130 Annex A
+
+    // Ignore the 12 sync bytes
+    uF1Data += 12;
+    uF1Erasures += 12;
+
+    // Store the data and erasures in the form expected by the ezpwd library
+    std::vector<uchar> pField;
+    std::vector<int> pFieldErasures;
+    pField.resize(26); // 24 + 2 parity bytes = 26
+
+    // evenOdd = 0 = LSBs / evenOdd = 1 = MSBs
+    for (qint32 evenOdd = 0; evenOdd < 2; evenOdd++) {
+        for (qint32 Np = 0; Np < 43; Np++) {
+            pFieldErasures.clear();
+            for (qint32 Mp = 0; Mp < 26; Mp++) {
+                // Get 24 byte codeword location + 2 P-parity bytes
+                qint32 Vp = 2 * (43 * Mp + Np) + evenOdd;
+                pField[static_cast<size_t>(Mp)] = uF1Data[Vp];
+
+                // Get codeword erasures if present
+                if (uF1Erasures[Vp] == 1) pFieldErasures.push_back(Mp);
+            }
+
+            // Perform RS decode/correction
+            if (pFieldErasures.size() > 2) pFieldErasures.clear();
+            std::vector<int> position;
+            int fixed = -1;
+            fixed = prs.decode(pField, pFieldErasures, &position);
+
+            // If correction was successful add to success counter
+            // and copy back the corrected data
+            if (fixed >= 0) {
+                successfulCorrections++;
+
+                // Here we use the calculation in reverse to put the corrected
+                // data back into it's original position
+                for (qint32 Mp = 0; Mp < 24; Mp++) {
+                    qint32 Vp = 2 * (43 * Mp + Np) + evenOdd;
+                    uF1Data[Vp] = pField[static_cast<size_t>(Mp)];
+                }
+            }
+        }
+    }
+
+    // Show P-Parity correction result to debug
+    if (successfulCorrections >= 86) {
+        //qDebug() << "Sector::performPParityECC(): P-Parity correction successful";
+
+    } else {
+        //qDebug() << "Sector::performPParityECC(): P-Parity correction failed! Got" << successfulCorrections << "correct out of 86 possible codewords";
+    }
+
+    // Reset the pointers
+    uF1Data -= 12;
+    uF1Erasures -= 12;
+}
 
 // Method to convert 2 digit BCD byte to an integer
 qint32 Sector::bcdToInteger(uchar bcd)

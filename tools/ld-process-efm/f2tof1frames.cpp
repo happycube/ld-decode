@@ -61,6 +61,9 @@ void F2ToF1Frames::reportStatus(void)
 
 QVector<F1Frame> F2ToF1Frames::convert(QVector<F2Frame> f2FramesIn)
 {
+    // Clear the F1 frame buffer
+    f1FrameBuffer.clear();
+
     // Add the F2 frame data to the F2 data buffer
     for (qint32 i = 0; i < f2FramesIn.size(); i++) {
         f2DataBuffer.append(f2FramesIn[i].getDataSymbols());

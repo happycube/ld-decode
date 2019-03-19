@@ -25,6 +25,16 @@
 #ifndef SECTOR_H
 #define SECTOR_H
 
+#include <ezpwd/rs_base>
+#include <ezpwd/rs>
+
+// CD-ROM Q and P specific CIRC configuration for Reed-Solomon forward error correction
+template < size_t SYMBOLS, size_t PAYLOAD > struct QRS;
+template < size_t PAYLOAD > struct QRS<255, PAYLOAD> : public __RS(QRS, uint8_t, 255, PAYLOAD, 0x11d, 0,  1);
+
+template < size_t SYMBOLS, size_t PAYLOAD > struct PRS;
+template < size_t PAYLOAD > struct PRS<255, PAYLOAD> : public __RS(PRS, uint8_t, 255, PAYLOAD, 0x11d, 0,  1);
+
 #include "f1frame.h"
 #include "tracktime.h"
 
@@ -46,10 +56,11 @@ private:
     qint32 mode; // 1 byte
     QByteArray userData;
     quint32 edcWord;
-    uchar intermediate[8];
-    uchar pParity[172];
-    uchar qParity[104];
+
     bool valid;
+
+    void performQParityECC(uchar *uF1Data, uchar *uF1Erasures);
+    void performPParityECC(uchar *uF1Data, uchar *uF1Erasures);
 
     qint32 bcdToInteger(uchar bcd);
     QString dataToString(QByteArray data);

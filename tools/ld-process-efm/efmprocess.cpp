@@ -33,6 +33,9 @@ EfmProcess::EfmProcess()
     qMode3Count = 0;
     qMode4Count = 0;
     qModeICount = 0;
+
+    validSectors = 0;
+    invalidSectors = 0;
 }
 
 // Note:
@@ -82,8 +85,10 @@ bool EfmProcess::process(QString inputFilename, QString outputFilename, bool ver
             Sector sector;
             sector.setData(f1Frames[i]);
             if (sector.isValid()) {
-                qDebug() << "F1Frame mode =" << sector.getMode() << "address =" << sector.getAddress().getTimeAsQString();
+                validSectors++;
+                //qDebug() << "F1Frame mode =" << sector.getMode() << "address =" << sector.getAddress().getTimeAsQString();
             } else {
+                invalidSectors++;
                 qDebug() << "F1Frame mode =" << sector.getMode() << "address =" << sector.getAddress().getTimeAsQString() << "Invalid";
             }
         }
@@ -209,11 +214,20 @@ void EfmProcess::reportStatus(void)
     qInfo() << "  Q Mode 3 sections =" << qMode3Count << "(Track ID)";
     qInfo() << "  Q Mode 4 sections =" << qMode4Count << "(Non-CD Audio)";
     qInfo() << "  Sections with failed Q CRC =" << qModeICount;
+    qInfo() << "";
+    qInfo() << "Data sector processing:";
+    qInfo() << "  Total number of sectors processed =" << validSectors + invalidSectors;
+    qInfo() << "  Number of unrecoverable sectors =" << invalidSectors;
+    qInfo() << "";
 
     efmToF3Frames.reportStatus();
+    qInfo() << "";
     f3ToF2Frames.reportStatus();
+    qInfo() << "";
     f2ToF1Frames.reportStatus();
+    qInfo() << "";
 
     f3ToSections.reportStatus();
+    qInfo() << "";
     f2FramesToAudio.reportStatus();
 }

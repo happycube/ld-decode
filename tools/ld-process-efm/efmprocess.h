@@ -64,6 +64,9 @@ private:
     qint32 qMode4Count;
     qint32 qModeICount;
 
+    qint32 validSectors;
+    qint32 invalidSectors;
+
     void processSections(QVector<Section> sections);
     bool openInputFile(QString inputFileName);
     void closeInputFile(void);
