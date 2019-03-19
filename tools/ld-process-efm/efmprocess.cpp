@@ -46,23 +46,28 @@ EfmProcess::EfmProcess()
 //
 // See ECMA-130 for details
 
-bool EfmProcess::process(QString inputFilename, QString outputFilename, bool verboseDebug)
+bool EfmProcess::process(QString inputEfmFilename, QString outputAudioFilename, QString outputDataFilename, bool verboseDebug)
 {
     // Open the input file
-    if (!openInputFile(inputFilename)) {
+    if (!openInputFile(inputEfmFilename)) {
         qCritical("Could not open input file!");
         return false;
     }
+
+    bool processAudio = false;
+    bool processData = false;
+    if (!outputAudioFilename.isEmpty()) processAudio = true;
+    if (!outputDataFilename.isEmpty()) processData = true;
 
     qint64 inputFileSize = inputFileHandle->size();
     qint64 inputBytesProcessed = 0;
     qint32 lastPercent = 0;
 
     // Open the audio output file
-    f2FramesToAudio.openOutputFile(outputFilename);
+    if (processAudio) f2FramesToAudio.openOutputFile(outputAudioFilename);
 
     // Open the data decode output file
-    // To-do: data support
+    if (processData) sectorsToData.openOutputFile(outputDataFilename);
 
     // Turn on verbose debug if required
     if (verboseDebug) efmToF3Frames.setVerboseDebug(true);
@@ -80,21 +85,29 @@ bool EfmProcess::process(QString inputFilename, QString outputFilename, bool ver
         // Convert the F2 frames into F1 frames
         QVector<F1Frame> f1Frames = f2ToF1Frames.convert(f2Frames);
 
-        // Process the F1 frames as sectors
-        for (qint32 i = 0; i < f1Frames.size(); i++) {
-            Sector sector;
-            sector.setData(f1Frames[i]);
-            if (sector.isValid()) {
-                validSectors++;
-                //qDebug() << "F1Frame mode =" << sector.getMode() << "address =" << sector.getAddress().getTimeAsQString();
-            } else {
-                invalidSectors++;
-                qDebug() << "F1Frame mode =" << sector.getMode() << "address =" << sector.getAddress().getTimeAsQString() << "Invalid";
+        if (processData) {
+            // Process the F1 frames as sectors
+            QVector<Sector> sectors;
+            for (qint32 i = 0; i < f1Frames.size(); i++) {
+                Sector sector;
+                sector.setData(f1Frames[i]);
+                if (sector.isValid()) {
+                    validSectors++;
+                    //qDebug() << "F1Frame mode =" << sector.getMode() << "address =" << sector.getAddress().getTimeAsQString();
+                } else {
+                    invalidSectors++;
+                    qDebug() << "F1Frame mode =" << sector.getMode() << "address =" << sector.getAddress().getTimeAsQString() << "Invalid";
+                }
+                sectors.append(sector);
             }
+
+            // Write the sectors as data
+            sectorsToData.convert(sectors);
         }
 
+
         // Convert the F2 frames into audio
-        f2FramesToAudio.convert(f2Frames);
+        if (processAudio) f2FramesToAudio.convert(f2Frames);
 
         // Convert the F3 frames into subcode sections
         QVector<Section> sections = f3ToSections.convert(f3Frames);
@@ -114,8 +127,9 @@ bool EfmProcess::process(QString inputFilename, QString outputFilename, bool ver
     // Close the input file
     closeInputFile();
 
-    // Close the audio output file
-    f2FramesToAudio.closeOutputFile();
+    // Close the output files
+    if (processAudio) f2FramesToAudio.closeOutputFile();
+    if (processData) sectorsToData.closeOutputFile();
 
     return true;
 }
@@ -225,6 +239,8 @@ void EfmProcess::reportStatus(void)
     f3ToF2Frames.reportStatus();
     qInfo() << "";
     f2ToF1Frames.reportStatus();
+    qInfo() << "";
+    sectorsToData.reportStatus();
     qInfo() << "";
 
     f3ToSections.reportStatus();

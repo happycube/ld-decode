@@ -30,7 +30,8 @@ SOURCES += \
     section.cpp \
     f1frame.cpp \
     f2tof1frames.cpp \
-    sector.cpp
+    sector.cpp \
+    sectorstodata.cpp
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin
@@ -64,5 +65,6 @@ HEADERS += \
     section.h \
     f1frame.h \
     f2tof1frames.h \
-    sector.h
+    sector.h \
+    sectorstodata.h
 

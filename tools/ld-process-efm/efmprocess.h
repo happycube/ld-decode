@@ -39,13 +39,14 @@
 #include "f2tof1frames.h"
 #include "f3tosections.h"
 #include "f2framestoaudio.h"
+#include "sectorstodata.h"
 
 class EfmProcess
 {
 public:
     EfmProcess();
 
-    bool process(QString inputFilename, QString outputFilename, bool verboseDebug);
+    bool process(QString inputFilename, QString outputFilename, QString outputDataFilename, bool verboseDebug);
 
 private:
     QFile *inputFileHandle;
@@ -56,6 +57,7 @@ private:
 
     F3ToSections f3ToSections;
     F2FramesToAudio f2FramesToAudio;
+    SectorsToData sectorsToData;
 
     qint32 qMode0Count;
     qint32 qMode1Count;

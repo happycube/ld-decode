@@ -1,6 +1,6 @@
 /************************************************************************
 
-    f2framestoaudio.h
+    sectorstodata.h
 
     ld-process-efm - EFM data decoder
     Copyright (C) 2019 Simon Inns
@@ -22,28 +22,28 @@
 
 ************************************************************************/
 
-#ifndef F2FRAMESTOAUDIO_H
-#define F2FRAMESTOAUDIO_H
+#ifndef SECTORSTODATA_H
+#define SECTORSTODATA_H
 
 #include <QCoreApplication>
 #include <QDebug>
 #include <QFile>
 
-#include "f2frame.h"
+#include "sector.h"
 
-class F2FramesToAudio
+class SectorsToData
 {
 public:
-    F2FramesToAudio();
+    SectorsToData();
 
     void reportStatus(void);
     bool openOutputFile(QString filename);
     void closeOutputFile(void);
-    void convert(QVector<F2Frame> f2Frames);
+    void convert(QVector<Sector> sectors);
 
 private:
     QFile *outputFileHandle;
-    qint32 audioSamples;
+    qint32 sectorsOut;
 };
 
-#endif // F2FRAMESTOAUDIO_H
+#endif // SECTORSTODATA_H
