@@ -48,6 +48,7 @@ public:
     TrackTime getAddress(void);
     QByteArray getUserData(void);
     bool isValid(void);
+    bool isCorrected(void);
 
 private:
     // Mode 1 sector fields:
@@ -58,6 +59,8 @@ private:
     quint32 edcWord;
 
     bool valid;
+    bool qCorrected;
+    bool pCorrected;
 
     void performQParityECC(uchar *uF1Data, uchar *uF1Erasures);
     void performPParityECC(uchar *uF1Data, uchar *uF1Erasures);

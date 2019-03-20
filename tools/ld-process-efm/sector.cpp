@@ -27,6 +27,8 @@
 Sector::Sector()
 {
     valid = false;
+    qCorrected = false;
+    pCorrected = false;
 }
 
 // Method to set the sector's data from a F1 frame
@@ -145,6 +147,13 @@ bool Sector::isValid(void)
     return valid;
 }
 
+// Method to get the corrected flag (i.e. sector was invalid, but corrected by ECC)
+bool Sector::isCorrected(void)
+{
+    if (qCorrected && pCorrected) return true;
+    return false;
+}
+
 // Private methods ----------------------------------------------------------------------------------------------------
 
 void Sector::performQParityECC(uchar *uF1Data, uchar *uF1Erasures)
@@ -216,9 +225,11 @@ void Sector::performQParityECC(uchar *uF1Data, uchar *uF1Erasures)
 
     // Show Q-Parity correction result to debug
     if (successfulCorrections >= 52) {
+        qCorrected = true;
         //qDebug() << "Sector::performQParityECC(): Q-Parity correction successful";
 
     } else {
+        qCorrected = false;
         //qDebug() << "Sector::performQParityECC(): Q-Parity correction failed! Got" << successfulCorrections << "correct out of 52 possible codewords";
     }
 
@@ -289,9 +300,10 @@ void Sector::performPParityECC(uchar *uF1Data, uchar *uF1Erasures)
 
     // Show P-Parity correction result to debug
     if (successfulCorrections >= 86) {
+        pCorrected = true;
         //qDebug() << "Sector::performPParityECC(): P-Parity correction successful";
-
     } else {
+        pCorrected = false;
         //qDebug() << "Sector::performPParityECC(): P-Parity correction failed! Got" << successfulCorrections << "correct out of 86 possible codewords";
     }
 

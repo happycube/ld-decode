@@ -33,9 +33,6 @@ EfmProcess::EfmProcess()
     qMode3Count = 0;
     qMode4Count = 0;
     qModeICount = 0;
-
-    validSectors = 0;
-    invalidSectors = 0;
 }
 
 // Note:
@@ -86,25 +83,12 @@ bool EfmProcess::process(QString inputEfmFilename, QString outputAudioFilename, 
         QVector<F1Frame> f1Frames = f2ToF1Frames.convert(f2Frames);
 
         if (processData) {
-            // Process the F1 frames as sectors
-            QVector<Sector> sectors;
-            for (qint32 i = 0; i < f1Frames.size(); i++) {
-                Sector sector;
-                sector.setData(f1Frames[i]);
-                if (sector.isValid()) {
-                    validSectors++;
-                    //qDebug() << "F1Frame mode =" << sector.getMode() << "address =" << sector.getAddress().getTimeAsQString();
-                } else {
-                    invalidSectors++;
-                    qDebug() << "F1Frame mode =" << sector.getMode() << "address =" << sector.getAddress().getTimeAsQString() << "Invalid";
-                }
-                sectors.append(sector);
-            }
+            // Convert the F1 frames to data sectors
+            QVector<Sector> sectors = f1ToSectors.convert(f1Frames);
 
             // Write the sectors as data
             sectorsToData.convert(sectors);
         }
-
 
         // Convert the F2 frames into audio
         if (processAudio) f2FramesToAudio.convert(f2Frames);
@@ -122,7 +106,7 @@ bool EfmProcess::process(QString inputEfmFilename, QString outputAudioFilename, 
     }
 
     // Report on the status of the various processes
-    reportStatus();
+    reportStatus(processAudio, processData);
 
     // Close the input file
     closeInputFile();
@@ -218,7 +202,7 @@ QByteArray EfmProcess::readEfmData(void)
 }
 
 // Method to write status information to qInfo
-void EfmProcess::reportStatus(void)
+void EfmProcess::reportStatus(bool processAudio, bool processData)
 {
     qInfo() << "EFM processing:";
     qInfo() << "  Total number of sections processed =" << qMode0Count + qMode1Count + qMode2Count + qMode3Count + qMode4Count + qModeICount;
@@ -229,10 +213,6 @@ void EfmProcess::reportStatus(void)
     qInfo() << "  Q Mode 4 sections =" << qMode4Count << "(Non-CD Audio)";
     qInfo() << "  Sections with failed Q CRC =" << qModeICount;
     qInfo() << "";
-    qInfo() << "Data sector processing:";
-    qInfo() << "  Total number of sectors processed =" << validSectors + invalidSectors;
-    qInfo() << "  Number of unrecoverable sectors =" << invalidSectors;
-    qInfo() << "";
 
     efmToF3Frames.reportStatus();
     qInfo() << "";
@@ -240,10 +220,18 @@ void EfmProcess::reportStatus(void)
     qInfo() << "";
     f2ToF1Frames.reportStatus();
     qInfo() << "";
-    sectorsToData.reportStatus();
-    qInfo() << "";
+
+    if (processData) {
+        f1ToSectors.reportStatus();
+        qInfo() << "";
+        sectorsToData.reportStatus();
+        qInfo() << "";
+    }
+
+    if (processAudio) {
+        f2FramesToAudio.reportStatus();
+        qInfo() << "";
+    }
 
     f3ToSections.reportStatus();
-    qInfo() << "";
-    f2FramesToAudio.reportStatus();
 }
