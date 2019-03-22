@@ -52,6 +52,11 @@ HEADERS += \
     yiqline.h \
     yiqbuffer.h
 
+# Additional include paths to support MacOS compilation
+INCLUDEPATH += "/usr/local/opt/opencv@2/include"
+LIBS += -L"/usr/local/opt/opencv@2/lib"
+
+# Normal open-source OS goodness
 INCLUDEPATH += "/usr/local/include/opencv"
 LIBS += -L"/usr/local/lib"
 LIBS += -lopencv_core -lopencv_imgcodecs -lopencv_highgui -lopencv_imgproc -lopencv_video
