@@ -379,7 +379,18 @@ def get_fmax(cavframe = 0, laser=780, na=0.5, fps=30):
 
 def compute_mtf(freq, cavframe = 0, laser=780, na=0.52):
     fmax = get_fmax(cavframe, laser, na)
+
     freq_mhz = freq / 1000000
     
+    if type(freq_mhz) == np.ndarray:
+        freq_mhz[freq_mhz > fmax] = fmax
+    elif freq_mhz > fmax:
+        return 0
+
     # from Compact Disc Technology AvHeitarō Nakajima, Hiroshi Ogawa page 17
     return (2/np.pi)*(np.arccos(freq_mhz/fmax)-((freq_mhz/fmax)*np.sqrt(1-((freq_mhz/fmax)**2))))
+
+def roundfloat(fl, places = 3):
+    ''' round float to (places) decimal places '''
+    r = 10 ** places
+    return np.round(fl * r) / r
