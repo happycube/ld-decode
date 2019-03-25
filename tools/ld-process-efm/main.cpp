@@ -100,11 +100,24 @@ int main(int argc, char *argv[])
                                        QCoreApplication::translate("main", "Show verbose F3 framing debug"));
     parser.addOption(verboseDebugOption);
 
-    // Positional argument to specify input EFM file
-    parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input EFM data file"));
 
-    // Positional argument to specify output data file
-    parser.addPositionalArgument("output", QCoreApplication::translate("main", "Specify output PCM audio file"));
+    // Option to specify input EFM file (-i)
+    QCommandLineOption inputEfmFileOption(QStringList() << "i" << "input",
+                QCoreApplication::translate("main", "Specify input EFM file"),
+                QCoreApplication::translate("main", "file"));
+    parser.addOption(inputEfmFileOption);
+
+    // Option to specify output audio file (-a)
+    QCommandLineOption outputAudioFileOption(QStringList() << "a" << "audio",
+                QCoreApplication::translate("main", "Specify output audio file"),
+                QCoreApplication::translate("main", "file"));
+    parser.addOption(outputAudioFileOption);
+
+    // Option to specify output sector data file (-s)
+    QCommandLineOption outputDataFileOption(QStringList() << "s" << "data",
+                QCoreApplication::translate("main", "Specify output sector data file"),
+                QCoreApplication::translate("main", "file"));
+    parser.addOption(outputDataFileOption);
 
     // Process the command line options and arguments given by the user
     parser.process(a);
@@ -114,21 +127,18 @@ int main(int argc, char *argv[])
     bool verboseDebug = parser.isSet(verboseDebugOption);
 
     // Get the arguments from the parser
-    QString inputFilename;
-    QString outputFilename;
-    QStringList positionalArguments = parser.positionalArguments();
-    if (positionalArguments.count() == 2) {
-        inputFilename = positionalArguments.at(0);
-        outputFilename = positionalArguments.at(1);
-    } else {
-        // Quit with error
-        qCritical("You must specify an input EFM data file and an output audio PCM file");
+    QString inputEfmFilename = parser.value(inputEfmFileOption);
+    QString outputAudioFilename = parser.value(outputAudioFileOption);
+    QString outputDataFilename = parser.value(outputDataFileOption);
+
+    // Check the parameters
+    if (inputEfmFilename.isEmpty()) {
+        qCritical() << "You must specify an input EFM file using --input";
         return -1;
     }
 
-    if (inputFilename == outputFilename) {
-        // Quit with error
-        qCritical("Input and output file names cannot be the same!");
+    if (outputAudioFilename.isEmpty() && outputDataFilename.isEmpty()) {
+        qCritical() << "You must specify either audio output (with --audio <filename>) or sector data output (with --sector <filename>)";
         return -1;
     }
 
@@ -137,7 +147,7 @@ int main(int argc, char *argv[])
 
     // Perform the processing
     EfmProcess efmProcess;
-    efmProcess.process(inputFilename, outputFilename, verboseDebug);
+    efmProcess.process(inputEfmFilename, outputAudioFilename, outputDataFilename, verboseDebug);
 
     // Quit with success
     return 0;

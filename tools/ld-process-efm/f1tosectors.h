@@ -1,6 +1,6 @@
 /************************************************************************
 
-    decodedata.cpp
+    f1tosectors.h
 
     ld-process-efm - EFM data decoder
     Copyright (C) 2019 Simon Inns
@@ -22,9 +22,27 @@
 
 ************************************************************************/
 
-#include "decodedata.h"
+#ifndef F1TOSECTORS_H
+#define F1TOSECTORS_H
 
-DecodeData::DecodeData()
+#include <QCoreApplication>
+#include <QDebug>
+
+#include "sector.h"
+#include "f1frame.h"
+
+class F1ToSectors
 {
+public:
+    F1ToSectors();
 
-}
+    void reportStatus(void);
+    QVector<Sector> convert(QVector<F1Frame> f1FramesIn);
+
+private:
+    qint32 validSectors;
+    qint32 invalidSectors;
+    qint32 correctedSectors;
+};
+
+#endif // F1TOSECTORS_H
