@@ -401,7 +401,7 @@ class RFDecode:
 
         return output_audio2    
 
-    def demod(self, indata, start, length, mtf_level = 0):
+    def demod(self, indata, start, length, mtf_level = 0, doaudio = True):
         end = int(start + length) + 1
         start = int(start - self.blockcut) if (start > self.blockcut) else 0
 
@@ -442,7 +442,7 @@ class RFDecode:
                 output_efm[output_slice] = tmp_efm[tmp_slice].real
 
             # repeat the above - but for audio
-            if tmp_audio is not None:
+            if doaudio == True and tmp_audio is not None:
                 audio_downscale = tmp_video.shape[0] // tmp_audio.shape[0]
 
                 if output_audio1 is None:
@@ -453,7 +453,7 @@ class RFDecode:
 
                 output_audio1[output_aslice] = tmp_audio[tmp_aslice]
 
-        if output_audio1 is not None:
+        if doaudio == True and output_audio1 is not None:
             output_audio = self.audio_phase2(output_audio1)
 
         return output, output_audio, output_efm
@@ -1191,7 +1191,7 @@ class FieldPAL(Field):
         return np.uint16(np.clip((reduced * self.out_scale) + 256, 0, 65535) + 0.5)
 
     def output_to_ire(self, output):
-        return ((output - 256) / self.out_scale) + self.rf.SysParams['vsync_ire']
+        return ((output- 256.0) / self.out_scale) + self.rf.SysParams['vsync_ire']
 
     def downscale(self, final = False, *args, **kwargs):
         # For PAL, each field starts with the line containing the first full VSYNC pulse
@@ -1746,7 +1746,8 @@ class LDdecode:
         return 20 * np.log10(signal / noise)
 
     def calcpsnr(self, f, snrslice):
-        data = f.output_to_ire(f.dspicture[snrslice])
+        # if dspicture isn't converted to float, this underflows at -40IRE
+        data = f.output_to_ire(f.dspicture[snrslice].astype(float))
         
 #        signal = np.mean(data)
         noise = np.std(data)
@@ -1763,6 +1764,8 @@ class LDdecode:
             rawslice = f2.lineslice(*sl)
             rawdata = f2.rawdata[rawslice.start - int(self.rf.delays['video_white']):rawslice.stop - int(self.rf.delays['video_white'])]
             metrics['whiteRFLevel'] = np.std(rawdata)
+
+            metrics['whiteField'] = 2
 
         # I've seen some clips with the 100IRE area in the back half of line 20- and none at all
         sl = (20, 14, 12)
@@ -1784,6 +1787,8 @@ class LDdecode:
             rawslice = f1.lineslice(*sl)
             rawdata = f1.rawdata[rawslice.start - int(self.rf.delays['video_white']):rawslice.stop - int(self.rf.delays['video_white'])]
             metrics['whiteRFLevel'] = np.std(rawdata)
+
+            metrics['whiteField'] = 1
 
 
         # check for a white flag
@@ -1827,6 +1832,29 @@ class LDdecode:
         metrics['ntscLine19ColorPhase'] = phase3d
         metrics['ntscLine19ColorRawSNR'] = snr3d
 
+    def computeMetricsPAL(self, f1, f2, metrics):
+        for i in zip([1, 2], [f1, f2]):
+            wl_slice = i[1].lineslice_tbc(19, 12, 8)
+            metrics['whiteF{0}SNR'.format(i[0])] = self.calcsnr(i[1], wl_slice)
+            metrics['whiteF{0}IRE'.format(i[0])] = np.mean(i[1].output_to_ire(i[1].dspicture[wl_slice]))
+
+            rawslice = i[1].lineslice(19, 12, 8)
+            rawdata = i[1].rawdata[rawslice.start - int(self.rf.delays['video_white']):rawslice.stop - int(self.rf.delays['video_white'])]
+            metrics['whiteF{0}RFLevel'.format(i[0])] = np.std(rawdata)
+
+        wl_slice = f1.lineslice_tbc(13, 4.7+16, 3)
+        metrics['palG50PSNR'] = self.calcpsnr(f1, wl_slice)
+        metrics['palG50IRE'] = np.mean(f1.output_to_ire(f2.dspicture[wl_slice]))
+
+#       too short to be accurate :()
+#        rawslice = f1.lineslice(13, 4.7+16, 3)
+#        rawdata = f1.rawdata[rawslice.start - int(self.rf.delays['video_white']):rawslice.stop - int(self.rf.delays['video_white'])]
+#        metrics['palG50RFLevel'] = np.std(rawdata)
+
+        b30slice = f2.lineslice_tbc(13, 36, 20)
+        metrics['palVITSBurst30Level'] = rms(f2.dspicture[b30slice]) / f2.out_scale
+
+
     def computeMetrics(self, f1, f2):
         ''' This uses a complete video (not LD) frame '''
 
@@ -1837,14 +1865,16 @@ class LDdecode:
         if f1.rf.system == 'NTSC':
             self.computeMetricsNTSC(f1, f2, metrics)
         else:
-            wl_slice = f2.lineslice_tbc(19, 14, 4)
-            metrics['whiteSNR'] = self.calcsnr(f2, wl_slice)
+            self.computeMetricsPAL(f1, f2, metrics)
 
         # compute black line SNR.  For PAL line 22 is guaranteed to be blanked for a pure disk (P)SNR
         blackline = 14 if f1.rf.system == 'NTSC' else 22
         bl_slicetbc = f1.lineslice_tbc(blackline, 12, 50)
 
-        # these metrics determine the effectiveness of the wow-filter
+        synclevels = []
+        rfgaps = []
+
+        # these metrics handle various easily detectable differences between fields
         for i in zip([1, 2], [f1, f2]):
             bl_slice = i[1].lineslice(blackline, 12, 50)
     
@@ -1857,7 +1887,31 @@ class LDdecode:
 
             metrics['blackLineF{0}PSNR'.format(i[0])] = self.calcpsnr(i[1], bl_slicetbc)
 
-        return metrics
+            sl_slice = i[1].lineslice(4, 35, 20)
+            sl_slicetbc = i[1].lineslice_tbc(4, 35, 20)
+            sl_sliceraw = slice(sl_slice.start - delay, sl_slice.stop - delay)
+
+            metrics['syncLevelF{0}PSNR'.format(i[0])] = self.calcpsnr(i[1], sl_slicetbc)
+
+            synclevels.append(np.std(i[1].rawdata[sl_sliceraw]))
+            metrics['syncLevelF{0}RFLevel'.format(i[0])] = synclevels[-1]
+            
+            # There is *always* enough data to determine the RF level differences from sync to black/0IRE
+            rfgaps.append(metrics['syncLevelF{0}RFLevel'.format(i[0])] / metrics['blackLineF{0}RFLevel'.format(i[0])])
+            metrics['synctoBlackRatioF{0}'.format(i[0])] = rfgaps[-1]
+
+        # average the F1/F2 ratio for a single metric
+        metrics['syncToBlackRFRatio'] = np.mean(rfgaps)
+
+        if 'whiteRFLevel' in metrics:
+            metrics['syncToWhiteRFRatio'] = np.mean(synclevels) / metrics['whiteRFLevel']
+
+        metrics_rounded = {}
+
+        for k in metrics.keys():
+            metrics_rounded[k] = roundfloat(metrics[k])
+
+        return metrics_rounded
 
     def processfield(self, f, squelch = False):
         picture, audio, efm = f.downscale(linesout = self.output_lines, final=True)
