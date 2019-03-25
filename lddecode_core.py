@@ -1998,7 +1998,7 @@ class LDdecode:
             if self.frameNumber is not None:
                 fi['frameNumber'] = int(self.frameNumber)
 
-            if self.isCLV:
+            if self.isCLV and self.clvMinutes is not None:
                 fi['clvMinutes'] = int(self.clvMinutes)
                 if self.earlyCLV == False:
                     fi['clvSeconds'] = int(self.clvSeconds)
