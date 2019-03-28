@@ -1785,7 +1785,10 @@ class LDdecode:
 
             rawloc = np.floor((self.readloc / self.bytes_per_field) / 2)
             if f.isCLV and self.frameNumber is not None:
-                print("file frame %d CLV timecode %d:%.2d.%.2d frame %d" % (rawloc, self.clvMinutes, self.clvSeconds, self.clvFrameNum, self.frameNumber))
+                try:
+                    print("file frame %d CLV timecode %d:%.2d.%.2d frame %d" % (rawloc, self.clvMinutes, self.clvSeconds, self.clvFrameNum, self.frameNumber))
+                except:
+                    print("file frame %d unknown (issue 177)" % (rawloc))
             elif f.isCLV and self.clvMinutes is not None: # early CLV
                 self.earlyCLV = True
                 print("file frame %d early-CLV minute %d" % (rawloc, self.clvMinutes))
@@ -1803,15 +1806,16 @@ class LDdecode:
             self.firstfield = None
             self.firstfield_picture = None
 
-            if self.frameNumber is not None:
-                fi['frameNumber'] = int(self.frameNumber)
+            fi['frameNumber'] = int(self.frameNumber)
 
             if f.isCLV:
-                fi['clvMinutes'] = int(self.clvMinutes)
-                if self.earlyCLV == False:
-                    fi['clvSeconds'] = int(self.clvSeconds)
-                    fi['clvFrameNr'] = int(self.clvFrameNum)
-
+                try:
+                    fi['clvMinutes'] = int(self.clvMinutes)
+                    if f.earlyCLV == False:
+                        fi['clvSeconds'] = int(self.clvSeconds)
+                        fi['clvFrameNr'] = int(self.clvFrameNum)
+                except:
+                    pass # issue 177
 
         elif f.isFirstField:
             self.firstfield = f
