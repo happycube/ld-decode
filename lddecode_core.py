@@ -1754,17 +1754,14 @@ class LDdecode:
 
         return 20 * np.log10(100 / noise)
 
-    def computeMetricsNTSC(self, metrics):
-        f = self.curfield
-        fp = self.prevfield
+    def computeMetricsNTSC(self, metrics, f, fp = None):
         
         # check for a white flag - only on earlier discs, and only on first "frame" fields
-
         wf_slice = f.lineslice_tbc(11, 15, 40)
         if inrange(np.mean(f.output_to_ire(f.dspicture[wf_slice])), 92, 108):
             metrics['ntscWhiteFlagSNR'] = self.calcpsnr(f, wf_slice)
 
-        # use line 19 to determine 0 and 70 IRE burst level for MTF compensation later
+        # use line 19 to determine 0 and 70 IRE burst levels for MTF compensation later
         c = CombNTSC(f)
 
         level, phase, snr = c.calcLine19Info()
@@ -1791,18 +1788,16 @@ class LDdecode:
             metrics['ntscLine19Color3DPhase'] = phase3d
             metrics['ntscLine19Color3DRawSNR'] = snr3d
 
-
-    def computeMetrics(self):
+    def computeMetrics(self, f, fp = None):
         if not self.curfield:
             raise ValueError("No decoded field to work with")
 
-        f = self.curfield
         system = f.rf.system
             
         metrics = {}
 
         if system == 'NTSC':
-            self.computeMetricsNTSC(metrics)
+            self.computeMetricsNTSC(metrics, f, fp)
             whitelocs = [(20, 14, 12), (20, 52, 8), (13, 13, 15), (20, 13, 2)]
         else:
             #self.computeMetricsPAL(metrics)        
@@ -1903,8 +1898,7 @@ class LDdecode:
         fi['decodeFaults'] = decodeFaults
 
         if squelch == False:
-            if self.firstfield is not None:
-                fi['vitsMetrics'] = self.computeMetrics()
+            fi['vitsMetrics'] = self.computeMetrics(self.curfield, self.prevfield)
 
             self.fieldinfo.append(fi)
 
