@@ -1754,157 +1754,104 @@ class LDdecode:
 
         return 20 * np.log10(100 / noise)
 
-    def computeMetricsNTSC(self, f1, f2, metrics):
-        sl = (20, 13, 2)
-        wl_slice = f2.lineslice_tbc(*sl)
-        if inrange(np.mean(f2.output_to_ire(f2.dspicture[wl_slice])), 90, 110):
-            metrics['whiteSNR'] = self.calcpsnr(f2, wl_slice)
-            metrics['whiteIRE'] = np.mean(f2.output_to_ire(f2.dspicture[wl_slice]))
+    def computeMetricsNTSC(self, metrics):
+        f = self.curfield
+        fp = self.prevfield
+        
+        # check for a white flag - only on earlier discs, and only on first "frame" fields
 
-            rawslice = f2.lineslice(*sl)
-            rawdata = f2.rawdata[rawslice.start - int(self.rf.delays['video_white']):rawslice.stop - int(self.rf.delays['video_white'])]
-            metrics['whiteRFLevel'] = np.std(rawdata)
+        wf_slice = f.lineslice_tbc(11, 15, 40)
+        if inrange(np.mean(f.output_to_ire(f.dspicture[wf_slice])), 92, 108):
+            metrics['ntscWhiteFlagSNR'] = self.calcpsnr(f, wf_slice)
 
-            metrics['whiteField'] = 2
+        # use line 19 to determine 0 and 70 IRE burst level for MTF compensation later
+        c = CombNTSC(f)
 
-        # I've seen some clips with the 100IRE area in the back half of line 20- and none at all
-        sl = (20, 14, 12)
-        wl20_slice = f1.lineslice_tbc(*sl)
-        if not inrange(np.mean(f1.output_to_ire(f1.dspicture[wl20_slice])), 90, 110):
-            sl = (20, 52, 8)
-            wl20_slice = f1.lineslice_tbc(*sl)
-            if not inrange(np.mean(f1.output_to_ire(f1.dspicture[wl20_slice])), 90, 110):
-                # only seen on GGV
-                sl = (13, 13, 15)
-                wl20_slice = f1.lineslice_tbc(*sl)
-                if not inrange(np.mean(f1.output_to_ire(f1.dspicture[wl20_slice])), 90, 110):
-                    wl20_slice = None
+        level, phase, snr = c.calcLine19Info()
+        metrics['ntscLine19ColorPhase'] = phase
+        metrics['ntscLine19ColorRawSNR'] = snr
 
-        if wl20_slice is not None:
-            metrics['whiteSNR'] = self.calcpsnr(f1, wl20_slice)
-            metrics['whiteIRE'] = np.mean(f1.output_to_ire(f1.dspicture[wl20_slice]))
+        ire50_slice = f.lineslice_tbc(19, 36, 10)
+        metrics['ntscIRE50PSNR'] = self.calcpsnr(f, ire50_slice)
 
-            rawslice = f1.lineslice(*sl)
-            rawdata = f1.rawdata[rawslice.start - int(self.rf.delays['video_white']):rawslice.stop - int(self.rf.delays['video_white'])]
-            metrics['whiteRFLevel'] = np.std(rawdata)
+        ire50_rawslice = f.lineslice(19, 36, 10)
+        rawdata = f.rawdata[ire50_rawslice.start - int(self.rf.delays['video_white']):ire50_rawslice.stop - int(self.rf.delays['video_white'])]
+        metrics['ntscIRE50RFLevel'] = np.std(rawdata)
+        
+        if fp is not None:
+            sl_cburst = f.lineslice_tbc(19, 4.7+.8, 2.4)
+            diff = (f.dspicture[sl_cburst].astype(float) - fp.dspicture[sl_cburst].astype(float))/2
 
-            metrics['whiteField'] = 1
-
-
-        # check for a white flag
-        # later disks - and some film frames - don't have a white flag
-
-        wf_slice = f1.lineslice_tbc(11, 15, 40)
-        if not inrange(np.mean(f1.output_to_ire(f1.dspicture[wf_slice])), 92, 108):
-            wf_slice = f2.lineslice_tbc(11, 15, 40)
-            if not inrange(np.mean(f2.output_to_ire(f2.dspicture[wf_slice])), 92, 108):
-                wf_slice = None
-            else:
-                metrics['ntscWhiteFlagSNR'] = self.calcpsnr(f2, wf_slice)
-        else:
-            metrics['ntscWhiteFlagSNR'] = self.calcpsnr(f1, wf_slice)
-
-        # for NTSC, use line 19 to determine 70IRE burst level for MTF compensation later
-        sl_cburst = f1.lineslice_tbc(19, 4.7+.8, 2.4)
-        diff = (f1.dspicture[sl_cburst].astype(float) - f2.dspicture[sl_cburst].astype(float))/2
-
-        metrics['ntscLine19Burst0IRE'] = np.sqrt(2)*rms(diff)/f1.out_scale
-
-        sl_cburst70 = f1.lineslice_tbc(19, 14, 20)
-        diff = (f1.dspicture[sl_cburst70].astype(float) - f2.dspicture[sl_cburst70].astype(float))/2
-
-        comb = []
-        for i in zip([1, 2], [f1, f2]):
-            comb.append(CombNTSC(i[1]))
-            level, phase, snr = comb[-1].calcLine19Info()
-            metrics['ntscF{0}Line19ColorPhase'.format(i[0])] = phase
-            metrics['ntscF{0}Line19ColorRawSNR'.format(i[0])] = snr
-
-            ire50_slice = i[1].lineslice_tbc(19, 36, 10)
-            metrics['ntscF{0}IRE50PSNR'.format(i[0])] = self.calcpsnr(i[1], ire50_slice)
-
-            ire50_rawslice = i[1].lineslice(19, 36, 10)
-            rawdata = i[1].rawdata[ire50_rawslice.start - int(self.rf.delays['video_white']):ire50_rawslice.stop - int(self.rf.delays['video_white'])]
-            metrics['ntscF{0}IRE50RFLevel'.format(i[0])] = np.std(rawdata)
-
-        level3d, phase3d, snr3d = comb[1].calcLine19Info(comb[0])
-        metrics['ntscLine19Burst70IRE'] = level3d
-        metrics['ntscLine19ColorPhase'] = phase3d
-        metrics['ntscLine19ColorRawSNR'] = snr3d
-
-    def computeMetricsPAL(self, f1, f2, metrics):
-        for i in zip([1, 2], [f1, f2]):
-            wl_slice = i[1].lineslice_tbc(19, 12, 8)
-            metrics['whiteF{0}SNR'.format(i[0])] = self.calcsnr(i[1], wl_slice)
-            metrics['whiteF{0}IRE'.format(i[0])] = np.mean(i[1].output_to_ire(i[1].dspicture[wl_slice]))
-
-            rawslice = i[1].lineslice(19, 12, 8)
-            rawdata = i[1].rawdata[rawslice.start - int(self.rf.delays['video_white']):rawslice.stop - int(self.rf.delays['video_white'])]
-            metrics['whiteF{0}RFLevel'.format(i[0])] = np.std(rawdata)
-
-        wl_slice = f1.lineslice_tbc(13, 4.7+16, 3)
-        metrics['palG50PSNR'] = self.calcpsnr(f1, wl_slice)
-        metrics['palG50IRE'] = np.mean(f1.output_to_ire(f2.dspicture[wl_slice]))
-
-#       too short to be accurate :()
-#        rawslice = f1.lineslice(13, 4.7+16, 3)
-#        rawdata = f1.rawdata[rawslice.start - int(self.rf.delays['video_white']):rawslice.stop - int(self.rf.delays['video_white'])]
-#        metrics['palG50RFLevel'] = np.std(rawdata)
-
-        b30slice = f2.lineslice_tbc(13, 36, 20)
-        metrics['palVITSBurst30Level'] = rms(f2.dspicture[b30slice]) / f2.out_scale
+            metrics['ntscLine19Burst0IRE'] = np.sqrt(2)*rms(diff)/f.out_scale
+            
+            cp = CombNTSC(fp)
+            
+            level3d, phase3d, snr3d = c.calcLine19Info(cp)
+            metrics['ntscLine19Burst70IRE'] = level3d
+            metrics['ntscLine19Color3DPhase'] = phase3d
+            metrics['ntscLine19Color3DRawSNR'] = snr3d
 
 
-    def computeMetrics(self, f1, f2):
-        ''' This uses a complete video (not LD) frame '''
+    def computeMetrics(self):
+        if not self.curfield:
+            raise ValueError("No decoded field to work with")
 
-        if not f1.isFirstField:
-            raise ValueError("computeMetrics f1 is not the first field")
-
+        f = self.curfield
+        system = f.rf.system
+            
         metrics = {}
-        if f1.rf.system == 'NTSC':
-            self.computeMetricsNTSC(f1, f2, metrics)
-        else:
-            self.computeMetricsPAL(f1, f2, metrics)
 
+        if system == 'NTSC':
+            self.computeMetricsNTSC(metrics)
+            whitelocs = [(20, 14, 12), (20, 52, 8), (13, 13, 15), (20, 13, 2)]
+        else:
+            #self.computeMetricsPAL(metrics)        
+            whitelocs = [(19, 12, 8)]
+        
+        for l in whitelocs:
+            wl_slice = f.lineslice_tbc(*l)
+            if inrange(np.mean(f.output_to_ire(f.dspicture[wl_slice])), 90, 110):
+                metrics['whiteSNR'] = self.calcpsnr(f, wl_slice)
+                metrics['whiteIRE'] = np.mean(f.output_to_ire(f.dspicture[wl_slice]))
+
+                rawslice = f.lineslice(*l)
+                rawdata = f.rawdata[rawslice.start - int(self.rf.delays['video_white']):rawslice.stop - int(self.rf.delays['video_white'])]
+                metrics['whiteRFLevel'] = np.std(rawdata)
+
+                break
+        
         # compute black line SNR.  For PAL line 22 is guaranteed to be blanked for a pure disk (P)SNR
-        blackline = 14 if f1.rf.system == 'NTSC' else 22
-        bl_slicetbc = f1.lineslice_tbc(blackline, 12, 50)
+        blackline = 14 if system == 'NTSC' else 22
+        bl_slicetbc = f.lineslice_tbc(blackline, 12, 50)
 
         synclevels = []
         rfgaps = []
 
         # these metrics handle various easily detectable differences between fields
-        for i in zip([1, 2], [f1, f2]):
-            bl_slice = i[1].lineslice(blackline, 12, 50)
-    
-            delay = int(i[1].rf.delays['video_sync'])
-            bl_sliceraw = slice(bl_slice.start - delay, bl_slice.stop - delay)
-            metrics['blackLineF{0}RFLevel'.format(i[0])] = np.std(i[1].rawdata[bl_sliceraw])
+        bl_slice = f.lineslice(blackline, 12, 50)
 
-            metrics['blackLineF{0}PreTBCIRE'.format(i[0])] = i[1].rf.hztoire(np.mean(i[1].data[0]['demod'][bl_slice]))
-            metrics['blackLineF{0}PostTBCIRE'.format(i[0])] = i[1].output_to_ire(np.mean(i[1].dspicture[bl_slicetbc]))
+        delay = int(f.rf.delays['video_sync'])
+        bl_sliceraw = slice(bl_slice.start - delay, bl_slice.stop - delay)
+        metrics['blackLineRFLevel'] = np.std(f.rawdata[bl_sliceraw])
 
-            metrics['blackLineF{0}PSNR'.format(i[0])] = self.calcpsnr(i[1], bl_slicetbc)
+        metrics['blackLinePreTBCIRE'] = f.rf.hztoire(np.mean(f.data[0]['demod'][bl_slice]))
+        metrics['blackLinePostTBCIRE'] = f.output_to_ire(np.mean(f.dspicture[bl_slicetbc]))
 
-            sl_slice = i[1].lineslice(4, 35, 20)
-            sl_slicetbc = i[1].lineslice_tbc(4, 35, 20)
-            sl_sliceraw = slice(sl_slice.start - delay, sl_slice.stop - delay)
+        metrics['blackLinePSNR'] = self.calcpsnr(f, bl_slicetbc)
 
-            metrics['syncLevelF{0}PSNR'.format(i[0])] = self.calcpsnr(i[1], sl_slicetbc)
+        sl_slice = f.lineslice(4, 35, 20)
+        sl_slicetbc = f.lineslice_tbc(4, 35, 20)
+        sl_sliceraw = slice(sl_slice.start - delay, sl_slice.stop - delay)
 
-            synclevels.append(np.std(i[1].rawdata[sl_sliceraw]))
-            metrics['syncLevelF{0}RFLevel'.format(i[0])] = synclevels[-1]
-            
-            # There is *always* enough data to determine the RF level differences from sync to black/0IRE
-            rfgaps.append(metrics['syncLevelF{0}RFLevel'.format(i[0])] / metrics['blackLineF{0}RFLevel'.format(i[0])])
-            metrics['synctoBlackRatioF{0}'.format(i[0])] = rfgaps[-1]
+        metrics['syncLevelPSNR'] = self.calcpsnr(f, sl_slicetbc)
 
-        # average the F1/F2 ratio for a single metric
-        metrics['syncToBlackRFRatio'] = np.mean(rfgaps)
+        metrics['syncRFLevel'] = np.std(f.rawdata[sl_sliceraw])
+
+        # There is *always* enough data to determine the RF level differences from sync to black/0IRE
+        metrics['syncToBlackRFRatio'] = metrics['syncRFLevel'] / metrics['blackLineRFLevel']
 
         if 'whiteRFLevel' in metrics:
-            metrics['syncToWhiteRFRatio'] = np.mean(synclevels) / metrics['whiteRFLevel']
+            metrics['syncToWhiteRFRatio'] = metrics['syncRFLevel'] / metrics['whiteRFLevel']
 
         metrics_rounded = {}
 
@@ -1957,7 +1904,7 @@ class LDdecode:
 
         if squelch == False:
             if self.firstfield is not None:
-                fi['vitsMetrics'] = self.computeMetrics(self.firstfield, f)
+                fi['vitsMetrics'] = self.computeMetrics()
 
             self.fieldinfo.append(fi)
 
