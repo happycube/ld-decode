@@ -102,7 +102,7 @@ RFParams_NTSC = {
     'video_lpf_order': 6, # butterworth filter order
 
     # MTF filter
-    'MTF_basemult': .545, # general ** level of the MTF filter for frame 0.
+    'MTF_basemult': .34, # general ** level of the MTF filter for frame 0.
     'MTF_poledist': .9,
     'MTF_freq': 12.2, # in mhz
 }
@@ -1706,6 +1706,7 @@ class LDdecode:
     def decodeFrameNumber(self, f1, f2):
         # CLV
         self.isCLV = False
+        self.earlyCLV = False
         self.clvMinutes = None
         self.clvSeconds = None
         self.clvFrameNum = None
@@ -1740,8 +1741,12 @@ class LDdecode:
 
                 self.isCLV = True
 
-            if self.clvMinutes is not None and self.clvSeconds is not None: # newer CLV
-                return (((self.clvMinutes * 60) + self.clvSeconds) * self.clvfps) + self.clvFrameNum
+            if self.clvMinutes is not None:
+                if self.clvSeconds is not None: # newer CLV
+                    return (((self.clvMinutes * 60) + self.clvSeconds) * self.clvfps) + self.clvFrameNum
+                else:
+                    self.earlyCLV = True
+                    return (self.clvMinutes * 60)
 
         if leadoutCount >= 3:
             self.leadOut = True
@@ -1760,7 +1765,6 @@ class LDdecode:
         # if dspicture isn't converted to float, this underflows at -40IRE
         data = f.output_to_ire(f.dspicture[snrslice].astype(float))
         
-#        signal = np.mean(data)
         noise = np.std(data)
 
         return 20 * np.log10(100 / noise)
@@ -1770,11 +1774,9 @@ class LDdecode:
         # PAL VITS has a lot of useful stuff on one field only, so 
         # always process both if possible(?)
         if f.isFirstField:
-            f1 = f
-            f2 = fp
+            f1, f2 = f, fp
         else:
-            f1 = fp
-            f2 = f
+            f1, f2 = fp, f
         
         if f1 is not None:
             # compute IRE50 from field1 l13
@@ -1895,6 +1897,71 @@ class LDdecode:
 
         return metrics_rounded
 
+    def build_json(self, f):
+        jout = {}
+        jout['pcmAudioParameters'] = {'bits':16, 'isLittleEndian': True, 'isSigned': True, 'sampleRate': 48000}
+
+        vp = {}
+
+        vp['numberOfSequentialFields'] = len(self.fieldinfo)
+        
+        vp['isSourcePal'] = True if f.rf.system == 'PAL' else False
+
+        vp['fsc'] = int(f.rf.SysParams['fsc_mhz'] * 1000000)
+        vp['fieldWidth'] = f.rf.SysParams['outlinelen']
+        vp['sampleRate'] = vp['fsc'] * 4
+        spu = vp['sampleRate'] / 1000000
+
+        vp['black16bIre'] = np.float(f.hz_to_output(f.rf.iretohz(self.blackIRE)))
+        vp['white16bIre'] = np.float(f.hz_to_output(f.rf.iretohz(100)))
+
+        vp['fieldHeight'] = f.outlinecount
+
+        badj = -1.4 # current burst adjustment as of 2/27/19, update when #158 is fixed!
+        vp['colourBurstStart'] = np.round((f.rf.SysParams['colorBurstUS'][0] * spu) + badj)
+        vp['colourBurstEnd'] = np.round((f.rf.SysParams['colorBurstUS'][1] * spu) + badj)
+        vp['activeVideoStart'] = np.round((f.rf.SysParams['activeVideoUS'][0] * spu) + badj)
+        vp['activeVideoEnd'] = np.round((f.rf.SysParams['activeVideoUS'][1] * spu) + badj)
+
+        jout['videoParameters'] = vp
+        
+        jout['fields'] = self.fieldinfo.copy()
+
+        return jout
+
+    def processframenumber(self, fi, f):
+        self.frameNumber = None
+        
+        # use a stored first field, in case we start with a second field
+        if self.firstfield is not None:
+            # process VBI frame info data
+            self.frameNumber = self.decodeFrameNumber(self.firstfield, f)
+
+            rawloc = np.floor((self.readloc / self.bytes_per_field) / 2)
+            if self.isCLV and self.earlyCLV: # early CLV
+                print("file frame %d early-CLV minute %d" % (rawloc, self.clvMinutes))
+            elif self.isCLV and self.frameNumber is not None:
+                print("file frame %d CLV timecode %d:%.2d.%.2d frame %d" % (rawloc, self.clvMinutes, self.clvSeconds, self.clvFrameNum, self.frameNumber))
+            elif self.frameNumber:
+                print("file frame %d CAV frame %d" % (rawloc, self.frameNumber))
+            elif self.leadOut:
+                print("file frame %d lead out" % (rawloc))
+            else:
+                print("file frame %d unknown" % (rawloc))
+
+            self.firstfield = None
+
+            if self.frameNumber is not None:
+                fi['frameNumber'] = int(self.frameNumber)
+
+            if self.isCLV and self.clvMinutes is not None:
+                fi['clvMinutes'] = int(self.clvMinutes)
+                if self.earlyCLV == False:
+                    fi['clvSeconds'] = int(self.clvSeconds)
+                    fi['clvFrameNr'] = int(self.clvFrameNum)
+
+        return fi
+
     def processfield(self, f, squelch = False):
         picture, audio, efm = f.downscale(linesout = self.output_lines, final=True)
             
@@ -1936,92 +2003,29 @@ class LDdecode:
                 fi['syncConf'] = 0
 
         fi['decodeFaults'] = decodeFaults
+        fi['vitsMetrics'] = self.computeMetrics(self.curfield, self.prevfield)
 
-        if squelch == False:
-            fi['vitsMetrics'] = self.computeMetrics(self.curfield, self.prevfield)
+        if self.fname_out is not None:
+            self.outfile_video.write(picture)
+            self.fields_written += 1
 
-            self.fieldinfo.append(fi)
+            if audio is not None and self.outfile_audio is not None:
+                self.outfile_audio.write(audio)
 
-            if self.fname_out is not None:
-                self.outfile_video.write(picture)
-                self.fields_written += 1
+            if self.digital_audio == True:
+                self.outfile_efm.write(efm)
 
-                if audio is not None and self.outfile_audio is not None:
-                    self.outfile_audio.write(audio)
-
-                if self.digital_audio == True:
-                    self.outfile_efm.write(efm)
-
-        self.frameNumber = None
-        self.earlyCLV = False
-
-        # use a stored first field, in case we start with a second field
-        if self.firstfield is not None:
-            # process VBI frame info data
-            self.frameNumber = self.decodeFrameNumber(self.firstfield, f)
-            self.earlyCLV = False
-
-            rawloc = np.floor((self.readloc / self.bytes_per_field) / 2)
-            if self.isCLV and self.frameNumber is not None:
-                print("file frame %d CLV timecode %d:%.2d.%.2d frame %d" % (rawloc, self.clvMinutes, self.clvSeconds, self.clvFrameNum, self.frameNumber))
-            elif self.isCLV and self.clvMinutes is not None: # early CLV
-                self.earlyCLV = True
-                print("file frame %d early-CLV minute %d" % (rawloc, self.clvMinutes))
-            elif self.frameNumber:
-                print("file frame %d CAV frame %d" % (rawloc, self.frameNumber))
-            elif self.leadOut:
-                print("file frame %d lead out" % (rawloc))
-            else:
-                print("file frame %d unknown" % (rawloc))
-
-            self.firstfield = None
-
-            if self.frameNumber is not None:
-                fi['frameNumber'] = int(self.frameNumber)
-
-            if self.isCLV and self.clvMinutes is not None:
-                fi['clvMinutes'] = int(self.clvMinutes)
-                if self.earlyCLV == False:
-                    fi['clvSeconds'] = int(self.clvSeconds)
-                    fi['clvFrameNr'] = int(self.clvFrameNum)
-        elif f.isFirstField:
+        if f.isFirstField:
             self.firstfield = f
+            self.frameNumber = None
+        else:
+            self.processframenumber(fi, f)
 
-    def build_json(self, f):
-        jout = {}
-        jout['pcmAudioParameters'] = {'bits':16, 'isLittleEndian': True, 'isSigned': True, 'sampleRate': 48000}
-
-        vp = {}
-
-        vp['numberOfSequentialFields'] = len(self.fieldinfo)
-        
-        vp['isSourcePal'] = True if f.rf.system == 'PAL' else False
-
-        vp['fsc'] = int(f.rf.SysParams['fsc_mhz'] * 1000000)
-        vp['fieldWidth'] = f.rf.SysParams['outlinelen']
-        vp['sampleRate'] = vp['fsc'] * 4
-        spu = vp['sampleRate'] / 1000000
-
-        vp['black16bIre'] = np.float(f.hz_to_output(f.rf.iretohz(self.blackIRE)))
-        vp['white16bIre'] = np.float(f.hz_to_output(f.rf.iretohz(100)))
-
-        vp['fieldHeight'] = f.outlinecount
-
-        badj = -1.4 # current burst adjustment as of 2/27/19, update when #158 is fixed!
-        vp['colourBurstStart'] = np.round((f.rf.SysParams['colorBurstUS'][0] * spu) + badj)
-        vp['colourBurstEnd'] = np.round((f.rf.SysParams['colorBurstUS'][1] * spu) + badj)
-        vp['activeVideoStart'] = np.round((f.rf.SysParams['activeVideoUS'][0] * spu) + badj)
-        vp['activeVideoEnd'] = np.round((f.rf.SysParams['activeVideoUS'][1] * spu) + badj)
-
-        jout['videoParameters'] = vp
-        
-        jout['fields'] = self.fieldinfo.copy()
-
-        return jout
+        self.fieldinfo.append(fi)
 
     # seek support function
     def seek_getframenr(self, start):
-        self.roughseek(start * 2)
+        self.roughseek(start)
 
         for fields in range(10):
             self.fieldloc = self.fdoffset
@@ -2031,19 +2035,22 @@ class LDdecode:
             self.curfield = f
             self.fdoffset += offset
 
-            if f is not None and f.valid:
-                self.processfield(f, squelch=True)
+            if self.prevfield is not None and f is not None and f.valid:
+                #self.processfield(f, squelch=True)
+                fnum = self.decodeFrameNumber(self.prevfield, self.curfield)
 
                 if self.earlyCLV:
                     print("ERROR: Cannot seek in early CLV disks w/o timecode")
                     return None
-                elif self.frameNumber is not None:
-                    return self.frameNumber
+                elif fnum is not None:
+                    rawloc = np.floor((self.readloc / self.bytes_per_field) / 2)
+                    print('seeking: file loc {0} frame # {1}'.format(rawloc, fnum))
+                    return fnum
         
         return False
         
     def seek(self, start, target):
-        cur = start
+        cur = start * 2
         
         print("Beginning seek")
 
@@ -2053,16 +2060,16 @@ class LDdecode:
 
         for retries in range(3):
             fnr = self.seek_getframenr(cur)
-            cur = int((self.fieldloc / self.bytes_per_field) / 2)
+            cur = int((self.fieldloc / self.bytes_per_field))
             if fnr is None:
                 return None
             else:
                 if fnr == target:
                     print("Finished seek")
-                    self.roughseek(cur * 2)
+                    self.roughseek(cur)
                     return cur
                 else:
-                    cur += (target - fnr) - 1
+                    cur += ((target - fnr) * 2) - 1
 
         print("Finished seeking")
 
