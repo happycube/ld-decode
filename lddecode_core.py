@@ -194,7 +194,6 @@ class RFDecode:
         # compute the pole locations symmetric to freq_half (i.e. 12.2 and 27.8)
         MTF_polef_lo = DP['MTF_freq']/self.freq_half
         MTF_polef_hi = (self.freq_half + (self.freq_half - DP['MTF_freq']))/self.freq_half
-        print(MTF_polef_lo, MTF_polef_hi)
 
         MTF = sps.zpk2tf([], [polar2z(DP['MTF_poledist'],np.pi*MTF_polef_lo), polar2z(DP['MTF_poledist'],np.pi*MTF_polef_hi)], 1)
         SF['MTF'] = filtfft(MTF, self.blocklen)
@@ -322,9 +321,7 @@ class RFDecode:
         rv_efm = None
 
         mtf_level *= self.mtf_mult
-        if self.system == 'NTSC':
-            #mtf_level *= .7
-            mtf_level *= .545
+        mtf_level *= self.DecoderParams['MTF_basemult']
         mtf_level += self.mtf_offset
             
         indata_fft = np.fft.fft(data[:self.blocklen])
