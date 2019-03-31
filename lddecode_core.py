@@ -83,6 +83,8 @@ SysParams_PAL['outfreq'] = 4 * SysParams_PAL['fsc_mhz']
 
 SysParams_PAL['vsync_ire'] = -.3 * (100 / .7)
 
+# RFParams are tunable
+
 RFParams_NTSC = {
     # The audio notch filters are important with DD v3.0+ boards
     'audio_notchwidth': 350000,
@@ -97,7 +99,12 @@ RFParams_NTSC = {
     # This can easily be pushed up to 4.5mhz or even a bit higher. 
     # A sharp 4.8-5.0 is probably the maximum before the audio carriers bleed into 0IRE.
     'video_lpf_freq': 4500000,   # in mhz
-    'video_lpf_order': 6 # butterworth filter order
+    'video_lpf_order': 6, # butterworth filter order
+
+    # MTF filter
+    'MTF_basemult': .545, # general ** level of the MTF filter for frame 0.
+    'MTF_poledist': .9,
+    'MTF_freq': 12.2, # in mhz
 }
 
 RFParams_PAL = {
@@ -113,6 +120,11 @@ RFParams_PAL = {
 
     'video_lpf_freq': 4800000,
     'video_lpf_order': 7,
+
+    # MTF filter
+    'MTF_basemult': 1.0,  # general ** level of the MTF filter for frame 0.
+    'MTF_poledist': .70,
+    'MTF_freq': 10,
 }
 
 class RFDecode:
@@ -172,20 +184,21 @@ class RFDecode:
         self.Filters['Fefm'] = filtfft((filt, [1.0]), self.blocklen)
 
     def computevideofilters(self):
-        if self.system == 'NTSC':
-            self.Filters = {
-                'MTF': filtfft(sps.zpk2tf([], [polar2z(.7,np.pi*12.5/20), polar2z(.7,np.pi*27.5/20)], 1.11), self.blocklen)
-            }
-        elif self.system == 'PAL':
-            self.Filters = {
-                'MTF': filtfft(sps.zpk2tf([], [polar2z(.7,np.pi*10/20), polar2z(.7,np.pi*28/20)], 1.11), self.blocklen)
-            }
+        self.Filters = {}
         
-        # Use some shorthand to compact the code.  good idea?  prolly not.
+        # Use some shorthand to compact the code.
         SF = self.Filters
         SP = self.SysParams
         DP = self.DecoderParams
         
+        # compute the pole locations symmetric to freq_half (i.e. 12.2 and 27.8)
+        MTF_polef_lo = DP['MTF_freq']/self.freq_half
+        MTF_polef_hi = (self.freq_half + (self.freq_half - DP['MTF_freq']))/self.freq_half
+        print(MTF_polef_lo, MTF_polef_hi)
+
+        MTF = sps.zpk2tf([], [polar2z(DP['MTF_poledist'],np.pi*MTF_polef_lo), polar2z(DP['MTF_poledist'],np.pi*MTF_polef_hi)], 1)
+        SF['MTF'] = filtfft(MTF, self.blocklen)
+
         SF['hilbert'] = np.fft.fft(hilbert_filter, self.blocklen)
         
         filt_rfvideo = sps.butter(DP['video_bpf_order'], [DP['video_bpf'][0]/self.freq_hz_half, DP['video_bpf'][1]/self.freq_hz_half], btype='bandpass')
@@ -310,7 +323,8 @@ class RFDecode:
 
         mtf_level *= self.mtf_mult
         if self.system == 'NTSC':
-            mtf_level *= .7
+            #mtf_level *= .7
+            mtf_level *= .545
         mtf_level += self.mtf_offset
             
         indata_fft = np.fft.fft(data[:self.blocklen])
@@ -1754,6 +1768,31 @@ class LDdecode:
 
         return 20 * np.log10(100 / noise)
 
+    def computeMetricsPAL(self, metrics, f, fp = None):
+
+        # PAL VITS has a lot of useful stuff on one field only, so 
+        # always process both if possible(?)
+        if f.isFirstField:
+            f1 = f
+            f2 = fp
+        else:
+            f1 = fp
+            f2 = f
+        
+        if f1 is not None:
+            # compute IRE50 from field1 l13
+            # Unforunately this is too short to get a 50IRE RF level
+            wl_slice = f1.lineslice_tbc(13, 4.7+15.5, 3)
+            metrics['palIRE50PSNR'] = self.calcpsnr(f1, wl_slice)
+            metrics['palIRE50IRE'] = np.mean(f1.output_to_ire(f1.dspicture[wl_slice]))
+
+        if f2 is not None:
+            # There's a nice long burst at 50IRE block on field2 l13
+            b50slice = f2.lineslice_tbc(13, 36, 20)
+            metrics['palVITSBurst50Level'] = rms(f2.dspicture[b50slice]) / f2.out_scale
+
+        return metrics    
+
     def computeMetricsNTSC(self, metrics, f, fp = None):
         
         # check for a white flag - only on earlier discs, and only on first "frame" fields
@@ -1765,6 +1804,7 @@ class LDdecode:
         c = CombNTSC(f)
 
         level, phase, snr = c.calcLine19Info()
+        #metrics['ntscLine19ColorLevel'] = level
         metrics['ntscLine19ColorPhase'] = phase
         metrics['ntscLine19ColorRawSNR'] = snr
 
@@ -1775,7 +1815,7 @@ class LDdecode:
         rawdata = f.rawdata[ire50_rawslice.start - int(self.rf.delays['video_white']):ire50_rawslice.stop - int(self.rf.delays['video_white'])]
         metrics['ntscIRE50RFLevel'] = np.std(rawdata)
         
-        if fp is not None:
+        if not f.isFirstField and fp is not None:
             sl_cburst = f.lineslice_tbc(19, 4.7+.8, 2.4)
             diff = (f.dspicture[sl_cburst].astype(float) - fp.dspicture[sl_cburst].astype(float))/2
 
@@ -1788,6 +1828,8 @@ class LDdecode:
             metrics['ntscLine19Color3DPhase'] = phase3d
             metrics['ntscLine19Color3DRawSNR'] = snr3d
 
+        return metrics    
+
     def computeMetrics(self, f, fp = None):
         if not self.curfield:
             raise ValueError("No decoded field to work with")
@@ -1798,13 +1840,14 @@ class LDdecode:
 
         if system == 'NTSC':
             self.computeMetricsNTSC(metrics, f, fp)
-            whitelocs = [(20, 14, 12), (20, 52, 8), (13, 13, 15), (20, 13, 2)]
+            whitelocs = [(20, 14, 12), (20, 52, 8), (13, 13, 15)]#, (20, 13, 2)]
         else:
-            #self.computeMetricsPAL(metrics)        
+            self.computeMetricsPAL(metrics, f, fp)
             whitelocs = [(19, 12, 8)]
         
         for l in whitelocs:
             wl_slice = f.lineslice_tbc(*l)
+            #print(l, np.mean(f.output_to_ire(f.dspicture[wl_slice])))
             if inrange(np.mean(f.output_to_ire(f.dspicture[wl_slice])), 90, 110):
                 metrics['whiteSNR'] = self.calcpsnr(f, wl_slice)
                 metrics['whiteIRE'] = np.mean(f.output_to_ire(f.dspicture[wl_slice]))
