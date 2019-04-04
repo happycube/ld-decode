@@ -102,7 +102,7 @@ RFParams_NTSC = {
     'video_lpf_order': 6, # butterworth filter order
 
     # MTF filter
-    'MTF_basemult': .34, # general ** level of the MTF filter for frame 0.
+    'MTF_basemult': .4, # general ** level of the MTF filter for frame 0.
     'MTF_poledist': .9,
     'MTF_freq': 12.2, # in mhz
 }
@@ -1322,6 +1322,7 @@ class FieldNTSC(Field):
         amed[True] = np.abs(np.median(bursts_arr[True]))
         amed[False] = np.abs(np.median(bursts_arr[False]))
 
+        #print(amed[True], amed[False])
         field14 = amed[True] < amed[False]
         self.amed = amed
         self.zc_bursts = zc_bursts
@@ -1384,6 +1385,8 @@ class FieldNTSC(Field):
             self.fieldPhaseID = 1 if self.field14 else 3
         else:
             self.fieldPhaseID = 4 if self.field14 else 2
+
+        #print(self.fieldPhaseID, self.isFirstField, self.field14)
 
         return linelocs_adj, burstlevel#, adjs
     
@@ -1510,9 +1513,21 @@ class CombNTSC:
         
         # Don't need the whole line here, but start at 0 to definitely have an even #
         l19_slice = self.field.lineslice_tbc(19, 0, 40)
+        l19_slice_i70 = self.field.lineslice_tbc(19, 14, 18)
+
+        # fail out if there is obviously bad data
+        if not ((np.max(self.field.output_to_ire(self.field.dspicture[l19_slice_i70])) < 100) and
+                (np.min(self.field.output_to_ire(self.field.dspicture[l19_slice_i70])) > 40)):
+            print(np.max(self.field.output_to_ire(self.field.dspicture[l19_slice_i70])), np.min(self.field.output_to_ire(self.field.dspicture[l19_slice_i70])))
+            return None, None, None
 
         cbuffer = self.cbuffer[l19_slice]
         if comb_field2 is not None:
+            # fail out if there is obviously bad data
+            if not ((np.max(self.field.output_to_ire(comb_field2.field.dspicture[l19_slice_i70])) < 100) and
+                    (np.min(self.field.output_to_ire(comb_field2.field.dspicture[l19_slice_i70])) > 40)):
+                return None, None, None
+
             cbuffer -= comb_field2.cbuffer[l19_slice]
             cbuffer /= 2
             
@@ -1563,6 +1578,7 @@ class LDdecode:
         self.firstfield = None # In frame output mode, the first field goes here
         self.fieldloc = 0
 
+        self.system = system
         if system == 'PAL':
             self.rf = RFDecode(system = 'PAL', decode_analog_audio=analog_audio, decode_digital_audio=digital_audio)
             self.FieldClass = FieldPAL
@@ -1594,6 +1610,8 @@ class LDdecode:
         self.leadOut = False
         self.isCLV = False
         self.frameNumber = None
+
+        self.bw_ratios = []
         
     def close(self):
         ''' deletes all open files, so it's possible to pickle an LDDecode object '''
@@ -1620,20 +1638,21 @@ class LDdecode:
         self.prevPhaseID = None
         self.fdoffset = fieldnr * self.bytes_per_field
 
-    # NOTE: this has a one frame lag, which means the first .tbc frame has default values
-    # this will be fixed later in rev5 dev cycle    
-    def checkMTF(self, field):
-        if self.isCLV == False and self.frameNumber is not None:
-            newmtf = 1 - (self.frameNumber / 10000) if self.frameNumber < 10000 else 0
-            oldmtf = self.mtf_level
-            self.mtf_level = newmtf
+    def checkMTF(self, field, pfield = None):
+        oldmtf = self.mtf_level
 
-            if np.abs(newmtf - oldmtf) > .1: # redo field if too much adjustment
-                #print(newmtf, oldmtf, field.cavFrame)
-                return False
-            
-        return True
-    
+        if (len(self.bw_ratios) == 0):
+            return True
+
+        # scale for NTSC - 1.1 to 1.55
+        self.mtf_level = (np.mean(self.bw_ratios) - 1.08) / .38
+        if self.mtf_level < 0:
+            self.mtf_level = 0
+        if self.mtf_level > 1:
+            self.mtf_level = 1
+
+        return np.abs(self.mtf_level - oldmtf) < .05
+
     def decodefield(self):
         ''' returns field object if valid, and the offset to the next decode '''
         self.readloc = self.fdoffset - self.rf.blockcut
@@ -1690,20 +1709,41 @@ class LDdecode:
             self.fdoffset += offset
             
             if f is not None and f.valid:
-                if self.checkMTF(f) or MTFadjusted:
+                metrics = self.computeMetrics(f, None)
+                if 'blackToWhiteRFRatio' in metrics and MTFadjusted == False:
+                    self.bw_ratios.append(metrics['blackToWhiteRFRatio'])
+                    self.bw_ratios = self.bw_ratios[-5:]
+
+                    #print(metrics['blackToWhiteRFRatio'], np.mean(self.bw_ratios))
+
+                if self.checkMTF(f, self.prevfield) or MTFadjusted:
                     done = True
                 else:
                     # redo field
                     MTFadjusted = True
                     self.fdoffset -= offset
-                 
-        if f is not None:
-            self.processfield(f)
+
+        if f is not None and self.fname_out is not None:
+            picture, audio, efm = f.downscale(linesout = self.output_lines, final=True)
+            
+            fi = self.buildmetadata(f)
+            fi['audioSamples'] = 0 if audio is None else int(len(audio) / 2)
+            self.fieldinfo.append(fi)
+
+            self.outfile_video.write(picture)
+            self.fields_written += 1
+
+            if audio is not None and self.outfile_audio is not None:
+                self.outfile_audio.write(audio)
+
+            if self.digital_audio == True:
+                self.outfile_efm.write(efm)
             
         return f
 
-    # For now only decode frame # to help with seeking
     def decodeFrameNumber(self, f1, f2):
+        ''' decode frame #/information from Philips code data on both fields '''
+
         # CLV
         self.isCLV = False
         self.earlyCLV = False
@@ -1770,7 +1810,6 @@ class LDdecode:
         return 20 * np.log10(100 / noise)
 
     def computeMetricsPAL(self, metrics, f, fp = None):
-
         # PAL VITS has a lot of useful stuff on one field only, so 
         # always process both if possible(?)
         if f.isFirstField:
@@ -1793,7 +1832,6 @@ class LDdecode:
         return metrics    
 
     def computeMetricsNTSC(self, metrics, f, fp = None):
-        
         # check for a white flag - only on earlier discs, and only on first "frame" fields
         wf_slice = f.lineslice_tbc(11, 15, 40)
         if inrange(np.mean(f.output_to_ire(f.dspicture[wf_slice])), 92, 108):
@@ -1803,9 +1841,11 @@ class LDdecode:
         c = CombNTSC(f)
 
         level, phase, snr = c.calcLine19Info()
-        #metrics['ntscLine19ColorLevel'] = level
-        metrics['ntscLine19ColorPhase'] = phase
-        metrics['ntscLine19ColorRawSNR'] = snr
+        if level is not None:
+            #print(level)
+            metrics['ntscLine19ColorLevel'] = level
+            metrics['ntscLine19ColorPhase'] = phase
+            metrics['ntscLine19ColorRawSNR'] = snr
 
         ire50_slice = f.lineslice_tbc(19, 36, 10)
         metrics['ntscIRE50PSNR'] = self.calcpsnr(f, ire50_slice)
@@ -1815,17 +1855,19 @@ class LDdecode:
         metrics['ntscIRE50RFLevel'] = np.std(rawdata)
         
         if not f.isFirstField and fp is not None:
-            sl_cburst = f.lineslice_tbc(19, 4.7+.8, 2.4)
-            diff = (f.dspicture[sl_cburst].astype(float) - fp.dspicture[sl_cburst].astype(float))/2
-
-            metrics['ntscLine19Burst0IRE'] = np.sqrt(2)*rms(diff)/f.out_scale
-            
             cp = CombNTSC(fp)
             
             level3d, phase3d, snr3d = c.calcLine19Info(cp)
-            metrics['ntscLine19Burst70IRE'] = level3d
-            metrics['ntscLine19Color3DPhase'] = phase3d
-            metrics['ntscLine19Color3DRawSNR'] = snr3d
+            #print(level3d)
+            if level3d is not None:
+                metrics['ntscLine19Burst70IRE'] = level3d
+                metrics['ntscLine19Color3DPhase'] = phase3d
+                metrics['ntscLine19Color3DRawSNR'] = snr3d
+
+                sl_cburst = f.lineslice_tbc(19, 4.7+.8, 2.4)
+                diff = (f.dspicture[sl_cburst].astype(float) - fp.dspicture[sl_cburst].astype(float))/2
+
+                metrics['ntscLine19Burst0IRE'] = np.sqrt(2)*rms(diff)/f.out_scale
 
         return metrics    
 
@@ -1889,6 +1931,8 @@ class LDdecode:
 
         if 'whiteRFLevel' in metrics:
             metrics['syncToWhiteRFRatio'] = metrics['syncRFLevel'] / metrics['whiteRFLevel']
+            metrics['blackToWhiteRFRatio'] = metrics['blackLineRFLevel'] / metrics['whiteRFLevel']
+
 
         metrics_rounded = {}
 
@@ -1897,81 +1941,13 @@ class LDdecode:
 
         return metrics_rounded
 
-    def build_json(self, f):
-        jout = {}
-        jout['pcmAudioParameters'] = {'bits':16, 'isLittleEndian': True, 'isSigned': True, 'sampleRate': 48000}
-
-        vp = {}
-
-        vp['numberOfSequentialFields'] = len(self.fieldinfo)
-        
-        vp['isSourcePal'] = True if f.rf.system == 'PAL' else False
-
-        vp['fsc'] = int(f.rf.SysParams['fsc_mhz'] * 1000000)
-        vp['fieldWidth'] = f.rf.SysParams['outlinelen']
-        vp['sampleRate'] = vp['fsc'] * 4
-        spu = vp['sampleRate'] / 1000000
-
-        vp['black16bIre'] = np.float(f.hz_to_output(f.rf.iretohz(self.blackIRE)))
-        vp['white16bIre'] = np.float(f.hz_to_output(f.rf.iretohz(100)))
-
-        vp['fieldHeight'] = f.outlinecount
-
-        badj = -1.4 # current burst adjustment as of 2/27/19, update when #158 is fixed!
-        vp['colourBurstStart'] = np.round((f.rf.SysParams['colorBurstUS'][0] * spu) + badj)
-        vp['colourBurstEnd'] = np.round((f.rf.SysParams['colorBurstUS'][1] * spu) + badj)
-        vp['activeVideoStart'] = np.round((f.rf.SysParams['activeVideoUS'][0] * spu) + badj)
-        vp['activeVideoEnd'] = np.round((f.rf.SysParams['activeVideoUS'][1] * spu) + badj)
-
-        jout['videoParameters'] = vp
-        
-        jout['fields'] = self.fieldinfo.copy()
-
-        return jout
-
-    def processframenumber(self, fi, f):
-        self.frameNumber = None
-        
-        # use a stored first field, in case we start with a second field
-        if self.firstfield is not None:
-            # process VBI frame info data
-            self.frameNumber = self.decodeFrameNumber(self.firstfield, f)
-
-            rawloc = np.floor((self.readloc / self.bytes_per_field) / 2)
-            if self.isCLV and self.earlyCLV: # early CLV
-                print("file frame %d early-CLV minute %d" % (rawloc, self.clvMinutes))
-            elif self.isCLV and self.frameNumber is not None:
-                print("file frame %d CLV timecode %d:%.2d.%.2d frame %d" % (rawloc, self.clvMinutes, self.clvSeconds, self.clvFrameNum, self.frameNumber))
-            elif self.frameNumber:
-                print("file frame %d CAV frame %d" % (rawloc, self.frameNumber))
-            elif self.leadOut:
-                print("file frame %d lead out" % (rawloc))
-            else:
-                print("file frame %d unknown" % (rawloc))
-
-            self.firstfield = None
-
-            if self.frameNumber is not None:
-                fi['frameNumber'] = int(self.frameNumber)
-
-            if self.isCLV and self.clvMinutes is not None:
-                fi['clvMinutes'] = int(self.clvMinutes)
-                if self.earlyCLV == False:
-                    fi['clvSeconds'] = int(self.clvSeconds)
-                    fi['clvFrameNr'] = int(self.clvFrameNum)
-
-        return fi
-
-    def processfield(self, f, squelch = False):
-        picture, audio, efm = f.downscale(linesout = self.output_lines, final=True)
-            
+    def buildmetadata(self, f):
         prevfi = self.fieldinfo[-1] if len(self.fieldinfo) else None
 
-        # isFirstField has been compared against line 6 PAL and line 9 NTSC
         fi = {'isFirstField': True if f.isFirstField else False, 
               'syncConf': f.sync_confidence, 
               'seqNo': len(self.fieldinfo) + 1, 
-              'audioSamples': 0 if audio is None else int(len(audio) / 2),
+              #'audioSamples': 0 if audio is None else int(len(audio) / 2),
               'diskLoc': np.round((self.fieldloc / self.bytes_per_field) * 10) / 10,
               'medianBurstIRE': f.burstmedian}
 
@@ -2005,23 +1981,39 @@ class LDdecode:
         fi['decodeFaults'] = decodeFaults
         fi['vitsMetrics'] = self.computeMetrics(self.curfield, self.prevfield)
 
-        if self.fname_out is not None:
-            self.outfile_video.write(picture)
-            self.fields_written += 1
-
-            if audio is not None and self.outfile_audio is not None:
-                self.outfile_audio.write(audio)
-
-            if self.digital_audio == True:
-                self.outfile_efm.write(efm)
-
+        self.frameNumber = None
         if f.isFirstField:
             self.firstfield = f
-            self.frameNumber = None
         else:
-            self.processframenumber(fi, f)
+            # use a stored first field, in case we start with a second field
+            if self.firstfield is not None:
+                # process VBI frame info data
+                self.frameNumber = self.decodeFrameNumber(self.firstfield, f)
 
-        self.fieldinfo.append(fi)
+                rawloc = np.floor((self.readloc / self.bytes_per_field) / 2)
+                if self.isCLV and self.earlyCLV: # early CLV
+                    print("file frame %d early-CLV minute %d" % (rawloc, self.clvMinutes))
+                elif self.isCLV and self.frameNumber is not None:
+                    print("file frame %d CLV timecode %d:%.2d.%.2d frame %d" % (rawloc, self.clvMinutes, self.clvSeconds, self.clvFrameNum, self.frameNumber))
+                elif self.frameNumber:
+                    print("file frame %d CAV frame %d" % (rawloc, self.frameNumber))
+                elif self.leadOut:
+                    print("file frame %d lead out" % (rawloc))
+                else:
+                    print("file frame %d unknown" % (rawloc))
+
+                if self.frameNumber is not None:
+                    fi['frameNumber'] = int(self.frameNumber)
+
+                if self.isCLV and self.clvMinutes is not None:
+                    fi['clvMinutes'] = int(self.clvMinutes)
+                    if self.earlyCLV == False:
+                        fi['clvSeconds'] = int(self.clvSeconds)
+                        fi['clvFrameNr'] = int(self.clvFrameNum)
+
+        #self.fieldinfo.append(fi)
+        return fi
+
 
     # seek support function
     def seek_getframenr(self, start):
@@ -2036,7 +2028,6 @@ class LDdecode:
             self.fdoffset += offset
 
             if self.prevfield is not None and f is not None and f.valid:
-                #self.processfield(f, squelch=True)
                 fnum = self.decodeFrameNumber(self.prevfield, self.curfield)
 
                 if self.earlyCLV:
@@ -2074,3 +2065,38 @@ class LDdecode:
         print("Finished seeking")
 
         return cur - 0
+
+    def build_json(self, f):
+        ''' build up the JSON structure for file output. '''
+        jout = {}
+        jout['pcmAudioParameters'] = {'bits':16, 'isLittleEndian': True, 'isSigned': True, 'sampleRate': 48000}
+
+        vp = {}
+
+        vp['numberOfSequentialFields'] = len(self.fieldinfo)
+        
+        vp['isSourcePal'] = True if f.rf.system == 'PAL' else False
+
+        vp['fsc'] = int(f.rf.SysParams['fsc_mhz'] * 1000000)
+        vp['fieldWidth'] = f.rf.SysParams['outlinelen']
+        vp['sampleRate'] = vp['fsc'] * 4
+        spu = vp['sampleRate'] / 1000000
+
+        vp['black16bIre'] = np.float(f.hz_to_output(f.rf.iretohz(self.blackIRE)))
+        vp['white16bIre'] = np.float(f.hz_to_output(f.rf.iretohz(100)))
+
+        vp['fieldHeight'] = f.outlinecount
+
+        badj = -1.4 # current burst adjustment as of 2/27/19, update when #158 is fixed!
+        vp['colourBurstStart'] = np.round((f.rf.SysParams['colorBurstUS'][0] * spu) + badj)
+        vp['colourBurstEnd'] = np.round((f.rf.SysParams['colorBurstUS'][1] * spu) + badj)
+        vp['activeVideoStart'] = np.round((f.rf.SysParams['activeVideoUS'][0] * spu) + badj)
+        vp['activeVideoEnd'] = np.round((f.rf.SysParams['activeVideoUS'][1] * spu) + badj)
+
+        jout['videoParameters'] = vp
+        
+        jout['fields'] = self.fieldinfo.copy()
+
+        return jout
+
+
