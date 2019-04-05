@@ -1611,6 +1611,8 @@ class LDdecode:
         self.isCLV = False
         self.frameNumber = None
 
+        self.autoMTF = True
+
         self.bw_ratios = []
         
     def close(self):
@@ -1638,7 +1640,23 @@ class LDdecode:
         self.prevPhaseID = None
         self.fdoffset = fieldnr * self.bytes_per_field
 
+    def checkMTF_calc(self, field):
+        if not self.isCLV and self.frameNumber is not None:
+            newmtf = 1 - (self.frameNumber / 10000) if self.frameNumber < 10000 else 0
+            oldmtf = self.mtf_level
+            self.mtf_level = newmtf
+
+            if np.abs(newmtf - oldmtf) > .1: # redo field if too much adjustment
+                #print(newmtf, oldmtf, field.cavFrame)
+                return False
+            
+        return True
+
     def checkMTF(self, field, pfield = None):
+
+        if not self.autoMTF:
+            return self.checkMTF_calc(field)
+
         oldmtf = self.mtf_level
 
         if (len(self.bw_ratios) == 0):
@@ -1711,8 +1729,9 @@ class LDdecode:
             if f is not None and f.valid:
                 metrics = self.computeMetrics(f, None)
                 if 'blackToWhiteRFRatio' in metrics and MTFadjusted == False:
+                    keep = 900 if self.isCLV else 30
                     self.bw_ratios.append(metrics['blackToWhiteRFRatio'])
-                    self.bw_ratios = self.bw_ratios[-5:]
+                    self.bw_ratios = self.bw_ratios[-keep:]
 
                     #print(metrics['blackToWhiteRFRatio'], np.mean(self.bw_ratios))
 
