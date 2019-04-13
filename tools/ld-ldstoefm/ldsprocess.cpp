@@ -42,7 +42,7 @@ LdsProcess::LdsProcess()
 //  6. Save the data to the output EFM data file
 
 bool LdsProcess::process(QString inputFilename, QString outputFilename, bool outputSample, bool useFloatingPoint,
-                         bool noIsiFilter, qint32 percentToProcess)
+                         bool noEFMFilter, bool noIsiFilter, qint32 percentToProcess)
 {
     // Open the input file
     if (!openInputFile(inputFilename)) {
@@ -75,10 +75,12 @@ bool LdsProcess::process(QString inputFilename, QString outputFilename, bool out
         if (ldsData.size() > 0) {
             inputProcessed += ldsData.size();
 
-            // Filter out everything from the LDS to leave just the EFM signal
-            qDebug() << "LdsProcess::process(): Applying EFM extraction filter...";
-            if (useFloatingPoint) efmFilter.floatEfmProcess(ldsData);
-            else efmFilter.fixedEfmProcess(ldsData);
+            if (!noEFMFilter) {
+            	// Filter out everything from the LDS to leave just the EFM signal
+            	qDebug() << "LdsProcess::process(): Applying EFM extraction filter...";
+            	if (useFloatingPoint) efmFilter.floatEfmProcess(ldsData);
+            	else efmFilter.fixedEfmProcess(ldsData);
+            }
 
             if (!noIsiFilter) {
                 // Pulse shape the EFM data
