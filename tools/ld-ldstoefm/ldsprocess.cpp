@@ -44,13 +44,19 @@ LdsProcess::LdsProcess()
 bool LdsProcess::process(QString inputFilename, QString outputFilename, bool outputSample, bool useFloatingPoint,
                          bool noEFMFilter, bool noIsiFilter, qint32 percentToProcess)
 {
-    // Open the input file
-    if (!openInputFile(inputFilename)) {
+	// Open the input file
+	if (!openInputFile(inputFilename)) {
         qCritical("Could not open input file!");
         return false;
     }
+
+    // Chad wrote this hacky garbage and really should clean it up. ;)
+	bool pipeMode = inputFileHandle->size() == 0; 
+
     qint64 inputFileSize = (inputFileHandle->size() / 10) * 16;
     qint64 inputProcessed = 0;
+
+    if (pipeMode) qInfo() << "Assuming a live pipe - reading 16 bit unsigned data.";
 
     // Warn if --sample has been selected
     if (outputSample) qInfo() << "Writing output as a 16-bit signed sample of the filter output";
@@ -69,8 +75,29 @@ bool LdsProcess::process(QString inputFilename, QString outputFilename, bool out
     QByteArray efmData;
     bool finished = false;
     do {
-        // Get qint16 sample data from the 10-bit packed LDS file
-        ldsData = readAndUnpackLdsFile();
+
+		if (pipeMode) {
+			qint32 bufferSizeInBytes = (1024 * 1024); // 1 MiB
+    		ldsData.resize(bufferSizeInBytes);
+
+            // Fill the input buffer with data
+            qint64 receivedBytes = 0;
+            qint32 totalReceivedBytes = 0;
+            do {
+                // In practice as long as the file descriptor is blocking this will read everything in one chunk...
+                receivedBytes = inputFileHandle->read(reinterpret_cast<char *>(ldsData.data() +totalReceivedBytes),
+                                                    bufferSizeInBytes - totalReceivedBytes);
+                if (receivedBytes > 0) totalReceivedBytes += receivedBytes;
+//                qInfo() << receivedBytes;
+            } while (receivedBytes > 0 && totalReceivedBytes < bufferSizeInBytes);
+
+            ldsData.resize(totalReceivedBytes);
+		} else {
+	        // Get qint16 sample data from the 10-bit packed LDS file
+			ldsData = readAndUnpackLdsFile();
+		}
+
+		//qInfo() << ldsData.size();
 
         if (ldsData.size() > 0) {
             inputProcessed += ldsData.size();
@@ -114,16 +141,19 @@ bool LdsProcess::process(QString inputFilename, QString outputFilename, bool out
                 }
             }
 
-            // Show a progress update to the user
-            //qInfo() << "Processed" << inputProcessed / 1024 << "Kbytes of" << inputFileSize / 1024 << "KBytes";
-            qreal percentage = (100.0 / static_cast<qreal>(inputFileSize)) * static_cast<qreal>(inputProcessed);
-            qInfo().nospace() << "Processed " << static_cast<qint32>(percentage) << "%";
+	    if (!pipeMode) {
+                // Show a progress update to the user
+                //qInfo() << "Processed" << inputProcessed / 1024 << "Kbytes of" << inputFileSize / 1024 << "KBytes";
+                qreal percentage = (100.0 / static_cast<qreal>(inputFileSize)) * static_cast<qreal>(inputProcessed);
+                qInfo().nospace() << "Processed " << static_cast<qint32>(percentage) << "%";
 
             // Limit input file processing if required
             if (percentToProcess < 100) {
                 if (static_cast<qint32>(percentage) == percentToProcess) finished = true;
             }
         }
+
+		}
     } while (ldsData.size() > 0 && !finished);
 
     // Close the input file

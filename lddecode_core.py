@@ -5,6 +5,7 @@ import getopt
 import io
 from io import BytesIO
 import os
+import subprocess
 import sys
 
 # standard numeric/scientific libraries
@@ -1316,13 +1317,10 @@ class FieldNTSC(Field):
         bursts_arr[True] = np.concatenate(bursts['even'])
         bursts_arr[False] = np.concatenate(bursts['odd'])
 
-        #print(np.median(bursts_arr[True]), np.median(bursts_arr[False]))
-
         amed = {}
         amed[True] = np.abs(np.median(bursts_arr[True]))
         amed[False] = np.abs(np.median(bursts_arr[False]))
 
-        #print(amed[True], amed[False])
         field14 = amed[True] < amed[False]
         self.amed = amed
         self.zc_bursts = zc_bursts
@@ -1385,8 +1383,6 @@ class FieldNTSC(Field):
             self.fieldPhaseID = 1 if self.field14 else 3
         else:
             self.fieldPhaseID = 4 if self.field14 else 2
-
-        #print(self.fieldPhaseID, self.isFirstField, self.field14)
 
         return linelocs_adj, burstlevel#, adjs
     
@@ -1567,11 +1563,20 @@ class LDdecode:
             self.outfile_video = open(fname_out + '.tbc', 'wb')
             #self.outfile_json = open(fname_out + '.json', 'wb')
             self.outfile_audio = open(fname_out + '.pcm', 'wb') if analog_audio else None
-            self.outfile_efm = open(fname_out + '.efm', 'wb') if digital_audio else None
+            #self.outfile_efm = open(fname_out + '.efm', 'wb') if digital_audio else None
         else:
             self.outfile_video = None
             self.outfile_audio = None
             self.outfile_efm = None
+
+        if fname_out is not None and digital_audio:
+            # create pipeline : EFM output -> dddconv .lds -> ld-ldstoefm
+
+            #self.subproc_dddconv = subprocess.Popen(['dddconv', '-p'], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+            self.subproc_ldstoefm = subprocess.Popen(['ld-ldstoefm', '-e', '/dev/stdin', fname_out + '.efm'], stdin=subprocess.PIPE)
+            
+            # feed EFM stream into dddconv
+            self.outfile_efm = self.subproc_ldstoefm.stdin
 
         self.fname_out = fname_out
 
@@ -1617,24 +1622,10 @@ class LDdecode:
         
     def close(self):
         ''' deletes all open files, so it's possible to pickle an LDDecode object '''
-        del self.infile
-        self.infile = None
 
-        if self.outfile_video is not None:
-            del self.outfile_video
-            self.outfile_video = None
-
-        if self.outfile_audio is not None:
-            del self.outfile_audio
-            self.outfile_audio = None
-
-        if self.outfile_json is not None:
-            del self.outfile_json
-            self.outfile_json = None
-
-        if self.outfile_efm is not None:
-            del self.outfile_efm
-            self.outfile_efm = None
+        # use setattr to force file closure
+        for outfiles in ['infile', 'outfile_video', 'outfile_audio', 'outfile_json', 'outfile_efm']:
+            setattr(self, outfiles, None)
 
     def roughseek(self, fieldnr):
         self.prevPhaseID = None
@@ -1653,7 +1644,6 @@ class LDdecode:
         return True
 
     def checkMTF(self, field, pfield = None):
-
         if not self.autoMTF:
             return self.checkMTF_calc(field)
 
@@ -1861,8 +1851,7 @@ class LDdecode:
 
         level, phase, snr = c.calcLine19Info()
         if level is not None:
-            #print(level)
-            metrics['ntscLine19ColorLevel'] = level
+            #metrics['ntscLine19ColorLevel'] = level
             metrics['ntscLine19ColorPhase'] = phase
             metrics['ntscLine19ColorRawSNR'] = snr
 
@@ -1922,9 +1911,6 @@ class LDdecode:
         blackline = 14 if system == 'NTSC' else 22
         bl_slicetbc = f.lineslice_tbc(blackline, 12, 50)
 
-        synclevels = []
-        rfgaps = []
-
         # these metrics handle various easily detectable differences between fields
         bl_slice = f.lineslice(blackline, 12, 50)
 
@@ -1951,7 +1937,6 @@ class LDdecode:
         if 'whiteRFLevel' in metrics:
             metrics['syncToWhiteRFRatio'] = metrics['syncRFLevel'] / metrics['whiteRFLevel']
             metrics['blackToWhiteRFRatio'] = metrics['blackLineRFLevel'] / metrics['whiteRFLevel']
-
 
         metrics_rounded = {}
 
@@ -2030,9 +2015,7 @@ class LDdecode:
                         fi['clvSeconds'] = int(self.clvSeconds)
                         fi['clvFrameNr'] = int(self.clvFrameNum)
 
-        #self.fieldinfo.append(fi)
         return fi
-
 
     # seek support function
     def seek_getframenr(self, start):
@@ -2117,5 +2100,3 @@ class LDdecode:
         jout['fields'] = self.fieldinfo.copy()
 
         return jout
-
-
