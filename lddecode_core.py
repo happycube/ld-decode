@@ -16,6 +16,9 @@ import scipy.signal as sps
 import scipy.fftpack as fftpack 
 
 #internal libraries which may or may not get used
+
+import commpy_filters
+
 import fdls
 from lddutils import *
 
@@ -183,6 +186,12 @@ class RFDecode:
         # this filter is applied *backwards*
         filt = filt[::-1]
         self.Filters['Fefm'] = filtfft((filt, [1.0]), self.blocklen)
+
+        # ISI filter
+        # similar to original: Fisi = commpy_filters.rcosfilter(81, .75, 1/4400000, 40000000)
+        # enhanced version:
+        Fisi = commpy_filters.rcosfilter(257, 0, 1/4400000, 40000000)
+        self.Filters['Fefm'] *= filtfft((Fisi[1], [1.0]), self.blocklen)
 
     def computevideofilters(self):
         self.Filters = {}
@@ -1573,7 +1582,7 @@ class LDdecode:
             # create pipeline : EFM output -> dddconv .lds -> ld-ldstoefm
 
             #self.subproc_dddconv = subprocess.Popen(['dddconv', '-p'], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
-            self.subproc_ldstoefm = subprocess.Popen(['ld-ldstoefm', '-e', '/dev/stdin', fname_out + '.efm'], stdin=subprocess.PIPE)
+            self.subproc_ldstoefm = subprocess.Popen(['ld-ldstoefm', '-n', '-e', '/dev/stdin', fname_out + '.efm'], stdin=subprocess.PIPE)
             
             # feed EFM stream into dddconv
             self.outfile_efm = self.subproc_ldstoefm.stdin
