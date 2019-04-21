@@ -56,14 +56,16 @@ bool LdsProcess::process(QString inputFilename, QString outputFilename, bool out
     qint64 inputFileSize = (inputFileHandle->size() / 10) * 16;
     qint64 inputProcessed = 0;
 
-    if (pipeMode) qInfo() << "Assuming a live pipe - reading 16 bit unsigned data.";
+    // if (pipeMode) qInfo() << "ld-ldstoefm recieving data from ld-decode";
 
     // Warn if --sample has been selected
     if (outputSample) qInfo() << "Writing output as a 16-bit signed sample of the filter output";
 
     // Warn is --float has been selected
-    if (useFloatingPoint) qInfo() << "Using floating-point filter processing";
-    else qInfo() << "Using fixed-point filter processing";
+    if (!pipeMode) {
+        if (useFloatingPoint) qInfo() << "Using floating-point filter processing";
+        else qInfo() << "Using fixed-point filter processing";
+    }
 
     // Open the output file
     if (!openOutputFile(outputFilename)) {
