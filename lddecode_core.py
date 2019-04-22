@@ -1537,7 +1537,8 @@ class CombNTSC:
         # fail out if there is obviously bad data
         if not ((np.max(self.field.output_to_ire(self.field.dspicture[l19_slice_i70])) < 100) and
                 (np.min(self.field.output_to_ire(self.field.dspicture[l19_slice_i70])) > 40)):
-            print(np.max(self.field.output_to_ire(self.field.dspicture[l19_slice_i70])), np.min(self.field.output_to_ire(self.field.dspicture[l19_slice_i70])))
+            #print("WARNING: line 19 data incorrect")
+            #print(np.max(self.field.output_to_ire(self.field.dspicture[l19_slice_i70])), np.min(self.field.output_to_ire(self.field.dspicture[l19_slice_i70])))
             return None, None, None
 
         cbuffer = self.cbuffer[l19_slice]
