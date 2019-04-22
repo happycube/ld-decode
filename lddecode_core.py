@@ -203,7 +203,8 @@ class RFDecode:
         # ISI filter
         # similar to original: Fisi = commpy_filters.rcosfilter(81, .75, 1/4400000, 40000000)
         # enhanced version:
-        Fisi = commpy_filters.rcosfilter(221, 0.08, 1/4321800, 40000000)
+        #Fisi = commpy_filters.rcosfilter(221, 0.08, 1/4321800, 40000000)
+        Fisi = commpy_filters.rcosfilter(221, 0.5, 1/4321800, 40000000)
         self.Filters['Fefm'] *= filtfft((Fisi[1], [1.0]), self.blocklen)
 
     def computevideofilters(self):
