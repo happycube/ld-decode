@@ -11,13 +11,13 @@ RFParams_PAL_VHS = {**RFParams_PAL}
 RFParams_PAL_VHS['video_deemp'] = (100*.24, 400*.24)
 
 # Band-pass filter for Video rf.
-RFParams_PAL_VHS['video_bpf'] = (3000000, 5500000)
+RFParams_PAL_VHS['video_bpf'] = (2500000, 6000000)
 # Band-pass filter order.
 # Order may be fine as is.
 # RFParams_PAL_VHS['video_bpf_order'] = 1
 
 # Low-pass filter on Y after demodulation
-RFParams_PAL_VHS['video_lpf_freq'] = 4500000
+RFParams_PAL_VHS['video_lpf_freq'] = 4200000
 # Order may be fine as is.
 # RFParams_PAL_VHS['video_lpf_order'] = 9
 
@@ -25,14 +25,14 @@ RFParams_PAL_VHS['video_lpf_freq'] = 4500000
 SysParams_PAL_VHS = {**SysParams_PAL}
 
 #0 IRE level after demodulation
-SysParams_PAL_VHS['ire0'] = 4050000
+SysParams_PAL_VHS['ire0'] = 4180000 #4100000
 
 # frequency/ire IRE change pr frequency (Is this labeled correctly?)
-SysParams_PAL_VHS['hz_ire'] = 800000 / 100.0
+SysParams_PAL_VHS['hz_ire'] = 960000 / 100.0
 
 # Heterodyned color carrier frequency in Mhz.
 # On VHS the same frequency is used for both NTSC and PAL.
-VHS_COLOR_CARRIER_MHZ = 0.629,
+VHS_COLOR_CARRIER_MHZ = 0.629
 
 #SysParams_PAL['outlinelen'] = calclinelen(SysParams_PAL, 4, 'fsc_mhz')
 #SysParams_PAL['outlinelen_pilot'] = calclinelen(SysParams_PAL, 4, 'pilot_mhz')

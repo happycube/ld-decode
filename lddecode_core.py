@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 import scipy as sp
 import scipy.signal as sps
-import scipy.fftpack as fftpack 
+import scipy.fftpack as fftpack
 
 #internal libraries which may or may not get used
 import fdls
@@ -743,6 +743,9 @@ class Field:
 
         linelocs2 = copy.deepcopy(linelocs)
 
+        #print("Line locs: ", linelocs)
+        #print("self.outlinecount + 6" , self.outlinecount + 6)
+
         for l in range(1, self.outlinecount + 6):
             if l not in linelocs:
                 prev_valid = None
@@ -757,7 +760,10 @@ class Field:
                         next_valid = i
                         break
 
-                if prev_valid is None:
+                if prev_valid is None and next_valid is None:
+                    avglen = self.inlinelen
+                    linelocs2[l] = avglen * l
+                elif prev_valid is None:
                     avglen = self.inlinelen
                     linelocs2[l] = linelocs[next_valid] - (avglen * (next_valid - l))
                 elif next_valid is not None:
