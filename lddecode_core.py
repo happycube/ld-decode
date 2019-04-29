@@ -778,9 +778,6 @@ class Field:
             else:
                 break
 
-        # get list of validated beginnings/endings
-        valid_vsync_edges = [z[0] for z in zip(vsyncs, validated) if z[1]]
-
         hsynclen_med = np.median([p[2] for p in pulses[vsyncs[1]+6:vsyncs[2]-6] if p[2] > self.usectoinpx(2.5)])
         hsynclen_min = hsynclen_med - self.usectoinpx(.2)
         hsynclen_max = hsynclen_med + self.usectoinpx(.2)
@@ -854,7 +851,7 @@ class Field:
                         this_linelen -= linelen
 
                     # TODO:  use running average of last X line lengths for comparison?
-                    if inrange(this_linelen, linelen *.995, linelen * 1.005):
+                    if inrange(this_linelen, linelen *.95, linelen * 1.05):
                         linelocs_dict[linenum] = pulses[p][0]
 
                         prevpulse = p
@@ -877,17 +874,19 @@ class Field:
                         next_valid = i
                         break
 
-                #print(l, prev_valid, next_valid)
-
                 if prev_valid is None:
                     avglen = self.inlinelen
                     linelocs_filled[l] = linelocs[next_valid] - (avglen * (next_valid - l))
                 elif next_valid is not None:
                     avglen = (linelocs[next_valid] - linelocs[prev_valid]) / (next_valid - prev_valid)
+                    #avglen = self.inlinelen 
                     linelocs_filled[l] = linelocs[prev_valid] + (avglen * (l - prev_valid))
                 else:
-                    avglen = linelocs[prev_valid] - linelocs[prev_valid - 1]
+                    avglen = (linelocs[next_valid] - linelocs[prev_valid]) / (next_valid - prev_valid)
+                    #avglen = self.inlinelen 
                     linelocs_filled[l] = linelocs[prev_valid] + (avglen * (l - prev_valid))
+                
+                #print(l, prev_valid, next_valid, linelocs_filled[l], avglen)
 
         # *finally* done :)
 
@@ -902,6 +901,7 @@ class Field:
         for i in range(len(self.linelocs1)):
             # Find beginning of hsync (linelocs1 is generally in the middle)
             ll1 = self.linelocs1[i] - self.usectoinpx(5.5)
+            #print(i, ll1)
             zc = calczc(self.data[0]['demod_05'], ll1, self.rf.iretohz(self.rf.SysParams['vsync_ire'] / 2), reverse=False, _count=400)
 
             if zc is not None and not self.linebad[i]:
@@ -1037,7 +1037,7 @@ class Field:
     def __init__(self, rf, rawdata, rawdecode, start, audio_offset = 0, keepraw = True):
         if rawdecode is None:
             return None
-        
+
         self.rawdata = rawdata
         self.data = rawdecode
         self.rf = rf
@@ -1068,13 +1068,10 @@ class Field:
 
             return
 
-        try:
-            self.linelocs2 = self.refine_linelocs_hsync()
-            self.linelocs = self.linelocs2
-        except:
-            print("error in refine_linelocs_hsync()")
-            return
-        
+        self.linelocs2 = self.refine_linelocs_hsync()
+
+        self.linelocs = self.linelocs2
+
         self.wowfactor = np.ones_like(self.linelocs)
 
         # VBI info
@@ -1743,18 +1740,18 @@ class LDdecode:
         if self.readloc < 0:
             self.readloc = 0
             
-        indata = self.freader(self.infile, self.readloc, self.readlen)
+        self.indata = self.freader(self.infile, self.readloc, self.readlen)
 
-        if indata is None:
+        if self.indata is None:
             print("End of file")
             return None, None
         
-        rawdecode = self.rf.demod(indata, self.rf.blockcut, self.readlen, self.mtf_level)
-        if rawdecode is None:
+        self.rawdecode = self.rf.demod(self.indata, self.rf.blockcut, self.readlen, self.mtf_level)
+        if self.rawdecode is None:
             print("Failed to demodulate data")
             return None, None
         
-        f = self.FieldClass(self.rf, indata, rawdecode, 0, audio_offset = self.audio_offset)
+        f = self.FieldClass(self.rf, self.indata, self.rawdecode, 0, audio_offset = self.audio_offset)
         
         self.curfield = f
 
