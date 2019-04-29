@@ -882,8 +882,8 @@ class Field:
                     #avglen = self.inlinelen 
                     linelocs_filled[l] = linelocs[prev_valid] + (avglen * (l - prev_valid))
                 else:
-                    avglen = (linelocs[next_valid] - linelocs[prev_valid]) / (next_valid - prev_valid)
-                    #avglen = self.inlinelen 
+                    #avglen = (linelocs[next_valid] - linelocs[prev_valid]) / (next_valid - prev_valid)
+                    avglen = self.inlinelen 
                     linelocs_filled[l] = linelocs[prev_valid] + (avglen * (l - prev_valid))
                 
                 #print(l, prev_valid, next_valid, linelocs_filled[l], avglen)
