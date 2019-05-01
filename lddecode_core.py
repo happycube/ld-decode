@@ -782,6 +782,12 @@ class Field:
         hsynclen_min = hsynclen_med - self.usectoinpx(.2)
         hsynclen_max = hsynclen_med + self.usectoinpx(.2)
 
+        # Save off beginnings of vsyncs 
+        # XXX: use ends - X lines when beginnings are invalid
+
+        self.vsync1loc = pulses[vsyncs[0]][0]
+        self.vsync2loc = pulses[vsyncs[2]][0]
+
         '''
         Get votes for whether or not this is a first or second field, using the distance between
         each line and the validated vsync pulses.
@@ -1014,7 +1020,7 @@ class Field:
             self.dsaudio, self.audio_next_offset = downscale_audio(self.data[1], lineinfo, self.rf, self.linecount, self.audio_offset)
             
         if self.rf.decode_digital_audio:
-            self.efmout = self.data[2][int(lineinfo[0]):int(lineinfo[self.linecount])]
+            self.efmout = self.data[2][self.vsync1loc:self.vsync2loc]
         else:
             self.efmout = None
 
