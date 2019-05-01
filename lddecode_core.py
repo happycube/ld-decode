@@ -931,8 +931,13 @@ class Field:
 
         return linelocs2
 
-    def fix_badlines(self, linelocs_in):
-        linelocs = linelocs_in.copy()
+    def fix_badlines(self, linelocs_in, linelocs_backup_in = None):
+        linelocs = np.array(linelocs_in.copy())
+
+        if linelocs_backup_in is not None:
+            linelocs_backup = np.array(linelocs_backup_in.copy())
+            badlines = np.isnan(linelocs)
+            linelocs[badlines] = linelocs_backup[badlines]
 
         for l in np.where(self.linebad)[0]:
             prevgood = l - 1
@@ -1501,7 +1506,7 @@ class FieldNTSC(Field):
         self.out_scale = np.double(0xc800 - 0x0400) / (100 - self.rf.SysParams['vsync_ire'])
 
         self.linelocs3, self.burstlevel = self.refine_linelocs_burst(self.linelocs2)
-        self.linelocs3 = self.fix_badlines(self.linelocs3)
+        self.linelocs3 = self.fix_badlines(self.linelocs3, self.linelocs2)
 
         self.burstmedian = self.calc_burstmedian()
 
