@@ -890,8 +890,10 @@ class Field:
 
         # *finally* done :)
 
-        rv_ll = [linelocs_filled[l] for l in range(1, self.outlinecount + 6)]
-        rv_err = [linelocs[l] <= 0 for l in range(1, self.outlinecount + 6)]
+        rv_ll = [linelocs_filled[l] for l in range(0, self.outlinecount + 6)]
+        rv_err = [linelocs[l] <= 0 for l in range(0, self.outlinecount + 6)]
+
+        #print(rv_ll[0])
         
         return rv_ll, rv_err, pulses[vsync2[0] - 9][0]
 
@@ -900,7 +902,7 @@ class Field:
 
         for i in range(len(self.linelocs1)):
             # skip VSYNC lines, since they handle the pulses differently 
-            if inrange(i, 3, 5):
+            if inrange(i, 4, 6):
                 continue
                         
             # Find beginning of hsync (linelocs1 is generally in the middle)
