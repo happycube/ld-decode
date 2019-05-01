@@ -922,7 +922,7 @@ class Field:
                     zc2 = calczc(self.data[0]['demod_05'], ll1, (porch_level + sync_level) / 2, reverse=False, _count=400)
 
                     # any wild variation here indicates a failure
-                    if zc2 is not None and np.abs(zc2 - zc) < (self.rf.freq / 4):
+                    if zc2 is not None and np.abs(zc2 - zc) < (self.rf.freq / 2):
                         linelocs2[i] = zc2
                     else:
                         self.linebad[i] = True
