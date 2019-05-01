@@ -324,7 +324,8 @@ def calczc(data, _start_offset, target, edge='both', _count=10, reverse=False):
 
 def calczc_sets(data, start, end, tgt = 0, cliplevel = None):
     zcsets = {False: [], True:[]}
-    bi = star
+    bi = start
+    
     while bi < end:
         if np.abs(data[bi]) > cliplevel:
             zc = calczc(data, bi, tgt)
@@ -394,3 +395,42 @@ def roundfloat(fl, places = 3):
     ''' round float to (places) decimal places '''
     r = 10 ** places
     return np.round(fl * r) / r
+
+# Something like this should be a numpy function, but I can't find it.
+
+def findareas(array, cross):
+    ''' Find areas where `array` is <= `cross`
+    
+    returns: array of tuples of said areas (begin, end, length)
+    '''
+    starts = np.where(np.logical_and(array[1:] < cross, array[:-1] >= cross))[0]
+    ends = np.where(np.logical_and(array[1:] >= cross, array[:-1] < cross))[0]
+
+    # remove 'dangling' beginnings and endings so everything zips up nicely and in order
+    if ends[0] < starts[0]:
+        ends = ends[1:]
+
+    if starts[-1] > ends[-1]:
+        starts = starts[:-1]
+
+    return [(*z, z[1] - z[0]) for z in zip(starts, ends)]
+
+def findareas_inrange(array, low, high):
+    ''' Find areas where `array` is between `low` and `high`
+    
+    returns: array of tuples of said areas (begin, end, length)
+    '''
+    
+    array_inrange = inrange(array, low, high)
+    
+    starts = np.where(np.logical_and(array_inrange[1:] == True, array_inrange[:-1] == False))[0]
+    ends = np.where(np.logical_and(array_inrange[1:] == False, array_inrange[:-1] == True))[0]
+
+    # remove 'dangling' beginnings and endings so everything zips up nicely and in order
+    if ends[0] < starts[0]:
+        ends = ends[1:]
+
+    if starts[-1] > ends[-1]:
+        starts = starts[:-1]
+
+    return [(*z, z[1] - z[0]) for z in zip(starts, ends)]
