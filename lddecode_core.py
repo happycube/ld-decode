@@ -1408,8 +1408,8 @@ class FieldNTSC(Field):
         self.amed = amed
         self.zc_bursts = zc_bursts
 
-        valid = amed[field14] + np.std(bursts_arr[field14]) < amed[not field14]
-        valid = valid and (np.abs(amed[True] - amed[False]) > .05)
+        #valid = amed[field14] + np.std(bursts_arr[field14]) < amed[not field14]
+        valid = (np.abs(amed[True] - amed[False]) > .05)
 
         return valid, zc_bursts, field14, burstlevel, badlines
 
