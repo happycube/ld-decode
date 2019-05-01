@@ -899,6 +899,10 @@ class Field:
         linelocs2 = self.linelocs1.copy()
 
         for i in range(len(self.linelocs1)):
+            # skip VSYNC lines, since they handle the pulses differently 
+            if inrange(i, 3, 5):
+                continue
+                        
             # Find beginning of hsync (linelocs1 is generally in the middle)
             ll1 = self.linelocs1[i] - self.usectoinpx(5.5)
             #print(i, ll1)
