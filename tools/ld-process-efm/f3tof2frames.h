@@ -1,13 +1,13 @@
 /************************************************************************
 
-    ldsprocess.h
+    f3tof2frames.h
 
-    ld-ldstoefm - LDS sample to EFM data processing
+    ld-process-efm - EFM data decoder
     Copyright (C) 2019 Simon Inns
 
     This file is part of ld-decode-tools.
 
-    ld-ldstoefm is free software: you can redistribute it and/or
+    ld-process-efm is free software: you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
     published by the Free Software Foundation, either version 3 of the
     License, or (at your option) any later version.
@@ -22,36 +22,31 @@
 
 ************************************************************************/
 
-#ifndef LDSPROCESS_H
-#define LDSPROCESS_H
+#ifndef F3TOF2FRAMES_H
+#define F3TOF2FRAMES_H
 
 #include <QCoreApplication>
 #include <QDebug>
-#include <QFile>
 
-#include "efmfilter.h"
-#include "isifilter.h"
-#include "pll.h"
+#include "f3frame.h"
+#include "f2frame.h"
+#include "c1circ.h"
+#include "c2circ.h"
+#include "c2deinterleave.h"
 
-class LdsProcess
+class F3ToF2Frames
 {
 public:
-    LdsProcess();
-    bool process(QString inputFilename, QString outputFilename, bool outputSample, bool useFloatingPoint, bool noEFMFilter, bool noIsiFilter, qint32 percentToProcess);
+    F3ToF2Frames();
+
+    void reportStatus(void);
+    void flush(void);
+    QVector<F2Frame> convert(QVector<F3Frame> f3Frames);
 
 private:
-    QFile *inputFileHandle;
-    QFile *outputFileHandle;
-    EfmFilter efmFilter;
-    IsiFilter isiFilter;
-    Pll pll;
-
-    bool openInputFile(QString inputFileName);
-    void closeInputFile(void);
-    bool openOutputFile(QString outputFileName);
-    void closeOutputFile(void);
-
-    QByteArray readAndUnpackLdsFile(void);
+    C1Circ c1Circ;
+    C2Circ c2Circ;
+    C2Deinterleave c2Deinterleave;
 };
 
-#endif // LDSPROCESS_H
+#endif // F3TOF2FRAMES_H

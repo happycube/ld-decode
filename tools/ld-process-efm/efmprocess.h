@@ -30,24 +30,36 @@
 #include <QFile>
 
 #include "f3frame.h"
-#include "subcodeblock.h"
+#include "f2frame.h"
+#include "f1frame.h"
+#include "sector.h"
+#include "section.h"
 #include "efmtof3frames.h"
-#include "f3framestosubcodeblocks.h"
-#include "decodeaudio.h"
+#include "f3tof2frames.h"
+#include "f2tof1frames.h"
+#include "f3tosections.h"
+#include "f2framestoaudio.h"
+#include "f1tosectors.h"
+#include "sectorstodata.h"
 
 class EfmProcess
 {
 public:
     EfmProcess();
 
-    bool process(QString inputFilename, QString outputFilename, bool verboseDebug);
+    bool process(QString inputFilename, QString outputFilename, QString outputDataFilename, bool verboseDebug);
 
 private:
     QFile *inputFileHandle;
 
     EfmToF3Frames efmToF3Frames;
-    F3FramesToSubcodeBlocks f3FramesToSubcodeBlocks;
-    DecodeAudio decodeAudio;
+    F3ToF2Frames f3ToF2Frames;
+    F2ToF1Frames f2ToF1Frames;
+
+    F3ToSections f3ToSections;
+    F2FramesToAudio f2FramesToAudio;
+    F1ToSectors f1ToSectors;
+    SectorsToData sectorsToData;
 
     qint32 qMode0Count;
     qint32 qMode1Count;
@@ -56,10 +68,11 @@ private:
     qint32 qMode4Count;
     qint32 qModeICount;
 
+    void processSections(QVector<Section> sections);
     bool openInputFile(QString inputFileName);
     void closeInputFile(void);
     QByteArray readEfmData(void);
-    void reportStatus(void);
+    void reportStatus(bool processAudio, bool processData);
 };
 
 #endif // EFMPROCESS_H

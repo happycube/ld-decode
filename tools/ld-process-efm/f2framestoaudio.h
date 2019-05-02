@@ -1,6 +1,6 @@
 /************************************************************************
 
-    decodedata.h
+    f2framestoaudio.h
 
     ld-process-efm - EFM data decoder
     Copyright (C) 2019 Simon Inns
@@ -22,14 +22,28 @@
 
 ************************************************************************/
 
-#ifndef DECODEDATA_H
-#define DECODEDATA_H
+#ifndef F2FRAMESTOAUDIO_H
+#define F2FRAMESTOAUDIO_H
 
+#include <QCoreApplication>
+#include <QDebug>
+#include <QFile>
 
-class DecodeData
+#include "f2frame.h"
+
+class F2FramesToAudio
 {
 public:
-    DecodeData();
+    F2FramesToAudio();
+
+    void reportStatus(void);
+    bool openOutputFile(QString filename);
+    void closeOutputFile(void);
+    void convert(QVector<F2Frame> f2Frames);
+
+private:
+    QFile *outputFileHandle;
+    qint32 audioSamples;
 };
 
-#endif // DECODEDATA_H
+#endif // F2FRAMESTOAUDIO_H

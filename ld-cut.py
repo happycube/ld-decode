@@ -64,25 +64,25 @@ if args.MTF is not None:
 if args.MTF_offset is not None:
     ldd.rf.mtf_offset = args.MTF_offset
 
-startloc = args.start
-
 if args.seek != -1:
     startloc = ldd.seek(args.start, args.seek) 
     if startloc > 1:
         startloc -= 1
-    
+else:
+    startloc = args.start * 2
+
 if args.end != -1:
     endloc = ldd.seek(startloc, args.end)
 elif args.length != -1:
-    endloc = startloc + args.length
+    endloc = startloc + (args.length * 2)
 else:
     print('ERROR: Must specify -l or -E option')
     exit(-1)
 
-ldd.roughseek(startloc * 2)
+ldd.roughseek(startloc)
 startidx = ldd.fdoffset
 
-ldd.roughseek(endloc * 2)
+ldd.roughseek(endloc)
 endidx = ldd.fdoffset
 
 if makelds:

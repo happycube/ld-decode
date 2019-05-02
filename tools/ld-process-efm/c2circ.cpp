@@ -124,14 +124,14 @@ void C2Circ::errorCorrect(void)
 
     // Perform error check and correction
     int fixed = -1;
-    if (erasures.size() < 5) {
-        // Initialise the error corrector
-        C2RS<255,255-4> rs; // Up to 251 symbols data load with 4 symbols parity RS(32,28)
+    if (erasures.size() > 4 ) erasures.clear();
 
-        // Perform decode
-        std::vector<int> position;
-        fixed = rs.decode(data, erasures, &position);
-    }
+    // Initialise the error corrector
+    C2RS<255,255-4> rs; // Up to 251 symbols data load with 4 symbols parity RS(32,28)
+
+    // Perform decode
+    std::vector<int> position;
+    fixed = rs.decode(data, erasures, &position);
 
     // Copy the result back to the output byte array
     for (qint32 byteC = 0; byteC < 28; byteC++) {

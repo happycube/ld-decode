@@ -1,6 +1,6 @@
 /************************************************************************
 
-    f3framestosubcodeblocks.h
+    f2tof1frames.h
 
     ld-process-efm - EFM data decoder
     Copyright (C) 2019 Simon Inns
@@ -22,57 +22,61 @@
 
 ************************************************************************/
 
-#ifndef F3FRAMESTOSUBCODEBLOCKS_H
-#define F3FRAMESTOSUBCODEBLOCKS_H
+#ifndef F2TOF1FRAMES_H
+#define F2TOF1FRAMES_H
 
 #include <QCoreApplication>
 #include <QDebug>
 
-#include "f3frame.h"
-#include "subcodeblock.h"
+#include "f2frame.h"
+#include "f1frame.h"
 
-class F3FramesToSubcodeBlocks
+class F2ToF1Frames
 {
 public:
-    F3FramesToSubcodeBlocks();
+    F2ToF1Frames();
 
     void reportStatus(void);
-    QVector<SubcodeBlock> convert(QVector<F3Frame> f3FramesIn);
+    QVector<F1Frame> convert(QVector<F2Frame> f2FramesIn);
 
 private:
-    // Subcode block buffer
-    QVector<SubcodeBlock> subcodeBlocks;
+    // This is the F1 frame sync pattern
+    QByteArray syncPattern;
 
-    // F3 Frame buffer
-    QVector<F3Frame> f3Frames;
+    // F1 frame buffer
+    QVector<F1Frame> f1FrameBuffer;
+
+    // F1 data buffer
+    QByteArray f2DataBuffer;
+    QByteArray f2ErrorBuffer;
 
     // State machine state definitions
     enum StateMachine {
         state_initial,
-        state_getSync0,
-        state_getSync1,
-        state_getInitialBlock,
-        state_getNextBlock,
+        state_getInitialSync,
+        state_getInitialF1Frame,
+        state_getNextF1Frame,
         state_syncLost
     };
 
     StateMachine currentState;
     StateMachine nextState;
-    bool waitingForF3frame;
+    bool waitingForF2frames;
 
-    F3Frame currentF3Frame;
+    F2Frame currentF2Frame;
 
-    qint32 missedBlockSyncCount;
-    qint32 blockSyncLost;
-    qint32 totalBlocks;
+    qint32 missedF1SyncCount;
+    qint32 F1SyncLost;
+    qint32 totalF1Frames;
     qint32 poorSyncs;
 
     StateMachine sm_state_initial(void);
-    StateMachine sm_state_getSync0(void);
-    StateMachine sm_state_getSync1(void);
-    StateMachine sm_state_getInitialBlock(void);
-    StateMachine sm_state_getNextBlock(void);
+    StateMachine sm_state_getInitialSync(void);
+    StateMachine sm_state_getInitialF1Frame(void);
+    StateMachine sm_state_getNextF1Frame(void);
     StateMachine sm_state_syncLost(void);
+
+    void removeF2Data(qint32 number);
 };
 
-#endif // F3FRAMESTOSUBCODEBLOCKS_H
+#endif // F2TOF1FRAMES_H

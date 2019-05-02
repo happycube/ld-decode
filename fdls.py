@@ -115,10 +115,8 @@ def FDLS(N, D, w, Am = [], Th = [], shift = 0, h = []):
 	Y = Am * np.cos(Th)
 	#print(X, Y)
 
-
-
 	# The actual computation - the setup leading up to this is the brilliant part
-	out = numpy.linalg.lstsq(X, Y)
+	out = numpy.linalg.lstsq(X, Y, rcond=None)
 
 	# There's always one A, even for an FIR filter
 	A = np.zeros(D + 1)

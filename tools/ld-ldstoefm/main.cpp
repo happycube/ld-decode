@@ -105,6 +105,11 @@ int main(int argc, char *argv[])
                                        QCoreApplication::translate("main", "Use floating-point filters instead of fixed-point"));
     parser.addOption(useFloatOption);
 
+    // Do not apply EFM prefilter (-e)
+    QCommandLineOption noEFMOption(QStringList() << "e" << "noefmpre",
+                                       QCoreApplication::translate("main", "Do not apply EFM RF filter (for testing only)"));
+    parser.addOption(noEFMOption);
+    
     // Do not apply ISI filter (-n)
     QCommandLineOption noIsiOption(QStringList() << "n" << "noisi",
                                        QCoreApplication::translate("main", "Do not apply ISI filter"));
@@ -130,6 +135,7 @@ int main(int argc, char *argv[])
     bool outputSample = parser.isSet(outputSampleOption);
     bool useFloatingPoint = parser.isSet(useFloatOption);
     bool noIsiFilter = parser.isSet(noIsiOption);
+    bool noEFMFilter = parser.isSet(noEFMOption);
 
     // Get the arguments from the parser
     QString inputFilename;
@@ -163,7 +169,7 @@ int main(int argc, char *argv[])
     // Perform the processing
     LdsProcess ldsProcess;
     ldsProcess.process(inputFilename, outputFilename, outputSample,
-                       useFloatingPoint, noIsiFilter, percentToProcess);
+                       useFloatingPoint, noEFMFilter, noIsiFilter, percentToProcess);
 
     // Quit with success
     return 0;

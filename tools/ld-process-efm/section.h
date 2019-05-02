@@ -1,6 +1,6 @@
 /************************************************************************
 
-    subcodeblock.h
+    section.h
 
     ld-process-efm - EFM data decoder
     Copyright (C) 2019 Simon Inns
@@ -22,30 +22,18 @@
 
 ************************************************************************/
 
-#ifndef SUBCODEBLOCK_H
-#define SUBCODEBLOCK_H
+#ifndef SECTION_H
+#define SECTION_H
 
 #include <QCoreApplication>
 #include <QDebug>
 
-#include "f3frame.h"
 #include "tracktime.h"
 
-class SubcodeBlock
+class Section
 {
 public:
-    SubcodeBlock();
-
-    enum Channels {
-        channelP,
-        channelQ,
-        channelR,
-        channelS,
-        channelT,
-        channelU,
-        channelV,
-        channelW
-    };
+    Section();
 
     // Structure of the Q Control flags
     struct QControl {
@@ -71,20 +59,14 @@ public:
         QMode4 qMode4;
     };
 
-    void setF3Frames(QVector<F3Frame> f3FramesIn);
-    uchar *getChannelData(SubcodeBlock::Channels channel);
-    F3Frame getFrame(qint32 frameNumber);
+    void setData(QByteArray dataIn);
     qint32 getQMode(void);
-    void setFirstAfterSync(bool parameter);
-    bool getFirstAfterSync(void);
     QMetadata getQMetadata(void);
 
 private:
+    // Q channel specific data
     QMetadata qMetadata;
-
-    QVector<F3Frame> f3Frames;
     qint32 qMode;
-    bool firstAfterSync;
 
     // Subcode channels
     uchar pSubcode[12];
@@ -102,7 +84,6 @@ private:
     void decodeQControl(void);
     void decodeQDataMode4(void);
     qint32 bcdToInteger(uchar bcd);
-
 };
 
-#endif // SUBCODEBLOCK_H
+#endif // SECTION_H

@@ -104,45 +104,69 @@ void C2Deinterleave::deinterleave(void)
     }
 
     // Note: This drops the C2 parity leaving 24 bytes of data (12 words of 16 bits)
-    if (c2sValid) {
-        // Deinterleaved data is valid
-        validDeinterleavedC2s++;
-        outputC2Data[ 0] = c2DelayBuffer[curr].c2Data[ 0];
-        outputC2Data[ 1] = c2DelayBuffer[curr].c2Data[ 1];
-        outputC2Data[ 2] = c2DelayBuffer[curr].c2Data[ 6];
-        outputC2Data[ 3] = c2DelayBuffer[curr].c2Data[ 7];
+    if (c2sValid) validDeinterleavedC2s++;
+    else invalidDeinterleavedC2s++;
 
-        outputC2Data[ 8] = c2DelayBuffer[curr].c2Data[ 2];
-        outputC2Data[ 9] = c2DelayBuffer[curr].c2Data[ 3];
-        outputC2Data[10] = c2DelayBuffer[curr].c2Data[ 8];
-        outputC2Data[11] = c2DelayBuffer[curr].c2Data[ 9];
+    // Deinterleave data
+    outputC2Data[ 0] = c2DelayBuffer[curr].c2Data[ 0];
+    outputC2Data[ 1] = c2DelayBuffer[curr].c2Data[ 1];
+    outputC2Data[ 2] = c2DelayBuffer[curr].c2Data[ 6];
+    outputC2Data[ 3] = c2DelayBuffer[curr].c2Data[ 7];
 
-        outputC2Data[16] = c2DelayBuffer[curr].c2Data[ 4];
-        outputC2Data[17] = c2DelayBuffer[curr].c2Data[ 5];
-        outputC2Data[18] = c2DelayBuffer[curr].c2Data[10];
-        outputC2Data[19] = c2DelayBuffer[curr].c2Data[11];
+    outputC2Data[ 8] = c2DelayBuffer[curr].c2Data[ 2];
+    outputC2Data[ 9] = c2DelayBuffer[curr].c2Data[ 3];
+    outputC2Data[10] = c2DelayBuffer[curr].c2Data[ 8];
+    outputC2Data[11] = c2DelayBuffer[curr].c2Data[ 9];
 
-        outputC2Data[ 4] = c2DelayBuffer[prev].c2Data[16];
-        outputC2Data[ 5] = c2DelayBuffer[prev].c2Data[17];
-        outputC2Data[ 6] = c2DelayBuffer[prev].c2Data[22];
-        outputC2Data[ 7] = c2DelayBuffer[prev].c2Data[23];
+    outputC2Data[16] = c2DelayBuffer[curr].c2Data[ 4];
+    outputC2Data[17] = c2DelayBuffer[curr].c2Data[ 5];
+    outputC2Data[18] = c2DelayBuffer[curr].c2Data[10];
+    outputC2Data[19] = c2DelayBuffer[curr].c2Data[11];
 
-        outputC2Data[12] = c2DelayBuffer[prev].c2Data[18];
-        outputC2Data[13] = c2DelayBuffer[prev].c2Data[19];
-        outputC2Data[14] = c2DelayBuffer[prev].c2Data[24];
-        outputC2Data[15] = c2DelayBuffer[prev].c2Data[25];
+    outputC2Data[ 4] = c2DelayBuffer[prev].c2Data[16];
+    outputC2Data[ 5] = c2DelayBuffer[prev].c2Data[17];
+    outputC2Data[ 6] = c2DelayBuffer[prev].c2Data[22];
+    outputC2Data[ 7] = c2DelayBuffer[prev].c2Data[23];
 
-        outputC2Data[20] = c2DelayBuffer[prev].c2Data[20];
-        outputC2Data[21] = c2DelayBuffer[prev].c2Data[21];
-        outputC2Data[22] = c2DelayBuffer[prev].c2Data[26];
-        outputC2Data[23] = c2DelayBuffer[prev].c2Data[27];
+    outputC2Data[12] = c2DelayBuffer[prev].c2Data[18];
+    outputC2Data[13] = c2DelayBuffer[prev].c2Data[19];
+    outputC2Data[14] = c2DelayBuffer[prev].c2Data[24];
+    outputC2Data[15] = c2DelayBuffer[prev].c2Data[25];
 
-        outputC2Errors.fill(0); // valid
-    } else {
-        // Deinterleaved data is invalid
-        invalidDeinterleavedC2s++;
-        outputC2Data.fill(0);
-        outputC2Errors.fill(1); // invalid
-    }
+    outputC2Data[20] = c2DelayBuffer[prev].c2Data[20];
+    outputC2Data[21] = c2DelayBuffer[prev].c2Data[21];
+    outputC2Data[22] = c2DelayBuffer[prev].c2Data[26];
+    outputC2Data[23] = c2DelayBuffer[prev].c2Data[27];
+
+    // Deinterleave errors
+    outputC2Errors[ 0] = c2DelayBuffer[curr].c2Error[ 0];
+    outputC2Errors[ 1] = c2DelayBuffer[curr].c2Error[ 1];
+    outputC2Errors[ 2] = c2DelayBuffer[curr].c2Error[ 6];
+    outputC2Errors[ 3] = c2DelayBuffer[curr].c2Error[ 7];
+
+    outputC2Errors[ 8] = c2DelayBuffer[curr].c2Error[ 2];
+    outputC2Errors[ 9] = c2DelayBuffer[curr].c2Error[ 3];
+    outputC2Errors[10] = c2DelayBuffer[curr].c2Error[ 8];
+    outputC2Errors[11] = c2DelayBuffer[curr].c2Error[ 9];
+
+    outputC2Errors[16] = c2DelayBuffer[curr].c2Error[ 4];
+    outputC2Errors[17] = c2DelayBuffer[curr].c2Error[ 5];
+    outputC2Errors[18] = c2DelayBuffer[curr].c2Error[10];
+    outputC2Errors[19] = c2DelayBuffer[curr].c2Error[11];
+
+    outputC2Errors[ 4] = c2DelayBuffer[prev].c2Error[16];
+    outputC2Errors[ 5] = c2DelayBuffer[prev].c2Error[17];
+    outputC2Errors[ 6] = c2DelayBuffer[prev].c2Error[22];
+    outputC2Errors[ 7] = c2DelayBuffer[prev].c2Error[23];
+
+    outputC2Errors[12] = c2DelayBuffer[prev].c2Error[18];
+    outputC2Errors[13] = c2DelayBuffer[prev].c2Error[19];
+    outputC2Errors[14] = c2DelayBuffer[prev].c2Error[24];
+    outputC2Errors[15] = c2DelayBuffer[prev].c2Error[25];
+
+    outputC2Errors[20] = c2DelayBuffer[prev].c2Error[20];
+    outputC2Errors[21] = c2DelayBuffer[prev].c2Error[21];
+    outputC2Errors[22] = c2DelayBuffer[prev].c2Error[26];
+    outputC2Errors[23] = c2DelayBuffer[prev].c2Error[27];
 }
 

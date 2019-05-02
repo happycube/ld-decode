@@ -1,6 +1,6 @@
 /************************************************************************
 
-    subcodeblock.cpp
+    section.cpp
 
     ld-process-efm - EFM data decoder
     Copyright (C) 2019 Simon Inns
@@ -22,12 +22,13 @@
 
 ************************************************************************/
 
-#include "subcodeblock.h"
+#include "section.h"
 
-SubcodeBlock::SubcodeBlock()
+// Note: Class for storing 'sections' as defined by clause 18 of ECMA-130
+
+Section::Section()
 {
     qMode = -1;
-    firstAfterSync = false;
 
     // Default the Q Metadata
     qMetadata.qControl.isAudioNotData = false;
@@ -43,20 +44,10 @@ SubcodeBlock::SubcodeBlock()
     qMetadata.qMode4.trackNumber = 0;
 }
 
-// Set the required 98 F3 frames for the subcode block
-void SubcodeBlock::setF3Frames(QVector<F3Frame> f3FramesIn)
+void Section::setData(QByteArray dataIn)
 {
-    // A subcode block requires 98 F3 Frames
-    if (f3FramesIn.size() != 98) {
-        qDebug() << "SubcodeBlock::setF3Frames(): A subcode block requires 98 F3 Frames!";
-        return;
-    }
-
-    // Store the F3 Frames
-    f3Frames = f3FramesIn;
-
-    // Interpret the subcode data
-    qint32 frame = 2;
+    // Interpret the section data
+    qint32 symbolNumber = 2;
     for (qint32 byteC = 0; byteC < 12; byteC++) {
         // Initialise the channel bytes
         pSubcode[byteC] = 0;
@@ -68,9 +59,9 @@ void SubcodeBlock::setF3Frames(QVector<F3Frame> f3FramesIn)
         vSubcode[byteC] = 0;
         wSubcode[byteC] = 0;
 
-        // Copy in the channel data from the subcode data
+        // Copy in the channel data from the section data
         for (qint32 bitC = 7; bitC >= 0; bitC--) {
-            qint32 subcode = f3Frames[frame].getSubcodeSymbol();
+            qint32 subcode = static_cast<qint32>(dataIn[symbolNumber]);
 
             if (subcode & 0x80) pSubcode[byteC] |= (1 << bitC);
             if (subcode & 0x40) qSubcode[byteC] |= (1 << bitC);
@@ -80,7 +71,7 @@ void SubcodeBlock::setF3Frames(QVector<F3Frame> f3FramesIn)
             if (subcode & 0x04) uSubcode[byteC] |= (1 << bitC);
             if (subcode & 0x02) vSubcode[byteC] |= (1 << bitC);
             if (subcode & 0x01) wSubcode[byteC] |= (1 << bitC);
-            frame++;
+            symbolNumber++;
         }
     }
 
@@ -103,50 +94,14 @@ void SubcodeBlock::setF3Frames(QVector<F3Frame> f3FramesIn)
     }
 }
 
-// Return the channel data for a subcode channel
-uchar* SubcodeBlock::getChannelData(SubcodeBlock::Channels channel)
-{
-    if (channel == channelP) return pSubcode;
-    if (channel == channelQ) return qSubcode;
-    if (channel == channelR) return rSubcode;
-    if (channel == channelS) return sSubcode;
-    if (channel == channelT) return tSubcode;
-    if (channel == channelU) return uSubcode;
-    if (channel == channelV) return vSubcode;
-
-    // Return W
-    return wSubcode;
-}
-
-// Return an F3 frame for the subcode block
-F3Frame SubcodeBlock::getFrame(qint32 frameNumber)
-{
-    if (frameNumber < 0 || frameNumber > 97) return F3Frame();
-
-    return f3Frames[frameNumber];
-}
-
 // Method to determine the Q mode
-qint32 SubcodeBlock::getQMode(void)
+qint32 Section::getQMode(void)
 {
     return qMode;
 }
 
-// Set flag to indicate if the subcode block is the first after the
-// initial sync (true) or a continuation of a subcode block sequence
-void SubcodeBlock::setFirstAfterSync(bool parameter)
-{
-    firstAfterSync = parameter;
-}
-
-// Get first after sync flag
-bool SubcodeBlock::getFirstAfterSync(void)
-{
-    return firstAfterSync;
-}
-
 // Method to get Q channel metadata
-SubcodeBlock::QMetadata SubcodeBlock::getQMetadata(void)
+Section::QMetadata Section::getQMetadata(void)
 {
     return qMetadata;
 }
@@ -154,7 +109,7 @@ SubcodeBlock::QMetadata SubcodeBlock::getQMetadata(void)
 // Private methods ----------------------------------------------------------------------------------------------------
 
 // Method to CRC verify the Q subcode channel
-bool SubcodeBlock::verifyQ(void)
+bool Section::verifyQ(void)
 {
     // CRC check the Q-subcode - CRC is on control+mode+data 4+4+72 = 80 bits with 16-bit CRC (96 bits total)
     char crcSource[10];
@@ -173,7 +128,7 @@ bool SubcodeBlock::verifyQ(void)
 
 // Method to perform CRC16 (XMODEM)
 // Adapted from http://mdfs.net/Info/Comp/Comms/CRC16.htm
-quint16 SubcodeBlock::crc16(char *addr, quint16 num)
+quint16 Section::crc16(char *addr, quint16 num)
 {
     qint32 i;
     quint32 crc = 0;
@@ -190,7 +145,7 @@ quint16 SubcodeBlock::crc16(char *addr, quint16 num)
 }
 
 // Method to decode the Q subcode ADR field
-qint32 SubcodeBlock::decodeQAddress(void)
+qint32 Section::decodeQAddress(void)
 {
     // Get the Q Mode value
     qint32 qMode = (qSubcode[0] & 0x0F);
@@ -202,7 +157,7 @@ qint32 SubcodeBlock::decodeQAddress(void)
 }
 
 // Method to decode the Q subcode CONTROL field
-void SubcodeBlock::decodeQControl(void)
+void Section::decodeQControl(void)
 {
     // Get the control payload
     qint32 qControlField = (qSubcode[0] & 0xF0) >> 4;
@@ -228,7 +183,7 @@ void SubcodeBlock::decodeQControl(void)
 }
 
 // Method to decode Q subcode Mode 4 DATA-Q
-void SubcodeBlock::decodeQDataMode4(void)
+void Section::decodeQDataMode4(void)
 {
     // Get the track number (TNO) field
     qint32 tno = bcdToInteger(qSubcode[1]);
@@ -266,7 +221,7 @@ void SubcodeBlock::decodeQDataMode4(void)
 }
 
 // Method to convert 2 digit BCD byte to an integer
-qint32 SubcodeBlock::bcdToInteger(uchar bcd)
+qint32 Section::bcdToInteger(uchar bcd)
 {
    return (((bcd>>4)*10) + (bcd & 0xF));
 }

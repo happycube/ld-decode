@@ -1,6 +1,6 @@
 /************************************************************************
 
-    decodeaudio.h
+    f2frame.h
 
     ld-process-efm - EFM data decoder
     Copyright (C) 2019 Simon Inns
@@ -22,41 +22,26 @@
 
 ************************************************************************/
 
-#ifndef DECODEAUDIO_H
-#define DECODEAUDIO_H
+#ifndef F2FRAME_H
+#define F2FRAME_H
 
 #include <QCoreApplication>
 #include <QDebug>
-#include <QFile>
-#include <QDataStream>
 
-#include "subcodeblock.h"
 #include "f3frame.h"
-#include "c1circ.h"
-#include "c2circ.h"
-#include "c2deinterleave.h"
 
-class DecodeAudio
+class F2Frame
 {
 public:
-    DecodeAudio();
-    ~DecodeAudio();
+    F2Frame();
 
-    void reportStatus(void);
-    bool openOutputFile(QString filename);
-    void closeOutputFile(void);
-    void flush(void);
-    void process(SubcodeBlock subcodeBlock);
+    void setData(QByteArray dataParam, QByteArray erasuresParam);
+    QByteArray getDataSymbols(void);
+    QByteArray getErrorSymbols(void);
 
 private:
-    C1Circ c1Circ;
-    C2Circ c2Circ;
-    C2Deinterleave c2Deinterleave;
-
-    QFile *outputFileHandle;
-    QDataStream *outputStream;
-
-    void writeAudioData(QByteArray audioData);
+    QByteArray dataSymbols;
+    QByteArray errorSymbols;
 };
 
-#endif // DECODEAUDIO_H
+#endif // F2FRAME_H

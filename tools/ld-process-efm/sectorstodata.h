@@ -1,13 +1,13 @@
 /************************************************************************
 
-    ldsprocess.h
+    sectorstodata.h
 
-    ld-ldstoefm - LDS sample to EFM data processing
+    ld-process-efm - EFM data decoder
     Copyright (C) 2019 Simon Inns
 
     This file is part of ld-decode-tools.
 
-    ld-ldstoefm is free software: you can redistribute it and/or
+    ld-process-efm is free software: you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
     published by the Free Software Foundation, either version 3 of the
     License, or (at your option) any later version.
@@ -22,36 +22,28 @@
 
 ************************************************************************/
 
-#ifndef LDSPROCESS_H
-#define LDSPROCESS_H
+#ifndef SECTORSTODATA_H
+#define SECTORSTODATA_H
 
 #include <QCoreApplication>
 #include <QDebug>
 #include <QFile>
 
-#include "efmfilter.h"
-#include "isifilter.h"
-#include "pll.h"
+#include "sector.h"
 
-class LdsProcess
+class SectorsToData
 {
 public:
-    LdsProcess();
-    bool process(QString inputFilename, QString outputFilename, bool outputSample, bool useFloatingPoint, bool noEFMFilter, bool noIsiFilter, qint32 percentToProcess);
+    SectorsToData();
+
+    void reportStatus(void);
+    bool openOutputFile(QString filename);
+    void closeOutputFile(void);
+    void convert(QVector<Sector> sectors);
 
 private:
-    QFile *inputFileHandle;
     QFile *outputFileHandle;
-    EfmFilter efmFilter;
-    IsiFilter isiFilter;
-    Pll pll;
-
-    bool openInputFile(QString inputFileName);
-    void closeInputFile(void);
-    bool openOutputFile(QString outputFileName);
-    void closeOutputFile(void);
-
-    QByteArray readAndUnpackLdsFile(void);
+    qint32 sectorsOut;
 };
 
-#endif // LDSPROCESS_H
+#endif // SECTORSTODATA_H
