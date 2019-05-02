@@ -5,6 +5,7 @@ import scipy.signal as sps
 import scipy.fftpack as fftpack
 import copy
 
+
 import matplotlib.pyplot as plt
 
 import lddecode_core as ldd
@@ -80,7 +81,10 @@ class VHSRFDecode(ldd.RFDecode):
         # in ld-decode assumes composite color. This function is called even if it's disabled, and
         # seems to break with the VHS setup, so we disable it by overriding it for now.
     def computedelays(self, mtf_level = 0):
-        pass
+        # Set these to 0 for now, the metrics calculations look for them.
+        self.delays = {}
+        self.delays['video_sync'] = 0
+        self.delays['video_white'] = 0
 
     def demodblock(self, data, mtf_level = 0):
         rv_efm = None
