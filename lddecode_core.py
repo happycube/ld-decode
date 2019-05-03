@@ -816,7 +816,8 @@ class Field:
         # area is relative to the regular lines.  This can then be used to determine if a field
         # is first or second... depending on standard. :)
 
-        self.isFirstField = (np.mean(dists) < .5) if self.rf.system == 'PAL' else (np.mean(dists) > .5)
+        #self.isFirstField = (np.mean(dists) < .5) if self.rf.system == 'PAL' else (np.mean(dists) > .5)
+        self.isFirstField = (np.mean(dists) > .5)
 
         # choose just one valid VSYNC.  If there are none, these fields are in bad shape ;)
         vsync_pulse = None
