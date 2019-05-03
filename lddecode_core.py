@@ -612,6 +612,8 @@ def downscale_audio(audio, lineinfo, rf, linecount, timeoffset = 0, freq = 48000
         output_left -= rf.SysParams['audio_lfreq']
         output_right -= rf.SysParams['audio_rfreq']
         
+        # XXX: replace nan's here?
+
         output[(i * 2) + 0] = int(np.round(output_left * 32767 / 150000))
         output[(i * 2) + 1] = int(np.round(output_right * 32767 / 150000))
         
@@ -758,7 +760,7 @@ class Field:
             for i in gaps:
                 # scale tolerance for short gaps
                 # XXX: compare w/Dragons Lair metal-backed disk caps
-                tol = i[2] * (.002 if p == 0 else .0005)
+                tol = i[2] * (.005 if p == 0 else .001)
 
                 ll = self.compute_distance(pulses, vsyncs[i[0]], vsyncs[i[1]], linelen, False)
 
@@ -866,6 +868,9 @@ class Field:
         linelocs = [linelocs_dict[l] if l in linelocs_dict else -1 for l in range(0, self.outlinecount + 6)]
         linelocs_filled = linelocs.copy()
 
+        if linelocs_filled[0] < 0:
+            linelocs_filled[0] = linelocs_filled[1] - linelen
+
         for l in range(1, self.outlinecount + 6):
             if linelocs_filled[l] < 0:
                 prev_valid = None
@@ -897,11 +902,13 @@ class Field:
         # *finally* done :)
 
         rv_ll = [linelocs_filled[l] for l in range(0, self.outlinecount + 6)]
-        rv_err = [linelocs[l] <= 0 for l in range(0, self.outlinecount + 6)]
+
+        rv_err = np.full(len(rv_ll), False)
+        rv_err[2:] = np.diff(np.diff(rv_ll)) > 1
 
         #print(rv_ll[0])
         
-        return rv_ll, rv_err, pulses[vsync2[0] - 9][0]
+        return rv_ll, rv_err, pulses[vsync2[0] - 12][0]
 
     def refine_linelocs_hsync(self):
         linelocs2 = self.linelocs1.copy()
