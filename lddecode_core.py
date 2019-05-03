@@ -816,8 +816,7 @@ class Field:
         # area is relative to the regular lines.  This can then be used to determine if a field
         # is first or second... depending on standard. :)
 
-        #self.isFirstField = (np.mean(dists) < .5) if self.rf.system == 'PAL' else (np.mean(dists) > .5)
-        self.isFirstField = (np.mean(dists) > .5)
+        self.isFirstField = (np.mean(dists) < .5) if self.rf.system == 'PAL' else (np.mean(dists) > .5)
 
         # choose just one valid VSYNC.  If there are none, these fields are in bad shape ;)
         vsync_pulse = None
@@ -1324,7 +1323,7 @@ class FieldPAL(Field):
         self.burstmedian = self.calc_burstmedian()
 
         self.linecount = 312 if self.isFirstField else 313
-        self.lineoffset = 2 if self.isFirstField else 3
+        self.lineoffset = 2 if self.isFirstField else 2
 
         self.linecode = [self.decodephillipscode(l + self.lineoffset) for l in [17, 18, 19]]
 
