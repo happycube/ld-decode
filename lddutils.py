@@ -426,6 +426,9 @@ def findareas_inrange(array, low, high):
     starts = np.where(np.logical_and(array_inrange[1:] == True, array_inrange[:-1] == False))[0]
     ends = np.where(np.logical_and(array_inrange[1:] == False, array_inrange[:-1] == True))[0]
 
+    if len(starts) == 0 or len(ends) == 0:
+        return []
+
     # remove 'dangling' beginnings and endings so everything zips up nicely and in order
     if ends[0] < starts[0]:
         ends = ends[1:]

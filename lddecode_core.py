@@ -708,6 +708,10 @@ class Field:
 
         pulses = findareas_inrange(self.data[0]['demod_05'], pulse_hz_min, pulse_hz_max)
 
+        if len(pulses) == 0:
+            print("ERROR: no pulses")
+            return None, None, self.rf.freq_hz
+
         # the ratio of sync pulses/data should be about .08.  If it's sharply different
         # this isn't valid video and the upper layer should skip ahead.
 
@@ -715,13 +719,13 @@ class Field:
         pulseratio = psum / pulses[-1][1]
 
         if not inrange(pulseratio, .05, .15):
-            #print("ERROR: invalid data pulseratio = ", pulseratio)
-            return None, None, None
+            print("ERROR: invalid data pulseratio = ", pulseratio)
+            return None, None, self.rf.freq_hz
 
         vsync1 = self.find_vsync(pulses, 0)
         if vsync1 is None:
             print("ERROR: no vsync area found")
-            return None, None, None
+            return None, None, int(self.rf.freq_hz / 60)
 
         vsync2 = self.find_vsync(pulses, vsync1[1])
         if vsync2 is None:
