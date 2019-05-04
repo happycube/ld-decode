@@ -1520,7 +1520,7 @@ class FieldNTSC(Field):
         if not self.valid:
             return
 
-        self.linecode = [self.decodephillipscode(l + self.lineoffset - 1) for l in [16, 17, 18]]
+        self.linecode = [self.decodephillipscode(l + self.lineoffset) for l in [16, 17, 18]]
 
         self.out_scale = np.double(0xc800 - 0x0400) / (100 - self.rf.SysParams['vsync_ire'])
 
