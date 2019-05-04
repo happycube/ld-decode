@@ -696,6 +696,7 @@ class Field:
         
     def compute_distance(self, pulses, p1, p2, ll = 0, round=True):
         linelen = self.inlinelen if ll == 0 else ll
+        #print(p1, p2, len(pulses))
         dist = (pulses[p2][0]-pulses[p1][0]) / linelen
         
         return np.round(dist*2)/2 if round else dist
@@ -822,6 +823,7 @@ class Field:
         vsync_pulse = None
 
         for z in zip(vsyncs, vsyncedge_locations, validated):
+            #print(z)
             if z[2] == True:
                 vsync_pulse = z[0]
                 vsync_pulse_offset = z[1]
@@ -834,6 +836,10 @@ class Field:
                     vsync_pulse_offset += (.5 if np.mean(dists) > .5 else 0)
 
                 break
+
+        if vsync_pulse is None:
+            print("WARNING: unable to lock VSYNC, skipping field")
+            return None, None, (self.inlinelen * 240)
 
         # Now build up a dictionary of line locations (it makes handling gaps easier)
         linelocs_dict = {}
