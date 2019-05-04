@@ -2104,25 +2104,29 @@ class LDdecode:
                 self.frameNumber = self.decodeFrameNumber(self.firstfield, f)
 
                 rawloc = np.floor((self.readloc / self.bytes_per_field) / 2)
-                if self.isCLV and self.earlyCLV: # early CLV
-                    print("file frame %d early-CLV minute %d" % (rawloc, self.clvMinutes))
-                elif self.isCLV and self.frameNumber is not None:
-                    print("file frame %d CLV timecode %d:%.2d.%.2d frame %d" % (rawloc, self.clvMinutes, self.clvSeconds, self.clvFrameNum, self.frameNumber))
-                elif self.frameNumber:
-                    print("file frame %d CAV frame %d" % (rawloc, self.frameNumber))
-                elif self.leadOut:
-                    print("file frame %d lead out" % (rawloc))
-                else:
-                    print("file frame %d unknown" % (rawloc))
 
-                if self.frameNumber is not None:
-                    fi['frameNumber'] = int(self.frameNumber)
+                try:
+                    if self.isCLV and self.earlyCLV: # early CLV
+                        print("file frame %d early-CLV minute %d" % (rawloc, self.clvMinutes))
+                    elif self.isCLV and self.frameNumber is not None:
+                        print("file frame %d CLV timecode %d:%.2d.%.2d frame %d" % (rawloc, self.clvMinutes, self.clvSeconds, self.clvFrameNum, self.frameNumber))
+                    elif self.frameNumber:
+                        print("file frame %d CAV frame %d" % (rawloc, self.frameNumber))
+                    elif self.leadOut:
+                        print("file frame %d lead out" % (rawloc))
+                    else:
+                        print("file frame %d unknown" % (rawloc))
 
-                if self.isCLV and self.clvMinutes is not None:
-                    fi['clvMinutes'] = int(self.clvMinutes)
-                    if self.earlyCLV == False:
-                        fi['clvSeconds'] = int(self.clvSeconds)
-                        fi['clvFrameNr'] = int(self.clvFrameNum)
+                    if self.frameNumber is not None:
+                        fi['frameNumber'] = int(self.frameNumber)
+
+                    if self.isCLV and self.clvMinutes is not None:
+                        fi['clvMinutes'] = int(self.clvMinutes)
+                        if self.earlyCLV == False:
+                            fi['clvSeconds'] = int(self.clvSeconds)
+                            fi['clvFrameNr'] = int(self.clvFrameNum)
+                except:
+                    print("file frame %d : VBI decoding error" % (rawloc))
 
         return fi
 
