@@ -716,7 +716,7 @@ class Field:
 
         if not inrange(pulseratio, .05, .15):
             #print("ERROR: invalid data pulseratio = ", pulseratio)
-            return None, None
+            return None, None, None
 
         vsync1 = self.find_vsync(pulses, 0)
         if vsync1 is None:
