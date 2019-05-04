@@ -869,14 +869,23 @@ class Field:
         linelocs_filled = linelocs.copy()
 
         if linelocs_filled[0] < 0:
-            linelocs_filled[0] = linelocs_filled[1] - linelen
+            for i in range(0, self.outlinecount + 1):
+                if linelocs[i] > 0:
+                    next_valid = i
+                    break
+
+            linelocs_filled[0] = linelocs_filled[next_valid] - (next_valid * linelen)
+            
+            if linelocs_filled[0] < linelen:
+                #print(linelocs_filled[0])
+                return None, None, pulses[vsyncs[0]][0] + (self.inlinelen * self.outlinecount - 7)
 
         for l in range(1, self.outlinecount + 6):
             if linelocs_filled[l] < 0:
                 prev_valid = None
                 next_valid = None
 
-                for i in range(l, -10, -1):
+                for i in range(l, 1, -1):
                     if linelocs[i] > 0:
                         prev_valid = i
                         break
@@ -885,9 +894,13 @@ class Field:
                         next_valid = i
                         break
 
+ #               print(l, prev_valid, next_valid)
+                #print(linelocs[prev_valid])
+                        
                 if prev_valid is None:
                     avglen = self.inlinelen
                     linelocs_filled[l] = linelocs[next_valid] - (avglen * (next_valid - l))
+#                    print(l, linelocs[next_valid], (avglen * (next_valid - l)))
                 elif next_valid is not None:
                     avglen = (linelocs[next_valid] - linelocs[prev_valid]) / (next_valid - prev_valid)
                     #avglen = self.inlinelen 
@@ -896,7 +909,7 @@ class Field:
                     #avglen = (linelocs[next_valid] - linelocs[prev_valid]) / (next_valid - prev_valid)
                     avglen = self.inlinelen 
                     linelocs_filled[l] = linelocs[prev_valid] + (avglen * (l - prev_valid))
-                
+
                 #print(l, prev_valid, next_valid, linelocs_filled[l], avglen)
 
         # *finally* done :)
@@ -907,8 +920,8 @@ class Field:
         rv_err[2:] = np.diff(np.diff(rv_ll)) > 1
 
         #print(rv_ll[0])
-        
-        return rv_ll, rv_err, pulses[vsync2[0] - 12][0]
+
+        return rv_ll, rv_err, pulses[vsync2[0] - 14][0]
 
     def refine_linelocs_hsync(self):
         linelocs2 = self.linelocs1.copy()
