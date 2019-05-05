@@ -202,7 +202,7 @@ bool NtscFilter::process(QString inputFileName, QString outputFileName,
 
     // Show processing summary
     qInfo() << "Processed" << length << "frames into" <<
-               static_cast<qint32>(videoEnd) - static_cast<qint32>(videoStart) << "x 486 RGB16-16-16 frames";
+               static_cast<qint32>(videoEnd) - static_cast<qint32>(videoStart) << "x 488 RGB16-16-16 frames";
 
     // Close the input and output files
     sourceVideo.close();
