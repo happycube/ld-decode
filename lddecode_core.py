@@ -1943,8 +1943,8 @@ class LDdecode:
             # compute IRE50 from field1 l13
             # Unforunately this is too short to get a 50IRE RF level
             wl_slice = f1.lineslice_tbc(13, 4.7+15.5, 3)
-            metrics['palIRE50PSNR'] = self.calcpsnr(f1, wl_slice)
-            metrics['palIRE50IRE'] = np.mean(f1.output_to_ire(f1.dspicture[wl_slice]))
+            metrics['greyPSNR'] = self.calcpsnr(f1, wl_slice)
+            metrics['greyIRE'] = np.mean(f1.output_to_ire(f1.dspicture[wl_slice]))
 
         if f2 is not None:
             # There's a nice long burst at 50IRE block on field2 l13
@@ -1969,11 +1969,12 @@ class LDdecode:
             metrics['ntscLine19ColorRawSNR'] = snr
 
         ire50_slice = f.lineslice_tbc(19, 36, 10)
-        metrics['ntscIRE50PSNR'] = self.calcpsnr(f, ire50_slice)
+        metrics['greyPSNR'] = self.calcpsnr(f, ire50_slice)
+        metrics['greyIRE'] = np.mean(f.output_to_ire(f.dspicture[ire50_slice]))
 
         ire50_rawslice = f.lineslice(19, 36, 10)
         rawdata = f.rawdata[ire50_rawslice.start - int(self.rf.delays['video_white']):ire50_rawslice.stop - int(self.rf.delays['video_white'])]
-        metrics['ntscIRE50RFLevel'] = np.std(rawdata)
+        metrics['greyRFLevel'] = np.std(rawdata)
         
         if not f.isFirstField and fp is not None:
             cp = CombNTSC(fp)
