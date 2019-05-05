@@ -59,21 +59,21 @@ bool NtscFilter::process(QString inputFileName, QString outputFileName,
     qint32 frameHeight = (videoParameters.fieldHeight * 2) - 1;
 
     // Set the first and last active scan line
-    qint32 firstActiveScanLine = 43;
+    qint32 firstActiveScanLine = 40;
     qint32 lastActiveScanLine = 525;
 
     // Default to standard output size
     qint32 videoStart = videoParameters.activeVideoStart;
     qint32 videoEnd = videoParameters.activeVideoEnd;
 
-    // Make sure output width is even (better for ffmpeg processing)
-    if (((videoEnd - videoStart) % 2) != 0) {
+    // Make sure output width is divisible by 8 (better for ffmpeg processing)
+    while (((videoEnd - videoStart) % 8) != 0) {
         videoEnd++;
     }
 
     // Show output information to the user
     qInfo() << "Input video of" << videoParameters.fieldWidth << "x" << frameHeight <<
-               "will be colourised and trimmed to" << static_cast<qint32>(videoEnd) - static_cast<qint32>(videoStart) << "x 486";
+               "will be colourised and trimmed to" << static_cast<qint32>(videoEnd) - static_cast<qint32>(videoStart) << "x 488";
 
     // Open the source video file
     if (!sourceVideo.open(inputFileName, videoParameters.fieldWidth * videoParameters.fieldHeight)) {
@@ -169,11 +169,11 @@ bool NtscFilter::process(QString inputFileName, QString outputFileName,
             // The NTSC filter outputs the whole frame, so here we crop it to the required dimensions
             QByteArray croppedOutputData;
 
-            // Add additional output lines to ensure the output height is 480 lines
+            // Add additional output lines to ensure the output height is 488 lines
             QByteArray blankLine;
             blankLine.resize((videoEnd - videoStart) * 6 );
             blankLine.fill(0);
-            for (qint32 y = 0; y < 486 - (lastActiveScanLine - firstActiveScanLine); y++) {
+            for (qint32 y = 0; y < 488 - (lastActiveScanLine - firstActiveScanLine); y++) {
                 croppedOutputData.append(blankLine);
             }
 

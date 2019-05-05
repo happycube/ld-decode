@@ -41,7 +41,7 @@ FilterThread::FilterThread(LdDecodeMetaData::VideoParameters videoParametersPara
 
     // Set the first and last active scan line
     firstActiveScanLine = 44;
-    lastActiveScanLine = 617;
+    lastActiveScanLine = 620;
     videoStart = videoParameters.activeVideoStart;
     videoEnd = videoParameters.activeVideoEnd;
 
@@ -50,8 +50,8 @@ FilterThread::FilterThread(LdDecodeMetaData::VideoParameters videoParametersPara
        lastActiveScanLine--;
     }
 
-    // Make sure output width is even (better for ffmpeg processing)
-    if (((videoEnd - videoStart) % 2) != 0) {
+    // Make sure output width is divisible by 16 (better for ffmpeg processing)
+    while (((videoEnd - videoStart) % 16) != 0) {
        videoEnd++;
     }
 }
