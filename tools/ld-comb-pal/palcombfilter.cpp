@@ -60,8 +60,8 @@ bool PalCombFilter::process(QString inputFileName, QString outputFileName, qint3
     qint32 videoStart = videoParameters.activeVideoStart;
     qint32 videoEnd = videoParameters.activeVideoEnd;
 
-    // Make sure output width is even (better for ffmpeg processing)
-    if (((videoEnd - videoStart) % 2) != 0) {
+    // Make sure output width is divisible by 16 (better for ffmpeg processing)
+    while (((videoEnd - videoStart) % 16) != 0) {
        videoEnd++;
     }
 

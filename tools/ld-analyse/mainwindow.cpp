@@ -309,10 +309,10 @@ void MainWindow::showFrame(qint32 frameNumber, bool showActiveVideoArea, bool hi
         qint32 lastActiveScanLine;
         if (videoParameters.isSourcePal) {
             firstActiveScanLine = 44;
-            lastActiveScanLine = 617;
+            lastActiveScanLine = 620;
         } else {
             firstActiveScanLine = 40;
-            lastActiveScanLine = 519;
+            lastActiveScanLine = 525;
         }
 
         // Outline the active video area
@@ -506,7 +506,7 @@ QImage MainWindow::generateQImage(qint32 firstFieldNumber, qint32 secondFieldNum
     } else {
         // Set the first and last active scan line (for PAL)
         qint32 firstActiveScanLine = 44;
-        qint32 lastActiveScanLine = 617;
+        qint32 lastActiveScanLine = 620;
         QByteArray outputData;
 
         // Perform a PAL 2D comb filter on the current frame
@@ -525,7 +525,7 @@ QImage MainWindow::generateQImage(qint32 firstFieldNumber, qint32 secondFieldNum
             // NTSC source
 
             // Set the first and last active scan line
-            firstActiveScanLine = 43;
+            firstActiveScanLine = 40;
             lastActiveScanLine = 525;
 
             outputData = ntscColour.process(firstFieldData, secondFieldData,
