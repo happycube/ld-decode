@@ -148,7 +148,7 @@ void MainWindow::updateGuiLoaded(void)
         palColour.updateConfiguration(videoParameters);
     } else {
         // Set the first active scan line
-        qint32 firstActiveScanLine = 43;
+        qint32 firstActiveScanLine = 40;
 
         // Get the default configuration for the comb filter
         Comb::Configuration configuration = ntscColour.getConfiguration();
@@ -583,6 +583,9 @@ void MainWindow::loadTbcFile(QString inputFileName)
     // Update the GUI
     updateGuiUnloaded();
 
+    // Close current source video (if open)
+    sourceVideo.close();
+
     qInfo() << "Opening TBC filename =" << inputFileName;
 
     // Open the TBC metadata file
@@ -597,9 +600,6 @@ void MainWindow::loadTbcFile(QString inputFileName)
     } else {
         // Get the video parameters from the metadata
         LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
-
-        // Close current source video (if open)
-        sourceVideo.close();
 
         // Open the new source video
         if (!sourceVideo.open(inputFileName, videoParameters.fieldWidth * videoParameters.fieldHeight)) {

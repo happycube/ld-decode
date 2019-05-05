@@ -274,6 +274,10 @@ bool LdDecodeMetaData::read(QString fileName)
                     metaData.fields[fieldNumber].dropOuts.endx[doCounter] = json.value({"fields", fieldNumber, "dropOuts", "endx", doCounter}).toInt();
                     metaData.fields[fieldNumber].dropOuts.fieldLine[doCounter] = json.value({"fields", fieldNumber, "dropOuts", "fieldLine", doCounter}).toInt();
                 }
+            } else {
+                metaData.fields[fieldNumber].dropOuts.startx.clear();
+                metaData.fields[fieldNumber].dropOuts.endx.clear();
+                metaData.fields[fieldNumber].dropOuts.fieldLine.clear();
             }
         }
     }  else {
