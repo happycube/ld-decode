@@ -1132,7 +1132,7 @@ class Field:
 
         # Do raw demod detection here.  (This covers only extreme cases right now)
         dod_margin_low = 1500000
-        dod_margin_high = 1500000
+        dod_margin_high = 10000000 if self.rf.system == 'PAL' else 1500000
         iserr1 = inrange(f.data[0]['demod_raw'], f.rf.limits['viewable'][0] - dod_margin_low, f.rf.limits['viewable'][1] +  dod_margin_high) == False
 
         # build sets of min/max valid levels 
