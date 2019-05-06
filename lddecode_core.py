@@ -1172,7 +1172,6 @@ class Field:
         iserr2 |= f.data[0]['demod'] > valid_max
 
         iserr = iserr1 | iserr2
-        print(np.sum(iserr))
         
         return iserr
 
