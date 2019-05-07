@@ -821,6 +821,10 @@ class Field:
         # area is relative to the regular lines.  This can then be used to determine if a field
         # is first or second... depending on standard. :)
 
+        if len(dists) == 0:
+            print("WARNING: unable to lock VSYNCs, skipping field")
+            return None, None, (self.inlinelen * 240)
+
         self.isFirstField = (np.mean(dists) < .5) if self.rf.system == 'PAL' else (np.mean(dists) > .5)
 
         # choose just one valid VSYNC.  If there are none, these fields are in bad shape ;)
@@ -1081,14 +1085,13 @@ class Field:
         
         return None
 
-    def __init__(self, rf, rawdata, rawdecode, start, audio_offset = 0, keepraw = True):
+    def __init__(self, rf, rawdata, rawdecode, audio_offset = 0, keepraw = True):
         if rawdecode is None:
             return None
 
         self.rawdata = rawdata
         self.data = rawdecode
         self.rf = rf
-        self.start = start
         
         self.inlinelen = self.rf.linelen
         self.outlinelen = self.rf.SysParams['outlinelen']
@@ -1111,7 +1114,7 @@ class Field:
         self.linelocs1, self.linebad, self.nextfieldoffset = self.compute_linelocs()
         if self.linelocs1 is None:
             if self.nextfieldoffset is None:
-                self.nextfieldoffset = start + (self.rf.linelen * 200)
+                self.nextfieldoffset = self.rf.linelen * 200
 
             return
 
@@ -1803,7 +1806,7 @@ class LDdecode:
             print("Failed to demodulate data")
             return None, None
         
-        f = self.FieldClass(self.rf, self.indata, self.rawdecode, 0, audio_offset = self.audio_offset)
+        f = self.FieldClass(self.rf, self.indata, self.rawdecode, audio_offset = self.audio_offset)
         
         self.curfield = f
 
