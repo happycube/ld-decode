@@ -42,7 +42,8 @@ SOURCES += \
     dropoutanalysisdialog.cpp \
     ../ld-comb-ntsc/yiqline.cpp \
     ../ld-comb-ntsc/yiqbuffer.cpp \
-    ../ld-comb-ntsc/opticalflow.cpp
+    ../ld-comb-ntsc/opticalflow.cpp \
+    vitsmetricsdialog.cpp
 
 HEADERS += \
         mainwindow.h \
@@ -62,7 +63,8 @@ HEADERS += \
     ../ld-comb-ntsc/yiqbuffer.h \
     ../ld-comb-ntsc/yiqline.h \
     ../ld-comb-ntsc/opticalflow.h \
-    ../ld-comb-ntsc/yiqbuffer.h
+    ../ld-comb-ntsc/yiqbuffer.h \
+    vitsmetricsdialog.h
 
 FORMS += \
         mainwindow.ui \
@@ -71,7 +73,8 @@ FORMS += \
     vbidialog.ui \
     ntscdialog.ui \
     videometadatadialog.ui \
-    dropoutanalysisdialog.ui
+    dropoutanalysisdialog.ui \
+    vitsmetricsdialog.ui
 
 MYDLLDIR = $$IN_PWD/../library
 

@@ -43,6 +43,7 @@
 #include "ntscdialog.h"
 #include "videometadatadialog.h"
 #include "dropoutanalysisdialog.h"
+#include "vitsmetricsdialog.h"
 #include "configuration.h"
 #include "frameqlabel.h"
 #include "../ld-comb-pal/palcolour.h"
@@ -86,6 +87,8 @@ private slots:
     void on_combFilterRadioButton_clicked();
     void on_reverseFieldOrderCheckBox_stateChanged(int arg1);
 
+    void on_actionVITS_Metrics_triggered();
+
 private:
     Ui::MainWindow *ui;
 
@@ -96,6 +99,7 @@ private:
     NtscDialog *ntscDialog;
     VideoMetadataDialog *videoMetadataDialog;
     DropoutAnalysisDialog *dropoutAnalysisDialog;
+    VitsMetricsDialog *vitsMetricsDialog;
 
     // Class globals
     Configuration *configuration;

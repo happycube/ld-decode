@@ -678,7 +678,7 @@
      <x>0</x>
      <y>0</y>
      <width>1234</width>
-     <height>21</height>
+     <height>22</height>
     </rect>
    </property>
    <widget class="QMenu" name="menuFile">
@@ -699,6 +699,7 @@
     <addaction name="actionVBI"/>
     <addaction name="actionNTSC"/>
     <addaction name="actionVideo_metadata"/>
+    <addaction name="actionVITS_Metrics"/>
     <addaction name="actionDropout_analysis"/>
    </widget>
    <widget class="QMenu" name="menuHelp">
@@ -728,7 +729,7 @@
    <property name="text">
     <string>Open TBC file...</string>
    </property>
-      <property name="shortcut">
+   <property name="shortcut">
     <string>Ctrl+O</string>
    </property>
   </action>
@@ -794,6 +795,14 @@
    </property>
    <property name="shortcut">
     <string>Ctrl+S</string>
+   </property>
+  </action>
+  <action name="actionVITS_Metrics">
+   <property name="text">
+    <string>VITS Metrics...</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+E</string>
    </property>
   </action>
  </widget>

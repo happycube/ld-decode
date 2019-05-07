@@ -122,10 +122,33 @@ public:
         QVector<qint32> fieldLine;
     };
 
-    // VITS metadata definition
-    struct Vits {
+    // VITS metrics metadata definition
+    struct VitsMetrics {
         bool inUse;
-        qreal snr;
+        qreal whiteSNR;
+        qreal whiteIRE;
+        qreal whiteRFLevel;
+        qreal greyPSNR;
+        qreal greyIRE;
+        qreal greyRFLevel;
+        qreal blackLinePreTBCIRE;
+        qreal blackLinePostTBCIRE;
+        qreal blackLinePSNR;
+        qreal blackLineRFLevel;
+        qreal syncLevelPSNR;
+        qreal syncRFLevel;
+        qreal syncToBlackRFRatio;
+        qreal syncToWhiteRFRatio;
+        qreal blackToWhiteRFRatio;
+        qreal ntscWhiteFlagSNR;
+        qreal ntscWhiteFlagRFLevel;
+        qreal ntscLine19Burst0IRE;
+        qreal ntscLine19Burst70IRE;
+        qreal ntscLine19ColorPhase;
+        qreal ntscLine19ColorRawSNR;
+        qreal ntscLine19Color3DPhase;
+        qreal ntscLine19Color3DRawSNR;
+        qreal palVITSBurst50Level;
     };
 
     // NTSC Specific metadata definition
@@ -154,7 +177,7 @@ public:
         qint32 fieldPhaseID;
         qint32 audioSamples;
 
-        Vits vits;
+        VitsMetrics vitsMetrics;
         Vbi vbi;
         Ntsc ntsc;
         DropOuts dropOuts;

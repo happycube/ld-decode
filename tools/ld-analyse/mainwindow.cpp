@@ -67,6 +67,9 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     // Set up the dropout analysis dialogue
     dropoutAnalysisDialog = new DropoutAnalysisDialog(this);
 
+    // Set up the VITS metrics dialogue
+    vitsMetricsDialog = new VitsMetricsDialog(this);
+
     // Load the window geometry from the configuration
     restoreGeometry(configuration->getMainWindowGeometry());
     vbiDialog->restoreGeometry(configuration->getVbiDialogGeometry());
@@ -74,6 +77,7 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     videoMetadataDialog->restoreGeometry(configuration->getVideoMetadataDialogGeometry());
     oscilloscopeDialog->restoreGeometry(configuration->getOscilloscopeDialogGeometry());
     dropoutAnalysisDialog->restoreGeometry(configuration->getDropoutAnalysisDialogGeometry());
+    vitsMetricsDialog->restoreGeometry(configuration->getVitsMetricsDialogGeometry());
 
     updateGuiUnloaded();
 
@@ -92,6 +96,7 @@ MainWindow::~MainWindow()
     configuration->setVideoMetadataDialogGeometry(videoMetadataDialog->saveGeometry());
     configuration->setOscilloscopeDialogGeometry(oscilloscopeDialog->saveGeometry());
     configuration->setDropoutAnalysisDialogGeometry(dropoutAnalysisDialog->saveGeometry());
+    configuration->setVitsMetricsDialogGeometry(vitsMetricsDialog->saveGeometry());
     configuration->writeConfiguration();
 
     // Close the source video if open
@@ -139,6 +144,7 @@ void MainWindow::updateGuiLoaded(void)
     ui->actionVBI->setEnabled(true);
     ui->actionNTSC->setEnabled(true);
     ui->actionVideo_metadata->setEnabled(true);
+    ui->actionVITS_Metrics->setEnabled(true);
     ui->action1_1_Frame_size->setEnabled(true);
     ui->actionDropout_analysis->setEnabled(true);
     ui->actionSave_frame_as_PNG->setEnabled(true);
@@ -246,6 +252,7 @@ void MainWindow::updateGuiUnloaded(void)
     ui->actionVBI->setEnabled(false);
     ui->actionNTSC->setEnabled(false);
     ui->actionVideo_metadata->setEnabled(false);
+    ui->actionVITS_Metrics->setEnabled(false);
     ui->action1_1_Frame_size->setEnabled(false);
     ui->actionDropout_analysis->setEnabled(false);
     ui->actionSave_frame_as_PNG->setEnabled(false);
@@ -435,6 +442,9 @@ void MainWindow::showFrame(qint32 frameNumber, bool showActiveVideoArea, bool hi
 
     // Update the metadata dialogue
     videoMetadataDialog->updateMetaData(videoParameters);
+
+    // Update the VITS metrics dialogue
+    vitsMetricsDialog->updateVitsMetrics(firstField, secondField);
 
     // Add the QImage to the QLabel in the dialogue
     ui->frameViewerLabel->clear();
@@ -773,6 +783,12 @@ void MainWindow::on_actionDropout_analysis_triggered()
     dropoutAnalysisDialog->show();
 }
 
+void MainWindow::on_actionVITS_Metrics_triggered()
+{
+    // Show the VITS metrics dialogue
+    vitsMetricsDialog->show();
+}
+
 // Adjust the window to show the frame at 1:1 zoom
 void MainWindow::on_action1_1_Frame_size_triggered()
 {
@@ -922,6 +938,8 @@ void MainWindow::updateOscilloscopeDialogue(qint32 frameNumber, qint32 scanLine)
                                        sourceVideo.getVideoField(secondFieldNumber)->getFieldData(),
                                        &ldDecodeMetaData, scanLine, firstFieldNumber, secondFieldNumber);
 }
+
+
 
 
 

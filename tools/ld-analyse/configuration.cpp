@@ -74,6 +74,7 @@ void Configuration::writeConfiguration(void)
     configuration->setValue("videoMetadataDialogGeometry", settings.windows.videoMetadataDialogGeometry);
     configuration->setValue("oscilloscopeDialogGeometry", settings.windows.oscilloscopeDialogGeometry);
     configuration->setValue("dropoutAnalysisDialogGeometry", settings.windows.dropoutAnalysisDialogGeometry);
+    configuration->setValue("vitsMetricsDialogGeometry", settings.windows.vitsMetricsDialogGeometry);
     configuration->endGroup();
 
     // Sync the settings with disk
@@ -102,6 +103,7 @@ void Configuration::readConfiguration(void)
     settings.windows.videoMetadataDialogGeometry = configuration->value("videoMetadataDialogGeometry").toByteArray();
     settings.windows.oscilloscopeDialogGeometry = configuration->value("oscilloscopeDialogGeometry").toByteArray();
     settings.windows.dropoutAnalysisDialogGeometry = configuration->value("dropoutAnalysisDialogGeometry").toByteArray();
+    settings.windows.vitsMetricsDialogGeometry = configuration->value("vitsMetricsDialogGeometry").toByteArray();
     configuration->endGroup();
 }
 
@@ -121,6 +123,7 @@ void Configuration::setDefault(void)
     settings.windows.videoMetadataDialogGeometry = QByteArray();
     settings.windows.oscilloscopeDialogGeometry = QByteArray();
     settings.windows.dropoutAnalysisDialogGeometry = QByteArray();
+    settings.windows.vitsMetricsDialogGeometry = QByteArray();
 
     // Write the configuration
     writeConfiguration();
@@ -208,5 +211,15 @@ void Configuration::setDropoutAnalysisDialogGeometry(QByteArray dropoutAnalysisD
 QByteArray Configuration::getDropoutAnalysisDialogGeometry(void)
 {
     return settings.windows.dropoutAnalysisDialogGeometry;
+}
+
+void Configuration::setVitsMetricsDialogGeometry(QByteArray vitsMetricsDialogGeometry)
+{
+    settings.windows.vitsMetricsDialogGeometry = vitsMetricsDialogGeometry;
+}
+
+QByteArray Configuration::getVitsMetricsDialogGeometry(void)
+{
+    return settings.windows.vitsMetricsDialogGeometry;
 }
 
