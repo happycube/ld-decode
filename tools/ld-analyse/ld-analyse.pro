@@ -29,6 +29,7 @@ SOURCES += \
         mainwindow.cpp \
     oscilloscopedialog.cpp \
     aboutdialog.cpp \
+    snranalysisdialog.cpp \
     vbidialog.cpp \
     configuration.cpp \
     ntscdialog.cpp \
@@ -49,6 +50,7 @@ HEADERS += \
         mainwindow.h \
     oscilloscopedialog.h \
     aboutdialog.h \
+    snranalysisdialog.h \
     vbidialog.h \
     configuration.h \
     ntscdialog.h \
@@ -70,6 +72,7 @@ FORMS += \
         mainwindow.ui \
     oscilloscopedialog.ui \
     aboutdialog.ui \
+    snranalysisdialog.ui \
     vbidialog.ui \
     ntscdialog.ui \
     videometadatadialog.ui \

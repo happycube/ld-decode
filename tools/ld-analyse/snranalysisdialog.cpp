@@ -1,6 +1,6 @@
 /************************************************************************
 
-    dropoutanalysisdialog.cpp
+    snranalysisdialog.cpp
 
     ld-analyse - TBC output analysis
     Copyright (C) 2018-2019 Simon Inns
@@ -22,12 +22,12 @@
 
 ************************************************************************/
 
-#include "dropoutanalysisdialog.h"
-#include "ui_dropoutanalysisdialog.h"
+#include "snranalysisdialog.h"
+#include "ui_snranalysisdialog.h"
 
-DropoutAnalysisDialog::DropoutAnalysisDialog(QWidget *parent) :
+SnrAnalysisDialog::SnrAnalysisDialog(QWidget *parent) :
     QDialog(parent),
-    ui(new Ui::DropoutAnalysisDialog)
+    ui(new Ui::SnrAnalysisDialog)
 {
     ui->setupUi(this);
 
@@ -43,7 +43,7 @@ DropoutAnalysisDialog::DropoutAnalysisDialog(QWidget *parent) :
     series.attachAxis(&axisX);
 
     // Set up the Y axis
-    axisY.setTitleText("Dropout length (in dots)");
+    axisY.setTitleText("Black Peak SNR (in dB)");
     axisY.setLabelFormat("%i");
     axisY.setTickCount(1000);
     chart.addAxis(&axisY, Qt::AlignLeft);
@@ -56,12 +56,12 @@ DropoutAnalysisDialog::DropoutAnalysisDialog(QWidget *parent) :
     chartView->repaint();
 }
 
-DropoutAnalysisDialog::~DropoutAnalysisDialog()
+SnrAnalysisDialog::~SnrAnalysisDialog()
 {
     delete ui;
 }
 
-void DropoutAnalysisDialog::updateChart(LdDecodeMetaData *ldDecodeMetaData)
+void SnrAnalysisDialog::updateChart(LdDecodeMetaData *ldDecodeMetaData)
 {
     series.clear();
 
@@ -72,41 +72,35 @@ void DropoutAnalysisDialog::updateChart(LdDecodeMetaData *ldDecodeMetaData)
     qint32 fieldsPerDataPoint = ldDecodeMetaData->getNumberOfFields() / dataPoints;
 
     qint32 fieldNumber = 1;
-    qint32 maximumDropoutLength = 0;
-    for (qint32 dpCount = 0; dpCount < dataPoints; dpCount++) {
-        qint32 doLength = 0;
+    qint32 maximumBlackPSNR = 0;
+    for (qint32 snrCount = 0; snrCount < dataPoints; snrCount++) {
+        qint32 snrTotal = 0;
         for (qint32 avCount = 0; avCount < fieldsPerDataPoint; avCount++) {
             LdDecodeMetaData::Field field = ldDecodeMetaData->getField(fieldNumber);
 
-            if (field.dropOuts.startx.size() > 0) {
-                // Calculate the total length of the dropouts
-                for (qint32 i = 0; i < field.dropOuts.startx.size(); i++) {
-                    doLength += field.dropOuts.endx[i] - field.dropOuts.startx[i];
-                }
-            }
-
+            snrTotal += field.vitsMetrics.blackLinePSNR;
             fieldNumber++;
         }
 
         // Calculate the average
-        doLength = doLength / fieldsPerDataPoint;
+        snrTotal = snrTotal / fieldsPerDataPoint;
 
         // Keep track of the maximum Y value
-        if (doLength > maximumDropoutLength) maximumDropoutLength = doLength;
+        if (snrTotal > maximumBlackPSNR) maximumBlackPSNR = snrTotal;
 
         // Add the result to the series
-        series.append(fieldNumber, doLength);
+        series.append(fieldNumber, snrTotal);
     }
 
     // Update the chart
-    chart.setTitle("Dropout loss analysis (averaged over " + QString::number(fieldsPerDataPoint) + " fields)");
+    chart.setTitle("Black peak SNR analysis (averaged over " + QString::number(fieldsPerDataPoint) + " fields)");
 
     axisX.setTickCount(10);
     axisX.setMax(ldDecodeMetaData->getNumberOfFields());
     axisX.setMin(0);
 
     axisY.setTickCount(10);
-    axisY.setMax(maximumDropoutLength);
+    axisY.setMax(maximumBlackPSNR + 10); // +10 to give a little space at the top of the window
     axisY.setMin(0);
 
     chartView->repaint();

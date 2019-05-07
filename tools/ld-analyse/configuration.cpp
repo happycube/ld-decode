@@ -3,7 +3,7 @@
     configuration.cpp
 
     ld-analyse - TBC output analysis
-    Copyright (C) 2018 Simon Inns
+    Copyright (C) 2018-2019 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -75,6 +75,7 @@ void Configuration::writeConfiguration(void)
     configuration->setValue("oscilloscopeDialogGeometry", settings.windows.oscilloscopeDialogGeometry);
     configuration->setValue("dropoutAnalysisDialogGeometry", settings.windows.dropoutAnalysisDialogGeometry);
     configuration->setValue("vitsMetricsDialogGeometry", settings.windows.vitsMetricsDialogGeometry);
+    configuration->setValue("snrAnalysisDialogGeometry", settings.windows.snrAnalysisDialogGeometry);
     configuration->endGroup();
 
     // Sync the settings with disk
@@ -104,6 +105,7 @@ void Configuration::readConfiguration(void)
     settings.windows.oscilloscopeDialogGeometry = configuration->value("oscilloscopeDialogGeometry").toByteArray();
     settings.windows.dropoutAnalysisDialogGeometry = configuration->value("dropoutAnalysisDialogGeometry").toByteArray();
     settings.windows.vitsMetricsDialogGeometry = configuration->value("vitsMetricsDialogGeometry").toByteArray();
+    settings.windows.snrAnalysisDialogGeometry = configuration->value("snrAnalysisDialogGeometry").toByteArray();
     configuration->endGroup();
 }
 
@@ -124,6 +126,7 @@ void Configuration::setDefault(void)
     settings.windows.oscilloscopeDialogGeometry = QByteArray();
     settings.windows.dropoutAnalysisDialogGeometry = QByteArray();
     settings.windows.vitsMetricsDialogGeometry = QByteArray();
+    settings.windows.snrAnalysisDialogGeometry = QByteArray();
 
     // Write the configuration
     writeConfiguration();
@@ -221,5 +224,15 @@ void Configuration::setVitsMetricsDialogGeometry(QByteArray vitsMetricsDialogGeo
 QByteArray Configuration::getVitsMetricsDialogGeometry(void)
 {
     return settings.windows.vitsMetricsDialogGeometry;
+}
+
+void Configuration::setSnrAnalysisDialogGeometry(QByteArray snrAnalysisDialogGeometry)
+{
+    settings.windows.snrAnalysisDialogGeometry = snrAnalysisDialogGeometry;
+}
+
+QByteArray Configuration::getSnrAnalysisDialogGeometry(void)
+{
+    return settings.windows.snrAnalysisDialogGeometry;
 }
 

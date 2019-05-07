@@ -1,6 +1,6 @@
 /************************************************************************
 
-    frameqlabel.h
+    snranalysisdialog.h
 
     ld-analyse - TBC output analysis
     Copyright (C) 2018-2019 Simon Inns
@@ -22,30 +22,36 @@
 
 ************************************************************************/
 
-#ifndef FRAMEQLABEL_H
-#define FRAMEQLABEL_H
+#ifndef SNRANALYSISDIALOG_H
+#define SNRANALYSISDIALOG_H
 
-#include <QLabel>
-#include <QPixmap>
-#include <QResizeEvent>
+#include <QDialog>
+#include <QtCharts>
 
-class FrameQLabel : public QLabel
+#include "lddecodemetadata.h"
+
+namespace Ui {
+class SnrAnalysisDialog;
+}
+
+class SnrAnalysisDialog : public QDialog
 {
-public:
     Q_OBJECT
 
 public:
-    explicit FrameQLabel(QWidget *parent = nullptr);
-    virtual qint32 heightForWidth(qint32 width) const;
-    virtual QSize sizeHint() const;
-    QPixmap scaledPixmap() const;
+    explicit SnrAnalysisDialog(QWidget *parent = nullptr);
+    ~SnrAnalysisDialog();
 
-public slots:
-    void setPixmap (const QPixmap &);
-    void resizeEvent(QResizeEvent *);
+    void updateChart(LdDecodeMetaData *ldDecodeMetaData);
 
 private:
-    QPixmap pix;
+    Ui::SnrAnalysisDialog *ui;
+
+    QChart chart;
+    QLineSeries series;
+    QChartView *chartView;
+    QValueAxis axisX;
+    QValueAxis axisY;
 };
 
-#endif // FRAMEQLABEL_H
+#endif // SNRANALYSISDIALOG_H

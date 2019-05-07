@@ -3,7 +3,7 @@
     mainwindow.cpp
 
     ld-analyse - TBC output analysis
-    Copyright (C) 2018 Simon Inns
+    Copyright (C) 2018-2019 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -70,6 +70,9 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     // Set up the VITS metrics dialogue
     vitsMetricsDialog = new VitsMetricsDialog(this);
 
+    // Set up the SNR analysis dialogue
+    snrAnalysisDialog = new SnrAnalysisDialog(this);
+
     // Load the window geometry from the configuration
     restoreGeometry(configuration->getMainWindowGeometry());
     vbiDialog->restoreGeometry(configuration->getVbiDialogGeometry());
@@ -78,6 +81,7 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     oscilloscopeDialog->restoreGeometry(configuration->getOscilloscopeDialogGeometry());
     dropoutAnalysisDialog->restoreGeometry(configuration->getDropoutAnalysisDialogGeometry());
     vitsMetricsDialog->restoreGeometry(configuration->getVitsMetricsDialogGeometry());
+    snrAnalysisDialog->restoreGeometry(configuration->getSnrAnalysisDialogGeometry());
 
     updateGuiUnloaded();
 
@@ -97,6 +101,7 @@ MainWindow::~MainWindow()
     configuration->setOscilloscopeDialogGeometry(oscilloscopeDialog->saveGeometry());
     configuration->setDropoutAnalysisDialogGeometry(dropoutAnalysisDialog->saveGeometry());
     configuration->setVitsMetricsDialogGeometry(vitsMetricsDialog->saveGeometry());
+    configuration->setSnrAnalysisDialogGeometry(snrAnalysisDialog->saveGeometry());
     configuration->writeConfiguration();
 
     // Close the source video if open
@@ -147,6 +152,7 @@ void MainWindow::updateGuiLoaded(void)
     ui->actionVITS_Metrics->setEnabled(true);
     ui->action1_1_Frame_size->setEnabled(true);
     ui->actionDropout_analysis->setEnabled(true);
+    ui->actionSNR_analysis->setEnabled(true);
     ui->actionSave_frame_as_PNG->setEnabled(true);
 
     // Configure the comb-filter
@@ -196,6 +202,9 @@ void MainWindow::updateGuiLoaded(void)
 
     // Update the dropout analysis dialogue
     dropoutAnalysisDialog->updateChart(&ldDecodeMetaData);
+
+    // Update the SNR analysis dialogue
+    snrAnalysisDialog->updateChart(&ldDecodeMetaData);
 
     // Show the current frame
     showFrame(currentFrameNumber, ui->showActiveVideoCheckBox->isChecked(), ui->highlightDropOutsCheckBox->isChecked());
@@ -255,6 +264,7 @@ void MainWindow::updateGuiUnloaded(void)
     ui->actionVITS_Metrics->setEnabled(false);
     ui->action1_1_Frame_size->setEnabled(false);
     ui->actionDropout_analysis->setEnabled(false);
+    ui->actionSNR_analysis->setEnabled(false);
     ui->actionSave_frame_as_PNG->setEnabled(false);
 
     // Hide the displayed frame
@@ -789,6 +799,12 @@ void MainWindow::on_actionVITS_Metrics_triggered()
     vitsMetricsDialog->show();
 }
 
+void MainWindow::on_actionSNR_analysis_triggered()
+{
+    // Show the SNR analysis dialogue
+    snrAnalysisDialog->show();
+}
+
 // Adjust the window to show the frame at 1:1 zoom
 void MainWindow::on_action1_1_Frame_size_triggered()
 {
@@ -938,6 +954,8 @@ void MainWindow::updateOscilloscopeDialogue(qint32 frameNumber, qint32 scanLine)
                                        sourceVideo.getVideoField(secondFieldNumber)->getFieldData(),
                                        &ldDecodeMetaData, scanLine, firstFieldNumber, secondFieldNumber);
 }
+
+
 
 
 

@@ -3,7 +3,7 @@
     configuration.h
 
     ld-analyse - TBC output analysis
-    Copyright (C) 2018 Simon Inns
+    Copyright (C) 2018-2019 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -64,6 +64,8 @@ public:
     QByteArray getDropoutAnalysisDialogGeometry(void);
     void setVitsMetricsDialogGeometry(QByteArray vitsMetricsDialogGeometry);
     QByteArray getVitsMetricsDialogGeometry(void);
+    void setSnrAnalysisDialogGeometry(QByteArray snrAnalysisDialogGeometry);
+    QByteArray getSnrAnalysisDialogGeometry(void);
 
 signals:
 
@@ -87,6 +89,7 @@ private:
         QByteArray oscilloscopeDialogGeometry;
         QByteArray dropoutAnalysisDialogGeometry;
         QByteArray vitsMetricsDialogGeometry;
+        QByteArray snrAnalysisDialogGeometry;
     };
 
     // Overall settings structure
