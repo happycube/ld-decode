@@ -35,7 +35,7 @@ class DropOutCorrect : public QObject
     Q_OBJECT
 public:
     explicit DropOutCorrect(QObject *parent = nullptr);
-    bool process(QString inputFileName, QString outputFileName, bool reverse);
+    bool process(QString inputFileName, QString outputFileName, bool reverse, bool intraField);
 
 signals:
 
@@ -65,7 +65,7 @@ private:
 
     QVector<DropOutLocation> populateDropoutsVector(LdDecodeMetaData::Field field);
     QVector<DropOutLocation> setDropOutLocations(QVector<DropOutLocation> dropOuts);
-    Replacement findReplacementLine(QVector<DropOutLocation>firstFieldDropouts, QVector<DropOutLocation> secondFieldDropouts, qint32 dropOutIndex, bool isColourBurst);
+    Replacement findReplacementLine(QVector<DropOutLocation>firstFieldDropouts, QVector<DropOutLocation> secondFieldDropouts, qint32 dropOutIndex, bool isColourBurst, bool intraField);
 };
 
 #endif // DROPOUTCORRECT_H

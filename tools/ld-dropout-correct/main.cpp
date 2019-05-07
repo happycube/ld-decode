@@ -100,6 +100,11 @@ int main(int argc, char *argv[])
                                        QCoreApplication::translate("main", "Reverse the field order to second/first (default first/second)"));
     parser.addOption(setReverseOption);
 
+    // Force intra-field correction only
+    QCommandLineOption setIntrafieldOption(QStringList() << "i" << "intra",
+                                       QCoreApplication::translate("main", "Force intrafield correction (default interfield)"));
+    parser.addOption(setIntrafieldOption);
+
     // Positional argument to specify input video file
     parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input TBC file"));
 
@@ -112,6 +117,7 @@ int main(int argc, char *argv[])
     // Get the options from the parser
     bool isDebugOn = parser.isSet(showDebugOption);
     bool reverse = parser.isSet(setReverseOption);
+    bool intraField = parser.isSet(setIntrafieldOption);
 
     // Get the arguments from the parser
     QString inputFileName;
@@ -137,7 +143,7 @@ int main(int argc, char *argv[])
 
     // Perform the processing
     DropOutCorrect dropOutCorrect;
-    dropOutCorrect.process(inputFileName, outputFileName, reverse);
+    dropOutCorrect.process(inputFileName, outputFileName, reverse, intraField);
 
     // Quit with success
     return 0;

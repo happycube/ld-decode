@@ -29,7 +29,7 @@ DropOutCorrect::DropOutCorrect(QObject *parent) : QObject(parent)
 
 }
 
-bool DropOutCorrect::process(QString inputFileName, QString outputFileName, bool reverse)
+bool DropOutCorrect::process(QString inputFileName, QString outputFileName, bool reverse, bool intraField)
 {
     SourceVideo sourceVideo;
 
@@ -43,6 +43,11 @@ bool DropOutCorrect::process(QString inputFileName, QString outputFileName, bool
     if (reverse) {
         qInfo() << "Expected field order is reversed to second field/first field";
         ldDecodeMetaData.setIsFirstFieldFirst(false);
+    }
+
+    // Intrafield only correction if required
+    if (intraField) {
+        qInfo() << "Using intra-field correction only";
     }
 
     videoParameters = ldDecodeMetaData.getVideoParameters();
@@ -111,12 +116,12 @@ bool DropOutCorrect::process(QString inputFileName, QString outputFileName, bool
         for (qint32 dropoutIndex = 0; dropoutIndex < firstFieldDropouts.size(); dropoutIndex++) {
             // Is the current dropout in the colour burst?
             if (firstFieldDropouts[dropoutIndex].location == Location::colourBurst) {
-                firstFieldReplacementLines[dropoutIndex] = findReplacementLine(firstFieldDropouts, secondFieldDropouts, dropoutIndex, true);
+                firstFieldReplacementLines[dropoutIndex] = findReplacementLine(firstFieldDropouts, secondFieldDropouts, dropoutIndex, true, intraField);
             }
 
             // Is the current dropout in the visible video line?
             if (firstFieldDropouts[dropoutIndex].location == Location::visibleLine) {
-                firstFieldReplacementLines[dropoutIndex] = findReplacementLine(firstFieldDropouts, secondFieldDropouts, dropoutIndex, false);
+                firstFieldReplacementLines[dropoutIndex] = findReplacementLine(firstFieldDropouts, secondFieldDropouts, dropoutIndex, false, intraField);
             }
         }
 
@@ -126,12 +131,12 @@ bool DropOutCorrect::process(QString inputFileName, QString outputFileName, bool
         for (qint32 dropoutIndex = 0; dropoutIndex < secondFieldDropouts.size(); dropoutIndex++) {
             // Is the current dropout in the colour burst?
             if (secondFieldDropouts[dropoutIndex].location == Location::colourBurst) {
-                secondFieldReplacementLines[dropoutIndex] = findReplacementLine(secondFieldDropouts, firstFieldDropouts, dropoutIndex, true);
+                secondFieldReplacementLines[dropoutIndex] = findReplacementLine(secondFieldDropouts, firstFieldDropouts, dropoutIndex, true, intraField);
             }
 
             // Is the current dropout in the visible video line?
             if (secondFieldDropouts[dropoutIndex].location == Location::visibleLine) {
-                secondFieldReplacementLines[dropoutIndex] = findReplacementLine(secondFieldDropouts, firstFieldDropouts, dropoutIndex, false);
+                secondFieldReplacementLines[dropoutIndex] = findReplacementLine(secondFieldDropouts, firstFieldDropouts, dropoutIndex, false, intraField);
             }
         }
 
@@ -144,6 +149,7 @@ bool DropOutCorrect::process(QString inputFileName, QString outputFileName, bool
         // Correct the data of the first field
         for (qint32 dropoutIndex = 0; dropoutIndex < firstFieldDropouts.size(); dropoutIndex++) {
             if (firstFieldReplacementLines[dropoutIndex].isFirstField) {
+                // Correct the first field from the first field (intra-field correction)
                 for (qint32 pixel = firstFieldDropouts[dropoutIndex].startx; pixel < firstFieldDropouts[dropoutIndex].endx; pixel++) {
                     if (firstFieldDropouts[dropoutIndex].fieldLine > 2) {
                         *(firstTargetFieldData.data() + (((firstFieldDropouts[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2))) =
@@ -153,6 +159,7 @@ bool DropOutCorrect::process(QString inputFileName, QString outputFileName, bool
                     }
                 }
             } else {
+                // Correct the first field from the second field (inter-field correction)
                 for (qint32 pixel = firstFieldDropouts[dropoutIndex].startx; pixel < firstFieldDropouts[dropoutIndex].endx; pixel++) {
                     if (firstFieldDropouts[dropoutIndex].fieldLine > 2) {
                         *(firstTargetFieldData.data() + (((firstFieldDropouts[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2))) =
@@ -167,6 +174,7 @@ bool DropOutCorrect::process(QString inputFileName, QString outputFileName, bool
         // Correct the data of the second field
         for (qint32 dropoutIndex = 0; dropoutIndex < secondFieldDropouts.size(); dropoutIndex++) {
             if (secondFieldReplacementLines[dropoutIndex].isFirstField) {
+                // Correct the second field from the second field (intra-field correction)
                 for (qint32 pixel = secondFieldDropouts[dropoutIndex].startx; pixel < secondFieldDropouts[dropoutIndex].endx; pixel++) {
                     if (secondFieldDropouts[dropoutIndex].fieldLine > 2) {
                         *(secondTargetFieldData.data() + (((secondFieldDropouts[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2))) =
@@ -176,6 +184,7 @@ bool DropOutCorrect::process(QString inputFileName, QString outputFileName, bool
                     }
                 }
             } else {
+                // Correct the second field from the first field (inter-field correction)
                 for (qint32 pixel = secondFieldDropouts[dropoutIndex].startx; pixel < secondFieldDropouts[dropoutIndex].endx; pixel++) {
                     if (secondFieldDropouts[dropoutIndex].fieldLine > 2) {
                         *(secondTargetFieldData.data() + (((secondFieldDropouts[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2))) =
@@ -306,7 +315,8 @@ QVector<DropOutCorrect::DropOutLocation> DropOutCorrect::setDropOutLocations(QVe
 // Find a replacement line to take replacement data from.  This method looks both up and down the field
 // for the nearest replacement line that doesn't contain a drop-out itself (to prevent copying bad data
 // over bad data).
-DropOutCorrect::Replacement DropOutCorrect::findReplacementLine(QVector<DropOutLocation> firstFieldDropouts, QVector<DropOutLocation> secondFieldDropouts, qint32 dropOutIndex, bool isColourBurst)
+DropOutCorrect::Replacement DropOutCorrect::findReplacementLine(QVector<DropOutLocation> firstFieldDropouts, QVector<DropOutLocation> secondFieldDropouts,
+                                                                qint32 dropOutIndex, bool isColourBurst, bool intraField)
 {
     Replacement replacement;
     bool upFoundSource;
@@ -495,7 +505,6 @@ DropOutCorrect::Replacement DropOutCorrect::findReplacementLine(QVector<DropOutL
         }
     }
 
-
     // Determine which field we should take the replacement data from
     if (!isColourBurst) {
         qDebug() << "Visible video dropout on line" << firstFieldDropouts[dropOutIndex].fieldLine;
@@ -507,21 +516,28 @@ DropOutCorrect::Replacement DropOutCorrect::findReplacementLine(QVector<DropOutL
     }
 
     if (!isColourBurst) {
-        if (firstFieldReplacementSourceLine < secondFieldReplacementSourceLine) {
+        if (!intraField) {
+            // Use intra or inter-field
+            if (firstFieldReplacementSourceLine < secondFieldReplacementSourceLine) {
+                replacement.isFirstField = true;
+                replacement.fieldLine = firstFieldReplacementSourceLine;
+                qDebug() << "Using data from the first field as a replacement (intra-field)";
+            } else {
+                replacement.isFirstField = false;
+                replacement.fieldLine = secondFieldReplacementSourceLine;
+                qDebug() << "Using data from the second field as a replacement (inter-field)";
+            }
+        } else {
+            // Force intra-field only
             replacement.isFirstField = true;
             replacement.fieldLine = firstFieldReplacementSourceLine;
-            qDebug() << "Using data from the first field as a replacement";
-        } else {
-            replacement.isFirstField = false;
-            replacement.fieldLine = secondFieldReplacementSourceLine;
-            qDebug() << "Using data from the second field as a replacement";
+            qDebug() << "Using data from the first field as a replacement (forced intra-field)";
         }
     } else {
         // Always use the same field for colour burst replacement
         replacement.isFirstField = true;
         replacement.fieldLine = firstFieldReplacementSourceLine;
     }
-
 
     return replacement;
 }
