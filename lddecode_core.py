@@ -1444,17 +1444,21 @@ class FieldNTSC(Field):
         amed = {}
         amed[True] = np.abs(np.median(bursts_arr[True]))
         amed[False] = np.abs(np.median(bursts_arr[False]))
-
-        #print(amed[False], amed[True])
-
         field14 = amed[True] < amed[False]
+
+        # if the medians are too close, recompute them with a 90 degree offset
+        if (np.abs(amed[True] - amed[False]) < .1):
+            amed = {}
+            amed[True] = np.abs(np.median(bursts_arr[True] + .25))
+            amed[False] = np.abs(np.median(bursts_arr[False] + .25))
+            field14 = amed[True] > amed[False]
+
         self.amed = amed
         self.zc_bursts = zc_bursts
 
-        #valid = amed[field14] + np.std(bursts_arr[field14]) < amed[not field14]
-        valid = (np.abs(amed[True] - amed[False]) > .025)
+        valid = True
 
-        return valid, zc_bursts, field14, burstlevel, badlines
+        return zc_bursts, field14, burstlevel, badlines
 
     def refine_linelocs_burst(self, linelocs = None):
         if linelocs is None:
@@ -1463,13 +1467,7 @@ class FieldNTSC(Field):
         linelocs_adj = linelocs.copy()
         burstlevel = np.zeros_like(linelocs_adj, dtype=np.float32)
 
-        valid, zc_bursts, field14, burstlevel, badlines = self.compute_burst_offsets(linelocs_adj)
-
-        if not valid or self.burst90 == True:
-            #print("WARNING: applying 90 degree line adjustment for burst processing")
-            self.burst90 = True
-            linelocs_adj = [l + (self.rf.linelen * (.25 / 227.5)) for l in linelocs_adj]
-            valid, zc_bursts, field14, burstlevel, badlines = self.compute_burst_offsets(linelocs_adj)
+        zc_bursts, field14, burstlevel, badlines = self.compute_burst_offsets(linelocs_adj)
 
         adjs = {}
 
