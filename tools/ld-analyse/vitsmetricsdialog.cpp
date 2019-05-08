@@ -113,5 +113,30 @@ void VitsMetricsDialog::updateVitsMetrics(LdDecodeMetaData::Field firstField, Ld
 
         if (firstField.vitsMetrics.palVITSBurst50Level > 0) ui->palVITSBurst50LevelLabel->setText(QString::number(firstField.vitsMetrics.palVITSBurst50Level));
         else ui->palVITSBurst50LevelLabel->setText(QString::number(secondField.vitsMetrics.palVITSBurst50Level));
+    } else {
+        ui->whiteSNRLabel->setText("0");
+        ui->whiteIRELabel->setText("0");
+        ui->whiteRFLevelLabel->setText("0");
+        ui->greyPSNRLabel->setText("0");
+        ui->greyIRELabel->setText("0");
+        ui->greyRFLevelLabel->setText("0");
+        ui->blackLinePreTBCIRELabel->setText("0");
+        ui->blackLinePostTBCIRELabel->setText("0");
+        ui->blackLinePSNRLabel->setText("0");
+        ui->blackLineRFLevelLabel->setText("0");
+        ui->syncLevelPSNRLabel->setText("0");
+        ui->syncRFLevelLabel->setText("0");
+        ui->syncToBlackRFRatioLabel->setText("0");
+        ui->syncToWhiteRFRatioLabel->setText("0");
+        ui->blackToWhiteRFRatioLabel->setText("0");
+        ui->ntscWhiteFlagSNRLabel->setText("0");
+        ui->ntscWhiteFlagRFLevelLabel->setText("0");
+        ui->ntscLine19Burst0IRELabel->setText("0");
+        ui->ntscLine19Burst70IRELabel->setText("0");
+        ui->ntscLine19ColorPhaseLabel->setText("0");
+        ui->ntscLine19ColorRawSNRLabel->setText("0");
+        ui->ntscLine19Color3DPhaseLabel->setText("0");
+        ui->ntscLine19Color3DRawSNRLabel->setText("0");
+        ui->palVITSBurst50LevelLabel->setText("0");
     }
 }

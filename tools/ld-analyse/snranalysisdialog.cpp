@@ -72,9 +72,10 @@ void SnrAnalysisDialog::updateChart(LdDecodeMetaData *ldDecodeMetaData)
     qint32 fieldsPerDataPoint = ldDecodeMetaData->getNumberOfFields() / dataPoints;
 
     qint32 fieldNumber = 1;
-    qint32 maximumBlackPSNR = 0;
+    qreal maximumBlackPSNR = 0;
+    qreal minimumBlackPSNR = 1000.0;
     for (qint32 snrCount = 0; snrCount < dataPoints; snrCount++) {
-        qint32 snrTotal = 0;
+        qreal snrTotal = 0;
         for (qint32 avCount = 0; avCount < fieldsPerDataPoint; avCount++) {
             LdDecodeMetaData::Field field = ldDecodeMetaData->getField(fieldNumber);
 
@@ -83,10 +84,11 @@ void SnrAnalysisDialog::updateChart(LdDecodeMetaData *ldDecodeMetaData)
         }
 
         // Calculate the average
-        snrTotal = snrTotal / fieldsPerDataPoint;
+        snrTotal = snrTotal / static_cast<qreal>(fieldsPerDataPoint);
 
-        // Keep track of the maximum Y value
+        // Keep track of the maximum and minimum Y values
         if (snrTotal > maximumBlackPSNR) maximumBlackPSNR = snrTotal;
+        if (snrTotal < minimumBlackPSNR) minimumBlackPSNR = snrTotal;
 
         // Add the result to the series
         series.append(fieldNumber, snrTotal);
@@ -100,8 +102,9 @@ void SnrAnalysisDialog::updateChart(LdDecodeMetaData *ldDecodeMetaData)
     axisX.setMin(0);
 
     axisY.setTickCount(10);
-    axisY.setMax(maximumBlackPSNR + 10); // +10 to give a little space at the top of the window
-    axisY.setMin(0);
+    axisY.setMax(maximumBlackPSNR + 5.0); // +5 to give a little space at the top of the window
+    if ((minimumBlackPSNR - 5.0) > 0) axisY.setMin(minimumBlackPSNR - 5);
+    else axisY.setMin(0);
 
     chartView->repaint();
 }
