@@ -20,7 +20,7 @@ class JsonWax
 {
 private:
     JsonWaxInternals::Parser PARSER;
-    JsonWaxInternals::Editor* EDITOR = 0;
+    JsonWaxInternals::Editor* EDITOR = nullptr;
     QString PROGRAM_PATH;
     QString FILENAME;
     JsonWaxInternals::Serializer SERIALIZER;

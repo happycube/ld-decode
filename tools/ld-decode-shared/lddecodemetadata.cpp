@@ -39,7 +39,9 @@ bool LdDecodeMetaData::read(QString fileName)
     qDebug() << "LdDecodeMetaData::read(): Loading JSON file" << fileName;
     JsonWax json;
     if (!json.loadFile(fileName)) {
+        qCritical() << "JSON wax library error:" << json.errorMsg();
         qCritical("Opening JSON file failed: JSON file cannot be opened/does not exist");
+
         return false;
     }
 
