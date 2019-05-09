@@ -29,10 +29,6 @@
 
 #include <QObject>
 #include <QVector>
-//#include <QJsonDocument>
-//#include <QJsonObject>
-//#include <QJsonArray>
-//#include <QFile>
 #include <QDebug>
 
 class LDDECODESHAREDSHARED_EXPORT LdDecodeMetaData : public QObject

@@ -609,6 +609,7 @@ private:
                 return result;
             }
             default:
+                qDebug() << "Warning from JSON wax: Unexpected character at position" << POSITION << "- total file size is" << SIZE;
                 return error( UNEXPECTED_CHARACTER);
             }
         }
