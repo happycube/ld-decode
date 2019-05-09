@@ -1944,24 +1944,17 @@ class LDdecode:
         return 20 * np.log10(100 / noise)
 
     def computeMetricsPAL(self, metrics, f, fp = None):
-        # PAL VITS has a lot of useful stuff on one field only, so 
-        # always process both if possible(?)
-        if f.isFirstField:
-            f1, f2 = f, fp
-        else:
-            f1, f2 = fp, f
         
-        if f1 is not None:
+        if f.isFirstField:
             # compute IRE50 from field1 l13
             # Unforunately this is too short to get a 50IRE RF level
-            wl_slice = f1.lineslice_tbc(13, 4.7+15.5, 3)
-            metrics['greyPSNR'] = self.calcpsnr(f1, wl_slice)
-            metrics['greyIRE'] = np.mean(f1.output_to_ire(f1.dspicture[wl_slice]))
-
-        if f2 is not None:
+            wl_slice = f.lineslice_tbc(13, 4.7+15.5, 3)
+            metrics['greyPSNR'] = self.calcpsnr(f, wl_slice)
+            metrics['greyIRE'] = np.mean(f.output_to_ire(f.dspicture[wl_slice]))
+        else:
             # There's a nice long burst at 50IRE block on field2 l13
-            b50slice = f2.lineslice_tbc(13, 36, 20)
-            metrics['palVITSBurst50Level'] = rms(f2.dspicture[b50slice]) / f2.out_scale
+            b50slice = f.lineslice_tbc(13, 36, 20)
+            metrics['palVITSBurst50Level'] = rms(f.dspicture[b50slice]) / f.out_scale
 
         return metrics    
 
@@ -1995,7 +1988,7 @@ class LDdecode:
             #print(level3d)
             if level3d is not None:
                 metrics['ntscLine19Burst70IRE'] = level3d
-                metrics['ntscLine19Color3DPhase'] = phase3d
+                #metrics['ntscLine19Color3DPhase'] = phase3d
                 metrics['ntscLine19Color3DRawSNR'] = snr3d
 
                 sl_cburst = f.lineslice_tbc(19, 4.7+.8, 2.4)
@@ -2049,25 +2042,28 @@ class LDdecode:
 
         metrics['blackLinePSNR'] = self.calcpsnr(f, bl_slicetbc)
 
-        sl_slice = f.lineslice(4, 35, 20)
-        sl_slicetbc = f.lineslice_tbc(4, 35, 20)
-        sl_sliceraw = slice(sl_slice.start - delay, sl_slice.stop - delay)
+        #sl_slice = f.lineslice(4, 35, 20)
+        #sl_slicetbc = f.lineslice_tbc(4, 35, 20)
+        #sl_sliceraw = slice(sl_slice.start - delay, sl_slice.stop - delay)
 
-        metrics['syncLevelPSNR'] = self.calcpsnr(f, sl_slicetbc)
+        # metrics['syncLevelPSNR'] = self.calcpsnr(f, sl_slicetbc)
 
-        metrics['syncRFLevel'] = np.std(f.rawdata[sl_sliceraw])
+        # metrics['syncRFLevel'] = np.std(f.rawdata[sl_sliceraw])
 
         # There is *always* enough data to determine the RF level differences from sync to black/0IRE
-        metrics['syncToBlackRFRatio'] = metrics['syncRFLevel'] / metrics['blackLineRFLevel']
+        # (but it isn't as consistent?)
+        # metrics['syncToBlackRFRatio'] = metrics['syncRFLevel'] / metrics['blackLineRFLevel']
 
         if 'whiteRFLevel' in metrics:
-            metrics['syncToWhiteRFRatio'] = metrics['syncRFLevel'] / metrics['whiteRFLevel']
+            #metrics['syncToWhiteRFRatio'] = metrics['syncRFLevel'] / metrics['whiteRFLevel']
             metrics['blackToWhiteRFRatio'] = metrics['blackLineRFLevel'] / metrics['whiteRFLevel']
 
         metrics_rounded = {}
 
         for k in metrics.keys():
-            metrics_rounded[k] = roundfloat(metrics[k])
+            rounded = roundfloat(metrics[k])
+            if np.isfinite(rounded):
+                metrics_rounded[k] = roundfloat(metrics[k])
 
         return metrics_rounded
 
