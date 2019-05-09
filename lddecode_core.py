@@ -946,7 +946,7 @@ class Field:
 
         for i in range(len(self.linelocs1)):
             # skip VSYNC lines, since they handle the pulses differently 
-            if inrange(i, 4, 6):
+            if inrange(i, 3, 6) or (self.rf.system == 'PAL' and (i == 2)):
                 continue
                         
             # Find beginning of hsync (linelocs1 is generally in the middle)
