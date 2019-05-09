@@ -2061,9 +2061,14 @@ class LDdecode:
         metrics_rounded = {}
 
         for k in metrics.keys():
-            rounded = roundfloat(metrics[k])
+            digits = 1
+            if 'Ratio' in k:
+                digits = 4
+            elif 'Burst' in k:
+                digits = 3
+            rounded = roundfloat(metrics[k], places=digits)
             if np.isfinite(rounded):
-                metrics_rounded[k] = roundfloat(metrics[k])
+                metrics_rounded[k] = rounded
 
         return metrics_rounded
 
@@ -2075,7 +2080,7 @@ class LDdecode:
               'seqNo': len(self.fieldinfo) + 1, 
               #'audioSamples': 0 if audio is None else int(len(audio) / 2),
               'diskLoc': np.round((self.fieldloc / self.bytes_per_field) * 10) / 10,
-              'medianBurstIRE': f.burstmedian}
+              'medianBurstIRE': roundfloat(f.burstmedian)}
 
         if self.doDOD:
             dropout_lines, dropout_starts, dropout_ends = f.dropout_detect()
