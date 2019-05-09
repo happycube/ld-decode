@@ -883,10 +883,14 @@ class Field:
         linelocs_filled = linelocs.copy()
 
         if linelocs_filled[0] < 0:
+            next_valid = None
             for i in range(0, self.outlinecount + 1):
                 if linelocs[i] > 0:
                     next_valid = i
                     break
+
+            if next_valid is None:
+                return None, None, pulses[vsyncs[0]][0] + (self.inlinelen * self.outlinecount - 7)
 
             linelocs_filled[0] = linelocs_filled[next_valid] - (next_valid * linelen)
             
