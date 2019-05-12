@@ -7,4 +7,4 @@ ld-comb-ntsc --3d  -l 245 ralf.tbc ralf.rgb
 ld-process-efm  --input ralf.efm --audio ralf.dig.pcm
 
 # This can be improved still - not all players like this interlaced MPEG-4 format
-rm ralf.avi ; ffmpeg -f s16le -ar 44.1k -ac 2 -i ralf.dig.pcm -f rawvideo -r 30000/1001 -pix_fmt rgb48 -s 754x486 -i ralf.rgb -b:v 15000k -aspect 4:3 -vcodec mpeg4 -flags +ilme+ildct ralf.avi
+rm ralf.avi ; ffmpeg -f s16le -ar 44.1k -ac 2 -i ralf.dig.pcm -f rawvideo -r 30000/1001 -pix_fmt rgb48 -s 760x488 -i ralf.rgb -b:v 15000k -aspect 4:3 -vcodec mpeg4 -flags +ilme+ildct ralf.avi
