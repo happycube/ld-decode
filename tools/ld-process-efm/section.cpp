@@ -86,12 +86,18 @@ void Section::setData(QByteArray dataIn)
         // Decode the Q control
         decodeQControl();
 
-        // If mode 4, decode the metadata
+        // If mode 1 (CD), decode as if mode 4 (LD)
+        if (qMode == 1) decodeQDataMode4();
+
+        // If mode 4 (LD), decode the metadata
         if (qMode == 4) decodeQDataMode4();
     } else {
         // Q channel mode is invalid
+        qDebug() << "Section::setData(): Q verification failed - not decoding the subcode metadata for this section";
         qMode = -1;
     }
+
+
 }
 
 // Method to determine the Q mode
