@@ -1,6 +1,6 @@
 /************************************************************************
 
-    efmprocess.h
+    sectiontometa.h
 
     ld-process-efm - EFM data decoder
     Copyright (C) 2019 Simon Inns
@@ -22,51 +22,29 @@
 
 ************************************************************************/
 
-#ifndef EFMPROCESS_H
-#define EFMPROCESS_H
+#ifndef SECTIONTOMETA_H
+#define SECTIONTOMETA_H
 
 #include <QCoreApplication>
 #include <QDebug>
-#include <QFile>
 
-#include "f3frame.h"
-#include "f2frame.h"
-#include "f1frame.h"
-#include "sector.h"
 #include "section.h"
-#include "efmtof3frames.h"
-#include "f3tof2frames.h"
-#include "f2tof1frames.h"
-#include "f3tosections.h"
-#include "f2framestoaudio.h"
-#include "f1tosectors.h"
-#include "sectorstodata.h"
-#include "sectiontometa.h"
 
-class EfmProcess
+class SectionToMeta
 {
 public:
-    EfmProcess();
+    SectionToMeta();
 
-    bool process(QString inputFilename, QString outputFilename, QString outputDataFilename, bool verboseDebug);
+    void reportStatus(void);
+    void process(QVector<Section> sections);
 
 private:
-    QFile *inputFileHandle;
-
-    EfmToF3Frames efmToF3Frames;
-    F3ToF2Frames f3ToF2Frames;
-    F2ToF1Frames f2ToF1Frames;
-
-    F3ToSections f3ToSections;
-    F2FramesToAudio f2FramesToAudio;
-    F1ToSectors f1ToSectors;
-    SectorsToData sectorsToData;
-    SectionToMeta sectionToMeta;
-
-    bool openInputFile(QString inputFileName);
-    void closeInputFile(void);
-    QByteArray readEfmData(void);
-    void reportStatus(bool processAudio, bool processData);
+    qint32 qMode0Count;
+    qint32 qMode1Count;
+    qint32 qMode2Count;
+    qint32 qMode3Count;
+    qint32 qMode4Count;
+    qint32 qModeICount;
 };
 
-#endif // EFMPROCESS_H
+#endif // SECTIONTOMETA_H

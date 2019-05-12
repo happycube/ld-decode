@@ -193,7 +193,7 @@ void Section::decodeQDataMode4(void)
         // Lead out
         qMetadata.qMode4.isLeadOut = true;
         qMetadata.qMode4.isLeadIn = false;
-        qMetadata.qMode4.trackNumber = 170;
+        qMetadata.qMode4.trackNumber = bcdToInteger(qSubcode[1]);
         qMetadata.qMode4.x = bcdToInteger(qSubcode[2]);
         qMetadata.qMode4.point = -1;
         qMetadata.qMode4.trackTime = TrackTime(bcdToInteger(qSubcode[3]), bcdToInteger(qSubcode[4]), bcdToInteger(qSubcode[5]));
@@ -213,8 +213,8 @@ void Section::decodeQDataMode4(void)
         qMetadata.qMode4.isLeadOut = false;
         qMetadata.qMode4.isLeadIn = false;
         qMetadata.qMode4.trackNumber = bcdToInteger(qSubcode[1]);
-        qMetadata.qMode4.x = -1;
-        qMetadata.qMode4.point = bcdToInteger(qSubcode[2]);
+        qMetadata.qMode4.x = bcdToInteger(qSubcode[2]);
+        qMetadata.qMode4.point = -1;
         qMetadata.qMode4.trackTime = TrackTime(bcdToInteger(qSubcode[3]), bcdToInteger(qSubcode[4]), bcdToInteger(qSubcode[5]));
         qMetadata.qMode4.discTime = TrackTime(bcdToInteger(qSubcode[7]), bcdToInteger(qSubcode[8]), bcdToInteger(qSubcode[9]));
     }
