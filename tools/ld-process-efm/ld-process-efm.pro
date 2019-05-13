@@ -41,6 +41,10 @@ else: unix:!android: target.path = /usr/local/bin/
 !isEmpty(target.path): INSTALLS += target
 
 HEADERS += \
+    JsonWax/JsonWax.h \
+    JsonWax/JsonWaxEditor.h \
+    JsonWax/JsonWaxParser.h \
+    JsonWax/JsonWaxSerializer.h \
     efmprocess.h \
     f3frame.h \
     efmtof3frames.h \

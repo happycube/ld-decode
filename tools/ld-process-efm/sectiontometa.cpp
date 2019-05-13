@@ -22,6 +22,7 @@
 
 ************************************************************************/
 
+#include "JsonWax/JsonWax.h"
 #include "sectiontometa.h"
 
 SectionToMeta::SectionToMeta()
@@ -35,6 +36,79 @@ SectionToMeta::SectionToMeta()
     qModeICount = 0;
 }
 
+// Method to open the metadata output file
+bool SectionToMeta::openOutputFile(QString filename)
+{
+    // Here we just store the required filename
+    // The file is created and filled on close
+    jsonFilename = filename;
+
+    // Exit with success
+    return true;
+}
+
+// Method to close the metadata output file
+void SectionToMeta::closeOutputFile(void)
+{
+    qDebug() << "SectionToMeta::closeOutputFile(): Processing" << qMetaDataVector.size() << "metadata entries to JSON";
+
+    // Define the JSON object
+    JsonWax json;
+
+    // Write out the entries
+    for (qint32 subcodeNo = 0; subcodeNo < qMetaDataVector.size(); subcodeNo++) {
+        // Process entry
+        json.setValue({"subcode", subcodeNo, "seqNo"}, subcodeNo);
+
+        if (qMetaModeVector[subcodeNo] == 0) {
+            // Q-Mode 0 - Data
+        } else if (qMetaModeVector[subcodeNo] == 1) {
+            // Q-Mode 1 - CD audio
+            json.setValue({"subcode", subcodeNo, "qControl", "isAudio"}, qMetaDataVector[subcodeNo].qControl.isAudioNotData);
+            json.setValue({"subcode", subcodeNo, "qControl", "isStereo"}, qMetaDataVector[subcodeNo].qControl.isStereoNotQuad);
+            json.setValue({"subcode", subcodeNo, "qControl", "isNoPreemp"}, qMetaDataVector[subcodeNo].qControl.isNoPreempNotPreemp);
+            json.setValue({"subcode", subcodeNo, "qControl", "isCopyProtected"}, qMetaDataVector[subcodeNo].qControl.isCopyProtectedNotUnprotected);
+
+            json.setValue({"subcode", subcodeNo, "qData", "qMode"}, 1);
+            json.setValue({"subcode", subcodeNo, "qData", "isLeadIn"}, qMetaDataVector[subcodeNo].qMode1.isLeadIn);
+            json.setValue({"subcode", subcodeNo, "qData", "isLeadOut"}, qMetaDataVector[subcodeNo].qMode1.isLeadOut);
+            json.setValue({"subcode", subcodeNo, "qData", "trackNumber"}, qMetaDataVector[subcodeNo].qMode1.trackNumber);
+            json.setValue({"subcode", subcodeNo, "qData", "point"}, qMetaDataVector[subcodeNo].qMode1.point);
+            json.setValue({"subcode", subcodeNo, "qData", "x"}, qMetaDataVector[subcodeNo].qMode1.x);
+            json.setValue({"subcode", subcodeNo, "qData", "trackTime"}, qMetaDataVector[subcodeNo].qMode1.trackTime.getTimeAsQString());
+            json.setValue({"subcode", subcodeNo, "qData", "discTime"}, qMetaDataVector[subcodeNo].qMode1.discTime.getTimeAsQString());
+        } else if (qMetaModeVector[subcodeNo] == 2) {
+            // Q-Mode 2 - Disc ID
+        } else if (qMetaModeVector[subcodeNo] == 3) {
+            // Q-Mode 3 - Track ID
+        } else if (qMetaModeVector[subcodeNo] == 4) {
+            // Q-Mode 4 - LD Audio
+            json.setValue({"subcode", subcodeNo, "qControl", "isAudio"}, qMetaDataVector[subcodeNo].qControl.isAudioNotData);
+            json.setValue({"subcode", subcodeNo, "qControl", "isStereo"}, qMetaDataVector[subcodeNo].qControl.isStereoNotQuad);
+            json.setValue({"subcode", subcodeNo, "qControl", "isNoPreemp"}, qMetaDataVector[subcodeNo].qControl.isNoPreempNotPreemp);
+            json.setValue({"subcode", subcodeNo, "qControl", "isCopyProtected"}, qMetaDataVector[subcodeNo].qControl.isCopyProtectedNotUnprotected);
+
+            json.setValue({"subcode", subcodeNo, "qData", "qMode"}, 4);
+            json.setValue({"subcode", subcodeNo, "qData", "isLeadIn"}, qMetaDataVector[subcodeNo].qMode4.isLeadIn);
+            json.setValue({"subcode", subcodeNo, "qData", "isLeadOut"}, qMetaDataVector[subcodeNo].qMode4.isLeadOut);
+            json.setValue({"subcode", subcodeNo, "qData", "trackNumber"}, qMetaDataVector[subcodeNo].qMode4.trackNumber);
+            json.setValue({"subcode", subcodeNo, "qData", "point"}, qMetaDataVector[subcodeNo].qMode4.point);
+            json.setValue({"subcode", subcodeNo, "qData", "x"}, qMetaDataVector[subcodeNo].qMode4.x);
+            json.setValue({"subcode", subcodeNo, "qData", "trackTime"}, qMetaDataVector[subcodeNo].qMode4.trackTime.getTimeAsQString());
+            json.setValue({"subcode", subcodeNo, "qData", "discTime"}, qMetaDataVector[subcodeNo].qMode4.discTime.getTimeAsQString());
+        } else {
+            // Unknown Q Mode
+        }
+    }
+
+    // Write the JSON object to file
+    qDebug() << "SectionToMeta::closeOutputFile(): Writing JSON metadata file";
+    if (!json.saveAs(jsonFilename, JsonWax::Readable)) {
+        qCritical("Writing JSON file failed!");
+        return;
+    }
+}
+
 // Method to write status information to qInfo
 void SectionToMeta::reportStatus(void)
 {
@@ -46,7 +120,7 @@ void SectionToMeta::reportStatus(void)
     qInfo() << "  Q Mode 1 sections =" << qMode1Count << "(CD Audio)";
     qInfo() << "  Q Mode 2 sections =" << qMode2Count << "(Disc ID)";
     qInfo() << "  Q Mode 3 sections =" << qMode3Count << "(Track ID)";
-    qInfo() << "  Q Mode 4 sections =" << qMode4Count << "(Non-CD Audio)";
+    qInfo() << "  Q Mode 4 sections =" << qMode4Count << "(LD Audio)";
     qInfo() << "  Sections with failed Q CRC =" << qModeICount;
     qInfo() << "";
 }
@@ -59,6 +133,11 @@ void SectionToMeta::process(QVector<Section> sections)
         for (qint32 i = 0; i < sections.size(); i++) {
             qint32 qMode = sections[i].getQMode();
 
+            // Store the metadata
+            Section::QMetadata qMetaData = sections[i].getQMetadata();
+            qMetaModeVector.append(qMode);
+            qMetaDataVector.append(qMetaData);
+
             // Depending on the section Q Mode, process the section
             if (qMode == 0) {
                 // Data
@@ -67,47 +146,45 @@ void SectionToMeta::process(QVector<Section> sections)
             } else if (qMode == 1) {
                 // CD Audio
                 qMode1Count++;
-                Section::QMetadata qMetaData = sections[i].getQMetadata();
 
-                if (qMetaData.qMode4.isLeadIn) {
+                if (qMetaData.qMode1.isLeadIn) {
                     // Lead in
-                    qDebug() << "SectionToMeta::process(): Section Q mode 1 - CD Audio - Lead in: Track =" << qMetaData.qMode4.trackNumber << "- point =" << qMetaData.qMode4.point <<
-                                "- Time =" << qMetaData.qMode4.trackTime.getTimeAsQString() << "- Disc Time =" << qMetaData.qMode4.discTime.getTimeAsQString();
-                } else if (qMetaData.qMode4.isLeadOut) {
+                    qDebug() << "SectionToMeta::process(): Section Q mode 1 - CD Audio - Lead in: Track =" << qMetaData.qMode1.trackNumber << "- point =" << qMetaData.qMode1.point <<
+                                "- Time =" << qMetaData.qMode1.trackTime.getTimeAsQString() << "- Disc Time =" << qMetaData.qMode1.discTime.getTimeAsQString();
+                } else if (qMetaData.qMode1.isLeadOut) {
                     // Lead out
-                    if (qMetaData.qMode4.x == 0) {
+                    if (qMetaData.qMode1.x == 0) {
                         // Encoding paused
-                        qDebug() << "SectionToMeta::process(): Section Q mode 1 - CD Audio - Lead out (Encoding paused): Track =" << qMetaData.qMode4.trackNumber <<
-                                    "- Time =" << qMetaData.qMode4.trackTime.getTimeAsQString() << "- Disc Time =" << qMetaData.qMode4.discTime.getTimeAsQString();
+                        qDebug() << "SectionToMeta::process(): Section Q mode 1 - CD Audio - Lead out (Encoding paused): Track =" << qMetaData.qMode1.trackNumber <<
+                                    "- Time =" << qMetaData.qMode1.trackTime.getTimeAsQString() << "- Disc Time =" << qMetaData.qMode1.discTime.getTimeAsQString();
                     } else {
                         // Encoding running
-                        qDebug() << "SectionToMeta::process(): Section Q mode 1 - CD Audio - Lead out (Encoding running): Track =" << qMetaData.qMode4.trackNumber <<
-                                    "- Time =" << qMetaData.qMode4.trackTime.getTimeAsQString() << "- Disc Time =" << qMetaData.qMode4.discTime.getTimeAsQString();
+                        qDebug() << "SectionToMeta::process(): Section Q mode 1 - CD Audio - Lead out (Encoding running): Track =" << qMetaData.qMode1.trackNumber <<
+                                    "- Time =" << qMetaData.qMode1.trackTime.getTimeAsQString() << "- Disc Time =" << qMetaData.qMode1.discTime.getTimeAsQString();
                     }
                 } else {
                     // Audio
-                    if (qMetaData.qMode4.x == 0) {
+                    if (qMetaData.qMode1.x == 0) {
                         // Encoding paused
-                        qDebug() << "SectionToMeta::process(): Section Q mode 1 - CD Audio - Audio (Encoding paused): Track =" << qMetaData.qMode4.trackNumber << "- Subdivision =" << qMetaData.qMode4.x <<
-                                    "- Time =" << qMetaData.qMode4.trackTime.getTimeAsQString() << "- Disc Time =" << qMetaData.qMode4.discTime.getTimeAsQString();
+                        qDebug() << "SectionToMeta::process(): Section Q mode 1 - CD Audio - Audio (Encoding paused): Track =" << qMetaData.qMode1.trackNumber << "- Subdivision =" << qMetaData.qMode1.x <<
+                                    "- Time =" << qMetaData.qMode1.trackTime.getTimeAsQString() << "- Disc Time =" << qMetaData.qMode1.discTime.getTimeAsQString();
                     } else {
                         // Encoding running
-                        qDebug() << "SectionToMeta::process(): Section Q mode 1 - CD Audio - Audio (Encoding running): Track =" << qMetaData.qMode4.trackNumber << "- Subdivision =" << qMetaData.qMode4.x <<
-                                    "- Time =" << qMetaData.qMode4.trackTime.getTimeAsQString() << "- Disc Time =" << qMetaData.qMode4.discTime.getTimeAsQString();
+                        qDebug() << "SectionToMeta::process(): Section Q mode 1 - CD Audio - Audio (Encoding running): Track =" << qMetaData.qMode1.trackNumber << "- Subdivision =" << qMetaData.qMode1.x <<
+                                    "- Time =" << qMetaData.qMode1.trackTime.getTimeAsQString() << "- Disc Time =" << qMetaData.qMode1.discTime.getTimeAsQString();
                     }
                 }
             } else if (qMode == 2) {
                 // Unique ID for disc
                 qMode2Count++;
-                qDebug() << "SectionToMeta::process(): Section Q mode 2 - Unique ID for disc";
+                qDebug() << "SectionToMeta::process(): Section Q mode 2 - Unique ID for disc (unsupported)";
             } else if (qMode == 3) {
                 // Unique ID for track
                 qMode3Count++;
-                qDebug() << "SectionToMeta::process(): Section Q mode 3 - Unique ID for track";
+                qDebug() << "SectionToMeta::process(): Section Q mode 3 - Unique ID for track (unsupported)";
             } else if (qMode == 4) {
                 // 4 = non-CD Audio (LaserDisc)
                 qMode4Count++;
-                Section::QMetadata qMetaData = sections[i].getQMetadata();
 
                 if (qMetaData.qMode4.isLeadIn) {
                     // Lead in

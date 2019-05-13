@@ -60,6 +60,9 @@ bool EfmProcess::process(QString inputEfmFilename, QString outputAudioFilename, 
     // Open the data decode output file
     if (processData) sectorsToData.openOutputFile(outputDataFilename);
 
+    // Open the metadata JSON file
+    sectionToMeta.openOutputFile(inputEfmFilename + ".json");
+
     // Turn on verbose debug if required
     if (verboseDebug) efmToF3Frames.setVerboseDebug(true);
 
@@ -108,6 +111,7 @@ bool EfmProcess::process(QString inputEfmFilename, QString outputAudioFilename, 
     // Close the output files
     if (processAudio) f2FramesToAudio.closeOutputFile();
     if (processData) sectorsToData.closeOutputFile();
+    sectionToMeta.closeOutputFile();
 
     return true;
 }

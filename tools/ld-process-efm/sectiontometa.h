@@ -35,6 +35,9 @@ class SectionToMeta
 public:
     SectionToMeta();
 
+    bool openOutputFile(QString filename);
+    void closeOutputFile(void);
+
     void reportStatus(void);
     void process(QVector<Section> sections);
 
@@ -45,6 +48,11 @@ private:
     qint32 qMode3Count;
     qint32 qMode4Count;
     qint32 qModeICount;
+
+    QString jsonFilename;
+
+    QVector<qint32> qMetaModeVector;
+    QVector<Section::QMetadata> qMetaDataVector;
 };
 
 #endif // SECTIONTOMETA_H
