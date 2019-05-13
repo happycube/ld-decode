@@ -54,6 +54,12 @@ public:
         TrackTime discTime;
     };
 
+    // Structure of the Q mode 2 metadata
+    struct QMode2 {
+        QString catalogueNumber;
+        qint32 aFrame;
+    };
+
     // Structure of the Q mode 4 metadata
     struct QMode4 {
         bool isLeadIn;
@@ -68,6 +74,7 @@ public:
     struct QMetadata {
         QControl qControl;
         QMode1 qMode1;
+        QMode2 qMode2;
         QMode4 qMode4;
     };
 
@@ -95,6 +102,7 @@ private:
     qint32 decodeQAddress(void);
     void decodeQControl(void);
     void decodeQDataMode1(void);
+    void decodeQDataMode2(void);
     void decodeQDataMode4(void);
     qint32 bcdToInteger(uchar bcd);
 };

@@ -34,6 +34,9 @@ SectionToMeta::SectionToMeta()
     qMode3Count = 0;
     qMode4Count = 0;
     qModeICount = 0;
+
+    qControlAudioCount = 0;
+    qControlDataCount = 0;
 }
 
 // Method to open the metadata output file
@@ -79,6 +82,14 @@ void SectionToMeta::closeOutputFile(void)
             json.setValue({"subcode", subcodeNo, "qData", "discTime"}, qMetaDataVector[subcodeNo].qMode1.discTime.getTimeAsQString());
         } else if (qMetaModeVector[subcodeNo] == 2) {
             // Q-Mode 2 - Disc ID
+            json.setValue({"subcode", subcodeNo, "qControl", "isAudio"}, qMetaDataVector[subcodeNo].qControl.isAudioNotData);
+            json.setValue({"subcode", subcodeNo, "qControl", "isStereo"}, qMetaDataVector[subcodeNo].qControl.isStereoNotQuad);
+            json.setValue({"subcode", subcodeNo, "qControl", "isNoPreemp"}, qMetaDataVector[subcodeNo].qControl.isNoPreempNotPreemp);
+            json.setValue({"subcode", subcodeNo, "qControl", "isCopyProtected"}, qMetaDataVector[subcodeNo].qControl.isCopyProtectedNotUnprotected);
+
+            json.setValue({"subcode", subcodeNo, "qData", "qMode"}, 2);
+            json.setValue({"subcode", subcodeNo, "qData", "catalogueNumber"}, qMetaDataVector[subcodeNo].qMode2.catalogueNumber);
+            json.setValue({"subcode", subcodeNo, "qData", "aFrame"}, qMetaDataVector[subcodeNo].qMode2.aFrame);
         } else if (qMetaModeVector[subcodeNo] == 3) {
             // Q-Mode 3 - Track ID
         } else if (qMetaModeVector[subcodeNo] == 4) {
@@ -98,6 +109,12 @@ void SectionToMeta::closeOutputFile(void)
             json.setValue({"subcode", subcodeNo, "qData", "discTime"}, qMetaDataVector[subcodeNo].qMode4.discTime.getTimeAsQString());
         } else {
             // Unknown Q Mode
+            json.setValue({"subcode", subcodeNo, "qControl", "isAudio"}, qMetaDataVector[subcodeNo].qControl.isAudioNotData);
+            json.setValue({"subcode", subcodeNo, "qControl", "isStereo"}, qMetaDataVector[subcodeNo].qControl.isStereoNotQuad);
+            json.setValue({"subcode", subcodeNo, "qControl", "isNoPreemp"}, qMetaDataVector[subcodeNo].qControl.isNoPreempNotPreemp);
+            json.setValue({"subcode", subcodeNo, "qControl", "isCopyProtected"}, qMetaDataVector[subcodeNo].qControl.isCopyProtectedNotUnprotected);
+
+            json.setValue({"subcode", subcodeNo, "qData", "qMode"}, -1);
         }
     }
 
@@ -123,6 +140,10 @@ void SectionToMeta::reportStatus(void)
     qInfo() << "  Q Mode 4 sections =" << qMode4Count << "(LD Audio)";
     qInfo() << "  Sections with failed Q CRC =" << qModeICount;
     qInfo() << "";
+    qInfo() << "  Sections with qControl flagged as audio =" << qControlAudioCount;
+    qInfo() << "  Sections with qControl flagged as data =" << qControlDataCount;
+    qInfo() << "  Total qControl sections =" << qControlDataCount + qControlAudioCount;
+    qInfo() << "";
 }
 
 // Method to process the decoded sections
@@ -131,6 +152,11 @@ void SectionToMeta::process(QVector<Section> sections)
     // Did we get any sections?
     if (sections.size() != 0) {
         for (qint32 i = 0; i < sections.size(); i++) {
+            // QControl
+            if (sections[i].getQMetadata().qControl.isAudioNotData) qControlAudioCount++;
+            else qControlDataCount++;
+
+            // QMode
             qint32 qMode = sections[i].getQMode();
 
             // Store the metadata
@@ -177,7 +203,7 @@ void SectionToMeta::process(QVector<Section> sections)
             } else if (qMode == 2) {
                 // Unique ID for disc
                 qMode2Count++;
-                qDebug() << "SectionToMeta::process(): Section Q mode 2 - Unique ID for disc (unsupported)";
+                qDebug() << "SectionToMeta::process(): Section Q mode 2 - ID =" << qMetaData.qMode2.catalogueNumber << "- frame =" << qMetaData.qMode2.aFrame;
             } else if (qMode == 3) {
                 // Unique ID for track
                 qMode3Count++;
@@ -216,7 +242,7 @@ void SectionToMeta::process(QVector<Section> sections)
             } else {
                 // Invalid section
                 qModeICount++;
-                qDebug() << "SectionToMeta::process(): Invalid section";
+                qDebug() << "SectionToMeta::process(): Invalid section with qMode =" << qMode;
             }
         }
     }

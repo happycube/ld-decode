@@ -89,11 +89,14 @@ void Section::setData(QByteArray dataIn)
         // If mode 1 (CD), decode the metadata
         if (qMode == 1) decodeQDataMode1();
 
+        // If mode 2 (Catalogue number), decode the metadata
+        if (qMode == 2) decodeQDataMode2();
+
         // If mode 4 (LD), decode the metadata
         if (qMode == 4) decodeQDataMode4();
 
         // If mode is unsupported, flag in debug
-        if (qMode != 1 && qMode != 4) qDebug() << "Section::setData(): Unsupported Q Mode" << qMode;
+        if (qMode != 1 && qMode != 2 && qMode != 4) qDebug() << "Section::setData(): Unsupported Q Mode" << qMode;
     } else {
         // Q channel mode is invalid
         qDebug() << "Section::setData(): Q verification failed - not decoding the subcode metadata for this section";
@@ -225,6 +228,24 @@ void Section::decodeQDataMode1(void)
         qMetadata.qMode1.trackTime = TrackTime(bcdToInteger(qSubcode[3]), bcdToInteger(qSubcode[4]), bcdToInteger(qSubcode[5]));
         qMetadata.qMode1.discTime = TrackTime(bcdToInteger(qSubcode[7]), bcdToInteger(qSubcode[8]), bcdToInteger(qSubcode[9]));
     }
+}
+
+// Method to decode Q subcode Mode 2 DATA-Q
+void Section::decodeQDataMode2(void)
+{
+    // Get the 13 digit catalogue number
+    QString catalogueNumber;
+    catalogueNumber  = QString("%1").arg(bcdToInteger(qSubcode[1]), 2, 10, QChar('0')); // n1 and n2
+    catalogueNumber += QString("%1").arg(bcdToInteger(qSubcode[2]), 2, 10, QChar('0')); // n3 and n4
+    catalogueNumber += QString("%1").arg(bcdToInteger(qSubcode[3]), 2, 10, QChar('0')); // n5 and n6
+    catalogueNumber += QString("%1").arg(bcdToInteger(qSubcode[4]), 2, 10, QChar('0')); // n7 and n8
+    catalogueNumber += QString("%1").arg(bcdToInteger(qSubcode[5]), 2, 10, QChar('0')); // n9 and n10
+    catalogueNumber += QString("%1").arg(bcdToInteger(qSubcode[6]), 2, 10, QChar('0')); // n11 and n12
+    catalogueNumber += QString("%1").arg(bcdToInteger(qSubcode[7]), 2, 10, QChar('0')); // n13 and n14 (n14 is always 0)
+    qMetadata.qMode2.catalogueNumber = catalogueNumber.left(13);
+
+    // Get the AFRAME number
+    qMetadata.qMode2.aFrame = bcdToInteger(qSubcode[9]);
 }
 
 // Method to decode Q subcode Mode 4 DATA-Q

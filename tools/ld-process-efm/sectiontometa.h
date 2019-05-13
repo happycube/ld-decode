@@ -49,6 +49,9 @@ private:
     qint32 qMode4Count;
     qint32 qModeICount;
 
+    qint32 qControlAudioCount;
+    qint32 qControlDataCount;
+
     QString jsonFilename;
 
     QVector<qint32> qMetaModeVector;
