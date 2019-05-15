@@ -322,7 +322,10 @@ class VHSRFDecode(ldd.RFDecode):
                     # Lastly we re-create the filters with the new parameters.
         self.computevideofilters()
 
-        video_lpf = sps.butter(4,(vhs_formats.VHS_COLOR_CARRIER_MHZ/self.freq) + 0.05, 'low')
+        cc = vhs_formats.VHS_COLOR_CARRIER_MHZ
+
+#        video_lpf = sps.butter(4,((vhs_formats.VHS_COLOR_CARRIER_MHZ + 0.05)/self.freq_half), 'low')
+        video_lpf = sps.butter(4, [(cc-.15)/self.freq_half, (cc+.15)/self.freq_half], btype='bandpass')
         self.Filters['FVideoBurst'] = lddu.filtfft(video_lpf, self.blocklen)
 
         #plt.ion()
@@ -369,7 +372,7 @@ class VHSRFDecode(ldd.RFDecode):
         min_ire = self.hztoire(min_level)
         sync_filter_high = self.iretohz(min_ire + 35)
 
-        out_videoburst = np.fft.ifft(demod_fft * self.Filters['FVideoBurst']).real
+        out_videoburst = np.fft.ifft(indata_fft * self.Filters['FVideoBurst']).real
 
         # NTSC: filtering for vsync pulses from -55 to -25ire seems to work well even on rotted disks
         # Need to change to
@@ -408,8 +411,11 @@ class VHSRFDecode(ldd.RFDecode):
             ax2 = self.ax2#ax1.twinx()
             ax2.cla()
 
-            ax2.plot(range(0, len(output_syncf)), output_syncf, color='tab:green')
-            ax2.plot(range(0, len(output_sync)), output_sync, color='tab:gray')
+            ax2.plot(range(0, len(out_videoburst)), out_videoburst, color='#FF0000')
+
+#            ax2.plot(range(0, len(output_syncf)), output_syncf, color='tab:green')
+#            ax2.plot(range(0, len(output_sync)), output_sync, color='tab:gray')
+
 
             #fig.tight_layout()
 
