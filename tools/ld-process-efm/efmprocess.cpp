@@ -26,13 +26,7 @@
 
 EfmProcess::EfmProcess()
 {
-    // Subcode block Q mode counters
-    qMode0Count = 0;
-    qMode1Count = 0;
-    qMode2Count = 0;
-    qMode3Count = 0;
-    qMode4Count = 0;
-    qModeICount = 0;
+
 }
 
 // Note:
@@ -66,6 +60,10 @@ bool EfmProcess::process(QString inputEfmFilename, QString outputAudioFilename, 
     // Open the data decode output file
     if (processData) sectorsToData.openOutputFile(outputDataFilename);
 
+    // Open the metadata JSON file
+    if (processAudio) sectionToMeta.openOutputFile(outputAudioFilename + ".json");
+    else sectionToMeta.openOutputFile(outputDataFilename + ".json");
+
     // Turn on verbose debug if required
     if (verboseDebug) efmToF3Frames.setVerboseDebug(true);
 
@@ -97,7 +95,7 @@ bool EfmProcess::process(QString inputEfmFilename, QString outputAudioFilename, 
         QVector<Section> sections = f3ToSections.convert(f3Frames);
 
         // Process the sections (doesn't really do much right now)
-        processSections(sections);
+        sectionToMeta.process(sections);
 
         // Show EFM processing progress update to user
         qreal percent = (100.0 / static_cast<qreal>(inputFileSize)) * static_cast<qreal>(inputBytesProcessed);
@@ -114,46 +112,9 @@ bool EfmProcess::process(QString inputEfmFilename, QString outputAudioFilename, 
     // Close the output files
     if (processAudio) f2FramesToAudio.closeOutputFile();
     if (processData) sectorsToData.closeOutputFile();
+    sectionToMeta.closeOutputFile();
 
     return true;
-}
-
-// Method to process the decoded sections
-void EfmProcess::processSections(QVector<Section> sections)
-{
-    // Did we get any sections?
-    if (sections.size() != 0) {
-        for (qint32 i = 0; i < sections.size(); i++) {
-            qint32 qMode = sections[i].getQMode();
-
-            // Depending on the section Q Mode, process the section
-            if (qMode == 0) {
-                // Data
-                qMode0Count++;
-                //qDebug() << "EfmProcess::showSections(): Section Q mode is 0 - Data!";
-            } else if (qMode == 1) {
-                // CD Audio
-                qMode1Count++;
-                //qDebug() << "EfmProcess::showSections(): Section Q mode is 1 - CD Audio - Track time:" << sections[i].getQMetadata().qMode4.trackTime.getTimeAsQString();
-            } else if (qMode == 2) {
-                // Unique ID for disc
-                qMode2Count++;
-                //qDebug() << "EfmProcess::showSections(): Section Q mode is 2 - Unique ID for disc";
-            } else if (qMode == 3) {
-                // Unique ID for track
-                qMode3Count++;
-                //qDebug() << "EfmProcess::showSections(): Section Q mode is 3 - Unique ID for track!";
-            } else if (qMode == 4) {
-                // 4 = non-CD Audio (LaserDisc)
-                qMode4Count++;
-                //qDebug() << "EfmProcess::showSections(): Section Q mode is 4 - non-CD Audio - Track time:" << sections[i].getQMetadata().qMode4.trackTime.getTimeAsQString();
-            } else {
-                // Invalid section
-                qModeICount++;
-                //qDebug() << "EfmProcess::showSections(): Invalid section";
-            }
-        }
-    }
 }
 
 // Method to open the input file for reading
@@ -204,16 +165,6 @@ QByteArray EfmProcess::readEfmData(void)
 // Method to write status information to qInfo
 void EfmProcess::reportStatus(bool processAudio, bool processData)
 {
-    qInfo() << "EFM processing:";
-    qInfo() << "  Total number of sections processed =" << qMode0Count + qMode1Count + qMode2Count + qMode3Count + qMode4Count + qModeICount;
-    qInfo() << "  Q Mode 0 sections =" << qMode0Count << "(Data)";
-    qInfo() << "  Q Mode 1 sections =" << qMode1Count << "(CD Audio)";
-    qInfo() << "  Q Mode 2 sections =" << qMode2Count << "(Disc ID)";
-    qInfo() << "  Q Mode 3 sections =" << qMode3Count << "(Track ID)";
-    qInfo() << "  Q Mode 4 sections =" << qMode4Count << "(Non-CD Audio)";
-    qInfo() << "  Sections with failed Q CRC =" << qModeICount;
-    qInfo() << "";
-
     efmToF3Frames.reportStatus();
     qInfo() << "";
     f3ToF2Frames.reportStatus();
@@ -234,4 +185,7 @@ void EfmProcess::reportStatus(bool processAudio, bool processData)
     }
 
     f3ToSections.reportStatus();
+    qInfo() << "";
+
+    sectionToMeta.reportStatus();
 }

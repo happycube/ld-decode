@@ -86,10 +86,20 @@ void Section::setData(QByteArray dataIn)
         // Decode the Q control
         decodeQControl();
 
-        // If mode 4, decode the metadata
+        // If mode 1 (CD), decode the metadata
+        if (qMode == 1) decodeQDataMode1();
+
+        // If mode 2 (Catalogue number), decode the metadata
+        if (qMode == 2) decodeQDataMode2();
+
+        // If mode 4 (LD), decode the metadata
         if (qMode == 4) decodeQDataMode4();
+
+        // If mode is unsupported, flag in debug
+        if (qMode != 1 && qMode != 2 && qMode != 4) qDebug() << "Section::setData(): Unsupported Q Mode" << qMode;
     } else {
         // Q channel mode is invalid
+        qDebug() << "Section::setData(): Q verification failed - not decoding the subcode metadata for this section";
         qMode = -1;
     }
 }
@@ -182,6 +192,62 @@ void Section::decodeQControl(void)
     else qMetadata.qControl.isNoPreempNotPreemp = true;
 }
 
+// Method to decode Q subcode Mode 1 DATA-Q
+void Section::decodeQDataMode1(void)
+{
+    // Get the track number (TNO) field
+    qint32 tno = bcdToInteger(qSubcode[1]);
+
+    // Use TNO to detect lead-in, audio or lead-out
+    if (qSubcode[1] == 0xAA) {
+        // Lead out
+        qMetadata.qMode1.isLeadOut = true;
+        qMetadata.qMode1.isLeadIn = false;
+        qMetadata.qMode1.trackNumber = bcdToInteger(qSubcode[1]);
+        qMetadata.qMode1.x = bcdToInteger(qSubcode[2]);
+        qMetadata.qMode1.point = -1;
+        qMetadata.qMode1.trackTime = TrackTime(bcdToInteger(qSubcode[3]), bcdToInteger(qSubcode[4]), bcdToInteger(qSubcode[5]));
+        qMetadata.qMode1.discTime = TrackTime(bcdToInteger(qSubcode[7]), bcdToInteger(qSubcode[8]), bcdToInteger(qSubcode[9]));
+
+    } else if (tno == 0) {
+        // Lead in
+        qMetadata.qMode1.isLeadOut = false;
+        qMetadata.qMode1.isLeadIn = true;
+        qMetadata.qMode1.trackNumber = bcdToInteger(qSubcode[1]);
+        qMetadata.qMode1.x = -1;
+        qMetadata.qMode1.point = bcdToInteger(qSubcode[2]);
+        qMetadata.qMode1.trackTime = TrackTime(bcdToInteger(qSubcode[3]), bcdToInteger(qSubcode[4]), bcdToInteger(qSubcode[5]));
+        qMetadata.qMode1.discTime = TrackTime(bcdToInteger(qSubcode[7]), bcdToInteger(qSubcode[8]), bcdToInteger(qSubcode[9]));
+    } else {
+        // Audio
+        qMetadata.qMode1.isLeadOut = false;
+        qMetadata.qMode1.isLeadIn = false;
+        qMetadata.qMode1.trackNumber = bcdToInteger(qSubcode[1]);
+        qMetadata.qMode1.x = bcdToInteger(qSubcode[2]);
+        qMetadata.qMode1.point = -1;
+        qMetadata.qMode1.trackTime = TrackTime(bcdToInteger(qSubcode[3]), bcdToInteger(qSubcode[4]), bcdToInteger(qSubcode[5]));
+        qMetadata.qMode1.discTime = TrackTime(bcdToInteger(qSubcode[7]), bcdToInteger(qSubcode[8]), bcdToInteger(qSubcode[9]));
+    }
+}
+
+// Method to decode Q subcode Mode 2 DATA-Q
+void Section::decodeQDataMode2(void)
+{
+    // Get the 13 digit catalogue number
+    QString catalogueNumber;
+    catalogueNumber  = QString("%1").arg(bcdToInteger(qSubcode[1]), 2, 10, QChar('0')); // n1 and n2
+    catalogueNumber += QString("%1").arg(bcdToInteger(qSubcode[2]), 2, 10, QChar('0')); // n3 and n4
+    catalogueNumber += QString("%1").arg(bcdToInteger(qSubcode[3]), 2, 10, QChar('0')); // n5 and n6
+    catalogueNumber += QString("%1").arg(bcdToInteger(qSubcode[4]), 2, 10, QChar('0')); // n7 and n8
+    catalogueNumber += QString("%1").arg(bcdToInteger(qSubcode[5]), 2, 10, QChar('0')); // n9 and n10
+    catalogueNumber += QString("%1").arg(bcdToInteger(qSubcode[6]), 2, 10, QChar('0')); // n11 and n12
+    catalogueNumber += QString("%1").arg(bcdToInteger(qSubcode[7]), 2, 10, QChar('0')); // n13 and n14 (n14 is always 0)
+    qMetadata.qMode2.catalogueNumber = catalogueNumber.left(13);
+
+    // Get the AFRAME number
+    qMetadata.qMode2.aFrame = bcdToInteger(qSubcode[9]);
+}
+
 // Method to decode Q subcode Mode 4 DATA-Q
 void Section::decodeQDataMode4(void)
 {
@@ -193,7 +259,7 @@ void Section::decodeQDataMode4(void)
         // Lead out
         qMetadata.qMode4.isLeadOut = true;
         qMetadata.qMode4.isLeadIn = false;
-        qMetadata.qMode4.trackNumber = 170;
+        qMetadata.qMode4.trackNumber = bcdToInteger(qSubcode[1]);
         qMetadata.qMode4.x = bcdToInteger(qSubcode[2]);
         qMetadata.qMode4.point = -1;
         qMetadata.qMode4.trackTime = TrackTime(bcdToInteger(qSubcode[3]), bcdToInteger(qSubcode[4]), bcdToInteger(qSubcode[5]));
@@ -213,8 +279,8 @@ void Section::decodeQDataMode4(void)
         qMetadata.qMode4.isLeadOut = false;
         qMetadata.qMode4.isLeadIn = false;
         qMetadata.qMode4.trackNumber = bcdToInteger(qSubcode[1]);
-        qMetadata.qMode4.x = -1;
-        qMetadata.qMode4.point = bcdToInteger(qSubcode[2]);
+        qMetadata.qMode4.x = bcdToInteger(qSubcode[2]);
+        qMetadata.qMode4.point = -1;
         qMetadata.qMode4.trackTime = TrackTime(bcdToInteger(qSubcode[3]), bcdToInteger(qSubcode[4]), bcdToInteger(qSubcode[5]));
         qMetadata.qMode4.discTime = TrackTime(bcdToInteger(qSubcode[7]), bcdToInteger(qSubcode[8]), bcdToInteger(qSubcode[9]));
     }

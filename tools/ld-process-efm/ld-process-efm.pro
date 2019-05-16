@@ -22,6 +22,7 @@ SOURCES += \
     c1circ.cpp \
     c2circ.cpp \
     c2deinterleave.cpp \
+    sectiontometa.cpp \
     tracktime.cpp \
     f2frame.cpp \
     f3tof2frames.cpp \
@@ -40,6 +41,10 @@ else: unix:!android: target.path = /usr/local/bin/
 !isEmpty(target.path): INSTALLS += target
 
 HEADERS += \
+    JsonWax/JsonWax.h \
+    JsonWax/JsonWaxEditor.h \
+    JsonWax/JsonWaxParser.h \
+    JsonWax/JsonWaxSerializer.h \
     efmprocess.h \
     f3frame.h \
     efmtof3frames.h \
@@ -58,6 +63,7 @@ HEADERS += \
     c1circ.h \
     c2circ.h \
     c2deinterleave.h \
+    sectiontometa.h \
     tracktime.h \
     f2frame.h \
     f3tof2frames.h \
