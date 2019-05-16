@@ -1,6 +1,7 @@
 # NOTE:  These are not reduced from ld-decode notebook
 
 from base64 import b64encode
+from collections import namedtuple
 import copy
 from datetime import datetime
 import getopt
@@ -415,7 +416,9 @@ def findareas(array, cross):
 
     return [(*z, z[1] - z[0]) for z in zip(starts, ends)]
 
-def findareas_inrange(array, low, high):
+Pulse = namedtuple('Pulse', 'start len')
+
+def findpulses(array, low, high):
     ''' Find areas where `array` is between `low` and `high`
     
     returns: array of tuples of said areas (begin, end, length)
@@ -436,4 +439,4 @@ def findareas_inrange(array, low, high):
     if starts[-1] > ends[-1]:
         starts = starts[:-1]
 
-    return [(*z, z[1] - z[0]) for z in zip(starts, ends)]
+    return [Pulse(z[0], z[1] - z[0]) for z in zip(starts, ends)]
