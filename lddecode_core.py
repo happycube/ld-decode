@@ -33,6 +33,7 @@ SysParams_NTSC = {
     'fsc_mhz': (315.0 / 88.0),
     'pilot_mhz': (315.0 / 88.0),
     'frame_lines': 525,
+    'field_lines': (263, 262),
 
     'ire0': 8100000,
     'hz_ire': 1700000 / 140.0,
@@ -48,6 +49,11 @@ SysParams_NTSC = {
     'colorBurstUS': (5.3, 7.8),
     'activeVideoUS': (9.45, 63.555-1.5),
 
+    # In NTSC framing, the distances between the first/last eq pulses and the 
+    # corresponding next lines are different.
+    'firstField1H': (True, False),
+
+    'numPulses': 6,
     'hsyncPulseUS': 4.7,
     'eqPulseUS': 2.3,
     'vsyncPulseUS': 27.1,
@@ -70,6 +76,7 @@ SysParams_PAL = {
     'fsc_mhz': ((1/64) * 283.75) + (25/1000000),
     'pilot_mhz': 3.75,
     'frame_lines': 625,
+    'field_lines': (312, 313),
     'line_period': 64,
 
     'ire0': 7100000,
@@ -84,6 +91,10 @@ SysParams_PAL = {
     'colorBurstUS': (5.6, 7.85),
     'activeVideoUS': (10.5, 64-1.5),
 
+    # In PAL, the first field's line sync<->first/last EQ pulse are both .5H
+    'firstField1H': (False, False),
+
+    'numPulses': 5,
     'hsyncPulseUS': 4.7,
     'eqPulseUS': 2.35,
     'vsyncPulseUS': 27.3,
@@ -677,7 +688,7 @@ class Field:
         prev = None
 
         for i, p in enumerate(pulses[start:]):
-            usec = self.inpxtousec(p[2])
+            usec = self.inpxtousec(p[1])
 
             # a VSYNC pulse should be *much* longer than 9.6 usec,
             # so even if there's corruption this should find things...
@@ -702,11 +713,11 @@ class Field:
         return np.round(dist*2)/2 if round else dist
 
     def compute_linelocs(self):
-        # Use the halfway point for zero crossing and sync pulse length
+        # pulse_hz range:  vsync_ire - 10, maximum is the 50% crossing point to sync
         pulse_hz_min = self.rf.iretohz(self.rf.SysParams['vsync_ire'] - 10)
         pulse_hz_max = self.rf.iretohz(self.rf.SysParams['vsync_ire'] / 2)
 
-        pulses = findareas_inrange(self.data[0]['demod_05'], pulse_hz_min, pulse_hz_max)
+        pulses = findpulses(self.data[0]['demod_05'], pulse_hz_min, pulse_hz_max)
 
         if len(pulses) == 0:
             print("ERROR: no pulses")
@@ -715,8 +726,8 @@ class Field:
         # the ratio of sync pulses/data should be about .08.  If it's sharply different
         # this isn't valid video and the upper layer should skip ahead.
 
-        psum = sum([z[2] for z in pulses])
-        pulseratio = psum / pulses[-1][1]
+        psum = sum([z[1] for z in pulses])
+        pulseratio = psum / (pulses[-1][0] + pulses[-1][1])
 
         if not inrange(pulseratio, .05, .15):
             print("ERROR: invalid data pulseratio = ", pulseratio)
@@ -765,11 +776,11 @@ class Field:
             for i in gaps:
                 # scale tolerance for short gaps
                 # XXX: compare w/Dragons Lair metal-backed disk caps
-                tol = i[2] * (.005 if p == 0 else .001)
+                tol = i[2] * (.005 if p == 0 else .0005)
 
                 ll = self.compute_distance(pulses, vsyncs[i[0]], vsyncs[i[1]], linelen, False)
 
-                #print(i[0], i[1], ll, i[2]-tol, i[2]+tol)
+                print(i[0], i[1], ll, i[2]-tol, i[2]+tol)
 
                 if inrange(ll, i[2]-tol, i[2]+tol):
                     #print('a')
@@ -785,7 +796,7 @@ class Field:
             else:
                 break
 
-        hsynclen_med = np.median([p[2] for p in pulses[vsyncs[1]+6:vsyncs[2]-6] if p[2] > self.usectoinpx(2.5)])
+        hsynclen_med = np.median([p[1] for p in pulses[vsyncs[1]+6:vsyncs[2]-6] if p[1] > self.usectoinpx(2.5)])
         hsynclen_min = hsynclen_med - self.usectoinpx(.2)
         hsynclen_max = hsynclen_med + self.usectoinpx(.2)
 
@@ -809,7 +820,7 @@ class Field:
                 continue
 
             for p in range(vsyncs[1], vsyncs[2]+1):
-                if inrange(pulses[p][2], hsynclen_min, hsynclen_max):
+                if inrange(pulses[p][1], hsynclen_min, hsynclen_max):
                     l = self.compute_distance(pulses, vsync_pnum, p, linelen, round=True)
 
                     # apply a correction factor for vsync edges falling at .5H, so
@@ -831,7 +842,6 @@ class Field:
         vsync_pulse = None
 
         for z in zip(vsyncs, vsyncedge_locations, validated):
-            #print(z)
             if z[2] == True:
                 vsync_pulse = z[0]
                 vsync_pulse_offset = z[1]
@@ -857,7 +867,7 @@ class Field:
             # outside the vsync interval, enforce longer pulses
             minpulselen = 2.5 if ((p > (vsyncs[1]+7)) and (p < (vsyncs[2] - 7))) else 1.5
 
-            if pulses[p][2] > self.usectoinpx(minpulselen):
+            if pulses[p][1] > self.usectoinpx(minpulselen):
                 linenum = self.compute_distance(pulses, vsync_pulse, p, linelen, round=True) + vsync_pulse_offset
 
                 #print(pulses[p], linenum)
@@ -912,23 +922,15 @@ class Field:
                         next_valid = i
                         break
 
- #               print(l, prev_valid, next_valid)
-                #print(linelocs[prev_valid])
-                        
                 if prev_valid is None:
                     avglen = self.inlinelen
                     linelocs_filled[l] = linelocs[next_valid] - (avglen * (next_valid - l))
-#                    print(l, linelocs[next_valid], (avglen * (next_valid - l)))
                 elif next_valid is not None:
                     avglen = (linelocs[next_valid] - linelocs[prev_valid]) / (next_valid - prev_valid)
-                    #avglen = self.inlinelen 
                     linelocs_filled[l] = linelocs[prev_valid] + (avglen * (l - prev_valid))
                 else:
-                    #avglen = (linelocs[next_valid] - linelocs[prev_valid]) / (next_valid - prev_valid)
                     avglen = self.inlinelen 
                     linelocs_filled[l] = linelocs[prev_valid] + (avglen * (l - prev_valid))
-
-                #print(l, prev_valid, next_valid, linelocs_filled[l], avglen)
 
         # *finally* done :)
 
@@ -937,7 +939,7 @@ class Field:
         rv_err = np.full(len(rv_ll), False)
         rv_err[2:] = np.diff(np.diff(rv_ll)) > 1
 
-        #print(rv_ll[0])
+        self.pulses = pulses
 
         return rv_ll, rv_err, pulses[vsync2[0] - 14][0]
 
@@ -1464,8 +1466,6 @@ class FieldNTSC(Field):
         self.amed = amed
         self.zc_bursts = zc_bursts
 
-        valid = True
-
         return zc_bursts, field14, burstlevel, badlines
 
     def refine_linelocs_burst(self, linelocs = None):
@@ -1500,21 +1500,25 @@ class FieldNTSC(Field):
 
                 adjs[l] = -(np.median(zc_bursts[l][edge]) * lfreq * (1 / self.rf.SysParams['fsc_mhz']))
 
-        adjs_median = np.median([adjs[a] for a in adjs])
-        
-        for l in range(0, 266):
-            if l in adjs and inrange(adjs[l] - adjs_median, -2, 2):
-                linelocs_adj[l] += adjs[l]
+        try:
+            adjs_median = np.median([adjs[a] for a in adjs])
+            
+            for l in range(0, 266):
+                if l in adjs and inrange(adjs[l] - adjs_median, -2, 2):
+                    linelocs_adj[l] += adjs[l]
+                else:
+                    linelocs_adj[l] += adjs_median
+                    self.linebad[l] = True
+
+            self.field14 = field14
+
+            if self.isFirstField:
+                self.fieldPhaseID = 1 if self.field14 else 3
             else:
-                linelocs_adj[l] += adjs_median
-                self.linebad[l] = True
-
-        self.field14 = field14
-
-        if self.isFirstField:
-            self.fieldPhaseID = 1 if self.field14 else 3
-        else:
-            self.fieldPhaseID = 4 if self.field14 else 2
+                self.fieldPhaseID = 4 if self.field14 else 2
+        except:
+            self.fieldPhaseID=1
+            return linelocs_adj, burstlevel#, adjs
 
         return linelocs_adj, burstlevel#, adjs
     
