@@ -67,6 +67,13 @@ void TrackTime::addFrames(qint32 frames)
     trackFrames += frames;
 }
 
+// Method to subtract frames from the track time
+void TrackTime::subtractFrames(qint32 frames)
+{
+    trackFrames -= frames;
+    if (trackFrames < 0) trackFrames = 0;
+}
+
 // Method to get the track time
 TrackTime::Time TrackTime::getTime(void)
 {

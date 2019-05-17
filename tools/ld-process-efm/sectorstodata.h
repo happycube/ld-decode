@@ -30,6 +30,7 @@
 #include <QFile>
 
 #include "sector.h"
+#include "tracktime.h"
 
 class SectorsToData
 {
@@ -44,6 +45,12 @@ public:
 private:
     QFile *outputFileHandle;
     qint32 sectorsOut;
+
+    bool gotFirstValidSector;
+    TrackTime lastGoodAddress;
+
+    qint32 gapSectors;
+    qint32 missingSectors;
 };
 
 #endif // SECTORSTODATA_H

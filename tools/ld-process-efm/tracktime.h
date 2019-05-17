@@ -42,6 +42,7 @@ public:
     bool setTime(qint32 minutesParam, qint32 secondsParam, qint32 framesParam);
     bool setTime(TrackTime::Time timeParam);
     void addFrames(qint32 frames);
+    void subtractFrames(qint32 frames);
     Time getTime(void);
     QString getTimeAsQString(void);
     qint32 getFrames(void);

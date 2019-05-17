@@ -27,6 +27,11 @@
 SectorsToData::SectorsToData()
 {
     sectorsOut = 0;
+    gotFirstValidSector = false;
+    lastGoodAddress.setTime(0, 0, 0);
+
+    gapSectors = 0;
+    missingSectors = 0;
 }
 
 // Method to write status information to qInfo
@@ -34,6 +39,8 @@ void SectorsToData::reportStatus(void)
 {
     qInfo() << "Sectors to data converter:";
     qInfo() << "  Total number of sectors written =" << sectorsOut;
+    qInfo() << "  Empty sectors (probably) due to EFM signal gaps =" << gapSectors;
+    qInfo() << "  Empty sectors (probably) due to data loss =" << missingSectors;
 }
 
 // Method to open the data output file
@@ -69,7 +76,70 @@ void SectorsToData::closeOutputFile(void)
 void SectorsToData::convert(QVector<Sector> sectors)
 {
     for (qint32 i = 0; i < sectors.size(); i++) {
-        outputFileHandle->write(sectors[i].getUserData());
-        sectorsOut++;
+        // Is sector valid?
+        if (sectors[i].isValid()) {
+            // Output sector metadata to debug
+            qDebug() << "SectorsToData::convert(): Writing mode" << sectors[i].getMode() <<
+                        sectors[i].getUserData().size() << "byte" <<
+                        "data sector with address of" << sectors[i].getAddress().getTimeAsQString();
+
+            // Write the sector
+            TrackTime expectedAddress = lastGoodAddress;
+            expectedAddress.addFrames(1); // We expect the next frame
+
+            // Is the current sector address the expected next sector address?
+            if (gotFirstValidSector) {
+                if (expectedAddress.getFrames() != sectors[i].getAddress().getFrames()) {
+                    // Calculate the number of missing frames
+                    qint32 missingFrames = (sectors[i].getAddress().getFrames() - expectedAddress.getFrames());
+
+                    // Address is not the expected next sector, show debug
+                    qDebug() << "SectorsToData::convert(): Unexpected sector address - missing" <<
+                                missingFrames << "sectors -" <<
+                                "padding output data!";
+
+                    // Figure out how many bytes to pad the data file with
+                    qint32 bytesToPad = 0;
+                    switch(sectors[i].getMode()) {
+                    case 0: bytesToPad = 2336;
+                        break;
+                    case 1: bytesToPad = 2048;
+                        break;
+                    case 2: bytesToPad = 2336;
+                        break;
+                    default: bytesToPad = 2048;
+                    }
+
+                    // If there is a big gap in EFM data it's probably because there is a break in the
+                    // EFM signal on the disc (Domesday has a number of these).  If we loose just a few
+                    // sectors, then it's very likely data is missing
+                    if (missingFrames > 16) {
+                        qInfo() << "A gap of" << missingFrames << "sectors was detected in the EFM (probably a break in the EFM signal)";
+                        gapSectors += missingFrames;
+                    } else {
+                        qWarning() << "A gap of" << missingFrames << "sectors was detected in the EFM (probably corrupt data!)";
+                        missingSectors += missingFrames;
+                    }
+
+                    QByteArray padding;
+                    padding.fill(0x0, bytesToPad * missingFrames);
+                    outputFileHandle->write(padding);
+                }
+            } else {
+                // This is the first valid sector
+                // First valid sector found
+                gotFirstValidSector = true;
+                qDebug() << "SectorsToData::convert(): First valid data sector found!";
+            }
+
+            // Write sector to disc
+            outputFileHandle->write(sectors[i].getUserData());
+
+            // Update tracking data
+            lastGoodAddress = sectors[i].getAddress();
+            sectorsOut++;
+        } else {
+            qDebug() << "SectorsToData::convert(): Data sector is invalid - ignoring";
+        }
     }
 }
