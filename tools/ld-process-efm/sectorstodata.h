@@ -51,6 +51,10 @@ private:
 
     qint32 gapSectors;
     qint32 missingSectors;
+
+    QVector<qint32> missingStartSector;
+    QVector<qint32> missingEndSector;
+    QVector<bool> isGap;
 };
 
 #endif // SECTORSTODATA_H
