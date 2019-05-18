@@ -32,6 +32,9 @@
 // Global for debug output
 static bool showDebug = false;
 
+// Global for quiet mode (suppress info and warning messages)
+static bool showOutput = true;
+
 // Qt debug message handler
 void debugOutputHandler(QtMsgType type, const QMessageLogContext &context, const QString &msg)
 {
@@ -50,12 +53,16 @@ void debugOutputHandler(QtMsgType type, const QMessageLogContext &context, const
         }
         break;
     case QtInfoMsg: // These are information messages meant for end-users
-        if (context.file != nullptr) fprintf(stderr, "Info: [%s:%d] %s\n", context.file, context.line, localMsg.constData());
-        else fprintf(stderr, "Info: %s\n", localMsg.constData());
+        if (showOutput) {
+            if (context.file != nullptr) fprintf(stderr, "Info: [%s:%d] %s\n", context.file, context.line, localMsg.constData());
+            else fprintf(stderr, "Info: %s\n", localMsg.constData());
+        }
         break;
     case QtWarningMsg:
-        if (context.file != nullptr) fprintf(stderr, "Warning: [%s:%d] %s\n", context.file, context.line, localMsg.constData());
-        else fprintf(stderr, "Warning: %s\n", localMsg.constData());
+        if (showOutput) {
+            if (context.file != nullptr) fprintf(stderr, "Warning: [%s:%d] %s\n", context.file, context.line, localMsg.constData());
+            else fprintf(stderr, "Warning: %s\n", localMsg.constData());
+        }
         break;
     case QtCriticalMsg:
         if (context.file != nullptr) fprintf(stderr, "Critical: [%s:%d] %s\n", context.file, context.line, localMsg.constData());
@@ -118,6 +125,11 @@ int main(int argc, char *argv[])
                                        QCoreApplication::translate("main", "Output in black and white"));
     parser.addOption(setBwModeOption);
 
+    // Option to set quiet mode (-q)
+    QCommandLineOption setQuietOption(QStringList() << "q" << "quiet",
+                                       QCoreApplication::translate("main", "Suppress info and warning messages"));
+    parser.addOption(setQuietOption);
+
     // Positional argument to specify input video file
     parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input TBC file"));
 
@@ -131,6 +143,7 @@ int main(int argc, char *argv[])
     bool isDebugOn = parser.isSet(showDebugOption);
     bool reverse = parser.isSet(setReverseOption);
     bool blackAndWhite = parser.isSet(setBwModeOption);
+    if (parser.isSet(setQuietOption)) showOutput = false;
 
     // Get the arguments from the parser
     QString inputFileName;
