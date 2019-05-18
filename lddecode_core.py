@@ -1069,10 +1069,10 @@ class Field:
         ''' compute errors based off the second derivative - if it exceeds 1 something's wrong '''
 
         derr1 = np.full(len(linelocs), False)
-        derr1[1:-1] = np.abs(np.diff(np.diff(linelocs))) > 1
+        derr1[1:-1] = np.abs(np.diff(np.diff(linelocs))) > 4
         
         derr2 = np.full(len(linelocs), False)
-        derr2[2:] = np.abs(np.diff(np.diff(linelocs))) > 1
+        derr2[2:] = np.abs(np.diff(np.diff(linelocs))) > 4
 
         derr = np.logical_or(derr1, derr2)
         
@@ -1521,8 +1521,6 @@ class FieldNTSC(Field):
         return zc_bursts
 
     def compute_burst_offsets(self, linelocs):
-        badlines = np.full(266, False)
-
         linelocs_adj = linelocs
 
         burstlevel = np.zeros_like(linelocs_adj, dtype=np.float32)
@@ -1564,7 +1562,7 @@ class FieldNTSC(Field):
         self.amed = amed
         self.zc_bursts = zc_bursts
 
-        return zc_bursts, field14, burstlevel, badlines
+        return zc_bursts, field14, burstlevel
 
     def refine_linelocs_burst(self, linelocs = None):
         if linelocs is None:
@@ -1573,7 +1571,7 @@ class FieldNTSC(Field):
         linelocs_adj = linelocs.copy()
         burstlevel = np.zeros_like(linelocs_adj, dtype=np.float32)
 
-        zc_bursts, field14, burstlevel, badlines = self.compute_burst_offsets(linelocs_adj)
+        zc_bursts, field14, burstlevel = self.compute_burst_offsets(linelocs_adj)
 
         adjs = {}
 
@@ -1588,7 +1586,7 @@ class FieldNTSC(Field):
 
             edge = not ((field14 and (l % 2)) or (not field14 and not (l % 2)))
 
-            if not (np.isnan(linelocs_adj[l]) or len(zc_bursts[l][edge]) == 0 or self.linebad[l] or badlines[l]):
+            if not (np.isnan(linelocs_adj[l]) or len(zc_bursts[l][edge]) == 0 or self.linebad[l]):
                 if l > 0:
                     lfreq = self.rf.freq * (((self.linelocs2[l+1] - self.linelocs2[l-1]) / 2) / self.rf.linelen)
                 elif l == 0:
