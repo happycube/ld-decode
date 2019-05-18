@@ -140,8 +140,8 @@ int main(int argc, char *argv[])
     // Positional argument to specify input video file
     parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input TBC file"));
 
-        // Positional argument to specify output video file
-    parser.addPositionalArgument("output", QCoreApplication::translate("main", "Specify output RGB file"));
+    // Positional argument to specify output video file
+    parser.addPositionalArgument("output", QCoreApplication::translate("main", "Specify output RGB file (omit for piped output)"));
 
     // Process the command line options and arguments given by the user
     parser.process(a);
@@ -187,9 +187,15 @@ int main(int argc, char *argv[])
         inputFileName = positionalArguments.at(0);
         outputFileName = positionalArguments.at(1);
     } else {
-        // Quit with error
-        qCritical("You must specify the input TBC and output RGB files");
-        return -1;
+        if (positionalArguments.count() == 1) {
+            // Use piped output
+            inputFileName = positionalArguments.at(0);
+            outputFileName.clear(); // Use pipe
+        } else {
+            // Quit with error
+            qCritical("You must specify the input TBC and output RGB files");
+            return -1;
+        }
     }
 
     if (inputFileName == outputFileName) {
