@@ -1068,15 +1068,15 @@ class Field:
     def compute_deriv_error(self, linelocs, baserr):
         ''' compute errors based off the second derivative - if it exceeds 1 something's wrong '''
 
-        #derr1 = np.full(len(linelocs), False)
-        #derr1[1:-1] = np.abs(np.diff(np.diff(linelocs))) > 1
+        derr1 = np.full(len(linelocs), False)
+        derr1[1:-1] = np.abs(np.diff(np.diff(linelocs))) > 1
         
         derr2 = np.full(len(linelocs), False)
         derr2[2:] = np.abs(np.diff(np.diff(linelocs))) > 1
 
-        #derr = np.logical_or(derr1, derr2)
+        derr = np.logical_or(derr1, derr2)
         
-        return np.logical_or(baserr, derr2)
+        return np.logical_or(baserr, derr)
 
     def fix_badlines(self, linelocs_in, linelocs_backup_in = None):
         self.linebad = self.compute_deriv_error(linelocs_in, self.linebad)
