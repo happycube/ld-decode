@@ -1069,12 +1069,12 @@ class Field:
         ''' compute errors based off the second derivative - if it exceeds 1 something's wrong '''
 
         derr1 = np.full(len(linelocs), False)
-        derr1[1:-1] = np.diff(np.diff(linelocs)) > 1
+        derr1[1:-1] = np.abs(np.diff(np.diff(linelocs))) > 1
         
         derr2 = np.full(len(linelocs), False)
-        derr2[2:] = np.diff(np.diff(linelocs)) > 1
+        derr2[2:] = np.abs(np.diff(np.diff(linelocs))) > 1
 
-        derr = np.logical_or(derr1,derr2)
+        derr = np.logical_or(derr1, derr2)
         
         return np.logical_or(baserr, derr)
 
