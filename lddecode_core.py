@@ -778,8 +778,7 @@ class Field:
                 elif inrange(p.len, hsync_min, hsync_max):
                     vints.append((eq_start, len(validpulses)-1))
                     spulse = (HSYNC, p)
-                    # FIXME: use standard-specific value
-                    earliest_eq = p.start + (self.inlinelen * 240)
+                    earliest_eq = p.start + (self.inlinelen * (np.min(self.rf.SysParams['field_lines']) - 10))
 
             # Quality check
             if spulse is not None and len(validpulses) >= 1:
