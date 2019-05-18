@@ -104,11 +104,23 @@ bool NtscFilter::process(QString inputFileName, QString outputFileName,
 
     // Open the output RGB file
     QFile targetVideo(outputFileName);
-    if (!targetVideo.open(QIODevice::WriteOnly)) {
+    if (outputFileName.isNull()) {
+        // No output filename, use stdout instead
+        if (!targetVideo.open(stdout, QIODevice::WriteOnly)) {
+            // Failed to open stdout
+            qCritical() << "Could not open stdout for RGB output";
+            sourceVideo.close();
+            return false;
+        }
+        qInfo() << "Using stdout as RGB output";
+    } else {
+        // Open output file
+        if (!targetVideo.open(QIODevice::WriteOnly)) {
             // Failed to open output file
             qCritical() << "Could not open " << outputFileName << "as RGB output file";
             sourceVideo.close();
             return false;
+        }
     }
 
     // Create the comb filter object
