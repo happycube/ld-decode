@@ -965,6 +965,8 @@ class Field:
                 #print(p, hlineloc, hlineloc / 2)
                 linelocs_dict[hlineloc // 2] = p[1].start
 
+        rv_err = np.full(self.outlinecount + 6, False)
+
         # Convert dictionary into list, then fill in gaps
         linelocs = [linelocs_dict[l] if l in linelocs_dict else -1 for l in range(0, self.outlinecount + 6)]
         linelocs_filled = linelocs.copy()
@@ -987,6 +989,8 @@ class Field:
 
         for l in range(1, self.outlinecount + 6):
             if linelocs_filled[l] < 0:
+                rv_err[l] = True
+
                 prev_valid = None
                 next_valid = None
 
@@ -1012,9 +1016,6 @@ class Field:
         # *finally* done :)
 
         rv_ll = [linelocs_filled[l] for l in range(0, self.outlinecount + 6)]
-
-        rv_err = np.full(len(rv_ll), False)
-        rv_err[2:] = np.diff(np.diff(rv_ll)) > 1
 
         self.vsync1loc = validpulses[blank1[0]][1].start
         self.vsync2loc = validpulses[blank2[0]][1].start
@@ -1064,7 +1065,21 @@ class Field:
 
         return linelocs2
 
+    def compute_deriv_error(self, linelocs, baserr):
+        ''' compute errors based off the second derivative - if it exceeds 1 something's wrong '''
+
+        derr1 = np.full(len(linelocs), False)
+        derr1[1:-1] = np.diff(np.diff(linelocs)) > 1
+        
+        derr2 = np.full(len(linelocs), False)
+        derr2[2:] = np.diff(np.diff(linelocs)) > 1
+
+        derr = np.logical_or(derr1,derr2)
+        
+        return np.logical_or(baserr, derr)
+
     def fix_badlines(self, linelocs_in, linelocs_backup_in = None):
+        self.linebad = self.compute_deriv_error(linelocs_in, self.linebad)
         linelocs = np.array(linelocs_in.copy())
 
         if linelocs_backup_in is not None:
@@ -1205,7 +1220,10 @@ class Field:
 
             return
 
+        self.linebad = self.compute_deriv_error(self.linelocs1, self.linebad)
+
         self.linelocs2 = self.refine_linelocs_hsync()
+        self.linebad = self.compute_deriv_error(self.linelocs2, self.linebad)
 
         self.linelocs = self.linelocs2
 
