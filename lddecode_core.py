@@ -1441,9 +1441,9 @@ class FieldPAL(Field):
         self.burstmedian = self.calc_burstmedian()
 
         self.linecount = 312 if self.isFirstField else 313
-        self.lineoffset = 2 if self.isFirstField else 2
+        self.lineoffset = 2 if self.isFirstField else 3
 
-        self.linecode = [self.decodephillipscode(l + self.lineoffset) for l in [17, 18, 19]]
+        self.linecode = [self.decodephillipscode(l + self.lineoffset) for l in [16, 17, 18]]
 
         self.out_scale = np.double(0xd300 - 0x0100) / (100 - self.rf.SysParams['vsync_ire'])
 
