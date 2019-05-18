@@ -920,6 +920,14 @@ class Field:
         if line0loc is None:
             line0loc_next, isNotFirstField = self.processVBlank(validpulses, 100)
 
+            if line0loc_next is None:
+                if self.prevfield is not None:
+                    print("WARNING: Severe VSYNC-area corruption detected.")
+                    return self.prevfield.linelocs[self.prevfield.outlinecount - 1] - self.prevfield.nextfieldoffset, not self.prevfield.isFirstField
+
+                print("ERROR: Severe VSYNC-area corruption detected, dropping field")
+                return None, None
+
             isFirstField = not isNotFirstField
 
             meanlinelen = self.computeLineLen(validpulses, 'all')
@@ -955,6 +963,10 @@ class Field:
 
         line0loc, self.isFirstField = self.getLine0(validpulses)
         linelocs_dict = {}
+
+        if line0loc is None:
+            print("ERROR: DROPPING FIELD")
+            return None, None, self.inlinelen * 200
 
         meanlinelen = self.computeLineLen(validpulses, 'all')
         for p in validpulses:
@@ -1187,9 +1199,11 @@ class Field:
         
         return None
 
-    def __init__(self, rf, rawdata, rawdecode, audio_offset = 0, keepraw = True):
+    def __init__(self, rf, rawdata, rawdecode, audio_offset = 0, keepraw = True, prevfield = None):
         if rawdecode is None:
             return None
+
+        self.prevfield = prevfield
 
         self.rawdata = rawdata
         self.data = rawdecode
@@ -1911,7 +1925,7 @@ class LDdecode:
             print("Failed to demodulate data")
             return None, None
         
-        f = self.FieldClass(self.rf, self.indata, self.rawdecode, audio_offset = self.audio_offset)
+        f = self.FieldClass(self.rf, self.indata, self.rawdecode, audio_offset = self.audio_offset, prevfield = self.curfield)
         
         self.curfield = f
 
@@ -2206,7 +2220,7 @@ class LDdecode:
                 fi['isFirstField'] = not prevfi['isFirstField']
                 fi['syncConf'] = 10
             else:
-                print('ERROR! Skipped field')
+                print('ERROR! Skipped field', prevfi['diskLoc'], fi['diskLoc'])
                 decodeFaults |= 4
                 fi['syncConf'] = 0
 
