@@ -23,6 +23,7 @@ SOURCES += \
     c2circ.cpp \
     c2deinterleave.cpp \
     sectiontometa.cpp \
+    sectorstometa.cpp \
     tracktime.cpp \
     f2frame.cpp \
     f3tof2frames.cpp \
@@ -64,6 +65,7 @@ HEADERS += \
     c2circ.h \
     c2deinterleave.h \
     sectiontometa.h \
+    sectorstometa.h \
     tracktime.h \
     f2frame.h \
     f3tof2frames.h \
