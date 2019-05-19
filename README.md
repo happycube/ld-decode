@@ -1,4 +1,4 @@
-This is the WIP tree for rev5.  It may be utterly broken at any time until release.
+This is rev5 of ld-decode and tools.  Lots of great new stuff, check out http://www.domesday86.com for details :)
 
 For more documentation check the wiki (here) on github:
 
