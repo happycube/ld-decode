@@ -1248,6 +1248,8 @@ class Field:
         # VBI info
         self.valid = True
 
+        self.prevfield = None
+
         return
 
     def dropout_detect_demod(self):
