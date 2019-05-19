@@ -60,8 +60,8 @@ bool PalCombFilter::process(QString inputFileName, QString outputFileName, qint3
     qint32 videoStart = videoParameters.activeVideoStart;
     qint32 videoEnd = videoParameters.activeVideoEnd;
 
-    // Make sure output width is even (better for ffmpeg processing)
-    if (((videoEnd - videoStart) % 2) != 0) {
+    // Make sure output width is divisible by 16 (better for ffmpeg processing)
+    while (((videoEnd - videoStart) % 16) != 0) {
        videoEnd++;
     }
 
@@ -103,13 +103,25 @@ bool PalCombFilter::process(QString inputFileName, QString outputFileName, qint3
 
     qInfo() << "Processing from start frame #" << startFrame << "with a length of" << length << "frames";
 
-    // Open the target video file (RGB)
+    // Open the output RGB file
     QFile targetVideo(outputFileName);
-    if (!targetVideo.open(QIODevice::WriteOnly)) {
-            // Could not open target video file
-            qInfo() << "Unable to open output video file";
+    if (outputFileName.isNull()) {
+        // No output filename, use stdout instead
+        if (!targetVideo.open(stdout, QIODevice::WriteOnly)) {
+            // Failed to open stdout
+            qCritical() << "Could not open stdout for RGB output";
             sourceVideo.close();
             return false;
+        }
+        qInfo() << "Using stdout as RGB output";
+    } else {
+        // Open output file
+        if (!targetVideo.open(QIODevice::WriteOnly)) {
+            // Failed to open output file
+            qCritical() << "Could not open " << outputFileName << "as RGB output file";
+            sourceVideo.close();
+            return false;
+        }
     }
 
     // Process the frames

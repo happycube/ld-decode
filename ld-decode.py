@@ -27,10 +27,10 @@ parser.add_argument('-n', '--ntsc', dest='ntsc', action='store_true', help='sour
 #parser.add_argument('-c', '--cut', dest='cut', action='store_true', help='cut (to r16) instead of decode')
 parser.add_argument('-m', '--MTF', metavar='mtf', type=float, default=None, help='mtf compensation multiplier')
 parser.add_argument('--MTF_offset', metavar='mtf_offset', type=float, default=None, help='mtf compensation offset')
-parser.add_argument('-f', '--frame', dest='frame', action='store_true', help='output frames')
-parser.add_argument('--NTSCJ', dest='ntscj', action='store_true', help='source is in NTSC-J (IRE 0 black) format')
+parser.add_argument('-j', '--NTSCJ', dest='ntscj', action='store_true', help='source is in NTSC-J (IRE 0 black) format')
 parser.add_argument('--noDOD', dest='nodod', action='store_true', default=False, help='disable dropout detector')
-
+parser.add_argument('--noEFM', dest='noefm', action='store_true', default=False, help='Disable EFM front end')
+parser.add_argument('--daa', dest='daa', action='store_true', default=False, help='Disable analog audio decoding')
 parser.add_argument('--ignoreleadout', dest='ignoreleadout', action='store_true', default=False, help='continue decoding after lead-out seen')
 
 
@@ -61,11 +61,14 @@ elif filename[-3:] == 'r30':
     loader = load_packed_data_3_32
 elif filename[-3:] == 'r16':
     loader = load_unpacked_data_s16
-    
+elif filename[-2:] == 'r8':
+    loader = load_unpacked_data_u8
+else:
+    loader = load_packed_data_4_40
+
 system = 'PAL' if args.pal else 'NTSC'
-foutput = False if not args.frame else True
     
-ldd = LDdecode(filename, outname, loader, frameoutput=foutput, system=system, doDOD = not args.nodod)
+ldd = LDdecode(filename, outname, loader, analog_audio = not args.daa, digital_audio = not args.noefm, system=system, doDOD = not args.nodod)
 ldd.roughseek(firstframe * 2)
 
 if system == 'NTSC' and not args.ntscj:
@@ -98,14 +101,14 @@ while not done and ldd.fields_written < (req_frames * 2):
     try:
         f = ldd.readfield()
     except KeyboardInterrupt as kbd:
-        print("Terminated, saving JSON and exiting")
+        print("Terminated, saving JSON and exiting", file=sys.stderr)
         write_json(ldd, outname)
         exit(1)
     except Exception as err:
-        print("ERROR - please paste the following into a bug report:")
-        print("current sample: ", ldd.fdoffset)
-        print("arguments: ", args)
-        print("Exception: ", err, " Traceback:")
+        print("ERROR - please paste the following into a bug report:", file=sys.stderr)
+        print("current sample: " + ldd.fdoffset, file=sys.stderr)
+        print("arguments: " + args, file=sys.stderr)
+        print("Exception: " + err + " Traceback:", file=sys.stderr)
         traceback.print_tb(err.__traceback__)
         write_json(ldd, outname)
         exit(1)
@@ -119,5 +122,5 @@ while not done and ldd.fields_written < (req_frames * 2):
         #print('write json')
         write_json(ldd, outname)
 
-print("saving JSON and exiting")    
+print("saving JSON and exiting", file=sys.stderr)    
 write_json(ldd, outname)

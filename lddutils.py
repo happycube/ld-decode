@@ -1,6 +1,7 @@
 # NOTE:  These are not reduced from ld-decode notebook
 
 from base64 import b64encode
+from collections import namedtuple
 import copy
 from datetime import datetime
 import getopt
@@ -324,7 +325,8 @@ def calczc(data, _start_offset, target, edge='both', _count=10, reverse=False):
 
 def calczc_sets(data, start, end, tgt = 0, cliplevel = None):
     zcsets = {False: [], True:[]}
-    bi = star
+    bi = start
+    
     while bi < end:
         if np.abs(data[bi]) > cliplevel:
             zc = calczc(data, bi, tgt)
@@ -367,3 +369,74 @@ def genwave(rate, freq, initialphase = 0):
         out[i] = np.sin(angle)
         
     return out
+
+# slightly faster than np.std for short arrays
+def rms(arr):
+    return np.sqrt(np.mean(np.square(arr - np.mean(arr))))
+
+# MTF calculations
+def get_fmax(cavframe = 0, laser=780, na=0.5, fps=30):
+    loc = .055 + ((cavframe / 54000) * .090)
+    return (2*na/(laser/1000))*(2*np.pi*fps)*loc
+
+def compute_mtf(freq, cavframe = 0, laser=780, na=0.52):
+    fmax = get_fmax(cavframe, laser, na)
+
+    freq_mhz = freq / 1000000
+    
+    if type(freq_mhz) == np.ndarray:
+        freq_mhz[freq_mhz > fmax] = fmax
+    elif freq_mhz > fmax:
+        return 0
+
+    # from Compact Disc Technology AvHeitarō Nakajima, Hiroshi Ogawa page 17
+    return (2/np.pi)*(np.arccos(freq_mhz/fmax)-((freq_mhz/fmax)*np.sqrt(1-((freq_mhz/fmax)**2))))
+
+def roundfloat(fl, places = 3):
+    ''' round float to (places) decimal places '''
+    r = 10 ** places
+    return np.round(fl * r) / r
+
+# Something like this should be a numpy function, but I can't find it.
+
+def findareas(array, cross):
+    ''' Find areas where `array` is <= `cross`
+    
+    returns: array of tuples of said areas (begin, end, length)
+    '''
+    starts = np.where(np.logical_and(array[1:] < cross, array[:-1] >= cross))[0]
+    ends = np.where(np.logical_and(array[1:] >= cross, array[:-1] < cross))[0]
+
+    # remove 'dangling' beginnings and endings so everything zips up nicely and in order
+    if ends[0] < starts[0]:
+        ends = ends[1:]
+
+    if starts[-1] > ends[-1]:
+        starts = starts[:-1]
+
+    return [(*z, z[1] - z[0]) for z in zip(starts, ends)]
+
+Pulse = namedtuple('Pulse', 'start len')
+
+def findpulses(array, low, high):
+    ''' Find areas where `array` is between `low` and `high`
+    
+    returns: array of tuples of said areas (begin, end, length)
+    '''
+    
+    array_inrange = inrange(array, low, high)
+    
+    starts = np.where(np.logical_and(array_inrange[1:] == True, array_inrange[:-1] == False))[0]
+    ends = np.where(np.logical_and(array_inrange[1:] == False, array_inrange[:-1] == True))[0]
+
+    if len(starts) == 0 or len(ends) == 0:
+        return []
+
+    # remove 'dangling' beginnings and endings so everything zips up nicely and in order
+    if ends[0] < starts[0]:
+        ends = ends[1:]
+
+    if starts[-1] > ends[-1]:
+        starts = starts[:-1]
+
+    return [Pulse(z[0], z[1] - z[0]) for z in zip(starts, ends)]

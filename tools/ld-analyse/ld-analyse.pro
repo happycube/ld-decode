@@ -29,6 +29,7 @@ SOURCES += \
         mainwindow.cpp \
     oscilloscopedialog.cpp \
     aboutdialog.cpp \
+    snranalysisdialog.cpp \
     vbidialog.cpp \
     configuration.cpp \
     ntscdialog.cpp \
@@ -42,12 +43,14 @@ SOURCES += \
     dropoutanalysisdialog.cpp \
     ../ld-comb-ntsc/yiqline.cpp \
     ../ld-comb-ntsc/yiqbuffer.cpp \
-    ../ld-comb-ntsc/opticalflow.cpp
+    ../ld-comb-ntsc/opticalflow.cpp \
+    vitsmetricsdialog.cpp
 
 HEADERS += \
         mainwindow.h \
     oscilloscopedialog.h \
     aboutdialog.h \
+    snranalysisdialog.h \
     vbidialog.h \
     configuration.h \
     ntscdialog.h \
@@ -62,16 +65,19 @@ HEADERS += \
     ../ld-comb-ntsc/yiqbuffer.h \
     ../ld-comb-ntsc/yiqline.h \
     ../ld-comb-ntsc/opticalflow.h \
-    ../ld-comb-ntsc/yiqbuffer.h
+    ../ld-comb-ntsc/yiqbuffer.h \
+    vitsmetricsdialog.h
 
 FORMS += \
         mainwindow.ui \
     oscilloscopedialog.ui \
     aboutdialog.ui \
+    snranalysisdialog.ui \
     vbidialog.ui \
     ntscdialog.ui \
     videometadatadialog.ui \
-    dropoutanalysisdialog.ui
+    dropoutanalysisdialog.ui \
+    vitsmetricsdialog.ui
 
 MYDLLDIR = $$IN_PWD/../library
 
@@ -92,6 +98,14 @@ else: unix:!android: target.path = /usr/local/bin/
 RESOURCES += \
     ld-analyse-resources.qrc
 
+# Additional include paths to support MacOS compilation
+INCLUDEPATH += "/usr/local/opt/opencv@2/include"
+LIBS += -L"/usr/local/opt/opencv@2/lib"
+
+# Normal open-source OS goodness
 INCLUDEPATH += "/usr/local/include/opencv"
 LIBS += -L"/usr/local/lib"
 LIBS += -lopencv_core -lopencv_imgcodecs -lopencv_highgui -lopencv_imgproc -lopencv_video
+
+
+

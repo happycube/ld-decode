@@ -1,4 +1,4 @@
-This is rev4 of ld-decode.  Lots of new features, read more at https://www.domesday86.com/?p=2670
+This is rev5 of ld-decode and tools.  Lots of great new stuff, check out http://www.domesday86.com for details :)
 
 For more documentation check the wiki (here) on github:
 

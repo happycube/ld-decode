@@ -35,6 +35,9 @@ Comb::Comb() {
 
     configuration.colorlpf = true; // Use as default
     configuration.colorlpf_hq = true; // Use as default
+    
+    configuration.cNRLevel = 0.0;
+    configuration.yNRLevel = 1.0;
 
     // These are the overall dimensions of the input frame
     configuration.fieldWidth = 910;
@@ -128,7 +131,7 @@ QByteArray Comb::process(QByteArray firstFieldInputBuffer, QByteArray secondFiel
         tempYiqBuffer = currentFrameBuffer.yiqBuffer;
 
         // Process the copy of the current frame
-        adjustY(tempYiqBuffer, currentFrameBuffer.firstFieldPhaseID, currentFrameBuffer.secondFieldPhaseID);
+        adjustY(&currentFrameBuffer, tempYiqBuffer);
         if (configuration.colorlpf) filterIQ(currentFrameBuffer.yiqBuffer);
         doYNR(tempYiqBuffer);
         doCNR(tempYiqBuffer);
@@ -150,7 +153,7 @@ QByteArray Comb::process(QByteArray firstFieldInputBuffer, QByteArray secondFiel
         tempYiqBuffer = currentFrameBuffer.yiqBuffer;
 
         // Process the copy of the current frame (needed for the Y image used by the optical flow)
-        adjustY(tempYiqBuffer, currentFrameBuffer.firstFieldPhaseID, currentFrameBuffer.secondFieldPhaseID);
+        adjustY(&currentFrameBuffer, tempYiqBuffer);
         if (configuration.colorlpf) filterIQ(currentFrameBuffer.yiqBuffer);
         doYNR(tempYiqBuffer);
         doCNR(tempYiqBuffer);
@@ -166,7 +169,7 @@ QByteArray Comb::process(QByteArray firstFieldInputBuffer, QByteArray secondFiel
         tempYiqBuffer = currentFrameBuffer.yiqBuffer;
 
         // Process the copy of the current frame (for final output now flow detection has been performed)
-        adjustY(tempYiqBuffer, currentFrameBuffer.firstFieldPhaseID, currentFrameBuffer.secondFieldPhaseID);
+        adjustY(&currentFrameBuffer, tempYiqBuffer);
         if (configuration.colorlpf) filterIQ(currentFrameBuffer.yiqBuffer);
         doYNR(tempYiqBuffer);
         doCNR(tempYiqBuffer);
@@ -197,54 +200,46 @@ void Comb::postConfigurationTasks(void)
     frameHeight = ((configuration.fieldHeight * 2) - 1);
 }
 
-// This could do with an explaination of what it is doing...
+/* 
+ * The color burst frequency is 227.5 cycles per line, so it flips 180 degrees for each line.
+ * 
+ * The color burst *signal* is at 180 degrees, which is a greenish yellow.
+ *
+ * When SCH phase is 0 (properly aligned) the color burst is in phase with the leading edge of the HSYNC pulse.
+ *
+ * Per RS-170 note 6, Fields 1 and 4 have positive/rising burst phase at that point on even (1-based!) lines.
+ * The color burst signal should begin exactly 19 cycles later.
+ *
+ * GetLinePhase returns true if the color burst is rising at the leading edge.
+ */
+
+inline qint32 Comb::GetFieldID(FrameBuffer *frameBuffer, qint32 lineNumber)
+{
+    bool isFirstField = ((lineNumber % 2) == 0);
+    
+    return isFirstField ? frameBuffer->firstFieldPhaseID : frameBuffer->secondFieldPhaseID;
+}
+
+// NOTE:  lineNumber is presumed to be starting at 1.  (This lines up with how splitIQ calls it)
+inline bool Comb::GetLinePhase(FrameBuffer *frameBuffer, qint32 lineNumber)
+{
+    qint32 fieldID = GetFieldID(frameBuffer, lineNumber);
+    bool isPositivePhaseOnEvenLines = (fieldID == 1) || (fieldID == 4);    
+
+    int fieldLine = (lineNumber / 2);
+    bool isEvenLine = (fieldLine % 2) == 0;
+    
+    return isEvenLine ? isPositivePhaseOnEvenLines : !isPositivePhaseOnEvenLines;
+}
+
 void Comb::split1D(FrameBuffer *frameBuffer)
 {
-    bool topInvertphase = false;
-    bool bottomInvertphase = false;
-    bool invertphase = false;
-
-    if (frameBuffer->firstFieldPhaseID == 2 || frameBuffer->firstFieldPhaseID == 3)
-        topInvertphase = true;
-
-    if (frameBuffer->secondFieldPhaseID == 1 || frameBuffer->secondFieldPhaseID == 4)
-        bottomInvertphase = true;
-
     for (qint32 lineNumber = configuration.firstVisibleFrameLine; lineNumber < frameHeight; lineNumber++) {
         // Get a pointer to the line's data
         quint16 *line = reinterpret_cast<quint16 *>(frameBuffer->rawbuffer.data() + (lineNumber * configuration.fieldWidth) * 2);
 
-        // Determine if the line phase should be inverted
-        if ((lineNumber % 2) == 0) {
-            topInvertphase = !topInvertphase;
-            invertphase = topInvertphase;
-        } else {
-            bottomInvertphase = !bottomInvertphase;
-            invertphase = bottomInvertphase;
-        }
-
-        Filter f_1di(f_colorlpi);
-        Filter f_1dq(f_colorlpq);
-
         for (qint32 h = configuration.activeVideoStart; h < configuration.activeVideoEnd; h++) {
-            qint32 phase = h % 4;
             qreal tc1 = (((line[h + 2] + line[h - 2]) / 2) - line[h]);
-            qreal tc1f = 0, tsi = 0, tsq = 0;
-
-            if (!invertphase) tc1 = -tc1;
-
-            switch (phase) {
-                case 0: tsi = tc1; tc1f = f_1di.feed(tsi); break;
-                case 1: tsq = -tc1; tc1f = -f_1dq.feed(tsq); break;
-                case 2: tsi = -tc1; tc1f = -f_1di.feed(tsi); break;
-                case 3: tsq = tc1; tc1f = f_1dq.feed(tsq); break;
-                default: break;
-            }
-
-            if (!invertphase) {
-                tc1 = -tc1;
-                tc1f = -tc1f;
-            }
 
             // Record the 1D C value
             frameBuffer->clpbuffer[0].pixel[lineNumber][h] = tc1;
@@ -325,31 +320,13 @@ void Comb::split3D(FrameBuffer *currentFrame, FrameBuffer *previousFrame)
 // Spilt the I and Q
 void Comb::splitIQ(FrameBuffer *frameBuffer)
 {
-    bool topInvertphase = false;
-    bool bottomInvertphase = false;
-    bool invertphase = false;
-
-    if (frameBuffer->firstFieldPhaseID == 2 || frameBuffer->firstFieldPhaseID == 3)
-        topInvertphase = true;
-
-    if (frameBuffer->secondFieldPhaseID == 1 || frameBuffer->secondFieldPhaseID == 4)
-        bottomInvertphase = true;
-
     // Clear the target frame YIQ buffer
     frameBuffer->yiqBuffer.clear();
 
     for (qint32 lineNumber = configuration.firstVisibleFrameLine; lineNumber < frameHeight; lineNumber++) {
         // Get a pointer to the line's data
         quint16 *line = reinterpret_cast<quint16 *>(frameBuffer->rawbuffer.data() + (lineNumber * configuration.fieldWidth) * 2);
-
-        // Determine if the line phase should be inverted
-        if ((lineNumber % 2) == 0) {
-            topInvertphase = !topInvertphase;
-            invertphase = topInvertphase;
-        } else {
-            bottomInvertphase = !bottomInvertphase;
-            invertphase = bottomInvertphase;
-        }
+        bool linePhase = GetLinePhase(frameBuffer, lineNumber);
 
         qreal si = 0, sq = 0;
         for (qint32 h = configuration.activeVideoStart; h < configuration.activeVideoEnd; h++) {
@@ -367,7 +344,7 @@ void Comb::splitIQ(FrameBuffer *frameBuffer)
                 //cavg = frameBuffer->clpbuffer[2].pixel[lineNumber][h];
             }
 
-            if (!invertphase) cavg = -cavg;
+            if (!linePhase) cavg = -cavg;
 
             switch (phase) {
                 case 0: sq = cavg; break;
@@ -412,14 +389,24 @@ void Comb::filterIQ(YiqBuffer &yiqBuffer)
     }
 }
 
-// Some kind of noise reduction filter on the C?
+/*
+ * This applies an FIR coring filter to both I and Q color channels.  It's a simple (crude?) NR technique used
+ * by LD players, but effective especially on the Y/luma channel.
+ *
+ * A coring filter removes high frequency components (.4mhz chroma, 2.8mhz luma) of a signal up to a certain point,
+ * which removes small high frequency noise.
+ */
+
 void Comb::doCNR(YiqBuffer &yiqBuffer)
 {
+    if (configuration.cNRLevel == 0) return;
+
+    // f_nrc is a 24-tap FIR filter.
     Filter f_hpi(f_nrc);
     Filter f_hpq(f_nrc);
 
-    // nr_c is some kind of noise reduction factor (I think)
-    qreal nr_c = 0.0 * irescale;
+    // nr_c is the coring level
+    qreal nr_c = configuration.cNRLevel * irescale;
 
     QVector<YIQ> hplinef;
     hplinef.resize(configuration.fieldWidth + 32);
@@ -431,6 +418,7 @@ void Comb::doCNR(YiqBuffer &yiqBuffer)
         }
 
         for (qint32 h = configuration.activeVideoStart; h < configuration.activeVideoEnd; h++) {
+            // Offset by 12 to cover the filter delay
             qreal ai = hplinef[h + 12].i;
             qreal aq = hplinef[h + 12].q;
 
@@ -448,13 +436,14 @@ void Comb::doCNR(YiqBuffer &yiqBuffer)
     }
 }
 
-// Some kind of noise reduction filter on the Y?
 void Comb::doYNR(YiqBuffer &yiqBuffer)
 {
+    if (configuration.yNRLevel == 0) return;
+
     Filter f_hpy(f_nr);
 
-    // nr_y is some kind of noise reduction factor (I think)
-    qreal nr_y = 1.0 * irescale;
+    // nr_y is the coring level
+    qreal nr_y = configuration.yNRLevel * irescale;
 
     QVector<YIQ> hplinef;
     hplinef.resize(configuration.fieldWidth + 32);
@@ -547,28 +536,11 @@ void Comb::overlayOpticalFlowMap(FrameBuffer frameBuffer, QByteArray &rgbFrame)
 }
 
 // Remove the colour data from the baseband (Y)
-void Comb::adjustY(YiqBuffer &yiqBuffer, qint32 firstFieldPhaseID, qint32 secondFieldPhaseID)
+void Comb::adjustY(FrameBuffer *frameBuffer, YiqBuffer &yiqBuffer)
 {
-    bool topInvertphase = false;
-    bool bottomInvertphase = false;
-    bool invertphase = false;
-
-    if (firstFieldPhaseID == 2 || firstFieldPhaseID == 3)
-        topInvertphase = true;
-
-    if (secondFieldPhaseID == 1 || secondFieldPhaseID == 4)
-        bottomInvertphase = true;
-
     // remove color data from baseband (Y)
     for (qint32 lineNumber = configuration.firstVisibleFrameLine; lineNumber < frameHeight; lineNumber++) {
-        // Determine if the line phase should be inverted
-        if ((lineNumber % 2) == 0) {
-            topInvertphase = !topInvertphase;
-            invertphase = topInvertphase;
-        } else {
-            bottomInvertphase = !bottomInvertphase;
-            invertphase = bottomInvertphase;
-        }
+        bool linePhase = GetLinePhase(frameBuffer, lineNumber);
 
         for (qint32 h = configuration.activeVideoStart; h < configuration.activeVideoEnd; h++) {
             qreal comp = 0;
@@ -584,7 +556,7 @@ void Comb::adjustY(YiqBuffer &yiqBuffer, qint32 firstFieldPhaseID, qint32 second
                 default: break;
             }
 
-            if (invertphase) comp = -comp;
+            if (linePhase) comp = -comp;
             y.y += comp;
 
             yiqBuffer[lineNumber][h + 0] = y;

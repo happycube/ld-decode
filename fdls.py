@@ -115,10 +115,8 @@ def FDLS(N, D, w, Am = [], Th = [], shift = 0, h = []):
 	Y = Am * np.cos(Th)
 	#print(X, Y)
 
-
-
 	# The actual computation - the setup leading up to this is the brilliant part
-	out = numpy.linalg.lstsq(X, Y)
+	out = numpy.linalg.lstsq(X, Y, rcond=None)
 
 	# There's always one A, even for an FIR filter
 	A = np.zeros(D + 1)
@@ -139,12 +137,16 @@ def FDLS(N, D, w, Am = [], Th = [], shift = 0, h = []):
 
 #	return FDLS(N, D, w, h = h, shift = shift) 
 
-def FDLS_fromfilt(B, A, N, D, shift = 0.0, phasemult = 1.0):
-	w, h = sps.freqz(B, A, worN = 1024)
+def FDLS_fromfilt(B, A, N, D, shift = 0.0, phasemult = 1.0, analog = False):
 
-	Am = np.absolute(h)
-	Th = np.angle(h) * phasemult 
+    if analog:
+        w, h = sps.freqs(B, A)
+    else:
+        w, h = sps.freqz(B, A, worN = 1024)
 
-	return FDLS(N, D, w, Am = Am, Th = Th, shift = shift) 
+    Am = np.absolute(h)
+    Th = np.angle(h) * phasemult 
+
+    return FDLS(N, D, w, Am = Am, Th = Th, shift = shift) 
  
  

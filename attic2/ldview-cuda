@@ -1,2 +1,0 @@
-#!/bin/bash
-python lddecodecuda.py -s 1 -S $1 $2 $3 | ./tbc-ntscx - 2> /dev/null | ./comb -d 3 -L -m - > /dev/null

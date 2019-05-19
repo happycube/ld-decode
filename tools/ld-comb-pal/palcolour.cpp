@@ -138,6 +138,10 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
         return nullptr;
     }
 
+    // Fill the output frame with zeros to ensure there is no random data in areas where there
+    // is no picture data
+    outputFrame.fill(0);
+
     // Note: 1.75 is the nominal scaling factor of 75% amplitude for full-range digitised
     // composite (with sync at code 0 or 1, blanking at code 64 (40h), and peak white at
     // code 211 (d3h) to give 0-255 RGB).

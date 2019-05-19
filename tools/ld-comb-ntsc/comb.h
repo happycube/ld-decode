@@ -67,6 +67,9 @@ public:
 
         qint32 blackIre;
         qint32 whiteIre;
+
+        qreal cNRLevel;
+        qreal yNRLevel;
     };
 
     Configuration getConfiguration(void);
@@ -114,6 +117,9 @@ private:
 
     void postConfigurationTasks(void);
 
+    inline qint32 GetFieldID(FrameBuffer *frameBuffer, qint32 lineNumber);
+    inline bool GetLinePhase(FrameBuffer *frameBuffer, qint32 lineNumber);
+
     void split1D(FrameBuffer *frameBuffer);
     void split2D(FrameBuffer *frameBuffer);
     void split3D(FrameBuffer *currentFrame, FrameBuffer *previousFrame);
@@ -126,7 +132,7 @@ private:
 
     QByteArray yiqToRgbFrame(YiqBuffer yiqBuffer, qreal burstLevel);
     void overlayOpticalFlowMap(FrameBuffer frameBuffer, QByteArray &rgbOutputFrame);
-    void adjustY(YiqBuffer &yiqBuffer, qint32 firstFieldPhaseID, qint32 secondFieldPhaseID);
+    void adjustY(FrameBuffer *frameBuffer, YiqBuffer &yiqBuffer);
 
     qreal clamp(qreal v, qreal low, qreal high);
     qreal atan2deg(qreal y, qreal x);

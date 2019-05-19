@@ -3,7 +3,7 @@
     mainwindow.cpp
 
     ld-analyse - TBC output analysis
-    Copyright (C) 2018 Simon Inns
+    Copyright (C) 2018-2019 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -67,6 +67,12 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     // Set up the dropout analysis dialogue
     dropoutAnalysisDialog = new DropoutAnalysisDialog(this);
 
+    // Set up the VITS metrics dialogue
+    vitsMetricsDialog = new VitsMetricsDialog(this);
+
+    // Set up the SNR analysis dialogue
+    snrAnalysisDialog = new SnrAnalysisDialog(this);
+
     // Load the window geometry from the configuration
     restoreGeometry(configuration->getMainWindowGeometry());
     vbiDialog->restoreGeometry(configuration->getVbiDialogGeometry());
@@ -74,6 +80,8 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     videoMetadataDialog->restoreGeometry(configuration->getVideoMetadataDialogGeometry());
     oscilloscopeDialog->restoreGeometry(configuration->getOscilloscopeDialogGeometry());
     dropoutAnalysisDialog->restoreGeometry(configuration->getDropoutAnalysisDialogGeometry());
+    vitsMetricsDialog->restoreGeometry(configuration->getVitsMetricsDialogGeometry());
+    snrAnalysisDialog->restoreGeometry(configuration->getSnrAnalysisDialogGeometry());
 
     updateGuiUnloaded();
 
@@ -92,6 +100,8 @@ MainWindow::~MainWindow()
     configuration->setVideoMetadataDialogGeometry(videoMetadataDialog->saveGeometry());
     configuration->setOscilloscopeDialogGeometry(oscilloscopeDialog->saveGeometry());
     configuration->setDropoutAnalysisDialogGeometry(dropoutAnalysisDialog->saveGeometry());
+    configuration->setVitsMetricsDialogGeometry(vitsMetricsDialog->saveGeometry());
+    configuration->setSnrAnalysisDialogGeometry(snrAnalysisDialog->saveGeometry());
     configuration->writeConfiguration();
 
     // Close the source video if open
@@ -139,8 +149,10 @@ void MainWindow::updateGuiLoaded(void)
     ui->actionVBI->setEnabled(true);
     ui->actionNTSC->setEnabled(true);
     ui->actionVideo_metadata->setEnabled(true);
+    ui->actionVITS_Metrics->setEnabled(true);
     ui->action1_1_Frame_size->setEnabled(true);
     ui->actionDropout_analysis->setEnabled(true);
+    ui->actionSNR_analysis->setEnabled(true);
     ui->actionSave_frame_as_PNG->setEnabled(true);
 
     // Configure the comb-filter
@@ -148,7 +160,7 @@ void MainWindow::updateGuiLoaded(void)
         palColour.updateConfiguration(videoParameters);
     } else {
         // Set the first active scan line
-        qint32 firstActiveScanLine = 43;
+        qint32 firstActiveScanLine = 40;
 
         // Get the default configuration for the comb filter
         Comb::Configuration configuration = ntscColour.getConfiguration();
@@ -190,6 +202,9 @@ void MainWindow::updateGuiLoaded(void)
 
     // Update the dropout analysis dialogue
     dropoutAnalysisDialog->updateChart(&ldDecodeMetaData);
+
+    // Update the SNR analysis dialogue
+    snrAnalysisDialog->updateChart(&ldDecodeMetaData);
 
     // Show the current frame
     showFrame(currentFrameNumber, ui->showActiveVideoCheckBox->isChecked(), ui->highlightDropOutsCheckBox->isChecked());
@@ -246,8 +261,10 @@ void MainWindow::updateGuiUnloaded(void)
     ui->actionVBI->setEnabled(false);
     ui->actionNTSC->setEnabled(false);
     ui->actionVideo_metadata->setEnabled(false);
+    ui->actionVITS_Metrics->setEnabled(false);
     ui->action1_1_Frame_size->setEnabled(false);
     ui->actionDropout_analysis->setEnabled(false);
+    ui->actionSNR_analysis->setEnabled(false);
     ui->actionSave_frame_as_PNG->setEnabled(false);
 
     // Hide the displayed frame
@@ -309,10 +326,10 @@ void MainWindow::showFrame(qint32 frameNumber, bool showActiveVideoArea, bool hi
         qint32 lastActiveScanLine;
         if (videoParameters.isSourcePal) {
             firstActiveScanLine = 44;
-            lastActiveScanLine = 617;
+            lastActiveScanLine = 620;
         } else {
             firstActiveScanLine = 40;
-            lastActiveScanLine = 519;
+            lastActiveScanLine = 525;
         }
 
         // Outline the active video area
@@ -436,6 +453,9 @@ void MainWindow::showFrame(qint32 frameNumber, bool showActiveVideoArea, bool hi
     // Update the metadata dialogue
     videoMetadataDialog->updateMetaData(videoParameters);
 
+    // Update the VITS metrics dialogue
+    vitsMetricsDialog->updateVitsMetrics(firstField, secondField);
+
     // Add the QImage to the QLabel in the dialogue
     ui->frameViewerLabel->clear();
     ui->frameViewerLabel->setSizePolicy(QSizePolicy::MinimumExpanding, QSizePolicy::MinimumExpanding);
@@ -506,7 +526,7 @@ QImage MainWindow::generateQImage(qint32 firstFieldNumber, qint32 secondFieldNum
     } else {
         // Set the first and last active scan line (for PAL)
         qint32 firstActiveScanLine = 44;
-        qint32 lastActiveScanLine = 617;
+        qint32 lastActiveScanLine = 620;
         QByteArray outputData;
 
         // Perform a PAL 2D comb filter on the current frame
@@ -525,7 +545,7 @@ QImage MainWindow::generateQImage(qint32 firstFieldNumber, qint32 secondFieldNum
             // NTSC source
 
             // Set the first and last active scan line
-            firstActiveScanLine = 43;
+            firstActiveScanLine = 40;
             lastActiveScanLine = 525;
 
             outputData = ntscColour.process(firstFieldData, secondFieldData,
@@ -583,6 +603,9 @@ void MainWindow::loadTbcFile(QString inputFileName)
     // Update the GUI
     updateGuiUnloaded();
 
+    // Close current source video (if open)
+    sourceVideo.close();
+
     qInfo() << "Opening TBC filename =" << inputFileName;
 
     // Open the TBC metadata file
@@ -597,9 +620,6 @@ void MainWindow::loadTbcFile(QString inputFileName)
     } else {
         // Get the video parameters from the metadata
         LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
-
-        // Close current source video (if open)
-        sourceVideo.close();
 
         // Open the new source video
         if (!sourceVideo.open(inputFileName, videoParameters.fieldWidth * videoParameters.fieldHeight)) {
@@ -773,6 +793,18 @@ void MainWindow::on_actionDropout_analysis_triggered()
     dropoutAnalysisDialog->show();
 }
 
+void MainWindow::on_actionVITS_Metrics_triggered()
+{
+    // Show the VITS metrics dialogue
+    vitsMetricsDialog->show();
+}
+
+void MainWindow::on_actionSNR_analysis_triggered()
+{
+    // Show the SNR analysis dialogue
+    snrAnalysisDialog->show();
+}
+
 // Adjust the window to show the frame at 1:1 zoom
 void MainWindow::on_action1_1_Frame_size_triggered()
 {
@@ -922,6 +954,10 @@ void MainWindow::updateOscilloscopeDialogue(qint32 frameNumber, qint32 scanLine)
                                        sourceVideo.getVideoField(secondFieldNumber)->getFieldData(),
                                        &ldDecodeMetaData, scanLine, firstFieldNumber, secondFieldNumber);
 }
+
+
+
+
 
 
 

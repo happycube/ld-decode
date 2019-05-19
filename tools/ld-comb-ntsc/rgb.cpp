@@ -50,8 +50,8 @@ void RGB::conv(YIQ _y, qreal colourBurstMedian)
     //
     // Note: this calculations should be 20 / colourBurstMedian (meaning that the
     // 'normal' colour burst median is 40 IRE (20 * 2).  At the moment this is
-    // over saturating, so we are using 28 IRE (14 * 2).
-    qreal saturationCompensation = (14.0 / colourBurstMedian) * 2;
+    // over saturating, so we are using 36 IRE (18 * 2).
+    qreal saturationCompensation = (18.0 / colourBurstMedian) * 2;
 
     i *= saturationCompensation;
     q *= saturationCompensation;

@@ -49,11 +49,11 @@ public:
 private:
     Ui::DropoutAnalysisDialog *ui;
 
-    QChart *chart;
-    QLineSeries *series;
+    QChart chart;
+    QLineSeries series;
     QChartView *chartView;
-    QValueAxis *axisX;
-    QValueAxis *axisY;
+    QValueAxis axisX;
+    QValueAxis axisY;
 };
 
 #endif // DROPOUTANALYSISDIALOG_H
