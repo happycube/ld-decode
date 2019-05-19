@@ -131,7 +131,7 @@ void SectionToMeta::reportStatus(void)
 {
     qint32 totalSections = qMode0Count + qMode1Count + qMode2Count + qMode3Count + qMode4Count + qModeICount;
 
-    qInfo() << "Sections to metadata processing:";
+    qInfo() << "Sections (audio/data) to metadata processing:";
     qInfo() << "  Total number of sections processed =" << totalSections << "(" << totalSections * 98 << "F3 frames )";
     qInfo() << "  Q Mode 0 sections =" << qMode0Count << "(Data)";
     qInfo() << "  Q Mode 1 sections =" << qMode1Count << "(CD Audio)";

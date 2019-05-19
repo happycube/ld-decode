@@ -42,6 +42,7 @@
 #include "f1tosectors.h"
 #include "sectorstodata.h"
 #include "sectiontometa.h"
+#include "sectorstometa.h"
 
 class EfmProcess
 {
@@ -62,6 +63,7 @@ private:
     F1ToSectors f1ToSectors;
     SectorsToData sectorsToData;
     SectionToMeta sectionToMeta;
+    SectorsToMeta sectorsToMeta;
 
     bool openInputFile(QString inputFileName);
     void closeInputFile(void);

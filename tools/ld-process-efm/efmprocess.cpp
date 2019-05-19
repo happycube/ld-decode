@@ -61,8 +61,8 @@ bool EfmProcess::process(QString inputEfmFilename, QString outputAudioFilename, 
     if (processData) sectorsToData.openOutputFile(outputDataFilename);
 
     // Open the metadata JSON file
-    if (processAudio) sectionToMeta.openOutputFile(outputAudioFilename + ".json");
-    else sectionToMeta.openOutputFile(outputDataFilename + ".json");
+    if (processAudio) sectionToMeta.openOutputFile(outputAudioFilename + ".subcode.json");
+    if (processData) sectorsToMeta.openOutputFile(outputDataFilename + ".data.json");
 
     // Turn on verbose debug if required
     if (verboseDebug) efmToF3Frames.setVerboseDebug(true);
@@ -86,6 +86,9 @@ bool EfmProcess::process(QString inputEfmFilename, QString outputAudioFilename, 
 
             // Write the sectors as data
             sectorsToData.convert(sectors);
+
+            // Process the sector meta data
+            sectorsToMeta.process(sectors);
         }
 
         // Convert the F2 frames into audio
@@ -94,8 +97,8 @@ bool EfmProcess::process(QString inputEfmFilename, QString outputAudioFilename, 
         // Convert the F3 frames into subcode sections
         QVector<Section> sections = f3ToSections.convert(f3Frames);
 
-        // Process the sections (doesn't really do much right now)
-        sectionToMeta.process(sections);
+        // Process the sections to audio metadata
+        if (processAudio) sectionToMeta.process(sections);
 
         // Show EFM processing progress update to user
         qreal percent = (100.0 / static_cast<qreal>(inputFileSize)) * static_cast<qreal>(inputBytesProcessed);
@@ -111,8 +114,9 @@ bool EfmProcess::process(QString inputEfmFilename, QString outputAudioFilename, 
 
     // Close the output files
     if (processAudio) f2FramesToAudio.closeOutputFile();
+    if (processAudio) sectionToMeta.closeOutputFile();
     if (processData) sectorsToData.closeOutputFile();
-    sectionToMeta.closeOutputFile();
+    if (processData) sectorsToMeta.closeOutputFile();
 
     return true;
 }
@@ -176,6 +180,8 @@ void EfmProcess::reportStatus(bool processAudio, bool processData)
         f1ToSectors.reportStatus();
         qInfo() << "";
         sectorsToData.reportStatus();
+        qInfo() << "";
+        sectorsToMeta.reportStatus();
         qInfo() << "";
     }
 
