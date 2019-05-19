@@ -1671,12 +1671,12 @@ class FieldNTSC(Field):
 
         super(FieldNTSC, self).__init__(*args, **kwargs)
         
+        self.out_scale = np.double(0xc800 - 0x0400) / (100 - self.rf.SysParams['vsync_ire'])
+        
         if not self.valid:
             return
 
         self.linecode = [self.decodephillipscode(l + self.lineoffset) for l in [16, 17, 18]]
-
-        self.out_scale = np.double(0xc800 - 0x0400) / (100 - self.rf.SysParams['vsync_ire'])
 
         self.linelocs3, self.burstlevel = self.refine_linelocs_burst(self.linelocs2)
         self.linelocs3 = self.fix_badlines(self.linelocs3, self.linelocs2)
