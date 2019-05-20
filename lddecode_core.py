@@ -923,9 +923,13 @@ class Field:
             line0loc_next, isNotFirstField = self.processVBlank(validpulses, 100)
 
             if line0loc_next is None:
-                if self.prevfield is not None:
-                    logging.warning("Severe VSYNC-area corruption detected.")
-                    return self.prevfield.linelocs[self.prevfield.outlinecount - 1] - self.prevfield.nextfieldoffset, not self.prevfield.isFirstField
+                try:
+                    if self.prevfield is not None:
+                        logging.warning("Severe VSYNC-area corruption detected.")
+                        return self.prevfield.linelocs[self.prevfield.outlinecount - 1] - self.prevfield.nextfieldoffset, not self.prevfield.isFirstField
+                except:
+                    # If the previous field is corrupt, something may fail up there
+                    pass
 
                 logging.error("Extreme VSYNC-area corruption detected, dropping field")
                 return None, None
