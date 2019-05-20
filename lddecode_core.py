@@ -719,13 +719,13 @@ class Field:
         ''' returns validated pulses with type and distance checks '''
         
         # compute the allowable times for each pulse type
-        hsync_min = self.usectoinpx(self.rf.SysParams['hsyncPulseUS'] - .5)
+        hsync_min = self.usectoinpx(self.rf.SysParams['hsyncPulseUS'] - .7)
         hsync_max = self.usectoinpx(self.rf.SysParams['hsyncPulseUS'] + .5)
 
-        eq_min = self.usectoinpx(self.rf.SysParams['eqPulseUS'] - .5)
+        eq_min = self.usectoinpx(self.rf.SysParams['eqPulseUS'] - .7)
         eq_max = self.usectoinpx(self.rf.SysParams['eqPulseUS'] + .5)
 
-        vsync_min = self.usectoinpx(self.rf.SysParams['vsyncPulseUS'] - .5)
+        vsync_min = self.usectoinpx(self.rf.SysParams['vsyncPulseUS'] - .7)
         vsync_max = self.usectoinpx(self.rf.SysParams['vsyncPulseUS'] + .5)
 
         # Pulse validator routine.  Removes sync pulses of invalid lengths, does not 
