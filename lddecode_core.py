@@ -734,8 +734,7 @@ class Field:
                 
         # Log transitions
 
-        # Allow some margin for inconsistent speed here
-        arearange = int(((self.rf.SysParams['numPulses'] + .2) * self.inlinelen) / 2)
+        arearange = int(((self.rf.SysParams['numPulses'] - .2) * self.inlinelen) / 2)
 
         vsync_starts = []
         vsync_ends = []
@@ -780,12 +779,22 @@ class Field:
         validpulses = []
 
         for spulse in zip(ptype, pulses):
-            # Quality checkss
+            # Quality checks
 
             # Make sure the length is close to the hblank type
             if not inrange(spulse[1].len, hmedians[spulse[0]] - self.usectoinpx(.25), hmedians[spulse[0]] + self.usectoinpx(.25)):
                 continue
-            
+
+            # Any really invalid EQ pulses may be tagged HSYNC - drop them if so
+            # (this may drop the first line after vblank, but eh)
+            drop = False
+            for r in vblank_range:
+                if spulse[0] == HSYNC and inrange(spulse[1].start, r[0], r[1]):
+                    drop = True
+
+            if drop:
+                continue
+                
             # Now determine if there are any weird gaps...
             if len(validpulses) >= 1:
                 prevpulse = validpulses[-1]
@@ -803,7 +812,7 @@ class Field:
 
             if spulse is not None:
                 validpulses.append((*spulse, inorder))
-
+                
         return validpulses
 
     def getblankrange(self, vpulses, start = 0):
