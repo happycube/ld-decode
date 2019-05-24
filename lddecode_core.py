@@ -734,7 +734,7 @@ class Field:
                 
         # Log transitions
 
-        arearange = int(((self.rf.SysParams['numPulses'] - .2) * self.inlinelen) / 2)
+        arearange = int(((self.rf.SysParams['numPulses'] + .2) * self.inlinelen) / 2)
 
         vsync_starts = []
         vsync_ends = []
@@ -782,7 +782,7 @@ class Field:
             # Quality checks
 
             # Make sure the length is close to the hblank type
-            if not inrange(spulse[1].len, hmedians[spulse[0]] - self.usectoinpx(.25), hmedians[spulse[0]] + self.usectoinpx(.25)):
+            if not inrange(spulse[1].len, hmedians[spulse[0]] - self.usectoinpx(.5), hmedians[spulse[0]] + self.usectoinpx(.5)):
                 continue
 
             # Any really invalid EQ pulses may be tagged HSYNC - drop them if so
@@ -790,6 +790,7 @@ class Field:
             drop = False
             for r in vblank_range:
                 if spulse[0] == HSYNC and inrange(spulse[1].start, r[0], r[1]):
+                    #print('drop', spulse)
                     drop = True
 
             if drop:
