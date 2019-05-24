@@ -55,6 +55,7 @@ SysParams_NTSC = {
     # In NTSC framing, the distances between the first/last eq pulses and the 
     # corresponding next lines are different.
     'firstField1H': (True, False),
+    'firstFieldH': (.5, 1),
 
     'numPulses': 6,
     'hsyncPulseUS': 4.7,
@@ -96,6 +97,7 @@ SysParams_PAL = {
 
     # In PAL, the first field's line sync<->first/last EQ pulse are both .5H
     'firstField1H': (False, False),
+    'firstFieldH': (.5, 1),
 
     'numPulses': 5,
     'hsyncPulseUS': 4.7,
@@ -715,7 +717,7 @@ class Field:
         
         return np.round(dist*2)/2 if round else dist
 
-    def refinepulses(self, pulses):
+    def __refinepulses(self, pulses):
         ''' returns validated pulses with type and distance checks '''
 
         ptype = np.zeros(len(pulses), dtype=np.int)
@@ -746,9 +748,9 @@ class Field:
             if ptype[i] == VSYNC:
                 vslens.append(pulses[i].len)
             
-            if ptype[i] == VSYNC and ptype[i - 1] != VSYNC:
+            if ptype[i] == VSYNC and ptype[i - 1] == EQPL1:
                 vsync_starts.append(pulses[i].start)
-            elif ptype[i] != VSYNC and ptype[i - 1] == VSYNC:
+            elif ptype[i] == EQPL2 and ptype[i - 1] == VSYNC:
                 if i < self.rf.SysParams['numPulses']:
                     # XXX: fail out completely here, this started in the middle of vsync
                     continue
@@ -778,6 +780,8 @@ class Field:
 
         validpulses = []
 
+        print(vblank_range)
+
         for spulse in zip(ptype, pulses):
             # Quality checks
 
@@ -790,7 +794,7 @@ class Field:
             drop = False
             for r in vblank_range:
                 if spulse[0] == HSYNC and inrange(spulse[1].start, r[0], r[1]):
-                    #print('drop', spulse)
+                    print('drop', spulse, r[0], r[1])
                     drop = True
 
             if drop:
@@ -814,6 +818,102 @@ class Field:
             if spulse is not None:
                 validpulses.append((*spulse, inorder))
                 
+        return validpulses
+
+    def refinepulses(self, pulses):
+        ''' returns validated pulses with type and distance checks '''
+        
+        # compute the allowable times for each pulse type
+        hsync_min = self.usectoinpx(self.rf.SysParams['hsyncPulseUS'] - .75)
+        hsync_max = self.usectoinpx(self.rf.SysParams['hsyncPulseUS'] + .5)
+
+        eq_min = self.usectoinpx(self.rf.SysParams['eqPulseUS'] - .5)
+        eq_max = self.usectoinpx(self.rf.SysParams['eqPulseUS'] + .5)
+
+        vsync_min = self.usectoinpx(self.rf.SysParams['vsyncPulseUS'] - 1)
+        vsync_max = self.usectoinpx(self.rf.SysParams['vsyncPulseUS'] + .5)
+
+        # Pulse validator routine.  Removes sync pulses of invalid lengths, does not 
+        # fill missing ones.
+
+        # states for first field of validpulses (second field is pulse #)
+        HSYNC, EQPL1, VSYNC, EQPL2 = range(4)
+
+        vsyncs = [] # VSYNC area (first broad pulse->first EQ after broad pulses)
+
+        inorder = False
+        validpulses = []
+
+        vsync_start = None
+        earliest_eq = 0
+        earliest_hsync = 0
+
+        # state order: HSYNC -> EQPUL1 -> VSYNC -> EQPUL2 -> HSYNC
+
+        for p in pulses:
+            spulse = None
+
+            state = validpulses[-1][0] if len(validpulses) > 0 else -1
+
+            if state == -1:
+                # First valid pulse must be a regular HSYNC
+                if inrange(p.len, hsync_min, hsync_max):
+                    spulse = (HSYNC, p)
+            elif state == HSYNC:
+                # HSYNC can transition to EQPUL/pre-vsync at the end of a field
+                if inrange(p.len, hsync_min, hsync_max):
+                    spulse = (HSYNC, p)
+                elif p.start > earliest_eq and inrange(p.len, eq_min, eq_max):
+                    spulse = (EQPL1, p)
+                elif p.start > earliest_eq and inrange(p.len, vsync_min, vsync_max):
+                    vsync_start = len(validpulses)-1
+                    spulse = (VSYNC, p)
+            elif state == EQPL1:
+                if inrange(p.len, eq_min, eq_max):
+                    spulse = (EQPL1, p)
+                elif inrange(p.len, vsync_min, vsync_max):
+                    # len(validpulses)-1 before appending adds index to first VSYNC pulse
+                    vsync_start = len(validpulses)-1
+                    spulse = (VSYNC, p)
+            elif state == VSYNC:
+                if inrange(p.len, eq_min, eq_max):
+                    # len(validpulses)-1 before appending adds index to first EQ pulse
+                    vsyncs.append((vsync_start, len(validpulses)-1))
+                    spulse = (EQPL2, p)
+                elif inrange(p.len, vsync_min, vsync_max):
+                    spulse = (VSYNC, p)
+                elif p.start > earliest_hsync and inrange(p.len, hsync_min, hsync_max):
+                    spulse = (HSYNC, p)
+                    earliest_eq = p.start + (self.inlinelen * (np.min(self.rf.SysParams['field_lines']) - 10))
+            elif state == EQPL2:
+                if inrange(p.len, eq_min, eq_max):
+                    spulse = (EQPL2, p)
+                elif inrange(p.len, hsync_min, hsync_max):
+                    spulse = (HSYNC, p)
+                    earliest_eq = p.start + (self.inlinelen * (np.min(self.rf.SysParams['field_lines']) - 10))
+
+            if vsync_start is not None and earliest_hsync == 0:
+                earliest_hsync = validpulses[vsync_start][1].start + (self.rf.SysParams['numPulses'] * self.inlinelen)
+
+            # Quality check
+            if spulse is not None and len(validpulses) >= 1:
+                prevpulse = validpulses[-1]
+                if prevpulse[0] > 0 and spulse[0] > 0:
+                    exprange = (.4, .6)
+                elif prevpulse[0] == 0 and spulse[0] == 0:
+                    exprange = (.9, 1.1)
+                else: # transition to/from regular hsyncs can be .5 or 1H
+                    exprange = (.4, 1.1)
+
+                linelen = (spulse[1].start - prevpulse[1].start) / self.inlinelen
+                inorder = inrange(linelen, *exprange)
+
+            if spulse is not None:
+                validpulses.append((*spulse, inorder))
+
+#        for p in validpulses:
+#            print(p)
+
         return validpulses
 
     def getblankrange(self, vpulses, start = 0):
@@ -847,36 +947,55 @@ class Field:
 
         HSYNC, EQPL1, VSYNC, EQPL2 = range(4)
 
-        vblankpulses = self.validpulses[firstblank:firstblank+24]
+        pt = np.array([v[0] for v in validpulses[firstblank:]])
+        pstart = np.array([v[1].start for v in validpulses[firstblank:]])
+        plen = np.array([v[1].len for v in validpulses[firstblank:]])
 
-        goodones = [vp[2] == True for vp in vblankpulses]
+        numPulses = self.rf.SysParams['numPulses']
+
+        #print(firstblank, lastblank)
 
         for i in [VSYNC, EQPL1, EQPL2]:
-            goodmatches = np.logical_and(goodones, [vp[0] == i for vp in vblankpulses])
+            ptmatch = (pt == i)
+            grouploc = None
+            for j in range(0, lastblank - firstblank):
+                if ptmatch[j:j+numPulses].all():
+                    # take the (second) derivative of the line gaps and lengths to determine 
+                    # if all are valid
+                    gaps = np.diff(np.diff(pstart[j:j+numPulses]))
+                    lengths = np.diff(plen[j:j+numPulses])
 
-            if np.sum(goodmatches) == self.rf.SysParams['numPulses']:
-                # compute the distance of the first pulse of this block to line 1
-                distfroml1 = (((i - 1) * self.rf.SysParams['numPulses']) * .5)
+#                    print(i, j, gaps, lengths)
 
-                setbegin = validpulses[np.where(goodmatches)[0][0] + firstblank]
-                firstloc = setbegin[1].start
+                    if np.max(gaps) < (self.rf.freq * .2) and np.max(lengths) < (self.rf.freq * .2):
+                        grouploc = j
+                        break
 
-                dist = (firstloc - loc_presync) / self.inlinelen
-                # get the integer rounded X * .5H distance.  then invert to determine
-                # the half-H alignment with the sync/blank pulses
-                hdist = int(np.round(dist * 2))
-                
-                isfirstfield = not ((hdist % 2) == self.rf.SysParams['firstField1H'][0])
-                
-                ff1h = self.rf.SysParams['firstField1H'][0]
-                if not isfirstfield:
-                    ff1h = not ff1h
+            if grouploc is None:
+                continue
 
-                eqgap = 1 if ff1h else .5
-                
-                line0 = firstloc - ((eqgap + distfroml1) * self.inlinelen)
+            setbegin = validpulses[firstblank+grouploc]
+            firstloc = setbegin[1].start
 
-                return line0, isfirstfield
+            # compute the distance of the first pulse of this block to line 1
+            # (line 0 may be .5H or 1H before that)
+            distfroml1 = (((i - 1) * self.rf.SysParams['numPulses']) * .5)
+
+            dist = (firstloc - loc_presync) / self.inlinelen
+            # get the integer rounded X * .5H distance.  then invert to determine
+            # the half-H alignment with the sync/blank pulses
+            hdist = int(np.round(dist * 2))
+            
+            isfirstfield = not ((hdist % 2) == self.rf.SysParams['firstField1H'][0])
+
+#            eqgap = self.rf.SysParams['firstFieldH'][isfirstfield]
+            eqgap = 1 if isfirstfield else .5
+
+#            print(i, dist, hdist, isfirstfield, eqgap)
+            
+            line0 = firstloc - ((eqgap + distfroml1) * self.inlinelen)
+
+            return line0, isfirstfield
                 
         return None, None
 
@@ -912,6 +1031,7 @@ class Field:
     def getLine0(self, validpulses):
 
         line0loc, isFirstField = self.processVBlank(validpulses, 0)
+        #print('a', line0loc, isFirstField)
         
         # If there isn't a valid transition in the first field's hsync, try the next
         if line0loc is None:
@@ -934,6 +1054,8 @@ class Field:
             meanlinelen = self.computeLineLen(validpulses, 'all')
             fieldlen = (meanlinelen * self.rf.SysParams['field_lines'][0 if isFirstField else 1])
             line0loc = int(np.round(line0loc_next - fieldlen))
+
+            #print('b', line0loc, isFirstField)
             
         return line0loc, isFirstField        
 
