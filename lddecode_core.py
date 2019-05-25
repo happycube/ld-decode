@@ -939,11 +939,15 @@ class Field:
         return core
 
     def processVBlank(self, validpulses, start):
+
         firstblank, lastblank = self.getblankrange(validpulses, start)
 
+        ''' 
+        First Look at each equalization/vblank pulse section - if the expected # are there and valid,
+        it can be used to determine where line 0 is...
+        '''
         # locations of lines before after/vblank.  may not be line 0 etc
         loc_presync = validpulses[firstblank-1][1].start
-        loc_postsync = validpulses[lastblank+1][1].start
 
         HSYNC, EQPL1, VSYNC, EQPL2 = range(4)
 
@@ -999,6 +1003,26 @@ class Field:
             line0 = firstloc - ((eqgap + distfroml1) * self.inlinelen)
 
             return line0, isfirstfield
+
+        '''
+        If there are no valid sections, check line 0 and the first eq pulse, and the last eq
+        pulse and the following line.  If the combined xH is correct for the standard in question
+        (1.5H for NTSC, 1 or 2H for PAL, that means line 0 has been found correctly.
+        '''
+
+        if validpulses[firstblank - 1][2] and validpulses[firstblank][2] and validpulses[lastblank][2] and validpulses[lastblank + 1][2]:
+            gap1 = validpulses[firstblank][1].start - validpulses[firstblank - 1][1].start
+            gap2 = validpulses[lastblank + 1][1].start - validpulses[lastblank][1].start
+            #print('guess', gap1, gap2)
+            
+            if self.rf.system == 'PAL' and inrange(np.abs(gap2 - gap1), 0, self.rf.freq * 1):
+                isfirstfield = inrange((gap1 / self.inlinelen), 0.45, 0.55)
+            elif self.rf.system == 'NTSC' and inrange(np.abs(gap2 + gap1), self.inlinelen * 1.4, self.inlinelen * 1.6):
+                isfirstfield = inrange((gap1 / self.inlinelen), 0.95, 1.05)
+            else:
+                return None, None
+            
+            return validpulses[firstblank - 1][1].start, isfirstfield
                 
         return None, None
 
@@ -1028,9 +1052,6 @@ class Field:
     # pull the above together into a routine that (should) find line 0, the last line of
     # the previous field.
 
-    # Basically as long as *one* of the four hsync<->eq pulse transitions work this should
-    # get a reasonably accurate location
-
     def getLine0(self, validpulses):
 
         line0loc, isFirstField = self.processVBlank(validpulses, 0)
@@ -1059,7 +1080,7 @@ class Field:
             line0loc = int(np.round(line0loc_next - fieldlen))
 
             #print('b', line0loc, isFirstField)
-            
+
         return line0loc, isFirstField        
 
     def compute_linelocs(self):
@@ -1196,10 +1217,6 @@ class Field:
                         self.linebad[i] = True
             else:
                 self.linebad[i] = True
-
-            if (i >= 2) and self.linebad[i]:
-                gap = linelocs2[i - 1] - linelocs2[i - 2]
-                linelocs2[i] = linelocs2[i - 1] + gap
 
         return linelocs2
 
@@ -1746,7 +1763,9 @@ class FieldNTSC(Field):
                     linelocs_adj[l] += adjs[l]
                 else:
                     linelocs_adj[l] += adjs_median
-                    self.linebad[l] = True
+                    if l >= 20:
+                        # issue #217: if possible keep some line data even if burst is bad 
+                        self.linebad[l] = True
 
             self.field14 = field14
 
