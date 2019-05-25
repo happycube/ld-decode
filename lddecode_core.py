@@ -970,7 +970,7 @@ class Field:
                     lengths = np.diff(plen[j:j+numPulses])
 
                     if np.max(gaps) < (self.rf.freq * .2) and np.max(lengths) < (self.rf.freq * .2):
-                        print(i, j, gaps, lengths)
+#                        print(i, j, gaps, lengths)
                         grouploc = j
                         break
 
