@@ -958,16 +958,19 @@ class Field:
         for i in [VSYNC, EQPL1, EQPL2]:
             ptmatch = (pt == i)
             grouploc = None
+
             for j in range(0, lastblank - firstblank):
                 if ptmatch[j:j+numPulses].all():
+                    if ptmatch[j:j+numPulses+4].sum() != numPulses:
+                        break
+
                     # take the (second) derivative of the line gaps and lengths to determine 
                     # if all are valid
                     gaps = np.diff(np.diff(pstart[j:j+numPulses]))
                     lengths = np.diff(plen[j:j+numPulses])
 
-#                    print(i, j, gaps, lengths)
-
                     if np.max(gaps) < (self.rf.freq * .2) and np.max(lengths) < (self.rf.freq * .2):
+                        print(i, j, gaps, lengths)
                         grouploc = j
                         break
 
