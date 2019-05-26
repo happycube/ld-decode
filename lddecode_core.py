@@ -54,7 +54,6 @@ SysParams_NTSC = {
 
     # In NTSC framing, the distances between the first/last eq pulses and the 
     # corresponding next lines are different.
-    'firstField1H': (True, False),
     'firstFieldH': (.5, 1),
 
     'numPulses': 6,
@@ -96,8 +95,7 @@ SysParams_PAL = {
     'activeVideoUS': (10.5, 64-1.5),
 
     # In PAL, the first field's line sync<->first/last EQ pulse are both .5H
-    'firstField1H': (False, False),
-    'firstFieldH': (.5, 1),
+    'firstFieldH': (1, .5),
 
     'numPulses': 5,
     'hsyncPulseUS': 4.7,
@@ -993,16 +991,20 @@ class Field:
             # the half-H alignment with the sync/blank pulses
             hdist = int(np.round(dist * 2))
             
-            isfirstfield = not ((hdist % 2) == self.rf.SysParams['firstField1H'][0])
+            #isfirstfield = not ((hdist % 2) == self.rf.SysParams['firstField1H'][0])
+            isfirstfield = (hdist % 2) == (self.rf.SysParams['firstFieldH'][1] != 1)
 
-#            eqgap = self.rf.SysParams['firstFieldH'][isfirstfield]
-            eqgap = 1 if isfirstfield else .5
+            # for PAL VSYNC, the offset is 2.5H, so the calculation must be reversed
+            if (distfroml1 * 2) % 2:
+                isfirstfield = not isfirstfield
 
-#            print(i, dist, hdist, isfirstfield, eqgap)
-            
+            eqgap = self.rf.SysParams['firstFieldH'][isfirstfield]
             line0 = firstloc - ((eqgap + distfroml1) * self.inlinelen)
 
-            return line0, isfirstfield
+            #print(distfroml1, line0, isfirstfield)
+            return np.int(line0), isfirstfield
+
+        #print(line0, isfirstfield)
 
         '''
         If there are no valid sections, check line 0 and the first eq pulse, and the last eq
@@ -1019,8 +1021,11 @@ class Field:
                 isfirstfield = inrange((gap1 / self.inlinelen), 0.45, 0.55)
             elif self.rf.system == 'NTSC' and inrange(np.abs(gap2 + gap1), self.inlinelen * 1.4, self.inlinelen * 1.6):
                 isfirstfield = inrange((gap1 / self.inlinelen), 0.95, 1.05)
+                #isfirstfield = inrange((gap1 / self.inlinelen), 0.45, 0.55)
             else:
                 return None, None
+
+            print(validpulses[firstblank - 1][1].start, isfirstfield)
             
             return validpulses[firstblank - 1][1].start, isfirstfield
                 
@@ -1713,12 +1718,16 @@ class FieldNTSC(Field):
         amed[False] = np.abs(np.median(bursts_arr[False]))
         field14 = amed[True] < amed[False]
 
+#        adj25 = False
         # if the medians are too close, recompute them with a 90 degree offset
         if (np.abs(amed[True] - amed[False]) < .1):
+            #adj25 = True
             amed = {}
             amed[True] = np.abs(np.median(bursts_arr[True] + .25))
             amed[False] = np.abs(np.median(bursts_arr[False] + .25))
             field14 = amed[True] > amed[False]
+
+        #print(field14, adj25, amed)
 
         self.amed = amed
         self.zc_bursts = zc_bursts
