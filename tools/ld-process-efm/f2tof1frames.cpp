@@ -23,6 +23,7 @@
 ************************************************************************/
 
 #include "f2tof1frames.h"
+#include "logging.h"
 
 F2ToF1Frames::F2ToF1Frames()
 {
@@ -50,13 +51,13 @@ F2ToF1Frames::F2ToF1Frames()
     syncPattern.append(static_cast<char>(0x00));
 }
 
-// Method to write status information to qInfo
+// Method to write status information to qCInfo
 void F2ToF1Frames::reportStatus(void)
 {
-    qInfo() << "F2 to F1 converter:";
-    qInfo() << "  Total number of F1 frames =" << totalF1Frames;
-    qInfo() << "  Number of F1 frames with sync missing =" << missedF1SyncCount;
-    qInfo() << "  Lost F1 sync" << F1SyncLost << "times";
+    qCInfo(efm_f2ToF1) << "F2 to F1 converter:";
+    qCInfo(efm_f2ToF1) << "  Total number of F1 frames =" << totalF1Frames;
+    qCInfo(efm_f2ToF1) << "  Number of F1 frames with sync missing =" << missedF1SyncCount;
+    qCInfo(efm_f2ToF1) << "  Lost F1 sync" << F1SyncLost << "times";
 }
 
 QVector<F1Frame> F2ToF1Frames::convert(QVector<F2Frame> f2FramesIn)
@@ -119,7 +120,7 @@ F2ToF1Frames::StateMachine F2ToF1Frames::sm_state_getInitialSync(void)
         return state_getInitialSync;
     }
 
-    qDebug() << "F1 Sync position:" << syncPosition;
+    qCDebug(efm_f2ToF1) << "F1 Sync position:" << syncPosition;
 
     // Sync found, discard all F2 data up to the start of the sync pattern
     removeF2Data(syncPosition);
@@ -136,7 +137,7 @@ F2ToF1Frames::StateMachine F2ToF1Frames::sm_state_getInitialF1Frame(void)
         return state_getInitialF1Frame;
     }
 
-    qDebug() << "F2ToF1Frames::sm_state_getInitialF1Frame(): Got initial F1 frame";
+    qCDebug(efm_f2ToF1) << "F2ToF1Frames::sm_state_getInitialF1Frame(): Got initial F1 frame";
 
     // Place the F1 frame data into a F1 frame object
     F1Frame tempF1Frame;
@@ -167,7 +168,7 @@ F2ToF1Frames::StateMachine F2ToF1Frames::sm_state_getNextF1Frame(void)
         // Sync is missing
         poorSyncs++;
         missedF1SyncCount++;
-        qDebug() << "F2ToF1Frames::sm_state_getNextF1Frame(): F1 Frame has missing sync!";
+        qCDebug(efm_f2ToF1) << "F2ToF1Frames::sm_state_getNextF1Frame(): F1 Frame has missing sync!";
 
         if (poorSyncs > 4) {
             // We have missed 4 syncs in a row... set sync lost
@@ -192,7 +193,7 @@ F2ToF1Frames::StateMachine F2ToF1Frames::sm_state_getNextF1Frame(void)
 
 F2ToF1Frames::StateMachine F2ToF1Frames::sm_state_syncLost(void)
 {
-    qDebug() << "F2ToF1Frames::sm_state_syncLost(): F1 Frame sync has been lost!";
+    qCDebug(efm_f2ToF1) << "F2ToF1Frames::sm_state_syncLost(): F1 Frame sync has been lost!";
     F1SyncLost++;
     return state_getInitialSync;
 }

@@ -44,7 +44,7 @@ Section::Section()
     qMetadata.qMode4.trackNumber = 0;
 }
 
-void Section::setData(QByteArray dataIn)
+bool Section::setData(QByteArray dataIn)
 {
     // Interpret the section data
     qint32 symbolNumber = 2;
@@ -99,9 +99,11 @@ void Section::setData(QByteArray dataIn)
         if (qMode != 1 && qMode != 2 && qMode != 4) qDebug() << "Section::setData(): Unsupported Q Mode" << qMode;
     } else {
         // Q channel mode is invalid
-        qDebug() << "Section::setData(): Q verification failed - not decoding the subcode metadata for this section";
         qMode = -1;
+        return false;
     }
+
+    return true;
 }
 
 // Method to determine the Q mode

@@ -23,6 +23,7 @@
 ************************************************************************/
 
 #include "f1tosectors.h"
+#include "logging.h"
 
 F1ToSectors::F1ToSectors()
 {
@@ -33,10 +34,10 @@ F1ToSectors::F1ToSectors()
 
 void F1ToSectors::reportStatus(void)
 {
-    qInfo() << "Data sector processing:";
-    qInfo() << "  Total number of sectors processed =" << validSectors + invalidSectors;
-    qInfo() << "  Number of good sectors =" << validSectors << "of which" << correctedSectors << "were ECC corrected";
-    qInfo() << "  Number of unrecoverable sectors =" << invalidSectors;
+    qCInfo(efm_f1ToSectors) << "Data sector processing:";
+    qCInfo(efm_f1ToSectors) << "  Total number of sectors processed =" << validSectors + invalidSectors;
+    qCInfo(efm_f1ToSectors) << "  Number of good sectors =" << validSectors << "of which" << correctedSectors << "were ECC corrected";
+    qCInfo(efm_f1ToSectors) << "  Number of unrecoverable sectors =" << invalidSectors;
 }
 
 QVector<Sector> F1ToSectors::convert(QVector<F1Frame> f1FramesIn)
@@ -50,11 +51,11 @@ QVector<Sector> F1ToSectors::convert(QVector<F1Frame> f1FramesIn)
             validSectors++;
             if (sector.isCorrected()) correctedSectors++;
 
-            //qDebug() << "F1Frame mode =" << sector.getMode() << "address =" << sector.getAddress().getTimeAsQString();
+            //qCDebug(efm_f1ToSectors) << "F1Frame mode =" << sector.getMode() << "address =" << sector.getAddress().getTimeAsQString();
         } else {
             invalidSectors++;
 
-            qDebug() << "F1Frame mode =" << sector.getMode() << "address =" << sector.getAddress().getTimeAsQString() << "Invalid";
+            qCDebug(efm_f1ToSectors) << "F1Frame mode =" << sector.getMode() << "address =" << sector.getAddress().getTimeAsQString() << "Invalid";
         }
         sectors.append(sector);
     }
