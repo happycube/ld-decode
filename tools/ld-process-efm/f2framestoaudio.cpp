@@ -23,17 +23,18 @@
 ************************************************************************/
 
 #include "f2framestoaudio.h"
+#include "logging.h"
 
 F2FramesToAudio::F2FramesToAudio()
 {
     audioSamples = 0;
 }
 
-// Method to write status information to qInfo
+// Method to write status information to qCInfo
 void F2FramesToAudio::reportStatus(void)
 {
-    qInfo() << "F2 Frames to audio converter:";
-    qInfo() << "  Total number of stereo audio samples =" << audioSamples;
+    qCInfo(efm_f2ToAudio) << "F2 Frames to audio converter:";
+    qCInfo(efm_f2ToAudio) << "  Total number of stereo audio samples =" << audioSamples;
 }
 
 // Method to open the audio output file
@@ -43,10 +44,10 @@ bool F2FramesToAudio::openOutputFile(QString filename)
     outputFileHandle = new QFile(filename);
     if (!outputFileHandle->open(QIODevice::WriteOnly)) {
         // Failed to open source sample file
-        qDebug() << "Could not open " << outputFileHandle << "as audio output file";
+        qCDebug(efm_f2ToAudio) << "Could not open " << outputFileHandle << "as audio output file";
         return false;
     }
-    qDebug() << "F2FramesToAudio::openOutputFile(): Opened" << filename << "as audio output file";
+    qCDebug(efm_f2ToAudio) << "F2FramesToAudio::openOutputFile(): Opened" << filename << "as audio output file";
 
     // Exit with success
     return true;

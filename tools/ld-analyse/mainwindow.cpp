@@ -154,6 +154,7 @@ void MainWindow::updateGuiLoaded(void)
     ui->actionDropout_analysis->setEnabled(true);
     ui->actionSNR_analysis->setEnabled(true);
     ui->actionSave_frame_as_PNG->setEnabled(true);
+    ui->actionSave_metadata_as_CSV->setEnabled(true);
 
     // Configure the comb-filter
     if (ldDecodeMetaData.getVideoParameters().isSourcePal) {
@@ -266,6 +267,7 @@ void MainWindow::updateGuiUnloaded(void)
     ui->actionDropout_analysis->setEnabled(false);
     ui->actionSNR_analysis->setEnabled(false);
     ui->actionSave_frame_as_PNG->setEnabled(false);
+    ui->actionSave_metadata_as_CSV->setEnabled(false);
 
     // Hide the displayed frame
     hideFrame();
@@ -612,6 +614,7 @@ void MainWindow::loadTbcFile(QString inputFileName)
     if (!ldDecodeMetaData.read(inputFileName + ".json")) {
         // Open failed
         qWarning() << "Open TBC JSON metadata failed for filename" << inputFileName;
+        currentInputFileName.clear();
 
         // Show an error to the user
         QMessageBox messageBox;
@@ -625,6 +628,7 @@ void MainWindow::loadTbcFile(QString inputFileName)
         if (!sourceVideo.open(inputFileName, videoParameters.fieldWidth * videoParameters.fieldHeight)) {
             // Open failed
             qWarning() << "Open TBC file failed for filename" << inputFileName;
+            currentInputFileName.clear();
 
             // Show an error to the user
             QMessageBox messageBox;
@@ -668,6 +672,10 @@ void MainWindow::loadTbcFile(QString inputFileName)
 
             // Set the window title
             this->setWindowTitle(tr("ld-analyse - ") + inputFileName);
+
+            // Set the current file name
+            currentInputFileName = inFileInfo.fileName();
+            qDebug() << "MainWindow::on_actionOpen_TBC_file_triggered(): Set current file name to to:" << currentInputFileName;
         }
     }
 }
@@ -871,6 +879,35 @@ void MainWindow::on_actionSave_frame_as_PNG_triggered()
     }
 }
 
+// Save the VITS metadata as a CSV file
+void MainWindow::on_actionSave_metadata_as_CSV_triggered()
+{
+    qDebug() << "MainWindow::on_actionSave_metadata_as_CSV_triggered(): Called";
+
+    // Create a suggestion for the filename
+    QString filenameSuggestion = configuration->getCsvDirectory() + tr("/");
+    filenameSuggestion += currentInputFileName + tr(".csv");
+
+    QString csvFilename = QFileDialog::getSaveFileName(this,
+                tr("Save CSV file"),
+                filenameSuggestion,
+                tr("CSV file (*.csv);;All Files (*)"));
+
+    // Was a filename specified?
+    if (!csvFilename.isEmpty() && !csvFilename.isNull()) {
+        // Save the metadata as CSV
+        qDebug() << "MainWindow::on_actionSave_metadata_as_CSV_triggered(): Saving VITS metadata as" << csvFilename;
+
+        ldDecodeMetaData.writeVitsCsv(csvFilename);
+
+        // Update the configuration for the CSV directory
+        QFileInfo csvFileInfo(csvFilename);
+        configuration->setCsvDirectory(csvFileInfo.absolutePath());
+        qDebug() << "MainWindow::on_actionSave_metadata_as_CSV_triggered(): Setting CSV directory to:" << csvFileInfo.absolutePath();
+        configuration->writeConfiguration();
+    }
+}
+
 void MainWindow::on_reverseFieldOrderCheckBox_stateChanged(int arg1)
 {
     (void)arg1;
@@ -954,6 +991,8 @@ void MainWindow::updateOscilloscopeDialogue(qint32 frameNumber, qint32 scanLine)
                                        sourceVideo.getVideoField(secondFieldNumber)->getFieldData(),
                                        &ldDecodeMetaData, scanLine, firstFieldNumber, secondFieldNumber);
 }
+
+
 
 
 

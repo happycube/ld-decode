@@ -23,6 +23,7 @@
 ************************************************************************/
 
 #include "efmtof3frames.h"
+#include "logging.h"
 
 EfmToF3Frames::EfmToF3Frames()
 {
@@ -40,13 +41,13 @@ EfmToF3Frames::EfmToF3Frames()
     verboseDebug = false;
 }
 
-// Method to write status information to qInfo
+// Method to write status information to qCInfo
 void EfmToF3Frames::reportStatus(void)
 {
-    qInfo() << "EFM to F3 Frame converter:";
-    qInfo() << "  Total number of F3 Frames =" << validFrameLength + invalidFrameLength;
-    qInfo() << "  of which" << validFrameLength << "were 588 bits and" << invalidFrameLength << "were invalid lengths";
-    qInfo() << "  Lost frame sync" << syncLoss << "times";
+    qCInfo(efm_efmToF3) << "EFM to F3 Frame converter:";
+    qCInfo(efm_efmToF3) << "  Total number of F3 Frames =" << validFrameLength + invalidFrameLength;
+    qCInfo(efm_efmToF3) << "  of which" << validFrameLength << "were 588 bits and" << invalidFrameLength << "were invalid lengths";
+    qCInfo(efm_efmToF3) << "  Lost frame sync" << syncLoss << "times";
 }
 
 // Turn verbose debug on/off
@@ -116,7 +117,7 @@ EfmToF3Frames::StateMachine EfmToF3Frames::sm_state_findInitialSyncStage1(void)
     }
 
     if (startSyncTransition == -1) {
-        if (verboseDebug) qDebug() << "EfmToF3Frames::sm_state_findInitialSyncStage1(): No initial F3 sync found in EFM buffer, requesting more data";
+        if (verboseDebug) qCDebug(efm_efmToF3) << "EfmToF3Frames::sm_state_findInitialSyncStage1(): No initial F3 sync found in EFM buffer, requesting more data";
 
         // Discard the EFM already tested and try again
         removeEfmData(efmData.size() - 1);
@@ -125,7 +126,7 @@ EfmToF3Frames::StateMachine EfmToF3Frames::sm_state_findInitialSyncStage1(void)
         return state_findInitialSyncStage1;
     }
 
-    if (verboseDebug) qDebug() << "EfmToF3Frames::sm_state_findInitialSyncStage1(): Initial F3 sync found at buffer position" << startSyncTransition;
+    if (verboseDebug) qCDebug(efm_efmToF3) << "EfmToF3Frames::sm_state_findInitialSyncStage1(): Initial F3 sync found at buffer position" << startSyncTransition;
 
     // Discard all EFM data up to the sync start
     removeEfmData(startSyncTransition);
@@ -157,13 +158,13 @@ EfmToF3Frames::StateMachine EfmToF3Frames::sm_state_findInitialSyncStage2(void)
     }
 
     if (tTotal > searchLength) {
-        if (verboseDebug) qDebug() << "EfmToF3Frames::sm_state_findInitialSyncStage2(): No second F3 sync found within a reasonable length, going back to look for new initial sync.  T =" << tTotal;
+        if (verboseDebug) qCDebug(efm_efmToF3) << "EfmToF3Frames::sm_state_findInitialSyncStage2(): No second F3 sync found within a reasonable length, going back to look for new initial sync.  T =" << tTotal;
         removeEfmData(endSyncTransition);
         return state_findInitialSyncStage1;
     }
 
     if (endSyncTransition == -1) {
-        if (verboseDebug) qDebug() << "EfmToF3Frames::sm_state_findInitialSyncStage2(): No second F3 sync found in EFM buffer, requesting more data.  T =" << tTotal;
+        if (verboseDebug) qCDebug(efm_efmToF3) << "EfmToF3Frames::sm_state_findInitialSyncStage2(): No second F3 sync found in EFM buffer, requesting more data.  T =" << tTotal;
 
         waitingForData = true;
         return state_findInitialSyncStage2;
@@ -172,13 +173,13 @@ EfmToF3Frames::StateMachine EfmToF3Frames::sm_state_findInitialSyncStage2(void)
     // Is the frame length valid (or close enough)?
     if (tTotal < 587 || tTotal > 589) {
         // Discard the transitions already tested and try again
-        if (verboseDebug) qDebug() << "EfmToF3Frames::sm_state_findInitialSyncStage2(): Got second F3 initial sync at" <<
+        if (verboseDebug) qCDebug(efm_efmToF3) << "EfmToF3Frames::sm_state_findInitialSyncStage2(): Got second F3 initial sync at" <<
                                       endSyncTransition << "but frame length was" << tTotal << " - trying again";
         removeEfmData(endSyncTransition);
         return state_findInitialSyncStage2;
     }
 
-    if (verboseDebug) qDebug() << "EfmToF3Frames::sm_state_findInitialSyncStage2(): Found first F3 frame with a length of" << tTotal << "bits";
+    if (verboseDebug) qCDebug(efm_efmToF3) << "EfmToF3Frames::sm_state_findInitialSyncStage2(): Found first F3 frame with a length of" << tTotal << "bits";
 
     // Mark F3 frame as first after F3 initial sync
     firstF3AfterInitialSync = true;
@@ -198,7 +199,7 @@ EfmToF3Frames::StateMachine EfmToF3Frames::sm_state_findSecondSync(void)
 
     // Did we have enough data to reach a tTotal of 588?
     if (tTotal < 588) {
-        //if (verboseDebug) qDebug() << "EfmToF3Frames::sm_state_findSecondSync(): Need more data to reach required F3 frame length";
+        //if (verboseDebug) qCDebug() << "EfmToF3Frames::sm_state_findSecondSync(): Need more data to reach required F3 frame length";
         // Indicate that more deltas are required and stay in this state
         waitingForData = true;
         return state_findSecondSync;
@@ -206,7 +207,7 @@ EfmToF3Frames::StateMachine EfmToF3Frames::sm_state_findSecondSync(void)
 
     // Do we have enough data to verify the sync position?
     if ((efmData.size() - i) < 2) {
-        //if (verboseDebug) qDebug() << "EfmToF3Frames::sm_state_findSecondSync(): Need more data to verify F3 sync position";
+        //if (verboseDebug) qCDebug() << "EfmToF3Frames::sm_state_findSecondSync(): Need more data to verify F3 sync position";
         // Indicate that more deltas are required and stay in this state
         waitingForData = true;
         return state_findSecondSync;
@@ -219,38 +220,38 @@ EfmToF3Frames::StateMachine EfmToF3Frames::sm_state_findSecondSync(void)
     } else {
         // Handle various possible sync issues in a (hopefully) smart way
         if (efmData[i] == static_cast<char>(11) && efmData[i + 1] == static_cast<char>(11)) {
-            if (verboseDebug) qDebug() << "EfmToF3Frames::sm_state_findSecondSync(): F3 Sync is in the right position and is valid - frame contains invalid T value";
+            if (verboseDebug) qCDebug(efm_efmToF3) << "EfmToF3Frames::sm_state_findSecondSync(): F3 Sync is in the right position and is valid - frame contains invalid T value";
             endSyncTransition = i;
             poorSyncCount = 0;
         } else if (efmData[i - 1] == static_cast<char>(11) && efmData[i] == static_cast<char>(11)) {
-            if (verboseDebug) qDebug() << "EfmToF3Frames::sm_state_findSecondSync(): F3 Sync valid, but off by one transition backwards";
+            if (verboseDebug) qCDebug(efm_efmToF3) << "EfmToF3Frames::sm_state_findSecondSync(): F3 Sync valid, but off by one transition backwards";
             endSyncTransition = i - 1;
             poorSyncCount = 0;
         } else if (efmData[i - 1] >= static_cast<char>(10) && efmData[i] >= static_cast<char>(10)) {
-            if (verboseDebug) qDebug() << "EfmToF3Frames::sm_state_findSecondSync(): F3 Sync value low and off by one transition backwards";
+            if (verboseDebug) qCDebug(efm_efmToF3) << "EfmToF3Frames::sm_state_findSecondSync(): F3 Sync value low and off by one transition backwards";
             endSyncTransition = i - 1;
             poorSyncCount = 0;
         } else {
             if (abs(tTotal - 588) < 3) {
-                if (verboseDebug) qDebug() << "EfmToF3Frames::sm_state_findSecondSync(): F3 frame length was incorrect (" << tTotal
+                if (verboseDebug) qCDebug(efm_efmToF3) << "EfmToF3Frames::sm_state_findSecondSync(): F3 frame length was incorrect (" << tTotal
                          << "), but error is less than T3, so nothing much to do about it";
                 endSyncTransition = i;
                 poorSyncCount = 0;
             } else if (abs(tTotal - 588) >= 3) {
-                    if (verboseDebug) qDebug() << "EfmToF3Frames::sm_state_findSecondSync(): F3 frame length was incorrect (" << tTotal
+                    if (verboseDebug) qCDebug(efm_efmToF3) << "EfmToF3Frames::sm_state_findSecondSync(): F3 frame length was incorrect (" << tTotal
                              << "), moving end transition in attempt to correct";
                     if (tTotal > 588) endSyncTransition = i - 1; else endSyncTransition = i;
                     poorSyncCount = 0;
             } else if (efmData[i] == static_cast<char>(11) && efmData[i + 1] == static_cast<char>(11)) {
-                if (verboseDebug) qDebug() << "EfmToF3Frames::sm_state_findSecondSync(): F3 Sync valid, but off by one transition forward";
+                if (verboseDebug) qCDebug(efm_efmToF3) << "EfmToF3Frames::sm_state_findSecondSync(): F3 Sync valid, but off by one transition forward";
                 endSyncTransition = i;
                 poorSyncCount = 0;
             } else if (efmData[i] >= static_cast<char>(10) && efmData[i + 1] >= static_cast<char>(10)) {
-                if (verboseDebug) qDebug() << "EfmToF3Frames::sm_state_findSecondSync(): F3 Sync value low and off by one transition forward";
+                if (verboseDebug) qCDebug(efm_efmToF3) << "EfmToF3Frames::sm_state_findSecondSync(): F3 Sync value low and off by one transition forward";
                 endSyncTransition = i;
                 poorSyncCount = 0;
             } else {
-                if (verboseDebug) qDebug() << "EfmToF3Frames::sm_state_findSecondSync(): F3 Sync appears to be missing causing an" <<
+                if (verboseDebug) qCDebug(efm_efmToF3) << "EfmToF3Frames::sm_state_findSecondSync(): F3 Sync appears to be missing causing an" <<
                             "overshoot; dropping a T value and marking as poor sync #" << poorSyncCount;
                 endSyncTransition = i;
                 poorSyncCount++;
@@ -261,7 +262,7 @@ EfmToF3Frames::StateMachine EfmToF3Frames::sm_state_findSecondSync(void)
     // Hit limit of poor sync detections?
     if (poorSyncCount > 16) {
         poorSyncCount = 0;
-        if (verboseDebug) qDebug() << "EfmToF3Frames::sm_state_findSecondSync(): Too many F3 sequential poor sync detections (>16) - sync lost";
+        if (verboseDebug) qCDebug(efm_efmToF3) << "EfmToF3Frames::sm_state_findSecondSync(): Too many F3 sequential poor sync detections (>16) - sync lost";
         return state_syncLost;
     }
 
@@ -271,7 +272,7 @@ EfmToF3Frames::StateMachine EfmToF3Frames::sm_state_findSecondSync(void)
 
 EfmToF3Frames::StateMachine EfmToF3Frames::sm_state_syncLost(void)
 {
-    if (verboseDebug) qDebug() << "EfmToF3Frames::sm_state_syncLost(): F3 Sync was completely lost!";
+    if (verboseDebug) qCDebug(efm_efmToF3) << "EfmToF3Frames::sm_state_syncLost(): F3 Sync was completely lost!";
     syncLoss++;
     return state_findInitialSyncStage1;
 }
@@ -284,10 +285,10 @@ EfmToF3Frames::StateMachine EfmToF3Frames::sm_state_processFrame(void)
         qint32 value = efmData[delta];
 
         if (value < 3) {
-            if (verboseDebug) qDebug() << "EfmToF3Frames::sm_state_processFrame(): Invalid T value <3";
+            if (verboseDebug) qCDebug(efm_efmToF3) << "EfmToF3Frames::sm_state_processFrame(): Invalid T value <3";
         }
         if (value > 11) {
-            if (verboseDebug) qDebug() << "EfmToF3Frames::sm_state_processFrame(): Invalid T value >11";
+            if (verboseDebug) qCDebug(efm_efmToF3) << "EfmToF3Frames::sm_state_processFrame(): Invalid T value >11";
         }
 
         tTotal += value;
@@ -295,11 +296,11 @@ EfmToF3Frames::StateMachine EfmToF3Frames::sm_state_processFrame(void)
     }
     if (tTotal == 588) {
         validFrameLength++;
-//        if (verboseDebug) qDebug() << "EfmToF3Frames::sm_state_processFrame(): F3 Frame" <<
+//        if (verboseDebug) qCDebug(efm_efmToF3) << "EfmToF3Frames::sm_state_processFrame(): F3 Frame" <<
 //                                      validFrameLength + invalidFrameLength << "length correct";
     } else {
         invalidFrameLength++;
-        if (verboseDebug) qDebug() << "EfmToF3Frames::sm_state_processFrame(): F3 Frame" <<
+        if (verboseDebug) qCDebug(efm_efmToF3) << "EfmToF3Frames::sm_state_processFrame(): F3 Frame" <<
                                       validFrameLength + invalidFrameLength << "frame length incorrect T =" << tTotal;
     }
 

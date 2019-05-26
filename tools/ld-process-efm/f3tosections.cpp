@@ -23,6 +23,7 @@
 ************************************************************************/
 
 #include "f3tosections.h"
+#include "logging.h"
 
 F3ToSections::F3ToSections()
 {
@@ -40,13 +41,13 @@ F3ToSections::F3ToSections()
     sync1 = false;
 }
 
-// Method to write status information to qInfo
+// Method to write status information to qCInfo
 void F3ToSections::reportStatus(void)
 {
-    qInfo() << "F3 to section converter:";
-    qInfo() << "  Total number of sections =" << totalSections;
-    qInfo() << "  Number of sections with SYNC0 or SYNC1 missing =" << poorSyncs;
-    qInfo() << "  Lost section sync" << sectionSyncLost << "times";
+    qCInfo(efm_f3ToSections) << "F3 to section converter:";
+    qCInfo(efm_f3ToSections) << "  Total number of sections =" << totalSections;
+    qCInfo(efm_f3ToSections) << "  Number of sections with SYNC0 or SYNC1 missing =" << poorSyncs;
+    qCInfo(efm_f3ToSections) << "  Lost section sync" << sectionSyncLost << "times";
 }
 
 // Convert the F3 frames into sections
@@ -161,10 +162,12 @@ F3ToSections::StateMachine F3ToSections::sm_state_getInitialSection(void)
     if (sectionBuffer.size() == 98) {
         // Create a section using the buffered symbols
         Section newSubcodeBlock;
-        newSubcodeBlock.setData(sectionBuffer);
+        if (!newSubcodeBlock.setData(sectionBuffer)) {
+            // Q decode failed (bad CRC?)
+            qCDebug(efm_f3ToSections) << "F3ToSections::sm_state_getInitialSection(): Unable to get section Q mode (corrupt)";
+        }
         sections.append(newSubcodeBlock);
         totalSections++;
-        //qDebug() << "F3ToSections::sm_state_getInitialBlock(): Got initial section";
 
         // Discard current section buffer
         sectionBuffer.clear();
@@ -216,7 +219,11 @@ F3ToSections::StateMachine F3ToSections::sm_state_getNextSection(void)
     if (sectionBuffer.size() == 98) {
         // Create a section using the buffered symbols
         Section newSubcodeBlock;
-        newSubcodeBlock.setData(sectionBuffer);
+        if (!newSubcodeBlock.setData(sectionBuffer)) {
+            // Q decode failed (bad CRC?)
+            qCDebug(efm_f3ToSections) << "F3ToSections::sm_state_getNextSection(): Unable to get section Q mode (corrupt)";
+        }
+
         sections.append(newSubcodeBlock);
         totalSections++;
 
@@ -238,7 +245,7 @@ F3ToSections::StateMachine F3ToSections::sm_state_getNextSection(void)
 
 F3ToSections::StateMachine F3ToSections::sm_state_syncLost(void)
 {
-    qDebug() << "F3ToSections::sm_state_syncLost(): Section sync has been lost!";
+    qCDebug(efm_f3ToSections) << "F3ToSections::sm_state_syncLost(): Section sync has been lost!";
     sectionSyncLost++;
 
     // Discard all section subcode symbols

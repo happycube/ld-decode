@@ -23,6 +23,7 @@
 ************************************************************************/
 
 #include "f3tof2frames.h"
+#include "logging.h"
 
 F3ToF2Frames::F3ToF2Frames()
 {
@@ -49,6 +50,8 @@ void F3ToF2Frames::flush(void)
     c1Circ.flush();
     c2Circ.flush();
     c2Deinterleave.flush();
+
+    qCDebug(efm_f3ToF2) << "F3ToF2Frames::flush(): Delay buffers flushed";
 }
 
 QVector<F2Frame> F3ToF2Frames::convert(QVector<F3Frame> f3Frames)

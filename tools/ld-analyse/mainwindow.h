@@ -92,6 +92,8 @@ private slots:
 
     void on_actionSNR_analysis_triggered();
 
+    void on_actionSave_metadata_as_CSV_triggered();
+
 private:
     Ui::MainWindow *ui;
 
@@ -115,6 +117,7 @@ private:
     bool isFileOpen;
     PalColour palColour;
     Comb ntscColour;
+    QString currentInputFileName;
 
     void updateGuiLoaded(void);
     void updateGuiUnloaded(void);

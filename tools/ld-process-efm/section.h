@@ -78,7 +78,7 @@ public:
         QMode4 qMode4;
     };
 
-    void setData(QByteArray dataIn);
+    bool setData(QByteArray dataIn);
     qint32 getQMode(void);
     QMetadata getQMetadata(void);
 

@@ -27,50 +27,13 @@
 #include <QtGlobal>
 #include <QCommandLineParser>
 
+#include "logging.h"
 #include "efmprocess.h"
-
-// Global for debug output
-static bool showDebug = false;
-
-// Qt debug message handler
-void debugOutputHandler(QtMsgType type, const QMessageLogContext &context, const QString &msg)
-{
-    // Use:
-    // context.file - to show the filename
-    // context.line - to show the line number
-    // context.function - to show the function name
-
-    QByteArray localMsg = msg.toLocal8Bit();
-    switch (type) {
-    case QtDebugMsg: // These are debug messages meant for developers
-        if (showDebug) {
-            // If the code was compiled as 'release' the context.file will be NULL
-            if (context.file != nullptr) fprintf(stderr, "Debug: [%s:%d] %s\n", context.file, context.line, localMsg.constData());
-            else fprintf(stderr, "Debug: %s\n", localMsg.constData());
-        }
-        break;
-    case QtInfoMsg: // These are information messages meant for end-users
-        if (context.file != nullptr) fprintf(stderr, "Info: [%s:%d] %s\n", context.file, context.line, localMsg.constData());
-        else fprintf(stderr, "Info: %s\n", localMsg.constData());
-        break;
-    case QtWarningMsg:
-        if (context.file != nullptr) fprintf(stderr, "Warning: [%s:%d] %s\n", context.file, context.line, localMsg.constData());
-        else fprintf(stderr, "Warning: %s\n", localMsg.constData());
-        break;
-    case QtCriticalMsg:
-        if (context.file != nullptr) fprintf(stderr, "Critical: [%s:%d] %s\n", context.file, context.line, localMsg.constData());
-        else fprintf(stderr, "Critical: %s\n", localMsg.constData());
-        break;
-    case QtFatalMsg:
-        if (context.file != nullptr) fprintf(stderr, "Fatal: [%s:%d] %s\n", context.file, context.line, localMsg.constData());
-        else fprintf(stderr, "Fatal: %s\n", localMsg.constData());
-        abort();
-    }
-}
 
 int main(int argc, char *argv[])
 {
     // Install the local debug message handler
+    setDebug(true);
     qInstallMessageHandler(debugOutputHandler);
 
     QCoreApplication a(argc, argv);
@@ -100,7 +63,6 @@ int main(int argc, char *argv[])
                                        QCoreApplication::translate("main", "Show verbose F3 framing debug"));
     parser.addOption(verboseDebugOption);
 
-
     // Option to specify input EFM file (-i)
     QCommandLineOption inputEfmFileOption(QStringList() << "i" << "input",
                 QCoreApplication::translate("main", "Specify input EFM file"),
@@ -119,6 +81,12 @@ int main(int argc, char *argv[])
                 QCoreApplication::translate("main", "file"));
     parser.addOption(outputDataFileOption);
 
+    // Option to specify output log file (-l)
+    QCommandLineOption outputLogFileOption(QStringList() << "l" << "log",
+                QCoreApplication::translate("main", "Specify optional log file"),
+                QCoreApplication::translate("main", "file"));
+    parser.addOption(outputLogFileOption);
+
     // Process the command line options and arguments given by the user
     parser.process(a);
 
@@ -130,6 +98,7 @@ int main(int argc, char *argv[])
     QString inputEfmFilename = parser.value(inputEfmFileOption);
     QString outputAudioFilename = parser.value(outputAudioFileOption);
     QString outputDataFilename = parser.value(outputDataFileOption);
+    QString outputLogFilename = parser.value(outputLogFileOption);
 
     // Check the parameters
     if (inputEfmFilename.isEmpty()) {
@@ -142,12 +111,21 @@ int main(int argc, char *argv[])
         return -1;
     }
 
+    if (!outputLogFilename.isEmpty()) {
+        openDebugFile(outputLogFilename);
+    }
+
     // Process the command line options
-    if (isDebugOn) showDebug = true;
+    if (isDebugOn) setDebug(true); else setDebug(false);
 
     // Perform the processing
     EfmProcess efmProcess;
     efmProcess.process(inputEfmFilename, outputAudioFilename, outputDataFilename, verboseDebug);
+
+    // Close the log file
+    if (!outputLogFilename.isEmpty()) {
+        closeDebugFile();
+    }
 
     // Quit with success
     return 0;
