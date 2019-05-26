@@ -35,6 +35,8 @@ Q_LOGGING_CATEGORY(efm_sectorsTodata, "efm.sectorsTodata")
 
 // Global for debug output
 static bool showDebug = false;
+static bool saveDebug = false;
+static QFile *efm_debug_file;
 
 // Qt debug message handler
 void debugOutputHandler(QtMsgType type, const QMessageLogContext &context, const QString &msg)
@@ -45,31 +47,57 @@ void debugOutputHandler(QtMsgType type, const QMessageLogContext &context, const
     // context.function - to show the function name
 
     QByteArray localMsg = msg.toLocal8Bit();
+    QString outputMessage;
+
     switch (type) {
     case QtDebugMsg: // These are debug messages meant for developers
-        if (showDebug) {
-            // If the code was compiled as 'release' the context.file will be NULL
-            if (context.file != nullptr) fprintf(stderr, "Debug (%s): [%s:%d] %s\n", context.category, context.file, context.line, localMsg.constData());
-            else fprintf(stderr, "Debug (%s): %s\n", context.category, localMsg.constData());
-        }
+        // If the code was compiled as 'release' the context.file will be NULL
+        if (context.file != nullptr) outputMessage.sprintf("Debug (%s): [%s:%d] %s\n", context.category, context.file, context.line, localMsg.constData());
+        else outputMessage.sprintf("Debug: %s\n", localMsg.constData());
         break;
     case QtInfoMsg: // These are information messages meant for end-users
-        if (context.file != nullptr) fprintf(stderr, "Info (%s): [%s:%d] %s\n", context.category, context.file, context.line, localMsg.constData());
-        else fprintf(stderr, "Info: %s\n", localMsg.constData());
+        if (context.file != nullptr) outputMessage.sprintf("Info (%s): [%s:%d] %s\n", context.category, context.file, context.line, localMsg.constData());
+        else outputMessage.sprintf("Info: %s\n", localMsg.constData());
         break;
     case QtWarningMsg:
-        if (context.file != nullptr) fprintf(stderr, "Warning (%s): [%s:%d] %s\n", context.category, context.file, context.line, localMsg.constData());
-        else fprintf(stderr, "Warning: %s\n", localMsg.constData());
+        if (context.file != nullptr) outputMessage.sprintf("Warning (%s): [%s:%d] %s\n", context.category, context.file, context.line, localMsg.constData());
+        else outputMessage.sprintf("Warning: %s\n", localMsg.constData());
         break;
     case QtCriticalMsg:
-        if (context.file != nullptr) fprintf(stderr, "Critical (%s): [%s:%d] %s\n", context.category, context.file, context.line, localMsg.constData());
-        else fprintf(stderr, "Critical: %s\n", localMsg.constData());
+        if (context.file != nullptr) outputMessage.sprintf("Critical (%s): [%s:%d] %s\n", context.category, context.file, context.line, localMsg.constData());
+        else outputMessage.sprintf("Critical: %s\n", localMsg.constData());
         break;
     case QtFatalMsg:
-        if (context.file != nullptr) fprintf(stderr, "Fatal (%s): [%s:%d] %s\n", context.category, context.file, context.line, localMsg.constData());
-        else fprintf(stderr, "Fatal: %s\n", localMsg.constData());
-        abort();
+        if (context.file != nullptr) outputMessage.sprintf("Fatal (%s): [%s:%d] %s\n", context.category, context.file, context.line, localMsg.constData());
+        else outputMessage.sprintf("Fatal: %s\n", localMsg.constData());
+        break;
     }
+
+    // Display the output message on stderr
+    if (showDebug || (type != QtDebugMsg)) QTextStream(stderr) << outputMessage;
+
+    // Optional output to file
+    if (saveDebug) QTextStream(efm_debug_file) << outputMessage;
+
+    // If the error was fatal, then we should abort
+    if (type == QtFatalMsg) abort();
+}
+
+// Open debug file
+void openDebugFile(QString filename)
+{
+    // Open output files for writing
+    efm_debug_file = new QFile(filename);
+    if (!efm_debug_file->open(QIODevice::WriteOnly)) {
+        // Failed to open source sample file
+        qDebug() << "Could not open " << filename << "as debug output file";
+    } else saveDebug = true;
+}
+
+// Close debug file
+void closeDebugFile(void)
+{
+    if (saveDebug) efm_debug_file->close();
 }
 
 void setDebug(bool state)

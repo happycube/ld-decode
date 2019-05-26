@@ -27,6 +27,8 @@
 
 #include <QCoreApplication>
 #include <QDebug>
+#include <QFile>
+#include <QString>
 
 #include <QLoggingCategory>
 Q_DECLARE_LOGGING_CATEGORY(efm_process)
@@ -41,5 +43,7 @@ Q_DECLARE_LOGGING_CATEGORY(efm_sectorsTodata)
 // Prototypes
 void debugOutputHandler(QtMsgType type, const QMessageLogContext &context, const QString &msg);
 void setDebug(bool state);
+void openDebugFile(QString filename);
+void closeDebugFile(void);
 
 #endif // LOGGING_H

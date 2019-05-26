@@ -63,7 +63,6 @@ int main(int argc, char *argv[])
                                        QCoreApplication::translate("main", "Show verbose F3 framing debug"));
     parser.addOption(verboseDebugOption);
 
-
     // Option to specify input EFM file (-i)
     QCommandLineOption inputEfmFileOption(QStringList() << "i" << "input",
                 QCoreApplication::translate("main", "Specify input EFM file"),
@@ -82,6 +81,12 @@ int main(int argc, char *argv[])
                 QCoreApplication::translate("main", "file"));
     parser.addOption(outputDataFileOption);
 
+    // Option to specify output log file (-l)
+    QCommandLineOption outputLogFileOption(QStringList() << "l" << "log",
+                QCoreApplication::translate("main", "Specify optional log file"),
+                QCoreApplication::translate("main", "file"));
+    parser.addOption(outputLogFileOption);
+
     // Process the command line options and arguments given by the user
     parser.process(a);
 
@@ -93,6 +98,7 @@ int main(int argc, char *argv[])
     QString inputEfmFilename = parser.value(inputEfmFileOption);
     QString outputAudioFilename = parser.value(outputAudioFileOption);
     QString outputDataFilename = parser.value(outputDataFileOption);
+    QString outputLogFilename = parser.value(outputLogFileOption);
 
     // Check the parameters
     if (inputEfmFilename.isEmpty()) {
@@ -105,12 +111,21 @@ int main(int argc, char *argv[])
         return -1;
     }
 
+    if (!outputLogFilename.isEmpty()) {
+        openDebugFile(outputLogFilename);
+    }
+
     // Process the command line options
     if (isDebugOn) setDebug(true); else setDebug(false);
 
     // Perform the processing
     EfmProcess efmProcess;
     efmProcess.process(inputEfmFilename, outputAudioFilename, outputDataFilename, verboseDebug);
+
+    // Close the log file
+    if (!outputLogFilename.isEmpty()) {
+        closeDebugFile();
+    }
 
     // Quit with success
     return 0;
