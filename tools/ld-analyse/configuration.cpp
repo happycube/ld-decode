@@ -25,7 +25,7 @@
 #include "configuration.h"
 
 // This define should be incremented if the settings file format changes
-static const qint32 SETTINGSVERSION = 2;
+static const qint32 SETTINGSVERSION = 3;
 
 Configuration::Configuration(QObject *parent) : QObject(parent)
 {
@@ -34,7 +34,7 @@ Configuration::Configuration(QObject *parent) : QObject(parent)
     QString configurationFileName;
 
     configurationPath = QStandardPaths::writableLocation(QStandardPaths::ConfigLocation) ;
-    configurationFileName = "ld-colourfilter.ini" ;
+    configurationFileName = "ld-analyse.ini" ;
     configuration = new QSettings(configurationPath + "/"+ configurationFileName, QSettings::IniFormat);
 
     // Read the configuration
@@ -64,6 +64,7 @@ void Configuration::writeConfiguration(void)
     configuration->beginGroup("directories");
     configuration->setValue("sourceDirectory", settings.directories.sourceDirectory);
     configuration->setValue("pngDirectory", settings.directories.pngDirectory);
+    configuration->setValue("csvDirectory", settings.directories.csvDirectory);
     configuration->endGroup();
 
     // Windows
@@ -94,6 +95,7 @@ void Configuration::readConfiguration(void)
     configuration->beginGroup("directories");
     settings.directories.sourceDirectory = configuration->value("sourceDirectory").toString();
     settings.directories.pngDirectory = configuration->value("pngDirectory").toString();
+    settings.directories.csvDirectory = configuration->value("csvDirectory").toString();
     configuration->endGroup();
 
     // Windows
@@ -117,6 +119,7 @@ void Configuration::setDefault(void)
     // Directories
     settings.directories.sourceDirectory = QDir::homePath();
     settings.directories.pngDirectory = QDir::homePath();
+    settings.directories.csvDirectory = QDir::homePath();
 
     // Windows
     settings.windows.mainWindowGeometry = QByteArray();
@@ -153,6 +156,16 @@ void Configuration::setPngDirectory(QString pngDirectory)
 QString Configuration::getPngDirectory(void)
 {
     return settings.directories.pngDirectory;
+}
+
+void Configuration::setCsvDirectory(QString csvDirectory)
+{
+    settings.directories.csvDirectory = csvDirectory;
+}
+
+QString Configuration::getCsvDirectory(void)
+{
+    return settings.directories.csvDirectory;
 }
 
 // Windows

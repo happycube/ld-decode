@@ -48,6 +48,8 @@ public:
     QString getSourceDirectory(void);
     void setPngDirectory(QString pngDirectory);
     QString getPngDirectory(void);
+    void setCsvDirectory(QString csvDirectory);
+    QString getCsvDirectory(void);
 
     // Get and set methods - windows
     void setMainWindowGeometry(QByteArray mainWindowGeometry);
@@ -78,6 +80,7 @@ private:
     struct Directories {
         QString sourceDirectory; // Last used directory for .tbc files
         QString pngDirectory; // Last used directory for .png files
+        QString csvDirectory; // Last used directory for .csv files
     };
 
     // Window geometry and settings

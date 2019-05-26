@@ -347,8 +347,6 @@ bool LdDecodeMetaData::write(QString fileName)
 
     // Write the video paramters
     json.setValue({"videoParameters", "numberOfSequentialFields"}, metaData.videoParameters.numberOfSequentialFields);
-
-    json.setValue({"videoParameters", "numberOfSequentialFields"}, metaData.videoParameters.numberOfSequentialFields);
     json.setValue({"videoParameters", "isSourcePal"}, metaData.videoParameters.isSourcePal);
 
     json.setValue({"videoParameters", "colourBurstStart"}, metaData.videoParameters.colourBurstStart);
@@ -573,6 +571,81 @@ bool LdDecodeMetaData::write(QString fileName)
     }
 
     return true;
+}
+
+// This method copies the VITS metadata structure into a CSV metadata file
+bool LdDecodeMetaData::writeVitsCsv(QString fileName)
+{
+    // Open a file for the CSV output
+    QFile csvFile(fileName);
+    if (!csvFile.open(QFile::WriteOnly | QFile::Text)){
+        qDebug("LdDecodeMetaData::writeVitsCsv(): Could not open CSV file for output!");
+        return false;
+    }
+
+    // Create a text stream for the CSV output
+    QTextStream outStream(&csvFile);
+    outStream.setCodec("UTF-8");
+
+    // Write the field and VITS data
+    outStream << "seqNo,isFirstField,syncConf,";
+    outStream << "medianBurstIRE,fieldPhaseID,audioSamples,";
+
+    // VITS headers
+    outStream << "whiteSNR,whiteIRE,whiteRFLevel,greyPSNR,greyIRE,greyRFLevel,blackLinePreTBCIRE,";
+    outStream << "blackLinePostTBCIRE,blackLinePSNR,blackLineRFLevel,syncLevelPSNR,syncRFLevel,";
+    outStream << "syncToBlackRFRatio,syncToWhiteRFRatio,blackToWhiteRFRatio,ntscWhiteFlagSNR,";
+    outStream << "ntscWhiteFlagRFLevel,ntscLine19Burst0IRE,ntscLine19Burst70IRE,ntscLine19ColorPhase,";
+    outStream << "ntscLine19ColorRawSNR,ntscLine19Color3DPhase,ntscLine19Color3DRawSNR,palVITSBurst50Level";
+    outStream << '\n';
+
+    for (qint32 fieldNumber = 0; fieldNumber < metaData.fields.size(); fieldNumber++) {
+        outStream << escapedString(QString::number(metaData.fields[fieldNumber].seqNo)) << ",";
+        outStream << escapedString(QString::number(metaData.fields[fieldNumber].isFirstField)) << ",";
+        outStream << escapedString(QString::number(metaData.fields[fieldNumber].syncConf)) << ",";
+        outStream << escapedString(QString::number(metaData.fields[fieldNumber].medianBurstIRE)) << ",";
+        outStream << escapedString(QString::number(metaData.fields[fieldNumber].fieldPhaseID)) << ",";
+        outStream << escapedString(QString::number(metaData.fields[fieldNumber].audioSamples)) << ",";
+
+        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.whiteSNR)) << ",";
+        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.whiteIRE)) << ",";
+        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.whiteRFLevel)) << ",";
+        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.greyPSNR)) << ",";
+        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.greyIRE)) << ",";
+        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.greyRFLevel)) << ",";
+        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.blackLinePreTBCIRE)) << ",";
+        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.blackLinePostTBCIRE)) << ",";
+        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.blackLinePSNR)) << ",";
+        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.blackLineRFLevel)) << ",";
+        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.syncLevelPSNR)) << ",";
+        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.syncRFLevel)) << ",";
+        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.syncToBlackRFRatio)) << ",";
+        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.syncToWhiteRFRatio)) << ",";
+        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.blackToWhiteRFRatio)) << ",";
+        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.ntscWhiteFlagSNR)) << ",";
+        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.ntscWhiteFlagRFLevel)) << ",";
+        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.ntscLine19Burst0IRE)) << ",";
+        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.ntscLine19Burst70IRE)) << ",";
+        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.ntscLine19ColorPhase)) << ",";
+        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.ntscLine19ColorRawSNR)) << ",";
+        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.ntscLine19Color3DPhase)) << ",";
+        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.ntscLine19Color3DRawSNR)) << ",";
+        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.palVITSBurst50Level));
+        outStream << '\n';
+    }
+
+    // Close the CSV file
+    csvFile.close();
+
+    return true;
+}
+
+// This method creates an 'escaped string' for safe CSV output of QStrings
+QString LdDecodeMetaData::escapedString(QString unescapedString)
+{
+    if (!unescapedString.contains(QLatin1Char(',')))
+        return unescapedString;
+    return '\"' + unescapedString.replace(QLatin1Char('\"'), QStringLiteral("\"\"")) + '\"';
 }
 
 // This method returns the videoParameters metadata

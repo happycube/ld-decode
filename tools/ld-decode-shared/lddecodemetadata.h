@@ -198,6 +198,9 @@ public:
 
     bool read(QString fileName);
     bool write(QString fileName);
+    bool writeVitsCsv(QString fileName);
+
+    QString escapedString(QString unescapedString);
 
     VideoParameters getVideoParameters(void);
     void setVideoParameters (VideoParameters videoParametersParam);
