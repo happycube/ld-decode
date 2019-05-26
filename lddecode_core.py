@@ -1204,6 +1204,7 @@ class Field:
                 hsync_area = self.data[0]['demod_05'][int(zc-(self.rf.freq*1.25)):int(zc+(self.rf.freq*8))]
                 if np.min(hsync_area) < self.rf.iretohz(-55) or np.max(hsync_area) > self.rf.iretohz(30):
                     self.linebad[i] = True
+                    linelocs2[i] = self.linelocs1[i] # don't use the computed value here if it's bad
                 else:
                     porch_level = np.median(self.data[0]['demod_05'][int(zc+(self.rf.freq*8)):int(zc+(self.rf.freq*9))])
                     sync_level = np.median(self.data[0]['demod_05'][int(zc+(self.rf.freq*1)):int(zc+(self.rf.freq*2.5))])
@@ -1215,6 +1216,7 @@ class Field:
                         linelocs2[i] = zc2
                     else:
                         self.linebad[i] = True
+                        linelocs2[i] = self.linelocs1[i]  # don't use the computed value here if it's bad
             else:
                 self.linebad[i] = True
 
