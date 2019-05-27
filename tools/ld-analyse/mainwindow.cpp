@@ -36,7 +36,9 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
 
     // Add a status bar to show the state of the source video file
     ui->statusBar->addWidget(&sourceVideoStatus);
+    ui->statusBar->addPermanentWidget(&frameLineStatus);
     sourceVideoStatus.setText(tr("No source video file loaded"));
+    frameLineStatus.setText(tr(""));
 
     // Set the initial frame number
     currentFrameNumber = 1;
@@ -44,6 +46,7 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
 
     // Add an event filter to the frame viewer label to catch mouse events
     ui->frameViewerLabel->installEventFilter(ui->frameViewerLabel);
+    connect(ui->frameViewerLabel, &FrameQLabel::mouseOverQFrame, this, &MainWindow::mouseOverQFrameSignalHandler);
 
     // Set up the oscilloscope dialogue
     oscilloscopeDialog = new OscilloscopeDialog(this);
@@ -922,47 +925,17 @@ void MainWindow::on_reverseFieldOrderCheckBox_stateChanged(int arg1)
     showFrame(currentFrameNumber, ui->showActiveVideoCheckBox->isChecked(), ui->highlightDropOutsCheckBox->isChecked());
 }
 
-// Mouse press event handler
-void MainWindow::mousePressEvent(QMouseEvent *event)
+// Method to update the line oscilloscope based on the frame number and scan line
+void MainWindow::updateOscilloscopeDialogue(qint32 frameNumber, qint32 scanLine)
 {
-    if (!isFileOpen) return;
+    // Determine the first and second fields for the frame number
+    qint32 firstFieldNumber = ldDecodeMetaData.getFirstFieldNumber(frameNumber);
+    qint32 secondFieldNumber = ldDecodeMetaData.getSecondFieldNumber(frameNumber);
 
-    // Get the mouse position relative to our scene
-    QPoint origin = ui->frameViewerLabel->mapFromGlobal(QCursor::pos());
-
-    // Get the metadata for the fields
-    LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
-
-    // Calculate the frame height
-    qint32 frameHeight = (videoParameters.fieldHeight * 2) - 1;
-
-    // Check that the mouse click is within bounds of the current picture
-    qint32 offset = (ui->frameViewerLabel->height() - ui->frameViewerLabel->pixmap()->height()) / 2;
-
-    if (origin.x() + 1 >= 0 &&
-            origin.y() >= 1 &&
-            origin.x() + 1 <= ui->frameViewerLabel->width() &&
-            origin.y() <= ui->frameViewerLabel->height()) {
-
-        qDebug() << "frameViewerLabel h =" << ui->frameViewerLabel->height();
-        qDebug() << "pixmap h =" << ui->frameViewerLabel->pixmap()->height();
-        qDebug() << "offset =" << offset;
-
-        qreal unscaledY = (static_cast<qreal>(frameHeight) / static_cast<qreal>(ui->frameViewerLabel->pixmap()->height())) * static_cast<qreal>(origin.y() - offset);
-
-        if (unscaledY > 1 && unscaledY <= frameHeight) {
-            qDebug() << "MainWindow::mousePressEvent():" << origin.x() << "x" << origin.y() << ": Unscaled y =" << static_cast<qint32>(unscaledY);
-
-            // Show the oscilloscope dialogue for the selected scan-line
-            updateOscilloscopeDialogue(currentFrameNumber, static_cast<qint32>(unscaledY));
-            oscilloscopeDialog->show();
-
-            // Remember the last line rendered
-            lastScopeLine = origin.y();
-
-            event->accept();
-        }
-    }
+    // Update the oscilloscope dialogue
+    oscilloscopeDialog->showTraceImage(sourceVideo.getVideoField(firstFieldNumber)->getFieldData(),
+                                       sourceVideo.getVideoField(secondFieldNumber)->getFieldData(),
+                                       &ldDecodeMetaData, scanLine, firstFieldNumber, secondFieldNumber);
 }
 
 void MainWindow::scanLineChangedSignalHandler(qint32 scanLine)
@@ -979,22 +952,82 @@ void MainWindow::scanLineChangedSignalHandler(qint32 scanLine)
     }
 }
 
-// Method to update the line oscilloscope based on the frame number and scan line
-void MainWindow::updateOscilloscopeDialogue(qint32 frameNumber, qint32 scanLine)
+// Mouse press event handler
+void MainWindow::mousePressEvent(QMouseEvent *event)
 {
-    // Determine the first and second fields for the frame number
-    qint32 firstFieldNumber = ldDecodeMetaData.getFirstFieldNumber(frameNumber);
-    qint32 secondFieldNumber = ldDecodeMetaData.getSecondFieldNumber(frameNumber);
+    if (!isFileOpen) return;
 
-    // Update the oscilloscope dialogue
-    oscilloscopeDialog->showTraceImage(sourceVideo.getVideoField(firstFieldNumber)->getFieldData(),
-                                       sourceVideo.getVideoField(secondFieldNumber)->getFieldData(),
-                                       &ldDecodeMetaData, scanLine, firstFieldNumber, secondFieldNumber);
+    // Get the mouse position relative to our scene
+    QPoint origin = ui->frameViewerLabel->mapFromGlobal(QCursor::pos());
+
+    // Get the metadata for the fields
+    LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
+
+    // Calculate the frame height
+    qint32 frameHeight = (videoParameters.fieldHeight * 2) - 1;
+
+    // Check that the mouse click is within bounds of the current picture
+    qreal offset = ((static_cast<qreal>(ui->frameViewerLabel->height()) - static_cast<qreal>(ui->frameViewerLabel->pixmap()->height())) / 2.0);
+
+    qint32 oX = origin.x();
+    qint32 oY = origin.y();
+
+    if (oX + 1 >= 0 &&
+            oY >= 0 &&
+            oX + 1 <= ui->frameViewerLabel->width() &&
+            oY <= ui->frameViewerLabel->height()) {
+
+        qreal unscaledYR = (static_cast<qreal>(frameHeight) / static_cast<qreal>(ui->frameViewerLabel->pixmap()->height())) * static_cast<qreal>(oY - offset);
+        qint32 unscaledY = static_cast<qint32>(unscaledYR) + 1;
+        if (unscaledY > frameHeight) unscaledY = frameHeight;
+        if (unscaledY < 1) unscaledY = 1;
+
+        // Show the oscilloscope dialogue for the selected scan-line
+        updateOscilloscopeDialogue(currentFrameNumber, unscaledY);
+        oscilloscopeDialog->show();
+
+        // Remember the last line rendered
+        lastScopeLine = origin.y();
+
+        event->accept();
+    }
 }
 
+// Method to handle the mouse over event from the frame viewer label
+// (This updates the current line number in the status bar)
+void MainWindow::mouseOverQFrameSignalHandler(QMouseEvent *event)
+{
+    if (!isFileOpen) return;
 
+    // Get the mouse position relative to our scene
+    QPoint origin = ui->frameViewerLabel->mapFromGlobal(QCursor::pos());
 
+    // Get the metadata for the fields
+    LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
 
+    // Calculate the frame height
+    qint32 frameHeight = (videoParameters.fieldHeight * 2) - 1;
+
+    // Check that the mouse click is within bounds of the current picture
+    qreal offset = ((static_cast<qreal>(ui->frameViewerLabel->height()) - static_cast<qreal>(ui->frameViewerLabel->pixmap()->height())) / 2.0);
+
+    qint32 oX = origin.x();
+    qint32 oY = origin.y();
+
+    if (oX + 1 >= 0 &&
+            oY >= 0 &&
+            oX + 1 <= ui->frameViewerLabel->width() &&
+            oY <= ui->frameViewerLabel->height()) {
+
+        qreal unscaledYR = (static_cast<qreal>(frameHeight) / static_cast<qreal>(ui->frameViewerLabel->pixmap()->height())) * static_cast<qreal>(oY - offset);
+        qint32 unscaledY = static_cast<qint32>(unscaledYR) + 1;
+        if (unscaledY > frameHeight) unscaledY = frameHeight;
+        if (unscaledY < 1) unscaledY = 1;
+
+        frameLineStatus.setText(QString::number(unscaledY));
+        event->accept();
+    }
+}
 
 
 
