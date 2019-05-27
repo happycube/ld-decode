@@ -631,7 +631,7 @@
         </rect>
        </property>
        <property name="text">
-        <string>Reverse still-frame field order</string>
+        <string>Reverse field order</string>
        </property>
       </widget>
      </widget>
