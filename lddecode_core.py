@@ -974,11 +974,13 @@ class Field:
     def getpulses(self):
         # pass one using standard levels 
 
-        # pulse_hz range:  vsync_ire - 10, maximum is the 50% crossing point to sync
-        pulse_hz_min = self.rf.iretohz(self.rf.SysParams['vsync_ire'] - 10)
-        pulse_hz_max = self.rf.iretohz(self.rf.SysParams['vsync_ire'] / 2)
+        vsync_ire = self.rf.SysParams['vsync_ire']
 
-        pulses = findpulses(self.data[0]['demod_05'], pulse_hz_min, pulse_hz_max)
+        # pulse_hz range:  vsync_ire - 10, maximum is the 50% crossing point to sync
+        self.sync_hz_min = self.rf.iretohz(vsync_ire - 10)
+        self.sync_hz_max = self.rf.iretohz(vsync_ire / 2)
+
+        pulses = findpulses(self.data[0]['demod_05'], self.sync_hz_min, self.sync_hz_max)
 
         if len(pulses) == 0:
             # can't do anything about this
@@ -993,7 +995,7 @@ class Field:
                 vsync_locs.append(i)
                 vsync_means.append(np.mean(self.data[0]['demod_05'][p.start+self.rf.freq:p.start+p.len-self.rf.freq]))
                 
-        self.synclevel = np.median(vsync_means)
+        synclevel = np.median(vsync_means)
 
         # to get the black levels, take the eq pulses before and after vsync
         r1 = range(vsync_locs[0]-5,vsync_locs[0])
@@ -1009,7 +1011,14 @@ class Field:
             if inrange(p.len, self.rf.freq * .75, self.rf.freq * 2.5):
                 black_means.append(np.mean(self.data[0]['demod_05'][p.start+(self.rf.freq*5):p.start+(self.rf.freq*20)]))
 
-        self.blacklevel = np.median(black_means)
+        blacklevel = np.median(black_means)
+
+        # if calculated sync+black levels are acceptably close, use them to ensure phase consistency
+        if inrange(self.rf.hztoire(self.blacklevel), -5, 5) and inrange(self.rf.hztoire(self.synclevel), vsync_ire - 5, vsync_ire + 5):
+            return pulses
+
+        self.blacklevel = blacklevel
+        self.synclevel = synclevel
 
         self.sync_hz_min = self.synclevel - (self.rf.SysParams['hz_ire'] * 10)
         self.sync_hz_max = (self.blacklevel + self.synclevel) / 2
@@ -1289,6 +1298,9 @@ class Field:
         self.dsaudio = None
         self.audio_offset = audio_offset
         self.audio_next_offset = audio_offset
+
+        self.synclevel = self.rf.iretohz(self.rf.SysParams['vsync_ire'])
+        self.blacklevel = self.rf.iretohz(0)
 
         # On NTSC linecount rounds up to 263, and PAL 313
         self.outlinecount = (self.rf.SysParams['frame_lines'] // 2) + 1
@@ -1636,16 +1648,12 @@ class FieldNTSC(Field):
         amed[False] = np.abs(np.median(bursts_arr[False]))
         field14 = amed[True] < amed[False]
 
-#        adj25 = False
         # if the medians are too close, recompute them with a 90 degree offset
         if (np.abs(amed[True] - amed[False]) < .1):
-            #adj25 = True
             amed = {}
             amed[True] = np.abs(np.median(bursts_arr[True] + .25))
             amed[False] = np.abs(np.median(bursts_arr[False] + .25))
             field14 = amed[True] > amed[False]
-
-        #print(field14, adj25, amed)
 
         self.amed = amed
         self.zc_bursts = zc_bursts
@@ -1703,8 +1711,11 @@ class FieldNTSC(Field):
             else:
                 self.fieldPhaseID = 4 if self.field14 else 2
         except:
+            print('oops, exception in ntsc refine_linelocs_burst')
             self.fieldPhaseID=1
             return linelocs_adj, burstlevel#, adjs
+
+        self.burst_adjs = adjs
 
         return linelocs_adj, burstlevel#, adjs
     
