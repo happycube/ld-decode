@@ -908,7 +908,7 @@ class Field:
             else:
                 return None, None
 
-            #print(validpulses[firstblank - 1][1].start, isfirstfield)
+            print(validpulses[firstblank - 1][1].start, isfirstfield)
             
             return validpulses[firstblank - 1][1].start, isfirstfield
                 
@@ -974,13 +974,11 @@ class Field:
     def getpulses(self):
         # pass one using standard levels 
 
-        vsync_ire = self.rf.SysParams['vsync_ire']
-
         # pulse_hz range:  vsync_ire - 10, maximum is the 50% crossing point to sync
-        self.sync_hz_min = self.rf.iretohz(vsync_ire - 10)
-        self.sync_hz_max = self.rf.iretohz(vsync_ire / 2)
+        pulse_hz_min = self.rf.iretohz(self.rf.SysParams['vsync_ire'] - 10)
+        pulse_hz_max = self.rf.iretohz(self.rf.SysParams['vsync_ire'] / 2)
 
-        pulses = findpulses(self.data[0]['demod_05'], self.sync_hz_min, self.sync_hz_max)
+        pulses = findpulses(self.data[0]['demod_05'], pulse_hz_min, pulse_hz_max)
 
         if len(pulses) == 0:
             # can't do anything about this
@@ -997,14 +995,20 @@ class Field:
                 
         synclevel = np.median(vsync_means)
 
-        # to get the black levels, take the eq pulses before and after vsync
+        if np.abs(self.rf.hztoire(synclevel) - self.rf.SysParams['vsync_ire']) < 5:
+            # sync level is close enough to use
+            return pulses
+
+        # Now compute black level and try again
+
+        # take the eq pulses before and after vsync
         r1 = range(vsync_locs[0]-5,vsync_locs[0])
         r2 = range(vsync_locs[-1]+1,vsync_locs[-1]+6)
 
         black_means = []
 
         for i in itertools.chain(r1, r2):
-            if i < 0 or i >= len(pulses):
+            if i < 0 or i > len(pulses):
                 continue
 
             p = pulses[i]
@@ -1013,17 +1017,10 @@ class Field:
 
         blacklevel = np.median(black_means)
 
-        # if calculated sync+black levels are acceptably close, use them to ensure phase consistency
-        if inrange(self.rf.hztoire(self.blacklevel), -5, 5) and inrange(self.rf.hztoire(self.synclevel), vsync_ire - 5, vsync_ire + 5):
-            return pulses
+        pulse_hz_min = synclevel - (self.rf.SysParams['hz_ire'] * 10)
+        pulse_hz_max = (blacklevel + synclevel) / 2
 
-        self.blacklevel = blacklevel
-        self.synclevel = synclevel
-
-        self.sync_hz_min = self.synclevel - (self.rf.SysParams['hz_ire'] * 10)
-        self.sync_hz_max = (self.blacklevel + self.synclevel) / 2
-
-        return findpulses(self.data[0]['demod_05'], self.sync_hz_min, self.sync_hz_max)
+        return findpulses(self.data[0]['demod_05'], pulse_hz_min, pulse_hz_max)
 
     def compute_linelocs(self):
 
@@ -1124,33 +1121,40 @@ class Field:
 
     def refine_linelocs_hsync(self):
         linelocs2 = self.linelocs1.copy()
-        
-        min_level = self.synclevel - (self.rf.SysParams['hz_ire'] * 10)
-        max_level = self.blacklevel + (self.rf.SysParams['hz_ire'] * 10)
-        
-        crossing_point = (self.blacklevel + self.synclevel) / 2
 
         for i in range(len(self.linelocs1)):
             # skip VSYNC lines, since they handle the pulses differently 
             if inrange(i, 3, 6) or (self.rf.system == 'PAL' and inrange(i, 1, 2)):
                 self.linebad[i] = True
                 continue
-                
-            self.linebad[i] = False
-
+                        
             # Find beginning of hsync (linelocs1 is generally in the middle)
-            ll1 = self.linelocs1[i] - self.usectoinpx(2.5)
+            ll1 = self.linelocs1[i] - self.usectoinpx(5.5)
             #logging.info(i, ll1)
-            zc = calczc(self.data[0]['demod_05'], ll1, crossing_point, reverse=False, _count=400)
-            
+            zc = calczc(self.data[0]['demod_05'], ll1, self.rf.iretohz(self.rf.SysParams['vsync_ire'] / 2), reverse=False, _count=400)
+
             if zc is not None and not self.linebad[i]:
                 linelocs2[i] = zc 
 
                 # The hsync area, burst, and porches should not leave -50 to 30 IRE (on PAL or NTSC)
                 hsync_area = self.data[0]['demod_05'][int(zc-(self.rf.freq*1.25)):int(zc+(self.rf.freq*8))]
-                if (np.min(hsync_area) < min_level) or (np.max(hsync_area) > max_level):
+                if np.min(hsync_area) < self.rf.iretohz(-55) or np.max(hsync_area) > self.rf.iretohz(30):
                     self.linebad[i] = True
                     linelocs2[i] = self.linelocs1[i] # don't use the computed value here if it's bad
+                else:
+                    porch_level = np.median(self.data[0]['demod_05'][int(zc+(self.rf.freq*8)):int(zc+(self.rf.freq*9))])
+                    sync_level = np.median(self.data[0]['demod_05'][int(zc+(self.rf.freq*1)):int(zc+(self.rf.freq*2.5))])
+
+                    zc2 = calczc(self.data[0]['demod_05'], ll1, (porch_level + sync_level) / 2, reverse=False, _count=400)
+
+                    # any wild variation here indicates a failure
+                    if zc2 is not None and np.abs(zc2 - zc) < (self.rf.freq / 2):
+                        linelocs2[i] = zc2
+                    else:
+                        self.linebad[i] = True
+                        linelocs2[i] = self.linelocs1[i]  # don't use the computed value here if it's bad
+            else:
+                self.linebad[i] = True
 
         return linelocs2
 
@@ -1298,9 +1302,6 @@ class Field:
         self.dsaudio = None
         self.audio_offset = audio_offset
         self.audio_next_offset = audio_offset
-
-        self.synclevel = self.rf.iretohz(self.rf.SysParams['vsync_ire'])
-        self.blacklevel = self.rf.iretohz(0)
 
         # On NTSC linecount rounds up to 263, and PAL 313
         self.outlinecount = (self.rf.SysParams['frame_lines'] // 2) + 1
@@ -1648,12 +1649,16 @@ class FieldNTSC(Field):
         amed[False] = np.abs(np.median(bursts_arr[False]))
         field14 = amed[True] < amed[False]
 
+#        adj25 = False
         # if the medians are too close, recompute them with a 90 degree offset
         if (np.abs(amed[True] - amed[False]) < .1):
+            #adj25 = True
             amed = {}
             amed[True] = np.abs(np.median(bursts_arr[True] + .25))
             amed[False] = np.abs(np.median(bursts_arr[False] + .25))
             field14 = amed[True] > amed[False]
+
+        #print(field14, adj25, amed)
 
         self.amed = amed
         self.zc_bursts = zc_bursts
@@ -1711,11 +1716,8 @@ class FieldNTSC(Field):
             else:
                 self.fieldPhaseID = 4 if self.field14 else 2
         except:
-            print('oops, exception in ntsc refine_linelocs_burst')
             self.fieldPhaseID=1
             return linelocs_adj, burstlevel#, adjs
-
-        self.burst_adjs = adjs
 
         return linelocs_adj, burstlevel#, adjs
     
