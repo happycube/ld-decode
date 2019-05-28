@@ -2,6 +2,7 @@ from base64 import b64encode
 import copy
 from datetime import datetime
 import getopt
+import itertools
 import io
 from io import BytesIO
 import logging
@@ -682,142 +683,6 @@ class Field:
 
         return slice(int(np.round(_begin)), int(np.round(_begin + _length)))
 
-    def find_vsync(self, pulses, start = 0):
-        ''' find the beginning and end of the core VSYNC period from a pulse set, starting with index # start
-        
-            returns (first pulse # of vsync, first pulse # *after* vsync)
-        '''
-        vset = []
-        prev = None
-
-        for i, p in enumerate(pulses[start:]):
-            usec = self.inpxtousec(p[1])
-
-            # a VSYNC pulse should be *much* longer than 9.6 usec,
-            # so even if there's corruption this should find things...
-            
-            #logging.info(i, p, p[0], usec)
-            
-            if usec > self.rf.SysParams['hsyncPulseUS'] * 2:
-                vset.append((i + start, *p))
-            elif len(vset) and (p[0] - vset[0][1]) > (self.inlinelen * 5):
-                break
-                
-        if len(vset) > 2:
-            return vset[0][0], vset[-1][0]+1
-        else:
-            return None
-        
-    def compute_distance(self, pulses, p1, p2, ll = 0, round=True):
-        linelen = self.inlinelen if ll == 0 else ll
-        #logging.info(p1, p2, len(pulses))
-        dist = (pulses[p2][0]-pulses[p1][0]) / linelen
-        
-        return np.round(dist*2)/2 if round else dist
-
-    def __refinepulses(self, pulses):
-        ''' returns validated pulses with type and distance checks '''
-
-        ptype = np.zeros(len(pulses), dtype=np.int)
-
-        HSYNC, EQPL1, VSYNC, EQPL2 = range(4)
-
-        # Check for VSYNC pulses first
-        for i in range(0, len(pulses)-2):
-            s = pulses[i].start
-                
-            pmean = np.mean(inrange(self.data[0]['demod_05'][s:s+(self.inlinelen//2)], self.rf.iretohz(-40), self.rf.iretohz(0)))
-            pgap = (pulses[i+1].start - s)
-            
-            if inrange(pgap, self.inlinelen * .45, self.inlinelen * .55) and pmean > .75:
-                ptype[i] = VSYNC
-                
-        # Log transitions
-
-        arearange = int(((self.rf.SysParams['numPulses'] + .2) * self.inlinelen) / 2)
-
-        vsync_starts = []
-        vsync_ends = []
-        vblank_range = []
-
-        vslens = []
-
-        for i in range(1, len(pulses)):
-            if ptype[i] == VSYNC:
-                vslens.append(pulses[i].len)
-            
-            if ptype[i] == VSYNC and ptype[i - 1] == EQPL1:
-                vsync_starts.append(pulses[i].start)
-            elif ptype[i] == EQPL2 and ptype[i - 1] == VSYNC:
-                if i < self.rf.SysParams['numPulses']:
-                    # XXX: fail out completely here, this started in the middle of vsync
-                    continue
-                
-                vsync_ends.append(pulses[i].start)
-                vblank_range.append((vsync_starts[-1] - arearange, pulses[i].start + arearange, vsync_starts[-1]))
-                
-        # Now check for EQ pulses based off what we found in VSYNCs
-
-        eqlengths = []
-        hsync_min = self.usectoinpx(self.rf.SysParams['hsyncPulseUS']) * .75
-
-        for i in range(0, len(pulses)):
-            for vb in vblank_range:
-                if ptype[i] != VSYNC and inrange(pulses[i].start, *vb[:2]) and pulses[i].len < hsync_min:
-                    ptype[i] = EQPL1 if pulses[i].start < vb[2] else EQPL2
-                    
-                    eqlengths.append(pulses[i].len)
-
-        # Once the EQ and VSYNC pulses are worked out, get the regular HSYNC lengths
-        hslens = []
-        for spulse in zip(ptype, pulses):
-            if spulse[0] == HSYNC:
-                hslens.append(spulse[1].len)
-
-        hmedians = np.median(hslens), np.median(eqlengths), np.median(vslens), np.median(eqlengths)
-
-        validpulses = []
-
-        print(vblank_range)
-
-        for spulse in zip(ptype, pulses):
-            # Quality checks
-
-            # Make sure the length is close to the hblank type
-            if not inrange(spulse[1].len, hmedians[spulse[0]] - self.usectoinpx(.5), hmedians[spulse[0]] + self.usectoinpx(.5)):
-                continue
-
-            # Any really invalid EQ pulses may be tagged HSYNC - drop them if so
-            # (this may drop the first line after vblank, but eh)
-            drop = False
-            for r in vblank_range:
-                if spulse[0] == HSYNC and inrange(spulse[1].start, r[0], r[1]):
-                    print('drop', spulse, r[0], r[1])
-                    drop = True
-
-            if drop:
-                continue
-                
-            # Now determine if there are any weird gaps...
-            if len(validpulses) >= 1:
-                prevpulse = validpulses[-1]
-                if prevpulse[0] > 0 and spulse[0] > 0:
-                    exprange = (.4, .6)
-                elif prevpulse[0] == 0 and spulse[0] == 0:
-                    exprange = (.9, 1.1)
-                else: # transition to/from regular hsyncs can be .5 or 1H
-                    exprange = (.4, 1.1)
-
-                linelen = (spulse[1].start - prevpulse[1].start) / self.inlinelen
-                inorder = inrange(linelen, *exprange)
-            else:
-                inorder = True
-
-            if spulse is not None:
-                validpulses.append((*spulse, inorder))
-                
-        return validpulses
-
     def refinepulses(self, pulses):
         ''' returns validated pulses with type and distance checks '''
         
@@ -1106,12 +971,60 @@ class Field:
 
         return line0loc, isFirstField        
 
-    def compute_linelocs(self):
+    def getpulses(self):
+        # pass one using standard levels 
+
         # pulse_hz range:  vsync_ire - 10, maximum is the 50% crossing point to sync
         pulse_hz_min = self.rf.iretohz(self.rf.SysParams['vsync_ire'] - 10)
         pulse_hz_max = self.rf.iretohz(self.rf.SysParams['vsync_ire'] / 2)
 
         pulses = findpulses(self.data[0]['demod_05'], pulse_hz_min, pulse_hz_max)
+
+        if len(pulses) == 0:
+            # can't do anything about this
+            return pulses
+
+        # determine sync pulses from vsync
+        vsync_locs = []
+        vsync_means = []
+
+        for i, p in enumerate(pulses):
+            if p.len > self.usectoinpx(10):
+                vsync_locs.append(i)
+                vsync_means.append(np.mean(self.data[0]['demod_05'][p.start+self.rf.freq:p.start+p.len-self.rf.freq]))
+                
+        synclevel = np.median(vsync_means)
+
+        if np.abs(self.rf.hztoire(synclevel) - self.rf.SysParams['vsync_ire']) < 5:
+            # sync level is close enough to use
+            return pulses
+
+        # Now compute black level and try again
+
+        # take the eq pulses before and after vsync
+        r1 = range(vsync_locs[0]-5,vsync_locs[0])
+        r2 = range(vsync_locs[-1]+1,vsync_locs[-1]+6)
+
+        black_means = []
+
+        for i in itertools.chain(r1, r2):
+            if i < 0 or i > len(pulses):
+                continue
+
+            p = pulses[i]
+            if inrange(p.len, self.rf.freq * 1, self.rf.freq * 2.5):
+                black_means.append(np.mean(self.data[0]['demod_05'][p.start+(self.rf.freq*5):p.start+(self.rf.freq*20)]))
+
+        blacklevel = np.median(black_means)
+
+        pulse_hz_min = synclevel - (self.rf.SysParams['hz_ire'] * 10)
+        pulse_hz_max = (blacklevel + synclevel) / 2
+
+        return findpulses(self.data[0]['demod_05'], pulse_hz_min, pulse_hz_max)
+
+    def compute_linelocs(self):
+
+        pulses = self.getpulses()
 
         if len(pulses) == 0:
             print("Unable to find any sync pulses")
