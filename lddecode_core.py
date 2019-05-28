@@ -1012,7 +1012,7 @@ class Field:
                 continue
 
             p = pulses[i]
-            if inrange(p.len, self.rf.freq * 1, self.rf.freq * 2.5):
+            if inrange(p.len, self.rf.freq * .75, self.rf.freq * 2.5):
                 black_means.append(np.mean(self.data[0]['demod_05'][p.start+(self.rf.freq*5):p.start+(self.rf.freq*20)]))
 
         blacklevel = np.median(black_means)
