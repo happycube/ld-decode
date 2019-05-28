@@ -821,15 +821,33 @@ class Field:
     def refinepulses(self, pulses):
         ''' returns validated pulses with type and distance checks '''
         
-        # compute the allowable times for each pulse type
-        hsync_min = self.usectoinpx(self.rf.SysParams['hsyncPulseUS'] - .75)
-        hsync_max = self.usectoinpx(self.rf.SysParams['hsyncPulseUS'] + .5)
+        hsync_typical = self.usectoinpx(self.rf.SysParams['hsyncPulseUS'])
 
-        eq_min = self.usectoinpx(self.rf.SysParams['eqPulseUS'] - .5)
-        eq_max = self.usectoinpx(self.rf.SysParams['eqPulseUS'] + .5)
+        # Some disks have odd sync levels resulting in short and/or long pulse lengths.
+        # So, take the median hsync and adjust the expected values accordingly
 
-        vsync_min = self.usectoinpx(self.rf.SysParams['vsyncPulseUS'] - 1)
-        vsync_max = self.usectoinpx(self.rf.SysParams['vsyncPulseUS'] + .5)
+        hsync_checkmin = self.usectoinpx(self.rf.SysParams['hsyncPulseUS'] - 1.75)
+        hsync_checkmax = self.usectoinpx(self.rf.SysParams['hsyncPulseUS'] + 2)
+
+        hlens = []
+        for p in pulses:
+            if inrange(p.len, hsync_checkmin, hsync_checkmax):
+                hlens.append(p.len)
+
+        hsync_median = np.median(hlens)
+
+        hsync_min = hsync_median + self.usectoinpx(-.5)
+        hsync_max = hsync_median + self.usectoinpx(.5)
+
+        hsync_offset = hsync_median - hsync_typical
+
+        eq_min = self.usectoinpx(self.rf.SysParams['eqPulseUS'] - .5) + hsync_offset
+        eq_max = self.usectoinpx(self.rf.SysParams['eqPulseUS'] + .5) + hsync_offset
+
+        vsync_min = self.usectoinpx(self.rf.SysParams['vsyncPulseUS'] - 1) + hsync_offset
+        vsync_max = self.usectoinpx(self.rf.SysParams['vsyncPulseUS'] + .5) + hsync_offset
+
+        #print(hsync_typical, hsync_median, hsync_offset, eq_min, eq_max, vsync_min, vsync_max)
 
         # Pulse validator routine.  Removes sync pulses of invalid lengths, does not 
         # fill missing ones.
@@ -1096,14 +1114,14 @@ class Field:
         pulses = findpulses(self.data[0]['demod_05'], pulse_hz_min, pulse_hz_max)
 
         if len(pulses) == 0:
-            logging.info("Unable to find any sync pulses")
+            print("Unable to find any sync pulses")
             return None, None, self.rf.freq_hz
 
         validpulses = self.refinepulses(pulses)
         self.validpulses = validpulses
 
         blank1 = self.getblankrange(validpulses)
-        if blank1[1] is None:
+        if False and blank1[1] is None:
             return None, None, self.inlinelen * 200
 
         blank2 = self.getblankrange(validpulses, blank1[1] + 1)
