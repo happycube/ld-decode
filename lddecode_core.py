@@ -1002,7 +1002,7 @@ class Field:
         black_means = []
 
         for i in itertools.chain(r1, r2):
-            if i < 0 or i > len(pulses):
+            if i < 0 or i >= len(pulses):
                 continue
 
             p = pulses[i]
