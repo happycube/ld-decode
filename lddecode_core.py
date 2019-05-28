@@ -908,7 +908,7 @@ class Field:
             else:
                 return None, None
 
-            print(validpulses[firstblank - 1][1].start, isfirstfield)
+            #print(validpulses[firstblank - 1][1].start, isfirstfield)
             
             return validpulses[firstblank - 1][1].start, isfirstfield
                 
@@ -993,15 +993,9 @@ class Field:
                 vsync_locs.append(i)
                 vsync_means.append(np.mean(self.data[0]['demod_05'][p.start+self.rf.freq:p.start+p.len-self.rf.freq]))
                 
-        synclevel = np.median(vsync_means)
+        self.synclevel = np.median(vsync_means)
 
-        if np.abs(self.rf.hztoire(synclevel) - self.rf.SysParams['vsync_ire']) < 5:
-            # sync level is close enough to use
-            return pulses
-
-        # Now compute black level and try again
-
-        # take the eq pulses before and after vsync
+        # to get the black levels, take the eq pulses before and after vsync
         r1 = range(vsync_locs[0]-5,vsync_locs[0])
         r2 = range(vsync_locs[-1]+1,vsync_locs[-1]+6)
 
@@ -1015,12 +1009,12 @@ class Field:
             if inrange(p.len, self.rf.freq * .75, self.rf.freq * 2.5):
                 black_means.append(np.mean(self.data[0]['demod_05'][p.start+(self.rf.freq*5):p.start+(self.rf.freq*20)]))
 
-        blacklevel = np.median(black_means)
+        self.blacklevel = np.median(black_means)
 
-        pulse_hz_min = synclevel - (self.rf.SysParams['hz_ire'] * 10)
-        pulse_hz_max = (blacklevel + synclevel) / 2
+        self.sync_hz_min = self.synclevel - (self.rf.SysParams['hz_ire'] * 10)
+        self.sync_hz_max = (self.blacklevel + self.synclevel) / 2
 
-        return findpulses(self.data[0]['demod_05'], pulse_hz_min, pulse_hz_max)
+        return findpulses(self.data[0]['demod_05'], self.sync_hz_min, self.sync_hz_max)
 
     def compute_linelocs(self):
 
@@ -1121,40 +1115,33 @@ class Field:
 
     def refine_linelocs_hsync(self):
         linelocs2 = self.linelocs1.copy()
+        
+        min_level = self.synclevel - (self.rf.SysParams['hz_ire'] * 10)
+        max_level = self.blacklevel + (self.rf.SysParams['hz_ire'] * 10)
+        
+        crossing_point = (self.blacklevel + self.synclevel) / 2
 
         for i in range(len(self.linelocs1)):
             # skip VSYNC lines, since they handle the pulses differently 
             if inrange(i, 3, 6) or (self.rf.system == 'PAL' and inrange(i, 1, 2)):
                 self.linebad[i] = True
                 continue
-                        
-            # Find beginning of hsync (linelocs1 is generally in the middle)
-            ll1 = self.linelocs1[i] - self.usectoinpx(5.5)
-            #logging.info(i, ll1)
-            zc = calczc(self.data[0]['demod_05'], ll1, self.rf.iretohz(self.rf.SysParams['vsync_ire'] / 2), reverse=False, _count=400)
+                
+            self.linebad[i] = False
 
+            # Find beginning of hsync (linelocs1 is generally in the middle)
+            ll1 = self.linelocs1[i] - self.usectoinpx(2.5)
+            #logging.info(i, ll1)
+            zc = calczc(self.data[0]['demod_05'], ll1, crossing_point, reverse=False, _count=400)
+            
             if zc is not None and not self.linebad[i]:
                 linelocs2[i] = zc 
 
                 # The hsync area, burst, and porches should not leave -50 to 30 IRE (on PAL or NTSC)
                 hsync_area = self.data[0]['demod_05'][int(zc-(self.rf.freq*1.25)):int(zc+(self.rf.freq*8))]
-                if np.min(hsync_area) < self.rf.iretohz(-55) or np.max(hsync_area) > self.rf.iretohz(30):
+                if (np.min(hsync_area) < min_level) or (np.max(hsync_area) > max_level):
                     self.linebad[i] = True
                     linelocs2[i] = self.linelocs1[i] # don't use the computed value here if it's bad
-                else:
-                    porch_level = np.median(self.data[0]['demod_05'][int(zc+(self.rf.freq*8)):int(zc+(self.rf.freq*9))])
-                    sync_level = np.median(self.data[0]['demod_05'][int(zc+(self.rf.freq*1)):int(zc+(self.rf.freq*2.5))])
-
-                    zc2 = calczc(self.data[0]['demod_05'], ll1, (porch_level + sync_level) / 2, reverse=False, _count=400)
-
-                    # any wild variation here indicates a failure
-                    if zc2 is not None and np.abs(zc2 - zc) < (self.rf.freq / 2):
-                        linelocs2[i] = zc2
-                    else:
-                        self.linebad[i] = True
-                        linelocs2[i] = self.linelocs1[i]  # don't use the computed value here if it's bad
-            else:
-                self.linebad[i] = True
 
         return linelocs2
 
