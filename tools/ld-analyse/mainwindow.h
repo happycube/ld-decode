@@ -75,6 +75,7 @@ private slots:
     void on_actionVBI_triggered();
 
     void mousePressEvent(QMouseEvent *event);
+    void mouseOverQFrameSignalHandler(QMouseEvent *event);
     void scanLineChangedSignalHandler(qint32 scanLine);
 
     void on_actionNTSC_triggered();
@@ -110,6 +111,7 @@ private:
     // Class globals
     Configuration *configuration;
     QLabel sourceVideoStatus;
+    QLabel frameLineStatus;
     LdDecodeMetaData ldDecodeMetaData;
     SourceVideo sourceVideo;
     qint32 currentFrameNumber;
