@@ -1139,6 +1139,7 @@ class Field:
                 # The hsync area, burst, and porches should not leave -50 to 30 IRE (on PAL or NTSC)
                 hsync_area = self.data[0]['demod_05'][int(zc-(self.rf.freq*1.25)):int(zc+(self.rf.freq*8))]
                 if np.min(hsync_area) < self.rf.iretohz(-55) or np.max(hsync_area) > self.rf.iretohz(30):
+                    print('failedrange', i)
                     self.linebad[i] = True
                     linelocs2[i] = self.linelocs1[i] # don't use the computed value here if it's bad
                 else:
@@ -1147,13 +1148,9 @@ class Field:
 
                     zc2 = calczc(self.data[0]['demod_05'], ll1, (porch_level + sync_level) / 2, reverse=False, _count=400)
 
-                    # any wild variation here indicates a failure
-                    if zc2 is not None and np.abs(zc2 - zc) < (self.rf.freq / 2):
-                        linelocs2[i] = zc2
-                    else:
-                        self.linebad[i] = True
-                        linelocs2[i] = self.linelocs1[i]  # don't use the computed value here if it's bad
+                    linelocs2[i] = zc2
             else:
+                print('failed', i)
                 self.linebad[i] = True
 
         return linelocs2
@@ -1708,6 +1705,9 @@ class FieldNTSC(Field):
                     if l >= 20:
                         # issue #217: if possible keep some line data even if burst is bad 
                         self.linebad[l] = True
+
+            self.burst_adjs = adjs
+            self.burst_adj_median = adjs_median
 
             self.field14 = field14
 
