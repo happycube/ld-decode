@@ -1124,19 +1124,13 @@ class Field:
 
         for i in range(len(self.linelocs1)):
             # skip VSYNC lines, since they handle the pulses differently 
-            if inrange(i, 3, 6) or (self.rf.system == 'PAL' and inrange(i, 1, 2)):
-                self.linebad[i] = True
-                continue
+#            if inrange(i, 3, 6) or (self.rf.system == 'PAL' and inrange(i, 1, 2)):
+#                self.linebad[i] = True
+#                continue
                         
-            # Find beginning of hsync (linelocs1 is generally in the middle)
-            ll1 = self.linelocs1[i] - self.usectoinpx(5.5)
-            #logging.info(i, ll1)
-            zc = calczc(self.data[0]['demod_05'], ll1, self.rf.iretohz(self.rf.SysParams['vsync_ire'] / 2), reverse=False, _count=400)
-
-            if zc is not None and not self.linebad[i]:
-                linelocs2[i] = zc 
-
+            if not self.linebad[i]:
                 # The hsync area, burst, and porches should not leave -50 to 30 IRE (on PAL or NTSC)
+                zc = self.linelocs1[i]
                 hsync_area = self.data[0]['demod_05'][int(zc-(self.rf.freq*1.25)):int(zc+(self.rf.freq*8))]
                 if np.min(hsync_area) < self.rf.iretohz(-55) or np.max(hsync_area) > self.rf.iretohz(30):
                     self.linebad[i] = True
@@ -1145,16 +1139,12 @@ class Field:
                     porch_level = np.median(self.data[0]['demod_05'][int(zc+(self.rf.freq*8)):int(zc+(self.rf.freq*9))])
                     sync_level = np.median(self.data[0]['demod_05'][int(zc+(self.rf.freq*1)):int(zc+(self.rf.freq*2.5))])
 
-                    zc2 = calczc(self.data[0]['demod_05'], ll1, (porch_level + sync_level) / 2, reverse=False, _count=400)
+                    zc2 = calczc(self.data[0]['demod_05'], zc, (porch_level + sync_level) / 2, reverse=True, _count=self.rf.freq*2)
 
-                    # any wild variation here indicates a failure
-                    if zc2 is not None and np.abs(zc2 - zc) < (self.rf.freq / 2):
+                    if zc2 is not None:
                         linelocs2[i] = zc2
                     else:
                         self.linebad[i] = True
-                        linelocs2[i] = self.linelocs1[i]  # don't use the computed value here if it's bad
-            else:
-                self.linebad[i] = True
 
         return linelocs2
 
@@ -2231,11 +2221,13 @@ class LDdecode:
                 break
         
         # compute black line SNR.  For PAL line 22 is guaranteed to be blanked for a pure disk (P)SNR
-        blackline = 14 if system == 'NTSC' else 22
-        bl_slicetbc = f.lineslice_tbc(blackline, 12, 50)
-
-        # these metrics handle various easily detectable differences between fields
-        bl_slice = f.lineslice(blackline, 12, 50)
+        if system == 'PAL':
+            # these metrics handle various easily detectable differences between fields
+            bl_slice = f.lineslice(22, 12, 50)
+            bl_slicetbc = f.lineslice_tbc(22, 12, 50)
+        else: # NTSC
+            bl_slice = f.lineslice(1, 10, 20)
+            bl_slicetbc = f.lineslice_tbc(1, 10, 20)
 
         delay = int(f.rf.delays['video_sync'])
         bl_sliceraw = slice(bl_slice.start - delay, bl_slice.stop - delay)
