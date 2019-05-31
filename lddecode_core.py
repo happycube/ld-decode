@@ -1001,6 +1001,9 @@ class Field:
 
         # Now compute black level and try again
 
+        if vsync_locs is None or not len(vsync_locs):
+            return None
+
         # take the eq pulses before and after vsync
         r1 = range(vsync_locs[0]-5,vsync_locs[0])
         r2 = range(vsync_locs[-1]+1,vsync_locs[-1]+6)
@@ -1008,7 +1011,7 @@ class Field:
         black_means = []
 
         for i in itertools.chain(r1, r2):
-            if i < 0 or i > len(pulses):
+            if i < 0 or i >= len(pulses):
                 continue
 
             p = pulses[i]
@@ -1026,7 +1029,7 @@ class Field:
 
         pulses = self.getpulses()
 
-        if len(pulses) == 0:
+        if pulses is None or len(pulses) == 0:
             print("Unable to find any sync pulses")
             return None, None, self.rf.freq_hz
 
