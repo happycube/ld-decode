@@ -1391,8 +1391,12 @@ class Field:
 
         for e in errmap:
             if e > curerr[0] and e <= (curerr[1] + 20):
-                epad = curerr[0] + ((e - curerr[0]) * 2)
+                pad = ((e - curerr[0])) * 2
+                pad = min(pad, self.rf.freq * 8)
+                epad = curerr[0] + pad
                 curerr = (curerr[0], epad)
+#                if curerr[1] - curerr[0] > 20:
+                    #print(e, curerr)
             elif e > firsterr:
                 errlist.append(curerr)
                 curerr = (e, e)
