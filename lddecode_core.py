@@ -1367,19 +1367,18 @@ class Field:
 
             if self.rf.system == 'PAL':
                 # basically exclude the pilot signal altogether
-                # This is needed even though HSYNC is excluded later, since failures are expanded
+                # This is needed even though HSYNC is excluded later, since failures can be expanded
                 valid_min[int(l-(f.rf.freq * .5)):int(l+(f.rf.freq * 4.7))] = f.rf.iretohz(-80)
                 valid_max[int(l-(f.rf.freq * .5)):int(l+(f.rf.freq * 4.7))] = f.rf.iretohz(50)
-
-        # effectively disable during VSYNC
-        for i in range(1, 7 + self.lineoffset):
-            valid_min[int(f.linelocs[i]):int(f.linelocs[i+1])] = f.rf.iretohz(-150)
-            valid_max[int(f.linelocs[i]):int(f.linelocs[i+1])] = f.rf.iretohz(150)
 
         iserr2 = f.data[0]['demod'] < valid_min
         iserr2 |= f.data[0]['demod'] > valid_max
 
         iserr = iserr1 | iserr2
+
+        # Each valid pulse is definitely *not* an error, so exclude it here at the end
+        for v in self.validpulses:
+            iserr[v[1].start:v[1].start+v[1].len] = False
         
         return iserr
 
@@ -2302,7 +2301,7 @@ class LDdecode:
             if prevfi:
                 if not ((fi['fieldPhaseID'] == 1 and prevfi['fieldPhaseID'] == 4) or
                         (fi['fieldPhaseID'] == prevfi['fieldPhaseID'] + 1)):
-                    logging.warning('NTSC field phaseID sequence mismatch')
+                    logging.warning('NTSC field phaseID sequence mismatch (player may be paused)')
                     decodeFaults |= 2
 
         if prevfi is not None and prevfi['isFirstField'] == fi['isFirstField']:
