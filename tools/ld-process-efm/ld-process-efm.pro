@@ -15,6 +15,7 @@ DEFINES += QT_DEPRECATED_WARNINGS
 #DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
 
 SOURCES += \
+    logging.cpp \
         main.cpp \
     efmprocess.cpp \
     f3frame.cpp \
@@ -64,6 +65,7 @@ HEADERS += \
     c1circ.h \
     c2circ.h \
     c2deinterleave.h \
+    logging.h \
     sectiontometa.h \
     sectorstometa.h \
     tracktime.h \

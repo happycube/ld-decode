@@ -23,6 +23,7 @@
 ************************************************************************/
 
 #include "sectorstodata.h"
+#include "logging.h"
 
 SectorsToData::SectorsToData()
 {
@@ -34,13 +35,13 @@ SectorsToData::SectorsToData()
     missingSectors = 0;
 }
 
-// Method to write status information to qInfo
+// Method to write status information to qCInfo
 void SectorsToData::reportStatus(void)
 {
-    qInfo() << "Sectors to data converter:";
-    qInfo() << "  Total number of sectors written =" << sectorsOut;
-    qInfo() << "  Empty sectors (probably) due to EFM signal gaps =" << gapSectors;
-    qInfo() << "  Empty sectors (probably) due to data loss =" << missingSectors;
+    qCInfo(efm_sectorsTodata) << "Sectors to data converter:";
+    qCInfo(efm_sectorsTodata) << "  Total number of sectors written =" << sectorsOut;
+    qCInfo(efm_sectorsTodata) << "  Empty sectors (probably) due to EFM signal gaps =" << gapSectors;
+    qCInfo(efm_sectorsTodata) << "  Empty sectors (probably) due to data loss =" << missingSectors;
 
     if (missingStartSector.size() > 0) {
         // Report gaps and missing data
@@ -48,13 +49,13 @@ void SectorsToData::reportStatus(void)
         QString endAddress;
         QString type;
 
-        qInfo() << "  Empty sector analysis:";
+        qCInfo(efm_sectorsTodata) << "  Empty sector analysis:";
         for (qint32 i = 0; i < missingStartSector.size(); i++) {
             startAddress = QString("0x%1").arg(missingStartSector[i], 8, 16, QChar('0'));
             endAddress = QString("0x%1").arg(missingEndSector[i], 8, 16, QChar('0'));
             if (isGap[i]) type = "EFM Gap"; else type = "Data Loss";
 
-            qInfo().noquote() << "    " << startAddress << "-" << endAddress << type;
+            qCInfo(efm_sectorsTodata).noquote() << "    " << startAddress << "-" << endAddress << type;
         }
     }
 }
@@ -66,10 +67,10 @@ bool SectorsToData::openOutputFile(QString filename)
     outputFileHandle = new QFile(filename);
     if (!outputFileHandle->open(QIODevice::WriteOnly)) {
         // Failed to open source sample file
-        qDebug() << "Could not open " << outputFileHandle << "as data output file";
+        qCDebug(efm_sectorsTodata) << "Could not open " << outputFileHandle << "as data output file";
         return false;
     }
-    qDebug() << "SectorsToData::openOutputFile(): Opened" << filename << "as data output file";
+    qCDebug(efm_sectorsTodata) << "SectorsToData::openOutputFile(): Opened" << filename << "as data output file";
 
     // Exit with success
     return true;
@@ -95,7 +96,7 @@ void SectorsToData::convert(QVector<Sector> sectors)
         // Is sector valid?
         if (sectors[i].isValid()) {
             // Output sector metadata to debug
-            qDebug() << "SectorsToData::convert(): Writing mode" << sectors[i].getMode() <<
+            qCDebug(efm_sectorsTodata) << "SectorsToData::convert(): Writing mode" << sectors[i].getMode() <<
                         sectors[i].getUserData().size() << "byte" <<
                         "data sector with address of" << sectors[i].getAddress().getTimeAsQString();
 
@@ -110,7 +111,7 @@ void SectorsToData::convert(QVector<Sector> sectors)
                     qint32 missingFrames = (sectors[i].getAddress().getFrames() - expectedAddress.getFrames());
 
                     // Address is not the expected next sector, show debug
-                    qDebug() << "SectorsToData::convert(): Unexpected sector address - missing" <<
+                    qCDebug(efm_sectorsTodata) << "SectorsToData::convert(): Unexpected sector address - missing" <<
                                 missingFrames << "sectors -" <<
                                 "padding output data!";
 
@@ -130,7 +131,7 @@ void SectorsToData::convert(QVector<Sector> sectors)
                     // EFM signal on the disc (Domesday has a number of these).  If we loose just a few
                     // sectors, then it's very likely data is missing
                     if (missingFrames > 16) {
-                        qDebug() << "SectorsToData::convert(): A gap of" << missingFrames << "sectors was detected in the EFM (probably a break in the EFM signal)";
+                        qCDebug(efm_sectorsTodata) << "SectorsToData::convert(): A gap of" << missingFrames << "sectors was detected in the EFM (probably a break in the EFM signal)";
                         gapSectors += missingFrames;
 
                         // Record the gap
@@ -138,10 +139,10 @@ void SectorsToData::convert(QVector<Sector> sectors)
                         missingEndSector.append((sectorsOut + missingFrames) * bytesToPad);
                         isGap.append(true);
                     } else {
-                        qDebug() << "SectorsToData::convert(): A gap of" << missingFrames << "sectors was detected in the EFM (probably corrupt data!)";
+                        qCDebug(efm_sectorsTodata) << "SectorsToData::convert(): A gap of" << missingFrames << "sectors was detected in the EFM (probably corrupt data!)";
                         missingSectors += missingFrames;
 
-                        qDebug().noquote() << "SectorsToData::convert(): Gap started at position" << QString("0x%1").arg(sectorsOut * bytesToPad, 0, 16) <<
+                        qCDebug(efm_sectorsTodata).noquote() << "SectorsToData::convert(): Gap started at position" << QString("0x%1").arg(sectorsOut * bytesToPad, 0, 16) <<
                                       "and finished at" << QString("0x%1").arg((sectorsOut + missingFrames) * bytesToPad, 0, 16);
 
                         // Record the data loss
@@ -161,7 +162,7 @@ void SectorsToData::convert(QVector<Sector> sectors)
                 // This is the first valid sector
                 // First valid sector found
                 gotFirstValidSector = true;
-                qDebug() << "SectorsToData::convert(): First valid data sector found!";
+                qCDebug(efm_sectorsTodata) << "SectorsToData::convert(): First valid data sector found!";
             }
 
             // Write sector to disc
@@ -171,7 +172,7 @@ void SectorsToData::convert(QVector<Sector> sectors)
             lastGoodAddress = sectors[i].getAddress();
             sectorsOut++;
         } else {
-            qDebug() << "SectorsToData::convert(): Data sector is invalid - ignoring";
+            qCDebug(efm_sectorsTodata) << "SectorsToData::convert(): Data sector is invalid - ignoring";
         }
     }
 }

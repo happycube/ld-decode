@@ -130,6 +130,12 @@ int main(int argc, char *argv[])
                                        QCoreApplication::translate("main", "Suppress info and warning messages"));
     parser.addOption(setQuietOption);
 
+    // Option to select the number of threads (-t)
+    QCommandLineOption threadsOption(QStringList() << "t" << "threads",
+                                        QCoreApplication::translate("main", "Specify the number of concurrent threads (default is 32)"),
+                                        QCoreApplication::translate("main", "number"));
+    parser.addOption(threadsOption);
+
     // Positional argument to specify input video file
     parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input TBC file"));
 
@@ -172,6 +178,7 @@ int main(int argc, char *argv[])
 
     qint32 startFrame = -1;
     qint32 length = -1;
+    qint32 maxThreads = 32;
 
     if (parser.isSet(startFrameOption)) {
         startFrame = parser.value(startFrameOption).toInt();
@@ -193,12 +200,22 @@ int main(int argc, char *argv[])
         }
     }
 
+    if (parser.isSet(threadsOption)) {
+        maxThreads = parser.value(threadsOption).toInt();
+
+        if (maxThreads < 1) {
+            // Quit with error
+            qCritical("Specified number of threads must be greater than zero");
+            return -1;
+        }
+    }
+
     // Process the command line options
     if (isDebugOn) showDebug = true;
 
     // Perform the processing
     PalCombFilter palCombFilter;
-    palCombFilter.process(inputFileName, outputFileName, startFrame, length, reverse, blackAndWhite);
+    palCombFilter.process(inputFileName, outputFileName, startFrame, length, reverse, blackAndWhite, maxThreads);
 
     // Quit with success
     return 0;

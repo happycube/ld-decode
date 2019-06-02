@@ -29,11 +29,11 @@ PalCombFilter::PalCombFilter(QObject *parent) : QObject(parent)
 
 }
 
-bool PalCombFilter::process(QString inputFileName, QString outputFileName, qint32 startFrame, qint32 length, bool reverse, bool blackAndWhite)
+bool PalCombFilter::process(QString inputFileName, QString outputFileName, qint32 startFrame, qint32 length,
+                            bool reverse, bool blackAndWhite, qint32 maxThreads)
 {
-    qint32 maxThreads = 16;
-
     // Open the source video metadata
+    qInfo() << "Reading JSON metadata...";
     if (!ldDecodeMetaData.read(inputFileName + ".json")) {
         qInfo() << "Unable to open ld-decode metadata file";
         return false;
@@ -75,6 +75,7 @@ bool PalCombFilter::process(QString inputFileName, QString outputFileName, qint3
     for (qint32 i = 0; i < maxThreads; i++) {
         filterThreads[i] = new FilterThread(videoParameters);
     }
+    qInfo() << "Using" << maxThreads << "threads";
 
     // Open the source video file
     if (!sourceVideo.open(inputFileName, videoParameters.fieldWidth * videoParameters.fieldHeight)) {
@@ -175,15 +176,15 @@ bool PalCombFilter::process(QString inputFileName, QString outputFileName, qint3
 
         // Show an update to the user
         qreal fps = maxThreads / (static_cast<qreal>(timer.elapsed()) / 1000.0);
-        qInfo() << frameNumber + maxThreads - 1 << "frames processed -" << fps << "FPS";
+        qInfo() << (frameNumber - (startFrame - 1)) + maxThreads - 1 << "frames processed -" << fps << "FPS";
     }
 
     qreal totalSecs = (static_cast<qreal>(totalTimer.elapsed()) / 1000.0);
-    qInfo() << "Processing complete -" << length + (startFrame - 1) << "frames in" << totalSecs << "seconds (" <<
-               (length + (startFrame - 1)) / totalSecs << "FPS )";
+    qInfo() << "Processing complete -" << length << "frames in" << totalSecs << "seconds (" <<
+               length / totalSecs << "FPS )";
 
     // Show processing summary
-    qInfo() << "Processed" << length + (startFrame - 1) << "frames into" <<
+    qInfo() << "Processed" << length << "frames into" <<
                videoEnd - videoStart << "x 576" <<
                "RGB16-16-16 frames";
 

@@ -23,6 +23,7 @@
 ************************************************************************/
 
 #include "efmprocess.h"
+#include "logging.h"
 
 EfmProcess::EfmProcess()
 {
@@ -41,7 +42,7 @@ bool EfmProcess::process(QString inputEfmFilename, QString outputAudioFilename, 
 {
     // Open the input file
     if (!openInputFile(inputEfmFilename)) {
-        qCritical("Could not open input file!");
+        qCCritical(efm_process, "Could not open input file!");
         return false;
     }
 
@@ -102,7 +103,7 @@ bool EfmProcess::process(QString inputEfmFilename, QString outputAudioFilename, 
 
         // Show EFM processing progress update to user
         qreal percent = (100.0 / static_cast<qreal>(inputFileSize)) * static_cast<qreal>(inputBytesProcessed);
-        if (static_cast<qint32>(percent) > lastPercent) qInfo().nospace() << "Processed " << static_cast<qint32>(percent) << "% of the input EFM";
+        if (static_cast<qint32>(percent) > lastPercent) qCInfo(efm_process).nospace() << "Processed " << static_cast<qint32>(percent) << "% of the input EFM";
         lastPercent = static_cast<qint32>(percent);
     }
 
@@ -128,10 +129,10 @@ bool EfmProcess::openInputFile(QString inputFileName)
     inputFileHandle = new QFile(inputFileName);
     if (!inputFileHandle->open(QIODevice::ReadOnly)) {
         // Failed to open source sample file
-        qDebug() << "Could not open " << inputFileName << "as input file";
+        qCDebug(efm_process) << "Could not open " << inputFileName << "as input file";
         return false;
     }
-    qDebug() << "EfmProcess::openInputFile(): 10-bit input file is" << inputFileName << "and is" <<
+    qCDebug(efm_process) << "EfmProcess::openInputFile(): 10-bit input file is" << inputFileName << "and is" <<
                 inputFileHandle->size() << "bytes in length";
 
     // Exit with success
@@ -166,32 +167,32 @@ QByteArray EfmProcess::readEfmData(void)
     return outputData;
 }
 
-// Method to write status information to qInfo
+// Method to write status information to qCInfo
 void EfmProcess::reportStatus(bool processAudio, bool processData)
 {
     efmToF3Frames.reportStatus();
-    qInfo() << "";
+    qCInfo(efm_process) << "";
     f3ToF2Frames.reportStatus();
-    qInfo() << "";
+    qCInfo(efm_process) << "";
     f2ToF1Frames.reportStatus();
-    qInfo() << "";
+    qCInfo(efm_process) << "";
 
     if (processData) {
         f1ToSectors.reportStatus();
-        qInfo() << "";
+        qCInfo(efm_process) << "";
         sectorsToData.reportStatus();
-        qInfo() << "";
+        qCInfo(efm_process) << "";
         sectorsToMeta.reportStatus();
-        qInfo() << "";
+        qCInfo(efm_process) << "";
     }
 
     if (processAudio) {
         f2FramesToAudio.reportStatus();
-        qInfo() << "";
+        qCInfo(efm_process) << "";
     }
 
     f3ToSections.reportStatus();
-    qInfo() << "";
+    qCInfo(efm_process) << "";
 
     sectionToMeta.reportStatus();
 }

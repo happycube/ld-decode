@@ -75,6 +75,7 @@ private slots:
     void on_actionVBI_triggered();
 
     void mousePressEvent(QMouseEvent *event);
+    void mouseOverQFrameSignalHandler(QMouseEvent *event);
     void scanLineChangedSignalHandler(qint32 scanLine);
 
     void on_actionNTSC_triggered();
@@ -92,6 +93,8 @@ private slots:
 
     void on_actionSNR_analysis_triggered();
 
+    void on_actionSave_metadata_as_CSV_triggered();
+
 private:
     Ui::MainWindow *ui;
 
@@ -108,6 +111,7 @@ private:
     // Class globals
     Configuration *configuration;
     QLabel sourceVideoStatus;
+    QLabel frameLineStatus;
     LdDecodeMetaData ldDecodeMetaData;
     SourceVideo sourceVideo;
     qint32 currentFrameNumber;
@@ -115,6 +119,7 @@ private:
     bool isFileOpen;
     PalColour palColour;
     Comb ntscColour;
+    QString currentInputFileName;
 
     void updateGuiLoaded(void);
     void updateGuiUnloaded(void);
