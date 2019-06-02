@@ -1029,7 +1029,7 @@ class Field:
 
         pulses = self.getpulses()
 
-        if pulses is None and len(pulses) == 0:
+        if pulses is None or len(pulses) == 0:
             print("Unable to find any sync pulses")
             return None, None, self.rf.freq_hz
 
@@ -1368,8 +1368,8 @@ class Field:
             if self.rf.system == 'PAL':
                 # basically exclude the pilot signal altogether
                 # This is needed even though HSYNC is excluded later, since failures are expanded
-                valid_min[int(l-(f.rf.freq * .5)):int(l+(f.rf.freq * 4.7))] = f.rf.iretohz(-100)
-                valid_max[int(l-(f.rf.freq * .5)):int(l+(f.rf.freq * 4.7))] = f.rf.iretohz(120)
+                valid_min[int(l-(f.rf.freq * .5)):int(l+(f.rf.freq * 4.7))] = f.rf.iretohz(-80)
+                valid_max[int(l-(f.rf.freq * .5)):int(l+(f.rf.freq * 4.7))] = f.rf.iretohz(50)
 
         # effectively disable during VSYNC
         for i in range(1, 7 + self.lineoffset):
@@ -1392,7 +1392,7 @@ class Field:
         for e in errmap:
             if e > curerr[0] and e <= (curerr[1] + 20):
                 pad = ((e - curerr[0])) * 2
-                pad = min(pad, self.rf.freq * 8)
+                pad = min(pad, self.rf.freq * 12)
                 epad = curerr[0] + pad
                 curerr = (curerr[0], epad)
 #                if curerr[1] - curerr[0] > 20:
@@ -1415,7 +1415,7 @@ class Field:
 
         lineoffset = -self.lineoffset
 
-        for l in range(lineoffset, self.linecount - 1):
+        for l in range(lineoffset, self.linecount + self.lineoffset):
             while curerr is not None and inrange(curerr[0], self.linelocs[l], self.linelocs[l + 1]):
                 start_rf_linepos = curerr[0] - self.linelocs[l]
                 start_linepos = start_rf_linepos / (self.linelocs[l + 1] - self.linelocs[l])
@@ -1447,19 +1447,14 @@ class Field:
         errlist = self.build_errlist(errmap)
 
         rvs = self.dropout_errlist_to_tbc(errlist)    
-        endhsync = int(4.7 * self.rf.SysParams['outfreq'])
 
         rv_lines = []
         rv_starts = []
         rv_ends = []
 
         for r in rvs:
-            # exclude HSYNC from output
-            if r[2] < endhsync:
-                continue
-            
             rv_lines.append(r[0] - 1)
-            rv_starts.append(int(r[1]) if r[1] > endhsync else endhsync)
+            rv_starts.append(int(r[1]))
             rv_ends.append(int(r[2]))
 
         return rv_lines, rv_starts, rv_ends
