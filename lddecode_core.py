@@ -1493,6 +1493,8 @@ class FieldPAL(Field):
                     if zc is not None:
                         zcp = zc / (adjfreq / 3.75)
                         offset = zcp - np.floor(zcp)
+                        # issue #224 was caused by it wrapping from say .01 to .99.
+                        # convert offsets into [-.5, .5] to hopefully prevent this
                         if offset > .5:
                             offset -= 1
                         offsets[l].append(offset)
