@@ -1378,7 +1378,7 @@ class Field:
 
         # Each valid pulse is definitely *not* an error, so exclude it here at the end
         for v in self.validpulses:
-            iserr[v[1].start:v[1].start+v[1].len] = False
+            iserr[v[1].start-self.rf.freq:v[1].start+v[1].len+self.rf.freq] = False
         
         return iserr
 
@@ -1492,7 +1492,10 @@ class FieldPAL(Field):
 
                     if zc is not None:
                         zcp = zc / (adjfreq / 3.75)
-                        offsets[l].append(zcp - np.floor(zcp))
+                        offset = zcp - np.floor(zcp)
+                        if offset > .5:
+                            offset -= 1
+                        offsets[l].append(offset)
                         i = np.int(zc + 1)
 
                 i += 1
