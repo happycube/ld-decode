@@ -1057,11 +1057,10 @@ class Field:
         meanlinelen = self.computeLineLen(validpulses, 'all')
         for p in validpulses:
             lineloc = (p[1].start - line0loc) / meanlinelen
-            hlineloc = int(np.round(lineloc * 2) )
             
-            if not (hlineloc % 2):
+            if not inrange(lineloc % 1, .4, .6):
                 #logging.info(p, hlineloc, hlineloc / 2)
-                linelocs_dict[hlineloc // 2] = p[1].start
+                linelocs_dict[np.round(lineloc)] = p[1].start
 
         rv_err = np.full(self.outlinecount + 6, False)
 
