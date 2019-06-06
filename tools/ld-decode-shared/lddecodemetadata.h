@@ -29,6 +29,7 @@
 
 #include <QObject>
 #include <QVector>
+#include <QTemporaryFile>
 #include <QDebug>
 
 class LDDECODESHAREDSHARED_EXPORT LdDecodeMetaData : public QObject
