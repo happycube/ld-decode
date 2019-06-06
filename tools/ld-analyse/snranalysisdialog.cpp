@@ -97,9 +97,10 @@ void SnrAnalysisDialog::updateChart(LdDecodeMetaData *ldDecodeMetaData)
     // Update the chart
     chart.setTitle("Black peak SNR analysis (averaged over " + QString::number(fieldsPerDataPoint) + " fields)");
 
-    axisX.setTickCount(10);
-    axisX.setMax(ldDecodeMetaData->getNumberOfFields());
     axisX.setMin(0);
+    axisX.setTickCount(10);
+    if (ldDecodeMetaData->getNumberOfFields() < 10) axisX.setMax(10);
+    else axisX.setMax(ldDecodeMetaData->getNumberOfFields());
 
     axisY.setTickCount(10);
     axisY.setMax(maximumBlackPSNR + 5.0); // +5 to give a little space at the top of the window
