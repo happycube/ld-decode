@@ -257,7 +257,7 @@ bool Combine::process(QString primaryFilename, QString secondaryFilename, QStrin
     qInfo() << "Creating JSON metadata file for output TBC";
     outputLdDecodeMetaData.write(outputFilename + ".json");
 
-    qInfo() << "Processing complete - Replaced" << linesReplaced << "complete lines," << dropoutsReplaced << "individual dropouts and missed" << failedReplaced << "dropouts due to no suitable replacement";
+    qInfo() << "Processing complete - Replaced" << dropoutsReplaced << "dropouts and missed" << failedReplaced << "dropouts due to no suitable replacement";
 
     // Close the source videos
     primarySourceVideo.close();
@@ -372,9 +372,6 @@ qint32 Combine::getClvFrameNumber(qint32 frameSeqNumber, LdDecodeMetaData *ldDec
 // Method to process two matching fields line by line, replacing lines
 // based on the quality of the line in the primary and secondary sources
 // Returns the corrected field data
-//
-// Note: This would probably be better if only the dropout areas were replaced
-// but that can be a future enhancement for now
 QByteArray Combine::processField(qint32 primarySeqFieldNumber, qint32 secondarySeqFieldNumber)
 {
     // Read the primary and secondary source video data for the field
@@ -386,35 +383,11 @@ QByteArray Combine::processField(qint32 primarySeqFieldNumber, qint32 secondaryS
     // Process the field line-by-line
     for (qint32 lineNumber = 1; lineNumber <= primaryVideoParameters.fieldHeight; lineNumber++) {
         qint32 primaryLineQuality = assessLineQuality(primaryLdDecodeMetaData.getField(primarySeqFieldNumber), lineNumber);
-        qint32 secondaryLineQuality = assessLineQuality(secondaryLdDecodeMetaData.getField(secondarySeqFieldNumber), lineNumber);
 
         // Is the primary line damaged?
         if (primaryLineQuality != 0) {
-            // If the secondary field line is perfect, just copy the whole line to the primary
-            if (secondaryLineQuality == 0) {
-                // Replace the whole primary line data with the secondary line data
-                qInfo() << "[Line   ] - [Field #" << primarySeqFieldNumber << "] - [Line #" << lineNumber << "] - Replaced";
-                linesReplaced++;
-
-                outputField = replaceVideoLineData(outputField, secondaryFieldData, lineNumber);
-
-                // Remove the primary line dropout data from the metadata
-                LdDecodeMetaData::Field outputFieldMetaData = outputLdDecodeMetaData.getField(primarySeqFieldNumber);
-                qint32 doCounter = 0;
-                while (doCounter < outputFieldMetaData.dropOuts.startx.size()) {
-                    // Is the dropout on the correct field line?
-                    if (outputFieldMetaData.dropOuts.fieldLine[doCounter] == lineNumber) {
-                        outputFieldMetaData.dropOuts.fieldLine.remove(doCounter);
-                        outputFieldMetaData.dropOuts.startx.remove(doCounter);
-                        outputFieldMetaData.dropOuts.endx.remove(doCounter);
-                    } else doCounter++; // Only update the counter if a line isn't removed
-                }
-
-                // Update the field's metadata
-                outputLdDecodeMetaData.updateField(outputFieldMetaData, primarySeqFieldNumber);
-            } else {
-                // Both the primary and the secondary line are not perfect; so we will replace any primary line dropouts
-                // with secondary (provided the secondary line doesn't have dropouts in the same place)
+                // Replace any primary line dropouts with secondary (provided the
+                // secondary line doesn't have dropouts in the same place)
 
                 // Look at the dropouts in the primary line and only replace if there is no dropout covering the
                 // same position in the secondard line
@@ -466,7 +439,6 @@ QByteArray Combine::processField(qint32 primarySeqFieldNumber, qint32 secondaryS
                             doCounter++;
                         }
                     } else doCounter++;
-                }
             }
         }
     }
@@ -516,7 +488,7 @@ QByteArray Combine::replaceVideoDropoutData(QByteArray primaryFieldData, QByteAr
 
     // Copy the line from the secondary field data to the primary
     qint32 startOfLine = (lineNumber - 1) * primaryVideoParameters.fieldWidth * 2;
-    for (qint32 pointer = startx; pointer < endx; pointer++) {
+    for (qint32 pointer = startx * 2; pointer < endx * 2; pointer++) {
         outputData[startOfLine + pointer] = secondaryFieldData[startOfLine + pointer];
     }
 
