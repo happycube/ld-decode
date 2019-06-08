@@ -1651,6 +1651,8 @@ class FieldNTSC(Field):
         amed[False] = np.abs(np.median(bursts_arr[False]))
         field14 = amed[True] < amed[False]
 
+        #print(amed[False], amed[True], field14, self.isFirstField)
+
 #        adj25 = False
         # if the medians are too close, recompute them with a 90 degree offset
         if (np.abs(amed[True] - amed[False]) < .1):
@@ -1658,8 +1660,11 @@ class FieldNTSC(Field):
             amed = {}
             amed[True] = np.abs(np.median(bursts_arr[True] + .25))
             amed[False] = np.abs(np.median(bursts_arr[False] + .25))
-            field14 = amed[True] > amed[False]
+            field14 = amed[True] < amed[False]
 
+            #print('redo', amed[False], amed[True], field14, self.isFirstField)
+
+        #field14 = not field14
         #print(field14, adj25, amed)
 
         self.amed = amed
