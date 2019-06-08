@@ -101,13 +101,16 @@ void DropoutAnalysisDialog::updateChart(LdDecodeMetaData *ldDecodeMetaData)
     // Update the chart
     chart.setTitle("Dropout loss analysis (averaged over " + QString::number(fieldsPerDataPoint) + " fields)");
 
-    axisX.setTickCount(10);
-    axisX.setMax(ldDecodeMetaData->getNumberOfFields());
     axisX.setMin(0);
+    axisX.setTickCount(10);
+    if (ldDecodeMetaData->getNumberOfFields() < 10) axisX.setMax(10);
+    else axisX.setMax(ldDecodeMetaData->getNumberOfFields());
 
-    axisY.setTickCount(10);
-    axisY.setMax(maximumDropoutLength);
     axisY.setMin(0);
+    axisY.setTickCount(10);
+    if (maximumDropoutLength < 10) axisY.setMax(10);
+    else axisY.setMax(maximumDropoutLength);
+
 
     chartView->repaint();
 }

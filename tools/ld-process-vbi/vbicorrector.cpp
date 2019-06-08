@@ -75,11 +75,6 @@ bool VbiCorrector::process(QString inputFileName)
     // Store the current sound mode
     LdDecodeMetaData::VbiSoundModes currentSoundMode = firstFieldSoundMode;
 
-    // Create a back-up of the JSON metadata
-    qInfo() << "This feature is experimental; creating a back-up of the JSON metadata...";
-    QString outputFileName = inputFileName + ".json.bup";
-    ldDecodeMetaData.write(outputFileName);
-
     // Check for any frames that are out of sequence (or have missing frame numbers) and try to guess the
     // frame number based on the adjacent frames
     // Note: Will not work correctly for NTSC will pull down (as the pull down frames have no frame number)
@@ -240,8 +235,8 @@ bool VbiCorrector::process(QString inputFileName)
     if (videoErrorCount != 0 || audioErrorCount != 0) {
         qInfo() << "Corrected" << videoErrorCount << "frame numbers/timecodes and" << audioErrorCount << "sound modes - writing new JSON metadata file...";
 
-        // Back-up the metadata file
-        outputFileName = inputFileName + ".json";
+        // Write the metadata file
+        QString outputFileName = inputFileName + ".json";
         ldDecodeMetaData.write(outputFileName);
     } else {
         qInfo() << "No frame numbers/timecodes were corrected.";

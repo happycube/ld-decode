@@ -563,12 +563,41 @@ bool LdDecodeMetaData::write(QString fileName)
         }
     }
 
-    // Write the JSON object to file
-    qDebug() << "LdDecodeMetaData::write(): Writing JSON metadata file";
-    if (!json.saveAs(fileName, JsonWax::Readable)) {
-        qCritical("Writing JSON file failed!");
+    // Write the JSON object to a temporary file
+    qDebug() << "LdDecodeMetaData::write(): Opening JSON metadata temporary file";
+    QTemporaryFile tempFile;
+    if (!tempFile.open()) {
+        qCritical() << "LdDecodeMetaData::write(): Could not open temporary file!";
         return false;
     }
+
+    // Get the temporary file filename
+    QString tempFilename = tempFile.fileName();
+
+    // Write the JSON object to the temporary file
+    qDebug() << "LdDecodeMetaData::write(): Writing JSON metadata to the temporary file:" << tempFilename;
+    if (!json.saveAs(tempFilename, JsonWax::Readable)) {
+        qCritical("Writing JSON temporary file failed!");
+        return false;
+    }
+
+    // Close the temporary file (file exists until object is destroyed)
+    tempFile.close();
+
+    // Copy the temporary file to the destination file
+    qDebug() << "LdDecodeMetaData::write(): Copying temporary file to destination file:" << fileName;
+    if (QFile::exists(fileName)) {
+        // Rename the existing file so we can copy the new one
+        QFile::rename(fileName, fileName + tr(".tmp"));
+    }
+
+    if (!QFile::copy(tempFilename, fileName)) {
+        qCritical("Copying JSON temporary file to destination file failed!");
+        return false;
+    }
+
+    // Remove the old file
+    QFile::remove(fileName + tr(".tmp"));
 
     return true;
 }
