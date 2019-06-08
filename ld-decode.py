@@ -33,6 +33,9 @@ parser.add_argument('--noEFM', dest='noefm', action='store_true', default=False,
 parser.add_argument('--daa', dest='daa', action='store_true', default=False, help='Disable analog audio decoding')
 parser.add_argument('--ignoreleadout', dest='ignoreleadout', action='store_true', default=False, help='continue decoding after lead-out seen')
 
+parser.add_argument('--video_bpf_high', dest='vbpf_high', type=float, default=None, help='Video BPF high end frequency')
+parser.add_argument('--video_lpf', dest='vlpf', type=float, default=None, help='Video low-pass filter frequency')
+
 
 args = parser.parse_args()
 #print(args)
@@ -84,6 +87,14 @@ if args.MTF is not None:
 
 if args.MTF_offset is not None:
     ldd.rf.mtf_offset = args.MTF_offset
+
+if args.vbpf_high is not None:
+    ldd.rf.DecoderParams['video_bpf_high'] = args.vbpf_high * 1000000
+
+if args.vlpf is not None:
+    ldd.rf.DecoderParams['video_lpf_freq'] = args.vlpf * 1000000
+
+ldd.rf.computefilters()
 
 def write_json(ldd, outname):
     jsondict = ldd.build_json(ldd.curfield)

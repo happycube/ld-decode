@@ -120,7 +120,8 @@ RFParams_NTSC = {
     'video_deemp': (120*.32, 320*.32),
 
     # This BPF is similar but not *quite* identical to what Pioneer did
-    'video_bpf': [3400000, 13800000],
+    'video_bpf_low': 3400000, 
+    'video_bpf_high': 13800000,
     'video_bpf_order': 4,
 
     # This can easily be pushed up to 4.5mhz or even a bit higher. 
@@ -142,7 +143,8 @@ RFParams_PAL = {
     'video_deemp': (100*.30, 400*.30),
 
     # XXX: guessing here!
-    'video_bpf': (2700000, 13500000),
+    'video_bpf_low': 2700000, 
+    'video_bpf_high': 13500000,
     'video_bpf_order': 1,
 
     'video_lpf_freq': 4800000,
@@ -247,7 +249,7 @@ class RFDecode:
 
         SF['hilbert'] = np.fft.fft(hilbert_filter, self.blocklen)
         
-        filt_rfvideo = sps.butter(DP['video_bpf_order'], [DP['video_bpf'][0]/self.freq_hz_half, DP['video_bpf'][1]/self.freq_hz_half], btype='bandpass')
+        filt_rfvideo = sps.butter(DP['video_bpf_order'], [DP['video_bpf_low']/self.freq_hz_half, DP['video_bpf_high']/self.freq_hz_half], btype='bandpass')
         SF['RFVideo'] = filtfft(filt_rfvideo, self.blocklen)
 
         if SP['analog_audio']: 
@@ -389,16 +391,11 @@ class RFDecode:
 
         out_videoburst = np.fft.ifft(demod_fft * self.Filters['FVideoBurst']).real
         
-        # NTSC: filtering for vsync pulses from -55 to -25ire seems to work well even on rotted disks
-        output_sync = inrange(out_video05, self.iretohz(-55), self.iretohz(-25))
-        # Perform FFT convolution of above filter
-        output_syncf = np.fft.ifft(np.fft.fft(output_sync) * self.Filters['FPsync']).real
-
         if self.system == 'PAL':
             out_videopilot = np.fft.ifft(demod_fft * self.Filters['FVideoPilot']).real
-            rv_video = np.rec.array([out_video, demod, out_video05, output_syncf, out_videoburst, out_videopilot], names=['demod', 'demod_raw', 'demod_05', 'demod_sync', 'demod_burst', 'demod_pilot'])
+            rv_video = np.rec.array([out_video, demod, out_video05, out_videoburst, out_videopilot], names=['demod', 'demod_raw', 'demod_05', 'demod_burst', 'demod_pilot'])
         else:
-            rv_video = np.rec.array([out_video, demod, out_video05, output_syncf, out_videoburst], names=['demod', 'demod_raw', 'demod_05', 'demod_sync', 'demod_burst'])
+            rv_video = np.rec.array([out_video, demod, out_video05, out_videoburst], names=['demod', 'demod_raw', 'demod_05', 'demod_burst'])
 
         if self.decode_digital_audio == True:
             rv_efm = np.fft.ifft(indata_fft * self.Filters['Fefm'])
