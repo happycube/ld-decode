@@ -516,7 +516,7 @@ QByteArray Combine::replaceVideoDropoutData(QByteArray primaryFieldData, QByteAr
 
     // Copy the line from the secondary field data to the primary
     qint32 startOfLine = (lineNumber - 1) * primaryVideoParameters.fieldWidth * 2;
-    for (qint32 pointer = startx; pointer < endx; pointer++) {
+    for (qint32 pointer = startx * 2; pointer < endx * 2; pointer++) {
         outputData[startOfLine + pointer] = secondaryFieldData[startOfLine + pointer];
     }
 
