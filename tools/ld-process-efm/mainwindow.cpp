@@ -78,6 +78,10 @@ MainWindow::~MainWindow()
 void MainWindow::noEfmFileLoaded(void)
 {
     // Configure GUI elements
+    ui->actionOpen_EFM_file->setEnabled(true);
+    ui->actionSave_Audio_As->setEnabled(false);
+    ui->actionSave_Data_As->setEnabled(false);
+
     ui->decodePushButton->setEnabled(false);
     ui->cancelPushButton->setEnabled(false);
     ui->decodeProgressBar->setEnabled(false);
@@ -97,6 +101,10 @@ void MainWindow::noEfmFileLoaded(void)
 void MainWindow::efmFileLoaded(void)
 {
     // Configure GUI elements
+    ui->actionOpen_EFM_file->setEnabled(true);
+    ui->actionSave_Audio_As->setEnabled(false);
+    ui->actionSave_Data_As->setEnabled(false);
+
     ui->decodePushButton->setEnabled(true);
     ui->cancelPushButton->setEnabled(false);
     ui->decodeProgressBar->setEnabled(true);
@@ -112,16 +120,34 @@ void MainWindow::efmFileLoaded(void)
 // Decoding stopped GUI update
 void MainWindow::decodingStop(void)
 {
+    ui->actionOpen_EFM_file->setEnabled(true);
+    ui->actionSave_Data_As->setEnabled(false);
+
     ui->decodePushButton->setEnabled(true);
     ui->cancelPushButton->setEnabled(false);
     statisticsUpdateTimer->stop();
 
     updateStatistics();
+
+    // Get the statistical information from the EFM processing thread
+    EfmProcess::Statistics statistics = efmProcess.getStatistics();
+
+    // Only allow audio save if there is audio data available
+    if (statistics.f2FramesToAudio_statistics.audioSamples != 0)  ui->actionSave_Audio_As->setEnabled(true);
+    else ui->actionSave_Audio_As->setEnabled(false);
+
+    // Only allow data save if there is data available
+    if (statistics.sectorsToData_statistics.sectorsWritten != 0)  ui->actionSave_Data_As->setEnabled(true);
+    else ui->actionSave_Data_As->setEnabled(false);
 }
 
 // Decoding started GUI update
 void MainWindow::decodingStart(void)
 {
+    ui->actionOpen_EFM_file->setEnabled(false);
+    ui->actionSave_Audio_As->setEnabled(false);
+    ui->actionSave_Data_As->setEnabled(false);
+
     ui->decodePushButton->setEnabled(false);
     ui->cancelPushButton->setEnabled(true);
     ui->decodeProgressBar->setValue(0);
@@ -197,6 +223,11 @@ void MainWindow::resetStatistics(void)
 
     // Audio tab
     ui->audio_totalSamples->setText(tr("0"));
+
+    // Data tab
+    ui->data_total->setText(tr("0"));
+    ui->data_signalGaps->setText(tr("0"));
+    ui->data_corruption->setText(tr("0"));
 }
 
 // Miscellaneous methods ----------------------------------------------------------------------------------------------
@@ -266,6 +297,84 @@ void MainWindow::on_actionOpen_EFM_file_triggered()
     if (!inputFileName.isEmpty() && !inputFileName.isNull()) {
         // Load the file
         loadEfmFile(inputFileName);
+    }
+}
+
+// Menu -> File -> Save Audio As
+void MainWindow::on_actionSave_Audio_As_triggered()
+{
+    qDebug() << "MainWindow::on_actionSave_Audio_As_triggered(): Called";
+
+    // Create a suggestion for the filename
+    QString filenameSuggestion = configuration->getAudioDirectory();
+    filenameSuggestion += currentInputFilename + tr(".pcm");
+
+    QString audioFilename = QFileDialog::getSaveFileName(this,
+                tr("Save PCM file"),
+                filenameSuggestion,
+                tr("PCM raw audio (*.pcm);;All Files (*)"));
+
+    // Was a filename specified?
+    if (!audioFilename.isEmpty() && !audioFilename.isNull()) {
+        // Save the audio as PCM
+        qDebug() << "MainWindow::on_actionSave_Audio_As_triggered(): Saving audio as" << audioFilename;
+
+        // Check if filename exists (and remove the file if it does)
+        if (QFile::exists(audioFilename)) QFile::remove(audioFilename);
+
+        // Copy the audio data from the temporary file to the destination
+        if (!audioOutputFile->copy(audioFilename)) {
+            qDebug() << "MainWindow::on_actionSave_Audio_As_triggered(): Failed to save file as" << audioFilename;
+
+            QMessageBox messageBox;
+            messageBox.warning(this, "Warning","Could not save PCM audio using the specified filename!");
+            messageBox.setFixedSize(500, 200);
+        }
+
+        // Update the configuration for the PNG directory
+        QFileInfo audioFileInfo(audioFilename);
+        configuration->setAudioDirectory(audioFileInfo.absolutePath());
+        qDebug() << "MainWindow::on_actionSave_Audio_As_triggered(): Setting PCM audio directory to:" << audioFileInfo.absolutePath();
+        configuration->writeConfiguration();
+    }
+}
+
+// Menu -> File -> Save Data As
+void MainWindow::on_actionSave_Data_As_triggered()
+{
+    qDebug() << "MainWindow::on_actionSave_Data_As_triggered(): Called";
+
+    // Create a suggestion for the filename
+    QString filenameSuggestion = configuration->getDataDirectory();
+    filenameSuggestion += currentInputFilename + tr(".dat");
+
+    QString dataFilename = QFileDialog::getSaveFileName(this,
+                tr("Save DAT file"),
+                filenameSuggestion,
+                tr("DAT data (*.dat);;All Files (*)"));
+
+    // Was a filename specified?
+    if (!dataFilename.isEmpty() && !dataFilename.isNull()) {
+        // Save the audio as PCM
+        qDebug() << "MainWindow::on_actionSave_Data_As_triggered(): Saving data as" << dataFilename;
+
+        // Check if filename exists (and remove the file if it does)
+        if (QFile::exists(dataFilename)) QFile::remove(dataFilename);
+
+        // Copy the audio data from the temporary file to the destination
+        if (!audioOutputFile->copy(dataFilename)) {
+            qDebug() << "MainWindow::on_actionSave_Data_As_triggered(): Failed to save file as" << dataFilename;
+
+            QMessageBox messageBox;
+            messageBox.warning(this, "Warning","Could not save DAT data using the specified filename!");
+            messageBox.setFixedSize(500, 200);
+        }
+
+        // Update the configuration for the PNG directory
+        QFileInfo dataFileInfo(dataFilename);
+        configuration->setDataDirectory(dataFileInfo.absolutePath());
+        qDebug() << "MainWindow::on_actionSave_Data_As_triggered(): Setting DAT data directory to:" << dataFileInfo.absolutePath();
+        configuration->writeConfiguration();
     }
 }
 
@@ -341,6 +450,11 @@ void MainWindow::updateStatistics(void)
 
     // Update audio tab
     ui->audio_totalSamples->setText(QString::number(statistics.f2FramesToAudio_statistics.audioSamples));
+
+    // Data tab
+    ui->data_total->setText(QString::number(statistics.sectorsToData_statistics.sectorsWritten));
+    ui->data_signalGaps->setText(QString::number(statistics.sectorsToData_statistics.gapSectors));
+    ui->data_corruption->setText(QString::number(statistics.sectorsToData_statistics.missingSectors));
 }
 
 // Main window general GUI events -------------------------------------------------------------------------------------
@@ -366,3 +480,5 @@ void MainWindow::on_cancelPushButton_clicked()
     // Update the GUI
     decodingStop();
 }
+
+

@@ -37,19 +37,25 @@ class SectorsToData
 public:
     SectorsToData();
 
+    struct Statistics {
+        qint32 sectorsWritten;
+        qint32 gapSectors;
+        qint32 missingSectors;
+    };
+
+    void resetStatistics(void);
+    Statistics getStatistics(void);
+
     void reportStatus(void);
     bool setOutputFile(QFile *outputFileHandle);
     void convert(QVector<Sector> sectors);
 
 private:
     QFile *outputFileHandle;
-    qint32 sectorsOut;
+    Statistics statistics;
 
     bool gotFirstValidSector;
     TrackTime lastGoodAddress;
-
-    qint32 gapSectors;
-    qint32 missingSectors;
 
     QVector<qint32> missingStartSector;
     QVector<qint32> missingEndSector;

@@ -63,6 +63,8 @@ void Configuration::writeConfiguration(void)
     // Directories
     configuration->beginGroup("directories");
     configuration->setValue("sourceDirectory", settings.directories.sourceDirectory);
+    configuration->setValue("audioDirectory", settings.directories.audioDirectory);
+    configuration->setValue("dataDirectory", settings.directories.dataDirectory);
     configuration->endGroup();
 
     // Windows
@@ -85,6 +87,8 @@ void Configuration::readConfiguration(void)
     // Directories
     configuration->beginGroup("directories");
     settings.directories.sourceDirectory = configuration->value("sourceDirectory").toString();
+    settings.directories.audioDirectory = configuration->value("audioDirectory").toString();
+    settings.directories.dataDirectory = configuration->value("dataDirectory").toString();
     configuration->endGroup();
 
     // Windows
@@ -100,6 +104,8 @@ void Configuration::setDefault(void)
 
     // Directories
     settings.directories.sourceDirectory = QDir::homePath();
+    settings.directories.audioDirectory = QDir::homePath();
+    settings.directories.dataDirectory = QDir::homePath();
 
     // Windows
     settings.windows.mainWindowGeometry = QByteArray();
@@ -119,6 +125,26 @@ void Configuration::setSourceDirectory(QString sourceDirectory)
 QString Configuration::getSourceDirectory(void)
 {
     return settings.directories.sourceDirectory;
+}
+
+void Configuration::setAudioDirectory(QString audioDirectory)
+{
+    settings.directories.audioDirectory = audioDirectory;
+}
+
+QString Configuration::getAudioDirectory(void)
+{
+    return settings.directories.audioDirectory;
+}
+
+void Configuration::setDataDirectory(QString dataDirectory)
+{
+    settings.directories.dataDirectory = dataDirectory;
+}
+
+QString Configuration::getDataDirectory(void)
+{
+    return settings.directories.dataDirectory;
 }
 
 // Windows

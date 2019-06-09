@@ -46,6 +46,10 @@ public:
     // Get and set methods - Directories
     void setSourceDirectory(QString sourceDirectory);
     QString getSourceDirectory(void);
+    void setAudioDirectory(QString audioDirectory);
+    QString getAudioDirectory(void);
+    void setDataDirectory(QString dataDirectory);
+    QString getDataDirectory(void);
 
     // Get and set methods - windows
     void setMainWindowGeometry(QByteArray mainWindowGeometry);
@@ -57,6 +61,8 @@ private:
     // Directories
     struct Directories {
         QString sourceDirectory; // Last used directory for .efm files
+        QString audioDirectory; // Last used directory for .pcm files
+        QString dataDirectory; // Last used directory for .dat files
     };
 
     // Window geometry and settings

@@ -27,21 +27,32 @@
 
 SectorsToData::SectorsToData()
 {
-    sectorsOut = 0;
     gotFirstValidSector = false;
     lastGoodAddress.setTime(0, 0, 0);
 
-    gapSectors = 0;
-    missingSectors = 0;
+    resetStatistics();
+}
+
+// Methods to handle statistics
+void SectorsToData::resetStatistics(void)
+{
+    statistics.sectorsWritten = 0;
+    statistics.gapSectors = 0;
+    statistics.missingSectors = 0;
+}
+
+SectorsToData::Statistics SectorsToData::getStatistics(void)
+{
+    return statistics;
 }
 
 // Method to write status information to qCInfo
 void SectorsToData::reportStatus(void)
 {
     qInfo() << "Sectors to data converter:";
-    qInfo() << "  Total number of sectors written =" << sectorsOut;
-    qInfo() << "  Empty sectors (probably) due to EFM signal gaps =" << gapSectors;
-    qInfo() << "  Empty sectors (probably) due to data loss =" << missingSectors;
+    qInfo() << "  Total number of sectors written =" << statistics.sectorsWritten;
+    qInfo() << "  Empty sectors (probably) due to EFM signal gaps =" << statistics.gapSectors;
+    qInfo() << "  Empty sectors (probably) due to data loss =" << statistics.missingSectors;
 
     if (missingStartSector.size() > 0) {
         // Report gaps and missing data
@@ -113,22 +124,22 @@ void SectorsToData::convert(QVector<Sector> sectors)
                     // sectors, then it's very likely data is missing
                     if (missingFrames > 16) {
                         qDebug() << "SectorsToData::convert(): A gap of" << missingFrames << "sectors was detected in the EFM (probably a break in the EFM signal)";
-                        gapSectors += missingFrames;
+                        statistics.gapSectors += missingFrames;
 
                         // Record the gap
-                        missingStartSector.append(sectorsOut * bytesToPad);
-                        missingEndSector.append((sectorsOut + missingFrames) * bytesToPad);
+                        missingStartSector.append(statistics.sectorsWritten * bytesToPad);
+                        missingEndSector.append((statistics.sectorsWritten + missingFrames) * bytesToPad);
                         isGap.append(true);
                     } else {
                         qDebug() << "SectorsToData::convert(): A gap of" << missingFrames << "sectors was detected in the EFM (probably corrupt data!)";
-                        missingSectors += missingFrames;
+                        statistics.missingSectors += missingFrames;
 
-                        qDebug().noquote() << "SectorsToData::convert(): Gap started at position" << QString("0x%1").arg(sectorsOut * bytesToPad, 0, 16) <<
-                                      "and finished at" << QString("0x%1").arg((sectorsOut + missingFrames) * bytesToPad, 0, 16);
+                        qDebug().noquote() << "SectorsToData::convert(): Gap started at position" << QString("0x%1").arg(statistics.sectorsWritten * bytesToPad, 0, 16) <<
+                                      "and finished at" << QString("0x%1").arg((statistics.sectorsWritten + missingFrames) * bytesToPad, 0, 16);
 
                         // Record the data loss
-                        missingStartSector.append(sectorsOut * bytesToPad);
-                        missingEndSector.append((sectorsOut + missingFrames) * bytesToPad);
+                        missingStartSector.append(statistics.sectorsWritten * bytesToPad);
+                        missingEndSector.append((statistics.sectorsWritten + missingFrames) * bytesToPad);
                         isGap.append(false);
                     }
 
@@ -137,7 +148,7 @@ void SectorsToData::convert(QVector<Sector> sectors)
                     for (qint32 pad = 0; pad < missingFrames; pad++) outputFileHandle->write(padding);
 
                     // Add the padding to the sectors out count
-                    sectorsOut += missingFrames;
+                    statistics.sectorsWritten += missingFrames;
                 }
             } else {
                 // This is the first valid sector
@@ -151,7 +162,7 @@ void SectorsToData::convert(QVector<Sector> sectors)
 
             // Update tracking data
             lastGoodAddress = sectors[i].getAddress();
-            sectorsOut++;
+            statistics.sectorsWritten++;
         } else {
             qDebug() << "SectorsToData::convert(): Data sector is invalid - ignoring";
         }

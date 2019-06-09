@@ -62,6 +62,7 @@ public:
         EfmToF3Frames::Statistics efmToF3Frames_statistics;
         F3ToF2Frames::Statistics f3ToF2Frames_statistics;
         F2FramesToAudio::Statistics f2FramesToAudio_statistics;
+        SectorsToData::Statistics sectorsToData_statistics;
     };
 
     void resetStatistics(void);

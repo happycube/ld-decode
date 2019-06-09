@@ -56,6 +56,8 @@ private slots:
     void updateStatistics(void);
 
     void on_actionOpen_EFM_file_triggered();
+    void on_actionSave_Audio_As_triggered();
+    void on_actionSave_Data_As_triggered();
     void on_actionExit_triggered();
     void on_actionAbout_ld_process_efm_triggered();
     void on_decodePushButton_clicked();

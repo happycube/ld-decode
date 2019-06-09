@@ -48,6 +48,7 @@ void EfmProcess::resetStatistics(void)
     efmToF3Frames.resetStatistics();
     f3ToF2Frames.resetStatistics();
     f2FramesToAudio.resetStatistics();
+    sectorsToData.resetStatistics();
 }
 
 EfmProcess::Statistics EfmProcess::getStatistics(void)
@@ -56,6 +57,7 @@ EfmProcess::Statistics EfmProcess::getStatistics(void)
     statistics.efmToF3Frames_statistics = efmToF3Frames.getStatistics();
     statistics.f3ToF2Frames_statistics = f3ToF2Frames.getStatistics();
     statistics.f2FramesToAudio_statistics = f2FramesToAudio.getStatistics();
+    statistics.sectorsToData_statistics = sectorsToData.getStatistics();
 
     return statistics;
 }
