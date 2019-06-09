@@ -27,43 +27,35 @@
 
 F2FramesToAudio::F2FramesToAudio()
 {
-    audioSamples = 0;
+    resetStatistics();
+}
+
+// Methods to handle statistics
+void F2FramesToAudio::resetStatistics(void)
+{
+    statistics.audioSamples = 0;
+}
+
+F2FramesToAudio::Statistics F2FramesToAudio::getStatistics(void)
+{
+    return statistics;
 }
 
 // Method to write status information to qCInfo
 void F2FramesToAudio::reportStatus(void)
 {
     qInfo() << "F2 Frames to audio converter:";
-    qInfo() << "  Total number of stereo audio samples =" << audioSamples;
+    qInfo() << "  Total number of stereo audio samples =" << statistics.audioSamples;
 }
 
-// Method to open the audio output file
-bool F2FramesToAudio::openOutputFile(QString filename)
+// Method to set the audio output file
+bool F2FramesToAudio::setOutputFile(QFile *outputFileHandle)
 {
     // Open output file for writing
-    outputFileHandle = new QFile(filename);
-    if (!outputFileHandle->open(QIODevice::WriteOnly)) {
-        // Failed to open source sample file
-        qDebug() << "F2FramesToAudio::openOutputFile(): Could not open " << outputFileHandle << "as audio output file";
-        return false;
-    }
-    qDebug() << "F2FramesToAudio::openOutputFile(): F2FramesToAudio::openOutputFile(): Opened" << filename << "as audio output file";
+    this->outputFileHandle = outputFileHandle;
 
     // Exit with success
     return true;
-}
-
-// Method to close the audio output file
-void F2FramesToAudio::closeOutputFile(void)
-{
-    // Is an output file open?
-    if (outputFileHandle != nullptr) {
-        outputFileHandle->close();
-    }
-
-    // Clear the file handle pointer
-    delete outputFileHandle;
-    outputFileHandle = nullptr;
 }
 
 // Convert F2 frames into audio sample data
@@ -71,6 +63,6 @@ void F2FramesToAudio::convert(QVector<F2Frame> f2Frames)
 {
     for (qint32 i = 0; i < f2Frames.size(); i++) {
         outputFileHandle->write(f2Frames[i].getDataSymbols());
-        audioSamples++;
+        statistics.audioSamples++;
     }
 }

@@ -31,6 +31,7 @@
 #include <QMessageBox>
 #include <QThread>
 #include <QTimer>
+#include <QTemporaryFile>
 #include <QDebug>
 
 #include "configuration.h"
@@ -72,6 +73,10 @@ private:
     QLabel efmStatus;
     QString currentInputFilename;
     QTimer *statisticsUpdateTimer;
+
+    // Temporary files
+    QTemporaryFile *audioOutputFile;
+    QTemporaryFile *dataOutputFile;
 
     void noEfmFileLoaded(void);
     void efmFileLoaded(void);

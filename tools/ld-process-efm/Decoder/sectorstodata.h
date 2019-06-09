@@ -38,8 +38,7 @@ public:
     SectorsToData();
 
     void reportStatus(void);
-    bool openOutputFile(QString filename);
-    void closeOutputFile(void);
+    bool setOutputFile(QFile *outputFileHandle);
     void convert(QVector<Sector> sectors);
 
 private:

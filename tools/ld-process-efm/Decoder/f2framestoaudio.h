@@ -36,14 +36,20 @@ class F2FramesToAudio
 public:
     F2FramesToAudio();
 
+    struct Statistics {
+        qint32 audioSamples;
+    };
+
+    void resetStatistics(void);
+    Statistics getStatistics(void);
+
     void reportStatus(void);
-    bool openOutputFile(QString filename);
-    void closeOutputFile(void);
+    bool setOutputFile(QFile *outputFileHandle);
     void convert(QVector<F2Frame> f2Frames);
 
 private:
+    Statistics statistics;
     QFile *outputFileHandle;
-    qint32 audioSamples;
 };
 
 #endif // F2FRAMESTOAUDIO_H

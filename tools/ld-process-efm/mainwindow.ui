@@ -36,7 +36,7 @@
          </size>
         </property>
         <property name="title">
-         <string>Control</string>
+         <string>Control:</string>
         </property>
         <layout class="QVBoxLayout" name="verticalLayout_4">
          <item>
@@ -104,7 +104,7 @@
       <item>
        <widget class="QTabWidget" name="feedbackTabWidget">
         <property name="currentIndex">
-         <number>0</number>
+         <number>2</number>
         </property>
         <widget class="QWidget" name="f3FramesTab">
          <attribute name="title">
@@ -115,7 +115,7 @@
            <rect>
             <x>9</x>
             <y>10</y>
-            <width>391</width>
+            <width>381</width>
             <height>121</height>
            </rect>
           </property>
@@ -710,6 +710,48 @@
          <attribute name="title">
           <string>Audio</string>
          </attribute>
+         <widget class="QGroupBox" name="groupBox_5">
+          <property name="geometry">
+           <rect>
+            <x>10</x>
+            <y>10</y>
+            <width>381</width>
+            <height>61</height>
+           </rect>
+          </property>
+          <property name="title">
+           <string>Stereo samples:</string>
+          </property>
+          <widget class="QLabel" name="label_20">
+           <property name="geometry">
+            <rect>
+             <x>10</x>
+             <y>30</y>
+             <width>121</width>
+             <height>20</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>Total:</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+           </property>
+          </widget>
+          <widget class="QLabel" name="audio_totalSamples">
+           <property name="geometry">
+            <rect>
+             <x>140</x>
+             <y>30</y>
+             <width>231</width>
+             <height>20</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>TextLabel</string>
+           </property>
+          </widget>
+         </widget>
         </widget>
         <widget class="QWidget" name="dataTab">
          <attribute name="title">

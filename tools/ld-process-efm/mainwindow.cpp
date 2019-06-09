@@ -51,6 +51,10 @@ MainWindow::MainWindow(QWidget *parent) :
     // Load the window geometry from the configuration
     restoreGeometry(configuration->getMainWindowGeometry());
 
+    // Open temporary files for decoding output
+    audioOutputFile = new QTemporaryFile(this);
+    dataOutputFile = new QTemporaryFile(this);
+
     // No EFM file loaded
     noEfmFileLoaded();
 
@@ -122,10 +126,42 @@ void MainWindow::decodingStart(void)
     ui->cancelPushButton->setEnabled(true);
     ui->decodeProgressBar->setValue(0);
 
+    // Remove any open temporary files
+    if (audioOutputFile->isOpen()) {
+        qDebug() << "MainWindow::decodingStart(): Removing previous temporary audio output file";
+        audioOutputFile->close();
+        audioOutputFile->remove();
+    }
+
+    if (dataOutputFile->isOpen()) {
+        qDebug() << "MainWindow::decodingStart(): Removing previous temporary data output file";
+        dataOutputFile->close();
+        dataOutputFile->remove();
+    }
+
+    // Open the temporary output files
+    if (!audioOutputFile->open()) {
+        qCritical() << "Unable to open temporary file for audio processing!";
+        QMessageBox messageBox;
+        messageBox.critical(this, "Error", "Could not open a temporary file for audio processing!");
+        messageBox.setFixedSize(500, 200);
+    }
+
+    if (!dataOutputFile->open()) {
+        qCritical() << "Unable to open temporary file for audio processing!";
+        QMessageBox messageBox;
+        messageBox.critical(this, "Error", "Could not open a temporary file for data processing!");
+        messageBox.setFixedSize(500, 200);
+    }
+
+    // Show the location of the temporary files in debug
+    qDebug() << "MainWindow::decodingStart(): Audio output temporary file is" << audioOutputFile->fileName();
+    qDebug() << "MainWindow::decodingStart(): Data output temporary file is" << dataOutputFile->fileName();
+
     // Reset statistics
     resetStatistics();
 
-    efmProcess.startProcessing(currentInputFilename);
+    efmProcess.startProcessing(currentInputFilename, audioOutputFile, dataOutputFile);
     statisticsUpdateTimer->start(100); // Update 10 times per second
 }
 
@@ -158,6 +194,9 @@ void MainWindow::resetStatistics(void)
     ui->f2Frames_c2de_valid->setText(tr("0"));
     ui->f2Frames_c2de_invalid->setText(tr("0"));
     ui->f2Frames_c2de_flushes->setText(tr("0"));
+
+    // Audio tab
+    ui->audio_totalSamples->setText(tr("0"));
 }
 
 // Miscellaneous methods ----------------------------------------------------------------------------------------------
@@ -190,6 +229,9 @@ void MainWindow::loadEfmFile(QString filename)
         inputFileHandle.close();
         return;
     }
+
+    // Close the current EFM input file (if any)
+    noEfmFileLoaded();
 
     // Update the configuration for the source directory
     QFileInfo inFileInfo(filename);
@@ -296,6 +338,9 @@ void MainWindow::updateStatistics(void)
     ui->f2Frames_c2de_valid->setText(QString::number(statistics.f3ToF2Frames_statistics.c2Deinterleave_statistics.validDeinterleavedC2s));
     ui->f2Frames_c2de_invalid->setText(QString::number(statistics.f3ToF2Frames_statistics.c2Deinterleave_statistics.invalidDeinterleavedC2s));
     ui->f2Frames_c2de_flushes->setText(QString::number(statistics.f3ToF2Frames_statistics.c2Deinterleave_statistics.c2flushed));
+
+    // Update audio tab
+    ui->audio_totalSamples->setText(QString::number(statistics.f2FramesToAudio_statistics.audioSamples));
 }
 
 // Main window general GUI events -------------------------------------------------------------------------------------

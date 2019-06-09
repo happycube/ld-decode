@@ -61,32 +61,13 @@ void SectorsToData::reportStatus(void)
 }
 
 // Method to open the data output file
-bool SectorsToData::openOutputFile(QString filename)
+bool SectorsToData::setOutputFile(QFile *outputFileHandle)
 {
     // Open output file for writing
-    outputFileHandle = new QFile(filename);
-    if (!outputFileHandle->open(QIODevice::WriteOnly)) {
-        // Failed to open source sample file
-        qDebug() << "SectorsToData::openOutputFile(): Could not open " << outputFileHandle << "as data output file";
-        return false;
-    }
-    qDebug() << "SectorsToData::openOutputFile(): Opened" << filename << "as data output file";
+    this->outputFileHandle = outputFileHandle;
 
     // Exit with success
     return true;
-}
-
-// Method to close the data output file
-void SectorsToData::closeOutputFile(void)
-{
-    // Is an output file open?
-    if (outputFileHandle != nullptr) {
-        outputFileHandle->close();
-    }
-
-    // Clear the file handle pointer
-    delete outputFileHandle;
-    outputFileHandle = nullptr;
 }
 
 // Convert sectors into data (Note: This will probably only work for type 1 sectors as-is)

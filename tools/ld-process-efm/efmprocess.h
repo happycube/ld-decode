@@ -61,12 +61,13 @@ public:
     struct Statistics {
         EfmToF3Frames::Statistics efmToF3Frames_statistics;
         F3ToF2Frames::Statistics f3ToF2Frames_statistics;
+        F2FramesToAudio::Statistics f2FramesToAudio_statistics;
     };
 
     void resetStatistics(void);
     Statistics getStatistics(void);
 
-    void startProcessing(QString inputFilename);
+    void startProcessing(QString inputFilename, QFile *audioOutputFile, QFile *dataOutputFile);
 
     void cancelProcessing();
     void quit();
@@ -88,9 +89,13 @@ private:
 
     // Externally settable variables
     QString inputFilename;
+    QFile *audioOutputFile;
+    QFile *dataOutputFile;
 
     // Thread-safe variables
     QString inputFilenameTs;
+    QFile *audioOutputFileTs;
+    QFile *dataOutputFileTs;
     QFile *inputFileHandle;
 
     EfmToF3Frames efmToF3Frames;
