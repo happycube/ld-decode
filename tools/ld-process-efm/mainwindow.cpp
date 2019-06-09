@@ -54,6 +54,8 @@ MainWindow::MainWindow(QWidget *parent) :
     // Open temporary files for decoding output
     audioOutputFile = new QTemporaryFile(this);
     dataOutputFile = new QTemporaryFile(this);
+    audioMetaOutputFile = new QTemporaryFile(this);
+    dataMetaOutputFile = new QTemporaryFile(this);
 
     // No EFM file loaded
     noEfmFileLoaded();
@@ -165,6 +167,18 @@ void MainWindow::decodingStart(void)
         dataOutputFile->remove();
     }
 
+    if (audioMetaOutputFile->isOpen()) {
+        qDebug() << "MainWindow::decodingStart(): Removing previous temporary audio metadata output file";
+        audioMetaOutputFile->close();
+        audioMetaOutputFile->remove();
+    }
+
+    if (dataMetaOutputFile->isOpen()) {
+        qDebug() << "MainWindow::decodingStart(): Removing previous temporary data metadata output file";
+        dataMetaOutputFile->close();
+        dataMetaOutputFile->remove();
+    }
+
     // Open the temporary output files
     if (!audioOutputFile->open()) {
         qCritical() << "Unable to open temporary file for audio processing!";
@@ -180,14 +194,30 @@ void MainWindow::decodingStart(void)
         messageBox.setFixedSize(500, 200);
     }
 
+    if (!audioMetaOutputFile->open()) {
+        qCritical() << "Unable to open temporary file for audio metadata!";
+        QMessageBox messageBox;
+        messageBox.critical(this, "Error", "Could not open a temporary file for audio metadata!");
+        messageBox.setFixedSize(500, 200);
+    }
+
+    if (!dataMetaOutputFile->open()) {
+        qCritical() << "Unable to open temporary file for data metadata!";
+        QMessageBox messageBox;
+        messageBox.critical(this, "Error", "Could not open a temporary file for data metadata!");
+        messageBox.setFixedSize(500, 200);
+    }
+
     // Show the location of the temporary files in debug
     qDebug() << "MainWindow::decodingStart(): Audio output temporary file is" << audioOutputFile->fileName();
     qDebug() << "MainWindow::decodingStart(): Data output temporary file is" << dataOutputFile->fileName();
+    qDebug() << "MainWindow::decodingStart(): Audio metadata output temporary file is" << audioMetaOutputFile->fileName();
+    qDebug() << "MainWindow::decodingStart(): Data metadata output temporary file is" << dataMetaOutputFile->fileName();
 
     // Reset statistics
     resetStatistics();
 
-    efmProcess.startProcessing(currentInputFilename, audioOutputFile, dataOutputFile);
+    efmProcess.startProcessing(currentInputFilename, audioOutputFile, dataOutputFile, audioMetaOutputFile, dataMetaOutputFile);
     statisticsUpdateTimer->start(100); // Update 10 times per second
 }
 
@@ -331,6 +361,15 @@ void MainWindow::on_actionSave_Audio_As_triggered()
             messageBox.setFixedSize(500, 200);
         }
 
+        // Copy the audio metadata from the temporary file to the destination
+        if (!audioMetaOutputFile->copy(audioFilename + tr(".json"))) {
+            qDebug() << "MainWindow::on_actionSave_Audio_As_triggered(): Failed to save metadata file as" << audioFilename + tr(".json");
+
+            QMessageBox messageBox;
+            messageBox.warning(this, "Warning","Could not save PCM audio metadata using the specified filename!");
+            messageBox.setFixedSize(500, 200);
+        }
+
         // Update the configuration for the PNG directory
         QFileInfo audioFileInfo(audioFilename);
         configuration->setAudioDirectory(audioFileInfo.absolutePath());
@@ -361,12 +400,21 @@ void MainWindow::on_actionSave_Data_As_triggered()
         // Check if filename exists (and remove the file if it does)
         if (QFile::exists(dataFilename)) QFile::remove(dataFilename);
 
-        // Copy the audio data from the temporary file to the destination
-        if (!audioOutputFile->copy(dataFilename)) {
+        // Copy the data from the temporary file to the destination
+        if (!dataOutputFile->copy(dataFilename)) {
             qDebug() << "MainWindow::on_actionSave_Data_As_triggered(): Failed to save file as" << dataFilename;
 
             QMessageBox messageBox;
             messageBox.warning(this, "Warning","Could not save DAT data using the specified filename!");
+            messageBox.setFixedSize(500, 200);
+        }
+
+        // Copy the data metadata from the temporary file to the destination
+        if (!dataMetaOutputFile->copy(dataFilename + tr(".json"))) {
+            qDebug() << "MainWindow::on_actionSave_Data_As_triggered(): Failed to save data metadata file as" << dataFilename + tr(".json");
+
+            QMessageBox messageBox;
+            messageBox.warning(this, "Warning","Could not save DAT data metadata using the specified filename!");
             messageBox.setFixedSize(500, 200);
         }
 

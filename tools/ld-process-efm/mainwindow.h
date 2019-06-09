@@ -79,6 +79,8 @@ private:
     // Temporary files
     QTemporaryFile *audioOutputFile;
     QTemporaryFile *dataOutputFile;
+    QTemporaryFile *audioMetaOutputFile;
+    QTemporaryFile *dataMetaOutputFile;
 
     void noEfmFileLoaded(void);
     void efmFileLoaded(void);

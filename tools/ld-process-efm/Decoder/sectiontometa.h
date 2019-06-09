@@ -26,6 +26,7 @@
 #define SECTIONTOMETA_H
 
 #include <QCoreApplication>
+#include <QFile>
 #include <QDebug>
 
 #include "section.h"
@@ -35,8 +36,8 @@ class SectionToMeta
 public:
     SectionToMeta();
 
-    bool openOutputFile(QString filename);
-    void closeOutputFile(void);
+    bool setOutputFile(QFile *outputFileHandle);
+    void flushMetadata(void);
 
     void reportStatus(void);
     void process(QVector<Section> sections);
@@ -53,6 +54,7 @@ private:
     qint32 qControlDataCount;
 
     QString jsonFilename;
+    QFile *outputFileHandle;
 
     QVector<qint32> qMetaModeVector;
     QVector<Section::QMetadata> qMetaDataVector;

@@ -26,6 +26,7 @@
 #define SECTORSTOMETA_H
 
 #include <QCoreApplication>
+#include <QFile>
 #include <QDebug>
 
 #include "sector.h"
@@ -35,8 +36,8 @@ class SectorsToMeta
 public:
     SectorsToMeta();
 
-    bool openOutputFile(QString filename);
-    void closeOutputFile(void);
+    bool setOutputFile(QFile *outputFileHandle);
+    void flushMetadata(void);
 
     void reportStatus(void);
     void process(QVector<Sector> sectors);
@@ -53,6 +54,7 @@ private:
     qint32 validSectors;
     qint32 invalidSectors;
     QString jsonFilename;
+    QFile *outputFileHandle;
 };
 
 #endif // SECTORSTOMETA_H

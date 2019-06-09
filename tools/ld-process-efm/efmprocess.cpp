@@ -66,7 +66,8 @@ EfmProcess::Statistics EfmProcess::getStatistics(void)
 
 // Process the specified input file.  This thread wrapper passes the parameters
 // to the object and restarts the run() function
-void EfmProcess::startProcessing(QString inputFilename, QFile *audioOutputFile, QFile *dataOutputFile)
+void EfmProcess::startProcessing(QString inputFilename, QFile *audioOutputFile, QFile *dataOutputFile,
+                                 QFile *audioMetaOutputFile, QFile *dataMetaOutputFile)
 {
     QMutexLocker locker(&mutex);
 
@@ -74,6 +75,8 @@ void EfmProcess::startProcessing(QString inputFilename, QFile *audioOutputFile, 
     this->inputFilename = inputFilename;
     this->audioOutputFile = audioOutputFile;
     this->dataOutputFile = dataOutputFile;
+    this->audioMetaOutputFile = audioMetaOutputFile;
+    this->dataMetaOutputFile = dataMetaOutputFile;
 
     // Is the run process already running?
     if (!isRunning()) {
@@ -100,6 +103,8 @@ void EfmProcess::run()
         inputFilenameTs = this->inputFilename;
         audioOutputFileTs = this->audioOutputFile;
         dataOutputFileTs = this->dataOutputFile;
+        audioMetaOutputFileTs = this->audioMetaOutputFile;
+        dataMetaOutputFileTs = this->dataMetaOutputFile;
         mutex.unlock();
 
         // Open the EFM input file
@@ -121,8 +126,26 @@ void EfmProcess::run()
             return;
         }
 
-        if (!audioOutputFileTs->isOpen()) {
+        if (!dataOutputFileTs->isOpen()) {
             qCritical("Data output file is not open!");
+
+            // Emit a signal showing the processing is complete
+            emit completed();
+
+            return;
+        }
+
+        if (!audioMetaOutputFileTs->isOpen()) {
+            qCritical("Audio metadata output file is not open!");
+
+            // Emit a signal showing the processing is complete
+            emit completed();
+
+            return;
+        }
+
+        if (!dataMetaOutputFileTs->isOpen()) {
+            qCritical("Data metadata output file is not open!");
 
             // Emit a signal showing the processing is complete
             emit completed();
@@ -140,8 +163,8 @@ void EfmProcess::run()
         if (processData) sectorsToData.setOutputFile(dataOutputFile);
 
         // Open the metadata JSON file
-        //if (processAudio) sectionToMeta.openOutputFile(outputAudioFilename + ".subcode.json");
-        //if (processData) sectorsToMeta.openOutputFile(outputDataFilename + ".data.json");
+        if (processAudio) sectionToMeta.setOutputFile(audioMetaOutputFileTs);
+        if (processData) sectorsToMeta.setOutputFile(dataMetaOutputFileTs);
 
         qint64 inputFileSize = inputFileHandle->size();
         qint64 inputBytesProcessed = 0;
@@ -168,7 +191,7 @@ void EfmProcess::run()
                 sectorsToData.convert(sectors);
 
                 // Process the sector meta data
-                //sectorsToMeta.process(sectors);
+                sectorsToMeta.process(sectors);
             }
 
             // Convert the F2 frames into audio
@@ -178,7 +201,7 @@ void EfmProcess::run()
             QVector<Section> sections = f3ToSections.convert(f3Frames);
 
             // Process the sections to audio metadata
-            //if (processAudio) sectionToMeta.process(sections);
+            if (processAudio) sectionToMeta.process(sections);
 
             // Show EFM processing progress update to user
             qreal percent = (100.0 / static_cast<qreal>(inputFileSize)) * static_cast<qreal>(inputBytesProcessed);
@@ -191,6 +214,10 @@ void EfmProcess::run()
         // Show the cancel flag
         if (cancel) qDebug() << "EfmProcess::run(): Conversion cancelled";
         cancel = false;
+
+        // Flush the metadata to the temporary files
+        if (processAudio) sectionToMeta.flushMetadata();
+        if (processData) sectorsToMeta.flushMetadata();
 
         // Emit a signal showing the processing is complete
         emit completed();

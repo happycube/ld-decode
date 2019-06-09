@@ -68,7 +68,8 @@ public:
     void resetStatistics(void);
     Statistics getStatistics(void);
 
-    void startProcessing(QString inputFilename, QFile *audioOutputFile, QFile *dataOutputFile);
+    void startProcessing(QString inputFilename, QFile *audioOutputFile, QFile *dataOutputFile,
+                         QFile *audioMetaOutputFile, QFile *dataMetaOutputFile);
 
     void cancelProcessing();
     void quit();
@@ -92,11 +93,15 @@ private:
     QString inputFilename;
     QFile *audioOutputFile;
     QFile *dataOutputFile;
+    QFile *audioMetaOutputFile;
+    QFile *dataMetaOutputFile;
 
     // Thread-safe variables
     QString inputFilenameTs;
     QFile *audioOutputFileTs;
     QFile *dataOutputFileTs;
+    QFile *audioMetaOutputFileTs;
+    QFile *dataMetaOutputFileTs;
     QFile *inputFileHandle;
 
     EfmToF3Frames efmToF3Frames;

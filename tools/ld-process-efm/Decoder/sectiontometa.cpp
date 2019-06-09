@@ -40,21 +40,22 @@ SectionToMeta::SectionToMeta()
 }
 
 // Method to open the metadata output file
-bool SectionToMeta::openOutputFile(QString filename)
+bool SectionToMeta::setOutputFile(QFile *outputFileHandle)
 {
+    // Open output file for writing
+    this->outputFileHandle = outputFileHandle;
+
     // Here we just store the required filename
     // The file is created and filled on close
-    jsonFilename = filename;
+    jsonFilename = outputFileHandle->fileName();
 
     // Exit with success
     return true;
 }
 
-// Method to close the metadata output file
-void SectionToMeta::closeOutputFile(void)
+// Method to flush the metadata to the output file
+void SectionToMeta::flushMetadata(void)
 {
-    qDebug() << "SectionToMeta::closeOutputFile(): Processing" << qMetaDataVector.size() << "metadata entries to JSON";
-
     // Define the JSON object
     JsonWax json;
 
