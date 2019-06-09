@@ -36,7 +36,7 @@ class Combine : public QObject
 public:
     explicit Combine(QObject *parent = nullptr);
 
-    bool process(QString primaryFilename, QString secondaryFilename, QString outputFilename, bool reverse);
+    bool process(QString primaryFilename, QString secondaryFilename, QString outputFilename, bool reverse, bool subline);
 
 signals:
 
@@ -62,7 +62,7 @@ private:
     qint32 getCavFrameNumber(qint32 frameSeqNumber, LdDecodeMetaData *ldDecodeMetaData);
     qint32 getClvFrameNumber(qint32 frameSeqNumber, LdDecodeMetaData *ldDecodeMetaData);
 
-    QByteArray processField(qint32 primarySeqFieldNumber, qint32 secondarySeqFieldNumber);
+    QByteArray processField(qint32 primarySeqFieldNumber, qint32 secondarySeqFieldNumber, bool subline);
     qint32 assessLineQuality(LdDecodeMetaData::Field field, qint32 lineNumber);
     QByteArray replaceVideoLineData(QByteArray primaryFieldData, QByteArray secondaryFieldData, qint32 lineNumber);
     QByteArray replaceVideoDropoutData(QByteArray primaryFieldData, QByteArray secondaryFieldData,
