@@ -36,6 +36,10 @@ void SectorsToData::reset(void)
     gotFirstValidSector = false;
     lastGoodAddress.setTime(0, 0, 0);
 
+    missingStartSector.clear();
+    missingEndSector.clear();
+    isGap.clear();
+
     resetStatistics();
 }
 

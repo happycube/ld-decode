@@ -36,17 +36,22 @@ void F3ToSections::reset(void)
     // Initialise the state machine
     currentState = state_initial;
     nextState = currentState;
-
-    missedSectionSyncCount = 0;
-    sectionSyncLost = 0;
-    poorSyncs = 0;
-    totalSections = 0;
+    waitingForF3frame = false;
 
     // Clear the sync flags
     sync0 = false;
     sync1 = false;
 
-    //resetStatistics();
+    resetStatistics();
+}
+
+// Reset statistics
+void F3ToSections::resetStatistics(void)
+{
+    missedSectionSyncCount = 0;
+    sectionSyncLost = 0;
+    poorSyncs = 0;
+    totalSections = 0;
 }
 
 // Method to write status information to qCInfo

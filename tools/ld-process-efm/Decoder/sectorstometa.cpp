@@ -36,7 +36,7 @@ void SectorsToMeta::reset(void)
     validSectors = 0;
     invalidSectors = 0;
 
-    metadata.empty();
+    metadata.clear();
 
     //resetStatistics();
 }

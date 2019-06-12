@@ -44,6 +44,7 @@ C1Circ::C1Circ()
 void C1Circ::reset(void)
 {
     flush();
+
     resetStatistics();
 }
 

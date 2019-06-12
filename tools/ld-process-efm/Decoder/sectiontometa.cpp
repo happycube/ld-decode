@@ -34,7 +34,8 @@ SectionToMeta::SectionToMeta()
 void SectionToMeta::reset(void)
 {
     // Delete any existing metadata records
-    qMetaDataVector.empty();
+    qMetaDataVector.clear();
+    qMetaModeVector.clear();
 
     resetStatistics();
 }

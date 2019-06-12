@@ -37,6 +37,7 @@ public:
     F2ToF1Frames();
 
     void reset(void);
+    void resetStatistics(void);
     void reportStatus(void);
     QVector<F1Frame> convert(QVector<F2Frame> f2FramesIn);
 

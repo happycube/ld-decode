@@ -50,13 +50,27 @@ void F2ToF1Frames::reset(void)
     // Initialise the state machine
     currentState = state_initial;
     nextState = currentState;
+    waitingForF2frames = false;
 
     missedF1SyncCount = 0;
     F1SyncLost = 0;
     poorSyncs = 0;
     totalF1Frames = 0;
 
-    // resetStatistics();
+    f1FrameBuffer.clear();
+    f2DataBuffer.clear();
+    f2ErrorBuffer.clear();
+
+    resetStatistics();
+}
+
+// Reset the statistics
+void F2ToF1Frames::resetStatistics(void)
+{
+    missedF1SyncCount = 0;
+    F1SyncLost = 0;
+    totalF1Frames = 0;
+    poorSyncs = 0;
 }
 
 // Method to write status information to qCInfo

@@ -47,11 +47,16 @@ void EfmProcess::reset(void)
 {
     efmToF3Frames.reset();
     f3ToF2Frames.reset();
+    f2ToF1Frames.reset();
     f2FramesToAudio.reset();
+    f3ToSections.reset();
+    f1ToSectors.reset();
     sectorsToData.reset();
 
     sectionToMeta.reset();
     sectorsToMeta.reset();
+
+    resetStatistics();
 }
 
 // Statistics

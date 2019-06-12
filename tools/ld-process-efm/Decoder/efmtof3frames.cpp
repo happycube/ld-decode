@@ -39,8 +39,9 @@ void EfmToF3Frames::reset(void)
     currentState = state_initial;
     nextState = currentState;
     waitingForData = false;
-
     firstF3AfterInitialSync = false;
+    poorSyncCount = 0;
+    endSyncTransition = 0;
 
     efmData.clear();
 
