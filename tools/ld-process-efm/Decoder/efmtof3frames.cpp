@@ -27,16 +27,24 @@
 
 EfmToF3Frames::EfmToF3Frames()
 {
+    verboseDebug = false;
+
+    reset();
+}
+
+// Method to reset and flush all buffers
+void EfmToF3Frames::reset(void)
+{
     // Initialise the state machine
     currentState = state_initial;
     nextState = currentState;
     waitingForData = false;
 
-    // Initialise the statistics
-    resetStatistics();
-
     firstF3AfterInitialSync = false;
-    verboseDebug = false;
+
+    efmData.clear();
+
+    resetStatistics();
 }
 
 // Methods to handle statistics

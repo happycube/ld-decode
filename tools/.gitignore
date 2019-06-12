@@ -51,5 +51,6 @@ CMakeLists.txt.user*
 /ld-process-audio/ld-process-audio
 /ld-combine/ld-combine
 /ld-process-efm/ld-process-efm
+/ld-process-efm-rev5/ld-process-efm-rev5
 /ld-ldstoefm/ld-ldstoefm
 

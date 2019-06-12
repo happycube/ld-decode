@@ -36,6 +36,7 @@ class F3ToSections
 public:
     F3ToSections();
 
+    void reset(void);
     void reportStatus(void);
     QVector<Section> convert(QVector<F3Frame> f3FramesIn);
 

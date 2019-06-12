@@ -65,6 +65,7 @@ public:
         SectorsToData::Statistics sectorsToData_statistics;
     };
 
+    void reset(void);
     void resetStatistics(void);
     Statistics getStatistics(void);
 

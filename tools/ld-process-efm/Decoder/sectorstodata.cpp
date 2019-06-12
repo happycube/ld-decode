@@ -27,6 +27,12 @@
 
 SectorsToData::SectorsToData()
 {
+    reset();
+}
+
+// Method to reset and flush all buffers
+void SectorsToData::reset(void)
+{
     gotFirstValidSector = false;
     lastGoodAddress.setTime(0, 0, 0);
 

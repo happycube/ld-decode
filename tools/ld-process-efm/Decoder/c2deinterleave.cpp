@@ -29,6 +29,13 @@ C2Deinterleave::C2Deinterleave()
     outputC2Data.resize(24);
     outputC2Errors.resize(24);
 
+    reset();
+}
+
+// Method to reset and flush all buffers
+void C2Deinterleave::reset(void)
+{
+    flush();
     resetStatistics();
 }
 

@@ -40,6 +40,7 @@ public:
         qint32 audioSamples;
     };
 
+    void reset(void);
     void resetStatistics(void);
     Statistics getStatistics(void);
 

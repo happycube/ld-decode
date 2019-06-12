@@ -36,6 +36,7 @@ class F1ToSectors
 public:
     F1ToSectors();
 
+    void reset(void);
     void reportStatus(void);
     QVector<Sector> convert(QVector<F1Frame> f1FramesIn);
 

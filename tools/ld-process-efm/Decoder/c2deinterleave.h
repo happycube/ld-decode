@@ -40,6 +40,7 @@ public:
         qint32 invalidDeinterleavedC2s;
     };
 
+    void reset(void);
     void resetStatistics(void);
     Statistics getStatistics(void);
     void reportStatus(void);

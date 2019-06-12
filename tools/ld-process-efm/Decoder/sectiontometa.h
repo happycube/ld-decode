@@ -36,6 +36,9 @@ class SectionToMeta
 public:
     SectionToMeta();
 
+    void reset(void);
+    void resetStatistics(void);
+
     bool setOutputFile(QFile *outputFileHandle);
     void flushMetadata(void);
 

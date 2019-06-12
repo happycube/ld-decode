@@ -48,6 +48,7 @@ public:
         qint32 c2flushed;
     };
 
+    void reset(void);
     void resetStatistics(void);
     Statistics getStatistics(void);
     void reportStatus(void);

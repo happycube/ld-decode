@@ -42,6 +42,18 @@ EfmProcess::~EfmProcess()
     wait();
 }
 
+// Reset the conversion classes
+void EfmProcess::reset(void)
+{
+    efmToF3Frames.reset();
+    f3ToF2Frames.reset();
+    f2FramesToAudio.reset();
+    sectorsToData.reset();
+
+    sectionToMeta.reset();
+    sectorsToMeta.reset();
+}
+
 // Statistics
 void EfmProcess::resetStatistics(void)
 {

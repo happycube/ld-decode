@@ -46,6 +46,7 @@ public:
         C2Deinterleave::Statistics c2Deinterleave_statistics;
     };
 
+    void reset(void);
     void resetStatistics(void);
     Statistics getStatistics(void);
 

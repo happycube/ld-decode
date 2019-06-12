@@ -32,8 +32,13 @@ C2Circ::C2Circ()
     outputC2Data.resize(28);
     outputC2Errors.resize(28);
 
-    flush();
+    reset();
+}
 
+// Method to reset and flush all buffers
+void C2Circ::reset(void)
+{
+    flush();
     resetStatistics();
 }
 

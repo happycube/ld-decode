@@ -43,6 +43,7 @@ public:
         qint32 missingSectors;
     };
 
+    void reset(void);
     void resetStatistics(void);
     Statistics getStatistics(void);
 

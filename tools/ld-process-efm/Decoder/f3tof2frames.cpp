@@ -27,7 +27,16 @@
 
 F3ToF2Frames::F3ToF2Frames()
 {
-    // Initialise the statistics
+    reset();
+}
+
+// Method to reset and flush all buffers
+void F3ToF2Frames::reset(void)
+{
+    c1Circ.reset();
+    c2Circ.reset();
+    c2Deinterleave.reset();
+
     resetStatistics();
 }
 

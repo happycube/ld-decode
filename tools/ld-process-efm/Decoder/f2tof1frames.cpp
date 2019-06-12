@@ -27,15 +27,6 @@
 
 F2ToF1Frames::F2ToF1Frames()
 {
-    // Initialise the state machine
-    currentState = state_initial;
-    nextState = currentState;
-
-    missedF1SyncCount = 0;
-    F1SyncLost = 0;
-    poorSyncs = 0;
-    totalF1Frames = 0;
-
     // Create the 12 byte F1 frame sync pattern
     syncPattern.append(static_cast<char>(0x00));
     syncPattern.append(static_cast<char>(0xFF));
@@ -49,6 +40,23 @@ F2ToF1Frames::F2ToF1Frames()
     syncPattern.append(static_cast<char>(0xFF));
     syncPattern.append(static_cast<char>(0xFF));
     syncPattern.append(static_cast<char>(0x00));
+
+    reset();
+}
+
+// Method to reset and flush all buffers
+void F2ToF1Frames::reset(void)
+{
+    // Initialise the state machine
+    currentState = state_initial;
+    nextState = currentState;
+
+    missedF1SyncCount = 0;
+    F1SyncLost = 0;
+    poorSyncs = 0;
+    totalF1Frames = 0;
+
+    // resetStatistics();
 }
 
 // Method to write status information to qCInfo

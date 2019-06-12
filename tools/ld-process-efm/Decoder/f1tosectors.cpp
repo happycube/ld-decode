@@ -27,9 +27,17 @@
 
 F1ToSectors::F1ToSectors()
 {
+    reset();
+}
+
+// Method to reset and flush all buffers
+void F1ToSectors::reset(void)
+{
     validSectors = 0;
     invalidSectors = 0;
     correctedSectors = 0;
+
+    //resetStatistics();
 }
 
 void F1ToSectors::reportStatus(void)

@@ -27,6 +27,12 @@
 
 F2FramesToAudio::F2FramesToAudio()
 {
+    reset();
+}
+
+// Method to reset and flush all buffers
+void F2FramesToAudio::reset(void)
+{
     resetStatistics();
 }
 

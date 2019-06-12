@@ -36,6 +36,7 @@ class SectorsToMeta
 public:
     SectorsToMeta();
 
+    void reset(void);
     bool setOutputFile(QFile *outputFileHandle);
     void flushMetadata(void);
 

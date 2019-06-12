@@ -27,6 +27,21 @@
 
 SectionToMeta::SectionToMeta()
 {
+    reset();
+}
+
+// Method to reset and flush all buffers
+void SectionToMeta::reset(void)
+{
+    // Delete any existing metadata records
+    qMetaDataVector.empty();
+
+    resetStatistics();
+}
+
+// Methods to handle statistics
+void SectionToMeta::resetStatistics(void)
+{
     // Subcode block Q mode counters
     qMode0Count = 0;
     qMode1Count = 0;

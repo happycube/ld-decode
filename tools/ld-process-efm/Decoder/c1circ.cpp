@@ -37,8 +37,13 @@ C1Circ::C1Circ()
     outputC1Data.resize(28);
     outputC1Errors.resize(28);
 
-    flush();
+    reset();
+}
 
+// Method to reset and flush all buffers
+void C1Circ::reset(void)
+{
+    flush();
     resetStatistics();
 }
 

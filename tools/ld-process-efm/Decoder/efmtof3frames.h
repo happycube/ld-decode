@@ -42,6 +42,7 @@ public:
         qint32 syncLoss;
     };
 
+    void reset(void);
     void setVerboseDebug(bool param);
     void reportStatus(void);
     QVector<F3Frame> convert(QByteArray efmDataIn);

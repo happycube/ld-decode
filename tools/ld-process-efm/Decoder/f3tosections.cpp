@@ -27,6 +27,12 @@
 
 F3ToSections::F3ToSections()
 {
+    reset();
+}
+
+// Method to reset and flush all buffers
+void F3ToSections::reset(void)
+{
     // Initialise the state machine
     currentState = state_initial;
     nextState = currentState;
@@ -39,6 +45,8 @@ F3ToSections::F3ToSections()
     // Clear the sync flags
     sync0 = false;
     sync1 = false;
+
+    //resetStatistics();
 }
 
 // Method to write status information to qCInfo

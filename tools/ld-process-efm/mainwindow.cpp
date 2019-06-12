@@ -95,6 +95,9 @@ void MainWindow::noEfmFileLoaded(void)
     // Clear the current input filename
     currentInputFilename.clear();
 
+    // Reset decoder
+    efmProcess.reset();
+
     // Reset statistics
     resetStatistics();
 }
@@ -114,6 +117,9 @@ void MainWindow::efmFileLoaded(void)
 
     // Set the main window title
     this->setWindowTitle(tr("ld-process-efm - ") + currentInputFilename);
+
+    // Reset decoder
+    efmProcess.reset();
 
     // Reset statistics
     resetStatistics();
@@ -213,6 +219,9 @@ void MainWindow::decodingStart(void)
     qDebug() << "MainWindow::decodingStart(): Data output temporary file is" << dataOutputFile->fileName();
     qDebug() << "MainWindow::decodingStart(): Audio metadata output temporary file is" << audioMetaOutputFile->fileName();
     qDebug() << "MainWindow::decodingStart(): Data metadata output temporary file is" << dataMetaOutputFile->fileName();
+
+    // Reset decoder
+    efmProcess.reset();
 
     // Reset statistics
     resetStatistics();

@@ -27,8 +27,18 @@
 
 SectorsToMeta::SectorsToMeta()
 {
+    reset();
+}
+
+// Method to reset and flush all buffers
+void SectorsToMeta::reset(void)
+{
     validSectors = 0;
     invalidSectors = 0;
+
+    metadata.empty();
+
+    //resetStatistics();
 }
 
 // Method to open the metadata output file
