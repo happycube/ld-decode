@@ -12,10 +12,8 @@ import sys
 
 # standard numeric/scientific libraries
 import numpy as np
-import pandas as pd
 import scipy as sp
 import scipy.signal as sps
-import scipy.fftpack as fftpack 
 
 # plotting
 import matplotlib
