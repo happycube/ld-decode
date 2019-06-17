@@ -117,9 +117,9 @@ while not done and ldd.fields_written < (req_frames * 2):
         exit(1)
     except Exception as err:
         print("ERROR - please paste the following into a bug report:", file=sys.stderr)
-        print("current sample: " + ldd.fdoffset, file=sys.stderr)
-        print("arguments: " + args, file=sys.stderr)
-        print("Exception: " + err + " Traceback:", file=sys.stderr)
+        print("current sample:", ldd.fdoffset, file=sys.stderr)
+        print("arguments:", args, file=sys.stderr)
+        print("Exception:", err, " Traceback:", file=sys.stderr)
         traceback.print_tb(err.__traceback__)
         write_json(ldd, outname)
         exit(1)
