@@ -67,6 +67,10 @@ void Configuration::writeConfiguration(void)
     configuration->setValue("dataDirectory", settings.directories.dataDirectory);
     configuration->endGroup();
 
+    qDebug() << "Configuration::writeConfiguration(): sourceDirectory =" << settings.directories.sourceDirectory;
+    qDebug() << "Configuration::writeConfiguration(): audioDirectory =" << settings.directories.audioDirectory;
+    qDebug() << "Configuration::writeConfiguration(): dataDirectory =" << settings.directories.dataDirectory;
+
     // Windows
     configuration->beginGroup("windows");
     configuration->setValue("mainWindowGeometry", settings.windows.mainWindowGeometry);
@@ -90,6 +94,10 @@ void Configuration::readConfiguration(void)
     settings.directories.audioDirectory = configuration->value("audioDirectory").toString();
     settings.directories.dataDirectory = configuration->value("dataDirectory").toString();
     configuration->endGroup();
+
+    qDebug() << "Configuration::readConfiguration(): sourceDirectory =" << settings.directories.sourceDirectory;
+    qDebug() << "Configuration::readConfiguration(): audioDirectory =" << settings.directories.audioDirectory;
+    qDebug() << "Configuration::readConfiguration(): dataDirectory =" << settings.directories.dataDirectory;
 
     // Windows
     configuration->beginGroup("windows");

@@ -116,7 +116,8 @@ void MainWindow::efmFileLoaded(void)
     ui->decodeProgressBar->setValue(0);
 
     // Set the main window title
-    this->setWindowTitle(tr("ld-process-efm - ") + currentInputFilename);
+    QFileInfo fileInfo(currentInputFilename);
+    this->setWindowTitle(tr("ld-process-efm - ") + fileInfo.fileName());
 
     // Reset decoder
     efmProcess.reset();
@@ -345,8 +346,11 @@ void MainWindow::on_actionSave_Audio_As_triggered()
     qDebug() << "MainWindow::on_actionSave_Audio_As_triggered(): Called";
 
     // Create a suggestion for the filename
-    QString filenameSuggestion = configuration->getAudioDirectory();
-    filenameSuggestion += currentInputFilename + tr(".pcm");
+    QFileInfo fileInfo(currentInputFilename);
+    QString filenameSuggestion = configuration->getAudioDirectory() + "/";
+    filenameSuggestion += fileInfo.fileName() + tr(".pcm");
+
+    qDebug() << "MainWindow::on_actionSave_Audio_As_triggered()L filename suggestion is =" << filenameSuggestion;
 
     QString audioFilename = QFileDialog::getSaveFileName(this,
                 tr("Save PCM file"),
@@ -360,6 +364,7 @@ void MainWindow::on_actionSave_Audio_As_triggered()
 
         // Check if filename exists (and remove the file if it does)
         if (QFile::exists(audioFilename)) QFile::remove(audioFilename);
+        if (QFile::exists(audioFilename + tr(".json"))) QFile::remove(audioFilename + tr(".json"));
 
         // Copy the audio data from the temporary file to the destination
         if (!audioOutputFile->copy(audioFilename)) {
@@ -393,8 +398,9 @@ void MainWindow::on_actionSave_Data_As_triggered()
     qDebug() << "MainWindow::on_actionSave_Data_As_triggered(): Called";
 
     // Create a suggestion for the filename
-    QString filenameSuggestion = configuration->getDataDirectory();
-    filenameSuggestion += currentInputFilename + tr(".dat");
+    QFileInfo fileInfo(currentInputFilename);
+    QString filenameSuggestion = configuration->getDataDirectory() + "/";
+    filenameSuggestion += fileInfo.fileName() + tr(".dat");
 
     QString dataFilename = QFileDialog::getSaveFileName(this,
                 tr("Save DAT file"),
@@ -408,6 +414,7 @@ void MainWindow::on_actionSave_Data_As_triggered()
 
         // Check if filename exists (and remove the file if it does)
         if (QFile::exists(dataFilename)) QFile::remove(dataFilename);
+        if (QFile::exists(dataFilename + tr(".json"))) QFile::remove(dataFilename + tr(".json"));
 
         // Copy the data from the temporary file to the destination
         if (!dataOutputFile->copy(dataFilename)) {
