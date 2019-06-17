@@ -3,7 +3,7 @@
     configuration.cpp
 
     ld-analyse - TBC output analysis
-    Copyright (C) 2018 Simon Inns
+    Copyright (C) 2018-2019 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -25,7 +25,7 @@
 #include "configuration.h"
 
 // This define should be incremented if the settings file format changes
-static const qint32 SETTINGSVERSION = 2;
+static const qint32 SETTINGSVERSION = 3;
 
 Configuration::Configuration(QObject *parent) : QObject(parent)
 {
@@ -34,7 +34,7 @@ Configuration::Configuration(QObject *parent) : QObject(parent)
     QString configurationFileName;
 
     configurationPath = QStandardPaths::writableLocation(QStandardPaths::ConfigLocation) ;
-    configurationFileName = "ld-colourfilter.ini" ;
+    configurationFileName = "ld-analyse.ini" ;
     configuration = new QSettings(configurationPath + "/"+ configurationFileName, QSettings::IniFormat);
 
     // Read the configuration
@@ -64,6 +64,7 @@ void Configuration::writeConfiguration(void)
     configuration->beginGroup("directories");
     configuration->setValue("sourceDirectory", settings.directories.sourceDirectory);
     configuration->setValue("pngDirectory", settings.directories.pngDirectory);
+    configuration->setValue("csvDirectory", settings.directories.csvDirectory);
     configuration->endGroup();
 
     // Windows
@@ -74,6 +75,8 @@ void Configuration::writeConfiguration(void)
     configuration->setValue("videoMetadataDialogGeometry", settings.windows.videoMetadataDialogGeometry);
     configuration->setValue("oscilloscopeDialogGeometry", settings.windows.oscilloscopeDialogGeometry);
     configuration->setValue("dropoutAnalysisDialogGeometry", settings.windows.dropoutAnalysisDialogGeometry);
+    configuration->setValue("vitsMetricsDialogGeometry", settings.windows.vitsMetricsDialogGeometry);
+    configuration->setValue("snrAnalysisDialogGeometry", settings.windows.snrAnalysisDialogGeometry);
     configuration->endGroup();
 
     // Sync the settings with disk
@@ -92,6 +95,7 @@ void Configuration::readConfiguration(void)
     configuration->beginGroup("directories");
     settings.directories.sourceDirectory = configuration->value("sourceDirectory").toString();
     settings.directories.pngDirectory = configuration->value("pngDirectory").toString();
+    settings.directories.csvDirectory = configuration->value("csvDirectory").toString();
     configuration->endGroup();
 
     // Windows
@@ -102,6 +106,8 @@ void Configuration::readConfiguration(void)
     settings.windows.videoMetadataDialogGeometry = configuration->value("videoMetadataDialogGeometry").toByteArray();
     settings.windows.oscilloscopeDialogGeometry = configuration->value("oscilloscopeDialogGeometry").toByteArray();
     settings.windows.dropoutAnalysisDialogGeometry = configuration->value("dropoutAnalysisDialogGeometry").toByteArray();
+    settings.windows.vitsMetricsDialogGeometry = configuration->value("vitsMetricsDialogGeometry").toByteArray();
+    settings.windows.snrAnalysisDialogGeometry = configuration->value("snrAnalysisDialogGeometry").toByteArray();
     configuration->endGroup();
 }
 
@@ -113,6 +119,7 @@ void Configuration::setDefault(void)
     // Directories
     settings.directories.sourceDirectory = QDir::homePath();
     settings.directories.pngDirectory = QDir::homePath();
+    settings.directories.csvDirectory = QDir::homePath();
 
     // Windows
     settings.windows.mainWindowGeometry = QByteArray();
@@ -121,6 +128,8 @@ void Configuration::setDefault(void)
     settings.windows.videoMetadataDialogGeometry = QByteArray();
     settings.windows.oscilloscopeDialogGeometry = QByteArray();
     settings.windows.dropoutAnalysisDialogGeometry = QByteArray();
+    settings.windows.vitsMetricsDialogGeometry = QByteArray();
+    settings.windows.snrAnalysisDialogGeometry = QByteArray();
 
     // Write the configuration
     writeConfiguration();
@@ -147,6 +156,16 @@ void Configuration::setPngDirectory(QString pngDirectory)
 QString Configuration::getPngDirectory(void)
 {
     return settings.directories.pngDirectory;
+}
+
+void Configuration::setCsvDirectory(QString csvDirectory)
+{
+    settings.directories.csvDirectory = csvDirectory;
+}
+
+QString Configuration::getCsvDirectory(void)
+{
+    return settings.directories.csvDirectory;
 }
 
 // Windows
@@ -208,5 +227,25 @@ void Configuration::setDropoutAnalysisDialogGeometry(QByteArray dropoutAnalysisD
 QByteArray Configuration::getDropoutAnalysisDialogGeometry(void)
 {
     return settings.windows.dropoutAnalysisDialogGeometry;
+}
+
+void Configuration::setVitsMetricsDialogGeometry(QByteArray vitsMetricsDialogGeometry)
+{
+    settings.windows.vitsMetricsDialogGeometry = vitsMetricsDialogGeometry;
+}
+
+QByteArray Configuration::getVitsMetricsDialogGeometry(void)
+{
+    return settings.windows.vitsMetricsDialogGeometry;
+}
+
+void Configuration::setSnrAnalysisDialogGeometry(QByteArray snrAnalysisDialogGeometry)
+{
+    settings.windows.snrAnalysisDialogGeometry = snrAnalysisDialogGeometry;
+}
+
+QByteArray Configuration::getSnrAnalysisDialogGeometry(void)
+{
+    return settings.windows.snrAnalysisDialogGeometry;
 }
 

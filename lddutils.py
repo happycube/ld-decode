@@ -1,6 +1,7 @@
 # NOTE:  These are not reduced from ld-decode notebook
 
 from base64 import b64encode
+from collections import namedtuple
 import copy
 from datetime import datetime
 import getopt
@@ -11,10 +12,8 @@ import sys
 
 # standard numeric/scientific libraries
 import numpy as np
-import pandas as pd
 import scipy as sp
 import scipy.signal as sps
-import scipy.fftpack as fftpack 
 
 # plotting
 import matplotlib
@@ -415,7 +414,9 @@ def findareas(array, cross):
 
     return [(*z, z[1] - z[0]) for z in zip(starts, ends)]
 
-def findareas_inrange(array, low, high):
+Pulse = namedtuple('Pulse', 'start len')
+
+def findpulses(array, low, high):
     ''' Find areas where `array` is between `low` and `high`
     
     returns: array of tuples of said areas (begin, end, length)
@@ -426,6 +427,9 @@ def findareas_inrange(array, low, high):
     starts = np.where(np.logical_and(array_inrange[1:] == True, array_inrange[:-1] == False))[0]
     ends = np.where(np.logical_and(array_inrange[1:] == False, array_inrange[:-1] == True))[0]
 
+    if len(starts) == 0 or len(ends) == 0:
+        return []
+
     # remove 'dangling' beginnings and endings so everything zips up nicely and in order
     if ends[0] < starts[0]:
         ends = ends[1:]
@@ -433,4 +437,4 @@ def findareas_inrange(array, low, high):
     if starts[-1] > ends[-1]:
         starts = starts[:-1]
 
-    return [(*z, z[1] - z[0]) for z in zip(starts, ends)]
+    return [Pulse(z[0], z[1] - z[0]) for z in zip(starts, ends)]

@@ -24,149 +24,264 @@
 
 #include "efmprocess.h"
 
-EfmProcess::EfmProcess()
+EfmProcess::EfmProcess(QObject *parent) : QThread(parent)
 {
-    // Subcode block Q mode counters
-    qMode0Count = 0;
-    qMode1Count = 0;
-    qMode2Count = 0;
-    qMode3Count = 0;
-    qMode4Count = 0;
-    qModeICount = 0;
+    // Thread control variables
+    restart = false; // Setting this to true starts processing
+    cancel = false; // Setting this to true cancels the processing in progress
+    abort = false; // Setting this to true ends the thread process
 }
 
-// Note:
-//
-//   Audio is: EFM->F3->F2->Audio
-//    Data is: EFM->F3->F2->F1->Sector->Data
-// Section is: EFM->F3->Section
-//
-// See ECMA-130 for details
-
-bool EfmProcess::process(QString inputEfmFilename, QString outputAudioFilename, QString outputDataFilename, bool verboseDebug)
+EfmProcess::~EfmProcess()
 {
-    // Open the input file
-    if (!openInputFile(inputEfmFilename)) {
-        qCritical("Could not open input file!");
-        return false;
+    mutex.lock();
+    abort = true;
+    condition.wakeOne();
+    mutex.unlock();
+
+    wait();
+}
+
+// Reset the conversion classes
+void EfmProcess::reset(void)
+{
+    efmToF3Frames.reset();
+    f3ToF2Frames.reset();
+    f2ToF1Frames.reset();
+    f2FramesToAudio.reset();
+    f3ToSections.reset();
+    f1ToSectors.reset();
+    sectorsToData.reset();
+
+    sectionToMeta.reset();
+    sectorsToMeta.reset();
+
+    resetStatistics();
+}
+
+// Statistics
+void EfmProcess::resetStatistics(void)
+{
+    efmToF3Frames.resetStatistics();
+    f3ToF2Frames.resetStatistics();
+    f2FramesToAudio.resetStatistics();
+    sectorsToData.resetStatistics();
+}
+
+EfmProcess::Statistics EfmProcess::getStatistics(void)
+{
+    // Gather statistics
+    statistics.efmToF3Frames_statistics = efmToF3Frames.getStatistics();
+    statistics.f3ToF2Frames_statistics = f3ToF2Frames.getStatistics();
+    statistics.f2FramesToAudio_statistics = f2FramesToAudio.getStatistics();
+    statistics.sectorsToData_statistics = sectorsToData.getStatistics();
+
+    return statistics;
+}
+
+// Thread handling methods --------------------------------------------------------------------------------------------
+
+// Process the specified input file.  This thread wrapper passes the parameters
+// to the object and restarts the run() function
+void EfmProcess::startProcessing(QString inputFilename, QFile *audioOutputFile, QFile *dataOutputFile,
+                                 QFile *audioMetaOutputFile, QFile *dataMetaOutputFile)
+{
+    QMutexLocker locker(&mutex);
+
+    // Move all the parameters to be local
+    this->inputFilename = inputFilename;
+    this->audioOutputFile = audioOutputFile;
+    this->dataOutputFile = dataOutputFile;
+    this->audioMetaOutputFile = audioMetaOutputFile;
+    this->dataMetaOutputFile = dataMetaOutputFile;
+
+    // Is the run process already running?
+    if (!isRunning()) {
+        // Yes, start with low priority
+        start(LowPriority);
+    } else {
+        // No, set the restart condition
+        restart = true;
+        cancel = false;
+        condition.wakeOne();
     }
+}
 
-    bool processAudio = false;
-    bool processData = false;
-    if (!outputAudioFilename.isEmpty()) processAudio = true;
-    if (!outputDataFilename.isEmpty()) processData = true;
+// Primary processing loop for the thread
+void EfmProcess::run()
+{
+    qDebug() << "EfmProcess::run(): Thread initial run";
 
-    qint64 inputFileSize = inputFileHandle->size();
-    qint64 inputBytesProcessed = 0;
-    qint32 lastPercent = 0;
+    while(!abort) {
+        qDebug() << "EfmProcess::run(): Thread wake up on restart";
 
-    // Open the audio output file
-    if (processAudio) f2FramesToAudio.openOutputFile(outputAudioFilename);
+        // Lock and copy all parameters to 'thread-safe' variables
+        mutex.lock();
+        inputFilenameTs = this->inputFilename;
+        audioOutputFileTs = this->audioOutputFile;
+        dataOutputFileTs = this->dataOutputFile;
+        audioMetaOutputFileTs = this->audioMetaOutputFile;
+        dataMetaOutputFileTs = this->dataMetaOutputFile;
+        mutex.unlock();
 
-    // Open the data decode output file
-    if (processData) sectorsToData.openOutputFile(outputDataFilename);
+        // Open the EFM input file
+        if (!openInputFile(inputFilenameTs)) {
+            qCritical("Could not open input EFM file!");
 
-    // Turn on verbose debug if required
-    if (verboseDebug) efmToF3Frames.setVerboseDebug(true);
+            // Emit a signal showing the processing is complete
+            emit completed();
 
-    QByteArray efmBuffer;
-    while ((efmBuffer = readEfmData()).size() != 0) {
-        inputBytesProcessed += efmBuffer.size();
-
-        // Convert the EFM buffer data into F3 frames
-        QVector<F3Frame> f3Frames = efmToF3Frames.convert(efmBuffer);
-
-        // Convert the F3 frames into F2 frames
-        QVector<F2Frame> f2Frames = f3ToF2Frames.convert(f3Frames);
-
-        // Convert the F2 frames into F1 frames
-        QVector<F1Frame> f1Frames = f2ToF1Frames.convert(f2Frames);
-
-        if (processData) {
-            // Convert the F1 frames to data sectors
-            QVector<Sector> sectors = f1ToSectors.convert(f1Frames);
-
-            // Write the sectors as data
-            sectorsToData.convert(sectors);
+            return;
         }
 
-        // Convert the F2 frames into audio
-        if (processAudio) f2FramesToAudio.convert(f2Frames);
+        if (!audioOutputFileTs->isOpen()) {
+            qCritical("Audio output file is not open!");
 
-        // Convert the F3 frames into subcode sections
-        QVector<Section> sections = f3ToSections.convert(f3Frames);
+            // Emit a signal showing the processing is complete
+            emit completed();
 
-        // Process the sections (doesn't really do much right now)
-        processSections(sections);
+            return;
+        }
 
-        // Show EFM processing progress update to user
-        qreal percent = (100.0 / static_cast<qreal>(inputFileSize)) * static_cast<qreal>(inputBytesProcessed);
-        if (static_cast<qint32>(percent) > lastPercent) qInfo().nospace() << "Processed " << static_cast<qint32>(percent) << "% of the input EFM";
-        lastPercent = static_cast<qint32>(percent);
-    }
+        if (!dataOutputFileTs->isOpen()) {
+            qCritical("Data output file is not open!");
 
-    // Report on the status of the various processes
-    reportStatus(processAudio, processData);
+            // Emit a signal showing the processing is complete
+            emit completed();
 
-    // Close the input file
-    closeInputFile();
+            return;
+        }
 
-    // Close the output files
-    if (processAudio) f2FramesToAudio.closeOutputFile();
-    if (processData) sectorsToData.closeOutputFile();
+        if (!audioMetaOutputFileTs->isOpen()) {
+            qCritical("Audio metadata output file is not open!");
 
-    return true;
-}
+            // Emit a signal showing the processing is complete
+            emit completed();
 
-// Method to process the decoded sections
-void EfmProcess::processSections(QVector<Section> sections)
-{
-    // Did we get any sections?
-    if (sections.size() != 0) {
-        for (qint32 i = 0; i < sections.size(); i++) {
-            qint32 qMode = sections[i].getQMode();
+            return;
+        }
 
-            // Depending on the section Q Mode, process the section
-            if (qMode == 0) {
-                // Data
-                qMode0Count++;
-                //qDebug() << "EfmProcess::showSections(): Section Q mode is 0 - Data!";
-            } else if (qMode == 1) {
-                // CD Audio
-                qMode1Count++;
-                //qDebug() << "EfmProcess::showSections(): Section Q mode is 1 - CD Audio - Track time:" << sections[i].getQMetadata().qMode4.trackTime.getTimeAsQString();
-            } else if (qMode == 2) {
-                // Unique ID for disc
-                qMode2Count++;
-                //qDebug() << "EfmProcess::showSections(): Section Q mode is 2 - Unique ID for disc";
-            } else if (qMode == 3) {
-                // Unique ID for track
-                qMode3Count++;
-                //qDebug() << "EfmProcess::showSections(): Section Q mode is 3 - Unique ID for track!";
-            } else if (qMode == 4) {
-                // 4 = non-CD Audio (LaserDisc)
-                qMode4Count++;
-                //qDebug() << "EfmProcess::showSections(): Section Q mode is 4 - non-CD Audio - Track time:" << sections[i].getQMetadata().qMode4.trackTime.getTimeAsQString();
-            } else {
-                // Invalid section
-                qModeICount++;
-                //qDebug() << "EfmProcess::showSections(): Invalid section";
+        if (!dataMetaOutputFileTs->isOpen()) {
+            qCritical("Data metadata output file is not open!");
+
+            // Emit a signal showing the processing is complete
+            emit completed();
+
+            return;
+        }
+
+        bool processAudio = true;
+        bool processData = true;
+
+        // Open the audio output file
+        if (processAudio) f2FramesToAudio.setOutputFile(audioOutputFileTs);
+
+        // Open the data decode output file
+        if (processData) sectorsToData.setOutputFile(dataOutputFile);
+
+        // Open the metadata JSON file
+        if (processAudio) sectionToMeta.setOutputFile(audioMetaOutputFileTs);
+        if (processData) sectorsToMeta.setOutputFile(dataMetaOutputFileTs);
+
+        qint64 inputFileSize = inputFileHandle->size();
+        qint64 inputBytesProcessed = 0;
+        qint32 lastPercent = 0;
+
+        QByteArray efmBuffer;
+        while(((efmBuffer = readEfmData()).size() != 0) && !cancel) { // Note: this doesn't allow the buffer processing to complete before stopping...
+            inputBytesProcessed += efmBuffer.size();
+
+            // Convert the EFM buffer data into F3 frames
+            QVector<F3Frame> f3Frames = efmToF3Frames.convert(efmBuffer);
+
+            // Convert the F3 frames into F2 frames
+            QVector<F2Frame> f2Frames = f3ToF2Frames.convert(f3Frames);
+
+            // Convert the F2 frames into F1 frames
+            QVector<F1Frame> f1Frames = f2ToF1Frames.convert(f2Frames);
+
+            if (processData) {
+                // Convert the F1 frames to data sectors
+                QVector<Sector> sectors = f1ToSectors.convert(f1Frames);
+
+                // Write the sectors as data
+                sectorsToData.convert(sectors);
+
+                // Process the sector meta data
+                sectorsToMeta.process(sectors);
             }
+
+            // Convert the F2 frames into audio
+            if (processAudio) f2FramesToAudio.convert(f2Frames);
+
+            // Convert the F3 frames into subcode sections
+            QVector<Section> sections = f3ToSections.convert(f3Frames);
+
+            // Process the sections to audio metadata
+            if (processAudio) sectionToMeta.process(sections);
+
+            // Show EFM processing progress update to user
+            qreal percent = (100.0 / static_cast<qreal>(inputFileSize)) * static_cast<qreal>(inputBytesProcessed);
+            if (static_cast<qint32>(percent) > lastPercent) {
+                emit percentageProcessed(static_cast<qint32>(percent));
+            }
+            lastPercent = static_cast<qint32>(percent);
         }
+
+        // Show the cancel flag
+        if (cancel) qDebug() << "EfmProcess::run(): Conversion cancelled";
+        cancel = false;
+
+        // Flush the metadata to the temporary files
+        if (processAudio) sectionToMeta.flushMetadata();
+        if (processData) sectorsToMeta.flushMetadata();
+
+        // Emit a signal showing the processing is complete
+        emit completed();
+
+        // Report on the status of the various processes
+        reportStatus(processAudio, processData);
+
+        // Close the input file
+        closeInputFile();
+
+        // Sleep the thread until we are restarted
+        mutex.lock();
+        if (!restart && !abort) {
+            qDebug() << "EfmProcess::run(): Thread sleeping pending restart";
+            condition.wait(&mutex);
+        }
+        restart = false;
+        mutex.unlock();
     }
+    qDebug() << "EfmProcess::run(): Thread aborted";
+}
+
+// Function sets the cancel flag (which terminates the conversion if in progress)
+void EfmProcess::cancelProcessing()
+{
+    qDebug() << "EfmProcess::cancelConversion(): Setting cancel conversion flag";
+    cancel = true;
+}
+
+// Function sets the abort flag (which terminates the run() loop if in progress)
+void EfmProcess::quit()
+{
+    qDebug() << "EfmProcess::quit(): Setting thread abort flag";
+    abort = true;
 }
 
 // Method to open the input file for reading
-bool EfmProcess::openInputFile(QString inputFileName)
+bool EfmProcess::openInputFile(QString inputFilename)
 {
     // Open input file for reading
-    inputFileHandle = new QFile(inputFileName);
+    inputFileHandle = new QFile(inputFilename);
     if (!inputFileHandle->open(QIODevice::ReadOnly)) {
         // Failed to open source sample file
-        qDebug() << "Could not open " << inputFileName << "as input file";
+        qDebug() << "EfmProcess::openInputFile(): Could not open " << inputFilename << "as input file";
         return false;
     }
-    qDebug() << "EfmProcess::openInputFile(): 10-bit input file is" << inputFileName << "and is" <<
+    qDebug() << "EfmProcess::openInputFile(): 10-bit input file is" << inputFilename << "and is" <<
                 inputFileHandle->size() << "bytes in length";
 
     // Exit with success
@@ -190,7 +305,7 @@ void EfmProcess::closeInputFile(void)
 QByteArray EfmProcess::readEfmData(void)
 {
     // Read EFM data in 64K blocks
-    qint32 bufferSize = 1240 * 64;
+    qint32 bufferSize = 1024 * 64;
 
     QByteArray outputData;
     outputData.resize(bufferSize);
@@ -204,16 +319,6 @@ QByteArray EfmProcess::readEfmData(void)
 // Method to write status information to qInfo
 void EfmProcess::reportStatus(bool processAudio, bool processData)
 {
-    qInfo() << "EFM processing:";
-    qInfo() << "  Total number of sections processed =" << qMode0Count + qMode1Count + qMode2Count + qMode3Count + qMode4Count + qModeICount;
-    qInfo() << "  Q Mode 0 sections =" << qMode0Count << "(Data)";
-    qInfo() << "  Q Mode 1 sections =" << qMode1Count << "(CD Audio)";
-    qInfo() << "  Q Mode 2 sections =" << qMode2Count << "(Disc ID)";
-    qInfo() << "  Q Mode 3 sections =" << qMode3Count << "(Track ID)";
-    qInfo() << "  Q Mode 4 sections =" << qMode4Count << "(Non-CD Audio)";
-    qInfo() << "  Sections with failed Q CRC =" << qModeICount;
-    qInfo() << "";
-
     efmToF3Frames.reportStatus();
     qInfo() << "";
     f3ToF2Frames.reportStatus();
@@ -226,6 +331,8 @@ void EfmProcess::reportStatus(bool processAudio, bool processData)
         qInfo() << "";
         sectorsToData.reportStatus();
         qInfo() << "";
+        sectorsToMeta.reportStatus();
+        qInfo() << "";
     }
 
     if (processAudio) {
@@ -234,4 +341,7 @@ void EfmProcess::reportStatus(bool processAudio, bool processData)
     }
 
     f3ToSections.reportStatus();
+    qInfo() << "";
+
+    sectionToMeta.reportStatus();
 }

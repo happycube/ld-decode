@@ -32,6 +32,9 @@
 // Global for debug output
 static bool showDebug = false;
 
+// Global for quiet mode (suppress info and warning messages)
+static bool showOutput = true;
+
 // Qt debug message handler
 void debugOutputHandler(QtMsgType type, const QMessageLogContext &context, const QString &msg)
 {
@@ -50,12 +53,16 @@ void debugOutputHandler(QtMsgType type, const QMessageLogContext &context, const
         }
         break;
     case QtInfoMsg: // These are information messages meant for end-users
-        if (context.file != nullptr) fprintf(stderr, "Info: [%s:%d] %s\n", context.file, context.line, localMsg.constData());
-        else fprintf(stderr, "Info: %s\n", localMsg.constData());
+        if (showOutput) {
+            if (context.file != nullptr) fprintf(stderr, "Info: [%s:%d] %s\n", context.file, context.line, localMsg.constData());
+            else fprintf(stderr, "Info: %s\n", localMsg.constData());
+        }
         break;
     case QtWarningMsg:
-        if (context.file != nullptr) fprintf(stderr, "Warning: [%s:%d] %s\n", context.file, context.line, localMsg.constData());
-        else fprintf(stderr, "Warning: %s\n", localMsg.constData());
+        if (showOutput) {
+            if (context.file != nullptr) fprintf(stderr, "Warning: [%s:%d] %s\n", context.file, context.line, localMsg.constData());
+            else fprintf(stderr, "Warning: %s\n", localMsg.constData());
+        }
         break;
     case QtCriticalMsg:
         if (context.file != nullptr) fprintf(stderr, "Critical: [%s:%d] %s\n", context.file, context.line, localMsg.constData());
@@ -118,11 +125,22 @@ int main(int argc, char *argv[])
                                        QCoreApplication::translate("main", "Output in black and white"));
     parser.addOption(setBwModeOption);
 
+    // Option to set quiet mode (-q)
+    QCommandLineOption setQuietOption(QStringList() << "q" << "quiet",
+                                       QCoreApplication::translate("main", "Suppress info and warning messages"));
+    parser.addOption(setQuietOption);
+
+    // Option to select the number of threads (-t)
+    QCommandLineOption threadsOption(QStringList() << "t" << "threads",
+                                        QCoreApplication::translate("main", "Specify the number of concurrent threads (default is 32)"),
+                                        QCoreApplication::translate("main", "number"));
+    parser.addOption(threadsOption);
+
     // Positional argument to specify input video file
     parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input TBC file"));
 
     // Positional argument to specify output video file
-    parser.addPositionalArgument("output", QCoreApplication::translate("main", "Specify output RGB file"));
+    parser.addPositionalArgument("output", QCoreApplication::translate("main", "Specify output RGB file (omit for piped output)"));
 
     // Process the command line options and arguments given by the user
     parser.process(a);
@@ -131,6 +149,7 @@ int main(int argc, char *argv[])
     bool isDebugOn = parser.isSet(showDebugOption);
     bool reverse = parser.isSet(setReverseOption);
     bool blackAndWhite = parser.isSet(setBwModeOption);
+    if (parser.isSet(setQuietOption)) showOutput = false;
 
     // Get the arguments from the parser
     QString inputFileName;
@@ -140,9 +159,15 @@ int main(int argc, char *argv[])
         inputFileName = positionalArguments.at(0);
         outputFileName = positionalArguments.at(1);
     } else {
-        // Quit with error
-        qCritical("You must specify input and output TBC files");
-        return -1;
+        if (positionalArguments.count() == 1) {
+            // Use piped output
+            inputFileName = positionalArguments.at(0);
+            outputFileName.clear(); // Use pipe
+        } else {
+            // Quit with error
+            qCritical("You must specify the input TBC and output RGB files");
+            return -1;
+        }
     }
 
     if (inputFileName == outputFileName) {
@@ -153,6 +178,7 @@ int main(int argc, char *argv[])
 
     qint32 startFrame = -1;
     qint32 length = -1;
+    qint32 maxThreads = 32;
 
     if (parser.isSet(startFrameOption)) {
         startFrame = parser.value(startFrameOption).toInt();
@@ -174,12 +200,22 @@ int main(int argc, char *argv[])
         }
     }
 
+    if (parser.isSet(threadsOption)) {
+        maxThreads = parser.value(threadsOption).toInt();
+
+        if (maxThreads < 1) {
+            // Quit with error
+            qCritical("Specified number of threads must be greater than zero");
+            return -1;
+        }
+    }
+
     // Process the command line options
     if (isDebugOn) showDebug = true;
 
     // Perform the processing
     PalCombFilter palCombFilter;
-    palCombFilter.process(inputFileName, outputFileName, startFrame, length, reverse, blackAndWhite);
+    palCombFilter.process(inputFileName, outputFileName, startFrame, length, reverse, blackAndWhite, maxThreads);
 
     // Quit with success
     return 0;

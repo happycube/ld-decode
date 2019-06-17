@@ -29,11 +29,11 @@ PalCombFilter::PalCombFilter(QObject *parent) : QObject(parent)
 
 }
 
-bool PalCombFilter::process(QString inputFileName, QString outputFileName, qint32 startFrame, qint32 length, bool reverse, bool blackAndWhite)
+bool PalCombFilter::process(QString inputFileName, QString outputFileName, qint32 startFrame, qint32 length,
+                            bool reverse, bool blackAndWhite, qint32 maxThreads)
 {
-    qint32 maxThreads = 16;
-
     // Open the source video metadata
+    qInfo() << "Reading JSON metadata...";
     if (!ldDecodeMetaData.read(inputFileName + ".json")) {
         qInfo() << "Unable to open ld-decode metadata file";
         return false;
@@ -60,8 +60,8 @@ bool PalCombFilter::process(QString inputFileName, QString outputFileName, qint3
     qint32 videoStart = videoParameters.activeVideoStart;
     qint32 videoEnd = videoParameters.activeVideoEnd;
 
-    // Make sure output width is even (better for ffmpeg processing)
-    if (((videoEnd - videoStart) % 2) != 0) {
+    // Make sure output width is divisible by 16 (better for ffmpeg processing)
+    while (((videoEnd - videoStart) % 16) != 0) {
        videoEnd++;
     }
 
@@ -75,6 +75,7 @@ bool PalCombFilter::process(QString inputFileName, QString outputFileName, qint3
     for (qint32 i = 0; i < maxThreads; i++) {
         filterThreads[i] = new FilterThread(videoParameters);
     }
+    qInfo() << "Using" << maxThreads << "threads";
 
     // Open the source video file
     if (!sourceVideo.open(inputFileName, videoParameters.fieldWidth * videoParameters.fieldHeight)) {
@@ -103,13 +104,25 @@ bool PalCombFilter::process(QString inputFileName, QString outputFileName, qint3
 
     qInfo() << "Processing from start frame #" << startFrame << "with a length of" << length << "frames";
 
-    // Open the target video file (RGB)
+    // Open the output RGB file
     QFile targetVideo(outputFileName);
-    if (!targetVideo.open(QIODevice::WriteOnly)) {
-            // Could not open target video file
-            qInfo() << "Unable to open output video file";
+    if (outputFileName.isNull()) {
+        // No output filename, use stdout instead
+        if (!targetVideo.open(stdout, QIODevice::WriteOnly)) {
+            // Failed to open stdout
+            qCritical() << "Could not open stdout for RGB output";
             sourceVideo.close();
             return false;
+        }
+        qInfo() << "Using stdout as RGB output";
+    } else {
+        // Open output file
+        if (!targetVideo.open(QIODevice::WriteOnly)) {
+            // Failed to open output file
+            qCritical() << "Could not open " << outputFileName << "as RGB output file";
+            sourceVideo.close();
+            return false;
+        }
     }
 
     // Process the frames
@@ -163,15 +176,15 @@ bool PalCombFilter::process(QString inputFileName, QString outputFileName, qint3
 
         // Show an update to the user
         qreal fps = maxThreads / (static_cast<qreal>(timer.elapsed()) / 1000.0);
-        qInfo() << frameNumber + maxThreads - 1 << "frames processed -" << fps << "FPS";
+        qInfo() << (frameNumber - (startFrame - 1)) + maxThreads - 1 << "frames processed -" << fps << "FPS";
     }
 
     qreal totalSecs = (static_cast<qreal>(totalTimer.elapsed()) / 1000.0);
-    qInfo() << "Processing complete -" << length + (startFrame - 1) << "frames in" << totalSecs << "seconds (" <<
-               (length + (startFrame - 1)) / totalSecs << "FPS )";
+    qInfo() << "Processing complete -" << length << "frames in" << totalSecs << "seconds (" <<
+               length / totalSecs << "FPS )";
 
     // Show processing summary
-    qInfo() << "Processed" << length + (startFrame - 1) << "frames into" <<
+    qInfo() << "Processed" << length << "frames into" <<
                videoEnd - videoStart << "x 576" <<
                "RGB16-16-16 frames";
 

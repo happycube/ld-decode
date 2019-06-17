@@ -27,11 +27,14 @@ parser.add_argument('-n', '--ntsc', dest='ntsc', action='store_true', help='sour
 #parser.add_argument('-c', '--cut', dest='cut', action='store_true', help='cut (to r16) instead of decode')
 parser.add_argument('-m', '--MTF', metavar='mtf', type=float, default=None, help='mtf compensation multiplier')
 parser.add_argument('--MTF_offset', metavar='mtf_offset', type=float, default=None, help='mtf compensation offset')
-parser.add_argument('--NTSCJ', dest='ntscj', action='store_true', help='source is in NTSC-J (IRE 0 black) format')
+parser.add_argument('-j', '--NTSCJ', dest='ntscj', action='store_true', help='source is in NTSC-J (IRE 0 black) format')
 parser.add_argument('--noDOD', dest='nodod', action='store_true', default=False, help='disable dropout detector')
-parser.add_argument('--EFM', dest='efm', action='store_true', default=False, help='Filter EFM output (WIP!)')
+parser.add_argument('--noEFM', dest='noefm', action='store_true', default=False, help='Disable EFM front end')
 parser.add_argument('--daa', dest='daa', action='store_true', default=False, help='Disable analog audio decoding')
 parser.add_argument('--ignoreleadout', dest='ignoreleadout', action='store_true', default=False, help='continue decoding after lead-out seen')
+
+parser.add_argument('--video_bpf_high', dest='vbpf_high', type=float, default=None, help='Video BPF high end frequency')
+parser.add_argument('--video_lpf', dest='vlpf', type=float, default=None, help='Video low-pass filter frequency')
 
 
 args = parser.parse_args()
@@ -68,7 +71,7 @@ else:
 
 system = 'PAL' if args.pal else 'NTSC'
     
-ldd = LDdecode(filename, outname, loader, analog_audio = not args.daa, digital_audio = args.efm, system=system, doDOD = not args.nodod)
+ldd = LDdecode(filename, outname, loader, analog_audio = not args.daa, digital_audio = not args.noefm, system=system, doDOD = not args.nodod)
 ldd.roughseek(firstframe * 2)
 
 if system == 'NTSC' and not args.ntscj:
@@ -84,6 +87,14 @@ if args.MTF is not None:
 
 if args.MTF_offset is not None:
     ldd.rf.mtf_offset = args.MTF_offset
+
+if args.vbpf_high is not None:
+    ldd.rf.DecoderParams['video_bpf_high'] = args.vbpf_high * 1000000
+
+if args.vlpf is not None:
+    ldd.rf.DecoderParams['video_lpf_freq'] = args.vlpf * 1000000
+
+ldd.rf.computefilters()
 
 def write_json(ldd, outname):
     jsondict = ldd.build_json(ldd.curfield)
@@ -101,14 +112,14 @@ while not done and ldd.fields_written < (req_frames * 2):
     try:
         f = ldd.readfield()
     except KeyboardInterrupt as kbd:
-        print("Terminated, saving JSON and exiting")
+        print("Terminated, saving JSON and exiting", file=sys.stderr)
         write_json(ldd, outname)
         exit(1)
     except Exception as err:
-        print("ERROR - please paste the following into a bug report:")
-        print("current sample: ", ldd.fdoffset)
-        print("arguments: ", args)
-        print("Exception: ", err, " Traceback:")
+        print("ERROR - please paste the following into a bug report:", file=sys.stderr)
+        print("current sample:", ldd.fdoffset, file=sys.stderr)
+        print("arguments:", args, file=sys.stderr)
+        print("Exception:", err, " Traceback:", file=sys.stderr)
         traceback.print_tb(err.__traceback__)
         write_json(ldd, outname)
         exit(1)
@@ -122,5 +133,5 @@ while not done and ldd.fields_written < (req_frames * 2):
         #print('write json')
         write_json(ldd, outname)
 
-print("saving JSON and exiting")    
+print("saving JSON and exiting", file=sys.stderr)    
 write_json(ldd, outname)

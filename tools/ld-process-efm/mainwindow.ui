@@ -1,0 +1,941 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MainWindow</class>
+ <widget class="QMainWindow" name="MainWindow">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>430</width>
+    <height>670</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>ld-process-efm</string>
+  </property>
+  <property name="windowIcon">
+   <iconset resource="resources.qrc">
+    <normaloff>:/logos/Graphics/ld-process-efm logo 128px.png</normaloff>:/logos/Graphics/ld-process-efm logo 128px.png</iconset>
+  </property>
+  <widget class="QWidget" name="centralWidget">
+   <layout class="QVBoxLayout" name="verticalLayout_2">
+    <item>
+     <layout class="QVBoxLayout" name="verticalLayout">
+      <item>
+       <widget class="QGroupBox" name="controlGroupBox">
+        <property name="minimumSize">
+         <size>
+          <width>0</width>
+          <height>0</height>
+         </size>
+        </property>
+        <property name="maximumSize">
+         <size>
+          <width>16777215</width>
+          <height>130</height>
+         </size>
+        </property>
+        <property name="title">
+         <string>Control:</string>
+        </property>
+        <layout class="QVBoxLayout" name="verticalLayout_4">
+         <item>
+          <layout class="QVBoxLayout" name="verticalLayout_3">
+           <item>
+            <layout class="QHBoxLayout" name="horizontalLayout">
+             <item>
+              <widget class="QPushButton" name="decodePushButton">
+               <property name="text">
+                <string>Decode</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QPushButton" name="cancelPushButton">
+               <property name="text">
+                <string>Cancel</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <spacer name="horizontalSpacer">
+               <property name="orientation">
+                <enum>Qt::Horizontal</enum>
+               </property>
+               <property name="sizeHint" stdset="0">
+                <size>
+                 <width>40</width>
+                 <height>20</height>
+                </size>
+               </property>
+              </spacer>
+             </item>
+            </layout>
+           </item>
+           <item>
+            <layout class="QHBoxLayout" name="horizontalLayout_2">
+             <item>
+              <widget class="QProgressBar" name="decodeProgressBar">
+               <property name="value">
+                <number>24</number>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+          </layout>
+         </item>
+         <item>
+          <spacer name="verticalSpacer">
+           <property name="orientation">
+            <enum>Qt::Vertical</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>20</width>
+             <height>40</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+        </layout>
+       </widget>
+      </item>
+      <item>
+       <widget class="QTabWidget" name="feedbackTabWidget">
+        <property name="currentIndex">
+         <number>3</number>
+        </property>
+        <widget class="QWidget" name="f3FramesTab">
+         <attribute name="title">
+          <string>F3</string>
+         </attribute>
+         <widget class="QGroupBox" name="groupBox_4">
+          <property name="geometry">
+           <rect>
+            <x>9</x>
+            <y>10</y>
+            <width>381</width>
+            <height>121</height>
+           </rect>
+          </property>
+          <property name="title">
+           <string>EFM T-values to F3 Frames:</string>
+          </property>
+          <widget class="QLabel" name="label">
+           <property name="geometry">
+            <rect>
+             <x>10</x>
+             <y>30</y>
+             <width>121</width>
+             <height>20</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>Total frames:</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+           </property>
+          </widget>
+          <widget class="QLabel" name="label_2">
+           <property name="geometry">
+            <rect>
+             <x>10</x>
+             <y>50</y>
+             <width>121</width>
+             <height>20</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>Valid frames:</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+           </property>
+          </widget>
+          <widget class="QLabel" name="label_3">
+           <property name="geometry">
+            <rect>
+             <x>10</x>
+             <y>70</y>
+             <width>121</width>
+             <height>20</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>Invalid frames:</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+           </property>
+          </widget>
+          <widget class="QLabel" name="label_4">
+           <property name="geometry">
+            <rect>
+             <x>10</x>
+             <y>90</y>
+             <width>121</width>
+             <height>20</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>Sync loss:</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+           </property>
+          </widget>
+          <widget class="QLabel" name="f3Frames_totalLabel">
+           <property name="geometry">
+            <rect>
+             <x>140</x>
+             <y>30</y>
+             <width>231</width>
+             <height>20</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>TextLabel</string>
+           </property>
+          </widget>
+          <widget class="QLabel" name="f3Frames_validLabel">
+           <property name="geometry">
+            <rect>
+             <x>140</x>
+             <y>50</y>
+             <width>231</width>
+             <height>20</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>TextLabel</string>
+           </property>
+          </widget>
+          <widget class="QLabel" name="f3Frames_invalidLabel">
+           <property name="geometry">
+            <rect>
+             <x>140</x>
+             <y>70</y>
+             <width>231</width>
+             <height>20</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>TextLabel</string>
+           </property>
+          </widget>
+          <widget class="QLabel" name="f3Frames_syncLossLabel">
+           <property name="geometry">
+            <rect>
+             <x>140</x>
+             <y>90</y>
+             <width>231</width>
+             <height>20</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>TextLabel</string>
+           </property>
+          </widget>
+         </widget>
+        </widget>
+        <widget class="QWidget" name="f2FramesTab">
+         <attribute name="title">
+          <string>F2</string>
+         </attribute>
+         <widget class="QGroupBox" name="groupBox">
+          <property name="geometry">
+           <rect>
+            <x>10</x>
+            <y>10</y>
+            <width>381</width>
+            <height>141</height>
+           </rect>
+          </property>
+          <property name="title">
+           <string>C1 CIRC:</string>
+          </property>
+          <widget class="QLabel" name="label_5">
+           <property name="geometry">
+            <rect>
+             <x>10</x>
+             <y>30</y>
+             <width>121</width>
+             <height>20</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>Total:</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+           </property>
+          </widget>
+          <widget class="QLabel" name="label_6">
+           <property name="geometry">
+            <rect>
+             <x>10</x>
+             <y>50</y>
+             <width>121</width>
+             <height>20</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>Valid:</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+           </property>
+          </widget>
+          <widget class="QLabel" name="label_7">
+           <property name="geometry">
+            <rect>
+             <x>10</x>
+             <y>70</y>
+             <width>121</width>
+             <height>20</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>Invalid:</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+           </property>
+          </widget>
+          <widget class="QLabel" name="label_8">
+           <property name="geometry">
+            <rect>
+             <x>10</x>
+             <y>90</y>
+             <width>121</width>
+             <height>20</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>Corrected:</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+           </property>
+          </widget>
+          <widget class="QLabel" name="label_9">
+           <property name="geometry">
+            <rect>
+             <x>10</x>
+             <y>110</y>
+             <width>121</width>
+             <height>20</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>Buffer flushes:</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+           </property>
+          </widget>
+          <widget class="QLabel" name="label_10">
+           <property name="geometry">
+            <rect>
+             <x>80</x>
+             <y>180</y>
+             <width>121</width>
+             <height>20</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>Total:</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+           </property>
+          </widget>
+         </widget>
+         <widget class="QGroupBox" name="groupBox_2">
+          <property name="geometry">
+           <rect>
+            <x>10</x>
+            <y>160</y>
+            <width>381</width>
+            <height>141</height>
+           </rect>
+          </property>
+          <property name="title">
+           <string>C2 CIRC:</string>
+          </property>
+          <widget class="QLabel" name="label_11">
+           <property name="geometry">
+            <rect>
+             <x>10</x>
+             <y>30</y>
+             <width>121</width>
+             <height>20</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>Total:</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+           </property>
+          </widget>
+          <widget class="QLabel" name="label_12">
+           <property name="geometry">
+            <rect>
+             <x>10</x>
+             <y>50</y>
+             <width>121</width>
+             <height>20</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>Valid:</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+           </property>
+          </widget>
+          <widget class="QLabel" name="label_13">
+           <property name="geometry">
+            <rect>
+             <x>10</x>
+             <y>70</y>
+             <width>121</width>
+             <height>20</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>Invalid:</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+           </property>
+          </widget>
+          <widget class="QLabel" name="label_14">
+           <property name="geometry">
+            <rect>
+             <x>10</x>
+             <y>90</y>
+             <width>121</width>
+             <height>20</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>Corrected:</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+           </property>
+          </widget>
+          <widget class="QLabel" name="label_15">
+           <property name="geometry">
+            <rect>
+             <x>10</x>
+             <y>110</y>
+             <width>121</width>
+             <height>20</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>Buffer flushes:</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+           </property>
+          </widget>
+          <widget class="QLabel" name="f2Frames_c2_total">
+           <property name="geometry">
+            <rect>
+             <x>140</x>
+             <y>30</y>
+             <width>231</width>
+             <height>20</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>TextLabel</string>
+           </property>
+          </widget>
+          <widget class="QLabel" name="f2Frames_c2_valid">
+           <property name="geometry">
+            <rect>
+             <x>140</x>
+             <y>50</y>
+             <width>231</width>
+             <height>20</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>TextLabel</string>
+           </property>
+          </widget>
+          <widget class="QLabel" name="f2Frames_c2_invalid">
+           <property name="geometry">
+            <rect>
+             <x>140</x>
+             <y>70</y>
+             <width>231</width>
+             <height>20</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>TextLabel</string>
+           </property>
+          </widget>
+          <widget class="QLabel" name="f2Frames_c2_corrected">
+           <property name="geometry">
+            <rect>
+             <x>140</x>
+             <y>90</y>
+             <width>231</width>
+             <height>20</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>TextLabel</string>
+           </property>
+          </widget>
+          <widget class="QLabel" name="f2Frames_c2_flushes">
+           <property name="geometry">
+            <rect>
+             <x>140</x>
+             <y>110</y>
+             <width>231</width>
+             <height>20</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>TextLabel</string>
+           </property>
+          </widget>
+         </widget>
+         <widget class="QGroupBox" name="groupBox_3">
+          <property name="geometry">
+           <rect>
+            <x>10</x>
+            <y>310</y>
+            <width>381</width>
+            <height>121</height>
+           </rect>
+          </property>
+          <property name="title">
+           <string>C2 Deinterleave:</string>
+          </property>
+          <widget class="QLabel" name="label_16">
+           <property name="geometry">
+            <rect>
+             <x>10</x>
+             <y>30</y>
+             <width>121</width>
+             <height>20</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>Total:</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+           </property>
+          </widget>
+          <widget class="QLabel" name="label_17">
+           <property name="geometry">
+            <rect>
+             <x>10</x>
+             <y>50</y>
+             <width>121</width>
+             <height>20</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>Valid:</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+           </property>
+          </widget>
+          <widget class="QLabel" name="label_18">
+           <property name="geometry">
+            <rect>
+             <x>10</x>
+             <y>70</y>
+             <width>121</width>
+             <height>20</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>Invalid:</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+           </property>
+          </widget>
+          <widget class="QLabel" name="label_19">
+           <property name="geometry">
+            <rect>
+             <x>10</x>
+             <y>90</y>
+             <width>121</width>
+             <height>20</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>Buffer flushes:</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+           </property>
+          </widget>
+          <widget class="QLabel" name="f2Frames_c2de_total">
+           <property name="geometry">
+            <rect>
+             <x>140</x>
+             <y>30</y>
+             <width>231</width>
+             <height>20</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>TextLabel</string>
+           </property>
+          </widget>
+          <widget class="QLabel" name="f2Frames_c2de_valid">
+           <property name="geometry">
+            <rect>
+             <x>140</x>
+             <y>50</y>
+             <width>231</width>
+             <height>20</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>TextLabel</string>
+           </property>
+          </widget>
+          <widget class="QLabel" name="f2Frames_c2de_invalid">
+           <property name="geometry">
+            <rect>
+             <x>140</x>
+             <y>70</y>
+             <width>231</width>
+             <height>20</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>TextLabel</string>
+           </property>
+          </widget>
+          <widget class="QLabel" name="f2Frames_c2de_flushes">
+           <property name="geometry">
+            <rect>
+             <x>140</x>
+             <y>90</y>
+             <width>231</width>
+             <height>20</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>TextLabel</string>
+           </property>
+          </widget>
+         </widget>
+         <widget class="QLabel" name="f2Frames_c1_total">
+          <property name="geometry">
+           <rect>
+            <x>150</x>
+            <y>40</y>
+            <width>231</width>
+            <height>20</height>
+           </rect>
+          </property>
+          <property name="text">
+           <string>TextLabel</string>
+          </property>
+         </widget>
+         <widget class="QLabel" name="f2Frames_c1_valid">
+          <property name="geometry">
+           <rect>
+            <x>150</x>
+            <y>60</y>
+            <width>231</width>
+            <height>20</height>
+           </rect>
+          </property>
+          <property name="text">
+           <string>TextLabel</string>
+          </property>
+         </widget>
+         <widget class="QLabel" name="f2Frames_c1_invalid">
+          <property name="geometry">
+           <rect>
+            <x>150</x>
+            <y>80</y>
+            <width>231</width>
+            <height>20</height>
+           </rect>
+          </property>
+          <property name="text">
+           <string>TextLabel</string>
+          </property>
+         </widget>
+         <widget class="QLabel" name="f2Frames_c1_corrected">
+          <property name="geometry">
+           <rect>
+            <x>150</x>
+            <y>100</y>
+            <width>231</width>
+            <height>20</height>
+           </rect>
+          </property>
+          <property name="text">
+           <string>TextLabel</string>
+          </property>
+         </widget>
+         <widget class="QLabel" name="f2Frames_c1_flushes">
+          <property name="geometry">
+           <rect>
+            <x>150</x>
+            <y>120</y>
+            <width>231</width>
+            <height>20</height>
+           </rect>
+          </property>
+          <property name="text">
+           <string>TextLabel</string>
+          </property>
+         </widget>
+        </widget>
+        <widget class="QWidget" name="audioTab">
+         <attribute name="title">
+          <string>Audio</string>
+         </attribute>
+         <widget class="QGroupBox" name="groupBox_5">
+          <property name="geometry">
+           <rect>
+            <x>10</x>
+            <y>10</y>
+            <width>381</width>
+            <height>61</height>
+           </rect>
+          </property>
+          <property name="title">
+           <string>Stereo samples:</string>
+          </property>
+          <widget class="QLabel" name="label_20">
+           <property name="geometry">
+            <rect>
+             <x>10</x>
+             <y>30</y>
+             <width>121</width>
+             <height>20</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>Total:</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+           </property>
+          </widget>
+          <widget class="QLabel" name="audio_totalSamples">
+           <property name="geometry">
+            <rect>
+             <x>140</x>
+             <y>30</y>
+             <width>231</width>
+             <height>20</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>TextLabel</string>
+           </property>
+          </widget>
+         </widget>
+        </widget>
+        <widget class="QWidget" name="dataTab">
+         <attribute name="title">
+          <string>Data</string>
+         </attribute>
+         <widget class="QGroupBox" name="groupBox_6">
+          <property name="geometry">
+           <rect>
+            <x>10</x>
+            <y>10</y>
+            <width>381</width>
+            <height>61</height>
+           </rect>
+          </property>
+          <property name="title">
+           <string>Sectors:</string>
+          </property>
+          <widget class="QLabel" name="label_21">
+           <property name="geometry">
+            <rect>
+             <x>10</x>
+             <y>30</y>
+             <width>121</width>
+             <height>20</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>Total:</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+           </property>
+          </widget>
+          <widget class="QLabel" name="data_total">
+           <property name="geometry">
+            <rect>
+             <x>140</x>
+             <y>30</y>
+             <width>231</width>
+             <height>20</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>TextLabel</string>
+           </property>
+          </widget>
+         </widget>
+         <widget class="QGroupBox" name="groupBox_7">
+          <property name="geometry">
+           <rect>
+            <x>10</x>
+            <y>80</y>
+            <width>381</width>
+            <height>81</height>
+           </rect>
+          </property>
+          <property name="title">
+           <string>Empty sectors analysis:</string>
+          </property>
+          <widget class="QLabel" name="label_22">
+           <property name="geometry">
+            <rect>
+             <x>10</x>
+             <y>30</y>
+             <width>121</width>
+             <height>20</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>Signal gaps:</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+           </property>
+          </widget>
+          <widget class="QLabel" name="label_23">
+           <property name="geometry">
+            <rect>
+             <x>10</x>
+             <y>50</y>
+             <width>121</width>
+             <height>20</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>Corruption:</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+           </property>
+          </widget>
+          <widget class="QLabel" name="data_signalGaps">
+           <property name="geometry">
+            <rect>
+             <x>140</x>
+             <y>30</y>
+             <width>231</width>
+             <height>20</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>TextLabel</string>
+           </property>
+          </widget>
+          <widget class="QLabel" name="data_corruption">
+           <property name="geometry">
+            <rect>
+             <x>140</x>
+             <y>50</y>
+             <width>231</width>
+             <height>20</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>TextLabel</string>
+           </property>
+          </widget>
+         </widget>
+        </widget>
+       </widget>
+      </item>
+     </layout>
+    </item>
+   </layout>
+  </widget>
+  <widget class="QMenuBar" name="menuBar">
+   <property name="geometry">
+    <rect>
+     <x>0</x>
+     <y>0</y>
+     <width>430</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <widget class="QMenu" name="menuFile">
+    <property name="title">
+     <string>File</string>
+    </property>
+    <addaction name="actionOpen_EFM_file"/>
+    <addaction name="separator"/>
+    <addaction name="actionSave_Audio_As"/>
+    <addaction name="actionSave_Data_As"/>
+    <addaction name="separator"/>
+    <addaction name="actionExit"/>
+   </widget>
+   <widget class="QMenu" name="menuHelp">
+    <property name="title">
+     <string>Help</string>
+    </property>
+    <addaction name="actionAbout_ld_process_efm"/>
+   </widget>
+   <addaction name="menuFile"/>
+   <addaction name="menuHelp"/>
+  </widget>
+  <widget class="QStatusBar" name="statusBar"/>
+  <action name="actionOpen_EFM_file">
+   <property name="text">
+    <string>Open EFM file...</string>
+   </property>
+  </action>
+  <action name="actionExit">
+   <property name="text">
+    <string>Exit</string>
+   </property>
+  </action>
+  <action name="actionAbout_ld_process_efm">
+   <property name="text">
+    <string>About ld-process-efm...</string>
+   </property>
+  </action>
+  <action name="actionSave_Audio_As">
+   <property name="text">
+    <string>Save Audio As...</string>
+   </property>
+  </action>
+  <action name="actionSave_Data_As">
+   <property name="text">
+    <string>Save Data As...</string>
+   </property>
+  </action>
+ </widget>
+ <layoutdefault spacing="6" margin="11"/>
+ <resources>
+  <include location="resources.qrc"/>
+ </resources>
+ <connections/>
+</ui>

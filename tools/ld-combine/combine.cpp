@@ -29,7 +29,7 @@ Combine::Combine(QObject *parent) : QObject(parent)
 
 }
 
-bool Combine::process(QString primaryFilename, QString secondaryFilename, QString outputFilename, bool reverse)
+bool Combine::process(QString primaryFilename, QString secondaryFilename, QString outputFilename, bool reverse, bool subline)
 {
     linesReplaced = 0;
     dropoutsReplaced = 0;
@@ -58,6 +58,11 @@ bool Combine::process(QString primaryFilename, QString secondaryFilename, QStrin
         qInfo() << "Expected field order is reversed to second field/first field";
         primaryLdDecodeMetaData.setIsFirstFieldFirst(false);
         secondaryLdDecodeMetaData.setIsFirstFieldFirst(false);
+    }
+    
+        // Sub-line replacements only
+    if (subline) {
+        qInfo() << "Sub-line replacements only";
     }
 
     primaryVideoParameters = primaryLdDecodeMetaData.getVideoParameters();
@@ -217,8 +222,8 @@ bool Combine::process(QString primaryFilename, QString secondaryFilename, QStrin
             qint32 secondarySecondField = secondaryLdDecodeMetaData.getSecondFieldNumber(secondarySeqFrameNumber);
 
             // Process the frame's field pair
-            firstFieldData = processField(primaryFirstField, secondaryFirstField);
-            secondFieldData = processField(primarySecondField, secondarySecondField);
+            firstFieldData = processField(primaryFirstField, secondaryFirstField, subline);
+            secondFieldData = processField(primarySecondField, secondarySecondField, subline);
         } else {
             // No matching frame found
             qDebug() << "Combine::process(): Frame" << primarySeqFrameNumber << "no matching frame found";
@@ -375,7 +380,7 @@ qint32 Combine::getClvFrameNumber(qint32 frameSeqNumber, LdDecodeMetaData *ldDec
 //
 // Note: This would probably be better if only the dropout areas were replaced
 // but that can be a future enhancement for now
-QByteArray Combine::processField(qint32 primarySeqFieldNumber, qint32 secondarySeqFieldNumber)
+QByteArray Combine::processField(qint32 primarySeqFieldNumber, qint32 secondarySeqFieldNumber, bool subline)
 {
     // Read the primary and secondary source video data for the field
     QByteArray primaryFieldData = primarySourceVideo.getVideoField(primarySeqFieldNumber)->getFieldData();
@@ -391,7 +396,7 @@ QByteArray Combine::processField(qint32 primarySeqFieldNumber, qint32 secondaryS
         // Is the primary line damaged?
         if (primaryLineQuality != 0) {
             // If the secondary field line is perfect, just copy the whole line to the primary
-            if (secondaryLineQuality == 0) {
+            if (subline != true && secondaryLineQuality == 0) {
                 // Replace the whole primary line data with the secondary line data
                 qInfo() << "[Line   ] - [Field #" << primarySeqFieldNumber << "] - [Line #" << lineNumber << "] - Replaced";
                 linesReplaced++;
@@ -516,7 +521,7 @@ QByteArray Combine::replaceVideoDropoutData(QByteArray primaryFieldData, QByteAr
 
     // Copy the line from the secondary field data to the primary
     qint32 startOfLine = (lineNumber - 1) * primaryVideoParameters.fieldWidth * 2;
-    for (qint32 pointer = startx; pointer < endx; pointer++) {
+    for (qint32 pointer = startx * 2; pointer < endx * 2; pointer++) {
         outputData[startOfLine + pointer] = secondaryFieldData[startOfLine + pointer];
     }
 

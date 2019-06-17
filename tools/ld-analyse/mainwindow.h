@@ -3,7 +3,7 @@
     mainwindow.h
 
     ld-analyse - TBC output analysis
-    Copyright (C) 2018 Simon Inns
+    Copyright (C) 2018-2019 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -43,6 +43,8 @@
 #include "ntscdialog.h"
 #include "videometadatadialog.h"
 #include "dropoutanalysisdialog.h"
+#include "vitsmetricsdialog.h"
+#include "snranalysisdialog.h"
 #include "configuration.h"
 #include "frameqlabel.h"
 #include "../ld-comb-pal/palcolour.h"
@@ -73,6 +75,7 @@ private slots:
     void on_actionVBI_triggered();
 
     void mousePressEvent(QMouseEvent *event);
+    void mouseOverQFrameSignalHandler(QMouseEvent *event);
     void scanLineChangedSignalHandler(qint32 scanLine);
 
     void on_actionNTSC_triggered();
@@ -86,6 +89,12 @@ private slots:
     void on_combFilterRadioButton_clicked();
     void on_reverseFieldOrderCheckBox_stateChanged(int arg1);
 
+    void on_actionVITS_Metrics_triggered();
+
+    void on_actionSNR_analysis_triggered();
+
+    void on_actionSave_metadata_as_CSV_triggered();
+
 private:
     Ui::MainWindow *ui;
 
@@ -96,10 +105,13 @@ private:
     NtscDialog *ntscDialog;
     VideoMetadataDialog *videoMetadataDialog;
     DropoutAnalysisDialog *dropoutAnalysisDialog;
+    VitsMetricsDialog *vitsMetricsDialog;
+    SnrAnalysisDialog *snrAnalysisDialog;
 
     // Class globals
     Configuration *configuration;
     QLabel sourceVideoStatus;
+    QLabel frameLineStatus;
     LdDecodeMetaData ldDecodeMetaData;
     SourceVideo sourceVideo;
     qint32 currentFrameNumber;
@@ -107,6 +119,7 @@ private:
     bool isFileOpen;
     PalColour palColour;
     Comb ntscColour;
+    QString currentInputFileName;
 
     void updateGuiLoaded(void);
     void updateGuiUnloaded(void);

@@ -3,7 +3,7 @@
     configuration.h
 
     ld-analyse - TBC output analysis
-    Copyright (C) 2018 Simon Inns
+    Copyright (C) 2018-2019 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -48,6 +48,8 @@ public:
     QString getSourceDirectory(void);
     void setPngDirectory(QString pngDirectory);
     QString getPngDirectory(void);
+    void setCsvDirectory(QString csvDirectory);
+    QString getCsvDirectory(void);
 
     // Get and set methods - windows
     void setMainWindowGeometry(QByteArray mainWindowGeometry);
@@ -62,6 +64,10 @@ public:
     QByteArray getVideoMetadataDialogGeometry(void);
     void setDropoutAnalysisDialogGeometry(QByteArray videoMetadataDialogGeometry);
     QByteArray getDropoutAnalysisDialogGeometry(void);
+    void setVitsMetricsDialogGeometry(QByteArray vitsMetricsDialogGeometry);
+    QByteArray getVitsMetricsDialogGeometry(void);
+    void setSnrAnalysisDialogGeometry(QByteArray snrAnalysisDialogGeometry);
+    QByteArray getSnrAnalysisDialogGeometry(void);
 
 signals:
 
@@ -74,6 +80,7 @@ private:
     struct Directories {
         QString sourceDirectory; // Last used directory for .tbc files
         QString pngDirectory; // Last used directory for .png files
+        QString csvDirectory; // Last used directory for .csv files
     };
 
     // Window geometry and settings
@@ -84,6 +91,8 @@ private:
         QByteArray videoMetadataDialogGeometry;
         QByteArray oscilloscopeDialogGeometry;
         QByteArray dropoutAnalysisDialogGeometry;
+        QByteArray vitsMetricsDialogGeometry;
+        QByteArray snrAnalysisDialogGeometry;
     };
 
     // Overall settings structure

@@ -3,7 +3,7 @@
     frameqlabel.h
 
     ld-analyse - TBC output analysis
-    Copyright (C) 2018 Simon Inns
+    Copyright (C) 2018-2019 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -28,6 +28,7 @@
 #include <QLabel>
 #include <QPixmap>
 #include <QResizeEvent>
+#include <QDebug>
 
 class FrameQLabel : public QLabel
 {
@@ -40,9 +41,13 @@ public:
     virtual QSize sizeHint() const;
     QPixmap scaledPixmap() const;
 
+signals:
+    void mouseOverQFrame(QMouseEvent *event);
+
 public slots:
     void setPixmap (const QPixmap &);
     void resizeEvent(QResizeEvent *);
+    void mouseMoveEvent(QMouseEvent *event);
 
 private:
     QPixmap pix;

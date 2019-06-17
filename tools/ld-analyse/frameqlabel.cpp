@@ -3,7 +3,7 @@
     frameqlabel.cpp
 
     ld-analyse - TBC output analysis
-    Copyright (C) 2018 Simon Inns
+    Copyright (C) 2018-2019 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -29,6 +29,9 @@ FrameQLabel::FrameQLabel(QWidget *parent) :
 {
     this->setMinimumSize(1,1);
     setScaledContents(false);
+    this->setAttribute(Qt::WA_Hover);
+    this->setMouseTracking(true);
+    this->installEventFilter(this);
 }
 
 void FrameQLabel::setPixmap ( const QPixmap & p)
@@ -58,4 +61,10 @@ void FrameQLabel::resizeEvent(QResizeEvent *e)
     (void) e;
     if(!pix.isNull())
         QLabel::setPixmap(scaledPixmap());
+}
+
+// Mouse over event handler
+void FrameQLabel::mouseMoveEvent(QMouseEvent *event)
+{
+    emit mouseOverQFrame(event);
 }
