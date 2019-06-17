@@ -11,7 +11,8 @@ RFParams_PAL_VHS = {**RFParams_PAL}
 RFParams_PAL_VHS['video_deemp'] = (100*.24, 400*.24)
 
 # Band-pass filter for Video rf.
-RFParams_PAL_VHS['video_bpf'] = (2500000, 6000000)
+RFParams_PAL_VHS['video_bpf_low'] = 2500000
+RFParams_PAL_VHS['video_bpf_high'] = 5500000
 # Band-pass filter order.
 # Order may be fine as is.
 # RFParams_PAL_VHS['video_bpf_order'] = 1
