@@ -986,7 +986,7 @@ class Field:
         for i, p in enumerate(pulses):
             if p.len > self.usectoinpx(10):
                 vsync_locs.append(i)
-                vsync_means.append(np.mean(self.data[0]['demod_05'][p.start+self.rf.freq:p.start+p.len-self.rf.freq]))
+                vsync_means.append(np.mean(self.data[0]['demod_05'][int(p.start+self.rf.freq):int(p.start+p.len-self.rf.freq)]))
                 
         synclevel = np.median(vsync_means)
 
@@ -1011,7 +1011,7 @@ class Field:
 
             p = pulses[i]
             if inrange(p.len, self.rf.freq * .75, self.rf.freq * 2.5):
-                black_means.append(np.mean(self.data[0]['demod_05'][p.start+(self.rf.freq*5):p.start+(self.rf.freq*20)]))
+                black_means.append(np.mean(self.data[0]['demod_05'][int(p.start+(self.rf.freq*5)):int(p.start+(self.rf.freq*20))]))
 
         blacklevel = np.median(black_means)
 
@@ -1026,7 +1026,7 @@ class Field:
 
         if pulses is None or len(pulses) == 0:
             print("Unable to find any sync pulses")
-            return None, None, self.rf.freq_hz
+            return None, None, int(self.rf.freq_hz)
 
         validpulses = self.refinepulses(pulses)
         self.validpulses = validpulses
@@ -1372,7 +1372,7 @@ class Field:
 
         # Each valid pulse is definitely *not* an error, so exclude it here at the end
         for v in self.validpulses:
-            iserr[v[1].start-self.rf.freq:v[1].start+v[1].len+self.rf.freq] = False
+            iserr[int(v[1].start-self.rf.freq):int(v[1].start+v[1].len+self.rf.freq)] = False
         
         return iserr
 
