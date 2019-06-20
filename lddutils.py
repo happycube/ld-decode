@@ -113,6 +113,25 @@ def downscale_field(data, lineinfo, outwidth=1820, lines=625, usewow=False):
         
     return dsout
 
+frequency_suffixes = [
+    ("ghz", 1.0e9),
+    ("mhz", 1.0e6),
+    ("khz", 1.0e3),
+    ("hz", 1.0),
+    ("fsc", 315.0e6 / 88.0),
+    ("fscpal", (283.75 * 15625) + 25),
+]
+
+"""Parse an argument string, returning a float frequency in MHz."""
+def parse_frequency(string):
+    multiplier = 1.0e6
+    for suffix, mult in frequency_suffixes:
+        if string.lower().endswith(suffix):
+            multiplier = mult
+            string = string[:-len(suffix)]
+            break
+    return (multiplier * float(string)) / 1.0e6
+
 '''
 
 For this part of the loader phase I found myself going to function objects that implement this sample API:
