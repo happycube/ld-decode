@@ -107,7 +107,6 @@ void F2FramesToAudio::processAudio(void)
         bool outputSamples = false;
         qint32 currentQMode = sectionsIn[sectionNo].getQMode();
         if (currentQMode == -1) {
-            qDebug() << "F2FramesToAudio::processAudio(): Current section is invalid";
             outputSamples = true; // Output the samples anyway (for now!)
             statistics.unknownQMode++;
             statistics.trackNumber = -1;
@@ -146,7 +145,7 @@ void F2FramesToAudio::processAudio(void)
             if (outputSamples) {
                 // Check F2 Frame data payload validity
                 if (!f2FramesIn[i].getDataValid()) {
-                    qDebug() << "F2FramesToAudio::processAudio(): F2 Frame data has errors - 6 samples might be garbage";
+                    // F2 Frame data has errors - 6 samples might be garbage
                     statistics.invalidAudioSamples += 6;
                 } else {
                     statistics.validAudioSamples += 6; // 24 bytes per F2 (/2 = 16-bit and /2 = stereo)

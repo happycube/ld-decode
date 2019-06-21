@@ -120,18 +120,8 @@ void C2Deinterleave::deinterleave(void)
     qint32 curr = 2; // C2 0-frame delay
     qint32 prev = 0; // C2 2=frame delay
 
-    // Check that both required C2 symbols are valid
-    bool c2sValid = true;
-    for (qint32 i = 0; i < 28; i++) {
-        if (c2DelayBuffer[curr].c2Error[i] == static_cast<char>(1) ||
-                c2DelayBuffer[prev].c2Error[i] == static_cast<char>(1)) {
-            c2sValid = false;
-            break;
-        }
-    }
-
-    // Note: This drops the C2 parity leaving 24 bytes of data (12 words of 16 bits)
-    if (c2sValid) {
+    // Check that both required C2 symbols contain valid data
+    if (c2DelayBuffer[curr].c2DataValid && c2DelayBuffer[prev].c2DataValid) {
         statistics.validDeinterleavedC2s++;
         outputC2Valid = true;
     } else {
