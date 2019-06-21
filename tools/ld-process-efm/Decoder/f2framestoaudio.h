@@ -30,6 +30,8 @@
 #include <QFile>
 
 #include "Datatypes/f2frame.h"
+#include "Datatypes/section.h"
+#include "Datatypes/tracktime.h"
 
 class F2FramesToAudio
 {
@@ -38,6 +40,13 @@ public:
 
     struct Statistics {
         qint32 audioSamples;
+        qint32 sectionsProcessed;
+        qint32 encoderRunning;
+        qint32 encoderStopped;
+        qint32 unknownQMode;
+        qint32 trackNumber;
+        TrackTime trackTime;
+        TrackTime discTime;
     };
 
     void reset(void);
@@ -46,11 +55,16 @@ public:
 
     void reportStatus(void);
     bool setOutputFile(QFile *outputFileHandle);
-    void convert(QVector<F2Frame> f2Frames);
+    void convert(QVector<F2Frame> f2Frames, QVector<Section> sections);
 
 private:
     Statistics statistics;
     QFile *outputFileHandle;
+
+    QVector<Section> sectionsIn;
+    QVector<F2Frame> f2FramesIn;
+
+    void processAudio(void);
 };
 
 #endif // F2FRAMESTOAUDIO_H

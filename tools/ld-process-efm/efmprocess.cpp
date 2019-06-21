@@ -194,12 +194,25 @@ void EfmProcess::run()
             // Convert the EFM buffer data into F3 frames
             QVector<F3Frame> f3Frames = efmToF3Frames.convert(efmBuffer);
 
+            // Convert the F3 frames into subcode sections
+            QVector<Section> sections = f3ToSections.convert(f3Frames);
+
             // Convert the F3 frames into F2 frames
             QVector<F2Frame> f2Frames = f3ToF2Frames.convert(f3Frames);
 
             // Convert the F2 frames into F1 frames
             QVector<F1Frame> f1Frames = f2ToF1Frames.convert(f2Frames);
 
+            // Audio specific processing
+            if (processAudio) {
+                // Convert the F2 frames into audio
+                f2FramesToAudio.convert(f2Frames, sections);
+
+                // Process the sections to audio metadata
+                sectionToMeta.process(sections);
+            }
+
+            // Data specific processing
             if (processData) {
                 // Convert the F1 frames to data sectors
                 QVector<Sector> sectors = f1ToSectors.convert(f1Frames);
@@ -208,17 +221,8 @@ void EfmProcess::run()
                 sectorsToData.convert(sectors);
 
                 // Process the sector meta data
-                sectorsToMeta.process(sectors);
+               // sectorsToMeta.process(sectors);
             }
-
-            // Convert the F2 frames into audio
-            if (processAudio) f2FramesToAudio.convert(f2Frames);
-
-            // Convert the F3 frames into subcode sections
-            QVector<Section> sections = f3ToSections.convert(f3Frames);
-
-            // Process the sections to audio metadata
-            if (processAudio) sectionToMeta.process(sections);
 
             // Show EFM processing progress update to user
             qreal percent = (100.0 / static_cast<qreal>(inputFileSize)) * static_cast<qreal>(inputBytesProcessed);

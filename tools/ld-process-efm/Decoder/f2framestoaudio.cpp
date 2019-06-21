@@ -40,6 +40,13 @@ void F2FramesToAudio::reset(void)
 void F2FramesToAudio::resetStatistics(void)
 {
     statistics.audioSamples = 0;
+    statistics.sectionsProcessed = 0;
+    statistics.encoderRunning = 0;
+    statistics.encoderStopped = 0;
+    statistics.unknownQMode = 0;
+    statistics.trackNumber = 0;
+    statistics.discTime.setTime(0, 0, 0);
+    statistics.trackTime.setTime(0, 0, 0);
 }
 
 F2FramesToAudio::Statistics F2FramesToAudio::getStatistics(void)
@@ -52,6 +59,10 @@ void F2FramesToAudio::reportStatus(void)
 {
     qInfo() << "F2 Frames to audio converter:";
     qInfo() << "  Total number of stereo audio samples =" << statistics.audioSamples;
+    qInfo() << "  Sections processed =" << statistics.sectionsProcessed;
+    qInfo() << "  Encoder running sections =" << statistics.encoderRunning;
+    qInfo() << "  Encoder stopped sections =" << statistics.encoderStopped;
+    qInfo() << "  Unknown QMode sections =" << statistics.unknownQMode;
 }
 
 // Method to set the audio output file
@@ -65,10 +76,89 @@ bool F2FramesToAudio::setOutputFile(QFile *outputFileHandle)
 }
 
 // Convert F2 frames into audio sample data
-void F2FramesToAudio::convert(QVector<F2Frame> f2Frames)
+void F2FramesToAudio::convert(QVector<F2Frame> f2Frames, QVector<Section> sections)
 {
-    for (qint32 i = 0; i < f2Frames.size(); i++) {
-        outputFileHandle->write(f2Frames[i].getDataSymbols());
-        statistics.audioSamples++;
+    // Note: At a sample rate of 44100Hz there are 44,100 samples per second
+    // There are 75 sections per second
+    // Therefore there are 588 samples per section
+
+    // Each F2 frame contains 24 bytes and there are 4 bytes per stereo sample pair
+    // therefore each F2 contains 6 samples
+    // therefore there are 98 F2 frames per section
+    f2FramesIn.append(f2Frames);
+    sectionsIn.append(sections);
+
+    // Do we have enough data to output audio information?
+    if (f2FramesIn.size() >= 98 && sectionsIn.size() >= 1) processAudio();
+}
+
+// NOTE: keep track of the elapsed time by number of samples (independent of the sections etc)
+
+void F2FramesToAudio::processAudio(void)
+{
+    qint32 f2FrameNumber = 0;
+    qint32 sectionsToProcess = f2FramesIn.size() / 98;
+    if (sectionsIn.size() < sectionsToProcess) sectionsToProcess = sectionsIn.size();
+
+    for (qint32 sectionNo = 0; sectionNo < sectionsToProcess; sectionNo++) {
+        // Ensure we have a valid QMode
+        bool outputSamples = false;
+        qint32 currentQMode = sectionsIn[sectionNo].getQMode();
+        if (currentQMode == -1) {
+            qDebug() << "F2FramesToAudio::processAudio(): Current section is invalid";
+            outputSamples = true; // Output the samples anyway (for now!)
+            statistics.unknownQMode++;
+            statistics.trackNumber = -1;
+            statistics.discTime.setTime(0, 0, 0);
+            statistics.trackTime.setTime(0, 0, 0);
+        } else {
+            if (currentQMode == 1) {
+                // Is the encoder running?
+                if (sectionsIn[sectionNo].getQMetadata().qMode1.trackNumber > 0) {
+                    outputSamples = true;
+                    statistics.encoderRunning++;
+                } else statistics.encoderStopped++;
+
+                // Set QMode1 statistics
+                statistics.trackNumber = sectionsIn[sectionNo].getQMetadata().qMode1.trackNumber;
+                statistics.discTime = sectionsIn[sectionNo].getQMetadata().qMode1.discTime;
+                statistics.trackTime = sectionsIn[sectionNo].getQMetadata().qMode1.trackTime;
+            }
+
+            if (currentQMode == 4) {
+                // Is the encoder running?
+                if (sectionsIn[sectionNo].getQMetadata().qMode4.trackNumber > 0) {
+                    outputSamples = true;
+                    statistics.encoderRunning++;
+                } else statistics.encoderStopped++;
+
+                // Set QMode 4 statistics
+                statistics.trackNumber = sectionsIn[sectionNo].getQMetadata().qMode4.trackNumber;
+                statistics.discTime = sectionsIn[sectionNo].getQMetadata().qMode4.discTime;
+                statistics.trackTime = sectionsIn[sectionNo].getQMetadata().qMode4.trackTime;
+            }
+        }
+
+        // Output the samples to file (98 f2 frames x 6 samples per frame = 588)
+        for (qint32 i = f2FrameNumber; i < f2FrameNumber + 98; i++) {
+            if (outputSamples) {
+                // Encoder running, output samples
+                outputFileHandle->write(f2FramesIn[i].getDataSymbols()); // 24 bytes per F2
+            } else {
+                // Encoder stopped, output F2 frame's worth in zeros
+                QByteArray dummy;
+                dummy.fill(0, 24);
+                outputFileHandle->write(dummy);
+            }
+
+            statistics.audioSamples += 6; // 24 bytes per F2 (/2 = 16-bit and /2 = stereo)
+        }
+        f2FrameNumber += 98;
+
+        statistics.sectionsProcessed++;
     }
+
+    // Remove processed F2Frames and samples from buffer
+    f2FramesIn.remove(0, sectionsToProcess * 98);
+    sectionsIn.remove(0, sectionsToProcess);
 }
