@@ -44,10 +44,14 @@ public:
         qint32 sectionsProcessed;
         qint32 encoderRunning;
         qint32 encoderStopped;
-        qint32 unknownQMode;
         qint32 trackNumber;
+        qint32 subdivision;
         TrackTime trackTime;
         TrackTime discTime;
+
+        qint32 qMode1Count;
+        qint32 qMode4Count;
+        qint32 qModeICount;
     };
 
     void reset(void);
@@ -58,14 +62,35 @@ public:
     bool setOutputFile(QFile *outputFileHandle);
     void convert(QVector<F2Frame> f2Frames, QVector<Section> sections);
 
+    bool setMetadataOutputFile(QFile *outputMetadataFileHandle);
+    void flushMetadata(void);
+
 private:
+    // Structure for temporary storage of metadata
+    struct Metadata {
+        qint32 qMode;
+        TrackTime discTime;
+        TrackTime trackTime;
+        qint32 trackNumber;
+        qint32 subdivision;
+        bool encoderRunning;
+        bool isAudio;
+        bool isCorrected;
+    };
+
     Statistics statistics;
     QFile *outputFileHandle;
+    QFile *outputMetadataFileHandle;
+
+    QString jsonFilename;
+    QVector<qint32> qMetaModeVector;
+    QVector<Section::QMetadata> qMetaDataVector;
 
     QVector<Section> sectionsIn;
     QVector<F2Frame> f2FramesIn;
 
     void processAudio(void);
+    Metadata sectionToMeta(Section section);
 };
 
 #endif // F2FRAMESTOAUDIO_H

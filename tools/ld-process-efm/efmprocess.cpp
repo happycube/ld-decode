@@ -53,7 +53,6 @@ void EfmProcess::reset(void)
     f1ToSectors.reset();
     sectorsToData.reset();
 
-    sectionToMeta.reset();
     sectorsToMeta.reset();
 
     resetStatistics();
@@ -179,8 +178,8 @@ void EfmProcess::run()
         // Open the data decode output file
         if (processData) sectorsToData.setOutputFile(dataOutputFile);
 
-        // Open the metadata JSON file
-        if (processAudio) sectionToMeta.setOutputFile(audioMetaOutputFileTs);
+        // Open the metadata JSON files
+        if (processAudio) f2FramesToAudio.setMetadataOutputFile(audioMetaOutputFileTs);
         if (processData) sectorsToMeta.setOutputFile(dataMetaOutputFileTs);
 
         qint64 inputFileSize = inputFileHandle->size();
@@ -207,9 +206,6 @@ void EfmProcess::run()
             if (processAudio) {
                 // Convert the F2 frames into audio
                 f2FramesToAudio.convert(f2Frames, sections);
-
-                // Process the sections to audio metadata
-                //sectionToMeta.process(sections);
             }
 
             // Data specific processing
@@ -237,7 +233,7 @@ void EfmProcess::run()
         cancel = false;
 
         // Flush the metadata to the temporary files
-        if (processAudio) sectionToMeta.flushMetadata();
+        if (processAudio) f2FramesToAudio.flushMetadata();
         if (processData) sectorsToMeta.flushMetadata();
 
         // Emit a signal showing the processing is complete
@@ -346,6 +342,4 @@ void EfmProcess::reportStatus(bool processAudio, bool processData)
 
     f3ToSections.reportStatus();
     qInfo() << "";
-
-    sectionToMeta.reportStatus();
 }

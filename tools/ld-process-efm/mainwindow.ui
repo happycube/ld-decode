@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>430</width>
-    <height>670</height>
+    <height>673</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -787,17 +787,17 @@
             <x>10</x>
             <y>100</y>
             <width>381</width>
-            <height>201</height>
+            <height>281</height>
            </rect>
           </property>
           <property name="title">
-           <string>Subcode data:</string>
+           <string>Audio metadata:</string>
           </property>
           <widget class="QLabel" name="label_24">
            <property name="geometry">
             <rect>
              <x>10</x>
-             <y>50</y>
+             <y>230</y>
              <width>121</width>
              <height>20</height>
             </rect>
@@ -813,7 +813,7 @@
            <property name="geometry">
             <rect>
              <x>10</x>
-             <y>70</y>
+             <y>250</y>
              <width>121</width>
              <height>20</height>
             </rect>
@@ -829,13 +829,13 @@
            <property name="geometry">
             <rect>
              <x>10</x>
-             <y>90</y>
+             <y>170</y>
              <width>121</width>
              <height>20</height>
             </rect>
            </property>
            <property name="text">
-            <string>Unknown Q:</string>
+            <string>Invalid Q Mode:</string>
            </property>
            <property name="alignment">
             <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
@@ -845,7 +845,7 @@
            <property name="geometry">
             <rect>
              <x>10</x>
-             <y>150</y>
+             <y>70</y>
              <width>121</width>
              <height>20</height>
             </rect>
@@ -861,7 +861,7 @@
            <property name="geometry">
             <rect>
              <x>10</x>
-             <y>170</y>
+             <y>90</y>
              <width>121</width>
              <height>20</height>
             </rect>
@@ -877,7 +877,7 @@
            <property name="geometry">
             <rect>
              <x>140</x>
-             <y>50</y>
+             <y>230</y>
              <width>231</width>
              <height>20</height>
             </rect>
@@ -890,7 +890,7 @@
            <property name="geometry">
             <rect>
              <x>140</x>
-             <y>70</y>
+             <y>250</y>
              <width>231</width>
              <height>20</height>
             </rect>
@@ -899,33 +899,7 @@
             <string>TextLabel</string>
            </property>
           </widget>
-          <widget class="QLabel" name="audio_unknownQMode">
-           <property name="geometry">
-            <rect>
-             <x>140</x>
-             <y>90</y>
-             <width>231</width>
-             <height>20</height>
-            </rect>
-           </property>
-           <property name="text">
-            <string>TextLabel</string>
-           </property>
-          </widget>
-          <widget class="QLabel" name="audio_trackTime">
-           <property name="geometry">
-            <rect>
-             <x>140</x>
-             <y>150</y>
-             <width>231</width>
-             <height>20</height>
-            </rect>
-           </property>
-           <property name="text">
-            <string>TextLabel</string>
-           </property>
-          </widget>
-          <widget class="QLabel" name="audio_discTime">
+          <widget class="QLabel" name="audio_qModeInvalid">
            <property name="geometry">
             <rect>
              <x>140</x>
@@ -938,11 +912,37 @@
             <string>TextLabel</string>
            </property>
           </widget>
+          <widget class="QLabel" name="audio_trackTime">
+           <property name="geometry">
+            <rect>
+             <x>140</x>
+             <y>70</y>
+             <width>231</width>
+             <height>20</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>TextLabel</string>
+           </property>
+          </widget>
+          <widget class="QLabel" name="audio_discTime">
+           <property name="geometry">
+            <rect>
+             <x>140</x>
+             <y>90</y>
+             <width>231</width>
+             <height>20</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>TextLabel</string>
+           </property>
+          </widget>
           <widget class="QLabel" name="label_29">
            <property name="geometry">
             <rect>
              <x>10</x>
-             <y>30</y>
+             <y>210</y>
              <width>121</width>
              <height>20</height>
             </rect>
@@ -958,7 +958,7 @@
            <property name="geometry">
             <rect>
              <x>140</x>
-             <y>30</y>
+             <y>210</y>
              <width>231</width>
              <height>20</height>
             </rect>
@@ -971,7 +971,7 @@
            <property name="geometry">
             <rect>
              <x>10</x>
-             <y>130</y>
+             <y>30</y>
              <width>121</width>
              <height>20</height>
             </rect>
@@ -987,7 +987,94 @@
            <property name="geometry">
             <rect>
              <x>140</x>
+             <y>30</y>
+             <width>231</width>
+             <height>20</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>TextLabel</string>
+           </property>
+          </widget>
+          <widget class="QLabel" name="label_32">
+           <property name="geometry">
+            <rect>
+             <x>10</x>
+             <y>50</y>
+             <width>121</width>
+             <height>20</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>Subdivision:</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+           </property>
+          </widget>
+          <widget class="QLabel" name="audio_subdivision">
+           <property name="geometry">
+            <rect>
+             <x>140</x>
+             <y>50</y>
+             <width>231</width>
+             <height>20</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>TextLabel</string>
+           </property>
+          </widget>
+          <widget class="QLabel" name="label_33">
+           <property name="geometry">
+            <rect>
+             <x>10</x>
              <y>130</y>
+             <width>121</width>
+             <height>20</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>Q Mode 1:</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+           </property>
+          </widget>
+          <widget class="QLabel" name="label_34">
+           <property name="geometry">
+            <rect>
+             <x>10</x>
+             <y>150</y>
+             <width>121</width>
+             <height>20</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>Q Mode 4:</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+           </property>
+          </widget>
+          <widget class="QLabel" name="audio_qMode1">
+           <property name="geometry">
+            <rect>
+             <x>140</x>
+             <y>130</y>
+             <width>231</width>
+             <height>20</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>TextLabel</string>
+           </property>
+          </widget>
+          <widget class="QLabel" name="audio_qMode4">
+           <property name="geometry">
+            <rect>
+             <x>140</x>
+             <y>150</y>
              <width>231</width>
              <height>20</height>
             </rect>

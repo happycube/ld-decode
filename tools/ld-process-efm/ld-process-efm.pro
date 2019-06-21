@@ -40,7 +40,6 @@ SOURCES += \
         Decoder/f2tof1frames.cpp \
         Decoder/f3tof2frames.cpp \
         Decoder/f3tosections.cpp \
-        Decoder/sectiontometa.cpp \
         Decoder/sectorstodata.cpp \
         Decoder/sectorstometa.cpp \
         aboutdialog.cpp \
@@ -66,7 +65,6 @@ HEADERS += \
         Decoder/f2tof1frames.h \
         Decoder/f3tof2frames.h \
         Decoder/f3tosections.h \
-        Decoder/sectiontometa.h \
         Decoder/sectorstodata.h \
         Decoder/sectorstometa.h \
         aboutdialog.h \

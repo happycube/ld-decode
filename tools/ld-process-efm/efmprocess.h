@@ -46,7 +46,6 @@
 #include "Decoder/f2framestoaudio.h"
 #include "Decoder/f1tosectors.h"
 #include "Decoder/sectorstodata.h"
-#include "Decoder/sectiontometa.h"
 #include "Decoder/sectorstometa.h"
 
 class EfmProcess : public QThread
@@ -112,7 +111,6 @@ private:
     F2FramesToAudio f2FramesToAudio;
     F1ToSectors f1ToSectors;
     SectorsToData sectorsToData;
-    SectionToMeta sectionToMeta;
     SectorsToMeta sectorsToMeta;
 
     Statistics statistics;

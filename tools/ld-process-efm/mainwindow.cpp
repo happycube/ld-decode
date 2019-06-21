@@ -267,10 +267,13 @@ void MainWindow::resetStatistics(void)
     ui->audio_sectionsProcessed->setText(tr("0"));
     ui->audio_encoderRunning->setText(tr("0"));
     ui->audio_encoderStopped->setText(tr("0"));
-    ui->audio_unknownQMode->setText(tr("0"));
     ui->audio_trackNumber->setText(tr("0"));
+    ui->audio_subdivision->setText(tr("0"));
     ui->audio_trackTime->setText(tr("00:00:00"));
     ui->audio_discTime->setText(tr("00:00:00"));
+    ui->audio_qModeInvalid->setText(tr("0"));
+    ui->audio_qMode1->setText(tr("0"));
+    ui->audio_qMode4->setText(tr("0"));
 
     // Data tab
     ui->data_total->setText(tr("0"));
@@ -526,10 +529,13 @@ void MainWindow::updateStatistics(void)
     ui->audio_sectionsProcessed->setText(QString::number(statistics.f2FramesToAudio_statistics.sectionsProcessed));
     ui->audio_encoderRunning->setText(QString::number(statistics.f2FramesToAudio_statistics.encoderRunning));
     ui->audio_encoderStopped->setText(QString::number(statistics.f2FramesToAudio_statistics.encoderStopped));
-    ui->audio_unknownQMode->setText(QString::number(statistics.f2FramesToAudio_statistics.unknownQMode));
     ui->audio_trackNumber->setText(QString::number(statistics.f2FramesToAudio_statistics.trackNumber));
+    ui->audio_subdivision->setText(QString::number(statistics.f2FramesToAudio_statistics.subdivision));
     ui->audio_trackTime->setText(statistics.f2FramesToAudio_statistics.trackTime.getTimeAsQString());
     ui->audio_discTime->setText(statistics.f2FramesToAudio_statistics.discTime.getTimeAsQString());
+    ui->audio_qModeInvalid->setText(QString::number(statistics.f2FramesToAudio_statistics.qModeICount));
+    ui->audio_qMode1->setText(QString::number(statistics.f2FramesToAudio_statistics.qMode1Count));
+    ui->audio_qMode4->setText(QString::number(statistics.f2FramesToAudio_statistics.qMode4Count));
 
     // Data tab
     ui->data_total->setText(QString::number(statistics.sectorsToData_statistics.sectorsWritten));
