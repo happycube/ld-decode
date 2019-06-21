@@ -28,8 +28,8 @@
 #include <QCoreApplication>
 #include <QDebug>
 
-#include <Decoder/ezpwd/rs_base>
-#include <Decoder/ezpwd/rs>
+#include <ezpwd/rs_base>
+#include <ezpwd/rs>
 
 // CD-ROM specific CIRC configuration for Reed-Solomon forward error correction
 template < size_t SYMBOLS, size_t PAYLOAD > struct C2RS;

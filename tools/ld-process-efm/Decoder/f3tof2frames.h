@@ -28,8 +28,8 @@
 #include <QCoreApplication>
 #include <QDebug>
 
-#include "f3frame.h"
-#include "f2frame.h"
+#include "Datatypes/f3frame.h"
+#include "Datatypes/f2frame.h"
 #include "c1circ.h"
 #include "c2circ.h"
 #include "c2deinterleave.h"

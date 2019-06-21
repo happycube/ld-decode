@@ -304,8 +304,8 @@ void EfmProcess::closeInputFile(void)
 // Method to read EFM T value data from the input file
 QByteArray EfmProcess::readEfmData(void)
 {
-    // Read EFM data in 64K blocks
-    qint32 bufferSize = 1024 * 64;
+    // Read EFM data in 256K blocks
+    qint32 bufferSize = 1024 * 256;
 
     QByteArray outputData;
     outputData.resize(bufferSize);

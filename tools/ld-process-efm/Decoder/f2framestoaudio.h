@@ -29,7 +29,7 @@
 #include <QDebug>
 #include <QFile>
 
-#include "f2frame.h"
+#include "Datatypes/f2frame.h"
 
 class F2FramesToAudio
 {

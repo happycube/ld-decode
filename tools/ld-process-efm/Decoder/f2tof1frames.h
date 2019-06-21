@@ -28,8 +28,8 @@
 #include <QCoreApplication>
 #include <QDebug>
 
-#include "f2frame.h"
-#include "f1frame.h"
+#include "Datatypes/f2frame.h"
+#include "Datatypes/f1frame.h"
 
 class F2ToF1Frames
 {

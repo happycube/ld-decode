@@ -34,11 +34,11 @@
 #include <QFile>
 #include <QDebug>
 
-#include "Decoder/f3frame.h"
-#include "Decoder/f2frame.h"
-#include "Decoder/f1frame.h"
-#include "Decoder/sector.h"
-#include "Decoder/section.h"
+#include "Datatypes/f3frame.h"
+#include "Datatypes/f2frame.h"
+#include "Datatypes/f1frame.h"
+#include "Datatypes/sector.h"
+#include "Datatypes/section.h"
 #include "Decoder/efmtof3frames.h"
 #include "Decoder/f3tof2frames.h"
 #include "Decoder/f2tof1frames.h"
