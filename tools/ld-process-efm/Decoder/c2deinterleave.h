@@ -44,20 +44,23 @@ public:
     void resetStatistics(void);
     Statistics getStatistics(void);
     void reportStatus(void);
-    void pushC2(QByteArray dataSymbols, QByteArray errorSymbols);
+    void pushC2(QByteArray dataSymbols, QByteArray errorSymbols, bool dataValid);
     QByteArray getDataSymbols(void);
     QByteArray getErrorSymbols(void);
+    bool getDataValid(void);
     void flush(void);
 
 private:
     struct C2Element {
         QByteArray c2Data;
         QByteArray c2Error;
+        bool c2DataValid;
     };
     QVector<C2Element> c2DelayBuffer;
 
     QByteArray outputC2Data;
     QByteArray outputC2Errors;
+    bool outputC2Valid;
 
     Statistics statistics;
 

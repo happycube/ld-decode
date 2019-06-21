@@ -39,7 +39,8 @@ void F2FramesToAudio::reset(void)
 // Methods to handle statistics
 void F2FramesToAudio::resetStatistics(void)
 {
-    statistics.audioSamples = 0;
+    statistics.validAudioSamples = 0;
+    statistics.invalidAudioSamples = 0;
     statistics.sectionsProcessed = 0;
     statistics.encoderRunning = 0;
     statistics.encoderStopped = 0;
@@ -58,7 +59,8 @@ F2FramesToAudio::Statistics F2FramesToAudio::getStatistics(void)
 void F2FramesToAudio::reportStatus(void)
 {
     qInfo() << "F2 Frames to audio converter:";
-    qInfo() << "  Total number of stereo audio samples =" << statistics.audioSamples;
+    qInfo() << "  Valid audio samples =" << statistics.validAudioSamples;
+    qInfo() << "  Invalid audio samples =" << statistics.invalidAudioSamples;
     qInfo() << "  Sections processed =" << statistics.sectionsProcessed;
     qInfo() << "  Encoder running sections =" << statistics.encoderRunning;
     qInfo() << "  Encoder stopped sections =" << statistics.encoderStopped;
@@ -142,6 +144,14 @@ void F2FramesToAudio::processAudio(void)
         // Output the samples to file (98 f2 frames x 6 samples per frame = 588)
         for (qint32 i = f2FrameNumber; i < f2FrameNumber + 98; i++) {
             if (outputSamples) {
+                // Check F2 Frame data payload validity
+                if (!f2FramesIn[i].getDataValid()) {
+                    qDebug() << "F2FramesToAudio::processAudio(): F2 Frame data has errors - 6 samples might be garbage";
+                    statistics.invalidAudioSamples += 6;
+                } else {
+                    statistics.validAudioSamples += 6; // 24 bytes per F2 (/2 = 16-bit and /2 = stereo)
+                }
+
                 // Encoder running, output samples
                 outputFileHandle->write(f2FramesIn[i].getDataSymbols()); // 24 bytes per F2
             } else {
@@ -150,8 +160,6 @@ void F2FramesToAudio::processAudio(void)
                 dummy.fill(0, 24);
                 outputFileHandle->write(dummy);
             }
-
-            statistics.audioSamples += 6; // 24 bytes per F2 (/2 = 16-bit and /2 = stereo)
         }
         f2FrameNumber += 98;
 

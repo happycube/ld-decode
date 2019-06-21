@@ -209,7 +209,7 @@ void EfmProcess::run()
                 f2FramesToAudio.convert(f2Frames, sections);
 
                 // Process the sections to audio metadata
-                sectionToMeta.process(sections);
+                //sectionToMeta.process(sections);
             }
 
             // Data specific processing

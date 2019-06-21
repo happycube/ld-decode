@@ -35,13 +35,15 @@ class F2Frame
 public:
     F2Frame();
 
-    void setData(QByteArray dataParam, QByteArray erasuresParam);
+    void setData(QByteArray dataParam, QByteArray erasuresParam, bool isDataValid);
     QByteArray getDataSymbols(void);
     QByteArray getErrorSymbols(void);
+    bool getDataValid(void);
 
 private:
     QByteArray dataSymbols;
     QByteArray errorSymbols;
+    bool dataValid;
 };
 
 #endif // F2FRAME_H

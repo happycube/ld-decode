@@ -55,6 +55,7 @@ public:
     void pushC1(QByteArray dataSymbols, QByteArray errorSymbols);
     QByteArray getDataSymbols(void);
     QByteArray getErrorSymbols(void);
+    bool getDataValid(void);
     void flush(void);
 
 private:
@@ -69,6 +70,7 @@ private:
 
     QByteArray outputC2Data;
     QByteArray outputC2Errors;
+    bool outputC2dataValid;
 
     Statistics statistics;
 

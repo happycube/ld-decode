@@ -716,7 +716,7 @@
             <x>10</x>
             <y>10</y>
             <width>381</width>
-            <height>61</height>
+            <height>81</height>
            </rect>
           </property>
           <property name="title">
@@ -732,17 +732,46 @@
             </rect>
            </property>
            <property name="text">
-            <string>Total:</string>
+            <string>Total valid:</string>
            </property>
            <property name="alignment">
             <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
            </property>
           </widget>
-          <widget class="QLabel" name="audio_totalSamples">
+          <widget class="QLabel" name="audio_totalValidSamples">
            <property name="geometry">
             <rect>
              <x>140</x>
              <y>30</y>
+             <width>231</width>
+             <height>20</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>TextLabel</string>
+           </property>
+          </widget>
+          <widget class="QLabel" name="label_31">
+           <property name="geometry">
+            <rect>
+             <x>10</x>
+             <y>50</y>
+             <width>121</width>
+             <height>20</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>Total invalid:</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+           </property>
+          </widget>
+          <widget class="QLabel" name="audio_totalInvalidSamples">
+           <property name="geometry">
+            <rect>
+             <x>140</x>
+             <y>50</y>
              <width>231</width>
              <height>20</height>
             </rect>
@@ -756,7 +785,7 @@
           <property name="geometry">
            <rect>
             <x>10</x>
-            <y>80</y>
+            <y>100</y>
             <width>381</width>
             <height>201</height>
            </rect>

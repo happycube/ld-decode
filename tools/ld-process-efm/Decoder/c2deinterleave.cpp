@@ -28,6 +28,7 @@ C2Deinterleave::C2Deinterleave()
 {
     outputC2Data.resize(24);
     outputC2Errors.resize(24);
+    outputC2Valid = false;
 
     reset();
 }
@@ -61,12 +62,13 @@ void C2Deinterleave::reportStatus(void)
     qInfo() << "  The delay buffer was flushed" << statistics.c2flushed << "times";
 }
 
-void C2Deinterleave::pushC2(QByteArray dataSymbols, QByteArray errorSymbols)
+void C2Deinterleave::pushC2(QByteArray dataSymbols, QByteArray errorSymbols, bool dataValid)
 {
     // Create a new C2 element and append it to the C2 delay buffer
     C2Element newC2Element;
     newC2Element.c2Data = dataSymbols;
     newC2Element.c2Error = errorSymbols;
+    newC2Element.c2DataValid = dataValid;
     c2DelayBuffer.append(newC2Element);
 
     if (c2DelayBuffer.size() >= 3) {
@@ -92,6 +94,13 @@ QByteArray C2Deinterleave::getErrorSymbols(void)
     return QByteArray();
 }
 
+// Return the deinterleaved C2 data valid flag if available
+bool C2Deinterleave::getDataValid(void)
+{
+    if (c2DelayBuffer.size() >= 3) return outputC2Valid;
+    return false;
+}
+
 // Method to flush the C1 buffers
 void C2Deinterleave::flush(void)
 {
@@ -99,6 +108,7 @@ void C2Deinterleave::flush(void)
 
     outputC2Data.fill(0);
     outputC2Errors.fill(0);
+    outputC2Valid = false;
 
     statistics.c2flushed++;
 }
@@ -121,8 +131,13 @@ void C2Deinterleave::deinterleave(void)
     }
 
     // Note: This drops the C2 parity leaving 24 bytes of data (12 words of 16 bits)
-    if (c2sValid) statistics.validDeinterleavedC2s++;
-    else statistics.invalidDeinterleavedC2s++;
+    if (c2sValid) {
+        statistics.validDeinterleavedC2s++;
+        outputC2Valid = true;
+    } else {
+        statistics.invalidDeinterleavedC2s++;
+        outputC2Valid = false;
+    }
 
     // Deinterleave data
     outputC2Data[ 0] = c2DelayBuffer[curr].c2Data[ 0];

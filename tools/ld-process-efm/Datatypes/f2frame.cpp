@@ -35,7 +35,7 @@ F2Frame::F2Frame()
     errorSymbols.fill(0);
 }
 
-void F2Frame::setData(QByteArray dataParam, QByteArray erasuresParam)
+void F2Frame::setData(QByteArray dataParam, QByteArray erasuresParam, bool isDataValid)
 {
     // Add the F2 frame data to the F2 data buffer and swap the byte
     // order (see ECMA-130 clause 16)
@@ -52,6 +52,7 @@ void F2Frame::setData(QByteArray dataParam, QByteArray erasuresParam)
     // however, since the required PCM sample format is little-endian (on a PC)
     // it is required.  Therefore we do it to the F2 frame data to save having
     // to perform the swapping twice (in the audio and data processing)
+    dataValid = isDataValid;
 }
 
 // This method returns the 24 data symbols for the F2 Frame
@@ -64,4 +65,10 @@ QByteArray F2Frame::getDataSymbols(void)
 QByteArray F2Frame::getErrorSymbols(void)
 {
     return errorSymbols;
+}
+
+// This method returns the data valid flag for the F2 Frame
+bool F2Frame::getDataValid(void)
+{
+    return dataValid;
 }
