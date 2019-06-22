@@ -28,8 +28,8 @@
 #include <QCoreApplication>
 #include <QDebug>
 
-#include "f3frame.h"
-#include "section.h"
+#include "Datatypes/f3frame.h"
+#include "Datatypes/section.h"
 
 class F3ToSections
 {

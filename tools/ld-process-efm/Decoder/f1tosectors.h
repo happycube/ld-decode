@@ -28,8 +28,8 @@
 #include <QCoreApplication>
 #include <QDebug>
 
-#include "sector.h"
-#include "f1frame.h"
+#include "Datatypes/sector.h"
+#include "Datatypes/f1frame.h"
 
 class F1ToSectors
 {

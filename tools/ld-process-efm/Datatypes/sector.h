@@ -25,8 +25,8 @@
 #ifndef SECTOR_H
 #define SECTOR_H
 
-#include <Decoder/ezpwd/rs_base>
-#include <Decoder/ezpwd/rs>
+#include <ezpwd/rs_base>
+#include <ezpwd/rs>
 
 // CD-ROM Q and P specific CIRC configuration for Reed-Solomon forward error correction
 template < size_t SYMBOLS, size_t PAYLOAD > struct QRS;

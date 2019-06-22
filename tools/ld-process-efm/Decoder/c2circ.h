@@ -28,8 +28,8 @@
 #include <QCoreApplication>
 #include <QDebug>
 
-#include <Decoder/ezpwd/rs_base>
-#include <Decoder/ezpwd/rs>
+#include <ezpwd/rs_base>
+#include <ezpwd/rs>
 
 // CD-ROM specific CIRC configuration for Reed-Solomon forward error correction
 template < size_t SYMBOLS, size_t PAYLOAD > struct C2RS;
@@ -55,6 +55,7 @@ public:
     void pushC1(QByteArray dataSymbols, QByteArray errorSymbols);
     QByteArray getDataSymbols(void);
     QByteArray getErrorSymbols(void);
+    bool getDataValid(void);
     void flush(void);
 
 private:
@@ -69,6 +70,7 @@ private:
 
     QByteArray outputC2Data;
     QByteArray outputC2Errors;
+    bool outputC2dataValid;
 
     Statistics statistics;
 

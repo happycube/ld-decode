@@ -98,6 +98,13 @@ QByteArray C2Circ::getErrorSymbols(void)
     return QByteArray();
 }
 
+// Return the C2 data valid flag if available
+bool C2Circ::getDataValid(void)
+{
+    if (c1DelayBuffer.size() >= 109) return outputC2dataValid;
+    return false;
+}
+
 // Method to flush the C2 buffers
 void C2Circ::flush(void)
 {
@@ -108,6 +115,7 @@ void C2Circ::flush(void)
 
     outputC2Data.fill(0);
     outputC2Errors.fill(0);
+    outputC2dataValid = false;
 
     statistics.c2flushed++;
 }
@@ -156,7 +164,16 @@ void C2Circ::errorCorrect(void)
     }
 
     // Update the statistics
-    if (fixed == 0) statistics.c2Passed++;
-    if (fixed > 0)  statistics.c2Corrected++;
-    if (fixed < 0)  statistics.c2Failed++;
+    if (fixed == 0) {
+        statistics.c2Passed++;
+        outputC2dataValid = true;
+    }
+    if (fixed > 0) {
+        statistics.c2Corrected++;
+        outputC2dataValid = true;
+    }
+    if (fixed < 0) {
+        statistics.c2Failed++;
+        outputC2dataValid = false;
+    }
 }

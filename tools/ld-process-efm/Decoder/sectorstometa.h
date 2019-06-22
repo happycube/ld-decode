@@ -29,7 +29,7 @@
 #include <QFile>
 #include <QDebug>
 
-#include "sector.h"
+#include "Datatypes/sector.h"
 
 class SectorsToMeta
 {

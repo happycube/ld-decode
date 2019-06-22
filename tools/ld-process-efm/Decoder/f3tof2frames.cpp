@@ -104,19 +104,21 @@ QVector<F2Frame> F3ToF2Frames::convert(QVector<F3Frame> f3Frames)
             // Get C2 results (if available)
             QByteArray c2DataSymbols = c2Circ.getDataSymbols();
             QByteArray c2ErrorSymbols = c2Circ.getErrorSymbols();
+            bool c2DataValid = c2Circ.getDataValid();
 
             // Only process the F2 frames if we received data
             if (!c2DataSymbols.isEmpty()) {
                 // Deinterleave the C2
-                c2Deinterleave.pushC2(c2DataSymbols, c2ErrorSymbols);
+                c2Deinterleave.pushC2(c2DataSymbols, c2ErrorSymbols, c2DataValid);
 
                 QByteArray c2DeinterleavedData = c2Deinterleave.getDataSymbols();
                 QByteArray c2DeinterleavedErrors = c2Deinterleave.getErrorSymbols();
+                bool c2DeinterleavedDataValid = c2Deinterleave.getDataValid();
 
                 // If we have deinterleaved C2s, create an F2 frame
                 if (!c2DeinterleavedData.isEmpty()) {
                     F2Frame newF2Frame;
-                    newF2Frame.setData(c2DeinterleavedData, c2DeinterleavedErrors);
+                    newF2Frame.setData(c2DeinterleavedData, c2DeinterleavedErrors, c2DeinterleavedDataValid);
                     f2Frames.append(newF2Frame);
                 }
             }

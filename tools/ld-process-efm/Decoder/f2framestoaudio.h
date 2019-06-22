@@ -29,7 +29,9 @@
 #include <QDebug>
 #include <QFile>
 
-#include "f2frame.h"
+#include "Datatypes/f2frame.h"
+#include "Datatypes/section.h"
+#include "Datatypes/tracktime.h"
 
 class F2FramesToAudio
 {
@@ -37,7 +39,19 @@ public:
     F2FramesToAudio();
 
     struct Statistics {
-        qint32 audioSamples;
+        qint32 validAudioSamples;
+        qint32 invalidAudioSamples;
+        qint32 sectionsProcessed;
+        qint32 encoderRunning;
+        qint32 encoderStopped;
+        qint32 trackNumber;
+        qint32 subdivision;
+        TrackTime trackTime;
+        TrackTime discTime;
+
+        qint32 qMode1Count;
+        qint32 qMode4Count;
+        qint32 qModeICount;
     };
 
     void reset(void);
@@ -46,11 +60,37 @@ public:
 
     void reportStatus(void);
     bool setOutputFile(QFile *outputFileHandle);
-    void convert(QVector<F2Frame> f2Frames);
+    void convert(QVector<F2Frame> f2Frames, QVector<Section> sections);
+
+    bool setMetadataOutputFile(QFile *outputMetadataFileHandle);
+    void flushMetadata(void);
 
 private:
+    // Structure for temporary storage of metadata
+    struct Metadata {
+        qint32 qMode;
+        TrackTime discTime;
+        TrackTime trackTime;
+        qint32 trackNumber;
+        qint32 subdivision;
+        bool encoderRunning;
+        bool isAudio;
+        bool isCorrected;
+    };
+
     Statistics statistics;
     QFile *outputFileHandle;
+    QFile *outputMetadataFileHandle;
+
+    QString jsonFilename;
+    QVector<qint32> qMetaModeVector;
+    QVector<Section::QMetadata> qMetaDataVector;
+
+    QVector<Section> sectionsIn;
+    QVector<F2Frame> f2FramesIn;
+
+    void processAudio(void);
+    Metadata sectionToMeta(Section section);
 };
 
 #endif // F2FRAMESTOAUDIO_H

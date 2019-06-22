@@ -29,8 +29,8 @@
 #include <QDebug>
 #include <QFile>
 
-#include "sector.h"
-#include "tracktime.h"
+#include "Datatypes/sector.h"
+#include "Datatypes/tracktime.h"
 
 class SectorsToData
 {

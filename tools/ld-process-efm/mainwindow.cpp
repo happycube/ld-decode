@@ -141,8 +141,8 @@ void MainWindow::decodingStop(void)
     // Get the statistical information from the EFM processing thread
     EfmProcess::Statistics statistics = efmProcess.getStatistics();
 
-    // Only allow audio save if there is audio data available
-    if (statistics.f2FramesToAudio_statistics.audioSamples != 0)  ui->actionSave_Audio_As->setEnabled(true);
+    // Only allow audio save if there is valid audio data available
+    if (statistics.f2FramesToAudio_statistics.validAudioSamples != 0)  ui->actionSave_Audio_As->setEnabled(true);
     else ui->actionSave_Audio_As->setEnabled(false);
 
     // Only allow data save if there is data available
@@ -262,7 +262,18 @@ void MainWindow::resetStatistics(void)
     ui->f2Frames_c2de_flushes->setText(tr("0"));
 
     // Audio tab
-    ui->audio_totalSamples->setText(tr("0"));
+    ui->audio_totalValidSamples->setText(tr("0"));
+    ui->audio_totalInvalidSamples->setText(tr("0"));
+    ui->audio_sectionsProcessed->setText(tr("0"));
+    ui->audio_encoderRunning->setText(tr("0"));
+    ui->audio_encoderStopped->setText(tr("0"));
+    ui->audio_trackNumber->setText(tr("0"));
+    ui->audio_subdivision->setText(tr("0"));
+    ui->audio_trackTime->setText(tr("00:00:00"));
+    ui->audio_discTime->setText(tr("00:00:00"));
+    ui->audio_qModeInvalid->setText(tr("0"));
+    ui->audio_qMode1->setText(tr("0"));
+    ui->audio_qMode4->setText(tr("0"));
 
     // Data tab
     ui->data_total->setText(tr("0"));
@@ -513,7 +524,18 @@ void MainWindow::updateStatistics(void)
     ui->f2Frames_c2de_flushes->setText(QString::number(statistics.f3ToF2Frames_statistics.c2Deinterleave_statistics.c2flushed));
 
     // Update audio tab
-    ui->audio_totalSamples->setText(QString::number(statistics.f2FramesToAudio_statistics.audioSamples));
+    ui->audio_totalValidSamples->setText(QString::number(statistics.f2FramesToAudio_statistics.validAudioSamples));
+    ui->audio_totalInvalidSamples->setText(QString::number(statistics.f2FramesToAudio_statistics.invalidAudioSamples));
+    ui->audio_sectionsProcessed->setText(QString::number(statistics.f2FramesToAudio_statistics.sectionsProcessed));
+    ui->audio_encoderRunning->setText(QString::number(statistics.f2FramesToAudio_statistics.encoderRunning));
+    ui->audio_encoderStopped->setText(QString::number(statistics.f2FramesToAudio_statistics.encoderStopped));
+    ui->audio_trackNumber->setText(QString::number(statistics.f2FramesToAudio_statistics.trackNumber));
+    ui->audio_subdivision->setText(QString::number(statistics.f2FramesToAudio_statistics.subdivision));
+    ui->audio_trackTime->setText(statistics.f2FramesToAudio_statistics.trackTime.getTimeAsQString());
+    ui->audio_discTime->setText(statistics.f2FramesToAudio_statistics.discTime.getTimeAsQString());
+    ui->audio_qModeInvalid->setText(QString::number(statistics.f2FramesToAudio_statistics.qModeICount));
+    ui->audio_qMode1->setText(QString::number(statistics.f2FramesToAudio_statistics.qMode1Count));
+    ui->audio_qMode4->setText(QString::number(statistics.f2FramesToAudio_statistics.qMode4Count));
 
     // Data tab
     ui->data_total->setText(QString::number(statistics.sectorsToData_statistics.sectorsWritten));
