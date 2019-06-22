@@ -67,6 +67,9 @@ MainWindow::MainWindow(QWidget *parent) :
 
 MainWindow::~MainWindow()
 {
+    // Cancel the efm processing thread
+    efmProcess.cancelProcessing();
+
     // Save the window geometry to the configuration
     configuration->setMainWindowGeometry(saveGeometry());
 
@@ -240,7 +243,8 @@ void MainWindow::resetStatistics(void)
     // F3 Frames tab
     ui->f3Frames_totalLabel->setText(tr("0"));
     ui->f3Frames_validLabel->setText(tr("0"));
-    ui->f3Frames_invalidLabel->setText(tr("0"));
+    ui->f3Frames_overshoot->setText(tr("0"));
+    ui->f3Frames_undershoot->setText(tr("0"));
     ui->f3Frames_syncLossLabel->setText(tr("0"));
 
     // F2 Frames tab
@@ -494,9 +498,10 @@ void MainWindow::updateStatistics(void)
 
     // Update F3 Frames tab
     ui->f3Frames_totalLabel->setText(QString::number(statistics.efmToF3Frames_statistics.validFrameLength +
-                                                     statistics.efmToF3Frames_statistics.invalidFrameLength));
+                                                     statistics.efmToF3Frames_statistics.invalidFrameLengthOvershoot));
     ui->f3Frames_validLabel->setText(QString::number(statistics.efmToF3Frames_statistics.validFrameLength));
-    ui->f3Frames_invalidLabel->setText(QString::number(statistics.efmToF3Frames_statistics.invalidFrameLength));
+    ui->f3Frames_overshoot->setText(QString::number(statistics.efmToF3Frames_statistics.invalidFrameLengthOvershoot));
+    ui->f3Frames_undershoot->setText(QString::number(statistics.efmToF3Frames_statistics.invalidFrameLengthUndershoot));
     ui->f3Frames_syncLossLabel->setText(QString::number(statistics.efmToF3Frames_statistics.syncLoss));
 
     // Update F2 Frames tab

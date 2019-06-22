@@ -34,6 +34,11 @@ F2FramesToAudio::F2FramesToAudio()
 // Method to reset and flush all buffers
 void F2FramesToAudio::reset(void)
 {
+    sectionsIn.clear();
+    f2FramesIn.clear();
+    qMetaModeVector.clear();
+    qMetaDataVector.clear();
+
     resetStatistics();
 }
 

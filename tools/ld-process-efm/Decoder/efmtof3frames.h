@@ -38,12 +38,12 @@ public:
     // Statistics data structure
     struct Statistics {
         qint32 validFrameLength;
-        qint32 invalidFrameLength;
+        qint32 invalidFrameLengthOvershoot;
+        qint32 invalidFrameLengthUndershoot;
         qint32 syncLoss;
     };
 
     void reset(void);
-    void setVerboseDebug(bool param);
     void reportStatus(void);
     QVector<F3Frame> convert(QByteArray efmDataIn);
 
@@ -51,8 +51,6 @@ public:
     Statistics getStatistics(void);
 
 private:
-    bool verboseDebug;
-
     // EFM data buffer
     QByteArray efmData;
 

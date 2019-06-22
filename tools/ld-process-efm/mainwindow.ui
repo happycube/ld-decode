@@ -104,7 +104,7 @@
       <item>
        <widget class="QTabWidget" name="feedbackTabWidget">
         <property name="currentIndex">
-         <number>2</number>
+         <number>0</number>
         </property>
         <widget class="QWidget" name="f3FramesTab">
          <attribute name="title">
@@ -116,7 +116,7 @@
             <x>9</x>
             <y>10</y>
             <width>381</width>
-            <height>121</height>
+            <height>141</height>
            </rect>
           </property>
           <property name="title">
@@ -164,7 +164,7 @@
             </rect>
            </property>
            <property name="text">
-            <string>Invalid frames:</string>
+            <string>Overshoot:</string>
            </property>
            <property name="alignment">
             <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
@@ -174,7 +174,7 @@
            <property name="geometry">
             <rect>
              <x>10</x>
-             <y>90</y>
+             <y>110</y>
              <width>121</width>
              <height>20</height>
             </rect>
@@ -212,7 +212,7 @@
             <string>TextLabel</string>
            </property>
           </widget>
-          <widget class="QLabel" name="f3Frames_invalidLabel">
+          <widget class="QLabel" name="f3Frames_overshoot">
            <property name="geometry">
             <rect>
              <x>140</x>
@@ -226,6 +226,35 @@
            </property>
           </widget>
           <widget class="QLabel" name="f3Frames_syncLossLabel">
+           <property name="geometry">
+            <rect>
+             <x>140</x>
+             <y>110</y>
+             <width>231</width>
+             <height>20</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>TextLabel</string>
+           </property>
+          </widget>
+          <widget class="QLabel" name="label_36">
+           <property name="geometry">
+            <rect>
+             <x>10</x>
+             <y>90</y>
+             <width>121</width>
+             <height>20</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>Undershoot:</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+           </property>
+          </widget>
+          <widget class="QLabel" name="f3Frames_undershoot">
            <property name="geometry">
             <rect>
              <x>140</x>
