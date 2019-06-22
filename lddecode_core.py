@@ -787,9 +787,6 @@ class Field:
             if spulse is not None:
                 validpulses.append((*spulse, inorder))
 
-#        for p in validpulses:
-#            print(p)
-
         return validpulses
 
     def getblankrange(self, vpulses, start = 0):
@@ -850,7 +847,6 @@ class Field:
                     lengths = np.diff(plen[j:j+numPulses])
 
                     if np.max(gaps) < (self.rf.freq * .2) and np.max(lengths) < (self.rf.freq * .2):
-#                        print(i, j, gaps, lengths)
                         grouploc = j
                         break
 
@@ -879,10 +875,7 @@ class Field:
             eqgap = self.rf.SysParams['firstFieldH'][isfirstfield]
             line0 = firstloc - ((eqgap + distfroml1) * self.inlinelen)
 
-            #print(distfroml1, line0, isfirstfield)
             return np.int(line0), isfirstfield
-
-        #print(line0, isfirstfield)
 
         '''
         If there are no valid sections, check line 0 and the first eq pulse, and the last eq
@@ -899,12 +892,9 @@ class Field:
                 isfirstfield = inrange((gap1 / self.inlinelen), 0.45, 0.55)
             elif self.rf.system == 'NTSC' and inrange(np.abs(gap2 + gap1), self.inlinelen * 1.4, self.inlinelen * 1.6):
                 isfirstfield = inrange((gap1 / self.inlinelen), 0.95, 1.05)
-                #isfirstfield = inrange((gap1 / self.inlinelen), 0.45, 0.55)
             else:
                 return None, None
 
-            print(validpulses[firstblank - 1][1].start, isfirstfield)
-            
             return validpulses[firstblank - 1][1].start, isfirstfield
                 
         return None, None
@@ -916,6 +906,10 @@ class Field:
         blank1 = self.getblankrange(validpulses)
         blank2 = self.getblankrange(validpulses, blank1[1] + 1)
         
+        if blank1 == (None, None) or blank2 == (None, None):
+            # Need a full set of data to compute this...
+            return self.inlinelen
+
         # This uses +/- 2 since the previous line is used as well
         if where == 'begin':
             scanrange = (blank1[1] + 2, blank1[1] + 20)
@@ -1025,22 +1019,11 @@ class Field:
         pulses = self.getpulses()
 
         if pulses is None or len(pulses) == 0:
-            print("Unable to find any sync pulses")
+            logging.error("Unable to find any sync pulses, jumping one second")
             return None, None, int(self.rf.freq_hz)
 
         validpulses = self.refinepulses(pulses)
         self.validpulses = validpulses
-
-        blank1 = self.getblankrange(validpulses)
-        endblank = blank1[1] + 1 if blank1[1] is not None else 100
-        blank2 = self.getblankrange(validpulses, endblank)
-
-        if blank2[1] == None:
-            logging.error("Unable to determine blanking areas - dropping field")
-            if blank1[0] is not None and blank1[0] > 6:
-                return None, None, validpulses[blank1[0] - 6][1].start
-            else:
-                return None, None, self.inlinelen * 200
 
         line0loc, self.isFirstField = self.getLine0(validpulses)
         linelocs_dict = {}
@@ -1050,11 +1033,14 @@ class Field:
             return None, None, self.inlinelen * 200
 
         meanlinelen = self.computeLineLen(validpulses, 'all')
+
+        if ((pulses[-1].start - line0loc) / meanlinelen) < (self.outlinecount + 7):
+            return None, None, line0loc - (meanlinelen * 3)
+
         for p in validpulses:
             lineloc = (p[1].start - line0loc) / meanlinelen
             
             if not inrange(lineloc % 1, .4, .6):
-                #logging.info(p, hlineloc, hlineloc / 2)
                 linelocs_dict[np.round(lineloc)] = p[1].start
 
         rv_err = np.full(self.outlinecount + 6, False)
@@ -1071,13 +1057,14 @@ class Field:
                     break
 
             if next_valid is None:
-                return None, None, validpulses[blank1[0]][1].start + (self.inlinelen * self.outlinecount - 7)
+                #logging.warning(next_valid)
+                return None, None, line0loc + (self.inlinelen * self.outlinecount - 7)
 
             linelocs_filled[0] = linelocs_filled[next_valid] - (next_valid * meanlinelen)
             
             if linelocs_filled[0] < self.inlinelen:
-                #logging.info(linelocs_filled[0])
-                return None, None, validpulses[blank1[0]][1].start + (self.inlinelen * self.outlinecount - 7)
+                #logging.warning(linelocs_filled[0])
+                return None, None, line0loc + (self.inlinelen * self.outlinecount - 7)
 
         for l in range(1, self.outlinecount + 6):
             if linelocs_filled[l] < 0:
@@ -1109,12 +1096,9 @@ class Field:
 
         rv_ll = [linelocs_filled[l] for l in range(0, self.outlinecount + 6)]
 
-        self.vsync1loc = validpulses[blank1[0]][1].start
-        self.vsync2loc = validpulses[blank2[0]][1].start
-
         self.pulses = pulses
 
-        return rv_ll, rv_err, validpulses[blank2[0] - 6][1].start
+        return rv_ll, rv_err, linelocs_filled[self.outlinecount - 7]
 
     def refine_linelocs_hsync(self):
         linelocs2 = self.linelocs1.copy()
@@ -1128,6 +1112,7 @@ class Field:
             # Find beginning of hsync (linelocs1 is generally in the middle)
             ll1 = self.linelocs1[i] - self.usectoinpx(5.5)
             #logging.info(i, ll1)
+            #print(i, ll1, len(self.data[0]['demod_05']))
             zc = calczc(self.data[0]['demod_05'], ll1, self.rf.iretohz(self.rf.SysParams['vsync_ire'] / 2), reverse=False, _count=400)
 
             if zc is not None and not self.linebad[i]:
@@ -1246,7 +1231,7 @@ class Field:
             self.dsaudio, self.audio_next_offset = downscale_audio(self.data[1], lineinfo, self.rf, self.linecount, self.audio_offset)
             
         if self.rf.decode_digital_audio:
-            self.efmout = self.data[2][self.vsync1loc:self.vsync2loc]
+            self.efmout = self.data[2][int(self.linelocs[1]):int(self.linelocs[self.linecount + 1])]
         else:
             self.efmout = None
 
@@ -1900,6 +1885,8 @@ class LDdecode:
 
         self.outfile_json = None
 
+        self.lastvalidfield = {False: None, True: None}
+
         if fname_out is not None:        
             self.outfile_video = open(fname_out + '.tbc', 'wb')
             #self.outfile_json = open(fname_out + '.json', 'wb')
@@ -2003,7 +1990,7 @@ class LDdecode:
 
     def decodefield(self):
         ''' returns field object if valid, and the offset to the next decode '''
-        self.readloc = self.fdoffset - self.rf.blockcut
+        self.readloc = int(self.fdoffset - self.rf.blockcut)
         if self.readloc < 0:
             self.readloc = 0
             
@@ -2030,6 +2017,24 @@ class LDdecode:
             #logging.info(f.isFirstField, f.cavFrame)
             
         return f, f.nextfieldoffset
+
+    def writeout(self, dataset):
+
+        f, fi, picture, audio, efm = dataset
+
+        fi['audioSamples'] = 0 if audio is None else int(len(audio) / 2)
+        self.fieldinfo.append(fi)
+
+        self.outfile_video.write(picture)
+        self.fields_written += 1
+
+        if audio is not None and self.outfile_audio is not None:
+            self.outfile_audio.write(audio)
+
+        if self.digital_audio == True:
+            self.outfile_efm.write(efm)
+        else:
+            efm = None
         
     def readfield(self):
         # pretty much a retry-ing wrapper around decodefield with MTF checking
@@ -2068,18 +2073,20 @@ class LDdecode:
         if f is not None and self.fname_out is not None:
             picture, audio, efm = f.downscale(linesout = self.output_lines, final=True)
             
-            fi = self.buildmetadata(f)
-            fi['audioSamples'] = 0 if audio is None else int(len(audio) / 2)
-            self.fieldinfo.append(fi)
+            # XXX: this currently performs a needed sanity check
+            fi, needFiller = self.buildmetadata(f)
 
-            self.outfile_video.write(picture)
-            self.fields_written += 1
+            self.lastvalidfield[f.isFirstField] = (f, fi, picture, audio, efm)
 
-            if audio is not None and self.outfile_audio is not None:
-                self.outfile_audio.write(audio)
+            if needFiller:
+                if self.lastvalidfield[not f.isFirstField] is not None:
+                    self.writeout(self.lastvalidfield[not f.isFirstField])
+                    self.writeout(self.lastvalidfield[f.isFirstField])
 
-            if self.digital_audio == True:
-                self.outfile_efm.write(efm)
+                # If this is the first field, don't write anything                
+                return f
+
+            self.writeout(self.lastvalidfield[f.isFirstField])
             
         return f
 
@@ -2282,6 +2289,7 @@ class LDdecode:
         return metrics_rounded
 
     def buildmetadata(self, f):
+        ''' returns field information JSON and whether or not a backfill field is needed '''
         prevfi = self.fieldinfo[-1] if len(self.fieldinfo) else None
 
         fi = {'isFirstField': True if f.isFirstField else False, 
@@ -2314,9 +2322,10 @@ class LDdecode:
                 fi['isFirstField'] = not prevfi['isFirstField']
                 fi['syncConf'] = 10
             else:
-                logging.error('Skipping field')
+                logging.error('Skipped field')
                 decodeFaults |= 4
                 fi['syncConf'] = 0
+                return fi, True
 
         fi['decodeFaults'] = decodeFaults
         fi['vitsMetrics'] = self.computeMetrics(self.curfield, self.prevfield)
@@ -2355,7 +2364,7 @@ class LDdecode:
                 except:
                     logging.warning("file frame %d : VBI decoding error" % (rawloc))
 
-        return fi
+        return fi, False
 
     # seek support function
     def seek_getframenr(self, start):
