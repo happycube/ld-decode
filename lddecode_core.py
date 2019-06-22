@@ -1032,12 +1032,12 @@ class Field:
         self.validpulses = validpulses
 
         blank1 = self.getblankrange(validpulses)
-        if False and blank1[1] is None:
-            return None, None, self.inlinelen * 200
+        endblank = blank1[1] + 1 if blank1[1] is not None else 100
+        blank2 = self.getblankrange(validpulses, endblank)
 
-        blank2 = self.getblankrange(validpulses, blank1[1] + 1)
         if blank2[1] == None:
-            if blank1[0] > 6:
+            logging.error("Unable to determine blanking areas - dropping field")
+            if blank1[0] is not None and blank1[0] > 6:
                 return None, None, validpulses[blank1[0] - 6][1].start
             else:
                 return None, None, self.inlinelen * 200
