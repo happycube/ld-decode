@@ -126,11 +126,9 @@ void F2FramesToAudio::processAudio(void)
         // Get the required metadata for processing from the section
         Metadata metadata = sectionToMeta(sectionsIn[sectionNo]);
 
-        // Probably should verify Q Mode is audio here? (and isAudio flag...)
-
         // Output the samples to file (98 f2 frames x 6 samples per frame = 588)
         for (qint32 i = f2FrameNumber; i < f2FrameNumber + 98; i++) {
-            if (metadata.encoderRunning) {
+            if (metadata.encoderRunning && (metadata.qMode == 1 || metadata.qMode == 4)) {
                 // Encoder running, output audio samples
 
                 // Check F2 Frame data payload validity
@@ -146,7 +144,8 @@ void F2FramesToAudio::processAudio(void)
                     // Note: At some point, audio error concealing should be implemented here
                 }
             } else {
-                // Encoder stopped, output F2 frame's worth in zeros
+                // Encoder stopped (or current output isn't audio), output F2 frame's worth in zeros
+                statistics.validAudioSamples += 6;
                 outputFileHandle->write(dummyF2Frame);
             }
         }
