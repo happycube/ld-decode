@@ -51,7 +51,8 @@ public:
 
         qint32 qMode1Count;
         qint32 qMode4Count;
-        qint32 qModeICount;
+        qint32 qModeInvalidCount;
+        qint32 qModeCorrectedCount;
     };
 
     void reset(void);
@@ -74,8 +75,9 @@ private:
         qint32 trackNumber;
         qint32 subdivision;
         bool encoderRunning;
-        bool isAudio;
+        bool isLeadIn;
         bool isCorrected;
+        bool isClockRunningForwards;
     };
 
     Statistics statistics;
@@ -91,6 +93,7 @@ private:
 
     void processAudio(void);
     Metadata sectionToMeta(Section section);
+    Metadata simplifyMetadata(Section::QMetadata qMetaData, qint32 qMode);
 };
 
 #endif // F2FRAMESTOAUDIO_H

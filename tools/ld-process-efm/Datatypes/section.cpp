@@ -266,7 +266,6 @@ void Section::decodeQDataMode4(void)
         qMetadata.qMode4.point = -1;
         qMetadata.qMode4.trackTime = TrackTime(bcdToInteger(qSubcode[3]), bcdToInteger(qSubcode[4]), bcdToInteger(qSubcode[5]));
         qMetadata.qMode4.discTime = TrackTime(bcdToInteger(qSubcode[7]), bcdToInteger(qSubcode[8]), bcdToInteger(qSubcode[9]));
-
     } else if (tno == 0) {
         // Lead in
         qMetadata.qMode4.isLeadOut = false;

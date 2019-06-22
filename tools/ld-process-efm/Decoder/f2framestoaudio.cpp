@@ -45,7 +45,8 @@ void F2FramesToAudio::resetStatistics(void)
     statistics.sectionsProcessed = 0;
     statistics.encoderRunning = 0;
     statistics.encoderStopped = 0;
-    statistics.qModeICount = 0;
+    statistics.qModeInvalidCount = 0;
+    statistics.qModeCorrectedCount = 0;
     statistics.trackNumber = 0;
     statistics.subdivision = 0;
     statistics.discTime.setTime(0, 0, 0);
@@ -73,7 +74,8 @@ void F2FramesToAudio::reportStatus(void)
 
     qInfo() << "  Q Mode 1 sections =" << statistics.qMode1Count << "(CD Audio)";
     qInfo() << "  Q Mode 4 sections =" << statistics.qMode4Count << "(LD Audio)";
-    qInfo() << "  Q Mode invalid sections =" << statistics.qModeICount;
+    qInfo() << "  Q Mode invalid sections =" << statistics.qModeInvalidCount;
+    qInfo() << "  Q Mode corrected sections =" << statistics.qModeCorrectedCount;
 }
 
 // Method to set the audio output file
@@ -107,6 +109,9 @@ void F2FramesToAudio::convert(QVector<F2Frame> f2Frames, QVector<Section> sectio
 
 void F2FramesToAudio::processAudio(void)
 {
+    QByteArray dummyF2Frame;
+    dummyF2Frame.fill(0, 24);
+
     qint32 f2FrameNumber = 0;
     qint32 sectionsToProcess = f2FramesIn.size() / 98;
     if (sectionsIn.size() < sectionsToProcess) sectionsToProcess = sectionsIn.size();
@@ -127,21 +132,20 @@ void F2FramesToAudio::processAudio(void)
                 if (!f2FramesIn[i].getDataValid()) {
                     // F2 Frame data has errors - 6 samples might be garbage
                     statistics.invalidAudioSamples += 6;
+                    outputFileHandle->write(dummyF2Frame);
                 } else {
+                    // Audio corrupt, output F2 frame's worth in zeros
                     statistics.validAudioSamples += 6; // 24 bytes per F2 (/2 = 16-bit and /2 = stereo)
-                }
+                    outputFileHandle->write(f2FramesIn[i].getDataSymbols()); // 24 bytes per F2
 
-                // Encoder running, output samples
-                outputFileHandle->write(f2FramesIn[i].getDataSymbols()); // 24 bytes per F2
+                    // Note: At some point, audio error concealing should be implemented here
+                }
             } else {
                 // Encoder stopped, output F2 frame's worth in zeros
-                QByteArray dummy;
-                dummy.fill(0, 24);
-                outputFileHandle->write(dummy);
+                outputFileHandle->write(dummyF2Frame);
             }
         }
         f2FrameNumber += 98;
-
         statistics.sectionsProcessed++;
     }
 
@@ -231,23 +235,94 @@ F2FramesToAudio::Metadata F2FramesToAudio::sectionToMeta(Section section)
 {
     Metadata metadata;
 
-    // Get the Q Control
-    if (section.getQMetadata().qControl.isAudioNotData) metadata.isAudio = true;
-    else metadata.isAudio = false;
-
-    // Get the Q Mode
+    // Get the Q Mode and update the statistics
     metadata.qMode = section.getQMode();
+    if (metadata.qMode == 1) statistics.qMode1Count++;
+    else if (metadata.qMode == 4) statistics.qMode4Count++;
+    else statistics.qModeInvalidCount++;
 
     // Store the metadata (for the flush JSON operation)
     Section::QMetadata qMetaData = section.getQMetadata();
     qMetaModeVector.append(metadata.qMode);
     qMetaDataVector.append(qMetaData);
 
+    // Simplify the metadata
+    metadata = simplifyMetadata(qMetaData, metadata.qMode);
+
+    // Perform metadata correction?
+    // Note: This does not correct the JSON metadata, only the internal representation
+    // this is to prevent the encoder being turned off when it shouldn't be (and therefore
+    // preventing the decoder from outputting valid audio samples due to Q channel corruption)
+    if (metadata.qMode != 1 && metadata.qMode != 4) {
+        // Invalid section or Non-audio Q Mode
+
+        // Find last known good audio metadata (Q Mode 1 or 4)
+        qint32 lastKnownGood = -1;
+        for (qint32 i = qMetaModeVector.size() - 1; i >= 0; i--) {
+            if (qMetaModeVector[i] == 1 || qMetaModeVector[i] == 4) {
+                lastKnownGood = i;
+                break;
+            }
+        }
+
+        // Found a good qMode?
+        if (lastKnownGood != -1) {
+            // Simplify last known good metadata
+            metadata = simplifyMetadata(qMetaDataVector[lastKnownGood], qMetaModeVector[lastKnownGood]);
+            qint32 frameDifference = (qMetaModeVector.size() - 1) - lastKnownGood;
+
+            // Check for lead-in and/or audio pause encoding (as track time clock runs backwards during these sections)
+            if (metadata.isClockRunningForwards) {
+                // Not lead-in, so track time clock is running forwards
+                metadata.discTime.addFrames(frameDifference);
+                metadata.trackTime.addFrames(frameDifference);
+            } else {
+                // Lead-in, so clock is running backwards
+                metadata.discTime.addFrames(frameDifference);
+                metadata.trackTime.subtractFrames(frameDifference);
+            }
+
+            qDebug().noquote() << "F2FramesToAudio::sectionToMeta(): Corrected to disc time" << metadata.discTime.getTimeAsQString() <<
+                        "and track time" << metadata.trackTime.getTimeAsQString() << "from last good metadata" << frameDifference <<
+                                  "frame(s) back";
+            metadata.isCorrected = true;
+            statistics.qModeCorrectedCount++;
+        } else {
+            // No last known good metadata - cannot correct
+            qDebug() << "F2FramesToAudio::sectionToMeta(): Unable to correct corrupt metadata entry - no last known good metadata";
+            metadata.trackNumber = -1;
+            metadata.subdivision = -1;
+            metadata.trackTime.setTime(0, 0, 0);
+            metadata.discTime.setTime(0, 0, 0);
+            metadata.encoderRunning = false;
+            metadata.isCorrected = false;
+            metadata.isLeadIn = false;
+        }
+    }
+
+    // Update statistics
+    statistics.discTime = metadata.discTime;
+    statistics.trackTime = metadata.trackTime;
+    statistics.subdivision = metadata.subdivision;
+    statistics.trackNumber = metadata.trackNumber;
+
+    if (metadata.encoderRunning) statistics.encoderRunning++;
+    else statistics.encoderStopped++;
+
+    return metadata;
+}
+
+// Translate section metadata to our simple metadata format for internal processing
+F2FramesToAudio::Metadata F2FramesToAudio::simplifyMetadata(Section::QMetadata qMetaData, qint32 qMode)
+{
+    Metadata metadata;
+
+    // Set the qMode
+    metadata.qMode = qMode;
+
     // Depending on the section Q Mode, process the section
     if (metadata.qMode == 1) {
         // CD Audio
-        statistics.qMode1Count++;
-
         if (qMetaData.qMode1.isLeadIn) {
             // Q Mode 1 - Lead in section
             metadata.trackNumber = qMetaData.qMode1.trackNumber;
@@ -256,6 +331,8 @@ F2FramesToAudio::Metadata F2FramesToAudio::sectionToMeta(Section section)
             metadata.discTime = qMetaData.qMode1.discTime;
             metadata.encoderRunning = false;
             metadata.isCorrected = false;
+            metadata.isLeadIn = true;
+            metadata.isClockRunningForwards = false;
         } else if (qMetaData.qMode1.isLeadOut) {
             // Q Mode 1 - Lead out section
             if (qMetaData.qMode1.x == 0) {
@@ -266,6 +343,8 @@ F2FramesToAudio::Metadata F2FramesToAudio::sectionToMeta(Section section)
                 metadata.discTime = qMetaData.qMode1.discTime;
                 metadata.encoderRunning = false;
                 metadata.isCorrected = false;
+                metadata.isLeadIn = false;
+                metadata.isClockRunningForwards = true;
             } else {
                 // Encoding running
                 metadata.trackNumber = qMetaData.qMode1.trackNumber;
@@ -274,6 +353,8 @@ F2FramesToAudio::Metadata F2FramesToAudio::sectionToMeta(Section section)
                 metadata.discTime = qMetaData.qMode1.discTime;
                 metadata.encoderRunning = true;
                 metadata.isCorrected = false;
+                metadata.isLeadIn = false;
+                metadata.isClockRunningForwards = true;
             }
         } else {
             // Q Mode 1 - Audio section
@@ -285,6 +366,8 @@ F2FramesToAudio::Metadata F2FramesToAudio::sectionToMeta(Section section)
                 metadata.discTime = qMetaData.qMode1.discTime;
                 metadata.encoderRunning = false;
                 metadata.isCorrected = false;
+                metadata.isLeadIn = false;
+                metadata.isClockRunningForwards = false;
             } else {
                 // Encoding running
                 metadata.trackNumber = qMetaData.qMode1.trackNumber;
@@ -293,12 +376,12 @@ F2FramesToAudio::Metadata F2FramesToAudio::sectionToMeta(Section section)
                 metadata.discTime = qMetaData.qMode1.discTime;
                 metadata.encoderRunning = true;
                 metadata.isCorrected = false;
+                metadata.isLeadIn = false;
+                metadata.isClockRunningForwards = true;
             }
         }
     } else if (metadata.qMode == 4) {
         // 4 = non-CD Audio (LaserDisc)
-        statistics.qMode4Count++;
-
         if (qMetaData.qMode4.isLeadIn) {
             // Q Mode 4 - Lead in section
             metadata.trackNumber = qMetaData.qMode4.trackNumber;
@@ -307,6 +390,8 @@ F2FramesToAudio::Metadata F2FramesToAudio::sectionToMeta(Section section)
             metadata.discTime = qMetaData.qMode4.discTime;
             metadata.encoderRunning = false;
             metadata.isCorrected = false;
+            metadata.isLeadIn = true;
+            metadata.isClockRunningForwards = false;
         } else if (qMetaData.qMode4.isLeadOut) {
             // Q Mode 4 - Lead out section
             if (qMetaData.qMode4.x == 0) {
@@ -317,6 +402,8 @@ F2FramesToAudio::Metadata F2FramesToAudio::sectionToMeta(Section section)
                 metadata.discTime = qMetaData.qMode4.discTime;
                 metadata.encoderRunning = false;
                 metadata.isCorrected = false;
+                metadata.isLeadIn = false;
+                metadata.isClockRunningForwards = true;
             } else {
                 // Encoding running
                 metadata.trackNumber = qMetaData.qMode4.trackNumber;
@@ -325,6 +412,8 @@ F2FramesToAudio::Metadata F2FramesToAudio::sectionToMeta(Section section)
                 metadata.discTime = qMetaData.qMode4.discTime;
                 metadata.encoderRunning = true;
                 metadata.isCorrected = false;
+                metadata.isLeadIn = false;
+                metadata.isClockRunningForwards = true;
             }
         } else {
             // Q Mode 4 - Audio section
@@ -336,6 +425,8 @@ F2FramesToAudio::Metadata F2FramesToAudio::sectionToMeta(Section section)
                 metadata.discTime = qMetaData.qMode4.discTime;
                 metadata.encoderRunning = false;
                 metadata.isCorrected = false;
+                metadata.isLeadIn = false;
+                metadata.isClockRunningForwards = false;
             } else {
                 // Encoding running
                 metadata.trackNumber = qMetaData.qMode4.trackNumber;
@@ -344,28 +435,11 @@ F2FramesToAudio::Metadata F2FramesToAudio::sectionToMeta(Section section)
                 metadata.discTime = qMetaData.qMode4.discTime;
                 metadata.encoderRunning = true;
                 metadata.isCorrected = false;
+                metadata.isLeadIn = false;
+                metadata.isClockRunningForwards = true;
             }
         }
-    } else {
-        // Invalid section / Non-audio Q Mode
-        statistics.qModeICount++;
-
-        metadata.trackNumber = -1;
-        metadata.subdivision = -1;
-        metadata.trackTime.setTime(0, 0, 0);
-        metadata.discTime.setTime(0, 0, 0);
-        metadata.encoderRunning = true; // Perhaps should default to false?
-        metadata.isCorrected = false;
     }
-
-    // Update statistics
-    statistics.discTime = metadata.discTime;
-    statistics.trackTime = metadata.trackTime;
-    statistics.subdivision = metadata.subdivision;
-    statistics.trackNumber = metadata.trackNumber;
-
-    if (metadata.encoderRunning) statistics.encoderRunning++;
-    else statistics.encoderStopped++;
 
     return metadata;
 }
