@@ -41,6 +41,7 @@ public:
     struct Statistics {
         qint32 validAudioSamples;
         qint32 invalidAudioSamples;
+        qint32 paddedAudioSamples;
         qint32 sectionsProcessed;
         qint32 encoderRunning;
         qint32 encoderStopped;
@@ -51,7 +52,8 @@ public:
 
         qint32 qMode1Count;
         qint32 qMode4Count;
-        qint32 qModeICount;
+        qint32 qModeInvalidCount;
+        qint32 qModeCorrectedCount;
     };
 
     void reset(void);
@@ -74,8 +76,9 @@ private:
         qint32 trackNumber;
         qint32 subdivision;
         bool encoderRunning;
-        bool isAudio;
+        bool isLeadIn;
         bool isCorrected;
+        bool isClockRunningForwards;
     };
 
     Statistics statistics;
@@ -89,8 +92,13 @@ private:
     QVector<Section> sectionsIn;
     QVector<F2Frame> f2FramesIn;
 
+    bool sampleGapFirstCheck;
+    TrackTime previousDiscTime;
+
     void processAudio(void);
+    qint32 checkForSampleGap(Metadata metadata);
     Metadata sectionToMeta(Section section);
+    Metadata simplifyMetadata(Section::QMetadata qMetaData, qint32 qMode);
 };
 
 #endif // F2FRAMESTOAUDIO_H

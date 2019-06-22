@@ -116,7 +116,7 @@
             <x>9</x>
             <y>10</y>
             <width>381</width>
-            <height>121</height>
+            <height>141</height>
            </rect>
           </property>
           <property name="title">
@@ -164,7 +164,7 @@
             </rect>
            </property>
            <property name="text">
-            <string>Invalid frames:</string>
+            <string>Overshoot:</string>
            </property>
            <property name="alignment">
             <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
@@ -174,7 +174,7 @@
            <property name="geometry">
             <rect>
              <x>10</x>
-             <y>90</y>
+             <y>110</y>
              <width>121</width>
              <height>20</height>
             </rect>
@@ -212,7 +212,7 @@
             <string>TextLabel</string>
            </property>
           </widget>
-          <widget class="QLabel" name="f3Frames_invalidLabel">
+          <widget class="QLabel" name="f3Frames_overshoot">
            <property name="geometry">
             <rect>
              <x>140</x>
@@ -226,6 +226,35 @@
            </property>
           </widget>
           <widget class="QLabel" name="f3Frames_syncLossLabel">
+           <property name="geometry">
+            <rect>
+             <x>140</x>
+             <y>110</y>
+             <width>231</width>
+             <height>20</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>TextLabel</string>
+           </property>
+          </widget>
+          <widget class="QLabel" name="label_36">
+           <property name="geometry">
+            <rect>
+             <x>10</x>
+             <y>90</y>
+             <width>121</width>
+             <height>20</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>Undershoot:</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+           </property>
+          </widget>
+          <widget class="QLabel" name="f3Frames_undershoot">
            <property name="geometry">
             <rect>
              <x>140</x>
@@ -716,7 +745,7 @@
             <x>10</x>
             <y>10</y>
             <width>381</width>
-            <height>81</height>
+            <height>101</height>
            </rect>
           </property>
           <property name="title">
@@ -780,14 +809,43 @@
             <string>TextLabel</string>
            </property>
           </widget>
+          <widget class="QLabel" name="label_37">
+           <property name="geometry">
+            <rect>
+             <x>10</x>
+             <y>70</y>
+             <width>121</width>
+             <height>20</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>Padded:</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+           </property>
+          </widget>
+          <widget class="QLabel" name="audio_totalPaddedSamples">
+           <property name="geometry">
+            <rect>
+             <x>140</x>
+             <y>70</y>
+             <width>231</width>
+             <height>20</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>TextLabel</string>
+           </property>
+          </widget>
          </widget>
          <widget class="QGroupBox" name="groupBox_8">
           <property name="geometry">
            <rect>
             <x>10</x>
-            <y>100</y>
+            <y>120</y>
             <width>381</width>
-            <height>281</height>
+            <height>301</height>
            </rect>
           </property>
           <property name="title">
@@ -797,7 +855,7 @@
            <property name="geometry">
             <rect>
              <x>10</x>
-             <y>230</y>
+             <y>250</y>
              <width>121</width>
              <height>20</height>
             </rect>
@@ -813,7 +871,7 @@
            <property name="geometry">
             <rect>
              <x>10</x>
-             <y>250</y>
+             <y>270</y>
              <width>121</width>
              <height>20</height>
             </rect>
@@ -877,7 +935,7 @@
            <property name="geometry">
             <rect>
              <x>140</x>
-             <y>230</y>
+             <y>250</y>
              <width>231</width>
              <height>20</height>
             </rect>
@@ -890,7 +948,7 @@
            <property name="geometry">
             <rect>
              <x>140</x>
-             <y>250</y>
+             <y>270</y>
              <width>231</width>
              <height>20</height>
             </rect>
@@ -942,7 +1000,7 @@
            <property name="geometry">
             <rect>
              <x>10</x>
-             <y>210</y>
+             <y>230</y>
              <width>121</width>
              <height>20</height>
             </rect>
@@ -958,7 +1016,7 @@
            <property name="geometry">
             <rect>
              <x>140</x>
-             <y>210</y>
+             <y>230</y>
              <width>231</width>
              <height>20</height>
             </rect>
@@ -1075,6 +1133,35 @@
             <rect>
              <x>140</x>
              <y>150</y>
+             <width>231</width>
+             <height>20</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>TextLabel</string>
+           </property>
+          </widget>
+          <widget class="QLabel" name="label_35">
+           <property name="geometry">
+            <rect>
+             <x>10</x>
+             <y>190</y>
+             <width>121</width>
+             <height>20</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>Corrected:</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+           </property>
+          </widget>
+          <widget class="QLabel" name="audio_qModeCorrected">
+           <property name="geometry">
+            <rect>
+             <x>140</x>
+             <y>190</y>
              <width>231</width>
              <height>20</height>
             </rect>

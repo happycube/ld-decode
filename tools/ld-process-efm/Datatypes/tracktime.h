@@ -43,6 +43,7 @@ public:
     bool setTime(TrackTime::Time timeParam);
     void addFrames(qint32 frames);
     void subtractFrames(qint32 frames);
+    qint32 getDifference(TrackTime::Time timeToCompare);
     Time getTime(void);
     QString getTimeAsQString(void);
     qint32 getFrames(void);

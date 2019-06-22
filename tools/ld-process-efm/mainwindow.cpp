@@ -67,6 +67,9 @@ MainWindow::MainWindow(QWidget *parent) :
 
 MainWindow::~MainWindow()
 {
+    // Cancel the efm processing thread
+    efmProcess.cancelProcessing();
+
     // Save the window geometry to the configuration
     configuration->setMainWindowGeometry(saveGeometry());
 
@@ -240,7 +243,8 @@ void MainWindow::resetStatistics(void)
     // F3 Frames tab
     ui->f3Frames_totalLabel->setText(tr("0"));
     ui->f3Frames_validLabel->setText(tr("0"));
-    ui->f3Frames_invalidLabel->setText(tr("0"));
+    ui->f3Frames_overshoot->setText(tr("0"));
+    ui->f3Frames_undershoot->setText(tr("0"));
     ui->f3Frames_syncLossLabel->setText(tr("0"));
 
     // F2 Frames tab
@@ -264,6 +268,7 @@ void MainWindow::resetStatistics(void)
     // Audio tab
     ui->audio_totalValidSamples->setText(tr("0"));
     ui->audio_totalInvalidSamples->setText(tr("0"));
+    ui->audio_totalPaddedSamples->setText(tr("0"));
     ui->audio_sectionsProcessed->setText(tr("0"));
     ui->audio_encoderRunning->setText(tr("0"));
     ui->audio_encoderStopped->setText(tr("0"));
@@ -272,6 +277,7 @@ void MainWindow::resetStatistics(void)
     ui->audio_trackTime->setText(tr("00:00:00"));
     ui->audio_discTime->setText(tr("00:00:00"));
     ui->audio_qModeInvalid->setText(tr("0"));
+    ui->audio_qModeCorrected->setText(tr("0"));
     ui->audio_qMode1->setText(tr("0"));
     ui->audio_qMode4->setText(tr("0"));
 
@@ -493,9 +499,10 @@ void MainWindow::updateStatistics(void)
 
     // Update F3 Frames tab
     ui->f3Frames_totalLabel->setText(QString::number(statistics.efmToF3Frames_statistics.validFrameLength +
-                                                     statistics.efmToF3Frames_statistics.invalidFrameLength));
+                                                     statistics.efmToF3Frames_statistics.invalidFrameLengthOvershoot));
     ui->f3Frames_validLabel->setText(QString::number(statistics.efmToF3Frames_statistics.validFrameLength));
-    ui->f3Frames_invalidLabel->setText(QString::number(statistics.efmToF3Frames_statistics.invalidFrameLength));
+    ui->f3Frames_overshoot->setText(QString::number(statistics.efmToF3Frames_statistics.invalidFrameLengthOvershoot));
+    ui->f3Frames_undershoot->setText(QString::number(statistics.efmToF3Frames_statistics.invalidFrameLengthUndershoot));
     ui->f3Frames_syncLossLabel->setText(QString::number(statistics.efmToF3Frames_statistics.syncLoss));
 
     // Update F2 Frames tab
@@ -526,6 +533,7 @@ void MainWindow::updateStatistics(void)
     // Update audio tab
     ui->audio_totalValidSamples->setText(QString::number(statistics.f2FramesToAudio_statistics.validAudioSamples));
     ui->audio_totalInvalidSamples->setText(QString::number(statistics.f2FramesToAudio_statistics.invalidAudioSamples));
+    ui->audio_totalPaddedSamples->setText(QString::number(statistics.f2FramesToAudio_statistics.paddedAudioSamples));
     ui->audio_sectionsProcessed->setText(QString::number(statistics.f2FramesToAudio_statistics.sectionsProcessed));
     ui->audio_encoderRunning->setText(QString::number(statistics.f2FramesToAudio_statistics.encoderRunning));
     ui->audio_encoderStopped->setText(QString::number(statistics.f2FramesToAudio_statistics.encoderStopped));
@@ -533,7 +541,8 @@ void MainWindow::updateStatistics(void)
     ui->audio_subdivision->setText(QString::number(statistics.f2FramesToAudio_statistics.subdivision));
     ui->audio_trackTime->setText(statistics.f2FramesToAudio_statistics.trackTime.getTimeAsQString());
     ui->audio_discTime->setText(statistics.f2FramesToAudio_statistics.discTime.getTimeAsQString());
-    ui->audio_qModeInvalid->setText(QString::number(statistics.f2FramesToAudio_statistics.qModeICount));
+    ui->audio_qModeInvalid->setText(QString::number(statistics.f2FramesToAudio_statistics.qModeInvalidCount));
+    ui->audio_qModeCorrected->setText(QString::number(statistics.f2FramesToAudio_statistics.qModeCorrectedCount));
     ui->audio_qMode1->setText(QString::number(statistics.f2FramesToAudio_statistics.qMode1Count));
     ui->audio_qMode4->setText(QString::number(statistics.f2FramesToAudio_statistics.qMode4Count));
 
