@@ -41,6 +41,7 @@ public:
     struct Statistics {
         qint32 validAudioSamples;
         qint32 invalidAudioSamples;
+        qint32 paddedAudioSamples;
         qint32 sectionsProcessed;
         qint32 encoderRunning;
         qint32 encoderStopped;
@@ -91,7 +92,11 @@ private:
     QVector<Section> sectionsIn;
     QVector<F2Frame> f2FramesIn;
 
+    bool sampleGapFirstCheck;
+    TrackTime previousDiscTime;
+
     void processAudio(void);
+    qint32 checkForSampleGap(Metadata metadata);
     Metadata sectionToMeta(Section section);
     Metadata simplifyMetadata(Section::QMetadata qMetaData, qint32 qMode);
 };

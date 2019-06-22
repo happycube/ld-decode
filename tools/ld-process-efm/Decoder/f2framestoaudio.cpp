@@ -38,6 +38,8 @@ void F2FramesToAudio::reset(void)
     f2FramesIn.clear();
     qMetaModeVector.clear();
     qMetaDataVector.clear();
+    previousDiscTime.setTime(0, 0, 0);
+    sampleGapFirstCheck = true;
 
     resetStatistics();
 }
@@ -47,6 +49,7 @@ void F2FramesToAudio::resetStatistics(void)
 {
     statistics.validAudioSamples = 0;
     statistics.invalidAudioSamples = 0;
+    statistics.paddedAudioSamples = 0;
     statistics.sectionsProcessed = 0;
     statistics.encoderRunning = 0;
     statistics.encoderStopped = 0;
@@ -73,6 +76,7 @@ void F2FramesToAudio::reportStatus(void)
     qInfo() << "F2 Frames to audio converter:";
     qInfo() << "  Valid audio samples =" << statistics.validAudioSamples;
     qInfo() << "  Invalid audio samples =" << statistics.invalidAudioSamples;
+    qInfo() << "  Padded audio samples =" << statistics.paddedAudioSamples;
     qInfo() << "  Sections processed =" << statistics.sectionsProcessed;
     qInfo() << "  Encoder running sections =" << statistics.encoderRunning;
     qInfo() << "  Encoder stopped sections =" << statistics.encoderStopped;
@@ -126,6 +130,17 @@ void F2FramesToAudio::processAudio(void)
         // Get the required metadata for processing from the section
         Metadata metadata = sectionToMeta(sectionsIn[sectionNo]);
 
+        // Check if there was a gap since the last output samples (and fill it if
+        // necessary)
+        qint32 gap = checkForSampleGap(metadata);
+        if (gap != 1) {
+            for (qint32 i = 0; i < (gap - 1); i++) {
+                statistics.paddedAudioSamples += 6;
+                outputFileHandle->write(dummyF2Frame);
+            }
+            qDebug() << "F2FramesToAudio::processAudio(): Metadata indicates unwanted sample gap of" << gap << "F2 frames!";
+        }
+
         // Output the samples to file (98 f2 frames x 6 samples per frame = 588)
         for (qint32 i = f2FrameNumber; i < f2FrameNumber + 98; i++) {
             if (metadata.encoderRunning && (metadata.qMode == 1 || metadata.qMode == 4)) {
@@ -156,6 +171,28 @@ void F2FramesToAudio::processAudio(void)
     // Remove processed F2Frames and samples from buffer
     f2FramesIn.remove(0, sectionsToProcess * 98);
     sectionsIn.remove(0, sectionsToProcess);
+}
+
+// Examine metadata and check for unwanted sample gaps (due to lower-level decoding
+// failure)
+qint32 F2FramesToAudio::checkForSampleGap(Metadata metadata)
+{
+    // Is this the first check performed?
+    if (sampleGapFirstCheck) {
+        if (metadata.qMode == 1 || metadata.qMode == 4) {
+            previousDiscTime.setTime(metadata.discTime.getTime());
+            sampleGapFirstCheck = false;
+            return 0;
+        } else {
+            // Can do anything this time
+            return 0;
+        }
+    }
+
+    // Check that this sample is one frame difference from the previous
+    qint32 gap = abs(metadata.discTime.getDifference(previousDiscTime.getTime()));
+    previousDiscTime = metadata.discTime;
+    return gap;
 }
 
 // Metadata processing ------------------------------------------------------------------------------------------------

@@ -74,6 +74,13 @@ void TrackTime::subtractFrames(qint32 frames)
     if (trackFrames < 0) trackFrames = 0;
 }
 
+// Method to get the difference (in frames) between two track times
+qint32 TrackTime::getDifference(TrackTime::Time timeToCompare)
+{
+    qint32 framesToCompare = timeToCompare.frames + (timeToCompare.seconds * 75) + (timeToCompare.minutes * 60 * 75);
+    return framesToCompare - trackFrames;
+}
+
 // Method to get the track time
 TrackTime::Time TrackTime::getTime(void)
 {

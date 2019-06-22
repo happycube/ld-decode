@@ -104,7 +104,7 @@
       <item>
        <widget class="QTabWidget" name="feedbackTabWidget">
         <property name="currentIndex">
-         <number>0</number>
+         <number>2</number>
         </property>
         <widget class="QWidget" name="f3FramesTab">
          <attribute name="title">
@@ -745,7 +745,7 @@
             <x>10</x>
             <y>10</y>
             <width>381</width>
-            <height>81</height>
+            <height>101</height>
            </rect>
           </property>
           <property name="title">
@@ -809,12 +809,41 @@
             <string>TextLabel</string>
            </property>
           </widget>
+          <widget class="QLabel" name="label_37">
+           <property name="geometry">
+            <rect>
+             <x>10</x>
+             <y>70</y>
+             <width>121</width>
+             <height>20</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>Padded:</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+           </property>
+          </widget>
+          <widget class="QLabel" name="audio_totalPaddedSamples">
+           <property name="geometry">
+            <rect>
+             <x>140</x>
+             <y>70</y>
+             <width>231</width>
+             <height>20</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>TextLabel</string>
+           </property>
+          </widget>
          </widget>
          <widget class="QGroupBox" name="groupBox_8">
           <property name="geometry">
            <rect>
             <x>10</x>
-            <y>100</y>
+            <y>120</y>
             <width>381</width>
             <height>301</height>
            </rect>

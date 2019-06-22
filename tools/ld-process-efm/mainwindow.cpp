@@ -268,6 +268,7 @@ void MainWindow::resetStatistics(void)
     // Audio tab
     ui->audio_totalValidSamples->setText(tr("0"));
     ui->audio_totalInvalidSamples->setText(tr("0"));
+    ui->audio_totalPaddedSamples->setText(tr("0"));
     ui->audio_sectionsProcessed->setText(tr("0"));
     ui->audio_encoderRunning->setText(tr("0"));
     ui->audio_encoderStopped->setText(tr("0"));
@@ -532,6 +533,7 @@ void MainWindow::updateStatistics(void)
     // Update audio tab
     ui->audio_totalValidSamples->setText(QString::number(statistics.f2FramesToAudio_statistics.validAudioSamples));
     ui->audio_totalInvalidSamples->setText(QString::number(statistics.f2FramesToAudio_statistics.invalidAudioSamples));
+    ui->audio_totalPaddedSamples->setText(QString::number(statistics.f2FramesToAudio_statistics.paddedAudioSamples));
     ui->audio_sectionsProcessed->setText(QString::number(statistics.f2FramesToAudio_statistics.sectionsProcessed));
     ui->audio_encoderRunning->setText(QString::number(statistics.f2FramesToAudio_statistics.encoderRunning));
     ui->audio_encoderStopped->setText(QString::number(statistics.f2FramesToAudio_statistics.encoderStopped));
