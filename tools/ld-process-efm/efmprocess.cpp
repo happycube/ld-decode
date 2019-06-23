@@ -170,24 +170,29 @@ void EfmProcess::run()
         }
 
         bool processAudio = true;
-        bool processData = true;
+        bool processData = false;
 
-        // Open the audio output file
-        if (processAudio) f2FramesToAudio.setOutputFile(audioOutputFileTs);
+        // Open the audio output files
+        if (processAudio) {
+            f2FramesToAudio.setOutputFile(audioOutputFileTs); // Data
+            f2FramesToAudio.setMetadataOutputFile(audioMetaOutputFileTs); // Metadata
+        }
 
-        // Open the data decode output file
-        if (processData) sectorsToData.setOutputFile(dataOutputFile);
-
-        // Open the metadata JSON files
-        if (processAudio) f2FramesToAudio.setMetadataOutputFile(audioMetaOutputFileTs);
-        if (processData) sectorsToMeta.setOutputFile(dataMetaOutputFileTs);
+        // Open the data decode output files
+        if (processData) {
+            sectorsToData.setOutputFile(dataOutputFile); // Data
+            sectorsToMeta.setOutputFile(dataMetaOutputFileTs); // Metadata
+        }
 
         qint64 inputFileSize = inputFileHandle->size();
         qint64 inputBytesProcessed = 0;
         qint32 lastPercent = 0;
 
         QByteArray efmBuffer;
-        while(((efmBuffer = readEfmData()).size() != 0) && !cancel) { // Note: this doesn't allow the buffer processing to complete before stopping...
+        bool processingComplete = false;
+
+        while((efmBuffer.size() > 0 || !processingComplete) && !cancel) {
+            efmBuffer = readEfmData();
             inputBytesProcessed += efmBuffer.size();
 
             // Convert the EFM buffer data into F3 frames
@@ -217,10 +222,17 @@ void EfmProcess::run()
                 sectorsToData.convert(sectors);
 
                 // Process the sector meta data
-               // sectorsToMeta.process(sectors);
+                //sectorsToMeta.process(sectors);
             }
 
+            // Check for completion
+            if (f3Frames.isEmpty() && sections.isEmpty() && f2Frames.isEmpty() && f1Frames.isEmpty()) processingComplete = true;
+            else processingComplete = false;
+
             // Show EFM processing progress update to user
+            if (efmBuffer.isEmpty()) qDebug() << "EfmProcess::run(): EFM input buffer is empty";
+            if (processingComplete) qDebug() << "EfmProcess:run(): Processing is flagged as complete";
+
             qreal percent = (100.0 / static_cast<qreal>(inputFileSize)) * static_cast<qreal>(inputBytesProcessed);
             if (static_cast<qint32>(percent) > lastPercent) {
                 emit percentageProcessed(static_cast<qint32>(percent));
@@ -244,6 +256,12 @@ void EfmProcess::run()
 
         // Close the input file
         closeInputFile();
+
+        // Decode verification stats
+        if (processAudio) {
+            qint32 f2FramesInAudio = (statistics.f2FramesToAudio_statistics.initialDiscTime.getDifference(statistics.f2FramesToAudio_statistics.discTime.getTime())) + 1;
+            qInfo() << "EfmProcess::run(): Disc time indicates" << f2FramesInAudio << "sections of output (" << f2FramesInAudio * 588 << "stereo samples )";
+        }
 
         // Sleep the thread until we are restarted
         mutex.lock();

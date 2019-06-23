@@ -39,6 +39,7 @@ public:
     F2FramesToAudio();
 
     struct Statistics {
+        qint32 totalAudioSamples;
         qint32 validAudioSamples;
         qint32 invalidAudioSamples;
         qint32 paddedAudioSamples;
@@ -49,6 +50,7 @@ public:
         qint32 subdivision;
         TrackTime trackTime;
         TrackTime discTime;
+        TrackTime initialDiscTime;
 
         qint32 qMode1Count;
         qint32 qMode4Count;
