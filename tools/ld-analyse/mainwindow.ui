@@ -281,7 +281,7 @@
          <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
         </property>
        </widget>
-       <widget class="QLabel" name="even0VbiLabel">
+       <widget class="QLabel" name="firstField0VbiLabel">
         <property name="geometry">
          <rect>
           <x>50</x>
@@ -294,7 +294,7 @@
          <string>No metadata</string>
         </property>
        </widget>
-       <widget class="QLabel" name="even1VbiLabel">
+       <widget class="QLabel" name="firstField1VbiLabel">
         <property name="geometry">
          <rect>
           <x>50</x>
@@ -307,7 +307,7 @@
          <string>No metadata</string>
         </property>
        </widget>
-       <widget class="QLabel" name="even2VbiLabel">
+       <widget class="QLabel" name="firstField2VbiLabel">
         <property name="geometry">
          <rect>
           <x>50</x>
@@ -542,7 +542,7 @@
          <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
         </property>
        </widget>
-       <widget class="QLabel" name="odd0VbiLabel">
+       <widget class="QLabel" name="secondField0VbiLabel">
         <property name="geometry">
          <rect>
           <x>50</x>
@@ -555,7 +555,7 @@
          <string>No metadata</string>
         </property>
        </widget>
-       <widget class="QLabel" name="odd1VbiLabel">
+       <widget class="QLabel" name="secondField1VbiLabel">
         <property name="geometry">
          <rect>
           <x>50</x>
@@ -568,7 +568,7 @@
          <string>No metadata</string>
         </property>
        </widget>
-       <widget class="QLabel" name="odd2VbiLabel">
+       <widget class="QLabel" name="secondField2VbiLabel">
         <property name="geometry">
          <rect>
           <x>50</x>

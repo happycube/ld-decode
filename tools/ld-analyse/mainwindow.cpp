@@ -393,13 +393,13 @@ void MainWindow::showFrame(qint32 frameNumber, bool showActiveVideoArea, bool hi
 
     // Add the first field VBI data to the dialogue
     if (firstField.vbi.inUse) {
-        ui->even0VbiLabel->setText("0x" + QString::number(firstField.vbi.vbiData[0], 16));
-        ui->even1VbiLabel->setText("0x" + QString::number(firstField.vbi.vbiData[1], 16));
-        ui->even2VbiLabel->setText("0x" + QString::number(firstField.vbi.vbiData[2], 16));
+        ui->firstField0VbiLabel->setText("0x" + QString::number(firstField.vbi.vbiData[0], 16));
+        ui->firstField1VbiLabel->setText("0x" + QString::number(firstField.vbi.vbiData[1], 16));
+        ui->firstField2VbiLabel->setText("0x" + QString::number(firstField.vbi.vbiData[2], 16));
     } else {
-        ui->even0VbiLabel->setText("No metadata");
-        ui->even1VbiLabel->setText("No metadata");
-        ui->even2VbiLabel->setText("No metadata");
+        ui->firstField0VbiLabel->setText("No metadata");
+        ui->firstField1VbiLabel->setText("No metadata");
+        ui->firstField2VbiLabel->setText("No metadata");
     }
 
     // Add the first field sync confidence field to the dialogue
@@ -422,13 +422,13 @@ void MainWindow::showFrame(qint32 frameNumber, bool showActiveVideoArea, bool hi
 
     // Add the second field VBI data to the dialogue
     if (secondField.vbi.inUse) {
-        ui->odd0VbiLabel->setText("0x" + QString::number(secondField.vbi.vbiData[0], 16));
-        ui->odd1VbiLabel->setText("0x" + QString::number(secondField.vbi.vbiData[1], 16));
-        ui->odd2VbiLabel->setText("0x" + QString::number(secondField.vbi.vbiData[2], 16));
+        ui->secondField0VbiLabel->setText("0x" + QString::number(secondField.vbi.vbiData[0], 16));
+        ui->secondField1VbiLabel->setText("0x" + QString::number(secondField.vbi.vbiData[1], 16));
+        ui->secondField2VbiLabel->setText("0x" + QString::number(secondField.vbi.vbiData[2], 16));
     } else {
-        ui->odd0VbiLabel->setText("No metadata");
-        ui->odd1VbiLabel->setText("No metadata");
-        ui->odd2VbiLabel->setText("No metadata");
+        ui->secondField0VbiLabel->setText("No metadata");
+        ui->secondField1VbiLabel->setText("No metadata");
+        ui->secondField2VbiLabel->setText("No metadata");
     }
 
     // Add the second field sync confidence field to the dialogue

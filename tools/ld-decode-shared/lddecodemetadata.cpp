@@ -35,6 +35,10 @@ LdDecodeMetaData::LdDecodeMetaData(QObject *parent) : QObject(parent)
 // metadata structure read for use
 bool LdDecodeMetaData::read(QString fileName)
 {
+    // Set defaults
+    metaData.fields.clear();
+    isFirstFieldFirst = false;
+
     // Open the JSON file
     qDebug() << "LdDecodeMetaData::read(): Loading JSON file" << fileName;
     JsonWax json;
