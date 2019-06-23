@@ -170,7 +170,7 @@ void EfmProcess::run()
         }
 
         bool processAudio = true;
-        bool processData = true;
+        bool processData = false;
 
         // Open the audio output files
         if (processAudio) {
@@ -230,8 +230,8 @@ void EfmProcess::run()
             else processingComplete = false;
 
             // Show EFM processing progress update to user
-            if (efmBuffer.isEmpty()) qInfo() << "EfmProcess::run(): EFM input buffer is empty";
-            if (processingComplete) qInfo() << "EfmProcess:run(): Processing is flagged as complete";
+            if (efmBuffer.isEmpty()) qDebug() << "EfmProcess::run(): EFM input buffer is empty";
+            if (processingComplete) qDebug() << "EfmProcess:run(): Processing is flagged as complete";
 
             qreal percent = (100.0 / static_cast<qreal>(inputFileSize)) * static_cast<qreal>(inputBytesProcessed);
             if (static_cast<qint32>(percent) > lastPercent) {
@@ -256,6 +256,12 @@ void EfmProcess::run()
 
         // Close the input file
         closeInputFile();
+
+        // Decode verification stats
+        if (processAudio) {
+            qint32 f2FramesInAudio = (statistics.f2FramesToAudio_statistics.initialDiscTime.getDifference(statistics.f2FramesToAudio_statistics.discTime.getTime())) + 1;
+            qInfo() << "EfmProcess::run(): Disc time indicates" << f2FramesInAudio << "sections of output (" << f2FramesInAudio * 588 << "stereo samples )";
+        }
 
         // Sleep the thread until we are restarted
         mutex.lock();

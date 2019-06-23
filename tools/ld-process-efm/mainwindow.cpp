@@ -266,6 +266,7 @@ void MainWindow::resetStatistics(void)
     ui->f2Frames_c2de_flushes->setText(tr("0"));
 
     // Audio tab
+    ui->audio_totalSamples->setText(tr("0"));
     ui->audio_totalValidSamples->setText(tr("0"));
     ui->audio_totalInvalidSamples->setText(tr("0"));
     ui->audio_totalPaddedSamples->setText(tr("0"));
@@ -532,6 +533,7 @@ void MainWindow::updateStatistics(void)
     ui->f2Frames_c2de_flushes->setText(QString::number(statistics.f3ToF2Frames_statistics.c2Deinterleave_statistics.c2flushed));
 
     // Update audio tab
+    ui->audio_totalSamples->setText(QString::number(statistics.f2FramesToAudio_statistics.totalAudioSamples));
     ui->audio_totalValidSamples->setText(QString::number(statistics.f2FramesToAudio_statistics.validAudioSamples));
     ui->audio_totalInvalidSamples->setText(QString::number(statistics.f2FramesToAudio_statistics.invalidAudioSamples));
     ui->audio_totalPaddedSamples->setText(QString::number(statistics.f2FramesToAudio_statistics.paddedAudioSamples));

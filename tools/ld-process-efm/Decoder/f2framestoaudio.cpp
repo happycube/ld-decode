@@ -47,6 +47,7 @@ void F2FramesToAudio::reset(void)
 // Methods to handle statistics
 void F2FramesToAudio::resetStatistics(void)
 {
+    statistics.totalAudioSamples = 0;
     statistics.validAudioSamples = 0;
     statistics.invalidAudioSamples = 0;
     statistics.paddedAudioSamples = 0;
@@ -75,6 +76,7 @@ F2FramesToAudio::Statistics F2FramesToAudio::getStatistics(void)
 void F2FramesToAudio::reportStatus(void)
 {
     qInfo() << "F2 Frames to audio converter:";
+    qInfo() << "  Total audio samples =" << statistics.totalAudioSamples;
     qInfo() << "  Valid audio samples =" << statistics.validAudioSamples;
     qInfo() << "  Invalid audio samples =" << statistics.invalidAudioSamples;
     qInfo() << "  Padded audio samples =" << statistics.paddedAudioSamples;
@@ -134,13 +136,23 @@ void F2FramesToAudio::processAudio(void)
 
         // Check if there was a gap since the last output samples (and fill it if
         // necessary)
+        TrackTime discTimeTemp = previousDiscTime; // Just for debug
         qint32 gap = checkForSampleGap(metadata);
         if (gap != 1) {
-            for (qint32 i = 0; i < (gap - 1); i++) {
-                statistics.paddedAudioSamples += 6;
-                outputFileHandle->write(dummyF2Frame);
+            if (gap > 1) {
+                for (qint32 i = 0; i < (gap - 1); i++) {
+                    statistics.paddedAudioSamples += 6 * 98;
+                    statistics.totalAudioSamples += 6 * 98;
+                    outputFileHandle->write(dummyF2Frame);
+                }
+                qDebug().noquote() << "F2FramesToAudio::processAudio(): Metadata indicates unwanted gap of" << gap << "F2 frames!" <<
+                           "Previous good metadata was" << discTimeTemp.getTimeAsQString() << "and current metadata is" <<
+                           metadata.discTime.getTimeAsQString();
+                            } else {
+                // Gap was zero... probably a skip/repeat causing the issue
+                // So we ignore it and output nothing
+                qDebug() << "F2FramesToAudio::processAudio(): Got F2 frame gap of" << gap << "between samples - possible skip/repeat error in EFM";
             }
-            qDebug() << "F2FramesToAudio::processAudio(): Metadata indicates unwanted sample gap of" << gap << "F2 frames!";
         }
 
         // Output the samples to file (98 f2 frames x 6 samples per frame = 588)
@@ -152,10 +164,12 @@ void F2FramesToAudio::processAudio(void)
                 if (!f2FramesIn[i].getDataValid()) {
                     // F2 Frame data has errors - 6 samples might be garbage
                     statistics.invalidAudioSamples += 6;
+                    statistics.totalAudioSamples += 6;
                     outputFileHandle->write(dummyF2Frame);
                 } else {
-                    // Audio corrupt, output F2 frame's worth in zeros
+                    // F2 Frame good
                     statistics.validAudioSamples += 6; // 24 bytes per F2 (/2 = 16-bit and /2 = stereo)
+                    statistics.totalAudioSamples += 6;
                     outputFileHandle->write(f2FramesIn[i].getDataSymbols()); // 24 bytes per F2
 
                     // Note: At some point, audio error concealing should be implemented here
@@ -163,6 +177,7 @@ void F2FramesToAudio::processAudio(void)
             } else {
                 // Encoder stopped (or current output isn't audio), output F2 frame's worth in zeros
                 statistics.validAudioSamples += 6;
+                statistics.totalAudioSamples += 6;
                 outputFileHandle->write(dummyF2Frame);
             }
         }
@@ -187,6 +202,7 @@ qint32 F2FramesToAudio::checkForSampleGap(Metadata metadata)
 
             // Store the initial disc time
             statistics.initialDiscTime.setTime(metadata.discTime.getTime());
+            qDebug().noquote() << "F2FramesToAudio::checkForSampleGap(): First valid Q Mode 1 or 4 disc time seen is" << metadata.discTime.getTimeAsQString();
             return 0;
         } else {
             // Can do anything this time

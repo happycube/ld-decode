@@ -39,6 +39,7 @@ public:
     F2FramesToAudio();
 
     struct Statistics {
+        qint32 totalAudioSamples;
         qint32 validAudioSamples;
         qint32 invalidAudioSamples;
         qint32 paddedAudioSamples;
