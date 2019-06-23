@@ -49,6 +49,7 @@ public:
         qint32 subdivision;
         TrackTime trackTime;
         TrackTime discTime;
+        TrackTime initialDiscTime;
 
         qint32 qMode1Count;
         qint32 qMode4Count;

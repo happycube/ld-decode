@@ -276,6 +276,7 @@ void MainWindow::resetStatistics(void)
     ui->audio_subdivision->setText(tr("0"));
     ui->audio_trackTime->setText(tr("00:00:00"));
     ui->audio_discTime->setText(tr("00:00:00"));
+    ui->audio_initialDiscTime->setText(tr("00:00:00"));
     ui->audio_qModeInvalid->setText(tr("0"));
     ui->audio_qModeCorrected->setText(tr("0"));
     ui->audio_qMode1->setText(tr("0"));
@@ -541,6 +542,7 @@ void MainWindow::updateStatistics(void)
     ui->audio_subdivision->setText(QString::number(statistics.f2FramesToAudio_statistics.subdivision));
     ui->audio_trackTime->setText(statistics.f2FramesToAudio_statistics.trackTime.getTimeAsQString());
     ui->audio_discTime->setText(statistics.f2FramesToAudio_statistics.discTime.getTimeAsQString());
+    ui->audio_initialDiscTime->setText(statistics.f2FramesToAudio_statistics.initialDiscTime.getTimeAsQString());
     ui->audio_qModeInvalid->setText(QString::number(statistics.f2FramesToAudio_statistics.qModeInvalidCount));
     ui->audio_qModeCorrected->setText(QString::number(statistics.f2FramesToAudio_statistics.qModeCorrectedCount));
     ui->audio_qMode1->setText(QString::number(statistics.f2FramesToAudio_statistics.qMode1Count));

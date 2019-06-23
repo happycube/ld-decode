@@ -59,6 +59,7 @@ void F2FramesToAudio::resetStatistics(void)
     statistics.subdivision = 0;
     statistics.discTime.setTime(0, 0, 0);
     statistics.trackTime.setTime(0, 0, 0);
+    statistics.initialDiscTime.setTime(0, 0, 0);
 
     // Subcode block Q mode counters
     statistics.qMode1Count = 0;
@@ -80,6 +81,7 @@ void F2FramesToAudio::reportStatus(void)
     qInfo() << "  Sections processed =" << statistics.sectionsProcessed;
     qInfo() << "  Encoder running sections =" << statistics.encoderRunning;
     qInfo() << "  Encoder stopped sections =" << statistics.encoderStopped;
+    qInfo() << "  Initial disc time =" << statistics.initialDiscTime.getTimeAsQString();
 
     qInfo() << "  Q Mode 1 sections =" << statistics.qMode1Count << "(CD Audio)";
     qInfo() << "  Q Mode 4 sections =" << statistics.qMode4Count << "(LD Audio)";
@@ -182,6 +184,9 @@ qint32 F2FramesToAudio::checkForSampleGap(Metadata metadata)
         if (metadata.qMode == 1 || metadata.qMode == 4) {
             previousDiscTime.setTime(metadata.discTime.getTime());
             sampleGapFirstCheck = false;
+
+            // Store the initial disc time
+            statistics.initialDiscTime.setTime(metadata.discTime.getTime());
             return 0;
         } else {
             // Can do anything this time
