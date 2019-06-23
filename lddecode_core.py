@@ -2071,9 +2071,14 @@ class LDdecode:
                     self.fdoffset -= offset
 
         if f is not None and self.fname_out is not None:
+
             picture, audio, efm = f.downscale(linesout = self.output_lines, final=True)
-            
-            # XXX: this currently performs a needed sanity check
+
+            # Only write a FirstField first
+            if len(self.fieldinfo) == 0 and not f.isFirstField:
+                return f
+
+            # XXX: this routine currently performs a needed sanity check
             fi, needFiller = self.buildmetadata(f)
 
             self.lastvalidfield[f.isFirstField] = (f, fi, picture, audio, efm)
@@ -2083,7 +2088,7 @@ class LDdecode:
                     self.writeout(self.lastvalidfield[not f.isFirstField])
                     self.writeout(self.lastvalidfield[f.isFirstField])
 
-                # If this is the first field, don't write anything                
+                # If this is the first field to be written, don't write anything                
                 return f
 
             self.writeout(self.lastvalidfield[f.isFirstField])
