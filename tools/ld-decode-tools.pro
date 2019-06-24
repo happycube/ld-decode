@@ -8,7 +8,9 @@ SUBDIRS = ld-decode-shared \
 	  ld-combine \
           ld-process-efm \
           ld-process-efm-rev5 \
-          ld-ldstoefm
+          ld-ldstoefm \
+          ld-lds-converter
+
 
 
 
