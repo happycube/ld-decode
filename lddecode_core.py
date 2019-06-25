@@ -820,6 +820,9 @@ class Field:
         it can be used to determine where line 0 is...
         '''
         # locations of lines before after/vblank.  may not be line 0 etc
+        if firstblank is None:
+            return None, None
+
         loc_presync = validpulses[firstblank-1][1].start
 
         HSYNC, EQPL1, VSYNC, EQPL2 = range(4)
@@ -982,6 +985,9 @@ class Field:
                 vsync_locs.append(i)
                 vsync_means.append(np.mean(self.data[0]['demod_05'][int(p.start+self.rf.freq):int(p.start+p.len-self.rf.freq)]))
                 
+        if len(vsync_means) == 0:
+            return None
+
         synclevel = np.median(vsync_means)
 
         if np.abs(self.rf.hztoire(synclevel) - self.rf.SysParams['vsync_ire']) < 5:
@@ -1019,7 +1025,7 @@ class Field:
         pulses = self.getpulses()
 
         if pulses is None or len(pulses) == 0:
-            logging.error("Unable to find any sync pulses, jumping one second")
+            #logging.error("Unable to find any sync pulses, jumping one second")
             return None, None, int(self.rf.freq_hz)
 
         validpulses = self.refinepulses(pulses)
@@ -1996,7 +2002,9 @@ class LDdecode:
             
         self.indata = self.freader(self.infile, self.readloc, self.readlen)
 
-        if self.indata is None:
+        #print(len(self.indata), self.readlen)
+
+        if self.indata is None or len(self.indata) < self.readlen:
             logging.info("End of file")
             return None, None
         
@@ -2010,7 +2018,7 @@ class LDdecode:
         self.curfield = f
 
         if not f.valid:
-            #logging.info("Bad data - jumping one second")
+            logging.info("Bad data - jumping one second")
             return f, f.nextfieldoffset
         else:
             self.audio_offset = f.audio_next_offset
@@ -2047,9 +2055,12 @@ class LDdecode:
             self.fieldloc = self.fdoffset
             f, offset = self.decodefield()
 
-            if f is None:
-                # EOF, probably
-                return None
+            if f is None:                
+                if offset is None:
+                    # EOF, probably
+                    return None
+            
+                print("")
 
             self.curfield = f
             self.fdoffset += offset
