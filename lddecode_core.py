@@ -907,9 +907,11 @@ class Field:
         linelens = []
         
         blank1 = self.getblankrange(validpulses)
+        if blank1 == (None, None):
+            return self.inlinelen
+
         blank2 = self.getblankrange(validpulses, blank1[1] + 1)
-        
-        if blank1 == (None, None) or blank2 == (None, None):
+        if blank2 == (None, None):
             # Need a full set of data to compute this...
             return self.inlinelen
 
