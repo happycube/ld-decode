@@ -26,25 +26,21 @@
 #define FILTERTHREAD_H
 
 #include <QObject>
+#include <QAtomicInt>
 #include <QThread>
-#include <QMutex>
-#include <QWaitCondition>
 #include <QDebug>
 
 #include "sourcevideo.h"
 #include "lddecodemetadata.h"
 #include "palcolour.h"
 
+class PalCombFilter;
+
 class FilterThread : public QThread
 {
     Q_OBJECT
 public:
-    explicit FilterThread(LdDecodeMetaData::VideoParameters videoParametersParam, QObject *parent = nullptr);
-    ~FilterThread() override;
-
-    void startFilter(QByteArray topFieldParam, QByteArray bottomFieldParam, qreal burstMedianIreParam, bool blackAndWhiteParam);
-    QByteArray getResult(void);
-    bool isBusy(void);
+    explicit FilterThread(QAtomicInt& abortParam, PalCombFilter& combFilterParam, LdDecodeMetaData::VideoParameters videoParametersParam, bool blackAndWhiteParam, QObject *parent = nullptr);
 
 signals:
 
@@ -52,15 +48,14 @@ protected:
     void run() override;
 
 private:
-    // Thread control
-    QMutex mutex;
-    QWaitCondition condition;
-    bool isProcessing;
-    bool abort;
+    // Manager
+    QAtomicInt& abort;
+    PalCombFilter& combFilter;
 
     // PAL colour object
     PalColour palColour;
     LdDecodeMetaData::VideoParameters videoParameters;
+    bool blackAndWhite;
 
     // Video extent for cropping
     qint32 firstActiveScanLine;
@@ -68,19 +63,8 @@ private:
     qint32 videoStart;
     qint32 videoEnd;
 
-    // Input data buffers
-    QByteArray firstFieldData;
-    QByteArray secondFieldData;
-    QByteArray tsFirstFieldData;
-    QByteArray tsSecondFieldData;
+    // Temporary output buffer
     QByteArray outputData;
-    QByteArray rgbOutputData;
-
-    // Burst level data
-    qreal burstMedianIre;
-
-    // Flags
-    bool blackAndWhite;
 };
 
 #endif // FILTERTHREAD_H
