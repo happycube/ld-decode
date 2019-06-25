@@ -268,13 +268,13 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
                     {
                         l=i-b; r=i+b;
 
-                        PU+=(m[r]+m[l])*cfilt0[b]+(+nx[r][0]+nx[l][0]-nx[l][1]-nx[r][1])*cfilt1[b]-(mx[l][2]+mx[r][2]+mx[l][3]+mx[r][3])*cfilt2[b]+(-nx[r][4]-nx[l][4]+nx[l][5]+nx[r][5])*cfilt3[b];
-                        QU+=(n[r]+n[l])*cfilt0[b]+(-mx[r][0]-mx[l][0]+mx[l][1]+mx[r][1])*cfilt1[b]-(nx[l][2]+nx[r][2]+nx[l][3]+nx[r][3])*cfilt2[b]+(+mx[r][4]+mx[l][4]-mx[l][5]-mx[r][5])*cfilt3[b];
-                        PV+=(m[r]+m[l])*cfilt0[b]+(-nx[r][0]-nx[l][0]+nx[l][1]+nx[r][1])*cfilt1[b]-(mx[l][2]+mx[r][2]+mx[l][3]+mx[r][3])*cfilt2[b]+(+nx[r][4]+nx[l][4]-nx[l][5]-nx[r][5])*cfilt3[b];
-                        QV+=(n[r]+n[l])*cfilt0[b]+(+mx[r][0]+mx[l][0]-mx[l][1]-mx[r][1])*cfilt1[b]-(nx[l][2]+nx[r][2]+nx[l][3]+nx[r][3])*cfilt2[b]+(-mx[r][4]-mx[l][4]+mx[l][5]+mx[r][5])*cfilt3[b];
+                        PY+=(m[r]+m[l])*yfilt0[b]-(mx[r][2]+mx[l][2]+mx[r][3]+mx[l][3])*yfilt2[b];  // note omission of yfilt[1] and [3] for PAL
+                        QY+=(n[r]+n[l])*yfilt0[b]-(nx[r][2]+nx[l][2]+nx[r][3]+nx[l][3])*yfilt2[b];  // note omission of yfilt[1] and [3] for PAL
 
-                        PY+=(m[r]+m[l])*yfilt0[b]-(mx[l][2]+mx[r][2]+mx[l][3]+mx[r][3])*yfilt2[b];  // note omission of yfilt[1] and [3] for PAL
-                        QY+=(n[r]+n[l])*yfilt0[b]-(nx[l][2]+nx[r][2]+nx[l][3]+nx[r][3])*yfilt2[b];  // note omission of yfilt[1] and [3] for PAL
+                        PU+=(m[r]+m[l])*cfilt0[b]-(mx[r][2]+mx[l][2]+mx[r][3]+mx[l][3])*cfilt2[b]+(nx[r][0]+nx[l][0]-nx[r][1]-nx[l][1])*cfilt1[b]-(nx[r][4]+nx[l][4]-nx[r][5]-nx[l][5])*cfilt3[b];
+                        QU+=(n[r]+n[l])*cfilt0[b]-(nx[r][2]+nx[l][2]+nx[r][3]+nx[l][3])*cfilt2[b]-(mx[r][0]+mx[l][0]-mx[r][1]-mx[l][1])*cfilt1[b]+(mx[r][4]+mx[l][4]-mx[r][5]-mx[l][5])*cfilt3[b];
+                        PV+=(m[r]+m[l])*cfilt0[b]-(mx[r][2]+mx[l][2]+mx[r][3]+mx[l][3])*cfilt2[b]-(nx[r][0]+nx[l][0]-nx[r][1]-nx[l][1])*cfilt1[b]+(nx[r][4]+nx[l][4]-nx[r][5]-nx[l][5])*cfilt3[b];
+                        QV+=(n[r]+n[l])*cfilt0[b]-(nx[r][2]+nx[l][2]+nx[r][3]+nx[l][3])*cfilt2[b]+(mx[r][0]+mx[l][0]-mx[r][1]-mx[l][1])*cfilt1[b]-(mx[r][4]+mx[l][4]-mx[r][5]-mx[l][5])*cfilt3[b];
                     }
                     pu[i]=PU/cdiv; qu[i]=QU/cdiv;
                     pv[i]=PV/cdiv; qv[i]=QV/cdiv;
