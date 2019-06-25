@@ -123,7 +123,10 @@ void F2FramesToAudio::convert(QVector<F2Frame> f2Frames, QVector<Section> sectio
 void F2FramesToAudio::processAudio(void)
 {
     QByteArray dummyF2Frame;
-    dummyF2Frame.fill(0, 24);
+    dummyF2Frame.fill(0, 24); // 6 stereo 16-bit sample pairs (6 * stereo * 2 bytes = 24)
+
+    QByteArray dummyF2Section;
+    dummyF2Section.fill(0, 24 * 98);
 
     qint32 f2FrameNumber = 0;
     qint32 sectionsToProcess = f2FramesIn.size() / 98;
@@ -134,6 +137,8 @@ void F2FramesToAudio::processAudio(void)
         // Get the required metadata for processing from the section
         Metadata metadata = sectionToMeta(sectionsIn[sectionNo]);
 
+        qDebug().noquote() << "F2FramesToAudio::processAudio(): Previous time" << previousDiscTime.getTimeAsQString() << "current time" << metadata.discTime.getTimeAsQString();
+
         // Check if there was a gap since the last output samples (and fill it if
         // necessary)
         TrackTime discTimeTemp = previousDiscTime; // Just for debug
@@ -143,7 +148,7 @@ void F2FramesToAudio::processAudio(void)
                 for (qint32 i = 0; i < (gap - 1); i++) {
                     statistics.paddedAudioSamples += 6 * 98;
                     statistics.totalAudioSamples += 6 * 98;
-                    outputFileHandle->write(dummyF2Frame);
+                    outputFileHandle->write(dummyF2Section);
                 }
                 qDebug().noquote() << "F2FramesToAudio::processAudio(): Metadata indicates unwanted gap of" << gap << "F2 frames!" <<
                            "Previous good metadata was" << discTimeTemp.getTimeAsQString() << "and current metadata is" <<
