@@ -1388,6 +1388,9 @@
    <property name="text">
     <string>Open EFM file...</string>
    </property>
+    <property name="shortcut">
+    <string>Ctrl+O</string>
+   </property>
   </action>
   <action name="actionExit">
    <property name="text">
@@ -1403,10 +1406,16 @@
    <property name="text">
     <string>Save Audio As...</string>
    </property>
+    <property name="shortcut">
+    <string>Ctrl+S</string>
+   </property>
   </action>
   <action name="actionSave_Data_As">
    <property name="text">
     <string>Save Data As...</string>
+   </property>
+    <property name="shortcut">
+    <string>Ctrl+D</string>
    </property>
   </action>
  </widget>

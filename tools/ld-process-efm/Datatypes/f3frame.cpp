@@ -50,14 +50,22 @@ void F3Frame::setTValues(QVector<qint32> tValuesIn)
     }
 
     // Range check the incoming T Values
+    bool debugSilence1 = false;
+    bool debugSilence2 = false;
     for (qint32 i = 0; i < tValuesIn.size(); i++) {
         if (tValuesIn[i] < 3) {
-            qDebug() << "F3Frame::setTValues(): Incoming T value is <T3";
+            if (debugSilence1 == false) {
+                qDebug() << "F3Frame::setTValues(): Incoming T values contain <T3!";
+                debugSilence1 = true;
+            }
             tValuesIn[i] = 3;
         }
 
         if (tValuesIn[i] > 11) {
-            qDebug() << "F3Frame::setTValues(): Incoming T value is >T11";
+            if (debugSilence2 == false) {
+                qDebug() << "F3Frame::setTValues(): Incoming T value is >T11";
+                debugSilence2 = true;
+            }
             tValuesIn[i] = 11;
         }
     }
@@ -67,12 +75,13 @@ void F3Frame::setTValues(QVector<qint32> tValuesIn)
 
     // Convert the T values into a bit stream
     // Should produce 588 channel bits which is 73.5 bytes of data
-    uchar rawFrameData[74];
+    uchar rawFrameData[75];
     qint32 bitPosition = 7;
     qint32 bytePosition = 0;
     uchar byteData = 0;
 
     for (qint32 tPosition = 0; tPosition < tValuesIn.size(); tPosition++) {
+        //qDebug() << "tValuesIn.size() =" << tValuesIn.size() << "tPosition =" << tPosition;
         for (qint32 bitCount = 0; bitCount < tValuesIn[tPosition]; bitCount++) {
             if (bitCount == 0) byteData |= (1 << bitPosition);
             bitPosition--;
@@ -83,12 +92,20 @@ void F3Frame::setTValues(QVector<qint32> tValuesIn)
                 bitPosition = 7;
                 bytePosition++;
 
-                // Check for overflow (due to errors in the T values)
-                if (bytePosition == 74) {
-                    qDebug() << "F3Frame::setTValues(): 14-bit EFM frame length exceeded 74 bytes";
+                // Check for overflow (due to errors in the T values) and stop processing to prevent crashes
+                if (bytePosition > 73) {
                     break;
                 }
             }
+
+            if (bytePosition > 73) {
+                break;
+            }
+        }
+
+        if (bytePosition > 73) {
+            qDebug() << "F3Frame::setTValues(): 14-bit EFM frame length exceeded 74 bytes!";
+            break;
         }
     }
 
