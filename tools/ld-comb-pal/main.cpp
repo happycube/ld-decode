@@ -26,6 +26,7 @@
 #include <QDebug>
 #include <QtGlobal>
 #include <QCommandLineParser>
+#include <QThread>
 
 #include "palcombfilter.h"
 
@@ -132,7 +133,7 @@ int main(int argc, char *argv[])
 
     // Option to select the number of threads (-t)
     QCommandLineOption threadsOption(QStringList() << "t" << "threads",
-                                        QCoreApplication::translate("main", "Specify the number of concurrent threads (default is 32)"),
+                                        QCoreApplication::translate("main", "Specify the number of concurrent threads (default number of logical CPUs plus 2)"),
                                         QCoreApplication::translate("main", "number"));
     parser.addOption(threadsOption);
 
@@ -178,7 +179,7 @@ int main(int argc, char *argv[])
 
     qint32 startFrame = -1;
     qint32 length = -1;
-    qint32 maxThreads = 32;
+    qint32 maxThreads = QThread::idealThreadCount() + 2;
 
     if (parser.isSet(startFrameOption)) {
         startFrame = parser.value(startFrameOption).toInt();
