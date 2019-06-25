@@ -249,7 +249,7 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
                 // NB: Multiline averaging/filtering assumes perfect
                 //     inter-line phase registration...
 
-                qint32 PU,QU, PV,QV, PY,QY;
+                double PU,QU, PV,QV, PY,QY;
                 for (qint32 i = videoParameters.activeVideoStart; i < videoParameters.activeVideoEnd; i++) {
                     PU=QU=0; PV=QV=0; PY=QY=0;
 
