@@ -26,7 +26,11 @@
 #define PALCOMBFILTER_H
 
 #include <QObject>
+#include <QAtomicInt>
+#include <QByteArray>
 #include <QElapsedTimer>
+#include <QMap>
+#include <QMutex>
 
 #include "sourcevideo.h"
 #include "lddecodemetadata.h"
@@ -39,6 +43,10 @@ public:
     explicit PalCombFilter(QObject *parent = nullptr);
     bool process(QString inputFileName, QString outputFileName, qint32 startFrame, qint32 length, bool reverse, bool blackAndWhite, qint32 maxThreads);
 
+    // Member functions used by worker threads
+    bool getInputFrame(qint32& frameNumber, QByteArray& firstField, QByteArray& secondField, qreal& burstMedianIre);
+    bool putOutputFrame(qint32 frameNumber, QByteArray& rgbOutput);
+
 signals:
 
 public slots:
@@ -46,8 +54,23 @@ public slots:
 private slots:
 
 private:
+    // Atomic abort flag shared by worker threads; workers watch this, and shut
+    // down as soon as possible if it becomes true
+    QAtomicInt abort;
+
+    // Input stream information (all guarded by inputMutex while threads are running)
+    QMutex inputMutex;
+    qint32 inputFrameNumber;
+    qint32 lastFrameNumber;
     LdDecodeMetaData ldDecodeMetaData;
     SourceVideo sourceVideo;
+
+    // Output stream information (all guarded by outputMutex while threads are running)
+    QMutex outputMutex;
+    qint32 outputFrameNumber;
+    QMap<qint32, QByteArray> pendingOutputFrames;
+    QFile targetVideo;
+    QElapsedTimer totalTimer;
 };
 
 #endif // PALCOMBFILTER_H

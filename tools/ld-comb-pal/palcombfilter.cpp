@@ -26,7 +26,7 @@
 
 PalCombFilter::PalCombFilter(QObject *parent) : QObject(parent)
 {
-
+    abort = false;
 }
 
 bool PalCombFilter::process(QString inputFileName, QString outputFileName, qint32 startFrame, qint32 length,
@@ -69,14 +69,6 @@ bool PalCombFilter::process(QString inputFileName, QString outputFileName, qint3
     qInfo() << "Input video of" << videoParameters.fieldWidth << "x" << frameHeight <<
                    "will be colourised and trimmed to" << videoEnd - videoStart << "x 576";
 
-    // Define a vector of filtering threads to process the video
-    QVector<FilterThread*> filterThreads;
-    filterThreads.resize(maxThreads);
-    for (qint32 i = 0; i < maxThreads; i++) {
-        filterThreads[i] = new FilterThread(videoParameters);
-    }
-    qInfo() << "Using" << maxThreads << "threads";
-
     // Open the source video file
     if (!sourceVideo.open(inputFileName, videoParameters.fieldWidth * videoParameters.fieldHeight)) {
         // Could not open source video file
@@ -102,10 +94,7 @@ bool PalCombFilter::process(QString inputFileName, QString outputFileName, qint3
         }
     }
 
-    qInfo() << "Processing from start frame #" << startFrame << "with a length of" << length << "frames";
-
     // Open the output RGB file
-    QFile targetVideo(outputFileName);
     if (outputFileName.isNull()) {
         // No output filename, use stdout instead
         if (!targetVideo.open(stdout, QIODevice::WriteOnly)) {
@@ -117,6 +106,7 @@ bool PalCombFilter::process(QString inputFileName, QString outputFileName, qint3
         qInfo() << "Using stdout as RGB output";
     } else {
         // Open output file
+        targetVideo.setFileName(outputFileName);
         if (!targetVideo.open(QIODevice::WriteOnly)) {
             // Failed to open output file
             qCritical() << "Could not open " << outputFileName << "as RGB output file";
@@ -125,58 +115,43 @@ bool PalCombFilter::process(QString inputFileName, QString outputFileName, qint3
         }
     }
 
-    // Process the frames
-    QElapsedTimer totalTimer;
+    qInfo() << "Using" << maxThreads << "threads";
+    qInfo() << "Processing from start frame #" << startFrame << "with a length of" << length << "frames";
+
+    // Initialise processing state
+    inputFrameNumber = startFrame;
+    outputFrameNumber = startFrame;
+    lastFrameNumber = length + (startFrame - 1);
     totalTimer.start();
-    for (qint32 frameNumber = startFrame; frameNumber <= length + (startFrame - 1); frameNumber += maxThreads) {
-        QElapsedTimer timer;
-        timer.start();
 
-        // Ensure we don't overflow the maximum number of frames to process
-        // (limit the available number of threads to the remaining number of frames)
-        if ((frameNumber +  maxThreads) > length + (startFrame - 1)) maxThreads = (length + startFrame) - frameNumber;
+    // Start a vector of filtering threads to process the video
+    QVector<FilterThread*> filterThreads;
+    filterThreads.resize(maxThreads);
+    for (qint32 i = 0; i < maxThreads; i++) {
+        filterThreads[i] = new FilterThread(abort, *this, videoParameters, blackAndWhite);
+        filterThreads[i]->start(QThread::LowPriority);
+    }
 
-        QByteArray rgbOutputData;
-        QVector<SourceField*> sourceFirstFields;
-        QVector<SourceField*> sourceSecondFields;
-        QVector<qreal> burstMedianIre;
-        sourceFirstFields.resize(maxThreads);
-        sourceSecondFields.resize(maxThreads);
-        burstMedianIre.resize(maxThreads);
+    // Wait for the workers to finish
+    for (qint32 i = 0; i < maxThreads; i++) {
+        filterThreads[i]->wait();
+        delete filterThreads[i];
+    }
 
-        // Perform filtering
-        for (qint32 i = 0; i < maxThreads; i++) {
-            // Determine the first and second fields for the frame number
-            qint32 firstFieldNumber = ldDecodeMetaData.getFirstFieldNumber(frameNumber + i);
-            qint32 secondFieldNumber = ldDecodeMetaData.getSecondFieldNumber(frameNumber + i);
+    // Did any of the threads abort?
+    if (abort) {
+        sourceVideo.close();
+        targetVideo.close();
+        return false;
+    }
 
-            // Show what we are about to process
-            qDebug() << "PalCombFilter::process(): Frame number" << frameNumber + i << "has a first-field of" << firstFieldNumber <<
-                        "and a second field of" << secondFieldNumber;
-
-            sourceFirstFields[i] = sourceVideo.getVideoField(firstFieldNumber);
-            sourceSecondFields[i] = sourceVideo.getVideoField(secondFieldNumber);
-            burstMedianIre[i] = ldDecodeMetaData.getField(firstFieldNumber).medianBurstIRE;
-            filterThreads[i]->startFilter(sourceFirstFields[i]->getFieldData(), sourceSecondFields[i]->getFieldData(), burstMedianIre[i], blackAndWhite);
-        }
-
-        for (qint32 i = 0; i < maxThreads; i++) {
-            while (filterThreads[i]->isBusy());
-            rgbOutputData = filterThreads[i]->getResult();
-
-            // Save the frame data to the output file
-            if (!targetVideo.write(rgbOutputData.data(), rgbOutputData.size())) {
-                // Could not write to target video file
-                qInfo() << "Writing to the output video file failed";
-                targetVideo.close();
-                sourceVideo.close();
-                return false;
-            }
-        }
-
-        // Show an update to the user
-        qreal fps = maxThreads / (static_cast<qreal>(timer.elapsed()) / 1000.0);
-        qInfo() << (frameNumber - (startFrame - 1)) + maxThreads - 1 << "frames processed -" << fps << "FPS";
+    // Check we've processed all the frames, now the workers have finished
+    if (inputFrameNumber != (lastFrameNumber + 1) || outputFrameNumber != (lastFrameNumber + 1)
+        || !pendingOutputFrames.empty()) {
+        qCritical() << "Incorrect state at end of processing";
+        sourceVideo.close();
+        targetVideo.close();
+        return false;
     }
 
     qreal totalSecs = (static_cast<qreal>(totalTimer.elapsed()) / 1000.0);
@@ -193,6 +168,77 @@ bool PalCombFilter::process(QString inputFileName, QString outputFileName, qint3
 
     // Close the target video
     targetVideo.close();
+
+    return true;
+}
+
+// Get the next frame that needs processing from the input.
+//
+// Returns true if a frame was returned, false if the end of the input has been
+// reached.
+bool PalCombFilter::getInputFrame(qint32 &frameNumber, QByteArray& firstField, QByteArray& secondField, qreal& burstMedianIre)
+{
+    QMutexLocker locker(&inputMutex);
+
+    if (inputFrameNumber > lastFrameNumber) {
+        // No more input frames
+        return false;
+    }
+
+    frameNumber = inputFrameNumber;
+    inputFrameNumber++;
+
+    // Determine the first and second fields for the frame number
+    qint32 firstFieldNumber = ldDecodeMetaData.getFirstFieldNumber(frameNumber);
+    qint32 secondFieldNumber = ldDecodeMetaData.getSecondFieldNumber(frameNumber);
+
+    // Show what we are about to process
+    qDebug() << "PalCombFilter::process(): Frame number" << frameNumber << "has a first-field of" << firstFieldNumber <<
+                "and a second field of" << secondFieldNumber;
+
+    // Fetch the input data
+    firstField = sourceVideo.getVideoField(firstFieldNumber)->getFieldData();
+    secondField = sourceVideo.getVideoField(secondFieldNumber)->getFieldData();
+    burstMedianIre = ldDecodeMetaData.getField(firstFieldNumber).medianBurstIRE;
+
+    return true;
+}
+
+// Put a decoded frame into the output stream.
+//
+// The worker threads will complete frames in an arbitrary order, so we can't
+// just write the frames to the output file directly. Instead, we keep a map of
+// frames that haven't yet been written; when a new frame comes in, we check
+// whether we can now write some of them out.
+//
+// Returns true on success, false on failure.
+bool PalCombFilter::putOutputFrame(qint32 frameNumber, QByteArray& rgbOutput)
+{
+    QMutexLocker locker(&outputMutex);
+
+    // Put this frame into the map
+    pendingOutputFrames[frameNumber] = rgbOutput;
+
+    // Write out as many frames as possible
+    while (pendingOutputFrames.contains(outputFrameNumber)) {
+        const QByteArray& outputData = pendingOutputFrames.value(outputFrameNumber);
+
+        // Save the frame data to the output file
+        if (!targetVideo.write(outputData.data(), outputData.size())) {
+            // Could not write to target video file
+            qCritical() << "Writing to the output video file failed";
+            return false;
+        }
+
+        pendingOutputFrames.remove(outputFrameNumber);
+        outputFrameNumber++;
+
+        if ((outputFrameNumber % 32) == 0) {
+            // Show an update to the user
+            qreal fps = outputFrameNumber / (static_cast<qreal>(totalTimer.elapsed()) / 1000.0);
+            qInfo() << outputFrameNumber << "frames processed -" << fps << "FPS";
+        }
+    }
 
     return true;
 }

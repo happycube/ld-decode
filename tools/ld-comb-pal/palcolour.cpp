@@ -154,9 +154,7 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
         // were all short ints
         double pu[MAX_WIDTH], qu[MAX_WIDTH], pv[MAX_WIDTH], qv[MAX_WIDTH], py[MAX_WIDTH], qy[MAX_WIDTH];
         double m[MAX_WIDTH], n[MAX_WIDTH];
-        double m1[MAX_WIDTH], n1[MAX_WIDTH], m2[MAX_WIDTH], n2[MAX_WIDTH];
-        double m3[MAX_WIDTH], n3[MAX_WIDTH], m4[MAX_WIDTH], n4[MAX_WIDTH];
-        double m5[MAX_WIDTH], n5[MAX_WIDTH], m6[MAX_WIDTH], n6[MAX_WIDTH];
+        double mx[MAX_WIDTH][6], nx[MAX_WIDTH][6];
 
         qint32 Vsw; // this will represent the PAL Vswitch state later on...
 
@@ -200,12 +198,12 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
                 for (qint32 i = videoParameters.colourBurstStart; i < videoParameters.fieldWidth; i++) {
                     m[i]=b0[i]*sine[i]; n[i]=b0[i]*cosine[i];
 
-                    m1[i]=b1[i]*sine[i];  n1[i]=b1[i]*cosine[i];
-                    m2[i]=b2[i]*sine[i];  n2[i]=b2[i]*cosine[i];
-                    m3[i]=b3[i]*sine[i];  n3[i]=b3[i]*cosine[i];
-                    m4[i]=b4[i]*sine[i];  n4[i]=b4[i]*cosine[i];
-                    m5[i]=b5[i]*sine[i];  n5[i]=b5[i]*cosine[i];
-                    m6[i]=b6[i]*sine[i];  n6[i]=b6[i]*cosine[i];
+                    mx[i][0]=b1[i]*sine[i];  nx[i][0]=b1[i]*cosine[i];
+                    mx[i][1]=b2[i]*sine[i];  nx[i][1]=b2[i]*cosine[i];
+                    mx[i][2]=b3[i]*sine[i];  nx[i][2]=b3[i]*cosine[i];
+                    mx[i][3]=b4[i]*sine[i];  nx[i][3]=b4[i]*cosine[i];
+                    mx[i][4]=b5[i]*sine[i];  nx[i][4]=b5[i]*cosine[i];
+                    mx[i][5]=b6[i]*sine[i];  nx[i][5]=b6[i]*cosine[i];
                 }
 
                 // Find absolute burst phase
@@ -219,10 +217,10 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
                 // this is a classic "product-" or "synchronous demodulation" operation. We "detect" the burst relative to the arbitrary sine[] and cosine[] reference phases
                 qint32 bp=0, bq=0, bpo=0, bqo=0;
                 for (qint32 i=videoParameters.colourBurstStart; i<videoParameters.colourBurstEnd; i++) {
-                    bp+=(m[i]-(m3[i]+m4[i])/2)/2;
-                    bq+=(n[i]-(n3[i]+n4[i])/2)/2;
-                    bpo+=(m2[i]-m1[i])/2;
-                    bqo+=(n2[i]-n1[i])/2;
+                    bp+=(m[i]-(mx[i][2]+mx[i][3])/2)/2;
+                    bq+=(n[i]-(nx[i][2]+nx[i][3])/2)/2;
+                    bpo+=(mx[i][1]-mx[i][0])/2;
+                    bqo+=(nx[i][1]-nx[i][0])/2;
                 }
 
                 bp/=(videoParameters.colourBurstEnd-videoParameters.colourBurstStart);  bq/=(videoParameters.colourBurstEnd-videoParameters.colourBurstStart);  // normalises those sums
@@ -251,7 +249,7 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
                 // NB: Multiline averaging/filtering assumes perfect
                 //     inter-line phase registration...
 
-                qint32 PU,QU, PV,QV, PY,QY;
+                double PU,QU, PV,QV, PY,QY;
                 for (qint32 i = videoParameters.activeVideoStart; i < videoParameters.activeVideoEnd; i++) {
                     PU=QU=0; PV=QV=0; PY=QY=0;
 
@@ -270,13 +268,13 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
                     {
                         l=i-b; r=i+b;
 
-                        PU+=(m[r]+m[l])*cfilt0[b]+(+n1[r]+n1[l]-n2[l]-n2[r])*cfilt1[b]-(m3[l]+m3[r]+m4[l]+m4[r])*cfilt2[b]+(-n5[r]-n5[l]+n6[l]+n6[r])*cfilt3[b];
-                        QU+=(n[r]+n[l])*cfilt0[b]+(-m1[r]-m1[l]+m2[l]+m2[r])*cfilt1[b]-(n3[l]+n3[r]+n4[l]+n4[r])*cfilt2[b]+(+m5[r]+m5[l]-m6[l]-m6[r])*cfilt3[b];
-                        PV+=(m[r]+m[l])*cfilt0[b]+(-n1[r]-n1[l]+n2[l]+n2[r])*cfilt1[b]-(m3[l]+m3[r]+m4[l]+m4[r])*cfilt2[b]+(+n5[r]+n5[l]-n6[l]-n6[r])*cfilt3[b];
-                        QV+=(n[r]+n[l])*cfilt0[b]+(+m1[r]+m1[l]-m2[l]-m2[r])*cfilt1[b]-(n3[l]+n3[r]+n4[l]+n4[r])*cfilt2[b]+(-m5[r]-m5[l]+m6[l]+m6[r])*cfilt3[b];
+                        PY+=(m[r]+m[l])*yfilt0[b]-(mx[r][2]+mx[l][2]+mx[r][3]+mx[l][3])*yfilt2[b];  // note omission of yfilt[1] and [3] for PAL
+                        QY+=(n[r]+n[l])*yfilt0[b]-(nx[r][2]+nx[l][2]+nx[r][3]+nx[l][3])*yfilt2[b];  // note omission of yfilt[1] and [3] for PAL
 
-                        PY+=(m[r]+m[l])*yfilt0[b]-(m3[l]+m3[r]+m4[l]+m4[r])*yfilt2[b];  // note omission of yfilt[1] and [3] for PAL
-                        QY+=(n[r]+n[l])*yfilt0[b]-(n3[l]+n3[r]+n4[l]+n4[r])*yfilt2[b];  // note omission of yfilt[1] and [3] for PAL
+                        PU+=(m[r]+m[l])*cfilt0[b]-(mx[r][2]+mx[l][2]+mx[r][3]+mx[l][3])*cfilt2[b]+(nx[r][0]+nx[l][0]-nx[r][1]-nx[l][1])*cfilt1[b]-(nx[r][4]+nx[l][4]-nx[r][5]-nx[l][5])*cfilt3[b];
+                        QU+=(n[r]+n[l])*cfilt0[b]-(nx[r][2]+nx[l][2]+nx[r][3]+nx[l][3])*cfilt2[b]-(mx[r][0]+mx[l][0]-mx[r][1]-mx[l][1])*cfilt1[b]+(mx[r][4]+mx[l][4]-mx[r][5]-mx[l][5])*cfilt3[b];
+                        PV+=(m[r]+m[l])*cfilt0[b]-(mx[r][2]+mx[l][2]+mx[r][3]+mx[l][3])*cfilt2[b]-(nx[r][0]+nx[l][0]-nx[r][1]-nx[l][1])*cfilt1[b]+(nx[r][4]+nx[l][4]-nx[r][5]-nx[l][5])*cfilt3[b];
+                        QV+=(n[r]+n[l])*cfilt0[b]-(nx[r][2]+nx[l][2]+nx[r][3]+nx[l][3])*cfilt2[b]+(mx[r][0]+mx[l][0]-mx[r][1]-mx[l][1])*cfilt1[b]-(mx[r][4]+mx[l][4]-mx[r][5]-mx[l][5])*cfilt3[b];
                     }
                     pu[i]=PU/cdiv; qu[i]=QU/cdiv;
                     pv[i]=PV/cdiv; qv[i]=QV/cdiv;
