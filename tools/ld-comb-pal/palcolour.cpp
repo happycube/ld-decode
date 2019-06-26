@@ -174,25 +174,21 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
         for (qint32 field = 0; field < 2; field++) {
             for (qint32 fieldLine = 3; fieldLine < (videoParameters.fieldHeight - 4); fieldLine++) {
                 if (field == 0) {
-                    for (qint32 x = videoParameters.colourBurstStart; x < videoParameters.fieldWidth; x++) {
-                        b0 = topFieldDataPointer+ (fieldLine      * (videoParameters.fieldWidth)) + x;
-                        b1 = topFieldDataPointer+((fieldLine - 1) * (videoParameters.fieldWidth)) + x;
-                        b2 = topFieldDataPointer+((fieldLine + 1) * (videoParameters.fieldWidth)) + x;
-                        b3 = topFieldDataPointer+((fieldLine - 2) * (videoParameters.fieldWidth)) + x;
-                        b4 = topFieldDataPointer+((fieldLine + 2) * (videoParameters.fieldWidth)) + x;
-                        b5 = topFieldDataPointer+((fieldLine - 3) * (videoParameters.fieldWidth)) + x;
-                        b6 = topFieldDataPointer+((fieldLine + 3) * (videoParameters.fieldWidth)) + x;
-                    }
+                    b0 = topFieldDataPointer+ (fieldLine      * (videoParameters.fieldWidth));
+                    b1 = topFieldDataPointer+((fieldLine - 1) * (videoParameters.fieldWidth));
+                    b2 = topFieldDataPointer+((fieldLine + 1) * (videoParameters.fieldWidth));
+                    b3 = topFieldDataPointer+((fieldLine - 2) * (videoParameters.fieldWidth));
+                    b4 = topFieldDataPointer+((fieldLine + 2) * (videoParameters.fieldWidth));
+                    b5 = topFieldDataPointer+((fieldLine - 3) * (videoParameters.fieldWidth));
+                    b6 = topFieldDataPointer+((fieldLine + 3) * (videoParameters.fieldWidth));
                 } else {
-                    for (qint32 x = videoParameters.colourBurstStart; x < videoParameters.fieldWidth; x++) {
-                        b0 = bottomFieldDataPointer+ (fieldLine      * (videoParameters.fieldWidth)) + x;
-                        b1 = bottomFieldDataPointer+((fieldLine - 1) * (videoParameters.fieldWidth)) + x;
-                        b2 = bottomFieldDataPointer+((fieldLine + 1) * (videoParameters.fieldWidth)) + x;
-                        b3 = bottomFieldDataPointer+((fieldLine - 2) * (videoParameters.fieldWidth)) + x;
-                        b4 = bottomFieldDataPointer+((fieldLine + 2) * (videoParameters.fieldWidth)) + x;
-                        b5 = bottomFieldDataPointer+((fieldLine - 3) * (videoParameters.fieldWidth)) + x;
-                        b6 = bottomFieldDataPointer+((fieldLine + 3) * (videoParameters.fieldWidth)) + x;
-                    }
+                    b0 = bottomFieldDataPointer+ (fieldLine      * (videoParameters.fieldWidth));
+                    b1 = bottomFieldDataPointer+((fieldLine - 1) * (videoParameters.fieldWidth));
+                    b2 = bottomFieldDataPointer+((fieldLine + 1) * (videoParameters.fieldWidth));
+                    b3 = bottomFieldDataPointer+((fieldLine - 2) * (videoParameters.fieldWidth));
+                    b4 = bottomFieldDataPointer+((fieldLine + 2) * (videoParameters.fieldWidth));
+                    b5 = bottomFieldDataPointer+((fieldLine - 3) * (videoParameters.fieldWidth));
+                    b6 = bottomFieldDataPointer+((fieldLine + 3) * (videoParameters.fieldWidth));
                 }
 
                 for (qint32 i = videoParameters.colourBurstStart; i < videoParameters.fieldWidth; i++) {
