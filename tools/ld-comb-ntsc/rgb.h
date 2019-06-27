@@ -45,8 +45,17 @@ private:
     bool whitePoint75;
     bool blackAndWhite;
 
-    double clamp(double v, double low, double high);
     double scaleY(double level);
 };
+
+// Clamp a value to within a fixed range.
+// (Equivalent to C++17's std::clamp.)
+template <typename T>
+static inline const T& clamp(const T& v, const T& low, const T& high)
+{
+    if (v < low) return low;
+    else if (v > high) return high;
+    else return v;
+}
 
 #endif // RGB_H

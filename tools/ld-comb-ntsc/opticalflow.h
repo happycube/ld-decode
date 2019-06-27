@@ -34,6 +34,7 @@
 #include <opencv2/core/core.hpp>
 #include <opencv2/video/tracking.hpp>
 
+#include "rgb.h"
 #include "yiqbuffer.h"
 
 class OpticalFlow
@@ -54,7 +55,6 @@ private:
     qint32 framesProcessed;
 
     cv::Mat convertYtoMat(YiqBuffer yiqBuffer);
-    qreal clamp(qreal v, qreal low, qreal high);
     qreal calculateDistance(qreal yDifference, qreal xDifference);
 };
 

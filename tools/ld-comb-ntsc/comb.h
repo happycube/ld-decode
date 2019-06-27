@@ -133,9 +133,6 @@ private:
     QByteArray yiqToRgbFrame(YiqBuffer yiqBuffer, qreal burstLevel);
     void overlayOpticalFlowMap(FrameBuffer frameBuffer, QByteArray &rgbOutputFrame);
     void adjustY(FrameBuffer *frameBuffer, YiqBuffer &yiqBuffer);
-
-    qreal clamp(qreal v, qreal low, qreal high);
-    qreal atan2deg(qreal y, qreal x);
 };
 
 #endif // COMB_H

@@ -274,8 +274,8 @@ void Comb::split2D(FrameBuffer *frameBuffer)
                 kn /= 2;
 
                 qreal p_2drange = 45 * irescale;
-                kp = clamp(1 - (kp / p_2drange), 0, 1);
-                kn = clamp(1 - (kn / p_2drange), 0, 1);
+                kp = clamp(1 - (kp / p_2drange), 0.0, 1.0);
+                kn = clamp(1 - (kn / p_2drange), 0.0, 1.0);
 
                 qreal sc = 1.0;
 
@@ -562,18 +562,4 @@ void Comb::adjustY(FrameBuffer *frameBuffer, YiqBuffer &yiqBuffer)
             yiqBuffer[lineNumber][h + 0] = y;
         }
     }
-}
-
-qreal Comb::clamp(qreal v, qreal low, qreal high)
-{
-        if (v < low) return low;
-        else if (v > high) return high;
-        else return v;
-}
-
-qreal Comb::atan2deg(qreal y, qreal x)
-{
-    qreal rv = static_cast<double>(atan2(static_cast<long double>(y), x) * (180 / M_PIl));
-    if (rv < 0) rv += 360;
-    return rv;
 }

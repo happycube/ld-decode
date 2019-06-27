@@ -70,19 +70,12 @@ void RGB::conv(YIQ _y, qreal colourBurstMedian)
     g = y - (0.272 * i) - (0.647 * q);
     b = y - (1.107 * i) + (1.704 * q);
 
-    r = clamp(r, 0, 65535);
-    g = clamp(g, 0, 65535);
-    b = clamp(b, 0, 65535);
+    r = clamp(r, 0.0, 65535.0);
+    g = clamp(g, 0.0, 65535.0);
+    b = clamp(b, 0.0, 65535.0);
 }
 
 // Private methods ----------------------------------------------------------------------------------------------------
-
-double RGB::clamp(double v, double low, double high)
-{
-        if (v < low) return low;
-        else if (v > high) return high;
-        else return v;
-}
 
 double RGB::scaleY(double level)
 {
