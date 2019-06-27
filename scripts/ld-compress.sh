@@ -26,7 +26,7 @@ done
 shift $(( OPTIND - 1 ))
 
 # Check if input files have been entered, and if so, process according to the selected mode.
-if [ -z "$@" ]
+if [[ $# < 1 ]]
 then
   help_msg ; exit
 else
