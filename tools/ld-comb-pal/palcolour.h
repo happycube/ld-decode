@@ -54,12 +54,8 @@ private:
     double sine[MAX_WIDTH], cosine[MAX_WIDTH];    // formerly short int
     static const int32_t arraySize = 14; // 'a' is the array-size, corresponding to at least half the filter-width, and should be at least Fsampling(max supported by build)/colourfilterBandwidth(min supported by build)
     //  'a' must be greater than or equal to the bigger of 'ca' and 'ya' above
-    double cfilt0[arraySize + 1];
-    double cfilt1[arraySize + 1];
-    double cfilt2[arraySize + 1];
-    double cfilt3[arraySize + 1];
-    double yfilt0[arraySize + 1];
-    double yfilt2[arraySize + 1];
+    double cfilt[arraySize + 1][4];
+    double yfilt[arraySize + 1][2];
 
     double cdiv;
     double ydiv;
