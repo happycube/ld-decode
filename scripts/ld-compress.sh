@@ -35,6 +35,7 @@ else
     help_msg
     >&2 echo Error: Incompatible options. ; exit
   else
+    trap exit SIGINT SIGTERM #Exit on ctrl-c
     if [[ "$comp" == true ]] # Perform compression
     then
       for f in "$@" ; do
