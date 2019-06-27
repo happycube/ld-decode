@@ -33,16 +33,16 @@ else
   if (($modeselection > 1)) # more than a single mode is selected
   then
     help_msg
-    echo Error: Incompatible options. ; exit
+    >&2 echo Error: Incompatible options. ; exit
   else
     if [[ "$comp" == true ]] # Perform compression
     then
       for f in "$@" ; do
         if [[ "$f" == *.lds ]]
         then
-          echo Compressing \'"$f"\' && ${fileinput_method} "$f" | ld-lds-converter -u |  ffmpeg -hide_banner -loglevel error -f s16le -ar 40k -ac 1 -i - -acodec flac -compression_level 11 "$(basename "$f" .lds).raw.oga"
+          >&2 echo Compressing \'"$f"\' && ${fileinput_method} "$f" | ld-lds-converter -u |  ffmpeg -hide_banner -loglevel error -f s16le -ar 40k -ac 1 -i - -acodec flac -compression_level 11 "$(basename "$f" .lds).raw.oga"
         else
-          echo Error: \'"$f"\' does not appear to be a .lds file. Skipping.
+          >&2 echo Error: \'"$f"\' does not appear to be a .lds file. Skipping.
         fi
       done
     fi
@@ -51,9 +51,9 @@ else
       for f in "$@" ; do
         if [[ "$f" == *.raw.oga ]]
         then
-          echo Uncompressing \'"$f"\' && ${fileinput_method} "$f" | ffmpeg -hide_banner -loglevel error -i - -f s16le -c:a pcm_s16le - | ld-lds-converter -p -o "$(basename "$f" .raw.oga).lds"
+         >&2 echo Uncompressing \'"$f"\' && ${fileinput_method} "$f" | ffmpeg -hide_banner -loglevel error -i - -f s16le -c:a pcm_s16le - | ld-lds-converter -p -o "$(basename "$f" .raw.oga).lds"
         else
-          echo Error: \'"$f"\' does not appear to be a .raw.oga file. Skipping.
+         >&2 echo Error: \'"$f"\' does not appear to be a .raw.oga file. Skipping.
         fi
       done
     fi
@@ -65,9 +65,9 @@ else
       then
         >&2 echo "Performing checksum of" \'"$f"\': && ${fileinput_method} "$f" | ffmpeg -hide_banner -loglevel error -i - -f s16le -c:a pcm_s16le - | ld-lds-converter -p | openssl dgst -md5 | echo $(awk '{print $2}') " ${f%.raw.oga}.lds"
       else
-        echo Error: \'"$f"\' does not appear to be a .raw.oga file. Skipping.
+        >&2 echo Error: \'"$f"\' does not appear to be a .raw.oga file. Skipping.
       fi
     done
   fi
-  echo "Task complete."
+  >&2 echo "Task complete."
 fi
