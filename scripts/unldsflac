@@ -1,0 +1,14 @@
+#!/bin/bash
+# This script accepts one or more .raw.oga files and uncompresses them to .lds files in the current directory.
+# Syntax: 
+# unldsflac file1 file2 file3 ...
+# unldsflac path/to/FLACed/*.raw.oga
+
+for f in "$@" ; do
+	if [[ "$f" == *.raw.oga ]]
+	then
+	echo "$f" && ffmpeg -i "$f" -f s16le -c:a pcm_s16le - | ld-lds-converter -p -o "$(basename "$f" .raw.oga).lds" 
+	else
+	echo Error: \'"$f"\' does not appear to be a .raw.oga file. Skipping.
+	fi
+done
