@@ -1,0 +1,14 @@
+#!/bin/bash
+# This script accepts one or more .lds files and compresses them to .raw.oga files in the current directory.
+# Syntax: 
+# ldsflac file1 file2 file3 ...
+# ldsflac path/to/LDSes/*.lds
+
+for f in "$@" ; do
+	if [[ "$f" == *.lds ]]
+	then
+	echo "$f" && ld-lds-converter -u -i "$f" |  ffmpeg -f s16le -ar 40k -ac 1 -i - -compression_level 11 "$(basename "$f" .lds).raw.oga"
+	else
+	echo Error: \'"$f"\' does not appear to be a .lds file. Skipping.
+	fi
+done
