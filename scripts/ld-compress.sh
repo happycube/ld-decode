@@ -64,11 +64,14 @@ else
     for f in "$@" ; do
       if [[ "$f" == *.raw.oga ]]
       then
-        >&2 echo "Performing checksum of" \'"$f"\': && ${fileinput_method} "$f" | ffmpeg -hide_banner -loglevel error -i - -f s16le -c:a pcm_s16le - | ld-lds-converter -p | openssl dgst -md5 | echo $(awk '{print $2}') " ${f%.raw.oga}.lds"
+        sleep 1 # Give any previous interation a second to output.
+        >&2 echo "Performing checksum of" \'"$f"\': && ${fileinput_method} "$f" | tee >(openssl dgst -md5 | echo $(awk '{print $2}') " $f") >(ffmpeg -hide_banner -loglevel error -i - -f s16le -c:a pcm_s16le - | ld-lds-converter -p | openssl dgst -md5 | echo $(awk '{print $2}') " ${f%.raw.oga}.lds") > /dev/null
       else
+        sleep 1
         >&2 echo Error: \'"$f"\' does not appear to be a .raw.oga file. Skipping.
       fi
     done
   fi
+  sleep 1
   >&2 echo "Task complete."
 fi
