@@ -8,7 +8,7 @@ fileinput_method=cat
 
 
 help_msg () {
-  echo "Usage: $0 [-c] [-u] [-v] [-p] [-h] file(s)"; printf -- "\nModes:\n-c Compress (default): Takes one or more .lds files and compresses them to .raw.oga files in the current directory.\n-u Uncompress: Takes one or more .raw.oga files and uncompresses them to .lds files in the current directory.\n-v Verify: Takes one or more .raw.oga files and returns the md5 checksum(s) of the contained .lds for verification.\n\nOptions\n-p Progress: displays progress bars - requires pv to be installed.\n-h Help: This dialog.\n\n"
+  echo "Usage: $0 [-c] [-u] [-v] [-p] [-h] file(s)"; printf -- "\nModes:\n-c Compress (default): Takes one or more .lds files and compresses them to .raw.oga files in the current directory.\n-u Uncompress: Takes one or more .raw.oga files and uncompresses them to .lds files in the current directory.\n-v Verify: Returns md5 checksums of the given .raw.oga files and their contained .lds files for verification purposes.\n\nOptions\n-p Progress: displays progress bars - requires pv to be installed.\n-h Help: This dialog.\n\n"
 }
 
 while getopts ":hcuvp" option; do
@@ -64,11 +64,14 @@ else
     for f in "$@" ; do
       if [[ "$f" == *.raw.oga ]]
       then
-        >&2 echo "Performing checksum of" \'"$f"\': && ${fileinput_method} "$f" | ffmpeg -hide_banner -loglevel error -i - -f s16le -c:a pcm_s16le - | ld-lds-converter -p | openssl dgst -md5 | echo $(awk '{print $2}') " ${f%.raw.oga}.lds"
+        sleep 1 # Give any previous interation a second to output.
+        >&2 echo "Performing checksum of" \'"$f"\': && ${fileinput_method} "$f" | tee >(openssl dgst -md5 | echo $(awk '{print $2}') " $f") >(ffmpeg -hide_banner -loglevel error -i - -f s16le -c:a pcm_s16le - | ld-lds-converter -p | openssl dgst -md5 | echo $(awk '{print $2}') " ${f%.raw.oga}.lds") > /dev/null
       else
+        sleep 1
         >&2 echo Error: \'"$f"\' does not appear to be a .raw.oga file. Skipping.
       fi
     done
   fi
+  sleep 1
   >&2 echo "Task complete."
 fi
