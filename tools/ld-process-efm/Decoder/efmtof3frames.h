@@ -46,6 +46,7 @@ public:
     void reset(void);
     void reportStatus(void);
     QVector<F3Frame> convert(QByteArray efmDataIn);
+    bool isF2FlushRequired(void);
 
     void resetStatistics(void);
     Statistics getStatistics(void);
@@ -78,6 +79,7 @@ private:
     qint32 endSyncTransition;
 
     bool firstF3AfterInitialSync;
+    bool f2FlushRequiredFlag;
 
     StateMachine sm_state_initial(void);
     StateMachine sm_state_findInitialSyncStage1(void);

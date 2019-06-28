@@ -177,7 +177,7 @@ F3ToSections::StateMachine F3ToSections::sm_state_getInitialSection(void)
         Section newSubcodeBlock;
         if (!newSubcodeBlock.setData(sectionBuffer)) {
             // Q decode failed (bad CRC?)
-            qDebug() << "F3ToSections::sm_state_getInitialSection(): Unable to get section Q mode (corrupt)";
+            qDebug() << "F3ToSections::sm_state_getInitialSection(): Got section, but Q mode was corrupt";
         }
         sections.append(newSubcodeBlock);
         totalSections++;
@@ -234,7 +234,7 @@ F3ToSections::StateMachine F3ToSections::sm_state_getNextSection(void)
         Section newSubcodeBlock;
         if (!newSubcodeBlock.setData(sectionBuffer)) {
             // Q decode failed (bad CRC?)
-            qDebug() << "F3ToSections::sm_state_getNextSection(): Unable to get section Q mode (corrupt)";
+            qDebug() << "F3ToSections::sm_state_getNextSection(): Got section, but Q mode was corrupt";
         }
 
         sections.append(newSubcodeBlock);

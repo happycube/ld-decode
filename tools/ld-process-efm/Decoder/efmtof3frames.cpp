@@ -38,6 +38,7 @@ void EfmToF3Frames::reset(void)
     nextState = currentState;
     waitingForData = false;
     firstF3AfterInitialSync = false;
+    f2FlushRequiredFlag = false;
     poorSyncCount = 0;
     endSyncTransition = 0;
 
@@ -111,6 +112,13 @@ QVector<F3Frame> EfmToF3Frames::convert(QByteArray efmDataIn)
     }
 
     return f3Frames;
+}
+
+bool EfmToF3Frames::isF2FlushRequired(void)
+{
+    bool returnValue = f2FlushRequiredFlag;
+    f2FlushRequiredFlag = false;
+    return returnValue;
 }
 
 EfmToF3Frames::StateMachine EfmToF3Frames::sm_state_initial(void)
@@ -279,6 +287,7 @@ EfmToF3Frames::StateMachine EfmToF3Frames::sm_state_findSecondSync(void)
 EfmToF3Frames::StateMachine EfmToF3Frames::sm_state_syncLost(void)
 {
     qDebug() << "EfmToF3Frames::sm_state_syncLost(): F3 Sync was completely lost!";
+    f2FlushRequiredFlag = true;
     statistics.syncLoss++;
     return state_findInitialSyncStage1;
 }

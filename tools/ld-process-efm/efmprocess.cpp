@@ -189,14 +189,15 @@ void EfmProcess::run()
         qint32 lastPercent = 0;
 
         QByteArray efmBuffer;
-        bool processingComplete = false;
+        bool processingBuffersEmpty = false;
 
-        while((efmBuffer.size() > 0 || !processingComplete) && !cancel) {
+        while((efmBuffer.size() > 0 || !processingBuffersEmpty) && !cancel) {
             efmBuffer = readEfmData();
             inputBytesProcessed += efmBuffer.size();
 
             // Convert the EFM buffer data into F3 frames
             QVector<F3Frame> f3Frames = efmToF3Frames.convert(efmBuffer);
+            if (efmToF3Frames.isF2FlushRequired()) f3ToF2Frames.flush();
 
             // Convert the F3 frames into subcode sections
             QVector<Section> sections = f3ToSections.convert(f3Frames);
@@ -225,13 +226,12 @@ void EfmProcess::run()
                 //sectorsToMeta.process(sectors);
             }
 
-            // Check for completion
-            if (f3Frames.isEmpty() && sections.isEmpty() && f2Frames.isEmpty() && f1Frames.isEmpty()) processingComplete = true;
-            else processingComplete = false;
+            // Check if the processing buffers are empty
+            if (f3Frames.isEmpty() && sections.isEmpty() && f2Frames.isEmpty() && f1Frames.isEmpty()) processingBuffersEmpty = true;
+            else processingBuffersEmpty = false;
 
             // Show EFM processing progress update to user
             if (efmBuffer.isEmpty()) qDebug() << "EfmProcess::run(): EFM input buffer is empty";
-            if (processingComplete) qDebug() << "EfmProcess:run(): Processing is flagged as complete";
 
             qreal percent = (100.0 / static_cast<qreal>(inputFileSize)) * static_cast<qreal>(inputBytesProcessed);
             if (static_cast<qint32>(percent) > lastPercent) {

@@ -37,6 +37,8 @@ void F3ToF2Frames::reset(void)
     c2Circ.reset();
     c2Deinterleave.reset();
 
+    waitingForSubcodeSync = true;
+
     resetStatistics();
 }
 
@@ -78,6 +80,8 @@ void F3ToF2Frames::flush(void)
     c2Circ.flush();
     c2Deinterleave.flush();
 
+    waitingForSubcodeSync = true;
+
     qDebug() << "F3ToF2Frames::flush(): Delay buffers flushed";
 }
 
@@ -89,37 +93,49 @@ QVector<F2Frame> F3ToF2Frames::convert(QVector<F3Frame> f3Frames)
 
     // Process the F3 frames
     for (qint32 i = 0; i < f3Frames.size(); i++) {
-        // Process C1 CIRC
-        c1Circ.pushF3Frame(f3Frames[i]);
+        bool skipFrame = false;
+        if (waitingForSubcodeSync) {
+            // Is the F3 frame the beginning of a section?
+            if (!f3Frames[i].isSubcodeSync0()) skipFrame = true;
+            else {
+                qDebug() << "F3ToF2Frames::convert(): Got subcode to F2 frame sync";
+                waitingForSubcodeSync = false;
+            }
+        }
 
-        // Get C1 results (if available)
-        QByteArray c1DataSymbols = c1Circ.getDataSymbols();
-        QByteArray c1ErrorSymbols = c1Circ.getErrorSymbols();
+        if (!skipFrame) {
+            // Process C1 CIRC
+            c1Circ.pushF3Frame(f3Frames[i]);
 
-        // If we have C1 results, process C2
-        if (!c1DataSymbols.isEmpty()) {
-            // Process C2 CIRC
-            c2Circ.pushC1(c1DataSymbols, c1ErrorSymbols);
+            // Get C1 results (if available)
+            QByteArray c1DataSymbols = c1Circ.getDataSymbols();
+            QByteArray c1ErrorSymbols = c1Circ.getErrorSymbols();
 
-            // Get C2 results (if available)
-            QByteArray c2DataSymbols = c2Circ.getDataSymbols();
-            QByteArray c2ErrorSymbols = c2Circ.getErrorSymbols();
-            bool c2DataValid = c2Circ.getDataValid();
+            // If we have C1 results, process C2
+            if (!c1DataSymbols.isEmpty()) {
+                // Process C2 CIRC
+                c2Circ.pushC1(c1DataSymbols, c1ErrorSymbols);
 
-            // Only process the F2 frames if we received data
-            if (!c2DataSymbols.isEmpty()) {
-                // Deinterleave the C2
-                c2Deinterleave.pushC2(c2DataSymbols, c2ErrorSymbols, c2DataValid);
+                // Get C2 results (if available)
+                QByteArray c2DataSymbols = c2Circ.getDataSymbols();
+                QByteArray c2ErrorSymbols = c2Circ.getErrorSymbols();
+                bool c2DataValid = c2Circ.getDataValid();
 
-                QByteArray c2DeinterleavedData = c2Deinterleave.getDataSymbols();
-                QByteArray c2DeinterleavedErrors = c2Deinterleave.getErrorSymbols();
-                bool c2DeinterleavedDataValid = c2Deinterleave.getDataValid();
+                // Only process the F2 frames if we received data
+                if (!c2DataSymbols.isEmpty()) {
+                    // Deinterleave the C2
+                    c2Deinterleave.pushC2(c2DataSymbols, c2ErrorSymbols, c2DataValid);
 
-                // If we have deinterleaved C2s, create an F2 frame
-                if (!c2DeinterleavedData.isEmpty()) {
-                    F2Frame newF2Frame;
-                    newF2Frame.setData(c2DeinterleavedData, c2DeinterleavedErrors, c2DeinterleavedDataValid);
-                    f2Frames.append(newF2Frame);
+                    QByteArray c2DeinterleavedData = c2Deinterleave.getDataSymbols();
+                    QByteArray c2DeinterleavedErrors = c2Deinterleave.getErrorSymbols();
+                    bool c2DeinterleavedDataValid = c2Deinterleave.getDataValid();
+
+                    // If we have deinterleaved C2s, create an F2 frame
+                    if (!c2DeinterleavedData.isEmpty()) {
+                        F2Frame newF2Frame;
+                        newF2Frame.setData(c2DeinterleavedData, c2DeinterleavedErrors, c2DeinterleavedDataValid);
+                        f2Frames.append(newF2Frame);
+                    }
                 }
             }
         }

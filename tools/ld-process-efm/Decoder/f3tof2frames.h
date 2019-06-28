@@ -59,6 +59,8 @@ private:
     C2Circ c2Circ;
     C2Deinterleave c2Deinterleave;
 
+    bool waitingForSubcodeSync;
+
     Statistics statistics;
 };
 

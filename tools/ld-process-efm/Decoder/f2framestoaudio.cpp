@@ -137,7 +137,7 @@ void F2FramesToAudio::processAudio(void)
         // Get the required metadata for processing from the section
         Metadata metadata = sectionToMeta(sectionsIn[sectionNo]);
 
-        qDebug().noquote() << "F2FramesToAudio::processAudio(): Previous time" << previousDiscTime.getTimeAsQString() << "current time" << metadata.discTime.getTimeAsQString();
+        //qDebug().noquote() << "F2FramesToAudio::processAudio(): Previous time" << previousDiscTime.getTimeAsQString() << "current time" << metadata.discTime.getTimeAsQString();
 
         // Check if there was a gap since the last output samples (and fill it if
         // necessary)
