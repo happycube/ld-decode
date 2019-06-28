@@ -8,7 +8,7 @@ fileinput_method=cat
 
 
 help_msg () {
-  echo "Usage: $0 [-c] [-u] [-v] [-p] [-h] file(s)"; printf -- "\nModes:\n-c Compress (default): Takes one or more .lds files and compresses them to .raw.oga files in the current directory.\n-u Uncompress: Takes one or more .raw.oga files and uncompresses them to .lds files in the current directory.\n-v Verify: Takes one or more .raw.oga files and returns the md5 checksum(s) of the contained .lds for verification.\n\nOptions\n-p Progress: displays progress bars - requires pv to be installed.\n-h Help: This dialog.\n\n"
+  echo "Usage: $0 [-c] [-u] [-v] [-p] [-h] file(s)"; printf -- "\nModes:\n-c Compress (default): Takes one or more .lds files and compresses them to .raw.oga files in the current directory.\n-u Uncompress: Takes one or more .raw.oga files and uncompresses them to .lds files in the current directory.\n-v Verify: Returns md5 checksums of the given .raw.oga files and their contained .lds files for verification purposes.\n\nOptions\n-p Progress: displays progress bars - requires pv to be installed.\n-h Help: This dialog.\n\n"
 }
 
 while getopts ":hcuvp" option; do
