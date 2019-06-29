@@ -45,7 +45,7 @@ private:
     bool whitePoint75;
     bool blackAndWhite;
 
-    double scaleY(double level);
+    inline double scaleY(double level);
 };
 
 // Clamp a value to within a fixed range.

@@ -55,7 +55,7 @@ private:
     qint32 framesProcessed;
 
     cv::Mat convertYtoMat(const YiqBuffer &yiqBuffer);
-    qreal calculateDistance(qreal yDifference, qreal xDifference);
+    inline qreal calculateDistance(qreal yDifference, qreal xDifference);
 };
 
 #endif // OPTICALFLOW_H
