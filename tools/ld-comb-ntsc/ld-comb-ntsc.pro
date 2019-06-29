@@ -44,6 +44,7 @@ HEADERS += \
     rgb.h \
     yiq.h \
     filter.h \
+    iirfilter.h \
     ntscfilter.h \
     ../../deemp.h \
     opticalflow.h \

@@ -26,6 +26,8 @@
 #include "comb.h"
 #include "../../deemp.h"
 
+#include "iirfilter.h"
+
 // Public methods -----------------------------------------------------------------------------------------------------
 
 Comb::Comb() {
@@ -364,9 +366,13 @@ void Comb::splitIQ(FrameBuffer *frameBuffer)
 // Filter the IQ from the input YIQ buffer
 void Comb::filterIQ(YiqBuffer &yiqBuffer)
 {
+    IIRFilter<2, 2> f_i(c_colorlpi_b, c_colorlpi_a);
+    IIRFilter<2, 2> f_q(configuration.colorlpf_hq ? c_colorlpi_b : c_colorlpq_b,
+                        configuration.colorlpf_hq ? c_colorlpi_a : c_colorlpq_a);
+
     for (qint32 lineNumber = configuration.firstVisibleFrameLine; lineNumber < frameHeight; lineNumber++) {
-        Filter f_i(configuration.colorlpf_hq ? f_colorlpi : f_colorlpi);
-        Filter f_q(configuration.colorlpf_hq ? f_colorlpi : f_colorlpq);
+        f_i.clear();
+        f_q.clear();
 
         qint32 qoffset = 2; // f_colorlpf_hq ? f_colorlpi_offset : f_colorlpq_offset;
 
@@ -401,9 +407,8 @@ void Comb::doCNR(YiqBuffer &yiqBuffer)
 {
     if (configuration.cNRLevel == 0) return;
 
-    // f_nrc is a 24-tap FIR filter.
-    Filter f_hpi(f_nrc);
-    Filter f_hpq(f_nrc);
+    IIRFilter<17, 1> f_hpi(c_nrc_b, c_nrc_a);
+    IIRFilter<17, 1> f_hpq(c_nrc_b, c_nrc_a);
 
     // nr_c is the coring level
     qreal nr_c = configuration.cNRLevel * irescale;
@@ -412,6 +417,8 @@ void Comb::doCNR(YiqBuffer &yiqBuffer)
     hplinef.resize(configuration.fieldWidth + 32);
 
     for (qint32 lineNumber = configuration.firstVisibleFrameLine; lineNumber < frameHeight; lineNumber++) {
+        // Filters not cleared from previous line
+
         for (qint32 h = configuration.activeVideoStart; h <= configuration.activeVideoEnd; h++) {
             hplinef[h].i = f_hpi.feed(yiqBuffer[lineNumber][h].i);
             hplinef[h].q = f_hpq.feed(yiqBuffer[lineNumber][h].q);
@@ -440,7 +447,7 @@ void Comb::doYNR(YiqBuffer &yiqBuffer)
 {
     if (configuration.yNRLevel == 0) return;
 
-    Filter f_hpy(f_nr);
+    IIRFilter<25, 1> f_hpy(c_nr_b, c_nr_a);
 
     // nr_y is the coring level
     qreal nr_y = configuration.yNRLevel * irescale;
@@ -449,6 +456,8 @@ void Comb::doYNR(YiqBuffer &yiqBuffer)
     hplinef.resize(configuration.fieldWidth + 32);
 
     for (qint32 lineNumber = configuration.firstVisibleFrameLine; lineNumber < frameHeight; lineNumber++) {
+        // Filter not cleared from previous line
+
         for (qint32 h = configuration.activeVideoStart; h <= configuration.activeVideoEnd; h++) {
             hplinef[h].y = f_hpy.feed(yiqBuffer[lineNumber][h].y);
         }
