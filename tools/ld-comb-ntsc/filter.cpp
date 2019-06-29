@@ -25,6 +25,8 @@
 
 #include "filter.h"
 
+using std::vector;
+
 // Public methods -----------------------------------------------------------------------------------------------------
 
 Filter::Filter(int _order, const double *_a, const double *_b)
