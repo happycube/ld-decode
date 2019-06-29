@@ -35,7 +35,7 @@ public:
 
     YIQ(qreal _y = 0.0, qreal _i = 0.0, qreal _q = 0.0);
     YIQ operator*=(qreal x);
-    YIQ operator+=(YIQ p);
+    YIQ operator+=(const YIQ &p);
 
 private:
 

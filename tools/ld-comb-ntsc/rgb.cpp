@@ -33,7 +33,7 @@ RGB::RGB(double whiteIreParam, double blackIreParam, bool whitePoint100Param, bo
     blackAndWhite = blackAndWhiteParam; // true = output in black and white only
 }
 
-void RGB::conv(YIQ _y, qreal colourBurstMedian)
+void RGB::conv(const YIQ &_y, qreal colourBurstMedian)
 {
     double y = _y.y;
     double i = +(_y.i);

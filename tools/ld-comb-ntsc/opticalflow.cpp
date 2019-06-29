@@ -32,7 +32,7 @@ OpticalFlow::OpticalFlow()
 
 // Perform a dense optical flow analysis
 // Input is a vector of 16-bit Y values for the NTSC frame (910x525)
-void OpticalFlow::denseOpticalFlow(YiqBuffer yiqBuffer, QVector<qreal> &kValues)
+void OpticalFlow::denseOpticalFlow(const YiqBuffer &yiqBuffer, QVector<qreal> &kValues)
 {
     // Convert the buffer of Y values into an OpenCV n-dimensional dense array (cv::Mat)
     cv::Mat currentFrameGrey = convertYtoMat(yiqBuffer);
@@ -73,7 +73,7 @@ void OpticalFlow::denseOpticalFlow(YiqBuffer yiqBuffer, QVector<qreal> &kValues)
 }
 
 // Method to convert a qreal vector frame of Y values to an OpenCV n-dimensional dense array (cv::Mat)
-cv::Mat OpticalFlow::convertYtoMat(YiqBuffer yiqBuffer)
+cv::Mat OpticalFlow::convertYtoMat(const YiqBuffer &yiqBuffer)
 {
     quint16 frame[910 * 525];
     memset(frame, 0, sizeof(frame));

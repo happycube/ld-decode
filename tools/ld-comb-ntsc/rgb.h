@@ -37,7 +37,7 @@ public:
     double r, g, b;
     RGB(double whiteIreParam, double blackIreParam, bool whitePoint100Param, bool blackAndWhiteParam);
 
-    void conv(YIQ _y, qreal colourBurstMedian);
+    void conv(const YIQ &_y, qreal colourBurstMedian);
 
 private:
     double blackIreLevel;

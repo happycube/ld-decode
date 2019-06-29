@@ -68,7 +68,7 @@ Comb::Configuration Comb::getConfiguration(void)
 }
 
 // Set the comb filter configuration parameters
-void Comb::setConfiguration(Comb::Configuration configurationParam)
+void Comb::setConfiguration(const Comb::Configuration &configurationParam)
 {
     // Range check the frame dimensions
     if (configuration.fieldWidth > 910) qCritical() << "Comb::Comb(): Frame width exceeds allowed maximum!";
@@ -466,7 +466,7 @@ void Comb::doYNR(YiqBuffer &yiqBuffer)
 }
 
 // Convert buffer from YIQ to RGB 16-16-16
-QByteArray Comb::yiqToRgbFrame(YiqBuffer yiqBuffer, qreal burstLevel)
+QByteArray Comb::yiqToRgbFrame(const YiqBuffer &yiqBuffer, qreal burstLevel)
 {
     QByteArray rgbOutputFrame;
     rgbOutputFrame.resize((configuration.fieldWidth * frameHeight * 3) * 2); // * 3 * 2 for RGB 16-16-16)
@@ -505,7 +505,7 @@ QByteArray Comb::yiqToRgbFrame(YiqBuffer yiqBuffer, qreal burstLevel)
 }
 
 // Convert buffer from YIQ to RGB
-void Comb::overlayOpticalFlowMap(FrameBuffer frameBuffer, QByteArray &rgbFrame)
+void Comb::overlayOpticalFlowMap(const FrameBuffer &frameBuffer, QByteArray &rgbFrame)
 {
     qDebug() << "Comb::overlayOpticalFlowMap(): Overlaying optical flow map onto RGB output";
 //    QVector<qreal> motionKMap;

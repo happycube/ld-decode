@@ -47,14 +47,14 @@ public:
         YIQ pixel[911]; // One line of YIQ data
     };
 
-    void denseOpticalFlow(YiqBuffer yiqBuffer, QVector<qreal> &kValues);
+    void denseOpticalFlow(const YiqBuffer &yiqBuffer, QVector<qreal> &kValues);
 
 private:
     // Globals used by the opticalFlow3D method
     cv::Mat previousFrameGrey;
     qint32 framesProcessed;
 
-    cv::Mat convertYtoMat(YiqBuffer yiqBuffer);
+    cv::Mat convertYtoMat(const YiqBuffer &yiqBuffer);
     qreal calculateDistance(qreal yDifference, qreal xDifference);
 };
 

@@ -37,7 +37,7 @@ class Filter
 {
 public:
     Filter(int _order, const double *_a, const double *_b);
-    Filter(vector<double> _b, vector<double> _a);
+    Filter(const vector<double> &_b, const vector<double> &_a);
     Filter(Filter *orig);
     void clear(double val = 0);
     void dump();
