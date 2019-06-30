@@ -63,6 +63,7 @@ public:
     void stopProcessing(void);
     Statistics getStatistics(void);
     void reportStatistics(void);
+    void reset(void);
 
 private:
     bool debugOn;

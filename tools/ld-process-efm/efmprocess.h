@@ -58,6 +58,7 @@ public:
     void stopProcessing();
     void quit();
     Statistics getStatistics(void);
+    void reset(void);
 
 signals:
     void processingComplete(bool audioAvailable, bool dataAvailable);
@@ -72,6 +73,12 @@ private:
     bool restart;
     bool cancel;
     bool abort;
+
+    // Class globals
+    EfmToF3Frames efmToF3Frames;
+    SyncF3Frames syncF3Frames;
+    F3ToF2Frames f3ToF2Frames;
+    F2FramesToAudio f2FramesToAudio;
 
     Statistics statistics;
 

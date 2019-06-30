@@ -36,8 +36,8 @@ void F2FramesToAudio::startProcessing(QFile *inputFileHandle, QFile *outputFileH
 {
     abort = false;
 
-    // Clear the statistic counters
-    clearStatistics();
+    // Reset the object
+    reset();
 
     // Define an input data stream
     QDataStream inputDataStream(inputFileHandle);
@@ -139,6 +139,11 @@ void F2FramesToAudio::reportStatistics(void)
     sampleLength.addFrames(sampleFrameLength);
     qInfo().noquote() << "      Sample duration:" << sampleLength.getTimeAsQString();
     qInfo().noquote() << "  Sample frame length:" << sampleFrameLength << "(" << sampleFrameLength / 75.0 << "seconds )";
+}
+
+void F2FramesToAudio::reset(void)
+{
+    clearStatistics();
 }
 
 // Private methods ----------------------------------------------------------------------------------------------------

@@ -82,7 +82,21 @@ void EfmProcess::quit()
 // Return statistics about the decoding process
 EfmProcess::Statistics EfmProcess::getStatistics(void)
 {
+    // Gather statistics
+    statistics.f3ToF2Frames = f3ToF2Frames.getStatistics();
+    statistics.syncF3Frames = syncF3Frames.getStatistics();
+    statistics.efmToF3Frames = efmToF3Frames.getStatistics();
+    statistics.f2FramesToAudio = f2FramesToAudio.getStatistics();
+
     return statistics;
+}
+
+void EfmProcess::reset(void)
+{
+    efmToF3Frames.reset();
+    syncF3Frames.reset();
+    f3ToF2Frames.reset();
+    f2FramesToAudio.reset();
 }
 
 // Primary processing loop for the thread
@@ -94,6 +108,7 @@ void EfmProcess::run()
         qDebug() << "EfmProcess::run(): Thread wake up on restart";
         bool audioAvailable = false;
         bool dataAvailable = false;
+        reset();
 
         // Lock and copy all parameters to 'thread-safe' variables
         mutex.lock();
@@ -148,25 +163,21 @@ void EfmProcess::run()
         if (readyToProcess) {
             // Perform EFM T-values to F3 frames decode
             qDebug() << "EfmProcess::run(): Performing EFM T-values to F3 frames decode";
-            EfmToF3Frames efmToF3Frames;
             efmTValuesInputFileHandle.seek(0);
             efmToF3Frames.startProcessing(&efmTValuesInputFileHandle, &f3FramesOutputFileHandle);
 
             // Synchronise F3 Frames
             qDebug() << "EfmProcess::run(): Performing synchronisation of F3 frames";
-            SyncF3Frames syncF3Frames;
             f3FramesOutputFileHandle.seek(0);
             syncF3Frames.startProcessing(&f3FramesOutputFileHandle, &syncF3FramesOutputFileHandle);
 
             // Decode synchronised F3 frames into F2 frames
             qDebug() << "EfmProcess::run(): Performing decode of synchronised F3 frames into F2 frames";
-            F3ToF2Frames f3ToF2Frames;
             syncF3FramesOutputFileHandle.seek(0);
             f3ToF2Frames.startProcessing(&syncF3FramesOutputFileHandle, &f2FramesOutputFileHandle);
 
             // Decode F2 frames into audio sample data
             qDebug() << "EfmProcess::run(): Performing decode of F2 frames into audio samples";
-            F2FramesToAudio f2FramesToAudio;
             f2FramesOutputFileHandle.seek(0);
             f2FramesToAudio.startProcessing(&f2FramesOutputFileHandle, audioOutputFileHandleTs);
 

@@ -88,6 +88,8 @@ void MainWindow::guiNoEfmFileLoaded(void)
 
     // Clear the input EFM file filename
     currentInputEfmFileAndPath.clear();
+
+    resetStatistics();
 }
 
 // EFM file loaded GUI update
@@ -102,6 +104,8 @@ void MainWindow::guiEfmFileLoaded(void)
     // Set the main window title
     QFileInfo fileInfo(currentInputEfmFileAndPath);
     this->setWindowTitle(tr("ld-process-efm - ") + fileInfo.fileName());
+
+    resetStatistics();
 }
 
 // Start processing the EFM file GUI update
@@ -134,6 +138,9 @@ void MainWindow::resetStatistics(void)
     // Progress bar
     ui->progressBar->setValue(0);
 
+    TrackTime dummyTime;
+    dummyTime.setTime(0, 0, 0);
+
     // EFM tab
     ui->efm_validSyncs_label->setText(tr("0"));
     ui->efm_overshootSyncs_label->setText(tr("0"));
@@ -161,8 +168,8 @@ void MainWindow::resetStatistics(void)
     ui->f2_f3ToF2_totalOutputF2Frames_label->setText(tr("0"));
     ui->f2_f3ToF2_f3SequenceInterruptions_label->setText(tr("0"));
     ui->f2_f3ToF2_missingF3Frames_label->setText(tr("0"));
-    ui->f2_f3ToF2_initialDiscTime_label->setText(tr("0"));
-    ui->f2_f3ToF2_currentDiscTime_label->setText(tr("0"));
+    ui->f2_f3ToF2_initialDiscTime_label->setText(dummyTime.getTimeAsQString());
+    ui->f2_f3ToF2_currentDiscTime_label->setText(dummyTime.getTimeAsQString());
 
     // == C1
     ui->f2_c1_totalC1sProcessed_label->setText(tr("0"));
@@ -190,14 +197,11 @@ void MainWindow::resetStatistics(void)
     ui->audio_missingSamples_label->setText(tr("0"));
     ui->audio_totalSamples_label->setText(tr("0"));
 
-    ui->audio_sampleStartTime_label->setText(tr("0"));
-    ui->audio_sampleCurrentTime_label->setText(tr("0"));
-    ui->audio_sampleDuration_label->setText(tr("0"));
+    ui->audio_sampleStartTime_label->setText(dummyTime.getTimeAsQString());
+    ui->audio_sampleCurrentTime_label->setText(dummyTime.getTimeAsQString());
+    ui->audio_sampleDuration_label->setText(dummyTime.getTimeAsQString());
     ui->audio_sampleFrameLength_label->setText(tr("0"));
     ui->audio_sampleDurationSeconds_label->setText(tr("0"));
-
-    // Select the audio tab as default
-    ui->audioTab->show();
 }
 
 // Update statistics
@@ -230,7 +234,7 @@ void MainWindow::updateStatistics(void)
     ui->f3_totalInputF3Frames_label->setText(QString::number(statistics.syncF3Frames.totalF3Frames));
     ui->f3_discardedFrames_label->setText(QString::number(statistics.syncF3Frames.discardedFrames));
     ui->f3_totalValidSections_label->setText(QString::number(statistics.syncF3Frames.totalSections));
-    ui->f3_totalValidF3Frames_label->setText(QString::number(statistics.syncF3Frames.totalF3Frames + statistics.syncF3Frames.discardedFrames));
+    ui->f3_totalValidF3Frames_label->setText(QString::number(statistics.syncF3Frames.totalSections * 98));
 
     // F2 tab
     // == F3 to F2
@@ -243,16 +247,20 @@ void MainWindow::updateStatistics(void)
 
     // == C1
     ui->f2_c1_totalC1sProcessed_label->setText(QString::number(statistics.f3ToF2Frames.c1Circ_statistics.c1Passed +
-                                                               statistics.f3ToF2Frames.c1Circ_statistics.c1Failed));
-    ui->f2_c1_validC1s_label->setText(QString::number(statistics.f3ToF2Frames.c1Circ_statistics.c1Passed));
+                                                               statistics.f3ToF2Frames.c1Circ_statistics.c1Failed +
+                                                               statistics.f3ToF2Frames.c1Circ_statistics.c1Corrected));
+    ui->f2_c1_validC1s_label->setText(QString::number(statistics.f3ToF2Frames.c1Circ_statistics.c1Passed +
+                                                      statistics.f3ToF2Frames.c1Circ_statistics.c1Corrected));
     ui->f2_c1_invalidC1s_label->setText(QString::number(statistics.f3ToF2Frames.c1Circ_statistics.c1Failed));
     ui->f2_c1_c1sCorrected_label->setText(QString::number(statistics.f3ToF2Frames.c1Circ_statistics.c1Corrected));
     ui->f2_c1_delayBufferFlushes_label->setText(QString::number(statistics.f3ToF2Frames.c1Circ_statistics.c1flushed));
 
     // == C2
     ui->f2_c2_totalC2sProcessed_label->setText(QString::number(statistics.f3ToF2Frames.c2Circ_statistics.c2Passed +
-                                                               statistics.f3ToF2Frames.c2Circ_statistics.c2Failed));
-    ui->f2_c2_validC2s_label->setText(QString::number(statistics.f3ToF2Frames.c2Circ_statistics.c2Passed));
+                                                               statistics.f3ToF2Frames.c2Circ_statistics.c2Failed +
+                                                               statistics.f3ToF2Frames.c2Circ_statistics.c2Corrected));
+    ui->f2_c2_validC2s_label->setText(QString::number(statistics.f3ToF2Frames.c2Circ_statistics.c2Passed +
+                                                      statistics.f3ToF2Frames.c2Circ_statistics.c2Corrected));
     ui->f2_c2_invalidC2s_label->setText(QString::number(statistics.f3ToF2Frames.c2Circ_statistics.c2Failed));
     ui->f2_c2_c2sCorrected_label->setText(QString::number(statistics.f3ToF2Frames.c2Circ_statistics.c2Corrected));
     ui->f2_c2_delayBufferFlushes_label->setText(QString::number(statistics.f3ToF2Frames.c2Circ_statistics.c2flushed));

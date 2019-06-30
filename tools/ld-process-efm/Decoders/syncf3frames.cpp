@@ -48,10 +48,11 @@ void SyncF3Frames::startProcessing(QFile *inputFileHandle, QFile *outputFileHand
 {
     abort = false;
 
-    // Clear the statistic counters
-    clearStatistics();
+    // Reset the object
+    reset();
 
     // Initialise the state-machine
+    f3FrameBuffer.clear();
     currentState = state_initial;
     nextState = currentState;
     waitingForData = false;
@@ -115,6 +116,11 @@ void SyncF3Frames::reportStatistics(void)
     qInfo() << "   Total input F3 Frames:" << statistics.totalF3Frames;
     qInfo() << "        Discarded Frames:" << statistics.discardedFrames;
     qInfo() << "    Total valid sections:" << statistics.totalSections << "(" << statistics.totalSections * 98 << "F3 Frames )";
+}
+
+void SyncF3Frames::reset(void)
+{
+    clearStatistics();
 }
 
 // Private methods ----------------------------------------------------------------------------------------------------

@@ -36,8 +36,8 @@ void F3ToF2Frames::startProcessing(QFile *inputFileHandle, QFile *outputFileHand
 {
     abort = false;
 
-    // Clear the statistic counters
-    clearStatistics();
+    // Reset the object
+    reset();
 
     // Define an input data stream
     QDataStream inputDataStream(inputFileHandle);
@@ -265,6 +265,15 @@ void F3ToF2Frames::reportStatistics(void)
 
     // Show C2 Deinterleave statistics
     c2Deinterleave.reportStatistics();
+}
+
+// Method to reset the object
+void F3ToF2Frames::reset(void)
+{
+    c1Circ.reset();
+    c2Circ.reset();
+    c2Deinterleave.reset();
+    clearStatistics();
 }
 
 // Private methods ----------------------------------------------------------------------------------------------------

@@ -36,10 +36,11 @@ void EfmToF3Frames::startProcessing(QFile *inputFileHandle, QFile *outputFileHan
 {
     abort = false;
 
-    // Clear the statistic counters
-    clearStatistics();
+    // Reset the object
+    reset();
 
     // Initialise the state-machine
+    efmDataBuffer.clear();
     currentState = state_initial;
     nextState = currentState;
     waitingForData = false;
@@ -124,6 +125,11 @@ void EfmToF3Frames::reportStatistics(void)
     qInfo() << "   Overshoot frames:" << statistics.overshootFrames;
     qInfo() << "  Undershoot frames:" << statistics.undershootFrames;
     qInfo() << "       TOTAL frames:" << statistics.validFrames + statistics.overshootFrames + statistics.undershootFrames;
+}
+
+void EfmToF3Frames::reset(void)
+{
+    clearStatistics();
 }
 
 // Private methods ----------------------------------------------------------------------------------------------------
