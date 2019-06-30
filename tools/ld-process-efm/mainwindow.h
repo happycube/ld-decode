@@ -51,6 +51,7 @@ public:
 
 private slots:
     void processingCompleteSignalHandler(bool audioAvailable, bool dataAvailable);
+    void updateStatistics(void);
 
     void on_actionOpen_EFM_File_triggered();
     void on_actionExit_triggered();
@@ -72,6 +73,7 @@ private:
     QLabel efmStatus;
     QString currentInputEfmFileAndPath;
     QTemporaryFile audioOutputTemporaryFile;
+    QTimer *statisticsUpdateTimer;
 
     // Method prototypes
     void guiNoEfmFileLoaded(void);
@@ -79,6 +81,8 @@ private:
     void guiEfmProcessingStop(void);
     void guiEfmProcessingStart(void);
     void loadInputEfmFile(QString filename);
+
+    void resetStatistics(void);
 };
 
 #endif // MAINWINDOW_H
