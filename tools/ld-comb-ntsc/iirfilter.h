@@ -37,7 +37,9 @@ template <unsigned bOrder, unsigned aOrder>
 class IIRFilter
 {
 public:
-    IIRFilter(const std::vector<double> &_b, const std::vector<double> &_a) {
+    // Construct a filter from coefficients.
+    template <typename BSrc, typename ASrc>
+    IIRFilter(const BSrc &_b, const ASrc &_a) {
         assert(_a.size() == aOrder);
         assert(_b.size() == bOrder);
 
@@ -51,6 +53,11 @@ public:
 
         clear();
     }
+
+    // Construct a filter as a copy of an existing one.
+    // This is slightly cheaper than constructing it from scratch,
+    // but note that it also copies the history of the filter.
+    IIRFilter(const IIRFilter &) = default;
 
     void clear(double val = 0) {
         x.fill(val);

@@ -13,8 +13,8 @@ double clamp(double v, double low, double high)
         else return v;
 }
 
-Filter f_left(f_a500_48k), f_left30(f_a40h_48k);
-Filter f_right(f_a500_48k), f_right30(f_a40h_48k);
+auto f_left(f_a500_48k), f_left30(f_a40h_48k);
+auto f_right(f_a500_48k), f_right30(f_a40h_48k);
 
 int snum = 0;
 double slow = 0, fast = 0;

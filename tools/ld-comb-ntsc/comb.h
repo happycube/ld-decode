@@ -31,7 +31,6 @@
 #include <QFile>
 #include <QtMath>
 
-#include "filter.h"
 #include "yiq.h"
 #include "rgb.h"
 #include "opticalflow.h"
