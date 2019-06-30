@@ -42,10 +42,7 @@ void F2FramesToAudio::startProcessing(QFile *inputFileHandle, QFile *outputFileH
     // Define an input data stream
     QDataStream inputDataStream(inputFileHandle);
 
-    // Define an output data stream
-    QDataStream outputDataStream(outputFileHandle);
-
-    qDebug() << "F2FramesToAudio::startProcessing(): Initial input file size of" << inputFileHandle->bytesAvailable() << "bytes";
+    if (debugOn) qDebug() << "F2FramesToAudio::startProcessing(): Initial input file size of" << inputFileHandle->bytesAvailable() << "bytes";
 
     // Initialise variables to track the disc time
     bool initialDiscTimeSet = false;
@@ -69,7 +66,7 @@ void F2FramesToAudio::startProcessing(QFile *inputFileHandle, QFile *outputFileH
             statistics.sampleStart = lastDiscTime;
             statistics.sampleCurrent = lastDiscTime;
             initialDiscTimeSet = true;
-            qDebug() << "F2FramesToAudio::startProcessing(): Initial disc time is" << lastDiscTime.getTimeAsQString();
+            if (debugOn) qDebug() << "F2FramesToAudio::startProcessing(): Initial disc time is" << lastDiscTime.getTimeAsQString();
         } else {
             TrackTime currentDiscTime = f2FrameBuffer[0].getDiscTime();
 
@@ -81,12 +78,11 @@ void F2FramesToAudio::startProcessing(QFile *inputFileHandle, QFile *outputFileH
                 QByteArray sectionPadding;
                 sectionPadding.fill(0, 98 * 24); // 24 bytes = 6 samples * 98 F2Frames per section
                 for (qint32 p = 0; p < sectionFrameGap - 1; p++) {
-                    //outputDataStream << sectionPadding;
                     outputFileHandle->write(sectionPadding);
                     statistics.missingSamples += 98 * 6;
                     statistics.totalSamples += 98 * 6;
                 }
-                qDebug() << "F2FramesToAudio::startProcessing(): Padded output sample by" << sectionFrameGap - 1 << "sections";
+                if (debugOn) qDebug() << "F2FramesToAudio::startProcessing(): Padded output sample by" << sectionFrameGap - 1 << "sections";
             }
 
             // Update the last disc time
@@ -98,14 +94,12 @@ void F2FramesToAudio::startProcessing(QFile *inputFileHandle, QFile *outputFileH
         for (qint32 i = 0; i < 98; i++) {
             if (f2FrameBuffer[i].getIsEncoderRunning() && f2FrameBuffer[i].getDataValid()) {
                 // Encoder is running and data is valid, output samples
-                //outputDataStream << f2FrameBuffer[i].getDataSymbols();
                 outputFileHandle->write(f2FrameBuffer[i].getDataSymbols());
                 statistics.validSamples += 6;
                 statistics.totalSamples += 6;
             } else {
                 QByteArray framePadding;
                 framePadding.fill(0, 24); // 24 bytes = 6 samples
-                //outputDataStream << framePadding;
                 outputFileHandle->write(framePadding);
                 if (!f2FrameBuffer[i].getDataValid()) statistics.corruptSamples += 6;
                 else statistics.missingSamples += 6;
@@ -114,7 +108,7 @@ void F2FramesToAudio::startProcessing(QFile *inputFileHandle, QFile *outputFileH
         }
     }
 
-    qDebug() << "F2FramesToAudio::startProcessing(): No more data to processes";
+    if (debugOn) qDebug() << "F2FramesToAudio::startProcessing(): No more data to processes";
 }
 
 void F2FramesToAudio::stopProcessing(void)
@@ -155,4 +149,7 @@ void F2FramesToAudio::clearStatistics(void)
     statistics.missingSamples = 0;
     statistics.totalSamples = 0;
     statistics.corruptSamples = 0;
+
+    statistics.sampleStart.setTime(0, 0, 0);
+    statistics.sampleCurrent.setTime(0, 0, 0);
 }

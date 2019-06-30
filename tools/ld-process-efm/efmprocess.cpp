@@ -45,12 +45,13 @@ EfmProcess::~EfmProcess()
 // Thread handling methods --------------------------------------------------------------------------------------------
 
 // Start processing the input EFM file
-void EfmProcess::startProcessing(QString inputFilename)
+void EfmProcess::startProcessing(QString _inputFilename, QFile *_audioOutputFileHandle)
 {
     QMutexLocker locker(&mutex);
 
     // Move all the parameters to be local
-    this->inputFilename = inputFilename;
+    inputFilename = _inputFilename;
+    audioOutputFileHandle = _audioOutputFileHandle;
 
     // Is the run process already running?
     if (!isRunning()) {
@@ -78,6 +79,12 @@ void EfmProcess::quit()
     abort = true;
 }
 
+// Return statistics about the decoding process
+EfmProcess::Statistics EfmProcess::getStatistics(void)
+{
+    return statistics;
+}
+
 // Primary processing loop for the thread
 void EfmProcess::run()
 {
@@ -85,10 +92,13 @@ void EfmProcess::run()
 
     while(!abort) {
         qDebug() << "EfmProcess::run(): Thread wake up on restart";
+        bool audioAvailable = false;
+        bool dataAvailable = false;
 
         // Lock and copy all parameters to 'thread-safe' variables
         mutex.lock();
         inputFilenameTs = this->inputFilename;
+        audioOutputFileHandleTs = this->audioOutputFileHandle;
         mutex.unlock();
 
         bool readyToProcess = true;
@@ -134,21 +144,12 @@ void EfmProcess::run()
             qDebug() << "EfmProcess::run(): Opened F2 frame temporary file";
         }
 
-        // Open temporary file for audio sample data
-        QTemporaryFile audioOutputFileHandle;
-        if (!audioOutputFileHandle.open()) {
-            // Failed to open file
-            qDebug() << "EfmProcess::run(): Could not open audio temporary file";
-            readyToProcess = false;
-        } else {
-            qDebug() << "EfmProcess::run(): Opened audio temporary file";
-        }
-
         // Perform the decoding process (audio specific)
         if (readyToProcess) {
             // Perform EFM T-values to F3 frames decode
             qDebug() << "EfmProcess::run(): Performing EFM T-values to F3 frames decode";
             EfmToF3Frames efmToF3Frames;
+            efmTValuesInputFileHandle.seek(0);
             efmToF3Frames.startProcessing(&efmTValuesInputFileHandle, &f3FramesOutputFileHandle);
 
             // Synchronise F3 Frames
@@ -167,7 +168,7 @@ void EfmProcess::run()
             qDebug() << "EfmProcess::run(): Performing decode of F2 frames into audio samples";
             F2FramesToAudio f2FramesToAudio;
             f2FramesOutputFileHandle.seek(0);
-            f2FramesToAudio.startProcessing(&f2FramesOutputFileHandle, &audioOutputFileHandle);
+            f2FramesToAudio.startProcessing(&f2FramesOutputFileHandle, audioOutputFileHandleTs);
 
             // Output decoder statistics
             efmToF3Frames.reportStatistics();
@@ -175,7 +176,8 @@ void EfmProcess::run()
             f3ToF2Frames.reportStatistics();
             f2FramesToAudio.reportStatistics();
 
-            qDebug() << "TEMPORARY INFO: Audio output temp file is" << audioOutputFileHandle.fileName();
+            // Check if audio is available
+            if (f2FramesToAudio.getStatistics().totalSamples > 0) audioAvailable = true;
         }
 
         // Close all files
@@ -183,10 +185,10 @@ void EfmProcess::run()
         f3FramesOutputFileHandle.close();
         syncF3FramesOutputFileHandle.close();
         f2FramesOutputFileHandle.close();
-        audioOutputFileHandle.close();
 
         // Processing complete
-        emit processingComplete();
+
+        emit processingComplete(audioAvailable, dataAvailable);
 
         // Sleep the thread until we are restarted
         mutex.lock();

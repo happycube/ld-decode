@@ -39,6 +39,9 @@ MainWindow::MainWindow(QWidget *parent) :
     ui->statusBar->addWidget(&efmStatus);
     efmStatus.setText(tr("No EFM file loaded"));
 
+    // Set up the about dialogue
+    aboutDialog = new AboutDialog(this);
+
     // Connect to the signals from the file converter thread
     connect(&efmProcess, &EfmProcess::processingComplete, this, &MainWindow::processingCompleteSignalHandler);
 
@@ -69,6 +72,7 @@ MainWindow::~MainWindow()
 void MainWindow::guiNoEfmFileLoaded(void)
 {
     ui->actionOpen_EFM_File->setEnabled(true);
+    ui->actionSave_PCM_Audio->setEnabled(false);
     ui->decodePushButton->setEnabled(false);
     ui->cancelPushButton->setEnabled(false);
 
@@ -83,6 +87,8 @@ void MainWindow::guiNoEfmFileLoaded(void)
 void MainWindow::guiEfmFileLoaded(void)
 {
     ui->actionOpen_EFM_File->setEnabled(true);
+    ui->actionSave_PCM_Audio->setEnabled(false);
+
     ui->decodePushButton->setEnabled(true);
     ui->cancelPushButton->setEnabled(false);
 
@@ -95,6 +101,7 @@ void MainWindow::guiEfmFileLoaded(void)
 void MainWindow::guiEfmProcessingStart(void)
 {
     ui->actionOpen_EFM_File->setEnabled(false);
+    ui->actionSave_PCM_Audio->setEnabled(false);
     ui->decodePushButton->setEnabled(false);
     ui->cancelPushButton->setEnabled(true);
 }
@@ -103,6 +110,7 @@ void MainWindow::guiEfmProcessingStart(void)
 void MainWindow::guiEfmProcessingStop(void)
 {
     ui->actionOpen_EFM_File->setEnabled(true);
+    // Don't set the save audio here, it's set by the signal handler
     ui->decodePushButton->setEnabled(true);
     ui->cancelPushButton->setEnabled(false);
 }
@@ -125,6 +133,48 @@ void MainWindow::on_actionOpen_EFM_File_triggered()
     }
 }
 
+void MainWindow::on_actionSave_PCM_Audio_triggered()
+{
+    qDebug() << "MainWindow::on_actionSave_PCM_Audio_triggered(): Called";
+
+    // Create a suggestion for the filename
+    QFileInfo fileInfo(currentInputEfmFileAndPath);
+    QString filenameSuggestion = configuration->getAudioDirectory() + "/";
+    filenameSuggestion += fileInfo.fileName() + tr(".pcm");
+
+    qDebug() << "MainWindow::on_actionSave_PCM_Audio_triggered()L filename suggestion is =" << filenameSuggestion;
+
+    QString audioFilename = QFileDialog::getSaveFileName(this,
+                tr("Save PCM file"),
+                filenameSuggestion,
+                tr("PCM raw audio (*.pcm);;All Files (*)"));
+
+    // Was a filename specified?
+    if (!audioFilename.isEmpty() && !audioFilename.isNull()) {
+        // Save the audio as PCM
+        qDebug() << "MainWindow::on_actionSave_Audio_As_triggered(): Saving audio as" << audioFilename;
+
+        // Check if filename exists (and remove the file if it does)
+        if (QFile::exists(audioFilename)) QFile::remove(audioFilename);
+        if (QFile::exists(audioFilename + tr(".json"))) QFile::remove(audioFilename + tr(".json"));
+
+        // Copy the audio data from the temporary file to the destination
+        if (!audioOutputTemporaryFile.copy(audioFilename)) {
+            qDebug() << "MainWindow::on_actionSave_PCM_Audio_triggered(): Failed to save file as" << audioFilename;
+
+            QMessageBox messageBox;
+            messageBox.warning(this, "Warning","Could not save PCM audio using the specified filename!");
+            messageBox.setFixedSize(500, 200);
+        }
+
+        // Update the configuration for the PNG directory
+        QFileInfo audioFileInfo(audioFilename);
+        configuration->setAudioDirectory(audioFileInfo.absolutePath());
+        qDebug() << "MainWindow::on_actionSave_PCM_Audio_triggered(): Setting PCM audio directory to:" << audioFileInfo.absolutePath();
+        configuration->writeConfiguration();
+    }
+}
+
 void MainWindow::on_actionExit_triggered()
 {
     qDebug() << "MainWindow::on_actionExit_triggered(): Called";
@@ -133,15 +183,30 @@ void MainWindow::on_actionExit_triggered()
     qApp->quit();
 }
 
+void MainWindow::on_actionAbout_ld_process_efm_triggered()
+{
+    // Show the about dialogue
+    aboutDialog->show();
+}
+
 void MainWindow::on_decodePushButton_clicked()
 {
     qDebug() << "MainWindow::on_decodePushButton_clicked(): Called";
     if (currentInputEfmFileAndPath.isEmpty()) return;
 
+    // Open temporary file for audio data
+    audioOutputTemporaryFile.close();
+    if (!audioOutputTemporaryFile.open()) {
+        // Failed to open file
+        qFatal("Could not open audio output temporary file - this is fatal!");
+    } else {
+        qDebug() << "MainWindow::on_decodePushButton_clicked(): Opened audio output temporary file";
+    }
+
     // Update the GUI
     guiEfmProcessingStart();
 
-    efmProcess.startProcessing(currentInputEfmFileAndPath);
+    efmProcess.startProcessing(currentInputEfmFileAndPath, &audioOutputTemporaryFile);
 }
 
 void MainWindow::on_cancelPushButton_clicked()
@@ -157,8 +222,14 @@ void MainWindow::on_cancelPushButton_clicked()
 // Local signal handling methods --------------------------------------------------------------------------------------
 
 // Handle processingComplete signal from EfmProcess class
-void MainWindow::processingCompleteSignalHandler(void)
+void MainWindow::processingCompleteSignalHandler(bool audioAvailable, bool dataAvailable)
 {
+    if (audioAvailable) {
+        qDebug() << "MainWindow::processingCompleteSignalHandler(): Processing complete - audio available";
+        ui->actionSave_PCM_Audio->setEnabled(true);
+    }
+    if (dataAvailable) qDebug() << "MainWindow::processingCompleteSignalHandler(): Processing complete - data available";
+
     // Update the GUI
     guiEfmProcessingStop();
 }

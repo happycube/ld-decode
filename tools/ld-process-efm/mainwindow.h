@@ -35,6 +35,7 @@
 
 #include "configuration.h"
 #include "efmprocess.h"
+#include "aboutdialog.h"
 
 namespace Ui {
 class MainWindow;
@@ -49,21 +50,28 @@ public:
     ~MainWindow();
 
 private slots:
-    void processingCompleteSignalHandler(void);
+    void processingCompleteSignalHandler(bool audioAvailable, bool dataAvailable);
 
     void on_actionOpen_EFM_File_triggered();
     void on_actionExit_triggered();
     void on_decodePushButton_clicked();
     void on_cancelPushButton_clicked();
+    void on_actionSave_PCM_Audio_triggered();
+
+    void on_actionAbout_ld_process_efm_triggered();
 
 private:
     Ui::MainWindow *ui;
+
+    // Dialogues
+    AboutDialog *aboutDialog;
 
     // Class globals
     Configuration *configuration;
     EfmProcess efmProcess;
     QLabel efmStatus;
     QString currentInputEfmFileAndPath;
+    QTemporaryFile audioOutputTemporaryFile;
 
     // Method prototypes
     void guiNoEfmFileLoaded(void);

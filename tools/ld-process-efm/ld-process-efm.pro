@@ -36,6 +36,7 @@ SOURCES += \
         Decoders/f2framestoaudio.cpp \
         Decoders/f3tof2frames.cpp \
         Decoders/syncf3frames.cpp \
+        aboutdialog.cpp \
         configuration.cpp \
         efmprocess.cpp \
         logging.cpp \
@@ -54,6 +55,7 @@ HEADERS += \
         Decoders/f2framestoaudio.h \
         Decoders/f3tof2frames.h \
         Decoders/syncf3frames.h \
+        aboutdialog.h \
         configuration.h \
         efmprocess.h \
         ezpwd/asserter \
@@ -71,6 +73,7 @@ HEADERS += \
         mainwindow.h
 
 FORMS += \
+        aboutdialog.ui \
         mainwindow.ui
 
 # Default rules for deployment.

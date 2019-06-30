@@ -47,12 +47,20 @@ public:
     explicit EfmProcess(QObject *parent = nullptr);
     ~EfmProcess() override;
 
-    void startProcessing(QString inputFilename);
+    struct Statistics {
+        EfmToF3Frames::Statistics efmToF3Frames;
+        SyncF3Frames::Statistics syncF3Frames;
+        F3ToF2Frames::Statistics f3ToF2Frames;
+        F2FramesToAudio::Statistics f2FramesToAudio;
+    };
+
+    void startProcessing(QString _inputFilename, QFile *_audioOutputFileHandle);
     void stopProcessing();
     void quit();
+    Statistics getStatistics(void);
 
 signals:
-    void processingComplete(void);
+    void processingComplete(bool audioAvailable, bool dataAvailable);
 
 protected:
     void run() override;
@@ -65,11 +73,15 @@ private:
     bool cancel;
     bool abort;
 
+    Statistics statistics;
+
     // Externally settable variables
     QString inputFilename;
+    QFile *audioOutputFileHandle;
 
     // Thread-safe variables
     QString inputFilenameTs;
+    QFile *audioOutputFileHandleTs;
 };
 
 #endif // EFMPROCESS_H

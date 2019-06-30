@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>400</width>
-    <height>300</height>
+    <width>563</width>
+    <height>597</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -24,7 +24,7 @@
       <x>10</x>
       <y>10</y>
       <width>381</width>
-      <height>101</height>
+      <height>161</height>
      </rect>
     </property>
     <property name="title">
@@ -63,7 +63,7 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>400</width>
+     <width>563</width>
      <height>22</height>
     </rect>
    </property>
@@ -73,9 +73,18 @@
     </property>
     <addaction name="actionOpen_EFM_File"/>
     <addaction name="separator"/>
+    <addaction name="actionSave_PCM_Audio"/>
+    <addaction name="separator"/>
     <addaction name="actionExit"/>
    </widget>
+   <widget class="QMenu" name="menuHelp">
+    <property name="title">
+     <string>Help</string>
+    </property>
+    <addaction name="actionAbout_ld_process_efm"/>
+   </widget>
    <addaction name="menuFile"/>
+   <addaction name="menuHelp"/>
   </widget>
   <widget class="QStatusBar" name="statusBar"/>
   <action name="actionOpen_EFM_File">
@@ -86,6 +95,16 @@
   <action name="actionExit">
    <property name="text">
     <string>Exit</string>
+   </property>
+  </action>
+  <action name="actionSave_PCM_Audio">
+   <property name="text">
+    <string>Save PCM Audio...</string>
+   </property>
+  </action>
+  <action name="actionAbout_ld_process_efm">
+   <property name="text">
+    <string>About ld-process-efm...</string>
    </property>
   </action>
  </widget>
