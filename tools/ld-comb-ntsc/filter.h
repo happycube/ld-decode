@@ -31,13 +31,11 @@
 
 #include <vector>
 
-using namespace std;
-
 class Filter
 {
 public:
     Filter(int _order, const double *_a, const double *_b);
-    Filter(vector<double> _b, vector<double> _a);
+    Filter(const std::vector<double> &_b, const std::vector<double> &_a);
     Filter(Filter *orig);
     void clear(double val = 0);
     void dump();
@@ -47,8 +45,8 @@ public:
 private:
     unsigned long order;
     bool isIIR;
-    vector<double> a, b;
-    vector<double> y, x;
+    std::vector<double> a, b;
+    std::vector<double> y, x;
 };
 
 #endif // FILTER_H

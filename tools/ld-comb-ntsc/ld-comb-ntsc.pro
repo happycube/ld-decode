@@ -21,9 +21,7 @@ SOURCES += \
     yiq.cpp \
     filter.cpp \
     ntscfilter.cpp \
-    opticalflow.cpp \
-    yiqline.cpp \
-    yiqbuffer.cpp
+    opticalflow.cpp
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin
@@ -46,10 +44,10 @@ HEADERS += \
     rgb.h \
     yiq.h \
     filter.h \
+    iirfilter.h \
     ntscfilter.h \
     ../../deemp.h \
     opticalflow.h \
-    yiqline.h \
     yiqbuffer.h
 
 # Additional include paths to support MacOS compilation

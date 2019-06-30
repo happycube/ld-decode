@@ -32,7 +32,7 @@ OpticalFlow::OpticalFlow()
 
 // Perform a dense optical flow analysis
 // Input is a vector of 16-bit Y values for the NTSC frame (910x525)
-void OpticalFlow::denseOpticalFlow(YiqBuffer yiqBuffer, QVector<qreal> &kValues)
+void OpticalFlow::denseOpticalFlow(const YiqBuffer &yiqBuffer, QVector<qreal> &kValues)
 {
     // Convert the buffer of Y values into an OpenCV n-dimensional dense array (cv::Mat)
     cv::Mat currentFrameGrey = convertYtoMat(yiqBuffer);
@@ -61,7 +61,7 @@ void OpticalFlow::denseOpticalFlow(YiqBuffer yiqBuffer, QVector<qreal> &kValues)
                 // in the X direction than the y
                 qreal velocity = calculateDistance(static_cast<qreal>(flowatxy.y), static_cast<qreal>(flowatxy.x) * 2);
 
-                kValues[(910 * y) + x] = clamp(velocity, 0, 1);
+                kValues[(910 * y) + x] = clamp(velocity, 0.0, 1.0);
             }
         }
     } else kValues.fill(1);
@@ -73,7 +73,7 @@ void OpticalFlow::denseOpticalFlow(YiqBuffer yiqBuffer, QVector<qreal> &kValues)
 }
 
 // Method to convert a qreal vector frame of Y values to an OpenCV n-dimensional dense array (cv::Mat)
-cv::Mat OpticalFlow::convertYtoMat(YiqBuffer yiqBuffer)
+cv::Mat OpticalFlow::convertYtoMat(const YiqBuffer &yiqBuffer)
 {
     quint16 frame[910 * 525];
     memset(frame, 0, sizeof(frame));
@@ -87,14 +87,6 @@ cv::Mat OpticalFlow::convertYtoMat(YiqBuffer yiqBuffer)
 
     // Return a Mat y * x in CV_16UC1 format
     return cv::Mat(525, 910, CV_16UC1, frame);
-}
-
-// Method to clamp a value within a low and high range
-qreal OpticalFlow::clamp(qreal v, qreal low, qreal high)
-{
-        if (v < low) return low;
-        else if (v > high) return high;
-        else return v;
 }
 
 // This method calculates the distance between points where x is the difference between the x-coordinates

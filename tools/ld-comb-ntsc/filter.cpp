@@ -25,6 +25,8 @@
 
 #include "filter.h"
 
+using std::vector;
+
 // Public methods -----------------------------------------------------------------------------------------------------
 
 Filter::Filter(int _order, const double *_a, const double *_b)
@@ -44,7 +46,7 @@ Filter::Filter(int _order, const double *_a, const double *_b)
     clear();
 }
 
-Filter::Filter(vector<double> _b, vector<double> _a)
+Filter::Filter(const vector<double> &_b, const vector<double> &_a)
 {
     b = _b;
     a = _a;
