@@ -37,7 +37,8 @@ template <unsigned bOrder, unsigned aOrder>
 class IIRFilter
 {
 public:
-    IIRFilter(const std::vector<double> &_b, const std::vector<double> &_a) {
+    template <typename BSrc, typename ASrc>
+    IIRFilter(const BSrc &_b, const ASrc &_a) {
         assert(_a.size() == aOrder);
         assert(_b.size() == bOrder);
 

@@ -45,10 +45,10 @@ protected:
     vector<double> y, x;
 
 public:
-    SimpleFilter(vector<double> _b, vector<double> _a) {
-        b = _b;
-        a = _a;
-
+    template <typename BSrc, typename ASrc>
+    SimpleFilter(const BSrc &_b, const ASrc &_a)
+        : b(_b.begin(), _b.end()), a(_a.begin(), _a.end())
+    {
         order = b.size();
 
         x.resize(b.size() + 1);
