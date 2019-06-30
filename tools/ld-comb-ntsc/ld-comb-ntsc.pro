@@ -19,7 +19,6 @@ SOURCES += \
     comb.cpp \
     rgb.cpp \
     yiq.cpp \
-    filter.cpp \
     ntscfilter.cpp \
     opticalflow.cpp
 
@@ -43,7 +42,6 @@ HEADERS += \
     comb.h \
     rgb.h \
     yiq.h \
-    filter.h \
     iirfilter.h \
     ntscfilter.h \
     ../../deemp.h \

@@ -24,9 +24,8 @@
 ************************************************************************/
 
 #include "comb.h"
-#include "../../deemp.h"
 
-#include "iirfilter.h"
+#include "../../deemp.h"
 
 // Public methods -----------------------------------------------------------------------------------------------------
 
@@ -366,13 +365,12 @@ void Comb::splitIQ(FrameBuffer *frameBuffer)
 // Filter the IQ from the input YIQ buffer
 void Comb::filterIQ(YiqBuffer &yiqBuffer)
 {
-    IIRFilter<2, 2> f_i(c_colorlpi_b, c_colorlpi_a);
-    IIRFilter<2, 2> f_q(configuration.colorlpf_hq ? c_colorlpi_b : c_colorlpq_b,
-                        configuration.colorlpf_hq ? c_colorlpi_a : c_colorlpq_a);
+    auto iFilter(f_colorlpi);
+    auto qFilter(configuration.colorlpf_hq ? f_colorlpi : f_colorlpq);
 
     for (qint32 lineNumber = configuration.firstVisibleFrameLine; lineNumber < frameHeight; lineNumber++) {
-        f_i.clear();
-        f_q.clear();
+        iFilter.clear();
+        qFilter.clear();
 
         qint32 qoffset = 2; // f_colorlpf_hq ? f_colorlpi_offset : f_colorlpq_offset;
 
@@ -382,10 +380,10 @@ void Comb::filterIQ(YiqBuffer &yiqBuffer)
             qint32 phase = h % 4;
 
             switch (phase) {
-                case 0: filti = f_i.feed(yiqBuffer[lineNumber][h].i); break;
-                case 1: filtq = f_q.feed(yiqBuffer[lineNumber][h].q); break;
-                case 2: filti = f_i.feed(yiqBuffer[lineNumber][h].i); break;
-                case 3: filtq = f_q.feed(yiqBuffer[lineNumber][h].q); break;
+                case 0: filti = iFilter.feed(yiqBuffer[lineNumber][h].i); break;
+                case 1: filtq = qFilter.feed(yiqBuffer[lineNumber][h].q); break;
+                case 2: filti = iFilter.feed(yiqBuffer[lineNumber][h].i); break;
+                case 3: filtq = qFilter.feed(yiqBuffer[lineNumber][h].q); break;
                 default: break;
             }
 
@@ -407,8 +405,9 @@ void Comb::doCNR(YiqBuffer &yiqBuffer)
 {
     if (configuration.cNRLevel == 0) return;
 
-    IIRFilter<17, 1> f_hpi(c_nrc_b, c_nrc_a);
-    IIRFilter<17, 1> f_hpq(c_nrc_b, c_nrc_a);
+    // High-pass filters for I/Q
+    auto iFilter(f_nrc);
+    auto qFilter(f_nrc);
 
     // nr_c is the coring level
     qreal nr_c = configuration.cNRLevel * irescale;
@@ -420,8 +419,8 @@ void Comb::doCNR(YiqBuffer &yiqBuffer)
         // Filters not cleared from previous line
 
         for (qint32 h = configuration.activeVideoStart; h <= configuration.activeVideoEnd; h++) {
-            hplinef[h].i = f_hpi.feed(yiqBuffer[lineNumber][h].i);
-            hplinef[h].q = f_hpq.feed(yiqBuffer[lineNumber][h].q);
+            hplinef[h].i = iFilter.feed(yiqBuffer[lineNumber][h].i);
+            hplinef[h].q = qFilter.feed(yiqBuffer[lineNumber][h].q);
         }
 
         for (qint32 h = configuration.activeVideoStart; h < configuration.activeVideoEnd; h++) {
@@ -447,7 +446,8 @@ void Comb::doYNR(YiqBuffer &yiqBuffer)
 {
     if (configuration.yNRLevel == 0) return;
 
-    IIRFilter<25, 1> f_hpy(c_nr_b, c_nr_a);
+    // High-pass filter for Y
+    auto yFilter(f_nr);
 
     // nr_y is the coring level
     qreal nr_y = configuration.yNRLevel * irescale;
@@ -459,7 +459,7 @@ void Comb::doYNR(YiqBuffer &yiqBuffer)
         // Filter not cleared from previous line
 
         for (qint32 h = configuration.activeVideoStart; h <= configuration.activeVideoEnd; h++) {
-            hplinef[h].y = f_hpy.feed(yiqBuffer[lineNumber][h].y);
+            hplinef[h].y = yFilter.feed(yiqBuffer[lineNumber][h].y);
         }
 
         for (qint32 h = configuration.activeVideoStart; h < configuration.activeVideoEnd; h++) {

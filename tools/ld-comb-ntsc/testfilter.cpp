@@ -32,9 +32,6 @@
 using std::cerr;
 using std::vector;
 
-#include "filter.h"
-#include "iirfilter.h"
-
 #include "../../deemp.h"
 
 // This is the original filter code from ld-decoder.h.
@@ -110,27 +107,27 @@ void test_filter(const char *name, FN& fn, FO& fo) {
 int main(int argc, char *argv[]) {
     // Test with the sets of coefficients used in the code.
 
-    IIRFilter<2, 2> f0(c_colorlpi_b, c_colorlpi_a);
+    auto f0(f_colorlpi);
     SimpleFilter g0(c_colorlpi_b, c_colorlpi_a);
     test_filter("colorlpi", f0, g0);
 
-    IIRFilter<2, 2> f1(c_colorlpq_b, c_colorlpq_a);
+    auto f1(f_colorlpq);
     SimpleFilter g1(c_colorlpq_b, c_colorlpq_a);
     test_filter("colorlpq", f1, g1);
 
-    IIRFilter<17, 1> f2(c_nrc_b, c_nrc_a);
+    auto f2(f_nrc);
     SimpleFilter g2(c_nrc_b, c_nrc_a);
     test_filter("nrc", f2, g2);
 
-    IIRFilter<25, 1> f3(c_nr_b, c_nr_a);
+    auto f3(f_nr);
     SimpleFilter g3(c_nr_b, c_nr_a);
     test_filter("nr", f3, g3);
 
-    IIRFilter<5, 5> f4(c_a500_48k_b, c_a500_48k_a);
+    auto f4(f_a500_48k);
     SimpleFilter g4(c_a500_48k_b, c_a500_48k_a);
     test_filter("a500_48k", f4, g4);
 
-    IIRFilter<5, 5> f5(c_a40h_48k_b, c_a40h_48k_a);
+    auto f5(f_a40h_48k);
     SimpleFilter g5(c_a40h_48k_b, c_a40h_48k_a);
     test_filter("a40h_48k", f5, g5);
 
