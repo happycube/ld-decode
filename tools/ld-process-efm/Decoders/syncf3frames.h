@@ -1,6 +1,6 @@
 /************************************************************************
 
-    f3tosections.cpp
+    syncf3frames.cpp
 
     ld-process-efm - EFM data decoder
     Copyright (C) 2019 Simon Inns
@@ -22,61 +22,59 @@
 
 ************************************************************************/
 
-#ifndef F3TOSECTIONS_H
-#define F3TOSECTIONS_H
+#ifndef SYNCF3FRAMES_H
+#define SYNCF3FRAMES_H
 
 #include <QCoreApplication>
 #include <QDebug>
+#include <QFile>
+#include <QDataStream>
 
 #include "Datatypes/f3frame.h"
-#include "Datatypes/section.h"
 
-class F3ToSections
+class SyncF3Frames
 {
 public:
-    F3ToSections();
+    SyncF3Frames();
 
-    void reset(void);
-    void resetStatistics(void);
-    void reportStatus(void);
-    QVector<Section> convert(QVector<F3Frame> f3FramesIn);
+    // Statistics
+    struct Statistics {
+        qint32 totalF3Frames;
+        qint32 discardedFrames;
+        qint32 totalSections;
+    };
+
+    void startProcessing(QFile *inputFileHandle, QFile *outputFileHandle);
+    void stopProcessing(void);
+    Statistics getStatistics(void);
+    void reportStatistics(void);
 
 private:
-    // Section buffer
-    QVector<Section> sections;
+    bool debugOn;
+    bool abort;
+    Statistics statistics;
+    QVector<F3Frame> f3FrameBuffer;
+    bool waitingForData;
 
-    // Section subcode buffer
-    QByteArray sectionBuffer;
+    void clearStatistics(void);
 
     // State machine state definitions
     enum StateMachine {
         state_initial,
-        state_getSync0,
-        state_getSync1,
-        state_getInitialSection,
-        state_getNextSection,
-        state_syncLost
+        state_findInitialSync0,
+        state_findNextSync,
+        state_syncLost,
+        state_processSection
     };
 
     StateMachine currentState;
     StateMachine nextState;
-    bool waitingForF3frame;
-
-    F3Frame currentF3Frame;
-    bool sync0;
-    bool sync1;
-
-    qint32 missedSectionSyncCount;
-    qint32 sectionSyncLost;
-    qint32 totalSections;
-    qint32 poorSyncs;
 
     StateMachine sm_state_initial(void);
-    StateMachine sm_state_getSync0(void);
-    StateMachine sm_state_getSync1(void);
-    StateMachine sm_state_getInitialSection(void);
-    StateMachine sm_state_getNextSection(void);
+    StateMachine sm_state_findInitialSync0(void);
+    StateMachine sm_state_findNextSync(void);
     StateMachine sm_state_syncLost(void);
+    StateMachine sm_state_processSection(QDataStream *outputDataStream);
 };
 
-#endif // F3TOSECTIONS_H
+#endif // SYNCF3FRAMES_H

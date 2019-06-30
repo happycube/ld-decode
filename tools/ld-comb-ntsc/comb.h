@@ -31,7 +31,6 @@
 #include <QFile>
 #include <QtMath>
 
-#include "filter.h"
 #include "yiq.h"
 #include "rgb.h"
 #include "opticalflow.h"
@@ -73,7 +72,7 @@ public:
     };
 
     Configuration getConfiguration(void);
-    void setConfiguration(Configuration configurationParam);
+    void setConfiguration(const Configuration &configurationParam);
     QByteArray process(QByteArray topFieldInputBuffer, QByteArray bottomFieldInputBuffer, qreal burstMedianIre, qint32 topFieldPhaseID, qint32 bottomFieldPhaseID);
 
 protected:
@@ -130,12 +129,9 @@ private:
     void doCNR(YiqBuffer &yiqBuffer);
     void doYNR(YiqBuffer &yiqBuffer);
 
-    QByteArray yiqToRgbFrame(YiqBuffer yiqBuffer, qreal burstLevel);
-    void overlayOpticalFlowMap(FrameBuffer frameBuffer, QByteArray &rgbOutputFrame);
+    QByteArray yiqToRgbFrame(const YiqBuffer &yiqBuffer, qreal burstLevel);
+    void overlayOpticalFlowMap(const FrameBuffer &frameBuffer, QByteArray &rgbOutputFrame);
     void adjustY(FrameBuffer *frameBuffer, YiqBuffer &yiqBuffer);
-
-    qreal clamp(qreal v, qreal low, qreal high);
-    qreal atan2deg(qreal y, qreal x);
 };
 
 #endif // COMB_H

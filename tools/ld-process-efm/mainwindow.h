@@ -31,7 +31,6 @@
 #include <QMessageBox>
 #include <QThread>
 #include <QTimer>
-#include <QTemporaryFile>
 #include <QDebug>
 
 #include "configuration.h"
@@ -51,17 +50,16 @@ public:
     ~MainWindow();
 
 private slots:
-    void percentageProcessedSignalHandler(qint32 percentage);
-    void processingCompletedSignalHandler(void);
+    void processingCompleteSignalHandler(bool audioAvailable, bool dataAvailable);
     void updateStatistics(void);
 
-    void on_actionOpen_EFM_file_triggered();
-    void on_actionSave_Audio_As_triggered();
-    void on_actionSave_Data_As_triggered();
+    void on_actionOpen_EFM_File_triggered();
     void on_actionExit_triggered();
-    void on_actionAbout_ld_process_efm_triggered();
     void on_decodePushButton_clicked();
     void on_cancelPushButton_clicked();
+    void on_actionSave_PCM_Audio_triggered();
+
+    void on_actionAbout_ld_process_efm_triggered();
 
 private:
     Ui::MainWindow *ui;
@@ -73,21 +71,17 @@ private:
     Configuration *configuration;
     EfmProcess efmProcess;
     QLabel efmStatus;
-    QString currentInputFilename;
+    QString currentInputEfmFileAndPath;
+    QTemporaryFile audioOutputTemporaryFile;
     QTimer *statisticsUpdateTimer;
 
-    // Temporary files
-    QTemporaryFile *audioOutputFile;
-    QTemporaryFile *dataOutputFile;
-    QTemporaryFile *audioMetaOutputFile;
-    QTemporaryFile *dataMetaOutputFile;
+    // Method prototypes
+    void guiNoEfmFileLoaded(void);
+    void guiEfmFileLoaded(void);
+    void guiEfmProcessingStop(void);
+    void guiEfmProcessingStart(void);
+    void loadInputEfmFile(QString filename);
 
-    void noEfmFileLoaded(void);
-    void efmFileLoaded(void);
-    void decodingStop(void);
-    void decodingStart(void);
-
-    void loadEfmFile(QString filename);
     void resetStatistics(void);
 };
 

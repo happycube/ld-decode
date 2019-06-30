@@ -25,13 +25,17 @@
 #include "f3frame.h"
 
 // Note: Class for storing 'F3 frames' as defined by clause 18 of ECMA-130
+//
+// Each frame consists of 1 byte of subcode data and 32 bytes of payload
+//
+// Data is represented as data symbols (the actual payload) and error symbols
+// that flag if a data symbol was detected as invalid during translation from EFM
 
 F3Frame::F3Frame()
 {
     isSync0 = false;
     isSync1 = false;
     subcodeSymbol = 0;
-    firstAfterSync = false;
 
     dataSymbols.resize(32);
     errorSymbols.resize(32);
@@ -50,24 +54,9 @@ void F3Frame::setTValues(QVector<qint32> tValuesIn)
     }
 
     // Range check the incoming T Values
-    bool debugSilence1 = false;
-    bool debugSilence2 = false;
     for (qint32 i = 0; i < tValuesIn.size(); i++) {
-        if (tValuesIn[i] < 3) {
-            if (debugSilence1 == false) {
-                qDebug() << "F3Frame::setTValues(): Incoming T values contain <T3!";
-                debugSilence1 = true;
-            }
-            tValuesIn[i] = 3;
-        }
-
-        if (tValuesIn[i] > 11) {
-            if (debugSilence2 == false) {
-                qDebug() << "F3Frame::setTValues(): Incoming T value is >T11";
-                debugSilence2 = true;
-            }
-            tValuesIn[i] = 11;
-        }
+        if (tValuesIn[i] < 3) tValuesIn[i] = 3;
+        if (tValuesIn[i] > 11) tValuesIn[i] = 11;
     }
 
     // Now perform the conversion
@@ -104,7 +93,6 @@ void F3Frame::setTValues(QVector<qint32> tValuesIn)
         }
 
         if (bytePosition > 73) {
-            qDebug() << "F3Frame::setTValues(): 14-bit EFM frame length exceeded 74 bytes!";
             break;
         }
     }
@@ -201,17 +189,18 @@ bool F3Frame::isSubcodeSync1(void)
     return isSync1;
 }
 
-// Set flag to indicate if the F3 frame is the first after the
-// initial sync (true) or a continuation of a frame sequence
-void F3Frame::setFirstAfterSync(bool parameter)
+// Overloaded operator for writing class data to a data-stream
+QDataStream &operator<<(QDataStream &out, const F3Frame &f3Frame)
 {
-    firstAfterSync = parameter;
+    out << f3Frame.dataSymbols << f3Frame.errorSymbols << f3Frame.subcodeSymbol << f3Frame.isSync0 << f3Frame.isSync1;
+    return out;
 }
 
-// Get first after sync flag
-bool F3Frame::getFirstAfterSync(void)
+// Overloaded operator for reading class data from a data-stream
+QDataStream &operator>>(QDataStream &in, F3Frame &f3Frame)
 {
-    return firstAfterSync;
+    in >> f3Frame.dataSymbols >> f3Frame.errorSymbols >> f3Frame.subcodeSymbol >> f3Frame.isSync0 >> f3Frame.isSync1;
+    return in;
 }
 
 // Private methods ----------------------------------------------------------------------------------------------------

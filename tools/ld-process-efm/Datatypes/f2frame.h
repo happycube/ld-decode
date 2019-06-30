@@ -27,11 +27,16 @@
 
 #include <QCoreApplication>
 #include <QDebug>
+#include <QDataStream>
 
 #include "f3frame.h"
+#include "Datatypes/tracktime.h"
 
 class F2Frame
 {
+    friend QDataStream &operator<<(QDataStream &, const F2Frame &);
+    friend QDataStream &operator>>(QDataStream &, F2Frame &);
+
 public:
     F2Frame();
 
@@ -40,10 +45,24 @@ public:
     QByteArray getErrorSymbols(void);
     bool getDataValid(void);
 
+    void setDiscTime(TrackTime _discTime);
+    void setTrackTime(TrackTime _trackTime);
+    TrackTime getDiscTime(void);
+    TrackTime getTrackTime(void);
+    void setTrackNumber(qint32 _trackNumber);
+    qint32 getTrackNumber(void);
+    void setIsEncoderRunning(bool _isEncoderRunning);
+    bool getIsEncoderRunning(void);
+
 private:
     QByteArray dataSymbols;
     QByteArray errorSymbols;
     bool dataValid;
+
+    TrackTime discTime;
+    TrackTime trackTime;
+    qint32 trackNumber;
+    bool isEncoderRunning;
 };
 
 #endif // F2FRAME_H

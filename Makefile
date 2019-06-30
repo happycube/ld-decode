@@ -4,7 +4,7 @@
 #       that make clean will not remove them.
 TARGETS=cx #comb-ntsc ddpack ddunpack tbc
 
-CFLAGS=-g -O2 -fno-omit-frame-pointer -march=native
+CFLAGS=-g -O2 -fno-omit-frame-pointer -march=native -Itools/ld-comb-ntsc
 OPENCV_LIBS=-lopencv_core -lopencv_highgui -lopencv_imgproc -lopencv_video
 
 # Define the directory for the TBC Qt app (relative to this makefile)

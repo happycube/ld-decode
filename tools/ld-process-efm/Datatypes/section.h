@@ -43,8 +43,8 @@ public:
         bool isNoPreempNotPreemp;
     };
 
-    // Structure of the Q mode 1 metadata
-    struct QMode1 {
+    // Structure of the Q mode 1 and 4 metadata
+    struct QMode1And4 {
         bool isLeadIn;
         bool isLeadOut;
         qint32 trackNumber;
@@ -52,6 +52,7 @@ public:
         qint32 point;
         TrackTime trackTime;
         TrackTime discTime;
+        bool isEncoderRunning;
     };
 
     // Structure of the Q mode 2 metadata
@@ -60,22 +61,10 @@ public:
         qint32 aFrame;
     };
 
-    // Structure of the Q mode 4 metadata
-    struct QMode4 {
-        bool isLeadIn;
-        bool isLeadOut;
-        qint32 trackNumber;
-        qint32 x;
-        qint32 point;
-        TrackTime trackTime;
-        TrackTime discTime;
-    };
-
     struct QMetadata {
         QControl qControl;
-        QMode1 qMode1;
+        QMode1And4 qMode1And4;
         QMode2 qMode2;
-        QMode4 qMode4;
     };
 
     bool setData(QByteArray dataIn);
@@ -101,9 +90,8 @@ private:
     quint16 crc16(char *addr, quint16 num);
     qint32 decodeQAddress(void);
     void decodeQControl(void);
-    void decodeQDataMode1(void);
+    void decodeQDataMode1And4(void);
     void decodeQDataMode2(void);
-    void decodeQDataMode4(void);
     qint32 bcdToInteger(uchar bcd);
 };
 

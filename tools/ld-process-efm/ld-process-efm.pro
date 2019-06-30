@@ -1,6 +1,6 @@
 #-------------------------------------------------
 #
-# Project created by QtCreator 2019-06-06T19:32:31
+# Project created by QtCreator 2019-06-29T06:07:37
 #
 #-------------------------------------------------
 
@@ -25,23 +25,17 @@ DEFINES += QT_DEPRECATED_WARNINGS
 CONFIG += c++11
 
 SOURCES += \
-        Datatypes/f1frame.cpp \
         Datatypes/f2frame.cpp \
         Datatypes/f3frame.cpp \
         Datatypes/section.cpp \
-        Datatypes/sector.cpp \
         Datatypes/tracktime.cpp \
-        Decoder/c1circ.cpp \
-        Decoder/c2circ.cpp \
-        Decoder/c2deinterleave.cpp \
-        Decoder/efmtof3frames.cpp \
-        Decoder/f1tosectors.cpp \
-        Decoder/f2framestoaudio.cpp \
-        Decoder/f2tof1frames.cpp \
-        Decoder/f3tof2frames.cpp \
-        Decoder/f3tosections.cpp \
-        Decoder/sectorstodata.cpp \
-        Decoder/sectorstometa.cpp \
+        Decoders/c1circ.cpp \
+        Decoders/c2circ.cpp \
+        Decoders/c2deinterleave.cpp \
+        Decoders/efmtof3frames.cpp \
+        Decoders/f2framestoaudio.cpp \
+        Decoders/f3tof2frames.cpp \
+        Decoders/syncf3frames.cpp \
         aboutdialog.cpp \
         configuration.cpp \
         efmprocess.cpp \
@@ -50,23 +44,17 @@ SOURCES += \
         mainwindow.cpp
 
 HEADERS += \
-        Datatypes/f1frame.h \
         Datatypes/f2frame.h \
         Datatypes/f3frame.h \
         Datatypes/section.h \
-        Datatypes/sector.h \
         Datatypes/tracktime.h \
-        Decoder/c1circ.h \
-        Decoder/c2circ.h \
-        Decoder/c2deinterleave.h \
-        Decoder/efmtof3frames.h \
-        Decoder/f1tosectors.h \
-        Decoder/f2framestoaudio.h \
-        Decoder/f2tof1frames.h \
-        Decoder/f3tof2frames.h \
-        Decoder/f3tosections.h \
-        Decoder/sectorstodata.h \
-        Decoder/sectorstometa.h \
+        Decoders/c1circ.h \
+        Decoders/c2circ.h \
+        Decoders/c2deinterleave.h \
+        Decoders/efmtof3frames.h \
+        Decoders/f2framestoaudio.h \
+        Decoders/f3tof2frames.h \
+        Decoders/syncf3frames.h \
         aboutdialog.h \
         configuration.h \
         efmprocess.h \
@@ -94,10 +82,7 @@ else: unix:!android: target.path = /usr/local/bin/
 !isEmpty(target.path): INSTALLS += target
 
 RESOURCES += \
-    resources.qrc
+    applicationicons.qrc
 
 DISTFILES += \
-    Decoder/JsonWax/LICENSE \
-    Decoder/JsonWax/README.md \
-    Decoder/ezpwd/rs_base \
     ezpwd/rs_base

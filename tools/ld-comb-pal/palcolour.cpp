@@ -102,21 +102,29 @@ void PalColour::buildLookUpTables(void)
         qint32 d;
         if (f==0) d=2; else d=1; // divider because we're only making half a filter-kernel and the zero-th poqint32 is counted twice later.
 
-        cfilt0[f]=256*(1+cos(M_PI*fc/ca))/d;
-        cfilt1[f]=256*(1+cos(M_PI*ff/ca))/d;
-        cfilt2[f]=256*(1+cos(M_PI*fff/ca))/d;
-        cfilt3[f]=256*(1+cos(M_PI*ffff/ca))/d;
+        // 0, 2, 1, 3 are vertical taps 0, +/- 1, +/- 2, +/- 3 (see filter loop below).
+        cfilt[f][0]=256*(1+cos(M_PI*fc/ca))/d;
+        cfilt[f][2]=256*(1+cos(M_PI*ff/ca))/d;
+        cfilt[f][1]=256*(1+cos(M_PI*fff/ca))/d;
+        cfilt[f][3]=256*(1+cos(M_PI*ffff/ca))/d;
 
-        cdiv+=cfilt0[f]+2*cfilt1[f]+2*cfilt2[f]+2*cfilt3[f];
+        cdiv+=cfilt[f][0]+2*cfilt[f][2]+2*cfilt[f][1]+2*cfilt[f][3];
 
         double  fy=f; if (fy>ya) fy=ya;
         double ffy=sqrt(f*f+2*2); if (ffy>ya) ffy=ya;
         double fffy=sqrt(f*f+4*4); if (fffy>ya) fffy=ya;
 
-        yfilt0[f]=256*(1+cos(M_PI*fy/ya))/d;
-        yfilt2[f]=0.2*256*(1+cos(M_PI*fffy/ya))/d;  // only used for PAL NB 0.2 makes much less sensitive to adjacent lines and reduces castellations and residual dot patterning
+        // For Y, only use lines n, n+/-2: the others cancel!!!
+        //  *have tried* using lines +/-1 & 3 --- can be made to work, but
+        //  introduces *phase-sensitivity* to the filter -> leaks too much
+        //  subcarrier if *any* phase-shifts!
+        // note omission of yfilt taps 1 and 3 for PAL
 
-        ydiv+=yfilt0[f]+2*0+2*yfilt2[f]+2*0;
+        // 0, 1 are vertical taps 0, +/- 2 (see filter loop below).
+        yfilt[f][0]=256*(1+cos(M_PI*fy/ya))/d;
+        yfilt[f][1]=0.2*256*(1+cos(M_PI*fffy/ya))/d;  // only used for PAL NB 0.2 makes much less sensitive to adjacent lines and reduces castellations and residual dot patterning
+
+        ydiv+=yfilt[f][0]+2*0+2*yfilt[f][1]+2*0;
     }
     cdiv*=2; ydiv*=2;
 
@@ -153,8 +161,7 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
 
         // were all short ints
         double pu[MAX_WIDTH], qu[MAX_WIDTH], pv[MAX_WIDTH], qv[MAX_WIDTH], py[MAX_WIDTH], qy[MAX_WIDTH];
-        double m[MAX_WIDTH], n[MAX_WIDTH];
-        double mx[MAX_WIDTH][6], nx[MAX_WIDTH][6];
+        double m[4][MAX_WIDTH], n[4][MAX_WIDTH];
 
         qint32 Vsw; // this will represent the PAL Vswitch state later on...
 
@@ -192,14 +199,23 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
                 }
 
                 for (qint32 i = videoParameters.colourBurstStart; i < videoParameters.fieldWidth; i++) {
-                    m[i]=b0[i]*sine[i]; n[i]=b0[i]*cosine[i];
+                    // The 2D filter is vertically symmetrical, so we can
+                    // pre-compute the sums of pairs of lines above and below
+                    // fieldLine to save some work in the inner loop below.
+                    //
+                    // Vertical taps 1 and 2 are swapped in the array to save
+                    // one addition in the filter loop, as U and V are the same
+                    // sign for taps 0 and 2.
 
-                    mx[i][0]=b1[i]*sine[i];  nx[i][0]=b1[i]*cosine[i];
-                    mx[i][1]=b2[i]*sine[i];  nx[i][1]=b2[i]*cosine[i];
-                    mx[i][2]=b3[i]*sine[i];  nx[i][2]=b3[i]*cosine[i];
-                    mx[i][3]=b4[i]*sine[i];  nx[i][3]=b4[i]*cosine[i];
-                    mx[i][4]=b5[i]*sine[i];  nx[i][4]=b5[i]*cosine[i];
-                    mx[i][5]=b6[i]*sine[i];  nx[i][5]=b6[i]*cosine[i];
+                    m[0][i]=+b0[i]*sine[i];
+                    m[2][i]=+b1[i]*sine[i]-b2[i]*sine[i];
+                    m[1][i]=-b3[i]*sine[i]-b4[i]*sine[i];
+                    m[3][i]=-b5[i]*sine[i]+b6[i]*sine[i];
+
+                    n[0][i]=+b0[i]*cosine[i];
+                    n[2][i]=+b1[i]*cosine[i]-b2[i]*cosine[i];
+                    n[1][i]=-b3[i]*cosine[i]-b4[i]*cosine[i];
+                    n[3][i]=-b5[i]*cosine[i]+b6[i]*cosine[i];
                 }
 
                 // Find absolute burst phase
@@ -213,10 +229,10 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
                 // this is a classic "product-" or "synchronous demodulation" operation. We "detect" the burst relative to the arbitrary sine[] and cosine[] reference phases
                 qint32 bp=0, bq=0, bpo=0, bqo=0;
                 for (qint32 i=videoParameters.colourBurstStart; i<videoParameters.colourBurstEnd; i++) {
-                    bp+=(m[i]-(mx[i][2]+mx[i][3])/2)/2;
-                    bq+=(n[i]-(nx[i][2]+nx[i][3])/2)/2;
-                    bpo+=(mx[i][1]-mx[i][0])/2;
-                    bqo+=(nx[i][1]-nx[i][0])/2;
+                    bp+=(m[0][i]+(m[1][i]/2))/2;
+                    bq+=(n[0][i]+(n[1][i]/2))/2;
+                    bpo-=m[2][i]/2;
+                    bqo-=n[2][i]/2;
                 }
 
                 bp/=(videoParameters.colourBurstEnd-videoParameters.colourBurstStart);  bq/=(videoParameters.colourBurstEnd-videoParameters.colourBurstStart);  // normalises those sums
@@ -251,12 +267,9 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
 
                     // Carry out 2D filtering. P and Q are the two arbitrary SINE & COS
                     // phases components. U filters for U, V for V, and Y for Y
-                    // U and V are the same for lines n, n+/-2, but differ in sign for
-                    // n+/-1, n+/-3 owing to the forward/backward axis slant
-                    // For Y, only use lines n, n+/-2: the others cancel!!!
-                    //  *have tried* using lines +/-1 & 3 --- can be made to work, but
-                    //  introduces *phase-sensitivity* to the filter -> leaks too much
-                    //  subcarrier if *any* phase-shifts!
+                    // U and V are the same for lines n ([0]), n+/-2 ([1]), but
+                    // differ in sign for n+/-1 ([2]), n+/-3 ([3]) owing to the
+                    // forward/backward axis slant
 
                     qint32 l,r;
 
@@ -264,13 +277,13 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
                     {
                         l=i-b; r=i+b;
 
-                        PY+=(m[r]+m[l])*yfilt0[b]-(mx[r][2]+mx[l][2]+mx[r][3]+mx[l][3])*yfilt2[b];  // note omission of yfilt[1] and [3] for PAL
-                        QY+=(n[r]+n[l])*yfilt0[b]-(nx[r][2]+nx[l][2]+nx[r][3]+nx[l][3])*yfilt2[b];  // note omission of yfilt[1] and [3] for PAL
+                        PY+=(m[0][r]+m[0][l])*yfilt[b][0]+(m[1][r]+m[1][l])*yfilt[b][1];
+                        QY+=(n[0][r]+n[0][l])*yfilt[b][0]+(n[1][r]+n[1][l])*yfilt[b][1];
 
-                        PU+=(m[r]+m[l])*cfilt0[b]-(mx[r][2]+mx[l][2]+mx[r][3]+mx[l][3])*cfilt2[b]+(nx[r][0]+nx[l][0]-nx[r][1]-nx[l][1])*cfilt1[b]-(nx[r][4]+nx[l][4]-nx[r][5]-nx[l][5])*cfilt3[b];
-                        QU+=(n[r]+n[l])*cfilt0[b]-(nx[r][2]+nx[l][2]+nx[r][3]+nx[l][3])*cfilt2[b]-(mx[r][0]+mx[l][0]-mx[r][1]-mx[l][1])*cfilt1[b]+(mx[r][4]+mx[l][4]-mx[r][5]-mx[l][5])*cfilt3[b];
-                        PV+=(m[r]+m[l])*cfilt0[b]-(mx[r][2]+mx[l][2]+mx[r][3]+mx[l][3])*cfilt2[b]-(nx[r][0]+nx[l][0]-nx[r][1]-nx[l][1])*cfilt1[b]+(nx[r][4]+nx[l][4]-nx[r][5]-nx[l][5])*cfilt3[b];
-                        QV+=(n[r]+n[l])*cfilt0[b]-(nx[r][2]+nx[l][2]+nx[r][3]+nx[l][3])*cfilt2[b]+(mx[r][0]+mx[l][0]-mx[r][1]-mx[l][1])*cfilt1[b]-(mx[r][4]+mx[l][4]-mx[r][5]-mx[l][5])*cfilt3[b];
+                        PU+=(m[0][r]+m[0][l])*cfilt[b][0]+(m[1][r]+m[1][l])*cfilt[b][1]+(n[2][r]+n[2][l])*cfilt[b][2]+(n[3][r]+n[3][l])*cfilt[b][3];
+                        QU+=(n[0][r]+n[0][l])*cfilt[b][0]+(n[1][r]+n[1][l])*cfilt[b][1]-(m[2][r]+m[2][l])*cfilt[b][2]-(m[3][r]+m[3][l])*cfilt[b][3];
+                        PV+=(m[0][r]+m[0][l])*cfilt[b][0]+(m[1][r]+m[1][l])*cfilt[b][1]-(n[2][r]+n[2][l])*cfilt[b][2]-(n[3][r]+n[3][l])*cfilt[b][3];
+                        QV+=(n[0][r]+n[0][l])*cfilt[b][0]+(n[1][r]+n[1][l])*cfilt[b][1]+(m[2][r]+m[2][l])*cfilt[b][2]+(m[3][r]+m[3][l])*cfilt[b][3];
                     }
                     pu[i]=PU/cdiv; qu[i]=QU/cdiv;
                     pv[i]=PV/cdiv; qv[i]=QV/cdiv;

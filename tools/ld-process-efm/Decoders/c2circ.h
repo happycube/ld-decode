@@ -1,6 +1,6 @@
 /************************************************************************
 
-    sectorstodata.h
+    c2circ.h
 
     ld-process-efm - EFM data decoder
     Copyright (C) 2019 Simon Inns
@@ -22,45 +22,60 @@
 
 ************************************************************************/
 
-#ifndef SECTORSTODATA_H
-#define SECTORSTODATA_H
+#ifndef C2CIRC_H
+#define C2CIRC_H
 
 #include <QCoreApplication>
 #include <QDebug>
-#include <QFile>
 
-#include "Datatypes/sector.h"
-#include "Datatypes/tracktime.h"
+#include <ezpwd/rs_base>
+#include <ezpwd/rs>
 
-class SectorsToData
+// CD-ROM specific CIRC configuration for Reed-Solomon forward error correction
+template < size_t SYMBOLS, size_t PAYLOAD > struct C2RS;
+template < size_t PAYLOAD > struct C2RS<255, PAYLOAD> : public __RS(C2RS, uint8_t, 255, PAYLOAD, 0x11d, 0,  1);
+
+class C2Circ
 {
 public:
-    SectorsToData();
+    C2Circ();
 
+    // Statistics data structure
     struct Statistics {
-        qint32 sectorsWritten;
-        qint32 gapSectors;
-        qint32 missingSectors;
+        qint32 c2Passed;
+        qint32 c2Corrected;
+        qint32 c2Failed;
+        qint32 c2flushed;
     };
 
     void reset(void);
     void resetStatistics(void);
     Statistics getStatistics(void);
-
-    void reportStatus(void);
-    bool setOutputFile(QFile *outputFileHandle);
-    void convert(QVector<Sector> sectors);
+    void reportStatistics(void);
+    void pushC1(QByteArray dataSymbols, QByteArray errorSymbols);
+    QByteArray getDataSymbols(void);
+    QByteArray getErrorSymbols(void);
+    bool getDataValid(void);
+    void flush(void);
 
 private:
-    QFile *outputFileHandle;
+    struct C1Element {
+        QByteArray c1Data;
+        QByteArray c1Error;
+    };
+    QVector<C1Element> c1DelayBuffer;
+
+    QByteArray interleavedC2Data;
+    QByteArray interleavedC2Errors;
+
+    QByteArray outputC2Data;
+    QByteArray outputC2Errors;
+    bool outputC2dataValid;
+
     Statistics statistics;
 
-    bool gotFirstValidSector;
-    TrackTime lastGoodAddress;
-
-    QVector<qint32> missingStartSector;
-    QVector<qint32> missingEndSector;
-    QVector<bool> isGap;
+    void interleave(void);
+    void errorCorrect(void);
 };
 
-#endif // SECTORSTODATA_H
+#endif // C2CIRC_H

@@ -19,6 +19,10 @@ __pycache__
 # Prerequisites
 *.d
 
+# Compiler intermediate files
+*.ii
+*.s
+
 # Compiled Object files
 *.slo
 *.lo
@@ -48,3 +52,7 @@ __pycache__
 *.exe
 *.out
 *.app
+
+# Profiling results
+perf.data*
+Benchfile*

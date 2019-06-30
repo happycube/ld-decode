@@ -53,13 +53,15 @@ C2Deinterleave::Statistics C2Deinterleave::getStatistics(void)
     return statistics;
 }
 
-// Method to write status information to qInfo
-void C2Deinterleave::reportStatus(void)
+// Method to write statistics information to qInfo
+void C2Deinterleave::reportStatistics(void)
 {
-    qInfo() << "C2 Deinterleave:";
-    qInfo() << "  Total number of C2s processed =" << statistics.validDeinterleavedC2s + statistics.invalidDeinterleavedC2s;
-    qInfo() << "  of which" << statistics.validDeinterleavedC2s << "were valid and" << statistics.invalidDeinterleavedC2s << "were invalid";
-    qInfo() << "  The delay buffer was flushed" << statistics.c2flushed << "times";
+    qInfo() << "";
+    qInfo() << "F3 to F2 frame C2 Deinterleave:";
+    qInfo() << "  Total C2s processed:" << statistics.validDeinterleavedC2s + statistics.invalidDeinterleavedC2s;
+    qInfo() << "            Valid C2s:" << statistics.validDeinterleavedC2s;
+    qInfo() << "          Invalid C2s:" << statistics.invalidDeinterleavedC2s;
+    qInfo() << " Delay buffer flushes:" << statistics.c2flushed;
 }
 
 void C2Deinterleave::pushC2(QByteArray dataSymbols, QByteArray errorSymbols, bool dataValid)

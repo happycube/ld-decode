@@ -24,6 +24,7 @@
 ************************************************************************/
 
 #include "comb.h"
+
 #include "../../deemp.h"
 
 // Public methods -----------------------------------------------------------------------------------------------------
@@ -68,7 +69,7 @@ Comb::Configuration Comb::getConfiguration(void)
 }
 
 // Set the comb filter configuration parameters
-void Comb::setConfiguration(Comb::Configuration configurationParam)
+void Comb::setConfiguration(const Comb::Configuration &configurationParam)
 {
     // Range check the frame dimensions
     if (configuration.fieldWidth > 910) qCritical() << "Comb::Comb(): Frame width exceeds allowed maximum!";
@@ -274,8 +275,8 @@ void Comb::split2D(FrameBuffer *frameBuffer)
                 kn /= 2;
 
                 qreal p_2drange = 45 * irescale;
-                kp = clamp(1 - (kp / p_2drange), 0, 1);
-                kn = clamp(1 - (kn / p_2drange), 0, 1);
+                kp = clamp(1 - (kp / p_2drange), 0.0, 1.0);
+                kn = clamp(1 - (kn / p_2drange), 0.0, 1.0);
 
                 qreal sc = 1.0;
 
@@ -364,9 +365,12 @@ void Comb::splitIQ(FrameBuffer *frameBuffer)
 // Filter the IQ from the input YIQ buffer
 void Comb::filterIQ(YiqBuffer &yiqBuffer)
 {
+    auto iFilter(f_colorlpi);
+    auto qFilter(configuration.colorlpf_hq ? f_colorlpi : f_colorlpq);
+
     for (qint32 lineNumber = configuration.firstVisibleFrameLine; lineNumber < frameHeight; lineNumber++) {
-        Filter f_i(configuration.colorlpf_hq ? f_colorlpi : f_colorlpi);
-        Filter f_q(configuration.colorlpf_hq ? f_colorlpi : f_colorlpq);
+        iFilter.clear();
+        qFilter.clear();
 
         qint32 qoffset = 2; // f_colorlpf_hq ? f_colorlpi_offset : f_colorlpq_offset;
 
@@ -376,10 +380,10 @@ void Comb::filterIQ(YiqBuffer &yiqBuffer)
             qint32 phase = h % 4;
 
             switch (phase) {
-                case 0: filti = f_i.feed(yiqBuffer[lineNumber][h].i); break;
-                case 1: filtq = f_q.feed(yiqBuffer[lineNumber][h].q); break;
-                case 2: filti = f_i.feed(yiqBuffer[lineNumber][h].i); break;
-                case 3: filtq = f_q.feed(yiqBuffer[lineNumber][h].q); break;
+                case 0: filti = iFilter.feed(yiqBuffer[lineNumber][h].i); break;
+                case 1: filtq = qFilter.feed(yiqBuffer[lineNumber][h].q); break;
+                case 2: filti = iFilter.feed(yiqBuffer[lineNumber][h].i); break;
+                case 3: filtq = qFilter.feed(yiqBuffer[lineNumber][h].q); break;
                 default: break;
             }
 
@@ -401,9 +405,9 @@ void Comb::doCNR(YiqBuffer &yiqBuffer)
 {
     if (configuration.cNRLevel == 0) return;
 
-    // f_nrc is a 24-tap FIR filter.
-    Filter f_hpi(f_nrc);
-    Filter f_hpq(f_nrc);
+    // High-pass filters for I/Q
+    auto iFilter(f_nrc);
+    auto qFilter(f_nrc);
 
     // nr_c is the coring level
     qreal nr_c = configuration.cNRLevel * irescale;
@@ -412,9 +416,11 @@ void Comb::doCNR(YiqBuffer &yiqBuffer)
     hplinef.resize(configuration.fieldWidth + 32);
 
     for (qint32 lineNumber = configuration.firstVisibleFrameLine; lineNumber < frameHeight; lineNumber++) {
+        // Filters not cleared from previous line
+
         for (qint32 h = configuration.activeVideoStart; h <= configuration.activeVideoEnd; h++) {
-            hplinef[h].i = f_hpi.feed(yiqBuffer[lineNumber][h].i);
-            hplinef[h].q = f_hpq.feed(yiqBuffer[lineNumber][h].q);
+            hplinef[h].i = iFilter.feed(yiqBuffer[lineNumber][h].i);
+            hplinef[h].q = qFilter.feed(yiqBuffer[lineNumber][h].q);
         }
 
         for (qint32 h = configuration.activeVideoStart; h < configuration.activeVideoEnd; h++) {
@@ -440,7 +446,8 @@ void Comb::doYNR(YiqBuffer &yiqBuffer)
 {
     if (configuration.yNRLevel == 0) return;
 
-    Filter f_hpy(f_nr);
+    // High-pass filter for Y
+    auto yFilter(f_nr);
 
     // nr_y is the coring level
     qreal nr_y = configuration.yNRLevel * irescale;
@@ -449,8 +456,10 @@ void Comb::doYNR(YiqBuffer &yiqBuffer)
     hplinef.resize(configuration.fieldWidth + 32);
 
     for (qint32 lineNumber = configuration.firstVisibleFrameLine; lineNumber < frameHeight; lineNumber++) {
+        // Filter not cleared from previous line
+
         for (qint32 h = configuration.activeVideoStart; h <= configuration.activeVideoEnd; h++) {
-            hplinef[h].y = f_hpy.feed(yiqBuffer[lineNumber][h].y);
+            hplinef[h].y = yFilter.feed(yiqBuffer[lineNumber][h].y);
         }
 
         for (qint32 h = configuration.activeVideoStart; h < configuration.activeVideoEnd; h++) {
@@ -466,13 +475,16 @@ void Comb::doYNR(YiqBuffer &yiqBuffer)
 }
 
 // Convert buffer from YIQ to RGB 16-16-16
-QByteArray Comb::yiqToRgbFrame(YiqBuffer yiqBuffer, qreal burstLevel)
+QByteArray Comb::yiqToRgbFrame(const YiqBuffer &yiqBuffer, qreal burstLevel)
 {
     QByteArray rgbOutputFrame;
     rgbOutputFrame.resize((configuration.fieldWidth * frameHeight * 3) * 2); // * 3 * 2 for RGB 16-16-16)
 
     // Initialise the output frame
     rgbOutputFrame.fill(0);
+
+    // Initialise YIQ to RGB converter
+    RGB rgb(configuration.whiteIre, configuration.blackIre, configuration.whitePoint100, configuration.blackAndWhite, burstLevel);
 
     // Perform YIQ to RGB conversion
     for (qint32 lineNumber = configuration.firstVisibleFrameLine; lineNumber < frameHeight; lineNumber++) {
@@ -485,19 +497,10 @@ QByteArray Comb::yiqToRgbFrame(YiqBuffer yiqBuffer, qreal burstLevel)
         // it's really not important)
         qint32 o = (configuration.activeVideoStart * 3) + 6;
 
-        // Fill the output frame with the RGB values
-        for (qint32 h = configuration.activeVideoStart; h < configuration.activeVideoEnd; h++) {
-            RGB rgb(configuration.whiteIre, configuration.blackIre, configuration.whitePoint100, configuration.blackAndWhite);
-            YIQ yiq = yiqBuffer[lineNumber][h];
-
-            // Convert YIQ to RGB colour space
-            rgb.conv(yiq, burstLevel);
-
-            // Place the RGB values in the output QByteArray
-            linePointer[o++] = static_cast<quint16>(rgb.r);
-            linePointer[o++] = static_cast<quint16>(rgb.g);
-            linePointer[o++] = static_cast<quint16>(rgb.b);
-        }
+        // Fill the output line with the RGB values
+        rgb.convertLine(&yiqBuffer[lineNumber][configuration.activeVideoStart],
+                        &yiqBuffer[lineNumber][configuration.activeVideoEnd],
+                        &linePointer[o]);
     }
 
     // Return the RGB frame data
@@ -505,7 +508,7 @@ QByteArray Comb::yiqToRgbFrame(YiqBuffer yiqBuffer, qreal burstLevel)
 }
 
 // Convert buffer from YIQ to RGB
-void Comb::overlayOpticalFlowMap(FrameBuffer frameBuffer, QByteArray &rgbFrame)
+void Comb::overlayOpticalFlowMap(const FrameBuffer &frameBuffer, QByteArray &rgbFrame)
 {
     qDebug() << "Comb::overlayOpticalFlowMap(): Overlaying optical flow map onto RGB output";
 //    QVector<qreal> motionKMap;
@@ -562,18 +565,4 @@ void Comb::adjustY(FrameBuffer *frameBuffer, YiqBuffer &yiqBuffer)
             yiqBuffer[lineNumber][h + 0] = y;
         }
     }
-}
-
-qreal Comb::clamp(qreal v, qreal low, qreal high)
-{
-        if (v < low) return low;
-        else if (v > high) return high;
-        else return v;
-}
-
-qreal Comb::atan2deg(qreal y, qreal x)
-{
-    qreal rv = static_cast<double>(atan2(static_cast<long double>(y), x) * (180 / M_PIl));
-    if (rv < 0) rv += 360;
-    return rv;
 }

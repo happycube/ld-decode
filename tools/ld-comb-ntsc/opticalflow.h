@@ -34,6 +34,7 @@
 #include <opencv2/core/core.hpp>
 #include <opencv2/video/tracking.hpp>
 
+#include "rgb.h"
 #include "yiqbuffer.h"
 
 class OpticalFlow
@@ -46,16 +47,15 @@ public:
         YIQ pixel[911]; // One line of YIQ data
     };
 
-    void denseOpticalFlow(YiqBuffer yiqBuffer, QVector<qreal> &kValues);
+    void denseOpticalFlow(const YiqBuffer &yiqBuffer, QVector<qreal> &kValues);
 
 private:
     // Globals used by the opticalFlow3D method
     cv::Mat previousFrameGrey;
     qint32 framesProcessed;
 
-    cv::Mat convertYtoMat(YiqBuffer yiqBuffer);
-    qreal clamp(qreal v, qreal low, qreal high);
-    qreal calculateDistance(qreal yDifference, qreal xDifference);
+    cv::Mat convertYtoMat(const YiqBuffer &yiqBuffer);
+    inline qreal calculateDistance(qreal yDifference, qreal xDifference);
 };
 
 #endif // OPTICALFLOW_H

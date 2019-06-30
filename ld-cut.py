@@ -86,7 +86,7 @@ ldd.roughseek(endloc)
 endidx = ldd.fdoffset
 
 if makelds:
-    process = subprocess.Popen(['dddconv', '-o', outname, '-p'], stdin=subprocess.PIPE)
+    process = subprocess.Popen(['ld-lds-converter', '-o', outname, '-p'], stdin=subprocess.PIPE)
     fd = process.stdin
 else:
     fd = open(args.outfile, 'wb')
@@ -110,7 +110,7 @@ for i in range(startidx, endidx + 16384, 16384):
 fd.close()
 
 if makelds:
-    # allow dddconv to finish after EOFing it's input
+    # allow ld-lds-converter to finish after EOFing it's input
     process.wait()
     
 #exit(0)

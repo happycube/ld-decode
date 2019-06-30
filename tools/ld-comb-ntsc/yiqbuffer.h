@@ -26,24 +26,29 @@
 #ifndef YIQBUFFER_H
 #define YIQBUFFER_H
 
-#include <QCoreApplication>
-#include <QVector>
-#include <QDebug>
+#include <array>
+#include <vector>
 
-#include "yiqline.h"
+#include "yiq.h"
 
+using YiqLine = std::array<YIQ, 910>;
+
+// A heap-allocated 2D array of YIQ pixels
 class YiqBuffer
+    : public std::vector<YiqLine>
 {
 public:
-    YiqBuffer();
+    YiqBuffer()
+        : std::vector<YiqLine>(525)
+    {
+    }
 
-    void clear(void);
-    YiqLine& operator[] (const int index);
-
-private:
-    qint32 bufferHeight;
-
-    QVector<YiqLine> yiqLine;
+    // Zero all pixels in the buffer
+    void clear() {
+        for (YiqLine &line: *this) {
+            line.fill(YIQ());
+        }
+    }
 };
 
 #endif // YIQBUFFER_H
