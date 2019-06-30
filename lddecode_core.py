@@ -416,18 +416,24 @@ class RFDecode:
     # the frequency is reduced by 16/32x.
 
     def runfilter_audio_phase2(self, frame_audio, start):
-        left = frame_audio['audio_left'][start:start+self.blocklen].copy() 
-        left_fft = np.fft.fft(left)
-        #logging.info(self.audio_fdslice2(left_fft).shape)
-        audio_out_fft = self.audio_fdslice2(left_fft) * self.Filters['audio_lpf2']
-        left_out = np.fft.ifft(audio_out_fft).real / self.Filters['audio_fdiv2']
+        outputs = []
 
-        right = frame_audio['audio_right'][start:start+self.blocklen].copy() 
-        right_fft = np.fft.fft(right)
-        audio_out_fft = self.audio_fdslice2(right_fft) * self.Filters['audio_lpf2'] #* adeemp
-        right_out = np.fft.ifft(audio_out_fft).real / self.Filters['audio_fdiv2']
+        for c in [['audio_left', 'audio_lfreq'], ['audio_right', 'audio_rfreq']]:
+            raw = frame_audio[c[0]][start:start+self.blocklen].copy() - self.SysParams[c[1]]
 
-        return np.rec.array([left_out, right_out], names=['audio_left', 'audio_right'])
+            raw = np.clip(raw, -150000, 150000)
+
+            fft_in = np.fft.fft(raw)
+
+#            if c[0] == 'audio_left':
+#                fft_out_raw = self.audio_fdslice2(fft_in) 
+
+            fft_out = self.audio_fdslice2(fft_in) * self.Filters['audio_lpf2'] * self.Filters['audio_deemp2']
+
+#            outputs.append((np.fft.ifft(fft_out_raw).real / self.Filters['audio_fdiv2']))
+            outputs.append((np.fft.ifft(fft_out).real / self.Filters['audio_fdiv2']) + self.SysParams[c[1]])
+
+        return np.rec.array(outputs, names=['audio_left', 'audio_right'])
 
     def audio_phase2(self, field_audio):
         # this creates an output array with left/right channels.
@@ -439,12 +445,13 @@ class RFDecode:
 
         end = field_audio.shape[0] #// filterset['audio_fdiv2']
 
-        askip = 64 # length of filters that needs to be chopped out of the ifft
+        askip = 512 # length of filters that needs to be chopped out of the ifft
         sjump = self.blocklen - (askip * self.Filters['audio_fdiv2'])
 
         ostart = tmp.shape[0]
         for sample in range(sjump, field_audio.shape[0] - sjump, sjump):
             tmp = self.runfilter_audio_phase2(field_audio, sample)
+            
             oend = ostart + tmp.shape[0] - askip
             output_audio2[ostart:oend] = tmp[askip:]
             ostart += tmp.shape[0] - askip
