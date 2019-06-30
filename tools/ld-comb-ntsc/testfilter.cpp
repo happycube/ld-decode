@@ -68,5 +68,13 @@ int main(int argc, char *argv[]) {
     Filter g3(c_nr_b, c_nr_a);
     test_filter("nr", f3, g3);
 
+    IIRFilter<5, 5> f4(c_a500_48k_b, c_a500_48k_a);
+    Filter g4(c_a500_48k_b, c_a500_48k_a);
+    test_filter("a500_48k", f4, g4);
+
+    IIRFilter<5, 5> f5(c_a40h_48k_b, c_a40h_48k_a);
+    Filter g5(c_a40h_48k_b, c_a40h_48k_a);
+    test_filter("a40h_48k", f5, g5);
+
     return 0;
 }
