@@ -15,33 +15,33 @@ freq32 = 32
 # RJS: standardise output for C++
 
 def WriteFilter(name, b, a = [1.0]):
-	print("std::vector<double> c_",name,"_b = {",sep="",end="")
-	ct = len(b)
-	for i in range(0, ct):
+	border = len(b)
+	print("const std::array<double, ",border,"> c_",name,"_b = {",sep="",end="")
+	for i in range(0, border):
 		# insert a new line and an indent every 4 items
 		if i % 4 == 0:
 			print()
 			print("\t",end='')
 		# print the item
 		print("%.15e" % b[i], end='')
-		if i < ct-1:
+		if i < border-1:
 			print(", ", end='')
 	print("\n};")
 
-	print("std::vector<double> c_",name,"_a = {",sep="",end="")
-	ct = len(a)
-	for i in range(0, ct):
+	aorder = len(a)
+	print("const std::array<double, ",aorder,"> c_",name,"_a = {",sep="",end="")
+	for i in range(0, aorder):
 		# insert a new line and an indent every 4 items
 		if i % 4 == 0:
 			print()
 			print("\t",end='')
 		# print the item
 		print("%.15e" % a[i], end="")
-		if i < ct-1:
+		if i < aorder-1:
 			print(", ", end='')
 	print("\n};")
 	print()
-	print("Filter f_",name,"(c_",name,"_b, c_",name,"_a);",sep="")
+	print("const IIRFilter<",border,", ", aorder,"> f_",name,"(c_",name,"_b, c_",name,"_a);",sep="")
 	print()
 
 
@@ -76,6 +76,11 @@ print()
 # Write the ifdefs first
 print ("#ifndef DEEMP_H")
 print ("#define DEEMP_H")
+print ();
+
+print ("#include <array>")
+print ();
+print ("#include \"iirfilter.h\"")
 print ();
 
 Bboost = sps.firwin(33, 3.5 / (freq), window='hamming', pass_zero=False)

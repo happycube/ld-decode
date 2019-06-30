@@ -3,6 +3,7 @@
     testfilter.cpp
 
     ld-comb-ntsc - NTSC colourisation filter for ld-decode
+    Copyright (C) 2014-5 Chad Page
     Copyright (C) 2019 Adam Sampson
 
     This file is part of ld-decode-tools.
@@ -24,19 +25,73 @@
 
 #include <cmath>
 #include <cstdlib>
+#include <cstring>
 #include <iostream>
+#include <vector>
 
 using std::cerr;
-
-#include "iirfilter.h"
-#include "filter.h"
+using std::vector;
 
 #include "../../deemp.h"
+
+// This is the original filter code from ld-decoder.h.
+class SimpleFilter {
+protected:
+    int order;
+    vector<double> a, b;
+    vector<double> y, x;
+
+public:
+    template <typename BSrc, typename ASrc>
+    SimpleFilter(const BSrc &_b, const ASrc &_a)
+        : b(_b.begin(), _b.end()), a(_a.begin(), _a.end())
+    {
+        order = b.size();
+
+        x.resize(b.size() + 1);
+        y.resize(a.size() + 1);
+
+        clear();
+    }
+
+    void clear(double val = 0) {
+        for (int i = 0; i < a.size(); i++) {
+            y[i] = val;
+        }
+        for (int i = 0; i < b.size(); i++) {
+            x[i] = val;
+        }
+    }
+
+    inline double feed(double val) {
+        double a0 = a[0];
+        double y0;
+
+        double *x_data = x.data();
+        double *y_data = y.data();
+
+        memmove(&x_data[1], x_data, sizeof(double) * (b.size() - 1));
+        memmove(&y_data[1], y_data, sizeof(double) * (a.size() - 1));
+
+        x[0] = val;
+        y0 = 0;
+
+        for (int o = 0; o < b.size(); o++) {
+            y0 += ((b[o] / a0) * x[o]);
+        }
+        for (int o = 1; o < a.size(); o++) {
+            y0 -= ((a[o] / a0) * y[o]);
+        }
+
+        y[0] = y0;
+        return y[0];
+    }
+};
 
 // Check that two filters produce the same output given the same input.
 template <typename FN, typename FO>
 void test_filter(const char *name, FN& fn, FO& fo) {
-    cerr << "Comparing filters: " << name << "\n";    
+    cerr << "Comparing filters: " << name << "\n";
 
     for (int i = 0; i < 100; ++i) {
         double input = i - 40;
@@ -52,21 +107,29 @@ void test_filter(const char *name, FN& fn, FO& fo) {
 int main(int argc, char *argv[]) {
     // Test with the sets of coefficients used in the code.
 
-    IIRFilter<2, 2> f0(c_colorlpi_b, c_colorlpi_a);
-    Filter g0(c_colorlpi_b, c_colorlpi_a);
+    auto f0(f_colorlpi);
+    SimpleFilter g0(c_colorlpi_b, c_colorlpi_a);
     test_filter("colorlpi", f0, g0);
 
-    IIRFilter<2, 2> f1(c_colorlpq_b, c_colorlpq_a);
-    Filter g1(c_colorlpq_b, c_colorlpq_a);
+    auto f1(f_colorlpq);
+    SimpleFilter g1(c_colorlpq_b, c_colorlpq_a);
     test_filter("colorlpq", f1, g1);
 
-    IIRFilter<17, 1> f2(c_nrc_b, c_nrc_a);
-    Filter g2(c_nrc_b, c_nrc_a);
+    auto f2(f_nrc);
+    SimpleFilter g2(c_nrc_b, c_nrc_a);
     test_filter("nrc", f2, g2);
 
-    IIRFilter<25, 1> f3(c_nr_b, c_nr_a);
-    Filter g3(c_nr_b, c_nr_a);
+    auto f3(f_nr);
+    SimpleFilter g3(c_nr_b, c_nr_a);
     test_filter("nr", f3, g3);
+
+    auto f4(f_a500_48k);
+    SimpleFilter g4(c_a500_48k_b, c_a500_48k_a);
+    test_filter("a500_48k", f4, g4);
+
+    auto f5(f_a40h_48k);
+    SimpleFilter g5(c_a40h_48k_b, c_a40h_48k_a);
+    test_filter("a40h_48k", f5, g5);
 
     return 0;
 }
