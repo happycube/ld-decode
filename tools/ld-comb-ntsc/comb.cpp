@@ -483,6 +483,9 @@ QByteArray Comb::yiqToRgbFrame(const YiqBuffer &yiqBuffer, qreal burstLevel)
     // Initialise the output frame
     rgbOutputFrame.fill(0);
 
+    // Initialise YIQ to RGB converter
+    RGB rgb(configuration.whiteIre, configuration.blackIre, configuration.whitePoint100, configuration.blackAndWhite, burstLevel);
+
     // Perform YIQ to RGB conversion
     for (qint32 lineNumber = configuration.firstVisibleFrameLine; lineNumber < frameHeight; lineNumber++) {
         // Map the QByteArray data to an unsigned 16 bit pointer
@@ -494,19 +497,10 @@ QByteArray Comb::yiqToRgbFrame(const YiqBuffer &yiqBuffer, qreal burstLevel)
         // it's really not important)
         qint32 o = (configuration.activeVideoStart * 3) + 6;
 
-        // Fill the output frame with the RGB values
-        for (qint32 h = configuration.activeVideoStart; h < configuration.activeVideoEnd; h++) {
-            RGB rgb(configuration.whiteIre, configuration.blackIre, configuration.whitePoint100, configuration.blackAndWhite);
-            YIQ yiq = yiqBuffer[lineNumber][h];
-
-            // Convert YIQ to RGB colour space
-            rgb.conv(yiq, burstLevel);
-
-            // Place the RGB values in the output QByteArray
-            linePointer[o++] = static_cast<quint16>(rgb.r);
-            linePointer[o++] = static_cast<quint16>(rgb.g);
-            linePointer[o++] = static_cast<quint16>(rgb.b);
-        }
+        // Fill the output line with the RGB values
+        rgb.convertLine(&yiqBuffer[lineNumber][configuration.activeVideoStart],
+                        &yiqBuffer[lineNumber][configuration.activeVideoEnd],
+                        &linePointer[o]);
     }
 
     // Return the RGB frame data

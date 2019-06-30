@@ -34,18 +34,16 @@
 class RGB
 {
 public:
-    double r, g, b;
-    RGB(double whiteIreParam, double blackIreParam, bool whitePoint100Param, bool blackAndWhiteParam);
+    RGB(double whiteIreParam, double blackIreParam, bool whitePoint100Param, bool blackAndWhiteParam, double colourBurstMedianParam);
 
-    void conv(const YIQ &_y, qreal colourBurstMedian);
+    void convertLine(const YIQ *begin, const YIQ *end, quint16 *out);
 
 private:
     double blackIreLevel;
     double whiteIreLevel;
     bool whitePoint75;
     bool blackAndWhite;
-
-    inline double scaleY(double level);
+    double colourBurstMedian;
 };
 
 // Clamp a value to within a fixed range.
