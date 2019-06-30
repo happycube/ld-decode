@@ -1,6 +1,6 @@
 /************************************************************************
 
-    sectorstometa.h
+    f2framestoaudio.h
 
     ld-process-efm - EFM data decoder
     Copyright (C) 2019 Simon Inns
@@ -22,40 +22,42 @@
 
 ************************************************************************/
 
-#ifndef SECTORSTOMETA_H
-#define SECTORSTOMETA_H
+#ifndef F2FRAMESTOAUDIO_H
+#define F2FRAMESTOAUDIO_H
 
 #include <QCoreApplication>
-#include <QFile>
 #include <QDebug>
+#include <QFile>
+#include <QDataStream>
 
-#include "Datatypes/sector.h"
+#include "Datatypes/f2frame.h"
 
-class SectorsToMeta
+class F2FramesToAudio
 {
 public:
-    SectorsToMeta();
+    F2FramesToAudio();
 
-    void reset(void);
-    bool setOutputFile(QFile *outputFileHandle);
-    void flushMetadata(void);
-
-    void reportStatus(void);
-    void process(QVector<Sector> sectors);
-
-private:
-    struct Metadatum {
-        TrackTime address;
-        qint32 mode;
-        bool isCorrected;
+    // Statistics
+    struct Statistics {
+        qint32 totalSamples;
+        qint32 validSamples;
+        qint32 corruptSamples;
+        qint32 missingSamples;
+        TrackTime sampleStart;
+        TrackTime sampleCurrent;
     };
 
-    QVector<Metadatum> metadata;
+    void startProcessing(QFile *inputFileHandle, QFile *outputFileHandle);
+    void stopProcessing(void);
+    Statistics getStatistics(void);
+    void reportStatistics(void);
 
-    qint32 validSectors;
-    qint32 invalidSectors;
-    QString jsonFilename;
-    QFile *outputFileHandle;
+private:
+    bool debugOn;
+    bool abort;
+    Statistics statistics;
+
+    void clearStatistics(void);
 };
 
-#endif // SECTORSTOMETA_H
+#endif // F2FRAMESTOAUDIO_H

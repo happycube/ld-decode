@@ -40,7 +40,7 @@ int main(int argc, char *argv[])
 
     // Set application name and version
     QCoreApplication::setApplicationName("ld-process-efm");
-    QCoreApplication::setApplicationVersion("2.0");
+    QCoreApplication::setApplicationVersion("3.0");
     QCoreApplication::setOrganizationDomain("domesday86.com");
 
     // Set up the command line parser

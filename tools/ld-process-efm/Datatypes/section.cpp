@@ -35,13 +35,14 @@ Section::Section()
     qMetadata.qControl.isStereoNotQuad = false;
     qMetadata.qControl.isNoPreempNotPreemp = false;
     qMetadata.qControl.isCopyProtectedNotUnprotected = false;
-    qMetadata.qMode4.x = 0;
-    qMetadata.qMode4.point = 0;
-    qMetadata.qMode4.discTime = TrackTime();
-    qMetadata.qMode4.trackTime = TrackTime();
-    qMetadata.qMode4.isLeadIn = false;
-    qMetadata.qMode4.isLeadOut = false;
-    qMetadata.qMode4.trackNumber = 0;
+    qMetadata.qMode1And4.x = 0;
+    qMetadata.qMode1And4.point = 0;
+    qMetadata.qMode1And4.discTime = TrackTime();
+    qMetadata.qMode1And4.trackTime = TrackTime();
+    qMetadata.qMode1And4.isLeadIn = false;
+    qMetadata.qMode1And4.isLeadOut = false;
+    qMetadata.qMode1And4.trackNumber = 0;
+    qMetadata.qMode1And4.isEncoderRunning = true;
 }
 
 bool Section::setData(QByteArray dataIn)
@@ -86,17 +87,23 @@ bool Section::setData(QByteArray dataIn)
         // Decode the Q control
         decodeQControl();
 
+        // If mode 0 (Custom DATA-Q), flag as unsupported
+        if (qMode == 0) qDebug() << "Section::setData(): Unsupported Q Mode 0 (Custom DATA-Q)";
+
         // If mode 1 (CD), decode the metadata
-        if (qMode == 1) decodeQDataMode1();
+        if (qMode == 1) decodeQDataMode1And4();
 
         // If mode 2 (Catalogue number), decode the metadata
         if (qMode == 2) decodeQDataMode2();
 
+        // Mode 3 (Track ID), is currently unsupported
+        if (qMode == 3) qDebug() << "Section::setData(): Unsupported Q Mode 3 (track ID)";
+
         // If mode 4 (LD), decode the metadata
-        if (qMode == 4) decodeQDataMode4();
+        if (qMode == 4) decodeQDataMode1And4();
 
         // If mode is unsupported, flag in debug
-        if (qMode != 1 && qMode != 2 && qMode != 4) qDebug() << "Section::setData(): Unsupported Q Mode" << qMode;
+        if (qMode < 0 || qMode > 4) qDebug() << "Section::setData(): Unsupported Q Mode" << qMode;
     } else {
         // Q channel mode is invalid
         qMode = -1;
@@ -194,8 +201,8 @@ void Section::decodeQControl(void)
     else qMetadata.qControl.isNoPreempNotPreemp = true;
 }
 
-// Method to decode Q subcode Mode 1 DATA-Q
-void Section::decodeQDataMode1(void)
+// Method to decode Q subcode Mode 1 and Mode 4 DATA-Q
+void Section::decodeQDataMode1And4(void)
 {
     // Get the track number (TNO) field
     qint32 tno = bcdToInteger(qSubcode[1]);
@@ -203,32 +210,57 @@ void Section::decodeQDataMode1(void)
     // Use TNO to detect lead-in, audio or lead-out
     if (qSubcode[1] == 0xAA) {
         // Lead out
-        qMetadata.qMode1.isLeadOut = true;
-        qMetadata.qMode1.isLeadIn = false;
-        qMetadata.qMode1.trackNumber = bcdToInteger(qSubcode[1]);
-        qMetadata.qMode1.x = bcdToInteger(qSubcode[2]);
-        qMetadata.qMode1.point = -1;
-        qMetadata.qMode1.trackTime = TrackTime(bcdToInteger(qSubcode[3]), bcdToInteger(qSubcode[4]), bcdToInteger(qSubcode[5]));
-        qMetadata.qMode1.discTime = TrackTime(bcdToInteger(qSubcode[7]), bcdToInteger(qSubcode[8]), bcdToInteger(qSubcode[9]));
+        qMetadata.qMode1And4.isLeadOut = true;
+        qMetadata.qMode1And4.isLeadIn = false;
+        qMetadata.qMode1And4.trackNumber = bcdToInteger(qSubcode[1]);
+        qMetadata.qMode1And4.x = bcdToInteger(qSubcode[2]);
+        qMetadata.qMode1And4.point = -1;
+        qMetadata.qMode1And4.trackTime = TrackTime(bcdToInteger(qSubcode[3]), bcdToInteger(qSubcode[4]), bcdToInteger(qSubcode[5]));
+        qMetadata.qMode1And4.discTime = TrackTime(bcdToInteger(qSubcode[7]), bcdToInteger(qSubcode[8]), bcdToInteger(qSubcode[9]));
 
     } else if (tno == 0) {
         // Lead in
-        qMetadata.qMode1.isLeadOut = false;
-        qMetadata.qMode1.isLeadIn = true;
-        qMetadata.qMode1.trackNumber = bcdToInteger(qSubcode[1]);
-        qMetadata.qMode1.x = -1;
-        qMetadata.qMode1.point = bcdToInteger(qSubcode[2]);
-        qMetadata.qMode1.trackTime = TrackTime(bcdToInteger(qSubcode[3]), bcdToInteger(qSubcode[4]), bcdToInteger(qSubcode[5]));
-        qMetadata.qMode1.discTime = TrackTime(bcdToInteger(qSubcode[7]), bcdToInteger(qSubcode[8]), bcdToInteger(qSubcode[9]));
+        qMetadata.qMode1And4.isLeadOut = false;
+        qMetadata.qMode1And4.isLeadIn = true;
+        qMetadata.qMode1And4.trackNumber = bcdToInteger(qSubcode[1]);
+        qMetadata.qMode1And4.x = -1;
+        qMetadata.qMode1And4.point = bcdToInteger(qSubcode[2]);
+        qMetadata.qMode1And4.trackTime = TrackTime(bcdToInteger(qSubcode[3]), bcdToInteger(qSubcode[4]), bcdToInteger(qSubcode[5]));
+        qMetadata.qMode1And4.discTime = TrackTime(bcdToInteger(qSubcode[7]), bcdToInteger(qSubcode[8]), bcdToInteger(qSubcode[9]));
     } else {
         // Audio
-        qMetadata.qMode1.isLeadOut = false;
-        qMetadata.qMode1.isLeadIn = false;
-        qMetadata.qMode1.trackNumber = bcdToInteger(qSubcode[1]);
-        qMetadata.qMode1.x = bcdToInteger(qSubcode[2]);
-        qMetadata.qMode1.point = -1;
-        qMetadata.qMode1.trackTime = TrackTime(bcdToInteger(qSubcode[3]), bcdToInteger(qSubcode[4]), bcdToInteger(qSubcode[5]));
-        qMetadata.qMode1.discTime = TrackTime(bcdToInteger(qSubcode[7]), bcdToInteger(qSubcode[8]), bcdToInteger(qSubcode[9]));
+        qMetadata.qMode1And4.isLeadOut = false;
+        qMetadata.qMode1And4.isLeadIn = false;
+        qMetadata.qMode1And4.trackNumber = bcdToInteger(qSubcode[1]);
+        qMetadata.qMode1And4.x = bcdToInteger(qSubcode[2]);
+        qMetadata.qMode1And4.point = -1;
+        qMetadata.qMode1And4.trackTime = TrackTime(bcdToInteger(qSubcode[3]), bcdToInteger(qSubcode[4]), bcdToInteger(qSubcode[5]));
+        qMetadata.qMode1And4.discTime = TrackTime(bcdToInteger(qSubcode[7]), bcdToInteger(qSubcode[8]), bcdToInteger(qSubcode[9]));
+    }
+
+    // Determine if the encoder is running or not
+    // (logic is translated from the specification)
+    if (qMetadata.qMode1And4.isLeadIn) {
+        // Q Mode 1/4 - Lead in section
+        qMetadata.qMode1And4.isEncoderRunning = false;
+    } else if (qMetadata.qMode1And4.isLeadOut) {
+        // Q Mode 1/4 - Lead out section
+        if (qMetadata.qMode1And4.x == 0) {
+            // Encoding paused
+            qMetadata.qMode1And4.isEncoderRunning = false;
+        } else {
+            // Encoding running
+            qMetadata.qMode1And4.isEncoderRunning = true;
+        }
+    } else {
+        // Q Mode 1/4 - Audio section
+        if (qMetadata.qMode1And4.x == 0) {
+            // Encoding paused
+            qMetadata.qMode1And4.isEncoderRunning = false;
+        } else {
+            // Encoding running
+            qMetadata.qMode1And4.isEncoderRunning = true;
+        }
     }
 }
 
@@ -248,43 +280,6 @@ void Section::decodeQDataMode2(void)
 
     // Get the AFRAME number
     qMetadata.qMode2.aFrame = bcdToInteger(qSubcode[9]);
-}
-
-// Method to decode Q subcode Mode 4 DATA-Q
-void Section::decodeQDataMode4(void)
-{
-    // Get the track number (TNO) field
-    qint32 tno = bcdToInteger(qSubcode[1]);
-
-    // Use TNO to detect lead-in, audio or lead-out
-    if (qSubcode[1] == 0xAA) {
-        // Lead out
-        qMetadata.qMode4.isLeadOut = true;
-        qMetadata.qMode4.isLeadIn = false;
-        qMetadata.qMode4.trackNumber = bcdToInteger(qSubcode[1]);
-        qMetadata.qMode4.x = bcdToInteger(qSubcode[2]);
-        qMetadata.qMode4.point = -1;
-        qMetadata.qMode4.trackTime = TrackTime(bcdToInteger(qSubcode[3]), bcdToInteger(qSubcode[4]), bcdToInteger(qSubcode[5]));
-        qMetadata.qMode4.discTime = TrackTime(bcdToInteger(qSubcode[7]), bcdToInteger(qSubcode[8]), bcdToInteger(qSubcode[9]));
-    } else if (tno == 0) {
-        // Lead in
-        qMetadata.qMode4.isLeadOut = false;
-        qMetadata.qMode4.isLeadIn = true;
-        qMetadata.qMode4.trackNumber = bcdToInteger(qSubcode[1]);
-        qMetadata.qMode4.x = -1;
-        qMetadata.qMode4.point = bcdToInteger(qSubcode[2]);
-        qMetadata.qMode4.trackTime = TrackTime(bcdToInteger(qSubcode[3]), bcdToInteger(qSubcode[4]), bcdToInteger(qSubcode[5]));
-        qMetadata.qMode4.discTime = TrackTime(bcdToInteger(qSubcode[7]), bcdToInteger(qSubcode[8]), bcdToInteger(qSubcode[9]));
-    } else {
-        // Audio
-        qMetadata.qMode4.isLeadOut = false;
-        qMetadata.qMode4.isLeadIn = false;
-        qMetadata.qMode4.trackNumber = bcdToInteger(qSubcode[1]);
-        qMetadata.qMode4.x = bcdToInteger(qSubcode[2]);
-        qMetadata.qMode4.point = -1;
-        qMetadata.qMode4.trackTime = TrackTime(bcdToInteger(qSubcode[3]), bcdToInteger(qSubcode[4]), bcdToInteger(qSubcode[5]));
-        qMetadata.qMode4.discTime = TrackTime(bcdToInteger(qSubcode[7]), bcdToInteger(qSubcode[8]), bcdToInteger(qSubcode[9]));
-    }
 }
 
 // Method to convert 2 digit BCD byte to an integer

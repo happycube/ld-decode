@@ -27,9 +27,13 @@
 
 #include <QCoreApplication>
 #include <QDebug>
+#include <QDataStream>
 
 class TrackTime
 {
+    friend QDataStream &operator<<(QDataStream &, const TrackTime &);
+    friend QDataStream &operator>>(QDataStream &, TrackTime &);
+
 public:
     TrackTime(qint32 minutesParam = 0, qint32 secondsParam = 0, qint32 framesParam = 0);
 

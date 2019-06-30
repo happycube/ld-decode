@@ -56,14 +56,16 @@ C2Circ::Statistics C2Circ::getStatistics(void)
     return statistics;
 }
 
-// Method to write status information to qInfo
-void C2Circ::reportStatus(void)
+// Method to write statistics information to qInfo
+void C2Circ::reportStatistics(void)
 {
-    qInfo() << "C2 Level error correction:";
-    qInfo() << "  Total number of C2s processed =" << statistics.c2Passed + statistics.c2Corrected + statistics.c2Failed;
-    qInfo() << "  of which" << statistics.c2Passed + statistics.c2Corrected << "passed and" << statistics.c2Failed << "failed";
-    qInfo() << "  The C2 error correction recovered" << statistics.c2Corrected << "corrupt C2s";
-    qInfo() << "  The delay buffer was flushed" << statistics.c2flushed << "times";
+    qInfo() << "";
+    qInfo() << "F3 to F2 frame C2 Error correction:";
+    qInfo() << "  Total C2s processed:" << statistics.c2Passed + statistics.c2Corrected + statistics.c2Failed;
+    qInfo() << "            Valid C2s:" << statistics.c2Passed + statistics.c2Corrected;
+    qInfo() << "          Invalid C2s:" << statistics.c2Failed;
+    qInfo() << "        C2s corrected:" << statistics.c2Corrected;
+    qInfo() << " Delay buffer flushes:" << statistics.c2flushed;
 }
 
 void C2Circ::pushC1(QByteArray dataSymbols, QByteArray errorSymbols)

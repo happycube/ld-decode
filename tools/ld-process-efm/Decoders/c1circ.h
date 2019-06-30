@@ -53,7 +53,7 @@ public:
     void reset(void);
     void resetStatistics(void);
     Statistics getStatistics(void);
-    void reportStatus(void);
+    void reportStatistics(void);
     void pushF3Frame(F3Frame f3Frame);
     QByteArray getDataSymbols(void);
     QByteArray getErrorSymbols(void);

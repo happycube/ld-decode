@@ -1,6 +1,6 @@
 /************************************************************************
 
-    f3tof2frames.h
+    f3tof2frames.cpp
 
     ld-process-efm - EFM data decoder
     Copyright (C) 2019 Simon Inns
@@ -27,9 +27,13 @@
 
 #include <QCoreApplication>
 #include <QDebug>
+#include <QFile>
+#include <QDataStream>
 
 #include "Datatypes/f3frame.h"
 #include "Datatypes/f2frame.h"
+#include "Datatypes/section.h"
+
 #include "c1circ.h"
 #include "c2circ.h"
 #include "c2deinterleave.h"
@@ -39,29 +43,37 @@ class F3ToF2Frames
 public:
     F3ToF2Frames();
 
-    // Statistics data structure
+    // Statistics
     struct Statistics {
+        qint32 totalF3Frames;
+        qint32 totalF2Frames;
+
         C1Circ::Statistics c1Circ_statistics;
         C2Circ::Statistics c2Circ_statistics;
         C2Deinterleave::Statistics c2Deinterleave_statistics;
+
+        TrackTime initialDiscTime;
+        TrackTime currentDiscTime;
+
+        qint32 sequenceInterruptions;
+        qint32 missingF3Frames;
     };
 
-    void reset(void);
-    void resetStatistics(void);
+    void startProcessing(QFile *inputFileHandle, QFile *outputFileHandle);
+    void stopProcessing(void);
     Statistics getStatistics(void);
-
-    void reportStatus(void);
-    void flush(void);
-    QVector<F2Frame> convert(QVector<F3Frame> f3Frames);
+    void reportStatistics(void);
 
 private:
+    bool debugOn;
+    bool abort;
+    Statistics statistics;
+
+    void clearStatistics(void);
+
     C1Circ c1Circ;
     C2Circ c2Circ;
     C2Deinterleave c2Deinterleave;
-
-    bool waitingForSubcodeSync;
-
-    Statistics statistics;
 };
 
 #endif // F3TOF2FRAMES_H

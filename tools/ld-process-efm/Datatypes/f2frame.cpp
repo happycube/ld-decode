@@ -33,6 +33,10 @@ F2Frame::F2Frame()
 
     dataSymbols.fill(0);
     errorSymbols.fill(0);
+
+    discTime.setTime(0, 0, 0);
+    trackTime.setTime(0, 0, 0);
+    trackNumber = 0;
 }
 
 void F2Frame::setData(QByteArray dataParam, QByteArray erasuresParam, bool isDataValid)
@@ -71,4 +75,62 @@ QByteArray F2Frame::getErrorSymbols(void)
 bool F2Frame::getDataValid(void)
 {
     return dataValid;
+}
+
+// Time markers (not really part of an F2, but used to track the location of the F2 when processing audio)
+
+void F2Frame::setDiscTime(TrackTime _discTime)
+{
+    discTime = _discTime;
+}
+
+void F2Frame::setTrackTime(TrackTime _trackTime)
+{
+    trackTime = _trackTime;
+}
+
+TrackTime F2Frame::getDiscTime(void)
+{
+    return discTime;
+}
+
+TrackTime F2Frame::getTrackTime(void)
+{
+    return trackTime;
+}
+
+void F2Frame::setTrackNumber(qint32 _trackNumber)
+{
+    trackNumber = _trackNumber;
+}
+
+qint32 F2Frame::getTrackNumber(void)
+{
+    return trackNumber;
+}
+
+void F2Frame::setIsEncoderRunning(bool _isEncoderRunning)
+{
+    isEncoderRunning = _isEncoderRunning;
+}
+
+bool F2Frame::getIsEncoderRunning(void)
+{
+    return isEncoderRunning;
+}
+
+// Overloaded operator for writing class data to a data-stream
+QDataStream &operator<<(QDataStream &out, const F2Frame &f2Frame)
+{
+    out << f2Frame.dataSymbols << f2Frame.errorSymbols << f2Frame.dataValid <<
+            f2Frame.discTime << f2Frame.trackTime << f2Frame.trackNumber;
+    return out;
+}
+
+// Overloaded operator for reading class data from a data-stream
+QDataStream &operator>>(QDataStream &in, F2Frame &f2Frame)
+{
+    in >> f2Frame.dataSymbols >> f2Frame.errorSymbols >> f2Frame.dataValid >>
+            f2Frame.discTime >> f2Frame.trackTime >> f2Frame.trackNumber;
+    return in;
 }

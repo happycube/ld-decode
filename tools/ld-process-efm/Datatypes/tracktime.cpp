@@ -78,7 +78,7 @@ void TrackTime::subtractFrames(qint32 frames)
 qint32 TrackTime::getDifference(TrackTime::Time timeToCompare)
 {
     qint32 framesToCompare = timeToCompare.frames + (timeToCompare.seconds * 75) + (timeToCompare.minutes * 60 * 75);
-    return framesToCompare - trackFrames;
+    return trackFrames - framesToCompare;
 }
 
 // Method to get the track time
@@ -112,4 +112,18 @@ QString TrackTime::getTimeAsQString(void)
 qint32 TrackTime::getFrames(void)
 {
     return trackFrames;
+}
+
+// Overloaded operator for writing class data to a data-stream
+QDataStream &operator<<(QDataStream &out, const TrackTime &trackTime)
+{
+    out << trackTime.trackFrames;
+    return out;
+}
+
+// Overloaded operator for reading class data from a data-stream
+QDataStream &operator>>(QDataStream &in, TrackTime &trackTime)
+{
+    in >> trackTime.trackFrames;
+    return in;
 }

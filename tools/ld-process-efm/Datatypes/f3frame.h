@@ -27,19 +27,22 @@
 
 #include <QCoreApplication>
 #include <QDebug>
+#include <QDataStream>
 
 class F3Frame
 {
+    friend QDataStream &operator<<(QDataStream &, const F3Frame &);
+    friend QDataStream &operator>>(QDataStream &, F3Frame &);
+
 public:
     F3Frame();
+
     void setTValues(QVector<qint32> tValuesIn);
     QByteArray getDataSymbols(void);
     QByteArray getErrorSymbols(void);
     uchar getSubcodeSymbol(void);
     bool isSubcodeSync0(void);
     bool isSubcodeSync1(void);
-    void setFirstAfterSync(bool parameter);
-    bool getFirstAfterSync(void);
 
 private:
     QByteArray dataSymbols;
@@ -47,7 +50,6 @@ private:
     uchar subcodeSymbol;
     bool isSync0;
     bool isSync1;
-    bool firstAfterSync;
 
     qint32 translateEfm(qint32 efmValue);
     qint32 getBits(uchar *rawData, qint32 bitIndex, qint32 width);

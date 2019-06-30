@@ -62,14 +62,16 @@ C1Circ::Statistics C1Circ::getStatistics(void)
     return statistics;
 }
 
-// Method to write status information to qInfo
-void C1Circ::reportStatus(void)
+// Method to write statistics information to qInfo
+void C1Circ::reportStatistics(void)
 {
-    qInfo() << "C1 Level error correction:";
-    qInfo() << "  Total number of C1s processed =" << statistics.c1Passed + statistics.c1Corrected + statistics.c1Failed;
-    qInfo() << "  of which" << statistics.c1Passed + statistics.c1Corrected << "passed and" << statistics.c1Failed << "failed";
-    qInfo() << "  The C1 error correction recovered" << statistics.c1Corrected << "corrupt C1s";
-    qInfo() << "  The delay buffer was flushed" << statistics.c1flushed << "times";
+    qInfo() << "";
+    qInfo() << "F3 to F2 frame C1 Error correction:";
+    qInfo() << "  Total C1s processed:" << statistics.c1Passed + statistics.c1Corrected + statistics.c1Failed;
+    qInfo() << "            Valid C1s:" << statistics.c1Passed + statistics.c1Corrected;
+    qInfo() << "          Invalid C1s:" << statistics.c1Failed;
+    qInfo() << "        C1s corrected:" << statistics.c1Corrected;
+    qInfo() << " Delay buffer flushes:" << statistics.c1flushed;
 }
 
 void C1Circ::pushF3Frame(F3Frame f3Frame)
