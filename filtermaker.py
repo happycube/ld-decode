@@ -16,7 +16,7 @@ freq32 = 32
 
 def WriteFilter(name, b, a = [1.0]):
 	border = len(b)
-	print("std::array<double, ",border,"> c_",name,"_b = {",sep="",end="")
+	print("const std::array<double, ",border,"> c_",name,"_b = {",sep="",end="")
 	for i in range(0, border):
 		# insert a new line and an indent every 4 items
 		if i % 4 == 0:
@@ -29,7 +29,7 @@ def WriteFilter(name, b, a = [1.0]):
 	print("\n};")
 
 	aorder = len(a)
-	print("std::array<double, ",aorder,"> c_",name,"_a = {",sep="",end="")
+	print("const std::array<double, ",aorder,"> c_",name,"_a = {",sep="",end="")
 	for i in range(0, aorder):
 		# insert a new line and an indent every 4 items
 		if i % 4 == 0:
@@ -41,7 +41,7 @@ def WriteFilter(name, b, a = [1.0]):
 			print(", ", end='')
 	print("\n};")
 	print()
-	print("IIRFilter<",border,", ", aorder,"> f_",name,"(c_",name,"_b, c_",name,"_a);",sep="")
+	print("const IIRFilter<",border,", ", aorder,"> f_",name,"(c_",name,"_b, c_",name,"_a);",sep="")
 	print()
 
 
