@@ -28,6 +28,7 @@
 #include <QCommandLineParser>
 #include <QThread>
 
+#include "lddecodemetadata.h"
 #include "palcombfilter.h"
 
 // Global for debug output
@@ -214,9 +215,18 @@ int main(int argc, char *argv[])
     // Process the command line options
     if (isDebugOn) showDebug = true;
 
+    // Load the source video metadata
+    LdDecodeMetaData metaData;
+    if (!metaData.read(inputFileName + ".json")) {
+        qInfo() << "Unable to open ld-decode metadata file";
+        return -1;
+    }
+
     // Perform the processing
-    PalCombFilter palCombFilter;
-    palCombFilter.process(inputFileName, outputFileName, startFrame, length, reverse, blackAndWhite, maxThreads);
+    PalCombFilter palCombFilter(metaData);
+    palCombFilter.process(inputFileName, outputFileName,
+                          startFrame, length, reverse,
+                          blackAndWhite, maxThreads);
 
     // Quit with success
     return 0;

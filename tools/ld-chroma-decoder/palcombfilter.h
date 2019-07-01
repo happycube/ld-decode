@@ -40,8 +40,10 @@ class PalCombFilter : public QObject
 {
     Q_OBJECT
 public:
-    explicit PalCombFilter(QObject *parent = nullptr);
-    bool process(QString inputFileName, QString outputFileName, qint32 startFrame, qint32 length, bool reverse, bool blackAndWhite, qint32 maxThreads);
+    explicit PalCombFilter(LdDecodeMetaData &ldDecodeMetaDataParam, QObject *parent = nullptr);
+    bool process(QString inputFileName, QString outputFileName,
+                 qint32 startFrame, qint32 length, bool reverse,
+                 bool blackAndWhite, qint32 maxThreads);
 
     // Member functions used by worker threads
     bool getInputFrame(qint32& frameNumber, QByteArray& firstField, QByteArray& secondField, qreal& burstMedianIre);
@@ -62,7 +64,7 @@ private:
     QMutex inputMutex;
     qint32 inputFrameNumber;
     qint32 lastFrameNumber;
-    LdDecodeMetaData ldDecodeMetaData;
+    LdDecodeMetaData &ldDecodeMetaData;
     SourceVideo sourceVideo;
 
     // Output stream information (all guarded by outputMutex while threads are running)

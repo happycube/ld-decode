@@ -24,21 +24,17 @@
 
 #include "palcombfilter.h"
 
-PalCombFilter::PalCombFilter(QObject *parent) : QObject(parent)
+PalCombFilter::PalCombFilter(LdDecodeMetaData &ldDecodeMetaDataParam,
+                             QObject *parent)
+    : QObject(parent), ldDecodeMetaData(ldDecodeMetaDataParam)
 {
     abort = false;
 }
 
-bool PalCombFilter::process(QString inputFileName, QString outputFileName, qint32 startFrame, qint32 length,
-                            bool reverse, bool blackAndWhite, qint32 maxThreads)
+bool PalCombFilter::process(QString inputFileName, QString outputFileName,
+                            qint32 startFrame, qint32 length, bool reverse,
+                            bool blackAndWhite, qint32 maxThreads)
 {
-    // Open the source video metadata
-    qInfo() << "Reading JSON metadata...";
-    if (!ldDecodeMetaData.read(inputFileName + ".json")) {
-        qInfo() << "Unable to open ld-decode metadata file";
-        return false;
-    }
-
     // Reverse field order if required
     if (reverse) {
         qInfo() << "Expected field order is reversed to second field/first field";
