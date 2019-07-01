@@ -32,16 +32,10 @@ NtscFilter::NtscFilter(LdDecodeMetaData &ldDecodeMetaDataParam, QObject *parent)
 }
 
 bool NtscFilter::process(QString inputFileName, QString outputFileName,
-                         qint32 startFrame, qint32 length, bool reverse,
+                         qint32 startFrame, qint32 length,
                          bool blackAndWhite, bool whitePoint, bool use3D,
                          bool showOpticalFlowMap)
 {
-    // Reverse field order if required
-    if (reverse) {
-        qInfo() << "Expected field order is reversed to second field/first field";
-        ldDecodeMetaData.setIsFirstFieldFirst(false);
-    }
-
     LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
 
     // Ensure the source video is NTSC

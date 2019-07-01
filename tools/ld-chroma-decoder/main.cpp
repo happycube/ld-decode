@@ -171,7 +171,6 @@ int main(int argc, char *argv[])
 
     // Get the options from the parser
     bool isDebugOn = parser.isSet(showDebugOption);
-    bool reverse = parser.isSet(setReverseOption);
     bool blackAndWhite = parser.isSet(setBwModeOption);
     bool use3D = parser.isSet(use3DOption);
     bool showOpticalFlow = parser.isSet(showOpticalFlowOption);
@@ -250,17 +249,23 @@ int main(int argc, char *argv[])
         return -1;
     }
 
+    // Reverse field order if required
+    if (parser.isSet(setReverseOption)) {
+        qInfo() << "Expected field order is reversed to second field/first field";
+        metaData.setIsFirstFieldFirst(false);
+    }
+
     // Perform the processing
     bool success;
     if (metaData.getVideoParameters().isSourcePal) {
         PalCombFilter palCombFilter(metaData);
         success = palCombFilter.process(inputFileName, outputFileName,
-                                        startFrame, length, reverse,
+                                        startFrame, length,
                                         blackAndWhite, maxThreads);
     } else {
         NtscFilter ntscFilter(metaData);
         success = ntscFilter.process(inputFileName, outputFileName,
-                                     startFrame, length, reverse,
+                                     startFrame, length,
                                      blackAndWhite, whitePoint, use3D, showOpticalFlow);
     }
     if (!success) {

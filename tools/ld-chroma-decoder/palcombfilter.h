@@ -42,7 +42,7 @@ class PalCombFilter : public QObject
 public:
     explicit PalCombFilter(LdDecodeMetaData &ldDecodeMetaDataParam, QObject *parent = nullptr);
     bool process(QString inputFileName, QString outputFileName,
-                 qint32 startFrame, qint32 length, bool reverse,
+                 qint32 startFrame, qint32 length,
                  bool blackAndWhite, qint32 maxThreads);
 
     // Member functions used by worker threads

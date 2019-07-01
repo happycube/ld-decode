@@ -32,15 +32,9 @@ PalCombFilter::PalCombFilter(LdDecodeMetaData &ldDecodeMetaDataParam,
 }
 
 bool PalCombFilter::process(QString inputFileName, QString outputFileName,
-                            qint32 startFrame, qint32 length, bool reverse,
+                            qint32 startFrame, qint32 length,
                             bool blackAndWhite, qint32 maxThreads)
 {
-    // Reverse field order if required
-    if (reverse) {
-        qInfo() << "Expected field order is reversed to second field/first field";
-        ldDecodeMetaData.setIsFirstFieldFirst(false);
-    }
-
     LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
 
     // Ensure the source video is PAL
