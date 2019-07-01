@@ -16,13 +16,13 @@ DEFINES += QT_DEPRECATED_WARNINGS
 
 SOURCES += \
     main.cpp \
-    palcombfilter.cpp \
+    decoderpool.cpp \
     palcolour.cpp \
-    filterthread.cpp \
+    paldecoder.cpp \
     comb.cpp \
     rgb.cpp \
     yiq.cpp \
-    ntscfilter.cpp \
+    ntscdecoder.cpp \
     opticalflow.cpp
 
 # Default rules for deployment.
@@ -42,14 +42,15 @@ win32:LIBS += $$quote($$MYDLLDIR/ld-decode-shared.dll)
 unix:LIBS += $$quote(-L$$MYDLLDIR) -lld-decode-shared
 
 HEADERS += \
-    palcombfilter.h \
+    decoder.h \
+    decoderpool.h \
     palcolour.h \
-    filterthread.h \
+    paldecoder.h \
     comb.h \
     rgb.h \
     yiq.h \
     iirfilter.h \
-    ntscfilter.h \
+    ntscdecoder.h \
     ../../deemp.h \
     opticalflow.h \
     yiqbuffer.h

@@ -4,6 +4,7 @@
 
     ld-chroma-decoder - Colourisation filter for ld-decode
     Copyright (C) 2018-2019 Simon Inns
+    Copyright (C) 2019 Adam Sampson
 
     This file is part of ld-decode-tools.
 
@@ -26,11 +27,14 @@
 #include <QDebug>
 #include <QtGlobal>
 #include <QCommandLineParser>
+#include <QScopedPointer>
 #include <QThread>
 
+#include "decoderpool.h"
 #include "lddecodemetadata.h"
-#include "ntscfilter.h"
-#include "palcombfilter.h"
+
+#include "ntscdecoder.h"
+#include "paldecoder.h"
 
 // Global for debug output
 static bool showDebug = false;
@@ -135,6 +139,12 @@ int main(int argc, char *argv[])
                                        QCoreApplication::translate("main", "Suppress info and warning messages"));
     parser.addOption(setQuietOption);
 
+    // Option to select which decoder to use (-f)
+    QCommandLineOption decoderOption(QStringList() << "f" << "decoder",
+                                     QCoreApplication::translate("main", "Decoder to use (pal2d, ntsc2d, ntsc3d; default automatic)"),
+                                     QCoreApplication::translate("main", "decoder"));
+    parser.addOption(decoderOption);
+
     // Option to select the number of threads (-t)
     QCommandLineOption threadsOption(QStringList() << "t" << "threads",
                                         QCoreApplication::translate("main", "Specify the number of concurrent threads (default number of logical CPUs plus 2)"),
@@ -142,11 +152,6 @@ int main(int argc, char *argv[])
     parser.addOption(threadsOption);
 
     // -- NTSC decoder options --
-
-    // Option to select 3D comb filter (-3)
-    QCommandLineOption use3DOption(QStringList() << "3" << "3d",
-                                   QCoreApplication::translate("main", "NTSC: Use 3D comb filter (default 2D)"));
-    parser.addOption(use3DOption);
 
     // Option to show the optical flow map (-o)
     QCommandLineOption showOpticalFlowOption(QStringList() << "o" << "oftest",
@@ -172,13 +177,9 @@ int main(int argc, char *argv[])
     // Get the options from the parser
     bool isDebugOn = parser.isSet(showDebugOption);
     bool blackAndWhite = parser.isSet(setBwModeOption);
-    bool use3D = parser.isSet(use3DOption);
     bool showOpticalFlow = parser.isSet(showOpticalFlowOption);
     bool whitePoint = parser.isSet(whitePointOption);
     if (parser.isSet(setQuietOption)) showOutput = false;
-
-    // Force 3D mode if the optical flow map overlay is selected
-    if (showOpticalFlow) use3D = true;
 
     // Get the arguments from the parser
     QString inputFileName;
@@ -255,20 +256,41 @@ int main(int argc, char *argv[])
         metaData.setIsFirstFieldFirst(false);
     }
 
-    // Perform the processing
-    bool success;
-    if (metaData.getVideoParameters().isSourcePal) {
-        PalCombFilter palCombFilter(metaData);
-        success = palCombFilter.process(inputFileName, outputFileName,
-                                        startFrame, length,
-                                        blackAndWhite, maxThreads);
+    // Work out which decoder to use
+    QString decoderName;
+    if (parser.isSet(decoderOption)) {
+        decoderName = parser.value(decoderOption);
+    } else if (metaData.getVideoParameters().isSourcePal) {
+        decoderName = "pal2d";
     } else {
-        NtscFilter ntscFilter(metaData);
-        success = ntscFilter.process(inputFileName, outputFileName,
-                                     startFrame, length,
-                                     blackAndWhite, whitePoint, use3D, showOpticalFlow);
+        decoderName = "ntsc2d";
     }
-    if (!success) {
+
+    // Require ntsc3d if the optical flow map overlay is selected
+    if (showOpticalFlow && decoderName != "ntsc3d") {
+        qCritical() << "Can only show optical flow with the ntsc3d decoder";
+        return -1;
+    }
+
+    // Select the decoder
+    QScopedPointer<Decoder> decoder;
+    if (decoderName == "pal2d") {
+        decoder.reset(new PalDecoder(blackAndWhite));
+    } else if (decoderName == "ntsc2d") {
+        decoder.reset(new NtscDecoder(blackAndWhite, whitePoint, false, false));
+    } else if (decoderName == "ntsc3d") {
+        decoder.reset(new NtscDecoder(blackAndWhite, whitePoint, true, showOpticalFlow));
+
+        // In 3D mode, NtscDecoder keeps state between frames, so it can't be parallelised.
+        maxThreads = 1;
+    } else {
+        qCritical() << "Unknown decoder " << decoderName;
+        return -1;
+    }
+
+    // Perform the processing
+    DecoderPool decoderPool(*decoder, inputFileName, metaData, outputFileName, startFrame, length, maxThreads);
+    if (!decoderPool.process()) {
         return -1;
     }
 

@@ -1,6 +1,6 @@
 /************************************************************************
 
-    palcombfilter.h
+    decoderpool.h
 
     ld-chroma-decoder - Colourisation filter for ld-decode
     Copyright (C) 2018-2019 Simon Inns
@@ -22,8 +22,8 @@
 
 ************************************************************************/
 
-#ifndef PALCOMBFILTER_H
-#define PALCOMBFILTER_H
+#ifndef DECODERPOOL_H
+#define DECODERPOOL_H
 
 #include <QObject>
 #include <QAtomicInt>
@@ -31,22 +31,26 @@
 #include <QElapsedTimer>
 #include <QMap>
 #include <QMutex>
+#include <QThread>
 
-#include "sourcevideo.h"
 #include "lddecodemetadata.h"
-#include "filterthread.h"
+#include "sourcevideo.h"
 
-class PalCombFilter : public QObject
+#include "decoder.h"
+
+class DecoderPool : public QObject
 {
     Q_OBJECT
 public:
-    explicit PalCombFilter(LdDecodeMetaData &ldDecodeMetaDataParam, QObject *parent = nullptr);
-    bool process(QString inputFileName, QString outputFileName,
-                 qint32 startFrame, qint32 length,
-                 bool blackAndWhite, qint32 maxThreads);
+    explicit DecoderPool(Decoder &decoderParam, QString inputFileNameParam,
+                         LdDecodeMetaData &ldDecodeMetaDataParam, QString outputFileNameParam,
+                         qint32 startFrameParam, qint32 lengthParam, qint32 maxThreadsParam,
+                         QObject *parent = nullptr);
+    bool process();
 
     // Member functions used by worker threads
-    bool getInputFrame(qint32& frameNumber, QByteArray& firstField, QByteArray& secondField, qreal& burstMedianIre);
+    bool getInputFrame(qint32& frameNumber, QByteArray& firstFieldData, QByteArray& secondFieldData,
+                       qint32& firstFieldPhaseID, qint32& secondFieldPhaseID, qreal& burstMedianIre);
     bool putOutputFrame(qint32 frameNumber, QByteArray& rgbOutput);
 
 signals:
@@ -56,6 +60,14 @@ public slots:
 private slots:
 
 private:
+    // Parameters
+    Decoder& decoder;
+    QString inputFileName;
+    QString outputFileName;
+    qint32 startFrame;
+    qint32 length;
+    qint32 maxThreads;
+
     // Atomic abort flag shared by worker threads; workers watch this, and shut
     // down as soon as possible if it becomes true
     QAtomicInt abort;
@@ -75,4 +87,4 @@ private:
     QElapsedTimer totalTimer;
 };
 
-#endif // PALCOMBFILTER_H
+#endif // DECODERPOOL_H

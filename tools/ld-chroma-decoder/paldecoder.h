@@ -1,9 +1,10 @@
 /************************************************************************
 
-    filterthread.h
+    paldecoder.h
 
     ld-chroma-decoder - Colourisation filter for ld-decode
     Copyright (C) 2018-2019 Simon Inns
+    Copyright (C) 2019 Adam Sampson
 
     This file is part of ld-decode-tools.
 
@@ -22,49 +23,69 @@
 
 ************************************************************************/
 
-#ifndef FILTERTHREAD_H
-#define FILTERTHREAD_H
+#ifndef PALDECODER_H
+#define PALDECODER_H
 
 #include <QObject>
 #include <QAtomicInt>
 #include <QThread>
 #include <QDebug>
 
-#include "sourcevideo.h"
 #include "lddecodemetadata.h"
+#include "sourcevideo.h"
+
+#include "decoder.h"
 #include "palcolour.h"
 
-class PalCombFilter;
+class DecoderPool;
 
-class FilterThread : public QThread
+// 2D PAL decoder using PALcolour
+class PalDecoder : public Decoder {
+public:
+    PalDecoder(bool blackAndWhiteParam);
+    bool configure(const LdDecodeMetaData::VideoParameters &videoParameters) override;
+    QThread *makeThread(QAtomicInt& abort, DecoderPool& decoderPool) override;
+
+    // Parameters used by PalDecoder and PalThread
+    struct Configuration {
+        LdDecodeMetaData::VideoParameters videoParameters;
+        bool blackAndWhite;
+        qint32 firstActiveScanLine;
+        qint32 lastActiveScanLine;
+        qint32 fieldWidth;
+        qint32 frameHeight;
+        qint32 videoStart;
+        qint32 videoEnd;
+    };
+
+private:
+    Configuration config;
+};
+
+class PalThread : public QThread
 {
     Q_OBJECT
 public:
-    explicit FilterThread(QAtomicInt& abortParam, PalCombFilter& combFilterParam, LdDecodeMetaData::VideoParameters videoParametersParam, bool blackAndWhiteParam, QObject *parent = nullptr);
-
-signals:
+    explicit PalThread(QAtomicInt &abortParam, DecoderPool &decoderPoolParam,
+                       const PalDecoder::Configuration &configParam,
+                       QObject *parent = nullptr);
 
 protected:
     void run() override;
 
 private:
-    // Manager
+    // Decoder pool
     QAtomicInt& abort;
-    PalCombFilter& combFilter;
+    DecoderPool& decoderPool;
+
+    // Settings
+    const PalDecoder::Configuration &config;
 
     // PAL colour object
     PalColour palColour;
-    LdDecodeMetaData::VideoParameters videoParameters;
-    bool blackAndWhite;
-
-    // Video extent for cropping
-    qint32 firstActiveScanLine;
-    qint32 lastActiveScanLine;
-    qint32 videoStart;
-    qint32 videoEnd;
 
     // Temporary output buffer
     QByteArray outputData;
 };
 
-#endif // FILTERTHREAD_H
+#endif // PALDECODER
