@@ -5,6 +5,7 @@ SUBDIRS = ld-decode-shared \
 	  ld-comb-pal \
           ld-analyse \
 	  ld-comb-ntsc \
+          ld-comb-ntsc/testfilter \
 	  ld-combine \
           ld-process-efm \
           ld-process-efm-rev5 \

@@ -32,7 +32,7 @@
 using std::cerr;
 using std::vector;
 
-#include "../../deemp.h"
+#include "deemp.h"
 
 // This is the original filter code from ld-decoder.h.
 class SimpleFilter {
