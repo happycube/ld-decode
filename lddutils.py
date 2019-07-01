@@ -457,3 +457,13 @@ def findpulses(array, low, high):
         starts = starts[:-1]
 
     return [Pulse(z[0], z[1] - z[0]) for z in zip(starts, ends)]
+
+def findpeaks(array, low = None):
+    if min is not None:
+        array2 = array.copy()
+        array2[np.where(array2 < low)] = 0
+    else:
+        array2 = array
+    
+    return [loc - 1 for loc in np.where(np.logical_and(array2[:-1] > array2[-1], array2[1:] > array2[:-1]))[0]]
+
