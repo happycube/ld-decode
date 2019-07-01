@@ -61,4 +61,4 @@ LIBS += -L"/usr/local/opt/opencv@2/lib"
 # Normal open-source OS goodness
 INCLUDEPATH += "/usr/local/include/opencv"
 LIBS += -L"/usr/local/lib"
-LIBS += -lopencv_core -lopencv_imgcodecs -lopencv_highgui -lopencv_imgproc -lopencv_video
+LIBS += -lopencv_core -lopencv_imgproc -lopencv_video
