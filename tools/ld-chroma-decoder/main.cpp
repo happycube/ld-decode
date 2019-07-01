@@ -223,10 +223,14 @@ int main(int argc, char *argv[])
     }
 
     // Perform the processing
+    bool success;
     PalCombFilter palCombFilter(metaData);
-    palCombFilter.process(inputFileName, outputFileName,
-                          startFrame, length, reverse,
-                          blackAndWhite, maxThreads);
+    success = palCombFilter.process(inputFileName, outputFileName,
+                                    startFrame, length, reverse,
+                                    blackAndWhite, maxThreads);
+    if (!success) {
+        return -1;
+    }
 
     // Quit with success
     return 0;
