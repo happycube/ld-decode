@@ -49,7 +49,7 @@ void PalColour::updateConfiguration(LdDecodeMetaData::VideoParameters videoParam
 
 // Private method to build the look up tables
 // must be called by the constructor when the object is created
-void PalColour::buildLookUpTables(void)
+void PalColour::buildLookUpTables()
 {
     // Step 1: create sine/cosine lookups
     refAmpl = 1.28;

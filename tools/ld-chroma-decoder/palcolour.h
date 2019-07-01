@@ -66,7 +66,7 @@ private:
     bool configurationSet;
 
     // Method to build the required look-up tables
-    void buildLookUpTables(void);
+    void buildLookUpTables();
 };
 
 #endif // PALCOLOUR_H

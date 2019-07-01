@@ -71,7 +71,7 @@ public:
         qreal yNRLevel;
     };
 
-    Configuration getConfiguration(void);
+    Configuration getConfiguration();
     void setConfiguration(const Configuration &configurationParam);
     QByteArray process(QByteArray topFieldInputBuffer, QByteArray bottomFieldInputBuffer, qreal burstMedianIre, qint32 topFieldPhaseID, qint32 bottomFieldPhaseID);
 
@@ -114,7 +114,7 @@ private:
     // Previous and next frame for 3D processing
     FrameBuffer previousFrameBuffer;
 
-    void postConfigurationTasks(void);
+    void postConfigurationTasks();
 
     inline qint32 GetFieldID(FrameBuffer *frameBuffer, qint32 lineNumber);
     inline bool GetLinePhase(FrameBuffer *frameBuffer, qint32 lineNumber);

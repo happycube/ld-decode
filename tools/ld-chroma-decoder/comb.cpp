@@ -63,7 +63,7 @@ Comb::Comb() {
 }
 
 // Get the comb filter configuration parameters
-Comb::Configuration Comb::getConfiguration(void)
+Comb::Configuration Comb::getConfiguration()
 {
     return configuration;
 }
@@ -192,7 +192,7 @@ QByteArray Comb::process(QByteArray firstFieldInputBuffer, QByteArray secondFiel
 // Private methods ----------------------------------------------------------------------------------------------------
 
 // Tasks to be performed if the configuration changes
-void Comb::postConfigurationTasks(void)
+void Comb::postConfigurationTasks()
 {
     // Set the IRE scale
     irescale = (configuration.whiteIre - configuration.blackIre) / 100;
