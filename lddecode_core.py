@@ -418,17 +418,28 @@ class RFDecode:
     def runfilter_audio_phase2(self, frame_audio, start):
         outputs = []
 
+        clips = None
+
         for c in [['audio_left', 'audio_lfreq'], ['audio_right', 'audio_rfreq']]:
             raw = frame_audio[c[0]][start:start+self.blocklen].copy() - self.SysParams[c[1]]
 
-            raw = np.clip(raw, -150000, 150000)
+            if c[0] == 'audio_left':
+                clips = findpeaks(raw, 175000)
+
+            for l in clips:
+                replacelen = 16*self.Filters['audio_fdiv2']
+                #replacement_idx = l + replacelen if l < replacelen else l - replacelen
+                #print(l, len(raw), raw[l], raw[replacement_idx])
+                raw[max(0, l - replacelen):min(l + replacelen, len(raw))] = 0# raw[replacement_idx]
+
+            #print(np.argmax(raw), np.max(raw))
+
+            #raw = np.clip(raw, -150000, 150000)
 
             fft_in = np.fft.fft(raw)
-
-#            if c[0] == 'audio_left':
-#                fft_out_raw = self.audio_fdslice2(fft_in) 
-
             fft_out = self.audio_fdslice2(fft_in) * self.Filters['audio_lpf2'] * self.Filters['audio_deemp2']
+
+            #fft_out = self.audio_fdslice2(fft_in) #* self.Filters['audio_lpf2'] * self.Filters['audio_deemp2']
 
 #            outputs.append((np.fft.ifft(fft_out_raw).real / self.Filters['audio_fdiv2']))
             outputs.append((np.fft.ifft(fft_out).real / self.Filters['audio_fdiv2']) + self.SysParams[c[1]])
