@@ -47,7 +47,7 @@
 #include "snranalysisdialog.h"
 #include "configuration.h"
 #include "frameqlabel.h"
-#include "../ld-comb-pal/palcolour.h"
+#include "../ld-chroma-decoder/palcolour.h"
 #include "../ld-comb-ntsc/comb.h"
 
 namespace Ui {

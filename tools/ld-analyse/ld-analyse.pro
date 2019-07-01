@@ -33,7 +33,7 @@ SOURCES += \
     vbidialog.cpp \
     configuration.cpp \
     ntscdialog.cpp \
-    ../ld-comb-pal/palcolour.cpp \
+    ../ld-chroma-decoder/palcolour.cpp \
     ../ld-comb-ntsc/comb.cpp \
     ../ld-comb-ntsc/rgb.cpp \
     ../ld-comb-ntsc/yiq.cpp \
@@ -51,7 +51,7 @@ HEADERS += \
     vbidialog.h \
     configuration.h \
     ntscdialog.h \
-    ../ld-comb-pal/palcolour.h \
+    ../ld-chroma-decoder/palcolour.h \
     ../ld-comb-ntsc/comb.h \
     ../ld-comb-ntsc/rgb.h \
     ../ld-comb-ntsc/yiq.h \

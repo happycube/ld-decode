@@ -2,12 +2,12 @@
 
     main.cpp
 
-    ld-comb-pal - PAL colourisation filter for ld-decode
+    ld-chroma-decoder - Colourisation filter for ld-decode
     Copyright (C) 2018-2019 Simon Inns
 
     This file is part of ld-decode-tools.
 
-    ld-comb-pal is free software: you can redistribute it and/or
+    ld-chroma-decoder is free software: you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
     published by the Free Software Foundation, either version 3 of the
     License, or (at your option) any later version.
@@ -84,14 +84,14 @@ int main(int argc, char *argv[])
     QCoreApplication a(argc, argv);
 
     // Set application name and version
-    QCoreApplication::setApplicationName("ld-comb-pal");
+    QCoreApplication::setApplicationName("ld-chroma-decoder");
     QCoreApplication::setApplicationVersion("1.1");
     QCoreApplication::setOrganizationDomain("domesday86.com");
 
     // Set up the command line parser
     QCommandLineParser parser;
     parser.setApplicationDescription(
-                "ld-comb-pal - PAL colourisation filter for ld-decode\n"
+                "ld-chroma-decoder - Colourisation filter for ld-decode\n"
                 "\n"
                 "(c)2018-2019 Simon Inns\n"
                 "Contains PALcolour: Copyright (C) 2018  William Andrew Steer\n"

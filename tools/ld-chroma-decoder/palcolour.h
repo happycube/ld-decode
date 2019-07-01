@@ -2,12 +2,12 @@
 
     palcolour.h
 
-    ld-comb-pal - PAL colourisation filter for ld-decode
+    ld-chroma-decoder - Colourisation filter for ld-decode
     Copyright (C) 2018-2019 Simon Inns
 
     This file is part of ld-decode-tools.
 
-    ld-comb-pal is free software: you can redistribute it and/or
+    ld-chroma-decoder is free software: you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
     published by the Free Software Foundation, either version 3 of the
     License, or (at your option) any later version.
