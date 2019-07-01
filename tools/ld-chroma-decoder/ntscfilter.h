@@ -1,14 +1,14 @@
 /************************************************************************
 
-    opticalflow.h
+    ntscfilter.h
 
-    ld-comb-ntsc - NTSC colourisation filter for ld-decode
+    ld-chroma-decoder - Colourisation filter for ld-decode
     Copyright (C) 2018 Chad Page
     Copyright (C) 2018-2019 Simon Inns
 
     This file is part of ld-decode-tools.
 
-    ld-comb-ntsc is free software: you can redistribute it and/or
+    ld-chroma-decoder is free software: you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
     published by the Free Software Foundation, either version 3 of the
     License, or (at your option) any later version.
@@ -23,39 +23,37 @@
 
 ************************************************************************/
 
-#ifndef OPTICALFLOW_H
-#define OPTICALFLOW_H
+#ifndef NTSCFILTER_H
+#define NTSCFILTER_H
 
-#include <QCoreApplication>
+#include <QObject>
 #include <QDebug>
-#include <QtMath>
+#include <QFile>
+#include <QElapsedTimer>
 
-// OpenCV3
-#include <opencv2/core/core.hpp>
-#include <opencv2/video/tracking.hpp>
+// Include the ld-decode-tools shared libary headers
+#include "sourcevideo.h"
+#include "lddecodemetadata.h"
 
-#include "rgb.h"
-#include "yiqbuffer.h"
+#include "comb.h"
 
-class OpticalFlow
+class NtscFilter : public QObject
 {
+    Q_OBJECT
 public:
-    OpticalFlow();
+    explicit NtscFilter(LdDecodeMetaData &ldDecodeMetaData, QObject *parent = nullptr);
 
-    // Input frame buffer definitions
-    struct yiqLine_t {
-        YIQ pixel[911]; // One line of YIQ data
-    };
+    bool process(QString inputFileName, QString outputFileName,
+                 qint32 startFrame, qint32 length, bool reverse,
+                 bool blackAndWhite, bool whitePoint, bool use3D, bool showOpticalFlowMap);
 
-    void denseOpticalFlow(const YiqBuffer &yiqBuffer, QVector<qreal> &kValues);
+signals:
+
+public slots:
 
 private:
-    // Globals used by the opticalFlow3D method
-    cv::Mat previousFrameGrey;
-    qint32 framesProcessed;
-
-    cv::Mat convertYtoMat(const YiqBuffer &yiqBuffer);
-    inline qreal calculateDistance(qreal yDifference, qreal xDifference);
+    LdDecodeMetaData &ldDecodeMetaData;
+    SourceVideo sourceVideo;
 };
 
-#endif // OPTICALFLOW_H
+#endif // NTSCFILTER_H

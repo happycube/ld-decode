@@ -2,13 +2,13 @@
 
     ntscfilter.cpp
 
-    ld-comb-ntsc - NTSC colourisation filter for ld-decode
+    ld-chroma-decoder - Colourisation filter for ld-decode
     Copyright (C) 2018 Chad Page
     Copyright (C) 2018-2019 Simon Inns
 
     This file is part of ld-decode-tools.
 
-    ld-comb-ntsc is free software: you can redistribute it and/or
+    ld-chroma-decoder is free software: you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
     published by the Free Software Foundation, either version 3 of the
     License, or (at your option) any later version.
@@ -25,7 +25,8 @@
 
 #include "ntscfilter.h"
 
-NtscFilter::NtscFilter(QObject *parent) : QObject(parent)
+NtscFilter::NtscFilter(LdDecodeMetaData &ldDecodeMetaDataParam, QObject *parent)
+    : QObject(parent), ldDecodeMetaData(ldDecodeMetaDataParam)
 {
 
 }
@@ -35,12 +36,6 @@ bool NtscFilter::process(QString inputFileName, QString outputFileName,
                          bool blackAndWhite, bool whitePoint, bool use3D,
                          bool showOpticalFlowMap)
 {
-    // Open the source video metadata
-    if (!ldDecodeMetaData.read(inputFileName + ".json")) {
-        qInfo() << "Unable to open ld-decode metadata file";
-        return false;
-    }
-
     // Reverse field order if required
     if (reverse) {
         qInfo() << "Expected field order is reversed to second field/first field";

@@ -2,8 +2,7 @@ TEMPLATE = subdirs
 SUBDIRS = \
     ld-analyse \
     ld-chroma-decoder \
-    ld-comb-ntsc \
-    ld-comb-ntsc/testfilter \
+    ld-chroma-decoder/testfilter \
     ld-combine \
     ld-decode-shared \
     ld-dropout-correct \
@@ -15,7 +14,6 @@ SUBDIRS = \
 
 ld-analyse.depends = ld-decode-shared
 ld-chroma-decoder.depends = ld-decode-shared
-ld-comb-ntsc.depends = ld-decode-shared
 ld-combine.depends = ld-decode-shared
 ld-dropout-correct.depends = ld-decode-shared
 ld-process-vbi.depends = ld-decode-shared

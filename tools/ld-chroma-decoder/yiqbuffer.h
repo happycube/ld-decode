@@ -1,14 +1,14 @@
 /************************************************************************
 
-    ntscfilter.h
+    yiqbuffer.h
 
-    ld-comb-ntsc - NTSC colourisation filter for ld-decode
+    ld-chroma-decoder - Colourisation filter for ld-decode
     Copyright (C) 2018 Chad Page
     Copyright (C) 2018-2019 Simon Inns
 
     This file is part of ld-decode-tools.
 
-    ld-comb-ntsc is free software: you can redistribute it and/or
+    ld-chroma-decoder is free software: you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
     published by the Free Software Foundation, either version 3 of the
     License, or (at your option) any later version.
@@ -23,36 +23,32 @@
 
 ************************************************************************/
 
-#ifndef NTSCFILTER_H
-#define NTSCFILTER_H
+#ifndef YIQBUFFER_H
+#define YIQBUFFER_H
 
-#include <QObject>
-#include <QDebug>
-#include <QFile>
-#include <QElapsedTimer>
+#include <array>
+#include <vector>
 
-// Include the ld-decode-tools shared libary headers
-#include "sourcevideo.h"
-#include "lddecodemetadata.h"
+#include "yiq.h"
 
-#include "comb.h"
+using YiqLine = std::array<YIQ, 910>;
 
-class NtscFilter : public QObject
+// A heap-allocated 2D array of YIQ pixels
+class YiqBuffer
+    : public std::vector<YiqLine>
 {
-    Q_OBJECT
 public:
-    explicit NtscFilter(QObject *parent = nullptr);
+    YiqBuffer()
+        : std::vector<YiqLine>(525)
+    {
+    }
 
-    bool process(QString inputFileName, QString outputFileName, qint32 startFrame, qint32 length, bool reverse,
-                 bool blackAndWhite, bool whitePoint, bool use3D, bool showOpticalFlowMap);
-
-signals:
-
-public slots:
-
-private:
-    LdDecodeMetaData ldDecodeMetaData;
-    SourceVideo sourceVideo;
+    // Zero all pixels in the buffer
+    void clear() {
+        for (YiqLine &line: *this) {
+            line.fill(YIQ());
+        }
+    }
 };
 
-#endif // NTSCFILTER_H
+#endif // YIQBUFFER_H

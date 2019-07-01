@@ -44,11 +44,10 @@ target_wrapper.*
 CMakeLists.txt.user*
 /ld-analyse/ld-analyse
 /ld-chroma-decoder/ld-chroma-decoder
+/ld-chroma-decoder/testfilter/testfilter
 /ld-dropout-correct/ld-dropout-correct
 /ld-process-vbi/ld-process-vbi
 /ld-process-ntsc/ld-process-ntsc
-/ld-comb-ntsc/ld-comb-ntsc
-/ld-comb-ntsc/testfilter/testfilter
 /ld-process-audio/ld-process-audio
 /ld-combine/ld-combine
 /ld-process-efm/ld-process-efm

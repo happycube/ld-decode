@@ -48,7 +48,7 @@
 #include "configuration.h"
 #include "frameqlabel.h"
 #include "../ld-chroma-decoder/palcolour.h"
-#include "../ld-comb-ntsc/comb.h"
+#include "../ld-chroma-decoder/comb.h"
 
 namespace Ui {
 class MainWindow;

@@ -1,14 +1,14 @@
 /************************************************************************
 
-    yiqbuffer.h
+    yiq.cpp
 
-    ld-comb-ntsc - NTSC colourisation filter for ld-decode
+    ld-chroma-decoder - Colourisation filter for ld-decode
     Copyright (C) 2018 Chad Page
     Copyright (C) 2018-2019 Simon Inns
 
     This file is part of ld-decode-tools.
 
-    ld-comb-ntsc is free software: you can redistribute it and/or
+    ld-chroma-decoder is free software: you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
     published by the Free Software Foundation, either version 3 of the
     License, or (at your option) any later version.
@@ -23,32 +23,31 @@
 
 ************************************************************************/
 
-#ifndef YIQBUFFER_H
-#define YIQBUFFER_H
-
-#include <array>
-#include <vector>
-
 #include "yiq.h"
 
-using YiqLine = std::array<YIQ, 910>;
-
-// A heap-allocated 2D array of YIQ pixels
-class YiqBuffer
-    : public std::vector<YiqLine>
+YIQ::YIQ(qreal _y, qreal _i, qreal _q)
 {
-public:
-    YiqBuffer()
-        : std::vector<YiqLine>(525)
-    {
-    }
+    y = _y; i = _i; q = _q;
+}
 
-    // Zero all pixels in the buffer
-    void clear() {
-        for (YiqLine &line: *this) {
-            line.fill(YIQ());
-        }
-    }
-};
+YIQ YIQ::operator*=(qreal x)
+{
+    YIQ o;
 
-#endif // YIQBUFFER_H
+    o.y = this->y * x;
+    o.i = this->i * x;
+    o.q = this->q * x;
+
+    return o;
+}
+
+YIQ YIQ::operator+=(const YIQ &p)
+{
+    YIQ o;
+
+    o.y = this->y + p.y;
+    o.i = this->i + p.i;
+    o.q = this->q + p.q;
+
+    return o;
+}

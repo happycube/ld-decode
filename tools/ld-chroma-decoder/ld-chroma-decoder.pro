@@ -15,10 +15,15 @@ DEFINES += QT_DEPRECATED_WARNINGS
 #DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
 
 SOURCES += \
-        main.cpp \
+    main.cpp \
     palcombfilter.cpp \
     palcolour.cpp \
-    filterthread.cpp
+    filterthread.cpp \
+    comb.cpp \
+    rgb.cpp \
+    yiq.cpp \
+    ntscfilter.cpp \
+    opticalflow.cpp
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin
@@ -34,9 +39,26 @@ INCLUDEPATH += $$MYDLLDIR
 # Dependency to library domain (libdomain.so for Unices or domain.dll on Win32)
 # Repeat this for more libraries if needed.
 win32:LIBS += $$quote($$MYDLLDIR/ld-decode-shared.dll)
- unix:LIBS += $$quote(-L$$MYDLLDIR) -lld-decode-shared
+unix:LIBS += $$quote(-L$$MYDLLDIR) -lld-decode-shared
 
 HEADERS += \
     palcombfilter.h \
     palcolour.h \
-    filterthread.h
+    filterthread.h \
+    comb.h \
+    rgb.h \
+    yiq.h \
+    iirfilter.h \
+    ntscfilter.h \
+    ../../deemp.h \
+    opticalflow.h \
+    yiqbuffer.h
+
+# Additional include paths to support MacOS compilation
+INCLUDEPATH += "/usr/local/opt/opencv@2/include"
+LIBS += -L"/usr/local/opt/opencv@2/lib"
+
+# Normal open-source OS goodness
+INCLUDEPATH += "/usr/local/include/opencv"
+LIBS += -L"/usr/local/lib"
+LIBS += -lopencv_core -lopencv_imgcodecs -lopencv_highgui -lopencv_imgproc -lopencv_video

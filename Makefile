@@ -4,7 +4,7 @@
 #       that make clean will not remove them.
 TARGETS=cx
 
-CFLAGS=-g -O2 -fno-omit-frame-pointer -march=native -Itools/ld-comb-ntsc
+CFLAGS=-g -O2 -fno-omit-frame-pointer -march=native -Itools/ld-chroma-decoder
 
 all: $(TARGETS)
 

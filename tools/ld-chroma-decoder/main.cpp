@@ -29,6 +29,7 @@
 #include <QThread>
 
 #include "lddecodemetadata.h"
+#include "ntscfilter.h"
 #include "palcombfilter.h"
 
 // Global for debug output
@@ -100,6 +101,8 @@ int main(int argc, char *argv[])
     parser.addHelpOption();
     parser.addVersionOption();
 
+    // -- General options --
+
     // Option to show debug (-d)
     QCommandLineOption showDebugOption(QStringList() << "d" << "debug",
                                        QCoreApplication::translate("main", "Show debug"));
@@ -138,6 +141,25 @@ int main(int argc, char *argv[])
                                         QCoreApplication::translate("main", "number"));
     parser.addOption(threadsOption);
 
+    // -- NTSC decoder options --
+
+    // Option to select 3D comb filter (-3)
+    QCommandLineOption use3DOption(QStringList() << "3" << "3d",
+                                   QCoreApplication::translate("main", "NTSC: Use 3D comb filter (default 2D)"));
+    parser.addOption(use3DOption);
+
+    // Option to show the optical flow map (-o)
+    QCommandLineOption showOpticalFlowOption(QStringList() << "o" << "oftest",
+                                             QCoreApplication::translate("main", "NTSC: Show the optical flow map (only used for testing)"));
+    parser.addOption(showOpticalFlowOption);
+
+    // Option to set the white point to 75% (rather than 100%)
+    QCommandLineOption whitePointOption(QStringList() << "w" << "white",
+                                        QCoreApplication::translate("main", "NTSC: Use 75% white-point (default 100%)"));
+    parser.addOption(whitePointOption);
+
+    // -- Positional arguments --
+
     // Positional argument to specify input video file
     parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input TBC file"));
 
@@ -151,7 +173,13 @@ int main(int argc, char *argv[])
     bool isDebugOn = parser.isSet(showDebugOption);
     bool reverse = parser.isSet(setReverseOption);
     bool blackAndWhite = parser.isSet(setBwModeOption);
+    bool use3D = parser.isSet(use3DOption);
+    bool showOpticalFlow = parser.isSet(showOpticalFlowOption);
+    bool whitePoint = parser.isSet(whitePointOption);
     if (parser.isSet(setQuietOption)) showOutput = false;
+
+    // Force 3D mode if the optical flow map overlay is selected
+    if (showOpticalFlow) use3D = true;
 
     // Get the arguments from the parser
     QString inputFileName;
@@ -224,10 +252,17 @@ int main(int argc, char *argv[])
 
     // Perform the processing
     bool success;
-    PalCombFilter palCombFilter(metaData);
-    success = palCombFilter.process(inputFileName, outputFileName,
-                                    startFrame, length, reverse,
-                                    blackAndWhite, maxThreads);
+    if (metaData.getVideoParameters().isSourcePal) {
+        PalCombFilter palCombFilter(metaData);
+        success = palCombFilter.process(inputFileName, outputFileName,
+                                        startFrame, length, reverse,
+                                        blackAndWhite, maxThreads);
+    } else {
+        NtscFilter ntscFilter(metaData);
+        success = ntscFilter.process(inputFileName, outputFileName,
+                                     startFrame, length, reverse,
+                                     blackAndWhite, whitePoint, use3D, showOpticalFlow);
+    }
     if (!success) {
         return -1;
     }
