@@ -35,7 +35,6 @@ SOURCES += \
     ntscdialog.cpp \
     ../ld-comb-pal/palcolour.cpp \
     ../ld-comb-ntsc/comb.cpp \
-    ../ld-comb-ntsc/filter.cpp \
     ../ld-comb-ntsc/rgb.cpp \
     ../ld-comb-ntsc/yiq.cpp \
     videometadatadialog.cpp \
@@ -54,7 +53,6 @@ HEADERS += \
     ntscdialog.h \
     ../ld-comb-pal/palcolour.h \
     ../ld-comb-ntsc/comb.h \
-    ../ld-comb-ntsc/filter.h \
     ../ld-comb-ntsc/rgb.h \
     ../ld-comb-ntsc/yiq.h \
     videometadatadialog.h \
@@ -80,6 +78,7 @@ MYDLLDIR = $$IN_PWD/../library
 # As our header files are in the same directory, we can make Qt Creator find it
 # by specifying it as INCLUDEPATH.
 INCLUDEPATH += $$MYDLLDIR
+INCLUDEPATH += ../ld-comb-ntsc
 
 # Dependency to library domain (libdomain.so for Unices or domain.dll on Win32)
 # Repeat this for more libraries if needed.
