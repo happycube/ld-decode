@@ -87,8 +87,6 @@ PalThread::PalThread(QAtomicInt& abortParam, DecoderPool& decoderPoolParam,
 {
     // Configure PALcolour
     palColour.updateConfiguration(config.videoParameters);
-
-    outputData.resize(config.videoParameters.fieldWidth * config.frameHeight * 6);
 }
 
 void PalThread::run()
