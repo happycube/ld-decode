@@ -48,10 +48,10 @@ bool PalDecoder::configure(const LdDecodeMetaData::VideoParameters &videoParamet
     // Default to standard output size
     config.outputHeight = 576;
 
-    // Make sure output width is divisible by 16 (better for ffmpeg processing)
+    // Make sure output width is divisible by 8 (better for ffmpeg processing)
     while (true) {
         const qint32 width = config.videoParameters.activeVideoEnd - config.videoParameters.activeVideoStart;
-        if ((width % 16) == 0) {
+        if ((width % 8) == 0) {
             break;
         }
 
