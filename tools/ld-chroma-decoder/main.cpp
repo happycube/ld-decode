@@ -2,12 +2,13 @@
 
     main.cpp
 
-    ld-comb-pal - PAL colourisation filter for ld-decode
+    ld-chroma-decoder - Colourisation filter for ld-decode
     Copyright (C) 2018-2019 Simon Inns
+    Copyright (C) 2019 Adam Sampson
 
     This file is part of ld-decode-tools.
 
-    ld-comb-pal is free software: you can redistribute it and/or
+    ld-chroma-decoder is free software: you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
     published by the Free Software Foundation, either version 3 of the
     License, or (at your option) any later version.
@@ -26,9 +27,14 @@
 #include <QDebug>
 #include <QtGlobal>
 #include <QCommandLineParser>
+#include <QScopedPointer>
 #include <QThread>
 
-#include "palcombfilter.h"
+#include "decoderpool.h"
+#include "lddecodemetadata.h"
+
+#include "ntscdecoder.h"
+#include "paldecoder.h"
 
 // Global for debug output
 static bool showDebug = false;
@@ -84,20 +90,22 @@ int main(int argc, char *argv[])
     QCoreApplication a(argc, argv);
 
     // Set application name and version
-    QCoreApplication::setApplicationName("ld-comb-pal");
+    QCoreApplication::setApplicationName("ld-chroma-decoder");
     QCoreApplication::setApplicationVersion("1.1");
     QCoreApplication::setOrganizationDomain("domesday86.com");
 
     // Set up the command line parser
     QCommandLineParser parser;
     parser.setApplicationDescription(
-                "ld-comb-pal - PAL colourisation filter for ld-decode\n"
+                "ld-chroma-decoder - Colourisation filter for ld-decode\n"
                 "\n"
                 "(c)2018-2019 Simon Inns\n"
                 "Contains PALcolour: Copyright (C) 2018  William Andrew Steer\n"
                 "GPLv3 Open-Source - github: https://github.com/happycube/ld-decode");
     parser.addHelpOption();
     parser.addVersionOption();
+
+    // -- General options --
 
     // Option to show debug (-d)
     QCommandLineOption showDebugOption(QStringList() << "d" << "debug",
@@ -131,11 +139,31 @@ int main(int argc, char *argv[])
                                        QCoreApplication::translate("main", "Suppress info and warning messages"));
     parser.addOption(setQuietOption);
 
+    // Option to select which decoder to use (-f)
+    QCommandLineOption decoderOption(QStringList() << "f" << "decoder",
+                                     QCoreApplication::translate("main", "Decoder to use (pal2d, ntsc2d, ntsc3d; default automatic)"),
+                                     QCoreApplication::translate("main", "decoder"));
+    parser.addOption(decoderOption);
+
     // Option to select the number of threads (-t)
     QCommandLineOption threadsOption(QStringList() << "t" << "threads",
                                         QCoreApplication::translate("main", "Specify the number of concurrent threads (default number of logical CPUs plus 2)"),
                                         QCoreApplication::translate("main", "number"));
     parser.addOption(threadsOption);
+
+    // -- NTSC decoder options --
+
+    // Option to show the optical flow map (-o)
+    QCommandLineOption showOpticalFlowOption(QStringList() << "o" << "oftest",
+                                             QCoreApplication::translate("main", "NTSC: Show the optical flow map (only used for testing)"));
+    parser.addOption(showOpticalFlowOption);
+
+    // Option to set the white point to 75% (rather than 100%)
+    QCommandLineOption whitePointOption(QStringList() << "w" << "white",
+                                        QCoreApplication::translate("main", "NTSC: Use 75% white-point (default 100%)"));
+    parser.addOption(whitePointOption);
+
+    // -- Positional arguments --
 
     // Positional argument to specify input video file
     parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input TBC file"));
@@ -148,8 +176,9 @@ int main(int argc, char *argv[])
 
     // Get the options from the parser
     bool isDebugOn = parser.isSet(showDebugOption);
-    bool reverse = parser.isSet(setReverseOption);
     bool blackAndWhite = parser.isSet(setBwModeOption);
+    bool showOpticalFlow = parser.isSet(showOpticalFlowOption);
+    bool whitePoint = parser.isSet(whitePointOption);
     if (parser.isSet(setQuietOption)) showOutput = false;
 
     // Get the arguments from the parser
@@ -214,9 +243,56 @@ int main(int argc, char *argv[])
     // Process the command line options
     if (isDebugOn) showDebug = true;
 
+    // Load the source video metadata
+    LdDecodeMetaData metaData;
+    if (!metaData.read(inputFileName + ".json")) {
+        qInfo() << "Unable to open ld-decode metadata file";
+        return -1;
+    }
+
+    // Reverse field order if required
+    if (parser.isSet(setReverseOption)) {
+        qInfo() << "Expected field order is reversed to second field/first field";
+        metaData.setIsFirstFieldFirst(false);
+    }
+
+    // Work out which decoder to use
+    QString decoderName;
+    if (parser.isSet(decoderOption)) {
+        decoderName = parser.value(decoderOption);
+    } else if (metaData.getVideoParameters().isSourcePal) {
+        decoderName = "pal2d";
+    } else {
+        decoderName = "ntsc2d";
+    }
+
+    // Require ntsc3d if the optical flow map overlay is selected
+    if (showOpticalFlow && decoderName != "ntsc3d") {
+        qCritical() << "Can only show optical flow with the ntsc3d decoder";
+        return -1;
+    }
+
+    // Select the decoder
+    QScopedPointer<Decoder> decoder;
+    if (decoderName == "pal2d") {
+        decoder.reset(new PalDecoder(blackAndWhite));
+    } else if (decoderName == "ntsc2d") {
+        decoder.reset(new NtscDecoder(blackAndWhite, whitePoint, false, false));
+    } else if (decoderName == "ntsc3d") {
+        decoder.reset(new NtscDecoder(blackAndWhite, whitePoint, true, showOpticalFlow));
+
+        // In 3D mode, NtscDecoder keeps state between frames, so it can't be parallelised.
+        maxThreads = 1;
+    } else {
+        qCritical() << "Unknown decoder " << decoderName;
+        return -1;
+    }
+
     // Perform the processing
-    PalCombFilter palCombFilter;
-    palCombFilter.process(inputFileName, outputFileName, startFrame, length, reverse, blackAndWhite, maxThreads);
+    DecoderPool decoderPool(*decoder, inputFileName, metaData, outputFileName, startFrame, length, maxThreads);
+    if (!decoderPool.process()) {
+        return -1;
+    }
 
     // Quit with success
     return 0;

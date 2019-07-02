@@ -10,7 +10,7 @@
 
     This file is part of ld-decode-tools.
 
-    ld-comb-pal is free software: you can redistribute it and/or
+    ld-chroma-decoder is free software: you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
     published by the Free Software Foundation, either version 3 of the
     License, or (at your option) any later version.
@@ -49,7 +49,7 @@ void PalColour::updateConfiguration(LdDecodeMetaData::VideoParameters videoParam
 
 // Private method to build the look up tables
 // must be called by the constructor when the object is created
-void PalColour::buildLookUpTables(void)
+void PalColour::buildLookUpTables()
 {
     // Step 1: create sine/cosine lookups
     refAmpl = 1.28;
@@ -111,7 +111,6 @@ void PalColour::buildLookUpTables(void)
         cdiv+=cfilt[f][0]+2*cfilt[f][2]+2*cfilt[f][1]+2*cfilt[f][3];
 
         double  fy=f; if (fy>ya) fy=ya;
-        double ffy=sqrt(f*f+2*2); if (ffy>ya) ffy=ya;
         double fffy=sqrt(f*f+4*4); if (fffy>ya) fffy=ya;
 
         // For Y, only use lines n, n+/-2: the others cancel!!!

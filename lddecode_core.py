@@ -1822,7 +1822,7 @@ class CombNTSC:
         if subset:
             data = data[subset]
             
-        # this is a translation of this code from tools/ld-comb-ntsc/comb.cxx:
+        # this is a translation of this code from tools/ld-chroma-decoder/comb.cpp:
         #
         # for (qint32 h = configuration.activeVideoStart; h < configuration.activeVideoEnd; h++) {
         #  qreal tc1 = (((line[h + 2] + line[h - 2]) / 2) - line[h]);

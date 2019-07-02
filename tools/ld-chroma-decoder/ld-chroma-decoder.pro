@@ -15,11 +15,14 @@ DEFINES += QT_DEPRECATED_WARNINGS
 #DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
 
 SOURCES += \
-        main.cpp \
+    main.cpp \
+    decoderpool.cpp \
+    palcolour.cpp \
+    paldecoder.cpp \
     comb.cpp \
     rgb.cpp \
     yiq.cpp \
-    ntscfilter.cpp \
+    ntscdecoder.cpp \
     opticalflow.cpp
 
 # Default rules for deployment.
@@ -39,11 +42,15 @@ win32:LIBS += $$quote($$MYDLLDIR/ld-decode-shared.dll)
 unix:LIBS += $$quote(-L$$MYDLLDIR) -lld-decode-shared
 
 HEADERS += \
+    decoder.h \
+    decoderpool.h \
+    palcolour.h \
+    paldecoder.h \
     comb.h \
     rgb.h \
     yiq.h \
     iirfilter.h \
-    ntscfilter.h \
+    ntscdecoder.h \
     ../../deemp.h \
     opticalflow.h \
     yiqbuffer.h
@@ -55,4 +62,4 @@ LIBS += -L"/usr/local/opt/opencv@2/lib"
 # Normal open-source OS goodness
 INCLUDEPATH += "/usr/local/include/opencv"
 LIBS += -L"/usr/local/lib"
-LIBS += -lopencv_core -lopencv_imgcodecs -lopencv_highgui -lopencv_imgproc -lopencv_video
+LIBS += -lopencv_core -lopencv_imgproc -lopencv_video

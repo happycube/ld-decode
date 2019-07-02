@@ -43,11 +43,11 @@ target_wrapper.*
 # QtCreator CMake
 CMakeLists.txt.user*
 /ld-analyse/ld-analyse
-/ld-comb-pal/ld-comb-pal
+/ld-chroma-decoder/ld-chroma-decoder
+/ld-chroma-decoder/testfilter/testfilter
 /ld-dropout-correct/ld-dropout-correct
 /ld-process-vbi/ld-process-vbi
 /ld-process-ntsc/ld-process-ntsc
-/ld-comb-ntsc/ld-comb-ntsc
 /ld-process-audio/ld-process-audio
 /ld-combine/ld-combine
 /ld-process-efm/ld-process-efm

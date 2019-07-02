@@ -33,14 +33,14 @@ SOURCES += \
     vbidialog.cpp \
     configuration.cpp \
     ntscdialog.cpp \
-    ../ld-comb-pal/palcolour.cpp \
-    ../ld-comb-ntsc/comb.cpp \
-    ../ld-comb-ntsc/rgb.cpp \
-    ../ld-comb-ntsc/yiq.cpp \
+    ../ld-chroma-decoder/palcolour.cpp \
+    ../ld-chroma-decoder/comb.cpp \
+    ../ld-chroma-decoder/rgb.cpp \
+    ../ld-chroma-decoder/yiq.cpp \
     videometadatadialog.cpp \
     frameqlabel.cpp \
     dropoutanalysisdialog.cpp \
-    ../ld-comb-ntsc/opticalflow.cpp \
+    ../ld-chroma-decoder/opticalflow.cpp \
     vitsmetricsdialog.cpp
 
 HEADERS += \
@@ -51,15 +51,15 @@ HEADERS += \
     vbidialog.h \
     configuration.h \
     ntscdialog.h \
-    ../ld-comb-pal/palcolour.h \
-    ../ld-comb-ntsc/comb.h \
-    ../ld-comb-ntsc/rgb.h \
-    ../ld-comb-ntsc/yiq.h \
+    ../ld-chroma-decoder/palcolour.h \
+    ../ld-chroma-decoder/comb.h \
+    ../ld-chroma-decoder/rgb.h \
+    ../ld-chroma-decoder/yiq.h \
     videometadatadialog.h \
     frameqlabel.h \
     dropoutanalysisdialog.h \
-    ../ld-comb-ntsc/yiqbuffer.h \
-    ../ld-comb-ntsc/opticalflow.h \
+    ../ld-chroma-decoder/yiqbuffer.h \
+    ../ld-chroma-decoder/opticalflow.h \
     vitsmetricsdialog.h
 
 FORMS += \
@@ -78,7 +78,7 @@ MYDLLDIR = $$IN_PWD/../library
 # As our header files are in the same directory, we can make Qt Creator find it
 # by specifying it as INCLUDEPATH.
 INCLUDEPATH += $$MYDLLDIR
-INCLUDEPATH += ../ld-comb-ntsc
+INCLUDEPATH += ../ld-chroma-decoder
 
 # Dependency to library domain (libdomain.so for Unices or domain.dll on Win32)
 # Repeat this for more libraries if needed.

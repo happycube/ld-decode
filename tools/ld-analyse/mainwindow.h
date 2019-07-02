@@ -7,7 +7,7 @@
 
     This file is part of ld-decode-tools.
 
-    ld-dropout-correct is free software: you can redistribute it and/or
+    ld-analyse is free software: you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
     published by the Free Software Foundation, either version 3 of the
     License, or (at your option) any later version.
@@ -47,8 +47,8 @@
 #include "snranalysisdialog.h"
 #include "configuration.h"
 #include "frameqlabel.h"
-#include "../ld-comb-pal/palcolour.h"
-#include "../ld-comb-ntsc/comb.h"
+#include "../ld-chroma-decoder/palcolour.h"
+#include "../ld-chroma-decoder/comb.h"
 
 namespace Ui {
 class MainWindow;

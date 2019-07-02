@@ -1,14 +1,14 @@
 /************************************************************************
 
-    rgb.h
+    opticalflow.h
 
-    ld-comb-ntsc - NTSC colourisation filter for ld-decode
+    ld-chroma-decoder - Colourisation filter for ld-decode
     Copyright (C) 2018 Chad Page
     Copyright (C) 2018-2019 Simon Inns
 
     This file is part of ld-decode-tools.
 
-    ld-comb-ntsc is free software: you can redistribute it and/or
+    ld-chroma-decoder is free software: you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
     published by the Free Software Foundation, either version 3 of the
     License, or (at your option) any later version.
@@ -23,37 +23,39 @@
 
 ************************************************************************/
 
-#ifndef RGB_H
-#define RGB_H
+#ifndef OPTICALFLOW_H
+#define OPTICALFLOW_H
 
 #include <QCoreApplication>
 #include <QDebug>
+#include <QtMath>
 
-#include "yiq.h"
+// OpenCV3
+#include <opencv2/core/core.hpp>
+#include <opencv2/video/tracking.hpp>
 
-class RGB
+#include "rgb.h"
+#include "yiqbuffer.h"
+
+class OpticalFlow
 {
 public:
-    RGB(double whiteIreParam, double blackIreParam, bool whitePoint100Param, bool blackAndWhiteParam, double colourBurstMedianParam);
+    OpticalFlow();
 
-    void convertLine(const YIQ *begin, const YIQ *end, quint16 *out);
+    // Input frame buffer definitions
+    struct yiqLine_t {
+        YIQ pixel[911]; // One line of YIQ data
+    };
+
+    void denseOpticalFlow(const YiqBuffer &yiqBuffer, QVector<qreal> &kValues);
 
 private:
-    double blackIreLevel;
-    double whiteIreLevel;
-    bool whitePoint75;
-    bool blackAndWhite;
-    double colourBurstMedian;
+    // Globals used by the opticalFlow3D method
+    cv::Mat previousFrameGrey;
+    qint32 framesProcessed;
+
+    cv::Mat convertYtoMat(const YiqBuffer &yiqBuffer);
+    inline qreal calculateDistance(qreal yDifference, qreal xDifference);
 };
 
-// Clamp a value to within a fixed range.
-// (Equivalent to C++17's std::clamp.)
-template <typename T>
-static inline const T& clamp(const T& v, const T& low, const T& high)
-{
-    if (v < low) return low;
-    else if (v > high) return high;
-    else return v;
-}
-
-#endif // RGB_H
+#endif // OPTICALFLOW_H

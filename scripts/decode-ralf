@@ -2,7 +2,7 @@
 python3 ld-decode.py ~/ralf_side1_6x_2018-10-09_21-41-14.lds ralf -s 7 -l 244 --NTSCJ --EFM
 #
 # -I 0 sets ire to 0, HE-010 is a Japanese LD
-ld-comb-ntsc --3d  -l 245 ralf.tbc ralf.rgb
+ld-chroma-decoder --3d  -l 245 ralf.tbc ralf.rgb
 
 ld-process-efm  --input ralf.efm --audio ralf.dig.pcm
 
