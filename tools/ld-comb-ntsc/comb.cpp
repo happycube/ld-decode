@@ -307,6 +307,11 @@ void Comb::split2D(FrameBuffer *frameBuffer)
 // Only apply 3D processing to stationary pixels
 void Comb::split3D(FrameBuffer *currentFrame, FrameBuffer *previousFrame)
 {
+    // If there is no previous frame data (i.e. this is the first frame), use the current frame.
+    if (previousFrame->rawbuffer.size() == 0) {
+        previousFrame = currentFrame;
+    }
+
     for (qint32 lineNumber = configuration.firstVisibleFrameLine; lineNumber < frameHeight; lineNumber++) {
 
         quint16 *currentLine = reinterpret_cast<quint16 *>(currentFrame->rawbuffer.data() + (lineNumber * configuration.fieldWidth) * 2);
