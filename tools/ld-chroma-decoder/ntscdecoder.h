@@ -49,12 +49,10 @@ public:
 
     // Parameters used by NtscDecoder and NtscThread
     struct Configuration {
+        LdDecodeMetaData::VideoParameters videoParameters;
         Comb::Configuration combConfig;
         qint32 firstActiveScanLine;
         qint32 lastActiveScanLine;
-        qint32 fieldWidth;
-        qint32 videoStart;
-        qint32 videoEnd;
         qint32 outputHeight;
     };
 

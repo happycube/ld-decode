@@ -50,38 +50,35 @@ bool NtscDecoder::configure(const LdDecodeMetaData::VideoParameters &videoParame
         return false;
     }
 
-    // Calculate the frame height
-    qint32 frameHeight = (videoParameters.fieldHeight * 2) - 1;
+    config.videoParameters = videoParameters;
 
     // Set the first and last active scan line
     config.firstActiveScanLine = 40;
     config.lastActiveScanLine = 525;
 
     // Default to standard output size
-    config.fieldWidth = videoParameters.fieldWidth;
-    config.videoStart = videoParameters.activeVideoStart;
-    config.videoEnd = videoParameters.activeVideoEnd;
     config.outputHeight = 488;
 
     // Make sure output width is divisible by 8 (better for ffmpeg processing)
     while (true) {
-        const qint32 width = config.videoEnd - config.videoStart;
+        const qint32 width = config.videoParameters.activeVideoEnd - config.videoParameters.activeVideoStart;
         if ((width % 8) == 0) {
             break;
         }
 
         // Add pixels to the right and left sides in turn, to keep the active area centred
         if ((width % 2) == 0) {
-            config.videoEnd++;
+            config.videoParameters.activeVideoEnd++;
         } else {
-            config.videoStart--;
+            config.videoParameters.activeVideoStart--;
         }
     }
 
     // Show output information to the user
-    qInfo() << "Input video of" << videoParameters.fieldWidth << "x" << frameHeight <<
-               "will be colourised and trimmed to" << config.videoEnd - config.videoStart <<
-               "x" << config.outputHeight << "RGB 16-16-16 frames";
+    const qint32 frameHeight = (videoParameters.fieldHeight * 2) - 1;
+    const qint32 outputWidth = config.videoParameters.activeVideoEnd - config.videoParameters.activeVideoStart;
+    qInfo() << "Input video of" << config.videoParameters.fieldWidth << "x" << frameHeight <<
+               "will be colourised and trimmed to" << outputWidth << "x" << config.outputHeight << "RGB 16-16-16 frames";
 
     // Set the input buffer dimensions configuration
     config.combConfig.fieldWidth = videoParameters.fieldWidth;
@@ -138,27 +135,29 @@ void NtscThread::run()
         }
 
         // Filter the frame
-        QByteArray rgbOutputData = comb.process(firstFieldData, secondFieldData, burstMedianIre,
-                                                firstFieldPhaseID, secondFieldPhaseID);
+        QByteArray outputData = comb.process(firstFieldData, secondFieldData, burstMedianIre,
+                                             firstFieldPhaseID, secondFieldPhaseID);
 
         // The NTSC filter outputs the whole frame, so here we crop it to the required dimensions
-        QByteArray croppedOutputData;
+        QByteArray croppedData;
 
         // Add additional output lines to ensure the output height is 488 lines
+        const qint32 activeVideoStart = config.videoParameters.activeVideoStart;
+        const qint32 activeVideoEnd = config.videoParameters.activeVideoEnd;
         QByteArray blankLine;
-        blankLine.resize((config.videoEnd - config.videoStart) * 6 );
+        blankLine.resize((activeVideoEnd - activeVideoStart) * 6);
         blankLine.fill(0);
         for (qint32 y = 0; y < config.outputHeight - (config.lastActiveScanLine - config.firstActiveScanLine); y++) {
-            croppedOutputData.append(blankLine);
+            croppedData.append(blankLine);
         }
 
-        for (qint32 y = static_cast<qint32>(config.firstActiveScanLine); y < static_cast<qint32>(config.lastActiveScanLine); y++) {
-            croppedOutputData.append(rgbOutputData.mid((y * config.fieldWidth * 6) + (static_cast<qint32>(config.videoStart) * 6),
-                                                       ((static_cast<qint32>(config.videoEnd) - static_cast<qint32>(config.videoStart)) * 6)));
+        for (qint32 y = config.firstActiveScanLine; y < config.lastActiveScanLine; y++) {
+            croppedData.append(outputData.mid((y * config.videoParameters.fieldWidth * 6) + (activeVideoStart * 6),
+                                              ((activeVideoEnd - activeVideoStart) * 6)));
         }
 
         // Write the result to the output file
-        if (!decoderPool.putOutputFrame(frameNumber, croppedOutputData)) {
+        if (!decoderPool.putOutputFrame(frameNumber, croppedData)) {
             abort = true;
             break;
         }
