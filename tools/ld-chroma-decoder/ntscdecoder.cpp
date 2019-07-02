@@ -64,8 +64,18 @@ bool NtscDecoder::configure(const LdDecodeMetaData::VideoParameters &videoParame
     config.outputHeight = 488;
 
     // Make sure output width is divisible by 8 (better for ffmpeg processing)
-    while (((config.videoEnd - config.videoStart) % 8) != 0) {
-        config.videoEnd++;
+    while (true) {
+        const qint32 width = config.videoEnd - config.videoStart;
+        if ((width % 8) == 0) {
+            break;
+        }
+
+        // Add pixels to the right and left sides in turn, to keep the active area centred
+        if ((width % 2) == 0) {
+            config.videoEnd++;
+        } else {
+            config.videoStart--;
+        }
     }
 
     // Show output information to the user

@@ -54,8 +54,18 @@ bool PalDecoder::configure(const LdDecodeMetaData::VideoParameters &videoParamet
     }
 
     // Make sure output width is divisible by 16 (better for ffmpeg processing)
-    while (((config.videoParameters.activeVideoEnd - config.videoParameters.activeVideoStart) % 16) != 0) {
-       config.videoParameters.activeVideoEnd++;
+    while (true) {
+        const qint32 width = config.videoParameters.activeVideoEnd - config.videoParameters.activeVideoStart;
+        if ((width % 16) == 0) {
+            break;
+        }
+
+        // Add pixels to the right and left sides in turn, to keep the active area centred
+        if ((width % 2) == 0) {
+            config.videoParameters.activeVideoEnd++;
+        } else {
+            config.videoParameters.activeVideoStart--;
+        }
     }
 
     // Show output information to the user
