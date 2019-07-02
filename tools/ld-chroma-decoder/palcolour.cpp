@@ -111,7 +111,6 @@ void PalColour::buildLookUpTables()
         cdiv+=cfilt[f][0]+2*cfilt[f][2]+2*cfilt[f][1]+2*cfilt[f][3];
 
         double  fy=f; if (fy>ya) fy=ya;
-        double ffy=sqrt(f*f+2*2); if (ffy>ya) ffy=ya;
         double fffy=sqrt(f*f+4*4); if (fffy>ya) fffy=ya;
 
         // For Y, only use lines n, n+/-2: the others cancel!!!
