@@ -42,14 +42,11 @@ bool PalDecoder::configure(const LdDecodeMetaData::VideoParameters &videoParamet
     config.videoParameters = videoParameters;
 
     // Calculate the frame size
-    config.fieldWidth = videoParameters.fieldWidth;
     config.frameHeight = (videoParameters.fieldHeight * 2) - 1;
 
     // Set the first and last active scan line
     config.firstActiveScanLine = 44;
     config.lastActiveScanLine = 620;
-    config.videoStart = videoParameters.activeVideoStart;
-    config.videoEnd = videoParameters.activeVideoEnd;
 
     // Make sure output height is even (better for ffmpeg processing)
     if (((config.lastActiveScanLine - config.firstActiveScanLine) % 2) != 0) {
@@ -57,13 +54,14 @@ bool PalDecoder::configure(const LdDecodeMetaData::VideoParameters &videoParamet
     }
 
     // Make sure output width is divisible by 16 (better for ffmpeg processing)
-    while (((config.videoEnd - config.videoStart) % 16) != 0) {
-       config.videoEnd++;
+    while (((config.videoParameters.activeVideoEnd - config.videoParameters.activeVideoStart) % 16) != 0) {
+       config.videoParameters.activeVideoEnd++;
     }
 
     // Show output information to the user
-    qInfo() << "Input video of" << videoParameters.fieldWidth << "x" << config.frameHeight <<
-               "will be colourised and trimmed to" << config.videoEnd - config.videoStart <<
+    qInfo() << "Input video of" << config.videoParameters.fieldWidth << "x" << config.frameHeight <<
+               "will be colourised and trimmed to" <<
+               config.videoParameters.activeVideoEnd - config.videoParameters.activeVideoStart <<
                "x" << config.lastActiveScanLine - config.firstActiveScanLine << "RGB 16-16-16 frames";
 
     return true;
@@ -80,7 +78,7 @@ PalThread::PalThread(QAtomicInt& abortParam, DecoderPool& decoderPoolParam,
     // Configure PALcolour
     palColour.updateConfiguration(config.videoParameters);
 
-    outputData.resize(config.fieldWidth * config.frameHeight * 6);
+    outputData.resize(config.videoParameters.fieldWidth * config.frameHeight * 6);
 }
 
 void PalThread::run()
@@ -121,8 +119,10 @@ void PalThread::run()
         rgbOutputData.clear();
 
         // Add additional output lines to ensure the output height is 576 lines
+        const qint32 activeVideoStart = config.videoParameters.activeVideoStart;
+        const qint32 activeVideoEnd = config.videoParameters.activeVideoEnd;
         QByteArray blankLine;
-        blankLine.resize((config.videoEnd - config.videoStart) * 6 );
+        blankLine.resize((activeVideoEnd - activeVideoStart) * 6);
         blankLine.fill(0);
         for (qint32 y = 0; y < 576 - (config.lastActiveScanLine - config.firstActiveScanLine); y++) {
             rgbOutputData.append(blankLine);
@@ -131,8 +131,8 @@ void PalThread::run()
         // Since PALcolour uses +-3 scan-lines to colourise, the final lines before the non-visible area may not come out quite
         // right, but we're including them here anyway.
         for (qint32 y = config.firstActiveScanLine; y < config.lastActiveScanLine; y++) {
-            rgbOutputData.append(outputData.mid((y * config.fieldWidth * 6) + (config.videoStart * 6),
-                                                ((config.videoEnd - config.videoStart) * 6)));
+            rgbOutputData.append(outputData.mid((y * config.videoParameters.fieldWidth * 6) + (activeVideoStart * 6),
+                                                ((activeVideoEnd - activeVideoStart) * 6)));
         }
 
         // Write the result to the output file

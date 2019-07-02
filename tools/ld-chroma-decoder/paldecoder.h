@@ -52,10 +52,7 @@ public:
         bool blackAndWhite;
         qint32 firstActiveScanLine;
         qint32 lastActiveScanLine;
-        qint32 fieldWidth;
         qint32 frameHeight;
-        qint32 videoStart;
-        qint32 videoEnd;
     };
 
 private:
