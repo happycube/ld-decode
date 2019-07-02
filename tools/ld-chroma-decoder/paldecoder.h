@@ -47,12 +47,8 @@ public:
     QThread *makeThread(QAtomicInt& abort, DecoderPool& decoderPool) override;
 
     // Parameters used by PalDecoder and PalThread
-    struct Configuration {
-        LdDecodeMetaData::VideoParameters videoParameters;
+    struct Configuration : public Decoder::Configuration {
         bool blackAndWhite;
-        qint32 firstActiveScanLine;
-        qint32 lastActiveScanLine;
-        qint32 outputHeight;
     };
 
 private:

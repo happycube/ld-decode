@@ -26,6 +26,9 @@
 #define DECODER_H
 
 #include <QAtomicInt>
+#include <QByteArray>
+#include <QDebug>
+#include <cassert>
 
 #include "lddecodemetadata.h"
 
@@ -59,6 +62,24 @@ public:
 
     // Construct a new worker thread
     virtual QThread *makeThread(QAtomicInt& abort, DecoderPool& decoderPool) = 0;
+
+    // Parameters used by the decoder and its threads.
+    // This may be subclassed by decoders to add extra parameters.
+    struct Configuration {
+        // Parameters computed from the video metadata
+        LdDecodeMetaData::VideoParameters videoParameters;
+        qint32 firstActiveScanLine;
+        qint32 lastActiveScanLine;
+        qint32 outputHeight;
+    };
+
+    // Compute the output frame size in Configuration, adjusting the active
+    // video region as required
+    static void setVideoParameters(Configuration &config, const LdDecodeMetaData::VideoParameters &videoParameters,
+                                   qint32 firstActiveScanLine, qint32 lastActiveScanLine, qint32 outputHeight);
+
+    // Crop a full decoded frame to the output frame size
+    static QByteArray cropOutputFrame(const Decoder::Configuration &config, QByteArray outputData);
 };
 
 #endif

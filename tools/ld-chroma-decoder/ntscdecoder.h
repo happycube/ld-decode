@@ -48,12 +48,8 @@ public:
     QThread *makeThread(QAtomicInt& abort, DecoderPool& decoderPool) override;
 
     // Parameters used by NtscDecoder and NtscThread
-    struct Configuration {
-        LdDecodeMetaData::VideoParameters videoParameters;
+    struct Configuration : public Decoder::Configuration {
         Comb::Configuration combConfig;
-        qint32 firstActiveScanLine;
-        qint32 lastActiveScanLine;
-        qint32 outputHeight;
     };
 
 private:

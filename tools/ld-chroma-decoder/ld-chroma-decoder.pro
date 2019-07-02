@@ -16,6 +16,7 @@ DEFINES += QT_DEPRECATED_WARNINGS
 
 SOURCES += \
     main.cpp \
+    decoder.cpp \
     decoderpool.cpp \
     palcolour.cpp \
     paldecoder.cpp \

@@ -39,35 +39,8 @@ bool PalDecoder::configure(const LdDecodeMetaData::VideoParameters &videoParamet
         return false;
     }
 
-    config.videoParameters = videoParameters;
-
-    // Set the first and last active scan line
-    config.firstActiveScanLine = 44;
-    config.lastActiveScanLine = 620;
-
-    // Default to standard output size
-    config.outputHeight = 576;
-
-    // Make sure output width is divisible by 8 (better for ffmpeg processing)
-    while (true) {
-        const qint32 width = config.videoParameters.activeVideoEnd - config.videoParameters.activeVideoStart;
-        if ((width % 8) == 0) {
-            break;
-        }
-
-        // Add pixels to the right and left sides in turn, to keep the active area centred
-        if ((width % 2) == 0) {
-            config.videoParameters.activeVideoEnd++;
-        } else {
-            config.videoParameters.activeVideoStart--;
-        }
-    }
-
-    // Show output information to the user
-    const qint32 frameHeight = (videoParameters.fieldHeight * 2) - 1;
-    const qint32 outputWidth = config.videoParameters.activeVideoEnd - config.videoParameters.activeVideoStart;
-    qInfo() << "Input video of" << config.videoParameters.fieldWidth << "x" << frameHeight <<
-               "will be colourised and trimmed to" << outputWidth << "x" << config.outputHeight << "RGB 16-16-16 frames";
+    // Compute cropping parameters
+    setVideoParameters(config, videoParameters, 44, 620, 576);
 
     return true;
 }
@@ -116,24 +89,9 @@ void PalThread::run()
 
         // The PALcolour library outputs the whole frame, so here we have to strip all the non-visible stuff to just get the
         // actual required image - it would be better if PALcolour gave back only the required RGB, but it's not my library.
-        QByteArray croppedData;
-
-        // Add additional output lines to ensure the output height is 576 lines
-        const qint32 activeVideoStart = config.videoParameters.activeVideoStart;
-        const qint32 activeVideoEnd = config.videoParameters.activeVideoEnd;
-        QByteArray blankLine;
-        blankLine.resize((activeVideoEnd - activeVideoStart) * 6);
-        blankLine.fill(0);
-        for (qint32 y = 0; y < config.outputHeight - (config.lastActiveScanLine - config.firstActiveScanLine); y++) {
-            croppedData.append(blankLine);
-        }
-
         // Since PALcolour uses +-3 scan-lines to colourise, the final lines before the non-visible area may not come out quite
         // right, but we're including them here anyway.
-        for (qint32 y = config.firstActiveScanLine; y < config.lastActiveScanLine; y++) {
-            croppedData.append(outputData.mid((y * config.videoParameters.fieldWidth * 6) + (activeVideoStart * 6),
-                                              ((activeVideoEnd - activeVideoStart) * 6)));
-        }
+        QByteArray croppedData = PalDecoder::cropOutputFrame(config, outputData);
 
         // Write the result to the output file
         if (!decoderPool.putOutputFrame(frameNumber, croppedData)) {
