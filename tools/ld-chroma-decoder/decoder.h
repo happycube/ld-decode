@@ -70,13 +70,14 @@ public:
         LdDecodeMetaData::VideoParameters videoParameters;
         qint32 firstActiveScanLine;
         qint32 lastActiveScanLine;
-        qint32 outputHeight;
+        qint32 topPadLines;
+        qint32 bottomPadLines;
     };
 
     // Compute the output frame size in Configuration, adjusting the active
     // video region as required
     static void setVideoParameters(Configuration &config, const LdDecodeMetaData::VideoParameters &videoParameters,
-                                   qint32 firstActiveScanLine, qint32 lastActiveScanLine, qint32 outputHeight);
+                                   qint32 firstActiveScanLine, qint32 lastActiveScanLine);
 
     // Crop a full decoded frame to the output frame size
     static QByteArray cropOutputFrame(const Decoder::Configuration &config, QByteArray outputData);

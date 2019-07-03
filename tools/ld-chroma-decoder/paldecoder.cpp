@@ -40,7 +40,7 @@ bool PalDecoder::configure(const LdDecodeMetaData::VideoParameters &videoParamet
     }
 
     // Compute cropping parameters
-    setVideoParameters(config, videoParameters, 44, 620, 576);
+    setVideoParameters(config, videoParameters, 44, 620);
 
     return true;
 }

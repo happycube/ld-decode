@@ -51,7 +51,7 @@ bool NtscDecoder::configure(const LdDecodeMetaData::VideoParameters &videoParame
     }
 
     // Compute cropping parameters
-    setVideoParameters(config, videoParameters, 40, 525, 488);
+    setVideoParameters(config, videoParameters, 40, 525);
 
     // Set the input buffer dimensions configuration
     config.combConfig.fieldWidth = videoParameters.fieldWidth;

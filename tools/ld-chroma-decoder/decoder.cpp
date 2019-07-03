@@ -25,18 +25,16 @@
 #include "decoder.h"
 
 void Decoder::setVideoParameters(Decoder::Configuration &config, const LdDecodeMetaData::VideoParameters &videoParameters,
-                                 qint32 firstActiveScanLine, qint32 lastActiveScanLine, qint32 outputHeight) {
-    // Check parameters are consistent.
-    // Both width and height should be divisible by 8, as video codecs expect this.
-    assert((outputHeight % 8) == 0);
-    assert((lastActiveScanLine - firstActiveScanLine) <= outputHeight);
+                                 qint32 firstActiveScanLine, qint32 lastActiveScanLine) {
 
     config.videoParameters = videoParameters;
     config.firstActiveScanLine = firstActiveScanLine;
     config.lastActiveScanLine = lastActiveScanLine;
-    config.outputHeight = outputHeight;
+    config.topPadLines = 0;
+    config.bottomPadLines = 0;
 
-    // Expand horizontal active region so the width is divisible by 8
+    // Both width and height should be divisible by 8, as video codecs expect this.
+    // Expand horizontal active region so the width is divisible by 8.
     qint32 outputWidth;
     while (true) {
         outputWidth = config.videoParameters.activeVideoEnd - config.videoParameters.activeVideoStart;
@@ -52,29 +50,49 @@ void Decoder::setVideoParameters(Decoder::Configuration &config, const LdDecodeM
         }
     }
 
+    // Insert empty padding lines so the height is divisible by 8
+    qint32 outputHeight;
+    while (true) {
+        outputHeight = config.topPadLines + (config.lastActiveScanLine - config.firstActiveScanLine) + config.bottomPadLines;
+        if ((outputHeight % 8) == 0) {
+            break;
+        }
+
+        // Add lines to the bottom and top in turn, to keep the active area centred
+        if ((outputHeight % 2) == 0) {
+            config.bottomPadLines++;
+        } else {
+            config.topPadLines++;
+        }
+    }
+
     // Show output information to the user
     const qint32 frameHeight = (videoParameters.fieldHeight * 2) - 1;
     qInfo() << "Input video of" << config.videoParameters.fieldWidth << "x" << frameHeight <<
-               "will be colourised and trimmed to" << outputWidth << "x" << config.outputHeight << "RGB 16-16-16 frames";
+               "will be colourised and trimmed to" << outputWidth << "x" << outputHeight << "RGB 16-16-16 frames";
 }
 
 QByteArray Decoder::cropOutputFrame(const Decoder::Configuration &config, QByteArray outputData) {
-    QByteArray croppedData;
-
-    // Add blank lines at the top to reach the intended output height
     const qint32 activeVideoStart = config.videoParameters.activeVideoStart;
     const qint32 activeVideoEnd = config.videoParameters.activeVideoEnd;
-    QByteArray blankLine;
-    blankLine.resize((activeVideoEnd - activeVideoStart) * 6);
-    blankLine.fill(0);
-    for (qint32 y = 0; y < config.outputHeight - (config.lastActiveScanLine - config.firstActiveScanLine); y++) {
-        croppedData.append(blankLine);
+    const qint32 outputLineBytes = (activeVideoEnd - activeVideoStart) * 6;
+
+    QByteArray croppedData;
+
+    // Insert padding at the top
+    if (config.topPadLines > 0) {
+        croppedData.append(config.topPadLines * outputLineBytes, 0);
     }
 
     // Copy the active region from the decoded image
     for (qint32 y = config.firstActiveScanLine; y < config.lastActiveScanLine; y++) {
         croppedData.append(outputData.mid((y * config.videoParameters.fieldWidth * 6) + (activeVideoStart * 6),
-                                          ((activeVideoEnd - activeVideoStart) * 6)));
+                                          outputLineBytes));
+    }
+
+    // Insert padding at the bottom
+    if (config.bottomPadLines > 0) {
+        croppedData.append(config.bottomPadLines * outputLineBytes, 0);
     }
 
     return croppedData;
