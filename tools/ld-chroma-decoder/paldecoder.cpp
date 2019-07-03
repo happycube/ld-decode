@@ -39,32 +39,8 @@ bool PalDecoder::configure(const LdDecodeMetaData::VideoParameters &videoParamet
         return false;
     }
 
-    config.videoParameters = videoParameters;
-
-    // Calculate the frame size
-    config.fieldWidth = videoParameters.fieldWidth;
-    config.frameHeight = (videoParameters.fieldHeight * 2) - 1;
-
-    // Set the first and last active scan line
-    config.firstActiveScanLine = 44;
-    config.lastActiveScanLine = 620;
-    config.videoStart = videoParameters.activeVideoStart;
-    config.videoEnd = videoParameters.activeVideoEnd;
-
-    // Make sure output height is even (better for ffmpeg processing)
-    if (((config.lastActiveScanLine - config.firstActiveScanLine) % 2) != 0) {
-       config.lastActiveScanLine--;
-    }
-
-    // Make sure output width is divisible by 16 (better for ffmpeg processing)
-    while (((config.videoEnd - config.videoStart) % 16) != 0) {
-       config.videoEnd++;
-    }
-
-    // Show output information to the user
-    qInfo() << "Input video of" << videoParameters.fieldWidth << "x" << config.frameHeight <<
-               "will be colourised and trimmed to" << config.videoEnd - config.videoStart <<
-               "x" << config.lastActiveScanLine - config.firstActiveScanLine << "RGB 16-16-16 frames";
+    // Compute cropping parameters
+    setVideoParameters(config, videoParameters, 44, 620);
 
     return true;
 }
@@ -79,8 +55,6 @@ PalThread::PalThread(QAtomicInt& abortParam, DecoderPool& decoderPoolParam,
 {
     // Configure PALcolour
     palColour.updateConfiguration(config.videoParameters);
-
-    outputData.resize(config.fieldWidth * config.frameHeight * 6);
 }
 
 void PalThread::run()
@@ -90,14 +64,11 @@ void PalThread::run()
     // Input data buffers
     QByteArray firstFieldData;
     QByteArray secondFieldData;
-    QByteArray rgbOutputData;
 
     // Frame metadata
     qint32 firstFieldPhaseID; // not used in PAL
     qint32 secondFieldPhaseID; // not used in PAL
     qreal burstMedianIre;
-
-    qDebug() << "PalThread::run(): Thread running";
 
     while(!abort) {
         // Get the next frame to process from the input file
@@ -113,30 +84,17 @@ void PalThread::run()
         qreal tSaturation = 125.0 + ((100.0 / 20.0) * (20.0 - burstMedianIre));
 
         // Perform the PALcolour filtering
-        outputData = palColour.performDecode(firstFieldData, secondFieldData, 100, static_cast<qint32>(tSaturation),
-                                             config.blackAndWhite);
+        QByteArray outputData = palColour.performDecode(firstFieldData, secondFieldData, 100,
+                                                        static_cast<qint32>(tSaturation), config.blackAndWhite);
 
         // The PALcolour library outputs the whole frame, so here we have to strip all the non-visible stuff to just get the
         // actual required image - it would be better if PALcolour gave back only the required RGB, but it's not my library.
-        rgbOutputData.clear();
-
-        // Add additional output lines to ensure the output height is 576 lines
-        QByteArray blankLine;
-        blankLine.resize((config.videoEnd - config.videoStart) * 6 );
-        blankLine.fill(0);
-        for (qint32 y = 0; y < 576 - (config.lastActiveScanLine - config.firstActiveScanLine); y++) {
-            rgbOutputData.append(blankLine);
-        }
-
         // Since PALcolour uses +-3 scan-lines to colourise, the final lines before the non-visible area may not come out quite
         // right, but we're including them here anyway.
-        for (qint32 y = config.firstActiveScanLine; y < config.lastActiveScanLine; y++) {
-            rgbOutputData.append(outputData.mid((y * config.fieldWidth * 6) + (config.videoStart * 6),
-                                                ((config.videoEnd - config.videoStart) * 6)));
-        }
+        QByteArray croppedData = PalDecoder::cropOutputFrame(config, outputData);
 
         // Write the result to the output file
-        if (!decoderPool.putOutputFrame(frameNumber, rgbOutputData)) {
+        if (!decoderPool.putOutputFrame(frameNumber, croppedData)) {
             abort = true;
             break;
         }
