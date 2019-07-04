@@ -131,6 +131,9 @@ RFParams_NTSC = {
     'MTF_basemult': .4, # general ** level of the MTF filter for frame 0.
     'MTF_poledist': .9,
     'MTF_freq': 12.2, # in mhz
+
+    'audio_filterwidth': 150000,
+    'audio_filterorder': 800,
 }
 
 RFParams_PAL = {
@@ -152,6 +155,9 @@ RFParams_PAL = {
     'MTF_basemult': 1.0,  # general ** level of the MTF filter for frame 0.
     'MTF_poledist': .70,
     'MTF_freq': 10,
+
+    'audio_filterwidth': 150000,
+    'audio_filterorder': 800,
 }
 
 class RFDecode:
@@ -304,6 +310,7 @@ class RFDecode:
     def computeaudiofilters(self):
         SF = self.Filters
         SP = self.SysParams
+        DP = self.DecoderParams
 
         # first stage audio filters
         if self.freq >= 32:
@@ -330,8 +337,8 @@ class RFDecode:
         # compute the base frequency of the cut audio range
         SF['audio_lowfreq'] = SP['audio_cfreq']-(self.freq_hz/(2*SF['audio_fdiv1']))
 
-        apass = 150000 # audio RF bandpass.  150khz is the maximum transient.
-        afilt_len = 800 # good for 150khz apass
+        apass = DP['audio_filterwidth'] # audio RF bandpass.  150khz is the maximum transient.
+        afilt_len = DP['audio_filterorder'] # good for 150khz apass
 
         afilt_left = filtfft([sps.firwin(afilt_len, [(SP['audio_lfreq']-apass)/self.freq_hz_half, (SP['audio_lfreq']+apass)/self.freq_hz_half], pass_zero=False), 1.0], self.blocklen)
         SF['audio_lfilt'] = self.audio_fdslice(afilt_left * SF['hilbert']) 
@@ -350,14 +357,20 @@ class RFDecode:
 
         SF['audio_lpf2'] = filtfft([sps.firwin(65, [21000/(SF['freq_aud2']/2)]), [1.0]], self.blocklen // (SF['audio_fdiv2'] * 1))
 
-        # convert 75usec into the exact -3dB frequency
-        d75freq = 1000000/(2*pi*75)
-
-        # I was overthinking deemphasis for a while.  For audio it turns out a straight
-        # 1-pole butterworth does a good job.
+        d75freq = 1000000/(2*pi*62)
         adeemp_b, adeemp_a = sps.butter(1, [d75freq/(SF['freq_aud2']/2)], btype='lowpass')
-        SF['audio_deemp2'] = filtfft([adeemp_b, adeemp_a],  self.blocklen // SF['audio_fdiv2'])
-        
+        addemp2lp = filtfft([adeemp_b, adeemp_a],  self.blocklen // SF['audio_fdiv2'])
+
+        dxfreq = 1000000/(2*pi*45)
+        adeemp_b, adeemp_a = sps.butter(1, [dxfreq/(SF['freq_aud2']/2)], btype='highpass')
+        addemp2hp1 = filtfft([adeemp_b, adeemp_a],  self.blocklen // SF['audio_fdiv2'])
+
+        dxfreq = 1000000/(2*pi*8)
+        adeemp_b, adeemp_a = sps.butter(1, [dxfreq/(SF['freq_aud2']/2)], btype='highpass')
+        addemp2hp2 = filtfft([adeemp_b, adeemp_a],  self.blocklen // SF['audio_fdiv2'])
+
+        SF['audio_deemp2'] = addemp2lp + (addemp2hp1 * .14) + (addemp2hp2 * .29)
+
     def iretohz(self, ire):
         return self.SysParams['ire0'] + (self.SysParams['hz_ire'] * ire)
 
