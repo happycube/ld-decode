@@ -86,7 +86,7 @@ cv::Mat OpticalFlow::convertYtoMat(const YiqBuffer &yiqBuffer)
     }
 
     // Return a Mat y * x in CV_16UC1 format
-    return cv::Mat(525, 910, CV_16UC1, frame);
+    return cv::Mat(525, 910, CV_16UC1, frame).clone();
 }
 
 // This method calculates the distance between points where x is the difference between the x-coordinates
