@@ -437,12 +437,12 @@ class RFDecode:
             raw = frame_audio[c[0]][start:start+self.blocklen].copy() - self.SysParams[c[1]]
 
             if c[0] == 'audio_left':
-                clips = findpeaks(raw, 175000)
+                clips = findpeaks(raw, 350000)
 
             for l in clips:
                 replacelen = 16*self.Filters['audio_fdiv2']
                 #replacement_idx = l + replacelen if l < replacelen else l - replacelen
-                #print(l, len(raw), raw[l], raw[replacement_idx])
+                #print(l, len(raw), raw[l])
                 raw[max(0, l - replacelen):min(l + replacelen, len(raw))] = 0# raw[replacement_idx]
 
             #print(np.argmax(raw), np.max(raw))
