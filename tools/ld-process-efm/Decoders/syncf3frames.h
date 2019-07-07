@@ -53,6 +53,7 @@ private:
     QVector<F3Frame> f3FrameBuffer;
     QVector<F3Frame> f3FramesOut;
     bool waitingForData;
+    qint32 syncRecoveryAttempts;
 
     void clearStatistics();
 
@@ -61,6 +62,7 @@ private:
         state_initial,
         state_findInitialSync0,
         state_findNextSync,
+        state_syncRecovery,
         state_syncLost,
         state_processSection
     };
@@ -71,6 +73,7 @@ private:
     StateMachine sm_state_initial();
     StateMachine sm_state_findInitialSync0();
     StateMachine sm_state_findNextSync();
+    StateMachine sm_state_syncRecovery();
     StateMachine sm_state_syncLost();
     StateMachine sm_state_processSection();
 };

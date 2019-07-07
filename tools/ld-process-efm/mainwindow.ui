@@ -1256,7 +1256,7 @@
                <x>10</x>
                <y>10</y>
                <width>531</width>
-               <height>121</height>
+               <height>181</height>
               </rect>
              </property>
              <property name="title">
@@ -1266,7 +1266,7 @@
               <property name="geometry">
                <rect>
                 <x>220</x>
-                <y>90</y>
+                <y>110</y>
                 <width>301</width>
                 <height>20</height>
                </rect>
@@ -1285,7 +1285,7 @@
                </rect>
               </property>
               <property name="text">
-               <string>Missing samples:</string>
+               <string>Missing section samples:</string>
               </property>
               <property name="alignment">
                <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
@@ -1308,7 +1308,7 @@
               <property name="geometry">
                <rect>
                 <x>10</x>
-                <y>90</y>
+                <y>110</y>
                 <width>201</width>
                 <height>21</height>
                </rect>
@@ -1320,7 +1320,7 @@
                <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
               </property>
              </widget>
-             <widget class="QLabel" name="audio_missingSamples_label">
+             <widget class="QLabel" name="audio_missingSectionSamples_label">
               <property name="geometry">
                <rect>
                 <x>220</x>
@@ -1378,12 +1378,54 @@
                <string>TextLabel</string>
               </property>
              </widget>
+             <widget class="QLabel" name="label_80">
+              <property name="geometry">
+               <rect>
+                <x>10</x>
+                <y>90</y>
+                <width>201</width>
+                <height>21</height>
+               </rect>
+              </property>
+              <property name="text">
+               <string>Encoder off samples:</string>
+              </property>
+              <property name="alignment">
+               <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+              </property>
+             </widget>
+             <widget class="QLabel" name="audio_encoderOffSamples_label">
+              <property name="geometry">
+               <rect>
+                <x>220</x>
+                <y>90</y>
+                <width>301</width>
+                <height>20</height>
+               </rect>
+              </property>
+              <property name="text">
+               <string>TextLabel</string>
+              </property>
+             </widget>
+             <widget class="QLabel" name="label_3">
+              <property name="geometry">
+               <rect>
+                <x>16</x>
+                <y>150</y>
+                <width>501</width>
+                <height>21</height>
+               </rect>
+              </property>
+              <property name="text">
+               <string>Note: Corrupt samples and missing section samples indicate data loss.</string>
+              </property>
+             </widget>
             </widget>
             <widget class="QGroupBox" name="groupBox_8">
              <property name="geometry">
               <rect>
                <x>10</x>
-               <y>140</y>
+               <y>200</y>
                <width>531</width>
                <height>161</height>
               </rect>

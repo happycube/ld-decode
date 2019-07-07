@@ -195,7 +195,8 @@ void MainWindow::resetStatistics(void)
     // Audio
     ui->audio_validSamples_label->setText(tr("0"));
     ui->audio_corruptSamples_label->setText(tr("0"));
-    ui->audio_missingSamples_label->setText(tr("0"));
+    ui->audio_missingSectionSamples_label->setText(tr("0"));
+    ui->audio_encoderOffSamples_label->setText(tr("0"));
     ui->audio_totalSamples_label->setText(tr("0"));
 
     ui->audio_sampleStartTime_label->setText(dummyTime.getTimeAsQString());
@@ -273,7 +274,8 @@ void MainWindow::updateStatistics(void)
     // Audio
     ui->audio_validSamples_label->setText(QString::number(statistics.f2FramesToAudio.validSamples));
     ui->audio_corruptSamples_label->setText(QString::number(statistics.f2FramesToAudio.corruptSamples));
-    ui->audio_missingSamples_label->setText(QString::number(statistics.f2FramesToAudio.missingSamples));
+    ui->audio_missingSectionSamples_label->setText(QString::number(statistics.f2FramesToAudio.missingSectionSamples));
+    ui->audio_encoderOffSamples_label->setText(QString::number(statistics.f2FramesToAudio.encoderOffSamples));
     ui->audio_totalSamples_label->setText(QString::number(statistics.f2FramesToAudio.totalSamples));
 
     ui->audio_sampleStartTime_label->setText(statistics.f2FramesToAudio.sampleStart.getTimeAsQString());
@@ -380,6 +382,7 @@ void MainWindow::on_decodePushButton_clicked()
 
     // Open temporary file for audio data
     audioOutputTemporaryFileHandle.close();
+    audioOutputTemporaryFileHandle.remove();
     if (!audioOutputTemporaryFileHandle.open()) {
         // Failed to open file
         qFatal("Could not open audio output temporary file - this is fatal!");
@@ -389,6 +392,7 @@ void MainWindow::on_decodePushButton_clicked()
 
     // Open temporary file for data
     dataOutputTemporaryFileHandle.close();
+    dataOutputTemporaryFileHandle.remove();
     if (!dataOutputTemporaryFileHandle.open()) {
         // Failed to open file
         qFatal("Could not open data output temporary file - this is fatal!");

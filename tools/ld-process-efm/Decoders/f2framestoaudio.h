@@ -40,7 +40,8 @@ public:
         qint32 totalSamples;
         qint32 validSamples;
         qint32 corruptSamples;
-        qint32 missingSamples;
+        qint32 missingSectionSamples;
+        qint32 encoderOffSamples;
         TrackTime sampleStart;
         TrackTime sampleCurrent;
     };

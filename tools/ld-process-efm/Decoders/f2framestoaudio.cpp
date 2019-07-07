@@ -79,7 +79,7 @@ QByteArray F2FramesToAudio::process(QVector<F2Frame> f2FramesIn)
                 sectionPadding.fill(0, 98 * 24); // 24 bytes = 6 samples * 98 F2Frames per section
                 for (qint32 p = 0; p < sectionFrameGap - 1; p++) {
                     audioBufferOut.append(sectionPadding);
-                    statistics.missingSamples += 98 * 6;
+                    statistics.missingSectionSamples += 98 * 6;
                     statistics.totalSamples += 98 * 6;
                 }
                 if (debugOn) qDebug() << "F2FramesToAudio::startProcessing(): Padded output sample by" << sectionFrameGap - 1 << "sections";
@@ -102,7 +102,7 @@ QByteArray F2FramesToAudio::process(QVector<F2Frame> f2FramesIn)
                 framePadding.fill(0, 24); // 24 bytes = 6 samples
                 audioBufferOut.append(framePadding);
                 if (!f2FrameBuffer[i].getDataValid()) statistics.corruptSamples += 6;
-                else statistics.missingSamples += 6;
+                else statistics.encoderOffSamples += 6;
                 statistics.totalSamples += 6;
             }
         }
@@ -122,20 +122,21 @@ void F2FramesToAudio::reportStatistics()
 {
     qInfo() << "";
     qInfo() << "F2 Frames to audio samples:";
-    qInfo() << "        Valid samples:" << statistics.validSamples;
-    qInfo() << "      Corrupt samples:" << statistics.corruptSamples;
-    qInfo() << "      Missing samples:" << statistics.missingSamples << "(" << statistics.missingSamples / 6 << "F3 Frames )";
-    qInfo() << "        TOTAL samples:" << statistics.totalSamples;
+    qInfo() << "            Valid samples:" << statistics.validSamples;
+    qInfo() << "          Corrupt samples:" << statistics.corruptSamples;
+    qInfo() << "  Missing section samples:" << statistics.missingSectionSamples << "(" << statistics.missingSectionSamples / 6 << "F3 Frames )";
+    qInfo() << "      Encoder off samples:" << statistics.encoderOffSamples;
+    qInfo() << "            TOTAL samples:" << statistics.totalSamples;
     qInfo() << "";
-    qInfo().noquote() << "    Sample start time:" << statistics.sampleStart.getTimeAsQString();
-    qInfo().noquote() << "      Sample end time:" << statistics.sampleCurrent.getTimeAsQString();
+    qInfo().noquote() << "        Sample start time:" << statistics.sampleStart.getTimeAsQString();
+    qInfo().noquote() << "          Sample end time:" << statistics.sampleCurrent.getTimeAsQString();
 
     qint32 sampleFrameLength = statistics.sampleCurrent.getDifference(statistics.sampleStart.getTime());
     TrackTime sampleLength;
     sampleLength.setTime(0, 0, 0);
     sampleLength.addFrames(sampleFrameLength);
-    qInfo().noquote() << "      Sample duration:" << sampleLength.getTimeAsQString();
-    qInfo().noquote() << "  Sample frame length:" << sampleFrameLength << "(" << sampleFrameLength / 75.0 << "seconds )";
+    qInfo().noquote() << "          Sample duration:" << sampleLength.getTimeAsQString();
+    qInfo().noquote() << "      Sample frame length:" << sampleFrameLength << "(" << sampleFrameLength / 75.0 << "seconds )";
 }
 
 // Method to reset the class
@@ -154,7 +155,8 @@ void F2FramesToAudio::reset()
 void F2FramesToAudio::clearStatistics()
 {
     statistics.validSamples = 0;
-    statistics.missingSamples = 0;
+    statistics.missingSectionSamples = 0;
+    statistics.encoderOffSamples = 0;
     statistics.totalSamples = 0;
     statistics.corruptSamples = 0;
 

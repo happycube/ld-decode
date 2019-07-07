@@ -121,7 +121,7 @@ void EfmProcess::run()
 
         qint64 initialInputFileSize = efmInputFileHandleTs->bytesAvailable();
         qint32 lastPercent = 0;
-        while(efmInputFileHandle->bytesAvailable() > 0 && !abort) {
+        while(efmInputFileHandle->bytesAvailable() > 0 && !abort && !cancel) {
             // Get a buffer of EFM data
             QByteArray inputEfmBuffer;
             inputEfmBuffer = readEfmData();

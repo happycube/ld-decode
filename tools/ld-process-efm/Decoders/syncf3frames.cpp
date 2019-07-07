@@ -70,6 +70,9 @@ QVector<F3Frame> SyncF3Frames::process(QVector<F3Frame> f3FramesIn)
         case state_findNextSync:
             nextState = sm_state_findNextSync();
             break;
+        case state_syncRecovery:
+            nextState = sm_state_syncRecovery();
+            break;
         case state_syncLost:
             nextState = sm_state_syncLost();
             break;
@@ -106,6 +109,7 @@ void SyncF3Frames::reset()
     currentState = state_initial;
     nextState = currentState;
     waitingForData = false;
+    syncRecoveryAttempts = 0;
 
     clearStatistics();
 }
@@ -135,12 +139,13 @@ SyncF3Frames::StateMachine SyncF3Frames::sm_state_findInitialSync0()
     //if (debugOn) qDebug() << "SyncF3Frames::sm_state_findInitialSync0(): Called";
 
     qint32 i = 0;
-    for (i = 0; i < f3FrameBuffer.size(); i++) {
-        if (f3FrameBuffer[i].isSubcodeSync0()) break;
+    for (i = 0; i < f3FrameBuffer.size() - 1; i++) {
+        if (f3FrameBuffer[i].isSubcodeSync0() || f3FrameBuffer[i+1].isSubcodeSync1()) break;
+
     }
 
-    // Did we find a sync?
-    if (!f3FrameBuffer[i].isSubcodeSync0()) {
+    // Did we find a sync0 or sync1?
+    if (!f3FrameBuffer[i].isSubcodeSync0() && !f3FrameBuffer[i+1].isSubcodeSync1()) {
         // Not found
         if (debugOn) qDebug() << "SyncF3Frames::sm_state_findInitialSync0(): No initial sync0 found in buffer";
         waitingForData = true;
@@ -161,7 +166,7 @@ SyncF3Frames::StateMachine SyncF3Frames::sm_state_findInitialSync0()
 SyncF3Frames::StateMachine SyncF3Frames::sm_state_findNextSync()
 {
     // Ensure we have enough data
-    if (f3FrameBuffer.size() < 98) {
+    if (f3FrameBuffer.size() < 99) {
         waitingForData = true;
         return state_findNextSync;
     }
@@ -171,8 +176,64 @@ SyncF3Frames::StateMachine SyncF3Frames::sm_state_findNextSync()
         return state_processSection;
     }
 
-    // Sync has been lost
-    return state_syncLost;
+    // Sync0 was missing... look for sync1
+    if (f3FrameBuffer[99].isSubcodeSync1()) {
+        return state_processSection;
+    }
+
+    // Sync is missing, attempt recovery
+    return state_syncRecovery;
+}
+
+// Subcode sync recovery state
+SyncF3Frames::StateMachine SyncF3Frames::sm_state_syncRecovery()
+{
+    // Sync0 and sync 1 are missing; so we need to look ahead over another
+    // section to see if a sync is present.  If it is, then it's very likely
+    // the missing section sync is simple corruption, so we can assume its
+    // position.  If two sets of sync0 and sync1 are missing in a row, its
+    // likely that the EFM signal is simply invalid, so we flag lost sync
+
+    qint32 requiredF3Frames = 98 * (syncRecoveryAttempts + 1);
+
+    // Ensure we have enough data to see the next section
+    if (f3FrameBuffer.size() < (requiredF3Frames + 2)) {
+        waitingForData = true;
+        return state_syncRecovery;
+    }
+
+    syncRecoveryAttempts++;
+
+    // Try recovery 5 times...
+    if (syncRecoveryAttempts > 5) {
+        // Too many attempts
+        if (debugOn) qDebug() << "SyncF3Frames::sm_state_syncRecovery(): Too many sync recovery attempts (" << syncRecoveryAttempts - 1 << ") - giving up";
+        syncRecoveryAttempts = 0;
+        return state_syncLost;
+    }
+
+    // This section's sync0 should be at 98 (with sync1 at 99),
+    // the next section's sync0 should be at 98+98 = 196
+    bool nextSectionSyncFound = false;
+
+    // If we identify the end of the section, process it
+    if (f3FrameBuffer[98 + (syncRecoveryAttempts * 98)].isSubcodeSync0()) {
+        nextSectionSyncFound = true;
+    }
+
+    // Sync0 was missing... look for sync1
+    if (f3FrameBuffer[99 + (syncRecoveryAttempts * 98)].isSubcodeSync1()) {
+        nextSectionSyncFound = true;
+    }
+
+    if (nextSectionSyncFound) {
+        if (debugOn) qDebug() << "SyncF3Frames::sm_state_syncRecovery(): Lost sync recovered on attempt" << syncRecoveryAttempts;
+        syncRecoveryAttempts = 0;
+        return state_processSection;
+    }
+
+    // Give up and make another attempt
+    return state_syncRecovery;
 }
 
 // Subcode sync lost state
