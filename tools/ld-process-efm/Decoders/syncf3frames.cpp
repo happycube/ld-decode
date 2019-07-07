@@ -38,78 +38,58 @@
 
 SyncF3Frames::SyncF3Frames()
 {
-    debugOn = false;
-    abort = false;
+    debugOn = true;
+    reset();
 }
 
 // Public methods -----------------------------------------------------------------------------------------------------
 
-void SyncF3Frames::startProcessing(QFile *inputFileHandle, QFile *outputFileHandle)
+// Main processing method
+QVector<F3Frame> SyncF3Frames::process(QVector<F3Frame> f3FramesIn)
 {
-    abort = false;
+    // Clear the output buffer
+    f3FramesOut.clear();
 
-    // Reset the object
-    reset();
+    if (f3FramesIn.isEmpty()) return f3FramesOut;
 
-    // Initialise the state-machine
-    f3FrameBuffer.clear();
-    currentState = state_initial;
-    nextState = currentState;
+    // Append input data to the processing buffer
+    statistics.totalF3Frames += f3FramesIn.size();
+    f3FrameBuffer.append(f3FramesIn);
+
     waitingForData = false;
+    while (!waitingForData) {
+        currentState = nextState;
 
-    // Define an input data stream
-    QDataStream inputDataStream(inputFileHandle);
-
-    // Define an output data stream
-    QDataStream outputDataStream(outputFileHandle);
-
-    if (debugOn) qDebug() << "SyncF3Frames::startProcessing(): Initial input file size of" << inputFileHandle->bytesAvailable() << "bytes";
-
-    // Find the first subcode sync frame
-    F3Frame f3frame;
-    while (inputFileHandle->bytesAvailable() != 0 && !abort) {
-        inputDataStream >> f3frame;
-        f3FrameBuffer.append(f3frame);
-        statistics.totalF3Frames++;
-
-        waitingForData = false;
-        while (!waitingForData) {
-            currentState = nextState;
-
-            switch (currentState) {
-            case state_initial:
-                nextState = sm_state_initial();
-                break;
-            case state_findInitialSync0:
-                nextState = sm_state_findInitialSync0();
-                break;
-            case state_findNextSync:
-                nextState = sm_state_findNextSync();
-                break;
-            case state_syncLost:
-                nextState = sm_state_syncLost();
-                break;
-            case state_processSection:
-                nextState = sm_state_processSection(&outputDataStream);
-                break;
-            }
+        switch (currentState) {
+        case state_initial:
+            nextState = sm_state_initial();
+            break;
+        case state_findInitialSync0:
+            nextState = sm_state_findInitialSync0();
+            break;
+        case state_findNextSync:
+            nextState = sm_state_findNextSync();
+            break;
+        case state_syncLost:
+            nextState = sm_state_syncLost();
+            break;
+        case state_processSection:
+            nextState = sm_state_processSection();
+            break;
         }
     }
 
-    if (debugOn) qDebug() << "SyncF3Frames::startProcessing(): No more data to processes";
+    return f3FramesOut;
 }
 
-void SyncF3Frames::stopProcessing(void)
-{
-    abort = true;
-}
-
-SyncF3Frames::Statistics SyncF3Frames::getStatistics(void)
+// Get method - retrieve statistics
+SyncF3Frames::Statistics SyncF3Frames::getStatistics()
 {
     return statistics;
 }
 
-void SyncF3Frames::reportStatistics(void)
+// Method to report decoding statistics to qInfo
+void SyncF3Frames::reportStatistics()
 {
     qInfo() << "";
     qInfo() << "F3 Frame synchronisation:";
@@ -118,14 +98,22 @@ void SyncF3Frames::reportStatistics(void)
     qInfo() << "    Total valid sections:" << statistics.totalSections << "(" << statistics.totalSections * 98 << "F3 Frames )";
 }
 
-void SyncF3Frames::reset(void)
+// Method to reset the class
+void SyncF3Frames::reset()
 {
+    // Initialise the state-machine
+    f3FrameBuffer.clear();
+    currentState = state_initial;
+    nextState = currentState;
+    waitingForData = false;
+
     clearStatistics();
 }
 
 // Private methods ----------------------------------------------------------------------------------------------------
 
-void SyncF3Frames::clearStatistics(void)
+// Method to clear the statistics counters
+void SyncF3Frames::clearStatistics()
 {
     statistics.totalF3Frames = 0;
     statistics.discardedFrames = 0;
@@ -135,86 +123,88 @@ void SyncF3Frames::clearStatistics(void)
 // Processing state machine methods -----------------------------------------------------------------------------------
 
 // Initial state machine state
-SyncF3Frames::StateMachine SyncF3Frames::sm_state_initial(void)
+SyncF3Frames::StateMachine SyncF3Frames::sm_state_initial()
 {
-    if (debugOn) qDebug() << "SyncF3Frames::sm_state_initial(): Called";
+    //if (debugOn) qDebug() << "SyncF3Frames::sm_state_initial(): Called";
     return state_findInitialSync0;
 }
 
-SyncF3Frames::StateMachine SyncF3Frames::sm_state_findInitialSync0(void)
+// Find initial subcode sync
+SyncF3Frames::StateMachine SyncF3Frames::sm_state_findInitialSync0()
 {
     //if (debugOn) qDebug() << "SyncF3Frames::sm_state_findInitialSync0(): Called";
 
-    if (f3FrameBuffer[f3FrameBuffer.size() - 1].isSubcodeSync0()) {
-        if (debugOn) qDebug() << "SyncF3Frames::sm_state_findInitialSync0(): Found initial sync0";
+    qint32 i = 0;
+    for (i = 0; i < f3FrameBuffer.size(); i++) {
+        if (f3FrameBuffer[i].isSubcodeSync0()) break;
+    }
+
+    // Did we find a sync?
+    if (!f3FrameBuffer[i].isSubcodeSync0()) {
+        // Not found
+        if (debugOn) qDebug() << "SyncF3Frames::sm_state_findInitialSync0(): No initial sync0 found in buffer";
+        waitingForData = true;
+        f3FrameBuffer.clear();
+        statistics.discardedFrames += f3FrameBuffer.size();
+        return state_findInitialSync0;
+    }
+
+    // Found, discard frames up to initial sync
+    f3FrameBuffer.remove(0, i);
+    statistics.discardedFrames += i;
+    if (debugOn) qDebug() << "SyncF3Frames::sm_state_findInitialSync0(): Found initial sync0";
+
+    return state_findNextSync;
+}
+
+// Find next subcode sync
+SyncF3Frames::StateMachine SyncF3Frames::sm_state_findNextSync()
+{
+    // Ensure we have enough data
+    if (f3FrameBuffer.size() < 98) {
         waitingForData = true;
         return state_findNextSync;
     }
 
-    f3FrameBuffer.removeLast();
-    statistics.discardedFrames++;
-    waitingForData = true;
-    return state_findInitialSync0;
-}
-
-SyncF3Frames::StateMachine SyncF3Frames::sm_state_findNextSync(void)
-{
-    //if (debugOn) qDebug() << "SyncF3Frames::sm_state_findNextSync(): Called";
-
     // If we identify the end of the section, process it
-    if (f3FrameBuffer[f3FrameBuffer.size() - 1].isSubcodeSync0()) {
+    if (f3FrameBuffer[98].isSubcodeSync0()) {
         return state_processSection;
     }
 
-    // If we exceed 99 frames in the buffer with no sync, clear it out to
-    // prevent the buffer from growing too large (99 frames is the 98 F3 frames that make
-    // up the section, plus the first frame from the next section (containing the sync)
-    waitingForData = true;
-    if (f3FrameBuffer.size() > 99) {
-        if (debugOn) qDebug() << "SyncF3Frames::sm_state_findNextSync(): More than 99 F3 Frames since last sync - sync lost!";
-        return state_syncLost;
-    }
-    return state_findNextSync;
+    // Sync has been lost
+    return state_syncLost;
 }
 
-SyncF3Frames::StateMachine SyncF3Frames::sm_state_syncLost(void)
+// Subcode sync lost state
+SyncF3Frames::StateMachine SyncF3Frames::sm_state_syncLost()
 {
     if (debugOn) qDebug() << "SyncF3Frames::sm_state_syncLost(): Called";
 
     // We have lost sync; clear the buffer and go back to looking for an initial sync
-    statistics.discardedFrames += f3FrameBuffer.size();
-    f3FrameBuffer.clear();
-    waitingForData = true;
+    f3FrameBuffer.remove(0, 98);
+    statistics.discardedFrames += 98;
+    if (debugOn) qDebug() << "SyncF3Frames::sm_state_findNextSync(): Sync lost!";
+
+    if (f3FrameBuffer.size() < 98) {
+        waitingForData = true;
+    }
+
     return state_findInitialSync0;
 }
 
-SyncF3Frames::StateMachine SyncF3Frames::sm_state_processSection(QDataStream *outputDataStream)
+// Process completed F3 frame
+SyncF3Frames::StateMachine SyncF3Frames::sm_state_processSection()
 {
     //if (debugOn) qDebug() << "SyncF3Frames::sm_state_processSection(): Called";
 
-    // Store the start frame of the next section
-    F3Frame f3Frame;
-    f3Frame = f3FrameBuffer[f3FrameBuffer.size() - 1];
-
-    // Ensure we have a complete section
-    if ((f3FrameBuffer.size() - 1) != 98) {
-        if (debugOn) qDebug() << "SyncF3Frames::sm_state_processSection(): Section has invalid length of" << f3FrameBuffer.size() - 1 << "- discarding";
-        statistics.discardedFrames += f3FrameBuffer.size() - 1;
-        f3FrameBuffer.clear();
-        f3FrameBuffer.append(f3Frame);
-        return state_syncLost;
-    }
-
-    // Write the complete section of 98 F3 frames to the output stream
+    // Write the complete section of 98 F3 frames to the output buffer
     for (qint32 i = 0; i < 98; i++) {
-        *outputDataStream << f3FrameBuffer[i];
+        f3FramesOut.append(f3FrameBuffer[i]);
     }
     statistics.totalSections++;
 
     // Remove the processed section from the F3 frame buffer
-    f3FrameBuffer.clear();
-    f3FrameBuffer.append(f3Frame);
+    f3FrameBuffer.remove(0, 98);
 
-    waitingForData = true;
     return state_findNextSync;
 }

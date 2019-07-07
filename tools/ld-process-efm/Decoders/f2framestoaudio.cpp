@@ -27,37 +27,37 @@
 F2FramesToAudio::F2FramesToAudio()
 {
     debugOn = false;
-    abort = false;
+    reset();
 }
 
 // Public methods -----------------------------------------------------------------------------------------------------
 
-void F2FramesToAudio::startProcessing(QFile *inputFileHandle, QFile *outputFileHandle)
+// Process F2 Frames into PCM audio data
+QByteArray F2FramesToAudio::process(QVector<F2Frame> f2FramesIn)
 {
-    abort = false;
+    QByteArray audioBufferOut;
 
-    // Reset the object
-    reset();
+    // Make sure there is something to process
+    if (f2FramesIn.isEmpty()) return audioBufferOut;
 
-    // Define an input data stream
-    QDataStream inputDataStream(inputFileHandle);
-
-    if (debugOn) qDebug() << "F2FramesToAudio::startProcessing(): Initial input file size of" << inputFileHandle->bytesAvailable() << "bytes";
-
-    // Initialise variables to track the disc time
-    bool initialDiscTimeSet = false;
-    TrackTime lastDiscTime;
-    lastDiscTime.setTime(0, 0, 0);
+    // Ensure that the upstream is providing only complete sections of
+    // 98 frames... otherwise we have an upstream bug.
+    if (f2FramesIn.size() % 98 != 0) {
+        qFatal("F2FramesToAudio::process(): Upstream has provided incomplete sections of 98 F2 frames - This is a bug!");
+        // Exection stops...
+        // return audioBufferOut;
+    }
 
     // Process the input F2 Frames
-    while (inputFileHandle->bytesAvailable() != 0 && !abort) {
+    while (!f2FramesIn.isEmpty()) {
         // Process 98 F2 frames per pass (1 section)
         QVector<F2Frame> f2FrameBuffer;
         for (qint32 i = 0; i < 98; i++) {
-            F2Frame f2Frame;
-            inputDataStream >> f2Frame;
-            f2FrameBuffer.append(f2Frame);
+            f2FrameBuffer.append(f2FramesIn[i]);
         }
+
+        // Remove the consumed F2 frames from the input buffer
+        f2FramesIn.remove(0, 98);
 
         // Check for missing sections (and pad as required)
         if (!initialDiscTimeSet) {
@@ -78,7 +78,7 @@ void F2FramesToAudio::startProcessing(QFile *inputFileHandle, QFile *outputFileH
                 QByteArray sectionPadding;
                 sectionPadding.fill(0, 98 * 24); // 24 bytes = 6 samples * 98 F2Frames per section
                 for (qint32 p = 0; p < sectionFrameGap - 1; p++) {
-                    outputFileHandle->write(sectionPadding);
+                    audioBufferOut.append(sectionPadding);
                     statistics.missingSamples += 98 * 6;
                     statistics.totalSamples += 98 * 6;
                 }
@@ -94,13 +94,13 @@ void F2FramesToAudio::startProcessing(QFile *inputFileHandle, QFile *outputFileH
         for (qint32 i = 0; i < 98; i++) {
             if (f2FrameBuffer[i].getIsEncoderRunning() && f2FrameBuffer[i].getDataValid()) {
                 // Encoder is running and data is valid, output samples
-                outputFileHandle->write(f2FrameBuffer[i].getDataSymbols());
+                audioBufferOut.append(f2FrameBuffer[i].getDataSymbols());
                 statistics.validSamples += 6;
                 statistics.totalSamples += 6;
             } else {
                 QByteArray framePadding;
                 framePadding.fill(0, 24); // 24 bytes = 6 samples
-                outputFileHandle->write(framePadding);
+                audioBufferOut.append(framePadding);
                 if (!f2FrameBuffer[i].getDataValid()) statistics.corruptSamples += 6;
                 else statistics.missingSamples += 6;
                 statistics.totalSamples += 6;
@@ -108,20 +108,17 @@ void F2FramesToAudio::startProcessing(QFile *inputFileHandle, QFile *outputFileH
         }
     }
 
-    if (debugOn) qDebug() << "F2FramesToAudio::startProcessing(): No more data to processes";
+    return audioBufferOut;
 }
 
-void F2FramesToAudio::stopProcessing(void)
-{
-    abort = true;
-}
-
-F2FramesToAudio::Statistics F2FramesToAudio::getStatistics(void)
+// Get method - retrieve statistics
+F2FramesToAudio::Statistics F2FramesToAudio::getStatistics()
 {
     return statistics;
 }
 
-void F2FramesToAudio::reportStatistics(void)
+// Method to report decoding statistics to qInfo
+void F2FramesToAudio::reportStatistics()
 {
     qInfo() << "";
     qInfo() << "F2 Frames to audio samples:";
@@ -141,14 +138,20 @@ void F2FramesToAudio::reportStatistics(void)
     qInfo().noquote() << "  Sample frame length:" << sampleFrameLength << "(" << sampleFrameLength / 75.0 << "seconds )";
 }
 
-void F2FramesToAudio::reset(void)
+// Method to reset the class
+void F2FramesToAudio::reset()
 {
+    // Initialise variables to track the disc time
+    initialDiscTimeSet = false;
+    lastDiscTime.setTime(0, 0, 0);
+
     clearStatistics();
 }
 
 // Private methods ----------------------------------------------------------------------------------------------------
 
-void F2FramesToAudio::clearStatistics(void)
+// Method to clear the statistics counters
+void F2FramesToAudio::clearStatistics()
 {
     statistics.validSamples = 0;
     statistics.missingSamples = 0;

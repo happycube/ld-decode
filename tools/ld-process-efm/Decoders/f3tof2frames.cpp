@@ -27,66 +27,51 @@
 F3ToF2Frames::F3ToF2Frames()
 {
     debugOn = false;
-    abort = false;
+    reset();
 }
 
 // Public methods -----------------------------------------------------------------------------------------------------
 
-void F3ToF2Frames::startProcessing(QFile *inputFileHandle, QFile *outputFileHandle)
+QVector<F2Frame> F3ToF2Frames::process(QVector<F3Frame> f3FramesIn)
 {
-    abort = false;
-
-    // Reset the object
-    reset();
-
-    // Define an input data stream
-    QDataStream inputDataStream(inputFileHandle);
-
-    // Define an output data stream
-    QDataStream outputDataStream(outputFileHandle);
-
-    if (debugOn) qDebug() << "F3ToF2Frames::startProcessing(): Initial input file size of" << inputFileHandle->bytesAvailable() << "bytes";
-
-    // Initialise variables to track the disc time
-    bool initialDiscTimeSet = false;
-    TrackTime lastDiscTime;
-    lastDiscTime.setTime(0, 0, 0);
-
-    // Since metadata is out-of-sync with F2 data, we need to buffer it
-    // across the sections of 98 F3 frames
+    QVector<F2Frame> f2FramesOut;
     QVector<Section> sectionBuffer;
     QVector<TrackTime> sectionDiscTimes;
-
     QVector<F2Frame> f2FrameBuffer;
 
-    while (inputFileHandle->bytesAvailable() != 0 && !abort) {
-        // Input data will be available in sections of 98 F3 frames, synchronised with a section
+    // Make sure there is something to process
+    if (f3FramesIn.isEmpty()) return f2FramesOut;
+
+    // Ensure that the upstream is providing only complete sections of
+    // 98 frames... otherwise we have an upstream bug.
+    if (f3FramesIn.size() % 98 != 0) {
+        qFatal("F3ToF2Frames::process(): Upstream has provided incomplete sections of 98 F3 frames - This is a bug!");
+        // Exection stops...
+        // return f2FramesOut;
+    }
+
+    // Process the incoming F3 Frames
+    while (!f3FramesIn.isEmpty()) {
+        // Input data must be available in sections of 98 F3 frames, synchronised with a section
         // read in the 98 F3 Frames
         QVector<F3Frame> f3FrameBuffer;
         F3Frame f3Frame;
         QByteArray sectionData;
         for (qint32 i = 0; i < 98; i++) {
             // Get the incoming F3 frame and place it in the F3 frame buffer
-            inputDataStream >> f3Frame;
-            f3FrameBuffer.append(f3Frame);
+            f3FrameBuffer.append(f3FramesIn[i]);
             statistics.totalF3Frames++;
 
             // Collect the 98 subcode data symbols
             sectionData.append(static_cast<char>(f3FrameBuffer[i].getSubcodeSymbol()));
         }
 
+        // Remove the consumed F3 frames from the input buffer
+        f3FramesIn.remove(0, 98);
+
         // Process the subcode data into a section
         Section section;
         section.setData(sectionData);
-
-        // Display some debug about the section metadata contents
-        if (section.getQMode() == 1 || section.getQMode() == 4) {
-            // if (debugOn) qDebug() << "F3ToF2Frames::startProcessing(): Q Mode is" << section.getQMode()<< "disc time:" << section.getQMetadata().qMode1And4.discTime.getTimeAsQString();
-        } else if (section.getQMode() == 2) {
-            // if (debugOn) qDebug() << "F3ToF2Frames::startProcessing(): Q Mode is 2 (ID):" << section.getQMetadata().qMode2.catalogueNumber << "with AFrame of" << section.getQMetadata().qMode2.aFrame;
-        } else {
-            // if (debugOn) qDebug() << "F3ToF2Frames::startProcessing(): Subcode corrupt, qMode unknown";
-        }
 
         // Keep track of the disc time
         TrackTime currentDiscTime;
@@ -213,8 +198,8 @@ void F3ToF2Frames::startProcessing(QFile *inputFileHandle, QFile *outputFileHand
                             f2FrameBuffer[currentF2Frame].setIsEncoderRunning(true);
                         }
 
-                        // Output the F2Frame
-                        outputDataStream << f2FrameBuffer[currentF2Frame];
+                        // Output the F2Frame to the output F2 frame buffer
+                        f2FramesOut.append(f2FrameBuffer[currentF2Frame]);
                         statistics.totalF2Frames++;
                         currentF2Frame++;
                     }
@@ -228,14 +213,10 @@ void F3ToF2Frames::startProcessing(QFile *inputFileHandle, QFile *outputFileHand
         }
     }
 
-    if (debugOn) qDebug() << "F3ToF2Frames::startProcessing(): No more data to processes";
+    return f2FramesOut;
 }
 
-void F3ToF2Frames::stopProcessing(void)
-{
-    abort = true;
-}
-
+// Get method - retrieve statistics
 F3ToF2Frames::Statistics F3ToF2Frames::getStatistics(void)
 {
     // Ensure sub-class statistics are updated
@@ -246,6 +227,7 @@ F3ToF2Frames::Statistics F3ToF2Frames::getStatistics(void)
     return statistics;
 }
 
+// Method to report decoding statistics to qInfo
 void F3ToF2Frames::reportStatistics(void)
 {
     qInfo() << "";
@@ -267,9 +249,13 @@ void F3ToF2Frames::reportStatistics(void)
     c2Deinterleave.reportStatistics();
 }
 
-// Method to reset the object
+// Method to reset the class
 void F3ToF2Frames::reset(void)
 {
+    // Initialise variables to track the disc time
+    initialDiscTimeSet = false;
+    lastDiscTime.setTime(0, 0, 0);
+
     c1Circ.reset();
     c2Circ.reset();
     c2Deinterleave.reset();
@@ -278,6 +264,7 @@ void F3ToF2Frames::reset(void)
 
 // Private methods ----------------------------------------------------------------------------------------------------
 
+// Method to clear the statistics counters
 void F3ToF2Frames::clearStatistics(void)
 {
     statistics.totalF3Frames = 0;

@@ -27,8 +27,6 @@
 
 #include <QCoreApplication>
 #include <QDebug>
-#include <QFile>
-#include <QDataStream>
 
 #include "Datatypes/f3frame.h"
 
@@ -44,20 +42,19 @@ public:
         qint32 totalSections;
     };
 
-    void startProcessing(QFile *inputFileHandle, QFile *outputFileHandle);
-    void stopProcessing(void);
-    Statistics getStatistics(void);
-    void reportStatistics(void);
-    void reset(void);
+    QVector<F3Frame> process(QVector<F3Frame> f3FramesIn);
+    Statistics getStatistics();
+    void reportStatistics();
+    void reset();
 
 private:
     bool debugOn;
-    bool abort;
     Statistics statistics;
     QVector<F3Frame> f3FrameBuffer;
+    QVector<F3Frame> f3FramesOut;
     bool waitingForData;
 
-    void clearStatistics(void);
+    void clearStatistics();
 
     // State machine state definitions
     enum StateMachine {
@@ -71,11 +68,11 @@ private:
     StateMachine currentState;
     StateMachine nextState;
 
-    StateMachine sm_state_initial(void);
-    StateMachine sm_state_findInitialSync0(void);
-    StateMachine sm_state_findNextSync(void);
-    StateMachine sm_state_syncLost(void);
-    StateMachine sm_state_processSection(QDataStream *outputDataStream);
+    StateMachine sm_state_initial();
+    StateMachine sm_state_findInitialSync0();
+    StateMachine sm_state_findNextSync();
+    StateMachine sm_state_syncLost();
+    StateMachine sm_state_processSection();
 };
 
 #endif // SYNCF3FRAMES_H

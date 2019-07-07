@@ -31,6 +31,7 @@
 #include <QMessageBox>
 #include <QThread>
 #include <QTimer>
+#include <QTemporaryFile>
 #include <QDebug>
 
 #include "configuration.h"
@@ -51,6 +52,7 @@ public:
 
 private slots:
     void processingCompleteSignalHandler(bool audioAvailable, bool dataAvailable);
+    void percentProcessedSignalHandler(qint32 percent);
     void updateStatistics(void);
 
     void on_actionOpen_EFM_File_triggered();
@@ -72,7 +74,9 @@ private:
     EfmProcess efmProcess;
     QLabel efmStatus;
     QString currentInputEfmFileAndPath;
-    QTemporaryFile audioOutputTemporaryFile;
+    QFile inputEfmFileHandle;
+    QTemporaryFile audioOutputTemporaryFileHandle;
+    QTemporaryFile dataOutputTemporaryFileHandle;
     QTimer *statisticsUpdateTimer;
 
     // Method prototypes

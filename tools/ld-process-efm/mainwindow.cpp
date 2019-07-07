@@ -42,8 +42,9 @@ MainWindow::MainWindow(QWidget *parent) :
     // Set up the about dialogue
     aboutDialog = new AboutDialog(this);
 
-    // Connect to the signals from the file converter thread
+    // Connect to the signals from the file decoder thread
     connect(&efmProcess, &EfmProcess::processingComplete, this, &MainWindow::processingCompleteSignalHandler);
+    connect(&efmProcess, &EfmProcess::percentProcessed, this, &MainWindow::percentProcessedSignalHandler);
 
     // Load the window geometry from the configuration
     restoreGeometry(configuration->getMainWindowGeometry());
@@ -210,9 +211,6 @@ void MainWindow::updateStatistics(void)
     // Get the updated statistics
     EfmProcess::Statistics statistics = efmProcess.getStatistics();
 
-    // Progress bar
-    ui->progressBar->setValue(0);
-
     // EFM tab
     ui->efm_validSyncs_label->setText(QString::number(statistics.efmToF3Frames.validSyncs));
     ui->efm_overshootSyncs_label->setText(QString::number(statistics.efmToF3Frames.overshootSyncs));
@@ -335,7 +333,7 @@ void MainWindow::on_actionSave_PCM_Audio_triggered()
         if (QFile::exists(audioFilename + tr(".json"))) QFile::remove(audioFilename + tr(".json"));
 
         // Copy the audio data from the temporary file to the destination
-        if (!audioOutputTemporaryFile.copy(audioFilename)) {
+        if (!audioOutputTemporaryFileHandle.copy(audioFilename)) {
             qDebug() << "MainWindow::on_actionSave_PCM_Audio_triggered(): Failed to save file as" << audioFilename;
 
             QMessageBox messageBox;
@@ -370,19 +368,40 @@ void MainWindow::on_decodePushButton_clicked()
     qDebug() << "MainWindow::on_decodePushButton_clicked(): Called";
     if (currentInputEfmFileAndPath.isEmpty()) return;
 
+    inputEfmFileHandle.close();
+    inputEfmFileHandle.setFileName(currentInputEfmFileAndPath);
+    if (!inputEfmFileHandle.open(QIODevice::ReadOnly)) {
+        // Failed to open file
+        qDebug() << "MainWindow::on_decodePushButton_clicked(): Could not open EFM input file";
+        return;
+    } else {
+        qDebug() << "MainWindow::on_decodePushButton_clicked(): Opened EFM input file";
+    }
+
     // Open temporary file for audio data
-    audioOutputTemporaryFile.close();
-    if (!audioOutputTemporaryFile.open()) {
+    audioOutputTemporaryFileHandle.close();
+    if (!audioOutputTemporaryFileHandle.open()) {
         // Failed to open file
         qFatal("Could not open audio output temporary file - this is fatal!");
     } else {
         qDebug() << "MainWindow::on_decodePushButton_clicked(): Opened audio output temporary file";
     }
 
+    // Open temporary file for data
+    dataOutputTemporaryFileHandle.close();
+    if (!dataOutputTemporaryFileHandle.open()) {
+        // Failed to open file
+        qFatal("Could not open data output temporary file - this is fatal!");
+    } else {
+        qDebug() << "MainWindow::on_decodePushButton_clicked(): Opened data output temporary file";
+    }
+
     // Update the GUI
     guiEfmProcessingStart();
 
-    efmProcess.startProcessing(currentInputEfmFileAndPath, &audioOutputTemporaryFile);
+    // Start the processing of the EFM
+    efmProcess.startProcessing(&inputEfmFileHandle, &audioOutputTemporaryFileHandle,
+                               &dataOutputTemporaryFileHandle);
 }
 
 void MainWindow::on_cancelPushButton_clicked()
@@ -409,6 +428,13 @@ void MainWindow::processingCompleteSignalHandler(bool audioAvailable, bool dataA
     // Update the GUI
     guiEfmProcessingStop();
 }
+
+// Handle percent processed signal from EfmProcess class
+void MainWindow::percentProcessedSignalHandler(qint32 percent)
+{
+    ui->progressBar->setValue(percent);
+}
+
 
 // Miscellaneous methods ----------------------------------------------------------------------------------------------
 

@@ -31,7 +31,6 @@
 #include <QWaitCondition>
 #include <QString>
 #include <QFile>
-#include <QTemporaryFile>
 #include <QDebug>
 
 #include "Decoders/efmtof3frames.h"
@@ -54,14 +53,15 @@ public:
         F2FramesToAudio::Statistics f2FramesToAudio;
     };
 
-    void startProcessing(QString _inputFilename, QFile *_audioOutputFileHandle);
+    void startProcessing(QFile *_inputFilename, QFile *_audioOutputFilename, QFile *_dataOutputFilename);
     void stopProcessing();
     void quit();
-    Statistics getStatistics(void);
-    void reset(void);
+    Statistics getStatistics();
+    void reset();
 
 signals:
     void processingComplete(bool audioAvailable, bool dataAvailable);
+    void percentProcessed(qint32 percent);
 
 protected:
     void run() override;
@@ -83,12 +83,16 @@ private:
     Statistics statistics;
 
     // Externally settable variables
-    QString inputFilename;
-    QFile *audioOutputFileHandle;
+    QFile* efmInputFileHandle;
+    QFile* audioOutputFileHandle;
+    QFile* dataOutputFileHandle;
 
     // Thread-safe variables
-    QString inputFilenameTs;
-    QFile *audioOutputFileHandleTs;
+    QFile* efmInputFileHandleTs;
+    QFile* audioOutputFileHandleTs;
+    QFile* dataOutputFileHandleTs;
+
+    QByteArray readEfmData(void);
 };
 
 #endif // EFMPROCESS_H

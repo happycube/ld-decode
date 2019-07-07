@@ -26,89 +26,58 @@
 
 EfmToF3Frames::EfmToF3Frames()
 {
-    debugOn = false;
-    abort = false;
+    debugOn = false;    
+    reset();
 }
 
 // Public methods -----------------------------------------------------------------------------------------------------
 
-void EfmToF3Frames::startProcessing(QFile *inputFileHandle, QFile *outputFileHandle)
+// Main processing method
+QVector<F3Frame> EfmToF3Frames::process(QByteArray efmDataIn)
 {
-    abort = false;
+    // Clear the output buffer
+    f3FramesOut.clear();
 
-    // Reset the object
-    reset();
+    // Append input data to the processing buffer
+    efmDataBuffer.append(efmDataIn);
 
-    // Initialise the state-machine
-    efmDataBuffer.clear();
-    currentState = state_initial;
-    nextState = currentState;
     waitingForData = false;
-    sequentialBadSyncCounter = 0;
-    endSyncTransition = 0;
+    while (!waitingForData) {
+        currentState = nextState;
 
-    bool endOfInputFile = false;
-    if (debugOn) qDebug() << "EfmToF3Frames::startProcessing(): Initial input file size of" << inputFileHandle->bytesAvailable() << "bytes";
-
-    // Define an output data stream
-    QDataStream outputDataStream(outputFileHandle);
-
-    do {
-        // Read the EFM data into the buffer
-        QByteArray efmInputBuffer;
-        qint32 efmInputBufferSize = 1024 * 256;
-        efmInputBuffer.resize(efmInputBufferSize);
-        qint64 bytesRead = inputFileHandle->read(efmInputBuffer.data(), efmInputBuffer.size());
-        if (bytesRead != efmInputBufferSize) {
-            efmInputBuffer.resize(static_cast<qint32>(bytesRead));
-            if (inputFileHandle->bytesAvailable() == 0) endOfInputFile = true;
+        switch (currentState) {
+        case state_initial:
+            nextState = sm_state_initial();
+            break;
+        case state_findInitialSyncStage1:
+            nextState = sm_state_findInitialSyncStage1();
+            break;
+        case state_findInitialSyncStage2:
+            nextState = sm_state_findInitialSyncStage2();
+            break;
+        case state_findSecondSync:
+            nextState = sm_state_findSecondSync();
+            break;
+        case state_syncLost:
+            nextState = sm_state_syncLost();
+            break;
+        case state_processFrame:
+            nextState = sm_state_processFrame();
+            break;
         }
-        if (debugOn) qDebug() << "EfmToF3Frames::startProcessing(): Read" << efmInputBuffer.size() << "bytes -" << inputFileHandle->bytesAvailable() << "left";
+    }
 
-        // Append input data to the processing buffer
-        efmDataBuffer.append(efmInputBuffer);
-
-        waitingForData = false;
-        while (!waitingForData) {
-            currentState = nextState;
-
-            switch (currentState) {
-            case state_initial:
-                nextState = sm_state_initial();
-                break;
-            case state_findInitialSyncStage1:
-                nextState = sm_state_findInitialSyncStage1();
-                break;
-            case state_findInitialSyncStage2:
-                nextState = sm_state_findInitialSyncStage2();
-                break;
-            case state_findSecondSync:
-                nextState = sm_state_findSecondSync();
-                break;
-            case state_syncLost:
-                nextState = sm_state_syncLost();
-                break;
-            case state_processFrame:
-                nextState = sm_state_processFrame(&outputDataStream);
-                break;
-            }
-        }
-    } while (!endOfInputFile && !abort);
-
-    if (debugOn) qDebug() << "EfmToF3Frames::startProcessing(): No more data to processes";
+    return f3FramesOut;
 }
 
-void EfmToF3Frames::stopProcessing(void)
-{
-    abort = true;
-}
-
-EfmToF3Frames::Statistics EfmToF3Frames::getStatistics(void)
+// Get method - retrieve statistics
+EfmToF3Frames::Statistics EfmToF3Frames::getStatistics()
 {
     return statistics;
 }
 
-void EfmToF3Frames::reportStatistics(void)
+// Method to report decoding statistics to qInfo
+void EfmToF3Frames::reportStatistics()
 {
     qInfo() << "";
     qInfo() << "EFM to F3 Frames:";
@@ -127,14 +96,24 @@ void EfmToF3Frames::reportStatistics(void)
     qInfo() << "       TOTAL frames:" << statistics.validFrames + statistics.overshootFrames + statistics.undershootFrames;
 }
 
+// Method to reset the class
 void EfmToF3Frames::reset(void)
 {
     clearStatistics();
+
+    // Initialise the state-machine
+    efmDataBuffer.clear();
+    currentState = state_initial;
+    nextState = currentState;
+    waitingForData = false;
+    sequentialBadSyncCounter = 0;
+    endSyncTransition = 0;
 }
 
 // Private methods ----------------------------------------------------------------------------------------------------
 
-void EfmToF3Frames::clearStatistics(void)
+// Method to clear the statistics counters
+void EfmToF3Frames::clearStatistics()
 {
     statistics.undershootSyncs = 0;
     statistics.validSyncs = 0;
@@ -151,14 +130,14 @@ void EfmToF3Frames::clearStatistics(void)
 // Processing state machine methods -----------------------------------------------------------------------------------
 
 // Initial state machine state
-EfmToF3Frames::StateMachine EfmToF3Frames::sm_state_initial(void)
+EfmToF3Frames::StateMachine EfmToF3Frames::sm_state_initial()
 {
     if (debugOn) qDebug() << "EfmToF3Frames::sm_state_initial(): Called";
     return state_findInitialSyncStage1;
 }
 
-// Search for the first T11+T11 sync pattern in the EFM buffer
-EfmToF3Frames::StateMachine EfmToF3Frames::sm_state_findInitialSyncStage1(void)
+// Search for the initial first T11+T11 sync pattern in the EFM buffer
+EfmToF3Frames::StateMachine EfmToF3Frames::sm_state_findInitialSyncStage1()
 {
     if (debugOn) qDebug() << "EfmToF3Frames::sm_state_findInitialSyncStage1(): Called";
 
@@ -191,7 +170,8 @@ EfmToF3Frames::StateMachine EfmToF3Frames::sm_state_findInitialSyncStage1(void)
     return state_findInitialSyncStage2;
 }
 
-EfmToF3Frames::StateMachine EfmToF3Frames::sm_state_findInitialSyncStage2(void)
+// Find the initial second T11+T11 sync pattern in the EFM buffer
+EfmToF3Frames::StateMachine EfmToF3Frames::sm_state_findInitialSyncStage2()
 {
     if (debugOn) qDebug() << "EfmToF3Frames::sm_state_findInitialSyncStage2(): Called";
 
@@ -238,7 +218,8 @@ EfmToF3Frames::StateMachine EfmToF3Frames::sm_state_findInitialSyncStage2(void)
     return state_processFrame;
 }
 
-EfmToF3Frames::StateMachine EfmToF3Frames::sm_state_findSecondSync(void)
+// Find the next T11+T11 sync pattern in the EFM input buffer
+EfmToF3Frames::StateMachine EfmToF3Frames::sm_state_findSecondSync()
 {
     if (debugOn) qDebug() << "EfmToF3Frames::sm_state_findSecondSync(): Called";
 
@@ -328,14 +309,16 @@ EfmToF3Frames::StateMachine EfmToF3Frames::sm_state_findSecondSync(void)
     return state_processFrame;
 }
 
-EfmToF3Frames::StateMachine EfmToF3Frames::sm_state_syncLost(void)
+// Sync lost state
+EfmToF3Frames::StateMachine EfmToF3Frames::sm_state_syncLost()
 {
     if (debugOn) qDebug() << "EfmToF3Frames::sm_state_syncLost(): Called";
     statistics.syncLoss++;
     return state_findInitialSyncStage1;
 }
 
-EfmToF3Frames::StateMachine EfmToF3Frames::sm_state_processFrame(QDataStream *outputDataStream)
+// Process a completed F3 Frame
+EfmToF3Frames::StateMachine EfmToF3Frames::sm_state_processFrame()
 {
     if (debugOn) qDebug() << "EfmToF3Frames::sm_state_processFrame(): Called";
 
@@ -370,8 +353,8 @@ EfmToF3Frames::StateMachine EfmToF3Frames::sm_state_processFrame(QDataStream *ou
     F3Frame f3Frame;
     f3Frame.setTValues(frameT);
 
-    // Now save the F3 frame to our output data stream
-    *outputDataStream << f3Frame;
+    // Now save the F3 frame to our output data buffer
+    f3FramesOut.append(f3Frame);
 
     // Discard all transitions up to the sync end
     removeEfmData(endSyncTransition);

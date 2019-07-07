@@ -27,8 +27,6 @@
 
 #include <QCoreApplication>
 #include <QDebug>
-#include <QFile>
-#include <QDataStream>
 
 #include "Datatypes/f3frame.h"
 
@@ -48,22 +46,20 @@ public:
         qint32 validFrames;
         qint32 overshootFrames;
 
-        qint32 validTValues;
-        qint32 invalidTValues;
+        qint64 validTValues;
+        qint64 invalidTValues;
     };
 
-    void startProcessing(QFile *inputFileHandle, QFile *outputFileHandle);
-    void stopProcessing(void);
-    Statistics getStatistics(void);
-    void reportStatistics(void);
-    void reset(void);
+    QVector<F3Frame> process(QByteArray efmDataIn);
+    Statistics getStatistics();
+    void reportStatistics();
+    void reset();
 
 private:
     bool debugOn;
-    bool abort;
     Statistics statistics;
     QByteArray efmDataBuffer;
-    void clearStatistics(void);
+    QVector<F3Frame> f3FramesOut;
 
     // State machine state definitions
     enum StateMachine {
@@ -82,12 +78,14 @@ private:
     qint32 sequentialBadSyncCounter;
     qint32 endSyncTransition;
 
-    StateMachine sm_state_initial(void);
-    StateMachine sm_state_findInitialSyncStage1(void);
-    StateMachine sm_state_findInitialSyncStage2(void);
-    StateMachine sm_state_findSecondSync(void);
-    StateMachine sm_state_syncLost(void);
-    StateMachine sm_state_processFrame(QDataStream *outputDataStream);
+    void clearStatistics();
+
+    StateMachine sm_state_initial();
+    StateMachine sm_state_findInitialSyncStage1();
+    StateMachine sm_state_findInitialSyncStage2();
+    StateMachine sm_state_findSecondSync();
+    StateMachine sm_state_syncLost();
+    StateMachine sm_state_processFrame();
 
     void removeEfmData(qint32 number);
 };

@@ -27,8 +27,6 @@
 
 #include <QCoreApplication>
 #include <QDebug>
-#include <QFile>
-#include <QDataStream>
 
 #include "Datatypes/f3frame.h"
 #include "Datatypes/f2frame.h"
@@ -59,15 +57,13 @@ public:
         qint32 missingF3Frames;
     };
 
-    void startProcessing(QFile *inputFileHandle, QFile *outputFileHandle);
-    void stopProcessing(void);
+    QVector<F2Frame> process(QVector<F3Frame> f3FramesIn);
     Statistics getStatistics(void);
     void reportStatistics(void);
     void reset(void);
 
 private:
     bool debugOn;
-    bool abort;
     Statistics statistics;
 
     void clearStatistics(void);
@@ -75,6 +71,9 @@ private:
     C1Circ c1Circ;
     C2Circ c2Circ;
     C2Deinterleave c2Deinterleave;
+
+    bool initialDiscTimeSet;
+    TrackTime lastDiscTime;
 };
 
 #endif // F3TOF2FRAMES_H

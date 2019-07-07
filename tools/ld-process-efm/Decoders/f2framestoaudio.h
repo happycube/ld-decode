@@ -27,8 +27,6 @@
 
 #include <QCoreApplication>
 #include <QDebug>
-#include <QFile>
-#include <QDataStream>
 
 #include "Datatypes/f2frame.h"
 
@@ -47,18 +45,19 @@ public:
         TrackTime sampleCurrent;
     };
 
-    void startProcessing(QFile *inputFileHandle, QFile *outputFileHandle);
-    void stopProcessing(void);
-    Statistics getStatistics(void);
-    void reportStatistics(void);
-    void reset(void);
+    QByteArray process(QVector<F2Frame> f2FramesIn);
+    Statistics getStatistics();
+    void reportStatistics();
+    void reset();
 
 private:
     bool debugOn;
-    bool abort;
     Statistics statistics;
 
-    void clearStatistics(void);
+    bool initialDiscTimeSet;
+    TrackTime lastDiscTime;
+
+    void clearStatistics();
 };
 
 #endif // F2FRAMESTOAUDIO_H
