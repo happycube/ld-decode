@@ -157,14 +157,15 @@ void C1Circ::errorCorrect(void)
     std::vector<int> erasures;
     data.resize(32);
 
+    // For the C1 CRC we ignore any inbound erasures (as per Sorin 2.4 p66) and can correct
+    // (at most) two symbols
+
     for (qint32 byteC = 0; byteC < 32; byteC++) {
         data[static_cast<size_t>(byteC)] = static_cast<uchar>(interleavedC1Data[byteC]);
-        if (interleavedC1Errors[byteC] == static_cast<char>(1)) erasures.push_back(byteC);
     }
 
     // Perform error check and correction
     int fixed = -1;
-    if (erasures.size() > 4) erasures.clear();
 
     // Initialise the error corrector
     C1RS<255,255-4> rs; // Up to 251 symbols data load with 4 symbols parity RS(32,28)
@@ -173,15 +174,31 @@ void C1Circ::errorCorrect(void)
     std::vector<int> position;
     fixed = rs.decode(data, erasures, &position);
 
-    // Copy the result back to the output byte array (removing the parity symbols)
-    for (qint32 byteC = 0; byteC < 28; byteC++) {
-        outputC1Data[byteC] = static_cast<char>(data[static_cast<size_t>(byteC)]);
-        if (fixed < 0) outputC1Errors[byteC] = 1; else outputC1Errors[byteC] = 0;
+    // If there were more than 2 symbols in error, mark the C1 as an erasure
+    if (fixed > 2) fixed = -1;
+
+    if (fixed >= 0) {
+        // Copy the result back to the output byte array (removing the parity symbols)
+        for (qint32 byteC = 0; byteC < 28; byteC++) {
+            outputC1Data[byteC] = static_cast<char>(data[static_cast<size_t>(byteC)]);
+            if (fixed < 0) outputC1Errors[byteC] = 1; else outputC1Errors[byteC] = 0;
+        }
+    } else {
+        // Erasure
+        for (qint32 byteC = 0; byteC < 28; byteC++) {
+            outputC1Data[byteC] = interleavedC1Data[byteC];
+            outputC1Errors[byteC] = 1;
+        }
     }
 
     // Update the statistics
     if (fixed == 0) statistics.c1Passed++;
-    if (fixed > 0)  statistics.c1Corrected++;
+
+    if (fixed > 0) {
+        statistics.c1Passed++;
+        statistics.c1Corrected++;
+    }
+
     if (fixed < 0)  statistics.c1Failed++;
 }
 

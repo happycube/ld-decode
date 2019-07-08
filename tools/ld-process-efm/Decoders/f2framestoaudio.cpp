@@ -82,7 +82,9 @@ QByteArray F2FramesToAudio::process(QVector<F2Frame> f2FramesIn)
                     statistics.missingSectionSamples += 98 * 6;
                     statistics.totalSamples += 98 * 6;
                 }
-                if (debugOn) qDebug() << "F2FramesToAudio::startProcessing(): Padded output sample by" << sectionFrameGap - 1 << "sections";
+                if (debugOn) qDebug().noquote() << "F2FramesToAudio::startProcessing(): Section gap - Last seen time was" << lastDiscTime.getTimeAsQString() <<
+                                         "current disc time is" << currentDiscTime.getTimeAsQString() <<
+                                         "Added" << sectionFrameGap - 1 << "section(s) of padding (" << (sectionFrameGap - 1) * 98 * 6 << "samples )";
             }
 
             // Update the last disc time
@@ -90,20 +92,39 @@ QByteArray F2FramesToAudio::process(QVector<F2Frame> f2FramesIn)
             statistics.sampleCurrent = currentDiscTime;
         }
 
+        // Determine if the section is encoder on or off (using a threshold to prevent false-negatives)
+        bool sectionEncoderState = false;
+        qint32 encoderStateCount = 0;
+        for (qint32 i = 0; i < 98; i++) {
+            if (f2FrameBuffer[i].getIsEncoderRunning()) encoderStateCount++;
+        }
+        if (encoderStateCount > 10) sectionEncoderState = true; else sectionEncoderState = false;
+
         // Now output the F2 Frames as samples
         for (qint32 i = 0; i < 98; i++) {
-            if (f2FrameBuffer[i].getIsEncoderRunning() && f2FrameBuffer[i].getDataValid()) {
+            if (sectionEncoderState && f2FrameBuffer[i].getDataValid()) {
                 // Encoder is running and data is valid, output samples
                 audioBufferOut.append(f2FrameBuffer[i].getDataSymbols());
                 statistics.validSamples += 6;
                 statistics.totalSamples += 6;
             } else {
-                QByteArray framePadding;
-                framePadding.fill(0, 24); // 24 bytes = 6 samples
-                audioBufferOut.append(framePadding);
-                if (!f2FrameBuffer[i].getDataValid()) statistics.corruptSamples += 6;
-                else statistics.encoderOffSamples += 6;
-                statistics.totalSamples += 6;
+                if (!sectionEncoderState) {
+                    // Section encoding is off, so no data loss
+                    QByteArray framePadding;
+                    framePadding.fill(0, 24); // 24 bytes = 6 samples
+                    audioBufferOut.append(framePadding);
+                    if (!f2FrameBuffer[i].getDataValid()) statistics.corruptSamples += 6;
+                    else statistics.encoderOffSamples += 6;
+                    statistics.totalSamples += 6;
+                } else {
+                    // Actual data loss occurred
+                    QByteArray framePadding;
+                    framePadding.fill(0, 24); // 24 bytes = 6 samples
+                    audioBufferOut.append(framePadding);
+                    statistics.corruptSamples += 6;
+                    statistics.totalSamples += 6;
+                }
+
             }
         }
     }

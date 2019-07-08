@@ -38,7 +38,7 @@
 
 SyncF3Frames::SyncF3Frames()
 {
-    debugOn = true;
+    debugOn = false;
     reset();
 }
 

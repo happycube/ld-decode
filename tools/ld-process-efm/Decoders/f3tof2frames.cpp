@@ -26,7 +26,7 @@
 
 F3ToF2Frames::F3ToF2Frames()
 {
-    debugOn = false;
+    debugOn = true;
     reset();
 }
 

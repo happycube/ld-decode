@@ -148,21 +148,41 @@ void C2Circ::errorCorrect(void)
         if (interleavedC2Errors[byteC] == static_cast<char>(1)) erasures.push_back(byteC);
     }
 
-    // Perform error check and correction
     int fixed = -1;
-    if (erasures.size() > 4 ) erasures.clear();
+    if (erasures.size() <= 4 ) {
+        // Perform error check and correction
 
-    // Initialise the error corrector
-    C2RS<255,255-4> rs; // Up to 251 symbols data load with 4 symbols parity RS(32,28)
+        // Initialise the error corrector
+        C2RS<255,255-4> rs; // Up to 251 symbols data load with 4 symbols parity RS(32,28)
 
-    // Perform decode
-    std::vector<int> position;
-    fixed = rs.decode(data, erasures, &position);
+        // Perform decode
+        std::vector<int> position;
+        fixed = rs.decode(data, erasures, &position);
 
-    // Copy the result back to the output byte array
-    for (qint32 byteC = 0; byteC < 28; byteC++) {
-        outputC2Data[byteC] = static_cast<char>(data[static_cast<size_t>(byteC)]);
-        if (fixed < 0) outputC2Errors[byteC] = 1; else outputC2Errors[byteC] = 0;
+        // If there were more than 4 symbols in error, mark the C2 as an erasure
+        if (fixed > 4) fixed = -1;
+
+        if (fixed >= 0) {
+            // Copy the result back to the output byte array (removing the parity symbols)
+            for (qint32 byteC = 0; byteC < 28; byteC++) {
+                outputC2Data[byteC] = static_cast<char>(data[static_cast<size_t>(byteC)]);
+                if (fixed < 0) outputC2Errors[byteC] = 1; else outputC2Errors[byteC] = 0;
+            }
+        } else {
+            // Erasure
+            for (qint32 byteC = 0; byteC < 28; byteC++) {
+                outputC2Data[byteC] = interleavedC2Data[byteC];
+                outputC2Errors[byteC] = 1;
+            }
+        }
+    } else {
+        // If we have more than 4 input erasures we have to flag the output as erasures and
+        // copy the original input data to the output (according to Sorin 2.4 p67)
+        for (qint32 byteC = 0; byteC < 28; byteC++) {
+            outputC2Data[byteC] = interleavedC2Data[byteC];
+            outputC2Errors[byteC] = 1;
+        }
+        fixed = -1;
     }
 
     // Update the statistics
@@ -171,6 +191,7 @@ void C2Circ::errorCorrect(void)
         outputC2dataValid = true;
     }
     if (fixed > 0) {
+        statistics.c2Passed++;
         statistics.c2Corrected++;
         outputC2dataValid = true;
     }
