@@ -154,8 +154,8 @@ void C2Circ::errorCorrect(void)
         std::vector<int> position;
         fixed = rs.decode(data, erasures, &position);
 
-        // If there were more than 4 symbols in error, mark the C2 as an erasure
-        if (fixed > 4) fixed = -1;
+        // If there were more than 3 symbols in error, mark the C2 as an erasure
+        if (fixed > 3) fixed = -1;
 
         if (fixed >= 0) {
             // Copy the result back to the output byte array (removing the parity symbols)
