@@ -9,6 +9,7 @@ import io
 from io import BytesIO
 import os
 import sys
+import subprocess
 
 # standard numeric/scientific libraries
 import numpy as np
@@ -259,6 +260,74 @@ def load_packed_data_4_40(infile, sample, readlen):
     
     return rv_signed
 
+
+class LoadFFmpeg:
+    """Load samples from a wide variety of formats using ffmpeg."""
+
+    def __init__(self):
+        # ffmpeg subprocess
+        self.ffmpeg = None
+
+        # The number of the next byte ffmpeg will return
+        self.position = 0
+
+        # Keep a buffer of recently-read data, to allow seeking backwards by
+        # small amounts. The last byte returned by ffmpeg is at the end of
+        # this buffer.
+        self.rewind_size = 2 * 1024 * 1024
+        self.rewind_buf = b''
+
+    def _read_data(self, count):
+        """Read data as bytes from ffmpeg, append it to the rewind buffer, and
+        return it. May return less than count bytes if EOF is reached."""
+
+        data = self.ffmpeg.stdout.read(count)
+        self.position += len(data)
+
+        self.rewind_buf += data
+        self.rewind_buf = self.rewind_buf[-self.rewind_size:]
+
+        return data
+
+    def __call__(self, infile, sample, readlen):
+        sample_bytes = sample * 2
+        readlen_bytes = readlen * 2
+
+        if self.ffmpeg is None:
+            command = ["ffmpeg", "-hide_banner", "-loglevel", "error",
+                       "-i", "-", "-f", "s16le", "-c:a", "pcm_s16le", "-"]
+            self.ffmpeg = subprocess.Popen(command, stdin=infile,
+                                           stdout=subprocess.PIPE)
+
+        if sample_bytes < self.position:
+            # Seeking backwards - use data from rewind_buf
+            start = len(self.rewind_buf) - (self.position - sample_bytes)
+            end = min(start + readlen_bytes, len(self.rewind_buf))
+            if start < 0:
+                raise IOError("Seeking too far backwards with ffmpeg")
+            buf_data = self.rewind_buf[start:end]
+            sample_bytes += len(buf_data)
+            readlen_bytes -= len(buf_data)
+        else:
+            buf_data = b''
+
+        while sample_bytes > self.position:
+            # Seeking forwards - read and discard samples
+            count = min(sample_bytes - self.position, self.rewind_size)
+            self._read_data(count)
+
+        if readlen_bytes > 0:
+            # Read some new data from ffmpeg
+            read_data = self._read_data(readlen_bytes)
+            if len(read_data) < readlen_bytes:
+                # Short read - end of file
+                return None
+        else:
+            read_data = b''
+
+        data = buf_data + read_data
+        assert len(data) == readlen * 2
+        return np.fromstring(data, '<i2')
 
 
 # Essential standalone routines 

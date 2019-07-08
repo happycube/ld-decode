@@ -68,6 +68,8 @@ elif filename[-3:] == 'r16':
     loader = load_unpacked_data_s16
 elif filename[-2:] == 'r8':
     loader = load_unpacked_data_u8
+elif filename[-7:] == 'raw.oga':
+    loader = LoadFFmpeg()
 else:
     loader = load_packed_data_4_40
 
