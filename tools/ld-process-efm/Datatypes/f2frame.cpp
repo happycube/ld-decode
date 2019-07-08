@@ -29,34 +29,36 @@
 F2Frame::F2Frame()
 {
     dataSymbols.resize(24);
-    errorSymbols.resize(24);
-
-    dataSymbols.fill(0);
-    errorSymbols.fill(0);
+    dataSymbols.fill(0, 24);
 
     discTime.setTime(0, 0, 0);
     trackTime.setTime(0, 0, 0);
     trackNumber = 0;
 }
 
-void F2Frame::setData(QByteArray dataParam, QByteArray erasuresParam, bool isDataValid)
+void F2Frame::setData(QByteArray dataParam, QByteArray erasuresParam)
 {
+    if (dataParam.size() != 24 || erasuresParam.size() != 24) {
+        qCritical() << "F2Frame::setData(): Parameter size is incorrect!";
+        return;
+    }
+
+    errorState = false;
+
     // Add the F2 frame data to the F2 data buffer and swap the byte
     // order (see ECMA-130 clause 16)
-    for (qint32 i = 0; i < dataParam.size(); i++) {
-        for (qint32 j = 0; j < 24; j += 2) {
-            dataSymbols[j] = dataParam[j+1];
-            dataSymbols[j+1] = dataParam[j];
-            errorSymbols[j] = erasuresParam[j+1];
-            errorSymbols[j+1] = erasuresParam[j];
-        }
+    for (qint32 j = 0; j < 24; j += 2) {
+        dataSymbols[j] = dataParam[j+1];
+        dataSymbols[j+1] = dataParam[j];
+
+        if (erasuresParam[j] != static_cast<char>(0)) errorState = true;
+        if (erasuresParam[j+1] != static_cast<char>(0)) errorState = true;
     }
 
     // Note: According the ECMA-130 audio data doesn't require byte swapping
     // however, since the required PCM sample format is little-endian (on a PC)
     // it is required.  Therefore we do it to the F2 frame data to save having
     // to perform the swapping twice (in the audio and data processing)
-    dataValid = isDataValid;
 }
 
 // This method returns the 24 data symbols for the F2 Frame
@@ -65,16 +67,11 @@ QByteArray F2Frame::getDataSymbols(void)
     return dataSymbols;
 }
 
-// This method returns the 24 error symbols for the F2 Frame
-QByteArray F2Frame::getErrorSymbols(void)
+// This method returns true if the data in the F2 Frame
+// is marked with erasures (i.e. it's corrupt)
+bool F2Frame::isFrameCorrupt(void)
 {
-    return errorSymbols;
-}
-
-// This method returns the data valid flag for the F2 Frame
-bool F2Frame::getDataValid(void)
-{
-    return dataValid;
+    return errorState;
 }
 
 // Time markers (not really part of an F2, but used to track the location of the F2 when processing audio)
@@ -119,18 +116,3 @@ bool F2Frame::getIsEncoderRunning(void)
     return isEncoderRunning;
 }
 
-// Overloaded operator for writing class data to a data-stream
-QDataStream &operator<<(QDataStream &out, const F2Frame &f2Frame)
-{
-    out << f2Frame.dataSymbols << f2Frame.errorSymbols << f2Frame.dataValid <<
-            f2Frame.discTime << f2Frame.trackTime << f2Frame.trackNumber;
-    return out;
-}
-
-// Overloaded operator for reading class data from a data-stream
-QDataStream &operator>>(QDataStream &in, F2Frame &f2Frame)
-{
-    in >> f2Frame.dataSymbols >> f2Frame.errorSymbols >> f2Frame.dataValid >>
-            f2Frame.discTime >> f2Frame.trackTime >> f2Frame.trackNumber;
-    return in;
-}

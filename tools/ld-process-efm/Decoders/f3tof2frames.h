@@ -72,6 +72,10 @@ private:
     C2Circ c2Circ;
     C2Deinterleave c2Deinterleave;
 
+    QVector<F2Frame> f2FrameBuffer;
+    QVector<Section> sectionBuffer;
+    QVector<TrackTime> sectionDiscTimes;
+
     bool initialDiscTimeSet;
     TrackTime lastDiscTime;
 };

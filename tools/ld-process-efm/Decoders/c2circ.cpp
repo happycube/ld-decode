@@ -26,12 +26,6 @@
 
 C2Circ::C2Circ()
 {
-    interleavedC2Data.resize(28);
-    interleavedC2Errors.resize(28);
-
-    outputC2Data.resize(28);
-    outputC2Errors.resize(28);
-
     reset();
 }
 
@@ -100,24 +94,16 @@ QByteArray C2Circ::getErrorSymbols(void)
     return QByteArray();
 }
 
-// Return the C2 data valid flag if available
-bool C2Circ::getDataValid(void)
-{
-    if (c1DelayBuffer.size() >= 109) return outputC2dataValid;
-    return false;
-}
-
 // Method to flush the C2 buffers
 void C2Circ::flush(void)
 {
     c1DelayBuffer.clear();
 
-    interleavedC2Data.fill(0);
-    interleavedC2Errors.fill(0);
+    interleavedC2Data.fill(0, 28);
+    interleavedC2Errors.fill(1, 28);
 
-    outputC2Data.fill(0);
-    outputC2Errors.fill(0);
-    outputC2dataValid = false;
+    outputC2Data.fill(0, 28);
+    outputC2Errors.fill(1, 28);
 
     statistics.c2flushed++;
 }
@@ -136,8 +122,15 @@ void C2Circ::interleave(void)
 }
 
 // Perform a C2 level error check and correction
+//
+// Note: RS ERC isn't a checksum and, if there are too many error/erasure symbols passed to it,
+// it is possible to receive false-positive corrections.  It is essential that the inbound BER
+// (Bit Error Rate) is at or below the IEC maximum of 3%.  More than this and it's likely bad
+// packets will be created.
 void C2Circ::errorCorrect(void)
 {
+    // The C2 error correction can correct, at most, 4 symbols
+
     // Convert the data and errors into the form expected by the ezpwd library
     std::vector<uint8_t> data;
     std::vector<int> erasures;
@@ -145,10 +138,12 @@ void C2Circ::errorCorrect(void)
 
     for (qint32 byteC = 0; byteC < 28; byteC++) {
         data[static_cast<size_t>(byteC)] = static_cast<uchar>(interleavedC2Data[byteC]);
-        if (interleavedC2Errors[byteC] == static_cast<char>(1)) erasures.push_back(byteC);
+        if (interleavedC2Errors[byteC] != static_cast<char>(0)) erasures.push_back(byteC);
     }
 
+    // Perform error check and correction
     int fixed = -1;
+
     if (erasures.size() <= 4 ) {
         // Perform error check and correction
 
@@ -188,15 +183,12 @@ void C2Circ::errorCorrect(void)
     // Update the statistics
     if (fixed == 0) {
         statistics.c2Passed++;
-        outputC2dataValid = true;
     }
     if (fixed > 0) {
         statistics.c2Passed++;
         statistics.c2Corrected++;
-        outputC2dataValid = true;
     }
     if (fixed < 0) {
         statistics.c2Failed++;
-        outputC2dataValid = false;
     }
 }

@@ -70,7 +70,6 @@ private:
 
     QByteArray outputC2Data;
     QByteArray outputC2Errors;
-    bool outputC2dataValid;
 
     Statistics statistics;
 

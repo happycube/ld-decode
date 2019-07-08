@@ -43,9 +43,8 @@ QByteArray F2FramesToAudio::process(QVector<F2Frame> f2FramesIn)
     // Ensure that the upstream is providing only complete sections of
     // 98 frames... otherwise we have an upstream bug.
     if (f2FramesIn.size() % 98 != 0) {
+        // Bug, exit with fatal error
         qFatal("F2FramesToAudio::process(): Upstream has provided incomplete sections of 98 F2 frames - This is a bug!");
-        // Exection stops...
-        // return audioBufferOut;
     }
 
     // Process the input F2 Frames
@@ -69,9 +68,11 @@ QByteArray F2FramesToAudio::process(QVector<F2Frame> f2FramesIn)
             if (debugOn) qDebug() << "F2FramesToAudio::startProcessing(): Initial disc time is" << lastDiscTime.getTimeAsQString();
         } else {
             TrackTime currentDiscTime = f2FrameBuffer[0].getDiscTime();
+            if (debugOn) qDebug() << "F2FramesToAudio::startProcessing(): Current disc time is" << currentDiscTime.getTimeAsQString();
 
             // Check that this section is one frame difference from the previous
             qint32 sectionFrameGap = currentDiscTime.getDifference(lastDiscTime.getTime());
+
 
             if (sectionFrameGap > 1) {
                 // Pad the output sample file according to the gap
@@ -102,22 +103,22 @@ QByteArray F2FramesToAudio::process(QVector<F2Frame> f2FramesIn)
 
         // Now output the F2 Frames as samples
         for (qint32 i = 0; i < 98; i++) {
-            if (sectionEncoderState && f2FrameBuffer[i].getDataValid()) {
+            if (sectionEncoderState && !f2FrameBuffer[i].isFrameCorrupt()) {
                 // Encoder is running and data is valid, output samples
                 audioBufferOut.append(f2FrameBuffer[i].getDataSymbols());
                 statistics.validSamples += 6;
                 statistics.totalSamples += 6;
             } else {
                 if (!sectionEncoderState) {
-                    // Section encoding is off, so no data loss
+                    // Section encoding is off, so no data loss (even if the sample data is invalid
+                    // we don't need to use it)
                     QByteArray framePadding;
                     framePadding.fill(0, 24); // 24 bytes = 6 samples
                     audioBufferOut.append(framePadding);
-                    if (!f2FrameBuffer[i].getDataValid()) statistics.corruptSamples += 6;
-                    else statistics.encoderOffSamples += 6;
+                    statistics.encoderOffSamples += 6;
                     statistics.totalSamples += 6;
                 } else {
-                    // Actual data loss occurred
+                    // Actual audio data loss has occurred (encoder is on and data is invalid)
                     QByteArray framePadding;
                     framePadding.fill(0, 24); // 24 bytes = 6 samples
                     audioBufferOut.append(framePadding);

@@ -31,9 +31,6 @@
 
 class F3Frame
 {
-    friend QDataStream &operator<<(QDataStream &, const F3Frame &);
-    friend QDataStream &operator>>(QDataStream &, F3Frame &);
-
 public:
     F3Frame();
 

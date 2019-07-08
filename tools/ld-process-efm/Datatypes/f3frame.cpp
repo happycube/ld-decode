@@ -37,11 +37,8 @@ F3Frame::F3Frame()
     isSync1 = false;
     subcodeSymbol = 0;
 
-    dataSymbols.resize(32);
-    errorSymbols.resize(32);
-
-    dataSymbols.fill(0);
-    errorSymbols.fill(0);
+    dataSymbols.fill(0, 32);
+    errorSymbols.fill(0, 32);
 }
 
 // This method sets the T-values for the F3 Frame
@@ -187,20 +184,6 @@ bool F3Frame::isSubcodeSync0(void)
 bool F3Frame::isSubcodeSync1(void)
 {
     return isSync1;
-}
-
-// Overloaded operator for writing class data to a data-stream
-QDataStream &operator<<(QDataStream &out, const F3Frame &f3Frame)
-{
-    out << f3Frame.dataSymbols << f3Frame.errorSymbols << f3Frame.subcodeSymbol << f3Frame.isSync0 << f3Frame.isSync1;
-    return out;
-}
-
-// Overloaded operator for reading class data from a data-stream
-QDataStream &operator>>(QDataStream &in, F3Frame &f3Frame)
-{
-    in >> f3Frame.dataSymbols >> f3Frame.errorSymbols >> f3Frame.subcodeSymbol >> f3Frame.isSync0 >> f3Frame.isSync1;
-    return in;
 }
 
 // Private methods ----------------------------------------------------------------------------------------------------

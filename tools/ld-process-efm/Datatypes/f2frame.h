@@ -34,16 +34,12 @@
 
 class F2Frame
 {
-    friend QDataStream &operator<<(QDataStream &, const F2Frame &);
-    friend QDataStream &operator>>(QDataStream &, F2Frame &);
-
 public:
     F2Frame();
 
-    void setData(QByteArray dataParam, QByteArray erasuresParam, bool isDataValid);
+    void setData(QByteArray dataParam, QByteArray erasuresParam);
     QByteArray getDataSymbols(void);
-    QByteArray getErrorSymbols(void);
-    bool getDataValid(void);
+    bool isFrameCorrupt(void);
 
     void setDiscTime(TrackTime _discTime);
     void setTrackTime(TrackTime _trackTime);
@@ -56,8 +52,7 @@ public:
 
 private:
     QByteArray dataSymbols;
-    QByteArray errorSymbols;
-    bool dataValid;
+    bool errorState;
 
     TrackTime discTime;
     TrackTime trackTime;

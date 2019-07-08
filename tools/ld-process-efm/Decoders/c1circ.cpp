@@ -26,17 +26,6 @@
 
 C1Circ::C1Circ()
 {
-    currentF3Data.resize(32);
-    previousF3Data.resize(32);
-    currentF3Errors.resize(32);
-    previousF3Errors.resize(32);
-
-    interleavedC1Data.resize(32);
-    interleavedC1Errors.resize(32);
-
-    outputC1Data.resize(28);
-    outputC1Errors.resize(28);
-
     reset();
 }
 
@@ -108,16 +97,16 @@ QByteArray C1Circ::getErrorSymbols(void)
 // Method to flush the C1 buffers
 void C1Circ::flush(void)
 {
-    currentF3Data.fill(0);
-    previousF3Data.fill(0);
-    currentF3Errors.fill(0);
-    previousF3Errors.fill(0);
+    currentF3Data.fill(0, 32);
+    previousF3Data.fill(0, 32);
+    currentF3Errors.fill(1, 32);
+    previousF3Errors.fill(1, 32);
 
-    interleavedC1Data.fill(0);
-    interleavedC1Errors.fill(0);
+    interleavedC1Data.fill(0, 32);
+    interleavedC1Errors.fill(1, 32);
 
-    outputC1Data.fill(0);
-    outputC1Errors.fill(0);
+    outputC1Data.fill(0, 28);
+    outputC1Errors.fill(1, 28);
 
     c1BufferLevel = 0;
 
@@ -150,55 +139,74 @@ void C1Circ::interleave(void)
 }
 
 // Perform a C1 level error check and correction
+//
+// Note: RS ERC isn't a checksum and, if there are too many error/erasure symbols passed to it,
+// it is possible to receive false-positive corrections.  It is essential that the inbound BER
+// (Bit Error Rate) is at or below the IEC maximum of 3%.  More than this and it's likely bad
+// packets will be created.
 void C1Circ::errorCorrect(void)
 {
+    // The C1 error correction can correct, at most, 2 symbols
+
     // Convert the data and errors into the form expected by the ezpwd library
     std::vector<uint8_t> data;
     std::vector<int> erasures;
     data.resize(32);
 
-    // For the C1 CRC we ignore any inbound erasures (as per Sorin 2.4 p66) and can correct
-    // (at most) two symbols
-
     for (qint32 byteC = 0; byteC < 32; byteC++) {
         data[static_cast<size_t>(byteC)] = static_cast<uchar>(interleavedC1Data[byteC]);
+        if (interleavedC1Errors[byteC] == static_cast<char>(1)) erasures.push_back(byteC);
     }
 
     // Perform error check and correction
     int fixed = -1;
 
-    // Initialise the error corrector
-    C1RS<255,255-4> rs; // Up to 251 symbols data load with 4 symbols parity RS(32,28)
+    if (erasures.size() <= 2) {
+        // Perform error check and correction
 
-    // Perform decode
-    std::vector<int> position;
-    fixed = rs.decode(data, erasures, &position);
+        // Initialise the error corrector
+        C1RS<255,255-4> rs; // Up to 251 symbols data load with 4 symbols parity RS(32,28)
 
-    // If there were more than 2 symbols in error, mark the C1 as an erasure
-    if (fixed > 2) fixed = -1;
+        // Perform decode
+        std::vector<int> position;
+        fixed = rs.decode(data, erasures, &position);
 
-    if (fixed >= 0) {
-        // Copy the result back to the output byte array (removing the parity symbols)
-        for (qint32 byteC = 0; byteC < 28; byteC++) {
-            outputC1Data[byteC] = static_cast<char>(data[static_cast<size_t>(byteC)]);
-            if (fixed < 0) outputC1Errors[byteC] = 1; else outputC1Errors[byteC] = 0;
+        // If there were more than 2 symbols in error, mark the C1 as an erasure
+        if (fixed > 2) fixed = -1;
+
+        if (fixed >= 0) {
+            // Copy the result back to the output byte array (removing the parity symbols)
+            for (qint32 byteC = 0; byteC < 28; byteC++) {
+                outputC1Data[byteC] = static_cast<char>(data[static_cast<size_t>(byteC)]);
+                if (fixed < 0) outputC1Errors[byteC] = 1; else outputC1Errors[byteC] = 0;
+            }
+        } else {
+            // Erasure
+            for (qint32 byteC = 0; byteC < 28; byteC++) {
+                outputC1Data[byteC] = interleavedC1Data[byteC];
+                outputC1Errors[byteC] = 1;
+            }
         }
     } else {
-        // Erasure
+        // If we have more than 2 input erasures we have to flag the output as erasures and
+        // copy the original input data to the output (according to Sorin 2.4 p66)
         for (qint32 byteC = 0; byteC < 28; byteC++) {
             outputC1Data[byteC] = interleavedC1Data[byteC];
             outputC1Errors[byteC] = 1;
         }
+        fixed = -1;
     }
 
     // Update the statistics
-    if (fixed == 0) statistics.c1Passed++;
-
+    if (fixed == 0) {
+        statistics.c1Passed++;
+    }
     if (fixed > 0) {
         statistics.c1Passed++;
         statistics.c1Corrected++;
     }
-
-    if (fixed < 0)  statistics.c1Failed++;
+    if (fixed < 0) {
+        statistics.c1Failed++;
+    }
 }
 

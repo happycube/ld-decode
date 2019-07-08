@@ -26,7 +26,7 @@
 
 F3ToF2Frames::F3ToF2Frames()
 {
-    debugOn = true;
+    debugOn = false;
     reset();
 }
 
@@ -35,9 +35,6 @@ F3ToF2Frames::F3ToF2Frames()
 QVector<F2Frame> F3ToF2Frames::process(QVector<F3Frame> f3FramesIn)
 {
     QVector<F2Frame> f2FramesOut;
-    QVector<Section> sectionBuffer;
-    QVector<TrackTime> sectionDiscTimes;
-    QVector<F2Frame> f2FrameBuffer;
 
     // Make sure there is something to process
     if (f3FramesIn.isEmpty()) return f2FramesOut;
@@ -79,46 +76,55 @@ QVector<F2Frame> F3ToF2Frames::process(QVector<F3Frame> f3FramesIn)
             // Get the initial disc time if available
             if (section.getQMode() == 1 || section.getQMode() == 4) {
                 statistics.initialDiscTime = section.getQMetadata().qMode1And4.discTime;
-                lastDiscTime = section.getQMetadata().qMode1And4.discTime;
-                currentDiscTime = lastDiscTime;
-                if (debugOn) qDebug().noquote() << "F3ToF2Frames::startProcessing(): Initial disc time is" << statistics.initialDiscTime.getTimeAsQString();
+                currentDiscTime = section.getQMetadata().qMode1And4.discTime;
+
+                lastDiscTime = currentDiscTime;
+                lastDiscTime.subtractFrames(1);
+
+                if (debugOn) qDebug().noquote() << "F3ToF2Frames::startProcessing(): Initial disc time is" << currentDiscTime.getTimeAsQString();
+                if (debugOn) qDebug().noquote() << "F3ToF2Frames::startProcessing(): Last disc time is" << lastDiscTime.getTimeAsQString();
                 initialDiscTimeSet = true;
             } else {
                 // If initial disc time isn't set and the first section isn't Q Mode 1 or 4, we could have
                 // a problem here... it might be smart to simply drop the section of F3 frames until we get a
                 // valid point; otherwise the decoded audio could be really messy?
-                if (debugOn) qDebug() << "F3ToF2Frames::startProcessing(): No available disc time in the first section of F3 Frames!";
+                if (debugOn) qWarning("F3ToF2Frames::startProcessing(): No available disc time in the first section of F3 Frames!");
+
+                // Default to 00:00.00
+                lastDiscTime.setTime(0, 0, 0);
             }
+        }
+
+        // Compare the last known disc time to the current disc time
+        if (section.getQMode() == 1 || section.getQMode() == 4) {
+            // Current section has a valid disc time
+            currentDiscTime = section.getQMetadata().qMode1And4.discTime;
         } else {
-            // Last disc time is known, compare to current
-            if (section.getQMode() == 1 || section.getQMode() == 4) {
-                // Current section has a valid disc time
-                currentDiscTime = section.getQMetadata().qMode1And4.discTime;
-            } else {
-                // Current section does not have a valid disc time, estimate it
-                currentDiscTime = lastDiscTime;
-                currentDiscTime.addFrames(1); // We assume this section is contiguous
-                //if (debugOn) qDebug().noquote() << "F3ToF2Frames::startProcessing(): Disc time not available, setting current disc time to" << currentDiscTime.getTimeAsQString();
-            }
+            // Current section does not have a valid disc time, estimate it
+            currentDiscTime = lastDiscTime;
+            currentDiscTime.addFrames(1); // We assume this section is contiguous
+            if (debugOn) qDebug().noquote() << "F3ToF2Frames::startProcessing(): Disc time not available, setting current disc time to" << currentDiscTime.getTimeAsQString() <<
+                                               "based on last disc time of" << lastDiscTime.getTimeAsQString();
+        }
 
-            // Check that this section is one frame difference from the previous
-            qint32 sectionFrameGap = currentDiscTime.getDifference(lastDiscTime.getTime());
+        // Check that this section is one frame difference from the previous
+        qint32 sectionFrameGap = currentDiscTime.getDifference(lastDiscTime.getTime());
 
-            if (sectionFrameGap > 1) {
-                // The incoming F3 section isn't contiguous with the previous F3 section
-                // this means the C1, C2 and deinterleave buffers are full of the wrong
-                // data... so here we flush them to speed up the recovery time
-                if (debugOn) qDebug() << "F3ToF2Frames::startProcessing(): Non-contiguous F3 section with" << sectionFrameGap << "frames missing - Last disc time was" <<
-                            lastDiscTime.getTimeAsQString() << "current disc time is" << currentDiscTime.getTimeAsQString();
-                statistics.sequenceInterruptions++;
-                statistics.missingF3Frames += (sectionFrameGap - 1) * 98;
-                c1Circ.flush();
-                c2Circ.flush();
-                c2Deinterleave.flush();
+        if (sectionFrameGap > 1) {
+            // The incoming F3 section isn't contiguous with the previous F3 section
+            // this means the C1, C2 and deinterleave buffers are full of the wrong
+            // data... so here we flush them to speed up the recovery time
+            if (debugOn) qDebug() << "F3ToF2Frames::startProcessing(): Non-contiguous F3 section with" << sectionFrameGap << "frames missing - Last disc time was" <<
+                        lastDiscTime.getTimeAsQString() << "current disc time is" << currentDiscTime.getTimeAsQString();
+            statistics.sequenceInterruptions++;
+            statistics.missingF3Frames += (sectionFrameGap - 1) * 98;
+            c1Circ.flush();
+            c2Circ.flush();
+            c2Deinterleave.flush();
 
-                // Also flush the metadata as it's now out of sync
-                sectionBuffer.clear();
-            }
+            // Also flush the section metadata as it's now out of sync
+            sectionBuffer.clear();
+            sectionDiscTimes.clear();
         }
 
         // Store the current disc time as last
@@ -146,69 +152,54 @@ QVector<F2Frame> F3ToF2Frames::process(QVector<F3Frame> f3FramesIn)
                 // Get C2 results (if available)
                 QByteArray c2DataSymbols = c2Circ.getDataSymbols();
                 QByteArray c2ErrorSymbols = c2Circ.getErrorSymbols();
-                bool c2DataValid = c2Circ.getDataValid();
 
                 // Only process the F2 frames if we received data
                 if (!c2DataSymbols.isEmpty()) {
                     // Deinterleave the C2
-                    c2Deinterleave.pushC2(c2DataSymbols, c2ErrorSymbols, c2DataValid);
+                    c2Deinterleave.pushC2(c2DataSymbols, c2ErrorSymbols);
 
                     QByteArray c2DeinterleavedData = c2Deinterleave.getDataSymbols();
                     QByteArray c2DeinterleavedErrors = c2Deinterleave.getErrorSymbols();
-                    bool c2DeinterleavedDataValid = c2Deinterleave.getDataValid();
 
                     // If we have deinterleaved C2s, create an F2 frame
                     if (!c2DeinterleavedData.isEmpty()) {
                         F2Frame newF2Frame;
-                        newF2Frame.setData(c2DeinterleavedData, c2DeinterleavedErrors, c2DeinterleavedDataValid);
-                        f2FrameBuffer.append(newF2Frame);
-                    }
-                }
-            }
-        }
+                        newF2Frame.setData(c2DeinterleavedData, c2DeinterleavedErrors);
 
-        // Apply the section metadata to the available F2 frames
-        // Note: There will be 98 F2 frames to each section of metadata
-        if (f2FrameBuffer.size() >= 98) {
-            // How many sections should be processed?
-            qint32 sectionsToProcess = f2FrameBuffer.size() / 98;
+                        // Add the section metadata to the F2 Frame (each section is applied to
+                        // 98 F2 frames)
 
-            // Ensure we have enough section data to cover the waiting F2 frames
-            if (sectionsToProcess > sectionBuffer.size()) {
-                qWarning() << "F3ToF2Frames::startProcessing(): There are more waiting F2 frames than section data - This is a bug!";
-            } else {
-                qint32 currentF2Frame = 0;
-                // Apply the metadata to the F2 frames
-                for (qint32 currentSection = 0; currentSection < sectionsToProcess; currentSection++) {
-                    // Process F2 Frames for the current section
-                    for (qint32 i = 0; i < 98; i++) {
                         // Always output the disc time from the corrected local version
-                        f2FrameBuffer[currentF2Frame].setDiscTime(sectionDiscTimes[currentSection]);
+                        newF2Frame.setDiscTime(sectionDiscTimes[0]);
 
                         // Only use the real metadata if it is valid and available
-                        if (sectionBuffer[currentSection].getQMode() == 1 || sectionBuffer[currentSection].getQMode() == 4) {
-                            f2FrameBuffer[currentF2Frame].setTrackTime(sectionBuffer[currentSection].getQMetadata().qMode1And4.trackTime);
-                            f2FrameBuffer[currentF2Frame].setTrackNumber(sectionBuffer[currentSection].getQMetadata().qMode1And4.trackNumber);
-                            f2FrameBuffer[currentF2Frame].setIsEncoderRunning(sectionBuffer[currentSection].getQMetadata().qMode1And4.isEncoderRunning);
+                        if (sectionBuffer[0].getQMode() == 1 || sectionBuffer[0].getQMode() == 4) {
+                            newF2Frame.setTrackTime(sectionBuffer[0].getQMetadata().qMode1And4.trackTime);
+                            newF2Frame.setTrackNumber(sectionBuffer[0].getQMetadata().qMode1And4.trackNumber);
+                            newF2Frame.setIsEncoderRunning(sectionBuffer[0].getQMetadata().qMode1And4.isEncoderRunning);
                         } else {
                             TrackTime dummyTime;
                             dummyTime.setTime(0, 0, 0);
-                            f2FrameBuffer[currentF2Frame].setTrackTime(dummyTime);
-                            f2FrameBuffer[currentF2Frame].setTrackNumber(1);
-                            f2FrameBuffer[currentF2Frame].setIsEncoderRunning(true);
+                            newF2Frame.setTrackTime(dummyTime);
+                            newF2Frame.setTrackNumber(1);
+                            newF2Frame.setIsEncoderRunning(true);
                         }
 
-                        // Output the F2Frame to the output F2 frame buffer
-                        f2FramesOut.append(f2FrameBuffer[currentF2Frame]);
-                        statistics.totalF2Frames++;
-                        currentF2Frame++;
+                        // Add the F2 frame to our output buffer
+                        f2FrameBuffer.append(newF2Frame);
+
                     }
                 }
+            }
 
-                // Remove the consumed frames and sections
-                sectionBuffer.remove(0, sectionsToProcess);
-                sectionDiscTimes.remove(0, sectionsToProcess);
-                f2FrameBuffer.remove(0, sectionsToProcess * 98);
+            // If we have 98 F2 frames, move them to the output buffer
+            if (f2FrameBuffer.size() == 98) {
+                for (qint32 i = 0; i < 98; i++) f2FramesOut.append(f2FrameBuffer[i]);
+                statistics.totalF2Frames += 98;
+                f2FrameBuffer.clear();
+
+                sectionBuffer.removeFirst();
+                sectionDiscTimes.removeFirst();
             }
         }
     }
@@ -255,6 +246,10 @@ void F3ToF2Frames::reset(void)
     // Initialise variables to track the disc time
     initialDiscTimeSet = false;
     lastDiscTime.setTime(0, 0, 0);
+
+    f2FrameBuffer.clear();
+    sectionBuffer.clear();
+    sectionDiscTimes.clear();
 
     c1Circ.reset();
     c2Circ.reset();

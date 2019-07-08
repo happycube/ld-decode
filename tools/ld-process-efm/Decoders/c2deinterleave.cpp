@@ -26,10 +26,6 @@
 
 C2Deinterleave::C2Deinterleave()
 {
-    outputC2Data.resize(24);
-    outputC2Errors.resize(24);
-    outputC2Valid = false;
-
     reset();
 }
 
@@ -64,13 +60,12 @@ void C2Deinterleave::reportStatistics(void)
     qInfo() << " Delay buffer flushes:" << statistics.c2flushed;
 }
 
-void C2Deinterleave::pushC2(QByteArray dataSymbols, QByteArray errorSymbols, bool dataValid)
+void C2Deinterleave::pushC2(QByteArray dataSymbols, QByteArray errorSymbols)
 {
     // Create a new C2 element and append it to the C2 delay buffer
     C2Element newC2Element;
     newC2Element.c2Data = dataSymbols;
     newC2Element.c2Error = errorSymbols;
-    newC2Element.c2DataValid = dataValid;
     c2DelayBuffer.append(newC2Element);
 
     if (c2DelayBuffer.size() >= 3) {
@@ -96,21 +91,13 @@ QByteArray C2Deinterleave::getErrorSymbols(void)
     return QByteArray();
 }
 
-// Return the deinterleaved C2 data valid flag if available
-bool C2Deinterleave::getDataValid(void)
-{
-    if (c2DelayBuffer.size() >= 3) return outputC2Valid;
-    return false;
-}
-
 // Method to flush the C1 buffers
 void C2Deinterleave::flush(void)
 {
     c2DelayBuffer.clear();
 
-    outputC2Data.fill(0);
-    outputC2Errors.fill(0);
-    outputC2Valid = false;
+    outputC2Data.fill(0, 24);
+    outputC2Errors.fill(1, 24);
 
     statistics.c2flushed++;
 }
@@ -121,15 +108,6 @@ void C2Deinterleave::deinterleave(void)
     // Element 2 is the current C2, element 0 is 2 line delays behind
     qint32 curr = 2; // C2 0-frame delay
     qint32 prev = 0; // C2 2=frame delay
-
-    // Check that both required C2 symbols contain valid data
-    if (c2DelayBuffer[curr].c2DataValid && c2DelayBuffer[prev].c2DataValid) {
-        statistics.validDeinterleavedC2s++;
-        outputC2Valid = true;
-    } else {
-        statistics.invalidDeinterleavedC2s++;
-        outputC2Valid = false;
-    }
 
     // Deinterleave data
     outputC2Data[ 0] = c2DelayBuffer[curr].c2Data[ 0];
@@ -192,5 +170,14 @@ void C2Deinterleave::deinterleave(void)
     outputC2Errors[21] = c2DelayBuffer[prev].c2Error[21];
     outputC2Errors[22] = c2DelayBuffer[prev].c2Error[26];
     outputC2Errors[23] = c2DelayBuffer[prev].c2Error[27];
+
+    // Check that both required C2 symbols contain valid data
+    bool outputC2Valid = true;
+    for (qint32 i = 0; i < 23; i++) {
+        if (outputC2Errors[i] == static_cast<char>(1)) outputC2Valid = false;
+    }
+
+    if (outputC2Valid) statistics.validDeinterleavedC2s++;
+    else statistics.invalidDeinterleavedC2s++;
 }
 
