@@ -199,6 +199,7 @@ void MainWindow::resetStatistics(void)
     ui->f2_c1_invalidC1s_label->setText(tr("0"));
     ui->f2_c1_c1sCorrected_label->setText(tr("0"));
     ui->f2_c1_delayBufferFlushes_label->setText(tr("0"));
+    ui->f2_c1_errorRate_label->setText(tr("0%"));
 
     // == C2
     ui->f2_c2_totalC2sProcessed_label->setText(tr("0"));
@@ -274,6 +275,13 @@ void MainWindow::updateStatistics(void)
     ui->f2_c1_invalidC1s_label->setText(QString::number(statistics.f3ToF2Frames.c1Circ_statistics.c1Failed));
     ui->f2_c1_c1sCorrected_label->setText(QString::number(statistics.f3ToF2Frames.c1Circ_statistics.c1Corrected));
     ui->f2_c1_delayBufferFlushes_label->setText(QString::number(statistics.f3ToF2Frames.c1Circ_statistics.c1flushed));
+
+    qreal c1ErrorRate = static_cast<qreal>(statistics.f3ToF2Frames.c1Circ_statistics.c1Passed) +
+            static_cast<qreal>(statistics.f3ToF2Frames.c1Circ_statistics.c1Failed) +
+            static_cast<qreal>(statistics.f3ToF2Frames.c1Circ_statistics.c1Corrected);
+
+    c1ErrorRate = (100 / c1ErrorRate) * (statistics.f3ToF2Frames.c1Circ_statistics.c1Failed + statistics.f3ToF2Frames.c1Circ_statistics.c1Corrected);
+    ui->f2_c1_errorRate_label->setText(QString::number(c1ErrorRate) + "%");
 
     // == C2
     ui->f2_c2_totalC2sProcessed_label->setText(QString::number(statistics.f3ToF2Frames.c2Circ_statistics.c2Passed +

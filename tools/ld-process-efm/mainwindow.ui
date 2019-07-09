@@ -7,13 +7,13 @@
     <x>0</x>
     <y>0</y>
     <width>605</width>
-    <height>880</height>
+    <height>920</height>
    </rect>
   </property>
   <property name="maximumSize">
    <size>
     <width>605</width>
-    <height>880</height>
+    <height>920</height>
    </size>
   </property>
   <property name="windowTitle">
@@ -110,7 +110,7 @@
          <item>
           <widget class="QTabWidget" name="tabWidget">
            <property name="currentIndex">
-            <number>0</number>
+            <number>3</number>
            </property>
            <widget class="QWidget" name="optionsTab">
             <attribute name="title">
@@ -944,7 +944,7 @@
                <x>10</x>
                <y>180</y>
                <width>531</width>
-               <height>141</height>
+               <height>181</height>
               </rect>
              </property>
              <property name="title">
@@ -1095,12 +1095,41 @@
                <string>TextLabel</string>
               </property>
              </widget>
+             <widget class="QLabel" name="label_54">
+              <property name="geometry">
+               <rect>
+                <x>10</x>
+                <y>150</y>
+                <width>201</width>
+                <height>21</height>
+               </rect>
+              </property>
+              <property name="text">
+               <string>C1 error rate:</string>
+              </property>
+              <property name="alignment">
+               <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+              </property>
+             </widget>
+             <widget class="QLabel" name="f2_c1_errorRate_label">
+              <property name="geometry">
+               <rect>
+                <x>220</x>
+                <y>150</y>
+                <width>301</width>
+                <height>20</height>
+               </rect>
+              </property>
+              <property name="text">
+               <string>TextLabel</string>
+              </property>
+             </widget>
             </widget>
             <widget class="QGroupBox" name="groupBox_5">
              <property name="geometry">
               <rect>
                <x>10</x>
-               <y>330</y>
+               <y>370</y>
                <width>531</width>
                <height>141</height>
               </rect>
@@ -1258,7 +1287,7 @@
              <property name="geometry">
               <rect>
                <x>10</x>
-               <y>480</y>
+               <y>520</y>
                <width>531</width>
                <height>121</height>
               </rect>
