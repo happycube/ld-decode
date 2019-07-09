@@ -46,7 +46,7 @@ public:
         TrackTime sampleCurrent;
     };
 
-    QByteArray process(QVector<F2Frame> f2FramesIn);
+    QByteArray process(QVector<F2Frame> f2FramesIn, bool debugState);
     Statistics getStatistics();
     void reportStatistics();
     void reset();

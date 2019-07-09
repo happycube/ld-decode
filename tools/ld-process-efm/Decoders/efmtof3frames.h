@@ -50,7 +50,7 @@ public:
         qint64 invalidTValues;
     };
 
-    QVector<F3Frame> process(QByteArray efmDataIn);
+    QVector<F3Frame> process(QByteArray efmDataIn, bool debugState);
     Statistics getStatistics();
     void reportStatistics();
     void reset();

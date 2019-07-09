@@ -33,8 +33,10 @@ EfmToF3Frames::EfmToF3Frames()
 // Public methods -----------------------------------------------------------------------------------------------------
 
 // Main processing method
-QVector<F3Frame> EfmToF3Frames::process(QByteArray efmDataIn)
+QVector<F3Frame> EfmToF3Frames::process(QByteArray efmDataIn, bool debugState)
 {
+    debugOn = debugState;
+
     // Clear the output buffer
     f3FramesOut.clear();
 
@@ -221,7 +223,7 @@ EfmToF3Frames::StateMachine EfmToF3Frames::sm_state_findInitialSyncStage2()
 // Find the next T11+T11 sync pattern in the EFM input buffer
 EfmToF3Frames::StateMachine EfmToF3Frames::sm_state_findSecondSync()
 {
-    if (debugOn) qDebug() << "EfmToF3Frames::sm_state_findSecondSync(): Called";
+    //if (debugOn) qDebug() << "EfmToF3Frames::sm_state_findSecondSync(): Called";
 
     // Get at least 588 bits of data
     qint32 i = 0;
@@ -320,7 +322,7 @@ EfmToF3Frames::StateMachine EfmToF3Frames::sm_state_syncLost()
 // Process a completed F3 Frame
 EfmToF3Frames::StateMachine EfmToF3Frames::sm_state_processFrame()
 {
-    if (debugOn) qDebug() << "EfmToF3Frames::sm_state_processFrame(): Called";
+    //if (debugOn) qDebug() << "EfmToF3Frames::sm_state_processFrame(): Called";
 
     // Convert the T-values into a byte-stream.  The sum of T-values in every frame should be 588
     // and is padded or truncated if incorrect.

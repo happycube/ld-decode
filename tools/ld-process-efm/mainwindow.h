@@ -34,6 +34,7 @@
 #include <QTemporaryFile>
 #include <QDebug>
 
+#include "logging.h"
 #include "configuration.h"
 #include "efmprocess.h"
 #include "aboutdialog.h"
@@ -47,7 +48,7 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
-    explicit MainWindow(QWidget *parent = nullptr);
+    explicit MainWindow(bool debugOn, QWidget *parent = nullptr);
     ~MainWindow();
 
 private slots:
@@ -60,8 +61,8 @@ private slots:
     void on_decodePushButton_clicked();
     void on_cancelPushButton_clicked();
     void on_actionSave_PCM_Audio_triggered();
-
     void on_actionAbout_ld_process_efm_triggered();
+    void on_debugEnabled_checkBox_clicked();
 
 private:
     Ui::MainWindow *ui;
@@ -87,6 +88,7 @@ private:
     void loadInputEfmFile(QString filename);
 
     void resetStatistics(void);
+    void resetDecoderOptions(void);
 };
 
 #endif // MAINWINDOW_H

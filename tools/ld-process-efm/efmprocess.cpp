@@ -30,6 +30,11 @@ EfmProcess::EfmProcess(QObject *parent) : QThread(parent)
     restart = false; // Setting this to true starts processing
     cancel = false; // Setting this to true cancels the processing in progress
     abort = false; // Setting this to true ends the thread process
+
+    debug_EfmToF3Frames = false;
+    debug_F2FramesToAudio = false;
+    debug_F3ToF2Frames = false;
+    debug_SyncF3Frames = false;
 }
 
 EfmProcess::~EfmProcess()
@@ -40,6 +45,16 @@ EfmProcess::~EfmProcess()
     mutex.unlock();
 
     wait();
+}
+
+// Set the debug output flags
+void EfmProcess::setDebug(bool _debug_EfmToF3Frames, bool _debug_SyncF3Frames,
+                          bool _debug_F3ToF2Frames, bool _debug_F2FramesToAudio)
+{
+    debug_EfmToF3Frames = _debug_EfmToF3Frames;
+    debug_F2FramesToAudio = _debug_F2FramesToAudio;
+    debug_F3ToF2Frames = _debug_F3ToF2Frames;
+    debug_SyncF3Frames = _debug_SyncF3Frames;
 }
 
 // Thread handling methods --------------------------------------------------------------------------------------------
@@ -127,10 +142,10 @@ void EfmProcess::run()
             inputEfmBuffer = readEfmData();
 
             // Perform processing
-            QVector<F3Frame> initialF3Frames = efmToF3Frames.process(inputEfmBuffer);
-            QVector<F3Frame> syncedF3Frames = syncF3Frames.process(initialF3Frames);
-            QVector<F2Frame> f2Frames = f3ToF2Frames.process(syncedF3Frames);
-            audioOutputFileHandle->write(f2FramesToAudio.process(f2Frames));
+            QVector<F3Frame> initialF3Frames = efmToF3Frames.process(inputEfmBuffer, debug_EfmToF3Frames);
+            QVector<F3Frame> syncedF3Frames = syncF3Frames.process(initialF3Frames, debug_SyncF3Frames);
+            QVector<F2Frame> f2Frames = f3ToF2Frames.process(syncedF3Frames, debug_F3ToF2Frames);
+            audioOutputFileHandle->write(f2FramesToAudio.process(f2Frames, debug_F2FramesToAudio));
 
             // Report progress to parent
             qreal percent = 100 - (100.0 / static_cast<qreal>(initialInputFileSize)) * static_cast<qreal>(efmInputFileHandle->bytesAvailable());

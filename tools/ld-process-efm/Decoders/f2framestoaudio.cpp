@@ -33,8 +33,9 @@ F2FramesToAudio::F2FramesToAudio()
 // Public methods -----------------------------------------------------------------------------------------------------
 
 // Process F2 Frames into PCM audio data
-QByteArray F2FramesToAudio::process(QVector<F2Frame> f2FramesIn)
+QByteArray F2FramesToAudio::process(QVector<F2Frame> f2FramesIn, bool debugState)
 {
+    debugOn = debugState;
     QByteArray audioBufferOut;
 
     // Make sure there is something to process

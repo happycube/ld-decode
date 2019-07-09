@@ -42,7 +42,7 @@ public:
         qint32 totalSections;
     };
 
-    QVector<F3Frame> process(QVector<F3Frame> f3FramesIn);
+    QVector<F3Frame> process(QVector<F3Frame> f3FramesIn, bool debugState);
     Statistics getStatistics();
     void reportStatistics();
     void reset();

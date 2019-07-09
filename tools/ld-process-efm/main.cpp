@@ -68,7 +68,7 @@ int main(int argc, char *argv[])
     if (isDebugOn) setDebug(true); else setDebug(false);
 
     // Start the GUI application
-    MainWindow w;
+    MainWindow w(isDebugOn);
     w.show();
 
     return a.exec();

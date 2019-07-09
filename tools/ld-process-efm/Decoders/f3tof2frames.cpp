@@ -32,8 +32,9 @@ F3ToF2Frames::F3ToF2Frames()
 
 // Public methods -----------------------------------------------------------------------------------------------------
 
-QVector<F2Frame> F3ToF2Frames::process(QVector<F3Frame> f3FramesIn)
+QVector<F2Frame> F3ToF2Frames::process(QVector<F3Frame> f3FramesIn, bool debugState)
 {
+    debugOn = debugState;
     QVector<F2Frame> f2FramesOut;
 
     // Make sure there is something to process

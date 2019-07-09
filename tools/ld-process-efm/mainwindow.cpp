@@ -25,7 +25,7 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
 
-MainWindow::MainWindow(QWidget *parent) :
+MainWindow::MainWindow(bool debugOn, QWidget *parent) :
     QMainWindow(parent),
     ui(new Ui::MainWindow)
 {
@@ -51,6 +51,19 @@ MainWindow::MainWindow(QWidget *parent) :
 
     // Reset the statistics
     resetStatistics();
+
+    // Reset the decoder options
+    resetDecoderOptions();
+    if (debugOn) {
+        ui->debugEnabled_checkBox->setChecked(true);
+        ui->debug_efmToF3_checkBox->setEnabled(true);
+        ui->debug_f3Sync_checkBox->setEnabled(true);
+        ui->debug_f3ToF2_checkBox->setEnabled(true);
+        ui->debug_f2ToAudio_checkBox->setEnabled(true);
+    }
+
+    // Select the Audio tab by default
+    ui->tabWidget->setCurrentWidget(ui->audioTab);
 
     // Set up a timer for updating the statistics
     statisticsUpdateTimer = new QTimer(this);
@@ -291,6 +304,25 @@ void MainWindow::updateStatistics(void)
     ui->audio_sampleDurationSeconds_label->setText(QString::number(sampleFrameLength / 75.0));
 }
 
+// Reset decoder options
+void MainWindow::resetDecoderOptions(void)
+{
+    ui->debugEnabled_checkBox->setChecked(false);
+    ui->debug_efmToF3_checkBox->setChecked(false);
+    ui->debug_f3Sync_checkBox->setChecked(false);
+    ui->debug_f3ToF2_checkBox->setChecked(false);
+    ui->debug_f2ToAudio_checkBox->setChecked(false);
+
+    ui->debug_efmToF3_checkBox->setEnabled(false);
+    ui->debug_f3Sync_checkBox->setEnabled(false);
+    ui->debug_f3ToF2_checkBox->setEnabled(false);
+    ui->debug_f2ToAudio_checkBox->setEnabled(false);
+
+    ui->audio_conceal_radioButton->setChecked(true);
+    ui->audio_silence_radioButton->setChecked(false);
+    ui->audio_passthrough_radioButton->setChecked(false);
+}
+
 // GUI action slots ---------------------------------------------------------------------------------------------------
 
 void MainWindow::on_actionOpen_EFM_File_triggered()
@@ -403,6 +435,10 @@ void MainWindow::on_decodePushButton_clicked()
     // Update the GUI
     guiEfmProcessingStart();
 
+    // Set the debug states
+    efmProcess.setDebug(ui->debug_efmToF3_checkBox->isChecked(), ui->debug_f3Sync_checkBox->isChecked(),
+                        ui->debug_f3ToF2_checkBox->isChecked(), ui->debug_f2ToAudio_checkBox->isChecked());
+
     // Start the processing of the EFM
     efmProcess.startProcessing(&inputEfmFileHandle, &audioOutputTemporaryFileHandle,
                                &dataOutputTemporaryFileHandle);
@@ -416,6 +452,23 @@ void MainWindow::on_cancelPushButton_clicked()
 
     // Update the GUI
     guiEfmProcessingStop();
+}
+
+void MainWindow::on_debugEnabled_checkBox_clicked()
+{
+    if (ui->debugEnabled_checkBox->isChecked()) {
+        ui->debug_efmToF3_checkBox->setEnabled(true);
+        ui->debug_f3Sync_checkBox->setEnabled(true);
+        ui->debug_f3ToF2_checkBox->setEnabled(true);
+        ui->debug_f2ToAudio_checkBox->setEnabled(true);
+        setDebug(true);
+    } else {
+        ui->debug_efmToF3_checkBox->setEnabled(false);
+        ui->debug_f3Sync_checkBox->setEnabled(false);
+        ui->debug_f3ToF2_checkBox->setEnabled(false);
+        ui->debug_f2ToAudio_checkBox->setEnabled(false);
+        setDebug(false);
+    }
 }
 
 // Local signal handling methods --------------------------------------------------------------------------------------
@@ -490,4 +543,6 @@ void MainWindow::loadInputEfmFile(QString filename)
     guiEfmFileLoaded();
     inputFileHandle.close();
 }
+
+
 

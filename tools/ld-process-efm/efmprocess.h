@@ -53,6 +53,8 @@ public:
         F2FramesToAudio::Statistics f2FramesToAudio;
     };
 
+    void setDebug(bool _debug_EfmToF3Frames, bool _debug_SyncF3Frames,
+                              bool _debug_F3ToF2Frames, bool _debug_F2FramesToAudio);
     void startProcessing(QFile *_inputFilename, QFile *_audioOutputFilename, QFile *_dataOutputFilename);
     void stopProcessing();
     void quit();
@@ -73,6 +75,12 @@ private:
     bool restart;
     bool cancel;
     bool abort;
+
+    // Debug
+    bool debug_EfmToF3Frames;
+    bool debug_F2FramesToAudio;
+    bool debug_F3ToF2Frames;
+    bool debug_SyncF3Frames;
 
     // Class globals
     EfmToF3Frames efmToF3Frames;

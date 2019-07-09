@@ -57,7 +57,7 @@ public:
         qint32 missingF3Frames;
     };
 
-    QVector<F2Frame> process(QVector<F3Frame> f3FramesIn);
+    QVector<F2Frame> process(QVector<F3Frame> f3FramesIn, bool debugState);
     Statistics getStatistics(void);
     void reportStatistics(void);
     void reset(void);

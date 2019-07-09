@@ -110,8 +110,146 @@
          <item>
           <widget class="QTabWidget" name="tabWidget">
            <property name="currentIndex">
-            <number>3</number>
+            <number>0</number>
            </property>
+           <widget class="QWidget" name="optionsTab">
+            <attribute name="title">
+             <string>Options</string>
+            </attribute>
+            <widget class="QGroupBox" name="groupBox_13">
+             <property name="geometry">
+              <rect>
+               <x>10</x>
+               <y>10</y>
+               <width>531</width>
+               <height>101</height>
+              </rect>
+             </property>
+             <property name="title">
+              <string>Audio:</string>
+             </property>
+             <widget class="QRadioButton" name="audio_silence_radioButton">
+              <property name="geometry">
+               <rect>
+                <x>10</x>
+                <y>50</y>
+                <width>511</width>
+                <height>23</height>
+               </rect>
+              </property>
+              <property name="text">
+               <string>Silence corrupt audio data</string>
+              </property>
+             </widget>
+             <widget class="QRadioButton" name="audio_conceal_radioButton">
+              <property name="geometry">
+               <rect>
+                <x>10</x>
+                <y>30</y>
+                <width>511</width>
+                <height>23</height>
+               </rect>
+              </property>
+              <property name="text">
+               <string>Conceal corrupt audio data</string>
+              </property>
+              <property name="checked">
+               <bool>true</bool>
+              </property>
+             </widget>
+             <widget class="QRadioButton" name="audio_passthrough_radioButton">
+              <property name="geometry">
+               <rect>
+                <x>10</x>
+                <y>70</y>
+                <width>511</width>
+                <height>23</height>
+               </rect>
+              </property>
+              <property name="text">
+               <string>Pass-through corrupt audio data</string>
+              </property>
+             </widget>
+            </widget>
+            <widget class="QGroupBox" name="groupBox_14">
+             <property name="geometry">
+              <rect>
+               <x>10</x>
+               <y>120</y>
+               <width>531</width>
+               <height>141</height>
+              </rect>
+             </property>
+             <property name="title">
+              <string>Development:</string>
+             </property>
+             <widget class="QCheckBox" name="debugEnabled_checkBox">
+              <property name="geometry">
+               <rect>
+                <x>10</x>
+                <y>30</y>
+                <width>511</width>
+                <height>23</height>
+               </rect>
+              </property>
+              <property name="text">
+               <string>Debug output enabled</string>
+              </property>
+             </widget>
+             <widget class="QCheckBox" name="debug_efmToF3_checkBox">
+              <property name="geometry">
+               <rect>
+                <x>30</x>
+                <y>50</y>
+                <width>491</width>
+                <height>23</height>
+               </rect>
+              </property>
+              <property name="text">
+               <string>EFM to F3 Frame debug</string>
+              </property>
+             </widget>
+             <widget class="QCheckBox" name="debug_f3Sync_checkBox">
+              <property name="geometry">
+               <rect>
+                <x>30</x>
+                <y>70</y>
+                <width>491</width>
+                <height>23</height>
+               </rect>
+              </property>
+              <property name="text">
+               <string>F3 and section sync debug</string>
+              </property>
+             </widget>
+             <widget class="QCheckBox" name="debug_f3ToF2_checkBox">
+              <property name="geometry">
+               <rect>
+                <x>30</x>
+                <y>90</y>
+                <width>491</width>
+                <height>23</height>
+               </rect>
+              </property>
+              <property name="text">
+               <string>F3 to F2 Frame decoding debug</string>
+              </property>
+             </widget>
+             <widget class="QCheckBox" name="debug_f2ToAudio_checkBox">
+              <property name="geometry">
+               <rect>
+                <x>30</x>
+                <y>110</y>
+                <width>491</width>
+                <height>23</height>
+               </rect>
+              </property>
+              <property name="text">
+               <string>F2 Frame to audio samples debug</string>
+              </property>
+             </widget>
+            </widget>
+           </widget>
            <widget class="QWidget" name="efmTab">
             <attribute name="title">
              <string>EFM</string>

@@ -45,8 +45,10 @@ SyncF3Frames::SyncF3Frames()
 // Public methods -----------------------------------------------------------------------------------------------------
 
 // Main processing method
-QVector<F3Frame> SyncF3Frames::process(QVector<F3Frame> f3FramesIn)
+QVector<F3Frame> SyncF3Frames::process(QVector<F3Frame> f3FramesIn, bool debugState)
 {
+    debugOn = debugState;
+
     // Clear the output buffer
     f3FramesOut.clear();
 
@@ -129,7 +131,7 @@ void SyncF3Frames::clearStatistics()
 // Initial state machine state
 SyncF3Frames::StateMachine SyncF3Frames::sm_state_initial()
 {
-    //if (debugOn) qDebug() << "SyncF3Frames::sm_state_initial(): Called";
+    if (debugOn) qDebug() << "SyncF3Frames::sm_state_initial(): Called";
     return state_findInitialSync0;
 }
 
@@ -141,7 +143,6 @@ SyncF3Frames::StateMachine SyncF3Frames::sm_state_findInitialSync0()
     qint32 i = 0;
     for (i = 0; i < f3FrameBuffer.size() - 1; i++) {
         if (f3FrameBuffer[i].isSubcodeSync0() || f3FrameBuffer[i+1].isSubcodeSync1()) break;
-
     }
 
     // Did we find a sync0 or sync1?
