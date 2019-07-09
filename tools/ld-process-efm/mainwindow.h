@@ -50,8 +50,11 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
-    explicit MainWindow(bool debugOn, QWidget *parent = nullptr);
+    explicit MainWindow(bool debugOn, bool _nonInteractive, QString _outputAudioFilename, QWidget *parent = nullptr);
     ~MainWindow();
+
+    bool loadInputEfmFile(QString filename);
+    void startDecodeNonInteractive();
 
 private slots:
     void processingCompleteSignalHandler(bool audioAvailable, bool dataAvailable);
@@ -81,13 +84,14 @@ private:
     QTemporaryFile audioOutputTemporaryFileHandle;
     QTemporaryFile dataOutputTemporaryFileHandle;
     QTimer *statisticsUpdateTimer;
+    bool nonInteractive;
+    QString outputAudioFilename;
 
     // Method prototypes
     void guiNoEfmFileLoaded(void);
     void guiEfmFileLoaded(void);
     void guiEfmProcessingStop(void);
     void guiEfmProcessingStart(void);
-    void loadInputEfmFile(QString filename);
 
     void resetStatistics(void);
     void resetDecoderOptions(void);

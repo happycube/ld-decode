@@ -75,6 +75,15 @@ void EfmProcess::setAudioErrorTreatment(F2FramesToAudio::ErrorTreatment _errorTr
     }
 }
 
+// Output the result of the decode to qInfo
+void EfmProcess::reportStatistics()
+{
+    efmToF3Frames.reportStatistics();
+    syncF3Frames.reportStatistics();
+    f3ToF2Frames.reportStatistics();
+    f2FramesToAudio.reportStatistics();
+}
+
 // Thread handling methods --------------------------------------------------------------------------------------------
 
 // Start processing the input EFM file
@@ -178,12 +187,6 @@ void EfmProcess::run()
 
         // Processing complete
         emit processingComplete(audioAvailable, dataAvailable);
-
-        // Output the result of the decode to qInfo
-        efmToF3Frames.reportStatistics();
-        syncF3Frames.reportStatistics();
-        f3ToF2Frames.reportStatistics();
-        f2FramesToAudio.reportStatistics();
 
         // Sleep the thread until we are restarted
         mutex.lock();

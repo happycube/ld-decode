@@ -56,6 +56,7 @@ public:
     void setDebug(bool _debug_EfmToF3Frames, bool _debug_SyncF3Frames,
                               bool _debug_F3ToF2Frames, bool _debug_F2FramesToAudio);
     void setAudioErrorTreatment(F2FramesToAudio::ErrorTreatment _errorTreatment);
+    void reportStatistics();
     void startProcessing(QFile *_inputFilename, QFile *_audioOutputFilename, QFile *_dataOutputFilename);
     void stopProcessing();
     void quit();

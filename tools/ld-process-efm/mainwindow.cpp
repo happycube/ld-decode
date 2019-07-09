@@ -25,10 +25,13 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
 
-MainWindow::MainWindow(bool debugOn, QWidget *parent) :
+MainWindow::MainWindow(bool debugOn, bool _nonInteractive, QString _outputAudioFilename, QWidget *parent) :
     QMainWindow(parent),
     ui(new Ui::MainWindow)
 {
+    nonInteractive = _nonInteractive;
+    outputAudioFilename = _outputAudioFilename;
+
     // Initialise the GUI
     ui->setupUi(this);
 
@@ -85,6 +88,11 @@ MainWindow::~MainWindow()
     configuration->writeConfiguration();
 
     delete ui;
+}
+
+void MainWindow::startDecodeNonInteractive()
+{
+    on_decodePushButton_clicked();
 }
 
 // GUI update methods -------------------------------------------------------------------------------------------------
@@ -430,7 +438,7 @@ void MainWindow::on_decodePushButton_clicked()
 
     // Open temporary file for audio data
     audioOutputTemporaryFileHandle.close();
-    audioOutputTemporaryFileHandle.remove();
+    if (audioOutputTemporaryFileHandle.exists()) audioOutputTemporaryFileHandle.remove();
     if (!audioOutputTemporaryFileHandle.open()) {
         // Failed to open file
         qFatal("Could not open audio output temporary file - this is fatal!");
@@ -440,7 +448,7 @@ void MainWindow::on_decodePushButton_clicked()
 
     // Open temporary file for data
     dataOutputTemporaryFileHandle.close();
-    dataOutputTemporaryFileHandle.remove();
+    if (dataOutputTemporaryFileHandle.exists()) dataOutputTemporaryFileHandle.remove();
     if (!dataOutputTemporaryFileHandle.open()) {
         // Failed to open file
         qFatal("Could not open data output temporary file - this is fatal!");
@@ -500,7 +508,29 @@ void MainWindow::processingCompleteSignalHandler(bool audioAvailable, bool dataA
     if (audioAvailable) {
         qDebug() << "MainWindow::processingCompleteSignalHandler(): Processing complete - audio available";
         ui->actionSave_PCM_Audio->setEnabled(true);
+
+        // If in non-Interactive mode, autosave
+        if (nonInteractive) {
+            // Save the audio as PCM
+            qInfo() << "Saving audio as" << outputAudioFilename;
+
+            // Check if filename exists (and remove the file if it does)
+            if (QFile::exists(outputAudioFilename)) QFile::remove(outputAudioFilename);
+            if (QFile::exists(outputAudioFilename + tr(".json"))) QFile::remove(outputAudioFilename + tr(".json"));
+
+            // Copy the audio data from the temporary file to the destination
+            if (!audioOutputTemporaryFileHandle.copy(outputAudioFilename)) {
+                qWarning() << "MainWindow::processingCompleteSignalHandler(): Failed to save file as" << outputAudioFilename;
+            }
+
+            // Report the decode statistics
+            efmProcess.reportStatistics();
+
+            // Quit the application
+            qApp->quit();
+        } else efmProcess.reportStatistics();
     }
+
     if (dataAvailable) qDebug() << "MainWindow::processingCompleteSignalHandler(): Processing complete - data available";
 
     // Update the GUI
@@ -511,13 +541,14 @@ void MainWindow::processingCompleteSignalHandler(bool audioAvailable, bool dataA
 void MainWindow::percentProcessedSignalHandler(qint32 percent)
 {
     ui->progressBar->setValue(percent);
+    if (nonInteractive) qInfo().nospace() << "Processing at " << percent << "%";
 }
 
 
 // Miscellaneous methods ----------------------------------------------------------------------------------------------
 
 // Load an EFM file
-void MainWindow::loadInputEfmFile(QString filename)
+bool MainWindow::loadInputEfmFile(QString filename)
 {
     // Open the EFM input file and verify the contents
 
@@ -528,10 +559,11 @@ void MainWindow::loadInputEfmFile(QString filename)
         QMessageBox messageBox;
         messageBox.critical(this, "Error", "Could not open the EFM input file!");
         messageBox.setFixedSize(500, 200);
+        qWarning() << "Could not load input EFM file!";
 
         guiNoEfmFileLoaded();
         inputFileHandle.close();
-        return;
+        return false;
     }
 
     if (inputFileHandle.bytesAvailable() == 0) {
@@ -539,10 +571,11 @@ void MainWindow::loadInputEfmFile(QString filename)
         QMessageBox messageBox;
         messageBox.critical(this, "Error", "Input EFM file is empty!");
         messageBox.setFixedSize(500, 200);
+        qWarning() << "EFM input file is empty!";
 
         guiNoEfmFileLoaded();
         inputFileHandle.close();
-        return;
+        return false;
     }
 
     // Update the GUI to the no EFM file loaded state
@@ -561,8 +594,12 @@ void MainWindow::loadInputEfmFile(QString filename)
     currentInputEfmFileAndPath = filename;
     qDebug() << "MainWindow::on_actionOpen_TBC_file_triggered(): Set current file name to to:" << currentInputEfmFileAndPath;
 
+    if (nonInteractive) qInfo() << "Processing EFM file:" << currentInputEfmFileAndPath;
+
     guiEfmFileLoaded();
     inputFileHandle.close();
+
+    return true;
 }
 
 
