@@ -35,6 +35,13 @@ class F2FramesToAudio
 public:
     F2FramesToAudio();
 
+    // Options for the treatment of audio errors
+    enum ErrorTreatment {
+        conceal,
+        silence,
+        passThrough
+    };
+
     // Statistics
     struct Statistics {
         qint32 totalSamples;
@@ -46,7 +53,7 @@ public:
         TrackTime sampleCurrent;
     };
 
-    QByteArray process(QVector<F2Frame> f2FramesIn, bool debugState);
+    QByteArray process(QVector<F2Frame> f2FramesIn, ErrorTreatment _errorTreatment, bool debugState);
     Statistics getStatistics();
     void reportStatistics();
     void reset();
@@ -55,8 +62,25 @@ private:
     bool debugOn;
     Statistics statistics;
 
-    bool initialDiscTimeSet;
+    // State-machine variables
+    enum StateMachine {
+        state_initial,
+        state_getInitialDiscTime,
+        state_processSection
+    };
+
+    StateMachine currentState;
+    StateMachine nextState;
+    QVector<F2Frame> f2FrameBuffer;
+    QByteArray audioBufferOut;
+    bool waitingForData;
+    ErrorTreatment errorTreatment;
     TrackTime lastDiscTime;
+
+    StateMachine sm_state_initial();
+    StateMachine sm_state_getInitialDiscTime();
+    StateMachine sm_state_bufferF2Frames();
+    StateMachine sm_state_processSection();
 
     void clearStatistics();
 };

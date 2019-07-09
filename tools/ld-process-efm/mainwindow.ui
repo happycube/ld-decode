@@ -116,7 +116,7 @@
             <attribute name="title">
              <string>Options</string>
             </attribute>
-            <widget class="QGroupBox" name="groupBox_13">
+            <widget class="QGroupBox" name="options_audio_groupBox">
              <property name="geometry">
               <rect>
                <x>10</x>
@@ -171,7 +171,7 @@
               </property>
              </widget>
             </widget>
-            <widget class="QGroupBox" name="groupBox_14">
+            <widget class="QGroupBox" name="options_development_groupBox">
              <property name="geometry">
               <rect>
                <x>10</x>

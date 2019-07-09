@@ -39,6 +39,8 @@
 #include "efmprocess.h"
 #include "aboutdialog.h"
 
+#include "Decoders/f2framestoaudio.h"
+
 namespace Ui {
 class MainWindow;
 }

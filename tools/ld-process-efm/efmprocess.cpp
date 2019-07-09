@@ -57,6 +57,24 @@ void EfmProcess::setDebug(bool _debug_EfmToF3Frames, bool _debug_SyncF3Frames,
     debug_SyncF3Frames = _debug_SyncF3Frames;
 }
 
+// Set the audio error treatment type
+void EfmProcess::setAudioErrorTreatment(F2FramesToAudio::ErrorTreatment _errorTreatment)
+{
+    errorTreatment = _errorTreatment;
+
+    switch (errorTreatment) {
+    case F2FramesToAudio::ErrorTreatment::conceal:
+        qDebug() << "EfmProcess::setAudioErrorTreatment(): Audio error treatment set to conceal";
+        break;
+    case F2FramesToAudio::ErrorTreatment::silence:
+        qDebug() << "EfmProcess::setAudioErrorTreatment(): Audio error treatment set to silence";
+        break;
+    case F2FramesToAudio::ErrorTreatment::passThrough:
+        qDebug() << "EfmProcess::setAudioErrorTreatment(): Audio error treatment set to pass-through";
+        break;
+    }
+}
+
 // Thread handling methods --------------------------------------------------------------------------------------------
 
 // Start processing the input EFM file
@@ -145,7 +163,7 @@ void EfmProcess::run()
             QVector<F3Frame> initialF3Frames = efmToF3Frames.process(inputEfmBuffer, debug_EfmToF3Frames);
             QVector<F3Frame> syncedF3Frames = syncF3Frames.process(initialF3Frames, debug_SyncF3Frames);
             QVector<F2Frame> f2Frames = f3ToF2Frames.process(syncedF3Frames, debug_F3ToF2Frames);
-            audioOutputFileHandle->write(f2FramesToAudio.process(f2Frames, debug_F2FramesToAudio));
+            audioOutputFileHandle->write(f2FramesToAudio.process(f2Frames, errorTreatment, debug_F2FramesToAudio));
 
             // Report progress to parent
             qreal percent = 100 - (100.0 / static_cast<qreal>(initialInputFileSize)) * static_cast<qreal>(efmInputFileHandle->bytesAvailable());

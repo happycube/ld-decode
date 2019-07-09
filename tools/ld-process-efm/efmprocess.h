@@ -55,6 +55,7 @@ public:
 
     void setDebug(bool _debug_EfmToF3Frames, bool _debug_SyncF3Frames,
                               bool _debug_F3ToF2Frames, bool _debug_F2FramesToAudio);
+    void setAudioErrorTreatment(F2FramesToAudio::ErrorTreatment _errorTreatment);
     void startProcessing(QFile *_inputFilename, QFile *_audioOutputFilename, QFile *_dataOutputFilename);
     void stopProcessing();
     void quit();
@@ -81,6 +82,9 @@ private:
     bool debug_F2FramesToAudio;
     bool debug_F3ToF2Frames;
     bool debug_SyncF3Frames;
+
+    // Audio options
+    F2FramesToAudio::ErrorTreatment errorTreatment;
 
     // Class globals
     EfmToF3Frames efmToF3Frames;

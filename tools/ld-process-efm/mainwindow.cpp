@@ -132,6 +132,10 @@ void MainWindow::guiEfmProcessingStart(void)
     ui->actionSave_PCM_Audio->setEnabled(false);
     ui->decodePushButton->setEnabled(false);
     ui->cancelPushButton->setEnabled(true);
+
+    // Disable changing of options
+    ui->options_audio_groupBox->setEnabled(false);
+    ui->options_development_groupBox->setEnabled(false);
 }
 
 // Stop processing the EFM file GUI update
@@ -141,9 +145,13 @@ void MainWindow::guiEfmProcessingStop(void)
     updateStatistics();
 
     ui->actionOpen_EFM_File->setEnabled(true);
-    // Don't set the save audio here, it's set by the signal handler
+    // Note: Don't set the save audio here, it's set by the signal handler
     ui->decodePushButton->setEnabled(true);
     ui->cancelPushButton->setEnabled(false);
+
+    // Allow changing of options
+    ui->options_audio_groupBox->setEnabled(true);
+    ui->options_development_groupBox->setEnabled(true);
 }
 
 // Reset statistics
@@ -438,6 +446,11 @@ void MainWindow::on_decodePushButton_clicked()
     // Set the debug states
     efmProcess.setDebug(ui->debug_efmToF3_checkBox->isChecked(), ui->debug_f3Sync_checkBox->isChecked(),
                         ui->debug_f3ToF2_checkBox->isChecked(), ui->debug_f2ToAudio_checkBox->isChecked());
+
+    // Set the audio error treatment option
+    if (ui->audio_conceal_radioButton->isChecked()) efmProcess.setAudioErrorTreatment(F2FramesToAudio::ErrorTreatment::conceal);
+    if (ui->audio_silence_radioButton->isChecked()) efmProcess.setAudioErrorTreatment(F2FramesToAudio::ErrorTreatment::silence);
+    if (ui->audio_passthrough_radioButton->isChecked()) efmProcess.setAudioErrorTreatment(F2FramesToAudio::ErrorTreatment::passThrough);
 
     // Start the processing of the EFM
     efmProcess.startProcessing(&inputEfmFileHandle, &audioOutputTemporaryFileHandle,
