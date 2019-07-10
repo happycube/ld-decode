@@ -157,7 +157,7 @@ EfmToF3Frames::StateMachine EfmToF3Frames::sm_state_findInitialSyncStage1()
         if (debugOn) qDebug() << "EfmToF3Frames::sm_state_findInitialSyncStage1(): No initial F3 sync found in EFM buffer, requesting more data";
 
         // Discard the EFM already tested and try again
-        removeEfmData(efmDataBuffer.size() - 1);
+        efmDataBuffer.remove(0, efmDataBuffer.size() - 1);
 
         waitingForData = true;
         return state_findInitialSyncStage1;
@@ -166,7 +166,7 @@ EfmToF3Frames::StateMachine EfmToF3Frames::sm_state_findInitialSyncStage1()
     if (debugOn) qDebug() << "EfmToF3Frames::sm_state_findInitialSyncStage1(): Initial F3 sync found at buffer position" << startSyncTransition;
 
     // Discard all EFM data up to the sync start
-    removeEfmData(startSyncTransition);
+    efmDataBuffer.remove(0, startSyncTransition);
 
     // Move to find initial sync stage 2
     return state_findInitialSyncStage2;
@@ -199,7 +199,7 @@ EfmToF3Frames::StateMachine EfmToF3Frames::sm_state_findInitialSyncStage2()
 
     if (tTotal > searchLength) {
         if (debugOn) qDebug() << "EfmToF3Frames::sm_state_findInitialSyncStage2(): No second F3 sync found within a reasonable length, going back to look for new initial sync.  T =" << tTotal;
-        removeEfmData(endSyncTransition);
+        efmDataBuffer.remove(0, endSyncTransition);
         return state_findInitialSyncStage1;
     }
 
@@ -211,7 +211,7 @@ EfmToF3Frames::StateMachine EfmToF3Frames::sm_state_findInitialSyncStage2()
     // Is the frame length valid (or close enough)?
     if (tTotal < 587 || tTotal > 589) {
         // Discard the transitions already tested and try again
-        removeEfmData(endSyncTransition);
+        efmDataBuffer.remove(0, endSyncTransition);
         return state_findInitialSyncStage2;
     }
 
@@ -359,19 +359,9 @@ EfmToF3Frames::StateMachine EfmToF3Frames::sm_state_processFrame()
     f3FramesOut.append(f3Frame);
 
     // Discard all transitions up to the sync end
-    removeEfmData(endSyncTransition);
+    efmDataBuffer.remove(0, endSyncTransition);
 
     // Find the next sync position
     return state_findSecondSync;
 }
 
-// Method to remove EFM data from the start of the buffer
-void EfmToF3Frames::removeEfmData(qint32 number)
-{
-    if (number > efmDataBuffer.size()) {
-        efmDataBuffer.clear();
-    } else {
-        // Shift the byte array back by 'number' elements
-        efmDataBuffer.remove(0, number);
-    }
-}

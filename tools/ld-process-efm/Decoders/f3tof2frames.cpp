@@ -52,16 +52,16 @@ QVector<F2Frame> F3ToF2Frames::process(QVector<F3Frame> f3FramesIn, bool debugSt
     while (!f3FramesIn.isEmpty()) {
         // Input data must be available in sections of 98 F3 frames, synchronised with a section
         // read in the 98 F3 Frames
-        QVector<F3Frame> f3FrameBuffer;
+        F3Frame f3FrameBuffer[98];
         F3Frame f3Frame;
-        QByteArray sectionData;
+        uchar sectionData[98];
         for (qint32 i = 0; i < 98; i++) {
             // Get the incoming F3 frame and place it in the F3 frame buffer
-            f3FrameBuffer.append(f3FramesIn[i]);
+            f3FrameBuffer[i] = f3FramesIn[i];
             statistics.totalF3Frames++;
 
             // Collect the 98 subcode data symbols
-            sectionData.append(static_cast<char>(f3FrameBuffer[i].getSubcodeSymbol()));
+            sectionData[i] = f3FrameBuffer[i].getSubcodeSymbol();
         }
 
         // Remove the consumed F3 frames from the input buffer

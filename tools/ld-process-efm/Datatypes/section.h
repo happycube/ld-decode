@@ -67,7 +67,7 @@ public:
         QMode2 qMode2;
     };
 
-    bool setData(QByteArray dataIn);
+    bool setData(uchar* dataIn);
     qint32 getQMode(void);
     QMetadata getQMetadata(void);
 

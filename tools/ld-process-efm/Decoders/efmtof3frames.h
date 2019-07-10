@@ -86,8 +86,6 @@ private:
     StateMachine sm_state_findSecondSync();
     StateMachine sm_state_syncLost();
     StateMachine sm_state_processFrame();
-
-    void removeEfmData(qint32 number);
 };
 
 #endif // EFMTOF3FRAMES_H

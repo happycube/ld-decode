@@ -52,12 +52,6 @@ void F3Frame::setTValues(QVector<qint32> tValuesIn)
         return;
     }
 
-    // Range check the incoming T Values
-    for (qint32 i = 0; i < tValuesIn.size(); i++) {
-        if (tValuesIn[i] < 3) tValuesIn[i] = 3;
-        if (tValuesIn[i] > 11) tValuesIn[i] = 11;
-    }
-
     // Now perform the conversion
     // Step 1:
 
@@ -68,9 +62,11 @@ void F3Frame::setTValues(QVector<qint32> tValuesIn)
     qint32 bytePosition = 0;
     uchar byteData = 0;
 
-    for (qint32 tPosition = 0; tPosition < tValuesIn.size(); tPosition++) {
-        //qDebug() << "tValuesIn.size() =" << tValuesIn.size() << "tPosition =" << tPosition;
-        for (qint32 bitCount = 0; bitCount < tValuesIn[tPosition]; bitCount++) {
+    qint32 tValuesSize = tValuesIn.size();
+    bool finished = false;
+    for (qint32 tPosition = 0; tPosition < tValuesSize; tPosition++) {
+        qint32 tValuesIn_tPosition = tValuesIn[tPosition];
+        for (qint32 bitCount = 0; bitCount < tValuesIn_tPosition; bitCount++) {
             if (bitCount == 0) byteData |= (1 << bitPosition);
             bitPosition--;
 
@@ -82,18 +78,15 @@ void F3Frame::setTValues(QVector<qint32> tValuesIn)
 
                 // Check for overflow (due to errors in the T values) and stop processing to prevent crashes
                 if (bytePosition > 73) {
+                    finished = true;
                     break;
                 }
             }
 
-            if (bytePosition > 73) {
-                break;
-            }
+            if (finished) break;
         }
 
-        if (bytePosition > 73) {
-            break;
-        }
+        if (finished) break;
     }
 
     // Add in the last nybble to get from 73.5 to 74 bytes
@@ -111,8 +104,8 @@ void F3Frame::setTValues(QVector<qint32> tValuesIn)
     // 32 * (14 + 3) data+parity               = 544
     //                                   total = 588 bits
 
-    qint32 efmValues[33];
-    qint32 currentBit = 0;
+    qint16 efmValues[33];
+    qint16 currentBit = 0;
 
     // Ignore the sync pattern (which is 24 bits plus 3 merging bits)
     currentBit += 24 + 3;
@@ -190,28 +183,26 @@ bool F3Frame::isSubcodeSync1(void)
 
 // Method to translate 14-bit EFM value into 8-bit byte
 // Returns -1 if the EFM value is invalid
-qint32 F3Frame::translateEfm(qint32 efmValue)
+qint16 F3Frame::translateEfm(qint16 efmValue)
 {
-    qint32 result = -1;
-
-    for (qint32 lutPos = 0; lutPos < 256; lutPos++) {
-        if (efm2numberLUT[lutPos] == efmValue) {
-            result = lutPos;
-            break;
-        }
+    qint16 result = -1;
+    qint16 lutPos = 0;
+    while (result == -1 && lutPos < 256) {
+        if (efm2numberLUT[lutPos] == efmValue) result = lutPos;
+        lutPos++;
     }
 
     return result;
 }
 
-// Method to get 'width' bits (max 31) from a byte array starting from bit 'bitIndex'
-qint32 F3Frame::getBits(uchar *rawData, qint32 bitIndex, qint32 width)
+// Method to get 'width' bits (max 15) from a byte array starting from bit 'bitIndex'
+inline qint16 F3Frame::getBits(uchar *rawData, qint16 bitIndex, qint16 width)
 {
-    qint32 byteIndex = bitIndex / 8;
-    qint32 bitInByteIndex = 7 - (bitIndex % 8);
+    qint16 byteIndex = bitIndex / 8;
+    qint16 bitInByteIndex = 7 - (bitIndex % 8);
 
-    qint32 result = 0;
-    for (qint32 nBits = width - 1; nBits > -1; nBits--) {
+    qint16 result = 0;
+    for (qint16 nBits = width - 1; nBits > -1; nBits--) {
         if (rawData[byteIndex] & (1 << bitInByteIndex)) result += (1 << nBits);
 
         bitInByteIndex--;
