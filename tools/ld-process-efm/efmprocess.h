@@ -37,6 +37,7 @@
 #include "Decoders/syncf3frames.h"
 #include "Decoders/f3tof2frames.h"
 #include "Decoders/f2framestoaudio.h"
+#include "Decoders/audiosampleframestopcm.h"
 
 class EfmProcess : public QThread
 {
@@ -54,8 +55,8 @@ public:
     };
 
     void setDebug(bool _debug_EfmToF3Frames, bool _debug_SyncF3Frames,
-                              bool _debug_F3ToF2Frames, bool _debug_F2FramesToAudio);
-    void setAudioErrorTreatment(F2FramesToAudio::ErrorTreatment _errorTreatment);
+                              bool _debug_F3ToF2Frames, bool _debug_F2FramesToAudio, bool _debug_AudioSampleFramesToPcm);
+    void setAudioErrorTreatment(AudioSampleFramesToPcm::ErrorTreatment _errorTreatment);
     void reportStatistics();
     void startProcessing(QFile *_inputFilename, QFile *_audioOutputFilename, QFile *_dataOutputFilename);
     void stopProcessing();
@@ -83,15 +84,17 @@ private:
     bool debug_F2FramesToAudio;
     bool debug_F3ToF2Frames;
     bool debug_SyncF3Frames;
+    bool debug_AudioSampleFramesToPcm;
 
     // Audio options
-    F2FramesToAudio::ErrorTreatment errorTreatment;
+    AudioSampleFramesToPcm::ErrorTreatment errorTreatment;
 
     // Class globals
     EfmToF3Frames efmToF3Frames;
     SyncF3Frames syncF3Frames;
     F3ToF2Frames f3ToF2Frames;
     F2FramesToAudio f2FramesToAudio;
+    AudioSampleFramesToPcm audioSampleFramesToPcm;
 
     Statistics statistics;
 

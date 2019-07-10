@@ -179,9 +179,7 @@ QVector<F2Frame> F3ToF2Frames::process(QVector<F3Frame> f3FramesIn, bool debugSt
                             newF2Frame.setTrackNumber(sectionBuffer[0].getQMetadata().qMode1And4.trackNumber);
                             newF2Frame.setIsEncoderRunning(sectionBuffer[0].getQMetadata().qMode1And4.isEncoderRunning);
                         } else {
-                            TrackTime dummyTime;
-                            dummyTime.setTime(0, 0, 0);
-                            newF2Frame.setTrackTime(dummyTime);
+                            newF2Frame.setTrackTime(TrackTime(0, 0, 0));
                             newF2Frame.setTrackNumber(1);
                             newF2Frame.setIsEncoderRunning(true);
                         }

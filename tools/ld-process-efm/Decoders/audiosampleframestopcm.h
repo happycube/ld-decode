@@ -1,6 +1,6 @@
 /************************************************************************
 
-    f2frame.h
+    audiosampleframestopcm.h
 
     ld-process-efm - EFM data decoder
     Copyright (C) 2019 Simon Inns
@@ -22,41 +22,30 @@
 
 ************************************************************************/
 
-#ifndef F2FRAME_H
-#define F2FRAME_H
+#ifndef AUDIOSAMPLEFRAMESTOPCM_H
+#define AUDIOSAMPLEFRAMESTOPCM_H
 
 #include <QCoreApplication>
 #include <QDebug>
 
-#include "Datatypes/f3frame.h"
-#include "Datatypes/tracktime.h"
+#include "Datatypes/audiosampleframe.h"
 
-class F2Frame
+class AudioSampleFramesToPcm
 {
 public:
-    F2Frame();
+    AudioSampleFramesToPcm();
 
-    void setData(QByteArray dataParam, QByteArray erasuresParam);
-    QByteArray getDataSymbols(void);
-    bool isFrameCorrupt(void);
+    // Options for the treatment of audio errors
+    enum ErrorTreatment {
+        conceal,
+        silence,
+        passThrough
+    };
 
-    void setDiscTime(TrackTime _discTime);
-    void setTrackTime(TrackTime _trackTime);
-    TrackTime getDiscTime(void);
-    TrackTime getTrackTime(void);
-    void setTrackNumber(qint32 _trackNumber);
-    qint32 getTrackNumber(void);
-    void setIsEncoderRunning(bool _isEncoderRunning);
-    bool getIsEncoderRunning(void);
+    QByteArray process(QVector<AudioSampleFrame> audioSampleFrames, ErrorTreatment errorTreatment, bool isDebugOn);
 
-private:
-    QByteArray dataSymbols;
-    bool errorState;
-
-    TrackTime discTime;
-    TrackTime trackTime;
-    qint32 trackNumber;
-    bool isEncoderRunning;
+public:
+    QByteArray pcmOutputBuffer;
 };
 
-#endif // F2FRAME_H
+#endif // AUDIOSAMPLEFRAMESTOPCM_H

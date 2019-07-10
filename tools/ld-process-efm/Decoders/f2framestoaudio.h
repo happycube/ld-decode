@@ -29,18 +29,12 @@
 #include <QDebug>
 
 #include "Datatypes/f2frame.h"
+#include "Datatypes/audiosampleframe.h"
 
 class F2FramesToAudio
 {
 public:
     F2FramesToAudio();
-
-    // Options for the treatment of audio errors
-    enum ErrorTreatment {
-        conceal,
-        silence,
-        passThrough
-    };
 
     // Statistics
     struct Statistics {
@@ -53,7 +47,7 @@ public:
         TrackTime sampleCurrent;
     };
 
-    QByteArray process(QVector<F2Frame> f2FramesIn, ErrorTreatment _errorTreatment, bool debugState);
+    QVector<AudioSampleFrame> process(QVector<F2Frame> f2FramesIn, bool debugState);
     Statistics getStatistics();
     void reportStatistics();
     void reset();
@@ -72,9 +66,8 @@ private:
     StateMachine currentState;
     StateMachine nextState;
     QVector<F2Frame> f2FrameBuffer;
-    QByteArray audioBufferOut;
+    QVector<AudioSampleFrame> audioSamplesOut;
     bool waitingForData;
-    ErrorTreatment errorTreatment;
     TrackTime lastDiscTime;
 
     StateMachine sm_state_initial();

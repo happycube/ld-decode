@@ -110,7 +110,7 @@
          <item>
           <widget class="QTabWidget" name="tabWidget">
            <property name="currentIndex">
-            <number>3</number>
+            <number>0</number>
            </property>
            <widget class="QWidget" name="optionsTab">
             <attribute name="title">
@@ -177,7 +177,7 @@
                <x>10</x>
                <y>120</y>
                <width>531</width>
-               <height>141</height>
+               <height>161</height>
               </rect>
              </property>
              <property name="title">
@@ -246,6 +246,19 @@
               </property>
               <property name="text">
                <string>F2 Frame to audio samples debug</string>
+              </property>
+             </widget>
+             <widget class="QCheckBox" name="debug_audioSampleFrameToPcm_checkBox">
+              <property name="geometry">
+               <rect>
+                <x>30</x>
+                <y>130</y>
+                <width>491</width>
+                <height>23</height>
+               </rect>
+              </property>
+              <property name="text">
+               <string>Audio sample frame to PCM debug</string>
               </property>
              </widget>
             </widget>
