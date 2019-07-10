@@ -41,7 +41,7 @@ QByteArray AudioSampleFramesToPcm::process(QVector<AudioSampleFrame> audioSample
         }
 
         // Append the audio sample's frame data to the output buffer
-        pcmOutputBuffer.append(audioSampleFrames[i].getSampleFrame());
+        pcmOutputBuffer.append(QByteArray(reinterpret_cast<char*>(audioSampleFrames[i].getSampleFrame()), 24));
     }
     if (isDebugOn) qDebug() << "AudioSampleFramesToPcm::process(): Processed" << audioSampleFrames.size() << "audio sample frames";
 

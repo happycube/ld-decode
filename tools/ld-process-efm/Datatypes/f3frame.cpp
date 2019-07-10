@@ -37,8 +37,10 @@ F3Frame::F3Frame()
     isSync1 = false;
     subcodeSymbol = 0;
 
-    dataSymbols.fill(0, 32);
-    errorSymbols.fill(0, 32);
+    for (qint32 i = 0; i < 32; i++) {
+        dataSymbols[i] = 0;
+        errorSymbols[i] = 0;
+    }
 }
 
 // This method sets the T-values for the F3 Frame
@@ -144,7 +146,7 @@ void F3Frame::setTValues(QVector<qint32> tValuesIn)
         qint32 value = translateEfm(efmValues[i + 1]);
         if (value != -1) {
             // Translated to a valid value
-            dataSymbols[i] = static_cast<char>(value);
+            dataSymbols[i] = static_cast<uchar>(value);
             errorSymbols[i] = 0;
         } else {
             // Translation was invalid, mark as error
@@ -152,18 +154,16 @@ void F3Frame::setTValues(QVector<qint32> tValuesIn)
             errorSymbols[i] = 1;
         }
     }
-
-    //qDebug().noquote() << "F3Frame::setTValues(): F3 Frame data symbols =" << dataToString(dataSymbols);
 }
 
 // This method returns the 32 data symbols for the F3 Frame
-QByteArray F3Frame::getDataSymbols(void)
+uchar *F3Frame::getDataSymbols(void)
 {
     return dataSymbols;
 }
 
 // This method returns the 32 error symbols for the F3 Frame
-QByteArray F3Frame::getErrorSymbols(void)
+uchar *F3Frame::getErrorSymbols(void)
 {
     return errorSymbols;
 }
@@ -224,14 +224,3 @@ qint32 F3Frame::getBits(uchar *rawData, qint32 bitIndex, qint32 width)
     return result;
 }
 
-// This method is for debug and outputs an array of 8-bit unsigned data as a hex string
-QString F3Frame::dataToString(QByteArray data)
-{
-    QString output;
-
-    for (qint32 count = 0; count < data.length(); count++) {
-        output += QString("%1").arg(static_cast<uchar>(data[count]), 2, 16, QChar('0'));
-    }
-
-    return output;
-}

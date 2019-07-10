@@ -35,23 +35,21 @@ public:
     F3Frame();
 
     void setTValues(QVector<qint32> tValuesIn);
-    QByteArray getDataSymbols(void);
-    QByteArray getErrorSymbols(void);
+    uchar* getDataSymbols(void);
+    uchar* getErrorSymbols(void);
     uchar getSubcodeSymbol(void);
     bool isSubcodeSync0(void);
     bool isSubcodeSync1(void);
 
 private:
-    QByteArray dataSymbols;
-    QByteArray errorSymbols;
+    uchar dataSymbols[32];
+    uchar errorSymbols[32];
     uchar subcodeSymbol;
     bool isSync0;
     bool isSync1;
 
     qint32 translateEfm(qint32 efmValue);
     qint32 getBits(uchar *rawData, qint32 bitIndex, qint32 width);
-
-    QString dataToString(QByteArray data);
 };
 
 // The following table provides the 10-bit EFM code (padded with leading

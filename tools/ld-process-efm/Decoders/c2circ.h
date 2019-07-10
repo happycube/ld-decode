@@ -52,24 +52,24 @@ public:
     void resetStatistics(void);
     Statistics getStatistics(void);
     void reportStatistics(void);
-    void pushC1(QByteArray dataSymbols, QByteArray errorSymbols);
-    QByteArray getDataSymbols(void);
-    QByteArray getErrorSymbols(void);
+    void pushC1(uchar *dataSymbols, uchar *errorSymbols);
+    uchar* getDataSymbols(void);
+    uchar* getErrorSymbols(void);
     bool getDataValid(void);
     void flush(void);
 
 private:
     struct C1Element {
-        QByteArray c1Data;
-        QByteArray c1Error;
+        uchar c1Data[28];
+        uchar c1Error[28];
     };
     QVector<C1Element> c1DelayBuffer;
 
-    QByteArray interleavedC2Data;
-    QByteArray interleavedC2Errors;
+    uchar interleavedC2Data[28];
+    uchar interleavedC2Errors[28];
 
-    QByteArray outputC2Data;
-    QByteArray outputC2Errors;
+    uchar outputC2Data[28];
+    uchar outputC2Errors[28];
 
     Statistics statistics;
 

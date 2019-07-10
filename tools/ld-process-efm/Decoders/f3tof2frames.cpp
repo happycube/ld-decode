@@ -141,29 +141,42 @@ QVector<F2Frame> F3ToF2Frames::process(QVector<F3Frame> f3FramesIn, bool debugSt
             // Process C1 CIRC
             c1Circ.pushF3Frame(f3FrameBuffer[i]);
 
-            // Get C1 results (if available)
-            QByteArray c1DataSymbols = c1Circ.getDataSymbols();
-            QByteArray c1ErrorSymbols = c1Circ.getErrorSymbols();
-
             // If we have C1 results, process C2
-            if (!c1DataSymbols.isEmpty()) {
+            if (c1Circ.getDataSymbols() != nullptr) {
+                // Get C1 results
+                uchar c1DataSymbols[28];
+                uchar c1ErrorSymbols[28];
+                for (qint32 i = 0; i < 28; i++) {
+                    c1DataSymbols[i] = c1Circ.getDataSymbols()[i];
+                    c1ErrorSymbols[i] = c1Circ.getErrorSymbols()[i];
+                }
+
                 // Process C2 CIRC
                 c2Circ.pushC1(c1DataSymbols, c1ErrorSymbols);
 
-                // Get C2 results (if available)
-                QByteArray c2DataSymbols = c2Circ.getDataSymbols();
-                QByteArray c2ErrorSymbols = c2Circ.getErrorSymbols();
-
                 // Only process the F2 frames if we received data
-                if (!c2DataSymbols.isEmpty()) {
+                if (c2Circ.getDataSymbols() != nullptr) {
+                    // Get C2 results
+                    uchar c2DataSymbols[28];
+                    uchar c2ErrorSymbols[28];
+                    for (qint32 i = 0; i < 28; i++) {
+                        c2DataSymbols[i] = c2Circ.getDataSymbols()[i];
+                        c2ErrorSymbols[i] = c2Circ.getErrorSymbols()[i];
+                    }
+
                     // Deinterleave the C2
                     c2Deinterleave.pushC2(c2DataSymbols, c2ErrorSymbols);
 
-                    QByteArray c2DeinterleavedData = c2Deinterleave.getDataSymbols();
-                    QByteArray c2DeinterleavedErrors = c2Deinterleave.getErrorSymbols();
-
                     // If we have deinterleaved C2s, create an F2 frame
-                    if (!c2DeinterleavedData.isEmpty()) {
+                    if (c2Deinterleave.getDataSymbols() != nullptr) {
+                        // Get C2 deinterleave results
+                        uchar c2DeinterleavedData[24];
+                        uchar c2DeinterleavedErrors[24];
+                        for (qint32 i = 0; i < 24; i++) {
+                            c2DeinterleavedData[i] = c2Deinterleave.getDataSymbols()[i];
+                            c2DeinterleavedErrors[i] = c2Deinterleave.getErrorSymbols()[i];
+                        }
+
                         F2Frame newF2Frame;
                         newF2Frame.setData(c2DeinterleavedData, c2DeinterleavedErrors);
 

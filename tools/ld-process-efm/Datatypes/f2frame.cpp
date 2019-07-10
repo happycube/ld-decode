@@ -28,21 +28,15 @@
 
 F2Frame::F2Frame()
 {
-    dataSymbols.resize(24);
-    dataSymbols.fill(0, 24);
+    for (qint32 i = 0; i < 24; i++) dataSymbols[i] = 0;
 
     discTime.setTime(0, 0, 0);
     trackTime.setTime(0, 0, 0);
     trackNumber = 0;
 }
 
-void F2Frame::setData(QByteArray dataParam, QByteArray erasuresParam)
+void F2Frame::setData(uchar* dataParam, uchar* erasuresParam)
 {
-    if (dataParam.size() != 24 || erasuresParam.size() != 24) {
-        qCritical() << "F2Frame::setData(): Parameter size is incorrect!";
-        return;
-    }
-
     errorState = false;
 
     // Add the F2 frame data to the F2 data buffer and swap the byte
@@ -51,8 +45,8 @@ void F2Frame::setData(QByteArray dataParam, QByteArray erasuresParam)
         dataSymbols[j] = dataParam[j+1];
         dataSymbols[j+1] = dataParam[j];
 
-        if (erasuresParam[j] != static_cast<char>(0)) errorState = true;
-        if (erasuresParam[j+1] != static_cast<char>(0)) errorState = true;
+        if (erasuresParam[j] != static_cast<uchar>(0)) errorState = true;
+        if (erasuresParam[j+1] != static_cast<uchar>(0)) errorState = true;
     }
 
     // Note: According the ECMA-130 audio data doesn't require byte swapping
@@ -62,7 +56,7 @@ void F2Frame::setData(QByteArray dataParam, QByteArray erasuresParam)
 }
 
 // This method returns the 24 data symbols for the F2 Frame
-QByteArray F2Frame::getDataSymbols(void)
+uchar *F2Frame::getDataSymbols(void)
 {
     return dataSymbols;
 }

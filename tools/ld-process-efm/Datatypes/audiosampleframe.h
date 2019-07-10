@@ -53,7 +53,7 @@ public:
     };
 
     struct Sample {
-        QByteArray sampleFrame;
+        uchar sampleFrame[24];
         SampleValues sampleValues;
         Metadata metadata;
     };
@@ -66,8 +66,8 @@ public:
     Metadata getMetadata();
     void setMetadata(Metadata _metadata);
 
-    void setSampleFrame(QByteArray _sampleFrame);
-    QByteArray getSampleFrame();
+    void setSampleFrame(uchar* _sampleFrame);
+    uchar* getSampleFrame();
 
     void setSampleValues(AudioSampleFrame::SampleValues _sampleValues);
     SampleValues getSampleValues();

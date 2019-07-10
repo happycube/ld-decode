@@ -43,7 +43,7 @@ AudioSampleFrame::AudioSampleFrame(F2Frame f2Frame)
 // Method to set the audio sample frame data from a F2 Frame
 void AudioSampleFrame::setDataFromF2Frame(F2Frame f2Frame)
 {
-    sample.sampleFrame = f2Frame.getDataSymbols();
+    for (qint32 i = 0; i < 24; i++) sample.sampleFrame[i] = f2Frame.getDataSymbols()[i];
     sample.metadata.discTime = f2Frame.getDiscTime();
     sample.metadata.trackTime = f2Frame.getTrackTime();
     sample.metadata.trackNumber = f2Frame.getTrackNumber();
@@ -70,16 +70,18 @@ void AudioSampleFrame::setMetadata(Metadata _metadata)
 }
 
 // Method to set the audio data sample frame (of 24 bytes)
-void AudioSampleFrame::setSampleFrame(QByteArray _sampleFrame)
+void AudioSampleFrame::setSampleFrame(uchar *_sampleFrame)
 {
-    sample.sampleFrame = _sampleFrame;
+    for (qint32 i = 0; i < 24; i++) {
+        sample.sampleFrame[i] = _sampleFrame[i];
+    }
 
     // Populate the sample values from the frame
     createSampleValuesFromFrame();
 }
 
 // Method to get the audio data as a sample frame (of 24 bytes)
-QByteArray AudioSampleFrame::getSampleFrame()
+uchar* AudioSampleFrame::getSampleFrame()
 {
     return sample.sampleFrame;
 }
@@ -113,7 +115,7 @@ void AudioSampleFrame::createSampleValuesFromFrame()
     // Set the sample data
     if (sample.metadata.sampleType == SampleType::audio || sample.metadata.sampleType == SampleType::corrupt) {
         // Convert F2 Frame data to qint16 samples
-        qint16* pcmDataBlock = reinterpret_cast<qint16*>(sample.sampleFrame.data());
+        qint16* pcmDataBlock = reinterpret_cast<qint16*>(sample.sampleFrame);
         sample.sampleValues.leftSamples[0]  = pcmDataBlock[0];
         sample.sampleValues.rightSamples[0] = pcmDataBlock[1];
         sample.sampleValues.leftSamples[1]  = pcmDataBlock[2];
@@ -136,10 +138,16 @@ void AudioSampleFrame::createSampleValuesFromFrame()
 void AudioSampleFrame::createSampleFrameFromValues()
 {
     // Create the PCM data from the passed sample values
-    sample.sampleFrame.clear();
-    for (qint32 i = 0; i < 6; i++) {
-        sample.sampleFrame.append(QByteArray::number(sample.sampleValues.leftSamples[i]));
-        sample.sampleFrame.append(QByteArray::number(sample.sampleValues.rightSamples[i]));
+    uchar *leftSampleFrameData = reinterpret_cast<uchar*>(sample.sampleValues.leftSamples);
+    uchar *rightSampleFrameData = reinterpret_cast<uchar*>(sample.sampleValues.rightSamples);
+
+    qint32 pointer = 0;
+    for (qint32 i = 0; i < 12; i += 2) {
+        sample.sampleFrame[pointer + 0] = leftSampleFrameData[i];
+        sample.sampleFrame[pointer + 1] = leftSampleFrameData[i + 1];
+        sample.sampleFrame[pointer + 2] = rightSampleFrameData[i];
+        sample.sampleFrame[pointer + 3] = rightSampleFrameData[i + 1];
+        pointer += 4;
     }
 }
 
@@ -151,7 +159,7 @@ void AudioSampleFrame::silenceSample()
         sample.sampleValues.rightSamples[i] = 0;
     }
 
-    sample.sampleFrame.fill(0, 24);
+    for (qint32 i = 0; i < 24; i++) sample.sampleFrame[i] = 0;
 
     sample.metadata.sampleType = SampleType::silence;
 }
