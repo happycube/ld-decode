@@ -66,16 +66,16 @@ def plotfilter_wh(w, h, freq, zero_base = False):
     
     return None
 
-def plotfilter(B, A, freq = 40, whole = False, zero_base = False):
-    w, h = sps.freqz(B, A, whole = whole, worN=4096)
-    
-    if whole:
-        w = np.arange(0, freq, freq / len(h))
-    else:
-        w = np.arange(0, (freq / 2), (freq / 2) / len(h))
+def plotfilter(B, A, dfreq = None, freq = 40, zero_base = False):
+    if dfreq is None:
+        dfreq = freq / 2
         
-    return plotfilter_wh(w, h, freq, zero_base)
-
+    w, h = sps.freqz(B, A, whole=True, worN=4096)
+    w = np.arange(0, freq, freq / len(h))
+    
+    keep = int((dfreq / freq) * len(h))
+        
+    return plotfilter_wh(w[1:keep], h[1:keep], freq, zero_base)
 
 from scipy import interpolate
 
