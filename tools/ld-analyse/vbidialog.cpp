@@ -30,6 +30,7 @@ VbiDialog::VbiDialog(QWidget *parent) :
     ui(new Ui::VbiDialog)
 {
     ui->setupUi(this);
+    setWindowFlags(Qt::Window);
 }
 
 VbiDialog::~VbiDialog()

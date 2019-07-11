@@ -30,6 +30,7 @@ VitsMetricsDialog::VitsMetricsDialog(QWidget *parent) :
     ui(new Ui::VitsMetricsDialog)
 {
     ui->setupUi(this);
+    setWindowFlags(Qt::Window);
 }
 
 VitsMetricsDialog::~VitsMetricsDialog()

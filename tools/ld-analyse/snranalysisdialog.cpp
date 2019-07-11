@@ -30,6 +30,7 @@ SnrAnalysisDialog::SnrAnalysisDialog(QWidget *parent) :
     ui(new Ui::SnrAnalysisDialog)
 {
     ui->setupUi(this);
+    setWindowFlags(Qt::Window);
 
     // Set up the chart
     chart.legend()->hide();

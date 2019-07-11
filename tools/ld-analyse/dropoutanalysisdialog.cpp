@@ -30,6 +30,7 @@ DropoutAnalysisDialog::DropoutAnalysisDialog(QWidget *parent) :
     ui(new Ui::DropoutAnalysisDialog)
 {
     ui->setupUi(this);
+    setWindowFlags(Qt::Window);
 
     // Set up the chart
     chart.legend()->hide();

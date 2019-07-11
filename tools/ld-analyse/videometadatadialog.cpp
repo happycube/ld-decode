@@ -30,6 +30,7 @@ VideoMetadataDialog::VideoMetadataDialog(QWidget *parent) :
     ui(new Ui::videoMetadataDialog)
 {
     ui->setupUi(this);
+    setWindowFlags(Qt::Window);
 }
 
 VideoMetadataDialog::~VideoMetadataDialog()
