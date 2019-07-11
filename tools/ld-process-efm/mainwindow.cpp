@@ -144,6 +144,7 @@ void MainWindow::guiEfmProcessingStart(void)
 
     // Disable changing of options
     ui->options_audio_groupBox->setEnabled(false);
+    ui->options_conceal_groupBox->setEnabled(false);
     ui->options_development_groupBox->setEnabled(false);
 }
 
@@ -160,6 +161,7 @@ void MainWindow::guiEfmProcessingStop(void)
 
     // Allow changing of options
     ui->options_audio_groupBox->setEnabled(true);
+    ui->options_conceal_groupBox->setEnabled(true);
     ui->options_development_groupBox->setEnabled(true);
 }
 
@@ -478,10 +480,18 @@ void MainWindow::on_decodePushButton_clicked()
                         ui->debug_f3ToF2_checkBox->isChecked(), ui->debug_f2ToAudio_checkBox->isChecked(),
                         ui->debug_audioSampleFrameToPcm_checkBox->isChecked());
 
-    // Set the audio error treatment option
-    if (ui->audio_conceal_radioButton->isChecked()) efmProcess.setAudioErrorTreatment(AudioSampleFramesToPcm::ErrorTreatment::conceal);
-    if (ui->audio_silence_radioButton->isChecked()) efmProcess.setAudioErrorTreatment(AudioSampleFramesToPcm::ErrorTreatment::silence);
-    if (ui->audio_passthrough_radioButton->isChecked()) efmProcess.setAudioErrorTreatment(AudioSampleFramesToPcm::ErrorTreatment::passThrough);
+    // Set the audio error treatment and conceal type options
+    AudioSampleFramesToPcm::ErrorTreatment errorTreatment = AudioSampleFramesToPcm::ErrorTreatment::conceal;
+    AudioSampleFramesToPcm::ConcealType concealType = AudioSampleFramesToPcm::ConcealType::linear;
+
+    if (ui->audio_conceal_radioButton->isChecked()) errorTreatment = AudioSampleFramesToPcm::ErrorTreatment::conceal;
+    if (ui->audio_silence_radioButton->isChecked()) errorTreatment = AudioSampleFramesToPcm::ErrorTreatment::silence;
+    if (ui->audio_passthrough_radioButton->isChecked()) errorTreatment = AudioSampleFramesToPcm::ErrorTreatment::passThrough;
+
+    if (ui->conceal_linear_radioButton->isChecked()) concealType = AudioSampleFramesToPcm::ConcealType::linear;
+    if (ui->conceal_prediction_radioButton->isChecked()) concealType = AudioSampleFramesToPcm::ConcealType::prediction;
+
+    efmProcess.setAudioErrorTreatment(errorTreatment, concealType);
 
     // Start the processing of the EFM
     efmProcess.startProcessing(&inputEfmFileHandle, &audioOutputTemporaryFileHandle,
