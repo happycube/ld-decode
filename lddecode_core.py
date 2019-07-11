@@ -229,6 +229,10 @@ class RFDecode:
         efmFilter_b.reverse()
         self.Filters['Fefm'] = filtfft((efmFilter_b, [1.0]), self.blocklen)
 
+        if False:
+            hfilt = sps.ellip(4, 1.725, 25, [2/20]) # probably best so far...
+            self.Filters['Fefm'] = filtfft(lfilt, self.blocklen) * filtfft(hfilt, self.blocklen) * filtfft(hfilt, self.blocklen)
+
         # ISI filter
         # similar to original: Fisi = commpy_filters.rcosfilter(81, .75, 1/4400000, 40000000)
         # enhanced version:
