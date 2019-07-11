@@ -230,6 +230,7 @@ class RFDecode:
         self.Filters['Fefm'] = filtfft((efmFilter_b, [1.0]), self.blocklen)
 
         if False:
+            lfilt = sps.butter(1, [.4/20], btype='high')
             hfilt = sps.ellip(4, 1.725, 25, [2/20]) # probably best so far...
             self.Filters['Fefm'] = filtfft(lfilt, self.blocklen) * filtfft(hfilt, self.blocklen) * filtfft(hfilt, self.blocklen)
 
