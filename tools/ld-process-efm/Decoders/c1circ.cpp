@@ -71,11 +71,13 @@ void C1Circ::reportStatistics(void)
 
 void C1Circ::pushF3Frame(F3Frame f3Frame)
 {
-    previousF3Data = currentF3Data;
-    currentF3Data = f3Frame.getDataSymbols();
+    for (qint32 i = 0; i < 32; i++) {
+        previousF3Data[i] = currentF3Data[i];
+        previousF3Errors[i] = currentF3Errors[i];
 
-    previousF3Errors = currentF3Errors;
-    currentF3Errors = f3Frame.getErrorSymbols();
+        currentF3Data[i] = f3Frame.getDataSymbols()[i];
+        currentF3Errors[i] = f3Frame.getErrorSymbols()[i];
+    }
 
     c1BufferLevel++;
     if (c1BufferLevel > 1) {
@@ -88,32 +90,33 @@ void C1Circ::pushF3Frame(F3Frame f3Frame)
 }
 
 // Return the C1 data symbols if available
-QByteArray C1Circ::getDataSymbols(void)
+uchar* C1Circ::getDataSymbols(void)
 {
     if (c1BufferLevel > 1) return outputC1Data;
-    return QByteArray();
+    return nullptr;
 }
 
 // Return the C1 error symbols if available
-QByteArray C1Circ::getErrorSymbols(void)
+uchar* C1Circ::getErrorSymbols(void)
 {
     if (c1BufferLevel > 1) return outputC1Errors;
-    return QByteArray();
+    return nullptr;
 }
 
 // Method to flush the C1 buffers
 void C1Circ::flush(void)
 {
-    currentF3Data.fill(0, 32);
-    previousF3Data.fill(0, 32);
-    currentF3Errors.fill(1, 32);
-    previousF3Errors.fill(1, 32);
+    for (qint32 i = 0; i < 32; i++) {
+        currentF3Data[i] = 0;
+        previousF3Data[i] = 0;
+        currentF3Errors[i] = 0;
+        previousF3Errors[i] = 0;
+    }
 
-    interleavedC1Data.fill(0, 32);
-    interleavedC1Errors.fill(1, 32);
-
-    outputC1Data.fill(0, 28);
-    outputC1Errors.fill(1, 28);
+    for (qint32 i = 0; i < 28; i++) {
+        outputC1Data[i] = 0;
+        outputC1Errors[i] = 0;
+    }
 
     c1BufferLevel = 0;
 
@@ -133,16 +136,16 @@ void C1Circ::interleave(void)
     }
 
     // Invert the Qm parity symbols
-    interleavedC1Data[12] = static_cast<char>(static_cast<uchar>(interleavedC1Data[12]) ^ 0xFF);
-    interleavedC1Data[13] = static_cast<char>(static_cast<uchar>(interleavedC1Data[13]) ^ 0xFF);
-    interleavedC1Data[14] = static_cast<char>(static_cast<uchar>(interleavedC1Data[14]) ^ 0xFF);
-    interleavedC1Data[15] = static_cast<char>(static_cast<uchar>(interleavedC1Data[15]) ^ 0xFF);
+    interleavedC1Data[12] = static_cast<uchar>(interleavedC1Data[12]) ^ 0xFF;
+    interleavedC1Data[13] = static_cast<uchar>(interleavedC1Data[13]) ^ 0xFF;
+    interleavedC1Data[14] = static_cast<uchar>(interleavedC1Data[14]) ^ 0xFF;
+    interleavedC1Data[15] = static_cast<uchar>(interleavedC1Data[15]) ^ 0xFF;
 
     // Invert the Pm parity symbols
-    interleavedC1Data[28] = static_cast<char>(static_cast<uchar>(interleavedC1Data[28]) ^ 0xFF);
-    interleavedC1Data[29] = static_cast<char>(static_cast<uchar>(interleavedC1Data[29]) ^ 0xFF);
-    interleavedC1Data[30] = static_cast<char>(static_cast<uchar>(interleavedC1Data[30]) ^ 0xFF);
-    interleavedC1Data[31] = static_cast<char>(static_cast<uchar>(interleavedC1Data[31]) ^ 0xFF);
+    interleavedC1Data[28] = static_cast<uchar>(interleavedC1Data[28]) ^ 0xFF;
+    interleavedC1Data[29] = static_cast<uchar>(interleavedC1Data[29]) ^ 0xFF;
+    interleavedC1Data[30] = static_cast<uchar>(interleavedC1Data[30]) ^ 0xFF;
+    interleavedC1Data[31] = static_cast<uchar>(interleavedC1Data[31]) ^ 0xFF;
 }
 
 // Perform a C1 level error check and correction
@@ -184,7 +187,7 @@ void C1Circ::errorCorrect(void)
         if (fixed >= 0) {
             // Copy the result back to the output byte array (removing the parity symbols)
             for (qint32 byteC = 0; byteC < 28; byteC++) {
-                outputC1Data[byteC] = static_cast<char>(data[static_cast<size_t>(byteC)]);
+                outputC1Data[byteC] = static_cast<uchar>(data[static_cast<size_t>(byteC)]);
                 if (fixed < 0) outputC1Errors[byteC] = 1; else outputC1Errors[byteC] = 0;
             }
         } else {

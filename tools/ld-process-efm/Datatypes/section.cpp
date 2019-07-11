@@ -45,7 +45,7 @@ Section::Section()
     qMetadata.qMode1And4.isEncoderRunning = true;
 }
 
-bool Section::setData(QByteArray dataIn)
+bool Section::setData(uchar *dataIn)
 {
     // Interpret the section data
     qint32 symbolNumber = 2;

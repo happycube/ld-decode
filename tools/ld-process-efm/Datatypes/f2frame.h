@@ -27,9 +27,8 @@
 
 #include <QCoreApplication>
 #include <QDebug>
-#include <QDataStream>
 
-#include "f3frame.h"
+#include "Datatypes/f3frame.h"
 #include "Datatypes/tracktime.h"
 
 class F2Frame
@@ -37,8 +36,8 @@ class F2Frame
 public:
     F2Frame();
 
-    void setData(QByteArray dataParam, QByteArray erasuresParam);
-    QByteArray getDataSymbols(void);
+    void setData(uchar *dataParam, uchar *erasuresParam);
+    uchar* getDataSymbols(void);
     bool isFrameCorrupt(void);
 
     void setDiscTime(TrackTime _discTime);
@@ -51,7 +50,7 @@ public:
     bool getIsEncoderRunning(void);
 
 private:
-    QByteArray dataSymbols;
+    uchar dataSymbols[24];
     bool errorState;
 
     TrackTime discTime;

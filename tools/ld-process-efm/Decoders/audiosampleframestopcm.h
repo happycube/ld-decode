@@ -1,6 +1,6 @@
 /************************************************************************
 
-    c2deinterleave.h
+    audiosampleframestopcm.h
 
     ld-process-efm - EFM data decoder
     Copyright (C) 2019 Simon Inns
@@ -22,46 +22,30 @@
 
 ************************************************************************/
 
-#ifndef C2DEINTERLEAVE_H
-#define C2DEINTERLEAVE_H
+#ifndef AUDIOSAMPLEFRAMESTOPCM_H
+#define AUDIOSAMPLEFRAMESTOPCM_H
 
 #include <QCoreApplication>
 #include <QDebug>
 
-class C2Deinterleave
+#include "Datatypes/audiosampleframe.h"
+
+class AudioSampleFramesToPcm
 {
 public:
-    C2Deinterleave();
+    AudioSampleFramesToPcm();
 
-    // Statistics data structure
-    struct Statistics {
-        qint32 c2flushed;
-        qint32 validDeinterleavedC2s;
-        qint32 invalidDeinterleavedC2s;
+    // Options for the treatment of audio errors
+    enum ErrorTreatment {
+        conceal,
+        silence,
+        passThrough
     };
 
-    void reset(void);
-    void resetStatistics(void);
-    Statistics getStatistics(void);
-    void reportStatistics(void);
-    void pushC2(uchar* dataSymbols, uchar* errorSymbols);
-    uchar* getDataSymbols(void);
-    uchar* getErrorSymbols(void);
-    void flush(void);
+    QByteArray process(QVector<AudioSampleFrame> audioSampleFrames, ErrorTreatment errorTreatment, bool isDebugOn);
 
-private:
-    struct C2Element {
-        uchar c2Data[28];
-        uchar c2Error[28];
-    };
-    QVector<C2Element> c2DelayBuffer;
-
-    uchar outputC2Data[24];
-    uchar outputC2Errors[24];
-
-    Statistics statistics;
-
-    void deinterleave(void);
+public:
+    QByteArray pcmOutputBuffer;
 };
 
-#endif // C2DEINTERLEAVE_H
+#endif // AUDIOSAMPLEFRAMESTOPCM_H

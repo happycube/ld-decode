@@ -33,16 +33,15 @@ F2FramesToAudio::F2FramesToAudio()
 // Public methods -----------------------------------------------------------------------------------------------------
 
 // Method to feed the audio processing state-machine with F2Frames
-QByteArray F2FramesToAudio::process(QVector<F2Frame> f2FramesIn, ErrorTreatment _errorTreatment,
+QVector<AudioSampleFrame> F2FramesToAudio::process(QVector<F2Frame> f2FramesIn,
                                     bool debugState)
 {
     debugOn = debugState;
-    errorTreatment = _errorTreatment;
 
     // Clear the output buffer
-    audioBufferOut.clear();
+    audioSamplesOut.clear();
 
-    if (f2FramesIn.isEmpty()) return audioBufferOut;
+    if (f2FramesIn.isEmpty()) return audioSamplesOut;
 
     // Append input data to the processing buffer
     f2FrameBuffer.append(f2FramesIn);
@@ -64,7 +63,7 @@ QByteArray F2FramesToAudio::process(QVector<F2Frame> f2FramesIn, ErrorTreatment 
         }
     }
 
-    return audioBufferOut;
+    return audioSamplesOut;
 }
 
 // Get method - retrieve statistics
@@ -99,11 +98,10 @@ void F2FramesToAudio::reportStatistics()
 void F2FramesToAudio::reset()
 {
     // Initialise variables to track the disc time
-    //initialDiscTimeSet = false;
-    //lastDiscTime.setTime(0, 0, 0);
+    lastDiscTime.setTime(0, 0, 0);
 
     f2FrameBuffer.clear();
-    audioBufferOut.clear();
+    audioSamplesOut.clear();
     waitingForData = false;
     currentState = state_initial;
     nextState = currentState;
@@ -159,17 +157,26 @@ F2FramesToAudio::StateMachine F2FramesToAudio::sm_state_processSection()
     // and pad the output sample data if sections are missing
     qint32 sectionFrameGap = currentDiscTime.getDifference(lastDiscTime.getTime());
     if (sectionFrameGap > 1) {
+        if (debugOn) qDebug().noquote() << "F2FramesToAudio::sm_state_processSection(): Section gap - Last seen time was" << lastDiscTime.getTimeAsQString() <<
+                                 "current disc time is" << currentDiscTime.getTimeAsQString() <<
+                                 "Adding" << sectionFrameGap - 1 << "section(s) of padding (" << (sectionFrameGap - 1) * 98 * 6 << "samples )";
+
         // Pad the output sample file according to the gap
-        QByteArray sectionPadding;
-        sectionPadding.fill(0, 98 * 24); // 24 bytes = 6 samples * 98 F2Frames per section
+        AudioSampleFrame audioSampleFrame;
+
+        // Loop per section
         for (qint32 p = 0; p < sectionFrameGap - 1; p++) {
-            audioBufferOut.append(sectionPadding);
+            // 98 Audio frames per section
+            lastDiscTime.addFrames(1);
+
+            for (qint32 s = 0; s < 98; s++) {
+                audioSamplesOut.append(AudioSampleFrame());
+            }
+
+            // Add filled section to statistics
             statistics.missingSectionSamples += 98 * 6;
             statistics.totalSamples += 98 * 6;
         }
-        if (debugOn) qDebug().noquote() << "F2FramesToAudio::sm_state_processSection(): Section gap - Last seen time was" << lastDiscTime.getTimeAsQString() <<
-                                 "current disc time is" << currentDiscTime.getTimeAsQString() <<
-                                 "Added" << sectionFrameGap - 1 << "section(s) of padding (" << (sectionFrameGap - 1) * 98 * 6 << "samples )";
     }
 
     // Store the current disc time as the last disc time for the next cycle of processing
@@ -186,41 +193,22 @@ F2FramesToAudio::StateMachine F2FramesToAudio::sm_state_processSection()
 
     // Output the F2 Frames as samples
     for (qint32 i = 0; i < 98; i++) {
+        audioSamplesOut.append(AudioSampleFrame(f2FrameBuffer[i]));
+
+        // Update the statistics
         if (sectionEncoderState && !f2FrameBuffer[i].isFrameCorrupt()) {
-            // Encoder is running and data is valid, output samples
-            audioBufferOut.append(f2FrameBuffer[i].getDataSymbols());
+            // Encoder is running and data is valid
             statistics.validSamples += 6;
             statistics.totalSamples += 6;
+        } else if (!sectionEncoderState) {
+            // Section encoding is off, so no data loss (even if the sample data is invalid
+            // we don't need to use it)
+            statistics.encoderOffSamples += 6;
+            statistics.totalSamples += 6;
         } else {
-            if (!sectionEncoderState) {
-                // Section encoding is off, so no data loss (even if the sample data is invalid
-                // we don't need to use it)
-                QByteArray framePadding;
-                framePadding.fill(0, 24); // 24 bytes = 6 samples
-                audioBufferOut.append(framePadding);
-                statistics.encoderOffSamples += 6;
-                statistics.totalSamples += 6;
-            } else {
-                // Actual audio data loss has occurred (encoder is on and data is invalid)
-                if (errorTreatment == F2FramesToAudio::ErrorTreatment::passThrough) {
-                    // Pass-through corrupt samples
-                    audioBufferOut.append(f2FrameBuffer[i].getDataSymbols());
-                    statistics.corruptSamples += 6;
-                    statistics.totalSamples += 6;
-                } else if (errorTreatment == F2FramesToAudio::ErrorTreatment::conceal) {
-                    // Conceal the corrupt samples - not implemented
-                    audioBufferOut.append(f2FrameBuffer[i].getDataSymbols());
-                    statistics.corruptSamples += 6;
-                    statistics.totalSamples += 6;
-                } else if (errorTreatment == F2FramesToAudio::ErrorTreatment::silence){
-                    // Output silence
-                    QByteArray framePadding;
-                    framePadding.fill(0, 24); // 24 bytes = 6 samples
-                    audioBufferOut.append(framePadding);
-                    statistics.corruptSamples += 6;
-                    statistics.totalSamples += 6;
-                }
-            }
+            // Actual audio data loss has occurred (encoder is on and data is invalid)
+            statistics.corruptSamples += 6;
+            statistics.totalSamples += 6;
         }
     }
 

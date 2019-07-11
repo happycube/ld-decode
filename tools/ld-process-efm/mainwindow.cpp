@@ -63,6 +63,7 @@ MainWindow::MainWindow(bool debugOn, bool _nonInteractive, QString _outputAudioF
         ui->debug_f3Sync_checkBox->setEnabled(true);
         ui->debug_f3ToF2_checkBox->setEnabled(true);
         ui->debug_f2ToAudio_checkBox->setEnabled(true);
+        ui->debug_audioSampleFrameToPcm_checkBox->setEnabled(true);
     }
 
     // Select the Audio tab by default
@@ -336,11 +337,13 @@ void MainWindow::resetDecoderOptions(void)
     ui->debug_f3Sync_checkBox->setChecked(false);
     ui->debug_f3ToF2_checkBox->setChecked(false);
     ui->debug_f2ToAudio_checkBox->setChecked(false);
+    ui->debug_audioSampleFrameToPcm_checkBox->setChecked(false);
 
     ui->debug_efmToF3_checkBox->setEnabled(false);
     ui->debug_f3Sync_checkBox->setEnabled(false);
     ui->debug_f3ToF2_checkBox->setEnabled(false);
     ui->debug_f2ToAudio_checkBox->setEnabled(false);
+    ui->debug_audioSampleFrameToPcm_checkBox->setEnabled(false);
 
     ui->audio_conceal_radioButton->setChecked(true);
     ui->audio_silence_radioButton->setChecked(false);
@@ -461,12 +464,13 @@ void MainWindow::on_decodePushButton_clicked()
 
     // Set the debug states
     efmProcess.setDebug(ui->debug_efmToF3_checkBox->isChecked(), ui->debug_f3Sync_checkBox->isChecked(),
-                        ui->debug_f3ToF2_checkBox->isChecked(), ui->debug_f2ToAudio_checkBox->isChecked());
+                        ui->debug_f3ToF2_checkBox->isChecked(), ui->debug_f2ToAudio_checkBox->isChecked(),
+                        ui->debug_audioSampleFrameToPcm_checkBox->isChecked());
 
     // Set the audio error treatment option
-    if (ui->audio_conceal_radioButton->isChecked()) efmProcess.setAudioErrorTreatment(F2FramesToAudio::ErrorTreatment::conceal);
-    if (ui->audio_silence_radioButton->isChecked()) efmProcess.setAudioErrorTreatment(F2FramesToAudio::ErrorTreatment::silence);
-    if (ui->audio_passthrough_radioButton->isChecked()) efmProcess.setAudioErrorTreatment(F2FramesToAudio::ErrorTreatment::passThrough);
+    if (ui->audio_conceal_radioButton->isChecked()) efmProcess.setAudioErrorTreatment(AudioSampleFramesToPcm::ErrorTreatment::conceal);
+    if (ui->audio_silence_radioButton->isChecked()) efmProcess.setAudioErrorTreatment(AudioSampleFramesToPcm::ErrorTreatment::silence);
+    if (ui->audio_passthrough_radioButton->isChecked()) efmProcess.setAudioErrorTreatment(AudioSampleFramesToPcm::ErrorTreatment::passThrough);
 
     // Start the processing of the EFM
     efmProcess.startProcessing(&inputEfmFileHandle, &audioOutputTemporaryFileHandle,
@@ -490,12 +494,14 @@ void MainWindow::on_debugEnabled_checkBox_clicked()
         ui->debug_f3Sync_checkBox->setEnabled(true);
         ui->debug_f3ToF2_checkBox->setEnabled(true);
         ui->debug_f2ToAudio_checkBox->setEnabled(true);
+        ui->debug_audioSampleFrameToPcm_checkBox->setEnabled(true);
         setDebug(true);
     } else {
         ui->debug_efmToF3_checkBox->setEnabled(false);
         ui->debug_f3Sync_checkBox->setEnabled(false);
         ui->debug_f3ToF2_checkBox->setEnabled(false);
         ui->debug_f2ToAudio_checkBox->setEnabled(false);
+        ui->debug_audioSampleFrameToPcm_checkBox->setEnabled(false);
         setDebug(false);
     }
 }

@@ -195,7 +195,7 @@ SyncF3Frames::StateMachine SyncF3Frames::sm_state_syncRecovery()
     // position.  If two sets of sync0 and sync1 are missing in a row, its
     // likely that the EFM signal is simply invalid, so we flag lost sync
 
-    qint32 requiredF3Frames = 98 * (syncRecoveryAttempts + 1);
+    qint32 requiredF3Frames = 98 * (syncRecoveryAttempts + 2);
 
     // Ensure we have enough data to see the next section
     if (f3FrameBuffer.size() < (requiredF3Frames + 2)) {

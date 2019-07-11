@@ -55,21 +55,21 @@ public:
     Statistics getStatistics(void);
     void reportStatistics(void);
     void pushF3Frame(F3Frame f3Frame);
-    QByteArray getDataSymbols(void);
-    QByteArray getErrorSymbols(void);
+    uchar* getDataSymbols(void);
+    uchar* getErrorSymbols(void);
     void flush(void);
 
 private:
-    QByteArray currentF3Data;
-    QByteArray previousF3Data;
-    QByteArray currentF3Errors;
-    QByteArray previousF3Errors;
+    uchar currentF3Data[32];
+    uchar previousF3Data[32];
+    uchar currentF3Errors[32];
+    uchar previousF3Errors[32];
 
-    QByteArray interleavedC1Data;
-    QByteArray interleavedC1Errors;
+    uchar interleavedC1Data[32];
+    uchar interleavedC1Errors[32];
 
-    QByteArray outputC1Data;
-    QByteArray outputC1Errors;
+    uchar outputC1Data[28];
+    uchar outputC1Errors[28];
 
     qint32 c1BufferLevel;    
     Statistics statistics;

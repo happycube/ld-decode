@@ -62,12 +62,14 @@ void C2Circ::reportStatistics(void)
     qInfo() << " Delay buffer flushes:" << statistics.c2flushed;
 }
 
-void C2Circ::pushC1(QByteArray dataSymbols, QByteArray errorSymbols)
+void C2Circ::pushC1(uchar* dataSymbols, uchar* errorSymbols)
 {
     // Create a new C1 element and append it to the C1 delay buffer
     C1Element newC1Element;
-    newC1Element.c1Data = dataSymbols;
-    newC1Element.c1Error = errorSymbols;
+    for (qint32 i = 0; i < 28; i++) {
+        newC1Element.c1Data[i] = dataSymbols[i];
+        newC1Element.c1Error[i] = errorSymbols[i];
+    }
     c1DelayBuffer.append(newC1Element);
 
     if (c1DelayBuffer.size() >= 109) {
@@ -81,17 +83,17 @@ void C2Circ::pushC1(QByteArray dataSymbols, QByteArray errorSymbols)
 }
 
 // Return the C2 data symbols if available
-QByteArray C2Circ::getDataSymbols(void)
+uchar* C2Circ::getDataSymbols(void)
 {
     if (c1DelayBuffer.size() >= 109) return outputC2Data;
-    return QByteArray();
+    return nullptr;
 }
 
 // Return the C2 error symbols if available
-QByteArray C2Circ::getErrorSymbols(void)
+uchar* C2Circ::getErrorSymbols(void)
 {
     if (c1DelayBuffer.size() >= 109) return outputC2Errors;
-    return QByteArray();
+    return nullptr;
 }
 
 // Method to flush the C2 buffers
@@ -99,11 +101,12 @@ void C2Circ::flush(void)
 {
     c1DelayBuffer.clear();
 
-    interleavedC2Data.fill(0, 28);
-    interleavedC2Errors.fill(1, 28);
-
-    outputC2Data.fill(0, 28);
-    outputC2Errors.fill(1, 28);
+    for (qint32 i = 0; i < 28; i++) {
+        interleavedC2Data[i] = 0;
+        interleavedC2Errors[i] = 0;
+        outputC2Data[i] = 0;
+        outputC2Errors[i] = 0;
+    }
 
     statistics.c2flushed++;
 }
@@ -160,7 +163,7 @@ void C2Circ::errorCorrect(void)
         if (fixed >= 0) {
             // Copy the result back to the output byte array (removing the parity symbols)
             for (qint32 byteC = 0; byteC < 28; byteC++) {
-                outputC2Data[byteC] = static_cast<char>(data[static_cast<size_t>(byteC)]);
+                outputC2Data[byteC] = static_cast<uchar>(data[static_cast<size_t>(byteC)]);
                 if (fixed < 0) outputC2Errors[byteC] = 1; else outputC2Errors[byteC] = 0;
             }
         } else {

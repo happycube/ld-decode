@@ -25,10 +25,12 @@ DEFINES += QT_DEPRECATED_WARNINGS
 CONFIG += c++11
 
 SOURCES += \
+        Datatypes/audiosampleframe.cpp \
         Datatypes/f2frame.cpp \
         Datatypes/f3frame.cpp \
         Datatypes/section.cpp \
         Datatypes/tracktime.cpp \
+        Decoders/audiosampleframestopcm.cpp \
         Decoders/c1circ.cpp \
         Decoders/c2circ.cpp \
         Decoders/c2deinterleave.cpp \
@@ -44,10 +46,12 @@ SOURCES += \
         mainwindow.cpp
 
 HEADERS += \
+        Datatypes/audiosampleframe.h \
         Datatypes/f2frame.h \
         Datatypes/f3frame.h \
         Datatypes/section.h \
         Datatypes/tracktime.h \
+        Decoders/audiosampleframestopcm.h \
         Decoders/c1circ.h \
         Decoders/c2circ.h \
         Decoders/c2deinterleave.h \

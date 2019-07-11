@@ -60,12 +60,15 @@ void C2Deinterleave::reportStatistics(void)
     qInfo() << " Delay buffer flushes:" << statistics.c2flushed;
 }
 
-void C2Deinterleave::pushC2(QByteArray dataSymbols, QByteArray errorSymbols)
+void C2Deinterleave::pushC2(uchar *dataSymbols, uchar *errorSymbols)
 {
     // Create a new C2 element and append it to the C2 delay buffer
     C2Element newC2Element;
-    newC2Element.c2Data = dataSymbols;
-    newC2Element.c2Error = errorSymbols;
+    for (qint32 i = 0; i < 28; i++) {
+        newC2Element.c2Data[i] = dataSymbols[i];
+        newC2Element.c2Error[i] = errorSymbols[i];
+    }
+
     c2DelayBuffer.append(newC2Element);
 
     if (c2DelayBuffer.size() >= 3) {
@@ -78,17 +81,17 @@ void C2Deinterleave::pushC2(QByteArray dataSymbols, QByteArray errorSymbols)
 }
 
 // Return the deinterleaved C2 data symbols if available
-QByteArray C2Deinterleave::getDataSymbols(void)
+uchar* C2Deinterleave::getDataSymbols(void)
 {
     if (c2DelayBuffer.size() >= 3) return outputC2Data;
-    return QByteArray();
+    return nullptr;
 }
 
 // Return the deinterleaved C2 error symbols if available
-QByteArray C2Deinterleave::getErrorSymbols(void)
+uchar* C2Deinterleave::getErrorSymbols(void)
 {
     if (c2DelayBuffer.size() >= 3) return outputC2Errors;
-    return QByteArray();
+    return nullptr;
 }
 
 // Method to flush the C1 buffers
@@ -96,8 +99,10 @@ void C2Deinterleave::flush(void)
 {
     c2DelayBuffer.clear();
 
-    outputC2Data.fill(0, 24);
-    outputC2Errors.fill(1, 24);
+    for (qint32 i = 0; i < 24; i++) {
+        outputC2Data[i] = 0;
+        outputC2Errors[i] = 0;
+    }
 
     statistics.c2flushed++;
 }
@@ -174,7 +179,7 @@ void C2Deinterleave::deinterleave(void)
     // Check that both required C2 symbols contain valid data
     bool outputC2Valid = true;
     for (qint32 i = 0; i < 23; i++) {
-        if (outputC2Errors[i] == static_cast<char>(1)) outputC2Valid = false;
+        if (outputC2Errors[i] == static_cast<uchar>(1)) outputC2Valid = false;
     }
 
     if (outputC2Valid) statistics.validDeinterleavedC2s++;

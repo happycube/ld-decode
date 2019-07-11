@@ -33,6 +33,12 @@ TrackTime::TrackTime(qint32 minutesParam, qint32 secondsParam, qint32 framesPara
     setTime(minutesParam, secondsParam, framesParam);
 }
 
+TrackTime::TrackTime(TrackTime::Time timeParam)
+{
+    // Set the default track time
+    setTime(timeParam);
+}
+
 // Set the track time using integer values
 bool TrackTime::setTime(qint32 minutesParam, qint32 secondsParam, qint32 framesParam)
 {
