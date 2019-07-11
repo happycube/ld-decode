@@ -46,6 +46,9 @@ public:
 
     void updateChart(LdDecodeMetaData *ldDecodeMetaData);
 
+private slots:
+    void on_reset_pushButton_clicked();
+
 private:
     Ui::DropoutAnalysisDialog *ui;
 

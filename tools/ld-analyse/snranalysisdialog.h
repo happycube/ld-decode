@@ -44,6 +44,9 @@ public:
 
     void updateChart(LdDecodeMetaData *ldDecodeMetaData);
 
+private slots:
+    void on_pushButton_clicked();
+
 private:
     Ui::SnrAnalysisDialog *ui;
 
