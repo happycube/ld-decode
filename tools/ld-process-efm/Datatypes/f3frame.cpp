@@ -33,6 +33,9 @@
 
 F3Frame::F3Frame()
 {
+    validEfmSymbols = 0;
+    invalidEfmSymbols = 0;
+
     isSync0 = false;
     isSync1 = false;
     subcodeSymbol = 0;
@@ -43,11 +46,23 @@ F3Frame::F3Frame()
     }
 }
 
+F3Frame::F3Frame(uchar *tValuesIn, qint32 tLength)
+{
+    validEfmSymbols = 0;
+    invalidEfmSymbols = 0;
+
+    isSync0 = false;
+    isSync1 = false;
+    subcodeSymbol = 0;
+
+    setTValues(tValuesIn, tLength);
+}
+
 // This method sets the T-values for the F3 Frame
-void F3Frame::setTValues(QVector<qint32> tValuesIn)
+void F3Frame::setTValues(uchar* tValuesIn, qint32 tLength)
 {
     // Does tValuesIn contain values?
-    if (tValuesIn.isEmpty()) {
+    if (tLength == 0) {
         qDebug() << "F3Frame::setTValues(): T values array is empty!";
         return;
     }
@@ -62,10 +77,9 @@ void F3Frame::setTValues(QVector<qint32> tValuesIn)
     qint32 bytePosition = 0;
     uchar byteData = 0;
 
-    qint32 tValuesSize = tValuesIn.size();
     bool finished = false;
-    for (qint32 tPosition = 0; tPosition < tValuesSize; tPosition++) {
-        qint32 tValuesIn_tPosition = tValuesIn[tPosition];
+    for (qint32 tPosition = 0; tPosition < tLength; tPosition++) {
+        uchar tValuesIn_tPosition = tValuesIn[tPosition];
         for (qint32 bitCount = 0; bitCount < tValuesIn_tPosition; bitCount++) {
             if (bitCount == 0) byteData |= (1 << bitPosition);
             bitPosition--;
@@ -149,6 +163,18 @@ void F3Frame::setTValues(QVector<qint32> tValuesIn)
     }
 }
 
+// Return the number of valid EFM symbols in the frame
+qint64 F3Frame::getNumberOfValidEfmSymbols()
+{
+    return validEfmSymbols;
+}
+
+// Return the number of invalid EFM symbols in the frame
+qint64 F3Frame::getNumberOfInvalidEfmSymbols()
+{
+    return invalidEfmSymbols;
+}
+
 // This method returns the 32 data symbols for the F3 Frame
 uchar *F3Frame::getDataSymbols(void)
 {
@@ -191,6 +217,8 @@ qint16 F3Frame::translateEfm(qint16 efmValue)
         if (efm2numberLUT[lutPos] == efmValue) result = lutPos;
         lutPos++;
     }
+
+    if (result == -1) invalidEfmSymbols++; else validEfmSymbols++;
 
     return result;
 }

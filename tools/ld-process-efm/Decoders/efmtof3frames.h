@@ -46,8 +46,11 @@ public:
         qint32 validFrames;
         qint32 overshootFrames;
 
-        qint64 validTValues;
-        qint64 invalidTValues;
+        qint64 inRangeTValues;
+        qint64 outOfRangeTValues;
+
+        qint64 validEfmSymbols;
+        qint64 invalidEfmSymbols;
     };
 
     QVector<F3Frame> process(QByteArray efmDataIn, bool debugState);

@@ -178,8 +178,12 @@ void MainWindow::resetStatistics(void)
     ui->efm_undershootSyncs_label->setText(tr("0"));
     ui->efm_totalSyncs_label->setText(tr("0"));
 
-    ui->efm_validTValues_label->setText(tr("0"));
-    ui->efm_invalidTValues_label->setText(tr("0"));
+    ui->efm_validEfmSymbols_label->setText(tr("0"));
+    ui->efm_invalidEfmSymbols_label->setText(tr("0"));
+    ui->efm_symbolErrorRate_label->setText(tr("0%"));
+
+    ui->efm_inRangeTValues_label->setText(tr("0"));
+    ui->efm_outOfRangeTValues_label->setText(tr("0"));
     ui->efm_totalTValues_label->setText(tr("0"));
 
     ui->efm_validFrames_label->setText(tr("0"));
@@ -250,9 +254,16 @@ void MainWindow::updateStatistics(void)
     ui->efm_totalSyncs_label->setText(QString::number(statistics.efmToF3Frames.validSyncs +
                                                       statistics.efmToF3Frames.overshootSyncs + statistics.efmToF3Frames.undershootSyncs));
 
-    ui->efm_validTValues_label->setText(QString::number(statistics.efmToF3Frames.validTValues));
-    ui->efm_invalidTValues_label->setText(QString::number(statistics.efmToF3Frames.invalidTValues));
-    ui->efm_totalTValues_label->setText(QString::number(statistics.efmToF3Frames.validTValues + statistics.efmToF3Frames.invalidTValues));
+    ui->efm_validEfmSymbols_label->setText(QString::number(statistics.efmToF3Frames.validEfmSymbols));
+    ui->efm_invalidEfmSymbols_label->setText(QString::number(statistics.efmToF3Frames.invalidEfmSymbols));
+
+    qreal efmSymbolErrorRate = static_cast<qreal>(statistics.efmToF3Frames.validEfmSymbols + statistics.efmToF3Frames.invalidEfmSymbols);
+    efmSymbolErrorRate = (100 / efmSymbolErrorRate) * (statistics.efmToF3Frames.invalidEfmSymbols);
+    ui->efm_symbolErrorRate_label->setText(QString::number(efmSymbolErrorRate) + "%");
+
+    ui->efm_inRangeTValues_label->setText(QString::number(statistics.efmToF3Frames.inRangeTValues));
+    ui->efm_outOfRangeTValues_label->setText(QString::number(statistics.efmToF3Frames.outOfRangeTValues));
+    ui->efm_totalTValues_label->setText(QString::number(statistics.efmToF3Frames.inRangeTValues + statistics.efmToF3Frames.outOfRangeTValues));
 
     ui->efm_validFrames_label->setText(QString::number(statistics.efmToF3Frames.validFrames));
     ui->efm_overshootFrames_label->setText(QString::number(statistics.efmToF3Frames.overshootFrames));

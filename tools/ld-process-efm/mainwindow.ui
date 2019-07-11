@@ -110,7 +110,7 @@
          <item>
           <widget class="QTabWidget" name="tabWidget">
            <property name="currentIndex">
-            <number>0</number>
+            <number>1</number>
            </property>
            <widget class="QWidget" name="optionsTab">
             <attribute name="title">
@@ -271,7 +271,7 @@
              <property name="geometry">
               <rect>
                <x>10</x>
-               <y>250</y>
+               <y>380</y>
                <width>531</width>
                <height>121</height>
               </rect>
@@ -400,7 +400,7 @@
              <property name="geometry">
               <rect>
                <x>10</x>
-               <y>140</y>
+               <y>270</y>
                <width>531</width>
                <height>101</height>
               </rect>
@@ -421,7 +421,7 @@
                <string>TextLabel</string>
               </property>
              </widget>
-             <widget class="QLabel" name="efm_invalidTValues_label">
+             <widget class="QLabel" name="efm_outOfRangeTValues_label">
               <property name="geometry">
                <rect>
                 <x>220</x>
@@ -444,13 +444,13 @@
                </rect>
               </property>
               <property name="text">
-               <string>Valid T-Values:</string>
+               <string>In range T-Values:</string>
               </property>
               <property name="alignment">
                <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
               </property>
              </widget>
-             <widget class="QLabel" name="efm_validTValues_label">
+             <widget class="QLabel" name="efm_inRangeTValues_label">
               <property name="geometry">
                <rect>
                 <x>220</x>
@@ -473,7 +473,7 @@
                </rect>
               </property>
               <property name="text">
-               <string>Invalid T-Values:</string>
+               <string>Out of range T-Values:</string>
               </property>
               <property name="alignment">
                <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
@@ -616,6 +616,106 @@
                <rect>
                 <x>220</x>
                 <y>70</y>
+                <width>301</width>
+                <height>20</height>
+               </rect>
+              </property>
+              <property name="text">
+               <string>TextLabel</string>
+              </property>
+             </widget>
+            </widget>
+            <widget class="QGroupBox" name="groupBox_13">
+             <property name="geometry">
+              <rect>
+               <x>10</x>
+               <y>140</y>
+               <width>531</width>
+               <height>121</height>
+              </rect>
+             </property>
+             <property name="title">
+              <string>EFM Symbols:</string>
+             </property>
+             <widget class="QLabel" name="label_14">
+              <property name="geometry">
+               <rect>
+                <x>10</x>
+                <y>30</y>
+                <width>201</width>
+                <height>21</height>
+               </rect>
+              </property>
+              <property name="text">
+               <string>Valid EFM symbols:</string>
+              </property>
+              <property name="alignment">
+               <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+              </property>
+             </widget>
+             <widget class="QLabel" name="label_15">
+              <property name="geometry">
+               <rect>
+                <x>10</x>
+                <y>50</y>
+                <width>201</width>
+                <height>21</height>
+               </rect>
+              </property>
+              <property name="text">
+               <string>Invalid EFM symbols:</string>
+              </property>
+              <property name="alignment">
+               <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+              </property>
+             </widget>
+             <widget class="QLabel" name="efm_validEfmSymbols_label">
+              <property name="geometry">
+               <rect>
+                <x>220</x>
+                <y>30</y>
+                <width>301</width>
+                <height>20</height>
+               </rect>
+              </property>
+              <property name="text">
+               <string>TextLabel</string>
+              </property>
+             </widget>
+             <widget class="QLabel" name="efm_invalidEfmSymbols_label">
+              <property name="geometry">
+               <rect>
+                <x>220</x>
+                <y>50</y>
+                <width>301</width>
+                <height>20</height>
+               </rect>
+              </property>
+              <property name="text">
+               <string>TextLabel</string>
+              </property>
+             </widget>
+             <widget class="QLabel" name="label_16">
+              <property name="geometry">
+               <rect>
+                <x>10</x>
+                <y>90</y>
+                <width>201</width>
+                <height>21</height>
+               </rect>
+              </property>
+              <property name="text">
+               <string>EFM error rate:</string>
+              </property>
+              <property name="alignment">
+               <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+              </property>
+             </widget>
+             <widget class="QLabel" name="efm_symbolErrorRate_label">
+              <property name="geometry">
+               <rect>
+                <x>220</x>
+                <y>90</y>
                 <width>301</width>
                 <height>20</height>
                </rect>

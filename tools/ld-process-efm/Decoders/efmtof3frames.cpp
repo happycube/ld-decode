@@ -83,19 +83,27 @@ void EfmToF3Frames::reportStatistics()
 {
     qInfo() << "";
     qInfo() << "EFM to F3 Frames:";
-    qInfo() << "        Valid syncs:" << statistics.validSyncs;
-    qInfo() << "    Overshoot syncs:" << statistics.overshootSyncs;
-    qInfo() << "   Undershoot syncs:" << statistics.undershootSyncs;
-    qInfo() << "        TOTAL syncs:" << statistics.validSyncs + statistics.overshootSyncs + statistics.undershootSyncs;
+    qInfo() << "            Valid syncs:" << statistics.validSyncs;
+    qInfo() << "        Overshoot syncs:" << statistics.overshootSyncs;
+    qInfo() << "       Undershoot syncs:" << statistics.undershootSyncs;
+    qInfo() << "            TOTAL syncs:" << statistics.validSyncs + statistics.overshootSyncs + statistics.undershootSyncs;
     qInfo() << "";
-    qInfo() << "     Valid T-values:" << statistics.validTValues;
-    qInfo() << "   Invalid T-values:" << statistics.invalidTValues;
-    qInfo() << "     TOTAL T-values:" << statistics.validTValues + statistics.invalidTValues;
+    qInfo() << "      Valid EFM symbols:" << statistics.validEfmSymbols;
+    qInfo() << "    Invalid EFM symbols:" << statistics.invalidEfmSymbols;
+
+    qreal efmSymbolErrorRate = static_cast<qreal>(statistics.validEfmSymbols + statistics.invalidEfmSymbols);
+    efmSymbolErrorRate = (100 / efmSymbolErrorRate) * (statistics.invalidEfmSymbols);
+    qInfo().nospace() << "         EFM error rate: " << efmSymbolErrorRate << "%";
+
     qInfo() << "";
-    qInfo() << "       Valid frames:" << statistics.validFrames;
-    qInfo() << "   Overshoot frames:" << statistics.overshootFrames;
-    qInfo() << "  Undershoot frames:" << statistics.undershootFrames;
-    qInfo() << "       TOTAL frames:" << statistics.validFrames + statistics.overshootFrames + statistics.undershootFrames;
+    qInfo() << "      In range T-values:" << statistics.inRangeTValues;
+    qInfo() << "  Out of range T-values:" << statistics.outOfRangeTValues;
+    qInfo() << "         TOTAL T-values:" << statistics.inRangeTValues + statistics.outOfRangeTValues;
+    qInfo() << "";
+    qInfo() << "           Valid frames:" << statistics.validFrames;
+    qInfo() << "       Overshoot frames:" << statistics.overshootFrames;
+    qInfo() << "      Undershoot frames:" << statistics.undershootFrames;
+    qInfo() << "           TOTAL frames:" << statistics.validFrames + statistics.overshootFrames + statistics.undershootFrames;
 }
 
 // Method to reset the class
@@ -125,8 +133,11 @@ void EfmToF3Frames::clearStatistics()
     statistics.validFrames = 0;
     statistics.overshootFrames = 0;
 
-    statistics.validTValues = 0;
-    statistics.invalidTValues = 0;
+    statistics.validEfmSymbols = 0;
+    statistics.invalidEfmSymbols = 0;
+
+    statistics.inRangeTValues = 0;
+    statistics.outOfRangeTValues = 0;
 }
 
 // Processing state machine methods -----------------------------------------------------------------------------------
@@ -327,36 +338,38 @@ EfmToF3Frames::StateMachine EfmToF3Frames::sm_state_processFrame()
     // Convert the T-values into a byte-stream.  The sum of T-values in every frame should be 588
     // and is padded or truncated if incorrect.
 
+    // The theoretical maximum number of T-values is (588 - T11 - T11) / T3 = 189
     qint32 tTotal = 0;
-    QVector<qint32> frameT;
-    for (qint32 delta = 0; delta < endSyncTransition; delta++) {
-        qint32 value = efmDataBuffer[delta];
+    uchar frameT[190];
+    qint32 tPointer = 0;
+    qint32 tLength = endSyncTransition;
+    if (tLength > 189) {
+        tLength = 189;
+        qDebug() << "EfmToF3Frames::sm_state_processFrame(): Number of T-values in frame exceeded 189!";
+    }
+    for (qint32 delta = 0; delta < tLength; delta++) {
+        uchar value = static_cast<uchar>(efmDataBuffer[delta]);
 
-        if (value < 3) {
-            statistics.invalidTValues++;
-            value = 3;
-        } else if (value > 11) {
-            statistics.invalidTValues++;
-            value = 11;
-        } else statistics.validTValues++;
+        if (value < 3 || value > 11) statistics.outOfRangeTValues++;
+        else statistics.inRangeTValues++;
 
         // Keep track of the total T and append to the F3 frame to be processed
         tTotal += value;
-        frameT.append(value);
+
+        frameT[tPointer++] = value;
     }
 
     // Track framing accuracy
     if (tTotal < 588) statistics.undershootFrames++;
-    if (tTotal == 588) statistics.validFrames++;
-    if (tTotal > 588) statistics.overshootFrames++;
+    else if (tTotal > 588) statistics.overshootFrames++;
+    else statistics.validFrames++;
 
     // Now we hand the data over to the F3 frame class which converts the data
-    // into a F3 frame
-    F3Frame f3Frame;
-    f3Frame.setTValues(frameT);
+    // into a F3 frame and save the F3 frame to our output data buffer
+    f3FramesOut.append(F3Frame(frameT, tLength));
 
-    // Now save the F3 frame to our output data buffer
-    f3FramesOut.append(f3Frame);
+    statistics.validEfmSymbols += f3FramesOut.last().getNumberOfValidEfmSymbols();
+    statistics.invalidEfmSymbols += f3FramesOut.last().getNumberOfInvalidEfmSymbols();
 
     // Discard all transitions up to the sync end
     efmDataBuffer.remove(0, endSyncTransition);

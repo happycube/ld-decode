@@ -33,13 +33,17 @@ class F3Frame
 {
 public:
     F3Frame();
+    F3Frame(uchar *tValuesIn, qint32 tLength);
 
-    void setTValues(QVector<qint32> tValuesIn);
+    void setTValues(uchar *tValuesIn, qint32 tLength);
     uchar* getDataSymbols(void);
     uchar* getErrorSymbols(void);
     uchar getSubcodeSymbol(void);
     bool isSubcodeSync0(void);
     bool isSubcodeSync1(void);
+
+    qint64 getNumberOfValidEfmSymbols();
+    qint64 getNumberOfInvalidEfmSymbols();
 
 private:
     uchar dataSymbols[32];
@@ -47,6 +51,9 @@ private:
     uchar subcodeSymbol;
     bool isSync0;
     bool isSync1;
+
+    qint64 validEfmSymbols;
+    qint64 invalidEfmSymbols;
 
     qint16 translateEfm(qint16 efmValue);
     qint16 getBits(uchar *rawData, qint16 bitIndex, qint16 width);
