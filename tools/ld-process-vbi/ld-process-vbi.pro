@@ -15,9 +15,10 @@ DEFINES += QT_DEPRECATED_WARNINGS
 #DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
 
 SOURCES += \
+    decoderpool.cpp \
         main.cpp \
-    vbidecoder.cpp \
     fmcode.cpp \
+    vbidecoder.cpp \
     whiteflag.cpp \
     vbicorrector.cpp
 
@@ -38,7 +39,8 @@ win32:LIBS += $$quote($$MYDLLDIR/ld-decode-shared.dll)
  unix:LIBS += $$quote(-L$$MYDLLDIR) -lld-decode-shared
 
 HEADERS += \
-    vbidecoder.h \
+    decoderpool.h \
     fmcode.h \
+    vbidecoder.h \
     whiteflag.h \
     vbicorrector.h

@@ -3,7 +3,7 @@
     vbicorrector.h
 
     ld-process-vbi - VBI and IEC NTSC specific processor for ld-decode
-    Copyright (C) 2018 Simon Inns
+    Copyright (C) 2018-2019 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -35,14 +35,14 @@ class VbiCorrector : public QObject
     Q_OBJECT
 public:
     explicit VbiCorrector(QObject *parent = nullptr);
-    bool process(QString inputFileName);
+    bool process(LdDecodeMetaData *_ldDecodeMetadata);
 
 signals:
 
 public slots:
 
 private:
-    LdDecodeMetaData ldDecodeMetaData;
+    LdDecodeMetaData* ldDecodeMetadata;
 
     qint32 getCavFrameNumber(qint32 frameSeqNumber);
     void setCavFrameNumber(qint32 frameSeqNumber, qint32 vbiFrameNumber);

@@ -3,7 +3,7 @@
     main.cpp
 
     ld-process-vbi - VBI and IEC NTSC specific processor for ld-decode
-    Copyright (C) 2018 Simon Inns
+    Copyright (C) 2018-2019 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -26,8 +26,9 @@
 #include <QDebug>
 #include <QtGlobal>
 #include <QCommandLineParser>
+#include <QThread>
 
-#include "vbidecoder.h"
+#include "decoderpool.h"
 #include "vbicorrector.h"
 
 // Global for debug output
@@ -78,7 +79,7 @@ int main(int argc, char *argv[])
 
     // Set application name and version
     QCoreApplication::setApplicationName("ld-process-vbi");
-    QCoreApplication::setApplicationVersion("1.2");
+    QCoreApplication::setApplicationVersion("1.3");
     QCoreApplication::setOrganizationDomain("domesday86.com");
 
     // Set up the command line parser
@@ -96,26 +97,49 @@ int main(int argc, char *argv[])
                                        QCoreApplication::translate("main", "Show debug"));
     parser.addOption(showDebugOption);
 
-    // Option to perform VBI correction (-c)
-    QCommandLineOption showCorrectionOption(QStringList() << "c" << "correction",
-                                       QCoreApplication::translate("main", "Perform VBI frame number correction"));
+    // Option to perform VBI error correction (-c)
+    QCommandLineOption showCorrectionOption(QStringList() << "e" << "errorcorrect",
+                                       QCoreApplication::translate("main", "Perform VBI frame number error correction (not for NTSC pull-down sources!)"));
     parser.addOption(showCorrectionOption);
 
-    // Positional argument to specify input video file
+    // Option to disable JSON back-up (-n)
+    QCommandLineOption showNoBackupOption(QStringList() << "n" << "nobackup",
+                                       QCoreApplication::translate("main", "Do not create a backup of the input JSON metadata"));
+    parser.addOption(showNoBackupOption);
+
+    // Option to select the number of threads (-t)
+    QCommandLineOption threadsOption(QStringList() << "t" << "threads",
+                                        QCoreApplication::translate("main", "Specify the number of concurrent threads (default is the number of logical CPUs)"),
+                                        QCoreApplication::translate("main", "number"));
+    parser.addOption(threadsOption);
+
+    // Positional argument to specify input TBC file
     parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input TBC file"));
 
     // Process the command line options and arguments given by the user
     parser.process(a);
 
     // Get the options from the parser
-    bool isDebugOn = parser.isSet(showDebugOption);
-    bool isCorrection = parser.isSet(showCorrectionOption);
+    bool debugOn = parser.isSet(showDebugOption);
+    bool performCorrection = parser.isSet(showCorrectionOption);
+    bool noBackup = parser.isSet(showNoBackupOption);
+
+    qint32 maxThreads = QThread::idealThreadCount();
+    if (parser.isSet(threadsOption)) {
+        maxThreads = parser.value(threadsOption).toInt();
+
+        if (maxThreads < 1) {
+            // Quit with error
+            qCritical("Specified number of threads must be greater than zero");
+            return -1;
+        }
+    }
 
     // Get the arguments from the parser
-    QString inputFileName;
+    QString inputFilename;
     QStringList positionalArguments = parser.positionalArguments();
     if (positionalArguments.count() == 1) {
-        inputFileName = positionalArguments.at(0);
+        inputFilename = positionalArguments.at(0);
     } else {
         // Quit with error
         qCritical("You must specify an input TBC file");
@@ -123,16 +147,32 @@ int main(int argc, char *argv[])
     }
 
     // Process the command line options
-    if (isDebugOn) showDebug = true;
+    if (debugOn) showDebug = true;
+
+    // Open the JSON metadata
+    LdDecodeMetaData metaData;
+
+    // Open the source video metadata
+    qInfo().nospace().noquote() << "Reading JSON metadata from " << inputFilename << ".json";
+    if (!metaData.read(inputFilename + ".json")) {
+        qCritical() << "Unable to open TBC JSON metadata file";
+        return 1;
+    }
+
+    // Perform a backup of the input JSON metadata
+    qInfo().nospace().noquote() << "Backing up JSON metadata to " << inputFilename << ".json.bup";
+    if (!noBackup) {
+        if (!QFile::copy(inputFilename + ".json", inputFilename + ".json.bup")) {
+            qCritical() << "Unable to back-up input JSON metadata file - back-up already exists?";
+            return 1;
+        }
+    }
 
     // Perform the processing
-    if (!isCorrection) {
-        VbiDecoder vbiDecoder;
-        vbiDecoder.process(inputFileName);
-    } else {
-        VbiCorrector vbiCorrector;
-        vbiCorrector.process(inputFileName);
-    }
+    qInfo() << "Beginning VBI processing...";
+    QScopedPointer<VbiDecoder> vbiDecoder;
+    DecoderPool decoderPool(inputFilename, performCorrection, maxThreads, metaData);
+    if (!decoderPool.process()) return 1;
 
     // Quit with success
     return 0;

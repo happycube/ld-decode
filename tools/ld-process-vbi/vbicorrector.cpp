@@ -29,26 +29,12 @@ VbiCorrector::VbiCorrector(QObject *parent) : QObject(parent)
 
 }
 
-bool VbiCorrector::process(QString inputFileName)
+bool VbiCorrector::process(LdDecodeMetaData *_ldDecodeMetadata)
 {
-    // Open the source video metadata
-    if (!ldDecodeMetaData.read(inputFileName + ".json")) {
-        qInfo() << "Unable to open ld-decode metadata file";
-        return false;
-    }
-
-    LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
-
-    qDebug() << "VbiCorrector::process(): Input source is" << videoParameters.fieldWidth << "x" << videoParameters.fieldHeight << "filename" << inputFileName;
-
-    // There must be at least 2 frames to process in the input TBC
-    if (ldDecodeMetaData.getNumberOfFrames() < 2) {
-        qCritical() << "The source TBC contains less than 2 frames... Cannot perform correction!";
-        return false;
-    }
+    ldDecodeMetadata = _ldDecodeMetadata;
 
     // Check the disc type
-    LdDecodeMetaData::VbiDiscTypes discType = ldDecodeMetaData.getDiscTypeFromVbi();
+    LdDecodeMetaData::VbiDiscTypes discType = ldDecodeMetadata->getDiscTypeFromVbi();
     if (discType == LdDecodeMetaData::VbiDiscTypes::cav) {
         qInfo() << "Disc type is CAV - performing correction of picture numbers";
     } else if (discType == LdDecodeMetaData::VbiDiscTypes::clv) {
@@ -59,12 +45,12 @@ bool VbiCorrector::process(QString inputFileName)
     }
 
     // Get the first and second field numbers for the sequential frame
-    qint32 firstField = ldDecodeMetaData.getFirstFieldNumber(1);
-    qint32 secondField = ldDecodeMetaData.getSecondFieldNumber(1);
+    qint32 firstField = ldDecodeMetadata->getFirstFieldNumber(1);
+    qint32 secondField = ldDecodeMetadata->getSecondFieldNumber(1);
 
     // Get the sound mode of the first frame
-    LdDecodeMetaData::VbiSoundModes firstFieldSoundMode = ldDecodeMetaData.getField(firstField).vbi.soundMode;
-    LdDecodeMetaData::VbiSoundModes secondFieldSoundMode = ldDecodeMetaData.getField(secondField).vbi.soundMode;
+    LdDecodeMetaData::VbiSoundModes firstFieldSoundMode = ldDecodeMetadata->getField(firstField).vbi.soundMode;
+    LdDecodeMetaData::VbiSoundModes secondFieldSoundMode = ldDecodeMetadata->getField(secondField).vbi.soundMode;
 
     bool correctSoundMode = true;
     if (firstFieldSoundMode != secondFieldSoundMode) {
@@ -78,16 +64,16 @@ bool VbiCorrector::process(QString inputFileName)
     // Check for any frames that are out of sequence (or have missing frame numbers) and try to guess the
     // frame number based on the adjacent frames
     // Note: Will not work correctly for NTSC will pull down (as the pull down frames have no frame number)
-    qInfo() << "Checking for frame numbers that are out of sequence:";
+    qInfo() << "Checking for frame numbers and sound modes that are out of sequence...";
     qint32 correctedFrameNumber;
     qint32 videoErrorCount = 0;
     qint32 audioErrorCount = 0;
-    for (qint32 seqNumber = 2; seqNumber < ldDecodeMetaData.getNumberOfFrames(); seqNumber++) {
-        qint32 firstField = ldDecodeMetaData.getFirstFieldNumber(seqNumber);
-        qint32 secondField = ldDecodeMetaData.getSecondFieldNumber(seqNumber);
+    for (qint32 seqNumber = 2; seqNumber < ldDecodeMetadata->getNumberOfFrames(); seqNumber++) {
+        qint32 firstField = ldDecodeMetadata->getFirstFieldNumber(seqNumber);
+        qint32 secondField = ldDecodeMetadata->getSecondFieldNumber(seqNumber);
 
-        LdDecodeMetaData::Field firstFieldData = ldDecodeMetaData.getField(firstField);
-        LdDecodeMetaData::Field secondFieldData = ldDecodeMetaData.getField(secondField);
+        LdDecodeMetaData::Field firstFieldData = ldDecodeMetadata->getField(firstField);
+        LdDecodeMetaData::Field secondFieldData = ldDecodeMetadata->getField(secondField);
 
         // Only process if fields aren't lead-in or lead-out
         if ((!firstFieldData.vbi.leadIn) && (!firstFieldData.vbi.leadOut) && (!secondFieldData.vbi.leadIn) && (!secondFieldData.vbi.leadOut)) {
@@ -171,19 +157,19 @@ bool VbiCorrector::process(QString inputFileName)
                     secondFieldData.vbi.soundMode = firstFieldData.vbi.soundMode;
 
                     // Update the metadata
-                    ldDecodeMetaData.updateField(secondFieldData, secondField);
+                    ldDecodeMetadata->updateField(secondFieldData, secondField);
                 } else if (secondFieldData.vbi.soundMode == currentSoundMode) {
                     qInfo() << "  Seq. frame" << seqNumber << " does not have matching sound modes - using secondField data (matches current sound mode)";
                     firstFieldData.vbi.soundMode = secondFieldData.vbi.soundMode;
 
                     // Update the metadata
-                    ldDecodeMetaData.updateField(firstFieldData, firstField);
+                    ldDecodeMetadata->updateField(firstFieldData, firstField);
                 } else {
                     qInfo() << "  Seq. frame" << seqNumber << " does not have matching sound modes - using firstField data only (neither field matches current sound mode)";
                     secondFieldData.vbi.soundMode = firstFieldData.vbi.soundMode;
 
                     // Update the metadata
-                    ldDecodeMetaData.updateField(secondFieldData, secondField);
+                    ldDecodeMetadata->updateField(secondFieldData, secondField);
                 }
 
                 audioErrorCount++;
@@ -201,14 +187,14 @@ bool VbiCorrector::process(QString inputFileName)
                 // we correct based on the sound mode of the previous frame.
 
                 qint32 fieldsToCheck = 20;
-                if ((seqNumber + fieldsToCheck) > ldDecodeMetaData.getNumberOfFields()) {
+                if ((seqNumber + fieldsToCheck) > ldDecodeMetadata->getNumberOfFields()) {
                     // We don't have enough remaining fields to do a full check
-                    fieldsToCheck = ldDecodeMetaData.getNumberOfFields() - seqNumber;
+                    fieldsToCheck = ldDecodeMetadata->getNumberOfFields() - seqNumber;
                 }
 
                 qint32 matches = 0;
                 for (qint32 counter = 1; counter < fieldsToCheck; counter++) {
-                    if (ldDecodeMetaData.getField(firstField + counter).vbi.soundMode == firstFieldSoundMode) matches++;
+                    if (ldDecodeMetadata->getField(firstField + counter).vbi.soundMode == firstFieldSoundMode) matches++;
                 }
 
                 if (matches > (fieldsToCheck / 2)) {
@@ -220,8 +206,8 @@ bool VbiCorrector::process(QString inputFileName)
                     secondFieldData.vbi.soundMode = currentSoundMode;
 
                     // Update the metadata
-                    ldDecodeMetaData.updateField(firstFieldData, firstField);
-                    ldDecodeMetaData.updateField(secondFieldData, secondField);
+                    ldDecodeMetadata->updateField(firstFieldData, firstField);
+                    ldDecodeMetadata->updateField(secondFieldData, secondField);
 
                     qInfo() << "  Seq. frame" << seqNumber << "corrected sound mode";
 
@@ -233,16 +219,11 @@ bool VbiCorrector::process(QString inputFileName)
 
     // Only write out the new JSON file if frames were corrected
     if (videoErrorCount != 0 || audioErrorCount != 0) {
-        qInfo() << "Corrected" << videoErrorCount << "frame numbers/timecodes and" << audioErrorCount << "sound modes - writing new JSON metadata file...";
-
-        // Write the metadata file
-        QString outputFileName = inputFileName + ".json";
-        ldDecodeMetaData.write(outputFileName);
+        qInfo() << "Corrected" << videoErrorCount << "frame numbers/timecodes and" << audioErrorCount << "sound modes";
     } else {
         qInfo() << "No frame numbers/timecodes were corrected.";
     }
 
-    qInfo() << "Processing complete";
     return true;
 }
 
@@ -250,20 +231,20 @@ bool VbiCorrector::process(QString inputFileName)
 qint32 VbiCorrector::getCavFrameNumber(qint32 frameSeqNumber)
 {
     // Get the first and second field numbers for the frame
-    qint32 firstField = ldDecodeMetaData.getFirstFieldNumber(frameSeqNumber);
-    qint32 secondField = ldDecodeMetaData.getSecondFieldNumber(frameSeqNumber);
+    qint32 firstField = ldDecodeMetadata->getFirstFieldNumber(frameSeqNumber);
+    qint32 secondField = ldDecodeMetadata->getSecondFieldNumber(frameSeqNumber);
 
     // Determine the field number from the VBI
-    LdDecodeMetaData::Field firstFieldData = ldDecodeMetaData.getField(firstField);
-    LdDecodeMetaData::Field secondFieldData = ldDecodeMetaData.getField(secondField);
+    LdDecodeMetaData::Field firstFieldData = ldDecodeMetadata->getField(firstField);
+    LdDecodeMetaData::Field secondFieldData = ldDecodeMetadata->getField(secondField);
 
     qint32 frameNumber = -1;
     if (firstFieldData.vbi.inUse && firstFieldData.vbi.picNo != -1) {
         // Got frame number from the first field
-        frameNumber = ldDecodeMetaData.getField(firstField).vbi.picNo;
+        frameNumber = ldDecodeMetadata->getField(firstField).vbi.picNo;
     } else if (secondFieldData.vbi.inUse && secondFieldData.vbi.picNo != -1) {
         // Got frame number from the second field
-        frameNumber = ldDecodeMetaData.getField(secondField).vbi.picNo;
+        frameNumber = ldDecodeMetadata->getField(secondField).vbi.picNo;
     } else {
         // Couldn't get a frame number for the sequential frame number
         frameNumber = -1;
@@ -276,12 +257,12 @@ qint32 VbiCorrector::getCavFrameNumber(qint32 frameSeqNumber)
 void VbiCorrector::setCavFrameNumber(qint32 frameSeqNumber, qint32 vbiFrameNumber)
 {
     // Get the first and second field numbers for the frame
-    qint32 firstField = ldDecodeMetaData.getFirstFieldNumber(frameSeqNumber);
-    qint32 secondField = ldDecodeMetaData.getSecondFieldNumber(frameSeqNumber);
+    qint32 firstField = ldDecodeMetadata->getFirstFieldNumber(frameSeqNumber);
+    qint32 secondField = ldDecodeMetadata->getSecondFieldNumber(frameSeqNumber);
 
     // Determine the field number from the VBI
-    LdDecodeMetaData::Field firstFieldData = ldDecodeMetaData.getField(firstField);
-    LdDecodeMetaData::Field secondFieldData = ldDecodeMetaData.getField(secondField);
+    LdDecodeMetaData::Field firstFieldData = ldDecodeMetadata->getField(firstField);
+    LdDecodeMetaData::Field secondFieldData = ldDecodeMetadata->getField(secondField);
 
     if (firstFieldData.vbi.inUse && firstFieldData.vbi.picNo != -1) {
         // VBI Frame number is in the first field
@@ -297,8 +278,8 @@ void VbiCorrector::setCavFrameNumber(qint32 frameSeqNumber, qint32 vbiFrameNumbe
     }
 
     // Update the metadata
-    ldDecodeMetaData.updateField(firstFieldData, firstField);
-    ldDecodeMetaData.updateField(secondFieldData, secondField);
+    ldDecodeMetadata->updateField(firstFieldData, firstField);
+    ldDecodeMetadata->updateField(secondFieldData, secondField);
 }
 
 // Method to convert a CLV time code into an equivalent frame number (to make
@@ -306,12 +287,12 @@ void VbiCorrector::setCavFrameNumber(qint32 frameSeqNumber, qint32 vbiFrameNumbe
 qint32 VbiCorrector::getClvFrameNumber(qint32 frameSeqNumber)
 {
     // Get the first and second field numbers for the frame
-    qint32 firstField = ldDecodeMetaData.getFirstFieldNumber(frameSeqNumber);
-    qint32 secondField = ldDecodeMetaData.getSecondFieldNumber(frameSeqNumber);
+    qint32 firstField = ldDecodeMetadata->getFirstFieldNumber(frameSeqNumber);
+    qint32 secondField = ldDecodeMetadata->getSecondFieldNumber(frameSeqNumber);
 
     // Determine the field number from the VBI
-    LdDecodeMetaData::Field firstFieldData = ldDecodeMetaData.getField(firstField);
-    LdDecodeMetaData::Field secondFieldData = ldDecodeMetaData.getField(secondField);
+    LdDecodeMetaData::Field firstFieldData = ldDecodeMetadata->getField(firstField);
+    LdDecodeMetaData::Field secondFieldData = ldDecodeMetadata->getField(secondField);
 
     LdDecodeMetaData::ClvTimecode clvTimecode;
     clvTimecode.hours = 0;
@@ -321,16 +302,16 @@ qint32 VbiCorrector::getClvFrameNumber(qint32 frameSeqNumber)
 
     if (firstFieldData.vbi.inUse && firstFieldData.vbi.clvHr != -1) {
         // Get CLV data from the first field
-        clvTimecode.hours = ldDecodeMetaData.getField(firstField).vbi.clvHr;
-        clvTimecode.minutes = ldDecodeMetaData.getField(firstField).vbi.clvMin;
-        clvTimecode.seconds = ldDecodeMetaData.getField(firstField).vbi.clvSec;
-        clvTimecode.pictureNumber = ldDecodeMetaData.getField(firstField).vbi.clvPicNo;
+        clvTimecode.hours = ldDecodeMetadata->getField(firstField).vbi.clvHr;
+        clvTimecode.minutes = ldDecodeMetadata->getField(firstField).vbi.clvMin;
+        clvTimecode.seconds = ldDecodeMetadata->getField(firstField).vbi.clvSec;
+        clvTimecode.pictureNumber = ldDecodeMetadata->getField(firstField).vbi.clvPicNo;
     } else if (secondFieldData.vbi.inUse && secondFieldData.vbi.clvHr != -1) {
         // Got CLV data from the second field
-        clvTimecode.hours = ldDecodeMetaData.getField(secondField).vbi.clvHr;
-        clvTimecode.minutes = ldDecodeMetaData.getField(secondField).vbi.clvMin;
-        clvTimecode.seconds = ldDecodeMetaData.getField(secondField).vbi.clvSec;
-        clvTimecode.pictureNumber = ldDecodeMetaData.getField(secondField).vbi.clvPicNo;
+        clvTimecode.hours = ldDecodeMetadata->getField(secondField).vbi.clvHr;
+        clvTimecode.minutes = ldDecodeMetadata->getField(secondField).vbi.clvMin;
+        clvTimecode.seconds = ldDecodeMetadata->getField(secondField).vbi.clvSec;
+        clvTimecode.pictureNumber = ldDecodeMetadata->getField(secondField).vbi.clvPicNo;
     } else {
         clvTimecode.hours = -1;
         clvTimecode.minutes = -1;
@@ -339,21 +320,21 @@ qint32 VbiCorrector::getClvFrameNumber(qint32 frameSeqNumber)
     }
 
     // Calculate the frame number
-    return ldDecodeMetaData.convertClvTimecodeToFrameNumber(clvTimecode);
+    return ldDecodeMetadata->convertClvTimecodeToFrameNumber(clvTimecode);
 }
 
 // Method to set the CLV tims code based on an equivalent frame number
 void VbiCorrector::setClvFrameNumber(qint32 frameSeqNumber, qint32 clvFrameNumber)
 {
-    LdDecodeMetaData::ClvTimecode clvTimecode = ldDecodeMetaData.convertFrameNumberToClvTimecode(clvFrameNumber);
+    LdDecodeMetaData::ClvTimecode clvTimecode = ldDecodeMetadata->convertFrameNumberToClvTimecode(clvFrameNumber);
 
     // Get the first and second field numbers for the frame
-    qint32 firstField = ldDecodeMetaData.getFirstFieldNumber(frameSeqNumber);
-    qint32 secondField = ldDecodeMetaData.getSecondFieldNumber(frameSeqNumber);
+    qint32 firstField = ldDecodeMetadata->getFirstFieldNumber(frameSeqNumber);
+    qint32 secondField = ldDecodeMetadata->getSecondFieldNumber(frameSeqNumber);
 
     // Determine the field number from the VBI
-    LdDecodeMetaData::Field firstFieldData = ldDecodeMetaData.getField(firstField);
-    LdDecodeMetaData::Field secondFieldData = ldDecodeMetaData.getField(secondField);
+    LdDecodeMetaData::Field firstFieldData = ldDecodeMetadata->getField(firstField);
+    LdDecodeMetaData::Field secondFieldData = ldDecodeMetadata->getField(secondField);
 
     if (firstFieldData.vbi.inUse && firstFieldData.vbi.clvHr != -1) {
         // CLV timecode is in the first field
@@ -384,8 +365,8 @@ void VbiCorrector::setClvFrameNumber(qint32 frameSeqNumber, qint32 clvFrameNumbe
     }
 
     // Update the metadata
-    ldDecodeMetaData.updateField(firstFieldData, firstField);
-    ldDecodeMetaData.updateField(secondFieldData, secondField);
+    ldDecodeMetadata->updateField(firstFieldData, firstField);
+    ldDecodeMetadata->updateField(secondFieldData, secondField);
 }
 
 

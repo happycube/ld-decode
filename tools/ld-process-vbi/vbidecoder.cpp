@@ -3,7 +3,7 @@
     vbidecoder.cpp
 
     ld-process-vbi - VBI and IEC NTSC specific processor for ld-decode
-    Copyright (C) 2018 Simon Inns
+    Copyright (C) 2018-2019 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -23,57 +23,43 @@
 ************************************************************************/
 
 #include "vbidecoder.h"
+#include "decoderpool.h"
 
-VbiDecoder::VbiDecoder(QObject *parent) : QObject(parent)
+VbiDecoder::VbiDecoder(QAtomicInt& _abort, DecoderPool& _decoderPool, QObject *parent)
+    : QThread(parent), abort(_abort), decoderPool(_decoderPool)
 {
 
 }
 
-bool VbiDecoder::process(QString inputFileName)
+// Method to make a new decoding thread
+QThread* VbiDecoder::makeThread(QAtomicInt& abort, DecoderPool& decoderPool)
 {
-    LdDecodeMetaData ldDecodeMetaData;
-    SourceVideo sourceVideo;
+    return new VbiDecoder(abort, decoderPool);
+}
 
-    // Open the source video metadata
-    if (!ldDecodeMetaData.read(inputFileName + ".json")) {
-        qInfo() << "Unable to open ld-decode metadata file";
-        return false;
-    }
+// Thread main processing method
+void VbiDecoder::run()
+{
+    qint32 fieldNumber;
 
-    LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
+    // Input data buffers
+    QByteArray sourceFieldData;
+    LdDecodeMetaData::Field fieldMetadata;
+    LdDecodeMetaData::VideoParameters videoParameters;
 
-    qDebug() << "VbiDecoder::process(): Input source is" << videoParameters.fieldWidth << "x" << videoParameters.fieldHeight << "filename" << inputFileName;
+    while(!abort) {
+        // Get the next field to process from the input file
+        if (!decoderPool.getInputField(fieldNumber, sourceFieldData, fieldMetadata, videoParameters)) {
+            // No more input fields -- exit
+            break;
+        }
 
-    // Open the source video
-    if (!sourceVideo.open(inputFileName, videoParameters.fieldWidth * videoParameters.fieldHeight)) {
-        // Could not open source video file
-        qInfo() << "Unable to open ld-decode video file";
-        return false;
-    }
-
-    // Check TBC and JSON field numbers match
-    if (sourceVideo.getNumberOfAvailableFields() != ldDecodeMetaData.getNumberOfFields()) {
-        qInfo() << "Warning: TBC file contains" << sourceVideo.getNumberOfAvailableFields() <<
-                   "fields but the JSON indicates" << ldDecodeMetaData.getNumberOfFields() <<
-                   "fields - some fields will be ignored";
-    }
-
-    // Process the VBI and NTSC data for the fields
-    for (qint32 fieldNumber = 1; fieldNumber <= ldDecodeMetaData.getNumberOfFields(); fieldNumber++) {
-        SourceField *sourceField;
-        VbiDecoder vbiDecoder;
         FmCode fmCode;
         FmCode::FmDecode fmDecode;
         bool isWhiteFlag = false;
         WhiteFlag whiteFlag;
 
-        // Get the source field
-        sourceField = sourceVideo.getVideoField(fieldNumber);
-
-        // Get the existing field data from the metadata
-        LdDecodeMetaData::Field field = ldDecodeMetaData.getField(fieldNumber);
-
-        if (field.isFirstField) qDebug() << "VbiDecoder::process(): Getting metadata for field" << fieldNumber << "(first)";
+        if (fieldMetadata.isFirstField) qDebug() << "VbiDecoder::process(): Getting metadata for field" << fieldNumber << "(first)";
         else  qDebug() << "VbiDecoder::process(): Getting metadata for field" << fieldNumber << "(second)";
 
         // Determine the 16-bit zero-crossing point
@@ -81,58 +67,51 @@ bool VbiDecoder::process(QString inputFileName)
 
         // Get the VBI data from the field lines
         qDebug() << "VbiDecoder::process(): Getting field-lines for field" << fieldNumber;
-        field.vbi.vbiData[0] = manchesterDecoder(getActiveVideoLine(sourceField, 16, videoParameters), zcPoint, videoParameters);
-        field.vbi.vbiData[1] = manchesterDecoder(getActiveVideoLine(sourceField, 17, videoParameters), zcPoint, videoParameters);
-        field.vbi.vbiData[2] = manchesterDecoder(getActiveVideoLine(sourceField, 18, videoParameters), zcPoint, videoParameters);
+        fieldMetadata.vbi.vbiData[0] = manchesterDecoder(getActiveVideoLine(&sourceFieldData, 16, videoParameters), zcPoint, videoParameters);
+        fieldMetadata.vbi.vbiData[1] = manchesterDecoder(getActiveVideoLine(&sourceFieldData, 17, videoParameters), zcPoint, videoParameters);
+        fieldMetadata.vbi.vbiData[2] = manchesterDecoder(getActiveVideoLine(&sourceFieldData, 18, videoParameters), zcPoint, videoParameters);
 
-        // Show the VBI data as hexadecimal
-        qInfo() << "Processing field" << fieldNumber <<
-                    "16 =" << QString::number(field.vbi.vbiData[0], 16) <<
-                    "17 =" << QString::number(field.vbi.vbiData[1], 16) <<
-                    "18 =" << QString::number(field.vbi.vbiData[2], 16);
+        // Show the VBI data as hexadecimal (for every 100th field)
+        if (fieldNumber % 1000 == 0) {
+            qInfo() << "Processing field" << fieldNumber;
+        }
 
         // Translate the VBI data into a decoded VBI object
-        field.vbi = translateVbi(field.vbi.vbiData[0], field.vbi.vbiData[1], field.vbi.vbiData[2]);
+        fieldMetadata.vbi = translateVbi(fieldMetadata.vbi.vbiData[0], fieldMetadata.vbi.vbiData[1], fieldMetadata.vbi.vbiData[2]);
 
         // Process NTSC specific data if source type is NTSC
         if (!videoParameters.isSourcePal) {
             // Get the 40-bit FM coded data from the field lines
-            fmDecode = fmCode.fmDecoder(getActiveVideoLine(sourceField, 10, videoParameters), videoParameters);
+            fmDecode = fmCode.fmDecoder(getActiveVideoLine(&sourceFieldData, 10, videoParameters), videoParameters);
 
             // Get the white flag from the field lines
-            isWhiteFlag = whiteFlag.getWhiteFlag(getActiveVideoLine(sourceField, 11, videoParameters), videoParameters);
+            isWhiteFlag = whiteFlag.getWhiteFlag(getActiveVideoLine(&sourceFieldData, 11, videoParameters), videoParameters);
 
             // Update the metadata
             if (fmDecode.receiverClockSyncBits != 0) {
-                field.ntsc.isFmCodeDataValid = true;
-                field.ntsc.fmCodeData = static_cast<qint32>(fmDecode.data);
-                if (fmDecode.videoFieldIndicator == 1) field.ntsc.fieldFlag = true;
-                else field.ntsc.fieldFlag = false;
+                fieldMetadata.ntsc.isFmCodeDataValid = true;
+                fieldMetadata.ntsc.fmCodeData = static_cast<qint32>(fmDecode.data);
+                if (fmDecode.videoFieldIndicator == 1) fieldMetadata.ntsc.fieldFlag = true;
+                else fieldMetadata.ntsc.fieldFlag = false;
             } else {
-                field.ntsc.isFmCodeDataValid = false;
-                field.ntsc.fmCodeData = -1;
-                field.ntsc.fieldFlag = false;
+                fieldMetadata.ntsc.isFmCodeDataValid = false;
+                fieldMetadata.ntsc.fmCodeData = -1;
+                fieldMetadata.ntsc.fieldFlag = false;
             }
 
-            field.ntsc.whiteFlag = isWhiteFlag;
-            field.ntsc.inUse = true;
+            fieldMetadata.ntsc.whiteFlag = isWhiteFlag;
+            fieldMetadata.ntsc.inUse = true;
         }
 
         // Update the metadata for the field
-        field.vbi.inUse = true;
-        ldDecodeMetaData.updateField(field, fieldNumber);
-        qDebug() << "VbiDecoder::process(): Updating metadata for field" << fieldNumber;
+        fieldMetadata.vbi.inUse = true;
+
+        // Write the result to the output metadata
+        if (!decoderPool.setOutputField(fieldNumber, fieldMetadata)) {
+            abort = true;
+            break;
+        }
     }
-
-    // Write the metadata file
-    QString outputFileName = inputFileName + ".json";
-    ldDecodeMetaData.write(outputFileName);
-    qInfo() << "Processing complete";
-
-    // Close the source video
-    sourceVideo.close();
-
-    return true;
 }
 
 // Private method to translate the values of the VBI lines into VBI data
@@ -699,7 +678,7 @@ bool VbiDecoder::parity(quint32 x4, quint32 x5)
 }
 
 // Private method to get a single scanline of greyscale data
-QByteArray VbiDecoder::getActiveVideoLine(SourceField *sourceField, qint32 fieldLine,
+QByteArray VbiDecoder::getActiveVideoLine(QByteArray *sourceField, qint32 fieldLine,
                                         LdDecodeMetaData::VideoParameters videoParameters)
 {
     // Range-check the scan line
@@ -711,7 +690,7 @@ QByteArray VbiDecoder::getActiveVideoLine(SourceField *sourceField, qint32 field
     qint32 startPointer = ((fieldLine - 1) * videoParameters.fieldWidth * 2) + (videoParameters.activeVideoStart * 2);
     qint32 length = (videoParameters.activeVideoEnd - videoParameters.activeVideoStart) * 2;
 
-    return sourceField->getFieldData().mid(startPointer, length);
+    return sourceField->mid(startPointer, length);
 }
 
 // Private method to read a 24-bit biphase coded signal (manchester code) from a field line
