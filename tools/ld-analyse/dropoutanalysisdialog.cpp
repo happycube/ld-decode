@@ -67,7 +67,7 @@ void DropoutAnalysisDialog::updateChart(LdDecodeMetaData *ldDecodeMetaData)
 {
     series.clear();
 
-    qreal targetDataPoints = 4000;
+    qreal targetDataPoints = 2000;
     qreal averageWidth = qRound(ldDecodeMetaData->getNumberOfFields() / targetDataPoints);
     if (averageWidth < 1) averageWidth = 1; // Ensure we don't divide by zero
     qint32 dataPoints = ldDecodeMetaData->getNumberOfFields() / static_cast<qint32>(averageWidth);

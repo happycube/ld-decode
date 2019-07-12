@@ -25,6 +25,7 @@ DEFINES += QT_DEPRECATED_WARNINGS
 CONFIG += c++11
 
 SOURCES += \
+    busydialog.cpp \
         main.cpp \
         mainwindow.cpp \
     oscilloscopedialog.cpp \
@@ -44,6 +45,7 @@ SOURCES += \
     vitsmetricsdialog.cpp
 
 HEADERS += \
+    busydialog.h \
         mainwindow.h \
     oscilloscopedialog.h \
     aboutdialog.h \
@@ -63,6 +65,7 @@ HEADERS += \
     vitsmetricsdialog.h
 
 FORMS += \
+    busydialog.ui \
         mainwindow.ui \
     oscilloscopedialog.ui \
     aboutdialog.ui \
