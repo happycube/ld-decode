@@ -27,19 +27,23 @@
 // Class constructor
 SourceVideo::SourceVideo(QObject *parent) : QObject(parent)
 {
-    qDebug() << "SourceVideo::SourceVideo(): Object created";
-
     // Default object settings
-    isSourceVideoValid = false;
+    isSourceVideoOpen = false;
     availableFields = -1;
     fileName.clear();
     fieldLength = -1;
-    inputFile = nullptr;
+
+    // Track caching success rate
+    cacheHit = 0;
+    cacheMiss = 0;
+
+    // Set cache maximum cost (number of objects to cache)
+    fieldCache.setMaxCost(200);
 }
 
 SourceVideo::~SourceVideo()
 {
-    if (inputFile != nullptr) delete inputFile;
+    if (isSourceVideoOpen) inputFile.close();
 }
 
 // Source Video file manipulation methods -----------------------------------------------------------------------------
@@ -50,25 +54,25 @@ bool SourceVideo::open(QString fileNameParam, qint32 fieldLengthParam)
     fieldLength = fieldLengthParam;
     qDebug() << "SourceVideo::open(): Called with field length =" << fieldLength;
 
-    if (isSourceVideoValid) {
+    if (isSourceVideoOpen) {
         // Video file is already open, close it
         qInfo() << "A source video input file is already open, cannot open a new one";
         return false;
     }
 
     // Open the source video file
-    inputFile = new QFile(fileNameParam);
-    if (!inputFile->open(QIODevice::ReadOnly)) {
+    inputFile.setFileName(fileNameParam);
+    if (!inputFile.open(QIODevice::ReadOnly)) {
         // Failed to open input file
         qWarning() << "Could not open " << fileNameParam << "as source video input file";
-        isSourceVideoValid = false;
+        isSourceVideoOpen = false;
         return false;
     }
 
     // File open successful - configure source video parameters
-    isSourceVideoValid = true;
+    isSourceVideoOpen = true;
     fileName = fileNameParam;
-    qint64 tAvailableFields = (inputFile->size() / (fieldLength * 2));
+    qint64 tAvailableFields = (inputFile.size() / (fieldLength * 2));
     availableFields = static_cast<qint32>(tAvailableFields);
     qDebug() << "SourceVideo::open(): Successful -" << availableFields << "fields available";
 
@@ -78,14 +82,14 @@ bool SourceVideo::open(QString fileNameParam, qint32 fieldLengthParam)
 // Close an input video data file
 void SourceVideo::close(void)
 {
-    if (!isSourceVideoValid) {
+    if (!isSourceVideoOpen) {
         qDebug() << "SourceVideo::close(): Called but no source video input file is open";
         return;
     }
 
     qDebug() << "SourceVideo::close(): Called, closing the source video file and emptying the frame cache";
-    inputFile->close();
-    isSourceVideoValid = false;
+    inputFile.close();
+    isSourceVideoOpen = false;
 
     // Clear the frame cache
     fieldCache.clear();
@@ -96,7 +100,7 @@ void SourceVideo::close(void)
 // Get the validity of the source video file
 bool SourceVideo::isSourceValid(void)
 {
-    return isSourceVideoValid;
+    return isSourceVideoOpen;
 }
 
 // Get the number of fields available from the source video file
@@ -107,114 +111,73 @@ qint32 SourceVideo::getNumberOfAvailableFields(void)
 
 // Frame data retrieval methods ---------------------------------------------------------------------------------------
 
-// Method to retrieve a single video frame (with caching)
-SourceField* SourceVideo::getVideoField(qint32 fieldNumber)
+// Method to retrieve a single video frame (with pre-caching)
+// When calling from interactive applications, setting noPreCache to true
+// will speed up random-accesses (as opposed to sequential field reads)
+SourceField* SourceVideo::getVideoField(qint32 fieldNumber, bool noPreCache)
 {
     // Check the cache
-    if (fieldCache.contains(fieldNumber)) {
-        qDebug() << "SourceVideo::getVideoField(): Returning cached field" << fieldNumber;
-        return fieldCache.object(fieldNumber);
+    if (fieldCache.contains(fieldNumber)) return fieldCache.object(fieldNumber);
+
+    // Ensure source video is open and field is in range
+    if (!isSourceVideoOpen) qFatal("Application requested video field before opening TBC file - Fatal error");
+    if (fieldNumber < 1 || fieldNumber > availableFields) qFatal("Application request non-existant TBC field");
+
+    // Seek to the correct file position for the requested field (if not already there)
+    qint64 requiredPosition = static_cast<qint64>((fieldLength * 2)) * static_cast<qint64>(fieldNumber - 1);
+    if (inputFile.pos() != requiredPosition) {
+        if (!inputFile.seek(requiredPosition)) qFatal("Could not seek to required field position in input TBC file");
     }
 
-    // Verify that we have an open file
-    if (!isSourceVideoValid) {
-        qWarning() << "Source video getVideoField called, but no input file is open";
-        // Return with error
-        return nullptr;
+    if (!noPreCache) {
+        // Read 100 fields of data (or the rest of the available fields)
+        qint32 fieldsToRead = availableFields - (fieldNumber - 1);
+        if (fieldsToRead > 100) fieldsToRead = 100;
+        qint32 fieldLengthInBytes = fieldLength * 2;
+
+        QByteArray inputFields;
+        inputFields.resize(fieldLengthInBytes * fieldsToRead);
+
+        // Read the data from the file into the field buffer
+        qint64 totalReceivedBytes = 0;
+        qint64 receivedBytes = 0;
+        do {
+            receivedBytes = inputFile.read(inputFields.data(), inputFields.size() - receivedBytes);
+            totalReceivedBytes += receivedBytes;
+        } while (receivedBytes > 0 && totalReceivedBytes < inputFields.size());
+
+        // Verify read was ok
+        if (receivedBytes != inputFields.size()) qFatal("Could not read input fields from file even though they were available");
+
+        // Cache the received fields
+        qint32 fieldPointer = fieldNumber;
+        for (qint32 i = 0; i < fieldsToRead; i++) {
+            SourceField* sourceField = new SourceField(inputFields.mid(i * fieldLengthInBytes, fieldLengthInBytes));
+            fieldCache.insert(fieldPointer, sourceField, 1);
+            fieldPointer++;
+        }
+    } else {
+        // Do not perform pre-caching
+        QByteArray inputFields;
+        inputFields.resize(fieldLength * 2);
+
+        // Read the data from the file into the field buffer
+        qint64 totalReceivedBytes = 0;
+        qint64 receivedBytes = 0;
+        do {
+            receivedBytes = inputFile.read(inputFields.data(), inputFields.size() - receivedBytes);
+            totalReceivedBytes += receivedBytes;
+        } while (receivedBytes > 0 && totalReceivedBytes < inputFields.size());
+
+        // Verify read was ok
+        if (receivedBytes != inputFields.size()) qFatal("Could not read input fields from file even though they were available");
+
+        // Cache the received field
+        SourceField* sourceField = new SourceField(inputFields);
+        fieldCache.insert(fieldNumber, sourceField, 1);
     }
 
-    // Range check the requested field range
-    if (fieldNumber < 1 || fieldNumber > availableFields) {
-        qWarning() << "Requested field number" << fieldNumber << "is out of range!";
-        return nullptr;
-    }
-
-    // Seek to the requested field
-    if (!seekToFieldNumber(fieldNumber)) {
-        // Seeking failed, just return the current cached field
-        qWarning() << "Source video seek failed... staying on the current field";
-        return nullptr;
-    }
-
-    // Persistant object for storing a field (managed by qcache)
-    sourceField = new SourceField();
-
-    // Add the raw field data from the source video file to the field object
-    sourceField->setFieldData(readRawFieldData());
-
-    // Place the frame in the frame cache
-    fieldCache.insert(fieldNumber, sourceField, 1);
-
-    qDebug() << "SourceVideo::getVideoField(): Completed";
+    // Return the originally request field
     return fieldCache.object(fieldNumber);
 }
 
-// Private methods for image and file manipulation --------------------------------------------------------------------
-
-// Seeks the input file to the specified field number
-bool SourceVideo::seekToFieldNumber(qint32 fieldNumber)
-{
-    qDebug() << "SourceVideo::seekToFieldNumber(): Called with fieldNumber =" << fieldNumber;
-
-    if (!isSourceVideoValid) {
-        qWarning() << "Source video seekToFieldNumber called, but no input file is open";
-        return false;
-    }
-
-    // Check that the required field number is in range (and possible)
-    if (fieldNumber > availableFields || fieldNumber < 1) {
-        qWarning() << "Source video seekToFieldNumber - Requested field number" << fieldNumber << "is out of bounds!";
-        return false;
-    }
-
-    qint64 requiredPosition = static_cast<qint64>((fieldLength * 2)) * static_cast<qint64>(fieldNumber - 1);
-    if (!inputFile->seek(requiredPosition)) {
-        qWarning() << "Source video seek to requested field number" << fieldNumber << "of" << availableFields << "failed!";
-        return false;
-    }
-
-    return true;
-}
-
-// Read a field of data from the input file into the current field data QByteArray
-QByteArray SourceVideo::readRawFieldData(void)
-{
-    qDebug() << "SourceVideo::readRawFieldData(): Called" <<
-                " - field length is" << fieldLength << "words";
-
-    QByteArray outputData;
-
-    // Resize the raw field buffer
-    // The size is fieldLength with 16-bit data words
-    outputData.resize((fieldLength * 2));
-
-    // Read the data from the file into the raw field buffer
-    qint64 totalReceivedBytes = 0;
-    qint64 receivedBytes = 0;
-    do {
-        receivedBytes = inputFile->read(outputData.data(), outputData.size() - receivedBytes);
-
-        if (receivedBytes > 0) totalReceivedBytes += receivedBytes;
-        //qDebug() << "SourceVideo::readRawFieldData(): Got" << receivedBytes << "bytes from input file";
-    } while (receivedBytes > 0 && totalReceivedBytes < outputData.size());
-    //qDebug() << "SourceVideo::readRawFieldData(): Got a total of" << totalReceivedBytes << "bytes from input file";
-
-    // Did we run out of data before filling the buffer?
-    if (receivedBytes == 0) {
-        // Determine why we failed
-        if (totalReceivedBytes == 0) {
-            // We didn't get any data at all...
-            qWarning() << "Zero data received when reading raw field data";
-        } else {
-            // End of file was reached before filling buffer
-            qWarning() << "Reached end of file before filling buffer";
-        }
-
-        // Return with empty data
-        outputData.clear();
-        return outputData;
-    }
-
-    // Successful
-    return outputData;
-}

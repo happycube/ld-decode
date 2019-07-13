@@ -47,7 +47,7 @@ public:
     void close(void);
 
     // Field handling methods
-    SourceField *getVideoField(qint32 fieldNumber);
+    SourceField *getVideoField(qint32 fieldNumber, bool noPreCache = false);
 
     // Get and set methods
     bool isSourceValid(void);
@@ -55,19 +55,16 @@ public:
 
 private:
     // File handling globals
-    QFile *inputFile;
+    QFile inputFile;
     QString fileName;
-    bool isSourceVideoValid;
+    bool isSourceVideoOpen;
     qint32 availableFields;
     qint32 fieldLength;
 
     // Field caching
-    SourceField *sourceField;
     QCache<qint32, SourceField> fieldCache;
-
-    // Data processing methods
-    bool seekToFieldNumber(qint32 fieldNumber);
-    QByteArray readRawFieldData(void);
+    qint32 cacheHit;
+    qint32 cacheMiss;
 };
 
 #endif // SOURCEVIDEO_H

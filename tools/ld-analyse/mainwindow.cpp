@@ -485,9 +485,9 @@ QImage MainWindow::generateQImage(qint32 firstFieldNumber, qint32 secondFieldNum
     // Get the metadata for the video parameters
     LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
 
-    // Get the raw data for the fields
-    QByteArray firstFieldData = sourceVideo.getVideoField(firstFieldNumber)->getFieldData();
-    QByteArray secondFieldData = sourceVideo.getVideoField(secondFieldNumber)->getFieldData();
+    // Get the raw data for the fields (without pre-caching)
+    QByteArray firstFieldData = sourceVideo.getVideoField(firstFieldNumber, true)->getFieldData();
+    QByteArray secondFieldData = sourceVideo.getVideoField(secondFieldNumber, true)->getFieldData();
 
     // Calculate the frame height
     qint32 frameHeight = (videoParameters.fieldHeight * 2) - 1;
@@ -987,8 +987,8 @@ void MainWindow::updateOscilloscopeDialogue(qint32 frameNumber, qint32 scanLine)
     qint32 secondFieldNumber = ldDecodeMetaData.getSecondFieldNumber(frameNumber);
 
     // Update the oscilloscope dialogue
-    oscilloscopeDialog->showTraceImage(sourceVideo.getVideoField(firstFieldNumber)->getFieldData(),
-                                       sourceVideo.getVideoField(secondFieldNumber)->getFieldData(),
+    oscilloscopeDialog->showTraceImage(sourceVideo.getVideoField(firstFieldNumber, true)->getFieldData(),
+                                       sourceVideo.getVideoField(secondFieldNumber, true)->getFieldData(),
                                        &ldDecodeMetaData, scanLine, firstFieldNumber, secondFieldNumber);
 }
 

@@ -24,29 +24,19 @@
 
 #include "sourcefield.h"
 
-SourceField::SourceField(QObject *parent) : QObject(parent)
+SourceField::SourceField(QByteArray fieldGrayScaleData, QObject *parent) : QObject (parent)
 {
-    qDebug() << "SourceField::SourceField(): Object created";
-
-    isFieldValid = false;
+    setFieldData(fieldGrayScaleData);
 }
 
 // Public method to set the frame's greyscale data
 void SourceField::setFieldData(QByteArray fieldGreyscaleData)
 {
-    qDebug() << "SourceField::setGreyScaleData(): Called";
-
-    isFieldValid = true;
     greyScaleData = QByteArray(fieldGreyscaleData, fieldGreyscaleData.size());
 }
 
 // Public method to get the frame's greyscale data
 QByteArray SourceField::getFieldData(void)
 {
-    if (!isFieldValid) {
-        qDebug() << "SourceField::getGreyScaleData(): Called, but field object is invalid";
-        return nullptr;
-    }
-
     return greyScaleData;
 }

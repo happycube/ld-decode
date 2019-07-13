@@ -35,16 +35,15 @@ class LDDECODESHAREDSHARED_EXPORT SourceField : public QObject
     Q_OBJECT
 
 public:
-    explicit SourceField(QObject *parent = nullptr);
-    void setFieldData(QByteArray fieldGreyscaleData);
+    //explicit SourceField(QObject *parent = nullptr);
+    explicit SourceField(QByteArray fieldGreyscaleData, QObject *parent = nullptr);
+
     QByteArray getFieldData(void);
 
 private:
     QByteArray greyScaleData;
-    bool isFieldValid;
 
-    void configureParameters(void);
-
+    void setFieldData(QByteArray fieldGreyscaleData);
 };
 
 #endif // SOURCEFIELD_H
