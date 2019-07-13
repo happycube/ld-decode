@@ -27,31 +27,16 @@ SOURCES += \
     lddecodemetadata.cpp
 
 HEADERS += \
-    ld-decode-shared_global.h \
-    sourcevideo.h \
-    lddecodemetadata.h \
     JsonWax/JsonWax.h \
     JsonWax/JsonWaxEditor.h \
     JsonWax/JsonWaxParser.h \
-    JsonWax/JsonWaxSerializer.h
+    JsonWax/JsonWaxSerializer.h \
+    ld-decode-shared_global.h \
+    sourcevideo.h \
+    lddecodemetadata.h
 
 unix {
     target.path = /usr/lib
     INSTALLS += target
 }
 
-# Set the destination directory of the shared libraries
-MYDLLDIR = $$IN_PWD/../library
-
-# Move all of the project's header files to the same directory
-DESTDIR = \"$$MYDLLDIR\"
-DDIR = \"$$MYDLLDIR/\"
-SDIR = \"$$IN_PWD/\"
-# Replace slashes in paths with backslashes for Windows
-win32:file ~= s,/,\\,g
-win32:DDIR ~= s,/,\\,g
-win32:SDIR ~= s,/,\\,g
-# For-loop to copy all header files to DDIR.
-for(file, HEADERS) {
-    QMAKE_POST_LINK += $$QMAKE_COPY $$quote($${SDIR}$${file}) $$quote($$DDIR) $$escape_expand(\\n\\t)
-}

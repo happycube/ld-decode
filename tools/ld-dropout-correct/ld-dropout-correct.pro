@@ -23,7 +23,7 @@ qnx: target.path = /tmp/$${TARGET}/bin
 else: unix:!android: target.path = /usr/local/bin/
 !isEmpty(target.path): INSTALLS += target
 
-MYDLLDIR = $$IN_PWD/../library
+MYDLLDIR = $$IN_PWD/../ld-decode-shared
 
 # As our header files are in the same directory, we can make Qt Creator find it
 # by specifying it as INCLUDEPATH.
