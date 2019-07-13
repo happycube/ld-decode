@@ -122,31 +122,8 @@ public:
     // VITS metrics metadata definition
     struct VitsMetrics {
         bool inUse;
-        qreal whiteSNR;
-        qreal whiteIRE;
-        qreal blackLinePSNR;
-        qreal blackLinePreTBCIRE;
-
-//        qreal whiteRFLevel;
-//        qreal greyPSNR;
-//        qreal greyIRE;
-//        qreal greyRFLevel;
-//        qreal blackLinePostTBCIRE;
-//        qreal blackLineRFLevel;
-//        qreal syncLevelPSNR;
-//        qreal syncRFLevel;
-//        qreal syncToBlackRFRatio;
-//        qreal syncToWhiteRFRatio;
-//        qreal blackToWhiteRFRatio;
-//        qreal ntscWhiteFlagSNR;
-//        qreal ntscWhiteFlagRFLevel;
-//        qreal ntscLine19Burst0IRE;
-//        qreal ntscLine19Burst70IRE;
-//        qreal ntscLine19ColorPhase;
-//        qreal ntscLine19ColorRawSNR;
-//        qreal ntscLine19Color3DPhase;
-//        qreal ntscLine19Color3DRawSNR;
-//        qreal palVITSBurst50Level;
+        qreal wSNR;
+        qreal bPSNR;
     };
 
     // NTSC Specific metadata definition
@@ -204,25 +181,25 @@ public:
 
     QString escapedString(QString unescapedString);
 
-    VideoParameters getVideoParameters(void);
-    void setVideoParameters (VideoParameters videoParametersParam);
+    VideoParameters getVideoParameters();
+    void setVideoParameters (VideoParameters _videoParameters);
 
-    PcmAudioParameters getPcmAudioParameters(void);
-    void setPcmAudioParameters(PcmAudioParameters pcmAudioParam);
+    PcmAudioParameters getPcmAudioParameters();
+    void setPcmAudioParameters(PcmAudioParameters _pcmAudioParam);
 
     Field getField(qint32 sequentialFieldNumber);
-    void appendField(Field fieldParam);
-    void updateField(Field fieldParam, qint32 sequentialFieldNumber);
+    void appendField(Field _field);
+    void updateField(Field _field, qint32 sequentialFieldNumber);
 
-    qint32 getNumberOfFields(void);
-    qint32 getNumberOfFrames(void);
+    qint32 getNumberOfFields();
+    qint32 getNumberOfFrames();
     qint32 getFirstFieldNumber(qint32 frameNumber);
     qint32 getSecondFieldNumber(qint32 frameNumber);
 
     void setIsFirstFieldFirst(bool flag);
-    bool getIsFirstFieldFirst(void);
+    bool getIsFirstFieldFirst();
 
-    VbiDiscTypes getDiscTypeFromVbi(void);
+    VbiDiscTypes getDiscTypeFromVbi();
 
     qint32 convertClvTimecodeToFrameNumber(LdDecodeMetaData::ClvTimecode clvTimeCode);
     LdDecodeMetaData::ClvTimecode convertFrameNumberToClvTimecode(qint32 clvFrameNumber);
@@ -232,8 +209,6 @@ signals:
 public slots:
 
 private:
-    bool isMetaDataValid;
-    MetaData metaData;
     bool isFirstFieldFirst;
     qint32 getFieldNumber(qint32 frameNumber, qint32 field);
 };
