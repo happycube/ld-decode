@@ -1989,6 +1989,8 @@ class LDdecode:
 
         self.autoMTF = True
 
+        self.verboseVITS = False
+
         self.bw_ratios = []
         
     def close(self):
@@ -2286,7 +2288,7 @@ class LDdecode:
             wl_slice = f.lineslice_tbc(*l)
             #logging.info(l, np.mean(f.output_to_ire(f.dspicture[wl_slice])))
             if inrange(np.mean(f.output_to_ire(f.dspicture[wl_slice])), 90, 110):
-                metrics['whiteSNR'] = self.calcpsnr(f, wl_slice)
+                metrics['wSNR'] = self.calcpsnr(f, wl_slice)
                 metrics['whiteIRE'] = np.mean(f.output_to_ire(f.dspicture[wl_slice]))
 
                 rawslice = f.lineslice(*l)
@@ -2310,7 +2312,7 @@ class LDdecode:
         metrics['blackLinePreTBCIRE'] = f.rf.hztoire(np.mean(f.data[0]['demod'][bl_slice]))
         metrics['blackLinePostTBCIRE'] = f.output_to_ire(np.mean(f.dspicture[bl_slicetbc]))
 
-        metrics['blackLinePSNR'] = self.calcpsnr(f, bl_slicetbc)
+        metrics['bPSNR'] = self.calcpsnr(f, bl_slicetbc)
 
         #sl_slice = f.lineslice(4, 35, 20)
         #sl_slicetbc = f.lineslice_tbc(4, 35, 20)
@@ -2328,9 +2330,14 @@ class LDdecode:
             #metrics['syncToWhiteRFRatio'] = metrics['syncRFLevel'] / metrics['whiteRFLevel']
             metrics['blackToWhiteRFRatio'] = metrics['blackLineRFLevel'] / metrics['whiteRFLevel']
 
+        outputkeys = metrics.keys() if self.verboseVITS else ['wSNR', 'bPSNR']
+
         metrics_rounded = {}
 
-        for k in metrics.keys():
+        for k in outputkeys:
+            if k not in metrics:
+                continue
+
             digits = 1
             if 'Ratio' in k:
                 digits = 4
@@ -2410,7 +2417,7 @@ class LDdecode:
                     if self.frameNumber is not None:
                         fi['frameNumber'] = int(self.frameNumber)
 
-                    if self.isCLV and self.clvMinutes is not None:
+                    if self.verboseVITS and self.isCLV and self.clvMinutes is not None:
                         fi['clvMinutes'] = int(self.clvMinutes)
                         if self.earlyCLV == False:
                             fi['clvSeconds'] = int(self.clvSeconds)
