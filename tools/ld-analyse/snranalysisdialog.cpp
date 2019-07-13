@@ -81,7 +81,7 @@ void SnrAnalysisDialog::updateChart(LdDecodeMetaData *ldDecodeMetaData)
         for (qint32 avCount = 0; avCount < fieldsPerDataPoint; avCount++) {
             LdDecodeMetaData::Field field = ldDecodeMetaData->getField(fieldNumber);
 
-            snrTotal += field.vitsMetrics.blackLinePSNR;
+            snrTotal += field.vitsMetrics.bPSNR;
             fieldNumber++;
         }
 
