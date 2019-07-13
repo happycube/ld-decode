@@ -122,9 +122,9 @@ bool Combine::process(QString primaryFilename, QString secondaryFilename, QStrin
     qint32 secondFieldNumber = primaryLdDecodeMetaData.getSecondFieldNumber(1);
 
     if (firstFieldNumber != 1 && secondFieldNumber != 1) {
-        SourceField *sourceField;
+        QByteArray sourceField;
         sourceField = primarySourceVideo.getVideoField(1);
-        if (!targetVideo.write(sourceField->getFieldData(), sourceField->getFieldData().size())) {
+        if (!targetVideo.write(sourceField, sourceField.size())) {
             // Could not write to target TBC file
             qInfo() << "Writing first field to the output TBC file failed";
             targetVideo.close();
@@ -229,8 +229,8 @@ bool Combine::process(QString primaryFilename, QString secondaryFilename, QStrin
             qDebug() << "Combine::process(): Frame" << primarySeqFrameNumber << "no matching frame found";
 
             // Just copy over the data from the primary source
-            firstFieldData = primarySourceVideo.getVideoField(primaryLdDecodeMetaData.getFirstFieldNumber(primarySeqFrameNumber))->getFieldData();
-            secondFieldData = primarySourceVideo.getVideoField(primaryLdDecodeMetaData.getSecondFieldNumber(primarySeqFrameNumber))->getFieldData();
+            firstFieldData = primarySourceVideo.getVideoField(primaryLdDecodeMetaData.getFirstFieldNumber(primarySeqFrameNumber));
+            secondFieldData = primarySourceVideo.getVideoField(primaryLdDecodeMetaData.getSecondFieldNumber(primarySeqFrameNumber));
         }
 
         // Write the output data to the output tbc file
@@ -383,8 +383,8 @@ qint32 Combine::getClvFrameNumber(qint32 frameSeqNumber, LdDecodeMetaData *ldDec
 QByteArray Combine::processField(qint32 primarySeqFieldNumber, qint32 secondarySeqFieldNumber, bool subline)
 {
     // Read the primary and secondary source video data for the field
-    QByteArray primaryFieldData = primarySourceVideo.getVideoField(primarySeqFieldNumber)->getFieldData();
-    QByteArray secondaryFieldData = secondarySourceVideo.getVideoField(secondarySeqFieldNumber)->getFieldData();
+    QByteArray primaryFieldData = primarySourceVideo.getVideoField(primarySeqFieldNumber);
+    QByteArray secondaryFieldData = secondarySourceVideo.getVideoField(secondarySeqFieldNumber);
 
     QByteArray outputField = primaryFieldData;
 

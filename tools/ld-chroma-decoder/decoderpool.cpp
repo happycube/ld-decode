@@ -169,8 +169,8 @@ bool DecoderPool::getInputFrame(qint32 &frameNumber, QByteArray &firstFieldData,
                 "and a second field of" << secondFieldNumber;
 
     // Fetch the input data
-    firstFieldData = sourceVideo.getVideoField(firstFieldNumber)->getFieldData();
-    secondFieldData = sourceVideo.getVideoField(secondFieldNumber)->getFieldData();
+    firstFieldData = sourceVideo.getVideoField(firstFieldNumber);
+    secondFieldData = sourceVideo.getVideoField(secondFieldNumber);
     burstMedianIre = ldDecodeMetaData.getField(firstFieldNumber).medianBurstIRE;
     firstFieldPhaseID = ldDecodeMetaData.getField(firstFieldNumber).fieldPhaseID;
     secondFieldPhaseID = ldDecodeMetaData.getField(secondFieldNumber).fieldPhaseID;

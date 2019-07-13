@@ -125,7 +125,7 @@ bool DecoderPool::getInputField(qint32 &fieldNumber, QByteArray& fieldVideoData,
     qDebug() << "DecoderPool::process(): Processing field number" << fieldNumber;
 
     // Fetch the input data
-    fieldVideoData = sourceVideo.getVideoField(fieldNumber)->getFieldData();
+    fieldVideoData = sourceVideo.getVideoField(fieldNumber);
     fieldMetadata = ldDecodeMetaData.getField(fieldNumber);
     videoParameters = ldDecodeMetaData.getVideoParameters();
 

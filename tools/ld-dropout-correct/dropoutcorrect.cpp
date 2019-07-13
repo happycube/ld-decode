@@ -34,6 +34,7 @@ bool DropOutCorrect::process(QString inputFileName, QString outputFileName, bool
     SourceVideo sourceVideo;
 
     // Open the source video metadata
+    qInfo() << "Reading JSON metadata...";
     if (!ldDecodeMetaData.read(inputFileName + ".json")) {
         qInfo() << "Unable to open ld-decode metadata file";
         return false;
@@ -55,6 +56,7 @@ bool DropOutCorrect::process(QString inputFileName, QString outputFileName, bool
     qDebug() << "DropOutDetector::process(): Input source is" << videoParameters.fieldWidth << "x" << videoParameters.fieldHeight << "filename" << inputFileName;
 
     // Open the source video
+    qInfo() << "Opening source and target video files...";
     if (!sourceVideo.open(inputFileName, videoParameters.fieldWidth * videoParameters.fieldHeight)) {
         // Could not open source video file
         qInfo() << "Unable to open ld-decode video file";
@@ -71,6 +73,7 @@ bool DropOutCorrect::process(QString inputFileName, QString outputFileName, bool
     }
 
     // Check TBC and JSON field numbers match
+    qInfo() << "Verifying metadata (number of available fields)...";
     if (sourceVideo.getNumberOfAvailableFields() != ldDecodeMetaData.getNumberOfFields()) {
         qInfo() << "Warning: TBC file contains" << sourceVideo.getNumberOfAvailableFields() <<
                    "fields but the JSON indicates" << ldDecodeMetaData.getNumberOfFields() <<
@@ -79,13 +82,14 @@ bool DropOutCorrect::process(QString inputFileName, QString outputFileName, bool
 
     // If there is a leading field in the TBC which is out of field order, we need to copy it
     // to ensure the JSON metadata files match up
+    qInfo() << "Verifying leading fields match...";
     qint32 firstFieldNumber = ldDecodeMetaData.getFirstFieldNumber(1);
     qint32 secondFieldNumber = ldDecodeMetaData.getSecondFieldNumber(1);
 
     if (firstFieldNumber != 1 && secondFieldNumber != 1) {
-        SourceField *sourceField;
+        QByteArray sourceField;
         sourceField = sourceVideo.getVideoField(1);
-        if (!targetVideo.write(sourceField->getFieldData(), sourceField->getFieldData().size())) {
+        if (!targetVideo.write(sourceField, sourceField.size())) {
             // Could not write to target TBC file
             qInfo() << "Writing first field to the output TBC file failed";
             targetVideo.close();
@@ -95,7 +99,7 @@ bool DropOutCorrect::process(QString inputFileName, QString outputFileName, bool
     }
 
     // Process the frames
-
+    qInfo() << "Performing drop-out correction...";
     for (qint32 frameNumber = 1; frameNumber <= ldDecodeMetaData.getNumberOfFrames(); frameNumber++) {
         // Get the field numbers for the frame
         qint32 firstFieldNumber = ldDecodeMetaData.getFirstFieldNumber(frameNumber);
@@ -141,8 +145,8 @@ bool DropOutCorrect::process(QString inputFileName, QString outputFileName, bool
         }
 
         // Get the source frame field data
-        QByteArray firstSourceField = sourceVideo.getVideoField(firstFieldNumber)->getFieldData();
-        QByteArray secondSourceField = sourceVideo.getVideoField(secondFieldNumber)->getFieldData();
+        QByteArray firstSourceField = sourceVideo.getVideoField(firstFieldNumber);
+        QByteArray secondSourceField = sourceVideo.getVideoField(secondFieldNumber);
         QByteArray firstTargetFieldData = firstSourceField;
         QByteArray secondTargetFieldData = secondSourceField;
 

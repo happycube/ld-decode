@@ -30,9 +30,6 @@
 #include <QObject>
 #include <QFile>
 #include <QDebug>
-#include <QCache>
-
-#include "sourcefield.h"
 
 class LDDECODESHAREDSHARED_EXPORT SourceVideo : public QObject
 {
@@ -43,28 +40,35 @@ public:
     ~SourceVideo() override;
 
     // File handling methods
-    bool open(QString fileName, qint32 fieldLengthParam);
+    bool open(QString filename, qint32 _fieldLength);
     void close(void);
 
     // Field handling methods
-    SourceField *getVideoField(qint32 fieldNumber, bool noPreCache = false);
+    QByteArray getVideoField(qint32 fieldNumber, bool noPreCache = false);
 
     // Get and set methods
-    bool isSourceValid(void);
-    qint32 getNumberOfAvailableFields(void);
+    bool isSourceValid();
+    qint32 getNumberOfAvailableFields();
 
 private:
     // File handling globals
     QFile inputFile;
-    QString fileName;
     bool isSourceVideoOpen;
     qint32 availableFields;
     qint32 fieldLength;
 
     // Field caching
-    QCache<qint32, SourceField> fieldCache;
-    qint32 cacheHit;
-    qint32 cacheMiss;
+    struct Cache {
+        QVector<QByteArray> storage;
+        qint32 maximumItems;
+        qint32 items;
+        qint32 startFieldNumber;
+
+        qint32 hit;
+        qint32 miss;
+    };
+
+    Cache cache;
 };
 
 #endif // SOURCEVIDEO_H
