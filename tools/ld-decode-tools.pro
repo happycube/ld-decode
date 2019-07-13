@@ -9,7 +9,6 @@ SUBDIRS = \
     ld-lds-converter \
     ld-ldstoefm \
     ld-process-efm \
-    ld-process-efm-rev5 \
     ld-process-vbi
 
 ld-analyse.depends = ld-decode-shared
