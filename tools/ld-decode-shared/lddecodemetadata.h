@@ -32,6 +32,8 @@
 #include <QTemporaryFile>
 #include <QDebug>
 
+#include "JsonWax/JsonWax.h"
+
 class LDDECODESHAREDSHARED_EXPORT LdDecodeMetaData : public QObject
 {
     Q_OBJECT
@@ -209,6 +211,7 @@ signals:
 public slots:
 
 private:
+    JsonWax json;
     bool isFirstFieldFirst;
     qint32 getFieldNumber(qint32 frameNumber, qint32 field);
 };

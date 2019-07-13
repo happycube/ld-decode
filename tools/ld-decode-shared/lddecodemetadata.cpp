@@ -23,12 +23,6 @@
 ************************************************************************/
 
 #include "lddecodemetadata.h"
-#include "./JsonWax/JsonWax.h"
-
-// Nasty hack, but I'm not sure how to solve the dependency issues that
-// occur if I put JsonWax in to the include file instead of here...
-extern JsonWax json;
-JsonWax json;
 
 LdDecodeMetaData::LdDecodeMetaData(QObject *parent) : QObject(parent)
 {

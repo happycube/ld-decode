@@ -76,7 +76,7 @@ FORMS += \
     dropoutanalysisdialog.ui \
     vitsmetricsdialog.ui
 
-MYDLLDIR = $$IN_PWD/../library
+MYDLLDIR = $$IN_PWD/../ld-decode-shared
 
 # As our header files are in the same directory, we can make Qt Creator find it
 # by specifying it as INCLUDEPATH.
