@@ -24,14 +24,12 @@ DEFINES += QT_DEPRECATED_WARNINGS
 
 SOURCES += \
     sourcevideo.cpp \
-    lddecodemetadata.cpp \
-    sourcefield.cpp
+    lddecodemetadata.cpp
 
 HEADERS += \
     ld-decode-shared_global.h \
     sourcevideo.h \
     lddecodemetadata.h \
-    sourcefield.h \
     JsonWax/JsonWax.h \
     JsonWax/JsonWaxEditor.h \
     JsonWax/JsonWaxParser.h \

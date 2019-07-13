@@ -30,6 +30,7 @@ DropoutAnalysisDialog::DropoutAnalysisDialog(QWidget *parent) :
     ui(new Ui::DropoutAnalysisDialog)
 {
     ui->setupUi(this);
+    setWindowFlags(Qt::Window);
 
     // Set up the chart
     chart.legend()->hide();
@@ -51,6 +52,7 @@ DropoutAnalysisDialog::DropoutAnalysisDialog(QWidget *parent) :
 
     // Set up the chart view
     chartView = new QChartView(&chart);
+    chartView->setRubberBand(QChartView::HorizontalRubberBand);
     chartView->setRenderHint(QPainter::Antialiasing);
     ui->verticalLayout->addWidget(chartView);
     chartView->repaint();
@@ -65,7 +67,7 @@ void DropoutAnalysisDialog::updateChart(LdDecodeMetaData *ldDecodeMetaData)
 {
     series.clear();
 
-    qreal targetDataPoints = 500;
+    qreal targetDataPoints = 2000;
     qreal averageWidth = qRound(ldDecodeMetaData->getNumberOfFields() / targetDataPoints);
     if (averageWidth < 1) averageWidth = 1; // Ensure we don't divide by zero
     qint32 dataPoints = ldDecodeMetaData->getNumberOfFields() / static_cast<qint32>(averageWidth);
@@ -101,6 +103,7 @@ void DropoutAnalysisDialog::updateChart(LdDecodeMetaData *ldDecodeMetaData)
     // Update the chart
     chart.setTitle("Dropout loss analysis (averaged over " + QString::number(fieldsPerDataPoint) + " fields)");
 
+    // Use fields
     axisX.setMin(0);
     axisX.setTickCount(10);
     if (ldDecodeMetaData->getNumberOfFields() < 10) axisX.setMax(10);
@@ -114,3 +117,9 @@ void DropoutAnalysisDialog::updateChart(LdDecodeMetaData *ldDecodeMetaData)
 
     chartView->repaint();
 }
+
+void DropoutAnalysisDialog::on_reset_pushButton_clicked()
+{
+    chart.zoomReset();
+}
+

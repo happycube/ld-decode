@@ -30,6 +30,7 @@ NtscDialog::NtscDialog(QWidget *parent) :
     ui(new Ui::NtscDialog)
 {
     ui->setupUi(this);
+    setWindowFlags(Qt::Window);
 }
 
 NtscDialog::~NtscDialog()

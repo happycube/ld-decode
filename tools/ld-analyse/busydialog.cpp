@@ -1,13 +1,13 @@
 /************************************************************************
 
-    f2framestoaudio.h
+    busydialog.cpp
 
-    ld-process-efm - EFM data decoder
-    Copyright (C) 2019 Simon Inns
+    ld-analyse - TBC output analysis
+    Copyright (C) 2018-2019 Simon Inns
 
     This file is part of ld-decode-tools.
 
-    ld-process-efm is free software: you can redistribute it and/or
+    ld-analyse is free software: you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
     published by the Free Software Foundation, either version 3 of the
     License, or (at your option) any later version.
@@ -22,28 +22,23 @@
 
 ************************************************************************/
 
-#ifndef F2FRAMESTOAUDIO_H
-#define F2FRAMESTOAUDIO_H
+#include "busydialog.h"
+#include "ui_busydialog.h"
 
-#include <QCoreApplication>
-#include <QDebug>
-#include <QFile>
-
-#include "f2frame.h"
-
-class F2FramesToAudio
+BusyDialog::BusyDialog(QWidget *parent) :
+    QDialog(parent),
+    ui(new Ui::BusyDialog)
 {
-public:
-    F2FramesToAudio();
+    ui->setupUi(this);
+    setWindowFlags(Qt::Dialog | Qt::FramelessWindowHint | Qt::WindowTitleHint);
+}
 
-    void reportStatus(void);
-    bool openOutputFile(QString filename);
-    void closeOutputFile(void);
-    void convert(QVector<F2Frame> f2Frames);
+BusyDialog::~BusyDialog()
+{
+    delete ui;
+}
 
-private:
-    QFile *outputFileHandle;
-    qint32 audioSamples;
-};
-
-#endif // F2FRAMESTOAUDIO_H
+void BusyDialog::setMessaage(QString message)
+{
+    ui->messageLabel->setText(message);
+}

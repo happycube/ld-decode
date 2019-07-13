@@ -3,7 +3,7 @@
     vbidecoder.h
 
     ld-process-vbi - VBI and IEC NTSC specific processor for ld-decode
-    Copyright (C) 2018 Simon Inns
+    Copyright (C) 2018-2019 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -26,26 +26,35 @@
 #define VBIDECODER_H
 
 #include <QObject>
+#include <QAtomicInt>
+#include <QThread>
+#include <QDebug>
 
-#include "sourcevideo.h"
 #include "lddecodemetadata.h"
 #include "fmcode.h"
 #include "whiteflag.h"
 
-class VbiDecoder : public QObject
-{
+class DecoderPool;
+
+class VbiDecoder : public QThread {
     Q_OBJECT
+
 public:
-    // Public methods
-    explicit VbiDecoder(QObject *parent = nullptr);
-    bool process(QString inputFileName);
+    explicit VbiDecoder(QAtomicInt& _abort, DecoderPool& _decoderPool, QObject *parent = nullptr);
+    QThread *makeThread(QAtomicInt& abort, DecoderPool& decoderPool);
 
-signals:
-
-public slots:
+protected:
+    void run() override;
 
 private:
-    QByteArray getActiveVideoLine(SourceField *sourceFrame, qint32 scanLine, LdDecodeMetaData::VideoParameters videoParameters);
+    // Decoder pool
+    QAtomicInt& abort;
+    DecoderPool& decoderPool;
+
+    // Temporary output buffer
+    LdDecodeMetaData::Field outputData;
+
+    QByteArray getActiveVideoLine(QByteArray *sourceFrame, qint32 scanLine, LdDecodeMetaData::VideoParameters videoParameters);
     LdDecodeMetaData::Vbi translateVbi(qint32 vbi16, qint32 vbi17, qint32 vbi18);
     bool parity(quint32 x4, quint32 x5);
     qint32 manchesterDecoder(QByteArray lineData, qint32 zcPoint, LdDecodeMetaData::VideoParameters videoParameters);

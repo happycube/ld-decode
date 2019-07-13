@@ -56,7 +56,7 @@ public:
 
     void setDebug(bool _debug_EfmToF3Frames, bool _debug_SyncF3Frames,
                               bool _debug_F3ToF2Frames, bool _debug_F2FramesToAudio, bool _debug_AudioSampleFramesToPcm);
-    void setAudioErrorTreatment(AudioSampleFramesToPcm::ErrorTreatment _errorTreatment);
+    void setAudioErrorTreatment(AudioSampleFramesToPcm::ErrorTreatment _errorTreatment, AudioSampleFramesToPcm::ConcealType _concealType);
     void reportStatistics();
     void startProcessing(QFile *_inputFilename, QFile *_audioOutputFilename, QFile *_dataOutputFilename);
     void stopProcessing();
@@ -88,6 +88,7 @@ private:
 
     // Audio options
     AudioSampleFramesToPcm::ErrorTreatment errorTreatment;
+    AudioSampleFramesToPcm::ConcealType concealType;
 
     // Class globals
     EfmToF3Frames efmToF3Frames;

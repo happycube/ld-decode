@@ -42,10 +42,46 @@ public:
         passThrough
     };
 
-    QByteArray process(QVector<AudioSampleFrame> audioSampleFrames, ErrorTreatment errorTreatment, bool isDebugOn);
+    // Options for concealment of audio errors
+    enum ConcealType {
+        linear,
+        prediction
+    };
+
+    void reset();
+    QByteArray process(QVector<AudioSampleFrame> audioSampleFrames, ErrorTreatment _errorTreatment, ConcealType _concealType, bool debugState);
 
 public:
+    bool debugOn;
+
+    // State-machine variables
+    enum StateMachine {
+        state_initial,
+        state_processFrame,
+        state_findEndOfError
+    };
+
+    StateMachine currentState;
+    StateMachine nextState;
     QByteArray pcmOutputBuffer;
+    QVector<AudioSampleFrame> audioSampleFrameBuffer;
+    bool waitingForData;
+    ErrorTreatment errorTreatment;
+    ConcealType concealType;
+
+    AudioSampleFrame lastGoodFrame;
+    AudioSampleFrame nextGoodFrame;
+    qint32 errorStartPosition;
+    qint32 errorStopPosition;
+
+    StateMachine sm_state_initial();
+    StateMachine sm_state_processFrame();
+    StateMachine sm_state_findEndOfError();
+
+    // Concealment methods
+    void linearInterpolationConceal();
+    void quadraticInterpolationConceal();
+    void predictiveInterpolationConceal();
 };
 
 #endif // AUDIOSAMPLEFRAMESTOPCM_H

@@ -1,13 +1,13 @@
 /************************************************************************
 
-    sourceframe.h
+    busydialog.h
 
-    ld-decode-tools shared library
-    Copyright (C) 2018 Simon Inns
+    ld-analyse - TBC output analysis
+    Copyright (C) 2018-2019 Simon Inns
 
     This file is part of ld-decode-tools.
 
-    ld-decode-tools is free software: you can redistribute it and/or
+    ld-analyse is free software: you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
     published by the Free Software Foundation, either version 3 of the
     License, or (at your option) any later version.
@@ -22,29 +22,27 @@
 
 ************************************************************************/
 
-#ifndef SOURCEFIELD_H
-#define SOURCEFIELD_H
+#ifndef BUSYDIALOG_H
+#define BUSYDIALOG_H
 
-#include "ld-decode-shared_global.h"
+#include <QDialog>
 
-#include <QObject>
-#include <QDebug>
+namespace Ui {
+class BusyDialog;
+}
 
-class LDDECODESHAREDSHARED_EXPORT SourceField : public QObject
+class BusyDialog : public QDialog
 {
     Q_OBJECT
 
 public:
-    explicit SourceField(QObject *parent = nullptr);
-    void setFieldData(QByteArray fieldGreyscaleData);
-    QByteArray getFieldData(void);
+    explicit BusyDialog(QWidget *parent = nullptr);
+    ~BusyDialog();
+
+    void setMessaage(QString message);
 
 private:
-    QByteArray greyScaleData;
-    bool isFieldValid;
-
-    void configureParameters(void);
-
+    Ui::BusyDialog *ui;
 };
 
-#endif // SOURCEFIELD_H
+#endif // BUSYDIALOG_H

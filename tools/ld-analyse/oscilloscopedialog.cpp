@@ -30,6 +30,7 @@ OscilloscopeDialog::OscilloscopeDialog(QWidget *parent) :
     ui(new Ui::OscilloscopeDialog)
 {
     ui->setupUi(this);
+    setWindowFlags(Qt::Window);
 
     maximumScanLines = 625;
 

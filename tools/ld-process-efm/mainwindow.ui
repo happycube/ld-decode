@@ -110,7 +110,7 @@
          <item>
           <widget class="QTabWidget" name="tabWidget">
            <property name="currentIndex">
-            <number>1</number>
+            <number>0</number>
            </property>
            <widget class="QWidget" name="optionsTab">
             <attribute name="title">
@@ -175,7 +175,7 @@
              <property name="geometry">
               <rect>
                <x>10</x>
-               <y>120</y>
+               <y>210</y>
                <width>531</width>
                <height>161</height>
               </rect>
@@ -259,6 +259,48 @@
               </property>
               <property name="text">
                <string>Audio sample frame to PCM debug</string>
+              </property>
+             </widget>
+            </widget>
+            <widget class="QGroupBox" name="options_conceal_groupBox">
+             <property name="geometry">
+              <rect>
+               <x>9</x>
+               <y>120</y>
+               <width>531</width>
+               <height>81</height>
+              </rect>
+             </property>
+             <property name="title">
+              <string>Concealment type:</string>
+             </property>
+             <widget class="QRadioButton" name="conceal_linear_radioButton">
+              <property name="geometry">
+               <rect>
+                <x>10</x>
+                <y>30</y>
+                <width>511</width>
+                <height>23</height>
+               </rect>
+              </property>
+              <property name="text">
+               <string>Linear interpolation</string>
+              </property>
+              <property name="checked">
+               <bool>true</bool>
+              </property>
+             </widget>
+             <widget class="QRadioButton" name="conceal_prediction_radioButton">
+              <property name="geometry">
+               <rect>
+                <x>10</x>
+                <y>50</y>
+                <width>511</width>
+                <height>23</height>
+               </rect>
+              </property>
+              <property name="text">
+               <string>Interpolated error prediction (experimental)</string>
               </property>
              </widget>
             </widget>

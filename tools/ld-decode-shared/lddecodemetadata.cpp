@@ -101,31 +101,37 @@ bool LdDecodeMetaData::read(QString fileName)
 
             // VITS metrics values
             if (json.size({"fields", fieldNumber, "vitsMetrics"}) > 0) {
+
+//                metaData.fields[fieldNumber].vitsMetrics.whiteSNR = json.value({"fields", fieldNumber, "vitsMetrics", "whiteSNR"}).toReal();
+//                metaData.fields[fieldNumber].vitsMetrics.whiteIRE = json.value({"fields", fieldNumber, "vitsMetrics", "whiteIRE"}).toReal();
+//                metaData.fields[fieldNumber].vitsMetrics.whiteRFLevel = json.value({"fields", fieldNumber, "vitsMetrics", "whiteRFLevel"}).toReal();
+//                metaData.fields[fieldNumber].vitsMetrics.greyPSNR = json.value({"fields", fieldNumber, "vitsMetrics", "greyPSNR"}).toReal();
+//                metaData.fields[fieldNumber].vitsMetrics.greyIRE = json.value({"fields", fieldNumber, "vitsMetrics", "greyIRE"}).toReal();
+//                metaData.fields[fieldNumber].vitsMetrics.greyRFLevel = json.value({"fields", fieldNumber, "vitsMetrics", "greyRFLevel"}).toReal();
+//                metaData.fields[fieldNumber].vitsMetrics.blackLinePreTBCIRE = json.value({"fields", fieldNumber, "vitsMetrics", "blackLinePreTBCIRE"}).toReal();
+//                metaData.fields[fieldNumber].vitsMetrics.blackLinePostTBCIRE = json.value({"fields", fieldNumber, "vitsMetrics", "blackLinePostTBCIRE"}).toReal();
+//                metaData.fields[fieldNumber].vitsMetrics.blackLinePSNR = json.value({"fields", fieldNumber, "vitsMetrics", "blackLinePSNR"}).toReal();
+//                metaData.fields[fieldNumber].vitsMetrics.blackLineRFLevel = json.value({"fields", fieldNumber, "vitsMetrics", "blackLineRFLevel"}).toReal();
+//                metaData.fields[fieldNumber].vitsMetrics.syncLevelPSNR = json.value({"fields", fieldNumber, "vitsMetrics", "syncLevelPSNR"}).toReal();
+//                metaData.fields[fieldNumber].vitsMetrics.syncRFLevel = json.value({"fields", fieldNumber, "vitsMetrics", "syncRFLevel"}).toReal();
+//                metaData.fields[fieldNumber].vitsMetrics.syncToBlackRFRatio = json.value({"fields", fieldNumber, "vitsMetrics", "syncToBlackRFRatio"}).toReal();
+//                metaData.fields[fieldNumber].vitsMetrics.syncToWhiteRFRatio = json.value({"fields", fieldNumber, "vitsMetrics", "syncToWhiteRFRatio"}).toReal();
+//                metaData.fields[fieldNumber].vitsMetrics.blackToWhiteRFRatio = json.value({"fields", fieldNumber, "vitsMetrics", "blackToWhiteRFRatio"}).toReal();
+//                metaData.fields[fieldNumber].vitsMetrics.ntscWhiteFlagSNR = json.value({"fields", fieldNumber, "vitsMetrics", "ntscWhiteFlagSNR"}).toReal();
+//                metaData.fields[fieldNumber].vitsMetrics.ntscWhiteFlagRFLevel = json.value({"fields", fieldNumber, "vitsMetrics", "ntscWhiteFlagRFLevel"}).toReal();
+//                metaData.fields[fieldNumber].vitsMetrics.ntscLine19Burst0IRE = json.value({"fields", fieldNumber, "vitsMetrics", "ntscLine19Burst0IRE"}).toReal();
+//                metaData.fields[fieldNumber].vitsMetrics.ntscLine19Burst70IRE = json.value({"fields", fieldNumber, "vitsMetrics", "ntscLine19Burst70IRE"}).toReal();
+//                metaData.fields[fieldNumber].vitsMetrics.ntscLine19ColorPhase = json.value({"fields", fieldNumber, "vitsMetrics", "ntscLine19ColorPhase"}).toReal();
+//                metaData.fields[fieldNumber].vitsMetrics.ntscLine19ColorRawSNR = json.value({"fields", fieldNumber, "vitsMetrics", "ntscLine19ColorRawSNR"}).toReal();
+//                metaData.fields[fieldNumber].vitsMetrics.ntscLine19Color3DPhase = json.value({"fields", fieldNumber, "vitsMetrics", "ntscLine19Color3DPhase"}).toReal();
+//                metaData.fields[fieldNumber].vitsMetrics.ntscLine19Color3DRawSNR = json.value({"fields", fieldNumber, "vitsMetrics", "ntscLine19Color3DRawSNR"}).toReal();
+//                metaData.fields[fieldNumber].vitsMetrics.palVITSBurst50Level = json.value({"fields", fieldNumber, "vitsMetrics", "palVITSBurst50Level"}).toReal();
+
                 metaData.fields[fieldNumber].vitsMetrics.inUse = true;
                 metaData.fields[fieldNumber].vitsMetrics.whiteSNR = json.value({"fields", fieldNumber, "vitsMetrics", "whiteSNR"}).toReal();
                 metaData.fields[fieldNumber].vitsMetrics.whiteIRE = json.value({"fields", fieldNumber, "vitsMetrics", "whiteIRE"}).toReal();
-                metaData.fields[fieldNumber].vitsMetrics.whiteRFLevel = json.value({"fields", fieldNumber, "vitsMetrics", "whiteRFLevel"}).toReal();
-                metaData.fields[fieldNumber].vitsMetrics.greyPSNR = json.value({"fields", fieldNumber, "vitsMetrics", "greyPSNR"}).toReal();
-                metaData.fields[fieldNumber].vitsMetrics.greyIRE = json.value({"fields", fieldNumber, "vitsMetrics", "greyIRE"}).toReal();
-                metaData.fields[fieldNumber].vitsMetrics.greyRFLevel = json.value({"fields", fieldNumber, "vitsMetrics", "greyRFLevel"}).toReal();
-                metaData.fields[fieldNumber].vitsMetrics.blackLinePreTBCIRE = json.value({"fields", fieldNumber, "vitsMetrics", "blackLinePreTBCIRE"}).toReal();
-                metaData.fields[fieldNumber].vitsMetrics.blackLinePostTBCIRE = json.value({"fields", fieldNumber, "vitsMetrics", "blackLinePostTBCIRE"}).toReal();
                 metaData.fields[fieldNumber].vitsMetrics.blackLinePSNR = json.value({"fields", fieldNumber, "vitsMetrics", "blackLinePSNR"}).toReal();
-                metaData.fields[fieldNumber].vitsMetrics.blackLineRFLevel = json.value({"fields", fieldNumber, "vitsMetrics", "blackLineRFLevel"}).toReal();
-                metaData.fields[fieldNumber].vitsMetrics.syncLevelPSNR = json.value({"fields", fieldNumber, "vitsMetrics", "syncLevelPSNR"}).toReal();
-                metaData.fields[fieldNumber].vitsMetrics.syncRFLevel = json.value({"fields", fieldNumber, "vitsMetrics", "syncRFLevel"}).toReal();
-                metaData.fields[fieldNumber].vitsMetrics.syncToBlackRFRatio = json.value({"fields", fieldNumber, "vitsMetrics", "syncToBlackRFRatio"}).toReal();
-                metaData.fields[fieldNumber].vitsMetrics.syncToWhiteRFRatio = json.value({"fields", fieldNumber, "vitsMetrics", "syncToWhiteRFRatio"}).toReal();
-                metaData.fields[fieldNumber].vitsMetrics.blackToWhiteRFRatio = json.value({"fields", fieldNumber, "vitsMetrics", "blackToWhiteRFRatio"}).toReal();
-                metaData.fields[fieldNumber].vitsMetrics.ntscWhiteFlagSNR = json.value({"fields", fieldNumber, "vitsMetrics", "ntscWhiteFlagSNR"}).toReal();
-                metaData.fields[fieldNumber].vitsMetrics.ntscWhiteFlagRFLevel = json.value({"fields", fieldNumber, "vitsMetrics", "ntscWhiteFlagRFLevel"}).toReal();
-                metaData.fields[fieldNumber].vitsMetrics.ntscLine19Burst0IRE = json.value({"fields", fieldNumber, "vitsMetrics", "ntscLine19Burst0IRE"}).toReal();
-                metaData.fields[fieldNumber].vitsMetrics.ntscLine19Burst70IRE = json.value({"fields", fieldNumber, "vitsMetrics", "ntscLine19Burst70IRE"}).toReal();
-                metaData.fields[fieldNumber].vitsMetrics.ntscLine19ColorPhase = json.value({"fields", fieldNumber, "vitsMetrics", "ntscLine19ColorPhase"}).toReal();
-                metaData.fields[fieldNumber].vitsMetrics.ntscLine19ColorRawSNR = json.value({"fields", fieldNumber, "vitsMetrics", "ntscLine19ColorRawSNR"}).toReal();
-                metaData.fields[fieldNumber].vitsMetrics.ntscLine19Color3DPhase = json.value({"fields", fieldNumber, "vitsMetrics", "ntscLine19Color3DPhase"}).toReal();
-                metaData.fields[fieldNumber].vitsMetrics.ntscLine19Color3DRawSNR = json.value({"fields", fieldNumber, "vitsMetrics", "ntscLine19Color3DRawSNR"}).toReal();
-                metaData.fields[fieldNumber].vitsMetrics.palVITSBurst50Level = json.value({"fields", fieldNumber, "vitsMetrics", "palVITSBurst50Level"}).toReal();
+                metaData.fields[fieldNumber].vitsMetrics.blackLinePreTBCIRE = json.value({"fields", fieldNumber, "vitsMetrics", "blackLinePreTBCIRE"}).toReal();
             } else {
                 // Mark VITS metrics as undefined
                 metaData.fields[fieldNumber].vitsMetrics.inUse = false;
@@ -140,7 +146,7 @@ bool LdDecodeMetaData::read(QString fileName)
                 metaData.fields[fieldNumber].vbi.vbiData.append(json.value({"fields", fieldNumber, "vbi", "vbiData", 1}).toInt()); // Line 17
                 metaData.fields[fieldNumber].vbi.vbiData.append(json.value({"fields", fieldNumber, "vbi", "vbiData", 2}).toInt()); // Line 18
 
-                switch(json.value({"fields", fieldNumber, "vbi", "type"}).toInt()) {
+                switch(json.value({"fields", fieldNumber, "vbi", "vp", 0}).toInt()) {
                 case 0:
                     metaData.fields[fieldNumber].vbi.type = LdDecodeMetaData::VbiDiscTypes::unknownDiscType;
                     break;
@@ -154,15 +160,15 @@ bool LdDecodeMetaData::read(QString fileName)
                     metaData.fields[fieldNumber].vbi.type = LdDecodeMetaData::VbiDiscTypes::unknownDiscType;
                 }
 
-                metaData.fields[fieldNumber].vbi.userCode = json.value({"fields", fieldNumber, "vbi", "userCode"}).toString();
-                metaData.fields[fieldNumber].vbi.picNo = json.value({"fields", fieldNumber, "vbi", "picNo"}).toInt();
-                metaData.fields[fieldNumber].vbi.chNo = json.value({"fields", fieldNumber, "vbi", "chNo"}).toInt();
-                metaData.fields[fieldNumber].vbi.clvHr = json.value({"fields", fieldNumber, "vbi", "clvHr"}).toInt();
-                metaData.fields[fieldNumber].vbi.clvMin = json.value({"fields", fieldNumber, "vbi", "clvMin"}).toInt();
-                metaData.fields[fieldNumber].vbi.clvSec = json.value({"fields", fieldNumber, "vbi", "clvSec"}).toInt();
-                metaData.fields[fieldNumber].vbi.clvPicNo = json.value({"fields", fieldNumber, "vbi", "clvPicNo"}).toInt();
+                metaData.fields[fieldNumber].vbi.userCode = json.value({"fields", fieldNumber, "vbi", "vp", 1}).toString();
+                metaData.fields[fieldNumber].vbi.picNo = json.value({"fields", fieldNumber, "vbi", "vp", 2}).toInt();
+                metaData.fields[fieldNumber].vbi.chNo = json.value({"fields", fieldNumber, "vbi", "vp", 3}).toInt();
+                metaData.fields[fieldNumber].vbi.clvHr = json.value({"fields", fieldNumber, "vbi", "vp", 4}).toInt();
+                metaData.fields[fieldNumber].vbi.clvMin = json.value({"fields", fieldNumber, "vbi", "vp", 5}).toInt();
+                metaData.fields[fieldNumber].vbi.clvSec = json.value({"fields", fieldNumber, "vbi", "vp", 6}).toInt();
+                metaData.fields[fieldNumber].vbi.clvPicNo = json.value({"fields", fieldNumber, "vbi", "vp", 7}).toInt();
 
-                switch (json.value({"fields", fieldNumber, "vbi", "soundMode"}).toInt()) {
+                switch (json.value({"fields", fieldNumber, "vbi", "vp", 8}).toInt()) {
                 case 0:
                     metaData.fields[fieldNumber].vbi.soundMode = LdDecodeMetaData::VbiSoundModes::stereo;
                     break;
@@ -204,7 +210,7 @@ bool LdDecodeMetaData::read(QString fileName)
                     break;
                 }
 
-                switch (json.value({"fields", fieldNumber, "vbi", "soundModeAm2"}).toInt()) {
+                switch (json.value({"fields", fieldNumber, "vbi", "vp", 9}).toInt()) {
                 case 0:
                     metaData.fields[fieldNumber].vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::stereo;
                     break;
@@ -247,7 +253,7 @@ bool LdDecodeMetaData::read(QString fileName)
                 }
 
                 // Get the boolean flags field (contains 13 boolean flags from the VBI)
-                qint32 booleanFlags = json.value({"fields", fieldNumber, "vbi", "flags"}).toInt();
+                qint32 booleanFlags = json.value({"fields", fieldNumber, "vbi", "vp", 10}).toInt();
 
                 // Interpret the flags
                 metaData.fields[fieldNumber].vbi.leadIn =      ((booleanFlags & 0x0001) == 0x0001);
@@ -386,30 +392,35 @@ bool LdDecodeMetaData::write(QString fileName)
 
             // Write the VITS metrics data if in use
             if (metaData.fields[fieldNumber].vitsMetrics.inUse) {
+//                json.setValue({"fields", fieldNumber, "vitsMetrics", "whiteSNR"}, metaData.fields[fieldNumber].vitsMetrics.whiteSNR);
+//                json.setValue({"fields", fieldNumber, "vitsMetrics", "whiteIRE"}, metaData.fields[fieldNumber].vitsMetrics.whiteIRE);
+//                json.setValue({"fields", fieldNumber, "vitsMetrics", "whiteRFLevel"}, metaData.fields[fieldNumber].vitsMetrics.whiteRFLevel);
+//                json.setValue({"fields", fieldNumber, "vitsMetrics", "greyPSNR"}, metaData.fields[fieldNumber].vitsMetrics.greyPSNR);
+//                json.setValue({"fields", fieldNumber, "vitsMetrics", "greyIRE"}, metaData.fields[fieldNumber].vitsMetrics.greyIRE);
+//                json.setValue({"fields", fieldNumber, "vitsMetrics", "greyRFLevel"}, metaData.fields[fieldNumber].vitsMetrics.greyRFLevel);
+//                json.setValue({"fields", fieldNumber, "vitsMetrics", "blackLinePreTBCIRE"}, metaData.fields[fieldNumber].vitsMetrics.blackLinePreTBCIRE);
+//                json.setValue({"fields", fieldNumber, "vitsMetrics", "blackLinePostTBCIRE"}, metaData.fields[fieldNumber].vitsMetrics.blackLinePostTBCIRE);
+//                json.setValue({"fields", fieldNumber, "vitsMetrics", "blackLinePSNR"}, metaData.fields[fieldNumber].vitsMetrics.blackLinePSNR);
+//                json.setValue({"fields", fieldNumber, "vitsMetrics", "blackLineRFLevel"}, metaData.fields[fieldNumber].vitsMetrics.blackLineRFLevel);
+//                json.setValue({"fields", fieldNumber, "vitsMetrics", "syncLevelPSNR"}, metaData.fields[fieldNumber].vitsMetrics.syncLevelPSNR);
+//                json.setValue({"fields", fieldNumber, "vitsMetrics", "syncRFLevel"}, metaData.fields[fieldNumber].vitsMetrics.syncRFLevel);
+//                json.setValue({"fields", fieldNumber, "vitsMetrics", "syncToBlackRFRatio"}, metaData.fields[fieldNumber].vitsMetrics.syncToBlackRFRatio);
+//                json.setValue({"fields", fieldNumber, "vitsMetrics", "syncToWhiteRFRatio"}, metaData.fields[fieldNumber].vitsMetrics.syncToWhiteRFRatio);
+//                json.setValue({"fields", fieldNumber, "vitsMetrics", "blackToWhiteRFRatio"}, metaData.fields[fieldNumber].vitsMetrics.blackToWhiteRFRatio);
+//                json.setValue({"fields", fieldNumber, "vitsMetrics", "ntscWhiteFlagSNR"}, metaData.fields[fieldNumber].vitsMetrics.ntscWhiteFlagSNR);
+//                json.setValue({"fields", fieldNumber, "vitsMetrics", "ntscWhiteFlagRFLevel"}, metaData.fields[fieldNumber].vitsMetrics.ntscWhiteFlagRFLevel);
+//                json.setValue({"fields", fieldNumber, "vitsMetrics", "ntscLine19Burst0IRE"}, metaData.fields[fieldNumber].vitsMetrics.ntscLine19Burst0IRE);
+//                json.setValue({"fields", fieldNumber, "vitsMetrics", "ntscLine19Burst70IRE"}, metaData.fields[fieldNumber].vitsMetrics.ntscLine19Burst70IRE);
+//                json.setValue({"fields", fieldNumber, "vitsMetrics", "ntscLine19ColorPhase"}, metaData.fields[fieldNumber].vitsMetrics.ntscLine19ColorPhase);
+//                json.setValue({"fields", fieldNumber, "vitsMetrics", "ntscLine19ColorRawSNR"}, metaData.fields[fieldNumber].vitsMetrics.ntscLine19ColorRawSNR);
+//                json.setValue({"fields", fieldNumber, "vitsMetrics", "ntscLine19Color3DPhase"}, metaData.fields[fieldNumber].vitsMetrics.ntscLine19Color3DPhase);
+//                json.setValue({"fields", fieldNumber, "vitsMetrics", "ntscLine19Color3DRawSNR"}, metaData.fields[fieldNumber].vitsMetrics.ntscLine19Color3DRawSNR);
+//                json.setValue({"fields", fieldNumber, "vitsMetrics", "palVITSBurst50Level"}, metaData.fields[fieldNumber].vitsMetrics.palVITSBurst50Level);
+
                 json.setValue({"fields", fieldNumber, "vitsMetrics", "whiteSNR"}, metaData.fields[fieldNumber].vitsMetrics.whiteSNR);
                 json.setValue({"fields", fieldNumber, "vitsMetrics", "whiteIRE"}, metaData.fields[fieldNumber].vitsMetrics.whiteIRE);
-                json.setValue({"fields", fieldNumber, "vitsMetrics", "whiteRFLevel"}, metaData.fields[fieldNumber].vitsMetrics.whiteRFLevel);
-                json.setValue({"fields", fieldNumber, "vitsMetrics", "greyPSNR"}, metaData.fields[fieldNumber].vitsMetrics.greyPSNR);
-                json.setValue({"fields", fieldNumber, "vitsMetrics", "greyIRE"}, metaData.fields[fieldNumber].vitsMetrics.greyIRE);
-                json.setValue({"fields", fieldNumber, "vitsMetrics", "greyRFLevel"}, metaData.fields[fieldNumber].vitsMetrics.greyRFLevel);
-                json.setValue({"fields", fieldNumber, "vitsMetrics", "blackLinePreTBCIRE"}, metaData.fields[fieldNumber].vitsMetrics.blackLinePreTBCIRE);
-                json.setValue({"fields", fieldNumber, "vitsMetrics", "blackLinePostTBCIRE"}, metaData.fields[fieldNumber].vitsMetrics.blackLinePostTBCIRE);
                 json.setValue({"fields", fieldNumber, "vitsMetrics", "blackLinePSNR"}, metaData.fields[fieldNumber].vitsMetrics.blackLinePSNR);
-                json.setValue({"fields", fieldNumber, "vitsMetrics", "blackLineRFLevel"}, metaData.fields[fieldNumber].vitsMetrics.blackLineRFLevel);
-                json.setValue({"fields", fieldNumber, "vitsMetrics", "syncLevelPSNR"}, metaData.fields[fieldNumber].vitsMetrics.syncLevelPSNR);
-                json.setValue({"fields", fieldNumber, "vitsMetrics", "syncRFLevel"}, metaData.fields[fieldNumber].vitsMetrics.syncRFLevel);
-                json.setValue({"fields", fieldNumber, "vitsMetrics", "syncToBlackRFRatio"}, metaData.fields[fieldNumber].vitsMetrics.syncToBlackRFRatio);
-                json.setValue({"fields", fieldNumber, "vitsMetrics", "syncToWhiteRFRatio"}, metaData.fields[fieldNumber].vitsMetrics.syncToWhiteRFRatio);
-                json.setValue({"fields", fieldNumber, "vitsMetrics", "blackToWhiteRFRatio"}, metaData.fields[fieldNumber].vitsMetrics.blackToWhiteRFRatio);
-                json.setValue({"fields", fieldNumber, "vitsMetrics", "ntscWhiteFlagSNR"}, metaData.fields[fieldNumber].vitsMetrics.ntscWhiteFlagSNR);
-                json.setValue({"fields", fieldNumber, "vitsMetrics", "ntscWhiteFlagRFLevel"}, metaData.fields[fieldNumber].vitsMetrics.ntscWhiteFlagRFLevel);
-                json.setValue({"fields", fieldNumber, "vitsMetrics", "ntscLine19Burst0IRE"}, metaData.fields[fieldNumber].vitsMetrics.ntscLine19Burst0IRE);
-                json.setValue({"fields", fieldNumber, "vitsMetrics", "ntscLine19Burst70IRE"}, metaData.fields[fieldNumber].vitsMetrics.ntscLine19Burst70IRE);
-                json.setValue({"fields", fieldNumber, "vitsMetrics", "ntscLine19ColorPhase"}, metaData.fields[fieldNumber].vitsMetrics.ntscLine19ColorPhase);
-                json.setValue({"fields", fieldNumber, "vitsMetrics", "ntscLine19ColorRawSNR"}, metaData.fields[fieldNumber].vitsMetrics.ntscLine19ColorRawSNR);
-                json.setValue({"fields", fieldNumber, "vitsMetrics", "ntscLine19Color3DPhase"}, metaData.fields[fieldNumber].vitsMetrics.ntscLine19Color3DPhase);
-                json.setValue({"fields", fieldNumber, "vitsMetrics", "ntscLine19Color3DRawSNR"}, metaData.fields[fieldNumber].vitsMetrics.ntscLine19Color3DRawSNR);
-                json.setValue({"fields", fieldNumber, "vitsMetrics", "palVITSBurst50Level"}, metaData.fields[fieldNumber].vitsMetrics.palVITSBurst50Level);
+                json.setValue({"fields", fieldNumber, "vitsMetrics", "blackLinePreTBCIRE"}, metaData.fields[fieldNumber].vitsMetrics.blackLinePreTBCIRE);
             }
 
             // Write the VBI data if in use
@@ -429,99 +440,99 @@ bool LdDecodeMetaData::write(QString fileName)
 
                 switch(metaData.fields[fieldNumber].vbi.type) {
                 case LdDecodeMetaData::VbiDiscTypes::unknownDiscType:
-                    json.setValue({"fields", fieldNumber, "vbi", "type"}, 0);
+                    json.setValue({"fields", fieldNumber, "vbi", "vp", 0}, 0);
                     break;
                 case LdDecodeMetaData::VbiDiscTypes::clv:
-                    json.setValue({"fields", fieldNumber, "vbi", "type"}, 1);
+                    json.setValue({"fields", fieldNumber, "vbi", "vp", 0}, 1);
                     break;
                 case LdDecodeMetaData::VbiDiscTypes::cav:
-                    json.setValue({"fields", fieldNumber, "vbi", "type"}, 2);
+                    json.setValue({"fields", fieldNumber, "vbi", "vp", 0}, 2);
                     break;
                 }
 
-                json.setValue({"fields", fieldNumber, "vbi", "userCode"}, metaData.fields[fieldNumber].vbi.userCode);
-                json.setValue({"fields", fieldNumber, "vbi", "picNo"}, metaData.fields[fieldNumber].vbi.picNo);
-                json.setValue({"fields", fieldNumber, "vbi", "chNo"}, metaData.fields[fieldNumber].vbi.chNo);
-                json.setValue({"fields", fieldNumber, "vbi", "clvHr"}, metaData.fields[fieldNumber].vbi.clvHr);
-                json.setValue({"fields", fieldNumber, "vbi", "clvMin"}, metaData.fields[fieldNumber].vbi.clvMin);
-                json.setValue({"fields", fieldNumber, "vbi", "clvSec"}, metaData.fields[fieldNumber].vbi.clvSec);
-                json.setValue({"fields", fieldNumber, "vbi", "clvPicNo"}, metaData.fields[fieldNumber].vbi.clvPicNo);
+                json.setValue({"fields", fieldNumber, "vbi", "vp", 1}, metaData.fields[fieldNumber].vbi.userCode);
+                json.setValue({"fields", fieldNumber, "vbi", "vp", 2}, metaData.fields[fieldNumber].vbi.picNo);
+                json.setValue({"fields", fieldNumber, "vbi", "vp", 3}, metaData.fields[fieldNumber].vbi.chNo);
+                json.setValue({"fields", fieldNumber, "vbi", "vp", 4}, metaData.fields[fieldNumber].vbi.clvHr);
+                json.setValue({"fields", fieldNumber, "vbi", "vp", 5}, metaData.fields[fieldNumber].vbi.clvMin);
+                json.setValue({"fields", fieldNumber, "vbi", "vp", 6}, metaData.fields[fieldNumber].vbi.clvSec);
+                json.setValue({"fields", fieldNumber, "vbi", "vp", 7}, metaData.fields[fieldNumber].vbi.clvPicNo);
 
                 switch (metaData.fields[fieldNumber].vbi.soundMode) {
                 case LdDecodeMetaData::VbiSoundModes::stereo:
-                    json.setValue({"fields", fieldNumber, "vbi", "soundMode"}, 0);
+                    json.setValue({"fields", fieldNumber, "vbi", "vp", 8}, 0);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::mono:
-                    json.setValue({"fields", fieldNumber, "vbi", "soundMode"}, 1);
+                    json.setValue({"fields", fieldNumber, "vbi", "vp", 8}, 1);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::audioSubCarriersOff:
-                    json.setValue({"fields", fieldNumber, "vbi", "soundMode"}, 2);
+                    json.setValue({"fields", fieldNumber, "vbi", "vp", 8}, 2);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::bilingual:
-                    json.setValue({"fields", fieldNumber, "vbi", "soundMode"}, 3);
+                    json.setValue({"fields", fieldNumber, "vbi", "vp", 8}, 3);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::stereo_stereo:
-                    json.setValue({"fields", fieldNumber, "vbi", "soundMode"}, 4);
+                    json.setValue({"fields", fieldNumber, "vbi", "vp", 8}, 4);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::stereo_bilingual:
-                    json.setValue({"fields", fieldNumber, "vbi", "soundMode"}, 5);
+                    json.setValue({"fields", fieldNumber, "vbi", "vp", 8}, 5);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::crossChannelStereo:
-                    json.setValue({"fields", fieldNumber, "vbi", "soundMode"}, 6);
+                    json.setValue({"fields", fieldNumber, "vbi", "vp", 8}, 6);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::bilingual_bilingual:
-                    json.setValue({"fields", fieldNumber, "vbi", "soundMode"}, 7);
+                    json.setValue({"fields", fieldNumber, "vbi", "vp", 8}, 7);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::mono_dump:
-                    json.setValue({"fields", fieldNumber, "vbi", "soundMode"}, 8);
+                    json.setValue({"fields", fieldNumber, "vbi", "vp", 8}, 8);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::stereo_dump:
-                    json.setValue({"fields", fieldNumber, "vbi", "soundMode"}, 9);
+                    json.setValue({"fields", fieldNumber, "vbi", "vp", 8}, 9);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::bilingual_dump:
-                    json.setValue({"fields", fieldNumber, "vbi", "soundMode"}, 10);
+                    json.setValue({"fields", fieldNumber, "vbi", "vp", 8}, 10);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::futureUse:
-                    json.setValue({"fields", fieldNumber, "vbi", "soundMode"}, 11);
+                    json.setValue({"fields", fieldNumber, "vbi", "vp", 8}, 11);
                     break;
                 }
 
                 switch (metaData.fields[fieldNumber].vbi.soundModeAm2) {
                 case LdDecodeMetaData::VbiSoundModes::stereo:
-                    json.setValue({"fields", fieldNumber, "vbi", "soundModeAm2"}, 0);
+                    json.setValue({"fields", fieldNumber, "vbi", "vp", 9}, 0);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::mono:
-                    json.setValue({"fields", fieldNumber, "vbi", "soundModeAm2"}, 1);
+                    json.setValue({"fields", fieldNumber, "vbi", "vp", 9}, 1);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::audioSubCarriersOff:
-                    json.setValue({"fields", fieldNumber, "vbi", "soundModeAm2"}, 2);
+                    json.setValue({"fields", fieldNumber, "vbi", "vp", 9}, 2);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::bilingual:
-                    json.setValue({"fields", fieldNumber, "vbi", "soundModeAm2"}, 3);
+                    json.setValue({"fields", fieldNumber, "vbi", "vp", 9}, 3);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::stereo_stereo:
-                    json.setValue({"fields", fieldNumber, "vbi", "soundModeAm2"}, 4);
+                    json.setValue({"fields", fieldNumber, "vbi", "vp", 9}, 4);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::stereo_bilingual:
-                    json.setValue({"fields", fieldNumber, "vbi", "soundModeAm2"}, 5);
+                    json.setValue({"fields", fieldNumber, "vbi", "vp", 9}, 5);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::crossChannelStereo:
-                    json.setValue({"fields", fieldNumber, "vbi", "soundModeAm2"}, 6);
+                    json.setValue({"fields", fieldNumber, "vbi", "vp", 9}, 6);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::bilingual_bilingual:
-                    json.setValue({"fields", fieldNumber, "vbi", "soundModeAm2"}, 7);
+                    json.setValue({"fields", fieldNumber, "vbi", "vp", 9}, 7);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::mono_dump:
-                    json.setValue({"fields", fieldNumber, "vbi", "soundModeAm2"}, 8);
+                    json.setValue({"fields", fieldNumber, "vbi", "vp", 9}, 8);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::stereo_dump:
-                    json.setValue({"fields", fieldNumber, "vbi", "soundModeAm2"}, 9);
+                    json.setValue({"fields", fieldNumber, "vbi", "vp", 9}, 9);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::bilingual_dump:
-                    json.setValue({"fields", fieldNumber, "vbi", "soundModeAm2"}, 10);
+                    json.setValue({"fields", fieldNumber, "vbi", "vp", 9}, 10);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::futureUse:
-                    json.setValue({"fields", fieldNumber, "vbi", "soundModeAm2"}, 11);
+                    json.setValue({"fields", fieldNumber, "vbi", "vp", 9}, 11);
                     break;
                 }
 
@@ -542,7 +553,7 @@ bool LdDecodeMetaData::write(QString fileName)
                 if (metaData.fields[fieldNumber].vbi.standardAm2)   flags += 0x1000;
 
                 // Insert the flags into the VBI JSON
-                json.setValue({"fields", fieldNumber, "vbi", "flags"}, flags);
+                json.setValue({"fields", fieldNumber, "vbi", "vp", 10}, flags);
             }
 
             // Write the NTSC specific record if in use
@@ -625,12 +636,14 @@ bool LdDecodeMetaData::writeVitsCsv(QString fileName)
     outStream << "medianBurstIRE,fieldPhaseID,audioSamples,";
 
     // VITS headers
-    outStream << "whiteSNR,whiteIRE,whiteRFLevel,greyPSNR,greyIRE,greyRFLevel,blackLinePreTBCIRE,";
-    outStream << "blackLinePostTBCIRE,blackLinePSNR,blackLineRFLevel,syncLevelPSNR,syncRFLevel,";
-    outStream << "syncToBlackRFRatio,syncToWhiteRFRatio,blackToWhiteRFRatio,ntscWhiteFlagSNR,";
-    outStream << "ntscWhiteFlagRFLevel,ntscLine19Burst0IRE,ntscLine19Burst70IRE,ntscLine19ColorPhase,";
-    outStream << "ntscLine19ColorRawSNR,ntscLine19Color3DPhase,ntscLine19Color3DRawSNR,palVITSBurst50Level";
+    outStream << "whiteSNR,whiteIRE,blackLinePSNR,blackLinePreTBCIRE";
     outStream << '\n';
+
+//    outStream << "whiteSNR,whiteIRE,whiteRFLevel,greyPSNR,greyIRE,greyRFLevel,blackLinePreTBCIRE,";
+//    outStream << "blackLinePostTBCIRE,blackLinePSNR,blackLineRFLevel,syncLevelPSNR,syncRFLevel,";
+//    outStream << "syncToBlackRFRatio,syncToWhiteRFRatio,blackToWhiteRFRatio,ntscWhiteFlagSNR,";
+//    outStream << "ntscWhiteFlagRFLevel,ntscLine19Burst0IRE,ntscLine19Burst70IRE,ntscLine19ColorPhase,";
+//    outStream << "ntscLine19ColorRawSNR,ntscLine19Color3DPhase,ntscLine19Color3DRawSNR,palVITSBurst50Level";
 
     for (qint32 fieldNumber = 0; fieldNumber < metaData.fields.size(); fieldNumber++) {
         outStream << escapedString(QString::number(metaData.fields[fieldNumber].seqNo)) << ",";
@@ -642,28 +655,29 @@ bool LdDecodeMetaData::writeVitsCsv(QString fileName)
 
         outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.whiteSNR)) << ",";
         outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.whiteIRE)) << ",";
-        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.whiteRFLevel)) << ",";
-        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.greyPSNR)) << ",";
-        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.greyIRE)) << ",";
-        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.greyRFLevel)) << ",";
-        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.blackLinePreTBCIRE)) << ",";
-        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.blackLinePostTBCIRE)) << ",";
         outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.blackLinePSNR)) << ",";
-        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.blackLineRFLevel)) << ",";
-        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.syncLevelPSNR)) << ",";
-        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.syncRFLevel)) << ",";
-        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.syncToBlackRFRatio)) << ",";
-        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.syncToWhiteRFRatio)) << ",";
-        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.blackToWhiteRFRatio)) << ",";
-        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.ntscWhiteFlagSNR)) << ",";
-        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.ntscWhiteFlagRFLevel)) << ",";
-        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.ntscLine19Burst0IRE)) << ",";
-        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.ntscLine19Burst70IRE)) << ",";
-        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.ntscLine19ColorPhase)) << ",";
-        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.ntscLine19ColorRawSNR)) << ",";
-        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.ntscLine19Color3DPhase)) << ",";
-        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.ntscLine19Color3DRawSNR)) << ",";
-        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.palVITSBurst50Level));
+        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.blackLinePreTBCIRE));
+
+//        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.whiteRFLevel)) << ",";
+//        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.greyPSNR)) << ",";
+//        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.greyIRE)) << ",";
+//        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.greyRFLevel)) << ",";
+//        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.blackLinePostTBCIRE)) << ",";
+//        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.blackLineRFLevel)) << ",";
+//        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.syncLevelPSNR)) << ",";
+//        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.syncRFLevel)) << ",";
+//        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.syncToBlackRFRatio)) << ",";
+//        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.syncToWhiteRFRatio)) << ",";
+//        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.blackToWhiteRFRatio)) << ",";
+//        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.ntscWhiteFlagSNR)) << ",";
+//        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.ntscWhiteFlagRFLevel)) << ",";
+//        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.ntscLine19Burst0IRE)) << ",";
+//        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.ntscLine19Burst70IRE)) << ",";
+//        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.ntscLine19ColorPhase)) << ",";
+//        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.ntscLine19ColorRawSNR)) << ",";
+//        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.ntscLine19Color3DPhase)) << ",";
+//        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.ntscLine19Color3DRawSNR)) << ",";
+//        outStream << escapedString(QString::number(metaData.fields[fieldNumber].vitsMetrics.palVITSBurst50Level));
         outStream << '\n';
     }
 

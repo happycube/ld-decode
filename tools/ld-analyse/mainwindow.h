@@ -34,6 +34,7 @@
 #include <QLabel>
 #include <QPainter>
 #include <QMouseEvent>
+#include <QtConcurrent/QtConcurrent>
 
 #include "sourcevideo.h"
 #include "lddecodemetadata.h"
@@ -45,6 +46,7 @@
 #include "dropoutanalysisdialog.h"
 #include "vitsmetricsdialog.h"
 #include "snranalysisdialog.h"
+#include "busydialog.h"
 #include "configuration.h"
 #include "frameqlabel.h"
 #include "../ld-chroma-decoder/palcolour.h"
@@ -88,12 +90,11 @@ private slots:
     void on_sourceRadioButton_clicked();
     void on_combFilterRadioButton_clicked();
     void on_reverseFieldOrderCheckBox_stateChanged(int arg1);
-
     void on_actionVITS_Metrics_triggered();
-
     void on_actionSNR_analysis_triggered();
-
     void on_actionSave_metadata_as_CSV_triggered();
+
+    void blackgroundLoadComplete();
 
 private:
     Ui::MainWindow *ui;
@@ -107,6 +108,7 @@ private:
     DropoutAnalysisDialog *dropoutAnalysisDialog;
     VitsMetricsDialog *vitsMetricsDialog;
     SnrAnalysisDialog *snrAnalysisDialog;
+    BusyDialog *busyDialog;
 
     // Class globals
     Configuration *configuration;
@@ -120,6 +122,7 @@ private:
     PalColour palColour;
     Comb ntscColour;
     QString currentInputFileName;
+    QString lastLoadError;
 
     void updateGuiLoaded(void);
     void updateGuiUnloaded(void);
@@ -130,6 +133,7 @@ private:
     QImage generateQImage(qint32 firstFieldNumber, qint32 secondFieldNumber);
 
     void loadTbcFile(QString inputFileName);
+    void backgroundLoad(QString inputFileName);
     void updateOscilloscopeDialogue(qint32 frameNumber, qint32 scanLine);
 };
 

@@ -169,8 +169,8 @@ bool DecoderPool::getInputFrame(qint32 &frameNumber, QByteArray &firstFieldData,
                 "and a second field of" << secondFieldNumber;
 
     // Fetch the input data
-    firstFieldData = sourceVideo.getVideoField(firstFieldNumber)->getFieldData();
-    secondFieldData = sourceVideo.getVideoField(secondFieldNumber)->getFieldData();
+    firstFieldData = sourceVideo.getVideoField(firstFieldNumber);
+    secondFieldData = sourceVideo.getVideoField(secondFieldNumber);
     burstMedianIre = ldDecodeMetaData.getField(firstFieldNumber).medianBurstIRE;
     firstFieldPhaseID = ldDecodeMetaData.getField(firstFieldNumber).fieldPhaseID;
     secondFieldPhaseID = ldDecodeMetaData.getField(secondFieldNumber).fieldPhaseID;
@@ -207,10 +207,11 @@ bool DecoderPool::putOutputFrame(qint32 frameNumber, QByteArray &rgbOutput)
         pendingOutputFrames.remove(outputFrameNumber);
         outputFrameNumber++;
 
-        if ((outputFrameNumber % 32) == 0) {
+        const qint32 outputCount = outputFrameNumber - startFrame;
+        if ((outputCount % 32) == 0) {
             // Show an update to the user
-            qreal fps = outputFrameNumber / (static_cast<qreal>(totalTimer.elapsed()) / 1000.0);
-            qInfo() << outputFrameNumber << "frames processed -" << fps << "FPS";
+            qreal fps = outputCount / (static_cast<qreal>(totalTimer.elapsed()) / 1000.0);
+            qInfo() << outputCount << "frames processed -" << fps << "FPS";
         }
     }
 

@@ -30,6 +30,7 @@ SnrAnalysisDialog::SnrAnalysisDialog(QWidget *parent) :
     ui(new Ui::SnrAnalysisDialog)
 {
     ui->setupUi(this);
+    setWindowFlags(Qt::Window);
 
     // Set up the chart
     chart.legend()->hide();
@@ -52,6 +53,7 @@ SnrAnalysisDialog::SnrAnalysisDialog(QWidget *parent) :
     // Set up the chart view
     chartView = new QChartView(&chart);
     chartView->setRenderHint(QPainter::Antialiasing);
+    chartView->setRubberBand(QChartView::HorizontalRubberBand);
     ui->verticalLayout->addWidget(chartView);
     chartView->repaint();
 }
@@ -65,7 +67,7 @@ void SnrAnalysisDialog::updateChart(LdDecodeMetaData *ldDecodeMetaData)
 {
     series.clear();
 
-    qreal targetDataPoints = 500;
+    qreal targetDataPoints = 2000;
     qreal averageWidth = qRound(ldDecodeMetaData->getNumberOfFields() / targetDataPoints);
     if (averageWidth < 1) averageWidth = 1; // Ensure we don't divide by zero
     qint32 dataPoints = ldDecodeMetaData->getNumberOfFields() / static_cast<qint32>(averageWidth);
@@ -108,4 +110,9 @@ void SnrAnalysisDialog::updateChart(LdDecodeMetaData *ldDecodeMetaData)
     else axisY.setMin(0);
 
     chartView->repaint();
+}
+
+void SnrAnalysisDialog::on_pushButton_clicked()
+{
+    chart.zoomReset();
 }
