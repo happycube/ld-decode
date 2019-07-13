@@ -2298,7 +2298,8 @@ class LDdecode:
 
         if self.doDOD:
             dropout_lines, dropout_starts, dropout_ends = f.dropout_detect()
-            fi['dropOuts'] = {'fieldLine': dropout_lines, 'startx': dropout_starts, 'endx': dropout_ends}
+            if len(dropout_lines):
+                fi['dropOuts'] = {'fieldLine': dropout_lines, 'startx': dropout_starts, 'endx': dropout_ends}
 
         # This is a bitmap, not a counter
         decodeFaults = 0
