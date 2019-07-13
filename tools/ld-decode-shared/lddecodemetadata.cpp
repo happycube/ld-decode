@@ -60,7 +60,7 @@ bool LdDecodeMetaData::write(QString fileName)
 {
     // Write the JSON object
     qDebug() << "LdDecodeMetaData::write(): Writing JSON metadata to:" << fileName;
-    if (!json.saveAs(fileName, JsonWax::Readable)) {
+    if (!json.saveAs(fileName, JsonWax::Compact)) {
         qCritical("Writing JSON metadata file failed!");
         return false;
     }
@@ -220,8 +220,8 @@ LdDecodeMetaData::Field LdDecodeMetaData::getField(qint32 sequentialFieldNumber)
     // VITS metrics values
     if (json.size({"fields", fieldNumber, "vitsMetrics"}) > 0) {
         field.vitsMetrics.inUse = true;
-        field.vitsMetrics.wSNR = json.value({"fields", fieldNumber, "vitsMetrics", "whiteSNR"}).toReal();
-        field.vitsMetrics.bPSNR = json.value({"fields", fieldNumber, "vitsMetrics", "blackLinePSNR"}).toReal();
+        field.vitsMetrics.wSNR = json.value({"fields", fieldNumber, "vitsMetrics", "wSNR"}).toReal();
+        field.vitsMetrics.bPSNR = json.value({"fields", fieldNumber, "vitsMetrics", "bPSNR"}).toReal();
     } else {
         // Mark VITS metrics as undefined
         field.vitsMetrics.inUse = false;
@@ -429,8 +429,8 @@ void LdDecodeMetaData::updateField(LdDecodeMetaData::Field _field, qint32 sequen
 
     // Write the VITS metrics data if in use
     if (_field.vitsMetrics.inUse) {
-        json.setValue({"fields", fieldNumber, "vitsMetrics", "whiteSNR"}, _field.vitsMetrics.wSNR);
-        json.setValue({"fields", fieldNumber, "vitsMetrics", "blackLinePSNR"}, _field.vitsMetrics.bPSNR);
+        json.setValue({"fields", fieldNumber, "vitsMetrics", "wSNR"}, _field.vitsMetrics.wSNR);
+        json.setValue({"fields", fieldNumber, "vitsMetrics", "bPSNR"}, _field.vitsMetrics.bPSNR);
     }
 
     // Write the VBI data if in use
