@@ -33,6 +33,7 @@ parser.add_argument('--noDOD', dest='nodod', action='store_true', default=False,
 parser.add_argument('--noEFM', dest='noefm', action='store_true', default=False, help='Disable EFM front end')
 parser.add_argument('--daa', dest='daa', action='store_true', default=False, help='Disable analog audio decoding')
 parser.add_argument('--ignoreleadout', dest='ignoreleadout', action='store_true', default=False, help='continue decoding after lead-out seen')
+parser.add_argument('--verboseVITS', dest='verboseVITS', action='store_true', default=False, help='Enable additional JSON fields')
 
 parser.add_argument('-f', '--frequency', dest='inputfreq', metavar='FREQ', type=parse_frequency, default=40, help='RF sampling frequency (default is 40MHz)')
 parser.add_argument('--video_bpf_high', dest='vbpf_high', metavar='FREQ', type=parse_frequency, default=None, help='Video BPF high end frequency')
@@ -98,13 +99,16 @@ if args.vbpf_high is not None:
 if args.vlpf is not None:
     ldd.rf.DecoderParams['video_lpf_freq'] = args.vlpf * 1000000
 
+if args.verboseVITS:
+    ldd.verboseVITS = True
+
 ldd.rf.computefilters()
 
 def write_json(ldd, outname):
     jsondict = ldd.build_json(ldd.curfield)
     
     fp = open(outname + '.tbc.json.tmp', 'w')
-    json.dump(jsondict, fp, indent=4)
+    json.dump(jsondict, fp, indent=4 if args.verboseVITS else None)
     fp.write('\n')
     fp.close()
     
