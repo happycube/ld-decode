@@ -38,7 +38,7 @@ using std::vector;
 class SimpleFilter {
 protected:
     int order;
-    vector<double> a, b;
+    vector<double> b, a;
     vector<double> y, x;
 
 public:
@@ -55,10 +55,10 @@ public:
     }
 
     void clear(double val = 0) {
-        for (int i = 0; i < a.size(); i++) {
+        for (unsigned i = 0; i < a.size(); i++) {
             y[i] = val;
         }
-        for (int i = 0; i < b.size(); i++) {
+        for (unsigned i = 0; i < b.size(); i++) {
             x[i] = val;
         }
     }
@@ -76,10 +76,10 @@ public:
         x[0] = val;
         y0 = 0;
 
-        for (int o = 0; o < b.size(); o++) {
+        for (unsigned o = 0; o < b.size(); o++) {
             y0 += ((b[o] / a0) * x[o]);
         }
-        for (int o = 1; o < a.size(); o++) {
+        for (unsigned o = 1; o < a.size(); o++) {
             y0 -= ((a[o] / a0) * y[o]);
         }
 
@@ -104,7 +104,7 @@ void test_filter(const char *name, FN& fn, FO& fo) {
     }
 }
 
-int main(int argc, char *argv[]) {
+int main() {
     // Test with the sets of coefficients used in the code.
 
     auto f0(f_colorlpi);
