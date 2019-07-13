@@ -15,8 +15,7 @@ import numpy as np
 import scipy as sp
 import scipy.signal as sps
 
-#internal libraries which may or may not get used
-
+#internal libraries
 import commpy_filters
 
 import fdls
@@ -205,34 +204,9 @@ class RFDecode:
     def computeefmfilter(self):
         ''' same for both PAL and NTSC LD's '''
 
-        # from Simon's dev work.  I haven't replicated this yet.
-        efmFilter_b = [0.002811997668622127, 0.004557434177095733, 0.005518081763120638, 0.006175434988371297,
-                0.007079542302379131, 0.007762746564588261, 0.007195457153986951, 0.004856513521712550,
-                830.5207151564147810E-6, -0.004778562707971237, -0.011982337787676704, -0.020620652183251653,
-            -0.030313333572191556, -0.040603187005666612, -0.050923073987327538, -0.060516949563439962,
-            -0.068546464145567254, -0.074232214244951744, -0.076886606768788085, -0.075966051373979687,
-            -0.071190271468117655, -0.062596043962852732, -0.050510748183213161, -0.035543389044287388,
-            -0.018571164687106789, -653.7572477720859750E-6, 0.017076103040008714, 0.033491741568629191,
-                0.047560393829158804, 0.058451726209266315, 0.065610957042443047, 0.068787227432726056,
-                0.068052927749701272, 0.063800948413328271, 0.056691533146975850, 0.047573385532196255,
-                0.037405276759632830, 0.027164400458192961, 0.017743654186943611, 0.009870181642090168,
-                0.004052704260208225, 544.6177383273721940E-6, -667.1955887800581880E-6, 165.1444186576358670E-6,
-                0.002601820774369020, 0.006075778653150664, 0.009965935705131752, 0.013676514558850801,
-                0.016702483466449127, 0.018675612904669636, 0.019395327506222131, 0.018837755091170524,
-                0.017137913326564228, 0.014554762572554125, 0.011427836596406824, 0.008126164613403961,
-                0.004996232601002520, 0.002320620946358973, 290.5097959689243230E-6, -0.001009070788039298,
-                -0.001598148724027520, -0.001584492210927387, -0.001136622115179061, -452.5692444180374420E-6,
-                273.0780338995041350E-6, 878.5749907962782570E-6, 0.001255201534195653, 0.001356950513019374,
-                0.001200086984625413, 852.4978004878322510E-6, 415.1503402529320400E-6]
-
-        # the above data is reversed
-        efmFilter_b.reverse()
-        self.Filters['Fefm'] = filtfft((efmFilter_b, [1.0]), self.blocklen)
-
-        if True:
-            lfilt = sps.butter(1, [.4/20], btype='high')
-            hfilt = sps.ellip(4, 1.725, 25, [2/20]) # probably best so far...
-            self.Filters['Fefm'] = filtfft(lfilt, self.blocklen) * filtfft(hfilt, self.blocklen) * filtfft(hfilt, self.blocklen)
+        lfilt = sps.butter(1, [.4/20], btype='high')
+        hfilt = sps.ellip(4, 1.725, 25, [2/20]) # probably best so far...
+        self.Filters['Fefm'] = filtfft(lfilt, self.blocklen) * filtfft(hfilt, self.blocklen) * filtfft(hfilt, self.blocklen)
 
         # ISI filter
         # similar to original: Fisi = commpy_filters.rcosfilter(81, .75, 1/4400000, 40000000)
@@ -446,20 +420,11 @@ class RFDecode:
 
             for l in clips:
                 replacelen = 16*self.Filters['audio_fdiv2']
-                #replacement_idx = l + replacelen if l < replacelen else l - replacelen
-                #print(l, len(raw), raw[l])
                 raw[max(0, l - replacelen):min(l + replacelen, len(raw))] = 0# raw[replacement_idx]
-
-            #print(np.argmax(raw), np.max(raw))
-
-            #raw = np.clip(raw, -150000, 150000)
 
             fft_in = np.fft.fft(raw)
             fft_out = self.audio_fdslice2(fft_in) * self.Filters['audio_lpf2'] * self.Filters['audio_deemp2']
 
-            #fft_out = self.audio_fdslice2(fft_in) #* self.Filters['audio_lpf2'] * self.Filters['audio_deemp2']
-
-#            outputs.append((np.fft.ifft(fft_out_raw).real / self.Filters['audio_fdiv2']))
             outputs.append((np.fft.ifft(fft_out).real / self.Filters['audio_fdiv2']) + self.SysParams[c[1]])
 
         return np.rec.array(outputs, names=['audio_left', 'audio_right'])
@@ -743,8 +708,6 @@ class Field:
         vsync_min = self.usectoinpx(self.rf.SysParams['vsyncPulseUS'] - 1) + hsync_offset
         vsync_max = self.usectoinpx(self.rf.SysParams['vsyncPulseUS'] + .5) + hsync_offset
 
-        #print(hsync_typical, hsync_median, hsync_offset, eq_min, eq_max, vsync_min, vsync_max)
-
         # Pulse validator routine.  Removes sync pulses of invalid lengths, does not 
         # fill missing ones.
 
@@ -971,9 +934,7 @@ class Field:
     # the previous field.
 
     def getLine0(self, validpulses):
-
         line0loc, isFirstField = self.processVBlank(validpulses, 0)
-        #print('a', line0loc, isFirstField)
         
         # If there isn't a valid transition in the first field's hsync, try the next
         if line0loc is None:
@@ -996,8 +957,6 @@ class Field:
             meanlinelen = self.computeLineLen(validpulses, 'all')
             fieldlen = (meanlinelen * self.rf.SysParams['field_lines'][0 if isFirstField else 1])
             line0loc = int(np.round(line0loc_next - fieldlen))
-
-            #print('b', line0loc, isFirstField)
 
         return line0loc, isFirstField        
 
@@ -1361,22 +1320,19 @@ class Field:
         # current field
         f = self
 
+        isPAL = self.rf.system == 'PAL'
+
         # Do raw demod detection here.  (This covers only extreme cases right now)
-        dod_margin_low = 2500000 if self.rf.system == 'PAL' else 1500000
-        dod_margin_high = 12000000 if self.rf.system == 'PAL' else 1500000
+        dod_margin_low = 2500000 if isPAL else 1500000
+        dod_margin_high = 12000000 if isPAL else 1500000
         
         iserr1 = inrange(f.data[0]['demod_raw'], f.rf.limits['viewable'][0] - dod_margin_low, f.rf.limits['viewable'][1] +  dod_margin_high) == False
 
         # build sets of min/max valid levels 
 
-        # the base values are good for viewable-area signal
-        if self.rf.system == 'PAL':
-            valid_min = np.full_like(f.data[0]['demod'], f.rf.iretohz(-50))
-            valid_max = np.full_like(f.data[0]['demod'], f.rf.iretohz(150))
-        else:
-            valid_min = np.full_like(f.data[0]['demod'], f.rf.iretohz(-50))
-            valid_max = np.full_like(f.data[0]['demod'], f.rf.iretohz(140))
-
+        valid_min = np.full_like(f.data[0]['demod'], f.rf.iretohz(-50))
+        valid_max = np.full_like(f.data[0]['demod'], f.rf.iretohz(150 if isPAL else 140))
+        
         # the minimum valid value during VSYNC is lower for PAL because of the pilot signal
         minsync = -100 if self.rf.system == 'PAL' else -50
 
@@ -2026,11 +1982,7 @@ class LDdecode:
             return True
 
         # scale for NTSC - 1.1 to 1.55
-        self.mtf_level = (np.mean(self.bw_ratios) - 1.08) / .38
-        if self.mtf_level < 0:
-            self.mtf_level = 0
-        if self.mtf_level > 1:
-            self.mtf_level = 1
+        self.mtf_level = np.clip((np.mean(self.bw_ratios) - 1.08) / .38, 0, 1)
 
         return np.abs(self.mtf_level - oldmtf) < .05
 
@@ -2041,8 +1993,6 @@ class LDdecode:
             self.readloc = 0
             
         self.indata = self.freader(self.infile, self.readloc, self.readlen)
-
-        #print(len(self.indata), self.readlen)
 
         if self.indata is None or len(self.indata) < self.readlen:
             logging.info("End of file")
@@ -2067,7 +2017,6 @@ class LDdecode:
         return f, f.nextfieldoffset
 
     def writeout(self, dataset):
-
         f, fi, picture, audio, efm = dataset
 
         fi['audioSamples'] = 0 if audio is None else int(len(audio) / 2)
@@ -2087,7 +2036,6 @@ class LDdecode:
     def readfield(self):
         # pretty much a retry-ing wrapper around decodefield with MTF checking
         self.prevfield = self.curfield
-        #self.curfield = None
         done = False
         MTFadjusted = False
         
@@ -2313,18 +2261,6 @@ class LDdecode:
         metrics['blackLinePostTBCIRE'] = f.output_to_ire(np.mean(f.dspicture[bl_slicetbc]))
 
         metrics['bPSNR'] = self.calcpsnr(f, bl_slicetbc)
-
-        #sl_slice = f.lineslice(4, 35, 20)
-        #sl_slicetbc = f.lineslice_tbc(4, 35, 20)
-        #sl_sliceraw = slice(sl_slice.start - delay, sl_slice.stop - delay)
-
-        # metrics['syncLevelPSNR'] = self.calcpsnr(f, sl_slicetbc)
-
-        # metrics['syncRFLevel'] = np.std(f.rawdata[sl_sliceraw])
-
-        # There is *always* enough data to determine the RF level differences from sync to black/0IRE
-        # (but it isn't as consistent?)
-        # metrics['syncToBlackRFRatio'] = metrics['syncRFLevel'] / metrics['blackLineRFLevel']
 
         if 'whiteRFLevel' in metrics:
             #metrics['syncToWhiteRFRatio'] = metrics['syncRFLevel'] / metrics['whiteRFLevel']
