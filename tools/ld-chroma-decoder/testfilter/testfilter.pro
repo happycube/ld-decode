@@ -1,4 +1,5 @@
-CONFIG = c++11 testcase
+CONFIG += c++11 testcase
+CONFIG -= app_bundle
 
 SOURCES += \
     testfilter.cpp
