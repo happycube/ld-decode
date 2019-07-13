@@ -49,95 +49,97 @@ void VitsMetricsDialog::updateVitsMetrics(LdDecodeMetaData::Field firstField, Ld
         if (firstField.vitsMetrics.whiteIRE > 0) ui->whiteIRELabel->setText(QString::number(firstField.vitsMetrics.whiteIRE));
         else ui->whiteIRELabel->setText(QString::number(secondField.vitsMetrics.whiteIRE));
 
-        if (firstField.vitsMetrics.whiteRFLevel > 0) ui->whiteRFLevelLabel->setText(QString::number(firstField.vitsMetrics.whiteRFLevel));
-        else ui->whiteRFLevelLabel->setText(QString::number(secondField.vitsMetrics.whiteRFLevel));
-
-        if (firstField.vitsMetrics.greyPSNR > 0) ui->greyPSNRLabel->setText(QString::number(firstField.vitsMetrics.greyPSNR));
-        else ui->greyPSNRLabel->setText(QString::number(secondField.vitsMetrics.greyPSNR));
-
-        if (firstField.vitsMetrics.greyIRE > 0) ui->greyIRELabel->setText(QString::number(firstField.vitsMetrics.greyIRE));
-        else ui->greyIRELabel->setText(QString::number(secondField.vitsMetrics.greyIRE));
-
-        if (firstField.vitsMetrics.greyRFLevel > 0) ui->greyRFLevelLabel->setText(QString::number(firstField.vitsMetrics.greyRFLevel));
-        else ui->greyRFLevelLabel->setText(QString::number(secondField.vitsMetrics.greyRFLevel));
+        if (firstField.vitsMetrics.blackLinePSNR > 0) ui->blackLinePSNRLabel->setText(QString::number(firstField.vitsMetrics.blackLinePSNR));
+        else ui->blackLinePSNRLabel->setText(QString::number(secondField.vitsMetrics.blackLinePSNR));
 
         if (firstField.vitsMetrics.blackLinePreTBCIRE > 0) ui->blackLinePreTBCIRELabel->setText(QString::number(firstField.vitsMetrics.blackLinePreTBCIRE));
         else ui->blackLinePreTBCIRELabel->setText(QString::number(secondField.vitsMetrics.blackLinePreTBCIRE));
 
-        if (firstField.vitsMetrics.blackLinePostTBCIRE > 0) ui->blackLinePostTBCIRELabel->setText(QString::number(firstField.vitsMetrics.blackLinePostTBCIRE));
-        else ui->blackLinePostTBCIRELabel->setText(QString::number(secondField.vitsMetrics.blackLinePostTBCIRE));
+//        if (firstField.vitsMetrics.whiteRFLevel > 0) ui->whiteRFLevelLabel->setText(QString::number(firstField.vitsMetrics.whiteRFLevel));
+//        else ui->whiteRFLevelLabel->setText(QString::number(secondField.vitsMetrics.whiteRFLevel));
 
-        if (firstField.vitsMetrics.blackLinePSNR > 0) ui->blackLinePSNRLabel->setText(QString::number(firstField.vitsMetrics.blackLinePSNR));
-        else ui->blackLinePSNRLabel->setText(QString::number(secondField.vitsMetrics.blackLinePSNR));
+//        if (firstField.vitsMetrics.greyPSNR > 0) ui->greyPSNRLabel->setText(QString::number(firstField.vitsMetrics.greyPSNR));
+//        else ui->greyPSNRLabel->setText(QString::number(secondField.vitsMetrics.greyPSNR));
 
-        if (firstField.vitsMetrics.blackLineRFLevel > 0) ui->blackLineRFLevelLabel->setText(QString::number(firstField.vitsMetrics.blackLineRFLevel));
-        else ui->blackLineRFLevelLabel->setText(QString::number(secondField.vitsMetrics.blackLineRFLevel));
+//        if (firstField.vitsMetrics.greyIRE > 0) ui->greyIRELabel->setText(QString::number(firstField.vitsMetrics.greyIRE));
+//        else ui->greyIRELabel->setText(QString::number(secondField.vitsMetrics.greyIRE));
 
-        if (firstField.vitsMetrics.syncLevelPSNR > 0) ui->syncLevelPSNRLabel->setText(QString::number(firstField.vitsMetrics.syncLevelPSNR));
-        else ui->syncLevelPSNRLabel->setText(QString::number(secondField.vitsMetrics.syncLevelPSNR));
+//        if (firstField.vitsMetrics.greyRFLevel > 0) ui->greyRFLevelLabel->setText(QString::number(firstField.vitsMetrics.greyRFLevel));
+//        else ui->greyRFLevelLabel->setText(QString::number(secondField.vitsMetrics.greyRFLevel));
 
-        if (firstField.vitsMetrics.syncRFLevel > 0) ui->syncRFLevelLabel->setText(QString::number(firstField.vitsMetrics.syncRFLevel));
-        else ui->syncRFLevelLabel->setText(QString::number(secondField.vitsMetrics.syncRFLevel));
+//        if (firstField.vitsMetrics.blackLinePostTBCIRE > 0) ui->blackLinePostTBCIRELabel->setText(QString::number(firstField.vitsMetrics.blackLinePostTBCIRE));
+//        else ui->blackLinePostTBCIRELabel->setText(QString::number(secondField.vitsMetrics.blackLinePostTBCIRE));
 
-        if (firstField.vitsMetrics.syncToBlackRFRatio > 0) ui->syncToBlackRFRatioLabel->setText(QString::number(firstField.vitsMetrics.syncToBlackRFRatio));
-        else ui->syncToBlackRFRatioLabel->setText(QString::number(secondField.vitsMetrics.syncToBlackRFRatio));
+//        if (firstField.vitsMetrics.blackLineRFLevel > 0) ui->blackLineRFLevelLabel->setText(QString::number(firstField.vitsMetrics.blackLineRFLevel));
+//        else ui->blackLineRFLevelLabel->setText(QString::number(secondField.vitsMetrics.blackLineRFLevel));
 
-        if (firstField.vitsMetrics.syncToWhiteRFRatio > 0) ui->syncToWhiteRFRatioLabel->setText(QString::number(firstField.vitsMetrics.syncToWhiteRFRatio));
-        else ui->syncToWhiteRFRatioLabel->setText(QString::number(secondField.vitsMetrics.syncToWhiteRFRatio));
+//        if (firstField.vitsMetrics.syncLevelPSNR > 0) ui->syncLevelPSNRLabel->setText(QString::number(firstField.vitsMetrics.syncLevelPSNR));
+//        else ui->syncLevelPSNRLabel->setText(QString::number(secondField.vitsMetrics.syncLevelPSNR));
 
-        if (firstField.vitsMetrics.blackToWhiteRFRatio > 0) ui->blackToWhiteRFRatioLabel->setText(QString::number(firstField.vitsMetrics.blackToWhiteRFRatio));
-        else ui->blackToWhiteRFRatioLabel->setText(QString::number(secondField.vitsMetrics.blackToWhiteRFRatio));
+//        if (firstField.vitsMetrics.syncRFLevel > 0) ui->syncRFLevelLabel->setText(QString::number(firstField.vitsMetrics.syncRFLevel));
+//        else ui->syncRFLevelLabel->setText(QString::number(secondField.vitsMetrics.syncRFLevel));
 
-        if (firstField.vitsMetrics.ntscWhiteFlagSNR > 0) ui->ntscWhiteFlagSNRLabel->setText(QString::number(firstField.vitsMetrics.ntscWhiteFlagSNR));
-        else ui->ntscWhiteFlagSNRLabel->setText(QString::number(secondField.vitsMetrics.ntscWhiteFlagSNR));
+//        if (firstField.vitsMetrics.syncToBlackRFRatio > 0) ui->syncToBlackRFRatioLabel->setText(QString::number(firstField.vitsMetrics.syncToBlackRFRatio));
+//        else ui->syncToBlackRFRatioLabel->setText(QString::number(secondField.vitsMetrics.syncToBlackRFRatio));
 
-        if (firstField.vitsMetrics.ntscWhiteFlagRFLevel > 0) ui->ntscWhiteFlagRFLevelLabel->setText(QString::number(firstField.vitsMetrics.ntscWhiteFlagRFLevel));
-        else ui->ntscWhiteFlagRFLevelLabel->setText(QString::number(secondField.vitsMetrics.ntscWhiteFlagRFLevel));
+//        if (firstField.vitsMetrics.syncToWhiteRFRatio > 0) ui->syncToWhiteRFRatioLabel->setText(QString::number(firstField.vitsMetrics.syncToWhiteRFRatio));
+//        else ui->syncToWhiteRFRatioLabel->setText(QString::number(secondField.vitsMetrics.syncToWhiteRFRatio));
 
-        if (firstField.vitsMetrics.ntscLine19Burst0IRE > 0) ui->ntscLine19Burst0IRELabel->setText(QString::number(firstField.vitsMetrics.ntscLine19Burst0IRE));
-        else ui->ntscLine19Burst0IRELabel->setText(QString::number(secondField.vitsMetrics.ntscLine19Burst0IRE));
+//        if (firstField.vitsMetrics.blackToWhiteRFRatio > 0) ui->blackToWhiteRFRatioLabel->setText(QString::number(firstField.vitsMetrics.blackToWhiteRFRatio));
+//        else ui->blackToWhiteRFRatioLabel->setText(QString::number(secondField.vitsMetrics.blackToWhiteRFRatio));
 
-        if (firstField.vitsMetrics.ntscLine19Burst70IRE > 0) ui->ntscLine19Burst70IRELabel->setText(QString::number(firstField.vitsMetrics.ntscLine19Burst70IRE));
-        else ui->ntscLine19Burst70IRELabel->setText(QString::number(secondField.vitsMetrics.ntscLine19Burst70IRE));
+//        if (firstField.vitsMetrics.ntscWhiteFlagSNR > 0) ui->ntscWhiteFlagSNRLabel->setText(QString::number(firstField.vitsMetrics.ntscWhiteFlagSNR));
+//        else ui->ntscWhiteFlagSNRLabel->setText(QString::number(secondField.vitsMetrics.ntscWhiteFlagSNR));
 
-        if (firstField.vitsMetrics.ntscLine19ColorPhase > 0) ui->ntscLine19ColorPhaseLabel->setText(QString::number(firstField.vitsMetrics.ntscLine19ColorPhase));
-        else ui->ntscLine19ColorPhaseLabel->setText(QString::number(secondField.vitsMetrics.ntscLine19ColorPhase));
+//        if (firstField.vitsMetrics.ntscWhiteFlagRFLevel > 0) ui->ntscWhiteFlagRFLevelLabel->setText(QString::number(firstField.vitsMetrics.ntscWhiteFlagRFLevel));
+//        else ui->ntscWhiteFlagRFLevelLabel->setText(QString::number(secondField.vitsMetrics.ntscWhiteFlagRFLevel));
 
-        if (firstField.vitsMetrics.ntscLine19ColorRawSNR > 0) ui->ntscLine19ColorRawSNRLabel->setText(QString::number(firstField.vitsMetrics.ntscLine19ColorRawSNR));
-        else ui->ntscLine19ColorRawSNRLabel->setText(QString::number(secondField.vitsMetrics.ntscLine19ColorRawSNR));
+//        if (firstField.vitsMetrics.ntscLine19Burst0IRE > 0) ui->ntscLine19Burst0IRELabel->setText(QString::number(firstField.vitsMetrics.ntscLine19Burst0IRE));
+//        else ui->ntscLine19Burst0IRELabel->setText(QString::number(secondField.vitsMetrics.ntscLine19Burst0IRE));
 
-        if (firstField.vitsMetrics.ntscLine19Color3DPhase > 0) ui->ntscLine19Color3DPhaseLabel->setText(QString::number(firstField.vitsMetrics.ntscLine19Color3DPhase));
-        else ui->ntscLine19Color3DPhaseLabel->setText(QString::number(secondField.vitsMetrics.ntscLine19Color3DPhase));
+//        if (firstField.vitsMetrics.ntscLine19Burst70IRE > 0) ui->ntscLine19Burst70IRELabel->setText(QString::number(firstField.vitsMetrics.ntscLine19Burst70IRE));
+//        else ui->ntscLine19Burst70IRELabel->setText(QString::number(secondField.vitsMetrics.ntscLine19Burst70IRE));
 
-        if (firstField.vitsMetrics.ntscLine19Color3DRawSNR > 0) ui->ntscLine19Color3DRawSNRLabel->setText(QString::number(firstField.vitsMetrics.ntscLine19Color3DRawSNR));
-        else ui->ntscLine19Color3DRawSNRLabel->setText(QString::number(secondField.vitsMetrics.ntscLine19Color3DRawSNR));
+//        if (firstField.vitsMetrics.ntscLine19ColorPhase > 0) ui->ntscLine19ColorPhaseLabel->setText(QString::number(firstField.vitsMetrics.ntscLine19ColorPhase));
+//        else ui->ntscLine19ColorPhaseLabel->setText(QString::number(secondField.vitsMetrics.ntscLine19ColorPhase));
 
-        if (firstField.vitsMetrics.palVITSBurst50Level > 0) ui->palVITSBurst50LevelLabel->setText(QString::number(firstField.vitsMetrics.palVITSBurst50Level));
-        else ui->palVITSBurst50LevelLabel->setText(QString::number(secondField.vitsMetrics.palVITSBurst50Level));
+//        if (firstField.vitsMetrics.ntscLine19ColorRawSNR > 0) ui->ntscLine19ColorRawSNRLabel->setText(QString::number(firstField.vitsMetrics.ntscLine19ColorRawSNR));
+//        else ui->ntscLine19ColorRawSNRLabel->setText(QString::number(secondField.vitsMetrics.ntscLine19ColorRawSNR));
+
+//        if (firstField.vitsMetrics.ntscLine19Color3DPhase > 0) ui->ntscLine19Color3DPhaseLabel->setText(QString::number(firstField.vitsMetrics.ntscLine19Color3DPhase));
+//        else ui->ntscLine19Color3DPhaseLabel->setText(QString::number(secondField.vitsMetrics.ntscLine19Color3DPhase));
+
+//        if (firstField.vitsMetrics.ntscLine19Color3DRawSNR > 0) ui->ntscLine19Color3DRawSNRLabel->setText(QString::number(firstField.vitsMetrics.ntscLine19Color3DRawSNR));
+//        else ui->ntscLine19Color3DRawSNRLabel->setText(QString::number(secondField.vitsMetrics.ntscLine19Color3DRawSNR));
+
+//        if (firstField.vitsMetrics.palVITSBurst50Level > 0) ui->palVITSBurst50LevelLabel->setText(QString::number(firstField.vitsMetrics.palVITSBurst50Level));
+//        else ui->palVITSBurst50LevelLabel->setText(QString::number(secondField.vitsMetrics.palVITSBurst50Level));
     } else {
         ui->whiteSNRLabel->setText("0");
         ui->whiteIRELabel->setText("0");
-        ui->whiteRFLevelLabel->setText("0");
-        ui->greyPSNRLabel->setText("0");
-        ui->greyIRELabel->setText("0");
-        ui->greyRFLevelLabel->setText("0");
-        ui->blackLinePreTBCIRELabel->setText("0");
-        ui->blackLinePostTBCIRELabel->setText("0");
+
         ui->blackLinePSNRLabel->setText("0");
-        ui->blackLineRFLevelLabel->setText("0");
-        ui->syncLevelPSNRLabel->setText("0");
-        ui->syncRFLevelLabel->setText("0");
-        ui->syncToBlackRFRatioLabel->setText("0");
-        ui->syncToWhiteRFRatioLabel->setText("0");
-        ui->blackToWhiteRFRatioLabel->setText("0");
-        ui->ntscWhiteFlagSNRLabel->setText("0");
-        ui->ntscWhiteFlagRFLevelLabel->setText("0");
-        ui->ntscLine19Burst0IRELabel->setText("0");
-        ui->ntscLine19Burst70IRELabel->setText("0");
-        ui->ntscLine19ColorPhaseLabel->setText("0");
-        ui->ntscLine19ColorRawSNRLabel->setText("0");
-        ui->ntscLine19Color3DPhaseLabel->setText("0");
-        ui->ntscLine19Color3DRawSNRLabel->setText("0");
-        ui->palVITSBurst50LevelLabel->setText("0");
+        ui->blackLinePreTBCIRELabel->setText("0");
+
+//        ui->whiteRFLevelLabel->setText("0");
+//        ui->greyPSNRLabel->setText("0");
+//        ui->greyIRELabel->setText("0");
+//        ui->greyRFLevelLabel->setText("0");
+//        ui->blackLinePostTBCIRELabel->setText("0");
+//        ui->blackLineRFLevelLabel->setText("0");
+//        ui->syncLevelPSNRLabel->setText("0");
+//        ui->syncRFLevelLabel->setText("0");
+//        ui->syncToBlackRFRatioLabel->setText("0");
+//        ui->syncToWhiteRFRatioLabel->setText("0");
+//        ui->blackToWhiteRFRatioLabel->setText("0");
+//        ui->ntscWhiteFlagSNRLabel->setText("0");
+//        ui->ntscWhiteFlagRFLevelLabel->setText("0");
+//        ui->ntscLine19Burst0IRELabel->setText("0");
+//        ui->ntscLine19Burst70IRELabel->setText("0");
+//        ui->ntscLine19ColorPhaseLabel->setText("0");
+//        ui->ntscLine19ColorRawSNRLabel->setText("0");
+//        ui->ntscLine19Color3DPhaseLabel->setText("0");
+//        ui->ntscLine19Color3DRawSNRLabel->setText("0");
+//        ui->palVITSBurst50LevelLabel->setText("0");
     }
 }
