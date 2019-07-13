@@ -146,7 +146,7 @@ bool LdDecodeMetaData::read(QString fileName)
                 metaData.fields[fieldNumber].vbi.vbiData.append(json.value({"fields", fieldNumber, "vbi", "vbiData", 1}).toInt()); // Line 17
                 metaData.fields[fieldNumber].vbi.vbiData.append(json.value({"fields", fieldNumber, "vbi", "vbiData", 2}).toInt()); // Line 18
 
-                switch(json.value({"fields", fieldNumber, "vbi", "type"}).toInt()) {
+                switch(json.value({"fields", fieldNumber, "vbi", "vp", 0}).toInt()) {
                 case 0:
                     metaData.fields[fieldNumber].vbi.type = LdDecodeMetaData::VbiDiscTypes::unknownDiscType;
                     break;
@@ -160,15 +160,15 @@ bool LdDecodeMetaData::read(QString fileName)
                     metaData.fields[fieldNumber].vbi.type = LdDecodeMetaData::VbiDiscTypes::unknownDiscType;
                 }
 
-                metaData.fields[fieldNumber].vbi.userCode = json.value({"fields", fieldNumber, "vbi", "userCode"}).toString();
-                metaData.fields[fieldNumber].vbi.picNo = json.value({"fields", fieldNumber, "vbi", "picNo"}).toInt();
-                metaData.fields[fieldNumber].vbi.chNo = json.value({"fields", fieldNumber, "vbi", "chNo"}).toInt();
-                metaData.fields[fieldNumber].vbi.clvHr = json.value({"fields", fieldNumber, "vbi", "clvHr"}).toInt();
-                metaData.fields[fieldNumber].vbi.clvMin = json.value({"fields", fieldNumber, "vbi", "clvMin"}).toInt();
-                metaData.fields[fieldNumber].vbi.clvSec = json.value({"fields", fieldNumber, "vbi", "clvSec"}).toInt();
-                metaData.fields[fieldNumber].vbi.clvPicNo = json.value({"fields", fieldNumber, "vbi", "clvPicNo"}).toInt();
+                metaData.fields[fieldNumber].vbi.userCode = json.value({"fields", fieldNumber, "vbi", "vp", 1}).toString();
+                metaData.fields[fieldNumber].vbi.picNo = json.value({"fields", fieldNumber, "vbi", "vp", 2}).toInt();
+                metaData.fields[fieldNumber].vbi.chNo = json.value({"fields", fieldNumber, "vbi", "vp", 3}).toInt();
+                metaData.fields[fieldNumber].vbi.clvHr = json.value({"fields", fieldNumber, "vbi", "vp", 4}).toInt();
+                metaData.fields[fieldNumber].vbi.clvMin = json.value({"fields", fieldNumber, "vbi", "vp", 5}).toInt();
+                metaData.fields[fieldNumber].vbi.clvSec = json.value({"fields", fieldNumber, "vbi", "vp", 6}).toInt();
+                metaData.fields[fieldNumber].vbi.clvPicNo = json.value({"fields", fieldNumber, "vbi", "vp", 7}).toInt();
 
-                switch (json.value({"fields", fieldNumber, "vbi", "soundMode"}).toInt()) {
+                switch (json.value({"fields", fieldNumber, "vbi", "vp", 8}).toInt()) {
                 case 0:
                     metaData.fields[fieldNumber].vbi.soundMode = LdDecodeMetaData::VbiSoundModes::stereo;
                     break;
@@ -210,7 +210,7 @@ bool LdDecodeMetaData::read(QString fileName)
                     break;
                 }
 
-                switch (json.value({"fields", fieldNumber, "vbi", "soundModeAm2"}).toInt()) {
+                switch (json.value({"fields", fieldNumber, "vbi", "vp", 9}).toInt()) {
                 case 0:
                     metaData.fields[fieldNumber].vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::stereo;
                     break;
@@ -253,7 +253,7 @@ bool LdDecodeMetaData::read(QString fileName)
                 }
 
                 // Get the boolean flags field (contains 13 boolean flags from the VBI)
-                qint32 booleanFlags = json.value({"fields", fieldNumber, "vbi", "flags"}).toInt();
+                qint32 booleanFlags = json.value({"fields", fieldNumber, "vbi", "vp", 10}).toInt();
 
                 // Interpret the flags
                 metaData.fields[fieldNumber].vbi.leadIn =      ((booleanFlags & 0x0001) == 0x0001);
@@ -440,99 +440,99 @@ bool LdDecodeMetaData::write(QString fileName)
 
                 switch(metaData.fields[fieldNumber].vbi.type) {
                 case LdDecodeMetaData::VbiDiscTypes::unknownDiscType:
-                    json.setValue({"fields", fieldNumber, "vbi", "type"}, 0);
+                    json.setValue({"fields", fieldNumber, "vbi", "vp", 0}, 0);
                     break;
                 case LdDecodeMetaData::VbiDiscTypes::clv:
-                    json.setValue({"fields", fieldNumber, "vbi", "type"}, 1);
+                    json.setValue({"fields", fieldNumber, "vbi", "vp", 0}, 1);
                     break;
                 case LdDecodeMetaData::VbiDiscTypes::cav:
-                    json.setValue({"fields", fieldNumber, "vbi", "type"}, 2);
+                    json.setValue({"fields", fieldNumber, "vbi", "vp", 0}, 2);
                     break;
                 }
 
-                json.setValue({"fields", fieldNumber, "vbi", "userCode"}, metaData.fields[fieldNumber].vbi.userCode);
-                json.setValue({"fields", fieldNumber, "vbi", "picNo"}, metaData.fields[fieldNumber].vbi.picNo);
-                json.setValue({"fields", fieldNumber, "vbi", "chNo"}, metaData.fields[fieldNumber].vbi.chNo);
-                json.setValue({"fields", fieldNumber, "vbi", "clvHr"}, metaData.fields[fieldNumber].vbi.clvHr);
-                json.setValue({"fields", fieldNumber, "vbi", "clvMin"}, metaData.fields[fieldNumber].vbi.clvMin);
-                json.setValue({"fields", fieldNumber, "vbi", "clvSec"}, metaData.fields[fieldNumber].vbi.clvSec);
-                json.setValue({"fields", fieldNumber, "vbi", "clvPicNo"}, metaData.fields[fieldNumber].vbi.clvPicNo);
+                json.setValue({"fields", fieldNumber, "vbi", "vp", 1}, metaData.fields[fieldNumber].vbi.userCode);
+                json.setValue({"fields", fieldNumber, "vbi", "vp", 2}, metaData.fields[fieldNumber].vbi.picNo);
+                json.setValue({"fields", fieldNumber, "vbi", "vp", 3}, metaData.fields[fieldNumber].vbi.chNo);
+                json.setValue({"fields", fieldNumber, "vbi", "vp", 4}, metaData.fields[fieldNumber].vbi.clvHr);
+                json.setValue({"fields", fieldNumber, "vbi", "vp", 5}, metaData.fields[fieldNumber].vbi.clvMin);
+                json.setValue({"fields", fieldNumber, "vbi", "vp", 6}, metaData.fields[fieldNumber].vbi.clvSec);
+                json.setValue({"fields", fieldNumber, "vbi", "vp", 7}, metaData.fields[fieldNumber].vbi.clvPicNo);
 
                 switch (metaData.fields[fieldNumber].vbi.soundMode) {
                 case LdDecodeMetaData::VbiSoundModes::stereo:
-                    json.setValue({"fields", fieldNumber, "vbi", "soundMode"}, 0);
+                    json.setValue({"fields", fieldNumber, "vbi", "vp", 8}, 0);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::mono:
-                    json.setValue({"fields", fieldNumber, "vbi", "soundMode"}, 1);
+                    json.setValue({"fields", fieldNumber, "vbi", "vp", 8}, 1);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::audioSubCarriersOff:
-                    json.setValue({"fields", fieldNumber, "vbi", "soundMode"}, 2);
+                    json.setValue({"fields", fieldNumber, "vbi", "vp", 8}, 2);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::bilingual:
-                    json.setValue({"fields", fieldNumber, "vbi", "soundMode"}, 3);
+                    json.setValue({"fields", fieldNumber, "vbi", "vp", 8}, 3);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::stereo_stereo:
-                    json.setValue({"fields", fieldNumber, "vbi", "soundMode"}, 4);
+                    json.setValue({"fields", fieldNumber, "vbi", "vp", 8}, 4);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::stereo_bilingual:
-                    json.setValue({"fields", fieldNumber, "vbi", "soundMode"}, 5);
+                    json.setValue({"fields", fieldNumber, "vbi", "vp", 8}, 5);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::crossChannelStereo:
-                    json.setValue({"fields", fieldNumber, "vbi", "soundMode"}, 6);
+                    json.setValue({"fields", fieldNumber, "vbi", "vp", 8}, 6);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::bilingual_bilingual:
-                    json.setValue({"fields", fieldNumber, "vbi", "soundMode"}, 7);
+                    json.setValue({"fields", fieldNumber, "vbi", "vp", 8}, 7);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::mono_dump:
-                    json.setValue({"fields", fieldNumber, "vbi", "soundMode"}, 8);
+                    json.setValue({"fields", fieldNumber, "vbi", "vp", 8}, 8);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::stereo_dump:
-                    json.setValue({"fields", fieldNumber, "vbi", "soundMode"}, 9);
+                    json.setValue({"fields", fieldNumber, "vbi", "vp", 8}, 9);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::bilingual_dump:
-                    json.setValue({"fields", fieldNumber, "vbi", "soundMode"}, 10);
+                    json.setValue({"fields", fieldNumber, "vbi", "vp", 8}, 10);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::futureUse:
-                    json.setValue({"fields", fieldNumber, "vbi", "soundMode"}, 11);
+                    json.setValue({"fields", fieldNumber, "vbi", "vp", 8}, 11);
                     break;
                 }
 
                 switch (metaData.fields[fieldNumber].vbi.soundModeAm2) {
                 case LdDecodeMetaData::VbiSoundModes::stereo:
-                    json.setValue({"fields", fieldNumber, "vbi", "soundModeAm2"}, 0);
+                    json.setValue({"fields", fieldNumber, "vbi", "vp", 9}, 0);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::mono:
-                    json.setValue({"fields", fieldNumber, "vbi", "soundModeAm2"}, 1);
+                    json.setValue({"fields", fieldNumber, "vbi", "vp", 9}, 1);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::audioSubCarriersOff:
-                    json.setValue({"fields", fieldNumber, "vbi", "soundModeAm2"}, 2);
+                    json.setValue({"fields", fieldNumber, "vbi", "vp", 9}, 2);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::bilingual:
-                    json.setValue({"fields", fieldNumber, "vbi", "soundModeAm2"}, 3);
+                    json.setValue({"fields", fieldNumber, "vbi", "vp", 9}, 3);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::stereo_stereo:
-                    json.setValue({"fields", fieldNumber, "vbi", "soundModeAm2"}, 4);
+                    json.setValue({"fields", fieldNumber, "vbi", "vp", 9}, 4);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::stereo_bilingual:
-                    json.setValue({"fields", fieldNumber, "vbi", "soundModeAm2"}, 5);
+                    json.setValue({"fields", fieldNumber, "vbi", "vp", 9}, 5);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::crossChannelStereo:
-                    json.setValue({"fields", fieldNumber, "vbi", "soundModeAm2"}, 6);
+                    json.setValue({"fields", fieldNumber, "vbi", "vp", 9}, 6);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::bilingual_bilingual:
-                    json.setValue({"fields", fieldNumber, "vbi", "soundModeAm2"}, 7);
+                    json.setValue({"fields", fieldNumber, "vbi", "vp", 9}, 7);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::mono_dump:
-                    json.setValue({"fields", fieldNumber, "vbi", "soundModeAm2"}, 8);
+                    json.setValue({"fields", fieldNumber, "vbi", "vp", 9}, 8);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::stereo_dump:
-                    json.setValue({"fields", fieldNumber, "vbi", "soundModeAm2"}, 9);
+                    json.setValue({"fields", fieldNumber, "vbi", "vp", 9}, 9);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::bilingual_dump:
-                    json.setValue({"fields", fieldNumber, "vbi", "soundModeAm2"}, 10);
+                    json.setValue({"fields", fieldNumber, "vbi", "vp", 9}, 10);
                     break;
                 case LdDecodeMetaData::VbiSoundModes::futureUse:
-                    json.setValue({"fields", fieldNumber, "vbi", "soundModeAm2"}, 11);
+                    json.setValue({"fields", fieldNumber, "vbi", "vp", 9}, 11);
                     break;
                 }
 
@@ -553,7 +553,7 @@ bool LdDecodeMetaData::write(QString fileName)
                 if (metaData.fields[fieldNumber].vbi.standardAm2)   flags += 0x1000;
 
                 // Insert the flags into the VBI JSON
-                json.setValue({"fields", fieldNumber, "vbi", "flags"}, flags);
+                json.setValue({"fields", fieldNumber, "vbi", "vp", 10}, flags);
             }
 
             // Write the NTSC specific record if in use
