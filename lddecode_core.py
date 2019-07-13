@@ -2337,7 +2337,7 @@ class LDdecode:
         for k in outputkeys:
             if k not in metrics:
                 continue
-                
+
             digits = 1
             if 'Ratio' in k:
                 digits = 4
@@ -2347,7 +2347,7 @@ class LDdecode:
             if np.isfinite(rounded):
                 metrics_rounded[k] = rounded
 
-            return metrics_rounded
+        return metrics_rounded
 
     def buildmetadata(self, f):
         ''' returns field information JSON and whether or not a backfill field is needed '''
