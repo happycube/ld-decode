@@ -67,6 +67,8 @@ DropoutAnalysisDialog::~DropoutAnalysisDialog()
 
 void DropoutAnalysisDialog::updateChart(LdDecodeMetaData *ldDecodeMetaData)
 {
+    // Remove series before updating to prevent GUI updates
+    chart.removeSeries(&series);
     series.clear();
 
     qreal targetDataPoints = 2000;
@@ -116,7 +118,7 @@ void DropoutAnalysisDialog::updateChart(LdDecodeMetaData *ldDecodeMetaData)
     if (maximumDropoutLength < 10) axisY.setMax(10);
     else axisY.setMax(maximumDropoutLength);
 
-
+    chart.addSeries(&series);
     chartView->repaint();
 }
 

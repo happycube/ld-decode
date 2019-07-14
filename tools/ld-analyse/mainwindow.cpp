@@ -634,17 +634,21 @@ void MainWindow::blackgroundLoadComplete()
 {
     qDebug() << "MainWindow::blackgroundLoadComplete(): Background loading is complete";
 
-    // Check for error
-    if (!isFileOpen) {
+    // Hide the busy dialogue and enable the main window
+    busyDialog->hide();
+    this->setEnabled(true);
+
+    // Update the GUI based on the result
+    if (isFileOpen) {
+        updateGuiLoaded();
+    } else {
+        updateGuiUnloaded();
+
         // Show an error to the user
         QMessageBox messageBox;
         messageBox.warning(this, "Error", lastLoadError);
         messageBox.setFixedSize(500, 200);
     }
-
-    // Hide the busy dialogue and enable the main window
-    busyDialog->hide();
-    this->setEnabled(true);
 }
 
 // Load the TBC and JSON metadata (called by QFuture in loadTbcFile method)
@@ -680,60 +684,28 @@ void MainWindow::backgroundLoad(QString inputFileName)
         } else {
             // Both the video and metadata files are now open
 
-            // Sanity check the input file for isFirstField continuity
-            qDebug() << "MainWindow::backgroundLoad(): Checking field continuity...";
-            busyDialog->setMessaage("Checking TBC field continuity...");
-            bool isFirstField = false;
-            qint32 errorCounter = 0;
-            for (qint32 fieldNumber = 1; fieldNumber <= ldDecodeMetaData.getNumberOfFields(); fieldNumber++) {
-                if (fieldNumber == 1) {
-                    isFirstField = ldDecodeMetaData.getField(fieldNumber).isFirstField;
-                    qDebug() << "MainWindow::backgroundLoad(): Initial field has isFirstField =" << isFirstField;
-                } else {
-                    if (ldDecodeMetaData.getField(fieldNumber).isFirstField == isFirstField) {
-                        qDebug() << "MainWindow::backgroundLoad(): Field #" << fieldNumber << "has isFirstField out of sequence";
-                        errorCounter++;
-                    } else {
-                        isFirstField = !isFirstField;
-                    }
-                }
-            }
+            // Update the configuration for the source directory
+            QFileInfo inFileInfo(inputFileName);
+            configuration->setSourceDirectory(inFileInfo.absolutePath());
+            qDebug() << "MainWindow::backgroundLoad(): Setting source directory to:" << inFileInfo.absolutePath();
+            configuration->writeConfiguration();
 
-            // Show an error message if required
-            if (errorCounter != 0) {
-                lastLoadError = "The JSON first field flag for the input file is not consistent - invalid TBC";
-            } else {
-                qDebug() << "MainWindow::backgroundLoad(): File opened successfully";
+            qDebug() << "MainWindow::backgroundLoad(): Generating DO and SNR graphs...";
+            busyDialog->setMessaage("Generating drop-out analysis graph...");
+            dropoutAnalysisDialog->updateChart(&ldDecodeMetaData);
+            busyDialog->setMessaage("Generating SNR analysis graph...");
+            snrAnalysisDialog->updateChart(&ldDecodeMetaData);
 
-                // Update the configuration for the source directory
-                QFileInfo inFileInfo(inputFileName);
-                configuration->setSourceDirectory(inFileInfo.absolutePath());
-                qDebug() << "MainWindow::backgroundLoad(): Setting source directory to:" << inFileInfo.absolutePath();
-                configuration->writeConfiguration();
+            busyDialog->setMessaage("Loading completed");
+            isFileOpen = true;
 
-                qDebug() << "MainWindow::backgroundLoad(): Generating DO and SNR graphs...";
-                busyDialog->setMessaage("Generating drop-out analysis graph...");
-                dropoutAnalysisDialog->updateChart(&ldDecodeMetaData);
-                busyDialog->setMessaage("Generating SNR analysis graph...");
-                snrAnalysisDialog->updateChart(&ldDecodeMetaData);
+            // Set the window title
+            this->setWindowTitle(tr("ld-analyse - ") + inputFileName);
 
-                isFileOpen = true;
-
-                // Set the window title
-                this->setWindowTitle(tr("ld-analyse - ") + inputFileName);
-
-                // Set the current file name
-                currentInputFileName = inFileInfo.fileName();
-                qDebug() << "MainWindow::backgroundLoad(): Set current file name to to:" << currentInputFileName;
-            }
+            // Set the current file name
+            currentInputFileName = inFileInfo.fileName();
+            qDebug() << "MainWindow::backgroundLoad(): Set current file name to to:" << currentInputFileName;
         }
-    }
-
-    // Update the GUI based on the result
-    if (isFileOpen) {
-        updateGuiLoaded();
-    } else {
-        updateGuiUnloaded();
     }
 }
 

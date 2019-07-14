@@ -70,7 +70,11 @@ SnrAnalysisDialog::~SnrAnalysisDialog()
 
 void SnrAnalysisDialog::updateChart(LdDecodeMetaData *ldDecodeMetaData)
 {
+    // Remove series before updating to prevent GUI updates
+    chart.removeSeries(&blackSeries);
+    chart.removeSeries(&whiteSeries);
     blackSeries.clear();
+    whiteSeries.clear();
 
     qreal targetDataPoints = 2000;
     qreal averageWidth = qRound(ldDecodeMetaData->getNumberOfFields() / targetDataPoints);
@@ -120,6 +124,8 @@ void SnrAnalysisDialog::updateChart(LdDecodeMetaData *ldDecodeMetaData)
     if ((minimumSNR - 5.0) > 0) axisY.setMin(minimumSNR - 5);
     else axisY.setMin(0);
 
+    chart.addSeries(&blackSeries);
+    chart.addSeries(&whiteSeries);
     chartView->repaint();
 }
 
