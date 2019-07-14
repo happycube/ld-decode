@@ -47,11 +47,16 @@ public:
 private slots:
     void on_pushButton_clicked();
 
+    void on_blackPSNR_checkBox_clicked();
+
+    void on_whiteSNR_checkBox_clicked();
+
 private:
     Ui::SnrAnalysisDialog *ui;
 
     QChart chart;
-    QLineSeries series;
+    QLineSeries blackSeries;
+    QLineSeries whiteSeries;
     QChartView *chartView;
     QValueAxis axisX;
     QValueAxis axisY;

@@ -50,6 +50,8 @@ DropoutAnalysisDialog::DropoutAnalysisDialog(QWidget *parent) :
     chart.addAxis(&axisY, Qt::AlignLeft);
     series.attachAxis(&axisY);
 
+    series.setColor(Qt::blue);
+
     // Set up the chart view
     chartView = new QChartView(&chart);
     chartView->setRubberBand(QChartView::HorizontalRubberBand);

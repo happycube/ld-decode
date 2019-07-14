@@ -34,21 +34,26 @@ SnrAnalysisDialog::SnrAnalysisDialog(QWidget *parent) :
 
     // Set up the chart
     chart.legend()->hide();
-    chart.addSeries(&series);
+    chart.addSeries(&blackSeries);
+    chart.addSeries(&whiteSeries);
 
     // Set up the X axis
     axisX.setTitleText("Field number");
     axisX.setLabelFormat("%i");
-    axisX.setTickCount(series.count());
+    axisX.setTickCount(blackSeries.count());
     chart.addAxis(&axisX, Qt::AlignBottom);
-    series.attachAxis(&axisX);
+    blackSeries.attachAxis(&axisX);
+    whiteSeries.attachAxis(&axisX);
+    blackSeries.setColor(Qt::black);
+    whiteSeries.setColor(Qt::gray);
 
     // Set up the Y axis
-    axisY.setTitleText("Black Peak SNR (in dB)");
+    axisY.setTitleText("SNR (in dB)");
     axisY.setLabelFormat("%i");
     axisY.setTickCount(1000);
     chart.addAxis(&axisY, Qt::AlignLeft);
-    series.attachAxis(&axisY);
+    blackSeries.attachAxis(&axisY);
+    whiteSeries.attachAxis(&axisY);
 
     // Set up the chart view
     chartView = new QChartView(&chart);
@@ -65,7 +70,7 @@ SnrAnalysisDialog::~SnrAnalysisDialog()
 
 void SnrAnalysisDialog::updateChart(LdDecodeMetaData *ldDecodeMetaData)
 {
-    series.clear();
+    blackSeries.clear();
 
     qreal targetDataPoints = 2000;
     qreal averageWidth = qRound(ldDecodeMetaData->getNumberOfFields() / targetDataPoints);
@@ -74,30 +79,36 @@ void SnrAnalysisDialog::updateChart(LdDecodeMetaData *ldDecodeMetaData)
     qint32 fieldsPerDataPoint = ldDecodeMetaData->getNumberOfFields() / dataPoints;
 
     qint32 fieldNumber = 1;
-    qreal maximumBlackPSNR = 0;
-    qreal minimumBlackPSNR = 1000.0;
+    qreal maximumSNR = 0;
+    qreal minimumSNR = 1000.0;
     for (qint32 snrCount = 0; snrCount < dataPoints; snrCount++) {
-        qreal snrTotal = 0;
+        qreal blackSnrTotal = 0;
+        qreal whiteSnrTotal = 0;
         for (qint32 avCount = 0; avCount < fieldsPerDataPoint; avCount++) {
             LdDecodeMetaData::Field field = ldDecodeMetaData->getField(fieldNumber);
 
-            snrTotal += field.vitsMetrics.bPSNR;
+            blackSnrTotal += field.vitsMetrics.bPSNR;
+            whiteSnrTotal += field.vitsMetrics.wSNR;
             fieldNumber++;
         }
 
         // Calculate the average
-        snrTotal = snrTotal / static_cast<qreal>(fieldsPerDataPoint);
+        blackSnrTotal = blackSnrTotal / static_cast<qreal>(fieldsPerDataPoint);
+        whiteSnrTotal = whiteSnrTotal / static_cast<qreal>(fieldsPerDataPoint);
 
         // Keep track of the maximum and minimum Y values
-        if (snrTotal > maximumBlackPSNR) maximumBlackPSNR = snrTotal;
-        if (snrTotal < minimumBlackPSNR) minimumBlackPSNR = snrTotal;
+        if (blackSnrTotal > maximumSNR) maximumSNR = blackSnrTotal;
+        if (blackSnrTotal < minimumSNR) minimumSNR = blackSnrTotal;
+        if (whiteSnrTotal > maximumSNR) maximumSNR = whiteSnrTotal;
+        if (whiteSnrTotal < minimumSNR) minimumSNR = whiteSnrTotal;
 
         // Add the result to the series
-        series.append(fieldNumber, snrTotal);
+        blackSeries.append(fieldNumber, blackSnrTotal);
+        whiteSeries.append(fieldNumber, whiteSnrTotal);
     }
 
     // Update the chart
-    chart.setTitle("Black peak SNR analysis (averaged over " + QString::number(fieldsPerDataPoint) + " fields)");
+    chart.setTitle("SNR analysis (averaged over " + QString::number(fieldsPerDataPoint) + " fields)");
 
     axisX.setMin(0);
     axisX.setTickCount(10);
@@ -105,8 +116,8 @@ void SnrAnalysisDialog::updateChart(LdDecodeMetaData *ldDecodeMetaData)
     else axisX.setMax(ldDecodeMetaData->getNumberOfFields());
 
     axisY.setTickCount(10);
-    axisY.setMax(maximumBlackPSNR + 5.0); // +5 to give a little space at the top of the window
-    if ((minimumBlackPSNR - 5.0) > 0) axisY.setMin(minimumBlackPSNR - 5);
+    axisY.setMax(maximumSNR + 5.0); // +5 to give a little space at the top of the window
+    if ((minimumSNR - 5.0) > 0) axisY.setMin(minimumSNR - 5);
     else axisY.setMin(0);
 
     chartView->repaint();
@@ -115,4 +126,16 @@ void SnrAnalysisDialog::updateChart(LdDecodeMetaData *ldDecodeMetaData)
 void SnrAnalysisDialog::on_pushButton_clicked()
 {
     chart.zoomReset();
+}
+
+void SnrAnalysisDialog::on_blackPSNR_checkBox_clicked()
+{
+    if (ui->blackPSNR_checkBox->isChecked()) blackSeries.show();
+    else blackSeries.hide();
+}
+
+void SnrAnalysisDialog::on_whiteSNR_checkBox_clicked()
+{
+    if (ui->whiteSNR_checkBox->isChecked()) whiteSeries.show();
+    else whiteSeries.hide();
 }
