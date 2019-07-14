@@ -867,6 +867,8 @@ class Field:
         (1.5H for NTSC, 1 or 2H for PAL, that means line 0 has been found correctly.
         '''
 
+        self.sync_confidence = 50
+
         if validpulses[firstblank - 1][2] and validpulses[firstblank][2] and validpulses[lastblank][2] and validpulses[lastblank + 1][2]:
             gap1 = validpulses[firstblank][1].start - validpulses[firstblank - 1][1].start
             gap2 = validpulses[lastblank + 1][1].start - validpulses[lastblank][1].start
@@ -880,6 +882,8 @@ class Field:
                 return None, None
 
             return validpulses[firstblank - 1][1].start, isfirstfield
+
+        self.sync_confidence = 0
                 
         return None, None
 
@@ -926,6 +930,7 @@ class Field:
                 try:
                     if self.prevfield is not None:
                         logging.warning("Severe VSYNC-area corruption detected.")
+                        self.sync_confidence = 10
                         return self.prevfield.linelocs[self.prevfield.outlinecount - 1] - self.prevfield.nextfieldoffset, not self.prevfield.isFirstField
                 except:
                     # If the previous field is corrupt, something may fail up there
@@ -1256,7 +1261,7 @@ class Field:
         self.lineoffset = 0
         
         self.valid = False
-        self.sync_confidence = 75
+        self.sync_confidence = 100
         
         self.dspicture = None
         self.dsaudio = None
