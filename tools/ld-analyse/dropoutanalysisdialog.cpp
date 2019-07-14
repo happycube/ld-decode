@@ -119,7 +119,7 @@ void DropoutAnalysisDialog::updateChart(LdDecodeMetaData *ldDecodeMetaData)
     else axisY.setMax(maximumDropoutLength);
 
     chart.addSeries(&series);
-    axisX.setTickCount(series.count());
+    axisX.setTickCount(10);
     series.attachAxis(&axisX);
     series.attachAxis(&axisY);
     series.setColor(Qt::blue);

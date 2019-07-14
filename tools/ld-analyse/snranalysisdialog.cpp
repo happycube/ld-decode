@@ -40,7 +40,6 @@ SnrAnalysisDialog::SnrAnalysisDialog(QWidget *parent) :
     axisX.setLabelFormat("%i");
     chart.addAxis(&axisX, Qt::AlignBottom);
 
-
     // Set up the Y axis
     axisY.setTitleText("SNR (in dB)");
     axisY.setLabelFormat("%i");
@@ -127,11 +126,11 @@ void SnrAnalysisDialog::updateChart(LdDecodeMetaData *ldDecodeMetaData)
     chart.addSeries(&blackSeries);
     chart.addSeries(&whiteSeries);
 
-    axisX.setTickCount(blackSeries.count());
-    blackSeries.attachAxis(&axisX);
-    whiteSeries.attachAxis(&axisX);
     blackSeries.setColor(Qt::black);
     whiteSeries.setColor(Qt::gray);
+    axisX.setTickCount(10);
+    blackSeries.attachAxis(&axisX);
+    whiteSeries.attachAxis(&axisX);
     blackSeries.attachAxis(&axisY);
     whiteSeries.attachAxis(&axisY);
 

@@ -451,16 +451,16 @@ void MainWindow::showFrame(qint32 frameNumber, bool showActiveVideoArea, bool hi
     }
 
     // Update the VBI dialogue
-    vbiDialog->updateVbi(firstField, secondField);
+    if (vbiDialog->isVisible()) vbiDialog->updateVbi(firstField, secondField);
 
     // Update the NTSC dialogue
-    ntscDialog->updateNtsc(firstField, secondField);
+    if (ntscDialog->isVisible()) ntscDialog->updateNtsc(firstField, secondField);
 
     // Update the metadata dialogue
-    videoMetadataDialog->updateMetaData(videoParameters);
+    if (videoMetadataDialog->isVisible()) videoMetadataDialog->updateMetaData(videoParameters);
 
     // Update the VITS metrics dialogue
-    vitsMetricsDialog->updateVitsMetrics(firstField, secondField);
+    if (vitsMetricsDialog->isVisible()) vitsMetricsDialog->updateVitsMetrics(firstField, secondField);
 
     // Add the QImage to the QLabel in the dialogue
     ui->frameViewerLabel->clear();
@@ -734,7 +734,6 @@ void MainWindow::on_previousPushButton_clicked()
     } else {
         ui->frameNumberSpinBox->setValue(currentFrameNumber);
         ui->frameHorizontalSlider->setValue(currentFrameNumber);
-        showFrame(currentFrameNumber, ui->showActiveVideoCheckBox->isChecked(), ui->highlightDropOutsCheckBox->isChecked());
     }
 }
 
@@ -747,7 +746,6 @@ void MainWindow::on_nextPushButton_clicked()
     } else {
         ui->frameNumberSpinBox->setValue(currentFrameNumber);
         ui->frameHorizontalSlider->setValue(currentFrameNumber);
-        showFrame(currentFrameNumber, ui->showActiveVideoCheckBox->isChecked(), ui->highlightDropOutsCheckBox->isChecked());
     }
 }
 
@@ -803,23 +801,31 @@ void MainWindow::on_actionLine_scope_triggered()
 
 void MainWindow::on_actionAbout_ld_analyse_triggered()
 {
+    videoMetadataDialog->updateMetaData(ldDecodeMetaData.getVideoParameters());
     aboutDialog->show();
 }
 
 // Display video metadata dialogue triggered
 void MainWindow::on_actionVideo_metadata_triggered()
 {
+    videoMetadataDialog->updateMetaData(ldDecodeMetaData.getVideoParameters());
     videoMetadataDialog->show();
 }
 
 void MainWindow::on_actionVBI_triggered()
 {
+    vbiDialog->updateVbi(ldDecodeMetaData.getField(ldDecodeMetaData.getFirstFieldNumber(currentFrameNumber)),
+                         ldDecodeMetaData.getField(ldDecodeMetaData.getSecondFieldNumber(currentFrameNumber)));
+
     // Show the VBI dialogue
     vbiDialog->show();
 }
 
 void MainWindow::on_actionNTSC_triggered()
 {
+    ntscDialog->updateNtsc(ldDecodeMetaData.getField(ldDecodeMetaData.getFirstFieldNumber(currentFrameNumber)),
+                           ldDecodeMetaData.getField(ldDecodeMetaData.getSecondFieldNumber(currentFrameNumber)));
+
     // Show the NTSC dialogue
     ntscDialog->show();
 }
@@ -832,6 +838,9 @@ void MainWindow::on_actionDropout_analysis_triggered()
 
 void MainWindow::on_actionVITS_Metrics_triggered()
 {
+    vitsMetricsDialog->updateVitsMetrics(ldDecodeMetaData.getField(ldDecodeMetaData.getFirstFieldNumber(currentFrameNumber)),
+                                         ldDecodeMetaData.getField(ldDecodeMetaData.getSecondFieldNumber(currentFrameNumber)));
+
     // Show the VITS metrics dialogue
     vitsMetricsDialog->show();
 }
