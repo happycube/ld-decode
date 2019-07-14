@@ -34,23 +34,20 @@ DropoutAnalysisDialog::DropoutAnalysisDialog(QWidget *parent) :
 
     // Set up the chart
     chart.legend()->hide();
-    chart.addSeries(&series);
 
     // Set up the X axis
     axisX.setTitleText("Field number");
     axisX.setLabelFormat("%i");
-    axisX.setTickCount(series.count());
+
     chart.addAxis(&axisX, Qt::AlignBottom);
-    series.attachAxis(&axisX);
 
     // Set up the Y axis
     axisY.setTitleText("Dropout length (in dots)");
     axisY.setLabelFormat("%i");
     axisY.setTickCount(1000);
     chart.addAxis(&axisY, Qt::AlignLeft);
-    series.attachAxis(&axisY);
 
-    series.setColor(Qt::blue);
+    series.append(0,0); // Just to ensure series is valid
 
     // Set up the chart view
     chartView = new QChartView(&chart);
@@ -58,6 +55,8 @@ DropoutAnalysisDialog::DropoutAnalysisDialog(QWidget *parent) :
     chartView->setRenderHint(QPainter::Antialiasing);
     ui->verticalLayout->addWidget(chartView);
     chartView->repaint();
+
+    firstRun = true;
 }
 
 DropoutAnalysisDialog::~DropoutAnalysisDialog()
@@ -68,7 +67,8 @@ DropoutAnalysisDialog::~DropoutAnalysisDialog()
 void DropoutAnalysisDialog::updateChart(LdDecodeMetaData *ldDecodeMetaData)
 {
     // Remove series before updating to prevent GUI updates
-    chart.removeSeries(&series);
+    if (!firstRun) chart.removeSeries(&series);
+    else firstRun = false;
     series.clear();
 
     qreal targetDataPoints = 2000;
@@ -119,6 +119,11 @@ void DropoutAnalysisDialog::updateChart(LdDecodeMetaData *ldDecodeMetaData)
     else axisY.setMax(maximumDropoutLength);
 
     chart.addSeries(&series);
+    axisX.setTickCount(series.count());
+    series.attachAxis(&axisX);
+    series.attachAxis(&axisY);
+    series.setColor(Qt::blue);
+
     chartView->repaint();
 }
 

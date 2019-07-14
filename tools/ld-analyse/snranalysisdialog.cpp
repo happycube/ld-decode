@@ -34,33 +34,27 @@ SnrAnalysisDialog::SnrAnalysisDialog(QWidget *parent) :
 
     // Set up the chart
     chart.legend()->hide();
-    chart.addSeries(&blackSeries);
-    chart.addSeries(&whiteSeries);
 
     // Set up the X axis
     axisX.setTitleText("Field number");
     axisX.setLabelFormat("%i");
-    axisX.setTickCount(blackSeries.count());
     chart.addAxis(&axisX, Qt::AlignBottom);
-    blackSeries.attachAxis(&axisX);
-    whiteSeries.attachAxis(&axisX);
-    blackSeries.setColor(Qt::black);
-    whiteSeries.setColor(Qt::gray);
+
 
     // Set up the Y axis
     axisY.setTitleText("SNR (in dB)");
     axisY.setLabelFormat("%i");
     axisY.setTickCount(1000);
     chart.addAxis(&axisY, Qt::AlignLeft);
-    blackSeries.attachAxis(&axisY);
-    whiteSeries.attachAxis(&axisY);
 
     // Set up the chart view
     chartView = new QChartView(&chart);
     chartView->setRenderHint(QPainter::Antialiasing);
     chartView->setRubberBand(QChartView::HorizontalRubberBand);
     ui->verticalLayout->addWidget(chartView);
-    chartView->repaint();
+    chartView->repaint();    
+
+    firstRun = true;
 }
 
 SnrAnalysisDialog::~SnrAnalysisDialog()
@@ -71,8 +65,12 @@ SnrAnalysisDialog::~SnrAnalysisDialog()
 void SnrAnalysisDialog::updateChart(LdDecodeMetaData *ldDecodeMetaData)
 {
     // Remove series before updating to prevent GUI updates
-    chart.removeSeries(&blackSeries);
-    chart.removeSeries(&whiteSeries);
+    if (!firstRun) {
+        chart.removeSeries(&blackSeries);
+        chart.removeSeries(&whiteSeries);
+    }
+    else firstRun = false;
+
     blackSeries.clear();
     whiteSeries.clear();
 
@@ -91,14 +89,16 @@ void SnrAnalysisDialog::updateChart(LdDecodeMetaData *ldDecodeMetaData)
         for (qint32 avCount = 0; avCount < fieldsPerDataPoint; avCount++) {
             LdDecodeMetaData::Field field = ldDecodeMetaData->getField(fieldNumber);
 
-            blackSnrTotal += field.vitsMetrics.bPSNR;
-            whiteSnrTotal += field.vitsMetrics.wSNR;
+            if (field.vitsMetrics.inUse) {
+                blackSnrTotal += field.vitsMetrics.bPSNR;
+                whiteSnrTotal += field.vitsMetrics.wSNR;
+            }
             fieldNumber++;
         }
 
         // Calculate the average
-        blackSnrTotal = blackSnrTotal / static_cast<qreal>(fieldsPerDataPoint);
-        whiteSnrTotal = whiteSnrTotal / static_cast<qreal>(fieldsPerDataPoint);
+        if (blackSnrTotal > 0) blackSnrTotal = blackSnrTotal / static_cast<qreal>(fieldsPerDataPoint);
+        if (whiteSnrTotal > 0) whiteSnrTotal = whiteSnrTotal / static_cast<qreal>(fieldsPerDataPoint);
 
         // Keep track of the maximum and minimum Y values
         if (blackSnrTotal > maximumSNR) maximumSNR = blackSnrTotal;
@@ -126,6 +126,15 @@ void SnrAnalysisDialog::updateChart(LdDecodeMetaData *ldDecodeMetaData)
 
     chart.addSeries(&blackSeries);
     chart.addSeries(&whiteSeries);
+
+    axisX.setTickCount(blackSeries.count());
+    blackSeries.attachAxis(&axisX);
+    whiteSeries.attachAxis(&axisX);
+    blackSeries.setColor(Qt::black);
+    whiteSeries.setColor(Qt::gray);
+    blackSeries.attachAxis(&axisY);
+    whiteSeries.attachAxis(&axisY);
+
     chartView->repaint();
 }
 

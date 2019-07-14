@@ -57,6 +57,8 @@ private:
     QChartView *chartView;
     QValueAxis axisX;
     QValueAxis axisY;
+
+    bool firstRun;
 };
 
 #endif // DROPOUTANALYSISDIALOG_H
