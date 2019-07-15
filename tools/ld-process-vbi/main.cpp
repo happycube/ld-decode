@@ -87,7 +87,7 @@ int main(int argc, char *argv[])
     parser.setApplicationDescription(
                 "ld-process-vbi - VBI and IEC NTSC specific processor for ld-decode\n"
                 "\n"
-                "(c)2018 Simon Inns\n"
+                "(c)2018-2019 Simon Inns\n"
                 "GPLv3 Open-Source - github: https://github.com/happycube/ld-decode");
     parser.addHelpOption();
     parser.addVersionOption();
@@ -170,7 +170,6 @@ int main(int argc, char *argv[])
 
     // Perform the processing
     qInfo() << "Beginning VBI processing...";
-    QScopedPointer<VbiDecoder> vbiDecoder;
     DecoderPool decoderPool(inputFilename, performCorrection, maxThreads, metaData);
     if (!decoderPool.process()) return 1;
 

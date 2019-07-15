@@ -31,12 +31,6 @@ VbiDecoder::VbiDecoder(QAtomicInt& _abort, DecoderPool& _decoderPool, QObject *p
 
 }
 
-// Method to make a new decoding thread
-QThread* VbiDecoder::makeThread(QAtomicInt& abort, DecoderPool& decoderPool)
-{
-    return new VbiDecoder(abort, decoderPool);
-}
-
 // Thread main processing method
 void VbiDecoder::run()
 {
@@ -71,7 +65,7 @@ void VbiDecoder::run()
         fieldMetadata.vbi.vbiData[1] = manchesterDecoder(getActiveVideoLine(&sourceFieldData, 17, videoParameters), zcPoint, videoParameters);
         fieldMetadata.vbi.vbiData[2] = manchesterDecoder(getActiveVideoLine(&sourceFieldData, 18, videoParameters), zcPoint, videoParameters);
 
-        // Show the VBI data as hexadecimal (for every 100th field)
+        // Show the VBI data as hexadecimal (for every 1000th field)
         if (fieldNumber % 1000 == 0) {
             qInfo() << "Processing field" << fieldNumber;
         }
