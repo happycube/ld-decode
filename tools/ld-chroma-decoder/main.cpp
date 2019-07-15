@@ -100,7 +100,8 @@ int main(int argc, char *argv[])
                 "ld-chroma-decoder - Colourisation filter for ld-decode\n"
                 "\n"
                 "(c)2018-2019 Simon Inns\n"
-                "Contains PALcolour: Copyright (C) 2018  William Andrew Steer\n"
+                "(c)2019 Adam Sampson\n"
+                "Contains PALcolour: Copyright (c)2018  William Andrew Steer\n"
                 "GPLv3 Open-Source - github: https://github.com/happycube/ld-decode");
     parser.addHelpOption();
     parser.addVersionOption();

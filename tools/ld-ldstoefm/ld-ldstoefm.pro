@@ -21,13 +21,15 @@ SOURCES += \
     isifilter.cpp \
     pll.cpp
 
-# Default rules for deployment.
-qnx: target.path = /tmp/$${TARGET}/bin
-else: unix:!android: target.path = /usr/local/bin/
-!isEmpty(target.path): INSTALLS += target
-
 HEADERS += \
     ldsprocess.h \
     efmfilter.h \
     isifilter.h \
     pll.h
+
+# Default rules for deployment.
+qnx: target.path = /tmp/$${TARGET}/bin
+else: unix:!android: target.path = /usr/local/bin/
+!isEmpty(target.path): INSTALLS += target
+
+

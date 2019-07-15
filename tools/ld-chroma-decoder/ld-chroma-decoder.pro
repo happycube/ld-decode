@@ -24,23 +24,9 @@ SOURCES += \
     rgb.cpp \
     yiq.cpp \
     ntscdecoder.cpp \
-    opticalflow.cpp
-
-# Default rules for deployment.
-qnx: target.path = /tmp/$${TARGET}/bin
-else: unix:!android: target.path = /usr/local/bin/
-!isEmpty(target.path): INSTALLS += target
-
-MYDLLDIR = $$IN_PWD/../ld-decode-shared
-
-# As our header files are in the same directory, we can make Qt Creator find it
-# by specifying it as INCLUDEPATH.
-INCLUDEPATH += $$MYDLLDIR
-
-# Dependency to library domain (libdomain.so for Unices or domain.dll on Win32)
-# Repeat this for more libraries if needed.
-win32:LIBS += $$quote($$MYDLLDIR/ld-decode-shared.dll)
-unix:LIBS += $$quote(-L$$MYDLLDIR) -lld-decode-shared
+    opticalflow.cpp \
+    ../library/tbc/lddecodemetadata.cpp \
+    ../library/tbc/sourcevideo.cpp
 
 HEADERS += \
     decoder.h \
@@ -54,7 +40,17 @@ HEADERS += \
     ntscdecoder.h \
     ../../deemp.h \
     opticalflow.h \
-    yiqbuffer.h
+    yiqbuffer.h \
+    ../library/tbc/lddecodemetadata.h \
+    ../library/tbc/sourcevideo.h
+
+# Add external includes to the include path
+INCLUDEPATH += ../library/tbc
+
+# Default rules for deployment.
+qnx: target.path = /tmp/$${TARGET}/bin
+else: unix:!android: target.path = /usr/local/bin/
+!isEmpty(target.path): INSTALLS += target
 
 # Additional include paths to support MacOS compilation
 INCLUDEPATH += "/usr/local/opt/opencv@2/include"

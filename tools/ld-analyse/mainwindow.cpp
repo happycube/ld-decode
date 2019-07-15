@@ -765,9 +765,7 @@ void MainWindow::on_frameNumberSpinBox_editingFinished()
 void MainWindow::on_frameHorizontalSlider_valueChanged(int value)
 {
     (void)value;
-
     if (!isFileOpen) return;
-    qDebug() << "MainWindow::on_frameHorizontalSlider_valueChanged(): Called";
 
     currentFrameNumber = ui->frameHorizontalSlider->value();
 

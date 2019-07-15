@@ -26,8 +26,8 @@ CONFIG += c++11
 
 SOURCES += \
     busydialog.cpp \
-        main.cpp \
-        mainwindow.cpp \
+    main.cpp \
+    mainwindow.cpp \
     oscilloscopedialog.cpp \
     aboutdialog.cpp \
     snranalysisdialog.cpp \
@@ -42,7 +42,9 @@ SOURCES += \
     frameqlabel.cpp \
     dropoutanalysisdialog.cpp \
     ../ld-chroma-decoder/opticalflow.cpp \
-    vitsmetricsdialog.cpp
+    vitsmetricsdialog.cpp \
+    ../library/tbc/lddecodemetadata.cpp \
+    ../library/tbc/sourcevideo.cpp
 
 HEADERS += \
     busydialog.h \
@@ -62,7 +64,9 @@ HEADERS += \
     dropoutanalysisdialog.h \
     ../ld-chroma-decoder/yiqbuffer.h \
     ../ld-chroma-decoder/opticalflow.h \
-    vitsmetricsdialog.h
+    vitsmetricsdialog.h \
+    ../library/tbc/lddecodemetadata.h \
+    ../library/tbc/sourcevideo.h
 
 FORMS += \
     busydialog.ui \
@@ -76,17 +80,9 @@ FORMS += \
     dropoutanalysisdialog.ui \
     vitsmetricsdialog.ui
 
-MYDLLDIR = $$IN_PWD/../ld-decode-shared
-
-# As our header files are in the same directory, we can make Qt Creator find it
-# by specifying it as INCLUDEPATH.
-INCLUDEPATH += $$MYDLLDIR
+# Add external includes to the include path
+INCLUDEPATH += ../library/tbc
 INCLUDEPATH += ../ld-chroma-decoder
-
-# Dependency to library domain (libdomain.so for Unices or domain.dll on Win32)
-# Repeat this for more libraries if needed.
-win32:LIBS += $$quote($$MYDLLDIR/ld-decode-shared.dll)
- unix:LIBS += $$quote(-L$$MYDLLDIR) -lld-decode-shared
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin

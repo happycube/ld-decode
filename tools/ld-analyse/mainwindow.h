@@ -49,8 +49,8 @@
 #include "busydialog.h"
 #include "configuration.h"
 #include "frameqlabel.h"
-#include "../ld-chroma-decoder/palcolour.h"
-#include "../ld-chroma-decoder/comb.h"
+#include "palcolour.h"
+#include "comb.h"
 
 namespace Ui {
 class MainWindow;

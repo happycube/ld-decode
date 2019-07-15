@@ -16,31 +16,30 @@ DEFINES += QT_DEPRECATED_WARNINGS
 
 SOURCES += \
     decoderpool.cpp \
-        main.cpp \
+    main.cpp \
     fmcode.cpp \
     vbidecoder.cpp \
     whiteflag.cpp \
-    vbicorrector.cpp
-
-# Default rules for deployment.
-qnx: target.path = /tmp/$${TARGET}/bin
-else: unix:!android: target.path = /usr/local/bin/
-!isEmpty(target.path): INSTALLS += target
-
-MYDLLDIR = $$IN_PWD/../ld-decode-shared
-
-# As our header files are in the same directory, we can make Qt Creator find it
-# by specifying it as INCLUDEPATH.
-INCLUDEPATH += $$MYDLLDIR
-
-# Dependency to library domain (libdomain.so for Unices or domain.dll on Win32)
-# Repeat this for more libraries if needed.
-win32:LIBS += $$quote($$MYDLLDIR/ld-decode-shared.dll)
- unix:LIBS += $$quote(-L$$MYDLLDIR) -lld-decode-shared
+    vbicorrector.cpp \
+    ../library/tbc/lddecodemetadata.cpp \
+    ../library/tbc/sourcevideo.cpp
 
 HEADERS += \
     decoderpool.h \
     fmcode.h \
     vbidecoder.h \
     whiteflag.h \
-    vbicorrector.h
+    vbicorrector.h \
+    ../library/tbc/lddecodemetadata.h \
+    ../library/tbc/sourcevideo.h
+
+# Add external includes to the include path
+INCLUDEPATH += ../library/tbc
+
+# Default rules for deployment.
+qnx: target.path = /tmp/$${TARGET}/bin
+else: unix:!android: target.path = /usr/local/bin/
+!isEmpty(target.path): INSTALLS += target
+
+
+
