@@ -556,7 +556,7 @@ class DemodCache:
             return 
 
         for k in self.lru[self.lrusize:]:
-            for d in [self.demod, self.rawdata, self.rawffts]:
+            for d in [self.demod, self.raw]:
                 if k in d:
                     del d[k]
 
@@ -574,8 +574,8 @@ class DemodCache:
 
         if blocknum not in self.raw:
             rawdata = self.loader(self.infile, blocknum * self.blocksize, self.rf.blocklen)
-            self.raw[blocknum]['fft'] = np.fft.fft(rawdata)
-            self.raw[blocknum]['input'] = rawdata[self.rf.blockcut:-self.rf.blockcut_end]
+            self.raw[blocknum] = {'fft': np.fft.fft(rawdata), 
+                                  'input':rawdata[self.rf.blockcut:-self.rf.blockcut_end]}
 
         if blocknum not in self.demod:
             self.demod[blocknum] = self.rf.demodblock(fftdata = self.raw[blocknum]['fft'], mtf_level=MTF, cut=True)
