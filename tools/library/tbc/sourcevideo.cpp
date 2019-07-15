@@ -30,13 +30,10 @@ SourceVideo::SourceVideo(QObject *parent) : QObject(parent)
     // Default object settings
     isSourceVideoOpen = false;
     availableFields = -1;
-    fieldLength = -1;
+    fieldByteLength = -1;
 
     // Set up the cache
-    cache.maximumItems = 100;
-    cache.storage.resize(cache.maximumItems);
-    cache.items = 0;
-    cache.startFieldNumber = 0;
+    fieldCache.setMaxCost(100);
 }
 
 SourceVideo::~SourceVideo()
@@ -49,8 +46,8 @@ SourceVideo::~SourceVideo()
 // Open an input video data file (returns true on success)
 bool SourceVideo::open(QString filename, qint32 _fieldLength)
 {
-    fieldLength = _fieldLength;
-    qDebug() << "SourceVideo::open(): Called with field length =" << fieldLength;
+    fieldByteLength = _fieldLength * 2;
+    qDebug() << "SourceVideo::open(): Called with field byte length =" << fieldByteLength;
 
     if (isSourceVideoOpen) {
         // Video file is already open, close it
@@ -69,18 +66,12 @@ bool SourceVideo::open(QString filename, qint32 _fieldLength)
 
     // File open successful - configure source video parameters
     isSourceVideoOpen = true;
-    qint64 tAvailableFields = (inputFile.size() / (fieldLength * 2));
+    qint64 tAvailableFields = (inputFile.size() / fieldByteLength);
     availableFields = static_cast<qint32>(tAvailableFields);
     qDebug() << "SourceVideo::open(): Successful -" << availableFields << "fields available";
 
-    // Initialise the frame cache
-    cache.storage.clear();
-    cache.storage.resize(cache.maximumItems);
-    cache.items = 0;
-    cache.startFieldNumber = -1;
-    cache.hit = 0;
-    cache.miss = 0;
-    for (qint32 i = 0; i < cache.maximumItems; i++) cache.storage[i].resize(fieldLength * 2);
+    // Initialise cache
+    fieldCache.clear();
 
     return true;
 }
@@ -117,71 +108,44 @@ qint32 SourceVideo::getNumberOfAvailableFields()
 // Method to retrieve a single video frame (with pre-caching)
 // When calling from interactive applications, setting noPreCache to true
 // will speed up random-accesses (as opposed to sequential field reads)
-QByteArray SourceVideo::getVideoField(qint32 fieldNumber, bool noPreCache)
+QByteArray SourceVideo::getVideoField(qint32 fieldNumber)
 {
     // Adjust the field number to index from zero
     fieldNumber--;
-
-    // Check the cache
-    if (fieldNumber >= cache.startFieldNumber && fieldNumber < cache.startFieldNumber + cache.items) {
-        cache.hit++;
-        return cache.storage[fieldNumber - cache.startFieldNumber];
-    } else cache.miss++;
-    if (!noPreCache) qDebug() << "SourceVideo::getVideoField(): Cache hits =" << cache.hit << "misses =" << cache.miss;
 
     // Ensure source video is open and field is in range
     if (!isSourceVideoOpen) qFatal("Application requested video field before opening TBC file - Fatal error");
     if (fieldNumber < 0 || fieldNumber >= availableFields) qFatal("Application request non-existant TBC field");
 
+    // Check the cache
+    if (fieldCache.contains(fieldNumber)) {
+        return *fieldCache.object(fieldNumber);
+    }
+
     // Seek to the correct file position for the requested field (if not already there)
-    qint64 requiredPosition = static_cast<qint64>((fieldLength * 2)) * static_cast<qint64>(fieldNumber);
+    qint64 requiredPosition = static_cast<qint64>(fieldByteLength) * static_cast<qint64>(fieldNumber);
     if (inputFile.pos() != requiredPosition) {
         if (!inputFile.seek(requiredPosition)) qFatal("Could not seek to required field position in input TBC file");
     }
 
-    if (!noPreCache) {
-        // Fill the cache with data
-        qint32 fieldsToRead = availableFields - fieldNumber;
-        if (fieldsToRead > cache.maximumItems) fieldsToRead = cache.maximumItems;
+    // Read the frame from disk into the cache
+    qint64 totalReceivedBytes = 0;
+    qint64 receivedBytes = 0;
+    QByteArray *fieldData = new QByteArray;
+    fieldData->resize(fieldByteLength);
 
-        // Read the data from the file into the cache
-        cache.startFieldNumber = fieldNumber;
-        cache.items = fieldsToRead;
+    do {
+        receivedBytes = inputFile.read(fieldData->data(), fieldByteLength - receivedBytes);
+        totalReceivedBytes += receivedBytes;
+    } while (receivedBytes > 0 && totalReceivedBytes < fieldByteLength);
 
-        for (qint32 i = 0; i < fieldsToRead; i++)
-        {
-            qint64 totalReceivedBytes = 0;
-            qint64 receivedBytes = 0;
-            do {
-                receivedBytes = inputFile.read(cache.storage[i].data(), cache.storage[i].size() - receivedBytes);
-                totalReceivedBytes += receivedBytes;
-            } while (receivedBytes > 0 && totalReceivedBytes < cache.storage[i].size());
+    // Verify read was ok
+    if (receivedBytes != fieldByteLength) qFatal("Could not read input fields from file even though they were available");
 
-            // Verify read was ok
-            if (receivedBytes != cache.storage[i].size()) qFatal("Could not read input fields from file even though they were available");
-        }
-    } else {
-        // Do not perform pre-caching
-
-        // Read the data from the file into the cache
-        qint64 totalReceivedBytes = 0;
-        qint64 receivedBytes = 0;
-        cache.startFieldNumber = fieldNumber;
-        cache.items = 1;
-
-        do {
-            receivedBytes = inputFile.read(cache.storage[0].data(), cache.storage[0].size() - receivedBytes);
-            totalReceivedBytes += receivedBytes;
-        } while (receivedBytes > 0 && totalReceivedBytes < cache.storage[0].size());
-
-        // Verify read was ok
-        if (receivedBytes != cache.storage[0].size()) qFatal("Could not read input fields from file even though they were available");
-
-        // Return the field
-        return cache.storage[0];
-    }
+    // Insert the field data into the cache
+    fieldCache.insert(fieldNumber, fieldData, 1);
 
     // Return the originally request field
-    return cache.storage[fieldNumber - cache.startFieldNumber];
+    return *fieldCache.object(fieldNumber);
 }
 

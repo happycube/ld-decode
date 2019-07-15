@@ -27,6 +27,7 @@
 
 #include <QObject>
 #include <QFile>
+#include <QCache>
 #include <QDebug>
 
 class SourceVideo : public QObject
@@ -42,7 +43,7 @@ public:
     void close(void);
 
     // Field handling methods
-    QByteArray getVideoField(qint32 fieldNumber, bool noPreCache = false);
+    QByteArray getVideoField(qint32 fieldNumber);
 
     // Get and set methods
     bool isSourceValid();
@@ -53,20 +54,10 @@ private:
     QFile inputFile;
     bool isSourceVideoOpen;
     qint32 availableFields;
-    qint32 fieldLength;
+    qint32 fieldByteLength;
 
     // Field caching
-    struct Cache {
-        QVector<QByteArray> storage;
-        qint32 maximumItems;
-        qint32 items;
-        qint32 startFieldNumber;
-
-        qint32 hit;
-        qint32 miss;
-    };
-
-    Cache cache;
+    QCache<qint32, QByteArray> fieldCache;
 };
 
 #endif // SOURCEVIDEO_H
