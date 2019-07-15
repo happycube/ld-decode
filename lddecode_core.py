@@ -583,7 +583,8 @@ class DemodCache:
             self.demods_video[blocknum] = demod[0][self.rf.blockcut:-self.rf.blockcut_end]
 
             if demod[1] is not None: # analog(ue) audio
-                fdiv1 = self.rf.Filters['audio_fdiv1']
+                #fdiv1 = self.rf.Filters['audio_fdiv1']
+                fdiv1 = demod[0].shape[0] // demod[1].shape[0]
                 self.demods_audio[blocknum] = demod[1][self.rf.blockcut//fdiv1:-self.rf.blockcut_end//fdiv1]
 
             if demod[2] is not None: # filtered EFM
@@ -600,7 +601,6 @@ class DemodCache:
         end = begin+length
 
         for b in range(begin // self.blocksize, (end // self.blocksize) + 1):
-            #print(b)
             self.readblock(b)
 
             rv_raw.append(self.rawdata[b])
@@ -613,7 +613,11 @@ class DemodCache:
 
         self.flush()
 
-        return np.concatenate(rv_raw), np.concatenate(rv_video), np.concatenate(rv_audio) if len(rv_audio) else None, np.concatenate(rv_efm) if len(rv_efm) else None
+        audio = np.concatenate(rv_audio) if len(rv_audio) else None
+        if audio is not None:
+            audio = self.rf.audio_phase2(audio)
+
+        return np.concatenate(rv_raw), np.concatenate(rv_video), audio, np.concatenate(rv_efm) if len(rv_efm) else None
 
 # right now defualt is 16/48, so not optimal :)
 def downscale_audio(audio, lineinfo, rf, linecount, timeoffset = 0, freq = 48000.0, scale=64):
