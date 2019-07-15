@@ -32,28 +32,14 @@ SnrAnalysisDialog::SnrAnalysisDialog(QWidget *parent) :
     ui->setupUi(this);
     setWindowFlags(Qt::Window);
 
-    // Set up the chart
-    chart.legend()->hide();
-
-    // Set up the X axis
-    axisX.setTitleText("Field number");
-    axisX.setLabelFormat("%i");
-    chart.addAxis(&axisX, Qt::AlignBottom);
-
-    // Set up the Y axis
-    axisY.setTitleText("SNR (in dB)");
-    axisY.setLabelFormat("%i");
-    axisY.setTickCount(1000);
-    chart.addAxis(&axisY, Qt::AlignLeft);
+    isFirstRun = true;
 
     // Set up the chart view
-    chartView = new QChartView(&chart);
-    chartView->setRenderHint(QPainter::Antialiasing);
-    chartView->setRubberBand(QChartView::HorizontalRubberBand);
-    ui->verticalLayout->addWidget(chartView);
-    chartView->repaint();    
+    chartView.setChart(&chart);
+    chartView.setRubberBand(QChartView::HorizontalRubberBand);
+    chartView.setRenderHint(QPainter::Antialiasing);
 
-    firstRun = true;
+    ui->verticalLayout->addWidget(&chartView);
 }
 
 SnrAnalysisDialog::~SnrAnalysisDialog()
@@ -63,15 +49,18 @@ SnrAnalysisDialog::~SnrAnalysisDialog()
 
 void SnrAnalysisDialog::updateChart(LdDecodeMetaData *ldDecodeMetaData)
 {
-    // Remove series before updating to prevent GUI updates
-    if (!firstRun) {
-        chart.removeSeries(&blackSeries);
-        chart.removeSeries(&whiteSeries);
-    }
-    else firstRun = false;
+    if (!isFirstRun) {
+        chart.removeAxis(&axisX);
+        chart.removeAxis(&axisY);
+        chart.removeSeries(&blackQLineSeries);
+        chart.removeSeries(&whiteQLineSeries);
+    } else isFirstRun = false;
+    blackQLineSeries.clear();
+    whiteQLineSeries.clear();
 
-    blackSeries.clear();
-    whiteSeries.clear();
+    // Create the QLineSeries
+    blackQLineSeries.setColor(Qt::black);
+    whiteQLineSeries.setColor(Qt::gray);
 
     qreal targetDataPoints = 2000;
     qreal averageWidth = qRound(ldDecodeMetaData->getNumberOfFields() / targetDataPoints);
@@ -106,35 +95,46 @@ void SnrAnalysisDialog::updateChart(LdDecodeMetaData *ldDecodeMetaData)
         if (whiteSnrTotal < minimumSNR) minimumSNR = whiteSnrTotal;
 
         // Add the result to the series
-        blackSeries.append(fieldNumber, blackSnrTotal);
-        whiteSeries.append(fieldNumber, whiteSnrTotal);
+        blackQLineSeries.append(fieldNumber, blackSnrTotal);
+        whiteQLineSeries.append(fieldNumber, whiteSnrTotal);
     }
 
-    // Update the chart
+    // Create the chart
     chart.setTitle("SNR analysis (averaged over " + QString::number(fieldsPerDataPoint) + " fields)");
+    chart.legend()->hide();
 
+    // Create the x axis
     axisX.setMin(0);
     axisX.setTickCount(10);
     if (ldDecodeMetaData->getNumberOfFields() < 10) axisX.setMax(10);
     else axisX.setMax(ldDecodeMetaData->getNumberOfFields());
+    axisX.setTitleText("Field number");
+    axisX.setLabelFormat("%i");
 
+    // Create the Y axis
     axisY.setTickCount(10);
     axisY.setMax(maximumSNR + 5.0); // +5 to give a little space at the top of the window
     if ((minimumSNR - 5.0) > 0) axisY.setMin(minimumSNR - 5);
     else axisY.setMin(0);
+    axisY.setTitleText("SNR (in dB)");
+    axisY.setLabelFormat("%i");
 
-    chart.addSeries(&blackSeries);
-    chart.addSeries(&whiteSeries);
+    // Attach the axis to the chart
+    chart.addAxis(&axisX, Qt::AlignBottom);
+    chart.addAxis(&axisY, Qt::AlignLeft);
 
-    blackSeries.setColor(Qt::black);
-    whiteSeries.setColor(Qt::gray);
-    axisX.setTickCount(10);
-    blackSeries.attachAxis(&axisX);
-    whiteSeries.attachAxis(&axisX);
-    blackSeries.attachAxis(&axisY);
-    whiteSeries.attachAxis(&axisY);
+    // Attach the series to the chart
+    chart.addSeries(&blackQLineSeries);
+    chart.addSeries(&whiteQLineSeries);
 
-    chartView->repaint();
+    // Attach the axis to the QLineSeries
+    blackQLineSeries.attachAxis(&axisX);
+    whiteQLineSeries.attachAxis(&axisX);
+    blackQLineSeries.attachAxis(&axisY);
+    whiteQLineSeries.attachAxis(&axisY);
+
+    // Render
+    chartView.repaint();
 }
 
 void SnrAnalysisDialog::on_pushButton_clicked()
@@ -144,12 +144,12 @@ void SnrAnalysisDialog::on_pushButton_clicked()
 
 void SnrAnalysisDialog::on_blackPSNR_checkBox_clicked()
 {
-    if (ui->blackPSNR_checkBox->isChecked()) blackSeries.show();
-    else blackSeries.hide();
+    if (ui->blackPSNR_checkBox->isChecked()) blackQLineSeries.show();
+    else blackQLineSeries.hide();
 }
 
 void SnrAnalysisDialog::on_whiteSNR_checkBox_clicked()
 {
-    if (ui->whiteSNR_checkBox->isChecked()) whiteSeries.show();
-    else whiteSeries.hide();
+    if (ui->whiteSNR_checkBox->isChecked()) whiteQLineSeries.show();
+    else whiteQLineSeries.hide();
 }

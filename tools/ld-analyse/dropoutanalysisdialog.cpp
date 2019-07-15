@@ -32,31 +32,14 @@ DropoutAnalysisDialog::DropoutAnalysisDialog(QWidget *parent) :
     ui->setupUi(this);
     setWindowFlags(Qt::Window);
 
-    // Set up the chart
-    chart.legend()->hide();
-
-    // Set up the X axis
-    axisX.setTitleText("Field number");
-    axisX.setLabelFormat("%i");
-
-    chart.addAxis(&axisX, Qt::AlignBottom);
-
-    // Set up the Y axis
-    axisY.setTitleText("Dropout length (in dots)");
-    axisY.setLabelFormat("%i");
-    axisY.setTickCount(1000);
-    chart.addAxis(&axisY, Qt::AlignLeft);
-
-    series.append(0,0); // Just to ensure series is valid
+    isFirstRun = true;
 
     // Set up the chart view
-    chartView = new QChartView(&chart);
-    chartView->setRubberBand(QChartView::HorizontalRubberBand);
-    chartView->setRenderHint(QPainter::Antialiasing);
-    ui->verticalLayout->addWidget(chartView);
-    chartView->repaint();
+    chartView.setChart(&chart);
+    chartView.setRubberBand(QChartView::HorizontalRubberBand);
+    chartView.setRenderHint(QPainter::Antialiasing);
 
-    firstRun = true;
+    ui->verticalLayout->addWidget(&chartView);
 }
 
 DropoutAnalysisDialog::~DropoutAnalysisDialog()
@@ -66,10 +49,15 @@ DropoutAnalysisDialog::~DropoutAnalysisDialog()
 
 void DropoutAnalysisDialog::updateChart(LdDecodeMetaData *ldDecodeMetaData)
 {
-    // Remove series before updating to prevent GUI updates
-    if (!firstRun) chart.removeSeries(&series);
-    else firstRun = false;
-    series.clear();
+    if (!isFirstRun) {
+        chart.removeAxis(&axisX);
+        chart.removeAxis(&axisY);
+        chart.removeSeries(&qLineSeries);
+    } else isFirstRun = false;
+    qLineSeries.clear();
+
+    // Create the QLineSeries
+    qLineSeries.setColor(Qt::blue);
 
     qreal targetDataPoints = 2000;
     qreal averageWidth = qRound(ldDecodeMetaData->getNumberOfFields() / targetDataPoints);
@@ -101,30 +89,42 @@ void DropoutAnalysisDialog::updateChart(LdDecodeMetaData *ldDecodeMetaData)
         if (doLength > maximumDropoutLength) maximumDropoutLength = doLength;
 
         // Add the result to the series
-        series.append(fieldNumber, doLength);
+        qLineSeries.append(fieldNumber, doLength);
     }
 
-    // Update the chart
+    // Create the chart
     chart.setTitle("Dropout loss analysis (averaged over " + QString::number(fieldsPerDataPoint) + " fields)");
+    chart.legend()->hide();
 
-    // Use fields
+    // Create the X axis
     axisX.setMin(0);
     axisX.setTickCount(10);
     if (ldDecodeMetaData->getNumberOfFields() < 10) axisX.setMax(10);
     else axisX.setMax(ldDecodeMetaData->getNumberOfFields());
+    axisX.setTitleText("Field number");
+    axisX.setLabelFormat("%i");
 
+    // Create the Y axis
     axisY.setMin(0);
     axisY.setTickCount(10);
     if (maximumDropoutLength < 10) axisY.setMax(10);
     else axisY.setMax(maximumDropoutLength);
+    axisY.setTitleText("Dropout length (in dots)");
+    axisY.setLabelFormat("%i");
 
-    chart.addSeries(&series);
-    axisX.setTickCount(10);
-    series.attachAxis(&axisX);
-    series.attachAxis(&axisY);
-    series.setColor(Qt::blue);
+    // Attach the axis to the chart
+    chart.addAxis(&axisX, Qt::AlignBottom);
+    chart.addAxis(&axisY, Qt::AlignLeft);
 
-    chartView->repaint();
+    // Attach the series to the chart
+    chart.addSeries(&qLineSeries);
+
+    // Attach the axis to the QLineSeries
+    qLineSeries.attachAxis(&axisX);
+    qLineSeries.attachAxis(&axisY);
+
+    // Render
+    chartView.repaint();
 }
 
 void DropoutAnalysisDialog::on_reset_pushButton_clicked()

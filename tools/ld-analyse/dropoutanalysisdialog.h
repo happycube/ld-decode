@@ -51,14 +51,14 @@ private slots:
 
 private:
     Ui::DropoutAnalysisDialog *ui;
-
+    QChartView chartView;
+    QLineSeries qLineSeries;
     QChart chart;
-    QLineSeries series;
-    QChartView *chartView;
     QValueAxis axisX;
     QValueAxis axisY;
 
-    bool firstRun;
+    bool isFirstRun;
+
 };
 
 #endif // DROPOUTANALYSISDIALOG_H
