@@ -548,9 +548,7 @@ class DemodCache:
         self.lrusize = 128
         self.lru = []
         
-        # All processing is done based on frequency domain, so the raw data doesn't (usually) need to be cached
-        self.rawdata = {}
-        self.rawffts = {}
+        self.raw = {}
         self.demod = {}
 
     def flush(self):
@@ -574,28 +572,27 @@ class DemodCache:
         # If any parameters change, self.demods is flushed completely, so it's easy for
         # there to be FFT'd data but not fully demodulated data
 
-        if blocknum not in self.rawffts:
+        if blocknum not in self.raw:
             rawdata = self.loader(self.infile, blocknum * self.blocksize, self.rf.blocklen)
-            self.rawffts[blocknum] = np.fft.fft(rawdata)
-            self.rawdata[blocknum] = rawdata[self.rf.blockcut:-self.rf.blockcut_end]
+            self.raw[blocknum]['fft'] = np.fft.fft(rawdata)
+            self.raw[blocknum]['input'] = rawdata[self.rf.blockcut:-self.rf.blockcut_end]
 
         if blocknum not in self.demod:
-            self.demod[blocknum] = self.rf.demodblock(fftdata = self.rawffts[blocknum], mtf_level=MTF, cut=True)
+            self.demod[blocknum] = self.rf.demodblock(fftdata = self.raw[blocknum]['fft'], mtf_level=MTF, cut=True)
 
     def read(self, begin, length, MTF=0):
-        rv_raw = []
-        rv = {'video':[], 'audio':[], 'efm':[]}
+        rv = {'input':[], 'fft':[], 'video':[], 'audio':[], 'efm':[]}
 
         end = begin+length
 
         for b in range(begin // self.blocksize, (end // self.blocksize) + 1):
             self.readblock(b)
 
-            rv_raw.append(self.rawdata[b])
-
             for k in rv.keys():
                 if k in self.demod[b]:
                     rv[k].append(self.demod[b][k])
+                elif k in self.raw[b]:
+                    rv[k].append(self.raw[b][k])
 
         self.flush()
 
@@ -603,7 +600,7 @@ class DemodCache:
         if audio is not None:
             audio = self.rf.audio_phase2(audio)
 
-        return np.concatenate(rv_raw), np.concatenate(rv['video']), audio, np.concatenate(rv['efm']) if len(rv['efm']) else None
+        return np.concatenate(rv['input']), np.concatenate(rv['video']), audio, np.concatenate(rv['efm']) if len(rv['efm']) else None
 
 # right now defualt is 16/48, so not optimal :)
 def downscale_audio(audio, lineinfo, rf, linecount, timeoffset = 0, freq = 48000.0, scale=64):
