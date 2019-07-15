@@ -349,6 +349,8 @@ class RFDecode:
         return (hz - self.SysParams['ire0']) / self.SysParams['hz_ire']
     
     def demodblock(self, data = None, mtf_level = 0, fftdata = None):
+        rv = {}
+
         mtf_level *= self.mtf_mult
         mtf_level *= self.DecoderParams['MTF_basemult']
         mtf_level += self.mtf_offset
@@ -375,12 +377,13 @@ class RFDecode:
         out_video05 = np.roll(out_video05, -self.Filters['F05_offset'])
 
         if self.system == 'PAL':
-            rv_video = np.rec.array([out_video, demod, out_video05], names=['demod', 'demod_raw', 'demod_05'])
+            rv['video'] = np.rec.array([out_video, demod, out_video05], names=['demod', 'demod_raw', 'demod_05'])
         else:
             out_videoburst = np.fft.ifft(demod_fft * self.Filters['FVideoBurst']).real
-            rv_video = np.rec.array([out_video, demod, out_video05, out_videoburst], names=['demod', 'demod_raw', 'demod_05', 'demod_burst'])
+            rv['video'] = np.rec.array([out_video, demod, out_video05, out_videoburst], names=['demod', 'demod_raw', 'demod_05', 'demod_burst'])
 
-        rv_efm = np.fft.ifft(indata_fft * self.Filters['Fefm']) if self.decode_digital_audio else None
+        if self.decode_digital_audio:
+            rv['efm'] = np.fft.ifft(indata_fft * self.Filters['Fefm']) 
 
         if self.decode_analog_audio:
             # Audio phase 1
@@ -390,11 +393,9 @@ class RFDecode:
             hilbert = np.fft.ifft(self.audio_fdslice(indata_fft) * self.Filters['audio_rfilt'])
             audio_right = unwrap_hilbert(hilbert, self.Filters['freq_arf']) + self.Filters['audio_lowfreq']
 
-            rv_audio = np.rec.array([audio_left, audio_right], names=['audio_left', 'audio_right'])
-        else:
-            rv_audio = None
+            rv['audio'] = np.rec.array([audio_left, audio_right], names=['audio_left', 'audio_right'])
 
-        return rv_video, rv_audio, rv_efm
+        return rv
     
     # Second phase audio filtering.  This works on a whole field's samples, since 
     # the frequency is reduced by 16/32x.
@@ -501,15 +502,15 @@ class RFDecode:
 
         # XXX: sync detector does NOT reflect actual sync detection, just regular filtering @ sync level
         # (but only regular filtering is needed for DOD)
-        dgap_sync = calczc(fakedecode[0]['demod'], 1500, rf.iretohz(rf.SysParams['vsync_ire'] / 2), _count=512) - 1500
-        dgap_white = calczc(fakedecode[0]['demod'], 3000, rf.iretohz(50), _count=512) - 3000
+        dgap_sync = calczc(fakedecode['video']['demod'], 1500, rf.iretohz(rf.SysParams['vsync_ire'] / 2), _count=512) - 1500
+        dgap_white = calczc(fakedecode['video']['demod'], 3000, rf.iretohz(50), _count=512) - 3000
 
         rf.delays = {}
         # factor in the 1k or so block cut as well, since we never *just* do demodblock
         rf.delays['video_sync'] = dgap_sync - self.blockcut
         rf.delays['video_white'] = dgap_white - self.blockcut
         
-        fdec_raw = fakedecode[0]['demod_raw']
+        fdec_raw = fakedecode['video']['demod_raw']
         
         rf.limits = {}
         rf.limits['sync'] = (np.min(fdec_raw[1400:2800]), np.max(fdec_raw[1400:2800]))
@@ -580,15 +581,15 @@ class DemodCache:
             demod = self.rf.demodblock(fftdata = self.rawffts[blocknum], mtf_level=MTF)
 
             # TODO: move the next lines to demodblock
-            self.demods_video[blocknum] = demod[0][self.rf.blockcut:-self.rf.blockcut_end]
+            self.demods_video[blocknum] = demod['video'][self.rf.blockcut:-self.rf.blockcut_end]
 
-            if demod[1] is not None: # analog(ue) audio
+            if demod['audio'] is not None: # analog(ue) audio
                 #fdiv1 = self.rf.Filters['audio_fdiv1']
-                fdiv1 = demod[0].shape[0] // demod[1].shape[0]
-                self.demods_audio[blocknum] = demod[1][self.rf.blockcut//fdiv1:-self.rf.blockcut_end//fdiv1]
+                fdiv1 = demod['video'].shape[0] // demod['audio'].shape[0]
+                self.demods_audio[blocknum] = demod['audio'][self.rf.blockcut//fdiv1:-self.rf.blockcut_end//fdiv1]
 
-            if demod[2] is not None: # filtered EFM
-                self.demods_efm[blocknum] = np.uint16(demod[2][self.rf.blockcut:-self.rf.blockcut_end].real)
+            if demod['efm'] is not None: # filtered EFM
+                self.demods_efm[blocknum] = np.uint16(demod['efm'][self.rf.blockcut:-self.rf.blockcut_end].real)
 
             #self.demods_video[blocknum] = demodc_video, demodc_audio, demodc_efm
 
