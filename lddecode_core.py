@@ -210,9 +210,6 @@ class RFDecode:
         self.Filters['Fefm'] = filtfft(lfilt, self.blocklen) * filtfft(hfilt, self.blocklen) * filtfft(hfilt, self.blocklen)
 
         # ISI filter
-        # similar to original: Fisi = commpy_filters.rcosfilter(81, .75, 1/4400000, 40000000)
-        # enhanced version:
-        #Fisi = commpy_filters.rcosfilter(221, 0.08, 1/4321800, 40000000)
         Fisi = commpy_filters.rcosfilter(221, 0.5, 1/4321800, 40000000)
         self.Filters['Fefm'] *= filtfft((Fisi[1], [1.0]), self.blocklen)
 
@@ -351,12 +348,18 @@ class RFDecode:
     def hztoire(self, hz):
         return (hz - self.SysParams['ire0']) / self.SysParams['hz_ire']
     
-    def demodblock(self, data, mtf_level = 0):
+    def demodblock(self, data = None, mtf_level = 0, fftdata = None):
         mtf_level *= self.mtf_mult
         mtf_level *= self.DecoderParams['MTF_basemult']
         mtf_level += self.mtf_offset
-            
-        indata_fft = np.fft.fft(data[:self.blocklen])
+        
+        if fftdata is not None:
+            indata_fft = fftdata
+        elif data is not None:
+            indata_fft = np.fft.fft(data[:self.blocklen])
+        else:
+            raise Exception("demodblock called without raw or FFT data")
+
         indata_fft_filt = indata_fft * self.Filters['RFVideo']
 
         if mtf_level != 0:
@@ -444,63 +447,6 @@ class RFDecode:
 
         return output_audio2    
 
-    def demod(self, indata, start, length, mtf_level = 0, doaudio = True):
-        end = int(start + length) + 1
-        start = int(start - self.blockcut) if (start > self.blockcut) else 0
-
-        # set a placeholder
-        output = None
-        output_audio = None
-        output_efm = None
-        output_audio1 = None
-
-        blocklen_overlap = self.blocklen - self.blockcut - self.blockcut_end
-        for i in range(start, end, blocklen_overlap):
-            # XXX: process last block with 0 padding
-            if (i + blocklen_overlap) > end:
-                break
-
-            tmp_video, tmp_audio, tmp_efm = self.demodblock(indata[i:i+self.blocklen], mtf_level = mtf_level)
-
-            # if the output hasn't been created yet, do it now using the 
-            # data types returned by dodemod (should be faster than multiple
-            # allocations...)
-            if output is None:
-                output = np.zeros(end - start + 1, dtype=tmp_video.dtype)
-
-            if i - start + (self.blocklen - self.blockcut) > len(output):
-                copylen = len(output) - (i - start)
-            else:
-                copylen = self.blocklen - self.blockcut - self.blockcut_end
-
-            output_slice = slice(i - start, i - start + copylen)
-            tmp_slice = slice(self.blockcut, self.blockcut + copylen)
-
-            output[output_slice] = tmp_video[tmp_slice]
-
-            if tmp_efm is not None:
-                if output_efm is None:
-                    output_efm = np.zeros(end - start + 1, dtype=np.int16)
-
-                output_efm[output_slice] = tmp_efm[tmp_slice].real
-
-            # repeat the above - but for audio
-            if doaudio == True and tmp_audio is not None:
-                audio_downscale = tmp_video.shape[0] // tmp_audio.shape[0]
-
-                if output_audio1 is None:
-                    output_audio1 = np.zeros(((end - start) // audio_downscale) + 1, dtype=tmp_audio.dtype)
-
-                output_aslice = slice((i - start) // audio_downscale, (i - start + copylen) // audio_downscale)
-                tmp_aslice = slice(self.blockcut // audio_downscale, (self.blockcut + copylen) // audio_downscale)
-
-                output_audio1[output_aslice] = tmp_audio[tmp_aslice]
-
-        if doaudio == True and output_audio1 is not None:
-            output_audio = self.audio_phase2(output_audio1)
-
-        return output, output_audio, output_efm
-
     def computedelays(self, mtf_level = 0):
         ''' Generate a fake signal and compute filter delays '''
 
@@ -570,6 +516,104 @@ class RFDecode:
         rf.limits['viewable'] = (np.min(fdec_raw[2900:6000]), np.max(fdec_raw[2900:6000]))
 
         return fakedecode, dgap_sync, dgap_white
+
+def LRULookup(l, k):
+    rv = False
+    try:
+        l.remove(k)
+        rv = True # Item (should) exist(s)
+    except:
+        pass
+
+    l.insert(0, k)
+
+    return rv        
+        
+class DemodCache:
+    def __init__(self, rf, infile, loader, cachesize = 128):
+        self.infile = infile
+        self.loader = loader
+        self.rf = rf
+    
+        self.blocksize = self.rf.blocklen - (self.rf.blockcut + self.rf.blockcut_end)
+        
+        # Cache dictionary - key is block #, which holds data for that block
+        self.lrusize = 128
+        self.lru = []
+        
+        # All processing is done based on frequency domain, so the raw data doesn't (usually) need to be cached
+        self.rawdata = {}
+        self.rawffts = {}
+        self.demods_efm = {}
+        self.demods_video = {}
+        self.demods_audio = {}
+
+    def flush(self):
+        if len(self.lru) < self.lrusize:
+            return 
+
+        for k in self.lru[self.lrusize:]:
+            for d in [self.demods_efm, self.demods_audio, self.demods_video, self.rawdata, self.rawffts]:
+                if k in d:
+                    del d[k]
+
+        self.lru = self.lru[:self.lrusize]
+
+    def flushvideo(self):
+        self.demods_efm = {}
+        self.demods_video = {}
+        self.demods_audio = {}        
+
+    def readblock(self, blocknum, MTF = 0):
+        # Freshen the LRU cache
+        LRULookup(self.lru, blocknum)
+
+        # If any parameters change, self.demods is flushed completely, so it's easy for
+        # there to be FFT'd data but not fully demodulated data
+
+        if blocknum not in self.rawffts:
+            rawdata = self.loader(self.infile, blocknum * self.blocksize, self.rf.blocklen)
+            self.rawffts[blocknum] = np.fft.fft(rawdata)
+            self.rawdata[blocknum] = rawdata[self.rf.blockcut:-self.rf.blockcut_end]
+
+        if blocknum not in self.demods_video:
+            demod = self.rf.demodblock(fftdata = self.rawffts[blocknum], mtf_level=MTF)
+
+            # TODO: move the next lines to demodblock
+            self.demods_video[blocknum] = demod[0][self.rf.blockcut:-self.rf.blockcut_end]
+
+            if demod[1] is not None: # analog(ue) audio
+                fdiv1 = self.rf.Filters['audio_fdiv1']
+                self.demods_audio[blocknum] = demod[1][self.rf.blockcut//fdiv1:-self.rf.blockcut_end//fdiv1]
+
+            if demod[2] is not None: # filtered EFM
+                self.demods_efm[blocknum] = np.uint16(demod[2][self.rf.blockcut:-self.rf.blockcut_end].real)
+
+            #self.demods_video[blocknum] = demodc_video, demodc_audio, demodc_efm
+
+    def read(self, begin, length, MTF=0):
+        rv_raw = []
+        rv_video = []
+        rv_audio = []
+        rv_efm = []
+
+        end = begin+length
+
+        for b in range(begin // self.blocksize, (end // self.blocksize) + 1):
+            #print(b)
+            self.readblock(b)
+
+            rv_raw.append(self.rawdata[b])
+
+            rv_video.append(self.demods_video[b])
+            if b in self.demods_audio:
+                rv_audio.append(self.demods_audio[b])
+            if b in self.demods_efm:
+                rv_efm.append(self.demods_efm[b])
+
+        self.flush()
+
+        return np.concatenate(rv_raw), np.concatenate(rv_video), np.concatenate(rv_audio) if len(rv_audio) else None, np.concatenate(rv_efm) if len(rv_efm) else None
 
 # right now defualt is 16/48, so not optimal :)
 def downscale_audio(audio, lineinfo, rf, linecount, timeoffset = 0, freq = 48000.0, scale=64):
@@ -1249,9 +1293,10 @@ class Field:
         if rawdecode is None:
             return None
 
+        self.rawdata = rawdata
+
         self.prevfield = prevfield
 
-        self.rawdata = rawdata
         self.data = rawdecode
         self.rf = rf
         
@@ -1398,20 +1443,21 @@ class Field:
     def dropout_detect(self):
         ''' returns dropouts in three arrays, to line up with the JSON output '''
 
-        iserr = self.dropout_detect_demod()
-        errmap = np.nonzero(iserr)[0]
-        errlist = self.build_errlist(errmap)
-
-        rvs = self.dropout_errlist_to_tbc(errlist)    
-
         rv_lines = []
         rv_starts = []
         rv_ends = []
 
-        for r in rvs:
-            rv_lines.append(r[0] - 1)
-            rv_starts.append(int(r[1]))
-            rv_ends.append(int(r[2]))
+        iserr = self.dropout_detect_demod()
+        errmap = np.nonzero(iserr)[0]
+
+        if len(errmap) > 0:
+            errlist = self.build_errlist(errmap)
+
+            rvs = self.dropout_errlist_to_tbc(errlist)    
+            for r in rvs:
+                rv_lines.append(r[0] - 1)
+                rv_starts.append(int(r[1]))
+                rv_ends.append(int(r[2]))
 
         return rv_lines, rv_starts, rv_ends
 
@@ -1910,6 +1956,8 @@ class LDdecode:
 
         self.verboseVITS = False
 
+        self.demodcache = DemodCache(self.rf, self.infile, self.freader)
+
         self.bw_ratios = []
         
     def close(self):
@@ -1949,36 +1997,6 @@ class LDdecode:
 
         return np.abs(self.mtf_level - oldmtf) < .05
 
-    def decodefield(self):
-        ''' returns field object if valid, and the offset to the next decode '''
-        self.readloc = int(self.fdoffset - self.rf.blockcut)
-        if self.readloc < 0:
-            self.readloc = 0
-            
-        self.indata = self.freader(self.infile, self.readloc, self.readlen)
-
-        if self.indata is None or len(self.indata) < self.readlen:
-            logging.info("End of file")
-            return None, None
-        
-        self.rawdecode = self.rf.demod(self.indata, self.rf.blockcut, self.readlen, self.mtf_level)
-        if self.rawdecode is None:
-            logging.info("Failed to demodulate data")
-            return None, None
-        
-        f = self.FieldClass(self.rf, self.indata, self.rawdecode, audio_offset = self.audio_offset, prevfield = self.curfield)
-        
-        self.curfield = f
-
-        if not f.valid:
-            logging.info("Bad data - jumping one second")
-            return f, f.nextfieldoffset
-        else:
-            self.audio_offset = f.audio_next_offset
-            #logging.info(f.isFirstField, f.cavFrame)
-            
-        return f, f.nextfieldoffset
-
     def writeout(self, dataset):
         f, fi, picture, audio, efm = dataset
 
@@ -1996,6 +2014,32 @@ class LDdecode:
         else:
             efm = None
         
+    def decodefield(self):
+        ''' returns field object if valid, and the offset to the next decode '''
+        self.readloc = int(self.fdoffset - self.rf.blockcut)
+        if self.readloc < 0:
+            self.readloc = 0
+
+        rdata = self.demodcache.read(self.readloc, self.readlen, self.mtf_level)
+        self.indata = rdata[0]
+        self.rawdecode = rdata[1:]
+
+        if self.rawdecode is None:
+            logging.info("Failed to demodulate data")
+            return None, None
+        
+        f = self.FieldClass(self.rf, self.indata, self.rawdecode, audio_offset = self.audio_offset, prevfield = self.curfield)
+        self.curfield = f
+
+        if not f.valid:
+            logging.info("Bad data - jumping one second")
+            return f, f.nextfieldoffset
+        else:
+            self.audio_offset = f.audio_next_offset
+            #logging.info(f.isFirstField, f.cavFrame)
+            
+        return f, f.nextfieldoffset
+
     def readfield(self):
         # pretty much a retry-ing wrapper around decodefield with MTF checking
         self.prevfield = self.curfield
@@ -2029,6 +2073,7 @@ class LDdecode:
                     done = True
                 else:
                     # redo field
+                    self.demodcache.flushvideo()
                     MTFadjusted = True
                     self.fdoffset -= offset
 
