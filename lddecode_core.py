@@ -348,7 +348,7 @@ class RFDecode:
     def hztoire(self, hz):
         return (hz - self.SysParams['ire0']) / self.SysParams['hz_ire']
     
-    def demodblock(self, data = None, mtf_level = 0, fftdata = None):
+    def demodblock(self, data = None, mtf_level = 0, fftdata = None, cut=False):
         rv = {}
 
         mtf_level *= self.mtf_mult
@@ -377,13 +377,16 @@ class RFDecode:
         out_video05 = np.roll(out_video05, -self.Filters['F05_offset'])
 
         if self.system == 'PAL':
-            rv['video'] = np.rec.array([out_video, demod, out_video05], names=['demod', 'demod_raw', 'demod_05'])
+            video_out = np.rec.array([out_video, demod, out_video05], names=['demod', 'demod_raw', 'demod_05'])
         else:
             out_videoburst = np.fft.ifft(demod_fft * self.Filters['FVideoBurst']).real
-            rv['video'] = np.rec.array([out_video, demod, out_video05, out_videoburst], names=['demod', 'demod_raw', 'demod_05', 'demod_burst'])
+            video_out = np.rec.array([out_video, demod, out_video05, out_videoburst], names=['demod', 'demod_raw', 'demod_05', 'demod_burst'])
+
+        rv['video'] = video_out[self.blockcut:-self.blockcut_end] if cut else video_out
 
         if self.decode_digital_audio:
-            rv['efm'] = np.fft.ifft(indata_fft * self.Filters['Fefm']) 
+            efm_out = np.fft.ifft(indata_fft * self.Filters['Fefm']) 
+            rv['efm'] = np.uint16(efm_out[self.blockcut:-self.blockcut_end].real) if cut else efm_out
 
         if self.decode_analog_audio:
             # Audio phase 1
@@ -393,7 +396,10 @@ class RFDecode:
             hilbert = np.fft.ifft(self.audio_fdslice(indata_fft) * self.Filters['audio_rfilt'])
             audio_right = unwrap_hilbert(hilbert, self.Filters['freq_arf']) + self.Filters['audio_lowfreq']
 
-            rv['audio'] = np.rec.array([audio_left, audio_right], names=['audio_left', 'audio_right'])
+            audio_out = np.rec.array([audio_left, audio_right], names=['audio_left', 'audio_right'])
+            
+            fdiv = video_out.shape[0] // audio_out.shape[0]
+            rv['audio'] = audio_out[self.blockcut//fdiv:-self.blockcut_end//fdiv] if cut else audio_out
 
         return rv
     
@@ -545,25 +551,21 @@ class DemodCache:
         # All processing is done based on frequency domain, so the raw data doesn't (usually) need to be cached
         self.rawdata = {}
         self.rawffts = {}
-        self.demods_efm = {}
-        self.demods_video = {}
-        self.demods_audio = {}
+        self.demod = {}
 
     def flush(self):
         if len(self.lru) < self.lrusize:
             return 
 
         for k in self.lru[self.lrusize:]:
-            for d in [self.demods_efm, self.demods_audio, self.demods_video, self.rawdata, self.rawffts]:
+            for d in [self.demod, self.rawdata, self.rawffts]:
                 if k in d:
                     del d[k]
 
         self.lru = self.lru[:self.lrusize]
 
     def flushvideo(self):
-        self.demods_efm = {}
-        self.demods_video = {}
-        self.demods_audio = {}        
+        self.demod = {}
 
     def readblock(self, blocknum, MTF = 0):
         # Freshen the LRU cache
@@ -577,27 +579,12 @@ class DemodCache:
             self.rawffts[blocknum] = np.fft.fft(rawdata)
             self.rawdata[blocknum] = rawdata[self.rf.blockcut:-self.rf.blockcut_end]
 
-        if blocknum not in self.demods_video:
-            demod = self.rf.demodblock(fftdata = self.rawffts[blocknum], mtf_level=MTF)
-
-            # TODO: move the next lines to demodblock
-            self.demods_video[blocknum] = demod['video'][self.rf.blockcut:-self.rf.blockcut_end]
-
-            if demod['audio'] is not None: # analog(ue) audio
-                #fdiv1 = self.rf.Filters['audio_fdiv1']
-                fdiv1 = demod['video'].shape[0] // demod['audio'].shape[0]
-                self.demods_audio[blocknum] = demod['audio'][self.rf.blockcut//fdiv1:-self.rf.blockcut_end//fdiv1]
-
-            if demod['efm'] is not None: # filtered EFM
-                self.demods_efm[blocknum] = np.uint16(demod['efm'][self.rf.blockcut:-self.rf.blockcut_end].real)
-
-            #self.demods_video[blocknum] = demodc_video, demodc_audio, demodc_efm
+        if blocknum not in self.demod:
+            self.demod[blocknum] = self.rf.demodblock(fftdata = self.rawffts[blocknum], mtf_level=MTF, cut=True)
 
     def read(self, begin, length, MTF=0):
         rv_raw = []
-        rv_video = []
-        rv_audio = []
-        rv_efm = []
+        rv = {'video':[], 'audio':[], 'efm':[]}
 
         end = begin+length
 
@@ -606,19 +593,17 @@ class DemodCache:
 
             rv_raw.append(self.rawdata[b])
 
-            rv_video.append(self.demods_video[b])
-            if b in self.demods_audio:
-                rv_audio.append(self.demods_audio[b])
-            if b in self.demods_efm:
-                rv_efm.append(self.demods_efm[b])
+            for k in rv.keys():
+                if k in self.demod[b]:
+                    rv[k].append(self.demod[b][k])
 
         self.flush()
 
-        audio = np.concatenate(rv_audio) if len(rv_audio) else None
+        audio = np.concatenate(rv['audio']) if len(rv['audio']) else None
         if audio is not None:
             audio = self.rf.audio_phase2(audio)
 
-        return np.concatenate(rv_raw), np.concatenate(rv_video), audio, np.concatenate(rv_efm) if len(rv_efm) else None
+        return np.concatenate(rv_raw), np.concatenate(rv['video']), audio, np.concatenate(rv['efm']) if len(rv['efm']) else None
 
 # right now defualt is 16/48, so not optimal :)
 def downscale_audio(audio, lineinfo, rf, linecount, timeoffset = 0, freq = 48000.0, scale=64):
