@@ -61,6 +61,7 @@ private:
     QValueAxis axisY;
 
     bool isFirstRun;
+    qreal maxSnr;
     qreal minSnr;
 };
 

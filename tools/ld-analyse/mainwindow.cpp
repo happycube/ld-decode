@@ -599,6 +599,10 @@ void MainWindow::loadTbcFile(QString inputFileName)
 void MainWindow::backgroundLoadComplete()
 {
     qDebug() << "MainWindow::blackgroundLoadComplete(): Background loading is complete";
+    disconnect(&watcher, SIGNAL(finished()), this, SLOT(backgroundLoadComplete()));
+
+    // Generate the graph data
+    generateGraphs();
 
     // Hide the busy dialogue and enable the main window
     busyDialog.hide();
@@ -628,7 +632,7 @@ void MainWindow::backgroundLoad(QString inputFileName)
 
     // Open the TBC metadata file
     qDebug() << "MainWindow::backgroundLoad(): Processing JSON metadata...";
-    busyDialog.setMessage("Processing JSON metadata...");
+    busyDialog.setMessage("Processing ld-decode metadata...");
     if (!ldDecodeMetaData.read(inputFileName + ".json")) {
         // Open failed
         qWarning() << "Open TBC JSON metadata failed for filename" << inputFileName;
@@ -659,16 +663,13 @@ void MainWindow::backgroundLoad(QString inputFileName)
             qDebug() << "MainWindow::backgroundLoad(): Setting source directory to:" << inFileInfo.absolutePath();
             configuration.writeConfiguration();
 
-            qDebug() << "MainWindow::backgroundLoad(): Generating DO and SNR graphs...";
-            busyDialog.setMessage("Generating drop-out and SNR analysis graphs...");
-            generateGraphs();
-
-            busyDialog.setMessage("Loading completed");
             isFileOpen = true;
 
             // Set the current file name
             currentInputFileName = inFileInfo.fileName();
             qDebug() << "MainWindow::backgroundLoad(): Set current file name to to:" << currentInputFileName;
+
+            busyDialog.setMessage("Generating graph data...");
         }
     }
 }

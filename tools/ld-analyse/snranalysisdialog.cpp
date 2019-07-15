@@ -33,7 +33,8 @@ SnrAnalysisDialog::SnrAnalysisDialog(QWidget *parent) :
     setWindowFlags(Qt::Window);
 
     isFirstRun = true;
-    minSnr = -1000.0;
+    maxSnr = 0;
+    minSnr = 1000;
 
     // Set up the chart view
     chartView.setChart(&chart);
@@ -64,7 +65,8 @@ void SnrAnalysisDialog::startUpdate()
     blackQLineSeries.setColor(Qt::black);
     whiteQLineSeries.setColor(Qt::gray);
 
-    minSnr = -1000.0;
+    maxSnr = 0;
+    minSnr = 1000;
 }
 
 // Add a data point to the chart
@@ -73,9 +75,11 @@ void SnrAnalysisDialog::addDataPoint(qint32 fieldNumber, qreal blackSnr, qreal w
     blackQLineSeries.append(fieldNumber, blackSnr);
     whiteQLineSeries.append(fieldNumber, whiteSnr);
 
-    // Keep track of the minimum Y value
+    // Keep track of the minimum and maximum SNR values
     if (blackSnr < minSnr) minSnr = blackSnr;
     if (whiteSnr < minSnr) minSnr = whiteSnr;
+    if (blackSnr > maxSnr) maxSnr = blackSnr;
+    if (whiteSnr > maxSnr) maxSnr = whiteSnr;
 }
 
 // Finish the update and render the graph
@@ -95,6 +99,8 @@ void SnrAnalysisDialog::finishUpdate(qint32 numberOfFields, qint32 fieldsPerData
 
     // Create the Y axis
     axisY.setTickCount(10);
+    axisY.setMax(maxSnr + 1);
+    axisY.setMin(minSnr - 1);
     axisY.setTitleText("SNR (in dB)");
     axisY.setLabelFormat("%i");
 
