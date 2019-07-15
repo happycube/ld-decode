@@ -33,6 +33,7 @@ SnrAnalysisDialog::SnrAnalysisDialog(QWidget *parent) :
     setWindowFlags(Qt::Window);
 
     isFirstRun = true;
+    minSnr = -1000.0;
 
     // Set up the chart view
     chartView.setChart(&chart);
@@ -47,7 +48,8 @@ SnrAnalysisDialog::~SnrAnalysisDialog()
     delete ui;
 }
 
-void SnrAnalysisDialog::updateChart(LdDecodeMetaData *ldDecodeMetaData)
+// Get ready for an update
+void SnrAnalysisDialog::startUpdate()
 {
     if (!isFirstRun) {
         chart.removeAxis(&axisX);
@@ -62,43 +64,23 @@ void SnrAnalysisDialog::updateChart(LdDecodeMetaData *ldDecodeMetaData)
     blackQLineSeries.setColor(Qt::black);
     whiteQLineSeries.setColor(Qt::gray);
 
-    qreal targetDataPoints = 2000;
-    qreal averageWidth = qRound(ldDecodeMetaData->getNumberOfFields() / targetDataPoints);
-    if (averageWidth < 1) averageWidth = 1; // Ensure we don't divide by zero
-    qint32 dataPoints = ldDecodeMetaData->getNumberOfFields() / static_cast<qint32>(averageWidth);
-    qint32 fieldsPerDataPoint = ldDecodeMetaData->getNumberOfFields() / dataPoints;
+    minSnr = -1000.0;
+}
 
-    qint32 fieldNumber = 1;
-    qreal maximumSNR = 0;
-    qreal minimumSNR = 1000.0;
-    for (qint32 snrCount = 0; snrCount < dataPoints; snrCount++) {
-        qreal blackSnrTotal = 0;
-        qreal whiteSnrTotal = 0;
-        for (qint32 avCount = 0; avCount < fieldsPerDataPoint; avCount++) {
-            LdDecodeMetaData::Field field = ldDecodeMetaData->getField(fieldNumber);
+// Add a data point to the chart
+void SnrAnalysisDialog::addDataPoint(qint32 fieldNumber, qreal blackSnr, qreal whiteSnr)
+{
+    blackQLineSeries.append(fieldNumber, blackSnr);
+    whiteQLineSeries.append(fieldNumber, whiteSnr);
 
-            if (field.vitsMetrics.inUse) {
-                blackSnrTotal += field.vitsMetrics.bPSNR;
-                whiteSnrTotal += field.vitsMetrics.wSNR;
-            }
-            fieldNumber++;
-        }
+    // Keep track of the minimum Y value
+    if (blackSnr < minSnr) minSnr = blackSnr;
+    if (whiteSnr < minSnr) minSnr = whiteSnr;
+}
 
-        // Calculate the average
-        if (blackSnrTotal > 0) blackSnrTotal = blackSnrTotal / static_cast<qreal>(fieldsPerDataPoint);
-        if (whiteSnrTotal > 0) whiteSnrTotal = whiteSnrTotal / static_cast<qreal>(fieldsPerDataPoint);
-
-        // Keep track of the maximum and minimum Y values
-        if (blackSnrTotal > maximumSNR) maximumSNR = blackSnrTotal;
-        if (blackSnrTotal < minimumSNR) minimumSNR = blackSnrTotal;
-        if (whiteSnrTotal > maximumSNR) maximumSNR = whiteSnrTotal;
-        if (whiteSnrTotal < minimumSNR) minimumSNR = whiteSnrTotal;
-
-        // Add the result to the series
-        blackQLineSeries.append(fieldNumber, blackSnrTotal);
-        whiteQLineSeries.append(fieldNumber, whiteSnrTotal);
-    }
-
+// Finish the update and render the graph
+void SnrAnalysisDialog::finishUpdate(qint32 numberOfFields, qint32 fieldsPerDataPoint)
+{
     // Create the chart
     chart.setTitle("SNR analysis (averaged over " + QString::number(fieldsPerDataPoint) + " fields)");
     chart.legend()->hide();
@@ -106,16 +88,13 @@ void SnrAnalysisDialog::updateChart(LdDecodeMetaData *ldDecodeMetaData)
     // Create the x axis
     axisX.setMin(0);
     axisX.setTickCount(10);
-    if (ldDecodeMetaData->getNumberOfFields() < 10) axisX.setMax(10);
-    else axisX.setMax(ldDecodeMetaData->getNumberOfFields());
+    if (numberOfFields < 10) axisX.setMax(10);
+    else axisX.setMax(numberOfFields);
     axisX.setTitleText("Field number");
     axisX.setLabelFormat("%i");
 
     // Create the Y axis
     axisY.setTickCount(10);
-    axisY.setMax(maximumSNR + 5.0); // +5 to give a little space at the top of the window
-    if ((minimumSNR - 5.0) > 0) axisY.setMin(minimumSNR - 5);
-    else axisY.setMin(0);
     axisY.setTitleText("SNR (in dB)");
     axisY.setLabelFormat("%i");
 

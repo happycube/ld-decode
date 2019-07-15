@@ -38,7 +38,7 @@ BusyDialog::~BusyDialog()
     delete ui;
 }
 
-void BusyDialog::setMessaage(QString message)
+void BusyDialog::setMessage(QString message)
 {
     ui->messageLabel->setText(message);
 }

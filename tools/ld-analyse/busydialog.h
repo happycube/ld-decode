@@ -39,7 +39,7 @@ public:
     explicit BusyDialog(QWidget *parent = nullptr);
     ~BusyDialog();
 
-    void setMessaage(QString message);
+    void setMessage(QString message);
 
 private:
     Ui::BusyDialog *ui;

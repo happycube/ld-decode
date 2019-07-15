@@ -92,7 +92,7 @@ private slots:
     void on_actionSNR_analysis_triggered();
     void on_actionSave_metadata_as_CSV_triggered();
 
-    void blackgroundLoadComplete();
+    void backgroundLoadComplete();
 
 private:
     Ui::MainWindow *ui;
@@ -111,15 +111,19 @@ private:
     Configuration configuration;
     QLabel sourceVideoStatus;
     QLabel frameLineStatus;
-    LdDecodeMetaData ldDecodeMetaData;
     SourceVideo sourceVideo;
     qint32 currentFrameNumber;
+    LdDecodeMetaData ldDecodeMetaData;
     qint32 lastScopeLine;
     bool isFileOpen;
     PalColour palColour;
     Comb ntscColour;
     QString currentInputFileName;
     QString lastLoadError;
+
+    // Background loader globals
+    QFutureWatcher<void> watcher;
+    QFuture <void> future;
 
     void updateGuiLoaded(void);
     void updateGuiUnloaded(void);
@@ -132,6 +136,8 @@ private:
     void loadTbcFile(QString inputFileName);
     void backgroundLoad(QString inputFileName);
     void updateOscilloscopeDialogue(qint32 frameNumber, qint32 scanLine);
+
+    void generateGraphs();
 };
 
 #endif // MAINWINDOW_H

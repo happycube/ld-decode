@@ -42,7 +42,9 @@ public:
     explicit SnrAnalysisDialog(QWidget *parent = nullptr);
     ~SnrAnalysisDialog();
 
-    void updateChart(LdDecodeMetaData *ldDecodeMetaData);
+    void startUpdate();
+    void addDataPoint(qint32 fieldNumber, qreal blackSnr, qreal whiteSnr);
+    void finishUpdate(qint32 numberOfFields, qint32 fieldsPerDataPoint);
 
 private slots:
     void on_pushButton_clicked();
@@ -59,6 +61,7 @@ private:
     QValueAxis axisY;
 
     bool isFirstRun;
+    qreal minSnr;
 };
 
 #endif // SNRANALYSISDIALOG_H

@@ -581,24 +581,22 @@ void MainWindow::loadTbcFile(QString inputFileName)
     sourceVideo.close();
 
     // Set the busy message and centre the dialog in the parent window
-    busyDialog.setMessaage("Processing...");
+    busyDialog.setMessage("Loading, please wait...");
     busyDialog.move(this->geometry().center() - busyDialog.rect().center());
 
     // Disable the main window during loading
     this->setEnabled(false);
     busyDialog.setEnabled(true);
 
-    QFutureWatcher<void> watcher;
-    connect(&watcher, SIGNAL(finished()), this, SLOT(blackgroundLoadComplete()));
-
-    QFuture <void> future = QtConcurrent::run(this, &MainWindow::backgroundLoad, inputFileName);
+    connect(&watcher, SIGNAL(finished()), this, SLOT(backgroundLoadComplete()));
+    future = QtConcurrent::run(this, &MainWindow::backgroundLoad, inputFileName);
     watcher.setFuture(future);
 
     busyDialog.exec();
 }
 
 // Post-background loading operations
-void MainWindow::blackgroundLoadComplete()
+void MainWindow::backgroundLoadComplete()
 {
     qDebug() << "MainWindow::blackgroundLoadComplete(): Background loading is complete";
 
@@ -609,6 +607,9 @@ void MainWindow::blackgroundLoadComplete()
     // Update the GUI based on the result
     if (isFileOpen) {
         updateGuiLoaded();
+
+        // Set the main window title
+        this->setWindowTitle(tr("ld-analyse - ") + currentInputFileName);
     } else {
         updateGuiUnloaded();
 
@@ -627,7 +628,7 @@ void MainWindow::backgroundLoad(QString inputFileName)
 
     // Open the TBC metadata file
     qDebug() << "MainWindow::backgroundLoad(): Processing JSON metadata...";
-    busyDialog.setMessaage("Processing JSON metadata...");
+    busyDialog.setMessage("Processing JSON metadata...");
     if (!ldDecodeMetaData.read(inputFileName + ".json")) {
         // Open failed
         qWarning() << "Open TBC JSON metadata failed for filename" << inputFileName;
@@ -641,7 +642,7 @@ void MainWindow::backgroundLoad(QString inputFileName)
 
         // Open the new source video
         qDebug() << "MainWindow::backgroundLoad(): Loading TBC file...";
-        busyDialog.setMessaage("Loading TBC file...");
+        busyDialog.setMessage("Loading TBC file...");
         if (!sourceVideo.open(inputFileName, videoParameters.fieldWidth * videoParameters.fieldHeight)) {
             // Open failed
             qWarning() << "Open TBC file failed for filename" << inputFileName;
@@ -659,22 +660,68 @@ void MainWindow::backgroundLoad(QString inputFileName)
             configuration.writeConfiguration();
 
             qDebug() << "MainWindow::backgroundLoad(): Generating DO and SNR graphs...";
-            busyDialog.setMessaage("Generating drop-out analysis graph...");
-            dropoutAnalysisDialog.updateChart(&ldDecodeMetaData);
-            busyDialog.setMessaage("Generating SNR analysis graph...");
-            snrAnalysisDialog.updateChart(&ldDecodeMetaData);
+            busyDialog.setMessage("Generating drop-out and SNR analysis graphs...");
+            generateGraphs();
 
-            busyDialog.setMessaage("Loading completed");
+            busyDialog.setMessage("Loading completed");
             isFileOpen = true;
-
-            // Set the window title
-            this->setWindowTitle(tr("ld-analyse - ") + inputFileName);
 
             // Set the current file name
             currentInputFileName = inFileInfo.fileName();
             qDebug() << "MainWindow::backgroundLoad(): Set current file name to to:" << currentInputFileName;
         }
     }
+}
+
+// Generate the data points for the Drop-out and SNR analysis graphs
+// We do these both at the same time to reduce calls to the metadata
+void MainWindow::generateGraphs()
+{
+    dropoutAnalysisDialog.startUpdate();
+    snrAnalysisDialog.startUpdate();
+
+    qreal targetDataPoints = 2000;
+    qreal averageWidth = qRound(ldDecodeMetaData.getNumberOfFields() / targetDataPoints);
+    if (averageWidth < 1) averageWidth = 1; // Ensure we don't divide by zero
+    qint32 dataPoints = ldDecodeMetaData.getNumberOfFields() / static_cast<qint32>(averageWidth);
+    qint32 fieldsPerDataPoint = ldDecodeMetaData.getNumberOfFields() / dataPoints;
+
+    qint32 fieldNumber = 1;
+    for (qint32 dpCount = 0; dpCount < dataPoints; dpCount++) {
+        qreal doLength = 0;
+        qreal blackSnrTotal = 0;
+        qreal whiteSnrTotal = 0;
+        for (qint32 avCount = 0; avCount < fieldsPerDataPoint; avCount++) {
+            LdDecodeMetaData::Field field = ldDecodeMetaData.getField(fieldNumber);
+
+            // Get the DOs
+            if (field.dropOuts.startx.size() > 0) {
+                // Calculate the total length of the dropouts
+                for (qint32 i = 0; i < field.dropOuts.startx.size(); i++) {
+                    doLength += field.dropOuts.endx[i] - field.dropOuts.startx[i];
+                }
+            }
+
+            // Get the SNRs
+            if (field.vitsMetrics.inUse) {
+                blackSnrTotal += field.vitsMetrics.bPSNR;
+                whiteSnrTotal += field.vitsMetrics.wSNR;
+            }
+            fieldNumber++;
+        }
+
+        // Calculate the average
+        doLength = doLength / static_cast<qreal>(fieldsPerDataPoint);
+        blackSnrTotal = blackSnrTotal / static_cast<qreal>(fieldsPerDataPoint);
+        whiteSnrTotal = whiteSnrTotal / static_cast<qreal>(fieldsPerDataPoint);
+
+        // Add the result to the series
+        dropoutAnalysisDialog.addDataPoint(fieldNumber, doLength);
+        snrAnalysisDialog.addDataPoint(fieldNumber, blackSnrTotal, whiteSnrTotal);
+    }
+
+    dropoutAnalysisDialog.finishUpdate(ldDecodeMetaData.getNumberOfFields(), fieldsPerDataPoint);
+    snrAnalysisDialog.finishUpdate(ldDecodeMetaData.getNumberOfFields(), fieldsPerDataPoint);
 }
 
 // Load a TBC file based on the file selection from the GUI

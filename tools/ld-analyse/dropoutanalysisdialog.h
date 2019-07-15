@@ -44,7 +44,9 @@ public:
     explicit DropoutAnalysisDialog(QWidget *parent = nullptr);
     ~DropoutAnalysisDialog();
 
-    void updateChart(LdDecodeMetaData *ldDecodeMetaData);
+    void startUpdate();
+    void addDataPoint(qint32 fieldNumber, qreal doLength);
+    void finishUpdate(qint32 numberOfFields, qint32 fieldsPerDataPoint);
 
 private slots:
     void on_reset_pushButton_clicked();
@@ -56,6 +58,7 @@ private:
     QChart chart;
     QValueAxis axisX;
     QValueAxis axisY;
+    qreal maxY;
 
     bool isFirstRun;
 

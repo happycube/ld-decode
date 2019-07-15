@@ -33,6 +33,7 @@ DropoutAnalysisDialog::DropoutAnalysisDialog(QWidget *parent) :
     setWindowFlags(Qt::Window);
 
     isFirstRun = true;
+    maxY = 0;
 
     // Set up the chart view
     chartView.setChart(&chart);
@@ -47,7 +48,8 @@ DropoutAnalysisDialog::~DropoutAnalysisDialog()
     delete ui;
 }
 
-void DropoutAnalysisDialog::updateChart(LdDecodeMetaData *ldDecodeMetaData)
+// Get ready for an update
+void DropoutAnalysisDialog::startUpdate()
 {
     if (!isFirstRun) {
         chart.removeAxis(&axisX);
@@ -59,39 +61,20 @@ void DropoutAnalysisDialog::updateChart(LdDecodeMetaData *ldDecodeMetaData)
     // Create the QLineSeries
     qLineSeries.setColor(Qt::blue);
 
-    qreal targetDataPoints = 2000;
-    qreal averageWidth = qRound(ldDecodeMetaData->getNumberOfFields() / targetDataPoints);
-    if (averageWidth < 1) averageWidth = 1; // Ensure we don't divide by zero
-    qint32 dataPoints = ldDecodeMetaData->getNumberOfFields() / static_cast<qint32>(averageWidth);
-    qint32 fieldsPerDataPoint = ldDecodeMetaData->getNumberOfFields() / dataPoints;
+    maxY = 0;
+}
 
-    qint32 fieldNumber = 1;
-    qint32 maximumDropoutLength = 0;
-    for (qint32 dpCount = 0; dpCount < dataPoints; dpCount++) {
-        qint32 doLength = 0;
-        for (qint32 avCount = 0; avCount < fieldsPerDataPoint; avCount++) {
-            LdDecodeMetaData::Field field = ldDecodeMetaData->getField(fieldNumber);
+// Add a data point to the chart
+void DropoutAnalysisDialog::addDataPoint(qint32 fieldNumber, qreal doLength)
+{
+    qLineSeries.append(fieldNumber, doLength);
+    // Keep track of the maximum Y value
+    if (doLength > maxY) maxY = doLength;
+}
 
-            if (field.dropOuts.startx.size() > 0) {
-                // Calculate the total length of the dropouts
-                for (qint32 i = 0; i < field.dropOuts.startx.size(); i++) {
-                    doLength += field.dropOuts.endx[i] - field.dropOuts.startx[i];
-                }
-            }
-
-            fieldNumber++;
-        }
-
-        // Calculate the average
-        doLength = doLength / fieldsPerDataPoint;
-
-        // Keep track of the maximum Y value
-        if (doLength > maximumDropoutLength) maximumDropoutLength = doLength;
-
-        // Add the result to the series
-        qLineSeries.append(fieldNumber, doLength);
-    }
-
+// Finish the update and render the graph
+void DropoutAnalysisDialog::finishUpdate(qint32 numberOfFields, qint32 fieldsPerDataPoint)
+{
     // Create the chart
     chart.setTitle("Dropout loss analysis (averaged over " + QString::number(fieldsPerDataPoint) + " fields)");
     chart.legend()->hide();
@@ -99,16 +82,16 @@ void DropoutAnalysisDialog::updateChart(LdDecodeMetaData *ldDecodeMetaData)
     // Create the X axis
     axisX.setMin(0);
     axisX.setTickCount(10);
-    if (ldDecodeMetaData->getNumberOfFields() < 10) axisX.setMax(10);
-    else axisX.setMax(ldDecodeMetaData->getNumberOfFields());
+    if (numberOfFields < 10) axisX.setMax(10);
+    else axisX.setMax(numberOfFields);
     axisX.setTitleText("Field number");
     axisX.setLabelFormat("%i");
 
     // Create the Y axis
     axisY.setMin(0);
     axisY.setTickCount(10);
-    if (maximumDropoutLength < 10) axisY.setMax(10);
-    else axisY.setMax(maximumDropoutLength);
+    if (maxY < 10) axisY.setMax(10);
+    else axisY.setMax(maxY);
     axisY.setTitleText("Dropout length (in dots)");
     axisY.setLabelFormat("%i");
 
