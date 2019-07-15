@@ -50,12 +50,8 @@ CMakeLists.txt.user*
 /ld-process-audio/ld-process-audio
 /ld-combine/ld-combine
 /ld-process-efm/ld-process-efm
-/ld-process-efm-rev5/ld-process-efm-rev5
 /ld-ldstoefm/ld-ldstoefm
 /ld-lds-converter/ld-lds-converter
 
-/ld-decode-shared/libld-decode-shared.so.1
-/ld-decode-shared/libld-decode-shared.so.1.0
-/ld-decode-shared/libld-decode-shared.so.1.0.0
 
 
