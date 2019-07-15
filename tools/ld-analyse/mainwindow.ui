@@ -696,13 +696,12 @@
     <property name="title">
      <string>Window</string>
     </property>
-    <addaction name="actionLine_scope"/>
-    <addaction name="actionVBI"/>
-    <addaction name="actionNTSC"/>
-    <addaction name="actionVideo_metadata"/>
-    <addaction name="actionVITS_Metrics"/>
     <addaction name="actionDropout_analysis"/>
     <addaction name="actionSNR_analysis"/>
+    <addaction name="actionVBI"/>
+    <addaction name="actionLine_scope"/>
+    <addaction name="actionNTSC"/>
+    <addaction name="actionVideo_metadata"/>
    </widget>
    <widget class="QMenu" name="menuHelp">
     <property name="title">

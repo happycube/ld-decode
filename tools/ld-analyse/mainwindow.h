@@ -44,7 +44,6 @@
 #include "ntscdialog.h"
 #include "videometadatadialog.h"
 #include "dropoutanalysisdialog.h"
-#include "vitsmetricsdialog.h"
 #include "snranalysisdialog.h"
 #include "busydialog.h"
 #include "configuration.h"
@@ -90,7 +89,6 @@ private slots:
     void on_sourceRadioButton_clicked();
     void on_combFilterRadioButton_clicked();
     void on_reverseFieldOrderCheckBox_stateChanged(int arg1);
-    void on_actionVITS_Metrics_triggered();
     void on_actionSNR_analysis_triggered();
     void on_actionSave_metadata_as_CSV_triggered();
 
@@ -100,18 +98,17 @@ private:
     Ui::MainWindow *ui;
 
     // Dialogues
-    OscilloscopeDialog *oscilloscopeDialog;
-    AboutDialog *aboutDialog;
-    VbiDialog *vbiDialog;
-    NtscDialog *ntscDialog;
-    VideoMetadataDialog *videoMetadataDialog;
-    DropoutAnalysisDialog *dropoutAnalysisDialog;
-    VitsMetricsDialog *vitsMetricsDialog;
-    SnrAnalysisDialog *snrAnalysisDialog;
-    BusyDialog *busyDialog;
+    OscilloscopeDialog oscilloscopeDialog;
+    AboutDialog aboutDialog;
+    VbiDialog vbiDialog;
+    NtscDialog ntscDialog;
+    VideoMetadataDialog videoMetadataDialog;
+    DropoutAnalysisDialog dropoutAnalysisDialog;
+    SnrAnalysisDialog snrAnalysisDialog;
+    BusyDialog busyDialog;
 
     // Class globals
-    Configuration *configuration;
+    Configuration configuration;
     QLabel sourceVideoStatus;
     QLabel frameLineStatus;
     LdDecodeMetaData ldDecodeMetaData;

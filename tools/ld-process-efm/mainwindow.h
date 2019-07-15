@@ -73,17 +73,17 @@ private:
     Ui::MainWindow *ui;
 
     // Dialogues
-    AboutDialog *aboutDialog;
+    AboutDialog aboutDialog;
 
     // Class globals
-    Configuration *configuration;
+    Configuration configuration;
     EfmProcess efmProcess;
     QLabel efmStatus;
     QString currentInputEfmFileAndPath;
     QFile inputEfmFileHandle;
     QTemporaryFile audioOutputTemporaryFileHandle;
     QTemporaryFile dataOutputTemporaryFileHandle;
-    QTimer *statisticsUpdateTimer;
+    QTimer statisticsUpdateTimer;
     bool nonInteractive;
     QString outputAudioFilename;
 

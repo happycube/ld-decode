@@ -42,7 +42,6 @@ SOURCES += \
     frameqlabel.cpp \
     dropoutanalysisdialog.cpp \
     ../ld-chroma-decoder/opticalflow.cpp \
-    vitsmetricsdialog.cpp \
     ../library/tbc/lddecodemetadata.cpp \
     ../library/tbc/sourcevideo.cpp
 
@@ -64,7 +63,6 @@ HEADERS += \
     dropoutanalysisdialog.h \
     ../ld-chroma-decoder/yiqbuffer.h \
     ../ld-chroma-decoder/opticalflow.h \
-    vitsmetricsdialog.h \
     ../library/tbc/lddecodemetadata.h \
     ../library/tbc/sourcevideo.h
 
@@ -77,8 +75,7 @@ FORMS += \
     vbidialog.ui \
     ntscdialog.ui \
     videometadatadialog.ui \
-    dropoutanalysisdialog.ui \
-    vitsmetricsdialog.ui
+    dropoutanalysisdialog.ui
 
 # Add external includes to the include path
 INCLUDEPATH += ../library/tbc

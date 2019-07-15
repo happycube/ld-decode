@@ -35,22 +35,16 @@ MainWindow::MainWindow(bool debugOn, bool _nonInteractive, QString _outputAudioF
     // Initialise the GUI
     ui->setupUi(this);
 
-    // Load the application's configuration
-    configuration = new Configuration();
-
     // Add a status bar to show the state of the source video file
     ui->statusBar->addWidget(&efmStatus);
     efmStatus.setText(tr("No EFM file loaded"));
-
-    // Set up the about dialogue
-    aboutDialog = new AboutDialog(this);
 
     // Connect to the signals from the file decoder thread
     connect(&efmProcess, &EfmProcess::processingComplete, this, &MainWindow::processingCompleteSignalHandler);
     connect(&efmProcess, &EfmProcess::percentProcessed, this, &MainWindow::percentProcessedSignalHandler);
 
     // Load the window geometry from the configuration
-    restoreGeometry(configuration->getMainWindowGeometry());
+    restoreGeometry(configuration.getMainWindowGeometry());
 
     // Reset the statistics
     resetStatistics();
@@ -70,8 +64,7 @@ MainWindow::MainWindow(bool debugOn, bool _nonInteractive, QString _outputAudioF
     ui->tabWidget->setCurrentWidget(ui->audioTab);
 
     // Set up a timer for updating the statistics
-    statisticsUpdateTimer = new QTimer(this);
-    connect(statisticsUpdateTimer, SIGNAL(timeout()), this, SLOT(updateStatistics()));
+    connect(&statisticsUpdateTimer, SIGNAL(timeout()), this, SLOT(updateStatistics()));
 
     // Set up GUI for no EFM file loaded
     guiNoEfmFileLoaded();
@@ -83,10 +76,10 @@ MainWindow::~MainWindow()
     efmProcess.quit();
 
     // Save the window geometry to the configuration
-    configuration->setMainWindowGeometry(saveGeometry());
+    configuration.setMainWindowGeometry(saveGeometry());
 
     // Save the configuration
-    configuration->writeConfiguration();
+    configuration.writeConfiguration();
 
     delete ui;
 }
@@ -135,7 +128,7 @@ void MainWindow::guiEfmFileLoaded(void)
 void MainWindow::guiEfmProcessingStart(void)
 {
     resetStatistics();
-    statisticsUpdateTimer->start(100); // Update 10 times per second
+    statisticsUpdateTimer.start(100); // Update 10 times per second
 
     ui->actionOpen_EFM_File->setEnabled(false);
     ui->actionSave_PCM_Audio->setEnabled(false);
@@ -151,7 +144,7 @@ void MainWindow::guiEfmProcessingStart(void)
 // Stop processing the EFM file GUI update
 void MainWindow::guiEfmProcessingStop(void)
 {
-    statisticsUpdateTimer->stop();
+    statisticsUpdateTimer.stop();
     updateStatistics();
 
     ui->actionOpen_EFM_File->setEnabled(true);
@@ -371,7 +364,7 @@ void MainWindow::on_actionOpen_EFM_File_triggered()
 
     QString inputFilename = QFileDialog::getOpenFileName(this,
                 tr("Open EFM file"),
-                configuration->getSourceDirectory()+tr("/ldsample.efm"),
+                configuration.getSourceDirectory()+tr("/ldsample.efm"),
                 tr("EFM output (*.efm);;All Files (*)"));
 
     // Was a filename specified?
@@ -387,7 +380,7 @@ void MainWindow::on_actionSave_PCM_Audio_triggered()
 
     // Create a suggestion for the filename
     QFileInfo fileInfo(currentInputEfmFileAndPath);
-    QString filenameSuggestion = configuration->getAudioDirectory() + "/";
+    QString filenameSuggestion = configuration.getAudioDirectory() + "/";
     filenameSuggestion += fileInfo.fileName() + tr(".pcm");
 
     qDebug() << "MainWindow::on_actionSave_PCM_Audio_triggered()L filename suggestion is =" << filenameSuggestion;
@@ -417,9 +410,9 @@ void MainWindow::on_actionSave_PCM_Audio_triggered()
 
         // Update the configuration for the PNG directory
         QFileInfo audioFileInfo(audioFilename);
-        configuration->setAudioDirectory(audioFileInfo.absolutePath());
+        configuration.setAudioDirectory(audioFileInfo.absolutePath());
         qDebug() << "MainWindow::on_actionSave_PCM_Audio_triggered(): Setting PCM audio directory to:" << audioFileInfo.absolutePath();
-        configuration->writeConfiguration();
+        configuration.writeConfiguration();
     }
 }
 
@@ -434,7 +427,7 @@ void MainWindow::on_actionExit_triggered()
 void MainWindow::on_actionAbout_ld_process_efm_triggered()
 {
     // Show the about dialogue
-    aboutDialog->show();
+    aboutDialog.show();
 }
 
 void MainWindow::on_decodePushButton_clicked()
@@ -610,9 +603,9 @@ bool MainWindow::loadInputEfmFile(QString filename)
 
     // Update the configuration for the source directory
     QFileInfo inFileInfo(filename);
-    configuration->setSourceDirectory(inFileInfo.absolutePath());
+    configuration.setSourceDirectory(inFileInfo.absolutePath());
     qDebug() << "MainWindow::on_actionOpen_EFM_file_triggered(): Setting EFM source directory to:" << inFileInfo.absolutePath();
-    configuration->writeConfiguration();
+    configuration.writeConfiguration();
 
     // Update the status bar
     efmStatus.setText(tr("EFM file loaded with ") + QString::number(inputFileHandle.bytesAvailable()) + tr(" T values"));
