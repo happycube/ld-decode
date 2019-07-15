@@ -41,7 +41,6 @@ class VbiDecoder : public QThread {
 
 public:
     explicit VbiDecoder(QAtomicInt& _abort, DecoderPool& _decoderPool, QObject *parent = nullptr);
-    //QThread *makeThread(QAtomicInt& abort, DecoderPool& decoderPool);
 
 protected:
     void run() override;
