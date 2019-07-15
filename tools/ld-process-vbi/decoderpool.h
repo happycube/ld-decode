@@ -71,7 +71,6 @@ private:
 
     // Output stream information (all guarded by outputMutex while threads are running)
     QMutex outputMutex;
-    qint32 outputFieldNumber;
     QFile targetJson;
 };
 

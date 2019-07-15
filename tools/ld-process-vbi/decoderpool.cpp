@@ -55,13 +55,11 @@ bool DecoderPool::process()
 
     // Initialise processing state
     inputFieldNumber = 1;
-    outputFieldNumber = 1;
     lastFieldNumber = ldDecodeMetaData.getNumberOfFields();
     totalTimer.start();
 
     // Start a vector of decoding threads to process the video
     QVector<QThread *> threads;
-    VbiDecoder vbiDecoder(abort, *this);
     threads.resize(maxThreads);
     for (qint32 i = 0; i < maxThreads; i++) {
         threads[i] = new VbiDecoder(abort, *this);
