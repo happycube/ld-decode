@@ -524,17 +524,6 @@ class RFDecode:
 
         return fakedecode, dgap_sync, dgap_white
 
-def LRUupdate(l, k):
-    ''' This turns a list into an LRU table.  When called it makes sure item 'k' is at the beginning,
-        so the list is in descending order of previous use.
-    '''
-    try:
-        l.remove(k)
-    except:
-        pass
-
-    l.insert(0, k)
-        
 class DemodCache:
     def __init__(self, rf, infile, loader, cachesize = 128):
         self.infile = infile
