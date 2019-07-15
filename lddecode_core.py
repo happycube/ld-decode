@@ -524,17 +524,16 @@ class RFDecode:
 
         return fakedecode, dgap_sync, dgap_white
 
-def LRULookup(l, k):
-    rv = False
+def LRUupdate(l, k):
+    ''' This turns a list into an LRU table.  When called it makes sure item 'k' is at the beginning,
+        so the list is in descending order of previous use.
+    '''
     try:
         l.remove(k)
-        rv = True # Item (should) exist(s)
     except:
         pass
 
     l.insert(0, k)
-
-    return rv        
         
 class DemodCache:
     def __init__(self, rf, infile, loader, cachesize = 128):
@@ -567,7 +566,7 @@ class DemodCache:
 
     def readblock(self, blocknum, MTF = 0):
         # Freshen the LRU cache
-        LRULookup(self.lru, blocknum)
+        LRUupdate(self.lru, blocknum)
 
         # If any parameters change, self.demods is flushed completely, so it's easy for
         # there to be FFT'd data but not fully demodulated data

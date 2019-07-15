@@ -536,3 +536,14 @@ def findpeaks(array, low = None):
     
     return [loc - 1 for loc in np.where(np.logical_and(array2[:-1] > array2[-1], array2[1:] > array2[:-1]))[0]]
 
+def LRUupdate(l, k):
+    ''' This turns a list into an LRU table.  When called it makes sure item 'k' is at the beginning,
+        so the list is in descending order of previous use.
+    '''
+    try:
+        l.remove(k)
+    except:
+        pass
+
+    l.insert(0, k)
+        
