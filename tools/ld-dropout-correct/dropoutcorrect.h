@@ -26,6 +26,7 @@
 #define DROPOUTCORRECT_H
 
 #include <QObject>
+#include <QElapsedTimer>
 
 #include "sourcevideo.h"
 #include "lddecodemetadata.h"
@@ -35,7 +36,7 @@ class DropOutCorrect : public QObject
     Q_OBJECT
 public:
     explicit DropOutCorrect(QObject *parent = nullptr);
-    bool process(QString inputFileName, QString outputFileName, bool reverse, bool intraField);
+    bool process(QString inputFileName, QString outputFileName, bool reverse, bool intraField, bool overCorrect);
 
 signals:
 
@@ -63,7 +64,9 @@ private:
     LdDecodeMetaData ldDecodeMetaData;
     LdDecodeMetaData::VideoParameters videoParameters;
 
-    QVector<DropOutLocation> populateDropoutsVector(LdDecodeMetaData::Field field);
+    QElapsedTimer totalTimer;
+
+    QVector<DropOutLocation> populateDropoutsVector(LdDecodeMetaData::Field field, bool overCorrect);
     QVector<DropOutLocation> setDropOutLocations(QVector<DropOutLocation> dropOuts);
     Replacement findReplacementLine(QVector<DropOutLocation>firstFieldDropouts, QVector<DropOutLocation> secondFieldDropouts, qint32 dropOutIndex, bool isColourBurst, bool intraField);
 };

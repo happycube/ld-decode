@@ -100,6 +100,11 @@ int main(int argc, char *argv[])
                                        QCoreApplication::translate("main", "Reverse the field order to second/first (default first/second)"));
     parser.addOption(setReverseOption);
 
+    // Option to select over correct mode (-o)
+    QCommandLineOption setOverCorrectOption(QStringList() << "o" << "overcorrect",
+                                       QCoreApplication::translate("main", "Over correct mode (use on heavily damaged sources)"));
+    parser.addOption(setOverCorrectOption);
+
     // Force intra-field correction only
     QCommandLineOption setIntrafieldOption(QStringList() << "i" << "intra",
                                        QCoreApplication::translate("main", "Force intrafield correction (default interfield)"));
@@ -118,6 +123,7 @@ int main(int argc, char *argv[])
     bool isDebugOn = parser.isSet(showDebugOption);
     bool reverse = parser.isSet(setReverseOption);
     bool intraField = parser.isSet(setIntrafieldOption);
+    bool overCorrect = parser.isSet(setOverCorrectOption);
 
     // Get the arguments from the parser
     QString inputFileName;
@@ -143,7 +149,7 @@ int main(int argc, char *argv[])
 
     // Perform the processing
     DropOutCorrect dropOutCorrect;
-    dropOutCorrect.process(inputFileName, outputFileName, reverse, intraField);
+    dropOutCorrect.process(inputFileName, outputFileName, reverse, intraField, overCorrect);
 
     // Quit with success
     return 0;

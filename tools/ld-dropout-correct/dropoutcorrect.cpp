@@ -29,7 +29,7 @@ DropOutCorrect::DropOutCorrect(QObject *parent) : QObject(parent)
 
 }
 
-bool DropOutCorrect::process(QString inputFileName, QString outputFileName, bool reverse, bool intraField)
+bool DropOutCorrect::process(QString inputFileName, QString outputFileName, bool reverse, bool intraField, bool overCorrect)
 {
     SourceVideo sourceVideo;
 
@@ -49,6 +49,11 @@ bool DropOutCorrect::process(QString inputFileName, QString outputFileName, bool
     // Intrafield only correction if required
     if (intraField) {
         qInfo() << "Using intra-field correction only";
+    }
+
+    // Overcorrection if required
+    if (overCorrect) {
+        qInfo() << "Using over correction mode";
     }
 
     videoParameters = ldDecodeMetaData.getVideoParameters();
@@ -100,101 +105,124 @@ bool DropOutCorrect::process(QString inputFileName, QString outputFileName, bool
 
     // Process the frames
     qInfo() << "Performing drop-out correction...";
+    totalTimer.start();
     for (qint32 frameNumber = 1; frameNumber <= ldDecodeMetaData.getNumberOfFrames(); frameNumber++) {
         // Get the field numbers for the frame
-        qint32 firstFieldNumber = ldDecodeMetaData.getFirstFieldNumber(frameNumber);
-        qint32 secondFieldNumber = ldDecodeMetaData.getSecondFieldNumber(frameNumber);
+        qint32 firstFieldSeqNo = ldDecodeMetaData.getFirstFieldNumber(frameNumber);
+        qint32 secondFieldSeqNo = ldDecodeMetaData.getSecondFieldNumber(frameNumber);
 
-        qDebug() << "DropOutDetector::process(): Processing frame" << frameNumber << "[" <<
-                    firstFieldNumber << "/" << secondFieldNumber << "]";
-
-        // Analyse the drop out locations in the first and second fields
-        QVector<DropOutLocation> firstFieldDropouts =
-                setDropOutLocations(populateDropoutsVector(ldDecodeMetaData.getField(firstFieldNumber)));
-        QVector<DropOutLocation> secondFieldDropouts =
-                setDropOutLocations(populateDropoutsVector(ldDecodeMetaData.getField(secondFieldNumber)));
-
-        // Process the dropouts for the first field
-        QVector<Replacement> firstFieldReplacementLines;
-        firstFieldReplacementLines.resize(firstFieldDropouts.size());
-        for (qint32 dropoutIndex = 0; dropoutIndex < firstFieldDropouts.size(); dropoutIndex++) {
-            // Is the current dropout in the colour burst?
-            if (firstFieldDropouts[dropoutIndex].location == Location::colourBurst) {
-                firstFieldReplacementLines[dropoutIndex] = findReplacementLine(firstFieldDropouts, secondFieldDropouts, dropoutIndex, true, intraField);
-            }
-
-            // Is the current dropout in the visible video line?
-            if (firstFieldDropouts[dropoutIndex].location == Location::visibleLine) {
-                firstFieldReplacementLines[dropoutIndex] = findReplacementLine(firstFieldDropouts, secondFieldDropouts, dropoutIndex, false, intraField);
-            }
-        }
-
-        // Process the dropouts for the second field
-        QVector<Replacement> secondFieldReplacementLines;
-        secondFieldReplacementLines.resize(secondFieldDropouts.size());
-        for (qint32 dropoutIndex = 0; dropoutIndex < secondFieldDropouts.size(); dropoutIndex++) {
-            // Is the current dropout in the colour burst?
-            if (secondFieldDropouts[dropoutIndex].location == Location::colourBurst) {
-                secondFieldReplacementLines[dropoutIndex] = findReplacementLine(secondFieldDropouts, firstFieldDropouts, dropoutIndex, true, intraField);
-            }
-
-            // Is the current dropout in the visible video line?
-            if (secondFieldDropouts[dropoutIndex].location == Location::visibleLine) {
-                secondFieldReplacementLines[dropoutIndex] = findReplacementLine(secondFieldDropouts, firstFieldDropouts, dropoutIndex, false, intraField);
-            }
-        }
-
-        // Get the source frame field data
-        QByteArray firstSourceField = sourceVideo.getVideoField(firstFieldNumber);
-        QByteArray secondSourceField = sourceVideo.getVideoField(secondFieldNumber);
+        // Get the source fields' video data
+        QByteArray firstSourceField = sourceVideo.getVideoField(firstFieldSeqNo);
+        QByteArray secondSourceField = sourceVideo.getVideoField(secondFieldSeqNo);
         QByteArray firstTargetFieldData = firstSourceField;
         QByteArray secondTargetFieldData = secondSourceField;
 
-        // Correct the data of the first field
-        for (qint32 dropoutIndex = 0; dropoutIndex < firstFieldDropouts.size(); dropoutIndex++) {
-            if (firstFieldReplacementLines[dropoutIndex].isFirstField) {
-                // Correct the first field from the first field (intra-field correction)
-                for (qint32 pixel = firstFieldDropouts[dropoutIndex].startx; pixel < firstFieldDropouts[dropoutIndex].endx; pixel++) {
-                    if (firstFieldDropouts[dropoutIndex].fieldLine > 2) {
-                        *(firstTargetFieldData.data() + (((firstFieldDropouts[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2))) =
-                                *(firstTargetFieldData.data() + (((firstFieldReplacementLines[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2)));
-                        *(firstTargetFieldData.data() + (((firstFieldDropouts[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2) + 1)) =
-                                *(firstTargetFieldData.data() + (((firstFieldReplacementLines[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2) + 1));
+        // Get the metadata for the fields
+        LdDecodeMetaData::Field firstFieldMetadata = ldDecodeMetaData.getField(firstFieldSeqNo);
+        LdDecodeMetaData::Field secondFieldMetadata = ldDecodeMetaData.getField(secondFieldSeqNo);
+
+        // Check if the frame contains drop-outs
+        if (firstFieldMetadata.dropOuts.startx.size() == 0 && secondFieldMetadata.dropOuts.startx.size() == 0) {
+            // No correction required...
+            qDebug() << "DropOutDetector::process(): Skipping frame" << frameNumber << "[" <<
+                        firstFieldSeqNo << "/" << secondFieldSeqNo << "]";
+        } else {
+            // Perform correction...
+            qDebug() << "DropOutDetector::process(): Correcting frame" << frameNumber << "[" <<
+                        firstFieldSeqNo << "/" << secondFieldSeqNo << "] containing" <<
+                        firstFieldMetadata.dropOuts.startx.size() + secondFieldMetadata.dropOuts.startx.size() <<
+                        "drop-outs";
+
+            // Analyse the drop out locations in the first field
+            QVector<DropOutLocation> firstFieldDropouts;
+            if (firstFieldMetadata.dropOuts.startx.size() > 0) firstFieldDropouts = setDropOutLocations(populateDropoutsVector(firstFieldMetadata, overCorrect));
+
+            // Analyse the drop out locations in the second field
+            QVector<DropOutLocation> secondFieldDropouts;
+            if (secondFieldMetadata.dropOuts.startx.size() > 0) secondFieldDropouts = setDropOutLocations(populateDropoutsVector(secondFieldMetadata, overCorrect));
+
+            // Process the first field if it contains drop-outs
+            if (firstFieldDropouts.size() > 0) {
+                // Process the dropouts for the first field
+                QVector<Replacement> firstFieldReplacementLines;
+                firstFieldReplacementLines.resize(firstFieldDropouts.size());
+                for (qint32 dropoutIndex = 0; dropoutIndex < firstFieldDropouts.size(); dropoutIndex++) {
+                    // Is the current dropout in the colour burst?
+                    if (firstFieldDropouts[dropoutIndex].location == Location::colourBurst) {
+                        firstFieldReplacementLines[dropoutIndex] = findReplacementLine(firstFieldDropouts, secondFieldDropouts, dropoutIndex, true, intraField);
+                    }
+
+                    // Is the current dropout in the visible video line?
+                    if (firstFieldDropouts[dropoutIndex].location == Location::visibleLine) {
+                        firstFieldReplacementLines[dropoutIndex] = findReplacementLine(firstFieldDropouts, secondFieldDropouts, dropoutIndex, false, intraField);
                     }
                 }
-            } else {
-                // Correct the first field from the second field (inter-field correction)
-                for (qint32 pixel = firstFieldDropouts[dropoutIndex].startx; pixel < firstFieldDropouts[dropoutIndex].endx; pixel++) {
-                    if (firstFieldDropouts[dropoutIndex].fieldLine > 2) {
-                        *(firstTargetFieldData.data() + (((firstFieldDropouts[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2))) =
-                                *(secondTargetFieldData.data() + (((firstFieldReplacementLines[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2)));
-                        *(firstTargetFieldData.data() + (((firstFieldDropouts[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2) + 1)) =
-                                *(secondTargetFieldData.data() + (((firstFieldReplacementLines[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2) + 1));
+
+                // Correct the data of the first field
+                for (qint32 dropoutIndex = 0; dropoutIndex < firstFieldDropouts.size(); dropoutIndex++) {
+                    if (firstFieldReplacementLines[dropoutIndex].isFirstField) {
+                        // Correct the first field from the first field (intra-field correction)
+                        for (qint32 pixel = firstFieldDropouts[dropoutIndex].startx; pixel < firstFieldDropouts[dropoutIndex].endx; pixel++) {
+                            if (firstFieldDropouts[dropoutIndex].fieldLine > 2) {
+                                *(firstTargetFieldData.data() + (((firstFieldDropouts[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2))) =
+                                        *(firstTargetFieldData.data() + (((firstFieldReplacementLines[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2)));
+                                *(firstTargetFieldData.data() + (((firstFieldDropouts[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2) + 1)) =
+                                        *(firstTargetFieldData.data() + (((firstFieldReplacementLines[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2) + 1));
+                            }
+                        }
+                    } else {
+                        // Correct the first field from the second field (inter-field correction)
+                        for (qint32 pixel = firstFieldDropouts[dropoutIndex].startx; pixel < firstFieldDropouts[dropoutIndex].endx; pixel++) {
+                            if (firstFieldDropouts[dropoutIndex].fieldLine > 2) {
+                                *(firstTargetFieldData.data() + (((firstFieldDropouts[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2))) =
+                                        *(secondTargetFieldData.data() + (((firstFieldReplacementLines[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2)));
+                                *(firstTargetFieldData.data() + (((firstFieldDropouts[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2) + 1)) =
+                                        *(secondTargetFieldData.data() + (((firstFieldReplacementLines[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2) + 1));
+                            }
+                        }
                     }
                 }
             }
-        }
 
-        // Correct the data of the second field
-        for (qint32 dropoutIndex = 0; dropoutIndex < secondFieldDropouts.size(); dropoutIndex++) {
-            if (secondFieldReplacementLines[dropoutIndex].isFirstField) {
-                // Correct the second field from the second field (intra-field correction)
-                for (qint32 pixel = secondFieldDropouts[dropoutIndex].startx; pixel < secondFieldDropouts[dropoutIndex].endx; pixel++) {
-                    if (secondFieldDropouts[dropoutIndex].fieldLine > 2) {
-                        *(secondTargetFieldData.data() + (((secondFieldDropouts[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2))) =
-                                *(secondSourceField.data() + (((secondFieldReplacementLines[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2)));
-                        *(secondTargetFieldData.data() + (((secondFieldDropouts[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2) + 1)) =
-                                *(secondSourceField.data() + (((secondFieldReplacementLines[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2) + 1));
+            // Process the second field if it contains drop-outs
+            if (secondFieldDropouts.size() > 0) {
+                // Process the dropouts for the second field
+                QVector<Replacement> secondFieldReplacementLines;
+                secondFieldReplacementLines.resize(secondFieldDropouts.size());
+                for (qint32 dropoutIndex = 0; dropoutIndex < secondFieldDropouts.size(); dropoutIndex++) {
+                    // Is the current dropout in the colour burst?
+                    if (secondFieldDropouts[dropoutIndex].location == Location::colourBurst) {
+                        secondFieldReplacementLines[dropoutIndex] = findReplacementLine(secondFieldDropouts, firstFieldDropouts, dropoutIndex, true, intraField);
+                    }
+
+                    // Is the current dropout in the visible video line?
+                    if (secondFieldDropouts[dropoutIndex].location == Location::visibleLine) {
+                        secondFieldReplacementLines[dropoutIndex] = findReplacementLine(secondFieldDropouts, firstFieldDropouts, dropoutIndex, false, intraField);
                     }
                 }
-            } else {
-                // Correct the second field from the first field (inter-field correction)
-                for (qint32 pixel = secondFieldDropouts[dropoutIndex].startx; pixel < secondFieldDropouts[dropoutIndex].endx; pixel++) {
-                    if (secondFieldDropouts[dropoutIndex].fieldLine > 2) {
-                        *(secondTargetFieldData.data() + (((secondFieldDropouts[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2))) =
-                                *(firstSourceField.data() + (((secondFieldReplacementLines[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2)));
-                        *(secondTargetFieldData.data() + (((secondFieldDropouts[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2) + 1)) =
-                                *(firstSourceField.data() + (((secondFieldReplacementLines[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2) + 1));
+
+                // Correct the data of the second field
+                for (qint32 dropoutIndex = 0; dropoutIndex < secondFieldDropouts.size(); dropoutIndex++) {
+                    if (secondFieldReplacementLines[dropoutIndex].isFirstField) {
+                        // Correct the second field from the second field (intra-field correction)
+                        for (qint32 pixel = secondFieldDropouts[dropoutIndex].startx; pixel < secondFieldDropouts[dropoutIndex].endx; pixel++) {
+                            if (secondFieldDropouts[dropoutIndex].fieldLine > 2) {
+                                *(secondTargetFieldData.data() + (((secondFieldDropouts[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2))) =
+                                        *(secondSourceField.data() + (((secondFieldReplacementLines[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2)));
+                                *(secondTargetFieldData.data() + (((secondFieldDropouts[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2) + 1)) =
+                                        *(secondSourceField.data() + (((secondFieldReplacementLines[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2) + 1));
+                            }
+                        }
+                    } else {
+                        // Correct the second field from the first field (inter-field correction)
+                        for (qint32 pixel = secondFieldDropouts[dropoutIndex].startx; pixel < secondFieldDropouts[dropoutIndex].endx; pixel++) {
+                            if (secondFieldDropouts[dropoutIndex].fieldLine > 2) {
+                                *(secondTargetFieldData.data() + (((secondFieldDropouts[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2))) =
+                                        *(firstSourceField.data() + (((secondFieldReplacementLines[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2)));
+                                *(secondTargetFieldData.data() + (((secondFieldDropouts[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2) + 1)) =
+                                        *(firstSourceField.data() + (((secondFieldReplacementLines[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2) + 1));
+                            }
+                        }
                     }
                 }
             }
@@ -202,7 +230,7 @@ bool DropOutCorrect::process(QString inputFileName, QString outputFileName, bool
 
         // Write the fields into the output TBC file in the correct order
         bool writeFail = false;
-        if (firstFieldNumber < secondFieldNumber) {
+        if (firstFieldSeqNo < secondFieldSeqNo) {
             // Save the first field and then second field to the output file
             if (!targetVideo.write(firstTargetFieldData.data(), firstTargetFieldData.size())) writeFail = true;
             if (!targetVideo.write(secondTargetFieldData.data(), secondTargetFieldData.size())) writeFail = true;
@@ -222,9 +250,15 @@ bool DropOutCorrect::process(QString inputFileName, QString outputFileName, bool
         }
 
         // Show an update to the user
-        qInfo() << "Frame #" << frameNumber << "[" << firstFieldNumber << "/" << secondFieldNumber << "] -"
-                << firstFieldDropouts.size() + secondFieldDropouts.size() << "dropouts corrected";
+        if (frameNumber % 200 == 0) {
+            qInfo() << "Processed frame" << frameNumber << "[" << firstFieldSeqNo << "/" << secondFieldSeqNo << "]";
+        }
     }
+
+    // Show the processing speed to the user
+    qreal totalSecs = (static_cast<qreal>(totalTimer.elapsed()) / 1000.0);
+    qInfo() << "Drop-out correction complete -" << ldDecodeMetaData.getNumberOfFrames() << "frames in" << totalSecs << "seconds (" <<
+               ldDecodeMetaData.getNumberOfFrames() / totalSecs << "FPS )";
 
     qInfo() << "Creating JSON metadata file for corrected TBC";
     ldDecodeMetaData.write(outputFileName + ".json");
@@ -241,7 +275,7 @@ bool DropOutCorrect::process(QString inputFileName, QString outputFileName, bool
 }
 
 // Populate the dropouts vector
-QVector<DropOutCorrect::DropOutLocation> DropOutCorrect::populateDropoutsVector(LdDecodeMetaData::Field field)
+QVector<DropOutCorrect::DropOutLocation> DropOutCorrect::populateDropoutsVector(LdDecodeMetaData::Field field, bool overCorrect)
 {
     QVector<DropOutLocation> fieldDropOuts;
 
@@ -251,6 +285,20 @@ QVector<DropOutCorrect::DropOutLocation> DropOutCorrect::populateDropoutsVector(
         dropOutLocation.endx = field.dropOuts.endx[dropOutIndex];
         dropOutLocation.fieldLine = field.dropOuts.fieldLine[dropOutIndex];
         dropOutLocation.location = DropOutCorrect::Location::unknown;
+
+        // Is over correct mode selected?
+        if (overCorrect) {
+            // Here we deliberately extend the length of dropouts to ensure that the
+            // correction captures as much as possible.  This is useful on heavily
+            // damaged discs where drop-outs can 'slope' in and out fooling ld-decode's
+            // detection mechanisms
+
+            qint32 overCorrectionDots = 24;
+            if (dropOutLocation.startx > overCorrectionDots) dropOutLocation.startx -= overCorrectionDots;
+            else dropOutLocation.startx = 0;
+            if (dropOutLocation.endx < videoParameters.fieldWidth - overCorrectionDots) dropOutLocation.endx += overCorrectionDots;
+            else dropOutLocation.endx = videoParameters.fieldWidth;
+        }
 
         fieldDropOuts.append(dropOutLocation);
     }
