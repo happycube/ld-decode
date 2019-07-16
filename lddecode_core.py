@@ -562,11 +562,17 @@ class DemodCache:
 
         if blocknum not in self.raw:
             rawdata = self.loader(self.infile, blocknum * self.blocksize, self.rf.blocklen)
+            
+            if rawdata is None or len(rawdata) < self.rf.blocklen:
+                return False
+
             self.raw[blocknum] = {'fft': np.fft.fft(rawdata), 
                                   'input':rawdata[self.rf.blockcut:-self.rf.blockcut_end]}
 
         if blocknum not in self.demod:
             self.demod[blocknum] = self.rf.demodblock(fftdata = self.raw[blocknum]['fft'], mtf_level=MTF, cut=True)
+
+        return True
 
     def read(self, begin, length, MTF=0):
         # transpose the cache by key, not block #
@@ -575,7 +581,8 @@ class DemodCache:
         end = begin+length
 
         for b in range(begin // self.blocksize, (end // self.blocksize) + 1):
-            self.readblock(b)
+            if self.readblock(b) == False:
+                return None
 
             for k in t.keys():
                 if k in self.demod[b]:
@@ -1426,7 +1433,7 @@ class Field:
         iserr = self.dropout_detect_demod()
         errmap = np.nonzero(iserr)[0]
 
-        if len(errmap) > 0:
+        if len(errmap) > 0 and errmap[-1] > self.linelocs[self.lineoffset]:
             errlist = self.build_errlist(errmap)
 
             rvs = self.dropout_errlist_to_tbc(errlist)    
@@ -1997,12 +2004,13 @@ class LDdecode:
             self.readloc = 0
 
         self.rawdecode = self.demodcache.read(self.readloc, self.readlen, self.mtf_level)
-        self.indata = self.rawdecode['input']
 
         if self.rawdecode is None:
             logging.info("Failed to demodulate data")
             return None, None
         
+        self.indata = self.rawdecode['input']
+
         f = self.FieldClass(self.rf, self.rawdecode, audio_offset = self.audio_offset, prevfield = self.curfield)
         self.curfield = f
 
