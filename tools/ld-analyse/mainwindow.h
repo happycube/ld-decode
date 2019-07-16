@@ -98,14 +98,14 @@ private:
     Ui::MainWindow *ui;
 
     // Dialogues
-    OscilloscopeDialog oscilloscopeDialog;
-    AboutDialog aboutDialog;
-    VbiDialog vbiDialog;
-    NtscDialog ntscDialog;
-    VideoMetadataDialog videoMetadataDialog;
-    DropoutAnalysisDialog dropoutAnalysisDialog;
-    SnrAnalysisDialog snrAnalysisDialog;
-    BusyDialog busyDialog;
+    OscilloscopeDialog* oscilloscopeDialog;
+    AboutDialog* aboutDialog;
+    VbiDialog* vbiDialog;
+    NtscDialog* ntscDialog;
+    VideoMetadataDialog* videoMetadataDialog;
+    DropoutAnalysisDialog* dropoutAnalysisDialog;
+    SnrAnalysisDialog* snrAnalysisDialog;
+    BusyDialog* busyDialog;
 
     // Class globals
     Configuration configuration;

@@ -31,6 +31,16 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
 {
     ui->setupUi(this);
 
+    // Set up dialogues
+    oscilloscopeDialog = new OscilloscopeDialog(this);
+    aboutDialog = new AboutDialog(this);
+    vbiDialog = new VbiDialog(this);
+    ntscDialog = new NtscDialog(this);
+    videoMetadataDialog = new VideoMetadataDialog(this);
+    dropoutAnalysisDialog = new DropoutAnalysisDialog(this);
+    snrAnalysisDialog = new SnrAnalysisDialog(this);
+    busyDialog = new BusyDialog(this);
+
     // Add a status bar to show the state of the source video file
     ui->statusBar->addWidget(&sourceVideoStatus);
     ui->statusBar->addPermanentWidget(&frameLineStatus);
@@ -46,17 +56,17 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     connect(ui->frameViewerLabel, &FrameQLabel::mouseOverQFrame, this, &MainWindow::mouseOverQFrameSignalHandler);
 
     // Connect to the scan line changed signal from the oscilloscope dialogue
-    connect(&oscilloscopeDialog, &OscilloscopeDialog::scanLineChanged, this, &MainWindow::scanLineChangedSignalHandler);
+    connect(oscilloscopeDialog, &OscilloscopeDialog::scanLineChanged, this, &MainWindow::scanLineChangedSignalHandler);
     lastScopeLine = 1;
 
     // Load the window geometry from the configuration
     restoreGeometry(configuration.getMainWindowGeometry());
-    vbiDialog.restoreGeometry(configuration.getVbiDialogGeometry());
-    ntscDialog.restoreGeometry(configuration.getNtscDialogGeometry());
-    videoMetadataDialog.restoreGeometry(configuration.getVideoMetadataDialogGeometry());
-    oscilloscopeDialog.restoreGeometry(configuration.getOscilloscopeDialogGeometry());
-    dropoutAnalysisDialog.restoreGeometry(configuration.getDropoutAnalysisDialogGeometry());
-    snrAnalysisDialog.restoreGeometry(configuration.getSnrAnalysisDialogGeometry());
+    vbiDialog->restoreGeometry(configuration.getVbiDialogGeometry());
+    ntscDialog->restoreGeometry(configuration.getNtscDialogGeometry());
+    videoMetadataDialog->restoreGeometry(configuration.getVideoMetadataDialogGeometry());
+    oscilloscopeDialog->restoreGeometry(configuration.getOscilloscopeDialogGeometry());
+    dropoutAnalysisDialog->restoreGeometry(configuration.getDropoutAnalysisDialogGeometry());
+    snrAnalysisDialog->restoreGeometry(configuration.getSnrAnalysisDialogGeometry());
 
     updateGuiUnloaded();
 
@@ -70,12 +80,12 @@ MainWindow::~MainWindow()
 {
     // Save the window geometry to the configuration
     configuration.setMainWindowGeometry(saveGeometry());
-    configuration.setVbiDialogGeometry(vbiDialog.saveGeometry());
-    configuration.setNtscDialogGeometry(ntscDialog.saveGeometry());
-    configuration.setVideoMetadataDialogGeometry(videoMetadataDialog.saveGeometry());
-    configuration.setOscilloscopeDialogGeometry(oscilloscopeDialog.saveGeometry());
-    configuration.setDropoutAnalysisDialogGeometry(dropoutAnalysisDialog.saveGeometry());
-    configuration.setSnrAnalysisDialogGeometry(snrAnalysisDialog.saveGeometry());
+    configuration.setVbiDialogGeometry(vbiDialog->saveGeometry());
+    configuration.setNtscDialogGeometry(ntscDialog->saveGeometry());
+    configuration.setVideoMetadataDialogGeometry(videoMetadataDialog->saveGeometry());
+    configuration.setOscilloscopeDialogGeometry(oscilloscopeDialog->saveGeometry());
+    configuration.setDropoutAnalysisDialogGeometry(dropoutAnalysisDialog->saveGeometry());
+    configuration.setSnrAnalysisDialogGeometry(snrAnalysisDialog->saveGeometry());
     configuration.writeConfiguration();
 
     // Close the source video if open
@@ -244,8 +254,8 @@ void MainWindow::updateGuiUnloaded(void)
     hideFrame();
 
     // Hide graphs
-    snrAnalysisDialog.hide();
-    dropoutAnalysisDialog.hide();
+    snrAnalysisDialog->hide();
+    dropoutAnalysisDialog->hide();
 
     isFileOpen = false;
 }
@@ -422,13 +432,13 @@ void MainWindow::showFrame(qint32 frameNumber, bool showActiveVideoArea, bool hi
     }
 
     // Update the VBI dialogue
-    if (vbiDialog.isVisible()) vbiDialog.updateVbi(firstField, secondField);
+    if (vbiDialog->isVisible()) vbiDialog->updateVbi(firstField, secondField);
 
     // Update the NTSC dialogue
-    if (ntscDialog.isVisible()) ntscDialog.updateNtsc(firstField, secondField);
+    if (ntscDialog->isVisible()) ntscDialog->updateNtsc(firstField, secondField);
 
     // Update the metadata dialogue
-    if (videoMetadataDialog.isVisible()) videoMetadataDialog.updateMetaData(videoParameters);
+    if (videoMetadataDialog->isVisible()) videoMetadataDialog->updateMetaData(videoParameters);
 
     // Add the QImage to the QLabel in the dialogue
     ui->frameViewerLabel->clear();
@@ -439,7 +449,7 @@ void MainWindow::showFrame(qint32 frameNumber, bool showActiveVideoArea, bool hi
     ui->frameViewerLabel->setPixmap(QPixmap::fromImage(frameImage));
 
     // If the scope window is open, update it too (using the last scope line selected by the user)
-    if (oscilloscopeDialog.isVisible()) {
+    if (oscilloscopeDialog->isVisible()) {
         // Show the oscilloscope dialogue for the selected scan-line
         updateOscilloscopeDialogue(currentFrameNumber, lastScopeLine);
     }
@@ -581,18 +591,18 @@ void MainWindow::loadTbcFile(QString inputFileName)
     sourceVideo.close();
 
     // Set the busy message and centre the dialog in the parent window
-    busyDialog.setMessage("Loading, please wait...");
-    busyDialog.move(this->geometry().center() - busyDialog.rect().center());
+    busyDialog->setMessage("Loading, please wait...");
+    busyDialog->move(this->geometry().center() - busyDialog->rect().center());
 
     // Disable the main window during loading
     this->setEnabled(false);
-    busyDialog.setEnabled(true);
+    busyDialog->setEnabled(true);
 
     connect(&watcher, SIGNAL(finished()), this, SLOT(backgroundLoadComplete()));
     future = QtConcurrent::run(this, &MainWindow::backgroundLoad, inputFileName);
     watcher.setFuture(future);
 
-    busyDialog.exec();
+    busyDialog->exec();
 }
 
 // Post-background loading operations
@@ -605,7 +615,7 @@ void MainWindow::backgroundLoadComplete()
     generateGraphs();
 
     // Hide the busy dialogue and enable the main window
-    busyDialog.hide();
+    busyDialog->hide();
     this->setEnabled(true);
 
     // Update the GUI based on the result
@@ -632,7 +642,7 @@ void MainWindow::backgroundLoad(QString inputFileName)
 
     // Open the TBC metadata file
     qDebug() << "MainWindow::backgroundLoad(): Processing JSON metadata...";
-    busyDialog.setMessage("Processing ld-decode metadata...");
+    busyDialog->setMessage("Processing ld-decode metadata...");
     if (!ldDecodeMetaData.read(inputFileName + ".json")) {
         // Open failed
         qWarning() << "Open TBC JSON metadata failed for filename" << inputFileName;
@@ -646,7 +656,7 @@ void MainWindow::backgroundLoad(QString inputFileName)
 
         // Open the new source video
         qDebug() << "MainWindow::backgroundLoad(): Loading TBC file...";
-        busyDialog.setMessage("Loading TBC file...");
+        busyDialog->setMessage("Loading TBC file...");
         if (!sourceVideo.open(inputFileName, videoParameters.fieldWidth * videoParameters.fieldHeight)) {
             // Open failed
             qWarning() << "Open TBC file failed for filename" << inputFileName;
@@ -669,7 +679,7 @@ void MainWindow::backgroundLoad(QString inputFileName)
             currentInputFileName = inFileInfo.fileName();
             qDebug() << "MainWindow::backgroundLoad(): Set current file name to to:" << currentInputFileName;
 
-            busyDialog.setMessage("Generating graph data...");
+            busyDialog->setMessage("Generating graph data...");
         }
     }
 }
@@ -678,8 +688,8 @@ void MainWindow::backgroundLoad(QString inputFileName)
 // We do these both at the same time to reduce calls to the metadata
 void MainWindow::generateGraphs()
 {
-    dropoutAnalysisDialog.startUpdate();
-    snrAnalysisDialog.startUpdate();
+    dropoutAnalysisDialog->startUpdate();
+    snrAnalysisDialog->startUpdate();
 
     qreal targetDataPoints = 2000;
     qreal averageWidth = qRound(ldDecodeMetaData.getNumberOfFields() / targetDataPoints);
@@ -717,12 +727,12 @@ void MainWindow::generateGraphs()
         whiteSnrTotal = whiteSnrTotal / static_cast<qreal>(fieldsPerDataPoint);
 
         // Add the result to the series
-        dropoutAnalysisDialog.addDataPoint(fieldNumber, doLength);
-        snrAnalysisDialog.addDataPoint(fieldNumber, blackSnrTotal, whiteSnrTotal);
+        dropoutAnalysisDialog->addDataPoint(fieldNumber, doLength);
+        snrAnalysisDialog->addDataPoint(fieldNumber, blackSnrTotal, whiteSnrTotal);
     }
 
-    dropoutAnalysisDialog.finishUpdate(ldDecodeMetaData.getNumberOfFields(), fieldsPerDataPoint);
-    snrAnalysisDialog.finishUpdate(ldDecodeMetaData.getNumberOfFields(), fieldsPerDataPoint);
+    dropoutAnalysisDialog->finishUpdate(ldDecodeMetaData.getNumberOfFields(), fieldsPerDataPoint);
+    snrAnalysisDialog->finishUpdate(ldDecodeMetaData.getNumberOfFields(), fieldsPerDataPoint);
 }
 
 // Load a TBC file based on the file selection from the GUI
@@ -809,51 +819,51 @@ void MainWindow::on_actionLine_scope_triggered()
     if (isFileOpen) {
         // Show the oscilloscope dialogue for the selected scan-line
         updateOscilloscopeDialogue(currentFrameNumber, lastScopeLine);
-        oscilloscopeDialog.show();
+        oscilloscopeDialog->show();
     }
 }
 
 void MainWindow::on_actionAbout_ld_analyse_triggered()
 {
-    videoMetadataDialog.updateMetaData(ldDecodeMetaData.getVideoParameters());
-    aboutDialog.show();
+    videoMetadataDialog->updateMetaData(ldDecodeMetaData.getVideoParameters());
+    aboutDialog->show();
 }
 
 // Display video metadata dialogue triggered
 void MainWindow::on_actionVideo_metadata_triggered()
 {
-    videoMetadataDialog.updateMetaData(ldDecodeMetaData.getVideoParameters());
-    videoMetadataDialog.show();
+    videoMetadataDialog->updateMetaData(ldDecodeMetaData.getVideoParameters());
+    videoMetadataDialog->show();
 }
 
 void MainWindow::on_actionVBI_triggered()
 {
-    vbiDialog.updateVbi(ldDecodeMetaData.getField(ldDecodeMetaData.getFirstFieldNumber(currentFrameNumber)),
+    vbiDialog->updateVbi(ldDecodeMetaData.getField(ldDecodeMetaData.getFirstFieldNumber(currentFrameNumber)),
                          ldDecodeMetaData.getField(ldDecodeMetaData.getSecondFieldNumber(currentFrameNumber)));
 
     // Show the VBI dialogue
-    vbiDialog.show();
+    vbiDialog->show();
 }
 
 void MainWindow::on_actionNTSC_triggered()
 {
-    ntscDialog.updateNtsc(ldDecodeMetaData.getField(ldDecodeMetaData.getFirstFieldNumber(currentFrameNumber)),
+    ntscDialog->updateNtsc(ldDecodeMetaData.getField(ldDecodeMetaData.getFirstFieldNumber(currentFrameNumber)),
                            ldDecodeMetaData.getField(ldDecodeMetaData.getSecondFieldNumber(currentFrameNumber)));
 
     // Show the NTSC dialogue
-    ntscDialog.show();
+    ntscDialog->show();
 }
 
 void MainWindow::on_actionDropout_analysis_triggered()
 {
     // Show the dropout analysis dialogue
-    dropoutAnalysisDialog.show();
+    dropoutAnalysisDialog->show();
 }
 
 void MainWindow::on_actionSNR_analysis_triggered()
 {
     // Show the SNR analysis dialogue
-    snrAnalysisDialog.show();
+    snrAnalysisDialog->show();
 }
 
 // Adjust the window to show the frame at 1:1 zoom
@@ -973,7 +983,7 @@ void MainWindow::updateOscilloscopeDialogue(qint32 frameNumber, qint32 scanLine)
     qint32 secondFieldNumber = ldDecodeMetaData.getSecondFieldNumber(frameNumber);
 
     // Update the oscilloscope dialogue
-    oscilloscopeDialog.showTraceImage(sourceVideo.getVideoField(firstFieldNumber),
+    oscilloscopeDialog->showTraceImage(sourceVideo.getVideoField(firstFieldNumber),
                                        sourceVideo.getVideoField(secondFieldNumber),
                                        &ldDecodeMetaData, scanLine, firstFieldNumber, secondFieldNumber);
 }
@@ -985,7 +995,7 @@ void MainWindow::scanLineChangedSignalHandler(qint32 scanLine)
     if (isFileOpen) {
         // Show the oscilloscope dialogue for the selected scan-line
         updateOscilloscopeDialogue(currentFrameNumber, scanLine);
-        oscilloscopeDialog.show();
+        oscilloscopeDialog->show();
 
         // Remember the last line rendered
         lastScopeLine = scanLine;
@@ -1024,7 +1034,7 @@ void MainWindow::mousePressEvent(QMouseEvent *event)
 
         // Show the oscilloscope dialogue for the selected scan-line
         updateOscilloscopeDialogue(currentFrameNumber, unscaledY);
-        oscilloscopeDialog.show();
+        oscilloscopeDialog->show();
 
         // Remember the last line rendered
         lastScopeLine = origin.y();
