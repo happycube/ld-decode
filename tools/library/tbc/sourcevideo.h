@@ -39,11 +39,12 @@ public:
     ~SourceVideo() override;
 
     // File handling methods
-    bool open(QString filename, qint32 _fieldLength);
+    bool open(QString filename, qint32 _fieldLength, qint32 _fieldLineLength = -1);
     void close(void);
 
     // Field handling methods
     QByteArray getVideoField(qint32 fieldNumber);
+    QByteArray getVideoField(qint32 fieldNumber, qint32 startFieldLine, qint32 endFieldLine);
 
     // Get and set methods
     bool isSourceValid();
@@ -55,6 +56,9 @@ private:
     bool isSourceVideoOpen;
     qint32 availableFields;
     qint32 fieldByteLength;
+    qint32 fieldLineLength;
+
+    QByteArray outputFieldLineData;
 
     // Field caching
     QCache<qint32, QByteArray> fieldCache;

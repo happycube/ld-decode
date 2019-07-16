@@ -212,127 +212,163 @@ LdDecodeMetaData::Field LdDecodeMetaData::getField(qint32 sequentialFieldNumber)
     field.audioSamples = json.value({"fields", fieldNumber, "audioSamples"}).toInt();
 
     // VITS metrics values
-    if (json.size({"fields", fieldNumber, "vitsMetrics"}) > 0) {
-        field.vitsMetrics.inUse = true;
-        field.vitsMetrics.wSNR = json.value({"fields", fieldNumber, "vitsMetrics", "wSNR"}).toReal();
-        field.vitsMetrics.bPSNR = json.value({"fields", fieldNumber, "vitsMetrics", "bPSNR"}).toReal();
-    } else {
-        // Mark VITS metrics as undefined
-        field.vitsMetrics.inUse = false;
-    }
+    field.vitsMetrics = getFieldVitsMetrics(sequentialFieldNumber);
 
     // VBI values
+    field.vbi = getFieldVbi(sequentialFieldNumber);
+
+    // NTSC values
+    field.ntsc = getFieldNtsc(sequentialFieldNumber);
+
+    // dropOuts values
+    field.dropOuts = getFieldDropOuts(sequentialFieldNumber);
+
+    return field;
+}
+
+// This method gets the VITS metrics metadata for the specified sequential field number
+LdDecodeMetaData::VitsMetrics LdDecodeMetaData::getFieldVitsMetrics(qint32 sequentialFieldNumber)
+{
+    VitsMetrics vitsMetrics;
+    qint32 fieldNumber = sequentialFieldNumber - 1;
+
+    if (fieldNumber >= getNumberOfFields() || fieldNumber < 0) {
+        qCritical() << "LdDecodeMetaData::getFieldVitsMetrics(): Requested field number" << sequentialFieldNumber << "out of bounds!";
+    }
+
+    if (json.size({"fields", fieldNumber, "vitsMetrics"}) > 0) {
+        vitsMetrics.inUse = true;
+        vitsMetrics.wSNR = json.value({"fields", fieldNumber, "vitsMetrics", "wSNR"}).toReal();
+        vitsMetrics.bPSNR = json.value({"fields", fieldNumber, "vitsMetrics", "bPSNR"}).toReal();
+    } else {
+        // Mark VITS metrics as undefined
+        vitsMetrics.inUse = false;
+    }
+
+    return vitsMetrics;
+}
+
+// This method gets the VBI metadata for the specified sequential field number
+LdDecodeMetaData::Vbi LdDecodeMetaData::getFieldVbi(qint32 sequentialFieldNumber)
+{
+    Vbi vbi;
+    qint32 fieldNumber = sequentialFieldNumber - 1;
+
+    if (fieldNumber >= getNumberOfFields() || fieldNumber < 0) {
+        qCritical() << "LdDecodeMetaData::getFieldVbi(): Requested field number" << sequentialFieldNumber << "out of bounds!";
+    }
+
     if (json.size({"fields", fieldNumber, "vbi"}) > 0) {
         // Mark VBI as in use
-        field.vbi.inUse = true;
+        vbi.inUse = true;
 
-        field.vbi.vbiData.append(json.value({"fields", fieldNumber, "vbi", "vbiData", 0}).toInt()); // Line 16
-        field.vbi.vbiData.append(json.value({"fields", fieldNumber, "vbi", "vbiData", 1}).toInt()); // Line 17
-        field.vbi.vbiData.append(json.value({"fields", fieldNumber, "vbi", "vbiData", 2}).toInt()); // Line 18
+        vbi.vbiData.append(json.value({"fields", fieldNumber, "vbi", "vbiData", 0}).toInt()); // Line 16
+        vbi.vbiData.append(json.value({"fields", fieldNumber, "vbi", "vbiData", 1}).toInt()); // Line 17
+        vbi.vbiData.append(json.value({"fields", fieldNumber, "vbi", "vbiData", 2}).toInt()); // Line 18
 
         switch(json.value({"fields", fieldNumber, "vbi", "vp", 0}).toInt()) {
         case 0:
-            field.vbi.type = LdDecodeMetaData::VbiDiscTypes::unknownDiscType;
+            vbi.type = LdDecodeMetaData::VbiDiscTypes::unknownDiscType;
             break;
         case 1 :
-            field.vbi.type = LdDecodeMetaData::VbiDiscTypes::clv;
+            vbi.type = LdDecodeMetaData::VbiDiscTypes::clv;
             break;
         case 2 :
-            field.vbi.type = LdDecodeMetaData::VbiDiscTypes::cav;
+            vbi.type = LdDecodeMetaData::VbiDiscTypes::cav;
             break;
         default:
-            field.vbi.type = LdDecodeMetaData::VbiDiscTypes::unknownDiscType;
+            vbi.type = LdDecodeMetaData::VbiDiscTypes::unknownDiscType;
         }
 
-        field.vbi.userCode = json.value({"fields", fieldNumber, "vbi", "vp", 1}).toString();
-        field.vbi.picNo = json.value({"fields", fieldNumber, "vbi", "vp", 2}).toInt();
-        field.vbi.chNo = json.value({"fields", fieldNumber, "vbi", "vp", 3}).toInt();
-        field.vbi.clvHr = json.value({"fields", fieldNumber, "vbi", "vp", 4}).toInt();
-        field.vbi.clvMin = json.value({"fields", fieldNumber, "vbi", "vp", 5}).toInt();
-        field.vbi.clvSec = json.value({"fields", fieldNumber, "vbi", "vp", 6}).toInt();
-        field.vbi.clvPicNo = json.value({"fields", fieldNumber, "vbi", "vp", 7}).toInt();
+        vbi.userCode = json.value({"fields", fieldNumber, "vbi", "vp", 1}).toString();
+        vbi.picNo = json.value({"fields", fieldNumber, "vbi", "vp", 2}).toInt();
+        vbi.chNo = json.value({"fields", fieldNumber, "vbi", "vp", 3}).toInt();
+        vbi.clvHr = json.value({"fields", fieldNumber, "vbi", "vp", 4}).toInt();
+        vbi.clvMin = json.value({"fields", fieldNumber, "vbi", "vp", 5}).toInt();
+        vbi.clvSec = json.value({"fields", fieldNumber, "vbi", "vp", 6}).toInt();
+        vbi.clvPicNo = json.value({"fields", fieldNumber, "vbi", "vp", 7}).toInt();
 
         switch (json.value({"fields", fieldNumber, "vbi", "vp", 8}).toInt()) {
         case 0:
-            field.vbi.soundMode = LdDecodeMetaData::VbiSoundModes::stereo;
+            vbi.soundMode = LdDecodeMetaData::VbiSoundModes::stereo;
             break;
         case 1:
-            field.vbi.soundMode = LdDecodeMetaData::VbiSoundModes::mono;
+            vbi.soundMode = LdDecodeMetaData::VbiSoundModes::mono;
             break;
         case 2:
-            field.vbi.soundMode = LdDecodeMetaData::VbiSoundModes::audioSubCarriersOff;
+            vbi.soundMode = LdDecodeMetaData::VbiSoundModes::audioSubCarriersOff;
             break;
         case 3:
-            field.vbi.soundMode = LdDecodeMetaData::VbiSoundModes::bilingual;
+            vbi.soundMode = LdDecodeMetaData::VbiSoundModes::bilingual;
             break;
         case 4:
-            field.vbi.soundMode = LdDecodeMetaData::VbiSoundModes::stereo_stereo;
+            vbi.soundMode = LdDecodeMetaData::VbiSoundModes::stereo_stereo;
             break;
         case 5:
-            field.vbi.soundMode = LdDecodeMetaData::VbiSoundModes::stereo_bilingual;
+            vbi.soundMode = LdDecodeMetaData::VbiSoundModes::stereo_bilingual;
             break;
         case 6:
-            field.vbi.soundMode = LdDecodeMetaData::VbiSoundModes::crossChannelStereo;
+            vbi.soundMode = LdDecodeMetaData::VbiSoundModes::crossChannelStereo;
             break;
         case 7:
-            field.vbi.soundMode = LdDecodeMetaData::VbiSoundModes::bilingual_bilingual;
+            vbi.soundMode = LdDecodeMetaData::VbiSoundModes::bilingual_bilingual;
             break;
         case 8:
-            field.vbi.soundMode = LdDecodeMetaData::VbiSoundModes::mono_dump;
+            vbi.soundMode = LdDecodeMetaData::VbiSoundModes::mono_dump;
             break;
         case 9:
-            field.vbi.soundMode = LdDecodeMetaData::VbiSoundModes::stereo_dump;
+            vbi.soundMode = LdDecodeMetaData::VbiSoundModes::stereo_dump;
             break;
         case 10:
-            field.vbi.soundMode = LdDecodeMetaData::VbiSoundModes::bilingual_dump;
+            vbi.soundMode = LdDecodeMetaData::VbiSoundModes::bilingual_dump;
             break;
         case 11:
-            field.vbi.soundMode = LdDecodeMetaData::VbiSoundModes::futureUse;
+            vbi.soundMode = LdDecodeMetaData::VbiSoundModes::futureUse;
             break;
         default:
-            field.vbi.soundMode = LdDecodeMetaData::VbiSoundModes::futureUse;
+            vbi.soundMode = LdDecodeMetaData::VbiSoundModes::futureUse;
             break;
         }
 
         switch (json.value({"fields", fieldNumber, "vbi", "vp", 9}).toInt()) {
         case 0:
-            field.vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::stereo;
+            vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::stereo;
             break;
         case 1:
-            field.vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::mono;
+            vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::mono;
             break;
         case 2:
-            field.vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::audioSubCarriersOff;
+            vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::audioSubCarriersOff;
             break;
         case 3:
-            field.vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::bilingual;
+            vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::bilingual;
             break;
         case 4:
-            field.vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::stereo_stereo;
+            vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::stereo_stereo;
             break;
         case 5:
-            field.vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::stereo_bilingual;
+            vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::stereo_bilingual;
             break;
         case 6:
-            field.vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::crossChannelStereo;
+            vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::crossChannelStereo;
             break;
         case 7:
-            field.vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::bilingual_bilingual;
+            vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::bilingual_bilingual;
             break;
         case 8:
-            field.vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::mono_dump;
+            vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::mono_dump;
             break;
         case 9:
-            field.vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::stereo_dump;
+            vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::stereo_dump;
             break;
         case 10:
-            field.vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::bilingual_dump;
+            vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::bilingual_dump;
             break;
         case 11:
-            field.vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::futureUse;
+            vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::futureUse;
             break;
         default:
-            field.vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::futureUse;
+            vbi.soundModeAm2 = LdDecodeMetaData::VbiSoundModes::futureUse;
             break;
         }
 
@@ -340,39 +376,67 @@ LdDecodeMetaData::Field LdDecodeMetaData::getField(qint32 sequentialFieldNumber)
         qint32 booleanFlags = json.value({"fields", fieldNumber, "vbi", "vp", 10}).toInt();
 
         // Interpret the flags
-        field.vbi.leadIn =      ((booleanFlags & 0x0001) == 0x0001);
-        field.vbi.leadOut =     ((booleanFlags & 0x0002) == 0x0002);
-        field.vbi.picStop =     ((booleanFlags & 0x0004) == 0x0004);
-        field.vbi.cx =          ((booleanFlags & 0x0008) == 0x0008);
-        field.vbi.size =        ((booleanFlags & 0x0010) == 0x0010);
-        field.vbi.side =        ((booleanFlags & 0x0020) == 0x0020);
-        field.vbi.teletext =    ((booleanFlags & 0x0040) == 0x0040);
-        field.vbi.dump =        ((booleanFlags & 0x0080) == 0x0080);
-        field.vbi.fm =          ((booleanFlags & 0x0100) == 0x0100);
-        field.vbi.digital =     ((booleanFlags & 0x0200) == 0x0200);
-        field.vbi.parity =      ((booleanFlags & 0x0400) == 0x0400);
-        field.vbi.copyAm2 =     ((booleanFlags & 0x0800) == 0x0800);
-        field.vbi.standardAm2 = ((booleanFlags & 0x1000) == 0x1000);
+        vbi.leadIn =      ((booleanFlags & 0x0001) == 0x0001);
+        vbi.leadOut =     ((booleanFlags & 0x0002) == 0x0002);
+        vbi.picStop =     ((booleanFlags & 0x0004) == 0x0004);
+        vbi.cx =          ((booleanFlags & 0x0008) == 0x0008);
+        vbi.size =        ((booleanFlags & 0x0010) == 0x0010);
+        vbi.side =        ((booleanFlags & 0x0020) == 0x0020);
+        vbi.teletext =    ((booleanFlags & 0x0040) == 0x0040);
+        vbi.dump =        ((booleanFlags & 0x0080) == 0x0080);
+        vbi.fm =          ((booleanFlags & 0x0100) == 0x0100);
+        vbi.digital =     ((booleanFlags & 0x0200) == 0x0200);
+        vbi.parity =      ((booleanFlags & 0x0400) == 0x0400);
+        vbi.copyAm2 =     ((booleanFlags & 0x0800) == 0x0800);
+        vbi.standardAm2 = ((booleanFlags & 0x1000) == 0x1000);
     } else {
         // Mark VBI as undefined
-        field.vbi.inUse = false;
+        vbi.inUse = false;
+
+        // Resize the VBI data fields to prevent assert issues downstream
+        vbi.vbiData.resize(3);
     }
 
-    // NTSC values
+    return vbi;
+}
+
+// This method gets the NTSC metadata for the specified sequential field number
+LdDecodeMetaData::Ntsc LdDecodeMetaData::getFieldNtsc(qint32 sequentialFieldNumber)
+{
+    Ntsc ntsc;
+    qint32 fieldNumber = sequentialFieldNumber - 1;
+
+    if (fieldNumber >= getNumberOfFields() || fieldNumber < 0) {
+        qCritical() << "LdDecodeMetaData::getFieldNtsc(): Requested field number" << sequentialFieldNumber << "out of bounds!";
+    }
+
     if (json.size({"fields", fieldNumber, "ntsc"}) > 0) {
         // Mark as in use
-        field.ntsc.inUse = true;
+        ntsc.inUse = true;
 
-        field.ntsc.isFmCodeDataValid = json.value({"fields", fieldNumber, "ntsc", "isFmCodeDataValid"}).toBool();
-        field.ntsc.fmCodeData = json.value({"fields", fieldNumber, "ntsc", "fmCodeData"}).toInt();
-        field.ntsc.fieldFlag = json.value({"fields", fieldNumber, "ntsc", "fieldFlag"}).toBool();
-        field.ntsc.whiteFlag = json.value({"fields", fieldNumber, "ntsc", "whiteFlag"}).toBool();
+        ntsc.isFmCodeDataValid = json.value({"fields", fieldNumber, "ntsc", "isFmCodeDataValid"}).toBool();
+        ntsc.fmCodeData = json.value({"fields", fieldNumber, "ntsc", "fmCodeData"}).toInt();
+        ntsc.fieldFlag = json.value({"fields", fieldNumber, "ntsc", "fieldFlag"}).toBool();
+        ntsc.whiteFlag = json.value({"fields", fieldNumber, "ntsc", "whiteFlag"}).toBool();
     } else {
         // Mark ntscSpecific as undefined
-        field.ntsc.inUse = false;
+        ntsc.inUse = false;
     }
 
-    // dropOuts values
+    return ntsc;
+}
+
+// This method gets the drop-out metadata for the specified sequential field number
+LdDecodeMetaData::DropOuts LdDecodeMetaData::getFieldDropOuts(qint32 sequentialFieldNumber)
+{
+    DropOuts dropOuts;
+    qint32 fieldNumber = sequentialFieldNumber - 1;
+
+    if (fieldNumber >= getNumberOfFields() || fieldNumber < 0) {
+        qCritical() << "LdDecodeMetaData::getFieldDropOuts(): Requested field number" << sequentialFieldNumber << "out of bounds!";
+    }
+
+    // Get the JSON array sizes
     qint32 startxSize = json.size({"fields", fieldNumber, "dropOuts", "startx"});
     qint32 endxSize = json.size({"fields", fieldNumber, "dropOuts", "endx"});
     qint32 fieldLinesSize = json.size({"fields", fieldNumber, "dropOuts", "fieldLines"});
@@ -383,25 +447,22 @@ LdDecodeMetaData::Field LdDecodeMetaData::getField(qint32 sequentialFieldNumber)
     }
 
     if (startxSize > 0) {
-        field.dropOuts.startx.resize(startxSize);
-        field.dropOuts.endx.resize(startxSize);
-        field.dropOuts.fieldLine.resize(startxSize);
+        dropOuts.startx.resize(startxSize);
+        dropOuts.endx.resize(startxSize);
+        dropOuts.fieldLine.resize(startxSize);
 
         for (qint32 doCounter = 0; doCounter < startxSize; doCounter++) {
-            field.dropOuts.startx[doCounter] = json.value({"fields", fieldNumber, "dropOuts", "startx", doCounter}).toInt();
-            field.dropOuts.endx[doCounter] = json.value({"fields", fieldNumber, "dropOuts", "endx", doCounter}).toInt();
-            field.dropOuts.fieldLine[doCounter] = json.value({"fields", fieldNumber, "dropOuts", "fieldLine", doCounter}).toInt();
+            dropOuts.startx[doCounter] = json.value({"fields", fieldNumber, "dropOuts", "startx", doCounter}).toInt();
+            dropOuts.endx[doCounter] = json.value({"fields", fieldNumber, "dropOuts", "endx", doCounter}).toInt();
+            dropOuts.fieldLine[doCounter] = json.value({"fields", fieldNumber, "dropOuts", "fieldLine", doCounter}).toInt();
         }
     } else {
-        field.dropOuts.startx.clear();
-        field.dropOuts.endx.clear();
-        field.dropOuts.fieldLine.clear();
+        dropOuts.startx.clear();
+        dropOuts.endx.clear();
+        dropOuts.fieldLine.clear();
     }
 
-    // Resize the VBI data fields to prevent assert issues downstream
-    if (field.vbi.vbiData.size() != 3) field.vbi.vbiData.resize(3);
-
-    return field;
+    return dropOuts;
 }
 
 // This method sets the field metadata for a field
@@ -422,27 +483,57 @@ void LdDecodeMetaData::updateField(LdDecodeMetaData::Field _field, qint32 sequen
     json.setValue({"fields", fieldNumber, "audioSamples"}, _field.audioSamples);
 
     // Write the VITS metrics data if in use
-    if (_field.vitsMetrics.inUse) {
-        json.setValue({"fields", fieldNumber, "vitsMetrics", "wSNR"}, _field.vitsMetrics.wSNR);
-        json.setValue({"fields", fieldNumber, "vitsMetrics", "bPSNR"}, _field.vitsMetrics.bPSNR);
-    }
+    updateFieldVitsMetrics(_field.vitsMetrics, sequentialFieldNumber);
 
     // Write the VBI data if in use
-    if (_field.vbi.inUse) {
+    updateFieldVbi(_field.vbi, sequentialFieldNumber);
+
+    // Write the NTSC specific record if in use
+    updateFieldNtsc(_field.ntsc, sequentialFieldNumber);
+
+    // Write the drop-out records
+    updateFieldDropOuts(_field.dropOuts, sequentialFieldNumber);
+}
+
+// This method sets the field VBI metadata for a field
+void LdDecodeMetaData::updateFieldVitsMetrics(LdDecodeMetaData::VitsMetrics _vitsMetrics, qint32 sequentialFieldNumber)
+{
+    qint32 fieldNumber = sequentialFieldNumber - 1;
+
+    if (fieldNumber >= getNumberOfFields() + 1 || fieldNumber < 0) {
+        qCritical() << "LdDecodeMetaData::updateFieldVitsMetrics(): Requested field number" << sequentialFieldNumber << "out of bounds!";
+    }
+
+    if (_vitsMetrics.inUse) {
+        json.setValue({"fields", fieldNumber, "vitsMetrics", "wSNR"}, _vitsMetrics.wSNR);
+        json.setValue({"fields", fieldNumber, "vitsMetrics", "bPSNR"}, _vitsMetrics.bPSNR);
+    }
+}
+
+// This method sets the field VBI metadata for a field
+void LdDecodeMetaData::updateFieldVbi(LdDecodeMetaData::Vbi _vbi, qint32 sequentialFieldNumber)
+{
+    qint32 fieldNumber = sequentialFieldNumber - 1;
+
+    if (fieldNumber >= getNumberOfFields() + 1 || fieldNumber < 0) {
+        qCritical() << "LdDecodeMetaData::updateFieldVbi(): Requested field number" << sequentialFieldNumber << "out of bounds!";
+    }
+
+    if (_vbi.inUse) {
         // Validate the VBI data array
-        if (_field.vbi.vbiData.size() != 3) {
+        if (_vbi.vbiData.size() != 3) {
             qDebug() << "LdDecodeMetaData::write(): Invalid vbiData array!  Setting to -1";
-            _field.vbi.vbiData.resize(3);
-            _field.vbi.vbiData[0] = -1;
-            _field.vbi.vbiData[1] = -1;
-            _field.vbi.vbiData[2] = -1;
+            _vbi.vbiData.resize(3);
+            _vbi.vbiData[0] = -1;
+            _vbi.vbiData[1] = -1;
+            _vbi.vbiData[2] = -1;
         }
 
-        json.setValue({"fields", fieldNumber, "vbi", "vbiData", 0}, _field.vbi.vbiData[0]);
-        json.setValue({"fields", fieldNumber, "vbi", "vbiData", 1}, _field.vbi.vbiData[1]);
-        json.setValue({"fields", fieldNumber, "vbi", "vbiData", 2}, _field.vbi.vbiData[2]);
+        json.setValue({"fields", fieldNumber, "vbi", "vbiData", 0}, _vbi.vbiData[0]);
+        json.setValue({"fields", fieldNumber, "vbi", "vbiData", 1}, _vbi.vbiData[1]);
+        json.setValue({"fields", fieldNumber, "vbi", "vbiData", 2}, _vbi.vbiData[2]);
 
-        switch(_field.vbi.type) {
+        switch(_vbi.type) {
         case LdDecodeMetaData::VbiDiscTypes::unknownDiscType:
             json.setValue({"fields", fieldNumber, "vbi", "vp", 0}, 0);
             break;
@@ -454,15 +545,15 @@ void LdDecodeMetaData::updateField(LdDecodeMetaData::Field _field, qint32 sequen
             break;
         }
 
-        json.setValue({"fields", fieldNumber, "vbi", "vp", 1}, _field.vbi.userCode);
-        json.setValue({"fields", fieldNumber, "vbi", "vp", 2}, _field.vbi.picNo);
-        json.setValue({"fields", fieldNumber, "vbi", "vp", 3}, _field.vbi.chNo);
-        json.setValue({"fields", fieldNumber, "vbi", "vp", 4}, _field.vbi.clvHr);
-        json.setValue({"fields", fieldNumber, "vbi", "vp", 5}, _field.vbi.clvMin);
-        json.setValue({"fields", fieldNumber, "vbi", "vp", 6}, _field.vbi.clvSec);
-        json.setValue({"fields", fieldNumber, "vbi", "vp", 7}, _field.vbi.clvPicNo);
+        json.setValue({"fields", fieldNumber, "vbi", "vp", 1}, _vbi.userCode);
+        json.setValue({"fields", fieldNumber, "vbi", "vp", 2}, _vbi.picNo);
+        json.setValue({"fields", fieldNumber, "vbi", "vp", 3}, _vbi.chNo);
+        json.setValue({"fields", fieldNumber, "vbi", "vp", 4}, _vbi.clvHr);
+        json.setValue({"fields", fieldNumber, "vbi", "vp", 5}, _vbi.clvMin);
+        json.setValue({"fields", fieldNumber, "vbi", "vp", 6}, _vbi.clvSec);
+        json.setValue({"fields", fieldNumber, "vbi", "vp", 7}, _vbi.clvPicNo);
 
-        switch (_field.vbi.soundMode) {
+        switch (_vbi.soundMode) {
         case LdDecodeMetaData::VbiSoundModes::stereo:
             json.setValue({"fields", fieldNumber, "vbi", "vp", 8}, 0);
             break;
@@ -501,7 +592,7 @@ void LdDecodeMetaData::updateField(LdDecodeMetaData::Field _field, qint32 sequen
             break;
         }
 
-        switch (_field.vbi.soundModeAm2) {
+        switch (_vbi.soundModeAm2) {
         case LdDecodeMetaData::VbiSoundModes::stereo:
             json.setValue({"fields", fieldNumber, "vbi", "vp", 9}, 0);
             break;
@@ -542,45 +633,62 @@ void LdDecodeMetaData::updateField(LdDecodeMetaData::Field _field, qint32 sequen
 
         // Convert the vitual flag booleans to the flags integer
         qint32 flags = 0;
-        if (_field.vbi.leadIn)        flags += 0x0001;
-        if (_field.vbi.leadOut)       flags += 0x0002;
-        if (_field.vbi.picStop)       flags += 0x0004;
-        if (_field.vbi.cx)            flags += 0x0008;
-        if (_field.vbi.size)          flags += 0x0010;
-        if (_field.vbi.side)          flags += 0x0020;
-        if (_field.vbi.teletext)      flags += 0x0040;
-        if (_field.vbi.dump)          flags += 0x0080;
-        if (_field.vbi.fm)            flags += 0x0100;
-        if (_field.vbi.digital)       flags += 0x0200;
-        if (_field.vbi.parity)        flags += 0x0400;
-        if (_field.vbi.copyAm2)       flags += 0x0800;
-        if (_field.vbi.standardAm2)   flags += 0x1000;
+        if (_vbi.leadIn)        flags += 0x0001;
+        if (_vbi.leadOut)       flags += 0x0002;
+        if (_vbi.picStop)       flags += 0x0004;
+        if (_vbi.cx)            flags += 0x0008;
+        if (_vbi.size)          flags += 0x0010;
+        if (_vbi.side)          flags += 0x0020;
+        if (_vbi.teletext)      flags += 0x0040;
+        if (_vbi.dump)          flags += 0x0080;
+        if (_vbi.fm)            flags += 0x0100;
+        if (_vbi.digital)       flags += 0x0200;
+        if (_vbi.parity)        flags += 0x0400;
+        if (_vbi.copyAm2)       flags += 0x0800;
+        if (_vbi.standardAm2)   flags += 0x1000;
 
         // Insert the flags into the VBI JSON
         json.setValue({"fields", fieldNumber, "vbi", "vp", 10}, flags);
     }
+}
 
-    // Write the NTSC specific record if in use
-    if (_field.ntsc.inUse) {
-        json.setValue({"fields", fieldNumber, "ntsc", "isFmCodeDataValid"}, _field.ntsc.isFmCodeDataValid);
-        if (_field.ntsc.isFmCodeDataValid)
-            json.setValue({"fields", fieldNumber, "ntsc", "fmCodeData"}, _field.ntsc.fmCodeData);
-        else json.setValue({"fields", fieldNumber, "ntsc", "fmCodeData"}, -1);
-        json.setValue({"fields", fieldNumber, "ntsc", "fieldFlag"}, _field.ntsc.fieldFlag);
-        json.setValue({"fields", fieldNumber, "ntsc", "whiteFlag"}, _field.ntsc.whiteFlag);
+// This method sets the field NTSC metadata for a field
+void LdDecodeMetaData::updateFieldNtsc(LdDecodeMetaData::Ntsc _ntsc, qint32 sequentialFieldNumber)
+{
+    qint32 fieldNumber = sequentialFieldNumber - 1;
+
+    if (fieldNumber >= getNumberOfFields() + 1 || fieldNumber < 0) {
+        qCritical() << "LdDecodeMetaData::updateFieldNtsc(): Requested field number" << sequentialFieldNumber << "out of bounds!";
     }
 
-    // Write the drop-out records
-    if (_field.dropOuts.startx.size() != 0) {
-        // Populate the arrays with the drop out metadata
-        for (qint32 doCounter = 0; doCounter < _field.dropOuts.startx.size(); doCounter++) {
-            json.setValue({"fields", fieldNumber, "dropOuts", "startx", doCounter}, _field.dropOuts.startx[doCounter]);
-            json.setValue({"fields", fieldNumber, "dropOuts", "endx", doCounter}, _field.dropOuts.endx[doCounter]);
-            json.setValue({"fields", fieldNumber, "dropOuts", "fieldLine", doCounter}, _field.dropOuts.fieldLine[doCounter]);
-        }
+    if (_ntsc.inUse) {
+        json.setValue({"fields", fieldNumber, "ntsc", "isFmCodeDataValid"}, _ntsc.isFmCodeDataValid);
+        if (_ntsc.isFmCodeDataValid)
+            json.setValue({"fields", fieldNumber, "ntsc", "fmCodeData"}, _ntsc.fmCodeData);
+        else json.setValue({"fields", fieldNumber, "ntsc", "fmCodeData"}, -1);
+        json.setValue({"fields", fieldNumber, "ntsc", "fieldFlag"}, _ntsc.fieldFlag);
+        json.setValue({"fields", fieldNumber, "ntsc", "whiteFlag"}, _ntsc.whiteFlag);
     }
 }
 
+// This method sets the field dropout metadata for a field
+void LdDecodeMetaData::updateFieldDropOuts(LdDecodeMetaData::DropOuts _dropOuts, qint32 sequentialFieldNumber)
+{
+    qint32 fieldNumber = sequentialFieldNumber - 1;
+
+    if (fieldNumber >= getNumberOfFields() + 1 || fieldNumber < 0) {
+        qCritical() << "LdDecodeMetaData::updateFieldDropOuts(): Requested field number" << sequentialFieldNumber << "out of bounds!";
+    }
+
+    if (_dropOuts.startx.size() != 0) {
+        // Populate the arrays with the drop out metadata
+        for (qint32 doCounter = 0; doCounter < _dropOuts.startx.size(); doCounter++) {
+            json.setValue({"fields", fieldNumber, "dropOuts", "startx", doCounter}, _dropOuts.startx[doCounter]);
+            json.setValue({"fields", fieldNumber, "dropOuts", "endx", doCounter}, _dropOuts.endx[doCounter]);
+            json.setValue({"fields", fieldNumber, "dropOuts", "fieldLine", doCounter}, _dropOuts.fieldLine[doCounter]);
+        }
+    }
+}
 
 // This method appends a new field to the existing metadata
 void LdDecodeMetaData::appendField(LdDecodeMetaData::Field _field)

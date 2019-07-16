@@ -37,7 +37,7 @@ bool DecoderPool::process()
                 videoParameters.fieldHeight;
 
     // Open the source video
-    if (!sourceVideo.open(inputFilename, videoParameters.fieldWidth * videoParameters.fieldHeight)) {
+    if (!sourceVideo.open(inputFilename, videoParameters.fieldWidth * videoParameters.fieldHeight, videoParameters.fieldWidth)) {
         // Could not open source video file
         qCritical() << "Source TBC file could not be opened";
         return false;
@@ -122,8 +122,8 @@ bool DecoderPool::getInputField(qint32 &fieldNumber, QByteArray& fieldVideoData,
     // Show what we are about to process
     qDebug() << "DecoderPool::process(): Processing field number" << fieldNumber;
 
-    // Fetch the input data
-    fieldVideoData = sourceVideo.getVideoField(fieldNumber);
+    // Fetch the input data (we require only lines 10 to 18 from the field)
+    fieldVideoData = sourceVideo.getVideoField(fieldNumber, 10, 18);
     fieldMetadata = ldDecodeMetaData.getField(fieldNumber);
     videoParameters = ldDecodeMetaData.getVideoParameters();
 
