@@ -1461,7 +1461,7 @@ class FieldPAL(Field):
         for l in range(len(linelocs)):
             pilot = self.data['video']['demod'][int(linelocs[l]):int(linelocs[l]+self.usectoinpx(4.7))].copy()
             pilot -= self.data['video']['demod_05'][int(linelocs[l]):int(linelocs[l]+self.usectoinpx(4.7))]
-            pilot = np.flip(pilot)
+            pilot = np.flip(pilot, axis=0)
 
             pilots.append(pilot)
             offsets[l] = []
