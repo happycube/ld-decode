@@ -137,8 +137,9 @@ bool DecoderPool::setOutputField(qint32 fieldNumber, LdDecodeMetaData::Field fie
 {
     QMutexLocker locker(&outputMutex);
 
-    // Save the field data to the metadata
-    ldDecodeMetaData.updateField(fieldMetadata, fieldNumber);
+    // Save the field data to the metadata (only VBI and NTSC metadata is affected)
+    ldDecodeMetaData.updateFieldVbi(fieldMetadata.vbi, fieldNumber);
+    ldDecodeMetaData.updateFieldNtsc(fieldMetadata.ntsc, fieldNumber);
 
     return true;
 }
