@@ -1550,7 +1550,7 @@ class FieldPAL(Field):
 
         self.out_scale = np.double(0xd300 - 0x0100) / (100 - self.rf.SysParams['vsync_ire'])
 
-        self.downscale(final=True)
+        #self.downscale(final=True)
 
 # These classes extend Field to do PAL/NTSC specific TBC features.
 
@@ -1758,7 +1758,7 @@ class FieldNTSC(Field):
         
         self.linecount = 263 if self.isFirstField else 262
 
-        self.downscale(final=True)
+        #self.downscale(final=True)
 
 class CombNTSC:
     ''' *partial* NTSC comb filter class - only enough to do VITS calculations ATM '''
@@ -2044,6 +2044,8 @@ class LDdecode:
             self.fdoffset += offset
             
             if f is not None and f.valid:
+                picture, audio, efm = f.downscale(linesout = self.output_lines, final=True)
+
                 metrics = self.computeMetrics(f, None)
                 if 'blackToWhiteRFRatio' in metrics and MTFadjusted == False:
                     keep = 900 if self.isCLV else 30
@@ -2061,8 +2063,7 @@ class LDdecode:
                     self.fdoffset -= offset
 
         if f is not None and self.fname_out is not None:
-
-            picture, audio, efm = f.downscale(linesout = self.output_lines, final=True)
+            #picture, audio, efm = f.downscale(linesout = self.output_lines, final=True)
 
             # Only write a FirstField first
             if len(self.fieldinfo) == 0 and not f.isFirstField:
