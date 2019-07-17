@@ -1,5 +1,5 @@
 This applies to all code in this repository, except FDLS which is under
-the scipy license - Chad.
+the scipy license and the ld-decode-tools applications (under the tools directory) which are under the GPLv3 license (please see source-code header files for details).
 
                   GNU LESSER GENERAL PUBLIC LICENSE
                        Version 2.1, February 1999
