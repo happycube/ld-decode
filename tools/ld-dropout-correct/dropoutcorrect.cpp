@@ -23,112 +23,49 @@
 ************************************************************************/
 
 #include "dropoutcorrect.h"
+#include "correctorpool.h"
 
-DropOutCorrect::DropOutCorrect(QObject *parent) : QObject(parent)
+DropOutCorrect::DropOutCorrect(QAtomicInt& _abort, CorrectorPool& _correctorPool, QObject *parent)
+    : QThread(parent), abort(_abort), correctorPool(_correctorPool)
 {
-
 }
 
-bool DropOutCorrect::process(QString inputFileName, QString outputFileName, bool reverse, bool intraField, bool overCorrect)
+void DropOutCorrect::run()
 {
-    SourceVideo sourceVideo;
+    // Variables for getInputFrame
+    qint32 frameNumber;
+    qint32 firstFieldSeqNo;
+    qint32 secondFieldSeqNo;
+    QByteArray firstSourceField;
+    QByteArray secondSourceField;
+    LdDecodeMetaData::Field firstFieldMetadata;
+    LdDecodeMetaData::Field secondFieldMetadata;
+    bool reverse, intraField, overCorrect;
 
-    // Open the source video metadata
-    qInfo() << "Reading JSON metadata...";
-    if (!ldDecodeMetaData.read(inputFileName + ".json")) {
-        qInfo() << "Unable to open ld-decode metadata file";
-        return false;
-    }
+    qDebug() << "DropOutCorrect::process(): Processing loop ready to go";
 
-    // Reverse field order if required
-    if (reverse) {
-        qInfo() << "Expected field order is reversed to second field/first field";
-        ldDecodeMetaData.setIsFirstFieldFirst(false);
-    }
-
-    // Intrafield only correction if required
-    if (intraField) {
-        qInfo() << "Using intra-field correction only";
-    }
-
-    // Overcorrection if required
-    if (overCorrect) {
-        qInfo() << "Using over correction mode";
-    }
-
-    videoParameters = ldDecodeMetaData.getVideoParameters();
-
-    qDebug() << "DropOutDetector::process(): Input source is" << videoParameters.fieldWidth << "x" << videoParameters.fieldHeight << "filename" << inputFileName;
-
-    // Open the source video
-    qInfo() << "Opening source and target video files...";
-    if (!sourceVideo.open(inputFileName, videoParameters.fieldWidth * videoParameters.fieldHeight)) {
-        // Could not open source video file
-        qInfo() << "Unable to open ld-decode video file";
-        return false;
-    }
-
-    // Open the target video
-    QFile targetVideo(outputFileName);
-    if (!targetVideo.open(QIODevice::WriteOnly)) {
-            // Could not open target video file
-            qInfo() << "Unable to open output video file";
-            sourceVideo.close();
-            return false;
-    }
-
-    // Check TBC and JSON field numbers match
-    qInfo() << "Verifying metadata (number of available fields)...";
-    if (sourceVideo.getNumberOfAvailableFields() != ldDecodeMetaData.getNumberOfFields()) {
-        qInfo() << "Warning: TBC file contains" << sourceVideo.getNumberOfAvailableFields() <<
-                   "fields but the JSON indicates" << ldDecodeMetaData.getNumberOfFields() <<
-                   "fields - some fields will be ignored";
-    }
-
-    // If there is a leading field in the TBC which is out of field order, we need to copy it
-    // to ensure the JSON metadata files match up
-    qInfo() << "Verifying leading fields match...";
-    qint32 firstFieldNumber = ldDecodeMetaData.getFirstFieldNumber(1);
-    qint32 secondFieldNumber = ldDecodeMetaData.getSecondFieldNumber(1);
-
-    if (firstFieldNumber != 1 && secondFieldNumber != 1) {
-        QByteArray sourceField;
-        sourceField = sourceVideo.getVideoField(1);
-        if (!targetVideo.write(sourceField, sourceField.size())) {
-            // Could not write to target TBC file
-            qInfo() << "Writing first field to the output TBC file failed";
-            targetVideo.close();
-            sourceVideo.close();
-            return false;
+    while(!abort) {
+        // Get the next field to process from the input file
+        if (!correctorPool.getInputFrame(frameNumber, firstFieldSeqNo, firstSourceField, firstFieldMetadata,
+                                       secondFieldSeqNo, secondSourceField, secondFieldMetadata,
+                                       videoParameters, reverse, intraField, overCorrect)) {
+            // No more input fields -- exit
+            break;
         }
-    }
+        qDebug() << "DropOutCorrect::process(): Got frame number" << frameNumber;
 
-    // Process the frames
-    qInfo() << "Performing drop-out correction...";
-    totalTimer.start();
-    for (qint32 frameNumber = 1; frameNumber <= ldDecodeMetaData.getNumberOfFrames(); frameNumber++) {
-        // Get the field numbers for the frame
-        qint32 firstFieldSeqNo = ldDecodeMetaData.getFirstFieldNumber(frameNumber);
-        qint32 secondFieldSeqNo = ldDecodeMetaData.getSecondFieldNumber(frameNumber);
-
-        // Get the source fields' video data
-        QByteArray firstSourceField = sourceVideo.getVideoField(firstFieldSeqNo);
-        QByteArray secondSourceField = sourceVideo.getVideoField(secondFieldSeqNo);
+        // Set the output frame to the input frame's data
         QByteArray firstTargetFieldData = firstSourceField;
         QByteArray secondTargetFieldData = secondSourceField;
-
-        // Get the metadata for the fields
-        LdDecodeMetaData::Field firstFieldMetadata = ldDecodeMetaData.getField(firstFieldSeqNo);
-        LdDecodeMetaData::Field secondFieldMetadata = ldDecodeMetaData.getField(secondFieldSeqNo);
 
         // Check if the frame contains drop-outs
         if (firstFieldMetadata.dropOuts.startx.size() == 0 && secondFieldMetadata.dropOuts.startx.size() == 0) {
             // No correction required...
-            qDebug() << "DropOutDetector::process(): Skipping frame" << frameNumber << "[" <<
+            qDebug() << "DropOutDetector::process(): Skipping fields [" <<
                         firstFieldSeqNo << "/" << secondFieldSeqNo << "]";
         } else {
             // Perform correction...
-            qDebug() << "DropOutDetector::process(): Correcting frame" << frameNumber << "[" <<
+            qDebug() << "DropOutDetector::process(): Correcting fields [" <<
                         firstFieldSeqNo << "/" << secondFieldSeqNo << "] containing" <<
                         firstFieldMetadata.dropOuts.startx.size() + secondFieldMetadata.dropOuts.startx.size() <<
                         "drop-outs";
@@ -228,50 +165,9 @@ bool DropOutCorrect::process(QString inputFileName, QString outputFileName, bool
             }
         }
 
-        // Write the fields into the output TBC file in the correct order
-        bool writeFail = false;
-        if (firstFieldSeqNo < secondFieldSeqNo) {
-            // Save the first field and then second field to the output file
-            if (!targetVideo.write(firstTargetFieldData.data(), firstTargetFieldData.size())) writeFail = true;
-            if (!targetVideo.write(secondTargetFieldData.data(), secondTargetFieldData.size())) writeFail = true;
-        } else {
-            // Save the second field and then first field to the output file
-            if (!targetVideo.write(secondTargetFieldData.data(), secondTargetFieldData.size())) writeFail = true;
-            if (!targetVideo.write(firstTargetFieldData.data(), firstTargetFieldData.size())) writeFail = true;
-        }
-
-        // Was the write successful?
-        if (writeFail) {
-            // Could not write to target TBC file
-            qInfo() << "Writing fields to the output TBC file failed";
-            targetVideo.close();
-            sourceVideo.close();
-            return false;
-        }
-
-        // Show an update to the user
-        if (frameNumber % 200 == 0) {
-            qInfo() << "Processed frame" << frameNumber << "[" << firstFieldSeqNo << "/" << secondFieldSeqNo << "]";
-        }
+        // Return the processed fields
+        correctorPool.setOutputFrame(frameNumber, firstTargetFieldData, secondTargetFieldData, firstFieldSeqNo, secondFieldSeqNo);
     }
-
-    // Show the processing speed to the user
-    qreal totalSecs = (static_cast<qreal>(totalTimer.elapsed()) / 1000.0);
-    qInfo() << "Drop-out correction complete -" << ldDecodeMetaData.getNumberOfFrames() << "frames in" << totalSecs << "seconds (" <<
-               ldDecodeMetaData.getNumberOfFrames() / totalSecs << "FPS )";
-
-    qInfo() << "Creating JSON metadata file for corrected TBC";
-    ldDecodeMetaData.write(outputFileName + ".json");
-
-    qInfo() << "Processing complete";
-
-    // Close the source video
-    sourceVideo.close();
-
-    // Close the target video
-    targetVideo.close();
-
-    return true;
 }
 
 // Populate the dropouts vector

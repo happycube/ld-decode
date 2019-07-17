@@ -27,20 +27,23 @@
 
 #include <QObject>
 #include <QElapsedTimer>
+#include <QAtomicInt>
+#include <QThread>
+#include <QDebug>
 
 #include "sourcevideo.h"
 #include "lddecodemetadata.h"
 
-class DropOutCorrect : public QObject
+class CorrectorPool;
+
+class DropOutCorrect : public QThread
 {
     Q_OBJECT
 public:
-    explicit DropOutCorrect(QObject *parent = nullptr);
-    bool process(QString inputFileName, QString outputFileName, bool reverse, bool intraField, bool overCorrect);
+    explicit DropOutCorrect(QAtomicInt& _abort, CorrectorPool& _correctorPool, QObject *parent = nullptr);
 
-signals:
-
-public slots:
+protected:
+    void run() override;
 
 private:
     enum Location {
@@ -61,10 +64,12 @@ private:
         qint32 fieldLine;
     };
 
+    // Decoder pool
+    QAtomicInt& abort;
+    CorrectorPool& correctorPool;
+
     LdDecodeMetaData ldDecodeMetaData;
     LdDecodeMetaData::VideoParameters videoParameters;
-
-    QElapsedTimer totalTimer;
 
     QVector<DropOutLocation> populateDropoutsVector(LdDecodeMetaData::Field field, bool overCorrect);
     QVector<DropOutLocation> setDropOutLocations(QVector<DropOutLocation> dropOuts);

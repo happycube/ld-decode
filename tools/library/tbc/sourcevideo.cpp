@@ -117,8 +117,8 @@ QByteArray SourceVideo::getVideoField(qint32 fieldNumber)
     fieldNumber--;
 
     // Ensure source video is open and field is in range
-    if (!isSourceVideoOpen) qFatal("Application requested video field before opening TBC file - Fatal error");
-    if (fieldNumber < 0 || fieldNumber >= availableFields) qFatal("Application request non-existant TBC field");
+    if (!isSourceVideoOpen) qFatal("Application requested TBC field before opening TBC file - Fatal error");
+    if (fieldNumber < 0 || fieldNumber >= availableFields) qFatal("Application requested non-existant TBC field");
 
     // Check the cache
     if (fieldCache.contains(fieldNumber)) {
@@ -163,8 +163,8 @@ QByteArray SourceVideo::getVideoField(qint32 fieldNumber, qint32 startFieldLine,
     endFieldLine--;
 
     // Ensure source video is open and field is in range
-    if (!isSourceVideoOpen) qFatal("Application requested video field before opening TBC file - Fatal error");
-    if (fieldNumber < 0 || fieldNumber >= availableFields) qFatal("Application request non-existant TBC field");
+    if (!isSourceVideoOpen) qFatal("Application requested TBC field before opening TBC file - Fatal error");
+    if (fieldNumber < 0 || fieldNumber >= availableFields) qFatal("Application requested non-existant TBC field");
     if (fieldLineLength == -1) qFatal("Application did not set field line length when opening TBC file");
 
     // Verify the required range
