@@ -15,6 +15,65 @@ from lddutils import unwrap_hilbert, inrange
 
 import vhs_formats
 
+def toDB(val):
+    return 20 * np.log10(val)
+
+def fromDB(val):
+    return 10.0 ** (val / 20.0)
+
+
+"""Generate low shelving filter coeficcients (digital).
+   f0: The frequency where the gain in decibel is at half the maximum value.
+       Normalized to sampling frequency, i.e output will be filter from 0 to 2pi.
+   dbgain: gain at the top of the shelf in decibels
+   qfactor: determines shape of filter TODO: Document better
+   fs: sampling frequency
+
+   Based on: https://www.w3.org/2011/audio/audio-eq-cookbook.html
+"""
+def genLowShelf(f0, dbgain, qfactor, fs):
+    # Not sure if the implementation is quite correct here but it seems to work
+    a = 10 ** (dbgain / 40.0)
+    w0 = 2 * math.pi * (f0/fs)
+    alpha = math.sin(w0) / (2 * qfactor)
+
+    cosw0 = math.cos(w0)
+    asquared = math.sqrt(a)
+
+    b0 = a * ((a + 1) - (a - 1) * cosw0 + 2 * asquared * alpha)
+    b1 = 2 * a * ((a - 1) - (a + 1) * cosw0)
+    b2 = a * ((a + 1) - (a - 1) * cosw0 - 2 * asquared * alpha)
+    a0 = (a + 1) + (a - 1) * cosw0 + 2 * asquared * alpha
+    a1 = -2 * ((a - 1) + (a + 1) * cosw0)
+    a2 = (a + 1) + (a - 1) * cosw0 - 2 * asquared * alpha
+    return [b0, b1, b2], [a0, a1, a2]
+
+"""Generate high shelving filter coeficcients (digital).
+   f0: The frequency where the gain in decibel is at half the maximum value.
+       Normalized to sampling frequency, i.e output will be filter from 0 to 2pi.
+   dbgain: gain at the top of the shelf in decibels
+   qfactor: determines shape of filter TODO: Document better
+   fs: sampling frequency
+
+   TODO: Generate based on -3db
+   Based on: https://www.w3.org/2011/audio/audio-eq-cookbook.html
+"""
+def genHighShelf(f0, dbgain, qfactor, fs):
+    a = 10 ** (dbgain / 40.0)
+    w0 = 2 * math.pi * (f0/fs)
+    alpha = math.sin(w0) / (2 * qfactor)
+
+    cosw0 = math.cos(w0)
+    asquared = math.sqrt(a)
+
+    b0 = a * ((a + 1) + (a - 1) * cosw0 + 2 * asquared * alpha)
+    b1 = -2 * a * ((a - 1) + (a + 1) * cosw0)
+    b2 = a * ((a + 1) + (a - 1) * cosw0 - 2 * asquared * alpha)
+    a0 = (a + 1) - (a - 1) * cosw0 + 2 * asquared * alpha
+    a1 = 2 * ((a - 1) -(a + 1) * cosw0)
+    a2 = (a + 1) - (a - 1) * cosw0 - 2 * asquared * alpha
+    return [b0, b1, b2], [a0, a1, a2]
+
 class FieldPALVHS(ldd.FieldPAL):
     def __init__(self, *args, **kwargs):
         super(FieldPALVHS, self).__init__(*args, **kwargs)
@@ -97,20 +156,34 @@ class VHSRFDecode(ldd.RFDecode):
             print("Non-PAL Not implemented yet!")
             exit(1)
 
-                    # Lastly we re-create the filters with the new parameters.
+        # Lastly we re-create the filters with the new parameters.
         self.computevideofilters()
 
         cc = vhs_formats.VHS_COLOR_CARRIER_MHZ
 
-#        video_lpf = sps.butter(4,((vhs_formats.VHS_COLOR_CARRIER_MHZ + 0.05)/self.freq_half), 'low')
+        # Video (luma) de-emphasis
+        # Not sure about the math of this but, by using a high-shelf filter and then
+        # swapping b and a we get a low-shelf filter that goes from 0 to -14 dB rather
+        # than from 14 to 0 which the high shelf function gives.
+        da, db = genHighShelf(0.26, 14, 1/2, inputfreq)
+        w, h = sps.freqz(db, da)
+
+#        w, h = sps.freqz(b, a)
+
+        self.Filters['Fdeemp'] = lddu.filtfft((db, da), self.blocklen)
+        self.Filters['FVideo'] = self.Filters['Fvideo_lpf'] * self.Filters['Fdeemp']
+        SF = self.Filters
+        SF['FVideo05'] = SF['Fvideo_lpf'] * SF['Fdeemp'] * SF['F05']
+
+#        fig, ax1 = plt.subplots()
+        # in dB
+#        ax1.grid(True)
+#        ax1.set_xscale('log')
+        #FS = inputfreq * 1000000
+        #ax1.plot((FS * 0.5 / np.pi) * w, toDB(abs(h)), 'b')
+        #plt.show()
         video_lpf = sps.butter(4, [(cc-.15)/self.freq_half, (cc+.15)/self.freq_half], btype='bandpass')
         self.Filters['FVideoBurst'] = lddu.filtfft(video_lpf, self.blocklen)
-
-        #plt.ion()
-        #plt.show()
-        #self.fig, self.ax1 = plt.subplots()
-        #self.ax2 = self.ax1.twinx()
-
 
         # Override computedelays
         # It's normally used for dropout compensation, but the dropout compensation implementation
