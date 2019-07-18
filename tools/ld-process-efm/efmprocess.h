@@ -57,6 +57,7 @@ public:
     void setDebug(bool _debug_EfmToF3Frames, bool _debug_SyncF3Frames,
                               bool _debug_F3ToF2Frames, bool _debug_F2FramesToAudio, bool _debug_AudioSampleFramesToPcm);
     void setAudioErrorTreatment(AudioSampleFramesToPcm::ErrorTreatment _errorTreatment, AudioSampleFramesToPcm::ConcealType _concealType);
+    void setAudioOptions(bool _padInitialDiscTime);
     void reportStatistics();
     void startProcessing(QFile *_inputFilename, QFile *_audioOutputFilename, QFile *_dataOutputFilename);
     void stopProcessing();
@@ -96,6 +97,7 @@ private:
     F3ToF2Frames f3ToF2Frames;
     F2FramesToAudio f2FramesToAudio;
     AudioSampleFramesToPcm audioSampleFramesToPcm;
+    bool padInitialDiscTime;
 
     Statistics statistics;
 

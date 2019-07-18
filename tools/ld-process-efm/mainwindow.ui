@@ -110,7 +110,7 @@
          <item>
           <widget class="QTabWidget" name="tabWidget">
            <property name="currentIndex">
-            <number>0</number>
+            <number>4</number>
            </property>
            <widget class="QWidget" name="optionsTab">
             <attribute name="title">
@@ -175,7 +175,7 @@
              <property name="geometry">
               <rect>
                <x>10</x>
-               <y>210</y>
+               <y>280</y>
                <width>531</width>
                <height>161</height>
               </rect>
@@ -301,6 +301,32 @@
               </property>
               <property name="text">
                <string>Interpolated error prediction (experimental)</string>
+              </property>
+             </widget>
+            </widget>
+            <widget class="QGroupBox" name="groupBox_14">
+             <property name="geometry">
+              <rect>
+               <x>9</x>
+               <y>209</y>
+               <width>531</width>
+               <height>61</height>
+              </rect>
+             </property>
+             <property name="title">
+              <string>Options:</string>
+             </property>
+             <widget class="QCheckBox" name="audio_padSampleStart_checkBox">
+              <property name="geometry">
+               <rect>
+                <x>10</x>
+                <y>30</y>
+                <width>511</width>
+                <height>23</height>
+               </rect>
+              </property>
+              <property name="text">
+               <string>Pad start of audio from 00:00 to match initial disc time</string>
               </property>
              </widget>
             </widget>
@@ -1739,7 +1765,7 @@
                </rect>
               </property>
               <property name="text">
-               <string>Note: Corrupt samples and missing section samples indicate data loss.</string>
+               <string>Note: Corrupt/missing section samples may indicate data loss.</string>
               </property>
              </widget>
             </widget>

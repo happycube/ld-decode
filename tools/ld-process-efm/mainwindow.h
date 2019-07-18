@@ -73,7 +73,7 @@ private:
     Ui::MainWindow *ui;
 
     // Dialogues
-    AboutDialog aboutDialog;
+    AboutDialog *aboutDialog;
 
     // Class globals
     Configuration configuration;

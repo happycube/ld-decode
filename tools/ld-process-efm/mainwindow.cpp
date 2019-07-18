@@ -35,6 +35,9 @@ MainWindow::MainWindow(bool debugOn, bool _nonInteractive, QString _outputAudioF
     // Initialise the GUI
     ui->setupUi(this);
 
+    // Initialise dialogs
+    aboutDialog = new AboutDialog(this);
+
     // Add a status bar to show the state of the source video file
     ui->statusBar->addWidget(&efmStatus);
     efmStatus.setText(tr("No EFM file loaded"));
@@ -354,6 +357,8 @@ void MainWindow::resetDecoderOptions(void)
     ui->audio_conceal_radioButton->setChecked(true);
     ui->audio_silence_radioButton->setChecked(false);
     ui->audio_passthrough_radioButton->setChecked(false);
+
+    ui->audio_padSampleStart_checkBox->setChecked(false);
 }
 
 // GUI action slots ---------------------------------------------------------------------------------------------------
@@ -427,7 +432,7 @@ void MainWindow::on_actionExit_triggered()
 void MainWindow::on_actionAbout_ld_process_efm_triggered()
 {
     // Show the about dialogue
-    aboutDialog.show();
+    aboutDialog->show();
 }
 
 void MainWindow::on_decodePushButton_clicked()
@@ -485,6 +490,9 @@ void MainWindow::on_decodePushButton_clicked()
     if (ui->conceal_prediction_radioButton->isChecked()) concealType = AudioSampleFramesToPcm::ConcealType::prediction;
 
     efmProcess.setAudioErrorTreatment(errorTreatment, concealType);
+
+    // Set the audio options
+    efmProcess.setAudioOptions(ui->audio_padSampleStart_checkBox->isChecked());
 
     // Start the processing of the EFM
     efmProcess.startProcessing(&inputEfmFileHandle, &audioOutputTemporaryFileHandle,
