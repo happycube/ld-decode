@@ -59,11 +59,11 @@ void VbiDecoder::run()
         // Determine the 16-bit zero-crossing point
         qint32 zcPoint = videoParameters.white16bIre - videoParameters.black16bIre;
 
-        // Get the VBI data from the field lines
+        // Get the VBI data from the field lines (we only read field lines 10-18, so the real field line number is -9)
         qDebug() << "VbiDecoder::process(): Getting field-lines for field" << fieldNumber;
-        fieldMetadata.vbi.vbiData[0] = manchesterDecoder(getActiveVideoLine(&sourceFieldData, 16, videoParameters), zcPoint, videoParameters);
-        fieldMetadata.vbi.vbiData[1] = manchesterDecoder(getActiveVideoLine(&sourceFieldData, 17, videoParameters), zcPoint, videoParameters);
-        fieldMetadata.vbi.vbiData[2] = manchesterDecoder(getActiveVideoLine(&sourceFieldData, 18, videoParameters), zcPoint, videoParameters);
+        fieldMetadata.vbi.vbiData[0] = manchesterDecoder(getActiveVideoLine(&sourceFieldData, 16 - 9, videoParameters), zcPoint, videoParameters);
+        fieldMetadata.vbi.vbiData[1] = manchesterDecoder(getActiveVideoLine(&sourceFieldData, 17 - 9, videoParameters), zcPoint, videoParameters);
+        fieldMetadata.vbi.vbiData[2] = manchesterDecoder(getActiveVideoLine(&sourceFieldData, 18 - 9, videoParameters), zcPoint, videoParameters);
 
         // Show the VBI data as hexadecimal (for every 1000th field)
         if (fieldNumber % 1000 == 0) {
@@ -76,10 +76,10 @@ void VbiDecoder::run()
         // Process NTSC specific data if source type is NTSC
         if (!videoParameters.isSourcePal) {
             // Get the 40-bit FM coded data from the field lines
-            fmDecode = fmCode.fmDecoder(getActiveVideoLine(&sourceFieldData, 10, videoParameters), videoParameters);
+            fmDecode = fmCode.fmDecoder(getActiveVideoLine(&sourceFieldData, 10 - 9, videoParameters), videoParameters);
 
             // Get the white flag from the field lines
-            isWhiteFlag = whiteFlag.getWhiteFlag(getActiveVideoLine(&sourceFieldData, 11, videoParameters), videoParameters);
+            isWhiteFlag = whiteFlag.getWhiteFlag(getActiveVideoLine(&sourceFieldData, 11 - 9, videoParameters), videoParameters);
 
             // Update the metadata
             if (fmDecode.receiverClockSyncBits != 0) {

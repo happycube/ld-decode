@@ -33,10 +33,11 @@ F2FramesToAudio::F2FramesToAudio()
 // Public methods -----------------------------------------------------------------------------------------------------
 
 // Method to feed the audio processing state-machine with F2Frames
-QVector<AudioSampleFrame> F2FramesToAudio::process(QVector<F2Frame> f2FramesIn,
+QVector<AudioSampleFrame> F2FramesToAudio::process(QVector<F2Frame> f2FramesIn, bool _padInitialDiscTime,
                                     bool debugState)
 {
     debugOn = debugState;
+    padInitialDiscTime = _padInitialDiscTime;
 
     // Clear the output buffer
     audioSamplesOut.clear();
@@ -139,6 +140,38 @@ F2FramesToAudio::StateMachine F2FramesToAudio::sm_state_getInitialDiscTime()
     statistics.sampleStart = lastDiscTime;
     statistics.sampleCurrent = lastDiscTime;
     if (debugOn) qDebug() << "F2FramesToAudio::sm_state_getInitialDiscTime(): Initial disc time is" << lastDiscTime.getTimeAsQString();
+
+    // Should we pad based on the initial disc time seen?
+    if (padInitialDiscTime) {
+        // Set the startDiscTime to 00:00.00
+        TrackTime startDiscTime;
+        startDiscTime.setTime(0, 0, 0);
+
+        // Check that this section is one frame difference from the previous
+        // and pad the output sample data if sections are missing
+        qint32 sectionFrameGap = lastDiscTime.getDifference(startDiscTime.getTime());
+        if (sectionFrameGap > 1) {
+            if (debugOn) qDebug().noquote() << "F2FramesToAudio::sm_state_getInitialDiscTime(): Initial disc time gap - Adding" <<
+                                               sectionFrameGap - 1 << "section(s) of padding (" << (sectionFrameGap - 1) * 98 * 6 << "samples )";
+
+            // Pad the output sample file according to the gap
+            AudioSampleFrame audioSampleFrame;
+
+            // Loop per section
+            for (qint32 p = 0; p < sectionFrameGap - 1; p++) {
+                // 98 Audio frames per section
+                lastDiscTime.addFrames(1);
+
+                for (qint32 s = 0; s < 98; s++) {
+                    audioSamplesOut.append(AudioSampleFrame());
+                }
+
+                // Add filled section to statistics
+                statistics.missingSectionSamples += 98 * 6;
+                statistics.totalSamples += 98 * 6;
+            }
+        }
+    }
 
     // To make sure the current time is processed correctly we have to
     // set the last disc time to -1 frame

@@ -47,7 +47,7 @@ public:
         TrackTime sampleCurrent;
     };
 
-    QVector<AudioSampleFrame> process(QVector<F2Frame> f2FramesIn, bool debugState);
+    QVector<AudioSampleFrame> process(QVector<F2Frame> f2FramesIn, bool _padInitialDiscTime, bool debugState);
     Statistics getStatistics();
     void reportStatistics();
     void reset();
@@ -55,6 +55,7 @@ public:
 private:
     bool debugOn;
     Statistics statistics;
+    bool padInitialDiscTime;
 
     // State-machine variables
     enum StateMachine {

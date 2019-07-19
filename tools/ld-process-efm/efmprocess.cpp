@@ -35,6 +35,8 @@ EfmProcess::EfmProcess(QObject *parent) : QThread(parent)
     debug_F2FramesToAudio = false;
     debug_F3ToF2Frames = false;
     debug_SyncF3Frames = false;
+
+    padInitialDiscTime = false;
 }
 
 EfmProcess::~EfmProcess()
@@ -88,6 +90,13 @@ void EfmProcess::setAudioErrorTreatment(AudioSampleFramesToPcm::ErrorTreatment _
             break;
         }
     }
+}
+
+// Set the audio options
+void EfmProcess::setAudioOptions(bool _padInitialDiscTime)
+{
+    qDebug() << "EfmProcess::setAudioOptions(): Pad initial disc time is" << _padInitialDiscTime;
+    padInitialDiscTime = _padInitialDiscTime;
 }
 
 // Output the result of the decode to qInfo
@@ -188,7 +197,7 @@ void EfmProcess::run()
             QVector<F3Frame> initialF3Frames = efmToF3Frames.process(inputEfmBuffer, debug_EfmToF3Frames);
             QVector<F3Frame> syncedF3Frames = syncF3Frames.process(initialF3Frames, debug_SyncF3Frames);
             QVector<F2Frame> f2Frames = f3ToF2Frames.process(syncedF3Frames, debug_F3ToF2Frames);
-            QVector<AudioSampleFrame> audioSampleFrames = f2FramesToAudio.process(f2Frames, debug_F2FramesToAudio);
+            QVector<AudioSampleFrame> audioSampleFrames = f2FramesToAudio.process(f2Frames, padInitialDiscTime, debug_F2FramesToAudio);
             audioOutputFileHandle->write(audioSampleFramesToPcm.process(audioSampleFrames, errorTreatment, concealType, debug_AudioSampleFramesToPcm));
 
             // Report progress to parent

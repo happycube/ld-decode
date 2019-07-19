@@ -187,9 +187,21 @@ public:
     PcmAudioParameters getPcmAudioParameters();
     void setPcmAudioParameters(PcmAudioParameters _pcmAudioParam);
 
+    // Get field metadata
     Field getField(qint32 sequentialFieldNumber);
-    void appendField(Field _field);
+    VitsMetrics getFieldVitsMetrics(qint32 sequentialFieldNumber);
+    Vbi getFieldVbi(qint32 sequentialFieldNumber);
+    Ntsc getFieldNtsc(qint32 sequentialFieldNumber);
+    DropOuts getFieldDropOuts(qint32 sequentialFieldNumber);
+
+    // Set field metadata
     void updateField(Field _field, qint32 sequentialFieldNumber);
+    void updateFieldVitsMetrics(LdDecodeMetaData::VitsMetrics _vitsMetrics, qint32 sequentialFieldNumber);
+    void updateFieldVbi(LdDecodeMetaData::Vbi _vbi, qint32 sequentialFieldNumber);
+    void updateFieldNtsc(LdDecodeMetaData::Ntsc _ntsc, qint32 sequentialFieldNumber);
+    void updateFieldDropOuts(LdDecodeMetaData::DropOuts _dropOuts, qint32 sequentialFieldNumber);
+
+    void appendField(Field _field);
 
     qint32 getNumberOfFields();
     qint32 getNumberOfFrames();

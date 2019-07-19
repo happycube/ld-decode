@@ -31,6 +31,7 @@ SourceVideo::SourceVideo(QObject *parent) : QObject(parent)
     isSourceVideoOpen = false;
     availableFields = -1;
     fieldByteLength = -1;
+    fieldLineLength = -1;
 
     // Set up the cache
     fieldCache.setMaxCost(100);
@@ -44,9 +45,12 @@ SourceVideo::~SourceVideo()
 // Source Video file manipulation methods -----------------------------------------------------------------------------
 
 // Open an input video data file (returns true on success)
-bool SourceVideo::open(QString filename, qint32 _fieldLength)
+bool SourceVideo::open(QString filename, qint32 _fieldLength, qint32 _fieldLineLength)
 {
     fieldByteLength = _fieldLength * 2;
+    if (_fieldLineLength != -1) {
+        fieldLineLength = _fieldLineLength * 2;
+    } else fieldLineLength = -1;
     qDebug() << "SourceVideo::open(): Called with field byte length =" << fieldByteLength;
 
     if (isSourceVideoOpen) {
@@ -105,17 +109,16 @@ qint32 SourceVideo::getNumberOfAvailableFields()
 
 // Frame data retrieval methods ---------------------------------------------------------------------------------------
 
-// Method to retrieve a single video frame (with pre-caching)
-// When calling from interactive applications, setting noPreCache to true
-// will speed up random-accesses (as opposed to sequential field reads)
+// Method to retrieve a single video frame (with caching to prevent multiple
+// file reads if application requests the same line multiple times)
 QByteArray SourceVideo::getVideoField(qint32 fieldNumber)
 {
     // Adjust the field number to index from zero
     fieldNumber--;
 
     // Ensure source video is open and field is in range
-    if (!isSourceVideoOpen) qFatal("Application requested video field before opening TBC file - Fatal error");
-    if (fieldNumber < 0 || fieldNumber >= availableFields) qFatal("Application request non-existant TBC field");
+    if (!isSourceVideoOpen) qFatal("Application requested TBC field before opening TBC file - Fatal error");
+    if (fieldNumber < 0 || fieldNumber >= availableFields) qFatal("Application requested non-existant TBC field");
 
     // Check the cache
     if (fieldCache.contains(fieldNumber)) {
@@ -148,4 +151,65 @@ QByteArray SourceVideo::getVideoField(qint32 fieldNumber)
     // Return the originally request field
     return *fieldCache.object(fieldNumber);
 }
+
+// Method to retrieve a range of field lines from a single video frame
+QByteArray SourceVideo::getVideoField(qint32 fieldNumber, qint32 startFieldLine, qint32 endFieldLine)
+{
+    // Adjust the field number to index from zero
+    fieldNumber--;
+
+    // Adjust the field line range to index from zero
+    startFieldLine--;
+    endFieldLine--;
+
+    // Ensure source video is open and field is in range
+    if (!isSourceVideoOpen) qFatal("Application requested TBC field before opening TBC file - Fatal error");
+    if (fieldNumber < 0 || fieldNumber >= availableFields) qFatal("Application requested non-existant TBC field");
+    if (fieldLineLength == -1) qFatal("Application did not set field line length when opening TBC file");
+
+    // Verify the required range
+    if (startFieldLine < 0) qFatal("Application requested out-of-bounds field line");
+
+    // Calculate the position of the require field line data
+    qint64 requiredStartPosition = static_cast<qint64>(fieldByteLength) * static_cast<qint64>(fieldNumber);
+    requiredStartPosition += static_cast<qint64>(fieldLineLength) * static_cast<qint64>(startFieldLine);
+    qint64 requiredReadLength = static_cast<qint64>(endFieldLine - startFieldLine + 1) * static_cast<qint64>(fieldLineLength);
+
+    if (requiredStartPosition + requiredReadLength > (static_cast<qint64>(fieldByteLength) * availableFields))
+        qFatal("Application request field line range that exceeds the boundaries of the input TBC file");
+
+    // Resize the output buffer
+    outputFieldLineData.resize(static_cast<qint32>(requiredReadLength));
+
+    // Seek to the correct file position for the requested field (if not already there)
+    if (inputFile.pos() != requiredStartPosition) {
+        if (!inputFile.seek(requiredStartPosition)) qFatal("Could not seek to required field position in input TBC file");
+    }
+
+    // Read the frame from disk into the cache
+    qint64 totalReceivedBytes = 0;
+    qint64 receivedBytes = 0;
+    do {
+        receivedBytes = inputFile.read(outputFieldLineData.data(), requiredReadLength - receivedBytes);
+        totalReceivedBytes += receivedBytes;
+    } while (receivedBytes > 0 && totalReceivedBytes < requiredReadLength);
+
+    // Verify read was ok
+    if (receivedBytes != requiredReadLength) qFatal("Could not read input fields from file even though they were available");
+
+    // Return the data
+    return outputFieldLineData;
+}
+
+
+
+
+
+
+
+
+
+
+
+
 
