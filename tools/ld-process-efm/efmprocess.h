@@ -55,9 +55,9 @@ public:
     };
 
     void setDebug(bool _debug_EfmToF3Frames, bool _debug_SyncF3Frames,
-                              bool _debug_F3ToF2Frames, bool _debug_F2FramesToAudio, bool _debug_AudioSampleFramesToPcm);
+                              bool _debug_F3ToF2Frames, bool _debug_F2FramesToAudio, bool _debug_AudioSampleFramesToPcm, bool _debug_f2ToF1Frame, bool _debug_f1FrameToDataSector);
     void setAudioErrorTreatment(AudioSampleFramesToPcm::ErrorTreatment _errorTreatment, AudioSampleFramesToPcm::ConcealType _concealType);
-    void setAudioOptions(bool _padInitialDiscTime);
+    void setDecoderOptions(bool _padInitialDiscTime, bool _decodeAsData);
     void reportStatistics();
     void startProcessing(QFile *_inputFilename, QFile *_audioOutputFilename, QFile *_dataOutputFilename);
     void stopProcessing();
@@ -86,6 +86,8 @@ private:
     bool debug_F3ToF2Frames;
     bool debug_SyncF3Frames;
     bool debug_AudioSampleFramesToPcm;
+    bool debug_f2ToF1Frame;
+    bool debug_f1FrameToDataSector;
 
     // Audio options
     AudioSampleFramesToPcm::ErrorTreatment errorTreatment;
@@ -98,6 +100,7 @@ private:
     F2FramesToAudio f2FramesToAudio;
     AudioSampleFramesToPcm audioSampleFramesToPcm;
     bool padInitialDiscTime;
+    bool decodeAsData;
 
     Statistics statistics;
 
