@@ -1,4 +1,4 @@
-# NOTE:  These are not reduced from ld-decode notebook
+# A collection of helper functions used in dev notebooks and lddecode_core.py
 
 from base64 import b64encode
 from collections import namedtuple
@@ -547,3 +547,5 @@ def LRUupdate(l, k):
 
     l.insert(0, k)
         
+if __name__ == "__main__":
+    print("Nothing to see here, move along ;)")

@@ -160,7 +160,7 @@ RFParams_PAL = {
 }
 
 class RFDecode:
-    def __init__(self, inputfreq = 40, system = 'NTSC', blocklen_ = 16384, decode_digital_audio = False, decode_analog_audio = True, have_analog_audio = True, mtf_mult = 1.0, mtf_offset = 0):
+    def __init__(self, inputfreq = 40, system = 'NTSC', blocklen_ = 32768, decode_digital_audio = False, decode_analog_audio = True, have_analog_audio = True, mtf_mult = 1.0, mtf_offset = 0):
         self.blocklen = blocklen_
         self.blockcut = 1024 # ???
         self.system = system
@@ -421,10 +421,15 @@ class RFDecode:
                 replacelen = 16*self.Filters['audio_fdiv2']
                 raw[max(0, l - replacelen):min(l + replacelen, len(raw))] = 0# raw[replacement_idx]
 
-            fft_in = np.fft.fft(raw)
-            fft_out = self.audio_fdslice2(fft_in) * self.Filters['audio_lpf2'] * self.Filters['audio_deemp2']
+            fft_in_real = self.audio_fdslice2(np.fft.fft(raw))
+            if len(fft_in_real) < len(self.Filters['audio_lpf2']):
+                fft_in = np.zeros_like(self.Filters['audio_lpf2'])
+                fft_in[:len(fft_in_real)] = fft_in_real
+            else:
+                fft_in = fft_in_real
+            fft_out = fft_in * self.Filters['audio_lpf2'] * self.Filters['audio_deemp2']
 
-            outputs.append((np.fft.ifft(fft_out).real / self.Filters['audio_fdiv2']) + self.SysParams[c[1]])
+            outputs.append((np.fft.ifft(fft_out).real[:len(fft_in_real)] / self.Filters['audio_fdiv2']) + self.SysParams[c[1]])
 
         return np.rec.array(outputs, names=['audio_left', 'audio_right'])
 
@@ -434,6 +439,10 @@ class RFDecode:
 
         # copy the first block in it's entirety, to keep audio and video samples aligned
         tmp = self.runfilter_audio_phase2(field_audio, 0)
+
+        if len(tmp) >= len(output_audio2):
+            return tmp[:len(output_audio2)]
+
         output_audio2[:tmp.shape[0]] = tmp
 
         end = field_audio.shape[0] #// filterset['audio_fdiv2']
@@ -598,6 +607,8 @@ class DemodCache:
         
         if rv['audio'] is not None:
             rv['audio'] = self.rf.audio_phase2(rv['audio'])
+
+        rv['startloc'] = (begin // self.blocksize) * self.blocksize
 
         return rv
 
@@ -1911,7 +1922,7 @@ class LDdecode:
             self.clvfps = 25
         else: # NTSC
             self.FieldClass = FieldNTSC
-            self.readlen = ((self.rf.linelen * 350) // 16384) * 16384
+            self.readlen = self.rf.linelen * 350
             self.clvfps = 30
 
         self.output_lines = (self.rf.SysParams['frame_lines'] // 2) + 1
@@ -2020,8 +2031,9 @@ class LDdecode:
         else:
             self.audio_offset = f.audio_next_offset
             #logging.info(f.isFirstField, f.cavFrame)
-            
-        return f, f.nextfieldoffset
+
+        # need to adjust for demodcache's block-based read here    
+        return f, f.nextfieldoffset - (self.readloc - self.rawdecode['startloc'])
 
     def readfield(self):
         # pretty much a retry-ing wrapper around decodefield with MTF checking
