@@ -1,6 +1,6 @@
 /************************************************************************
 
-    audiosampleframe.h
+    audio.h
 
     ld-process-efm - EFM data decoder
     Copyright (C) 2019 Simon Inns
@@ -22,66 +22,39 @@
 
 ************************************************************************/
 
-#ifndef AUDIOSAMPLEFRAME_H
-#define AUDIOSAMPLEFRAME_H
+#ifndef AUDIO_H
+#define AUDIO_H
 
 #include <QCoreApplication>
 #include <QDebug>
 
-#include "Datatypes/tracktime.h"
-#include "Datatypes/f2frame.h"
-
-class AudioSampleFrame
+class Audio
 {
 public:
-    enum SampleType {
-        audio,
-        silence,
-        corrupt
-    };
-
     struct SampleValues {
         qint16 leftSamples[6];
         qint16 rightSamples[6];
     };
 
-    struct Metadata {
-        TrackTime discTime;
-        TrackTime trackTime;
-        qint32 trackNumber;
-        SampleType sampleType;
-    };
-
     struct Sample {
         uchar sampleFrame[24];
         SampleValues sampleValues;
-        Metadata metadata;
     };
 
-    AudioSampleFrame();
-    AudioSampleFrame(F2Frame f2Frame);
+    Audio();
+    Audio(uchar *_sampleFrame);
 
-    void setDataFromF2Frame(F2Frame f2Frame);
-
-    Metadata getMetadata();
-    void setMetadata(Metadata _metadata);
-
-    void setSampleFrame(uchar* _sampleFrame);
     uchar* getSampleFrame();
-
-    void setSampleValues(AudioSampleFrame::SampleValues _sampleValues);
+    void setSampleValues(Audio::SampleValues _sampleValues);
     SampleValues getSampleValues();
-
     void setSampleToSilence();
 
 private:
     Sample sample;
-
-    bool isEncoderRunning;
 
     void createSampleValuesFromFrame();
     void createSampleFrameFromValues();
     void silenceSample();
 };
 
-#endif // AUDIOSAMPLEFRAME_H
+#endif // AUDIO_H

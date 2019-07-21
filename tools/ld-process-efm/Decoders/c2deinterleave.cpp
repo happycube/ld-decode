@@ -30,27 +30,27 @@ C2Deinterleave::C2Deinterleave()
 }
 
 // Method to reset and flush all buffers
-void C2Deinterleave::reset(void)
+void C2Deinterleave::reset()
 {
     flush();
     resetStatistics();
 }
 
 // Methods to handle statistics
-void C2Deinterleave::resetStatistics(void)
+void C2Deinterleave::resetStatistics()
 {
     statistics.validDeinterleavedC2s = 0;
     statistics.invalidDeinterleavedC2s = 0;
     statistics.c2flushed = 0;
 }
 
-C2Deinterleave::Statistics C2Deinterleave::getStatistics(void)
+C2Deinterleave::Statistics C2Deinterleave::getStatistics()
 {
     return statistics;
 }
 
 // Method to write statistics information to qInfo
-void C2Deinterleave::reportStatistics(void)
+void C2Deinterleave::reportStatistics()
 {
     qInfo() << "";
     qInfo() << "F3 to F2 frame C2 Deinterleave:";
@@ -81,21 +81,21 @@ void C2Deinterleave::pushC2(uchar *dataSymbols, uchar *errorSymbols)
 }
 
 // Return the deinterleaved C2 data symbols if available
-uchar* C2Deinterleave::getDataSymbols(void)
+uchar* C2Deinterleave::getDataSymbols()
 {
     if (c2DelayBuffer.size() >= 3) return outputC2Data;
     return nullptr;
 }
 
 // Return the deinterleaved C2 error symbols if available
-uchar* C2Deinterleave::getErrorSymbols(void)
+uchar* C2Deinterleave::getErrorSymbols()
 {
     if (c2DelayBuffer.size() >= 3) return outputC2Errors;
     return nullptr;
 }
 
 // Method to flush the C1 buffers
-void C2Deinterleave::flush(void)
+void C2Deinterleave::flush()
 {
     c2DelayBuffer.clear();
 
@@ -108,7 +108,7 @@ void C2Deinterleave::flush(void)
 }
 
 // Deinterleave C2 data as per IEC60908 Figure 13 - CIRC decoder (de-interleaving sequence)
-void C2Deinterleave::deinterleave(void)
+void C2Deinterleave::deinterleave()
 {
     // Element 2 is the current C2, element 0 is 2 line delays behind
     qint32 curr = 2; // C2 0-frame delay

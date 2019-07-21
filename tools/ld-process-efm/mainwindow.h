@@ -39,7 +39,7 @@
 #include "efmprocess.h"
 #include "aboutdialog.h"
 
-#include "Decoders/f2framestoaudio.h"
+#include "Decoders/f2tof1frames.h"
 
 namespace Ui {
 class MainWindow;
@@ -59,7 +59,7 @@ public:
 private slots:
     void processingCompleteSignalHandler(bool audioAvailable, bool dataAvailable);
     void percentProcessedSignalHandler(qint32 percent);
-    void updateStatistics(void);
+    void updateStatistics();
 
     void on_actionOpen_EFM_File_triggered();
     void on_actionExit_triggered();
@@ -89,13 +89,13 @@ private:
     QString outputAudioFilename;
 
     // Method prototypes
-    void guiNoEfmFileLoaded(void);
-    void guiEfmFileLoaded(void);
-    void guiEfmProcessingStop(void);
-    void guiEfmProcessingStart(void);
+    void guiNoEfmFileLoaded();
+    void guiEfmFileLoaded();
+    void guiEfmProcessingStop();
+    void guiEfmProcessingStart();
 
-    void resetStatistics(void);
-    void resetDecoderOptions(void);
+    void resetStatistics();
+    void resetDecoderOptions();
 };
 
 #endif // MAINWINDOW_H

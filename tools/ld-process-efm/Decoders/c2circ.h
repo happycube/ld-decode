@@ -48,15 +48,15 @@ public:
         qint32 c2flushed;
     };
 
-    void reset(void);
-    void resetStatistics(void);
-    Statistics getStatistics(void);
-    void reportStatistics(void);
+    void reset();
+    void resetStatistics();
+    Statistics getStatistics();
+    void reportStatistics();
     void pushC1(uchar *dataSymbols, uchar *errorSymbols);
-    uchar* getDataSymbols(void);
-    uchar* getErrorSymbols(void);
-    bool getDataValid(void);
-    void flush(void);
+    uchar* getDataSymbols();
+    uchar* getErrorSymbols();
+    bool getDataValid();
+    void flush();
 
 private:
     struct C1Element {
@@ -73,8 +73,8 @@ private:
 
     Statistics statistics;
 
-    void interleave(void);
-    void errorCorrect(void);
+    void interleave();
+    void errorCorrect();
 };
 
 #endif // C2CIRC_H

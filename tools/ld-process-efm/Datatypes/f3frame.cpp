@@ -176,31 +176,31 @@ qint64 F3Frame::getNumberOfInvalidEfmSymbols()
 }
 
 // This method returns the 32 data symbols for the F3 Frame
-uchar *F3Frame::getDataSymbols(void)
+uchar *F3Frame::getDataSymbols()
 {
     return dataSymbols;
 }
 
 // This method returns the 32 error symbols for the F3 Frame
-uchar *F3Frame::getErrorSymbols(void)
+uchar *F3Frame::getErrorSymbols()
 {
     return errorSymbols;
 }
 
 // This method returns the subcode symbol for the F3 frame
-uchar F3Frame::getSubcodeSymbol(void)
+uchar F3Frame::getSubcodeSymbol()
 {
     return subcodeSymbol;
 }
 
 // This method returns true if the subcode symbol is a SYNC0 pattern
-bool F3Frame::isSubcodeSync0(void)
+bool F3Frame::isSubcodeSync0()
 {
     return isSync0;
 }
 
 // This method returns true if the subcode symbol is a SYNC1 pattern
-bool F3Frame::isSubcodeSync1(void)
+bool F3Frame::isSubcodeSync1()
 {
     return isSync1;
 }

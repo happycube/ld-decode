@@ -39,31 +39,22 @@ void F2Frame::setData(uchar* dataParam, uchar* erasuresParam)
 {
     errorState = false;
 
-    // Add the F2 frame data to the F2 data buffer and swap the byte
-    // order (see ECMA-130 clause 16)
-    for (qint32 j = 0; j < 24; j += 2) {
-        dataSymbols[j] = dataParam[j+1];
-        dataSymbols[j+1] = dataParam[j];
-
+    // Add the F2 frame data to the F2 data buffer and swap the byte    
+    for (qint32 j = 0; j < 24; j++) {
+        dataSymbols[j] = dataParam[j];
         if (erasuresParam[j] != static_cast<uchar>(0)) errorState = true;
-        if (erasuresParam[j+1] != static_cast<uchar>(0)) errorState = true;
     }
-
-    // Note: According the ECMA-130 audio data doesn't require byte swapping
-    // however, since the required PCM sample format is little-endian (on a PC)
-    // it is required.  Therefore we do it to the F2 frame data to save having
-    // to perform the swapping twice (in the audio and data processing)
 }
 
 // This method returns the 24 data symbols for the F2 Frame
-uchar *F2Frame::getDataSymbols(void)
+uchar *F2Frame::getDataSymbols()
 {
     return dataSymbols;
 }
 
 // This method returns true if the data in the F2 Frame
 // is marked with erasures (i.e. it's corrupt)
-bool F2Frame::isFrameCorrupt(void)
+bool F2Frame::isFrameCorrupt()
 {
     return errorState;
 }
@@ -80,12 +71,12 @@ void F2Frame::setTrackTime(TrackTime _trackTime)
     trackTime = _trackTime;
 }
 
-TrackTime F2Frame::getDiscTime(void)
+TrackTime F2Frame::getDiscTime()
 {
     return discTime;
 }
 
-TrackTime F2Frame::getTrackTime(void)
+TrackTime F2Frame::getTrackTime()
 {
     return trackTime;
 }
@@ -95,7 +86,7 @@ void F2Frame::setTrackNumber(qint32 _trackNumber)
     trackNumber = _trackNumber;
 }
 
-qint32 F2Frame::getTrackNumber(void)
+qint32 F2Frame::getTrackNumber()
 {
     return trackNumber;
 }
@@ -105,7 +96,7 @@ void F2Frame::setIsEncoderRunning(bool _isEncoderRunning)
     isEncoderRunning = _isEncoderRunning;
 }
 
-bool F2Frame::getIsEncoderRunning(void)
+bool F2Frame::getIsEncoderRunning()
 {
     return isEncoderRunning;
 }

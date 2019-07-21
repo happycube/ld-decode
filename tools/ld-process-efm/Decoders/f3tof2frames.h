@@ -58,15 +58,15 @@ public:
     };
 
     QVector<F2Frame> process(QVector<F3Frame> f3FramesIn, bool debugState);
-    Statistics getStatistics(void);
-    void reportStatistics(void);
-    void reset(void);
+    Statistics getStatistics();
+    void reportStatistics();
+    void reset();
 
 private:
     bool debugOn;
     Statistics statistics;
 
-    void clearStatistics(void);
+    void clearStatistics();
 
     C1Circ c1Circ;
     C2Circ c2Circ;

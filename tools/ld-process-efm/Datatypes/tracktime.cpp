@@ -88,7 +88,7 @@ qint32 TrackTime::getDifference(TrackTime::Time timeToCompare)
 }
 
 // Method to get the track time
-TrackTime::Time TrackTime::getTime(void)
+TrackTime::Time TrackTime::getTime()
 {
     Time time;
 
@@ -103,7 +103,7 @@ TrackTime::Time TrackTime::getTime(void)
 }
 
 // Method to return the track time as a string
-QString TrackTime::getTimeAsQString(void)
+QString TrackTime::getTimeAsQString()
 {
     QString timeString;
 
@@ -115,7 +115,7 @@ QString TrackTime::getTimeAsQString(void)
 }
 
 // Method to return track time in number of frames
-qint32 TrackTime::getFrames(void)
+qint32 TrackTime::getFrames()
 {
     return trackFrames;
 }

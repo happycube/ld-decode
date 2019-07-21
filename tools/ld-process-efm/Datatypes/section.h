@@ -68,8 +68,8 @@ public:
     };
 
     bool setData(uchar* dataIn);
-    qint32 getQMode(void);
-    QMetadata getQMetadata(void);
+    qint32 getQMode();
+    QMetadata getQMetadata();
 
 private:
     // Q channel specific data
@@ -86,12 +86,12 @@ private:
     uchar vSubcode[12];
     uchar wSubcode[12];
 
-    bool verifyQ(void);
+    bool verifyQ();
     quint16 crc16(char *addr, quint16 num);
-    qint32 decodeQAddress(void);
-    void decodeQControl(void);
-    void decodeQDataMode1And4(void);
-    void decodeQDataMode2(void);
+    qint32 decodeQAddress();
+    void decodeQControl();
+    void decodeQDataMode1And4();
+    void decodeQDataMode2();
     qint32 bcdToInteger(uchar bcd);
 };
 

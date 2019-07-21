@@ -25,17 +25,20 @@ DEFINES += QT_DEPRECATED_WARNINGS
 CONFIG += c++11
 
 SOURCES += \
-        Datatypes/audiosampleframe.cpp \
+        Datatypes/audio.cpp \
+        Datatypes/f1frame.cpp \
         Datatypes/f2frame.cpp \
         Datatypes/f3frame.cpp \
         Datatypes/section.cpp \
+        Datatypes/sector.cpp \
         Datatypes/tracktime.cpp \
-        Decoders/audiosampleframestopcm.cpp \
         Decoders/c1circ.cpp \
         Decoders/c2circ.cpp \
         Decoders/c2deinterleave.cpp \
         Decoders/efmtof3frames.cpp \
-        Decoders/f2framestoaudio.cpp \
+        Decoders/f1toaudio.cpp \
+        Decoders/f1todata.cpp \
+        Decoders/f2tof1frames.cpp \
         Decoders/f3tof2frames.cpp \
         Decoders/syncf3frames.cpp \
         aboutdialog.cpp \
@@ -46,17 +49,20 @@ SOURCES += \
         mainwindow.cpp
 
 HEADERS += \
-        Datatypes/audiosampleframe.h \
+        Datatypes/audio.h \
+        Datatypes/f1frame.h \
         Datatypes/f2frame.h \
         Datatypes/f3frame.h \
         Datatypes/section.h \
+        Datatypes/sector.h \
         Datatypes/tracktime.h \
-        Decoders/audiosampleframestopcm.h \
         Decoders/c1circ.h \
         Decoders/c2circ.h \
         Decoders/c2deinterleave.h \
         Decoders/efmtof3frames.h \
-        Decoders/f2framestoaudio.h \
+        Decoders/f1toaudio.h \
+        Decoders/f1todata.h \
+        Decoders/f2tof1frames.h \
         Decoders/f3tof2frames.h \
         Decoders/syncf3frames.h \
         aboutdialog.h \

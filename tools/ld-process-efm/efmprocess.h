@@ -36,8 +36,9 @@
 #include "Decoders/efmtof3frames.h"
 #include "Decoders/syncf3frames.h"
 #include "Decoders/f3tof2frames.h"
-#include "Decoders/f2framestoaudio.h"
-#include "Decoders/audiosampleframestopcm.h"
+#include "Decoders/f2tof1frames.h"
+#include "Decoders/f1toaudio.h"
+#include "Decoders/f1todata.h"
 
 class EfmProcess : public QThread
 {
@@ -51,12 +52,16 @@ public:
         EfmToF3Frames::Statistics efmToF3Frames;
         SyncF3Frames::Statistics syncF3Frames;
         F3ToF2Frames::Statistics f3ToF2Frames;
-        F2FramesToAudio::Statistics f2FramesToAudio;
+        F2ToF1Frames::Statistics f2ToF1Frames;
+        F1ToAudio::Statistics f1ToAudio;
+        //F1ToData::Statistics f1ToData;
     };
 
-    void setDebug(bool _debug_EfmToF3Frames, bool _debug_SyncF3Frames,
-                              bool _debug_F3ToF2Frames, bool _debug_F2FramesToAudio, bool _debug_AudioSampleFramesToPcm, bool _debug_f2ToF1Frame, bool _debug_f1FrameToDataSector);
-    void setAudioErrorTreatment(AudioSampleFramesToPcm::ErrorTreatment _errorTreatment, AudioSampleFramesToPcm::ConcealType _concealType);
+    void setDebug(bool _debug_efmToF3Frames, bool _debug_syncF3Frames,
+                  bool _debug_f3ToF2Frames, bool _debug_f2ToF1Frames,
+                  bool _debug_f1ToAudio, bool _debug_f1ToData);
+    void setAudioErrorTreatment(F1ToAudio::ErrorTreatment _errorTreatment,
+                                            F1ToAudio::ConcealType _concealType);
     void setDecoderOptions(bool _padInitialDiscTime, bool _decodeAsData);
     void reportStatistics();
     void startProcessing(QFile *_inputFilename, QFile *_audioOutputFilename, QFile *_dataOutputFilename);
@@ -81,24 +86,24 @@ private:
     bool abort;
 
     // Debug
-    bool debug_EfmToF3Frames;
-    bool debug_F2FramesToAudio;
-    bool debug_F3ToF2Frames;
-    bool debug_SyncF3Frames;
-    bool debug_AudioSampleFramesToPcm;
+    bool debug_efmToF3Frames;
+    bool debug_f3ToF2Frames;
+    bool debug_syncF3Frames;
     bool debug_f2ToF1Frame;
-    bool debug_f1FrameToDataSector;
+    bool debug_f1ToAudio;
+    bool debug_f1ToData;
 
     // Audio options
-    AudioSampleFramesToPcm::ErrorTreatment errorTreatment;
-    AudioSampleFramesToPcm::ConcealType concealType;
+    F1ToAudio::ErrorTreatment errorTreatment;
+    F1ToAudio::ConcealType concealType;
 
     // Class globals
     EfmToF3Frames efmToF3Frames;
     SyncF3Frames syncF3Frames;
     F3ToF2Frames f3ToF2Frames;
-    F2FramesToAudio f2FramesToAudio;
-    AudioSampleFramesToPcm audioSampleFramesToPcm;
+    F2ToF1Frames f2ToF1Frames;
+    F1ToAudio f1ToAudio;
+    F1ToData f1ToData;
     bool padInitialDiscTime;
     bool decodeAsData;
 
