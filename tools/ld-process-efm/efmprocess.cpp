@@ -39,6 +39,9 @@ EfmProcess::EfmProcess(QObject *parent) : QThread(parent)
     debug_f1ToData = false;
 
     padInitialDiscTime = false;
+
+    decodeAsAudio = true;
+    decodeAsData = false;
 }
 
 EfmProcess::~EfmProcess()
@@ -96,11 +99,13 @@ void EfmProcess::setAudioErrorTreatment(F1ToAudio::ErrorTreatment _errorTreatmen
 }
 
 // Set the decoder options
-void EfmProcess::setDecoderOptions(bool _padInitialDiscTime, bool _decodeAsData)
+void EfmProcess::setDecoderOptions(bool _padInitialDiscTime, bool _decodeAsAudio, bool _decodeAsData)
 {
     qDebug() << "EfmProcess::setDecoderOptions(): Pad initial disc time is" << _padInitialDiscTime;
+    qDebug() << "EfmProcess::setDecoderOptions(): Decode as audio is" << _decodeAsAudio;
     qDebug() << "EfmProcess::setDecoderOptions(): Decode as data is" << _decodeAsData;
     padInitialDiscTime = _padInitialDiscTime;
+    decodeAsAudio = _decodeAsAudio;
     decodeAsData = _decodeAsData;
 }
 
@@ -112,7 +117,7 @@ void EfmProcess::reportStatistics()
     f3ToF2Frames.reportStatistics();
     f2ToF1Frames.reportStatistics();
     f1ToAudio.reportStatistics();
-    //f1ToData.reportStatistics();
+    f1ToData.reportStatistics();
 }
 
 // Thread handling methods --------------------------------------------------------------------------------------------
@@ -162,7 +167,7 @@ EfmProcess::Statistics EfmProcess::getStatistics(void)
     statistics.efmToF3Frames = efmToF3Frames.getStatistics();
     statistics.f2ToF1Frames = f2ToF1Frames.getStatistics();
     statistics.f1ToAudio = f1ToAudio.getStatistics();
-    //statistics.f1ToData = f1ToData.getStatistics();
+    statistics.f1ToData = f1ToData.getStatistics();
 
     return statistics;
 }
@@ -175,7 +180,7 @@ void EfmProcess::reset()
     f3ToF2Frames.reset();
     f2ToF1Frames.reset();
     f1ToAudio.reset();
-    //f1ToData.reset();
+    f1ToData.reset();
 }
 
 // Primary processing loop for the thread
@@ -208,7 +213,14 @@ void EfmProcess::run()
             QVector<F3Frame> syncedF3Frames = syncF3Frames.process(initialF3Frames, debug_syncF3Frames);
             QVector<F2Frame> f2Frames = f3ToF2Frames.process(syncedF3Frames, debug_f3ToF2Frames);
             QVector<F1Frame> f1Frames = f2ToF1Frames.process(f2Frames, debug_f2ToF1Frame);
-            audioOutputFileHandle->write(f1ToAudio.process(f1Frames, padInitialDiscTime, errorTreatment, concealType, debug_f1ToAudio));
+
+            if (decodeAsAudio) {
+                audioOutputFileHandle->write(f1ToAudio.process(f1Frames, padInitialDiscTime, errorTreatment, concealType, debug_f1ToAudio));
+            }
+
+            if (decodeAsData) {
+                dataOutputFileHandle->write(f1ToData.process(f1Frames, debug_f1ToData));
+            }
 
             // Report progress to parent
             qreal percent = 100 - (100.0 / static_cast<qreal>(initialInputFileSize)) * static_cast<qreal>(efmInputFileHandle->bytesAvailable());
@@ -220,7 +232,7 @@ void EfmProcess::run()
 
         // Check if audio is available
         if (f1ToAudio.getStatistics().totalSamples > 0) audioAvailable = true;
-        //if (f1ToData.getStatistics().totalSectors > 0) dataAvailable = true;
+        if (f1ToData.getStatistics().totalSectors > 0) dataAvailable = true;
 
         // Processing complete
         emit processingComplete(audioAvailable, dataAvailable);

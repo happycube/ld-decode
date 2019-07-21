@@ -54,7 +54,7 @@ public:
         F3ToF2Frames::Statistics f3ToF2Frames;
         F2ToF1Frames::Statistics f2ToF1Frames;
         F1ToAudio::Statistics f1ToAudio;
-        //F1ToData::Statistics f1ToData;
+        F1ToData::Statistics f1ToData;
     };
 
     void setDebug(bool _debug_efmToF3Frames, bool _debug_syncF3Frames,
@@ -62,7 +62,7 @@ public:
                   bool _debug_f1ToAudio, bool _debug_f1ToData);
     void setAudioErrorTreatment(F1ToAudio::ErrorTreatment _errorTreatment,
                                             F1ToAudio::ConcealType _concealType);
-    void setDecoderOptions(bool _padInitialDiscTime, bool _decodeAsData);
+    void setDecoderOptions(bool _padInitialDiscTime, bool _decodeAsAudio, bool _decodeAsData);
     void reportStatistics();
     void startProcessing(QFile *_inputFilename, QFile *_audioOutputFilename, QFile *_dataOutputFilename);
     void stopProcessing();
@@ -105,6 +105,7 @@ private:
     F1ToAudio f1ToAudio;
     F1ToData f1ToData;
     bool padInitialDiscTime;
+    bool decodeAsAudio;
     bool decodeAsData;
 
     Statistics statistics;

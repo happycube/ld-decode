@@ -69,6 +69,7 @@ private slots:
     void on_actionAbout_ld_process_efm_triggered();
     void on_debugEnabled_checkBox_clicked();
     void on_options_decodeAsData_checkbox_clicked();
+    void on_options_decodeAsAudio_checkbox_clicked();
 
 private:
     Ui::MainWindow *ui;
