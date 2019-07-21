@@ -1,6 +1,6 @@
 /************************************************************************
 
-    audiosampleframestopcm.h
+    f1toaudio.h
 
     ld-process-efm - EFM data decoder
     Copyright (C) 2019 Simon Inns
@@ -22,18 +22,19 @@
 
 ************************************************************************/
 
-#ifndef AUDIOSAMPLEFRAMESTOPCM_H
-#define AUDIOSAMPLEFRAMESTOPCM_H
+#ifndef F1TOAUDIO_H
+#define F1TOAUDIO_H
 
 #include <QCoreApplication>
 #include <QDebug>
 
-#include "Datatypes/audiosampleframe.h"
+#include "Datatypes/f1frame.h"
+#include "Datatypes/audio.h"
 
-class AudioSampleFramesToPcm
+class F1ToAudio
 {
 public:
-    AudioSampleFramesToPcm();
+    F1ToAudio();
 
     // Options for the treatment of audio errors
     enum ErrorTreatment {
@@ -48,11 +49,29 @@ public:
         prediction
     };
 
+    struct Statistics {
+        qint32 audioSamples;
+        qint32 corruptSamples;
+        qint32 missingSamples;
+        qint32 concealedSamples;
+        qint32 totalSamples;
+
+        TrackTime startTime;
+        TrackTime currentTime;
+        TrackTime duration;
+    };
+
+    QByteArray process(QVector<F1Frame> f1FramesIn, bool _padInitialDiscTime,
+                       ErrorTreatment _errorTreatment, ConcealType _concealType, bool debugState);
+    Statistics getStatistics();
+    void reportStatistics();
     void reset();
-    QByteArray process(QVector<AudioSampleFrame> audioSampleFrames, ErrorTreatment _errorTreatment, ConcealType _concealType, bool debugState);
+    void clearStatistics();
 
 public:
     bool debugOn;
+    bool padInitialDiscTime;
+    Statistics statistics;
 
     // State-machine variables
     enum StateMachine {
@@ -64,13 +83,15 @@ public:
     StateMachine currentState;
     StateMachine nextState;
     QByteArray pcmOutputBuffer;
-    QVector<AudioSampleFrame> audioSampleFrameBuffer;
+    QVector<F1Frame> f1FrameBuffer;
     bool waitingForData;
     ErrorTreatment errorTreatment;
     ConcealType concealType;
+    bool gotFirstSample;
+    bool initialDiscTimeSet;
 
-    AudioSampleFrame lastGoodFrame;
-    AudioSampleFrame nextGoodFrame;
+    F1Frame lastGoodFrame;
+    F1Frame nextGoodFrame;
     qint32 errorStartPosition;
     qint32 errorStopPosition;
 
@@ -80,8 +101,7 @@ public:
 
     // Concealment methods
     void linearInterpolationConceal();
-    void quadraticInterpolationConceal();
     void predictiveInterpolationConceal();
 };
 
-#endif // AUDIOSAMPLEFRAMESTOPCM_H
+#endif // F1TOAUDIO_H

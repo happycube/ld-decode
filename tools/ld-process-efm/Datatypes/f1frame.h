@@ -1,6 +1,6 @@
 /************************************************************************
 
-    tracktime.h
+    f1frame.h
 
     ld-process-efm - EFM data decoder
     Copyright (C) 2019 Simon Inns
@@ -22,39 +22,39 @@
 
 ************************************************************************/
 
-#ifndef TRACKTIME_H
-#define TRACKTIME_H
+#ifndef F1FRAME_H
+#define F1FRAME_H
 
 #include <QCoreApplication>
 #include <QDebug>
-#include <QDataStream>
 
-class TrackTime
+#include "Datatypes/tracktime.h"
+
+class F1Frame
 {
-    friend QDataStream &operator<<(QDataStream &, const TrackTime &);
-    friend QDataStream &operator>>(QDataStream &, TrackTime &);
-
 public:
-    struct Time {
-        qint32 minutes;
-        qint32 seconds;
-        qint32 frames;
-    };
+    F1Frame();
 
-    TrackTime(qint32 minutesParam = 0, qint32 secondsParam = 0, qint32 framesParam = 0);
-    TrackTime(TrackTime::Time timeParam);
+    void setData(uchar *dataParam, bool _isCorrupt, bool _isEncoderOn, bool _isMissing,
+                 TrackTime _discTime, TrackTime _trackTime, qint32 _trackNumber);
+    uchar* getDataSymbols(void);
 
-    bool setTime(qint32 minutesParam, qint32 secondsParam, qint32 framesParam);
-    bool setTime(TrackTime::Time timeParam);
-    void addFrames(qint32 frames);
-    void subtractFrames(qint32 frames);
-    qint32 getDifference(TrackTime::Time timeToCompare);
-    Time getTime();
-    QString getTimeAsQString();
-    qint32 getFrames();
+    bool isCorrupt();
+    bool isEncoderOn();
+    bool isMissing();
+
+    TrackTime getDiscTime();
+    TrackTime getTrackTime();
+    qint32 getTrackNumber();
 
 private:
-    qint32 trackFrames;
+    bool isCorruptFlag;
+    bool isEncoderOnFlag;
+    bool isMissingFlag;
+    TrackTime discTime;
+    TrackTime trackTime;
+    qint32 trackNumber;
+    uchar dataSymbols[24];
 };
 
-#endif // TRACKTIME_H
+#endif // F1FRAME_H

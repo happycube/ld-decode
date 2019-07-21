@@ -30,14 +30,14 @@ C1Circ::C1Circ()
 }
 
 // Method to reset and flush all buffers
-void C1Circ::reset(void)
+void C1Circ::reset()
 {
     flush();
     resetStatistics();
 }
 
 // Methods to handle statistics
-void C1Circ::resetStatistics(void)
+void C1Circ::resetStatistics()
 {
     statistics.c1Passed = 0;
     statistics.c1Corrected = 0;
@@ -45,13 +45,13 @@ void C1Circ::resetStatistics(void)
     statistics.c1flushed = 0;
 }
 
-C1Circ::Statistics C1Circ::getStatistics(void)
+C1Circ::Statistics C1Circ::getStatistics()
 {
     return statistics;
 }
 
 // Method to write statistics information to qInfo
-void C1Circ::reportStatistics(void)
+void C1Circ::reportStatistics()
 {
     qInfo() << "";
     qInfo() << "F3 to F2 frame C1 Error correction:";
@@ -90,21 +90,21 @@ void C1Circ::pushF3Frame(F3Frame f3Frame)
 }
 
 // Return the C1 data symbols if available
-uchar* C1Circ::getDataSymbols(void)
+uchar* C1Circ::getDataSymbols()
 {
     if (c1BufferLevel > 1) return outputC1Data;
     return nullptr;
 }
 
 // Return the C1 error symbols if available
-uchar* C1Circ::getErrorSymbols(void)
+uchar* C1Circ::getErrorSymbols()
 {
     if (c1BufferLevel > 1) return outputC1Errors;
     return nullptr;
 }
 
 // Method to flush the C1 buffers
-void C1Circ::flush(void)
+void C1Circ::flush()
 {
     for (qint32 i = 0; i < 32; i++) {
         currentF3Data[i] = 0;
@@ -124,7 +124,7 @@ void C1Circ::flush(void)
 }
 
 // Interleave current and previous F3 frame symbols and then invert parity symbols
-void C1Circ::interleave(void)
+void C1Circ::interleave()
 {
     // Interleave the symbols
     for (qint32 byteC = 0; byteC < 32; byteC += 2) {
@@ -154,7 +154,7 @@ void C1Circ::interleave(void)
 // it is possible to receive false-positive corrections.  It is essential that the inbound BER
 // (Bit Error Rate) is at or below the IEC maximum of 3%.  More than this and it's likely bad
 // packets will be created.
-void C1Circ::errorCorrect(void)
+void C1Circ::errorCorrect()
 {
     // The C1 error correction can correct, at most, 2 symbols
 

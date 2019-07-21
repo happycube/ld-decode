@@ -29,25 +29,25 @@
 #include <QDebug>
 
 #include "Datatypes/f2frame.h"
-#include "Datatypes/audiosampleframe.h"
+#include "Datatypes/f1frame.h"
 
-class F2FramesToAudio
+class F2ToF1Frames
 {
 public:
-    F2FramesToAudio();
+    F2ToF1Frames();
 
     // Statistics
     struct Statistics {
-        qint32 totalSamples;
-        qint32 validSamples;
-        qint32 corruptSamples;
-        qint32 missingSectionSamples;
-        qint32 encoderOffSamples;
-        TrackTime sampleStart;
-        TrackTime sampleCurrent;
+        qint32 totalFrames;
+        qint32 validFrames;
+        qint32 invalidFrames;
+        qint32 missingSectionFrames;
+        qint32 encoderOffFrames;
+        TrackTime framesStart;
+        TrackTime frameCurrent;
     };
 
-    QVector<AudioSampleFrame> process(QVector<F2Frame> f2FramesIn, bool _padInitialDiscTime, bool debugState);
+    QVector<F1Frame> process(QVector<F2Frame> f2FramesIn, bool debugState);
     Statistics getStatistics();
     void reportStatistics();
     void reset();
@@ -55,7 +55,6 @@ public:
 private:
     bool debugOn;
     Statistics statistics;
-    bool padInitialDiscTime;
 
     // State-machine variables
     enum StateMachine {
@@ -67,7 +66,7 @@ private:
     StateMachine currentState;
     StateMachine nextState;
     QVector<F2Frame> f2FrameBuffer;
-    QVector<AudioSampleFrame> audioSamplesOut;
+    QVector<F1Frame> f1FramesOut;
     bool waitingForData;
     TrackTime lastDiscTime;
 

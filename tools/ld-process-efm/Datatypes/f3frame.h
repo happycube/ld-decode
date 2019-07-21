@@ -36,11 +36,11 @@ public:
     F3Frame(uchar *tValuesIn, qint32 tLength);
 
     void setTValues(uchar *tValuesIn, qint32 tLength);
-    uchar* getDataSymbols(void);
-    uchar* getErrorSymbols(void);
-    uchar getSubcodeSymbol(void);
-    bool isSubcodeSync0(void);
-    bool isSubcodeSync1(void);
+    uchar* getDataSymbols();
+    uchar* getErrorSymbols();
+    uchar getSubcodeSymbol();
+    bool isSubcodeSync0();
+    bool isSubcodeSync1();
 
     qint64 getNumberOfValidEfmSymbols();
     qint64 getNumberOfInvalidEfmSymbols();

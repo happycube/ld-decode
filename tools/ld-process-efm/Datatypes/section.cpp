@@ -114,13 +114,13 @@ bool Section::setData(uchar *dataIn)
 }
 
 // Method to determine the Q mode
-qint32 Section::getQMode(void)
+qint32 Section::getQMode()
 {
     return qMode;
 }
 
 // Method to get Q channel metadata
-Section::QMetadata Section::getQMetadata(void)
+Section::QMetadata Section::getQMetadata()
 {
     return qMetadata;
 }
@@ -128,7 +128,7 @@ Section::QMetadata Section::getQMetadata(void)
 // Private methods ----------------------------------------------------------------------------------------------------
 
 // Method to CRC verify the Q subcode channel
-bool Section::verifyQ(void)
+bool Section::verifyQ()
 {
     // CRC check the Q-subcode - CRC is on control+mode+data 4+4+72 = 80 bits with 16-bit CRC (96 bits total)
     char crcSource[10];
@@ -164,7 +164,7 @@ quint16 Section::crc16(char *addr, quint16 num)
 }
 
 // Method to decode the Q subcode ADR field
-qint32 Section::decodeQAddress(void)
+qint32 Section::decodeQAddress()
 {
     // Get the Q Mode value
     qint32 qMode = (qSubcode[0] & 0x0F);
@@ -176,7 +176,7 @@ qint32 Section::decodeQAddress(void)
 }
 
 // Method to decode the Q subcode CONTROL field
-void Section::decodeQControl(void)
+void Section::decodeQControl()
 {
     // Get the control payload
     qint32 qControlField = (qSubcode[0] & 0xF0) >> 4;
@@ -202,7 +202,7 @@ void Section::decodeQControl(void)
 }
 
 // Method to decode Q subcode Mode 1 and Mode 4 DATA-Q
-void Section::decodeQDataMode1And4(void)
+void Section::decodeQDataMode1And4()
 {
     // Get the track number (TNO) field
     qint32 tno = bcdToInteger(qSubcode[1]);
@@ -265,7 +265,7 @@ void Section::decodeQDataMode1And4(void)
 }
 
 // Method to decode Q subcode Mode 2 DATA-Q
-void Section::decodeQDataMode2(void)
+void Section::decodeQDataMode2()
 {
     // Get the 13 digit catalogue number
     QString catalogueNumber;

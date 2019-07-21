@@ -1,6 +1,6 @@
 /************************************************************************
 
-    tracktime.h
+    f1todata.cpp
 
     ld-process-efm - EFM data decoder
     Copyright (C) 2019 Simon Inns
@@ -22,39 +22,9 @@
 
 ************************************************************************/
 
-#ifndef TRACKTIME_H
-#define TRACKTIME_H
+#include "f1todata.h"
 
-#include <QCoreApplication>
-#include <QDebug>
-#include <QDataStream>
-
-class TrackTime
+F1ToData::F1ToData()
 {
-    friend QDataStream &operator<<(QDataStream &, const TrackTime &);
-    friend QDataStream &operator>>(QDataStream &, TrackTime &);
 
-public:
-    struct Time {
-        qint32 minutes;
-        qint32 seconds;
-        qint32 frames;
-    };
-
-    TrackTime(qint32 minutesParam = 0, qint32 secondsParam = 0, qint32 framesParam = 0);
-    TrackTime(TrackTime::Time timeParam);
-
-    bool setTime(qint32 minutesParam, qint32 secondsParam, qint32 framesParam);
-    bool setTime(TrackTime::Time timeParam);
-    void addFrames(qint32 frames);
-    void subtractFrames(qint32 frames);
-    qint32 getDifference(TrackTime::Time timeToCompare);
-    Time getTime();
-    QString getTimeAsQString();
-    qint32 getFrames();
-
-private:
-    qint32 trackFrames;
-};
-
-#endif // TRACKTIME_H
+}

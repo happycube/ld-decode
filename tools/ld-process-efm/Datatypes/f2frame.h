@@ -37,17 +37,17 @@ public:
     F2Frame();
 
     void setData(uchar *dataParam, uchar *erasuresParam);
-    uchar* getDataSymbols(void);
-    bool isFrameCorrupt(void);
+    uchar* getDataSymbols();
+    bool isFrameCorrupt();
 
     void setDiscTime(TrackTime _discTime);
     void setTrackTime(TrackTime _trackTime);
-    TrackTime getDiscTime(void);
-    TrackTime getTrackTime(void);
+    TrackTime getDiscTime();
+    TrackTime getTrackTime();
     void setTrackNumber(qint32 _trackNumber);
-    qint32 getTrackNumber(void);
+    qint32 getTrackNumber();
     void setIsEncoderRunning(bool _isEncoderRunning);
-    bool getIsEncoderRunning(void);
+    bool getIsEncoderRunning();
 
 private:
     uchar dataSymbols[24];

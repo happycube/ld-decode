@@ -50,14 +50,14 @@ public:
         qint32 c1flushed;
     };
 
-    void reset(void);
-    void resetStatistics(void);
-    Statistics getStatistics(void);
-    void reportStatistics(void);
+    void reset();
+    void resetStatistics();
+    Statistics getStatistics();
+    void reportStatistics();
     void pushF3Frame(F3Frame f3Frame);
-    uchar* getDataSymbols(void);
-    uchar* getErrorSymbols(void);
-    void flush(void);
+    uchar* getDataSymbols();
+    uchar* getErrorSymbols();
+    void flush();
 
 private:
     uchar currentF3Data[32];
@@ -74,8 +74,8 @@ private:
     qint32 c1BufferLevel;    
     Statistics statistics;
 
-    void interleave(void);
-    void errorCorrect(void);
+    void interleave();
+    void errorCorrect();
 };
 
 #endif // C1CIRC_H

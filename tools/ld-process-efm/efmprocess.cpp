@@ -31,10 +31,12 @@ EfmProcess::EfmProcess(QObject *parent) : QThread(parent)
     cancel = false; // Setting this to true cancels the processing in progress
     abort = false; // Setting this to true ends the thread process
 
-    debug_EfmToF3Frames = false;
-    debug_F2FramesToAudio = false;
-    debug_F3ToF2Frames = false;
-    debug_SyncF3Frames = false;
+    debug_efmToF3Frames = false;
+    debug_syncF3Frames = false;
+    debug_f3ToF2Frames = false;
+    debug_f2ToF1Frame = false;
+    debug_f1ToAudio = false;
+    debug_f1ToData = false;
 
     padInitialDiscTime = false;
 }
@@ -50,45 +52,43 @@ EfmProcess::~EfmProcess()
 }
 
 // Set the debug output flags
-void EfmProcess::setDebug(bool _debug_EfmToF3Frames, bool _debug_SyncF3Frames,
-                          bool _debug_F3ToF2Frames, bool _debug_F2FramesToAudio,
-                          bool _debug_AudioSampleFramesToPcm, bool _debug_f2ToF1Frame,
-                          bool _debug_f1FrameToDataSector)
+void EfmProcess::setDebug(bool _debug_efmToF3Frames, bool _debug_syncF3Frames,
+                          bool _debug_f3ToF2Frames, bool _debug_f2ToF1Frames,
+                          bool _debug_f1ToAudio, bool _debug_f1ToData)
 {
-    debug_EfmToF3Frames = _debug_EfmToF3Frames;
-    debug_F2FramesToAudio = _debug_F2FramesToAudio;
-    debug_F3ToF2Frames = _debug_F3ToF2Frames;
-    debug_SyncF3Frames = _debug_SyncF3Frames;
-    debug_AudioSampleFramesToPcm = _debug_AudioSampleFramesToPcm;
-    debug_f2ToF1Frame = _debug_f2ToF1Frame;
-    debug_f1FrameToDataSector = _debug_f1FrameToDataSector;
+    debug_efmToF3Frames = _debug_efmToF3Frames;
+    debug_syncF3Frames = _debug_syncF3Frames;
+    debug_f3ToF2Frames = _debug_f3ToF2Frames;
+    debug_f2ToF1Frame = _debug_f2ToF1Frames;
+    debug_f1ToAudio = _debug_f1ToAudio;
+    debug_f1ToData = _debug_f1ToData;
 }
 
 // Set the audio error treatment type
-void EfmProcess::setAudioErrorTreatment(AudioSampleFramesToPcm::ErrorTreatment _errorTreatment,
-                                        AudioSampleFramesToPcm::ConcealType _concealType)
+void EfmProcess::setAudioErrorTreatment(F1ToAudio::ErrorTreatment _errorTreatment,
+                                        F1ToAudio::ConcealType _concealType)
 {
     errorTreatment = _errorTreatment;
     concealType = _concealType;
 
     switch (errorTreatment) {
-    case AudioSampleFramesToPcm::ErrorTreatment::conceal:
+    case F1ToAudio::ErrorTreatment::conceal:
         qDebug() << "EfmProcess::setAudioErrorTreatment(): Audio error treatment set to conceal";
         break;
-    case AudioSampleFramesToPcm::ErrorTreatment::silence:
+    case F1ToAudio::ErrorTreatment::silence:
         qDebug() << "EfmProcess::setAudioErrorTreatment(): Audio error treatment set to silence";
         break;
-    case AudioSampleFramesToPcm::ErrorTreatment::passThrough:
+    case F1ToAudio::ErrorTreatment::passThrough:
         qDebug() << "EfmProcess::setAudioErrorTreatment(): Audio error treatment set to pass-through";
         break;
     }
 
-    if (errorTreatment == AudioSampleFramesToPcm::ErrorTreatment::conceal) {
+    if (errorTreatment == F1ToAudio::ErrorTreatment::conceal) {
         switch (concealType) {
-        case AudioSampleFramesToPcm::ConcealType::linear:
+        case F1ToAudio::ConcealType::linear:
             qDebug() << "EfmProcess::setAudioErrorTreatment(): Conceal type set to linear interpolation";
             break;
-        case AudioSampleFramesToPcm::ConcealType::prediction:
+        case F1ToAudio::ConcealType::prediction:
             qDebug() << "EfmProcess::setAudioErrorTreatment(): Conceal type set to interpolated error prediction (experimental)";
             break;
         }
@@ -110,7 +110,9 @@ void EfmProcess::reportStatistics()
     efmToF3Frames.reportStatistics();
     syncF3Frames.reportStatistics();
     f3ToF2Frames.reportStatistics();
-    f2FramesToAudio.reportStatistics();
+    f2ToF1Frames.reportStatistics();
+    f1ToAudio.reportStatistics();
+    //f1ToData.reportStatistics();
 }
 
 // Thread handling methods --------------------------------------------------------------------------------------------
@@ -158,7 +160,9 @@ EfmProcess::Statistics EfmProcess::getStatistics(void)
     statistics.f3ToF2Frames = f3ToF2Frames.getStatistics();
     statistics.syncF3Frames = syncF3Frames.getStatistics();
     statistics.efmToF3Frames = efmToF3Frames.getStatistics();
-    statistics.f2FramesToAudio = f2FramesToAudio.getStatistics();
+    statistics.f2ToF1Frames = f2ToF1Frames.getStatistics();
+    statistics.f1ToAudio = f1ToAudio.getStatistics();
+    //statistics.f1ToData = f1ToData.getStatistics();
 
     return statistics;
 }
@@ -169,8 +173,9 @@ void EfmProcess::reset()
     efmToF3Frames.reset();
     syncF3Frames.reset();
     f3ToF2Frames.reset();
-    f2FramesToAudio.reset();
-    audioSampleFramesToPcm.reset();
+    f2ToF1Frames.reset();
+    f1ToAudio.reset();
+    //f1ToData.reset();
 }
 
 // Primary processing loop for the thread
@@ -199,11 +204,11 @@ void EfmProcess::run()
             inputEfmBuffer = readEfmData();
 
             // Perform processing
-            QVector<F3Frame> initialF3Frames = efmToF3Frames.process(inputEfmBuffer, debug_EfmToF3Frames);
-            QVector<F3Frame> syncedF3Frames = syncF3Frames.process(initialF3Frames, debug_SyncF3Frames);
-            QVector<F2Frame> f2Frames = f3ToF2Frames.process(syncedF3Frames, debug_F3ToF2Frames);
-            QVector<AudioSampleFrame> audioSampleFrames = f2FramesToAudio.process(f2Frames, padInitialDiscTime, debug_F2FramesToAudio);
-            audioOutputFileHandle->write(audioSampleFramesToPcm.process(audioSampleFrames, errorTreatment, concealType, debug_AudioSampleFramesToPcm));
+            QVector<F3Frame> initialF3Frames = efmToF3Frames.process(inputEfmBuffer, debug_efmToF3Frames);
+            QVector<F3Frame> syncedF3Frames = syncF3Frames.process(initialF3Frames, debug_syncF3Frames);
+            QVector<F2Frame> f2Frames = f3ToF2Frames.process(syncedF3Frames, debug_f3ToF2Frames);
+            QVector<F1Frame> f1Frames = f2ToF1Frames.process(f2Frames, debug_f2ToF1Frame);
+            audioOutputFileHandle->write(f1ToAudio.process(f1Frames, padInitialDiscTime, errorTreatment, concealType, debug_f1ToAudio));
 
             // Report progress to parent
             qreal percent = 100 - (100.0 / static_cast<qreal>(initialInputFileSize)) * static_cast<qreal>(efmInputFileHandle->bytesAvailable());
@@ -214,7 +219,8 @@ void EfmProcess::run()
         }
 
         // Check if audio is available
-        if (f2FramesToAudio.getStatistics().totalSamples > 0) audioAvailable = true;
+        if (f1ToAudio.getStatistics().totalSamples > 0) audioAvailable = true;
+        //if (f1ToData.getStatistics().totalSectors > 0) dataAvailable = true;
 
         // Processing complete
         emit processingComplete(audioAvailable, dataAvailable);

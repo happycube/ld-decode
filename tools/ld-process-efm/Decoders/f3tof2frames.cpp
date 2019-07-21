@@ -220,7 +220,7 @@ QVector<F2Frame> F3ToF2Frames::process(QVector<F3Frame> f3FramesIn, bool debugSt
 }
 
 // Get method - retrieve statistics
-F3ToF2Frames::Statistics F3ToF2Frames::getStatistics(void)
+F3ToF2Frames::Statistics F3ToF2Frames::getStatistics()
 {
     // Ensure sub-class statistics are updated
     statistics.c1Circ_statistics = c1Circ.getStatistics();
@@ -231,7 +231,7 @@ F3ToF2Frames::Statistics F3ToF2Frames::getStatistics(void)
 }
 
 // Method to report decoding statistics to qInfo
-void F3ToF2Frames::reportStatistics(void)
+void F3ToF2Frames::reportStatistics()
 {
     qInfo() << "";
     qInfo() << "F3 Frame to F2 Frame decode:";
@@ -253,7 +253,7 @@ void F3ToF2Frames::reportStatistics(void)
 }
 
 // Method to reset the class
-void F3ToF2Frames::reset(void)
+void F3ToF2Frames::reset()
 {
     // Initialise variables to track the disc time
     initialDiscTimeSet = false;
@@ -272,7 +272,7 @@ void F3ToF2Frames::reset(void)
 // Private methods ----------------------------------------------------------------------------------------------------
 
 // Method to clear the statistics counters
-void F3ToF2Frames::clearStatistics(void)
+void F3ToF2Frames::clearStatistics()
 {
     statistics.totalF3Frames = 0;
     statistics.totalF2Frames = 0;

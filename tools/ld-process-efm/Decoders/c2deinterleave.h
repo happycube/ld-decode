@@ -40,14 +40,14 @@ public:
         qint32 invalidDeinterleavedC2s;
     };
 
-    void reset(void);
-    void resetStatistics(void);
-    Statistics getStatistics(void);
-    void reportStatistics(void);
+    void reset();
+    void resetStatistics();
+    Statistics getStatistics();
+    void reportStatistics();
     void pushC2(uchar* dataSymbols, uchar* errorSymbols);
-    uchar* getDataSymbols(void);
-    uchar* getErrorSymbols(void);
-    void flush(void);
+    uchar* getDataSymbols();
+    uchar* getErrorSymbols();
+    void flush();
 
 private:
     struct C2Element {
@@ -61,7 +61,7 @@ private:
 
     Statistics statistics;
 
-    void deinterleave(void);
+    void deinterleave();
 };
 
 #endif // C2DEINTERLEAVE_H

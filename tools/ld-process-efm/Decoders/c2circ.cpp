@@ -30,14 +30,14 @@ C2Circ::C2Circ()
 }
 
 // Method to reset and flush all buffers
-void C2Circ::reset(void)
+void C2Circ::reset()
 {
     flush();
     resetStatistics();
 }
 
 // Methods to handle statistics
-void C2Circ::resetStatistics(void)
+void C2Circ::resetStatistics()
 {
     statistics.c2Passed = 0;
     statistics.c2Corrected = 0;
@@ -45,7 +45,7 @@ void C2Circ::resetStatistics(void)
     statistics.c2flushed = 0;
 }
 
-C2Circ::Statistics C2Circ::getStatistics(void)
+C2Circ::Statistics C2Circ::getStatistics()
 {
     return statistics;
 }
@@ -83,21 +83,21 @@ void C2Circ::pushC1(uchar* dataSymbols, uchar* errorSymbols)
 }
 
 // Return the C2 data symbols if available
-uchar* C2Circ::getDataSymbols(void)
+uchar* C2Circ::getDataSymbols()
 {
     if (c1DelayBuffer.size() >= 109) return outputC2Data;
     return nullptr;
 }
 
 // Return the C2 error symbols if available
-uchar* C2Circ::getErrorSymbols(void)
+uchar* C2Circ::getErrorSymbols()
 {
     if (c1DelayBuffer.size() >= 109) return outputC2Errors;
     return nullptr;
 }
 
 // Method to flush the C2 buffers
-void C2Circ::flush(void)
+void C2Circ::flush()
 {
     c1DelayBuffer.clear();
 
@@ -113,7 +113,7 @@ void C2Circ::flush(void)
 
 // Interleave the C1 data by applying delay lines of unequal length
 // according to fig. 13 in IEC 60908 in order to produce the C2 data
-void C2Circ::interleave(void)
+void C2Circ::interleave()
 {
     // Longest delay is 27 * 4 = 108
     for (qint32 byteC = 0; byteC < 28; byteC++) {
@@ -130,7 +130,7 @@ void C2Circ::interleave(void)
 // it is possible to receive false-positive corrections.  It is essential that the inbound BER
 // (Bit Error Rate) is at or below the IEC maximum of 3%.  More than this and it's likely bad
 // packets will be created.
-void C2Circ::errorCorrect(void)
+void C2Circ::errorCorrect()
 {
     // The C2 error correction can correct, at most, 4 symbols
 

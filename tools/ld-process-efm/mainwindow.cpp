@@ -59,10 +59,9 @@ MainWindow::MainWindow(bool debugOn, bool _nonInteractive, QString _outputAudioF
         ui->debug_efmToF3_checkBox->setEnabled(true);
         ui->debug_f3Sync_checkBox->setEnabled(true);
         ui->debug_f3ToF2_checkBox->setEnabled(true);
-        ui->debug_f2ToAudio_checkBox->setEnabled(true);
-        ui->debug_audioSampleFrameToPcm_checkBox->setEnabled(true);
         ui->debug_f2ToF1Frame_checkBox->setEnabled(true);
-        ui->debug_f1FrameToDataSector_checkBox->setEnabled(true);
+        ui->debug_f1ToAudio_checkBox->setEnabled(true);
+        ui->debug_f1ToData_checkBox->setEnabled(true);
     }
 
     // Select the Audio tab by default
@@ -97,7 +96,7 @@ void MainWindow::startDecodeNonInteractive()
 // GUI update methods -------------------------------------------------------------------------------------------------
 
 // No EFM file loaded GUI update
-void MainWindow::guiNoEfmFileLoaded(void)
+void MainWindow::guiNoEfmFileLoaded()
 {
     ui->actionOpen_EFM_File->setEnabled(true);
     ui->actionSave_PCM_Audio->setEnabled(false);
@@ -115,7 +114,7 @@ void MainWindow::guiNoEfmFileLoaded(void)
 }
 
 // EFM file loaded GUI update
-void MainWindow::guiEfmFileLoaded(void)
+void MainWindow::guiEfmFileLoaded()
 {
     ui->actionOpen_EFM_File->setEnabled(true);
     ui->actionSave_PCM_Audio->setEnabled(false);
@@ -132,7 +131,7 @@ void MainWindow::guiEfmFileLoaded(void)
 }
 
 // Start processing the EFM file GUI update
-void MainWindow::guiEfmProcessingStart(void)
+void MainWindow::guiEfmProcessingStart()
 {
     resetStatistics();
     statisticsUpdateTimer.start(100); // Update 10 times per second
@@ -151,7 +150,7 @@ void MainWindow::guiEfmProcessingStart(void)
 }
 
 // Stop processing the EFM file GUI update
-void MainWindow::guiEfmProcessingStop(void)
+void MainWindow::guiEfmProcessingStop()
 {
     statisticsUpdateTimer.stop();
     updateStatistics();
@@ -169,7 +168,7 @@ void MainWindow::guiEfmProcessingStop(void)
 }
 
 // Reset statistics
-void MainWindow::resetStatistics(void)
+void MainWindow::resetStatistics()
 {
     // Progress bar
     ui->progressBar->setValue(0);
@@ -232,38 +231,29 @@ void MainWindow::resetStatistics(void)
     ui->f2_deinterleave_invalidC2s_label->setText(tr("0"));
     ui->f2_deinterleave_delayBufferFlushes_label->setText(tr("0"));
 
-    // Audio
-    ui->audio_validSamples_label->setText(tr("0"));
+    // F1 tab
+    ui->f1_f2ToF1_validFrames_label->setText(tr("0"));
+    ui->f1_f2ToF1_invalidFrames_label->setText(tr("0"));
+    ui->f1_f2ToF1_missingSectionFrames_label->setText(tr("0"));
+    ui->f1_f2ToF1_encoderOffFrames_label->setText(tr("0"));
+    ui->f1_f2ToF1_totalFrames_label->setText(tr("0"));
+    ui->f1_f2ToF1_framesStartTime_label->setText(dummyTime.getTimeAsQString());
+    ui->f1_f2ToF1_framesCurrentTime_label->setText(dummyTime.getTimeAsQString());
+
+    // Audio tab
+    ui->audio_audioSamples_label->setText(tr("0"));
     ui->audio_corruptSamples_label->setText(tr("0"));
-    ui->audio_missingSectionSamples_label->setText(tr("0"));
-    ui->audio_encoderOffSamples_label->setText(tr("0"));
+    ui->audio_missingSamples_label->setText(tr("0"));
+    ui->audio_concealedSamples_label->setText(tr("0"));
     ui->audio_totalSamples_label->setText(tr("0"));
 
-    ui->audio_sampleStartTime_label->setText(dummyTime.getTimeAsQString());
-    ui->audio_sampleCurrentTime_label->setText(dummyTime.getTimeAsQString());
-    ui->audio_sampleDuration_label->setText(dummyTime.getTimeAsQString());
-    ui->audio_sampleFrameLength_label->setText(tr("0"));
-    ui->audio_sampleDurationSeconds_label->setText(tr("0"));
-
-    // F1 frames
-    ui->f1_f2ToF1_totalInputF2Frames->setText(tr("0"));
-    ui->f1_f2ToF1_totalF1_label->setText(tr("0"));
-    ui->f1_f2ToF1_validF1_label->setText(tr("0"));
-    ui->f1_f2ToF1_invalidF1_label->setText(tr("0"));
-    ui->f1_f2ToF1_f1SyncMissed_label->setText(tr("0"));
-
-    // Data
-    ui->data_sectors_validSectors_label->setText(tr("0"));
-    ui->data_sectors_invalidSectors_label->setText(tr("0"));
-    ui->data_sectors_missingSectors_label->setText(tr("0"));
-    ui->data_sectors_totalSectors_label->setText(tr("0"));
-
-    ui->data_addressing_startAddress_label->setText(dummyTime.getTimeAsQString());
-    ui->data_addressing_currentAddress_label->setText(dummyTime.getTimeAsQString());
+    ui->audio_startTime_label->setText(dummyTime.getTimeAsQString());
+    ui->audio_currentTime_label->setText(dummyTime.getTimeAsQString());
+    ui->audio_duration_label->setText(dummyTime.getTimeAsQString());
 }
 
 // Update statistics
-void MainWindow::updateStatistics(void)
+void MainWindow::updateStatistics()
 {
     // Get the updated statistics
     EfmProcess::Statistics statistics = efmProcess.getStatistics();
@@ -341,45 +331,44 @@ void MainWindow::updateStatistics(void)
     ui->f2_deinterleave_invalidC2s_label->setText(QString::number(statistics.f3ToF2Frames.c2Deinterleave_statistics.invalidDeinterleavedC2s));
     ui->f2_deinterleave_delayBufferFlushes_label->setText(QString::number(statistics.f3ToF2Frames.c2Deinterleave_statistics.c2flushed));
 
+    // F1 tab
+    ui->f1_f2ToF1_validFrames_label->setText(QString::number(statistics.f2ToF1Frames.validFrames));
+    ui->f1_f2ToF1_invalidFrames_label->setText(QString::number(statistics.f2ToF1Frames.invalidFrames));
+    ui->f1_f2ToF1_missingSectionFrames_label->setText(QString::number(statistics.f2ToF1Frames.missingSectionFrames));
+    ui->f1_f2ToF1_encoderOffFrames_label->setText(QString::number(statistics.f2ToF1Frames.encoderOffFrames));
+    ui->f1_f2ToF1_totalFrames_label->setText(QString::number(statistics.f2ToF1Frames.totalFrames));
+    ui->f1_f2ToF1_framesStartTime_label->setText(statistics.f2ToF1Frames.framesStart.getTimeAsQString());
+    ui->f1_f2ToF1_framesCurrentTime_label->setText(statistics.f2ToF1Frames.frameCurrent.getTimeAsQString());
+
     // Audio
-    ui->audio_validSamples_label->setText(QString::number(statistics.f2FramesToAudio.validSamples));
-    ui->audio_corruptSamples_label->setText(QString::number(statistics.f2FramesToAudio.corruptSamples));
-    ui->audio_missingSectionSamples_label->setText(QString::number(statistics.f2FramesToAudio.missingSectionSamples));
-    ui->audio_encoderOffSamples_label->setText(QString::number(statistics.f2FramesToAudio.encoderOffSamples));
-    ui->audio_totalSamples_label->setText(QString::number(statistics.f2FramesToAudio.totalSamples));
+    ui->audio_audioSamples_label->setText(QString::number(statistics.f1ToAudio.audioSamples));
+    ui->audio_corruptSamples_label->setText(QString::number(statistics.f1ToAudio.corruptSamples));
+    ui->audio_missingSamples_label->setText(QString::number(statistics.f1ToAudio.missingSamples));
+    ui->audio_concealedSamples_label->setText(QString::number(statistics.f1ToAudio.concealedSamples));
+    ui->audio_totalSamples_label->setText(QString::number(statistics.f1ToAudio.totalSamples));
 
-    ui->audio_sampleStartTime_label->setText(statistics.f2FramesToAudio.sampleStart.getTimeAsQString());
-    ui->audio_sampleCurrentTime_label->setText(statistics.f2FramesToAudio.sampleCurrent.getTimeAsQString());
-
-    qint32 sampleFrameLength = statistics.f2FramesToAudio.sampleCurrent.getDifference(statistics.f2FramesToAudio.sampleStart.getTime());
-    TrackTime sampleLength;
-    sampleLength.setTime(0, 0, 0);
-    sampleLength.addFrames(sampleFrameLength);
-
-    ui->audio_sampleDuration_label->setText(sampleLength.getTimeAsQString());
-    ui->audio_sampleFrameLength_label->setText(QString::number(sampleFrameLength));
-    ui->audio_sampleDurationSeconds_label->setText(QString::number(sampleFrameLength / 75.0));
+    ui->audio_startTime_label->setText(statistics.f1ToAudio.startTime.getTimeAsQString());
+    ui->audio_currentTime_label->setText(statistics.f1ToAudio.currentTime.getTimeAsQString());
+    ui->audio_duration_label->setText(statistics.f1ToAudio.duration.getTimeAsQString());
 }
 
 // Reset decoder options
-void MainWindow::resetDecoderOptions(void)
+void MainWindow::resetDecoderOptions()
 {
     ui->debugEnabled_checkBox->setChecked(false);
     ui->debug_efmToF3_checkBox->setChecked(false);
     ui->debug_f3Sync_checkBox->setChecked(false);
     ui->debug_f3ToF2_checkBox->setChecked(false);
-    ui->debug_f2ToAudio_checkBox->setChecked(false);
-    ui->debug_audioSampleFrameToPcm_checkBox->setChecked(false);
     ui->debug_f2ToF1Frame_checkBox->setChecked(false);
-    ui->debug_f1FrameToDataSector_checkBox->setChecked(false);
+    ui->debug_f1ToAudio_checkBox->setChecked(false);
+    ui->debug_f1ToData_checkBox->setChecked(false);
 
     ui->debug_efmToF3_checkBox->setEnabled(false);
     ui->debug_f3Sync_checkBox->setEnabled(false);
     ui->debug_f3ToF2_checkBox->setEnabled(false);
-    ui->debug_f2ToAudio_checkBox->setEnabled(false);
-    ui->debug_audioSampleFrameToPcm_checkBox->setEnabled(false);
     ui->debug_f2ToF1Frame_checkBox->setEnabled(false);
-    ui->debug_f1FrameToDataSector_checkBox->setEnabled(false);
+    ui->debug_f1ToAudio_checkBox->setEnabled(false);
+    ui->debug_f1ToData_checkBox->setEnabled(false);
 
     ui->audio_conceal_radioButton->setChecked(true);
     ui->audio_silence_radioButton->setChecked(false);
@@ -388,7 +377,6 @@ void MainWindow::resetDecoderOptions(void)
     ui->audio_padSampleStart_checkBox->setChecked(false);
     ui->options_decodeAsData_checkbox->setChecked(false);
 
-    ui->tabWidget->setTabEnabled(ui->tabWidget->indexOf(ui->f1FramesTab), false);
     ui->tabWidget->setTabEnabled(ui->tabWidget->indexOf(ui->dataTab), false);
 }
 
@@ -506,20 +494,19 @@ void MainWindow::on_decodePushButton_clicked()
 
     // Set the debug states
     efmProcess.setDebug(ui->debug_efmToF3_checkBox->isChecked(), ui->debug_f3Sync_checkBox->isChecked(),
-                        ui->debug_f3ToF2_checkBox->isChecked(), ui->debug_f2ToAudio_checkBox->isChecked(),
-                        ui->debug_audioSampleFrameToPcm_checkBox->isChecked(), ui->debug_f2ToF1Frame_checkBox->isChecked(),
-                        ui->debug_f1FrameToDataSector_checkBox->isChecked());
+                        ui->debug_f3ToF2_checkBox->isChecked(), ui->debug_f2ToF1Frame_checkBox->isChecked(),
+                        ui->debug_f1ToAudio_checkBox->isChecked(), ui->debug_f1ToData_checkBox->isChecked());
 
     // Set the audio error treatment and conceal type options
-    AudioSampleFramesToPcm::ErrorTreatment errorTreatment = AudioSampleFramesToPcm::ErrorTreatment::conceal;
-    AudioSampleFramesToPcm::ConcealType concealType = AudioSampleFramesToPcm::ConcealType::linear;
+    F1ToAudio::ErrorTreatment errorTreatment = F1ToAudio::ErrorTreatment::conceal;
+    F1ToAudio::ConcealType concealType = F1ToAudio::ConcealType::linear;
 
-    if (ui->audio_conceal_radioButton->isChecked()) errorTreatment = AudioSampleFramesToPcm::ErrorTreatment::conceal;
-    if (ui->audio_silence_radioButton->isChecked()) errorTreatment = AudioSampleFramesToPcm::ErrorTreatment::silence;
-    if (ui->audio_passthrough_radioButton->isChecked()) errorTreatment = AudioSampleFramesToPcm::ErrorTreatment::passThrough;
+    if (ui->audio_conceal_radioButton->isChecked()) errorTreatment = F1ToAudio::ErrorTreatment::conceal;
+    if (ui->audio_silence_radioButton->isChecked()) errorTreatment = F1ToAudio::ErrorTreatment::silence;
+    if (ui->audio_passthrough_radioButton->isChecked()) errorTreatment = F1ToAudio::ErrorTreatment::passThrough;
 
-    if (ui->conceal_linear_radioButton->isChecked()) concealType = AudioSampleFramesToPcm::ConcealType::linear;
-    if (ui->conceal_prediction_radioButton->isChecked()) concealType = AudioSampleFramesToPcm::ConcealType::prediction;
+    if (ui->conceal_linear_radioButton->isChecked()) concealType = F1ToAudio::ConcealType::linear;
+    if (ui->conceal_prediction_radioButton->isChecked()) concealType = F1ToAudio::ConcealType::prediction;
 
     efmProcess.setAudioErrorTreatment(errorTreatment, concealType);
 
@@ -547,19 +534,17 @@ void MainWindow::on_debugEnabled_checkBox_clicked()
         ui->debug_efmToF3_checkBox->setEnabled(true);
         ui->debug_f3Sync_checkBox->setEnabled(true);
         ui->debug_f3ToF2_checkBox->setEnabled(true);
-        ui->debug_f2ToAudio_checkBox->setEnabled(true);
-        ui->debug_audioSampleFrameToPcm_checkBox->setEnabled(true);
         ui->debug_f2ToF1Frame_checkBox->setEnabled(true);
-        ui->debug_f1FrameToDataSector_checkBox->setEnabled(true);
+        ui->debug_f1ToAudio_checkBox->setEnabled(true);
+        ui->debug_f1ToData_checkBox->setEnabled(true);
         setDebug(true);
     } else {
         ui->debug_efmToF3_checkBox->setEnabled(false);
         ui->debug_f3Sync_checkBox->setEnabled(false);
         ui->debug_f3ToF2_checkBox->setEnabled(false);
-        ui->debug_f2ToAudio_checkBox->setEnabled(false);
-        ui->debug_audioSampleFrameToPcm_checkBox->setEnabled(false);
         ui->debug_f2ToF1Frame_checkBox->setEnabled(false);
-        ui->debug_f1FrameToDataSector_checkBox->setEnabled(false);
+        ui->debug_f1ToAudio_checkBox->setEnabled(false);
+        ui->debug_f1ToData_checkBox->setEnabled(false);
         setDebug(false);
     }
 }
@@ -567,10 +552,8 @@ void MainWindow::on_debugEnabled_checkBox_clicked()
 void MainWindow::on_options_decodeAsData_checkbox_clicked()
 {
     if (ui->options_decodeAsData_checkbox->isChecked()) {
-        ui->tabWidget->setTabEnabled(ui->tabWidget->indexOf(ui->f1FramesTab), true);
         ui->tabWidget->setTabEnabled(ui->tabWidget->indexOf(ui->dataTab), true);
     } else {
-        ui->tabWidget->setTabEnabled(ui->tabWidget->indexOf(ui->f1FramesTab), false);
         ui->tabWidget->setTabEnabled(ui->tabWidget->indexOf(ui->dataTab), false);
     }
 }
