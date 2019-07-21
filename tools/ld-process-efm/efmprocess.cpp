@@ -52,13 +52,16 @@ EfmProcess::~EfmProcess()
 // Set the debug output flags
 void EfmProcess::setDebug(bool _debug_EfmToF3Frames, bool _debug_SyncF3Frames,
                           bool _debug_F3ToF2Frames, bool _debug_F2FramesToAudio,
-                          bool _debug_AudioSampleFramesToPcm)
+                          bool _debug_AudioSampleFramesToPcm, bool _debug_f2ToF1Frame,
+                          bool _debug_f1FrameToDataSector)
 {
     debug_EfmToF3Frames = _debug_EfmToF3Frames;
     debug_F2FramesToAudio = _debug_F2FramesToAudio;
     debug_F3ToF2Frames = _debug_F3ToF2Frames;
     debug_SyncF3Frames = _debug_SyncF3Frames;
     debug_AudioSampleFramesToPcm = _debug_AudioSampleFramesToPcm;
+    debug_f2ToF1Frame = _debug_f2ToF1Frame;
+    debug_f1FrameToDataSector = _debug_f1FrameToDataSector;
 }
 
 // Set the audio error treatment type
@@ -92,11 +95,13 @@ void EfmProcess::setAudioErrorTreatment(AudioSampleFramesToPcm::ErrorTreatment _
     }
 }
 
-// Set the audio options
-void EfmProcess::setAudioOptions(bool _padInitialDiscTime)
+// Set the decoder options
+void EfmProcess::setDecoderOptions(bool _padInitialDiscTime, bool _decodeAsData)
 {
-    qDebug() << "EfmProcess::setAudioOptions(): Pad initial disc time is" << _padInitialDiscTime;
+    qDebug() << "EfmProcess::setDecoderOptions(): Pad initial disc time is" << _padInitialDiscTime;
+    qDebug() << "EfmProcess::setDecoderOptions(): Decode as data is" << _decodeAsData;
     padInitialDiscTime = _padInitialDiscTime;
+    decodeAsData = _decodeAsData;
 }
 
 // Output the result of the decode to qInfo
