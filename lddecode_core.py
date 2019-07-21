@@ -10,6 +10,9 @@ import os
 import subprocess
 import sys
 
+import threading
+import queue
+
 # standard numeric/scientific libraries
 import numpy as np
 import scipy as sp
@@ -20,6 +23,15 @@ import commpy_filters
 
 import fdls
 from lddutils import *
+
+try:
+    # If Anaconda's numpy is installed, mkl will use all threads for fft etc
+    # which doesn't work when we do more threads, do disable that...
+    import mkl
+    mkl.set_num_threads(1)
+except:
+    # If not running Anaconda, we don't care that mkl doesn't exist.
+    pass
 
 logging.getLogger(__name__).setLevel(logging.DEBUG)
 
@@ -534,7 +546,7 @@ class RFDecode:
         return fakedecode, dgap_sync, dgap_white
 
 class DemodCache:
-    def __init__(self, rf, infile, loader, cachesize = 128):
+    def __init__(self, rf, infile, loader, cachesize = 128, num_worker_threads=2):
         self.infile = infile
         self.loader = loader
         self.rf = rf
@@ -545,15 +557,27 @@ class DemodCache:
         self.lrusize = 128
         self.lru = []
         
-        self.raw = {}
+        self.rawinput = {}
+        self.input = {}
         self.demod = {}
+
+        self.mtf_level = 1
+
+        self.q = queue.Queue()
+        self.threads = []
+        for i in range(num_worker_threads):
+            t = threading.Thread(target=self.worker, daemon=True)#, args=[self])
+            t.start()
+            self.threads.append(t)
 
     def flush(self):
         if len(self.lru) < self.lrusize:
             return 
 
         for k in self.lru[self.lrusize:]:
-            for d in [self.demod, self.raw]:
+            if k in self.rawinput:
+                del self.rawinput[k]
+            for d in [self.demod, self.input]:
                 if k in d:
                     del d[k]
 
@@ -562,42 +586,66 @@ class DemodCache:
     def flushvideo(self):
         self.demod = {}
 
-    def readblock(self, blocknum, MTF = 0):
-        # Freshen the LRU cache
-        LRUupdate(self.lru, blocknum)
+    def worker(self):
+        while True:
+            item = self.q.get()
+            if item is None:
+                break
 
-        # If any parameters change, self.demods is flushed completely, so it's easy for
-        # there to be FFT'd data but not fully demodulated data
+            dofft, dodemod, blocknum = item
 
-        if blocknum not in self.raw:
-            rawdata = self.loader(self.infile, blocknum * self.blocksize, self.rf.blocklen)
-            
-            if rawdata is None or len(rawdata) < self.rf.blocklen:
-                return False
+            if dofft:
+                self.input[blocknum] = {'fft': np.fft.fft(self.rawinput[blocknum]), 
+                                        'input':self.rawinput[blocknum][self.rf.blockcut:-self.rf.blockcut_end]}
+            if dodemod:
+                self.demod[blocknum] = self.rf.demodblock(fftdata = self.input[blocknum]['fft'], mtf_level=self.mtf_level, cut=True)
 
-            self.raw[blocknum] = {'fft': np.fft.fft(rawdata), 
-                                  'input':rawdata[self.rf.blockcut:-self.rf.blockcut_end]}
-
-        if blocknum not in self.demod:
-            self.demod[blocknum] = self.rf.demodblock(fftdata = self.raw[blocknum]['fft'], mtf_level=MTF, cut=True)
-
-        return True
+            self.q.task_done()
 
     def read(self, begin, length, MTF=0):
         # transpose the cache by key, not block #
         t = {'input':[], 'fft':[], 'video':[], 'audio':[], 'efm':[]}
 
+        self.mtf_level = MTF
+
         end = begin+length
 
-        for b in range(begin // self.blocksize, (end // self.blocksize) + 1):
-            if self.readblock(b) == False:
-                return None
+        # first load the data from disk
+        for blocknum in range(begin // self.blocksize, (end // self.blocksize) + 1):
+            # Freshen the LRU cache
+            LRUupdate(self.lru, blocknum)
 
+            if blocknum not in self.rawinput:
+                rawdata = self.loader(self.infile, blocknum * self.blocksize, self.rf.blocklen)
+                
+                if rawdata is None or len(rawdata) < self.rf.blocklen:
+                    return False
+
+                self.rawinput[blocknum] = rawdata
+
+        # then process the input FFT
+        for blocknum in range(begin // self.blocksize, (end // self.blocksize) + 1):
+            dofft = dodemod = False
+
+            if blocknum not in self.input:
+                dofft = True
+
+            if blocknum not in self.demod:
+                dodemod = True
+
+            if dofft or dodemod:
+                self.q.put((dofft, dodemod, blocknum))
+
+        # block until all tasks are done
+        self.q.join()
+
+        # Now coalesce the output
+        for b in range(begin // self.blocksize, (end // self.blocksize) + 1):
             for k in t.keys():
                 if k in self.demod[b]:
                     t[k].append(self.demod[b][k])
-                elif k in self.raw[b]:
-                    t[k].append(self.raw[b][k])
+                elif k in self.input[b]:
+                    t[k].append(self.input[b][k])
 
         self.flush()
 
@@ -1922,7 +1970,7 @@ class LDdecode:
             self.clvfps = 25
         else: # NTSC
             self.FieldClass = FieldNTSC
-            self.readlen = self.rf.linelen * 350
+            self.readlen = ((self.rf.linelen * 350) // 16384) * 16384
             self.clvfps = 30
 
         self.output_lines = (self.rf.SysParams['frame_lines'] // 2) + 1
@@ -2031,8 +2079,7 @@ class LDdecode:
         else:
             self.audio_offset = f.audio_next_offset
             #logging.info(f.isFirstField, f.cavFrame)
-
-        # need to adjust for demodcache's block-based read here    
+            
         return f, f.nextfieldoffset - (self.readloc - self.rawdecode['startloc'])
 
     def readfield(self):
