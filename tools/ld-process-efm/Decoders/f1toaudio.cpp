@@ -32,7 +32,7 @@ F1ToAudio::F1ToAudio()
 
 // Public methods -----------------------------------------------------------------------------------------------------
 
-// Method to feed the audio processing state-machine with audio sample frames
+// Method to feed the audio processing state-machine with F1 frames
 QByteArray F1ToAudio::process(QVector<F1Frame> f1FramesIn, bool _padInitialDiscTime,
                               ErrorTreatment _errorTreatment, ConcealType _concealType,
                               bool debugState)
@@ -79,6 +79,7 @@ F1ToAudio::Statistics F1ToAudio::getStatistics()
 // Method to report decoding statistics to qInfo
 void F1ToAudio::reportStatistics()
 {
+    qInfo()           << "";
     qInfo()           << "F1 Frames to Audio:";
     qInfo()           << "       Audio samples:" << statistics.audioSamples;
     qInfo()           << "     Corrupt samples:" << statistics.corruptSamples;

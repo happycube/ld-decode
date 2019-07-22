@@ -68,7 +68,7 @@ public:
     void reset();
     void clearStatistics();
 
-public:
+private:
     bool debugOn;
     bool padInitialDiscTime;
     Statistics statistics;

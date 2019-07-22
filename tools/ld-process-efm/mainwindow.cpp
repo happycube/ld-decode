@@ -375,6 +375,7 @@ void MainWindow::resetDecoderOptions()
     ui->audio_passthrough_radioButton->setChecked(false);
 
     ui->audio_padSampleStart_checkBox->setChecked(false);
+    ui->options_decodeAsAudio_checkbox->setChecked(true);
     ui->options_decodeAsData_checkbox->setChecked(false);
 
     ui->tabWidget->setTabEnabled(ui->tabWidget->indexOf(ui->dataTab), false);
@@ -511,7 +512,8 @@ void MainWindow::on_decodePushButton_clicked()
     efmProcess.setAudioErrorTreatment(errorTreatment, concealType);
 
     // Set the audio options
-    efmProcess.setDecoderOptions(ui->audio_padSampleStart_checkBox->isChecked(), ui->options_decodeAsData_checkbox->isChecked());
+    efmProcess.setDecoderOptions(ui->audio_padSampleStart_checkBox->isChecked(), ui->options_decodeAsAudio_checkbox->isChecked(),
+                                 ui->options_decodeAsData_checkbox->isChecked());
 
     // Start the processing of the EFM
     efmProcess.startProcessing(&inputEfmFileHandle, &audioOutputTemporaryFileHandle,
@@ -546,6 +548,15 @@ void MainWindow::on_debugEnabled_checkBox_clicked()
         ui->debug_f1ToAudio_checkBox->setEnabled(false);
         ui->debug_f1ToData_checkBox->setEnabled(false);
         setDebug(false);
+    }
+}
+
+void MainWindow::on_options_decodeAsAudio_checkbox_clicked()
+{
+    if (ui->options_decodeAsAudio_checkbox->isChecked()) {
+        ui->tabWidget->setTabEnabled(ui->tabWidget->indexOf(ui->audioTab), true);
+    } else {
+        ui->tabWidget->setTabEnabled(ui->tabWidget->indexOf(ui->audioTab), false);
     }
 }
 
@@ -662,5 +673,4 @@ bool MainWindow::loadInputEfmFile(QString filename)
 
     return true;
 }
-
 
