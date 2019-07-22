@@ -10,6 +10,8 @@ import os
 import subprocess
 import sys
 
+from numba import jit, njit
+
 import threading
 import queue
 
@@ -546,7 +548,7 @@ class RFDecode:
         return fakedecode, dgap_sync, dgap_white
 
 class DemodCache:
-    def __init__(self, rf, infile, loader, cachesize = 128, num_worker_threads=2):
+    def __init__(self, rf, infile, loader, cachesize = 128, num_worker_threads=6):
         self.infile = infile
         self.loader = loader
         self.rf = rf
@@ -857,7 +859,7 @@ class Field:
                 inorder = inrange(linelen, *exprange)
 
             if spulse is not None:
-                validpulses.append((*spulse, inorder))
+                validpulses.append((spulse[0], spulse[1], inorder))
 
         return validpulses
 
@@ -975,7 +977,6 @@ class Field:
         self.sync_confidence = 0
                 
         return None, None
-
 
     def computeLineLen(self, validpulses, where = 'all'):
         linelens = []
@@ -1613,12 +1614,21 @@ class FieldPAL(Field):
 
 # These classes extend Field to do PAL/NTSC specific TBC features.
 
+@njit
+def clb_findnextburst(burstarea, i, endburstarea, threshold):
+    for j in range(i, endburstarea):
+        if np.abs(burstarea[j]) > threshold:
+            return j
+
+    return None
+
 class FieldNTSC(Field):
 
     def get_burstlevel(self, l, linelocs = None):
         burstarea = self.data['video']['demod'][self.lineslice(l, 5.5, 2.4, linelocs)].copy()
 
         return rms(burstarea) * np.sqrt(2)
+
 
     def compute_line_bursts(self, linelocs, line):
         '''
@@ -1645,22 +1655,26 @@ class FieldNTSC(Field):
         zc_bursts = {False: [], True: []}
 
         # copy and get the mean of the burst area to factor out wow/flutter
-        burstarea = self.data['video']['demod_burst'][s+bstart:s+bend].copy()
+        burstarea = self.data['video']['demod_burst'][s+bstart:s+bend]
         if len(burstarea) == 0:
             #logging.info( line, s + bstart, s + bend, linelocs[line])
             return zc_bursts
-        burstarea -= np.mean(burstarea)
 
-        i = 0
-        while i < (len(burstarea) - 1):
-            if np.abs(burstarea[i]) > (8 * self.rf.SysParams['hz_ire']):
-                zc = calczc(burstarea, i, 0)
-                if zc is not None:
-                    zc_burst = ((bstart+zc-s_rem) / lfreq) / (1 / self.rf.SysParams['fsc_mhz'])
-                    zc_bursts[burstarea[i] < 0].append(np.round(zc_burst) - zc_burst)
-                    i = int(zc) + 1
+        burstarea = burstarea - np.mean(burstarea)
 
-            i += 1
+        threshold = 8 * self.rf.SysParams['hz_ire']
+
+        fsc_n1 = (1 / self.rf.SysParams['fsc_mhz'])
+#        zcburstdiv = (lfreq * fsc_n1)
+
+        i = clb_findnextburst(burstarea, 0, len(burstarea) - 1, threshold)
+        zc = 0
+        while i is not None and zc is not None:
+            zc = calczc(burstarea, i, 0)
+            if zc is not None:
+                zc_burst = ((bstart+zc-s_rem) / lfreq) / fsc_n1
+                zc_bursts[burstarea[i] < 0].append(np.round(zc_burst) - zc_burst)
+                i = clb_findnextburst(burstarea, int(zc + 1), len(burstarea) - 1, threshold)
 
         return zc_bursts
 

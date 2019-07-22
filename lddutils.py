@@ -11,6 +11,8 @@ import os
 import sys
 import subprocess
 
+from numba import jit, njit
+
 # standard numeric/scientific libraries
 import numpy as np
 import scipy as sp
@@ -356,58 +358,68 @@ hilbert_filter = np.fft.fftshift(
 def filtfft(filt, blocklen):
     return sps.freqz(filt[0], filt[1], blocklen, whole=1)[1]
 
+@njit
 def inrange(a, mi, ma):
     return (a >= mi) & (a <= ma)
 
 def sqsum(cmplx):
     return np.sqrt((cmplx.real ** 2) + (cmplx.imag ** 2))
 
-def calczc(data, _start_offset, target, edge='both', _count=10, reverse=False):
-    
-    if reverse:
-        # Instead of actually implementing this in reverse, use numpy to flip data
-        rev_zc = calczc(data[_start_offset::-1], 0, target, edge, _count)
-        if rev_zc is not None:
-            return _start_offset - rev_zc
-        else:
-            return None
-    
-    start_offset = int(_start_offset)
+@njit
+def calczc_findfirst(data, target, rising):
+    if rising:
+        for i in range(0, len(data)):
+            if data[i] >= target:
+                return i
+
+        return None
+    else:
+        for i in range(0, len(data)):
+            if data[i] <= target:
+                return i
+
+        return None
+
+@njit
+def calczc_do(data, _start_offset, target, edge=0, _count=10):
+    start_offset = max(1, int(_start_offset))
     count = int(_count + 1)
     
-    if edge == 'both': # capture rising or falling edge
+    if edge == 0: # capture rising or falling edge
         if data[start_offset] < target:
-            edge = 'rising'
+            edge = 1
         else:
-            edge = 'falling'
+            edge = -1
 
-    if edge == 'rising':
-        locs = np.where(data[start_offset:start_offset+count] >= target)[0]
-        #print(locs)
-        offset = 0
-    else:
-        locs = np.where(data[start_offset:start_offset+count] <= target)[0]
-        offset = -1
+    loc = calczc_findfirst(data[start_offset:start_offset+count], target, edge==1)
                
-    if len(locs) == 0:
+    if loc is None:
         return None
 
-    index = 0
-        
-    x = start_offset + locs[index] #+ offset
-    
-    if (x == 0):
-        #print("BUG:  cannot figure out zero crossing for beginning of data")
-        return None
-    
+    x = start_offset + loc
     a = data[x - 1] - target
     b = data[x] - target
     
     y = -a / (-a + b)
 
-    #print(x, y, locs, data[start_offset:start_offset+locs[0] + 1])
-
     return x-1+y
+
+def calczc(data, _start_offset, target, edge='both', _count=10, reverse=False):
+    edgec = 0 # 'both'
+    if edge == 'rising':
+        edgec = 1
+    elif edge == 'falling':
+        edgec = -1
+
+    if reverse:
+        # Instead of actually implementing this in reverse, use numpy to flip data
+        rev_zc = calczc_do(data[_start_offset::-1], 0, target, edgec, _count)
+        if rev_zc is None:
+            return None
+
+        return _start_offset - rev_zc
+
+    return calczc_do(data, _start_offset, target, edgec, _count)
 
 def calczc_sets(data, start, end, tgt = 0, cliplevel = None):
     zcsets = {False: [], True:[]}
@@ -457,6 +469,7 @@ def genwave(rate, freq, initialphase = 0):
     return out
 
 # slightly faster than np.std for short arrays
+@njit
 def rms(arr):
     return np.sqrt(np.mean(np.square(arr - np.mean(arr))))
 
@@ -484,7 +497,7 @@ def roundfloat(fl, places = 3):
     return np.round(fl * r) / r
 
 # Something like this should be a numpy function, but I can't find it.
-
+@jit
 def findareas(array, cross):
     ''' Find areas where `array` is <= `cross`
     
@@ -502,13 +515,13 @@ def findareas(array, cross):
 
     return [(*z, z[1] - z[0]) for z in zip(starts, ends)]
 
-Pulse = namedtuple('Pulse', 'start len')
-
 def findpulses(array, low, high):
     ''' Find areas where `array` is between `low` and `high`
     
     returns: array of tuples of said areas (begin, end, length)
     '''
+    
+    Pulse = namedtuple('Pulse', 'start len')
     
     array_inrange = inrange(array, low, high)
     
