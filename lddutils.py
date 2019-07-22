@@ -559,6 +559,14 @@ def LRUupdate(l, k):
         pass
 
     l.insert(0, k)
-        
+
+@njit
+def nb_median(m):
+    return np.median(m)
+
+@njit
+def nb_mean(m):
+    return np.mean(m)
+
 if __name__ == "__main__":
     print("Nothing to see here, move along ;)")
