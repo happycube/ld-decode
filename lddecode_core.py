@@ -1202,8 +1202,8 @@ class Field:
                     self.linebad[i] = True
                     linelocs2[i] = self.linelocs1[i] # don't use the computed value here if it's bad
                 else:
-                    porch_level = np.median(self.data['video']['demod_05'][int(zc+(self.rf.freq*8)):int(zc+(self.rf.freq*9))])
-                    sync_level = np.median(self.data['video']['demod_05'][int(zc+(self.rf.freq*1)):int(zc+(self.rf.freq*2.5))])
+                    porch_level = nb_median(self.data['video']['demod_05'][int(zc+(self.rf.freq*8)):int(zc+(self.rf.freq*9))])
+                    sync_level = nb_median(self.data['video']['demod_05'][int(zc+(self.rf.freq*1)):int(zc+(self.rf.freq*2.5))])
 
                     zc2 = calczc(self.data['video']['demod_05'], ll1, (porch_level + sync_level) / 2, reverse=False, _count=400)
 
@@ -1554,12 +1554,12 @@ class FieldPAL(Field):
             else:
                 offsets[l] = []
 
-        medianoffset = np.median(alloffsets)
+        medianoffset = nb_median(alloffsets)
         tgt = .5 if inrange(medianoffset, 0.25, 0.75) else 0
 
         for l in range(len(linelocs)):
             if offsets[l] != []:
-                adjustment = tgt - np.median(offsets[l])
+                adjustment = tgt - nb_median(offsets[l])
                 linelocs[l] += adjustment * (self.rf.freq / 3.75) * .25
 
         return linelocs  
@@ -1571,7 +1571,7 @@ class FieldPAL(Field):
             burstarea = self.data['video']['demod'][self.lineslice(l, 6, 3)]
             burstlevel[l] = rms(burstarea) * np.sqrt(2)
 
-        return np.median(burstlevel / self.rf.SysParams['hz_ire'])
+        return nb_median(burstlevel / self.rf.SysParams['hz_ire'])
 
     def hz_to_output(self, input):
         reduced = (input - self.rf.SysParams['ire0']) / self.rf.SysParams['hz_ire']
@@ -1614,6 +1614,7 @@ class FieldPAL(Field):
 
 # These classes extend Field to do PAL/NTSC specific TBC features.
 
+# Hotspots found in profiling are refactored here and boosted by numba's jit.
 @njit
 def clb_findnextburst(burstarea, i, endburstarea, threshold):
     for j in range(i, endburstarea):
@@ -1621,6 +1622,11 @@ def clb_findnextburst(burstarea, i, endburstarea, threshold):
             return j
 
     return None
+
+@njit
+def clb_subround(x):
+    # Yes, this was a hotspot.
+    return np.round(x) - x
 
 class FieldNTSC(Field):
 
@@ -1660,23 +1666,24 @@ class FieldNTSC(Field):
             #logging.info( line, s + bstart, s + bend, linelocs[line])
             return zc_bursts
 
-        burstarea = burstarea - np.mean(burstarea)
+        burstarea = burstarea - nb_mean(burstarea)
 
         threshold = 8 * self.rf.SysParams['hz_ire']
 
         fsc_n1 = (1 / self.rf.SysParams['fsc_mhz'])
-#        zcburstdiv = (lfreq * fsc_n1)
+        zcburstdiv = (lfreq * fsc_n1)
 
         i = clb_findnextburst(burstarea, 0, len(burstarea) - 1, threshold)
         zc = 0
         while i is not None and zc is not None:
             zc = calczc(burstarea, i, 0)
             if zc is not None:
-                zc_burst = ((bstart+zc-s_rem) / lfreq) / fsc_n1
-                zc_bursts[burstarea[i] < 0].append(np.round(zc_burst) - zc_burst)
+                zc_burst = (bstart+zc-s_rem) / zcburstdiv
+                zc_burst = clb_subround(zc_burst) 
+                zc_bursts[burstarea[i] < 0].append(zc_burst)
                 i = clb_findnextburst(burstarea, int(zc + 1), len(burstarea) - 1, threshold)
 
-        return zc_bursts
+        return {False: np.array(zc_bursts[False]), True:np.array(zc_bursts[True])}
 
     def compute_burst_offsets(self, linelocs):
         linelocs_adj = linelocs
@@ -1706,15 +1713,15 @@ class FieldNTSC(Field):
         bursts_arr[False] = np.concatenate(bursts['odd'])
 
         amed = {}
-        amed[True] = np.abs(np.median(bursts_arr[True]))
-        amed[False] = np.abs(np.median(bursts_arr[False]))
+        amed[True] = np.abs(nb_median(bursts_arr[True]))
+        amed[False] = np.abs(nb_median(bursts_arr[False]))
         field14 = amed[True] < amed[False]
 
         # if the medians are too close, recompute them with a 90 degree offset
         if (np.abs(amed[True] - amed[False]) < .1):
             amed = {}
-            amed[True] = np.abs(np.median(bursts_arr[True] + .25))
-            amed[False] = np.abs(np.median(bursts_arr[False] + .25))
+            amed[True] = np.abs(nb_median(bursts_arr[True] + .25))
+            amed[False] = np.abs(nb_median(bursts_arr[False] + .25))
             field14 = amed[True] < amed[False]
 
         self.amed = amed
@@ -1752,7 +1759,7 @@ class FieldNTSC(Field):
                 elif l >= 262:
                     lfreq = self.rf.freq * (((self.linelocs2[l+0] - self.linelocs2[l-1]) / 1) / self.rf.linelen)
 
-                adjs[l] = -(np.median(zc_bursts[l][edge]) * lfreq * (1 / self.rf.SysParams['fsc_mhz']))
+                adjs[l] = -(nb_median(zc_bursts[l][edge]) * lfreq * (1 / self.rf.SysParams['fsc_mhz']))
 
         try:
             adjs_median = np.median([adjs[a] for a in adjs])
