@@ -548,7 +548,7 @@ class RFDecode:
         return fakedecode, dgap_sync, dgap_white
 
 class DemodCache:
-    def __init__(self, rf, infile, loader, cachesize = 128, num_worker_threads=6):
+    def __init__(self, rf, infile, loader, cachesize = 128, num_worker_threads=2):
         self.infile = infile
         self.loader = loader
         self.rf = rf
