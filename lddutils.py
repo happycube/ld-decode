@@ -82,7 +82,7 @@ def plotfilter(B, A, dfreq = None, freq = 40, zero_base = False):
 from scipy import interpolate
 
 # This uses numpy's interpolator, which works well enough
-def scale(buf, begin, end, tgtlen):
+def scale_old(buf, begin, end, tgtlen):
 #        print("scaling ", begin, end, tgtlen)
         ibegin = int(begin)
         iend = int(end)
@@ -98,6 +98,23 @@ def scale(buf, begin, end, tgtlen):
 
         return interpolate.splev(arrout, spl)[:-1]
     
+@njit
+def scale(buf, begin, end, tgtlen):
+    linelen = end - begin
+    sfactor = linelen/tgtlen
+
+    output = np.zeros(tgtlen, dtype=buf.dtype)
+    
+    for i in range(0, tgtlen):
+        coord = (i * sfactor) + begin
+        start = int(coord) - 1
+        p = buf[start:start+4]
+        x = coord - int(coord)
+        
+        output[i] = p[1] + 0.5 * x*(p[2] - p[0] + x*(2.0*p[0] - 5.0*p[1] + 4.0*p[2] - p[3] + x*(3.0*(p[1] - p[2]) + p[3] - p[0])));
+
+    return output
+
 def downscale_field(data, lineinfo, outwidth=1820, lines=625, usewow=False):
     ilinepx = linelen
     dsout = np.zeros((len(lineinfo) * outwidth), dtype=np.double)    
@@ -567,6 +584,22 @@ def nb_median(m):
 @njit
 def nb_mean(m):
     return np.mean(m)
+
+@njit
+def nb_min(m):
+    return np.min(m)
+
+@njit
+def nb_max(m):
+    return np.max(m)
+
+@njit
+def nb_mul(x, y):
+    return x * y
+
+@njit
+def nb_where(x):
+    return np.where(x)
 
 if __name__ == "__main__":
     print("Nothing to see here, move along ;)")

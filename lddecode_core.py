@@ -711,9 +711,9 @@ def downscale_audio(audio, lineinfo, rf, linecount, timeoffset = 0, freq = 48000
 class Field:
     def get_linefreq(self, l = None):
         if l is None or l == 0:
-            return self.rf.freq
+            return self.freq
         else:
-            return self.rf.freq * (((self.linelocs[l+1] - self.linelocs[l-1]) / 2) / self.rf.linelen)
+            return self.freq * (((self.linelocs[l+1] - self.linelocs[l-1]) / 2) / self.inlinelen)
 
     def usectoinpx(self, x, line = None):
         return x * self.get_linefreq(line)
@@ -1342,6 +1342,7 @@ class Field:
         self.prevfield = prevfield
 
         self.rf = rf
+        self.freq = self.rf.freq
         
         self.inlinelen = self.rf.linelen
         self.outlinelen = self.rf.SysParams['outlinelen']
