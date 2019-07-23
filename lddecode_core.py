@@ -1620,7 +1620,7 @@ class FieldPAL(Field):
 def clb_findnextburst(burstarea, i, endburstarea, threshold):
     for j in range(i, endburstarea):
         if np.abs(burstarea[j]) > threshold:
-            return j
+            return j, burstarea[j]
 
     return None
 
@@ -1676,15 +1676,28 @@ class FieldNTSC(Field):
 
         i = clb_findnextburst(burstarea, 0, len(burstarea) - 1, threshold)
         zc = 0
+        numpos = 0
+        numneg = 0
+        zc_bursts_t = np.zeros(64, dtype=np.float)
+        zc_bursts_n = np.zeros(64, dtype=np.float)
+
         while i is not None and zc is not None:
-            zc = calczc(burstarea, i, 0)
+            zc = calczc(burstarea, i[0], 0)
             if zc is not None:
                 zc_burst = (bstart+zc-s_rem) / zcburstdiv
                 zc_burst = clb_subround(zc_burst) 
-                zc_bursts[burstarea[i] < 0].append(zc_burst)
+                if i[1] < 0:
+                    zc_bursts_t[numpos] = zc_burst
+                    numpos = numpos + 1
+                else:
+                    zc_bursts_n[numneg] = zc_burst
+                    numneg = numneg + 1
+
+                #zc_bursts[burstarea[i] < 0].append(zc_burst)
                 i = clb_findnextburst(burstarea, int(zc + 1), len(burstarea) - 1, threshold)
 
-        return {False: np.array(zc_bursts[False]), True:np.array(zc_bursts[True])}
+        return {False: zc_bursts_n[:numneg], True:zc_bursts_t[:numpos]}
+        #return {False: np.array(zc_bursts[False]), True:np.array(zc_bursts[True])}
 
     def compute_burst_offsets(self, linelocs):
         linelocs_adj = linelocs
