@@ -1555,12 +1555,12 @@ class FieldPAL(Field):
             else:
                 offsets[l] = []
 
-        medianoffset = nb_median(alloffsets)
+        medianoffset = np.median(alloffsets)
         tgt = .5 if inrange(medianoffset, 0.25, 0.75) else 0
 
         for l in range(len(linelocs)):
             if offsets[l] != []:
-                adjustment = tgt - nb_median(offsets[l])
+                adjustment = tgt - np.median(offsets[l])
                 linelocs[l] += adjustment * (self.rf.freq / 3.75) * .25
 
         return linelocs  
