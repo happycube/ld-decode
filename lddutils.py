@@ -421,22 +421,17 @@ def calczc_do(data, _start_offset, target, edge=0, _count=10):
 
     return x-1+y
 
-def calczc(data, _start_offset, target, edge='both', _count=10, reverse=False):
-    edgec = 0 # 'both'
-    if edge == 'rising':
-        edgec = 1
-    elif edge == 'falling':
-        edgec = -1
-
+def calczc(data, _start_offset, target, edge=0, _count=10, reverse=False):
+    ''' edge:  -1 falling, 0 either, 1 rising '''
     if reverse:
         # Instead of actually implementing this in reverse, use numpy to flip data
-        rev_zc = calczc_do(data[_start_offset::-1], 0, target, edgec, _count)
+        rev_zc = calczc_do(data[_start_offset::-1], 0, target, edge, _count)
         if rev_zc is None:
             return None
 
         return _start_offset - rev_zc
 
-    return calczc_do(data, _start_offset, target, edgec, _count)
+    return calczc_do(data, _start_offset, target, edge, _count)
 
 def calczc_sets(data, start, end, tgt = 0, cliplevel = None):
     zcsets = {False: [], True:[]}
