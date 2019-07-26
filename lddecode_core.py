@@ -1522,7 +1522,7 @@ class FieldPAL(Field):
         for l in range(len(linelocs)):
             pilot = self.data['video']['demod'][int(linelocs[l]):int(linelocs[l]+self.usectoinpx(4.7))].copy()
             pilot -= self.data['video']['demod_05'][int(linelocs[l]):int(linelocs[l]+self.usectoinpx(4.7))]
-            pilot = np.flip(pilot, axis=0)
+            #pilot = np.flip(pilot, axis=0)
 
             pilots.append(pilot)
             offsets[l] = []
@@ -1531,27 +1531,23 @@ class FieldPAL(Field):
             if l > 1:
                 adjfreq /= (linelocs[l] - linelocs[l - 1]) / self.rf.linelen
 
-            i = 0
-            while i < len(pilot):
-                if inrange(pilot[i], -300000, -100000):
-                    zc = calczc(pilot, i, 0)
+            pcross = np.where((pilot[:-1] < 0) & (pilot[1:] >= 0))[0]
 
-                    if zc is not None:
-                        zcp = zc / (adjfreq / 3.75)
-                        offset = zcp - np.floor(zcp)
-                        # issue #224 was caused by it wrapping from say .01 to .99.
-                        # convert offsets into [-.5, .5] to hopefully prevent this
-                        if offset > .5:
-                            offset -= 1
-                        offsets[l].append(offset)
-                        i = np.int(zc + 1)
-
-                i += 1
+            for c in pcross:
+                # filter out bits outside of the pilot wave?  need to look at this more esp at 75msps
+                if pilot[c + 1] - pilot[c] > 50000:
+                    zc = calczc(pilot, c, 0)
+                    zcp = zc / (adjfreq / 3.75)
+                    offset = zcp - np.floor(zcp)
+                    # issue #224 was caused by it wrapping from say .01 to .99.
+                    # convert offsets into [-.5, .5] to hopefully prevent this
+                    if offset > .5:
+                        offset -= 1
+                    offsets[l].append(offset)
 
             if len(offsets) >= 3:
                 offsets[l] = offsets[l][1:-1]
-                if i >= 11:
-                    alloffsets += offsets[l]
+                alloffsets += offsets[l]
             else:
                 offsets[l] = []
 
