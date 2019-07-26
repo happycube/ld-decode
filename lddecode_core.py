@@ -548,7 +548,7 @@ class RFDecode:
         return fakedecode, dgap_sync, dgap_white
 
 class DemodCache:
-    def __init__(self, rf, infile, loader, cachesize = 128, num_worker_threads=2):
+    def __init__(self, rf, infile, loader, cachesize = 128, num_worker_threads=6):
         self.infile = infile
         self.loader = loader
         self.rf = rf
@@ -1674,18 +1674,18 @@ class FieldNTSC(Field):
         fsc_n1 = (1 / self.rf.SysParams['fsc_mhz'])
         zcburstdiv = (lfreq * fsc_n1)
 
-        i = clb_findnextburst(burstarea, 0, len(burstarea) - 1, threshold)
-        zc = 0
         numpos = 0
         numneg = 0
         zc_bursts_t = np.zeros(64, dtype=np.float)
         zc_bursts_n = np.zeros(64, dtype=np.float)
 
+        i = clb_findnextburst(burstarea, 0, len(burstarea) - 1, threshold)
+        zc = 0
+
         while i is not None and zc is not None:
             zc = calczc(burstarea, i[0], 0)
             if zc is not None:
-                zc_burst = (bstart+zc-s_rem) / zcburstdiv
-                zc_burst = clb_subround(zc_burst) 
+                zc_burst = clb_subround((bstart+zc-s_rem) / zcburstdiv) 
                 if i[1] < 0:
                     zc_bursts_t[numpos] = zc_burst
                     numpos = numpos + 1
@@ -1693,7 +1693,6 @@ class FieldNTSC(Field):
                     zc_bursts_n[numneg] = zc_burst
                     numneg = numneg + 1
 
-                #zc_bursts[burstarea[i] < 0].append(zc_burst)
                 i = clb_findnextburst(burstarea, int(zc + 1), len(burstarea) - 1, threshold)
 
         return {False: zc_bursts_n[:numneg], True:zc_bursts_t[:numpos]}
@@ -1958,9 +1957,11 @@ class CombNTSC:
 
 class LDdecode:
     
-    def __init__(self, fname_in, fname_out, freader, inputfreq = 40, analog_audio = True, digital_audio = False, system = 'NTSC', doDOD = True):
+    def __init__(self, fname_in, fname_out, freader, inputfreq = 40, analog_audio = True, digital_audio = False, system = 'NTSC', doDOD = True, threads=4):
         self.infile = open(fname_in, 'rb')
         self.freader = freader
+
+        self.numthreads = threads
 
         self.fields_written = 0
 
@@ -2033,7 +2034,7 @@ class LDdecode:
 
         self.verboseVITS = False
 
-        self.demodcache = DemodCache(self.rf, self.infile, self.freader)
+        self.demodcache = DemodCache(self.rf, self.infile, self.freader, num_worker_threads=self.numthreads)
 
         self.bw_ratios = []
         

@@ -35,6 +35,8 @@ parser.add_argument('--daa', dest='daa', action='store_true', default=False, hel
 parser.add_argument('--ignoreleadout', dest='ignoreleadout', action='store_true', default=False, help='continue decoding after lead-out seen')
 parser.add_argument('--verboseVITS', dest='verboseVITS', action='store_true', default=False, help='Enable additional JSON fields')
 
+parser.add_argument('-t', '--threads', metavar='threads', type=int, default=4, help='number of CPU threads to use')
+
 parser.add_argument('-f', '--frequency', dest='inputfreq', metavar='FREQ', type=parse_frequency, default=40, help='RF sampling frequency (default is 40MHz)')
 parser.add_argument('--video_bpf_high', dest='vbpf_high', metavar='FREQ', type=parse_frequency, default=None, help='Video BPF high end frequency')
 parser.add_argument('--video_lpf', dest='vlpf', metavar='FREQ', type=parse_frequency, default=None, help='Video low-pass filter frequency')
@@ -76,7 +78,7 @@ else:
 
 system = 'PAL' if args.pal else 'NTSC'
     
-ldd = LDdecode(filename, outname, loader, inputfreq = args.inputfreq, analog_audio = not args.daa, digital_audio = not args.noefm, system=system, doDOD = not args.nodod)
+ldd = LDdecode(filename, outname, loader, inputfreq = args.inputfreq, analog_audio = not args.daa, digital_audio = not args.noefm, system=system, doDOD = not args.nodod, threads=args.threads)
 ldd.roughseek(firstframe * 2)
 
 if system == 'NTSC' and not args.ntscj:
