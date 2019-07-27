@@ -582,13 +582,18 @@ class DemodCache:
         self.deqeue_thread = threading.Thread(target=self.dequeue, daemon=True)
         self.deqeue_thread.start()
 
-    def __del__(self):            
+    def end(self):            
         # stop workers
-        for i in range(len(self.threads)):
+        for i in range(len(self.threads)*4):
             self.q_in.put(None)
 
         for t in self.threads:
             t.join()
+
+        self.q_out.put(None)
+
+    def __del__(self):
+        self.end()
 
     def flush(self):
         if len(self.lru) < self.lrusize:
@@ -609,7 +614,7 @@ class DemodCache:
         while True:
             item = self.q_in.get()
             if item is None:
-                break
+                return
 
             blocknum, block, target_MTF = item
 
@@ -673,7 +678,11 @@ class DemodCache:
 
     def dequeue(self):
         while True: # not self.q_out.empty():
-            blocknum, item = self.q_out.get()
+            rv = self.q_out.get()
+            if rv is None:
+                return
+            blocknum, item = rv
+
             self.q_in_metadata.remove((blocknum, item['MTF']))
 
             self.lock.acquire()
@@ -2105,6 +2114,9 @@ class LDdecode:
         self.demodcache = DemodCache(self.rf, self.infile, self.freader, num_worker_threads=self.numthreads)
 
         self.bw_ratios = []
+
+    def __del__(self):
+        del self.demodcache
         
     def close(self):
         ''' deletes all open files, so it's possible to pickle an LDDecode object '''
@@ -2112,6 +2124,8 @@ class LDdecode:
         # use setattr to force file closure
         for outfiles in ['infile', 'outfile_video', 'outfile_audio', 'outfile_json', 'outfile_efm']:
             setattr(self, outfiles, None)
+
+        self.demodcache.end()
 
     def roughseek(self, fieldnr):
         self.prevPhaseID = None
@@ -2201,7 +2215,7 @@ class LDdecode:
                     # EOF, probably
                     return None
             
-                print("")
+#                print("")
 
             self.curfield = f
             self.fdoffset += offset
