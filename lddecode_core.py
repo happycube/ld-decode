@@ -727,6 +727,10 @@ class DemodCache:
 
         return rv
 
+@njit
+def dsa_rescale(infloat):
+    return int(np.round(infloat * 32767 / 150000))
+
 # right now defualt is 16/48, so not optimal :)
 def downscale_audio(audio, lineinfo, rf, linecount, timeoffset = 0, freq = 48000.0, scale=64):
     #frametime = 1 / (rf.SysParams['FPS'] * 2)
@@ -765,8 +769,8 @@ def downscale_audio(audio, lineinfo, rf, linecount, timeoffset = 0, freq = 48000
         output_left = (output_left * swow[i]) - rf.SysParams['audio_lfreq']
         output_right = (output_right * swow[i]) - rf.SysParams['audio_rfreq']
         
-        output[(i * 2) + 0] = int(np.round(output_left * 32767 / 150000))
-        output[(i * 2) + 1] = int(np.round(output_right * 32767 / 150000))
+        output[(i * 2) + 0] = dsa_rescale(output_left) #int(np.round(output_left * 32767 / 150000))
+        output[(i * 2) + 1] = dsa_rescale(output_right)
         
     np.clip(output, -32766, 32766, out=output16)
             
