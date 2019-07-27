@@ -15,6 +15,8 @@ from numba import jit, njit
 import threading
 import queue
 
+from multiprocessing import Process, Pool, Queue, JoinableQueue
+
 # standard numeric/scientific libraries
 import numpy as np
 import scipy as sp
@@ -559,50 +561,64 @@ class DemodCache:
         self.lrusize = 128
         self.lru = []
         
-        self.rawinput = {}
-        self.input = {}
-        self.demod = {}
+        self.blocks = {}
 
         self.mtf_level = 1
 
-        self.q = queue.Queue()
+        self.q_in = JoinableQueue()
+        self.q_out = Queue()
         self.threads = []
         for i in range(num_worker_threads):
-            t = threading.Thread(target=self.worker, daemon=True)#, args=[self])
+            t = Process(target=self.worker, daemon=True)#, args=[self])
             t.start()
             self.threads.append(t)
+
+    def __del__(self):            
+        # stop workers
+        for i in range(len(self.threads)):
+            self.q_in.put(None)
+
+        for t in self.threads:
+            t.join()
 
     def flush(self):
         if len(self.lru) < self.lrusize:
             return 
-
+        
         for k in self.lru[self.lrusize:]:
-            if k in self.rawinput:
-                del self.rawinput[k]
-            for d in [self.demod, self.input]:
-                if k in d:
-                    del d[k]
+            if k in self.blocks:
+                del self.blocks[k]
 
         self.lru = self.lru[:self.lrusize]
 
     def flushvideo(self):
-        self.demod = {}
+        for k in self.blocks.keys():
+            if 'demod' in self.blocks[k]:
+                del self.blocks[k]['demod']
 
     def worker(self):
         while True:
-            item = self.q.get()
+            item = self.q_in.get()
             if item is None:
                 break
 
-            dofft, dodemod, blocknum = item
+            blocknum, block = item
 
-            if dofft:
-                self.input[blocknum] = {'fft': np.fft.fft(self.rawinput[blocknum]), 
-                                        'input':self.rawinput[blocknum][self.rf.blockcut:-self.rf.blockcut_end]}
-            if dodemod:
-                self.demod[blocknum] = self.rf.demodblock(fftdata = self.input[blocknum]['fft'], mtf_level=self.mtf_level, cut=True)
+            output = {}
 
-            self.q.task_done()
+            if 'fft' not in block:
+                output['fft'] = np.fft.fft(block['rawinput'])
+                fftdata = output['fft']
+            else:
+                fftdata = block['fft']
+
+            if 'demod' not in block:
+                output['demod'] = self.rf.demodblock(fftdata = fftdata, mtf_level=block['MTF'], cut=True)
+                #self.q_out.put((blocknum, self.rf.demodblock(fftdata = indata[0], mtf_level=indata[1], cut=True)))
+
+            self.q_out.put((blocknum, output))
+
+            self.q_in.task_done()
 
     def read(self, begin, length, MTF=0):
         # transpose the cache by key, not block #
@@ -617,37 +633,41 @@ class DemodCache:
             # Freshen the LRU cache
             LRUupdate(self.lru, blocknum)
 
-            if blocknum not in self.rawinput:
+            if blocknum not in self.blocks:
                 rawdata = self.loader(self.infile, blocknum * self.blocksize, self.rf.blocklen)
                 
                 if rawdata is None or len(rawdata) < self.rf.blocklen:
                     return False
 
-                self.rawinput[blocknum] = rawdata
+                self.blocks[blocknum] = {}
+                self.blocks[blocknum]['rawinput'] = rawdata
+                #self.blocks[blocknum]['input'] = rawdata[self.rf.blockcut:-self.rf.blockcut_end]
 
-        # then process the input FFT
+        processing = 0
+        # then process it in parallel
         for blocknum in range(begin // self.blocksize, (end // self.blocksize) + 1):
-            dofft = dodemod = False
-
-            if blocknum not in self.input:
-                dofft = True
-
-            if blocknum not in self.demod:
-                dodemod = True
-
-            if dofft or dodemod:
-                self.q.put((dofft, dodemod, blocknum))
+            if 'demod' not in self.blocks[blocknum]:
+                self.blocks[blocknum]['MTF'] = MTF
+                self.q_in.put((blocknum, self.blocks[blocknum]))
+                processing += 1
 
         # block until all tasks are done
-        self.q.join()
+        self.q_in.join()
+
+        for i in range(processing):
+            blocknum, item = self.q_out.get()
+            for k in item.keys():
+                self.blocks[blocknum][k] = item[k]
+            if 'input' not in self.blocks[blocknum]:
+                self.blocks[blocknum]['input'] = self.blocks[blocknum]['rawinput'][self.rf.blockcut:-self.rf.blockcut_end]
 
         # Now coalesce the output
         for b in range(begin // self.blocksize, (end // self.blocksize) + 1):
             for k in t.keys():
-                if k in self.demod[b]:
-                    t[k].append(self.demod[b][k])
-                elif k in self.input[b]:
-                    t[k].append(self.input[b][k])
+                if k in self.blocks[b]['demod']:
+                    t[k].append(self.blocks[b]['demod'][k])
+                elif k in self.blocks[b]:
+                    t[k].append(self.blocks[b][k])
 
         self.flush()
 
