@@ -584,7 +584,7 @@ class DemodCache:
 
     def end(self):            
         # stop workers
-        for i in range(len(self.threads)*4):
+        for i in range(len(self.threads)):
             self.q_in.put(None)
 
         for t in self.threads:
