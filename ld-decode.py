@@ -124,6 +124,7 @@ while not done and ldd.fields_written < (req_frames * 2):
     except KeyboardInterrupt as kbd:
         print("Terminated, saving JSON and exiting", file=sys.stderr)
         write_json(ldd, outname)
+        ldd.close()
         exit(1)
     except Exception as err:
         print("ERROR - please paste the following into a bug report:", file=sys.stderr)
@@ -132,6 +133,7 @@ while not done and ldd.fields_written < (req_frames * 2):
         print("Exception:", err, " Traceback:", file=sys.stderr)
         traceback.print_tb(err.__traceback__)
         write_json(ldd, outname)
+        ldd.close()
         exit(1)
 
     if f is None or (args.ignoreleadout == False and ldd.leadOut == True):
@@ -143,5 +145,6 @@ while not done and ldd.fields_written < (req_frames * 2):
         #print('write json')
         write_json(ldd, outname)
 
-print("saving JSON and exiting", file=sys.stderr)    
+print("saving JSON and exiting", file=sys.stderr)
 write_json(ldd, outname)
+ldd.close()
