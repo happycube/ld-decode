@@ -28,6 +28,21 @@ F1ToData::F1ToData()
 {
     debugOn = false;
     reset();
+
+    // Set the sector sync pattern
+    syncPattern.clear();
+    syncPattern.append(static_cast<char>(0x00));
+    syncPattern.append(static_cast<char>(0xFF));
+    syncPattern.append(static_cast<char>(0xFF));
+    syncPattern.append(static_cast<char>(0xFF));
+    syncPattern.append(static_cast<char>(0xFF));
+    syncPattern.append(static_cast<char>(0xFF));
+    syncPattern.append(static_cast<char>(0xFF));
+    syncPattern.append(static_cast<char>(0xFF));
+    syncPattern.append(static_cast<char>(0xFF));
+    syncPattern.append(static_cast<char>(0xFF));
+    syncPattern.append(static_cast<char>(0xFF));
+    syncPattern.append(static_cast<char>(0x00));
 }
 
 // Public methods -----------------------------------------------------------------------------------------------------
@@ -43,7 +58,15 @@ QByteArray F1ToData::process(QVector<F1Frame> f1FramesIn, bool debugState)
     if (f1FramesIn.isEmpty()) return dataOutputBuffer;
 
     // Append input data to the processing buffer
-    f1FrameBuffer.append(f1FramesIn);
+    for (qint32 i = 0; i < f1FramesIn.size(); i++) {
+        f1DataBuffer.append(reinterpret_cast<char*>(f1FramesIn[i].getDataSymbols()), 24);
+
+        // Each validity flag covers 24 bytes of data symbols
+        for (qint32 p = 0; p < 24; p++) {
+            f1IsCorruptBuffer.append(f1FramesIn[i].isCorrupt());
+            f1IsMissingBuffer.append(f1FramesIn[i].isMissing());
+        }
+    }
 
     waitingForData = false;
     while (!waitingForData) {
@@ -53,11 +76,17 @@ QByteArray F1ToData::process(QVector<F1Frame> f1FramesIn, bool debugState)
         case state_initial:
             nextState = sm_state_initial();
             break;
-        case state_getSync:
-            nextState = sm_state_getSync();
+        case state_getInitialSync:
+            nextState = sm_state_getInitialSync();
+            break;
+        case state_getNextSync:
+            nextState = sm_state_getNextSync();
             break;
         case state_processFrame:
             nextState = sm_state_processFrame();
+            break;
+        case state_noSync:
+            nextState = sm_state_noSync();
             break;
         }
     }
@@ -76,20 +105,32 @@ void F1ToData::reportStatistics()
 {
     qInfo()           << "";
     qInfo()           << "F1 Frames to Data:";
-    qInfo()           << "       Valid sectors:" << statistics.validSectors;
-    qInfo()           << "     Invalid sectors:" << statistics.invalidSectors;
-    qInfo()           << "       Total sectors:" << statistics.totalSectors;
+    qInfo()           << "         Valid sectors:" << statistics.validSectors;
+    qInfo()           << "       Invalid sectors:" << statistics.invalidSectors;
+    qInfo()           << "       Missing sectors:" << statistics.missingSectors;
+    qInfo()           << "         Total sectors:" << statistics.totalSectors;
+
     qInfo()           << "";
-    qInfo().noquote() << "       Start address:" << statistics.startAddress.getTimeAsQString();
-    qInfo().noquote() << "     Current address:" << statistics.currentAddress.getTimeAsQString();
+    qInfo()           << "  Sectors missing sync:" << statistics.missingSync;
+
+    qInfo()           << "";
+    qInfo().noquote() << "         Start address:" << statistics.startAddress.getTimeAsQString();
+    qInfo().noquote() << "       Current address:" << statistics.currentAddress.getTimeAsQString();
 }
 
 // Reset the object
 void F1ToData::reset()
 {
-    f1FrameBuffer.clear();
+    f1DataBuffer.clear();
+    f1IsCorruptBuffer.clear();
+    f1IsMissingBuffer.clear();
     dataOutputBuffer.clear();
+
     waitingForData = false;
+    currentState = state_initial;
+    nextState = currentState;
+
+    missingSyncCount = 0;
 
     clearStatistics();
 }
@@ -101,7 +142,9 @@ void F1ToData::clearStatistics()
 {
     statistics.validSectors = 0;
     statistics.invalidSectors = 0;
+    statistics.missingSectors = 0;
     statistics.totalSectors = 0;
+    statistics.missingSync = 0;
 
     statistics.startAddress.setTime(0, 0, 0);
     statistics.currentAddress.setTime(0, 0, 0);
@@ -115,20 +158,150 @@ F1ToData::StateMachine F1ToData::sm_state_initial()
 
     // Set initial disc time to 00:00.00
     statistics.startAddress.setTime(0, 0, 0);
+    lastAddress.setTime(0, 0, 0);
 
+    return state_getInitialSync;
+}
+
+// Find the initial sector sync pattern
+F1ToData::StateMachine F1ToData::sm_state_getInitialSync()
+{
+    // Look for the sector sync pattern in the F1 frame data
+    qint32 syncPosition = f1DataBuffer.indexOf(syncPattern);
+
+    // Was a sync pattern found?
+    if (syncPosition == -1) {
+        // No sync found
+        f1DataBuffer.clear();
+        f1IsCorruptBuffer.clear();
+        f1IsMissingBuffer.clear();
+        waitingForData = true;
+        //if (debugOn) qDebug() << "F1ToData::sm_state_getInitialSync(): No sync found";
+        return state_getInitialSync;
+    }
+
+    if (debugOn) qDebug() << "F1ToData::sm_state_getInitialSync(): Initial sync found at position" << syncPosition;
+    f1DataBuffer.remove(0, syncPosition);
     return state_processFrame;
 }
 
 // Find the next sector sync pattern
-F1ToData::StateMachine F1ToData::sm_state_getSync()
+F1ToData::StateMachine F1ToData::sm_state_getNextSync()
 {
-    f1FrameBuffer.clear();
-    waitingForData = true;
-    return state_getSync;
+    // Ensure we have enough data to detect a sync
+    if (f1DataBuffer.size() < 12) {
+        // We need more data
+        waitingForData = true;
+        return state_getNextSync;
+    }
+
+    // Once the initial sync is found and the buffer is aligned, the sync should always
+    // be at the start of the input buffer
+    qint32 syncPosition = f1DataBuffer.indexOf(syncPattern);
+    if (syncPosition != 0) {
+        // Sector has no sync pattern
+        return state_noSync;
+    }
+
+    return state_processFrame;
 }
 
 // Process a sector into data
 F1ToData::StateMachine F1ToData::sm_state_processFrame()
 {
+    // Ensure we have enough data to process an entire sector
+    if (f1DataBuffer.size() < 2352) {
+        // We need more data
+        waitingForData = true;
+        return state_processFrame;
+    }
+
+    // Create a sector object from the sector data
+    bool sectorValidity = true;
+    for (qint32 i = 0; i < 2352; i++) {
+        if (f1IsCorruptBuffer[i] == static_cast<char>(0)) sectorValidity = false;
+        if (f1IsMissingBuffer[i] == static_cast<char>(0)) sectorValidity = false;
+        if (sectorValidity == false) break;
+    }
+    Sector sector(f1DataBuffer.mid(0, 2352), sectorValidity);
+
+    // Remove the sector data from the input F1 buffer
+    f1DataBuffer.remove(0, 2352);
+    f1IsCorruptBuffer.remove(0, 2352);
+    f1IsMissingBuffer.remove(0, 2352);
+
+    // Verify the sector is valid
+    if (!sector.isValid()) {
+        // Sector is not valid, set to zero and force address
+        lastAddress.addFrames(1);
+        statistics.currentAddress = lastAddress;
+        sector.setAsNull(statistics.currentAddress);
+        if (debugOn) qDebug() << "F1ToData::sm_state_processFrame(): Current frame is invalid, setting user data to null";
+        statistics.invalidSectors++;
+        statistics.totalSectors++;
+    } else {
+        // Sector is valid
+        statistics.currentAddress = sector.getAddress();
+        statistics.validSectors++;
+        statistics.totalSectors++;
+    }
+
+    // Sector will now have a valid address, check for gaps and pad if required, then write the current sector
+    qint32 sectorAddressGap = sector.getAddress().getDifference(lastAddress.getTime());
+    if (sectorAddressGap > 1) {
+        if (debugOn) qDebug().noquote() << "F1ToData::sm_state_processFrame(): Sector address gap - Adding" <<
+                                           sectorAddressGap - 1 << "sectors(s) of padding - Last sector address was" <<
+                                           lastAddress.getTimeAsQString() <<
+                                           " - current sector address is" << sector.getAddress().getTimeAsQString();
+
+        // If we're not at the start of the disc, add one to avoid writing the same
+        // address twice
+        if (lastAddress.getFrames() != 0) {
+            lastAddress.addFrames(1);
+            sectorAddressGap--;
+        }
+
+        Sector paddingSector;
+        for (qint32 p = 0; p < sectorAddressGap; p++) {
+            paddingSector.setAsNull(lastAddress);
+
+            dataOutputBuffer.append(paddingSector.getUserData());
+            //if (debugOn) qDebug().noquote() << "F1ToData::sm_state_processFrame(): Padding sector with address" << lastAddress.getTimeAsQString();
+
+            lastAddress.addFrames(1);
+
+            statistics.missingSectors++;
+            statistics.totalSectors++;
+        }
+    }
+
+    // Write out the new sector
+    dataOutputBuffer.append(sector.getUserData());
+    lastAddress = statistics.currentAddress;
+    //if (debugOn) qDebug().noquote() << "F1ToData::sm_state_processFrame(): Writing data sector with address" << statistics.currentAddress.getTimeAsQString();
+
+    return state_getNextSync;
+}
+
+// Sector sync has been lost
+F1ToData::StateMachine F1ToData::sm_state_noSync()
+{
+    statistics.missingSync++;
+
+    // The current sector has no sync.  Here we need to determine if the sector is corrupt, or if it's just missing
+    // (due to a gap in the EFM rather than errors in the EFM)
+    Sector sector(f1DataBuffer.mid(0, 2352), true);
+    if (sector.isMissing()) {
+        if (debugOn) qDebug() << "F1ToData::sm_state_syncLost(): Sector sync has been lost and sector looks like it's missing.  Hunting for next valid sync";
+
+        // Remove the sector data from the input F1 buffer
+        f1DataBuffer.remove(0, 2352);
+        f1IsCorruptBuffer.remove(0, 2352);
+        f1IsMissingBuffer.remove(0, 2352);
+
+        return state_getInitialSync;
+    }
+
+    if (debugOn) qDebug() << "F1ToData::sm_state_syncLost(): Sector is missing sync pattern, but looks like it should be a valid sector - continuing";
     return state_processFrame;
 }

@@ -27,35 +27,62 @@
 Sector::Sector()
 {
     valid = false;
+    missing = false;
     qCorrected = false;
     pCorrected = false;
 }
 
-// Method to set the sector's data from a F1 frame
-void Sector::setData(QByteArray sectorData)
+Sector::Sector(QByteArray _sectorData, bool _isValid)
 {
-    // Get the f1 data symbols and represent as unsigned 8-bit
-    //QByteArray f1Data = f1Frame.getDataSymbols();
-    uchar* uF1Data; // = reinterpret_cast<uchar*>(sectorData.data());
+    setData(_sectorData, _isValid);
+}
 
-    // Get the F1 error symbols
-    //QByteArray f1Erasures = f1Frame.getErrorSymbols();
-    uchar* uF1Erasures; // = reinterpret_cast<uchar*>(f1Erasures.data());
+// Method to set the sector's data from a F1 frame
+void Sector::setData(QByteArray _sectorData, bool _isValid)
+{
+    qint32 missingCount = 0;
+
+    // Verify sector data size
+    if (_sectorData.size() != 2352) {
+        qCritical() << "Sector::setData(): Got invalid sector data of size" << _sectorData.size();
+        valid = false;
+        return;
+    }
+
+    // Get the f1 data symbols and represent as unsigned 8-bit
+    uchar* uF1DataIn = reinterpret_cast<uchar*>(_sectorData.data());
+
+    QByteArray uF1Data;
+    uF1Data.resize(2352);
+    uF1Data.fill(0);
+    uchar* uF1DataOut = reinterpret_cast<uchar*>(uF1Data.data());
+
+    // Descramble the F1 data
+    for (qint32 i = 0; i < 2352; i++) {
+        uF1DataOut[i] = uF1DataIn[i] ^ scrambleTable[i];
+    }
+
+    // Is data marked as valid?
+    uchar uF1Erasures[2352];
+    for (qint32 i = 0; i < 2352; i++) {
+        if (_isValid) uF1Erasures[i] = 0; else uF1Erasures[i] = 1;
+    }
 
     // Set the sector's address
     address.setTime(
-        bcdToInteger(uF1Data[12]),
-        bcdToInteger(uF1Data[13]),
-        bcdToInteger(uF1Data[14])
+        bcdToInteger(uF1DataOut[12]),
+        bcdToInteger(uF1DataOut[13]),
+        bcdToInteger(uF1DataOut[14])
         );
 
     // Set the sector's mode
-    mode = uF1Data[15];
+    mode = uF1DataOut[15];
 
     // Range check the mode and default to 1 if out of range
     if (mode < 0 || mode > 2) {
         qDebug() << "Sector::setData(): Invalid mode of" << mode << "defaulting to 1";
         mode = 1;
+        missingCount++;
     }
 
     // Process the sector depending on the mode
@@ -73,53 +100,60 @@ void Sector::setData(QByteArray sectorData)
 
         // Get the 32-bit EDC word from the F1 data
         edcWord =
-            ((static_cast<quint32>(uF1Data[2064])) <<  0) |
-            ((static_cast<quint32>(uF1Data[2065])) <<  8) |
-            ((static_cast<quint32>(uF1Data[2066])) << 16) |
-            ((static_cast<quint32>(uF1Data[2067])) << 24);
+            ((static_cast<quint32>(uF1DataOut[2064])) <<  0) |
+            ((static_cast<quint32>(uF1DataOut[2065])) <<  8) |
+            ((static_cast<quint32>(uF1DataOut[2066])) << 16) |
+            ((static_cast<quint32>(uF1DataOut[2067])) << 24);
 
         // Perform a CRC32 on bytes 0 to 2063 of the F1 frame
-        if (edcWord != crc32(uF1Data, 2064)) {
+        if (edcWord != crc32(uF1DataOut, 2064)) {
             //qDebug() << "Sector::setData(): Initial EDC failed (CRC32 checksum incorrect)";
 
             // Attempt Q and P error correction on sector
-            performQParityECC(uF1Data, uF1Erasures);
-            performPParityECC(uF1Data, uF1Erasures);
+            performQParityECC(uF1DataOut, uF1Erasures);
+            performPParityECC(uF1DataOut, uF1Erasures);
 
             // Get the updated EDC word
             edcWord =
-                ((static_cast<quint32>(uF1Data[2064])) <<  0) |
-                ((static_cast<quint32>(uF1Data[2065])) <<  8) |
-                ((static_cast<quint32>(uF1Data[2066])) << 16) |
-                ((static_cast<quint32>(uF1Data[2067])) << 24);
+                ((static_cast<quint32>(uF1DataOut[2064])) <<  0) |
+                ((static_cast<quint32>(uF1DataOut[2065])) <<  8) |
+                ((static_cast<quint32>(uF1DataOut[2066])) << 16) |
+                ((static_cast<quint32>(uF1DataOut[2067])) << 24);
 
             // Perform EDC again to confirm correction
-            if (edcWord != crc32(uF1Data, 2064)) {
-                qDebug() << "Sector::setData(): ECC error correction failed - Sector is corrupt!";
+            if (edcWord != crc32(uF1DataOut, 2064)) {
+                qDebug() << "Sector::setData(): Sector contained errors, ECC error correction failed - Sector is corrupt!";
                 valid = false;
+                missingCount++;
             } else {
                 // EDC and ECC are now correct
-                qDebug() << "Sector::setData(): ECC error correction successful";
-                userData = sectorData.mid(16, 2048);
+                //qDebug() << "Sector::setData(): Sector contained errors, ECC error correction successful";
+                userData = uF1Data.mid(16, 2048);
                 valid = true;
 
                 // Set the sector's address again (as the data has been updated)
                 address.setTime(
-                    bcdToInteger(uF1Data[12]),
-                    bcdToInteger(uF1Data[13]),
-                    bcdToInteger(uF1Data[14])
+                    bcdToInteger(uF1DataOut[12]),
+                    bcdToInteger(uF1DataOut[13]),
+                    bcdToInteger(uF1DataOut[14])
                     );
             }
         } else {
             // EDC passed, data is valid.  Copy to sector user data (2048 bytes)
-            userData = sectorData.mid(16, 2048);
+            userData = uF1Data.mid(16, 2048);
             valid = true;
         }
     } else if (mode == 2) {
         // Mode 2 sector
         // This is a 2336 byte data sector without error correction
-        userData = sectorData.mid(16, 2336);
+        userData = uF1Data.mid(16, 2336);
         valid = true;
+    }
+
+    if (missingCount > 1) {
+        // It looks like the EFM is simply missing (rather than this being a corrupt frame)
+        // Mark the sector as (most likely to be) missing.
+        missing = true;
     }
 }
 
@@ -141,10 +175,25 @@ QByteArray Sector::getUserData()
     return userData;
 }
 
+// Method to set the sector to null and force an address
+void Sector::setAsNull(TrackTime _address)
+{
+    address = _address;
+    mode = 1;
+    userData.fill(0, 2048);
+    valid = false;
+}
+
 // Method to get the sector's validity
 bool Sector::isValid()
 {
     return valid;
+}
+
+// Method to get the sector's missing flag
+bool Sector::isMissing()
+{
+    return missing;
 }
 
 // Method to get the corrected flag (i.e. sector was invalid, but corrected by ECC)
