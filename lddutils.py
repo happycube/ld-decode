@@ -98,8 +98,8 @@ def scale_old(buf, begin, end, tgtlen):
 
         return interpolate.splev(arrout, spl)[:-1]
     
-@njit
-def scale(buf, begin, end, tgtlen):
+@njit(nogil=True)
+def scale(buf, begin, end, tgtlen, mult = 1):
     linelen = end - begin
     sfactor = linelen/tgtlen
 
@@ -111,7 +111,7 @@ def scale(buf, begin, end, tgtlen):
         p = buf[start:start+4]
         x = coord - int(coord)
         
-        output[i] = p[1] + 0.5 * x*(p[2] - p[0] + x*(2.0*p[0] - 5.0*p[1] + 4.0*p[2] - p[3] + x*(3.0*(p[1] - p[2]) + p[3] - p[0])));
+        output[i] = mult * (p[1] + 0.5 * x*(p[2] - p[0] + x*(2.0*p[0] - 5.0*p[1] + 4.0*p[2] - p[3] + x*(3.0*(p[1] - p[2]) + p[3] - p[0]))))
 
     return output
 

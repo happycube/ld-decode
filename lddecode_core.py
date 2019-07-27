@@ -9,6 +9,7 @@ import logging
 import os
 import subprocess
 import sys
+import time
 
 from numba import jit, njit
 
@@ -176,7 +177,7 @@ RFParams_PAL = {
 }
 
 class RFDecode:
-    def __init__(self, inputfreq = 40, system = 'NTSC', blocklen_ = 32768, decode_digital_audio = False, decode_analog_audio = True, have_analog_audio = True, mtf_mult = 1.0, mtf_offset = 0):
+    def __init__(self, inputfreq = 40, system = 'NTSC', blocklen_ = 32*1024, decode_digital_audio = False, decode_analog_audio = True, have_analog_audio = True, mtf_mult = 1.0, mtf_offset = 0):
         self.blocklen = blocklen_
         self.blockcut = 1024 # ???
         self.system = system
@@ -550,28 +551,36 @@ class RFDecode:
         return fakedecode, dgap_sync, dgap_white
 
 class DemodCache:
-    def __init__(self, rf, infile, loader, cachesize = 128, num_worker_threads=6):
+    def __init__(self, rf, infile, loader, cachesize = 128, num_worker_threads=6, MTF_tolerance = .05):
         self.infile = infile
         self.loader = loader
         self.rf = rf
+
+        self.currentMTF = 1
+        self.MTF_tolerance = MTF_tolerance
     
         self.blocksize = self.rf.blocklen - (self.rf.blockcut + self.rf.blockcut_end)
         
         # Cache dictionary - key is block #, which holds data for that block
-        self.lrusize = 128
+        self.lrusize = 256
+        self.prefetch = 32 # TODO: set this to proper amount for format
         self.lru = []
         
+        self.lock = threading.Lock()
         self.blocks = {}
 
-        self.mtf_level = 1
-
         self.q_in = JoinableQueue()
+        self.q_in_metadata = []
+
         self.q_out = Queue()
         self.threads = []
         for i in range(num_worker_threads):
             t = Process(target=self.worker, daemon=True)#, args=[self])
             t.start()
             self.threads.append(t)
+
+        self.deqeue_thread = threading.Thread(target=self.dequeue, daemon=True)
+        self.deqeue_thread.start()
 
     def __del__(self):            
         # stop workers
@@ -602,7 +611,7 @@ class DemodCache:
             if item is None:
                 break
 
-            blocknum, block = item
+            blocknum, block, target_MTF = item
 
             output = {}
 
@@ -612,54 +621,88 @@ class DemodCache:
             else:
                 fftdata = block['fft']
 
-            if 'demod' not in block:
-                output['demod'] = self.rf.demodblock(fftdata = fftdata, mtf_level=block['MTF'], cut=True)
-                #self.q_out.put((blocknum, self.rf.demodblock(fftdata = indata[0], mtf_level=indata[1], cut=True)))
+            if 'demod' not in block or np.abs(block['MTF'] - target_MTF) > self.MTF_tolerance:
+                output['demod'] = self.rf.demodblock(fftdata = fftdata, mtf_level=target_MTF, cut=True)
+                output['MTF'] = target_MTF
 
             self.q_out.put((blocknum, output))
 
             self.q_in.task_done()
 
+    def doread(self, blocknums, MTF):
+        need_blocks = []
+
+        hc = 0
+
+        #self.lock.acquire()
+
+        for b in blocknums:
+            if b not in self.blocks:
+                LRUupdate(self.lru, b)
+
+                rawdata = self.loader(self.infile, b * self.blocksize, self.rf.blocklen)
+                
+                if rawdata is None or len(rawdata) < self.rf.blocklen:
+                    self.blocks[b] = None
+                    return None
+
+                self.blocks[b] = {}
+                self.blocks[b]['rawinput'] = rawdata
+
+            handling = need_demod = ('demod' not in self.blocks[b]) or (np.abs(self.blocks[b]['MTF'] - MTF) > self.MTF_tolerance)
+
+            # Check to see if it's already in queue to process
+            if need_demod:
+                for inqueue in self.q_in_metadata:
+                    if inqueue[0] == b and (np.abs(inqueue[1] - MTF) <= self.MTF_tolerance):
+                        handling = False
+                        #print(b)
+
+                need_blocks.append(b)
+            
+            if handling:
+                self.q_in.put((b, self.blocks[b], MTF))
+                self.q_in_metadata.append((b, MTF))
+                hc = hc + 1
+
+        #self.lock.release()
+
+        #print(hc, len(need_blocks), len(self.q_in_metadata))
+
+        return need_blocks
+
+    def dequeue(self):
+        while True: # not self.q_out.empty():
+            blocknum, item = self.q_out.get()
+            self.q_in_metadata.remove((blocknum, item['MTF']))
+
+            self.lock.acquire()
+
+            for k in item.keys():
+                if k == 'demod' and (np.abs(item['MTF'] - self.currentMTF) > self.MTF_tolerance):
+                    continue
+                self.blocks[blocknum][k] = item[k]
+        
+            if 'input' not in self.blocks[blocknum]:
+                self.blocks[blocknum]['input'] = self.blocks[blocknum]['rawinput'][self.rf.blockcut:-self.rf.blockcut_end]
+
+            self.lock.release()
+
     def read(self, begin, length, MTF=0):
         # transpose the cache by key, not block #
         t = {'input':[], 'fft':[], 'video':[], 'audio':[], 'efm':[]}
 
-        self.mtf_level = MTF
+        self.currentMTF = MTF
 
         end = begin+length
 
-        # first load the data from disk
-        for blocknum in range(begin // self.blocksize, (end // self.blocksize) + 1):
-            # Freshen the LRU cache
-            LRUupdate(self.lru, blocknum)
+        toread = range(begin // self.blocksize, (end // self.blocksize) + 1)
+        toread_prefetch = range(end // self.blocksize, (end // self.blocksize) + self.prefetch)
 
-            if blocknum not in self.blocks:
-                rawdata = self.loader(self.infile, blocknum * self.blocksize, self.rf.blocklen)
-                
-                if rawdata is None or len(rawdata) < self.rf.blocklen:
-                    return False
-
-                self.blocks[blocknum] = {}
-                self.blocks[blocknum]['rawinput'] = rawdata
-                #self.blocks[blocknum]['input'] = rawdata[self.rf.blockcut:-self.rf.blockcut_end]
-
-        processing = 0
-        # then process it in parallel
-        for blocknum in range(begin // self.blocksize, (end // self.blocksize) + 1):
-            if 'demod' not in self.blocks[blocknum]:
-                self.blocks[blocknum]['MTF'] = MTF
-                self.q_in.put((blocknum, self.blocks[blocknum]))
-                processing += 1
-
-        # block until all tasks are done
-        self.q_in.join()
-
-        for i in range(processing):
-            blocknum, item = self.q_out.get()
-            for k in item.keys():
-                self.blocks[blocknum][k] = item[k]
-            if 'input' not in self.blocks[blocknum]:
-                self.blocks[blocknum]['input'] = self.blocks[blocknum]['rawinput'][self.rf.blockcut:-self.rf.blockcut_end]
+        need_blocks = self.doread(toread, MTF)
+        while len(need_blocks):
+            time.sleep(.005)
+            need_blocks = self.doread(toread, MTF)
 
         # Now coalesce the output
         for b in range(begin // self.blocksize, (end // self.blocksize) + 1):
@@ -679,6 +722,8 @@ class DemodCache:
             rv['audio'] = self.rf.audio_phase2(rv['audio'])
 
         rv['startloc'] = (begin // self.blocksize) * self.blocksize
+
+        need_blocks = self.doread(toread_prefetch, MTF)
 
         return rv
 
@@ -1312,8 +1357,8 @@ class Field:
 
         for l in range(lineoffset, linesout + lineoffset):
             if lineinfo[l + 1] > lineinfo[l]:
-                scaled = scale(self.data['video'][channel], lineinfo[l], lineinfo[l + 1], outwidth)
-                scaled *= self.wowfactor[l]
+                scaled = scale(self.data['video'][channel], lineinfo[l], lineinfo[l + 1], outwidth, self.wowfactor[l])
+#                scaled *= self.wowfactor[l]
 
                 dsout[(l - lineoffset) * outwidth:(l + 1 - lineoffset)*outwidth] = scaled
             else:
