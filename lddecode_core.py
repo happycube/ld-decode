@@ -1537,13 +1537,16 @@ class FieldPAL(Field):
                 # filter out bits outside of the pilot wave?  need to look at this more esp at 75msps
                 if pilot[c + 1] - pilot[c] > 50000:
                     zc = calczc(pilot, c, 0)
-                    zcp = zc / (adjfreq / 3.75)
-                    offset = zcp - np.floor(zcp)
-                    # issue #224 was caused by it wrapping from say .01 to .99.
-                    # convert offsets into [-.5, .5] to hopefully prevent this
-                    if offset > .5:
-                        offset -= 1
-                    offsets[l].append(offset)
+                    if zc is not None:
+                        zcp = zc / (adjfreq / 3.75)
+                        offset = zcp - np.floor(zcp)
+                        # issue #224 was caused by it wrapping from say .01 to .99.
+                        # convert offsets into [-.5, .5] to hopefully prevent this
+                        if offset > .5:
+                            offset -= 1
+                        offsets[l].append(offset)
+                    else:
+                        break
 
             if len(offsets) >= 3:
                 offsets[l] = offsets[l][1:-1]
