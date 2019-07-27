@@ -599,16 +599,20 @@ class DemodCache:
         if len(self.lru) < self.lrusize:
             return 
         
+        self.lock.acquire()
         for k in self.lru[self.lrusize:]:
             if k in self.blocks:
                 del self.blocks[k]
+        self.lock.release()
 
         self.lru = self.lru[:self.lrusize]
 
     def flushvideo(self):
         for k in self.blocks.keys():
             if 'demod' in self.blocks[k]:
+                self.lock.acquire()
                 del self.blocks[k]['demod']
+                self.lock.release()
 
     def worker(self):
         while True:
@@ -639,7 +643,7 @@ class DemodCache:
 
         hc = 0
 
-        #self.lock.acquire()
+        self.lock.acquire()
 
         for b in blocknums:
             if b not in self.blocks:
@@ -670,7 +674,7 @@ class DemodCache:
                 self.q_in_metadata.append((b, MTF))
                 hc = hc + 1
 
-        #self.lock.release()
+        self.lock.release()
 
         #print(hc, len(need_blocks), len(self.q_in_metadata))
 
