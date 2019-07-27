@@ -110,7 +110,7 @@
          <item>
           <widget class="QTabWidget" name="tabWidget">
            <property name="currentIndex">
-            <number>0</number>
+            <number>6</number>
            </property>
            <widget class="QWidget" name="optionsTab">
             <attribute name="title">
@@ -2210,12 +2210,215 @@
                <property name="minimumSize">
                 <size>
                  <width>0</width>
-                 <height>100</height>
+                 <height>220</height>
                 </size>
                </property>
                <property name="title">
                 <string>F1 to Data sectors decode:</string>
                </property>
+               <widget class="QLabel" name="data_validSectors_label">
+                <property name="geometry">
+                 <rect>
+                  <x>220</x>
+                  <y>30</y>
+                  <width>301</width>
+                  <height>20</height>
+                 </rect>
+                </property>
+                <property name="text">
+                 <string>TextLabel</string>
+                </property>
+               </widget>
+               <widget class="QLabel" name="label_64">
+                <property name="geometry">
+                 <rect>
+                  <x>10</x>
+                  <y>30</y>
+                  <width>201</width>
+                  <height>21</height>
+                 </rect>
+                </property>
+                <property name="text">
+                 <string>Valid sectors:</string>
+                </property>
+                <property name="alignment">
+                 <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+                </property>
+               </widget>
+               <widget class="QLabel" name="label_65">
+                <property name="geometry">
+                 <rect>
+                  <x>10</x>
+                  <y>50</y>
+                  <width>201</width>
+                  <height>21</height>
+                 </rect>
+                </property>
+                <property name="text">
+                 <string>Invalid sectors:</string>
+                </property>
+                <property name="alignment">
+                 <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+                </property>
+               </widget>
+               <widget class="QLabel" name="data_invalidSectors_label">
+                <property name="geometry">
+                 <rect>
+                  <x>220</x>
+                  <y>50</y>
+                  <width>301</width>
+                  <height>20</height>
+                 </rect>
+                </property>
+                <property name="text">
+                 <string>TextLabel</string>
+                </property>
+               </widget>
+               <widget class="QLabel" name="label_66">
+                <property name="geometry">
+                 <rect>
+                  <x>10</x>
+                  <y>70</y>
+                  <width>201</width>
+                  <height>21</height>
+                 </rect>
+                </property>
+                <property name="text">
+                 <string>Missing sectors:</string>
+                </property>
+                <property name="alignment">
+                 <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+                </property>
+               </widget>
+               <widget class="QLabel" name="data_missingSectors_label">
+                <property name="geometry">
+                 <rect>
+                  <x>220</x>
+                  <y>70</y>
+                  <width>301</width>
+                  <height>20</height>
+                 </rect>
+                </property>
+                <property name="text">
+                 <string>TextLabel</string>
+                </property>
+               </widget>
+               <widget class="QLabel" name="label_67">
+                <property name="geometry">
+                 <rect>
+                  <x>10</x>
+                  <y>90</y>
+                  <width>201</width>
+                  <height>21</height>
+                 </rect>
+                </property>
+                <property name="text">
+                 <string>Total sectors:</string>
+                </property>
+                <property name="alignment">
+                 <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+                </property>
+               </widget>
+               <widget class="QLabel" name="data_totalSectors_label">
+                <property name="geometry">
+                 <rect>
+                  <x>220</x>
+                  <y>90</y>
+                  <width>301</width>
+                  <height>20</height>
+                 </rect>
+                </property>
+                <property name="text">
+                 <string>TextLabel</string>
+                </property>
+               </widget>
+               <widget class="QLabel" name="label_68">
+                <property name="geometry">
+                 <rect>
+                  <x>10</x>
+                  <y>130</y>
+                  <width>201</width>
+                  <height>21</height>
+                 </rect>
+                </property>
+                <property name="text">
+                 <string>Sectors missing sync:</string>
+                </property>
+                <property name="alignment">
+                 <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+                </property>
+               </widget>
+               <widget class="QLabel" name="data_sectorsMissingSync_label">
+                <property name="geometry">
+                 <rect>
+                  <x>220</x>
+                  <y>130</y>
+                  <width>301</width>
+                  <height>20</height>
+                 </rect>
+                </property>
+                <property name="text">
+                 <string>TextLabel</string>
+                </property>
+               </widget>
+               <widget class="QLabel" name="label_69">
+                <property name="geometry">
+                 <rect>
+                  <x>10</x>
+                  <y>170</y>
+                  <width>201</width>
+                  <height>21</height>
+                 </rect>
+                </property>
+                <property name="text">
+                 <string>Start address:</string>
+                </property>
+                <property name="alignment">
+                 <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+                </property>
+               </widget>
+               <widget class="QLabel" name="data_startAddress_label">
+                <property name="geometry">
+                 <rect>
+                  <x>220</x>
+                  <y>170</y>
+                  <width>301</width>
+                  <height>20</height>
+                 </rect>
+                </property>
+                <property name="text">
+                 <string>TextLabel</string>
+                </property>
+               </widget>
+               <widget class="QLabel" name="label_70">
+                <property name="geometry">
+                 <rect>
+                  <x>10</x>
+                  <y>190</y>
+                  <width>201</width>
+                  <height>21</height>
+                 </rect>
+                </property>
+                <property name="text">
+                 <string>Current address:</string>
+                </property>
+                <property name="alignment">
+                 <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+                </property>
+               </widget>
+               <widget class="QLabel" name="data_currentAddress_label">
+                <property name="geometry">
+                 <rect>
+                  <x>220</x>
+                  <y>190</y>
+                  <width>301</width>
+                  <height>20</height>
+                 </rect>
+                </property>
+                <property name="text">
+                 <string>TextLabel</string>
+                </property>
+               </widget>
               </widget>
              </item>
              <item>

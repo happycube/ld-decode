@@ -70,6 +70,7 @@ private slots:
     void on_debugEnabled_checkBox_clicked();
     void on_options_decodeAsData_checkbox_clicked();
     void on_options_decodeAsAudio_checkbox_clicked();
+    void on_actionSave_Sector_Data_triggered();
 
 private:
     Ui::MainWindow *ui;

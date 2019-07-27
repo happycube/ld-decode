@@ -39,7 +39,9 @@ public:
     struct Statistics {
         qint32 validSectors;
         qint32 invalidSectors;
+        qint32 missingSectors;
         qint32 totalSectors;
+        qint32 missingSync;
 
         TrackTime startAddress;
         TrackTime currentAddress;
@@ -56,23 +58,34 @@ private:
     bool debugOn;
     Statistics statistics;
 
-    QVector<F1Frame> f1FrameBuffer;
+    QByteArray f1DataBuffer;
+    QByteArray f1IsCorruptBuffer;
+    QByteArray f1IsMissingBuffer;
+
     QByteArray dataOutputBuffer;
     bool waitingForData;
+    QByteArray syncPattern;
+    qint32 missingSyncCount;
+
+    TrackTime lastAddress;
 
     // State-machine variables
     enum StateMachine {
         state_initial,
-        state_getSync,
-        state_processFrame
+        state_getInitialSync,
+        state_getNextSync,
+        state_processFrame,
+        state_noSync
     };
 
     StateMachine currentState;
     StateMachine nextState;
 
     StateMachine sm_state_initial();
-    StateMachine sm_state_getSync();
+    StateMachine sm_state_getInitialSync();
+    StateMachine sm_state_getNextSync();
     StateMachine sm_state_processFrame();
+    StateMachine sm_state_noSync();
 };
 
 #endif // F1TOSECTORS_H

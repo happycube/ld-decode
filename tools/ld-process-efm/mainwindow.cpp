@@ -250,6 +250,17 @@ void MainWindow::resetStatistics()
     ui->audio_startTime_label->setText(dummyTime.getTimeAsQString());
     ui->audio_currentTime_label->setText(dummyTime.getTimeAsQString());
     ui->audio_duration_label->setText(dummyTime.getTimeAsQString());
+
+    // Data tab
+    ui->data_validSectors_label->setText(tr("0"));
+    ui->data_invalidSectors_label->setText(tr("0"));
+    ui->data_missingSectors_label->setText(tr("0"));
+    ui->data_totalSectors_label->setText(tr("0"));
+
+    ui->data_sectorsMissingSync_label->setText(tr("0"));
+
+    ui->data_startAddress_label->setText(dummyTime.getTimeAsQString());
+    ui->data_currentAddress_label->setText(dummyTime.getTimeAsQString());
 }
 
 // Update statistics
@@ -350,6 +361,17 @@ void MainWindow::updateStatistics()
     ui->audio_startTime_label->setText(statistics.f1ToAudio.startTime.getTimeAsQString());
     ui->audio_currentTime_label->setText(statistics.f1ToAudio.currentTime.getTimeAsQString());
     ui->audio_duration_label->setText(statistics.f1ToAudio.duration.getTimeAsQString());
+
+    // Data tab
+    ui->data_validSectors_label->setText(QString::number(statistics.f1ToData.validSectors));
+    ui->data_invalidSectors_label->setText(QString::number(statistics.f1ToData.invalidSectors));
+    ui->data_missingSectors_label->setText(QString::number(statistics.f1ToData.missingSectors));
+    ui->data_totalSectors_label->setText(QString::number(statistics.f1ToData.totalSectors));
+
+    ui->data_sectorsMissingSync_label->setText(QString::number(statistics.f1ToData.missingSync));
+
+    ui->data_startAddress_label->setText(statistics.f1ToData.startAddress.getTimeAsQString());
+    ui->data_currentAddress_label->setText(statistics.f1ToData.currentAddress.getTimeAsQString());
 }
 
 // Reset decoder options
@@ -383,6 +405,7 @@ void MainWindow::resetDecoderOptions()
 
 // GUI action slots ---------------------------------------------------------------------------------------------------
 
+// Open a new EFM input file
 void MainWindow::on_actionOpen_EFM_File_triggered()
 {
     qDebug() << "MainWindow::on_actionOpen_EFM_file_triggered(): Called";
@@ -399,6 +422,7 @@ void MainWindow::on_actionOpen_EFM_File_triggered()
     }
 }
 
+// Save the PCM audio data as...
 void MainWindow::on_actionSave_PCM_Audio_triggered()
 {
     qDebug() << "MainWindow::on_actionSave_PCM_Audio_triggered(): Called";
@@ -408,7 +432,7 @@ void MainWindow::on_actionSave_PCM_Audio_triggered()
     QString filenameSuggestion = configuration.getAudioDirectory() + "/";
     filenameSuggestion += fileInfo.fileName() + tr(".pcm");
 
-    qDebug() << "MainWindow::on_actionSave_PCM_Audio_triggered()L filename suggestion is =" << filenameSuggestion;
+    qDebug() << "MainWindow::on_actionSave_PCM_Audio_triggered(): filename suggestion is =" << filenameSuggestion;
 
     QString audioFilename = QFileDialog::getSaveFileName(this,
                 tr("Save PCM file"),
@@ -429,7 +453,7 @@ void MainWindow::on_actionSave_PCM_Audio_triggered()
             qDebug() << "MainWindow::on_actionSave_PCM_Audio_triggered(): Failed to save file as" << audioFilename;
 
             QMessageBox messageBox;
-            messageBox.warning(this, "Warning","Could not save PCM audio using the specified filename!");
+            messageBox.warning(this, "Warning", "Could not save PCM audio using the specified filename!");
             messageBox.setFixedSize(500, 200);
         }
 
@@ -437,6 +461,48 @@ void MainWindow::on_actionSave_PCM_Audio_triggered()
         QFileInfo audioFileInfo(audioFilename);
         configuration.setAudioDirectory(audioFileInfo.absolutePath());
         qDebug() << "MainWindow::on_actionSave_PCM_Audio_triggered(): Setting PCM audio directory to:" << audioFileInfo.absolutePath();
+        configuration.writeConfiguration();
+    }
+}
+
+// Save the sector data as...
+void MainWindow::on_actionSave_Sector_Data_triggered()
+{
+    qDebug() << "MainWindow::on_actionSave_Sector_Data_triggered(): Called";
+
+    // Create a suggestion for the filename
+    QFileInfo fileInfo(currentInputEfmFileAndPath);
+    QString filenameSuggestion = configuration.getAudioDirectory() + "/";
+    filenameSuggestion += fileInfo.fileName() + tr(".dat");
+
+    qDebug() << "MainWindow::on_actionSave_Sector_Data_triggered(): filename suggestion is =" << filenameSuggestion;
+
+    QString dataFilename = QFileDialog::getSaveFileName(this,
+                tr("Save DAT file"),
+                filenameSuggestion,
+                tr("DAT sector data (*.dat);;All Files (*)"));
+
+    // Was a filename specified?
+    if (!dataFilename.isEmpty() && !dataFilename.isNull()) {
+        // Save the data
+        qDebug() << "MainWindow::on_actionSave_Sector_Data_triggered(): Saving sector data as" << dataFilename;
+
+        // Check if filename exists (and remove the file if it does)
+        if (QFile::exists(dataFilename)) QFile::remove(dataFilename);
+
+        // Copy the audio data from the temporary file to the destination
+        if (!dataOutputTemporaryFileHandle.copy(dataFilename)) {
+            qDebug() << "MainWindow::on_actionSave_Sector_Data_triggered(): Failed to save file as" << dataFilename;
+
+            QMessageBox messageBox;
+            messageBox.warning(this, "Warning", "Could not save sector data using the specified filename!");
+            messageBox.setFixedSize(500, 200);
+        }
+
+        // Update the configuration for the PNG directory
+        QFileInfo dataFileInfo(dataFilename);
+        configuration.setDataDirectory(dataFileInfo.absolutePath());
+        qDebug() << "MainWindow::on_actionSave_Sector_Data_triggered(): Setting sector data directory to:" << dataFileInfo.absolutePath();
         configuration.writeConfiguration();
     }
 }
@@ -597,13 +663,16 @@ void MainWindow::processingCompleteSignalHandler(bool audioAvailable, bool dataA
 
             // Quit the application
             qApp->quit();
-        } else efmProcess.reportStatistics();
+        }
     }
 
     if (dataAvailable) {
         qDebug() << "MainWindow::processingCompleteSignalHandler(): Processing complete - data available";
         ui->actionSave_Sector_Data->setEnabled(true);
     }
+
+    // Report the decode statistics to qInfo
+    efmProcess.reportStatistics();
 
     // Update the GUI
     guiEfmProcessingStop();
@@ -673,4 +742,6 @@ bool MainWindow::loadInputEfmFile(QString filename)
 
     return true;
 }
+
+
 
