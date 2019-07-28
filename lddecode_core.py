@@ -265,11 +265,11 @@ class RFDecode:
 
         # The deemphasis filter.  This math is probably still quite wrong, but with the right values it works
         deemp0, deemp1 = DP['video_deemp']
-        [tf_b, tf_a] = sps.zpk2tf(-deemp1*(10**-10), -deemp0*(10**-10), deemp0 / deemp1)
+        [tf_b, tf_a] = sps.zpk2tf([-deemp1*(10**-10)], [-deemp0*(10**-10)], deemp0 / deemp1)
         SF['Fdeemp'] = filtfft(sps.bilinear(tf_b, tf_a, 1.0/self.freq_hz_half), self.blocklen)
 
         # The direct opposite of the above, used in test signal generation
-        [tf_b, tf_a] = sps.zpk2tf(-deemp0*(10**-10), -deemp1*(10**-10), deemp1 / deemp0)
+        [tf_b, tf_a] = sps.zpk2tf([-deemp0*(10**-10)], [-deemp1*(10**-10)], deemp1 / deemp0)
         SF['Femp'] = filtfft(sps.bilinear(tf_b, tf_a, 1.0/self.freq_hz_half), self.blocklen)
         
         # Post processing:  lowpass filter + deemp
