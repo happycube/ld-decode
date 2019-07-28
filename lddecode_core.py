@@ -575,7 +575,7 @@ class DemodCache:
         self.q_out = Queue()
         self.threads = []
 
-        num_worker_threads = min(num_worker_threads - 1, 1)
+        num_worker_threads = max(num_worker_threads - 1, 1)
 
         for i in range(num_worker_threads):
             t = Process(target=self.worker, daemon=True)#, args=[self])
@@ -728,6 +728,7 @@ class DemodCache:
             need_blocks = self.doread(toread, MTF)
 
         if need_blocks is None:
+            # EOF
             return None
 
         # Now coalesce the output
@@ -2232,15 +2233,13 @@ class LDdecode:
                     # EOF, probably
                     return None
             
-#                print("")
-
             self.curfield = f
             self.fdoffset += offset
             
             if f is not None and f.valid:
                 picture, audio, efm = f.downscale(linesout = self.output_lines, final=True)
 
-                metrics = self.computeMetrics(f, None)
+                metrics = self.computeMetrics(f, None, verbose=True)
                 if 'blackToWhiteRFRatio' in metrics and MTFadjusted == False:
                     keep = 900 if self.isCLV else 30
                     self.bw_ratios.append(metrics['blackToWhiteRFRatio'])
@@ -2400,11 +2399,13 @@ class LDdecode:
 
         return metrics    
 
-    def computeMetrics(self, f, fp = None):
+    def computeMetrics(self, f, fp = None, verbose = False):
         if not self.curfield:
             raise ValueError("No decoded field to work with")
 
         system = f.rf.system
+        if self.verboseVITS:
+            verbose = True
             
         metrics = {}
 
@@ -2449,7 +2450,7 @@ class LDdecode:
             #metrics['syncToWhiteRFRatio'] = metrics['syncRFLevel'] / metrics['whiteRFLevel']
             metrics['blackToWhiteRFRatio'] = metrics['blackLineRFLevel'] / metrics['whiteRFLevel']
 
-        outputkeys = metrics.keys() if self.verboseVITS else ['wSNR', 'bPSNR']
+        outputkeys = metrics.keys() if verbose else ['wSNR', 'bPSNR']
 
         metrics_rounded = {}
 
