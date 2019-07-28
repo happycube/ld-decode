@@ -73,10 +73,16 @@ void PalColour::buildLookUpTables()
 
     // Create filter-profile lookup
     // chromaBandwidthHz values between 1.1MHz and 1.3MHz can be tried. Some specific values in that range may work best at minimising residual
-    // dot pattern at given sample rates due to the discrete nature of the filters. It'd be good to find ways to optimise this more rigourously
+    // dot pattern at given sample rates due to the discrete nature of the filters. It'd be good to find ways to optimise this more rigourously.
+    // Note in principle you could have different bandwidths for extracting the luma and chroma, according to aesthetic tradeoffs. Not really very justifyable though.
     double chromaBandwidthHz=1100000.0 /0.93; // the 0.93 is a bit empirical for the 4Fsc sampled LaserDisc scans
+
+    // Compute filter widths based on chroma bandwidth.
+    // arraySize must be wide enough to hold both filters (and ideally no
+    // wider, else we're doing more computation than we need to).
     double ca=0.5*videoParameters.sampleRate/chromaBandwidthHz, ya=0.5*videoParameters.sampleRate/chromaBandwidthHz; // where does the 0.5* come from?
-    // note in principle you could have different bandwidths for extracting the luma and chroma, according to aesthetic tradeoffs. Not really very justifyable though.
+    assert(arraySize >= static_cast<qint32>(ca));
+    assert(arraySize >= static_cast<qint32>(ya));
 
     // Simon: The array declarations (used here and in the processing method) have been moved
     // to the class' private space (in the .h)
