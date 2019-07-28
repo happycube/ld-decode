@@ -93,7 +93,7 @@ void PalColour::buildLookUpTables()
     // and that 'lines' of the masks were equivalent, then
     // significant time-savings could be made.
 
-    for (int16_t f=0; f<=arraySize; f++)
+    for (qint32 f=0; f<=arraySize; f++)
     {
         double  fc=f; if (fc>ca) fc=ca;
         double  ff=sqrt(f*f+2*2); if ( ff>ca)  ff=ca;  // 2 -- 4 -- 6 sequence
