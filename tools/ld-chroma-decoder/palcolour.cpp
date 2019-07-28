@@ -80,7 +80,8 @@ void PalColour::buildLookUpTables()
 
     // Simon: The array declarations (used here and in the processing method) have been moved
     // to the class' private space (in the .h)
-    cdiv=0; ydiv=0;
+    double cdiv=0;
+    double ydiv=0;
 
     // Note that we choose to make the y-filter *much* less selective in the vertical direction:
     // - this is to prevent castellation on horizontal colour boundaries.
@@ -126,6 +127,15 @@ void PalColour::buildLookUpTables()
         ydiv+=yfilt[f][0]+2*0+2*yfilt[f][1]+2*0;
     }
     cdiv*=2; ydiv*=2;
+
+    for (qint32 f = 0; f <= arraySize; f++) {
+        for (qint32 i = 0; i < 4; i++) {
+            cfilt[f][i] /= cdiv;
+        }
+        for (qint32 i = 0; i < 2; i++) {
+            yfilt[f][i] /= ydiv;
+        }
+    }
 
     // Calculate the frame height and resize the output buffer
     qint32 frameHeight = (videoParameters.fieldHeight * 2) - 1;
@@ -284,9 +294,9 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
                         PV+=(m[0][r]+m[0][l])*cfilt[b][0]+(m[1][r]+m[1][l])*cfilt[b][1]-(n[2][r]+n[2][l])*cfilt[b][2]-(n[3][r]+n[3][l])*cfilt[b][3];
                         QV+=(n[0][r]+n[0][l])*cfilt[b][0]+(n[1][r]+n[1][l])*cfilt[b][1]+(m[2][r]+m[2][l])*cfilt[b][2]+(m[3][r]+m[3][l])*cfilt[b][3];
                     }
-                    pu[i]=PU/cdiv; qu[i]=QU/cdiv;
-                    pv[i]=PV/cdiv; qv[i]=QV/cdiv;
-                    py[i]=PY/ydiv; qy[i]=QY/ydiv;
+                    pu[i]=PU; qu[i]=QU;
+                    pv[i]=PV; qv[i]=QV;
+                    py[i]=PY; qy[i]=QY;
                 }
 
                 // Generate the luminance (Y), by filtering out Fsc (by re-synthesising the detected py qy and subtracting), and subtracting the black-level

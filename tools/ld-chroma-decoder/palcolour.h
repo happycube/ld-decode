@@ -57,8 +57,6 @@ private:
     double cfilt[arraySize + 1][4];
     double yfilt[arraySize + 1][2];
 
-    double cdiv;
-    double ydiv;
     double refAmpl;
     double normalise;
     QByteArray outputFrame;
