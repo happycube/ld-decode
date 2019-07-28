@@ -574,6 +574,9 @@ class DemodCache:
 
         self.q_out = Queue()
         self.threads = []
+
+        num_worker_threads = min(num_worker_threads - 1, 1)
+
         for i in range(num_worker_threads):
             t = Process(target=self.worker, daemon=True)#, args=[self])
             t.start()
@@ -584,11 +587,13 @@ class DemodCache:
 
     def end(self):            
         # stop workers
-        for i in range(len(self.threads)):
-            self.q_in.put(None)
+        for i in self.threads:
+            if i.is_alive():
+                self.q_in.put(None)
 
         for t in self.threads:
-            t.join()
+            if t.is_alive():
+                t.join()
 
         self.q_out.put(None)
 
@@ -617,7 +622,7 @@ class DemodCache:
     def worker(self):
         while True:
             item = self.q_in.get()
-            if item is None:
+            if item is None or item[1] is None:
                 return
 
             blocknum, block, target_MTF = item
@@ -653,10 +658,15 @@ class DemodCache:
                 
                 if rawdata is None or len(rawdata) < self.rf.blocklen:
                     self.blocks[b] = None
+                    self.lock.release()
                     return None
 
                 self.blocks[b] = {}
                 self.blocks[b]['rawinput'] = rawdata
+
+            if self.blocks[b] is None:
+                self.lock.release()
+                return None
 
             handling = need_demod = ('demod' not in self.blocks[b]) or (np.abs(self.blocks[b]['MTF'] - MTF) > self.MTF_tolerance)
 
@@ -713,9 +723,12 @@ class DemodCache:
         toread_prefetch = range(end // self.blocksize, (end // self.blocksize) + self.prefetch)
 
         need_blocks = self.doread(toread, MTF)
-        while len(need_blocks):
+        while need_blocks is not None and len(need_blocks):
             time.sleep(.005)
             need_blocks = self.doread(toread, MTF)
+
+        if need_blocks is None:
+            return None
 
         # Now coalesce the output
         for b in range(begin // self.blocksize, (end // self.blocksize) + 1):
