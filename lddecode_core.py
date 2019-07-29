@@ -695,11 +695,19 @@ class DemodCache:
             rv = self.q_out.get()
             if rv is None:
                 return
-            blocknum, item = rv
-
-            self.q_in_metadata.remove((blocknum, item['MTF']))
 
             self.lock.acquire()
+
+            blocknum, item = rv
+
+            if 'MTF' not in item or 'demod' not in item:
+                # This shouldn't happen, but was observed by Simon on a decode
+                logging.error('incomplete demodulated block placed on queue, block #' + blocknum)
+                self.q_in.put((blocknum, self.blocks[blocknum], self.currentMTF))
+                self.lock.release()
+                continue                
+
+            self.q_in_metadata.remove((blocknum, item['MTF']))
 
             for k in item.keys():
                 if k == 'demod' and (np.abs(item['MTF'] - self.currentMTF) > self.MTF_tolerance):
