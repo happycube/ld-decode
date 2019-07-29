@@ -35,8 +35,6 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     oscilloscopeDialog = new OscilloscopeDialog(this);
     aboutDialog = new AboutDialog(this);
     vbiDialog = new VbiDialog(this);
-    ntscDialog = new NtscDialog(this);
-    videoMetadataDialog = new VideoMetadataDialog(this);
     dropoutAnalysisDialog = new DropoutAnalysisDialog(this);
     snrAnalysisDialog = new SnrAnalysisDialog(this);
     busyDialog = new BusyDialog(this);
@@ -44,8 +42,9 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     // Add a status bar to show the state of the source video file
     ui->statusBar->addWidget(&sourceVideoStatus);
     ui->statusBar->addPermanentWidget(&frameLineStatus);
+    ui->statusBar->addWidget(&fieldNumberStatus);
     sourceVideoStatus.setText(tr("No source video file loaded"));
-    frameLineStatus.setText(tr(""));
+    fieldNumberStatus.setText(tr(" -  Fields: ./."));
 
     // Set the initial frame number
     currentFrameNumber = 1;
@@ -62,11 +61,12 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     // Load the window geometry from the configuration
     restoreGeometry(configuration.getMainWindowGeometry());
     vbiDialog->restoreGeometry(configuration.getVbiDialogGeometry());
-    ntscDialog->restoreGeometry(configuration.getNtscDialogGeometry());
-    videoMetadataDialog->restoreGeometry(configuration.getVideoMetadataDialogGeometry());
     oscilloscopeDialog->restoreGeometry(configuration.getOscilloscopeDialogGeometry());
     dropoutAnalysisDialog->restoreGeometry(configuration.getDropoutAnalysisDialogGeometry());
     snrAnalysisDialog->restoreGeometry(configuration.getSnrAnalysisDialogGeometry());
+
+    // Store the current button palette for the show dropouts button
+    buttonPalette = ui->dropoutsPushButton->palette();
 
     updateGuiUnloaded();
 
@@ -81,8 +81,6 @@ MainWindow::~MainWindow()
     // Save the window geometry to the configuration
     configuration.setMainWindowGeometry(saveGeometry());
     configuration.setVbiDialogGeometry(vbiDialog->saveGeometry());
-    configuration.setNtscDialogGeometry(ntscDialog->saveGeometry());
-    configuration.setVideoMetadataDialogGeometry(videoMetadataDialog->saveGeometry());
     configuration.setOscilloscopeDialogGeometry(oscilloscopeDialog->saveGeometry());
     configuration.setDropoutAnalysisDialogGeometry(dropoutAnalysisDialog->saveGeometry());
     configuration.setSnrAnalysisDialogGeometry(snrAnalysisDialog->saveGeometry());
@@ -106,14 +104,10 @@ void MainWindow::updateGuiLoaded(void)
     ui->frameNumberSpinBox->setEnabled(true);
     ui->previousPushButton->setEnabled(true);
     ui->nextPushButton->setEnabled(true);
+    ui->startFramePushButton->setEnabled(true);
+    ui->endFramePushButton->setEnabled(true);
     ui->frameHorizontalSlider->setEnabled(true);
-    ui->combFilterRadioButton->setEnabled(true);
-    ui->sourceRadioButton->setEnabled(true);
-
-    // Enable the option check boxes
-    ui->highlightDropOutsCheckBox->setEnabled(true);
-    ui->showActiveVideoCheckBox->setEnabled(true);
-    ui->reverseFieldOrderCheckBox->setEnabled(true);
+    ui->mediaControl_frame->setEnabled(true);
 
     // Update the current frame number
     currentFrameNumber = 1;
@@ -127,10 +121,6 @@ void MainWindow::updateGuiLoaded(void)
     ui->frameHorizontalSlider->setPageStep(ldDecodeMetaData.getNumberOfFrames() / 100);
     ui->frameHorizontalSlider->setValue(currentFrameNumber);
 
-    // Enable the field information groupboxes
-    ui->firstFieldGroupBox->setEnabled(true);
-    ui->secondFieldGroupBox->setEnabled(true);
-
     // Enable menu options
     ui->actionLine_scope->setEnabled(true);
     ui->actionVBI->setEnabled(true);
@@ -142,6 +132,14 @@ void MainWindow::updateGuiLoaded(void)
     ui->actionSNR_analysis->setEnabled(true);
     ui->actionSave_frame_as_PNG->setEnabled(true);
     ui->actionSave_metadata_as_CSV->setEnabled(true);
+
+    // Set option button states
+    chromaOn = false;
+    dropoutsOn = false;
+    reverseFoOn = false;
+    ui->videoPushButton->setText(tr("Chroma"));
+    ui->dropoutsPushButton->setText(tr("Show dropouts"));
+    ui->fieldOrderPushButton->setText(tr("Reverse Field-order"));
 
     // Configure the comb-filter
     if (ldDecodeMetaData.getVideoParameters().isSourcePal) {
@@ -189,7 +187,7 @@ void MainWindow::updateGuiLoaded(void)
     sourceVideoStatus.setText(statusText);
 
     // Show the current frame
-    showFrame(currentFrameNumber, ui->showActiveVideoCheckBox->isChecked(), ui->highlightDropOutsCheckBox->isChecked());
+    showFrame(currentFrameNumber, dropoutsOn);
 
     isFileOpen = true;
 }
@@ -201,17 +199,10 @@ void MainWindow::updateGuiUnloaded(void)
     ui->frameNumberSpinBox->setEnabled(false);
     ui->previousPushButton->setEnabled(false);
     ui->nextPushButton->setEnabled(false);
+    ui->startFramePushButton->setEnabled(false);
+    ui->endFramePushButton->setEnabled(false);
     ui->frameHorizontalSlider->setEnabled(false);
-    ui->combFilterRadioButton->setEnabled(false);
-    ui->sourceRadioButton->setEnabled(false);
-
-    // Disable the option check boxes
-    ui->highlightDropOutsCheckBox->setEnabled(false);
-    ui->showActiveVideoCheckBox->setEnabled(false);
-    ui->reverseFieldOrderCheckBox->setEnabled(false);
-    ui->highlightDropOutsCheckBox->setChecked(false);
-    ui->showActiveVideoCheckBox->setChecked(false);
-    ui->reverseFieldOrderCheckBox->setChecked(false);
+    ui->mediaControl_frame->setEnabled(false);
 
     // Update the current frame number
     currentFrameNumber = 1;
@@ -228,15 +219,12 @@ void MainWindow::updateGuiUnloaded(void)
     ui->nextPushButton->setAutoRepeatDelay(500);
     ui->nextPushButton->setAutoRepeatInterval(10);
 
-    // Disable the field information groupboxes
-    ui->firstFieldGroupBox->setEnabled(false);
-    ui->secondFieldGroupBox->setEnabled(false);
-
     // Set the window title
     this->setWindowTitle(tr("ld-analyse"));
 
     // Set the status bar text
     sourceVideoStatus.setText(tr("No source video file loaded"));
+    fieldNumberStatus.setText(tr(" -  Fields: ./."));
 
     // Disable menu options
     ui->actionLine_scope->setEnabled(false);
@@ -250,6 +238,14 @@ void MainWindow::updateGuiUnloaded(void)
     ui->actionSave_frame_as_PNG->setEnabled(false);
     ui->actionSave_metadata_as_CSV->setEnabled(false);
 
+    // Set option button states
+    chromaOn = false;
+    dropoutsOn = false;
+    reverseFoOn = false;
+    ui->videoPushButton->setText(tr("Chroma"));
+    ui->dropoutsPushButton->setText(tr("Show dropouts"));
+    ui->fieldOrderPushButton->setText(tr("Reverse Field-order"));
+
     // Hide the displayed frame
     hideFrame();
 
@@ -261,7 +257,7 @@ void MainWindow::updateGuiUnloaded(void)
 }
 
 // Method to display a sequential frame
-void MainWindow::showFrame(qint32 frameNumber, bool showActiveVideoArea, bool highlightDropOuts)
+void MainWindow::showFrame(qint32 frameNumber, bool highlightDropOuts)
 {
     // Get the required field numbers
     qint32 firstFieldNumber = ldDecodeMetaData.getFirstFieldNumber(frameNumber);
@@ -294,56 +290,12 @@ void MainWindow::showFrame(qint32 frameNumber, bool showActiveVideoArea, bool hi
     LdDecodeMetaData::Field secondField = ldDecodeMetaData.getField(secondFieldNumber);
 
     // Show the field numbers
-    ui->firstFieldLabel->setText(QString::number(firstFieldNumber));
-    ui->secondFieldLabel->setText(QString::number(secondFieldNumber));
+    fieldNumberStatus.setText(" -  Fields: " + QString::number(firstFieldNumber) + "/" + QString::number(secondFieldNumber));
 
     // Get the video parameters
     LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
 
-    // Show the active video extent?
-    if (showActiveVideoArea) {
-        // Create a painter object
-        QPainter imagePainter;
-
-        imagePainter.begin(&frameImage);
-        imagePainter.setPen(Qt::cyan);
-
-        // Determine the first and last active scan line based on the source format
-        qint32 firstActiveScanLine;
-        qint32 lastActiveScanLine;
-        if (videoParameters.isSourcePal) {
-            firstActiveScanLine = 44;
-            lastActiveScanLine = 620;
-        } else {
-            firstActiveScanLine = 40;
-            lastActiveScanLine = 525;
-        }
-
-        // Outline the active video area
-        imagePainter.drawLine(videoParameters.activeVideoStart, firstActiveScanLine, videoParameters.activeVideoStart, lastActiveScanLine);
-        imagePainter.drawLine(videoParameters.activeVideoEnd, firstActiveScanLine, videoParameters.activeVideoEnd, lastActiveScanLine);
-        imagePainter.drawLine(videoParameters.activeVideoStart, firstActiveScanLine, videoParameters.activeVideoEnd, firstActiveScanLine);
-        imagePainter.drawLine(videoParameters.activeVideoStart, lastActiveScanLine, videoParameters.activeVideoEnd, lastActiveScanLine);
-
-        // Outline the VP415 Domesday player active video area
-        qreal vp415FirstActiveScanLine = firstActiveScanLine + (((videoParameters.fieldHeight * 2) / 100) * 1.0);
-        qreal vp415LastActiveScanLine = lastActiveScanLine - (((videoParameters.fieldHeight * 2) / 100) * 1.0);
-        qreal vp415VideoStart = videoParameters.activeVideoStart + ((videoParameters.fieldWidth / 100) * 1.0);
-        qreal vp415VideoEnd = videoParameters.activeVideoEnd - ((videoParameters.fieldWidth / 100) * 1.0);
-        imagePainter.drawLine(static_cast<qint32>(vp415VideoStart), static_cast<qint32>(vp415FirstActiveScanLine),
-                              static_cast<qint32>(vp415VideoStart), static_cast<qint32>(vp415LastActiveScanLine));
-        imagePainter.drawLine(static_cast<qint32>(vp415VideoEnd), static_cast<qint32>(vp415FirstActiveScanLine),
-                              static_cast<qint32>(vp415VideoEnd), static_cast<qint32>(vp415LastActiveScanLine));
-
-        imagePainter.drawLine(static_cast<qint32>(vp415VideoStart), static_cast<qint32>(vp415FirstActiveScanLine),
-                              static_cast<qint32>(vp415VideoEnd), static_cast<qint32>(vp415FirstActiveScanLine));
-        imagePainter.drawLine(static_cast<qint32>(vp415VideoStart), static_cast<qint32>(vp415LastActiveScanLine),
-                              static_cast<qint32>(vp415VideoEnd), static_cast<qint32>(vp415LastActiveScanLine));
-
-        // End the painter object
-        imagePainter.end();
-    }
-
+    // Highlight dropouts
     if (highlightDropOuts) {
         // Create a painter object
         QPainter imagePainter;
@@ -373,72 +325,21 @@ void MainWindow::showFrame(qint32 frameNumber, bool showActiveVideoArea, bool hi
         imagePainter.end();
     }
 
-    // Add the first field VBI data to the dialogue
-    if (firstField.vbi.inUse) {
-        ui->firstField0VbiLabel->setText("0x" + QString::number(firstField.vbi.vbiData[0], 16));
-        ui->firstField1VbiLabel->setText("0x" + QString::number(firstField.vbi.vbiData[1], 16));
-        ui->firstField2VbiLabel->setText("0x" + QString::number(firstField.vbi.vbiData[2], 16));
+    // If there are dropouts in the frame, highlight the show dropouts button
+    if (firstField.dropOuts.startx.size() > 0 || secondField.dropOuts.startx.size() > 0) {
+        QPalette tempPalette = buttonPalette;
+        tempPalette.setColor(QPalette::Button, QColor(Qt::lightGray));
+        ui->dropoutsPushButton->setAutoFillBackground(true);
+        ui->dropoutsPushButton->setPalette(tempPalette);
+        ui->dropoutsPushButton->update();
     } else {
-        ui->firstField0VbiLabel->setText("No metadata");
-        ui->firstField1VbiLabel->setText("No metadata");
-        ui->firstField2VbiLabel->setText("No metadata");
-    }
-
-    // Add the first field sync confidence field to the dialogue
-    ui->firstFieldSyncConfLabel->setText(QString::number(firstField.syncConf) + "%");
-
-    // Add the first field drop out data to the dialogue
-    if (firstField.dropOuts.startx.size() > 0) {
-        ui->firstFieldDropoutsLabel->setText(QString::number(firstField.dropOuts.startx.size()));
-
-        // Calculate the total length of the dropouts
-        qint32 doLength = 0;
-        for (qint32 i = 0; i < firstField.dropOuts.startx.size(); i++) {
-            doLength += firstField.dropOuts.endx[i] - firstField.dropOuts.startx[i];
-        }
-        ui->firstFieldDoLengthLabel->setText(QString::number(doLength));
-    } else {
-        ui->firstFieldDropoutsLabel->setText("0");
-        ui->firstFieldDoLengthLabel->setText("0");
-    }
-
-    // Add the second field VBI data to the dialogue
-    if (secondField.vbi.inUse) {
-        ui->secondField0VbiLabel->setText("0x" + QString::number(secondField.vbi.vbiData[0], 16));
-        ui->secondField1VbiLabel->setText("0x" + QString::number(secondField.vbi.vbiData[1], 16));
-        ui->secondField2VbiLabel->setText("0x" + QString::number(secondField.vbi.vbiData[2], 16));
-    } else {
-        ui->secondField0VbiLabel->setText("No metadata");
-        ui->secondField1VbiLabel->setText("No metadata");
-        ui->secondField2VbiLabel->setText("No metadata");
-    }
-
-    // Add the second field sync confidence field to the dialogue
-    ui->secondFieldSyncConfLabel->setText(QString::number(secondField.syncConf) + "%");
-
-    // Add the second field drop out data to the dialogue
-    if (secondField.dropOuts.startx.size() > 0) {
-        ui->secondFieldDropoutsLabel->setText(QString::number(secondField.dropOuts.startx.size()));
-
-        // Calculate the total length of the dropouts
-        qint32 doLength = 0;
-        for (qint32 i = 0; i < secondField.dropOuts.startx.size(); i++) {
-            doLength += secondField.dropOuts.endx[i] - secondField.dropOuts.startx[i];
-        }
-        ui->secondFieldDoLengthLabel->setText(QString::number(doLength));
-    } else {
-        ui->secondFieldDropoutsLabel->setText("0");
-        ui->secondFieldDoLengthLabel->setText("0");
+        ui->dropoutsPushButton->setAutoFillBackground(true);
+        ui->dropoutsPushButton->setPalette(buttonPalette);
+        ui->dropoutsPushButton->update();
     }
 
     // Update the VBI dialogue
     if (vbiDialog->isVisible()) vbiDialog->updateVbi(firstField, secondField);
-
-    // Update the NTSC dialogue
-    if (ntscDialog->isVisible()) ntscDialog->updateNtsc(firstField, secondField);
-
-    // Update the metadata dialogue
-    if (videoMetadataDialog->isVisible()) videoMetadataDialog->updateMetaData(videoParameters);
 
     // Add the QImage to the QLabel in the dialogue
     ui->frameViewerLabel->clear();
@@ -481,7 +382,7 @@ QImage MainWindow::generateQImage(qint32 firstFieldNumber, qint32 secondFieldNum
     QByteArray firstLineData;
     QByteArray secondLineData;
 
-    if (ui->sourceRadioButton->isChecked()) {
+    if (!chromaOn) {
         // Copy the raw 16-bit grayscale data into the RGB888 QImage
         for (qint32 y = 0; y < frameHeight; y++) {
             // Extract the current scan line data from the frame
@@ -775,6 +676,22 @@ void MainWindow::on_nextPushButton_clicked()
     }
 }
 
+// Skip to end frame button has been clicked
+void MainWindow::on_endFramePushButton_clicked()
+{
+    currentFrameNumber = ldDecodeMetaData.getNumberOfFrames();
+    ui->frameNumberSpinBox->setValue(currentFrameNumber);
+    ui->frameHorizontalSlider->setValue(currentFrameNumber);
+}
+
+// Skip to start frame button has been clicked
+void MainWindow::on_startFramePushButton_clicked()
+{
+    currentFrameNumber = 1;
+    ui->frameNumberSpinBox->setValue(currentFrameNumber);
+    ui->frameHorizontalSlider->setValue(currentFrameNumber);
+}
+
 // Frame number spin box editing has finished
 void MainWindow::on_frameNumberSpinBox_editingFinished()
 {
@@ -783,7 +700,7 @@ void MainWindow::on_frameNumberSpinBox_editingFinished()
         if (ui->frameNumberSpinBox->value() > sourceVideo.getNumberOfAvailableFields()) ui->frameNumberSpinBox->setValue(ldDecodeMetaData.getNumberOfFrames());
         currentFrameNumber = ui->frameNumberSpinBox->value();
         ui->frameHorizontalSlider->setValue(currentFrameNumber);
-        showFrame(currentFrameNumber, ui->showActiveVideoCheckBox->isChecked(), ui->highlightDropOutsCheckBox->isChecked());
+        showFrame(currentFrameNumber, dropoutsOn);
     }
 }
 
@@ -799,19 +716,8 @@ void MainWindow::on_frameHorizontalSlider_valueChanged(int value)
     // otherwisew we just ignore this
     if (ui->frameNumberSpinBox->isEnabled()) {
         ui->frameNumberSpinBox->setValue(currentFrameNumber);
-        showFrame(currentFrameNumber, ui->showActiveVideoCheckBox->isChecked(), ui->highlightDropOutsCheckBox->isChecked());
+        showFrame(currentFrameNumber, dropoutsOn);
     }
-}
-
-
-void MainWindow::on_showActiveVideoCheckBox_clicked()
-{
-    showFrame(currentFrameNumber, ui->showActiveVideoCheckBox->isChecked(), ui->highlightDropOutsCheckBox->isChecked());
-}
-
-void MainWindow::on_highlightDropOutsCheckBox_clicked()
-{
-    showFrame(currentFrameNumber, ui->showActiveVideoCheckBox->isChecked(), ui->highlightDropOutsCheckBox->isChecked());
 }
 
 void MainWindow::on_actionLine_scope_triggered()
@@ -825,15 +731,7 @@ void MainWindow::on_actionLine_scope_triggered()
 
 void MainWindow::on_actionAbout_ld_analyse_triggered()
 {
-    videoMetadataDialog->updateMetaData(ldDecodeMetaData.getVideoParameters());
     aboutDialog->show();
-}
-
-// Display video metadata dialogue triggered
-void MainWindow::on_actionVideo_metadata_triggered()
-{
-    videoMetadataDialog->updateMetaData(ldDecodeMetaData.getVideoParameters());
-    videoMetadataDialog->show();
 }
 
 void MainWindow::on_actionVBI_triggered()
@@ -843,15 +741,6 @@ void MainWindow::on_actionVBI_triggered()
 
     // Show the VBI dialogue
     vbiDialog->show();
-}
-
-void MainWindow::on_actionNTSC_triggered()
-{
-    ntscDialog->updateNtsc(ldDecodeMetaData.getField(ldDecodeMetaData.getFirstFieldNumber(currentFrameNumber)),
-                           ldDecodeMetaData.getField(ldDecodeMetaData.getSecondFieldNumber(currentFrameNumber)));
-
-    // Show the NTSC dialogue
-    ntscDialog->show();
 }
 
 void MainWindow::on_actionDropout_analysis_triggered()
@@ -874,20 +763,6 @@ void MainWindow::on_action1_1_Frame_size_triggered()
     this->resize(sizeHint());
 }
 
-// Display source frame radio button clicked
-void MainWindow::on_sourceRadioButton_clicked()
-{
-    // Show the current frame
-    showFrame(currentFrameNumber, ui->showActiveVideoCheckBox->isChecked(), ui->highlightDropOutsCheckBox->isChecked());
-}
-
-// Display comb-filtered frame
-void MainWindow::on_combFilterRadioButton_clicked()
-{
-    // Show the current frame
-    showFrame(currentFrameNumber, ui->showActiveVideoCheckBox->isChecked(), ui->highlightDropOutsCheckBox->isChecked());
-}
-
 // Save current frame as PNG
 void MainWindow::on_actionSave_frame_as_PNG_triggered()
 {
@@ -897,7 +772,7 @@ void MainWindow::on_actionSave_frame_as_PNG_triggered()
     QString filenameSuggestion = configuration.getPngDirectory();
     if (ldDecodeMetaData.getVideoParameters().isSourcePal) filenameSuggestion += tr("/frame_pal_");
     else filenameSuggestion += tr("/frame_ntsc_");
-    if (ui->sourceRadioButton->isChecked()) filenameSuggestion += tr("source_");
+    if (!chromaOn) filenameSuggestion += tr("source_");
     else filenameSuggestion += tr("comb_");
     filenameSuggestion += QString::number(currentFrameNumber) + tr(".png");
 
@@ -961,20 +836,6 @@ void MainWindow::on_actionSave_metadata_as_CSV_triggered()
     }
 }
 
-void MainWindow::on_reverseFieldOrderCheckBox_stateChanged(int arg1)
-{
-    (void)arg1;
-
-    if (ui->reverseFieldOrderCheckBox->isChecked()) ldDecodeMetaData.setIsFirstFieldFirst(false);
-        else ldDecodeMetaData.setIsFirstFieldFirst(true);
-
-    // If the TBC field order is changed, the number of available frames can change, so we need to update the GUI
-    updateGuiLoaded();
-
-    // Show the current frame
-    showFrame(currentFrameNumber, ui->showActiveVideoCheckBox->isChecked(), ui->highlightDropOutsCheckBox->isChecked());
-}
-
 // Method to update the line oscilloscope based on the frame number and scan line
 void MainWindow::updateOscilloscopeDialogue(qint32 frameNumber, qint32 scanLine)
 {
@@ -986,6 +847,59 @@ void MainWindow::updateOscilloscopeDialogue(qint32 frameNumber, qint32 scanLine)
     oscilloscopeDialog->showTraceImage(sourceVideo.getVideoField(firstFieldNumber),
                                        sourceVideo.getVideoField(secondFieldNumber),
                                        &ldDecodeMetaData, scanLine, firstFieldNumber, secondFieldNumber);
+}
+
+// Source/Chroma select button clicked
+void MainWindow::on_videoPushButton_clicked()
+{
+    if (chromaOn) {
+        chromaOn = false;
+        ui->videoPushButton->setText(tr("Chroma"));
+    } else {
+        chromaOn = true;
+        ui->videoPushButton->setText(tr("Source"));
+    }
+
+    // Show the current frame
+    showFrame(currentFrameNumber, dropoutsOn);
+}
+
+// Show/hide dropouts button clicked
+void MainWindow::on_dropoutsPushButton_clicked()
+{
+    if (dropoutsOn) {
+        dropoutsOn = false;
+        ui->dropoutsPushButton->setText(tr("Show dropouts"));
+    } else {
+        dropoutsOn = true;
+        ui->dropoutsPushButton->setText(tr("Hide dropouts"));
+    }
+
+    // Show the current frame (why isn't this option passed?)
+    showFrame(currentFrameNumber, dropoutsOn);
+}
+
+// Normal/Reverse field order button clicked
+void MainWindow::on_fieldOrderPushButton_clicked()
+{
+    if (reverseFoOn) {
+        ldDecodeMetaData.setIsFirstFieldFirst(true);
+
+        // If the TBC field order is changed, the number of available frames can change, so we need to update the GUI
+        updateGuiLoaded();
+        reverseFoOn = false;
+        ui->fieldOrderPushButton->setText(tr("Reverse Field-order"));
+    } else {
+        ldDecodeMetaData.setIsFirstFieldFirst(false);
+
+        // If the TBC field order is changed, the number of available frames can change, so we need to update the GUI
+        updateGuiLoaded();
+        reverseFoOn = true;
+        ui->fieldOrderPushButton->setText(tr("Normal Field-order"));
+    }
+
+    // Show the current frame
+    showFrame(currentFrameNumber, dropoutsOn);
 }
 
 void MainWindow::scanLineChangedSignalHandler(qint32 scanLine)
@@ -1074,10 +988,14 @@ void MainWindow::mouseOverQFrameSignalHandler(QMouseEvent *event)
         if (unscaledY > frameHeight) unscaledY = frameHeight;
         if (unscaledY < 1) unscaledY = 1;
 
-        frameLineStatus.setText(QString::number(unscaledY));
+        frameLineStatus.setText("Line: " + QString::number(unscaledY));
         event->accept();
     }
 }
+
+
+
+
 
 
 

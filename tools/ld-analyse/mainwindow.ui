@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1234</width>
-    <height>665</height>
+    <width>1236</width>
+    <height>788</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -27,7 +27,7 @@
   </property>
   <property name="windowIcon">
    <iconset resource="ld-analyse-resources.qrc">
-    <normaloff>:/icons/Graphics/ld-analyse logo 128px.png</normaloff>:/icons/Graphics/ld-analyse logo 128px.png</iconset>
+    <normaloff>:/icons/Graphics/128-analyse.png</normaloff>:/icons/Graphics/128-analyse.png</iconset>
   </property>
   <widget class="QWidget" name="centralWidget">
    <property name="minimumSize">
@@ -41,631 +41,193 @@
      <enum>QLayout::SetDefaultConstraint</enum>
     </property>
     <item>
-     <widget class="QFrame" name="frame">
-      <property name="minimumSize">
-       <size>
-        <width>240</width>
-        <height>210</height>
-       </size>
-      </property>
-      <property name="maximumSize">
-       <size>
-        <width>240</width>
-        <height>16777215</height>
-       </size>
-      </property>
-      <property name="frameShape">
-       <enum>QFrame::StyledPanel</enum>
-      </property>
-      <property name="frameShadow">
-       <enum>QFrame::Raised</enum>
-      </property>
-      <widget class="QSpinBox" name="frameNumberSpinBox">
-       <property name="geometry">
-        <rect>
-         <x>10</x>
-         <y>10</y>
-         <width>81</width>
-         <height>25</height>
-        </rect>
-       </property>
-       <property name="maximum">
-        <number>80000</number>
-       </property>
-       <property name="value">
-        <number>79999</number>
-       </property>
-      </widget>
-      <widget class="QPushButton" name="previousPushButton">
-       <property name="geometry">
-        <rect>
-         <x>100</x>
-         <y>10</y>
-         <width>61</width>
-         <height>24</height>
-        </rect>
-       </property>
-       <property name="text">
-        <string>Prev</string>
-       </property>
-      </widget>
-      <widget class="QPushButton" name="nextPushButton">
-       <property name="geometry">
-        <rect>
-         <x>170</x>
-         <y>10</y>
-         <width>61</width>
-         <height>24</height>
-        </rect>
-       </property>
-       <property name="text">
-        <string>Next</string>
-       </property>
-      </widget>
-      <widget class="QCheckBox" name="highlightDropOutsCheckBox">
-       <property name="geometry">
-        <rect>
-         <x>10</x>
-         <y>50</y>
-         <width>221</width>
-         <height>22</height>
-        </rect>
-       </property>
-       <property name="text">
-        <string>Highlight dropouts</string>
-       </property>
-      </widget>
-      <widget class="QCheckBox" name="showActiveVideoCheckBox">
-       <property name="geometry">
-        <rect>
-         <x>10</x>
-         <y>70</y>
-         <width>221</width>
-         <height>22</height>
-        </rect>
-       </property>
-       <property name="text">
-        <string>Show active video extent</string>
-       </property>
-      </widget>
-      <widget class="QGroupBox" name="firstFieldGroupBox">
-       <property name="geometry">
-        <rect>
-         <x>10</x>
-         <y>160</y>
-         <width>221</width>
-         <height>211</height>
-        </rect>
-       </property>
-       <property name="title">
-        <string>First field:</string>
-       </property>
-       <widget class="QLabel" name="label_7">
-        <property name="geometry">
-         <rect>
-          <x>10</x>
-          <y>30</y>
-          <width>81</width>
-          <height>21</height>
-         </rect>
-        </property>
-        <property name="text">
-         <string>Field #:</string>
-        </property>
-        <property name="alignment">
-         <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-        </property>
-       </widget>
-       <widget class="QLabel" name="firstFieldLabel">
-        <property name="geometry">
-         <rect>
-          <x>100</x>
-          <y>30</y>
-          <width>111</width>
-          <height>21</height>
-         </rect>
-        </property>
-        <property name="text">
-         <string>None</string>
-        </property>
-       </widget>
-       <widget class="QLabel" name="label_9">
-        <property name="geometry">
-         <rect>
-          <x>10</x>
-          <y>50</y>
-          <width>81</width>
-          <height>21</height>
-         </rect>
-        </property>
-        <property name="text">
-         <string>Sync Conf.:</string>
-        </property>
-        <property name="alignment">
-         <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-        </property>
-       </widget>
-       <widget class="QLabel" name="label_10">
-        <property name="geometry">
-         <rect>
-          <x>10</x>
-          <y>70</y>
-          <width>81</width>
-          <height>21</height>
-         </rect>
-        </property>
-        <property name="text">
-         <string>Dropouts:</string>
-        </property>
-        <property name="alignment">
-         <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-        </property>
-       </widget>
-       <widget class="QLabel" name="label_11">
-        <property name="geometry">
-         <rect>
-          <x>10</x>
-          <y>90</y>
-          <width>81</width>
-          <height>21</height>
-         </rect>
-        </property>
-        <property name="text">
-         <string>DO Length:</string>
-        </property>
-        <property name="alignment">
-         <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-        </property>
-       </widget>
-       <widget class="QLabel" name="label_15">
-        <property name="geometry">
-         <rect>
-          <x>10</x>
-          <y>120</y>
-          <width>51</width>
-          <height>21</height>
-         </rect>
-        </property>
-        <property name="text">
-         <string>VBI:</string>
-        </property>
-        <property name="alignment">
-         <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
-        </property>
-       </widget>
-       <widget class="QLabel" name="label">
-        <property name="geometry">
-         <rect>
-          <x>10</x>
-          <y>140</y>
-          <width>31</width>
-          <height>21</height>
-         </rect>
-        </property>
-        <property name="text">
-         <string>16:</string>
-        </property>
-        <property name="alignment">
-         <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-        </property>
-       </widget>
-       <widget class="QLabel" name="label_2">
-        <property name="geometry">
-         <rect>
-          <x>10</x>
-          <y>160</y>
-          <width>31</width>
-          <height>21</height>
-         </rect>
-        </property>
-        <property name="text">
-         <string>17:</string>
-        </property>
-        <property name="alignment">
-         <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-        </property>
-       </widget>
-       <widget class="QLabel" name="label_3">
-        <property name="geometry">
-         <rect>
-          <x>10</x>
-          <y>180</y>
-          <width>31</width>
-          <height>21</height>
-         </rect>
-        </property>
-        <property name="text">
-         <string>18:</string>
-        </property>
-        <property name="alignment">
-         <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-        </property>
-       </widget>
-       <widget class="QLabel" name="firstField0VbiLabel">
-        <property name="geometry">
-         <rect>
-          <x>50</x>
-          <y>140</y>
-          <width>161</width>
-          <height>21</height>
-         </rect>
-        </property>
-        <property name="text">
-         <string>No metadata</string>
-        </property>
-       </widget>
-       <widget class="QLabel" name="firstField1VbiLabel">
-        <property name="geometry">
-         <rect>
-          <x>50</x>
-          <y>160</y>
-          <width>161</width>
-          <height>21</height>
-         </rect>
-        </property>
-        <property name="text">
-         <string>No metadata</string>
-        </property>
-       </widget>
-       <widget class="QLabel" name="firstField2VbiLabel">
-        <property name="geometry">
-         <rect>
-          <x>50</x>
-          <y>180</y>
-          <width>161</width>
-          <height>21</height>
-         </rect>
-        </property>
-        <property name="text">
-         <string>No metadata</string>
-        </property>
-       </widget>
-       <widget class="QLabel" name="firstFieldSyncConfLabel">
-        <property name="geometry">
-         <rect>
-          <x>100</x>
-          <y>50</y>
-          <width>111</width>
-          <height>21</height>
-         </rect>
-        </property>
-        <property name="text">
-         <string>None</string>
-        </property>
-       </widget>
-       <widget class="QLabel" name="firstFieldDropoutsLabel">
-        <property name="geometry">
-         <rect>
-          <x>100</x>
-          <y>70</y>
-          <width>111</width>
-          <height>21</height>
-         </rect>
-        </property>
-        <property name="text">
-         <string>No metadata</string>
-        </property>
-       </widget>
-       <widget class="QLabel" name="firstFieldDoLengthLabel">
-        <property name="geometry">
-         <rect>
-          <x>100</x>
-          <y>90</y>
-          <width>111</width>
-          <height>21</height>
-         </rect>
-        </property>
-        <property name="text">
-         <string>No metadata</string>
-        </property>
-       </widget>
-      </widget>
-      <widget class="QRadioButton" name="sourceRadioButton">
-       <property name="geometry">
-        <rect>
-         <x>10</x>
-         <y>100</y>
-         <width>81</width>
-         <height>22</height>
-        </rect>
-       </property>
-       <property name="text">
-        <string>Source</string>
-       </property>
-       <property name="checked">
-        <bool>true</bool>
-       </property>
-      </widget>
-      <widget class="QRadioButton" name="combFilterRadioButton">
-       <property name="geometry">
-        <rect>
-         <x>90</x>
-         <y>100</y>
-         <width>101</width>
-         <height>22</height>
-        </rect>
-       </property>
-       <property name="text">
-        <string>Comb filter</string>
-       </property>
-      </widget>
-      <widget class="QGroupBox" name="secondFieldGroupBox">
-       <property name="geometry">
-        <rect>
-         <x>10</x>
-         <y>380</y>
-         <width>221</width>
-         <height>211</height>
-        </rect>
-       </property>
-       <property name="title">
-        <string>Second field:</string>
-       </property>
-       <widget class="QLabel" name="label_8">
-        <property name="geometry">
-         <rect>
-          <x>10</x>
-          <y>30</y>
-          <width>81</width>
-          <height>21</height>
-         </rect>
-        </property>
-        <property name="text">
-         <string>Field #:</string>
-        </property>
-        <property name="alignment">
-         <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-        </property>
-       </widget>
-       <widget class="QLabel" name="secondFieldLabel">
-        <property name="geometry">
-         <rect>
-          <x>100</x>
-          <y>30</y>
-          <width>111</width>
-          <height>21</height>
-         </rect>
-        </property>
-        <property name="text">
-         <string>None</string>
-        </property>
-       </widget>
-       <widget class="QLabel" name="label_12">
-        <property name="geometry">
-         <rect>
-          <x>10</x>
-          <y>50</y>
-          <width>81</width>
-          <height>21</height>
-         </rect>
-        </property>
-        <property name="text">
-         <string>Sync Conf.:</string>
-        </property>
-        <property name="alignment">
-         <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-        </property>
-       </widget>
-       <widget class="QLabel" name="label_13">
-        <property name="geometry">
-         <rect>
-          <x>10</x>
-          <y>70</y>
-          <width>81</width>
-          <height>21</height>
-         </rect>
-        </property>
-        <property name="text">
-         <string>Dropouts:</string>
-        </property>
-        <property name="alignment">
-         <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-        </property>
-       </widget>
-       <widget class="QLabel" name="label_14">
-        <property name="geometry">
-         <rect>
-          <x>10</x>
-          <y>90</y>
-          <width>81</width>
-          <height>21</height>
-         </rect>
-        </property>
-        <property name="text">
-         <string>DO Length:</string>
-        </property>
-        <property name="alignment">
-         <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-        </property>
-       </widget>
-       <widget class="QLabel" name="label_16">
-        <property name="geometry">
-         <rect>
-          <x>10</x>
-          <y>120</y>
-          <width>51</width>
-          <height>21</height>
-         </rect>
-        </property>
-        <property name="text">
-         <string>VBI:</string>
-        </property>
-        <property name="alignment">
-         <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
-        </property>
-       </widget>
-       <widget class="QLabel" name="label_4">
-        <property name="geometry">
-         <rect>
-          <x>10</x>
-          <y>140</y>
-          <width>31</width>
-          <height>21</height>
-         </rect>
-        </property>
-        <property name="text">
-         <string>16:</string>
-        </property>
-        <property name="alignment">
-         <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-        </property>
-       </widget>
-       <widget class="QLabel" name="label_5">
-        <property name="geometry">
-         <rect>
-          <x>10</x>
-          <y>160</y>
-          <width>31</width>
-          <height>21</height>
-         </rect>
-        </property>
-        <property name="text">
-         <string>17:</string>
-        </property>
-        <property name="alignment">
-         <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-        </property>
-       </widget>
-       <widget class="QLabel" name="label_6">
-        <property name="geometry">
-         <rect>
-          <x>10</x>
-          <y>180</y>
-          <width>31</width>
-          <height>21</height>
-         </rect>
-        </property>
-        <property name="text">
-         <string>18:</string>
-        </property>
-        <property name="alignment">
-         <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-        </property>
-       </widget>
-       <widget class="QLabel" name="secondField0VbiLabel">
-        <property name="geometry">
-         <rect>
-          <x>50</x>
-          <y>140</y>
-          <width>161</width>
-          <height>21</height>
-         </rect>
-        </property>
-        <property name="text">
-         <string>No metadata</string>
-        </property>
-       </widget>
-       <widget class="QLabel" name="secondField1VbiLabel">
-        <property name="geometry">
-         <rect>
-          <x>50</x>
-          <y>160</y>
-          <width>161</width>
-          <height>21</height>
-         </rect>
-        </property>
-        <property name="text">
-         <string>No metadata</string>
-        </property>
-       </widget>
-       <widget class="QLabel" name="secondField2VbiLabel">
-        <property name="geometry">
-         <rect>
-          <x>50</x>
-          <y>180</y>
-          <width>161</width>
-          <height>21</height>
-         </rect>
-        </property>
-        <property name="text">
-         <string>No metadata</string>
-        </property>
-       </widget>
-       <widget class="QLabel" name="secondFieldSyncConfLabel">
-        <property name="geometry">
-         <rect>
-          <x>100</x>
-          <y>50</y>
-          <width>111</width>
-          <height>21</height>
-         </rect>
-        </property>
-        <property name="text">
-         <string>None</string>
-        </property>
-       </widget>
-       <widget class="QLabel" name="secondFieldDropoutsLabel">
-        <property name="geometry">
-         <rect>
-          <x>100</x>
-          <y>70</y>
-          <width>111</width>
-          <height>21</height>
-         </rect>
-        </property>
-        <property name="text">
-         <string>No metadata</string>
-        </property>
-       </widget>
-       <widget class="QLabel" name="secondFieldDoLengthLabel">
-        <property name="geometry">
-         <rect>
-          <x>100</x>
-          <y>90</y>
-          <width>111</width>
-          <height>21</height>
-         </rect>
-        </property>
-        <property name="text">
-         <string>No metadata</string>
-        </property>
-       </widget>
-      </widget>
-      <widget class="QCheckBox" name="reverseFieldOrderCheckBox">
-       <property name="geometry">
-        <rect>
-         <x>10</x>
-         <y>130</y>
-         <width>221</width>
-         <height>22</height>
-        </rect>
-       </property>
-       <property name="text">
-        <string>Reverse field order</string>
-       </property>
-      </widget>
-     </widget>
-    </item>
-    <item>
      <layout class="QVBoxLayout" name="verticalLayout">
       <item>
-       <layout class="QHBoxLayout" name="horizontalLayout">
-        <property name="sizeConstraint">
-         <enum>QLayout::SetDefaultConstraint</enum>
+       <widget class="QFrame" name="frameViewer_frame">
+        <property name="frameShape">
+         <enum>QFrame::StyledPanel</enum>
         </property>
-        <item>
-         <widget class="FrameQLabel" name="frameViewerLabel">
-          <property name="minimumSize">
-           <size>
-            <width>0</width>
-            <height>0</height>
-           </size>
-          </property>
-          <property name="text">
-           <string>Graphics Label</string>
-          </property>
-         </widget>
-        </item>
-       </layout>
+        <property name="frameShadow">
+         <enum>QFrame::Raised</enum>
+        </property>
+        <layout class="QHBoxLayout" name="horizontalLayout">
+         <item>
+          <widget class="FrameQLabel" name="frameViewerLabel">
+           <property name="text">
+            <string>No image to display</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignCenter</set>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </widget>
       </item>
       <item>
-       <widget class="QSlider" name="frameHorizontalSlider">
-        <property name="pageStep">
-         <number>1</number>
+       <widget class="QFrame" name="mediaControl_frame">
+        <property name="maximumSize">
+         <size>
+          <width>16777215</width>
+          <height>80</height>
+         </size>
         </property>
-        <property name="orientation">
-         <enum>Qt::Horizontal</enum>
+        <property name="frameShape">
+         <enum>QFrame::StyledPanel</enum>
         </property>
+        <property name="frameShadow">
+         <enum>QFrame::Raised</enum>
+        </property>
+        <layout class="QVBoxLayout" name="verticalLayout_3">
+         <item>
+          <widget class="QSlider" name="frameHorizontalSlider">
+           <property name="orientation">
+            <enum>Qt::Horizontal</enum>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <layout class="QHBoxLayout" name="horizontalLayout_3">
+           <item>
+            <widget class="QLabel" name="label_17">
+             <property name="text">
+              <string>Frame #:</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QSpinBox" name="frameNumberSpinBox">
+             <property name="maximum">
+              <number>80000</number>
+             </property>
+             <property name="value">
+              <number>79999</number>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="startFramePushButton">
+             <property name="minimumSize">
+              <size>
+               <width>30</width>
+               <height>30</height>
+              </size>
+             </property>
+             <property name="text">
+              <string/>
+             </property>
+             <property name="icon">
+              <iconset theme="media-skip-backward">
+               <normaloff>.</normaloff>.</iconset>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="previousPushButton">
+             <property name="minimumSize">
+              <size>
+               <width>30</width>
+               <height>30</height>
+              </size>
+             </property>
+             <property name="text">
+              <string/>
+             </property>
+             <property name="icon">
+              <iconset theme="media-seek-backward">
+               <normaloff>.</normaloff>.</iconset>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="nextPushButton">
+             <property name="minimumSize">
+              <size>
+               <width>30</width>
+               <height>30</height>
+              </size>
+             </property>
+             <property name="text">
+              <string/>
+             </property>
+             <property name="icon">
+              <iconset theme="media-seek-forward">
+               <normaloff>.</normaloff>.</iconset>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="endFramePushButton">
+             <property name="minimumSize">
+              <size>
+               <width>30</width>
+               <height>30</height>
+              </size>
+             </property>
+             <property name="text">
+              <string/>
+             </property>
+             <property name="icon">
+              <iconset theme="media-skip-forward">
+               <normaloff>.</normaloff>.</iconset>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <spacer name="horizontalSpacer_2">
+             <property name="orientation">
+              <enum>Qt::Horizontal</enum>
+             </property>
+             <property name="sizeHint" stdset="0">
+              <size>
+               <width>40</width>
+               <height>20</height>
+              </size>
+             </property>
+            </spacer>
+           </item>
+           <item>
+            <widget class="QPushButton" name="videoPushButton">
+             <property name="minimumSize">
+              <size>
+               <width>80</width>
+               <height>0</height>
+              </size>
+             </property>
+             <property name="text">
+              <string>Chroma</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="dropoutsPushButton">
+             <property name="minimumSize">
+              <size>
+               <width>115</width>
+               <height>0</height>
+              </size>
+             </property>
+             <property name="text">
+              <string>Show Dropouts</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="fieldOrderPushButton">
+             <property name="minimumSize">
+              <size>
+               <width>145</width>
+               <height>0</height>
+              </size>
+             </property>
+             <property name="text">
+              <string>Reverse Field Order</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </item>
+        </layout>
        </widget>
       </item>
      </layout>
@@ -677,7 +239,7 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>1234</width>
+     <width>1236</width>
      <height>22</height>
     </rect>
    </property>
@@ -700,8 +262,6 @@
     <addaction name="actionSNR_analysis"/>
     <addaction name="actionVBI"/>
     <addaction name="actionLine_scope"/>
-    <addaction name="actionNTSC"/>
-    <addaction name="actionVideo_metadata"/>
    </widget>
    <widget class="QMenu" name="menuHelp">
     <property name="title">

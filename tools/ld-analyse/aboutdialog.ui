@@ -54,7 +54,7 @@
     <string/>
    </property>
    <property name="pixmap">
-    <pixmap resource="ld-analyse-resources.qrc">:/icons/Graphics/ld-analyse logo 128px.png</pixmap>
+    <pixmap resource="ld-analyse-resources.qrc">:/icons/Graphics/128-analyse.png</pixmap>
    </property>
    <property name="alignment">
     <set>Qt::AlignCenter</set>
