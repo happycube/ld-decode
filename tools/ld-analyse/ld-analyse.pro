@@ -41,11 +41,12 @@ SOURCES += \
     dropoutanalysisdialog.cpp \
     ../ld-chroma-decoder/opticalflow.cpp \
     ../library/tbc/lddecodemetadata.cpp \
-    ../library/tbc/sourcevideo.cpp
+    ../library/tbc/sourcevideo.cpp \
+    ../library/tbc/vbidecoder.cpp
 
 HEADERS += \
     busydialog.h \
-        mainwindow.h \
+    mainwindow.h \
     oscilloscopedialog.h \
     aboutdialog.h \
     snranalysisdialog.h \
@@ -60,11 +61,12 @@ HEADERS += \
     ../ld-chroma-decoder/yiqbuffer.h \
     ../ld-chroma-decoder/opticalflow.h \
     ../library/tbc/lddecodemetadata.h \
-    ../library/tbc/sourcevideo.h
+    ../library/tbc/sourcevideo.h \
+    ../library/tbc/vbidecoder.h
 
 FORMS += \
     busydialog.ui \
-        mainwindow.ui \
+    mainwindow.ui \
     oscilloscopedialog.ui \
     aboutdialog.ui \
     snranalysisdialog.ui \

@@ -35,14 +35,13 @@
 #include "sourcevideo.h"
 #include "lddecodemetadata.h"
 #include "vbidecoder.h"
-#include "vbicorrector.h"
 
 class DecoderPool : public QObject
 {
     Q_OBJECT
 public:
     // Public methods
-    explicit DecoderPool(QString _inputFileName, bool _performCorrection,
+    explicit DecoderPool(QString _inputFileName,
                         qint32 _maxThreads, LdDecodeMetaData &_ldDecodeMetaData,
                         QObject *parent = nullptr);
     bool process();

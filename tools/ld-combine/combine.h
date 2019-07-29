@@ -29,6 +29,7 @@
 
 #include "sourcevideo.h"
 #include "lddecodemetadata.h"
+#include "vbidecoder.h"
 
 class Combine : public QObject
 {

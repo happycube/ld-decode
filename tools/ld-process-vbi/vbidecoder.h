@@ -54,8 +54,6 @@ private:
     LdDecodeMetaData::Field outputData;
 
     QByteArray getActiveVideoLine(QByteArray *sourceFrame, qint32 scanLine, LdDecodeMetaData::VideoParameters videoParameters);
-    LdDecodeMetaData::Vbi translateVbi(qint32 vbi16, qint32 vbi17, qint32 vbi18);
-    bool parity(quint32 x4, quint32 x5);
     qint32 manchesterDecoder(QByteArray lineData, qint32 zcPoint, LdDecodeMetaData::VideoParameters videoParameters);
     QVector<bool> getTransitionMap(QByteArray lineData, qint32 zcPoint);
 };

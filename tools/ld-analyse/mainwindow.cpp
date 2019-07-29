@@ -292,9 +292,6 @@ void MainWindow::showFrame(qint32 frameNumber, bool highlightDropOuts)
     // Show the field numbers
     fieldNumberStatus.setText(" -  Fields: " + QString::number(firstFieldNumber) + "/" + QString::number(secondFieldNumber));
 
-    // Get the video parameters
-    LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
-
     // Highlight dropouts
     if (highlightDropOuts) {
         // Create a painter object
@@ -339,7 +336,19 @@ void MainWindow::showFrame(qint32 frameNumber, bool highlightDropOuts)
     }
 
     // Update the VBI dialogue
-    if (vbiDialog->isVisible()) vbiDialog->updateVbi(firstField, secondField);
+    if (vbiDialog->isVisible()) {
+        qint32 vbi16_1, vbi17_1, vbi18_1;
+        qint32 vbi16_2, vbi17_2, vbi18_2;
+
+        vbi16_1 = firstField.vbi.vbiData[0];
+        vbi17_1 = firstField.vbi.vbiData[1];
+        vbi18_1 = firstField.vbi.vbiData[2];
+        vbi16_2 = secondField.vbi.vbiData[0];
+        vbi17_2 = secondField.vbi.vbiData[1];
+        vbi18_2 = secondField.vbi.vbiData[2];
+
+        vbiDialog->updateVbi(vbi16_1, vbi17_1, vbi18_1, vbi16_2, vbi17_2, vbi18_2);
+    }
 
     // Add the QImage to the QLabel in the dialogue
     ui->frameViewerLabel->clear();
@@ -736,8 +745,20 @@ void MainWindow::on_actionAbout_ld_analyse_triggered()
 
 void MainWindow::on_actionVBI_triggered()
 {
-    vbiDialog->updateVbi(ldDecodeMetaData.getField(ldDecodeMetaData.getFirstFieldNumber(currentFrameNumber)),
-                         ldDecodeMetaData.getField(ldDecodeMetaData.getSecondFieldNumber(currentFrameNumber)));
+    LdDecodeMetaData::Field firstField = ldDecodeMetaData.getField(ldDecodeMetaData.getFirstFieldNumber(currentFrameNumber));
+    LdDecodeMetaData::Field secondField = ldDecodeMetaData.getField(ldDecodeMetaData.getSecondFieldNumber(currentFrameNumber));
+
+    qint32 vbi16_1, vbi17_1, vbi18_1;
+    qint32 vbi16_2, vbi17_2, vbi18_2;
+
+    vbi16_1 = firstField.vbi.vbiData[0];
+    vbi17_1 = firstField.vbi.vbiData[1];
+    vbi18_1 = firstField.vbi.vbiData[2];
+    vbi16_2 = secondField.vbi.vbiData[0];
+    vbi17_2 = secondField.vbi.vbiData[1];
+    vbi18_2 = secondField.vbi.vbiData[2];
+
+    vbiDialog->updateVbi(vbi16_1, vbi17_1, vbi18_1, vbi16_2, vbi17_2, vbi18_2);
 
     // Show the VBI dialogue
     vbiDialog->show();

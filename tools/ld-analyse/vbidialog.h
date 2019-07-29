@@ -28,6 +28,7 @@
 #include <QDialog>
 
 #include "lddecodemetadata.h"
+#include "vbidecoder.h"
 
 namespace Ui {
 class VbiDialog;
@@ -41,10 +42,13 @@ public:
     explicit VbiDialog(QWidget *parent = nullptr);
     ~VbiDialog();
 
-    void updateVbi(LdDecodeMetaData::Field firstField, LdDecodeMetaData::Field secondField);
+    void updateVbi(qint32 vbi16_1, qint32 vbi17_1, qint32 vbi18_1,
+                   qint32 vbi16_2, qint32 vbi17_2, qint32 vbi18_2);
 
 private:
     Ui::VbiDialog *ui;
+
+    VbiDecoder vbiDecoder;
 };
 
 #endif // VBIDIALOG_H

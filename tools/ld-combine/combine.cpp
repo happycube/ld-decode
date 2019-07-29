@@ -135,11 +135,32 @@ bool Combine::process(QString primaryFilename, QString secondaryFilename, QStrin
         qInfo() << "Extra field at start of primary TBC - written field #1";
     }
 
+    VbiDecoder vbiDecoder;
+
+    qint32 vbi16_1, vbi17_1, vbi18_1;
+    qint32 vbi16_2, vbi17_2, vbi18_2;
+
+    vbi16_1 = primaryLdDecodeMetaData.getFieldVbi(firstFieldNumber).vbiData[0];
+    vbi17_1 = primaryLdDecodeMetaData.getFieldVbi(firstFieldNumber).vbiData[1];
+    vbi18_1 = primaryLdDecodeMetaData.getFieldVbi(firstFieldNumber).vbiData[2];
+    vbi16_2 = primaryLdDecodeMetaData.getFieldVbi(secondFieldNumber).vbiData[0];
+    vbi17_2 = primaryLdDecodeMetaData.getFieldVbi(secondFieldNumber).vbiData[1];
+    vbi18_2 = primaryLdDecodeMetaData.getFieldVbi(secondFieldNumber).vbiData[2];
+    VbiDecoder::Vbi primaryVbi = vbiDecoder.decodeFrame(vbi16_1, vbi17_1, vbi18_1, vbi16_2, vbi17_2, vbi18_2);
+
+    vbi16_1 = secondaryLdDecodeMetaData.getFieldVbi(firstFieldNumber).vbiData[0];
+    vbi17_1 = secondaryLdDecodeMetaData.getFieldVbi(firstFieldNumber).vbiData[1];
+    vbi18_1 = secondaryLdDecodeMetaData.getFieldVbi(firstFieldNumber).vbiData[2];
+    vbi16_2 = secondaryLdDecodeMetaData.getFieldVbi(secondFieldNumber).vbiData[0];
+    vbi17_2 = secondaryLdDecodeMetaData.getFieldVbi(secondFieldNumber).vbiData[1];
+    vbi18_2 = secondaryLdDecodeMetaData.getFieldVbi(secondFieldNumber).vbiData[2];
+    VbiDecoder::Vbi secondaryVbi = vbiDecoder.decodeFrame(vbi16_1, vbi17_1, vbi18_1, vbi16_2, vbi17_2, vbi18_2);
+
     // Check the primary source disc type
-    LdDecodeMetaData::VbiDiscTypes primaryDiscType = primaryLdDecodeMetaData.getDiscTypeFromVbi();
-    if (primaryDiscType == LdDecodeMetaData::VbiDiscTypes::cav) {
+    VbiDecoder::VbiDiscTypes primaryDiscType = primaryVbi.type;
+    if (primaryDiscType == VbiDecoder::VbiDiscTypes::cav) {
         qInfo() << "Primary source disc type is CAV";
-    } else if (primaryDiscType == LdDecodeMetaData::VbiDiscTypes::clv) {
+    } else if (primaryDiscType == VbiDecoder::VbiDiscTypes::clv) {
         qInfo() << "Primary source disc type is CLV";
     } else {
         qCritical() << "Cannot determine if the primary source disc type is CAV or CLV!";
@@ -147,10 +168,10 @@ bool Combine::process(QString primaryFilename, QString secondaryFilename, QStrin
     }
 
     // Check the secondary source disc type
-    LdDecodeMetaData::VbiDiscTypes secondaryDiscType = secondaryLdDecodeMetaData.getDiscTypeFromVbi();
-    if (secondaryDiscType == LdDecodeMetaData::VbiDiscTypes::cav) {
+    VbiDecoder::VbiDiscTypes secondaryDiscType = secondaryVbi.type;
+    if (secondaryDiscType == VbiDecoder::VbiDiscTypes::cav) {
         qInfo() << "Secondary source disc type is CAV";
-    } else if (secondaryDiscType == LdDecodeMetaData::VbiDiscTypes::clv) {
+    } else if (secondaryDiscType == VbiDecoder::VbiDiscTypes::clv) {
         qInfo() << "Secondary source disc type is CLV";
     } else {
         qCritical() << "Cannot determine if the secondary source disc type is CAV or CLV!";
@@ -165,7 +186,7 @@ bool Combine::process(QString primaryFilename, QString secondaryFilename, QStrin
 
     // Set the disc type for processing
     bool isDiscCav;
-    if (primaryDiscType == LdDecodeMetaData::VbiDiscTypes::cav) isDiscCav = true; else isDiscCav = false;
+    if (primaryDiscType == VbiDecoder::VbiDiscTypes::cav) isDiscCav = true; else isDiscCav = false;
 
     // Scan for lead-in frames in the primary and secondary sources (as there may be preceeding duplicate frames)
     qint32 primaryLeadinOffset = 0;
@@ -178,7 +199,15 @@ bool Combine::process(QString primaryFilename, QString secondaryFilename, QStrin
         qint32 primaryFirstField = primaryLdDecodeMetaData.getFirstFieldNumber(primarySeqFrameNumber);
         qint32 primarySecondField = primaryLdDecodeMetaData.getSecondFieldNumber(primarySeqFrameNumber);
 
-        if (primaryLdDecodeMetaData.getField(primaryFirstField).vbi.leadIn || primaryLdDecodeMetaData.getField(primarySecondField).vbi.leadIn)
+        vbi16_1 = primaryLdDecodeMetaData.getFieldVbi(primaryFirstField).vbiData[0];
+        vbi17_1 = primaryLdDecodeMetaData.getFieldVbi(primaryFirstField).vbiData[1];
+        vbi18_1 = primaryLdDecodeMetaData.getFieldVbi(primaryFirstField).vbiData[2];
+        vbi16_2 = primaryLdDecodeMetaData.getFieldVbi(primarySecondField).vbiData[0];
+        vbi17_2 = primaryLdDecodeMetaData.getFieldVbi(primarySecondField).vbiData[1];
+        vbi18_2 = primaryLdDecodeMetaData.getFieldVbi(primarySecondField).vbiData[2];
+        primaryVbi = vbiDecoder.decodeFrame(vbi16_1, vbi17_1, vbi18_1, vbi16_2, vbi17_2, vbi18_2);
+
+        if (primaryVbi.leadIn)
             primaryLeadinOffset = primarySeqFrameNumber;
     }
     primaryLeadinOffset++; // Move to the next frame to correct offset
@@ -190,7 +219,15 @@ bool Combine::process(QString primaryFilename, QString secondaryFilename, QStrin
         qint32 secondaryFirstField = secondaryLdDecodeMetaData.getFirstFieldNumber(secondarySeqFrameNumber);
         qint32 secondarySecondField = secondaryLdDecodeMetaData.getSecondFieldNumber(secondarySeqFrameNumber);
 
-        if (secondaryLdDecodeMetaData.getField(secondaryFirstField).vbi.leadIn || secondaryLdDecodeMetaData.getField(secondarySecondField).vbi.leadIn)
+        vbi16_1 = secondaryLdDecodeMetaData.getFieldVbi(secondaryFirstField).vbiData[0];
+        vbi17_1 = secondaryLdDecodeMetaData.getFieldVbi(secondaryFirstField).vbiData[1];
+        vbi18_1 = secondaryLdDecodeMetaData.getFieldVbi(secondaryFirstField).vbiData[2];
+        vbi16_2 = secondaryLdDecodeMetaData.getFieldVbi(secondarySecondField).vbiData[0];
+        vbi17_2 = secondaryLdDecodeMetaData.getFieldVbi(secondarySecondField).vbiData[1];
+        vbi18_2 = secondaryLdDecodeMetaData.getFieldVbi(secondarySecondField).vbiData[2];
+        secondaryVbi = vbiDecoder.decodeFrame(vbi16_1, vbi17_1, vbi18_1, vbi16_2, vbi17_2, vbi18_2);
+
+        if (secondaryVbi.leadIn)
             secondardLeadinOffset = secondarySeqFrameNumber;
     }
     secondardLeadinOffset++; // Move to the next frame to correct offset
@@ -314,23 +351,19 @@ qint32 Combine::getCavFrameNumber(qint32 frameSeqNumber, LdDecodeMetaData *ldDec
     qint32 firstField = ldDecodeMetaData->getFirstFieldNumber(frameSeqNumber);
     qint32 secondField = ldDecodeMetaData->getSecondFieldNumber(frameSeqNumber);
 
-    // Determine the field number from the VBI
-    LdDecodeMetaData::Field firstFieldData = ldDecodeMetaData->getField(firstField);
-    LdDecodeMetaData::Field secondFieldData = ldDecodeMetaData->getField(secondField);
+    VbiDecoder vbiDecoder;
+    qint32 vbi16_1, vbi17_1, vbi18_1;
+    qint32 vbi16_2, vbi17_2, vbi18_2;
 
-    qint32 frameNumber = -1;
-    if (firstFieldData.vbi.inUse && firstFieldData.vbi.picNo != -1) {
-        // Got frame number from the first field
-        frameNumber = ldDecodeMetaData->getField(firstField).vbi.picNo;
-    } else if (secondFieldData.vbi.inUse && secondFieldData.vbi.picNo != -1) {
-        // Got frame number from the second field
-        frameNumber = ldDecodeMetaData->getField(secondField).vbi.picNo;
-    } else {
-        // Couldn't get a frame number for the sequential frame number
-        frameNumber = -1;
-    }
+    vbi16_1 = ldDecodeMetaData->getFieldVbi(firstField).vbiData[0];
+    vbi17_1 = ldDecodeMetaData->getFieldVbi(firstField).vbiData[1];
+    vbi18_1 = ldDecodeMetaData->getFieldVbi(firstField).vbiData[2];
+    vbi16_2 = ldDecodeMetaData->getFieldVbi(secondField).vbiData[0];
+    vbi17_2 = ldDecodeMetaData->getFieldVbi(secondField).vbiData[1];
+    vbi18_2 = ldDecodeMetaData->getFieldVbi(secondField).vbiData[2];
+    VbiDecoder::Vbi primaryVbi = vbiDecoder.decodeFrame(vbi16_1, vbi17_1, vbi18_1, vbi16_2, vbi17_2, vbi18_2);
 
-    return frameNumber;
+    return primaryVbi.picNo;
 }
 
 // Method to convert a CLV time code into an equivalent frame number (to make
@@ -341,9 +374,17 @@ qint32 Combine::getClvFrameNumber(qint32 frameSeqNumber, LdDecodeMetaData *ldDec
     qint32 firstField = ldDecodeMetaData->getFirstFieldNumber(frameSeqNumber);
     qint32 secondField = ldDecodeMetaData->getSecondFieldNumber(frameSeqNumber);
 
-    // Determine the field number from the VBI
-    LdDecodeMetaData::Field firstFieldData = ldDecodeMetaData->getField(firstField);
-    LdDecodeMetaData::Field secondFieldData = ldDecodeMetaData->getField(secondField);
+    VbiDecoder vbiDecoder;
+    qint32 vbi16_1, vbi17_1, vbi18_1;
+    qint32 vbi16_2, vbi17_2, vbi18_2;
+
+    vbi16_1 = ldDecodeMetaData->getFieldVbi(firstField).vbiData[0];
+    vbi17_1 = ldDecodeMetaData->getFieldVbi(firstField).vbiData[1];
+    vbi18_1 = ldDecodeMetaData->getFieldVbi(firstField).vbiData[2];
+    vbi16_2 = ldDecodeMetaData->getFieldVbi(secondField).vbiData[0];
+    vbi17_2 = ldDecodeMetaData->getFieldVbi(secondField).vbiData[1];
+    vbi18_2 = ldDecodeMetaData->getFieldVbi(secondField).vbiData[2];
+    VbiDecoder::Vbi primaryVbi = vbiDecoder.decodeFrame(vbi16_1, vbi17_1, vbi18_1, vbi16_2, vbi17_2, vbi18_2);
 
     LdDecodeMetaData::ClvTimecode clvTimecode;
     clvTimecode.hours = 0;
@@ -351,24 +392,10 @@ qint32 Combine::getClvFrameNumber(qint32 frameSeqNumber, LdDecodeMetaData *ldDec
     clvTimecode.seconds = 0;
     clvTimecode.pictureNumber = 0;
 
-    if (firstFieldData.vbi.inUse && firstFieldData.vbi.clvHr != -1) {
-        // Get CLV data from the first field
-        clvTimecode.hours = ldDecodeMetaData->getField(firstField).vbi.clvHr;
-        clvTimecode.minutes = ldDecodeMetaData->getField(firstField).vbi.clvMin;
-        clvTimecode.seconds = ldDecodeMetaData->getField(firstField).vbi.clvSec;
-        clvTimecode.pictureNumber = ldDecodeMetaData->getField(firstField).vbi.clvPicNo;
-    } else if (secondFieldData.vbi.inUse && secondFieldData.vbi.clvHr != -1) {
-        // Got CLV data from the second field
-        clvTimecode.hours = ldDecodeMetaData->getField(secondField).vbi.clvHr;
-        clvTimecode.minutes = ldDecodeMetaData->getField(secondField).vbi.clvMin;
-        clvTimecode.seconds = ldDecodeMetaData->getField(secondField).vbi.clvSec;
-        clvTimecode.pictureNumber = ldDecodeMetaData->getField(secondField).vbi.clvPicNo;
-    } else {
-        clvTimecode.hours = -1;
-        clvTimecode.minutes = -1;
-        clvTimecode.seconds = -1;
-        clvTimecode.pictureNumber = -1;
-    }
+    clvTimecode.hours = primaryVbi.clvHr;
+    clvTimecode.minutes = primaryVbi.clvMin;
+    clvTimecode.seconds = primaryVbi.clvSec;
+    clvTimecode.pictureNumber = primaryVbi.clvPicNo;
 
     // Calculate the frame number
     return ldDecodeMetaData->convertClvTimecodeToFrameNumber(clvTimecode);
