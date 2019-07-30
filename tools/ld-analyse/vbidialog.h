@@ -42,8 +42,7 @@ public:
     explicit VbiDialog(QWidget *parent = nullptr);
     ~VbiDialog();
 
-    void updateVbi(qint32 vbi16_1, qint32 vbi17_1, qint32 vbi18_1,
-                   qint32 vbi16_2, qint32 vbi17_2, qint32 vbi18_2);
+    void updateVbi(VbiDecoder::Vbi vbi, bool isVbiValid);
 
 private:
     Ui::VbiDialog *ui;

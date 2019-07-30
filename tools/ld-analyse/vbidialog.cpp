@@ -38,15 +38,11 @@ VbiDialog::~VbiDialog()
     delete ui;
 }
 
-void VbiDialog::updateVbi(qint32 vbi16_1, qint32 vbi17_1, qint32 vbi18_1,
-                          qint32 vbi16_2, qint32 vbi17_2, qint32 vbi18_2)
+void VbiDialog::updateVbi(VbiDecoder::Vbi vbi, bool isVbiValid)
 {
     qDebug() << "VbiDialog::updateVbi(): Called";
 
-    // Decode the VBI data
-    VbiDecoder::Vbi vbi = vbiDecoder.decodeFrame(vbi16_1, vbi17_1, vbi18_1, vbi16_2, vbi17_2, vbi18_2);
-
-    if (vbi16_1 == -1 && vbi17_1 == -1 && vbi18_1 == -1 && vbi16_2 == -1 && vbi17_2 == -1 && vbi18_2 == -1) {
+    if (!isVbiValid) {
         // VBI data is not valid
         ui->discTypeLabel->setText("No metadata");
         ui->leadInLabel->setText("No metadata");

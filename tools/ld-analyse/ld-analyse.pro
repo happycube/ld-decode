@@ -31,6 +31,7 @@ SOURCES += \
     oscilloscopedialog.cpp \
     aboutdialog.cpp \
     snranalysisdialog.cpp \
+    tbcsource.cpp \
     vbidialog.cpp \
     configuration.cpp \
     ../ld-chroma-decoder/palcolour.cpp \
@@ -50,6 +51,7 @@ HEADERS += \
     oscilloscopedialog.h \
     aboutdialog.h \
     snranalysisdialog.h \
+    tbcsource.h \
     vbidialog.h \
     configuration.h \
     ../ld-chroma-decoder/palcolour.h \

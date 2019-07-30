@@ -32,6 +32,7 @@
 
 #include "sourcevideo.h"
 #include "lddecodemetadata.h"
+#include "tbcsource.h"
 
 namespace Ui {
 class OscilloscopeDialog;
@@ -45,7 +46,7 @@ public:
     explicit OscilloscopeDialog(QWidget *parent = nullptr);
     ~OscilloscopeDialog();
 
-    void showTraceImage(QByteArray topFieldData, QByteArray bottomFieldData, LdDecodeMetaData *ldDecodeMetaData, qint32 scanLine, qint32 firstField, qint32 secondField);
+    void showTraceImage(TbcSource::ScanLineData scanLineData, qint32 scanLine, qint32 frameHeight);
 
 signals:
     void scanLineChanged(qint32 scanLine);
@@ -63,7 +64,7 @@ private:
     Ui::OscilloscopeDialog *ui;
     qint32 maximumScanLines;
 
-    QImage getFieldLineTraceImage(QByteArray rgbData, LdDecodeMetaData::VideoParameters frameParameters, qint32 fieldLine, LdDecodeMetaData::DropOuts dropouts);
+    QImage getFieldLineTraceImage(TbcSource::ScanLineData scanLineData);
 };
 
 #endif // OSCILLOSCOPEDIALOG_H

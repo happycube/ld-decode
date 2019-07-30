@@ -32,12 +32,8 @@
 #include <QFileDialog>
 #include <QMessageBox>
 #include <QLabel>
-#include <QPainter>
 #include <QMouseEvent>
-#include <QtConcurrent/QtConcurrent>
 
-#include "sourcevideo.h"
-#include "lddecodemetadata.h"
 #include "oscilloscopedialog.h"
 #include "aboutdialog.h"
 #include "vbidialog.h"
@@ -46,8 +42,7 @@
 #include "busydialog.h"
 #include "configuration.h"
 #include "frameqlabel.h"
-#include "palcolour.h"
-#include "comb.h"
+#include "tbcsource.h"
 
 namespace Ui {
 class MainWindow;
@@ -87,7 +82,8 @@ private slots:
     void on_dropoutsPushButton_clicked();
     void on_fieldOrderPushButton_clicked();
 
-    void backgroundLoadComplete();
+    void on_busyLoading(QString infoMessage);
+    void on_finishedLoading();
 
 private:
     Ui::MainWindow *ui;
@@ -105,39 +101,21 @@ private:
     QLabel sourceVideoStatus;
     QLabel frameLineStatus;
     QLabel fieldNumberStatus;
-    SourceVideo sourceVideo;
-    qint32 currentFrameNumber;
-    LdDecodeMetaData ldDecodeMetaData;
+    TbcSource tbcSource;
     qint32 lastScopeLine;
-    bool isFileOpen;
-    PalColour palColour;
-    Comb ntscColour;
-    QString currentInputFileName;
-    QString lastLoadError;
+    qint32 currentFrameNumber;
 
-    // Button option states
-    bool chromaOn;
-    bool dropoutsOn;
-    bool reverseFoOn;
+    // Button state
     QPalette buttonPalette;
-
-    // Background loader globals
-    QFutureWatcher<void> watcher;
-    QFuture <void> future;
 
     void updateGuiLoaded(void);
     void updateGuiUnloaded(void);
 
-    void showFrame(qint32 frameNumber, bool highlightDropOuts);
+    void showFrame(qint32 frameNumber);
     void hideFrame(void);
 
-    QImage generateQImage(qint32 firstFieldNumber, qint32 secondFieldNumber);
-
     void loadTbcFile(QString inputFileName);
-    void backgroundLoad(QString inputFileName);
     void updateOscilloscopeDialogue(qint32 frameNumber, qint32 scanLine);
-
-    void generateGraphs();
 };
 
 #endif // MAINWINDOW_H

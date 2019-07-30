@@ -48,7 +48,6 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
 
     // Set the initial frame number
     currentFrameNumber = 1;
-    isFileOpen = false;
 
     // Add an event filter to the frame viewer label to catch mouse events
     ui->frameViewerLabel->installEventFilter(ui->frameViewerLabel);
@@ -57,6 +56,10 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     // Connect to the scan line changed signal from the oscilloscope dialogue
     connect(oscilloscopeDialog, &OscilloscopeDialog::scanLineChanged, this, &MainWindow::scanLineChangedSignalHandler);
     lastScopeLine = 1;
+
+    // Connect to the TbcSource signals (busy loading and finished loading)
+    connect(&tbcSource, &TbcSource::busyLoading, this, &MainWindow::on_busyLoading);
+    connect(&tbcSource, &TbcSource::finishedLoading, this, &MainWindow::on_finishedLoading);
 
     // Load the window geometry from the configuration
     restoreGeometry(configuration.getMainWindowGeometry());
@@ -68,11 +71,12 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     // Store the current button palette for the show dropouts button
     buttonPalette = ui->dropoutsPushButton->palette();
 
+    // Set the GUI to unloaded
     updateGuiUnloaded();
 
     // Was a filename specified on the command line?
     if (!inputFilenameParam.isEmpty()) {
-        loadTbcFile(inputFilenameParam);
+        tbcSource.loadSource(inputFilenameParam);
     }
 }
 
@@ -87,8 +91,8 @@ MainWindow::~MainWindow()
     configuration.writeConfiguration();
 
     // Close the source video if open
-    if (isFileOpen) {
-        sourceVideo.close();
+    if (tbcSource.getIsSourceLoaded()) {
+        tbcSource.unloadSource();
     }
 
     delete ui;
@@ -97,9 +101,6 @@ MainWindow::~MainWindow()
 // Method to update the GUI when a file is loaded
 void MainWindow::updateGuiLoaded(void)
 {
-    // Get the video parameters
-    LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
-
     // Enable the frame controls
     ui->frameNumberSpinBox->setEnabled(true);
     ui->previousPushButton->setEnabled(true);
@@ -112,14 +113,12 @@ void MainWindow::updateGuiLoaded(void)
     // Update the current frame number
     currentFrameNumber = 1;
     ui->frameNumberSpinBox->setMinimum(1);
-    ui->frameNumberSpinBox->setMaximum(ldDecodeMetaData.getNumberOfFrames());
-    currentFrameNumber = 1;
-    ui->frameNumberSpinBox->setValue(currentFrameNumber);
+    ui->frameNumberSpinBox->setMaximum(tbcSource.getNumberOfFrames());
+    ui->frameNumberSpinBox->setValue(1);
     ui->frameHorizontalSlider->setMinimum(1);
-    ui->frameHorizontalSlider->setMaximum(ldDecodeMetaData.getNumberOfFrames());
-    currentFrameNumber = 1;
-    ui->frameHorizontalSlider->setPageStep(ldDecodeMetaData.getNumberOfFrames() / 100);
-    ui->frameHorizontalSlider->setValue(currentFrameNumber);
+    ui->frameHorizontalSlider->setMaximum(tbcSource.getNumberOfFrames());
+    ui->frameHorizontalSlider->setPageStep(tbcSource.getNumberOfFrames() / 100);
+    ui->frameHorizontalSlider->setValue(1);
 
     // Enable menu options
     ui->actionLine_scope->setEnabled(true);
@@ -134,62 +133,21 @@ void MainWindow::updateGuiLoaded(void)
     ui->actionSave_metadata_as_CSV->setEnabled(true);
 
     // Set option button states
-    chromaOn = false;
-    dropoutsOn = false;
-    reverseFoOn = false;
     ui->videoPushButton->setText(tr("Chroma"));
     ui->dropoutsPushButton->setText(tr("Show dropouts"));
     ui->fieldOrderPushButton->setText(tr("Reverse Field-order"));
 
-    // Configure the comb-filter
-    if (ldDecodeMetaData.getVideoParameters().isSourcePal) {
-        palColour.updateConfiguration(videoParameters);
-    } else {
-        // Set the first active scan line
-        qint32 firstActiveScanLine = 40;
-
-        // Get the default configuration for the comb filter
-        Comb::Configuration configuration = ntscColour.getConfiguration();
-
-        // Set the comb filter configuration
-        configuration.blackAndWhite = false;
-
-        // Set the input buffer dimensions configuration
-        configuration.fieldWidth = videoParameters.fieldWidth;
-        configuration.fieldHeight = videoParameters.fieldHeight;
-
-        // Set the active video range
-        configuration.activeVideoStart = videoParameters.activeVideoStart;
-        configuration.activeVideoEnd = videoParameters.activeVideoEnd;
-
-        // Set the first frame scan line which contains active video
-        configuration.firstVisibleFrameLine = firstActiveScanLine;
-
-        // Set the IRE levels
-        configuration.blackIre = videoParameters.black16bIre;
-        configuration.whiteIre = videoParameters.white16bIre;
-
-        // Set the filter mode
-        configuration.use3D = false;
-        configuration.showOpticalFlowMap = false;
-
-        // Update the comb filter object's configuration
-        ntscColour.setConfiguration(configuration);
-    }
-
     // Update the status bar
     QString statusText;
-    if (videoParameters.isSourcePal) statusText += "PAL";
+    if (tbcSource.getIsSourcePal()) statusText += "PAL";
     else statusText += "NTSC";
     statusText += " source loaded with ";
-    statusText += QString::number(ldDecodeMetaData.getNumberOfFrames());
+    statusText += QString::number(tbcSource.getNumberOfFrames());
     statusText += " sequential frames available";
     sourceVideoStatus.setText(statusText);
 
     // Show the current frame
-    showFrame(currentFrameNumber, dropoutsOn);
-
-    isFileOpen = true;
+    showFrame(currentFrameNumber);
 }
 
 // Method to update the GUI when a file is unloaded
@@ -239,9 +197,6 @@ void MainWindow::updateGuiUnloaded(void)
     ui->actionSave_metadata_as_CSV->setEnabled(false);
 
     // Set option button states
-    chromaOn = false;
-    dropoutsOn = false;
-    reverseFoOn = false;
     ui->videoPushButton->setText(tr("Chroma"));
     ui->dropoutsPushButton->setText(tr("Show dropouts"));
     ui->fieldOrderPushButton->setText(tr("Reverse Field-order"));
@@ -252,78 +207,20 @@ void MainWindow::updateGuiUnloaded(void)
     // Hide graphs
     snrAnalysisDialog->hide();
     dropoutAnalysisDialog->hide();
-
-    isFileOpen = false;
 }
 
 // Method to display a sequential frame
-void MainWindow::showFrame(qint32 frameNumber, bool highlightDropOuts)
+void MainWindow::showFrame(qint32 frameNumber)
 {
-    // Get the required field numbers
-    qint32 firstFieldNumber = ldDecodeMetaData.getFirstFieldNumber(frameNumber);
-    qint32 secondFieldNumber = ldDecodeMetaData.getSecondFieldNumber(frameNumber);
-
-    // Make sure we have a valid response from the frame determination
-    if (firstFieldNumber == -1 || secondFieldNumber == -1) {
-        QMessageBox messageBox;
-        messageBox.warning(this, "Warning","Could not determine field numbers - check the debug!");
-        messageBox.setFixedSize(500, 200);
-
-        // Jump back one frame
-        if (frameNumber != 1) {
-            frameNumber--;
-
-            firstFieldNumber = ldDecodeMetaData.getFirstFieldNumber(frameNumber);
-            secondFieldNumber = ldDecodeMetaData.getSecondFieldNumber(frameNumber);
-        }
-        qDebug() << "MainWindow::showFrame(): Jumping back one frame due to error";
-    }
-
-    qDebug() << "MainWindow::showFrame(): Frame number" << frameNumber << "has a first-field of" << firstFieldNumber <<
-                "and a second field of" << secondFieldNumber;
-
-    // Get a QImage for the frame
-    QImage frameImage = generateQImage(firstFieldNumber, secondFieldNumber);
-
-    // Get the field metadata
-    LdDecodeMetaData::Field firstField = ldDecodeMetaData.getField(firstFieldNumber);
-    LdDecodeMetaData::Field secondField = ldDecodeMetaData.getField(secondFieldNumber);
+    // Get the QImage for the frame
+    QImage frameImage = tbcSource.getFrameImage(frameNumber);
 
     // Show the field numbers
-    fieldNumberStatus.setText(" -  Fields: " + QString::number(firstFieldNumber) + "/" + QString::number(secondFieldNumber));
-
-    // Highlight dropouts
-    if (highlightDropOuts) {
-        // Create a painter object
-        QPainter imagePainter;
-        imagePainter.begin(&frameImage);
-
-        // Draw the drop out data for the first field
-        imagePainter.setPen(Qt::red);
-        for (qint32 dropOutIndex = 0; dropOutIndex < firstField.dropOuts.startx.size(); dropOutIndex++) {
-            qint32 startx = firstField.dropOuts.startx[dropOutIndex];
-            qint32 endx = firstField.dropOuts.endx[dropOutIndex];
-            qint32 fieldLine = firstField.dropOuts.fieldLine[dropOutIndex];
-
-            imagePainter.drawLine(startx, ((fieldLine - 1) * 2), endx, ((fieldLine - 1) * 2));
-        }
-
-        // Draw the drop out data for the second field
-        imagePainter.setPen(Qt::blue);
-        for (qint32 dropOutIndex = 0; dropOutIndex < secondField.dropOuts.startx.size(); dropOutIndex++) {
-            qint32 startx = secondField.dropOuts.startx[dropOutIndex];
-            qint32 endx = secondField.dropOuts.endx[dropOutIndex];
-            qint32 fieldLine = secondField.dropOuts.fieldLine[dropOutIndex];
-
-            imagePainter.drawLine(startx, ((fieldLine - 1) * 2) + 1, endx, ((fieldLine - 1) * 2) + 1);
-        }
-
-        // End the painter object
-        imagePainter.end();
-    }
+    fieldNumberStatus.setText(" -  Fields: " + QString::number(tbcSource.getFirstFieldNumber(frameNumber)) + "/" +
+                              QString::number(tbcSource.getSecondFieldNumber(frameNumber)));
 
     // If there are dropouts in the frame, highlight the show dropouts button
-    if (firstField.dropOuts.startx.size() > 0 || secondField.dropOuts.startx.size() > 0) {
+    if (tbcSource.getIsDropoutPresent(frameNumber)) {
         QPalette tempPalette = buttonPalette;
         tempPalette.setColor(QPalette::Button, QColor(Qt::lightGray));
         ui->dropoutsPushButton->setAutoFillBackground(true);
@@ -336,19 +233,8 @@ void MainWindow::showFrame(qint32 frameNumber, bool highlightDropOuts)
     }
 
     // Update the VBI dialogue
-    if (vbiDialog->isVisible()) {
-        qint32 vbi16_1, vbi17_1, vbi18_1;
-        qint32 vbi16_2, vbi17_2, vbi18_2;
-
-        vbi16_1 = firstField.vbi.vbiData[0];
-        vbi17_1 = firstField.vbi.vbiData[1];
-        vbi18_1 = firstField.vbi.vbiData[2];
-        vbi16_2 = secondField.vbi.vbiData[0];
-        vbi17_2 = secondField.vbi.vbiData[1];
-        vbi18_2 = secondField.vbi.vbiData[2];
-
-        vbiDialog->updateVbi(vbi16_1, vbi17_1, vbi18_1, vbi16_2, vbi17_2, vbi18_2);
-    }
+    if (vbiDialog->isVisible()) vbiDialog->updateVbi(tbcSource.getFrameVbi(currentFrameNumber),
+                                                     tbcSource.getIsFrameVbiValid(currentFrameNumber));
 
     // Add the QImage to the QLabel in the dialogue
     ui->frameViewerLabel->clear();
@@ -365,119 +251,6 @@ void MainWindow::showFrame(qint32 frameNumber, bool highlightDropOuts)
     }
 }
 
-// Method to create a QImage for a source video frame
-QImage MainWindow::generateQImage(qint32 firstFieldNumber, qint32 secondFieldNumber)
-{
-    // Generate the QImage for the frame
-
-    // Get the metadata for the video parameters
-    LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
-
-    // Get the raw data for the fields (without pre-caching)
-    QByteArray firstFieldData = sourceVideo.getVideoField(firstFieldNumber);
-    QByteArray secondFieldData = sourceVideo.getVideoField(secondFieldNumber);
-
-    // Calculate the frame height
-    qint32 frameHeight = (videoParameters.fieldHeight * 2) - 1;
-
-    qDebug() << "MainWindow::generateQImage(): Generating a QImage with first field =" << firstFieldNumber <<
-                "and second field =" << secondFieldNumber << "(" << videoParameters.fieldWidth << "x" <<
-                frameHeight << ")";
-
-    // Create a QImage
-    QImage frameImage = QImage(videoParameters.fieldWidth, frameHeight, QImage::Format_RGB888);
-
-    // Define the data buffers
-    QByteArray firstLineData;
-    QByteArray secondLineData;
-
-    if (!chromaOn) {
-        // Copy the raw 16-bit grayscale data into the RGB888 QImage
-        for (qint32 y = 0; y < frameHeight; y++) {
-            // Extract the current scan line data from the frame
-            qint32 startPointer = (y / 2) * videoParameters.fieldWidth * 2;
-            qint32 length = videoParameters.fieldWidth * 2;
-
-            firstLineData = firstFieldData.mid(startPointer, length);
-            secondLineData = secondFieldData.mid(startPointer, length);
-
-            for (qint32 x = 0; x < videoParameters.fieldWidth; x++) {
-                // Take just the MSB of the input data
-                qint32 dp = x * 2;
-                uchar pixelValue;
-                if (y % 2) {
-                    pixelValue = static_cast<uchar>(secondLineData[dp + 1]);
-                } else {
-                    pixelValue = static_cast<uchar>(firstLineData[dp + 1]);
-                }
-
-                qint32 xpp = x * 3;
-                *(frameImage.scanLine(y) + xpp + 0) = static_cast<uchar>(pixelValue); // R
-                *(frameImage.scanLine(y) + xpp + 1) = static_cast<uchar>(pixelValue); // G
-                *(frameImage.scanLine(y) + xpp + 2) = static_cast<uchar>(pixelValue); // B
-            }
-        }
-    } else {
-        // Set the first and last active scan line (for PAL)
-        qint32 firstActiveScanLine = 44;
-        qint32 lastActiveScanLine = 620;
-        QByteArray outputData;
-
-        // Perform a PAL 2D comb filter on the current frame
-        if (videoParameters.isSourcePal) {
-            // PAL source
-
-            // Calculate the saturation level from the burst median IRE
-            // Note: This code works as a temporary MTF compensator whilst ld-decode gets
-            // real MTF compensation added to it.
-            qreal tSaturation = 125.0 + ((100.0 / 20.0) * (20.0 - ldDecodeMetaData.getField(firstFieldNumber).medianBurstIRE));
-
-            // Perform the PALcolour filtering (output is RGB 16-16-16)
-            outputData = palColour.performDecode(firstFieldData, secondFieldData,
-                                                  100, static_cast<qint32>(tSaturation), false);
-        } else {
-            // NTSC source
-
-            // Set the first and last active scan line
-            firstActiveScanLine = 40;
-            lastActiveScanLine = 525;
-
-            outputData = ntscColour.process(firstFieldData, secondFieldData,
-                                                            ldDecodeMetaData.getField(firstFieldNumber).medianBurstIRE,
-                                                            ldDecodeMetaData.getField(firstFieldNumber).fieldPhaseID,
-                                                            ldDecodeMetaData.getField(secondFieldNumber).fieldPhaseID);
-        }
-
-        // Fill the QImage with black
-        frameImage.fill(Qt::black);
-
-        // Copy the RGB16-16-16 data into the RGB888 QImage
-        for (qint32 y = firstActiveScanLine; y < lastActiveScanLine; y++) {
-            // Extract the current scan line data from the frame
-            qint32 startPointer = y * videoParameters.fieldWidth * 6;
-            qint32 length = videoParameters.fieldWidth * 6;
-
-            QByteArray rgbData = outputData.mid(startPointer, length);
-
-            for (qint32 x = videoParameters.activeVideoStart; x < videoParameters.activeVideoEnd; x++) {
-                // Take just the MSB of the input data
-                qint32 dp = x * 6;
-
-                uchar pixelValueR = static_cast<uchar>(rgbData[dp + 1]);
-                uchar pixelValueG = static_cast<uchar>(rgbData[dp + 3]);
-                uchar pixelValueB = static_cast<uchar>(rgbData[dp + 5]);
-
-                qint32 xpp = x * 3;
-                *(frameImage.scanLine(y) + xpp + 0) = static_cast<uchar>(pixelValueR); // R
-                *(frameImage.scanLine(y) + xpp + 1) = static_cast<uchar>(pixelValueG); // G
-                *(frameImage.scanLine(y) + xpp + 2) = static_cast<uchar>(pixelValueB); // B
-            }
-        }
-    }
-
-    return frameImage;
-}
-
 // Method to hide the current frame
 void MainWindow::hideFrame(void)
 {
@@ -487,7 +260,8 @@ void MainWindow::hideFrame(void)
 void MainWindow::on_actionExit_triggered()
 {
     qDebug() << "MainWindow::on_actionExit_triggered(): Called";
-        // Quit the application
+
+    // Quit the application
     qApp->quit();
 }
 
@@ -497,152 +271,13 @@ void MainWindow::loadTbcFile(QString inputFileName)
     // Update the GUI
     updateGuiUnloaded();
 
-    // Close current source video (if open)
-    sourceVideo.close();
+    // Close current source video (if loaded)
+    if (tbcSource.getIsSourceLoaded()) tbcSource.unloadSource();
 
-    // Set the busy message and centre the dialog in the parent window
-    busyDialog->setMessage("Loading, please wait...");
-    busyDialog->move(this->geometry().center() - busyDialog->rect().center());
+    // Load the source
+    tbcSource.loadSource(inputFileName);
 
-    // Disable the main window during loading
-    this->setEnabled(false);
-    busyDialog->setEnabled(true);
-
-    connect(&watcher, SIGNAL(finished()), this, SLOT(backgroundLoadComplete()));
-    future = QtConcurrent::run(this, &MainWindow::backgroundLoad, inputFileName);
-    watcher.setFuture(future);
-
-    busyDialog->exec();
-}
-
-// Post-background loading operations
-void MainWindow::backgroundLoadComplete()
-{
-    qDebug() << "MainWindow::blackgroundLoadComplete(): Background loading is complete";
-    disconnect(&watcher, SIGNAL(finished()), this, SLOT(backgroundLoadComplete()));
-
-    // Generate the graph data
-    generateGraphs();
-
-    // Hide the busy dialogue and enable the main window
-    busyDialog->hide();
-    this->setEnabled(true);
-
-    // Update the GUI based on the result
-    if (isFileOpen) {
-        updateGuiLoaded();
-
-        // Set the main window title
-        this->setWindowTitle(tr("ld-analyse - ") + currentInputFileName);
-    } else {
-        updateGuiUnloaded();
-
-        // Show an error to the user
-        QMessageBox messageBox;
-        messageBox.warning(this, "Error", lastLoadError);
-        messageBox.setFixedSize(500, 200);
-    }
-}
-
-// Load the TBC and JSON metadata (called by QFuture in loadTbcFile method)
-void MainWindow::backgroundLoad(QString inputFileName)
-{
-    qInfo() << "Opening TBC filename =" << inputFileName;
-    isFileOpen = false;
-
-    // Open the TBC metadata file
-    qDebug() << "MainWindow::backgroundLoad(): Processing JSON metadata...";
-    busyDialog->setMessage("Processing ld-decode metadata...");
-    if (!ldDecodeMetaData.read(inputFileName + ".json")) {
-        // Open failed
-        qWarning() << "Open TBC JSON metadata failed for filename" << inputFileName;
-        currentInputFileName.clear();
-
-        // Show an error to the user
-        lastLoadError = "Could not open TBC JSON metadata file for the TBC input file!";
-    } else {
-        // Get the video parameters from the metadata
-        LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
-
-        // Open the new source video
-        qDebug() << "MainWindow::backgroundLoad(): Loading TBC file...";
-        busyDialog->setMessage("Loading TBC file...");
-        if (!sourceVideo.open(inputFileName, videoParameters.fieldWidth * videoParameters.fieldHeight)) {
-            // Open failed
-            qWarning() << "Open TBC file failed for filename" << inputFileName;
-            currentInputFileName.clear();
-
-            // Show an error to the user
-            lastLoadError = "Could not open TBC data file!";
-        } else {
-            // Both the video and metadata files are now open
-
-            // Update the configuration for the source directory
-            QFileInfo inFileInfo(inputFileName);
-            configuration.setSourceDirectory(inFileInfo.absolutePath());
-            qDebug() << "MainWindow::backgroundLoad(): Setting source directory to:" << inFileInfo.absolutePath();
-            configuration.writeConfiguration();
-
-            isFileOpen = true;
-
-            // Set the current file name
-            currentInputFileName = inFileInfo.fileName();
-            qDebug() << "MainWindow::backgroundLoad(): Set current file name to to:" << currentInputFileName;
-
-            busyDialog->setMessage("Generating graph data...");
-        }
-    }
-}
-
-// Generate the data points for the Drop-out and SNR analysis graphs
-// We do these both at the same time to reduce calls to the metadata
-void MainWindow::generateGraphs()
-{
-    dropoutAnalysisDialog->startUpdate();
-    snrAnalysisDialog->startUpdate();
-
-    qreal targetDataPoints = 2000;
-    qreal averageWidth = qRound(ldDecodeMetaData.getNumberOfFields() / targetDataPoints);
-    if (averageWidth < 1) averageWidth = 1; // Ensure we don't divide by zero
-    qint32 dataPoints = ldDecodeMetaData.getNumberOfFields() / static_cast<qint32>(averageWidth);
-    qint32 fieldsPerDataPoint = ldDecodeMetaData.getNumberOfFields() / dataPoints;
-
-    qint32 fieldNumber = 1;
-    for (qint32 dpCount = 0; dpCount < dataPoints; dpCount++) {
-        qreal doLength = 0;
-        qreal blackSnrTotal = 0;
-        qreal whiteSnrTotal = 0;
-        for (qint32 avCount = 0; avCount < fieldsPerDataPoint; avCount++) {
-            LdDecodeMetaData::Field field = ldDecodeMetaData.getField(fieldNumber);
-
-            // Get the DOs
-            if (field.dropOuts.startx.size() > 0) {
-                // Calculate the total length of the dropouts
-                for (qint32 i = 0; i < field.dropOuts.startx.size(); i++) {
-                    doLength += field.dropOuts.endx[i] - field.dropOuts.startx[i];
-                }
-            }
-
-            // Get the SNRs
-            if (field.vitsMetrics.inUse) {
-                blackSnrTotal += field.vitsMetrics.bPSNR;
-                whiteSnrTotal += field.vitsMetrics.wSNR;
-            }
-            fieldNumber++;
-        }
-
-        // Calculate the average
-        doLength = doLength / static_cast<qreal>(fieldsPerDataPoint);
-        blackSnrTotal = blackSnrTotal / static_cast<qreal>(fieldsPerDataPoint);
-        whiteSnrTotal = whiteSnrTotal / static_cast<qreal>(fieldsPerDataPoint);
-
-        // Add the result to the series
-        dropoutAnalysisDialog->addDataPoint(fieldNumber, doLength);
-        snrAnalysisDialog->addDataPoint(fieldNumber, blackSnrTotal, whiteSnrTotal);
-    }
-
-    dropoutAnalysisDialog->finishUpdate(ldDecodeMetaData.getNumberOfFields(), fieldsPerDataPoint);
-    snrAnalysisDialog->finishUpdate(ldDecodeMetaData.getNumberOfFields(), fieldsPerDataPoint);
+    // Note: loading continues in the background...
 }
 
 // Load a TBC file based on the file selection from the GUI
@@ -677,8 +312,8 @@ void MainWindow::on_previousPushButton_clicked()
 void MainWindow::on_nextPushButton_clicked()
 {
     currentFrameNumber++;
-    if (currentFrameNumber > ldDecodeMetaData.getNumberOfFrames()) {
-        currentFrameNumber = ldDecodeMetaData.getNumberOfFrames();
+    if (currentFrameNumber > tbcSource.getNumberOfFrames()) {
+        currentFrameNumber = tbcSource.getNumberOfFrames();
     } else {
         ui->frameNumberSpinBox->setValue(currentFrameNumber);
         ui->frameHorizontalSlider->setValue(currentFrameNumber);
@@ -688,7 +323,7 @@ void MainWindow::on_nextPushButton_clicked()
 // Skip to end frame button has been clicked
 void MainWindow::on_endFramePushButton_clicked()
 {
-    currentFrameNumber = ldDecodeMetaData.getNumberOfFrames();
+    currentFrameNumber = tbcSource.getNumberOfFrames();
     ui->frameNumberSpinBox->setValue(currentFrameNumber);
     ui->frameHorizontalSlider->setValue(currentFrameNumber);
 }
@@ -706,10 +341,10 @@ void MainWindow::on_frameNumberSpinBox_editingFinished()
 {
     if (ui->frameNumberSpinBox->value() != currentFrameNumber) {
         if (ui->frameNumberSpinBox->value() < 1) ui->frameNumberSpinBox->setValue(1);
-        if (ui->frameNumberSpinBox->value() > sourceVideo.getNumberOfAvailableFields()) ui->frameNumberSpinBox->setValue(ldDecodeMetaData.getNumberOfFrames());
+        if (ui->frameNumberSpinBox->value() > tbcSource.getNumberOfFrames()) ui->frameNumberSpinBox->setValue(tbcSource.getNumberOfFrames());
         currentFrameNumber = ui->frameNumberSpinBox->value();
         ui->frameHorizontalSlider->setValue(currentFrameNumber);
-        showFrame(currentFrameNumber, dropoutsOn);
+        showFrame(currentFrameNumber);
     }
 }
 
@@ -717,7 +352,7 @@ void MainWindow::on_frameNumberSpinBox_editingFinished()
 void MainWindow::on_frameHorizontalSlider_valueChanged(int value)
 {
     (void)value;
-    if (!isFileOpen) return;
+    if (!tbcSource.getIsSourceLoaded()) return;
 
     currentFrameNumber = ui->frameHorizontalSlider->value();
 
@@ -725,13 +360,13 @@ void MainWindow::on_frameHorizontalSlider_valueChanged(int value)
     // otherwisew we just ignore this
     if (ui->frameNumberSpinBox->isEnabled()) {
         ui->frameNumberSpinBox->setValue(currentFrameNumber);
-        showFrame(currentFrameNumber, dropoutsOn);
+        showFrame(currentFrameNumber);
     }
 }
 
 void MainWindow::on_actionLine_scope_triggered()
 {
-    if (isFileOpen) {
+    if (tbcSource.getIsSourceLoaded()) {
         // Show the oscilloscope dialogue for the selected scan-line
         updateOscilloscopeDialogue(currentFrameNumber, lastScopeLine);
         oscilloscopeDialog->show();
@@ -745,22 +380,8 @@ void MainWindow::on_actionAbout_ld_analyse_triggered()
 
 void MainWindow::on_actionVBI_triggered()
 {
-    LdDecodeMetaData::Field firstField = ldDecodeMetaData.getField(ldDecodeMetaData.getFirstFieldNumber(currentFrameNumber));
-    LdDecodeMetaData::Field secondField = ldDecodeMetaData.getField(ldDecodeMetaData.getSecondFieldNumber(currentFrameNumber));
-
-    qint32 vbi16_1, vbi17_1, vbi18_1;
-    qint32 vbi16_2, vbi17_2, vbi18_2;
-
-    vbi16_1 = firstField.vbi.vbiData[0];
-    vbi17_1 = firstField.vbi.vbiData[1];
-    vbi18_1 = firstField.vbi.vbiData[2];
-    vbi16_2 = secondField.vbi.vbiData[0];
-    vbi17_2 = secondField.vbi.vbiData[1];
-    vbi18_2 = secondField.vbi.vbiData[2];
-
-    vbiDialog->updateVbi(vbi16_1, vbi17_1, vbi18_1, vbi16_2, vbi17_2, vbi18_2);
-
     // Show the VBI dialogue
+    vbiDialog->updateVbi(tbcSource.getFrameVbi(currentFrameNumber), tbcSource.getIsFrameVbiValid(currentFrameNumber));
     vbiDialog->show();
 }
 
@@ -791,9 +412,9 @@ void MainWindow::on_actionSave_frame_as_PNG_triggered()
 
     // Create a suggestion for the filename
     QString filenameSuggestion = configuration.getPngDirectory();
-    if (ldDecodeMetaData.getVideoParameters().isSourcePal) filenameSuggestion += tr("/frame_pal_");
+    if (tbcSource.getIsSourcePal()) filenameSuggestion += tr("/frame_pal_");
     else filenameSuggestion += tr("/frame_ntsc_");
-    if (!chromaOn) filenameSuggestion += tr("source_");
+    if (!tbcSource.getChromaDecoder()) filenameSuggestion += tr("source_");
     else filenameSuggestion += tr("comb_");
     filenameSuggestion += QString::number(currentFrameNumber) + tr(".png");
 
@@ -807,12 +428,8 @@ void MainWindow::on_actionSave_frame_as_PNG_triggered()
         // Save the current frame as a PNG
         qDebug() << "MainWindow::on_actionSave_frame_as_PNG_triggered(): Saving current frame as" << pngFilename;
 
-        // Get the required field numbers
-        qint32 firstFieldNumber = ldDecodeMetaData.getFirstFieldNumber(currentFrameNumber);
-        qint32 secondFieldNumber = ldDecodeMetaData.getSecondFieldNumber(currentFrameNumber);
-
         // Generate the current frame and save it
-        if (!generateQImage(firstFieldNumber, secondFieldNumber).save(pngFilename)) {
+        if (!tbcSource.getFrameImage(currentFrameNumber).save(pngFilename)) {
             qDebug() << "MainWindow::on_actionSave_frame_as_PNG_triggered(): Failed to save file as" << pngFilename;
 
             QMessageBox messageBox;
@@ -835,7 +452,7 @@ void MainWindow::on_actionSave_metadata_as_CSV_triggered()
 
     // Create a suggestion for the filename
     QString filenameSuggestion = configuration.getCsvDirectory() + tr("/");
-    filenameSuggestion += currentInputFileName + tr(".csv");
+    filenameSuggestion += tbcSource.getCurrentSourceFilename() + tr(".csv");
 
     QString csvFilename = QFileDialog::getSaveFileName(this,
                 tr("Save CSV file"),
@@ -847,87 +464,87 @@ void MainWindow::on_actionSave_metadata_as_CSV_triggered()
         // Save the metadata as CSV
         qDebug() << "MainWindow::on_actionSave_metadata_as_CSV_triggered(): Saving VITS metadata as" << csvFilename;
 
-        ldDecodeMetaData.writeVitsCsv(csvFilename);
+        if (tbcSource.saveVitsAsCsv(csvFilename)) {
+            // Update the configuration for the CSV directory
+            QFileInfo csvFileInfo(csvFilename);
+            configuration.setCsvDirectory(csvFileInfo.absolutePath());
+            qDebug() << "MainWindow::on_actionSave_metadata_as_CSV_triggered(): Setting CSV directory to:" << csvFileInfo.absolutePath();
+            configuration.writeConfiguration();
+        } else {
+            // Save as CSV failed
+            qDebug() << "MainWindow::on_actionSave_metadata_as_CSV_triggered(): Failed to save file as" << csvFilename;
 
-        // Update the configuration for the CSV directory
-        QFileInfo csvFileInfo(csvFilename);
-        configuration.setCsvDirectory(csvFileInfo.absolutePath());
-        qDebug() << "MainWindow::on_actionSave_metadata_as_CSV_triggered(): Setting CSV directory to:" << csvFileInfo.absolutePath();
-        configuration.writeConfiguration();
+            QMessageBox messageBox;
+            messageBox.warning(this, "Warning","Could not save a CSV file using the specified filename!");
+            messageBox.setFixedSize(500, 200);
+        }
     }
 }
 
 // Method to update the line oscilloscope based on the frame number and scan line
 void MainWindow::updateOscilloscopeDialogue(qint32 frameNumber, qint32 scanLine)
 {
-    // Determine the first and second fields for the frame number
-    qint32 firstFieldNumber = ldDecodeMetaData.getFirstFieldNumber(frameNumber);
-    qint32 secondFieldNumber = ldDecodeMetaData.getSecondFieldNumber(frameNumber);
-
     // Update the oscilloscope dialogue
-    oscilloscopeDialog->showTraceImage(sourceVideo.getVideoField(firstFieldNumber),
-                                       sourceVideo.getVideoField(secondFieldNumber),
-                                       &ldDecodeMetaData, scanLine, firstFieldNumber, secondFieldNumber);
+    oscilloscopeDialog->showTraceImage(tbcSource.getScanLineData(frameNumber, scanLine), scanLine,
+                                       tbcSource.getFrameHeight());
 }
 
 // Source/Chroma select button clicked
 void MainWindow::on_videoPushButton_clicked()
 {
-    if (chromaOn) {
-        chromaOn = false;
+    if (tbcSource.getChromaDecoder()) {
+        tbcSource.setChromaDecoder(false);
         ui->videoPushButton->setText(tr("Chroma"));
     } else {
-        chromaOn = true;
+        tbcSource.setChromaDecoder(true);
         ui->videoPushButton->setText(tr("Source"));
     }
 
     // Show the current frame
-    showFrame(currentFrameNumber, dropoutsOn);
+    showFrame(currentFrameNumber);
 }
 
 // Show/hide dropouts button clicked
 void MainWindow::on_dropoutsPushButton_clicked()
 {
-    if (dropoutsOn) {
-        dropoutsOn = false;
+    if (tbcSource.getHighlightDropouts()) {
+        tbcSource.setHighlightDropouts(false);
         ui->dropoutsPushButton->setText(tr("Show dropouts"));
     } else {
-        dropoutsOn = true;
+        tbcSource.setHighlightDropouts(true);
         ui->dropoutsPushButton->setText(tr("Hide dropouts"));
     }
 
     // Show the current frame (why isn't this option passed?)
-    showFrame(currentFrameNumber, dropoutsOn);
+    showFrame(currentFrameNumber);
 }
 
 // Normal/Reverse field order button clicked
 void MainWindow::on_fieldOrderPushButton_clicked()
 {
-    if (reverseFoOn) {
-        ldDecodeMetaData.setIsFirstFieldFirst(true);
+    if (tbcSource.getFieldOrder()) {
+        tbcSource.setFieldOrder(false);
 
         // If the TBC field order is changed, the number of available frames can change, so we need to update the GUI
         updateGuiLoaded();
-        reverseFoOn = false;
         ui->fieldOrderPushButton->setText(tr("Reverse Field-order"));
     } else {
-        ldDecodeMetaData.setIsFirstFieldFirst(false);
+        tbcSource.setFieldOrder(true);
 
         // If the TBC field order is changed, the number of available frames can change, so we need to update the GUI
         updateGuiLoaded();
-        reverseFoOn = true;
         ui->fieldOrderPushButton->setText(tr("Normal Field-order"));
     }
 
     // Show the current frame
-    showFrame(currentFrameNumber, dropoutsOn);
+    showFrame(currentFrameNumber);
 }
 
 void MainWindow::scanLineChangedSignalHandler(qint32 scanLine)
 {
     qDebug() << "MainWindow::scanLineChangedSignalHandler(): Called with scanLine =" << scanLine;
 
-    if (isFileOpen) {
+    if (tbcSource.getIsSourceLoaded()) {
         // Show the oscilloscope dialogue for the selected scan-line
         updateOscilloscopeDialogue(currentFrameNumber, scanLine);
         oscilloscopeDialog->show();
@@ -940,19 +557,14 @@ void MainWindow::scanLineChangedSignalHandler(qint32 scanLine)
 // Mouse press event handler
 void MainWindow::mousePressEvent(QMouseEvent *event)
 {
-    if (!isFileOpen) return;
+    if (!tbcSource.getIsSourceLoaded()) return;
 
     // Get the mouse position relative to our scene
     QPoint origin = ui->frameViewerLabel->mapFromGlobal(QCursor::pos());
 
-    // Get the metadata for the fields
-    LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
-
-    // Calculate the frame height
-    qint32 frameHeight = (videoParameters.fieldHeight * 2) - 1;
-
     // Check that the mouse click is within bounds of the current picture
-    qreal offset = ((static_cast<qreal>(ui->frameViewerLabel->height()) - static_cast<qreal>(ui->frameViewerLabel->pixmap()->height())) / 2.0);
+    qreal offset = ((static_cast<qreal>(ui->frameViewerLabel->height()) -
+                     static_cast<qreal>(ui->frameViewerLabel->pixmap()->height())) / 2.0);
 
     qint32 oX = origin.x();
     qint32 oY = origin.y();
@@ -962,9 +574,10 @@ void MainWindow::mousePressEvent(QMouseEvent *event)
             oX + 1 <= ui->frameViewerLabel->width() &&
             oY <= ui->frameViewerLabel->height()) {
 
-        qreal unscaledYR = (static_cast<qreal>(frameHeight) / static_cast<qreal>(ui->frameViewerLabel->pixmap()->height())) * static_cast<qreal>(oY - offset);
+        qreal unscaledYR = (static_cast<qreal>(tbcSource.getFrameHeight()) /
+                            static_cast<qreal>(ui->frameViewerLabel->pixmap()->height())) * static_cast<qreal>(oY - offset);
         qint32 unscaledY = static_cast<qint32>(unscaledYR) + 1;
-        if (unscaledY > frameHeight) unscaledY = frameHeight;
+        if (unscaledY > tbcSource.getFrameHeight()) unscaledY = tbcSource.getFrameHeight();
         if (unscaledY < 1) unscaledY = 1;
 
         // Show the oscilloscope dialogue for the selected scan-line
@@ -982,19 +595,14 @@ void MainWindow::mousePressEvent(QMouseEvent *event)
 // (This updates the current line number in the status bar)
 void MainWindow::mouseOverQFrameSignalHandler(QMouseEvent *event)
 {
-    if (!isFileOpen) return;
+    if (!tbcSource.getIsSourceLoaded()) return;
 
     // Get the mouse position relative to our scene
     QPoint origin = ui->frameViewerLabel->mapFromGlobal(QCursor::pos());
 
-    // Get the metadata for the fields
-    LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
-
-    // Calculate the frame height
-    qint32 frameHeight = (videoParameters.fieldHeight * 2) - 1;
-
     // Check that the mouse click is within bounds of the current picture
-    qreal offset = ((static_cast<qreal>(ui->frameViewerLabel->height()) - static_cast<qreal>(ui->frameViewerLabel->pixmap()->height())) / 2.0);
+    qreal offset = ((static_cast<qreal>(ui->frameViewerLabel->height()) -
+                     static_cast<qreal>(ui->frameViewerLabel->pixmap()->height())) / 2.0);
 
     qint32 oX = origin.x();
     qint32 oY = origin.y();
@@ -1004,9 +612,10 @@ void MainWindow::mouseOverQFrameSignalHandler(QMouseEvent *event)
             oX + 1 <= ui->frameViewerLabel->width() &&
             oY <= ui->frameViewerLabel->height()) {
 
-        qreal unscaledYR = (static_cast<qreal>(frameHeight) / static_cast<qreal>(ui->frameViewerLabel->pixmap()->height())) * static_cast<qreal>(oY - offset);
+        qreal unscaledYR = (static_cast<qreal>(tbcSource.getFrameHeight()) /
+                            static_cast<qreal>(ui->frameViewerLabel->pixmap()->height())) * static_cast<qreal>(oY - offset);
         qint32 unscaledY = static_cast<qint32>(unscaledYR) + 1;
-        if (unscaledY > frameHeight) unscaledY = frameHeight;
+        if (unscaledY > tbcSource.getFrameHeight()) unscaledY = tbcSource.getFrameHeight();
         if (unscaledY < 1) unscaledY = 1;
 
         frameLineStatus.setText("Line: " + QString::number(unscaledY));
@@ -1014,6 +623,71 @@ void MainWindow::mouseOverQFrameSignalHandler(QMouseEvent *event)
     }
 }
 
+// TbcSource class signal handlers ------------------------------------------------------------------------------------
+
+// Signal handler for busyLoading signal from TbcSource class
+void MainWindow::on_busyLoading(QString infoMessage)
+{
+    qDebug() << "MainWindow::on_busyLoading(): Got signal with message" << infoMessage;
+    // Set the busy message and centre the dialog in the parent window
+    busyDialog->setMessage(infoMessage);
+    busyDialog->move(this->geometry().center() - busyDialog->rect().center());
+
+    if (!busyDialog->isVisible()) {
+        // Disable the main window during loading
+        this->setEnabled(false);
+        busyDialog->setEnabled(true);
+
+        busyDialog->exec();
+    }
+}
+
+// Signal handler for finishedLoading signal from TbcSource class
+void MainWindow::on_finishedLoading()
+{
+    qDebug() << "MainWindow::on_finishedLoading(): Called";
+
+    // Hide the busy dialogue and enable the main window
+    busyDialog->hide();
+    this->setEnabled(true);
+
+    // Ensure source loaded ok
+    if (tbcSource.getIsSourceLoaded()) {
+        // Generate the graph data
+        dropoutAnalysisDialog->startUpdate();
+        snrAnalysisDialog->startUpdate();
+
+        qint32 fieldNumber = 1;
+        for (qint32 i = 0; i < tbcSource.getDataSize(); i++) {
+            dropoutAnalysisDialog->addDataPoint(fieldNumber, tbcSource.getDropOutData()[i]);
+            snrAnalysisDialog->addDataPoint(fieldNumber, tbcSource.getBlackSnrData()[i], tbcSource.getWhiteSnrData()[i]);
+            fieldNumber += tbcSource.getFieldsPerDataPoint();
+        }
+
+        dropoutAnalysisDialog->finishUpdate(tbcSource.getNumberOfFields(), tbcSource.getFieldsPerDataPoint());
+        snrAnalysisDialog->finishUpdate(tbcSource.getNumberOfFields(), tbcSource.getFieldsPerDataPoint());
+
+        // Update the GUI
+        updateGuiLoaded();
+
+        // Set the main window title
+        this->setWindowTitle(tr("ld-analyse - ") + tbcSource.getCurrentSourceFilename());
+
+        // Update the configuration for the source directory
+        QFileInfo inFileInfo(tbcSource.getCurrentSourceFilename());
+        configuration.setSourceDirectory(inFileInfo.absolutePath());
+        qDebug() << "MainWindow::loadTbcFile(): Setting source directory to:" << inFileInfo.absolutePath();
+        configuration.writeConfiguration();
+    } else {
+        // Load failed
+        updateGuiUnloaded();
+
+        // Show an error to the user
+        QMessageBox messageBox;
+        messageBox.warning(this, "Error", "Could not load source TBC file");
+        messageBox.setFixedSize(500, 200);
+    }
+}
 
 
 

@@ -53,43 +53,17 @@ OscilloscopeDialog::~OscilloscopeDialog()
     delete ui;
 }
 
-void OscilloscopeDialog::showTraceImage(QByteArray firstFieldData, QByteArray secondFieldData, LdDecodeMetaData *ldDecodeMetaData, qint32 scanLine,
-                                        qint32 firstField, qint32 secondField)
+void OscilloscopeDialog::showTraceImage(TbcSource::ScanLineData scanLineData, qint32 scanLine, qint32 frameHeight)
 {
     qDebug() << "OscilloscopeDialog::showTraceImage(): Called for scan-line" << scanLine;
 
-    LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData->getVideoParameters();
-
-    // Convert the scan line into field and field line
-    bool isFieldTop = true;
-    qint32 fieldLine = 0;
-
-    if (scanLine % 2 == 0) isFieldTop = false;
-    else isFieldTop = true;
-
-    if (isFieldTop) {
-        fieldLine = (scanLine / 2) + 1;
-    } else {
-        fieldLine = (scanLine / 2);
-    }
-
-    // Calculate the frame height
-    qint32 frameHeight = (videoParameters.fieldHeight * 2) - 1;
-
     // Set the dialogue title based on the scan-line
-    QString windowTitle;
-    if (isFieldTop) {
-        windowTitle = "Oscilloscope trace for scan-line #" + QString::number(scanLine) + " (First field line #" + QString::number(fieldLine) + ")";
-    } else {
-        windowTitle = "Oscilloscope trace for scan-line #" + QString::number(scanLine) + " (Second field line #" + QString::number(fieldLine) + ")";
-    }
-
-    this->setWindowTitle(windowTitle);
+    this->setWindowTitle("Oscilloscope trace for scan-line #" + QString::number(scanLine));
 
     // Get the raw field data for the selected line
     QImage traceImage;
-    if (isFieldTop) traceImage = getFieldLineTraceImage(firstFieldData, videoParameters, fieldLine, ldDecodeMetaData->getField(firstField).dropOuts);
-    else traceImage = getFieldLineTraceImage(secondFieldData, videoParameters, fieldLine, ldDecodeMetaData->getField(secondField).dropOuts);
+
+    traceImage = getFieldLineTraceImage(scanLineData);
 
     // Add the QImage to the QLabel in the dialogue
     ui->scopeLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
@@ -110,15 +84,9 @@ void OscilloscopeDialog::showTraceImage(QByteArray firstFieldData, QByteArray se
     maximumScanLines = frameHeight;
 }
 
-QImage OscilloscopeDialog::getFieldLineTraceImage(QByteArray fieldLineData, LdDecodeMetaData::VideoParameters videoParameters, qint32 fieldLine, LdDecodeMetaData::DropOuts dropouts)
+QImage OscilloscopeDialog::getFieldLineTraceImage(TbcSource::ScanLineData scanLineData)
 {
-    qDebug() << "OscilloscopeDialog::getFieldLineTraceImage(): Called for field line" << fieldLine;
-
-    // Range-check the scan line
-    if (fieldLine > videoParameters.fieldHeight || fieldLine < 1) {
-        qWarning() << "Cannot generate line trace, field line number is out of bounds!";
-        return QImage();
-    }
+    qDebug() << "OscilloscopeDialog::getFieldLineTraceImage(): Called";
 
     // Get the display settings from the UI
     bool showYC = ui->YCcheckBox->isChecked();
@@ -130,12 +98,12 @@ QImage OscilloscopeDialog::getFieldLineTraceImage(QByteArray fieldLineData, LdDe
     qint32 scopeHeight = 512;
 
     // Define image with width, height and format
-    QImage scopeImage(videoParameters.fieldWidth, scopeHeight, QImage::Format_RGB888);
+    QImage scopeImage(scanLineData.data.size(), scopeHeight, QImage::Format_RGB888);
     QPainter scopePainter;
 
     // Ensure we have valid data
-    if (fieldLineData.isEmpty()) {
-        qWarning() << "Did not get valid RGB data for the requested field!";
+    if (scanLineData.data.isEmpty()) {
+        qWarning() << "Did not get valid data for the requested field!";
         return scopeImage;
     }
 
@@ -149,38 +117,38 @@ QImage OscilloscopeDialog::getFieldLineTraceImage(QByteArray fieldLineData, LdDe
     // Note: For PAL this should be black at 64 and white at 211
 
     // Scale to 512 pixel height
-    qint32 blackIre = 512 - (videoParameters.black16bIre / 128);
-    qint32 whiteIre = 512 - (videoParameters.white16bIre / 128);
-    qint32 midPointIre = videoParameters.black16bIre + ((videoParameters.white16bIre - videoParameters.black16bIre) / 2);
+    qint32 blackIre = 512 - (scanLineData.blackIre / 128);
+    qint32 whiteIre = 512 - (scanLineData.whiteIre / 128);
+    qint32 midPointIre = scanLineData.blackIre + ((scanLineData.whiteIre - scanLineData.blackIre) / 2);
     midPointIre = 512 - (midPointIre / 128);
 
     scopePainter.setPen(Qt::white);
-    scopePainter.drawLine(0, blackIre, videoParameters.fieldWidth, blackIre);
-    scopePainter.drawLine(0, whiteIre, videoParameters.fieldWidth, whiteIre);
+    scopePainter.drawLine(0, blackIre, scanLineData.data.size(), blackIre);
+    scopePainter.drawLine(0, whiteIre, scanLineData.data.size(), whiteIre);
 
     // If showing C - draw the IRE mid-point
     if (showC) {
         scopePainter.setPen(Qt::gray);
-        scopePainter.drawLine(0, midPointIre, videoParameters.fieldWidth, midPointIre);
+        scopePainter.drawLine(0, midPointIre, scanLineData.data.size(), midPointIre);
     }
 
     // Draw the indicator lines
     scopePainter.setPen(Qt::blue);
-    scopePainter.drawLine(videoParameters.colourBurstStart, 0, videoParameters.colourBurstStart, scopeHeight);
-    scopePainter.drawLine(videoParameters.colourBurstEnd, 0, videoParameters.colourBurstEnd, scopeHeight);
+    scopePainter.drawLine(scanLineData.colourBurstStart, 0, scanLineData.colourBurstStart, scopeHeight);
+    scopePainter.drawLine(scanLineData.colourBurstEnd, 0, scanLineData.colourBurstEnd, scopeHeight);
     scopePainter.setPen(Qt::cyan);
-    scopePainter.drawLine(videoParameters.activeVideoStart, 0, videoParameters.activeVideoStart, scopeHeight);
-    scopePainter.drawLine(videoParameters.activeVideoEnd, 0, videoParameters.activeVideoEnd, scopeHeight);
+    scopePainter.drawLine(scanLineData.activeVideoStart, 0, scanLineData.activeVideoStart, scopeHeight);
+    scopePainter.drawLine(scanLineData.activeVideoEnd, 0, scanLineData.activeVideoEnd, scopeHeight);
 
     // Get the signal data
     QVector<qint32> signalDataYC; // Luminance (Y) and Chrominance (C) combined
     QVector<bool> dropOutYC; // Drop out locations within YC data
     QVector<qint32> signalDataY; // Luminance (Y) only
     QVector<qint32> signalDataC; // Chrominance (C) only
-    signalDataYC.resize(videoParameters.fieldWidth);
-    dropOutYC.resize(videoParameters.fieldWidth);
-    signalDataY.resize(videoParameters.fieldWidth);
-    signalDataC.resize(videoParameters.fieldWidth);
+    signalDataYC.resize(scanLineData.data.size());
+    dropOutYC.resize(scanLineData.data.size());
+    signalDataY.resize(scanLineData.data.size());
+    signalDataC.resize(scanLineData.data.size());
 
     // To extract Y from PAL, a LPF of 3.8MHz is required
     // To extract Y from NTSC, a LPF of 3.0MHz is required
@@ -188,23 +156,16 @@ QImage OscilloscopeDialog::getFieldLineTraceImage(QByteArray fieldLineData, LdDe
     // To extract C from NTSC, a HPF of 3.0MHz is required
 
     // Get the YC data
-    for (qint32 xPosition = 0; xPosition < videoParameters.fieldWidth; xPosition++) {
-        // Get the 16-bit YC value for the current pixel (frame data is numbered 0-624 or 0-524)
-        uchar *pixelPointer =  reinterpret_cast<uchar*>(fieldLineData.data()) + ((fieldLine - 1) * videoParameters.fieldWidth * 2) + (xPosition * 2);
-        signalDataYC[xPosition] = (pixelPointer[1] * 256) + pixelPointer[0];
-
-        dropOutYC[xPosition] = false;
-        for (qint32 doCount = 0; doCount < dropouts.startx.size(); doCount++) {
-            if (dropouts.fieldLine[doCount] == fieldLine) {
-                if (xPosition >= dropouts.startx[doCount] && xPosition <= dropouts.endx[doCount]) dropOutYC[xPosition] = true;
-            }
-        }
+    for (qint32 xPosition = 0; xPosition < scanLineData.data.size(); xPosition++) {
+        // Get the data for the current pixel
+        signalDataYC[xPosition] = scanLineData.data[xPosition];
+        dropOutYC[xPosition] = scanLineData.isDropout[xPosition];
     }
 
     if (showY) {
         // Filter out the Y data (with a simple LPF)
         qreal cutOffFrequency;
-        if (videoParameters.isSourcePal) cutOffFrequency = 380000; // 3.8MHz for PAL
+        if (scanLineData.isSourcePal) cutOffFrequency = 380000; // 3.8MHz for PAL
         else cutOffFrequency = 300000; // 3.0MHz for NTSC
         qreal sampleRate = 17734476; // details.sampleRate = 17734476;
         qreal rc = 1.0 / (cutOffFrequency * 2.0 * 3.1415927);
@@ -220,7 +181,7 @@ QImage OscilloscopeDialog::getFieldLineTraceImage(QByteArray fieldLineData, LdDe
     if (showC) {
         // Filter out the C data (with a simple HPF)
         qreal cutOffFrequency;
-        if (videoParameters.isSourcePal) cutOffFrequency = 380000; // 3.8MHz for PAL
+        if (scanLineData.isSourcePal) cutOffFrequency = 380000; // 3.8MHz for PAL
         else cutOffFrequency = 300000; // 3.0MHz for NTSC
         qreal sampleRate = 17734476; // details.sampleRate = 17734476;
         qreal rc = 1.0 / (cutOffFrequency * 2.0 * 3.1415927);
@@ -238,7 +199,7 @@ QImage OscilloscopeDialog::getFieldLineTraceImage(QByteArray fieldLineData, LdDe
     qint32 lastSignalLevelYC = 0;
     qint32 lastSignalLevelY = 0;
     qint32 lastSignalLevelC = 0;
-    for (qint32 xPosition = 0; xPosition < videoParameters.fieldWidth; xPosition++) {
+    for (qint32 xPosition = 0; xPosition < scanLineData.data.size(); xPosition++) {
         if (showYC) {
             // Scale (to 0-512) and invert
             qint32 signalLevelYC = scopeHeight - (signalDataYC[xPosition] / 128);
@@ -246,7 +207,7 @@ QImage OscilloscopeDialog::getFieldLineTraceImage(QByteArray fieldLineData, LdDe
             if (xPosition != 0) {
                 // Non-active video area YC is yellow, active is white
                 if (!showY && !showC) scopePainter.setPen(Qt::white); else scopePainter.setPen(Qt::darkGray);
-                if (xPosition < videoParameters.colourBurstEnd || xPosition > videoParameters.activeVideoEnd) scopePainter.setPen(Qt::yellow);
+                if (xPosition < scanLineData.colourBurstEnd || xPosition > scanLineData.activeVideoEnd) scopePainter.setPen(Qt::yellow);
 
                 // Highlight dropouts
                 if (dropOutYC[xPosition] && showDropouts) scopePainter.setPen(Qt::red);
@@ -265,7 +226,7 @@ QImage OscilloscopeDialog::getFieldLineTraceImage(QByteArray fieldLineData, LdDe
 
             if (xPosition != 0) {
                 // Draw a line from the last Y signal to the current one (signal green, out of range in yellow)
-                if (xPosition > videoParameters.colourBurstEnd && xPosition < videoParameters.activeVideoEnd) {
+                if (xPosition > scanLineData.colourBurstEnd && xPosition < scanLineData.activeVideoEnd) {
                     if (signalLevelC > blackIre || signalLevelC < whiteIre) scopePainter.setPen(Qt::yellow);
                     else scopePainter.setPen(Qt::green);
                     scopePainter.drawLine(xPosition - 1, lastSignalLevelC, xPosition, signalLevelC);
@@ -282,7 +243,7 @@ QImage OscilloscopeDialog::getFieldLineTraceImage(QByteArray fieldLineData, LdDe
 
             if (xPosition != 0) {
                 // Draw a line from the last Y signal to the current one (signal white, out of range in red)
-                if (xPosition > videoParameters.colourBurstEnd && xPosition < videoParameters.activeVideoEnd) {
+                if (xPosition > scanLineData.colourBurstEnd && xPosition < scanLineData.activeVideoEnd) {
                     if (signalLevelY > blackIre || signalLevelY < whiteIre) scopePainter.setPen(Qt::red);
                     else scopePainter.setPen(Qt::white);
                     scopePainter.drawLine(xPosition - 1, lastSignalLevelY, xPosition, signalLevelY);
