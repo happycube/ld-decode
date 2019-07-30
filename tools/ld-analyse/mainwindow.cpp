@@ -136,7 +136,11 @@ void MainWindow::updateGuiLoaded(void)
     ui->actionNTSC->setEnabled(true);
     ui->actionVideo_metadata->setEnabled(true);
     ui->actionVITS_Metrics->setEnabled(true);
-    ui->action1_1_Frame_size->setEnabled(true);
+    ui->actionZoom_In->setEnabled(true);
+    ui->actionZoom_Out->setEnabled(true);
+    ui->actionZoom_1x->setEnabled(true);
+    ui->actionZoom_2x->setEnabled(true);
+    ui->actionZoom_3x->setEnabled(true);
     ui->actionDropout_analysis->setEnabled(true);
     ui->actionSNR_analysis->setEnabled(true);
     ui->actionSave_frame_as_PNG->setEnabled(true);
@@ -204,7 +208,11 @@ void MainWindow::updateGuiUnloaded(void)
     ui->actionNTSC->setEnabled(false);
     ui->actionVideo_metadata->setEnabled(false);
     ui->actionVITS_Metrics->setEnabled(false);
-    ui->action1_1_Frame_size->setEnabled(false);
+    ui->actionZoom_In->setEnabled(false);
+    ui->actionZoom_Out->setEnabled(false);
+    ui->actionZoom_1x->setEnabled(false);
+    ui->actionZoom_2x->setEnabled(false);
+    ui->actionZoom_3x->setEnabled(false);
     ui->actionDropout_analysis->setEnabled(false);
     ui->actionSNR_analysis->setEnabled(false);
     ui->actionSave_frame_as_PNG->setEnabled(false);
@@ -561,15 +569,29 @@ void MainWindow::on_actionZoom_In_triggered()
 }
 
 // Zoom out
-void MainWindow::on_actionZoom_out_triggered()
+void MainWindow::on_actionZoom_Out_triggered()
 {
     on_zoomOutPushButton_clicked();
 }
 
 // Original size 1:1 zoom
-void MainWindow::on_action1_1_Frame_size_triggered()
+void MainWindow::on_actionZoom_1x_triggered()
 {
     on_originalSizePushButton_clicked();
+}
+
+// 2:1 zoom
+void MainWindow::on_actionZoom_2x_triggered()
+{
+    scaleFactor = 2.0;
+    updateFrameViewer();
+}
+
+// 3:1 zoom
+void MainWindow::on_actionZoom_3x_triggered()
+{
+    scaleFactor = 3.0;
+    updateFrameViewer();
 }
 
 // Zoom in
