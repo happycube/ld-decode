@@ -38,7 +38,6 @@ SOURCES += \
     ../ld-chroma-decoder/comb.cpp \
     ../ld-chroma-decoder/rgb.cpp \
     ../ld-chroma-decoder/yiq.cpp \
-    frameqlabel.cpp \
     dropoutanalysisdialog.cpp \
     ../ld-chroma-decoder/opticalflow.cpp \
     ../library/tbc/lddecodemetadata.cpp \
@@ -58,7 +57,6 @@ HEADERS += \
     ../ld-chroma-decoder/comb.h \
     ../ld-chroma-decoder/rgb.h \
     ../ld-chroma-decoder/yiq.h \
-    frameqlabel.h \
     dropoutanalysisdialog.h \
     ../ld-chroma-decoder/yiqbuffer.h \
     ../ld-chroma-decoder/opticalflow.h \

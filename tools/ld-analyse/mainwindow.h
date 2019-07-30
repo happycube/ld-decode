@@ -41,7 +41,6 @@
 #include "snranalysisdialog.h"
 #include "busydialog.h"
 #include "configuration.h"
-#include "frameqlabel.h"
 #include "tbcsource.h"
 
 namespace Ui {
@@ -75,7 +74,6 @@ private slots:
     void on_actionDropout_analysis_triggered();
     void on_actionSave_frame_as_PNG_triggered();
     void on_frameHorizontalSlider_valueChanged(int value);
-    void on_action1_1_Frame_size_triggered();
     void on_actionSNR_analysis_triggered();
     void on_actionSave_metadata_as_CSV_triggered();
     void on_videoPushButton_clicked();
@@ -84,6 +82,13 @@ private slots:
 
     void on_busyLoading(QString infoMessage);
     void on_finishedLoading();
+
+    void on_actionZoom_In_triggered();
+    void on_actionZoom_out_triggered();
+    void on_action1_1_Frame_size_triggered();
+    void on_zoomInPushButton_clicked();
+    void on_zoomOutPushButton_clicked();
+    void on_originalSizePushButton_clicked();
 
 private:
     Ui::MainWindow *ui;
@@ -104,6 +109,8 @@ private:
     TbcSource tbcSource;
     qint32 lastScopeLine;
     qint32 currentFrameNumber;
+
+    qreal scaleFactor;
 
     // Button state
     QPalette buttonPalette;

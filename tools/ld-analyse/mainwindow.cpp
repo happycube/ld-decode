@@ -46,12 +46,13 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     sourceVideoStatus.setText(tr("No source video file loaded"));
     fieldNumberStatus.setText(tr(" -  Fields: ./."));
 
-    // Set the initial frame number
+    // Set the initial frame number and scale
     currentFrameNumber = 1;
+    scaleFactor = 1.0;
 
     // Add an event filter to the frame viewer label to catch mouse events
-    ui->frameViewerLabel->installEventFilter(ui->frameViewerLabel);
-    connect(ui->frameViewerLabel, &FrameQLabel::mouseOverQFrame, this, &MainWindow::mouseOverQFrameSignalHandler);
+//    ui->frameViewerLabel->installEventFilter(ui->frameViewerLabel);
+//    connect(ui->frameViewerLabel, &FrameQLabel::mouseOverQFrame, this, &MainWindow::mouseOverQFrameSignalHandler);
 
     // Connect to the scan line changed signal from the oscilloscope dialogue
     connect(oscilloscopeDialog, &OscilloscopeDialog::scanLineChanged, this, &MainWindow::scanLineChangedSignalHandler);
@@ -120,6 +121,14 @@ void MainWindow::updateGuiLoaded(void)
     ui->frameHorizontalSlider->setPageStep(tbcSource.getNumberOfFrames() / 100);
     ui->frameHorizontalSlider->setValue(1);
 
+    // Allow the next and previous frame buttons to auto-repeat
+    ui->previousPushButton->setAutoRepeat(true);
+    ui->previousPushButton->setAutoRepeatDelay(500);
+    ui->previousPushButton->setAutoRepeatInterval(1);
+    ui->nextPushButton->setAutoRepeat(true);
+    ui->nextPushButton->setAutoRepeatDelay(500);
+    ui->nextPushButton->setAutoRepeatInterval(1);
+
     // Enable menu options
     ui->actionLine_scope->setEnabled(true);
     ui->actionVBI->setEnabled(true);
@@ -137,6 +146,18 @@ void MainWindow::updateGuiLoaded(void)
     ui->dropoutsPushButton->setText(tr("Show dropouts"));
     ui->fieldOrderPushButton->setText(tr("Reverse Field-order"));
 
+    // Set zoom button states
+    ui->zoomInPushButton->setEnabled(true);
+    ui->zoomOutPushButton->setEnabled(true);
+    ui->originalSizePushButton->setEnabled(true);
+
+    ui->zoomInPushButton->setAutoRepeat(true);
+    ui->zoomInPushButton->setAutoRepeatDelay(500);
+    ui->zoomInPushButton->setAutoRepeatInterval(100);
+    ui->zoomOutPushButton->setAutoRepeat(true);
+    ui->zoomOutPushButton->setAutoRepeatDelay(500);
+    ui->zoomOutPushButton->setAutoRepeatInterval(100);
+
     // Update the status bar
     QString statusText;
     if (tbcSource.getIsSourcePal()) statusText += "PAL";
@@ -145,6 +166,9 @@ void MainWindow::updateGuiLoaded(void)
     statusText += QString::number(tbcSource.getNumberOfFrames());
     statusText += " sequential frames available";
     sourceVideoStatus.setText(statusText);
+
+    // Set the frame scale factor
+    scaleFactor = 1.0;
 
     // Show the current frame
     showFrame(currentFrameNumber);
@@ -168,14 +192,6 @@ void MainWindow::updateGuiUnloaded(void)
     currentFrameNumber = 1;
     ui->frameHorizontalSlider->setValue(currentFrameNumber);
     currentFrameNumber = 1;
-
-    // Allow the next and previous frame buttons to auto-repeat
-    ui->previousPushButton->setAutoRepeat(true);
-    ui->previousPushButton->setAutoRepeatDelay(500);
-    ui->previousPushButton->setAutoRepeatInterval(10);
-    ui->nextPushButton->setAutoRepeat(true);
-    ui->nextPushButton->setAutoRepeatDelay(500);
-    ui->nextPushButton->setAutoRepeatInterval(10);
 
     // Set the window title
     this->setWindowTitle(tr("ld-analyse"));
@@ -201,6 +217,11 @@ void MainWindow::updateGuiUnloaded(void)
     ui->dropoutsPushButton->setText(tr("Show dropouts"));
     ui->fieldOrderPushButton->setText(tr("Reverse Field-order"));
 
+    // Set zoom button states
+    ui->zoomInPushButton->setEnabled(false);
+    ui->zoomOutPushButton->setEnabled(false);
+    ui->originalSizePushButton->setEnabled(false);
+
     // Hide the displayed frame
     hideFrame();
 
@@ -212,9 +233,6 @@ void MainWindow::updateGuiUnloaded(void)
 // Method to display a sequential frame
 void MainWindow::showFrame(qint32 frameNumber)
 {
-    // Get the QImage for the frame
-    QImage frameImage = tbcSource.getFrameImage(frameNumber);
-
     // Show the field numbers
     fieldNumberStatus.setText(" -  Fields: " + QString::number(tbcSource.getFirstFieldNumber(frameNumber)) + "/" +
                               QString::number(tbcSource.getSecondFieldNumber(frameNumber)));
@@ -238,11 +256,10 @@ void MainWindow::showFrame(qint32 frameNumber)
 
     // Add the QImage to the QLabel in the dialogue
     ui->frameViewerLabel->clear();
-    ui->frameViewerLabel->setSizePolicy(QSizePolicy::MinimumExpanding, QSizePolicy::MinimumExpanding);
-    ui->frameViewerLabel->setAlignment(Qt::AlignCenter);
-    ui->frameViewerLabel->setMinimumSize(frameImage.width(), frameImage.height());
     ui->frameViewerLabel->setScaledContents(false);
-    ui->frameViewerLabel->setPixmap(QPixmap::fromImage(frameImage));
+    ui->frameViewerLabel->setAlignment(Qt::AlignCenter);
+    ui->frameViewerLabel->setPixmap(QPixmap::fromImage(tbcSource.getFrameImage(frameNumber)));
+    ui->frameViewerLabel->setPixmap(ui->frameViewerLabel->pixmap()->scaled(scaleFactor * ui->frameViewerLabel->pixmap()->size()));
 
     // If the scope window is open, update it too (using the last scope line selected by the user)
     if (oscilloscopeDialog->isVisible()) {
@@ -397,14 +414,6 @@ void MainWindow::on_actionSNR_analysis_triggered()
     snrAnalysisDialog->show();
 }
 
-// Adjust the window to show the frame at 1:1 zoom
-void MainWindow::on_action1_1_Frame_size_triggered()
-{
-    this->resize(minimumSizeHint());
-    this->adjustSize();
-    this->resize(sizeHint());
-}
-
 // Save current frame as PNG
 void MainWindow::on_actionSave_frame_as_PNG_triggered()
 {
@@ -538,6 +547,58 @@ void MainWindow::on_fieldOrderPushButton_clicked()
 
     // Show the current frame
     showFrame(currentFrameNumber);
+}
+
+// Zoom in
+void MainWindow::on_actionZoom_In_triggered()
+{
+    on_zoomInPushButton_clicked();
+}
+
+// Zoom out
+void MainWindow::on_actionZoom_out_triggered()
+{
+    on_zoomOutPushButton_clicked();
+}
+
+// Original size 1:1 zoom
+void MainWindow::on_action1_1_Frame_size_triggered()
+{
+    on_originalSizePushButton_clicked();
+}
+
+// Zoom in
+void MainWindow::on_zoomInPushButton_clicked()
+{
+    qreal factor = 1.1;
+    if (((scaleFactor * factor) > 0.333) && ((scaleFactor * factor) < 3.0)) {
+        scaleFactor *= factor;
+    }
+
+    //ui->frameViewerLabel->resize(scaleFactor * ui->frameViewerLabel->pixmap()->size());
+    ui->frameViewerLabel->setPixmap(QPixmap::fromImage(tbcSource.getFrameImage(currentFrameNumber)));
+    ui->frameViewerLabel->setPixmap(ui->frameViewerLabel->pixmap()->scaled(scaleFactor * ui->frameViewerLabel->pixmap()->size()));
+}
+
+// Zoom out
+void MainWindow::on_zoomOutPushButton_clicked()
+{
+    qreal factor = 0.9;
+    if (((scaleFactor * factor) > 0.333) && ((scaleFactor * factor) < 3.0)) {
+        scaleFactor *= factor;
+    }
+
+    //ui->frameViewerLabel->resize(scaleFactor * ui->frameViewerLabel->pixmap()->size());
+    ui->frameViewerLabel->setPixmap(QPixmap::fromImage(tbcSource.getFrameImage(currentFrameNumber)));
+    ui->frameViewerLabel->setPixmap(ui->frameViewerLabel->pixmap()->scaled(scaleFactor * ui->frameViewerLabel->pixmap()->size()));
+}
+
+// Original size 1:1 zoom
+void MainWindow::on_originalSizePushButton_clicked()
+{
+    scaleFactor = 1.0;
+    ui->frameViewerLabel->setPixmap(QPixmap::fromImage(tbcSource.getFrameImage(currentFrameNumber)));
+    ui->frameViewerLabel->setPixmap(ui->frameViewerLabel->pixmap()->scaled(scaleFactor * ui->frameViewerLabel->pixmap()->size()));
 }
 
 void MainWindow::scanLineChangedSignalHandler(qint32 scanLine)
@@ -688,6 +749,8 @@ void MainWindow::on_finishedLoading()
         messageBox.setFixedSize(500, 200);
     }
 }
+
+
 
 
 

@@ -39,10 +39,10 @@ OscilloscopeDialog::OscilloscopeDialog(QWidget *parent) :
     ui->scanLineSpinBox->setMaximum(625);
 
     ui->previousPushButton->setAutoRepeat(true);
-    ui->previousPushButton->setAutoRepeatInterval(100);
+    ui->previousPushButton->setAutoRepeatInterval(50);
 
     ui->nextPushButton->setAutoRepeat(true);
-    ui->nextPushButton->setAutoRepeatInterval(100);
+    ui->nextPushButton->setAutoRepeatInterval(50);
 
     ui->previousPushButton->setFocusPolicy(Qt::NoFocus);
     ui->nextPushButton->setFocusPolicy(Qt::NoFocus);
