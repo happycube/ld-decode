@@ -171,7 +171,7 @@ void MainWindow::updateGuiLoaded(void)
     scaleFactor = 1.0;
 
     // Show the current frame
-    showFrame(currentFrameNumber);
+    showFrame();
 }
 
 // Method to update the GUI when a file is unloaded
@@ -231,14 +231,14 @@ void MainWindow::updateGuiUnloaded(void)
 }
 
 // Method to display a sequential frame
-void MainWindow::showFrame(qint32 frameNumber)
+void MainWindow::showFrame(void)
 {
     // Show the field numbers
-    fieldNumberStatus.setText(" -  Fields: " + QString::number(tbcSource.getFirstFieldNumber(frameNumber)) + "/" +
-                              QString::number(tbcSource.getSecondFieldNumber(frameNumber)));
+    fieldNumberStatus.setText(" -  Fields: " + QString::number(tbcSource.getFirstFieldNumber(currentFrameNumber)) + "/" +
+                              QString::number(tbcSource.getSecondFieldNumber(currentFrameNumber)));
 
     // If there are dropouts in the frame, highlight the show dropouts button
-    if (tbcSource.getIsDropoutPresent(frameNumber)) {
+    if (tbcSource.getIsDropoutPresent(currentFrameNumber)) {
         QPalette tempPalette = buttonPalette;
         tempPalette.setColor(QPalette::Button, QColor(Qt::lightGray));
         ui->dropoutsPushButton->setAutoFillBackground(true);
@@ -258,7 +258,7 @@ void MainWindow::showFrame(qint32 frameNumber)
     ui->frameViewerLabel->clear();
     ui->frameViewerLabel->setScaledContents(false);
     ui->frameViewerLabel->setAlignment(Qt::AlignCenter);
-    ui->frameViewerLabel->setPixmap(QPixmap::fromImage(tbcSource.getFrameImage(frameNumber)));
+    ui->frameViewerLabel->setPixmap(QPixmap::fromImage(tbcSource.getFrameImage(currentFrameNumber)));
     ui->frameViewerLabel->setPixmap(ui->frameViewerLabel->pixmap()->scaled(scaleFactor * ui->frameViewerLabel->pixmap()->size()));
 
     // If the scope window is open, update it too (using the last scope line selected by the user)
@@ -361,7 +361,7 @@ void MainWindow::on_frameNumberSpinBox_editingFinished()
         if (ui->frameNumberSpinBox->value() > tbcSource.getNumberOfFrames()) ui->frameNumberSpinBox->setValue(tbcSource.getNumberOfFrames());
         currentFrameNumber = ui->frameNumberSpinBox->value();
         ui->frameHorizontalSlider->setValue(currentFrameNumber);
-        showFrame(currentFrameNumber);
+        showFrame();
     }
 }
 
@@ -377,7 +377,7 @@ void MainWindow::on_frameHorizontalSlider_valueChanged(int value)
     // otherwisew we just ignore this
     if (ui->frameNumberSpinBox->isEnabled()) {
         ui->frameNumberSpinBox->setValue(currentFrameNumber);
-        showFrame(currentFrameNumber);
+        showFrame();
     }
 }
 
@@ -510,7 +510,7 @@ void MainWindow::on_videoPushButton_clicked()
     }
 
     // Show the current frame
-    showFrame(currentFrameNumber);
+    showFrame();
 }
 
 // Show/hide dropouts button clicked
@@ -525,7 +525,7 @@ void MainWindow::on_dropoutsPushButton_clicked()
     }
 
     // Show the current frame (why isn't this option passed?)
-    showFrame(currentFrameNumber);
+    showFrame();
 }
 
 // Normal/Reverse field order button clicked
@@ -546,7 +546,7 @@ void MainWindow::on_fieldOrderPushButton_clicked()
     }
 
     // Show the current frame
-    showFrame(currentFrameNumber);
+    showFrame();
 }
 
 // Zoom in

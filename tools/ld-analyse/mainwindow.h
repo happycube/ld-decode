@@ -118,7 +118,7 @@ private:
     void updateGuiLoaded(void);
     void updateGuiUnloaded(void);
 
-    void showFrame(qint32 frameNumber);
+    void showFrame(void);
     void hideFrame(void);
 
     void loadTbcFile(QString inputFileName);
