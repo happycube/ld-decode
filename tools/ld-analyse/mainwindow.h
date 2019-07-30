@@ -119,6 +119,7 @@ private:
     void updateGuiUnloaded(void);
 
     void showFrame(void);
+    void updateFrameViewer(void);
     void hideFrame(void);
 
     void loadTbcFile(QString inputFileName);

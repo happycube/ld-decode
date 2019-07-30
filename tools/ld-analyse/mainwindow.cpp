@@ -258,14 +258,20 @@ void MainWindow::showFrame(void)
     ui->frameViewerLabel->clear();
     ui->frameViewerLabel->setScaledContents(false);
     ui->frameViewerLabel->setAlignment(Qt::AlignCenter);
-    ui->frameViewerLabel->setPixmap(QPixmap::fromImage(tbcSource.getFrameImage(currentFrameNumber)));
-    ui->frameViewerLabel->setPixmap(ui->frameViewerLabel->pixmap()->scaled(scaleFactor * ui->frameViewerLabel->pixmap()->size()));
+    updateFrameViewer();
 
     // If the scope window is open, update it too (using the last scope line selected by the user)
     if (oscilloscopeDialog->isVisible()) {
         // Show the oscilloscope dialogue for the selected scan-line
         updateOscilloscopeDialogue(currentFrameNumber, lastScopeLine);
     }
+}
+
+// Redraw the frame viewer (for example, when scaleFactor has been changed)
+void MainWindow::updateFrameViewer(void)
+{
+    ui->frameViewerLabel->setPixmap(QPixmap::fromImage(tbcSource.getFrameImage(currentFrameNumber)));
+    ui->frameViewerLabel->setPixmap(ui->frameViewerLabel->pixmap()->scaled(scaleFactor * ui->frameViewerLabel->pixmap()->size()));
 }
 
 // Method to hide the current frame
@@ -575,9 +581,7 @@ void MainWindow::on_zoomInPushButton_clicked()
         scaleFactor *= factor;
     }
 
-    //ui->frameViewerLabel->resize(scaleFactor * ui->frameViewerLabel->pixmap()->size());
-    ui->frameViewerLabel->setPixmap(QPixmap::fromImage(tbcSource.getFrameImage(currentFrameNumber)));
-    ui->frameViewerLabel->setPixmap(ui->frameViewerLabel->pixmap()->scaled(scaleFactor * ui->frameViewerLabel->pixmap()->size()));
+    updateFrameViewer();
 }
 
 // Zoom out
@@ -588,17 +592,14 @@ void MainWindow::on_zoomOutPushButton_clicked()
         scaleFactor *= factor;
     }
 
-    //ui->frameViewerLabel->resize(scaleFactor * ui->frameViewerLabel->pixmap()->size());
-    ui->frameViewerLabel->setPixmap(QPixmap::fromImage(tbcSource.getFrameImage(currentFrameNumber)));
-    ui->frameViewerLabel->setPixmap(ui->frameViewerLabel->pixmap()->scaled(scaleFactor * ui->frameViewerLabel->pixmap()->size()));
+    updateFrameViewer();
 }
 
 // Original size 1:1 zoom
 void MainWindow::on_originalSizePushButton_clicked()
 {
     scaleFactor = 1.0;
-    ui->frameViewerLabel->setPixmap(QPixmap::fromImage(tbcSource.getFrameImage(currentFrameNumber)));
-    ui->frameViewerLabel->setPixmap(ui->frameViewerLabel->pixmap()->scaled(scaleFactor * ui->frameViewerLabel->pixmap()->size()));
+    updateFrameViewer();
 }
 
 void MainWindow::scanLineChangedSignalHandler(qint32 scanLine)
