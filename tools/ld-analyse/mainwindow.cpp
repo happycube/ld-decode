@@ -46,9 +46,8 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     sourceVideoStatus.setText(tr("No source video file loaded"));
     fieldNumberStatus.setText(tr(" -  Fields: ./."));
 
-    // Set the initial frame number and scale
+    // Set the initial frame number
     currentFrameNumber = 1;
-    scaleFactor = 1.0;
 
     // Add an event filter to the frame viewer label to catch mouse events
 //    ui->frameViewerLabel->installEventFilter(ui->frameViewerLabel);
@@ -62,8 +61,9 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     connect(&tbcSource, &TbcSource::busyLoading, this, &MainWindow::on_busyLoading);
     connect(&tbcSource, &TbcSource::finishedLoading, this, &MainWindow::on_finishedLoading);
 
-    // Load the window geometry from the configuration
+    // Load the window geometry and settings from the configuration
     restoreGeometry(configuration.getMainWindowGeometry());
+    scaleFactor = configuration.getMainWindowScaleFactor();
     vbiDialog->restoreGeometry(configuration.getVbiDialogGeometry());
     oscilloscopeDialog->restoreGeometry(configuration.getOscilloscopeDialogGeometry());
     dropoutAnalysisDialog->restoreGeometry(configuration.getDropoutAnalysisDialogGeometry());
@@ -83,8 +83,9 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
 
 MainWindow::~MainWindow()
 {
-    // Save the window geometry to the configuration
+    // Save the window geometry and settings to the configuration
     configuration.setMainWindowGeometry(saveGeometry());
+    configuration.setMainWindowScaleFactor(scaleFactor);
     configuration.setVbiDialogGeometry(vbiDialog->saveGeometry());
     configuration.setOscilloscopeDialogGeometry(oscilloscopeDialog->saveGeometry());
     configuration.setDropoutAnalysisDialogGeometry(dropoutAnalysisDialog->saveGeometry());
@@ -166,9 +167,6 @@ void MainWindow::updateGuiLoaded(void)
     statusText += QString::number(tbcSource.getNumberOfFrames());
     statusText += " sequential frames available";
     sourceVideoStatus.setText(statusText);
-
-    // Set the frame scale factor
-    scaleFactor = 1.0;
 
     // Show the current frame
     showFrame();
