@@ -271,7 +271,8 @@ void MainWindow::showFrame(void)
 void MainWindow::updateFrameViewer(void)
 {
     ui->frameViewerLabel->setPixmap(QPixmap::fromImage(tbcSource.getFrameImage(currentFrameNumber)));
-    ui->frameViewerLabel->setPixmap(ui->frameViewerLabel->pixmap()->scaled(scaleFactor * ui->frameViewerLabel->pixmap()->size()));
+    ui->frameViewerLabel->setPixmap(ui->frameViewerLabel->pixmap()->scaled(scaleFactor * ui->frameViewerLabel->pixmap()->size(),
+                                                                           Qt::IgnoreAspectRatio, Qt::SmoothTransformation));
 }
 
 // Method to hide the current frame
