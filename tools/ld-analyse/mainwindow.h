@@ -89,7 +89,6 @@ private slots:
     // Miscellaneous handlers
     void scanLineChangedSignalHandler(qint32 scanLine);
     void mousePressEvent(QMouseEvent *event);
-    void mouseOverQFrameSignalHandler(QMouseEvent *event);
 
     // Tbc Source signal handlers
     void on_busyLoading(QString infoMessage);

@@ -635,6 +635,7 @@ void MainWindow::on_originalSizePushButton_clicked()
 
 // Miscellaneous handler methods --------------------------------------------------------------------------------------
 
+// Handler called when another class changes the currenly selected scan line
 void MainWindow::scanLineChangedSignalHandler(qint32 scanLine)
 {
     qDebug() << "MainWindow::scanLineChangedSignalHandler(): Called with scanLine =" << scanLine;
@@ -675,43 +676,14 @@ void MainWindow::mousePressEvent(QMouseEvent *event)
         if (unscaledY > tbcSource.getFrameHeight()) unscaledY = tbcSource.getFrameHeight();
         if (unscaledY < 1) unscaledY = 1;
 
-        // Show the oscilloscope dialogue for the selected scan-line
-        updateOscilloscopeDialogue(unscaledY);
-        oscilloscopeDialog->show();
+        // Show the oscilloscope dialogue for the selected scan-line (if the right mouse mode is selected)
+        if (ui->mouseModePushButton->isChecked()) {
+            updateOscilloscopeDialogue(unscaledY);
+            oscilloscopeDialog->show();
 
-        // Remember the last line rendered
-        lastScopeLine = origin.y();
-
-        event->accept();
-    }
-}
-
-// Method to handle the mouse over event from the frame viewer label
-// (This updates the current line number in the status bar)
-void MainWindow::mouseOverQFrameSignalHandler(QMouseEvent *event)
-{
-    if (!tbcSource.getIsSourceLoaded()) return;
-
-    // Get the mouse position relative to our scene
-    QPoint origin = ui->frameViewerLabel->mapFromGlobal(QCursor::pos());
-
-    // Check that the mouse click is within bounds of the current picture
-    qreal offset = ((static_cast<qreal>(ui->frameViewerLabel->height()) -
-                     static_cast<qreal>(ui->frameViewerLabel->pixmap()->height())) / 2.0);
-
-    qint32 oX = origin.x();
-    qint32 oY = origin.y();
-
-    if (oX + 1 >= 0 &&
-            oY >= 0 &&
-            oX + 1 <= ui->frameViewerLabel->width() &&
-            oY <= ui->frameViewerLabel->height()) {
-
-        qreal unscaledYR = (static_cast<qreal>(tbcSource.getFrameHeight()) /
-                            static_cast<qreal>(ui->frameViewerLabel->pixmap()->height())) * static_cast<qreal>(oY - offset);
-        qint32 unscaledY = static_cast<qint32>(unscaledYR) + 1;
-        if (unscaledY > tbcSource.getFrameHeight()) unscaledY = tbcSource.getFrameHeight();
-        if (unscaledY < 1) unscaledY = 1;
+            // Remember the last line rendered
+            lastScopeLine = unscaledY;
+        }
 
         event->accept();
     }

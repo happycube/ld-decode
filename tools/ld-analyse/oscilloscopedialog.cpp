@@ -86,8 +86,6 @@ void OscilloscopeDialog::showTraceImage(TbcSource::ScanLineData scanLineData, qi
 
 QImage OscilloscopeDialog::getFieldLineTraceImage(TbcSource::ScanLineData scanLineData)
 {
-    qDebug() << "OscilloscopeDialog::getFieldLineTraceImage(): Called";
-
     // Get the display settings from the UI
     bool showYC = ui->YCcheckBox->isChecked();
     bool showY = ui->YcheckBox->isChecked();

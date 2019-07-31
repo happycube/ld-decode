@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1005</width>
-    <height>600</height>
+    <width>948</width>
+    <height>700</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -52,8 +52,8 @@
           <rect>
            <x>0</x>
            <y>0</y>
-           <width>983</width>
-           <height>455</height>
+           <width>926</width>
+           <height>555</height>
           </rect>
          </property>
          <layout class="QVBoxLayout" name="verticalLayout_2">
@@ -226,7 +226,8 @@
               <string/>
              </property>
              <property name="icon">
-              <iconset theme="zoom-in"/>
+              <iconset theme="zoom-in">
+               <normaloff>.</normaloff>.</iconset>
              </property>
             </widget>
            </item>
@@ -245,7 +246,8 @@
               <string/>
              </property>
              <property name="icon">
-              <iconset theme="zoom-out"/>
+              <iconset theme="zoom-out">
+               <normaloff>.</normaloff>.</iconset>
              </property>
             </widget>
            </item>
@@ -264,7 +266,39 @@
               <string/>
              </property>
              <property name="icon">
-              <iconset theme="zoom-original"/>
+              <iconset theme="zoom-original">
+               <normaloff>.</normaloff>.</iconset>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="mouseModePushButton">
+             <property name="minimumSize">
+              <size>
+               <width>30</width>
+               <height>30</height>
+              </size>
+             </property>
+             <property name="maximumSize">
+              <size>
+               <width>30</width>
+               <height>30</height>
+              </size>
+             </property>
+             <property name="toolTip">
+              <string>Enables mouse button to show scan line oscilloscope on click</string>
+             </property>
+             <property name="text">
+              <string/>
+             </property>
+             <property name="icon">
+              <iconset theme="mouse"/>
+             </property>
+             <property name="checkable">
+              <bool>true</bool>
+             </property>
+             <property name="checked">
+              <bool>false</bool>
              </property>
             </widget>
            </item>
@@ -343,7 +377,7 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>1005</width>
+     <width>948</width>
      <height>22</height>
     </rect>
    </property>
