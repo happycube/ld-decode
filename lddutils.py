@@ -336,6 +336,11 @@ class LoadFFmpeg:
         self.rewind_size = 2 * 1024 * 1024
         self.rewind_buf = b''
 
+    def __del__(self):
+        if self.ffmpeg is not None:
+            self.ffmpeg.kill()
+            self.ffmpeg.wait()
+
     def _read_data(self, count):
         """Read data as bytes from ffmpeg, append it to the rewind buffer, and
         return it. May return less than count bytes if EOF is reached."""
