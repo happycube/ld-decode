@@ -162,8 +162,6 @@ sample: starting sample #
 readlen: # of samples
 ```
 Returns data if successful, or None or an upstream exception if not (including if not enough data is available)
-
-This might probably need to become a full object once FLAC support is added.
 '''
 
 def make_loader(filename):
