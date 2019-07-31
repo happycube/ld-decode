@@ -164,18 +164,41 @@ readlen: # of samples
 Returns data if successful, or None or an upstream exception if not (including if not enough data is available)
 '''
 
-def make_loader(filename):
-    """Return an appropriate loader function for filename."""
+def make_loader(filename, inputfreq=None):
+    """Return an appropriate loader function object for filename.
 
-    if filename[-3:] == 'lds':
+    If inputfreq is specified, it gives the sample rate in MHz of the source
+    file, and the loader will resample from that rate to 40 MHz. Any sample
+    rate specified by the source file's metadata will be ignored, as some
+    formats can't represent typical RF sample rates accurately."""
+
+    if inputfreq is not None:
+        # We're resampling, so we have to use ffmpeg.
+
+        if filename.endswith('.r16'):
+            input_args = ['-f', 's16le']
+        elif filename.endswith('.r8'):
+            input_args = ['-f', 'u8']
+        elif filename.endswith('.lds') or filename.endswith('.r30'):
+            raise ValueError('File format not supported when resampling: ' + filename)
+        else:
+            # Assume ffmpeg will recognise this format itself.
+            input_args = []
+
+        # Use asetrate first to override the input file's sample rate.
+        output_args = ['-filter:a', 'asetrate=' + str(inputfreq * 1e6) + ',aresample=' + str(40e6)]
+
+        return LoadFFmpeg(input_args=input_args, output_args=output_args)
+
+    elif filename.endswith('.lds'):
         return load_packed_data_4_40
-    elif filename[-3:] == 'r30':
+    elif filename.endswith('.r30'):
         return load_packed_data_3_32
-    elif filename[-3:] == 'r16':
+    elif filename.endswith('.r16'):
         return load_unpacked_data_s16
-    elif filename[-2:] == 'r8':
+    elif filename.endswith('.r8'):
         return load_unpacked_data_u8
-    elif filename[-7:] == 'raw.oga':
+    elif filename.endswith('raw.oga'):
         return LoadFFmpeg()
     else:
         return load_packed_data_4_40
@@ -297,7 +320,10 @@ def load_packed_data_4_40(infile, sample, readlen):
 class LoadFFmpeg:
     """Load samples from a wide variety of formats using ffmpeg."""
 
-    def __init__(self):
+    def __init__(self, input_args=[], output_args=[]):
+        self.input_args = input_args
+        self.output_args = output_args
+
         # ffmpeg subprocess
         self.ffmpeg = None
 
@@ -327,8 +353,11 @@ class LoadFFmpeg:
         readlen_bytes = readlen * 2
 
         if self.ffmpeg is None:
-            command = ["ffmpeg", "-hide_banner", "-loglevel", "error",
-                       "-i", "-", "-f", "s16le", "-c:a", "pcm_s16le", "-"]
+            command = ["ffmpeg", "-hide_banner", "-loglevel", "error"]
+            command += self.input_args
+            command += ["-i", "-"]
+            command += self.output_args
+            command += ["-c:a", "pcm_s16le", "-f", "s16le", "-"]
             self.ffmpeg = subprocess.Popen(command, stdin=infile,
                                            stdout=subprocess.PIPE)
 
