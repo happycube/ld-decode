@@ -81,11 +81,11 @@ public:
     VbiDecoder::Vbi getFrameVbi(qint32 frameNumber);
     bool getIsFrameVbiValid(qint32 frameNumber);
 
-    QVector<qreal> getBlackSnrData();
-    QVector<qreal> getWhiteSnrData();
-    QVector<qreal> getDropOutData();
-    qint32 getDataSize();
-    qint32 getFieldsPerDataPoint();
+    QVector<qreal> getBlackSnrGraphData();
+    QVector<qreal> getWhiteSnrGraphData();
+    QVector<qreal> getDropOutGraphData();
+    qint32 getGraphDataSize();
+    qint32 getFieldsPerGraphDataPoint();
 
     bool getIsDropoutPresent(qint32 frameNumber);
     ScanLineData getScanLineData(qint32 frameNumber, qint32 scanLine);
@@ -106,10 +106,10 @@ private:
     bool sourceReady;
 
     // Frame data
-    QVector<qreal> blackSnrData;
-    QVector<qreal> whiteSnrData;
-    QVector<qreal> dropoutData;
-    qint32 fieldsPerDataPoint;
+    QVector<qreal> blackSnrGraphData;
+    QVector<qreal> whiteSnrGraphData;
+    QVector<qreal> dropoutGraphData;
+    qint32 fieldsPerGraphDataPoint;
 
     // Frame image options
     bool chromaOn;

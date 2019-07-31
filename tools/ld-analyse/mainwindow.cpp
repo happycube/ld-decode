@@ -41,17 +41,12 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
 
     // Add a status bar to show the state of the source video file
     ui->statusBar->addWidget(&sourceVideoStatus);
-    ui->statusBar->addPermanentWidget(&frameLineStatus);
     ui->statusBar->addWidget(&fieldNumberStatus);
     sourceVideoStatus.setText(tr("No source video file loaded"));
     fieldNumberStatus.setText(tr(" -  Fields: ./."));
 
     // Set the initial frame number
     currentFrameNumber = 1;
-
-    // Add an event filter to the frame viewer label to catch mouse events
-//    ui->frameViewerLabel->installEventFilter(ui->frameViewerLabel);
-//    connect(ui->frameViewerLabel, &FrameQLabel::mouseOverQFrame, this, &MainWindow::mouseOverQFrameSignalHandler);
 
     // Connect to the scan line changed signal from the oscilloscope dialogue
     connect(oscilloscopeDialog, &OscilloscopeDialog::scanLineChanged, this, &MainWindow::scanLineChangedSignalHandler);
@@ -100,8 +95,10 @@ MainWindow::~MainWindow()
     delete ui;
 }
 
+// Update GUI methods for when TBC source files are loaded and unloaded -----------------------------------------------
+
 // Method to update the GUI when a file is loaded
-void MainWindow::updateGuiLoaded(void)
+void MainWindow::updateGuiLoaded()
 {
     // Enable the frame controls
     ui->frameNumberSpinBox->setEnabled(true);
@@ -177,7 +174,7 @@ void MainWindow::updateGuiLoaded(void)
 }
 
 // Method to update the GUI when a file is unloaded
-void MainWindow::updateGuiUnloaded(void)
+void MainWindow::updateGuiUnloaded()
 {
     // Disable the frame controls
     ui->frameNumberSpinBox->setEnabled(false);
@@ -236,8 +233,10 @@ void MainWindow::updateGuiUnloaded(void)
     dropoutAnalysisDialog->hide();
 }
 
+// Frame display methods ----------------------------------------------------------------------------------------------
+
 // Method to display a sequential frame
-void MainWindow::showFrame(void)
+void MainWindow::showFrame()
 {
     // Show the field numbers
     fieldNumberStatus.setText(" -  Fields: " + QString::number(tbcSource.getFirstFieldNumber(currentFrameNumber)) + "/" +
@@ -269,12 +268,12 @@ void MainWindow::showFrame(void)
     // If the scope window is open, update it too (using the last scope line selected by the user)
     if (oscilloscopeDialog->isVisible()) {
         // Show the oscilloscope dialogue for the selected scan-line
-        updateOscilloscopeDialogue(currentFrameNumber, lastScopeLine);
+        updateOscilloscopeDialogue(lastScopeLine);
     }
 }
 
 // Redraw the frame viewer (for example, when scaleFactor has been changed)
-void MainWindow::updateFrameViewer(void)
+void MainWindow::updateFrameViewer()
 {
     ui->frameViewerLabel->setPixmap(QPixmap::fromImage(tbcSource.getFrameImage(currentFrameNumber)));
     ui->frameViewerLabel->setPixmap(ui->frameViewerLabel->pixmap()->scaled(scaleFactor * ui->frameViewerLabel->pixmap()->size(),
@@ -282,18 +281,12 @@ void MainWindow::updateFrameViewer(void)
 }
 
 // Method to hide the current frame
-void MainWindow::hideFrame(void)
+void MainWindow::hideFrame()
 {
     ui->frameViewerLabel->clear();
 }
 
-void MainWindow::on_actionExit_triggered()
-{
-    qDebug() << "MainWindow::on_actionExit_triggered(): Called";
-
-    // Quit the application
-    qApp->quit();
-}
+// Misc private methods -----------------------------------------------------------------------------------------------
 
 // Load a TBC file based on the passed file name
 void MainWindow::loadTbcFile(QString inputFileName)
@@ -308,6 +301,24 @@ void MainWindow::loadTbcFile(QString inputFileName)
     tbcSource.loadSource(inputFileName);
 
     // Note: loading continues in the background...
+}
+
+// Method to update the line oscilloscope based on the frame number and scan line
+void MainWindow::updateOscilloscopeDialogue(qint32 scanLine)
+{
+    // Update the oscilloscope dialogue
+    oscilloscopeDialog->showTraceImage(tbcSource.getScanLineData(currentFrameNumber, scanLine), scanLine,
+                                       tbcSource.getFrameHeight());
+}
+
+// Menu bar signal handlers -------------------------------------------------------------------------------------------
+
+void MainWindow::on_actionExit_triggered()
+{
+    qDebug() << "MainWindow::on_actionExit_triggered(): Called";
+
+    // Quit the application
+    qApp->quit();
 }
 
 // Load a TBC file based on the file selection from the GUI
@@ -326,88 +337,23 @@ void MainWindow::on_actionOpen_TBC_file_triggered()
     }
 }
 
-// Previous frame button has been clicked
-void MainWindow::on_previousPushButton_clicked()
-{
-    currentFrameNumber--;
-    if (currentFrameNumber < 1) {
-        currentFrameNumber = 1;
-    } else {
-        ui->frameNumberSpinBox->setValue(currentFrameNumber);
-        ui->frameHorizontalSlider->setValue(currentFrameNumber);
-    }
-}
-
-// Next frame button has been clicked
-void MainWindow::on_nextPushButton_clicked()
-{
-    currentFrameNumber++;
-    if (currentFrameNumber > tbcSource.getNumberOfFrames()) {
-        currentFrameNumber = tbcSource.getNumberOfFrames();
-    } else {
-        ui->frameNumberSpinBox->setValue(currentFrameNumber);
-        ui->frameHorizontalSlider->setValue(currentFrameNumber);
-    }
-}
-
-// Skip to end frame button has been clicked
-void MainWindow::on_endFramePushButton_clicked()
-{
-    currentFrameNumber = tbcSource.getNumberOfFrames();
-    ui->frameNumberSpinBox->setValue(currentFrameNumber);
-    ui->frameHorizontalSlider->setValue(currentFrameNumber);
-}
-
-// Skip to start frame button has been clicked
-void MainWindow::on_startFramePushButton_clicked()
-{
-    currentFrameNumber = 1;
-    ui->frameNumberSpinBox->setValue(currentFrameNumber);
-    ui->frameHorizontalSlider->setValue(currentFrameNumber);
-}
-
-// Frame number spin box editing has finished
-void MainWindow::on_frameNumberSpinBox_editingFinished()
-{
-    if (ui->frameNumberSpinBox->value() != currentFrameNumber) {
-        if (ui->frameNumberSpinBox->value() < 1) ui->frameNumberSpinBox->setValue(1);
-        if (ui->frameNumberSpinBox->value() > tbcSource.getNumberOfFrames()) ui->frameNumberSpinBox->setValue(tbcSource.getNumberOfFrames());
-        currentFrameNumber = ui->frameNumberSpinBox->value();
-        ui->frameHorizontalSlider->setValue(currentFrameNumber);
-        showFrame();
-    }
-}
-
-// Frame slider value has changed
-void MainWindow::on_frameHorizontalSlider_valueChanged(int value)
-{
-    (void)value;
-    if (!tbcSource.getIsSourceLoaded()) return;
-
-    currentFrameNumber = ui->frameHorizontalSlider->value();
-
-    // If the spinbox is enabled, we can update the current frame number
-    // otherwisew we just ignore this
-    if (ui->frameNumberSpinBox->isEnabled()) {
-        ui->frameNumberSpinBox->setValue(currentFrameNumber);
-        showFrame();
-    }
-}
-
+// Display the scan line oscilloscope view
 void MainWindow::on_actionLine_scope_triggered()
 {
     if (tbcSource.getIsSourceLoaded()) {
         // Show the oscilloscope dialogue for the selected scan-line
-        updateOscilloscopeDialogue(currentFrameNumber, lastScopeLine);
+        updateOscilloscopeDialogue(lastScopeLine);
         oscilloscopeDialog->show();
     }
 }
 
+// Show the about window
 void MainWindow::on_actionAbout_ld_analyse_triggered()
 {
     aboutDialog->show();
 }
 
+// Show the VBI window
 void MainWindow::on_actionVBI_triggered()
 {
     // Show the VBI dialogue
@@ -415,12 +361,14 @@ void MainWindow::on_actionVBI_triggered()
     vbiDialog->show();
 }
 
+// Show the drop out analysis graph
 void MainWindow::on_actionDropout_analysis_triggered()
 {
     // Show the dropout analysis dialogue
     dropoutAnalysisDialog->show();
 }
 
+// Show the SNR analysis graph
 void MainWindow::on_actionSNR_analysis_triggered()
 {
     // Show the SNR analysis dialogue
@@ -503,12 +451,106 @@ void MainWindow::on_actionSave_metadata_as_CSV_triggered()
     }
 }
 
-// Method to update the line oscilloscope based on the frame number and scan line
-void MainWindow::updateOscilloscopeDialogue(qint32 frameNumber, qint32 scanLine)
+// Zoom in menu option
+void MainWindow::on_actionZoom_In_triggered()
 {
-    // Update the oscilloscope dialogue
-    oscilloscopeDialog->showTraceImage(tbcSource.getScanLineData(frameNumber, scanLine), scanLine,
-                                       tbcSource.getFrameHeight());
+    on_zoomInPushButton_clicked();
+}
+
+// Zoom out menu option
+void MainWindow::on_actionZoom_Out_triggered()
+{
+    on_zoomOutPushButton_clicked();
+}
+
+// Original size 1:1 zoom menu option
+void MainWindow::on_actionZoom_1x_triggered()
+{
+    on_originalSizePushButton_clicked();
+}
+
+// 2:1 zoom menu option
+void MainWindow::on_actionZoom_2x_triggered()
+{
+    scaleFactor = 2.0;
+    updateFrameViewer();
+}
+
+// 3:1 zoom menu option
+void MainWindow::on_actionZoom_3x_triggered()
+{
+    scaleFactor = 3.0;
+    updateFrameViewer();
+}
+
+// Media control frame signal handlers --------------------------------------------------------------------------------
+
+// Previous frame button has been clicked
+void MainWindow::on_previousPushButton_clicked()
+{
+    currentFrameNumber--;
+    if (currentFrameNumber < 1) {
+        currentFrameNumber = 1;
+    } else {
+        ui->frameNumberSpinBox->setValue(currentFrameNumber);
+        ui->frameHorizontalSlider->setValue(currentFrameNumber);
+    }
+}
+
+// Next frame button has been clicked
+void MainWindow::on_nextPushButton_clicked()
+{
+    currentFrameNumber++;
+    if (currentFrameNumber > tbcSource.getNumberOfFrames()) {
+        currentFrameNumber = tbcSource.getNumberOfFrames();
+    } else {
+        ui->frameNumberSpinBox->setValue(currentFrameNumber);
+        ui->frameHorizontalSlider->setValue(currentFrameNumber);
+    }
+}
+
+// Skip to end frame button has been clicked
+void MainWindow::on_endFramePushButton_clicked()
+{
+    currentFrameNumber = tbcSource.getNumberOfFrames();
+    ui->frameNumberSpinBox->setValue(currentFrameNumber);
+    ui->frameHorizontalSlider->setValue(currentFrameNumber);
+}
+
+// Skip to start frame button has been clicked
+void MainWindow::on_startFramePushButton_clicked()
+{
+    currentFrameNumber = 1;
+    ui->frameNumberSpinBox->setValue(currentFrameNumber);
+    ui->frameHorizontalSlider->setValue(currentFrameNumber);
+}
+
+// Frame number spin box editing has finished
+void MainWindow::on_frameNumberSpinBox_editingFinished()
+{
+    if (ui->frameNumberSpinBox->value() != currentFrameNumber) {
+        if (ui->frameNumberSpinBox->value() < 1) ui->frameNumberSpinBox->setValue(1);
+        if (ui->frameNumberSpinBox->value() > tbcSource.getNumberOfFrames()) ui->frameNumberSpinBox->setValue(tbcSource.getNumberOfFrames());
+        currentFrameNumber = ui->frameNumberSpinBox->value();
+        ui->frameHorizontalSlider->setValue(currentFrameNumber);
+        showFrame();
+    }
+}
+
+// Frame slider value has changed
+void MainWindow::on_frameHorizontalSlider_valueChanged(int value)
+{
+    (void)value;
+    if (!tbcSource.getIsSourceLoaded()) return;
+
+    currentFrameNumber = ui->frameHorizontalSlider->value();
+
+    // If the spinbox is enabled, we can update the current frame number
+    // otherwisew we just ignore this
+    if (ui->frameNumberSpinBox->isEnabled()) {
+        ui->frameNumberSpinBox->setValue(currentFrameNumber);
+        showFrame();
+    }
 }
 
 // Source/Chroma select button clicked
@@ -563,38 +605,6 @@ void MainWindow::on_fieldOrderPushButton_clicked()
 }
 
 // Zoom in
-void MainWindow::on_actionZoom_In_triggered()
-{
-    on_zoomInPushButton_clicked();
-}
-
-// Zoom out
-void MainWindow::on_actionZoom_Out_triggered()
-{
-    on_zoomOutPushButton_clicked();
-}
-
-// Original size 1:1 zoom
-void MainWindow::on_actionZoom_1x_triggered()
-{
-    on_originalSizePushButton_clicked();
-}
-
-// 2:1 zoom
-void MainWindow::on_actionZoom_2x_triggered()
-{
-    scaleFactor = 2.0;
-    updateFrameViewer();
-}
-
-// 3:1 zoom
-void MainWindow::on_actionZoom_3x_triggered()
-{
-    scaleFactor = 3.0;
-    updateFrameViewer();
-}
-
-// Zoom in
 void MainWindow::on_zoomInPushButton_clicked()
 {
     qreal factor = 1.1;
@@ -623,13 +633,15 @@ void MainWindow::on_originalSizePushButton_clicked()
     updateFrameViewer();
 }
 
+// Miscellaneous handler methods --------------------------------------------------------------------------------------
+
 void MainWindow::scanLineChangedSignalHandler(qint32 scanLine)
 {
     qDebug() << "MainWindow::scanLineChangedSignalHandler(): Called with scanLine =" << scanLine;
 
     if (tbcSource.getIsSourceLoaded()) {
         // Show the oscilloscope dialogue for the selected scan-line
-        updateOscilloscopeDialogue(currentFrameNumber, scanLine);
+        updateOscilloscopeDialogue(scanLine);
         oscilloscopeDialog->show();
 
         // Remember the last line rendered
@@ -664,7 +676,7 @@ void MainWindow::mousePressEvent(QMouseEvent *event)
         if (unscaledY < 1) unscaledY = 1;
 
         // Show the oscilloscope dialogue for the selected scan-line
-        updateOscilloscopeDialogue(currentFrameNumber, unscaledY);
+        updateOscilloscopeDialogue(unscaledY);
         oscilloscopeDialog->show();
 
         // Remember the last line rendered
@@ -701,7 +713,6 @@ void MainWindow::mouseOverQFrameSignalHandler(QMouseEvent *event)
         if (unscaledY > tbcSource.getFrameHeight()) unscaledY = tbcSource.getFrameHeight();
         if (unscaledY < 1) unscaledY = 1;
 
-        frameLineStatus.setText("Line: " + QString::number(unscaledY));
         event->accept();
     }
 }
@@ -741,14 +752,14 @@ void MainWindow::on_finishedLoading()
         snrAnalysisDialog->startUpdate();
 
         qint32 fieldNumber = 1;
-        for (qint32 i = 0; i < tbcSource.getDataSize(); i++) {
-            dropoutAnalysisDialog->addDataPoint(fieldNumber, tbcSource.getDropOutData()[i]);
-            snrAnalysisDialog->addDataPoint(fieldNumber, tbcSource.getBlackSnrData()[i], tbcSource.getWhiteSnrData()[i]);
-            fieldNumber += tbcSource.getFieldsPerDataPoint();
+        for (qint32 i = 0; i < tbcSource.getGraphDataSize(); i++) {
+            dropoutAnalysisDialog->addDataPoint(fieldNumber, tbcSource.getDropOutGraphData()[i]);
+            snrAnalysisDialog->addDataPoint(fieldNumber, tbcSource.getBlackSnrGraphData()[i], tbcSource.getWhiteSnrGraphData()[i]);
+            fieldNumber += tbcSource.getFieldsPerGraphDataPoint();
         }
 
-        dropoutAnalysisDialog->finishUpdate(tbcSource.getNumberOfFields(), tbcSource.getFieldsPerDataPoint());
-        snrAnalysisDialog->finishUpdate(tbcSource.getNumberOfFields(), tbcSource.getFieldsPerDataPoint());
+        dropoutAnalysisDialog->finishUpdate(tbcSource.getNumberOfFields(), tbcSource.getFieldsPerGraphDataPoint());
+        snrAnalysisDialog->finishUpdate(tbcSource.getNumberOfFields(), tbcSource.getFieldsPerGraphDataPoint());
 
         // Update the GUI
         updateGuiLoaded();
@@ -771,15 +782,3 @@ void MainWindow::on_finishedLoading()
         messageBox.setFixedSize(500, 200);
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-

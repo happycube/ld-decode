@@ -56,41 +56,44 @@ public:
     ~MainWindow();
 
 private slots:
+    // Menu bar handlers
     void on_actionExit_triggered();
     void on_actionOpen_TBC_file_triggered();
-    void on_previousPushButton_clicked();
-    void on_nextPushButton_clicked();
-    void on_endFramePushButton_clicked();
-    void on_startFramePushButton_clicked();
-    void on_frameNumberSpinBox_editingFinished();
     void on_actionLine_scope_triggered();
     void on_actionAbout_ld_analyse_triggered();
     void on_actionVBI_triggered();
-
-    void mousePressEvent(QMouseEvent *event);
-    void mouseOverQFrameSignalHandler(QMouseEvent *event);
-    void scanLineChangedSignalHandler(qint32 scanLine);
-
     void on_actionDropout_analysis_triggered();
-    void on_actionSave_frame_as_PNG_triggered();
-    void on_frameHorizontalSlider_valueChanged(int value);
     void on_actionSNR_analysis_triggered();
+    void on_actionSave_frame_as_PNG_triggered();
     void on_actionSave_metadata_as_CSV_triggered();
-    void on_videoPushButton_clicked();
-    void on_dropoutsPushButton_clicked();
-    void on_fieldOrderPushButton_clicked();
-
-    void on_busyLoading(QString infoMessage);
-    void on_finishedLoading();
-
     void on_actionZoom_In_triggered();
     void on_actionZoom_Out_triggered();
     void on_actionZoom_1x_triggered();
     void on_actionZoom_2x_triggered();
     void on_actionZoom_3x_triggered();
+
+    // Media control frame handlers
+    void on_previousPushButton_clicked();
+    void on_nextPushButton_clicked();
+    void on_endFramePushButton_clicked();
+    void on_startFramePushButton_clicked();
+    void on_frameNumberSpinBox_editingFinished();
+    void on_frameHorizontalSlider_valueChanged(int value);
+    void on_videoPushButton_clicked();
+    void on_dropoutsPushButton_clicked();
+    void on_fieldOrderPushButton_clicked();
     void on_zoomInPushButton_clicked();
     void on_zoomOutPushButton_clicked();
     void on_originalSizePushButton_clicked();
+
+    // Miscellaneous handlers
+    void scanLineChangedSignalHandler(qint32 scanLine);
+    void mousePressEvent(QMouseEvent *event);
+    void mouseOverQFrameSignalHandler(QMouseEvent *event);
+
+    // Tbc Source signal handlers
+    void on_busyLoading(QString infoMessage);
+    void on_finishedLoading();
 
 private:
     Ui::MainWindow *ui;
@@ -106,26 +109,25 @@ private:
     // Class globals
     Configuration configuration;
     QLabel sourceVideoStatus;
-    QLabel frameLineStatus;
     QLabel fieldNumberStatus;
     TbcSource tbcSource;
     qint32 lastScopeLine;
     qint32 currentFrameNumber;
-
     qreal scaleFactor;
-
-    // Button state
     QPalette buttonPalette;
 
-    void updateGuiLoaded(void);
-    void updateGuiUnloaded(void);
+    // Update GUI methods
+    void updateGuiLoaded();
+    void updateGuiUnloaded();
 
-    void showFrame(void);
-    void updateFrameViewer(void);
-    void hideFrame(void);
+    // Frame display methods
+    void showFrame();
+    void updateFrameViewer();
+    void hideFrame();
 
+    // TBC source signal handlers
     void loadTbcFile(QString inputFileName);
-    void updateOscilloscopeDialogue(qint32 frameNumber, qint32 scanLine);
+    void updateOscilloscopeDialogue(qint32 scanLine);
 };
 
 #endif // MAINWINDOW_H

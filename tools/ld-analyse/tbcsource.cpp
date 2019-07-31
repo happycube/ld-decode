@@ -34,7 +34,7 @@ TbcSource::TbcSource(QObject *parent) : QObject(parent)
     dropoutsOn = false;
     reverseFoOn = false;
 
-    fieldsPerDataPoint = 0;
+    fieldsPerGraphDataPoint = 0;
 }
 
 // Public methods -----------------------------------------------------------------------------------------------------
@@ -229,34 +229,34 @@ qint32 TbcSource::getFrameWidth()
 }
 
 // Get black SNR data for graphing
-QVector<qreal> TbcSource::getBlackSnrData()
+QVector<qreal> TbcSource::getBlackSnrGraphData()
 {
-    return blackSnrData;
+    return blackSnrGraphData;
 }
 
 // Get white SNR data for graphing
-QVector<qreal> TbcSource::getWhiteSnrData()
+QVector<qreal> TbcSource::getWhiteSnrGraphData()
 {
-    return whiteSnrData;
+    return whiteSnrGraphData;
 }
 
 // Get dropout data for graphing
-QVector<qreal> TbcSource::getDropOutData()
+QVector<qreal> TbcSource::getDropOutGraphData()
 {
-    return dropoutData;
+    return dropoutGraphData;
 }
 
 // Method to get the size of the graphing data
-qint32 TbcSource::getDataSize()
+qint32 TbcSource::getGraphDataSize()
 {
     // All data vectors are the same size, just return the size on one
-    return dropoutData.size();
+    return dropoutGraphData.size();
 }
 
 // Method to get the number of fields averaged into each graphing data point
-qint32 TbcSource::getFieldsPerDataPoint()
+qint32 TbcSource::getFieldsPerGraphDataPoint()
 {
-    return fieldsPerDataPoint;
+    return fieldsPerGraphDataPoint;
 }
 
 // Method returns true if frame contains dropouts
@@ -542,22 +542,22 @@ QImage TbcSource::generateQImage(qint32 firstFieldNumber, qint32 secondFieldNumb
 // We do these both at the same time to reduce calls to the metadata
 void TbcSource::generateData(qint32 _targetDataPoints)
 {
-    dropoutData.clear();
-    blackSnrData.clear();
-    whiteSnrData.clear();
+    dropoutGraphData.clear();
+    blackSnrGraphData.clear();
+    whiteSnrGraphData.clear();
 
     qreal targetDataPoints = static_cast<qreal>(_targetDataPoints);
     qreal averageWidth = qRound(ldDecodeMetaData.getNumberOfFields() / targetDataPoints);
     if (averageWidth < 1) averageWidth = 1; // Ensure we don't divide by zero
     qint32 dataPoints = ldDecodeMetaData.getNumberOfFields() / static_cast<qint32>(averageWidth);
-    fieldsPerDataPoint = ldDecodeMetaData.getNumberOfFields() / dataPoints;
+    fieldsPerGraphDataPoint = ldDecodeMetaData.getNumberOfFields() / dataPoints;
 
     qint32 fieldNumber = 1;
     for (qint32 dpCount = 0; dpCount < dataPoints; dpCount++) {
         qreal doLength = 0;
         qreal blackSnrTotal = 0;
         qreal whiteSnrTotal = 0;
-        for (qint32 avCount = 0; avCount < fieldsPerDataPoint; avCount++) {
+        for (qint32 avCount = 0; avCount < fieldsPerGraphDataPoint; avCount++) {
             LdDecodeMetaData::Field field = ldDecodeMetaData.getField(fieldNumber);
 
             // Get the DOs
@@ -577,14 +577,14 @@ void TbcSource::generateData(qint32 _targetDataPoints)
         }
 
         // Calculate the average
-        doLength = doLength / static_cast<qreal>(fieldsPerDataPoint);
-        blackSnrTotal = blackSnrTotal / static_cast<qreal>(fieldsPerDataPoint);
-        whiteSnrTotal = whiteSnrTotal / static_cast<qreal>(fieldsPerDataPoint);
+        doLength = doLength / static_cast<qreal>(fieldsPerGraphDataPoint);
+        blackSnrTotal = blackSnrTotal / static_cast<qreal>(fieldsPerGraphDataPoint);
+        whiteSnrTotal = whiteSnrTotal / static_cast<qreal>(fieldsPerGraphDataPoint);
 
         // Add the result to the vectors
-        dropoutData.append(doLength);
-        blackSnrData.append(blackSnrTotal);
-        whiteSnrData.append(whiteSnrTotal);
+        dropoutGraphData.append(doLength);
+        blackSnrGraphData.append(blackSnrTotal);
+        whiteSnrGraphData.append(whiteSnrTotal);
     }
 }
 
