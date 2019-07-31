@@ -378,8 +378,10 @@
      <string>View</string>
     </property>
     <addaction name="actionZoom_In"/>
-    <addaction name="actionZoom_out"/>
-    <addaction name="action1_1_Frame_size"/>
+    <addaction name="actionZoom_Out"/>
+    <addaction name="actionZoom_1x"/>
+    <addaction name="actionZoom_2x"/>
+    <addaction name="actionZoom_3x"/>
    </widget>
    <addaction name="menuFile"/>
    <addaction name="menuView"/>
@@ -440,12 +442,28 @@
     <string>Ctrl+M</string>
    </property>
   </action>
-  <action name="action1_1_Frame_size">
+  <action name="actionZoom_1x">
    <property name="text">
-    <string>1:1 Frame size</string>
+    <string>Zoom to original size</string>
    </property>
    <property name="shortcut">
     <string>Ctrl+1</string>
+   </property>
+  </action>
+  <action name="actionZoom_2x">
+   <property name="text">
+    <string>Zoom to 2x size</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+2</string>
+   </property>
+  </action>
+  <action name="actionZoom_3x">
+   <property name="text">
+    <string>Zoom to 3x size</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+3</string>
    </property>
   </action>
   <action name="actionDropout_analysis">
@@ -489,10 +507,16 @@
    <property name="text">
     <string>Zoom In</string>
    </property>
+   <property name="shortcut">
+    <string>Ctrl++</string>
+   </property>
   </action>
-  <action name="actionZoom_out">
+  <action name="actionZoom_Out">
    <property name="text">
     <string>Zoom Out</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+-</string>
    </property>
   </action>
  </widget>

@@ -46,9 +46,8 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     sourceVideoStatus.setText(tr("No source video file loaded"));
     fieldNumberStatus.setText(tr(" -  Fields: ./."));
 
-    // Set the initial frame number and scale
+    // Set the initial frame number
     currentFrameNumber = 1;
-    scaleFactor = 1.0;
 
     // Add an event filter to the frame viewer label to catch mouse events
 //    ui->frameViewerLabel->installEventFilter(ui->frameViewerLabel);
@@ -62,8 +61,9 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     connect(&tbcSource, &TbcSource::busyLoading, this, &MainWindow::on_busyLoading);
     connect(&tbcSource, &TbcSource::finishedLoading, this, &MainWindow::on_finishedLoading);
 
-    // Load the window geometry from the configuration
+    // Load the window geometry and settings from the configuration
     restoreGeometry(configuration.getMainWindowGeometry());
+    scaleFactor = configuration.getMainWindowScaleFactor();
     vbiDialog->restoreGeometry(configuration.getVbiDialogGeometry());
     oscilloscopeDialog->restoreGeometry(configuration.getOscilloscopeDialogGeometry());
     dropoutAnalysisDialog->restoreGeometry(configuration.getDropoutAnalysisDialogGeometry());
@@ -83,8 +83,9 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
 
 MainWindow::~MainWindow()
 {
-    // Save the window geometry to the configuration
+    // Save the window geometry and settings to the configuration
     configuration.setMainWindowGeometry(saveGeometry());
+    configuration.setMainWindowScaleFactor(scaleFactor);
     configuration.setVbiDialogGeometry(vbiDialog->saveGeometry());
     configuration.setOscilloscopeDialogGeometry(oscilloscopeDialog->saveGeometry());
     configuration.setDropoutAnalysisDialogGeometry(dropoutAnalysisDialog->saveGeometry());
@@ -135,7 +136,11 @@ void MainWindow::updateGuiLoaded(void)
     ui->actionNTSC->setEnabled(true);
     ui->actionVideo_metadata->setEnabled(true);
     ui->actionVITS_Metrics->setEnabled(true);
-    ui->action1_1_Frame_size->setEnabled(true);
+    ui->actionZoom_In->setEnabled(true);
+    ui->actionZoom_Out->setEnabled(true);
+    ui->actionZoom_1x->setEnabled(true);
+    ui->actionZoom_2x->setEnabled(true);
+    ui->actionZoom_3x->setEnabled(true);
     ui->actionDropout_analysis->setEnabled(true);
     ui->actionSNR_analysis->setEnabled(true);
     ui->actionSave_frame_as_PNG->setEnabled(true);
@@ -167,11 +172,8 @@ void MainWindow::updateGuiLoaded(void)
     statusText += " sequential frames available";
     sourceVideoStatus.setText(statusText);
 
-    // Set the frame scale factor
-    scaleFactor = 1.0;
-
     // Show the current frame
-    showFrame(currentFrameNumber);
+    showFrame();
 }
 
 // Method to update the GUI when a file is unloaded
@@ -206,7 +208,11 @@ void MainWindow::updateGuiUnloaded(void)
     ui->actionNTSC->setEnabled(false);
     ui->actionVideo_metadata->setEnabled(false);
     ui->actionVITS_Metrics->setEnabled(false);
-    ui->action1_1_Frame_size->setEnabled(false);
+    ui->actionZoom_In->setEnabled(false);
+    ui->actionZoom_Out->setEnabled(false);
+    ui->actionZoom_1x->setEnabled(false);
+    ui->actionZoom_2x->setEnabled(false);
+    ui->actionZoom_3x->setEnabled(false);
     ui->actionDropout_analysis->setEnabled(false);
     ui->actionSNR_analysis->setEnabled(false);
     ui->actionSave_frame_as_PNG->setEnabled(false);
@@ -231,14 +237,14 @@ void MainWindow::updateGuiUnloaded(void)
 }
 
 // Method to display a sequential frame
-void MainWindow::showFrame(qint32 frameNumber)
+void MainWindow::showFrame(void)
 {
     // Show the field numbers
-    fieldNumberStatus.setText(" -  Fields: " + QString::number(tbcSource.getFirstFieldNumber(frameNumber)) + "/" +
-                              QString::number(tbcSource.getSecondFieldNumber(frameNumber)));
+    fieldNumberStatus.setText(" -  Fields: " + QString::number(tbcSource.getFirstFieldNumber(currentFrameNumber)) + "/" +
+                              QString::number(tbcSource.getSecondFieldNumber(currentFrameNumber)));
 
     // If there are dropouts in the frame, highlight the show dropouts button
-    if (tbcSource.getIsDropoutPresent(frameNumber)) {
+    if (tbcSource.getIsDropoutPresent(currentFrameNumber)) {
         QPalette tempPalette = buttonPalette;
         tempPalette.setColor(QPalette::Button, QColor(Qt::lightGray));
         ui->dropoutsPushButton->setAutoFillBackground(true);
@@ -258,14 +264,21 @@ void MainWindow::showFrame(qint32 frameNumber)
     ui->frameViewerLabel->clear();
     ui->frameViewerLabel->setScaledContents(false);
     ui->frameViewerLabel->setAlignment(Qt::AlignCenter);
-    ui->frameViewerLabel->setPixmap(QPixmap::fromImage(tbcSource.getFrameImage(frameNumber)));
-    ui->frameViewerLabel->setPixmap(ui->frameViewerLabel->pixmap()->scaled(scaleFactor * ui->frameViewerLabel->pixmap()->size()));
+    updateFrameViewer();
 
     // If the scope window is open, update it too (using the last scope line selected by the user)
     if (oscilloscopeDialog->isVisible()) {
         // Show the oscilloscope dialogue for the selected scan-line
         updateOscilloscopeDialogue(currentFrameNumber, lastScopeLine);
     }
+}
+
+// Redraw the frame viewer (for example, when scaleFactor has been changed)
+void MainWindow::updateFrameViewer(void)
+{
+    ui->frameViewerLabel->setPixmap(QPixmap::fromImage(tbcSource.getFrameImage(currentFrameNumber)));
+    ui->frameViewerLabel->setPixmap(ui->frameViewerLabel->pixmap()->scaled(scaleFactor * ui->frameViewerLabel->pixmap()->size(),
+                                                                           Qt::IgnoreAspectRatio, Qt::SmoothTransformation));
 }
 
 // Method to hide the current frame
@@ -361,7 +374,7 @@ void MainWindow::on_frameNumberSpinBox_editingFinished()
         if (ui->frameNumberSpinBox->value() > tbcSource.getNumberOfFrames()) ui->frameNumberSpinBox->setValue(tbcSource.getNumberOfFrames());
         currentFrameNumber = ui->frameNumberSpinBox->value();
         ui->frameHorizontalSlider->setValue(currentFrameNumber);
-        showFrame(currentFrameNumber);
+        showFrame();
     }
 }
 
@@ -377,7 +390,7 @@ void MainWindow::on_frameHorizontalSlider_valueChanged(int value)
     // otherwisew we just ignore this
     if (ui->frameNumberSpinBox->isEnabled()) {
         ui->frameNumberSpinBox->setValue(currentFrameNumber);
-        showFrame(currentFrameNumber);
+        showFrame();
     }
 }
 
@@ -510,7 +523,7 @@ void MainWindow::on_videoPushButton_clicked()
     }
 
     // Show the current frame
-    showFrame(currentFrameNumber);
+    showFrame();
 }
 
 // Show/hide dropouts button clicked
@@ -525,7 +538,7 @@ void MainWindow::on_dropoutsPushButton_clicked()
     }
 
     // Show the current frame (why isn't this option passed?)
-    showFrame(currentFrameNumber);
+    showFrame();
 }
 
 // Normal/Reverse field order button clicked
@@ -546,7 +559,7 @@ void MainWindow::on_fieldOrderPushButton_clicked()
     }
 
     // Show the current frame
-    showFrame(currentFrameNumber);
+    showFrame();
 }
 
 // Zoom in
@@ -556,15 +569,29 @@ void MainWindow::on_actionZoom_In_triggered()
 }
 
 // Zoom out
-void MainWindow::on_actionZoom_out_triggered()
+void MainWindow::on_actionZoom_Out_triggered()
 {
     on_zoomOutPushButton_clicked();
 }
 
 // Original size 1:1 zoom
-void MainWindow::on_action1_1_Frame_size_triggered()
+void MainWindow::on_actionZoom_1x_triggered()
 {
     on_originalSizePushButton_clicked();
+}
+
+// 2:1 zoom
+void MainWindow::on_actionZoom_2x_triggered()
+{
+    scaleFactor = 2.0;
+    updateFrameViewer();
+}
+
+// 3:1 zoom
+void MainWindow::on_actionZoom_3x_triggered()
+{
+    scaleFactor = 3.0;
+    updateFrameViewer();
 }
 
 // Zoom in
@@ -575,9 +602,7 @@ void MainWindow::on_zoomInPushButton_clicked()
         scaleFactor *= factor;
     }
 
-    //ui->frameViewerLabel->resize(scaleFactor * ui->frameViewerLabel->pixmap()->size());
-    ui->frameViewerLabel->setPixmap(QPixmap::fromImage(tbcSource.getFrameImage(currentFrameNumber)));
-    ui->frameViewerLabel->setPixmap(ui->frameViewerLabel->pixmap()->scaled(scaleFactor * ui->frameViewerLabel->pixmap()->size()));
+    updateFrameViewer();
 }
 
 // Zoom out
@@ -588,17 +613,14 @@ void MainWindow::on_zoomOutPushButton_clicked()
         scaleFactor *= factor;
     }
 
-    //ui->frameViewerLabel->resize(scaleFactor * ui->frameViewerLabel->pixmap()->size());
-    ui->frameViewerLabel->setPixmap(QPixmap::fromImage(tbcSource.getFrameImage(currentFrameNumber)));
-    ui->frameViewerLabel->setPixmap(ui->frameViewerLabel->pixmap()->scaled(scaleFactor * ui->frameViewerLabel->pixmap()->size()));
+    updateFrameViewer();
 }
 
 // Original size 1:1 zoom
 void MainWindow::on_originalSizePushButton_clicked()
 {
     scaleFactor = 1.0;
-    ui->frameViewerLabel->setPixmap(QPixmap::fromImage(tbcSource.getFrameImage(currentFrameNumber)));
-    ui->frameViewerLabel->setPixmap(ui->frameViewerLabel->pixmap()->scaled(scaleFactor * ui->frameViewerLabel->pixmap()->size()));
+    updateFrameViewer();
 }
 
 void MainWindow::scanLineChangedSignalHandler(qint32 scanLine)

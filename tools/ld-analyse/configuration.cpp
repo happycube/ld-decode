@@ -70,6 +70,7 @@ void Configuration::writeConfiguration(void)
     // Windows
     configuration->beginGroup("windows");
     configuration->setValue("mainWindowGeometry", settings.windows.mainWindowGeometry);
+    configuration->setValue("mainWindowScaleFactor", settings.windows.mainWindowScaleFactor);
     configuration->setValue("vbiDialogGeometry", settings.windows.vbiDialogGeometry);
     configuration->setValue("oscilloscopeDialogGeometry", settings.windows.oscilloscopeDialogGeometry);
     configuration->setValue("dropoutAnalysisDialogGeometry", settings.windows.dropoutAnalysisDialogGeometry);
@@ -98,6 +99,7 @@ void Configuration::readConfiguration(void)
     // Windows
     configuration->beginGroup("windows");
     settings.windows.mainWindowGeometry = configuration->value("mainWindowGeometry").toByteArray();
+    settings.windows.mainWindowScaleFactor = configuration->value("mainWindowScaleFactor").toReal();
     settings.windows.vbiDialogGeometry = configuration->value("vbiDialogGeometry").toByteArray();
     settings.windows.oscilloscopeDialogGeometry = configuration->value("oscilloscopeDialogGeometry").toByteArray();
     settings.windows.dropoutAnalysisDialogGeometry = configuration->value("dropoutAnalysisDialogGeometry").toByteArray();
@@ -117,6 +119,7 @@ void Configuration::setDefault(void)
 
     // Windows
     settings.windows.mainWindowGeometry = QByteArray();
+    settings.windows.mainWindowScaleFactor = 1.0;
     settings.windows.vbiDialogGeometry = QByteArray();
     settings.windows.oscilloscopeDialogGeometry = QByteArray();
     settings.windows.dropoutAnalysisDialogGeometry = QByteArray();
@@ -168,6 +171,16 @@ void Configuration::setMainWindowGeometry(QByteArray mainWindowGeometry)
 QByteArray Configuration::getMainWindowGeometry(void)
 {
     return settings.windows.mainWindowGeometry;
+}
+
+void Configuration::setMainWindowScaleFactor(qreal mainWindowScaleFactor)
+{
+    settings.windows.mainWindowScaleFactor = mainWindowScaleFactor;
+}
+
+qreal Configuration::getMainWindowScaleFactor(void)
+{
+    return settings.windows.mainWindowScaleFactor;
 }
 
 void Configuration::setVbiDialogGeometry(QByteArray vbiDialogGeometry)

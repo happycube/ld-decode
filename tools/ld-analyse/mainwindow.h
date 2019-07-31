@@ -84,8 +84,10 @@ private slots:
     void on_finishedLoading();
 
     void on_actionZoom_In_triggered();
-    void on_actionZoom_out_triggered();
-    void on_action1_1_Frame_size_triggered();
+    void on_actionZoom_Out_triggered();
+    void on_actionZoom_1x_triggered();
+    void on_actionZoom_2x_triggered();
+    void on_actionZoom_3x_triggered();
     void on_zoomInPushButton_clicked();
     void on_zoomOutPushButton_clicked();
     void on_originalSizePushButton_clicked();
@@ -118,7 +120,8 @@ private:
     void updateGuiLoaded(void);
     void updateGuiUnloaded(void);
 
-    void showFrame(qint32 frameNumber);
+    void showFrame(void);
+    void updateFrameViewer(void);
     void hideFrame(void);
 
     void loadTbcFile(QString inputFileName);
