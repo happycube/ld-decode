@@ -54,15 +54,6 @@ if args.pal and args.ntsc:
     print("ERROR: Can only be PAL or NTSC")
     exit(1)
 
-# make sure we have at least two frames' worth of data (so we can be sure we will get at least one full frame)
-#infile_size = os.path.getsize(filename)
-#if (infile_size // bytes_per_frame - firstframe) < 2: 
-	#print('Error: start frame is past end of file')
-	#exit(1)
-#num_frames = req_frames if req_frames is not None else infile_size // bytes_per_frame - firstframe
-
-#fd = open(filename, 'rb')
-
 if filename[-3:] == 'lds':
     loader = load_packed_data_4_40
 elif filename[-3:] == 'r30':
