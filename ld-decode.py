@@ -54,18 +54,7 @@ if args.pal and args.ntsc:
     print("ERROR: Can only be PAL or NTSC")
     exit(1)
 
-if filename[-3:] == 'lds':
-    loader = load_packed_data_4_40
-elif filename[-3:] == 'r30':
-    loader = load_packed_data_3_32
-elif filename[-3:] == 'r16':
-    loader = load_unpacked_data_s16
-elif filename[-2:] == 'r8':
-    loader = load_unpacked_data_u8
-elif filename[-7:] == 'raw.oga':
-    loader = LoadFFmpeg()
-else:
-    loader = load_packed_data_4_40
+loader = make_loader(filename)
 
 system = 'PAL' if args.pal else 'NTSC'
     

@@ -166,6 +166,22 @@ Returns data if successful, or None or an upstream exception if not (including i
 This might probably need to become a full object once FLAC support is added.
 '''
 
+def make_loader(filename):
+    """Return an appropriate loader function for filename."""
+
+    if filename[-3:] == 'lds':
+        return load_packed_data_4_40
+    elif filename[-3:] == 'r30':
+        return load_packed_data_3_32
+    elif filename[-3:] == 'r16':
+        return load_unpacked_data_s16
+    elif filename[-2:] == 'r8':
+        return load_unpacked_data_u8
+    elif filename[-7:] == 'raw.oga':
+        return LoadFFmpeg()
+    else:
+        return load_packed_data_4_40
+
 def load_unpacked_data(infile, sample, readlen, sampletype):
     # this is run for unpacked data - 1 is for old cxadc data, 2 for 16bit DD
     infile.seek(sample * sampletype, 0)
