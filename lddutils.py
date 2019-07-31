@@ -142,8 +142,8 @@ frequency_suffixes = [
     ("fscpal", (283.75 * 15625) + 25),
 ]
 
-"""Parse an argument string, returning a float frequency in MHz."""
 def parse_frequency(string):
+    """Parse an argument string, returning a float frequency in MHz."""
     multiplier = 1.0e6
     for suffix, mult in frequency_suffixes:
         if string.lower().endswith(suffix):
