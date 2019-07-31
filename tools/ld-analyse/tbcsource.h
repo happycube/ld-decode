@@ -133,6 +133,10 @@ private:
     QFutureWatcher<void> watcher;
     QFuture <void> future;
 
+    // Cache of current frame QImage
+    QImage frameCache;
+    qint32 frameCacheFrameNumber;
+
     QImage generateQImage(qint32 firstFieldNumber, qint32 secondFieldNumber);
     void generateData(qint32 _targetDataPoints);
     void startBackgroundLoad(QString sourceFilename);

@@ -89,6 +89,7 @@ private slots:
     // Miscellaneous handlers
     void scanLineChangedSignalHandler(qint32 scanLine, qint32 pictureDot);
     void mousePressEvent(QMouseEvent *event);
+    void mouseMoveEvent(QMouseEvent *event);
 
     // Tbc Source signal handlers
     void on_busyLoading(QString infoMessage);
@@ -130,6 +131,7 @@ private:
     // TBC source signal handlers
     void loadTbcFile(QString inputFileName);
     void updateOscilloscopeDialogue(qint32 scanLine, qint32 pictureDot);
+    void mouseScanLineSelect(qint32 oX, qint32 oY);
 };
 
 #endif // MAINWINDOW_H

@@ -26,15 +26,13 @@
 
 TbcSource::TbcSource(QObject *parent) : QObject(parent)
 {
-    // No source loaded
-    sourceReady = false;
-
     // Default frame image options
     chromaOn = false;
     dropoutsOn = false;
     reverseFoOn = false;
-
+    sourceReady = false;
     fieldsPerGraphDataPoint = 0;
+    frameCacheFrameNumber = -1;
 }
 
 // Public methods -----------------------------------------------------------------------------------------------------
@@ -47,6 +45,8 @@ void TbcSource::loadSource(QString sourceFilename)
     dropoutsOn = false;
     reverseFoOn = false;
     sourceReady = false;
+    fieldsPerGraphDataPoint = 0;
+    frameCacheFrameNumber = -1;
 
     // Set the current file name
     QFileInfo inFileInfo(sourceFilename);
@@ -84,18 +84,21 @@ QString TbcSource::getCurrentSourceFilename()
 // Method to set the highlight dropouts mode (true = dropouts highlighted)
 void TbcSource::setHighlightDropouts(bool _state)
 {
+    frameCacheFrameNumber = -1;
     dropoutsOn = _state;
 }
 
 // Method to set the chroma decoder mode (true = on)
 void TbcSource::setChromaDecoder(bool _state)
 {
+    frameCacheFrameNumber = -1;
     chromaOn = _state;
 }
 
 // Method to set the field order (true = reversed, false = normal)
 void TbcSource::setFieldOrder(bool _state)
 {
+    frameCacheFrameNumber = -1;
     reverseFoOn = _state;
 
     if (reverseFoOn) ldDecodeMetaData.setIsFirstFieldFirst(false);
@@ -124,6 +127,12 @@ bool TbcSource::getFieldOrder()
 QImage TbcSource::getFrameImage(qint32 frameNumber)
 {
     if (!sourceReady) return QImage();
+
+    // Check cached QImage
+    if (frameCacheFrameNumber == frameNumber) return frameCache;
+    else {
+        frameCacheFrameNumber = frameNumber;
+    }
 
     // Get the required field numbers
     qint32 firstFieldNumber = ldDecodeMetaData.getFirstFieldNumber(frameNumber);
@@ -180,6 +189,7 @@ QImage TbcSource::getFrameImage(qint32 frameNumber)
         imagePainter.end();
     }
 
+    frameCache = frameImage;
     return frameImage;
 }
 

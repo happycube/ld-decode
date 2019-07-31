@@ -701,40 +701,67 @@ void MainWindow::mousePressEvent(QMouseEvent *event)
             oX + 1 <= ui->frameViewerLabel->width() &&
             oY <= ui->frameViewerLabel->height()) {
 
-        // X calc
-        qreal offsetX = ((static_cast<qreal>(ui->frameViewerLabel->width()) -
-                         static_cast<qreal>(ui->frameViewerLabel->pixmap()->width())) / 2.0);
-
-        qreal unscaledXR = (static_cast<qreal>(tbcSource.getFrameWidth()) /
-                            static_cast<qreal>(ui->frameViewerLabel->pixmap()->width())) * static_cast<qreal>(oX - offsetX);
-        qint32 unscaledX = static_cast<qint32>(unscaledXR);
-        if (unscaledX > tbcSource.getFrameWidth() - 1) unscaledX = tbcSource.getFrameWidth() - 1;
-        if (unscaledX < 0) unscaledX = 0;
-
-        // Y Calc
-        qreal offsetY = ((static_cast<qreal>(ui->frameViewerLabel->height()) -
-                         static_cast<qreal>(ui->frameViewerLabel->pixmap()->height())) / 2.0);
-
-        qreal unscaledYR = (static_cast<qreal>(tbcSource.getFrameHeight()) /
-                            static_cast<qreal>(ui->frameViewerLabel->pixmap()->height())) * static_cast<qreal>(oY - offsetY);
-        qint32 unscaledY = static_cast<qint32>(unscaledYR);
-        if (unscaledY > tbcSource.getFrameHeight()) unscaledY = tbcSource.getFrameHeight();
-        if (unscaledY < 1) unscaledY = 1;
-
-        // Show the oscilloscope dialogue for the selected scan-line (if the right mouse mode is selected)
-        if (ui->mouseModePushButton->isChecked()) {
-            // Remember the last line rendered
-            lastScopeLine = unscaledY;
-            lastScopeDot = unscaledX;
-
-            updateOscilloscopeDialogue(lastScopeLine, lastScopeDot);
-            oscilloscopeDialog->show();
-
-            // Update the frame viewer
-            updateFrameViewer();
-        }
-
+        mouseScanLineSelect(oX, oY);
         event->accept();
+    }
+}
+
+// Mouse move event
+void MainWindow::mouseMoveEvent(QMouseEvent *event)
+{
+    if (!tbcSource.getIsSourceLoaded()) return;
+
+    // Get the mouse position relative to our scene
+    QPoint origin = ui->frameViewerLabel->mapFromGlobal(QCursor::pos());
+
+    // Check that the mouse click is within bounds of the current picture
+    qint32 oX = origin.x();
+    qint32 oY = origin.y();
+
+    if (oX + 1 >= 0 &&
+            oY >= 0 &&
+            oX + 1 <= ui->frameViewerLabel->width() &&
+            oY <= ui->frameViewerLabel->height()) {
+
+        mouseScanLineSelect(oX, oY);
+        event->accept();
+    }
+}
+
+// Perform mouse based scan line selection
+void MainWindow::mouseScanLineSelect(qint32 oX, qint32 oY)
+{
+    // X calc
+    qreal offsetX = ((static_cast<qreal>(ui->frameViewerLabel->width()) -
+                     static_cast<qreal>(ui->frameViewerLabel->pixmap()->width())) / 2.0);
+
+    qreal unscaledXR = (static_cast<qreal>(tbcSource.getFrameWidth()) /
+                        static_cast<qreal>(ui->frameViewerLabel->pixmap()->width())) * static_cast<qreal>(oX - offsetX);
+    qint32 unscaledX = static_cast<qint32>(unscaledXR);
+    if (unscaledX > tbcSource.getFrameWidth() - 1) unscaledX = tbcSource.getFrameWidth() - 1;
+    if (unscaledX < 0) unscaledX = 0;
+
+    // Y Calc
+    qreal offsetY = ((static_cast<qreal>(ui->frameViewerLabel->height()) -
+                     static_cast<qreal>(ui->frameViewerLabel->pixmap()->height())) / 2.0);
+
+    qreal unscaledYR = (static_cast<qreal>(tbcSource.getFrameHeight()) /
+                        static_cast<qreal>(ui->frameViewerLabel->pixmap()->height())) * static_cast<qreal>(oY - offsetY);
+    qint32 unscaledY = static_cast<qint32>(unscaledYR);
+    if (unscaledY > tbcSource.getFrameHeight()) unscaledY = tbcSource.getFrameHeight();
+    if (unscaledY < 1) unscaledY = 1;
+
+    // Show the oscilloscope dialogue for the selected scan-line (if the right mouse mode is selected)
+    if (ui->mouseModePushButton->isChecked()) {
+        // Remember the last line rendered
+        lastScopeLine = unscaledY;
+        lastScopeDot = unscaledX;
+
+        updateOscilloscopeDialogue(lastScopeLine, lastScopeDot);
+        oscilloscopeDialog->show();
+
+        // Update the frame viewer
+        updateFrameViewer();
     }
 }
 

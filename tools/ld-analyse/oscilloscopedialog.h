@@ -62,6 +62,7 @@ private slots:
     void on_dropoutsCheckBox_clicked();
 
     void mousePressEvent(QMouseEvent *event);
+    void mouseMoveEvent(QMouseEvent *event);
 
 private:
     Ui::OscilloscopeDialog *ui;
@@ -72,6 +73,7 @@ private:
     qint32 lastScopeDot;
 
     QImage getFieldLineTraceImage(TbcSource::ScanLineData scanLineData, qint32 pictureDot);
+    void mousePictureDotSelect(qint32 oX);
 };
 
 #endif // OSCILLOSCOPEDIALOG_H

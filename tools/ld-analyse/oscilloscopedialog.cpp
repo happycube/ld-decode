@@ -327,18 +327,42 @@ void OscilloscopeDialog::mousePressEvent(QMouseEvent *event)
             oX + 1 <= ui->scopeLabel->width() &&
             oY <= ui->scopeLabel->height()) {
 
-        qreal unscaledXR = (static_cast<qreal>(scopeWidth) /
-                            static_cast<qreal>(ui->scopeLabel->width())) * static_cast<qreal>(oX);
-
-        qint32 unscaledX = static_cast<qint32>(unscaledXR);
-        if (unscaledX > scopeWidth - 1) unscaledX = scopeWidth - 1;
-        if (unscaledX < 0) unscaledX = 0;
-
-        // Remember the last dot selected
-        lastScopeDot = unscaledX;
-
-        emit scanLineChanged(ui->scanLineSpinBox->value(), lastScopeDot);
+        mousePictureDotSelect(oX);
+        event->accept();
     }
+}
 
-    event->accept();
+// Mouse drag event handler
+void OscilloscopeDialog::mouseMoveEvent(QMouseEvent *event)
+{
+    // Get the mouse position relative to our scene
+    QPoint origin = ui->scopeLabel->mapFromGlobal(QCursor::pos());
+
+    // Check that the mouse click is within bounds of the current picture
+    qint32 oX = origin.x();
+    qint32 oY = origin.y();
+
+    if (oX + 1 >= 0 &&
+            oY >= 0 &&
+            oX + 1 <= ui->scopeLabel->width() &&
+            oY <= ui->scopeLabel->height()) {
+
+        mousePictureDotSelect(oX);
+        event->accept();
+    }
+}
+
+void OscilloscopeDialog::mousePictureDotSelect(qint32 oX)
+{
+    qreal unscaledXR = (static_cast<qreal>(scopeWidth) /
+                        static_cast<qreal>(ui->scopeLabel->width())) * static_cast<qreal>(oX);
+
+    qint32 unscaledX = static_cast<qint32>(unscaledXR);
+    if (unscaledX > scopeWidth - 1) unscaledX = scopeWidth - 1;
+    if (unscaledX < 0) unscaledX = 0;
+
+    // Remember the last dot selected
+    lastScopeDot = unscaledX;
+
+    emit scanLineChanged(ui->scanLineSpinBox->value(), lastScopeDot);
 }
