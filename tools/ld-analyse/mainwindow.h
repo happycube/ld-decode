@@ -87,12 +87,14 @@ private slots:
     void on_originalSizePushButton_clicked();
 
     // Miscellaneous handlers
-    void scanLineChangedSignalHandler(qint32 scanLine);
+    void scanLineChangedSignalHandler(qint32 scanLine, qint32 pictureDot);
     void mousePressEvent(QMouseEvent *event);
 
     // Tbc Source signal handlers
     void on_busyLoading(QString infoMessage);
     void on_finishedLoading();
+
+    void on_mouseModePushButton_clicked();
 
 private:
     Ui::MainWindow *ui;
@@ -111,6 +113,7 @@ private:
     QLabel fieldNumberStatus;
     TbcSource tbcSource;
     qint32 lastScopeLine;
+    qint32 lastScopeDot;
     qint32 currentFrameNumber;
     qreal scaleFactor;
     QPalette buttonPalette;
@@ -126,7 +129,7 @@ private:
 
     // TBC source signal handlers
     void loadTbcFile(QString inputFileName);
-    void updateOscilloscopeDialogue(qint32 scanLine);
+    void updateOscilloscopeDialogue(qint32 scanLine, qint32 pictureDot);
 };
 
 #endif // MAINWINDOW_H

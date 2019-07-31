@@ -33,6 +33,10 @@ OscilloscopeDialog::OscilloscopeDialog(QWidget *parent) :
     setWindowFlags(Qt::Window);
 
     maximumScanLines = 625;
+    lastScopeLine = 0;
+    lastScopeDot = 0;
+    scopeHeight = 0;
+    scopeWidth = 0;
 
     // Configure the GUI
     ui->scanLineSpinBox->setMinimum(1);
@@ -53,17 +57,19 @@ OscilloscopeDialog::~OscilloscopeDialog()
     delete ui;
 }
 
-void OscilloscopeDialog::showTraceImage(TbcSource::ScanLineData scanLineData, qint32 scanLine, qint32 frameHeight)
+void OscilloscopeDialog::showTraceImage(TbcSource::ScanLineData scanLineData, qint32 scanLine, qint32 pictureDot, qint32 frameHeight)
 {
-    qDebug() << "OscilloscopeDialog::showTraceImage(): Called for scan-line" << scanLine;
+    qDebug() << "OscilloscopeDialog::showTraceImage(): Called for scan-line" << scanLine << "with picture dot" << pictureDot;
 
     // Set the dialogue title based on the scan-line
     this->setWindowTitle("Oscilloscope trace for scan-line #" + QString::number(scanLine));
 
     // Get the raw field data for the selected line
     QImage traceImage;
+    lastScopeLine = scanLine;
+    lastScopeDot = pictureDot;
 
-    traceImage = getFieldLineTraceImage(scanLineData);
+    traceImage = getFieldLineTraceImage(scanLineData, pictureDot);
 
     // Add the QImage to the QLabel in the dialogue
     ui->scopeLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
@@ -84,7 +90,7 @@ void OscilloscopeDialog::showTraceImage(TbcSource::ScanLineData scanLineData, qi
     maximumScanLines = frameHeight;
 }
 
-QImage OscilloscopeDialog::getFieldLineTraceImage(TbcSource::ScanLineData scanLineData)
+QImage OscilloscopeDialog::getFieldLineTraceImage(TbcSource::ScanLineData scanLineData, qint32 pictureDot)
 {
     // Get the display settings from the UI
     bool showYC = ui->YCcheckBox->isChecked();
@@ -93,7 +99,8 @@ QImage OscilloscopeDialog::getFieldLineTraceImage(TbcSource::ScanLineData scanLi
     bool showDropouts = ui->dropoutsCheckBox->isChecked();
 
     // These are fixed, but may be changed to options later
-    qint32 scopeHeight = 512;
+    scopeHeight = 512;
+    scopeWidth = scanLineData.data.size();
 
     // Define image with width, height and format
     QImage scopeImage(scanLineData.data.size(), scopeHeight, QImage::Format_RGB888);
@@ -253,6 +260,10 @@ QImage OscilloscopeDialog::getFieldLineTraceImage(TbcSource::ScanLineData scanLi
         }
     }
 
+    // Draw the picture dot position line
+    scopePainter.setPen(QColor(0, 255, 0, 127));
+    scopePainter.drawLine(pictureDot, 0, pictureDot, scopeHeight);
+
     // Return the QImage
     scopePainter.end();
     return scopeImage;
@@ -263,39 +274,71 @@ QImage OscilloscopeDialog::getFieldLineTraceImage(TbcSource::ScanLineData scanLi
 void OscilloscopeDialog::on_previousPushButton_clicked()
 {
     if (ui->scanLineSpinBox->value() != 1) {
-        emit scanLineChanged(ui->scanLineSpinBox->value() - 1);
+        emit scanLineChanged(ui->scanLineSpinBox->value() - 1, lastScopeDot);
     }
 }
 
 void OscilloscopeDialog::on_nextPushButton_clicked()
 {
     if (ui->scanLineSpinBox->value() < maximumScanLines) {
-        emit scanLineChanged(ui->scanLineSpinBox->value() + 1);
+        emit scanLineChanged(ui->scanLineSpinBox->value() + 1, lastScopeDot);
     }
 }
 
 void OscilloscopeDialog::on_scanLineSpinBox_valueChanged(int arg1)
 {
     (void)arg1;
-    emit scanLineChanged(ui->scanLineSpinBox->value());
+    if (ui->scanLineSpinBox->value() != lastScopeLine)
+        emit scanLineChanged(ui->scanLineSpinBox->value(), lastScopeDot);
 }
 
 void OscilloscopeDialog::on_YCcheckBox_clicked()
 {
-    emit scanLineChanged(ui->scanLineSpinBox->value());
+    emit scanLineChanged(ui->scanLineSpinBox->value(), lastScopeDot);
 }
 
 void OscilloscopeDialog::on_YcheckBox_clicked()
 {
-    emit scanLineChanged(ui->scanLineSpinBox->value());
+    emit scanLineChanged(ui->scanLineSpinBox->value(), lastScopeDot);
 }
 
 void OscilloscopeDialog::on_CcheckBox_clicked()
 {
-    emit scanLineChanged(ui->scanLineSpinBox->value());
+    emit scanLineChanged(ui->scanLineSpinBox->value(), lastScopeDot);
 }
 
 void OscilloscopeDialog::on_dropoutsCheckBox_clicked()
 {
-    emit scanLineChanged(ui->scanLineSpinBox->value());
+    emit scanLineChanged(ui->scanLineSpinBox->value(), lastScopeDot);
+}
+
+// Mouse press event handler
+void OscilloscopeDialog::mousePressEvent(QMouseEvent *event)
+{
+    // Get the mouse position relative to our scene
+    QPoint origin = ui->scopeLabel->mapFromGlobal(QCursor::pos());
+
+    // Check that the mouse click is within bounds of the current picture
+    qint32 oX = origin.x();
+    qint32 oY = origin.y();
+
+    if (oX + 1 >= 0 &&
+            oY >= 0 &&
+            oX + 1 <= ui->scopeLabel->width() &&
+            oY <= ui->scopeLabel->height()) {
+
+        qreal unscaledXR = (static_cast<qreal>(scopeWidth) /
+                            static_cast<qreal>(ui->scopeLabel->width())) * static_cast<qreal>(oX);
+
+        qint32 unscaledX = static_cast<qint32>(unscaledXR);
+        if (unscaledX > scopeWidth - 1) unscaledX = scopeWidth - 1;
+        if (unscaledX < 0) unscaledX = 0;
+
+        // Remember the last dot selected
+        lastScopeDot = unscaledX;
+
+        emit scanLineChanged(ui->scanLineSpinBox->value(), lastScopeDot);
+    }
+
+    event->accept();
 }

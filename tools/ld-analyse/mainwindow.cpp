@@ -51,6 +51,7 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     // Connect to the scan line changed signal from the oscilloscope dialogue
     connect(oscilloscopeDialog, &OscilloscopeDialog::scanLineChanged, this, &MainWindow::scanLineChangedSignalHandler);
     lastScopeLine = 1;
+    lastScopeDot = 1;
 
     // Connect to the TbcSource signals (busy loading and finished loading)
     connect(&tbcSource, &TbcSource::busyLoading, this, &MainWindow::on_busyLoading);
@@ -257,7 +258,7 @@ void MainWindow::showFrame()
 
     // Update the VBI dialogue
     if (vbiDialog->isVisible()) vbiDialog->updateVbi(tbcSource.getFrameVbi(currentFrameNumber),
-                                                     tbcSource.getIsFrameVbiValid(currentFrameNumber));
+                                                     tbcSource.getIsFrameVbiValid(currentFrameNumber)); 
 
     // Add the QImage to the QLabel in the dialogue
     ui->frameViewerLabel->clear();
@@ -268,14 +269,30 @@ void MainWindow::showFrame()
     // If the scope window is open, update it too (using the last scope line selected by the user)
     if (oscilloscopeDialog->isVisible()) {
         // Show the oscilloscope dialogue for the selected scan-line
-        updateOscilloscopeDialogue(lastScopeLine);
+        updateOscilloscopeDialogue(lastScopeLine, lastScopeDot);
     }
 }
 
 // Redraw the frame viewer (for example, when scaleFactor has been changed)
 void MainWindow::updateFrameViewer()
 {
-    ui->frameViewerLabel->setPixmap(QPixmap::fromImage(tbcSource.getFrameImage(currentFrameNumber)));
+    QImage frameImage = tbcSource.getFrameImage(currentFrameNumber);
+
+    if (ui->mouseModePushButton->isChecked()) {
+        // Create a painter object
+        QPainter imagePainter;
+        imagePainter.begin(&frameImage);
+
+        // Draw lines to indicate the current scope position
+        imagePainter.setPen(QColor(0, 255, 0, 127));
+        imagePainter.drawLine(0, lastScopeLine - 1, tbcSource.getFrameWidth(), lastScopeLine - 1);
+        imagePainter.drawLine(lastScopeDot, 0, lastScopeDot, tbcSource.getFrameHeight());
+
+        // End the painter object
+        imagePainter.end();
+    }
+
+    ui->frameViewerLabel->setPixmap(QPixmap::fromImage(frameImage));
     ui->frameViewerLabel->setPixmap(ui->frameViewerLabel->pixmap()->scaled(scaleFactor * ui->frameViewerLabel->pixmap()->size(),
                                                                            Qt::IgnoreAspectRatio, Qt::SmoothTransformation));
 }
@@ -304,11 +321,11 @@ void MainWindow::loadTbcFile(QString inputFileName)
 }
 
 // Method to update the line oscilloscope based on the frame number and scan line
-void MainWindow::updateOscilloscopeDialogue(qint32 scanLine)
+void MainWindow::updateOscilloscopeDialogue(qint32 scanLine, qint32 pictureDot)
 {
     // Update the oscilloscope dialogue
-    oscilloscopeDialog->showTraceImage(tbcSource.getScanLineData(currentFrameNumber, scanLine), scanLine,
-                                       tbcSource.getFrameHeight());
+    oscilloscopeDialog->showTraceImage(tbcSource.getScanLineData(currentFrameNumber, scanLine),
+                                       scanLine, pictureDot, tbcSource.getFrameHeight());
 }
 
 // Menu bar signal handlers -------------------------------------------------------------------------------------------
@@ -342,7 +359,7 @@ void MainWindow::on_actionLine_scope_triggered()
 {
     if (tbcSource.getIsSourceLoaded()) {
         // Show the oscilloscope dialogue for the selected scan-line
-        updateOscilloscopeDialogue(lastScopeLine);
+        updateOscilloscopeDialogue(lastScopeLine, lastScopeDot);
         oscilloscopeDialog->show();
     }
 }
@@ -633,20 +650,37 @@ void MainWindow::on_originalSizePushButton_clicked()
     updateFrameViewer();
 }
 
+// Mouse mode button clicked
+void MainWindow::on_mouseModePushButton_clicked()
+{
+    if (ui->mouseModePushButton->isChecked()) {
+        // Show the oscilloscope view if currently hidden
+        if (!oscilloscopeDialog->isVisible()) {
+            updateOscilloscopeDialogue(lastScopeLine, lastScopeDot);
+            oscilloscopeDialog->show();
+        }
+    }
+
+    // Update the frame viewer to display/hide the indicator line
+    updateFrameViewer();
+}
+
 // Miscellaneous handler methods --------------------------------------------------------------------------------------
 
 // Handler called when another class changes the currenly selected scan line
-void MainWindow::scanLineChangedSignalHandler(qint32 scanLine)
+void MainWindow::scanLineChangedSignalHandler(qint32 scanLine, qint32 pictureDot)
 {
-    qDebug() << "MainWindow::scanLineChangedSignalHandler(): Called with scanLine =" << scanLine;
+    qDebug() << "MainWindow::scanLineChangedSignalHandler(): Called with scanLine =" << scanLine << "and picture dot" << pictureDot;
 
     if (tbcSource.getIsSourceLoaded()) {
         // Show the oscilloscope dialogue for the selected scan-line
-        updateOscilloscopeDialogue(scanLine);
+        lastScopeDot = pictureDot;
+        lastScopeLine = scanLine;
+        updateOscilloscopeDialogue(lastScopeLine, lastScopeDot);
         oscilloscopeDialog->show();
 
-        // Remember the last line rendered
-        lastScopeLine = scanLine;
+        // Update the frame viewer
+        updateFrameViewer();
     }
 }
 
@@ -659,9 +693,6 @@ void MainWindow::mousePressEvent(QMouseEvent *event)
     QPoint origin = ui->frameViewerLabel->mapFromGlobal(QCursor::pos());
 
     // Check that the mouse click is within bounds of the current picture
-    qreal offset = ((static_cast<qreal>(ui->frameViewerLabel->height()) -
-                     static_cast<qreal>(ui->frameViewerLabel->pixmap()->height())) / 2.0);
-
     qint32 oX = origin.x();
     qint32 oY = origin.y();
 
@@ -670,19 +701,37 @@ void MainWindow::mousePressEvent(QMouseEvent *event)
             oX + 1 <= ui->frameViewerLabel->width() &&
             oY <= ui->frameViewerLabel->height()) {
 
+        // X calc
+        qreal offsetX = ((static_cast<qreal>(ui->frameViewerLabel->width()) -
+                         static_cast<qreal>(ui->frameViewerLabel->pixmap()->width())) / 2.0);
+
+        qreal unscaledXR = (static_cast<qreal>(tbcSource.getFrameWidth()) /
+                            static_cast<qreal>(ui->frameViewerLabel->pixmap()->width())) * static_cast<qreal>(oX - offsetX);
+        qint32 unscaledX = static_cast<qint32>(unscaledXR);
+        if (unscaledX > tbcSource.getFrameWidth() - 1) unscaledX = tbcSource.getFrameWidth() - 1;
+        if (unscaledX < 0) unscaledX = 0;
+
+        // Y Calc
+        qreal offsetY = ((static_cast<qreal>(ui->frameViewerLabel->height()) -
+                         static_cast<qreal>(ui->frameViewerLabel->pixmap()->height())) / 2.0);
+
         qreal unscaledYR = (static_cast<qreal>(tbcSource.getFrameHeight()) /
-                            static_cast<qreal>(ui->frameViewerLabel->pixmap()->height())) * static_cast<qreal>(oY - offset);
-        qint32 unscaledY = static_cast<qint32>(unscaledYR) + 1;
+                            static_cast<qreal>(ui->frameViewerLabel->pixmap()->height())) * static_cast<qreal>(oY - offsetY);
+        qint32 unscaledY = static_cast<qint32>(unscaledYR);
         if (unscaledY > tbcSource.getFrameHeight()) unscaledY = tbcSource.getFrameHeight();
         if (unscaledY < 1) unscaledY = 1;
 
         // Show the oscilloscope dialogue for the selected scan-line (if the right mouse mode is selected)
         if (ui->mouseModePushButton->isChecked()) {
-            updateOscilloscopeDialogue(unscaledY);
-            oscilloscopeDialog->show();
-
             // Remember the last line rendered
             lastScopeLine = unscaledY;
+            lastScopeDot = unscaledX;
+
+            updateOscilloscopeDialogue(lastScopeLine, lastScopeDot);
+            oscilloscopeDialog->show();
+
+            // Update the frame viewer
+            updateFrameViewer();
         }
 
         event->accept();
@@ -754,3 +803,5 @@ void MainWindow::on_finishedLoading()
         messageBox.setFixedSize(500, 200);
     }
 }
+
+
