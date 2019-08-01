@@ -75,6 +75,7 @@ void Configuration::writeConfiguration(void)
     configuration->setValue("oscilloscopeDialogGeometry", settings.windows.oscilloscopeDialogGeometry);
     configuration->setValue("dropoutAnalysisDialogGeometry", settings.windows.dropoutAnalysisDialogGeometry);
     configuration->setValue("snrAnalysisDialogGeometry", settings.windows.snrAnalysisDialogGeometry);
+    configuration->setValue("closedCaptionDialogGeometry", settings.windows.closedCaptionDialogGeometry);
     configuration->endGroup();
 
     // Sync the settings with disk
@@ -104,6 +105,7 @@ void Configuration::readConfiguration(void)
     settings.windows.oscilloscopeDialogGeometry = configuration->value("oscilloscopeDialogGeometry").toByteArray();
     settings.windows.dropoutAnalysisDialogGeometry = configuration->value("dropoutAnalysisDialogGeometry").toByteArray();
     settings.windows.snrAnalysisDialogGeometry = configuration->value("snrAnalysisDialogGeometry").toByteArray();
+    settings.windows.closedCaptionDialogGeometry = configuration->value("closedCaptionDialogGeometry").toByteArray();
     configuration->endGroup();
 }
 
@@ -124,6 +126,7 @@ void Configuration::setDefault(void)
     settings.windows.oscilloscopeDialogGeometry = QByteArray();
     settings.windows.dropoutAnalysisDialogGeometry = QByteArray();
     settings.windows.snrAnalysisDialogGeometry = QByteArray();
+    settings.windows.closedCaptionDialogGeometry = QByteArray();
 
     // Write the configuration
     writeConfiguration();
@@ -223,3 +226,12 @@ QByteArray Configuration::getSnrAnalysisDialogGeometry(void)
     return settings.windows.snrAnalysisDialogGeometry;
 }
 
+void Configuration::setClosedCaptionDialogGeometry(QByteArray closedCaptionDialogGeometry)
+{
+    settings.windows.closedCaptionDialogGeometry = closedCaptionDialogGeometry;
+}
+
+QByteArray Configuration::getClosedCaptionDialogGeometry(void)
+{
+    return settings.windows.closedCaptionDialogGeometry;
+}

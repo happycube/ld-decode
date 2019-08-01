@@ -84,6 +84,8 @@ public:
         qint32 fmCodeData;
         bool fieldFlag;
         bool whiteFlag;
+        qint32 ccData0;
+        qint32 ccData1;
     };
 
     // PCM sound metadata definition

@@ -292,7 +292,8 @@
               <string/>
              </property>
              <property name="icon">
-              <iconset theme="mouse"/>
+              <iconset theme="mouse">
+               <normaloff>.</normaloff>.</iconset>
              </property>
              <property name="checkable">
               <bool>true</bool>
@@ -400,6 +401,7 @@
     <addaction name="actionSNR_analysis"/>
     <addaction name="actionVBI"/>
     <addaction name="actionLine_scope"/>
+    <addaction name="actionClosed_Captions"/>
    </widget>
    <widget class="QMenu" name="menuHelp">
     <property name="title">
@@ -551,6 +553,11 @@
    </property>
    <property name="shortcut">
     <string>Ctrl+-</string>
+   </property>
+  </action>
+  <action name="actionClosed_Captions">
+   <property name="text">
+    <string>Closed Captions...</string>
    </property>
   </action>
  </widget>

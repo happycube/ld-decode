@@ -294,6 +294,8 @@ LdDecodeMetaData::Ntsc LdDecodeMetaData::getFieldNtsc(qint32 sequentialFieldNumb
         ntsc.fmCodeData = json.value({"fields", fieldNumber, "ntsc", "fmCodeData"}).toInt();
         ntsc.fieldFlag = json.value({"fields", fieldNumber, "ntsc", "fieldFlag"}).toBool();
         ntsc.whiteFlag = json.value({"fields", fieldNumber, "ntsc", "whiteFlag"}).toBool();
+        ntsc.ccData0 = json.value({"fields", fieldNumber, "ntsc", "ccData0"}).toInt();
+        ntsc.ccData1 = json.value({"fields", fieldNumber, "ntsc", "ccData1"}).toInt();
     } else {
         // Mark ntscSpecific as undefined
         ntsc.inUse = false;
@@ -427,6 +429,8 @@ void LdDecodeMetaData::updateFieldNtsc(LdDecodeMetaData::Ntsc _ntsc, qint32 sequ
         else json.setValue({"fields", fieldNumber, "ntsc", "fmCodeData"}, -1);
         json.setValue({"fields", fieldNumber, "ntsc", "fieldFlag"}, _ntsc.fieldFlag);
         json.setValue({"fields", fieldNumber, "ntsc", "whiteFlag"}, _ntsc.whiteFlag);
+        json.setValue({"fields", fieldNumber, "ntsc", "ccData0"}, _ntsc.ccData0);
+        json.setValue({"fields", fieldNumber, "ntsc", "ccData1"}, _ntsc.ccData1);
     }
 }
 

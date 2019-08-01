@@ -40,6 +40,7 @@
 #include "dropoutanalysisdialog.h"
 #include "snranalysisdialog.h"
 #include "busydialog.h"
+#include "closedcaptionsdialog.h"
 #include "configuration.h"
 #include "tbcsource.h"
 
@@ -97,6 +98,8 @@ private slots:
 
     void on_mouseModePushButton_clicked();
 
+    void on_actionClosed_Captions_triggered();
+
 private:
     Ui::MainWindow *ui;
 
@@ -107,6 +110,7 @@ private:
     DropoutAnalysisDialog* dropoutAnalysisDialog;
     SnrAnalysisDialog* snrAnalysisDialog;
     BusyDialog* busyDialog;
+    ClosedCaptionsDialog *closedCaptionDialog;
 
     // Class globals
     Configuration configuration;

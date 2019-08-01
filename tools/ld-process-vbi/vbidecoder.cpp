@@ -50,8 +50,12 @@ void VbiDecoder::run()
 
         FmCode fmCode;
         FmCode::FmDecode fmDecode;
+
         bool isWhiteFlag = false;
         WhiteFlag whiteFlag;
+
+        ClosedCaption closedCaption;
+        ClosedCaption::CcData ccData;
 
         if (fieldMetadata.isFirstField) qDebug() << "VbiDecoder::process(): Getting metadata for field" << fieldNumber << "(first)";
         else  qDebug() << "VbiDecoder::process(): Getting metadata for field" << fieldNumber << "(second)";
@@ -59,7 +63,7 @@ void VbiDecoder::run()
         // Determine the 16-bit zero-crossing point
         qint32 zcPoint = videoParameters.white16bIre - videoParameters.black16bIre;
 
-        // Get the VBI data from the field lines (we only read field lines 10-18, so the real field line number is -9)
+        // Get the VBI data from the field lines (we only read field lines 10-21, so the real field line number is -9)
         qDebug() << "VbiDecoder::process(): Getting field-lines for field" << fieldNumber;
         fieldMetadata.vbi.vbiData[0] = manchesterDecoder(getActiveVideoLine(&sourceFieldData, 16 - 9, videoParameters), zcPoint, videoParameters);
         fieldMetadata.vbi.vbiData[1] = manchesterDecoder(getActiveVideoLine(&sourceFieldData, 17 - 9, videoParameters), zcPoint, videoParameters);
@@ -78,6 +82,9 @@ void VbiDecoder::run()
             // Get the white flag from the field lines
             isWhiteFlag = whiteFlag.getWhiteFlag(getActiveVideoLine(&sourceFieldData, 11 - 9, videoParameters), videoParameters);
 
+            // Get the closed captioning from field line 21
+            ccData = closedCaption.getData(getActiveVideoLine(&sourceFieldData, 21 - 9, videoParameters), videoParameters);
+
             // Update the metadata
             if (fmDecode.receiverClockSyncBits != 0) {
                 fieldMetadata.ntsc.isFmCodeDataValid = true;
@@ -92,6 +99,14 @@ void VbiDecoder::run()
 
             fieldMetadata.ntsc.whiteFlag = isWhiteFlag;
             fieldMetadata.ntsc.inUse = true;
+
+            if (ccData.isValid) {
+                fieldMetadata.ntsc.ccData0 = ccData.byte0;
+                fieldMetadata.ntsc.ccData1 = ccData.byte1;
+            } else {
+                fieldMetadata.ntsc.ccData0 = -1;
+                fieldMetadata.ntsc.ccData1 = -1;
+            }
         }
 
         // Update the metadata for the field
@@ -192,7 +207,6 @@ QVector<bool> VbiDecoder::getTransitionMap(QByteArray lineData, qint32 zcPoint)
     qint32 debounce = 0;
     QVector<bool> manchesterData;
 
-    qint32 manchesterPointer = 0;
     for (qint32 xPoint = 0; xPoint < lineData.size(); xPoint += 2) {
         qint32 pixelValue = (static_cast<uchar>(lineData[xPoint + 1]) * 256) + static_cast<uchar>(lineData[xPoint]);
         if (pixelValue > zcPoint) currentState = true; else currentState = false;
@@ -205,7 +219,6 @@ QVector<bool> VbiDecoder::getTransitionMap(QByteArray lineData, qint32 zcPoint)
         }
 
         manchesterData.append(previousState);
-        manchesterPointer++;
     }
 
     return manchesterData;

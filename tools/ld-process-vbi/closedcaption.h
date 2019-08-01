@@ -1,6 +1,6 @@
 /************************************************************************
 
-    vbidecoder.h
+    closedcaption.h
 
     ld-process-vbi - VBI and IEC NTSC specific processor for ld-decode
     Copyright (C) 2018-2019 Simon Inns
@@ -22,41 +22,32 @@
 
 ************************************************************************/
 
-#ifndef VBIDECODER_H
-#define VBIDECODER_H
+#ifndef CLOSEDCAPTION_H
+#define CLOSEDCAPTION_H
 
 #include <QObject>
-#include <QAtomicInt>
-#include <QThread>
-#include <QDebug>
 
+#include "sourcevideo.h"
 #include "lddecodemetadata.h"
-#include "fmcode.h"
-#include "whiteflag.h"
-#include "closedcaption.h"
 
-class DecoderPool;
-
-class VbiDecoder : public QThread {
+class ClosedCaption : public QObject
+{
     Q_OBJECT
 
 public:
-    explicit VbiDecoder(QAtomicInt& _abort, DecoderPool& _decoderPool, QObject *parent = nullptr);
+    explicit ClosedCaption(QObject *parent = nullptr);
 
-protected:
-    void run() override;
+    struct CcData {
+        uchar byte0;
+        uchar byte1;
+        bool isValid;
+    };
+
+    CcData getData(QByteArray lineData, LdDecodeMetaData::VideoParameters videoParameters);
 
 private:
-    // Decoder pool
-    QAtomicInt& abort;
-    DecoderPool& decoderPool;
-
-    // Temporary output buffer
-    LdDecodeMetaData::Field outputData;
-
-    QByteArray getActiveVideoLine(QByteArray *sourceFrame, qint32 scanLine, LdDecodeMetaData::VideoParameters videoParameters);
-    qint32 manchesterDecoder(QByteArray lineData, qint32 zcPoint, LdDecodeMetaData::VideoParameters videoParameters);
+    bool isEvenParity(uchar data);
     QVector<bool> getTransitionMap(QByteArray lineData, qint32 zcPoint);
 };
 
-#endif // VBIDECODER_H
+#endif // CLOSEDCAPTION_H

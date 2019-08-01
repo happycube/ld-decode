@@ -25,6 +25,10 @@
   <property name="windowTitle">
    <string>About ld-analyse</string>
   </property>
+  <property name="windowIcon">
+   <iconset resource="ld-analyse-resources.qrc">
+    <normaloff>:/icons/Graphics/128-analyse.png</normaloff>:/icons/Graphics/128-analyse.png</iconset>
+  </property>
   <widget class="QDialogButtonBox" name="buttonBox">
    <property name="geometry">
     <rect>

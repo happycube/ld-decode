@@ -26,6 +26,7 @@ CONFIG += c++11
 
 SOURCES += \
     busydialog.cpp \
+    closedcaptionsdialog.cpp \
     main.cpp \
     mainwindow.cpp \
     oscilloscopedialog.cpp \
@@ -46,6 +47,7 @@ SOURCES += \
 
 HEADERS += \
     busydialog.h \
+    closedcaptionsdialog.h \
     mainwindow.h \
     oscilloscopedialog.h \
     aboutdialog.h \
@@ -66,6 +68,7 @@ HEADERS += \
 
 FORMS += \
     busydialog.ui \
+    closedcaptionsdialog.ui \
     mainwindow.ui \
     oscilloscopedialog.ui \
     aboutdialog.ui \

@@ -95,6 +95,9 @@ public:
 
     bool saveVitsAsCsv(QString filename);
 
+    qint32 getCcData0(qint32 frameNumber);
+    qint32 getCcData1(qint32 frameNumber);
+
 signals:
     void busyLoading(QString information);
     void finishedLoading();

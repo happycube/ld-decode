@@ -64,6 +64,8 @@ public:
     QByteArray getDropoutAnalysisDialogGeometry(void);
     void setSnrAnalysisDialogGeometry(QByteArray snrAnalysisDialogGeometry);
     QByteArray getSnrAnalysisDialogGeometry(void);
+    void setClosedCaptionDialogGeometry(QByteArray closedCaptionDialogGeometry);
+    QByteArray getClosedCaptionDialogGeometry(void);
 
 signals:
 
@@ -87,6 +89,7 @@ private:
         QByteArray oscilloscopeDialogGeometry;
         QByteArray dropoutAnalysisDialogGeometry;
         QByteArray snrAnalysisDialogGeometry;
+        QByteArray closedCaptionDialogGeometry;
     };
 
     // Overall settings structure

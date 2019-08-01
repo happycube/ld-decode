@@ -428,6 +428,38 @@ bool TbcSource::saveVitsAsCsv(QString filename)
     return ldDecodeMetaData.writeVitsCsv(filename);
 }
 
+qint32 TbcSource::getCcData0(qint32 frameNumber)
+{
+    if (!sourceReady) return false;
+
+    // Get the required field numbers
+    qint32 firstFieldNumber = ldDecodeMetaData.getFirstFieldNumber(frameNumber);
+    qint32 secondFieldNumber = ldDecodeMetaData.getSecondFieldNumber(frameNumber);
+
+    // Get the field metadata
+    LdDecodeMetaData::Field firstField = ldDecodeMetaData.getField(firstFieldNumber);
+    LdDecodeMetaData::Field secondField = ldDecodeMetaData.getField(secondFieldNumber);
+
+    if (firstField.ntsc.ccData0 != -1) return firstField.ntsc.ccData0;
+    return secondField.ntsc.ccData0;
+}
+
+qint32 TbcSource::getCcData1(qint32 frameNumber)
+{
+    if (!sourceReady) return false;
+
+    // Get the required field numbers
+    qint32 firstFieldNumber = ldDecodeMetaData.getFirstFieldNumber(frameNumber);
+    qint32 secondFieldNumber = ldDecodeMetaData.getSecondFieldNumber(frameNumber);
+
+    // Get the field metadata
+    LdDecodeMetaData::Field firstField = ldDecodeMetaData.getField(firstFieldNumber);
+    LdDecodeMetaData::Field secondField = ldDecodeMetaData.getField(secondFieldNumber);
+
+    if (firstField.ntsc.ccData1 != -1) return firstField.ntsc.ccData1;
+    return secondField.ntsc.ccData1;
+}
+
 // Private methods ----------------------------------------------------------------------------------------------------
 
 // Method to create a QImage for a source video frame

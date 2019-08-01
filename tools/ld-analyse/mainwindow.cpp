@@ -38,6 +38,7 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     dropoutAnalysisDialog = new DropoutAnalysisDialog(this);
     snrAnalysisDialog = new SnrAnalysisDialog(this);
     busyDialog = new BusyDialog(this);
+    closedCaptionDialog = new ClosedCaptionsDialog(this);
 
     // Add a status bar to show the state of the source video file
     ui->statusBar->addWidget(&sourceVideoStatus);
@@ -64,6 +65,7 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     oscilloscopeDialog->restoreGeometry(configuration.getOscilloscopeDialogGeometry());
     dropoutAnalysisDialog->restoreGeometry(configuration.getDropoutAnalysisDialogGeometry());
     snrAnalysisDialog->restoreGeometry(configuration.getSnrAnalysisDialogGeometry());
+    closedCaptionDialog->restoreGeometry(configuration.getClosedCaptionDialogGeometry());
 
     // Store the current button palette for the show dropouts button
     buttonPalette = ui->dropoutsPushButton->palette();
@@ -86,6 +88,7 @@ MainWindow::~MainWindow()
     configuration.setOscilloscopeDialogGeometry(oscilloscopeDialog->saveGeometry());
     configuration.setDropoutAnalysisDialogGeometry(dropoutAnalysisDialog->saveGeometry());
     configuration.setSnrAnalysisDialogGeometry(snrAnalysisDialog->saveGeometry());
+    configuration.setClosedCaptionDialogGeometry(closedCaptionDialog->saveGeometry());
     configuration.writeConfiguration();
 
     // Close the source video if open
@@ -270,6 +273,11 @@ void MainWindow::showFrame()
     if (oscilloscopeDialog->isVisible()) {
         // Show the oscilloscope dialogue for the selected scan-line
         updateOscilloscopeDialogue(lastScopeLine, lastScopeDot);
+    }
+
+    // Update the closed caption dialog
+    if (!tbcSource.getIsSourcePal()) {
+        closedCaptionDialog->addData(currentFrameNumber, tbcSource.getCcData0(currentFrameNumber), tbcSource.getCcData1(currentFrameNumber));
     }
 }
 
@@ -498,6 +506,12 @@ void MainWindow::on_actionZoom_3x_triggered()
 {
     scaleFactor = 3.0;
     updateFrameViewer();
+}
+
+// Show closed captions
+void MainWindow::on_actionClosed_Captions_triggered()
+{
+    closedCaptionDialog->show();
 }
 
 // Media control frame signal handlers --------------------------------------------------------------------------------
@@ -830,5 +844,4 @@ void MainWindow::on_finishedLoading()
         messageBox.setFixedSize(500, 200);
     }
 }
-
 
