@@ -31,50 +31,46 @@ SOURCES += \
     oscilloscopedialog.cpp \
     aboutdialog.cpp \
     snranalysisdialog.cpp \
+    tbcsource.cpp \
     vbidialog.cpp \
     configuration.cpp \
-    ntscdialog.cpp \
     ../ld-chroma-decoder/palcolour.cpp \
     ../ld-chroma-decoder/comb.cpp \
     ../ld-chroma-decoder/rgb.cpp \
     ../ld-chroma-decoder/yiq.cpp \
-    videometadatadialog.cpp \
-    frameqlabel.cpp \
     dropoutanalysisdialog.cpp \
     ../ld-chroma-decoder/opticalflow.cpp \
     ../library/tbc/lddecodemetadata.cpp \
-    ../library/tbc/sourcevideo.cpp
+    ../library/tbc/sourcevideo.cpp \
+    ../library/tbc/vbidecoder.cpp
 
 HEADERS += \
     busydialog.h \
-        mainwindow.h \
+    mainwindow.h \
     oscilloscopedialog.h \
     aboutdialog.h \
     snranalysisdialog.h \
+    tbcsource.h \
     vbidialog.h \
     configuration.h \
-    ntscdialog.h \
     ../ld-chroma-decoder/palcolour.h \
     ../ld-chroma-decoder/comb.h \
     ../ld-chroma-decoder/rgb.h \
     ../ld-chroma-decoder/yiq.h \
-    videometadatadialog.h \
-    frameqlabel.h \
     dropoutanalysisdialog.h \
     ../ld-chroma-decoder/yiqbuffer.h \
     ../ld-chroma-decoder/opticalflow.h \
     ../library/tbc/lddecodemetadata.h \
-    ../library/tbc/sourcevideo.h
+    ../library/tbc/sourcevideo.h \
+    ../library/tbc/vbidecoder.h
 
 FORMS += \
     busydialog.ui \
-        mainwindow.ui \
+    mainwindow.ui \
     oscilloscopedialog.ui \
     aboutdialog.ui \
     snranalysisdialog.ui \
     vbidialog.ui \
-    ntscdialog.ui \
-    videometadatadialog.ui \
     dropoutanalysisdialog.ui
 
 # Add external includes to the include path

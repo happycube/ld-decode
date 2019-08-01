@@ -32,24 +32,16 @@
 #include <QFileDialog>
 #include <QMessageBox>
 #include <QLabel>
-#include <QPainter>
 #include <QMouseEvent>
-#include <QtConcurrent/QtConcurrent>
 
-#include "sourcevideo.h"
-#include "lddecodemetadata.h"
 #include "oscilloscopedialog.h"
 #include "aboutdialog.h"
 #include "vbidialog.h"
-#include "ntscdialog.h"
-#include "videometadatadialog.h"
 #include "dropoutanalysisdialog.h"
 #include "snranalysisdialog.h"
 #include "busydialog.h"
 #include "configuration.h"
-#include "frameqlabel.h"
-#include "palcolour.h"
-#include "comb.h"
+#include "tbcsource.h"
 
 namespace Ui {
 class MainWindow;
@@ -64,35 +56,46 @@ public:
     ~MainWindow();
 
 private slots:
+    // Menu bar handlers
     void on_actionExit_triggered();
     void on_actionOpen_TBC_file_triggered();
-    void on_previousPushButton_clicked();
-    void on_nextPushButton_clicked();
-    void on_frameNumberSpinBox_editingFinished();
-    void on_showActiveVideoCheckBox_clicked();
-    void on_highlightDropOutsCheckBox_clicked();
     void on_actionLine_scope_triggered();
     void on_actionAbout_ld_analyse_triggered();
     void on_actionVBI_triggered();
-
-    void mousePressEvent(QMouseEvent *event);
-    void mouseOverQFrameSignalHandler(QMouseEvent *event);
-    void scanLineChangedSignalHandler(qint32 scanLine);
-
-    void on_actionNTSC_triggered();
     void on_actionDropout_analysis_triggered();
-    void on_actionSave_frame_as_PNG_triggered();
-
-    void on_frameHorizontalSlider_valueChanged(int value);
-    void on_actionVideo_metadata_triggered();
-    void on_action1_1_Frame_size_triggered();
-    void on_sourceRadioButton_clicked();
-    void on_combFilterRadioButton_clicked();
-    void on_reverseFieldOrderCheckBox_stateChanged(int arg1);
     void on_actionSNR_analysis_triggered();
+    void on_actionSave_frame_as_PNG_triggered();
     void on_actionSave_metadata_as_CSV_triggered();
+    void on_actionZoom_In_triggered();
+    void on_actionZoom_Out_triggered();
+    void on_actionZoom_1x_triggered();
+    void on_actionZoom_2x_triggered();
+    void on_actionZoom_3x_triggered();
 
-    void backgroundLoadComplete();
+    // Media control frame handlers
+    void on_previousPushButton_clicked();
+    void on_nextPushButton_clicked();
+    void on_endFramePushButton_clicked();
+    void on_startFramePushButton_clicked();
+    void on_frameNumberSpinBox_editingFinished();
+    void on_frameHorizontalSlider_valueChanged(int value);
+    void on_videoPushButton_clicked();
+    void on_dropoutsPushButton_clicked();
+    void on_fieldOrderPushButton_clicked();
+    void on_zoomInPushButton_clicked();
+    void on_zoomOutPushButton_clicked();
+    void on_originalSizePushButton_clicked();
+
+    // Miscellaneous handlers
+    void scanLineChangedSignalHandler(qint32 scanLine, qint32 pictureDot);
+    void mousePressEvent(QMouseEvent *event);
+    void mouseMoveEvent(QMouseEvent *event);
+
+    // Tbc Source signal handlers
+    void on_busyLoading(QString infoMessage);
+    void on_finishedLoading();
+
+    void on_mouseModePushButton_clicked();
 
 private:
     Ui::MainWindow *ui;
@@ -101,8 +104,6 @@ private:
     OscilloscopeDialog* oscilloscopeDialog;
     AboutDialog* aboutDialog;
     VbiDialog* vbiDialog;
-    NtscDialog* ntscDialog;
-    VideoMetadataDialog* videoMetadataDialog;
     DropoutAnalysisDialog* dropoutAnalysisDialog;
     SnrAnalysisDialog* snrAnalysisDialog;
     BusyDialog* busyDialog;
@@ -110,34 +111,27 @@ private:
     // Class globals
     Configuration configuration;
     QLabel sourceVideoStatus;
-    QLabel frameLineStatus;
-    SourceVideo sourceVideo;
-    qint32 currentFrameNumber;
-    LdDecodeMetaData ldDecodeMetaData;
+    QLabel fieldNumberStatus;
+    TbcSource tbcSource;
     qint32 lastScopeLine;
-    bool isFileOpen;
-    PalColour palColour;
-    Comb ntscColour;
-    QString currentInputFileName;
-    QString lastLoadError;
+    qint32 lastScopeDot;
+    qint32 currentFrameNumber;
+    qreal scaleFactor;
+    QPalette buttonPalette;
 
-    // Background loader globals
-    QFutureWatcher<void> watcher;
-    QFuture <void> future;
+    // Update GUI methods
+    void updateGuiLoaded();
+    void updateGuiUnloaded();
 
-    void updateGuiLoaded(void);
-    void updateGuiUnloaded(void);
+    // Frame display methods
+    void showFrame();
+    void updateFrameViewer();
+    void hideFrame();
 
-    void showFrame(qint32 frameNumber, bool showOverScan, bool highlightDropOuts);
-    void hideFrame(void);
-
-    QImage generateQImage(qint32 firstFieldNumber, qint32 secondFieldNumber);
-
+    // TBC source signal handlers
     void loadTbcFile(QString inputFileName);
-    void backgroundLoad(QString inputFileName);
-    void updateOscilloscopeDialogue(qint32 frameNumber, qint32 scanLine);
-
-    void generateGraphs();
+    void updateOscilloscopeDialogue(qint32 scanLine, qint32 pictureDot);
+    void mouseScanLineSelect(qint32 oX, qint32 oY);
 };
 
 #endif // MAINWINDOW_H

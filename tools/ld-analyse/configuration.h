@@ -54,14 +54,12 @@ public:
     // Get and set methods - windows
     void setMainWindowGeometry(QByteArray mainWindowGeometry);
     QByteArray getMainWindowGeometry(void);
+    void setMainWindowScaleFactor(qreal mainWindowScaleFactor);
+    qreal getMainWindowScaleFactor(void);
     void setVbiDialogGeometry(QByteArray vbiDialogGeometry);
     QByteArray getVbiDialogGeometry(void);
-    void setNtscDialogGeometry(QByteArray ntscDialogGeometry);
-    QByteArray getNtscDialogGeometry(void);
     void setOscilloscopeDialogGeometry(QByteArray oscilloscopeDialogGeometry);
     QByteArray getOscilloscopeDialogGeometry(void);
-    void setVideoMetadataDialogGeometry(QByteArray videoMetadataDialogGeometry);
-    QByteArray getVideoMetadataDialogGeometry(void);
     void setDropoutAnalysisDialogGeometry(QByteArray videoMetadataDialogGeometry);
     QByteArray getDropoutAnalysisDialogGeometry(void);
     void setSnrAnalysisDialogGeometry(QByteArray snrAnalysisDialogGeometry);
@@ -84,9 +82,8 @@ private:
     // Window geometry and settings
     struct Windows {
         QByteArray mainWindowGeometry;
+        qreal mainWindowScaleFactor;
         QByteArray vbiDialogGeometry;
-        QByteArray ntscDialogGeometry;
-        QByteArray videoMetadataDialogGeometry;
         QByteArray oscilloscopeDialogGeometry;
         QByteArray dropoutAnalysisDialogGeometry;
         QByteArray snrAnalysisDialogGeometry;

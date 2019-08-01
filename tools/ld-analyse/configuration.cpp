@@ -70,9 +70,8 @@ void Configuration::writeConfiguration(void)
     // Windows
     configuration->beginGroup("windows");
     configuration->setValue("mainWindowGeometry", settings.windows.mainWindowGeometry);
+    configuration->setValue("mainWindowScaleFactor", settings.windows.mainWindowScaleFactor);
     configuration->setValue("vbiDialogGeometry", settings.windows.vbiDialogGeometry);
-    configuration->setValue("ntscDialogGeometry", settings.windows.ntscDialogGeometry);
-    configuration->setValue("videoMetadataDialogGeometry", settings.windows.videoMetadataDialogGeometry);
     configuration->setValue("oscilloscopeDialogGeometry", settings.windows.oscilloscopeDialogGeometry);
     configuration->setValue("dropoutAnalysisDialogGeometry", settings.windows.dropoutAnalysisDialogGeometry);
     configuration->setValue("snrAnalysisDialogGeometry", settings.windows.snrAnalysisDialogGeometry);
@@ -100,9 +99,8 @@ void Configuration::readConfiguration(void)
     // Windows
     configuration->beginGroup("windows");
     settings.windows.mainWindowGeometry = configuration->value("mainWindowGeometry").toByteArray();
+    settings.windows.mainWindowScaleFactor = configuration->value("mainWindowScaleFactor").toReal();
     settings.windows.vbiDialogGeometry = configuration->value("vbiDialogGeometry").toByteArray();
-    settings.windows.ntscDialogGeometry = configuration->value("ntscDialogGeometry").toByteArray();
-    settings.windows.videoMetadataDialogGeometry = configuration->value("videoMetadataDialogGeometry").toByteArray();
     settings.windows.oscilloscopeDialogGeometry = configuration->value("oscilloscopeDialogGeometry").toByteArray();
     settings.windows.dropoutAnalysisDialogGeometry = configuration->value("dropoutAnalysisDialogGeometry").toByteArray();
     settings.windows.snrAnalysisDialogGeometry = configuration->value("snrAnalysisDialogGeometry").toByteArray();
@@ -121,9 +119,8 @@ void Configuration::setDefault(void)
 
     // Windows
     settings.windows.mainWindowGeometry = QByteArray();
+    settings.windows.mainWindowScaleFactor = 1.0;
     settings.windows.vbiDialogGeometry = QByteArray();
-    settings.windows.ntscDialogGeometry = QByteArray();
-    settings.windows.videoMetadataDialogGeometry = QByteArray();
     settings.windows.oscilloscopeDialogGeometry = QByteArray();
     settings.windows.dropoutAnalysisDialogGeometry = QByteArray();
     settings.windows.snrAnalysisDialogGeometry = QByteArray();
@@ -176,6 +173,16 @@ QByteArray Configuration::getMainWindowGeometry(void)
     return settings.windows.mainWindowGeometry;
 }
 
+void Configuration::setMainWindowScaleFactor(qreal mainWindowScaleFactor)
+{
+    settings.windows.mainWindowScaleFactor = mainWindowScaleFactor;
+}
+
+qreal Configuration::getMainWindowScaleFactor(void)
+{
+    return settings.windows.mainWindowScaleFactor;
+}
+
 void Configuration::setVbiDialogGeometry(QByteArray vbiDialogGeometry)
 {
     settings.windows.vbiDialogGeometry = vbiDialogGeometry;
@@ -186,16 +193,6 @@ QByteArray Configuration::getVbiDialogGeometry(void)
     return settings.windows.vbiDialogGeometry;
 }
 
-void Configuration::setNtscDialogGeometry(QByteArray ntscDialogGeometry)
-{
-    settings.windows.ntscDialogGeometry = ntscDialogGeometry;
-}
-
-QByteArray Configuration::getNtscDialogGeometry(void)
-{
-    return settings.windows.ntscDialogGeometry;
-}
-
 void Configuration::setOscilloscopeDialogGeometry(QByteArray oscilloscopeDialogGeometry)
 {
     settings.windows.oscilloscopeDialogGeometry = oscilloscopeDialogGeometry;
@@ -204,16 +201,6 @@ void Configuration::setOscilloscopeDialogGeometry(QByteArray oscilloscopeDialogG
 QByteArray Configuration::getOscilloscopeDialogGeometry(void)
 {
     return settings.windows.oscilloscopeDialogGeometry;
-}
-
-void Configuration::setVideoMetadataDialogGeometry(QByteArray videoMetadataDialogGeometry)
-{
-    settings.windows.videoMetadataDialogGeometry = videoMetadataDialogGeometry;
-}
-
-QByteArray Configuration::getVideoMetadataDialogGeometry(void)
-{
-    return settings.windows.videoMetadataDialogGeometry;
 }
 
 void Configuration::setDropoutAnalysisDialogGeometry(QByteArray dropoutAnalysisDialogGeometry)

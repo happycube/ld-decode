@@ -29,9 +29,11 @@
 #include <QGraphicsPixmapItem>
 #include <QPainter>
 #include <QDebug>
+#include <QMouseEvent>
 
 #include "sourcevideo.h"
 #include "lddecodemetadata.h"
+#include "tbcsource.h"
 
 namespace Ui {
 class OscilloscopeDialog;
@@ -45,10 +47,10 @@ public:
     explicit OscilloscopeDialog(QWidget *parent = nullptr);
     ~OscilloscopeDialog();
 
-    void showTraceImage(QByteArray topFieldData, QByteArray bottomFieldData, LdDecodeMetaData *ldDecodeMetaData, qint32 scanLine, qint32 firstField, qint32 secondField);
+    void showTraceImage(TbcSource::ScanLineData scanLineData, qint32 scanLine, qint32 pictureDot, qint32 frameHeight);
 
 signals:
-    void scanLineChanged(qint32 scanLine);
+    void scanLineChanged(qint32 scanLine, qint32 lastScopeDot);
 
 private slots:
     void on_previousPushButton_clicked();
@@ -59,11 +61,19 @@ private slots:
     void on_CcheckBox_clicked();
     void on_dropoutsCheckBox_clicked();
 
+    void mousePressEvent(QMouseEvent *event);
+    void mouseMoveEvent(QMouseEvent *event);
+
 private:
     Ui::OscilloscopeDialog *ui;
     qint32 maximumScanLines;
+    qint32 scopeHeight;
+    qint32 scopeWidth;
+    qint32 lastScopeLine;
+    qint32 lastScopeDot;
 
-    QImage getFieldLineTraceImage(QByteArray rgbData, LdDecodeMetaData::VideoParameters frameParameters, qint32 fieldLine, LdDecodeMetaData::DropOuts dropouts);
+    QImage getFieldLineTraceImage(TbcSource::ScanLineData scanLineData, qint32 pictureDot);
+    void mousePictureDotSelect(qint32 oX);
 };
 
 #endif // OSCILLOSCOPEDIALOG_H

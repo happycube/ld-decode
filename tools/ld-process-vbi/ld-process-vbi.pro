@@ -20,7 +20,6 @@ SOURCES += \
     fmcode.cpp \
     vbidecoder.cpp \
     whiteflag.cpp \
-    vbicorrector.cpp \
     ../library/tbc/lddecodemetadata.cpp \
     ../library/tbc/sourcevideo.cpp
 
@@ -29,7 +28,6 @@ HEADERS += \
     fmcode.h \
     vbidecoder.h \
     whiteflag.h \
-    vbicorrector.h \
     ../library/tbc/lddecodemetadata.h \
     ../library/tbc/sourcevideo.h
 

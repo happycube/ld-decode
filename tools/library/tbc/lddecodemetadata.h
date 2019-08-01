@@ -38,58 +38,9 @@ class LdDecodeMetaData : public QObject
 public:
 
     // VBI Metadata definition
-    enum VbiDiscTypes {
-        unknownDiscType,    // 0
-        clv,                // 1
-        cav                 // 2
-    };
-
-    // VBI Sound modes
-    enum VbiSoundModes {
-        stereo,                 // 0
-        mono,                   // 1
-        audioSubCarriersOff,    // 2
-        bilingual,              // 3
-        stereo_stereo,          // 4
-        stereo_bilingual,       // 5
-        crossChannelStereo,     // 6
-        bilingual_bilingual,    // 7
-        mono_dump,              // 8
-        stereo_dump,            // 9
-        bilingual_dump,         // 10
-        futureUse               // 11
-    };
-
-    // Overall container struct for VBI information
     struct Vbi {
         bool inUse;
-
         QVector<qint32> vbiData;
-        VbiDiscTypes type;
-        QString userCode;
-        qint32 picNo;
-        qint32 chNo;
-        qint32 clvHr;
-        qint32 clvMin;
-        qint32 clvSec;
-        qint32 clvPicNo;
-        VbiSoundModes soundMode;
-        VbiSoundModes soundModeAm2;
-
-        // Note: These booleans are virtual (and stored in a single int)
-        bool leadIn;
-        bool leadOut;
-        bool picStop;
-        bool cx;
-        bool size;
-        bool side;
-        bool teletext;
-        bool dump;
-        bool fm;
-        bool digital;
-        bool parity;
-        bool copyAm2;
-        bool standardAm2;
     };
 
     // Video metadata definition
@@ -210,8 +161,6 @@ public:
 
     void setIsFirstFieldFirst(bool flag);
     bool getIsFirstFieldFirst();
-
-    VbiDiscTypes getDiscTypeFromVbi();
 
     qint32 convertClvTimecodeToFrameNumber(LdDecodeMetaData::ClvTimecode clvTimeCode);
     LdDecodeMetaData::ClvTimecode convertFrameNumberToClvTimecode(qint32 clvFrameNumber);

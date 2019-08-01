@@ -29,7 +29,6 @@
 #include <QThread>
 
 #include "decoderpool.h"
-#include "vbicorrector.h"
 
 // Global for debug output
 static bool showDebug = false;
@@ -97,11 +96,6 @@ int main(int argc, char *argv[])
                                        QCoreApplication::translate("main", "Show debug"));
     parser.addOption(showDebugOption);
 
-    // Option to perform VBI error correction (-c)
-    QCommandLineOption showCorrectionOption(QStringList() << "e" << "errorcorrect",
-                                       QCoreApplication::translate("main", "Perform VBI frame number error correction (not for NTSC pull-down sources!)"));
-    parser.addOption(showCorrectionOption);
-
     // Option to disable JSON back-up (-n)
     QCommandLineOption showNoBackupOption(QStringList() << "n" << "nobackup",
                                        QCoreApplication::translate("main", "Do not create a backup of the input JSON metadata"));
@@ -121,7 +115,6 @@ int main(int argc, char *argv[])
 
     // Get the options from the parser
     bool debugOn = parser.isSet(showDebugOption);
-    bool performCorrection = parser.isSet(showCorrectionOption);
     bool noBackup = parser.isSet(showNoBackupOption);
 
     qint32 maxThreads = QThread::idealThreadCount();
@@ -170,7 +163,7 @@ int main(int argc, char *argv[])
 
     // Perform the processing
     qInfo() << "Beginning VBI processing...";
-    DecoderPool decoderPool(inputFilename, performCorrection, maxThreads, metaData);
+    DecoderPool decoderPool(inputFilename, maxThreads, metaData);
     if (!decoderPool.process()) return 1;
 
     // Quit with success

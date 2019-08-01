@@ -28,6 +28,7 @@
 #include <QObject>
 #include <QtMath>
 #include <QDebug>
+#include <cassert>
 
 #include "lddecodemetadata.h"
 
@@ -43,8 +44,8 @@ public:
     QByteArray performDecode(QByteArray topFieldData, QByteArray bottomFieldData, qint32 brightness, qint32 saturation, bool blackAndWhite);
 
     // Replacements for #DEFINE values
-    static const int MAX_WIDTH = 1135; // Simon: Maximum based on PAL width
-    static const int MAX_HEIGHT = 625; // Simon: Maximum based on PAL height
+    static const qint32 MAX_WIDTH = 1135; // Simon: Maximum based on PAL width
+    static const qint32 MAX_HEIGHT = 625; // Simon: Maximum based on PAL height
 
 private:
     // Configuration parameters
@@ -52,13 +53,16 @@ private:
 
     // Look up tables array and constant definitions
     double sine[MAX_WIDTH], cosine[MAX_WIDTH];    // formerly short int
-    static const int32_t arraySize = 14; // 'a' is the array-size, corresponding to at least half the filter-width, and should be at least Fsampling(max supported by build)/colourfilterBandwidth(min supported by build)
-    //  'a' must be greater than or equal to the bigger of 'ca' and 'ya' above
+    // cfilt and yfilt are the coefficients for the chroma and luma 2D FIR filters.
+    // The filters are horizontally and vertically symmetrical (with signs
+    // adjusted later to deal with phase differences between lines), so each
+    // 2D array represents one quarter of a filter. The zeroth horizontal
+    // element is included in the sum twice, so the coefficient is halved to
+    // compensate. Each filter is (2 * arraySize) + 1 elements wide.
+    static const qint32 arraySize = 7;
     double cfilt[arraySize + 1][4];
     double yfilt[arraySize + 1][2];
 
-    double cdiv;
-    double ydiv;
     double refAmpl;
     double normalise;
     QByteArray outputFrame;
