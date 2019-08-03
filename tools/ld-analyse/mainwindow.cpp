@@ -175,6 +175,9 @@ void MainWindow::updateGuiLoaded()
 
     // Show the current frame
     showFrame();
+
+    // Ensure the busy dialogue is hidden
+    busyDialog->hide();
 }
 
 // Method to update the GUI when a file is unloaded
