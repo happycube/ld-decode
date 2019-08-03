@@ -27,9 +27,11 @@ CONFIG += c++11
 SOURCES += \
         ../library/tbc/lddecodemetadata.cpp \
         ../library/tbc/sourcevideo.cpp \
+        ../library/tbc/vbidecoder.cpp \
         aboutdialog.cpp \
         busydialog.cpp \
         configuration.cpp \
+        discmap.cpp \
         logging.cpp \
         main.cpp \
         mainwindow.cpp \
@@ -38,9 +40,11 @@ SOURCES += \
 HEADERS += \
         ../library/tbc/lddecodemetadata.h \
         ../library/tbc/sourcevideo.h \
+        ../library/tbc/vbidecoder.h \
         aboutdialog.h \
         busydialog.h \
         configuration.h \
+        discmap.h \
         logging.h \
         mainwindow.h \
         tbcsources.h

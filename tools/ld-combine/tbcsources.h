@@ -35,6 +35,9 @@
 #include "sourcevideo.h"
 #include "lddecodemetadata.h"
 
+// Local includes
+#include "discmap.h"
+
 class TbcSources : public QObject
 {
     Q_OBJECT
@@ -79,6 +82,7 @@ private:
         LdDecodeMetaData ldDecodeMetaData;
         qint32 currentFrameNumber;
         QString filename;
+        DiscMap discMap;
     };
 
     QVector<Source*> sourceVideos;

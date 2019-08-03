@@ -232,10 +232,11 @@ void TbcSources::performBackgroundLoad(QString filename)
         }
     }
 
-    backgroundLoadSuccessful = false;
+    backgroundLoadSuccessful = true;
     sourceVideos.resize(sourceVideos.size() + 1);
     qint32 newSourceNumber = sourceVideos.size() - 1;
     sourceVideos[newSourceNumber] = new Source;
+    LdDecodeMetaData::VideoParameters videoParameters;
 
     // Open the TBC metadata file
     qDebug() << "TbcSources::performBackgroundLoad(): Processing JSON metadata...";
@@ -245,36 +246,64 @@ void TbcSources::performBackgroundLoad(QString filename)
         qWarning() << "Open TBC JSON metadata failed for filename" << filename;
         backgroundLoadErrorMessage = "Cannot load source - JSON metadata could not be read!";
         backgroundLoadSuccessful = false;
-    } else {
-        // Get the video parameters from the metadata
-        LdDecodeMetaData::VideoParameters videoParameters = sourceVideos[newSourceNumber]->ldDecodeMetaData.getVideoParameters();
+    }
 
-        // Ensure that the video standard matches any existing sources
+    // Get the video parameters from the metadata
+    if (backgroundLoadSuccessful) {
+        videoParameters = sourceVideos[newSourceNumber]->ldDecodeMetaData.getVideoParameters();
+    }
+
+    // Ensure that the video standard matches any existing sources
+    if (backgroundLoadSuccessful) {
         if ((sourceVideos.size() - 1 > 0) && (sourceVideos[0]->ldDecodeMetaData.getVideoParameters().isSourcePal != videoParameters.isSourcePal)) {
             qWarning() << "New source video standard does not match existing source(s)!";
             backgroundLoadErrorMessage = "Cannot load source - Mixing PAL and NTSC sources is not supported!";
             backgroundLoadSuccessful = false;
-        } else {
-            // Open the new source video
-            qDebug() << "TbcSources::loadSource(): Loading TBC file...";
-            emit setBusy("Loading TBC file...", false, 0);
-            if (!sourceVideos[newSourceNumber]->sourceVideo.open(filename, videoParameters.fieldWidth * videoParameters.fieldHeight)) {
-                // Open failed
-                qWarning() << "Open TBC file failed for filename" << filename;
-                backgroundLoadErrorMessage = "Cannot load source - Error reading source TBC data file!";
-                backgroundLoadSuccessful = false;
-            } else {
-                // Both the video and metadata files are now open
-                sourceVideos[newSourceNumber]->filename = filename;
-                sourceVideos[newSourceNumber]->currentFrameNumber = 1;
-                backgroundLoadSuccessful = true;
-            }
         }
     }
 
-    // Deal with any issues
-    if (!backgroundLoadSuccessful) {
-        // Remove the new source entry and default the current source
+    // Ensure that the video has VBI data
+    if (backgroundLoadSuccessful) {
+        if (!sourceVideos[newSourceNumber]->ldDecodeMetaData.getFieldVbi(1).inUse) {
+            qWarning() << "New source video does not contain VBI data!";
+            backgroundLoadErrorMessage = "Cannot load source - No VBI data available. Please run ld-process-vbi before loading source!";
+            backgroundLoadSuccessful = false;
+        }
+    }
+
+    // Open the new source TBC video
+    if (backgroundLoadSuccessful) {
+        qDebug() << "TbcSources::loadSource(): Loading TBC file...";
+        emit setBusy("Loading TBC file...", false, 0);
+
+        if (!sourceVideos[newSourceNumber]->sourceVideo.open(filename, videoParameters.fieldWidth * videoParameters.fieldHeight)) {
+           // Open failed
+           qWarning() << "Open TBC file failed for filename" << filename;
+           backgroundLoadErrorMessage = "Cannot load source - Error reading source TBC data file!";
+           backgroundLoadSuccessful = false;
+        }
+    }
+
+    // Perform LaserDisc mapping
+    if (backgroundLoadSuccessful) {
+        qDebug() << "TbcSources::loadSource(): Performing LaserDisc mapping...";
+        emit setBusy("Performing LaserDisc mapping...", false, 0);
+        if (!sourceVideos[newSourceNumber]->discMap.create(sourceVideos[newSourceNumber]->ldDecodeMetaData)) {
+            // Disc mapping failed
+            qWarning() << "Disc mapping failed!";
+            backgroundLoadErrorMessage = "Cannot load source - Error creating LaserDisc map!";
+            backgroundLoadSuccessful = false;
+        }
+    }
+
+    // Finish up
+    if (backgroundLoadSuccessful) {
+        // Loading successful
+        sourceVideos[newSourceNumber]->filename = filename;
+        sourceVideos[newSourceNumber]->currentFrameNumber = 1;
+        backgroundLoadSuccessful = true;
+    } else {
+        // Loading unsuccessful - Remove the new source entry and default the current source
         sourceVideos[newSourceNumber]->sourceVideo.close();
         delete sourceVideos[newSourceNumber];
         sourceVideos.remove(newSourceNumber);
