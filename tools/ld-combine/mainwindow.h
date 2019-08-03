@@ -30,9 +30,10 @@
 #include <QMessageBox>
 #include <QLabel>
 
-#include "configuration.h"
 #include "aboutdialog.h"
+#include "busydialog.h"
 
+#include "configuration.h"
 #include "tbcsources.h"
 
 namespace Ui {
@@ -58,10 +59,13 @@ private slots:
     void on_previousFramePushButton_clicked();
     void on_nextFramePushButton_clicked();
     void on_sourceSelectComboBox_currentIndexChanged(int index);
-
     void on_frameNumberSpinBox_valueChanged(int arg1);
-
     void on_frameNumberHorizontalSlider_valueChanged(int value);
+
+    // TbcSources class slots
+    void on_setBusy(QString message, bool showProgress, qint32 progress);
+    void on_clearBusy();
+    void on_updateSources(bool isSuccessful);
 
 private:
     Ui::MainWindow *ui;
@@ -71,6 +75,7 @@ private:
 
     // Dialogue objects
     AboutDialog *aboutDialog;
+    BusyDialog *busyDialog;
 
     // GUI update methods
     void updateGUIsourcesAvailable();

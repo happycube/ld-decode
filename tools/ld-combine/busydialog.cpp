@@ -1,6 +1,6 @@
 /************************************************************************
 
-    aboutdialog.h
+    busydialog.cpp
 
     ld-combine - TBC combination and enhancement tool
     Copyright (C) 2019 Simon Inns
@@ -22,25 +22,39 @@
 
 ************************************************************************/
 
-#ifndef ABOUTDIALOG_H
-#define ABOUTDIALOG_H
+#include "busydialog.h"
+#include "ui_busydialog.h"
 
-#include <QDialog>
+BusyDialog::BusyDialog(QWidget *parent) :
+    QDialog(parent),
+    ui(new Ui::BusyDialog)
+{
+    ui->setupUi(this);
+    showProgress(false);
 
-namespace Ui {
-class AboutDialog;
+    setWindowFlags(Qt::Window | Qt::FramelessWindowHint);
 }
 
-class AboutDialog : public QDialog
+BusyDialog::~BusyDialog()
 {
-    Q_OBJECT
+    delete ui;
+}
 
-public:
-    explicit AboutDialog(QWidget *parent = nullptr);
-    ~AboutDialog();
+void BusyDialog::setMessage(QString message)
+{
+    ui->messageLabel->setText(message);
+}
 
-private:
-    Ui::AboutDialog *ui;
-};
+void BusyDialog::setProgress(qint32 progress)
+{
+    if (progress < 0) progress = 0;
+    if (progress > 100) progress = 100;
 
-#endif // ABOUTDIALOG_H
+    ui->progressBar->setValue(progress);
+}
+
+void BusyDialog::showProgress(bool state)
+{
+    if (!state) ui->progressBar->hide();
+    else ui->progressBar->show();
+}

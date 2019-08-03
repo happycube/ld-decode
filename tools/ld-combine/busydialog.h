@@ -1,6 +1,6 @@
 /************************************************************************
 
-    aboutdialog.h
+    busydialog.h
 
     ld-combine - TBC combination and enhancement tool
     Copyright (C) 2019 Simon Inns
@@ -22,25 +22,29 @@
 
 ************************************************************************/
 
-#ifndef ABOUTDIALOG_H
-#define ABOUTDIALOG_H
+#ifndef BUSYDIALOG_H
+#define BUSYDIALOG_H
 
 #include <QDialog>
 
 namespace Ui {
-class AboutDialog;
+class BusyDialog;
 }
 
-class AboutDialog : public QDialog
+class BusyDialog : public QDialog
 {
     Q_OBJECT
 
 public:
-    explicit AboutDialog(QWidget *parent = nullptr);
-    ~AboutDialog();
+    explicit BusyDialog(QWidget *parent = nullptr);
+    ~BusyDialog();
+
+    void setMessage(QString message);
+    void setProgress(qint32 progress);
+    void showProgress(bool state);
 
 private:
-    Ui::AboutDialog *ui;
+    Ui::BusyDialog *ui;
 };
 
-#endif // ABOUTDIALOG_H
+#endif // BUSYDIALOG_H

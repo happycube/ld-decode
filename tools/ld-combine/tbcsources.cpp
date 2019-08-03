@@ -27,81 +27,23 @@
 TbcSources::TbcSources(QObject *parent) : QObject(parent)
 {
     currentSource = 0;
-    loadingMessage.clear();
+    backgroundLoadErrorMessage.clear();
 }
 
 // Load a TBC source video; returns updated current source number or -1 on failure
-bool TbcSources::loadSource(QString filename)
+void TbcSources::loadSource(QString filename)
 {
-    // Check that source file isn't already loaded
-    for (qint32 i = 0; i < sourceVideos.size(); i++) {
-        if (filename == sourceVideos[i]->filename) {
-            qDebug() << "TbcSources::loadSource(): Cannot load source - already loaded!";
-            loadingMessage = "Cannot load source - source is already loaded!";
-            return false;
-        }
-    }
-
-    bool loadingSuccessful = false;
-    sourceVideos.resize(sourceVideos.size() + 1);
-    qint32 newSourceNumber = sourceVideos.size() - 1;
-    sourceVideos[newSourceNumber] = new Source;
-
-    // Open the TBC metadata file
-    qDebug() << "TbcSources::loadSource(): Processing JSON metadata...";
-    if (!sourceVideos[newSourceNumber]->ldDecodeMetaData.read(filename + ".json")) {
-        // Open failed
-        qWarning() << "Open TBC JSON metadata failed for filename" << filename;
-        loadingMessage = "Cannot load source - JSON metadata could not be read!";
-        loadingSuccessful = false;
-    } else {
-        // Get the video parameters from the metadata
-        LdDecodeMetaData::VideoParameters videoParameters = sourceVideos[newSourceNumber]->ldDecodeMetaData.getVideoParameters();
-
-        // Ensure that the video standard matches any existing sources
-        if ((sourceVideos.size() - 1 > 0) && (sourceVideos[0]->ldDecodeMetaData.getVideoParameters().isSourcePal != videoParameters.isSourcePal)) {
-            qWarning() << "New source video standard does not match existing source(s)!";
-            loadingMessage = "Cannot load source - Mixing PAL and NTSC sources is not supported!";
-            loadingSuccessful = false;
-        } else {
-            // Open the new source video
-            qDebug() << "TbcSources::loadSource(): Loading TBC file...";
-            if (!sourceVideos[newSourceNumber]->sourceVideo.open(filename, videoParameters.fieldWidth * videoParameters.fieldHeight)) {
-                // Open failed
-                qWarning() << "Open TBC file failed for filename" << filename;
-                loadingMessage = "Cannot load source - Error reading source TBC data file!";
-                loadingSuccessful = false;
-            } else {
-                // Both the video and metadata files are now open
-                sourceVideos[newSourceNumber]->filename = filename;
-                sourceVideos[newSourceNumber]->currentFrameNumber = 1;
-                loadingSuccessful = true;
-            }
-        }
-    }
-
-    // Deal with any issues
-    if (!loadingSuccessful) {
-        // Remove the new source entry and default the current source
-        sourceVideos[newSourceNumber]->sourceVideo.close();
-        delete sourceVideos[newSourceNumber];
-        sourceVideos.remove(newSourceNumber);
-        currentSource = 0;
-        return false;
-    }
-
-    // Select the new source
-    currentSource = newSourceNumber;
-
-    // Exit with success
-    loadingMessage = "Loading successful";
-    return true;
+    // Set up and fire-off the background loading thread
+    qDebug() << "TbcSources::loadSource(): Setting up background loader thread";
+    connect(&watcher, SIGNAL(finished()), this, SLOT(finishBackgroundLoad()));
+    future = QtConcurrent::run(this, &TbcSources::performBackgroundLoad, filename);
+    watcher.setFuture(future);
 }
 
 // Returns the last recorded loading message (for error boxes, etc.)
 QString TbcSources::getLoadingMessage()
 {
-    return loadingMessage;
+    return backgroundLoadErrorMessage;
 }
 
 // Unload a source video and remove it's data
@@ -270,4 +212,98 @@ QString TbcSources::getCurrentSourceFilename()
 {
     if (sourceVideos.size() == 0) return QString();
     return sourceVideos[currentSource]->filename;
+}
+
+// Private methods ----------------------------------------------------------------------------------------------------
+
+// Method to load a new source in the background
+void TbcSources::performBackgroundLoad(QString filename)
+{
+    // Set the parent's busy state
+    emit setBusy("Please wait loading...", false, 0);
+
+    // Check that source file isn't already loaded
+    for (qint32 i = 0; i < sourceVideos.size(); i++) {
+        if (filename == sourceVideos[i]->filename) {
+            qDebug() << "TbcSources::performBackgroundLoad(): Cannot load source - already loaded!";
+            backgroundLoadErrorMessage = "Cannot load source - source is already loaded!";
+            backgroundLoadSuccessful = false;
+            return;
+        }
+    }
+
+    backgroundLoadSuccessful = false;
+    sourceVideos.resize(sourceVideos.size() + 1);
+    qint32 newSourceNumber = sourceVideos.size() - 1;
+    sourceVideos[newSourceNumber] = new Source;
+
+    // Open the TBC metadata file
+    qDebug() << "TbcSources::performBackgroundLoad(): Processing JSON metadata...";
+    emit setBusy("Processing JSON metadata...", false, 0);
+    if (!sourceVideos[newSourceNumber]->ldDecodeMetaData.read(filename + ".json")) {
+        // Open failed
+        qWarning() << "Open TBC JSON metadata failed for filename" << filename;
+        backgroundLoadErrorMessage = "Cannot load source - JSON metadata could not be read!";
+        backgroundLoadSuccessful = false;
+    } else {
+        // Get the video parameters from the metadata
+        LdDecodeMetaData::VideoParameters videoParameters = sourceVideos[newSourceNumber]->ldDecodeMetaData.getVideoParameters();
+
+        // Ensure that the video standard matches any existing sources
+        if ((sourceVideos.size() - 1 > 0) && (sourceVideos[0]->ldDecodeMetaData.getVideoParameters().isSourcePal != videoParameters.isSourcePal)) {
+            qWarning() << "New source video standard does not match existing source(s)!";
+            backgroundLoadErrorMessage = "Cannot load source - Mixing PAL and NTSC sources is not supported!";
+            backgroundLoadSuccessful = false;
+        } else {
+            // Open the new source video
+            qDebug() << "TbcSources::loadSource(): Loading TBC file...";
+            emit setBusy("Loading TBC file...", false, 0);
+            if (!sourceVideos[newSourceNumber]->sourceVideo.open(filename, videoParameters.fieldWidth * videoParameters.fieldHeight)) {
+                // Open failed
+                qWarning() << "Open TBC file failed for filename" << filename;
+                backgroundLoadErrorMessage = "Cannot load source - Error reading source TBC data file!";
+                backgroundLoadSuccessful = false;
+            } else {
+                // Both the video and metadata files are now open
+                sourceVideos[newSourceNumber]->filename = filename;
+                sourceVideos[newSourceNumber]->currentFrameNumber = 1;
+                backgroundLoadSuccessful = true;
+            }
+        }
+    }
+
+    // Deal with any issues
+    if (!backgroundLoadSuccessful) {
+        // Remove the new source entry and default the current source
+        sourceVideos[newSourceNumber]->sourceVideo.close();
+        delete sourceVideos[newSourceNumber];
+        sourceVideos.remove(newSourceNumber);
+        currentSource = 0;
+        return;
+    }
+
+    // Select the new source
+    currentSource = newSourceNumber;
+
+    // Exit with success
+    backgroundLoadErrorMessage = "";
+    return;
+}
+
+// Method to handle background source loading finished
+void TbcSources::finishBackgroundLoad()
+{
+    qDebug() << "TbcSources::finishBackgroundLoad(): Called - clearing busy and updating sources";
+
+    // Disconnect the finished signal
+    disconnect(&watcher, SIGNAL(finished()), this, SLOT(finishBackgroundLoad()));
+
+    if (backgroundLoadSuccessful) qDebug() << "TbcSources::finishBackgroundLoad(): Background load was successful";
+    else qDebug() << "TbcSources::finishBackgroundLoad(): Background load failed!";
+
+    // Clear the parent's busy state
+    emit clearBusy();
+
+    // Tell the parent to update the sources
+    emit updateSources(backgroundLoadSuccessful);
 }

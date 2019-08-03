@@ -28,6 +28,7 @@ SOURCES += \
         ../library/tbc/lddecodemetadata.cpp \
         ../library/tbc/sourcevideo.cpp \
         aboutdialog.cpp \
+        busydialog.cpp \
         configuration.cpp \
         logging.cpp \
         main.cpp \
@@ -38,6 +39,7 @@ HEADERS += \
         ../library/tbc/lddecodemetadata.h \
         ../library/tbc/sourcevideo.h \
         aboutdialog.h \
+        busydialog.h \
         configuration.h \
         logging.h \
         mainwindow.h \
@@ -45,6 +47,7 @@ HEADERS += \
 
 FORMS += \
         aboutdialog.ui \
+        busydialog.ui \
         mainwindow.ui
 
 # Add external includes to the include path
@@ -54,3 +57,6 @@ INCLUDEPATH += ../library/tbc
 qnx: target.path = /tmp/$${TARGET}/bin
 else: unix:!android: target.path = /usr/local/bin/
 !isEmpty(target.path): INSTALLS += target
+
+RESOURCES += \
+    app-resources.qrc

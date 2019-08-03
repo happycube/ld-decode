@@ -33,6 +33,12 @@ MainWindow::MainWindow(QWidget *parent) :
 
     // Set up dialogues
     aboutDialog = new AboutDialog(this);
+    busyDialog = new BusyDialog(this);
+
+    // Connect to the TbcSource signals (busy loading and finished loading)
+    connect(&tbcSources, &TbcSources::setBusy, this, &MainWindow::on_setBusy);
+    connect(&tbcSources, &TbcSources::clearBusy, this, &MainWindow::on_clearBusy);
+    connect(&tbcSources, &TbcSources::updateSources, this, &MainWindow::on_updateSources);
 
     // Load the window geometry and settings from the configurationMainWindow
     restoreGeometry(configuration.getMainWindowGeometry());
@@ -181,37 +187,27 @@ void MainWindow::on_actionOpen_new_source_triggered()
                 configuration.getSourceDirectory()+tr("/ldsample.tbc"),
                 tr("TBC output (*.tbc);;All Files (*)"));
 
-    // Was a filename specified?
-    if (!inputFileName.isEmpty() && !inputFileName.isNull()) {
-        if (!tbcSources.loadSource(inputFileName)) {
-            QMessageBox messageBox;
-                        messageBox.warning(this, "Warning", tbcSources.getLoadingMessage());
-                        messageBox.setFixedSize(500, 200);
-        } else {
-            updateGUIsourcesAvailable();
-            sourceChanged();
-
-            // Populate the source selection combobox
-            updateSourceSelectionCombobox();
-
-            // Update the configuration for the source directory
-            QFileInfo inFileInfo(tbcSources.getCurrentSourceFilename());
-            configuration.setSourceDirectory(inFileInfo.absolutePath());
-            qDebug() << "MainWindow::loadTbcFile(): Setting source directory to:" << inFileInfo.absolutePath();
-            configuration.writeConfiguration();
-        }
-    }
+    // If a filename was specified, load the source
+    if (!inputFileName.isEmpty() && !inputFileName.isNull()) tbcSources.loadSource(inputFileName);
 }
 
 void MainWindow::on_actionClose_current_source_triggered()
 {
-    tbcSources.unloadSource();
-    if (tbcSources.getNumberOfAvailableSources() > 0) {
-        sourceChanged();
-        updateSourceSelectionCombobox();
+    QMessageBox::StandardButton reply;
+    reply = QMessageBox::question(this, "Close source",
+                                  "Are you sure that you want to close the current source?", QMessageBox::Yes|QMessageBox::No);
+    if (reply == QMessageBox::Yes) {
+        qDebug() << "MainWindow::on_actionClose_current_source_triggered(): Closing current source";
+        tbcSources.unloadSource();
+        if (tbcSources.getNumberOfAvailableSources() > 0) {
+            sourceChanged();
+            updateSourceSelectionCombobox();
+        } else {
+            updateGUInoSourcesAvailable();
+            updateSourceSelectionCombobox();
+        }
     } else {
-        updateGUInoSourcesAvailable();
-        updateSourceSelectionCombobox();
+        qDebug() << "MainWindow::on_actionClose_current_source_triggered(): User did not confirm close current source";
     }
 }
 
@@ -286,4 +282,60 @@ void MainWindow::on_frameNumberHorizontalSlider_valueChanged(int value)
     ui->frameNumberSpinBox->setValue(tbcSources.getCurrentFrameNumber());
     ui->frameNumberSpinBox->blockSignals(false);
     if (frameNumber != tbcSources.getCurrentFrameNumber()) showFrame();
+}
+
+// TbcSources class signal handlers -----------------------------------------------------------------------------------
+
+// Signal handler for setBusy signal from TbcSources class
+void MainWindow::on_setBusy(QString message, bool showProgress, qint32 progress)
+{
+    qDebug() << "MainWindow::on_setBusy(): Got signal with message" << message << "show progress" << showProgress << "progress =" << progress;
+    // Set the busy message and centre the dialog in the parent window
+    busyDialog->setMessage(message);
+    busyDialog->setProgress(progress);
+    busyDialog->showProgress(showProgress);
+    busyDialog->move(this->geometry().center() - busyDialog->rect().center());
+
+    if (!busyDialog->isVisible()) {
+        // Disable the main window during loading
+        this->setEnabled(false);
+        busyDialog->setEnabled(true);
+        busyDialog->exec();
+    }
+}
+
+// Signal handler for clearBusy signal from TbcSources class
+void MainWindow::on_clearBusy()
+{
+    qDebug() << "MainWindow::on_clearBusy(): Called";
+
+    // Hide the busy dialogue and enable the main window
+    busyDialog->hide();
+    this->setEnabled(true);
+}
+
+// Signal handler for updateSources signal from TbcSources class (called after
+// a new source is loaded)
+void MainWindow::on_updateSources(bool isSuccessful)
+{
+    // Check for failure
+    if (!isSuccessful) {
+        qDebug() << "MainWindow::on_updateSources(): Updating source failed - displaying error message";
+        QMessageBox messageBox;
+                    messageBox.warning(this, "Warning", tbcSources.getLoadingMessage());
+                    messageBox.setFixedSize(500, 200);
+    } else {
+        qDebug() << "MainWindow::on_updateSources(): Updating source successful";
+        updateGUIsourcesAvailable();
+        sourceChanged();
+
+        // Populate the source selection combobox
+        updateSourceSelectionCombobox();
+
+        // Update the configuration for the source directory
+        QFileInfo inFileInfo(tbcSources.getCurrentSourceFilename());
+        configuration.setSourceDirectory(inFileInfo.absolutePath());
+        qDebug() << "MainWindow::on_updateSources(): Setting source directory to:" << inFileInfo.absolutePath();
+        configuration.writeConfiguration();
+    }
 }

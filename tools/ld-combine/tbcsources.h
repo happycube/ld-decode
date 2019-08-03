@@ -28,6 +28,7 @@
 #include <QObject>
 #include <QImage>
 #include <QList>
+#include <QtConcurrent/QtConcurrent>
 #include <QDebug>
 
 // TBC library includes
@@ -48,7 +49,7 @@ public:
         qint32 fieldWidth;
     };
 
-    bool loadSource(QString filename);
+    void loadSource(QString filename);
     QString getLoadingMessage();
     bool unloadSource();
     bool setCurrentSource(qint32 sourceNumber);
@@ -63,8 +64,14 @@ public:
     QString getCurrentSourceFilename();
 
 signals:
+    void setBusy(QString message, bool showProgress, qint32 progress);
+    void clearBusy();
+    void updateSources(bool isSuccessful);
 
 public slots:
+
+private slots:
+    void finishBackgroundLoad();
 
 private:
     struct Source {
@@ -76,8 +83,14 @@ private:
 
     QVector<Source*> sourceVideos;
     qint32 currentSource;
+    QString backgroundLoadErrorMessage;
 
-    QString loadingMessage;
+    // Background loader globals
+    QFutureWatcher<void> watcher;
+    QFuture <void> future;
+    bool backgroundLoadSuccessful;
+
+    void performBackgroundLoad(QString filename);
 };
 
 #endif // TBCSOURCES_H
