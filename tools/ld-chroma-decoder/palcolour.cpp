@@ -150,9 +150,6 @@ void PalColour::buildLookUpTables()
 
 // Performs a decode of the 16-bit greyscale input frame and produces a RGB 16-16-16-bit output frame
 // with 16 bit processing
-//
-// Note: This method does not clear the output array before writing to it; if there is garbage
-// in the allocated memory, it will be in the output with the decoded image on top.
 QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray secondFieldData, qint32 brightness, qint32 saturation)
 {
     // Ensure the object has been configured
