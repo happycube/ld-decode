@@ -668,7 +668,7 @@ void TbcSource::startBackgroundLoad(QString sourceFilename)
 
     // Configure the chroma decoder
     if (videoParameters.isSourcePal) {
-        palColour.updateConfiguration(videoParameters);
+        palColour.updateConfiguration(videoParameters, 44, 620);
     } else {
         // Set the first active scan line
         qint32 firstActiveScanLine = 40;
