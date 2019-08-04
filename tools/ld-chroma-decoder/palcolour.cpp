@@ -170,7 +170,6 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
 
     if (!firstFieldData.isNull() && !secondFieldData.isNull()) {
         // Step 2:
-        quint16 Y[MAX_WIDTH];
 
         // were all short ints
         double pu[MAX_WIDTH], qu[MAX_WIDTH], pv[MAX_WIDTH], qv[MAX_WIDTH], py[MAX_WIDTH], qy[MAX_WIDTH];
@@ -303,14 +302,6 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
                     py[i]=PY; qy[i]=QY;
                 }
 
-                // Generate the luminance (Y), by filtering out Fsc (by re-synthesising the detected py qy and subtracting), and subtracting the black-level
-                for (qint32 i=videoParameters.activeVideoStart; i < videoParameters.activeVideoEnd; i++) {
-                    qint32 tmp = static_cast<qint32>(b0[i]-(py[i]*sine[i]+qy[i]*cosine[i]) / normalise - videoParameters.black16bIre);
-                    if (tmp < 0) tmp = 0;
-                    if (tmp > 65535) tmp = 65535;
-                    Y[i] = static_cast<quint16>(tmp);
-                }
-
                 // Define scan line pointer to output buffer using 16 bit unsigned words
                 quint16 *ptr = reinterpret_cast<quint16*>(outputFrame.data() + (((fieldLine * 2) + field) * videoParameters.fieldWidth * 6));
 
@@ -321,9 +312,14 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
 
                 for (qint32 i = videoParameters.activeVideoStart; i < videoParameters.activeVideoEnd; i++)
                 {
+                    // Generate the luminance (Y), by filtering out Fsc (by re-synthesising the detected py qy and subtracting), and subtracting the black-level
+                    rY = b0[i] - ((py[i]*sine[i]+qy[i]*cosine[i]) / normalise) - videoParameters.black16bIre;
+                    rY *= scaledBrightness;
+                    if (rY < 0) rY = 0;
+                    if (rY > 65535) rY = 65535;
+
                     // the next two lines "rotate" the p&q components (at the arbitrary sine/cosine reference phase) backwards by the
                     // burst phase (relative to the arb phase), in order to recover U and V. The Vswitch is applied to flip the V-phase on alternate lines for PAL
-                    rY = Y[i] * scaledBrightness;
                     rU = (-((pu[i]*bp+qu[i]*bq)) * scaledSaturation);
                     rV = (-(Vsw*(qv[i]*bp-pv[i]*bq)) * scaledSaturation);
 
