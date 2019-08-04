@@ -214,6 +214,13 @@ QString TbcSources::getCurrentSourceFilename()
     return sourceVideos[currentSource]->filename;
 }
 
+// Get the map report for the current source
+QStringList TbcSources::getCurrentMapReport()
+{
+    if (sourceVideos.size() == 0) return QStringList();
+    return sourceVideos[currentSource]->discMap.getReport();
+}
+
 // Private methods ----------------------------------------------------------------------------------------------------
 
 // Method to load a new source in the background
@@ -286,12 +293,12 @@ void TbcSources::performBackgroundLoad(QString filename)
 
     // Perform LaserDisc mapping
     if (backgroundLoadSuccessful) {
-        qDebug() << "TbcSources::loadSource(): Performing LaserDisc mapping...";
-        emit setBusy("Performing LaserDisc mapping...", false, 0);
+        qDebug() << "TbcSources::loadSource(): Performing intelligent mapping...";
+        emit setBusy("Performing intelligent mapping...", false, 0);
         if (!sourceVideos[newSourceNumber]->discMap.create(sourceVideos[newSourceNumber]->ldDecodeMetaData)) {
             // Disc mapping failed
             qWarning() << "Disc mapping failed!";
-            backgroundLoadErrorMessage = "Cannot load source - Error creating LaserDisc map!";
+            backgroundLoadErrorMessage = "Cannot load source - Error creating map!";
             backgroundLoadSuccessful = false;
         }
     }

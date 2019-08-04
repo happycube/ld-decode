@@ -34,6 +34,7 @@ MainWindow::MainWindow(QWidget *parent) :
     // Set up dialogues
     aboutDialog = new AboutDialog(this);
     busyDialog = new BusyDialog(this);
+    reportDialog = new ReportDialog(this);
 
     // Connect to the TbcSource signals (busy loading and finished loading)
     connect(&tbcSources, &TbcSources::setBusy, this, &MainWindow::on_setBusy);
@@ -284,6 +285,13 @@ void MainWindow::on_frameNumberHorizontalSlider_valueChanged(int value)
     if (frameNumber != tbcSources.getCurrentFrameNumber()) showFrame();
 }
 
+void MainWindow::on_actionSource_report_triggered()
+{
+    reportDialog->clearReport();
+    reportDialog->showReport(tbcSources.getCurrentMapReport());
+    reportDialog->show();
+}
+
 // TbcSources class signal handlers -----------------------------------------------------------------------------------
 
 // Signal handler for setBusy signal from TbcSources class
@@ -339,3 +347,4 @@ void MainWindow::on_updateSources(bool isSuccessful)
         configuration.writeConfiguration();
     }
 }
+

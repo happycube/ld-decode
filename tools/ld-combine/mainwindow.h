@@ -32,6 +32,7 @@
 
 #include "aboutdialog.h"
 #include "busydialog.h"
+#include "reportdialog.h"
 
 #include "configuration.h"
 #include "tbcsources.h"
@@ -67,6 +68,8 @@ private slots:
     void on_clearBusy();
     void on_updateSources(bool isSuccessful);
 
+    void on_actionSource_report_triggered();
+
 private:
     Ui::MainWindow *ui;
     Configuration configuration;
@@ -76,6 +79,7 @@ private:
     // Dialogue objects
     AboutDialog *aboutDialog;
     BusyDialog *busyDialog;
+    ReportDialog *reportDialog;
 
     // GUI update methods
     void updateGUIsourcesAvailable();

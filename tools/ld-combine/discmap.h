@@ -39,26 +39,46 @@ public:
     explicit DiscMap(QObject *parent = nullptr);
 
     bool create(LdDecodeMetaData &ldDecodeMetaData);
+    QStringList getReport();
 
 signals:
 
 public slots:
 
 private:
+    bool isSourcePal;
+    QStringList mapReport;
+
+    enum DiscType {
+        discType_clv,
+        discType_cav,
+        discType_unknown
+    };
+    DiscType discType;
+
     struct Frame {
         qint32 firstField;
         qint32 secondField;
         bool isMissing;
         bool isLeadInOrOut;
+        bool isMarkedForDeletion;
         qint32 vbiFrameNumber;
+        qint32 syncConf;
+        qint32 bSnr;
+        qint32 dropOutLevel;
+
+        // Override < to allow struct to be sorted
+        bool operator < (const Frame& frame) const {
+            return (vbiFrameNumber < frame.vbiFrameNumber);
+        }
     };
-    QList<Frame> frames;
+    QVector<Frame> frames;
 
     bool sanityCheck(LdDecodeMetaData &ldDecodeMetaData);
     bool createInitialMap(LdDecodeMetaData &ldDecodeMetaData);
-    void correctFrameNumbering(LdDecodeMetaData &ldDecodeMetaData);
-    void removeDuplicateFrames(LdDecodeMetaData &ldDecodeMetaData);
-    void detectMissingFrames(LdDecodeMetaData &ldDecodeMetaData);
+    void correctFrameNumbering();
+    void removeDuplicateFrames();
+    void detectMissingFrames();
 };
 
 #endif // DISCMAP_H

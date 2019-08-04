@@ -65,6 +65,7 @@ public:
     qint32 getCurrentFrameNumber();
     void setCurrentFrameNumber(qint32 frameNumber);
     QString getCurrentSourceFilename();
+    QStringList getCurrentMapReport();
 
 signals:
     void setBusy(QString message, bool showProgress, qint32 progress);
