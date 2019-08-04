@@ -175,38 +175,18 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
 
         qint32 Vsw; // this will represent the PAL Vswitch state later on...
 
-        // Since we're not using Image objects, we need a pointer to the 16-bit image data
-        quint16 *topFieldDataPointer = reinterpret_cast<quint16*>(firstFieldData.data());
-        quint16 *bottomFieldDataPointer = reinterpret_cast<quint16*>(secondFieldData.data());
-
-        // Define the 16-bit line buffers
-        quint16 *b0 = nullptr;
-        quint16 *b1 = nullptr;
-        quint16 *b2 = nullptr;
-        quint16 *b3 = nullptr;
-        quint16 *b4 = nullptr;
-        quint16 *b5 = nullptr;
-        quint16 *b6 = nullptr;
-
         for (qint32 field = 0; field < 2; field++) {
+            const quint16 *fieldData = reinterpret_cast<const quint16 *>(field == 0 ? firstFieldData.data()
+                                                                                    : secondFieldData.data());
+
             for (qint32 fieldLine = 3; fieldLine < (videoParameters.fieldHeight - 3); fieldLine++) {
-                if (field == 0) {
-                    b0 = topFieldDataPointer+ (fieldLine      * (videoParameters.fieldWidth));
-                    b1 = topFieldDataPointer+((fieldLine - 1) * (videoParameters.fieldWidth));
-                    b2 = topFieldDataPointer+((fieldLine + 1) * (videoParameters.fieldWidth));
-                    b3 = topFieldDataPointer+((fieldLine - 2) * (videoParameters.fieldWidth));
-                    b4 = topFieldDataPointer+((fieldLine + 2) * (videoParameters.fieldWidth));
-                    b5 = topFieldDataPointer+((fieldLine - 3) * (videoParameters.fieldWidth));
-                    b6 = topFieldDataPointer+((fieldLine + 3) * (videoParameters.fieldWidth));
-                } else {
-                    b0 = bottomFieldDataPointer+ (fieldLine      * (videoParameters.fieldWidth));
-                    b1 = bottomFieldDataPointer+((fieldLine - 1) * (videoParameters.fieldWidth));
-                    b2 = bottomFieldDataPointer+((fieldLine + 1) * (videoParameters.fieldWidth));
-                    b3 = bottomFieldDataPointer+((fieldLine - 2) * (videoParameters.fieldWidth));
-                    b4 = bottomFieldDataPointer+((fieldLine + 2) * (videoParameters.fieldWidth));
-                    b5 = bottomFieldDataPointer+((fieldLine - 3) * (videoParameters.fieldWidth));
-                    b6 = bottomFieldDataPointer+((fieldLine + 3) * (videoParameters.fieldWidth));
-                }
+                const quint16 *b0 = fieldData +  (fieldLine      * (videoParameters.fieldWidth));
+                const quint16 *b1 = fieldData + ((fieldLine - 1) * (videoParameters.fieldWidth));
+                const quint16 *b2 = fieldData + ((fieldLine + 1) * (videoParameters.fieldWidth));
+                const quint16 *b3 = fieldData + ((fieldLine - 2) * (videoParameters.fieldWidth));
+                const quint16 *b4 = fieldData + ((fieldLine + 2) * (videoParameters.fieldWidth));
+                const quint16 *b5 = fieldData + ((fieldLine - 3) * (videoParameters.fieldWidth));
+                const quint16 *b6 = fieldData + ((fieldLine + 3) * (videoParameters.fieldWidth));
 
                 for (qint32 i = videoParameters.colourBurstStart; i < videoParameters.fieldWidth; i++) {
                     // The 2D filter is vertically symmetrical, so we can
