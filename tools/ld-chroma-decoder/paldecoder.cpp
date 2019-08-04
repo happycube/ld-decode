@@ -54,7 +54,7 @@ PalThread::PalThread(QAtomicInt& abortParam, DecoderPool& decoderPoolParam,
     : QThread(parent), abort(abortParam), decoderPool(decoderPoolParam), config(configParam)
 {
     // Configure PALcolour
-    palColour.updateConfiguration(config.videoParameters);
+    palColour.updateConfiguration(config.videoParameters, config.firstActiveScanLine, config.lastActiveScanLine);
 }
 
 void PalThread::run()
@@ -92,10 +92,7 @@ void PalThread::run()
         // Perform the PALcolour filtering
         QByteArray outputData = palColour.performDecode(firstFieldData, secondFieldData, 100, static_cast<qint32>(tSaturation));
 
-        // The PALcolour library outputs the whole frame, so here we have to strip all the non-visible stuff to just get the
-        // actual required image - it would be better if PALcolour gave back only the required RGB, but it's not my library.
-        // Since PALcolour uses +-3 scan-lines to colourise, the final lines before the non-visible area may not come out quite
-        // right, but we're including them here anyway.
+        // PALcolour outputs the whole frame; crop it to the active area
         QByteArray croppedData = PalDecoder::cropOutputFrame(config, outputData);
 
         // Write the result to the output file

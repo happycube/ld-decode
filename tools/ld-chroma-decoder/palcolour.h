@@ -38,7 +38,7 @@ class PalColour : public QObject
 
 public:
     explicit PalColour(QObject *parent = nullptr);
-    void updateConfiguration(LdDecodeMetaData::VideoParameters videoParametersParam);
+    void updateConfiguration(LdDecodeMetaData::VideoParameters videoParameters, qint32 firstActiveLine, qint32 lastActiveLine);
 
     // Method to perform the colour decoding
     QByteArray performDecode(QByteArray topFieldData, QByteArray bottomFieldData, qint32 brightness, qint32 saturation);
@@ -50,6 +50,8 @@ public:
 private:
     // Configuration parameters
     LdDecodeMetaData::VideoParameters videoParameters;
+    qint32 firstActiveLine;
+    qint32 lastActiveLine;
 
     // Look up tables array and constant definitions
     double sine[MAX_WIDTH], cosine[MAX_WIDTH];

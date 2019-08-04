@@ -36,10 +36,13 @@ PalColour::PalColour(QObject *parent) : QObject(parent)
     configurationSet = false;
 }
 
-void PalColour::updateConfiguration(LdDecodeMetaData::VideoParameters videoParametersParam)
+void PalColour::updateConfiguration(LdDecodeMetaData::VideoParameters videoParametersParam,
+                                    qint32 firstActiveLineParam, qint32 lastActiveLineParam)
 {
     // Copy the configuration parameters
     videoParameters = videoParametersParam;
+    firstActiveLine = firstActiveLineParam;
+    lastActiveLine = lastActiveLineParam;
 
     // Build the look-up tables
     buildLookUpTables();
@@ -169,6 +172,9 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
     // Scaling factor to put black at 0 and peak white at 65535
     double scaledBrightness = (65535.0 / (videoParameters.white16bIre - videoParameters.black16bIre)) * brightness / 100.0;
 
+    // Dummy black line, used when the 2D filter needs to look outside the active region.
+    static constexpr quint16 blackLine[MAX_WIDTH] = {0};
+
     if (!firstFieldData.isNull() && !secondFieldData.isNull()) {
         double pu[MAX_WIDTH], qu[MAX_WIDTH], pv[MAX_WIDTH], qv[MAX_WIDTH], py[MAX_WIDTH], qy[MAX_WIDTH];
         double m[4][MAX_WIDTH], n[4][MAX_WIDTH];
@@ -179,14 +185,24 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
             const quint16 *fieldData = reinterpret_cast<const quint16 *>(field == 0 ? firstFieldData.data()
                                                                                     : secondFieldData.data());
 
-            for (qint32 fieldLine = 3; fieldLine < (videoParameters.fieldHeight - 3); fieldLine++) {
-                const quint16 *b0 = fieldData +  (fieldLine      * (videoParameters.fieldWidth));
-                const quint16 *b1 = fieldData + ((fieldLine - 1) * (videoParameters.fieldWidth));
-                const quint16 *b2 = fieldData + ((fieldLine + 1) * (videoParameters.fieldWidth));
-                const quint16 *b3 = fieldData + ((fieldLine - 2) * (videoParameters.fieldWidth));
-                const quint16 *b4 = fieldData + ((fieldLine + 2) * (videoParameters.fieldWidth));
-                const quint16 *b5 = fieldData + ((fieldLine - 3) * (videoParameters.fieldWidth));
-                const quint16 *b6 = fieldData + ((fieldLine + 3) * (videoParameters.fieldWidth));
+            // Work out the active lines to be decoded within this field.
+            // If firstActiveLine or lastActiveLine is odd, we can end up with
+            // different ranges for the two fields, so we need to be careful
+            // about how this is rounded.
+            const qint32 firstFieldLine = (firstActiveLine + 1 - field) / 2;
+            const qint32 lastFieldLine = (lastActiveLine + 1 - field) / 2;
+
+            for (qint32 fieldLine = firstFieldLine; fieldLine < lastFieldLine; fieldLine++) {
+                // Get pointers to the surrounding lines.
+                // If a line we need is outside the active area, use blackLine instead.
+                const quint16 *b0, *b1, *b2, *b3, *b4, *b5, *b6;
+                b0 =                                                  fieldData +  (fieldLine      * videoParameters.fieldWidth);
+                b1 = (fieldLine - 1) <  firstFieldLine ? blackLine : (fieldData + ((fieldLine - 1) * videoParameters.fieldWidth));
+                b2 = (fieldLine + 1) >= lastFieldLine  ? blackLine : (fieldData + ((fieldLine + 1) * videoParameters.fieldWidth));
+                b3 = (fieldLine - 2) <  firstFieldLine ? blackLine : (fieldData + ((fieldLine - 2) * videoParameters.fieldWidth));
+                b4 = (fieldLine + 2) >= lastFieldLine  ? blackLine : (fieldData + ((fieldLine + 2) * videoParameters.fieldWidth));
+                b5 = (fieldLine - 2) <  firstFieldLine ? blackLine : (fieldData + ((fieldLine - 3) * videoParameters.fieldWidth));
+                b6 = (fieldLine + 3) >= lastFieldLine  ? blackLine : (fieldData + ((fieldLine + 3) * videoParameters.fieldWidth));
 
                 for (qint32 i = videoParameters.colourBurstStart; i < videoParameters.fieldWidth; i++) {
                     // The 2D filter is vertically symmetrical, so we can
