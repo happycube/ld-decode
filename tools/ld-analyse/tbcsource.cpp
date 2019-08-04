@@ -536,7 +536,7 @@ QImage TbcSource::generateQImage(qint32 firstFieldNumber, qint32 secondFieldNumb
 
             // Perform the PALcolour filtering (output is RGB 16-16-16)
             outputData = palColour.performDecode(firstFieldData, secondFieldData,
-                                                  100, static_cast<qint32>(tSaturation), false);
+                                                  100, static_cast<qint32>(tSaturation));
         } else {
             // NTSC source
 

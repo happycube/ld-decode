@@ -82,10 +82,12 @@ void PalThread::run()
         // Note: This code works as a temporary MTF compensator whilst ld-decode gets
         // real MTF compensation added to it.
         qreal tSaturation = 125.0 + ((100.0 / 20.0) * (20.0 - burstMedianIre));
+        if (config.blackAndWhite) {
+            tSaturation = 0;
+        }
 
         // Perform the PALcolour filtering
-        QByteArray outputData = palColour.performDecode(firstFieldData, secondFieldData, 100,
-                                                        static_cast<qint32>(tSaturation), config.blackAndWhite);
+        QByteArray outputData = palColour.performDecode(firstFieldData, secondFieldData, 100, static_cast<qint32>(tSaturation));
 
         // The PALcolour library outputs the whole frame, so here we have to strip all the non-visible stuff to just get the
         // actual required image - it would be better if PALcolour gave back only the required RGB, but it's not my library.
