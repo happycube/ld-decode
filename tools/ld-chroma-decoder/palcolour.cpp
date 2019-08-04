@@ -51,9 +51,15 @@ void PalColour::updateConfiguration(LdDecodeMetaData::VideoParameters videoParam
 // must be called by the constructor when the object is created
 void PalColour::buildLookUpTables()
 {
-    // Step 1: create sine/cosine lookups
+    // Generate quadrature samples of a sine wave at the subcarrier frequency.
+    // We'll use this for two purposes below:
+    // - product-detecting the line samples, to give us quadrature samples of
+    //   the chroma information centred on 0 Hz
+    // - working out what the phase of the subcarrier is on each line,
+    //   so we can rotate the chroma samples to put U/V on the right axes
+    // refAmpl is the sinewave amplitude.
     refAmpl = 1.28;
-    normalise = (refAmpl * refAmpl / 2);     // refAmpl is the integer sinewave amplitude
+    normalise = (refAmpl * refAmpl / 2);
 
     double rad;
     for (qint32 i = 0; i < videoParameters.fieldWidth; i++)
@@ -84,8 +90,6 @@ void PalColour::buildLookUpTables()
     assert(arraySize >= static_cast<qint32>(ca));
     assert(arraySize >= static_cast<qint32>(ya));
 
-    // Simon: The array declarations (used here and in the processing method) have been moved
-    // to the class' private space (in the .h)
     double cdiv=0;
     double ydiv=0;
 
@@ -166,9 +170,6 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
     double scaledBrightness = (65535.0 / (videoParameters.white16bIre - videoParameters.black16bIre)) * brightness / 100.0;
 
     if (!firstFieldData.isNull() && !secondFieldData.isNull()) {
-        // Step 2:
-
-        // were all short ints
         double pu[MAX_WIDTH], qu[MAX_WIDTH], pv[MAX_WIDTH], qv[MAX_WIDTH], py[MAX_WIDTH], qy[MAX_WIDTH];
         double m[4][MAX_WIDTH], n[4][MAX_WIDTH];
 
