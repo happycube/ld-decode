@@ -38,21 +38,23 @@ class PalColour : public QObject
 
 public:
     explicit PalColour(QObject *parent = nullptr);
-    void updateConfiguration(LdDecodeMetaData::VideoParameters videoParametersParam);
+    void updateConfiguration(LdDecodeMetaData::VideoParameters videoParameters, qint32 firstActiveLine, qint32 lastActiveLine);
 
     // Method to perform the colour decoding
-    QByteArray performDecode(QByteArray topFieldData, QByteArray bottomFieldData, qint32 brightness, qint32 saturation, bool blackAndWhite);
+    QByteArray performDecode(QByteArray topFieldData, QByteArray bottomFieldData, qint32 brightness, qint32 saturation);
 
-    // Replacements for #DEFINE values
-    static const qint32 MAX_WIDTH = 1135; // Simon: Maximum based on PAL width
-    static const qint32 MAX_HEIGHT = 625; // Simon: Maximum based on PAL height
+    // Maximum frame size, based on PAL
+    static const qint32 MAX_WIDTH = 1135;
+    static const qint32 MAX_HEIGHT = 625;
 
 private:
     // Configuration parameters
     LdDecodeMetaData::VideoParameters videoParameters;
+    qint32 firstActiveLine;
+    qint32 lastActiveLine;
 
     // Look up tables array and constant definitions
-    double sine[MAX_WIDTH], cosine[MAX_WIDTH];    // formerly short int
+    double sine[MAX_WIDTH], cosine[MAX_WIDTH];
     // cfilt and yfilt are the coefficients for the chroma and luma 2D FIR filters.
     // The filters are horizontally and vertically symmetrical (with signs
     // adjusted later to deal with phase differences between lines), so each

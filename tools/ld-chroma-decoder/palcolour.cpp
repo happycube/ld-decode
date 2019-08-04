@@ -36,10 +36,13 @@ PalColour::PalColour(QObject *parent) : QObject(parent)
     configurationSet = false;
 }
 
-void PalColour::updateConfiguration(LdDecodeMetaData::VideoParameters videoParametersParam)
+void PalColour::updateConfiguration(LdDecodeMetaData::VideoParameters videoParametersParam,
+                                    qint32 firstActiveLineParam, qint32 lastActiveLineParam)
 {
     // Copy the configuration parameters
     videoParameters = videoParametersParam;
+    firstActiveLine = firstActiveLineParam;
+    lastActiveLine = lastActiveLineParam;
 
     // Build the look-up tables
     buildLookUpTables();
@@ -51,9 +54,15 @@ void PalColour::updateConfiguration(LdDecodeMetaData::VideoParameters videoParam
 // must be called by the constructor when the object is created
 void PalColour::buildLookUpTables()
 {
-    // Step 1: create sine/cosine lookups
+    // Generate quadrature samples of a sine wave at the subcarrier frequency.
+    // We'll use this for two purposes below:
+    // - product-detecting the line samples, to give us quadrature samples of
+    //   the chroma information centred on 0 Hz
+    // - working out what the phase of the subcarrier is on each line,
+    //   so we can rotate the chroma samples to put U/V on the right axes
+    // refAmpl is the sinewave amplitude.
     refAmpl = 1.28;
-    normalise = (refAmpl * refAmpl / 2);     // refAmpl is the integer sinewave amplitude
+    normalise = (refAmpl * refAmpl / 2);
 
     double rad;
     for (qint32 i = 0; i < videoParameters.fieldWidth; i++)
@@ -84,8 +93,6 @@ void PalColour::buildLookUpTables()
     assert(arraySize >= static_cast<qint32>(ca));
     assert(arraySize >= static_cast<qint32>(ya));
 
-    // Simon: The array declarations (used here and in the processing method) have been moved
-    // to the class' private space (in the .h)
     double cdiv=0;
     double ydiv=0;
 
@@ -150,10 +157,7 @@ void PalColour::buildLookUpTables()
 
 // Performs a decode of the 16-bit greyscale input frame and produces a RGB 16-16-16-bit output frame
 // with 16 bit processing
-//
-// Note: This method does not clear the output array before writing to it; if there is garbage
-// in the allocated memory, it will be in the output with the decoded image on top.
-QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray secondFieldData, qint32 brightness, qint32 saturation, bool blackAndWhite)
+QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray secondFieldData, qint32 brightness, qint32 saturation)
 {
     // Ensure the object has been configured
     if (!configurationSet) {
@@ -165,53 +169,40 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
     // is no picture data
     outputFrame.fill(0);
 
-    // Note: 1.75 is the nominal scaling factor of 75% amplitude for full-range digitised
-    // composite (with sync at code 0 or 1, blanking at code 64 (40h), and peak white at
-    // code 211 (d3h) to give 0-255 RGB).
-    double scaledBrightness = 1.75 * brightness / 100.0;
+    // Scaling factor to put black at 0 and peak white at 65535
+    double scaledBrightness = (65535.0 / (videoParameters.white16bIre - videoParameters.black16bIre)) * brightness / 100.0;
+
+    // Dummy black line, used when the 2D filter needs to look outside the active region.
+    static constexpr quint16 blackLine[MAX_WIDTH] = {0};
 
     if (!firstFieldData.isNull() && !secondFieldData.isNull()) {
-        // Step 2:
-        quint16 Y[MAX_WIDTH];
-
-        // were all short ints
         double pu[MAX_WIDTH], qu[MAX_WIDTH], pv[MAX_WIDTH], qv[MAX_WIDTH], py[MAX_WIDTH], qy[MAX_WIDTH];
         double m[4][MAX_WIDTH], n[4][MAX_WIDTH];
 
         qint32 Vsw; // this will represent the PAL Vswitch state later on...
 
-        // Since we're not using Image objects, we need a pointer to the 16-bit image data
-        quint16 *topFieldDataPointer = reinterpret_cast<quint16*>(firstFieldData.data());
-        quint16 *bottomFieldDataPointer = reinterpret_cast<quint16*>(secondFieldData.data());
-
-        // Define the 16-bit line buffers
-        quint16 *b0 = nullptr;
-        quint16 *b1 = nullptr;
-        quint16 *b2 = nullptr;
-        quint16 *b3 = nullptr;
-        quint16 *b4 = nullptr;
-        quint16 *b5 = nullptr;
-        quint16 *b6 = nullptr;
-
         for (qint32 field = 0; field < 2; field++) {
-            for (qint32 fieldLine = 3; fieldLine < (videoParameters.fieldHeight - 3); fieldLine++) {
-                if (field == 0) {
-                    b0 = topFieldDataPointer+ (fieldLine      * (videoParameters.fieldWidth));
-                    b1 = topFieldDataPointer+((fieldLine - 1) * (videoParameters.fieldWidth));
-                    b2 = topFieldDataPointer+((fieldLine + 1) * (videoParameters.fieldWidth));
-                    b3 = topFieldDataPointer+((fieldLine - 2) * (videoParameters.fieldWidth));
-                    b4 = topFieldDataPointer+((fieldLine + 2) * (videoParameters.fieldWidth));
-                    b5 = topFieldDataPointer+((fieldLine - 3) * (videoParameters.fieldWidth));
-                    b6 = topFieldDataPointer+((fieldLine + 3) * (videoParameters.fieldWidth));
-                } else {
-                    b0 = bottomFieldDataPointer+ (fieldLine      * (videoParameters.fieldWidth));
-                    b1 = bottomFieldDataPointer+((fieldLine - 1) * (videoParameters.fieldWidth));
-                    b2 = bottomFieldDataPointer+((fieldLine + 1) * (videoParameters.fieldWidth));
-                    b3 = bottomFieldDataPointer+((fieldLine - 2) * (videoParameters.fieldWidth));
-                    b4 = bottomFieldDataPointer+((fieldLine + 2) * (videoParameters.fieldWidth));
-                    b5 = bottomFieldDataPointer+((fieldLine - 3) * (videoParameters.fieldWidth));
-                    b6 = bottomFieldDataPointer+((fieldLine + 3) * (videoParameters.fieldWidth));
-                }
+            const quint16 *fieldData = reinterpret_cast<const quint16 *>(field == 0 ? firstFieldData.data()
+                                                                                    : secondFieldData.data());
+
+            // Work out the active lines to be decoded within this field.
+            // If firstActiveLine or lastActiveLine is odd, we can end up with
+            // different ranges for the two fields, so we need to be careful
+            // about how this is rounded.
+            const qint32 firstFieldLine = (firstActiveLine + 1 - field) / 2;
+            const qint32 lastFieldLine = (lastActiveLine + 1 - field) / 2;
+
+            for (qint32 fieldLine = firstFieldLine; fieldLine < lastFieldLine; fieldLine++) {
+                // Get pointers to the surrounding lines.
+                // If a line we need is outside the active area, use blackLine instead.
+                const quint16 *b0, *b1, *b2, *b3, *b4, *b5, *b6;
+                b0 =                                                  fieldData +  (fieldLine      * videoParameters.fieldWidth);
+                b1 = (fieldLine - 1) <  firstFieldLine ? blackLine : (fieldData + ((fieldLine - 1) * videoParameters.fieldWidth));
+                b2 = (fieldLine + 1) >= lastFieldLine  ? blackLine : (fieldData + ((fieldLine + 1) * videoParameters.fieldWidth));
+                b3 = (fieldLine - 2) <  firstFieldLine ? blackLine : (fieldData + ((fieldLine - 2) * videoParameters.fieldWidth));
+                b4 = (fieldLine + 2) >= lastFieldLine  ? blackLine : (fieldData + ((fieldLine + 2) * videoParameters.fieldWidth));
+                b5 = (fieldLine - 2) <  firstFieldLine ? blackLine : (fieldData + ((fieldLine - 3) * videoParameters.fieldWidth));
+                b6 = (fieldLine + 3) >= lastFieldLine  ? blackLine : (fieldData + ((fieldLine + 3) * videoParameters.fieldWidth));
 
                 for (qint32 i = videoParameters.colourBurstStart; i < videoParameters.fieldWidth; i++) {
                     // The 2D filter is vertically symmetrical, so we can
@@ -305,14 +296,6 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
                     py[i]=PY; qy[i]=QY;
                 }
 
-                // Generate the luminance (Y), by filtering out Fsc (by re-synthesising the detected py qy and subtracting), and subtracting the black-level
-                for (qint32 i=videoParameters.activeVideoStart; i < videoParameters.activeVideoEnd; i++) {
-                    qint32 tmp = static_cast<qint32>(b0[i]-(py[i]*sine[i]+qy[i]*cosine[i]) / normalise - videoParameters.black16bIre);
-                    if (tmp < 0) tmp = 0;
-                    if (tmp > 65535) tmp = 65535;
-                    Y[i] = static_cast<quint16>(tmp);
-                }
-
                 // Define scan line pointer to output buffer using 16 bit unsigned words
                 quint16 *ptr = reinterpret_cast<quint16*>(outputFrame.data() + (((fieldLine * 2) + field) * videoParameters.fieldWidth * 6));
 
@@ -323,18 +306,16 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
 
                 for (qint32 i = videoParameters.activeVideoStart; i < videoParameters.activeVideoEnd; i++)
                 {
+                    // Generate the luminance (Y), by filtering out Fsc (by re-synthesising the detected py qy and subtracting), and subtracting the black-level
+                    rY = b0[i] - ((py[i]*sine[i]+qy[i]*cosine[i]) / normalise) - videoParameters.black16bIre;
+                    rY *= scaledBrightness;
+                    if (rY < 0) rY = 0;
+                    if (rY > 65535) rY = 65535;
+
                     // the next two lines "rotate" the p&q components (at the arbitrary sine/cosine reference phase) backwards by the
                     // burst phase (relative to the arb phase), in order to recover U and V. The Vswitch is applied to flip the V-phase on alternate lines for PAL
-                    // The scaledBrightness provides 75% amplitude (x1.75)
-                    rY = Y[i] * scaledBrightness;
                     rU = (-((pu[i]*bp+qu[i]*bq)) * scaledSaturation);
                     rV = (-(Vsw*(qv[i]*bp-pv[i]*bq)) * scaledSaturation);
-
-                    // Remove UV colour components if black and white (Y only) output is required
-                    if (blackAndWhite) {
-                        rU = 0;
-                        rV = 0;
-                    }
 
                     // This conversion is taken from Video Demystified (5th edition) page 18
                     R = ( rY + (1.140 * rV) );
