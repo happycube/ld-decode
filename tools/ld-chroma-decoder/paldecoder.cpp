@@ -81,7 +81,10 @@ void PalThread::run()
         // Calculate the saturation level from the burst median IRE
         // Note: This code works as a temporary MTF compensator whilst ld-decode gets
         // real MTF compensation added to it.
-        qreal tSaturation = 125.0 + ((100.0 / 20.0) * (20.0 - burstMedianIre));
+        // PAL burst is 300 mV p-p (about 43 IRE, as 100 IRE = 700 mV)
+        qreal nominalBurstIre = 300 * (100.0 / 700) / 2;
+        qreal tSaturation = 100 * (nominalBurstIre / burstMedianIre);
+
         if (config.blackAndWhite) {
             tSaturation = 0;
         }
