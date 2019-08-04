@@ -38,24 +38,6 @@ class DiscMap : public QObject
 public:
     explicit DiscMap(QObject *parent = nullptr);
 
-    bool create(LdDecodeMetaData &ldDecodeMetaData);
-    QStringList getReport();
-
-signals:
-
-public slots:
-
-private:
-    bool isSourcePal;
-    QStringList mapReport;
-
-    enum DiscType {
-        discType_clv,
-        discType_cav,
-        discType_unknown
-    };
-    DiscType discType;
-
     struct Frame {
         qint32 firstField;
         qint32 secondField;
@@ -72,7 +54,33 @@ private:
             return (vbiFrameNumber < frame.vbiFrameNumber);
         }
     };
+
+    bool create(LdDecodeMetaData &ldDecodeMetaData);
+    QStringList getReport();
+
+    qint32 getNumberOfFrames();
+    qint32 getStartFrame();
+    qint32 getEndFrame();
+    Frame getFrame(qint32 frameNumber);
+
+signals:
+
+public slots:
+
+private:
+    bool isSourcePal;
+    QStringList mapReport;
+
+    enum DiscType {
+        discType_clv,
+        discType_cav,
+        discType_unknown
+    };
+    DiscType discType;
+
     QVector<Frame> frames;
+    qint32 vbiStartFrameNumber;
+    qint32 vbiEndFrameNumber;
 
     bool sanityCheck(LdDecodeMetaData &ldDecodeMetaData);
     bool createInitialMap(LdDecodeMetaData &ldDecodeMetaData);

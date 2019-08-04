@@ -27,6 +27,7 @@
 TbcSources::TbcSources(QObject *parent) : QObject(parent)
 {
     currentSource = 0;
+    currentFrameNumber = 1;
     backgroundLoadErrorMessage.clear();
 }
 
@@ -99,58 +100,66 @@ QVector<QString> TbcSources::getListOfAvailableSources()
 // Get a QImage of the current source's current frame
 QImage TbcSources::getCurrentFrameImage()
 {
-    // Get the required field numbers
-    qint32 firstFieldNumber = sourceVideos[currentSource]->ldDecodeMetaData.getFirstFieldNumber(
-                sourceVideos[currentSource]->currentFrameNumber);
-    qint32 secondFieldNumber = sourceVideos[currentSource]->ldDecodeMetaData.getSecondFieldNumber(
-                sourceVideos[currentSource]->currentFrameNumber);
-
     // Get the metadata for the video parameters
     LdDecodeMetaData::VideoParameters videoParameters = sourceVideos[currentSource]->ldDecodeMetaData.getVideoParameters();
-
-    // Get the video field data
-    QByteArray firstFieldData = sourceVideos[currentSource]->sourceVideo.getVideoField(firstFieldNumber);
-    QByteArray secondFieldData = sourceVideos[currentSource]->sourceVideo.getVideoField(secondFieldNumber);
 
     // Calculate the frame height
     qint32 frameHeight = (videoParameters.fieldHeight * 2) - 1;
 
-    // Show debug information
-    qDebug().nospace() << "TbcSources::getCurrentFrameImage(): Generating a source image from field pair " << firstFieldNumber <<
-                "/" << secondFieldNumber << " (" << videoParameters.fieldWidth << "x" <<
-                frameHeight << ")";
-
     // Create a QImage
     QImage frameImage = QImage(videoParameters.fieldWidth, frameHeight, QImage::Format_RGB888);
 
-    // Define the data buffers
-    QByteArray firstLineData;
-    QByteArray secondLineData;
+    // Ensure the frame is not missing
+    if (!sourceVideos[currentSource]->discMap.getFrame(currentFrameNumber).isMissing) {
+        // Get the required field numbers
+        qint32 firstFieldNumber = sourceVideos[currentSource]->discMap.getFrame(currentFrameNumber).firstField;
+        qint32 secondFieldNumber = sourceVideos[currentSource]->discMap.getFrame(currentFrameNumber).secondField;
 
-    // Copy the raw 16-bit grayscale data into the RGB888 QImage
-    for (qint32 y = 0; y < frameHeight; y++) {
-        // Extract the current scan line data from the frame
-        qint32 startPointer = (y / 2) * videoParameters.fieldWidth * 2;
-        qint32 length = videoParameters.fieldWidth * 2;
+        // Get the video field data
+        QByteArray firstFieldData = sourceVideos[currentSource]->sourceVideo.getVideoField(firstFieldNumber);
+        QByteArray secondFieldData = sourceVideos[currentSource]->sourceVideo.getVideoField(secondFieldNumber);
 
-        firstLineData = firstFieldData.mid(startPointer, length);
-        secondLineData = secondFieldData.mid(startPointer, length);
+        // Show debug information
+        qDebug().nospace() << "TbcSources::getCurrentFrameImage(): Generating a source image from field pair " << firstFieldNumber <<
+                    "/" << secondFieldNumber << " (" << videoParameters.fieldWidth << "x" <<
+                    frameHeight << ")";
 
-        for (qint32 x = 0; x < videoParameters.fieldWidth; x++) {
-            // Take just the MSB of the input data
-            qint32 dp = x * 2;
-            uchar pixelValue;
-            if (y % 2) {
-                pixelValue = static_cast<uchar>(secondLineData[dp + 1]);
-            } else {
-                pixelValue = static_cast<uchar>(firstLineData[dp + 1]);
+        // Define the data buffers
+        QByteArray firstLineData;
+        QByteArray secondLineData;
+
+        // Copy the raw 16-bit grayscale data into the RGB888 QImage
+        for (qint32 y = 0; y < frameHeight; y++) {
+            // Extract the current scan line data from the frame
+            qint32 startPointer = (y / 2) * videoParameters.fieldWidth * 2;
+            qint32 length = videoParameters.fieldWidth * 2;
+
+            firstLineData = firstFieldData.mid(startPointer, length);
+            secondLineData = secondFieldData.mid(startPointer, length);
+
+            for (qint32 x = 0; x < videoParameters.fieldWidth; x++) {
+                // Take just the MSB of the input data
+                qint32 dp = x * 2;
+                uchar pixelValue;
+                if (y % 2) {
+                    pixelValue = static_cast<uchar>(secondLineData[dp + 1]);
+                } else {
+                    pixelValue = static_cast<uchar>(firstLineData[dp + 1]);
+                }
+
+                qint32 xpp = x * 3;
+                *(frameImage.scanLine(y) + xpp + 0) = static_cast<uchar>(pixelValue); // R
+                *(frameImage.scanLine(y) + xpp + 1) = static_cast<uchar>(pixelValue); // G
+                *(frameImage.scanLine(y) + xpp + 2) = static_cast<uchar>(pixelValue); // B
             }
-
-            qint32 xpp = x * 3;
-            *(frameImage.scanLine(y) + xpp + 0) = static_cast<uchar>(pixelValue); // R
-            *(frameImage.scanLine(y) + xpp + 1) = static_cast<uchar>(pixelValue); // G
-            *(frameImage.scanLine(y) + xpp + 2) = static_cast<uchar>(pixelValue); // B
         }
+    } else {
+        // Frame is missing from source - return a dummy frame
+        frameImage.fill(Qt::red);
+
+        // Show debug information
+        qDebug().nospace() << "TbcSources::getCurrentFrameImage(): Source frame is missing - generating dummy image (" <<
+                              videoParameters.fieldWidth << "x" << frameHeight << ")";
     }
 
     return frameImage;
@@ -162,10 +171,8 @@ TbcSources::RawFrame TbcSources::getCurrentFrameData()
     RawFrame rawFrame;
 
     // Get the required field numbers
-    qint32 firstFieldNumber = sourceVideos[currentSource]->ldDecodeMetaData.getFirstFieldNumber(
-                sourceVideos[currentSource]->currentFrameNumber);
-    qint32 secondFieldNumber = sourceVideos[currentSource]->ldDecodeMetaData.getSecondFieldNumber(
-                sourceVideos[currentSource]->currentFrameNumber);
+    qint32 firstFieldNumber = sourceVideos[currentSource]->discMap.getFrame(currentFrameNumber).firstField;
+    qint32 secondFieldNumber = sourceVideos[currentSource]->discMap.getFrame(currentFrameNumber).secondField;
 
     // Get the metadata for the video parameters
     LdDecodeMetaData::VideoParameters videoParameters = sourceVideos[currentSource]->ldDecodeMetaData.getVideoParameters();
@@ -180,17 +187,17 @@ TbcSources::RawFrame TbcSources::getCurrentFrameData()
 }
 
 // Get the number of frames available from the current source
-qint32 TbcSources::getNumberOfFrames()
+qint32 TbcSources::getCurrentSourceNumberOfFrames()
 {
     if (sourceVideos.size() == 0) return -1;
-    return sourceVideos[currentSource]->ldDecodeMetaData.getNumberOfFrames();
+    return sourceVideos[currentSource]->discMap.getNumberOfFrames();
 }
 
 // Get the currently selected frame number of the current source
 qint32 TbcSources::getCurrentFrameNumber()
 {
     if (sourceVideos.size() == 0) return -1;
-    return sourceVideos[currentSource]->currentFrameNumber;
+    return currentFrameNumber;
 }
 
 // Set the current frame number of the current source
@@ -199,12 +206,20 @@ void TbcSources::setCurrentFrameNumber(qint32 frameNumber)
     if (sourceVideos.size() == 0) return;
 
     // Range check the request
-    if (frameNumber < 1) frameNumber = 1;
-    if (frameNumber > sourceVideos[currentSource]->ldDecodeMetaData.getNumberOfFrames())
-        frameNumber = sourceVideos[currentSource]->ldDecodeMetaData.getNumberOfFrames();
+    if (frameNumber < getMinimumFrameNumber()) {
+        qDebug() << "TbcSources::setCurrentFrameNumber(): Request to set current frame number to" << frameNumber <<
+                    "is out of bounds ( before start of" << getMinimumFrameNumber() << " )";
+        frameNumber = getMinimumFrameNumber();
+    }
+
+    if (frameNumber > getMaximumFrameNumber()) {
+        qDebug() << "TbcSources::setCurrentFrameNumber(): Request to set current frame number to" << frameNumber <<
+                    "is out of bounds ( after end of" << getMaximumFrameNumber() << " )";
+        frameNumber = getMaximumFrameNumber();
+    }
 
     // Set the current frame number
-    sourceVideos[currentSource]->currentFrameNumber = frameNumber;
+    currentFrameNumber = frameNumber;
 }
 
 // Get the current source's filename
@@ -219,6 +234,42 @@ QStringList TbcSources::getCurrentMapReport()
 {
     if (sourceVideos.size() == 0) return QStringList();
     return sourceVideos[currentSource]->discMap.getReport();
+}
+
+// Get the minimum frame number for all sources
+qint32 TbcSources::getMinimumFrameNumber()
+{
+    qint32 minimumFrameNumber = 1000000;
+    for (qint32 i = 0; i < sourceVideos.size(); i++) {
+        if (sourceVideos[i]->discMap.getStartFrame() < minimumFrameNumber)
+            minimumFrameNumber = sourceVideos[i]->discMap.getStartFrame();
+    }
+
+    return minimumFrameNumber;
+}
+
+// Get the maximum frame number for all sources
+qint32 TbcSources::getMaximumFrameNumber()
+{
+    qint32 maximumFrameNumber = 0;
+    for (qint32 i = 0; i < sourceVideos.size(); i++) {
+        if (sourceVideos[i]->discMap.getEndFrame() > maximumFrameNumber)
+            maximumFrameNumber = sourceVideos[i]->discMap.getEndFrame();
+    }
+
+    return maximumFrameNumber;
+}
+
+// Get the minimum frame number for the current source
+qint32 TbcSources::getCurrentSourceMinimumFrameNumber()
+{
+    return sourceVideos[currentSource]->discMap.getStartFrame();
+}
+
+// Get the maximum frame number for the current source
+qint32 TbcSources::getCurrentSourceMaxmumFrameNumber()
+{
+    return sourceVideos[currentSource]->discMap.getEndFrame();
 }
 
 // Private methods ----------------------------------------------------------------------------------------------------
@@ -307,7 +358,6 @@ void TbcSources::performBackgroundLoad(QString filename)
     if (backgroundLoadSuccessful) {
         // Loading successful
         sourceVideos[newSourceNumber]->filename = filename;
-        sourceVideos[newSourceNumber]->currentFrameNumber = 1;
         backgroundLoadSuccessful = true;
     } else {
         // Loading unsuccessful - Remove the new source entry and default the current source

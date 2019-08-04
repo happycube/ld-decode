@@ -61,11 +61,15 @@ public:
     QVector<QString> getListOfAvailableSources();
     QImage getCurrentFrameImage();
     RawFrame getCurrentFrameData();
-    qint32 getNumberOfFrames();
+    qint32 getCurrentSourceNumberOfFrames();
     qint32 getCurrentFrameNumber();
     void setCurrentFrameNumber(qint32 frameNumber);
     QString getCurrentSourceFilename();
     QStringList getCurrentMapReport();
+    qint32 getMinimumFrameNumber();
+    qint32 getMaximumFrameNumber();
+    qint32 getCurrentSourceMinimumFrameNumber();
+    qint32 getCurrentSourceMaxmumFrameNumber();
 
 signals:
     void setBusy(QString message, bool showProgress, qint32 progress);
@@ -81,10 +85,12 @@ private:
     struct Source {
         SourceVideo sourceVideo;
         LdDecodeMetaData ldDecodeMetaData;
-        qint32 currentFrameNumber;
         QString filename;
         DiscMap discMap;
     };
+
+    // The frame number is common between sources
+    qint32 currentFrameNumber;
 
     QVector<Source*> sourceVideos;
     qint32 currentSource;

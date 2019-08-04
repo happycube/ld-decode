@@ -53,6 +53,8 @@ public:
     // Get and set methods - windows
     void setMainWindowGeometry(QByteArray mainWindowGeometry);
     QByteArray getMainWindowGeometry(void);
+    void setReportDialogGeometry(QByteArray reportWindowGeometry);
+    QByteArray getReportDialogGeometry(void);
 
 private:
     QSettings *configuration;
@@ -66,6 +68,7 @@ private:
     // Window geometry and settings
     struct Windows {
         QByteArray mainWindowGeometry;
+        QByteArray reportDialogGeometry;
     };
 
     // Overall settings structure

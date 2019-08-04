@@ -41,8 +41,9 @@ MainWindow::MainWindow(QWidget *parent) :
     connect(&tbcSources, &TbcSources::clearBusy, this, &MainWindow::on_clearBusy);
     connect(&tbcSources, &TbcSources::updateSources, this, &MainWindow::on_updateSources);
 
-    // Load the window geometry and settings from the configurationMainWindow
-    restoreGeometry(configuration.getMainWindowGeometry());
+    // Load the window geometry and settings from the configuration
+    this->restoreGeometry(configuration.getMainWindowGeometry());
+    reportDialog->restoreGeometry(configuration.getReportDialogGeometry());
 
     // Add a status bar to show the state of the source video file
     ui->statusBar->addWidget(&applicationStatus);
@@ -54,7 +55,8 @@ MainWindow::MainWindow(QWidget *parent) :
 MainWindow::~MainWindow()
 {
     // Save the window geometry and settings to the configuration
-    configuration.setMainWindowGeometry(saveGeometry());
+    configuration.setMainWindowGeometry(this->saveGeometry());
+    configuration.setReportDialogGeometry(reportDialog->saveGeometry());
     configuration.writeConfiguration();
 
     delete ui;
@@ -131,20 +133,31 @@ void MainWindow::sourceChanged()
     // Set the main window title
     this->setWindowTitle(tr("ld-combine - ") + tbcSources.getCurrentSourceFilename());
 
-    // Set the status bar text
-    applicationStatus.setText("Source #" + QString::number(tbcSources.getCurrentSource()) +
-                              " with " + QString::number(tbcSources.getNumberOfFrames()) + " frames");
+    if (tbcSources.getNumberOfAvailableSources() == 1) {
+        tbcSources.setCurrentFrameNumber(tbcSources.getMinimumFrameNumber());
+    }
 
-    // Set the frame number spin box
-    ui->frameNumberSpinBox->setValue(tbcSources.getCurrentFrameNumber());
+    // Set the status bar text
+    applicationStatus.setText("Source #" + QString::number(tbcSources.getCurrentSource()) + " selected - " +
+                              " " + QString::number(tbcSources.getCurrentSourceNumberOfFrames()) + " frames in the range of " +
+                              QString::number(tbcSources.getCurrentSourceMinimumFrameNumber()) + " to " +
+                              QString::number(tbcSources.getCurrentSourceMaxmumFrameNumber()));
 
     // Set the source selection combo box index
     ui->sourceSelectComboBox->setCurrentIndex(tbcSources.getCurrentSource());
 
     // Set the horizontal slider bar
-    ui->frameNumberHorizontalSlider->setMinimum(1);
-    ui->frameNumberHorizontalSlider->setMaximum(tbcSources.getNumberOfFrames());
+    ui->frameNumberHorizontalSlider->setMinimum(tbcSources.getMinimumFrameNumber());
+    ui->frameNumberHorizontalSlider->setMaximum(tbcSources.getMaximumFrameNumber());
     ui->frameNumberHorizontalSlider->setValue(tbcSources.getCurrentFrameNumber());
+    qDebug() << "Slider range set to" << tbcSources.getMinimumFrameNumber() << "-" << tbcSources.getMaximumFrameNumber();
+
+    // Set the frame number spin box
+    ui->frameNumberSpinBox->setValue(tbcSources.getCurrentFrameNumber());
+
+    // Update the disc report
+    reportDialog->clearReport();
+    reportDialog->showReport(tbcSources.getCurrentMapReport());
 
     showFrame();
 

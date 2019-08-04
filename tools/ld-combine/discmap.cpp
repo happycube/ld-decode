@@ -52,6 +52,44 @@ QStringList DiscMap::getReport()
     return mapReport;
 }
 
+qint32 DiscMap::getNumberOfFrames()
+{
+    return frames.size();
+}
+
+qint32 DiscMap::getStartFrame()
+{
+    return vbiStartFrameNumber;
+}
+
+qint32 DiscMap::getEndFrame()
+{
+    return vbiEndFrameNumber;
+}
+
+DiscMap::Frame DiscMap::getFrame(qint32 frameNumber)
+{
+    if (frameNumber < vbiStartFrameNumber || frameNumber > vbiEndFrameNumber) {
+        // Return the frame as missing
+        qDebug() << "DiscMap::getFrame(): Request for frameNumber" << frameNumber << "- returning missing frame";
+
+        Frame frame;
+        frame.firstField = -1;
+        frame.secondField = -1;
+        frame.isMissing = true;
+        frame.isLeadInOrOut = false;
+        frame.isMarkedForDeletion = false;
+        frame.vbiFrameNumber = frameNumber + 1;
+        frame.syncConf = 0;
+        frame.bSnr = 0;
+        frame.dropOutLevel = 0;
+        return frame;
+    }
+
+    //qDebug() << "DiscMap::getFrame(): Request for frameNumber" << frameNumber << "returning frame element" << frameNumber - vbiStartFrameNumber;
+    return frames[frameNumber - vbiStartFrameNumber];
+}
+
 // Private methods ----------------------------------------------------------------------------------------------------
 
 bool DiscMap::sanityCheck(LdDecodeMetaData &ldDecodeMetaData)
@@ -74,7 +112,7 @@ bool DiscMap::sanityCheck(LdDecodeMetaData &ldDecodeMetaData)
 bool DiscMap::createInitialMap(LdDecodeMetaData &ldDecodeMetaData)
 {
     qDebug() << "DiscMap::createInitialMap(): Creating initial map...";
-    mapReport.append("Performing initial mapping:");
+    mapReport.append("Initial mapping:");
     VbiDecoder vbiDecoder;
     discType = discType_unknown;
     isSourcePal = ldDecodeMetaData.getVideoParameters().isSourcePal;
@@ -382,5 +420,10 @@ void DiscMap::detectMissingFrames()
     frames = filledFrames;
     qDebug() << "DiscMap::detectMissingFrames(): Added" << filledFrameCount << "missing frames - Frame total now" << frames.size();
     mapReport.append("Added " + QString::number(filledFrameCount) + " missing frames - Frame total now " + QString::number(frames.size()));
+
+    // Set the start frame (by setting the frameNumberOffset
+    vbiStartFrameNumber = frames.first().vbiFrameNumber;
+    vbiEndFrameNumber = frames.last().vbiFrameNumber;
+    mapReport.append("Set source start frame as " + QString::number(vbiStartFrameNumber) + " and end frame as " + QString::number(vbiEndFrameNumber));
 }
 
