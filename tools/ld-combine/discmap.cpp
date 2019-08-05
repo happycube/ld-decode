@@ -31,11 +31,12 @@ DiscMap::DiscMap(QObject *parent) : QObject(parent)
 
 // Public methods -----------------------------------------------------------------------------------------------------
 
+// Create a disc map based on the source's metadata
 bool DiscMap::create(LdDecodeMetaData &ldDecodeMetaData)
 {
     mapReport.clear();
 
-    if (!sanityCheck(ldDecodeMetaData)) return false;
+    if (!discCheck(ldDecodeMetaData)) return false;
     if (!createInitialMap(ldDecodeMetaData)) return false;
     correctFrameNumbering();
     removeDuplicateFrames();
@@ -47,26 +48,32 @@ bool DiscMap::create(LdDecodeMetaData &ldDecodeMetaData)
     return true;
 }
 
+// Return the disc mapping text report
 QStringList DiscMap::getReport()
 {
     return mapReport;
 }
 
+// Get the number of frames in the map
 qint32 DiscMap::getNumberOfFrames()
 {
     return frames.size();
 }
 
+// Get the start frame of the map
 qint32 DiscMap::getStartFrame()
 {
     return vbiStartFrameNumber;
 }
 
+// Get the end frame of the map
 qint32 DiscMap::getEndFrame()
 {
     return vbiEndFrameNumber;
 }
 
+
+// Get a frame record from the disc map
 DiscMap::Frame DiscMap::getFrame(qint32 frameNumber)
 {
     if (frameNumber < vbiStartFrameNumber || frameNumber > vbiEndFrameNumber) {
@@ -77,7 +84,6 @@ DiscMap::Frame DiscMap::getFrame(qint32 frameNumber)
         frame.firstField = -1;
         frame.secondField = -1;
         frame.isMissing = true;
-        frame.isLeadInOrOut = false;
         frame.isMarkedForDeletion = false;
         frame.vbiFrameNumber = frameNumber + 1;
         frame.syncConf = 0;
@@ -92,37 +98,88 @@ DiscMap::Frame DiscMap::getFrame(qint32 frameNumber)
 
 // Private methods ----------------------------------------------------------------------------------------------------
 
-bool DiscMap::sanityCheck(LdDecodeMetaData &ldDecodeMetaData)
+bool DiscMap::discCheck(LdDecodeMetaData &ldDecodeMetaData)
 {
+    qDebug() << "DiscMap::discCheck(): Disc check";
+    mapReport.append("Disc check:");
+
+    // Report number of available frames in the source
+    mapReport.append("Source contains " + QString::number(ldDecodeMetaData.getNumberOfFrames()) + " frames");
+
     if (ldDecodeMetaData.getNumberOfFrames() < 2) {
-        qDebug() << "DiscMap::sanityCheck(): Source file is too small to be valid!";
-        mapReport.append("Source file is too small to be valid! - Failed");
+        qDebug() << "DiscMap::discCheck(): Source file is too small to be valid!";
+        mapReport.append("Source file is too small to be valid! - Cannot map");
         return false;
     }
 
     if (ldDecodeMetaData.getNumberOfFrames() > 100000) {
-        qDebug() << "DiscMap::sanityCheck(): Source file is too large to be valid!";
-        mapReport.append("Source file is too large to be valid! - Failed");
+        qDebug() << "DiscMap::discCheck(): Source file is too large to be valid!";
+        mapReport.append("Source file is too large to be valid! - Cannot map");
         return false;
+    }
+
+    // Check disc video standard
+    isSourcePal = ldDecodeMetaData.getVideoParameters().isSourcePal;
+    if (isSourcePal) mapReport.append("Source file standard is PAL");
+    else mapReport.append("Source file standard is NTSC");
+
+    // Determine the disc type (check 100 frames (or less if source is small)
+    // Fail if picture numbers or timecodes are not available
+    discType = discType_unknown;
+    qint32 framesToCheck = 100;
+    if (ldDecodeMetaData.getNumberOfFrames() < framesToCheck) framesToCheck = ldDecodeMetaData.getNumberOfFrames();
+    qDebug() << "DiscMap::discCheck(): Checking first" << framesToCheck << "sequential frames for disc type determination";
+
+    VbiDecoder vbiDecoder;
+    qint32 cavCount = 0;
+    qint32 clvCount = 0;
+    // Using sequential frame numbering starting from 1
+    for (qint32 seqFrame = 1; seqFrame <= framesToCheck; seqFrame++) {
+        // Get the VBI data and then decode
+        QVector<qint32> vbi1 = ldDecodeMetaData.getFieldVbi(ldDecodeMetaData.getFirstFieldNumber(seqFrame)).vbiData;
+        QVector<qint32> vbi2 = ldDecodeMetaData.getFieldVbi(ldDecodeMetaData.getSecondFieldNumber(seqFrame)).vbiData;
+        VbiDecoder::Vbi vbi = vbiDecoder.decodeFrame(vbi1[0], vbi1[1], vbi1[2], vbi2[0], vbi2[1], vbi2[2]);
+
+        // Look for a complete, valid CAV picture number or CLV time-code
+        if (vbi.picNo > 0) cavCount++;
+        if (vbi.clvHr != -1 && vbi.clvMin != -1 &&
+                vbi.clvSec != -1 && vbi.clvPicNo != -1) clvCount++;
+    }
+    qDebug() << "DiscMap::discCheck(): Got" << cavCount << "CAV picture codes and" << clvCount << "CLV timecodes";
+
+    // If the metadata has no picture numbers or time-codes, we cannot use the source
+    if (cavCount == 0 && clvCount == 0) {
+        qDebug() << "DiscMap::discCheck(): Source does not seem to contain valid CAV picture numbers or CLV time-codes - cannot continue!";
+        return false;
+    }
+
+    // Determine disc type
+    if (cavCount > clvCount) {
+        discType = discType_cav;
+        mapReport.append("Got " + QString::number(cavCount) + " valid CAV picture numbers from " + QString::number(framesToCheck) + " frames - source disc type is CAV");
+    } else {
+        discType = discType_clv;
+        mapReport.append("Got " + QString::number(clvCount) + " valid CLV picture numbers from " + QString::number(framesToCheck) + " frames - source disc type is CLV");
     }
 
     return true;
 }
 
+// This method takes the original metadata and stores it in the disc map frames
+// structure.  This is the last part of the process that interacts with the original
+// metadata.
 bool DiscMap::createInitialMap(LdDecodeMetaData &ldDecodeMetaData)
 {
     qDebug() << "DiscMap::createInitialMap(): Creating initial map...";
+    mapReport.append("");
     mapReport.append("Initial mapping:");
-    VbiDecoder vbiDecoder;
-    discType = discType_unknown;
-    isSourcePal = ldDecodeMetaData.getVideoParameters().isSourcePal;
-    if (isSourcePal) mapReport.append("Source file standard is PAL");
-    else mapReport.append("Source file standard is NTSC");
-    mapReport.append("Source contains " + QString::number(ldDecodeMetaData.getNumberOfFrames()) + " frames");
 
+    VbiDecoder vbiDecoder;
     qint32 missingFrameNumbers = 0;
     qint32 leadInOrOutFrames = 0;
+    bool gotFirstFrame = false; // Used to ensure we only detect lead-in before real frames
 
+    // Using sequential frame numbering starting from 1
     for (qint32 seqFrame = 1; seqFrame <= ldDecodeMetaData.getNumberOfFrames(); seqFrame++) {
         Frame frame;
         // Get the required field numbers
@@ -134,7 +191,6 @@ bool DiscMap::createInitialMap(LdDecodeMetaData &ldDecodeMetaData)
 
         // Default the other parameters
         frame.isMissing = false;
-        frame.isLeadInOrOut = false;
         frame.isMarkedForDeletion = false;
 
         // Get the VBI data and then decode
@@ -142,19 +198,24 @@ bool DiscMap::createInitialMap(LdDecodeMetaData &ldDecodeMetaData)
         QVector<qint32> vbi2 = ldDecodeMetaData.getFieldVbi(frame.secondField).vbiData;
         VbiDecoder::Vbi vbi = vbiDecoder.decodeFrame(vbi1[0], vbi1[1], vbi1[2], vbi2[0], vbi2[1], vbi2[2]);
 
-        // Check for lead in or out frame
-        if (vbi.leadIn || vbi.leadOut) {
-            frame.isLeadInOrOut = true;
-            frame.vbiFrameNumber = -1;
+        // Check for lead in frame
+        if (vbi.leadIn && !gotFirstFrame) {
+            // We only detect a leadin frame if it comes before a real frame
+            // Lead in frames are discarded
+            leadInOrOutFrames++;            
+        } else if (vbi.leadOut && (seqFrame > (ldDecodeMetaData.getNumberOfFrames() - 20))) {
+            // We only detect a lead out frame if it is within 20 frames of the last frame
+            // Lead out frames are discarded
             leadInOrOutFrames++;
         } else {
-            // Check if we have a valid CAV picture number, if not, translated the CLV
-            // timecode into a frame number (we only want to deal with one frame identifier in
-            // the disc map)
-            if (vbi.picNo > 0) {
-                // Valid CAV picture number
+            // Since this isn't lead-in or out, flag that a real frame has been seen
+            gotFirstFrame = true;
+
+            // Get either the CAV picture number or the CLV timecode
+            // CLV timecodes are converted into the equivalent picture number
+            if (discType == discType_cav) {
+                // Get CAV picture number
                 frame.vbiFrameNumber = vbi.picNo;
-                if (discType == discType_unknown) discType = discType_cav;
             } else {
                 // Attempt to translate the CLV timecode into a frame number
                 LdDecodeMetaData::ClvTimecode clvTimecode;
@@ -162,23 +223,14 @@ bool DiscMap::createInitialMap(LdDecodeMetaData &ldDecodeMetaData)
                 clvTimecode.minutes = vbi.clvMin;
                 clvTimecode.seconds = vbi.clvSec;
                 clvTimecode.pictureNumber = vbi.clvPicNo;
-
                 frame.vbiFrameNumber = ldDecodeMetaData.convertClvTimecodeToFrameNumber(clvTimecode);
-
-                // If this fails the frame number will be -1 to indicate that it's not valid,
-                // but just in case
-                if (frame.vbiFrameNumber < 1) frame.vbiFrameNumber = -1;
-
-                // Count the missing frame numbers
-                if (frame.vbiFrameNumber < 1) missingFrameNumbers++;
-
-                if (discType == discType_unknown) discType = discType_clv;
             }
 
-            if (vbi.type == VbiDecoder::VbiDiscTypes::clv && discType == discType_cav) {
-                qWarning() << "VBI indicates the disc is CLV but data suggests its CAV!";
-            } else if (vbi.type == VbiDecoder::VbiDiscTypes::cav && discType == discType_clv) {
-                qWarning() << "VBI indicates the disc is CAV but data suggests its CLV!";
+            // Is the frame number missing?
+            if (frame.vbiFrameNumber < 1) {
+                missingFrameNumbers++;
+                qDebug() << "DiscMap::createInitialMap(): Sequential frame" << seqFrame << "does not have a valid frame number";
+                mapReport.append("Sequential frame " + QString::number(seqFrame) + " does not have a valid frame number");
             }
 
             // Get the frame's average sync confidence
@@ -210,37 +262,16 @@ bool DiscMap::createInitialMap(LdDecodeMetaData &ldDecodeMetaData)
 
             // Store the frame
             frames.append(frame);
-
-//            qDebug() << "DiscMap::createInitialMap(): SeqF#" << seqFrame << "VBIF#" << frame.vbiFrameNumber <<
-//                        "DOL =" << frame.dropOutLevel << "SNR =" << frame.bSnr << "SyncConf =" << frame.syncConf;
         }
     }
 
-    qDebug() << "DiscMap::createInitialMap(): Initial map created.  Got" << ldDecodeMetaData.getNumberOfFrames() <<
+    qDebug() << "DiscMap::createInitialMap(): Initial map created.  Got" << frames.size() <<
                 "frames with" << missingFrameNumbers << "missing frame numbers and" <<
-                leadInOrOutFrames << "Lead in/out frames";
+                leadInOrOutFrames << "discarded lead in/out frames";
     mapReport.append("Initial map created - Got " +
-                 QString::number(ldDecodeMetaData.getNumberOfFrames()) +
+                 QString::number(frames.size()) +
                  " frames with " + QString::number(missingFrameNumbers) + " missing frame numbers and " +
-                 QString::number(leadInOrOutFrames) + " lead in/out frames");
-
-    switch (discType) {
-    case discType_cav:
-        qDebug() << "DiscMap::createInitialMap(): Disc type is CAV";
-        mapReport.append("LaserDisc type is CAV");
-        break;
-    case discType_clv:
-        qDebug() << "DiscMap::createInitialMap(): Disc type is CLV";
-        mapReport.append("LaserDisc type is CLV");
-        break;
-    case discType_unknown:
-        qDebug() << "DiscMap::createInitialMap(): Disc type is UNKNOWN!";
-        mapReport.append("LaserDisc type is UNKNOWN!");
-        break;
-    }
-
-    // Don't continue if it wasn't possible to work out the type of disc...
-    if (discType == discType_unknown) return false;
+                 QString::number(leadInOrOutFrames) + " discarded lead in/out frames");
 
     return true;
 }
@@ -255,57 +286,64 @@ void DiscMap::correctFrameNumbering()
     qint32 frameNumberErrorCount = 0;
     qint32 frameMissingFrameNumberCount = 0;
     qint32 searchDistance = 5;
-    for (qint32 seqNumber = 2; seqNumber < frames.size(); seqNumber++) {
-        // Only process if fields aren't lead-in or lead-out
-        if (!frames[seqNumber].isLeadInOrOut) {
-            // If this is NTSC CAV only correct if the current frame number is valid (in all other
-            // cases, correct even if the frame number is missing)
-            if (!(!isSourcePal && discType == discType_cav && frames[seqNumber].vbiFrameNumber < 1)) {
-                // Check if frame number is missing
-                if (frames[seqNumber].vbiFrameNumber < 1) frameMissingFrameNumberCount++;
 
-                // Are there enough remaining frames to perform the search?
-                if ((frames.size() - seqNumber) < searchDistance) searchDistance = frames.size() - seqNumber;
+    // We must verify the very first and very last frames first in order to perform a valid
+    // gap analysis
 
-                // Try up to a distance of 'searchDistance' frames to find the sequence
-                for (qint32 gap = 1; gap < searchDistance; gap++) {
-                    if (frames[seqNumber].vbiFrameNumber != (frames[seqNumber - 1].vbiFrameNumber + 1)) {
-                        if (frames[seqNumber - 1].vbiFrameNumber == (frames[seqNumber + gap].vbiFrameNumber - (gap + 1))) {
-                            correctedFrameNumber = frames[seqNumber - 1].vbiFrameNumber + 1;
+    // Correct from frames from start + 1 to end -1
+    for (qint32 frameElement = 1; frameElement < frames.size(); frameElement++) {
+        // If this is NTSC CAV only correct if the current frame number is valid (in all other
+        // cases, correct even if the frame number is missing)
+        if (!(!isSourcePal && discType == discType_cav && frames[frameElement].vbiFrameNumber < 1)) {
+            // Check if frame number is missing
+            if (frames[frameElement].vbiFrameNumber < 1) frameMissingFrameNumberCount++;
 
-                            if (correctedFrameNumber > 0 && correctedFrameNumber < 80000) {
-                                qDebug() << "DiscMap::correctFrameNumbering(): Correction to seq. frame" << seqNumber << ":";
-                                qDebug() << "DiscMap::correctFrameNumbering():   Seq. frame" << seqNumber - 1 << "has a VBI frame number of" << frames[seqNumber - 1].vbiFrameNumber;
-                                qDebug() << "DiscMap::correctFrameNumbering():   Seq. frame" << seqNumber << "has a VBI frame number of" << frames[seqNumber].vbiFrameNumber;
-                                qDebug() << "DiscMap::correctFrameNumbering():   Seq. frame" << seqNumber + gap << "has a VBI frame number of" << frames[seqNumber + gap].vbiFrameNumber;
-                                qDebug() << "DiscMap::correctFrameNumbering():   VBI frame number corrected to" << correctedFrameNumber;
+            // Are there enough remaining frames to perform the search?
+            if ((frames.size() - frameElement) < searchDistance) searchDistance = frames.size() - frameElement;
 
-                                mapReport.append("Correction to sequential frame number " + QString::number(seqNumber) + ":");
-                                mapReport.append("** Sequential frame " + QString::number(seqNumber - 1) + " has a VBI frame number of " + QString::number(frames[seqNumber - 1].vbiFrameNumber));
-                                mapReport.append("** Sequential frame " + QString::number(seqNumber) + " has a VBI frame number of " + QString::number(frames[seqNumber].vbiFrameNumber));
-                                mapReport.append("** Sequential frame " + QString::number(seqNumber + gap) + " has a VBI frame number of " + QString::number(frames[seqNumber + gap].vbiFrameNumber));
-                                mapReport.append("** VBI frame number corrected to " + QString::number(correctedFrameNumber));
+            // Try up to a distance of 'searchDistance' frames to find the sequence
+            for (qint32 gap = 1; gap < searchDistance; gap++) {
+                if (frames[frameElement].vbiFrameNumber != (frames[frameElement - 1].vbiFrameNumber + 1)) {
+                    if (frames[frameElement - 1].vbiFrameNumber == (frames[frameElement + gap].vbiFrameNumber - (gap + 1))) {
+                        correctedFrameNumber = frames[frameElement - 1].vbiFrameNumber + 1;
+
+                        if (correctedFrameNumber > 0 && correctedFrameNumber < 80000) {
+                            qDebug() << "DiscMap::correctFrameNumbering(): Correction to seq. frame" << frameElement << ":";
+                            qDebug() << "DiscMap::correctFrameNumbering():   Seq. frame" << frameElement - 1 << "has a VBI frame number of" << frames[frameElement - 1].vbiFrameNumber;
+                            qDebug() << "DiscMap::correctFrameNumbering():   Seq. frame" << frameElement << "has a VBI frame number of" << frames[frameElement].vbiFrameNumber;
+                            qDebug() << "DiscMap::correctFrameNumbering():   Seq. frame" << frameElement + gap << "has a VBI frame number of" << frames[frameElement + gap].vbiFrameNumber;
+                            qDebug() << "DiscMap::correctFrameNumbering():   VBI frame number corrected to" << correctedFrameNumber;
+
+                            mapReport.append("Correction to sequential frame number " + QString::number(frameElement) + ":");
+                            mapReport.append("** Sequential frame " + QString::number(frameElement - 1) + " has a VBI frame number of " + QString::number(frames[frameElement - 1].vbiFrameNumber));
+                            if (frames[frameElement].vbiFrameNumber> 0) {
+                                mapReport.append("** Sequential frame " + QString::number(frameElement) + " has a VBI frame number of " + QString::number(frames[frameElement].vbiFrameNumber));
                             } else {
-                                // Correction was out of range...
-                                qDebug() << "DiscMap::correctFrameNumbering(): Correction to sequential frame number" << seqNumber << ": was out of range, setting to invalid";
-                                mapReport.append("Correction to sequential frame number " + QString::number(seqNumber) + ": was out of range, setting to invalid");
-                                correctedFrameNumber = -1;
+                                mapReport.append("** Sequential frame " + QString::number(frameElement) + " does not have a valid VBI frame number");
                             }
-
-                            // Update the frame number
-                            frames[seqNumber].vbiFrameNumber = correctedFrameNumber;
-
-                            frameNumberErrorCount++;
-                            break; // done
+                            mapReport.append("** Sequential frame " + QString::number(frameElement + gap) + " has a VBI frame number of " + QString::number(frames[frameElement + gap].vbiFrameNumber));
+                            mapReport.append("** VBI frame number corrected to " + QString::number(correctedFrameNumber));
+                        } else {
+                            // Correction was out of range...
+                            qDebug() << "DiscMap::correctFrameNumbering(): Correction to sequential frame number" << frameElement << ": was out of range, setting to invalid";
+                            mapReport.append("Correction to sequential frame number " + QString::number(frameElement) + ": was out of range, setting to invalid");
+                            correctedFrameNumber = -1;
                         }
+
+                        // Update the frame number
+                        frames[frameElement].vbiFrameNumber = correctedFrameNumber;
+
+                        frameNumberErrorCount++;
+                        break; // done
                     }
                 }
-            } else {
-                // NTSC CAV missing frame number
-                qCritical() << "DiscMap::correctFrameNumbering(): WARNING: NTSC CAV might not work properly yet (seeing missing frame numbers)!";
-                mapReport.append("WARNING: NTSC CAV might not work properly yet (seeing missing frame numbers)!");
             }
+        } else {
+            // NTSC CAV missing frame number
+            qCritical() << "DiscMap::correctFrameNumbering(): WARNING: NTSC CAV might not work properly yet (seeing missing frame numbers)!";
+            mapReport.append("WARNING: NTSC CAV might not work properly yet (seeing missing frame numbers)!");
         }
+
     }
     qDebug() << "DiscMap::correctFrameNumbering(): Found and corrected" << frameNumberErrorCount << "bad/missing VBI frame numbers (of which" <<
                 frameMissingFrameNumberCount << "had no frame number)";
@@ -319,15 +357,15 @@ void DiscMap::removeDuplicateFrames()
     mapReport.append("");
     mapReport.append("Identify and remove duplicate frames:");
 
-    for (qint32 seqNumber = 0; seqNumber < frames.size(); seqNumber++) {
-        if (frames[seqNumber].vbiFrameNumber > 0) {
+    for (qint32 frameElement = 0; frameElement < frames.size(); frameElement++) {
+        if (frames[frameElement].vbiFrameNumber > 0) {
             QVector<qint32> duplicates;
             for (qint32 i = 0; i < frames.size(); i++) {
-                if (frames[seqNumber].vbiFrameNumber == frames[i].vbiFrameNumber && !frames[i].isMarkedForDeletion) duplicates.append(i);
+                if (frames[frameElement].vbiFrameNumber == frames[i].vbiFrameNumber && !frames[i].isMarkedForDeletion) duplicates.append(i);
             }
             if (duplicates.size() > 1) {
-                qDebug() << "DiscMap::correctFrameNumbering(): Found" << duplicates.size() - 1 << "duplicates of VBI frame number" << frames[seqNumber].vbiFrameNumber;
-                mapReport.append("Found " + QString::number(duplicates.size() - 1) + " duplicates of VBI frame number " + QString::number(frames[seqNumber].vbiFrameNumber));
+                qDebug() << "DiscMap::correctFrameNumbering(): Found" << duplicates.size() - 1 << "duplicates of VBI frame number" << frames[frameElement].vbiFrameNumber;
+                mapReport.append("Found " + QString::number(duplicates.size() - 1) + " duplicates of VBI frame number " + QString::number(frames[frameElement].vbiFrameNumber));
 
                 // Select one of the available frames based on black SNR (TODO: should also include sync confidence and DO levels)
                 qint32 maxSnr = -1;
@@ -352,8 +390,8 @@ void DiscMap::removeDuplicateFrames()
                 }
             }
         } else {
-            qDebug() << "DiscMap::correctFrameNumbering(): Frame sequence number" << seqNumber << "is missing a VBI frame number!";
-            mapReport.append("Frame with sequential number " + QString::number(seqNumber) + " is missing a VBI frame number!");
+            qDebug() << "DiscMap::correctFrameNumbering(): Frame sequence number" << frameElement << "is missing a VBI frame number!";
+            mapReport.append("Frame with sequential number " + QString::number(frameElement) + " is missing a VBI frame number!");
         }
     }
 
@@ -386,6 +424,7 @@ void DiscMap::detectMissingFrames()
 
     QVector<Frame> filledFrames;
     qint32 filledFrameCount = 0;
+    qint32 iecOffset = 0;
     for (qint32 i = 0; i < frames.size(); i++) {
         // Copy the current frame to the output
         filledFrames.append(frames[i]);
@@ -395,24 +434,45 @@ void DiscMap::detectMissingFrames()
         if (i != frames.size() - 1) {
             qint32 currentFrameNumber = frames[i].vbiFrameNumber;
             if (frames[i + 1].vbiFrameNumber != currentFrameNumber + 1) {
-                qDebug() << "DiscMap::detectMissingFrames(): Current frame number is" << currentFrameNumber << "next frame number is" << frames[i + 1].vbiFrameNumber;
-                mapReport.append("** Found gap between VBI frame number " + QString::number(currentFrameNumber) + " and " + QString::number(frames[i + 1].vbiFrameNumber));
-                // Frames are missing
-                for (qint32 p = 1; p < frames[i + 1].vbiFrameNumber - currentFrameNumber; p++) {
-                    Frame frame;
-                    frame.firstField = -1;
-                    frame.secondField = -1;
-                    frame.isMissing = true;
-                    frame.isLeadInOrOut = false;
-                    frame.isMarkedForDeletion = false;
-                    frame.vbiFrameNumber = currentFrameNumber + p;
-                    frame.syncConf = 0;
-                    frame.bSnr = 0;
-                    frame.dropOutLevel = 0;
-                    filledFrames.append(frame);
-                    filledFrameCount++;
+
+                // Is this an IEC NTSC amendment 2 NTSC CLV sequence frame number?
+                if (isNtscAmendment2ClvFrameNumber(frames[i].vbiFrameNumber + 1 - iecOffset) && discType == discType_clv && !isSourcePal && (frames[i + 1].vbiFrameNumber - currentFrameNumber == 2)) {
+                    qDebug() << "DiscMap::detectMissingFrames(): Gap at VBI frame" << currentFrameNumber << "is caused by IEC NTSC2 CLV offset sequence";
+                    mapReport.append("Gap at VBI frame " + QString::number(currentFrameNumber) + " is caused by IEC NTSC2 CLV offset sequence");
+                    iecOffset++;
+                } else {
+                    qDebug() << "DiscMap::detectMissingFrames(): Current frame number is" << currentFrameNumber << "next frame number is" << frames[i + 1].vbiFrameNumber <<
+                                "- gap is " << frames[i + 1].vbiFrameNumber - currentFrameNumber << "frames";
+                    mapReport.append("** Found gap between VBI frame number " + QString::number(currentFrameNumber) + " and " + QString::number(frames[i + 1].vbiFrameNumber));
+                    // Frames are missing
+                    for (qint32 p = 1; p < frames[i + 1].vbiFrameNumber - currentFrameNumber; p++) {
+                        Frame frame;
+                        frame.firstField = -1;
+                        frame.secondField = -1;
+                        frame.isMissing = true;
+                        frame.isMarkedForDeletion = false;
+                        frame.vbiFrameNumber = currentFrameNumber + p;
+                        frame.syncConf = 0;
+                        frame.bSnr = 0;
+                        frame.dropOutLevel = 0;
+                        filledFrames.append(frame);
+                        filledFrameCount++;
+                    }
                 }
             }
+        }
+    }
+
+    // If there were IEC NTSC CLV offsets, we need to correct the VBI frame numbering
+    // before continuing (since we didn't fill the gaps there will still be missing
+    // frame numbers)
+    if (iecOffset > 0) {
+        qDebug() << "DiscMap::detectMissingFrames(): Adjusting frame numbers to allow for IEC NTSC2 CLV offset";
+        mapReport.append("Adjusting frame numbers to allow for IEC NTSC2 CLV offset");
+        qint32 element = 0;
+        for (qint32 i = filledFrames.first().vbiFrameNumber; i < filledFrames.first().vbiFrameNumber + filledFrames.size(); i++) {
+            filledFrames[element].vbiFrameNumber = i;
+            element++;
         }
     }
 
@@ -425,5 +485,22 @@ void DiscMap::detectMissingFrames()
     vbiStartFrameNumber = frames.first().vbiFrameNumber;
     vbiEndFrameNumber = frames.last().vbiFrameNumber;
     mapReport.append("Set source start frame as " + QString::number(vbiStartFrameNumber) + " and end frame as " + QString::number(vbiEndFrameNumber));
+}
+
+// Check if frame number matches IEC 60857-1986 LaserVision NTSC Amendment 2
+// clause 10.1.10 CLV time-code skip frame number sequence
+bool DiscMap::isNtscAmendment2ClvFrameNumber(qint32 frameNumber)
+{
+    bool response = false;
+    for (qint32 l = 0; l < 9; l++) {
+        for (qint32 m = 1; m <= 9; m++) {
+            qint32 n = 8991 * l + 899 * m;
+            if (n == frameNumber) {
+                response = true;
+                break;
+            }
+        }
+    }
+    return response;
 }
 

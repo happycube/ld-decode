@@ -42,7 +42,6 @@ public:
         qint32 firstField;
         qint32 secondField;
         bool isMissing;
-        bool isLeadInOrOut;
         bool isMarkedForDeletion;
         qint32 vbiFrameNumber;
         qint32 syncConf;
@@ -82,11 +81,12 @@ private:
     qint32 vbiStartFrameNumber;
     qint32 vbiEndFrameNumber;
 
-    bool sanityCheck(LdDecodeMetaData &ldDecodeMetaData);
+    bool discCheck(LdDecodeMetaData &ldDecodeMetaData);
     bool createInitialMap(LdDecodeMetaData &ldDecodeMetaData);
     void correctFrameNumbering();
     void removeDuplicateFrames();
     void detectMissingFrames();
+    bool isNtscAmendment2ClvFrameNumber(qint32 frameNumber);
 };
 
 #endif // DISCMAP_H

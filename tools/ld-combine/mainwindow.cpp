@@ -74,8 +74,6 @@ void MainWindow::updateGUIsourcesAvailable()
     // Enable the GUI media controls
     ui->previousFramePushButton->setEnabled(true);
     ui->nextFramePushButton->setEnabled(true);
-    ui->keyFrameCheckBox->setEnabled(true);
-    ui->keyFrameCheckBox->setChecked(true);
     ui->sourceSelectComboBox->setEnabled(true);
     ui->frameNumberSpinBox->setEnabled(true);
     ui->frameNumberHorizontalSlider->setEnabled(true);
@@ -102,8 +100,6 @@ void MainWindow::updateGUInoSourcesAvailable()
     // Disable the GUI media controls
     ui->previousFramePushButton->setEnabled(false);
     ui->nextFramePushButton->setEnabled(false);
-    ui->keyFrameCheckBox->setEnabled(false);
-    ui->keyFrameCheckBox->setChecked(false);
     ui->sourceSelectComboBox->setEnabled(false);
     ui->frameNumberSpinBox->setEnabled(false);
     ui->frameNumberHorizontalSlider->setEnabled(false);
@@ -111,6 +107,9 @@ void MainWindow::updateGUInoSourcesAvailable()
     // Clear the frame viewer
     ui->mediaViewLabel->clear();
     ui->mediaViewLabel->setText("No sources loaded");
+
+    // Clear the report dialogue
+    reportDialog->clearReport();
 
     // Set the main window's title
     this->setWindowTitle(tr("ld-combine - No sources loaded"));
