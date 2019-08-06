@@ -251,54 +251,62 @@ void Comb::split1D(FrameBuffer *frameBuffer)
 // This could do with an explaination of what it is doing...
 void Comb::split2D(FrameBuffer *frameBuffer)
 {
+    // Dummy black line.
+    static constexpr qreal blackLine[911] = {0};
+
     for (qint32 lineNumber = configuration.firstVisibleFrameLine; lineNumber < frameHeight; lineNumber++) {
-        qreal *previousLine = frameBuffer->clpbuffer[0].pixel[lineNumber - 2];
-        qreal *currentLine = frameBuffer->clpbuffer[0].pixel[lineNumber];
-        qreal *nextLine = frameBuffer->clpbuffer[0].pixel[lineNumber + 2];
+        // Get pointers to the surrounding lines.
+        // If a line we need is outside the active area, use blackLine instead.
+        const qreal *previousLine = blackLine;
+        if (lineNumber - 2 >= configuration.firstVisibleFrameLine) {
+            previousLine = frameBuffer->clpbuffer[0].pixel[lineNumber - 2];
+        }
+        const qreal *currentLine = frameBuffer->clpbuffer[0].pixel[lineNumber];
+        const qreal *nextLine = blackLine;
+        if (lineNumber + 2 < frameHeight) {
+            nextLine = frameBuffer->clpbuffer[0].pixel[lineNumber + 2];
+        }
 
-        // 2D filtering.  can't do top or bottom line - calculated between
-        // 1d and 3d because this is filtered
-        if ((lineNumber >= 4) && (lineNumber < (frameHeight - 1))) {
-            for (qint32 h = configuration.activeVideoStart; h < configuration.activeVideoEnd; h++) {
-                qreal tc1;
+        // 2D filtering.
+        for (qint32 h = configuration.activeVideoStart; h < configuration.activeVideoEnd; h++) {
+            qreal tc1;
 
-                qreal kp, kn;
+            qreal kp, kn;
 
-                kp  = fabs(fabs(currentLine[h]) - fabs(previousLine[h])); // - fabs(c1line[h] * .20);
-                kp += fabs(fabs(currentLine[h - 1]) - fabs(previousLine[h - 1]));
-                kp -= (fabs(currentLine[h]) + fabs(currentLine[h - 1])) * .10;
-                kn  = fabs(fabs(currentLine[h]) - fabs(nextLine[h])); // - fabs(c1line[h] * .20);
-                kn += fabs(fabs(currentLine[h - 1]) - fabs(nextLine[h - 1]));
-                kn -= (fabs(currentLine[h]) + fabs(nextLine[h - 1])) * .10;
+            kp  = fabs(fabs(currentLine[h]) - fabs(previousLine[h])); // - fabs(c1line[h] * .20);
+            kp += fabs(fabs(currentLine[h - 1]) - fabs(previousLine[h - 1]));
+            kp -= (fabs(currentLine[h]) + fabs(currentLine[h - 1])) * .10;
+            kn  = fabs(fabs(currentLine[h]) - fabs(nextLine[h])); // - fabs(c1line[h] * .20);
+            kn += fabs(fabs(currentLine[h - 1]) - fabs(nextLine[h - 1]));
+            kn -= (fabs(currentLine[h]) + fabs(nextLine[h - 1])) * .10;
 
-                kp /= 2;
-                kn /= 2;
+            kp /= 2;
+            kn /= 2;
 
-                qreal p_2drange = 45 * irescale;
-                kp = clamp(1 - (kp / p_2drange), 0.0, 1.0);
-                kn = clamp(1 - (kn / p_2drange), 0.0, 1.0);
+            qreal p_2drange = 45 * irescale;
+            kp = clamp(1 - (kp / p_2drange), 0.0, 1.0);
+            kn = clamp(1 - (kn / p_2drange), 0.0, 1.0);
 
-                qreal sc = 1.0;
+            qreal sc = 1.0;
 
-                if ((kn > 0) || (kp > 0)) {
-                    if (kn > (3 * kp)) kp = 0;
-                    else if (kp > (3 * kn)) kn = 0;
+            if ((kn > 0) || (kp > 0)) {
+                if (kn > (3 * kp)) kp = 0;
+                else if (kp > (3 * kn)) kn = 0;
 
-                    sc = (2.0 / (kn + kp));// * max(kn * kn, kp * kp);
-                    if (sc < 1.0) sc = 1.0;
-                } else {
-                    if ((fabs(fabs(previousLine[h]) - fabs(nextLine[h])) - fabs((nextLine[h] + previousLine[h]) * .2)) <= 0) {
-                        kn = kp = 1;
-                    }
+                sc = (2.0 / (kn + kp));// * max(kn * kn, kp * kp);
+                if (sc < 1.0) sc = 1.0;
+            } else {
+                if ((fabs(fabs(previousLine[h]) - fabs(nextLine[h])) - fabs((nextLine[h] + previousLine[h]) * .2)) <= 0) {
+                    kn = kp = 1;
                 }
-
-                tc1  = ((frameBuffer->clpbuffer[0].pixel[lineNumber][h] - previousLine[h]) * kp * sc);
-                tc1 += ((frameBuffer->clpbuffer[0].pixel[lineNumber][h] - nextLine[h]) * kn * sc);
-                tc1 /= 8; //(2 * 2);
-
-                // Record the 2D C value
-                frameBuffer->clpbuffer[1].pixel[lineNumber][h] = tc1;
             }
+
+            tc1  = ((frameBuffer->clpbuffer[0].pixel[lineNumber][h] - previousLine[h]) * kp * sc);
+            tc1 += ((frameBuffer->clpbuffer[0].pixel[lineNumber][h] - nextLine[h]) * kn * sc);
+            tc1 /= 8; //(2 * 2);
+
+            // Record the 2D C value
+            frameBuffer->clpbuffer[1].pixel[lineNumber][h] = tc1;
         }
     }
 }

@@ -89,6 +89,7 @@ public:
     Vbi decode(qint32 vbi16, qint32 vbi17, qint32 vbi18);
 
 private:
+    bool verboseDebug;
     bool parity(quint32 x4, quint32 x5);
 };
 

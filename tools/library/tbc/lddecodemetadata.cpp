@@ -634,8 +634,13 @@ bool LdDecodeMetaData::getIsFirstFieldFirst()
 qint32 LdDecodeMetaData::convertClvTimecodeToFrameNumber(LdDecodeMetaData::ClvTimecode clvTimeCode)
 {
     // Calculate the frame number
-    qint32 frameNumber = -1;
+    qint32 frameNumber = 0;
     VideoParameters videoParameters = getVideoParameters();
+
+    // Check for invalid CLV timecode
+    if (clvTimeCode.hours == -1 || clvTimeCode.minutes == -1 || clvTimeCode.seconds == -1 || clvTimeCode.pictureNumber == -1) {
+        return -1;
+    }
 
     if (clvTimeCode.hours != -1) {
         if (videoParameters.isSourcePal) frameNumber += clvTimeCode.hours * 3600 * 25;

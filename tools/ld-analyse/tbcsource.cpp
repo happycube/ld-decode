@@ -536,7 +536,7 @@ QImage TbcSource::generateQImage(qint32 firstFieldNumber, qint32 secondFieldNumb
 
             // Perform the PALcolour filtering (output is RGB 16-16-16)
             outputData = palColour.performDecode(firstFieldData, secondFieldData,
-                                                  100, static_cast<qint32>(tSaturation), false);
+                                                  100, static_cast<qint32>(tSaturation));
         } else {
             // NTSC source
 
@@ -668,7 +668,7 @@ void TbcSource::startBackgroundLoad(QString sourceFilename)
 
     // Configure the chroma decoder
     if (videoParameters.isSourcePal) {
-        palColour.updateConfiguration(videoParameters);
+        palColour.updateConfiguration(videoParameters, 44, 620);
     } else {
         // Set the first active scan line
         qint32 firstActiveScanLine = 40;

@@ -197,12 +197,12 @@ void ClosedCaptionsDialog::processCommand(qint32 data0, qint32 data1)
         // The italics control code does not change the colour
         // A colour control code turns off italics and flashing
 
-        qint32 dataChannel =       (data0 & 0x08) >> 3; // 0b00001000 >> 3;
-        qint32 nonDisplayCommand = (data0 & 0x07);      // 0b00000111 >> 0;
+        //qint32 dataChannel =       (data0 & 0x08) >> 3; // 0b00001000 >> 3;
+        //qint32 nonDisplayCommand = (data0 & 0x07);      // 0b00000111 >> 0;
 
-        qint32 displayCommand =    (data1 & 0x60) >> 5; // 0b01100000 >> 5;
-        qint32 displayData =       (data1 & 0x1E) >> 1; // 0b00011110;
-        qint32 displayU =          (data1 & 0x01);      // 0b00000001;
+        //qint32 displayCommand =    (data1 & 0x60) >> 5; // 0b01100000 >> 5;
+        //qint32 displayData =       (data1 & 0x1E) >> 1; // 0b00011110;
+        //qint32 displayU =          (data1 & 0x01);      // 0b00000001;
 
     } else {
         qDebug() << "ClosedCaptionsDialog::addData(): Display control code invalid!" << data1;
