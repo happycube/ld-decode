@@ -2523,7 +2523,7 @@ class LDdecode:
         fi['decodeFaults'] = decodeFaults
         fi['vitsMetrics'] = self.computeMetrics(self.curfield, self.prevfield)
 
-        fi['vbiData'] = [int(lc) for lc in f.linecode if lc is not None]
+        fi['vbi'] = {'vbiData': [int(lc) for lc in f.linecode if lc is not None]}
 
         self.frameNumber = None
         if f.isFirstField:
