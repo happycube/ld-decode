@@ -223,7 +223,8 @@ class RFDecode:
         ''' same for both PAL and NTSC LD's '''
 
         lfilt = sps.butter(1, [.4/20], btype='high')
-        hfilt = sps.ellip(4, 1.725, 25, [2/20]) # probably best so far...
+        #hfilt = sps.ellip(4, 1.725, 25, [2/20]) # probably best so far...
+        hfilt = sps.ellip(4, 1.825, 26, [2.00/20]) # tuned on a 12 second domesday sample
         self.Filters['Fefm'] = filtfft(lfilt, self.blocklen) * filtfft(hfilt, self.blocklen) * filtfft(hfilt, self.blocklen)
 
         # ISI filter
