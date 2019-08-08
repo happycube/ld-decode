@@ -37,7 +37,7 @@ parser.add_argument('--verboseVITS', dest='verboseVITS', action='store_true', de
 
 parser.add_argument('-t', '--threads', metavar='threads', type=int, default=5, help='number of CPU threads to use')
 
-parser.add_argument('-f', '--frequency', dest='inputfreq', metavar='FREQ', type=parse_frequency, default=40, help='RF sampling frequency (default is 40MHz)')
+parser.add_argument('-f', '--frequency', dest='inputfreq', metavar='FREQ', type=parse_frequency, default=None, help='RF sampling frequency in source file (default is 40MHz)')
 parser.add_argument('--video_bpf_high', dest='vbpf_high', metavar='FREQ', type=parse_frequency, default=None, help='Video BPF high end frequency')
 parser.add_argument('--video_lpf', dest='vlpf', metavar='FREQ', type=parse_frequency, default=None, help='Video low-pass filter frequency')
 
@@ -54,31 +54,15 @@ if args.pal and args.ntsc:
     print("ERROR: Can only be PAL or NTSC")
     exit(1)
 
-# make sure we have at least two frames' worth of data (so we can be sure we will get at least one full frame)
-#infile_size = os.path.getsize(filename)
-#if (infile_size // bytes_per_frame - firstframe) < 2: 
-	#print('Error: start frame is past end of file')
-	#exit(1)
-#num_frames = req_frames if req_frames is not None else infile_size // bytes_per_frame - firstframe
-
-#fd = open(filename, 'rb')
-
-if filename[-3:] == 'lds':
-    loader = load_packed_data_4_40
-elif filename[-3:] == 'r30':
-    loader = load_packed_data_3_32
-elif filename[-3:] == 'r16':
-    loader = load_unpacked_data_s16
-elif filename[-2:] == 'r8':
-    loader = load_unpacked_data_u8
-elif filename[-7:] == 'raw.oga':
-    loader = LoadFFmpeg()
-else:
-    loader = load_packed_data_4_40
+try:
+    loader = make_loader(filename, args.inputfreq)
+except ValueError as e:
+    print(e)
+    exit(1)
 
 system = 'PAL' if args.pal else 'NTSC'
     
-ldd = LDdecode(filename, outname, loader, inputfreq = args.inputfreq, analog_audio = not args.daa, digital_audio = not args.noefm, system=system, doDOD = not args.nodod, threads=args.threads)
+ldd = LDdecode(filename, outname, loader, analog_audio = not args.daa, digital_audio = not args.noefm, system=system, doDOD = not args.nodod, threads=args.threads)
 ldd.roughseek(firstframe * 2)
 
 if system == 'NTSC' and not args.ntscj:

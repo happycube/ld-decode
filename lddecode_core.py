@@ -2061,7 +2061,7 @@ class CombNTSC:
 
 class LDdecode:
     
-    def __init__(self, fname_in, fname_out, freader, inputfreq = 40, analog_audio = True, digital_audio = False, system = 'NTSC', doDOD = True, threads=4):
+    def __init__(self, fname_in, fname_out, freader, analog_audio = True, digital_audio = False, system = 'NTSC', doDOD = True, threads=4):
         self.demodcache = None
 
         self.infile = open(fname_in, 'rb')
@@ -2105,7 +2105,7 @@ class LDdecode:
         self.fieldloc = 0
 
         self.system = system
-        self.rf = RFDecode(inputfreq=inputfreq, system=system, decode_analog_audio=analog_audio, decode_digital_audio=digital_audio)
+        self.rf = RFDecode(system=system, decode_analog_audio=analog_audio, decode_digital_audio=digital_audio)
         if system == 'PAL':
             self.FieldClass = FieldPAL
             self.readlen = self.rf.linelen * 400
