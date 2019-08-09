@@ -292,7 +292,7 @@
               <string/>
              </property>
              <property name="icon">
-              <iconset theme="mouse">
+              <iconset theme="input-mouse">
                <normaloff>.</normaloff>.</iconset>
              </property>
              <property name="checkable">
