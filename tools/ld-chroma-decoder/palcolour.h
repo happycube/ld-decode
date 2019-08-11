@@ -60,13 +60,13 @@ private:
     // adjusted later to deal with phase differences between lines), so each
     // 2D array represents one quarter of a filter. The zeroth horizontal
     // element is included in the sum twice, so the coefficient is halved to
-    // compensate. Each filter is (2 * arraySize) + 1 elements wide.
-    static const qint32 arraySize = 7;
-    double cfilt[arraySize + 1][4];
-    double yfilt[arraySize + 1][2];
+    // compensate. Each filter is (2 * FILTER_SIZE) + 1 elements wide.
+    static const qint32 FILTER_SIZE = 7;
+    double cfilt[FILTER_SIZE + 1][4];
+    double yfilt[FILTER_SIZE + 1][2];
 
     double refAmpl;
-    double normalise;
+    double refNorm;
     QByteArray outputFrame;
 
     bool configurationSet;

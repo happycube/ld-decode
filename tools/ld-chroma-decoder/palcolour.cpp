@@ -62,7 +62,7 @@ void PalColour::buildLookUpTables()
     //   so we can rotate the chroma samples to put U/V on the right axes
     // refAmpl is the sinewave amplitude.
     refAmpl = 1.28;
-    normalise = (refAmpl * refAmpl / 2);
+    refNorm = (refAmpl * refAmpl / 2);
 
     double rad;
     for (qint32 i = 0; i < videoParameters.fieldWidth; i++)
@@ -87,11 +87,11 @@ void PalColour::buildLookUpTables()
     double chromaBandwidthHz=1100000.0 /0.93; // the 0.93 is a bit empirical for the 4Fsc sampled LaserDisc scans
 
     // Compute filter widths based on chroma bandwidth.
-    // arraySize must be wide enough to hold both filters (and ideally no
+    // FILTER_SIZE must be wide enough to hold both filters (and ideally no
     // wider, else we're doing more computation than we need to).
     double ca=0.5*videoParameters.sampleRate/chromaBandwidthHz, ya=0.5*videoParameters.sampleRate/chromaBandwidthHz; // where does the 0.5* come from?
-    assert(arraySize >= static_cast<qint32>(ca));
-    assert(arraySize >= static_cast<qint32>(ya));
+    assert(FILTER_SIZE >= static_cast<qint32>(ca));
+    assert(FILTER_SIZE >= static_cast<qint32>(ya));
 
     double cdiv=0;
     double ydiv=0;
@@ -106,8 +106,7 @@ void PalColour::buildLookUpTables()
     // and that 'lines' of the masks were equivalent, then
     // significant time-savings could be made.
 
-    for (qint32 f=0; f<=arraySize; f++)
-    {
+    for (qint32 f = 0; f <= FILTER_SIZE; f++) {
         double  fc=f; if (fc>ca) fc=ca;
         double  ff=sqrt(f*f+2*2); if ( ff>ca)  ff=ca;  // 2 -- 4 -- 6 sequence
         double fff=sqrt(f*f+4*4); if (fff>ca) fff=ca;  // because only one FIELD!
@@ -141,7 +140,7 @@ void PalColour::buildLookUpTables()
     }
     cdiv*=2; ydiv*=2;
 
-    for (qint32 f = 0; f <= arraySize; f++) {
+    for (qint32 f = 0; f <= FILTER_SIZE; f++) {
         for (qint32 i = 0; i < 4; i++) {
             cfilt[f][i] /= cdiv;
         }
@@ -254,12 +253,12 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
                 // ave the phase of burst from two lines to get -U (reference) phase out (burst phase is (-U +/-V)
                 // if NTSC then leave bp as-is, we take bp,bq as the underlying -U (reference) phase.
 
-                //qint32 norm=sqrt(bp*bp+bq*bq)*refAmpl*16; // 16 empirical scaling factor
-                double norm=sqrt(bp*bp+bq*bq); // TRIAL - 7 Oct 2005
+                // burstNorm normalises bp and bq to 1
+                double burstNorm = sqrt(bp*bp+bq*bq);
 
                 // kill colour if burst too weak!  magic number 130000 !!! check!
-                if (norm<(130000.0 / 128)) {
-                    norm=130000.0 / 128;
+                if (burstNorm < (130000.0 / 128)) {
+                    burstNorm = 130000.0 / 128;
                 }
 
                 // p & q should be sine/cosine components' amplitudes
@@ -278,8 +277,7 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
 
                     qint32 l,r;
 
-                    for (qint32 b = 0; b <= arraySize; b++)
-                    {
+                    for (qint32 b = 0; b <= FILTER_SIZE; b++) {
                         l=i-b; r=i+b;
 
                         PY+=(m[0][r]+m[0][l])*yfilt[b][0]+(m[1][r]+m[1][l])*yfilt[b][1];
@@ -299,14 +297,14 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
                 quint16 *ptr = reinterpret_cast<quint16*>(outputFrame.data() + (((fieldLine * 2) + field) * videoParameters.fieldWidth * 6));
 
                 // 'saturation' is a user saturation control, nom. 100%
-                double scaledSaturation = (saturation / 50.0) / norm;  // 'norm' normalises bp and bq to 1
+                double scaledSaturation = (saturation / 50.0) / burstNorm;
                 double R, G, B;
                 double rY, rU, rV;
 
                 for (qint32 i = videoParameters.activeVideoStart; i < videoParameters.activeVideoEnd; i++)
                 {
                     // Generate the luminance (Y), by filtering out Fsc (by re-synthesising the detected py qy and subtracting), and subtracting the black-level
-                    rY = b0[i] - ((py[i]*sine[i]+qy[i]*cosine[i]) / normalise) - videoParameters.black16bIre;
+                    rY = b0[i] - ((py[i]*sine[i]+qy[i]*cosine[i]) / refNorm) - videoParameters.black16bIre;
                     rY *= scaledContrast;
                     if (rY < 0) rY = 0;
                     if (rY > 65535) rY = 65535;
