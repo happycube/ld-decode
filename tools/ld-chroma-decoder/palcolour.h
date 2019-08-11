@@ -66,8 +66,21 @@ private:
     // Decode one field into outputFrame.
     void decodeField(const FieldInfo &field, const QByteArray &fieldData);
 
+    // Information about a line we're decoding.
+    struct LineInfo {
+        explicit LineInfo(qint32 number);
+
+        qint32 number;
+        double bp, bq;
+        double Vsw;
+        double burstNorm;
+    };
+
+    // Detect the colourburst on a line.
+    void detectBurst(LineInfo &line, const quint16 *inputData);
+
     // Decode one line into outputFrame.
-    void decodeLine(const FieldInfo &field, qint32 fieldLine, const quint16 *inputData);
+    void decodeLine(const FieldInfo &field, const LineInfo &line, const quint16 *inputData);
 
     // Configuration parameters
     bool configurationSet;

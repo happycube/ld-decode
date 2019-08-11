@@ -234,51 +234,33 @@ void PalColour::decodeField(const FieldInfo &field, const QByteArray &fieldData)
     const quint16 *inputData = reinterpret_cast<const quint16 *>(fieldData.data());
 
     for (qint32 fieldLine = field.firstLine; fieldLine < field.lastLine; fieldLine++) {
-        decodeLine(field, fieldLine, inputData);
+        LineInfo line(fieldLine);
+
+        detectBurst(line, inputData);
+        decodeLine(field, line, inputData);
     }
 }
 
-void PalColour::decodeLine(const FieldInfo &field, qint32 fieldLine, const quint16 *inputData)
+PalColour::LineInfo::LineInfo(qint32 _number)
+    : number(_number)
 {
-    // Dummy black line, used when the 2D filter needs to look outside the active region.
+}
+
+void PalColour::detectBurst(LineInfo &line, const quint16 *inputData)
+{
+    // Dummy black line, used when the filter needs to look outside the field.
     static constexpr quint16 blackLine[MAX_WIDTH] = {0};
 
     // Get pointers to the surrounding lines of input data.
-    // If a line we need is outside the active area, use blackLine instead.
-    const quint16 *in0, *in1, *in2, *in3, *in4, *in5, *in6;
-    in0 =                                                   inputData +  (fieldLine      * videoParameters.fieldWidth);
-    in1 = (fieldLine - 1) <  field.firstLine ? blackLine : (inputData + ((fieldLine - 1) * videoParameters.fieldWidth));
-    in2 = (fieldLine + 1) >= field.lastLine  ? blackLine : (inputData + ((fieldLine + 1) * videoParameters.fieldWidth));
-    in3 = (fieldLine - 2) <  field.firstLine ? blackLine : (inputData + ((fieldLine - 2) * videoParameters.fieldWidth));
-    in4 = (fieldLine + 2) >= field.lastLine  ? blackLine : (inputData + ((fieldLine + 2) * videoParameters.fieldWidth));
-    in5 = (fieldLine - 2) <  field.firstLine ? blackLine : (inputData + ((fieldLine - 3) * videoParameters.fieldWidth));
-    in6 = (fieldLine + 3) >= field.lastLine  ? blackLine : (inputData + ((fieldLine + 3) * videoParameters.fieldWidth));
-
-    // Multiply the composite input signal by the reference carrier, giving
-    // quadrature samples where the colour subcarrier is now at 0 Hz.
-    // (There will be a considerable amount of energy at higher frequencies
-    // resulting from the luma information and aliases of the signal, so
-    // we need to low-pass filter it before extracting the colour
-    // components.)
-    //
-    // As the 2D filters are vertically symmetrical, we can pre-compute the
-    // sums of pairs of lines above and below fieldLine to save some work
-    // in the inner loop below.
-    //
-    // Vertical taps 1 and 2 are swapped in the array to save one addition
-    // in the filter loop, as U and V use the same sign for taps 0 and 2.
-    double m[4][MAX_WIDTH], n[4][MAX_WIDTH];
-    for (qint32 i = videoParameters.colourBurstStart; i < videoParameters.fieldWidth; i++) {
-        m[0][i] =  in0[i] * sine[i];
-        m[2][i] =  in1[i] * sine[i] - in2[i] * sine[i];
-        m[1][i] = -in3[i] * sine[i] - in4[i] * sine[i];
-        m[3][i] = -in5[i] * sine[i] + in6[i] * sine[i];
-
-        n[0][i] =  in0[i] * cosine[i];
-        n[2][i] =  in1[i] * cosine[i] - in2[i] * cosine[i];
-        n[1][i] = -in3[i] * cosine[i] - in4[i] * cosine[i];
-        n[3][i] = -in5[i] * cosine[i] + in6[i] * cosine[i];
-    }
+    // If a line we need is outside the field, use blackLine instead.
+    // (Unlike below, we don't need to stay in the active area, since we're
+    // only looking at the colourburst.)
+    const quint16 *in0, *in1, *in2, *in3, *in4;
+    in0 =                                                                 inputData +  (line.number      * videoParameters.fieldWidth);
+    in1 = (line.number - 1) <  0                           ? blackLine : (inputData + ((line.number - 1) * videoParameters.fieldWidth));
+    in2 = (line.number + 1) >= videoParameters.fieldHeight ? blackLine : (inputData + ((line.number + 1) * videoParameters.fieldWidth));
+    in3 = (line.number - 2) <  0                           ? blackLine : (inputData + ((line.number - 2) * videoParameters.fieldWidth));
+    in4 = (line.number + 2) >= videoParameters.fieldHeight ? blackLine : (inputData + ((line.number + 2) * videoParameters.fieldWidth));
 
     // Find absolute burst phase relative to the reference carrier by
     // product detection.
@@ -294,10 +276,10 @@ void PalColour::decodeLine(const FieldInfo &field, qint32 fieldLine, const quint
     // opposite V-switch phase (and a 90 degree subcarrier phase shift).
     double bp = 0, bq = 0, bpo = 0, bqo = 0;
     for (qint32 i = videoParameters.colourBurstStart; i < videoParameters.colourBurstEnd; i++) {
-        bp += (m[0][i] + (m[1][i] / 2)) / 2;
-        bq += (n[0][i] + (n[1][i] / 2)) / 2;
-        bpo -= m[2][i] / 2;
-        bqo -= n[2][i] / 2;
+        bp += ((in0[i] - ((in3[i] + in4[i]) / 2)) / 2) * sine[i];
+        bq += ((in0[i] - ((in3[i] + in4[i]) / 2)) / 2) * cosine[i];
+        bpo += ((in2[i] - in1[i]) / 2) * sine[i];
+        bqo += ((in2[i] - in1[i]) / 2) * cosine[i];
     }
 
     // Normalise the sums above
@@ -313,20 +295,67 @@ void PalColour::decodeLine(const FieldInfo &field, qint32 fieldLine, const quint
     // vector magnitude /difference/ between the phases of the burst on the
     // present line and previous line to the magnitude of the burst. This
     // may effectively be a dot-product operation...
-    double Vsw = -1;
+    line.Vsw = -1;
     if ((((bp - bpo) * (bp - bpo) + (bq - bqo) * (bq - bqo)) < (bp * bp + bq * bq) * 2)) {
-        Vsw = 1;
+        line.Vsw = 1;
     }
 
     // Average the burst phase to get -U (reference) phase out -- burst
     // phase is (-U +/-V). bp and bq will be of the order of 1000.
-    bp = (bp - bqo) / 2;
-    bq = (bq + bpo) / 2;
+    line.bp = (bp - bqo) / 2;
+    line.bq = (bq + bpo) / 2;
 
     // burstNorm normalises bp and bq to 1.
     // Kill colour if burst too weak.
     // XXX magic number 130000 !!! check!
-    const double burstNorm = qMax(sqrt(bp * bp + bq * bq), 130000.0 / 128);
+    line.burstNorm = qMax(sqrt(line.bp * line.bp + line.bq * line.bq), 130000.0 / 128);
+}
+
+void PalColour::decodeLine(const FieldInfo &field, const LineInfo &line, const quint16 *inputData)
+{
+    // Dummy black line, used when the filter needs to look outside the active region.
+    static constexpr quint16 blackLine[MAX_WIDTH] = {0};
+
+    // Get pointers to the surrounding lines of input data.
+    // If a line we need is outside the active area, use blackLine instead.
+    const quint16 *in0, *in1, *in2, *in3, *in4, *in5, *in6;
+    in0 =                                                     inputData +  (line.number      * videoParameters.fieldWidth);
+    in1 = (line.number - 1) <  field.firstLine ? blackLine : (inputData + ((line.number - 1) * videoParameters.fieldWidth));
+    in2 = (line.number + 1) >= field.lastLine  ? blackLine : (inputData + ((line.number + 1) * videoParameters.fieldWidth));
+    in3 = (line.number - 2) <  field.firstLine ? blackLine : (inputData + ((line.number - 2) * videoParameters.fieldWidth));
+    in4 = (line.number + 2) >= field.lastLine  ? blackLine : (inputData + ((line.number + 2) * videoParameters.fieldWidth));
+    in5 = (line.number - 2) <  field.firstLine ? blackLine : (inputData + ((line.number - 3) * videoParameters.fieldWidth));
+    in6 = (line.number + 3) >= field.lastLine  ? blackLine : (inputData + ((line.number + 3) * videoParameters.fieldWidth));
+
+    // Check that the filter isn't going to run out of data horizontally.
+    assert(videoParameters.activeVideoStart - FILTER_SIZE >= videoParameters.colourBurstEnd);
+    assert(videoParameters.activeVideoEnd + FILTER_SIZE + 1 <= videoParameters.fieldWidth);
+
+    // Multiply the composite input signal by the reference carrier, giving
+    // quadrature samples where the colour subcarrier is now at 0 Hz.
+    // (There will be a considerable amount of energy at higher frequencies
+    // resulting from the luma information and aliases of the signal, so
+    // we need to low-pass filter it before extracting the colour
+    // components.)
+    //
+    // As the 2D filters are vertically symmetrical, we can pre-compute the
+    // sums of pairs of lines above and below line.number to save some work
+    // in the inner loop below.
+    //
+    // Vertical taps 1 and 2 are swapped in the array to save one addition
+    // in the filter loop, as U and V use the same sign for taps 0 and 2.
+    double m[4][MAX_WIDTH], n[4][MAX_WIDTH];
+    for (qint32 i = videoParameters.activeVideoStart - FILTER_SIZE; i < videoParameters.activeVideoEnd + FILTER_SIZE + 1; i++) {
+        m[0][i] =  in0[i] * sine[i];
+        m[2][i] =  in1[i] * sine[i] - in2[i] * sine[i];
+        m[1][i] = -in3[i] * sine[i] - in4[i] * sine[i];
+        m[3][i] = -in5[i] * sine[i] + in6[i] * sine[i];
+
+        n[0][i] =  in0[i] * cosine[i];
+        n[2][i] =  in1[i] * cosine[i] - in2[i] * cosine[i];
+        n[1][i] = -in3[i] * cosine[i] - in4[i] * cosine[i];
+        n[3][i] = -in5[i] * cosine[i] + in6[i] * cosine[i];
+    }
 
     // p & q should be sine/cosine components' amplitudes
     // NB: Multiline averaging/filtering assumes perfect
@@ -369,13 +398,14 @@ void PalColour::decodeLine(const FieldInfo &field, qint32 fieldLine, const quint
     }
 
     // Define scan line pointer to output buffer using 16 bit unsigned words
-    quint16 *ptr = reinterpret_cast<quint16 *>(outputFrame.data() + (((fieldLine * 2) + field.number) * videoParameters.fieldWidth * 6));
+    quint16 *ptr = reinterpret_cast<quint16 *>(outputFrame.data()
+                                               + (((line.number * 2) + field.number) * videoParameters.fieldWidth * 6));
 
     // Gain for the Y component, to put black at 0 and peak white at 65535
     const double scaledContrast = (65535.0 / (videoParameters.white16bIre - videoParameters.black16bIre)) * field.contrast / 100.0;
 
     // Gain for the U/V components
-    const double scaledSaturation = (field.saturation / 50.0) / burstNorm;
+    const double scaledSaturation = (field.saturation / 50.0) / line.burstNorm;
 
     for (qint32 i = videoParameters.activeVideoStart; i < videoParameters.activeVideoEnd; i++) {
         // Compute luma by resynthesising the chroma signal that the Y
@@ -390,8 +420,8 @@ void PalColour::decodeLine(const FieldInfo &field, qint32 fieldLine, const quint
         // reference phase) backwards by the burst phase (relative to the
         // reference phase), in order to recover U and V. The Vswitch is
         // applied to flip the V-phase on alternate lines for PAL.
-        const double rU =       -((pu[i] * bp + qu[i] * bq)) * scaledSaturation;
-        const double rV = Vsw * -((qv[i] * bp - pv[i] * bq)) * scaledSaturation;
+        const double rU =            -((pu[i] * line.bp + qu[i] * line.bq)) * scaledSaturation;
+        const double rV = line.Vsw * -((qv[i] * line.bp - pv[i] * line.bq)) * scaledSaturation;
 
         // Convert YUV to RGB, saturating levels at 0-65535 to prevent overflow.
         // This conversion is taken from Video Demystified (5th edition) page 18.
