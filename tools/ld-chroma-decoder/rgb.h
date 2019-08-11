@@ -34,13 +34,18 @@
 class RGB
 {
 public:
-    RGB(double whiteIreParam, double blackIreParam, bool whitePoint100Param, bool blackAndWhiteParam, double colourBurstMedianParam);
+    // whiteIreLevel: 100 IRE 16-bit level
+    // blackIreLevel: 0 or 7.5 IRE 16-bit level
+    // whitePoint75: false = using 100% white point, true = 75%
+    // blackAndWhite: true = output in black and white only
+    // colourBurstMedian: 40 IRE burst amplitude measured by ld-decode
+    RGB(double whiteIreLevel, double blackIreLevel, bool whitePoint75, bool blackAndWhite, double colourBurstMedian);
 
     void convertLine(const YIQ *begin, const YIQ *end, quint16 *out);
 
 private:
-    double blackIreLevel;
     double whiteIreLevel;
+    double blackIreLevel;
     bool whitePoint75;
     bool blackAndWhite;
     double colourBurstMedian;

@@ -25,13 +25,10 @@
 
 #include "rgb.h"
 
-RGB::RGB(double whiteIreParam, double blackIreParam, bool whitePoint100Param, bool blackAndWhiteParam, double colourBurstMedianParam)
+RGB::RGB(double _whiteIreLevel, double _blackIreLevel, bool _whitePoint75, bool _blackAndWhite, double _colourBurstMedian)
+    : whiteIreLevel(_whiteIreLevel), blackIreLevel(_blackIreLevel), whitePoint75(_whitePoint75),
+      blackAndWhite(_blackAndWhite), colourBurstMedian(_colourBurstMedian)
 {
-    blackIreLevel = blackIreParam; // 0 or 7.5 IRE 16-bit level
-    whiteIreLevel = whiteIreParam; // 100 IRE 16-bit level
-    whitePoint75 = whitePoint100Param; // false = using 100% white point, true = 75%
-    blackAndWhite = blackAndWhiteParam; // true = output in black and white only
-    colourBurstMedian = colourBurstMedianParam; // 40 IRE burst amplitude measured by ld-decode
 }
 
 void RGB::convertLine(const YIQ *begin, const YIQ *end, quint16 *out)

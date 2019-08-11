@@ -60,8 +60,8 @@ class NtscThread : public QThread
 {
     Q_OBJECT
 public:
-    explicit NtscThread(QAtomicInt &abortParam, DecoderPool &decoderPoolParam,
-                        const NtscDecoder::Configuration &configParam,
+    explicit NtscThread(QAtomicInt &abort, DecoderPool &decoderPool,
+                        const NtscDecoder::Configuration &config,
                         QObject *parent = nullptr);
 
 protected:

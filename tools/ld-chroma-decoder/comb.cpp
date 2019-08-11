@@ -69,16 +69,16 @@ Comb::Configuration Comb::getConfiguration()
 }
 
 // Set the comb filter configuration parameters
-void Comb::setConfiguration(const Comb::Configuration &configurationParam)
+void Comb::setConfiguration(const Comb::Configuration &_configuration)
 {
     // Range check the frame dimensions
-    if (configuration.fieldWidth > 910) qCritical() << "Comb::Comb(): Frame width exceeds allowed maximum!";
-    if (((configuration.fieldHeight * 2) - 1) > 525) qCritical() << "Comb::Comb(): Frame height exceeds allowed maximum!";
+    if (_configuration.fieldWidth > 910) qCritical() << "Comb::Comb(): Frame width exceeds allowed maximum!";
+    if (((_configuration.fieldHeight * 2) - 1) > 525) qCritical() << "Comb::Comb(): Frame height exceeds allowed maximum!";
 
     // Range check the video start
-    if (configurationParam.activeVideoStart < 16) qCritical() << "Comb::Comb(): activeVideoStart must be > 16!";
+    if (_configuration.activeVideoStart < 16) qCritical() << "Comb::Comb(): activeVideoStart must be > 16!";
 
-    configuration = configurationParam;
+    configuration = _configuration;
     postConfigurationTasks();
 }
 

@@ -76,9 +76,9 @@ QThread *NtscDecoder::makeThread(QAtomicInt& abort, DecoderPool& decoderPool)
     return new NtscThread(abort, decoderPool, config);
 }
 
-NtscThread::NtscThread(QAtomicInt& abortParam, DecoderPool &decoderPoolParam,
-                       const NtscDecoder::Configuration &configParam, QObject *parent)
-    : QThread(parent), abort(abortParam), decoderPool(decoderPoolParam), config(configParam)
+NtscThread::NtscThread(QAtomicInt& _abort, DecoderPool &_decoderPool,
+                       const NtscDecoder::Configuration &_config, QObject *parent)
+    : QThread(parent), abort(_abort), decoderPool(_decoderPool), config(_config)
 {
 }
 

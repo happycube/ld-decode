@@ -72,7 +72,7 @@ public:
     };
 
     Configuration getConfiguration();
-    void setConfiguration(const Configuration &configurationParam);
+    void setConfiguration(const Configuration &configuration);
     QByteArray process(QByteArray topFieldInputBuffer, QByteArray bottomFieldInputBuffer, qreal burstMedianIre, qint32 topFieldPhaseID, qint32 bottomFieldPhaseID);
 
 protected:

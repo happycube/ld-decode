@@ -26,8 +26,8 @@
 #include "opticalflow.h"
 
 OpticalFlow::OpticalFlow()
+    : framesProcessed(0)
 {
-    framesProcessed = 0;
 }
 
 // Perform a dense optical flow analysis

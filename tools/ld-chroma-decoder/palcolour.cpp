@@ -55,18 +55,18 @@
     filters with more complex coefficients than the report describes.
  */
 
-PalColour::PalColour(QObject *parent) : QObject(parent)
+PalColour::PalColour(QObject *parent)
+    : QObject(parent), configurationSet(false)
 {
-    configurationSet = false;
 }
 
-void PalColour::updateConfiguration(LdDecodeMetaData::VideoParameters videoParametersParam,
-                                    qint32 firstActiveLineParam, qint32 lastActiveLineParam)
+void PalColour::updateConfiguration(LdDecodeMetaData::VideoParameters _videoParameters,
+                                    qint32 _firstActiveLine, qint32 _lastActiveLine)
 {
     // Copy the configuration parameters
-    videoParameters = videoParametersParam;
-    firstActiveLine = firstActiveLineParam;
-    lastActiveLine = lastActiveLineParam;
+    videoParameters = _videoParameters;
+    firstActiveLine = _firstActiveLine;
+    lastActiveLine = _lastActiveLine;
 
     // Build the look-up tables
     buildLookUpTables();
