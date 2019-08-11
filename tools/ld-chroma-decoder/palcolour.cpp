@@ -179,8 +179,6 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
         double pu[MAX_WIDTH], qu[MAX_WIDTH], pv[MAX_WIDTH], qv[MAX_WIDTH], py[MAX_WIDTH], qy[MAX_WIDTH];
         double m[4][MAX_WIDTH], n[4][MAX_WIDTH];
 
-        qint32 Vsw; // this will represent the PAL Vswitch state later on...
-
         for (qint32 field = 0; field < 2; field++) {
             const quint16 *fieldData = reinterpret_cast<const quint16 *>(field == 0 ? firstFieldData.data()
                                                                                     : secondFieldData.data());
@@ -233,7 +231,7 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
                 //    but for PAL we also analyse the average (bpo,bqo 'old') of the line immediately above and below, which have the opposite V-switch phase (and a 90 degree subcarrier phase shift)
 
                 // this is a classic "product-" or "synchronous demodulation" operation. We "detect" the burst relative to the arbitrary sine[] and cosine[] reference phases
-                qint32 bp=0, bq=0, bpo=0, bqo=0;
+                double bp=0, bq=0, bpo=0, bqo=0;
                 for (qint32 i=videoParameters.colourBurstStart; i<videoParameters.colourBurstEnd; i++) {
                     bp+=(m[0][i]+(m[1][i]/2))/2;
                     bq+=(n[0][i]+(n[1][i]/2))/2;
@@ -246,6 +244,7 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
 
                 // Generate V-switch phase - I forget exactly why this works, but it's essentially comparing the vector magnitude /difference/ between the
                 // phases of the burst on the present line and previous line to the magnitude of the burst. This may effectively be a dot-product operation...
+                double Vsw;
                 if (((bp-bpo)*(bp-bpo)+(bq-bqo)*(bq-bqo))<(bp*bp+bq*bq)*2) Vsw=1; else Vsw=-1;
 
                 // NB bp and bq will be of the order of 1000. CHECK!!
@@ -259,8 +258,8 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
                 double norm=sqrt(bp*bp+bq*bq); // TRIAL - 7 Oct 2005
 
                 // kill colour if burst too weak!  magic number 130000 !!! check!
-                if (norm<(130000 / 128)) {
-                    norm=130000 / 128;
+                if (norm<(130000.0 / 128)) {
+                    norm=130000.0 / 128;
                 }
 
                 // p & q should be sine/cosine components' amplitudes
