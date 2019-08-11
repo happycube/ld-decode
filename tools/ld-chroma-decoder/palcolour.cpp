@@ -180,6 +180,7 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
 
 void PalColour::decodeField(qint32 fieldNumber, const QByteArray &fieldData, qint32 contrast, qint32 saturation)
 {
+    // Pointer to the input field data
     const quint16 *inputData = reinterpret_cast<const quint16 *>(fieldData.data());
 
     // Dummy black line, used when the 2D filter needs to look outside the active region.
@@ -193,34 +194,37 @@ void PalColour::decodeField(qint32 fieldNumber, const QByteArray &fieldData, qin
     const qint32 lastFieldLine = (lastActiveLine + 1 - fieldNumber) / 2;
 
     for (qint32 fieldLine = firstFieldLine; fieldLine < lastFieldLine; fieldLine++) {
-        // Get pointers to the surrounding lines.
+        // Get pointers to the surrounding lines of input data.
         // If a line we need is outside the active area, use blackLine instead.
-        const quint16 *b0, *b1, *b2, *b3, *b4, *b5, *b6;
-        b0 =                                                  inputData +  (fieldLine      * videoParameters.fieldWidth);
-        b1 = (fieldLine - 1) <  firstFieldLine ? blackLine : (inputData + ((fieldLine - 1) * videoParameters.fieldWidth));
-        b2 = (fieldLine + 1) >= lastFieldLine  ? blackLine : (inputData + ((fieldLine + 1) * videoParameters.fieldWidth));
-        b3 = (fieldLine - 2) <  firstFieldLine ? blackLine : (inputData + ((fieldLine - 2) * videoParameters.fieldWidth));
-        b4 = (fieldLine + 2) >= lastFieldLine  ? blackLine : (inputData + ((fieldLine + 2) * videoParameters.fieldWidth));
-        b5 = (fieldLine - 2) <  firstFieldLine ? blackLine : (inputData + ((fieldLine - 3) * videoParameters.fieldWidth));
-        b6 = (fieldLine + 3) >= lastFieldLine  ? blackLine : (inputData + ((fieldLine + 3) * videoParameters.fieldWidth));
+        const quint16 *in0, *in1, *in2, *in3, *in4, *in5, *in6;
+        in0 =                                                  inputData +  (fieldLine      * videoParameters.fieldWidth);
+        in1 = (fieldLine - 1) <  firstFieldLine ? blackLine : (inputData + ((fieldLine - 1) * videoParameters.fieldWidth));
+        in2 = (fieldLine + 1) >= lastFieldLine  ? blackLine : (inputData + ((fieldLine + 1) * videoParameters.fieldWidth));
+        in3 = (fieldLine - 2) <  firstFieldLine ? blackLine : (inputData + ((fieldLine - 2) * videoParameters.fieldWidth));
+        in4 = (fieldLine + 2) >= lastFieldLine  ? blackLine : (inputData + ((fieldLine + 2) * videoParameters.fieldWidth));
+        in5 = (fieldLine - 2) <  firstFieldLine ? blackLine : (inputData + ((fieldLine - 3) * videoParameters.fieldWidth));
+        in6 = (fieldLine + 3) >= lastFieldLine  ? blackLine : (inputData + ((fieldLine + 3) * videoParameters.fieldWidth));
 
-        // The 2D filter is vertically symmetrical, so we can pre-compute the
+        // Multiply the composite input signal by the reference carrier, giving
+        // quadrature samples where the colour subcarrier is now at 0 Hz.
+        //
+        // As the 2D filters are vertically symmetrical, we can pre-compute the
         // sums of pairs of lines above and below fieldLine to save some work
         // in the inner loop below.
         //
         // Vertical taps 1 and 2 are swapped in the array to save one addition
-        // in the filter loop, as U and V are the same sign for taps 0 and 2.
+        // in the filter loop, as U and V use the same sign for taps 0 and 2.
         double m[4][MAX_WIDTH], n[4][MAX_WIDTH];
         for (qint32 i = videoParameters.colourBurstStart; i < videoParameters.fieldWidth; i++) {
-            m[0][i]=+b0[i]*sine[i];
-            m[2][i]=+b1[i]*sine[i]-b2[i]*sine[i];
-            m[1][i]=-b3[i]*sine[i]-b4[i]*sine[i];
-            m[3][i]=-b5[i]*sine[i]+b6[i]*sine[i];
+            m[0][i] =  in0[i] * sine[i];
+            m[2][i] =  in1[i] * sine[i] - in2[i] * sine[i];
+            m[1][i] = -in3[i] * sine[i] - in4[i] * sine[i];
+            m[3][i] = -in5[i] * sine[i] + in6[i] * sine[i];
 
-            n[0][i]=+b0[i]*cosine[i];
-            n[2][i]=+b1[i]*cosine[i]-b2[i]*cosine[i];
-            n[1][i]=-b3[i]*cosine[i]-b4[i]*cosine[i];
-            n[3][i]=-b5[i]*cosine[i]+b6[i]*cosine[i];
+            n[0][i] =  in0[i] * cosine[i];
+            n[2][i] =  in1[i] * cosine[i] - in2[i] * cosine[i];
+            n[1][i] = -in3[i] * cosine[i] - in4[i] * cosine[i];
+            n[3][i] = -in5[i] * cosine[i] + in6[i] * cosine[i];
         }
 
         // Find absolute burst phase
@@ -311,7 +315,7 @@ void PalColour::decodeField(qint32 fieldNumber, const QByteArray &fieldData, qin
         for (qint32 i = videoParameters.activeVideoStart; i < videoParameters.activeVideoEnd; i++)
         {
             // Generate the luminance (Y), by filtering out Fsc (by re-synthesising the detected py qy and subtracting), and subtracting the black-level
-            rY = b0[i] - ((py[i]*sine[i]+qy[i]*cosine[i]) / refNorm) - videoParameters.black16bIre;
+            rY = in0[i] - ((py[i] * sine[i] + qy[i] * cosine[i]) / refNorm) - videoParameters.black16bIre;
             rY *= scaledContrast;
             if (rY < 0) rY = 0;
             if (rY > 65535) rY = 65535;
