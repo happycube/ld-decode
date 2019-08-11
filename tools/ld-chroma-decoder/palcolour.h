@@ -33,13 +33,16 @@
 
 #include "lddecodemetadata.h"
 
+#include "transformpal.h"
+
 class PalColour : public QObject
 {
     Q_OBJECT
 
 public:
     explicit PalColour(QObject *parent = nullptr);
-    void updateConfiguration(LdDecodeMetaData::VideoParameters videoParameters, qint32 firstActiveLine, qint32 lastActiveLine);
+    void updateConfiguration(LdDecodeMetaData::VideoParameters videoParameters, qint32 firstActiveLine, qint32 lastActiveLine,
+                             bool useTransformFilter = false, double transformThreshold = 0.6);
 
     // Decode two fields to produce an interlaced frame.
     // contrast and saturation are user-adjustable controls; 100 is nominal.
@@ -77,16 +80,26 @@ private:
     };
 
     // Detect the colourburst on a line.
+    // Stores the burst details into line.
     void detectBurst(LineInfo &line, const quint16 *inputData);
 
     // Decode one line into outputFrame.
-    void decodeLine(const FieldInfo &field, const LineInfo &line, const quint16 *inputData);
+    // inputData (templated, so it can be any numeric type) is the input to the
+    // filter; this may be the composite signal, or it may be pre-filtered down
+    // to chroma.
+    // compData is the composite signal, used for reconstructing Y at the end.
+    template <typename InputSample>
+    void decodeLine(const FieldInfo &field, const LineInfo &line, const InputSample *inputData, const quint16 *compData);
 
     // Configuration parameters
     bool configurationSet;
     LdDecodeMetaData::VideoParameters videoParameters;
     qint32 firstActiveLine;
     qint32 lastActiveLine;
+    bool useTransformFilter;
+
+    // Transform PAL filter
+    TransformPal transformPal;
 
     // The subcarrier reference signal
     double sine[MAX_WIDTH], cosine[MAX_WIDTH];

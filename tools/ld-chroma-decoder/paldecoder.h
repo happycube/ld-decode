@@ -42,13 +42,15 @@ class DecoderPool;
 // 2D PAL decoder using PALcolour
 class PalDecoder : public Decoder {
 public:
-    PalDecoder(bool blackAndWhite);
+    PalDecoder(bool blackAndWhite, bool useTransformFilter = false, double transformThreshold = 0.6);
     bool configure(const LdDecodeMetaData::VideoParameters &videoParameters) override;
     QThread *makeThread(QAtomicInt& abort, DecoderPool& decoderPool) override;
 
     // Parameters used by PalDecoder and PalThread
     struct Configuration : public Decoder::Configuration {
         bool blackAndWhite;
+        bool useTransformFilter;
+        double transformThreshold;
     };
 
 private:

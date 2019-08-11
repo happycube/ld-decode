@@ -61,15 +61,20 @@ PalColour::PalColour(QObject *parent)
 }
 
 void PalColour::updateConfiguration(LdDecodeMetaData::VideoParameters _videoParameters,
-                                    qint32 _firstActiveLine, qint32 _lastActiveLine)
+                                    qint32 _firstActiveLine, qint32 _lastActiveLine,
+                                    bool _useTransformFilter, double transformThreshold)
 {
     // Copy the configuration parameters
     videoParameters = _videoParameters;
     firstActiveLine = _firstActiveLine;
     lastActiveLine = _lastActiveLine;
+    useTransformFilter = _useTransformFilter;
 
     // Build the look-up tables
     buildLookUpTables();
+
+    // Configure Transform PAL
+    transformPal.updateConfiguration(_videoParameters, _firstActiveLine, _lastActiveLine, transformThreshold);
 
     configurationSet = true;
 }
@@ -233,11 +238,25 @@ void PalColour::decodeField(const FieldInfo &field, const QByteArray &fieldData)
     // Pointer to the input field data
     const quint16 *inputData = reinterpret_cast<const quint16 *>(fieldData.data());
 
+    const double *chromaData = nullptr;
+    if (useTransformFilter) {
+        // Use Transform PAL filter to extract chroma
+        chromaData = transformPal.filterField(field.number, fieldData);
+    }
+
     for (qint32 fieldLine = field.firstLine; fieldLine < field.lastLine; fieldLine++) {
         LineInfo line(fieldLine);
 
+        // Detect the colourburst from the composite signal
         detectBurst(line, inputData);
-        decodeLine(field, line, inputData);
+
+        if (useTransformFilter) {
+            // Decode chroma and luma from the Transform PAL output
+            decodeLine(field, line, chromaData, inputData);
+        } else {
+            // Decode chroma and luma from the composite signal
+            decodeLine(field, line, inputData, inputData);
+        }
     }
 }
 
@@ -311,14 +330,15 @@ void PalColour::detectBurst(LineInfo &line, const quint16 *inputData)
     line.burstNorm = qMax(sqrt(line.bp * line.bp + line.bq * line.bq), 130000.0 / 128);
 }
 
-void PalColour::decodeLine(const FieldInfo &field, const LineInfo &line, const quint16 *inputData)
+template <typename InputSample>
+void PalColour::decodeLine(const FieldInfo &field, const LineInfo &line, const InputSample *inputData, const quint16 *compData)
 {
     // Dummy black line, used when the filter needs to look outside the active region.
-    static constexpr quint16 blackLine[MAX_WIDTH] = {0};
+    static constexpr InputSample blackLine[MAX_WIDTH] = {0};
 
     // Get pointers to the surrounding lines of input data.
     // If a line we need is outside the active area, use blackLine instead.
-    const quint16 *in0, *in1, *in2, *in3, *in4, *in5, *in6;
+    const InputSample *in0, *in1, *in2, *in3, *in4, *in5, *in6;
     in0 =                                                     inputData +  (line.number      * videoParameters.fieldWidth);
     in1 = (line.number - 1) <  field.firstLine ? blackLine : (inputData + ((line.number - 1) * videoParameters.fieldWidth));
     in2 = (line.number + 1) >= field.lastLine  ? blackLine : (inputData + ((line.number + 1) * videoParameters.fieldWidth));
@@ -397,6 +417,9 @@ void PalColour::decodeLine(const FieldInfo &field, const LineInfo &line, const q
         qy[i] = QY;
     }
 
+    // Pointer to composite signal data
+    const quint16 *comp = compData + (line.number * videoParameters.fieldWidth);
+
     // Define scan line pointer to output buffer using 16 bit unsigned words
     quint16 *ptr = reinterpret_cast<quint16 *>(outputFrame.data()
                                                + (((line.number * 2) + field.number) * videoParameters.fieldWidth * 6));
@@ -408,10 +431,16 @@ void PalColour::decodeLine(const FieldInfo &field, const LineInfo &line, const q
     const double scaledSaturation = (field.saturation / 50.0) / line.burstNorm;
 
     for (qint32 i = videoParameters.activeVideoStart; i < videoParameters.activeVideoEnd; i++) {
-        // Compute luma by resynthesising the chroma signal that the Y
-        // filter extracted, and subtracting it from the original composite
-        // signal
-        double rY = in0[i] - ((py[i] * sine[i] + qy[i] * cosine[i]) / refNorm);
+        // Compute luma by...
+        double rY;
+        if (useTransformFilter) {
+            // ... subtracting pre-filtered chroma from the composite input
+            rY = comp[i] - in0[i];
+        } else {
+            // ... resynthesising the chroma signal that the Y filter
+            // extracted, and subtracting it from the composite input
+            rY = comp[i] - ((py[i] * sine[i] + qy[i] * cosine[i]) / refNorm);
+        }
 
         // Scale to 16-bit output
         rY = qBound(0.0, (rY - videoParameters.black16bIre) * scaledContrast, 65535.0);

@@ -20,6 +20,7 @@ SOURCES += \
     decoderpool.cpp \
     palcolour.cpp \
     paldecoder.cpp \
+    transformpal.cpp \
     comb.cpp \
     rgb.cpp \
     yiq.cpp \
@@ -33,6 +34,7 @@ HEADERS += \
     decoderpool.h \
     palcolour.h \
     paldecoder.h \
+    transformpal.h \
     comb.h \
     rgb.h \
     yiq.h \
@@ -59,4 +61,4 @@ LIBS += -L"/usr/local/opt/opencv@2/lib"
 # Normal open-source OS goodness
 INCLUDEPATH += "/usr/local/include/opencv"
 LIBS += -L"/usr/local/lib"
-LIBS += -lopencv_core -lopencv_imgproc -lopencv_video
+LIBS += -lopencv_core -lopencv_imgproc -lopencv_video -lfftw3

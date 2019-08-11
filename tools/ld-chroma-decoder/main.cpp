@@ -102,6 +102,7 @@ int main(int argc, char *argv[])
                 "(c)2018-2019 Simon Inns\n"
                 "(c)2019 Adam Sampson\n"
                 "Contains PALcolour: Copyright (c)2018  William Andrew Steer\n"
+                "Contains Transform PAL: Copyright (c)2014 Jim Easterbrook\n"
                 "GPLv3 Open-Source - github: https://github.com/happycube/ld-decode");
     parser.addHelpOption();
     parser.addVersionOption();
@@ -142,7 +143,7 @@ int main(int argc, char *argv[])
 
     // Option to select which decoder to use (-f)
     QCommandLineOption decoderOption(QStringList() << "f" << "decoder",
-                                     QCoreApplication::translate("main", "Decoder to use (pal2d, ntsc2d, ntsc3d; default automatic)"),
+                                     QCoreApplication::translate("main", "Decoder to use (pal2d, transform2d, ntsc2d, ntsc3d; default automatic)"),
                                      QCoreApplication::translate("main", "decoder"));
     parser.addOption(decoderOption);
 
@@ -163,6 +164,15 @@ int main(int argc, char *argv[])
     QCommandLineOption whitePointOption(QStringList() << "w" << "white",
                                         QCoreApplication::translate("main", "NTSC: Use 75% white-point (default 100%)"));
     parser.addOption(whitePointOption);
+
+    // -- PAL decoder options --
+
+    // Option to select the Transform PAL threshold
+    QCommandLineOption transformThresholdOption(QStringList() << "transformThreshold",
+                                                QCoreApplication::translate("main", "Transform: Similarity threshold for the chroma filter (default 0.6)"),
+                                                QCoreApplication::translate("main", "number"));
+    parser.addOption(transformThresholdOption);
+
 
     // -- Positional arguments --
 
@@ -210,6 +220,7 @@ int main(int argc, char *argv[])
     qint32 startFrame = -1;
     qint32 length = -1;
     qint32 maxThreads = QThread::idealThreadCount() + 2;
+    double transformThreshold = 0.6;
 
     if (parser.isSet(startFrameOption)) {
         startFrame = parser.value(startFrameOption).toInt();
@@ -239,6 +250,10 @@ int main(int argc, char *argv[])
             qCritical("Specified number of threads must be greater than zero");
             return -1;
         }
+    }
+
+    if (parser.isSet(transformThresholdOption)) {
+        transformThreshold = parser.value(transformThresholdOption).toDouble();
     }
 
     // Process the command line options
@@ -277,6 +292,8 @@ int main(int argc, char *argv[])
     QScopedPointer<Decoder> decoder;
     if (decoderName == "pal2d") {
         decoder.reset(new PalDecoder(blackAndWhite));
+    } else if (decoderName == "transform2d") {
+        decoder.reset(new PalDecoder(blackAndWhite, true, transformThreshold));
     } else if (decoderName == "ntsc2d") {
         decoder.reset(new NtscDecoder(blackAndWhite, whitePoint, false, false));
     } else if (decoderName == "ntsc3d") {
