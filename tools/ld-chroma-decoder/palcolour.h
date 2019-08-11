@@ -48,6 +48,10 @@ public:
     static const qint32 MAX_HEIGHT = 625;
 
 private:
+    // Decode one field into outputFrame.
+    // fieldNumber is 0 for the top field, 1 for the bottom field.
+    void decodeField(qint32 fieldNumber, const QByteArray &fieldData, qint32 contrast, qint32 saturation);
+
     // Configuration parameters
     LdDecodeMetaData::VideoParameters videoParameters;
     qint32 firstActiveLine;

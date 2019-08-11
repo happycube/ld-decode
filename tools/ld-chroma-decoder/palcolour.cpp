@@ -168,174 +168,177 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
     // is no picture data
     outputFrame.fill(0);
 
-    // Scaling factor to put black at 0 and peak white at 65535
-    double scaledContrast = (65535.0 / (videoParameters.white16bIre - videoParameters.black16bIre)) * contrast / 100.0;
+    if (!firstFieldData.isNull()) {
+        decodeField(0, firstFieldData, contrast, saturation);
+    }
+    if (!secondFieldData.isNull()) {
+        decodeField(1, secondFieldData, contrast, saturation);
+    }
+
+    return outputFrame;
+}
+
+void PalColour::decodeField(qint32 fieldNumber, const QByteArray &fieldData, qint32 contrast, qint32 saturation)
+{
+    const quint16 *inputData = reinterpret_cast<const quint16 *>(fieldData.data());
 
     // Dummy black line, used when the 2D filter needs to look outside the active region.
     static constexpr quint16 blackLine[MAX_WIDTH] = {0};
 
-    if (!firstFieldData.isNull() && !secondFieldData.isNull()) {
-        double pu[MAX_WIDTH], qu[MAX_WIDTH], pv[MAX_WIDTH], qv[MAX_WIDTH], py[MAX_WIDTH], qy[MAX_WIDTH];
+    // Work out the active lines to be decoded within this field.
+    // If firstActiveLine or lastActiveLine is odd, we can end up with
+    // different ranges for the two fields, so we need to be careful
+    // about how this is rounded.
+    const qint32 firstFieldLine = (firstActiveLine + 1 - fieldNumber) / 2;
+    const qint32 lastFieldLine = (lastActiveLine + 1 - fieldNumber) / 2;
+
+    for (qint32 fieldLine = firstFieldLine; fieldLine < lastFieldLine; fieldLine++) {
+        // Get pointers to the surrounding lines.
+        // If a line we need is outside the active area, use blackLine instead.
+        const quint16 *b0, *b1, *b2, *b3, *b4, *b5, *b6;
+        b0 =                                                  inputData +  (fieldLine      * videoParameters.fieldWidth);
+        b1 = (fieldLine - 1) <  firstFieldLine ? blackLine : (inputData + ((fieldLine - 1) * videoParameters.fieldWidth));
+        b2 = (fieldLine + 1) >= lastFieldLine  ? blackLine : (inputData + ((fieldLine + 1) * videoParameters.fieldWidth));
+        b3 = (fieldLine - 2) <  firstFieldLine ? blackLine : (inputData + ((fieldLine - 2) * videoParameters.fieldWidth));
+        b4 = (fieldLine + 2) >= lastFieldLine  ? blackLine : (inputData + ((fieldLine + 2) * videoParameters.fieldWidth));
+        b5 = (fieldLine - 2) <  firstFieldLine ? blackLine : (inputData + ((fieldLine - 3) * videoParameters.fieldWidth));
+        b6 = (fieldLine + 3) >= lastFieldLine  ? blackLine : (inputData + ((fieldLine + 3) * videoParameters.fieldWidth));
+
+        // The 2D filter is vertically symmetrical, so we can pre-compute the
+        // sums of pairs of lines above and below fieldLine to save some work
+        // in the inner loop below.
+        //
+        // Vertical taps 1 and 2 are swapped in the array to save one addition
+        // in the filter loop, as U and V are the same sign for taps 0 and 2.
         double m[4][MAX_WIDTH], n[4][MAX_WIDTH];
+        for (qint32 i = videoParameters.colourBurstStart; i < videoParameters.fieldWidth; i++) {
+            m[0][i]=+b0[i]*sine[i];
+            m[2][i]=+b1[i]*sine[i]-b2[i]*sine[i];
+            m[1][i]=-b3[i]*sine[i]-b4[i]*sine[i];
+            m[3][i]=-b5[i]*sine[i]+b6[i]*sine[i];
 
-        for (qint32 field = 0; field < 2; field++) {
-            const quint16 *fieldData = reinterpret_cast<const quint16 *>(field == 0 ? firstFieldData.data()
-                                                                                    : secondFieldData.data());
+            n[0][i]=+b0[i]*cosine[i];
+            n[2][i]=+b1[i]*cosine[i]-b2[i]*cosine[i];
+            n[1][i]=-b3[i]*cosine[i]-b4[i]*cosine[i];
+            n[3][i]=-b5[i]*cosine[i]+b6[i]*cosine[i];
+        }
 
-            // Work out the active lines to be decoded within this field.
-            // If firstActiveLine or lastActiveLine is odd, we can end up with
-            // different ranges for the two fields, so we need to be careful
-            // about how this is rounded.
-            const qint32 firstFieldLine = (firstActiveLine + 1 - field) / 2;
-            const qint32 lastFieldLine = (lastActiveLine + 1 - field) / 2;
+        // Find absolute burst phase
 
-            for (qint32 fieldLine = firstFieldLine; fieldLine < lastFieldLine; fieldLine++) {
-                // Get pointers to the surrounding lines.
-                // If a line we need is outside the active area, use blackLine instead.
-                const quint16 *b0, *b1, *b2, *b3, *b4, *b5, *b6;
-                b0 =                                                  fieldData +  (fieldLine      * videoParameters.fieldWidth);
-                b1 = (fieldLine - 1) <  firstFieldLine ? blackLine : (fieldData + ((fieldLine - 1) * videoParameters.fieldWidth));
-                b2 = (fieldLine + 1) >= lastFieldLine  ? blackLine : (fieldData + ((fieldLine + 1) * videoParameters.fieldWidth));
-                b3 = (fieldLine - 2) <  firstFieldLine ? blackLine : (fieldData + ((fieldLine - 2) * videoParameters.fieldWidth));
-                b4 = (fieldLine + 2) >= lastFieldLine  ? blackLine : (fieldData + ((fieldLine + 2) * videoParameters.fieldWidth));
-                b5 = (fieldLine - 2) <  firstFieldLine ? blackLine : (fieldData + ((fieldLine - 3) * videoParameters.fieldWidth));
-                b6 = (fieldLine + 3) >= lastFieldLine  ? blackLine : (fieldData + ((fieldLine + 3) * videoParameters.fieldWidth));
+        //  To avoid hue-shifts on alternate lines, the phase is determined by averaging the phase on the current-line with the average of
+        //  two other lines, one above and one below the current line.
+        //   For NTSC we use the scan-lines immediately above and below (in the field), which we know have exactly 180 degrees burst phase shift to the present line
+        //   For PAL we use the next-but-one line above and below (in the field), which will have the same V-switch phase as the current-line (and 180 degree change of phase)
+        //    but for PAL we also analyse the average (bpo,bqo 'old') of the line immediately above and below, which have the opposite V-switch phase (and a 90 degree subcarrier phase shift)
 
-                for (qint32 i = videoParameters.colourBurstStart; i < videoParameters.fieldWidth; i++) {
-                    // The 2D filter is vertically symmetrical, so we can
-                    // pre-compute the sums of pairs of lines above and below
-                    // fieldLine to save some work in the inner loop below.
-                    //
-                    // Vertical taps 1 and 2 are swapped in the array to save
-                    // one addition in the filter loop, as U and V are the same
-                    // sign for taps 0 and 2.
+        // this is a classic "product-" or "synchronous demodulation" operation. We "detect" the burst relative to the arbitrary sine[] and cosine[] reference phases
+        double bp=0, bq=0, bpo=0, bqo=0;
+        for (qint32 i=videoParameters.colourBurstStart; i<videoParameters.colourBurstEnd; i++) {
+            bp+=(m[0][i]+(m[1][i]/2))/2;
+            bq+=(n[0][i]+(n[1][i]/2))/2;
+            bpo-=m[2][i]/2;
+            bqo-=n[2][i]/2;
+        }
 
-                    m[0][i]=+b0[i]*sine[i];
-                    m[2][i]=+b1[i]*sine[i]-b2[i]*sine[i];
-                    m[1][i]=-b3[i]*sine[i]-b4[i]*sine[i];
-                    m[3][i]=-b5[i]*sine[i]+b6[i]*sine[i];
+        bp/=(videoParameters.colourBurstEnd-videoParameters.colourBurstStart);  bq/=(videoParameters.colourBurstEnd-videoParameters.colourBurstStart);  // normalises those sums
+        bpo/=(videoParameters.colourBurstEnd-videoParameters.colourBurstStart); bqo/=(videoParameters.colourBurstEnd-videoParameters.colourBurstStart); // normalises those sums
 
-                    n[0][i]=+b0[i]*cosine[i];
-                    n[2][i]=+b1[i]*cosine[i]-b2[i]*cosine[i];
-                    n[1][i]=-b3[i]*cosine[i]-b4[i]*cosine[i];
-                    n[3][i]=-b5[i]*cosine[i]+b6[i]*cosine[i];
-                }
+        // Generate V-switch phase - I forget exactly why this works, but it's essentially comparing the vector magnitude /difference/ between the
+        // phases of the burst on the present line and previous line to the magnitude of the burst. This may effectively be a dot-product operation...
+        double Vsw;
+        if (((bp-bpo)*(bp-bpo)+(bq-bqo)*(bq-bqo))<(bp*bp+bq*bq)*2) Vsw=1; else Vsw=-1;
 
-                // Find absolute burst phase
+        // NB bp and bq will be of the order of 1000. CHECK!!
+        bp=(bp-bqo)/2;
+        bq=(bq+bpo)/2;
 
-                //  To avoid hue-shifts on alternate lines, the phase is determined by averaging the phase on the current-line with the average of
-                //  two other lines, one above and one below the current line.
-                //   For NTSC we use the scan-lines immediately above and below (in the field), which we know have exactly 180 degrees burst phase shift to the present line
-                //   For PAL we use the next-but-one line above and below (in the field), which will have the same V-switch phase as the current-line (and 180 degree change of phase)
-                //    but for PAL we also analyse the average (bpo,bqo 'old') of the line immediately above and below, which have the opposite V-switch phase (and a 90 degree subcarrier phase shift)
+        // ave the phase of burst from two lines to get -U (reference) phase out (burst phase is (-U +/-V)
+        // if NTSC then leave bp as-is, we take bp,bq as the underlying -U (reference) phase.
 
-                // this is a classic "product-" or "synchronous demodulation" operation. We "detect" the burst relative to the arbitrary sine[] and cosine[] reference phases
-                double bp=0, bq=0, bpo=0, bqo=0;
-                for (qint32 i=videoParameters.colourBurstStart; i<videoParameters.colourBurstEnd; i++) {
-                    bp+=(m[0][i]+(m[1][i]/2))/2;
-                    bq+=(n[0][i]+(n[1][i]/2))/2;
-                    bpo-=m[2][i]/2;
-                    bqo-=n[2][i]/2;
-                }
+        // burstNorm normalises bp and bq to 1
+        double burstNorm = sqrt(bp*bp+bq*bq);
 
-                bp/=(videoParameters.colourBurstEnd-videoParameters.colourBurstStart);  bq/=(videoParameters.colourBurstEnd-videoParameters.colourBurstStart);  // normalises those sums
-                bpo/=(videoParameters.colourBurstEnd-videoParameters.colourBurstStart); bqo/=(videoParameters.colourBurstEnd-videoParameters.colourBurstStart); // normalises those sums
+        // kill colour if burst too weak!  magic number 130000 !!! check!
+        if (burstNorm < (130000.0 / 128)) {
+            burstNorm = 130000.0 / 128;
+        }
 
-                // Generate V-switch phase - I forget exactly why this works, but it's essentially comparing the vector magnitude /difference/ between the
-                // phases of the burst on the present line and previous line to the magnitude of the burst. This may effectively be a dot-product operation...
-                double Vsw;
-                if (((bp-bpo)*(bp-bpo)+(bq-bqo)*(bq-bqo))<(bp*bp+bq*bq)*2) Vsw=1; else Vsw=-1;
+        // p & q should be sine/cosine components' amplitudes
+        // NB: Multiline averaging/filtering assumes perfect
+        //     inter-line phase registration...
 
-                // NB bp and bq will be of the order of 1000. CHECK!!
-                bp=(bp-bqo)/2;
-                bq=(bq+bpo)/2;
+        double pu[MAX_WIDTH], qu[MAX_WIDTH], pv[MAX_WIDTH], qv[MAX_WIDTH], py[MAX_WIDTH], qy[MAX_WIDTH];
+        double PU,QU, PV,QV, PY,QY;
+        for (qint32 i = videoParameters.activeVideoStart; i < videoParameters.activeVideoEnd; i++) {
+            PU=QU=0; PV=QV=0; PY=QY=0;
 
-                // ave the phase of burst from two lines to get -U (reference) phase out (burst phase is (-U +/-V)
-                // if NTSC then leave bp as-is, we take bp,bq as the underlying -U (reference) phase.
+            // Carry out 2D filtering. P and Q are the two arbitrary SINE & COS
+            // phases components. U filters for U, V for V, and Y for Y
+            // U and V are the same for lines n ([0]), n+/-2 ([1]), but
+            // differ in sign for n+/-1 ([2]), n+/-3 ([3]) owing to the
+            // forward/backward axis slant
 
-                // burstNorm normalises bp and bq to 1
-                double burstNorm = sqrt(bp*bp+bq*bq);
+            qint32 l,r;
 
-                // kill colour if burst too weak!  magic number 130000 !!! check!
-                if (burstNorm < (130000.0 / 128)) {
-                    burstNorm = 130000.0 / 128;
-                }
+            for (qint32 b = 0; b <= FILTER_SIZE; b++) {
+                l=i-b; r=i+b;
 
-                // p & q should be sine/cosine components' amplitudes
-                // NB: Multiline averaging/filtering assumes perfect
-                //     inter-line phase registration...
+                PY+=(m[0][r]+m[0][l])*yfilt[b][0]+(m[1][r]+m[1][l])*yfilt[b][1];
+                QY+=(n[0][r]+n[0][l])*yfilt[b][0]+(n[1][r]+n[1][l])*yfilt[b][1];
 
-                double PU,QU, PV,QV, PY,QY;
-                for (qint32 i = videoParameters.activeVideoStart; i < videoParameters.activeVideoEnd; i++) {
-                    PU=QU=0; PV=QV=0; PY=QY=0;
-
-                    // Carry out 2D filtering. P and Q are the two arbitrary SINE & COS
-                    // phases components. U filters for U, V for V, and Y for Y
-                    // U and V are the same for lines n ([0]), n+/-2 ([1]), but
-                    // differ in sign for n+/-1 ([2]), n+/-3 ([3]) owing to the
-                    // forward/backward axis slant
-
-                    qint32 l,r;
-
-                    for (qint32 b = 0; b <= FILTER_SIZE; b++) {
-                        l=i-b; r=i+b;
-
-                        PY+=(m[0][r]+m[0][l])*yfilt[b][0]+(m[1][r]+m[1][l])*yfilt[b][1];
-                        QY+=(n[0][r]+n[0][l])*yfilt[b][0]+(n[1][r]+n[1][l])*yfilt[b][1];
-
-                        PU+=(m[0][r]+m[0][l])*cfilt[b][0]+(m[1][r]+m[1][l])*cfilt[b][1]+(n[2][r]+n[2][l])*cfilt[b][2]+(n[3][r]+n[3][l])*cfilt[b][3];
-                        QU+=(n[0][r]+n[0][l])*cfilt[b][0]+(n[1][r]+n[1][l])*cfilt[b][1]-(m[2][r]+m[2][l])*cfilt[b][2]-(m[3][r]+m[3][l])*cfilt[b][3];
-                        PV+=(m[0][r]+m[0][l])*cfilt[b][0]+(m[1][r]+m[1][l])*cfilt[b][1]-(n[2][r]+n[2][l])*cfilt[b][2]-(n[3][r]+n[3][l])*cfilt[b][3];
-                        QV+=(n[0][r]+n[0][l])*cfilt[b][0]+(n[1][r]+n[1][l])*cfilt[b][1]+(m[2][r]+m[2][l])*cfilt[b][2]+(m[3][r]+m[3][l])*cfilt[b][3];
-                    }
-                    pu[i]=PU; qu[i]=QU;
-                    pv[i]=PV; qv[i]=QV;
-                    py[i]=PY; qy[i]=QY;
-                }
-
-                // Define scan line pointer to output buffer using 16 bit unsigned words
-                quint16 *ptr = reinterpret_cast<quint16*>(outputFrame.data() + (((fieldLine * 2) + field) * videoParameters.fieldWidth * 6));
-
-                // 'saturation' is a user saturation control, nom. 100%
-                double scaledSaturation = (saturation / 50.0) / burstNorm;
-                double R, G, B;
-                double rY, rU, rV;
-
-                for (qint32 i = videoParameters.activeVideoStart; i < videoParameters.activeVideoEnd; i++)
-                {
-                    // Generate the luminance (Y), by filtering out Fsc (by re-synthesising the detected py qy and subtracting), and subtracting the black-level
-                    rY = b0[i] - ((py[i]*sine[i]+qy[i]*cosine[i]) / refNorm) - videoParameters.black16bIre;
-                    rY *= scaledContrast;
-                    if (rY < 0) rY = 0;
-                    if (rY > 65535) rY = 65535;
-
-                    // the next two lines "rotate" the p&q components (at the arbitrary sine/cosine reference phase) backwards by the
-                    // burst phase (relative to the arb phase), in order to recover U and V. The Vswitch is applied to flip the V-phase on alternate lines for PAL
-                    rU = (-((pu[i]*bp+qu[i]*bq)) * scaledSaturation);
-                    rV = (-(Vsw*(qv[i]*bp-pv[i]*bq)) * scaledSaturation);
-
-                    // This conversion is taken from Video Demystified (5th edition) page 18
-                    R = ( rY + (1.140 * rV) );
-                    G = ( rY - (0.395 * rU) - (0.581 * rV) );
-                    B = ( rY + (2.032 * rU) );
-
-                    // Saturate the levels at 0 and 100% in order to prevent range overflow
-                    if (R < 0) R = 0;
-                    if (R > 65535) R = 65535;
-                    if (G < 0) G = 0;
-                    if (G > 65535) G = 65535;
-                    if (B < 0) B = 0;
-                    if (B > 65535) B = 65535;
-
-                    // Pack the data back into the RGB 16/16/16 buffer
-                    qint32 pp = i * 3; // 3 words per pixel
-                    ptr[pp+0] = static_cast<quint16>(R);
-                    ptr[pp+1] = static_cast<quint16>(G);
-                    ptr[pp+2] = static_cast<quint16>(B);
-                }
+                PU+=(m[0][r]+m[0][l])*cfilt[b][0]+(m[1][r]+m[1][l])*cfilt[b][1]+(n[2][r]+n[2][l])*cfilt[b][2]+(n[3][r]+n[3][l])*cfilt[b][3];
+                QU+=(n[0][r]+n[0][l])*cfilt[b][0]+(n[1][r]+n[1][l])*cfilt[b][1]-(m[2][r]+m[2][l])*cfilt[b][2]-(m[3][r]+m[3][l])*cfilt[b][3];
+                PV+=(m[0][r]+m[0][l])*cfilt[b][0]+(m[1][r]+m[1][l])*cfilt[b][1]-(n[2][r]+n[2][l])*cfilt[b][2]-(n[3][r]+n[3][l])*cfilt[b][3];
+                QV+=(n[0][r]+n[0][l])*cfilt[b][0]+(n[1][r]+n[1][l])*cfilt[b][1]+(m[2][r]+m[2][l])*cfilt[b][2]+(m[3][r]+m[3][l])*cfilt[b][3];
             }
+            pu[i]=PU; qu[i]=QU;
+            pv[i]=PV; qv[i]=QV;
+            py[i]=PY; qy[i]=QY;
+        }
+
+        // Define scan line pointer to output buffer using 16 bit unsigned words
+        quint16 *ptr = reinterpret_cast<quint16*>(outputFrame.data() + (((fieldLine * 2) + fieldNumber) * videoParameters.fieldWidth * 6));
+
+        // Scaling factor to put black at 0 and peak white at 65535
+        double scaledContrast = (65535.0 / (videoParameters.white16bIre - videoParameters.black16bIre)) * contrast / 100.0;
+
+        // 'saturation' is a user saturation control, nom. 100%
+        double scaledSaturation = (saturation / 50.0) / burstNorm;
+
+        double R, G, B;
+        double rY, rU, rV;
+
+        for (qint32 i = videoParameters.activeVideoStart; i < videoParameters.activeVideoEnd; i++)
+        {
+            // Generate the luminance (Y), by filtering out Fsc (by re-synthesising the detected py qy and subtracting), and subtracting the black-level
+            rY = b0[i] - ((py[i]*sine[i]+qy[i]*cosine[i]) / refNorm) - videoParameters.black16bIre;
+            rY *= scaledContrast;
+            if (rY < 0) rY = 0;
+            if (rY > 65535) rY = 65535;
+
+            // the next two lines "rotate" the p&q components (at the arbitrary sine/cosine reference phase) backwards by the
+            // burst phase (relative to the arb phase), in order to recover U and V. The Vswitch is applied to flip the V-phase on alternate lines for PAL
+            rU = (-((pu[i]*bp+qu[i]*bq)) * scaledSaturation);
+            rV = (-(Vsw*(qv[i]*bp-pv[i]*bq)) * scaledSaturation);
+
+            // This conversion is taken from Video Demystified (5th edition) page 18
+            R = ( rY + (1.140 * rV) );
+            G = ( rY - (0.395 * rU) - (0.581 * rV) );
+            B = ( rY + (2.032 * rU) );
+
+            // Saturate the levels at 0 and 100% in order to prevent range overflow
+            if (R < 0) R = 0;
+            if (R > 65535) R = 65535;
+            if (G < 0) G = 0;
+            if (G > 65535) G = 65535;
+            if (B < 0) B = 0;
+            if (B > 65535) B = 65535;
+
+            // Pack the data back into the RGB 16/16/16 buffer
+            qint32 pp = i * 3; // 3 words per pixel
+            ptr[pp+0] = static_cast<quint16>(R);
+            ptr[pp+1] = static_cast<quint16>(G);
+            ptr[pp+2] = static_cast<quint16>(B);
         }
     }
-
-    return outputFrame;
 }
