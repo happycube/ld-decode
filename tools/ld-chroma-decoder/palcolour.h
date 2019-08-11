@@ -4,6 +4,7 @@
 
     ld-chroma-decoder - Colourisation filter for ld-decode
     Copyright (C) 2018-2019 Simon Inns
+    Copyright (C) 2019 Adam Sampson
 
     This file is part of ld-decode-tools.
 
@@ -40,7 +41,8 @@ public:
     explicit PalColour(QObject *parent = nullptr);
     void updateConfiguration(LdDecodeMetaData::VideoParameters videoParameters, qint32 firstActiveLine, qint32 lastActiveLine);
 
-    // Method to perform the colour decoding
+    // Decode two fields to produce an interlaced frame.
+    // contrast and saturation are user-adjustable controls; 100 is nominal.
     QByteArray performDecode(QByteArray topFieldData, QByteArray bottomFieldData, qint32 contrast, qint32 saturation);
 
     // Maximum frame size, based on PAL
@@ -53,27 +55,30 @@ private:
     void decodeField(qint32 fieldNumber, const QByteArray &fieldData, qint32 contrast, qint32 saturation);
 
     // Configuration parameters
+    bool configurationSet;
     LdDecodeMetaData::VideoParameters videoParameters;
     qint32 firstActiveLine;
     qint32 lastActiveLine;
 
-    // Look up tables array and constant definitions
+    // The subcarrier reference signal
     double sine[MAX_WIDTH], cosine[MAX_WIDTH];
-    // cfilt and yfilt are the coefficients for the chroma and luma 2D FIR filters.
-    // The filters are horizontally and vertically symmetrical (with signs
-    // adjusted later to deal with phase differences between lines), so each
-    // 2D array represents one quarter of a filter. The zeroth horizontal
-    // element is included in the sum twice, so the coefficient is halved to
+    double refAmpl;
+    double refNorm;
+
+    // Coefficients for the three 2D chroma low-pass filters. There are
+    // separate filters for U and V, but only the signs differ, so they can
+    // share a set of coefficients.
+    //
+    // The filters are horizontally and vertically symmetrical, so each 2D
+    // array represents one quarter of a filter. The zeroth horizontal element
+    // is included in the sum twice, so the coefficient is halved to
     // compensate. Each filter is (2 * FILTER_SIZE) + 1 elements wide.
     static const qint32 FILTER_SIZE = 7;
     double cfilt[FILTER_SIZE + 1][4];
     double yfilt[FILTER_SIZE + 1][2];
 
-    double refAmpl;
-    double refNorm;
+    // The output frame
     QByteArray outputFrame;
-
-    bool configurationSet;
 
     // Method to build the required look-up tables
     void buildLookUpTables();
