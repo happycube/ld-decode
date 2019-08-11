@@ -54,7 +54,7 @@ PalThread::PalThread(QAtomicInt& _abort, DecoderPool& _decoderPool,
     : QThread(parent), abort(_abort), decoderPool(_decoderPool), config(_config)
 {
     // Configure PALcolour
-    palColour.updateConfiguration(config.videoParameters, config.firstActiveScanLine, config.lastActiveScanLine);
+    palColour.updateConfiguration(config.videoParameters, config.firstActiveLine, config.lastActiveLine);
 }
 
 void PalThread::run()

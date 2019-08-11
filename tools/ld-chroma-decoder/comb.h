@@ -62,7 +62,7 @@ public:
         qint32 activeVideoStart;
         qint32 activeVideoEnd;
 
-        qint32 firstVisibleFrameLine;
+        qint32 firstActiveLine;
 
         qint32 blackIre;
         qint32 whiteIre;

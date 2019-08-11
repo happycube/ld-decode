@@ -62,7 +62,7 @@ bool NtscDecoder::configure(const LdDecodeMetaData::VideoParameters &videoParame
     config.combConfig.activeVideoEnd = videoParameters.activeVideoEnd;
 
     // Set the first frame scan line which contains active video
-    config.combConfig.firstVisibleFrameLine = config.firstActiveScanLine;
+    config.combConfig.firstActiveLine = config.firstActiveLine;
 
     // Set the IRE levels
     config.combConfig.blackIre = videoParameters.black16bIre;
