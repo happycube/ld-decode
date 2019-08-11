@@ -88,10 +88,8 @@ void PalColour::buildLookUpTables()
     refAmpl = 1.28;
     refNorm = (refAmpl * refAmpl / 2);
 
-    double rad;
-    for (qint32 i = 0; i < videoParameters.fieldWidth; i++)
-    {
-        rad=(2 * M_PI * i * videoParameters.fsc / videoParameters.sampleRate);
+    for (qint32 i = 0; i < videoParameters.fieldWidth; i++) {
+        const double rad = 2 * M_PI * i * videoParameters.fsc / videoParameters.sampleRate;
         sine[i] = refAmpl * sin(rad);
         cosine[i] = refAmpl * cos(rad);
     }
@@ -136,27 +134,27 @@ void PalColour::buildLookUpTables()
 
     double cdiv = 0, ydiv = 0;
     for (qint32 f = 0; f <= FILTER_SIZE; f++) {
-        double  fc=f; if (fc>ca) fc=ca;
-        double  ff=sqrt(f*f+2*2); if ( ff>ca)  ff=ca;  // 2 -- 4 -- 6 sequence
-        double fff=sqrt(f*f+4*4); if (fff>ca) fff=ca;  // because only one FIELD!
-        double ffff=sqrt(f*f+6*6); if (ffff>ca) ffff=ca;
+        // 0-2-4-6 sequence here because we're only processing one field.
+        const double fc   = qMin(ca, static_cast<double>(f));
+        const double ff   = qMin(ca, sqrt(f * f + 2 * 2));
+        const double fff  = qMin(ca, sqrt(f * f + 4 * 4));
+        const double ffff = qMin(ca, sqrt(f * f + 6 * 6));
 
         // Divider because we're only making half a filter-kernel and the
-        // zero-th point is counted twice later
-        qint32 d;
-        if (f==0) d=2; else d=1;
+        // zero-th point (vertically) is counted twice later
+        const qint32 d = (f == 0) ? 2 : 1;
 
         // For U/V.
         // 0, 2, 1, 3 are vertical taps 0, +/- 1, +/- 2, +/- 3 (see filter loop below).
-        cfilt[f][0]=256*(1+cos(M_PI*fc/ca))/d;
-        cfilt[f][2]=256*(1+cos(M_PI*ff/ca))/d;
-        cfilt[f][1]=256*(1+cos(M_PI*fff/ca))/d;
-        cfilt[f][3]=256*(1+cos(M_PI*ffff/ca))/d;
+        cfilt[f][0] = 256 * (1 + cos(M_PI * fc   / ca)) / d;
+        cfilt[f][2] = 256 * (1 + cos(M_PI * ff   / ca)) / d;
+        cfilt[f][1] = 256 * (1 + cos(M_PI * fff  / ca)) / d;
+        cfilt[f][3] = 256 * (1 + cos(M_PI * ffff / ca)) / d;
 
-        cdiv+=cfilt[f][0]+2*cfilt[f][2]+2*cfilt[f][1]+2*cfilt[f][3];
+        cdiv += 1 * cfilt[f][0] + 2 * cfilt[f][2] + 2 * cfilt[f][1] + 2 * cfilt[f][3];
 
-        double  fy=f; if (fy>ya) fy=ya;
-        double fffy=sqrt(f*f+4*4); if (fffy>ya) fffy=ya;
+        const double fy   = qMin(ya, static_cast<double>(f));
+        const double fffy = qMin(ya, sqrt(f * f + 4 * 4));
 
         // For Y, only use lines n, n+/-2: the others cancel!!!
         //  *have tried* using lines +/-1 & 3 --- can be made to work, but
@@ -169,13 +167,16 @@ void PalColour::buildLookUpTables()
         // patterning.
         //
         // 0, 1 are vertical taps 0, +/- 2 (see filter loop below).
-        yfilt[f][0]=256*(1+cos(M_PI*fy/ya))/d;
-        yfilt[f][1]=0.2*256*(1+cos(M_PI*fffy/ya))/d;
+        yfilt[f][0] =       256 * (1 + cos(M_PI * fy   / ya)) / d;
+        yfilt[f][1] = 0.2 * 256 * (1 + cos(M_PI * fffy / ya)) / d;
 
-        ydiv+=yfilt[f][0]+2*0+2*yfilt[f][1]+2*0;
+        ydiv += 1 * yfilt[f][0] + 2 * 0 + 2 * yfilt[f][1] + 2 * 0;
     }
-    cdiv*=2; ydiv*=2;
 
+    // Normalise the filter coefficients.
+    // We've already doubled above for horizontal symmetry; do it again for vertical symmetry.
+    cdiv *= 2;
+    ydiv *= 2;
     for (qint32 f = 0; f <= FILTER_SIZE; f++) {
         for (qint32 i = 0; i < 4; i++) {
             cfilt[f][i] /= cdiv;
@@ -186,7 +187,7 @@ void PalColour::buildLookUpTables()
     }
 
     // Calculate the frame height and resize the output buffer
-    qint32 frameHeight = (videoParameters.fieldHeight * 2) - 1;
+    const qint32 frameHeight = (videoParameters.fieldHeight * 2) - 1;
     outputFrame.resize(videoParameters.fieldWidth * frameHeight * 6);
 }
 
@@ -279,12 +280,12 @@ void PalColour::decodeField(qint32 fieldNumber, const QByteArray &fieldData, qin
         // degree change of phase), and we also analyse the average (bpo/bqo
         // 'old') of the line immediately above and below, which have the
         // opposite V-switch phase (and a 90 degree subcarrier phase shift).
-        double bp=0, bq=0, bpo=0, bqo=0;
-        for (qint32 i=videoParameters.colourBurstStart; i<videoParameters.colourBurstEnd; i++) {
-            bp+=(m[0][i]+(m[1][i]/2))/2;
-            bq+=(n[0][i]+(n[1][i]/2))/2;
-            bpo-=m[2][i]/2;
-            bqo-=n[2][i]/2;
+        double bp = 0, bq = 0, bpo = 0, bqo = 0;
+        for (qint32 i = videoParameters.colourBurstStart; i < videoParameters.colourBurstEnd; i++) {
+            bp += (m[0][i] + (m[1][i] / 2)) / 2;
+            bq += (n[0][i] + (n[1][i] / 2)) / 2;
+            bpo -= m[2][i] / 2;
+            bqo -= n[2][i] / 2;
         }
 
         // Normalise the sums above
@@ -300,31 +301,28 @@ void PalColour::decodeField(qint32 fieldNumber, const QByteArray &fieldData, qin
         // vector magnitude /difference/ between the phases of the burst on the
         // present line and previous line to the magnitude of the burst. This
         // may effectively be a dot-product operation...
-        double Vsw;
-        if (((bp-bpo)*(bp-bpo)+(bq-bqo)*(bq-bqo))<(bp*bp+bq*bq)*2) Vsw=1; else Vsw=-1;
+        double Vsw = -1;
+        if ((((bp - bpo) * (bp - bpo) + (bq - bqo) * (bq - bqo)) < (bp * bp + bq * bq) * 2)) {
+            Vsw = 1;
+        }
 
         // Average the burst phase to get -U (reference) phase out -- burst
         // phase is (-U +/-V). bp and bq will be of the order of 1000.
-        bp=(bp-bqo)/2;
-        bq=(bq+bpo)/2;
+        bp = (bp - bqo) / 2;
+        bq = (bq + bpo) / 2;
 
         // burstNorm normalises bp and bq to 1.
-        double burstNorm = sqrt(bp*bp+bq*bq);
-
         // Kill colour if burst too weak.
         // XXX magic number 130000 !!! check!
-        if (burstNorm < (130000.0 / 128)) {
-            burstNorm = 130000.0 / 128;
-        }
+        const double burstNorm = qMax(sqrt(bp * bp + bq * bq), 130000.0 / 128);
 
         // p & q should be sine/cosine components' amplitudes
         // NB: Multiline averaging/filtering assumes perfect
         //     inter-line phase registration...
 
         double pu[MAX_WIDTH], qu[MAX_WIDTH], pv[MAX_WIDTH], qv[MAX_WIDTH], py[MAX_WIDTH], qy[MAX_WIDTH];
-        double PU,QU, PV,QV, PY,QY;
         for (qint32 i = videoParameters.activeVideoStart; i < videoParameters.activeVideoEnd; i++) {
-            PU=QU=0; PV=QV=0; PY=QY=0;
+            double PU = 0, QU = 0, PV = 0, QV = 0, PY = 0, QY = 0;
 
             // Carry out 2D filtering. P and Q are the two arbitrary SINE & COS
             // phases components. U filters for U, V for V, and Y for Y.
@@ -333,74 +331,67 @@ void PalColour::decodeField(qint32 fieldNumber, const QByteArray &fieldData, qin
             // differ in sign for n+/-1 ([2]), n+/-3 ([3]) owing to the
             // forward/backward axis slant.
 
-            qint32 l,r;
-
             for (qint32 b = 0; b <= FILTER_SIZE; b++) {
-                l=i-b; r=i+b;
+                const qint32 l = i - b;
+                const qint32 r = i + b;
 
-                PY+=(m[0][r]+m[0][l])*yfilt[b][0]+(m[1][r]+m[1][l])*yfilt[b][1];
-                QY+=(n[0][r]+n[0][l])*yfilt[b][0]+(n[1][r]+n[1][l])*yfilt[b][1];
+                PY += (m[0][r] + m[0][l]) * yfilt[b][0] + (m[1][r] + m[1][l]) * yfilt[b][1];
+                QY += (n[0][r] + n[0][l]) * yfilt[b][0] + (n[1][r] + n[1][l]) * yfilt[b][1];
 
-                PU+=(m[0][r]+m[0][l])*cfilt[b][0]+(m[1][r]+m[1][l])*cfilt[b][1]+(n[2][r]+n[2][l])*cfilt[b][2]+(n[3][r]+n[3][l])*cfilt[b][3];
-                QU+=(n[0][r]+n[0][l])*cfilt[b][0]+(n[1][r]+n[1][l])*cfilt[b][1]-(m[2][r]+m[2][l])*cfilt[b][2]-(m[3][r]+m[3][l])*cfilt[b][3];
-                PV+=(m[0][r]+m[0][l])*cfilt[b][0]+(m[1][r]+m[1][l])*cfilt[b][1]-(n[2][r]+n[2][l])*cfilt[b][2]-(n[3][r]+n[3][l])*cfilt[b][3];
-                QV+=(n[0][r]+n[0][l])*cfilt[b][0]+(n[1][r]+n[1][l])*cfilt[b][1]+(m[2][r]+m[2][l])*cfilt[b][2]+(m[3][r]+m[3][l])*cfilt[b][3];
+                PU += (m[0][r] + m[0][l]) * cfilt[b][0] + (m[1][r] + m[1][l]) * cfilt[b][1]
+                        + (n[2][r] + n[2][l]) * cfilt[b][2] + (n[3][r] + n[3][l]) * cfilt[b][3];
+                QU += (n[0][r] + n[0][l]) * cfilt[b][0] + (n[1][r] + n[1][l]) * cfilt[b][1]
+                        - (m[2][r] + m[2][l]) * cfilt[b][2] - (m[3][r] + m[3][l]) * cfilt[b][3];
+                PV += (m[0][r] + m[0][l]) * cfilt[b][0] + (m[1][r] + m[1][l]) * cfilt[b][1]
+                        - (n[2][r] + n[2][l]) * cfilt[b][2] - (n[3][r] + n[3][l]) * cfilt[b][3];
+                QV += (n[0][r] + n[0][l]) * cfilt[b][0] + (n[1][r] + n[1][l]) * cfilt[b][1]
+                        + (m[2][r] + m[2][l]) * cfilt[b][2] + (m[3][r] + m[3][l]) * cfilt[b][3];
             }
-            pu[i]=PU; qu[i]=QU;
-            pv[i]=PV; qv[i]=QV;
-            py[i]=PY; qy[i]=QY;
+
+            pu[i] = PU;
+            qu[i] = QU;
+            pv[i] = PV;
+            qv[i] = QV;
+            py[i] = PY;
+            qy[i] = QY;
         }
 
         // Define scan line pointer to output buffer using 16 bit unsigned words
-        quint16 *ptr = reinterpret_cast<quint16*>(outputFrame.data() + (((fieldLine * 2) + fieldNumber) * videoParameters.fieldWidth * 6));
+        quint16 *ptr = reinterpret_cast<quint16 *>(outputFrame.data() + (((fieldLine * 2) + fieldNumber) * videoParameters.fieldWidth * 6));
 
         // Gain for the Y component, to put black at 0 and peak white at 65535
-        double scaledContrast = (65535.0 / (videoParameters.white16bIre - videoParameters.black16bIre)) * contrast / 100.0;
+        const double scaledContrast = (65535.0 / (videoParameters.white16bIre - videoParameters.black16bIre)) * contrast / 100.0;
 
         // Gain for the U/V components
-        double scaledSaturation = (saturation / 50.0) / burstNorm;
+        const double scaledSaturation = (saturation / 50.0) / burstNorm;
 
-        double R, G, B;
-        double rY, rU, rV;
-
-        for (qint32 i = videoParameters.activeVideoStart; i < videoParameters.activeVideoEnd; i++)
-        {
+        for (qint32 i = videoParameters.activeVideoStart; i < videoParameters.activeVideoEnd; i++) {
             // Compute luma by resynthesising the chroma signal that the Y
             // filter extracted, and subtracting it from the original composite
             // signal
-            rY = in0[i] - ((py[i] * sine[i] + qy[i] * cosine[i]) / refNorm);
+            double rY = in0[i] - ((py[i] * sine[i] + qy[i] * cosine[i]) / refNorm);
 
             // Scale to 16-bit output
-            rY = (rY - videoParameters.black16bIre) * scaledContrast;
-            if (rY < 0) rY = 0;
-            if (rY > 65535) rY = 65535;
+            rY = qBound(0.0, (rY - videoParameters.black16bIre) * scaledContrast, 65535.0);
 
             // Rotate the p&q components (at the arbitrary sine/cosine
             // reference phase) backwards by the burst phase (relative to the
             // reference phase), in order to recover U and V. The Vswitch is
             // applied to flip the V-phase on alternate lines for PAL.
-            rU = (-((pu[i]*bp+qu[i]*bq)) * scaledSaturation);
-            rV = (-(Vsw*(qv[i]*bp-pv[i]*bq)) * scaledSaturation);
+            const double rU =       -((pu[i] * bp + qu[i] * bq)) * scaledSaturation;
+            const double rV = Vsw * -((qv[i] * bp - pv[i] * bq)) * scaledSaturation;
 
-            // Convert YUV to RGB.
-            // This conversion is taken from Video Demystified (5th edition) page 18
-            R = ( rY + (1.140 * rV) );
-            G = ( rY - (0.395 * rU) - (0.581 * rV) );
-            B = ( rY + (2.032 * rU) );
-
-            // Saturate the levels at 0 and 100% in order to prevent range overflow
-            if (R < 0) R = 0;
-            if (R > 65535) R = 65535;
-            if (G < 0) G = 0;
-            if (G > 65535) G = 65535;
-            if (B < 0) B = 0;
-            if (B > 65535) B = 65535;
+            // Convert YUV to RGB, saturating levels at 0-65535 to prevent overflow.
+            // This conversion is taken from Video Demystified (5th edition) page 18.
+            const double R = qBound(0.0, rY + (1.140 * rV),                65535.0);
+            const double G = qBound(0.0, rY - (0.395 * rU) - (0.581 * rV), 65535.0);
+            const double B = qBound(0.0, rY + (2.032 * rU),                65535.0 );
 
             // Pack the data back into the RGB 16/16/16 buffer
-            qint32 pp = i * 3; // 3 words per pixel
-            ptr[pp+0] = static_cast<quint16>(R);
-            ptr[pp+1] = static_cast<quint16>(G);
-            ptr[pp+2] = static_cast<quint16>(B);
+            const qint32 pp = i * 3; // 3 words per pixel
+            ptr[pp + 0] = static_cast<quint16>(R);
+            ptr[pp + 1] = static_cast<quint16>(G);
+            ptr[pp + 2] = static_cast<quint16>(B);
         }
     }
 }
