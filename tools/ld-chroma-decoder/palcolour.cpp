@@ -157,7 +157,7 @@ void PalColour::buildLookUpTables()
 
 // Performs a decode of the 16-bit greyscale input frame and produces a RGB 16-16-16-bit output frame
 // with 16 bit processing
-QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray secondFieldData, qint32 brightness, qint32 saturation)
+QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray secondFieldData, qint32 contrast, qint32 saturation)
 {
     // Ensure the object has been configured
     if (!configurationSet) {
@@ -170,7 +170,7 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
     outputFrame.fill(0);
 
     // Scaling factor to put black at 0 and peak white at 65535
-    double scaledBrightness = (65535.0 / (videoParameters.white16bIre - videoParameters.black16bIre)) * brightness / 100.0;
+    double scaledContrast = (65535.0 / (videoParameters.white16bIre - videoParameters.black16bIre)) * contrast / 100.0;
 
     // Dummy black line, used when the 2D filter needs to look outside the active region.
     static constexpr quint16 blackLine[MAX_WIDTH] = {0};
@@ -307,7 +307,7 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
                 {
                     // Generate the luminance (Y), by filtering out Fsc (by re-synthesising the detected py qy and subtracting), and subtracting the black-level
                     rY = b0[i] - ((py[i]*sine[i]+qy[i]*cosine[i]) / normalise) - videoParameters.black16bIre;
-                    rY *= scaledBrightness;
+                    rY *= scaledContrast;
                     if (rY < 0) rY = 0;
                     if (rY > 65535) rY = 65535;
 

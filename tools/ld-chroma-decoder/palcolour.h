@@ -41,7 +41,7 @@ public:
     void updateConfiguration(LdDecodeMetaData::VideoParameters videoParameters, qint32 firstActiveLine, qint32 lastActiveLine);
 
     // Method to perform the colour decoding
-    QByteArray performDecode(QByteArray topFieldData, QByteArray bottomFieldData, qint32 brightness, qint32 saturation);
+    QByteArray performDecode(QByteArray topFieldData, QByteArray bottomFieldData, qint32 contrast, qint32 saturation);
 
     // Maximum frame size, based on PAL
     static const qint32 MAX_WIDTH = 1135;
