@@ -61,7 +61,7 @@ void OpticalFlow::denseOpticalFlow(const YiqBuffer &yiqBuffer, QVector<qreal> &k
                 // in the X direction than the y
                 qreal velocity = calculateDistance(static_cast<qreal>(flowatxy.y), static_cast<qreal>(flowatxy.x) * 2);
 
-                kValues[(910 * y) + x] = clamp(velocity, 0.0, 1.0);
+                kValues[(910 * y) + x] = qBound(0.0, velocity, 1.0);
             }
         }
     } else kValues.fill(1);

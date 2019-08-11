@@ -284,8 +284,8 @@ void Comb::split2D(FrameBuffer *frameBuffer)
             kn /= 2;
 
             qreal p_2drange = 45 * irescale;
-            kp = clamp(1 - (kp / p_2drange), 0.0, 1.0);
-            kn = clamp(1 - (kn / p_2drange), 0.0, 1.0);
+            kp = qBound(0.0, 1 - (kp / p_2drange), 1.0);
+            kn = qBound(0.0, 1 - (kn / p_2drange), 1.0);
 
             qreal sc = 1.0;
 

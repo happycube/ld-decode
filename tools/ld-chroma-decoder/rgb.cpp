@@ -67,7 +67,7 @@ void RGB::convertLine(const YIQ *begin, const YIQ *end, quint16 *out)
 
         // Scale the Y to 0-65535 where 0 = blackIreLevel and 65535 = whiteIreLevel
         y = (y - yBlackLevel) * yScale;
-        y = clamp(y, 0.0, 65535.0);
+        y = qBound(0.0, y, 65535.0);
 
         // Scale the I & Q components according to the colourburstMedian
         i *= iqScale;
@@ -81,9 +81,9 @@ void RGB::convertLine(const YIQ *begin, const YIQ *end, quint16 *out)
         double g = y - (0.272 * i) - (0.647 * q);
         double b = y - (1.107 * i) + (1.704 * q);
 
-        r = clamp(r, 0.0, 65535.0);
-        g = clamp(g, 0.0, 65535.0);
-        b = clamp(b, 0.0, 65535.0);
+        r = qBound(0.0, r, 65535.0);
+        g = qBound(0.0, g, 65535.0);
+        b = qBound(0.0, b, 65535.0);
 
         // Place the 16-bit RGB values in the output array
         *out++ = static_cast<quint16>(r);
