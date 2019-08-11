@@ -50,9 +50,24 @@ public:
     static const qint32 MAX_HEIGHT = 625;
 
 private:
+    // Information about a field we're decoding.
+    struct FieldInfo {
+        explicit FieldInfo(qint32 number, qint32 contrast, qint32 saturation, qint32 firstActiveLine, qint32 lastActiveLine);
+
+        // number is 0 for the top field, 1 for the bottom field.
+        qint32 number;
+        qint32 contrast;
+        qint32 saturation;
+        // firstLine/lastLine are the range of active lines within the field.
+        qint32 firstLine;
+        qint32 lastLine;
+    };
+
     // Decode one field into outputFrame.
-    // fieldNumber is 0 for the top field, 1 for the bottom field.
-    void decodeField(qint32 fieldNumber, const QByteArray &fieldData, qint32 contrast, qint32 saturation);
+    void decodeField(const FieldInfo &field, const QByteArray &fieldData);
+
+    // Decode one line into outputFrame.
+    void decodeLine(const FieldInfo &field, qint32 fieldLine, const quint16 *inputData);
 
     // Configuration parameters
     bool configurationSet;
