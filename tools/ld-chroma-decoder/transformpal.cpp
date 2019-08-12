@@ -27,7 +27,9 @@
 
 #include "transformpal.h"
 
+#include <QtMath>
 #include <cassert>
+#include <cmath>
 #include <complex>
 
 /*!
@@ -48,14 +50,14 @@
 TransformPal::TransformPal()
     : configurationSet(false)
 {
-    // Compute the window function for combining FFT results.
-    // XXX This is wasteful because the edges are 0... use raised cosine instead?
+    // Compute the window function applied to the data blocks before the FFT to
+    // reduce edge effects. A symmetrical raised-cosine function is chosen so
+    // that the overlapping inverse-FFT blocks can be summed directly.
     for (qint32 y = 0; y < YTILE; y++) {
-        const double windowY = ((y < HALFYTILE) ? y : (YTILE - 1 - y)) / (HALFYTILE - 1.0);
+        const double windowY = (1 - cos((2 * M_PI * (y + 0.5)) / YTILE)) / 2;
         for (qint32 x = 0; x < XTILE; x++) {
-            const double windowX = ((x < HALFXTILE) ? x : (XTILE - 1 - x)) / (HALFXTILE - 1.0);
-            // Divide by number of elements too to normalise the FFTW result
-            windowFunction[y][x] = windowY * windowX / (YTILE * XTILE);
+            const double windowX = (1 - cos((2 * M_PI * (x + 0.5)) / XTILE)) / 2;
+            windowFunction[y][x] = windowY * windowX;
         }
     }
 
@@ -133,11 +135,11 @@ const double *TransformPal::filterField(qint32 fieldNumber, const QByteArray &fi
                 }
             }
 
-            // Copy the input signal into fftReal
+            // Copy the input signal into fftReal, applying the window function
             for (qint32 y = startY; y < endY; y++) {
                 const quint16 *b = inputPtr + ((tileY + y) * videoParameters.fieldWidth);
                 for (qint32 x = startX; x < endX; x++) {
-                    fftReal[(y * XTILE) + x] = b[tileX + x];
+                    fftReal[(y * XTILE) + x] = b[tileX + x] * windowFunction[y][x];
                 }
             }
 
@@ -150,11 +152,11 @@ const double *TransformPal::filterField(qint32 fieldNumber, const QByteArray &fi
             // Convert frequency domain in fftComplexOut back to time domain in fftReal
             fftw_execute(inversePlan);
 
-            // Overlay the result, with windowing and normalisation, into chromaBuf
+            // Overlay the result, normalising the FFTW output, into chromaBuf
             for (qint32 y = startY; y < endY; y++) {
                 double *b = outputPtr + ((tileY + y) * videoParameters.fieldWidth);
                 for (qint32 x = startX; x < endX; x++) {
-                    b[tileX + x] += fftReal[(y * XTILE) + x] * windowFunction[y][x];
+                    b[tileX + x] += fftReal[(y * XTILE) + x] / (YTILE * XTILE);
                 }
             }
         }

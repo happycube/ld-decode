@@ -40,7 +40,8 @@ public:
     TransformPal();
     ~TransformPal();
 
-    // threshold is the similarity threshold for the filter (0.6 is pyctools-pal's default)
+    // threshold is the similarity threshold for the filter (values from 0-1
+    // are meaningful; 0.6 is pyctools-pal's default)
     void updateConfiguration(LdDecodeMetaData::VideoParameters videoParameters,
                              qint32 firstActiveLine, qint32 lastActiveLine,
                              double threshold);
@@ -79,6 +80,9 @@ private:
     static constexpr int YCOMPLEX = YTILE;
     static constexpr int XCOMPLEX = (XTILE / 2) + 1;
 
+    // Window function applied before the FFT
+    double windowFunction[YTILE][XTILE];
+
     // FFT input/output buffers
     double *fftReal;
     fftw_complex *fftComplexIn;
@@ -88,10 +92,8 @@ private:
     fftw_plan forwardPlan, inversePlan;
 
     // The combined result of all the FFT processing.
-    // Inverse-FFT results are accumulated into this buffer, multiplied by
-    // windowFunction to "crossfade" between the overlapping tiles.
+    // Inverse-FFT results are accumulated into this buffer.
     QVector<double> chromaBuf;
-    double windowFunction[YTILE][XTILE];
 };
 
 #endif
