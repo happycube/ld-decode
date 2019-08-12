@@ -169,7 +169,7 @@ int main(int argc, char *argv[])
 
     // Option to select the Transform PAL threshold
     QCommandLineOption transformThresholdOption(QStringList() << "transformThreshold",
-                                                QCoreApplication::translate("main", "Transform: Similarity threshold for the chroma filter (default 0.6)"),
+                                                QCoreApplication::translate("main", "Transform: Similarity threshold for the chroma filter (default 0.4)"),
                                                 QCoreApplication::translate("main", "number"));
     parser.addOption(transformThresholdOption);
 
@@ -220,7 +220,7 @@ int main(int argc, char *argv[])
     qint32 startFrame = -1;
     qint32 length = -1;
     qint32 maxThreads = QThread::idealThreadCount() + 2;
-    double transformThreshold = 0.6;
+    double transformThreshold = 0.4;
 
     if (parser.isSet(startFrameOption)) {
         startFrame = parser.value(startFrameOption).toInt();

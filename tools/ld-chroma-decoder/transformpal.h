@@ -40,7 +40,8 @@ public:
     TransformPal();
     ~TransformPal();
 
-    // threshold is the similarity threshold for the filter (0.6 is pyctools-pal's default)
+    // threshold is the similarity threshold for the filter (values from 0-1
+    // are meaningful; 0.6 is pyctools-pal's default)
     void updateConfiguration(LdDecodeMetaData::VideoParameters videoParameters,
                              qint32 firstActiveLine, qint32 lastActiveLine,
                              double threshold);
