@@ -107,6 +107,12 @@ qint32 SourceVideo::getNumberOfAvailableFields()
     return availableFields;
 }
 
+// Get the byte length of the fields
+qint32 SourceVideo::getFieldByteLength()
+{
+    return fieldByteLength;
+}
+
 // Frame data retrieval methods ---------------------------------------------------------------------------------------
 
 // Method to retrieve a single video frame (with caching to prevent multiple

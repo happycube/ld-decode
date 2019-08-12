@@ -49,6 +49,7 @@ public:
     // Get and set methods
     bool isSourceValid();
     qint32 getNumberOfAvailableFields();
+    qint32 getFieldByteLength();
 
 private:
     // File handling globals

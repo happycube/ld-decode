@@ -39,6 +39,8 @@ public:
 
     // VBI Metadata definition
     struct Vbi {
+        Vbi() : inUse(false) {}
+
         bool inUse;
         QVector<qint32> vbiData;
     };
@@ -72,6 +74,8 @@ public:
 
     // VITS metrics metadata definition
     struct VitsMetrics {
+        VitsMetrics() : inUse(false), wSNR(0), bPSNR(0) {}
+
         bool inUse;
         qreal wSNR;
         qreal bPSNR;
@@ -79,6 +83,9 @@ public:
 
     // NTSC Specific metadata definition
     struct Ntsc {
+        Ntsc() : inUse(false), isFmCodeDataValid(false), fmCodeData(0), fieldFlag(false),
+            whiteFlag(false), ccData0(0), ccData1(0) {}
+
         bool inUse;
         bool isFmCodeDataValid;
         qint32 fmCodeData;
@@ -98,6 +105,9 @@ public:
 
     // Field metadata definition
     struct Field {
+        Field() : seqNo(0), isFirstField(false), syncConf(0), medianBurstIRE(0),
+            fieldPhaseID(0), audioSamples(0), pad(false) {}
+
         qint32 seqNo;       // Note: This is the unique primary-key
         bool isFirstField;
         qint32 syncConf;
@@ -109,6 +119,7 @@ public:
         Vbi vbi;
         Ntsc ntsc;
         DropOuts dropOuts;
+        bool pad;
     };
 
     // Overall metadata definition
