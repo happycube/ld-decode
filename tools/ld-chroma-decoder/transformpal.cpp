@@ -27,7 +27,9 @@
 
 #include "transformpal.h"
 
+#include <QtMath>
 #include <cassert>
+#include <cmath>
 #include <complex>
 
 /*!
@@ -49,13 +51,12 @@ TransformPal::TransformPal()
     : configurationSet(false)
 {
     // Compute the window function applied to the data blocks before the FFT to
-    // reduce edge effects. This function is chosen so that the overlapping
-    // inverse-FFT blocks can be summed directly.
-    // XXX This is wasteful because the edges are 0... use raised cosine instead?
+    // reduce edge effects. A symmetrical raised-cosine function is chosen so
+    // that the overlapping inverse-FFT blocks can be summed directly.
     for (qint32 y = 0; y < YTILE; y++) {
-        const double windowY = ((y < HALFYTILE) ? y : (YTILE - 1 - y)) / (HALFYTILE - 1.0);
+        const double windowY = (1 - cos((2 * M_PI * (y + 0.5)) / YTILE)) / 2;
         for (qint32 x = 0; x < XTILE; x++) {
-            const double windowX = ((x < HALFXTILE) ? x : (XTILE - 1 - x)) / (HALFXTILE - 1.0);
+            const double windowX = (1 - cos((2 * M_PI * (x + 0.5)) / XTILE)) / 2;
             windowFunction[y][x] = windowY * windowX;
         }
     }
