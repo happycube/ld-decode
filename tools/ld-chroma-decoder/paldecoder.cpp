@@ -27,9 +27,11 @@
 
 #include "decoderpool.h"
 
-PalDecoder::PalDecoder(bool blackAndWhiteParam)
+PalDecoder::PalDecoder(bool _blackAndWhite, bool _useTransformFilter, double _transformThreshold)
 {
-    config.blackAndWhite = blackAndWhiteParam;
+    config.blackAndWhite = _blackAndWhite;
+    config.useTransformFilter = _useTransformFilter;
+    config.transformThreshold = _transformThreshold;
 }
 
 bool PalDecoder::configure(const LdDecodeMetaData::VideoParameters &videoParameters) {
@@ -49,12 +51,13 @@ QThread *PalDecoder::makeThread(QAtomicInt& abort, DecoderPool& decoderPool) {
     return new PalThread(abort, decoderPool, config);
 }
 
-PalThread::PalThread(QAtomicInt& abortParam, DecoderPool& decoderPoolParam,
-                     const PalDecoder::Configuration &configParam, QObject *parent)
-    : QThread(parent), abort(abortParam), decoderPool(decoderPoolParam), config(configParam)
+PalThread::PalThread(QAtomicInt& _abort, DecoderPool& _decoderPool,
+                     const PalDecoder::Configuration &_config, QObject *parent)
+    : QThread(parent), abort(_abort), decoderPool(_decoderPool), config(_config)
 {
     // Configure PALcolour
-    palColour.updateConfiguration(config.videoParameters, config.firstActiveScanLine, config.lastActiveScanLine);
+    palColour.updateConfiguration(config.videoParameters, config.firstActiveLine, config.lastActiveLine,
+                                  config.useTransformFilter, config.transformThreshold);
 }
 
 void PalThread::run()

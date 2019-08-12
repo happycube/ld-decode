@@ -25,13 +25,10 @@
 
 #include "rgb.h"
 
-RGB::RGB(double whiteIreParam, double blackIreParam, bool whitePoint100Param, bool blackAndWhiteParam, double colourBurstMedianParam)
+RGB::RGB(double _whiteIreLevel, double _blackIreLevel, bool _whitePoint75, bool _blackAndWhite, double _colourBurstMedian)
+    : whiteIreLevel(_whiteIreLevel), blackIreLevel(_blackIreLevel), whitePoint75(_whitePoint75),
+      blackAndWhite(_blackAndWhite), colourBurstMedian(_colourBurstMedian)
 {
-    blackIreLevel = blackIreParam; // 0 or 7.5 IRE 16-bit level
-    whiteIreLevel = whiteIreParam; // 100 IRE 16-bit level
-    whitePoint75 = whitePoint100Param; // false = using 100% white point, true = 75%
-    blackAndWhite = blackAndWhiteParam; // true = output in black and white only
-    colourBurstMedian = colourBurstMedianParam; // 40 IRE burst amplitude measured by ld-decode
 }
 
 void RGB::convertLine(const YIQ *begin, const YIQ *end, quint16 *out)
@@ -70,7 +67,7 @@ void RGB::convertLine(const YIQ *begin, const YIQ *end, quint16 *out)
 
         // Scale the Y to 0-65535 where 0 = blackIreLevel and 65535 = whiteIreLevel
         y = (y - yBlackLevel) * yScale;
-        y = clamp(y, 0.0, 65535.0);
+        y = qBound(0.0, y, 65535.0);
 
         // Scale the I & Q components according to the colourburstMedian
         i *= iqScale;
@@ -84,9 +81,9 @@ void RGB::convertLine(const YIQ *begin, const YIQ *end, quint16 *out)
         double g = y - (0.272 * i) - (0.647 * q);
         double b = y - (1.107 * i) + (1.704 * q);
 
-        r = clamp(r, 0.0, 65535.0);
-        g = clamp(g, 0.0, 65535.0);
-        b = clamp(b, 0.0, 65535.0);
+        r = qBound(0.0, r, 65535.0);
+        g = qBound(0.0, g, 65535.0);
+        b = qBound(0.0, b, 65535.0);
 
         // Place the 16-bit RGB values in the output array
         *out++ = static_cast<quint16>(r);

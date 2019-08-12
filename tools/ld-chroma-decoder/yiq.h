@@ -33,7 +33,7 @@ class YIQ
 public:
     qreal y, i, q;
 
-    YIQ(qreal _y = 0.0, qreal _i = 0.0, qreal _q = 0.0);
+    YIQ(qreal y = 0.0, qreal i = 0.0, qreal q = 0.0);
     YIQ operator*=(qreal x);
     YIQ operator+=(const YIQ &p);
 

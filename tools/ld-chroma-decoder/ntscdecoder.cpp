@@ -62,7 +62,7 @@ bool NtscDecoder::configure(const LdDecodeMetaData::VideoParameters &videoParame
     config.combConfig.activeVideoEnd = videoParameters.activeVideoEnd;
 
     // Set the first frame scan line which contains active video
-    config.combConfig.firstVisibleFrameLine = config.firstActiveScanLine;
+    config.combConfig.firstActiveLine = config.firstActiveLine;
 
     // Set the IRE levels
     config.combConfig.blackIre = videoParameters.black16bIre;
@@ -76,9 +76,9 @@ QThread *NtscDecoder::makeThread(QAtomicInt& abort, DecoderPool& decoderPool)
     return new NtscThread(abort, decoderPool, config);
 }
 
-NtscThread::NtscThread(QAtomicInt& abortParam, DecoderPool &decoderPoolParam,
-                       const NtscDecoder::Configuration &configParam, QObject *parent)
-    : QThread(parent), abort(abortParam), decoderPool(decoderPoolParam), config(configParam)
+NtscThread::NtscThread(QAtomicInt& _abort, DecoderPool &_decoderPool,
+                       const NtscDecoder::Configuration &_config, QObject *parent)
+    : QThread(parent), abort(_abort), decoderPool(_decoderPool), config(_config)
 {
 }
 

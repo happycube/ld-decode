@@ -24,14 +24,14 @@
 
 #include "decoderpool.h"
 
-DecoderPool::DecoderPool(Decoder &decoderParam, QString inputFileNameParam,
-                         LdDecodeMetaData &ldDecodeMetaDataParam, QString outputFileNameParam,
-                         qint32 startFrameParam, qint32 lengthParam, qint32 maxThreadsParam,
+DecoderPool::DecoderPool(Decoder &_decoder, QString _inputFileName,
+                         LdDecodeMetaData &_ldDecodeMetaData, QString _outputFileName,
+                         qint32 _startFrame, qint32 _length, qint32 _maxThreads,
                          QObject *parent)
-    : QObject(parent), decoder(decoderParam), inputFileName(inputFileNameParam),
-      outputFileName(outputFileNameParam), startFrame(startFrameParam),
-      length(lengthParam), maxThreads(maxThreadsParam),
-      abort(false), ldDecodeMetaData(ldDecodeMetaDataParam)
+    : QObject(parent), decoder(_decoder), inputFileName(_inputFileName),
+      outputFileName(_outputFileName), startFrame(_startFrame),
+      length(_length), maxThreads(_maxThreads),
+      abort(false), ldDecodeMetaData(_ldDecodeMetaData)
 {
 }
 
