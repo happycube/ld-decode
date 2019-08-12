@@ -79,6 +79,9 @@ private:
     static constexpr int YCOMPLEX = YTILE;
     static constexpr int XCOMPLEX = (XTILE / 2) + 1;
 
+    // Window function applied before the FFT
+    double windowFunction[YTILE][XTILE];
+
     // FFT input/output buffers
     double *fftReal;
     fftw_complex *fftComplexIn;
@@ -88,10 +91,8 @@ private:
     fftw_plan forwardPlan, inversePlan;
 
     // The combined result of all the FFT processing.
-    // Inverse-FFT results are accumulated into this buffer, multiplied by
-    // windowFunction to "crossfade" between the overlapping tiles.
+    // Inverse-FFT results are accumulated into this buffer.
     QVector<double> chromaBuf;
-    double windowFunction[YTILE][XTILE];
 };
 
 #endif
