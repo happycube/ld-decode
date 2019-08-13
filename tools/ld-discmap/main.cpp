@@ -86,19 +86,32 @@ int main(int argc, char *argv[])
     QString inputFilename;
     QString outputFilename;
     QStringList positionalArguments = parser.positionalArguments();
-    if (positionalArguments.count() == 2) {
-        inputFilename = positionalArguments.at(0);
-        outputFilename = positionalArguments.at(1);
-    } else {
-        // Quit with error
-        qCritical("You must specify input and output TBC files");
-        return -1;
-    }
+    if (!mapOnly) {
+        // Require source and target filenames
+        if (positionalArguments.count() == 2) {
+            inputFilename = positionalArguments.at(0);
+            outputFilename = positionalArguments.at(1);
+        } else {
+            // Quit with error
+            qCritical("You must specify input and output TBC files");
+            return -1;
+        }
 
-    if (inputFilename == outputFilename) {
-        // Quit with error
-        qCritical("Input and output TBC files cannot have the same file names");
-        return -1;
+        if (inputFilename == outputFilename) {
+            // Quit with error
+            qCritical("Input and output TBC files cannot have the same file names");
+            return -1;
+        }
+    } else {
+        // Require only source filename
+        if (positionalArguments.count() > 0) {
+            inputFilename = positionalArguments.at(0);
+            outputFilename = "";
+        } else {
+            // Quit with error
+            qCritical("You must specify the input TBC file");
+            return -1;
+        }
     }
 
     if (isDebugOn) setDebug(true); else setDebug(false);

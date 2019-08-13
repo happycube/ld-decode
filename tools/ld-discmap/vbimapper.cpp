@@ -294,7 +294,15 @@ void VbiMapper::correctFrameNumbering()
     qint32 frameMissingFrameNumberCount = 0;
     qint32 searchDistance = 5;
 
-    // We must verify the very first and very last frames first in order to perform a valid
+    // Set the maximum frame number limit
+    qint32 maxFrames;
+    if (discType == discType_cav) maxFrames = 80000; // CAV maximum is 79999
+    else {
+        if (isSourcePal) maxFrames = 105000; // PAL CLV set to 70 minutes (70*60*25)
+        else maxFrames = 121800; // NTSC CLV set to 70 minutes (70*60*29)
+    }
+
+    // TODO: We must verify the very first and very last frames first in order to perform a valid
     // gap analysis
 
     // Correct from frames from start + 1 to end -1
@@ -314,7 +322,7 @@ void VbiMapper::correctFrameNumbering()
                     if (frames[frameElement - 1].vbiFrameNumber == (frames[frameElement + gap].vbiFrameNumber - (gap + 1))) {
                         correctedFrameNumber = frames[frameElement - 1].vbiFrameNumber + 1;
 
-                        if (correctedFrameNumber > 0 && correctedFrameNumber < 80000) {
+                        if (correctedFrameNumber > 0 && correctedFrameNumber < maxFrames) {
                             qInfo() << "Correction to seq. frame" << frameElement << ":";
                             qInfo() << "   Seq. frame" << frameElement - 1 << "has a VBI frame number of" << frames[frameElement - 1].vbiFrameNumber;
                             if (frames[frameElement].vbiFrameNumber> 0) {
