@@ -668,7 +668,8 @@ void TbcSource::startBackgroundLoad(QString sourceFilename)
 
     // Configure the chroma decoder
     if (videoParameters.isSourcePal) {
-        palColour.updateConfiguration(videoParameters, 44, 620);
+        // Default to the PAL 2D transform filter
+        palColour.updateConfiguration(videoParameters, 44, 620, true);
     } else {
         // Set the first active scan line
         qint32 firstActiveScanLine = 40;
@@ -688,7 +689,7 @@ void TbcSource::startBackgroundLoad(QString sourceFilename)
         configuration.activeVideoEnd = videoParameters.activeVideoEnd;
 
         // Set the first frame scan line which contains active video
-        configuration.firstVisibleFrameLine = firstActiveScanLine;
+        configuration.firstActiveLine = firstActiveScanLine;
 
         // Set the IRE levels
         configuration.blackIre = videoParameters.black16bIre;

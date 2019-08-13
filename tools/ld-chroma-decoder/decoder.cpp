@@ -25,11 +25,11 @@
 #include "decoder.h"
 
 void Decoder::setVideoParameters(Decoder::Configuration &config, const LdDecodeMetaData::VideoParameters &videoParameters,
-                                 qint32 firstActiveScanLine, qint32 lastActiveScanLine) {
+                                 qint32 firstActiveLine, qint32 lastActiveLine) {
 
     config.videoParameters = videoParameters;
-    config.firstActiveScanLine = firstActiveScanLine;
-    config.lastActiveScanLine = lastActiveScanLine;
+    config.firstActiveLine = firstActiveLine;
+    config.lastActiveLine = lastActiveLine;
     config.topPadLines = 0;
     config.bottomPadLines = 0;
 
@@ -53,7 +53,7 @@ void Decoder::setVideoParameters(Decoder::Configuration &config, const LdDecodeM
     // Insert empty padding lines so the height is divisible by 8
     qint32 outputHeight;
     while (true) {
-        outputHeight = config.topPadLines + (config.lastActiveScanLine - config.firstActiveScanLine) + config.bottomPadLines;
+        outputHeight = config.topPadLines + (config.lastActiveLine - config.firstActiveLine) + config.bottomPadLines;
         if ((outputHeight % 8) == 0) {
             break;
         }
@@ -85,7 +85,7 @@ QByteArray Decoder::cropOutputFrame(const Decoder::Configuration &config, QByteA
     }
 
     // Copy the active region from the decoded image
-    for (qint32 y = config.firstActiveScanLine; y < config.lastActiveScanLine; y++) {
+    for (qint32 y = config.firstActiveLine; y < config.lastActiveLine; y++) {
         croppedData.append(outputData.mid((y * config.videoParameters.fieldWidth * 6) + (activeVideoStart * 6),
                                           outputLineBytes));
     }

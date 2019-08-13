@@ -48,8 +48,8 @@ Comb::Comb() {
     configuration.activeVideoStart = 40;
     configuration.activeVideoEnd = 840;
 
-    // This sets the first visible frame line
-    configuration.firstVisibleFrameLine = 43;
+    // This sets the first active frame line
+    configuration.firstActiveLine = 43;
 
     // Set the 16-bit IRE levels
     configuration.blackIre = 15360;
@@ -69,16 +69,16 @@ Comb::Configuration Comb::getConfiguration()
 }
 
 // Set the comb filter configuration parameters
-void Comb::setConfiguration(const Comb::Configuration &configurationParam)
+void Comb::setConfiguration(const Comb::Configuration &_configuration)
 {
     // Range check the frame dimensions
-    if (configuration.fieldWidth > 910) qCritical() << "Comb::Comb(): Frame width exceeds allowed maximum!";
-    if (((configuration.fieldHeight * 2) - 1) > 525) qCritical() << "Comb::Comb(): Frame height exceeds allowed maximum!";
+    if (_configuration.fieldWidth > 910) qCritical() << "Comb::Comb(): Frame width exceeds allowed maximum!";
+    if (((_configuration.fieldHeight * 2) - 1) > 525) qCritical() << "Comb::Comb(): Frame height exceeds allowed maximum!";
 
     // Range check the video start
-    if (configurationParam.activeVideoStart < 16) qCritical() << "Comb::Comb(): activeVideoStart must be > 16!";
+    if (_configuration.activeVideoStart < 16) qCritical() << "Comb::Comb(): activeVideoStart must be > 16!";
 
-    configuration = configurationParam;
+    configuration = _configuration;
     postConfigurationTasks();
 }
 
@@ -235,7 +235,7 @@ inline bool Comb::GetLinePhase(FrameBuffer *frameBuffer, qint32 lineNumber)
 
 void Comb::split1D(FrameBuffer *frameBuffer)
 {
-    for (qint32 lineNumber = configuration.firstVisibleFrameLine; lineNumber < frameHeight; lineNumber++) {
+    for (qint32 lineNumber = configuration.firstActiveLine; lineNumber < frameHeight; lineNumber++) {
         // Get a pointer to the line's data
         quint16 *line = reinterpret_cast<quint16 *>(frameBuffer->rawbuffer.data() + (lineNumber * configuration.fieldWidth) * 2);
 
@@ -254,11 +254,11 @@ void Comb::split2D(FrameBuffer *frameBuffer)
     // Dummy black line.
     static constexpr qreal blackLine[911] = {0};
 
-    for (qint32 lineNumber = configuration.firstVisibleFrameLine; lineNumber < frameHeight; lineNumber++) {
+    for (qint32 lineNumber = configuration.firstActiveLine; lineNumber < frameHeight; lineNumber++) {
         // Get pointers to the surrounding lines.
         // If a line we need is outside the active area, use blackLine instead.
         const qreal *previousLine = blackLine;
-        if (lineNumber - 2 >= configuration.firstVisibleFrameLine) {
+        if (lineNumber - 2 >= configuration.firstActiveLine) {
             previousLine = frameBuffer->clpbuffer[0].pixel[lineNumber - 2];
         }
         const qreal *currentLine = frameBuffer->clpbuffer[0].pixel[lineNumber];
@@ -284,8 +284,8 @@ void Comb::split2D(FrameBuffer *frameBuffer)
             kn /= 2;
 
             qreal p_2drange = 45 * irescale;
-            kp = clamp(1 - (kp / p_2drange), 0.0, 1.0);
-            kn = clamp(1 - (kn / p_2drange), 0.0, 1.0);
+            kp = qBound(0.0, 1 - (kp / p_2drange), 1.0);
+            kn = qBound(0.0, 1 - (kn / p_2drange), 1.0);
 
             qreal sc = 1.0;
 
@@ -320,7 +320,7 @@ void Comb::split3D(FrameBuffer *currentFrame, FrameBuffer *previousFrame)
         previousFrame = currentFrame;
     }
 
-    for (qint32 lineNumber = configuration.firstVisibleFrameLine; lineNumber < frameHeight; lineNumber++) {
+    for (qint32 lineNumber = configuration.firstActiveLine; lineNumber < frameHeight; lineNumber++) {
 
         quint16 *currentLine = reinterpret_cast<quint16 *>(currentFrame->rawbuffer.data() + (lineNumber * configuration.fieldWidth) * 2);
         quint16 *previousLine = reinterpret_cast<quint16 *>(previousFrame->rawbuffer.data() + (lineNumber * configuration.fieldWidth) * 2);
@@ -337,7 +337,7 @@ void Comb::splitIQ(FrameBuffer *frameBuffer)
     // Clear the target frame YIQ buffer
     frameBuffer->yiqBuffer.clear();
 
-    for (qint32 lineNumber = configuration.firstVisibleFrameLine; lineNumber < frameHeight; lineNumber++) {
+    for (qint32 lineNumber = configuration.firstActiveLine; lineNumber < frameHeight; lineNumber++) {
         // Get a pointer to the line's data
         quint16 *line = reinterpret_cast<quint16 *>(frameBuffer->rawbuffer.data() + (lineNumber * configuration.fieldWidth) * 2);
         bool linePhase = GetLinePhase(frameBuffer, lineNumber);
@@ -381,7 +381,7 @@ void Comb::filterIQ(YiqBuffer &yiqBuffer)
     auto iFilter(f_colorlpi);
     auto qFilter(configuration.colorlpf_hq ? f_colorlpi : f_colorlpq);
 
-    for (qint32 lineNumber = configuration.firstVisibleFrameLine; lineNumber < frameHeight; lineNumber++) {
+    for (qint32 lineNumber = configuration.firstActiveLine; lineNumber < frameHeight; lineNumber++) {
         iFilter.clear();
         qFilter.clear();
 
@@ -428,7 +428,7 @@ void Comb::doCNR(YiqBuffer &yiqBuffer)
     QVector<YIQ> hplinef;
     hplinef.resize(configuration.fieldWidth + 32);
 
-    for (qint32 lineNumber = configuration.firstVisibleFrameLine; lineNumber < frameHeight; lineNumber++) {
+    for (qint32 lineNumber = configuration.firstActiveLine; lineNumber < frameHeight; lineNumber++) {
         // Filters not cleared from previous line
 
         for (qint32 h = configuration.activeVideoStart; h <= configuration.activeVideoEnd; h++) {
@@ -468,7 +468,7 @@ void Comb::doYNR(YiqBuffer &yiqBuffer)
     QVector<YIQ> hplinef;
     hplinef.resize(configuration.fieldWidth + 32);
 
-    for (qint32 lineNumber = configuration.firstVisibleFrameLine; lineNumber < frameHeight; lineNumber++) {
+    for (qint32 lineNumber = configuration.firstActiveLine; lineNumber < frameHeight; lineNumber++) {
         // Filter not cleared from previous line
 
         for (qint32 h = configuration.activeVideoStart; h <= configuration.activeVideoEnd; h++) {
@@ -500,7 +500,7 @@ QByteArray Comb::yiqToRgbFrame(const YiqBuffer &yiqBuffer, qreal burstLevel)
     RGB rgb(configuration.whiteIre, configuration.blackIre, configuration.whitePoint100, configuration.blackAndWhite, burstLevel);
 
     // Perform YIQ to RGB conversion
-    for (qint32 lineNumber = configuration.firstVisibleFrameLine; lineNumber < frameHeight; lineNumber++) {
+    for (qint32 lineNumber = configuration.firstActiveLine; lineNumber < frameHeight; lineNumber++) {
         // Map the QByteArray data to an unsigned 16 bit pointer
         quint16 *linePointer = reinterpret_cast<quint16 *>(rgbOutputFrame.data() + ((configuration.fieldWidth * 3 * lineNumber) * 2));
 
@@ -528,7 +528,7 @@ void Comb::overlayOpticalFlowMap(const FrameBuffer &frameBuffer, QByteArray &rgb
 //    opticalFlow.motionK(motionKMap);
 
     // Overlay the optical flow map on the output RGB
-    for (qint32 lineNumber = configuration.firstVisibleFrameLine; lineNumber < frameHeight; lineNumber++) {
+    for (qint32 lineNumber = configuration.firstActiveLine; lineNumber < frameHeight; lineNumber++) {
         // Map the QByteArray data to an unsigned 16 bit pointer
         quint16 *linePointer = reinterpret_cast<quint16 *>(rgbFrame.data() + ((configuration.fieldWidth * 3 * lineNumber) * 2));
 
@@ -555,7 +555,7 @@ void Comb::overlayOpticalFlowMap(const FrameBuffer &frameBuffer, QByteArray &rgb
 void Comb::adjustY(FrameBuffer *frameBuffer, YiqBuffer &yiqBuffer)
 {
     // remove color data from baseband (Y)
-    for (qint32 lineNumber = configuration.firstVisibleFrameLine; lineNumber < frameHeight; lineNumber++) {
+    for (qint32 lineNumber = configuration.firstActiveLine; lineNumber < frameHeight; lineNumber++) {
         bool linePhase = GetLinePhase(frameBuffer, lineNumber);
 
         for (qint32 h = configuration.activeVideoStart; h < configuration.activeVideoEnd; h++) {

@@ -26,8 +26,8 @@
 #include "yiq.h"
 
 YIQ::YIQ(qreal _y, qreal _i, qreal _q)
+    : y(_y), i(_i), q(_q)
 {
-    y = _y; i = _i; q = _q;
 }
 
 YIQ YIQ::operator*=(qreal x)

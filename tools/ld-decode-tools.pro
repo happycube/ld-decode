@@ -10,5 +10,6 @@ SUBDIRS = \
     ld-lds-converter \
     ld-ldstoefm \
     ld-process-efm \
-    ld-process-vbi
+    ld-process-vbi \
+    ld-discmap
 

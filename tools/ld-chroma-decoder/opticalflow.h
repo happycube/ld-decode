@@ -34,7 +34,6 @@
 #include <opencv2/core/core.hpp>
 #include <opencv2/video/tracking.hpp>
 
-#include "rgb.h"
 #include "yiqbuffer.h"
 
 class OpticalFlow

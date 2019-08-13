@@ -4,6 +4,7 @@
 
     ld-chroma-decoder - Colourisation filter for ld-decode
     Copyright (C) 2018-2019 Simon Inns
+    Copyright (C) 2019 Adam Sampson
 
     This file is part of ld-decode-tools.
 
@@ -32,44 +33,93 @@
 
 #include "lddecodemetadata.h"
 
+#include "transformpal.h"
+
 class PalColour : public QObject
 {
     Q_OBJECT
 
 public:
     explicit PalColour(QObject *parent = nullptr);
-    void updateConfiguration(LdDecodeMetaData::VideoParameters videoParameters, qint32 firstActiveLine, qint32 lastActiveLine);
+    void updateConfiguration(LdDecodeMetaData::VideoParameters videoParameters, qint32 firstActiveLine, qint32 lastActiveLine,
+                             bool useTransformFilter = false, double transformThreshold = 0.4);
 
-    // Method to perform the colour decoding
-    QByteArray performDecode(QByteArray topFieldData, QByteArray bottomFieldData, qint32 brightness, qint32 saturation);
+    // Decode two fields to produce an interlaced frame.
+    // contrast and saturation are user-adjustable controls; 100 is nominal.
+    QByteArray performDecode(QByteArray topFieldData, QByteArray bottomFieldData, qint32 contrast, qint32 saturation);
 
     // Maximum frame size, based on PAL
     static const qint32 MAX_WIDTH = 1135;
     static const qint32 MAX_HEIGHT = 625;
 
 private:
+    // Information about a field we're decoding.
+    struct FieldInfo {
+        explicit FieldInfo(qint32 number, qint32 contrast, qint32 saturation, qint32 firstActiveLine, qint32 lastActiveLine);
+
+        // number is 0 for the top field, 1 for the bottom field.
+        qint32 number;
+        qint32 contrast;
+        qint32 saturation;
+        // firstLine/lastLine are the range of active lines within the field.
+        qint32 firstLine;
+        qint32 lastLine;
+    };
+
+    // Decode one field into outputFrame.
+    void decodeField(const FieldInfo &field, const QByteArray &fieldData);
+
+    // Information about a line we're decoding.
+    struct LineInfo {
+        explicit LineInfo(qint32 number);
+
+        qint32 number;
+        double bp, bq;
+        double Vsw;
+        double burstNorm;
+    };
+
+    // Detect the colourburst on a line.
+    // Stores the burst details into line.
+    void detectBurst(LineInfo &line, const quint16 *inputData);
+
+    // Decode one line into outputFrame.
+    // inputData (templated, so it can be any numeric type) is the input to the
+    // filter; this may be the composite signal, or it may be pre-filtered down
+    // to chroma.
+    // compData is the composite signal, used for reconstructing Y at the end.
+    template <typename InputSample>
+    void decodeLine(const FieldInfo &field, const LineInfo &line, const InputSample *inputData, const quint16 *compData);
+
     // Configuration parameters
+    bool configurationSet;
     LdDecodeMetaData::VideoParameters videoParameters;
     qint32 firstActiveLine;
     qint32 lastActiveLine;
+    bool useTransformFilter;
 
-    // Look up tables array and constant definitions
+    // Transform PAL filter
+    TransformPal transformPal;
+
+    // The subcarrier reference signal
     double sine[MAX_WIDTH], cosine[MAX_WIDTH];
-    // cfilt and yfilt are the coefficients for the chroma and luma 2D FIR filters.
-    // The filters are horizontally and vertically symmetrical (with signs
-    // adjusted later to deal with phase differences between lines), so each
-    // 2D array represents one quarter of a filter. The zeroth horizontal
-    // element is included in the sum twice, so the coefficient is halved to
-    // compensate. Each filter is (2 * arraySize) + 1 elements wide.
-    static const qint32 arraySize = 7;
-    double cfilt[arraySize + 1][4];
-    double yfilt[arraySize + 1][2];
-
     double refAmpl;
-    double normalise;
-    QByteArray outputFrame;
+    double refNorm;
 
-    bool configurationSet;
+    // Coefficients for the three 2D chroma low-pass filters. There are
+    // separate filters for U and V, but only the signs differ, so they can
+    // share a set of coefficients.
+    //
+    // The filters are horizontally and vertically symmetrical, so each 2D
+    // array represents one quarter of a filter. The zeroth horizontal element
+    // is included in the sum twice, so the coefficient is halved to
+    // compensate. Each filter is (2 * FILTER_SIZE) + 1 elements wide.
+    static const qint32 FILTER_SIZE = 7;
+    double cfilt[FILTER_SIZE + 1][4];
+    double yfilt[FILTER_SIZE + 1][2];
+
+    // The output frame
+    QByteArray outputFrame;
 
     // Method to build the required look-up tables
     void buildLookUpTables();

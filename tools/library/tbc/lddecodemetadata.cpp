@@ -148,7 +148,7 @@ LdDecodeMetaData::VideoParameters LdDecodeMetaData::getVideoParameters()
 void LdDecodeMetaData::setVideoParameters (LdDecodeMetaData::VideoParameters _videoParameters)
 {
     // Write the video parameters
-    json.setValue({"videoParameters", "numberOfSequentialFields"}, _videoParameters.numberOfSequentialFields);
+    json.setValue({"videoParameters", "numberOfSequentialFields"}, getNumberOfFields());
     json.setValue({"videoParameters", "isSourcePal"}, _videoParameters.isSourcePal);
 
     json.setValue({"videoParameters", "colourBurstStart"}, _videoParameters.colourBurstStart);
@@ -222,6 +222,9 @@ LdDecodeMetaData::Field LdDecodeMetaData::getField(qint32 sequentialFieldNumber)
 
     // dropOuts values
     field.dropOuts = getFieldDropOuts(sequentialFieldNumber);
+
+    // Padding flag
+    field.pad = json.value({"fields", fieldNumber, "pad"}).toBool();
 
     return field;
 }
@@ -346,14 +349,14 @@ LdDecodeMetaData::DropOuts LdDecodeMetaData::getFieldDropOuts(qint32 sequentialF
 // This method sets the field metadata for a field
 void LdDecodeMetaData::updateField(LdDecodeMetaData::Field _field, qint32 sequentialFieldNumber)
 {
-    qint32 fieldNumber = sequentialFieldNumber - 1;
-
-    if (fieldNumber >= getNumberOfFields() + 1 || fieldNumber < 0) {
-        qCritical() << "LdDecodeMetaData::updateField(): Requested field number" << sequentialFieldNumber << "out of bounds!";
+    if (sequentialFieldNumber < 1) {
+        qCritical() << "LdDecodeMetaData::updateFieldVitsMetrics(): Requested field number" << sequentialFieldNumber << "out of bounds!";
     }
 
+    qint32 fieldNumber = sequentialFieldNumber - 1;
+
     // Write the field data
-    json.setValue({"fields", fieldNumber, "seqNo"}, _field.seqNo);
+    json.setValue({"fields", fieldNumber, "seqNo"}, sequentialFieldNumber);
     json.setValue({"fields", fieldNumber, "isFirstField"}, _field.isFirstField);
     json.setValue({"fields", fieldNumber, "syncConf"}, _field.syncConf);
     json.setValue({"fields", fieldNumber, "medianBurstIRE"}, _field.medianBurstIRE);
@@ -371,6 +374,9 @@ void LdDecodeMetaData::updateField(LdDecodeMetaData::Field _field, qint32 sequen
 
     // Write the drop-out records
     updateFieldDropOuts(_field.dropOuts, sequentialFieldNumber);
+
+    // Padding flag
+    json.setValue({"fields", fieldNumber, "pad"}, _field.pad);
 }
 
 // This method sets the field VBI metadata for a field
@@ -456,7 +462,11 @@ void LdDecodeMetaData::updateFieldDropOuts(LdDecodeMetaData::DropOuts _dropOuts,
 // This method appends a new field to the existing metadata
 void LdDecodeMetaData::appendField(LdDecodeMetaData::Field _field)
 {
-    updateField(_field, getNumberOfFields() + 1);
+    // Get the field number (and adjust to 0 if there are no fields in the JSON)
+    qint32 fieldNumber = getNumberOfFields();
+    if (fieldNumber < 0) fieldNumber = 0;
+
+    updateField(_field, fieldNumber + 1);
 }
 
 // Method to get the available number of fields (according to the metadata)

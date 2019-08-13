@@ -39,6 +39,7 @@ SOURCES += \
     ../ld-chroma-decoder/comb.cpp \
     ../ld-chroma-decoder/rgb.cpp \
     ../ld-chroma-decoder/yiq.cpp \
+    ../ld-chroma-decoder/transformpal.cpp \
     dropoutanalysisdialog.cpp \
     ../ld-chroma-decoder/opticalflow.cpp \
     ../library/tbc/lddecodemetadata.cpp \
@@ -59,6 +60,7 @@ HEADERS += \
     ../ld-chroma-decoder/comb.h \
     ../ld-chroma-decoder/rgb.h \
     ../ld-chroma-decoder/yiq.h \
+    ../ld-chroma-decoder/transformpal.cpp \
     dropoutanalysisdialog.h \
     ../ld-chroma-decoder/yiqbuffer.h \
     ../ld-chroma-decoder/opticalflow.h \
@@ -95,7 +97,7 @@ LIBS += -L"/usr/local/opt/opencv@2/lib"
 # Normal open-source OS goodness
 INCLUDEPATH += "/usr/local/include/opencv"
 LIBS += -L"/usr/local/lib"
-LIBS += -lopencv_core -lopencv_imgcodecs -lopencv_highgui -lopencv_imgproc -lopencv_video
+LIBS += -lopencv_core -lopencv_imgcodecs -lopencv_highgui -lopencv_imgproc -lopencv_video -lfftw3
 
 
 

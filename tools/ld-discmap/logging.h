@@ -1,14 +1,13 @@
 /************************************************************************
 
-    yiq.h
+    logging.h
 
-    ld-chroma-decoder - Colourisation filter for ld-decode
-    Copyright (C) 2018 Chad Page
-    Copyright (C) 2018-2019 Simon Inns
+    ld-discmap - TBC and VBI alignment and correction
+    Copyright (C) 2019 Simon Inns
 
     This file is part of ld-decode-tools.
 
-    ld-chroma-decoder is free software: you can redistribute it and/or
+    ld-discmap is free software: you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
     published by the Free Software Foundation, either version 3 of the
     License, or (at your option) any later version.
@@ -23,22 +22,18 @@
 
 ************************************************************************/
 
-#ifndef YIQ_H
-#define YIQ_H
+#ifndef LOGGING_H
+#define LOGGING_H
 
 #include <QCoreApplication>
+#include <QDebug>
+#include <QFile>
+#include <QString>
 
-class YIQ
-{
-public:
-    qreal y, i, q;
+// Prototypes
+void debugOutputHandler(QtMsgType type, const QMessageLogContext &context, const QString &msg);
+void setDebug(bool state);
+void openDebugFile(QString filename);
+void closeDebugFile(void);
 
-    YIQ(qreal y = 0.0, qreal i = 0.0, qreal q = 0.0);
-    YIQ operator*=(qreal x);
-    YIQ operator+=(const YIQ &p);
-
-private:
-
-};
-
-#endif // YIQ_H
+#endif // LOGGING_H

@@ -42,9 +42,9 @@ class DecoderPool : public QObject
 {
     Q_OBJECT
 public:
-    explicit DecoderPool(Decoder &decoderParam, QString inputFileNameParam,
-                         LdDecodeMetaData &ldDecodeMetaDataParam, QString outputFileNameParam,
-                         qint32 startFrameParam, qint32 lengthParam, qint32 maxThreadsParam,
+    explicit DecoderPool(Decoder &decoder, QString inputFileName,
+                         LdDecodeMetaData &ldDecodeMetaData, QString outputFileName,
+                         qint32 startFrame, qint32 length, qint32 maxThreads,
                          QObject *parent = nullptr);
     bool process();
 

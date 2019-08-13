@@ -52,6 +52,7 @@ CMakeLists.txt.user*
 /ld-process-efm/ld-process-efm
 /ld-ldstoefm/ld-ldstoefm
 /ld-lds-converter/ld-lds-converter
+/ld-discmap/ld-discmap
 
 
 
