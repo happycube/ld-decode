@@ -51,7 +51,7 @@ void OpticalFlow::denseOpticalFlow(const YiqBuffer &yiqBuffer, QVector<qreal> &k
         cv::GaussianBlur(flow, flow, cv::Size(21, 21), 0);
 
         // Convert to K values
-        for (qint32 y = 0; y < 524; y++) {
+        for (qint32 y = 0; y < 525; y++) {
             for (qint32 x = 0; x < 910; x++) {
                 // Get the flow velocity at the current x, y point
                 const cv::Point2f flowatxy = flow.at<cv::Point2f>(y, x);
