@@ -75,18 +75,19 @@ void OpticalFlow::denseOpticalFlow(const YiqBuffer &yiqBuffer, QVector<qreal> &k
 // Method to convert a qreal vector frame of Y values to an OpenCV n-dimensional dense array (cv::Mat)
 cv::Mat OpticalFlow::convertYtoMat(const YiqBuffer &yiqBuffer)
 {
-    quint16 frame[910 * 525];
+    quint8 frame[910 * 525];
     memset(frame, 0, sizeof(frame));
 
-    // Firstly we have to convert the Y vector of real numbers into quint16 values for OpenCV
+    // Firstly we have to convert the Y vector of real numbers into quint8
+    // values for cv::calcOpticalFlowFarneback
     for (qint32 line = 0; line < 525; line++) {
         for (qint32 pixel = 0; pixel < 910; pixel++) {
-            frame[(line * 910) + pixel] = static_cast<quint16>(yiqBuffer[line][pixel].y);
+            frame[(line * 910) + pixel] = static_cast<quint8>(yiqBuffer[line][pixel].y / 256.0);
         }
     }
 
-    // Return a Mat y * x in CV_16UC1 format
-    return cv::Mat(525, 910, CV_16UC1, frame).clone();
+    // Return a Mat y * x in CV_8UC1 format
+    return cv::Mat(525, 910, CV_8UC1, frame).clone();
 }
 
 // This method calculates the distance between points where x is the difference between the x-coordinates
