@@ -34,9 +34,7 @@
 // TBC library includes
 #include "sourcevideo.h"
 #include "lddecodemetadata.h"
-
-// Local includes
-#include "discmap.h"
+#include "vbidecoder.h"
 
 class TbcSources : public QObject
 {
@@ -86,7 +84,9 @@ private:
         SourceVideo sourceVideo;
         LdDecodeMetaData ldDecodeMetaData;
         QString filename;
-        DiscMap discMap;
+        qint32 minimumVbiFrameNumber;
+        qint32 maximumVbiFrameNumber;
+        bool isSourceCav;
     };
 
     // The frame number is common between sources
@@ -102,6 +102,7 @@ private:
     bool backgroundLoadSuccessful;
 
     void performBackgroundLoad(QString filename);
+    bool setDiscTypeAndMaxMinFrameVbi(qint32 sourceNumber);
 };
 
 #endif // TBCSOURCES_H

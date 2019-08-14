@@ -31,7 +31,6 @@ SOURCES += \
         aboutdialog.cpp \
         busydialog.cpp \
         configuration.cpp \
-        discmap.cpp \
         logging.cpp \
         main.cpp \
         mainwindow.cpp \
@@ -45,7 +44,6 @@ HEADERS += \
         aboutdialog.h \
         busydialog.h \
         configuration.h \
-        discmap.h \
         logging.h \
         mainwindow.h \
         reportdialog.h \

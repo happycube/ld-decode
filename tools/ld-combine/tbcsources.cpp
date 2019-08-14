@@ -109,11 +109,13 @@ QImage TbcSources::getCurrentFrameImage()
     // Create a QImage
     QImage frameImage = QImage(videoParameters.fieldWidth, frameHeight, QImage::Format_RGB888);
 
-    // Ensure the frame is not missing
-    if (!sourceVideos[currentSource]->discMap.getFrame(currentFrameNumber).isMissing) {
-        // Get the required field numbers
-        qint32 firstFieldNumber = sourceVideos[currentSource]->discMap.getFrame(currentFrameNumber).firstField;
-        qint32 secondFieldNumber = sourceVideos[currentSource]->discMap.getFrame(currentFrameNumber).secondField;
+    // Get the required field numbers
+    qint32 firstFieldNumber = sourceVideos[currentSource]->ldDecodeMetaData.getFirstFieldNumber(currentFrameNumber);
+    qint32 secondFieldNumber = sourceVideos[currentSource]->ldDecodeMetaData.getSecondFieldNumber(currentFrameNumber);
+
+    // Ensure the frame is not a padded field (i.e. missing)
+    if (!(sourceVideos[currentSource]->ldDecodeMetaData.getField(firstFieldNumber).pad &&
+          sourceVideos[currentSource]->ldDecodeMetaData.getField(secondFieldNumber).pad)) {
 
         // Get the video field data
         QByteArray firstFieldData = sourceVideos[currentSource]->sourceVideo.getVideoField(firstFieldNumber);
@@ -171,8 +173,8 @@ TbcSources::RawFrame TbcSources::getCurrentFrameData()
     RawFrame rawFrame;
 
     // Get the required field numbers
-    qint32 firstFieldNumber = sourceVideos[currentSource]->discMap.getFrame(currentFrameNumber).firstField;
-    qint32 secondFieldNumber = sourceVideos[currentSource]->discMap.getFrame(currentFrameNumber).secondField;
+    qint32 firstFieldNumber = sourceVideos[currentSource]->ldDecodeMetaData.getFirstFieldNumber(currentFrameNumber);
+    qint32 secondFieldNumber = sourceVideos[currentSource]->ldDecodeMetaData.getSecondFieldNumber(currentFrameNumber);
 
     // Get the metadata for the video parameters
     LdDecodeMetaData::VideoParameters videoParameters = sourceVideos[currentSource]->ldDecodeMetaData.getVideoParameters();
@@ -190,7 +192,7 @@ TbcSources::RawFrame TbcSources::getCurrentFrameData()
 qint32 TbcSources::getCurrentSourceNumberOfFrames()
 {
     if (sourceVideos.size() == 0) return -1;
-    return sourceVideos[currentSource]->discMap.getNumberOfFrames();
+    return sourceVideos[currentSource]->ldDecodeMetaData.getNumberOfFrames();
 }
 
 // Get the currently selected frame number of the current source
@@ -233,7 +235,7 @@ QString TbcSources::getCurrentSourceFilename()
 QStringList TbcSources::getCurrentMapReport()
 {
     if (sourceVideos.size() == 0) return QStringList();
-    return sourceVideos[currentSource]->discMap.getReport();
+    return QStringList();
 }
 
 // Get the minimum frame number for all sources
@@ -241,8 +243,8 @@ qint32 TbcSources::getMinimumFrameNumber()
 {
     qint32 minimumFrameNumber = 1000000;
     for (qint32 i = 0; i < sourceVideos.size(); i++) {
-        if (sourceVideos[i]->discMap.getStartFrame() < minimumFrameNumber)
-            minimumFrameNumber = sourceVideos[i]->discMap.getStartFrame();
+        if (sourceVideos[i]->minimumVbiFrameNumber < minimumFrameNumber)
+            minimumFrameNumber = sourceVideos[i]->minimumVbiFrameNumber;
     }
 
     return minimumFrameNumber;
@@ -253,8 +255,8 @@ qint32 TbcSources::getMaximumFrameNumber()
 {
     qint32 maximumFrameNumber = 0;
     for (qint32 i = 0; i < sourceVideos.size(); i++) {
-        if (sourceVideos[i]->discMap.getEndFrame() > maximumFrameNumber)
-            maximumFrameNumber = sourceVideos[i]->discMap.getEndFrame();
+        if (sourceVideos[i]->maximumVbiFrameNumber > maximumFrameNumber)
+            maximumFrameNumber = sourceVideos[i]->maximumVbiFrameNumber;
     }
 
     return maximumFrameNumber;
@@ -263,13 +265,13 @@ qint32 TbcSources::getMaximumFrameNumber()
 // Get the minimum frame number for the current source
 qint32 TbcSources::getCurrentSourceMinimumFrameNumber()
 {
-    return sourceVideos[currentSource]->discMap.getStartFrame();
+    return sourceVideos[currentSource]->minimumVbiFrameNumber;
 }
 
 // Get the maximum frame number for the current source
 qint32 TbcSources::getCurrentSourceMaxmumFrameNumber()
 {
-    return sourceVideos[currentSource]->discMap.getEndFrame();
+    return sourceVideos[currentSource]->maximumVbiFrameNumber;
 }
 
 // Private methods ----------------------------------------------------------------------------------------------------
@@ -329,6 +331,18 @@ void TbcSources::performBackgroundLoad(QString filename)
         }
     }
 
+    // Determine the minimum and maximum VBI frame number and the disc type
+    if (backgroundLoadSuccessful) {
+        qDebug() << "TbcSources::loadSource(): Determining disc type and VBI frame range...";
+        emit setBusy("Determining disc type and VBI frame range...", false, 0);
+        if (!setDiscTypeAndMaxMinFrameVbi(newSourceNumber)) {
+            // Failed
+            qWarning() << "Could not determine disc type or VBI range";
+            backgroundLoadErrorMessage = "Cannot load source - Could not determine disc type and/or VBI frame range!";
+            backgroundLoadSuccessful = false;
+        }
+    }
+
     // Open the new source TBC video
     if (backgroundLoadSuccessful) {
         qDebug() << "TbcSources::loadSource(): Loading TBC file...";
@@ -339,18 +353,6 @@ void TbcSources::performBackgroundLoad(QString filename)
            qWarning() << "Open TBC file failed for filename" << filename;
            backgroundLoadErrorMessage = "Cannot load source - Error reading source TBC data file!";
            backgroundLoadSuccessful = false;
-        }
-    }
-
-    // Perform LaserDisc mapping
-    if (backgroundLoadSuccessful) {
-        qDebug() << "TbcSources::loadSource(): Performing intelligent mapping...";
-        emit setBusy("Performing intelligent mapping...", false, 0);
-        if (!sourceVideos[newSourceNumber]->discMap.create(sourceVideos[newSourceNumber]->ldDecodeMetaData)) {
-            // Disc mapping failed
-            qWarning() << "Disc mapping failed!";
-            backgroundLoadErrorMessage = "Cannot load source - Error creating map!";
-            backgroundLoadSuccessful = false;
         }
     }
 
@@ -392,4 +394,72 @@ void TbcSources::finishBackgroundLoad()
 
     // Tell the parent to update the sources
     emit updateSources(backgroundLoadSuccessful);
+}
+
+bool TbcSources::setDiscTypeAndMaxMinFrameVbi(qint32 sourceNumber)
+{
+    sourceVideos[sourceNumber]->isSourceCav = false;
+
+    // Determine the disc type and max/min VBI frame numbers
+    VbiDecoder vbiDecoder;
+    qint32 cavCount = 0;
+    qint32 clvCount = 0;
+    qint32 cavMin = 1000000;
+    qint32 cavMax = 0;
+    qint32 clvMin = 1000000;
+    qint32 clvMax = 0;
+    // Using sequential frame numbering starting from 1
+    for (qint32 seqFrame = 1; seqFrame <= sourceVideos[sourceNumber]->ldDecodeMetaData.getNumberOfFrames(); seqFrame++) {
+        // Get the VBI data and then decode
+        QVector<qint32> vbi1 = sourceVideos[sourceNumber]->ldDecodeMetaData.getFieldVbi(sourceVideos[sourceNumber]->ldDecodeMetaData.getFirstFieldNumber(seqFrame)).vbiData;
+        QVector<qint32> vbi2 = sourceVideos[sourceNumber]->ldDecodeMetaData.getFieldVbi(sourceVideos[sourceNumber]->ldDecodeMetaData.getSecondFieldNumber(seqFrame)).vbiData;
+        VbiDecoder::Vbi vbi = vbiDecoder.decodeFrame(vbi1[0], vbi1[1], vbi1[2], vbi2[0], vbi2[1], vbi2[2]);
+
+        // Look for a complete, valid CAV picture number or CLV time-code
+        if (vbi.picNo > 0) {
+            cavCount++;
+
+            if (vbi.picNo < cavMin) cavMin = vbi.picNo;
+            if (vbi.picNo > cavMax) cavMax = vbi.picNo;
+        }
+
+        if (vbi.clvHr != -1 && vbi.clvMin != -1 &&
+                vbi.clvSec != -1 && vbi.clvPicNo != -1) {
+            clvCount++;
+
+            LdDecodeMetaData::ClvTimecode timecode;
+            timecode.hours = vbi.clvHr;
+            timecode.minutes = vbi.clvMin;
+            timecode.seconds = vbi.clvSec;
+            timecode.pictureNumber = vbi.clvPicNo;
+            qint32 cvFrameNumber = sourceVideos[sourceNumber]->ldDecodeMetaData.convertClvTimecodeToFrameNumber(timecode);
+
+            if (cvFrameNumber < clvMin) clvMin = cvFrameNumber;
+            if (cvFrameNumber > clvMax) clvMax = cvFrameNumber;
+        }
+    }
+    qDebug() << "TbcSources::getIsSourceCav(): Got" << cavCount << "CAV picture codes and" << clvCount << "CLV timecodes";
+
+    // If the metadata has no picture numbers or time-codes, we cannot use the source
+    if (cavCount == 0 && clvCount == 0) {
+        qDebug() << "TbcSources::getIsSourceCav(): Source does not seem to contain valid CAV picture numbers or CLV time-codes - cannot process";
+        return false;
+    }
+
+    // Determine disc type
+    if (cavCount > clvCount) {
+        sourceVideos[sourceNumber]->isSourceCav = true;
+        qDebug() << "TbcSources::getIsSourceCav(): Got" << cavCount << "valid CAV picture numbers - source disc type is CAV";
+
+        sourceVideos[sourceNumber]->maximumVbiFrameNumber = cavMax;
+        sourceVideos[sourceNumber]->minimumVbiFrameNumber = cavMin;
+    } else {
+        sourceVideos[sourceNumber]->isSourceCav = false;;
+        qDebug() << "TbcSources::getIsSourceCav(): Got" << clvCount << "valid CLV picture numbers - source disc type is CLV";
+
+        sourceVideos[sourceNumber]->maximumVbiFrameNumber = clvMax;
+        sourceVideos[sourceNumber]->minimumVbiFrameNumber = clvMin;
+    }
+
+    return true;
 }

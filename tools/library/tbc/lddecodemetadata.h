@@ -185,6 +185,7 @@ public slots:
 private:
     JsonWax json;
     bool isFirstFieldFirst;
+
     qint32 getFieldNumber(qint32 frameNumber, qint32 field);
 };
 
