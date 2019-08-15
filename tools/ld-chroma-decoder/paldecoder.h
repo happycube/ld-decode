@@ -55,7 +55,7 @@ private:
     Configuration config;
 };
 
-class PalThread : public QThread
+class PalThread : public DecoderThread
 {
     Q_OBJECT
 public:
@@ -64,13 +64,10 @@ public:
                        QObject *parent = nullptr);
 
 protected:
-    void run() override;
+    QByteArray decodeFrame(const LdDecodeMetaData::Field &firstField, QByteArray firstFieldData,
+                           const LdDecodeMetaData::Field &secondField, QByteArray secondFieldData) override;
 
 private:
-    // Decoder pool
-    QAtomicInt& abort;
-    DecoderPool& decoderPool;
-
     // Settings
     const PalDecoder::Configuration &config;
 

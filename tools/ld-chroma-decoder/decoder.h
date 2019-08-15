@@ -28,6 +28,7 @@
 #include <QAtomicInt>
 #include <QByteArray>
 #include <QDebug>
+#include <QThread>
 #include <cassert>
 
 #include "lddecodemetadata.h"
@@ -37,8 +38,8 @@ class DecoderPool;
 // Abstract base class for chroma decoders.
 //
 // For each chroma decoder in ld-chroma-decoder, there is a subclass of this
-// class, and a corresponding subclass of QThread -- let's say SecamDecoder and
-// SecamThread.
+// class, and a corresponding subclass of DecoderThread -- let's say
+// SecamDecoder and SecamThread.
 //
 // main() creates an instance of SecamDecoder and passes it to DecoderPool.
 // DecoderPool calls SecamDecoder::configure with the input video parameters,
@@ -81,6 +82,24 @@ public:
 
     // Crop a full decoded frame to the output frame size
     static QByteArray cropOutputFrame(const Configuration &config, QByteArray outputData);
+};
+
+// Abstract base class for chroma decoder worker threads.
+class DecoderThread : public QThread {
+    Q_OBJECT
+public:
+    explicit DecoderThread(QAtomicInt &abort, DecoderPool &decoderPool, QObject *parent = nullptr);
+
+protected:
+    void run() override;
+
+    // Decode two fields into an interlaced, cropped frame
+    virtual QByteArray decodeFrame(const LdDecodeMetaData::Field &firstField, QByteArray firstFieldData,
+                                   const LdDecodeMetaData::Field &secondField, QByteArray secondFieldData) = 0;
+
+    // Decoder pool
+    QAtomicInt& abort;
+    DecoderPool& decoderPool;
 };
 
 #endif

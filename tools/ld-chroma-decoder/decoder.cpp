@@ -24,6 +24,8 @@
 
 #include "decoder.h"
 
+#include "decoderpool.h"
+
 void Decoder::setVideoParameters(Decoder::Configuration &config, const LdDecodeMetaData::VideoParameters &videoParameters,
                                  qint32 firstActiveLine, qint32 lastActiveLine) {
 
@@ -96,4 +98,37 @@ QByteArray Decoder::cropOutputFrame(const Decoder::Configuration &config, QByteA
     }
 
     return croppedData;
+}
+
+DecoderThread::DecoderThread(QAtomicInt& _abort, DecoderPool& _decoderPool, QObject *parent)
+    : QThread(parent), abort(_abort), decoderPool(_decoderPool)
+{
+}
+
+void DecoderThread::run()
+{
+    qint32 frameNumber;
+
+    // Input field metadata and data
+    LdDecodeMetaData::Field firstField;
+    QByteArray firstFieldData;
+    LdDecodeMetaData::Field secondField;
+    QByteArray secondFieldData;
+
+    while(!abort) {
+        // Get the next frame to process from the input file
+        if (!decoderPool.getInputFrame(frameNumber, firstField, firstFieldData, secondField, secondFieldData)) {
+            // No more input frames -- exit
+            break;
+        }
+
+        // Decode and crop the frame
+        QByteArray frameData = decodeFrame(firstField, firstFieldData, secondField, secondFieldData);
+
+        // Write the result to the output file
+        if (!decoderPool.putOutputFrame(frameNumber, frameData)) {
+            abort = true;
+            break;
+        }
+    }
 }

@@ -53,39 +53,18 @@ QThread *PalDecoder::makeThread(QAtomicInt& abort, DecoderPool& decoderPool) {
 
 PalThread::PalThread(QAtomicInt& _abort, DecoderPool& _decoderPool,
                      const PalDecoder::Configuration &_config, QObject *parent)
-    : QThread(parent), abort(_abort), decoderPool(_decoderPool), config(_config)
+    : DecoderThread(_abort, _decoderPool, parent), config(_config)
 {
     // Configure PALcolour
     palColour.updateConfiguration(config.videoParameters, config.pal);
 }
 
-void PalThread::run()
+QByteArray PalThread::decodeFrame(const LdDecodeMetaData::Field &firstField, QByteArray firstFieldData,
+                                  const LdDecodeMetaData::Field &secondField, QByteArray secondFieldData)
 {
-    qint32 frameNumber;
+    // Perform the PALcolour filtering
+    QByteArray outputData = palColour.decodeFrame(firstField, firstFieldData, secondField, secondFieldData);
 
-    // Input field metadata and data
-    LdDecodeMetaData::Field firstField;
-    QByteArray firstFieldData;
-    LdDecodeMetaData::Field secondField;
-    QByteArray secondFieldData;
-
-    while(!abort) {
-        // Get the next frame to process from the input file
-        if (!decoderPool.getInputFrame(frameNumber, firstField, firstFieldData, secondField, secondFieldData)) {
-            // No more input frames -- exit
-            break;
-        }
-
-        // Perform the PALcolour filtering
-        QByteArray outputData = palColour.decodeFrame(firstField, firstFieldData, secondField, secondFieldData);
-
-        // PALcolour outputs the whole frame; crop it to the active area
-        QByteArray croppedData = PalDecoder::cropOutputFrame(config, outputData);
-
-        // Write the result to the output file
-        if (!decoderPool.putOutputFrame(frameNumber, croppedData)) {
-            abort = true;
-            break;
-        }
-    }
+    // Crop the frame to just the active area
+    return PalDecoder::cropOutputFrame(config, outputData);
 }
