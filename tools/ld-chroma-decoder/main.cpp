@@ -149,7 +149,7 @@ int main(int argc, char *argv[])
 
     // Option to select the number of threads (-t)
     QCommandLineOption threadsOption(QStringList() << "t" << "threads",
-                                        QCoreApplication::translate("main", "Specify the number of concurrent threads (default number of logical CPUs plus 2)"),
+                                        QCoreApplication::translate("main", "Specify the number of concurrent threads (default number of logical CPUs)"),
                                         QCoreApplication::translate("main", "number"));
     parser.addOption(threadsOption);
 
@@ -219,7 +219,7 @@ int main(int argc, char *argv[])
 
     qint32 startFrame = -1;
     qint32 length = -1;
-    qint32 maxThreads = QThread::idealThreadCount() + 2;
+    qint32 maxThreads = QThread::idealThreadCount();
     double transformThreshold = 0.4;
 
     if (parser.isSet(startFrameOption)) {
