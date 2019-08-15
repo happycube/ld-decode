@@ -537,7 +537,7 @@ void Comb::overlayOpticalFlowMap(const FrameBuffer &frameBuffer, QByteArray &rgb
             qint32 intensity = static_cast<qint32>(frameBuffer.kValues[(lineNumber * 910) + h] * 65535);
             // Make the RGB more purple to show where motion was detected
             qint32 red = linePointer[(h * 3)] + intensity;
-            qint32 green = linePointer[(h * 3) + 2];
+            qint32 green = linePointer[(h * 3) + 1];
             qint32 blue = linePointer[(h * 3) + 2] + intensity;
 
             if (red > 65535) red = 65535;
