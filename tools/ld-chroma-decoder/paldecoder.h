@@ -78,9 +78,6 @@ private:
 
     // PAL colour object
     PalColour palColour;
-
-    // Temporary output buffer
-    QByteArray outputData;
 };
 
 #endif // PALDECODER
