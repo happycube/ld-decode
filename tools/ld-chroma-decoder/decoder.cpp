@@ -109,21 +109,19 @@ void DecoderThread::run()
 {
     qint32 frameNumber;
 
-    // Input field metadata and data
-    LdDecodeMetaData::Field firstField;
-    QByteArray firstFieldData;
-    LdDecodeMetaData::Field secondField;
-    QByteArray secondFieldData;
+    // Input fields
+    Decoder::InputField firstField;
+    Decoder::InputField secondField;
 
     while(!abort) {
         // Get the next frame to process from the input file
-        if (!decoderPool.getInputFrame(frameNumber, firstField, firstFieldData, secondField, secondFieldData)) {
+        if (!decoderPool.getInputFrame(frameNumber, firstField, secondField)) {
             // No more input frames -- exit
             break;
         }
 
         // Decode and crop the frame
-        QByteArray frameData = decodeFrame(firstField, firstFieldData, secondField, secondFieldData);
+        QByteArray frameData = decodeFrame(firstField, secondField);
 
         // Write the result to the output file
         if (!decoderPool.putOutputFrame(frameNumber, frameData)) {

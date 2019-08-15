@@ -47,9 +47,7 @@ public:
     bool process();
 
     // Member functions used by worker threads
-    bool getInputFrame(qint32 &frameNumber,
-                       LdDecodeMetaData::Field &firstField, QByteArray &firstFieldData,
-                       LdDecodeMetaData::Field &secondField, QByteArray &secondFieldData);
+    bool getInputFrame(qint32 &frameNumber, Decoder::InputField &firstField, Decoder::InputField &secondField);
     bool putOutputFrame(qint32 frameNumber, QByteArray &rgbOutput);
 
 private:

@@ -145,9 +145,7 @@ bool DecoderPool::process()
 //
 // Returns true if a frame was returned, false if the end of the input has been
 // reached.
-bool DecoderPool::getInputFrame(qint32 &frameNumber,
-                                LdDecodeMetaData::Field &firstField, QByteArray &firstFieldData,
-                                LdDecodeMetaData::Field &secondField, QByteArray &secondFieldData)
+bool DecoderPool::getInputFrame(qint32 &frameNumber, Decoder::InputField &firstField, Decoder::InputField &secondField)
 {
     QMutexLocker locker(&inputMutex);
 
@@ -168,10 +166,10 @@ bool DecoderPool::getInputFrame(qint32 &frameNumber,
                 "and a second field of" << secondFieldNumber;
 
     // Fetch the input data
-    firstField = ldDecodeMetaData.getField(firstFieldNumber);
-    firstFieldData = sourceVideo.getVideoField(firstFieldNumber);
-    secondField = ldDecodeMetaData.getField(secondFieldNumber);
-    secondFieldData = sourceVideo.getVideoField(secondFieldNumber);
+    firstField.field = ldDecodeMetaData.getField(firstFieldNumber);
+    firstField.data = sourceVideo.getVideoField(firstFieldNumber);
+    secondField.field = ldDecodeMetaData.getField(secondFieldNumber);
+    secondField.data = sourceVideo.getVideoField(secondFieldNumber);
 
     return true;
 }

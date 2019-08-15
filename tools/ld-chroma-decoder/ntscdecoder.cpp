@@ -64,11 +64,10 @@ NtscThread::NtscThread(QAtomicInt& _abort, DecoderPool &_decoderPool,
     comb.updateConfiguration(config.videoParameters, config.combConfig);
 }
 
-QByteArray NtscThread::decodeFrame(const LdDecodeMetaData::Field &firstField, QByteArray firstFieldData,
-                                   const LdDecodeMetaData::Field &secondField, QByteArray secondFieldData)
+QByteArray NtscThread::decodeFrame(const Decoder::InputField &firstField, const Decoder::InputField &secondField)
 {
     // Filter the frame
-    QByteArray outputData = comb.decodeFrame(firstField, firstFieldData, secondField, secondFieldData);
+    QByteArray outputData = comb.decodeFrame(firstField.field, firstField.data, secondField.field, secondField.data);
 
     // The NTSC filter outputs the whole frame, so here we crop it to the required dimensions
     return NtscDecoder::cropOutputFrame(config, outputData);

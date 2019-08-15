@@ -75,6 +75,12 @@ public:
         qint32 bottomPadLines;
     };
 
+    // A field read from the input file
+    struct InputField {
+        LdDecodeMetaData::Field field;
+        QByteArray data;
+    };
+
     // Compute the output frame size in Configuration, adjusting the active
     // video region as required
     static void setVideoParameters(Configuration &config, const LdDecodeMetaData::VideoParameters &videoParameters,
@@ -94,8 +100,7 @@ protected:
     void run() override;
 
     // Decode two fields into an interlaced, cropped frame
-    virtual QByteArray decodeFrame(const LdDecodeMetaData::Field &firstField, QByteArray firstFieldData,
-                                   const LdDecodeMetaData::Field &secondField, QByteArray secondFieldData) = 0;
+    virtual QByteArray decodeFrame(const Decoder::InputField &firstField, const Decoder::InputField &secondField) = 0;
 
     // Decoder pool
     QAtomicInt& abort;
