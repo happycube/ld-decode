@@ -42,7 +42,6 @@ static AVPacket pkt;
 static int audio_frame_count = 0;
 
 static uint64_t seekto = 0;
-static int outcount = 0;
 
 static int decode_packet(int *got_frame, int cached)
 {
@@ -65,18 +64,13 @@ static int decode_packet(int *got_frame, int cached)
         decoded = FFMIN(ret, pkt.size);
 
         if (*got_frame) {
-            size_t unpadded_linesize = frame->nb_samples * av_get_bytes_per_sample(frame->format);
+            int offset = FFMAX((seekto - frame->pts), 0);
+            size_t unpadded_linesize = (frame->nb_samples - offset) * av_get_bytes_per_sample(frame->format);
             size_t rv = 0;
 
             if ((frame->pts + frame->nb_samples) < seekto) {
                 return decoded;
             }
-
-            if (!outcount) {
-                fprintf(stderr, "START:%ld\n", frame->pts);
-            }
-
-            outcount++;
 
             /* Write the raw audio data samples of the first plane. This works
              * fine for packed formats (e.g. AV_SAMPLE_FMT_S16). However,
@@ -87,10 +81,9 @@ static int decode_packet(int *got_frame, int cached)
              * You should use libswresample or libavfilter to convert the frame
              * to packed data. */
             // fwrite(frame->extended_data[0], 1, unpadded_linesize, audio_dst_file);
-            rv = write(1, frame->extended_data[0], unpadded_linesize);
+            rv = write(1, &(frame->extended_data[0])[offset * av_get_bytes_per_sample(frame->format)], unpadded_linesize);
 
             if (rv != unpadded_linesize) {
-
                 fprintf(stderr, "write error");
                 return -1;
             }
@@ -199,7 +192,7 @@ int main (int argc, char **argv)
         goto end;
     }
 
-    fprintf(stderr, "RATE:%d ", audio_dec_ctx->sample_rate);
+    fprintf(stderr, "RATE:%d\n", audio_dec_ctx->sample_rate);
 
     frame = av_frame_alloc();
     if (!frame) {
