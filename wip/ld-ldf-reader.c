@@ -64,7 +64,7 @@ static int decode_packet(int *got_frame, int cached)
         decoded = FFMIN(ret, pkt.size);
 
         if (*got_frame) {
-            int offset = FFMAX((seekto - frame->pts), 0);
+            int64_t offset = FFMIN((seekto - frame->pts), 0);
             size_t unpadded_linesize = (frame->nb_samples - offset) * av_get_bytes_per_sample(frame->format);
             size_t rv = 0;
 
@@ -83,10 +83,10 @@ static int decode_packet(int *got_frame, int cached)
              * You should use libswresample or libavfilter to convert the frame
              * to packed data. */
             // fwrite(frame->extended_data[0], 1, unpadded_linesize, audio_dst_file);
-            rv = write(1, &(frame->extended_data[0])[offset * av_get_bytes_per_sample(frame->format)], unpadded_linesize);
+            rv = write(1, frame->extended_data[0] + (offset * av_get_bytes_per_sample(frame->format)), unpadded_linesize);
 
             if (rv != unpadded_linesize) {
-                fprintf(stderr, "write error");
+                fprintf(stderr, "write error %ld", offset);
                 return -1;
             }
         }
