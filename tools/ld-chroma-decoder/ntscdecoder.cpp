@@ -46,8 +46,7 @@ bool NtscDecoder::configure(const LdDecodeMetaData::VideoParameters &videoParame
     }
 
     // Compute cropping parameters
-    config.combConfig.firstActiveLine = 40;
-    setVideoParameters(config, videoParameters, config.combConfig.firstActiveLine, 525);
+    setVideoParameters(config, videoParameters, config.combConfig.firstActiveLine, config.combConfig.lastActiveLine);
 
     return true;
 }

@@ -520,14 +520,15 @@ QImage TbcSource::generateQImage(qint32 firstFieldNumber, qint32 secondFieldNumb
             }
         }
     } else {
-        // Set the first and last active scan line (for PAL)
-        qint32 firstActiveScanLine = 44;
-        qint32 lastActiveScanLine = 620;
+        qint32 firstActiveLine, lastActiveLine;
         QByteArray outputData;
 
         // Perform a PAL 2D comb filter on the current frame
         if (videoParameters.isSourcePal) {
             // PAL source
+
+            firstActiveLine = palColour.getConfiguration().firstActiveLine;
+            lastActiveLine = palColour.getConfiguration().lastActiveLine;
 
             // Calculate the saturation level from the burst median IRE
             // Note: This code works as a temporary MTF compensator whilst ld-decode gets
@@ -540,9 +541,8 @@ QImage TbcSource::generateQImage(qint32 firstFieldNumber, qint32 secondFieldNumb
         } else {
             // NTSC source
 
-            // Set the first and last active scan line
-            firstActiveScanLine = 40;
-            lastActiveScanLine = 525;
+            firstActiveLine = ntscColour.getConfiguration().firstActiveLine;
+            lastActiveLine = ntscColour.getConfiguration().lastActiveLine;
 
             outputData = ntscColour.process(firstFieldData, secondFieldData,
                                                             ldDecodeMetaData.getField(firstFieldNumber).medianBurstIRE,
@@ -554,7 +554,7 @@ QImage TbcSource::generateQImage(qint32 firstFieldNumber, qint32 secondFieldNumb
         frameImage.fill(Qt::black);
 
         // Copy the RGB16-16-16 data into the RGB888 QImage
-        for (qint32 y = firstActiveScanLine; y < lastActiveScanLine; y++) {
+        for (qint32 y = firstActiveLine; y < lastActiveLine; y++) {
             // Extract the current scan line data from the frame
             qint32 startPointer = y * videoParameters.fieldWidth * 6;
             qint32 length = videoParameters.fieldWidth * 6;
@@ -676,7 +676,6 @@ void TbcSource::startBackgroundLoad(QString sourceFilename)
         palColour.updateConfiguration(videoParameters, configuration);
     } else {
         Comb::Configuration configuration;
-        configuration.firstActiveLine = 40;
         ntscColour.updateConfiguration(videoParameters, configuration);
     }
 
