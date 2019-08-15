@@ -61,7 +61,6 @@ public:
         // Interlaced line 40 is NTSC line 21 (the closed-caption line before the first active half-line)
         qint32 firstActiveLine = 40;
         // Interlaced line 524 is NTSC line 263 (the last active half-line).
-        // XXX The Comb code doesn't use this because it's the last line of the picture anyway.
         qint32 lastActiveLine = 525;
 
         qreal cNRLevel = 0.0;

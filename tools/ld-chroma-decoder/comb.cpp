@@ -211,7 +211,7 @@ inline bool Comb::GetLinePhase(FrameBuffer *frameBuffer, qint32 lineNumber)
 
 void Comb::split1D(FrameBuffer *frameBuffer)
 {
-    for (qint32 lineNumber = configuration.firstActiveLine; lineNumber < frameHeight; lineNumber++) {
+    for (qint32 lineNumber = configuration.firstActiveLine; lineNumber < configuration.lastActiveLine; lineNumber++) {
         // Get a pointer to the line's data
         quint16 *line = reinterpret_cast<quint16 *>(frameBuffer->rawbuffer.data() + (lineNumber * videoParameters.fieldWidth) * 2);
 
@@ -230,7 +230,7 @@ void Comb::split2D(FrameBuffer *frameBuffer)
     // Dummy black line.
     static constexpr qreal blackLine[911] = {0};
 
-    for (qint32 lineNumber = configuration.firstActiveLine; lineNumber < frameHeight; lineNumber++) {
+    for (qint32 lineNumber = configuration.firstActiveLine; lineNumber < configuration.lastActiveLine; lineNumber++) {
         // Get pointers to the surrounding lines.
         // If a line we need is outside the active area, use blackLine instead.
         const qreal *previousLine = blackLine;
@@ -239,7 +239,7 @@ void Comb::split2D(FrameBuffer *frameBuffer)
         }
         const qreal *currentLine = frameBuffer->clpbuffer[0].pixel[lineNumber];
         const qreal *nextLine = blackLine;
-        if (lineNumber + 2 < frameHeight) {
+        if (lineNumber + 2 < configuration.lastActiveLine) {
             nextLine = frameBuffer->clpbuffer[0].pixel[lineNumber + 2];
         }
 
@@ -296,7 +296,7 @@ void Comb::split3D(FrameBuffer *currentFrame, FrameBuffer *previousFrame)
         previousFrame = currentFrame;
     }
 
-    for (qint32 lineNumber = configuration.firstActiveLine; lineNumber < frameHeight; lineNumber++) {
+    for (qint32 lineNumber = configuration.firstActiveLine; lineNumber < configuration.lastActiveLine; lineNumber++) {
 
         quint16 *currentLine = reinterpret_cast<quint16 *>(currentFrame->rawbuffer.data() + (lineNumber * videoParameters.fieldWidth) * 2);
         quint16 *previousLine = reinterpret_cast<quint16 *>(previousFrame->rawbuffer.data() + (lineNumber * videoParameters.fieldWidth) * 2);
@@ -313,7 +313,7 @@ void Comb::splitIQ(FrameBuffer *frameBuffer)
     // Clear the target frame YIQ buffer
     frameBuffer->yiqBuffer.clear();
 
-    for (qint32 lineNumber = configuration.firstActiveLine; lineNumber < frameHeight; lineNumber++) {
+    for (qint32 lineNumber = configuration.firstActiveLine; lineNumber < configuration.lastActiveLine; lineNumber++) {
         // Get a pointer to the line's data
         quint16 *line = reinterpret_cast<quint16 *>(frameBuffer->rawbuffer.data() + (lineNumber * videoParameters.fieldWidth) * 2);
         bool linePhase = GetLinePhase(frameBuffer, lineNumber);
@@ -357,7 +357,7 @@ void Comb::filterIQ(YiqBuffer &yiqBuffer)
     auto iFilter(f_colorlpi);
     auto qFilter(configuration.colorlpf_hq ? f_colorlpi : f_colorlpq);
 
-    for (qint32 lineNumber = configuration.firstActiveLine; lineNumber < frameHeight; lineNumber++) {
+    for (qint32 lineNumber = configuration.firstActiveLine; lineNumber < configuration.lastActiveLine; lineNumber++) {
         iFilter.clear();
         qFilter.clear();
 
@@ -404,7 +404,7 @@ void Comb::doCNR(YiqBuffer &yiqBuffer)
     QVector<YIQ> hplinef;
     hplinef.resize(videoParameters.fieldWidth + 32);
 
-    for (qint32 lineNumber = configuration.firstActiveLine; lineNumber < frameHeight; lineNumber++) {
+    for (qint32 lineNumber = configuration.firstActiveLine; lineNumber < configuration.lastActiveLine; lineNumber++) {
         // Filters not cleared from previous line
 
         for (qint32 h = videoParameters.activeVideoStart; h <= videoParameters.activeVideoEnd; h++) {
@@ -444,7 +444,7 @@ void Comb::doYNR(YiqBuffer &yiqBuffer)
     QVector<YIQ> hplinef;
     hplinef.resize(videoParameters.fieldWidth + 32);
 
-    for (qint32 lineNumber = configuration.firstActiveLine; lineNumber < frameHeight; lineNumber++) {
+    for (qint32 lineNumber = configuration.firstActiveLine; lineNumber < configuration.lastActiveLine; lineNumber++) {
         // Filter not cleared from previous line
 
         for (qint32 h = videoParameters.activeVideoStart; h <= videoParameters.activeVideoEnd; h++) {
@@ -476,7 +476,7 @@ QByteArray Comb::yiqToRgbFrame(const YiqBuffer &yiqBuffer, qreal burstLevel)
     RGB rgb(videoParameters.white16bIre, videoParameters.black16bIre, configuration.whitePoint100, configuration.blackAndWhite, burstLevel);
 
     // Perform YIQ to RGB conversion
-    for (qint32 lineNumber = configuration.firstActiveLine; lineNumber < frameHeight; lineNumber++) {
+    for (qint32 lineNumber = configuration.firstActiveLine; lineNumber < configuration.lastActiveLine; lineNumber++) {
         // Map the QByteArray data to an unsigned 16 bit pointer
         quint16 *linePointer = reinterpret_cast<quint16 *>(rgbOutputFrame.data() + ((videoParameters.fieldWidth * 3 * lineNumber) * 2));
 
@@ -504,7 +504,7 @@ void Comb::overlayOpticalFlowMap(const FrameBuffer &frameBuffer, QByteArray &rgb
 //    opticalFlow.motionK(motionKMap);
 
     // Overlay the optical flow map on the output RGB
-    for (qint32 lineNumber = configuration.firstActiveLine; lineNumber < frameHeight; lineNumber++) {
+    for (qint32 lineNumber = configuration.firstActiveLine; lineNumber < configuration.lastActiveLine; lineNumber++) {
         // Map the QByteArray data to an unsigned 16 bit pointer
         quint16 *linePointer = reinterpret_cast<quint16 *>(rgbFrame.data() + ((videoParameters.fieldWidth * 3 * lineNumber) * 2));
 
@@ -531,7 +531,7 @@ void Comb::overlayOpticalFlowMap(const FrameBuffer &frameBuffer, QByteArray &rgb
 void Comb::adjustY(FrameBuffer *frameBuffer, YiqBuffer &yiqBuffer)
 {
     // remove color data from baseband (Y)
-    for (qint32 lineNumber = configuration.firstActiveLine; lineNumber < frameHeight; lineNumber++) {
+    for (qint32 lineNumber = configuration.firstActiveLine; lineNumber < configuration.lastActiveLine; lineNumber++) {
         bool linePhase = GetLinePhase(frameBuffer, lineNumber);
 
         for (qint32 h = videoParameters.activeVideoStart; h < videoParameters.activeVideoEnd; h++) {
