@@ -83,7 +83,7 @@ TransformPal::~TransformPal()
     fftw_free(fftComplexOut);
 }
 
-void TransformPal::updateConfiguration(LdDecodeMetaData::VideoParameters _videoParameters,
+void TransformPal::updateConfiguration(const LdDecodeMetaData::VideoParameters &_videoParameters,
                                        qint32 _firstActiveLine, qint32 _lastActiveLine,
                                        double _threshold)
 {

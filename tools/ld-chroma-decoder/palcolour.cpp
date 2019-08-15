@@ -60,7 +60,7 @@ PalColour::PalColour(QObject *parent)
 {
 }
 
-void PalColour::updateConfiguration(LdDecodeMetaData::VideoParameters _videoParameters,
+void PalColour::updateConfiguration(const LdDecodeMetaData::VideoParameters &_videoParameters,
                                     qint32 _firstActiveLine, qint32 _lastActiveLine,
                                     bool _useTransformFilter, double transformThreshold)
 {

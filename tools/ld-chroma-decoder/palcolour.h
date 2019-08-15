@@ -41,7 +41,8 @@ class PalColour : public QObject
 
 public:
     explicit PalColour(QObject *parent = nullptr);
-    void updateConfiguration(LdDecodeMetaData::VideoParameters videoParameters, qint32 firstActiveLine, qint32 lastActiveLine,
+    void updateConfiguration(const LdDecodeMetaData::VideoParameters &videoParameters,
+                             qint32 firstActiveLine, qint32 lastActiveLine,
                              bool useTransformFilter = false, double transformThreshold = 0.4);
 
     // Decode two fields to produce an interlaced frame.

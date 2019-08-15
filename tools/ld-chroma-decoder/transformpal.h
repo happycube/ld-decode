@@ -42,7 +42,7 @@ public:
 
     // threshold is the similarity threshold for the filter (values from 0-1
     // are meaningful; 0.6 is pyctools-pal's default)
-    void updateConfiguration(LdDecodeMetaData::VideoParameters videoParameters,
+    void updateConfiguration(const LdDecodeMetaData::VideoParameters &videoParameters,
                              qint32 firstActiveLine, qint32 lastActiveLine,
                              double threshold);
 
