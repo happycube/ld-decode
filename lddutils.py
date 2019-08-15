@@ -420,9 +420,7 @@ class LoadLDF:
         self.rewind_buf = b''
 
     def __del__(self):
-        if self.ldfreader is not None:
-            self.ldfreader.kill()
-            self.ldfreader.wait()
+        self._close()
 
     def _read_data(self, count):
         """Read data as bytes from ffmpeg, append it to the rewind buffer, and
@@ -436,24 +434,45 @@ class LoadLDF:
 
         return data
 
+    def _close(self):
+        if self.ldfreader is not None:
+            self.ldfreader.kill()
+            self.ldfreader.wait()
+
+        self.ldfreader = None
+
+    def _open(self, sample):
+        self._close()
+
+        command = ["ld-ldf-reader", self.filename, str(sample)]
+
+        ldfreader = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.position = sample * 2
+        self.rewind_buf = b''
+
+        return ldfreader
+
     def __call__(self, infile, sample, readlen):
         sample_bytes = sample * 2
         readlen_bytes = readlen * 2
 
         if self.ldfreader is None:
-            command = ["ld-ldf-reader", self.filename, str(sample)]
-            self.ldfreader = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            self.position = sample_bytes
+            self.ldfreader = self._open(sample)
 
-        if sample_bytes < self.position:
+        if (sample_bytes < self.position):
             # Seeking backwards - use data from rewind_buf
             start = len(self.rewind_buf) - (self.position - sample_bytes)
             end = min(start + readlen_bytes, len(self.rewind_buf))
             if start < 0:
-                raise IOError("Seeking too far backwards with ffmpeg")
-            buf_data = self.rewind_buf[start:end]
-            sample_bytes += len(buf_data)
-            readlen_bytes -= len(buf_data)
+                #raise IOError("Seeking too far backwards with ffmpeg")
+                self.ldfreader = self._open(sample)
+            else:
+                buf_data = self.rewind_buf[start:end]
+                sample_bytes += len(buf_data)
+                readlen_bytes -= len(buf_data)
+        elif ((sample_bytes - self.position) > (40*1024*1024*2)):
+            self.ldfreader = self._open(sample)
+            buf_data = b''
         else:
             buf_data = b''
 
