@@ -71,7 +71,9 @@ public:
     void updateConfiguration(const LdDecodeMetaData::VideoParameters &videoParameters,
                              const Configuration &configuration);
 
-    QByteArray process(QByteArray topFieldInputBuffer, QByteArray bottomFieldInputBuffer, qreal burstMedianIre, qint32 topFieldPhaseID, qint32 bottomFieldPhaseID);
+    // Decode two fields to produce an interlaced frame.
+    QByteArray decodeFrame(const LdDecodeMetaData::Field &firstField, QByteArray firstFieldInputBuffer,
+                           const LdDecodeMetaData::Field &secondField, QByteArray secondFieldInputBuffer);
 
 protected:
 

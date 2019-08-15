@@ -68,26 +68,21 @@ void NtscThread::run()
 {
     qint32 frameNumber;
 
-    // Input data buffers
+    // Input field metadata and data
+    LdDecodeMetaData::Field firstField;
     QByteArray firstFieldData;
+    LdDecodeMetaData::Field secondField;
     QByteArray secondFieldData;
-
-    // Frame metadata
-    qint32 firstFieldPhaseID;
-    qint32 secondFieldPhaseID;
-    qreal burstMedianIre;
 
     while(!abort) {
         // Get the next frame to process from the input file
-        if (!decoderPool.getInputFrame(frameNumber, firstFieldData, secondFieldData,
-                                       firstFieldPhaseID, secondFieldPhaseID, burstMedianIre)) {
+        if (!decoderPool.getInputFrame(frameNumber, firstField, firstFieldData, secondField, secondFieldData)) {
             // No more input frames -- exit
             break;
         }
 
         // Filter the frame
-        QByteArray outputData = comb.process(firstFieldData, secondFieldData, burstMedianIre,
-                                             firstFieldPhaseID, secondFieldPhaseID);
+        QByteArray outputData = comb.decodeFrame(firstField, firstFieldData, secondField, secondFieldData);
 
         // The NTSC filter outputs the whole frame, so here we crop it to the required dimensions
         QByteArray croppedData = NtscDecoder::cropOutputFrame(config, outputData);

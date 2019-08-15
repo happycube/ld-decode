@@ -48,7 +48,6 @@ public:
 
     // Parameters used by PalDecoder and PalThread
     struct Configuration : public Decoder::Configuration {
-        bool blackAndWhite;
         PalColour::Configuration pal;
     };
 

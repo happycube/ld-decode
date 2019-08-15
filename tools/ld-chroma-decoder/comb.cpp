@@ -63,8 +63,8 @@ void Comb::updateConfiguration(const LdDecodeMetaData::VideoParameters &_videoPa
 }
 
 // Process the input buffer into the RGB output buffer
-QByteArray Comb::process(QByteArray firstFieldInputBuffer, QByteArray secondFieldInputBuffer, qreal burstMedianIre,
-                         qint32 firstFieldPhaseID, qint32 secondFieldPhaseID)
+QByteArray Comb::decodeFrame(const LdDecodeMetaData::Field &firstField, QByteArray firstFieldInputBuffer,
+                             const LdDecodeMetaData::Field &secondField, QByteArray secondFieldInputBuffer)
 {
     // Ensure the object has been configured
     if (!configurationSet) {
@@ -92,13 +92,14 @@ QByteArray Comb::process(QByteArray firstFieldInputBuffer, QByteArray secondFiel
         fieldLine++;
     }
 
-    // Set the frames burst median (IRE) - This is used by yiqToRgbFrame to tweak the colour
-    // saturation levels (compensating for MTF issues)
-    currentFrameBuffer.burstLevel = burstMedianIre;
+    // Set the frame's burst median (IRE) from the *first* field only.
+    // This is used by yiqToRgbFrame to tweak the colour saturation levels
+    // (compensating for MTF issues)
+    currentFrameBuffer.burstLevel = firstField.medianBurstIRE;
 
     // Set the phase IDs for the frame
-    currentFrameBuffer.firstFieldPhaseID = firstFieldPhaseID;
-    currentFrameBuffer.secondFieldPhaseID = secondFieldPhaseID;
+    currentFrameBuffer.firstFieldPhaseID = firstField.fieldPhaseID;
+    currentFrameBuffer.secondFieldPhaseID = secondField.fieldPhaseID;
 
     // 2D or 3D comb filter processing?
     if (!configuration.use3D) {

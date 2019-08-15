@@ -468,6 +468,10 @@ QImage TbcSource::generateQImage(qint32 firstFieldNumber, qint32 secondFieldNumb
     // Get the metadata for the video parameters
     LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
 
+    // Get the field metadata
+    LdDecodeMetaData::Field firstField = ldDecodeMetaData.getField(firstFieldNumber);
+    LdDecodeMetaData::Field secondField = ldDecodeMetaData.getField(secondFieldNumber);
+
     // Get the video field data
     QByteArray firstFieldData = sourceVideo.getVideoField(firstFieldNumber);
     QByteArray secondFieldData = sourceVideo.getVideoField(secondFieldNumber);
@@ -523,31 +527,21 @@ QImage TbcSource::generateQImage(qint32 firstFieldNumber, qint32 secondFieldNumb
         qint32 firstActiveLine, lastActiveLine;
         QByteArray outputData;
 
-        // Perform a PAL 2D comb filter on the current frame
+        // Decode colour for the current frame, to RGB 16-16-16 interlaced output
         if (videoParameters.isSourcePal) {
             // PAL source
 
             firstActiveLine = palColour.getConfiguration().firstActiveLine;
             lastActiveLine = palColour.getConfiguration().lastActiveLine;
 
-            // Calculate the saturation level from the burst median IRE
-            // Note: This code works as a temporary MTF compensator whilst ld-decode gets
-            // real MTF compensation added to it.
-            qreal tSaturation = 125.0 + ((100.0 / 20.0) * (20.0 - ldDecodeMetaData.getField(firstFieldNumber).medianBurstIRE));
-
-            // Perform the PALcolour filtering (output is RGB 16-16-16)
-            outputData = palColour.performDecode(firstFieldData, secondFieldData,
-                                                  100, static_cast<qint32>(tSaturation));
+            outputData = palColour.decodeFrame(firstField, firstFieldData, secondField, secondFieldData);
         } else {
             // NTSC source
 
             firstActiveLine = ntscColour.getConfiguration().firstActiveLine;
             lastActiveLine = ntscColour.getConfiguration().lastActiveLine;
 
-            outputData = ntscColour.process(firstFieldData, secondFieldData,
-                                                            ldDecodeMetaData.getField(firstFieldNumber).medianBurstIRE,
-                                                            ldDecodeMetaData.getField(firstFieldNumber).fieldPhaseID,
-                                                            ldDecodeMetaData.getField(secondFieldNumber).fieldPhaseID);
+            outputData = ntscColour.decodeFrame(firstField, firstFieldData, secondField, secondFieldData);
         }
 
         // Fill the QImage with black

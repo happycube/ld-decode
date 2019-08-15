@@ -29,7 +29,7 @@
 
 PalDecoder::PalDecoder(bool _blackAndWhite, bool _useTransformFilter, double _transformThreshold)
 {
-    config.blackAndWhite = _blackAndWhite;
+    config.pal.blackAndWhite = _blackAndWhite;
     config.pal.useTransformFilter = _useTransformFilter;
     config.pal.transformThreshold = _transformThreshold;
 }
@@ -63,36 +63,21 @@ void PalThread::run()
 {
     qint32 frameNumber;
 
-    // Input data buffers
+    // Input field metadata and data
+    LdDecodeMetaData::Field firstField;
     QByteArray firstFieldData;
+    LdDecodeMetaData::Field secondField;
     QByteArray secondFieldData;
-
-    // Frame metadata
-    qint32 firstFieldPhaseID; // not used in PAL
-    qint32 secondFieldPhaseID; // not used in PAL
-    qreal burstMedianIre;
 
     while(!abort) {
         // Get the next frame to process from the input file
-        if (!decoderPool.getInputFrame(frameNumber, firstFieldData, secondFieldData,
-                                       firstFieldPhaseID, secondFieldPhaseID, burstMedianIre)) {
+        if (!decoderPool.getInputFrame(frameNumber, firstField, firstFieldData, secondField, secondFieldData)) {
             // No more input frames -- exit
             break;
         }
 
-        // Calculate the saturation level from the burst median IRE
-        // Note: This code works as a temporary MTF compensator whilst ld-decode gets
-        // real MTF compensation added to it.
-        // PAL burst is 300 mV p-p (about 43 IRE, as 100 IRE = 700 mV)
-        qreal nominalBurstIre = 300 * (100.0 / 700) / 2;
-        qreal tSaturation = 100 * (nominalBurstIre / burstMedianIre);
-
-        if (config.blackAndWhite) {
-            tSaturation = 0;
-        }
-
         // Perform the PALcolour filtering
-        QByteArray outputData = palColour.performDecode(firstFieldData, secondFieldData, 100, static_cast<qint32>(tSaturation));
+        QByteArray outputData = palColour.decodeFrame(firstField, firstFieldData, secondField, secondFieldData);
 
         // PALcolour outputs the whole frame; crop it to the active area
         QByteArray croppedData = PalDecoder::cropOutputFrame(config, outputData);
