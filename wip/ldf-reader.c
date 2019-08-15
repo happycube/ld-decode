@@ -72,6 +72,8 @@ static int decode_packet(int *got_frame, int cached)
                 return decoded;
             }
 
+            // fprintf(stderr, "%lld %d\n", frame->pts, offset);
+
             /* Write the raw audio data samples of the first plane. This works
              * fine for packed formats (e.g. AV_SAMPLE_FMT_S16). However,
              * most audio decoders output planar audio, which uses a separate
