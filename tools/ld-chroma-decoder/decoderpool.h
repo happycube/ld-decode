@@ -38,26 +38,18 @@
 
 #include "decoder.h"
 
-class DecoderPool : public QObject
+class DecoderPool
 {
-    Q_OBJECT
 public:
     explicit DecoderPool(Decoder &decoder, QString inputFileName,
                          LdDecodeMetaData &ldDecodeMetaData, QString outputFileName,
-                         qint32 startFrame, qint32 length, qint32 maxThreads,
-                         QObject *parent = nullptr);
+                         qint32 startFrame, qint32 length, qint32 maxThreads);
     bool process();
 
     // Member functions used by worker threads
     bool getInputFrame(qint32& frameNumber, QByteArray& firstFieldData, QByteArray& secondFieldData,
                        qint32& firstFieldPhaseID, qint32& secondFieldPhaseID, qreal& burstMedianIre);
     bool putOutputFrame(qint32 frameNumber, QByteArray& rgbOutput);
-
-signals:
-
-public slots:
-
-private slots:
 
 private:
     // Parameters
