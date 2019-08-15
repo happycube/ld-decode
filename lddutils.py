@@ -443,6 +443,7 @@ class LoadLDF:
         if self.ldfreader is None:
             command = ["ld-ldf-reader", self.filename, str(sample)]
             self.ldfreader = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            self.position = sample_bytes
 
         if sample_bytes < self.position:
             # Seeking backwards - use data from rewind_buf
