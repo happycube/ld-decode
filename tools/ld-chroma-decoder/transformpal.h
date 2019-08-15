@@ -43,13 +43,12 @@ public:
     // threshold is the similarity threshold for the filter (values from 0-1
     // are meaningful; 0.6 is pyctools-pal's default)
     void updateConfiguration(const LdDecodeMetaData::VideoParameters &videoParameters,
-                             qint32 firstActiveLine, qint32 lastActiveLine,
                              double threshold);
 
     // Filter an input field.
     // Returns a pointer to an array of the same size (owned by this object)
     // containing the chroma signal.
-    const double *filterField(qint32 fieldNumber, const QByteArray &fieldData);
+    const double *filterField(qint32 firstFieldLine, qint32 lastFieldLine, const QByteArray &fieldData);
 
 private:
     // Apply the frequency-domain filter
@@ -58,8 +57,6 @@ private:
     // Configuration parameters
     bool configurationSet;
     LdDecodeMetaData::VideoParameters videoParameters;
-    qint32 firstActiveLine;
-    qint32 lastActiveLine;
     double threshold;
 
     // Maximum field size, based on PAL

@@ -84,12 +84,9 @@ TransformPal::~TransformPal()
 }
 
 void TransformPal::updateConfiguration(const LdDecodeMetaData::VideoParameters &_videoParameters,
-                                       qint32 _firstActiveLine, qint32 _lastActiveLine,
                                        double _threshold)
 {
     videoParameters = _videoParameters;
-    firstActiveLine = _firstActiveLine;
-    lastActiveLine = _lastActiveLine;
     threshold = _threshold;
 
     // Resize the chroma buffer
@@ -98,18 +95,10 @@ void TransformPal::updateConfiguration(const LdDecodeMetaData::VideoParameters &
     configurationSet = true;
 }
 
-const double *TransformPal::filterField(qint32 fieldNumber, const QByteArray &fieldData)
+const double *TransformPal::filterField(qint32 firstFieldLine, qint32 lastFieldLine, const QByteArray &fieldData)
 {
     assert(configurationSet);
-    assert(fieldNumber == 0 || fieldNumber == 1);
     assert(!fieldData.isNull());
-
-    // Work out the active lines to be decoded within this field.
-    // If firstActiveLine or lastActiveLine is odd, we can end up with
-    // different ranges for the two fields, so we need to be careful
-    // about how this is rounded.
-    const qint32 firstFieldLine = (firstActiveLine + 1 - fieldNumber) / 2;
-    const qint32 lastFieldLine = (lastActiveLine + 1 - fieldNumber) / 2;
 
     // Pointers to the input and output data
     const quint16 *inputPtr = reinterpret_cast<const quint16 *>(fieldData.data());

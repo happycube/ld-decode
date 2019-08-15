@@ -77,9 +77,7 @@ void PalColour::updateConfiguration(const LdDecodeMetaData::VideoParameters &_vi
 
     if (configuration.useTransformFilter) {
         // Configure Transform PAL
-        transformPal.updateConfiguration(videoParameters,
-                                         configuration.firstActiveLine, configuration.lastActiveLine,
-                                         configuration.transformThreshold);
+        transformPal.updateConfiguration(videoParameters, configuration.transformThreshold);
     }
 
     configurationSet = true;
@@ -247,7 +245,7 @@ void PalColour::decodeField(const FieldInfo &field, const QByteArray &fieldData)
     const double *chromaData = nullptr;
     if (configuration.useTransformFilter) {
         // Use Transform PAL filter to extract chroma
-        chromaData = transformPal.filterField(field.number, fieldData);
+        chromaData = transformPal.filterField(field.firstLine, field.lastLine, fieldData);
     }
 
     for (qint32 fieldLine = field.firstLine; fieldLine < field.lastLine; fieldLine++) {
