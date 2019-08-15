@@ -79,7 +79,7 @@ void MainWindow::updateGUIsourcesAvailable()
     ui->frameNumberHorizontalSlider->setEnabled(true);
 
     // Set the spin box to the current frame number
-    ui->frameNumberSpinBox->setValue(tbcSources.getCurrentFrameNumber());
+    ui->frameNumberSpinBox->setValue(tbcSources.getCurrentVbiFrameNumber());
 
     // Enable previous/next buttons to rapidly auto-repeat
     ui->previousFramePushButton->setAutoRepeat(true);
@@ -133,30 +133,29 @@ void MainWindow::sourceChanged()
     this->setWindowTitle(tr("ld-combine - ") + tbcSources.getCurrentSourceFilename());
 
     if (tbcSources.getNumberOfAvailableSources() == 1) {
-        tbcSources.setCurrentFrameNumber(tbcSources.getMinimumFrameNumber());
+        tbcSources.setCurrentVbiFrameNumber(tbcSources.getMinimumVbiFrameNumber());
     }
 
     // Set the status bar text
     applicationStatus.setText("Source #" + QString::number(tbcSources.getCurrentSource()) + " selected - " +
                               " " + QString::number(tbcSources.getCurrentSourceNumberOfFrames()) + " frames in the range of " +
-                              QString::number(tbcSources.getCurrentSourceMinimumFrameNumber()) + " to " +
-                              QString::number(tbcSources.getCurrentSourceMaxmumFrameNumber()));
+                              QString::number(tbcSources.getCurrentSourceMinimumVbiFrameNumber()) + " to " +
+                              QString::number(tbcSources.getCurrentSourceMaximumVbiFrameNumber()));
 
     // Set the source selection combo box index
     ui->sourceSelectComboBox->setCurrentIndex(tbcSources.getCurrentSource());
 
     // Set the horizontal slider bar
-    ui->frameNumberHorizontalSlider->setMinimum(tbcSources.getMinimumFrameNumber());
-    ui->frameNumberHorizontalSlider->setMaximum(tbcSources.getMaximumFrameNumber());
-    ui->frameNumberHorizontalSlider->setValue(tbcSources.getCurrentFrameNumber());
-    qDebug() << "Slider range set to" << tbcSources.getMinimumFrameNumber() << "-" << tbcSources.getMaximumFrameNumber();
+    ui->frameNumberHorizontalSlider->setMinimum(tbcSources.getMinimumVbiFrameNumber());
+    ui->frameNumberHorizontalSlider->setMaximum(tbcSources.getMaximumVbiFrameNumber());
+    ui->frameNumberHorizontalSlider->setValue(tbcSources.getCurrentVbiFrameNumber());
+    qDebug() << "Slider range set to" << tbcSources.getMinimumVbiFrameNumber() << "-" << tbcSources.getMaximumVbiFrameNumber();
 
     // Set the frame number spin box
-    ui->frameNumberSpinBox->setValue(tbcSources.getCurrentFrameNumber());
+    ui->frameNumberSpinBox->setValue(tbcSources.getCurrentVbiFrameNumber());
 
     // Update the disc report
     reportDialog->clearReport();
-    reportDialog->showReport(tbcSources.getCurrentMapReport());
 
     showFrame();
 
@@ -241,28 +240,28 @@ void MainWindow::on_actionAbout_ld_combine_triggered()
 
 void MainWindow::on_previousFramePushButton_clicked()
 {
-    qint32 frameNumber = tbcSources.getCurrentFrameNumber();
-    tbcSources.setCurrentFrameNumber(tbcSources.getCurrentFrameNumber() - 1);
+    qint32 frameNumber = tbcSources.getCurrentVbiFrameNumber();
+    tbcSources.setCurrentVbiFrameNumber(tbcSources.getCurrentVbiFrameNumber() - 1);
     ui->frameNumberSpinBox->blockSignals(true);
     ui->frameNumberHorizontalSlider->blockSignals(true);
-    ui->frameNumberSpinBox->setValue(tbcSources.getCurrentFrameNumber());
-    ui->frameNumberHorizontalSlider->setValue(tbcSources.getCurrentFrameNumber());
+    ui->frameNumberSpinBox->setValue(tbcSources.getCurrentVbiFrameNumber());
+    ui->frameNumberHorizontalSlider->setValue(tbcSources.getCurrentVbiFrameNumber());
     ui->frameNumberSpinBox->blockSignals(false);
     ui->frameNumberHorizontalSlider->blockSignals(false);
-    if (frameNumber != tbcSources.getCurrentFrameNumber()) showFrame();
+    if (frameNumber != tbcSources.getCurrentVbiFrameNumber()) showFrame();
 }
 
 void MainWindow::on_nextFramePushButton_clicked()
 {
-    qint32 frameNumber = tbcSources.getCurrentFrameNumber();
-    tbcSources.setCurrentFrameNumber(frameNumber + 1);
+    qint32 frameNumber = tbcSources.getCurrentVbiFrameNumber();
+    tbcSources.setCurrentVbiFrameNumber(frameNumber + 1);
     ui->frameNumberSpinBox->blockSignals(true);
     ui->frameNumberHorizontalSlider->blockSignals(true);
-    ui->frameNumberSpinBox->setValue(tbcSources.getCurrentFrameNumber());
-    ui->frameNumberHorizontalSlider->setValue(tbcSources.getCurrentFrameNumber());
+    ui->frameNumberSpinBox->setValue(tbcSources.getCurrentVbiFrameNumber());
+    ui->frameNumberHorizontalSlider->setValue(tbcSources.getCurrentVbiFrameNumber());
     ui->frameNumberSpinBox->blockSignals(false);
     ui->frameNumberHorizontalSlider->blockSignals(false);
-    if (frameNumber != tbcSources.getCurrentFrameNumber()) showFrame();
+    if (frameNumber != tbcSources.getCurrentVbiFrameNumber()) showFrame();
 }
 
 // User has selected a different source
@@ -278,29 +277,28 @@ void MainWindow::on_sourceSelectComboBox_currentIndexChanged(int index)
 
 void MainWindow::on_frameNumberSpinBox_valueChanged(int arg1)
 {
-    qint32 frameNumber = tbcSources.getCurrentFrameNumber();
-    tbcSources.setCurrentFrameNumber(arg1);
+    qint32 frameNumber = tbcSources.getCurrentVbiFrameNumber();
+    tbcSources.setCurrentVbiFrameNumber(arg1);
     ui->frameNumberHorizontalSlider->blockSignals(true);
-    ui->frameNumberSpinBox->setValue(tbcSources.getCurrentFrameNumber());
-    ui->frameNumberHorizontalSlider->setValue(tbcSources.getCurrentFrameNumber());
+    ui->frameNumberSpinBox->setValue(tbcSources.getCurrentVbiFrameNumber());
+    ui->frameNumberHorizontalSlider->setValue(tbcSources.getCurrentVbiFrameNumber());
     ui->frameNumberHorizontalSlider->blockSignals(false);
-    if (frameNumber != tbcSources.getCurrentFrameNumber()) showFrame();
+    if (frameNumber != tbcSources.getCurrentVbiFrameNumber()) showFrame();
 }
 
 void MainWindow::on_frameNumberHorizontalSlider_valueChanged(int value)
 {
-    qint32 frameNumber = tbcSources.getCurrentFrameNumber();
-    tbcSources.setCurrentFrameNumber(value);
+    qint32 frameNumber = tbcSources.getCurrentVbiFrameNumber();
+    tbcSources.setCurrentVbiFrameNumber(value);
     ui->frameNumberSpinBox->blockSignals(true);
-    ui->frameNumberSpinBox->setValue(tbcSources.getCurrentFrameNumber());
+    ui->frameNumberSpinBox->setValue(tbcSources.getCurrentVbiFrameNumber());
     ui->frameNumberSpinBox->blockSignals(false);
-    if (frameNumber != tbcSources.getCurrentFrameNumber()) showFrame();
+    if (frameNumber != tbcSources.getCurrentVbiFrameNumber()) showFrame();
 }
 
 void MainWindow::on_actionSource_report_triggered()
 {
     reportDialog->clearReport();
-    reportDialog->showReport(tbcSources.getCurrentMapReport());
     reportDialog->show();
 }
 
