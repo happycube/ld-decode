@@ -41,9 +41,20 @@ class PalColour : public QObject
 
 public:
     explicit PalColour(QObject *parent = nullptr);
+
+    struct Configuration {
+        bool useTransformFilter = false;
+        double transformThreshold = 0.4;
+
+        // Interlaced line 44 is PAL line 23 (the first active half-line)
+        qint32 firstActiveLine = 44;
+        // Interlaced line 619 is PAL line 623 (the last active half-line)
+        qint32 lastActiveLine = 620;
+    };
+
+    const Configuration &getConfiguration() const;
     void updateConfiguration(const LdDecodeMetaData::VideoParameters &videoParameters,
-                             qint32 firstActiveLine, qint32 lastActiveLine,
-                             bool useTransformFilter = false, double transformThreshold = 0.4);
+                             const Configuration &configuration);
 
     // Decode two fields to produce an interlaced frame.
     // contrast and saturation are user-adjustable controls; 100 is nominal.
@@ -94,10 +105,8 @@ private:
 
     // Configuration parameters
     bool configurationSet;
+    Configuration configuration;
     LdDecodeMetaData::VideoParameters videoParameters;
-    qint32 firstActiveLine;
-    qint32 lastActiveLine;
-    bool useTransformFilter;
 
     // Transform PAL filter
     TransformPal transformPal;

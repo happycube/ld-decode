@@ -49,8 +49,7 @@ public:
     // Parameters used by PalDecoder and PalThread
     struct Configuration : public Decoder::Configuration {
         bool blackAndWhite;
-        bool useTransformFilter;
-        double transformThreshold;
+        PalColour::Configuration pal;
     };
 
 private:

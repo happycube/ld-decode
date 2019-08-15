@@ -60,21 +60,27 @@ PalColour::PalColour(QObject *parent)
 {
 }
 
+// Return the current configuration
+const PalColour::Configuration &PalColour::getConfiguration() const {
+    return configuration;
+}
+
 void PalColour::updateConfiguration(const LdDecodeMetaData::VideoParameters &_videoParameters,
-                                    qint32 _firstActiveLine, qint32 _lastActiveLine,
-                                    bool _useTransformFilter, double transformThreshold)
+                                    const Configuration &_configuration)
 {
     // Copy the configuration parameters
     videoParameters = _videoParameters;
-    firstActiveLine = _firstActiveLine;
-    lastActiveLine = _lastActiveLine;
-    useTransformFilter = _useTransformFilter;
+    configuration = _configuration;
 
     // Build the look-up tables
     buildLookUpTables();
 
-    // Configure Transform PAL
-    transformPal.updateConfiguration(_videoParameters, _firstActiveLine, _lastActiveLine, transformThreshold);
+    if (configuration.useTransformFilter) {
+        // Configure Transform PAL
+        transformPal.updateConfiguration(videoParameters,
+                                         configuration.firstActiveLine, configuration.lastActiveLine,
+                                         configuration.transformThreshold);
+    }
 
     configurationSet = true;
 }
@@ -211,11 +217,11 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
     outputFrame.fill(0);
 
     if (!firstFieldData.isNull()) {
-        FieldInfo field(0, contrast, saturation, firstActiveLine, lastActiveLine);
+        FieldInfo field(0, contrast, saturation, configuration.firstActiveLine, configuration.lastActiveLine);
         decodeField(field, firstFieldData);
     }
     if (!secondFieldData.isNull()) {
-        FieldInfo field(1, contrast, saturation, firstActiveLine, lastActiveLine);
+        FieldInfo field(1, contrast, saturation, configuration.firstActiveLine, configuration.lastActiveLine);
         decodeField(field, secondFieldData);
     }
 
@@ -239,7 +245,7 @@ void PalColour::decodeField(const FieldInfo &field, const QByteArray &fieldData)
     const quint16 *inputData = reinterpret_cast<const quint16 *>(fieldData.data());
 
     const double *chromaData = nullptr;
-    if (useTransformFilter) {
+    if (configuration.useTransformFilter) {
         // Use Transform PAL filter to extract chroma
         chromaData = transformPal.filterField(field.number, fieldData);
     }
@@ -250,7 +256,7 @@ void PalColour::decodeField(const FieldInfo &field, const QByteArray &fieldData)
         // Detect the colourburst from the composite signal
         detectBurst(line, inputData);
 
-        if (useTransformFilter) {
+        if (configuration.useTransformFilter) {
             // Decode chroma and luma from the Transform PAL output
             decodeLine(field, line, chromaData, inputData);
         } else {
@@ -433,7 +439,7 @@ void PalColour::decodeLine(const FieldInfo &field, const LineInfo &line, const I
     for (qint32 i = videoParameters.activeVideoStart; i < videoParameters.activeVideoEnd; i++) {
         // Compute luma by...
         double rY;
-        if (useTransformFilter) {
+        if (configuration.useTransformFilter) {
             // ... subtracting pre-filtered chroma from the composite input
             rY = comp[i] - in0[i];
         } else {

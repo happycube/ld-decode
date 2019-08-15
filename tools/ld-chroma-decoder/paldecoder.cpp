@@ -30,8 +30,8 @@
 PalDecoder::PalDecoder(bool _blackAndWhite, bool _useTransformFilter, double _transformThreshold)
 {
     config.blackAndWhite = _blackAndWhite;
-    config.useTransformFilter = _useTransformFilter;
-    config.transformThreshold = _transformThreshold;
+    config.pal.useTransformFilter = _useTransformFilter;
+    config.pal.transformThreshold = _transformThreshold;
 }
 
 bool PalDecoder::configure(const LdDecodeMetaData::VideoParameters &videoParameters) {
@@ -42,7 +42,7 @@ bool PalDecoder::configure(const LdDecodeMetaData::VideoParameters &videoParamet
     }
 
     // Compute cropping parameters
-    setVideoParameters(config, videoParameters, 44, 620);
+    setVideoParameters(config, videoParameters, config.pal.firstActiveLine, config.pal.lastActiveLine);
 
     return true;
 }
@@ -56,8 +56,7 @@ PalThread::PalThread(QAtomicInt& _abort, DecoderPool& _decoderPool,
     : QThread(parent), abort(_abort), decoderPool(_decoderPool), config(_config)
 {
     // Configure PALcolour
-    palColour.updateConfiguration(config.videoParameters, config.firstActiveLine, config.lastActiveLine,
-                                  config.useTransformFilter, config.transformThreshold);
+    palColour.updateConfiguration(config.videoParameters, config.pal);
 }
 
 void PalThread::run()

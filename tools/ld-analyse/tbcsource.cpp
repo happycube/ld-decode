@@ -668,8 +668,12 @@ void TbcSource::startBackgroundLoad(QString sourceFilename)
 
     // Configure the chroma decoder
     if (videoParameters.isSourcePal) {
+        PalColour::Configuration configuration;
+
         // Default to the PAL 2D transform filter
-        palColour.updateConfiguration(videoParameters, 44, 620, true);
+        configuration.useTransformFilter = true;
+
+        palColour.updateConfiguration(videoParameters, configuration);
     } else {
         Comb::Configuration configuration;
         configuration.firstActiveLine = 40;
