@@ -74,6 +74,9 @@ private:
 
     // Settings
     const NtscDecoder::Configuration &config;
+
+    // NTSC decoder
+    Comb comb;
 };
 
 #endif // NTSCDECODER_H

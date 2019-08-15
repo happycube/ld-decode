@@ -671,36 +671,9 @@ void TbcSource::startBackgroundLoad(QString sourceFilename)
         // Default to the PAL 2D transform filter
         palColour.updateConfiguration(videoParameters, 44, 620, true);
     } else {
-        // Set the first active scan line
-        qint32 firstActiveScanLine = 40;
-
-        // Get the default configuration for the comb filter
-        Comb::Configuration configuration = ntscColour.getConfiguration();
-
-        // Set the comb filter configuration
-        configuration.blackAndWhite = false;
-
-        // Set the input buffer dimensions configuration
-        configuration.fieldWidth = videoParameters.fieldWidth;
-        configuration.fieldHeight = videoParameters.fieldHeight;
-
-        // Set the active video range
-        configuration.activeVideoStart = videoParameters.activeVideoStart;
-        configuration.activeVideoEnd = videoParameters.activeVideoEnd;
-
-        // Set the first frame scan line which contains active video
-        configuration.firstActiveLine = firstActiveScanLine;
-
-        // Set the IRE levels
-        configuration.blackIre = videoParameters.black16bIre;
-        configuration.whiteIre = videoParameters.white16bIre;
-
-        // Set the filter mode
-        configuration.use3D = false;
-        configuration.showOpticalFlowMap = false;
-
-        // Update the comb filter object's configuration
-        ntscColour.setConfiguration(configuration);
+        Comb::Configuration configuration;
+        configuration.firstActiveLine = 40;
+        ntscColour.updateConfiguration(videoParameters, configuration);
     }
 
     // Generate the graph data for the source

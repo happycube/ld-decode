@@ -29,63 +29,49 @@
 
 // Public methods -----------------------------------------------------------------------------------------------------
 
-Comb::Comb() {
-    // Set default configuration
-    configuration.blackAndWhite = false;
-    configuration.whitePoint100 = false;
-
-    configuration.colorlpf = true; // Use as default
-    configuration.colorlpf_hq = true; // Use as default
-    
-    configuration.cNRLevel = 0.0;
-    configuration.yNRLevel = 1.0;
-
-    // These are the overall dimensions of the input frame
-    configuration.fieldWidth = 910;
-    configuration.fieldHeight = 263;
-
-    // These are the start and end points for the active video line
-    configuration.activeVideoStart = 40;
-    configuration.activeVideoEnd = 840;
-
-    // This sets the first active frame line
-    configuration.firstActiveLine = 43;
-
-    // Set the 16-bit IRE levels
-    configuration.blackIre = 15360;
-    configuration.whiteIre = 51200;
-
-    // Set the filter type
-    configuration.use3D = false;
-    configuration.showOpticalFlowMap = false;
-
-    postConfigurationTasks();
+Comb::Comb()
+    : configurationSet(false)
+{
 }
 
-// Get the comb filter configuration parameters
-Comb::Configuration Comb::getConfiguration()
-{
+// Return the current configuration
+const Comb::Configuration &Comb::getConfiguration() const {
     return configuration;
 }
 
 // Set the comb filter configuration parameters
-void Comb::setConfiguration(const Comb::Configuration &_configuration)
+void Comb::updateConfiguration(const LdDecodeMetaData::VideoParameters &_videoParameters, const Comb::Configuration &_configuration)
 {
+    // Copy the configuration parameters
+    videoParameters = _videoParameters;
+    configuration = _configuration;
+
     // Range check the frame dimensions
-    if (_configuration.fieldWidth > 910) qCritical() << "Comb::Comb(): Frame width exceeds allowed maximum!";
-    if (((_configuration.fieldHeight * 2) - 1) > 525) qCritical() << "Comb::Comb(): Frame height exceeds allowed maximum!";
+    if (videoParameters.fieldWidth > 910) qCritical() << "Comb::Comb(): Frame width exceeds allowed maximum!";
+    if (((videoParameters.fieldHeight * 2) - 1) > 525) qCritical() << "Comb::Comb(): Frame height exceeds allowed maximum!";
 
     // Range check the video start
-    if (_configuration.activeVideoStart < 16) qCritical() << "Comb::Comb(): activeVideoStart must be > 16!";
+    if (videoParameters.activeVideoStart < 16) qCritical() << "Comb::Comb(): activeVideoStart must be > 16!";
 
-    configuration = _configuration;
-    postConfigurationTasks();
+    // Set the IRE scale
+    irescale = (videoParameters.white16bIre - videoParameters.black16bIre) / 100;
+
+    // Set the frame height
+    frameHeight = ((videoParameters.fieldHeight * 2) - 1);
+
+    configurationSet = true;
 }
 
 // Process the input buffer into the RGB output buffer
 QByteArray Comb::process(QByteArray firstFieldInputBuffer, QByteArray secondFieldInputBuffer, qreal burstMedianIre,
                          qint32 firstFieldPhaseID, qint32 secondFieldPhaseID)
 {
+    // Ensure the object has been configured
+    if (!configurationSet) {
+        qDebug() << "Comb::process(): Called, but the object has not been configured";
+        return nullptr;
+    }
+
     // Allocate the frame buffer
     FrameBuffer currentFrameBuffer;
     currentFrameBuffer.clpbuffer.resize(3);
@@ -101,8 +87,8 @@ QByteArray Comb::process(QByteArray firstFieldInputBuffer, QByteArray secondFiel
     qint32 fieldLine = 0;
     currentFrameBuffer.rawbuffer.clear();
     for (qint32 frameLine = 0; frameLine < frameHeight; frameLine += 2) {
-        currentFrameBuffer.rawbuffer.append(firstFieldInputBuffer.mid(fieldLine * configuration.fieldWidth * 2, configuration.fieldWidth * 2));
-        currentFrameBuffer.rawbuffer.append(secondFieldInputBuffer.mid(fieldLine * configuration.fieldWidth * 2, configuration.fieldWidth * 2));
+        currentFrameBuffer.rawbuffer.append(firstFieldInputBuffer.mid(fieldLine * videoParameters.fieldWidth * 2, videoParameters.fieldWidth * 2));
+        currentFrameBuffer.rawbuffer.append(secondFieldInputBuffer.mid(fieldLine * videoParameters.fieldWidth * 2, videoParameters.fieldWidth * 2));
         fieldLine++;
     }
 
@@ -191,16 +177,6 @@ QByteArray Comb::process(QByteArray firstFieldInputBuffer, QByteArray secondFiel
 
 // Private methods ----------------------------------------------------------------------------------------------------
 
-// Tasks to be performed if the configuration changes
-void Comb::postConfigurationTasks()
-{
-    // Set the IRE scale
-    irescale = (configuration.whiteIre - configuration.blackIre) / 100;
-
-    // Set the frame height
-    frameHeight = ((configuration.fieldHeight * 2) - 1);
-}
-
 /* 
  * The color burst frequency is 227.5 cycles per line, so it flips 180 degrees for each line.
  * 
@@ -237,9 +213,9 @@ void Comb::split1D(FrameBuffer *frameBuffer)
 {
     for (qint32 lineNumber = configuration.firstActiveLine; lineNumber < frameHeight; lineNumber++) {
         // Get a pointer to the line's data
-        quint16 *line = reinterpret_cast<quint16 *>(frameBuffer->rawbuffer.data() + (lineNumber * configuration.fieldWidth) * 2);
+        quint16 *line = reinterpret_cast<quint16 *>(frameBuffer->rawbuffer.data() + (lineNumber * videoParameters.fieldWidth) * 2);
 
-        for (qint32 h = configuration.activeVideoStart; h < configuration.activeVideoEnd; h++) {
+        for (qint32 h = videoParameters.activeVideoStart; h < videoParameters.activeVideoEnd; h++) {
             qreal tc1 = (((line[h + 2] + line[h - 2]) / 2) - line[h]);
 
             // Record the 1D C value
@@ -268,7 +244,7 @@ void Comb::split2D(FrameBuffer *frameBuffer)
         }
 
         // 2D filtering.
-        for (qint32 h = configuration.activeVideoStart; h < configuration.activeVideoEnd; h++) {
+        for (qint32 h = videoParameters.activeVideoStart; h < videoParameters.activeVideoEnd; h++) {
             qreal tc1;
 
             qreal kp, kn;
@@ -322,10 +298,10 @@ void Comb::split3D(FrameBuffer *currentFrame, FrameBuffer *previousFrame)
 
     for (qint32 lineNumber = configuration.firstActiveLine; lineNumber < frameHeight; lineNumber++) {
 
-        quint16 *currentLine = reinterpret_cast<quint16 *>(currentFrame->rawbuffer.data() + (lineNumber * configuration.fieldWidth) * 2);
-        quint16 *previousLine = reinterpret_cast<quint16 *>(previousFrame->rawbuffer.data() + (lineNumber * configuration.fieldWidth) * 2);
+        quint16 *currentLine = reinterpret_cast<quint16 *>(currentFrame->rawbuffer.data() + (lineNumber * videoParameters.fieldWidth) * 2);
+        quint16 *previousLine = reinterpret_cast<quint16 *>(previousFrame->rawbuffer.data() + (lineNumber * videoParameters.fieldWidth) * 2);
 
-        for (qint32 h = configuration.activeVideoStart; h < configuration.activeVideoEnd; h++) {
+        for (qint32 h = videoParameters.activeVideoStart; h < videoParameters.activeVideoEnd; h++) {
             currentFrame->clpbuffer[2].pixel[lineNumber][h] = (previousLine[h] - currentLine[h]) / 2;
         }
     }
@@ -339,11 +315,11 @@ void Comb::splitIQ(FrameBuffer *frameBuffer)
 
     for (qint32 lineNumber = configuration.firstActiveLine; lineNumber < frameHeight; lineNumber++) {
         // Get a pointer to the line's data
-        quint16 *line = reinterpret_cast<quint16 *>(frameBuffer->rawbuffer.data() + (lineNumber * configuration.fieldWidth) * 2);
+        quint16 *line = reinterpret_cast<quint16 *>(frameBuffer->rawbuffer.data() + (lineNumber * videoParameters.fieldWidth) * 2);
         bool linePhase = GetLinePhase(frameBuffer, lineNumber);
 
         qreal si = 0, sq = 0;
-        for (qint32 h = configuration.activeVideoStart; h < configuration.activeVideoEnd; h++) {
+        for (qint32 h = videoParameters.activeVideoStart; h < videoParameters.activeVideoEnd; h++) {
             qint32 phase = h % 4;
 
             // Take the 2D C
@@ -389,7 +365,7 @@ void Comb::filterIQ(YiqBuffer &yiqBuffer)
 
         qreal filti = 0, filtq = 0;
 
-        for (qint32 h = configuration.activeVideoStart; h < configuration.activeVideoEnd; h++) {
+        for (qint32 h = videoParameters.activeVideoStart; h < videoParameters.activeVideoEnd; h++) {
             qint32 phase = h % 4;
 
             switch (phase) {
@@ -426,17 +402,17 @@ void Comb::doCNR(YiqBuffer &yiqBuffer)
     qreal nr_c = configuration.cNRLevel * irescale;
 
     QVector<YIQ> hplinef;
-    hplinef.resize(configuration.fieldWidth + 32);
+    hplinef.resize(videoParameters.fieldWidth + 32);
 
     for (qint32 lineNumber = configuration.firstActiveLine; lineNumber < frameHeight; lineNumber++) {
         // Filters not cleared from previous line
 
-        for (qint32 h = configuration.activeVideoStart; h <= configuration.activeVideoEnd; h++) {
+        for (qint32 h = videoParameters.activeVideoStart; h <= videoParameters.activeVideoEnd; h++) {
             hplinef[h].i = iFilter.feed(yiqBuffer[lineNumber][h].i);
             hplinef[h].q = qFilter.feed(yiqBuffer[lineNumber][h].q);
         }
 
-        for (qint32 h = configuration.activeVideoStart; h < configuration.activeVideoEnd; h++) {
+        for (qint32 h = videoParameters.activeVideoStart; h < videoParameters.activeVideoEnd; h++) {
             // Offset by 12 to cover the filter delay
             qreal ai = hplinef[h + 12].i;
             qreal aq = hplinef[h + 12].q;
@@ -466,16 +442,16 @@ void Comb::doYNR(YiqBuffer &yiqBuffer)
     qreal nr_y = configuration.yNRLevel * irescale;
 
     QVector<YIQ> hplinef;
-    hplinef.resize(configuration.fieldWidth + 32);
+    hplinef.resize(videoParameters.fieldWidth + 32);
 
     for (qint32 lineNumber = configuration.firstActiveLine; lineNumber < frameHeight; lineNumber++) {
         // Filter not cleared from previous line
 
-        for (qint32 h = configuration.activeVideoStart; h <= configuration.activeVideoEnd; h++) {
+        for (qint32 h = videoParameters.activeVideoStart; h <= videoParameters.activeVideoEnd; h++) {
             hplinef[h].y = yFilter.feed(yiqBuffer[lineNumber][h].y);
         }
 
-        for (qint32 h = configuration.activeVideoStart; h < configuration.activeVideoEnd; h++) {
+        for (qint32 h = videoParameters.activeVideoStart; h < videoParameters.activeVideoEnd; h++) {
             qreal a = hplinef[h + 12].y;
 
             if (fabs(a) > nr_y) {
@@ -491,28 +467,28 @@ void Comb::doYNR(YiqBuffer &yiqBuffer)
 QByteArray Comb::yiqToRgbFrame(const YiqBuffer &yiqBuffer, qreal burstLevel)
 {
     QByteArray rgbOutputFrame;
-    rgbOutputFrame.resize((configuration.fieldWidth * frameHeight * 3) * 2); // * 3 * 2 for RGB 16-16-16)
+    rgbOutputFrame.resize((videoParameters.fieldWidth * frameHeight * 3) * 2); // * 3 * 2 for RGB 16-16-16)
 
     // Initialise the output frame
     rgbOutputFrame.fill(0);
 
     // Initialise YIQ to RGB converter
-    RGB rgb(configuration.whiteIre, configuration.blackIre, configuration.whitePoint100, configuration.blackAndWhite, burstLevel);
+    RGB rgb(videoParameters.white16bIre, videoParameters.black16bIre, configuration.whitePoint100, configuration.blackAndWhite, burstLevel);
 
     // Perform YIQ to RGB conversion
     for (qint32 lineNumber = configuration.firstActiveLine; lineNumber < frameHeight; lineNumber++) {
         // Map the QByteArray data to an unsigned 16 bit pointer
-        quint16 *linePointer = reinterpret_cast<quint16 *>(rgbOutputFrame.data() + ((configuration.fieldWidth * 3 * lineNumber) * 2));
+        quint16 *linePointer = reinterpret_cast<quint16 *>(rgbOutputFrame.data() + ((videoParameters.fieldWidth * 3 * lineNumber) * 2));
 
         // Offset the output by the activeVideoStart to keep the output frame
         // in the same x position as the input video frame (the +6 realigns the output
         // to the source frame; not sure where the 2 pixel offset is coming from, but
         // it's really not important)
-        qint32 o = (configuration.activeVideoStart * 3) + 6;
+        qint32 o = (videoParameters.activeVideoStart * 3) + 6;
 
         // Fill the output line with the RGB values
-        rgb.convertLine(&yiqBuffer[lineNumber][configuration.activeVideoStart],
-                        &yiqBuffer[lineNumber][configuration.activeVideoEnd],
+        rgb.convertLine(&yiqBuffer[lineNumber][videoParameters.activeVideoStart],
+                        &yiqBuffer[lineNumber][videoParameters.activeVideoEnd],
                         &linePointer[o]);
     }
 
@@ -530,10 +506,10 @@ void Comb::overlayOpticalFlowMap(const FrameBuffer &frameBuffer, QByteArray &rgb
     // Overlay the optical flow map on the output RGB
     for (qint32 lineNumber = configuration.firstActiveLine; lineNumber < frameHeight; lineNumber++) {
         // Map the QByteArray data to an unsigned 16 bit pointer
-        quint16 *linePointer = reinterpret_cast<quint16 *>(rgbFrame.data() + ((configuration.fieldWidth * 3 * lineNumber) * 2));
+        quint16 *linePointer = reinterpret_cast<quint16 *>(rgbFrame.data() + ((videoParameters.fieldWidth * 3 * lineNumber) * 2));
 
         // Fill the output frame with the RGB values
-        for (qint32 h = configuration.activeVideoStart; h < configuration.activeVideoEnd; h++) {
+        for (qint32 h = videoParameters.activeVideoStart; h < videoParameters.activeVideoEnd; h++) {
             qint32 intensity = static_cast<qint32>(frameBuffer.kValues[(lineNumber * 910) + h] * 65535);
             // Make the RGB more purple to show where motion was detected
             qint32 red = linePointer[(h * 3)] + intensity;
@@ -558,7 +534,7 @@ void Comb::adjustY(FrameBuffer *frameBuffer, YiqBuffer &yiqBuffer)
     for (qint32 lineNumber = configuration.firstActiveLine; lineNumber < frameHeight; lineNumber++) {
         bool linePhase = GetLinePhase(frameBuffer, lineNumber);
 
-        for (qint32 h = configuration.activeVideoStart; h < configuration.activeVideoEnd; h++) {
+        for (qint32 h = videoParameters.activeVideoStart; h < videoParameters.activeVideoEnd; h++) {
             qreal comp = 0;
             qint32 phase = h % 4;
 
