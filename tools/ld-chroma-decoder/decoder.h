@@ -61,6 +61,16 @@ public:
     // If the video is not compatible, print an error message and return false.
     virtual bool configure(const LdDecodeMetaData::VideoParameters &videoParameters) = 0;
 
+    // After configuration, return the number of frames that the decoder needs
+    // to be able to see into the past (each frame being two InputFields).
+    // The default implementation returns 0, which is appropriate for 1D/2D decoders.
+    virtual qint32 getLookBehind();
+
+    // After configuration, return the number of frames that the decoder needs
+    // to be able to see into the future (each frame being two InputFields).
+    // The default implementation returns 0, which is appropriate for 1D/2D decoders.
+    virtual qint32 getLookAhead();
+
     // Construct a new worker thread
     virtual QThread *makeThread(QAtomicInt& abort, DecoderPool& decoderPool) = 0;
 

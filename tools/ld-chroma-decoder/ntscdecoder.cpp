@@ -51,6 +51,16 @@ bool NtscDecoder::configure(const LdDecodeMetaData::VideoParameters &videoParame
     return true;
 }
 
+qint32 NtscDecoder::getLookBehind()
+{
+    if (config.combConfig.use3D) {
+        // In 3D mode, we need to see the previous frame
+        return 1;
+    }
+
+    return 0;
+}
+
 QThread *NtscDecoder::makeThread(QAtomicInt& abort, DecoderPool& decoderPool)
 {
     return new NtscThread(abort, decoderPool, config);

@@ -298,9 +298,6 @@ int main(int argc, char *argv[])
         decoder.reset(new NtscDecoder(blackAndWhite, whitePoint, false, false));
     } else if (decoderName == "ntsc3d") {
         decoder.reset(new NtscDecoder(blackAndWhite, whitePoint, true, showOpticalFlow));
-
-        // In 3D mode, NtscDecoder keeps state between frames, so it can't be parallelised.
-        maxThreads = 1;
     } else {
         qCritical() << "Unknown decoder " << decoderName;
         return -1;

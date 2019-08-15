@@ -45,6 +45,7 @@ class NtscDecoder : public Decoder {
 public:
     NtscDecoder(bool blackAndWhite, bool whitePoint, bool use3D, bool showOpticalFlowMap);
     bool configure(const LdDecodeMetaData::VideoParameters &videoParameters) override;
+    qint32 getLookBehind() override;
     QThread *makeThread(QAtomicInt& abort, DecoderPool& decoderPool) override;
 
     // Parameters used by NtscDecoder and NtscThread

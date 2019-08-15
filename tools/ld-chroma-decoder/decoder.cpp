@@ -26,6 +26,16 @@
 
 #include "decoderpool.h"
 
+qint32 Decoder::getLookBehind()
+{
+    return 0;
+}
+
+qint32 Decoder::getLookAhead()
+{
+    return 0;
+}
+
 void Decoder::setVideoParameters(Decoder::Configuration &config, const LdDecodeMetaData::VideoParameters &videoParameters,
                                  qint32 firstActiveLine, qint32 lastActiveLine) {
 
@@ -107,24 +117,31 @@ DecoderThread::DecoderThread(QAtomicInt& _abort, DecoderPool& _decoderPool, QObj
 
 void DecoderThread::run()
 {
-    qint32 frameNumber;
+    // Input and output data
+    QVector<Decoder::InputField> inputFields;
+    QVector<QByteArray> outputFrames;
 
-    // Input fields
-    Decoder::InputField firstField;
-    Decoder::InputField secondField;
-
-    while(!abort) {
-        // Get the next frame to process from the input file
-        if (!decoderPool.getInputFrame(frameNumber, firstField, secondField)) {
+    while (!abort) {
+        // Get the next batch of fields to process
+        qint32 startFrameNumber, startIndex, endIndex;
+        if (!decoderPool.getInputFrames(startFrameNumber, inputFields, startIndex, endIndex)) {
             // No more input frames -- exit
             break;
         }
 
-        // Decode and crop the frame
-        QByteArray frameData = decodeFrame(firstField, secondField);
+        // Decode lookahead fields, discarding the result
+        for (qint32 i = 0; i < startIndex; i += 2) {
+            decodeFrame(inputFields[i], inputFields[i + 1]);
+        }
 
-        // Write the result to the output file
-        if (!decoderPool.putOutputFrame(frameNumber, frameData)) {
+        // Decode real fields to frames
+        outputFrames.resize((endIndex - startIndex) / 2);
+        for (qint32 i = startIndex, j = 0; i < endIndex; i += 2, j++) {
+            outputFrames[j] = decodeFrame(inputFields[i], inputFields[i + 1]);
+        }
+
+        // Write the frames to the output file
+        if (!decoderPool.putOutputFrames(startFrameNumber, outputFrames)) {
             abort = true;
             break;
         }
