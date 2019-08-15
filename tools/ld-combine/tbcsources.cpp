@@ -27,7 +27,7 @@
 TbcSources::TbcSources(QObject *parent) : QObject(parent)
 {
     currentSource = 0;
-    currentFrameNumber = 1;
+    currentVbiFrameNumber = 1;
     backgroundLoadErrorMessage.clear();
 }
 
@@ -109,59 +109,73 @@ QImage TbcSources::getCurrentFrameImage()
     // Create a QImage
     QImage frameImage = QImage(videoParameters.fieldWidth, frameHeight, QImage::Format_RGB888);
 
-    // Get the required field numbers
-    qint32 firstFieldNumber = sourceVideos[currentSource]->ldDecodeMetaData.getFirstFieldNumber(currentFrameNumber);
-    qint32 secondFieldNumber = sourceVideos[currentSource]->ldDecodeMetaData.getSecondFieldNumber(currentFrameNumber);
-
-    // Ensure the frame is not a padded field (i.e. missing)
-    if (!(sourceVideos[currentSource]->ldDecodeMetaData.getField(firstFieldNumber).pad &&
-          sourceVideos[currentSource]->ldDecodeMetaData.getField(secondFieldNumber).pad)) {
-
-        // Get the video field data
-        QByteArray firstFieldData = sourceVideos[currentSource]->sourceVideo.getVideoField(firstFieldNumber);
-        QByteArray secondFieldData = sourceVideos[currentSource]->sourceVideo.getVideoField(secondFieldNumber);
+    // Check that the current source is in range of the require frame number
+    if (currentVbiFrameNumber < sourceVideos[currentSource]->minimumVbiFrameNumber || currentVbiFrameNumber > sourceVideos[currentSource]->maximumVbiFrameNumber) {
+        // Out of range of the current source - return a dummy frame
+        frameImage.fill(Qt::blue);
 
         // Show debug information
-        qDebug().nospace() << "TbcSources::getCurrentFrameImage(): Generating a source image from field pair " << firstFieldNumber <<
-                    "/" << secondFieldNumber << " (" << videoParameters.fieldWidth << "x" <<
-                    frameHeight << ")";
-
-        // Define the data buffers
-        QByteArray firstLineData;
-        QByteArray secondLineData;
-
-        // Copy the raw 16-bit grayscale data into the RGB888 QImage
-        for (qint32 y = 0; y < frameHeight; y++) {
-            // Extract the current scan line data from the frame
-            qint32 startPointer = (y / 2) * videoParameters.fieldWidth * 2;
-            qint32 length = videoParameters.fieldWidth * 2;
-
-            firstLineData = firstFieldData.mid(startPointer, length);
-            secondLineData = secondFieldData.mid(startPointer, length);
-
-            for (qint32 x = 0; x < videoParameters.fieldWidth; x++) {
-                // Take just the MSB of the input data
-                qint32 dp = x * 2;
-                uchar pixelValue;
-                if (y % 2) {
-                    pixelValue = static_cast<uchar>(secondLineData[dp + 1]);
-                } else {
-                    pixelValue = static_cast<uchar>(firstLineData[dp + 1]);
-                }
-
-                qint32 xpp = x * 3;
-                *(frameImage.scanLine(y) + xpp + 0) = static_cast<uchar>(pixelValue); // R
-                *(frameImage.scanLine(y) + xpp + 1) = static_cast<uchar>(pixelValue); // G
-                *(frameImage.scanLine(y) + xpp + 2) = static_cast<uchar>(pixelValue); // B
-            }
-        }
-    } else {
-        // Frame is missing from source - return a dummy frame
-        frameImage.fill(Qt::red);
-
-        // Show debug information
-        qDebug().nospace() << "TbcSources::getCurrentFrameImage(): Source frame is missing - generating dummy image (" <<
+        qDebug().nospace() << "TbcSources::getCurrentFrameImage(): Source frame is out of range - generating dummy image (" <<
                               videoParameters.fieldWidth << "x" << frameHeight << ")";
+    } else {
+        // Offset the VBI frame number to get the sequential source frame number
+        qint32 frameNumber = currentVbiFrameNumber - sourceVideos[currentSource]->minimumVbiFrameNumber + 1;
+        qDebug() << "TbcSources::getCurrentFrameImage(): Request for VBI frame number" << currentVbiFrameNumber << "translated to frame number" << frameNumber;
+
+        // Get the required field numbers
+        qint32 firstFieldNumber = sourceVideos[currentSource]->ldDecodeMetaData.getFirstFieldNumber(frameNumber);
+        qint32 secondFieldNumber = sourceVideos[currentSource]->ldDecodeMetaData.getSecondFieldNumber(frameNumber);
+
+        // Ensure the frame is not a padded field (i.e. missing)
+        if (!(sourceVideos[currentSource]->ldDecodeMetaData.getField(firstFieldNumber).pad &&
+              sourceVideos[currentSource]->ldDecodeMetaData.getField(secondFieldNumber).pad)) {
+
+            // Get the video field data
+            QByteArray firstFieldData = sourceVideos[currentSource]->sourceVideo.getVideoField(firstFieldNumber);
+            QByteArray secondFieldData = sourceVideos[currentSource]->sourceVideo.getVideoField(secondFieldNumber);
+
+            // Show debug information
+            qDebug().nospace() << "TbcSources::getCurrentFrameImage(): Generating a source image from field pair " << firstFieldNumber <<
+                        "/" << secondFieldNumber << " (" << videoParameters.fieldWidth << "x" <<
+                        frameHeight << ")";
+
+            // Define the data buffers
+            QByteArray firstLineData;
+            QByteArray secondLineData;
+
+            // Copy the raw 16-bit grayscale data into the RGB888 QImage
+            for (qint32 y = 0; y < frameHeight; y++) {
+                // Extract the current scan line data from the frame
+                qint32 startPointer = (y / 2) * videoParameters.fieldWidth * 2;
+                qint32 length = videoParameters.fieldWidth * 2;
+
+                firstLineData = firstFieldData.mid(startPointer, length);
+                secondLineData = secondFieldData.mid(startPointer, length);
+
+                for (qint32 x = 0; x < videoParameters.fieldWidth; x++) {
+                    // Take just the MSB of the input data
+                    qint32 dp = x * 2;
+                    uchar pixelValue;
+                    if (y % 2) {
+                        pixelValue = static_cast<uchar>(secondLineData[dp + 1]);
+                    } else {
+                        pixelValue = static_cast<uchar>(firstLineData[dp + 1]);
+                    }
+
+                    qint32 xpp = x * 3;
+                    *(frameImage.scanLine(y) + xpp + 0) = static_cast<uchar>(pixelValue); // R
+                    *(frameImage.scanLine(y) + xpp + 1) = static_cast<uchar>(pixelValue); // G
+                    *(frameImage.scanLine(y) + xpp + 2) = static_cast<uchar>(pixelValue); // B
+                }
+            }
+        } else {
+            // Frame is missing from source - return a dummy frame
+            frameImage.fill(Qt::red);
+
+            // Show debug information
+            qDebug().nospace() << "TbcSources::getCurrentFrameImage(): Source frame is missing/padded - generating dummy image (" <<
+                                  videoParameters.fieldWidth << "x" << frameHeight << ")";
+        }
     }
 
     return frameImage;
@@ -173,8 +187,8 @@ TbcSources::RawFrame TbcSources::getCurrentFrameData()
     RawFrame rawFrame;
 
     // Get the required field numbers
-    qint32 firstFieldNumber = sourceVideos[currentSource]->ldDecodeMetaData.getFirstFieldNumber(currentFrameNumber);
-    qint32 secondFieldNumber = sourceVideos[currentSource]->ldDecodeMetaData.getSecondFieldNumber(currentFrameNumber);
+    qint32 firstFieldNumber = sourceVideos[currentSource]->ldDecodeMetaData.getFirstFieldNumber(currentVbiFrameNumber);
+    qint32 secondFieldNumber = sourceVideos[currentSource]->ldDecodeMetaData.getSecondFieldNumber(currentVbiFrameNumber);
 
     // Get the metadata for the video parameters
     LdDecodeMetaData::VideoParameters videoParameters = sourceVideos[currentSource]->ldDecodeMetaData.getVideoParameters();
@@ -196,32 +210,32 @@ qint32 TbcSources::getCurrentSourceNumberOfFrames()
 }
 
 // Get the currently selected frame number of the current source
-qint32 TbcSources::getCurrentFrameNumber()
+qint32 TbcSources::getCurrentVbiFrameNumber()
 {
     if (sourceVideos.size() == 0) return -1;
-    return currentFrameNumber;
+    return currentVbiFrameNumber;
 }
 
 // Set the current frame number of the current source
-void TbcSources::setCurrentFrameNumber(qint32 frameNumber)
+void TbcSources::setCurrentVbiFrameNumber(qint32 frameNumber)
 {
     if (sourceVideos.size() == 0) return;
 
     // Range check the request
-    if (frameNumber < getMinimumFrameNumber()) {
+    if (frameNumber < getMinimumVbiFrameNumber()) {
         qDebug() << "TbcSources::setCurrentFrameNumber(): Request to set current frame number to" << frameNumber <<
-                    "is out of bounds ( before start of" << getMinimumFrameNumber() << " )";
-        frameNumber = getMinimumFrameNumber();
+                    "is out of bounds ( before start of" << getMinimumVbiFrameNumber() << " ) - Frame number set to" << getMinimumVbiFrameNumber();
+        frameNumber = getMinimumVbiFrameNumber();
     }
 
-    if (frameNumber > getMaximumFrameNumber()) {
+    if (frameNumber > getMaximumVbiFrameNumber()) {
         qDebug() << "TbcSources::setCurrentFrameNumber(): Request to set current frame number to" << frameNumber <<
-                    "is out of bounds ( after end of" << getMaximumFrameNumber() << " )";
-        frameNumber = getMaximumFrameNumber();
+                    "is out of bounds ( after end of" << getMaximumVbiFrameNumber() << " ) - Frame number set to" << getMaximumVbiFrameNumber();
+        frameNumber = getMaximumVbiFrameNumber();
     }
 
     // Set the current frame number
-    currentFrameNumber = frameNumber;
+    currentVbiFrameNumber = frameNumber;
 }
 
 // Get the current source's filename
@@ -231,15 +245,8 @@ QString TbcSources::getCurrentSourceFilename()
     return sourceVideos[currentSource]->filename;
 }
 
-// Get the map report for the current source
-QStringList TbcSources::getCurrentMapReport()
-{
-    if (sourceVideos.size() == 0) return QStringList();
-    return QStringList();
-}
-
-// Get the minimum frame number for all sources
-qint32 TbcSources::getMinimumFrameNumber()
+// Get the minimum VBI frame number for all sources
+qint32 TbcSources::getMinimumVbiFrameNumber()
 {
     qint32 minimumFrameNumber = 1000000;
     for (qint32 i = 0; i < sourceVideos.size(); i++) {
@@ -250,8 +257,8 @@ qint32 TbcSources::getMinimumFrameNumber()
     return minimumFrameNumber;
 }
 
-// Get the maximum frame number for all sources
-qint32 TbcSources::getMaximumFrameNumber()
+// Get the maximum VBI frame number for all sources
+qint32 TbcSources::getMaximumVbiFrameNumber()
 {
     qint32 maximumFrameNumber = 0;
     for (qint32 i = 0; i < sourceVideos.size(); i++) {
@@ -262,14 +269,14 @@ qint32 TbcSources::getMaximumFrameNumber()
     return maximumFrameNumber;
 }
 
-// Get the minimum frame number for the current source
-qint32 TbcSources::getCurrentSourceMinimumFrameNumber()
+// Get the minimum VBI frame number for the current source
+qint32 TbcSources::getCurrentSourceMinimumVbiFrameNumber()
 {
     return sourceVideos[currentSource]->minimumVbiFrameNumber;
 }
 
-// Get the maximum frame number for the current source
-qint32 TbcSources::getCurrentSourceMaxmumFrameNumber()
+// Get the maximum VBI frame number for the current source
+qint32 TbcSources::getCurrentSourceMaximumVbiFrameNumber()
 {
     return sourceVideos[currentSource]->maximumVbiFrameNumber;
 }
@@ -311,6 +318,13 @@ void TbcSources::performBackgroundLoad(QString filename)
     // Get the video parameters from the metadata
     if (backgroundLoadSuccessful) {
         videoParameters = sourceVideos[newSourceNumber]->ldDecodeMetaData.getVideoParameters();
+
+        // Ensure that the TBC file has been mapped
+        if (!videoParameters.isMapped) {
+            qWarning() << "New source video has not been mapped!";
+            backgroundLoadErrorMessage = "Cannot load source - The TBC has not been mapped (please run ld-discmap on the source)!";
+            backgroundLoadSuccessful = false;
+        }
     }
 
     // Ensure that the video standard matches any existing sources
@@ -460,6 +474,9 @@ bool TbcSources::setDiscTypeAndMaxMinFrameVbi(qint32 sourceNumber)
         sourceVideos[sourceNumber]->maximumVbiFrameNumber = clvMax;
         sourceVideos[sourceNumber]->minimumVbiFrameNumber = clvMin;
     }
+
+    qDebug() << "TbcSources::setDiscTypeAndMaxMinFrameVbi(): Minimum VBI frame number is" << sourceVideos[sourceNumber]->minimumVbiFrameNumber;
+    qDebug() << "TbcSources::setDiscTypeAndMaxMinFrameVbi(): Maximum VBI frame number is" << sourceVideos[sourceNumber]->maximumVbiFrameNumber;
 
     return true;
 }

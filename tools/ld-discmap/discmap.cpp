@@ -105,9 +105,16 @@ bool DiscMap::saveSource(QString filename)
 
     // Create a target metadata object (using video and PCM audio settings from the source)
     LdDecodeMetaData targetMetadata;
-    targetMetadata.setVideoParameters(sourceMetaData.getVideoParameters());
+    LdDecodeMetaData::VideoParameters sourceVideoParameters = sourceMetaData.getVideoParameters();
+
+    // Indicate that the source has been mapped
+    sourceVideoParameters.isMapped = true;
+    targetMetadata.setVideoParameters(sourceVideoParameters);
+
+    // Store the PCM audio parameters
     targetMetadata.setPcmAudioParameters(sourceMetaData.getPcmAudioParameters());
 
+    // Process the fields
     QByteArray firstSourceField;
     QByteArray secondSourceField;
     bool writeFail = false;

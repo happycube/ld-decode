@@ -136,6 +136,8 @@ LdDecodeMetaData::VideoParameters LdDecodeMetaData::getVideoParameters()
         videoParameters.fieldHeight = json.value({"videoParameters", "fieldHeight"}).toInt();
         videoParameters.sampleRate = json.value({"videoParameters", "sampleRate"}).toInt();
         videoParameters.fsc = json.value({"videoParameters", "fsc"}).toInt();
+
+        videoParameters.isMapped = json.value({"videoParameters", "isMapped"}).toBool();
     } else {
         qCritical("JSON file invalid: videoParameters object is not defined");
         return videoParameters;
@@ -163,6 +165,8 @@ void LdDecodeMetaData::setVideoParameters (LdDecodeMetaData::VideoParameters _vi
     json.setValue({"videoParameters", "fieldHeight"}, _videoParameters.fieldHeight);
     json.setValue({"videoParameters", "sampleRate"}, _videoParameters.sampleRate);
     json.setValue({"videoParameters", "fsc"}, _videoParameters.fsc);
+
+    json.setValue({"videoParameters", "isMapped"}, _videoParameters.isMapped);
 }
 
 // This method returns the pcmAudioParameters metadata

@@ -63,6 +63,8 @@ public:
         qint32 fieldHeight;
         qint32 sampleRate;
         qint32 fsc;
+
+        bool isMapped;
     };
 
     // Drop-outs metadata definition

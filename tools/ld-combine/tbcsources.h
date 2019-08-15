@@ -60,14 +60,13 @@ public:
     QImage getCurrentFrameImage();
     RawFrame getCurrentFrameData();
     qint32 getCurrentSourceNumberOfFrames();
-    qint32 getCurrentFrameNumber();
-    void setCurrentFrameNumber(qint32 frameNumber);
+    qint32 getCurrentVbiFrameNumber();
+    void setCurrentVbiFrameNumber(qint32 frameNumber);
     QString getCurrentSourceFilename();
-    QStringList getCurrentMapReport();
-    qint32 getMinimumFrameNumber();
-    qint32 getMaximumFrameNumber();
-    qint32 getCurrentSourceMinimumFrameNumber();
-    qint32 getCurrentSourceMaxmumFrameNumber();
+    qint32 getMinimumVbiFrameNumber();
+    qint32 getMaximumVbiFrameNumber();
+    qint32 getCurrentSourceMinimumVbiFrameNumber();
+    qint32 getCurrentSourceMaximumVbiFrameNumber();
 
 signals:
     void setBusy(QString message, bool showProgress, qint32 progress);
@@ -90,7 +89,7 @@ private:
     };
 
     // The frame number is common between sources
-    qint32 currentFrameNumber;
+    qint32 currentVbiFrameNumber;
 
     QVector<Source*> sourceVideos;
     qint32 currentSource;
