@@ -67,9 +67,8 @@ TransformPal::TransformPal()
     fftComplexOut = fftw_alloc_complex(YCOMPLEX * XCOMPLEX);
 
     // Plan FFTW operations
-    // XXX FFTW_ESTIMATE is quick but potentially produces a slower plan...
-    forwardPlan = fftw_plan_dft_r2c_2d(YTILE, XTILE, fftReal, fftComplexIn, FFTW_ESTIMATE);
-    inversePlan = fftw_plan_dft_c2r_2d(YTILE, XTILE, fftComplexOut, fftReal, FFTW_ESTIMATE);
+    forwardPlan = fftw_plan_dft_r2c_2d(YTILE, XTILE, fftReal, fftComplexIn, FFTW_MEASURE);
+    inversePlan = fftw_plan_dft_c2r_2d(YTILE, XTILE, fftComplexOut, fftReal, FFTW_MEASURE);
 }
 
 TransformPal::~TransformPal()
