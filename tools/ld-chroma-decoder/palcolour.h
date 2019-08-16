@@ -104,7 +104,7 @@ private:
     // filter; this may be the composite signal, or it may be pre-filtered down
     // to chroma.
     // compData is the composite signal, used for reconstructing Y at the end.
-    template <typename InputSample>
+    template <typename InputSample, bool useTransformFilter>
     void decodeLine(const FieldInfo &fieldInfo, const LineInfo &line, const InputSample *inputData, const quint16 *compData);
 
     // Configuration parameters

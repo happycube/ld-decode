@@ -272,10 +272,10 @@ void PalColour::decodeField(const LdDecodeMetaData::Field &field, const QByteArr
 
         if (configuration.useTransformFilter) {
             // Decode chroma and luma from the Transform PAL output
-            decodeLine(fieldInfo, line, chromaData, inputData);
+            decodeLine<double, true>(fieldInfo, line, chromaData, inputData);
         } else {
             // Decode chroma and luma from the composite signal
-            decodeLine(fieldInfo, line, inputData, inputData);
+            decodeLine<quint16, false>(fieldInfo, line, inputData, inputData);
         }
     }
 }
@@ -350,7 +350,7 @@ void PalColour::detectBurst(LineInfo &line, const quint16 *inputData)
     line.burstNorm = qMax(sqrt(line.bp * line.bp + line.bq * line.bq), 130000.0 / 128);
 }
 
-template <typename InputSample>
+template <typename InputSample, bool useTransformFilter>
 void PalColour::decodeLine(const FieldInfo &fieldInfo, const LineInfo &line, const InputSample *inputData, const quint16 *compData)
 {
     // Dummy black line, used when the filter needs to look outside the active region.
@@ -453,7 +453,7 @@ void PalColour::decodeLine(const FieldInfo &fieldInfo, const LineInfo &line, con
     for (qint32 i = videoParameters.activeVideoStart; i < videoParameters.activeVideoEnd; i++) {
         // Compute luma by...
         double rY;
-        if (configuration.useTransformFilter) {
+        if (useTransformFilter) {
             // ... subtracting pre-filtered chroma from the composite input
             rY = comp[i] - in0[i];
         } else {
