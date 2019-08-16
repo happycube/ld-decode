@@ -30,7 +30,6 @@
 #include <QtMath>
 #include <cassert>
 #include <cmath>
-#include <complex>
 
 /*!
     \class TransformPal
@@ -154,9 +153,9 @@ const double *TransformPal::filterField(qint32 firstFieldLine, qint32 lastFieldL
     return chromaBuf.data();
 }
 
-// Return the absolute value of an fftw_complex
-static inline double fftwAbs(const fftw_complex &value) {
-    return std::abs(std::complex<double>(value[0], value[1]));
+// Return the absolute value squared of an fftw_complex
+static inline double fftwAbsSq(const fftw_complex &value) {
+    return (value[0] * value[0]) + (value[1] * value[1]);
 }
 
 void TransformPal::applyFilter() {
@@ -178,6 +177,8 @@ void TransformPal::applyFilter() {
     // symmetrical around the V carrier owing to wraparound. We look at every
     // point that might be a chroma signal, and only keep it if it's
     // sufficiently symmetrical with its reflection.
+
+    const double threshold_sq = threshold * threshold;
 
     for (qint32 y = 0; y < YTILE; y++) {
         // Reflect around 72 c/aph vertically.
@@ -207,11 +208,13 @@ void TransformPal::applyFilter() {
             }
 
             // Compare the magnitudes of the two values.
-            // XXX This does a sqrt which we don't strictly need for the comparison below
+            // (In fact, we compute the square of the magnitude, and square
+            // both sides of the comparison below; this saves an expensive sqrt
+            // operation.)
             // XXX Implement other comparison modes
-            const double m_in = fftwAbs(in_val);
-            const double m_ref = fftwAbs(ref_val);
-            if (m_in < m_ref * threshold || m_ref < m_in * threshold) {
+            const double m_in_sq = fftwAbsSq(in_val);
+            const double m_ref_sq = fftwAbsSq(ref_val);
+            if (m_in_sq < m_ref_sq * threshold_sq || m_ref_sq < m_in_sq * threshold_sq) {
                 // They're different. Probably not a chroma signal; throw it away.
                 continue;
             }
