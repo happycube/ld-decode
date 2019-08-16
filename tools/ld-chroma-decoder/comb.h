@@ -31,6 +31,8 @@
 #include <QFile>
 #include <QtMath>
 
+#include "lddecodemetadata.h"
+
 #include "yiq.h"
 #include "rgb.h"
 #include "opticalflow.h"
@@ -49,37 +51,37 @@ public:
 
     // Comb filter configuration parameters
     struct Configuration {
-        bool blackAndWhite;
-        bool colorlpf;
-        bool colorlpf_hq;
-        bool whitePoint100;
-        bool use3D;
-        bool showOpticalFlowMap;
+        bool blackAndWhite = false;
+        bool colorlpf = true;
+        bool colorlpf_hq = true;
+        bool whitePoint100 = false;
+        bool use3D = false;
+        bool showOpticalFlowMap = false;
 
-        qint32 fieldWidth;
-        qint32 fieldHeight;
+        // Interlaced line 40 is NTSC line 21 (the closed-caption line before the first active half-line)
+        qint32 firstActiveLine = 40;
+        // Interlaced line 524 is NTSC line 263 (the last active half-line).
+        qint32 lastActiveLine = 525;
 
-        qint32 activeVideoStart;
-        qint32 activeVideoEnd;
-
-        qint32 firstActiveLine;
-
-        qint32 blackIre;
-        qint32 whiteIre;
-
-        qreal cNRLevel;
-        qreal yNRLevel;
+        qreal cNRLevel = 0.0;
+        qreal yNRLevel = 1.0;
     };
 
-    Configuration getConfiguration();
-    void setConfiguration(const Configuration &configuration);
-    QByteArray process(QByteArray topFieldInputBuffer, QByteArray bottomFieldInputBuffer, qreal burstMedianIre, qint32 topFieldPhaseID, qint32 bottomFieldPhaseID);
+    const Configuration &getConfiguration() const;
+    void updateConfiguration(const LdDecodeMetaData::VideoParameters &videoParameters,
+                             const Configuration &configuration);
+
+    // Decode two fields to produce an interlaced frame.
+    QByteArray decodeFrame(const LdDecodeMetaData::Field &firstField, QByteArray firstFieldInputBuffer,
+                           const LdDecodeMetaData::Field &secondField, QByteArray secondFieldInputBuffer);
 
 protected:
 
 private:
     // Comb-filter configuration parameters
+    bool configurationSet;
     Configuration configuration;
+    LdDecodeMetaData::VideoParameters videoParameters;
 
     // IRE scaling
     qreal irescale;
@@ -113,8 +115,6 @@ private:
 
     // Previous and next frame for 3D processing
     FrameBuffer previousFrameBuffer;
-
-    void postConfigurationTasks();
 
     inline qint32 GetFieldID(FrameBuffer *frameBuffer, qint32 lineNumber);
     inline bool GetLinePhase(FrameBuffer *frameBuffer, qint32 lineNumber);

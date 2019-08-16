@@ -45,6 +45,7 @@ class NtscDecoder : public Decoder {
 public:
     NtscDecoder(bool blackAndWhite, bool whitePoint, bool use3D, bool showOpticalFlowMap);
     bool configure(const LdDecodeMetaData::VideoParameters &videoParameters) override;
+    qint32 getLookBehind() override;
     QThread *makeThread(QAtomicInt& abort, DecoderPool& decoderPool) override;
 
     // Parameters used by NtscDecoder and NtscThread
@@ -56,7 +57,7 @@ private:
     Configuration config;
 };
 
-class NtscThread : public QThread
+class NtscThread : public DecoderThread
 {
     Q_OBJECT
 public:
@@ -65,15 +66,14 @@ public:
                         QObject *parent = nullptr);
 
 protected:
-    void run() override;
+    QByteArray decodeFrame(const Decoder::InputField &firstField, const Decoder::InputField &secondField) override;
 
 private:
-    // Decoder pool
-    QAtomicInt& abort;
-    DecoderPool& decoderPool;
-
     // Settings
     const NtscDecoder::Configuration &config;
+
+    // NTSC decoder
+    Comb comb;
 };
 
 #endif // NTSCDECODER_H

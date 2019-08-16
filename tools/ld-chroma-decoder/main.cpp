@@ -149,7 +149,7 @@ int main(int argc, char *argv[])
 
     // Option to select the number of threads (-t)
     QCommandLineOption threadsOption(QStringList() << "t" << "threads",
-                                        QCoreApplication::translate("main", "Specify the number of concurrent threads (default number of logical CPUs plus 2)"),
+                                        QCoreApplication::translate("main", "Specify the number of concurrent threads (default number of logical CPUs)"),
                                         QCoreApplication::translate("main", "number"));
     parser.addOption(threadsOption);
 
@@ -219,7 +219,7 @@ int main(int argc, char *argv[])
 
     qint32 startFrame = -1;
     qint32 length = -1;
-    qint32 maxThreads = QThread::idealThreadCount() + 2;
+    qint32 maxThreads = QThread::idealThreadCount();
     double transformThreshold = 0.4;
 
     if (parser.isSet(startFrameOption)) {
@@ -298,9 +298,6 @@ int main(int argc, char *argv[])
         decoder.reset(new NtscDecoder(blackAndWhite, whitePoint, false, false));
     } else if (decoderName == "ntsc3d") {
         decoder.reset(new NtscDecoder(blackAndWhite, whitePoint, true, showOpticalFlow));
-
-        // In 3D mode, NtscDecoder keeps state between frames, so it can't be parallelised.
-        maxThreads = 1;
     } else {
         qCritical() << "Unknown decoder " << decoderName;
         return -1;

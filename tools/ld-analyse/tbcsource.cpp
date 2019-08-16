@@ -468,6 +468,10 @@ QImage TbcSource::generateQImage(qint32 firstFieldNumber, qint32 secondFieldNumb
     // Get the metadata for the video parameters
     LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
 
+    // Get the field metadata
+    LdDecodeMetaData::Field firstField = ldDecodeMetaData.getField(firstFieldNumber);
+    LdDecodeMetaData::Field secondField = ldDecodeMetaData.getField(secondFieldNumber);
+
     // Get the video field data
     QByteArray firstFieldData = sourceVideo.getVideoField(firstFieldNumber);
     QByteArray secondFieldData = sourceVideo.getVideoField(secondFieldNumber);
@@ -520,41 +524,31 @@ QImage TbcSource::generateQImage(qint32 firstFieldNumber, qint32 secondFieldNumb
             }
         }
     } else {
-        // Set the first and last active scan line (for PAL)
-        qint32 firstActiveScanLine = 44;
-        qint32 lastActiveScanLine = 620;
+        qint32 firstActiveLine, lastActiveLine;
         QByteArray outputData;
 
-        // Perform a PAL 2D comb filter on the current frame
+        // Decode colour for the current frame, to RGB 16-16-16 interlaced output
         if (videoParameters.isSourcePal) {
             // PAL source
 
-            // Calculate the saturation level from the burst median IRE
-            // Note: This code works as a temporary MTF compensator whilst ld-decode gets
-            // real MTF compensation added to it.
-            qreal tSaturation = 125.0 + ((100.0 / 20.0) * (20.0 - ldDecodeMetaData.getField(firstFieldNumber).medianBurstIRE));
+            firstActiveLine = palColour.getConfiguration().firstActiveLine;
+            lastActiveLine = palColour.getConfiguration().lastActiveLine;
 
-            // Perform the PALcolour filtering (output is RGB 16-16-16)
-            outputData = palColour.performDecode(firstFieldData, secondFieldData,
-                                                  100, static_cast<qint32>(tSaturation));
+            outputData = palColour.decodeFrame(firstField, firstFieldData, secondField, secondFieldData);
         } else {
             // NTSC source
 
-            // Set the first and last active scan line
-            firstActiveScanLine = 40;
-            lastActiveScanLine = 525;
+            firstActiveLine = ntscColour.getConfiguration().firstActiveLine;
+            lastActiveLine = ntscColour.getConfiguration().lastActiveLine;
 
-            outputData = ntscColour.process(firstFieldData, secondFieldData,
-                                                            ldDecodeMetaData.getField(firstFieldNumber).medianBurstIRE,
-                                                            ldDecodeMetaData.getField(firstFieldNumber).fieldPhaseID,
-                                                            ldDecodeMetaData.getField(secondFieldNumber).fieldPhaseID);
+            outputData = ntscColour.decodeFrame(firstField, firstFieldData, secondField, secondFieldData);
         }
 
         // Fill the QImage with black
         frameImage.fill(Qt::black);
 
         // Copy the RGB16-16-16 data into the RGB888 QImage
-        for (qint32 y = firstActiveScanLine; y < lastActiveScanLine; y++) {
+        for (qint32 y = firstActiveLine; y < lastActiveLine; y++) {
             // Extract the current scan line data from the frame
             qint32 startPointer = y * videoParameters.fieldWidth * 6;
             qint32 length = videoParameters.fieldWidth * 6;
@@ -668,39 +662,15 @@ void TbcSource::startBackgroundLoad(QString sourceFilename)
 
     // Configure the chroma decoder
     if (videoParameters.isSourcePal) {
+        PalColour::Configuration configuration;
+
         // Default to the PAL 2D transform filter
-        palColour.updateConfiguration(videoParameters, 44, 620, true);
+        configuration.useTransformFilter = true;
+
+        palColour.updateConfiguration(videoParameters, configuration);
     } else {
-        // Set the first active scan line
-        qint32 firstActiveScanLine = 40;
-
-        // Get the default configuration for the comb filter
-        Comb::Configuration configuration = ntscColour.getConfiguration();
-
-        // Set the comb filter configuration
-        configuration.blackAndWhite = false;
-
-        // Set the input buffer dimensions configuration
-        configuration.fieldWidth = videoParameters.fieldWidth;
-        configuration.fieldHeight = videoParameters.fieldHeight;
-
-        // Set the active video range
-        configuration.activeVideoStart = videoParameters.activeVideoStart;
-        configuration.activeVideoEnd = videoParameters.activeVideoEnd;
-
-        // Set the first frame scan line which contains active video
-        configuration.firstActiveLine = firstActiveScanLine;
-
-        // Set the IRE levels
-        configuration.blackIre = videoParameters.black16bIre;
-        configuration.whiteIre = videoParameters.white16bIre;
-
-        // Set the filter mode
-        configuration.use3D = false;
-        configuration.showOpticalFlowMap = false;
-
-        // Update the comb filter object's configuration
-        ntscColour.setConfiguration(configuration);
+        Comb::Configuration configuration;
+        ntscColour.updateConfiguration(videoParameters, configuration);
     }
 
     // Generate the graph data for the source

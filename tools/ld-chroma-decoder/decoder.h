@@ -28,6 +28,7 @@
 #include <QAtomicInt>
 #include <QByteArray>
 #include <QDebug>
+#include <QThread>
 #include <cassert>
 
 #include "lddecodemetadata.h"
@@ -37,8 +38,8 @@ class DecoderPool;
 // Abstract base class for chroma decoders.
 //
 // For each chroma decoder in ld-chroma-decoder, there is a subclass of this
-// class, and a corresponding subclass of QThread -- let's say SecamDecoder and
-// SecamThread.
+// class, and a corresponding subclass of DecoderThread -- let's say
+// SecamDecoder and SecamThread.
 //
 // main() creates an instance of SecamDecoder and passes it to DecoderPool.
 // DecoderPool calls SecamDecoder::configure with the input video parameters,
@@ -60,6 +61,16 @@ public:
     // If the video is not compatible, print an error message and return false.
     virtual bool configure(const LdDecodeMetaData::VideoParameters &videoParameters) = 0;
 
+    // After configuration, return the number of frames that the decoder needs
+    // to be able to see into the past (each frame being two InputFields).
+    // The default implementation returns 0, which is appropriate for 1D/2D decoders.
+    virtual qint32 getLookBehind();
+
+    // After configuration, return the number of frames that the decoder needs
+    // to be able to see into the future (each frame being two InputFields).
+    // The default implementation returns 0, which is appropriate for 1D/2D decoders.
+    virtual qint32 getLookAhead();
+
     // Construct a new worker thread
     virtual QThread *makeThread(QAtomicInt& abort, DecoderPool& decoderPool) = 0;
 
@@ -74,13 +85,36 @@ public:
         qint32 bottomPadLines;
     };
 
+    // A field read from the input file
+    struct InputField {
+        LdDecodeMetaData::Field field;
+        QByteArray data;
+    };
+
     // Compute the output frame size in Configuration, adjusting the active
     // video region as required
     static void setVideoParameters(Configuration &config, const LdDecodeMetaData::VideoParameters &videoParameters,
                                    qint32 firstActiveLine, qint32 lastActiveLine);
 
     // Crop a full decoded frame to the output frame size
-    static QByteArray cropOutputFrame(const Decoder::Configuration &config, QByteArray outputData);
+    static QByteArray cropOutputFrame(const Configuration &config, QByteArray outputData);
+};
+
+// Abstract base class for chroma decoder worker threads.
+class DecoderThread : public QThread {
+    Q_OBJECT
+public:
+    explicit DecoderThread(QAtomicInt &abort, DecoderPool &decoderPool, QObject *parent = nullptr);
+
+protected:
+    void run() override;
+
+    // Decode two fields into an interlaced, cropped frame
+    virtual QByteArray decodeFrame(const Decoder::InputField &firstField, const Decoder::InputField &secondField) = 0;
+
+    // Decoder pool
+    QAtomicInt& abort;
+    DecoderPool& decoderPool;
 };
 
 #endif

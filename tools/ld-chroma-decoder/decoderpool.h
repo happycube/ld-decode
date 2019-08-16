@@ -32,34 +32,54 @@
 #include <QMap>
 #include <QMutex>
 #include <QThread>
+#include <QVector>
 
 #include "lddecodemetadata.h"
 #include "sourcevideo.h"
 
 #include "decoder.h"
 
-class DecoderPool : public QObject
+class DecoderPool
 {
-    Q_OBJECT
 public:
     explicit DecoderPool(Decoder &decoder, QString inputFileName,
                          LdDecodeMetaData &ldDecodeMetaData, QString outputFileName,
-                         qint32 startFrame, qint32 length, qint32 maxThreads,
-                         QObject *parent = nullptr);
+                         qint32 startFrame, qint32 length, qint32 maxThreads);
+
+    // Decode fields to frames as specified by the constructor args.
+    // Returns true on success; on failure, prints a message and returns false.
     bool process();
 
-    // Member functions used by worker threads
-    bool getInputFrame(qint32& frameNumber, QByteArray& firstFieldData, QByteArray& secondFieldData,
-                       qint32& firstFieldPhaseID, qint32& secondFieldPhaseID, qreal& burstMedianIre);
-    bool putOutputFrame(qint32 frameNumber, QByteArray& rgbOutput);
+    // For worker threads: get the next batch of data from the input file.
+    //
+    // fields will be resized and filled with pairs of InputFields; entries
+    // from startIndex to endIndex are those that should be processed into
+    // output frames, with startIndex corresponding to the first field of frame
+    // startFrameNumber.
+    //
+    // If the Decoder requested lookahead or lookbehind, an appropriate number
+    // of additional fields will be provided before startIndex and after
+    // endIndex. Dummy black frames (with metadata copied from a real frame)
+    // will be provided when going beyond the bounds of the input file.
+    //
+    // Returns true if a frame was returned, false if the end of the input has
+    // been reached.
+    bool getInputFrames(qint32 &startFrameNumber, QVector<Decoder::InputField> &fields, qint32 &startIndex, qint32 &endIndex);
 
-signals:
-
-public slots:
-
-private slots:
+    // For worker threads: return decoded frames to write to the output file.
+    //
+    // outputFrames should contain RGB16-16-16 output frames, with the first
+    // frame being startFrameNumber.
+    //
+    // Returns true on success, false on failure.
+    bool putOutputFrames(qint32 startFrameNumber, const QVector<QByteArray> &outputFrames);
 
 private:
+    bool putOutputFrame(qint32 frameNumber, const QByteArray &outputFrame);
+
+    // Default batch size, in frames
+    static constexpr qint32 DEFAULT_BATCH_SIZE = 16;
+
     // Parameters
     Decoder& decoder;
     QString inputFileName;
@@ -74,6 +94,8 @@ private:
 
     // Input stream information (all guarded by inputMutex while threads are running)
     QMutex inputMutex;
+    qint32 decoderLookBehind;
+    qint32 decoderLookAhead;
     qint32 inputFrameNumber;
     qint32 lastFrameNumber;
     LdDecodeMetaData &ldDecodeMetaData;
