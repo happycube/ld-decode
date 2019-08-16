@@ -168,7 +168,7 @@ int main(int argc, char *argv[])
     // -- PAL decoder options --
 
     // Option to select the Transform PAL threshold
-    QCommandLineOption transformThresholdOption(QStringList() << "transformThreshold",
+    QCommandLineOption transformThresholdOption(QStringList() << "transform-threshold",
                                                 QCoreApplication::translate("main", "Transform: Similarity threshold for the chroma filter (default 0.4)"),
                                                 QCoreApplication::translate("main", "number"));
     parser.addOption(transformThresholdOption);
