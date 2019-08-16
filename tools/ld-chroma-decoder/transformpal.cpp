@@ -162,7 +162,7 @@ static inline double fftwAbs(const fftw_complex &value) {
 void TransformPal::applyFilter() {
     // Clear fftComplexOut. We discard values by default; the filter only
     // copies values that look like chroma.
-    for (int i = 0; i < XCOMPLEX * YCOMPLEX; i++) {
+    for (qint32 i = 0; i < XCOMPLEX * YCOMPLEX; i++) {
         fftComplexOut[i][0] = 0.0;
         fftComplexOut[i][1] = 0.0;
     }
@@ -179,9 +179,9 @@ void TransformPal::applyFilter() {
     // point that might be a chroma signal, and only keep it if it's
     // sufficiently symmetrical with its reflection.
 
-    for (int y = 0; y < YTILE; y++) {
+    for (qint32 y = 0; y < YTILE; y++) {
         // Reflect around 72 c/aph vertically.
-        const int y_ref = ((YTILE / 2) + YTILE - y) % YTILE;
+        const qint32 y_ref = ((YTILE / 2) + YTILE - y) % YTILE;
 
         // Input data for this line and its reflection
         const fftw_complex *bi = fftComplexIn + (y * XCOMPLEX);
@@ -192,9 +192,9 @@ void TransformPal::applyFilter() {
         fftw_complex *bo_ref = fftComplexOut + (y_ref * XCOMPLEX);
 
         // We only need to look at horizontal frequencies that might be chroma (0.5fSC to 2fSC).
-        for (int x = XTILE / 8; x <= XTILE / 4; x++) {
+        for (qint32 x = XTILE / 8; x <= XTILE / 4; x++) {
             // Reflect around 4fSC Hz horizontally.
-            const int x_ref = (XTILE / 2) - x;
+            const qint32 x_ref = (XTILE / 2) - x;
 
             const fftw_complex &in_val = bi[x];
             const fftw_complex &ref_val = bi_ref[x_ref];
