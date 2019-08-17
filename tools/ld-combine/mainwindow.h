@@ -32,7 +32,6 @@
 
 #include "aboutdialog.h"
 #include "busydialog.h"
-#include "reportdialog.h"
 
 #include "configuration.h"
 #include "tbcsources.h"
@@ -55,6 +54,7 @@ private slots:
     void on_actionClose_current_source_triggered();
     void on_actionExit_triggered();
     void on_actionAbout_ld_combine_triggered();
+    void on_actionPerform_DiffDOD_triggered();
 
     // MainWindow widget slots
     void on_previousFramePushButton_clicked();
@@ -68,7 +68,7 @@ private slots:
     void on_clearBusy();
     void on_updateSources(bool isSuccessful);
 
-    void on_actionSource_report_triggered();
+    void on_highlightDoCheckBox_clicked();
 
 private:
     Ui::MainWindow *ui;
@@ -79,7 +79,6 @@ private:
     // Dialogue objects
     AboutDialog *aboutDialog;
     BusyDialog *busyDialog;
-    ReportDialog *reportDialog;
 
     // GUI update methods
     void updateGUIsourcesAvailable();

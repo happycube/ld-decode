@@ -27,6 +27,7 @@
 
 #include <QObject>
 #include <QImage>
+#include <QPainter>
 #include <QList>
 #include <QtConcurrent/QtConcurrent>
 #include <QDebug>
@@ -57,6 +58,7 @@ public:
     qint32 getCurrentSource();
     qint32 getNumberOfAvailableSources();
     QVector<QString> getListOfAvailableSources();
+    void performDiffDod();
     QImage getCurrentFrameImage();
     RawFrame getCurrentFrameData();
     qint32 getCurrentSourceNumberOfFrames();
@@ -67,6 +69,7 @@ public:
     qint32 getMaximumVbiFrameNumber();
     qint32 getCurrentSourceMinimumVbiFrameNumber();
     qint32 getCurrentSourceMaximumVbiFrameNumber();
+    void setHighlightDropouts(bool _state);
 
 signals:
     void setBusy(QString message, bool showProgress, qint32 progress);
@@ -77,6 +80,7 @@ public slots:
 
 private slots:
     void finishBackgroundLoad();
+    void finishBackgroundDiffDod();
 
 private:
     struct Source {
@@ -87,6 +91,8 @@ private:
         qint32 maximumVbiFrameNumber;
         bool isSourceCav;
     };
+
+    bool dropoutsOn;
 
     // The frame number is common between sources
     qint32 currentVbiFrameNumber;
@@ -102,6 +108,9 @@ private:
 
     void performBackgroundLoad(QString filename);
     bool setDiscTypeAndMaxMinFrameVbi(qint32 sourceNumber);
+    void performBackgroundDiffDod();
+    void diffDodFrame(qint32 targetSource, qint32 targetVbiFrame, qint32 threshold);
+    qint32 convertVbiFrameNumberToSequential(qint32 vbiFrameNumber, qint32 sourceNumber);
 };
 
 #endif // TBCSOURCES_H

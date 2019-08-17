@@ -34,7 +34,6 @@ SOURCES += \
         logging.cpp \
         main.cpp \
         mainwindow.cpp \
-        reportdialog.cpp \
         tbcsources.cpp
 
 HEADERS += \
@@ -46,14 +45,12 @@ HEADERS += \
         configuration.h \
         logging.h \
         mainwindow.h \
-        reportdialog.h \
         tbcsources.h
 
 FORMS += \
         aboutdialog.ui \
         busydialog.ui \
-        mainwindow.ui \
-        reportdialog.ui
+        mainwindow.ui
 
 # Add external includes to the include path
 INCLUDEPATH += ../library/tbc
