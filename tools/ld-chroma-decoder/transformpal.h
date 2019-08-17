@@ -42,14 +42,13 @@ public:
 
     // threshold is the similarity threshold for the filter (values from 0-1
     // are meaningful; 0.6 is pyctools-pal's default)
-    void updateConfiguration(LdDecodeMetaData::VideoParameters videoParameters,
-                             qint32 firstActiveLine, qint32 lastActiveLine,
+    void updateConfiguration(const LdDecodeMetaData::VideoParameters &videoParameters,
                              double threshold);
 
     // Filter an input field.
     // Returns a pointer to an array of the same size (owned by this object)
     // containing the chroma signal.
-    const double *filterField(qint32 fieldNumber, const QByteArray &fieldData);
+    const double *filterField(qint32 firstFieldLine, qint32 lastFieldLine, const QByteArray &fieldData);
 
 private:
     // Apply the frequency-domain filter
@@ -58,27 +57,25 @@ private:
     // Configuration parameters
     bool configurationSet;
     LdDecodeMetaData::VideoParameters videoParameters;
-    qint32 firstActiveLine;
-    qint32 lastActiveLine;
     double threshold;
 
     // Maximum field size, based on PAL
-    static constexpr int MAX_WIDTH = 1135;
+    static constexpr qint32 MAX_WIDTH = 1135;
 
     // FFT input and output sizes.
-    // The input field is divided into tiles of XSIZE x YSIZE, with adjacent
-    // tiles overlapping by HALFXSIZE/HALFYSIZE.
-    static constexpr int YTILE = 16;
-    static constexpr int HALFYTILE = YTILE / 2;
-    static constexpr int XTILE = 32;
-    static constexpr int HALFXTILE = XTILE / 2;
+    // The input field is divided into tiles of XTILE x YTILE, with adjacent
+    // tiles overlapping by HALFXTILE/HALFYTILE.
+    static constexpr qint32 YTILE = 16;
+    static constexpr qint32 HALFYTILE = YTILE / 2;
+    static constexpr qint32 XTILE = 32;
+    static constexpr qint32 HALFXTILE = XTILE / 2;
 
     // Each tile is converted to the frequency domain using forwardPlan, which
     // gives a complex result of size XCOMPLEX x YCOMPLEX (roughly half the
     // size of the input, because the input data was real, i.e. contained no
     // negative frequencies).
-    static constexpr int YCOMPLEX = YTILE;
-    static constexpr int XCOMPLEX = (XTILE / 2) + 1;
+    static constexpr qint32 YCOMPLEX = YTILE;
+    static constexpr qint32 XCOMPLEX = (XTILE / 2) + 1;
 
     // Window function applied before the FFT
     double windowFunction[YTILE][XTILE];

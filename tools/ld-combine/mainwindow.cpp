@@ -34,7 +34,6 @@ MainWindow::MainWindow(QWidget *parent) :
     // Set up dialogues
     aboutDialog = new AboutDialog(this);
     busyDialog = new BusyDialog(this);
-    reportDialog = new ReportDialog(this);
 
     // Connect to the TbcSource signals (busy loading and finished loading)
     connect(&tbcSources, &TbcSources::setBusy, this, &MainWindow::on_setBusy);
@@ -43,7 +42,6 @@ MainWindow::MainWindow(QWidget *parent) :
 
     // Load the window geometry and settings from the configuration
     this->restoreGeometry(configuration.getMainWindowGeometry());
-    reportDialog->restoreGeometry(configuration.getReportDialogGeometry());
 
     // Add a status bar to show the state of the source video file
     ui->statusBar->addWidget(&applicationStatus);
@@ -56,7 +54,6 @@ MainWindow::~MainWindow()
 {
     // Save the window geometry and settings to the configuration
     configuration.setMainWindowGeometry(this->saveGeometry());
-    configuration.setReportDialogGeometry(reportDialog->saveGeometry());
     configuration.writeConfiguration();
 
     delete ui;
@@ -77,6 +74,12 @@ void MainWindow::updateGUIsourcesAvailable()
     ui->sourceSelectComboBox->setEnabled(true);
     ui->frameNumberSpinBox->setEnabled(true);
     ui->frameNumberHorizontalSlider->setEnabled(true);
+
+    // Enable the GUI options
+    ui->highlightDoCheckBox->setEnabled(true);
+
+    if (tbcSources.getNumberOfAvailableSources() < 3) ui->actionPerform_DiffDOD->setEnabled(false);
+    else ui->actionPerform_DiffDOD->setEnabled(true);
 
     // Set the spin box to the current frame number
     ui->frameNumberSpinBox->setValue(tbcSources.getCurrentVbiFrameNumber());
@@ -104,12 +107,13 @@ void MainWindow::updateGUInoSourcesAvailable()
     ui->frameNumberSpinBox->setEnabled(false);
     ui->frameNumberHorizontalSlider->setEnabled(false);
 
+    // Enable the GUI options
+    ui->highlightDoCheckBox->setEnabled(false);
+    ui->actionPerform_DiffDOD->setEnabled(false);
+
     // Clear the frame viewer
     ui->mediaViewLabel->clear();
     ui->mediaViewLabel->setText("No sources loaded");
-
-    // Clear the report dialogue
-    reportDialog->clearReport();
 
     // Set the main window's title
     this->setWindowTitle(tr("ld-combine - No sources loaded"));
@@ -154,9 +158,11 @@ void MainWindow::sourceChanged()
     // Set the frame number spin box
     ui->frameNumberSpinBox->setValue(tbcSources.getCurrentVbiFrameNumber());
 
-    // Update the disc report
-    reportDialog->clearReport();
+    // Check the number of sources for diffDOD
+    if (tbcSources.getNumberOfAvailableSources() < 3) ui->actionPerform_DiffDOD->setEnabled(false);
+    else ui->actionPerform_DiffDOD->setEnabled(true);
 
+    // Show the current frame image
     showFrame();
 
     // Unblock signals
@@ -236,6 +242,13 @@ void MainWindow::on_actionAbout_ld_combine_triggered()
     aboutDialog->show();
 }
 
+
+void MainWindow::on_actionPerform_DiffDOD_triggered()
+{
+    qDebug() << "MainWindow::on_actionPerform_DiffDOD_triggered(): Called";
+    tbcSources.performDiffDod();
+}
+
 // Main window widget slots -------------------------------------------------------------------------------------------
 
 void MainWindow::on_previousFramePushButton_clicked()
@@ -296,10 +309,15 @@ void MainWindow::on_frameNumberHorizontalSlider_valueChanged(int value)
     if (frameNumber != tbcSources.getCurrentVbiFrameNumber()) showFrame();
 }
 
-void MainWindow::on_actionSource_report_triggered()
+void MainWindow::on_highlightDoCheckBox_clicked()
 {
-    reportDialog->clearReport();
-    reportDialog->show();
+    if (ui->highlightDoCheckBox->isChecked()) {
+        tbcSources.setHighlightDropouts(true);
+    } else {
+        tbcSources.setHighlightDropouts(false);
+    }
+
+    showFrame();
 }
 
 // TbcSources class signal handlers -----------------------------------------------------------------------------------
@@ -357,4 +375,7 @@ void MainWindow::on_updateSources(bool isSuccessful)
         configuration.writeConfiguration();
     }
 }
+
+
+
 

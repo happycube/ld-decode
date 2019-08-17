@@ -24,6 +24,18 @@
 
 #include "decoder.h"
 
+#include "decoderpool.h"
+
+qint32 Decoder::getLookBehind()
+{
+    return 0;
+}
+
+qint32 Decoder::getLookAhead()
+{
+    return 0;
+}
+
 void Decoder::setVideoParameters(Decoder::Configuration &config, const LdDecodeMetaData::VideoParameters &videoParameters,
                                  qint32 firstActiveLine, qint32 lastActiveLine) {
 
@@ -96,4 +108,42 @@ QByteArray Decoder::cropOutputFrame(const Decoder::Configuration &config, QByteA
     }
 
     return croppedData;
+}
+
+DecoderThread::DecoderThread(QAtomicInt& _abort, DecoderPool& _decoderPool, QObject *parent)
+    : QThread(parent), abort(_abort), decoderPool(_decoderPool)
+{
+}
+
+void DecoderThread::run()
+{
+    // Input and output data
+    QVector<Decoder::InputField> inputFields;
+    QVector<QByteArray> outputFrames;
+
+    while (!abort) {
+        // Get the next batch of fields to process
+        qint32 startFrameNumber, startIndex, endIndex;
+        if (!decoderPool.getInputFrames(startFrameNumber, inputFields, startIndex, endIndex)) {
+            // No more input frames -- exit
+            break;
+        }
+
+        // Decode lookahead fields, discarding the result
+        for (qint32 i = 0; i < startIndex; i += 2) {
+            decodeFrame(inputFields[i], inputFields[i + 1]);
+        }
+
+        // Decode real fields to frames
+        outputFrames.resize((endIndex - startIndex) / 2);
+        for (qint32 i = startIndex, j = 0; i < endIndex; i += 2, j++) {
+            outputFrames[j] = decodeFrame(inputFields[i], inputFields[i + 1]);
+        }
+
+        // Write the frames to the output file
+        if (!decoderPool.putOutputFrames(startFrameNumber, outputFrames)) {
+            abort = true;
+            break;
+        }
+    }
 }

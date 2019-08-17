@@ -29,11 +29,6 @@
 #include "decoderpool.h"
 
 NtscDecoder::NtscDecoder(bool blackAndWhite, bool whitePoint, bool use3D, bool showOpticalFlowMap) {
-    // Get the default configuration for the comb filter
-    // FIXME It'd be nice not to have to create a Comb for this
-    Comb comb;
-    config.combConfig = comb.getConfiguration();
-
     // Set the comb filter configuration
     config.combConfig.blackAndWhite = blackAndWhite;
     config.combConfig.whitePoint100 = whitePoint;
@@ -51,24 +46,19 @@ bool NtscDecoder::configure(const LdDecodeMetaData::VideoParameters &videoParame
     }
 
     // Compute cropping parameters
-    setVideoParameters(config, videoParameters, 40, 525);
-
-    // Set the input buffer dimensions configuration
-    config.combConfig.fieldWidth = videoParameters.fieldWidth;
-    config.combConfig.fieldHeight = videoParameters.fieldHeight;
-
-    // Set the active video range
-    config.combConfig.activeVideoStart = videoParameters.activeVideoStart;
-    config.combConfig.activeVideoEnd = videoParameters.activeVideoEnd;
-
-    // Set the first frame scan line which contains active video
-    config.combConfig.firstActiveLine = config.firstActiveLine;
-
-    // Set the IRE levels
-    config.combConfig.blackIre = videoParameters.black16bIre;
-    config.combConfig.whiteIre = videoParameters.white16bIre;
+    setVideoParameters(config, videoParameters, config.combConfig.firstActiveLine, config.combConfig.lastActiveLine);
 
     return true;
+}
+
+qint32 NtscDecoder::getLookBehind()
+{
+    if (config.combConfig.use3D) {
+        // In 3D mode, we need to see the previous frame
+        return 1;
+    }
+
+    return 0;
 }
 
 QThread *NtscDecoder::makeThread(QAtomicInt& abort, DecoderPool& decoderPool)
@@ -78,46 +68,17 @@ QThread *NtscDecoder::makeThread(QAtomicInt& abort, DecoderPool& decoderPool)
 
 NtscThread::NtscThread(QAtomicInt& _abort, DecoderPool &_decoderPool,
                        const NtscDecoder::Configuration &_config, QObject *parent)
-    : QThread(parent), abort(_abort), decoderPool(_decoderPool), config(_config)
+    : DecoderThread(_abort, _decoderPool, parent), config(_config)
 {
+    // Configure NTSC decoder
+    comb.updateConfiguration(config.videoParameters, config.combConfig);
 }
 
-void NtscThread::run()
+QByteArray NtscThread::decodeFrame(const Decoder::InputField &firstField, const Decoder::InputField &secondField)
 {
-    qint32 frameNumber;
+    // Filter the frame
+    QByteArray outputData = comb.decodeFrame(firstField.field, firstField.data, secondField.field, secondField.data);
 
-    // Input data buffers
-    QByteArray firstFieldData;
-    QByteArray secondFieldData;
-
-    // Frame metadata
-    qint32 firstFieldPhaseID;
-    qint32 secondFieldPhaseID;
-    qreal burstMedianIre;
-
-    // Create the comb filter object with the precomputed configuration
-    Comb comb;
-    comb.setConfiguration(config.combConfig);
-
-    while(!abort) {
-        // Get the next frame to process from the input file
-        if (!decoderPool.getInputFrame(frameNumber, firstFieldData, secondFieldData,
-                                       firstFieldPhaseID, secondFieldPhaseID, burstMedianIre)) {
-            // No more input frames -- exit
-            break;
-        }
-
-        // Filter the frame
-        QByteArray outputData = comb.process(firstFieldData, secondFieldData, burstMedianIre,
-                                             firstFieldPhaseID, secondFieldPhaseID);
-
-        // The NTSC filter outputs the whole frame, so here we crop it to the required dimensions
-        QByteArray croppedData = NtscDecoder::cropOutputFrame(config, outputData);
-
-        // Write the result to the output file
-        if (!decoderPool.putOutputFrame(frameNumber, croppedData)) {
-            abort = true;
-            break;
-        }
-    }
+    // The NTSC filter outputs the whole frame, so here we crop it to the required dimensions
+    return NtscDecoder::cropOutputFrame(config, outputData);
 }

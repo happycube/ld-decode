@@ -41,12 +41,25 @@ class PalColour : public QObject
 
 public:
     explicit PalColour(QObject *parent = nullptr);
-    void updateConfiguration(LdDecodeMetaData::VideoParameters videoParameters, qint32 firstActiveLine, qint32 lastActiveLine,
-                             bool useTransformFilter = false, double transformThreshold = 0.4);
+
+    struct Configuration {
+        bool blackAndWhite = false;
+        bool useTransformFilter = false;
+        double transformThreshold = 0.4;
+
+        // Interlaced line 44 is PAL line 23 (the first active half-line)
+        qint32 firstActiveLine = 44;
+        // Interlaced line 619 is PAL line 623 (the last active half-line)
+        qint32 lastActiveLine = 620;
+    };
+
+    const Configuration &getConfiguration() const;
+    void updateConfiguration(const LdDecodeMetaData::VideoParameters &videoParameters,
+                             const Configuration &configuration);
 
     // Decode two fields to produce an interlaced frame.
-    // contrast and saturation are user-adjustable controls; 100 is nominal.
-    QByteArray performDecode(QByteArray topFieldData, QByteArray bottomFieldData, qint32 contrast, qint32 saturation);
+    QByteArray decodeFrame(const LdDecodeMetaData::Field &topField, QByteArray topFieldData,
+                           const LdDecodeMetaData::Field &bottomField, QByteArray bottomFieldData);
 
     // Maximum frame size, based on PAL
     static const qint32 MAX_WIDTH = 1135;
@@ -55,19 +68,22 @@ public:
 private:
     // Information about a field we're decoding.
     struct FieldInfo {
-        explicit FieldInfo(qint32 number, qint32 contrast, qint32 saturation, qint32 firstActiveLine, qint32 lastActiveLine);
+        explicit FieldInfo(const LdDecodeMetaData::Field &field, const Configuration &configuration, double chromaGain);
 
-        // number is 0 for the top field, 1 for the bottom field.
-        qint32 number;
-        qint32 contrast;
-        qint32 saturation;
+        // Chroma gain factor, based on colourburst amplitude.
+        double chromaGain;
+
+        // Vertical pixels to offset this field within the interlaced frame --
+        // i.e. 0 for the top field, 1 for the bottom field.
+        qint32 offset;
+
         // firstLine/lastLine are the range of active lines within the field.
         qint32 firstLine;
         qint32 lastLine;
     };
 
     // Decode one field into outputFrame.
-    void decodeField(const FieldInfo &field, const QByteArray &fieldData);
+    void decodeField(const LdDecodeMetaData::Field &field, const QByteArray &fieldData, double chromaGain);
 
     // Information about a line we're decoding.
     struct LineInfo {
@@ -88,15 +104,13 @@ private:
     // filter; this may be the composite signal, or it may be pre-filtered down
     // to chroma.
     // compData is the composite signal, used for reconstructing Y at the end.
-    template <typename InputSample>
-    void decodeLine(const FieldInfo &field, const LineInfo &line, const InputSample *inputData, const quint16 *compData);
+    template <typename InputSample, bool useTransformFilter>
+    void decodeLine(const FieldInfo &fieldInfo, const LineInfo &line, const InputSample *inputData, const quint16 *compData);
 
     // Configuration parameters
     bool configurationSet;
+    Configuration configuration;
     LdDecodeMetaData::VideoParameters videoParameters;
-    qint32 firstActiveLine;
-    qint32 lastActiveLine;
-    bool useTransformFilter;
 
     // Transform PAL filter
     TransformPal transformPal;

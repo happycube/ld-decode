@@ -30,7 +30,6 @@
 #include <QtMath>
 #include <cassert>
 #include <cmath>
-#include <complex>
 
 /*!
     \class TransformPal
@@ -68,9 +67,8 @@ TransformPal::TransformPal()
     fftComplexOut = fftw_alloc_complex(YCOMPLEX * XCOMPLEX);
 
     // Plan FFTW operations
-    // XXX FFTW_ESTIMATE is quick but potentially produces a slower plan...
-    forwardPlan = fftw_plan_dft_r2c_2d(YTILE, XTILE, fftReal, fftComplexIn, FFTW_ESTIMATE);
-    inversePlan = fftw_plan_dft_c2r_2d(YTILE, XTILE, fftComplexOut, fftReal, FFTW_ESTIMATE);
+    forwardPlan = fftw_plan_dft_r2c_2d(YTILE, XTILE, fftReal, fftComplexIn, FFTW_MEASURE);
+    inversePlan = fftw_plan_dft_c2r_2d(YTILE, XTILE, fftComplexOut, fftReal, FFTW_MEASURE);
 }
 
 TransformPal::~TransformPal()
@@ -83,13 +81,10 @@ TransformPal::~TransformPal()
     fftw_free(fftComplexOut);
 }
 
-void TransformPal::updateConfiguration(LdDecodeMetaData::VideoParameters _videoParameters,
-                                       qint32 _firstActiveLine, qint32 _lastActiveLine,
+void TransformPal::updateConfiguration(const LdDecodeMetaData::VideoParameters &_videoParameters,
                                        double _threshold)
 {
     videoParameters = _videoParameters;
-    firstActiveLine = _firstActiveLine;
-    lastActiveLine = _lastActiveLine;
     threshold = _threshold;
 
     // Resize the chroma buffer
@@ -98,18 +93,10 @@ void TransformPal::updateConfiguration(LdDecodeMetaData::VideoParameters _videoP
     configurationSet = true;
 }
 
-const double *TransformPal::filterField(qint32 fieldNumber, const QByteArray &fieldData)
+const double *TransformPal::filterField(qint32 firstFieldLine, qint32 lastFieldLine, const QByteArray &fieldData)
 {
     assert(configurationSet);
-    assert(fieldNumber == 0 || fieldNumber == 1);
     assert(!fieldData.isNull());
-
-    // Work out the active lines to be decoded within this field.
-    // If firstActiveLine or lastActiveLine is odd, we can end up with
-    // different ranges for the two fields, so we need to be careful
-    // about how this is rounded.
-    const qint32 firstFieldLine = (firstActiveLine + 1 - fieldNumber) / 2;
-    const qint32 lastFieldLine = (lastActiveLine + 1 - fieldNumber) / 2;
 
     // Pointers to the input and output data
     const quint16 *inputPtr = reinterpret_cast<const quint16 *>(fieldData.data());
@@ -165,15 +152,15 @@ const double *TransformPal::filterField(qint32 fieldNumber, const QByteArray &fi
     return chromaBuf.data();
 }
 
-// Return the absolute value of an fftw_complex
-static inline double fftwAbs(const fftw_complex &value) {
-    return std::abs(std::complex<double>(value[0], value[1]));
+// Return the absolute value squared of an fftw_complex
+static inline double fftwAbsSq(const fftw_complex &value) {
+    return (value[0] * value[0]) + (value[1] * value[1]);
 }
 
 void TransformPal::applyFilter() {
     // Clear fftComplexOut. We discard values by default; the filter only
     // copies values that look like chroma.
-    for (int i = 0; i < XCOMPLEX * YCOMPLEX; i++) {
+    for (qint32 i = 0; i < XCOMPLEX * YCOMPLEX; i++) {
         fftComplexOut[i][0] = 0.0;
         fftComplexOut[i][1] = 0.0;
     }
@@ -190,9 +177,11 @@ void TransformPal::applyFilter() {
     // point that might be a chroma signal, and only keep it if it's
     // sufficiently symmetrical with its reflection.
 
-    for (int y = 0; y < YTILE; y++) {
+    const double threshold_sq = threshold * threshold;
+
+    for (qint32 y = 0; y < YTILE; y++) {
         // Reflect around 72 c/aph vertically.
-        const int y_ref = ((YTILE / 2) + YTILE - y) % YTILE;
+        const qint32 y_ref = ((YTILE / 2) + YTILE - y) % YTILE;
 
         // Input data for this line and its reflection
         const fftw_complex *bi = fftComplexIn + (y * XCOMPLEX);
@@ -203,9 +192,9 @@ void TransformPal::applyFilter() {
         fftw_complex *bo_ref = fftComplexOut + (y_ref * XCOMPLEX);
 
         // We only need to look at horizontal frequencies that might be chroma (0.5fSC to 2fSC).
-        for (int x = XTILE / 8; x <= XTILE / 4; x++) {
+        for (qint32 x = XTILE / 8; x <= XTILE / 4; x++) {
             // Reflect around 4fSC Hz horizontally.
-            const int x_ref = (XTILE / 2) - x;
+            const qint32 x_ref = (XTILE / 2) - x;
 
             const fftw_complex &in_val = bi[x];
             const fftw_complex &ref_val = bi_ref[x_ref];
@@ -218,11 +207,13 @@ void TransformPal::applyFilter() {
             }
 
             // Compare the magnitudes of the two values.
-            // XXX This does a sqrt which we don't strictly need for the comparison below
+            // (In fact, we compute the square of the magnitude, and square
+            // both sides of the comparison below; this saves an expensive sqrt
+            // operation.)
             // XXX Implement other comparison modes
-            const double m_in = fftwAbs(in_val);
-            const double m_ref = fftwAbs(ref_val);
-            if (m_in < m_ref * threshold || m_ref < m_in * threshold) {
+            const double m_in_sq = fftwAbsSq(in_val);
+            const double m_ref_sq = fftwAbsSq(ref_val);
+            if (m_in_sq < m_ref_sq * threshold_sq || m_ref_sq < m_in_sq * threshold_sq) {
                 // They're different. Probably not a chroma signal; throw it away.
                 continue;
             }

@@ -29,6 +29,7 @@ TbcSources::TbcSources(QObject *parent) : QObject(parent)
     currentSource = 0;
     currentVbiFrameNumber = 1;
     backgroundLoadErrorMessage.clear();
+    dropoutsOn = false;
 }
 
 // Load a TBC source video; returns updated current source number or -1 on failure
@@ -97,6 +98,16 @@ QVector<QString> TbcSources::getListOfAvailableSources()
     return sourceIds;
 }
 
+// Perform diffDOD in a background thread
+void TbcSources::performDiffDod()
+{
+    // Set up and fire-off the background diffDOD thread
+    qDebug() << "TbcSources::performDiffDod(): Setting up background diffDOD thread";
+    connect(&watcher, SIGNAL(finished()), this, SLOT(finishBackgroundDiffDod()));
+    future = QtConcurrent::run(this, &TbcSources::performBackgroundDiffDod);
+    watcher.setFuture(future);
+}
+
 // Get a QImage of the current source's current frame
 QImage TbcSources::getCurrentFrameImage()
 {
@@ -119,7 +130,7 @@ QImage TbcSources::getCurrentFrameImage()
                               videoParameters.fieldWidth << "x" << frameHeight << ")";
     } else {
         // Offset the VBI frame number to get the sequential source frame number
-        qint32 frameNumber = currentVbiFrameNumber - sourceVideos[currentSource]->minimumVbiFrameNumber + 1;
+        qint32 frameNumber = convertVbiFrameNumberToSequential(currentVbiFrameNumber, currentSource);
         qDebug() << "TbcSources::getCurrentFrameImage(): Request for VBI frame number" << currentVbiFrameNumber << "translated to frame number" << frameNumber;
 
         // Get the required field numbers
@@ -167,6 +178,41 @@ QImage TbcSources::getCurrentFrameImage()
                     *(frameImage.scanLine(y) + xpp + 1) = static_cast<uchar>(pixelValue); // G
                     *(frameImage.scanLine(y) + xpp + 2) = static_cast<uchar>(pixelValue); // B
                 }
+            }
+
+            // Highlight dropouts
+            if (dropoutsOn) {
+                // Create a painter object
+                QPainter imagePainter;
+                imagePainter.begin(&frameImage);
+
+                // Draw the drop out data for the first field
+                imagePainter.setPen(Qt::red);
+                LdDecodeMetaData::DropOuts firstFieldDropouts = sourceVideos[currentSource]->ldDecodeMetaData.getFieldDropOuts(firstFieldNumber);
+                for (qint32 dropOutIndex = 0; dropOutIndex < firstFieldDropouts.startx.size(); dropOutIndex++) {
+                    qint32 startx = firstFieldDropouts.startx[dropOutIndex];
+                    qint32 endx = firstFieldDropouts.endx[dropOutIndex];
+                    qint32 fieldLine = firstFieldDropouts.fieldLine[dropOutIndex];
+
+                    imagePainter.drawLine(startx, ((fieldLine - 1) * 2), endx, ((fieldLine - 1) * 2));
+                }
+
+                // Draw the drop out data for the second field
+                imagePainter.setPen(Qt::blue);
+                LdDecodeMetaData::DropOuts secondFieldDropouts = sourceVideos[currentSource]->ldDecodeMetaData.getFieldDropOuts(secondFieldNumber);
+                for (qint32 dropOutIndex = 0; dropOutIndex < secondFieldDropouts.startx.size(); dropOutIndex++) {
+                    qint32 startx = secondFieldDropouts.startx[dropOutIndex];
+                    qint32 endx = secondFieldDropouts.endx[dropOutIndex];
+                    qint32 fieldLine = secondFieldDropouts.fieldLine[dropOutIndex];
+
+                    imagePainter.drawLine(startx, ((fieldLine - 1) * 2) + 1, endx, ((fieldLine - 1) * 2) + 1);
+                }
+
+                qDebug() << "TbcSources::getCurrentFrameImage(): Highlighting dropouts -" << firstFieldDropouts.startx.size() << "first field and" <<
+                            secondFieldDropouts.startx.size() << "second field";
+
+                // End the painter object
+                imagePainter.end();
             }
         } else {
             // Frame is missing from source - return a dummy frame
@@ -279,6 +325,12 @@ qint32 TbcSources::getCurrentSourceMinimumVbiFrameNumber()
 qint32 TbcSources::getCurrentSourceMaximumVbiFrameNumber()
 {
     return sourceVideos[currentSource]->maximumVbiFrameNumber;
+}
+
+// Method to set the highlight dropouts mode (true = dropouts highlighted)
+void TbcSources::setHighlightDropouts(bool _state)
+{
+    dropoutsOn = _state;
 }
 
 // Private methods ----------------------------------------------------------------------------------------------------
@@ -480,3 +532,215 @@ bool TbcSources::setDiscTypeAndMaxMinFrameVbi(qint32 sourceNumber)
 
     return true;
 }
+
+// Perform the background diffDOD of the current source
+void TbcSources::performBackgroundDiffDod()
+{
+    // Set the parent's busy state
+    emit setBusy("Please wait performing diffDOD...", false, 0);
+
+    for (qint32 vbiFrameNumber = sourceVideos[currentSource]->minimumVbiFrameNumber; vbiFrameNumber <= sourceVideos[currentSource]->maximumVbiFrameNumber; vbiFrameNumber++) {
+
+        diffDodFrame(vbiFrameNumber, 6000);
+
+        if (vbiFrameNumber % 10 == 0) {
+            QString updateString = "Processing VBI frame #" + QString::number(vbiFrameNumber);
+            emit setBusy(updateString, false, 0);
+        }
+    }
+}
+
+// Finish the diffDOD background task
+void TbcSources::finishBackgroundDiffDod()
+{
+    qDebug() << "TbcSources::finishBackgroundDiffDod(): Called - clearing busy";
+
+    // Disconnect the finished signal
+    disconnect(&watcher, SIGNAL(finished()), this, SLOT(finishBackgroundDiffDod()));
+
+    // Clear the parent's busy state
+    emit clearBusy();
+}
+
+// Perform differential dropout detection and update the current source's metadata
+// Threshold is best around 6000-10000
+// targetSource + targetVbiFrame is the source and frame to generate dropout data for
+void TbcSources::diffDodFrame(qint32 targetVbiFrame, qint32 threshold)
+{
+    // Range check the threshold
+    if (threshold < 100) threshold = 100;
+    if (threshold > 16284) threshold = 16284;
+
+    // Check how many source frames are available for the current frame
+    QVector<qint32> availableSourceFrames;
+    for (qint32 sourceNumber = 0; sourceNumber < sourceVideos.size(); sourceNumber++) {
+        if (targetVbiFrame >= sourceVideos[sourceNumber]->minimumVbiFrameNumber && targetVbiFrame <= sourceVideos[sourceNumber]->maximumVbiFrameNumber) {
+            // Get the required field numbers
+            qint32 firstFieldNumber = sourceVideos[sourceNumber]->ldDecodeMetaData.getFirstFieldNumber(convertVbiFrameNumberToSequential(targetVbiFrame, sourceNumber));
+            qint32 secondFieldNumber = sourceVideos[sourceNumber]->ldDecodeMetaData.getSecondFieldNumber(convertVbiFrameNumberToSequential(targetVbiFrame, sourceNumber));
+
+            // Ensure the frame is not a padded field (i.e. missing)
+            if (!(sourceVideos[sourceNumber]->ldDecodeMetaData.getField(firstFieldNumber).pad &&
+                  sourceVideos[sourceNumber]->ldDecodeMetaData.getField(secondFieldNumber).pad)) {
+                availableSourceFrames.append(sourceNumber);
+            }
+        }
+    }
+
+    // Differential DOD requires at least three frames (including the current frame)
+    if (availableSourceFrames.size() < 3) {
+        // Differential DOD requires at least 3 valid source frames
+        qDebug() << "TbcSources::performDifferentialDropoutDetection(): Only" << availableSourceFrames.size() << "source frames are available - can not perform DOD";
+        return;
+    }
+
+    // Get the metadata for the video parameters (all sources are the same, so just grab from the first)
+    LdDecodeMetaData::VideoParameters videoParameters = sourceVideos[0]->ldDecodeMetaData.getVideoParameters();
+
+    // Perform the diffDOD
+
+    // Define the temp dropout metadata
+    struct FrameDropOuts {
+        LdDecodeMetaData::DropOuts firstFieldDropOuts;
+        LdDecodeMetaData::DropOuts secondFieldDropOuts;
+    };
+
+    QVector<FrameDropOuts> frameDropouts;
+    frameDropouts.resize(availableSourceFrames.size());
+
+    QVector<QByteArray> firstFields;
+    QVector<QByteArray> secondFields;
+    firstFields.resize(availableSourceFrames.size());
+    secondFields.resize(availableSourceFrames.size());
+
+    QVector<quint16*> sourceFirstFieldPointer;
+    QVector<quint16*> sourceSecondFieldPointer;
+    sourceFirstFieldPointer.resize(availableSourceFrames.size());
+    sourceSecondFieldPointer.resize(availableSourceFrames.size());
+
+    for (qint32 sourcePointer = 0; sourcePointer < availableSourceFrames.size(); sourcePointer++) {
+        qint32 firstFieldNumber = sourceVideos[availableSourceFrames[sourcePointer]]->ldDecodeMetaData.getFirstFieldNumber(convertVbiFrameNumberToSequential(targetVbiFrame, availableSourceFrames[sourcePointer]));
+        qint32 secondFieldNumber = sourceVideos[availableSourceFrames[sourcePointer]]->ldDecodeMetaData.getSecondFieldNumber(convertVbiFrameNumberToSequential(targetVbiFrame, availableSourceFrames[sourcePointer]));
+
+        firstFields[sourcePointer] = (sourceVideos[availableSourceFrames[sourcePointer]]->sourceVideo.getVideoField(firstFieldNumber));
+        secondFields[sourcePointer] = (sourceVideos[availableSourceFrames[sourcePointer]]->sourceVideo.getVideoField(secondFieldNumber));
+
+        sourceFirstFieldPointer[sourcePointer] = reinterpret_cast<quint16*>(firstFields[sourcePointer].data());
+        sourceSecondFieldPointer[sourcePointer] = reinterpret_cast<quint16*>(secondFields[sourcePointer].data());
+    }
+
+    QVector<qint32> firstDiff;
+    QVector<qint32> secondDiff;
+    for (qint32 y = 0; y < videoParameters.fieldHeight; y++) {
+        qint32 startOfLinePointer = y * videoParameters.fieldWidth;
+
+        for (qint32 targetPointer = 0; targetPointer < availableSourceFrames.size(); targetPointer++) {
+            // Declare first and second field diff and set all elements to zero
+            firstDiff.fill(0, videoParameters.fieldWidth);
+            secondDiff.fill(0, videoParameters.fieldWidth);
+
+            for (qint32 sourcePointer = 0; sourcePointer < availableSourceFrames.size(); sourcePointer++) {
+                if (sourcePointer != targetPointer) {
+                    for (qint32 x = 0; x < videoParameters.fieldWidth; x++) {
+                        // Get the 16-bit pixel values and diff them - First field
+                        qint32 firstDifference = static_cast<qint32>(sourceFirstFieldPointer[targetPointer][x + startOfLinePointer]) -
+                                static_cast<qint32>(sourceFirstFieldPointer[sourcePointer][x + startOfLinePointer]);
+
+                        if (firstDifference < 0) firstDifference = -firstDifference;
+                        if (firstDifference > threshold) firstDiff[x]++;
+
+                        // Get the 16-bit pixel values and diff them - second field
+                        qint32 secondDifference = static_cast<qint32>(sourceSecondFieldPointer[targetPointer][x + startOfLinePointer]) -
+                                static_cast<qint32>(sourceSecondFieldPointer[sourcePointer][x + startOfLinePointer]);
+
+                        if (secondDifference < 0) secondDifference = -secondDifference;
+                        if (secondDifference > threshold) secondDiff[x]++;
+                    }
+                }
+            }
+
+            // Now the value of diff[x] contains the number of sources that are different to the current source
+            // If this more than 1, the current source's x is a dropout/error
+            bool doInProgressFirst = false;
+            bool doInProgressSecond = false;
+            for (qint32 x = 0; x < videoParameters.fieldWidth; x++) {
+                if (firstDiff[x] > 1) {
+                    // Current X is a dropout
+                    if (!doInProgressFirst) {
+                        doInProgressFirst = true;
+                        frameDropouts[targetPointer].firstFieldDropOuts.startx.append(x);
+                        frameDropouts[targetPointer].firstFieldDropOuts.fieldLine.append(y + 1);
+                    }
+                } else {
+                    // Current X is not a dropout
+                    if (doInProgressFirst) {
+                        doInProgressFirst = false;
+                        // Mark the previous x as the end of the dropout
+                        frameDropouts[targetPointer].firstFieldDropOuts.endx.append(x - 1);
+                    }
+                }
+
+                if (secondDiff[x] > 1) {
+                    // Current X is a dropout
+                    if (!doInProgressSecond) {
+                        doInProgressSecond = true;
+                        frameDropouts[targetPointer].secondFieldDropOuts.startx.append(x);
+                        frameDropouts[targetPointer].secondFieldDropOuts.fieldLine.append(y + 1);
+                    }
+                } else {
+                    // Current X is not a dropout
+                    if (doInProgressSecond) {
+                        doInProgressSecond = false;
+                        // Mark the previous x as the end of the dropout
+                        frameDropouts[targetPointer].secondFieldDropOuts.endx.append(x - 1);
+                    }
+                }
+            }
+
+            // Ensure dropout ends at the end of scan line
+            if (doInProgressFirst) {
+                doInProgressFirst = false;
+                frameDropouts[targetPointer].firstFieldDropOuts.endx.append(videoParameters.fieldWidth);
+            }
+
+            if (doInProgressSecond) {
+                doInProgressSecond = false;
+                frameDropouts[targetPointer].secondFieldDropOuts.endx.append(videoParameters.fieldWidth);
+            }
+        }
+    }
+
+    // Store the frame's dropouts in the metadata
+    for (qint32 targetPointer = 0; targetPointer < availableSourceFrames.size(); targetPointer++) {
+        // Store the new dropout data to the field's metadata
+        qint32 firstFieldNumber = sourceVideos[availableSourceFrames[targetPointer]]->ldDecodeMetaData.getFirstFieldNumber(convertVbiFrameNumberToSequential(targetVbiFrame, availableSourceFrames[targetPointer]));
+        qint32 secondFieldNumber = sourceVideos[availableSourceFrames[targetPointer]]->ldDecodeMetaData.getSecondFieldNumber(convertVbiFrameNumberToSequential(targetVbiFrame, availableSourceFrames[targetPointer]));
+
+        sourceVideos[availableSourceFrames[targetPointer]]->ldDecodeMetaData.updateFieldDropOuts(frameDropouts[targetPointer].firstFieldDropOuts, firstFieldNumber);
+        sourceVideos[availableSourceFrames[targetPointer]]->ldDecodeMetaData.updateFieldDropOuts(frameDropouts[targetPointer].secondFieldDropOuts, secondFieldNumber);
+    }
+}
+
+// Method to convert a VBI frame number to a sequential frame number
+qint32 TbcSources::convertVbiFrameNumberToSequential(qint32 vbiFrameNumber, qint32 sourceNumber)
+{
+    // Offset the VBI frame number to get the sequential source frame number
+    return vbiFrameNumber - sourceVideos[sourceNumber]->minimumVbiFrameNumber + 1;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

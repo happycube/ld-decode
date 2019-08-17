@@ -72,7 +72,6 @@ void Configuration::writeConfiguration(void)
     // Windows
     configuration->beginGroup("windows");
     configuration->setValue("mainWindowGeometry", settings.windows.mainWindowGeometry);
-    configuration->setValue("reportDialogGeometry", settings.windows.reportDialogGeometry);
     configuration->endGroup();
 
     // Sync the settings with disk
@@ -99,7 +98,6 @@ void Configuration::readConfiguration(void)
     // Windows
     configuration->beginGroup("windows");
     settings.windows.mainWindowGeometry = configuration->value("mainWindowGeometry").toByteArray();
-    settings.windows.reportDialogGeometry = configuration->value("reportDialogGeometry").toByteArray();
     configuration->endGroup();
 }
 
@@ -114,7 +112,6 @@ void Configuration::setDefault(void)
 
     // Windows
     settings.windows.mainWindowGeometry = QByteArray();
-    settings.windows.reportDialogGeometry = QByteArray();
 
     // Write the configuration
     writeConfiguration();
@@ -154,12 +151,3 @@ QByteArray Configuration::getMainWindowGeometry(void)
     return settings.windows.mainWindowGeometry;
 }
 
-void Configuration::setReportDialogGeometry(QByteArray reportDialogGeometry)
-{
-    settings.windows.reportDialogGeometry = reportDialogGeometry;
-}
-
-QByteArray Configuration::getReportDialogGeometry(void)
-{
-    return settings.windows.reportDialogGeometry;
-}

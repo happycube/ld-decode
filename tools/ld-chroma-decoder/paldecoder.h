@@ -48,16 +48,14 @@ public:
 
     // Parameters used by PalDecoder and PalThread
     struct Configuration : public Decoder::Configuration {
-        bool blackAndWhite;
-        bool useTransformFilter;
-        double transformThreshold;
+        PalColour::Configuration pal;
     };
 
 private:
     Configuration config;
 };
 
-class PalThread : public QThread
+class PalThread : public DecoderThread
 {
     Q_OBJECT
 public:
@@ -66,21 +64,14 @@ public:
                        QObject *parent = nullptr);
 
 protected:
-    void run() override;
+    QByteArray decodeFrame(const Decoder::InputField &firstField, const Decoder::InputField &secondField) override;
 
 private:
-    // Decoder pool
-    QAtomicInt& abort;
-    DecoderPool& decoderPool;
-
     // Settings
     const PalDecoder::Configuration &config;
 
     // PAL colour object
     PalColour palColour;
-
-    // Temporary output buffer
-    QByteArray outputData;
 };
 
 #endif // PALDECODER

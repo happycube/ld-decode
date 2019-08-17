@@ -111,6 +111,13 @@
           </widget>
          </item>
          <item>
+          <widget class="QCheckBox" name="highlightDoCheckBox">
+           <property name="text">
+            <string>Show DOs</string>
+           </property>
+          </widget>
+         </item>
+         <item>
           <spacer name="horizontalSpacer">
            <property name="orientation">
             <enum>Qt::Horizontal</enum>
@@ -191,14 +198,14 @@
     </property>
     <addaction name="actionAbout_ld_combine"/>
    </widget>
-   <widget class="QMenu" name="menuView">
+   <widget class="QMenu" name="menuTools">
     <property name="title">
-     <string>View</string>
+     <string>Tools</string>
     </property>
-    <addaction name="actionSource_report"/>
+    <addaction name="actionPerform_DiffDOD"/>
    </widget>
    <addaction name="menuFile"/>
-   <addaction name="menuView"/>
+   <addaction name="menuTools"/>
    <addaction name="menuHelp"/>
   </widget>
   <widget class="QStatusBar" name="statusBar"/>
@@ -230,6 +237,11 @@
   <action name="actionSource_report">
    <property name="text">
     <string>Source report...</string>
+   </property>
+  </action>
+  <action name="actionPerform_DiffDOD">
+   <property name="text">
+    <string>Perform diffDOD...</string>
    </property>
   </action>
  </widget>
