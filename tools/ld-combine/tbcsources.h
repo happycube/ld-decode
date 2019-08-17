@@ -109,7 +109,7 @@ private:
     void performBackgroundLoad(QString filename);
     bool setDiscTypeAndMaxMinFrameVbi(qint32 sourceNumber);
     void performBackgroundDiffDod();
-    void diffDodFrame(qint32 targetSource, qint32 targetVbiFrame, qint32 threshold);
+    void diffDodFrame(qint32 targetVbiFrame, qint32 threshold);
     qint32 convertVbiFrameNumberToSequential(qint32 vbiFrameNumber, qint32 sourceNumber);
 };
 
