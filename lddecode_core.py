@@ -2091,12 +2091,8 @@ class LDdecode:
             self.outfile_efm = None
 
         if fname_out is not None and digital_audio:
-            # create pipeline : EFM output -> ld-lds-converter .lds -> ld-ldstoefm
-
-            #self.subproc_ld-lds-converter = subprocess.Popen(['ld-lds-converter', '-p'], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
-            self.subproc_ldstoefm = subprocess.Popen(['ld-ldstoefm', '-n', '-e', '/dev/stdin', fname_out + '.efm'], stdin=subprocess.PIPE)
-            
-            # feed EFM stream into ld-lds-converter
+            # feed EFM stream into ld-ldstoefm
+            self.subproc_ldstoefm = subprocess.Popen(['ld-ldstoefm', fname_out + '.efm'], stdin=subprocess.PIPE)
             self.outfile_efm = self.subproc_ldstoefm.stdin
 
         self.fname_out = fname_out
