@@ -282,7 +282,7 @@ TbcSources::CombinedFrame TbcSources::combineFrame(qint32 targetVbiFrame, qint32
         return combinedFrame;
     }
 
-    // Combination requires at least three source frames, output the first source frame
+    // Combination requires at least three source frames, if there are less then output the first source frame
     if (availableSourceFrames.size() < 3) {
         // Differential DOD requires at least 3 valid source frames
         qInfo() << "Only" << availableSourceFrames.size() << "source frames are available - can not perform combination for VBI frame" << targetVbiFrame;
@@ -310,8 +310,6 @@ TbcSources::CombinedFrame TbcSources::combineFrame(qint32 targetVbiFrame, qint32
     combinedFrame.firstFieldData.resize(sourceVideos[availableSourceFrames[0]]->sourceVideo.getVideoField(firstFieldNumber).size());
     combinedFrame.secondFieldData.resize(sourceVideos[availableSourceFrames[0]]->sourceVideo.getVideoField(secondFieldNumber).size());
 
-    // Perform the differential combination
-
     // Define the temp dropout metadata
     struct FrameDropOuts {
         LdDecodeMetaData::DropOuts firstFieldDropOuts;
@@ -320,7 +318,7 @@ TbcSources::CombinedFrame TbcSources::combineFrame(qint32 targetVbiFrame, qint32
 
     FrameDropOuts frameDropouts;
 
-    // Get the data for all available source fields
+    // Get the data for all available source fields and copy locally
     QVector<QByteArray> firstFields;
     QVector<QByteArray> secondFields;
     firstFields.resize(availableSourceFrames.size());
@@ -332,8 +330,10 @@ TbcSources::CombinedFrame TbcSources::combineFrame(qint32 targetVbiFrame, qint32
     sourceSecondFieldPointer.resize(availableSourceFrames.size());
 
     for (qint32 sourcePointer = 0; sourcePointer < availableSourceFrames.size(); sourcePointer++) {
-        qint32 firstFieldNumber = sourceVideos[availableSourceFrames[sourcePointer]]->ldDecodeMetaData.getFirstFieldNumber(convertVbiFrameNumberToSequential(targetVbiFrame, availableSourceFrames[sourcePointer]));
-        qint32 secondFieldNumber = sourceVideos[availableSourceFrames[sourcePointer]]->ldDecodeMetaData.getSecondFieldNumber(convertVbiFrameNumberToSequential(targetVbiFrame, availableSourceFrames[sourcePointer]));
+        qint32 firstFieldNumber = sourceVideos[availableSourceFrames[sourcePointer]]->
+                ldDecodeMetaData.getFirstFieldNumber(convertVbiFrameNumberToSequential(targetVbiFrame, availableSourceFrames[sourcePointer]));
+        qint32 secondFieldNumber = sourceVideos[availableSourceFrames[sourcePointer]]->
+                ldDecodeMetaData.getSecondFieldNumber(convertVbiFrameNumberToSequential(targetVbiFrame, availableSourceFrames[sourcePointer]));
 
         firstFields[sourcePointer] = (sourceVideos[availableSourceFrames[sourcePointer]]->sourceVideo.getVideoField(firstFieldNumber));
         secondFields[sourcePointer] = (sourceVideos[availableSourceFrames[sourcePointer]]->sourceVideo.getVideoField(secondFieldNumber));
@@ -342,7 +342,12 @@ TbcSources::CombinedFrame TbcSources::combineFrame(qint32 targetVbiFrame, qint32
         sourceSecondFieldPointer[sourcePointer] = reinterpret_cast<quint16*>(secondFields[sourcePointer].data());
     }
 
-    // Perform diffDOD
+    // Perform differential dropout detection
+    //
+    // This compares each available source against all other available sources to determine where the source differs.
+    // If any of the frame's contents do not match that of the other sources, the frame's pixels are marked as dropouts.
+    // Once diffDOD is performed (line by line) a target line is then produced by averaging the available source pixels together
+    // (and ignoring sources with 'dropout' pixels to prevent outliers and errors disturbing the resulting frame).
     struct Diff {
         QVector<qint32> firstDiff;
         QVector<qint32> secondDiff;
@@ -351,6 +356,7 @@ TbcSources::CombinedFrame TbcSources::combineFrame(qint32 targetVbiFrame, qint32
     QVector<Diff> diffs;
     diffs.resize(availableSourceFrames.size());
 
+    // Process the frame one line at a time (both fields)
     for (qint32 y = 0; y < videoParameters.fieldHeight; y++) {
         qint32 startOfLinePointer = y * videoParameters.fieldWidth;
 
@@ -383,10 +389,10 @@ TbcSources::CombinedFrame TbcSources::combineFrame(qint32 targetVbiFrame, qint32
             }
         }
 
-        // Now the value of diffs[source].firstDiff[x]/diffs[source].secondDiff[x] contains the number of other sources that different
+        // Now the value of diffs[source].firstDiff[x]/diffs[source].secondDiff[x] contains the number of other sources that differ
         // If this more than 1, the current source's x is a dropout/error
 
-        // Sum all of the valid pixel data
+        // Sum all of the valid pixel data and keep track of the number of sources contributing to the sum
         QVector<qint32> firstSum;
         QVector<qint32> firstNumberOfSources;
         firstSum.fill(0, videoParameters.fieldWidth);
@@ -465,7 +471,7 @@ TbcSources::CombinedFrame TbcSources::combineFrame(qint32 targetVbiFrame, qint32
             }
         }
 
-        // Ensure metadata dropout ends at the end of scan line
+        // Ensure metadata dropouts end at the end of scan line (require by the fieldLine attribute)
         if (doInProgressFirst) {
             doInProgressFirst = false;
             frameDropouts.firstFieldDropOuts.endx.append(videoParameters.fieldWidth);
@@ -477,7 +483,7 @@ TbcSources::CombinedFrame TbcSources::combineFrame(qint32 targetVbiFrame, qint32
         }
     }
 
-    // Store the frame's dropouts in the combined metadata
+    // Store the target frame dropouts in the combined frame's metadata
     combinedFrame.firstFieldMetadata.dropOuts = frameDropouts.firstFieldDropOuts;
     combinedFrame.secondFieldMetadata.dropOuts = frameDropouts.secondFieldDropOuts;
 
@@ -499,8 +505,10 @@ bool TbcSources::setDiscTypeAndMaxMinFrameVbi(qint32 sourceNumber)
     // Using sequential frame numbering starting from 1
     for (qint32 seqFrame = 1; seqFrame <= sourceVideos[sourceNumber]->ldDecodeMetaData.getNumberOfFrames(); seqFrame++) {
         // Get the VBI data and then decode
-        QVector<qint32> vbi1 = sourceVideos[sourceNumber]->ldDecodeMetaData.getFieldVbi(sourceVideos[sourceNumber]->ldDecodeMetaData.getFirstFieldNumber(seqFrame)).vbiData;
-        QVector<qint32> vbi2 = sourceVideos[sourceNumber]->ldDecodeMetaData.getFieldVbi(sourceVideos[sourceNumber]->ldDecodeMetaData.getSecondFieldNumber(seqFrame)).vbiData;
+        QVector<qint32> vbi1 = sourceVideos[sourceNumber]->ldDecodeMetaData.getFieldVbi(sourceVideos[sourceNumber]->
+                                                                                        ldDecodeMetaData.getFirstFieldNumber(seqFrame)).vbiData;
+        QVector<qint32> vbi2 = sourceVideos[sourceNumber]->ldDecodeMetaData.getFieldVbi(sourceVideos[sourceNumber]->
+                                                                                        ldDecodeMetaData.getSecondFieldNumber(seqFrame)).vbiData;
         VbiDecoder::Vbi vbi = vbiDecoder.decodeFrame(vbi1[0], vbi1[1], vbi1[2], vbi2[0], vbi2[1], vbi2[2]);
 
         // Look for a complete, valid CAV picture number or CLV time-code
