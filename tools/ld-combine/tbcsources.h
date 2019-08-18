@@ -26,8 +26,6 @@
 #define TBCSOURCES_H
 
 #include <QObject>
-#include <QImage>
-#include <QPainter>
 #include <QList>
 #include <QtConcurrent/QtConcurrent>
 #include <QDebug>
@@ -43,44 +41,12 @@ class TbcSources : public QObject
 public:
     explicit TbcSources(QObject *parent = nullptr);
 
-    struct RawFrame {
-        QByteArray firstFieldData;
-        QByteArray secondFieldData;
-
-        qint32 fieldHeight;
-        qint32 fieldWidth;
-    };
-
-    void loadSource(QString filename);
-    QString getLoadingMessage();
+    bool loadSource(QString filename, bool reverse);
     bool unloadSource();
-    bool setCurrentSource(qint32 sourceNumber);
-    qint32 getCurrentSource();
+    bool saveSource(QString outputFilename, qint32 vbiStartFrame, qint32 length, qint32 dodThreshold);
     qint32 getNumberOfAvailableSources();
-    QVector<QString> getListOfAvailableSources();
-    void performDiffDod();
-    QImage getCurrentFrameImage();
-    RawFrame getCurrentFrameData();
-    qint32 getCurrentSourceNumberOfFrames();
-    qint32 getCurrentVbiFrameNumber();
-    void setCurrentVbiFrameNumber(qint32 frameNumber);
-    QString getCurrentSourceFilename();
     qint32 getMinimumVbiFrameNumber();
     qint32 getMaximumVbiFrameNumber();
-    qint32 getCurrentSourceMinimumVbiFrameNumber();
-    qint32 getCurrentSourceMaximumVbiFrameNumber();
-    void setHighlightDropouts(bool _state);
-
-signals:
-    void setBusy(QString message, bool showProgress, qint32 progress);
-    void clearBusy();
-    void updateSources(bool isSuccessful);
-
-public slots:
-
-private slots:
-    void finishBackgroundLoad();
-    void finishBackgroundDiffDod();
 
 private:
     struct Source {
@@ -92,24 +58,22 @@ private:
         bool isSourceCav;
     };
 
-    bool dropoutsOn;
+    struct CombinedFrame {
+        QByteArray firstFieldData;
+        QByteArray secondFieldData;
+
+        LdDecodeMetaData::Field firstFieldMetadata;
+        LdDecodeMetaData::Field secondFieldMetadata;
+    };
 
     // The frame number is common between sources
     qint32 currentVbiFrameNumber;
 
     QVector<Source*> sourceVideos;
     qint32 currentSource;
-    QString backgroundLoadErrorMessage;
 
-    // Background loader globals
-    QFutureWatcher<void> watcher;
-    QFuture <void> future;
-    bool backgroundLoadSuccessful;
-
-    void performBackgroundLoad(QString filename);
+    CombinedFrame combineFrame(qint32 targetVbiFrame, qint32 threshold);
     bool setDiscTypeAndMaxMinFrameVbi(qint32 sourceNumber);
-    void performBackgroundDiffDod();
-    void diffDodFrame(qint32 targetVbiFrame, qint32 threshold);
     qint32 convertVbiFrameNumberToSequential(qint32 vbiFrameNumber, qint32 sourceNumber);
 };
 

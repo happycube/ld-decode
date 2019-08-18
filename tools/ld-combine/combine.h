@@ -1,6 +1,6 @@
 /************************************************************************
 
-    aboutdialog.h
+    combine.h
 
     ld-combine - TBC combination and enhancement tool
     Copyright (C) 2019 Simon Inns
@@ -22,25 +22,28 @@
 
 ************************************************************************/
 
-#ifndef ABOUTDIALOG_H
-#define ABOUTDIALOG_H
+#ifndef COMBINE_H
+#define COMBINE_H
 
-#include <QDialog>
+#include <QObject>
+#include <QDebug>
+#include <QFile>
 
-namespace Ui {
-class AboutDialog;
-}
+#include "tbcsources.h"
 
-class AboutDialog : public QDialog
+class Combine : public QObject
 {
     Q_OBJECT
-
 public:
-    explicit AboutDialog(QWidget *parent = nullptr);
-    ~AboutDialog();
+    explicit Combine(QObject *parent = nullptr);
+
+    bool process(QVector<QString> inputFilenames, QString outputFilename, bool reverse,
+                 qint32 vbiStartFrame, qint32 length, qint32 dodThreshold);
 
 private:
-    Ui::AboutDialog *ui;
+    TbcSources tbcSources;
+
+    bool loadInputTbcFiles(QVector<QString> inputFilenames, bool reverse);
 };
 
-#endif // ABOUTDIALOG_H
+#endif // COMBINE_H
