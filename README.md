@@ -1,4 +1,4 @@
-This is the development branch for rev6.  It's already better, stronger, and faster than rev5.x, but may randomly not work being a development branch.
+This is the development branch for rev6.  It's already better, stronger, and faster than rev5.x, but may randomly not work since it's a development branch.
 
 For more documentation check the wiki (here) on github:
 
