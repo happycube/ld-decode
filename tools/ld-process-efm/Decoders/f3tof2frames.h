@@ -55,6 +55,8 @@ public:
 
         qint32 sequenceInterruptions;
         qint32 missingF3Frames;
+
+        qint32 preempFrames;
     };
 
     QVector<F2Frame> process(QVector<F3Frame> f3FramesIn, bool debugState);

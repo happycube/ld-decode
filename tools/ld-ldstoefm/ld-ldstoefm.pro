@@ -17,14 +17,10 @@ DEFINES += QT_DEPRECATED_WARNINGS
 SOURCES += \
         main.cpp \
     ldsprocess.cpp \
-    efmfilter.cpp \
-    isifilter.cpp \
     pll.cpp
 
 HEADERS += \
     ldsprocess.h \
-    efmfilter.h \
-    isifilter.h \
     pll.h
 
 # Default rules for deployment.

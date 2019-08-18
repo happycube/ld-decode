@@ -1,6 +1,0 @@
-<RCC>
-    <qresource prefix="/icons">
-        <file>Graphics/128px-ld-combine.png</file>
-        <file>Graphics/256px-ld-combine.png</file>
-    </qresource>
-</RCC>

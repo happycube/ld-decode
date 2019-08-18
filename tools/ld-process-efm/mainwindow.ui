@@ -110,7 +110,7 @@
          <item>
           <widget class="QTabWidget" name="tabWidget">
            <property name="currentIndex">
-            <number>6</number>
+            <number>3</number>
            </property>
            <widget class="QWidget" name="optionsTab">
             <attribute name="title">
@@ -1028,7 +1028,7 @@
                <property name="minimumSize">
                 <size>
                  <width>0</width>
-                 <height>160</height>
+                 <height>180</height>
                 </size>
                </property>
                <property name="title">
@@ -1083,7 +1083,7 @@
                 <property name="geometry">
                  <rect>
                   <x>10</x>
-                  <y>70</y>
+                  <y>90</y>
                   <width>201</width>
                   <height>21</height>
                  </rect>
@@ -1099,7 +1099,7 @@
                 <property name="geometry">
                  <rect>
                   <x>10</x>
-                  <y>90</y>
+                  <y>110</y>
                   <width>201</width>
                   <height>21</height>
                  </rect>
@@ -1115,7 +1115,7 @@
                 <property name="geometry">
                  <rect>
                   <x>10</x>
-                  <y>110</y>
+                  <y>130</y>
                   <width>201</width>
                   <height>21</height>
                  </rect>
@@ -1131,7 +1131,7 @@
                 <property name="geometry">
                  <rect>
                   <x>10</x>
-                  <y>130</y>
+                  <y>150</y>
                   <width>201</width>
                   <height>21</height>
                  </rect>
@@ -1160,7 +1160,7 @@
                 <property name="geometry">
                  <rect>
                   <x>220</x>
-                  <y>70</y>
+                  <y>90</y>
                   <width>301</width>
                   <height>20</height>
                  </rect>
@@ -1173,7 +1173,7 @@
                 <property name="geometry">
                  <rect>
                   <x>220</x>
-                  <y>90</y>
+                  <y>110</y>
                   <width>301</width>
                   <height>20</height>
                  </rect>
@@ -1186,7 +1186,7 @@
                 <property name="geometry">
                  <rect>
                   <x>220</x>
-                  <y>110</y>
+                  <y>130</y>
                   <width>301</width>
                   <height>20</height>
                  </rect>
@@ -1199,7 +1199,36 @@
                 <property name="geometry">
                  <rect>
                   <x>220</x>
-                  <y>130</y>
+                  <y>150</y>
+                  <width>301</width>
+                  <height>20</height>
+                 </rect>
+                </property>
+                <property name="text">
+                 <string>TextLabel</string>
+                </property>
+               </widget>
+               <widget class="QLabel" name="label_71">
+                <property name="geometry">
+                 <rect>
+                  <x>10</x>
+                  <y>70</y>
+                  <width>201</width>
+                  <height>21</height>
+                 </rect>
+                </property>
+                <property name="text">
+                 <string>Total Pre-emp Frames:</string>
+                </property>
+                <property name="alignment">
+                 <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+                </property>
+               </widget>
+               <widget class="QLabel" name="f2_f3ToF2_totalPreempFrames_label">
+                <property name="geometry">
+                 <rect>
+                  <x>220</x>
+                  <y>70</y>
                   <width>301</width>
                   <height>20</height>
                  </rect>

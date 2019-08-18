@@ -205,6 +205,7 @@ void MainWindow::resetStatistics()
     // == F3 to F2
     ui->f2_f3ToF2_totalInputF3Frames_label->setText(tr("0"));
     ui->f2_f3ToF2_totalOutputF2Frames_label->setText(tr("0"));
+    ui->f2_f3ToF2_totalPreempFrames_label->setText(tr("0"));
     ui->f2_f3ToF2_f3SequenceInterruptions_label->setText(tr("0"));
     ui->f2_f3ToF2_missingF3Frames_label->setText(tr("0"));
     ui->f2_f3ToF2_initialDiscTime_label->setText(dummyTime.getTimeAsQString());
@@ -303,6 +304,7 @@ void MainWindow::updateStatistics()
     // == F3 to F2
     ui->f2_f3ToF2_totalInputF3Frames_label->setText(QString::number(statistics.f3ToF2Frames.totalF3Frames));
     ui->f2_f3ToF2_totalOutputF2Frames_label->setText(QString::number(statistics.f3ToF2Frames.totalF2Frames));
+    ui->f2_f3ToF2_totalPreempFrames_label->setText(QString::number(statistics.f3ToF2Frames.preempFrames));
     ui->f2_f3ToF2_f3SequenceInterruptions_label->setText(QString::number(statistics.f3ToF2Frames.sequenceInterruptions));
     ui->f2_f3ToF2_missingF3Frames_label->setText(QString::number(statistics.f3ToF2Frames.missingF3Frames));
     ui->f2_f3ToF2_initialDiscTime_label->setText(statistics.f3ToF2Frames.initialDiscTime.getTimeAsQString());

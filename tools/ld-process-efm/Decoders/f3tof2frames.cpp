@@ -71,6 +71,11 @@ QVector<F2Frame> F3ToF2Frames::process(QVector<F3Frame> f3FramesIn, bool debugSt
         Section section;
         section.setData(sectionData);
 
+        // Check the audio preemp flag (false = pre-emp audio)
+        if (section.getQMode() == 1 || section.getQMode() == 4) {
+            if (!section.getQMetadata().qControl.isNoPreempNotPreemp) statistics.preempFrames++;
+        }
+
         // Keep track of the disc time
         TrackTime currentDiscTime;
         if (!initialDiscTimeSet) {
@@ -237,6 +242,7 @@ void F3ToF2Frames::reportStatistics()
     qInfo() << "F3 Frame to F2 Frame decode:";
     qInfo() << "      Total input F3 Frames:" << statistics.totalF3Frames;
     qInfo() << "     Total output F2 Frames:" << statistics.totalF2Frames;
+    qInfo() << "        Total Preemp Frames:" << statistics.preempFrames;
     qInfo() << "  F3 Sequence Interruptions:" << statistics.sequenceInterruptions;
     qInfo() << "          Missing F3 Frames:" << statistics.missingF3Frames;
     qInfo().noquote() << "          Initial disc time:" << statistics.initialDiscTime.getTimeAsQString();
@@ -286,4 +292,6 @@ void F3ToF2Frames::clearStatistics()
 
     statistics.sequenceInterruptions = 0;
     statistics.missingF3Frames = 0;
+
+    statistics.preempFrames = 0;
 }
