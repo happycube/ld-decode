@@ -1,6 +1,4 @@
-This is rev5.1 of ld-decode and tools. rev5.1 fixes some additional issues from rev5, mostly with "imperfect" disks... 
-
-(rev5 itself added lots of great new stuff, check out http://www.domesday86.com for details :)
+This is the development branch for rev6.  It's already better, stronger, and faster than rev5.x, but may randomly not work being a development branch.
 
 For more documentation check the wiki (here) on github:
 
