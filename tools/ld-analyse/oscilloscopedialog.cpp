@@ -35,7 +35,6 @@ OscilloscopeDialog::OscilloscopeDialog(QWidget *parent) :
     maximumScanLines = 625;
     lastScopeLine = 0;
     lastScopeDot = 0;
-    scopeHeight = 0;
     scopeWidth = 0;
 
     // Configure the GUI
@@ -74,13 +73,8 @@ void OscilloscopeDialog::showTraceImage(TbcSource::ScanLineData scanLineData, qi
     // Add the QImage to the QLabel in the dialogue
     ui->scopeLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     ui->scopeLabel->setAlignment(Qt::AlignCenter);
-    ui->scopeLabel->setMinimumSize(traceImage.width() / 4, traceImage.height() / 4); // Minimum size 1/4
-    ui->scopeLabel->setMaximumSize(traceImage.width(), traceImage.height());
     ui->scopeLabel->setScaledContents(true);
     ui->scopeLabel->setPixmap(QPixmap::fromImage(traceImage));
-
-    // Set the window's maximum size according to its contents
-    this->setMaximumSize(sizeHint());
 
     // Update the scan-line spinbox
     ui->scanLineSpinBox->setMaximum(frameHeight);
@@ -99,8 +93,10 @@ QImage OscilloscopeDialog::getFieldLineTraceImage(TbcSource::ScanLineData scanLi
     bool showDropouts = ui->dropoutsCheckBox->isChecked();
 
     // These are fixed, but may be changed to options later
-    scopeHeight = 512;
+    qint32 scopeHeight = 2048;
     scopeWidth = scanLineData.data.size();
+
+    qint32 scopeScale = 65536 / scopeHeight;
 
     // Define image with width, height and format
     QImage scopeImage(scanLineData.data.size(), scopeHeight, QImage::Format_RGB888);
@@ -122,10 +118,10 @@ QImage OscilloscopeDialog::getFieldLineTraceImage(TbcSource::ScanLineData scanLi
     // Note: For PAL this should be black at 64 and white at 211
 
     // Scale to 512 pixel height
-    qint32 blackIre = 512 - (scanLineData.blackIre / 128);
-    qint32 whiteIre = 512 - (scanLineData.whiteIre / 128);
+    qint32 blackIre = scopeHeight - (scanLineData.blackIre / scopeScale);
+    qint32 whiteIre = scopeHeight - (scanLineData.whiteIre / scopeScale);
     qint32 midPointIre = scanLineData.blackIre + ((scanLineData.whiteIre - scanLineData.blackIre) / 2);
-    midPointIre = 512 - (midPointIre / 128);
+    midPointIre = scopeHeight - (midPointIre / scopeScale);
 
     scopePainter.setPen(Qt::white);
     scopePainter.drawLine(0, blackIre, scanLineData.data.size(), blackIre);
@@ -207,7 +203,7 @@ QImage OscilloscopeDialog::getFieldLineTraceImage(TbcSource::ScanLineData scanLi
     for (qint32 xPosition = 0; xPosition < scanLineData.data.size(); xPosition++) {
         if (showYC) {
             // Scale (to 0-512) and invert
-            qint32 signalLevelYC = scopeHeight - (signalDataYC[xPosition] / 128);
+            qint32 signalLevelYC = scopeHeight - (signalDataYC[xPosition] / scopeScale);
 
             if (xPosition != 0) {
                 // Non-active video area YC is yellow, active is white
@@ -227,7 +223,7 @@ QImage OscilloscopeDialog::getFieldLineTraceImage(TbcSource::ScanLineData scanLi
 
         if (showC) {
             // Scale (to 0-512) and invert
-            qint32 signalLevelC = (scopeHeight - (signalDataC[xPosition] / 128)) - (scopeHeight - midPointIre);
+            qint32 signalLevelC = (scopeHeight - (signalDataC[xPosition] / scopeScale)) - (scopeHeight - midPointIre);
 
             if (xPosition != 0) {
                 // Draw a line from the last Y signal to the current one (signal green, out of range in yellow)
@@ -244,7 +240,7 @@ QImage OscilloscopeDialog::getFieldLineTraceImage(TbcSource::ScanLineData scanLi
 
         if (showY) {
             // Scale (to 0-512) and invert
-            qint32 signalLevelY = scopeHeight - (signalDataY[xPosition] / 128);
+            qint32 signalLevelY = scopeHeight - (signalDataY[xPosition] / scopeScale);
 
             if (xPosition != 0) {
                 // Draw a line from the last Y signal to the current one (signal white, out of range in red)

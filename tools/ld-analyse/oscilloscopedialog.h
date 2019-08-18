@@ -67,7 +67,6 @@ private slots:
 private:
     Ui::OscilloscopeDialog *ui;
     qint32 maximumScanLines;
-    qint32 scopeHeight;
     qint32 scopeWidth;
     qint32 lastScopeLine;
     qint32 lastScopeDot;
