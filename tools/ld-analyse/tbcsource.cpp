@@ -593,6 +593,11 @@ void TbcSource::generateData(qint32 _targetDataPoints)
         qreal doLength = 0;
         qreal blackSnrTotal = 0;
         qreal whiteSnrTotal = 0;
+
+        // SNR data may be missing in some fields, so we count the points to prevent
+        // the average from being thrown-off by missing data
+        qreal blackSnrPoints = 0;
+        qreal whiteSnrPoints = 0;
         for (qint32 avCount = 0; avCount < fieldsPerGraphDataPoint; avCount++) {
             LdDecodeMetaData::Field field = ldDecodeMetaData.getField(fieldNumber);
 
@@ -606,16 +611,22 @@ void TbcSource::generateData(qint32 _targetDataPoints)
 
             // Get the SNRs
             if (field.vitsMetrics.inUse) {
-                blackSnrTotal += field.vitsMetrics.bPSNR;
-                whiteSnrTotal += field.vitsMetrics.wSNR;
+                if (field.vitsMetrics.bPSNR > 0) {
+                    blackSnrTotal += field.vitsMetrics.bPSNR;
+                    blackSnrPoints++;
+                }
+                if (field.vitsMetrics.wSNR > 0) {
+                    whiteSnrTotal += field.vitsMetrics.wSNR;
+                    whiteSnrPoints++;
+                }
             }
             fieldNumber++;
         }
 
         // Calculate the average
         doLength = doLength / static_cast<qreal>(fieldsPerGraphDataPoint);
-        blackSnrTotal = blackSnrTotal / static_cast<qreal>(fieldsPerGraphDataPoint);
-        whiteSnrTotal = whiteSnrTotal / static_cast<qreal>(fieldsPerGraphDataPoint);
+        blackSnrTotal = blackSnrTotal / blackSnrPoints;
+        whiteSnrTotal = whiteSnrTotal / whiteSnrPoints;
 
         // Add the result to the vectors
         dropoutGraphData.append(doLength);
