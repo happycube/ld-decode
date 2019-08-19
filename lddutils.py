@@ -198,10 +198,12 @@ def make_loader(filename, inputfreq=None):
         return load_unpacked_data_s16
     elif filename.endswith('.r8'):
         return load_unpacked_data_u8
-    elif filename.endswith('raw.oga'):
-        return LoadFFmpeg()
-    elif filename.endswith('.ldf'):
-        return LoadLDF(filename)
+    elif filename.endswith('raw.oga') or filename.endswith('.ldf'):
+        try:
+            return LoadLDF(filename)
+        except:
+            print("Please build and install ld-ldf-reader in your PATH for improved performance", file=sys.stderr)
+            return LoadFFmpeg(filename)
     else:
         return load_packed_data_4_40
 
