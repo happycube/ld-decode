@@ -1440,6 +1440,23 @@ class Field:
         
         return None
 
+    def compute_syncconf(self):
+        ''' use final lineloc data to compute sync confidence '''
+        
+        newconf = 100
+        
+        lld = np.diff(self.linelocs[self.lineoffset:self.lineoffset+self.linecount])
+        lld2 = np.diff(lld)
+        lld2max = np.max(lld2)
+
+        if lld2max > 4:
+            newconf = int(50 - (5 * np.sum(lld2max > 4)))
+        
+        newconf = max(newconf, 0)
+        
+        self.sync_confidence = min(self.sync_confidence, newconf)
+        return int(self.sync_confidence)
+
     def __init__(self, rf, decode, audio_offset = 0, keepraw = True, prevfield = None):
         self.rawdata = decode['input']
         self.data = decode
@@ -2482,7 +2499,7 @@ class LDdecode:
         prevfi = self.fieldinfo[-1] if len(self.fieldinfo) else None
 
         fi = {'isFirstField': True if f.isFirstField else False, 
-              'syncConf': f.sync_confidence, 
+              'syncConf': f.compute_syncconf(), 
               'seqNo': len(self.fieldinfo) + 1, 
               #'audioSamples': 0 if audio is None else int(len(audio) / 2),
               'diskLoc': np.round((self.fieldloc / self.bytes_per_field) * 10) / 10,
