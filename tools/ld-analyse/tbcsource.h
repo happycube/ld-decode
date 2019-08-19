@@ -98,6 +98,9 @@ public:
     qint32 getCcData0(qint32 frameNumber);
     qint32 getCcData1(qint32 frameNumber);
 
+    void setPalColourConfiguration(bool blackAndWhite, bool useTransformFilter, double transformThreshold);
+    void getPalColourConfiguration(bool &blackAndWhite, bool &useTransformFilter, double &transformThreshold);
+
 signals:
     void busyLoading(QString information);
     void finishedLoading();
@@ -139,6 +142,10 @@ private:
     // Cache of current frame QImage
     QImage frameCache;
     qint32 frameCacheFrameNumber;
+
+    // PAL chroma-decoder configuration
+    PalColour::Configuration palColourConfiguration;
+    bool decoderConfigurationChanged;
 
     QImage generateQImage(qint32 firstFieldNumber, qint32 secondFieldNumber);
     void generateData(qint32 _targetDataPoints);

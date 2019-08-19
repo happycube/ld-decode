@@ -76,6 +76,7 @@ void Configuration::writeConfiguration(void)
     configuration->setValue("dropoutAnalysisDialogGeometry", settings.windows.dropoutAnalysisDialogGeometry);
     configuration->setValue("snrAnalysisDialogGeometry", settings.windows.snrAnalysisDialogGeometry);
     configuration->setValue("closedCaptionDialogGeometry", settings.windows.closedCaptionDialogGeometry);
+    configuration->setValue("palChromaDecoderConfigDialogGeometry", settings.windows.palChromaDecoderConfigDialogGeometry);
     configuration->endGroup();
 
     // Sync the settings with disk
@@ -106,6 +107,7 @@ void Configuration::readConfiguration(void)
     settings.windows.dropoutAnalysisDialogGeometry = configuration->value("dropoutAnalysisDialogGeometry").toByteArray();
     settings.windows.snrAnalysisDialogGeometry = configuration->value("snrAnalysisDialogGeometry").toByteArray();
     settings.windows.closedCaptionDialogGeometry = configuration->value("closedCaptionDialogGeometry").toByteArray();
+    settings.windows.palChromaDecoderConfigDialogGeometry = configuration->value("palChromaDecoderConfigDialogGeometry").toByteArray();
     configuration->endGroup();
 }
 
@@ -127,6 +129,7 @@ void Configuration::setDefault(void)
     settings.windows.dropoutAnalysisDialogGeometry = QByteArray();
     settings.windows.snrAnalysisDialogGeometry = QByteArray();
     settings.windows.closedCaptionDialogGeometry = QByteArray();
+    settings.windows.palChromaDecoderConfigDialogGeometry = QByteArray();
 
     // Write the configuration
     writeConfiguration();
@@ -234,4 +237,14 @@ void Configuration::setClosedCaptionDialogGeometry(QByteArray closedCaptionDialo
 QByteArray Configuration::getClosedCaptionDialogGeometry(void)
 {
     return settings.windows.closedCaptionDialogGeometry;
+}
+
+void Configuration::setPalChromaDecoderConfigDialogGeometry(QByteArray palChromaDecoderConfigDialogGeometry)
+{
+    settings.windows.palChromaDecoderConfigDialogGeometry = palChromaDecoderConfigDialogGeometry;
+}
+
+QByteArray Configuration::getPalChromaDecoderConfigDialogGeometry(void)
+{
+    return settings.windows.palChromaDecoderConfigDialogGeometry;
 }

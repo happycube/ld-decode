@@ -402,6 +402,8 @@
     <addaction name="actionVBI"/>
     <addaction name="actionLine_scope"/>
     <addaction name="actionClosed_Captions"/>
+    <addaction name="separator"/>
+    <addaction name="actionPAL_Chroma_decoder"/>
    </widget>
    <widget class="QMenu" name="menuHelp">
     <property name="title">
@@ -558,6 +560,11 @@
   <action name="actionClosed_Captions">
    <property name="text">
     <string>Closed Captions...</string>
+   </property>
+  </action>
+  <action name="actionPAL_Chroma_decoder">
+   <property name="text">
+    <string>PAL Chroma decoder...</string>
    </property>
   </action>
  </widget>

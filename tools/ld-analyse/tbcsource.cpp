@@ -33,6 +33,11 @@ TbcSource::TbcSource(QObject *parent) : QObject(parent)
     sourceReady = false;
     fieldsPerGraphDataPoint = 0;
     frameCacheFrameNumber = -1;
+
+    // Set the PALcolour configuration to default
+    palColourConfiguration = palColour.getConfiguration();
+    palColourConfiguration.useTransformFilter = true;
+    decoderConfigurationChanged = false;
 }
 
 // Public methods -----------------------------------------------------------------------------------------------------
@@ -129,9 +134,10 @@ QImage TbcSource::getFrameImage(qint32 frameNumber)
     if (!sourceReady) return QImage();
 
     // Check cached QImage
-    if (frameCacheFrameNumber == frameNumber) return frameCache;
+    if (frameCacheFrameNumber == frameNumber && !decoderConfigurationChanged) return frameCache;
     else {
         frameCacheFrameNumber = frameNumber;
+        decoderConfigurationChanged = false;
     }
 
     // Get the required field numbers
@@ -460,6 +466,28 @@ qint32 TbcSource::getCcData1(qint32 frameNumber)
     return secondField.ntsc.ccData1;
 }
 
+void TbcSource::setPalColourConfiguration(bool blackAndWhite, bool useTransformFilter, double transformThreshold)
+{
+    palColourConfiguration.blackAndWhite = blackAndWhite;
+    palColourConfiguration.useTransformFilter = useTransformFilter;
+    palColourConfiguration.transformThreshold = transformThreshold;
+
+    // Get the video parameters
+    LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
+
+    // Configure the chroma decoder
+    palColour.updateConfiguration(videoParameters, palColourConfiguration);
+
+    decoderConfigurationChanged = true;
+}
+
+void TbcSource::getPalColourConfiguration(bool &blackAndWhite, bool &useTransformFilter, double &transformThreshold)
+{
+    blackAndWhite = palColourConfiguration.blackAndWhite;
+    useTransformFilter = palColourConfiguration.useTransformFilter;
+    transformThreshold = palColourConfiguration.transformThreshold;
+}
+
 // Private methods ----------------------------------------------------------------------------------------------------
 
 // Method to create a QImage for a source video frame
@@ -673,12 +701,7 @@ void TbcSource::startBackgroundLoad(QString sourceFilename)
 
     // Configure the chroma decoder
     if (videoParameters.isSourcePal) {
-        PalColour::Configuration configuration;
-
-        // Default to the PAL 2D transform filter
-        configuration.useTransformFilter = true;
-
-        palColour.updateConfiguration(videoParameters, configuration);
+        palColour.updateConfiguration(videoParameters, palColourConfiguration);
     } else {
         Comb::Configuration configuration;
         ntscColour.updateConfiguration(videoParameters, configuration);
