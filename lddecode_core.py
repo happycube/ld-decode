@@ -2112,6 +2112,7 @@ class LDdecode:
             self.subproc_ldstoefm = subprocess.Popen(['ld-ldstoefm', fname_out + '.efm'], stdin=subprocess.PIPE)
             self.outfile_efm = self.subproc_ldstoefm.stdin
 
+
         self.fname_out = fname_out
 
         self.firstfield = None # In frame output mode, the first field goes here
