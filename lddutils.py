@@ -200,10 +200,12 @@ def make_loader(filename, inputfreq=None):
         return load_unpacked_data_u8
     elif filename.endswith('raw.oga') or filename.endswith('.ldf'):
         try:
-            return LoadLDF(filename)
+            rv = LoadLDF(filename)
         except:
-            print("Please build and install ld-ldf-reader in your PATH for improved performance", file=sys.stderr)
-            return LoadFFmpeg(filename)
+            #print("Please build and install ld-ldf-reader in your PATH for improved performance", file=sys.stderr)
+            rv = LoadFFmpeg()
+
+        return rv
     else:
         return load_packed_data_4_40
 
@@ -407,9 +409,6 @@ class LoadLDF:
         self.input_args = input_args
         self.output_args = output_args
 
-        # ld-ldf-reader subprocess
-        self.ldfreader = None
-
         self.filename = filename
 
         # The number of the next byte ld-ldf-reader will return
@@ -420,6 +419,11 @@ class LoadLDF:
         # this buffer.
         self.rewind_size = 2 * 1024 * 1024
         self.rewind_buf = b''
+
+        self.ldfreader = None
+
+        # ld-ldf-reader subprocess
+        self.ldfreader = self._open(0)
 
     def __del__(self):
         self._close()
@@ -458,7 +462,7 @@ class LoadLDF:
         sample_bytes = sample * 2
         readlen_bytes = readlen * 2
 
-        if self.ldfreader is None:
+        if self.ldfreader is None or ((sample_bytes - self.position) > 40000000):
             self.ldfreader = self._open(sample)
 
         if (sample_bytes < self.position):
