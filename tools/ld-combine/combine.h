@@ -2,7 +2,7 @@
 
     combine.h
 
-    ld-combine - Combine TBC files
+    ld-combine - TBC combination and enhancement tool
     Copyright (C) 2019 Simon Inns
 
     This file is part of ld-decode-tools.
@@ -26,9 +26,10 @@
 #define COMBINE_H
 
 #include <QObject>
+#include <QDebug>
+#include <QFile>
 
-#include "sourcevideo.h"
-#include "lddecodemetadata.h"
+#include "tbcsources.h"
 
 class Combine : public QObject
 {
@@ -36,37 +37,13 @@ class Combine : public QObject
 public:
     explicit Combine(QObject *parent = nullptr);
 
-    bool process(QString primaryFilename, QString secondaryFilename, QString outputFilename, bool reverse, bool subline);
-
-signals:
-
-public slots:
+    bool process(QVector<QString> inputFilenames, QString outputFilename, bool reverse,
+                 qint32 vbiStartFrame, qint32 length, qint32 dodThreshold);
 
 private:
-    SourceVideo primarySourceVideo;
-    SourceVideo secondarySourceVideo;
+    TbcSources tbcSources;
 
-    LdDecodeMetaData primaryLdDecodeMetaData;
-    LdDecodeMetaData::VideoParameters primaryVideoParameters;
-    LdDecodeMetaData secondaryLdDecodeMetaData;
-    LdDecodeMetaData::VideoParameters secondaryVideoParameters;
-
-    LdDecodeMetaData outputLdDecodeMetaData;
-
-    qint32 linesReplaced;
-    qint32 dropoutsReplaced;
-    qint32 failedReplaced;
-
-    qint32 getMatchingSecondaryFrame(bool isDiscCav, qint32 seqFrameNumber, qint32 leadinOffset);
-
-    qint32 getCavFrameNumber(qint32 frameSeqNumber, LdDecodeMetaData *ldDecodeMetaData);
-    qint32 getClvFrameNumber(qint32 frameSeqNumber, LdDecodeMetaData *ldDecodeMetaData);
-
-    QByteArray processField(qint32 primarySeqFieldNumber, qint32 secondarySeqFieldNumber, bool subline);
-    qint32 assessLineQuality(LdDecodeMetaData::Field field, qint32 lineNumber);
-    QByteArray replaceVideoLineData(QByteArray primaryFieldData, QByteArray secondaryFieldData, qint32 lineNumber);
-    QByteArray replaceVideoDropoutData(QByteArray primaryFieldData, QByteArray secondaryFieldData,
-                                                qint32 lineNumber, qint32 startx, qint32 endx);
+    bool loadInputTbcFiles(QVector<QString> inputFilenames, bool reverse);
 };
 
 #endif // COMBINE_H

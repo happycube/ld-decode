@@ -7,7 +7,7 @@ ntsc4
 tbc-ntsc
 tbc-pal
 tbc-pal32
-tbc
+*.tbc
 
 # Odd Python stuff
 numpy
@@ -18,6 +18,10 @@ __pycache__
 
 # Prerequisites
 *.d
+
+# Compiler intermediate files
+*.ii
+*.s
 
 # Compiled Object files
 *.slo
@@ -48,3 +52,7 @@ __pycache__
 *.exe
 *.out
 *.app
+
+# Profiling results
+perf.data*
+Benchfile*

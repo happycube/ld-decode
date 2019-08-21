@@ -30,24 +30,15 @@
 #include <QMutex>
 #include <QWaitCondition>
 #include <QString>
-#include <QTime>
 #include <QFile>
 #include <QDebug>
 
-#include "Decoder/f3frame.h"
-#include "Decoder/f2frame.h"
-#include "Decoder/f1frame.h"
-#include "Decoder/sector.h"
-#include "Decoder/section.h"
-#include "Decoder/efmtof3frames.h"
-#include "Decoder/f3tof2frames.h"
-#include "Decoder/f2tof1frames.h"
-#include "Decoder/f3tosections.h"
-#include "Decoder/f2framestoaudio.h"
-#include "Decoder/f1tosectors.h"
-#include "Decoder/sectorstodata.h"
-#include "Decoder/sectiontometa.h"
-#include "Decoder/sectorstometa.h"
+#include "Decoders/efmtof3frames.h"
+#include "Decoders/syncf3frames.h"
+#include "Decoders/f3tof2frames.h"
+#include "Decoders/f2tof1frames.h"
+#include "Decoders/f1toaudio.h"
+#include "Decoders/f1todata.h"
 
 class EfmProcess : public QThread
 {
@@ -57,27 +48,31 @@ public:
     explicit EfmProcess(QObject *parent = nullptr);
     ~EfmProcess() override;
 
-    // Statistics structure
     struct Statistics {
-        EfmToF3Frames::Statistics efmToF3Frames_statistics;
-        F3ToF2Frames::Statistics f3ToF2Frames_statistics;
-        F2FramesToAudio::Statistics f2FramesToAudio_statistics;
-        SectorsToData::Statistics sectorsToData_statistics;
+        EfmToF3Frames::Statistics efmToF3Frames;
+        SyncF3Frames::Statistics syncF3Frames;
+        F3ToF2Frames::Statistics f3ToF2Frames;
+        F2ToF1Frames::Statistics f2ToF1Frames;
+        F1ToAudio::Statistics f1ToAudio;
+        F1ToData::Statistics f1ToData;
     };
 
-    void reset(void);
-    void resetStatistics(void);
-    Statistics getStatistics(void);
-
-    void startProcessing(QString inputFilename, QFile *audioOutputFile, QFile *dataOutputFile,
-                         QFile *audioMetaOutputFile, QFile *dataMetaOutputFile);
-
-    void cancelProcessing();
+    void setDebug(bool _debug_efmToF3Frames, bool _debug_syncF3Frames,
+                  bool _debug_f3ToF2Frames, bool _debug_f2ToF1Frames,
+                  bool _debug_f1ToAudio, bool _debug_f1ToData);
+    void setAudioErrorTreatment(F1ToAudio::ErrorTreatment _errorTreatment,
+                                            F1ToAudio::ConcealType _concealType);
+    void setDecoderOptions(bool _padInitialDiscTime, bool _decodeAsAudio, bool _decodeAsData);
+    void reportStatistics();
+    void startProcessing(QFile *_inputFilename, QFile *_audioOutputFilename, QFile *_dataOutputFilename);
+    void stopProcessing();
     void quit();
+    Statistics getStatistics();
+    void reset();
 
 signals:
-    void percentageProcessed(qint32);
-    void completed(void);
+    void processingComplete(bool audioAvailable, bool dataAvailable);
+    void percentProcessed(qint32 percent);
 
 protected:
     void run() override;
@@ -90,37 +85,42 @@ private:
     bool cancel;
     bool abort;
 
-    // Externally settable variables
-    QString inputFilename;
-    QFile *audioOutputFile;
-    QFile *dataOutputFile;
-    QFile *audioMetaOutputFile;
-    QFile *dataMetaOutputFile;
+    // Debug
+    bool debug_efmToF3Frames;
+    bool debug_f3ToF2Frames;
+    bool debug_syncF3Frames;
+    bool debug_f2ToF1Frame;
+    bool debug_f1ToAudio;
+    bool debug_f1ToData;
 
-    // Thread-safe variables
-    QString inputFilenameTs;
-    QFile *audioOutputFileTs;
-    QFile *dataOutputFileTs;
-    QFile *audioMetaOutputFileTs;
-    QFile *dataMetaOutputFileTs;
-    QFile *inputFileHandle;
+    // Audio options
+    F1ToAudio::ErrorTreatment errorTreatment;
+    F1ToAudio::ConcealType concealType;
 
+    // Class globals
     EfmToF3Frames efmToF3Frames;
+    SyncF3Frames syncF3Frames;
     F3ToF2Frames f3ToF2Frames;
     F2ToF1Frames f2ToF1Frames;
-    F3ToSections f3ToSections;
-    F2FramesToAudio f2FramesToAudio;
-    F1ToSectors f1ToSectors;
-    SectorsToData sectorsToData;
-    SectionToMeta sectionToMeta;
-    SectorsToMeta sectorsToMeta;
+    F1ToAudio f1ToAudio;
+    F1ToData f1ToData;
+    bool padInitialDiscTime;
+    bool decodeAsAudio;
+    bool decodeAsData;
 
     Statistics statistics;
 
-    bool openInputFile(QString inputFilename);
-    void closeInputFile(void);
+    // Externally settable variables
+    QFile* efmInputFileHandle;
+    QFile* audioOutputFileHandle;
+    QFile* dataOutputFileHandle;
+
+    // Thread-safe variables
+    QFile* efmInputFileHandleTs;
+    QFile* audioOutputFileHandleTs;
+    QFile* dataOutputFileHandleTs;
+
     QByteArray readEfmData(void);
-    void reportStatus(bool processAudio, bool processData);
 };
 
 #endif // EFMPROCESS_H

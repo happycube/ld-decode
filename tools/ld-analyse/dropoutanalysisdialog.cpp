@@ -7,7 +7,7 @@
 
     This file is part of ld-decode-tools.
 
-    ld-dropout-correct is free software: you can redistribute it and/or
+    ld-analyse is free software: you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
     published by the Free Software Foundation, either version 3 of the
     License, or (at your option) any later version.
@@ -30,30 +30,17 @@ DropoutAnalysisDialog::DropoutAnalysisDialog(QWidget *parent) :
     ui(new Ui::DropoutAnalysisDialog)
 {
     ui->setupUi(this);
+    setWindowFlags(Qt::Window);
 
-    // Set up the chart
-    chart.legend()->hide();
-    chart.addSeries(&series);
-
-    // Set up the X axis
-    axisX.setTitleText("Field number");
-    axisX.setLabelFormat("%i");
-    axisX.setTickCount(series.count());
-    chart.addAxis(&axisX, Qt::AlignBottom);
-    series.attachAxis(&axisX);
-
-    // Set up the Y axis
-    axisY.setTitleText("Dropout length (in dots)");
-    axisY.setLabelFormat("%i");
-    axisY.setTickCount(1000);
-    chart.addAxis(&axisY, Qt::AlignLeft);
-    series.attachAxis(&axisY);
+    isFirstRun = true;
+    maxY = 0;
 
     // Set up the chart view
-    chartView = new QChartView(&chart);
-    chartView->setRenderHint(QPainter::Antialiasing);
-    ui->verticalLayout->addWidget(chartView);
-    chartView->repaint();
+    chartView.setChart(&chart);
+    chartView.setRubberBand(QChartView::HorizontalRubberBand);
+    chartView.setRenderHint(QPainter::Antialiasing);
+
+    ui->verticalLayout->addWidget(&chartView);
 }
 
 DropoutAnalysisDialog::~DropoutAnalysisDialog()
@@ -61,56 +48,70 @@ DropoutAnalysisDialog::~DropoutAnalysisDialog()
     delete ui;
 }
 
-void DropoutAnalysisDialog::updateChart(LdDecodeMetaData *ldDecodeMetaData)
+// Get ready for an update
+void DropoutAnalysisDialog::startUpdate()
 {
-    series.clear();
+    if (!isFirstRun) {
+        chart.removeAxis(&axisX);
+        chart.removeAxis(&axisY);
+        chart.removeSeries(&qLineSeries);
+    } else isFirstRun = false;
+    qLineSeries.clear();
 
-    qreal targetDataPoints = 500;
-    qreal averageWidth = qRound(ldDecodeMetaData->getNumberOfFields() / targetDataPoints);
-    if (averageWidth < 1) averageWidth = 1; // Ensure we don't divide by zero
-    qint32 dataPoints = ldDecodeMetaData->getNumberOfFields() / static_cast<qint32>(averageWidth);
-    qint32 fieldsPerDataPoint = ldDecodeMetaData->getNumberOfFields() / dataPoints;
+    // Create the QLineSeries
+    qLineSeries.setColor(Qt::blue);
 
-    qint32 fieldNumber = 1;
-    qint32 maximumDropoutLength = 0;
-    for (qint32 dpCount = 0; dpCount < dataPoints; dpCount++) {
-        qint32 doLength = 0;
-        for (qint32 avCount = 0; avCount < fieldsPerDataPoint; avCount++) {
-            LdDecodeMetaData::Field field = ldDecodeMetaData->getField(fieldNumber);
+    maxY = 0;
+}
 
-            if (field.dropOuts.startx.size() > 0) {
-                // Calculate the total length of the dropouts
-                for (qint32 i = 0; i < field.dropOuts.startx.size(); i++) {
-                    doLength += field.dropOuts.endx[i] - field.dropOuts.startx[i];
-                }
-            }
+// Add a data point to the chart
+void DropoutAnalysisDialog::addDataPoint(qint32 fieldNumber, qreal doLength)
+{
+    qLineSeries.append(fieldNumber, doLength);
+    // Keep track of the maximum Y value
+    if (doLength > maxY) maxY = doLength;
+}
 
-            fieldNumber++;
-        }
-
-        // Calculate the average
-        doLength = doLength / fieldsPerDataPoint;
-
-        // Keep track of the maximum Y value
-        if (doLength > maximumDropoutLength) maximumDropoutLength = doLength;
-
-        // Add the result to the series
-        series.append(fieldNumber, doLength);
-    }
-
-    // Update the chart
+// Finish the update and render the graph
+void DropoutAnalysisDialog::finishUpdate(qint32 numberOfFields, qint32 fieldsPerDataPoint)
+{
+    // Create the chart
     chart.setTitle("Dropout loss analysis (averaged over " + QString::number(fieldsPerDataPoint) + " fields)");
+    chart.legend()->hide();
 
+    // Create the X axis
     axisX.setMin(0);
     axisX.setTickCount(10);
-    if (ldDecodeMetaData->getNumberOfFields() < 10) axisX.setMax(10);
-    else axisX.setMax(ldDecodeMetaData->getNumberOfFields());
+    if (numberOfFields < 10) axisX.setMax(10);
+    else axisX.setMax(numberOfFields);
+    axisX.setTitleText("Field number");
+    axisX.setLabelFormat("%i");
 
+    // Create the Y axis
     axisY.setMin(0);
     axisY.setTickCount(10);
-    if (maximumDropoutLength < 10) axisY.setMax(10);
-    else axisY.setMax(maximumDropoutLength);
+    if (maxY < 10) axisY.setMax(10);
+    else axisY.setMax(maxY);
+    axisY.setTitleText("Dropout length (in dots)");
+    axisY.setLabelFormat("%i");
 
+    // Attach the axis to the chart
+    chart.addAxis(&axisX, Qt::AlignBottom);
+    chart.addAxis(&axisY, Qt::AlignLeft);
 
-    chartView->repaint();
+    // Attach the series to the chart
+    chart.addSeries(&qLineSeries);
+
+    // Attach the axis to the QLineSeries
+    qLineSeries.attachAxis(&axisX);
+    qLineSeries.attachAxis(&axisY);
+
+    // Render
+    chartView.repaint();
 }
+
+void DropoutAnalysisDialog::on_reset_pushButton_clicked()
+{
+    chart.zoomReset();
+}
+

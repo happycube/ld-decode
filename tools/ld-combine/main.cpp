@@ -2,7 +2,7 @@
 
     main.cpp
 
-    ld-combine - Combine TBC files
+    ld-combine - TBC combination and enhancement tool
     Copyright (C) 2019 Simon Inns
 
     This file is part of ld-decode-tools.
@@ -27,89 +27,64 @@
 #include <QtGlobal>
 #include <QCommandLineParser>
 
+#include "logging.h"
 #include "combine.h"
-
-// Global for debug output
-static bool showDebug = false;
-
-// Qt debug message handler
-void debugOutputHandler(QtMsgType type, const QMessageLogContext &context, const QString &msg)
-{
-    // Use:
-    // context.file - to show the filename
-    // context.line - to show the line number
-    // context.function - to show the function name
-
-    QByteArray localMsg = msg.toLocal8Bit();
-    switch (type) {
-    case QtDebugMsg: // These are debug messages meant for developers
-        if (showDebug) {
-            // If the code was compiled as 'release' the context.file will be NULL
-            if (context.file != nullptr) fprintf(stderr, "Debug: [%s:%d] %s\n", context.file, context.line, localMsg.constData());
-            else fprintf(stderr, "Debug: %s\n", localMsg.constData());
-        }
-        break;
-    case QtInfoMsg: // These are information messages meant for end-users
-        if (context.file != nullptr) fprintf(stderr, "Info: [%s:%d] %s\n", context.file, context.line, localMsg.constData());
-        else fprintf(stderr, "Info: %s\n", localMsg.constData());
-        break;
-    case QtWarningMsg:
-        if (context.file != nullptr) fprintf(stderr, "Warning: [%s:%d] %s\n", context.file, context.line, localMsg.constData());
-        else fprintf(stderr, "Warning: %s\n", localMsg.constData());
-        break;
-    case QtCriticalMsg:
-        if (context.file != nullptr) fprintf(stderr, "Critical: [%s:%d] %s\n", context.file, context.line, localMsg.constData());
-        else fprintf(stderr, "Critical: %s\n", localMsg.constData());
-        break;
-    case QtFatalMsg:
-        if (context.file != nullptr) fprintf(stderr, "Fatal: [%s:%d] %s\n", context.file, context.line, localMsg.constData());
-        else fprintf(stderr, "Fatal: %s\n", localMsg.constData());
-        abort();
-    }
-}
 
 int main(int argc, char *argv[])
 {
     // Install the local debug message handler
+    setDebug(true);
     qInstallMessageHandler(debugOutputHandler);
 
     QCoreApplication a(argc, argv);
 
     // Set application name and version
     QCoreApplication::setApplicationName("ld-combine");
-    QCoreApplication::setApplicationVersion("1.0");
+    QCoreApplication::setApplicationVersion("3.0");
     QCoreApplication::setOrganizationDomain("domesday86.com");
 
     // Set up the command line parser
     QCommandLineParser parser;
     parser.setApplicationDescription(
-                "ld-combine - Combine TBC files\n"
+                "ld-combine - TBC combination and enhancement tool\n"
                 "\n"
                 "(c)2019 Simon Inns\n"
                 "GPLv3 Open-Source - github: https://github.com/happycube/ld-decode");
     parser.addHelpOption();
     parser.addVersionOption();
 
-    // Option to show debug (-d)
+    // Option to show debug (-d / --debug)
     QCommandLineOption showDebugOption(QStringList() << "d" << "debug",
                                        QCoreApplication::translate("main", "Show debug"));
     parser.addOption(showDebugOption);
 
-    // Option to reverse the field order (-r)
+    // Option to reverse the field order (-r / --reverse)
     QCommandLineOption setReverseOption(QStringList() << "r" << "reverse",
                                        QCoreApplication::translate("main", "Reverse the field order to second/first (default first/second)"));
     parser.addOption(setReverseOption);
-    
-        // Option to force sub-line replacements (-s)
-    QCommandLineOption setSublineOption(QStringList() << "s" << "subline",
-                                       QCoreApplication::translate("main", "Force sub-line replacements (default full-line)"));
-    parser.addOption(setSublineOption);
 
-    // Positional argument to specify input video file
-    parser.addPositionalArgument("primary", QCoreApplication::translate("main", "Specify primary input TBC file"));
-    parser.addPositionalArgument("seconday", QCoreApplication::translate("main", "Specify secondary input TBC file"));
+    // Option to select DOD threshold (dodthreshold) (-x)
+    QCommandLineOption dodThresholdOption(QStringList() << "x" << "dodthreshold",
+                                        QCoreApplication::translate("main", "Specify the DOD threshold (100-65435 default: 6000"),
+                                        QCoreApplication::translate("main", "number"));
+    parser.addOption(dodThresholdOption);
 
-    // Positional argument to specify output video file
+    // Option to select start frame (start) (-s)
+    QCommandLineOption startFrameOption(QStringList() << "s" << "start",
+                                        QCoreApplication::translate("main", "Specify the start VBI frame number"),
+                                        QCoreApplication::translate("main", "number"));
+    parser.addOption(startFrameOption);
+
+    // Option to select length (-l)
+    QCommandLineOption lengthOption(QStringList() << "l" << "length",
+                                        QCoreApplication::translate("main", "Specify the length (number of frames to process)"),
+                                        QCoreApplication::translate("main", "number"));
+    parser.addOption(lengthOption);
+
+    // Positional argument to specify input TBC files
+    parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input TBC files (minimum 3)"));
+
+    // Positional argument to specify output TBC file
     parser.addPositionalArgument("output", QCoreApplication::translate("main", "Specify output TBC file"));
 
     // Process the command line options and arguments given by the user
@@ -118,35 +93,70 @@ int main(int argc, char *argv[])
     // Get the options from the parser
     bool isDebugOn = parser.isSet(showDebugOption);
     bool reverse = parser.isSet(setReverseOption);
-    bool subline = parser.isSet(setSublineOption);
-
-    // Get the arguments from the parser
-    QString primaryFilename;
-    QString secondaryFilename;
-    QString outputFilename;
-    QStringList positionalArguments = parser.positionalArguments();
-    if (positionalArguments.count() == 3) {
-        primaryFilename = positionalArguments.at(0);
-        secondaryFilename = positionalArguments.at(1);
-        outputFilename = positionalArguments.at(2);
-    } else {
-        // Quit with error
-        qCritical("You must specify two input and one output TBC files");
-        return -1;
-    }
-
-    if (primaryFilename == outputFilename || secondaryFilename == outputFilename || primaryFilename == secondaryFilename) {
-        // Quit with error
-        qCritical("TBC file names cannot be the same");
-        return -1;
-    }
 
     // Process the command line options
-    if (isDebugOn) showDebug = true;
+    if (isDebugOn) setDebug(true); else setDebug(false);
 
-    // Perform the processing
+    QVector<QString> inputFilenames;
+    QString outputFilename;
+    QStringList positionalArguments = parser.positionalArguments();
+
+    // Require source and target filenames
+    if (positionalArguments.count() > 65) {
+        qCritical() << "A maximum of 64 input sources are supported";
+        return -1;
+    }
+
+    if (positionalArguments.count() >= 4) {
+        for (qint32 i = 0; i < positionalArguments.count() - 1; i++) {
+            inputFilenames.append(positionalArguments.at(i));
+        }
+        outputFilename = positionalArguments.at(positionalArguments.count() - 1);
+    } else {
+        // Quit with error
+        qCritical("You must specify at least 3 input TBC files and one output TBC file");
+        return -1;
+    }
+
+    qint32 vbiStartFrame = -1;
+    qint32 length = -1;
+    qint32 dodThreshold = 6000;
+
+    if (parser.isSet(startFrameOption)) {
+        vbiStartFrame = parser.value(startFrameOption).toInt();
+
+        if (vbiStartFrame < 1) {
+            // Quit with error
+            qCritical("Specified startFrame must be at least 1");
+            return -1;
+        }
+    }
+
+    if (parser.isSet(lengthOption)) {
+        length = parser.value(lengthOption).toInt();
+
+        if (length < 1) {
+            // Quit with error
+            qCritical("Specified length must be greater than zero frames");
+            return -1;
+        }
+    }
+
+    if (parser.isSet(dodThresholdOption)) {
+        dodThreshold = parser.value(dodThresholdOption).toInt();
+
+        if (dodThreshold < 100 || dodThreshold > 65435) {
+            // Quit with error
+            qCritical("DOD threshold must be between 100 and 65435");
+            return -1;
+        }
+    }
+
+    // Process the TBC file
     Combine combine;
-    combine.process(primaryFilename, secondaryFilename, outputFilename, reverse, subline);
+    if (!combine.process(inputFilenames, outputFilename, reverse, vbiStartFrame, length, dodThreshold)) {
+        return 1;
+    }
 
     // Quit with success
     return 0;

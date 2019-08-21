@@ -29,29 +29,24 @@
 #include <QDebug>
 #include <QFile>
 
-#include "efmfilter.h"
-#include "isifilter.h"
 #include "pll.h"
 
 class LdsProcess
 {
 public:
     LdsProcess();
-    bool process(QString inputFilename, QString outputFilename, bool outputSample, bool useFloatingPoint, bool noEFMFilter, bool noIsiFilter, qint32 percentToProcess);
+    bool process(QString outputFilename);
 
 private:
-    QFile *inputFileHandle;
+    QFile stdinFileHandle;
     QFile *outputFileHandle;
-    EfmFilter efmFilter;
-    IsiFilter isiFilter;
     Pll pll;
 
-    bool openInputFile(QString inputFileName);
+    bool openInputFile();
     void closeInputFile(void);
+
     bool openOutputFile(QString outputFileName);
     void closeOutputFile(void);
-
-    QByteArray readAndUnpackLdsFile(void);
 };
 
 #endif // LDSPROCESS_H

@@ -3,7 +3,7 @@
     main.cpp
 
     ld-dropout-correct - Dropout correction for ld-decode
-    Copyright (C) 2018 Simon Inns
+    Copyright (C) 2018-2019 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -26,7 +26,9 @@
 #include <QDebug>
 #include <QtGlobal>
 #include <QCommandLineParser>
+#include <QThread>
 
+#include "correctorpool.h"
 #include "dropoutcorrect.h"
 
 // Global for debug output
@@ -77,7 +79,7 @@ int main(int argc, char *argv[])
 
     // Set application name and version
     QCoreApplication::setApplicationName("ld-dropout-correct");
-    QCoreApplication::setApplicationVersion("1.2");
+    QCoreApplication::setApplicationVersion("1.4");
     QCoreApplication::setOrganizationDomain("domesday86.com");
 
     // Set up the command line parser
@@ -85,7 +87,7 @@ int main(int argc, char *argv[])
     parser.setApplicationDescription(
                 "ld-dropout-correct - Dropout correction for ld-decode\n"
                 "\n"
-                "(c)2018 Simon Inns\n"
+                "(c)2018-2019 Simon Inns\n"
                 "GPLv3 Open-Source - github: https://github.com/happycube/ld-decode");
     parser.addHelpOption();
     parser.addVersionOption();
@@ -100,10 +102,21 @@ int main(int argc, char *argv[])
                                        QCoreApplication::translate("main", "Reverse the field order to second/first (default first/second)"));
     parser.addOption(setReverseOption);
 
+    // Option to select over correct mode (-o)
+    QCommandLineOption setOverCorrectOption(QStringList() << "o" << "overcorrect",
+                                       QCoreApplication::translate("main", "Over correct mode (use on heavily damaged sources)"));
+    parser.addOption(setOverCorrectOption);
+
     // Force intra-field correction only
     QCommandLineOption setIntrafieldOption(QStringList() << "i" << "intra",
                                        QCoreApplication::translate("main", "Force intrafield correction (default interfield)"));
     parser.addOption(setIntrafieldOption);
+
+    // Option to select the number of threads (-t)
+    QCommandLineOption threadsOption(QStringList() << "t" << "threads",
+                                        QCoreApplication::translate("main", "Specify the number of concurrent threads (default is the number of logical CPUs)"),
+                                        QCoreApplication::translate("main", "number"));
+    parser.addOption(threadsOption);
 
     // Positional argument to specify input video file
     parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input TBC file"));
@@ -118,21 +131,33 @@ int main(int argc, char *argv[])
     bool isDebugOn = parser.isSet(showDebugOption);
     bool reverse = parser.isSet(setReverseOption);
     bool intraField = parser.isSet(setIntrafieldOption);
+    bool overCorrect = parser.isSet(setOverCorrectOption);
 
     // Get the arguments from the parser
-    QString inputFileName;
-    QString outputFileName;
+    qint32 maxThreads = QThread::idealThreadCount();
+    if (parser.isSet(threadsOption)) {
+        maxThreads = parser.value(threadsOption).toInt();
+
+        if (maxThreads < 1) {
+            // Quit with error
+            qCritical("Specified number of threads must be greater than zero");
+            return -1;
+        }
+    }
+
+    QString inputFilename;
+    QString outputFilename;
     QStringList positionalArguments = parser.positionalArguments();
     if (positionalArguments.count() == 2) {
-        inputFileName = positionalArguments.at(0);
-        outputFileName = positionalArguments.at(1);
+        inputFilename = positionalArguments.at(0);
+        outputFilename = positionalArguments.at(1);
     } else {
         // Quit with error
         qCritical("You must specify input and output TBC files");
         return -1;
     }
 
-    if (inputFileName == outputFileName) {
+    if (inputFilename == outputFilename) {
         // Quit with error
         qCritical("Input and output files cannot be the same");
         return -1;
@@ -141,9 +166,20 @@ int main(int argc, char *argv[])
     // Process the command line options
     if (isDebugOn) showDebug = true;
 
+    // Open the JSON metadata
+    LdDecodeMetaData metaData;
+
+    // Open the source video metadata
+    qInfo().nospace().noquote() << "Reading JSON metadata from " << inputFilename << ".json";
+    if (!metaData.read(inputFilename + ".json")) {
+        qCritical() << "Unable to open TBC JSON metadata file";
+        return 1;
+    }
+
     // Perform the processing
-    DropOutCorrect dropOutCorrect;
-    dropOutCorrect.process(inputFileName, outputFileName, reverse, intraField);
+    qInfo() << "Beginning VBI processing...";
+    CorrectorPool correctorPool(inputFilename, outputFilename, maxThreads, metaData, reverse, intraField, overCorrect);
+    if (!correctorPool.process()) return 1;
 
     // Quit with success
     return 0;

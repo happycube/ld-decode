@@ -15,24 +15,26 @@ DEFINES += QT_DEPRECATED_WARNINGS
 #DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
 
 SOURCES += \
-        main.cpp \
-    combine.cpp
+    ../library/tbc/lddecodemetadata.cpp \
+    ../library/tbc/sourcevideo.cpp \
+    ../library/tbc/vbidecoder.cpp \
+    combine.cpp \
+    logging.cpp \
+    main.cpp \
+    tbcsources.cpp
+
+HEADERS += \
+    ../library/tbc/lddecodemetadata.h \
+    ../library/tbc/sourcevideo.h \
+    ../library/tbc/vbidecoder.h \
+    combine.h \
+    logging.h \
+    tbcsources.h
+
+# Add external includes to the include path
+INCLUDEPATH += ../library/tbc
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin
-else: unix:!android: target.path = /usr/local/bin
+else: unix:!android: target.path = /usr/local/bin/
 !isEmpty(target.path): INSTALLS += target
-
-MYDLLDIR = $$IN_PWD/../library
-
-# As our header files are in the same directory, we can make Qt Creator find it
-# by specifying it as INCLUDEPATH.
-INCLUDEPATH += $$MYDLLDIR
-
-# Dependency to library domain (libdomain.so for Unices or domain.dll on Win32)
-# Repeat this for more libraries if needed.
-win32:LIBS += $$quote($$MYDLLDIR/ld-decode-shared.dll)
- unix:LIBS += $$quote(-L$$MYDLLDIR) -lld-decode-shared
-
-HEADERS += \
-    combine.h

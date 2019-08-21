@@ -34,9 +34,12 @@
 #include <QTemporaryFile>
 #include <QDebug>
 
+#include "logging.h"
 #include "configuration.h"
 #include "efmprocess.h"
 #include "aboutdialog.h"
+
+#include "Decoders/f2tof1frames.h"
 
 namespace Ui {
 class MainWindow;
@@ -47,21 +50,27 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
-    explicit MainWindow(QWidget *parent = nullptr);
+    explicit MainWindow(bool debugOn, bool _nonInteractive, QString _outputAudioFilename, QWidget *parent = nullptr);
     ~MainWindow();
 
-private slots:
-    void percentageProcessedSignalHandler(qint32 percentage);
-    void processingCompletedSignalHandler(void);
-    void updateStatistics(void);
+    bool loadInputEfmFile(QString filename);
+    void startDecodeNonInteractive();
 
-    void on_actionOpen_EFM_file_triggered();
-    void on_actionSave_Audio_As_triggered();
-    void on_actionSave_Data_As_triggered();
+private slots:
+    void processingCompleteSignalHandler(bool audioAvailable, bool dataAvailable);
+    void percentProcessedSignalHandler(qint32 percent);
+    void updateStatistics();
+
+    void on_actionOpen_EFM_File_triggered();
     void on_actionExit_triggered();
-    void on_actionAbout_ld_process_efm_triggered();
     void on_decodePushButton_clicked();
     void on_cancelPushButton_clicked();
+    void on_actionSave_PCM_Audio_triggered();
+    void on_actionAbout_ld_process_efm_triggered();
+    void on_debugEnabled_checkBox_clicked();
+    void on_options_decodeAsData_checkbox_clicked();
+    void on_options_decodeAsAudio_checkbox_clicked();
+    void on_actionSave_Sector_Data_triggered();
 
 private:
     Ui::MainWindow *ui;
@@ -70,25 +79,25 @@ private:
     AboutDialog *aboutDialog;
 
     // Class globals
-    Configuration *configuration;
+    Configuration configuration;
     EfmProcess efmProcess;
     QLabel efmStatus;
-    QString currentInputFilename;
-    QTimer *statisticsUpdateTimer;
+    QString currentInputEfmFileAndPath;
+    QFile inputEfmFileHandle;
+    QTemporaryFile audioOutputTemporaryFileHandle;
+    QTemporaryFile dataOutputTemporaryFileHandle;
+    QTimer statisticsUpdateTimer;
+    bool nonInteractive;
+    QString outputAudioFilename;
 
-    // Temporary files
-    QTemporaryFile *audioOutputFile;
-    QTemporaryFile *dataOutputFile;
-    QTemporaryFile *audioMetaOutputFile;
-    QTemporaryFile *dataMetaOutputFile;
+    // Method prototypes
+    void guiNoEfmFileLoaded();
+    void guiEfmFileLoaded();
+    void guiEfmProcessingStop();
+    void guiEfmProcessingStart();
 
-    void noEfmFileLoaded(void);
-    void efmFileLoaded(void);
-    void decodingStop(void);
-    void decodingStart(void);
-
-    void loadEfmFile(QString filename);
-    void resetStatistics(void);
+    void resetStatistics();
+    void resetDecoderOptions();
 };
 
 #endif // MAINWINDOW_H

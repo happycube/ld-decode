@@ -7,7 +7,7 @@
 
     This file is part of ld-decode-tools.
 
-    ld-dropout-correct is free software: you can redistribute it and/or
+    ld-analyse is free software: you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
     published by the Free Software Foundation, either version 3 of the
     License, or (at your option) any later version.
@@ -30,30 +30,18 @@ SnrAnalysisDialog::SnrAnalysisDialog(QWidget *parent) :
     ui(new Ui::SnrAnalysisDialog)
 {
     ui->setupUi(this);
+    setWindowFlags(Qt::Window);
 
-    // Set up the chart
-    chart.legend()->hide();
-    chart.addSeries(&series);
-
-    // Set up the X axis
-    axisX.setTitleText("Field number");
-    axisX.setLabelFormat("%i");
-    axisX.setTickCount(series.count());
-    chart.addAxis(&axisX, Qt::AlignBottom);
-    series.attachAxis(&axisX);
-
-    // Set up the Y axis
-    axisY.setTitleText("Black Peak SNR (in dB)");
-    axisY.setLabelFormat("%i");
-    axisY.setTickCount(1000);
-    chart.addAxis(&axisY, Qt::AlignLeft);
-    series.attachAxis(&axisY);
+    isFirstRun = true;
+    maxSnr = 0;
+    minSnr = 1000;
 
     // Set up the chart view
-    chartView = new QChartView(&chart);
-    chartView->setRenderHint(QPainter::Antialiasing);
-    ui->verticalLayout->addWidget(chartView);
-    chartView->repaint();
+    chartView.setChart(&chart);
+    chartView.setRubberBand(QChartView::HorizontalRubberBand);
+    chartView.setRenderHint(QPainter::Antialiasing);
+
+    ui->verticalLayout->addWidget(&chartView);
 }
 
 SnrAnalysisDialog::~SnrAnalysisDialog()
@@ -61,51 +49,92 @@ SnrAnalysisDialog::~SnrAnalysisDialog()
     delete ui;
 }
 
-void SnrAnalysisDialog::updateChart(LdDecodeMetaData *ldDecodeMetaData)
+// Get ready for an update
+void SnrAnalysisDialog::startUpdate()
 {
-    series.clear();
+    if (!isFirstRun) {
+        chart.removeAxis(&axisX);
+        chart.removeAxis(&axisY);
+        chart.removeSeries(&blackQLineSeries);
+        chart.removeSeries(&whiteQLineSeries);
+    } else isFirstRun = false;
+    blackQLineSeries.clear();
+    whiteQLineSeries.clear();
 
-    qreal targetDataPoints = 500;
-    qreal averageWidth = qRound(ldDecodeMetaData->getNumberOfFields() / targetDataPoints);
-    if (averageWidth < 1) averageWidth = 1; // Ensure we don't divide by zero
-    qint32 dataPoints = ldDecodeMetaData->getNumberOfFields() / static_cast<qint32>(averageWidth);
-    qint32 fieldsPerDataPoint = ldDecodeMetaData->getNumberOfFields() / dataPoints;
+    // Create the QLineSeries
+    blackQLineSeries.setColor(Qt::black);
+    whiteQLineSeries.setColor(Qt::gray);
 
-    qint32 fieldNumber = 1;
-    qreal maximumBlackPSNR = 0;
-    qreal minimumBlackPSNR = 1000.0;
-    for (qint32 snrCount = 0; snrCount < dataPoints; snrCount++) {
-        qreal snrTotal = 0;
-        for (qint32 avCount = 0; avCount < fieldsPerDataPoint; avCount++) {
-            LdDecodeMetaData::Field field = ldDecodeMetaData->getField(fieldNumber);
+    maxSnr = 0;
+    minSnr = 1000;
+}
 
-            snrTotal += field.vitsMetrics.blackLinePSNR;
-            fieldNumber++;
-        }
+// Add a data point to the chart
+void SnrAnalysisDialog::addDataPoint(qint32 fieldNumber, qreal blackSnr, qreal whiteSnr)
+{
+    blackQLineSeries.append(fieldNumber, blackSnr);
+    whiteQLineSeries.append(fieldNumber, whiteSnr);
 
-        // Calculate the average
-        snrTotal = snrTotal / static_cast<qreal>(fieldsPerDataPoint);
+    // Keep track of the minimum and maximum SNR values
+    if (blackSnr < minSnr) minSnr = blackSnr;
+    if (whiteSnr < minSnr) minSnr = whiteSnr;
+    if (blackSnr > maxSnr) maxSnr = blackSnr;
+    if (whiteSnr > maxSnr) maxSnr = whiteSnr;
+}
 
-        // Keep track of the maximum and minimum Y values
-        if (snrTotal > maximumBlackPSNR) maximumBlackPSNR = snrTotal;
-        if (snrTotal < minimumBlackPSNR) minimumBlackPSNR = snrTotal;
+// Finish the update and render the graph
+void SnrAnalysisDialog::finishUpdate(qint32 numberOfFields, qint32 fieldsPerDataPoint)
+{
+    // Create the chart
+    chart.setTitle("SNR analysis (averaged over " + QString::number(fieldsPerDataPoint) + " fields)");
+    chart.legend()->hide();
 
-        // Add the result to the series
-        series.append(fieldNumber, snrTotal);
-    }
-
-    // Update the chart
-    chart.setTitle("Black peak SNR analysis (averaged over " + QString::number(fieldsPerDataPoint) + " fields)");
-
+    // Create the x axis
     axisX.setMin(0);
     axisX.setTickCount(10);
-    if (ldDecodeMetaData->getNumberOfFields() < 10) axisX.setMax(10);
-    else axisX.setMax(ldDecodeMetaData->getNumberOfFields());
+    if (numberOfFields < 10) axisX.setMax(10);
+    else axisX.setMax(numberOfFields);
+    axisX.setTitleText("Field number");
+    axisX.setLabelFormat("%i");
 
+    // Create the Y axis
     axisY.setTickCount(10);
-    axisY.setMax(maximumBlackPSNR + 5.0); // +5 to give a little space at the top of the window
-    if ((minimumBlackPSNR - 5.0) > 0) axisY.setMin(minimumBlackPSNR - 5);
-    else axisY.setMin(0);
+    axisY.setMax(maxSnr + 1);
+    axisY.setMin(minSnr - 1);
+    axisY.setTitleText("SNR (in dB)");
+    axisY.setLabelFormat("%i");
 
-    chartView->repaint();
+    // Attach the axis to the chart
+    chart.addAxis(&axisX, Qt::AlignBottom);
+    chart.addAxis(&axisY, Qt::AlignLeft);
+
+    // Attach the series to the chart
+    chart.addSeries(&blackQLineSeries);
+    chart.addSeries(&whiteQLineSeries);
+
+    // Attach the axis to the QLineSeries
+    blackQLineSeries.attachAxis(&axisX);
+    whiteQLineSeries.attachAxis(&axisX);
+    blackQLineSeries.attachAxis(&axisY);
+    whiteQLineSeries.attachAxis(&axisY);
+
+    // Render
+    chartView.repaint();
+}
+
+void SnrAnalysisDialog::on_pushButton_clicked()
+{
+    chart.zoomReset();
+}
+
+void SnrAnalysisDialog::on_blackPSNR_checkBox_clicked()
+{
+    if (ui->blackPSNR_checkBox->isChecked()) blackQLineSeries.show();
+    else blackQLineSeries.hide();
+}
+
+void SnrAnalysisDialog::on_whiteSNR_checkBox_clicked()
+{
+    if (ui->whiteSNR_checkBox->isChecked()) whiteQLineSeries.show();
+    else whiteQLineSeries.hide();
 }

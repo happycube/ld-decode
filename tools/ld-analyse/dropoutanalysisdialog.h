@@ -7,7 +7,7 @@
 
     This file is part of ld-decode-tools.
 
-    ld-dropout-correct is free software: you can redistribute it and/or
+    ld-analyse is free software: you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
     published by the Free Software Foundation, either version 3 of the
     License, or (at your option) any later version.
@@ -44,16 +44,24 @@ public:
     explicit DropoutAnalysisDialog(QWidget *parent = nullptr);
     ~DropoutAnalysisDialog();
 
-    void updateChart(LdDecodeMetaData *ldDecodeMetaData);
+    void startUpdate();
+    void addDataPoint(qint32 fieldNumber, qreal doLength);
+    void finishUpdate(qint32 numberOfFields, qint32 fieldsPerDataPoint);
+
+private slots:
+    void on_reset_pushButton_clicked();
 
 private:
     Ui::DropoutAnalysisDialog *ui;
-
+    QChartView chartView;
+    QLineSeries qLineSeries;
     QChart chart;
-    QLineSeries series;
-    QChartView *chartView;
     QValueAxis axisX;
     QValueAxis axisY;
+    qreal maxY;
+
+    bool isFirstRun;
+
 };
 
 #endif // DROPOUTANALYSISDIALOG_H

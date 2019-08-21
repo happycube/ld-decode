@@ -7,7 +7,7 @@
 
     This file is part of ld-decode-tools.
 
-    ld-dropout-correct is free software: you can redistribute it and/or
+    ld-analyse is free software: you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
     published by the Free Software Foundation, either version 3 of the
     License, or (at your option) any later version.
@@ -28,6 +28,7 @@
 #include <QDialog>
 
 #include "lddecodemetadata.h"
+#include "vbidecoder.h"
 
 namespace Ui {
 class VbiDialog;
@@ -41,10 +42,12 @@ public:
     explicit VbiDialog(QWidget *parent = nullptr);
     ~VbiDialog();
 
-    void updateVbi(LdDecodeMetaData::Field firstField, LdDecodeMetaData::Field secondField);
+    void updateVbi(VbiDecoder::Vbi vbi, bool isVbiValid);
 
 private:
     Ui::VbiDialog *ui;
+
+    VbiDecoder vbiDecoder;
 };
 
 #endif // VBIDIALOG_H

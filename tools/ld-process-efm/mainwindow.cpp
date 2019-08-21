@@ -25,332 +25,416 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
 
-MainWindow::MainWindow(QWidget *parent) :
+MainWindow::MainWindow(bool debugOn, bool _nonInteractive, QString _outputAudioFilename, QWidget *parent) :
     QMainWindow(parent),
     ui(new Ui::MainWindow)
 {
+    nonInteractive = _nonInteractive;
+    outputAudioFilename = _outputAudioFilename;
+
     // Initialise the GUI
     ui->setupUi(this);
 
-    // Load the application's configuration
-    configuration = new Configuration();
+    // Initialise dialogs
+    aboutDialog = new AboutDialog(this);
 
     // Add a status bar to show the state of the source video file
     ui->statusBar->addWidget(&efmStatus);
     efmStatus.setText(tr("No EFM file loaded"));
 
-    // Set up the dialogues
-
-    // Set up the about dialogue
-    aboutDialog = new AboutDialog(this);
-
-    // Connect to the signals from the file converter thread
-    connect(&efmProcess, &EfmProcess::percentageProcessed, this, &MainWindow::percentageProcessedSignalHandler);
-    connect(&efmProcess, &EfmProcess::completed, this, &MainWindow::processingCompletedSignalHandler);
+    // Connect to the signals from the file decoder thread
+    connect(&efmProcess, &EfmProcess::processingComplete, this, &MainWindow::processingCompleteSignalHandler);
+    connect(&efmProcess, &EfmProcess::percentProcessed, this, &MainWindow::percentProcessedSignalHandler);
 
     // Load the window geometry from the configuration
-    restoreGeometry(configuration->getMainWindowGeometry());
+    restoreGeometry(configuration.getMainWindowGeometry());
 
-    // Open temporary files for decoding output
-    audioOutputFile = new QTemporaryFile(this);
-    dataOutputFile = new QTemporaryFile(this);
-    audioMetaOutputFile = new QTemporaryFile(this);
-    dataMetaOutputFile = new QTemporaryFile(this);
+    // Reset the statistics
+    resetStatistics();
 
-    // No EFM file loaded
-    noEfmFileLoaded();
+    // Reset the decoder options
+    resetDecoderOptions();
+    if (debugOn) {
+        ui->debugEnabled_checkBox->setChecked(true);
+        ui->debug_efmToF3_checkBox->setEnabled(true);
+        ui->debug_f3Sync_checkBox->setEnabled(true);
+        ui->debug_f3ToF2_checkBox->setEnabled(true);
+        ui->debug_f2ToF1Frame_checkBox->setEnabled(true);
+        ui->debug_f1ToAudio_checkBox->setEnabled(true);
+        ui->debug_f1ToData_checkBox->setEnabled(true);
+    }
+
+    // Select the Audio tab by default
+    ui->tabWidget->setCurrentWidget(ui->audioTab);
 
     // Set up a timer for updating the statistics
-    statisticsUpdateTimer = new QTimer(this);
-    connect(statisticsUpdateTimer, SIGNAL(timeout()), this, SLOT(updateStatistics()));
+    connect(&statisticsUpdateTimer, SIGNAL(timeout()), this, SLOT(updateStatistics()));
+
+    // Set up GUI for no EFM file loaded
+    guiNoEfmFileLoaded();
 }
 
 MainWindow::~MainWindow()
 {
+    // Quit the processing thread
+    efmProcess.quit();
+
     // Save the window geometry to the configuration
-    configuration->setMainWindowGeometry(saveGeometry());
+    configuration.setMainWindowGeometry(saveGeometry());
 
     // Save the configuration
-    configuration->writeConfiguration();
+    configuration.writeConfiguration();
 
     delete ui;
 }
 
-// No EFM file loaded GUI update
-void MainWindow::noEfmFileLoaded(void)
+void MainWindow::startDecodeNonInteractive()
 {
-    // Configure GUI elements
-    ui->actionOpen_EFM_file->setEnabled(true);
-    ui->actionSave_Audio_As->setEnabled(false);
-    ui->actionSave_Data_As->setEnabled(false);
+    on_decodePushButton_clicked();
+}
 
+// GUI update methods -------------------------------------------------------------------------------------------------
+
+// No EFM file loaded GUI update
+void MainWindow::guiNoEfmFileLoaded()
+{
+    ui->actionOpen_EFM_File->setEnabled(true);
+    ui->actionSave_PCM_Audio->setEnabled(false);
+    ui->actionSave_Sector_Data->setEnabled(false);
     ui->decodePushButton->setEnabled(false);
     ui->cancelPushButton->setEnabled(false);
-    ui->decodeProgressBar->setEnabled(false);
-    ui->decodeProgressBar->setValue(0);
 
     // Set the main window title
     this->setWindowTitle(tr("ld-process-efm"));
 
-    // Clear the current input filename
-    currentInputFilename.clear();
+    // Clear the input EFM file filename
+    currentInputEfmFileAndPath.clear();
 
-    // Reset decoder
-    efmProcess.reset();
-
-    // Reset statistics
     resetStatistics();
 }
 
 // EFM file loaded GUI update
-void MainWindow::efmFileLoaded(void)
+void MainWindow::guiEfmFileLoaded()
 {
-    // Configure GUI elements
-    ui->actionOpen_EFM_file->setEnabled(true);
-    ui->actionSave_Audio_As->setEnabled(false);
-    ui->actionSave_Data_As->setEnabled(false);
+    ui->actionOpen_EFM_File->setEnabled(true);
+    ui->actionSave_PCM_Audio->setEnabled(false);
+    ui->actionSave_Sector_Data->setEnabled(false);
 
     ui->decodePushButton->setEnabled(true);
     ui->cancelPushButton->setEnabled(false);
-    ui->decodeProgressBar->setEnabled(true);
-    ui->decodeProgressBar->setValue(0);
 
     // Set the main window title
-    QFileInfo fileInfo(currentInputFilename);
+    QFileInfo fileInfo(currentInputEfmFileAndPath);
     this->setWindowTitle(tr("ld-process-efm - ") + fileInfo.fileName());
 
-    // Reset decoder
-    efmProcess.reset();
-
-    // Reset statistics
     resetStatistics();
 }
 
-// Decoding stopped GUI update
-void MainWindow::decodingStop(void)
+// Start processing the EFM file GUI update
+void MainWindow::guiEfmProcessingStart()
 {
-    ui->actionOpen_EFM_file->setEnabled(true);
-    ui->actionSave_Data_As->setEnabled(false);
+    resetStatistics();
+    statisticsUpdateTimer.start(100); // Update 10 times per second
 
-    ui->decodePushButton->setEnabled(true);
-    ui->cancelPushButton->setEnabled(false);
-    statisticsUpdateTimer->stop();
-
-    updateStatistics();
-
-    // Get the statistical information from the EFM processing thread
-    EfmProcess::Statistics statistics = efmProcess.getStatistics();
-
-    // Only allow audio save if there is audio data available
-    if (statistics.f2FramesToAudio_statistics.audioSamples != 0)  ui->actionSave_Audio_As->setEnabled(true);
-    else ui->actionSave_Audio_As->setEnabled(false);
-
-    // Only allow data save if there is data available
-    if (statistics.sectorsToData_statistics.sectorsWritten != 0)  ui->actionSave_Data_As->setEnabled(true);
-    else ui->actionSave_Data_As->setEnabled(false);
-}
-
-// Decoding started GUI update
-void MainWindow::decodingStart(void)
-{
-    ui->actionOpen_EFM_file->setEnabled(false);
-    ui->actionSave_Audio_As->setEnabled(false);
-    ui->actionSave_Data_As->setEnabled(false);
-
+    ui->actionOpen_EFM_File->setEnabled(false);
+    ui->actionSave_PCM_Audio->setEnabled(false);
+    ui->actionSave_Sector_Data->setEnabled(false);
     ui->decodePushButton->setEnabled(false);
     ui->cancelPushButton->setEnabled(true);
-    ui->decodeProgressBar->setValue(0);
 
-    // Remove any open temporary files
-    if (audioOutputFile->isOpen()) {
-        qDebug() << "MainWindow::decodingStart(): Removing previous temporary audio output file";
-        audioOutputFile->close();
-        audioOutputFile->remove();
-    }
-
-    if (dataOutputFile->isOpen()) {
-        qDebug() << "MainWindow::decodingStart(): Removing previous temporary data output file";
-        dataOutputFile->close();
-        dataOutputFile->remove();
-    }
-
-    if (audioMetaOutputFile->isOpen()) {
-        qDebug() << "MainWindow::decodingStart(): Removing previous temporary audio metadata output file";
-        audioMetaOutputFile->close();
-        audioMetaOutputFile->remove();
-    }
-
-    if (dataMetaOutputFile->isOpen()) {
-        qDebug() << "MainWindow::decodingStart(): Removing previous temporary data metadata output file";
-        dataMetaOutputFile->close();
-        dataMetaOutputFile->remove();
-    }
-
-    // Open the temporary output files
-    if (!audioOutputFile->open()) {
-        qCritical() << "Unable to open temporary file for audio processing!";
-        QMessageBox messageBox;
-        messageBox.critical(this, "Error", "Could not open a temporary file for audio processing!");
-        messageBox.setFixedSize(500, 200);
-    }
-
-    if (!dataOutputFile->open()) {
-        qCritical() << "Unable to open temporary file for audio processing!";
-        QMessageBox messageBox;
-        messageBox.critical(this, "Error", "Could not open a temporary file for data processing!");
-        messageBox.setFixedSize(500, 200);
-    }
-
-    if (!audioMetaOutputFile->open()) {
-        qCritical() << "Unable to open temporary file for audio metadata!";
-        QMessageBox messageBox;
-        messageBox.critical(this, "Error", "Could not open a temporary file for audio metadata!");
-        messageBox.setFixedSize(500, 200);
-    }
-
-    if (!dataMetaOutputFile->open()) {
-        qCritical() << "Unable to open temporary file for data metadata!";
-        QMessageBox messageBox;
-        messageBox.critical(this, "Error", "Could not open a temporary file for data metadata!");
-        messageBox.setFixedSize(500, 200);
-    }
-
-    // Show the location of the temporary files in debug
-    qDebug() << "MainWindow::decodingStart(): Audio output temporary file is" << audioOutputFile->fileName();
-    qDebug() << "MainWindow::decodingStart(): Data output temporary file is" << dataOutputFile->fileName();
-    qDebug() << "MainWindow::decodingStart(): Audio metadata output temporary file is" << audioMetaOutputFile->fileName();
-    qDebug() << "MainWindow::decodingStart(): Data metadata output temporary file is" << dataMetaOutputFile->fileName();
-
-    // Reset decoder
-    efmProcess.reset();
-
-    // Reset statistics
-    resetStatistics();
-
-    efmProcess.startProcessing(currentInputFilename, audioOutputFile, dataOutputFile, audioMetaOutputFile, dataMetaOutputFile);
-    statisticsUpdateTimer->start(100); // Update 10 times per second
+    // Disable changing of options
+    ui->options_audio_groupBox->setEnabled(false);
+    ui->options_conceal_groupBox->setEnabled(false);
+    ui->options_development_groupBox->setEnabled(false);
+    ui->options_options_groupBox->setEnabled(false);
 }
 
-// Reset statistics GUI update
-void MainWindow::resetStatistics(void)
+// Stop processing the EFM file GUI update
+void MainWindow::guiEfmProcessingStop()
 {
-    // Reset statistics and initialise GUI labels
-    efmProcess.resetStatistics();
+    statisticsUpdateTimer.stop();
+    updateStatistics();
 
-    // F3 Frames tab
-    ui->f3Frames_totalLabel->setText(tr("0"));
-    ui->f3Frames_validLabel->setText(tr("0"));
-    ui->f3Frames_invalidLabel->setText(tr("0"));
-    ui->f3Frames_syncLossLabel->setText(tr("0"));
+    ui->actionOpen_EFM_File->setEnabled(true);
+    // Note: Don't set the save audio here, it's set by the signal handler
+    ui->decodePushButton->setEnabled(true);
+    ui->cancelPushButton->setEnabled(false);
 
-    // F2 Frames tab
-    ui->f2Frames_c1_total->setText(tr("0"));
-    ui->f2Frames_c1_valid->setText(tr("0"));
-    ui->f2Frames_c1_invalid->setText(tr("0"));
-    ui->f2Frames_c1_corrected->setText(tr("0"));
-    ui->f2Frames_c1_flushes->setText(tr("0"));
+    // Allow changing of options
+    ui->options_audio_groupBox->setEnabled(true);
+    ui->options_conceal_groupBox->setEnabled(true);
+    ui->options_development_groupBox->setEnabled(true);
+    ui->options_options_groupBox->setEnabled(true);
+}
 
-    ui->f2Frames_c2_total->setText(tr("0"));
-    ui->f2Frames_c2_valid->setText(tr("0"));
-    ui->f2Frames_c2_invalid->setText(tr("0"));
-    ui->f2Frames_c2_corrected->setText(tr("0"));
-    ui->f2Frames_c2_flushes->setText(tr("0"));
+// Reset statistics
+void MainWindow::resetStatistics()
+{
+    // Progress bar
+    ui->progressBar->setValue(0);
 
-    ui->f2Frames_c2de_total->setText(tr("0"));
-    ui->f2Frames_c2de_valid->setText(tr("0"));
-    ui->f2Frames_c2de_invalid->setText(tr("0"));
-    ui->f2Frames_c2de_flushes->setText(tr("0"));
+    TrackTime dummyTime;
+    dummyTime.setTime(0, 0, 0);
+
+    // EFM tab
+    ui->efm_validSyncs_label->setText(tr("0"));
+    ui->efm_overshootSyncs_label->setText(tr("0"));
+    ui->efm_undershootSyncs_label->setText(tr("0"));
+    ui->efm_totalSyncs_label->setText(tr("0"));
+
+    ui->efm_validEfmSymbols_label->setText(tr("0"));
+    ui->efm_invalidEfmSymbols_label->setText(tr("0"));
+    ui->efm_symbolErrorRate_label->setText(tr("0%"));
+
+    ui->efm_inRangeTValues_label->setText(tr("0"));
+    ui->efm_outOfRangeTValues_label->setText(tr("0"));
+    ui->efm_totalTValues_label->setText(tr("0"));
+
+    ui->efm_validFrames_label->setText(tr("0"));
+    ui->efm_overshootFrames_label->setText(tr("0"));
+    ui->efm_undershootFrames_label->setText(tr("0"));
+    ui->efm_totalFrames_label->setText(tr("0"));
+
+    // F3 tab
+    ui->f3_totalInputF3Frames_label->setText(tr("0"));
+    ui->f3_discardedFrames_label->setText(tr("0"));
+    ui->f3_totalValidSections_label->setText(tr("0"));
+    ui->f3_totalValidF3Frames_label->setText(tr("0"));
+
+    // F2 tab
+    // == F3 to F2
+    ui->f2_f3ToF2_totalInputF3Frames_label->setText(tr("0"));
+    ui->f2_f3ToF2_totalOutputF2Frames_label->setText(tr("0"));
+    ui->f2_f3ToF2_totalPreempFrames_label->setText(tr("0"));
+    ui->f2_f3ToF2_f3SequenceInterruptions_label->setText(tr("0"));
+    ui->f2_f3ToF2_missingF3Frames_label->setText(tr("0"));
+    ui->f2_f3ToF2_initialDiscTime_label->setText(dummyTime.getTimeAsQString());
+    ui->f2_f3ToF2_currentDiscTime_label->setText(dummyTime.getTimeAsQString());
+
+    // == C1
+    ui->f2_c1_totalC1sProcessed_label->setText(tr("0"));
+    ui->f2_c1_validC1s_label->setText(tr("0"));
+    ui->f2_c1_invalidC1s_label->setText(tr("0"));
+    ui->f2_c1_c1sCorrected_label->setText(tr("0"));
+    ui->f2_c1_delayBufferFlushes_label->setText(tr("0"));
+    ui->f2_c1_errorRate_label->setText(tr("0%"));
+
+    // == C2
+    ui->f2_c2_totalC2sProcessed_label->setText(tr("0"));
+    ui->f2_c2_validC2s_label->setText(tr("0"));
+    ui->f2_c2_invalidC2s_label->setText(tr("0"));
+    ui->f2_c2_c2sCorrected_label->setText(tr("0"));
+    ui->f2_c2_delayBufferFlushes_label->setText(tr("0"));
+
+    // == Deinterleave
+    ui->f2_deinterleave_totalC2sProcessed_label->setText(tr("0"));
+    ui->f2_deinterleave_validC2s_label->setText(tr("0"));
+    ui->f2_deinterleave_invalidC2s_label->setText(tr("0"));
+    ui->f2_deinterleave_delayBufferFlushes_label->setText(tr("0"));
+
+    // F1 tab
+    ui->f1_f2ToF1_validFrames_label->setText(tr("0"));
+    ui->f1_f2ToF1_invalidFrames_label->setText(tr("0"));
+    ui->f1_f2ToF1_missingSectionFrames_label->setText(tr("0"));
+    ui->f1_f2ToF1_encoderOffFrames_label->setText(tr("0"));
+    ui->f1_f2ToF1_totalFrames_label->setText(tr("0"));
+    ui->f1_f2ToF1_framesStartTime_label->setText(dummyTime.getTimeAsQString());
+    ui->f1_f2ToF1_framesCurrentTime_label->setText(dummyTime.getTimeAsQString());
 
     // Audio tab
-    ui->audio_totalSamples->setText(tr("0"));
+    ui->audio_audioSamples_label->setText(tr("0"));
+    ui->audio_corruptSamples_label->setText(tr("0"));
+    ui->audio_missingSamples_label->setText(tr("0"));
+    ui->audio_concealedSamples_label->setText(tr("0"));
+    ui->audio_totalSamples_label->setText(tr("0"));
+
+    ui->audio_startTime_label->setText(dummyTime.getTimeAsQString());
+    ui->audio_currentTime_label->setText(dummyTime.getTimeAsQString());
+    ui->audio_duration_label->setText(dummyTime.getTimeAsQString());
 
     // Data tab
-    ui->data_total->setText(tr("0"));
-    ui->data_signalGaps->setText(tr("0"));
-    ui->data_corruption->setText(tr("0"));
+    ui->data_validSectors_label->setText(tr("0"));
+    ui->data_invalidSectors_label->setText(tr("0"));
+    ui->data_missingSectors_label->setText(tr("0"));
+    ui->data_totalSectors_label->setText(tr("0"));
+
+    ui->data_sectorsMissingSync_label->setText(tr("0"));
+
+    ui->data_startAddress_label->setText(dummyTime.getTimeAsQString());
+    ui->data_currentAddress_label->setText(dummyTime.getTimeAsQString());
 }
 
-// Miscellaneous methods ----------------------------------------------------------------------------------------------
-
-// Load an EFM file
-void MainWindow::loadEfmFile(QString filename)
+// Update statistics
+void MainWindow::updateStatistics()
 {
-    // Open the EFM input file and verify the contents
+    // Get the updated statistics
+    EfmProcess::Statistics statistics = efmProcess.getStatistics();
 
-    // Open input file for reading
-    QFile inputFileHandle((filename));
-    if (!inputFileHandle.open(QIODevice::ReadOnly)) {
-        // Show an error to the user
-        QMessageBox messageBox;
-        messageBox.critical(this, "Error", "Could not open the EFM input file!");
-        messageBox.setFixedSize(500, 200);
+    // EFM tab
+    ui->efm_validSyncs_label->setText(QString::number(statistics.efmToF3Frames.validSyncs));
+    ui->efm_overshootSyncs_label->setText(QString::number(statistics.efmToF3Frames.overshootSyncs));
+    ui->efm_undershootSyncs_label->setText(QString::number(statistics.efmToF3Frames.undershootSyncs));
+    ui->efm_totalSyncs_label->setText(QString::number(statistics.efmToF3Frames.validSyncs +
+                                                      statistics.efmToF3Frames.overshootSyncs + statistics.efmToF3Frames.undershootSyncs));
 
-        noEfmFileLoaded();
-        inputFileHandle.close();
-        return;
-    }
+    ui->efm_validEfmSymbols_label->setText(QString::number(statistics.efmToF3Frames.validEfmSymbols));
+    ui->efm_invalidEfmSymbols_label->setText(QString::number(statistics.efmToF3Frames.invalidEfmSymbols));
 
-    if (inputFileHandle.bytesAvailable() == 0) {
-        // Show an error to the user
-        QMessageBox messageBox;
-        messageBox.critical(this, "Error", "Input EFM file is empty!");
-        messageBox.setFixedSize(500, 200);
+    qreal efmSymbolErrorRate = static_cast<qreal>(statistics.efmToF3Frames.validEfmSymbols + statistics.efmToF3Frames.invalidEfmSymbols);
+    efmSymbolErrorRate = (100 / efmSymbolErrorRate) * (statistics.efmToF3Frames.invalidEfmSymbols);
+    ui->efm_symbolErrorRate_label->setText(QString::number(efmSymbolErrorRate) + "%");
 
-        noEfmFileLoaded();
-        inputFileHandle.close();
-        return;
-    }
+    ui->efm_inRangeTValues_label->setText(QString::number(statistics.efmToF3Frames.inRangeTValues));
+    ui->efm_outOfRangeTValues_label->setText(QString::number(statistics.efmToF3Frames.outOfRangeTValues));
+    ui->efm_totalTValues_label->setText(QString::number(statistics.efmToF3Frames.inRangeTValues + statistics.efmToF3Frames.outOfRangeTValues));
 
-    // Close the current EFM input file (if any)
-    noEfmFileLoaded();
+    ui->efm_validFrames_label->setText(QString::number(statistics.efmToF3Frames.validFrames));
+    ui->efm_overshootFrames_label->setText(QString::number(statistics.efmToF3Frames.overshootFrames));
+    ui->efm_undershootFrames_label->setText(QString::number(statistics.efmToF3Frames.undershootFrames));
+    ui->efm_totalFrames_label->setText(QString::number(statistics.efmToF3Frames.validFrames + statistics.efmToF3Frames.overshootFrames +
+                                                       statistics.efmToF3Frames.undershootFrames));
 
-    // Update the configuration for the source directory
-    QFileInfo inFileInfo(filename);
-    configuration->setSourceDirectory(inFileInfo.absolutePath());
-    qDebug() << "MainWindow::on_actionOpen_EFM_file_triggered(): Setting EFM source directory to:" << inFileInfo.absolutePath();
-    configuration->writeConfiguration();
+    // F3 tab
+    ui->f3_totalInputF3Frames_label->setText(QString::number(statistics.syncF3Frames.totalF3Frames));
+    ui->f3_discardedFrames_label->setText(QString::number(statistics.syncF3Frames.discardedFrames));
+    ui->f3_totalValidSections_label->setText(QString::number(statistics.syncF3Frames.totalSections));
+    ui->f3_totalValidF3Frames_label->setText(QString::number(statistics.syncF3Frames.totalSections * 98));
 
-    // Update the status bar
-    efmStatus.setText(tr("EFM file loaded with ") + QString::number(inputFileHandle.bytesAvailable()) + tr(" T values"));
+    // F2 tab
+    // == F3 to F2
+    ui->f2_f3ToF2_totalInputF3Frames_label->setText(QString::number(statistics.f3ToF2Frames.totalF3Frames));
+    ui->f2_f3ToF2_totalOutputF2Frames_label->setText(QString::number(statistics.f3ToF2Frames.totalF2Frames));
+    ui->f2_f3ToF2_totalPreempFrames_label->setText(QString::number(statistics.f3ToF2Frames.preempFrames));
+    ui->f2_f3ToF2_f3SequenceInterruptions_label->setText(QString::number(statistics.f3ToF2Frames.sequenceInterruptions));
+    ui->f2_f3ToF2_missingF3Frames_label->setText(QString::number(statistics.f3ToF2Frames.missingF3Frames));
+    ui->f2_f3ToF2_initialDiscTime_label->setText(statistics.f3ToF2Frames.initialDiscTime.getTimeAsQString());
+    ui->f2_f3ToF2_currentDiscTime_label->setText(statistics.f3ToF2Frames.currentDiscTime.getTimeAsQString());
 
-    // Set the current file name
-    currentInputFilename = filename;
-    qDebug() << "MainWindow::on_actionOpen_TBC_file_triggered(): Set current file name to to:" << currentInputFilename;
+    // == C1
+    ui->f2_c1_totalC1sProcessed_label->setText(QString::number(statistics.f3ToF2Frames.c1Circ_statistics.c1Passed +
+                                                               statistics.f3ToF2Frames.c1Circ_statistics.c1Failed +
+                                                               statistics.f3ToF2Frames.c1Circ_statistics.c1Corrected));
+    ui->f2_c1_validC1s_label->setText(QString::number(statistics.f3ToF2Frames.c1Circ_statistics.c1Passed +
+                                                      statistics.f3ToF2Frames.c1Circ_statistics.c1Corrected));
+    ui->f2_c1_invalidC1s_label->setText(QString::number(statistics.f3ToF2Frames.c1Circ_statistics.c1Failed));
+    ui->f2_c1_c1sCorrected_label->setText(QString::number(statistics.f3ToF2Frames.c1Circ_statistics.c1Corrected));
+    ui->f2_c1_delayBufferFlushes_label->setText(QString::number(statistics.f3ToF2Frames.c1Circ_statistics.c1flushed));
 
-    efmFileLoaded();
-    inputFileHandle.close();
+    qreal c1ErrorRate = static_cast<qreal>(statistics.f3ToF2Frames.c1Circ_statistics.c1Passed) +
+            static_cast<qreal>(statistics.f3ToF2Frames.c1Circ_statistics.c1Failed) +
+            static_cast<qreal>(statistics.f3ToF2Frames.c1Circ_statistics.c1Corrected);
+
+    c1ErrorRate = (100 / c1ErrorRate) * (statistics.f3ToF2Frames.c1Circ_statistics.c1Failed + statistics.f3ToF2Frames.c1Circ_statistics.c1Corrected);
+    ui->f2_c1_errorRate_label->setText(QString::number(c1ErrorRate) + "%");
+
+    // == C2
+    ui->f2_c2_totalC2sProcessed_label->setText(QString::number(statistics.f3ToF2Frames.c2Circ_statistics.c2Passed +
+                                                               statistics.f3ToF2Frames.c2Circ_statistics.c2Failed +
+                                                               statistics.f3ToF2Frames.c2Circ_statistics.c2Corrected));
+    ui->f2_c2_validC2s_label->setText(QString::number(statistics.f3ToF2Frames.c2Circ_statistics.c2Passed +
+                                                      statistics.f3ToF2Frames.c2Circ_statistics.c2Corrected));
+    ui->f2_c2_invalidC2s_label->setText(QString::number(statistics.f3ToF2Frames.c2Circ_statistics.c2Failed));
+    ui->f2_c2_c2sCorrected_label->setText(QString::number(statistics.f3ToF2Frames.c2Circ_statistics.c2Corrected));
+    ui->f2_c2_delayBufferFlushes_label->setText(QString::number(statistics.f3ToF2Frames.c2Circ_statistics.c2flushed));
+
+    // == Deinterleave
+    ui->f2_deinterleave_totalC2sProcessed_label->setText(QString::number(statistics.f3ToF2Frames.c2Deinterleave_statistics.validDeinterleavedC2s +
+                                                                         statistics.f3ToF2Frames.c2Deinterleave_statistics.invalidDeinterleavedC2s));
+    ui->f2_deinterleave_validC2s_label->setText(QString::number(statistics.f3ToF2Frames.c2Deinterleave_statistics.validDeinterleavedC2s));
+    ui->f2_deinterleave_invalidC2s_label->setText(QString::number(statistics.f3ToF2Frames.c2Deinterleave_statistics.invalidDeinterleavedC2s));
+    ui->f2_deinterleave_delayBufferFlushes_label->setText(QString::number(statistics.f3ToF2Frames.c2Deinterleave_statistics.c2flushed));
+
+    // F1 tab
+    ui->f1_f2ToF1_validFrames_label->setText(QString::number(statistics.f2ToF1Frames.validFrames));
+    ui->f1_f2ToF1_invalidFrames_label->setText(QString::number(statistics.f2ToF1Frames.invalidFrames));
+    ui->f1_f2ToF1_missingSectionFrames_label->setText(QString::number(statistics.f2ToF1Frames.missingSectionFrames));
+    ui->f1_f2ToF1_encoderOffFrames_label->setText(QString::number(statistics.f2ToF1Frames.encoderOffFrames));
+    ui->f1_f2ToF1_totalFrames_label->setText(QString::number(statistics.f2ToF1Frames.totalFrames));
+    ui->f1_f2ToF1_framesStartTime_label->setText(statistics.f2ToF1Frames.framesStart.getTimeAsQString());
+    ui->f1_f2ToF1_framesCurrentTime_label->setText(statistics.f2ToF1Frames.frameCurrent.getTimeAsQString());
+
+    // Audio
+    ui->audio_audioSamples_label->setText(QString::number(statistics.f1ToAudio.audioSamples));
+    ui->audio_corruptSamples_label->setText(QString::number(statistics.f1ToAudio.corruptSamples));
+    ui->audio_missingSamples_label->setText(QString::number(statistics.f1ToAudio.missingSamples));
+    ui->audio_concealedSamples_label->setText(QString::number(statistics.f1ToAudio.concealedSamples));
+    ui->audio_totalSamples_label->setText(QString::number(statistics.f1ToAudio.totalSamples));
+
+    ui->audio_startTime_label->setText(statistics.f1ToAudio.startTime.getTimeAsQString());
+    ui->audio_currentTime_label->setText(statistics.f1ToAudio.currentTime.getTimeAsQString());
+    ui->audio_duration_label->setText(statistics.f1ToAudio.duration.getTimeAsQString());
+
+    // Data tab
+    ui->data_validSectors_label->setText(QString::number(statistics.f1ToData.validSectors));
+    ui->data_invalidSectors_label->setText(QString::number(statistics.f1ToData.invalidSectors));
+    ui->data_missingSectors_label->setText(QString::number(statistics.f1ToData.missingSectors));
+    ui->data_totalSectors_label->setText(QString::number(statistics.f1ToData.totalSectors));
+
+    ui->data_sectorsMissingSync_label->setText(QString::number(statistics.f1ToData.missingSync));
+
+    ui->data_startAddress_label->setText(statistics.f1ToData.startAddress.getTimeAsQString());
+    ui->data_currentAddress_label->setText(statistics.f1ToData.currentAddress.getTimeAsQString());
 }
 
-// Main window menu events --------------------------------------------------------------------------------------------
+// Reset decoder options
+void MainWindow::resetDecoderOptions()
+{
+    ui->debugEnabled_checkBox->setChecked(false);
+    ui->debug_efmToF3_checkBox->setChecked(false);
+    ui->debug_f3Sync_checkBox->setChecked(false);
+    ui->debug_f3ToF2_checkBox->setChecked(false);
+    ui->debug_f2ToF1Frame_checkBox->setChecked(false);
+    ui->debug_f1ToAudio_checkBox->setChecked(false);
+    ui->debug_f1ToData_checkBox->setChecked(false);
 
-// Menu -> File -> Open EFM file
-void MainWindow::on_actionOpen_EFM_file_triggered()
+    ui->debug_efmToF3_checkBox->setEnabled(false);
+    ui->debug_f3Sync_checkBox->setEnabled(false);
+    ui->debug_f3ToF2_checkBox->setEnabled(false);
+    ui->debug_f2ToF1Frame_checkBox->setEnabled(false);
+    ui->debug_f1ToAudio_checkBox->setEnabled(false);
+    ui->debug_f1ToData_checkBox->setEnabled(false);
+
+    ui->audio_conceal_radioButton->setChecked(true);
+    ui->audio_silence_radioButton->setChecked(false);
+    ui->audio_passthrough_radioButton->setChecked(false);
+
+    ui->audio_padSampleStart_checkBox->setChecked(false);
+    ui->options_decodeAsAudio_checkbox->setChecked(true);
+    ui->options_decodeAsData_checkbox->setChecked(false);
+
+    ui->tabWidget->setTabEnabled(ui->tabWidget->indexOf(ui->dataTab), false);
+}
+
+// GUI action slots ---------------------------------------------------------------------------------------------------
+
+// Open a new EFM input file
+void MainWindow::on_actionOpen_EFM_File_triggered()
 {
     qDebug() << "MainWindow::on_actionOpen_EFM_file_triggered(): Called";
 
-    QString inputFileName = QFileDialog::getOpenFileName(this,
+    QString inputFilename = QFileDialog::getOpenFileName(this,
                 tr("Open EFM file"),
-                configuration->getSourceDirectory()+tr("/ldsample.efm"),
+                configuration.getSourceDirectory()+tr("/ldsample.efm"),
                 tr("EFM output (*.efm);;All Files (*)"));
 
     // Was a filename specified?
-    if (!inputFileName.isEmpty() && !inputFileName.isNull()) {
+    if (!inputFilename.isEmpty() && !inputFilename.isNull()) {
         // Load the file
-        loadEfmFile(inputFileName);
+        loadInputEfmFile(inputFilename);
     }
 }
 
-// Menu -> File -> Save Audio As
-void MainWindow::on_actionSave_Audio_As_triggered()
+// Save the PCM audio data as...
+void MainWindow::on_actionSave_PCM_Audio_triggered()
 {
-    qDebug() << "MainWindow::on_actionSave_Audio_As_triggered(): Called";
+    qDebug() << "MainWindow::on_actionSave_PCM_Audio_triggered(): Called";
 
     // Create a suggestion for the filename
-    QFileInfo fileInfo(currentInputFilename);
-    QString filenameSuggestion = configuration->getAudioDirectory() + "/";
+    QFileInfo fileInfo(currentInputEfmFileAndPath);
+    QString filenameSuggestion = configuration.getAudioDirectory() + "/";
     filenameSuggestion += fileInfo.fileName() + tr(".pcm");
 
-    qDebug() << "MainWindow::on_actionSave_Audio_As_triggered()L filename suggestion is =" << filenameSuggestion;
+    qDebug() << "MainWindow::on_actionSave_PCM_Audio_triggered(): filename suggestion is =" << filenameSuggestion;
 
     QString audioFilename = QFileDialog::getSaveFileName(this,
                 tr("Save PCM file"),
@@ -367,82 +451,64 @@ void MainWindow::on_actionSave_Audio_As_triggered()
         if (QFile::exists(audioFilename + tr(".json"))) QFile::remove(audioFilename + tr(".json"));
 
         // Copy the audio data from the temporary file to the destination
-        if (!audioOutputFile->copy(audioFilename)) {
-            qDebug() << "MainWindow::on_actionSave_Audio_As_triggered(): Failed to save file as" << audioFilename;
+        if (!audioOutputTemporaryFileHandle.copy(audioFilename)) {
+            qDebug() << "MainWindow::on_actionSave_PCM_Audio_triggered(): Failed to save file as" << audioFilename;
 
             QMessageBox messageBox;
-            messageBox.warning(this, "Warning","Could not save PCM audio using the specified filename!");
-            messageBox.setFixedSize(500, 200);
-        }
-
-        // Copy the audio metadata from the temporary file to the destination
-        if (!audioMetaOutputFile->copy(audioFilename + tr(".json"))) {
-            qDebug() << "MainWindow::on_actionSave_Audio_As_triggered(): Failed to save metadata file as" << audioFilename + tr(".json");
-
-            QMessageBox messageBox;
-            messageBox.warning(this, "Warning","Could not save PCM audio metadata using the specified filename!");
+            messageBox.warning(this, "Warning", "Could not save PCM audio using the specified filename!");
             messageBox.setFixedSize(500, 200);
         }
 
         // Update the configuration for the PNG directory
         QFileInfo audioFileInfo(audioFilename);
-        configuration->setAudioDirectory(audioFileInfo.absolutePath());
-        qDebug() << "MainWindow::on_actionSave_Audio_As_triggered(): Setting PCM audio directory to:" << audioFileInfo.absolutePath();
-        configuration->writeConfiguration();
+        configuration.setAudioDirectory(audioFileInfo.absolutePath());
+        qDebug() << "MainWindow::on_actionSave_PCM_Audio_triggered(): Setting PCM audio directory to:" << audioFileInfo.absolutePath();
+        configuration.writeConfiguration();
     }
 }
 
-// Menu -> File -> Save Data As
-void MainWindow::on_actionSave_Data_As_triggered()
+// Save the sector data as...
+void MainWindow::on_actionSave_Sector_Data_triggered()
 {
-    qDebug() << "MainWindow::on_actionSave_Data_As_triggered(): Called";
+    qDebug() << "MainWindow::on_actionSave_Sector_Data_triggered(): Called";
 
     // Create a suggestion for the filename
-    QFileInfo fileInfo(currentInputFilename);
-    QString filenameSuggestion = configuration->getDataDirectory() + "/";
+    QFileInfo fileInfo(currentInputEfmFileAndPath);
+    QString filenameSuggestion = configuration.getAudioDirectory() + "/";
     filenameSuggestion += fileInfo.fileName() + tr(".dat");
+
+    qDebug() << "MainWindow::on_actionSave_Sector_Data_triggered(): filename suggestion is =" << filenameSuggestion;
 
     QString dataFilename = QFileDialog::getSaveFileName(this,
                 tr("Save DAT file"),
                 filenameSuggestion,
-                tr("DAT data (*.dat);;All Files (*)"));
+                tr("DAT sector data (*.dat);;All Files (*)"));
 
     // Was a filename specified?
     if (!dataFilename.isEmpty() && !dataFilename.isNull()) {
-        // Save the audio as PCM
-        qDebug() << "MainWindow::on_actionSave_Data_As_triggered(): Saving data as" << dataFilename;
+        // Save the data
+        qDebug() << "MainWindow::on_actionSave_Sector_Data_triggered(): Saving sector data as" << dataFilename;
 
         // Check if filename exists (and remove the file if it does)
         if (QFile::exists(dataFilename)) QFile::remove(dataFilename);
-        if (QFile::exists(dataFilename + tr(".json"))) QFile::remove(dataFilename + tr(".json"));
 
-        // Copy the data from the temporary file to the destination
-        if (!dataOutputFile->copy(dataFilename)) {
-            qDebug() << "MainWindow::on_actionSave_Data_As_triggered(): Failed to save file as" << dataFilename;
-
-            QMessageBox messageBox;
-            messageBox.warning(this, "Warning","Could not save DAT data using the specified filename!");
-            messageBox.setFixedSize(500, 200);
-        }
-
-        // Copy the data metadata from the temporary file to the destination
-        if (!dataMetaOutputFile->copy(dataFilename + tr(".json"))) {
-            qDebug() << "MainWindow::on_actionSave_Data_As_triggered(): Failed to save data metadata file as" << dataFilename + tr(".json");
+        // Copy the audio data from the temporary file to the destination
+        if (!dataOutputTemporaryFileHandle.copy(dataFilename)) {
+            qDebug() << "MainWindow::on_actionSave_Sector_Data_triggered(): Failed to save file as" << dataFilename;
 
             QMessageBox messageBox;
-            messageBox.warning(this, "Warning","Could not save DAT data metadata using the specified filename!");
+            messageBox.warning(this, "Warning", "Could not save sector data using the specified filename!");
             messageBox.setFixedSize(500, 200);
         }
 
         // Update the configuration for the PNG directory
         QFileInfo dataFileInfo(dataFilename);
-        configuration->setDataDirectory(dataFileInfo.absolutePath());
-        qDebug() << "MainWindow::on_actionSave_Data_As_triggered(): Setting DAT data directory to:" << dataFileInfo.absolutePath();
-        configuration->writeConfiguration();
+        configuration.setDataDirectory(dataFileInfo.absolutePath());
+        qDebug() << "MainWindow::on_actionSave_Sector_Data_triggered(): Setting sector data directory to:" << dataFileInfo.absolutePath();
+        configuration.writeConfiguration();
     }
 }
 
-// Menu -> File -> Exit
 void MainWindow::on_actionExit_triggered()
 {
     qDebug() << "MainWindow::on_actionExit_triggered(): Called";
@@ -451,98 +517,233 @@ void MainWindow::on_actionExit_triggered()
     qApp->quit();
 }
 
-// Menu -> Help -> About ld-process-efm
 void MainWindow::on_actionAbout_ld_process_efm_triggered()
 {
     // Show the about dialogue
     aboutDialog->show();
 }
 
-// Signal handlers ----------------------------------------------------------------------------------------------------
-
-// Handle the percentage processed signal sent by the file converter thread
-void MainWindow::percentageProcessedSignalHandler(qint32 percentage)
-{
-    // Update the process dialogue
-    ui->decodeProgressBar->setValue(percentage);
-}
-
-// Handle the conversion completed signal sent by the file converter thread
-void MainWindow::processingCompletedSignalHandler(void)
-{
-    qDebug() << "MainWindow::processingCompletedSignalHandler(): Called";
-    decodingStop();
-}
-
-// Handle the update statistics timer event
-void MainWindow::updateStatistics(void)
-{
-    // Get the statistical information from the EFM processing thread
-    EfmProcess::Statistics statistics = efmProcess.getStatistics();
-
-    // Update F3 Frames tab
-    ui->f3Frames_totalLabel->setText(QString::number(statistics.efmToF3Frames_statistics.validFrameLength +
-                                                     statistics.efmToF3Frames_statistics.invalidFrameLength));
-    ui->f3Frames_validLabel->setText(QString::number(statistics.efmToF3Frames_statistics.validFrameLength));
-    ui->f3Frames_invalidLabel->setText(QString::number(statistics.efmToF3Frames_statistics.invalidFrameLength));
-    ui->f3Frames_syncLossLabel->setText(QString::number(statistics.efmToF3Frames_statistics.syncLoss));
-
-    // Update F2 Frames tab
-    ui->f2Frames_c1_total->setText(QString::number(statistics.f3ToF2Frames_statistics.c1Circ_statistics.c1Passed +
-                                                   statistics.f3ToF2Frames_statistics.c1Circ_statistics.c1Failed +
-                                                   statistics.f3ToF2Frames_statistics.c1Circ_statistics.c1Corrected));
-    ui->f2Frames_c1_valid->setText(QString::number(statistics.f3ToF2Frames_statistics.c1Circ_statistics.c1Passed +
-                                                   statistics.f3ToF2Frames_statistics.c1Circ_statistics.c1Corrected));
-    ui->f2Frames_c1_invalid->setText(QString::number(statistics.f3ToF2Frames_statistics.c1Circ_statistics.c1Failed));
-    ui->f2Frames_c1_corrected->setText(QString::number(statistics.f3ToF2Frames_statistics.c1Circ_statistics.c1Corrected));
-    ui->f2Frames_c1_flushes->setText(QString::number(statistics.f3ToF2Frames_statistics.c1Circ_statistics.c1flushed));
-
-    ui->f2Frames_c2_total->setText(QString::number(statistics.f3ToF2Frames_statistics.c2Circ_statistics.c2Passed +
-                                                   statistics.f3ToF2Frames_statistics.c2Circ_statistics.c2Failed +
-                                                   statistics.f3ToF2Frames_statistics.c2Circ_statistics.c2Corrected));
-    ui->f2Frames_c2_valid->setText(QString::number(statistics.f3ToF2Frames_statistics.c2Circ_statistics.c2Passed +
-                                                   statistics.f3ToF2Frames_statistics.c2Circ_statistics.c2Corrected));
-    ui->f2Frames_c2_invalid->setText(QString::number(statistics.f3ToF2Frames_statistics.c2Circ_statistics.c2Failed));
-    ui->f2Frames_c2_corrected->setText(QString::number(statistics.f3ToF2Frames_statistics.c2Circ_statistics.c2Corrected));
-    ui->f2Frames_c2_flushes->setText(QString::number(statistics.f3ToF2Frames_statistics.c2Circ_statistics.c2flushed));
-
-    ui->f2Frames_c2de_total->setText(QString::number(statistics.f3ToF2Frames_statistics.c2Deinterleave_statistics.validDeinterleavedC2s +
-                                                     statistics.f3ToF2Frames_statistics.c2Deinterleave_statistics.invalidDeinterleavedC2s));
-    ui->f2Frames_c2de_valid->setText(QString::number(statistics.f3ToF2Frames_statistics.c2Deinterleave_statistics.validDeinterleavedC2s));
-    ui->f2Frames_c2de_invalid->setText(QString::number(statistics.f3ToF2Frames_statistics.c2Deinterleave_statistics.invalidDeinterleavedC2s));
-    ui->f2Frames_c2de_flushes->setText(QString::number(statistics.f3ToF2Frames_statistics.c2Deinterleave_statistics.c2flushed));
-
-    // Update audio tab
-    ui->audio_totalSamples->setText(QString::number(statistics.f2FramesToAudio_statistics.audioSamples));
-
-    // Data tab
-    ui->data_total->setText(QString::number(statistics.sectorsToData_statistics.sectorsWritten));
-    ui->data_signalGaps->setText(QString::number(statistics.sectorsToData_statistics.gapSectors));
-    ui->data_corruption->setText(QString::number(statistics.sectorsToData_statistics.missingSectors));
-}
-
-// Main window general GUI events -------------------------------------------------------------------------------------
-
-// Start decoding push button clicked
 void MainWindow::on_decodePushButton_clicked()
 {
     qDebug() << "MainWindow::on_decodePushButton_clicked(): Called";
-    if (currentInputFilename.isEmpty()) return;
+    if (currentInputEfmFileAndPath.isEmpty()) return;
+
+    inputEfmFileHandle.close();
+    inputEfmFileHandle.setFileName(currentInputEfmFileAndPath);
+    if (!inputEfmFileHandle.open(QIODevice::ReadOnly)) {
+        // Failed to open file
+        qDebug() << "MainWindow::on_decodePushButton_clicked(): Could not open EFM input file";
+        return;
+    } else {
+        qDebug() << "MainWindow::on_decodePushButton_clicked(): Opened EFM input file";
+    }
+
+    // Open temporary file for audio data
+    audioOutputTemporaryFileHandle.close();
+    if (audioOutputTemporaryFileHandle.exists()) audioOutputTemporaryFileHandle.remove();
+    if (!audioOutputTemporaryFileHandle.open()) {
+        // Failed to open file
+        qFatal("Could not open audio output temporary file - this is fatal!");
+    } else {
+        qDebug() << "MainWindow::on_decodePushButton_clicked(): Opened audio output temporary file";
+    }
+
+    // Open temporary file for data
+    dataOutputTemporaryFileHandle.close();
+    if (dataOutputTemporaryFileHandle.exists()) dataOutputTemporaryFileHandle.remove();
+    if (!dataOutputTemporaryFileHandle.open()) {
+        // Failed to open file
+        qFatal("Could not open data output temporary file - this is fatal!");
+    } else {
+        qDebug() << "MainWindow::on_decodePushButton_clicked(): Opened data output temporary file";
+    }
 
     // Update the GUI
-    decodingStart();
+    guiEfmProcessingStart();
+
+    // Set the debug states
+    efmProcess.setDebug(ui->debug_efmToF3_checkBox->isChecked(), ui->debug_f3Sync_checkBox->isChecked(),
+                        ui->debug_f3ToF2_checkBox->isChecked(), ui->debug_f2ToF1Frame_checkBox->isChecked(),
+                        ui->debug_f1ToAudio_checkBox->isChecked(), ui->debug_f1ToData_checkBox->isChecked());
+
+    // Set the audio error treatment and conceal type options
+    F1ToAudio::ErrorTreatment errorTreatment = F1ToAudio::ErrorTreatment::conceal;
+    F1ToAudio::ConcealType concealType = F1ToAudio::ConcealType::linear;
+
+    if (ui->audio_conceal_radioButton->isChecked()) errorTreatment = F1ToAudio::ErrorTreatment::conceal;
+    if (ui->audio_silence_radioButton->isChecked()) errorTreatment = F1ToAudio::ErrorTreatment::silence;
+    if (ui->audio_passthrough_radioButton->isChecked()) errorTreatment = F1ToAudio::ErrorTreatment::passThrough;
+
+    if (ui->conceal_linear_radioButton->isChecked()) concealType = F1ToAudio::ConcealType::linear;
+    if (ui->conceal_prediction_radioButton->isChecked()) concealType = F1ToAudio::ConcealType::prediction;
+
+    efmProcess.setAudioErrorTreatment(errorTreatment, concealType);
+
+    // Set the audio options
+    efmProcess.setDecoderOptions(ui->audio_padSampleStart_checkBox->isChecked(), ui->options_decodeAsAudio_checkbox->isChecked(),
+                                 ui->options_decodeAsData_checkbox->isChecked());
+
+    // Start the processing of the EFM
+    efmProcess.startProcessing(&inputEfmFileHandle, &audioOutputTemporaryFileHandle,
+                               &dataOutputTemporaryFileHandle);
 }
 
-// Cancel decoding push button clicked
 void MainWindow::on_cancelPushButton_clicked()
 {
     qDebug() << "MainWindow::on_cancelPushButton_clicked(): Called";
 
-    // Cancel the processing
-    efmProcess.cancelProcessing();
+    efmProcess.stopProcessing();
 
     // Update the GUI
-    decodingStop();
+    guiEfmProcessingStop();
 }
+
+void MainWindow::on_debugEnabled_checkBox_clicked()
+{
+    if (ui->debugEnabled_checkBox->isChecked()) {
+        ui->debug_efmToF3_checkBox->setEnabled(true);
+        ui->debug_f3Sync_checkBox->setEnabled(true);
+        ui->debug_f3ToF2_checkBox->setEnabled(true);
+        ui->debug_f2ToF1Frame_checkBox->setEnabled(true);
+        ui->debug_f1ToAudio_checkBox->setEnabled(true);
+        ui->debug_f1ToData_checkBox->setEnabled(true);
+        setDebug(true);
+    } else {
+        ui->debug_efmToF3_checkBox->setEnabled(false);
+        ui->debug_f3Sync_checkBox->setEnabled(false);
+        ui->debug_f3ToF2_checkBox->setEnabled(false);
+        ui->debug_f2ToF1Frame_checkBox->setEnabled(false);
+        ui->debug_f1ToAudio_checkBox->setEnabled(false);
+        ui->debug_f1ToData_checkBox->setEnabled(false);
+        setDebug(false);
+    }
+}
+
+void MainWindow::on_options_decodeAsAudio_checkbox_clicked()
+{
+    if (ui->options_decodeAsAudio_checkbox->isChecked()) {
+        ui->tabWidget->setTabEnabled(ui->tabWidget->indexOf(ui->audioTab), true);
+    } else {
+        ui->tabWidget->setTabEnabled(ui->tabWidget->indexOf(ui->audioTab), false);
+    }
+}
+
+void MainWindow::on_options_decodeAsData_checkbox_clicked()
+{
+    if (ui->options_decodeAsData_checkbox->isChecked()) {
+        ui->tabWidget->setTabEnabled(ui->tabWidget->indexOf(ui->dataTab), true);
+    } else {
+        ui->tabWidget->setTabEnabled(ui->tabWidget->indexOf(ui->dataTab), false);
+    }
+}
+
+// Local signal handling methods --------------------------------------------------------------------------------------
+
+// Handle processingComplete signal from EfmProcess class
+void MainWindow::processingCompleteSignalHandler(bool audioAvailable, bool dataAvailable)
+{
+    if (audioAvailable) {
+        qDebug() << "MainWindow::processingCompleteSignalHandler(): Processing complete - audio available";
+        ui->actionSave_PCM_Audio->setEnabled(true);
+
+        // If in non-Interactive mode, autosave
+        if (nonInteractive) {
+            // Save the audio as PCM
+            qInfo() << "Saving audio as" << outputAudioFilename;
+
+            // Check if filename exists (and remove the file if it does)
+            if (QFile::exists(outputAudioFilename)) QFile::remove(outputAudioFilename);
+            if (QFile::exists(outputAudioFilename + tr(".json"))) QFile::remove(outputAudioFilename + tr(".json"));
+
+            // Copy the audio data from the temporary file to the destination
+            if (!audioOutputTemporaryFileHandle.copy(outputAudioFilename)) {
+                qWarning() << "MainWindow::processingCompleteSignalHandler(): Failed to save file as" << outputAudioFilename;
+            }
+
+            // Report the decode statistics
+            efmProcess.reportStatistics();
+
+            // Quit the application
+            qApp->quit();
+        }
+    }
+
+    if (dataAvailable) {
+        qDebug() << "MainWindow::processingCompleteSignalHandler(): Processing complete - data available";
+        ui->actionSave_Sector_Data->setEnabled(true);
+    }
+
+    // Report the decode statistics to qInfo
+    efmProcess.reportStatistics();
+
+    // Update the GUI
+    guiEfmProcessingStop();
+}
+
+// Handle percent processed signal from EfmProcess class
+void MainWindow::percentProcessedSignalHandler(qint32 percent)
+{
+    ui->progressBar->setValue(percent);
+    if (nonInteractive) qInfo().nospace() << "Processing at " << percent << "%";
+}
+
+
+// Miscellaneous methods ----------------------------------------------------------------------------------------------
+
+// Load an EFM file
+bool MainWindow::loadInputEfmFile(QString filename)
+{
+    // Open the EFM input file and verify the contents
+
+    // Open input file for reading
+    QFile inputFileHandle((filename));
+    if (!inputFileHandle.open(QIODevice::ReadOnly)) {
+        // Show an error to the user
+        QMessageBox messageBox;
+        messageBox.critical(this, "Error", "Could not open the EFM input file!");
+        messageBox.setFixedSize(500, 200);
+        qWarning() << "Could not load input EFM file!";
+
+        guiNoEfmFileLoaded();
+        inputFileHandle.close();
+        return false;
+    }
+
+    if (inputFileHandle.bytesAvailable() == 0) {
+        // Show an error to the user
+        QMessageBox messageBox;
+        messageBox.critical(this, "Error", "Input EFM file is empty!");
+        messageBox.setFixedSize(500, 200);
+        qWarning() << "EFM input file is empty!";
+
+        guiNoEfmFileLoaded();
+        inputFileHandle.close();
+        return false;
+    }
+
+    // Update the GUI to the no EFM file loaded state
+    guiNoEfmFileLoaded();
+
+    // Update the configuration for the source directory
+    QFileInfo inFileInfo(filename);
+    configuration.setSourceDirectory(inFileInfo.absolutePath());
+    qDebug() << "MainWindow::on_actionOpen_EFM_file_triggered(): Setting EFM source directory to:" << inFileInfo.absolutePath();
+    configuration.writeConfiguration();
+
+    // Update the status bar
+    efmStatus.setText(tr("EFM file loaded with ") + QString::number(inputFileHandle.bytesAvailable()) + tr(" T values"));
+
+    // Set the current file name
+    currentInputEfmFileAndPath = filename;
+    qDebug() << "MainWindow::on_actionOpen_TBC_file_triggered(): Set current file name to to:" << currentInputEfmFileAndPath;
+
+    if (nonInteractive) qInfo() << "Processing EFM file:" << currentInputEfmFileAndPath;
+
+    guiEfmFileLoaded();
+    inputFileHandle.close();
+
+    return true;
+}
+
 
 

@@ -3,7 +3,7 @@
     dropoutcorrect.h
 
     ld-dropout-correct - Dropout correction for ld-decode
-    Copyright (C) 2018 Simon Inns
+    Copyright (C) 2018-2019 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -26,20 +26,24 @@
 #define DROPOUTCORRECT_H
 
 #include <QObject>
+#include <QElapsedTimer>
+#include <QAtomicInt>
+#include <QThread>
+#include <QDebug>
 
 #include "sourcevideo.h"
 #include "lddecodemetadata.h"
 
-class DropOutCorrect : public QObject
+class CorrectorPool;
+
+class DropOutCorrect : public QThread
 {
     Q_OBJECT
 public:
-    explicit DropOutCorrect(QObject *parent = nullptr);
-    bool process(QString inputFileName, QString outputFileName, bool reverse, bool intraField);
+    explicit DropOutCorrect(QAtomicInt& _abort, CorrectorPool& _correctorPool, QObject *parent = nullptr);
 
-signals:
-
-public slots:
+protected:
+    void run() override;
 
 private:
     enum Location {
@@ -60,10 +64,14 @@ private:
         qint32 fieldLine;
     };
 
+    // Decoder pool
+    QAtomicInt& abort;
+    CorrectorPool& correctorPool;
+
     LdDecodeMetaData ldDecodeMetaData;
     LdDecodeMetaData::VideoParameters videoParameters;
 
-    QVector<DropOutLocation> populateDropoutsVector(LdDecodeMetaData::Field field);
+    QVector<DropOutLocation> populateDropoutsVector(LdDecodeMetaData::Field field, bool overCorrect);
     QVector<DropOutLocation> setDropOutLocations(QVector<DropOutLocation> dropOuts);
     Replacement findReplacementLine(QVector<DropOutLocation>firstFieldDropouts, QVector<DropOutLocation> secondFieldDropouts, qint32 dropOutIndex, bool isColourBurst, bool intraField);
 };

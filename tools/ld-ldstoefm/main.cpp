@@ -95,35 +95,6 @@ int main(int argc, char *argv[])
                                        QCoreApplication::translate("main", "Show debug"));
     parser.addOption(showDebugOption);
 
-    // Option to output filtered sample instead of EFM (for testing filters) (-s)
-    QCommandLineOption outputSampleOption(QStringList() << "s" << "sample",
-                                       QCoreApplication::translate("main", "Output sample instead of EFM (for testing only)"));
-    parser.addOption(outputSampleOption);
-
-    // Option to use floating-point filters instead of fixed-point (-f)
-    QCommandLineOption useFloatOption(QStringList() << "f" << "float",
-                                       QCoreApplication::translate("main", "Use floating-point filters instead of fixed-point"));
-    parser.addOption(useFloatOption);
-
-    // Do not apply EFM prefilter (-e)
-    QCommandLineOption noEFMOption(QStringList() << "e" << "noefmpre",
-                                       QCoreApplication::translate("main", "Do not apply EFM RF filter (for testing only)"));
-    parser.addOption(noEFMOption);
-    
-    // Do not apply ISI filter (-n)
-    QCommandLineOption noIsiOption(QStringList() << "n" << "noisi",
-                                       QCoreApplication::translate("main", "Do not apply ISI filter"));
-    parser.addOption(noIsiOption);
-
-    // Option to limit the percentage of the input file to process
-    QCommandLineOption processPercentOption(QStringList() << "p" << "percent",
-                                        QCoreApplication::translate("main", "Specify the percent of the input file to process"),
-                                        QCoreApplication::translate("main", "percentage (1-100)"));
-    parser.addOption(processPercentOption);
-
-    // Positional argument to specify input EFM file
-    parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input 40MSPS sampled LDS file"));
-
     // Positional argument to specify output data file
     parser.addPositionalArgument("output", QCoreApplication::translate("main", "Specify output EFM data file"));
 
@@ -132,35 +103,16 @@ int main(int argc, char *argv[])
 
     // Get the options from the parser
     bool isDebugOn = parser.isSet(showDebugOption);
-    bool outputSample = parser.isSet(outputSampleOption);
-    bool useFloatingPoint = parser.isSet(useFloatOption);
-    bool noIsiFilter = parser.isSet(noIsiOption);
-    bool noEFMFilter = parser.isSet(noEFMOption);
 
     // Get the arguments from the parser
-    QString inputFilename;
     QString outputFilename;
     QStringList positionalArguments = parser.positionalArguments();
-    if (positionalArguments.count() == 2) {
-        inputFilename = positionalArguments.at(0);
-        outputFilename = positionalArguments.at(1);
+    if (positionalArguments.count() == 1) {
+        outputFilename = positionalArguments.at(0);
     } else {
         // Quit with error
-        qCritical("You must specify an input LDS file and an output EFM file");
+        qCritical("You must specify an output EFM file");
         return -1;
-    }
-
-    if (inputFilename == outputFilename) {
-        // Quit with error
-        qCritical("Input and output file names cannot be the same!");
-        return -1;
-    }
-
-    qint32 percentToProcess = 100;
-    if (parser.isSet(processPercentOption)) {
-        percentToProcess = parser.value(processPercentOption).toInt();
-        if (percentToProcess < 1) percentToProcess = 1;
-        if (percentToProcess > 100) percentToProcess = 100;
     }
 
     // Process the command line options
@@ -168,8 +120,7 @@ int main(int argc, char *argv[])
 
     // Perform the processing
     LdsProcess ldsProcess;
-    ldsProcess.process(inputFilename, outputFilename, outputSample,
-                       useFloatingPoint, noEFMFilter, noIsiFilter, percentToProcess);
+    ldsProcess.process(outputFilename);
 
     // Quit with success
     return 0;

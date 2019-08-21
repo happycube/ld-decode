@@ -1,6 +1,6 @@
 #-------------------------------------------------
 #
-# Project created by QtCreator 2019-06-06T19:32:31
+# Project created by QtCreator 2019-06-29T06:07:37
 #
 #-------------------------------------------------
 
@@ -25,24 +25,22 @@ DEFINES += QT_DEPRECATED_WARNINGS
 CONFIG += c++11
 
 SOURCES += \
-        Decoder/c1circ.cpp \
-        Decoder/c2circ.cpp \
-        Decoder/c2deinterleave.cpp \
-        Decoder/efmtof3frames.cpp \
-        Decoder/f1frame.cpp \
-        Decoder/f1tosectors.cpp \
-        Decoder/f2frame.cpp \
-        Decoder/f2framestoaudio.cpp \
-        Decoder/f2tof1frames.cpp \
-        Decoder/f3frame.cpp \
-        Decoder/f3tof2frames.cpp \
-        Decoder/f3tosections.cpp \
-        Decoder/section.cpp \
-        Decoder/sectiontometa.cpp \
-        Decoder/sector.cpp \
-        Decoder/sectorstodata.cpp \
-        Decoder/sectorstometa.cpp \
-        Decoder/tracktime.cpp \
+        Datatypes/audio.cpp \
+        Datatypes/f1frame.cpp \
+        Datatypes/f2frame.cpp \
+        Datatypes/f3frame.cpp \
+        Datatypes/section.cpp \
+        Datatypes/sector.cpp \
+        Datatypes/tracktime.cpp \
+        Decoders/c1circ.cpp \
+        Decoders/c2circ.cpp \
+        Decoders/c2deinterleave.cpp \
+        Decoders/efmtof3frames.cpp \
+        Decoders/f1toaudio.cpp \
+        Decoders/f1todata.cpp \
+        Decoders/f2tof1frames.cpp \
+        Decoders/f3tof2frames.cpp \
+        Decoders/syncf3frames.cpp \
         aboutdialog.cpp \
         configuration.cpp \
         efmprocess.cpp \
@@ -51,42 +49,36 @@ SOURCES += \
         mainwindow.cpp
 
 HEADERS += \
-        Decoder/JsonWax/JsonWax.h \
-        Decoder/JsonWax/JsonWaxEditor.h \
-        Decoder/JsonWax/JsonWaxParser.h \
-        Decoder/JsonWax/JsonWaxSerializer.h \
-        Decoder/c1circ.h \
-        Decoder/c2circ.h \
-        Decoder/c2deinterleave.h \
-        Decoder/efmtof3frames.h \
-        Decoder/ezpwd/asserter \
-        Decoder/ezpwd/bch \
-        Decoder/ezpwd/bch_base \
-        Decoder/ezpwd/corrector \
-        Decoder/ezpwd/definitions \
-        Decoder/ezpwd/ezcod \
-        Decoder/ezpwd/output \
-        Decoder/ezpwd/rs \
-        Decoder/ezpwd/serialize \
-        Decoder/ezpwd/serialize_definitions \
-        Decoder/ezpwd/timeofday \
-        Decoder/f1frame.h \
-        Decoder/f1tosectors.h \
-        Decoder/f2frame.h \
-        Decoder/f2framestoaudio.h \
-        Decoder/f2tof1frames.h \
-        Decoder/f3frame.h \
-        Decoder/f3tof2frames.h \
-        Decoder/f3tosections.h \
-        Decoder/section.h \
-        Decoder/sectiontometa.h \
-        Decoder/sector.h \
-        Decoder/sectorstodata.h \
-        Decoder/sectorstometa.h \
-        Decoder/tracktime.h \
+        Datatypes/audio.h \
+        Datatypes/f1frame.h \
+        Datatypes/f2frame.h \
+        Datatypes/f3frame.h \
+        Datatypes/section.h \
+        Datatypes/sector.h \
+        Datatypes/tracktime.h \
+        Decoders/c1circ.h \
+        Decoders/c2circ.h \
+        Decoders/c2deinterleave.h \
+        Decoders/efmtof3frames.h \
+        Decoders/f1toaudio.h \
+        Decoders/f1todata.h \
+        Decoders/f2tof1frames.h \
+        Decoders/f3tof2frames.h \
+        Decoders/syncf3frames.h \
         aboutdialog.h \
         configuration.h \
         efmprocess.h \
+        ezpwd/asserter \
+        ezpwd/bch \
+        ezpwd/bch_base \
+        ezpwd/corrector \
+        ezpwd/definitions \
+        ezpwd/ezcod \
+        ezpwd/output \
+        ezpwd/rs \
+        ezpwd/serialize \
+        ezpwd/serialize_definitions \
+        ezpwd/timeofday \
         logging.h \
         mainwindow.h
 
@@ -100,9 +92,7 @@ else: unix:!android: target.path = /usr/local/bin/
 !isEmpty(target.path): INSTALLS += target
 
 RESOURCES += \
-    resources.qrc
+    applicationicons.qrc
 
 DISTFILES += \
-    Decoder/JsonWax/LICENSE \
-    Decoder/JsonWax/README.md \
-    Decoder/ezpwd/rs_base
+    ezpwd/rs_base

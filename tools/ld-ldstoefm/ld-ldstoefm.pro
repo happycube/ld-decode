@@ -17,17 +17,15 @@ DEFINES += QT_DEPRECATED_WARNINGS
 SOURCES += \
         main.cpp \
     ldsprocess.cpp \
-    efmfilter.cpp \
-    isifilter.cpp \
     pll.cpp
+
+HEADERS += \
+    ldsprocess.h \
+    pll.h
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin
 else: unix:!android: target.path = /usr/local/bin/
 !isEmpty(target.path): INSTALLS += target
 
-HEADERS += \
-    ldsprocess.h \
-    efmfilter.h \
-    isifilter.h \
-    pll.h
+

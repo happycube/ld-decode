@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>ClosedCaptionsDialog</class>
+ <widget class="QDialog" name="ClosedCaptionsDialog">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>482</width>
+    <height>516</height>
+   </rect>
+  </property>
+  <property name="maximumSize">
+   <size>
+    <width>16777215</width>
+    <height>16777215</height>
+   </size>
+  </property>
+  <property name="windowTitle">
+   <string>NTSC Closed Captions</string>
+  </property>
+  <property name="windowIcon">
+   <iconset resource="ld-analyse-resources.qrc">
+    <normaloff>:/icons/Graphics/128-analyse.png</normaloff>:/icons/Graphics/128-analyse.png</iconset>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <item>
+    <widget class="QTextEdit" name="captionTextEdit">
+     <property name="enabled">
+      <bool>true</bool>
+     </property>
+     <property name="focusPolicy">
+      <enum>Qt::NoFocus</enum>
+     </property>
+     <property name="acceptDrops">
+      <bool>false</bool>
+     </property>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources>
+  <include location="ld-analyse-resources.qrc"/>
+ </resources>
+ <connections/>
+</ui>
