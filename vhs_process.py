@@ -22,16 +22,17 @@ def fromDB(val):
     return 10.0 ** (val / 20.0)
 
 
-"""Generate low shelving filter coeficcients (digital).
-   f0: The frequency where the gain in decibel is at half the maximum value.
-       Normalized to sampling frequency, i.e output will be filter from 0 to 2pi.
-   dbgain: gain at the top of the shelf in decibels
-   qfactor: determines shape of filter TODO: Document better
-   fs: sampling frequency
 
-   Based on: https://www.w3.org/2011/audio/audio-eq-cookbook.html
-"""
 def genLowShelf(f0, dbgain, qfactor, fs):
+    """Generate low shelving filter coeficcients (digital).
+    f0: The frequency where the gain in decibel is at half the maximum value.
+       Normalized to sampling frequency, i.e output will be filter from 0 to 2pi.
+    dbgain: gain at the top of the shelf in decibels
+    qfactor: determines shape of filter TODO: Document better
+    fs: sampling frequency
+
+    Based on: https://www.w3.org/2011/audio/audio-eq-cookbook.html
+    """
     # Not sure if the implementation is quite correct here but it seems to work
     a = 10 ** (dbgain / 40.0)
     w0 = 2 * math.pi * (f0/fs)
@@ -48,17 +49,18 @@ def genLowShelf(f0, dbgain, qfactor, fs):
     a2 = (a + 1) + (a - 1) * cosw0 - 2 * asquared * alpha
     return [b0, b1, b2], [a0, a1, a2]
 
-"""Generate high shelving filter coeficcients (digital).
-   f0: The frequency where the gain in decibel is at half the maximum value.
-       Normalized to sampling frequency, i.e output will be filter from 0 to 2pi.
-   dbgain: gain at the top of the shelf in decibels
-   qfactor: determines shape of filter TODO: Document better
-   fs: sampling frequency
 
-   TODO: Generate based on -3db
-   Based on: https://www.w3.org/2011/audio/audio-eq-cookbook.html
-"""
 def genHighShelf(f0, dbgain, qfactor, fs):
+    """Generate high shelving filter coeficcients (digital).
+    f0: The frequency where the gain in decibel is at half the maximum value.
+       Normalized to sampling frequency, i.e output will be filter from 0 to 2pi.
+    dbgain: gain at the top of the shelf in decibels
+    qfactor: determines shape of filter TODO: Document better
+    fs: sampling frequency
+
+    TODO: Generate based on -3db
+    Based on: https://www.w3.org/2011/audio/audio-eq-cookbook.html
+    """
     a = 10 ** (dbgain / 40.0)
     w0 = 2 * math.pi * (f0/fs)
     alpha = math.sin(w0) / (2 * qfactor)
@@ -80,6 +82,7 @@ class FieldPALVHS(ldd.FieldPAL):
 
 
     def refine_linelocs_pilot(self, linelocs = None):
+        """Override this as it's LD specific"""
         if linelocs is None:
             linelocs = self.linelocs2.copy()
         else:
@@ -87,7 +90,7 @@ class FieldPALVHS(ldd.FieldPAL):
 
         return linelocs
 
-    def refine_linelocs_hsync(self):
+    def _refine_linelocs_hsync(self):
         """Refine the hsync locations.
         The LD implementation doesn't seem to work well with VHS, so we just skip this for now as
         the original locations gives a reasonable result.
@@ -108,6 +111,8 @@ class VHSDecode(ldd.LDdecode):
         # Overwrite the rf decoder with the VHS-altered one
         self.rf = VHSRFDecode(system = system, inputfreq = inputfreq)
         self.FieldClass = FieldPALVHS
+        self.demodcache = ldd.DemodCache(self.rf, self.infile, self.freader,
+                                     num_worker_threads=self.numthreads)
 
     # Override to avoid NaN in JSON.
     def calcsnr(self, f, snrslice):
@@ -168,17 +173,11 @@ class VHSRFDecode(ldd.RFDecode):
         da, db = genHighShelf(0.26, 14, 1/2, inputfreq)
         w, h = sps.freqz(db, da)
 
-#        w, h = sps.freqz(b, a)
-
         self.Filters['Fdeemp'] = lddu.filtfft((db, da), self.blocklen)
         self.Filters['FVideo'] = self.Filters['Fvideo_lpf'] * self.Filters['Fdeemp']
         SF = self.Filters
         SF['FVideo05'] = SF['Fvideo_lpf'] * SF['Fdeemp'] * SF['F05']
 
-#        fig, ax1 = plt.subplots()
-        # in dB
-#        ax1.grid(True)
-#        ax1.set_xscale('log')
         #FS = inputfreq * 1000000
         #ax1.plot((FS * 0.5 / np.pi) * w, toDB(abs(h)), 'b')
         #plt.show()
@@ -195,19 +194,17 @@ class VHSRFDecode(ldd.RFDecode):
         self.delays['video_sync'] = 0
         self.delays['video_white'] = 0
 
-    def demodblock(self, data, mtf_level = 0):
-        rv_efm = None
+    def demodblock(self, data = None, mtf_level = 0, fftdata = None, cut = False):
+        rv = {}
 
-        #mtf_level *= self.mtf_mult
-        #if self.system == 'NTSC':
-        #    mtf_level *= .7
-        #mtf_level += self.mtf_offset
+        if fftdata is not None:
+            indata_fft = fftdata
+        elif data is not None:
+            indata_fft = np.fft.fft(data[:self.blocklen])
+        else:
+            raise Exception("demodblock called without raw or FFT data")
 
-        indata_fft = np.fft.fft(data[:self.blocklen])
         indata_fft_filt = indata_fft * self.Filters['RFVideo']
-
-        #if mtf_level != 0:
-        #    indata_fft_filt *= self.Filters['MTF'] ** mtf_level
 
         hilbert = np.fft.ifft(indata_fft_filt)
         demod = unwrap_hilbert(hilbert, self.freq_hz)
@@ -219,25 +216,16 @@ class VHSRFDecode(ldd.RFDecode):
         out_video05 = np.fft.ifft(demod_fft * self.Filters['FVideo05']).real
         out_video05 = np.roll(out_video05, -self.Filters['F05_offset'])
 
-        min_level = np.nanmin(out_video05)
-        min_ire = self.hztoire(min_level)
-        sync_filter_high = self.iretohz(min_ire + 35)
-
-        out_videoburst = np.fft.ifft(indata_fft * self.Filters['FVideoBurst']).real
-
-        # NTSC: filtering for vsync pulses from -55 to -25ire seems to work well even on rotted disks
-        # Need to change to
-        output_sync = inrange(out_video05, min_ire, sync_filter_high)
-        # Perform FFT convolution of above filter
-        output_syncf = np.fft.ifft(np.fft.fft(output_sync) * self.Filters['FPsync']).real
-
-        #print("min_ire ", min_ire)
-
         if self.system == 'PAL':
-            out_videopilot = np.fft.ifft(demod_fft * self.Filters['FVideoPilot']).real
-            rv_video = np.rec.array([out_video, demod, out_video05, output_syncf, out_videoburst, out_videopilot], names=['demod', 'demod_raw', 'demod_05', 'demod_sync', 'demod_burst', 'demod_pilot'])
+            video_out = np.rec.array(
+                [out_video, demod, out_video05], names=['demod', 'demod_raw', 'demod_05'])
         else:
-            rv_video = np.rec.array([out_video, demod, out_video05, output_syncf, out_videoburst], names=['demod', 'demod_raw', 'demod_05', 'demod_sync', 'demod_burst'])
+            out_videoburst = np.fft.ifft(indata_fft * self.Filters['FVideoBurst']).real
+            video_out = np.rec.array(
+                [out_video, demod, out_video05, out_videoburst],
+                names=['demod', 'demod_raw', 'demod_05', 'demod_burst'])
+
+        rv['video'] = video_out[self.blockcut:-self.blockcut_end] if cut else video_out
 
         if False:
             self.fig, self.ax1 = plt.subplots()
@@ -253,8 +241,8 @@ class VHSRFDecode(ldd.RFDecode):
             color = 'tab:red'
             ax1.axhline(self.iretohz(self.SysParams['vsync_ire']), color=color)
             ax1.axhline(self.iretohz(0), color='0.0')
-            ax1.axhline(min_level, color='#00FF00')
-            ax1.axhline(sync_filter_high, color='#0000FF')
+            #ax1.axhline(min_level, color='#00FF00')
+            #ax1.axhline(sync_filter_high, color='#0000FF')
 
             ax1.plot(range(0, len(out_video)), out_video)
             ax1.plot(range(0, len(out_video05)), out_video05)
@@ -280,16 +268,4 @@ class VHSRFDecode(ldd.RFDecode):
             plt.show()
             #plt.pause(0.1)
 
-        if self.decode_analog_audio == False:
-            return rv_video, None, rv_efm
-
-        # Audio phase 1
-        hilbert = np.fft.ifft(self.audio_fdslice(indata_fft) * self.Filters['audio_lfilt'])
-        audio_left = unwrap_hilbert(hilbert, self.Filters['freq_arf']) + self.Filters['audio_lowfreq']
-
-        hilbert = np.fft.ifft(self.audio_fdslice(indata_fft) * self.Filters['audio_rfilt'])
-        audio_right = unwrap_hilbert(hilbert, self.Filters['freq_arf']) + self.Filters['audio_lowfreq']
-
-        rv_audio = np.rec.array([audio_left, audio_right], names=['audio_left', 'audio_right'])
-
-        return rv_video, rv_audio, rv_efm
+        return rv
