@@ -31,6 +31,7 @@ SOURCES += \
     mainwindow.cpp \
     oscilloscopedialog.cpp \
     aboutdialog.cpp \
+    palchromadecoderconfigdialog.cpp \
     snranalysisdialog.cpp \
     tbcsource.cpp \
     vbidialog.cpp \
@@ -52,6 +53,7 @@ HEADERS += \
     mainwindow.h \
     oscilloscopedialog.h \
     aboutdialog.h \
+    palchromadecoderconfigdialog.h \
     snranalysisdialog.h \
     tbcsource.h \
     vbidialog.h \
@@ -74,6 +76,7 @@ FORMS += \
     mainwindow.ui \
     oscilloscopedialog.ui \
     aboutdialog.ui \
+    palchromadecoderconfigdialog.ui \
     snranalysisdialog.ui \
     vbidialog.ui \
     dropoutanalysisdialog.ui

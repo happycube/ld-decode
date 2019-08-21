@@ -41,6 +41,7 @@
 #include "snranalysisdialog.h"
 #include "busydialog.h"
 #include "closedcaptionsdialog.h"
+#include "palchromadecoderconfigdialog.h"
 #include "configuration.h"
 #include "tbcsource.h"
 
@@ -72,6 +73,8 @@ private slots:
     void on_actionZoom_1x_triggered();
     void on_actionZoom_2x_triggered();
     void on_actionZoom_3x_triggered();
+    void on_actionClosed_Captions_triggered();
+    void on_actionPAL_Chroma_decoder_triggered();
 
     // Media control frame handlers
     void on_previousPushButton_clicked();
@@ -86,19 +89,17 @@ private slots:
     void on_zoomInPushButton_clicked();
     void on_zoomOutPushButton_clicked();
     void on_originalSizePushButton_clicked();
+    void on_mouseModePushButton_clicked();
 
     // Miscellaneous handlers
     void scanLineChangedSignalHandler(qint32 scanLine, qint32 pictureDot);
     void mousePressEvent(QMouseEvent *event);
     void mouseMoveEvent(QMouseEvent *event);
+    void palConfigurationChangedSignalHandler();
 
     // Tbc Source signal handlers
     void on_busyLoading(QString infoMessage);
-    void on_finishedLoading();
-
-    void on_mouseModePushButton_clicked();
-
-    void on_actionClosed_Captions_triggered();
+    void on_finishedLoading();    
 
 private:
     Ui::MainWindow *ui;
@@ -111,6 +112,7 @@ private:
     SnrAnalysisDialog* snrAnalysisDialog;
     BusyDialog* busyDialog;
     ClosedCaptionsDialog *closedCaptionDialog;
+    PalChromaDecoderConfigDialog * palChromaDecoderConfigDialog;
 
     // Class globals
     Configuration configuration;

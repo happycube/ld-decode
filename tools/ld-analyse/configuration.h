@@ -66,6 +66,8 @@ public:
     QByteArray getSnrAnalysisDialogGeometry(void);
     void setClosedCaptionDialogGeometry(QByteArray closedCaptionDialogGeometry);
     QByteArray getClosedCaptionDialogGeometry(void);
+    void setPalChromaDecoderConfigDialogGeometry(QByteArray palChromaDecoderConfigDialogGeometry);
+    QByteArray getPalChromaDecoderConfigDialogGeometry(void);
 
 signals:
 
@@ -90,6 +92,7 @@ private:
         QByteArray dropoutAnalysisDialogGeometry;
         QByteArray snrAnalysisDialogGeometry;
         QByteArray closedCaptionDialogGeometry;
+        QByteArray palChromaDecoderConfigDialogGeometry;
     };
 
     // Overall settings structure

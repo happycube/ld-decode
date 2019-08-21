@@ -39,6 +39,7 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     snrAnalysisDialog = new SnrAnalysisDialog(this);
     busyDialog = new BusyDialog(this);
     closedCaptionDialog = new ClosedCaptionsDialog(this);
+    palChromaDecoderConfigDialog = new PalChromaDecoderConfigDialog(this);
 
     // Add a status bar to show the state of the source video file
     ui->statusBar->addWidget(&sourceVideoStatus);
@@ -54,6 +55,9 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     lastScopeLine = 1;
     lastScopeDot = 1;
 
+    // Connect to the PAL decoder configuration changed signal
+    connect(palChromaDecoderConfigDialog, &PalChromaDecoderConfigDialog::palChromaDecoderConfigChanged, this, &MainWindow::palConfigurationChangedSignalHandler);
+
     // Connect to the TbcSource signals (busy loading and finished loading)
     connect(&tbcSource, &TbcSource::busyLoading, this, &MainWindow::on_busyLoading);
     connect(&tbcSource, &TbcSource::finishedLoading, this, &MainWindow::on_finishedLoading);
@@ -66,6 +70,7 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     dropoutAnalysisDialog->restoreGeometry(configuration.getDropoutAnalysisDialogGeometry());
     snrAnalysisDialog->restoreGeometry(configuration.getSnrAnalysisDialogGeometry());
     closedCaptionDialog->restoreGeometry(configuration.getClosedCaptionDialogGeometry());
+    palChromaDecoderConfigDialog->restoreGeometry(configuration.getPalChromaDecoderConfigDialogGeometry());
 
     // Store the current button palette for the show dropouts button
     buttonPalette = ui->dropoutsPushButton->palette();
@@ -89,6 +94,7 @@ MainWindow::~MainWindow()
     configuration.setDropoutAnalysisDialogGeometry(dropoutAnalysisDialog->saveGeometry());
     configuration.setSnrAnalysisDialogGeometry(snrAnalysisDialog->saveGeometry());
     configuration.setClosedCaptionDialogGeometry(closedCaptionDialog->saveGeometry());
+    configuration.setPalChromaDecoderConfigDialogGeometry(palChromaDecoderConfigDialog->saveGeometry());
     configuration.writeConfiguration();
 
     // Close the source video if open
@@ -146,6 +152,9 @@ void MainWindow::updateGuiLoaded()
     ui->actionSNR_analysis->setEnabled(true);
     ui->actionSave_frame_as_PNG->setEnabled(true);
     ui->actionSave_metadata_as_CSV->setEnabled(true);
+    ui->actionClosed_Captions->setEnabled(true);
+    if (tbcSource.getIsSourcePal()) ui->actionPAL_Chroma_decoder->setEnabled(true);
+    else ui->actionPAL_Chroma_decoder->setEnabled(false);
 
     // Set option button states
     ui->videoPushButton->setText(tr("Chroma"));
@@ -172,6 +181,12 @@ void MainWindow::updateGuiLoaded()
     statusText += QString::number(tbcSource.getNumberOfFrames());
     statusText += " sequential frames available";
     sourceVideoStatus.setText(statusText);
+
+    // Update the PAL chroma configuration dialogue
+    PalChromaDecoderConfigDialog::PalChromaDecoderConfig palChromaDecoderConfig;
+    tbcSource.getPalColourConfiguration(palChromaDecoderConfig.blackAndWhite, palChromaDecoderConfig.useTransformFilter,
+                                        palChromaDecoderConfig.transformThreshold);
+    palChromaDecoderConfigDialog->setConfiguration(palChromaDecoderConfig);
 
     // Show the current frame
     showFrame();
@@ -221,6 +236,8 @@ void MainWindow::updateGuiUnloaded()
     ui->actionSNR_analysis->setEnabled(false);
     ui->actionSave_frame_as_PNG->setEnabled(false);
     ui->actionSave_metadata_as_CSV->setEnabled(false);
+    ui->actionClosed_Captions->setEnabled(false);
+    ui->actionPAL_Chroma_decoder->setEnabled(false);
 
     // Set option button states
     ui->videoPushButton->setText(tr("Chroma"));
@@ -238,6 +255,9 @@ void MainWindow::updateGuiUnloaded()
     // Hide graphs
     snrAnalysisDialog->hide();
     dropoutAnalysisDialog->hide();
+
+    // Hide configuration dialogues
+    palChromaDecoderConfigDialog->hide();
 }
 
 // Frame display methods ----------------------------------------------------------------------------------------------
@@ -517,6 +537,12 @@ void MainWindow::on_actionClosed_Captions_triggered()
     closedCaptionDialog->show();
 }
 
+// Show PAL Chroma-Decoder configuration
+void MainWindow::on_actionPAL_Chroma_decoder_triggered()
+{
+    palChromaDecoderConfigDialog->show();
+}
+
 // Media control frame signal handlers --------------------------------------------------------------------------------
 
 // Previous frame button has been clicked
@@ -782,6 +808,20 @@ void MainWindow::mouseScanLineSelect(qint32 oX, qint32 oY)
     }
 }
 
+// Handle PAL configuration changed signal from the PAL configuration dialogue
+void MainWindow::palConfigurationChangedSignalHandler()
+{
+    // Get the new configuration
+    PalChromaDecoderConfigDialog::PalChromaDecoderConfig palChromaDecoderConfig = palChromaDecoderConfigDialog->getConfiguration();
+
+    // Set the new configuration
+    tbcSource.setPalColourConfiguration(palChromaDecoderConfig.blackAndWhite, palChromaDecoderConfig.useTransformFilter,
+                                        palChromaDecoderConfig.transformThreshold);
+
+    // Update the frame viewer;
+    updateFrameViewer();
+}
+
 // TbcSource class signal handlers ------------------------------------------------------------------------------------
 
 // Signal handler for busyLoading signal from TbcSource class
@@ -847,4 +887,6 @@ void MainWindow::on_finishedLoading()
         messageBox.setFixedSize(500, 200);
     }
 }
+
+
 
