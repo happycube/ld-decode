@@ -298,6 +298,7 @@ TbcSources::CombinedFrame TbcSources::combineFrame(qint32 targetVbiFrame, qint32
 
         return combinedFrame;
     }
+    qDebug() << "Frame #" << targetVbiFrame << "has" << availableSourceFrames.size() << "sources available";
 
     // Get the metadata for the video parameters (all sources are the same, so just grab from the first)
     LdDecodeMetaData::VideoParameters videoParameters = sourceVideos[0]->ldDecodeMetaData.getVideoParameters();
@@ -367,8 +368,10 @@ TbcSources::CombinedFrame TbcSources::combineFrame(qint32 targetVbiFrame, qint32
         }
 
         // Compare all combinations of source and target
-        for (qint32 targetPointer = 0; targetPointer < availableSourceFrames.size(); targetPointer++) {
-            for (qint32 sourcePointer = 0; sourcePointer < availableSourceFrames.size(); sourcePointer++) {
+        // Note: the source is the field we are building a DO map for, target is the field we are
+        // comparing the source to.
+        for (qint32 sourcePointer = 0; sourcePointer < availableSourceFrames.size(); sourcePointer++) {
+            for (qint32 targetPointer = 0; targetPointer < availableSourceFrames.size(); targetPointer++) {
                 if (sourcePointer != targetPointer) {
                     for (qint32 x = 0; x < videoParameters.fieldWidth; x++) {
                         // Get the 16-bit pixel values and diff them - First field
@@ -376,21 +379,25 @@ TbcSources::CombinedFrame TbcSources::combineFrame(qint32 targetVbiFrame, qint32
                                 static_cast<qint32>(sourceFirstFieldPointer[sourcePointer][x + startOfLinePointer]);
 
                         if (firstDifference < 0) firstDifference = -firstDifference;
-                        if (firstDifference > threshold) diffs[targetPointer].firstDiff[x]++;
+                        if (firstDifference > threshold) {
+                            diffs[sourcePointer].firstDiff[x]++;
+                        }
 
                         // Get the 16-bit pixel values and diff them - second field
                         qint32 secondDifference = static_cast<qint32>(sourceSecondFieldPointer[targetPointer][x + startOfLinePointer]) -
                                 static_cast<qint32>(sourceSecondFieldPointer[sourcePointer][x + startOfLinePointer]);
 
                         if (secondDifference < 0) secondDifference = -secondDifference;
-                        if (secondDifference > threshold) diffs[targetPointer].secondDiff[x]++;
+                        if (secondDifference > threshold) {
+                            diffs[sourcePointer].secondDiff[x]++;
+                        }
                     }
                 }
             }
         }
 
-        // Now the value of diffs[source].firstDiff[x]/diffs[source].secondDiff[x] contains the number of other sources that differ
-        // If this more than 1, the current source's x is a dropout/error
+        // Now the value of diffs[source].firstDiff[x]/diffs[source].secondDiff[x] contains the number of other target fields
+        // that differ from the source field.
 
         // Sum all of the valid pixel data and keep track of the number of sources contributing to the sum
         QVector<qint32> firstSum;
@@ -403,15 +410,22 @@ TbcSources::CombinedFrame TbcSources::combineFrame(qint32 targetVbiFrame, qint32
         secondSum.fill(0, videoParameters.fieldWidth);
         secondNumberOfSources.fill(0, videoParameters.fieldWidth);
 
+        // The minimum number of sources for diffDOD is 3, and when comparing 3 sources, each source has to
+        // match at least 1 other source.  As the sources increase, so does the required number of matches
+        // (i.e. for 4 sources, 2 should match and so on).  This makes the diffDOD better and better as the
+        // number of available sources increase.
+        qint32 diffCompareThreshold = availableSourceFrames.size() - 2;
+
         for (qint32 sourceNo = 0; sourceNo < availableSourceFrames.size(); sourceNo++) {
              for (qint32 x = 0; x < videoParameters.fieldWidth; x++) {
-                 // Only inclued the source data if it's not a dropout
-                 if (diffs[sourceNo].firstDiff[x] <= 1) {
+                 // Only include the source first field in the averaging, if the diffDOD didn't see an error
+                 if (diffs[sourceNo].firstDiff[x] <= diffCompareThreshold) {
                      firstSum[x] += static_cast<qint32>(sourceFirstFieldPointer[sourceNo][x + startOfLinePointer]);
                      firstNumberOfSources[x]++;
                  }
 
-                 if (diffs[sourceNo].secondDiff[x] <= 1) {
+                 // Only include the source second field in the averaging, if the diffDOD didn't see an error
+                 if (diffs[sourceNo].secondDiff[x] <= diffCompareThreshold) {
                      secondSum[x] += static_cast<qint32>(sourceSecondFieldPointer[sourceNo][x + startOfLinePointer]);
                      secondNumberOfSources[x]++;
                  }
@@ -424,7 +438,7 @@ TbcSources::CombinedFrame TbcSources::combineFrame(qint32 targetVbiFrame, qint32
         bool doInProgressFirst = false;
         bool doInProgressSecond = false;
         for (qint32 x = 0; x < videoParameters.fieldWidth; x++) {
-            if (firstNumberOfSources[x] != 0) {
+            if (firstNumberOfSources[x] > 0) {
                 qreal rAveragePixel = static_cast<qreal>(firstSum[x]) / static_cast<qreal>(firstNumberOfSources[x]);
                 quint16 averagePixel = static_cast<quint16>(rAveragePixel);
                 firstTargetFieldData[x + startOfLinePointer] = averagePixel;
@@ -447,7 +461,7 @@ TbcSources::CombinedFrame TbcSources::combineFrame(qint32 targetVbiFrame, qint32
                 }
             }
 
-            if (secondNumberOfSources[x] != 0) {
+            if (secondNumberOfSources[x] > 0) {
                 qreal rAveragePixel = static_cast<qreal>(secondSum[x]) / static_cast<qreal>(secondNumberOfSources[x]);
                 quint16 averagePixel = static_cast<quint16>(rAveragePixel);
                 secondTargetFieldData[x + startOfLinePointer] = averagePixel;
