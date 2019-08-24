@@ -56,3 +56,4 @@ __pycache__
 # Profiling results
 perf.data*
 Benchfile*
+/ld-ldf-reader
