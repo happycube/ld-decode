@@ -101,8 +101,7 @@ for i in range(startidx, endidx + 16384, 16384):
         break
     #l = 16384 if (l > 16384) else l
 
-    #data = ldd.freader(ldd.infile, i, l)
-    data = ldd.
+    data = ldd.freader(ldd.infile, i, l)
     dataout = np.array(data, dtype=np.int16)
 
     fd.write(dataout)
