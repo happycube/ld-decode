@@ -472,6 +472,7 @@ class LoadLDF:
             if start < 0:
                 #raise IOError("Seeking too far backwards with ffmpeg")
                 self.ldfreader = self._open(sample)
+                buf_data = b''
             else:
                 buf_data = self.rewind_buf[start:end]
                 sample_bytes += len(buf_data)
