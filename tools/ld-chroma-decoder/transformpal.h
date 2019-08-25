@@ -62,9 +62,6 @@ private:
     LdDecodeMetaData::VideoParameters videoParameters;
     double threshold;
 
-    // Maximum field size, based on PAL
-    static constexpr qint32 MAX_WIDTH = 1135;
-
     // FFT input and output sizes.
     // The input field is divided into tiles of XTILE x YTILE, with adjacent
     // tiles overlapping by HALFXTILE/HALFYTILE.
