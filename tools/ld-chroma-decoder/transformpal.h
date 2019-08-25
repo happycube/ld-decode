@@ -29,19 +29,17 @@
 #define TRANSFORMPAL_H
 
 #include <QByteArray>
-#include <QDebug>
-#include <QObject>
 #include <QVector>
-#include <fftw3.h>
 
 #include "lddecodemetadata.h"
 
 #include "sourcefield.h"
 
+// Abstract base class for Transform PAL filters.
 class TransformPal {
 public:
     TransformPal();
-    ~TransformPal();
+    virtual ~TransformPal();
 
     // Specify what the frequency-domain filter should do to each pair of
     // frequencies that should be symmetrical around the carriers.
@@ -68,16 +66,10 @@ public:
     // For each input frame between startFieldIndex and endFieldIndex, a
     // pointer will be placed in outputFields to an array of the same size
     // (owned by this object) containing the chroma signal.
-    void filterFields(const QVector<SourceField> &inputFields, qint32 startIndex, qint32 endIndex,
-                      QVector<const double *> &outputFields);
+    virtual void filterFields(const QVector<SourceField> &inputFields, qint32 startIndex, qint32 endIndex,
+                              QVector<const double *> &outputFields) = 0;
 
-private:
-    void filterField(const SourceField& inputField, qint32 outputIndex);
-    void forwardFFTTile(qint32 tileX, qint32 tileY, qint32 startY, qint32 endY, const SourceField &inputField);
-    void inverseFFTTile(qint32 tileX, qint32 tileY, qint32 startY, qint32 endY, qint32 outputIndex);
-    template <TransformMode MODE>
-    void applyFilter();
-
+protected:
     // Configuration parameters
     bool configurationSet;
     LdDecodeMetaData::VideoParameters videoParameters;
@@ -85,36 +77,6 @@ private:
     qint32 lastActiveLine;
     double threshold;
     TransformMode mode;
-
-    // FFT input and output sizes.
-    // The input field is divided into tiles of XTILE x YTILE, with adjacent
-    // tiles overlapping by HALFXTILE/HALFYTILE.
-    static constexpr qint32 YTILE = 16;
-    static constexpr qint32 HALFYTILE = YTILE / 2;
-    static constexpr qint32 XTILE = 32;
-    static constexpr qint32 HALFXTILE = XTILE / 2;
-
-    // Each tile is converted to the frequency domain using forwardPlan, which
-    // gives a complex result of size XCOMPLEX x YCOMPLEX (roughly half the
-    // size of the input, because the input data was real, i.e. contained no
-    // negative frequencies).
-    static constexpr qint32 YCOMPLEX = YTILE;
-    static constexpr qint32 XCOMPLEX = (XTILE / 2) + 1;
-
-    // Window function applied before the FFT
-    double windowFunction[YTILE][XTILE];
-
-    // FFT input/output buffers
-    double *fftReal;
-    fftw_complex *fftComplexIn;
-    fftw_complex *fftComplexOut;
-
-    // FFT plans
-    fftw_plan forwardPlan, inversePlan;
-
-    // The combined result of all the FFT processing for each input field.
-    // Inverse-FFT results are accumulated into these buffers.
-    QVector<QVector<double>> chromaBuf;
 };
 
 #endif

@@ -41,6 +41,7 @@ SOURCES += \
     ../ld-chroma-decoder/rgb.cpp \
     ../ld-chroma-decoder/yiq.cpp \
     ../ld-chroma-decoder/transformpal.cpp \
+    ../ld-chroma-decoder/transformpal2d.cpp \
     dropoutanalysisdialog.cpp \
     ../ld-chroma-decoder/opticalflow.cpp \
     ../ld-chroma-decoder/sourcefield.cpp \
@@ -63,7 +64,8 @@ HEADERS += \
     ../ld-chroma-decoder/comb.h \
     ../ld-chroma-decoder/rgb.h \
     ../ld-chroma-decoder/yiq.h \
-    ../ld-chroma-decoder/transformpal.cpp \
+    ../ld-chroma-decoder/transformpal.h \
+    ../ld-chroma-decoder/transformpal2d.h \
     dropoutanalysisdialog.h \
     ../ld-chroma-decoder/yiqbuffer.h \
     ../ld-chroma-decoder/opticalflow.h \

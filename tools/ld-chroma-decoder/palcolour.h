@@ -26,10 +26,11 @@
 #ifndef PALCOLOUR_H
 #define PALCOLOUR_H
 
-#include <QObject>
-#include <QtMath>
 #include <QDebug>
+#include <QObject>
+#include <QScopedPointer>
 #include <QVector>
+#include <QtMath>
 
 #include "lddecodemetadata.h"
 
@@ -102,7 +103,7 @@ private:
     LdDecodeMetaData::VideoParameters videoParameters;
 
     // Transform PAL filter
-    TransformPal transformPal;
+    QScopedPointer<TransformPal> transformPal;
 
     // The subcarrier reference signal
     double sine[MAX_WIDTH], cosine[MAX_WIDTH];

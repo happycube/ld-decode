@@ -32,6 +32,8 @@
 
 #include "palcolour.h"
 
+#include "transformpal2d.h"
+
 #include <cassert>
 
 /*!
@@ -78,9 +80,11 @@ void PalColour::updateConfiguration(const LdDecodeMetaData::VideoParameters &_vi
     buildLookUpTables();
 
     if (configuration.useTransformFilter) {
+        transformPal.reset(new TransformPal2D);
+
         // Configure Transform PAL
-        transformPal.updateConfiguration(videoParameters, configuration.firstActiveLine, configuration.lastActiveLine,
-                                         configuration.transformMode, configuration.transformThreshold);
+        transformPal->updateConfiguration(videoParameters, configuration.firstActiveLine, configuration.lastActiveLine,
+                                          configuration.transformMode, configuration.transformThreshold);
     }
 
     configurationSet = true;
@@ -218,7 +222,7 @@ void PalColour::decodeFrames(const QVector<SourceField> &inputFields, qint32 sta
     QVector<const double *> chromaData(endIndex - startIndex);
     if (configuration.useTransformFilter) {
         // Use Transform PAL filter to extract chroma
-        transformPal.filterFields(inputFields, startIndex, endIndex, chromaData);
+        transformPal->filterFields(inputFields, startIndex, endIndex, chromaData);
     }
 
     // Resize and clear the output buffers
