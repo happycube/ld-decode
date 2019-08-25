@@ -59,6 +59,9 @@ public:
         ChromaFilterMode chromaFilter = palColourFilter;
         TransformPal::TransformMode transformMode = TransformPal::thresholdMode;
         double transformThreshold = 0.4;
+        bool showFFTs = false;
+        qint32 showPositionX = 200;
+        qint32 showPositionY = 200;
 
         // Interlaced line 44 is PAL line 23 (the first active half-line)
         qint32 firstActiveLine = 44;

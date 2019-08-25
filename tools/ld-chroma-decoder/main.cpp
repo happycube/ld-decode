@@ -182,6 +182,11 @@ int main(int argc, char *argv[])
                                                 QCoreApplication::translate("main", "number"));
     parser.addOption(transformThresholdOption);
 
+    // Option to overlay the FFTs
+    QCommandLineOption showFFTsOption(QStringList() << "show-ffts",
+                                      QCoreApplication::translate("main", "Transform: Overlay the input and output FFTs"));
+    parser.addOption(showFFTsOption);
+
     // -- Positional arguments --
 
     // Positional argument to specify input video file
@@ -296,6 +301,10 @@ int main(int argc, char *argv[])
         }
     }
 
+    if (parser.isSet(showFFTsOption)) {
+        palConfig.showFFTs = true;
+    }
+
     // Process the command line options
     if (isDebugOn) showDebug = true;
 
@@ -325,6 +334,12 @@ int main(int argc, char *argv[])
     // Require ntsc3d if the optical flow map overlay is selected
     if (combConfig.showOpticalFlowMap && decoderName != "ntsc3d") {
         qCritical() << "Can only show optical flow with the ntsc3d decoder";
+        return -1;
+    }
+
+    // Require transform2d/3d if the FFT overlay is selected
+    if (palConfig.showFFTs && decoderName != "transform2d" && decoderName != "transform3d") {
+        qCritical() << "Can only show FFTs with the transform2d/transform3d decoders";
         return -1;
     }
 

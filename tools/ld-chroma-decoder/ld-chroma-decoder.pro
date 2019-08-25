@@ -18,6 +18,7 @@ SOURCES += \
     comb.cpp \
     decoder.cpp \
     decoderpool.cpp \
+    framecanvas.cpp \
     main.cpp \
     ntscdecoder.cpp \
     opticalflow.cpp \
@@ -36,6 +37,7 @@ HEADERS += \
     comb.h \
     decoder.h \
     decoderpool.h \
+    framecanvas.h \
     iirfilter.h \
     ntscdecoder.h \
     opticalflow.h \

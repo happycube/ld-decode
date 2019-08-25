@@ -43,6 +43,7 @@ SOURCES += \
     ../ld-chroma-decoder/transformpal.cpp \
     ../ld-chroma-decoder/transformpal2d.cpp \
     ../ld-chroma-decoder/transformpal3d.cpp \
+    ../ld-chroma-decoder/framecanvas.cpp \
     dropoutanalysisdialog.cpp \
     ../ld-chroma-decoder/opticalflow.cpp \
     ../ld-chroma-decoder/sourcefield.cpp \
@@ -68,6 +69,7 @@ HEADERS += \
     ../ld-chroma-decoder/transformpal.h \
     ../ld-chroma-decoder/transformpal2d.h \
     ../ld-chroma-decoder/transformpal3d.h \
+    ../ld-chroma-decoder/framecanvas.h \
     dropoutanalysisdialog.h \
     ../ld-chroma-decoder/yiqbuffer.h \
     ../ld-chroma-decoder/opticalflow.h \

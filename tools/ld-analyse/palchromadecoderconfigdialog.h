@@ -52,6 +52,7 @@ private slots:
     void on_twoDeeTransformCheckBox_clicked();
     void on_thresholdModeCheckBox_clicked();
     void on_thresholdHorizontalSlider_valueChanged(int value);
+    void on_showFFTsCheckBox_clicked();
 
 private:
     Ui::PalChromaDecoderConfigDialog *ui;

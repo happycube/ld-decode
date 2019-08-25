@@ -272,6 +272,12 @@ void PalColour::decodeFrames(const QVector<SourceField> &inputFields, qint32 sta
         decodeField(inputFields[i], chromaData[j], chromaGain, outputFrames[k]);
         decodeField(inputFields[i + 1], chromaData[j + 1], chromaGain, outputFrames[k]);
     }
+
+    if (configuration.showFFTs && configuration.chromaFilter != palColourFilter) {
+        // Overlay the FFT visualisation
+        transformPal->overlayFFT(configuration.showPositionX, configuration.showPositionY,
+                                 inputFields, startIndex, endIndex, outputFrames);
+    }
 }
 
 void PalColour::decodeField(const SourceField &inputField, const double *chromaData, double chromaGain, QByteArray &outputFrame)

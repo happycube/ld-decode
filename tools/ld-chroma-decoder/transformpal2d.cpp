@@ -291,3 +291,41 @@ void TransformPal2D::applyFilter()
         }
     }
 }
+
+void TransformPal2D::overlayFFTFrame(qint32 positionX, qint32 positionY,
+                                     const QVector<SourceField> &inputFields, qint32 fieldIndex,
+                                     QByteArray &rgbFrame)
+{
+    // Do nothing if the tile isn't within the frame
+    if (positionX < 0 || positionX + XTILE > videoParameters.fieldWidth
+        || positionY < 0 || positionY + YTILE > (2 * videoParameters.fieldHeight) + 1) {
+        return;
+    }
+
+    // Work out which field lines to use (as the input is in frame lines)
+    const SourceField &inputField = inputFields[fieldIndex];
+    const qint32 firstFieldLine = inputField.getFirstActiveLine(firstActiveLine);
+    const qint32 lastFieldLine = inputField.getLastActiveLine(lastActiveLine);
+    const qint32 tileY = positionY / 2;
+    const qint32 startY = qMax(firstFieldLine - tileY, 0);
+    const qint32 endY = qMin(lastFieldLine - tileY, YTILE);
+
+    // Compute the forward FFT
+    forwardFFTTile(positionX, tileY, startY, endY, inputField);
+
+    // Apply the frequency-domain filter in the appropriate mode
+    if (mode == levelMode) {
+        applyFilter<levelMode>();
+    } else {
+        applyFilter<thresholdMode>();
+    }
+
+    // Create a canvas
+    FrameCanvas canvas(rgbFrame, videoParameters, firstActiveLine, lastActiveLine);
+
+    // Outline the selected tile
+    canvas.drawRectangle(positionX - 1, positionY + inputField.getOffset() - 1, XTILE + 1, (YTILE * 2) + 1, FrameCanvas::green);
+
+    // Draw the arrays
+    overlayFFTArrays(fftComplexIn, fftComplexOut, XCOMPLEX, YCOMPLEX, 1, canvas);
+}

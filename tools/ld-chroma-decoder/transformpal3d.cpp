@@ -32,6 +32,8 @@
 #include <cmath>
 #include <cstring>
 
+#include "framecanvas.h"
+
 /*!
     \class TransformPal3D
 
@@ -331,4 +333,34 @@ void TransformPal3D::applyFilter()
             }
         }
     }
+}
+
+void TransformPal3D::overlayFFTFrame(qint32 positionX, qint32 positionY,
+                                     const QVector<SourceField> &inputFields, qint32 fieldIndex,
+                                     QByteArray &rgbFrame)
+{
+    // Do nothing if the tile isn't within the frame
+    if (positionX < 0 || positionX + XTILE > videoParameters.fieldWidth
+        || positionY < 0 || positionY + YTILE > (2 * videoParameters.fieldHeight) + 1) {
+        return;
+    }
+
+    // Compute the forward FFT
+    forwardFFTTile(positionX, positionY, fieldIndex, inputFields);
+
+    // Apply the frequency-domain filter in the appropriate mode
+    if (mode == levelMode) {
+        applyFilter<levelMode>();
+    } else {
+        applyFilter<thresholdMode>();
+    }
+
+    // Create a canvas
+    FrameCanvas canvas(rgbFrame, videoParameters, firstActiveLine, lastActiveLine);
+
+    // Outline the selected tile
+    canvas.drawRectangle(positionX - 1, positionY - 1, XTILE + 1, YTILE + 1, FrameCanvas::green);
+
+    // Draw the arrays
+    overlayFFTArrays(fftComplexIn, fftComplexOut, XCOMPLEX, YCOMPLEX, ZCOMPLEX, canvas);
 }
