@@ -128,10 +128,12 @@ void TransformPal::forwardFFTTile(qint32 tileX, qint32 tileY, const SourceField 
     const qint32 startY = qMax(firstFieldLine - tileY, 0);
     const qint32 endY = qMin(lastFieldLine - tileY, YTILE);
 
-    // If we aren't going to fill in the whole tile, zero it first
+    // If we aren't going to fill in the whole tile, fill it with black first
     if (startX != 0 || endX != XTILE || startY != 0 || endY != YTILE) {
-        for (qint32 i = 0; i < YTILE * XTILE; i++) {
-            fftReal[i] = 0.0;
+        for (qint32 y = startY; y < endY; y++) {
+            for (qint32 x = startX; x < endX; x++) {
+                fftReal[(y * XTILE) + x] = videoParameters.black16bIre * windowFunction[y][x];
+            }
         }
     }
 

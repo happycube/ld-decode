@@ -58,8 +58,9 @@ void SourceField::loadFields(SourceVideo &sourceVideo, LdDecodeMetaData &ldDecod
 
         if (useBlankFrame) {
             // Fill both fields with black
-            fields[i].data.fill(0);
-            fields[i + 1].data.fill(0);
+            const quint16 black = ldDecodeMetaData.getVideoParameters().black16bIre;
+            fields[i].data.fill(black);
+            fields[i + 1].data.fill(black);
         }
 
         frameNumber++;
