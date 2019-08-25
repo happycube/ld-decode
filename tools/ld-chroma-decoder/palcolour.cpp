@@ -202,8 +202,7 @@ void PalColour::buildLookUpTables()
 
 // Performs a decode of the 16-bit greyscale input frame and produces a RGB 16-16-16-bit output frame
 // with 16 bit processing
-QByteArray PalColour::decodeFrame(const LdDecodeMetaData::Field &firstField, QByteArray firstFieldData,
-                                  const LdDecodeMetaData::Field &secondField, QByteArray secondFieldData)
+QByteArray PalColour::decodeFrame(const SourceField &firstField, const SourceField &secondField)
 {
     // Ensure the object has been configured
     if (!configurationSet) {
@@ -221,17 +220,17 @@ QByteArray PalColour::decodeFrame(const LdDecodeMetaData::Field &firstField, QBy
     // real MTF compensation added to it.
     // PAL burst is 300 mV p-p (about 43 IRE, as 100 IRE = 700 mV)
     const double nominalBurstIRE = 300 * (100.0 / 700) / 2;
-    double chromaGain = nominalBurstIRE / firstField.medianBurstIRE;
+    double chromaGain = nominalBurstIRE / firstField.field.medianBurstIRE;
 
     if (configuration.blackAndWhite) {
         chromaGain = 0.0;
     }
 
-    if (!firstFieldData.isNull()) {
-        decodeField(firstField, firstFieldData, chromaGain);
+    if (!firstField.data.isNull()) {
+        decodeField(firstField, chromaGain);
     }
-    if (!secondFieldData.isNull()) {
-        decodeField(secondField, secondFieldData, chromaGain);
+    if (!secondField.data.isNull()) {
+        decodeField(secondField, chromaGain);
     }
 
     return outputFrame;
@@ -251,17 +250,17 @@ PalColour::FieldInfo::FieldInfo(const LdDecodeMetaData::Field &field, const Conf
     lastLine = (configuration.lastActiveLine + 1 - offset) / 2;
 }
 
-void PalColour::decodeField(const LdDecodeMetaData::Field &field, const QByteArray &fieldData, double chromaGain)
+void PalColour::decodeField(const SourceField &field, double chromaGain)
 {
-    FieldInfo fieldInfo(field, configuration, chromaGain);
+    FieldInfo fieldInfo(field.field, configuration, chromaGain);
 
     // Pointer to the input field data
-    const quint16 *inputData = reinterpret_cast<const quint16 *>(fieldData.data());
+    const quint16 *inputData = reinterpret_cast<const quint16 *>(field.data.data());
 
     const double *chromaData = nullptr;
     if (configuration.useTransformFilter) {
         // Use Transform PAL filter to extract chroma
-        chromaData = transformPal.filterField(fieldInfo.firstLine, fieldInfo.lastLine, fieldData);
+        chromaData = transformPal.filterField(fieldInfo.firstLine, fieldInfo.lastLine, field);
     }
 
     for (qint32 fieldLine = fieldInfo.firstLine; fieldLine < fieldInfo.lastLine; fieldLine++) {

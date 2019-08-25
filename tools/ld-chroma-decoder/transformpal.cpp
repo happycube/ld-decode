@@ -93,13 +93,13 @@ void TransformPal::updateConfiguration(const LdDecodeMetaData::VideoParameters &
     configurationSet = true;
 }
 
-const double *TransformPal::filterField(qint32 firstFieldLine, qint32 lastFieldLine, const QByteArray &fieldData)
+const double *TransformPal::filterField(qint32 firstFieldLine, qint32 lastFieldLine, const SourceField &inputField)
 {
     assert(configurationSet);
-    assert(!fieldData.isNull());
+    assert(!inputField.data.isNull());
 
     // Pointers to the input and output data
-    const quint16 *inputPtr = reinterpret_cast<const quint16 *>(fieldData.data());
+    const quint16 *inputPtr = reinterpret_cast<const quint16 *>(inputField.data.data());
     double *outputPtr = chromaBuf.data();
 
     // Clear chromaBuf

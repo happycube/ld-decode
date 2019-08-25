@@ -24,6 +24,8 @@
 
 #include "tbcsource.h"
 
+#include "sourcefield.h"
+
 TbcSource::TbcSource(QObject *parent) : QObject(parent)
 {
     // Default frame image options
@@ -496,13 +498,12 @@ QImage TbcSource::generateQImage(qint32 firstFieldNumber, qint32 secondFieldNumb
     // Get the metadata for the video parameters
     LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
 
-    // Get the field metadata
-    LdDecodeMetaData::Field firstField = ldDecodeMetaData.getField(firstFieldNumber);
-    LdDecodeMetaData::Field secondField = ldDecodeMetaData.getField(secondFieldNumber);
-
-    // Get the video field data
-    QByteArray firstFieldData = sourceVideo.getVideoField(firstFieldNumber);
-    QByteArray secondFieldData = sourceVideo.getVideoField(secondFieldNumber);
+    // Get the two fields and their metadata
+    SourceField firstField, secondField;
+    firstField.field = ldDecodeMetaData.getField(firstFieldNumber);
+    secondField.field = ldDecodeMetaData.getField(secondFieldNumber);
+    firstField.data = sourceVideo.getVideoField(firstFieldNumber);
+    secondField.data = sourceVideo.getVideoField(secondFieldNumber);
 
     // Calculate the frame height
     qint32 frameHeight = (videoParameters.fieldHeight * 2) - 1;
@@ -532,8 +533,8 @@ QImage TbcSource::generateQImage(qint32 firstFieldNumber, qint32 secondFieldNumb
             qint32 startPointer = (y / 2) * videoParameters.fieldWidth * 2;
             qint32 length = videoParameters.fieldWidth * 2;
 
-            firstLineData = firstFieldData.mid(startPointer, length);
-            secondLineData = secondFieldData.mid(startPointer, length);
+            firstLineData = firstField.data.mid(startPointer, length);
+            secondLineData = secondField.data.mid(startPointer, length);
 
             for (qint32 x = 0; x < videoParameters.fieldWidth; x++) {
                 // Take just the MSB of the input data
@@ -562,14 +563,14 @@ QImage TbcSource::generateQImage(qint32 firstFieldNumber, qint32 secondFieldNumb
             firstActiveLine = palColour.getConfiguration().firstActiveLine;
             lastActiveLine = palColour.getConfiguration().lastActiveLine;
 
-            outputData = palColour.decodeFrame(firstField, firstFieldData, secondField, secondFieldData);
+            outputData = palColour.decodeFrame(firstField, secondField);
         } else {
             // NTSC source
 
             firstActiveLine = ntscColour.getConfiguration().firstActiveLine;
             lastActiveLine = ntscColour.getConfiguration().lastActiveLine;
 
-            outputData = ntscColour.decodeFrame(firstField, firstFieldData, secondField, secondFieldData);
+            outputData = ntscColour.decodeFrame(firstField, secondField);
         }
 
         // Fill the QImage with black

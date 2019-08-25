@@ -33,9 +33,10 @@
 
 #include "lddecodemetadata.h"
 
-#include "yiq.h"
-#include "rgb.h"
 #include "opticalflow.h"
+#include "rgb.h"
+#include "sourcefield.h"
+#include "yiq.h"
 #include "yiqbuffer.h"
 
 // Fix required for Mac OS compilation - environment doesn't seem to set up
@@ -72,8 +73,7 @@ public:
                              const Configuration &configuration);
 
     // Decode two fields to produce an interlaced frame.
-    QByteArray decodeFrame(const LdDecodeMetaData::Field &firstField, QByteArray firstFieldInputBuffer,
-                           const LdDecodeMetaData::Field &secondField, QByteArray secondFieldInputBuffer);
+    QByteArray decodeFrame(const SourceField &firstField, const SourceField &secondField);
 
 protected:
 

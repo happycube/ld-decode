@@ -62,7 +62,7 @@ PalThread::PalThread(QAtomicInt& _abort, DecoderPool& _decoderPool,
 QByteArray PalThread::decodeFrame(const SourceField &firstField, const SourceField &secondField)
 {
     // Perform the PALcolour filtering
-    QByteArray outputData = palColour.decodeFrame(firstField.field, firstField.data, secondField.field, secondField.data);
+    QByteArray outputData = palColour.decodeFrame(firstField, secondField);
 
     // Crop the frame to just the active area
     return PalDecoder::cropOutputFrame(config, outputData);

@@ -35,6 +35,8 @@
 
 #include "lddecodemetadata.h"
 
+#include "sourcefield.h"
+
 class TransformPal {
 public:
     TransformPal();
@@ -48,7 +50,7 @@ public:
     // Filter an input field.
     // Returns a pointer to an array of the same size (owned by this object)
     // containing the chroma signal.
-    const double *filterField(qint32 firstFieldLine, qint32 lastFieldLine, const QByteArray &fieldData);
+    const double *filterField(qint32 firstFieldLine, qint32 lastFieldLine, const SourceField &inputField);
 
 private:
     // Apply the frequency-domain filter

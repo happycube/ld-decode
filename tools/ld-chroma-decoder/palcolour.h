@@ -33,6 +33,7 @@
 
 #include "lddecodemetadata.h"
 
+#include "sourcefield.h"
 #include "transformpal.h"
 
 class PalColour : public QObject
@@ -58,8 +59,7 @@ public:
                              const Configuration &configuration);
 
     // Decode two fields to produce an interlaced frame.
-    QByteArray decodeFrame(const LdDecodeMetaData::Field &topField, QByteArray topFieldData,
-                           const LdDecodeMetaData::Field &bottomField, QByteArray bottomFieldData);
+    QByteArray decodeFrame(const SourceField &firstField, const SourceField &secondField);
 
     // Maximum frame size, based on PAL
     static const qint32 MAX_WIDTH = 1135;
@@ -83,7 +83,7 @@ private:
     };
 
     // Decode one field into outputFrame.
-    void decodeField(const LdDecodeMetaData::Field &field, const QByteArray &fieldData, double chromaGain);
+    void decodeField(const SourceField &field, double chromaGain);
 
     // Information about a line we're decoding.
     struct LineInfo {

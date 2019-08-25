@@ -77,7 +77,7 @@ NtscThread::NtscThread(QAtomicInt& _abort, DecoderPool &_decoderPool,
 QByteArray NtscThread::decodeFrame(const SourceField &firstField, const SourceField &secondField)
 {
     // Filter the frame
-    QByteArray outputData = comb.decodeFrame(firstField.field, firstField.data, secondField.field, secondField.data);
+    QByteArray outputData = comb.decodeFrame(firstField, secondField);
 
     // The NTSC filter outputs the whole frame, so here we crop it to the required dimensions
     return NtscDecoder::cropOutputFrame(config, outputData);
