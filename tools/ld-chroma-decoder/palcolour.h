@@ -26,13 +26,15 @@
 #ifndef PALCOLOUR_H
 #define PALCOLOUR_H
 
-#include <QObject>
-#include <QtMath>
 #include <QDebug>
-#include <cassert>
+#include <QObject>
+#include <QScopedPointer>
+#include <QVector>
+#include <QtMath>
 
 #include "lddecodemetadata.h"
 
+#include "sourcefield.h"
 #include "transformpal.h"
 
 class PalColour : public QObject
@@ -42,15 +44,32 @@ class PalColour : public QObject
 public:
     explicit PalColour(QObject *parent = nullptr);
 
+    // Specify which filter to use to separate luma and chroma information.
+    enum ChromaFilterMode {
+        // PALColour's 2D FIR filter
+        palColourFilter = 0,
+        // 2D Transform PAL frequency-domain filter
+        transform2DFilter,
+        // 3D Transform PAL frequency-domain filter
+        transform3DFilter
+    };
+
     struct Configuration {
         bool blackAndWhite = false;
-        bool useTransformFilter = true;
+        ChromaFilterMode chromaFilter = palColourFilter;
+        TransformPal::TransformMode transformMode = TransformPal::thresholdMode;
         double transformThreshold = 0.4;
+        bool showFFTs = false;
+        qint32 showPositionX = 200;
+        qint32 showPositionY = 200;
 
         // Interlaced line 44 is PAL line 23 (the first active half-line)
         qint32 firstActiveLine = 44;
         // Interlaced line 619 is PAL line 623 (the last active half-line)
         qint32 lastActiveLine = 620;
+
+        qint32 getLookBehind() const;
+        qint32 getLookAhead() const;
     };
 
     const Configuration &getConfiguration() const;
@@ -58,32 +77,19 @@ public:
                              const Configuration &configuration);
 
     // Decode two fields to produce an interlaced frame.
-    QByteArray decodeFrame(const LdDecodeMetaData::Field &topField, QByteArray topFieldData,
-                           const LdDecodeMetaData::Field &bottomField, QByteArray bottomFieldData);
+    QByteArray decodeFrame(const SourceField &firstField, const SourceField &secondField);
+
+    // Decode a sequence of fields into a sequence of interlaced frames
+    void decodeFrames(const QVector<SourceField> &inputFields, qint32 startIndex, qint32 endIndex,
+                      QVector<QByteArray> &outputFrames);
 
     // Maximum frame size, based on PAL
     static const qint32 MAX_WIDTH = 1135;
     static const qint32 MAX_HEIGHT = 625;
 
 private:
-    // Information about a field we're decoding.
-    struct FieldInfo {
-        explicit FieldInfo(const LdDecodeMetaData::Field &field, const Configuration &configuration, double chromaGain);
-
-        // Chroma gain factor, based on colourburst amplitude.
-        double chromaGain;
-
-        // Vertical pixels to offset this field within the interlaced frame --
-        // i.e. 0 for the top field, 1 for the bottom field.
-        qint32 offset;
-
-        // firstLine/lastLine are the range of active lines within the field.
-        qint32 firstLine;
-        qint32 lastLine;
-    };
-
     // Decode one field into outputFrame.
-    void decodeField(const LdDecodeMetaData::Field &field, const QByteArray &fieldData, double chromaGain);
+    void decodeField(const SourceField &inputField, const double *chromaData, double chromaGain, QByteArray &outputFrame);
 
     // Information about a line we're decoding.
     struct LineInfo {
@@ -100,12 +106,12 @@ private:
     void detectBurst(LineInfo &line, const quint16 *inputData);
 
     // Decode one line into outputFrame.
-    // inputData (templated, so it can be any numeric type) is the input to the
-    // filter; this may be the composite signal, or it may be pre-filtered down
-    // to chroma.
-    // compData is the composite signal, used for reconstructing Y at the end.
-    template <typename InputSample, bool useTransformFilter>
-    void decodeLine(const FieldInfo &fieldInfo, const LineInfo &line, const InputSample *inputData, const quint16 *compData);
+    // chromaData (templated, so it can be any numeric type) is the input to
+    // the chroma demodulator; this may be the composite signal from
+    // inputField, or it may be pre-filtered down to chroma.
+    template <typename ChromaSample, bool useTransformFilter>
+    void decodeLine(const SourceField &inputField, const ChromaSample *chromaData, const LineInfo &line, double chromaGain,
+                    QByteArray &outputFrame);
 
     // Configuration parameters
     bool configurationSet;
@@ -113,7 +119,7 @@ private:
     LdDecodeMetaData::VideoParameters videoParameters;
 
     // Transform PAL filter
-    TransformPal transformPal;
+    QScopedPointer<TransformPal> transformPal;
 
     // The subcarrier reference signal
     double sine[MAX_WIDTH], cosine[MAX_WIDTH];
@@ -131,9 +137,6 @@ private:
     static const qint32 FILTER_SIZE = 7;
     double cfilt[FILTER_SIZE + 1][4];
     double yfilt[FILTER_SIZE + 1][2];
-
-    // The output frame
-    QByteArray outputFrame;
 
     // Method to build the required look-up tables
     void buildLookUpTables();

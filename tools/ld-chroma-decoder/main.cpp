@@ -33,8 +33,11 @@
 #include "decoderpool.h"
 #include "lddecodemetadata.h"
 
+#include "comb.h"
 #include "ntscdecoder.h"
+#include "palcolour.h"
 #include "paldecoder.h"
+#include "transformpal.h"
 
 // Global for debug output
 static bool showDebug = false;
@@ -143,7 +146,7 @@ int main(int argc, char *argv[])
 
     // Option to select which decoder to use (-f)
     QCommandLineOption decoderOption(QStringList() << "f" << "decoder",
-                                     QCoreApplication::translate("main", "Decoder to use (pal2d, transform2d, ntsc2d, ntsc3d; default automatic)"),
+                                     QCoreApplication::translate("main", "Decoder to use (pal2d, transform2d, transform3d, ntsc2d, ntsc3d; default automatic)"),
                                      QCoreApplication::translate("main", "decoder"));
     parser.addOption(decoderOption);
 
@@ -167,12 +170,22 @@ int main(int argc, char *argv[])
 
     // -- PAL decoder options --
 
+    // Option to select the Transform PAL filter mode
+    QCommandLineOption transformModeOption(QStringList() << "transform-mode",
+                                           QCoreApplication::translate("main", "Transform: Filter mode to use (level, threshold; default level)"),
+                                           QCoreApplication::translate("main", "mode"));
+    parser.addOption(transformModeOption);
+
     // Option to select the Transform PAL threshold
     QCommandLineOption transformThresholdOption(QStringList() << "transform-threshold",
-                                                QCoreApplication::translate("main", "Transform: Similarity threshold for the chroma filter (default 0.4)"),
+                                                QCoreApplication::translate("main", "Transform: Similarity threshold in 'threshold' mode (default 0.4)"),
                                                 QCoreApplication::translate("main", "number"));
     parser.addOption(transformThresholdOption);
 
+    // Option to overlay the FFTs
+    QCommandLineOption showFFTsOption(QStringList() << "show-ffts",
+                                      QCoreApplication::translate("main", "Transform: Overlay the input and output FFTs"));
+    parser.addOption(showFFTsOption);
 
     // -- Positional arguments --
 
@@ -187,9 +200,6 @@ int main(int argc, char *argv[])
 
     // Get the options from the parser
     bool isDebugOn = parser.isSet(showDebugOption);
-    bool blackAndWhite = parser.isSet(setBwModeOption);
-    bool showOpticalFlow = parser.isSet(showOpticalFlowOption);
-    bool whitePoint = parser.isSet(whitePointOption);
     if (parser.isSet(setQuietOption)) showOutput = false;
 
     // Get the arguments from the parser
@@ -220,7 +230,8 @@ int main(int argc, char *argv[])
     qint32 startFrame = -1;
     qint32 length = -1;
     qint32 maxThreads = QThread::idealThreadCount();
-    double transformThreshold = 0.4;
+    PalColour::Configuration palConfig;
+    Comb::Configuration combConfig;
 
     if (parser.isSet(startFrameOption)) {
         startFrame = parser.value(startFrameOption).toInt();
@@ -252,8 +263,46 @@ int main(int argc, char *argv[])
         }
     }
 
+    if (parser.isSet(setBwModeOption)) {
+        palConfig.blackAndWhite = true;
+        combConfig.blackAndWhite = true;
+    }
+
+    if (parser.isSet(whitePointOption)) {
+        combConfig.whitePoint100 = true;
+    }
+
+    if (parser.isSet(showOpticalFlowOption)) {
+        combConfig.showOpticalFlowMap = true;
+    }
+
+    if (parser.isSet(transformModeOption)) {
+        const QString name = parser.value(transformModeOption);
+
+        if (name == "level") {
+            palConfig.transformMode = TransformPal::levelMode;
+        } else if (name == "threshold") {
+            palConfig.transformMode = TransformPal::thresholdMode;
+        } else {
+            palConfig.transformMode = TransformPal::levelMode;
+            // Quit with error
+            qCritical() << "Unknown Transform mode " << name;
+            return -1;
+        }
+    }
+
     if (parser.isSet(transformThresholdOption)) {
-        transformThreshold = parser.value(transformThresholdOption).toDouble();
+        palConfig.transformThreshold = parser.value(transformThresholdOption).toDouble();
+
+        if (palConfig.transformThreshold < 0.0 || palConfig.transformThreshold > 1.0) {
+            // Quit with error
+            qCritical("Transform threshold must be between 0 and 1");
+            return -1;
+        }
+    }
+
+    if (parser.isSet(showFFTsOption)) {
+        palConfig.showFFTs = true;
     }
 
     // Process the command line options
@@ -283,21 +332,32 @@ int main(int argc, char *argv[])
     }
 
     // Require ntsc3d if the optical flow map overlay is selected
-    if (showOpticalFlow && decoderName != "ntsc3d") {
+    if (combConfig.showOpticalFlowMap && decoderName != "ntsc3d") {
         qCritical() << "Can only show optical flow with the ntsc3d decoder";
+        return -1;
+    }
+
+    // Require transform2d/3d if the FFT overlay is selected
+    if (palConfig.showFFTs && decoderName != "transform2d" && decoderName != "transform3d") {
+        qCritical() << "Can only show FFTs with the transform2d/transform3d decoders";
         return -1;
     }
 
     // Select the decoder
     QScopedPointer<Decoder> decoder;
     if (decoderName == "pal2d") {
-        decoder.reset(new PalDecoder(blackAndWhite));
+        decoder.reset(new PalDecoder(palConfig));
     } else if (decoderName == "transform2d") {
-        decoder.reset(new PalDecoder(blackAndWhite, true, transformThreshold));
+        palConfig.chromaFilter = PalColour::transform2DFilter;
+        decoder.reset(new PalDecoder(palConfig));
+    } else if (decoderName == "transform3d") {
+        palConfig.chromaFilter = PalColour::transform3DFilter;
+        decoder.reset(new PalDecoder(palConfig));
     } else if (decoderName == "ntsc2d") {
-        decoder.reset(new NtscDecoder(blackAndWhite, whitePoint, false, false));
+        decoder.reset(new NtscDecoder(combConfig));
     } else if (decoderName == "ntsc3d") {
-        decoder.reset(new NtscDecoder(blackAndWhite, whitePoint, true, showOpticalFlow));
+        combConfig.use3D = true;
+        decoder.reset(new NtscDecoder(combConfig));
     } else {
         qCritical() << "Unknown decoder " << decoderName;
         return -1;

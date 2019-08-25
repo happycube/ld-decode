@@ -183,10 +183,7 @@ void MainWindow::updateGuiLoaded()
     sourceVideoStatus.setText(statusText);
 
     // Update the PAL chroma configuration dialogue
-    PalChromaDecoderConfigDialog::PalChromaDecoderConfig palChromaDecoderConfig;
-    tbcSource.getPalColourConfiguration(palChromaDecoderConfig.blackAndWhite, palChromaDecoderConfig.useTransformFilter,
-                                        palChromaDecoderConfig.transformThreshold);
-    palChromaDecoderConfigDialog->setConfiguration(palChromaDecoderConfig);
+    palChromaDecoderConfigDialog->setConfiguration(tbcSource.getPalColourConfiguration());
 
     // Show the current frame
     showFrame();
@@ -811,12 +808,8 @@ void MainWindow::mouseScanLineSelect(qint32 oX, qint32 oY)
 // Handle PAL configuration changed signal from the PAL configuration dialogue
 void MainWindow::palConfigurationChangedSignalHandler()
 {
-    // Get the new configuration
-    PalChromaDecoderConfigDialog::PalChromaDecoderConfig palChromaDecoderConfig = palChromaDecoderConfigDialog->getConfiguration();
-
     // Set the new configuration
-    tbcSource.setPalColourConfiguration(palChromaDecoderConfig.blackAndWhite, palChromaDecoderConfig.useTransformFilter,
-                                        palChromaDecoderConfig.transformThreshold);
+    tbcSource.setPalColourConfiguration(palChromaDecoderConfigDialog->getConfiguration());
 
     // Update the frame viewer;
     updateFrameViewer();

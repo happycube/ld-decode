@@ -36,14 +36,17 @@
 
 #include "decoder.h"
 #include "palcolour.h"
+#include "sourcefield.h"
 
 class DecoderPool;
 
 // 2D PAL decoder using PALcolour
 class PalDecoder : public Decoder {
 public:
-    PalDecoder(bool blackAndWhite, bool useTransformFilter = false, double transformThreshold = 0.4);
+    PalDecoder(const PalColour::Configuration &palConfig);
     bool configure(const LdDecodeMetaData::VideoParameters &videoParameters) override;
+    qint32 getLookBehind() const override;
+    qint32 getLookAhead() const override;
     QThread *makeThread(QAtomicInt& abort, DecoderPool& decoderPool) override;
 
     // Parameters used by PalDecoder and PalThread
@@ -64,7 +67,8 @@ public:
                        QObject *parent = nullptr);
 
 protected:
-    QByteArray decodeFrame(const Decoder::InputField &firstField, const Decoder::InputField &secondField) override;
+    void decodeFrames(const QVector<SourceField> &inputFields, qint32 startIndex, qint32 endIndex,
+                      QVector<QByteArray> &outputFrames) override;
 
 private:
     // Settings

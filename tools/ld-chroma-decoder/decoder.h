@@ -33,6 +33,8 @@
 
 #include "lddecodemetadata.h"
 
+#include "sourcefield.h"
+
 class DecoderPool;
 
 // Abstract base class for chroma decoders.
@@ -62,14 +64,14 @@ public:
     virtual bool configure(const LdDecodeMetaData::VideoParameters &videoParameters) = 0;
 
     // After configuration, return the number of frames that the decoder needs
-    // to be able to see into the past (each frame being two InputFields).
+    // to be able to see into the past (each frame being two SourceFields).
     // The default implementation returns 0, which is appropriate for 1D/2D decoders.
-    virtual qint32 getLookBehind();
+    virtual qint32 getLookBehind() const;
 
     // After configuration, return the number of frames that the decoder needs
-    // to be able to see into the future (each frame being two InputFields).
+    // to be able to see into the future (each frame being two SourceFields).
     // The default implementation returns 0, which is appropriate for 1D/2D decoders.
-    virtual qint32 getLookAhead();
+    virtual qint32 getLookAhead() const;
 
     // Construct a new worker thread
     virtual QThread *makeThread(QAtomicInt& abort, DecoderPool& decoderPool) = 0;
@@ -83,12 +85,6 @@ public:
         qint32 lastActiveLine;
         qint32 topPadLines;
         qint32 bottomPadLines;
-    };
-
-    // A field read from the input file
-    struct InputField {
-        LdDecodeMetaData::Field field;
-        QByteArray data;
     };
 
     // Compute the output frame size in Configuration, adjusting the active
@@ -109,8 +105,9 @@ public:
 protected:
     void run() override;
 
-    // Decode two fields into an interlaced, cropped frame
-    virtual QByteArray decodeFrame(const Decoder::InputField &firstField, const Decoder::InputField &secondField) = 0;
+    // Decode a sequence of fields into a sequence of frames
+    virtual void decodeFrames(const QVector<SourceField> &inputFields, qint32 startIndex, qint32 endIndex,
+                              QVector<QByteArray> &outputFrames) = 0;
 
     // Decoder pool
     QAtomicInt& abort;

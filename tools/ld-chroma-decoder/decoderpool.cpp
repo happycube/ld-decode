@@ -145,7 +145,7 @@ bool DecoderPool::process()
     return true;
 }
 
-bool DecoderPool::getInputFrames(qint32 &startFrameNumber, QVector<Decoder::InputField> &fields, qint32 &startIndex, qint32 &endIndex)
+bool DecoderPool::getInputFrames(qint32 &startFrameNumber, QVector<SourceField> &fields, qint32 &startIndex, qint32 &endIndex)
 {
     QMutexLocker locker(&inputMutex);
 
@@ -166,39 +166,10 @@ bool DecoderPool::getInputFrames(qint32 &startFrameNumber, QVector<Decoder::Inpu
     startFrameNumber = inputFrameNumber;
     inputFrameNumber += batchFrames;
 
-    // Work out indexes.
-    // fields will contain {lookbehind fields... [startIndex] real fields... [endIndex] lookahead fields...}.
-    startIndex = 2 * decoderLookBehind;
-    endIndex = startIndex + (2 * batchFrames);
-    fields.resize(endIndex + (2 * decoderLookAhead));
-
-    // Populate fields
-    const qint32 numInputFrames = ldDecodeMetaData.getNumberOfFrames();
-    qint32 frameNumber = startFrameNumber - decoderLookBehind;
-    for (qint32 i = 0; i < fields.size(); i += 2) {
-
-        // Is this frame outside the bounds of the input file?
-        // If so, use real metadata (from frame 1) and black fields.
-        const bool useBlankFrame = frameNumber < 1 || frameNumber > numInputFrames;
-
-        // Get the first frame from the file (using frame 1 if outside bounds)
-        qint32 firstFieldNumber = ldDecodeMetaData.getFirstFieldNumber(useBlankFrame ? 1 : frameNumber);
-        qint32 secondFieldNumber = ldDecodeMetaData.getSecondFieldNumber(useBlankFrame ? 1 : frameNumber);
-
-        // Fetch the input metadata
-        fields[i].field = ldDecodeMetaData.getField(firstFieldNumber);
-        fields[i].data = sourceVideo.getVideoField(firstFieldNumber);
-        fields[i + 1].field = ldDecodeMetaData.getField(secondFieldNumber);
-        fields[i + 1].data = sourceVideo.getVideoField(secondFieldNumber);
-
-        if (useBlankFrame) {
-            // Fill both fields with black
-            fields[i].data.fill(0);
-            fields[i + 1].data.fill(0);
-        }
-
-        frameNumber++;
-    }
+    // Load the fields
+    SourceField::loadFields(sourceVideo, ldDecodeMetaData,
+                            startFrameNumber, batchFrames, decoderLookBehind, decoderLookAhead,
+                            fields, startIndex, endIndex);
 
     return true;
 }

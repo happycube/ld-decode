@@ -63,8 +63,7 @@ void Comb::updateConfiguration(const LdDecodeMetaData::VideoParameters &_videoPa
 }
 
 // Process the input buffer into the RGB output buffer
-QByteArray Comb::decodeFrame(const LdDecodeMetaData::Field &firstField, QByteArray firstFieldInputBuffer,
-                             const LdDecodeMetaData::Field &secondField, QByteArray secondFieldInputBuffer)
+QByteArray Comb::decodeFrame(const SourceField &firstField, const SourceField &secondField)
 {
     // Ensure the object has been configured
     if (!configurationSet) {
@@ -87,19 +86,19 @@ QByteArray Comb::decodeFrame(const LdDecodeMetaData::Field &firstField, QByteArr
     qint32 fieldLine = 0;
     currentFrameBuffer.rawbuffer.clear();
     for (qint32 frameLine = 0; frameLine < frameHeight; frameLine += 2) {
-        currentFrameBuffer.rawbuffer.append(firstFieldInputBuffer.mid(fieldLine * videoParameters.fieldWidth * 2, videoParameters.fieldWidth * 2));
-        currentFrameBuffer.rawbuffer.append(secondFieldInputBuffer.mid(fieldLine * videoParameters.fieldWidth * 2, videoParameters.fieldWidth * 2));
+        currentFrameBuffer.rawbuffer.append(firstField.data.mid(fieldLine * videoParameters.fieldWidth * 2, videoParameters.fieldWidth * 2));
+        currentFrameBuffer.rawbuffer.append(secondField.data.mid(fieldLine * videoParameters.fieldWidth * 2, videoParameters.fieldWidth * 2));
         fieldLine++;
     }
 
     // Set the frame's burst median (IRE) from the *first* field only.
     // This is used by yiqToRgbFrame to tweak the colour saturation levels
     // (compensating for MTF issues)
-    currentFrameBuffer.burstLevel = firstField.medianBurstIRE;
+    currentFrameBuffer.burstLevel = firstField.field.medianBurstIRE;
 
     // Set the phase IDs for the frame
-    currentFrameBuffer.firstFieldPhaseID = firstField.fieldPhaseID;
-    currentFrameBuffer.secondFieldPhaseID = secondField.fieldPhaseID;
+    currentFrameBuffer.firstFieldPhaseID = firstField.field.fieldPhaseID;
+    currentFrameBuffer.secondFieldPhaseID = secondField.field.fieldPhaseID;
 
     // 2D or 3D comb filter processing?
     if (!configuration.use3D) {
