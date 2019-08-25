@@ -45,6 +45,16 @@ bool PalDecoder::configure(const LdDecodeMetaData::VideoParameters &videoParamet
     return true;
 }
 
+qint32 PalDecoder::getLookBehind() const
+{
+    return config.pal.getLookBehind();
+}
+
+qint32 PalDecoder::getLookAhead() const
+{
+    return config.pal.getLookAhead();
+}
+
 QThread *PalDecoder::makeThread(QAtomicInt& abort, DecoderPool& decoderPool) {
     return new PalThread(abort, decoderPool, config);
 }

@@ -44,9 +44,19 @@ class PalColour : public QObject
 public:
     explicit PalColour(QObject *parent = nullptr);
 
+    // Specify which filter to use to separate luma and chroma information.
+    enum ChromaFilterMode {
+        // PALColour's 2D FIR filter
+        palColourFilter = 0,
+        // 2D Transform PAL frequency-domain filter
+        transform2DFilter,
+        // 3D Transform PAL frequency-domain filter
+        transform3DFilter
+    };
+
     struct Configuration {
         bool blackAndWhite = false;
-        bool useTransformFilter = false;
+        ChromaFilterMode chromaFilter = palColourFilter;
         TransformPal::TransformMode transformMode = TransformPal::thresholdMode;
         double transformThreshold = 0.4;
 
@@ -54,6 +64,9 @@ public:
         qint32 firstActiveLine = 44;
         // Interlaced line 619 is PAL line 623 (the last active half-line)
         qint32 lastActiveLine = 620;
+
+        qint32 getLookBehind() const;
+        qint32 getLookAhead() const;
     };
 
     const Configuration &getConfiguration() const;

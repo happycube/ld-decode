@@ -27,6 +27,7 @@ SOURCES += \
     sourcefield.cpp \
     transformpal.cpp \
     transformpal2d.cpp \
+    transformpal3d.cpp \
     yiq.cpp \
     ../library/tbc/lddecodemetadata.cpp \
     ../library/tbc/sourcevideo.cpp
@@ -44,6 +45,7 @@ HEADERS += \
     sourcefield.h \
     transformpal.h \
     transformpal2d.h \
+    transformpal3d.h \
     yiq.h \
     yiqbuffer.h \
     ../../deemp.h \

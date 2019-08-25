@@ -38,7 +38,7 @@ TbcSource::TbcSource(QObject *parent) : QObject(parent)
 
     // Set the PALcolour configuration to default
     palColourConfiguration = palColour.getConfiguration();
-    palColourConfiguration.useTransformFilter = true;
+    palColourConfiguration.chromaFilter = PalColour::transform2DFilter;
     decoderConfigurationChanged = false;
 }
 

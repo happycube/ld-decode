@@ -33,6 +33,7 @@
 #include "palcolour.h"
 
 #include "transformpal2d.h"
+#include "transformpal3d.h"
 
 #include <cassert>
 
@@ -64,6 +65,24 @@ PalColour::PalColour(QObject *parent)
 {
 }
 
+qint32 PalColour::Configuration::getLookBehind() const
+{
+    if (chromaFilter == transform3DFilter) {
+        return TransformPal3D::getLookBehind();
+    } else {
+        return 0;
+    }
+}
+
+qint32 PalColour::Configuration::getLookAhead() const
+{
+    if (chromaFilter == transform3DFilter) {
+        return TransformPal3D::getLookAhead();
+    } else {
+        return 0;
+    }
+}
+
 // Return the current configuration
 const PalColour::Configuration &PalColour::getConfiguration() const {
     return configuration;
@@ -79,10 +98,15 @@ void PalColour::updateConfiguration(const LdDecodeMetaData::VideoParameters &_vi
     // Build the look-up tables
     buildLookUpTables();
 
-    if (configuration.useTransformFilter) {
-        transformPal.reset(new TransformPal2D);
+    if (configuration.chromaFilter == transform2DFilter || configuration.chromaFilter == transform3DFilter) {
+        // Create the Transform PAL filter
+        if (configuration.chromaFilter == transform2DFilter) {
+            transformPal.reset(new TransformPal2D);
+        } else {
+            transformPal.reset(new TransformPal3D);
+        }
 
-        // Configure Transform PAL
+        // Configure the filter
         transformPal->updateConfiguration(videoParameters, configuration.firstActiveLine, configuration.lastActiveLine,
                                           configuration.transformMode, configuration.transformThreshold);
     }
@@ -220,7 +244,7 @@ void PalColour::decodeFrames(const QVector<SourceField> &inputFields, qint32 sta
     assert((outputFrames.size() * 2) == (endIndex - startIndex));
 
     QVector<const double *> chromaData(endIndex - startIndex);
-    if (configuration.useTransformFilter) {
+    if (configuration.chromaFilter != palColourFilter) {
         // Use Transform PAL filter to extract chroma
         transformPal->filterFields(inputFields, startIndex, endIndex, chromaData);
     }
@@ -263,12 +287,12 @@ void PalColour::decodeField(const SourceField &inputField, const double *chromaD
         // Detect the colourburst from the composite signal
         detectBurst(line, compPtr);
 
-        if (configuration.useTransformFilter) {
-            // Decode chroma and luma from the Transform PAL output
-            decodeLine<double, true>(inputField, chromaData, line, chromaGain, outputFrame);
-        } else {
+        if (configuration.chromaFilter == palColourFilter) {
             // Decode chroma and luma from the composite signal
             decodeLine<quint16, false>(inputField, compPtr, line, chromaGain, outputFrame);
+        } else {
+            // Decode chroma and luma from the Transform PAL output
+            decodeLine<double, true>(inputField, chromaData, line, chromaGain, outputFrame);
         }
     }
 }
@@ -343,7 +367,7 @@ void PalColour::detectBurst(LineInfo &line, const quint16 *inputData)
     line.burstNorm = qMax(sqrt(line.bp * line.bp + line.bq * line.bq), 130000.0 / 128);
 }
 
-template <typename ChromaSample, bool useTransformFilter>
+template <typename ChromaSample, bool PREFILTERED_CHROMA>
 void PalColour::decodeLine(const SourceField &inputField, const ChromaSample *chromaData, const LineInfo &line, double chromaGain,
                            QByteArray &outputFrame)
 {
@@ -449,7 +473,7 @@ void PalColour::decodeLine(const SourceField &inputField, const ChromaSample *ch
     for (qint32 i = videoParameters.activeVideoStart; i < videoParameters.activeVideoEnd; i++) {
         // Compute luma by...
         double rY;
-        if (useTransformFilter) {
+        if (PREFILTERED_CHROMA) {
             // ... subtracting pre-filtered chroma from the composite input
             rY = comp[i] - in0[i];
         } else {

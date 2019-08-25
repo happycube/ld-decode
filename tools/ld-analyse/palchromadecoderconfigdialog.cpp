@@ -51,6 +51,11 @@ void PalChromaDecoderConfigDialog::setConfiguration(const PalColour::Configurati
     if (palChromaDecoderConfig.transformThreshold < 0.00) palChromaDecoderConfig.transformThreshold = 0.00;
     if (palChromaDecoderConfig.transformThreshold > 1.00) palChromaDecoderConfig.transformThreshold = 1.00;
 
+    // ld-analyse only supports 2D filters at the moment
+    if (palChromaDecoderConfig.chromaFilter == PalColour::transform3DFilter) {
+        palChromaDecoderConfig.chromaFilter = PalColour::transform2DFilter;
+    }
+
     updateDialog();
     emit palChromaDecoderConfigChanged();
 }
@@ -65,7 +70,7 @@ void PalChromaDecoderConfigDialog::updateDialog()
     if (palChromaDecoderConfig.blackAndWhite) ui->blackAndWhiteCheckBox->setChecked(true);
     else ui->blackAndWhiteCheckBox->setChecked(false);
 
-    if (palChromaDecoderConfig.useTransformFilter) {
+    if (palChromaDecoderConfig.chromaFilter == PalColour::transform2DFilter) {
         ui->twoDeeTransformCheckBox->setChecked(true);
         ui->thresholdModeCheckBox->setEnabled(true);
     } else {
@@ -81,7 +86,8 @@ void PalChromaDecoderConfigDialog::updateDialog()
 
     ui->thresholdHorizontalSlider->setValue(static_cast<qint32>(palChromaDecoderConfig.transformThreshold * 100));
     ui->thresholdValueLabel->setText(QString::number(palChromaDecoderConfig.transformThreshold, 'f', 2));
-    if (palChromaDecoderConfig.useTransformFilter && palChromaDecoderConfig.transformMode == TransformPal::thresholdMode) {
+    if (palChromaDecoderConfig.chromaFilter == PalColour::transform2DFilter
+        && palChromaDecoderConfig.transformMode == TransformPal::thresholdMode) {
         ui->thresholdHorizontalSlider->setEnabled(true);
         ui->thresholdValueLabel->setEnabled(true);
     } else {
@@ -101,8 +107,11 @@ void PalChromaDecoderConfigDialog::on_blackAndWhiteCheckBox_clicked()
 
 void PalChromaDecoderConfigDialog::on_twoDeeTransformCheckBox_clicked()
 {
-    if (ui->twoDeeTransformCheckBox->isChecked()) palChromaDecoderConfig.useTransformFilter = true;
-    else palChromaDecoderConfig.useTransformFilter = false;
+    if (ui->twoDeeTransformCheckBox->isChecked()) {
+        palChromaDecoderConfig.chromaFilter = PalColour::transform2DFilter;
+    } else {
+        palChromaDecoderConfig.chromaFilter = PalColour::palColourFilter;
+    }
     updateDialog();
     emit palChromaDecoderConfigChanged();
 }
