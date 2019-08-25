@@ -96,7 +96,16 @@ void TransformPal::updateConfiguration(const LdDecodeMetaData::VideoParameters &
 const double *TransformPal::filterField(qint32 firstFieldLine, qint32 lastFieldLine, const SourceField &inputField)
 {
     assert(configurationSet);
+
+    // Check we have a valid input field
     assert(!inputField.data.isNull());
+
+    // Check that there is enough horizontal space around the active region to
+    // overlap safely by half a tile. (We can't do this vertically because we'd
+    // run into the VBI data, so we have to pad with black lines on the Y
+    // axis.)
+    assert((videoParameters.activeVideoStart - videoParameters.colourBurstEnd) >= HALFXTILE);
+    assert((videoParameters.fieldWidth - videoParameters.activeVideoEnd) >= HALFXTILE);
 
     // Clear chromaBuf
     chromaBuf.fill(0.0);
@@ -122,26 +131,24 @@ const double *TransformPal::filterField(qint32 firstFieldLine, qint32 lastFieldL
 // Apply the forward FFT to an input tile, populating fftComplexIn
 void TransformPal::forwardFFTTile(qint32 tileX, qint32 tileY, const SourceField &inputField, qint32 firstFieldLine, qint32 lastFieldLine)
 {
-    // Work out what portion of this tile is inside the active area
-    const qint32 startX = qMax(videoParameters.activeVideoStart - tileX, 0);
-    const qint32 endX = qMin(videoParameters.activeVideoEnd - tileX, XTILE);
+    // Work out which lines of this tile are within the active region
     const qint32 startY = qMax(firstFieldLine - tileY, 0);
     const qint32 endY = qMin(lastFieldLine - tileY, YTILE);
 
-    // If we aren't going to fill in the whole tile, fill it with black first
-    if (startX != 0 || endX != XTILE || startY != 0 || endY != YTILE) {
-        for (qint32 y = startY; y < endY; y++) {
-            for (qint32 x = startX; x < endX; x++) {
-                fftReal[(y * XTILE) + x] = videoParameters.black16bIre * windowFunction[y][x];
-            }
-        }
-    }
-
     // Copy the input signal into fftReal, applying the window function
     const quint16 *inputPtr = reinterpret_cast<const quint16 *>(inputField.data.data());
-    for (qint32 y = startY; y < endY; y++) {
+    for (qint32 y = 0; y < YTILE; y++) {
+        // If this frame line is above/below the active region, fill it with
+        // black instead.
+        if (y < startY || y >= endY) {
+            for (qint32 x = 0; x < XTILE; x++) {
+                fftReal[(y * XTILE) + x] = videoParameters.black16bIre * windowFunction[y][x];
+            }
+            continue;
+        }
+
         const quint16 *b = inputPtr + ((tileY + y) * videoParameters.fieldWidth);
-        for (qint32 x = startX; x < endX; x++) {
+        for (qint32 x = 0; x < XTILE; x++) {
             fftReal[(y * XTILE) + x] = b[tileX + x] * windowFunction[y][x];
         }
     }
