@@ -24,6 +24,7 @@ SOURCES += \
     palcolour.cpp \
     paldecoder.cpp \
     rgb.cpp \
+    sourcefield.cpp \
     transformpal.cpp \
     yiq.cpp \
     ../library/tbc/lddecodemetadata.cpp \

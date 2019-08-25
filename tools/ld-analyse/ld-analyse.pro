@@ -43,6 +43,7 @@ SOURCES += \
     ../ld-chroma-decoder/transformpal.cpp \
     dropoutanalysisdialog.cpp \
     ../ld-chroma-decoder/opticalflow.cpp \
+    ../ld-chroma-decoder/sourcefield.cpp \
     ../library/tbc/lddecodemetadata.cpp \
     ../library/tbc/sourcevideo.cpp \
     ../library/tbc/vbidecoder.cpp

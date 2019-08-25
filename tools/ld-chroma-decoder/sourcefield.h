@@ -35,6 +35,15 @@ class SourceVideo;
 struct SourceField {
     LdDecodeMetaData::Field field;
     QByteArray data;
+
+    // Load a sequence of frames from the input files.
+    //
+    // fields will contain {lookbehind fields... [startIndex] real fields... [endIndex] lookahead fields...}.
+    // Fields requested outside the bounds of the file will have dummy metadata and black data.
+    static void loadFields(SourceVideo &sourceVideo, LdDecodeMetaData &ldDecodeMetaData,
+                           qint32 firstFrameNumber, qint32 numFrames,
+                           qint32 lookBehindFrames, qint32 lookAheadFrames,
+                           QVector<SourceField> &fields, qint32 &startIndex, qint32 &endIndex);
 };
 
 #endif
