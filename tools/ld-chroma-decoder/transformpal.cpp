@@ -38,7 +38,7 @@
     pyctools-pal. Given a composite signal, this extracts a chroma signal from
     it using frequency-domain processing.
 
-    For a description of the algorithm with examples, see Transform PAL web
+    For a description of the algorithm with examples, see the Transform PAL web
     site (http://www.jim-easterbrook.me.uk/pal/).
 
     Note that this is only a 2D implementation at the moment, which limits the
@@ -153,11 +153,14 @@ const double *TransformPal::filterField(qint32 firstFieldLine, qint32 lastFieldL
 }
 
 // Return the absolute value squared of an fftw_complex
-static inline double fftwAbsSq(const fftw_complex &value) {
+static inline double fftwAbsSq(const fftw_complex &value)
+{
     return (value[0] * value[0]) + (value[1] * value[1]);
 }
 
-void TransformPal::applyFilter() {
+// Apply the frequency-domain filter
+void TransformPal::applyFilter()
+{
     // Clear fftComplexOut. We discard values by default; the filter only
     // copies values that look like chroma.
     for (qint32 i = 0; i < XCOMPLEX * YCOMPLEX; i++) {

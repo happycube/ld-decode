@@ -53,7 +53,6 @@ public:
     const double *filterField(qint32 firstFieldLine, qint32 lastFieldLine, const SourceField &inputField);
 
 private:
-    // Apply the frequency-domain filter
     void applyFilter();
 
     // Configuration parameters
