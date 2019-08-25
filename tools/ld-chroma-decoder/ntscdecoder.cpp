@@ -51,7 +51,7 @@ bool NtscDecoder::configure(const LdDecodeMetaData::VideoParameters &videoParame
     return true;
 }
 
-qint32 NtscDecoder::getLookBehind()
+qint32 NtscDecoder::getLookBehind() const
 {
     if (config.combConfig.use3D) {
         // In 3D mode, we need to see the previous frame

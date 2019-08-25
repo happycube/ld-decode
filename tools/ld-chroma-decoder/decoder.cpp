@@ -26,12 +26,12 @@
 
 #include "decoderpool.h"
 
-qint32 Decoder::getLookBehind()
+qint32 Decoder::getLookBehind() const
 {
     return 0;
 }
 
-qint32 Decoder::getLookAhead()
+qint32 Decoder::getLookAhead() const
 {
     return 0;
 }
