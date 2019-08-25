@@ -32,6 +32,8 @@
 
 #include "palcolour.h"
 
+#include <cassert>
+
 /*!
     \class PalColour
 
@@ -194,54 +196,63 @@ void PalColour::buildLookUpTables()
             yfilt[f][i] /= ydiv;
         }
     }
-
-    // Calculate the frame height and resize the output buffer
-    const qint32 frameHeight = (videoParameters.fieldHeight * 2) - 1;
-    outputFrame.resize(videoParameters.fieldWidth * frameHeight * 6);
 }
 
-// Performs a decode of the 16-bit greyscale input frame and produces a RGB 16-16-16-bit output frame
-// with 16 bit processing
 QByteArray PalColour::decodeFrame(const SourceField &firstField, const SourceField &secondField)
 {
-    // Ensure the object has been configured
-    if (!configurationSet) {
-        qDebug() << "PalColour::performDecode(): Called, but the object has not been configured";
-        return nullptr;
-    }
+    QVector<SourceField> inputFields {firstField, secondField};
+    QVector<QByteArray> outputFrames(1);
 
-    // Fill the output frame with zeros to ensure there is no random data in areas where there
-    // is no picture data
-    outputFrame.fill(0);
+    decodeFrames(inputFields, 0, 2, outputFrames);
 
-    // Calculate the chroma gain from the burst median IRE, using the *first*
-    // field's burst amplitude to compensate both fields.
-    // Note: This code works as a temporary MTF compensator whilst ld-decode gets
-    // real MTF compensation added to it.
-    // PAL burst is 300 mV p-p (about 43 IRE, as 100 IRE = 700 mV)
-    const double nominalBurstIRE = 300 * (100.0 / 700) / 2;
-    double chromaGain = nominalBurstIRE / firstField.field.medianBurstIRE;
-
-    if (configuration.blackAndWhite) {
-        chromaGain = 0.0;
-    }
-
-    if (!firstField.data.isNull()) {
-        decodeField(firstField, chromaGain);
-    }
-    if (!secondField.data.isNull()) {
-        decodeField(secondField, chromaGain);
-    }
-
-    return outputFrame;
+    return outputFrames[0];
 }
 
-PalColour::FieldInfo::FieldInfo(const LdDecodeMetaData::Field &field, const Configuration &configuration, double _chromaGain)
-    : chromaGain(_chromaGain)
+void PalColour::decodeFrames(const QVector<SourceField> &inputFields, qint32 startIndex, qint32 endIndex,
+                             QVector<QByteArray> &outputFrames)
 {
-    // The second field's lines start at 1 in the output frame
-    offset = field.isFirstField ? 0 : 1;
+    assert(configurationSet);
+    assert((outputFrames.size() * 2) == (endIndex - startIndex));
 
+    FieldInfo firstFieldInfo(0, configuration);
+    FieldInfo secondFieldInfo(1, configuration);
+
+    QVector<const double *> chromaData(endIndex - startIndex);
+    if (configuration.useTransformFilter) {
+        // Use Transform PAL filter to extract chroma
+        transformPal.filterFields(firstFieldInfo.firstLine, firstFieldInfo.lastLine,
+                                  secondFieldInfo.firstLine, secondFieldInfo.lastLine,
+                                  inputFields, startIndex, endIndex, chromaData);
+    }
+
+    // Resize and clear the output buffers
+    const qint32 frameHeight = (videoParameters.fieldHeight * 2) - 1;
+    for (qint32 i = 0; i < outputFrames.size(); i++) {
+        outputFrames[i].resize(videoParameters.fieldWidth * frameHeight * 6);
+        outputFrames[i].fill(0);
+    }
+
+    for (qint32 i = startIndex, j = 0, k = 0; i < endIndex; i += 2, j += 2, k++) {
+        // Calculate the chroma gain from the burst median IRE, using the *first*
+        // field's burst amplitude to compensate both fields.
+        // Note: This code works as a temporary MTF compensator whilst ld-decode gets
+        // real MTF compensation added to it.
+        // PAL burst is 300 mV p-p (about 43 IRE, as 100 IRE = 700 mV)
+        const double nominalBurstIRE = 300 * (100.0 / 700) / 2;
+        double chromaGain = nominalBurstIRE / inputFields[i].field.medianBurstIRE;
+
+        if (configuration.blackAndWhite) {
+            chromaGain = 0.0;
+        }
+
+        decodeField(inputFields[i].data, chromaData[j], firstFieldInfo, chromaGain, outputFrames[k]);
+        decodeField(inputFields[i + 1].data, chromaData[j + 1], secondFieldInfo, chromaGain, outputFrames[k]);
+    }
+}
+
+PalColour::FieldInfo::FieldInfo(qint32 _offset, const Configuration &configuration)
+    : offset(_offset)
+{
     // Work out the active lines to be decoded within this field.
     // If firstActiveLine or lastActiveLine is odd, we can end up with
     // different ranges for top/bottom fields, so we need to be careful
@@ -250,31 +261,25 @@ PalColour::FieldInfo::FieldInfo(const LdDecodeMetaData::Field &field, const Conf
     lastLine = (configuration.lastActiveLine + 1 - offset) / 2;
 }
 
-void PalColour::decodeField(const SourceField &field, double chromaGain)
+void PalColour::decodeField(const QByteArray &compData, const double *chromaData,
+                            const FieldInfo &fieldInfo, double chromaGain,
+                            QByteArray &outputFrame)
 {
-    FieldInfo fieldInfo(field.field, configuration, chromaGain);
-
-    // Pointer to the input field data
-    const quint16 *inputData = reinterpret_cast<const quint16 *>(field.data.data());
-
-    const double *chromaData = nullptr;
-    if (configuration.useTransformFilter) {
-        // Use Transform PAL filter to extract chroma
-        chromaData = transformPal.filterField(fieldInfo.firstLine, fieldInfo.lastLine, field);
-    }
+    // Pointer to the composite signal data
+    const quint16 *compPtr = reinterpret_cast<const quint16 *>(compData.data());
 
     for (qint32 fieldLine = fieldInfo.firstLine; fieldLine < fieldInfo.lastLine; fieldLine++) {
         LineInfo line(fieldLine);
 
         // Detect the colourburst from the composite signal
-        detectBurst(line, inputData);
+        detectBurst(line, compPtr);
 
         if (configuration.useTransformFilter) {
             // Decode chroma and luma from the Transform PAL output
-            decodeLine<double, true>(fieldInfo, line, chromaData, inputData);
+            decodeLine<double, true>(fieldInfo, line, chromaGain, chromaData, compPtr, outputFrame);
         } else {
             // Decode chroma and luma from the composite signal
-            decodeLine<quint16, false>(fieldInfo, line, inputData, inputData);
+            decodeLine<quint16, false>(fieldInfo, line, chromaGain, compPtr, compPtr, outputFrame);
         }
     }
 }
@@ -350,7 +355,8 @@ void PalColour::detectBurst(LineInfo &line, const quint16 *inputData)
 }
 
 template <typename InputSample, bool useTransformFilter>
-void PalColour::decodeLine(const FieldInfo &fieldInfo, const LineInfo &line, const InputSample *inputData, const quint16 *compData)
+void PalColour::decodeLine(const FieldInfo &fieldInfo, const LineInfo &line, double chromaGain,
+                           const InputSample *inputData, const quint16 *compData, QByteArray &outputFrame)
 {
     // Dummy black line, used when the filter needs to look outside the active region.
     static constexpr InputSample blackLine[MAX_WIDTH] = {0};
@@ -447,7 +453,7 @@ void PalColour::decodeLine(const FieldInfo &fieldInfo, const LineInfo &line, con
     const double scaledContrast = 65535.0 / (videoParameters.white16bIre - videoParameters.black16bIre);
 
     // Gain for the U/V components
-    const double scaledSaturation = (2.0 / line.burstNorm) * fieldInfo.chromaGain;
+    const double scaledSaturation = (2.0 / line.burstNorm) * chromaGain;
 
     for (qint32 i = videoParameters.activeVideoStart; i < videoParameters.activeVideoEnd; i++) {
         // Compute luma by...

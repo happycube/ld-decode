@@ -31,6 +31,7 @@
 #include <QByteArray>
 #include <QDebug>
 #include <QObject>
+#include <QVector>
 #include <fftw3.h>
 
 #include "lddecodemetadata.h"
@@ -61,14 +62,20 @@ public:
     void updateConfiguration(const LdDecodeMetaData::VideoParameters &videoParameters,
                              TransformMode mode, double threshold);
 
-    // Filter an input field.
-    // Returns a pointer to an array of the same size (owned by this object)
-    // containing the chroma signal.
-    const double *filterField(qint32 firstFieldLine, qint32 lastFieldLine, const SourceField &inputField);
+    // Filter input fields.
+    //
+    // For each input frame between startFieldIndex and endFieldIndex, a
+    // pointer will be placed in outputFields to an array of the same size
+    // (owned by this object) containing the chroma signal.
+    void filterFields(qint32 firstFieldFirstLine, qint32 firstFieldLastLine,
+                      qint32 secondFieldFirstLine, qint32 secondFieldLastLine,
+                      const QVector<SourceField> &inputFields, qint32 startIndex, qint32 endIndex,
+                      QVector<const double *> &outputFields);
 
 private:
+    void filterField(const SourceField& inputField, qint32 firstFieldLine, qint32 lastFieldLine, qint32 outputIndex);
     void forwardFFTTile(qint32 tileX, qint32 tileY, const SourceField &inputField, qint32 firstFieldLine, qint32 lastFieldLine);
-    void inverseFFTTile(qint32 tileX, qint32 tileY, qint32 firstFieldLine, qint32 lastFieldLine);
+    void inverseFFTTile(qint32 tileX, qint32 tileY, qint32 firstFieldLine, qint32 lastFieldLine, qint32 outputIndex);
     template <TransformMode MODE>
     void applyFilter();
 
@@ -104,9 +111,9 @@ private:
     // FFT plans
     fftw_plan forwardPlan, inversePlan;
 
-    // The combined result of all the FFT processing.
-    // Inverse-FFT results are accumulated into this buffer.
-    QVector<double> chromaBuf;
+    // The combined result of all the FFT processing for each input field.
+    // Inverse-FFT results are accumulated into these buffers.
+    QVector<QVector<double>> chromaBuf;
 };
 
 #endif

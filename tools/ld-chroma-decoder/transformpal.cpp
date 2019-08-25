@@ -95,18 +95,22 @@ void TransformPal::updateConfiguration(const LdDecodeMetaData::VideoParameters &
     mode = _mode;
     threshold = _threshold;
 
-    // Resize the chroma buffer
-    chromaBuf.resize(videoParameters.fieldWidth * videoParameters.fieldHeight);
-
     configurationSet = true;
 }
 
-const double *TransformPal::filterField(qint32 firstFieldLine, qint32 lastFieldLine, const SourceField &inputField)
+void TransformPal::filterFields(qint32 firstFieldFirstLine, qint32 firstFieldLastLine,
+                                qint32 secondFieldFirstLine, qint32 secondFieldLastLine,
+                                const QVector<SourceField> &inputFields, qint32 startIndex, qint32 endIndex,
+                                QVector<const double *> &outputFields)
 {
     assert(configurationSet);
 
-    // Check we have a valid input field
-    assert(!inputField.data.isNull());
+    // Check we have a valid vector of input fields, and a matching output vector
+    assert((inputFields.size() % 2) == 0);
+    for (qint32 i = 0; i < inputFields.size(); i++) {
+        assert(!inputFields[i].data.isNull());
+    }
+    assert(outputFields.size() == (endIndex - startIndex));
 
     // Check that there is enough horizontal space around the active region to
     // overlap safely by half a tile. (We can't do this vertically because we'd
@@ -115,9 +119,26 @@ const double *TransformPal::filterField(qint32 firstFieldLine, qint32 lastFieldL
     assert((videoParameters.activeVideoStart - videoParameters.colourBurstEnd) >= HALFXTILE);
     assert((videoParameters.fieldWidth - videoParameters.activeVideoEnd) >= HALFXTILE);
 
-    // Clear chromaBuf
-    chromaBuf.fill(0.0);
+    // Allocate and clear output buffers
+    chromaBuf.resize(endIndex - startIndex);
+    for (qint32 i = 0; i < chromaBuf.size(); i++) {
+        chromaBuf[i].resize(videoParameters.fieldWidth * videoParameters.fieldHeight);
+        chromaBuf[i].fill(0.0);
 
+        outputFields[i] = chromaBuf[i].data();
+    }
+
+    for (qint32 i = startIndex, j = 0; i < endIndex; i++, j++) {
+        filterField(inputFields[i],
+                    (i % 2) == 0 ? firstFieldFirstLine : secondFieldFirstLine,
+                    (i % 2) == 0 ? firstFieldLastLine : secondFieldLastLine,
+                    j);
+    }
+}
+
+// Process one field, writing the reuslt into chromaBuf[outputIndex]
+void TransformPal::filterField(const SourceField& inputField, qint32 firstFieldLine, qint32 lastFieldLine, qint32 outputIndex)
+{
     // Iterate through the overlapping tile positions, covering the active area.
     // (See TransformThread member variable documentation for how the tiling works.)
     for (qint32 tileY = firstFieldLine - HALFYTILE; tileY < lastFieldLine; tileY += HALFYTILE) {
@@ -133,11 +154,9 @@ const double *TransformPal::filterField(qint32 firstFieldLine, qint32 lastFieldL
             }
 
             // Compute the inverse FFT
-            inverseFFTTile(tileX, tileY, firstFieldLine, lastFieldLine);
+            inverseFFTTile(tileX, tileY, firstFieldLine, lastFieldLine, outputIndex);
         }
     }
-
-    return chromaBuf.data();
 }
 
 // Apply the forward FFT to an input tile, populating fftComplexIn
@@ -169,8 +188,8 @@ void TransformPal::forwardFFTTile(qint32 tileX, qint32 tileY, const SourceField 
     fftw_execute(forwardPlan);
 }
 
-// Apply the inverse FFT to fftComplexOut, overlaying the result into chromaBuf
-void TransformPal::inverseFFTTile(qint32 tileX, qint32 tileY, qint32 firstFieldLine, qint32 lastFieldLine)
+// Apply the inverse FFT to fftComplexOut, overlaying the result into chromaBuf[outputIndex]
+void TransformPal::inverseFFTTile(qint32 tileX, qint32 tileY, qint32 firstFieldLine, qint32 lastFieldLine, qint32 outputIndex)
 {
     // Work out what portion of this tile is inside the active area
     const qint32 startX = qMax(videoParameters.activeVideoStart - tileX, 0);
@@ -182,7 +201,7 @@ void TransformPal::inverseFFTTile(qint32 tileX, qint32 tileY, qint32 firstFieldL
     fftw_execute(inversePlan);
 
     // Overlay the result, normalising the FFTW output, into chromaBuf
-    double *outputPtr = chromaBuf.data();
+    double *outputPtr = chromaBuf[outputIndex].data();
     for (qint32 y = startY; y < endY; y++) {
         double *b = outputPtr + ((tileY + y) * videoParameters.fieldWidth);
         for (qint32 x = startX; x < endX; x++) {

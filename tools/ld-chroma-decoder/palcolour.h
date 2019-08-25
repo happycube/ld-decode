@@ -29,7 +29,7 @@
 #include <QObject>
 #include <QtMath>
 #include <QDebug>
-#include <cassert>
+#include <QVector>
 
 #include "lddecodemetadata.h"
 
@@ -62,6 +62,10 @@ public:
     // Decode two fields to produce an interlaced frame.
     QByteArray decodeFrame(const SourceField &firstField, const SourceField &secondField);
 
+    // Decode a sequence of fields into a sequence of interlaced frames
+    void decodeFrames(const QVector<SourceField> &inputFields, qint32 startIndex, qint32 endIndex,
+                      QVector<QByteArray> &outputFrames);
+
     // Maximum frame size, based on PAL
     static const qint32 MAX_WIDTH = 1135;
     static const qint32 MAX_HEIGHT = 625;
@@ -69,10 +73,7 @@ public:
 private:
     // Information about a field we're decoding.
     struct FieldInfo {
-        explicit FieldInfo(const LdDecodeMetaData::Field &field, const Configuration &configuration, double chromaGain);
-
-        // Chroma gain factor, based on colourburst amplitude.
-        double chromaGain;
+        explicit FieldInfo(qint32 offset, const Configuration &configuration);
 
         // Vertical pixels to offset this field within the interlaced frame --
         // i.e. 0 for the top field, 1 for the bottom field.
@@ -84,7 +85,8 @@ private:
     };
 
     // Decode one field into outputFrame.
-    void decodeField(const SourceField &field, double chromaGain);
+    void decodeField(const QByteArray &fieldData, const double *chromaData, const FieldInfo &fieldInfo, double chromaGain,
+                     QByteArray &outputFrame);
 
     // Information about a line we're decoding.
     struct LineInfo {
@@ -106,7 +108,8 @@ private:
     // to chroma.
     // compData is the composite signal, used for reconstructing Y at the end.
     template <typename InputSample, bool useTransformFilter>
-    void decodeLine(const FieldInfo &fieldInfo, const LineInfo &line, const InputSample *inputData, const quint16 *compData);
+    void decodeLine(const FieldInfo &fieldInfo, const LineInfo &line, double chromaGain,
+                    const InputSample *inputData, const quint16 *compData, QByteArray &outputFrame);
 
     // Configuration parameters
     bool configurationSet;
@@ -132,9 +135,6 @@ private:
     static const qint32 FILTER_SIZE = 7;
     double cfilt[FILTER_SIZE + 1][4];
     double yfilt[FILTER_SIZE + 1][2];
-
-    // The output frame
-    QByteArray outputFrame;
 
     // Method to build the required look-up tables
     void buildLookUpTables();

@@ -60,11 +60,13 @@ PalThread::PalThread(QAtomicInt& _abort, DecoderPool& _decoderPool,
 void PalThread::decodeFrames(const QVector<SourceField> &inputFields, qint32 startIndex, qint32 endIndex,
                              QVector<QByteArray> &outputFrames)
 {
-    for (qint32 i = startIndex, j = 0; i < endIndex; i += 2, j++) {
-        // Perform the PALcolour filtering
-        QByteArray outputData = palColour.decodeFrame(inputFields[i], inputFields[i + 1]);
+    QVector<QByteArray> decodedFrames(outputFrames.size());
 
+    // Perform the PALcolour filtering
+    palColour.decodeFrames(inputFields, startIndex, endIndex, decodedFrames);
+
+    for (qint32 i = 0; i < outputFrames.size(); i++) {
         // Crop the frame to just the active area
-        outputFrames[j] = PalDecoder::cropOutputFrame(config, outputData);
+        outputFrames[i] = PalDecoder::cropOutputFrame(config, decodedFrames[i]);
     }
 }
