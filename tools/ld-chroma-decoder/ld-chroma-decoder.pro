@@ -15,34 +15,34 @@ DEFINES += QT_DEPRECATED_WARNINGS
 #DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
 
 SOURCES += \
-    main.cpp \
+    comb.cpp \
     decoder.cpp \
     decoderpool.cpp \
-    palcolour.cpp \
-    paldecoder.cpp \
-    transformpal.cpp \
-    comb.cpp \
-    rgb.cpp \
-    yiq.cpp \
+    main.cpp \
     ntscdecoder.cpp \
     opticalflow.cpp \
+    palcolour.cpp \
+    paldecoder.cpp \
+    rgb.cpp \
+    transformpal.cpp \
+    yiq.cpp \
     ../library/tbc/lddecodemetadata.cpp \
     ../library/tbc/sourcevideo.cpp
 
 HEADERS += \
+    comb.h \
     decoder.h \
     decoderpool.h \
-    palcolour.h \
-    paldecoder.h \
-    transformpal.h \
-    comb.h \
-    rgb.h \
-    yiq.h \
     iirfilter.h \
     ntscdecoder.h \
-    ../../deemp.h \
     opticalflow.h \
+    palcolour.h \
+    paldecoder.h \
+    rgb.h \
+    transformpal.h \
+    yiq.h \
     yiqbuffer.h \
+    ../../deemp.h \
     ../library/tbc/lddecodemetadata.h \
     ../library/tbc/sourcevideo.h
 
