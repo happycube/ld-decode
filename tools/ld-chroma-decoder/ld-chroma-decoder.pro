@@ -39,6 +39,7 @@ HEADERS += \
     palcolour.h \
     paldecoder.h \
     rgb.h \
+    sourcefield.h \
     transformpal.h \
     yiq.h \
     yiqbuffer.h \

@@ -37,6 +37,7 @@
 
 #include "comb.h"
 #include "decoder.h"
+#include "sourcefield.h"
 
 class DecoderPool;
 
@@ -66,7 +67,7 @@ public:
                         QObject *parent = nullptr);
 
 protected:
-    QByteArray decodeFrame(const Decoder::InputField &firstField, const Decoder::InputField &secondField) override;
+    QByteArray decodeFrame(const SourceField &firstField, const SourceField &secondField) override;
 
 private:
     // Settings

@@ -38,6 +38,7 @@
 #include "sourcevideo.h"
 
 #include "decoder.h"
+#include "sourcefield.h"
 
 class DecoderPool
 {
@@ -52,7 +53,7 @@ public:
 
     // For worker threads: get the next batch of data from the input file.
     //
-    // fields will be resized and filled with pairs of InputFields; entries
+    // fields will be resized and filled with pairs of SourceFields; entries
     // from startIndex to endIndex are those that should be processed into
     // output frames, with startIndex corresponding to the first field of frame
     // startFrameNumber.
@@ -64,7 +65,7 @@ public:
     //
     // Returns true if a frame was returned, false if the end of the input has
     // been reached.
-    bool getInputFrames(qint32 &startFrameNumber, QVector<Decoder::InputField> &fields, qint32 &startIndex, qint32 &endIndex);
+    bool getInputFrames(qint32 &startFrameNumber, QVector<SourceField> &fields, qint32 &startIndex, qint32 &endIndex);
 
     // For worker threads: return decoded frames to write to the output file.
     //

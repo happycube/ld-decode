@@ -74,7 +74,7 @@ NtscThread::NtscThread(QAtomicInt& _abort, DecoderPool &_decoderPool,
     comb.updateConfiguration(config.videoParameters, config.combConfig);
 }
 
-QByteArray NtscThread::decodeFrame(const Decoder::InputField &firstField, const Decoder::InputField &secondField)
+QByteArray NtscThread::decodeFrame(const SourceField &firstField, const SourceField &secondField)
 {
     // Filter the frame
     QByteArray outputData = comb.decodeFrame(firstField.field, firstField.data, secondField.field, secondField.data);

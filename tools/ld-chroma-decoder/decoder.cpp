@@ -118,7 +118,7 @@ DecoderThread::DecoderThread(QAtomicInt& _abort, DecoderPool& _decoderPool, QObj
 void DecoderThread::run()
 {
     // Input and output data
-    QVector<Decoder::InputField> inputFields;
+    QVector<SourceField> inputFields;
     QVector<QByteArray> outputFrames;
 
     while (!abort) {

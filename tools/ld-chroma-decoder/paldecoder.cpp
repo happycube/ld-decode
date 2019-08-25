@@ -59,7 +59,7 @@ PalThread::PalThread(QAtomicInt& _abort, DecoderPool& _decoderPool,
     palColour.updateConfiguration(config.videoParameters, config.pal);
 }
 
-QByteArray PalThread::decodeFrame(const Decoder::InputField &firstField, const Decoder::InputField &secondField)
+QByteArray PalThread::decodeFrame(const SourceField &firstField, const SourceField &secondField)
 {
     // Perform the PALcolour filtering
     QByteArray outputData = palColour.decodeFrame(firstField.field, firstField.data, secondField.field, secondField.data);

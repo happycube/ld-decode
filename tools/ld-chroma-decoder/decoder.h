@@ -33,6 +33,8 @@
 
 #include "lddecodemetadata.h"
 
+#include "sourcefield.h"
+
 class DecoderPool;
 
 // Abstract base class for chroma decoders.
@@ -62,12 +64,12 @@ public:
     virtual bool configure(const LdDecodeMetaData::VideoParameters &videoParameters) = 0;
 
     // After configuration, return the number of frames that the decoder needs
-    // to be able to see into the past (each frame being two InputFields).
+    // to be able to see into the past (each frame being two SourceFields).
     // The default implementation returns 0, which is appropriate for 1D/2D decoders.
     virtual qint32 getLookBehind();
 
     // After configuration, return the number of frames that the decoder needs
-    // to be able to see into the future (each frame being two InputFields).
+    // to be able to see into the future (each frame being two SourceFields).
     // The default implementation returns 0, which is appropriate for 1D/2D decoders.
     virtual qint32 getLookAhead();
 
@@ -83,12 +85,6 @@ public:
         qint32 lastActiveLine;
         qint32 topPadLines;
         qint32 bottomPadLines;
-    };
-
-    // A field read from the input file
-    struct InputField {
-        LdDecodeMetaData::Field field;
-        QByteArray data;
     };
 
     // Compute the output frame size in Configuration, adjusting the active
@@ -110,7 +106,7 @@ protected:
     void run() override;
 
     // Decode two fields into an interlaced, cropped frame
-    virtual QByteArray decodeFrame(const Decoder::InputField &firstField, const Decoder::InputField &secondField) = 0;
+    virtual QByteArray decodeFrame(const SourceField &firstField, const SourceField &secondField) = 0;
 
     // Decoder pool
     QAtomicInt& abort;
