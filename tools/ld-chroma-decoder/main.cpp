@@ -33,7 +33,9 @@
 #include "decoderpool.h"
 #include "lddecodemetadata.h"
 
+#include "comb.h"
 #include "ntscdecoder.h"
+#include "palcolour.h"
 #include "paldecoder.h"
 
 // Global for debug output
@@ -187,9 +189,6 @@ int main(int argc, char *argv[])
 
     // Get the options from the parser
     bool isDebugOn = parser.isSet(showDebugOption);
-    bool blackAndWhite = parser.isSet(setBwModeOption);
-    bool showOpticalFlow = parser.isSet(showOpticalFlowOption);
-    bool whitePoint = parser.isSet(whitePointOption);
     if (parser.isSet(setQuietOption)) showOutput = false;
 
     // Get the arguments from the parser
@@ -220,7 +219,8 @@ int main(int argc, char *argv[])
     qint32 startFrame = -1;
     qint32 length = -1;
     qint32 maxThreads = QThread::idealThreadCount();
-    double transformThreshold = 0.4;
+    PalColour::Configuration palConfig;
+    Comb::Configuration combConfig;
 
     if (parser.isSet(startFrameOption)) {
         startFrame = parser.value(startFrameOption).toInt();
@@ -252,8 +252,27 @@ int main(int argc, char *argv[])
         }
     }
 
+    if (parser.isSet(setBwModeOption)) {
+        palConfig.blackAndWhite = true;
+        combConfig.blackAndWhite = true;
+    }
+
+    if (parser.isSet(whitePointOption)) {
+        combConfig.whitePoint100 = true;
+    }
+
+    if (parser.isSet(showOpticalFlowOption)) {
+        combConfig.showOpticalFlowMap = true;
+    }
+
     if (parser.isSet(transformThresholdOption)) {
-        transformThreshold = parser.value(transformThresholdOption).toDouble();
+        palConfig.transformThreshold = parser.value(transformThresholdOption).toDouble();
+
+        if (palConfig.transformThreshold < 0.0 || palConfig.transformThreshold > 1.0) {
+            // Quit with error
+            qCritical("Transform threshold must be between 0 and 1");
+            return -1;
+        }
     }
 
     // Process the command line options
@@ -283,7 +302,7 @@ int main(int argc, char *argv[])
     }
 
     // Require ntsc3d if the optical flow map overlay is selected
-    if (showOpticalFlow && decoderName != "ntsc3d") {
+    if (combConfig.showOpticalFlowMap && decoderName != "ntsc3d") {
         qCritical() << "Can only show optical flow with the ntsc3d decoder";
         return -1;
     }
@@ -291,13 +310,15 @@ int main(int argc, char *argv[])
     // Select the decoder
     QScopedPointer<Decoder> decoder;
     if (decoderName == "pal2d") {
-        decoder.reset(new PalDecoder(blackAndWhite));
+        decoder.reset(new PalDecoder(palConfig));
     } else if (decoderName == "transform2d") {
-        decoder.reset(new PalDecoder(blackAndWhite, true, transformThreshold));
+        palConfig.useTransformFilter = true;
+        decoder.reset(new PalDecoder(palConfig));
     } else if (decoderName == "ntsc2d") {
-        decoder.reset(new NtscDecoder(blackAndWhite, whitePoint, false, false));
+        decoder.reset(new NtscDecoder(combConfig));
     } else if (decoderName == "ntsc3d") {
-        decoder.reset(new NtscDecoder(blackAndWhite, whitePoint, true, showOpticalFlow));
+        combConfig.use3D = true;
+        decoder.reset(new NtscDecoder(combConfig));
     } else {
         qCritical() << "Unknown decoder " << decoderName;
         return -1;

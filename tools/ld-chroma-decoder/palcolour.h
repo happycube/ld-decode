@@ -45,7 +45,7 @@ public:
 
     struct Configuration {
         bool blackAndWhite = false;
-        bool useTransformFilter = true;
+        bool useTransformFilter = false;
         double transformThreshold = 0.4;
 
         // Interlaced line 44 is PAL line 23 (the first active half-line)

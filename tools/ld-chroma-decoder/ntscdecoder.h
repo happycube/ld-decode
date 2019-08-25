@@ -44,7 +44,7 @@ class DecoderPool;
 // 2D/3D NTSC decoder using Comb
 class NtscDecoder : public Decoder {
 public:
-    NtscDecoder(bool blackAndWhite, bool whitePoint, bool use3D, bool showOpticalFlowMap);
+    NtscDecoder(const Comb::Configuration &combConfig);
     bool configure(const LdDecodeMetaData::VideoParameters &videoParameters) override;
     qint32 getLookBehind() const override;
     QThread *makeThread(QAtomicInt& abort, DecoderPool& decoderPool) override;

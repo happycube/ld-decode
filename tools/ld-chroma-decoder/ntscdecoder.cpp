@@ -28,14 +28,9 @@
 
 #include "decoderpool.h"
 
-NtscDecoder::NtscDecoder(bool blackAndWhite, bool whitePoint, bool use3D, bool showOpticalFlowMap) {
-    // Set the comb filter configuration
-    config.combConfig.blackAndWhite = blackAndWhite;
-    config.combConfig.whitePoint100 = whitePoint;
-
-    // Set the filter type
-    config.combConfig.use3D = use3D;
-    config.combConfig.showOpticalFlowMap = showOpticalFlowMap;
+NtscDecoder::NtscDecoder(const Comb::Configuration &combConfig)
+{
+    config.combConfig = combConfig;
 }
 
 bool NtscDecoder::configure(const LdDecodeMetaData::VideoParameters &videoParameters) {

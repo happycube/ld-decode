@@ -27,11 +27,9 @@
 
 #include "decoderpool.h"
 
-PalDecoder::PalDecoder(bool _blackAndWhite, bool _useTransformFilter, double _transformThreshold)
+PalDecoder::PalDecoder(const PalColour::Configuration &palConfig)
 {
-    config.pal.blackAndWhite = _blackAndWhite;
-    config.pal.useTransformFilter = _useTransformFilter;
-    config.pal.transformThreshold = _transformThreshold;
+    config.pal = palConfig;
 }
 
 bool PalDecoder::configure(const LdDecodeMetaData::VideoParameters &videoParameters) {
