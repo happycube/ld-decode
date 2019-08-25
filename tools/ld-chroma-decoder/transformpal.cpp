@@ -46,16 +46,23 @@
     to multiple fields.
  */
 
+// Compute one value of the window function, applied to the data blocks before
+// the FFT to reduce edge effects. This is a symmetrical raised-cosine
+// function, which means that the overlapping inverse-FFT blocks can be summed
+// directly without needing an inverse window function.
+static double computeWindow(qint32 element, qint32 limit)
+{
+    return 0.5 - (0.5 * cos((2 * M_PI * (element + 0.5)) / limit));
+}
+
 TransformPal::TransformPal()
     : configurationSet(false)
 {
-    // Compute the window function applied to the data blocks before the FFT to
-    // reduce edge effects. A symmetrical raised-cosine function is chosen so
-    // that the overlapping inverse-FFT blocks can be summed directly.
+    // Compute the window function.
     for (qint32 y = 0; y < YTILE; y++) {
-        const double windowY = (1 - cos((2 * M_PI * (y + 0.5)) / YTILE)) / 2;
+        const double windowY = computeWindow(y, YTILE);
         for (qint32 x = 0; x < XTILE; x++) {
-            const double windowX = (1 - cos((2 * M_PI * (x + 0.5)) / XTILE)) / 2;
+            const double windowX = computeWindow(x, XTILE);
             windowFunction[y][x] = windowY * windowX;
         }
     }
