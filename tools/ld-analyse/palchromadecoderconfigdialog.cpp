@@ -32,11 +32,6 @@ PalChromaDecoderConfigDialog::PalChromaDecoderConfigDialog(QWidget *parent) :
     ui->setupUi(this);
     setWindowFlags(Qt::Window);
 
-    // Set default configuration
-    palChromaDecoderConfig.blackAndWhite = false;
-    palChromaDecoderConfig.useTransformFilter = true;
-    palChromaDecoderConfig.transformThreshold = 0.4;
-
     ui->thresholdHorizontalSlider->setMinimum(0);
     ui->thresholdHorizontalSlider->setMaximum(100);
 
@@ -49,17 +44,18 @@ PalChromaDecoderConfigDialog::~PalChromaDecoderConfigDialog()
     delete ui;
 }
 
-void PalChromaDecoderConfigDialog::setConfiguration(PalChromaDecoderConfigDialog::PalChromaDecoderConfig _palChromaDecoderConfig)
+void PalChromaDecoderConfigDialog::setConfiguration(const PalColour::Configuration &_palChromaDecoderConfig)
 {
-    if (_palChromaDecoderConfig.transformThreshold < 0.00) _palChromaDecoderConfig.transformThreshold = 0.00;
-    if (_palChromaDecoderConfig.transformThreshold > 1.00) _palChromaDecoderConfig.transformThreshold = 1.00;
-
     palChromaDecoderConfig = _palChromaDecoderConfig;
+
+    if (palChromaDecoderConfig.transformThreshold < 0.00) palChromaDecoderConfig.transformThreshold = 0.00;
+    if (palChromaDecoderConfig.transformThreshold > 1.00) palChromaDecoderConfig.transformThreshold = 1.00;
+
     updateDialog();
     emit palChromaDecoderConfigChanged();
 }
 
-PalChromaDecoderConfigDialog::PalChromaDecoderConfig PalChromaDecoderConfigDialog::getConfiguration()
+const PalColour::Configuration &PalChromaDecoderConfigDialog::getConfiguration()
 {
     return palChromaDecoderConfig;
 }

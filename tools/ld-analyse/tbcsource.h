@@ -98,8 +98,8 @@ public:
     qint32 getCcData0(qint32 frameNumber);
     qint32 getCcData1(qint32 frameNumber);
 
-    void setPalColourConfiguration(bool blackAndWhite, bool useTransformFilter, double transformThreshold);
-    void getPalColourConfiguration(bool &blackAndWhite, bool &useTransformFilter, double &transformThreshold);
+    void setPalColourConfiguration(const PalColour::Configuration &palColourConfiguration);
+    const PalColour::Configuration &getPalColourConfiguration();
 
 signals:
     void busyLoading(QString information);

@@ -468,11 +468,9 @@ qint32 TbcSource::getCcData1(qint32 frameNumber)
     return secondField.ntsc.ccData1;
 }
 
-void TbcSource::setPalColourConfiguration(bool blackAndWhite, bool useTransformFilter, double transformThreshold)
+void TbcSource::setPalColourConfiguration(const PalColour::Configuration &_palColourConfiguration)
 {
-    palColourConfiguration.blackAndWhite = blackAndWhite;
-    palColourConfiguration.useTransformFilter = useTransformFilter;
-    palColourConfiguration.transformThreshold = transformThreshold;
+    palColourConfiguration = _palColourConfiguration;
 
     // Get the video parameters
     LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
@@ -483,11 +481,9 @@ void TbcSource::setPalColourConfiguration(bool blackAndWhite, bool useTransformF
     decoderConfigurationChanged = true;
 }
 
-void TbcSource::getPalColourConfiguration(bool &blackAndWhite, bool &useTransformFilter, double &transformThreshold)
+const PalColour::Configuration &TbcSource::getPalColourConfiguration()
 {
-    blackAndWhite = palColourConfiguration.blackAndWhite;
-    useTransformFilter = palColourConfiguration.useTransformFilter;
-    transformThreshold = palColourConfiguration.transformThreshold;
+    return palColourConfiguration;
 }
 
 // Private methods ----------------------------------------------------------------------------------------------------
@@ -560,8 +556,8 @@ QImage TbcSource::generateQImage(qint32 firstFieldNumber, qint32 secondFieldNumb
         if (videoParameters.isSourcePal) {
             // PAL source
 
-            firstActiveLine = palColour.getConfiguration().firstActiveLine;
-            lastActiveLine = palColour.getConfiguration().lastActiveLine;
+            firstActiveLine = palColourConfiguration.firstActiveLine;
+            lastActiveLine = palColourConfiguration.lastActiveLine;
 
             outputData = palColour.decodeFrame(firstField, secondField);
         } else {
