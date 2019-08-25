@@ -105,8 +105,9 @@ public:
 protected:
     void run() override;
 
-    // Decode two fields into an interlaced, cropped frame
-    virtual QByteArray decodeFrame(const SourceField &firstField, const SourceField &secondField) = 0;
+    // Decode a sequence of fields into a sequence of frames
+    virtual void decodeFrames(const QVector<SourceField> &inputFields, qint32 startIndex, qint32 endIndex,
+                              QVector<QByteArray> &outputFrames) = 0;
 
     // Decoder pool
     QAtomicInt& abort;

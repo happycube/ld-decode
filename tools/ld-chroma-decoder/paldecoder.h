@@ -65,7 +65,8 @@ public:
                        QObject *parent = nullptr);
 
 protected:
-    QByteArray decodeFrame(const SourceField &firstField, const SourceField &secondField) override;
+    void decodeFrames(const QVector<SourceField> &inputFields, qint32 startIndex, qint32 endIndex,
+                      QVector<QByteArray> &outputFrames) override;
 
 private:
     // Settings

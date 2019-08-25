@@ -57,11 +57,14 @@ PalThread::PalThread(QAtomicInt& _abort, DecoderPool& _decoderPool,
     palColour.updateConfiguration(config.videoParameters, config.pal);
 }
 
-QByteArray PalThread::decodeFrame(const SourceField &firstField, const SourceField &secondField)
+void PalThread::decodeFrames(const QVector<SourceField> &inputFields, qint32 startIndex, qint32 endIndex,
+                             QVector<QByteArray> &outputFrames)
 {
-    // Perform the PALcolour filtering
-    QByteArray outputData = palColour.decodeFrame(firstField, secondField);
+    for (qint32 i = startIndex, j = 0; i < endIndex; i += 2, j++) {
+        // Perform the PALcolour filtering
+        QByteArray outputData = palColour.decodeFrame(inputFields[i], inputFields[i + 1]);
 
-    // Crop the frame to just the active area
-    return PalDecoder::cropOutputFrame(config, outputData);
+        // Crop the frame to just the active area
+        outputFrames[j] = PalDecoder::cropOutputFrame(config, outputData);
+    }
 }
