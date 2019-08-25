@@ -89,9 +89,10 @@ TransformPal::~TransformPal()
 }
 
 void TransformPal::updateConfiguration(const LdDecodeMetaData::VideoParameters &_videoParameters,
-                                       double _threshold)
+                                       TransformPal::TransformMode _mode, double _threshold)
 {
     videoParameters = _videoParameters;
+    mode = _mode;
     threshold = _threshold;
 
     // Resize the chroma buffer
@@ -124,8 +125,12 @@ const double *TransformPal::filterField(qint32 firstFieldLine, qint32 lastFieldL
             // Compute the forward FFT
             forwardFFTTile(tileX, tileY, inputField, firstFieldLine, lastFieldLine);
 
-            // Apply the frequency-domain filter
-            applyFilter();
+            // Apply the frequency-domain filter in the appropriate mode
+            if (mode == levelMode) {
+                applyFilter<levelMode>();
+            } else {
+                applyFilter<thresholdMode>();
+            }
 
             // Compute the inverse FFT
             inverseFFTTile(tileX, tileY, firstFieldLine, lastFieldLine);
@@ -192,7 +197,9 @@ static inline double fftwAbsSq(const fftw_complex &value)
     return (value[0] * value[0]) + (value[1] * value[1]);
 }
 
-// Apply the frequency-domain filter
+// Apply the frequency-domain filter.
+// (Templated so that the inner loop gets specialised for each mode.)
+template <TransformPal::TransformMode MODE>
 void TransformPal::applyFilter()
 {
     // Clear fftComplexOut. We discard values by default; the filter only
@@ -205,7 +212,7 @@ void TransformPal::applyFilter()
     // This is a direct translation of transform_filter from pyctools-pal.
     // The main simplification is that we don't need to worry about
     // conjugates, because FFTW only returns half the result in the first
-    // place. We've also only implemented "threshold" mode for now.
+    // place.
     //
     // The general idea is that a real modulated chroma signal will be
     // symmetrical around the U carrier, which is at fSC Hz and 72 c/aph -- and
@@ -246,23 +253,41 @@ void TransformPal::applyFilter()
                 continue;
             }
 
-            // Compare the magnitudes of the two values.
-            // (In fact, we compute the square of the magnitude, and square
-            // both sides of the comparison below; this saves an expensive sqrt
-            // operation.)
-            // XXX Implement other comparison modes
+            // Get the squares of the magnitudes (to minimise the number of sqrts)
             const double m_in_sq = fftwAbsSq(in_val);
             const double m_ref_sq = fftwAbsSq(ref_val);
-            if (m_in_sq < m_ref_sq * threshold_sq || m_ref_sq < m_in_sq * threshold_sq) {
-                // They're different. Probably not a chroma signal; throw it away.
-                continue;
-            }
 
-            // They're similar. Keep it!
-            bo[x][0] = in_val[0];
-            bo[x][1] = in_val[1];
-            bo_ref[x_ref][0] = ref_val[0];
-            bo_ref[x_ref][1] = ref_val[1];
+            if (MODE == levelMode) {
+                // Compare the magnitudes of the two values, and scale the
+                // larger one down so its magnitude is the same as the
+                // smaller one.
+                const double factor = sqrt(m_in_sq / m_ref_sq);
+                if (m_in_sq > m_ref_sq) {
+                    // Reduce in_val, keep ref_val as is
+                    bo[x][0] = in_val[0] / factor;
+                    bo[x][1] = in_val[1] / factor;
+                    bo_ref[x_ref][0] = ref_val[0];
+                    bo_ref[x_ref][1] = ref_val[1];
+                } else {
+                    // Reduce ref_val, keep in_val as is
+                    bo[x][0] = in_val[0];
+                    bo[x][1] = in_val[1];
+                    bo_ref[x_ref][0] = ref_val[0] * factor;
+                    bo_ref[x_ref][1] = ref_val[1] * factor;
+                }
+            } else {
+                // Compare the magnitudes of the two values, and discard
+                // both if they are more different than the threshold.
+                if (m_in_sq < m_ref_sq * threshold_sq || m_ref_sq < m_in_sq * threshold_sq) {
+                    // Probably not a chroma signal; throw it away.
+                } else {
+                    // They're similar. Keep it!
+                    bo[x][0] = in_val[0];
+                    bo[x][1] = in_val[1];
+                    bo_ref[x_ref][0] = ref_val[0];
+                    bo_ref[x_ref][1] = ref_val[1];
+                }
+            }
         }
     }
 }

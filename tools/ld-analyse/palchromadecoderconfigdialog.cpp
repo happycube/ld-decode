@@ -67,16 +67,27 @@ void PalChromaDecoderConfigDialog::updateDialog()
 
     if (palChromaDecoderConfig.useTransformFilter) {
         ui->twoDeeTransformCheckBox->setChecked(true);
-        ui->thresholdHorizontalSlider->setEnabled(true);
-        ui->thresholdValueLabel->setEnabled(true);
+        ui->thresholdModeCheckBox->setEnabled(true);
     } else {
         ui->twoDeeTransformCheckBox->setChecked(false);
-        ui->thresholdHorizontalSlider->setEnabled(false);
-        ui->thresholdValueLabel->setEnabled(false);
+        ui->thresholdModeCheckBox->setEnabled(false);
+    }
+
+    if (palChromaDecoderConfig.transformMode == TransformPal::thresholdMode) {
+        ui->thresholdModeCheckBox->setChecked(true);
+    } else {
+        ui->thresholdModeCheckBox->setChecked(false);
     }
 
     ui->thresholdHorizontalSlider->setValue(static_cast<qint32>(palChromaDecoderConfig.transformThreshold * 100));
     ui->thresholdValueLabel->setText(QString::number(palChromaDecoderConfig.transformThreshold, 'f', 2));
+    if (palChromaDecoderConfig.useTransformFilter && palChromaDecoderConfig.transformMode == TransformPal::thresholdMode) {
+        ui->thresholdHorizontalSlider->setEnabled(true);
+        ui->thresholdValueLabel->setEnabled(true);
+    } else {
+        ui->thresholdHorizontalSlider->setEnabled(false);
+        ui->thresholdValueLabel->setEnabled(false);
+    }
 }
 
 // Methods to handle changes to the dialogue
@@ -92,6 +103,17 @@ void PalChromaDecoderConfigDialog::on_twoDeeTransformCheckBox_clicked()
 {
     if (ui->twoDeeTransformCheckBox->isChecked()) palChromaDecoderConfig.useTransformFilter = true;
     else palChromaDecoderConfig.useTransformFilter = false;
+    updateDialog();
+    emit palChromaDecoderConfigChanged();
+}
+
+void PalChromaDecoderConfigDialog::on_thresholdModeCheckBox_clicked()
+{
+    if (ui->thresholdModeCheckBox->isChecked()) {
+        palChromaDecoderConfig.transformMode = TransformPal::thresholdMode;
+    } else {
+        palChromaDecoderConfig.transformMode = TransformPal::levelMode;
+    }
     updateDialog();
     emit palChromaDecoderConfigChanged();
 }

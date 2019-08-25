@@ -26,7 +26,14 @@
      <item>
       <widget class="QCheckBox" name="twoDeeTransformCheckBox">
        <property name="text">
-        <string>Use 2D PAL transform</string>
+        <string>Use Transform PAL 2D filter</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QCheckBox" name="thresholdModeCheckBox">
+       <property name="text">
+        <string>Use threshold comparison mode</string>
        </property>
       </widget>
      </item>

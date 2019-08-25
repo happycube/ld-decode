@@ -37,6 +37,7 @@
 #include "ntscdecoder.h"
 #include "palcolour.h"
 #include "paldecoder.h"
+#include "transformpal.h"
 
 // Global for debug output
 static bool showDebug = false;
@@ -169,12 +170,17 @@ int main(int argc, char *argv[])
 
     // -- PAL decoder options --
 
+    // Option to select the Transform PAL filter mode
+    QCommandLineOption transformModeOption(QStringList() << "transform-mode",
+                                           QCoreApplication::translate("main", "Transform: Filter mode to use (level, threshold; default level)"),
+                                           QCoreApplication::translate("main", "mode"));
+    parser.addOption(transformModeOption);
+
     // Option to select the Transform PAL threshold
     QCommandLineOption transformThresholdOption(QStringList() << "transform-threshold",
-                                                QCoreApplication::translate("main", "Transform: Similarity threshold for the chroma filter (default 0.4)"),
+                                                QCoreApplication::translate("main", "Transform: Similarity threshold in 'threshold' mode (default 0.4)"),
                                                 QCoreApplication::translate("main", "number"));
     parser.addOption(transformThresholdOption);
-
 
     // -- Positional arguments --
 
@@ -263,6 +269,21 @@ int main(int argc, char *argv[])
 
     if (parser.isSet(showOpticalFlowOption)) {
         combConfig.showOpticalFlowMap = true;
+    }
+
+    if (parser.isSet(transformModeOption)) {
+        const QString name = parser.value(transformModeOption);
+
+        if (name == "level") {
+            palConfig.transformMode = TransformPal::levelMode;
+        } else if (name == "threshold") {
+            palConfig.transformMode = TransformPal::thresholdMode;
+        } else {
+            palConfig.transformMode = TransformPal::levelMode;
+            // Quit with error
+            qCritical() << "Unknown Transform mode " << name;
+            return -1;
+        }
     }
 
     if (parser.isSet(transformThresholdOption)) {

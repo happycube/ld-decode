@@ -42,10 +42,24 @@ public:
     TransformPal();
     ~TransformPal();
 
-    // threshold is the similarity threshold for the filter (values from 0-1
-    // are meaningful; 0.6 is pyctools-pal's default)
+    // Specify what the frequency-domain filter should do to each pair of
+    // frequencies that should be symmetrical around the carriers.
+    enum TransformMode {
+        // Adjust the amplitudes of the two points to be equal
+        levelMode = 0,
+        // If the amplitudes aren't within a threshold of each other, zero both points
+        thresholdMode
+    };
+
+    // Configure TransformPal.
+    //
+    // mode selects an operation mode for the filter.
+    //
+    // threshold is the similarity threshold for the filter in thresholdMode.
+    // Values from 0-1 are meaningful, with higher values requiring signals to
+    // be more similar to be considered chroma. 0.6 is pyctools-pal's default.
     void updateConfiguration(const LdDecodeMetaData::VideoParameters &videoParameters,
-                             double threshold);
+                             TransformMode mode, double threshold);
 
     // Filter an input field.
     // Returns a pointer to an array of the same size (owned by this object)
@@ -55,12 +69,14 @@ public:
 private:
     void forwardFFTTile(qint32 tileX, qint32 tileY, const SourceField &inputField, qint32 firstFieldLine, qint32 lastFieldLine);
     void inverseFFTTile(qint32 tileX, qint32 tileY, qint32 firstFieldLine, qint32 lastFieldLine);
+    template <TransformMode MODE>
     void applyFilter();
 
     // Configuration parameters
     bool configurationSet;
     LdDecodeMetaData::VideoParameters videoParameters;
     double threshold;
+    TransformMode mode;
 
     // FFT input and output sizes.
     // The input field is divided into tiles of XTILE x YTILE, with adjacent
