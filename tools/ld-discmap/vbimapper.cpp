@@ -399,9 +399,20 @@ void VbiMapper::removeDuplicateFrames()
                 qint32 maxSnr = -1;
                 qint32 selection = -1;
                 for (qint32 i = 0; i < duplicates.size(); i++) {
-                    if (frames[duplicates[i]].bSnr > maxSnr) {
+                    qint32 frameNumber = duplicates[i];
+                    qint32 snr = frames[frameNumber].bSnr;
+
+                    // If there is a following frame with the same or lower frame number, the player
+                    // must have skipped during this frame -- give it a big SNR penalty so it's
+                    // unlikely to be selected
+                    if (frameNumber + 1 < frames.size() &&
+                        frames[frameNumber + 1].vbiFrameNumber <= frames[frameNumber].vbiFrameNumber) {
+                        snr -= 20;
+                    }
+
+                    if (snr > maxSnr) {
                         selection = i;
-                        maxSnr = frames[duplicates[i]].bSnr;
+                        maxSnr = snr;
                     }
                 }
 
