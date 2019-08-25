@@ -71,22 +71,8 @@ public:
     static const qint32 MAX_HEIGHT = 625;
 
 private:
-    // Information about a field we're decoding.
-    struct FieldInfo {
-        explicit FieldInfo(qint32 offset, const Configuration &configuration);
-
-        // Vertical pixels to offset this field within the interlaced frame --
-        // i.e. 0 for the top field, 1 for the bottom field.
-        qint32 offset;
-
-        // firstLine/lastLine are the range of active lines within the field.
-        qint32 firstLine;
-        qint32 lastLine;
-    };
-
     // Decode one field into outputFrame.
-    void decodeField(const QByteArray &fieldData, const double *chromaData, const FieldInfo &fieldInfo, double chromaGain,
-                     QByteArray &outputFrame);
+    void decodeField(const SourceField &inputField, const double *chromaData, double chromaGain, QByteArray &outputFrame);
 
     // Information about a line we're decoding.
     struct LineInfo {
@@ -103,13 +89,12 @@ private:
     void detectBurst(LineInfo &line, const quint16 *inputData);
 
     // Decode one line into outputFrame.
-    // inputData (templated, so it can be any numeric type) is the input to the
-    // filter; this may be the composite signal, or it may be pre-filtered down
-    // to chroma.
-    // compData is the composite signal, used for reconstructing Y at the end.
-    template <typename InputSample, bool useTransformFilter>
-    void decodeLine(const FieldInfo &fieldInfo, const LineInfo &line, double chromaGain,
-                    const InputSample *inputData, const quint16 *compData, QByteArray &outputFrame);
+    // chromaData (templated, so it can be any numeric type) is the input to
+    // the chroma demodulator; this may be the composite signal from
+    // inputField, or it may be pre-filtered down to chroma.
+    template <typename ChromaSample, bool useTransformFilter>
+    void decodeLine(const SourceField &inputField, const ChromaSample *chromaData, const LineInfo &line, double chromaGain,
+                    QByteArray &outputFrame);
 
     // Configuration parameters
     bool configurationSet;

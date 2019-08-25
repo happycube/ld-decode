@@ -89,18 +89,19 @@ TransformPal::~TransformPal()
 }
 
 void TransformPal::updateConfiguration(const LdDecodeMetaData::VideoParameters &_videoParameters,
+                                       qint32 _firstActiveLine, qint32 _lastActiveLine,
                                        TransformPal::TransformMode _mode, double _threshold)
 {
     videoParameters = _videoParameters;
+    firstActiveLine = _firstActiveLine;
+    lastActiveLine = _lastActiveLine;
     mode = _mode;
     threshold = _threshold;
 
     configurationSet = true;
 }
 
-void TransformPal::filterFields(qint32 firstFieldFirstLine, qint32 firstFieldLastLine,
-                                qint32 secondFieldFirstLine, qint32 secondFieldLastLine,
-                                const QVector<SourceField> &inputFields, qint32 startIndex, qint32 endIndex,
+void TransformPal::filterFields(const QVector<SourceField> &inputFields, qint32 startIndex, qint32 endIndex,
                                 QVector<const double *> &outputFields)
 {
     assert(configurationSet);
@@ -129,22 +130,26 @@ void TransformPal::filterFields(qint32 firstFieldFirstLine, qint32 firstFieldLas
     }
 
     for (qint32 i = startIndex, j = 0; i < endIndex; i++, j++) {
-        filterField(inputFields[i],
-                    (i % 2) == 0 ? firstFieldFirstLine : secondFieldFirstLine,
-                    (i % 2) == 0 ? firstFieldLastLine : secondFieldLastLine,
-                    j);
+        filterField(inputFields[i], j);
     }
 }
 
 // Process one field, writing the reuslt into chromaBuf[outputIndex]
-void TransformPal::filterField(const SourceField& inputField, qint32 firstFieldLine, qint32 lastFieldLine, qint32 outputIndex)
+void TransformPal::filterField(const SourceField& inputField, qint32 outputIndex)
 {
+    const qint32 firstFieldLine = inputField.getFirstActiveLine(firstActiveLine);
+    const qint32 lastFieldLine = inputField.getLastActiveLine(lastActiveLine);
+
     // Iterate through the overlapping tile positions, covering the active area.
     // (See TransformThread member variable documentation for how the tiling works.)
     for (qint32 tileY = firstFieldLine - HALFYTILE; tileY < lastFieldLine; tileY += HALFYTILE) {
+        // Work out which lines of these tiles are within the active region
+        const qint32 startY = qMax(firstFieldLine - tileY, 0);
+        const qint32 endY = qMin(lastFieldLine - tileY, YTILE);
+
         for (qint32 tileX = videoParameters.activeVideoStart - HALFXTILE; tileX < videoParameters.activeVideoEnd; tileX += HALFXTILE) {
             // Compute the forward FFT
-            forwardFFTTile(tileX, tileY, inputField, firstFieldLine, lastFieldLine);
+            forwardFFTTile(tileX, tileY, startY, endY, inputField);
 
             // Apply the frequency-domain filter in the appropriate mode
             if (mode == levelMode) {
@@ -154,18 +159,14 @@ void TransformPal::filterField(const SourceField& inputField, qint32 firstFieldL
             }
 
             // Compute the inverse FFT
-            inverseFFTTile(tileX, tileY, firstFieldLine, lastFieldLine, outputIndex);
+            inverseFFTTile(tileX, tileY, startY, endY, outputIndex);
         }
     }
 }
 
 // Apply the forward FFT to an input tile, populating fftComplexIn
-void TransformPal::forwardFFTTile(qint32 tileX, qint32 tileY, const SourceField &inputField, qint32 firstFieldLine, qint32 lastFieldLine)
+void TransformPal::forwardFFTTile(qint32 tileX, qint32 tileY, qint32 startY, qint32 endY, const SourceField &inputField)
 {
-    // Work out which lines of this tile are within the active region
-    const qint32 startY = qMax(firstFieldLine - tileY, 0);
-    const qint32 endY = qMin(lastFieldLine - tileY, YTILE);
-
     // Copy the input signal into fftReal, applying the window function
     const quint16 *inputPtr = reinterpret_cast<const quint16 *>(inputField.data.data());
     for (qint32 y = 0; y < YTILE; y++) {
@@ -189,13 +190,11 @@ void TransformPal::forwardFFTTile(qint32 tileX, qint32 tileY, const SourceField 
 }
 
 // Apply the inverse FFT to fftComplexOut, overlaying the result into chromaBuf[outputIndex]
-void TransformPal::inverseFFTTile(qint32 tileX, qint32 tileY, qint32 firstFieldLine, qint32 lastFieldLine, qint32 outputIndex)
+void TransformPal::inverseFFTTile(qint32 tileX, qint32 tileY, qint32 startY, qint32 endY, qint32 outputIndex)
 {
-    // Work out what portion of this tile is inside the active area
+    // Work out what X range of this tile is inside the active area
     const qint32 startX = qMax(videoParameters.activeVideoStart - tileX, 0);
     const qint32 endX = qMin(videoParameters.activeVideoEnd - tileX, XTILE);
-    const qint32 startY = qMax(firstFieldLine - tileY, 0);
-    const qint32 endY = qMin(lastFieldLine - tileY, YTILE);
 
     // Convert frequency domain in fftComplexOut back to time domain in fftReal
     fftw_execute(inversePlan);

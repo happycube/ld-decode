@@ -44,6 +44,21 @@ struct SourceField {
                            qint32 firstFrameNumber, qint32 numFrames,
                            qint32 lookBehindFrames, qint32 lookAheadFrames,
                            QVector<SourceField> &fields, qint32 &startIndex, qint32 &endIndex);
+
+    // Return the vertical offset of this field within the interlaced frame
+    // (i.e. 0 for the top field, 1 for the bottom field).
+    qint32 getOffset() const {
+        return field.isFirstField ? 0 : 1;
+    }
+
+    // Return the first/last active line numbers within this field's data,
+    // given the first/last frame line numbers.
+    qint32 getFirstActiveLine(qint32 firstActiveFrameLine) const {
+        return (firstActiveFrameLine + 1 - getOffset()) / 2;
+    }
+    qint32 getLastActiveLine(qint32 lastActiveFrameLine) const {
+        return (lastActiveFrameLine + 1 - getOffset()) / 2;
+    }
 };
 
 #endif

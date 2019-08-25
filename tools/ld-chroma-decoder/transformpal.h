@@ -60,6 +60,7 @@ public:
     // Values from 0-1 are meaningful, with higher values requiring signals to
     // be more similar to be considered chroma. 0.6 is pyctools-pal's default.
     void updateConfiguration(const LdDecodeMetaData::VideoParameters &videoParameters,
+                             qint32 firstActiveLine, qint32 lastActiveLine,
                              TransformMode mode, double threshold);
 
     // Filter input fields.
@@ -67,21 +68,21 @@ public:
     // For each input frame between startFieldIndex and endFieldIndex, a
     // pointer will be placed in outputFields to an array of the same size
     // (owned by this object) containing the chroma signal.
-    void filterFields(qint32 firstFieldFirstLine, qint32 firstFieldLastLine,
-                      qint32 secondFieldFirstLine, qint32 secondFieldLastLine,
-                      const QVector<SourceField> &inputFields, qint32 startIndex, qint32 endIndex,
+    void filterFields(const QVector<SourceField> &inputFields, qint32 startIndex, qint32 endIndex,
                       QVector<const double *> &outputFields);
 
 private:
-    void filterField(const SourceField& inputField, qint32 firstFieldLine, qint32 lastFieldLine, qint32 outputIndex);
-    void forwardFFTTile(qint32 tileX, qint32 tileY, const SourceField &inputField, qint32 firstFieldLine, qint32 lastFieldLine);
-    void inverseFFTTile(qint32 tileX, qint32 tileY, qint32 firstFieldLine, qint32 lastFieldLine, qint32 outputIndex);
+    void filterField(const SourceField& inputField, qint32 outputIndex);
+    void forwardFFTTile(qint32 tileX, qint32 tileY, qint32 startY, qint32 endY, const SourceField &inputField);
+    void inverseFFTTile(qint32 tileX, qint32 tileY, qint32 startY, qint32 endY, qint32 outputIndex);
     template <TransformMode MODE>
     void applyFilter();
 
     // Configuration parameters
     bool configurationSet;
     LdDecodeMetaData::VideoParameters videoParameters;
+    qint32 firstActiveLine;
+    qint32 lastActiveLine;
     double threshold;
     TransformMode mode;
 

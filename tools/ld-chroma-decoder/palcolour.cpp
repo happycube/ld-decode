@@ -79,7 +79,8 @@ void PalColour::updateConfiguration(const LdDecodeMetaData::VideoParameters &_vi
 
     if (configuration.useTransformFilter) {
         // Configure Transform PAL
-        transformPal.updateConfiguration(videoParameters, configuration.transformMode, configuration.transformThreshold);
+        transformPal.updateConfiguration(videoParameters, configuration.firstActiveLine, configuration.lastActiveLine,
+                                         configuration.transformMode, configuration.transformThreshold);
     }
 
     configurationSet = true;
@@ -214,15 +215,10 @@ void PalColour::decodeFrames(const QVector<SourceField> &inputFields, qint32 sta
     assert(configurationSet);
     assert((outputFrames.size() * 2) == (endIndex - startIndex));
 
-    FieldInfo firstFieldInfo(0, configuration);
-    FieldInfo secondFieldInfo(1, configuration);
-
     QVector<const double *> chromaData(endIndex - startIndex);
     if (configuration.useTransformFilter) {
         // Use Transform PAL filter to extract chroma
-        transformPal.filterFields(firstFieldInfo.firstLine, firstFieldInfo.lastLine,
-                                  secondFieldInfo.firstLine, secondFieldInfo.lastLine,
-                                  inputFields, startIndex, endIndex, chromaData);
+        transformPal.filterFields(inputFields, startIndex, endIndex, chromaData);
     }
 
     // Resize and clear the output buffers
@@ -245,30 +241,19 @@ void PalColour::decodeFrames(const QVector<SourceField> &inputFields, qint32 sta
             chromaGain = 0.0;
         }
 
-        decodeField(inputFields[i].data, chromaData[j], firstFieldInfo, chromaGain, outputFrames[k]);
-        decodeField(inputFields[i + 1].data, chromaData[j + 1], secondFieldInfo, chromaGain, outputFrames[k]);
+        decodeField(inputFields[i], chromaData[j], chromaGain, outputFrames[k]);
+        decodeField(inputFields[i + 1], chromaData[j + 1], chromaGain, outputFrames[k]);
     }
 }
 
-PalColour::FieldInfo::FieldInfo(qint32 _offset, const Configuration &configuration)
-    : offset(_offset)
-{
-    // Work out the active lines to be decoded within this field.
-    // If firstActiveLine or lastActiveLine is odd, we can end up with
-    // different ranges for top/bottom fields, so we need to be careful
-    // about how this is rounded.
-    firstLine = (configuration.firstActiveLine + 1 - offset) / 2;
-    lastLine = (configuration.lastActiveLine + 1 - offset) / 2;
-}
-
-void PalColour::decodeField(const QByteArray &compData, const double *chromaData,
-                            const FieldInfo &fieldInfo, double chromaGain,
-                            QByteArray &outputFrame)
+void PalColour::decodeField(const SourceField &inputField, const double *chromaData, double chromaGain, QByteArray &outputFrame)
 {
     // Pointer to the composite signal data
-    const quint16 *compPtr = reinterpret_cast<const quint16 *>(compData.data());
+    const quint16 *compPtr = reinterpret_cast<const quint16 *>(inputField.data.data());
 
-    for (qint32 fieldLine = fieldInfo.firstLine; fieldLine < fieldInfo.lastLine; fieldLine++) {
+    const qint32 firstLine = inputField.getFirstActiveLine(configuration.firstActiveLine);
+    const qint32 lastLine = inputField.getLastActiveLine(configuration.lastActiveLine);
+    for (qint32 fieldLine = firstLine; fieldLine < lastLine; fieldLine++) {
         LineInfo line(fieldLine);
 
         // Detect the colourburst from the composite signal
@@ -276,10 +261,10 @@ void PalColour::decodeField(const QByteArray &compData, const double *chromaData
 
         if (configuration.useTransformFilter) {
             // Decode chroma and luma from the Transform PAL output
-            decodeLine<double, true>(fieldInfo, line, chromaGain, chromaData, compPtr, outputFrame);
+            decodeLine<double, true>(inputField, chromaData, line, chromaGain, outputFrame);
         } else {
             // Decode chroma and luma from the composite signal
-            decodeLine<quint16, false>(fieldInfo, line, chromaGain, compPtr, compPtr, outputFrame);
+            decodeLine<quint16, false>(inputField, compPtr, line, chromaGain, outputFrame);
         }
     }
 }
@@ -354,23 +339,25 @@ void PalColour::detectBurst(LineInfo &line, const quint16 *inputData)
     line.burstNorm = qMax(sqrt(line.bp * line.bp + line.bq * line.bq), 130000.0 / 128);
 }
 
-template <typename InputSample, bool useTransformFilter>
-void PalColour::decodeLine(const FieldInfo &fieldInfo, const LineInfo &line, double chromaGain,
-                           const InputSample *inputData, const quint16 *compData, QByteArray &outputFrame)
+template <typename ChromaSample, bool useTransformFilter>
+void PalColour::decodeLine(const SourceField &inputField, const ChromaSample *chromaData, const LineInfo &line, double chromaGain,
+                           QByteArray &outputFrame)
 {
     // Dummy black line, used when the filter needs to look outside the active region.
-    static constexpr InputSample blackLine[MAX_WIDTH] = {0};
+    static constexpr ChromaSample blackLine[MAX_WIDTH] = {0};
 
     // Get pointers to the surrounding lines of input data.
     // If a line we need is outside the active area, use blackLine instead.
-    const InputSample *in0, *in1, *in2, *in3, *in4, *in5, *in6;
-    in0 =                                                         inputData +  (line.number      * videoParameters.fieldWidth);
-    in1 = (line.number - 1) <  fieldInfo.firstLine ? blackLine : (inputData + ((line.number - 1) * videoParameters.fieldWidth));
-    in2 = (line.number + 1) >= fieldInfo.lastLine  ? blackLine : (inputData + ((line.number + 1) * videoParameters.fieldWidth));
-    in3 = (line.number - 2) <  fieldInfo.firstLine ? blackLine : (inputData + ((line.number - 2) * videoParameters.fieldWidth));
-    in4 = (line.number + 2) >= fieldInfo.lastLine  ? blackLine : (inputData + ((line.number + 2) * videoParameters.fieldWidth));
-    in5 = (line.number - 2) <  fieldInfo.firstLine ? blackLine : (inputData + ((line.number - 3) * videoParameters.fieldWidth));
-    in6 = (line.number + 3) >= fieldInfo.lastLine  ? blackLine : (inputData + ((line.number + 3) * videoParameters.fieldWidth));
+    const qint32 firstLine = inputField.getFirstActiveLine(configuration.firstActiveLine);
+    const qint32 lastLine = inputField.getLastActiveLine(configuration.lastActiveLine);
+    const ChromaSample *in0, *in1, *in2, *in3, *in4, *in5, *in6;
+    in0 =                                               chromaData +  (line.number      * videoParameters.fieldWidth);
+    in1 = (line.number - 1) <  firstLine ? blackLine : (chromaData + ((line.number - 1) * videoParameters.fieldWidth));
+    in2 = (line.number + 1) >= lastLine  ? blackLine : (chromaData + ((line.number + 1) * videoParameters.fieldWidth));
+    in3 = (line.number - 2) <  firstLine ? blackLine : (chromaData + ((line.number - 2) * videoParameters.fieldWidth));
+    in4 = (line.number + 2) >= lastLine  ? blackLine : (chromaData + ((line.number + 2) * videoParameters.fieldWidth));
+    in5 = (line.number - 2) <  firstLine ? blackLine : (chromaData + ((line.number - 3) * videoParameters.fieldWidth));
+    in6 = (line.number + 3) >= lastLine  ? blackLine : (chromaData + ((line.number + 3) * videoParameters.fieldWidth));
 
     // Check that the filter isn't going to run out of data horizontally.
     assert(videoParameters.activeVideoStart - FILTER_SIZE >= videoParameters.colourBurstEnd);
@@ -443,11 +430,11 @@ void PalColour::decodeLine(const FieldInfo &fieldInfo, const LineInfo &line, dou
     }
 
     // Pointer to composite signal data
-    const quint16 *comp = compData + (line.number * videoParameters.fieldWidth);
+    const quint16 *comp = reinterpret_cast<const quint16 *>(inputField.data.data()) + (line.number * videoParameters.fieldWidth);
 
     // Define scan line pointer to output buffer using 16 bit unsigned words
     quint16 *ptr = reinterpret_cast<quint16 *>(outputFrame.data()
-                                               + (((line.number * 2) + fieldInfo.offset) * videoParameters.fieldWidth * 6));
+                                               + (((line.number * 2) + inputField.getOffset()) * videoParameters.fieldWidth * 6));
 
     // Gain for the Y component, to put black at 0 and peak white at 65535
     const double scaledContrast = 65535.0 / (videoParameters.white16bIre - videoParameters.black16bIre);
