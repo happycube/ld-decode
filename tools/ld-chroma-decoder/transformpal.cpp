@@ -98,10 +98,6 @@ const double *TransformPal::filterField(qint32 firstFieldLine, qint32 lastFieldL
     assert(configurationSet);
     assert(!inputField.data.isNull());
 
-    // Pointers to the input and output data
-    const quint16 *inputPtr = reinterpret_cast<const quint16 *>(inputField.data.data());
-    double *outputPtr = chromaBuf.data();
-
     // Clear chromaBuf
     chromaBuf.fill(0.0);
 
@@ -109,47 +105,69 @@ const double *TransformPal::filterField(qint32 firstFieldLine, qint32 lastFieldL
     // (See TransformThread member variable documentation for how the tiling works.)
     for (qint32 tileY = firstFieldLine - HALFYTILE; tileY < lastFieldLine; tileY += HALFYTILE) {
         for (qint32 tileX = videoParameters.activeVideoStart - HALFXTILE; tileX < videoParameters.activeVideoEnd; tileX += HALFXTILE) {
-            // Work out what portion of this tile is inside the active area
-            const qint32 startX = qMax(videoParameters.activeVideoStart - tileX, 0);
-            const qint32 endX = qMin(videoParameters.activeVideoEnd - tileX, XTILE);
-            const qint32 startY = qMax(firstFieldLine - tileY, 0);
-            const qint32 endY = qMin(lastFieldLine - tileY, YTILE);
-
-            // If we aren't going to fill in the whole tile, zero it first
-            if (startX != 0 || endX != XTILE || startY != 0 || endY != YTILE) {
-                for (qint32 i = 0; i < YTILE * XTILE; i++) {
-                    fftReal[i] = 0.0;
-                }
-            }
-
-            // Copy the input signal into fftReal, applying the window function
-            for (qint32 y = startY; y < endY; y++) {
-                const quint16 *b = inputPtr + ((tileY + y) * videoParameters.fieldWidth);
-                for (qint32 x = startX; x < endX; x++) {
-                    fftReal[(y * XTILE) + x] = b[tileX + x] * windowFunction[y][x];
-                }
-            }
-
-            // Convert time domain in fftReal to frequency domain in fftComplexIn
-            fftw_execute(forwardPlan);
+            // Compute the forward FFT
+            forwardFFTTile(tileX, tileY, inputField, firstFieldLine, lastFieldLine);
 
             // Apply the frequency-domain filter
             applyFilter();
 
-            // Convert frequency domain in fftComplexOut back to time domain in fftReal
-            fftw_execute(inversePlan);
-
-            // Overlay the result, normalising the FFTW output, into chromaBuf
-            for (qint32 y = startY; y < endY; y++) {
-                double *b = outputPtr + ((tileY + y) * videoParameters.fieldWidth);
-                for (qint32 x = startX; x < endX; x++) {
-                    b[tileX + x] += fftReal[(y * XTILE) + x] / (YTILE * XTILE);
-                }
-            }
+            // Compute the inverse FFT
+            inverseFFTTile(tileX, tileY, firstFieldLine, lastFieldLine);
         }
     }
 
     return chromaBuf.data();
+}
+
+// Apply the forward FFT to an input tile, populating fftComplexIn
+void TransformPal::forwardFFTTile(qint32 tileX, qint32 tileY, const SourceField &inputField, qint32 firstFieldLine, qint32 lastFieldLine)
+{
+    // Work out what portion of this tile is inside the active area
+    const qint32 startX = qMax(videoParameters.activeVideoStart - tileX, 0);
+    const qint32 endX = qMin(videoParameters.activeVideoEnd - tileX, XTILE);
+    const qint32 startY = qMax(firstFieldLine - tileY, 0);
+    const qint32 endY = qMin(lastFieldLine - tileY, YTILE);
+
+    // If we aren't going to fill in the whole tile, zero it first
+    if (startX != 0 || endX != XTILE || startY != 0 || endY != YTILE) {
+        for (qint32 i = 0; i < YTILE * XTILE; i++) {
+            fftReal[i] = 0.0;
+        }
+    }
+
+    // Copy the input signal into fftReal, applying the window function
+    const quint16 *inputPtr = reinterpret_cast<const quint16 *>(inputField.data.data());
+    for (qint32 y = startY; y < endY; y++) {
+        const quint16 *b = inputPtr + ((tileY + y) * videoParameters.fieldWidth);
+        for (qint32 x = startX; x < endX; x++) {
+            fftReal[(y * XTILE) + x] = b[tileX + x] * windowFunction[y][x];
+        }
+    }
+
+    // Convert time domain in fftReal to frequency domain in fftComplexIn
+    fftw_execute(forwardPlan);
+}
+
+// Apply the inverse FFT to fftComplexOut, overlaying the result into chromaBuf
+void TransformPal::inverseFFTTile(qint32 tileX, qint32 tileY, qint32 firstFieldLine, qint32 lastFieldLine)
+{
+    // Work out what portion of this tile is inside the active area
+    const qint32 startX = qMax(videoParameters.activeVideoStart - tileX, 0);
+    const qint32 endX = qMin(videoParameters.activeVideoEnd - tileX, XTILE);
+    const qint32 startY = qMax(firstFieldLine - tileY, 0);
+    const qint32 endY = qMin(lastFieldLine - tileY, YTILE);
+
+    // Convert frequency domain in fftComplexOut back to time domain in fftReal
+    fftw_execute(inversePlan);
+
+    // Overlay the result, normalising the FFTW output, into chromaBuf
+    double *outputPtr = chromaBuf.data();
+    for (qint32 y = startY; y < endY; y++) {
+        double *b = outputPtr + ((tileY + y) * videoParameters.fieldWidth);
+        for (qint32 x = startX; x < endX; x++) {
+            b[tileX + x] += fftReal[(y * XTILE) + x] / (YTILE * XTILE);
+        }
+    }
 }
 
 // Return the absolute value squared of an fftw_complex

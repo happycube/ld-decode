@@ -53,6 +53,8 @@ public:
     const double *filterField(qint32 firstFieldLine, qint32 lastFieldLine, const SourceField &inputField);
 
 private:
+    void forwardFFTTile(qint32 tileX, qint32 tileY, const SourceField &inputField, qint32 firstFieldLine, qint32 lastFieldLine);
+    void inverseFFTTile(qint32 tileX, qint32 tileY, qint32 firstFieldLine, qint32 lastFieldLine);
     void applyFilter();
 
     // Configuration parameters
