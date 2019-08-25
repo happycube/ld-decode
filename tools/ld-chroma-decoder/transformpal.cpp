@@ -213,6 +213,9 @@ void TransformPal::applyFilter()
     // symmetrical around the V carrier owing to wraparound. We look at every
     // point that might be a chroma signal, and only keep it if it's
     // sufficiently symmetrical with its reflection.
+    //
+    // The Y axis covers 0 to 288 c/aph;  72 c/aph is 1/4 * YTILE.
+    // The X axis covers 0 to 4fSC Hz;    fSC HZ   is 1/4 * XTILE.
 
     const double threshold_sq = threshold * threshold;
 
@@ -228,9 +231,9 @@ void TransformPal::applyFilter()
         fftw_complex *bo = fftComplexOut + (y * XCOMPLEX);
         fftw_complex *bo_ref = fftComplexOut + (y_ref * XCOMPLEX);
 
-        // We only need to look at horizontal frequencies that might be chroma (0.5fSC to 2fSC).
+        // We only need to look at horizontal frequencies that might be chroma (0.5fSC to 1.5fSC).
         for (qint32 x = XTILE / 8; x <= XTILE / 4; x++) {
-            // Reflect around 4fSC Hz horizontally.
+            // Reflect around fSC Hz horizontally.
             const qint32 x_ref = (XTILE / 2) - x;
 
             const fftw_complex &in_val = bi[x];
