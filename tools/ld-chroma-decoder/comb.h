@@ -106,10 +106,6 @@ private:
         qint32 secondFieldPhaseID; // The phase of the frame's second field
     };
 
-    // Input and output file handles
-    QFile *inputFileHandle;
-    QFile *outputFileHandle;
-
     // Optical flow processor
     OpticalFlow opticalFlow;
 
