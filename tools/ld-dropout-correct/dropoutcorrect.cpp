@@ -99,24 +99,10 @@ void DropOutCorrect::run()
                 for (qint32 dropoutIndex = 0; dropoutIndex < firstFieldDropouts.size(); dropoutIndex++) {
                     if (firstFieldReplacementLines[dropoutIndex].isFirstField) {
                         // Correct the first field from the first field (intra-field correction)
-                        for (qint32 pixel = firstFieldDropouts[dropoutIndex].startx; pixel < firstFieldDropouts[dropoutIndex].endx; pixel++) {
-                            if (firstFieldDropouts[dropoutIndex].fieldLine > 2) {
-                                *(firstTargetFieldData.data() + (((firstFieldDropouts[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2))) =
-                                        *(firstTargetFieldData.data() + (((firstFieldReplacementLines[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2)));
-                                *(firstTargetFieldData.data() + (((firstFieldDropouts[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2) + 1)) =
-                                        *(firstTargetFieldData.data() + (((firstFieldReplacementLines[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2) + 1));
-                            }
-                        }
+                        correctDropOut(firstFieldDropouts[dropoutIndex], firstFieldReplacementLines[dropoutIndex], firstTargetFieldData, firstTargetFieldData);
                     } else {
                         // Correct the first field from the second field (inter-field correction)
-                        for (qint32 pixel = firstFieldDropouts[dropoutIndex].startx; pixel < firstFieldDropouts[dropoutIndex].endx; pixel++) {
-                            if (firstFieldDropouts[dropoutIndex].fieldLine > 2) {
-                                *(firstTargetFieldData.data() + (((firstFieldDropouts[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2))) =
-                                        *(secondTargetFieldData.data() + (((firstFieldReplacementLines[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2)));
-                                *(firstTargetFieldData.data() + (((firstFieldDropouts[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2) + 1)) =
-                                        *(secondTargetFieldData.data() + (((firstFieldReplacementLines[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2) + 1));
-                            }
-                        }
+                        correctDropOut(firstFieldDropouts[dropoutIndex], firstFieldReplacementLines[dropoutIndex], firstTargetFieldData, secondTargetFieldData);
                     }
                 }
             }
@@ -142,24 +128,10 @@ void DropOutCorrect::run()
                 for (qint32 dropoutIndex = 0; dropoutIndex < secondFieldDropouts.size(); dropoutIndex++) {
                     if (secondFieldReplacementLines[dropoutIndex].isFirstField) {
                         // Correct the second field from the second field (intra-field correction)
-                        for (qint32 pixel = secondFieldDropouts[dropoutIndex].startx; pixel < secondFieldDropouts[dropoutIndex].endx; pixel++) {
-                            if (secondFieldDropouts[dropoutIndex].fieldLine > 2) {
-                                *(secondTargetFieldData.data() + (((secondFieldDropouts[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2))) =
-                                        *(secondSourceField.data() + (((secondFieldReplacementLines[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2)));
-                                *(secondTargetFieldData.data() + (((secondFieldDropouts[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2) + 1)) =
-                                        *(secondSourceField.data() + (((secondFieldReplacementLines[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2) + 1));
-                            }
-                        }
+                        correctDropOut(secondFieldDropouts[dropoutIndex], secondFieldReplacementLines[dropoutIndex], secondTargetFieldData, secondSourceField);
                     } else {
                         // Correct the second field from the first field (inter-field correction)
-                        for (qint32 pixel = secondFieldDropouts[dropoutIndex].startx; pixel < secondFieldDropouts[dropoutIndex].endx; pixel++) {
-                            if (secondFieldDropouts[dropoutIndex].fieldLine > 2) {
-                                *(secondTargetFieldData.data() + (((secondFieldDropouts[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2))) =
-                                        *(firstSourceField.data() + (((secondFieldReplacementLines[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2)));
-                                *(secondTargetFieldData.data() + (((secondFieldDropouts[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2) + 1)) =
-                                        *(firstSourceField.data() + (((secondFieldReplacementLines[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2) + 1));
-                            }
-                        }
+                        correctDropOut(secondFieldDropouts[dropoutIndex], secondFieldReplacementLines[dropoutIndex], secondTargetFieldData, firstSourceField);
                     }
                 }
             }
@@ -490,3 +462,15 @@ DropOutCorrect::Replacement DropOutCorrect::findReplacementLine(QVector<DropOutL
     return replacement;
 }
 
+// Correct a dropout by copying data from a replacement line.
+void DropOutCorrect::correctDropOut(const DropOutLocation &dropOut, const Replacement &replacement, QByteArray &targetField, const QByteArray &sourceField)
+{
+    for (qint32 pixel = dropOut.startx; pixel < dropOut.endx; pixel++) {
+        if (dropOut.fieldLine > 2) {
+            *(targetField.data() + (((dropOut.fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2))) =
+                    *(sourceField.data() + (((replacement.fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2)));
+            *(targetField.data() + (((dropOut.fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2) + 1)) =
+                    *(sourceField.data() + (((replacement.fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2) + 1));
+        }
+    }
+}
