@@ -298,11 +298,9 @@ DropOutCorrect::Replacement DropOutCorrect::findReplacementLine(QVector<DropOutL
             if (firstFieldDropouts[sourceIndex].fieldLine == upSourceLine) {
                 // Does the start<->end range overlap?
                 if ((firstFieldDropouts[sourceIndex].endx - firstFieldDropouts[dropOutIndex].startx >= 0) && (firstFieldDropouts[dropOutIndex].endx - firstFieldDropouts[sourceIndex].startx >= 0)) {
-                    // Overlap
+                    // Overlap -- can't use this line
                     upSourceLine -= stepAmount;
                     upFoundSource = false;
-                } else {
-                    upFoundSource = true; // Use the current source line
                     break;
                 }
             }
@@ -319,11 +317,9 @@ DropOutCorrect::Replacement DropOutCorrect::findReplacementLine(QVector<DropOutL
             if (firstFieldDropouts[sourceIndex].fieldLine == downSourceLine) {
                 // Does the start<->end range overlap?
                 if ((firstFieldDropouts[sourceIndex].endx - firstFieldDropouts[dropOutIndex].startx >= 0) && (firstFieldDropouts[dropOutIndex].endx - firstFieldDropouts[sourceIndex].startx >= 0)) {
-                    // Overlap
+                    // Overlap -- can't use this line
                     downSourceLine += stepAmount;
                     downFoundSource = false;
-                } else {
-                    downFoundSource = true; // Use the current source line
                     break;
                 }
             }
@@ -367,19 +363,12 @@ DropOutCorrect::Replacement DropOutCorrect::findReplacementLine(QVector<DropOutL
             upFoundSource = true;
             for (qint32 sourceIndex = 0; sourceIndex < secondFieldDropouts.size(); sourceIndex++) {
                 if (secondFieldDropouts[sourceIndex].fieldLine == upSourceLine) {
-                    if (secondFieldDropouts.size() < dropOutIndex && firstFieldDropouts.size() < sourceIndex) {
-                        // Does the start<->end range overlap?
-                        if ((firstFieldDropouts[sourceIndex].endx - secondFieldDropouts[dropOutIndex].startx >= 0) &&
-                                (firstFieldDropouts[dropOutIndex].endx - secondFieldDropouts[sourceIndex].startx >= 0)) {
-                            // Overlap
-                            upSourceLine -= stepAmount;
-                            upFoundSource = false;
-                        } else {
-                            upFoundSource = true; // Use the current source line
-                            break;
-                        }
-                    } else {
-                        upFoundSource = true; // Use the current source line
+                    // Does the start<->end range overlap?
+                    if ((firstFieldDropouts[dropOutIndex].endx - secondFieldDropouts[sourceIndex].startx >= 0) &&
+                            (secondFieldDropouts[sourceIndex].endx - firstFieldDropouts[dropOutIndex].startx >= 0)) {
+                        // Overlap -- can't use this line
+                        upSourceLine -= stepAmount;
+                        upFoundSource = false;
                         break;
                     }
                 }
@@ -394,19 +383,12 @@ DropOutCorrect::Replacement DropOutCorrect::findReplacementLine(QVector<DropOutL
             downFoundSource = true;
             for (qint32 sourceIndex = 0; sourceIndex < secondFieldDropouts.size(); sourceIndex++) {
                 if (secondFieldDropouts[sourceIndex].fieldLine == downSourceLine) {
-                    if (secondFieldDropouts.size() < dropOutIndex && firstFieldDropouts.size() < sourceIndex) {
-                        // Does the start<->end range overlap?
-                        if ((firstFieldDropouts[sourceIndex].endx - secondFieldDropouts[dropOutIndex].startx >= 0) &&
-                                (firstFieldDropouts[dropOutIndex].endx - secondFieldDropouts[sourceIndex].startx >= 0)) {
-                            // Overlap
-                            downSourceLine += stepAmount;
-                            downFoundSource = false;
-                        } else {
-                            downFoundSource = true; // Use the current source line
-                            break;
-                        }
-                    } else {
-                        downFoundSource = true; // Use the current source line
+                    // Does the start<->end range overlap?
+                    if ((firstFieldDropouts[dropOutIndex].endx - secondFieldDropouts[sourceIndex].startx >= 0) &&
+                            (secondFieldDropouts[sourceIndex].endx - firstFieldDropouts[dropOutIndex].startx >= 0)) {
+                        // Overlap -- can't use this line
+                        downSourceLine += stepAmount;
+                        downFoundSource = false;
                         break;
                     }
                 }
