@@ -84,6 +84,8 @@ void DropOutCorrect::run()
                 QVector<Replacement> firstFieldReplacementLines;
                 firstFieldReplacementLines.resize(firstFieldDropouts.size());
                 for (qint32 dropoutIndex = 0; dropoutIndex < firstFieldDropouts.size(); dropoutIndex++) {
+                    firstFieldReplacementLines[dropoutIndex].fieldLine = -1;
+
                     // Is the current dropout in the colour burst?
                     if (firstFieldDropouts[dropoutIndex].location == Location::colourBurst) {
                         firstFieldReplacementLines[dropoutIndex] = findReplacementLine(firstFieldDropouts, secondFieldDropouts, dropoutIndex, true, intraField);
@@ -97,7 +99,9 @@ void DropOutCorrect::run()
 
                 // Correct the data of the first field
                 for (qint32 dropoutIndex = 0; dropoutIndex < firstFieldDropouts.size(); dropoutIndex++) {
-                    if (firstFieldReplacementLines[dropoutIndex].isFirstField) {
+                    if (firstFieldReplacementLines[dropoutIndex].fieldLine == -1) {
+                        // Doesn't need correcting
+                    } else if (firstFieldReplacementLines[dropoutIndex].isFirstField) {
                         // Correct the first field from the first field (intra-field correction)
                         correctDropOut(firstFieldDropouts[dropoutIndex], firstFieldReplacementLines[dropoutIndex], firstTargetFieldData, firstTargetFieldData);
                     } else {
@@ -113,6 +117,8 @@ void DropOutCorrect::run()
                 QVector<Replacement> secondFieldReplacementLines;
                 secondFieldReplacementLines.resize(secondFieldDropouts.size());
                 for (qint32 dropoutIndex = 0; dropoutIndex < secondFieldDropouts.size(); dropoutIndex++) {
+                    secondFieldReplacementLines[dropoutIndex].fieldLine = -1;
+
                     // Is the current dropout in the colour burst?
                     if (secondFieldDropouts[dropoutIndex].location == Location::colourBurst) {
                         secondFieldReplacementLines[dropoutIndex] = findReplacementLine(secondFieldDropouts, firstFieldDropouts, dropoutIndex, true, intraField);
@@ -126,7 +132,9 @@ void DropOutCorrect::run()
 
                 // Correct the data of the second field
                 for (qint32 dropoutIndex = 0; dropoutIndex < secondFieldDropouts.size(); dropoutIndex++) {
-                    if (secondFieldReplacementLines[dropoutIndex].isFirstField) {
+                    if (secondFieldReplacementLines[dropoutIndex].fieldLine == -1) {
+                        // Doesn't need correcting
+                    } else if (secondFieldReplacementLines[dropoutIndex].isFirstField) {
                         // Correct the second field from the second field (intra-field correction)
                         correctDropOut(secondFieldDropouts[dropoutIndex], secondFieldReplacementLines[dropoutIndex], secondTargetFieldData, secondSourceField);
                     } else {
