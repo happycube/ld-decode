@@ -154,6 +154,11 @@ QVector<DropOutCorrect::DropOutLocation> DropOutCorrect::populateDropoutsVector(
         dropOutLocation.fieldLine = field.dropOuts.fieldLine[dropOutIndex];
         dropOutLocation.location = DropOutCorrect::Location::unknown;
 
+        // Ignore dropouts outside the field's data
+        if (dropOutLocation.fieldLine < 1 || dropOutLocation.fieldLine > videoParameters.fieldHeight) {
+            continue;
+        }
+
         // Is over correct mode selected?
         if (overCorrect) {
             // Here we deliberately extend the length of dropouts to ensure that the
