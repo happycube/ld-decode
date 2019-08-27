@@ -26,12 +26,12 @@
 
 #include "decoderpool.h"
 
-qint32 Decoder::getLookBehind()
+qint32 Decoder::getLookBehind() const
 {
     return 0;
 }
 
-qint32 Decoder::getLookAhead()
+qint32 Decoder::getLookAhead() const
 {
     return 0;
 }
@@ -118,7 +118,7 @@ DecoderThread::DecoderThread(QAtomicInt& _abort, DecoderPool& _decoderPool, QObj
 void DecoderThread::run()
 {
     // Input and output data
-    QVector<Decoder::InputField> inputFields;
+    QVector<SourceField> inputFields;
     QVector<QByteArray> outputFrames;
 
     while (!abort) {
@@ -129,16 +129,11 @@ void DecoderThread::run()
             break;
         }
 
-        // Decode lookahead fields, discarding the result
-        for (qint32 i = 0; i < startIndex; i += 2) {
-            decodeFrame(inputFields[i], inputFields[i + 1]);
-        }
-
-        // Decode real fields to frames
+        // Adjust the output to the right size
         outputFrames.resize((endIndex - startIndex) / 2);
-        for (qint32 i = startIndex, j = 0; i < endIndex; i += 2, j++) {
-            outputFrames[j] = decodeFrame(inputFields[i], inputFields[i + 1]);
-        }
+
+        // Decode the fields to frames
+        decodeFrames(inputFields, startIndex, endIndex, outputFrames);
 
         // Write the frames to the output file
         if (!decoderPool.putOutputFrames(startFrameNumber, outputFrames)) {

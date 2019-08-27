@@ -204,9 +204,18 @@ bool VbiMapper::createInitialMap(LdDecodeMetaData &ldDecodeMetaData)
         frame.isMarkedForDeletion = false;
         frame.isCorruptVbi = false;
 
-        // Get the VBI data and then decode
+        // Get the VBI data
         QVector<qint32> vbi1 = ldDecodeMetaData.getFieldVbi(frame.firstField).vbiData;
         QVector<qint32> vbi2 = ldDecodeMetaData.getFieldVbi(frame.secondField).vbiData;
+
+        // Is the VBI data valid for the frame?
+        if (vbi1[0] == -1 || vbi1[1] == -1 || vbi1[2] == -1 || vbi2[0] == -1 || vbi2[1] == -1 || vbi2[2] == -1) {
+            // VBI is invalid
+            qCritical() << "Metadata contains invalid/missing VBI data - please run ld-process-vbi on the source TBC";
+            return false;
+        }
+
+        // Decode the VBI data
         VbiDecoder::Vbi vbi = vbiDecoder.decodeFrame(vbi1[0], vbi1[1], vbi1[2], vbi2[0], vbi2[1], vbi2[2]);
 
         // Check for lead in frame
@@ -214,12 +223,12 @@ bool VbiMapper::createInitialMap(LdDecodeMetaData &ldDecodeMetaData)
             // We only detect a leadin frame if it comes before a real frame
             // Lead in frames are discarded
             leadInOrOutFrames++;
+            if (vbi.leadIn) qInfo() << "Sequential frame" << seqFrame << "is a lead-in frame";
         } else if (vbi.leadOut && (seqFrame > (ldDecodeMetaData.getNumberOfFrames() - 20))) {
             // We only detect a lead out frame if it is within 20 frames of the last frame
             // Lead out frames are discarded
             leadInOrOutFrames++;
-            if (vbi.leadIn) qInfo() << "Sequential frame" << seqFrame << "is a lead-in frame";
-            else qInfo() << "Sequential frame" << seqFrame << "is a lead-out frame";
+            if (vbi.leadOut) qInfo() << "Sequential frame" << seqFrame << "is a lead-out frame";
         } else {
             // Since this isn't lead-in or out, flag that a real frame has been seen
             gotFirstFrame = true;
@@ -302,16 +311,18 @@ void VbiMapper::correctFrameNumbering()
         else maxFrames = 121800; // NTSC CLV set to 70 minutes (70*60*29)
     }
 
-    // TODO: We must verify the very first and very last frames first in order to perform a valid
-    // gap analysis
-
-    // Correct from frames from start + 1 to end -1
-    for (qint32 frameElement = 1; frameElement < frames.size() - 1; frameElement++) {
+    // Correct from frames from start + 1 to end
+    for (qint32 frameElement = 1; frameElement < frames.size(); frameElement++) {
         // If this is NTSC CAV only correct if the current frame number is valid (in all other
         // cases, correct even if the frame number is missing)
         if (!(!isSourcePal && discType == discType_cav && frames[frameElement].vbiFrameNumber < 1)) {
             // Check if frame number is missing
-            if (frames[frameElement].vbiFrameNumber < 1) frameMissingFrameNumberCount++;
+            if (frames[frameElement].vbiFrameNumber < 1) {
+                frameMissingFrameNumberCount++;
+
+                // Set the frame number to a sane value ready for correction
+                frames[frameElement].vbiFrameNumber = frames[frameElement - 1].vbiFrameNumber + 1;
+            }
 
             // Are there enough remaining frames to perform the search?
             if ((frames.size() - frameElement) < searchDistance) searchDistance = frames.size() - frameElement;
@@ -319,36 +330,53 @@ void VbiMapper::correctFrameNumbering()
             // Try up to a distance of 'searchDistance' frames to find the sequence
             for (qint32 gap = 1; gap < searchDistance; gap++) {
                 if (frames[frameElement].vbiFrameNumber != (frames[frameElement - 1].vbiFrameNumber + 1)) {
-                    if (frames[frameElement - 1].vbiFrameNumber == (frames[frameElement + gap].vbiFrameNumber - (gap + 1))) {
-                        correctedFrameNumber = frames[frameElement - 1].vbiFrameNumber + 1;
 
-                        if (correctedFrameNumber > 0 && correctedFrameNumber < maxFrames) {
-                            qInfo() << "Correction to seq. frame" << frameElement << ":";
-                            qInfo() << "   Seq. frame" << frameElement - 1 << "has a VBI frame number of" << frames[frameElement - 1].vbiFrameNumber;
-                            if (frames[frameElement].vbiFrameNumber> 0) {
-                                qInfo() << "   Seq. frame" << frameElement << "has a VBI frame number of" << frames[frameElement].vbiFrameNumber;
+                    // Did the player stall and repeat the last frame?
+                    if (frames[frameElement - 1].vbiFrameNumber == frames[frameElement].vbiFrameNumber) {
+                        // Give up and leave the frame number as-is
+                        qInfo() << "Seq. frame" << frameElement << "repeats previous VBI frame number of" << frames[frameElement].vbiFrameNumber << "- player stalled/paused?";
+                        break;
+                    } else {
+                        // Doesn't look like the player has paused; assume we have progressed one frame
+                        if (frames[frameElement - 1].vbiFrameNumber == (frames[frameElement + gap].vbiFrameNumber - (gap + 1))) {
+                            correctedFrameNumber = frames[frameElement - 1].vbiFrameNumber + 1;
+
+                            if (correctedFrameNumber > 0 && correctedFrameNumber < maxFrames) {
+                                qInfo() << "Correction to seq. frame" << frameElement << ":";
+                                qInfo() << "   Seq. frame" << frameElement - 1 << "has a VBI frame number of" << frames[frameElement - 1].vbiFrameNumber;
+                                if (frames[frameElement].vbiFrameNumber > 0) {
+                                    qInfo() << "   Seq. frame" << frameElement << "has a VBI frame number of" << frames[frameElement].vbiFrameNumber;
+                                } else {
+                                    qInfo() << "   Seq. frame" << frameElement << "does not have a valid VBI frame number";
+                                }
+                                qInfo() << "   Seq. frame" << frameElement + gap << "has a VBI frame number of" << frames[frameElement + gap].vbiFrameNumber;
+                                qInfo() << "   VBI frame number corrected to" << correctedFrameNumber;
                             } else {
-                                qInfo() << "   Seq. frame" << frameElement << "does not have a valid VBI frame number";
+                                // Correction was out of range...
+                                qInfo() << "Correction to sequential frame number" << frameElement << ": was out of range, setting to invalid";
+                                correctedFrameNumber = -1;
                             }
-                            qInfo() << "   Seq. frame" << frameElement + gap << "has a VBI frame number of" << frames[frameElement + gap].vbiFrameNumber;
-                            qInfo() << "   VBI frame number corrected to" << correctedFrameNumber;
-                        } else {
-                            // Correction was out of range...
-                            qInfo() << "Correction to sequential frame number" << frameElement << ": was out of range, setting to invalid";
-                            correctedFrameNumber = -1;
+
+                            // Update the frame number
+                            frames[frameElement].vbiFrameNumber = correctedFrameNumber;
+                            frames[frameElement].isCorruptVbi = true;
+
+                            frameNumberErrorCount++;
+                            break; // done
                         }
-
-                        // Update the frame number
-                        frames[frameElement].vbiFrameNumber = correctedFrameNumber;
-                        frames[frameElement].isCorruptVbi = true;
-
-                        frameNumberErrorCount++;
-                        break; // done
                     }
                 }
             }
         }
     }
+
+    // All frame numbers are now checked and corrected except the first frame; so we do that here
+    // since the second frame should have been corrected already
+    if (frames[0].vbiFrameNumber != frames[1].vbiFrameNumber - 1) {
+        qInfo() << "The first frame does not have a valid frame number; correcting based on second frame...";
+        frames[0].vbiFrameNumber = frames[1].vbiFrameNumber - 1;
+    }
+
     qInfo() << "Found and corrected" << frameNumberErrorCount << "bad/missing VBI frame numbers (of which" <<
                 frameMissingFrameNumberCount << "had no frame number set in the VBI)";
 }
@@ -371,9 +399,20 @@ void VbiMapper::removeDuplicateFrames()
                 qint32 maxSnr = -1;
                 qint32 selection = -1;
                 for (qint32 i = 0; i < duplicates.size(); i++) {
-                    if (frames[duplicates[i]].bSnr > maxSnr) {
+                    qint32 frameNumber = duplicates[i];
+                    qint32 snr = frames[frameNumber].bSnr;
+
+                    // If there is a following frame with the same or lower frame number, the player
+                    // must have skipped during this frame -- give it a big SNR penalty so it's
+                    // unlikely to be selected
+                    if (frameNumber + 1 < frames.size() &&
+                        frames[frameNumber + 1].vbiFrameNumber <= frames[frameNumber].vbiFrameNumber) {
+                        snr -= 20;
+                    }
+
+                    if (snr > maxSnr) {
                         selection = i;
-                        maxSnr = frames[duplicates[i]].bSnr;
+                        maxSnr = snr;
                     }
                 }
 
@@ -388,7 +427,7 @@ void VbiMapper::removeDuplicateFrames()
                 }
             }
         } else {
-            qInfo() << "Frame sequence number" << frameElement << "is missing a VBI frame number!";
+            qInfo() << "Frame sequence number" << frameElement << "is missing a VBI frame number - this is probably a bug!";
         }
     }
 

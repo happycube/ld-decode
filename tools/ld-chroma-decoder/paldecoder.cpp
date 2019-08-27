@@ -27,11 +27,9 @@
 
 #include "decoderpool.h"
 
-PalDecoder::PalDecoder(bool _blackAndWhite, bool _useTransformFilter, double _transformThreshold)
+PalDecoder::PalDecoder(const PalColour::Configuration &palConfig)
 {
-    config.pal.blackAndWhite = _blackAndWhite;
-    config.pal.useTransformFilter = _useTransformFilter;
-    config.pal.transformThreshold = _transformThreshold;
+    config.pal = palConfig;
 }
 
 bool PalDecoder::configure(const LdDecodeMetaData::VideoParameters &videoParameters) {
@@ -47,6 +45,16 @@ bool PalDecoder::configure(const LdDecodeMetaData::VideoParameters &videoParamet
     return true;
 }
 
+qint32 PalDecoder::getLookBehind() const
+{
+    return config.pal.getLookBehind();
+}
+
+qint32 PalDecoder::getLookAhead() const
+{
+    return config.pal.getLookAhead();
+}
+
 QThread *PalDecoder::makeThread(QAtomicInt& abort, DecoderPool& decoderPool) {
     return new PalThread(abort, decoderPool, config);
 }
@@ -59,11 +67,16 @@ PalThread::PalThread(QAtomicInt& _abort, DecoderPool& _decoderPool,
     palColour.updateConfiguration(config.videoParameters, config.pal);
 }
 
-QByteArray PalThread::decodeFrame(const Decoder::InputField &firstField, const Decoder::InputField &secondField)
+void PalThread::decodeFrames(const QVector<SourceField> &inputFields, qint32 startIndex, qint32 endIndex,
+                             QVector<QByteArray> &outputFrames)
 {
-    // Perform the PALcolour filtering
-    QByteArray outputData = palColour.decodeFrame(firstField.field, firstField.data, secondField.field, secondField.data);
+    QVector<QByteArray> decodedFrames(outputFrames.size());
 
-    // Crop the frame to just the active area
-    return PalDecoder::cropOutputFrame(config, outputData);
+    // Perform the PALcolour filtering
+    palColour.decodeFrames(inputFields, startIndex, endIndex, decodedFrames);
+
+    for (qint32 i = 0; i < outputFrames.size(); i++) {
+        // Crop the frame to just the active area
+        outputFrames[i] = PalDecoder::cropOutputFrame(config, decodedFrames[i]);
+    }
 }

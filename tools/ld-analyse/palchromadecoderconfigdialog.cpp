@@ -32,11 +32,6 @@ PalChromaDecoderConfigDialog::PalChromaDecoderConfigDialog(QWidget *parent) :
     ui->setupUi(this);
     setWindowFlags(Qt::Window);
 
-    // Set default configuration
-    palChromaDecoderConfig.blackAndWhite = false;
-    palChromaDecoderConfig.useTransformFilter = true;
-    palChromaDecoderConfig.transformThreshold = 0.4;
-
     ui->thresholdHorizontalSlider->setMinimum(0);
     ui->thresholdHorizontalSlider->setMaximum(100);
 
@@ -49,17 +44,23 @@ PalChromaDecoderConfigDialog::~PalChromaDecoderConfigDialog()
     delete ui;
 }
 
-void PalChromaDecoderConfigDialog::setConfiguration(PalChromaDecoderConfigDialog::PalChromaDecoderConfig _palChromaDecoderConfig)
+void PalChromaDecoderConfigDialog::setConfiguration(const PalColour::Configuration &_palChromaDecoderConfig)
 {
-    if (_palChromaDecoderConfig.transformThreshold < 0.00) _palChromaDecoderConfig.transformThreshold = 0.00;
-    if (_palChromaDecoderConfig.transformThreshold > 1.00) _palChromaDecoderConfig.transformThreshold = 1.00;
-
     palChromaDecoderConfig = _palChromaDecoderConfig;
+
+    if (palChromaDecoderConfig.transformThreshold < 0.00) palChromaDecoderConfig.transformThreshold = 0.00;
+    if (palChromaDecoderConfig.transformThreshold > 1.00) palChromaDecoderConfig.transformThreshold = 1.00;
+
+    // ld-analyse only supports 2D filters at the moment
+    if (palChromaDecoderConfig.chromaFilter == PalColour::transform3DFilter) {
+        palChromaDecoderConfig.chromaFilter = PalColour::transform2DFilter;
+    }
+
     updateDialog();
     emit palChromaDecoderConfigChanged();
 }
 
-PalChromaDecoderConfigDialog::PalChromaDecoderConfig PalChromaDecoderConfigDialog::getConfiguration()
+const PalColour::Configuration &PalChromaDecoderConfigDialog::getConfiguration()
 {
     return palChromaDecoderConfig;
 }
@@ -69,18 +70,35 @@ void PalChromaDecoderConfigDialog::updateDialog()
     if (palChromaDecoderConfig.blackAndWhite) ui->blackAndWhiteCheckBox->setChecked(true);
     else ui->blackAndWhiteCheckBox->setChecked(false);
 
-    if (palChromaDecoderConfig.useTransformFilter) {
+    if (palChromaDecoderConfig.chromaFilter == PalColour::transform2DFilter) {
         ui->twoDeeTransformCheckBox->setChecked(true);
-        ui->thresholdHorizontalSlider->setEnabled(true);
-        ui->thresholdValueLabel->setEnabled(true);
+        ui->thresholdModeCheckBox->setEnabled(true);
+        ui->showFFTsCheckBox->setEnabled(true);
     } else {
         ui->twoDeeTransformCheckBox->setChecked(false);
-        ui->thresholdHorizontalSlider->setEnabled(false);
-        ui->thresholdValueLabel->setEnabled(false);
+        ui->thresholdModeCheckBox->setEnabled(false);
+        ui->showFFTsCheckBox->setEnabled(false);
+    }
+
+    if (palChromaDecoderConfig.transformMode == TransformPal::thresholdMode) {
+        ui->thresholdModeCheckBox->setChecked(true);
+    } else {
+        ui->thresholdModeCheckBox->setChecked(false);
     }
 
     ui->thresholdHorizontalSlider->setValue(static_cast<qint32>(palChromaDecoderConfig.transformThreshold * 100));
     ui->thresholdValueLabel->setText(QString::number(palChromaDecoderConfig.transformThreshold, 'f', 2));
+    if (palChromaDecoderConfig.chromaFilter == PalColour::transform2DFilter
+        && palChromaDecoderConfig.transformMode == TransformPal::thresholdMode) {
+        ui->thresholdHorizontalSlider->setEnabled(true);
+        ui->thresholdValueLabel->setEnabled(true);
+    } else {
+        ui->thresholdHorizontalSlider->setEnabled(false);
+        ui->thresholdValueLabel->setEnabled(false);
+    }
+
+    if (palChromaDecoderConfig.showFFTs) ui->showFFTsCheckBox->setChecked(true);
+    else ui->showFFTsCheckBox->setChecked(false);
 }
 
 // Methods to handle changes to the dialogue
@@ -94,8 +112,22 @@ void PalChromaDecoderConfigDialog::on_blackAndWhiteCheckBox_clicked()
 
 void PalChromaDecoderConfigDialog::on_twoDeeTransformCheckBox_clicked()
 {
-    if (ui->twoDeeTransformCheckBox->isChecked()) palChromaDecoderConfig.useTransformFilter = true;
-    else palChromaDecoderConfig.useTransformFilter = false;
+    if (ui->twoDeeTransformCheckBox->isChecked()) {
+        palChromaDecoderConfig.chromaFilter = PalColour::transform2DFilter;
+    } else {
+        palChromaDecoderConfig.chromaFilter = PalColour::palColourFilter;
+    }
+    updateDialog();
+    emit palChromaDecoderConfigChanged();
+}
+
+void PalChromaDecoderConfigDialog::on_thresholdModeCheckBox_clicked()
+{
+    if (ui->thresholdModeCheckBox->isChecked()) {
+        palChromaDecoderConfig.transformMode = TransformPal::thresholdMode;
+    } else {
+        palChromaDecoderConfig.transformMode = TransformPal::levelMode;
+    }
     updateDialog();
     emit palChromaDecoderConfigChanged();
 }
@@ -104,5 +136,12 @@ void PalChromaDecoderConfigDialog::on_thresholdHorizontalSlider_valueChanged(int
 {
     palChromaDecoderConfig.transformThreshold = static_cast<double>(value) / 100;
     ui->thresholdValueLabel->setText(QString::number(palChromaDecoderConfig.transformThreshold, 'f', 2));
+    emit palChromaDecoderConfigChanged();
+}
+
+void PalChromaDecoderConfigDialog::on_showFFTsCheckBox_clicked()
+{
+    if (ui->showFFTsCheckBox->isChecked()) palChromaDecoderConfig.showFFTs = true;
+    else palChromaDecoderConfig.showFFTs = false;
     emit palChromaDecoderConfigChanged();
 }

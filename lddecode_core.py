@@ -286,6 +286,9 @@ class RFDecode:
         if self.system == 'NTSC':
             SF['Fburst'] = filtfft(sps.butter(1, [(SP['fsc_mhz']-.1)/self.freq_half, (SP['fsc_mhz']+.1)/self.freq_half], btype='bandpass'), self.blocklen) 
             SF['FVideoBurst'] = SF['Fvideo_lpf'] * SF['Fdeemp']  * SF['Fburst']
+        else:
+            SF['Fpilot'] = filtfft(sps.butter(1, [(SP['pilot_mhz']-.1)/self.freq_half, (SP['pilot_mhz']+.1)/self.freq_half], btype='bandpass'), self.blocklen) 
+            SF['FVideoPilot'] = SF['Fvideo_lpf'] * SF['Fdeemp']  * SF['Fpilot']
         
     # frequency domain slicers.  first and second stages use different ones...
     def audio_fdslice(self, freqdomain):
@@ -395,7 +398,8 @@ class RFDecode:
         out_video05 = np.roll(out_video05, -self.Filters['F05_offset'])
 
         if self.system == 'PAL':
-            video_out = np.rec.array([out_video, demod, out_video05], names=['demod', 'demod_raw', 'demod_05'])
+            out_videopilot = np.fft.ifft(demod_fft * self.Filters['FVideoPilot']).real
+            video_out = np.rec.array([out_video, demod, out_video05, out_videopilot], names=['demod', 'demod_raw', 'demod_05', 'demod_pilot'])
         else:
             out_videoburst = np.fft.ifft(demod_fft * self.Filters['FVideoBurst']).real
             video_out = np.rec.array([out_video, demod, out_video05, out_videoburst], names=['demod', 'demod_raw', 'demod_05', 'demod_burst'])
@@ -644,7 +648,7 @@ class DemodCache:
 
             self.q_in.task_done()
 
-    def doread(self, blocknums, MTF):
+    def doread(self, blocknums, MTF, dodemod = True):
         need_blocks = []
 
         hc = 0
@@ -669,7 +673,10 @@ class DemodCache:
                 self.lock.release()
                 return None
 
-            handling = need_demod = ('demod' not in self.blocks[b]) or (np.abs(self.blocks[b]['MTF'] - MTF) > self.MTF_tolerance)
+            if dodemod:
+                handling = need_demod = ('demod' not in self.blocks[b]) or (np.abs(self.blocks[b]['MTF'] - MTF) > self.MTF_tolerance)
+            else:
+                handling = need_demod = False
 
             # Check to see if it's already in queue to process
             if need_demod:
@@ -720,7 +727,7 @@ class DemodCache:
 
             self.lock.release()
 
-    def read(self, begin, length, MTF=0):
+    def read(self, begin, length, MTF=0, dodemod=True):
         # transpose the cache by key, not block #
         t = {'input':[], 'fft':[], 'video':[], 'audio':[], 'efm':[]}
 
@@ -731,7 +738,18 @@ class DemodCache:
         toread = range(begin // self.blocksize, (end // self.blocksize) + 1)
         toread_prefetch = range(end // self.blocksize, (end // self.blocksize) + self.prefetch)
 
-        need_blocks = self.doread(toread, MTF)
+        need_blocks = self.doread(toread, MTF, dodemod)
+
+        if dodemod == False:            
+            raw = [self.blocks[toread[0]]['rawinput'][begin % self.blocksize:]]
+            for i in range(toread[1], toread[-2]):
+                raw.append(self.blocks[i]['rawinput'])
+            raw.append(self.blocks[-1]['rawinput'][:end % self.blocksize])
+            
+            rv = np.concatenate(raw)
+            self.flush()
+            return rv
+
         while need_blocks is not None and len(need_blocks):
             time.sleep(.005)
             need_blocks = self.doread(toread, MTF)
@@ -1642,8 +1660,10 @@ class FieldPAL(Field):
 
         # first pass: get median of all pilot positive zero crossings
         for l in range(len(linelocs)):
-            pilot = self.data['video']['demod'][int(linelocs[l]):int(linelocs[l]+self.usectoinpx(4.7))].copy()
-            pilot -= self.data['video']['demod_05'][int(linelocs[l]):int(linelocs[l]+self.usectoinpx(4.7))]
+            #pilot = self.data['video']['demod'][int(linelocs[l]):int(linelocs[l]+self.usectoinpx(4.7))].copy()
+            #pilot -= self.data['video']['demod_05'][int(linelocs[l]):int(linelocs[l]+self.usectoinpx(4.7))]
+
+            pilot = self.data['video']['demod_pilot'][int(linelocs[l]):int(linelocs[l]+self.usectoinpx(4.7))].copy()
             #pilot = np.flip(pilot, axis=0)
 
             pilots.append(pilot)
@@ -1671,11 +1691,12 @@ class FieldPAL(Field):
                         break
 
             if len(offsets) >= 3:
-                offsets[l] = offsets[l][1:-1]
+                offsets[l] = offsets[l][2:-2]
                 alloffsets += offsets[l]
             else:
                 offsets[l] = []
 
+        print(len(alloffsets), np.median(alloffsets), np.std(alloffsets))
         medianoffset = np.median(alloffsets)
         tgt = .5 if inrange(medianoffset, 0.25, 0.75) else 0
 
@@ -1720,8 +1741,11 @@ class FieldPAL(Field):
         if not self.valid:
             return
 
-        self.linelocs = self.refine_linelocs_pilot()
-        self.linelocs = self.fix_badlines(self.linelocs)
+        if False:
+            self.linelocs = self.refine_linelocs_pilot()
+            self.linelocs = self.fix_badlines(self.linelocs)
+        else:
+            self.linelocs = self.fix_badlines(self.linelocs2)
 
         self.burstmedian = self.calc_burstmedian()
 

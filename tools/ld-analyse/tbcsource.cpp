@@ -24,6 +24,8 @@
 
 #include "tbcsource.h"
 
+#include "sourcefield.h"
+
 TbcSource::TbcSource(QObject *parent) : QObject(parent)
 {
     // Default frame image options
@@ -36,7 +38,7 @@ TbcSource::TbcSource(QObject *parent) : QObject(parent)
 
     // Set the PALcolour configuration to default
     palColourConfiguration = palColour.getConfiguration();
-    palColourConfiguration.useTransformFilter = true;
+    palColourConfiguration.chromaFilter = PalColour::transform2DFilter;
     decoderConfigurationChanged = false;
 }
 
@@ -466,11 +468,9 @@ qint32 TbcSource::getCcData1(qint32 frameNumber)
     return secondField.ntsc.ccData1;
 }
 
-void TbcSource::setPalColourConfiguration(bool blackAndWhite, bool useTransformFilter, double transformThreshold)
+void TbcSource::setPalColourConfiguration(const PalColour::Configuration &_palColourConfiguration)
 {
-    palColourConfiguration.blackAndWhite = blackAndWhite;
-    palColourConfiguration.useTransformFilter = useTransformFilter;
-    palColourConfiguration.transformThreshold = transformThreshold;
+    palColourConfiguration = _palColourConfiguration;
 
     // Get the video parameters
     LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
@@ -481,11 +481,9 @@ void TbcSource::setPalColourConfiguration(bool blackAndWhite, bool useTransformF
     decoderConfigurationChanged = true;
 }
 
-void TbcSource::getPalColourConfiguration(bool &blackAndWhite, bool &useTransformFilter, double &transformThreshold)
+const PalColour::Configuration &TbcSource::getPalColourConfiguration()
 {
-    blackAndWhite = palColourConfiguration.blackAndWhite;
-    useTransformFilter = palColourConfiguration.useTransformFilter;
-    transformThreshold = palColourConfiguration.transformThreshold;
+    return palColourConfiguration;
 }
 
 // Private methods ----------------------------------------------------------------------------------------------------
@@ -496,13 +494,12 @@ QImage TbcSource::generateQImage(qint32 firstFieldNumber, qint32 secondFieldNumb
     // Get the metadata for the video parameters
     LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
 
-    // Get the field metadata
-    LdDecodeMetaData::Field firstField = ldDecodeMetaData.getField(firstFieldNumber);
-    LdDecodeMetaData::Field secondField = ldDecodeMetaData.getField(secondFieldNumber);
-
-    // Get the video field data
-    QByteArray firstFieldData = sourceVideo.getVideoField(firstFieldNumber);
-    QByteArray secondFieldData = sourceVideo.getVideoField(secondFieldNumber);
+    // Get the two fields and their metadata
+    SourceField firstField, secondField;
+    firstField.field = ldDecodeMetaData.getField(firstFieldNumber);
+    secondField.field = ldDecodeMetaData.getField(secondFieldNumber);
+    firstField.data = sourceVideo.getVideoField(firstFieldNumber);
+    secondField.data = sourceVideo.getVideoField(secondFieldNumber);
 
     // Calculate the frame height
     qint32 frameHeight = (videoParameters.fieldHeight * 2) - 1;
@@ -532,8 +529,8 @@ QImage TbcSource::generateQImage(qint32 firstFieldNumber, qint32 secondFieldNumb
             qint32 startPointer = (y / 2) * videoParameters.fieldWidth * 2;
             qint32 length = videoParameters.fieldWidth * 2;
 
-            firstLineData = firstFieldData.mid(startPointer, length);
-            secondLineData = secondFieldData.mid(startPointer, length);
+            firstLineData = firstField.data.mid(startPointer, length);
+            secondLineData = secondField.data.mid(startPointer, length);
 
             for (qint32 x = 0; x < videoParameters.fieldWidth; x++) {
                 // Take just the MSB of the input data
@@ -559,17 +556,17 @@ QImage TbcSource::generateQImage(qint32 firstFieldNumber, qint32 secondFieldNumb
         if (videoParameters.isSourcePal) {
             // PAL source
 
-            firstActiveLine = palColour.getConfiguration().firstActiveLine;
-            lastActiveLine = palColour.getConfiguration().lastActiveLine;
+            firstActiveLine = palColourConfiguration.firstActiveLine;
+            lastActiveLine = palColourConfiguration.lastActiveLine;
 
-            outputData = palColour.decodeFrame(firstField, firstFieldData, secondField, secondFieldData);
+            outputData = palColour.decodeFrame(firstField, secondField);
         } else {
             // NTSC source
 
             firstActiveLine = ntscColour.getConfiguration().firstActiveLine;
             lastActiveLine = ntscColour.getConfiguration().lastActiveLine;
 
-            outputData = ntscColour.decodeFrame(firstField, firstFieldData, secondField, secondFieldData);
+            outputData = ntscColour.decodeFrame(firstField, secondField);
         }
 
         // Fill the QImage with black

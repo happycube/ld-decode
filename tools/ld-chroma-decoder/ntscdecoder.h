@@ -37,15 +37,16 @@
 
 #include "comb.h"
 #include "decoder.h"
+#include "sourcefield.h"
 
 class DecoderPool;
 
 // 2D/3D NTSC decoder using Comb
 class NtscDecoder : public Decoder {
 public:
-    NtscDecoder(bool blackAndWhite, bool whitePoint, bool use3D, bool showOpticalFlowMap);
+    NtscDecoder(const Comb::Configuration &combConfig);
     bool configure(const LdDecodeMetaData::VideoParameters &videoParameters) override;
-    qint32 getLookBehind() override;
+    qint32 getLookBehind() const override;
     QThread *makeThread(QAtomicInt& abort, DecoderPool& decoderPool) override;
 
     // Parameters used by NtscDecoder and NtscThread
@@ -66,7 +67,8 @@ public:
                         QObject *parent = nullptr);
 
 protected:
-    QByteArray decodeFrame(const Decoder::InputField &firstField, const Decoder::InputField &secondField) override;
+    void decodeFrames(const QVector<SourceField> &inputFields, qint32 startIndex, qint32 endIndex,
+                      QVector<QByteArray> &outputFrames) override;
 
 private:
     // Settings

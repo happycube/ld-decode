@@ -27,6 +27,8 @@
 
 #include <QDialog>
 
+#include "palcolour.h"
+
 namespace Ui {
 class PalChromaDecoderConfigDialog;
 }
@@ -39,14 +41,8 @@ public:
     explicit PalChromaDecoderConfigDialog(QWidget *parent = nullptr);
     ~PalChromaDecoderConfigDialog();
 
-    struct PalChromaDecoderConfig {
-        bool blackAndWhite;
-        bool useTransformFilter;
-        double transformThreshold;
-    };
-
-    void setConfiguration(PalChromaDecoderConfig _palChromaDecoderConfig);
-    PalChromaDecoderConfig getConfiguration();
+    void setConfiguration(const PalColour::Configuration &_palChromaDecoderConfig);
+    const PalColour::Configuration &getConfiguration();
 
 signals:
     void palChromaDecoderConfigChanged();
@@ -54,11 +50,13 @@ signals:
 private slots:
     void on_blackAndWhiteCheckBox_clicked();
     void on_twoDeeTransformCheckBox_clicked();
+    void on_thresholdModeCheckBox_clicked();
     void on_thresholdHorizontalSlider_valueChanged(int value);
+    void on_showFFTsCheckBox_clicked();
 
 private:
     Ui::PalChromaDecoderConfigDialog *ui;
-    PalChromaDecoderConfig palChromaDecoderConfig;
+    PalColour::Configuration palChromaDecoderConfig;
 
     void updateDialog();
 };

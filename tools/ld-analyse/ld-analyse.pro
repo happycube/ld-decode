@@ -41,8 +41,12 @@ SOURCES += \
     ../ld-chroma-decoder/rgb.cpp \
     ../ld-chroma-decoder/yiq.cpp \
     ../ld-chroma-decoder/transformpal.cpp \
+    ../ld-chroma-decoder/transformpal2d.cpp \
+    ../ld-chroma-decoder/transformpal3d.cpp \
+    ../ld-chroma-decoder/framecanvas.cpp \
     dropoutanalysisdialog.cpp \
     ../ld-chroma-decoder/opticalflow.cpp \
+    ../ld-chroma-decoder/sourcefield.cpp \
     ../library/tbc/lddecodemetadata.cpp \
     ../library/tbc/sourcevideo.cpp \
     ../library/tbc/vbidecoder.cpp
@@ -62,10 +66,14 @@ HEADERS += \
     ../ld-chroma-decoder/comb.h \
     ../ld-chroma-decoder/rgb.h \
     ../ld-chroma-decoder/yiq.h \
-    ../ld-chroma-decoder/transformpal.cpp \
+    ../ld-chroma-decoder/transformpal.h \
+    ../ld-chroma-decoder/transformpal2d.h \
+    ../ld-chroma-decoder/transformpal3d.h \
+    ../ld-chroma-decoder/framecanvas.h \
     dropoutanalysisdialog.h \
     ../ld-chroma-decoder/yiqbuffer.h \
     ../ld-chroma-decoder/opticalflow.h \
+    ../ld-chroma-decoder/sourcefield.h \
     ../library/tbc/lddecodemetadata.h \
     ../library/tbc/sourcevideo.h \
     ../library/tbc/vbidecoder.h
