@@ -84,6 +84,8 @@ void DropOutCorrect::run()
                 QVector<Replacement> firstFieldReplacementLines;
                 firstFieldReplacementLines.resize(firstFieldDropouts.size());
                 for (qint32 dropoutIndex = 0; dropoutIndex < firstFieldDropouts.size(); dropoutIndex++) {
+                    firstFieldReplacementLines[dropoutIndex].fieldLine = -1;
+
                     // Is the current dropout in the colour burst?
                     if (firstFieldDropouts[dropoutIndex].location == Location::colourBurst) {
                         firstFieldReplacementLines[dropoutIndex] = findReplacementLine(firstFieldDropouts, secondFieldDropouts, dropoutIndex, true, intraField);
@@ -97,26 +99,14 @@ void DropOutCorrect::run()
 
                 // Correct the data of the first field
                 for (qint32 dropoutIndex = 0; dropoutIndex < firstFieldDropouts.size(); dropoutIndex++) {
-                    if (firstFieldReplacementLines[dropoutIndex].isFirstField) {
+                    if (firstFieldReplacementLines[dropoutIndex].fieldLine == -1) {
+                        // Doesn't need correcting
+                    } else if (firstFieldReplacementLines[dropoutIndex].isFirstField) {
                         // Correct the first field from the first field (intra-field correction)
-                        for (qint32 pixel = firstFieldDropouts[dropoutIndex].startx; pixel < firstFieldDropouts[dropoutIndex].endx; pixel++) {
-                            if (firstFieldDropouts[dropoutIndex].fieldLine > 2) {
-                                *(firstTargetFieldData.data() + (((firstFieldDropouts[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2))) =
-                                        *(firstTargetFieldData.data() + (((firstFieldReplacementLines[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2)));
-                                *(firstTargetFieldData.data() + (((firstFieldDropouts[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2) + 1)) =
-                                        *(firstTargetFieldData.data() + (((firstFieldReplacementLines[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2) + 1));
-                            }
-                        }
+                        correctDropOut(firstFieldDropouts[dropoutIndex], firstFieldReplacementLines[dropoutIndex], firstTargetFieldData, firstTargetFieldData);
                     } else {
                         // Correct the first field from the second field (inter-field correction)
-                        for (qint32 pixel = firstFieldDropouts[dropoutIndex].startx; pixel < firstFieldDropouts[dropoutIndex].endx; pixel++) {
-                            if (firstFieldDropouts[dropoutIndex].fieldLine > 2) {
-                                *(firstTargetFieldData.data() + (((firstFieldDropouts[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2))) =
-                                        *(secondTargetFieldData.data() + (((firstFieldReplacementLines[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2)));
-                                *(firstTargetFieldData.data() + (((firstFieldDropouts[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2) + 1)) =
-                                        *(secondTargetFieldData.data() + (((firstFieldReplacementLines[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2) + 1));
-                            }
-                        }
+                        correctDropOut(firstFieldDropouts[dropoutIndex], firstFieldReplacementLines[dropoutIndex], firstTargetFieldData, secondTargetFieldData);
                     }
                 }
             }
@@ -127,6 +117,8 @@ void DropOutCorrect::run()
                 QVector<Replacement> secondFieldReplacementLines;
                 secondFieldReplacementLines.resize(secondFieldDropouts.size());
                 for (qint32 dropoutIndex = 0; dropoutIndex < secondFieldDropouts.size(); dropoutIndex++) {
+                    secondFieldReplacementLines[dropoutIndex].fieldLine = -1;
+
                     // Is the current dropout in the colour burst?
                     if (secondFieldDropouts[dropoutIndex].location == Location::colourBurst) {
                         secondFieldReplacementLines[dropoutIndex] = findReplacementLine(secondFieldDropouts, firstFieldDropouts, dropoutIndex, true, intraField);
@@ -140,26 +132,14 @@ void DropOutCorrect::run()
 
                 // Correct the data of the second field
                 for (qint32 dropoutIndex = 0; dropoutIndex < secondFieldDropouts.size(); dropoutIndex++) {
-                    if (secondFieldReplacementLines[dropoutIndex].isFirstField) {
+                    if (secondFieldReplacementLines[dropoutIndex].fieldLine == -1) {
+                        // Doesn't need correcting
+                    } else if (secondFieldReplacementLines[dropoutIndex].isFirstField) {
                         // Correct the second field from the second field (intra-field correction)
-                        for (qint32 pixel = secondFieldDropouts[dropoutIndex].startx; pixel < secondFieldDropouts[dropoutIndex].endx; pixel++) {
-                            if (secondFieldDropouts[dropoutIndex].fieldLine > 2) {
-                                *(secondTargetFieldData.data() + (((secondFieldDropouts[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2))) =
-                                        *(secondSourceField.data() + (((secondFieldReplacementLines[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2)));
-                                *(secondTargetFieldData.data() + (((secondFieldDropouts[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2) + 1)) =
-                                        *(secondSourceField.data() + (((secondFieldReplacementLines[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2) + 1));
-                            }
-                        }
+                        correctDropOut(secondFieldDropouts[dropoutIndex], secondFieldReplacementLines[dropoutIndex], secondTargetFieldData, secondSourceField);
                     } else {
                         // Correct the second field from the first field (inter-field correction)
-                        for (qint32 pixel = secondFieldDropouts[dropoutIndex].startx; pixel < secondFieldDropouts[dropoutIndex].endx; pixel++) {
-                            if (secondFieldDropouts[dropoutIndex].fieldLine > 2) {
-                                *(secondTargetFieldData.data() + (((secondFieldDropouts[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2))) =
-                                        *(firstSourceField.data() + (((secondFieldReplacementLines[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2)));
-                                *(secondTargetFieldData.data() + (((secondFieldDropouts[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2) + 1)) =
-                                        *(firstSourceField.data() + (((secondFieldReplacementLines[dropoutIndex].fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2) + 1));
-                            }
-                        }
+                        correctDropOut(secondFieldDropouts[dropoutIndex], secondFieldReplacementLines[dropoutIndex], secondTargetFieldData, firstSourceField);
                     }
                 }
             }
@@ -181,6 +161,11 @@ QVector<DropOutCorrect::DropOutLocation> DropOutCorrect::populateDropoutsVector(
         dropOutLocation.endx = field.dropOuts.endx[dropOutIndex];
         dropOutLocation.fieldLine = field.dropOuts.fieldLine[dropOutIndex];
         dropOutLocation.location = DropOutCorrect::Location::unknown;
+
+        // Ignore dropouts outside the field's data
+        if (dropOutLocation.fieldLine < 1 || dropOutLocation.fieldLine > videoParameters.fieldHeight) {
+            continue;
+        }
 
         // Is over correct mode selected?
         if (overCorrect) {
@@ -313,11 +298,9 @@ DropOutCorrect::Replacement DropOutCorrect::findReplacementLine(QVector<DropOutL
             if (firstFieldDropouts[sourceIndex].fieldLine == upSourceLine) {
                 // Does the start<->end range overlap?
                 if ((firstFieldDropouts[sourceIndex].endx - firstFieldDropouts[dropOutIndex].startx >= 0) && (firstFieldDropouts[dropOutIndex].endx - firstFieldDropouts[sourceIndex].startx >= 0)) {
-                    // Overlap
+                    // Overlap -- can't use this line
                     upSourceLine -= stepAmount;
                     upFoundSource = false;
-                } else {
-                    upFoundSource = true; // Use the current source line
                     break;
                 }
             }
@@ -334,11 +317,9 @@ DropOutCorrect::Replacement DropOutCorrect::findReplacementLine(QVector<DropOutL
             if (firstFieldDropouts[sourceIndex].fieldLine == downSourceLine) {
                 // Does the start<->end range overlap?
                 if ((firstFieldDropouts[sourceIndex].endx - firstFieldDropouts[dropOutIndex].startx >= 0) && (firstFieldDropouts[dropOutIndex].endx - firstFieldDropouts[sourceIndex].startx >= 0)) {
-                    // Overlap
+                    // Overlap -- can't use this line
                     downSourceLine += stepAmount;
                     downFoundSource = false;
-                } else {
-                    downFoundSource = true; // Use the current source line
                     break;
                 }
             }
@@ -382,19 +363,12 @@ DropOutCorrect::Replacement DropOutCorrect::findReplacementLine(QVector<DropOutL
             upFoundSource = true;
             for (qint32 sourceIndex = 0; sourceIndex < secondFieldDropouts.size(); sourceIndex++) {
                 if (secondFieldDropouts[sourceIndex].fieldLine == upSourceLine) {
-                    if (secondFieldDropouts.size() < dropOutIndex && firstFieldDropouts.size() < sourceIndex) {
-                        // Does the start<->end range overlap?
-                        if ((firstFieldDropouts[sourceIndex].endx - secondFieldDropouts[dropOutIndex].startx >= 0) &&
-                                (firstFieldDropouts[dropOutIndex].endx - secondFieldDropouts[sourceIndex].startx >= 0)) {
-                            // Overlap
-                            upSourceLine -= stepAmount;
-                            upFoundSource = false;
-                        } else {
-                            upFoundSource = true; // Use the current source line
-                            break;
-                        }
-                    } else {
-                        upFoundSource = true; // Use the current source line
+                    // Does the start<->end range overlap?
+                    if ((firstFieldDropouts[dropOutIndex].endx - secondFieldDropouts[sourceIndex].startx >= 0) &&
+                            (secondFieldDropouts[sourceIndex].endx - firstFieldDropouts[dropOutIndex].startx >= 0)) {
+                        // Overlap -- can't use this line
+                        upSourceLine -= stepAmount;
+                        upFoundSource = false;
                         break;
                     }
                 }
@@ -409,19 +383,12 @@ DropOutCorrect::Replacement DropOutCorrect::findReplacementLine(QVector<DropOutL
             downFoundSource = true;
             for (qint32 sourceIndex = 0; sourceIndex < secondFieldDropouts.size(); sourceIndex++) {
                 if (secondFieldDropouts[sourceIndex].fieldLine == downSourceLine) {
-                    if (secondFieldDropouts.size() < dropOutIndex && firstFieldDropouts.size() < sourceIndex) {
-                        // Does the start<->end range overlap?
-                        if ((firstFieldDropouts[sourceIndex].endx - secondFieldDropouts[dropOutIndex].startx >= 0) &&
-                                (firstFieldDropouts[dropOutIndex].endx - secondFieldDropouts[sourceIndex].startx >= 0)) {
-                            // Overlap
-                            downSourceLine += stepAmount;
-                            downFoundSource = false;
-                        } else {
-                            downFoundSource = true; // Use the current source line
-                            break;
-                        }
-                    } else {
-                        downFoundSource = true; // Use the current source line
+                    // Does the start<->end range overlap?
+                    if ((firstFieldDropouts[dropOutIndex].endx - secondFieldDropouts[sourceIndex].startx >= 0) &&
+                            (secondFieldDropouts[sourceIndex].endx - firstFieldDropouts[dropOutIndex].startx >= 0)) {
+                        // Overlap -- can't use this line
+                        downSourceLine += stepAmount;
+                        downFoundSource = false;
                         break;
                     }
                 }
@@ -490,3 +457,15 @@ DropOutCorrect::Replacement DropOutCorrect::findReplacementLine(QVector<DropOutL
     return replacement;
 }
 
+// Correct a dropout by copying data from a replacement line.
+void DropOutCorrect::correctDropOut(const DropOutLocation &dropOut, const Replacement &replacement, QByteArray &targetField, const QByteArray &sourceField)
+{
+    for (qint32 pixel = dropOut.startx; pixel < dropOut.endx; pixel++) {
+        if (dropOut.fieldLine > 2) {
+            *(targetField.data() + (((dropOut.fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2))) =
+                    *(sourceField.data() + (((replacement.fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2)));
+            *(targetField.data() + (((dropOut.fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2) + 1)) =
+                    *(sourceField.data() + (((replacement.fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2) + 1));
+        }
+    }
+}
