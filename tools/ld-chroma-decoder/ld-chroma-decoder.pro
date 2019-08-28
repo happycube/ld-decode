@@ -20,6 +20,7 @@ SOURCES += \
     decoderpool.cpp \
     framecanvas.cpp \
     main.cpp \
+    monodecoder.cpp \
     ntscdecoder.cpp \
     opticalflow.cpp \
     palcolour.cpp \
@@ -39,6 +40,7 @@ HEADERS += \
     decoderpool.h \
     framecanvas.h \
     iirfilter.h \
+    monodecoder.h \
     ntscdecoder.h \
     opticalflow.h \
     palcolour.h \
