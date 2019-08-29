@@ -34,6 +34,7 @@
 #include "lddecodemetadata.h"
 
 #include "comb.h"
+#include "monodecoder.h"
 #include "ntscdecoder.h"
 #include "palcolour.h"
 #include "paldecoder.h"
@@ -146,7 +147,7 @@ int main(int argc, char *argv[])
 
     // Option to select which decoder to use (-f)
     QCommandLineOption decoderOption(QStringList() << "f" << "decoder",
-                                     QCoreApplication::translate("main", "Decoder to use (pal2d, transform2d, transform3d, ntsc2d, ntsc3d; default automatic)"),
+                                     QCoreApplication::translate("main", "Decoder to use (pal2d, transform2d, transform3d, ntsc2d, ntsc3d, mono; default automatic)"),
                                      QCoreApplication::translate("main", "decoder"));
     parser.addOption(decoderOption);
 
@@ -358,6 +359,8 @@ int main(int argc, char *argv[])
     } else if (decoderName == "ntsc3d") {
         combConfig.use3D = true;
         decoder.reset(new NtscDecoder(combConfig));
+    } else if (decoderName == "mono") {
+        decoder.reset(new MonoDecoder);
     } else {
         qCritical() << "Unknown decoder " << decoderName;
         return -1;
