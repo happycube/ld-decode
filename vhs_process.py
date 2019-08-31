@@ -21,7 +21,17 @@ def toDB(val):
 def fromDB(val):
     return 10.0 ** (val / 20.0)
 
+def scale_chroma(chroma):
+    '''Scale the array to fit into signed 16-bit values.
+    '''
+    S16_ABS_MAX = 32767
 
+    if chroma is None:
+        print("Tried to scale an empty array!")
+    positive = np.max(chroma)
+    negative = np.min(chroma)
+    scale = 32767 / max(positive, abs(negative))
+    return np.int16(chroma * scale)
 
 def genLowShelf(f0, dbgain, qfactor, fs):
     """Generate low shelving filter coeficcients (digital).
@@ -98,6 +108,12 @@ class FieldPALVHS(ldd.FieldPAL):
         linelocs2 = self.linelocs1.copy()
         return linelocs2
 
+    def downscale(self, final = False, *args, **kwargs):
+        dsout, dsaudio, dsefm = super(FieldPALVHS, self).downscale(final, *args, **kwargs)
+        chroma, _, _ = ldd.Field.downscale(self, channel="demod_burst")
+        dschroma = scale_chroma(chroma)
+        return (dsout, dschroma), dsaudio, dsefm
+
 # Superclass to override laserdisc-specific parts of ld-decode with stuff that works for VHS
 #
 # We do this simply by using inheritance and overriding functions. This results in some redundant
@@ -113,6 +129,11 @@ class VHSDecode(ldd.LDdecode):
         self.FieldClass = FieldPALVHS
         self.demodcache = ldd.DemodCache(self.rf, self.infile, self.freader,
                                      num_worker_threads=self.numthreads)
+
+        if fname_out is not None:
+            self.outfile_chroma = open(fname_out + '.tbcc', 'wb')
+        else:
+            self.outfile_chroma = None
 
     # Override to avoid NaN in JSON.
     def calcsnr(self, f, snrslice):
@@ -145,6 +166,20 @@ class VHSDecode(ldd.LDdecode):
     # VHS, so just skip it.
     def decodeFrameNumber(self, f1, f2):
         return None
+
+    def writeout(self, dataset):
+        f, fi, (picturey, picturec), audio, efm = dataset
+
+        fi['audioSamples'] = 0
+        self.fieldinfo.append(fi)
+
+        self.outfile_video.write(picturey)
+        self.outfile_chroma.write(picturec)
+        self.fields_written += 1
+
+    def close(self):
+        setattr(self, self.outfile_chroma, None)
+        super(VHSDecode, self).close()
 
 class VHSRFDecode(ldd.RFDecode):
     def __init__(self, inputfreq = 40, system = 'NTSC'):
@@ -184,11 +219,13 @@ class VHSRFDecode(ldd.RFDecode):
         video_lpf = sps.butter(4, [(cc-.15)/self.freq_half, (cc+.15)/self.freq_half], btype='bandpass')
         self.Filters['FVideoBurst'] = lddu.filtfft(video_lpf, self.blocklen)
 
-        # Override computedelays
-        # It's normally used for dropout compensation, but the dropout compensation implementation
-        # in ld-decode assumes composite color. This function is called even if it's disabled, and
-        # seems to break with the VHS setup, so we disable it by overriding it for now.
+
     def computedelays(self, mtf_level = 0):
+        '''Override computedelays
+        It's normally used for dropout compensation, but the dropout compensation implementation
+        in ld-decode assumes composite color. This function is called even if it's disabled, and
+        seems to break with the VHS setup, so we disable it by overriding it for now.
+        '''
         # Set these to 0 for now, the metrics calculations look for them.
         self.delays = {}
         self.delays['video_sync'] = 0
@@ -216,13 +253,11 @@ class VHSRFDecode(ldd.RFDecode):
         out_video05 = np.fft.ifft(demod_fft * self.Filters['FVideo05']).real
         out_video05 = np.roll(out_video05, -self.Filters['F05_offset'])
 
-        if self.system == 'PAL':
-            video_out = np.rec.array(
-                [out_video, demod, out_video05], names=['demod', 'demod_raw', 'demod_05'])
-        else:
-            out_videoburst = np.fft.ifft(indata_fft * self.Filters['FVideoBurst']).real
-            video_out = np.rec.array(
-                [out_video, demod, out_video05, out_videoburst],
+        out_chroma = np.fft.ifft(indata_fft * self.Filters['FVideoBurst']).real * 5000.0
+
+        # demod_burst is a bit misleading, but keeping the naming for compatability.
+        video_out = np.rec.array(
+                [out_video, demod, out_video05, out_chroma],
                 names=['demod', 'demod_raw', 'demod_05', 'demod_burst'])
 
         rv['video'] = video_out[self.blockcut:-self.blockcut_end] if cut else video_out
@@ -250,7 +285,9 @@ class VHSRFDecode(ldd.RFDecode):
             ax2 = self.ax2#ax1.twinx()
             ax2.cla()
 
-            ax2.plot(range(0, len(out_videoburst)), out_videoburst, color='#FF0000')
+            ax2.plot(range(0, len(out_chroma)), out_chroma, color='#FF0000')
+            #ax2.plot(range(0, len(video_variation)), video_variation, color='#FFFF00')
+
 
 #            ax2.plot(range(0, len(output_syncf)), output_syncf, color='tab:green')
 #            ax2.plot(range(0, len(output_sync)), output_sync, color='tab:gray')
