@@ -749,5 +749,35 @@ def nb_mul(x, y):
 def nb_where(x):
     return np.where(x)
 
+def angular_mean(x, cycle_len = 1.0):
+    ''' Compute the mean phase, assuming 0..1 is one phase cycle
+
+        (Using this technique handles the 3.99, 5.01 issue 
+        where otherwise the phase average would be 0.5.  while a
+        naive computation could be changed to rotate around 0.5, 
+        that breaks down when things are out of phase...)
+    '''
+    x2 = x - np.floor(x)  # not strictly necessary but slightly more precise
+
+    # refer to https://en.wikipedia.org/wiki/Mean_of_circular_quantities
+    angles = [np.e ** (1j * f * np.pi * 2 / cycle_len) for f in x2]
+
+    am = np.angle(np.mean(angles)) / (np.pi * 2)
+    if (am < 0):
+        am = 1 + am
+        
+    return am
+
+def phase_distance(x, c = .75):
+    ''' returns the shortest path between two phases (assuming x and c are in (0..1)) '''
+    d = (x - np.floor(x)) - c
+    
+    if d < -.5:
+        d += 1
+    elif d > .5:
+        d -= 1
+    
+    return d
+
 if __name__ == "__main__":
     print("Nothing to see here, move along ;)")

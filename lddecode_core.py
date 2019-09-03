@@ -844,7 +844,7 @@ class Field:
     def inpxtousec(self, x, line = None):
         return x / self.get_linefreq(line)
 
-    def lineslice(self, l, begin = None, length = None, linelocs = None):
+    def lineslice(self, l, begin = None, length = None, linelocs = None, begin_offset = 0):
         ''' return a slice corresponding with pre-TBC line l, begin+length are uSecs '''
         
         # for PAL, each field has a different offset so normalize that
@@ -855,7 +855,7 @@ class Field:
 
         _length = self.usectoinpx(length, l_adj) if length is not None else 1
 
-        return slice(int(np.round(_begin)), int(np.round(_begin + _length)))
+        return slice(int(np.floor(_begin + begin_offset)), int(np.ceil(_begin + _length + begin_offset)))
 
     def usectooutpx(self, x):
         return x * self.rf.SysParams['outfreq']
@@ -1648,64 +1648,41 @@ class Field:
 # These classes extend Field to do PAL/NTSC specific TBC features.
 
 class FieldPAL(Field):
+
     def refine_linelocs_pilot(self, linelocs = None):
         if linelocs is None:
             linelocs = self.linelocs2.copy()
         else:
             linelocs = linelocs.copy()
 
-        pilots = []
-        alloffsets = []
-        offsets = {}
+        plen = {}
 
-        # first pass: get median of all pilot positive zero crossings
-        for l in range(len(linelocs)):
-            #pilot = self.data['video']['demod'][int(linelocs[l]):int(linelocs[l]+self.usectoinpx(4.7))].copy()
-            #pilot -= self.data['video']['demod_05'][int(linelocs[l]):int(linelocs[l]+self.usectoinpx(4.7))]
-
-            pilot = self.data['video']['demod_pilot'][int(linelocs[l]):int(linelocs[l]+self.usectoinpx(4.7))].copy()
-            #pilot = np.flip(pilot, axis=0)
-
-            pilots.append(pilot)
-            offsets[l] = []
-
+        zcs = []
+        for l in range(0, 312):
             adjfreq = self.rf.freq
-            if l > 1:
-                adjfreq /= (linelocs[l] - linelocs[l - 1]) / self.rf.linelen
+            #if l > 1:
+                #adjfreq /= (linelocs[l] - linelocs[l - 1]) / self.rf.linelen
 
-            pcross = np.where((pilot[:-1] < 0) & (pilot[1:] >= 0))[0]
+            plen[l] = (adjfreq / self.rf.SysParams['pilot_mhz']) / 2
 
-            for c in pcross:
-                # filter out bits outside of the pilot wave?  need to look at this more esp at 75msps
-                if pilot[c + 1] - pilot[c] > 50000:
-                    zc = calczc(pilot, c, 0)
-                    if zc is not None:
-                        zcp = zc / (adjfreq / 3.75)
-                        offset = zcp - np.floor(zcp)
-                        # issue #224 was caused by it wrapping from say .01 to .99.
-                        # convert offsets into [-.5, .5] to hopefully prevent this
-                        if offset > .5:
-                            offset -= 1
-                        offsets[l].append(offset)
-                    else:
-                        break
+            ls = self.lineslice(l, 0, 6, linelocs)
+            lsoffset = linelocs[l] - ls.start
 
-            if len(offsets) >= 3:
-                offsets[l] = offsets[l][2:-2]
-                alloffsets += offsets[l]
-            else:
-                offsets[l] = []
+            pilots = self.data['video']['demod_pilot'][ls]
 
-        print(len(alloffsets), np.median(alloffsets), np.std(alloffsets))
-        medianoffset = np.median(alloffsets)
-        tgt = .5 if inrange(medianoffset, 0.25, 0.75) else 0
+            peakloc = np.argmax(np.abs(pilots))
 
-        for l in range(len(linelocs)):
-            if offsets[l] != []:
-                adjustment = tgt - np.median(offsets[l])
-                linelocs[l] += adjustment * (self.rf.freq / 3.75) * .25
+            zc = (calczc(pilots, peakloc, 0) - lsoffset) / plen[l]
+            zcs.append(zc)
 
-        return linelocs  
+        am = angular_mean(zcs)
+
+#        print(am, np.std(zcs - np.floor(zcs)))
+
+        for l in range(0, 312):
+            linelocs[l] += (phase_distance(zcs[l], am) * plen[l]) * 1
+
+        return linelocs
 
     def calc_burstmedian(self):
         burstlevel = np.zeros(314)
@@ -1741,7 +1718,7 @@ class FieldPAL(Field):
         if not self.valid:
             return
 
-        if False:
+        if True:
             self.linelocs = self.refine_linelocs_pilot()
             self.linelocs = self.fix_badlines(self.linelocs)
         else:
