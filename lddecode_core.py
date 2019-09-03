@@ -1373,6 +1373,8 @@ class Field:
             while nextgood < len(linelocs) and self.linebad[nextgood]:
                 nextgood += 1
 
+            #print(l, prevgood, nextgood)
+
             if prevgood >= 0 and nextgood < len(linelocs):
                 gap = (linelocs[nextgood] - linelocs[prevgood]) / (nextgood - prevgood)
                 linelocs[l] = (gap * (l - prevgood)) + linelocs[prevgood]
@@ -1660,8 +1662,8 @@ class FieldPAL(Field):
         zcs = []
         for l in range(0, 312):
             adjfreq = self.rf.freq
-            #if l > 1:
-                #adjfreq /= (linelocs[l] - linelocs[l - 1]) / self.rf.linelen
+            if l > 1:
+                adjfreq /= (linelocs[l] - linelocs[l - 1]) / self.rf.linelen
 
             plen[l] = (adjfreq / self.rf.SysParams['pilot_mhz']) / 2
 
@@ -1677,12 +1679,13 @@ class FieldPAL(Field):
 
         am = angular_mean(zcs)
 
-#        print(am, np.std(zcs - np.floor(zcs)))
+        #print(am, np.std(zcs - np.floor(zcs)))
 
         for l in range(0, 312):
+            #print(l, phase_distance(zcs[l], am))
             linelocs[l] += (phase_distance(zcs[l], am) * plen[l]) * 1
 
-        return linelocs
+        return np.array(linelocs)
 
     def calc_burstmedian(self):
         burstlevel = np.zeros(314)
@@ -1719,8 +1722,9 @@ class FieldPAL(Field):
             return
 
         if True:
-            self.linelocs = self.refine_linelocs_pilot()
-            self.linelocs = self.fix_badlines(self.linelocs)
+            self.linelocs3 = self.refine_linelocs_pilot(self.linelocs2)
+            self.linelocs3a = self.refine_linelocs_pilot(self.linelocs3)
+            self.linelocs = self.fix_badlines(self.linelocs3a)
         else:
             self.linelocs = self.fix_badlines(self.linelocs2)
 
