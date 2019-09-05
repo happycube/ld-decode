@@ -1854,8 +1854,8 @@ class FieldNTSC(Field):
         bursts_arr[False] = np.concatenate(bursts['odd'])
 
         amed = {}
-        amed[True] = angular_mean(bursts_arr[True], zero_base=False)
-        amed[False] = angular_mean(bursts_arr[False], zero_base=False)
+        amed[True] = np.abs(angular_mean(bursts_arr[True], zero_base=False))
+        amed[False] = np.abs(angular_mean(bursts_arr[False], zero_base=False))
         
         #print(amed)
         field14 = amed[True] < amed[False]
@@ -1863,8 +1863,8 @@ class FieldNTSC(Field):
         # if the medians are too close, recompute them with a 90 degree offset
         if (np.abs(amed[True] - amed[False]) < .1):
             amed = {}
-            amed[True] = angular_mean(bursts_arr[True] + .25, zero_base=False)
-            amed[False] = angular_mean(bursts_arr[False] + .25, zero_base=False)
+            amed[True] = np.abs(angular_mean(bursts_arr[True] + .25, zero_base=False))
+            amed[False] = np.abs(angular_mean(bursts_arr[False] + .25, zero_base=False))
             field14 = amed[True] < amed[False]
 
         self.amed = amed
