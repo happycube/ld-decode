@@ -1723,6 +1723,8 @@ class FieldPAL(Field):
 
         if True:
             self.linelocs3 = self.refine_linelocs_pilot(self.linelocs2)
+            # do a second pass for fine tuning (typically < .1px), because the adjusted 
+            # frequency changes slightly from the first pass
             self.linelocs3a = self.refine_linelocs_pilot(self.linelocs3)
             self.linelocs = self.fix_badlines(self.linelocs3a)
         else:
@@ -1852,15 +1854,17 @@ class FieldNTSC(Field):
         bursts_arr[False] = np.concatenate(bursts['odd'])
 
         amed = {}
-        amed[True] = np.abs(nb_median(bursts_arr[True]))
-        amed[False] = np.abs(nb_median(bursts_arr[False]))
+        amed[True] = angular_mean(bursts_arr[True], zero_base=False)
+        amed[False] = angular_mean(bursts_arr[False], zero_base=False)
+        
+        #print(amed)
         field14 = amed[True] < amed[False]
 
         # if the medians are too close, recompute them with a 90 degree offset
         if (np.abs(amed[True] - amed[False]) < .1):
             amed = {}
-            amed[True] = np.abs(nb_median(bursts_arr[True] + .25))
-            amed[False] = np.abs(nb_median(bursts_arr[False] + .25))
+            amed[True] = angular_mean(bursts_arr[True] + .25, zero_base=False)
+            amed[False] = angular_mean(bursts_arr[False] + .25, zero_base=False)
             field14 = amed[True] < amed[False]
 
         self.amed = amed

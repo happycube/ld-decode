@@ -749,7 +749,7 @@ def nb_mul(x, y):
 def nb_where(x):
     return np.where(x)
 
-def angular_mean(x, cycle_len = 1.0):
+def angular_mean(x, cycle_len = 1.0, zero_base = True):
     ''' Compute the mean phase, assuming 0..1 is one phase cycle
 
         (Using this technique handles the 3.99, 5.01 issue 
@@ -763,7 +763,7 @@ def angular_mean(x, cycle_len = 1.0):
     angles = [np.e ** (1j * f * np.pi * 2 / cycle_len) for f in x2]
 
     am = np.angle(np.mean(angles)) / (np.pi * 2)
-    if (am < 0):
+    if zero_base and (am < 0):
         am = 1 + am
         
     return am
