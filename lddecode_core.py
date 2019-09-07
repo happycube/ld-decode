@@ -1674,7 +1674,11 @@ class FieldPAL(Field):
 
             peakloc = np.argmax(np.abs(pilots))
 
-            zc = (calczc(pilots, peakloc, 0) - lsoffset) / plen[l]
+            try:
+                zc = (calczc(pilots, peakloc, 0) - lsoffset) / plen[l]
+            except:
+                zc = zcs[-1] if len(zcs) else 0
+                
             zcs.append(zc)
 
         am = angular_mean(zcs)
