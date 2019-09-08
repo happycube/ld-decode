@@ -15,6 +15,12 @@ from lddutils import unwrap_hilbert, inrange
 
 import vhs_formats
 
+
+
+def upconvert_chroma(chroma):
+
+    return chroma
+
 def toDB(val):
     return 20 * np.log10(val)
 
@@ -30,8 +36,8 @@ def scale_chroma(chroma):
         print("Tried to scale an empty array!")
     positive = np.max(chroma)
     negative = np.min(chroma)
-    scale = 32767 / max(positive, abs(negative))
-    return np.int16(chroma * scale)
+    scale = S16_ABS_MAX / max(positive, abs(negative))
+    return np.uint16((chroma * scale) + S16_ABS_MAX + 1)
 
 def genLowShelf(f0, dbgain, qfactor, fs):
     """Generate low shelving filter coeficcients (digital).
@@ -111,7 +117,23 @@ class FieldPALVHS(ldd.FieldPAL):
     def downscale(self, final = False, *args, **kwargs):
         dsout, dsaudio, dsefm = super(FieldPALVHS, self).downscale(final, *args, **kwargs)
         chroma, _, _ = ldd.Field.downscale(self, channel="demod_burst")
-        dschroma = scale_chroma(chroma)
+
+
+        ## Chroma upheterodyne
+
+        uphet = np.zeros(chroma.size, dtype=np.double)
+
+        lineoffset = self.lineoffset + 1
+        linesout = self.outlinecount
+        outwidth = self.outlinelen
+
+        for l in range(lineoffset, linesout + lineoffset):
+            linestart = (l - lineoffset) * outwidth
+            lineend = linestart + outwidth
+
+            uphet[linestart:lineend] = chroma[linestart:lineend] * self.rf.chroma_heterodyne
+
+        dschroma = scale_chroma(uphet)
         return (dsout, dschroma), dsaudio, dsefm
 
 # Superclass to override laserdisc-specific parts of ld-decode with stuff that works for VHS
@@ -216,9 +238,21 @@ class VHSRFDecode(ldd.RFDecode):
         #FS = inputfreq * 1000000
         #ax1.plot((FS * 0.5 / np.pi) * w, toDB(abs(h)), 'b')
         #plt.show()
-        video_lpf = sps.butter(4, [(cc-.15)/self.freq_half, (cc+.15)/self.freq_half], btype='bandpass')
-        self.Filters['FVideoBurst'] = lddu.filtfft(video_lpf, self.blocklen)
+        chroma_bandpass = sps.butter(5, [(cc-.15)/self.freq_half,
+                                         (cc+.15)/self.freq_half], btype='bandpass')
+        self.Filters['FVideoBurst'] = lddu.filtfft(chroma_bandpass, self.blocklen)
 
+        # Heterodyne wave
+        # We combine the color carrier with a wave with a frequency of the
+        # subcarrier + the downconverted chroma carrier to get the original
+        # color wave back.
+        samples = np.arange(self.SysParams['outlinelen'])
+        # As this is done on the tbced signal, we need the sampling frequency of that,
+        # which is 4fsc for NTSC and approx. 4 fsc for PAL.
+        # TODO: Correct frequency for pal?
+        wave_scale =  (self.SysParams['fsc_mhz'] + cc) / (self.SysParams['fsc_mhz'] * 4)
+
+        self.chroma_heterodyne = np.sin(2 * np.pi * wave_scale * samples)
 
     def computedelays(self, mtf_level = 0):
         '''Override computedelays
@@ -253,7 +287,7 @@ class VHSRFDecode(ldd.RFDecode):
         out_video05 = np.fft.ifft(demod_fft * self.Filters['FVideo05']).real
         out_video05 = np.roll(out_video05, -self.Filters['F05_offset'])
 
-        out_chroma = np.fft.ifft(indata_fft * self.Filters['FVideoBurst']).real * 5000.0
+        out_chroma = np.fft.ifft(indata_fft * self.Filters['FVideoBurst']).real * 100
 
         # demod_burst is a bit misleading, but keeping the naming for compatability.
         video_out = np.rec.array(
@@ -270,17 +304,20 @@ class VHSRFDecode(ldd.RFDecode):
             #fig.cla()
             ax1.cla()
 
-            ax1.axhline(self.iretohz(-55))
-            ax1.axhline(self.iretohz(-25))
+            #ax1.axhline(self.iretohz(-55))
+            #ax1.axhline(self.iretohz(-25))
 
             color = 'tab:red'
-            ax1.axhline(self.iretohz(self.SysParams['vsync_ire']), color=color)
-            ax1.axhline(self.iretohz(0), color='0.0')
+            #ax1.axhline(self.iretohz(self.SysParams['vsync_ire']), color=color)
+            #ax1.axhline(self.iretohz(0), color='0.0')
             #ax1.axhline(min_level, color='#00FF00')
             #ax1.axhline(sync_filter_high, color='#0000FF')
 
-            ax1.plot(range(0, len(out_video)), out_video)
-            ax1.plot(range(0, len(out_video05)), out_video05)
+#            ax1.plot(range(0, len(self.chroma_heterodyne)), self.chroma_heterodyne)
+            ax1.plot(range(0, len(uphet)), uphet)
+
+            #ax1.plot(range(0, len(out_video)), out_video)
+            #ax1.plot(range(0, len(out_video05)), out_video05)
 
             ax2 = self.ax2#ax1.twinx()
             ax2.cla()

@@ -33,7 +33,7 @@ SysParams_PAL_VHS['hz_ire'] = 960000 / 100.0
 
 # Heterodyned color carrier frequency in Mhz.
 # On VHS the same frequency is used for both NTSC and PAL.
-VHS_COLOR_CARRIER_MHZ = 0.629
+VHS_COLOR_CARRIER_MHZ = 0.626953
 
 #SysParams_PAL['outlinelen'] = calclinelen(SysParams_PAL, 4, 'fsc_mhz')
 #SysParams_PAL['outlinelen_pilot'] = calclinelen(SysParams_PAL, 4, 'pilot_mhz')
