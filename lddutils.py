@@ -625,12 +625,12 @@ def genwave(rate, freq, initialphase = 0):
     angle = initialphase
     
     for i in range(0, len(rate)):
+        out[i] = np.sin(angle)
+
         angle += np.pi * (rate[i] / freq)
         if angle > np.pi:
             angle -= tau
-        
-        out[i] = np.sin(angle)
-        
+                
     return out
 
 # slightly faster than np.std for short arrays
