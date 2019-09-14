@@ -2575,6 +2575,7 @@ class LDdecode:
                         print("file frame %d lead out" % (rawloc), file=sys.stderr)
                     else:
                         print("file frame %d unknown" % (rawloc), file=sys.stderr)
+                    sys.stderr.flush()
 
                     if self.frameNumber is not None:
                         fi['frameNumber'] = int(self.frameNumber)
