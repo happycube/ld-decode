@@ -710,7 +710,7 @@ class DemodCache:
 
             if 'MTF' not in item or 'demod' not in item:
                 # This shouldn't happen, but was observed by Simon on a decode
-                logging.error('incomplete demodulated block placed on queue, block #' + blocknum)
+                logging.error('incomplete demodulated block placed on queue, block #%d', blocknum)
                 self.q_in.put((blocknum, self.blocks[blocknum], self.currentMTF))
                 self.lock.release()
                 continue                
@@ -1422,7 +1422,7 @@ class Field:
 
                 dsout[(l - lineoffset) * outwidth:(l + 1 - lineoffset)*outwidth] = scaled
             else:
-                logging.warning("WARNING: TBC failure at line" + l)
+                logging.warning("WARNING: TBC failure at line %d", l)
                 dsout[(l - lineoffset) * outwidth:(l + 1 - lineoffset)*outwidth] = self.rf.SysParams['ire0']
 
         if audio and self.rf.decode_analog_audio:
@@ -2585,7 +2585,7 @@ class LDdecode:
                             fi['clvSeconds'] = int(self.clvSeconds)
                             fi['clvFrameNr'] = int(self.clvFrameNum)
                 except:
-                    logging.warning("file frame %d : VBI decoding error" % (rawloc))
+                    logging.warning("file frame %d : VBI decoding error", rawloc)
 
         return fi, False
 
@@ -2609,7 +2609,7 @@ class LDdecode:
                     return None
                 elif fnum is not None:
                     rawloc = np.floor((self.readloc / self.bytes_per_field) / 2)
-                    logging.info('seeking: file loc {0} frame # {1}'.format(rawloc, fnum))
+                    logging.info('seeking: file loc %d frame # %d', rawloc, fnum)
                     return fnum
         
         return False
