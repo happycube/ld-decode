@@ -32,7 +32,7 @@ SnrAnalysisDialog::SnrAnalysisDialog(QWidget *parent) :
     ui->setupUi(this);
     setWindowFlags(Qt::Window);
 
-    isFirstRun = true;
+    chartOwnsContents = false;
     maxSnr = 0;
     minSnr = 1000;
 
@@ -46,18 +46,14 @@ SnrAnalysisDialog::SnrAnalysisDialog(QWidget *parent) :
 
 SnrAnalysisDialog::~SnrAnalysisDialog()
 {
+    removeChartContents();
     delete ui;
 }
 
 // Get ready for an update
 void SnrAnalysisDialog::startUpdate()
 {
-    if (!isFirstRun) {
-        chart.removeAxis(&axisX);
-        chart.removeAxis(&axisY);
-        chart.removeSeries(&blackQLineSeries);
-        chart.removeSeries(&whiteQLineSeries);
-    } else isFirstRun = false;
+    removeChartContents();
     blackQLineSeries.clear();
     whiteQLineSeries.clear();
 
@@ -67,6 +63,19 @@ void SnrAnalysisDialog::startUpdate()
 
     maxSnr = 0;
     minSnr = 1000;
+}
+
+// Remove the axes and series from the chart, giving ownership back to this object
+void SnrAnalysisDialog::removeChartContents()
+{
+    if (!chartOwnsContents) return;
+
+    chart.removeAxis(&axisX);
+    chart.removeAxis(&axisY);
+    chart.removeSeries(&blackQLineSeries);
+    chart.removeSeries(&whiteQLineSeries);
+
+    chartOwnsContents = false;
 }
 
 // Add a data point to the chart
@@ -111,6 +120,9 @@ void SnrAnalysisDialog::finishUpdate(qint32 numberOfFields, qint32 fieldsPerData
     // Attach the series to the chart
     chart.addSeries(&blackQLineSeries);
     chart.addSeries(&whiteQLineSeries);
+
+    // The chart now owns the axes and series
+    chartOwnsContents = true;
 
     // Attach the axis to the QLineSeries
     blackQLineSeries.attachAxis(&axisX);

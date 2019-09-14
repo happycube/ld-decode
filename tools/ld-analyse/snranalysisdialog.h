@@ -52,6 +52,8 @@ private slots:
     void on_whiteSNR_checkBox_clicked();
 
 private:
+    void removeChartContents();
+
     Ui::SnrAnalysisDialog *ui;
     QChartView chartView;
     QLineSeries blackQLineSeries;
@@ -60,7 +62,7 @@ private:
     QValueAxis axisX;
     QValueAxis axisY;
 
-    bool isFirstRun;
+    bool chartOwnsContents;
     qreal maxSnr;
     qreal minSnr;
 };

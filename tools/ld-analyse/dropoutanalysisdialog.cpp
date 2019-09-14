@@ -32,7 +32,7 @@ DropoutAnalysisDialog::DropoutAnalysisDialog(QWidget *parent) :
     ui->setupUi(this);
     setWindowFlags(Qt::Window);
 
-    isFirstRun = true;
+    chartOwnsContents = false;
     maxY = 0;
 
     // Set up the chart view
@@ -45,23 +45,32 @@ DropoutAnalysisDialog::DropoutAnalysisDialog(QWidget *parent) :
 
 DropoutAnalysisDialog::~DropoutAnalysisDialog()
 {
+    removeChartContents();
     delete ui;
 }
 
 // Get ready for an update
 void DropoutAnalysisDialog::startUpdate()
 {
-    if (!isFirstRun) {
-        chart.removeAxis(&axisX);
-        chart.removeAxis(&axisY);
-        chart.removeSeries(&qLineSeries);
-    } else isFirstRun = false;
+    removeChartContents();
     qLineSeries.clear();
 
     // Create the QLineSeries
     qLineSeries.setColor(Qt::blue);
 
     maxY = 0;
+}
+
+// Remove the axes and series from the chart, giving ownership back to this object
+void DropoutAnalysisDialog::removeChartContents()
+{
+    if (!chartOwnsContents) return;
+
+    chart.removeAxis(&axisX);
+    chart.removeAxis(&axisY);
+    chart.removeSeries(&qLineSeries);
+
+    chartOwnsContents = false;
 }
 
 // Add a data point to the chart
@@ -101,6 +110,9 @@ void DropoutAnalysisDialog::finishUpdate(qint32 numberOfFields, qint32 fieldsPer
 
     // Attach the series to the chart
     chart.addSeries(&qLineSeries);
+
+    // The chart now owns the axes and series
+    chartOwnsContents = true;
 
     // Attach the axis to the QLineSeries
     qLineSeries.attachAxis(&axisX);
