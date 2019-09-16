@@ -79,16 +79,18 @@ if args.MTF is not None:
 if args.MTF_offset is not None:
     ldd.rf.mtf_offset = args.MTF_offset
 
+DecoderParamsOverride = {}
 if args.vbpf_high is not None:
-    ldd.rf.DecoderParams['video_bpf_high'] = args.vbpf_high * 1000000
+    DecoderParamsOverride['video_bpf_high'] = args.vbpf_high * 1000000
 
 if args.vlpf is not None:
-    ldd.rf.DecoderParams['video_lpf_freq'] = args.vlpf * 1000000
+    DecoderParamsOverride['video_lpf_freq'] = args.vlpf * 1000000
+
+if len(DecoderParamsOverride.keys()):
+    ldd.demodcache.setparams(DecoderParamsOverride)
 
 if args.verboseVITS:
     ldd.verboseVITS = True
-
-ldd.rf.computefilters()
 
 def write_json(ldd, outname):
     jsondict = ldd.build_json(ldd.curfield)
