@@ -375,10 +375,12 @@ void PalColour::detectBurst(LineInfo &line, const quint16 *inputData)
     line.bp = (bp - bqo) / 2;
     line.bq = (bq + bpo) / 2;
 
-    // burstNorm normalises bp and bq to 1.
+    // Normalise the magnitude of the bp/bq vector to 1.
     // Kill colour if burst too weak.
     // XXX magic number 130000 !!! check!
-    line.burstNorm = qMax(sqrt(line.bp * line.bp + line.bq * line.bq), 130000.0 / 128);
+    const double burstNorm = qMax(sqrt(line.bp * line.bp + line.bq * line.bq), 130000.0 / 128);
+    line.bp /= burstNorm;
+    line.bq /= burstNorm;
 }
 
 // Decode one line into outputFrame.
@@ -486,7 +488,7 @@ void PalColour::decodeLine(const SourceField &inputField, const ChromaSample *ch
     const double scaledContrast = 65535.0 / (videoParameters.white16bIre - videoParameters.black16bIre);
 
     // Gain for the U/V components
-    const double scaledSaturation = (2.0 / line.burstNorm) * chromaGain;
+    const double scaledSaturation = 2.0 * chromaGain;
 
     for (qint32 i = videoParameters.activeVideoStart; i < videoParameters.activeVideoEnd; i++) {
         // Compute luma by...

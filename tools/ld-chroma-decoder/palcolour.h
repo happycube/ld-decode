@@ -94,7 +94,6 @@ private:
         qint32 number;
         double bp, bq;
         double Vsw;
-        double burstNorm;
     };
 
     void buildLookUpTables();
