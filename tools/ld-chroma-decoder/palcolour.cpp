@@ -190,10 +190,10 @@ void PalColour::buildLookUpTables()
 
         // For U/V.
         // 0, 2, 1, 3 are vertical taps 0, +/- 1, +/- 2, +/- 3 (see filter loop below).
-        cfilt[f][0] = 256 * (1 + cos(M_PI * fc   / ca)) / d;
-        cfilt[f][2] = 256 * (1 + cos(M_PI * ff   / ca)) / d;
-        cfilt[f][1] = 256 * (1 + cos(M_PI * fff  / ca)) / d;
-        cfilt[f][3] = 256 * (1 + cos(M_PI * ffff / ca)) / d;
+        cfilt[f][0] = (1 + cos(M_PI * fc   / ca)) / d;
+        cfilt[f][2] = (1 + cos(M_PI * ff   / ca)) / d;
+        cfilt[f][1] = (1 + cos(M_PI * fff  / ca)) / d;
+        cfilt[f][3] = (1 + cos(M_PI * ffff / ca)) / d;
 
         // Each horizontal coefficient is applied to 2 columns (when b == 0,
         // it's the same column twice).
@@ -215,8 +215,8 @@ void PalColour::buildLookUpTables()
         // patterning.
         //
         // 0, 1 are vertical taps 0, +/- 2 (see filter loop below).
-        yfilt[f][0] =       256 * (1 + cos(M_PI * fy   / ya)) / d;
-        yfilt[f][1] = 0.2 * 256 * (1 + cos(M_PI * fffy / ya)) / d;
+        yfilt[f][0] =       (1 + cos(M_PI * fy   / ya)) / d;
+        yfilt[f][1] = 0.2 * (1 + cos(M_PI * fffy / ya)) / d;
 
         ydiv += 2 * (1 * yfilt[f][0] + 2 * 0 + 2 * yfilt[f][1] + 2 * 0);
     }
