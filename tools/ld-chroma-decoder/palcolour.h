@@ -108,7 +108,7 @@ private:
     // chromaData (templated, so it can be any numeric type) is the input to
     // the chroma demodulator; this may be the composite signal from
     // inputField, or it may be pre-filtered down to chroma.
-    template <typename ChromaSample, bool useTransformFilter>
+    template <typename ChromaSample, bool PREFILTERED_CHROMA>
     void decodeLine(const SourceField &inputField, const ChromaSample *chromaData, const LineInfo &line, double chromaGain,
                     QByteArray &outputFrame);
 
