@@ -24,6 +24,10 @@
 
 #include "framecanvas.h"
 
+// Definitions of static constexpr data members, for compatibility with
+// pre-C++17 compilers
+constexpr FrameCanvas::RGB FrameCanvas::green;
+
 FrameCanvas::FrameCanvas(QByteArray &_rgbFrame, const LdDecodeMetaData::VideoParameters &_videoParameters,
                          qint32 _firstActiveLine, qint32 _lastActiveLine)
     : rgbData(reinterpret_cast<quint16 *>(_rgbFrame.data())), rgbSize(_rgbFrame.size() / sizeof(quint16)),
@@ -50,8 +54,6 @@ qint32 FrameCanvas::right()
 {
     return videoParameters.activeVideoEnd;
 }
-
-const FrameCanvas::RGB FrameCanvas::green {0, 65535, 0};
 
 FrameCanvas::RGB FrameCanvas::grey(quint16 value)
 {

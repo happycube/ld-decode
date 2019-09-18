@@ -84,8 +84,7 @@ public:
                       QVector<QByteArray> &outputFrames);
 
     // Maximum frame size, based on PAL
-    static const qint32 MAX_WIDTH = 1135;
-    static const qint32 MAX_HEIGHT = 625;
+    static constexpr qint32 MAX_WIDTH = 1135;
 
 private:
     // Decode one field into outputFrame.
@@ -134,7 +133,7 @@ private:
     // array represents one quarter of a filter. The zeroth horizontal element
     // is included in the sum twice, so the coefficient is halved to
     // compensate. Each filter is (2 * FILTER_SIZE) + 1 elements wide.
-    static const qint32 FILTER_SIZE = 7;
+    static constexpr qint32 FILTER_SIZE = 7;
     double cfilt[FILTER_SIZE + 1][4];
     double yfilt[FILTER_SIZE + 1][2];
 
