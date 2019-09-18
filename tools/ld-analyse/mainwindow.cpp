@@ -830,7 +830,7 @@ void MainWindow::on_busyLoading(QString infoMessage)
         this->setEnabled(false);
         busyDialog->setEnabled(true);
 
-        busyDialog->exec();
+        busyDialog->show();
     }
 }
 
@@ -838,10 +838,6 @@ void MainWindow::on_busyLoading(QString infoMessage)
 void MainWindow::on_finishedLoading()
 {
     qDebug() << "MainWindow::on_finishedLoading(): Called";
-
-    // Hide the busy dialogue and enable the main window
-    busyDialog->hide();
-    this->setEnabled(true);
 
     // Ensure source loaded ok
     if (tbcSource.getIsSourceLoaded()) {
@@ -879,6 +875,10 @@ void MainWindow::on_finishedLoading()
         messageBox.warning(this, "Error", "Could not load source TBC file");
         messageBox.setFixedSize(500, 200);
     }
+
+    // Hide the busy dialogue and enable the main window
+    busyDialog->hide();
+    this->setEnabled(true);
 }
 
 

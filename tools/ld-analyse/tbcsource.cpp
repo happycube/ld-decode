@@ -612,6 +612,7 @@ void TbcSource::generateData(qint32 _targetDataPoints)
     if (averageWidth < 1) averageWidth = 1; // Ensure we don't divide by zero
     qint32 dataPoints = ldDecodeMetaData.getNumberOfFields() / static_cast<qint32>(averageWidth);
     fieldsPerGraphDataPoint = ldDecodeMetaData.getNumberOfFields() / dataPoints;
+    if (fieldsPerGraphDataPoint < 1) fieldsPerGraphDataPoint = 1;
 
     qint32 fieldNumber = 1;
     for (qint32 dpCount = 0; dpCount < dataPoints; dpCount++) {

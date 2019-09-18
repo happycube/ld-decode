@@ -81,8 +81,8 @@ void SnrAnalysisDialog::removeChartContents()
 // Add a data point to the chart
 void SnrAnalysisDialog::addDataPoint(qint32 fieldNumber, qreal blackSnr, qreal whiteSnr)
 {
-    blackQLineSeries.append(fieldNumber, blackSnr);
-    whiteQLineSeries.append(fieldNumber, whiteSnr);
+    if (!isnanf(static_cast<float>(blackSnr))) blackQLineSeries.append(fieldNumber, blackSnr);
+    if (!isnanf(static_cast<float>(whiteSnr))) whiteQLineSeries.append(fieldNumber, whiteSnr);
 
     // Keep track of the minimum and maximum SNR values
     if (blackSnr < minSnr) minSnr = blackSnr;
