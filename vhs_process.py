@@ -15,12 +15,6 @@ from lddutils import unwrap_hilbert, inrange
 
 import vhs_formats
 
-
-
-def upconvert_chroma(chroma):
-
-    return chroma
-
 def toDB(val):
     return 20 * np.log10(val)
 
@@ -114,26 +108,102 @@ class FieldPALVHS(ldd.FieldPAL):
         linelocs2 = self.linelocs1.copy()
         return linelocs2
 
-    def downscale(self, final = False, *args, **kwargs):
-        dsout, dsaudio, dsefm = super(FieldPALVHS, self).downscale(final, *args, **kwargs)
+    def processChroma(self):
         chroma, _, _ = ldd.Field.downscale(self, channel="demod_burst")
 
-
         ## Chroma upheterodyne
-
         uphet = np.zeros(chroma.size, dtype=np.double)
 
         lineoffset = self.lineoffset + 1
         linesout = self.outlinecount
         outwidth = self.outlinelen
 
-        for l in range(lineoffset, linesout + lineoffset):
-            linestart = (l - lineoffset) * outwidth
-            lineend = linestart + outwidth
+        burstlevel = np.zeros(linesout)
+        burstphase = np.zeros(linesout)
 
-            uphet[linestart:lineend] = chroma[linestart:lineend] * self.rf.chroma_heterodyne
+        burstarea = (math.floor(self.usectooutpx(self.rf.SysParams['colorBurstUS'][0])),
+                     math.ceil(self.usectooutpx(self.rf.SysParams['colorBurstUS'][1])))
+
+#        print("Burst area: ", burstarea)
+
+        if self.rf.fieldNumber % 2 == 0:
+            for l in range(lineoffset, linesout + lineoffset):
+                linestart = (l - lineoffset) * outwidth
+                lineend = linestart + outwidth
+
+                line = chroma[linestart:lineend] * self.rf.chroma_heterodyne[0]
+
+                linefilt = np.fft.ifft(np.fft.fft(line) * self.rf.Filters['FChromaFinal']).real
+
+#                if l > lineoffset:
+#                    linefilt = -(-linefilt + uphet[linestart - outwidth:linestart])
+
+                uphet[linestart:lineend] = linefilt
+
+                uphet[linestart + burstarea[0]:linestart + burstarea[1]] *= 5
+        #            burstphase[l - lineoffset] = lddu.angular_mean(chroma[linestart + burstarea[0]:linestart + burstarea[1]])
+        else:
+            phase = 0
+            for l in range(lineoffset, linesout + lineoffset):
+                linestart = (l - lineoffset) * outwidth
+                lineend = linestart + outwidth
+
+                line = chroma[linestart:lineend] * self.rf.chroma_heterodyne[3 - phase]
+                linefilt = np.fft.ifft(np.fft.fft(line) * self.rf.Filters['FChromaFinal']).real
+
+#                if l > lineoffset:
+#                    linefilt = -(-linefilt + uphet[linestart - outwidth:linestart])
+
+                uphet[linestart:lineend] = linefilt
+
+                uphet[linestart + burstarea[0]:linestart + burstarea[1]] *= 5
+
+                phase += 1
+                if phase > 3:
+                    phase = 0
+
+#            burstphase[l - lineoffset] = lddu.angular_mean(chroma[linestart + burstarea[0]:linestart + burstarea[1]])
+            if False:
+                samplefreq = self.rf.SysParams['fsc_mhz'] * 4
+                rate = np.full(outwidth , vhs_formats.VHS_COLOR_CARRIER_MHZ, dtype=np.double)
+                rate[outwidth // 3:(outwidth // 3) * 2] = self.rf.SysParams['fsc_mhz']
+                #test_wave = lddu.genwave(rate, samplefreq / 2)
+
+                samples = np.arange(self.rf.SysParams['outlinelen'])
+                wave_scale =  vhs_formats.VHS_COLOR_CARRIER_MHZ / (self.rf.SysParams['fsc_mhz'] * 4)
+                cc_wave = np.sin(2 * np.pi * wave_scale * samples)
+
+#                start = (80 - lineoffset) * outwidth
+
+                #chroma_fft =  np.fft.fft(test_wave)#chroma[linestart:lineend])
+                #            chroma_uphet_fft = np.fft.fft(uphet * 1000000)
+                #            hetero_fft = np.fft.fft(self.rf.cc_raw)
+                #cc_fft = np.fft.fft(cc_wave)
+                self.fig, self.ax1 = plt.subplots()
+#                self.ax2 = self.ax1.twinx()
+                #            self.ax2 = self.ax1.twinx()
+                #self.ax1.plot(range(0, len(chroma_fft)), chroma_fft.real)
+                #self.ax1.plot(range(0, len(test_wave)), test_wave, color='#FF0000')
+                #            self.ax1.plot(range(0, len(chroma_uphet_fft)), chroma_uphet_fft.real, color='#FF0000')
+                #self.ax2.plot(range(0, len(cc_fft)), cc_fft.real, color='#FF0000')
+                #self.ax1.plot(range(0, len(cc_wave)), cc_wave, color='#FFFF00')
+                self.ax1.plot(range(0, len(self.rf.chroma_heterodyne[0])), self.rf.chroma_heterodyne[0], color='#FFFF00')
+                self.ax1.plot(range(0, len(self.rf.chroma_heterodyne[0])), self.rf.chroma_heterodyne[1], color='#FF0000')
+                self.ax1.plot(range(0, len(self.rf.chroma_heterodyne[0])), self.rf.chroma_heterodyne[2], color='#00FF00')
+                self.ax1.plot(range(0, len(self.rf.chroma_heterodyne[0])), self.rf.chroma_heterodyne[3], color='#0000FF')
+
+                plt.show()
 
         dschroma = scale_chroma(uphet)
+
+        self.rf.fieldNumber += 1
+
+        return dschroma
+
+    def downscale(self, final = False, *args, **kwargs):
+        dsout, dsaudio, dsefm = super(FieldPALVHS, self).downscale(final, *args, **kwargs)
+        dschroma = self.processChroma()
+
         return (dsout, dschroma), dsaudio, dsefm
 
 # Superclass to override laserdisc-specific parts of ld-decode with stuff that works for VHS
@@ -156,6 +226,8 @@ class VHSDecode(ldd.LDdecode):
             self.outfile_chroma = open(fname_out + '.tbcc', 'wb')
         else:
             self.outfile_chroma = None
+
+        plt.rcParams['figure.figsize'] = 15, 8
 
     # Override to avoid NaN in JSON.
     def calcsnr(self, f, snrslice):
@@ -235,12 +307,23 @@ class VHSRFDecode(ldd.RFDecode):
         SF = self.Filters
         SF['FVideo05'] = SF['Fvideo_lpf'] * SF['Fdeemp'] * SF['F05']
 
-        #FS = inputfreq * 1000000
-        #ax1.plot((FS * 0.5 / np.pi) * w, toDB(abs(h)), 'b')
-        #plt.show()
-        chroma_bandpass = sps.butter(5, [(cc-.15)/self.freq_half,
-                                         (cc+.15)/self.freq_half], btype='bandpass')
-        self.Filters['FVideoBurst'] = lddu.filtfft(chroma_bandpass, self.blocklen)
+        # Filter to pick out color-under chroma component.
+        # filter at twice the carrier.
+        chroma_lowpass = sps.butter(2, [(cc*2)/self.freq_half], btype='lowpass')
+        self.Filters['FVideoBurst'] = lddu.filtfft(chroma_lowpass, self.blocklen)
+
+        out_frequency_half = (self.SysParams['fsc_mhz'] * 4) / 2
+
+        # Final band-pass filter for chroma output.
+        chroma_bandpass_final = sps.butter(2, [(self.SysParams['fsc_mhz']-.08)/out_frequency_half,
+                                               (self.SysParams['fsc_mhz']+.06)/out_frequency_half], btype='bandpass')
+        self.Filters['FChromaFinal'] = lddu.filtfft(chroma_bandpass_final, self.SysParams['outlinelen'])
+
+        het_freq = self.SysParams['fsc_mhz'] + cc
+
+        het_filter = sps.butter(4, [(het_freq -.001)/out_frequency_half,
+                                               (het_freq +.001)/out_frequency_half], btype='bandpass')
+        het_filter = lddu.filtfft(het_filter, self.SysParams['outlinelen'])
 
         # Heterodyne wave
         # We combine the color carrier with a wave with a frequency of the
@@ -250,9 +333,46 @@ class VHSRFDecode(ldd.RFDecode):
         # As this is done on the tbced signal, we need the sampling frequency of that,
         # which is 4fsc for NTSC and approx. 4 fsc for PAL.
         # TODO: Correct frequency for pal?
-        wave_scale =  (self.SysParams['fsc_mhz'] + cc) / (self.SysParams['fsc_mhz'] * 4)
+        wave_scale =  1/4.0##(self.SysParams['fsc_mhz']) / (self.SysParams['fsc_mhz'] * 4)
 
-        self.chroma_heterodyne = np.sin(2 * np.pi * wave_scale * samples)
+        cc_wave_scale = cc / (self.SysParams['fsc_mhz'] * 4)
+        cc_wave = np.sin(2 * np.pi * cc_wave_scale * samples)
+        cc_wave_90 = np.sin((2 * np.pi * cc_wave_scale * samples) + np.pi / 2)
+        cc_wave_180 = np.sin((2 * np.pi * cc_wave_scale * samples) + np.pi)
+        cc_wave_270 = np.sin((2 * np.pi * cc_wave_scale * samples) - np.pi / 2)
+        fsc_wave = np.sin(2 * np.pi * wave_scale * samples)
+##        cc_wave_90 =
+
+        #wave_scale_t =  (self.SysParams['fsc_mhz'] + cc) / (self.SysParams['fsc_mhz'] * 4)
+
+        #fsc_and_cc_mixed = cc_wave * fsc_wave
+        #fsc_and_cc_freq = np.sin(2 * np.pi * wave_scale_t * samples)
+
+        self.chroma_heterodyne = {}
+
+        self.chroma_heterodyne[0] = np.fft.ifft(np.fft.fft(cc_wave * fsc_wave) * het_filter) #np.sin(2 * np.pi * wave_scale_t * samples)
+        self.chroma_heterodyne[1] = np.fft.ifft(np.fft.fft(cc_wave_90 * fsc_wave) * het_filter)
+        self.chroma_heterodyne[2] = np.fft.ifft(np.fft.fft(cc_wave_180 * fsc_wave) * het_filter)
+        self.chroma_heterodyne[3] = np.fft.ifft(np.fft.fft(cc_wave_270 * fsc_wave) * het_filter)
+
+        self.fig, self.ax1 = plt.subplots()
+
+
+        #fsc_bandpass = sps.butter(5, [(het_freq-.10)/self.freq_half,
+ #                                        (het_freq+.10)/self.freq_half], btype='bandpass')
+        #fsc_bandpass = lddu.filtfft(fsc_bandpass, self.SysParams['outlinelen'])
+
+        #test_wave = np.fft.ifft(np.fft.fft(cc_wave * fsc_wave) * fsc_bandpass)
+
+        #self.ax1.plot(range(0, len(cc_wave)), cc_wave * fsc_wave, color='#FFFF00')
+        #self.ax1.plot(range(0, len(cc_wave)), cc_wave_90 * fsc_wave , color='#FF0000')
+#        self.ax1.plot(range(0, len(cc_wave)), cc_wave_180 * fsc_wave, color='#00FF00')
+#        self.ax1.plot(range(0, len(cc_wave)), cc_wave_270 * fsc_wave, color='#0000FF')
+
+#        plt.show()
+
+        self.fieldNumber = 0
+
 
     def computedelays(self, mtf_level = 0):
         '''Override computedelays
@@ -304,8 +424,9 @@ class VHSRFDecode(ldd.RFDecode):
             #fig.cla()
             ax1.cla()
 
-            #ax1.axhline(self.iretohz(-55))
-            #ax1.axhline(self.iretohz(-25))
+            ax1.axhline(self.iretohz(100))
+            ax1.axhline(self.iretohz(0))
+            ax1.axhline(self.iretohz(-25))
 
             color = 'tab:red'
             #ax1.axhline(self.iretohz(self.SysParams['vsync_ire']), color=color)
@@ -314,15 +435,15 @@ class VHSRFDecode(ldd.RFDecode):
             #ax1.axhline(sync_filter_high, color='#0000FF')
 
 #            ax1.plot(range(0, len(self.chroma_heterodyne)), self.chroma_heterodyne)
-            ax1.plot(range(0, len(uphet)), uphet)
+#            ax1.plot(range(0, len(uphet)), uphet)
 
             #ax1.plot(range(0, len(out_video)), out_video)
-            #ax1.plot(range(0, len(out_video05)), out_video05)
+            ax1.plot(range(0, len(out_video05)), out_video05)
 
-            ax2 = self.ax2#ax1.twinx()
-            ax2.cla()
+            #ax2 = self.ax2#ax1.twinx()
+            #ax2.cla()
 
-            ax2.plot(range(0, len(out_chroma)), out_chroma, color='#FF0000')
+            #ax2.plot(range(0, len(out_chroma)), out_chroma, color='#FF0000')
             #ax2.plot(range(0, len(video_variation)), video_variation, color='#FFFF00')
 
 
