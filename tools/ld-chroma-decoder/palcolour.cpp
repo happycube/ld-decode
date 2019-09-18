@@ -128,14 +128,10 @@ void PalColour::buildLookUpTables()
     //   the chroma information centred on 0 Hz
     // - working out what the phase of the subcarrier is on each line,
     //   so we can rotate the chroma samples to put U/V on the right axes
-    // refAmpl is the sinewave amplitude.
-    refAmpl = 1.28;
-    refNorm = refAmpl * refAmpl / 2;
-
     for (qint32 i = 0; i < videoParameters.fieldWidth; i++) {
         const double rad = 2 * M_PI * i * videoParameters.fsc / videoParameters.sampleRate;
-        sine[i] = refAmpl * sin(rad);
-        cosine[i] = refAmpl * cos(rad);
+        sine[i] = sin(rad);
+        cosine[i] = cos(rad);
     }
 
     // Create filter profiles for colour filtering.
@@ -413,10 +409,16 @@ void PalColour::decodeLine(const SourceField &inputField, const ChromaSample *ch
 
     // Multiply the composite input signal by the reference carrier, giving
     // quadrature samples where the colour subcarrier is now at 0 Hz.
-    // (There will be a considerable amount of energy at higher frequencies
+    // There will be a considerable amount of energy at higher frequencies
     // resulting from the luma information and aliases of the signal, so
     // we need to low-pass filter it before extracting the colour
-    // components.)
+    // components.
+    //
+    // After filtering -- i.e. removing all the terms with sin(i) and sin^2(i)
+    // from the product -- we'll be left with just the chroma signal, at half
+    // its original amplitude. Phase errors will cancel between lines with
+    // opposite Vsw sense, giving correct phase (hue) but lower amplitude
+    // (saturation).
     //
     // As the 2D filters are vertically symmetrical, we can pre-compute the
     // sums of pairs of lines above and below line.number to save some work
@@ -488,7 +490,8 @@ void PalColour::decodeLine(const SourceField &inputField, const ChromaSample *ch
     const double scaledContrast = 65535.0 / (videoParameters.white16bIre - videoParameters.black16bIre);
 
     // Gain for the U/V components
-    const double scaledSaturation = 2.0 * chromaGain;
+    // XXX This should depend on scaledContrast
+    const double scaledSaturation = 2.56 * chromaGain;
 
     for (qint32 i = videoParameters.activeVideoStart; i < videoParameters.activeVideoEnd; i++) {
         // Compute luma by...
@@ -499,7 +502,7 @@ void PalColour::decodeLine(const SourceField &inputField, const ChromaSample *ch
         } else {
             // ... resynthesising the chroma signal that the Y filter
             // extracted, and subtracting it from the composite input
-            rY = comp[i] - ((py[i] * sine[i] + qy[i] * cosine[i]) / refNorm);
+            rY = comp[i] - ((py[i] * sine[i] + qy[i] * cosine[i]) * 2.0);
         }
 
         // Scale to 16-bit output
