@@ -24,6 +24,10 @@
 
 #include "decoderpool.h"
 
+// Definitions of static constexpr data members, for compatibility with
+// pre-C++17 compilers
+constexpr qint32 DecoderPool::DEFAULT_BATCH_SIZE;
+
 DecoderPool::DecoderPool(Decoder &_decoder, QString _inputFileName,
                          LdDecodeMetaData &_ldDecodeMetaData, QString _outputFileName,
                          qint32 _startFrame, qint32 _length, qint32 _maxThreads)
