@@ -184,8 +184,8 @@ void PalColour::buildLookUpTables()
         const double fff  = qMin(ca, sqrt(f * f + 4 * 4));
         const double ffff = qMin(ca, sqrt(f * f + 6 * 6));
 
-        // Divider because we're only making half a filter-kernel and the
-        // zero-th point (vertically) is counted twice later
+        // We will sum the zero-th horizontal tap twice later (when b == 0 in
+        // the filter loop), so halve the coefficient to compensate
         const qint32 d = (f == 0) ? 2 : 1;
 
         // For U/V.
@@ -195,7 +195,11 @@ void PalColour::buildLookUpTables()
         cfilt[f][1] = 256 * (1 + cos(M_PI * fff  / ca)) / d;
         cfilt[f][3] = 256 * (1 + cos(M_PI * ffff / ca)) / d;
 
-        cdiv += 1 * cfilt[f][0] + 2 * cfilt[f][2] + 2 * cfilt[f][1] + 2 * cfilt[f][3];
+        // Each horizontal coefficient is applied to 2 columns (when b == 0,
+        // it's the same column twice).
+        // The zero-th vertical coefficient is applied to 1 line, and the
+        // others are applied to pairs of lines.
+        cdiv += 2 * (1 * cfilt[f][0] + 2 * cfilt[f][2] + 2 * cfilt[f][1] + 2 * cfilt[f][3]);
 
         const double fy   = qMin(ya, static_cast<double>(f));
         const double fffy = qMin(ya, sqrt(f * f + 4 * 4));
@@ -214,13 +218,10 @@ void PalColour::buildLookUpTables()
         yfilt[f][0] =       256 * (1 + cos(M_PI * fy   / ya)) / d;
         yfilt[f][1] = 0.2 * 256 * (1 + cos(M_PI * fffy / ya)) / d;
 
-        ydiv += 1 * yfilt[f][0] + 2 * 0 + 2 * yfilt[f][1] + 2 * 0;
+        ydiv += 2 * (1 * yfilt[f][0] + 2 * 0 + 2 * yfilt[f][1] + 2 * 0);
     }
 
     // Normalise the filter coefficients.
-    // We've already doubled above for horizontal symmetry; do it again for vertical symmetry.
-    cdiv *= 2;
-    ydiv *= 2;
     for (qint32 f = 0; f <= FILTER_SIZE; f++) {
         for (qint32 i = 0; i < 4; i++) {
             cfilt[f][i] /= cdiv;
