@@ -346,10 +346,10 @@ void PalColour::detectBurst(LineInfo &line, const quint16 *inputData)
     // opposite V-switch phase (and a 90 degree subcarrier phase shift).
     double bp = 0, bq = 0, bpo = 0, bqo = 0;
     for (qint32 i = videoParameters.colourBurstStart; i < videoParameters.colourBurstEnd; i++) {
-        bp += ((in0[i] - ((in3[i] + in4[i]) / 2)) / 2) * sine[i];
-        bq += ((in0[i] - ((in3[i] + in4[i]) / 2)) / 2) * cosine[i];
-        bpo += ((in2[i] - in1[i]) / 2) * sine[i];
-        bqo += ((in2[i] - in1[i]) / 2) * cosine[i];
+        bp += ((in0[i] - ((in3[i] + in4[i]) / 2.0)) / 2.0) * sine[i];
+        bq += ((in0[i] - ((in3[i] + in4[i]) / 2.0)) / 2.0) * cosine[i];
+        bpo += ((in2[i] - in1[i]) / 2.0) * sine[i];
+        bqo += ((in2[i] - in1[i]) / 2.0) * cosine[i];
     }
 
     // Normalise the sums above
