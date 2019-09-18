@@ -513,10 +513,10 @@ void PalColour::decodeLine(const SourceField &inputField, const ChromaSample *ch
         const double rV = line.Vsw * -(qv[i] * line.bp - pv[i] * line.bq) * scaledSaturation;
 
         // Convert YUV to RGB, saturating levels at 0-65535 to prevent overflow.
-        // This conversion is taken from Video Demystified (5th edition) page 18.
-        const double R = qBound(0.0, rY + (1.140 * rV),                65535.0);
-        const double G = qBound(0.0, rY - (0.395 * rU) - (0.581 * rV), 65535.0);
-        const double B = qBound(0.0, rY + (2.032 * rU),                65535.0);
+        // Coefficients from Poynton, "Digital Video and HDTV" first edition, p337 eq 28.6.
+        const double R = qBound(0.0, rY                    + (1.139883 * rV),  65535.0);
+        const double G = qBound(0.0, rY + (-0.394642 * rU) + (-0.580622 * rV), 65535.0);
+        const double B = qBound(0.0, rY + (2.032062 * rU),                     65535.0);
 
         // Pack the data back into the RGB 16/16/16 buffer
         const qint32 pp = i * 3; // 3 words per pixel
