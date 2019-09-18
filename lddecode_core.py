@@ -2362,11 +2362,17 @@ class LDdecode:
                 fnum = 0
                 for y in range(16, -1, -4):
                     fnum *= 10
-                    fnum += l >> y & 0x0f
+                    toadd = l >> y & 0x0f
+                    if toadd > 9:
+                        fnum = -1
+                        break
+                    fnum += toadd
                     
                     fnum = fnum if fnum < 80000 else fnum - 80000
 
-                return fnum
+                if fnum >= 0:
+                    return fnum
+                    
             elif (l & 0x80f000) == 0x80e000: # CLV picture #
                 self.clvSeconds = (((l >> 16) & 0xf) - 10) * 10
                 self.clvSeconds += ((l >> 8) & 0xf)
