@@ -52,6 +52,8 @@ private slots:
     void on_reset_pushButton_clicked();
 
 private:
+    void removeChartContents();
+
     Ui::DropoutAnalysisDialog *ui;
     QChartView chartView;
     QLineSeries qLineSeries;
@@ -60,8 +62,7 @@ private:
     QValueAxis axisY;
     qreal maxY;
 
-    bool isFirstRun;
-
+    bool chartOwnsContents;
 };
 
 #endif // DROPOUTANALYSISDIALOG_H

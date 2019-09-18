@@ -16,7 +16,7 @@ from numba import jit, njit
 import threading
 import queue
 
-from multiprocessing import Process, Pool, Queue, JoinableQueue
+from multiprocessing import Process, Pool, Queue, JoinableQueue, Pipe
 
 # standard numeric/scientific libraries
 import numpy as np
@@ -247,7 +247,6 @@ class RFDecode:
         SF['MTF'] = filtfft(MTF, self.blocklen)
 
         SF['hilbert'] = np.fft.fft(hilbert_filter, self.blocklen)
-        
         filt_rfvideo = sps.butter(DP['video_bpf_order'], [DP['video_bpf_low']/self.freq_hz_half, DP['video_bpf_high']/self.freq_hz_half], btype='bandpass')
         SF['RFVideo'] = filtfft(filt_rfvideo, self.blocklen)
 
@@ -578,12 +577,15 @@ class DemodCache:
         self.q_in_metadata = []
 
         self.q_out = Queue()
+
+        self.threadpipes = []
         self.threads = []
 
         num_worker_threads = max(num_worker_threads - 1, 1)
 
         for i in range(num_worker_threads):
-            t = Process(target=self.worker, daemon=True)#, args=[self])
+            self.threadpipes.append(Pipe())
+            t = Process(target=self.worker, daemon=True, args=(self.threadpipes[-1][1],))
             t.start()
             self.threads.append(t)
 
@@ -624,29 +626,42 @@ class DemodCache:
                 del self.blocks[k]['demod']
                 self.lock.release()
 
-    def worker(self):
+    def worker(self, pipein):
         while True:
-            item = self.q_in.get()
-            if item is None or item[1] is None:
+            ispiped = False
+            if pipein.poll():
+                item = pipein.recv()
+                ispiped = True
+            else:
+                item = self.q_in.get()
+            
+            if item is None or item[0] == "END":
                 return
 
-            blocknum, block, target_MTF = item
+            if item[0] == 'DEMOD':
+                blocknum, block, target_MTF = item[1:]
 
-            output = {}
+                output = {}
 
-            if 'fft' not in block:
-                output['fft'] = np.fft.fft(block['rawinput'])
-                fftdata = output['fft']
-            else:
-                fftdata = block['fft']
+                if 'fft' not in block:
+                    output['fft'] = np.fft.fft(block['rawinput'])
+                    fftdata = output['fft']
+                else:
+                    fftdata = block['fft']
 
-            if 'demod' not in block or np.abs(block['MTF'] - target_MTF) > self.MTF_tolerance:
-                output['demod'] = self.rf.demodblock(fftdata = fftdata, mtf_level=target_MTF, cut=True)
-                output['MTF'] = target_MTF
+                if 'demod' not in block or np.abs(block['MTF'] - target_MTF) > self.MTF_tolerance:
+                    output['demod'] = self.rf.demodblock(fftdata = fftdata, mtf_level=target_MTF, cut=True)
+                    output['MTF'] = target_MTF
 
-            self.q_out.put((blocknum, output))
+                self.q_out.put((blocknum, output))
+            elif item[0] == 'NEWPARAMS':
+                for k in item[1].keys():
+                    self.rf.DecoderParams[k] = item[1][k]
 
-            self.q_in.task_done()
+                self.rf.computefilters()
+
+            if not ispiped:
+                self.q_in.task_done()
 
     def doread(self, blocknums, MTF, dodemod = True):
         need_blocks = []
@@ -688,7 +703,7 @@ class DemodCache:
                 need_blocks.append(b)
             
             if handling:
-                self.q_in.put((b, self.blocks[b], MTF))
+                self.q_in.put(("DEMOD", b, self.blocks[b], MTF))
                 self.q_in_metadata.append((b, MTF))
                 hc = hc + 1
 
@@ -710,7 +725,7 @@ class DemodCache:
 
             if 'MTF' not in item or 'demod' not in item:
                 # This shouldn't happen, but was observed by Simon on a decode
-                logging.error('incomplete demodulated block placed on queue, block #' + blocknum)
+                logging.error('incomplete demodulated block placed on queue, block #%d', blocknum)
                 self.q_in.put((blocknum, self.blocks[blocknum], self.currentMTF))
                 self.lock.release()
                 continue                
@@ -780,6 +795,10 @@ class DemodCache:
         need_blocks = self.doread(toread_prefetch, MTF)
 
         return rv
+
+    def setparams(self, params):
+        for p in self.threadpipes:
+            p[0].send(('NEWPARAMS', params))
 
 @njit
 def dsa_rescale(infloat):
@@ -1422,7 +1441,7 @@ class Field:
 
                 dsout[(l - lineoffset) * outwidth:(l + 1 - lineoffset)*outwidth] = scaled
             else:
-                logging.warning("WARNING: TBC failure at line" + l)
+                logging.warning("WARNING: TBC failure at line %d", l)
                 dsout[(l - lineoffset) * outwidth:(l + 1 - lineoffset)*outwidth] = self.rf.SysParams['ire0']
 
         if audio and self.rf.decode_analog_audio:
@@ -2343,11 +2362,17 @@ class LDdecode:
                 fnum = 0
                 for y in range(16, -1, -4):
                     fnum *= 10
-                    fnum += l >> y & 0x0f
+                    toadd = l >> y & 0x0f
+                    if toadd > 9:
+                        fnum = -1
+                        break
+                    fnum += toadd
                     
                     fnum = fnum if fnum < 80000 else fnum - 80000
 
-                return fnum
+                if fnum >= 0:
+                    return fnum
+                    
             elif (l & 0x80f000) == 0x80e000: # CLV picture #
                 self.clvSeconds = (((l >> 16) & 0xf) - 10) * 10
                 self.clvSeconds += ((l >> 8) & 0xf)
@@ -2575,6 +2600,7 @@ class LDdecode:
                         print("file frame %d lead out" % (rawloc), file=sys.stderr)
                     else:
                         print("file frame %d unknown" % (rawloc), file=sys.stderr)
+                    sys.stderr.flush()
 
                     if self.frameNumber is not None:
                         fi['frameNumber'] = int(self.frameNumber)
@@ -2585,7 +2611,7 @@ class LDdecode:
                             fi['clvSeconds'] = int(self.clvSeconds)
                             fi['clvFrameNr'] = int(self.clvFrameNum)
                 except:
-                    logging.warning("file frame %d : VBI decoding error" % (rawloc))
+                    logging.warning("file frame %d : VBI decoding error", rawloc)
 
         return fi, False
 
@@ -2609,7 +2635,7 @@ class LDdecode:
                     return None
                 elif fnum is not None:
                     rawloc = np.floor((self.readloc / self.bytes_per_field) / 2)
-                    logging.info('seeking: file loc {0} frame # {1}'.format(rawloc, fnum))
+                    logging.info('seeking: file loc %d frame # %d', rawloc, fnum)
                     return fnum
         
         return False

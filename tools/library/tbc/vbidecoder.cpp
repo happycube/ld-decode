@@ -171,10 +171,28 @@ VbiDecoder::Vbi VbiDecoder::decode(qint32 vbi16, qint32 vbi17, qint32 vbi18)
     // Check for picture number on lines 17 and 18
     quint32 bcdPictureNumber = 0;
 
-    if ( (vbi17 & 0xF00000) == 0xF00000 ) {
+    // Check line 17
+    if ((vbi17 & 0xF00000) == 0xF00000 ) {
         bcdPictureNumber = vbi17 & 0x07FFFF;
-    } else if ( (vbi18 & 0xF00000) == 0xF00000 ) {
+        if (((bcdPictureNumber & 0xF0000) >> 16) > 9) bcdPictureNumber = 0;
+        if (((bcdPictureNumber & 0x0F000) >> 12) > 9) bcdPictureNumber = 0;
+        if (((bcdPictureNumber & 0x00F00) >> 8) > 9) bcdPictureNumber = 0;
+        if (((bcdPictureNumber & 0x000F0) >> 4) > 9) bcdPictureNumber = 0;
+        if (((bcdPictureNumber & 0x0000F) >> 0) > 9) bcdPictureNumber = 0;
+
+        if (bcdPictureNumber == 0) qDebug() << "VbiDecoder::decode(): VBI picture number on line 17 corrupt";
+    }
+
+    // Check line 18
+    if (((vbi18 & 0xF00000) == 0xF00000 ) && bcdPictureNumber == 0) {
         bcdPictureNumber = vbi18 & 0x07FFFF;
+        if (((bcdPictureNumber & 0xF0000) >> 16) > 9) bcdPictureNumber = 0;
+        if (((bcdPictureNumber & 0x0F000) >> 12) > 9) bcdPictureNumber = 0;
+        if (((bcdPictureNumber & 0x00F00) >> 8) > 9) bcdPictureNumber = 0;
+        if (((bcdPictureNumber & 0x000F0) >> 4) > 9) bcdPictureNumber = 0;
+        if (((bcdPictureNumber & 0x0000F) >> 0) > 9) bcdPictureNumber = 0;
+
+        if (bcdPictureNumber == 0) qDebug() << "VbiDecoder::decode(): VBI picture number on line 18 corrupt";
     }
 
     if (bcdPictureNumber != 0) {
