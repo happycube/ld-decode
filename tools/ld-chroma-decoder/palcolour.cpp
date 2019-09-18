@@ -131,7 +131,7 @@ void PalColour::buildLookUpTables()
     //   so we can rotate the chroma samples to put U/V on the right axes
     // refAmpl is the sinewave amplitude.
     refAmpl = 1.28;
-    refNorm = (refAmpl * refAmpl / 2);
+    refNorm = refAmpl * refAmpl / 2;
 
     for (qint32 i = 0; i < videoParameters.fieldWidth; i++) {
         const double rad = 2 * M_PI * i * videoParameters.fsc / videoParameters.sampleRate;
@@ -500,14 +500,14 @@ void PalColour::decodeLine(const SourceField &inputField, const ChromaSample *ch
         // reference phase) backwards by the burst phase (relative to the
         // reference phase), in order to recover U and V. The Vswitch is
         // applied to flip the V-phase on alternate lines for PAL.
-        const double rU =            -((pu[i] * line.bp + qu[i] * line.bq)) * scaledSaturation;
-        const double rV = line.Vsw * -((qv[i] * line.bp - pv[i] * line.bq)) * scaledSaturation;
+        const double rU =            -(pu[i] * line.bp + qu[i] * line.bq) * scaledSaturation;
+        const double rV = line.Vsw * -(qv[i] * line.bp - pv[i] * line.bq) * scaledSaturation;
 
         // Convert YUV to RGB, saturating levels at 0-65535 to prevent overflow.
         // This conversion is taken from Video Demystified (5th edition) page 18.
         const double R = qBound(0.0, rY + (1.140 * rV),                65535.0);
         const double G = qBound(0.0, rY - (0.395 * rU) - (0.581 * rV), 65535.0);
-        const double B = qBound(0.0, rY + (2.032 * rU),                65535.0 );
+        const double B = qBound(0.0, rY + (2.032 * rU),                65535.0);
 
         // Pack the data back into the RGB 16/16/16 buffer
         const qint32 pp = i * 3; // 3 words per pixel
