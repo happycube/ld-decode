@@ -87,9 +87,6 @@ public:
     static constexpr qint32 MAX_WIDTH = 1135;
 
 private:
-    // Decode one field into outputFrame.
-    void decodeField(const SourceField &inputField, const double *chromaData, double chromaGain, QByteArray &outputFrame);
-
     // Information about a line we're decoding.
     struct LineInfo {
         explicit LineInfo(qint32 number);
@@ -100,14 +97,9 @@ private:
         double burstNorm;
     };
 
-    // Detect the colourburst on a line.
-    // Stores the burst details into line.
+    void buildLookUpTables();
+    void decodeField(const SourceField &inputField, const double *chromaData, double chromaGain, QByteArray &outputFrame);
     void detectBurst(LineInfo &line, const quint16 *inputData);
-
-    // Decode one line into outputFrame.
-    // chromaData (templated, so it can be any numeric type) is the input to
-    // the chroma demodulator; this may be the composite signal from
-    // inputField, or it may be pre-filtered down to chroma.
     template <typename ChromaSample, bool PREFILTERED_CHROMA>
     void decodeLine(const SourceField &inputField, const ChromaSample *chromaData, const LineInfo &line, double chromaGain,
                     QByteArray &outputFrame);
@@ -136,9 +128,6 @@ private:
     static constexpr qint32 FILTER_SIZE = 7;
     double cfilt[FILTER_SIZE + 1][4];
     double yfilt[FILTER_SIZE + 1][2];
-
-    // Method to build the required look-up tables
-    void buildLookUpTables();
 };
 
 #endif // PALCOLOUR_H

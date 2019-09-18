@@ -119,8 +119,7 @@ void PalColour::updateConfiguration(const LdDecodeMetaData::VideoParameters &_vi
     configurationSet = true;
 }
 
-// Private method to build the look up tables
-// must be called by the constructor when the object is created
+// Rebuild the lookup tables based on the configuration
 void PalColour::buildLookUpTables()
 {
     // Generate the reference carrier: quadrature samples of a sine wave at the
@@ -285,6 +284,7 @@ void PalColour::decodeFrames(const QVector<SourceField> &inputFields, qint32 sta
     }
 }
 
+// Decode one field into outputFrame
 void PalColour::decodeField(const SourceField &inputField, const double *chromaData, double chromaGain, QByteArray &outputFrame)
 {
     // Pointer to the composite signal data
@@ -313,6 +313,8 @@ PalColour::LineInfo::LineInfo(qint32 _number)
 {
 }
 
+// Detect the colourburst on a line.
+// Stores the burst details into line.
 void PalColour::detectBurst(LineInfo &line, const quint16 *inputData)
 {
     // Dummy black line, used when the filter needs to look outside the field.
@@ -378,6 +380,10 @@ void PalColour::detectBurst(LineInfo &line, const quint16 *inputData)
     line.burstNorm = qMax(sqrt(line.bp * line.bp + line.bq * line.bq), 130000.0 / 128);
 }
 
+// Decode one line into outputFrame.
+// chromaData (templated, so it can be any numeric type) is the input to
+// the chroma demodulator; this may be the composite signal from
+// inputField, or it may be pre-filtered down to chroma.
 template <typename ChromaSample, bool PREFILTERED_CHROMA>
 void PalColour::decodeLine(const SourceField &inputField, const ChromaSample *chromaData, const LineInfo &line, double chromaGain,
                            QByteArray &outputFrame)
