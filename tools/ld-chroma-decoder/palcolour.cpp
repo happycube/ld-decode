@@ -262,9 +262,11 @@ void PalColour::decodeFrames(const QVector<SourceField> &inputFields, qint32 sta
         // field's burst amplitude to compensate both fields.
         // Note: This code works as a temporary MTF compensator whilst ld-decode gets
         // real MTF compensation added to it.
-        // PAL burst is 300 mV p-p (about 43 IRE, as 100 IRE = 700 mV)
-        const double nominalBurstIRE = 300 * (100.0 / 700) / 2;
-        double chromaGain = nominalBurstIRE / inputFields[i].field.medianBurstIRE;
+        //
+        // The PAL colourburst has peak-to-peak amplitude of 3/7 of the
+        // reference black - reference white range.
+        const double nominalBurstIRE = (3.0 / 7.0) * 100.0 * 0.5;
+        double chromaGain = configuration.chromaGain * nominalBurstIRE / inputFields[i].field.medianBurstIRE;
 
         if (configuration.blackAndWhite) {
             chromaGain = 0.0;
@@ -486,12 +488,14 @@ void PalColour::decodeLine(const SourceField &inputField, const ChromaSample *ch
     quint16 *ptr = reinterpret_cast<quint16 *>(outputFrame.data()
                                                + (((line.number * 2) + inputField.getOffset()) * videoParameters.fieldWidth * 6));
 
-    // Gain for the Y component, to put black at 0 and peak white at 65535
+    // Gain for the Y component, to put reference black at 0 and reference white at 65535
     const double scaledContrast = 65535.0 / (videoParameters.white16bIre - videoParameters.black16bIre);
 
-    // Gain for the U/V components
-    // XXX This should depend on scaledContrast
-    const double scaledSaturation = 2.56 * chromaGain;
+    // Gain for the U/V components.
+    // The scale is the same as for Y above, doubled because the U/V filters
+    // extract the result with half its original amplitude, and with the
+    // burst-based correction applied.
+    const double scaledSaturation = 2.0 * scaledContrast * chromaGain;
 
     for (qint32 i = videoParameters.activeVideoStart; i < videoParameters.activeVideoEnd; i++) {
         // Compute luma by...
@@ -501,7 +505,8 @@ void PalColour::decodeLine(const SourceField &inputField, const ChromaSample *ch
             rY = comp[i] - in0[i];
         } else {
             // ... resynthesising the chroma signal that the Y filter
-            // extracted, and subtracting it from the composite input
+            // extracted (at half amplitude), and subtracting it from the
+            // composite input
             rY = comp[i] - ((py[i] * sine[i] + qy[i] * cosine[i]) * 2.0);
         }
 
