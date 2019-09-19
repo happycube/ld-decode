@@ -60,6 +60,11 @@
     filters with more complex coefficients than the report describes.
  */
 
+// Definitions of static constexpr data members, for compatibility with
+// pre-C++17 compilers
+constexpr qint32 PalColour::MAX_WIDTH;
+constexpr qint32 PalColour::FILTER_SIZE;
+
 PalColour::PalColour(QObject *parent)
     : QObject(parent), configurationSet(false)
 {
@@ -114,8 +119,7 @@ void PalColour::updateConfiguration(const LdDecodeMetaData::VideoParameters &_vi
     configurationSet = true;
 }
 
-// Private method to build the look up tables
-// must be called by the constructor when the object is created
+// Rebuild the lookup tables based on the configuration
 void PalColour::buildLookUpTables()
 {
     // Generate the reference carrier: quadrature samples of a sine wave at the
@@ -124,14 +128,10 @@ void PalColour::buildLookUpTables()
     //   the chroma information centred on 0 Hz
     // - working out what the phase of the subcarrier is on each line,
     //   so we can rotate the chroma samples to put U/V on the right axes
-    // refAmpl is the sinewave amplitude.
-    refAmpl = 1.28;
-    refNorm = (refAmpl * refAmpl / 2);
-
     for (qint32 i = 0; i < videoParameters.fieldWidth; i++) {
         const double rad = 2 * M_PI * i * videoParameters.fsc / videoParameters.sampleRate;
-        sine[i] = refAmpl * sin(rad);
-        cosine[i] = refAmpl * cos(rad);
+        sine[i] = sin(rad);
+        cosine[i] = cos(rad);
     }
 
     // Create filter profiles for colour filtering.
@@ -180,18 +180,22 @@ void PalColour::buildLookUpTables()
         const double fff  = qMin(ca, sqrt(f * f + 4 * 4));
         const double ffff = qMin(ca, sqrt(f * f + 6 * 6));
 
-        // Divider because we're only making half a filter-kernel and the
-        // zero-th point (vertically) is counted twice later
+        // We will sum the zero-th horizontal tap twice later (when b == 0 in
+        // the filter loop), so halve the coefficient to compensate
         const qint32 d = (f == 0) ? 2 : 1;
 
         // For U/V.
         // 0, 2, 1, 3 are vertical taps 0, +/- 1, +/- 2, +/- 3 (see filter loop below).
-        cfilt[f][0] = 256 * (1 + cos(M_PI * fc   / ca)) / d;
-        cfilt[f][2] = 256 * (1 + cos(M_PI * ff   / ca)) / d;
-        cfilt[f][1] = 256 * (1 + cos(M_PI * fff  / ca)) / d;
-        cfilt[f][3] = 256 * (1 + cos(M_PI * ffff / ca)) / d;
+        cfilt[f][0] = (1 + cos(M_PI * fc   / ca)) / d;
+        cfilt[f][2] = (1 + cos(M_PI * ff   / ca)) / d;
+        cfilt[f][1] = (1 + cos(M_PI * fff  / ca)) / d;
+        cfilt[f][3] = (1 + cos(M_PI * ffff / ca)) / d;
 
-        cdiv += 1 * cfilt[f][0] + 2 * cfilt[f][2] + 2 * cfilt[f][1] + 2 * cfilt[f][3];
+        // Each horizontal coefficient is applied to 2 columns (when b == 0,
+        // it's the same column twice).
+        // The zero-th vertical coefficient is applied to 1 line, and the
+        // others are applied to pairs of lines.
+        cdiv += 2 * (1 * cfilt[f][0] + 2 * cfilt[f][2] + 2 * cfilt[f][1] + 2 * cfilt[f][3]);
 
         const double fy   = qMin(ya, static_cast<double>(f));
         const double fffy = qMin(ya, sqrt(f * f + 4 * 4));
@@ -207,16 +211,13 @@ void PalColour::buildLookUpTables()
         // patterning.
         //
         // 0, 1 are vertical taps 0, +/- 2 (see filter loop below).
-        yfilt[f][0] =       256 * (1 + cos(M_PI * fy   / ya)) / d;
-        yfilt[f][1] = 0.2 * 256 * (1 + cos(M_PI * fffy / ya)) / d;
+        yfilt[f][0] =       (1 + cos(M_PI * fy   / ya)) / d;
+        yfilt[f][1] = 0.2 * (1 + cos(M_PI * fffy / ya)) / d;
 
-        ydiv += 1 * yfilt[f][0] + 2 * 0 + 2 * yfilt[f][1] + 2 * 0;
+        ydiv += 2 * (1 * yfilt[f][0] + 2 * 0 + 2 * yfilt[f][1] + 2 * 0);
     }
 
     // Normalise the filter coefficients.
-    // We've already doubled above for horizontal symmetry; do it again for vertical symmetry.
-    cdiv *= 2;
-    ydiv *= 2;
     for (qint32 f = 0; f <= FILTER_SIZE; f++) {
         for (qint32 i = 0; i < 4; i++) {
             cfilt[f][i] /= cdiv;
@@ -261,9 +262,11 @@ void PalColour::decodeFrames(const QVector<SourceField> &inputFields, qint32 sta
         // field's burst amplitude to compensate both fields.
         // Note: This code works as a temporary MTF compensator whilst ld-decode gets
         // real MTF compensation added to it.
-        // PAL burst is 300 mV p-p (about 43 IRE, as 100 IRE = 700 mV)
-        const double nominalBurstIRE = 300 * (100.0 / 700) / 2;
-        double chromaGain = nominalBurstIRE / inputFields[i].field.medianBurstIRE;
+        //
+        // The PAL colourburst has peak-to-peak amplitude of 3/7 of the
+        // reference black - reference white range.
+        const double nominalBurstIRE = (3.0 / 7.0) * 100.0 * 0.5;
+        double chromaGain = configuration.chromaGain * nominalBurstIRE / inputFields[i].field.medianBurstIRE;
 
         if (configuration.blackAndWhite) {
             chromaGain = 0.0;
@@ -280,6 +283,7 @@ void PalColour::decodeFrames(const QVector<SourceField> &inputFields, qint32 sta
     }
 }
 
+// Decode one field into outputFrame
 void PalColour::decodeField(const SourceField &inputField, const double *chromaData, double chromaGain, QByteArray &outputFrame)
 {
     // Pointer to the composite signal data
@@ -308,6 +312,8 @@ PalColour::LineInfo::LineInfo(qint32 _number)
 {
 }
 
+// Detect the colourburst on a line.
+// Stores the burst details into line.
 void PalColour::detectBurst(LineInfo &line, const quint16 *inputData)
 {
     // Dummy black line, used when the filter needs to look outside the field.
@@ -338,10 +344,10 @@ void PalColour::detectBurst(LineInfo &line, const quint16 *inputData)
     // opposite V-switch phase (and a 90 degree subcarrier phase shift).
     double bp = 0, bq = 0, bpo = 0, bqo = 0;
     for (qint32 i = videoParameters.colourBurstStart; i < videoParameters.colourBurstEnd; i++) {
-        bp += ((in0[i] - ((in3[i] + in4[i]) / 2)) / 2) * sine[i];
-        bq += ((in0[i] - ((in3[i] + in4[i]) / 2)) / 2) * cosine[i];
-        bpo += ((in2[i] - in1[i]) / 2) * sine[i];
-        bqo += ((in2[i] - in1[i]) / 2) * cosine[i];
+        bp += ((in0[i] - ((in3[i] + in4[i]) / 2.0)) / 2.0) * sine[i];
+        bq += ((in0[i] - ((in3[i] + in4[i]) / 2.0)) / 2.0) * cosine[i];
+        bpo += ((in2[i] - in1[i]) / 2.0) * sine[i];
+        bqo += ((in2[i] - in1[i]) / 2.0) * cosine[i];
     }
 
     // Normalise the sums above
@@ -367,12 +373,18 @@ void PalColour::detectBurst(LineInfo &line, const quint16 *inputData)
     line.bp = (bp - bqo) / 2;
     line.bq = (bq + bpo) / 2;
 
-    // burstNorm normalises bp and bq to 1.
+    // Normalise the magnitude of the bp/bq vector to 1.
     // Kill colour if burst too weak.
     // XXX magic number 130000 !!! check!
-    line.burstNorm = qMax(sqrt(line.bp * line.bp + line.bq * line.bq), 130000.0 / 128);
+    const double burstNorm = qMax(sqrt(line.bp * line.bp + line.bq * line.bq), 130000.0 / 128);
+    line.bp /= burstNorm;
+    line.bq /= burstNorm;
 }
 
+// Decode one line into outputFrame.
+// chromaData (templated, so it can be any numeric type) is the input to
+// the chroma demodulator; this may be the composite signal from
+// inputField, or it may be pre-filtered down to chroma.
 template <typename ChromaSample, bool PREFILTERED_CHROMA>
 void PalColour::decodeLine(const SourceField &inputField, const ChromaSample *chromaData, const LineInfo &line, double chromaGain,
                            QByteArray &outputFrame)
@@ -399,10 +411,16 @@ void PalColour::decodeLine(const SourceField &inputField, const ChromaSample *ch
 
     // Multiply the composite input signal by the reference carrier, giving
     // quadrature samples where the colour subcarrier is now at 0 Hz.
-    // (There will be a considerable amount of energy at higher frequencies
+    // There will be a considerable amount of energy at higher frequencies
     // resulting from the luma information and aliases of the signal, so
     // we need to low-pass filter it before extracting the colour
-    // components.)
+    // components.
+    //
+    // After filtering -- i.e. removing all the terms with sin(i) and sin^2(i)
+    // from the product -- we'll be left with just the chroma signal, at half
+    // its original amplitude. Phase errors will cancel between lines with
+    // opposite Vsw sense, giving correct phase (hue) but lower amplitude
+    // (saturation).
     //
     // As the 2D filters are vertically symmetrical, we can pre-compute the
     // sums of pairs of lines above and below line.number to save some work
@@ -470,11 +488,14 @@ void PalColour::decodeLine(const SourceField &inputField, const ChromaSample *ch
     quint16 *ptr = reinterpret_cast<quint16 *>(outputFrame.data()
                                                + (((line.number * 2) + inputField.getOffset()) * videoParameters.fieldWidth * 6));
 
-    // Gain for the Y component, to put black at 0 and peak white at 65535
+    // Gain for the Y component, to put reference black at 0 and reference white at 65535
     const double scaledContrast = 65535.0 / (videoParameters.white16bIre - videoParameters.black16bIre);
 
-    // Gain for the U/V components
-    const double scaledSaturation = (2.0 / line.burstNorm) * chromaGain;
+    // Gain for the U/V components.
+    // The scale is the same as for Y above, doubled because the U/V filters
+    // extract the result with half its original amplitude, and with the
+    // burst-based correction applied.
+    const double scaledSaturation = 2.0 * scaledContrast * chromaGain;
 
     for (qint32 i = videoParameters.activeVideoStart; i < videoParameters.activeVideoEnd; i++) {
         // Compute luma by...
@@ -484,8 +505,9 @@ void PalColour::decodeLine(const SourceField &inputField, const ChromaSample *ch
             rY = comp[i] - in0[i];
         } else {
             // ... resynthesising the chroma signal that the Y filter
-            // extracted, and subtracting it from the composite input
-            rY = comp[i] - ((py[i] * sine[i] + qy[i] * cosine[i]) / refNorm);
+            // extracted (at half amplitude), and subtracting it from the
+            // composite input
+            rY = comp[i] - ((py[i] * sine[i] + qy[i] * cosine[i]) * 2.0);
         }
 
         // Scale to 16-bit output
@@ -495,14 +517,14 @@ void PalColour::decodeLine(const SourceField &inputField, const ChromaSample *ch
         // reference phase) backwards by the burst phase (relative to the
         // reference phase), in order to recover U and V. The Vswitch is
         // applied to flip the V-phase on alternate lines for PAL.
-        const double rU =            -((pu[i] * line.bp + qu[i] * line.bq)) * scaledSaturation;
-        const double rV = line.Vsw * -((qv[i] * line.bp - pv[i] * line.bq)) * scaledSaturation;
+        const double rU =            -(pu[i] * line.bp + qu[i] * line.bq) * scaledSaturation;
+        const double rV = line.Vsw * -(qv[i] * line.bp - pv[i] * line.bq) * scaledSaturation;
 
         // Convert YUV to RGB, saturating levels at 0-65535 to prevent overflow.
-        // This conversion is taken from Video Demystified (5th edition) page 18.
-        const double R = qBound(0.0, rY + (1.140 * rV),                65535.0);
-        const double G = qBound(0.0, rY - (0.395 * rU) - (0.581 * rV), 65535.0);
-        const double B = qBound(0.0, rY + (2.032 * rU),                65535.0 );
+        // Coefficients from Poynton, "Digital Video and HDTV" first edition, p337 eq 28.6.
+        const double R = qBound(0.0, rY                    + (1.139883 * rV),  65535.0);
+        const double G = qBound(0.0, rY + (-0.394642 * rU) + (-0.580622 * rV), 65535.0);
+        const double B = qBound(0.0, rY + (2.032062 * rU),                     65535.0);
 
         // Pack the data back into the RGB 16/16/16 buffer
         const qint32 pp = i * 3; // 3 words per pixel

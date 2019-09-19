@@ -42,6 +42,7 @@ target_wrapper.*
 # QtCreator CMake
 CMakeLists.txt.user*
 /ld-analyse/ld-analyse
+/ld-chroma-decoder/encoder/ld-chroma-encoder
 /ld-chroma-decoder/ld-chroma-decoder
 /ld-chroma-decoder/testfilter/testfilter
 /ld-dropout-correct/ld-dropout-correct
