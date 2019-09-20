@@ -2359,6 +2359,9 @@ class LDdecode:
                 self.isCLV = True
                 #logging.info('CLV', mins)
             elif (l & 0xf00000) == 0xf00000: # CAV frame
+                # Ignore the top bit of the first digit, used for PSC
+                l &= 0x7ffff
+
                 fnum = 0
                 for y in range(16, -1, -4):
                     fnum *= 10
