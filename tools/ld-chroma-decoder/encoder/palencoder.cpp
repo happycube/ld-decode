@@ -246,7 +246,7 @@ void PALEncoder::encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rgb
     const double prevCycles = prevLines * 283.7516;
 
     // Compute the V-switch state and colourburst phase on this line [Poynton p530]
-    const double Vsw = ((frameLine % 4) < 2) ? 1.0 : -1.0;
+    const double Vsw = (prevLines % 2) == 0 ? 1.0 : -1.0;
     const double burstOffset = Vsw * 135.0 * M_PI / 180.0;
 
     // Compute colourburst gating profile [Poynton p530]
