@@ -268,11 +268,12 @@ DropOutCorrect::Replacement DropOutCorrect::findReplacementLine(QVector<DropOutL
 
     // Define the required step amount for colour burst replacement (to maintain line phase)
     qint32 stepAmount;
-    if (!videoParameters.isSourcePal) {
-        // PAL
+    if (videoParameters.isSourcePal) {
+        // PAL - 8 lines per phase sequence
         if (isColourBurst) stepAmount = 8;
         else stepAmount = 4;
     } else {
+        // NTSC - 4 lines per phase sequence
         if (isColourBurst) stepAmount = 4;
         else stepAmount = 2;
     }
