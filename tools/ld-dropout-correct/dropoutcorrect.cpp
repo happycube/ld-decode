@@ -397,7 +397,9 @@ DropOutCorrect::Replacement DropOutCorrect::findReplacementLine(QVector<DropOutL
     if (!isColourBurst) {
         if (!intraField) {
             // Use intra or inter-field
-            if (firstFieldReplacementSourceLine < secondFieldReplacementSourceLine) {
+            const qint32 firstFieldDistance = qAbs(firstFieldReplacementSourceLine - firstFieldDropouts[dropOutIndex].fieldLine);
+            const qint32 secondFieldDistance = qAbs(secondFieldReplacementSourceLine - firstFieldDropouts[dropOutIndex].fieldLine);
+            if (firstFieldDistance < secondFieldDistance) {
                 replacement.isFirstField = true;
                 replacement.fieldLine = firstFieldReplacementSourceLine;
                 qDebug() << "Using data from the first field as a replacement (intra-field)";
