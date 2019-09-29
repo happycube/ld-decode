@@ -306,8 +306,8 @@ DropOutCorrect::Replacement DropOutCorrect::findReplacementLine(QVector<DropOutL
     downDistance = downSourceLine - firstFieldDropouts[dropOutIndex].fieldLine;
 
     if (!upFoundSource && !downFoundSource) {
-        // We didn't find a good replacement source in either direction
-        firstFieldReplacementSourceLine = firstFieldDropouts[dropOutIndex].fieldLine - stepAmount;
+        // We didn't find a good replacement source in either direction -- don't correct it
+        firstFieldReplacementSourceLine = firstFieldDropouts[dropOutIndex].fieldLine;
     } else if (upFoundSource && !downFoundSource) {
         // We only found a replacement in the up direction
         firstFieldReplacementSourceLine = upSourceLine;
@@ -345,8 +345,8 @@ DropOutCorrect::Replacement DropOutCorrect::findReplacementLine(QVector<DropOutL
         downDistance = downSourceLine - firstFieldDropouts[dropOutIndex].fieldLine;
 
         if (!upFoundSource && !downFoundSource) {
-            // We didn't find a good replacement source in either direction
-            secondFieldReplacementSourceLine = firstFieldDropouts[dropOutIndex].fieldLine - stepAmount;
+            // We didn't find a good replacement source in either direction -- don't correct it
+            secondFieldReplacementSourceLine = firstFieldDropouts[dropOutIndex].fieldLine;
         } else if (upFoundSource && !downFoundSource) {
             // We only found a replacement in the up direction
             secondFieldReplacementSourceLine = upSourceLine;
@@ -435,11 +435,9 @@ qint32 DropOutCorrect::findPotentialReplacementLine(const QVector<DropOutLocatio
 void DropOutCorrect::correctDropOut(const DropOutLocation &dropOut, const Replacement &replacement, QByteArray &targetField, const QByteArray &sourceField)
 {
     for (qint32 pixel = dropOut.startx; pixel < dropOut.endx; pixel++) {
-        if (dropOut.fieldLine > 2) {
-            *(targetField.data() + (((dropOut.fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2))) =
-                    *(sourceField.data() + (((replacement.fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2)));
-            *(targetField.data() + (((dropOut.fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2) + 1)) =
-                    *(sourceField.data() + (((replacement.fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2) + 1));
-        }
+        *(targetField.data() + (((dropOut.fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2))) =
+                *(sourceField.data() + (((replacement.fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2)));
+        *(targetField.data() + (((dropOut.fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2) + 1)) =
+                *(sourceField.data() + (((replacement.fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2) + 1));
     }
 }
