@@ -267,16 +267,36 @@ DropOutCorrect::Replacement DropOutCorrect::findReplacementLine(QVector<DropOutL
         lastActiveFieldLine = 259;
     }
 
-    // Define the required step amount for colour burst replacement (to maintain line phase)
+    // Define the minimum step size to use when searching for replacement lines.
+    //
+    // At present the replacement line must match exactly in terms of chroma
+    // encoding; we could use closer lines if we were willing to shift samples
+    // horizontally to match the chroma encoding (or discard the chroma
+    // entirely, as analogue LaserDisc players do).
     qint32 stepAmount;
     if (videoParameters.isSourcePal) {
-        // PAL - 8 lines per phase sequence
-        if (isColourBurst) stepAmount = 8;
-        else stepAmount = 4;
+        // For PAL: [Poynton ch44 p529]
+        //
+        // - Subcarrier has 283.7516 cycles per line, so there's a (nearly) 90
+        //   degree phase shift between adjacent field lines.
+        // - Colourburst is +135 degrees and -135 degrees from the subcarrier
+        //   on alternate field lines.
+        // - The V-switch causes the V component to be inverted on alternate
+        //   field lines.
+        //
+        // So the nearest line we can use which has the same subcarrier phase,
+        // colourburst phase and V-switch state is 4 field lines away.
+        stepAmount = 4;
     } else {
-        // NTSC - 4 lines per phase sequence
-        if (isColourBurst) stepAmount = 4;
-        else stepAmount = 2;
+        // For NTSC: [Poynton ch42 p511]
+        //
+        // - Subcarrier has 227.5 cycles per line, so there's a 180 degree
+        //   phase shift between adjacent field lines.
+        // - Colourburst is always 180 degrees from the subcarrier.
+        //
+        // So the nearest line we can use which has the same subcarrier phase
+        // and colourburst phase is 2 field lines away.
+        stepAmount = 2;
     }
 
     // Look for replacement lines
