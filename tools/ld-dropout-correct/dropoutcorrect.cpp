@@ -273,7 +273,7 @@ DropOutCorrect::Replacement DropOutCorrect::findReplacementLine(QVector<DropOutL
     // encoding; we could use closer lines if we were willing to shift samples
     // horizontally to match the chroma encoding (or discard the chroma
     // entirely, as analogue LaserDisc players do).
-    qint32 stepAmount;
+    qint32 stepAmount, secondFieldOffset;
     if (videoParameters.isSourcePal) {
         // For PAL: [Poynton ch44 p529]
         //
@@ -287,6 +287,10 @@ DropOutCorrect::Replacement DropOutCorrect::findReplacementLine(QVector<DropOutL
         // So the nearest line we can use which has the same subcarrier phase,
         // colourburst phase and V-switch state is 4 field lines away.
         stepAmount = 4;
+
+        // Moving to the same line in the other field leaves us with the same
+        // phase relationship.
+        secondFieldOffset = 0;
     } else {
         // For NTSC: [Poynton ch42 p511]
         //
@@ -297,6 +301,10 @@ DropOutCorrect::Replacement DropOutCorrect::findReplacementLine(QVector<DropOutL
         // So the nearest line we can use which has the same subcarrier phase
         // and colourburst phase is 2 field lines away.
         stepAmount = 2;
+
+        // Moving to the same line in the other field gives 180 degree phase
+        // shift.
+        secondFieldOffset = -1;
     }
 
     // Look for replacement lines
@@ -350,13 +358,13 @@ DropOutCorrect::Replacement DropOutCorrect::findReplacementLine(QVector<DropOutL
 
         // Look up the field for a replacement
         upSourceLine = findPotentialReplacementLine(firstFieldDropouts, dropOutIndex,
-                                                    secondFieldDropouts, 0, -stepAmount,
+                                                    secondFieldDropouts, secondFieldOffset, -stepAmount,
                                                     firstActiveFieldLine, lastActiveFieldLine);
         upFoundSource = (upSourceLine != -1);
 
         // Look down the field for a replacement
         downSourceLine = findPotentialReplacementLine(firstFieldDropouts, dropOutIndex,
-                                                      secondFieldDropouts, stepAmount, stepAmount,
+                                                      secondFieldDropouts, secondFieldOffset + stepAmount, stepAmount,
                                                       firstActiveFieldLine, lastActiveFieldLine);
         downFoundSource = (downSourceLine != -1);
 
