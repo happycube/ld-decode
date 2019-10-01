@@ -60,7 +60,7 @@ private:
     };
 
     struct Replacement {
-        bool isFirstField;
+        bool isSameField;
         qint32 fieldLine;
     };
 
@@ -73,7 +73,9 @@ private:
 
     QVector<DropOutLocation> populateDropoutsVector(LdDecodeMetaData::Field field, bool overCorrect);
     QVector<DropOutLocation> setDropOutLocations(QVector<DropOutLocation> dropOuts);
-    Replacement findReplacementLine(QVector<DropOutLocation>firstFieldDropouts, QVector<DropOutLocation> secondFieldDropouts, qint32 dropOutIndex, bool isColourBurst, bool intraField);
+    Replacement findReplacementLine(const QVector<DropOutLocation> &thisFieldDropouts,
+                                    const QVector<DropOutLocation> &otherFieldDropouts,
+                                    qint32 dropOutIndex, bool isColourBurst, bool intraField);
     qint32 findPotentialReplacementLine(const QVector<DropOutLocation> &targetDropouts, qint32 targetIndex,
                                         const QVector<DropOutLocation> &sourceDropouts, qint32 sourceOffset, qint32 stepAmount,
                                         qint32 firstActiveFieldLine, qint32 lastActiveFieldLine);
