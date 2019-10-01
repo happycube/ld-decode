@@ -12,5 +12,6 @@ SUBDIRS = \
     ld-ldstoefm \
     ld-process-efm \
     ld-process-vbi \
+    ld-diffdod \
     ld-discmap
 

@@ -463,6 +463,20 @@ void LdDecodeMetaData::updateFieldDropOuts(LdDecodeMetaData::DropOuts _dropOuts,
     }
 }
 
+// This method clears the field dropout metadata for a field
+void LdDecodeMetaData::clearFieldDropOuts(qint32 sequentialFieldNumber)
+{
+    qint32 fieldNumber = sequentialFieldNumber - 1;
+
+    if (fieldNumber >= getNumberOfFields() + 1 || fieldNumber < 0) {
+        qCritical() << "LdDecodeMetaData::updateFieldDropOuts(): Requested field number" << sequentialFieldNumber << "out of bounds!";
+    }
+
+    json.remove({"fields", fieldNumber, "dropOuts", "startx"});
+    json.remove({"fields", fieldNumber, "dropOuts", "endx"});
+    json.remove({"fields", fieldNumber, "dropOuts", "fieldLine"});
+}
+
 // This method appends a new field to the existing metadata
 void LdDecodeMetaData::appendField(LdDecodeMetaData::Field _field)
 {
