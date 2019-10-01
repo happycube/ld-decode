@@ -75,7 +75,7 @@ private:
     QVector<DropOutLocation> setDropOutLocations(QVector<DropOutLocation> dropOuts);
     Replacement findReplacementLine(const QVector<DropOutLocation> &thisFieldDropouts,
                                     const QVector<DropOutLocation> &otherFieldDropouts,
-                                    qint32 dropOutIndex, bool isColourBurst, bool intraField);
+                                    qint32 dropOutIndex, bool thisFieldIsFirst, bool isColourBurst, bool intraField);
     qint32 findPotentialReplacementLine(const QVector<DropOutLocation> &targetDropouts, qint32 targetIndex,
                                         const QVector<DropOutLocation> &sourceDropouts, qint32 sourceOffset, qint32 stepAmount,
                                         qint32 firstActiveFieldLine, qint32 lastActiveFieldLine);

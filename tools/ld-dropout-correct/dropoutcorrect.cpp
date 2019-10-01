@@ -89,12 +89,12 @@ void DropOutCorrect::run()
 
                     // Is the current dropout in the colour burst?
                     if (firstFieldDropouts[dropoutIndex].location == Location::colourBurst) {
-                        firstFieldReplacementLines[dropoutIndex] = findReplacementLine(firstFieldDropouts, secondFieldDropouts, dropoutIndex, true, intraField);
+                        firstFieldReplacementLines[dropoutIndex] = findReplacementLine(firstFieldDropouts, secondFieldDropouts, dropoutIndex, true, true, intraField);
                     }
 
                     // Is the current dropout in the visible video line?
                     if (firstFieldDropouts[dropoutIndex].location == Location::visibleLine) {
-                        firstFieldReplacementLines[dropoutIndex] = findReplacementLine(firstFieldDropouts, secondFieldDropouts, dropoutIndex, false, intraField);
+                        firstFieldReplacementLines[dropoutIndex] = findReplacementLine(firstFieldDropouts, secondFieldDropouts, dropoutIndex, true, false, intraField);
                     }
                 }
 
@@ -122,12 +122,12 @@ void DropOutCorrect::run()
 
                     // Is the current dropout in the colour burst?
                     if (secondFieldDropouts[dropoutIndex].location == Location::colourBurst) {
-                        secondFieldReplacementLines[dropoutIndex] = findReplacementLine(secondFieldDropouts, firstFieldDropouts, dropoutIndex, true, intraField);
+                        secondFieldReplacementLines[dropoutIndex] = findReplacementLine(secondFieldDropouts, firstFieldDropouts, dropoutIndex, false, true, intraField);
                     }
 
                     // Is the current dropout in the visible video line?
                     if (secondFieldDropouts[dropoutIndex].location == Location::visibleLine) {
-                        secondFieldReplacementLines[dropoutIndex] = findReplacementLine(secondFieldDropouts, firstFieldDropouts, dropoutIndex, false, intraField);
+                        secondFieldReplacementLines[dropoutIndex] = findReplacementLine(secondFieldDropouts, firstFieldDropouts, dropoutIndex, false, false, intraField);
                     }
                 }
 
@@ -251,7 +251,8 @@ QVector<DropOutCorrect::DropOutLocation> DropOutCorrect::setDropOutLocations(QVe
 // over bad data).
 DropOutCorrect::Replacement DropOutCorrect::findReplacementLine(const QVector<DropOutLocation> &thisFieldDropouts,
                                                                 const QVector<DropOutLocation> &otherFieldDropouts,
-                                                                qint32 dropOutIndex, bool isColourBurst, bool intraField)
+                                                                qint32 dropOutIndex, bool thisFieldIsFirst, bool isColourBurst,
+                                                                bool intraField)
 {
     Replacement replacement;
     bool upFoundSource;
@@ -268,7 +269,9 @@ DropOutCorrect::Replacement DropOutCorrect::findReplacementLine(const QVector<Dr
         lastActiveFieldLine = 259;
     }
 
-    // Define the minimum step size to use when searching for replacement lines.
+    // Define the minimum step size to use when searching for replacement
+    // lines, and the offset to the nearest replacement line in the other
+    // field.
     //
     // At present the replacement line must match exactly in terms of chroma
     // encoding; we could use closer lines if we were willing to shift samples
@@ -289,9 +292,16 @@ DropOutCorrect::Replacement DropOutCorrect::findReplacementLine(const QVector<Dr
         // colourburst phase and V-switch state is 4 field lines away.
         stepAmount = 4;
 
-        // Moving to the same line in the other field leaves us with the same
-        // phase relationship.
-        otherFieldOffset = 1;
+        // First field lines 1-313 are PAL line numbers 1-313.
+        // Second field lines 1-312 are PAL line numbers 314-625.
+        // Moving from first field line N to second field line N would give 313
+        // lines = (nearly) 90 degrees phase shift; move by 310 lines to N-3 to
+        // get (nearly) 0 degrees.
+        if (thisFieldIsFirst) {
+            otherFieldOffset = -3;
+        } else {
+            otherFieldOffset = -1;
+        }
     } else {
         // For NTSC: [Poynton ch42 p511]
         //
@@ -303,8 +313,11 @@ DropOutCorrect::Replacement DropOutCorrect::findReplacementLine(const QVector<Dr
         // and colourburst phase is 2 field lines away.
         stepAmount = 2;
 
-        // Moving to the same line in the other field gives 180 degree phase
-        // shift.
+        // First field lines 1-263 are NTSC line numbers 1-263.
+        // Second field lines 1-262 are NTSC line numbers 264-525.
+        // Moving from first field line N to second field line N would give 263
+        // lines = 180 degrees phase shift; move by 262 lines to N-1 to get 0
+        // degrees.
         otherFieldOffset = -1;
     }
 
