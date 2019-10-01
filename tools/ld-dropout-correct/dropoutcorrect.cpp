@@ -89,12 +89,12 @@ void DropOutCorrect::run()
 
                     // Is the current dropout in the colour burst?
                     if (firstFieldDropouts[dropoutIndex].location == Location::colourBurst) {
-                        firstFieldReplacementLines[dropoutIndex] = findReplacementLine(firstFieldDropouts, secondFieldDropouts, dropoutIndex, true, intraField);
+                        firstFieldReplacementLines[dropoutIndex] = findReplacementLine(firstFieldDropouts, secondFieldDropouts, dropoutIndex, true, true, intraField);
                     }
 
                     // Is the current dropout in the visible video line?
                     if (firstFieldDropouts[dropoutIndex].location == Location::visibleLine) {
-                        firstFieldReplacementLines[dropoutIndex] = findReplacementLine(firstFieldDropouts, secondFieldDropouts, dropoutIndex, false, intraField);
+                        firstFieldReplacementLines[dropoutIndex] = findReplacementLine(firstFieldDropouts, secondFieldDropouts, dropoutIndex, true, false, intraField);
                     }
                 }
 
@@ -102,7 +102,7 @@ void DropOutCorrect::run()
                 for (qint32 dropoutIndex = 0; dropoutIndex < firstFieldDropouts.size(); dropoutIndex++) {
                     if (firstFieldReplacementLines[dropoutIndex].fieldLine == -1) {
                         // Doesn't need correcting
-                    } else if (firstFieldReplacementLines[dropoutIndex].isFirstField) {
+                    } else if (firstFieldReplacementLines[dropoutIndex].isSameField) {
                         // Correct the first field from the first field (intra-field correction)
                         correctDropOut(firstFieldDropouts[dropoutIndex], firstFieldReplacementLines[dropoutIndex], firstTargetFieldData, firstTargetFieldData);
                     } else {
@@ -122,12 +122,12 @@ void DropOutCorrect::run()
 
                     // Is the current dropout in the colour burst?
                     if (secondFieldDropouts[dropoutIndex].location == Location::colourBurst) {
-                        secondFieldReplacementLines[dropoutIndex] = findReplacementLine(secondFieldDropouts, firstFieldDropouts, dropoutIndex, true, intraField);
+                        secondFieldReplacementLines[dropoutIndex] = findReplacementLine(secondFieldDropouts, firstFieldDropouts, dropoutIndex, false, true, intraField);
                     }
 
                     // Is the current dropout in the visible video line?
                     if (secondFieldDropouts[dropoutIndex].location == Location::visibleLine) {
-                        secondFieldReplacementLines[dropoutIndex] = findReplacementLine(secondFieldDropouts, firstFieldDropouts, dropoutIndex, false, intraField);
+                        secondFieldReplacementLines[dropoutIndex] = findReplacementLine(secondFieldDropouts, firstFieldDropouts, dropoutIndex, false, false, intraField);
                     }
                 }
 
@@ -135,7 +135,7 @@ void DropOutCorrect::run()
                 for (qint32 dropoutIndex = 0; dropoutIndex < secondFieldDropouts.size(); dropoutIndex++) {
                     if (secondFieldReplacementLines[dropoutIndex].fieldLine == -1) {
                         // Doesn't need correcting
-                    } else if (secondFieldReplacementLines[dropoutIndex].isFirstField) {
+                    } else if (secondFieldReplacementLines[dropoutIndex].isSameField) {
                         // Correct the second field from the second field (intra-field correction)
                         correctDropOut(secondFieldDropouts[dropoutIndex], secondFieldReplacementLines[dropoutIndex], secondTargetFieldData, secondSourceField);
                     } else {
@@ -249,13 +249,11 @@ QVector<DropOutCorrect::DropOutLocation> DropOutCorrect::setDropOutLocations(QVe
 // Find a replacement line to take replacement data from.  This method looks both up and down the field
 // for the nearest replacement line that doesn't contain a drop-out itself (to prevent copying bad data
 // over bad data).
-DropOutCorrect::Replacement DropOutCorrect::findReplacementLine(QVector<DropOutLocation> firstFieldDropouts, QVector<DropOutLocation> secondFieldDropouts,
-                                                                qint32 dropOutIndex, bool isColourBurst, bool intraField)
+DropOutCorrect::Replacement DropOutCorrect::findReplacementLine(const QVector<DropOutLocation> &thisFieldDropouts,
+                                                                const QVector<DropOutLocation> &otherFieldDropouts,
+                                                                qint32 dropOutIndex, bool thisFieldIsFirst, bool isColourBurst,
+                                                                bool intraField)
 {
-    Replacement replacement;
-    bool upFoundSource;
-    bool downFoundSource;
-
     // Determine the first and last active scan line based on the source format
     qint32 firstActiveFieldLine;
     qint32 lastActiveFieldLine;
@@ -267,13 +265,15 @@ DropOutCorrect::Replacement DropOutCorrect::findReplacementLine(QVector<DropOutL
         lastActiveFieldLine = 259;
     }
 
-    // Define the minimum step size to use when searching for replacement lines.
+    // Define the minimum step size to use when searching for replacement
+    // lines, and the offset to the nearest replacement line in the other
+    // field.
     //
     // At present the replacement line must match exactly in terms of chroma
     // encoding; we could use closer lines if we were willing to shift samples
     // horizontally to match the chroma encoding (or discard the chroma
     // entirely, as analogue LaserDisc players do).
-    qint32 stepAmount, secondFieldOffset;
+    qint32 stepAmount, otherFieldOffset;
     if (videoParameters.isSourcePal) {
         // For PAL: [Poynton ch44 p529]
         //
@@ -288,9 +288,16 @@ DropOutCorrect::Replacement DropOutCorrect::findReplacementLine(QVector<DropOutL
         // colourburst phase and V-switch state is 4 field lines away.
         stepAmount = 4;
 
-        // Moving to the same line in the other field leaves us with the same
-        // phase relationship.
-        secondFieldOffset = 0;
+        // First field lines 1-313 are PAL line numbers 1-313.
+        // Second field lines 1-312 are PAL line numbers 314-625.
+        // Moving from first field line N to second field line N would give 313
+        // lines = (nearly) 90 degrees phase shift; move by 310 lines to N-3 to
+        // get (nearly) 0 degrees.
+        if (thisFieldIsFirst) {
+            otherFieldOffset = -3;
+        } else {
+            otherFieldOffset = -1;
+        }
     } else {
         // For NTSC: [Poynton ch42 p511]
         //
@@ -302,140 +309,87 @@ DropOutCorrect::Replacement DropOutCorrect::findReplacementLine(QVector<DropOutL
         // and colourburst phase is 2 field lines away.
         stepAmount = 2;
 
-        // Moving to the same line in the other field gives 180 degree phase
-        // shift.
-        secondFieldOffset = -1;
+        // First field lines 1-263 are NTSC line numbers 1-263.
+        // Second field lines 1-262 are NTSC line numbers 264-525.
+        // Moving from first field line N to second field line N would give 263
+        // lines = 180 degrees phase shift; move by 262 lines to N-1 to get 0
+        // degrees.
+        otherFieldOffset = -1;
     }
 
-    // Look for replacement lines
-    qint32 upDistance = 0;
-    qint32 downDistance = 0;
-    qint32 upSourceLine = 0;
-    qint32 downSourceLine = 0;
-    qint32 firstFieldReplacementSourceLine = -1;
-    qint32 secondFieldReplacementSourceLine = -1;
+    // Look for potential replacement lines
+    QVector<DropOutCorrect::Replacement> candidates;
 
-    // Examine the first field:
+    // Examine this field:
 
     // Look up the field for a replacement
-    upSourceLine = findPotentialReplacementLine(firstFieldDropouts, dropOutIndex,
-                                                firstFieldDropouts, 0, -stepAmount,
-                                                firstActiveFieldLine, lastActiveFieldLine);
-    upFoundSource = (upSourceLine != -1);
+    findPotentialReplacementLine(thisFieldDropouts, dropOutIndex,
+                                 thisFieldDropouts, true, 0, -stepAmount,
+                                 firstActiveFieldLine, lastActiveFieldLine,
+                                 candidates);
 
     // Look down the field for a replacement
-    downSourceLine = findPotentialReplacementLine(firstFieldDropouts, dropOutIndex,
-                                                  firstFieldDropouts, stepAmount, stepAmount,
-                                                  firstActiveFieldLine, lastActiveFieldLine);
-    downFoundSource = (downSourceLine != -1);
+    findPotentialReplacementLine(thisFieldDropouts, dropOutIndex,
+                                 thisFieldDropouts, true, stepAmount, stepAmount,
+                                 firstActiveFieldLine, lastActiveFieldLine,
+                                 candidates);
 
-    // Determine the replacement's distance from the dropout
-    upDistance = firstFieldDropouts[dropOutIndex].fieldLine - upSourceLine;
-    downDistance = downSourceLine - firstFieldDropouts[dropOutIndex].fieldLine;
-
-    if (!upFoundSource && !downFoundSource) {
-        // We didn't find a good replacement source in either direction -- don't correct it
-        firstFieldReplacementSourceLine = firstFieldDropouts[dropOutIndex].fieldLine;
-    } else if (upFoundSource && !downFoundSource) {
-        // We only found a replacement in the up direction
-        firstFieldReplacementSourceLine = upSourceLine;
-    } else if (!upFoundSource && downFoundSource) {
-        // We only found a replacement in the down direction
-        firstFieldReplacementSourceLine = downSourceLine;
-    } else {
-        // We found a replacement in both directions, pick the closest
-        if (upDistance < downDistance)
-        {
-            firstFieldReplacementSourceLine = upSourceLine;
-        } else {
-            firstFieldReplacementSourceLine = downSourceLine;
-        }
-    }
-
-    // Only check the second field for visible line replacements
-    if (!isColourBurst) {
-        // Examine the second field:
+    // Only check the other field for visible line replacements
+    if (!isColourBurst && !intraField) {
+        // Examine the other field:
 
         // Look up the field for a replacement
-        upSourceLine = findPotentialReplacementLine(firstFieldDropouts, dropOutIndex,
-                                                    secondFieldDropouts, secondFieldOffset, -stepAmount,
-                                                    firstActiveFieldLine, lastActiveFieldLine);
-        upFoundSource = (upSourceLine != -1);
+        findPotentialReplacementLine(thisFieldDropouts, dropOutIndex,
+                                     otherFieldDropouts, false, otherFieldOffset, -stepAmount,
+                                     firstActiveFieldLine, lastActiveFieldLine,
+                                     candidates);
 
         // Look down the field for a replacement
-        downSourceLine = findPotentialReplacementLine(firstFieldDropouts, dropOutIndex,
-                                                      secondFieldDropouts, secondFieldOffset + stepAmount, stepAmount,
-                                                      firstActiveFieldLine, lastActiveFieldLine);
-        downFoundSource = (downSourceLine != -1);
-
-        // Determine the replacement's distance from the dropout
-        upDistance = firstFieldDropouts[dropOutIndex].fieldLine - upSourceLine;
-        downDistance = downSourceLine - firstFieldDropouts[dropOutIndex].fieldLine;
-
-        if (!upFoundSource && !downFoundSource) {
-            // We didn't find a good replacement source in either direction -- don't correct it
-            secondFieldReplacementSourceLine = firstFieldDropouts[dropOutIndex].fieldLine;
-        } else if (upFoundSource && !downFoundSource) {
-            // We only found a replacement in the up direction
-            secondFieldReplacementSourceLine = upSourceLine;
-        } else if (!upFoundSource && downFoundSource) {
-            // We only found a replacement in the down direction
-            secondFieldReplacementSourceLine = downSourceLine;
-        } else {
-            // We found a replacement in both directions, pick the closest
-            if (upDistance < downDistance)
-            {
-                secondFieldReplacementSourceLine = upSourceLine;
-            } else {
-                secondFieldReplacementSourceLine = downSourceLine;
-            }
-        }
+        findPotentialReplacementLine(thisFieldDropouts, dropOutIndex,
+                                     otherFieldDropouts, false, otherFieldOffset + stepAmount, stepAmount,
+                                     firstActiveFieldLine, lastActiveFieldLine,
+                                     candidates);
     }
 
-    // Determine which field we should take the replacement data from
-    if (!isColourBurst) {
-        qDebug() << "Visible video dropout on line" << firstFieldDropouts[dropOutIndex].fieldLine;
-        qDebug() << "First field nearest replacement =" << firstFieldReplacementSourceLine;
-        qDebug() << "Second field nearest replacement =" << secondFieldReplacementSourceLine;
-    } else {
-        qDebug() << "Colourburst dropout on line" << firstFieldDropouts[dropOutIndex].fieldLine;
-        qDebug() << "First field nearest replacement =" << firstFieldReplacementSourceLine;
-    }
+    qDebug() << (isColourBurst ? "Colourburst" : "Visible video") << "dropout on line"
+             << thisFieldDropouts[dropOutIndex].fieldLine << "of" << (thisFieldIsFirst ? "first" : "second") << "field";
 
-    if (!isColourBurst) {
-        if (!intraField) {
-            // Use intra or inter-field
-            const qint32 firstFieldDistance = qAbs(firstFieldReplacementSourceLine - firstFieldDropouts[dropOutIndex].fieldLine);
-            const qint32 secondFieldDistance = qAbs(secondFieldReplacementSourceLine - firstFieldDropouts[dropOutIndex].fieldLine);
-            if (firstFieldDistance < secondFieldDistance) {
-                replacement.isFirstField = true;
-                replacement.fieldLine = firstFieldReplacementSourceLine;
-                qDebug() << "Using data from the first field as a replacement (intra-field)";
-            } else {
-                replacement.isFirstField = false;
-                replacement.fieldLine = secondFieldReplacementSourceLine;
-                qDebug() << "Using data from the second field as a replacement (inter-field)";
-            }
-        } else {
-            // Force intra-field only
-            replacement.isFirstField = true;
-            replacement.fieldLine = firstFieldReplacementSourceLine;
-            qDebug() << "Using data from the first field as a replacement (forced intra-field)";
-        }
+    Replacement replacement;
+    if (candidates.empty()) {
+        // No replacements found -- we can't correct it, so provide the dropout location as the source
+        replacement.isSameField = true;
+        replacement.fieldLine = thisFieldDropouts[dropOutIndex].fieldLine;
     } else {
-        // Always use the same field for colour burst replacement
-        replacement.isFirstField = true;
-        replacement.fieldLine = firstFieldReplacementSourceLine;
+        // Find the candidate with the lowest spatial distance from the dropout
+        qint32 lowestDistance = 1000000;
+        for (const Replacement &candidate: candidates) {
+            // Work out the corresponding output frame line numbers.
+            // The first field (in a .tbc, for both PAL and NTSC) contains the top frame line.
+            const qint32 dropoutFrameLine = (2 * thisFieldDropouts[dropOutIndex].fieldLine) + (thisFieldIsFirst ? 0 : 1);
+            const qint32 sourceFrameLine = (2 * candidate.fieldLine) + (candidate.isSameField ? (thisFieldIsFirst ? 0 : 1)
+                                                                                              : (thisFieldIsFirst ? 1 : 0));
+
+            const qint32 distance = qAbs(dropoutFrameLine - sourceFrameLine);
+            qDebug() << (candidate.isSameField ? "This" : "Other") << "field replacement candidate line"
+                     << candidate.fieldLine << "distance" << distance;
+
+            if (distance < lowestDistance) {
+                replacement = candidate;
+                lowestDistance = distance;
+            }
+        }
     }
 
     return replacement;
 }
 
 // Given a dropout, scan through a source field for the nearest replacement line that doesn't have overlapping dropouts.
-// Returns the line number, or -1 if nothing was found.
-qint32 DropOutCorrect::findPotentialReplacementLine(const QVector<DropOutLocation> &targetDropouts, qint32 targetIndex,
-                                                    const QVector<DropOutLocation> &sourceDropouts, qint32 sourceOffset, qint32 stepAmount,
-                                                    qint32 firstActiveFieldLine, qint32 lastActiveFieldLine)
+// Adds a Replacement to candidates if one was found.
+void DropOutCorrect::findPotentialReplacementLine(const QVector<DropOutLocation> &targetDropouts, qint32 targetIndex,
+                                                  const QVector<DropOutLocation> &sourceDropouts, bool isSameField,
+                                                  qint32 sourceOffset, qint32 stepAmount,
+                                                  qint32 firstActiveFieldLine, qint32 lastActiveFieldLine,
+                                                  QVector<Replacement> &candidates)
 {
     qint32 sourceLine = targetDropouts[targetIndex].fieldLine + sourceOffset;
     while (sourceLine >= firstActiveFieldLine && sourceLine < lastActiveFieldLine) {
@@ -453,12 +407,13 @@ qint32 DropOutCorrect::findPotentialReplacementLine(const QVector<DropOutLocatio
         }
         if (!hasOverlap) {
             // No overlaps -- we can use this line
-            return sourceLine;
+            Replacement replacement;
+            replacement.isSameField = isSameField;
+            replacement.fieldLine = sourceLine;
+            candidates.push_back(replacement);
+            return;
         }
     }
-
-    // No non-overlapping line found
-    return -1;
 }
 
 // Correct a dropout by copying data from a replacement line.
