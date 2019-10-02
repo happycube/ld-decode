@@ -28,10 +28,12 @@ def scale_chroma(chroma):
 
     if chroma is None:
         print("Tried to scale an empty array!")
-    #
-    positive = np.max(chroma) * 1.5
-    negative = np.min(chroma) * 1.5
-    scale = S16_ABS_MAX / max(positive, abs(negative))
+
+    positive = np.max(chroma)
+    negative = np.min(chroma)
+
+    # HACK: reduce the chroma amplitude for now to avoid oversaturation.
+    scale = S16_ABS_MAX / (max(positive, abs(negative)) * 4)
     return np.uint16((chroma * scale) + S16_ABS_MAX + 1)
 
 def genLowShelf(f0, dbgain, qfactor, fs):
@@ -87,6 +89,14 @@ def genHighShelf(f0, dbgain, qfactor, fs):
     a2 = (a + 1) - (a - 1) * cosw0 - 2 * asquared * alpha
     return [b0, b1, b2], [a0, a1, a2]
 
+# Phase comprensation stuff - needs rework.
+# def phase_shift(data, angle):
+#     return np.fft.irfft(np.fft.rfft(data) * np.exp(1.0j * angle), len(data)).real
+
+# def detect_phase(data):
+#     data = data / np.mean(abs(data))
+#     return lddu.calczc(data, 1, 0, edge=1)
+
 class FieldPALVHS(ldd.FieldPAL):
     def __init__(self, *args, **kwargs):
         super(FieldPALVHS, self).__init__(*args, **kwargs)
@@ -101,13 +111,8 @@ class FieldPALVHS(ldd.FieldPAL):
 
         return linelocs
 
-    def _refine_linelocs_hsync(self):
-        """Refine the hsync locations.
-        The LD implementation doesn't seem to work well with VHS, so we just skip this for now as
-        the original locations gives a reasonable result.
-        """
-        linelocs2 = self.linelocs1.copy()
-        return linelocs2
+    def final_chroma(self, signal):
+        return np.fft.ifft(np.fft.fft(signal) * (self.rf.Filters['FChromaFinal'])).real
 
     def processChroma(self):
         chroma, _, _ = ldd.Field.downscale(self, channel="demod_burst")
@@ -119,95 +124,58 @@ class FieldPALVHS(ldd.FieldPAL):
         linesout = self.outlinecount
         outwidth = self.outlinelen
 
-#        burstlevel = np.zeros(linesout)
-#        burstphase = np.zeros(linesout)
+        #burstlevel = np.zeros(linesout)
+        #burstphase = np.zeros(linesout)
 
         burstarea = (math.floor(self.usectooutpx(self.rf.SysParams['colorBurstUS'][0])),
                      math.ceil(self.usectooutpx(self.rf.SysParams['colorBurstUS'][1])))
 
+        # Naively assume field number/track relationship
+        # TODO: Detect automatically.
         if self.rf.fieldNumber % 2 == 0:
+            # Track 1 - phase doesn't change.
             for l in range(lineoffset, linesout + lineoffset):
                 linenum = l - lineoffset
                 linestart = (l - lineoffset) * outwidth
                 lineend = linestart + outwidth
-                phase = 0
 
-                line = chroma[linestart:lineend] * self.rf.chroma_heterodyne[0]
+                # Heterodyne frequency - this doesn't work, need to generate one with a PLL maybe?
+                # heterodyne2 = np.fft.ifft(np.fft.fft(chroma[linestart:lineend]
+                #                                      * self.rf.fsc_wave[linestart:lineend]) * het_filter).real
+                # Basic heterodyne wave with no compensation for frequency variation.
+                heterodyne = self.rf.chroma_heterodyne[0][linestart:lineend]
 
+                c = chroma[linestart:lineend]
 
+                line = heterodyne * c
 
-                pos_peaks = sps.find_peaks(line[burstarea[0]:burstarea[1]])[0]
-                neg_peaks = sps.find_peaks(-line[burstarea[0]:burstarea[1]])[0]
-
-                print("l: ", linenum, " pos peaks: ", pos_peaks, " neg peaks: ", neg_peaks)
-
-                #if linenum > 1:
-                #    line *= uphet[linestart - (outwidth * 2):lineend - (outwidth*2)]
-
+                # Filter out unwanted frequencies from color carrier.
                 linefilt = np.fft.ifft(np.fft.fft(line) * (self.rf.Filters['FChromaFinal'])).real
-
 
                 uphet[linestart:lineend] = linefilt
 
-        #            burstphase[l - lineoffset] = lddu.angular_mean(chroma[linestart + burstarea[0]:linestart + burstarea[1]])
         else:
+            # Track 2 - needs phase rotation or the chroma will be inverted.
             phase = 0
             for l in range(lineoffset, linesout + lineoffset):
                 linenum = l - lineoffset
                 linestart = (l - lineoffset) * outwidth
                 lineend = linestart + outwidth
 
-                line = chroma[linestart:lineend] * self.rf.chroma_heterodyne[phase]
+                heterodyne = self.rf.chroma_heterodyne[phase][linestart:lineend]
+
+                c = chroma[linestart:lineend]
+
+
+                line = heterodyne * c
+
                 linefilt = np.fft.ifft(np.fft.fft(line) * self.rf.Filters['FChromaFinal']).real
-
-                #pos_peaks = sps.find_peaks(line[burstarea[0]:burstarea[1]])[0]
-                #neg_peaks = sps.find_peaks(-line[burstarea[0]:burstarea[1]])[0]
-
-#                if l > lineoffset:
-#                    linefilt = -(-linefilt + uphet[linestart - outwidth:linestart])
-
-#                if l > lineoffset + 1:
-#                    linefilt = -(linefilt + uphet[linestart - (outwidth*2):linestart - outwidth])
-
 
                 uphet[linestart:lineend] = linefilt
 
                 phase -= 1
                 if phase < 0:
                     phase = 3
-
-
-#            burstphase[l - lineoffset] = lddu.angular_mean(chroma[linestart + burstarea[0]:linestart + burstarea[1]])
-            if False:
-                samplefreq = self.rf.SysParams['fsc_mhz'] * 4
-                rate = np.full(outwidth , vhs_formats.VHS_COLOR_CARRIER_MHZ, dtype=np.double)
-                rate[outwidth // 3:(outwidth // 3) * 2] = self.rf.SysParams['fsc_mhz']
-                #test_wave = lddu.genwave(rate, samplefreq / 2)
-
-                samples = np.arange(self.rf.SysParams['outlinelen'])
-                wave_scale =  vhs_formats.VHS_COLOR_CARRIER_MHZ / (self.rf.SysParams['fsc_mhz'] * 4)
-                cc_wave = np.sin(2 * np.pi * wave_scale * samples)
-
-#                start = (80 - lineoffset) * outwidth
-
-                #chroma_fft =  np.fft.fft(test_wave)#chroma[linestart:lineend])
-                #            chroma_uphet_fft = np.fft.fft(uphet * 1000000)
-                #            hetero_fft = np.fft.fft(self.rf.cc_raw)
-                #cc_fft = np.fft.fft(cc_wave)
-                self.fig, self.ax1 = plt.subplots()
-#                self.ax2 = self.ax1.twinx()
-                #            self.ax2 = self.ax1.twinx()
-                #self.ax1.plot(range(0, len(chroma_fft)), chroma_fft.real)
-                #self.ax1.plot(range(0, len(test_wave)), test_wave, color='#FF0000')
-                #            self.ax1.plot(range(0, len(chroma_uphet_fft)), chroma_uphet_fft.real, color='#FF0000')
-                #self.ax2.plot(range(0, len(cc_fft)), cc_fft.real, color='#FF0000')
-                #self.ax1.plot(range(0, len(cc_wave)), cc_wave, color='#FFFF00')
-                self.ax1.plot(range(0, len(self.rf.chroma_heterodyne[0])), self.rf.chroma_heterodyne[0], color='#FFFF00')
-                self.ax1.plot(range(0, len(self.rf.chroma_heterodyne[0])), self.rf.chroma_heterodyne[1], color='#FF0000')
-                self.ax1.plot(range(0, len(self.rf.chroma_heterodyne[0])), self.rf.chroma_heterodyne[2], color='#00FF00')
-                self.ax1.plot(range(0, len(self.rf.chroma_heterodyne[0])), self.rf.chroma_heterodyne[3], color='#0000FF')
-
-                plt.show()
 
         dschroma = scale_chroma(uphet)
 
@@ -230,7 +198,7 @@ class VHSDecode(ldd.LDdecode):
     def __init__(self, fname_in, fname_out, freader, system = 'NTSC', doDOD = False,
                  inputfreq = 40):
         super(VHSDecode, self).__init__(fname_in, fname_out, freader, analog_audio = False,
-                                        system = system, doDOD = doDOD)
+                                        system = system, doDOD = doDOD, threads = 1)
         # Overwrite the rf decoder with the VHS-altered one
         self.rf = VHSRFDecode(system = system, inputfreq = inputfreq)
         self.FieldClass = FieldPALVHS
@@ -323,74 +291,68 @@ class VHSRFDecode(ldd.RFDecode):
         SF['FVideo05'] = SF['Fvideo_lpf'] * SF['Fdeemp'] * SF['F05']
 
         # Filter to pick out color-under chroma component.
-        # filter at about twice the carrier.
-        chroma_lowpass = sps.butter(2, [1.4/self.freq_half], btype='lowpass')
+        # filter at about twice the carrier. (This seems to be similar to what VCRs do)
+        chroma_lowpass = sps.butter(4, [1.3/self.freq_half], btype='lowpass')
         self.Filters['FVideoBurst'] = lddu.filtfft(chroma_lowpass, self.blocklen)
+
+        # The following filters are for post-TBC:
 
         out_frequency_half = (self.SysParams['fsc_mhz'] * 4) / 2
 
         # Final band-pass filter for chroma output.
-        chroma_bandpass_final = sps.butter(3, [(self.SysParams['fsc_mhz']-.08)/out_frequency_half,
+        chroma_bandpass_final = sps.butter(2, [(self.SysParams['fsc_mhz']-.08)/out_frequency_half,
                                                (self.SysParams['fsc_mhz']+.06)/out_frequency_half], btype='bandpass')
         self.Filters['FChromaFinal'] = lddu.filtfft(chroma_bandpass_final, self.SysParams['outlinelen'])
 
+
+        fieldlen = self.SysParams['outlinelen'] * max(self.SysParams['field_lines'])
+
         het_freq = self.SysParams['fsc_mhz'] + cc
 
-        het_filter = sps.butter(4, [(het_freq -.001)/out_frequency_half,
+        ## Bandpass filter to select heterodyne frequency from the mixed fsc and color carrier signal
+        het_filter_raw = sps.butter(2, [(het_freq -.001)/out_frequency_half,
                                                (het_freq +.001)/out_frequency_half], btype='bandpass')
-        het_filter = lddu.filtfft(het_filter, self.SysParams['outlinelen'])
+        het_filter = lddu.filtfft(het_filter_raw, fieldlen)
+
+        ### Heterodyne bandpass for frequency-compensated heterodyne - not used atm
+        # het_filter_b_raw = sps.butter(2, [(het_freq * 0.95)/out_frequency_half,
+        #                                        (het_freq * 1.05)/out_frequency_half], btype='bandpass')
+        # het_filter_b = lddu.filtfft(het_filter_b_raw, self.SysParams['outlinelen'])
+        # self.Filters['HetFreq'] = het_filter_b
+
+        samples = np.arange(self.SysParams['outlinelen'] * (626 // 2))
+        # As this is done on the tbced signal, we need the sampling frequency of that,
+        # which is 4fsc for NTSC and approx. 4 fsc for PAL.
+        # TODO: Correct frequency for pal?
+        wave_scale =  (self.SysParams['fsc_mhz']) / (self.SysParams['fsc_mhz'] * 4)
+
+        cc_wave_scale = cc / (self.SysParams['fsc_mhz'] * 4)
+        self.cc_ratio = cc_wave_scale
+        # 0 phase downconverted color under carrier wave
+        self.cc_wave = np.sin(2 * np.pi * cc_wave_scale * samples)
+        # +90 deg and so on phase wave for track2 phase rotation
+        cc_wave_90 = np.sin((2 * np.pi * cc_wave_scale * samples) + (np.pi / 2))#
+        cc_wave_180 = np.sin((2 * np.pi * cc_wave_scale * samples) + np.pi)
+        cc_wave_270 = np.sin((2 * np.pi * cc_wave_scale * samples) + np.pi + (np.pi / 2))
+
+        # Standard frequency color carrier wave.
+        self.fsc_wave = np.sin(2 * np.pi * wave_scale * samples)
+
+        # cc_samples = np.arange(self.blocklen)
+        # cc_scale = cc / inputfreq
+        # self.cc_orig_sampl = np.sin(2 * np.pi * cc_scale * cc_samples)
 
         # Heterodyne wave
         # We combine the color carrier with a wave with a frequency of the
         # subcarrier + the downconverted chroma carrier to get the original
         # color wave back.
-        samples = np.arange(self.SysParams['outlinelen'])
-        # As this is done on the tbced signal, we need the sampling frequency of that,
-        # which is 4fsc for NTSC and approx. 4 fsc for PAL.
-        # TODO: Correct frequency for pal?
-        wave_scale =  1/4.0##(self.SysParams['fsc_mhz']) / (self.SysParams['fsc_mhz'] * 4)
-
-        cc_wave_scale = cc / (self.SysParams['fsc_mhz'] * 4)
-        cc_wave = np.sin(2 * np.pi * cc_wave_scale * samples)
-        cc_wave_90 = np.sin((2 * np.pi * cc_wave_scale * samples) + (np.pi / 2))
-        cc_wave_180 = np.sin((2 * np.pi * cc_wave_scale * samples) + np.pi)
-        cc_wave_270 = np.sin((2 * np.pi * cc_wave_scale * samples) + np.pi + (np.pi / 2))
-        fsc_wave = np.sin(2 * np.pi * wave_scale * samples)
-        fsc_wave_90 = np.sin((2 * np.pi * wave_scale * samples) + (np.pi / 2))
-        fsc_wave_180 = np.sin((2 * np.pi * wave_scale * samples) + np.pi)
-        fsc_wave_270 = np.sin((2 * np.pi * wave_scale * samples) - (np.pi / 2))
-##        cc_wave_90 =
-
-        #wave_scale_t =  (self.SysParams['fsc_mhz'] + cc) / (self.SysParams['fsc_mhz'] * 4)
-
-        #fsc_and_cc_mixed = cc_wave * fsc_wave
-        #fsc_and_cc_freq = np.sin(2 * np.pi * wave_scale_t * samples)
-
         self.chroma_heterodyne = {}
-#        self.chroma_heterodyne[0] = np.sin((2 * np.pi * ((cc + self.SysParams['fsc_mhz']) /  (self.SysParams['fsc_mhz'] * 4))) * samples)
-        self.chroma_heterodyne[0] = np.fft.ifft(np.fft.fft(cc_wave * fsc_wave) * het_filter) #np.sin(2 * np.pi * wave_scale_t * samples)
-        self.chroma_heterodyne[1] = np.fft.ifft(np.fft.fft(cc_wave_90 * fsc_wave_90) * het_filter)
-        self.chroma_heterodyne[2] = np.fft.ifft(np.fft.fft(cc_wave_180 * fsc_wave_180) * het_filter)
-        self.chroma_heterodyne[3] = np.fft.ifft(np.fft.fft(cc_wave_270 * fsc_wave_270) * het_filter)
-
-        self.fig, self.ax1 = plt.subplots()
-
-
-        #fsc_bandpass = sps.butter(5, [(het_freq-.10)/self.freq_half,
- #                                        (het_freq+.10)/self.freq_half], btype='bandpass')
-        #fsc_bandpass = lddu.filtfft(fsc_bandpass, self.SysParams['outlinelen'])
-
-        #test_wave = np.fft.ifft(np.fft.fft(cc_wave * fsc_wave) * fsc_bandpass)
-
-        #self.ax1.plot(range(0, len(cc_wave)), cc_wave * fsc_wave, color='#FFFF00')
-        #self.ax1.plot(range(0, len(cc_wave)), cc_wave_90 * fsc_wave , color='#FF0000')
-#        self.ax1.plot(range(0, len(cc_wave)), cc_wave_180 * fsc_wave, color='#00FF00')
-#        self.ax1.plot(range(0, len(cc_wave)), cc_wave_270 * fsc_wave, color='#0000FF')
-
-#        plt.show()
+        self.chroma_heterodyne[0] = np.fft.ifft(np.fft.fft(self.cc_wave * self.fsc_wave) * het_filter).real
+        self.chroma_heterodyne[1] = np.fft.ifft(np.fft.fft(cc_wave_90 * self.fsc_wave) * het_filter).real
+        self.chroma_heterodyne[2] = np.fft.ifft(np.fft.fft(cc_wave_180 * self.fsc_wave) * het_filter).real
+        self.chroma_heterodyne[3] = np.fft.ifft(np.fft.fft(cc_wave_270 * self.fsc_wave) * het_filter).real
 
         self.fieldNumber = 0
-
 
     def computedelays(self, mtf_level = 0):
         '''Override computedelays
@@ -425,7 +387,10 @@ class VHSRFDecode(ldd.RFDecode):
         out_video05 = np.fft.ifft(demod_fft * self.Filters['FVideo05']).real
         out_video05 = np.roll(out_video05, -self.Filters['F05_offset'])
 
-        out_chroma = np.fft.ifft(indata_fft * self.Filters['FVideoBurst']).real * 100
+        out_chroma = np.fft.ifft(indata_fft * self.Filters['FVideoBurst']
+                                 * self.Filters['FVideoBurst']).real
+        # crude DC offset removal
+        out_chroma = out_chroma - np.mean(out_chroma)
 
         # demod_burst is a bit misleading, but keeping the naming for compatability.
         video_out = np.rec.array(
@@ -433,52 +398,5 @@ class VHSRFDecode(ldd.RFDecode):
                 names=['demod', 'demod_raw', 'demod_05', 'demod_burst'])
 
         rv['video'] = video_out[self.blockcut:-self.blockcut_end] if cut else video_out
-
-        if False:
-            self.fig, self.ax1 = plt.subplots()
-            self.ax2 = self.ax1.twinx()
-            fig, ax1 = self.fig, self.ax1
-            #fig.clf()
-            #fig.cla()
-            ax1.cla()
-
-            ax1.axhline(self.iretohz(100))
-            ax1.axhline(self.iretohz(0))
-            ax1.axhline(self.iretohz(-25))
-
-            color = 'tab:red'
-            #ax1.axhline(self.iretohz(self.SysParams['vsync_ire']), color=color)
-            #ax1.axhline(self.iretohz(0), color='0.0')
-            #ax1.axhline(min_level, color='#00FF00')
-            #ax1.axhline(sync_filter_high, color='#0000FF')
-
-#            ax1.plot(range(0, len(self.chroma_heterodyne)), self.chroma_heterodyne)
-#            ax1.plot(range(0, len(uphet)), uphet)
-
-            #ax1.plot(range(0, len(out_video)), out_video)
-            ax1.plot(range(0, len(out_video05)), out_video05)
-
-            #ax2 = self.ax2#ax1.twinx()
-            #ax2.cla()
-
-            #ax2.plot(range(0, len(out_chroma)), out_chroma, color='#FF0000')
-            #ax2.plot(range(0, len(video_variation)), video_variation, color='#FFFF00')
-
-
-#            ax2.plot(range(0, len(output_syncf)), output_syncf, color='tab:green')
-#            ax2.plot(range(0, len(output_sync)), output_sync, color='tab:gray')
-
-
-            #fig.tight_layout()
-
-            #	plt.plot(range(0, len(doutput)), doutput)
-            #	plt.plot(range(0, len(output_prefilt)), output_prefilt)
-            #plt.show()
-            #        plt.draw()
-
-            #fig.canvas.draw()
-            #fig.canvas.flush_events()
-            plt.show()
-            #plt.pause(0.1)
 
         return rv
