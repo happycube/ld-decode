@@ -34,6 +34,7 @@
 #include "sourcevideo.h"
 #include "lddecodemetadata.h"
 #include "vbidecoder.h"
+#include "filters.h"
 
 class TbcSources : public QObject
 {

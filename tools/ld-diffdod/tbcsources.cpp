@@ -246,6 +246,16 @@ void TbcSources::performFrameDiffDod(qint32 targetVbiFrame, qint32 dodThreshold)
         sourceFirstFieldPointer[sourceNo] = reinterpret_cast<quint16*>(firstFields[sourceNo].data());
         sourceSecondFieldPointer[sourceNo] = reinterpret_cast<quint16*>(secondFields[sourceNo].data());
 
+        // Filter out the chroma information from the fields leaving just luma
+        Filters filters;
+        if (videoParameters.isSourcePal) {
+            filters.palLumaFirFilter(sourceFirstFieldPointer[sourceNo], videoParameters.fieldWidth * videoParameters.fieldHeight);
+            filters.palLumaFirFilter(sourceSecondFieldPointer[sourceNo], videoParameters.fieldWidth * videoParameters.fieldHeight);
+        } else {
+            filters.ntscLumaFirFilter(sourceFirstFieldPointer[sourceNo], videoParameters.fieldWidth * videoParameters.fieldHeight);
+            filters.ntscLumaFirFilter(sourceSecondFieldPointer[sourceNo], videoParameters.fieldWidth * videoParameters.fieldHeight);
+        }
+
         // Remove the existing field dropout metadata for the frame
         sourceVideos[availableSourcesForFrame[sourceNo]]->ldDecodeMetaData.clearFieldDropOuts(firstFieldNumber);
         sourceVideos[availableSourcesForFrame[sourceNo]]->ldDecodeMetaData.clearFieldDropOuts(secondFieldNumber);
