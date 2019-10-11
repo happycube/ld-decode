@@ -35,6 +35,7 @@
 #include "sourcevideo.h"
 #include "lddecodemetadata.h"
 #include "vbidecoder.h"
+#include "filters.h"
 
 // Chroma decoder includes
 #include "configuration.h"
@@ -66,9 +67,11 @@ public:
 
     void setHighlightDropouts(bool _state);
     void setChromaDecoder(bool _state);
+    void setLumaMode(bool _state);
     void setFieldOrder(bool _state);
     bool getHighlightDropouts();
     bool getChromaDecoder();
+    bool getLumaMode();
     bool getFieldOrder();
 
     QImage getFrameImage(qint32 frameNumber);
@@ -119,6 +122,7 @@ private:
 
     // Frame image options
     bool chromaOn;
+    bool lumaOn;
     bool dropoutsOn;
     bool reverseFoOn;
 

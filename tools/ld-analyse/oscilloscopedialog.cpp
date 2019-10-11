@@ -163,35 +163,22 @@ QImage OscilloscopeDialog::getFieldLineTraceImage(TbcSource::ScanLineData scanLi
         dropOutYC[xPosition] = scanLineData.isDropout[xPosition];
     }
 
-    if (showY) {
-        // Filter out the Y data (with a simple LPF)
-        qreal cutOffFrequency;
-        if (scanLineData.isSourcePal) cutOffFrequency = 380000; // 3.8MHz for PAL
-        else cutOffFrequency = 300000; // 3.0MHz for NTSC
-        qreal sampleRate = 17734476; // details.sampleRate = 17734476;
-        qreal rc = 1.0 / (cutOffFrequency * 2.0 * 3.1415927);
-        qreal dt = 1.0 / sampleRate; // Sample rate
-        qreal alpha = dt / (rc + dt);
-        signalDataY[0] = signalDataYC[0];
-        for(qint32 i = 1; i < signalDataYC.size(); i++) {
-            qreal result = signalDataY[i-1] + (alpha * (signalDataYC[i] - signalDataY[i - 1]));
-            signalDataY[i] = static_cast<qint32>(result);
+    if (showY || showC) {
+        // Filter out the Y data (using the filters library)
+        Filters filters;
+
+        if (scanLineData.isSourcePal) {
+            signalDataY = signalDataYC;
+            filters.palLumaFirFilter(signalDataY);
+        } else {
+            signalDataY = signalDataYC;
+            filters.ntscLumaFirFilter(signalDataY);
         }
     }
 
     if (showC) {
-        // Filter out the C data (with a simple HPF)
-        qreal cutOffFrequency;
-        if (scanLineData.isSourcePal) cutOffFrequency = 380000; // 3.8MHz for PAL
-        else cutOffFrequency = 300000; // 3.0MHz for NTSC
-        qreal sampleRate = 17734476; // details.sampleRate = 17734476;
-        qreal rc = 1.0 / (cutOffFrequency * 2.0 * 3.1415927);
-        qreal dt = 1.0 / sampleRate; // Sample rate
-        qreal alpha = rc / (rc + dt);
-        signalDataC[0] = signalDataYC[0];
-        for(qint32 i = 1; i < signalDataYC.size(); i++) {
-            qreal result = alpha * (signalDataC[i-1] + signalDataYC[i] - signalDataYC[i-1]);
-            signalDataC[i] = static_cast<qint32>(result);
+        for (qint32 i = 0; i < signalDataYC.size(); i++) {
+            signalDataC[i] = signalDataYC[i] - signalDataY[i];
         }
     }
 
