@@ -53,7 +53,7 @@ bool Diffdod::process(QVector<QString> inputFilenames, bool reverse,
 
     // Check start and length
     qint32 vbiStartFrame = tbcSources.getMinimumVbiFrameNumber();
-    qint32 length = tbcSources.getMaximumVbiFrameNumber() - tbcSources.getMinimumVbiFrameNumber();
+    qint32 length = tbcSources.getMaximumVbiFrameNumber() - tbcSources.getMinimumVbiFrameNumber() + 1;
 
     qInfo() << "Processing" << length << "frames starting from VBI frame" << vbiStartFrame;
     if (!tbcSources.saveSources(vbiStartFrame, length, dodThreshold)) {

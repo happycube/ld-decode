@@ -326,29 +326,32 @@ void TbcSources::performFrameDiffDod(qint32 targetVbiFrame, qint32 dodThreshold)
         // that differ from the source field line.
 
         // The minimum number of sources for diffDOD is 3, and when comparing 3 sources, each source has to
-        // match at least 1 other source.  As the sources increase, so does the required number of matches
-        // (i.e. for 4 sources, 2 should match and so on).  This makes the diffDOD better and better as the
+        // match at least 2 other sources.  As the sources increase, so does the required number of matches
+        // (i.e. for 4 sources, 3 should match and so on).  This makes the diffDOD better and better as the
         // number of available sources increase.
         qint32 diffCompareThreshold = availableSourcesForFrame.size() - 2;
 
         // Process each source line in turn
         for (qint32 sourceNo = 0; sourceNo < availableSourcesForFrame.size(); sourceNo++) {
-            bool doInProgressFirst = false;
-            bool doInProgressSecond = false;
+            qint32 doCounterFirst = 0;
+            qint32 doCounterSecond = 0;
+            qint32 minimumDetectLength = 3;
 
             for (qint32 x = 0; x < videoParameters.fieldWidth; x++) {
                 // First field - Compare to threshold
                 if (static_cast<qint32>(fieldDiff[sourceNo].firstFieldDiff[x + startOfLinePointer]) <= diffCompareThreshold) {
                     // Current X is not a dropout
-                    if (doInProgressFirst) {
-                        doInProgressFirst = false;
-                        // Mark the previous x as the end of the dropout
-                        frameDropouts[sourceNo].firstFieldDropOuts.endx.append(x - 1);
+                    if (doCounterFirst > 0) {
+                        doCounterFirst--;
+                        if (doCounterFirst == 0) {
+                            // Mark the previous x as the end of the dropout
+                            frameDropouts[sourceNo].firstFieldDropOuts.endx.append(x - 1);
+                        }
                     }
                 } else {
                     // Current X is a dropout
-                    if (!doInProgressFirst) {
-                        doInProgressFirst = true;
+                    if (doCounterFirst == 0) {
+                        doCounterFirst = minimumDetectLength;
                         frameDropouts[sourceNo].firstFieldDropOuts.startx.append(x);
                         frameDropouts[sourceNo].firstFieldDropOuts.fieldLine.append(y + 1);
                     }
@@ -357,15 +360,18 @@ void TbcSources::performFrameDiffDod(qint32 targetVbiFrame, qint32 dodThreshold)
                 // Second field
                 if (static_cast<qint32>(fieldDiff[sourceNo].secondFieldDiff[x + startOfLinePointer]) <= diffCompareThreshold) {
                     // Current X is not a dropout
-                    if (doInProgressSecond) {
-                        doInProgressSecond = false;
-                        // Mark the previous x as the end of the dropout
-                        frameDropouts[sourceNo].secondFieldDropOuts.endx.append(x - 1);
+                    if (doCounterSecond > 0) {
+                        doCounterSecond--;
+
+                        if (doCounterSecond == 0) {
+                            // Mark the previous x as the end of the dropout
+                            frameDropouts[sourceNo].secondFieldDropOuts.endx.append(x - 1);
+                        }
                     }
                 } else {
                     // Current X is a dropout
-                    if (!doInProgressSecond) {
-                        doInProgressSecond = true;
+                    if (doCounterSecond == 0) {
+                        doCounterSecond = minimumDetectLength;
                         frameDropouts[sourceNo].secondFieldDropOuts.startx.append(x);
                         frameDropouts[sourceNo].secondFieldDropOuts.fieldLine.append(y + 1);
                     }
@@ -373,13 +379,13 @@ void TbcSources::performFrameDiffDod(qint32 targetVbiFrame, qint32 dodThreshold)
             }
 
             // Ensure metadata dropouts end at the end of scan line (require by the fieldLine attribute)
-            if (doInProgressFirst) {
-                doInProgressFirst = false;
+            if (doCounterFirst > 0) {
+                doCounterFirst = 0;
                 frameDropouts[sourceNo].firstFieldDropOuts.endx.append(videoParameters.fieldWidth);
             }
 
-            if (doInProgressSecond) {
-                doInProgressSecond = false;
+            if (doCounterSecond > 0) {
+                doCounterSecond = 0;
                 frameDropouts[sourceNo].secondFieldDropOuts.endx.append(videoParameters.fieldWidth);
             }
         } // Next source
