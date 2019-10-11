@@ -30,7 +30,7 @@ Diffdod::Diffdod(QObject *parent) : QObject(parent)
 }
 
 bool Diffdod::process(QVector<QString> inputFilenames, bool reverse,
-                      qint32 dodOnThreshold, qint32 dodOffThreshold)
+                      qint32 dodThreshold)
 {
     // Show input filenames
     qInfo() << "Processing" << inputFilenames.size() << "input TBC files:";
@@ -38,8 +38,7 @@ bool Diffdod::process(QVector<QString> inputFilenames, bool reverse,
 
     // And then show the rest...
     if (reverse) qInfo() << "Using reverse field order"; else qInfo() << "Using normal field order";
-    qInfo() << "Dropout on detection threshold is" << dodOnThreshold;
-    qInfo() << "Dropout off detection threshold is" << dodOffThreshold;
+    qInfo() << "Dropout detection threshold is" << dodThreshold;
     qInfo() << "";
 
     // Load the input TBC files
@@ -57,7 +56,7 @@ bool Diffdod::process(QVector<QString> inputFilenames, bool reverse,
     qint32 length = tbcSources.getMaximumVbiFrameNumber() - tbcSources.getMinimumVbiFrameNumber();
 
     qInfo() << "Processing" << length << "frames starting from VBI frame" << vbiStartFrame;
-    if (!tbcSources.saveSources(vbiStartFrame, length, dodOnThreshold, dodOffThreshold)) {
+    if (!tbcSources.saveSources(vbiStartFrame, length, dodThreshold)) {
         qCritical() << "Saving source failed!";
         return false;
     }
