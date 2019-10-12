@@ -1012,7 +1012,8 @@ class Field:
         vp_type = np.array([p[0] for p in vpulses])
         
         try:
-            firstblank = np.where(vp_type[start:] > 0)[0][0] + start
+            firstvsync = np.where(vp_type[start:] == 2)[0][0] + start
+            firstblank = np.where(vp_type[firstvsync - 10:] > 0)[0][0] + (firstvsync - 10)
             lastblank = np.where(vp_type[firstblank:] == 0)[0][0] + firstblank - 1
         except:
             # there isn't a valid range to find
@@ -1166,14 +1167,15 @@ class Field:
         if line0loc_next is None:
             try:
                 if self.prevfield is not None:
-                    logging.warning("Severe VSYNC-area corruption detected.")
+                    if self.initphase == False:
+                        logging.warning("Severe VSYNC-area corruption detected.")
                     self.sync_confidence = 10
                     return self.prevfield.linelocs[self.prevfield.outlinecount - 1] - self.prevfield.nextfieldoffset, not self.prevfield.isFirstField
             except:
                 # If the previous field is corrupt, something may fail up there
                 pass
 
-            if line0loc is None:
+            if line0loc is None and self.initphase == False:
                 logging.error("Extreme VSYNC-area corruption detected, dropping field")
 
             return line0loc, isFirstField
@@ -1256,7 +1258,9 @@ class Field:
         linelocs_dict = {}
 
         if line0loc is None:
-            logging.error("Unable to determine start of field - dropping field")
+            if self.initphase == False:
+                logging.error("Unable to determine start of field - dropping field")
+
             return None, None, self.inlinelen * 200
 
         meanlinelen = self.computeLineLen(validpulses, 'all')
@@ -1501,9 +1505,10 @@ class Field:
         self.sync_confidence = min(self.sync_confidence, newconf)
         return int(self.sync_confidence)
 
-    def __init__(self, rf, decode, audio_offset = 0, keepraw = True, prevfield = None):
+    def __init__(self, rf, decode, audio_offset = 0, keepraw = True, prevfield = None, initphase = False):
         self.rawdata = decode['input']
         self.data = decode
+        self.initphase = initphase # used for seeking or first field
 
         self.prevfield = prevfield
 
@@ -2254,7 +2259,7 @@ class LDdecode:
         else:
             efm = None
         
-    def decodefield(self):
+    def decodefield(self, initphase = False):
         ''' returns field object if valid, and the offset to the next decode '''
         self.readloc = int(self.fdoffset - self.rf.blockcut)
         if self.readloc < 0:
@@ -2268,7 +2273,7 @@ class LDdecode:
         
         self.indata = self.rawdecode['input']
 
-        f = self.FieldClass(self.rf, self.rawdecode, audio_offset = self.audio_offset, prevfield = self.curfield)
+        f = self.FieldClass(self.rf, self.rawdecode, audio_offset = self.audio_offset, prevfield = self.curfield, initphase = initphase)
         self.curfield = f
 
         if not f.valid:
@@ -2280,7 +2285,7 @@ class LDdecode:
             
         return f, f.nextfieldoffset - (self.readloc - self.rawdecode['startloc'])
 
-    def readfield(self):
+    def readfield(self, initphase = False):
         # pretty much a retry-ing wrapper around decodefield with MTF checking
         self.prevfield = self.curfield
         done = False
@@ -2288,7 +2293,7 @@ class LDdecode:
         
         while done == False:
             self.fieldloc = self.fdoffset
-            f, offset = self.decodefield()
+            f, offset = self.decodefield(initphase = initphase)
 
             if f is None:                
                 if offset is None:
@@ -2629,7 +2634,7 @@ class LDdecode:
 
         for fields in range(10):
             self.fieldloc = self.fdoffset
-            f, offset = self.decodefield()
+            f, offset = self.decodefield(initphase = True)
 
             self.prevfield = self.curfield
             self.curfield = f
