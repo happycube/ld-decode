@@ -34,6 +34,7 @@
 #include "sourcevideo.h"
 #include "lddecodemetadata.h"
 #include "vbidecoder.h"
+#include "filters.h"
 
 class TbcSources : public QObject
 {
@@ -43,13 +44,14 @@ public:
 
     bool loadSource(QString filename, bool reverse);
     bool unloadSource();
-    bool saveSources(qint32 vbiStartFrame, qint32 length, qint32 dodOnThreshold, qint32 dodOffThreshold);
+    bool saveSources(qint32 vbiStartFrame, qint32 length, qint32 dodThreshold, bool noLumaClip);
 
     qint32 getNumberOfAvailableSources();
     qint32 getMinimumVbiFrameNumber();
     qint32 getMaximumVbiFrameNumber();
 
 private:
+    // Source definition
     struct Source {
         SourceVideo sourceVideo;
         LdDecodeMetaData ldDecodeMetaData;
@@ -59,13 +61,27 @@ private:
         bool isSourceCav;
     };
 
+    // Frame differential map
+    struct FrameDiff {
+        QByteArray firstFieldDiff;
+        QByteArray secondFieldDiff;
+    };
+
+    // Dropout metadata
+    struct FrameDropOuts {
+        LdDecodeMetaData::DropOuts firstFieldDropOuts;
+        LdDecodeMetaData::DropOuts secondFieldDropOuts;
+    };
+
     // The frame number is common between sources
     qint32 currentVbiFrameNumber;
 
     QVector<Source*> sourceVideos;
     qint32 currentSource;
 
-    void performFrameDiffDod(qint32 targetVbiFrame, qint32 dodOnThreshold, qint32 dodOffThreshold);
+    void performFrameDiffDod(qint32 targetVbiFrame, qint32 dodOnThreshold, bool noLumaClip);
+    QVector<qint32> getAvailableSourcesForFrame(qint32 vbiFrameNumber);
+
     bool setDiscTypeAndMaxMinFrameVbi(qint32 sourceNumber);
     qint32 convertVbiFrameNumberToSequential(qint32 vbiFrameNumber, qint32 sourceNumber);
 };

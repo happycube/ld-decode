@@ -63,17 +63,17 @@ int main(int argc, char *argv[])
                                        QCoreApplication::translate("main", "Reverse the field order to second/first (default first/second)"));
     parser.addOption(setReverseOption);
 
-    // Option to select DOD on threshold (dod-on-threshold) (-x)
-    QCommandLineOption dodOnThresholdOption(QStringList() << "x" << "dod-on-threshold",
-                                        QCoreApplication::translate("main", "Specify the DOD on threshold (100-65435 default: 2000"),
-                                        QCoreApplication::translate("main", "number"));
-    parser.addOption(dodOnThresholdOption);
+    // Option to turn off luma clip detection (-n / --noluma)
+    QCommandLineOption setNoLumaOption(QStringList() << "n" << "noluma",
+                                       QCoreApplication::translate("main", "Do not perform luma clip dropout detection"));
+    parser.addOption(setNoLumaOption);
 
-    // Option to select DOD off threshold (dod-off-threshold) (-y)
-    QCommandLineOption dodOffThresholdOption(QStringList() << "y" << "dod-off-threshold",
-                                        QCoreApplication::translate("main", "Specify the DOD off threshold (100-65435 default: 1000"),
+
+    // Option to select DOD threshold (dod-threshold) (-x)
+    QCommandLineOption dodThresholdOption(QStringList() << "x" << "dod-threshold",
+                                        QCoreApplication::translate("main", "Specify the DOD threshold (100-65435 default: 700"),
                                         QCoreApplication::translate("main", "number"));
-    parser.addOption(dodOffThresholdOption);
+    parser.addOption(dodThresholdOption);
 
     // Positional argument to specify input TBC files
     parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input TBC files (minimum of 3)"));
@@ -84,6 +84,7 @@ int main(int argc, char *argv[])
     // Get the options from the parser
     bool isDebugOn = parser.isSet(showDebugOption);
     bool reverse = parser.isSet(setReverseOption);
+    bool noLumaClip = parser.isSet(setNoLumaOption);
 
     // Process the command line options
     if (isDebugOn) setDebug(true); else setDebug(false);
@@ -107,36 +108,21 @@ int main(int argc, char *argv[])
         return -1;
     }
 
-    qint32 dodOnThreshold = 2000;
-    qint32 dodOffThreshold = 1000;
+    qint32 dodThreshold = 700;
 
-    if (parser.isSet(dodOnThresholdOption)) {
-        dodOnThreshold = parser.value(dodOnThresholdOption).toInt();
+    if (parser.isSet(dodThresholdOption)) {
+        dodThreshold = parser.value(dodThresholdOption).toInt();
 
-        if (dodOnThreshold < 100 || dodOnThreshold > 65435) {
+        if (dodThreshold < 100 || dodThreshold > 65435) {
             // Quit with error
             qCritical("DOD threshold must be between 100 and 65435");
             return -1;
         }
-    }
-
-    if (parser.isSet(dodOffThresholdOption)) {
-        dodOffThreshold = parser.value(dodOffThresholdOption).toInt();
-
-        if (dodOffThreshold < 100 || dodOffThreshold > 65435) {
-            // Quit with error
-            qCritical("DOD threshold must be between 100 and 65435");
-            return -1;
-        }
-    }
-
-    if (dodOffThreshold > dodOnThreshold) {
-        qCritical("DOD on threshold must be higher or equal to DOD off threshold");
     }
 
     // Process the TBC file
     Diffdod diffdod;
-    if (!diffdod.process(inputFilenames, reverse, dodOnThreshold, dodOffThreshold)) {
+    if (!diffdod.process(inputFilenames, reverse, dodThreshold, noLumaClip)) {
         return 1;
     }
 

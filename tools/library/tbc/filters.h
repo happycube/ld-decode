@@ -1,13 +1,13 @@
 /************************************************************************
 
-    diffdod.h
+    filters.h
 
-    ld-diffdod - TBC Differential Drop-Out Detection tool
-    Copyright (C) 2019 Simon Inns
+    ld-decode-tools TBC library
+    Copyright (C) 2018-2019 Simon Inns
 
     This file is part of ld-decode-tools.
 
-    ld-diffdod is free software: you can redistribute it and/or
+    ld-decode-tools is free software: you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
     published by the Free Software Foundation, either version 3 of the
     License, or (at your option) any later version.
@@ -22,28 +22,28 @@
 
 ************************************************************************/
 
-#ifndef DIFFDOD_H
-#define DIFFDOD_H
+#ifndef FILTERS_H
+#define FILTERS_H
 
 #include <QObject>
+#include <QVector>
 #include <QDebug>
-#include <QFile>
 
-#include "tbcsources.h"
-
-class Diffdod : public QObject
+class Filters : public QObject
 {
     Q_OBJECT
 public:
-    explicit Diffdod(QObject *parent = nullptr);
+    explicit Filters(QObject *parent = nullptr);
 
-    bool process(QVector<QString> inputFilenames, bool reverse,
-                 qint32 dodThreshold, bool noLumaClip);
+    void palLumaFirFilter(quint16 *data, qint32 dataPoints);
+    void palLumaFirFilter(QVector<qint32> &data);
+
+    void ntscLumaFirFilter(quint16 *data, qint32 dataPoints);
+    void ntscLumaFirFilter(QVector<qint32> &data);
 
 private:
-    TbcSources tbcSources;
-
-    bool loadInputTbcFiles(QVector<QString> inputFilenames, bool reverse);
+    void palLumaFirFilterDouble(QVector<double> &floatData);
+    void ntscLumaFirFilterDouble(QVector<double> &floatData);
 };
 
-#endif // DIFFDOD_H
+#endif // FILTERS_H

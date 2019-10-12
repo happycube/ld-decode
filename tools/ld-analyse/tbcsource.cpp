@@ -30,6 +30,7 @@ TbcSource::TbcSource(QObject *parent) : QObject(parent)
 {
     // Default frame image options
     chromaOn = false;
+    lumaOn = false;
     dropoutsOn = false;
     reverseFoOn = false;
     sourceReady = false;
@@ -49,6 +50,7 @@ void TbcSource::loadSource(QString sourceFilename)
 {
     // Default frame options
     chromaOn = false;
+    lumaOn = false;
     dropoutsOn = false;
     reverseFoOn = false;
     sourceReady = false;
@@ -100,6 +102,19 @@ void TbcSource::setChromaDecoder(bool _state)
 {
     frameCacheFrameNumber = -1;
     chromaOn = _state;
+
+    // Turn off luma if chroma is selected
+    if (chromaOn) lumaOn = false;
+}
+
+// Method to set the luma mode (true = on)
+void TbcSource::setLumaMode(bool _state)
+{
+    frameCacheFrameNumber = -1;
+    lumaOn = _state;
+
+    // Turn off chroma if luma is selected
+    if (lumaOn) chromaOn = false;
 }
 
 // Method to set the field order (true = reversed, false = normal)
@@ -122,6 +137,12 @@ bool TbcSource::getHighlightDropouts()
 bool TbcSource::getChromaDecoder()
 {
     return chromaOn;
+}
+
+// Method to get the state of the luma mode
+bool TbcSource::getLumaMode()
+{
+    return lumaOn;
 }
 
 // Method to get the field order
@@ -494,23 +515,20 @@ QImage TbcSource::generateQImage(qint32 firstFieldNumber, qint32 secondFieldNumb
     // Get the metadata for the video parameters
     LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
 
-    // Get the two fields and their metadata
-    SourceField firstField, secondField;
-    firstField.field = ldDecodeMetaData.getField(firstFieldNumber);
-    secondField.field = ldDecodeMetaData.getField(secondFieldNumber);
-    firstField.data = sourceVideo.getVideoField(firstFieldNumber);
-    secondField.data = sourceVideo.getVideoField(secondFieldNumber);
-
     // Calculate the frame height
     qint32 frameHeight = (videoParameters.fieldHeight * 2) - 1;
 
     // Show debug information
-    if (!chromaOn) {
-        qDebug().nospace() << "TbcSource::generateQImage(): Generating a source image from field pair " << firstFieldNumber <<
+    if (chromaOn) {
+        qDebug().nospace() << "TbcSource::generateQImage(): Generating a chroma image from field pair " << firstFieldNumber <<
+                    "/" << secondFieldNumber << " (" << videoParameters.fieldWidth << "x" <<
+                    frameHeight << ")";
+    } else if (lumaOn) {
+        qDebug().nospace() << "TbcSource::generateQImage(): Generating a luma image from field pair " << firstFieldNumber <<
                     "/" << secondFieldNumber << " (" << videoParameters.fieldWidth << "x" <<
                     frameHeight << ")";
     } else {
-        qDebug().nospace() << "TbcSource::generateQImage(): Generating a chroma image from field pair " << firstFieldNumber <<
+        qDebug().nospace() << "TbcSource::generateQImage(): Generating a source image from field pair " << firstFieldNumber <<
                     "/" << secondFieldNumber << " (" << videoParameters.fieldWidth << "x" <<
                     frameHeight << ")";
     }
@@ -522,33 +540,17 @@ QImage TbcSource::generateQImage(qint32 firstFieldNumber, qint32 secondFieldNumb
     QByteArray firstLineData;
     QByteArray secondLineData;
 
-    if (!chromaOn) {
-        // Copy the raw 16-bit grayscale data into the RGB888 QImage
-        for (qint32 y = 0; y < frameHeight; y++) {
-            // Extract the current scan line data from the frame
-            qint32 startPointer = (y / 2) * videoParameters.fieldWidth * 2;
-            qint32 length = videoParameters.fieldWidth * 2;
+    if (chromaOn) {
+        // Chroma decode the current frame and display
 
-            firstLineData = firstField.data.mid(startPointer, length);
-            secondLineData = secondField.data.mid(startPointer, length);
+        // Get the two fields and their metadata and contain in the chroma-decoder's
+        // source field class
+        SourceField firstField, secondField;
+        firstField.field = ldDecodeMetaData.getField(firstFieldNumber);
+        secondField.field = ldDecodeMetaData.getField(secondFieldNumber);
+        firstField.data = sourceVideo.getVideoField(firstFieldNumber);
+        secondField.data = sourceVideo.getVideoField(secondFieldNumber);
 
-            for (qint32 x = 0; x < videoParameters.fieldWidth; x++) {
-                // Take just the MSB of the input data
-                qint32 dp = x * 2;
-                uchar pixelValue;
-                if (y % 2) {
-                    pixelValue = static_cast<uchar>(secondLineData[dp + 1]);
-                } else {
-                    pixelValue = static_cast<uchar>(firstLineData[dp + 1]);
-                }
-
-                qint32 xpp = x * 3;
-                *(frameImage.scanLine(y) + xpp + 0) = static_cast<uchar>(pixelValue); // R
-                *(frameImage.scanLine(y) + xpp + 1) = static_cast<uchar>(pixelValue); // G
-                *(frameImage.scanLine(y) + xpp + 2) = static_cast<uchar>(pixelValue); // B
-            }
-        }
-    } else {
         qint32 firstActiveLine, lastActiveLine;
         QByteArray outputData;
 
@@ -592,6 +594,88 @@ QImage TbcSource::generateQImage(qint32 firstFieldNumber, qint32 secondFieldNumb
                 *(frameImage.scanLine(y) + xpp + 0) = static_cast<uchar>(pixelValueR); // R
                 *(frameImage.scanLine(y) + xpp + 1) = static_cast<uchar>(pixelValueG); // G
                 *(frameImage.scanLine(y) + xpp + 2) = static_cast<uchar>(pixelValueB); // B
+            }
+        }
+    } else if (lumaOn) {
+        // Display the current frame as luma only
+
+        // Get the field data
+        QByteArray firstField = sourceVideo.getVideoField(firstFieldNumber);
+        QByteArray secondField = sourceVideo.getVideoField(secondFieldNumber);
+
+        // Generate pointers to the 16-bit greyscale data
+        quint16* firstFieldPointer = reinterpret_cast<quint16*>(firstField.data());
+        quint16* secondFieldPointer = reinterpret_cast<quint16*>(secondField.data());
+
+        // Generate a filter object
+        Filters filters;
+
+        // Filter out the Chroma information
+        if (videoParameters.isSourcePal) {
+            qDebug() << "TbcSource::generateQImage(): Applying FIR LPF to PAL image data";
+            filters.palLumaFirFilter(firstFieldPointer, videoParameters.fieldWidth * videoParameters.fieldHeight);
+            filters.palLumaFirFilter(secondFieldPointer, videoParameters.fieldWidth * videoParameters.fieldHeight);
+        } else {
+            qDebug() << "TbcSource::generateQImage(): Applying FIR LPF to NTSC image data";
+            filters.ntscLumaFirFilter(firstFieldPointer, videoParameters.fieldWidth * videoParameters.fieldHeight);
+            filters.ntscLumaFirFilter(secondFieldPointer, videoParameters.fieldWidth * videoParameters.fieldHeight);
+        }
+
+        // Copy the raw 16-bit grayscale data into the RGB888 QImage
+        for (qint32 y = 0; y < frameHeight; y++) {
+            // Extract the current scan line data from the frame
+            qint32 startPointer = (y / 2) * videoParameters.fieldWidth * 2;
+            qint32 length = videoParameters.fieldWidth * 2;
+
+            firstLineData = firstField.mid(startPointer, length);
+            secondLineData = secondField.mid(startPointer, length);
+
+            for (qint32 x = 0; x < videoParameters.fieldWidth; x++) {
+                // Take just the MSB of the input data
+                qint32 dp = x * 2;
+                uchar pixelValue;
+                if (y % 2) {
+                    pixelValue = static_cast<uchar>(secondLineData[dp + 1]);
+                } else {
+                    pixelValue = static_cast<uchar>(firstLineData[dp + 1]);
+                }
+
+                qint32 xpp = x * 3;
+                *(frameImage.scanLine(y) + xpp + 0) = static_cast<uchar>(pixelValue); // R
+                *(frameImage.scanLine(y) + xpp + 1) = static_cast<uchar>(pixelValue); // G
+                *(frameImage.scanLine(y) + xpp + 2) = static_cast<uchar>(pixelValue); // B
+            }
+        }
+    } else {
+        // Display the current frame as source data
+
+        // Get the field data
+        QByteArray firstField = sourceVideo.getVideoField(firstFieldNumber);
+        QByteArray secondField = sourceVideo.getVideoField(secondFieldNumber);
+
+        // Copy the raw 16-bit grayscale data into the RGB888 QImage
+        for (qint32 y = 0; y < frameHeight; y++) {
+            // Extract the current scan line data from the frame
+            qint32 startPointer = (y / 2) * videoParameters.fieldWidth * 2;
+            qint32 length = videoParameters.fieldWidth * 2;
+
+            firstLineData = firstField.mid(startPointer, length);
+            secondLineData = secondField.mid(startPointer, length);
+
+            for (qint32 x = 0; x < videoParameters.fieldWidth; x++) {
+                // Take just the MSB of the input data
+                qint32 dp = x * 2;
+                uchar pixelValue;
+                if (y % 2) {
+                    pixelValue = static_cast<uchar>(secondLineData[dp + 1]);
+                } else {
+                    pixelValue = static_cast<uchar>(firstLineData[dp + 1]);
+                }
+
+                qint32 xpp = x * 3;
+                *(frameImage.scanLine(y) + xpp + 0) = static_cast<uchar>(pixelValue); // R
+                *(frameImage.scanLine(y) + xpp + 1) = static_cast<uchar>(pixelValue); // G
+                *(frameImage.scanLine(y) + xpp + 2) = static_cast<uchar>(pixelValue); // B
             }
         }
     }

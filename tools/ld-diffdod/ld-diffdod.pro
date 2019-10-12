@@ -18,6 +18,7 @@ SOURCES += \
     ../library/tbc/lddecodemetadata.cpp \
     ../library/tbc/sourcevideo.cpp \
     ../library/tbc/vbidecoder.cpp \
+    ../library/tbc/filters.cpp \
     diffdod.cpp \
     logging.cpp \
     main.cpp \
@@ -27,6 +28,7 @@ HEADERS += \
     ../library/tbc/lddecodemetadata.h \
     ../library/tbc/sourcevideo.h \
     ../library/tbc/vbidecoder.h \
+    ../library/tbc/filters.h \
     diffdod.h \
     logging.h \
     tbcsources.h
