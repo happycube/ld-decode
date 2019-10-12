@@ -48,7 +48,7 @@ public:
     struct RGB {
         quint16 r, g, b;
     };
-    static const RGB green;
+    static constexpr RGB green {0, 65535, 0};
     static RGB grey(quint16 value);
 
     // Plot a pixel

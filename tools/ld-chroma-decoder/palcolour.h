@@ -56,6 +56,8 @@ public:
 
     struct Configuration {
         bool blackAndWhite = false;
+        // This value is chosen to compensate for typical LaserDisc characteristics
+        double chromaGain = 0.735;
         ChromaFilterMode chromaFilter = palColourFilter;
         TransformPal::TransformMode transformMode = TransformPal::thresholdMode;
         double transformThreshold = 0.4;
@@ -84,13 +86,9 @@ public:
                       QVector<QByteArray> &outputFrames);
 
     // Maximum frame size, based on PAL
-    static const qint32 MAX_WIDTH = 1135;
-    static const qint32 MAX_HEIGHT = 625;
+    static constexpr qint32 MAX_WIDTH = 1135;
 
 private:
-    // Decode one field into outputFrame.
-    void decodeField(const SourceField &inputField, const double *chromaData, double chromaGain, QByteArray &outputFrame);
-
     // Information about a line we're decoding.
     struct LineInfo {
         explicit LineInfo(qint32 number);
@@ -98,18 +96,12 @@ private:
         qint32 number;
         double bp, bq;
         double Vsw;
-        double burstNorm;
     };
 
-    // Detect the colourburst on a line.
-    // Stores the burst details into line.
+    void buildLookUpTables();
+    void decodeField(const SourceField &inputField, const double *chromaData, double chromaGain, QByteArray &outputFrame);
     void detectBurst(LineInfo &line, const quint16 *inputData);
-
-    // Decode one line into outputFrame.
-    // chromaData (templated, so it can be any numeric type) is the input to
-    // the chroma demodulator; this may be the composite signal from
-    // inputField, or it may be pre-filtered down to chroma.
-    template <typename ChromaSample, bool useTransformFilter>
+    template <typename ChromaSample, bool PREFILTERED_CHROMA>
     void decodeLine(const SourceField &inputField, const ChromaSample *chromaData, const LineInfo &line, double chromaGain,
                     QByteArray &outputFrame);
 
@@ -123,8 +115,6 @@ private:
 
     // The subcarrier reference signal
     double sine[MAX_WIDTH], cosine[MAX_WIDTH];
-    double refAmpl;
-    double refNorm;
 
     // Coefficients for the three 2D chroma low-pass filters. There are
     // separate filters for U and V, but only the signs differ, so they can
@@ -134,12 +124,9 @@ private:
     // array represents one quarter of a filter. The zeroth horizontal element
     // is included in the sum twice, so the coefficient is halved to
     // compensate. Each filter is (2 * FILTER_SIZE) + 1 elements wide.
-    static const qint32 FILTER_SIZE = 7;
+    static constexpr qint32 FILTER_SIZE = 7;
     double cfilt[FILTER_SIZE + 1][4];
     double yfilt[FILTER_SIZE + 1][2];
-
-    // Method to build the required look-up tables
-    void buildLookUpTables();
 };
 
 #endif // PALCOLOUR_H

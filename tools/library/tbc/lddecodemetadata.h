@@ -166,6 +166,7 @@ public:
     void updateFieldVbi(LdDecodeMetaData::Vbi _vbi, qint32 sequentialFieldNumber);
     void updateFieldNtsc(LdDecodeMetaData::Ntsc _ntsc, qint32 sequentialFieldNumber);
     void updateFieldDropOuts(LdDecodeMetaData::DropOuts _dropOuts, qint32 sequentialFieldNumber);
+    void clearFieldDropOuts(qint32 sequentialFieldNumber);
 
     void appendField(Field _field);
 

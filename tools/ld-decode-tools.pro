@@ -4,6 +4,7 @@ TEMPLATE = subdirs
 SUBDIRS = \
     ld-analyse \
     ld-chroma-decoder \
+    ld-chroma-decoder/encoder \
     ld-chroma-decoder/testfilter \
     ld-combine \
     ld-dropout-correct \
@@ -11,5 +12,6 @@ SUBDIRS = \
     ld-ldstoefm \
     ld-process-efm \
     ld-process-vbi \
+    ld-diffdod \
     ld-discmap
 

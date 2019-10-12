@@ -157,9 +157,9 @@ void MainWindow::updateGuiLoaded()
     else ui->actionPAL_Chroma_decoder->setEnabled(false);
 
     // Set option button states
-    ui->videoPushButton->setText(tr("Chroma"));
-    ui->dropoutsPushButton->setText(tr("Show dropouts"));
-    ui->fieldOrderPushButton->setText(tr("Reverse Field-order"));
+    ui->videoPushButton->setText(tr("Source"));
+    ui->dropoutsPushButton->setText(tr("Dropouts Off"));
+    ui->fieldOrderPushButton->setText(tr("Normal Field-order"));
 
     // Set zoom button states
     ui->zoomInPushButton->setEnabled(true);
@@ -237,9 +237,9 @@ void MainWindow::updateGuiUnloaded()
     ui->actionPAL_Chroma_decoder->setEnabled(false);
 
     // Set option button states
-    ui->videoPushButton->setText(tr("Chroma"));
-    ui->dropoutsPushButton->setText(tr("Show dropouts"));
-    ui->fieldOrderPushButton->setText(tr("Reverse Field-order"));
+    ui->videoPushButton->setText(tr("Source"));
+    ui->dropoutsPushButton->setText(tr("Dropouts Off"));
+    ui->fieldOrderPushButton->setText(tr("Normal Field-order"));
 
     // Set zoom button states
     ui->zoomInPushButton->setEnabled(false);
@@ -614,11 +614,20 @@ void MainWindow::on_frameHorizontalSlider_valueChanged(int value)
 void MainWindow::on_videoPushButton_clicked()
 {
     if (tbcSource.getChromaDecoder()) {
+        // Chroma decoder off, luma mode on
         tbcSource.setChromaDecoder(false);
-        ui->videoPushButton->setText(tr("Chroma"));
-    } else {
-        tbcSource.setChromaDecoder(true);
+        tbcSource.setLumaMode(true);
+        ui->videoPushButton->setText(tr("Luma"));
+    } else if (tbcSource.getLumaMode()) {
+        // Chroma decoder off, Luma mode off
+        tbcSource.setLumaMode(false);
+        tbcSource.setChromaDecoder(false);
         ui->videoPushButton->setText(tr("Source"));
+    } else {
+        // Chroma decoder on, luma mode off
+        tbcSource.setLumaMode(false);
+        tbcSource.setChromaDecoder(true);
+        ui->videoPushButton->setText(tr("Chroma"));
     }
 
     // Show the current frame
@@ -630,10 +639,10 @@ void MainWindow::on_dropoutsPushButton_clicked()
 {
     if (tbcSource.getHighlightDropouts()) {
         tbcSource.setHighlightDropouts(false);
-        ui->dropoutsPushButton->setText(tr("Show dropouts"));
+        ui->dropoutsPushButton->setText(tr("Dropouts Off"));
     } else {
         tbcSource.setHighlightDropouts(true);
-        ui->dropoutsPushButton->setText(tr("Hide dropouts"));
+        ui->dropoutsPushButton->setText(tr("Dropouts On"));
     }
 
     // Show the current frame (why isn't this option passed?)
@@ -648,13 +657,13 @@ void MainWindow::on_fieldOrderPushButton_clicked()
 
         // If the TBC field order is changed, the number of available frames can change, so we need to update the GUI
         updateGuiLoaded();
-        ui->fieldOrderPushButton->setText(tr("Reverse Field-order"));
+        ui->fieldOrderPushButton->setText(tr("Normal Field-order"));
     } else {
         tbcSource.setFieldOrder(true);
 
         // If the TBC field order is changed, the number of available frames can change, so we need to update the GUI
         updateGuiLoaded();
-        ui->fieldOrderPushButton->setText(tr("Normal Field-order"));
+        ui->fieldOrderPushButton->setText(tr("Reverse Field-order"));
     }
 
     // Show the current frame

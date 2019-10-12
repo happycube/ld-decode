@@ -171,6 +171,12 @@ int main(int argc, char *argv[])
 
     // -- PAL decoder options --
 
+    // Option to specify chroma gain
+    QCommandLineOption chromaGainOption(QStringList() << "chroma-gain",
+                                        QCoreApplication::translate("main", "PAL: Gain factor applied to U/V chroma components (default 0.735)"),
+                                        QCoreApplication::translate("main", "number"));
+    parser.addOption(chromaGainOption);
+
     // Option to select the Transform PAL filter mode
     QCommandLineOption transformModeOption(QStringList() << "transform-mode",
                                            QCoreApplication::translate("main", "Transform: Filter mode to use (level, threshold; default level)"),
@@ -288,6 +294,16 @@ int main(int argc, char *argv[])
             palConfig.transformMode = TransformPal::levelMode;
             // Quit with error
             qCritical() << "Unknown Transform mode " << name;
+            return -1;
+        }
+    }
+
+    if (parser.isSet(chromaGainOption)) {
+        palConfig.chromaGain = parser.value(chromaGainOption).toDouble();
+
+        if (palConfig.chromaGain <= 0.0) {
+            // Quit with error
+            qCritical("Chroma gain must be greater than 0");
             return -1;
         }
     }
