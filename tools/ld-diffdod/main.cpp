@@ -63,6 +63,12 @@ int main(int argc, char *argv[])
                                        QCoreApplication::translate("main", "Reverse the field order to second/first (default first/second)"));
     parser.addOption(setReverseOption);
 
+    // Option to turn off luma clip detection (-n / --noluma)
+    QCommandLineOption setNoLumaOption(QStringList() << "n" << "noluma",
+                                       QCoreApplication::translate("main", "Do not perform luma clip dropout detection"));
+    parser.addOption(setNoLumaOption);
+
+
     // Option to select DOD threshold (dod-threshold) (-x)
     QCommandLineOption dodThresholdOption(QStringList() << "x" << "dod-threshold",
                                         QCoreApplication::translate("main", "Specify the DOD threshold (100-65435 default: 700"),
@@ -78,6 +84,7 @@ int main(int argc, char *argv[])
     // Get the options from the parser
     bool isDebugOn = parser.isSet(showDebugOption);
     bool reverse = parser.isSet(setReverseOption);
+    bool noLumaClip = parser.isSet(setNoLumaOption);
 
     // Process the command line options
     if (isDebugOn) setDebug(true); else setDebug(false);
@@ -115,7 +122,7 @@ int main(int argc, char *argv[])
 
     // Process the TBC file
     Diffdod diffdod;
-    if (!diffdod.process(inputFilenames, reverse, dodThreshold)) {
+    if (!diffdod.process(inputFilenames, reverse, dodThreshold, noLumaClip)) {
         return 1;
     }
 

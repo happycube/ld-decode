@@ -30,7 +30,7 @@ Diffdod::Diffdod(QObject *parent) : QObject(parent)
 }
 
 bool Diffdod::process(QVector<QString> inputFilenames, bool reverse,
-                      qint32 dodThreshold)
+                      qint32 dodThreshold, bool noLumaClip)
 {
     // Show input filenames
     qInfo() << "Processing" << inputFilenames.size() << "input TBC files:";
@@ -56,7 +56,7 @@ bool Diffdod::process(QVector<QString> inputFilenames, bool reverse,
     qint32 length = tbcSources.getMaximumVbiFrameNumber() - tbcSources.getMinimumVbiFrameNumber() + 1;
 
     qInfo() << "Processing" << length << "frames starting from VBI frame" << vbiStartFrame;
-    if (!tbcSources.saveSources(vbiStartFrame, length, dodThreshold)) {
+    if (!tbcSources.saveSources(vbiStartFrame, length, dodThreshold, noLumaClip)) {
         qCritical() << "Saving source failed!";
         return false;
     }

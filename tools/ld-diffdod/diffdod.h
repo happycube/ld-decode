@@ -38,7 +38,7 @@ public:
     explicit Diffdod(QObject *parent = nullptr);
 
     bool process(QVector<QString> inputFilenames, bool reverse,
-                 qint32 dodThreshold);
+                 qint32 dodThreshold, bool noLumaClip);
 
 private:
     TbcSources tbcSources;
