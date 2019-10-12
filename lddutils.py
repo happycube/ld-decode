@@ -499,7 +499,7 @@ class LoadLDF:
 
         data = buf_data + read_data
         assert len(data) == readlen * 2
-        return np.fromstring(data, '<i2')
+        return np.frombuffer(data, '<i2')
 
 
 # Essential standalone routines 
@@ -535,7 +535,7 @@ def inrange(a, mi, ma):
 def sqsum(cmplx):
     return np.sqrt((cmplx.real ** 2) + (cmplx.imag ** 2))
 
-@njit
+@njit(cache=True)
 def calczc_findfirst(data, target, rising):
     if rising:
         for i in range(0, len(data)):
@@ -550,7 +550,7 @@ def calczc_findfirst(data, target, rising):
 
         return None
 
-@njit
+@njit(cache=True)
 def calczc_do(data, _start_offset, target, edge=0, _count=10):
     start_offset = max(1, int(_start_offset))
     count = int(_count + 1)
@@ -662,7 +662,7 @@ def roundfloat(fl, places = 3):
     return np.round(fl * r) / r
 
 # Something like this should be a numpy function, but I can't find it.
-@jit
+@jit(cache=True)
 def findareas(array, cross):
     ''' Find areas where `array` is <= `cross`
     

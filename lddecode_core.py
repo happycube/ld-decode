@@ -71,7 +71,7 @@ SysParams_NTSC = {
     # corresponding next lines are different.
     'firstFieldH': (.5, 1),
 
-    'numPulses': 6,
+    'numPulses': 6,         # number of equalization pulses per section
     'hsyncPulseUS': 4.7,
     'eqPulseUS': 2.3,
     'vsyncPulseUS': 27.1,
@@ -112,7 +112,7 @@ SysParams_PAL = {
     # In PAL, the first field's line sync<->first/last EQ pulse are both .5H
     'firstFieldH': (1, .5),
 
-    'numPulses': 5,
+    'numPulses': 5,         # number of equalization pulses per section
     'hsyncPulseUS': 4.7,
     'eqPulseUS': 2.35,
     'vsyncPulseUS': 27.3,
@@ -922,8 +922,8 @@ class Field:
         eq_min = self.usectoinpx(self.rf.SysParams['eqPulseUS'] - .5) + hsync_offset
         eq_max = self.usectoinpx(self.rf.SysParams['eqPulseUS'] + .5) + hsync_offset
 
-        vsync_min = self.usectoinpx(self.rf.SysParams['vsyncPulseUS'] - 1) + hsync_offset
-        vsync_max = self.usectoinpx(self.rf.SysParams['vsyncPulseUS'] + .5) + hsync_offset
+        vsync_min = self.usectoinpx(self.rf.SysParams['vsyncPulseUS'] * .5) + hsync_offset
+        vsync_max = self.usectoinpx(self.rf.SysParams['vsyncPulseUS'] + 1) + hsync_offset
 
         # Pulse validator routine.  Removes sync pulses of invalid lengths, does not 
         # fill missing ones.
@@ -967,6 +967,9 @@ class Field:
                     # len(validpulses)-1 before appending adds index to first VSYNC pulse
                     vsync_start = len(validpulses)-1
                     spulse = (VSYNC, p)
+                elif inrange(p.len, hsync_min, hsync_max):
+                    # previous state transition was likely in error!
+                    spulse = (HSYNC, p)
             elif state == VSYNC:
                 if inrange(p.len, eq_min, eq_max):
                     # len(validpulses)-1 before appending adds index to first EQ pulse
@@ -1105,13 +1108,13 @@ class Field:
         if validpulses[firstblank - 1][2] and validpulses[firstblank][2] and validpulses[lastblank][2] and validpulses[lastblank + 1][2]:
             gap1 = validpulses[firstblank][1].start - validpulses[firstblank - 1][1].start
             gap2 = validpulses[lastblank + 1][1].start - validpulses[lastblank][1].start
-            #print('guess', gap1, gap2)
             
             if self.rf.system == 'PAL' and inrange(np.abs(gap2 - gap1), 0, self.rf.freq * 1):
                 isfirstfield = inrange((gap1 / self.inlinelen), 0.45, 0.55)
             elif self.rf.system == 'NTSC' and inrange(np.abs(gap2 + gap1), self.inlinelen * 1.4, self.inlinelen * 1.6):
                 isfirstfield = inrange((gap1 / self.inlinelen), 0.95, 1.05)
             else:
+                self.sync_confidence = 0
                 return None, None
 
             return validpulses[firstblank - 1][1].start, isfirstfield
@@ -1154,28 +1157,32 @@ class Field:
     def getLine0(self, validpulses):
         line0loc, isFirstField = self.processVBlank(validpulses, 0)
         
+        if self.sync_confidence == 100:
+            return line0loc, isFirstField
+
         # If there isn't a valid transition in the first field's hsync, try the next
-        if line0loc is None:
-            line0loc_next, isNotFirstField = self.processVBlank(validpulses, 100)
+        line0loc_next, isNotFirstField = self.processVBlank(validpulses, 100)
 
-            if line0loc_next is None:
-                try:
-                    if self.prevfield is not None:
-                        logging.warning("Severe VSYNC-area corruption detected.")
-                        self.sync_confidence = 10
-                        return self.prevfield.linelocs[self.prevfield.outlinecount - 1] - self.prevfield.nextfieldoffset, not self.prevfield.isFirstField
-                except:
-                    # If the previous field is corrupt, something may fail up there
-                    pass
+        if line0loc_next is None:
+            try:
+                if self.prevfield is not None:
+                    logging.warning("Severe VSYNC-area corruption detected.")
+                    self.sync_confidence = 10
+                    return self.prevfield.linelocs[self.prevfield.outlinecount - 1] - self.prevfield.nextfieldoffset, not self.prevfield.isFirstField
+            except:
+                # If the previous field is corrupt, something may fail up there
+                pass
 
+            if line0loc is None:
                 logging.error("Extreme VSYNC-area corruption detected, dropping field")
-                return None, None
 
-            isFirstField = not isNotFirstField
+            return line0loc, isFirstField
 
-            meanlinelen = self.computeLineLen(validpulses, 'all')
-            fieldlen = (meanlinelen * self.rf.SysParams['field_lines'][0 if isFirstField else 1])
-            line0loc = int(np.round(line0loc_next - fieldlen))
+        isFirstField = not isNotFirstField
+
+        meanlinelen = self.computeLineLen(validpulses, 'all')
+        fieldlen = (meanlinelen * self.rf.SysParams['field_lines'][0 if isFirstField else 1])
+        line0loc = int(np.round(line0loc_next - fieldlen))
 
         return line0loc, isFirstField        
 
@@ -1238,12 +1245,12 @@ class Field:
 
     def compute_linelocs(self):
 
-        pulses = self.getpulses()
-        if pulses is None or len(pulses) == 0:
+        self.rawpulses = self.getpulses()
+        if self.rawpulses is None or len(self.rawpulses) == 0:
             logging.error("Unable to find any sync pulses, jumping one second")
             return None, None, int(self.rf.freq_hz)
 
-        self.validpulses = validpulses = self.refinepulses(pulses)
+        self.validpulses = validpulses = self.refinepulses(self.rawpulses)
 
         line0loc, self.isFirstField = self.getLine0(validpulses)
         linelocs_dict = {}
@@ -1254,7 +1261,7 @@ class Field:
 
         meanlinelen = self.computeLineLen(validpulses, 'all')
 
-        if ((pulses[-1].start - line0loc) / meanlinelen) < (self.outlinecount + 7):
+        if ((self.rawpulses[-1].start - line0loc) / meanlinelen) < (self.outlinecount + 7):
             return None, None, line0loc - (meanlinelen * 3)
 
         for p in validpulses:
@@ -1315,8 +1322,6 @@ class Field:
         # *finally* done :)
 
         rv_ll = [linelocs_filled[l] for l in range(0, self.outlinecount + 6)]
-
-        self.pulses = pulses
 
         return rv_ll, rv_err, linelocs_filled[self.outlinecount - 7]
 
@@ -1767,7 +1772,7 @@ class FieldPAL(Field):
 # These classes extend Field to do PAL/NTSC specific TBC features.
 
 # Hotspots found in profiling are refactored here and boosted by numba's jit.
-@njit
+@njit(cache=True)
 def clb_findnextburst(burstarea, i, endburstarea, threshold):
     for j in range(i, endburstarea):
         if np.abs(burstarea[j]) > threshold:
@@ -1775,7 +1780,7 @@ def clb_findnextburst(burstarea, i, endburstarea, threshold):
 
     return None
 
-@njit
+@njit(cache=True)
 def clb_subround(x):
     # Yes, this was a hotspot.
     return np.round(x) - x
