@@ -1010,16 +1010,21 @@ class Field:
 
     def getblankrange(self, vpulses, start = 0):
         vp_type = np.array([p[0] for p in vpulses])
-        
+
         try:
             firstvsync = np.where(vp_type[start:] == 2)[0][0] + start
-            firstblank = np.where(vp_type[firstvsync - 10:] > 0)[0][0] + (firstvsync - 10)
-            lastblank = np.where(vp_type[firstblank:] == 0)[0][0] + firstblank - 1
+            
+            for newstart in range(firstvsync - 10, firstvsync - 4):
+                firstblank = np.where(vp_type[newstart:] > 0)[0][0] + newstart
+                lastblank = np.where(vp_type[firstblank:] == 0)[0][0] + firstblank - 1
+                
+                if (lastblank - firstblank) > 12:
+                    return firstblank, lastblank
         except:
-            # there isn't a valid range to find
-            return None, None
+            pass
         
-        return firstblank, lastblank
+        # there isn't a valid range to find, or it's impossibly short
+        return None, None
 
     def getBlankLength(self, isFirstField):
         core = (self.rf.SysParams['numPulses'] * 3 * .5)
