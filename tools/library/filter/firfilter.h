@@ -25,6 +25,7 @@
 #ifndef FIRFILTER_H
 #define FIRFILTER_H
 
+#include <algorithm>
 #include <cassert>
 
 // A FIR filter with arbitrary coefficients. The number of taps must be odd.
@@ -47,12 +48,42 @@ public:
     template <typename InputSample, typename OutputSample>
     void apply(const InputSample *inputData, OutputSample *outputData, int numSamples) const
     {
+        // To minimise tests in the loops below, we divide the data into
+        // three parts, based on how far we might need to read outside the
+        // input data.
         const int numTaps = coeffs.size();
+        const int overlap = numTaps / 2;
 
-        for (int i = 0; i < numSamples; i++) {
+        // At the left end of the input, we definitely overlap to the left.
+        // We might overlap to the right too if numSamples < numTaps, in which
+        // case this loop will handle all the samples.
+        const int leftPos = std::min(overlap, numSamples);
+        for (int i = 0; i < leftPos; i++) {
             typename Coeffs::value_type v = 0;
-            for (int j = 0, k = i - (numTaps / 2); j < numTaps; j++, k++) {
+            for (int j = 0, k = i - overlap; j < numTaps; j++, k++) {
                 if (k >= 0 && k < numSamples) {
+                    v += coeffs[j] * inputData[k];
+                }
+            }
+            outputData[i] = v;
+        }
+
+        // In the middle of the input, we definitely don't overlap -- and for
+        // typical input this is where we do most of the work.
+        const int rightPos = std::max(numSamples - overlap, leftPos);
+        for (int i = leftPos; i < rightPos; i++) {
+            typename Coeffs::value_type v = 0;
+            for (int j = 0, k = i - overlap; j < numTaps; j++, k++) {
+                v += coeffs[j] * inputData[k];
+            }
+            outputData[i] = v;
+        }
+
+        // At the right end of the input, we definitely overlap to the right.
+        for (int i = rightPos; i < numSamples; i++) {
+            typename Coeffs::value_type v = 0;
+            for (int j = 0, k = i - overlap; j < numTaps; j++, k++) {
+                if (k < numSamples) {
                     v += coeffs[j] * inputData[k];
                 }
             }
