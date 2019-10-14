@@ -39,7 +39,6 @@ HEADERS += \
     decoder.h \
     decoderpool.h \
     framecanvas.h \
-    iirfilter.h \
     monodecoder.h \
     ntscdecoder.h \
     opticalflow.h \
@@ -53,10 +52,12 @@ HEADERS += \
     yiq.h \
     yiqbuffer.h \
     ../../deemp.h \
+    ../library/filter/iirfilter.h \
     ../library/tbc/lddecodemetadata.h \
     ../library/tbc/sourcevideo.h
 
 # Add external includes to the include path
+INCLUDEPATH += ../library/filter
 INCLUDEPATH += ../library/tbc
 
 # Default rules for deployment.

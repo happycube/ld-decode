@@ -2,7 +2,7 @@
 
     testfilter.cpp
 
-    ld-chroma-decoder - NTSC colourisation filter for ld-decode
+    ld-decode-tools filter library
     Copyright (C) 2014-5 Chad Page
     Copyright (C) 2019 Adam Sampson
 

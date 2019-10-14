@@ -6,8 +6,8 @@ SOURCES += \
 
 HEADERS += \
     ../iirfilter.h \
-    ../../../deemp.h
+    ../../../../deemp.h
 
 INCLUDEPATH += \
     .. \
-    ../../..
+    ../../../..
