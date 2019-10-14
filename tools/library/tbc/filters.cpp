@@ -24,11 +24,6 @@
 
 #include "filters.h"
 
-Filters::Filters(QObject *parent) : QObject(parent)
-{
-
-}
-
 // Apply a FIR filter to remove PAL chroma leaving just luma
 // Accepts quint16 greyscale data and returns the filtered data into
 // the same array

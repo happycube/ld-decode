@@ -25,16 +25,12 @@
 #ifndef FILTERS_H
 #define FILTERS_H
 
-#include <QObject>
 #include <QVector>
 #include <QDebug>
 
-class Filters : public QObject
+class Filters
 {
-    Q_OBJECT
 public:
-    explicit Filters(QObject *parent = nullptr);
-
     void palLumaFirFilter(quint16 *data, qint32 dataPoints);
     void palLumaFirFilter(QVector<qint32> &data);
 
