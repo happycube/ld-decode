@@ -75,6 +75,7 @@ HEADERS += \
     ../ld-chroma-decoder/yiqbuffer.h \
     ../ld-chroma-decoder/opticalflow.h \
     ../ld-chroma-decoder/sourcefield.h \
+    ../library/filter/firfilter.h \
     ../library/tbc/lddecodemetadata.h \
     ../library/tbc/sourcevideo.h \
     ../library/tbc/vbidecoder.h \
@@ -92,6 +93,7 @@ FORMS += \
     dropoutanalysisdialog.ui
 
 # Add external includes to the include path
+INCLUDEPATH += ../library/filter
 INCLUDEPATH += ../library/tbc
 INCLUDEPATH += ../ld-chroma-decoder
 

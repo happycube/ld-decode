@@ -36,10 +36,6 @@ public:
 
     void ntscLumaFirFilter(quint16 *data, qint32 dataPoints);
     void ntscLumaFirFilter(QVector<qint32> &data);
-
-private:
-    void palLumaFirFilterDouble(QVector<double> &floatData);
-    void ntscLumaFirFilterDouble(QVector<double> &floatData);
 };
 
 #endif // FILTERS_H
