@@ -23,9 +23,11 @@ SOURCES += \
 
 HEADERS += \
     palencoder.h \
+    ../../library/filter/firfilter.h \
     ../../library/tbc/lddecodemetadata.h
 
 # Add external includes to the include path
+INCLUDEPATH += ../../library/filter
 INCLUDEPATH += ../../library/tbc
 
 # Default rules for deployment.
