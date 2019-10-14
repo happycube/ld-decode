@@ -1163,7 +1163,7 @@ class Field:
     def getLine0(self, validpulses):
         line0loc, isFirstField = self.processVBlank(validpulses, 0)
         
-        if self.sync_confidence == 100:
+        if line0loc is not None and self.sync_confidence == 100:
             return line0loc, isFirstField
 
         # If there isn't a valid transition in the first field's hsync, try the next
