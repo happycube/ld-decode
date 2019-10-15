@@ -389,7 +389,10 @@ class RFDecode:
 
         hilbert = np.fft.ifft(indata_fft_filt)
         demod = unwrap_hilbert(hilbert, self.freq_hz)
-        demod_fft = np.fft.fft(demod)
+
+        #demod = np.clip(demod, 2000000, self.freq_hz_half)
+
+        demod_fft = np.fft.fft(np.clip(demod, 1500000, self.freq_hz * .75))
 
         out_video = np.fft.ifft(demod_fft * self.Filters['FVideo']).real
         
@@ -1567,33 +1570,32 @@ class Field:
 
         isPAL = self.rf.system == 'PAL'
 
-        # Do raw demod detection here.  (This covers only extreme cases right now)
-        dod_margin_low = 2500000 if isPAL else 1500000
-        dod_margin_high = 12000000 if isPAL else 1500000
-        
-        iserr1 = inrange(f.data['video']['demod_raw'], f.rf.limits['viewable'][0] - dod_margin_low, f.rf.limits['viewable'][1] +  dod_margin_high) == False
+        # detect absurd fluctuations in pre-deemp demod
+        # (current np.diff has a prepend option, but not in ubuntu 18.04's version)
+        iserr1 = np.full(len(f.data['video']['demod_raw']), False, dtype=np.bool)
+        iserr1[1:] = iserr1[1:] | (np.abs(np.diff(f.data['video']['demod_raw'])) > (self.rf.freq_hz / 5))
 
         # build sets of min/max valid levels 
 
-        valid_min = np.full_like(f.data['video']['demod'], f.rf.iretohz(-50))
+        valid_min = np.full_like(f.data['video']['demod'], f.rf.iretohz(-60 if isPAL else -50))
         valid_max = np.full_like(f.data['video']['demod'], f.rf.iretohz(150 if isPAL else 140))
         
         # the minimum valid value during VSYNC is lower for PAL because of the pilot signal
         minsync = -100 if self.rf.system == 'PAL' else -50
 
-        # these lines should cover both PAL and NTSC
+        # these lines should cover both PAL and NTSC's hsync areas
+        if False:
+            for i in range(0, len(f.linelocs)):
+                l = f.linelocs[i]
+                # Could compute the estimated length of setup, but we can cut this a bit early...
+                valid_min[int(l-(f.rf.freq * .5)):int(l+(f.rf.freq * 8))] = f.rf.iretohz(minsync)
+                valid_max[int(l-(f.rf.freq * .5)):int(l+(f.rf.freq * 8))] = f.rf.iretohz(40)
 
-        for i in range(0, len(f.linelocs)):
-            l = f.linelocs[i]
-            # Could compute the estimated length of setup, but we can cut this a bit early...
-            valid_min[int(l-(f.rf.freq * .5)):int(l+(f.rf.freq * 8))] = f.rf.iretohz(minsync)
-            valid_max[int(l-(f.rf.freq * .5)):int(l+(f.rf.freq * 8))] = f.rf.iretohz(40)
-
-            if self.rf.system == 'PAL':
-                # basically exclude the pilot signal altogether
-                # This is needed even though HSYNC is excluded later, since failures can be expanded
-                valid_min[int(l-(f.rf.freq * .5)):int(l+(f.rf.freq * 4.7))] = f.rf.iretohz(-80)
-                valid_max[int(l-(f.rf.freq * .5)):int(l+(f.rf.freq * 4.7))] = f.rf.iretohz(50)
+                if self.rf.system == 'PAL':
+                    # basically exclude the pilot signal altogether
+                    # This is needed even though HSYNC is excluded later, since failures can be expanded
+                    valid_min[int(l-(f.rf.freq * .5)):int(l+(f.rf.freq * 4.7))] = f.rf.iretohz(-80)
+                    valid_max[int(l-(f.rf.freq * .5)):int(l+(f.rf.freq * 4.7))] = f.rf.iretohz(50)
 
         iserr2 = f.data['video']['demod'] < valid_min
         iserr2 |= f.data['video']['demod'] > valid_max
@@ -1605,6 +1607,7 @@ class Field:
             iserr[int(v[1].start-self.rf.freq):int(v[1].start+v[1].len+self.rf.freq)] = False
         
         return iserr
+
 
     def build_errlist(self, errmap):
         errlist = []
