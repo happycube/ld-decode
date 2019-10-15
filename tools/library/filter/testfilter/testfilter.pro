@@ -5,9 +5,10 @@ SOURCES += \
     testfilter.cpp
 
 HEADERS += \
+    ../firfilter.h \
     ../iirfilter.h \
-    ../../../deemp.h
+    ../../../../deemp.h
 
 INCLUDEPATH += \
     .. \
-    ../../..
+    ../../../..

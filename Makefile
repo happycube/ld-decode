@@ -4,7 +4,7 @@
 #       that make clean will not remove them.
 TARGETS=cx ld-ldf-reader
 
-CFLAGS=-g -O2 -fno-omit-frame-pointer -march=native -Itools/ld-chroma-decoder
+CFLAGS=-g -O2 -fno-omit-frame-pointer -march=native -Itools/library/filter
 
 all: $(TARGETS)
 

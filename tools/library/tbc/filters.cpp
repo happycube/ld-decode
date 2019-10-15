@@ -24,27 +24,42 @@
 
 #include "filters.h"
 
-Filters::Filters(QObject *parent) : QObject(parent)
-{
+#include "firfilter.h"
 
-}
+#include <array>
+
+// PAL - Filter at Fsc/2 (Fsc = 4433618 (/2 = 2,216,809), sample rate = 17,734,472)
+// 2.2 MHz LPF - 9 Taps
+// scipy.signal.firwin(9, [2.2e6/17734472], window='hamming')
+static constexpr std::array<double, 9> palLumaFilterCoeffs {
+    0.01251067, 0.04121379, 0.11872117, 0.20565387, 0.24380102,
+    0.20565387, 0.11872117, 0.04121379, 0.01251067
+};
+static constexpr auto palLumaFilter = makeFIRFilter(palLumaFilterCoeffs);
+
+// NTSC - Filter at Fsc/2 (Fsc = 3579545 (/2 = 1,789,772.5), sample rate = 14,318,180)
+// 1.8 MHz LPF - 9 Taps
+// scipy.signal.firwin(9, [1.8e6/14318180], window='hamming')
+static constexpr std::array<double, 9> ntscLumaFilterCoeffs {
+    0.0123685 , 0.04101026, 0.11860244, 0.20589257, 0.24425247,
+    0.20589257, 0.11860244, 0.04101026, 0.0123685
+};
+static constexpr auto ntscLumaFilter = makeFIRFilter(ntscLumaFilterCoeffs);
+
+// Public methods ----------------------------------------------------------------------------------------------------
 
 // Apply a FIR filter to remove PAL chroma leaving just luma
 // Accepts quint16 greyscale data and returns the filtered data into
 // the same array
 void Filters::palLumaFirFilter(quint16 *data, qint32 dataPoints)
 {
-    // Convert the quint16 data to double
-    QVector<double> floatData(dataPoints);
-    for (qint32 i = 0; i < dataPoints; i++) {
-        floatData[i] = static_cast<double>(data[i]);
-    }
+    // Filter into a temporary buffer
+    QVector<quint16> tmp(dataPoints);
+    palLumaFilter.apply(data, tmp.data(), dataPoints);
 
-    palLumaFirFilterDouble(floatData);
-
-    // Convert the double data back to quint16
+    // Copy the result over the original array
     for (qint32 i = 0; i < dataPoints; i++) {
-        data[i] = static_cast<quint16>(floatData[i]);
+        data[i] = tmp[i];
     }
 }
 
@@ -53,18 +68,7 @@ void Filters::palLumaFirFilter(quint16 *data, qint32 dataPoints)
 // the same array
 void Filters::palLumaFirFilter(QVector<qint32> &data)
 {
-    // Convert the qint32 data to double
-    QVector<double> floatData(data.size());
-    for (qint32 i = 0; i < data.size(); i++) {
-        floatData[i] = static_cast<double>(data[i]);
-    }
-
-    palLumaFirFilterDouble(floatData);
-
-    // Convert the double data back to qint32
-    for (qint32 i = 0; i < data.size(); i++) {
-        data[i] = static_cast<qint32>(floatData[i]);
-    }
+    palLumaFilter.apply(data);
 }
 
 // Apply a FIR filter to remove NTSC chroma leaving just luma
@@ -72,17 +76,13 @@ void Filters::palLumaFirFilter(QVector<qint32> &data)
 // the same array
 void Filters::ntscLumaFirFilter(quint16 *data, qint32 dataPoints)
 {
-    // Convert the quint16 data to double
-    QVector<double> floatData(dataPoints);
-    for (qint32 i = 0; i < dataPoints; i++) {
-        floatData[i] = static_cast<double>(data[i]);
-    }
+    // Filter into a temporary buffer
+    QVector<quint16> tmp(dataPoints);
+    ntscLumaFilter.apply(data, tmp.data(), dataPoints);
 
-    ntscLumaFirFilterDouble(floatData);
-
-    // Convert the double data back to quint16
+    // Copy the result over the original array
     for (qint32 i = 0; i < dataPoints; i++) {
-        data[i] = static_cast<quint16>(floatData[i]);
+        data[i] = tmp[i];
     }
 }
 
@@ -91,76 +91,5 @@ void Filters::ntscLumaFirFilter(quint16 *data, qint32 dataPoints)
 // the same array
 void Filters::ntscLumaFirFilter(QVector<qint32> &data)
 {
-    // Convert the qint32 data to double
-    QVector<double> floatData(data.size());
-    for (qint32 i = 0; i < data.size(); i++) {
-        floatData[i] = static_cast<double>(data[i]);
-    }
-
-    ntscLumaFirFilterDouble(floatData);
-
-    // Convert the double data back to qint32
-    for (qint32 i = 0; i < data.size(); i++) {
-        data[i] = static_cast<qint32>(floatData[i]);
-    }
-}
-
-// Private methods ----------------------------------------------------------------------------------------------------
-void Filters::palLumaFirFilterDouble(QVector<double> &floatData)
-{
-    // PAL - Filter at Fsc/2 (Fsc = 4433618 (/2 = 2,216,809), sample rate = 17,734,472)
-    // 2.2 MHz LPF - 9 Taps
-    // scipy.signal.firwin(9, [2.2e6/17734472], window='hamming')
-    double filter[9] = {
-        0.01251067,  0.04121379,  0.11872117,  0.20565387,  0.24380102,
-        0.20565387,  0.11872117,  0.04121379,  0.01251067
-    };
-    qint32 filterSize = 9;
-
-    const qint32 dataSize = floatData.size();
-    QVector<double> tmp(dataSize);
-
-    for (qint32 i = 0; i < dataSize; i++) {
-        double v = 0.0;
-        for (qint32 j = 0, k = i - (filterSize / 2); j < filterSize; j++, k++) {
-            // Assume data is 0 outside the vector bounds
-            if (k >= 0 && k < dataSize) {
-                v += filter[j] * floatData[k];
-            }
-        }
-        tmp[i] = v;
-    }
-
-    floatData = tmp;
-}
-
-// Apply a FIR filter to remove NTSC chroma leaving just luma
-// Accepts quint16 greyscale data and returns the filtered data into
-// the same array
-void Filters::ntscLumaFirFilterDouble(QVector<double> &floatData)
-{
-    // NTSC - Filter at Fsc/2 (Fsc = 3579545 (/2 = 1,789,772.5), sample rate = 14,318,180)
-    // 1.8 MHz LPF - 9 Taps
-    // signal.firwin(9, [1.8e6/14318180], window='hamming')
-    double filter[9] = {
-        0.0123685 ,  0.04101026,  0.11860244,  0.20589257,  0.24425247,
-        0.20589257,  0.11860244,  0.04101026,  0.0123685
-    };
-    qint32 filterSize = 9;
-
-    const qint32 dataSize = floatData.size();
-    QVector<double> tmp(dataSize);
-
-    for (qint32 i = 0; i < dataSize; i++) {
-        double v = 0.0;
-        for (qint32 j = 0, k = i - (filterSize / 2); j < filterSize; j++, k++) {
-            // Assume data is 0 outside the vector bounds
-            if (k >= 0 && k < dataSize) {
-                v += filter[j] * floatData[k];
-            }
-        }
-        tmp[i] = v;
-    }
-
-    floatData = tmp;
+    ntscLumaFilter.apply(data);
 }
