@@ -1572,7 +1572,7 @@ class Field:
 
         # detect absurd fluctuations in pre-deemp demod
         # (current np.diff has a prepend option, but not in ubuntu 18.04's version)
-        iserr1 = np.full(len(f.data['video']['demod_raw']), False, dtype=np.bool)
+        iserr1 = f.data['video']['demod_raw'] > self.rf.freq_hz_half
         iserr1[1:] = iserr1[1:] | (np.abs(np.diff(f.data['video']['demod_raw'])) > (self.rf.freq_hz / 5))
 
         # build sets of min/max valid levels 
@@ -1622,7 +1622,7 @@ class Field:
                 epad = curerr[0] + pad
                 curerr = (curerr[0], epad)
             elif e > firsterr:
-                errlist.append(curerr)
+                errlist.append((curerr[0] - 4, curerr[1] + 4))
                 curerr = (e, e)
                 
         return errlist
