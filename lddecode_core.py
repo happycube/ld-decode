@@ -180,6 +180,7 @@ class RFDecode:
     def __init__(self, inputfreq = 40, system = 'NTSC', blocklen_ = 32*1024, decode_digital_audio = False, decode_analog_audio = True, have_analog_audio = True, mtf_mult = 1.0, mtf_offset = 0):
         self.blocklen = blocklen_
         self.blockcut = 1024 # ???
+        self.blockcut_end = 0
         self.system = system
         
         freq = inputfreq
@@ -216,6 +217,9 @@ class RFDecode:
 
         if self.decode_digital_audio:
             self.computeefmfilter()
+
+        Frfbpf = sps.butter(1, [.1/self.freq_half, .5/self.freq_half], btype='bandpass')
+        self.Filters['Frfbpf'] = filtfft(Frfbpf, self.blocklen)
 
         self.computedelays()
 
@@ -382,6 +386,14 @@ class RFDecode:
         else:
             raise Exception("demodblock called without raw or FFT data")
 
+
+        try:
+            rotdelay = self.delays['video_rot']
+        except:
+            rotdelay = 0
+        rv['rfbpf'] = np.fft.ifft(indata_fft * self.Filters['Frfbpf']).real
+        rv['rfbpf'] = rv['rfbpf'][self.blockcut-rotdelay:-self.blockcut_end-rotdelay]
+
         indata_fft_filt = indata_fft * self.Filters['RFVideo']
 
         if mtf_level != 0:
@@ -536,6 +548,9 @@ class RFDecode:
         fakeoutput_emp = np.fft.ifft(tmp3).real
 
         fakesignal = genwave(fakeoutput_emp, rf.freq_hz / 2)
+        fakesignal *= 4096
+        fakesignal += 8192
+        fakesignal[6000:6005] = 0
 
         fakedecode = rf.demodblock(fakesignal, mtf_level=mtf_level)
 
@@ -543,11 +558,13 @@ class RFDecode:
         # (but only regular filtering is needed for DOD)
         dgap_sync = calczc(fakedecode['video']['demod'], 1500, rf.iretohz(rf.SysParams['vsync_ire'] / 2), _count=512) - 1500
         dgap_white = calczc(fakedecode['video']['demod'], 3000, rf.iretohz(50), _count=512) - 3000
+        dgap_rot = calczc(fakedecode['video']['demod'], 6000, rf.iretohz(10), _count=512) - 6000
 
         rf.delays = {}
         # factor in the 1k or so block cut as well, since we never *just* do demodblock
-        rf.delays['video_sync'] = dgap_sync - self.blockcut
-        rf.delays['video_white'] = dgap_white - self.blockcut
+        rf.delays['video_sync'] = dgap_sync #- self.blockcut
+        rf.delays['video_white'] = dgap_white #- self.blockcut
+        rf.delays['video_rot'] = int(np.round(dgap_rot)) #- self.blockcut
         
         fdec_raw = fakedecode['video']['demod_raw']
         
@@ -684,8 +701,11 @@ class DemodCache:
                     self.lock.release()
                     return None
 
+                rawdatac = rawdata.copy()
+                #rawdatac[16384:16388] = -32500
+
                 self.blocks[b] = {}
-                self.blocks[b]['rawinput'] = rawdata
+                self.blocks[b]['rawinput'] = rawdatac
 
             if self.blocks[b] is None:
                 self.lock.release()
@@ -747,7 +767,7 @@ class DemodCache:
 
     def read(self, begin, length, MTF=0, dodemod=True):
         # transpose the cache by key, not block #
-        t = {'input':[], 'fft':[], 'video':[], 'audio':[], 'efm':[]}
+        t = {'input':[], 'fft':[], 'video':[], 'audio':[], 'efm':[], 'rfbpf':[]}
 
         self.currentMTF = MTF
 
@@ -1570,7 +1590,10 @@ class Field:
 
         isPAL = self.rf.system == 'PAL'
 
-        # detect absurd fluctuations in pre-deemp demod
+        rfstd = np.std(f.data['rfbpf'])
+        iserr_rf = f.data['rfbpf'] < (-rfstd * 3)
+        
+        # detect absurd fluctuations in pre-deemp demod, since only dropouts can cause them
         # (current np.diff has a prepend option, but not in ubuntu 18.04's version)
         iserr1 = f.data['video']['demod_raw'] > self.rf.freq_hz_half
         iserr1[1:] = iserr1[1:] | (np.abs(np.diff(f.data['video']['demod_raw'])) > (self.rf.freq_hz / 5))
@@ -1600,7 +1623,7 @@ class Field:
         iserr2 = f.data['video']['demod'] < valid_min
         iserr2 |= f.data['video']['demod'] > valid_max
 
-        iserr = iserr1 | iserr2
+        iserr = iserr1 | iserr2 | iserr_rf
 
         # Each valid pulse is definitely *not* an error, so exclude it here at the end
         for v in self.validpulses:
@@ -1617,12 +1640,13 @@ class Field:
 
         for e in errmap:
             if e > curerr[0] and e <= (curerr[1] + 20):
-                pad = ((e - curerr[0])) * 2
+                pad = ((e - curerr[0])) * 1.5
                 pad = min(pad, self.rf.freq * 12)
                 epad = curerr[0] + pad
                 curerr = (curerr[0], epad)
             elif e > firsterr:
-                errlist.append((curerr[0] - 4, curerr[1] + 4))
+                #errlist.append((curerr[0] - 4, curerr[1] + 4))
+                errlist.append((curerr[0] - 8, curerr[1] + 4))
                 curerr = (e, e)
                 
         return errlist
