@@ -558,7 +558,7 @@ class RFDecode:
         # (but only regular filtering is needed for DOD)
         dgap_sync = calczc(fakedecode['video']['demod'], 1500, rf.iretohz(rf.SysParams['vsync_ire'] / 2), _count=512) - 1500
         dgap_white = calczc(fakedecode['video']['demod'], 3000, rf.iretohz(50), _count=512) - 3000
-        dgap_rot = calczc(fakedecode['video']['demod'], 6000, rf.iretohz(10), _count=512) - 6000
+        dgap_rot = calczc(fakedecode['video']['demod'], 6000, rf.iretohz(-10), _count=512) - 6000
 
         rf.delays = {}
         # factor in the 1k or so block cut as well, since we never *just* do demodblock
