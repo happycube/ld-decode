@@ -1591,7 +1591,7 @@ class Field:
         isPAL = self.rf.system == 'PAL'
 
         rfstd = np.std(f.data['rfbpf'])
-        iserr_rf = f.data['rfbpf'] < (-rfstd * 3)
+        iserr_rf = f.data['rfbpf'] < (-rfstd * 4)
         
         # detect absurd fluctuations in pre-deemp demod, since only dropouts can cause them
         # (current np.diff has a prepend option, but not in ubuntu 18.04's version)
@@ -1640,7 +1640,7 @@ class Field:
 
         for e in errmap:
             if e > curerr[0] and e <= (curerr[1] + 20):
-                pad = ((e - curerr[0])) * 1.5
+                pad = ((e - curerr[0])) * 1.7
                 pad = min(pad, self.rf.freq * 12)
                 epad = curerr[0] + pad
                 curerr = (curerr[0], epad)
