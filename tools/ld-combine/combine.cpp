@@ -63,7 +63,7 @@ bool Combine::process(QVector<QString> inputFilenames, QString outputFilename, b
         return false;
     }
 
-    if (length == -1) length = tbcSources.getMaximumVbiFrameNumber() - tbcSources.getMinimumVbiFrameNumber();
+    if (length == -1) length = tbcSources.getMaximumVbiFrameNumber() - tbcSources.getMinimumVbiFrameNumber() + 1;
     if (vbiStartFrame + length > tbcSources.getMaximumVbiFrameNumber()) {
         length = tbcSources.getMaximumVbiFrameNumber() - tbcSources.getMinimumVbiFrameNumber();
         qInfo() << "Requested length exceeds the available source frames, setting to" << length;

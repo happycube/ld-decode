@@ -13,4 +13,5 @@ SUBDIRS = \
     ld-ldstoefm \
     ld-process-efm \
     ld-process-vbi \
+    cd-decode \
     library/filter/testfilter
