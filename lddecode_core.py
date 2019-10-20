@@ -148,6 +148,10 @@ RFParams_NTSC = {
     'MTF_poledist': .9,
     'MTF_freq': 12.2, # in mhz
 
+    # used to detect rot
+    'video_hpf_freq': 10000000,
+    'video_hpf_order': 4,
+
     'audio_filterwidth': 150000,
     'audio_filterorder': 800,
 }
@@ -171,6 +175,10 @@ RFParams_PAL = {
     'MTF_basemult': 1.0,  # general ** level of the MTF filter for frame 0.
     'MTF_poledist': .70,
     'MTF_freq': 10,
+
+    # used to detect rot
+    'video_hpf_freq': 10000000,
+    'video_hpf_order': 4,
 
     'audio_filterwidth': 150000,
     'audio_filterorder': 800,
@@ -218,7 +226,7 @@ class RFDecode:
         if self.decode_digital_audio:
             self.computeefmfilter()
 
-        Frfbpf = sps.butter(1, [.1/self.freq_half, .5/self.freq_half], btype='bandpass')
+        Frfbpf = sps.butter(1, [10/self.freq_half], btype='highpass')
         self.Filters['Frfbpf'] = filtfft(Frfbpf, self.blocklen)
 
         self.computedelays()
@@ -266,6 +274,9 @@ class RFDecode:
         
         video_lpf = sps.butter(DP['video_lpf_order'], DP['video_lpf_freq']/self.freq_hz_half, 'low')
         SF['Fvideo_lpf'] = filtfft(video_lpf, self.blocklen)
+
+        video_hpf = sps.butter(DP['video_hpf_order'], DP['video_hpf_freq']/self.freq_hz_half, 'high')
+        SF['Fvideo_hpf'] = filtfft(video_hpf, self.blocklen)
 
         # The deemphasis filter.  This math is probably still quite wrong, but with the right values it works
         deemp0, deemp1 = DP['video_deemp']
@@ -386,7 +397,6 @@ class RFDecode:
         else:
             raise Exception("demodblock called without raw or FFT data")
 
-
         try:
             rotdelay = self.delays['video_rot']
         except:
@@ -404,6 +414,10 @@ class RFDecode:
 
         #demod = np.clip(demod, 2000000, self.freq_hz_half)
 
+        demod_fft_full = np.fft.fft(demod)
+        demod_hpf = np.fft.ifft(demod_fft_full * self.Filters['Fvideo_hpf']).real
+
+        # use a clipped demod for video output processing to reduce speckling impact 
         demod_fft = np.fft.fft(np.clip(demod, 1500000, self.freq_hz * .75))
 
         out_video = np.fft.ifft(demod_fft * self.Filters['FVideo']).real
@@ -413,10 +427,10 @@ class RFDecode:
 
         if self.system == 'PAL':
             out_videopilot = np.fft.ifft(demod_fft * self.Filters['FVideoPilot']).real
-            video_out = np.rec.array([out_video, demod, out_video05, out_videopilot], names=['demod', 'demod_raw', 'demod_05', 'demod_pilot'])
+            video_out = np.rec.array([out_video, demod, demod_hpf, out_video05, out_videopilot], names=['demod', 'demod_raw', 'demod_hpf', 'demod_05', 'demod_pilot'])
         else:
             out_videoburst = np.fft.ifft(demod_fft * self.Filters['FVideoBurst']).real
-            video_out = np.rec.array([out_video, demod, out_video05, out_videoburst], names=['demod', 'demod_raw', 'demod_05', 'demod_burst'])
+            video_out = np.rec.array([out_video, demod, demod_hpf, out_video05, out_videoburst], names=['demod', 'demod_raw', 'demod_hpf', 'demod_05', 'demod_burst'])
 
         rv['video'] = video_out[self.blockcut:-self.blockcut_end] if cut else video_out
 
@@ -1591,12 +1605,14 @@ class Field:
         isPAL = self.rf.system == 'PAL'
 
         rfstd = np.std(f.data['rfbpf'])
-        iserr_rf = f.data['rfbpf'] < (-rfstd * 4)
+        iserr_rf = (f.data['rfbpf'] < (-rfstd * 2)) | (f.data['rfbpf'] > (rfstd * 5))
         
         # detect absurd fluctuations in pre-deemp demod, since only dropouts can cause them
         # (current np.diff has a prepend option, but not in ubuntu 18.04's version)
         iserr1 = f.data['video']['demod_raw'] > self.rf.freq_hz_half
-        iserr1[1:] = iserr1[1:] | (np.abs(np.diff(f.data['video']['demod_raw'])) > (self.rf.freq_hz / 5))
+        iserr1 |= f.data['video']['demod_hpf'] > 1200000
+
+        #return iserr1 | iserr_rf
 
         # build sets of min/max valid levels 
 
