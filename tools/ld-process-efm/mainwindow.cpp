@@ -659,12 +659,6 @@ void MainWindow::processingCompleteSignalHandler(bool audioAvailable, bool dataA
             if (!audioOutputTemporaryFileHandle.copy(outputAudioFilename)) {
                 qWarning() << "MainWindow::processingCompleteSignalHandler(): Failed to save file as" << outputAudioFilename;
             }
-
-            // Report the decode statistics
-            efmProcess.reportStatistics();
-
-            // Quit the application
-            qApp->quit();
         }
     }
 
@@ -675,6 +669,11 @@ void MainWindow::processingCompleteSignalHandler(bool audioAvailable, bool dataA
 
     // Report the decode statistics to qInfo
     efmProcess.reportStatistics();
+
+    if (nonInteractive) {
+        // Quit the application
+        qApp->quit();
+    }
 
     // Update the GUI
     guiEfmProcessingStop();
