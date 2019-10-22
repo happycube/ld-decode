@@ -85,7 +85,7 @@ bool LdsProcess::process(QString outputFilename)
                 closeOutputFile();
                 return false;
             }
-		}
+        }
     } while (ldsData.size() > 0 && !finished);
 
     // Close the output file
