@@ -1605,7 +1605,10 @@ class Field:
         isPAL = self.rf.system == 'PAL'
 
         rfstd = np.std(f.data['rfbpf'])
-        iserr_rf = (f.data['rfbpf'] < (-rfstd * 2)) | (f.data['rfbpf'] > (rfstd * 5))
+        #iserr_rf = np.full(len(f.data['video']['demod']), False, dtype=np.bool)
+        iserr_rf1 = (f.data['rfbpf'] < (-rfstd * 3)) | (f.data['rfbpf'] > (rfstd * 3)) | (f.rawdata <= -32000)
+        iserr_rf = np.full_like(iserr_rf1, False)
+        iserr_rf[self.rf.delays['video_rot']:] = iserr_rf1[:-self.rf.delays['video_rot']]
         
         # detect absurd fluctuations in pre-deemp demod, since only dropouts can cause them
         # (current np.diff has a prepend option, but not in ubuntu 18.04's version)
@@ -1664,6 +1667,8 @@ class Field:
                 #errlist.append((curerr[0] - 4, curerr[1] + 4))
                 errlist.append((curerr[0] - 8, curerr[1] + 4))
                 curerr = (e, e)
+
+        errlist.append(curerr)
                 
         return errlist
 
