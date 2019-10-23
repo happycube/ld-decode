@@ -1642,7 +1642,13 @@ class Field:
         iserr2 = f.data['video']['demod'] < valid_min
         iserr2 |= f.data['video']['demod'] > valid_max
 
-        iserr = iserr1 | iserr2 | iserr_rf
+        valid_min05 = np.full_like(f.data['video']['demod_05'], f.rf.iretohz(-20 if isPAL else -20))
+        valid_max05 = np.full_like(f.data['video']['demod_05'], f.rf.iretohz(115 if isPAL else 110))
+
+        iserr3 = f.data['video']['demod_05'] < valid_min05
+        iserr3 |= f.data['video']['demod_05'] > valid_max05
+
+        iserr = iserr1 | iserr2 | iserr3 | iserr_rf
 
         # Each valid pulse is definitely *not* an error, so exclude it here at the end
         for v in self.validpulses:
