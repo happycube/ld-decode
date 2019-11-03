@@ -13,6 +13,7 @@ import lddecode_core as ldd
 import lddutils as lddu
 from lddutils import unwrap_hilbert, inrange
 
+#import pll
 import vhs_formats
 
 def toDB(val):
@@ -21,20 +22,37 @@ def toDB(val):
 def fromDB(val):
     return 10.0 ** (val / 20.0)
 
-def scale_chroma(chroma):
-    '''Scale the array to fit into signed 16-bit values.
-    '''
+def chroma_to_u16(chroma):
     S16_ABS_MAX = 32767
 
-    if chroma is None:
-        print("Tried to scale an empty array!")
+    if np.max(chroma) > S16_ABS_MAX or abs(np.min(chroma)) > S16_ABS_MAX:
+        print("Warning! Chroma signal clipping.")
 
-    positive = np.max(chroma)
-    negative = np.min(chroma)
+    return np.uint16(chroma + S16_ABS_MAX)
 
-    # HACK: reduce the chroma amplitude for now to avoid oversaturation.
-    scale = S16_ABS_MAX / (max(positive, abs(negative)) * 4)
-    return np.uint16((chroma * scale) + S16_ABS_MAX + 1)
+def acc(chroma, burst_abs_ref, burststart, burstend, linelength, lines):
+    """Scale chroma according to the level of the color burst on each line."""
+    output = np.zeros(chroma.size, dtype=np.double)
+    chromaavg = 0
+    for l in range(0,lines):
+        linestart = linelength * l
+        lineend = linestart + linelength
+        line = chroma[linestart:lineend]
+        output[linestart:lineend] = acc_line(line, burst_abs_ref, burststart, burstend)
+
+    return output
+
+
+def acc_line(chroma, burst_abs_ref, burststart, burstend):
+    """Scale chroma according to the level of the color burst the line."""
+    output = np.zeros(chroma.size, dtype=np.double)
+
+    line = chroma
+    burst_abs_mean = np.mean(np.abs(line[burststart:burstend]))
+    scale = burst_abs_ref / burst_abs_mean if burst_abs_mean != 0 else 1
+    output = line * scale
+
+    return output
 
 def genLowShelf(f0, dbgain, qfactor, fs):
     """Generate low shelving filter coeficcients (digital).
@@ -124,11 +142,13 @@ class FieldPALVHS(ldd.FieldPAL):
         linesout = self.outlinecount
         outwidth = self.outlinelen
 
-        #burstlevel = np.zeros(linesout)
-        #burstphase = np.zeros(linesout)
-
         burstarea = (math.floor(self.usectooutpx(self.rf.SysParams['colorBurstUS'][0])),
                      math.ceil(self.usectooutpx(self.rf.SysParams['colorBurstUS'][1])))
+
+        chroma = acc(chroma, 200.0, burstarea[0], burstarea[1], outwidth, linesout)
+
+
+#        test = pll.run_pll(chroma[lineoffset:lineoffset + (outwidth * self.outlinelen)])
 
         # Naively assume field number/track relationship
         # TODO: Detect automatically.
@@ -149,8 +169,12 @@ class FieldPALVHS(ldd.FieldPAL):
 
                 line = heterodyne * c
 
-                # Filter out unwanted frequencies from color carrier.
+                # Filter out unwanted frequencies from the final chroma signal.
+                # Mixing the signals will produce waves at the difference and sum of the
+                # frequencies. We only want the difference wave which is at the correct color
+                # carrier frequency here.
                 linefilt = np.fft.ifft(np.fft.fft(line) * (self.rf.Filters['FChromaFinal'])).real
+#                phase, ref, lock = pll.run_pll(linefilt, fsc, fsc * 4)
 
                 uphet[linestart:lineend] = linefilt
 
@@ -177,17 +201,24 @@ class FieldPALVHS(ldd.FieldPAL):
                 if phase < 0:
                     phase = 3
 
-        dschroma = scale_chroma(uphet)
+
+        uphet = acc(uphet, vhs_formats.PAL_BURST_REF_MEAN_ABS,
+                    burstarea[0], burstarea[1], outwidth, linesout)
+
 
         self.rf.fieldNumber += 1
 
-        return dschroma
+        return chroma_to_u16(uphet)
 
     def downscale(self, final = False, *args, **kwargs):
         dsout, dsaudio, dsefm = super(FieldPALVHS, self).downscale(final, *args, **kwargs)
         dschroma = self.processChroma()
 
         return (dsout, dschroma), dsaudio, dsefm
+
+    def calc_burstmedian(self):
+        # Set this to a constant value for now to avoid the comb filter messing with chroma levels.
+        return 1.0
 
 # Superclass to override laserdisc-specific parts of ld-decode with stuff that works for VHS
 #
@@ -223,7 +254,8 @@ class VHSDecode(ldd.LDdecode):
         if signal < 0.0:
                 print("WARNING: Negative mean for SNR, changing to absolute value.")
                 signal = abs(signal)
-
+        if noise == 0:
+            return 0
         return 20 * np.log10(signal / noise)
 
     def calcpsnr(self, f, snrslice):
@@ -231,7 +263,8 @@ class VHSDecode(ldd.LDdecode):
 
 #        signal = np.mean(data)
         noise = np.std(data)
-
+        if noise == 0:
+            return 0
         return 20 * np.log10(100 / noise)
 
     def buildmetadata(self, f):

@@ -19,9 +19,9 @@ RFParams_PAL_VHS['video_bpf_high'] = 5200000
 #RFParams_PAL_VHS['video_bpf_order'] = 1
 
 # Low-pass filter on Y after demodulation
-RFParams_PAL_VHS['video_lpf_freq'] = 4200000
+RFParams_PAL_VHS['video_lpf_freq'] = 3600000
 # Order may be fine as is.
-# RFParams_PAL_VHS['video_lpf_order'] = 9
+#RFParams_PAL_VHS['video_lpf_order'] = 9
 
 
 SysParams_PAL_VHS = {**SysParams_PAL}
@@ -35,6 +35,10 @@ SysParams_PAL_VHS['hz_ire'] = 860000 / 100.0
 # Heterodyned color carrier frequency in Mhz.
 # On VHS the same frequency is used for both NTSC and PAL.
 VHS_COLOR_CARRIER_MHZ = 0.626953
+
+# Mean absolute value of color burst for Automatic Chroma Control.
+# The value is eyeballed to give ok chroma level as of now, needs to be tweaked.
+PAL_BURST_REF_MEAN_ABS = 600.
 
 #SysParams_PAL['outlinelen'] = calclinelen(SysParams_PAL, 4, 'fsc_mhz')
 #SysParams_PAL['outlinelen_pilot'] = calclinelen(SysParams_PAL, 4, 'pilot_mhz')
