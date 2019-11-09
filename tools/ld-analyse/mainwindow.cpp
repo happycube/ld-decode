@@ -429,8 +429,9 @@ void MainWindow::on_actionSave_frame_as_PNG_triggered()
     QString filenameSuggestion = configuration.getPngDirectory();
     if (tbcSource.getIsSourcePal()) filenameSuggestion += tr("/frame_pal_");
     else filenameSuggestion += tr("/frame_ntsc_");
-    if (!tbcSource.getChromaDecoder()) filenameSuggestion += tr("source_");
-    else filenameSuggestion += tr("comb_");
+    if (!tbcSource.getChromaDecoder() && !tbcSource.getLumaMode()) filenameSuggestion += tr("source_");
+    else if (tbcSource.getChromaDecoder() && !tbcSource.getLumaMode()) filenameSuggestion += tr("comb_");
+    else filenameSuggestion += tr("luma_");
     filenameSuggestion += QString::number(currentFrameNumber) + tr(".png");
 
     QString pngFilename = QFileDialog::getSaveFileName(this,
