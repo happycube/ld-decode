@@ -623,21 +623,37 @@ QImage TbcSource::generateQImage(qint32 firstFieldNumber, qint32 secondFieldNumb
 
         // Copy the raw 16-bit grayscale data into the RGB888 QImage
         for (qint32 y = 0; y < frameHeight; y++) {
-            // Extract the current scan line data from the frame
-            qint32 startPointer = (y / 2) * videoParameters.fieldWidth * 2;
-            qint32 length = videoParameters.fieldWidth * 2;
-
-            firstLineData = firstField.mid(startPointer, length);
-            secondLineData = secondField.mid(startPointer, length);
-
             for (qint32 x = 0; x < videoParameters.fieldWidth; x++) {
                 // Take just the MSB of the input data
-                qint32 dp = x * 2;
                 uchar pixelValue;
                 if (y % 2) {
-                    pixelValue = static_cast<uchar>(secondLineData[dp + 1]);
+                    qreal pixelValue32 = static_cast<qreal>(secondFieldPointer[x + (videoParameters.fieldWidth * (y / 2))]);
+
+                    // Clamp the IRE value for the pixel
+                    if (pixelValue32 < videoParameters.black16bIre) pixelValue32 = videoParameters.black16bIre;
+                    if (pixelValue32 > videoParameters.white16bIre) pixelValue32 = videoParameters.white16bIre;
+
+                    // Scale the IRE value to a 16 bit greyscale value
+                    qreal scaledValue = ((pixelValue32 - static_cast<qreal>(videoParameters.black16bIre)) /
+                                         (static_cast<qreal>(videoParameters.white16bIre) -
+                                          static_cast<qreal>(videoParameters.black16bIre))) * 65535.0;
+                    pixelValue32 = static_cast<qint32>(scaledValue);
+
+                    // Convert to 8-bit for RGB888
+                    pixelValue = static_cast<uchar>(pixelValue32 / 256);
                 } else {
-                    pixelValue = static_cast<uchar>(firstLineData[dp + 1]);
+                    qreal pixelValue32 = static_cast<qreal>(firstFieldPointer[x + (videoParameters.fieldWidth * (y / 2))]);
+                    if (pixelValue32 < videoParameters.black16bIre) pixelValue32 = videoParameters.black16bIre;
+                    if (pixelValue32 > videoParameters.white16bIre) pixelValue32 = videoParameters.white16bIre;
+
+                    // Scale the IRE value to a 16 bit greyscale value
+                    qreal scaledValue = ((pixelValue32 - static_cast<qreal>(videoParameters.black16bIre)) /
+                                         (static_cast<qreal>(videoParameters.white16bIre)
+                                          - static_cast<qreal>(videoParameters.black16bIre))) * 65535.0;
+                    pixelValue32 = static_cast<qint32>(scaledValue);
+
+                    // Convert to 8-bit for RGB888
+                    pixelValue = static_cast<uchar>(pixelValue32 / 256);
                 }
 
                 qint32 xpp = x * 3;
