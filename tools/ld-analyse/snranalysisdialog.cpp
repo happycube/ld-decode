@@ -107,9 +107,9 @@ void SnrAnalysisDialog::finishUpdate(qint32 numberOfFields, qint32 fieldsPerData
     axisX.setLabelFormat("%i");
 
     // Create the Y axis
-    axisY.setTickCount(10);
-    axisY.setMax(maxSnr + 1);
-    axisY.setMin(minSnr - 1);
+    axisY.setMax(ceil(maxSnr + 1));
+    axisY.setMin(floor(minSnr - 1));
+    axisY.setTickCount(static_cast<qint32>(ceil(maxSnr + 1) - floor(minSnr - 1) + 1));
     axisY.setTitleText("SNR (in dB)");
     axisY.setLabelFormat("%i");
 
@@ -150,3 +150,4 @@ void SnrAnalysisDialog::on_whiteSNR_checkBox_clicked()
     if (ui->whiteSNR_checkBox->isChecked()) whiteQLineSeries.show();
     else whiteQLineSeries.hide();
 }
+

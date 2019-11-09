@@ -27,6 +27,7 @@
 
 #include <QDialog>
 #include <QtCharts>
+#include <QDebug>
 
 #include "lddecodemetadata.h"
 
