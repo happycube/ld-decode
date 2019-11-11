@@ -31,16 +31,15 @@ DropoutAnalysisDialog::DropoutAnalysisDialog(QWidget *parent) :
 {
     ui->setupUi(this);
     setWindowFlags(Qt::Window);
-
-    chartOwnsContents = false;
     maxY = 0;
 
     // Set up the chart view
-    chartView.setChart(&chart);
-    chartView.setRubberBand(QChartView::HorizontalRubberBand);
-    chartView.setRenderHint(QPainter::Antialiasing);
+    plot = new QwtPlot();
+    grid = new QwtPlotGrid();
+    curve = new QwtPlotCurve();
+    points = new QPolygonF();
 
-    ui->verticalLayout->addWidget(&chartView);
+    ui->verticalLayout->addWidget(plot);
 }
 
 DropoutAnalysisDialog::~DropoutAnalysisDialog()
@@ -53,30 +52,21 @@ DropoutAnalysisDialog::~DropoutAnalysisDialog()
 void DropoutAnalysisDialog::startUpdate()
 {
     removeChartContents();
-    qLineSeries.clear();
-
-    // Create the QLineSeries
-    qLineSeries.setColor(Qt::blue);
-
     maxY = 0;
 }
 
 // Remove the axes and series from the chart, giving ownership back to this object
 void DropoutAnalysisDialog::removeChartContents()
 {
-    if (!chartOwnsContents) return;
-
-    chart.removeAxis(&axisX);
-    chart.removeAxis(&axisY);
-    chart.removeSeries(&qLineSeries);
-
-    chartOwnsContents = false;
+    points->clear();
+    plot->replot();
 }
 
 // Add a data point to the chart
 void DropoutAnalysisDialog::addDataPoint(qint32 fieldNumber, qreal doLength)
 {
-    qLineSeries.append(fieldNumber, doLength);
+    points->append(QPointF(fieldNumber, doLength));
+
     // Keep track of the maximum Y value
     if (doLength > maxY) maxY = doLength;
 }
@@ -84,46 +74,35 @@ void DropoutAnalysisDialog::addDataPoint(qint32 fieldNumber, qreal doLength)
 // Finish the update and render the graph
 void DropoutAnalysisDialog::finishUpdate(qint32 numberOfFields, qint32 fieldsPerDataPoint)
 {
-    // Create the chart
-    chart.setTitle("Dropout loss analysis (averaged over " + QString::number(fieldsPerDataPoint) + " fields)");
-    chart.legend()->hide();
+    // Set the chart title
+    plot->setTitle("Dropout loss analysis (averaged over " + QString::number(fieldsPerDataPoint) + " fields)");
 
-    // Create the X axis
-    axisX.setMin(0);
-    axisX.setTickCount(10);
-    if (numberOfFields < 10) axisX.setMax(10);
-    else axisX.setMax(numberOfFields);
-    axisX.setTitleText("Field number");
-    axisX.setLabelFormat("%i");
+    // Set the background and grid
+    plot->setCanvasBackground(Qt::white);
+    grid->attach(plot);
 
-    // Create the Y axis
-    axisY.setMin(0);
-    axisY.setTickCount(10);
-    if (maxY < 10) axisY.setMax(10);
-    else axisY.setMax(maxY);
-    axisY.setTitleText("Dropout length (in dots)");
-    axisY.setLabelFormat("%i");
+    // Define the x-axis
+    plot->setAxisScale(QwtPlot::xBottom, 0, numberOfFields, (numberOfFields / 10) + 1);
+    plot->setAxisTitle(QwtPlot::xBottom, "Field number");
 
-    // Attach the axis to the chart
-    chart.addAxis(&axisX, Qt::AlignBottom);
-    chart.addAxis(&axisY, Qt::AlignLeft);
+    // Define the y-axis
+    if (maxY < 10) plot->setAxisScale(QwtPlot::yLeft, 0, 10);
+    else plot->setAxisScale(QwtPlot::yLeft, 0, maxY);
+    plot->setAxisTitle(QwtPlot::yLeft, "Dropout length (in dots)");
 
-    // Attach the series to the chart
-    chart.addSeries(&qLineSeries);
+    // Attach the curve data to the chart
+    curve->setTitle("Dropout length");
+    curve->setPen(Qt::blue, 1);
+    curve->setRenderHint(QwtPlotItem::RenderAntialiased, true);
+    curve->setSamples(*points);
+    curve->attach(plot);
 
-    // The chart now owns the axes and series
-    chartOwnsContents = true;
+    // Update the axis
+    plot->updateAxes();
 
-    // Attach the axis to the QLineSeries
-    qLineSeries.attachAxis(&axisX);
-    qLineSeries.attachAxis(&axisY);
-
-    // Render
-    chartView.repaint();
+    // Render the chart
+    plot->maximumSize();
+    plot->show();
 }
 
-void DropoutAnalysisDialog::on_reset_pushButton_clicked()
-{
-    chart.zoomReset();
-}
 
