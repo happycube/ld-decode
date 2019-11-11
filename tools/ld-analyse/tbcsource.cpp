@@ -30,7 +30,7 @@ TbcSource::TbcSource(QObject *parent) : QObject(parent)
 {
     // Default frame image options
     chromaOn = false;
-    lumaOn = false;
+    lpfOn = false;
     dropoutsOn = false;
     reverseFoOn = false;
     sourceReady = false;
@@ -50,7 +50,7 @@ void TbcSource::loadSource(QString sourceFilename)
 {
     // Default frame options
     chromaOn = false;
-    lumaOn = false;
+    lpfOn = false;
     dropoutsOn = false;
     reverseFoOn = false;
     sourceReady = false;
@@ -103,18 +103,18 @@ void TbcSource::setChromaDecoder(bool _state)
     frameCacheFrameNumber = -1;
     chromaOn = _state;
 
-    // Turn off luma if chroma is selected
-    if (chromaOn) lumaOn = false;
+    // Turn off LPF if chroma is selected
+    if (chromaOn) lpfOn = false;
 }
 
-// Method to set the luma mode (true = on)
-void TbcSource::setLumaMode(bool _state)
+// Method to set the LPF mode (true = on)
+void TbcSource::setLpfMode(bool _state)
 {
     frameCacheFrameNumber = -1;
-    lumaOn = _state;
+    lpfOn = _state;
 
-    // Turn off chroma if luma is selected
-    if (lumaOn) chromaOn = false;
+    // Turn off chroma if LPF is selected
+    if (lpfOn) chromaOn = false;
 }
 
 // Method to set the field order (true = reversed, false = normal)
@@ -139,10 +139,10 @@ bool TbcSource::getChromaDecoder()
     return chromaOn;
 }
 
-// Method to get the state of the luma mode
-bool TbcSource::getLumaMode()
+// Method to get the state of the LPF mode
+bool TbcSource::getLpfMode()
 {
-    return lumaOn;
+    return lpfOn;
 }
 
 // Method to get the field order
@@ -523,8 +523,8 @@ QImage TbcSource::generateQImage(qint32 firstFieldNumber, qint32 secondFieldNumb
         qDebug().nospace() << "TbcSource::generateQImage(): Generating a chroma image from field pair " << firstFieldNumber <<
                     "/" << secondFieldNumber << " (" << videoParameters.fieldWidth << "x" <<
                     frameHeight << ")";
-    } else if (lumaOn) {
-        qDebug().nospace() << "TbcSource::generateQImage(): Generating a luma image from field pair " << firstFieldNumber <<
+    } else if (lpfOn) {
+        qDebug().nospace() << "TbcSource::generateQImage(): Generating a LPF image from field pair " << firstFieldNumber <<
                     "/" << secondFieldNumber << " (" << videoParameters.fieldWidth << "x" <<
                     frameHeight << ")";
     } else {
@@ -596,8 +596,8 @@ QImage TbcSource::generateQImage(qint32 firstFieldNumber, qint32 secondFieldNumb
                 *(frameImage.scanLine(y) + xpp + 2) = static_cast<uchar>(pixelValueB); // B
             }
         }
-    } else if (lumaOn) {
-        // Display the current frame as luma only
+    } else if (lpfOn) {
+        // Display the current frame as LPF only
 
         // Get the field data
         QByteArray firstField = sourceVideo.getVideoField(firstFieldNumber);

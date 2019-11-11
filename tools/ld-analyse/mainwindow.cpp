@@ -429,9 +429,9 @@ void MainWindow::on_actionSave_frame_as_PNG_triggered()
     QString filenameSuggestion = configuration.getPngDirectory();
     if (tbcSource.getIsSourcePal()) filenameSuggestion += tr("/frame_pal_");
     else filenameSuggestion += tr("/frame_ntsc_");
-    if (!tbcSource.getChromaDecoder() && !tbcSource.getLumaMode()) filenameSuggestion += tr("source_");
-    else if (tbcSource.getChromaDecoder() && !tbcSource.getLumaMode()) filenameSuggestion += tr("comb_");
-    else filenameSuggestion += tr("luma_");
+    if (!tbcSource.getChromaDecoder() && !tbcSource.getLpfMode()) filenameSuggestion += tr("source_");
+    else if (tbcSource.getChromaDecoder() && !tbcSource.getLpfMode()) filenameSuggestion += tr("comb_");
+    else filenameSuggestion += tr("lpf_");
     filenameSuggestion += QString::number(currentFrameNumber) + tr(".png");
 
     QString pngFilename = QFileDialog::getSaveFileName(this,
@@ -615,18 +615,18 @@ void MainWindow::on_frameHorizontalSlider_valueChanged(int value)
 void MainWindow::on_videoPushButton_clicked()
 {
     if (tbcSource.getChromaDecoder()) {
-        // Chroma decoder off, luma mode on
+        // Chroma decoder off, LPF mode on
         tbcSource.setChromaDecoder(false);
-        tbcSource.setLumaMode(true);
-        ui->videoPushButton->setText(tr("Luma"));
-    } else if (tbcSource.getLumaMode()) {
-        // Chroma decoder off, Luma mode off
-        tbcSource.setLumaMode(false);
+        tbcSource.setLpfMode(true);
+        ui->videoPushButton->setText(tr("LPF"));
+    } else if (tbcSource.getLpfMode()) {
+        // Chroma decoder off, LPF mode off
+        tbcSource.setLpfMode(false);
         tbcSource.setChromaDecoder(false);
         ui->videoPushButton->setText(tr("Source"));
     } else {
-        // Chroma decoder on, luma mode off
-        tbcSource.setLumaMode(false);
+        // Chroma decoder on, LPF mode off
+        tbcSource.setLpfMode(false);
         tbcSource.setChromaDecoder(true);
         ui->videoPushButton->setText(tr("Chroma"));
     }
