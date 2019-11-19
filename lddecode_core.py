@@ -882,6 +882,8 @@ def downscale_audio(audio, lineinfo, rf, linecount, timeoffset = 0, freq = 48000
         output[(i * 2) + 0] = dsa_rescale(output_left) #int(np.round(output_left * 32767 / 150000))
         output[(i * 2) + 1] = dsa_rescale(output_right)
         
+    #print(locs[len(arange)-1], len(audio['audio_left']), np.min(output), np.max(output), swow[len(arange) - 1], linenum)
+
     np.clip(output, -32766, 32766, out=output16)
             
     return output16, arange[-1] - frametime
@@ -1298,6 +1300,7 @@ class Field:
 
         line0loc, self.isFirstField = self.getLine0(validpulses)
         linelocs_dict = {}
+        linelocs_dist = {}
 
         if line0loc is None:
             if self.initphase == False:
@@ -1312,9 +1315,15 @@ class Field:
 
         for p in validpulses:
             lineloc = (p[1].start - line0loc) / meanlinelen
-            
-            if not inrange(lineloc % 1, .4, .6):
-                linelocs_dict[np.round(lineloc)] = p[1].start
+            rlineloc = np.round(lineloc)
+            lineloc_distance = np.abs(lineloc - rlineloc)
+
+            # only record if it's closer to the (probable) beginning of the line
+            if rlineloc in linelocs_dict and lineloc_distance > linelocs_dist[rlineloc]:
+                continue
+
+            linelocs_dict[np.round(lineloc)] = p[1].start
+            linelocs_dist[np.round(lineloc)] = lineloc_distance
 
         rv_err = np.full(self.outlinecount + 6, False)
 
