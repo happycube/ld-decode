@@ -1318,8 +1318,11 @@ class Field:
             rlineloc = np.round(lineloc)
             lineloc_distance = np.abs(lineloc - rlineloc)
 
+#            print(p, lineloc, rlineloc, lineloc_distance)
+
             # only record if it's closer to the (probable) beginning of the line
-            if rlineloc in linelocs_dict and lineloc_distance > linelocs_dist[rlineloc]:
+            if lineloc_distance > .4 or (rlineloc in linelocs_dict and lineloc_distance > linelocs_dist[rlineloc]):
+#                print('reject')
                 continue
 
             linelocs_dict[np.round(lineloc)] = p[1].start
