@@ -460,7 +460,7 @@ class RFDecode:
         for channel in ['audio_left', 'audio_right']:
             achannel = field_audio[channel]
             cmed[channel] = np.median(achannel)
-            aabs = np.abs(achannel) - cmed[channel]
+            aabs = np.abs(achannel - cmed[channel])
 
             if rejects is None:
                 rejects = aabs > 175000
