@@ -452,9 +452,53 @@ class RFDecode:
             rv['audio'] = audio_out[self.blockcut//fdiv:-self.blockcut_end//fdiv] if cut else audio_out
 
         return rv
-    
+
+    # detect clicks that are impossibly large and snip them out
+    def audio_dropout_detector(self, field_audio, padding = 32):
+        rejects = None
+        cmed = {}
+        for channel in ['audio_left', 'audio_right']:
+            achannel = field_audio[channel]
+            cmed[channel] = np.median(achannel)
+            aabs = np.abs(achannel) - cmed[channel]
+
+            if rejects is None:
+                rejects = aabs > 175000
+            else:
+                rejects |= aabs > 175000
+
+        if np.sum(rejects) == 0:
+            # If no spikes, return original
+            return field_audio
+
+        reject_locs = np.where(rejects)[0]
+        reject_areas = []
+        cur_area = [reject_locs[0] - padding, reject_locs[0] + padding]
+
+        for r in np.where(rejects)[0][1:]:
+            if r > cur_area[1]:
+                reject_areas.append(tuple(cur_area))
+                cur_area = [r - padding, r + padding]
+            else:
+                cur_area[1] = r + padding
+
+        field_audio_dod = field_audio.copy()
+
+        #print(reject_areas)
+
+        for achannel in ['audio_left', 'audio_right']:
+            for ra in reject_areas:
+                if ra[0] < 1:
+                    field_audio_dod[achannel][0:ra[1]] = field_audio_dod[channel][ra[1]+1]
+                elif ra[1] > len(field_audio_dod) - 1:
+                    field_audio_dod[achannel][ra[0]:-1] = field_audio_dod[channel][ra[0]-1]
+                else:
+                    field_audio_dod[achannel][ra[0]:ra[1]] = cmed[achannel]
+
+        return field_audio_dod
+
     # Second phase audio filtering.  This works on a whole field's samples, since 
-    # the frequency is reduced by 16/32x.
+    # the frequency has already been reduced by 16 or 32x.
 
     def runfilter_audio_phase2(self, frame_audio, start):
         outputs = []
@@ -486,6 +530,8 @@ class RFDecode:
     def audio_phase2(self, field_audio):
         # this creates an output array with left/right channels.
         output_audio2 = np.zeros(len(field_audio['audio_left']) // self.Filters['audio_fdiv2'], dtype=field_audio.dtype)
+
+        field_audio = self.audio_dropout_detector(field_audio)
 
         # copy the first block in it's entirety, to keep audio and video samples aligned
         tmp = self.runfilter_audio_phase2(field_audio, 0)
@@ -825,6 +871,7 @@ class DemodCache:
             rv[k] = np.concatenate(t[k]) if len(t[k]) else None
         
         if rv['audio'] is not None:
+            rv['audio_phase1'] = rv['audio']
             rv['audio'] = self.rf.audio_phase2(rv['audio'])
 
         rv['startloc'] = (begin // self.blocksize) * self.blocksize
