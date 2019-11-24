@@ -482,6 +482,8 @@ class RFDecode:
             else:
                 cur_area[1] = r + padding
 
+        reject_areas.append(cur_area)
+
         field_audio_dod = field_audio.copy()
 
         #print(reject_areas)
@@ -916,8 +918,9 @@ def downscale_audio(audio, lineinfo, rf, linecount, timeoffset = 0, freq = 48000
         swow[i] = (lineloc_next - lineloc_cur) / rf.linelen
         # There's almost *no way* the disk is spinning more than 5% off, so mask TBC errors here
         # to reduce pops
-        if i and np.abs(swow[i] - swow[i - 1]) > .05:
+        if i and np.abs(swow[i] - swow[i - 1]) > .015:
             swow[i] = swow[i - 1]
+
         locs[i] = sampleloc / scale
 
     output = np.zeros((2 * (len(arange) - 1)), dtype=np.int32)
