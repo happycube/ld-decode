@@ -1243,7 +1243,7 @@ class Field:
         for i in range(longrun[0] + 1, longrun[0] + longrun[1]):
             linelens.append(self.validpulses[i][1].start - self.validpulses[i-1][1].start)
 
-        return np.mean(linelens)
+        return np.median(linelens)
 
     # pull the above together into a routine that (should) find line 0, the last line of
     # the previous field.
@@ -1367,7 +1367,7 @@ class Field:
             rlineloc = np.round(lineloc)
             lineloc_distance = np.abs(lineloc - rlineloc)
 
-            #print(p, lineloc, rlineloc, lineloc_distance)
+            print(p, lineloc, rlineloc, lineloc_distance)
 
             # only record if it's closer to the (probable) beginning of the line
             if lineloc_distance > .4 or (rlineloc in linelocs_dict and lineloc_distance > linelocs_dist[rlineloc]):
