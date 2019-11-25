@@ -1222,33 +1222,28 @@ class Field:
                 
         return None, None
 
-    def computeLineLen(self, validpulses, where = 'all'):
+    def computeLineLen(self, validpulses):
+        # determine longest run of 0's
+        longrun = [-1, -1]
+        currun = None
+        for i, v in enumerate([p[0] for p in self.validpulses]):
+            if v != 0:
+                if currun is not None and currun[1] > longrun[1]:
+                    longrun = currun
+                currun = None
+            elif currun is None:
+                currun = [i, 0]
+            else:
+                currun[1] += 1
+
+        if currun[0] is not None and currun[1] > longrun[1]:
+            longrun = currun
+
         linelens = []
-        
-        blank1 = self.getblankrange(validpulses)
-        if blank1 == (None, None):
-            return self.inlinelen
+        for i in range(longrun[0] + 1, longrun[0] + longrun[1]):
+            linelens.append(self.validpulses[i][1].start - self.validpulses[i-1][1].start)
 
-        blank2 = self.getblankrange(validpulses, blank1[1] + 1)
-        if blank2 == (None, None):
-            # Need a full set of data to compute this...
-            return self.inlinelen
-
-        # This uses +/- 2 since the previous line is used as well
-        if where == 'begin':
-            scanrange = (blank1[1] + 2, blank1[1] + 20)
-        elif where == 'end':
-            scanrange = (blank2[0] - 20, blank2[0] - 2)
-        else: # where == 'all':
-            scanrange = (blank1[1] + 2, blank2[0] - 2)
-            
-        for i in range(*scanrange):
-            linelen = validpulses[i][1].start - validpulses[i - 1][1].start
-            
-            if inrange(linelen, self.inlinelen * .95, self.inlinelen * 1.05):
-                linelens.append(linelen)
-
-        return np.mean(linelens) if len(linelens) else self.inlinelen
+        return np.mean(linelens)
 
     # pull the above together into a routine that (should) find line 0, the last line of
     # the previous field.
@@ -1280,7 +1275,7 @@ class Field:
 
         isFirstField = not isNotFirstField
 
-        meanlinelen = self.computeLineLen(validpulses, 'all')
+        meanlinelen = self.computeLineLen(validpulses)
         fieldlen = (meanlinelen * self.rf.SysParams['field_lines'][0 if isFirstField else 1])
         line0loc = int(np.round(line0loc_next - fieldlen))
 
@@ -1362,7 +1357,7 @@ class Field:
 
             return None, None, self.inlinelen * 200
 
-        meanlinelen = self.computeLineLen(validpulses, 'all')
+        meanlinelen = self.computeLineLen(validpulses)
 
         if ((self.rawpulses[-1].start - line0loc) / meanlinelen) < (self.outlinecount + 7):
             return None, None, line0loc - (meanlinelen * 3)
@@ -1372,11 +1367,11 @@ class Field:
             rlineloc = np.round(lineloc)
             lineloc_distance = np.abs(lineloc - rlineloc)
 
-#            print(p, lineloc, rlineloc, lineloc_distance)
+            #print(p, lineloc, rlineloc, lineloc_distance)
 
             # only record if it's closer to the (probable) beginning of the line
             if lineloc_distance > .4 or (rlineloc in linelocs_dict and lineloc_distance > linelocs_dist[rlineloc]):
-#                print('reject')
+                #print(rlineloc, p, 'reject')
                 continue
 
             linelocs_dict[np.round(lineloc)] = p[1].start
@@ -1387,6 +1382,8 @@ class Field:
         # Convert dictionary into list, then fill in gaps
         linelocs = [linelocs_dict[l] if l in linelocs_dict else -1 for l in range(0, self.outlinecount + 6)]
         linelocs_filled = linelocs.copy()
+
+        self.linelocs0 = linelocs.copy()
 
         if linelocs_filled[0] < 0:
             next_valid = None
