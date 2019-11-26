@@ -9,7 +9,7 @@ level=11
 ext=ldf
 
 help_msg () {
-  echo "Usage: $0 [-c] [-u] [-v] [-p] [-h] [-l <1-15>] [-g] file(s)"; printf -- "\nModes:\n-c Compress (default): Takes one or more .lds files and compresses them to .ldf files in the current directory.\n-u Uncompress: Takes one or more .ldf/.raw.oga files and uncompresses them to .lds files in the current directory.\n-v Verify: Returns md5 checksums of the given .ldf/.raw.oga files and their contained .lds files for verification purposes.\n\nOptions\n-p Progress: displays progress bars - requires pv to be installed.\n-h Help: This dialog.\n-l Compression level 1 - 12. Default is 11. 6 is recommended for faster but fair compression.\n-g Use .raw.oga extension instead of .ldf when compressing.\n\n"
+  echo "Usage: $0 [-c] [-u] [-v] [-p] [-h] [-l <1-12>] [-g] file(s)"; printf -- "\nModes:\n-c Compress (default): Takes one or more .lds files and compresses them to .ldf files in the current directory.\n-u Uncompress: Takes one or more .ldf/.raw.oga files and uncompresses them to .lds files in the current directory.\n-v Verify: Returns md5 checksums of the given .ldf/.raw.oga files and their contained .lds files for verification purposes.\n\nOptions\n-p Progress: displays progress bars - requires pv to be installed.\n-h Help: This dialog.\n-l Compression level 1 - 12. Default is 11. 6 is recommended for faster but fair compression.\n-g Use .raw.oga extension instead of .ldf when compressing.\n\n"
 }
 
 while getopts ":hcuvpl:g" option; do
