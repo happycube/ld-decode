@@ -1241,9 +1241,11 @@ class Field:
 
         linelens = []
         for i in range(longrun[0] + 1, longrun[0] + longrun[1]):
-            linelens.append(self.validpulses[i][1].start - self.validpulses[i-1][1].start)
+            linelen = self.validpulses[i][1].start - self.validpulses[i-1][1].start
+            if inrange(linelen / self.inlinelen, .95, 1.05):
+                linelens.append(self.validpulses[i][1].start - self.validpulses[i-1][1].start)
 
-        return np.median(linelens)
+        return np.mean(linelens)
 
     # pull the above together into a routine that (should) find line 0, the last line of
     # the previous field.
