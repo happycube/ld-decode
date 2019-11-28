@@ -22,6 +22,7 @@ from multiprocessing import Process, Pool, Queue, JoinableQueue, Pipe
 import numpy as np
 import scipy as sp
 import scipy.signal as sps
+import scipy.interpolate as spi
 
 #internal libraries
 import commpy_filters
@@ -231,7 +232,7 @@ class RFDecode:
 
         self.computedelays()
 
-    def computeefmfilter(self):
+    def computeefmfilter_old(self):
         ''' same for both PAL and NTSC LD's '''
 
         lfilt = sps.butter(1, [.4/20], btype='high')
@@ -242,6 +243,48 @@ class RFDecode:
         # ISI filter
         Fisi = commpy_filters.rcosfilter(221, 0.5, 1/4321800, 40000000)
         self.Filters['Fefm'] *= filtfft((Fisi[1], [1.0]), self.blocklen)
+
+    def computeefmfilter(self):
+        """Frequency-domain equalisation filter for the LaserDisc EFM signal.
+        This was inspired by the input signal equaliser in WSJT-X, described in
+        Steven J. Franke and Joseph H. Taylor, "The MSK144 Protocol for
+        Meteor-Scatter Communication", QEX July/August 2017.
+        <http://physics.princeton.edu/pulsar/k1jt/MSK144_Protocol_QEX.pdf>
+
+        This improved EFM filter was devised by Adam Sampson (@atsampson)
+        """
+        # Frequency bands
+        freqs = np.linspace(0.0e6, 2.0e6, num=11)
+        freq_per_bin = self.freq_hz / self.blocklen
+        # Amplitude and phase adjustments for each band.
+        # These values were adjusted empirically based on a selection of NTSC and PAL samples.
+        amp = np.array([0.0, 0.2, 0.41, 0.73, 0.98, 1.03, 0.99, 0.81, 0.59, 0.42, 0.0])
+        phase = np.array([0.0, -0.95, -1.05, -1.05, -1.2, -1.2, -1.2, -1.2, -1.2, -1.2, -1.2])
+        coeffs = None
+
+        """Compute filter coefficients for the given FFTFilter."""
+        # Anything above the highest frequency is left as zero.
+        coeffs = np.zeros(self.blocklen, dtype=np.complex)
+
+        # Generate the frequency-domain coefficients by cubic interpolation between the equaliser values.
+        a_interp = spi.interp1d(freqs, amp, kind="cubic")
+        p_interp = spi.interp1d(freqs, phase, kind="cubic")
+        
+        nonzero_bins = int(freqs[-1] / freq_per_bin) + 1
+        print(nonzero_bins)
+        
+        bin_freqs = np.arange(nonzero_bins) * freq_per_bin
+        bin_amp = a_interp(bin_freqs)
+        bin_phase = p_interp(bin_freqs)
+
+        # Scale by the amplitude, rotate by the phase
+        coeffs[:nonzero_bins] = bin_amp * (np.cos(bin_phase) + (complex(0, -1) * np.sin(bin_phase)))
+
+        # TODO: figure out this flip, the filter is asymmetric but works better that way.  huh.
+        #coeffs[-nonzero_bins:] = np.flip(coeffs[:nonzero_bins], 0)
+        
+        self.Filters['Fefm'] = coeffs * 8
+
 
     def computevideofilters(self):
         self.Filters = {}
