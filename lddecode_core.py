@@ -271,7 +271,7 @@ class RFDecode:
         p_interp = spi.interp1d(freqs, phase, kind="cubic")
         
         nonzero_bins = int(freqs[-1] / freq_per_bin) + 1
-        print(nonzero_bins)
+        #print(nonzero_bins)
         
         bin_freqs = np.arange(nonzero_bins) * freq_per_bin
         bin_amp = a_interp(bin_freqs)
