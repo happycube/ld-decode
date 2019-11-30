@@ -508,7 +508,7 @@ class RFDecode:
         cur_area = [reject_locs[0] - padding, reject_locs[0] + padding]
 
         for r in np.where(rejects)[0][1:]:
-            if r > cur_area[1]:
+            if (r - padding) > cur_area[1]:
                 reject_areas.append(tuple(cur_area))
                 cur_area = [r - padding, r + padding]
             else:
@@ -520,14 +520,18 @@ class RFDecode:
 
         #print(reject_areas)
 
-        for achannel in ['audio_left', 'audio_right']:
+        for channel in ['audio_left', 'audio_right']:
             for ra in reject_areas:
                 if ra[0] < 1:
-                    field_audio_dod[achannel][0:ra[1]] = field_audio_dod[channel][ra[1]+1]
+                    field_audio_dod[channel][0:ra[1]] = field_audio_dod[channel][ra[1]+1]
                 elif ra[1] > len(field_audio_dod) - 1:
-                    field_audio_dod[achannel][ra[0]:-1] = field_audio_dod[channel][ra[0]-1]
+                    field_audio_dod[channel][ra[0]:-1] = field_audio_dod[channel][ra[0]-1]
                 else:
-                    field_audio_dod[achannel][ra[0]:ra[1]] = cmed[achannel]
+                    abeg = field_audio_dod[channel][ra[0] - 1]
+                    aend = field_audio_dod[channel][ra[1] + 1]
+                    # pad np.arange run by 1 and crop it so there's always enough data to fill in
+                    # XXX: clean up
+                    field_audio_dod[channel][ra[0]:ra[1]] = np.arange(abeg, aend, (aend - abeg) / (1 + ra[1] - ra[0]))[:ra[1]-ra[0]]
 
         return field_audio_dod
 
