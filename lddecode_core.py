@@ -24,6 +24,16 @@ import scipy as sp
 import scipy.signal as sps
 import scipy.interpolate as spi
 
+# Use PyFFTW's faster FFT implementation if available
+try:
+    import pyfftw.interfaces.numpy_fft as npfft
+
+    import pyfftw.interfaces
+    pyfftw.interfaces.cache.enable()
+    pyfftw.interfaces.cache.set_keepalive_time(10)
+except ImportError:
+    import numpy.fft as npfft
+
 #internal libraries
 import commpy_filters
 
@@ -290,7 +300,7 @@ class RFDecode:
         MTF = sps.zpk2tf([], [polar2z(DP['MTF_poledist'],np.pi*MTF_polef_lo), polar2z(DP['MTF_poledist'],np.pi*MTF_polef_hi)], 1)
         SF['MTF'] = filtfft(MTF, self.blocklen)
 
-        SF['hilbert'] = np.fft.fft(hilbert_filter, self.blocklen)
+        SF['hilbert'] = npfft.fft(hilbert_filter, self.blocklen)
         filt_rfvideo = sps.butter(DP['video_bpf_order'], [DP['video_bpf_low']/self.freq_hz_half, DP['video_bpf_high']/self.freq_hz_half], btype='bandpass')
         SF['RFVideo'] = filtfft(filt_rfvideo, self.blocklen)
 
@@ -425,7 +435,7 @@ class RFDecode:
         if fftdata is not None:
             indata_fft = fftdata
         elif data is not None:
-            indata_fft = np.fft.fft(data[:self.blocklen])
+            indata_fft = npfft.fft(data[:self.blocklen])
         else:
             raise Exception("demodblock called without raw or FFT data")
 
@@ -433,7 +443,7 @@ class RFDecode:
             rotdelay = self.delays['video_rot']
         except:
             rotdelay = 0
-        rv['rfbpf'] = np.fft.ifft(indata_fft * self.Filters['Frfbpf']).real
+        rv['rfbpf'] = npfft.ifft(indata_fft * self.Filters['Frfbpf']).real
         rv['rfbpf'] = rv['rfbpf'][self.blockcut-rotdelay:-self.blockcut_end-rotdelay]
 
         indata_fft_filt = indata_fft * self.Filters['RFVideo']
@@ -441,41 +451,41 @@ class RFDecode:
         if mtf_level != 0:
             indata_fft_filt *= self.Filters['MTF'] ** mtf_level
 
-        hilbert = np.fft.ifft(indata_fft_filt)
+        hilbert = npfft.ifft(indata_fft_filt)
         demod = unwrap_hilbert(hilbert, self.freq_hz)
 
         #demod = np.clip(demod, 2000000, self.freq_hz_half)
 
-        demod_fft_full = np.fft.fft(demod)
-        demod_hpf = np.fft.ifft(demod_fft_full * self.Filters['Fvideo_hpf']).real
+        demod_fft_full = npfft.fft(demod)
+        demod_hpf = npfft.ifft(demod_fft_full * self.Filters['Fvideo_hpf']).real
 
         # use a clipped demod for video output processing to reduce speckling impact 
-        demod_fft = np.fft.fft(np.clip(demod, 1500000, self.freq_hz * .75))
+        demod_fft = npfft.fft(np.clip(demod, 1500000, self.freq_hz * .75))
 
-        out_video = np.fft.ifft(demod_fft * self.Filters['FVideo']).real
+        out_video = npfft.ifft(demod_fft * self.Filters['FVideo']).real
         
-        out_video05 = np.fft.ifft(demod_fft * self.Filters['FVideo05']).real
+        out_video05 = npfft.ifft(demod_fft * self.Filters['FVideo05']).real
         out_video05 = np.roll(out_video05, -self.Filters['F05_offset'])
 
         if self.system == 'PAL':
-            out_videopilot = np.fft.ifft(demod_fft * self.Filters['FVideoPilot']).real
+            out_videopilot = npfft.ifft(demod_fft * self.Filters['FVideoPilot']).real
             video_out = np.rec.array([out_video, demod, demod_hpf, out_video05, out_videopilot], names=['demod', 'demod_raw', 'demod_hpf', 'demod_05', 'demod_pilot'])
         else:
-            out_videoburst = np.fft.ifft(demod_fft * self.Filters['FVideoBurst']).real
+            out_videoburst = npfft.ifft(demod_fft * self.Filters['FVideoBurst']).real
             video_out = np.rec.array([out_video, demod, demod_hpf, out_video05, out_videoburst], names=['demod', 'demod_raw', 'demod_hpf', 'demod_05', 'demod_burst'])
 
         rv['video'] = video_out[self.blockcut:-self.blockcut_end] if cut else video_out
 
         if self.decode_digital_audio:
-            efm_out = np.fft.ifft(indata_fft * self.Filters['Fefm']) 
+            efm_out = npfft.ifft(indata_fft * self.Filters['Fefm']) 
             rv['efm'] = np.uint16(efm_out[self.blockcut:-self.blockcut_end].real) if cut else efm_out
 
         if self.decode_analog_audio:
             # Audio phase 1
-            hilbert = np.fft.ifft(self.audio_fdslice(indata_fft) * self.Filters['audio_lfilt'])
+            hilbert = npfft.ifft(self.audio_fdslice(indata_fft) * self.Filters['audio_lfilt'])
             audio_left = unwrap_hilbert(hilbert, self.Filters['freq_arf']) + self.Filters['audio_lowfreq']
 
-            hilbert = np.fft.ifft(self.audio_fdslice(indata_fft) * self.Filters['audio_rfilt'])
+            hilbert = npfft.ifft(self.audio_fdslice(indata_fft) * self.Filters['audio_rfilt'])
             audio_right = unwrap_hilbert(hilbert, self.Filters['freq_arf']) + self.Filters['audio_lowfreq']
 
             audio_out = np.rec.array([audio_left, audio_right], names=['audio_left', 'audio_right'])
@@ -553,7 +563,7 @@ class RFDecode:
                 replacelen = 16*self.Filters['audio_fdiv2']
                 raw[max(0, l - replacelen):min(l + replacelen, len(raw))] = 0# raw[replacement_idx]
 
-            fft_in_real = self.audio_fdslice2(np.fft.fft(raw))
+            fft_in_real = self.audio_fdslice2(npfft.fft(raw))
             if len(fft_in_real) < len(self.Filters['audio_lpf2']):
                 fft_in = np.zeros_like(self.Filters['audio_lpf2'])
                 fft_in[:len(fft_in_real)] = fft_in_real
@@ -561,7 +571,7 @@ class RFDecode:
                 fft_in = fft_in_real
             fft_out = fft_in * self.Filters['audio_lpf2'] * self.Filters['audio_deemp2']
 
-            outputs.append((np.fft.ifft(fft_out).real[:len(fft_in_real)] / self.Filters['audio_fdiv2']) + self.SysParams[c[1]])
+            outputs.append((npfft.ifft(fft_out).real[:len(fft_in_real)] / self.Filters['audio_fdiv2']) + self.SysParams[c[1]])
 
         return np.rec.array(outputs, names=['audio_left', 'audio_right'])
 
@@ -638,12 +648,12 @@ class RFDecode:
         # NOTE: group pre-delay is not implemented, so the decoded signal
         # has issues settling down.  Emphasis is correct AFAIK
 
-        tmp = np.fft.fft(fakeoutput)
+        tmp = npfft.fft(fakeoutput)
         tmp2 = tmp * (filterset['Fvideo_lpf'] ** 1)
         tmp3 = tmp2 * (filterset['Femp'] ** 1)
 
-        #fakeoutput_lpf = np.fft.ifft(tmp2).real
-        fakeoutput_emp = np.fft.ifft(tmp3).real
+        #fakeoutput_lpf = npfft.ifft(tmp2).real
+        fakeoutput_emp = npfft.ifft(tmp3).real
 
         fakesignal = genwave(fakeoutput_emp, rf.freq_hz / 2)
         fakesignal *= 4096
@@ -762,7 +772,7 @@ class DemodCache:
                 output = {}
 
                 if 'fft' not in block:
-                    output['fft'] = np.fft.fft(block['rawinput'])
+                    output['fft'] = npfft.fft(block['rawinput'])
                     fftdata = output['fft']
                 else:
                     fftdata = block['fft']
