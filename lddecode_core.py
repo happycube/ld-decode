@@ -496,7 +496,7 @@ class RFDecode:
         return rv
 
     # detect clicks that are impossibly large and snip them out
-    def audio_dropout_detector(self, field_audio, padding = 32):
+    def audio_dropout_detector(self, field_audio, padding = 48):
         rejects = None
         cmed = {}
         for channel in ['audio_left', 'audio_right']:
@@ -532,13 +532,13 @@ class RFDecode:
 
         for channel in ['audio_left', 'audio_right']:
             for ra in reject_areas:
-                if ra[0] < 1:
+                if ra[0] <= 1:
                     field_audio_dod[channel][0:ra[1]] = field_audio_dod[channel][ra[1]+1]
-                elif ra[1] > len(field_audio_dod) - 1:
+                elif ra[1] >= len(field_audio_dod) - 1:
                     field_audio_dod[channel][ra[0]:] = field_audio_dod[channel][ra[0]-1]
                 else:
-                    abeg = field_audio_dod[channel][ra[0] - 1]
-                    aend = field_audio_dod[channel][ra[1] + 1]
+                    abeg = field_audio_dod[channel][ra[0]]
+                    aend = field_audio_dod[channel][ra[1]]
                     # pad np.arange run by 1 and crop it so there's always enough data to fill in
                     # XXX: clean up
                     field_audio_dod[channel][ra[0]:ra[1]] = np.arange(abeg, aend, (aend - abeg) / (1 + ra[1] - ra[0]))[:ra[1]-ra[0]]
