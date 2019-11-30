@@ -28,6 +28,7 @@ import scipy.interpolate as spi
 import commpy_filters
 
 import fdls
+import efm_pll
 from lddutils import *
 
 try:
@@ -2298,7 +2299,7 @@ class LDdecode:
             self.outfile_video = open(fname_out + '.tbc', 'wb')
             #self.outfile_json = open(fname_out + '.json', 'wb')
             self.outfile_audio = open(fname_out + '.pcm', 'wb') if analog_audio else None
-            #self.outfile_efm = open(fname_out + '.efm', 'wb') if digital_audio else None
+            self.outfile_efm = open(fname_out + '.efm', 'wb') if digital_audio else None
         else:
             self.outfile_video = None
             self.outfile_audio = None
@@ -2306,9 +2307,7 @@ class LDdecode:
 
         if fname_out is not None and digital_audio:
             # feed EFM stream into ld-ldstoefm
-            self.subproc_ldstoefm = subprocess.Popen(['ld-ldstoefm', fname_out + '.efm'], stdin=subprocess.PIPE)
-            self.outfile_efm = self.subproc_ldstoefm.stdin
-
+            self.efm_pll = efm_pll.EFM_PLL()
 
         self.fname_out = fname_out
 
@@ -2410,7 +2409,9 @@ class LDdecode:
             self.outfile_audio.write(audio)
 
         if self.digital_audio == True:
-            self.outfile_efm.write(efm)
+            efm_s16 = np.int16(np.int32(efm) - 32768)
+            efm_out = self.efm_pll.process(efm_s16)
+            self.outfile_efm.write(efm_out.tobytes())
         else:
             efm = None
         
