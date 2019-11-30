@@ -535,7 +535,7 @@ class RFDecode:
                 if ra[0] < 1:
                     field_audio_dod[channel][0:ra[1]] = field_audio_dod[channel][ra[1]+1]
                 elif ra[1] > len(field_audio_dod) - 1:
-                    field_audio_dod[channel][ra[0]:-1] = field_audio_dod[channel][ra[0]-1]
+                    field_audio_dod[channel][ra[0]:] = field_audio_dod[channel][ra[0]-1]
                 else:
                     abeg = field_audio_dod[channel][ra[0] - 1]
                     aend = field_audio_dod[channel][ra[1] + 1]
