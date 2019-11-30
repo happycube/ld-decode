@@ -532,7 +532,10 @@ class RFDecode:
 
         for channel in ['audio_left', 'audio_right']:
             for ra in reject_areas:
-                if ra[0] <= 1:
+                if ra[0] <= 1 and ra[1] >= len(field_audio_dod) - 1:
+                    # The entire thing can be bad during spinup
+                    pass
+                elif ra[0] <= 1:
                     field_audio_dod[channel][0:ra[1]] = field_audio_dod[channel][ra[1]+1]
                 elif ra[1] >= len(field_audio_dod) - 1:
                     field_audio_dod[channel][ra[0]:] = field_audio_dod[channel][ra[0]-1]
@@ -557,7 +560,7 @@ class RFDecode:
             raw = frame_audio[c[0]][start:start+self.blocklen].copy() - self.SysParams[c[1]]
 
             if c[0] == 'audio_left':
-                clips = findpeaks(raw, 350000)
+                clips = findpeaks(raw, 300000)
 
             for l in clips:
                 replacelen = 16*self.Filters['audio_fdiv2']
