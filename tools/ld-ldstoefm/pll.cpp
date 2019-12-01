@@ -4,6 +4,7 @@
 
     ld-ldstoefm - LDS sample to EFM data processing
     Copyright (C) 2019 Simon Inns
+    Copyright (C) 2019 Adam Sampson
 
     This file is part of ld-decode-tools.
 
@@ -30,9 +31,11 @@
 
 Pll::Pll()
 {
-    // Default ZC detector state
-    zcFirstRun = true;
+    // Default ZC detector state.
+    // In order to hold state over buffer read boundaries, we keep
+    // global track of the direction and delta information.
     zcPreviousInput = 0;
+    delta = 0;
 
     // Default PLL state
     basePeriod = 40000000.0 / 4321800.0; // T1 clock period 40MSPS / bit-rate
@@ -62,41 +65,17 @@ Pll::Pll()
 QByteArray Pll::process(QByteArray buffer)
 {
     // Input data is really qint16 wrapped in a byte array
-    qint16 *inputBuffer = reinterpret_cast<qint16*>(buffer.data());
+    const qint16 *inputBuffer = reinterpret_cast<const qint16 *>(buffer.data());
 
     // Clear the PLL result buffer
     pllResult.clear();
-
-    // In order to hold state over buffer read boundaries, we keep
-    // global track of the direction and delta information
-    if (zcFirstRun) {
-        zcFirstRun = false;
-
-        zcPreviousInput = 0;
-        prevDirection = false; // Down
-        delta = 0;
-    }
 
     for (qint32 i = 0; i < (buffer.size() / 2); i++) {
         qint16 vPrev = zcPreviousInput;
         qint16 vCurr = inputBuffer[i];
 
-        bool xup = false;
-        bool xdn = false;
-
-        // Possing zero-cross up or down?
-        if (vPrev < 0 && vCurr >= 0) xup = true;
-        if (vPrev > 0 && vCurr <= 0) xdn = true;
-
-        // Check ZC direction against previous
-        if (prevDirection && xup) xup = false;
-        if (!prevDirection && xdn) xdn = false;
-
-        // Store the current direction as the previous
-        if (xup) prevDirection = true;
-        if (xdn) prevDirection = false;
-
-        if (xup || xdn) {
+        // Have we seen a zero-crossing?
+        if ((vPrev < 0 && vCurr >= 0) || (vPrev >= 0 && vCurr < 0)) {
             // Interpolate to get the ZC sub-sample position fraction
             qreal prev = static_cast<qreal>(vPrev);
             qreal curr = static_cast<qreal>(vCurr);
@@ -120,66 +99,58 @@ QByteArray Pll::process(QByteArray buffer)
     return pllResult;
 }
 
-void Pll::pushTValue(qint8 bit)
-{
-    // If this is a 1, push the T delta
-    if (bit) {
-        pllResult.push_back(tCounter);
-        tCounter = 1;
-    } else {
-        tCounter++;
-    }
-}
-
 // Called when a ZC happens on a sample number
 void Pll::pushEdge(qreal sampleDelta)
 {
-    while(sampleDelta >= refClockTime) {
+    while (sampleDelta >= refClockTime) {
         qreal next = refClockTime + currentPeriod + phaseAdjust;
         refClockTime = next;
 
         // Note: the tCounter < 3 check causes an 'edge push' if T is 1 or 2 (which
         // are invalid timing lengths for the NRZI data).  We also 'edge pull' values
         // greater than T11
-        if((sampleDelta > next || tCounter < 3) && !(tCounter > 10)) {
+        if ((sampleDelta > next || tCounter < 3) && tCounter < 11) {
             phaseAdjust = 0;
-            pushTValue(0);
+            tCounter++;
         } else {
-            qreal delta = sampleDelta - (next - currentPeriod / 2.0);
-            phaseAdjust = delta * 0.005;
+            qreal edgeDelta = sampleDelta - (next - currentPeriod / 2.0);
+            phaseAdjust = edgeDelta * 0.005;
 
             // Adjust frequency based on error
-            if(delta < 0) {
-                if(frequencyHysteresis < 0) frequencyHysteresis--;
-                else frequencyHysteresis = -1;
-            } else if(delta > 0) {
-                if(frequencyHysteresis > 0) frequencyHysteresis++;
-                else frequencyHysteresis = 1;
-            } else  {
+            if (edgeDelta < 0) {
+                if (frequencyHysteresis < 0)
+                    frequencyHysteresis--;
+                else
+                    frequencyHysteresis = -1;
+            } else if (edgeDelta > 0) {
+                if (frequencyHysteresis > 0)
+                    frequencyHysteresis++;
+                else
+                    frequencyHysteresis = 1;
+            } else {
                 frequencyHysteresis = 0;
             }
 
             // Update the reference clock?
-            if(frequencyHysteresis) {
-                qint32 afh = frequencyHysteresis < 0 ? -frequencyHysteresis : frequencyHysteresis;
-                if(afh > 1) {
-                    qreal aper = periodAdjustBase * delta / currentPeriod;
-                    currentPeriod += aper;
+            if (frequencyHysteresis < -1.0 || frequencyHysteresis > 1.0) {
+                qreal aper = periodAdjustBase * edgeDelta / currentPeriod;
+                currentPeriod += aper;
 
-                    if (currentPeriod < minimumPeriod) {
-                        currentPeriod = minimumPeriod;
-                    } else if (currentPeriod > maximumPeriod) {
-                        currentPeriod = maximumPeriod;
-                    }
+                if (currentPeriod < minimumPeriod) {
+                    currentPeriod = minimumPeriod;
+                } else if (currentPeriod > maximumPeriod) {
+                    currentPeriod = maximumPeriod;
                 }
             }
-            pushTValue(1);
+
+            pllResult.push_back(tCounter);
+            tCounter = 1;
         }
     }
 
     // Reset refClockTime ready for the next delta but
     // keep any error to maintain accuracy
-    refClockTime = (refClockTime - sampleDelta);
+    refClockTime -= sampleDelta;
 
     // Use this debug if you want to monitor the PLL output frequency
     //qDebug() << "Base =" << basePeriod << "current = " << currentPeriod;
