@@ -60,9 +60,6 @@ private:
     };
 
     struct Replacement {
-        // The default value is no replacement
-        Replacement() : isSameField(true), fieldLine(-1) {}
-
         bool isSameField;
         qint32 fieldLine;
     };
@@ -74,24 +71,17 @@ private:
     LdDecodeMetaData ldDecodeMetaData;
     LdDecodeMetaData::VideoParameters videoParameters;
 
-    void correctField(const QVector<DropOutLocation> &thisFieldDropouts,
-                      const QVector<DropOutLocation> &otherFieldDropouts,
-                      QByteArray &thisFieldData, const QByteArray &otherFieldData,
-                      bool thisFieldIsFirst, bool intraField);
     QVector<DropOutLocation> populateDropoutsVector(LdDecodeMetaData::Field field, bool overCorrect);
     QVector<DropOutLocation> setDropOutLocations(QVector<DropOutLocation> dropOuts);
     Replacement findReplacementLine(const QVector<DropOutLocation> &thisFieldDropouts,
                                     const QVector<DropOutLocation> &otherFieldDropouts,
-                                    qint32 dropOutIndex, bool thisFieldIsFirst, bool matchChromaPhase,
-                                    bool isColourBurst, bool intraField);
+                                    qint32 dropOutIndex, bool thisFieldIsFirst, bool isColourBurst, bool intraField);
     void findPotentialReplacementLine(const QVector<DropOutLocation> &targetDropouts, qint32 targetIndex,
                                       const QVector<DropOutLocation> &sourceDropouts, bool isSameField,
                                       qint32 sourceOffset, qint32 stepAmount,
                                       qint32 firstActiveFieldLine, qint32 lastActiveFieldLine,
                                       QVector<Replacement> &candidates);
-    void correctDropOut(const DropOutLocation &dropOut,
-                        const Replacement &replacement, const Replacement &chromaReplacement,
-                        QByteArray &thisFieldData, const QByteArray &otherFieldData);
+    void correctDropOut(const DropOutLocation &dropOut, const Replacement &replacement, QByteArray &targetField, const QByteArray &sourceField);
 };
 
 #endif // DROPOUTCORRECT_H

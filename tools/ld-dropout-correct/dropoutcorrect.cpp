@@ -25,7 +25,6 @@
 
 #include "dropoutcorrect.h"
 #include "correctorpool.h"
-#include "filters.h"
 
 DropOutCorrect::DropOutCorrect(QAtomicInt& _abort, CorrectorPool& _correctorPool, QObject *parent)
     : QThread(parent), abort(_abort), correctorPool(_correctorPool)
@@ -56,14 +55,12 @@ void DropOutCorrect::run()
         }
         qDebug() << "DropOutCorrect::process(): Got frame number" << frameNumber;
 
-        // Copy the input frames' data to the target frames.
-        // We'll use these both as source and target during correction, which
-        // is OK because we're careful not to copy data from another dropout.
-        QByteArray firstFieldData = firstSourceField;
-        QByteArray secondFieldData = secondSourceField;
+        // Set the output frame to the input frame's data
+        QByteArray firstTargetFieldData = firstSourceField;
+        QByteArray secondTargetFieldData = secondSourceField;
 
         // Check if the frame contains drop-outs
-        if (firstFieldMetadata.dropOuts.startx.empty() && secondFieldMetadata.dropOuts.startx.empty()) {
+        if (firstFieldMetadata.dropOuts.startx.size() == 0 && secondFieldMetadata.dropOuts.startx.size() == 0) {
             // No correction required...
             qDebug() << "DropOutDetector::process(): Skipping fields [" <<
                         firstFieldSeqNo << "/" << secondFieldSeqNo << "]";
@@ -82,47 +79,75 @@ void DropOutCorrect::run()
             QVector<DropOutLocation> secondFieldDropouts;
             if (secondFieldMetadata.dropOuts.startx.size() > 0) secondFieldDropouts = setDropOutLocations(populateDropoutsVector(secondFieldMetadata, overCorrect));
 
-            // Correct the first field
-            correctField(firstFieldDropouts, secondFieldDropouts, firstFieldData, secondFieldData, true, intraField);
+            // Process the first field if it contains drop-outs
+            if (firstFieldDropouts.size() > 0) {
+                // Process the dropouts for the first field
+                QVector<Replacement> firstFieldReplacementLines;
+                firstFieldReplacementLines.resize(firstFieldDropouts.size());
+                for (qint32 dropoutIndex = 0; dropoutIndex < firstFieldDropouts.size(); dropoutIndex++) {
+                    firstFieldReplacementLines[dropoutIndex].fieldLine = -1;
 
-            // Correct the second field
-            correctField(secondFieldDropouts, firstFieldDropouts, secondFieldData, firstFieldData, false, intraField);
+                    // Is the current dropout in the colour burst?
+                    if (firstFieldDropouts[dropoutIndex].location == Location::colourBurst) {
+                        firstFieldReplacementLines[dropoutIndex] = findReplacementLine(firstFieldDropouts, secondFieldDropouts, dropoutIndex, true, true, intraField);
+                    }
+
+                    // Is the current dropout in the visible video line?
+                    if (firstFieldDropouts[dropoutIndex].location == Location::visibleLine) {
+                        firstFieldReplacementLines[dropoutIndex] = findReplacementLine(firstFieldDropouts, secondFieldDropouts, dropoutIndex, true, false, intraField);
+                    }
+                }
+
+                // Correct the data of the first field
+                for (qint32 dropoutIndex = 0; dropoutIndex < firstFieldDropouts.size(); dropoutIndex++) {
+                    if (firstFieldReplacementLines[dropoutIndex].fieldLine == -1) {
+                        // Doesn't need correcting
+                    } else if (firstFieldReplacementLines[dropoutIndex].isSameField) {
+                        // Correct the first field from the first field (intra-field correction)
+                        correctDropOut(firstFieldDropouts[dropoutIndex], firstFieldReplacementLines[dropoutIndex], firstTargetFieldData, firstTargetFieldData);
+                    } else {
+                        // Correct the first field from the second field (inter-field correction)
+                        correctDropOut(firstFieldDropouts[dropoutIndex], firstFieldReplacementLines[dropoutIndex], firstTargetFieldData, secondTargetFieldData);
+                    }
+                }
+            }
+
+            // Process the second field if it contains drop-outs
+            if (secondFieldDropouts.size() > 0) {
+                // Process the dropouts for the second field
+                QVector<Replacement> secondFieldReplacementLines;
+                secondFieldReplacementLines.resize(secondFieldDropouts.size());
+                for (qint32 dropoutIndex = 0; dropoutIndex < secondFieldDropouts.size(); dropoutIndex++) {
+                    secondFieldReplacementLines[dropoutIndex].fieldLine = -1;
+
+                    // Is the current dropout in the colour burst?
+                    if (secondFieldDropouts[dropoutIndex].location == Location::colourBurst) {
+                        secondFieldReplacementLines[dropoutIndex] = findReplacementLine(secondFieldDropouts, firstFieldDropouts, dropoutIndex, false, true, intraField);
+                    }
+
+                    // Is the current dropout in the visible video line?
+                    if (secondFieldDropouts[dropoutIndex].location == Location::visibleLine) {
+                        secondFieldReplacementLines[dropoutIndex] = findReplacementLine(secondFieldDropouts, firstFieldDropouts, dropoutIndex, false, false, intraField);
+                    }
+                }
+
+                // Correct the data of the second field
+                for (qint32 dropoutIndex = 0; dropoutIndex < secondFieldDropouts.size(); dropoutIndex++) {
+                    if (secondFieldReplacementLines[dropoutIndex].fieldLine == -1) {
+                        // Doesn't need correcting
+                    } else if (secondFieldReplacementLines[dropoutIndex].isSameField) {
+                        // Correct the second field from the second field (intra-field correction)
+                        correctDropOut(secondFieldDropouts[dropoutIndex], secondFieldReplacementLines[dropoutIndex], secondTargetFieldData, secondSourceField);
+                    } else {
+                        // Correct the second field from the first field (inter-field correction)
+                        correctDropOut(secondFieldDropouts[dropoutIndex], secondFieldReplacementLines[dropoutIndex], secondTargetFieldData, firstSourceField);
+                    }
+                }
+            }
         }
 
         // Return the processed fields
-        correctorPool.setOutputFrame(frameNumber, firstFieldData, secondFieldData, firstFieldSeqNo, secondFieldSeqNo);
-    }
-}
-
-// Correct dropouts within one field
-void DropOutCorrect::correctField(const QVector<DropOutLocation> &thisFieldDropouts,
-                                  const QVector<DropOutLocation> &otherFieldDropouts,
-                                  QByteArray &thisFieldData, const QByteArray &otherFieldData,
-                                  bool thisFieldIsFirst, bool intraField)
-{
-    for (qint32 dropoutIndex = 0; dropoutIndex < thisFieldDropouts.size(); dropoutIndex++) {
-        Replacement replacement, chromaReplacement;
-
-        // Is the current dropout in the colour burst?
-        if (thisFieldDropouts[dropoutIndex].location == Location::colourBurst) {
-            replacement = findReplacementLine(thisFieldDropouts, otherFieldDropouts,
-                                              dropoutIndex, thisFieldIsFirst, true,
-                                              true, intraField);
-        }
-
-        // Is the current dropout in the visible video line?
-        if (thisFieldDropouts[dropoutIndex].location == Location::visibleLine) {
-            // Find separate replacements for luma and chroma
-            replacement = findReplacementLine(thisFieldDropouts, otherFieldDropouts,
-                                              dropoutIndex, thisFieldIsFirst, false,
-                                              false, intraField);
-            chromaReplacement = findReplacementLine(thisFieldDropouts, otherFieldDropouts,
-                                                    dropoutIndex, thisFieldIsFirst, true,
-                                                    false, intraField);
-        }
-
-        // Correct the data
-        correctDropOut(thisFieldDropouts[dropoutIndex], replacement, chromaReplacement, thisFieldData, otherFieldData);
+        correctorPool.setOutputFrame(frameNumber, firstTargetFieldData, secondTargetFieldData, firstFieldSeqNo, secondFieldSeqNo);
     }
 }
 
@@ -226,8 +251,8 @@ QVector<DropOutCorrect::DropOutLocation> DropOutCorrect::setDropOutLocations(QVe
 // over bad data).
 DropOutCorrect::Replacement DropOutCorrect::findReplacementLine(const QVector<DropOutLocation> &thisFieldDropouts,
                                                                 const QVector<DropOutLocation> &otherFieldDropouts,
-                                                                qint32 dropOutIndex, bool thisFieldIsFirst, bool matchChromaPhase,
-                                                                bool isColourBurst, bool intraField)
+                                                                qint32 dropOutIndex, bool thisFieldIsFirst, bool isColourBurst,
+                                                                bool intraField)
 {
     // Determine the first and last active scan line based on the source format
     qint32 firstActiveFieldLine;
@@ -243,12 +268,13 @@ DropOutCorrect::Replacement DropOutCorrect::findReplacementLine(const QVector<Dr
     // Define the minimum step size to use when searching for replacement
     // lines, and the offset to the nearest replacement line in the other
     // field.
+    //
+    // At present the replacement line must match exactly in terms of chroma
+    // encoding; we could use closer lines if we were willing to shift samples
+    // horizontally to match the chroma encoding (or discard the chroma
+    // entirely, as analogue LaserDisc players do).
     qint32 stepAmount, otherFieldOffset;
-    if (!matchChromaPhase) {
-        // We're not trying to match the chroma phase, so any line will do.
-        stepAmount = 1;
-        otherFieldOffset = -1;
-    } else if (videoParameters.isSourcePal) {
+    if (videoParameters.isSourcePal) {
         // For PAL: [Poynton ch44 p529]
         //
         // - Subcarrier has 283.7516 cycles per line, so there's a (nearly) 90
@@ -328,10 +354,12 @@ DropOutCorrect::Replacement DropOutCorrect::findReplacementLine(const QVector<Dr
     qDebug() << (isColourBurst ? "Colourburst" : "Visible video") << "dropout on line"
              << thisFieldDropouts[dropOutIndex].fieldLine << "of" << (thisFieldIsFirst ? "first" : "second") << "field";
 
-    // If no candidate is found, return no replacement
     Replacement replacement;
-
-    if (!candidates.empty()) {
+    if (candidates.empty()) {
+        // No replacements found -- we can't correct it, so provide the dropout location as the source
+        replacement.isSameField = true;
+        replacement.fieldLine = thisFieldDropouts[dropOutIndex].fieldLine;
+    } else {
         // Find the candidate with the lowest spatial distance from the dropout
         qint32 lowestDistance = 1000000;
         for (const Replacement &candidate: candidates) {
@@ -389,62 +417,12 @@ void DropOutCorrect::findPotentialReplacementLine(const QVector<DropOutLocation>
 }
 
 // Correct a dropout by copying data from a replacement line.
-void DropOutCorrect::correctDropOut(const DropOutLocation &dropOut,
-                                    const Replacement &replacement, const Replacement &chromaReplacement,
-                                    QByteArray &thisFieldData, const QByteArray &otherFieldData)
+void DropOutCorrect::correctDropOut(const DropOutLocation &dropOut, const Replacement &replacement, QByteArray &targetField, const QByteArray &sourceField)
 {
-    if (replacement.fieldLine == -1) {
-        // No correction needed
-        return;
-    }
-
-    const quint16 *sourceLine = reinterpret_cast<const quint16 *>(replacement.isSameField ? thisFieldData.data()
-                                                                                          : otherFieldData.data())
-                                + ((replacement.fieldLine - 1) * videoParameters.fieldWidth);
-    quint16 *targetLine = reinterpret_cast<quint16 *>(thisFieldData.data())
-                          + ((dropOut.fieldLine - 1) * videoParameters.fieldWidth);
-
-    if (chromaReplacement.fieldLine == -1) {
-        // No separate chroma replacement; just copy the whole signal
-
-        for (qint32 pixel = dropOut.startx; pixel < dropOut.endx; pixel++) {
-            targetLine[pixel] = sourceLine[pixel];
-        }
-    } else {
-        // Combine low frequencies (mostly luma) from replacement with high
-        // frequencies (mostly chroma) from chromaReplacement. As this is only
-        // a 1D filter, it won't achieve very good separation, but it's good
-        // enough for the purposes of replacing a dropout.
-
-        Filters filters;
-        QVector<quint16> lineBuf(videoParameters.fieldWidth);
-        auto filterLineBuf = [&] {
-            if (videoParameters.isSourcePal) {
-                filters.palLumaFirFilter(lineBuf.data(), lineBuf.size());
-            } else {
-                filters.ntscLumaFirFilter(lineBuf.data(), lineBuf.size());
-            }
-        };
-
-        // Extract LF from replacement
-        for (qint32 pixel = 0; pixel < videoParameters.fieldWidth; pixel++) {
-            lineBuf[pixel] = sourceLine[pixel];
-        }
-        filterLineBuf();
-        for (qint32 pixel = dropOut.startx; pixel < dropOut.endx; pixel++) {
-            targetLine[pixel] = lineBuf[pixel];
-        }
-
-        // Extract HF from chromaReplacement (by extracting LF, then subtracting from the original)
-        const quint16 *chromaLine = reinterpret_cast<const quint16 *>(chromaReplacement.isSameField ? thisFieldData.data()
-                                                                                                    : otherFieldData.data())
-                                    + ((chromaReplacement.fieldLine - 1) * videoParameters.fieldWidth);
-        for (qint32 pixel = 0; pixel < videoParameters.fieldWidth; pixel++) {
-            lineBuf[pixel] = chromaLine[pixel];
-        }
-        filterLineBuf();
-        for (qint32 pixel = dropOut.startx; pixel < dropOut.endx; pixel++) {
-            targetLine[pixel] += chromaLine[pixel] - lineBuf[pixel];
-        }
+    for (qint32 pixel = dropOut.startx; pixel < dropOut.endx; pixel++) {
+        *(targetField.data() + (((dropOut.fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2))) =
+                *(sourceField.data() + (((replacement.fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2)));
+        *(targetField.data() + (((dropOut.fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2) + 1)) =
+                *(sourceField.data() + (((replacement.fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2) + 1));
     }
 }
