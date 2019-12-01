@@ -71,6 +71,10 @@ private:
     LdDecodeMetaData ldDecodeMetaData;
     LdDecodeMetaData::VideoParameters videoParameters;
 
+    void correctField(const QVector<DropOutLocation> &thisFieldDropouts,
+                      const QVector<DropOutLocation> &otherFieldDropouts,
+                      QByteArray &thisFieldData, const QByteArray &otherFieldData,
+                      bool thisFieldIsFirst, bool intraField);
     QVector<DropOutLocation> populateDropoutsVector(LdDecodeMetaData::Field field, bool overCorrect);
     QVector<DropOutLocation> setDropOutLocations(QVector<DropOutLocation> dropOuts);
     Replacement findReplacementLine(const QVector<DropOutLocation> &thisFieldDropouts,
