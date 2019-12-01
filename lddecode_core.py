@@ -197,7 +197,7 @@ RFParams_PAL = {
 }
 
 class RFDecode:
-    def __init__(self, inputfreq = 40, system = 'NTSC', blocklen_ = 32*1024, decode_digital_audio = False, decode_analog_audio = True, have_analog_audio = True, mtf_mult = 1.0, mtf_offset = 0):
+    def __init__(self, inputfreq = 40, system = 'NTSC', blocklen_ = 32*1024, decode_digital_audio = False, decode_analog_audio = 0, have_analog_audio = True, mtf_mult = 1.0, mtf_offset = 0):
         self.blocklen = blocklen_
         self.blockcut = 1024 # ???
         self.blockcut_end = 0
@@ -232,7 +232,7 @@ class RFDecode:
     def computefilters(self):
         self.computevideofilters()
 
-        if self.decode_analog_audio: 
+        if self.decode_analog_audio > 0: 
             self.computeaudiofilters()
 
         if self.decode_digital_audio:
@@ -1584,7 +1584,7 @@ class Field:
         #wf2 = copy.copy(wow)
         #wf2[4:-3] = wf_filter[5:]
 
-    def downscale(self, lineinfo = None, linesout = None, outwidth = None, channel='demod', audio = False):
+    def downscale(self, lineinfo = None, linesout = None, outwidth = None, channel='demod', audio = 0):
         if lineinfo is None:
             lineinfo = self.linelocs
         if outwidth is None:
@@ -1609,8 +1609,8 @@ class Field:
                 logging.warning("WARNING: TBC failure at line %d", l)
                 dsout[(l - lineoffset) * outwidth:(l + 1 - lineoffset)*outwidth] = self.rf.SysParams['ire0']
 
-        if audio and self.rf.decode_analog_audio:
-            self.dsaudio, self.audio_next_offset = downscale_audio(self.data['audio'], lineinfo, self.rf, self.linecount, self.audio_offset)
+        if audio > 0 and self.rf.decode_analog_audio:
+            self.dsaudio, self.audio_next_offset = downscale_audio(self.data['audio'], lineinfo, self.rf, self.linecount, self.audio_offset, freq = audio)
             
         if self.rf.decode_digital_audio:
             self.efmout = self.data['efm'][int(self.linelocs[1]):int(self.linelocs[self.linecount + 1])]
@@ -1913,7 +1913,7 @@ class FieldPAL(Field):
 
     def downscale(self, final = False, *args, **kwargs):
         # For PAL, each field starts with the line containing the first full VSYNC pulse
-        dsout, dsaudio, dsefm = super(FieldPAL, self).downscale(audio = final, *args, **kwargs)
+        dsout, dsaudio, dsefm = super(FieldPAL, self).downscale(*args, **kwargs)
         
         if final:
             self.dspicture = self.hz_to_output(dsout)
@@ -2142,7 +2142,11 @@ class FieldNTSC(Field):
         return ((output - 1024) / self.out_scale) + self.rf.SysParams['vsync_ire']
 
     def downscale(self, lineoffset = 0, final = False, *args, **kwargs):
-        dsout, dsaudio, dsefm = super(FieldNTSC, self).downscale(audio = final, *args, **kwargs)
+        if final == False:
+            if 'audio' in kwargs:
+                kwargs['audio'] = 0
+
+        dsout, dsaudio, dsefm = super(FieldNTSC, self).downscale(*args, **kwargs)
         
         if final:
             lines16 = self.hz_to_output(dsout)
@@ -2293,7 +2297,7 @@ class CombNTSC:
 
 class LDdecode:
     
-    def __init__(self, fname_in, fname_out, freader, analog_audio = True, digital_audio = False, system = 'NTSC', doDOD = True, threads=4):
+    def __init__(self, fname_in, fname_out, freader, analog_audio = 0, digital_audio = False, system = 'NTSC', doDOD = True, threads=4):
         self.demodcache = None
 
         self.infile = open(fname_in, 'rb')
@@ -2305,7 +2309,7 @@ class LDdecode:
 
         self.blackIRE = 0
 
-        self.analog_audio = analog_audio
+        self.analog_audio = int(analog_audio * 1000)
         self.digital_audio = digital_audio
 
         self.outfile_json = None
@@ -2315,8 +2319,8 @@ class LDdecode:
         if fname_out is not None:        
             self.outfile_video = open(fname_out + '.tbc', 'wb')
             #self.outfile_json = open(fname_out + '.json', 'wb')
-            self.outfile_audio = open(fname_out + '.pcm', 'wb') if analog_audio else None
-            self.outfile_efm = open(fname_out + '.efm', 'wb') if digital_audio else None
+            self.outfile_audio = open(fname_out + '.pcm', 'wb') if self.analog_audio else None
+            self.outfile_efm = open(fname_out + '.efm', 'wb') if self.digital_audio else None
         else:
             self.outfile_video = None
             self.outfile_audio = None
@@ -2452,9 +2456,6 @@ class LDdecode:
         if not f.valid:
             logging.info("Bad data - jumping one second")
             return f, f.nextfieldoffset
-        else:
-            self.audio_offset = f.audio_next_offset
-            #logging.info(f.isFirstField, f.cavFrame)
             
         return f, f.nextfieldoffset - (self.readloc - self.rawdecode['startloc'])
 
@@ -2477,7 +2478,9 @@ class LDdecode:
             self.fdoffset += offset
             
             if f is not None and f.valid:
-                picture, audio, efm = f.downscale(linesout = self.output_lines, final=True)
+                picture, audio, efm = f.downscale(linesout = self.output_lines, final=True, audio=self.analog_audio)
+
+                self.audio_offset = f.audio_next_offset
 
                 metrics = self.computeMetrics(f, None, verbose=True)
                 if 'blackToWhiteRFRatio' in metrics and MTFadjusted == False:
@@ -2496,8 +2499,6 @@ class LDdecode:
                     self.fdoffset -= offset
 
         if f is not None and self.fname_out is not None:
-            #picture, audio, efm = f.downscale(linesout = self.output_lines, final=True)
-
             # Only write a FirstField first
             if len(self.fieldinfo) == 0 and not f.isFirstField:
                 return f
@@ -2856,7 +2857,7 @@ class LDdecode:
     def build_json(self, f):
         ''' build up the JSON structure for file output. '''
         jout = {}
-        jout['pcmAudioParameters'] = {'bits':16, 'isLittleEndian': True, 'isSigned': True, 'sampleRate': 48000}
+        jout['pcmAudioParameters'] = {'bits':16, 'isLittleEndian': True, 'isSigned': True, 'sampleRate': self.analog_audio}
 
         vp = {}
 
