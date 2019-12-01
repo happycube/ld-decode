@@ -150,6 +150,15 @@ class EFM_PLL:
                 # Update the reference clock?
                 if self.frequencyHysteresis < -1.0 or self.frequencyHysteresis > 1.0:
                     aper = self.periodAdjustBase * edgeDelta / self.currentPeriod
+
+                    # If there's been a substantial gap since the last edge (e.g.
+                    # a dropout), edgeDelta can be very large here, so we need to
+                    # limit how much of an adjustment we're willing to make
+                    if aper < -self.periodAdjustBase:
+                        aper = -self.periodAdjustBase
+                    elif aper > self.periodAdjustBase:
+                        aper = self.periodAdjustBase
+
                     self.currentPeriod += aper
 
                     if self.currentPeriod < self.minimumPeriod:

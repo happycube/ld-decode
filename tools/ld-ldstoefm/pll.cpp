@@ -134,6 +134,15 @@ void Pll::pushEdge(qreal sampleDelta)
             // Update the reference clock?
             if (frequencyHysteresis < -1.0 || frequencyHysteresis > 1.0) {
                 qreal aper = periodAdjustBase * edgeDelta / currentPeriod;
+
+                // If there's been a substantial gap since the last edge (e.g.
+                // a dropout), edgeDelta can be very large here, so we need to
+                // limit how much of an adjustment we're willing to make
+                if (aper < -periodAdjustBase)
+                    aper = -periodAdjustBase;
+                else if (aper > periodAdjustBase)
+                    aper = periodAdjustBase;
+
                 currentPeriod += aper;
 
                 if (currentPeriod < minimumPeriod) {
