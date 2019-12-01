@@ -99,34 +99,26 @@ void DropOutCorrect::correctField(const QVector<DropOutLocation> &thisFieldDropo
                                   QByteArray &thisFieldData, const QByteArray &otherFieldData,
                                   bool thisFieldIsFirst, bool intraField)
 {
-    if (thisFieldDropouts.empty()) {
-        // No dropouts in this field -- nothing to do
-        return;
-    }
-
-    // Find replacement lines for this field's dropouts
-    QVector<Replacement> replacementLines;
-    replacementLines.resize(thisFieldDropouts.size());
     for (qint32 dropoutIndex = 0; dropoutIndex < thisFieldDropouts.size(); dropoutIndex++) {
         // Don't correct by default
-        replacementLines[dropoutIndex].fieldLine = -1;
+        Replacement replacement;
+        replacement.isSameField = true;
+        replacement.fieldLine = -1;
 
         // Is the current dropout in the colour burst?
         if (thisFieldDropouts[dropoutIndex].location == Location::colourBurst) {
-            replacementLines[dropoutIndex] = findReplacementLine(thisFieldDropouts, otherFieldDropouts,
-                                                                 dropoutIndex, thisFieldIsFirst, true, intraField);
+            replacement = findReplacementLine(thisFieldDropouts, otherFieldDropouts,
+                                              dropoutIndex, thisFieldIsFirst, true, intraField);
         }
 
         // Is the current dropout in the visible video line?
         if (thisFieldDropouts[dropoutIndex].location == Location::visibleLine) {
-            replacementLines[dropoutIndex] = findReplacementLine(thisFieldDropouts, otherFieldDropouts,
-                                                                 dropoutIndex, thisFieldIsFirst, false, intraField);
+            replacement = findReplacementLine(thisFieldDropouts, otherFieldDropouts,
+                                              dropoutIndex, thisFieldIsFirst, false, intraField);
         }
-    }
 
-    // Correct the data
-    for (qint32 dropoutIndex = 0; dropoutIndex < thisFieldDropouts.size(); dropoutIndex++) {
-        correctDropOut(thisFieldDropouts[dropoutIndex], replacementLines[dropoutIndex], thisFieldData, otherFieldData);
+        // Correct the data
+        correctDropOut(thisFieldDropouts[dropoutIndex], replacement, thisFieldData, otherFieldData);
     }
 }
 
