@@ -85,7 +85,8 @@ private:
                                       qint32 sourceOffset, qint32 stepAmount,
                                       qint32 firstActiveFieldLine, qint32 lastActiveFieldLine,
                                       QVector<Replacement> &candidates);
-    void correctDropOut(const DropOutLocation &dropOut, const Replacement &replacement, QByteArray &targetField, const QByteArray &sourceField);
+    void correctDropOut(const DropOutLocation &dropOut, const Replacement &replacement,
+                        QByteArray &thisFieldData, const QByteArray &otherFieldData);
 };
 
 #endif // DROPOUTCORRECT_H

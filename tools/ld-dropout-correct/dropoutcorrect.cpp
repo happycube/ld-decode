@@ -108,6 +108,7 @@ void DropOutCorrect::correctField(const QVector<DropOutLocation> &thisFieldDropo
     QVector<Replacement> replacementLines;
     replacementLines.resize(thisFieldDropouts.size());
     for (qint32 dropoutIndex = 0; dropoutIndex < thisFieldDropouts.size(); dropoutIndex++) {
+        // Don't correct by default
         replacementLines[dropoutIndex].fieldLine = -1;
 
         // Is the current dropout in the colour burst?
@@ -125,15 +126,7 @@ void DropOutCorrect::correctField(const QVector<DropOutLocation> &thisFieldDropo
 
     // Correct the data
     for (qint32 dropoutIndex = 0; dropoutIndex < thisFieldDropouts.size(); dropoutIndex++) {
-        if (replacementLines[dropoutIndex].fieldLine == -1) {
-            // Doesn't need correcting
-        } else if (replacementLines[dropoutIndex].isSameField) {
-            // Correct this field from itself (intra-field correction)
-            correctDropOut(thisFieldDropouts[dropoutIndex], replacementLines[dropoutIndex], thisFieldData, thisFieldData);
-        } else {
-            // Correct this field from the other field (inter-field correction)
-            correctDropOut(thisFieldDropouts[dropoutIndex], replacementLines[dropoutIndex], thisFieldData, otherFieldData);
-        }
+        correctDropOut(thisFieldDropouts[dropoutIndex], replacementLines[dropoutIndex], thisFieldData, otherFieldData);
     }
 }
 
@@ -342,9 +335,9 @@ DropOutCorrect::Replacement DropOutCorrect::findReplacementLine(const QVector<Dr
 
     Replacement replacement;
     if (candidates.empty()) {
-        // No replacements found -- we can't correct it, so provide the dropout location as the source
+        // No replacements found -- don't correct it
         replacement.isSameField = true;
-        replacement.fieldLine = thisFieldDropouts[dropOutIndex].fieldLine;
+        replacement.fieldLine = -1;
     } else {
         // Find the candidate with the lowest spatial distance from the dropout
         qint32 lowestDistance = 1000000;
@@ -403,12 +396,21 @@ void DropOutCorrect::findPotentialReplacementLine(const QVector<DropOutLocation>
 }
 
 // Correct a dropout by copying data from a replacement line.
-void DropOutCorrect::correctDropOut(const DropOutLocation &dropOut, const Replacement &replacement, QByteArray &targetField, const QByteArray &sourceField)
+void DropOutCorrect::correctDropOut(const DropOutLocation &dropOut, const Replacement &replacement,
+                                    QByteArray &thisFieldData, const QByteArray &otherFieldData)
 {
+    if (replacement.fieldLine == -1) {
+        // No correction needed
+        return;
+    }
+
+    const quint16 *sourceLine = reinterpret_cast<const quint16 *>(replacement.isSameField ? thisFieldData.data()
+                                                                                          : otherFieldData.data())
+                                + ((replacement.fieldLine - 1) * videoParameters.fieldWidth);
+    quint16 *targetLine = reinterpret_cast<quint16 *>(thisFieldData.data())
+                          + ((dropOut.fieldLine - 1) * videoParameters.fieldWidth);
+
     for (qint32 pixel = dropOut.startx; pixel < dropOut.endx; pixel++) {
-        *(targetField.data() + (((dropOut.fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2))) =
-                *(sourceField.data() + (((replacement.fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2)));
-        *(targetField.data() + (((dropOut.fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2) + 1)) =
-                *(sourceField.data() + (((replacement.fieldLine - 1) * videoParameters.fieldWidth * 2) + (pixel * 2) + 1));
+        targetLine[pixel] = sourceLine[pixel];
     }
 }
