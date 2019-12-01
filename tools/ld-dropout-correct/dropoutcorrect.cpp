@@ -100,10 +100,7 @@ void DropOutCorrect::correctField(const QVector<DropOutLocation> &thisFieldDropo
                                   bool thisFieldIsFirst, bool intraField)
 {
     for (qint32 dropoutIndex = 0; dropoutIndex < thisFieldDropouts.size(); dropoutIndex++) {
-        // Don't correct by default
         Replacement replacement;
-        replacement.isSameField = true;
-        replacement.fieldLine = -1;
 
         // Is the current dropout in the colour burst?
         if (thisFieldDropouts[dropoutIndex].location == Location::colourBurst) {
@@ -325,12 +322,10 @@ DropOutCorrect::Replacement DropOutCorrect::findReplacementLine(const QVector<Dr
     qDebug() << (isColourBurst ? "Colourburst" : "Visible video") << "dropout on line"
              << thisFieldDropouts[dropOutIndex].fieldLine << "of" << (thisFieldIsFirst ? "first" : "second") << "field";
 
+    // If no candidate is found, return no replacement
     Replacement replacement;
-    if (candidates.empty()) {
-        // No replacements found -- don't correct it
-        replacement.isSameField = true;
-        replacement.fieldLine = -1;
-    } else {
+
+    if (!candidates.empty()) {
         // Find the candidate with the lowest spatial distance from the dropout
         qint32 lowestDistance = 1000000;
         for (const Replacement &candidate: candidates) {

@@ -60,6 +60,9 @@ private:
     };
 
     struct Replacement {
+        // The default value is no replacement
+        Replacement() : isSameField(true), fieldLine(-1) {}
+
         bool isSameField;
         qint32 fieldLine;
     };
