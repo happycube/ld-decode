@@ -477,8 +477,10 @@ class RFDecode:
         rv['video'] = video_out[self.blockcut:-self.blockcut_end] if cut else video_out
 
         if self.decode_digital_audio:
-            efm_out = npfft.ifft(indata_fft * self.Filters['Fefm']) 
-            rv['efm'] = np.uint16(efm_out[self.blockcut:-self.blockcut_end].real) if cut else efm_out
+            efm_out = npfft.ifft(indata_fft * self.Filters['Fefm'])
+            if cut:
+                efm_out = efm_out[self.blockcut:-self.blockcut_end]
+            rv['efm'] = np.int16(np.clip(efm_out.real, -32768, 32767))
 
         if self.decode_analog_audio:
             # Audio phase 1
@@ -2430,8 +2432,7 @@ class LDdecode:
             self.outfile_audio.write(audio)
 
         if self.digital_audio == True:
-            efm_s16 = np.int16(np.int32(efm) - 32768)
-            efm_out = self.efm_pll.process(efm_s16)
+            efm_out = self.efm_pll.process(efm)
             self.outfile_efm.write(efm_out.tobytes())
         else:
             efm = None

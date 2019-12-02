@@ -37,9 +37,7 @@ public:
 
 private:
     // ZC detector state
-    bool zcFirstRun;
     qint16 zcPreviousInput;
-    bool prevDirection;
     qreal delta;
 
     // PLL state
@@ -54,7 +52,6 @@ private:
     qint8 tCounter;
 
     void pushEdge(qreal sampleDelta);
-    void pushTValue(qint8 bit);
 };
 
 #endif // PLL_H
