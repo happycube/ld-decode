@@ -957,11 +957,21 @@ def downscale_audio(audio, lineinfo, rf, linecount, timeoffset = 0, freq = 48000
     for i, t in enumerate(arange):
         linenum = (((t * 1000000) / rf.SysParams['line_period']) + 1)
         
-        lineloc_cur = lineinfo[np.int(linenum)]
-        try:
-            lineloc_next = lineinfo[np.int(linenum) + 1]
-        except:
+        # XXX: 
+        # The timing handling can sometimes go outside the bounds of the known line #'s.  
+        # This is a quick-ish fix that should work OK, but may need to be reworked if
+        # analog audio is weak for some reason
+        if linenum < 0:
+            lineloc_cur = int(lineinfo[0] + (rf.linelen * linenum))
             lineloc_next = lineloc_cur + rf.linelen
+        else:
+            try:
+                lineloc_cur = lineinfo[np.int(linenum)]
+                lineloc_next = lineinfo[np.int(linenum) + 1]
+            except:
+                # Catch things that go past the last known line by using the last lines here.
+                lineloc_cur = lineinfo[-2]
+                lineloc_next = lineloc_cur + rf.linelen
 
         sampleloc = lineloc_cur
         sampleloc += (lineloc_next - lineloc_cur) * (linenum - np.floor(linenum))
@@ -978,14 +988,18 @@ def downscale_audio(audio, lineinfo, rf, linecount, timeoffset = 0, freq = 48000
     output16 = np.zeros((2 * (len(arange) - 1)), dtype=np.int16)
 
     for i in range(len(arange) - 1):    
-        output_left = nb_mean(audio['audio_left'][np.int(locs[i]):np.int(locs[i+1])])
-        output_right = nb_mean(audio['audio_right'][np.int(locs[i]):np.int(locs[i+1])])
+        if locs[i] > locs[i + 1]:
+            output_left = nb_mean(audio['audio_left'][np.int(locs[i]):np.int(locs[i+1])])
+            output_right = nb_mean(audio['audio_right'][np.int(locs[i]):np.int(locs[i+1])])
 
-        output_left = (output_left * swow[i]) - rf.SysParams['audio_lfreq']
-        output_right = (output_right * swow[i]) - rf.SysParams['audio_rfreq']
-        
-        output[(i * 2) + 0] = dsa_rescale(output_left) #int(np.round(output_left * 32767 / 150000))
-        output[(i * 2) + 1] = dsa_rescale(output_right)
+            output_left = (output_left * swow[i]) - rf.SysParams['audio_lfreq']
+            output_right = (output_right * swow[i]) - rf.SysParams['audio_rfreq']
+            
+            output[(i * 2) + 0] = dsa_rescale(output_left) #int(np.round(output_left * 32767 / 150000))
+            output[(i * 2) + 1] = dsa_rescale(output_right)
+        else:
+            output_left = 0
+            output_right = 0
         
     #print(locs[len(arange)-1], len(audio['audio_left']), np.min(output), np.max(output), swow[len(arange) - 1], linenum)
 
