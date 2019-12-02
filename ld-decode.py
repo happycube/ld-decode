@@ -62,7 +62,7 @@ except ValueError as e:
 
 system = 'PAL' if args.pal else 'NTSC'
     
-ldd = LDdecode(filename, outname, loader, analog_audio = not args.daa, digital_audio = not args.noefm, system=system, doDOD = not args.nodod, threads=args.threads)
+ldd = LDdecode(filename, outname, loader, analog_audio = 0 if args.daa else 44.100, digital_audio = not args.noefm, system=system, doDOD = not args.nodod, threads=args.threads)
 ldd.roughseek(firstframe * 2)
 
 if system == 'NTSC' and not args.ntscj:
