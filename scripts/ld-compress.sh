@@ -66,7 +66,7 @@ else
       for f in "$@" ; do
         if [[ "$f" == *.raw.oga || "$f" == *.ldf ]]
         then
-         >&2 echo Uncompressing \'"$f"\' && ${fileinput_method} "$f" | ffmpeg -hide_banner -loglevel error -i - -f s16le -c:a pcm_s16le - | ld-lds-converter -p -o "$(basename ${f%.raw.oga} .ldf).lds"
+         >&2 echo Uncompressing \'"$f"\' && ${fileinput_method} "$f" | ffmpeg -hide_banner -loglevel error -i - -f s16le -c:a pcm_s16le - | ld-lds-converter -p -o "$(basename "${f%.raw.oga}" .ldf).lds"
         else
          >&2 echo Error: \'"$f"\' does not appear to be a .raw.oga/.ldf file. Skipping.
         fi
@@ -79,7 +79,7 @@ else
       if [[ "$f" == *.raw.oga || "$f" == *.ldf ]]
       then
         sleep 1 # Give any previous iteration a second to output.
-        >&2 echo "Performing checksum of" \'"$f"\': && ${fileinput_method} "$f" | tee >(openssl dgst -md5 | echo $(awk '{print $2}') " $f") >(ffmpeg -hide_banner -loglevel error -f ogg -i - -f s16le -c:a pcm_s16le - | ld-lds-converter -p | openssl dgst -md5 | echo $(awk '{print $2}') " $(basename ${f%.raw.oga} .ldf).lds") > /dev/null
+        >&2 echo "Performing checksum of" \'"$f"\': && ${fileinput_method} "$f" | tee >(openssl dgst -md5 | echo $(awk '{print $2}') " $f") >(ffmpeg -hide_banner -loglevel error -f ogg -i - -f s16le -c:a pcm_s16le - | ld-lds-converter -p | openssl dgst -md5 | echo $(awk '{print $2}') " $(basename "${f%.raw.oga}" .ldf).lds") > /dev/null
       else
         sleep 1
         >&2 echo Error: \'"$f"\' does not appear to be a .raw.oga/.ldf file. Skipping.
