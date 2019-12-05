@@ -2075,15 +2075,19 @@ class FieldNTSC(Field):
         amed[True] = np.abs(angular_mean(bursts_arr[True], zero_base=False))
         amed[False] = np.abs(angular_mean(bursts_arr[False], zero_base=False))
         
-        #print(amed)
         field14 = amed[True] < amed[False]
 
-        # if the medians are too close, recompute them with a 90 degree offset
-        if (np.abs(amed[True] - amed[False]) < .1):
+        # if the medians are too close, recompute them with a 90 degree offset.
+
+        # XXX: print a warning message here since some disks will suffer phase errors
+        # if this code runs.  (OTOH, any disk that triggers this is *seriously* out of
+        # spec...)
+        if (np.abs(amed[True] - amed[False]) < .025):
             amed = {}
             amed[True] = np.abs(angular_mean(bursts_arr[True] + .25, zero_base=False))
             amed[False] = np.abs(angular_mean(bursts_arr[False] + .25, zero_base=False))
-            field14 = amed[True] < amed[False]
+            # Use > instead of < to maintain polarity in *most* cases
+            field14 = amed[True] > amed[False]
 
         self.amed = amed
         self.zc_bursts = zc_bursts
