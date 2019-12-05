@@ -175,9 +175,9 @@ def make_loader(filename, inputfreq=None):
     if inputfreq is not None:
         # We're resampling, so we have to use ffmpeg.
 
-        if filename.endswith('.r16'):
+        if filename.endswith('.r16') or filename.endswith('.s16'):
             input_args = ['-f', 's16le']
-        elif filename.endswith('.r8'):
+        elif filename.endswith('.r8') or filename.endswith('.u8'):
             input_args = ['-f', 'u8']
         elif filename.endswith('.lds') or filename.endswith('.r30'):
             raise ValueError('File format not supported when resampling: ' + filename)
@@ -194,9 +194,9 @@ def make_loader(filename, inputfreq=None):
         return load_packed_data_4_40
     elif filename.endswith('.r30'):
         return load_packed_data_3_32
-    elif filename.endswith('.r16'):
+    elif filename.endswith('.r16') or filename.endswith('.s16'):
         return load_unpacked_data_s16
-    elif filename.endswith('.r8'):
+    elif filename.endswith('.r8') or filename.endswith('.u8'):
         return load_unpacked_data_u8
     elif filename.endswith('raw.oga') or filename.endswith('.ldf'):
         try:
