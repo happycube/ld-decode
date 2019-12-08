@@ -6,12 +6,10 @@ import scipy.signal as sps
 import scipy.fftpack as fftpack
 import copy
 
-
-import matplotlib.pyplot as plt
-
 import lddecode_core as ldd
 import lddutils as lddu
 from lddutils import unwrap_hilbert, inrange
+import vhs_utils
 
 #import pll
 import vhs_formats
@@ -23,6 +21,7 @@ def fromDB(val):
     return 10.0 ** (val / 20.0)
 
 def chroma_to_u16(chroma):
+    """Scale the chroma output array to a 16-bit value for output."""
     S16_ABS_MAX = 32767
 
     if np.max(chroma) > S16_ABS_MAX or abs(np.min(chroma)) > S16_ABS_MAX:
@@ -241,7 +240,7 @@ class VHSDecode(ldd.LDdecode):
         else:
             self.outfile_chroma = None
 
-        plt.rcParams['figure.figsize'] = 15, 8
+        #plt.rcParams['figure.figsize'] = 15, 8
 
     # Override to avoid NaN in JSON.
     def calcsnr(self, f, snrslice):
@@ -311,6 +310,24 @@ class VHSRFDecode(ldd.RFDecode):
 
         cc = vhs_formats.VHS_COLOR_CARRIER_MHZ
 
+        # More advanced rf filter - disabled for commit
+        # DP = self.DecoderParams
+        # y_fm = sps.butter(DP['video_bpf_order'], [DP['video_bpf_low']/self.freq_hz_half,
+        #                                    DP['video_bpf_high']/self.freq_hz_half], btype='bandpass')
+        # y_fm = lddu.filtfft(y_fm, self.blocklen)
+
+        # y_fm_lowpass = lddu.filtfft(sps.butter(1, [5.7/self.freq_half], btype='lowpass'),
+        #                             self.blocklen)
+
+        # y_fm_chroma_trap = lddu.filtfft(sps.butter(1,
+        #                                         [(cc * 0.9)/self.freq_half, (cc * 1.1)/self.freq_half],
+        #                                         btype='bandstop'),
+        #                             self.blocklen)
+
+        # y_fm_filter = y_fm * y_fm_lowpass * y_fm_chroma_trap * self.Filters['hilbert']
+
+        # self.Filters['RFVideo'] = y_fm_filter
+
         # Video (luma) de-emphasis
         # Not sure about the math of this but, by using a high-shelf filter and then
         # swapping b and a we get a low-shelf filter that goes from 0 to -14 dB rather
@@ -328,19 +345,23 @@ class VHSRFDecode(ldd.RFDecode):
         chroma_lowpass = sps.butter(4, [1.3/self.freq_half], btype='lowpass')
         self.Filters['FVideoBurst'] = lddu.filtfft(chroma_lowpass, self.blocklen)
 
+
         # The following filters are for post-TBC:
 
-        out_frequency_half = (self.SysParams['fsc_mhz'] * 4) / 2
+        # The output sample rate is at approx 4fsc
+        fsc_mhz = self.SysParams['fsc_mhz']
+        out_sample_rate_mhz = fsc_mhz * 4
+        out_frequency_half = out_sample_rate_mhz / 2
 
         # Final band-pass filter for chroma output.
-        chroma_bandpass_final = sps.butter(2, [(self.SysParams['fsc_mhz']-.08)/out_frequency_half,
-                                               (self.SysParams['fsc_mhz']+.06)/out_frequency_half], btype='bandpass')
+        chroma_bandpass_final = sps.butter(2, [(fsc_mhz - .08)/out_frequency_half,
+                                               (fsc_mhz + .06)/out_frequency_half], btype='bandpass')
         self.Filters['FChromaFinal'] = lddu.filtfft(chroma_bandpass_final, self.SysParams['outlinelen'])
 
 
         fieldlen = self.SysParams['outlinelen'] * max(self.SysParams['field_lines'])
 
-        het_freq = self.SysParams['fsc_mhz'] + cc
+        het_freq = fsc_mhz + cc
 
         ## Bandpass filter to select heterodyne frequency from the mixed fsc and color carrier signal
         het_filter_raw = sps.butter(2, [(het_freq -.001)/out_frequency_half,
@@ -353,13 +374,15 @@ class VHSRFDecode(ldd.RFDecode):
         # het_filter_b = lddu.filtfft(het_filter_b_raw, self.SysParams['outlinelen'])
         # self.Filters['HetFreq'] = het_filter_b
 
-        samples = np.arange(self.SysParams['outlinelen'] * (626 // 2))
+        samples = np.arange(fieldlen)
+
+
         # As this is done on the tbced signal, we need the sampling frequency of that,
         # which is 4fsc for NTSC and approx. 4 fsc for PAL.
         # TODO: Correct frequency for pal?
-        wave_scale =  (self.SysParams['fsc_mhz']) / (self.SysParams['fsc_mhz'] * 4)
+        wave_scale =  fsc_mhz / out_sample_rate_mhz
 
-        cc_wave_scale = cc / (self.SysParams['fsc_mhz'] * 4)
+        cc_wave_scale = cc / out_sample_rate_mhz
         self.cc_ratio = cc_wave_scale
         # 0 phase downconverted color under carrier wave
         self.cc_wave = np.sin(2 * np.pi * cc_wave_scale * samples)
@@ -369,7 +392,7 @@ class VHSRFDecode(ldd.RFDecode):
         cc_wave_270 = np.sin((2 * np.pi * cc_wave_scale * samples) + np.pi + (np.pi / 2))
 
         # Standard frequency color carrier wave.
-        self.fsc_wave = np.sin(2 * np.pi * wave_scale * samples)
+        self.fsc_wave = vhs_utils.gen_wave_at_frequency(fsc_mhz, out_sample_rate_mhz, fieldlen)
 
         # cc_samples = np.arange(self.blocklen)
         # cc_scale = cc / inputfreq

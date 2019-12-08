@@ -12,11 +12,11 @@ RFParams_PAL_VHS = {**RFParams_PAL}
 
 # Band-pass filter for Video rf.
 # TODO: Needs tweaking
-RFParams_PAL_VHS['video_bpf_low'] = 3350000
+RFParams_PAL_VHS['video_bpf_low'] = 3550000
 RFParams_PAL_VHS['video_bpf_high'] = 5200000
 # Band-pass filter order.
 # Order may be fine as is.
-#RFParams_PAL_VHS['video_bpf_order'] = 1
+RFParams_PAL_VHS['video_bpf_order'] = 1
 
 # Low-pass filter on Y after demodulation
 RFParams_PAL_VHS['video_lpf_freq'] = 3600000
@@ -27,10 +27,12 @@ RFParams_PAL_VHS['video_lpf_freq'] = 3600000
 SysParams_PAL_VHS = {**SysParams_PAL}
 
 #0 IRE level after demodulation
-SysParams_PAL_VHS['ire0'] = 4140000 #4100000
+SysParams_PAL_VHS['ire0'] = 4100000
 
 # frequency/ire IRE change pr frequency (Is this labeled correctly?)
-SysParams_PAL_VHS['hz_ire'] = 860000 / 100.0
+SysParams_PAL_VHS['hz_ire'] = 700000 / 100.0
+
+SysParams_PAL_VHS['max_ire'] = 100 # Top/white point defined by the standard 4.8 MHz
 
 # Heterodyned color carrier frequency in Mhz.
 # On VHS the same frequency is used for both NTSC and PAL.
