@@ -1297,7 +1297,7 @@ class Field:
             else:
                 currun[1] += 1
 
-        if currun[0] is not None and currun[1] > longrun[1]:
+        if currun is not None and currun[1] > longrun[1]:
             longrun = currun
 
         linelens = []
