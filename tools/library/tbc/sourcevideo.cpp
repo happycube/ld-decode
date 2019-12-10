@@ -24,11 +24,14 @@
 
 #include "sourcevideo.h"
 
+#include <cstdio>
+
 // Class constructor
 SourceVideo::SourceVideo(QObject *parent) : QObject(parent)
 {
     // Default object settings
     isSourceVideoOpen = false;
+    inputFilePos = -1;
     availableFields = -1;
     fieldByteLength = -1;
     fieldLineLength = -1;
@@ -44,7 +47,8 @@ SourceVideo::~SourceVideo()
 
 // Source Video file manipulation methods -----------------------------------------------------------------------------
 
-// Open an input video data file (returns true on success)
+// Open an input video data file. If filename is "-", read from stdin.
+// Returns true on success.
 bool SourceVideo::open(QString filename, qint32 _fieldLength, qint32 _fieldLineLength)
 {
     fieldByteLength = _fieldLength * 2;
@@ -61,21 +65,33 @@ bool SourceVideo::open(QString filename, qint32 _fieldLength, qint32 _fieldLineL
 
     // Open the source video file
     inputFile.setFileName(filename);
-    if (!inputFile.open(QIODevice::ReadOnly)) {
-        // Failed to open input file
-        qWarning() << "Could not open " << filename << "as source video input file";
-        isSourceVideoOpen = false;
-        return false;
-    }
+    if (filename == "-") {
+        if (!inputFile.open(stdin, QIODevice::ReadOnly)) {
+            // Failed to open stdin
+            qWarning() << "Could not open stdin as source video input file";
+            return false;
+        }
 
-    // File open successful - configure source video parameters
-    isSourceVideoOpen = true;
-    qint64 tAvailableFields = (inputFile.size() / fieldByteLength);
-    availableFields = static_cast<qint32>(tAvailableFields);
-    qDebug() << "SourceVideo::open(): Successful -" << availableFields << "fields available";
+        // When reading from stdin, we don't know how long the input will be
+        availableFields = -1;
+    } else {
+        if (!inputFile.open(QIODevice::ReadOnly)) {
+            // Failed to open named input file
+            qWarning() << "Could not open " << filename << "as source video input file";
+            return false;
+        }
+
+        // File open successful - configure source video parameters
+        qint64 tAvailableFields = (inputFile.size() / fieldByteLength);
+        availableFields = static_cast<qint32>(tAvailableFields);
+        qDebug() << "SourceVideo::open(): Successful -" << availableFields << "fields available";
+    }
 
     // Initialise cache
     fieldCache.clear();
+
+    isSourceVideoOpen = true;
+    inputFilePos = 0;
 
     return true;
 }
@@ -91,6 +107,7 @@ void SourceVideo::close()
     qDebug() << "SourceVideo::close(): Called, closing the source video file and emptying the frame cache";
     inputFile.close();
     isSourceVideoOpen = false;
+    inputFilePos = -1;
 
     qDebug() << "SourceVideo::close(): Source video input file closed";
 }
@@ -101,7 +118,8 @@ bool SourceVideo::isSourceValid()
     return isSourceVideoOpen;
 }
 
-// Get the number of fields available from the source video file
+// Get the number of fields available from the source video file.
+// Returns -1 if the length is unknown (e.g. we're reading from stdin).
 qint32 SourceVideo::getNumberOfAvailableFields()
 {
     return availableFields;
@@ -122,9 +140,8 @@ QByteArray SourceVideo::getVideoField(qint32 fieldNumber, qint32 startFieldLine,
     // Adjust the field number to index from zero
     fieldNumber--;
 
-    // Ensure source video is open and field is in range
+    // Ensure source video is open
     if (!isSourceVideoOpen) qFatal("Application requested TBC field before opening TBC file - Fatal error");
-    if (fieldNumber < 0 || fieldNumber >= availableFields) qFatal("Application requested non-existant TBC field");
 
     // Calculate the position of the require field line data
     qint64 requiredStartPosition = static_cast<qint64>(fieldByteLength) * static_cast<qint64>(fieldNumber);
@@ -154,15 +171,20 @@ QByteArray SourceVideo::getVideoField(qint32 fieldNumber, qint32 startFieldLine,
         requiredReadLength = static_cast<qint64>(endFieldLine - startFieldLine + 1) * static_cast<qint64>(fieldLineLength);
     }
 
-    if (requiredStartPosition + requiredReadLength > (static_cast<qint64>(fieldByteLength) * availableFields))
+    // Check the requested field and lines are valid
+    if (availableFields != -1
+        && (requiredStartPosition < 0
+            || requiredStartPosition + requiredReadLength > (static_cast<qint64>(fieldByteLength) * availableFields))) {
         qFatal("Application requested field line range that exceeds the boundaries of the input TBC file");
+    }
 
     // Resize the output buffer
     outputFieldData.resize(static_cast<qint32>(requiredReadLength));
 
     // Seek to the correct file position (if not already there)
-    if (inputFile.pos() != requiredStartPosition) {
+    if (inputFilePos != requiredStartPosition) {
         if (!inputFile.seek(requiredStartPosition)) qFatal("Could not seek to required field position in input TBC file");
+        inputFilePos = requiredStartPosition;
     }
 
     // Read the field lines from the input
@@ -170,7 +192,10 @@ QByteArray SourceVideo::getVideoField(qint32 fieldNumber, qint32 startFieldLine,
     qint64 receivedBytes = 0;
     do {
         receivedBytes = inputFile.read(outputFieldData.data() + totalReceivedBytes, requiredReadLength - totalReceivedBytes);
-        totalReceivedBytes += receivedBytes;
+        if (receivedBytes > 0) {
+            totalReceivedBytes += receivedBytes;
+            inputFilePos += receivedBytes;
+        }
     } while (receivedBytes > 0 && totalReceivedBytes < requiredReadLength);
 
     // Verify read was ok

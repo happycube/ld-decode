@@ -53,6 +53,7 @@ public:
 private:
     // File handling globals
     QFile inputFile;
+    qint64 inputFilePos;
     bool isSourceVideoOpen;
     qint32 availableFields;
     qint32 fieldByteLength;
