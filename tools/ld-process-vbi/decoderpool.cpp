@@ -24,8 +24,10 @@
 
 #include "decoderpool.h"
 
-DecoderPool::DecoderPool(QString _inputFileName, qint32 _maxThreads, LdDecodeMetaData &_ldDecodeMetaData, QObject *parent)
-    : QObject(parent), inputFilename(_inputFileName), maxThreads(_maxThreads), ldDecodeMetaData(_ldDecodeMetaData)
+DecoderPool::DecoderPool(QString _inputFilename, QString _outputJsonFilename,
+                         qint32 _maxThreads, LdDecodeMetaData &_ldDecodeMetaData, QObject *parent)
+    : QObject(parent), inputFilename(_inputFilename), outputJsonFilename(_outputJsonFilename),
+      maxThreads(_maxThreads), ldDecodeMetaData(_ldDecodeMetaData)
 {
 }
 
@@ -85,8 +87,7 @@ bool DecoderPool::process()
 
     // Write the JSON metadata file
     qInfo() << "Writing JSON metadata file...";
-    QString outputFileName = inputFilename + ".json";
-    ldDecodeMetaData.write(outputFileName);
+    ldDecodeMetaData.write(outputJsonFilename);
     qInfo() << "VBI processing complete";
 
     // Close the source video
