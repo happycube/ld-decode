@@ -20,7 +20,7 @@ parser = argparse.ArgumentParser(description='Extracts a sample area from raw RF
 parser.add_argument('infile', metavar='infile', type=str, help='source file')
 parser.add_argument('outfile', metavar='outfile', type=str, help='destination file')
 
-parser.add_argument('-s', '--start', metavar='start', type=int, default=0, help='rough jump to frame n of capture (default is 0)')
+parser.add_argument('-s', '--start', metavar='start', type=float, default=0, help='rough jump to frame n of capture (default is 0)')
 parser.add_argument('-l', '--length', metavar='length', type=int, default = -1, help='limit length to n frames')
 
 parser.add_argument('-S', '--seek', metavar='seek', type=int, default=-1, help='seek to frame n of capture')
