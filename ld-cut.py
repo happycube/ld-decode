@@ -79,10 +79,10 @@ else:
     exit(-1)
 
 ldd.roughseek(startloc)
-startidx = ldd.fdoffset
+startidx = int(ldd.fdoffset)
 
 ldd.roughseek(endloc)
-endidx = ldd.fdoffset
+endidx = int(ldd.fdoffset)
 
 if makelds:
     process = subprocess.Popen(['ld-lds-converter', '-o', outname, '-p'], stdin=subprocess.PIPE)
