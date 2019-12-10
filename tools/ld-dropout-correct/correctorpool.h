@@ -40,7 +40,8 @@ class CorrectorPool : public QObject
 {
     Q_OBJECT
 public:
-    explicit CorrectorPool(QString _inputFileName, QString _outputFilename, qint32 _maxThreads, LdDecodeMetaData &_ldDecodeMetaData,
+    explicit CorrectorPool(QString _inputFilename, QString _outputFilename, QString _outputJsonFilename,
+                           qint32 _maxThreads, LdDecodeMetaData &_ldDecodeMetaData,
                            bool _reverse, bool _intraField, bool _overCorrect, QObject *parent = nullptr);
 
     bool process();
@@ -59,6 +60,7 @@ public:
 private:
     QString inputFilename;
     QString outputFilename;
+    QString outputJsonFilename;
     qint32 maxThreads;
     bool reverse;
     bool intraField;
