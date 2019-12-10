@@ -177,7 +177,7 @@ int main(int argc, char *argv[])
     }
 
     // Perform the processing
-    qInfo() << "Beginning VBI processing...";
+    qInfo() << "Beginning dropout correction...";
     CorrectorPool correctorPool(inputFilename, outputFilename, maxThreads, metaData, reverse, intraField, overCorrect);
     if (!correctorPool.process()) return 1;
 
