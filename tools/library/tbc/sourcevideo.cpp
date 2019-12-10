@@ -144,12 +144,12 @@ QByteArray SourceVideo::getVideoField(qint32 fieldNumber)
     fieldData->resize(fieldByteLength);
 
     do {
-        receivedBytes = inputFile.read(fieldData->data(), fieldByteLength - receivedBytes);
+        receivedBytes = inputFile.read(fieldData->data() + totalReceivedBytes, fieldByteLength - totalReceivedBytes);
         totalReceivedBytes += receivedBytes;
     } while (receivedBytes > 0 && totalReceivedBytes < fieldByteLength);
 
     // Verify read was ok
-    if (receivedBytes != fieldByteLength) qFatal("Could not read input fields from file even though they were available");
+    if (totalReceivedBytes != fieldByteLength) qFatal("Could not read input fields from file even though they were available");
 
     // Insert the field data into the cache
     fieldCache.insert(fieldNumber, fieldData, 1);
@@ -196,12 +196,12 @@ QByteArray SourceVideo::getVideoField(qint32 fieldNumber, qint32 startFieldLine,
     qint64 totalReceivedBytes = 0;
     qint64 receivedBytes = 0;
     do {
-        receivedBytes = inputFile.read(outputFieldLineData.data(), requiredReadLength - receivedBytes);
+        receivedBytes = inputFile.read(outputFieldLineData.data() + totalReceivedBytes, requiredReadLength - totalReceivedBytes);
         totalReceivedBytes += receivedBytes;
     } while (receivedBytes > 0 && totalReceivedBytes < requiredReadLength);
 
     // Verify read was ok
-    if (receivedBytes != requiredReadLength) qFatal("Could not read input fields from file even though they were available");
+    if (totalReceivedBytes != requiredReadLength) qFatal("Could not read input fields from file even though they were available");
 
     // Return the data
     return outputFieldLineData;
