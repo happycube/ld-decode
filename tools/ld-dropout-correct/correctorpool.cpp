@@ -24,9 +24,13 @@
 
 #include "correctorpool.h"
 
-CorrectorPool::CorrectorPool(QString _inputFilename, QString _outputFilename, qint32 _maxThreads, LdDecodeMetaData &_ldDecodeMetaData,
+#include <cstdio>
+
+CorrectorPool::CorrectorPool(QString _inputFilename, QString _outputFilename, QString _outputJsonFilename,
+                             qint32 _maxThreads, LdDecodeMetaData &_ldDecodeMetaData,
                              bool _reverse, bool _intraField, bool _overCorrect, QObject *parent)
-    : QObject(parent), inputFilename(_inputFilename), outputFilename(_outputFilename), maxThreads(_maxThreads), reverse(_reverse),
+    : QObject(parent), inputFilename(_inputFilename), outputFilename(_outputFilename), outputJsonFilename(_outputJsonFilename),
+      maxThreads(_maxThreads), reverse(_reverse),
       intraField(_intraField), overCorrect(_overCorrect),  abort(false), ldDecodeMetaData(_ldDecodeMetaData)
 {
 }
@@ -64,11 +68,20 @@ bool CorrectorPool::process()
 
     // Open the target video
     targetVideo.setFileName(outputFilename);
-    if (!targetVideo.open(QIODevice::WriteOnly)) {
-            // Could not open target video file
-            qInfo() << "Unable to open output video file";
-            sourceVideo.close();
-            return false;
+    if (outputFilename == "-") {
+        if (!targetVideo.open(stdout, QIODevice::WriteOnly)) {
+                // Could not open stdout
+                qInfo() << "Unable to open stdout";
+                sourceVideo.close();
+                return false;
+        }
+    } else {
+        if (!targetVideo.open(QIODevice::WriteOnly)) {
+                // Could not open target video file
+                qInfo() << "Unable to open output video file";
+                sourceVideo.close();
+                return false;
+        }
     }
 
     // Check TBC and JSON field numbers match
@@ -133,7 +146,7 @@ bool CorrectorPool::process()
                lastFrameNumber / totalSecs << "FPS )";
 
     qInfo() << "Creating JSON metadata file for drop-out corrected TBC";
-    ldDecodeMetaData.write(outputFilename + ".json");
+    ldDecodeMetaData.write(outputJsonFilename);
 
     qInfo() << "Processing complete";
 

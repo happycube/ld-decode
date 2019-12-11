@@ -118,6 +118,12 @@ int main(int argc, char *argv[])
                                        QCoreApplication::translate("main", "Show debug"));
     parser.addOption(showDebugOption);
 
+    // Option to specify a different JSON input file
+    QCommandLineOption inputJsonOption(QStringList() << "input-json",
+                                       QCoreApplication::translate("main", "Specify the input JSON file (default input.json)"),
+                                       QCoreApplication::translate("main", "filename"));
+    parser.addOption(inputJsonOption);
+
     // Option to select start frame (sequential) (-s)
     QCommandLineOption startFrameOption(QStringList() << "s" << "start",
                                         QCoreApplication::translate("main", "Specify the start frame number"),
@@ -197,10 +203,10 @@ int main(int argc, char *argv[])
     // -- Positional arguments --
 
     // Positional argument to specify input video file
-    parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input TBC file"));
+    parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input TBC file (- for piped input)"));
 
     // Positional argument to specify output video file
-    parser.addPositionalArgument("output", QCoreApplication::translate("main", "Specify output RGB file (omit for piped output)"));
+    parser.addPositionalArgument("output", QCoreApplication::translate("main", "Specify output RGB file (omit or - for piped output)"));
 
     // Process the command line options and arguments given by the user
     parser.process(a);
@@ -211,24 +217,26 @@ int main(int argc, char *argv[])
 
     // Get the arguments from the parser
     QString inputFileName;
-    QString outputFileName;
+    QString outputFileName = "-";
     QStringList positionalArguments = parser.positionalArguments();
     if (positionalArguments.count() == 2) {
         inputFileName = positionalArguments.at(0);
         outputFileName = positionalArguments.at(1);
+    } else if (positionalArguments.count() == 1) {
+        inputFileName = positionalArguments.at(0);
     } else {
-        if (positionalArguments.count() == 1) {
-            // Use piped output
-            inputFileName = positionalArguments.at(0);
-            outputFileName.clear(); // Use pipe
-        } else {
-            // Quit with error
-            qCritical("You must specify the input TBC and output RGB files");
-            return -1;
-        }
+        // Quit with error
+        qCritical("You must specify the input TBC and output RGB files");
+        return -1;
     }
 
-    if (inputFileName == outputFileName) {
+    // Check filename arguments are reasonable
+    if (inputFileName == "-" && !parser.isSet(inputJsonOption)) {
+        // Quit with error
+        qCritical("With piped input, you must also specify the input JSON file");
+        return -1;
+    }
+    if (inputFileName == outputFileName && outputFileName != "-") {
         // Quit with error
         qCritical("Input and output files cannot be the same");
         return -1;
@@ -325,9 +333,15 @@ int main(int argc, char *argv[])
     // Process the command line options
     if (isDebugOn) showDebug = true;
 
+    // Work out the metadata filename
+    QString inputJsonFileName = inputFileName + ".json";
+    if (parser.isSet(inputJsonOption)) {
+        inputJsonFileName = parser.value(inputJsonOption);
+    }
+
     // Load the source video metadata
     LdDecodeMetaData metaData;
-    if (!metaData.read(inputFileName + ".json")) {
+    if (!metaData.read(inputJsonFileName)) {
         qInfo() << "Unable to open ld-decode metadata file";
         return -1;
     }
