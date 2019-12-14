@@ -185,7 +185,7 @@ int main(int argc, char *argv[])
 
     // Option to select the Transform PAL filter mode
     QCommandLineOption transformModeOption(QStringList() << "transform-mode",
-                                           QCoreApplication::translate("main", "Transform: Filter mode to use (level, threshold; default level)"),
+                                           QCoreApplication::translate("main", "Transform: Filter mode to use (level, threshold; default threshold)"),
                                            QCoreApplication::translate("main", "mode"));
     parser.addOption(transformModeOption);
 
