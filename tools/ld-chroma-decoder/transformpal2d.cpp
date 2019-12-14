@@ -61,6 +61,7 @@ static double computeWindow(qint32 element, qint32 limit)
 }
 
 TransformPal2D::TransformPal2D()
+    : TransformPal(XCOMPLEX, YCOMPLEX, 1)
 {
     // Compute the window function.
     for (qint32 y = 0; y < YTILE; y++) {
@@ -337,5 +338,5 @@ void TransformPal2D::overlayFFTFrame(qint32 positionX, qint32 positionY,
     canvas.drawRectangle(positionX - 1, positionY + inputField.getOffset() - 1, XTILE + 1, (YTILE * 2) + 1, FrameCanvas::green);
 
     // Draw the arrays
-    overlayFFTArrays(fftComplexIn, fftComplexOut, XCOMPLEX, YCOMPLEX, 1, canvas);
+    overlayFFTArrays(fftComplexIn, fftComplexOut, canvas);
 }

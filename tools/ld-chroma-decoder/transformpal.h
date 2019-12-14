@@ -40,7 +40,7 @@
 // Abstract base class for Transform PAL filters.
 class TransformPal {
 public:
-    TransformPal();
+    TransformPal(qint32 xComplex, qint32 yComplex, qint32 zComplex);
     virtual ~TransformPal();
 
     // Specify what the frequency-domain filter should do to each pair of
@@ -88,7 +88,12 @@ protected:
                                  QByteArray &rgbFrame) = 0;
 
     void overlayFFTArrays(const fftw_complex *fftIn, const fftw_complex *fftOut,
-                          qint32 xSize, qint32 ySize, qint32 zSize, FrameCanvas &canvas);
+                          FrameCanvas &canvas);
+
+    // FFT size
+    qint32 xComplex;
+    qint32 yComplex;
+    qint32 zComplex;
 
     // Configuration parameters
     bool configurationSet;
