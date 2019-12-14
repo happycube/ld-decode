@@ -95,7 +95,7 @@ TransformPal2D::~TransformPal2D()
 
 qint32 TransformPal2D::getThresholdsSize()
 {
-    // On the X axis, include only the elements we actually use in applyFilter
+    // On the X axis, include only the bins we actually use in applyFilter
     return YCOMPLEX * ((XCOMPLEX / 4) + 1);
 }
 
@@ -237,7 +237,7 @@ void TransformPal2D::applyFilter()
     // symmetrical around the U carrier, which is at fSC Hz and 72 c/aph -- and
     // because we're sampling at 4fSC, this is handily equivalent to being
     // symmetrical around the V carrier owing to wraparound. We look at every
-    // point that might be a chroma signal, and only keep it if it's
+    // bin that might be a chroma signal, and only keep it if it's
     // sufficiently symmetrical with its reflection.
     //
     // The Y axis covers 0 to 288 c/aph;  72 c/aph is 1/4 * YTILE.
@@ -260,14 +260,14 @@ void TransformPal2D::applyFilter()
             // Reflect around fSC horizontally
             const qint32 x_ref = (XTILE / 2) - x;
 
-            // Get the threshold for this point
+            // Get the threshold for this bin
             const double threshold_sq = *thresholdsPtr++;
 
             const fftw_complex &in_val = bi[x];
             const fftw_complex &ref_val = bi_ref[x_ref];
 
             if (x == x_ref && y == y_ref) {
-                // This point is its own reflection (i.e. it's a carrier). Keep it!
+                // This bin is its own reflection (i.e. it's a carrier). Keep it!
                 bo[x][0] = in_val[0];
                 bo[x][1] = in_val[1];
                 continue;
@@ -298,7 +298,7 @@ void TransformPal2D::applyFilter()
             } else {
                 // Compare the magnitudes of the two values, and discard both
                 // if they are more different than the threshold for this
-                // point.
+                // bin.
                 if (m_in_sq < m_ref_sq * threshold_sq || m_ref_sq < m_in_sq * threshold_sq) {
                     // Probably not a chroma signal; throw it away.
                 } else {

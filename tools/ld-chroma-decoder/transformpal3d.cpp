@@ -104,7 +104,7 @@ TransformPal3D::~TransformPal3D()
 
 qint32 TransformPal3D::getThresholdsSize()
 {
-    // On the X axis, include only the elements we actually use in applyFilter
+    // On the X axis, include only the bins we actually use in applyFilter
     return ZCOMPLEX * YCOMPLEX * ((XCOMPLEX / 4) + 1);
 }
 
@@ -116,7 +116,7 @@ qint32 TransformPal3D::getLookBehind()
 
 qint32 TransformPal3D::getLookAhead()
 {
-    // ... and at most a tile minus one element into the future.
+    // ... and at most a tile minus one bin into the future.
     return (ZTILE - 1 + 1) / 2;
 }
 
@@ -276,7 +276,7 @@ void TransformPal3D::applyFilter()
     // symmetrical around the U carrier, which is at fSC Hz, 72 c/aph, 18.75 Hz
     // -- and because we're sampling at 4fSC, this is handily equivalent to
     // being symmetrical around the V carrier owing to wraparound. We look at
-    // every point that might be a chroma signal, and only keep it if it's
+    // every bin that might be a chroma signal, and only keep it if it's
     // sufficiently symmetrical with its reflection.
     //
     // The Z axis covers 0 to 50 Hz;      18.75 Hz is 3/8 * ZTILE.
@@ -305,14 +305,14 @@ void TransformPal3D::applyFilter()
                 // Reflect around fSC horizontally
                 const qint32 x_ref = (XTILE / 2) - x;
 
-                // Get the threshold for this point
+                // Get the threshold for this bin
                 const double threshold_sq = *thresholdsPtr++;
 
                 const fftw_complex &in_val = bi[x];
                 const fftw_complex &ref_val = bi_ref[x_ref];
 
                 if (x == x_ref && y == y_ref && z == z_ref) {
-                    // This point is its own reflection (i.e. it's a carrier). Keep it!
+                    // This bin is its own reflection (i.e. it's a carrier). Keep it!
                     bo[x][0] = in_val[0];
                     bo[x][1] = in_val[1];
                     continue;
@@ -343,7 +343,7 @@ void TransformPal3D::applyFilter()
                 } else {
                     // Compare the magnitudes of the two values, and discard
                     // both if they are more different than the threshold for
-                    // this point.
+                    // this bin.
                     if (m_in_sq < m_ref_sq * threshold_sq || m_ref_sq < m_in_sq * threshold_sq) {
                         // Probably not a chroma signal; throw it away.
                     } else {

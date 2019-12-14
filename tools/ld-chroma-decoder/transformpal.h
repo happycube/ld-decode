@@ -44,11 +44,11 @@ public:
     virtual ~TransformPal();
 
     // Specify what the frequency-domain filter should do to each pair of
-    // frequencies that should be symmetrical around the carriers.
+    // bins that should be symmetrical around the carriers.
     enum TransformMode {
-        // Adjust the amplitudes of the two points to be equal
+        // Adjust the amplitudes of the two bins to be equal
         levelMode = 0,
-        // If the amplitudes aren't within a threshold of each other, zero both points
+        // If the amplitudes aren't within a threshold of each other, zero both bins
         thresholdMode
     };
 

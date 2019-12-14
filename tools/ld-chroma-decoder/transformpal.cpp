@@ -48,12 +48,12 @@ void TransformPal::updateConfiguration(const LdDecodeMetaData::VideoParameters &
     lastActiveLine = _lastActiveLine;
     mode = _mode;
 
-    // Resize thresholds to match the number of FFT points we will consider in
-    // applyFilter. The x loop there doesn't need to look at every point.
+    // Resize thresholds to match the number of FFT bins we will consider in
+    // applyFilter. The x loop there doesn't need to look at every bin.
     const qint32 thresholdsSize = ((xComplex / 4) + 1) * yComplex * zComplex;
 
     if (_thresholds.size() == 0) {
-        // Use the same (squared) threshold value for all elements
+        // Use the same (squared) threshold value for all bins
         thresholds.fill(threshold * threshold, thresholdsSize);
     } else {
         // Square the provided thresholds
@@ -81,11 +81,11 @@ void TransformPal::overlayFFT(qint32 positionX, qint32 positionY,
 void TransformPal::overlayFFTArrays(const fftw_complex *fftIn, const fftw_complex *fftOut,
                                     FrameCanvas &canvas)
 {
-    // How many pixels to draw for each element
+    // How many pixels to draw for each bin
     const qint32 xScale = 2;
     const qint32 yScale = 2;
 
-    // Each block shows the absolute value of the real component of an FFT element using a log scale.
+    // Each block shows the absolute value of the real component of an FFT bin using a log scale.
     // Work out a scaling factor to make all values visible.
     double maxValue = 0;
     for (qint32 i = 0; i < xComplex * yComplex * zComplex; i++) {
@@ -106,7 +106,7 @@ void TransformPal::overlayFFTArrays(const fftw_complex *fftIn, const fftw_comple
             // Outline the array
             canvas.drawRectangle(xStart, yStart, (xScale * xComplex) + 2, (yScale * yComplex) + 2, canvas.green);
 
-            // Draw the elements in the array
+            // Draw the bins in the array
             for (qint32 y = 0; y < yComplex; y++) {
                 for (qint32 x = 0; x < xComplex; x++) {
                     const double value = fabs(fftData[(((z * yComplex) + y) * xComplex) + x][0]);
