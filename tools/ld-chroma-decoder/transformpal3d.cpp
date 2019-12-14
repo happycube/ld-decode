@@ -294,7 +294,7 @@ void TransformPal3D::applyFilter()
 
             // We only need to look at horizontal frequencies that might be chroma (0.5fSC to 1.5fSC).
             for (qint32 x = XTILE / 8; x <= XTILE / 4; x++) {
-                // Reflect around fSC horizontally.
+                // Reflect around fSC horizontally
                 const qint32 x_ref = (XTILE / 2) - x;
 
                 const fftw_complex &in_val = bi[x];
@@ -331,7 +331,8 @@ void TransformPal3D::applyFilter()
                     }
                 } else {
                     // Compare the magnitudes of the two values, and discard
-                    // both if they are more different than the threshold.
+                    // both if they are more different than the threshold for
+                    // this point.
                     if (m_in_sq < m_ref_sq * threshold_sq || m_ref_sq < m_in_sq * threshold_sq) {
                         // Probably not a chroma signal; throw it away.
                     } else {
