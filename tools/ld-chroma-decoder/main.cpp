@@ -299,7 +299,6 @@ int main(int argc, char *argv[])
         } else if (name == "threshold") {
             palConfig.transformMode = TransformPal::thresholdMode;
         } else {
-            palConfig.transformMode = TransformPal::levelMode;
             // Quit with error
             qCritical() << "Unknown Transform mode " << name;
             return -1;
