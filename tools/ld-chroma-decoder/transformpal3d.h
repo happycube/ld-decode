@@ -39,6 +39,9 @@ public:
     TransformPal3D();
     ~TransformPal3D();
 
+    // Return the expected size of the thresholds array.
+    static qint32 getThresholdsSize();
+
     // Return the number of frames that the decoder needs to be able to see
     // into the past and future (each frame being two SourceFields).
     static qint32 getLookBehind();

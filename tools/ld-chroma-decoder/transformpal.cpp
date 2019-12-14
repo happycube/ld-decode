@@ -40,13 +40,29 @@ TransformPal::~TransformPal()
 
 void TransformPal::updateConfiguration(const LdDecodeMetaData::VideoParameters &_videoParameters,
                                        qint32 _firstActiveLine, qint32 _lastActiveLine,
-                                       TransformPal::TransformMode _mode, double _threshold)
+                                       TransformPal::TransformMode _mode, double threshold,
+                                       const QVector<double> &_thresholds)
 {
     videoParameters = _videoParameters;
     firstActiveLine = _firstActiveLine;
     lastActiveLine = _lastActiveLine;
     mode = _mode;
-    threshold = _threshold;
+
+    // Resize thresholds to match the number of FFT points we will consider in
+    // applyFilter. The x loop there doesn't need to look at every point.
+    const qint32 thresholdsSize = ((xComplex / 4) + 1) * yComplex * zComplex;
+
+    if (_thresholds.size() == 0) {
+        // Use the same (squared) threshold value for all elements
+        thresholds.fill(threshold * threshold, thresholdsSize);
+    } else {
+        // Square the provided thresholds
+        assert(_thresholds.size() == thresholdsSize);
+        thresholds.resize(thresholdsSize);
+        for (int i = 0; i < thresholdsSize; i++) {
+            thresholds[i] = _thresholds[i] * _thresholds[i];
+        }
+    }
 
     configurationSet = true;
 }

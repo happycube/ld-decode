@@ -39,6 +39,9 @@ public:
     TransformPal2D();
     virtual ~TransformPal2D();
 
+    // Return the expected size of the thresholds array.
+    static qint32 getThresholdsSize();
+
     void filterFields(const QVector<SourceField> &inputFields, qint32 startIndex, qint32 endIndex,
                       QVector<const double *> &outputFields) override;
 

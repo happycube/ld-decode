@@ -61,7 +61,8 @@ public:
     // be more similar to be considered chroma. 0.6 is pyctools-pal's default.
     void updateConfiguration(const LdDecodeMetaData::VideoParameters &videoParameters,
                              qint32 firstActiveLine, qint32 lastActiveLine,
-                             TransformMode mode, double threshold);
+                             TransformMode mode, double threshold,
+                             const QVector<double> &thresholds);
 
     // Filter input fields.
     //
@@ -100,7 +101,7 @@ protected:
     LdDecodeMetaData::VideoParameters videoParameters;
     qint32 firstActiveLine;
     qint32 lastActiveLine;
-    double threshold;
+    QVector<double> thresholds;
     TransformMode mode;
 };
 

@@ -102,6 +102,12 @@ TransformPal3D::~TransformPal3D()
     fftw_free(fftComplexOut);
 }
 
+qint32 TransformPal3D::getThresholdsSize()
+{
+    // On the X axis, include only the elements we actually use in applyFilter
+    return ZCOMPLEX * YCOMPLEX * ((XCOMPLEX / 4) + 1);
+}
+
 qint32 TransformPal3D::getLookBehind()
 {
     // We overlap at most half a tile (in frames) into the past...
@@ -251,6 +257,9 @@ static inline double fftwAbsSq(const fftw_complex &value)
 template <TransformPal::TransformMode MODE>
 void TransformPal3D::applyFilter()
 {
+    // Get pointer to squared threshold values
+    const double *thresholdsPtr = thresholds.data();
+
     // Clear fftComplexOut. We discard values by default; the filter only
     // copies values that look like chroma.
     for (qint32 i = 0; i < ZCOMPLEX * YCOMPLEX * XCOMPLEX; i++) {
@@ -274,8 +283,6 @@ void TransformPal3D::applyFilter()
     // The Y axis covers 0 to 576 c/aph;  72 c/aph is 1/8 * YTILE.
     // The X axis covers 0 to 4fSC Hz;    fSC HZ   is 1/4 * XTILE.
 
-    const double threshold_sq = threshold * threshold;
-
     for (qint32 z = 0; z < ZTILE; z++) {
         // Reflect around 18.75 Hz temporally.
         // XXX Why ZTILE / 4? It should be (6 * ZTILE) / 8...
@@ -297,6 +304,9 @@ void TransformPal3D::applyFilter()
             for (qint32 x = XTILE / 8; x <= XTILE / 4; x++) {
                 // Reflect around fSC horizontally
                 const qint32 x_ref = (XTILE / 2) - x;
+
+                // Get the threshold for this point
+                const double threshold_sq = *thresholdsPtr++;
 
                 const fftw_complex &in_val = bi[x];
                 const fftw_complex &ref_val = bi_ref[x_ref];
@@ -347,6 +357,8 @@ void TransformPal3D::applyFilter()
             }
         }
     }
+
+    assert(thresholdsPtr == thresholds.data() + thresholds.size());
 }
 
 void TransformPal3D::overlayFFTFrame(qint32 positionX, qint32 positionY,

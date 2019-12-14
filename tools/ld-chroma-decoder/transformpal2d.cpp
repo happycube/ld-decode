@@ -93,6 +93,12 @@ TransformPal2D::~TransformPal2D()
     fftw_free(fftComplexOut);
 }
 
+qint32 TransformPal2D::getThresholdsSize()
+{
+    // On the X axis, include only the elements we actually use in applyFilter
+    return YCOMPLEX * ((XCOMPLEX / 4) + 1);
+}
+
 void TransformPal2D::filterFields(const QVector<SourceField> &inputFields, qint32 startIndex, qint32 endIndex,
                                   QVector<const double *> &outputFields)
 {
@@ -212,6 +218,9 @@ static inline double fftwAbsSq(const fftw_complex &value)
 template <TransformPal::TransformMode MODE>
 void TransformPal2D::applyFilter()
 {
+    // Get pointer to squared threshold values
+    const double *thresholdsPtr = thresholds.data();
+
     // Clear fftComplexOut. We discard values by default; the filter only
     // copies values that look like chroma.
     for (qint32 i = 0; i < XCOMPLEX * YCOMPLEX; i++) {
@@ -234,8 +243,6 @@ void TransformPal2D::applyFilter()
     // The Y axis covers 0 to 288 c/aph;  72 c/aph is 1/4 * YTILE.
     // The X axis covers 0 to 4fSC Hz;    fSC HZ   is 1/4 * XTILE.
 
-    const double threshold_sq = threshold * threshold;
-
     for (qint32 y = 0; y < YTILE; y++) {
         // Reflect around 72 c/aph vertically.
         const qint32 y_ref = ((YTILE / 2) + YTILE - y) % YTILE;
@@ -252,6 +259,9 @@ void TransformPal2D::applyFilter()
         for (qint32 x = XTILE / 8; x <= XTILE / 4; x++) {
             // Reflect around fSC horizontally
             const qint32 x_ref = (XTILE / 2) - x;
+
+            // Get the threshold for this point
+            const double threshold_sq = *thresholdsPtr++;
 
             const fftw_complex &in_val = bi[x];
             const fftw_complex &ref_val = bi_ref[x_ref];
@@ -301,6 +311,8 @@ void TransformPal2D::applyFilter()
             }
         }
     }
+
+    assert(thresholdsPtr == thresholds.data() + thresholds.size());
 }
 
 void TransformPal2D::overlayFFTFrame(qint32 positionX, qint32 positionY,
