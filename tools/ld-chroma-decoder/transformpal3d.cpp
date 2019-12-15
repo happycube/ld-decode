@@ -67,6 +67,7 @@ static double computeWindow(qint32 element, qint32 limit)
 }
 
 TransformPal3D::TransformPal3D()
+    : TransformPal(XCOMPLEX, YCOMPLEX, ZCOMPLEX)
 {
     // Compute the window function.
     for (qint32 z = 0; z < ZTILE; z++) {
@@ -101,6 +102,12 @@ TransformPal3D::~TransformPal3D()
     fftw_free(fftComplexOut);
 }
 
+qint32 TransformPal3D::getThresholdsSize()
+{
+    // On the X axis, include only the bins we actually use in applyFilter
+    return ZCOMPLEX * YCOMPLEX * ((XCOMPLEX / 4) + 1);
+}
+
 qint32 TransformPal3D::getLookBehind()
 {
     // We overlap at most half a tile (in frames) into the past...
@@ -109,7 +116,7 @@ qint32 TransformPal3D::getLookBehind()
 
 qint32 TransformPal3D::getLookAhead()
 {
-    // ... and at most a tile minus one element into the future.
+    // ... and at most a tile minus one bin into the future.
     return (ZTILE - 1 + 1) / 2;
 }
 
@@ -250,6 +257,9 @@ static inline double fftwAbsSq(const fftw_complex &value)
 template <TransformPal::TransformMode MODE>
 void TransformPal3D::applyFilter()
 {
+    // Get pointer to squared threshold values
+    const double *thresholdsPtr = thresholds.data();
+
     // Clear fftComplexOut. We discard values by default; the filter only
     // copies values that look like chroma.
     for (qint32 i = 0; i < ZCOMPLEX * YCOMPLEX * XCOMPLEX; i++) {
@@ -266,14 +276,12 @@ void TransformPal3D::applyFilter()
     // symmetrical around the U carrier, which is at fSC Hz, 72 c/aph, 18.75 Hz
     // -- and because we're sampling at 4fSC, this is handily equivalent to
     // being symmetrical around the V carrier owing to wraparound. We look at
-    // every point that might be a chroma signal, and only keep it if it's
+    // every bin that might be a chroma signal, and only keep it if it's
     // sufficiently symmetrical with its reflection.
     //
     // The Z axis covers 0 to 50 Hz;      18.75 Hz is 3/8 * ZTILE.
     // The Y axis covers 0 to 576 c/aph;  72 c/aph is 1/8 * YTILE.
     // The X axis covers 0 to 4fSC Hz;    fSC HZ   is 1/4 * XTILE.
-
-    const double threshold_sq = threshold * threshold;
 
     for (qint32 z = 0; z < ZTILE; z++) {
         // Reflect around 18.75 Hz temporally.
@@ -294,14 +302,17 @@ void TransformPal3D::applyFilter()
 
             // We only need to look at horizontal frequencies that might be chroma (0.5fSC to 1.5fSC).
             for (qint32 x = XTILE / 8; x <= XTILE / 4; x++) {
-                // Reflect around fSC horizontally.
+                // Reflect around fSC horizontally
                 const qint32 x_ref = (XTILE / 2) - x;
+
+                // Get the threshold for this bin
+                const double threshold_sq = *thresholdsPtr++;
 
                 const fftw_complex &in_val = bi[x];
                 const fftw_complex &ref_val = bi_ref[x_ref];
 
                 if (x == x_ref && y == y_ref && z == z_ref) {
-                    // This point is its own reflection (i.e. it's a carrier). Keep it!
+                    // This bin is its own reflection (i.e. it's a carrier). Keep it!
                     bo[x][0] = in_val[0];
                     bo[x][1] = in_val[1];
                     continue;
@@ -331,7 +342,8 @@ void TransformPal3D::applyFilter()
                     }
                 } else {
                     // Compare the magnitudes of the two values, and discard
-                    // both if they are more different than the threshold.
+                    // both if they are more different than the threshold for
+                    // this bin.
                     if (m_in_sq < m_ref_sq * threshold_sq || m_ref_sq < m_in_sq * threshold_sq) {
                         // Probably not a chroma signal; throw it away.
                     } else {
@@ -345,6 +357,8 @@ void TransformPal3D::applyFilter()
             }
         }
     }
+
+    assert(thresholdsPtr == thresholds.data() + thresholds.size());
 }
 
 void TransformPal3D::overlayFFTFrame(qint32 positionX, qint32 positionY,
@@ -374,5 +388,5 @@ void TransformPal3D::overlayFFTFrame(qint32 positionX, qint32 positionY,
     canvas.drawRectangle(positionX - 1, positionY - 1, XTILE + 1, YTILE + 1, FrameCanvas::green);
 
     // Draw the arrays
-    overlayFFTArrays(fftComplexIn, fftComplexOut, XCOMPLEX, YCOMPLEX, ZCOMPLEX, canvas);
+    overlayFFTArrays(fftComplexIn, fftComplexOut, canvas);
 }

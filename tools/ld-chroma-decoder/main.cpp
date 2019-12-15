@@ -29,6 +29,7 @@
 #include <QCommandLineParser>
 #include <QScopedPointer>
 #include <QThread>
+#include <fstream>
 
 #include "decoderpool.h"
 #include "lddecodemetadata.h"
@@ -84,6 +85,56 @@ void debugOutputHandler(QtMsgType type, const QMessageLogContext &context, const
         else fprintf(stderr, "Fatal: %s\n", localMsg.constData());
         abort();
     }
+}
+
+// Load the thresholds file for the Transform decoders, if specified. We must
+// do this after PalColour has been configured, so we know how many values to
+// expect.
+//
+// Return true on success; on failure, print a message and return false.
+static bool loadTransformThresholds(QCommandLineParser &parser, QCommandLineOption &transformThresholdsOption, PalColour::Configuration &palConfig)
+{
+    if (!parser.isSet(transformThresholdsOption)) {
+        // Nothing to load
+        return true;
+    }
+
+    // Open the file
+    QString filename = parser.value(transformThresholdsOption);
+    std::ifstream thresholdsFile(filename.toStdString());
+    if (thresholdsFile.fail()) {
+        qCritical() << "Transform thresholds file could not be opened:" << filename;
+        return false;
+    }
+
+    // Read threshold values from the file
+    palConfig.transformThresholds.clear();
+    while (true) {
+        double value;
+        thresholdsFile >> value;
+        if (thresholdsFile.eof()) {
+            break;
+        }
+        if (value < 0.0 || value > 1.0) {
+            qCritical() << "Values in Transform thresholds file must be between 0 and 1:" << filename;
+            return false;
+        }
+        if (thresholdsFile.fail()) {
+            qCritical() << "Couldn't parse Transform thresholds file:" << filename;
+            return false;
+        }
+        palConfig.transformThresholds.push_back(value);
+    }
+
+    // Check we've read the right number
+    if (palConfig.transformThresholds.size() != palConfig.getThresholdsSize()) {
+        qCritical() << "Transform thresholds file contained" << palConfig.transformThresholds.size()
+                    << "values, expecting" << palConfig.getThresholdsSize() << "values:" << filename;
+        return false;
+    }
+
+    thresholdsFile.close();
+    return true;
 }
 
 int main(int argc, char *argv[])
@@ -185,15 +236,21 @@ int main(int argc, char *argv[])
 
     // Option to select the Transform PAL filter mode
     QCommandLineOption transformModeOption(QStringList() << "transform-mode",
-                                           QCoreApplication::translate("main", "Transform: Filter mode to use (level, threshold; default level)"),
+                                           QCoreApplication::translate("main", "Transform: Filter mode to use (level, threshold; default threshold)"),
                                            QCoreApplication::translate("main", "mode"));
     parser.addOption(transformModeOption);
 
     // Option to select the Transform PAL threshold
     QCommandLineOption transformThresholdOption(QStringList() << "transform-threshold",
-                                                QCoreApplication::translate("main", "Transform: Similarity threshold in 'threshold' mode (default 0.4)"),
+                                                QCoreApplication::translate("main", "Transform: Uniform similarity threshold in 'threshold' mode (default 0.4)"),
                                                 QCoreApplication::translate("main", "number"));
     parser.addOption(transformThresholdOption);
+
+    // Option to select the Transform PAL thresholds file
+    QCommandLineOption transformThresholdsOption(QStringList() << "transform-thresholds",
+                                                 QCoreApplication::translate("main", "Transform: File containing per-bin similarity thresholds in 'threshold' mode"),
+                                                 QCoreApplication::translate("main", "file"));
+    parser.addOption(transformThresholdsOption);
 
     // Option to overlay the FFTs
     QCommandLineOption showFFTsOption(QStringList() << "show-ffts",
@@ -299,7 +356,6 @@ int main(int argc, char *argv[])
         } else if (name == "threshold") {
             palConfig.transformMode = TransformPal::thresholdMode;
         } else {
-            palConfig.transformMode = TransformPal::levelMode;
             // Quit with error
             qCritical() << "Unknown Transform mode " << name;
             return -1;
@@ -380,9 +436,15 @@ int main(int argc, char *argv[])
         decoder.reset(new PalDecoder(palConfig));
     } else if (decoderName == "transform2d") {
         palConfig.chromaFilter = PalColour::transform2DFilter;
+        if (!loadTransformThresholds(parser, transformThresholdsOption, palConfig)) {
+            return -1;
+        }
         decoder.reset(new PalDecoder(palConfig));
     } else if (decoderName == "transform3d") {
         palConfig.chromaFilter = PalColour::transform3DFilter;
+        if (!loadTransformThresholds(parser, transformThresholdsOption, palConfig)) {
+            return -1;
+        }
         decoder.reset(new PalDecoder(palConfig));
     } else if (decoderName == "ntsc2d") {
         decoder.reset(new NtscDecoder(combConfig));

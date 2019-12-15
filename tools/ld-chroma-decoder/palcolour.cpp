@@ -70,6 +70,17 @@ PalColour::PalColour(QObject *parent)
 {
 }
 
+qint32 PalColour::Configuration::getThresholdsSize() const
+{
+    if (chromaFilter == transform2DFilter) {
+        return TransformPal2D::getThresholdsSize();
+    } else if (chromaFilter == transform3DFilter) {
+        return TransformPal3D::getThresholdsSize();
+    } else {
+        return 0;
+    }
+}
+
 qint32 PalColour::Configuration::getLookBehind() const
 {
     if (chromaFilter == transform3DFilter) {
@@ -113,7 +124,8 @@ void PalColour::updateConfiguration(const LdDecodeMetaData::VideoParameters &_vi
 
         // Configure the filter
         transformPal->updateConfiguration(videoParameters, configuration.firstActiveLine, configuration.lastActiveLine,
-                                          configuration.transformMode, configuration.transformThreshold);
+                                          configuration.transformMode, configuration.transformThreshold,
+                                          configuration.transformThresholds);
     }
 
     configurationSet = true;
