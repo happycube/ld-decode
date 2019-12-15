@@ -1,0 +1,185 @@
+#!python3
+
+from datetime import datetime
+import getopt
+import io
+from io import BytesIO
+import os
+import sys
+
+import json
+
+import scipy as sp
+import scipy.signal as sps
+import scipy.fftpack as fftpack 
+
+from lddutils import *
+import lddecode_core as ldd
+
+'''
+
+This is a prototype CX expander/decoder for 'new' ld-decode.
+
+Current Limitations:
+    - Output levels/decoding equations are somewhat incorrect.
+    - All IO is via pipes only.
+    - Only CX-14 is supported (some early Japanese disks used CX20)
+
+Background:
+
+CX is a companding/expanding filter created by CBS for vinyl records, 
+where it was a bit of a flop ( https://www.youtube.com/watch?v=E5XCvsNUkmI )
+but it was applied to both Laserdisc and CED.  It reduces noise by dynamic 
+level adjustment, amplifying audio by 2:1 above a set noise threshold.
+
+On Laserdisc, the filter was lightened slightly so that it is less severe
+when played without a decoder.  The LD implementation provides 14dB of
+level reduction instead of 20dB.  6dB is applied to reducing noise, and 8dB
+is used for level reduction, so that the right audio channel harmonics
+do not bleed into the chroma harmonic range.  TL;DR CX *also* works as 
+chroma noise reduction*.  ( https://en.wikipedia.org/w/index.php?title=CX_(audio) )
+
+"CX14" features a high pass filter and begins 2:1 expansion at 22dB.
+
+TODO: Very early Pioneer Japan releases use the original CX20 encoding,
+so that should be offered as an option.  (also needed if anyone implements
+ced-decode, which uses 20dB CX because CED needs all the noise reduction
+it can get ;P )
+
+Documentation references:
+    - "The Audio Side of Laserdisc" by Greg Badger*
+        - (a very good read even if you're mostly into video)
+    - Pioneer Tuning Fork #6 page 64
+        - (if you're interested in LD tech stuff, read the whole article,
+           it's a good system overview as it existed in 1982)
+
+    * special posthumous thanks to Disclord for researching CX and uploading 
+the AES paper.  He was there when CX disks came out, and has many insightful
+posts on the business side of things on the net still.
+
+Reference audio tests:
+
+GGV1069 CX test signal blocks 
+    - NTSC ONLY, PAL GGV1011 was recorded w/o CX enabled.  Oops.
+    - 7.5 seconds of -8dB -> 0dB audio alternating with 7.5 secs of -18dB->20dB
+
+Tune-Up AV II audio test tones
+    - Several seconds of 0dB in both CX-analog and digital between 50hz and 10khz.
+      (CX has a 500hz high pass filter, so it slowly comes on)
+
+level targets for ld-decode rev6:
+
+0dB = ~14762 
+max = 0dB (rms 14762) to +16db (6.3x) - currently capped about +6dB
+high = -8dB (rms 5877) to 0dB (2.5118x)
+low = -18dB (rms 1865) to -20dB
+min = -22dB (rms 1172?) to -28dB (.50118x)
+'''
+
+# A FIR filter is used here so that phase is (mostly) maintained
+# between low and high pass filters.  Audio < 500hz is (mostly)
+# not passed through CX, so a 50hz 0dB signal will still be at 
+# 0dB on the disk.
+
+a500l_44k = [sps.firwin(255, 500/44100, pass_zero=True), 1.0]
+a500h_44k = [sps.firwin(255, 500/44100, pass_zero=False), 1.0]
+
+class CXExpander:
+    def __init__(self):
+        
+        # While this code does not use FFT's yet, use a block/overlap
+        # structure to keep from using a iterative filter for performance
+        # (sic) reasons
+        self.blocksize = 4096
+        self.margin = 256
+        
+        self.fast = 0
+        self.slow = 0
+        
+        self.zerodb = 14762 # rms of 0dB output from ld-decode
+        self.knee = -22     # beginning of 2:1 expansion in dB
+        self.knee_level = db_to_lev(self.knee)
+        
+    def process(self, left, right):
+        ''' Expand a CX block.  Outputs a block w/margins cut '''
+        
+        # XXX: numba-ify!
+
+        output_len = (len(left) - (self.margin * 2)) * 2
+        output = np.zeros(output_len, dtype=np.float32)
+        output16 = np.zeros(output_len, dtype=np.int16)
+
+        # note at least right now margins don't need to be done beginning/end, but 
+        # that may change later
+        fleft = sps.lfilter(a500h_44k[0], a500h_44k[1], left)[self.margin:-self.margin]
+        fright = sps.lfilter(a500h_44k[0], a500h_44k[1], right)[self.margin:-self.margin]
+
+        lfleft = sps.lfilter(a500l_44k[0], a500l_44k[1], left)[self.margin:-self.margin]
+        lfright = sps.lfilter(a500l_44k[0], a500l_44k[1], right)[self.margin:-self.margin]
+        
+        m6db = db_to_lev(-6)
+        
+        for i in range(len(fleft)):
+            highest = max(np.abs(fleft[i]), np.abs(fright[i]))
+
+            # The filter itself
+            # XXX: NOT CORRECT YET!
+            self.fast = (self.fast * .9995) + (highest * .000570)
+            self.slow = (self.slow * .999925) + (highest * .0000855)
+
+            lev = max(self.fast, self.slow)
+
+            mdb = lev_to_db(lev / self.zerodb)
+            mfactor = max(m6db, (db_to_lev(mdb - self.knee) / 2))
+            # lmfactor = max(1, mfactor) # ???
+            lmfactor = 1 # ???
+
+            output[(i * 2)] = (fleft[i] * mfactor) + (lfleft[i] * lmfactor)
+            output[(i * 2) + 1] = (fright[i] * mfactor) + (lfright[i] * lmfactor)
+
+            #output[(i * 2)] = lfright[i]
+            #output[(i * 2) + 1] = fright[i]
+            
+        np.clip(output, -32766, 32766, out=output16)
+        return output16
+    
+cxe = CXExpander()
+
+# For now just pipe
+fd_in = sys.stdin.buffer # open('soundtest.pcm', 'rb')
+fd_out = sys.stdout.buffer # open('soundtest.cx.pcm', 'wb')
+
+i = 0
+
+while True:
+    if i == 0:
+        indata_raw = fd_in.read(cxe.blocksize * 4)
+    else:
+        needed = (cxe.blocksize * 4) - len(indata_raw)
+        indata_raw = indata_raw + fd_in.read(needed) # 2x int16
+    
+    if len(indata_raw) == 0:
+        # no data, done
+        break
+    
+    if len(indata_raw) < (cxe.blocksize * 4):
+        # not enough data, (mostly) done, for now write w/o CX filtering
+        fd_out.write(indata_raw)
+        break
+
+    if i == 0:
+        # Write the first bit of data w/o CX filtering
+        fd_out.write(indata_raw[:cxe.margin*4])
+        
+    indata = np.frombuffer(indata_raw, 'int16', len(indata_raw) // 2)
+    
+    output = cxe.process(indata[::2], indata[1::2])
+    fd_out.write(output)
+
+    indata_raw = indata_raw[-(cxe.margin * 2)*4:]
+    
+    i += 1
+
+    if False:
+        if i == 16:
+            break
