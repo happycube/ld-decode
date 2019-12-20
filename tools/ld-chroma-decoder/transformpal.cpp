@@ -27,6 +27,7 @@
 
 #include "transformpal.h"
 
+#include <cassert>
 #include <cmath>
 
 TransformPal::TransformPal(qint32 _xComplex, qint32 _yComplex, qint32 _zComplex)
