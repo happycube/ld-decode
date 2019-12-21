@@ -1,6 +1,6 @@
 /************************************************************************
 
-    vbidecoder.h
+    vbilinedecoder.h
 
     ld-process-vbi - VBI and IEC NTSC specific processor for ld-decode
     Copyright (C) 2018-2019 Simon Inns
@@ -22,8 +22,8 @@
 
 ************************************************************************/
 
-#ifndef VBIDECODER_H
-#define VBIDECODER_H
+#ifndef VBILINEDECODER_H
+#define VBILINEDECODER_H
 
 #include <QObject>
 #include <QAtomicInt>
@@ -37,11 +37,11 @@
 
 class DecoderPool;
 
-class VbiDecoder : public QThread {
+class VbiLineDecoder : public QThread {
     Q_OBJECT
 
 public:
-    explicit VbiDecoder(QAtomicInt& _abort, DecoderPool& _decoderPool, QObject *parent = nullptr);
+    explicit VbiLineDecoder(QAtomicInt& _abort, DecoderPool& _decoderPool, QObject *parent = nullptr);
 
 protected:
     void run() override;
@@ -59,4 +59,4 @@ private:
     QVector<bool> getTransitionMap(QByteArray lineData, qint32 zcPoint);
 };
 
-#endif // VBIDECODER_H
+#endif // VBILINEDECODER_H

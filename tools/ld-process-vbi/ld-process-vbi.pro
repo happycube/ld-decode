@@ -19,19 +19,21 @@ SOURCES += \
     decoderpool.cpp \
     main.cpp \
     fmcode.cpp \
-    vbidecoder.cpp \
+    vbilinedecoder.cpp \
     whiteflag.cpp \
     ../library/tbc/lddecodemetadata.cpp \
-    ../library/tbc/sourcevideo.cpp
+    ../library/tbc/sourcevideo.cpp \
+    ../library/tbc/vbidecoder.cpp
 
 HEADERS += \
     closedcaption.h \
     decoderpool.h \
     fmcode.h \
-    vbidecoder.h \
+    vbilinedecoder.h \
     whiteflag.h \
     ../library/tbc/lddecodemetadata.h \
-    ../library/tbc/sourcevideo.h
+    ../library/tbc/sourcevideo.h \
+    ../library/tbc/vbidecoder.h
 
 # Add external includes to the include path
 INCLUDEPATH += ../library/tbc

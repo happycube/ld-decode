@@ -64,7 +64,7 @@ bool DecoderPool::process()
     QVector<QThread *> threads;
     threads.resize(maxThreads);
     for (qint32 i = 0; i < maxThreads; i++) {
-        threads[i] = new VbiDecoder(abort, *this);
+        threads[i] = new VbiLineDecoder(abort, *this);
         threads[i]->start(QThread::LowPriority);
     }
 

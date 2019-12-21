@@ -97,6 +97,7 @@ public:
     qint32 getSecondFieldNumber(qint32 frameNumber);
 
     bool saveVitsAsCsv(QString filename);
+    bool saveVbiAsCsv(QString filename);
 
     qint32 getCcData0(qint32 frameNumber);
     qint32 getCcData1(qint32 frameNumber);

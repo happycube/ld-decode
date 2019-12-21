@@ -152,6 +152,7 @@ void MainWindow::updateGuiLoaded()
     ui->actionSNR_analysis->setEnabled(true);
     ui->actionSave_frame_as_PNG->setEnabled(true);
     ui->actionSave_metadata_as_CSV->setEnabled(true);
+    ui->actionSave_VBI_as_CSV->setEnabled(true);
     ui->actionClosed_Captions->setEnabled(true);
     if (tbcSource.getIsSourcePal()) ui->actionPAL_Chroma_decoder->setEnabled(true);
     else ui->actionPAL_Chroma_decoder->setEnabled(false);
@@ -233,6 +234,7 @@ void MainWindow::updateGuiUnloaded()
     ui->actionSNR_analysis->setEnabled(false);
     ui->actionSave_frame_as_PNG->setEnabled(false);
     ui->actionSave_metadata_as_CSV->setEnabled(false);
+    ui->actionSave_VBI_as_CSV->setEnabled(false);
     ui->actionClosed_Captions->setEnabled(false);
     ui->actionPAL_Chroma_decoder->setEnabled(false);
 
@@ -468,7 +470,7 @@ void MainWindow::on_actionSave_metadata_as_CSV_triggered()
 
     // Create a suggestion for the filename
     QString filenameSuggestion = configuration.getCsvDirectory() + tr("/");
-    filenameSuggestion += tbcSource.getCurrentSourceFilename() + tr(".csv");
+    filenameSuggestion += tbcSource.getCurrentSourceFilename() + tr("_vits.csv");
 
     QString csvFilename = QFileDialog::getSaveFileName(this,
                 tr("Save CSV file"),
@@ -491,7 +493,43 @@ void MainWindow::on_actionSave_metadata_as_CSV_triggered()
             qDebug() << "MainWindow::on_actionSave_metadata_as_CSV_triggered(): Failed to save file as" << csvFilename;
 
             QMessageBox messageBox;
-            messageBox.warning(this, "Warning","Could not save a CSV file using the specified filename!");
+            messageBox.warning(this, "Warning", "Could not save VITS CSV file using the specified filename!");
+            messageBox.setFixedSize(500, 200);
+        }
+    }
+}
+
+// Save the VBI as a CSV file
+void MainWindow::on_actionSave_VBI_as_CSV_triggered()
+{
+    qDebug() << "MainWindow::on_actionSave_VBI_as_CSV_triggered(): Called";
+
+    // Create a suggestion for the filename
+    QString filenameSuggestion = configuration.getCsvDirectory() + tr("/");
+    filenameSuggestion += tbcSource.getCurrentSourceFilename() + tr("_vbi.csv");
+
+    QString csvFilename = QFileDialog::getSaveFileName(this,
+                tr("Save CSV file"),
+                filenameSuggestion,
+                tr("CSV file (*.csv);;All Files (*)"));
+
+    // Was a filename specified?
+    if (!csvFilename.isEmpty() && !csvFilename.isNull()) {
+        // Save the metadata as CSV
+        qDebug() << "MainWindow::on_actionSave_VBI_as_CSV_triggered(): Saving VBI as" << csvFilename;
+
+        if (tbcSource.saveVbiAsCsv(csvFilename)) {
+            // Update the configuration for the CSV directory
+            QFileInfo csvFileInfo(csvFilename);
+            configuration.setCsvDirectory(csvFileInfo.absolutePath());
+            qDebug() << "MainWindow::on_actionSave_VBI_as_CSV_triggered(): Setting CSV directory to:" << csvFileInfo.absolutePath();
+            configuration.writeConfiguration();
+        } else {
+            // Save as CSV failed
+            qDebug() << "MainWindow::on_actionSave_VBI_as_CSV_triggered(): Failed to save file as" << csvFilename;
+
+            QMessageBox messageBox;
+            messageBox.warning(this, "Warning","Could not save VBI CSV file using the specified filename!");
             messageBox.setFixedSize(500, 200);
         }
     }
@@ -890,6 +928,4 @@ void MainWindow::on_finishedLoading()
     busyDialog->hide();
     this->setEnabled(true);
 }
-
-
 

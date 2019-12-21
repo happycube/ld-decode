@@ -19,12 +19,14 @@ DEFINES += QT_DEPRECATED_WARNINGS
 SOURCES += \
     main.cpp \
     palencoder.cpp \
-    ../../library/tbc/lddecodemetadata.cpp
+    ../../library/tbc/lddecodemetadata.cpp \
+    ../../library/tbc/vbidecoder.cpp
 
 HEADERS += \
     palencoder.h \
     ../../library/filter/firfilter.h \
-    ../../library/tbc/lddecodemetadata.h
+    ../../library/tbc/lddecodemetadata.h \
+    ../../library/tbc/vbidecoder.h
 
 # Add external includes to the include path
 INCLUDEPATH += ../../library/filter

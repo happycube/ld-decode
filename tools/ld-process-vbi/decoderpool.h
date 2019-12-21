@@ -34,7 +34,7 @@
 
 #include "sourcevideo.h"
 #include "lddecodemetadata.h"
-#include "vbidecoder.h"
+#include "vbilinedecoder.h"
 
 class DecoderPool : public QObject
 {

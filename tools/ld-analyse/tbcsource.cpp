@@ -457,6 +457,14 @@ bool TbcSource::saveVitsAsCsv(QString filename)
     return ldDecodeMetaData.writeVitsCsv(filename);
 }
 
+// Save the VBI as a CSV file
+bool TbcSource::saveVbiAsCsv(QString filename)
+{
+    if (!sourceReady) return 0;
+
+    return ldDecodeMetaData.writeVbiCsv(filename);
+}
+
 qint32 TbcSource::getCcData0(qint32 frameNumber)
 {
     if (!sourceReady) return false;
