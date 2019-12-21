@@ -148,17 +148,19 @@ SyncF3Frames::StateMachine SyncF3Frames::sm_state_findInitialSync0()
     // Did we find a sync0 or sync1?
     if (!f3FrameBuffer[i].isSubcodeSync0() && !f3FrameBuffer[i+1].isSubcodeSync1()) {
         // Not found
-        if (debugOn) qDebug() << "SyncF3Frames::sm_state_findInitialSync0(): No initial sync0 found in buffer";
-        waitingForData = true;
-        f3FrameBuffer.clear();
         statistics.discardedFrames += f3FrameBuffer.size();
-        return state_findInitialSync0;
-    }
 
-    // Found, discard frames up to initial sync
-    f3FrameBuffer.remove(0, i);
-    statistics.discardedFrames += i;
-    if (debugOn) qDebug() << "SyncF3Frames::sm_state_findInitialSync0(): Found initial sync0";
+        if (debugOn) qDebug() << "SyncF3Frames::sm_state_findInitialSync0(): No initial sync0 found in buffer - discarding" << f3FrameBuffer.size() << "frames";
+        waitingForData = true;
+
+        f3FrameBuffer.clear();
+        return state_findInitialSync0;
+    } else {
+        // Found, discard frames up to initial sync
+        f3FrameBuffer.remove(0, i);
+        statistics.discardedFrames += i;
+        if (debugOn) qDebug() << "SyncF3Frames::sm_state_findInitialSync0(): Found initial sync0 - discarding" << i << "frames";
+    }
 
     return state_findNextSync;
 }
@@ -183,6 +185,8 @@ SyncF3Frames::StateMachine SyncF3Frames::sm_state_findNextSync()
     }
 
     // Sync is missing, attempt recovery
+    if (debugOn) qDebug() << "SyncF3Frames::sm_state_syncRecovery(): F3 subcode sync0 and sync1 missing";
+    syncRecoveryAttempts = 0;
     return state_syncRecovery;
 }
 
@@ -192,7 +196,7 @@ SyncF3Frames::StateMachine SyncF3Frames::sm_state_syncRecovery()
     // Sync0 and sync 1 are missing; so we need to look ahead over another
     // section to see if a sync is present.  If it is, then it's very likely
     // the missing section sync is simple corruption, so we can assume its
-    // position.  If two sets of sync0 and sync1 are missing in a row, its
+    // position.  If 5 sets of sync0 and sync1 are missing in a row, its
     // likely that the EFM signal is simply invalid, so we flag lost sync
 
     qint32 requiredF3Frames = 98 * (syncRecoveryAttempts + 2);
@@ -201,16 +205,6 @@ SyncF3Frames::StateMachine SyncF3Frames::sm_state_syncRecovery()
     if (f3FrameBuffer.size() < (requiredF3Frames + 2)) {
         waitingForData = true;
         return state_syncRecovery;
-    }
-
-    syncRecoveryAttempts++;
-
-    // Try recovery 5 times...
-    if (syncRecoveryAttempts > 5) {
-        // Too many attempts
-        if (debugOn) qDebug() << "SyncF3Frames::sm_state_syncRecovery(): Too many sync recovery attempts (" << syncRecoveryAttempts - 1 << ") - giving up";
-        syncRecoveryAttempts = 0;
-        return state_syncLost;
     }
 
     // This section's sync0 should be at 98 (with sync1 at 99),
@@ -233,7 +227,18 @@ SyncF3Frames::StateMachine SyncF3Frames::sm_state_syncRecovery()
         return state_processSection;
     }
 
-    // Give up and make another attempt
+    // Give up - make another attempt?
+    if (debugOn) qDebug() << "SyncF3Frames::sm_state_syncRecovery(): Failed to find sync on attempt" << syncRecoveryAttempts;
+
+    // Try recovery 5 times...
+    syncRecoveryAttempts++;
+    if (syncRecoveryAttempts > 5) {
+        // Too many attempts
+        if (debugOn) qDebug() << "SyncF3Frames::sm_state_syncRecovery(): Too many sync recovery attempts (" << syncRecoveryAttempts - 1 << ") - giving up";
+        syncRecoveryAttempts = 0;
+        return state_syncLost;
+    }
+
     return state_syncRecovery;
 }
 
@@ -245,7 +250,7 @@ SyncF3Frames::StateMachine SyncF3Frames::sm_state_syncLost()
     // We have lost sync; clear the buffer and go back to looking for an initial sync
     f3FrameBuffer.remove(0, 98);
     statistics.discardedFrames += 98;
-    if (debugOn) qDebug() << "SyncF3Frames::sm_state_findNextSync(): Sync lost!";
+    if (debugOn) qDebug() << "SyncF3Frames::sm_state_findNextSync(): Sync lost! - discarding 98 frames";
 
     if (f3FrameBuffer.size() < 98) {
         waitingForData = true;

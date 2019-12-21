@@ -80,6 +80,7 @@ private:
 
     bool initialDiscTimeSet;
     TrackTime lastDiscTime;
+    bool lostSections;
 };
 
 #endif // F3TOF2FRAMES_H

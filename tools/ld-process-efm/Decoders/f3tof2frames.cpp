@@ -100,19 +100,31 @@ QVector<F2Frame> F3ToF2Frames::process(QVector<F3Frame> f3FramesIn, bool debugSt
                 // Default to 00:00.00
                 lastDiscTime.setTime(0, 0, 0);
             }
-        } else {
+        }
+
+        if (initialDiscTimeSet) {
             // Initial disc time has been set
 
             // Compare the last known disc time to the current disc time
             if (section.getQMode() == 1 || section.getQMode() == 4) {
-                // Current section has a valid disc time
+                // Current section has a valid disc time - read it
                 currentDiscTime = section.getQMetadata().qMode1And4.discTime;
+
+                if (lostSections) {
+                    if (debugOn) qDebug().noquote() << "F3ToF2Frames::process(): First valid time after section loss is" << currentDiscTime.getTimeAsQString();
+                    lostSections = false;
+                }
             } else {
-                // Current section does not have a valid disc time, estimate it
+                // Current section does not have a valid disc time - estimate it
                 currentDiscTime = lastDiscTime;
                 currentDiscTime.addFrames(1); // We assume this section is contiguous
-                if (debugOn) qDebug().noquote() << "F3ToF2Frames::process(): Disc time not available, setting current disc time to" << currentDiscTime.getTimeAsQString() <<
+                if (debugOn) qDebug().noquote() << "F3ToF2Frames::process(): Section disc time not valid, setting current disc time to" << currentDiscTime.getTimeAsQString() <<
                                                    "based on last disc time of" << lastDiscTime.getTimeAsQString();
+
+                if (lostSections) {
+                    if (debugOn) qDebug().noquote() << "F3ToF2Frames::process(): First invalid guessed time after section loss is" << currentDiscTime.getTimeAsQString();
+                    lostSections = false;
+                }
             }
 
             // Check that this section is one frame difference from the previous
@@ -122,8 +134,10 @@ QVector<F2Frame> F3ToF2Frames::process(QVector<F3Frame> f3FramesIn, bool debugSt
                 // The incoming F3 section isn't contiguous with the previous F3 section
                 // this means the C1, C2 and deinterleave buffers are full of the wrong
                 // data... so here we flush them to speed up the recovery time
-                if (debugOn) qDebug() << "F3ToF2Frames::process(): Non-contiguous F3 section with" << sectionFrameGap << "frames missing - Last disc time was" <<
+                if (debugOn) qDebug() << "F3ToF2Frames::process(): Non-contiguous F3 section with" << sectionFrameGap - 1 << "sections missing - Last disc time was" <<
                             lastDiscTime.getTimeAsQString() << "current disc time is" << currentDiscTime.getTimeAsQString();
+                if (debugOn) qDebug() << "F3ToF2Frames::process(): Lost" << (sectionFrameGap - 1) * 98 << "F3 frames (" << (sectionFrameGap - 1) <<
+                                         "sections ) - Flushing C1, C2 buffers and section metadata";
                 statistics.sequenceInterruptions++;
                 statistics.missingF3Frames += (sectionFrameGap - 1) * 98;
                 c1Circ.flush();
@@ -133,6 +147,9 @@ QVector<F2Frame> F3ToF2Frames::process(QVector<F3Frame> f3FramesIn, bool debugSt
                 // Also flush the section metadata as it's now out of sync
                 sectionBuffer.clear();
                 sectionDiscTimes.clear();
+
+                // Mark section loss
+                lostSections = true;
             }
 
             // Store the current disc time as last
@@ -276,6 +293,8 @@ void F3ToF2Frames::reset()
     c2Circ.reset();
     c2Deinterleave.reset();
     clearStatistics();
+
+    lostSections = false;
 }
 
 // Private methods ----------------------------------------------------------------------------------------------------
