@@ -116,6 +116,7 @@ void EfmToF3Frames::reset(void)
     currentState = state_initial;
     nextState = currentState;
     waitingForData = false;
+    sequentialGoodSyncCounter = 0;
     sequentialBadSyncCounter = 0;
     endSyncTransition = 0;
 }
@@ -227,6 +228,7 @@ EfmToF3Frames::StateMachine EfmToF3Frames::sm_state_findInitialSyncStage2()
     }
 
     if (debugOn) qDebug() << "EfmToF3Frames::sm_state_findInitialSyncStage2(): Found first F3 frame with a length of" << tTotal << "bits";
+    sequentialGoodSyncCounter = 0;
 
     return state_processFrame;
 }
@@ -263,7 +265,8 @@ EfmToF3Frames::StateMachine EfmToF3Frames::sm_state_findSecondSync()
         endSyncTransition = i;
         sequentialBadSyncCounter = 0;
         statistics.validSyncs++;
-        //if (debugOn) qDebug() << "EfmToF3Frames::sm_state_findSecondSync(): Got good F3 sync";
+        //if (debugOn) qDebug() << "EfmToF3Frames::sm_state_findSecondSync(): Got good F3 sync - #" << sequentialGoodSyncCounter;
+        sequentialGoodSyncCounter++;
     } else {
         // Handle various possible sync issues in a (hopefully) smart way
         if (efmDataBuffer[i] == static_cast<char>(11) && efmDataBuffer[i + 1] == static_cast<char>(11)) {
@@ -306,6 +309,15 @@ EfmToF3Frames::StateMachine EfmToF3Frames::sm_state_findSecondSync()
                 sequentialBadSyncCounter++;
                 statistics.overshootSyncs++;
             }
+
+            // If there is a failure when there are no previous good syncs, try to resync
+            if (sequentialGoodSyncCounter == 0 && sequentialBadSyncCounter != 0) {
+                if (debugOn) qDebug() << "EfmToF3Frames::sm_state_findSecondSync(): F3 Sync failing with no previous good frames - attempting to reset sync";
+                return state_findInitialSyncStage1;
+            }
+
+            // Reset the sequential good sync counter
+            sequentialGoodSyncCounter = 0;
         }
     }
 
