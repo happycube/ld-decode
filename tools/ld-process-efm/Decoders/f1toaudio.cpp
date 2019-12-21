@@ -155,12 +155,7 @@ F1ToAudio::StateMachine F1ToAudio::sm_state_processFrame()
                     if (!padInitialDiscTime) {
                         // Only count as a missing sample after the first good sample is seen
                         if (gotFirstSample) statistics.missingSamples += 6;
-                    } else {
-                        // If we are padding initial disc time, count all missing samples
-                        // as missing
-                        statistics.missingSamples += 6;
                     }
-
                 }
             } else {
                 // Frame is good - Get the frame data

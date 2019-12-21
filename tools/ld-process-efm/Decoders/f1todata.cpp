@@ -218,11 +218,14 @@ F1ToData::StateMachine F1ToData::sm_state_processFrame()
 
     // Create a sector object from the sector data
     bool sectorValidity = true;
+    bool sectorBufferCorrupt = false;
+    bool sectorBufferMissing = false;
     for (qint32 i = 0; i < 2352; i++) {
-        if (f1IsCorruptBuffer[i] == static_cast<char>(0)) sectorValidity = false;
-        if (f1IsMissingBuffer[i] == static_cast<char>(0)) sectorValidity = false;
-        if (sectorValidity == false) break;
+        if (f1IsCorruptBuffer[i] == static_cast<char>(0)) sectorBufferCorrupt = true;
+        if (f1IsMissingBuffer[i] == static_cast<char>(0)) sectorBufferMissing = true;
+        if (sectorBufferCorrupt || sectorBufferMissing) break;
     }
+    if (sectorBufferCorrupt || sectorBufferMissing) sectorValidity = false;
     Sector sector(f1DataBuffer.mid(0, 2352), sectorValidity);
 
     // Remove the sector data from the input F1 buffer
@@ -236,8 +239,13 @@ F1ToData::StateMachine F1ToData::sm_state_processFrame()
         lastAddress.addFrames(1);
         statistics.currentAddress = lastAddress;
         sector.setAsNull(statistics.currentAddress);
+
+        if (debugOn && sectorBufferCorrupt) qDebug() << "F1ToData::sm_state_processFrame(): Sector invalid - Buffer contained corrupt F1 data";
+        if (debugOn && sectorBufferMissing) qDebug() << "F1ToData::sm_state_processFrame(): Sector invalid - Buffer contained missing F1 data (padded)";
+
         if (debugOn) qDebug() << "F1ToData::sm_state_processFrame(): Current frame is invalid, setting user data to null";
         statistics.invalidSectors++;
+
         statistics.totalSectors++;
     } else {
         // Sector is valid

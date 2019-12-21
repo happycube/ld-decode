@@ -235,6 +235,7 @@ void MainWindow::resetStatistics()
     // F1 tab
     ui->f1_f2ToF1_validFrames_label->setText(tr("0"));
     ui->f1_f2ToF1_invalidFrames_label->setText(tr("0"));
+    ui->f1_f2ToF1_initialPaddingFrames_label->setText(tr("0"));
     ui->f1_f2ToF1_missingSectionFrames_label->setText(tr("0"));
     ui->f1_f2ToF1_encoderOffFrames_label->setText(tr("0"));
     ui->f1_f2ToF1_totalFrames_label->setText(tr("0"));
@@ -345,8 +346,9 @@ void MainWindow::updateStatistics()
     ui->f2_deinterleave_delayBufferFlushes_label->setText(QString::number(statistics.f3ToF2Frames.c2Deinterleave_statistics.c2flushed));
 
     // F1 tab
-    ui->f1_f2ToF1_validFrames_label->setText(QString::number(statistics.f2ToF1Frames.validFrames));
-    ui->f1_f2ToF1_invalidFrames_label->setText(QString::number(statistics.f2ToF1Frames.invalidFrames));
+    ui->f1_f2ToF1_validFrames_label->setText(QString::number(statistics.f2ToF1Frames.validF2Frames));
+    ui->f1_f2ToF1_invalidFrames_label->setText(QString::number(statistics.f2ToF1Frames.invalidF2Frames));
+    ui->f1_f2ToF1_initialPaddingFrames_label->setText(QString::number(statistics.f2ToF1Frames.initialPaddingFrames));
     ui->f1_f2ToF1_missingSectionFrames_label->setText(QString::number(statistics.f2ToF1Frames.missingSectionFrames));
     ui->f1_f2ToF1_encoderOffFrames_label->setText(QString::number(statistics.f2ToF1Frames.encoderOffFrames));
     ui->f1_f2ToF1_totalFrames_label->setText(QString::number(statistics.f2ToF1Frames.totalFrames));

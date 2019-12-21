@@ -76,11 +76,12 @@ void F2ToF1Frames::reportStatistics()
 {
     qInfo()           << "";
     qInfo()           << "F2 Frames to F1 Frames:";
-    qInfo()           << "            Valid frames:" << statistics.validFrames;
-    qInfo()           << "          Invalid frames:" << statistics.invalidFrames;
-    qInfo()           << "  Missing section frames:" << statistics.missingSectionFrames << "(" << statistics.missingSectionFrames / 6 << "F3 Frames )";
-    qInfo()           << "      Encoder off frames:" << statistics.encoderOffFrames;
-    qInfo()           << "            TOTAL frames:" << statistics.totalFrames;
+    qInfo()           << "            Valid F2 frames:" << statistics.validF2Frames;
+    qInfo()           << "          Invalid F2 frames:" << statistics.invalidF2Frames;
+    qInfo()           << "     Initial padding frames:" << statistics.initialPaddingFrames;
+    qInfo()           << "     Missing section frames:" << statistics.missingSectionFrames;
+    qInfo()           << "         Encoder off frames:" << statistics.encoderOffFrames;
+    qInfo()           << "               TOTAL frames:" << statistics.totalFrames;
     qInfo()           << "";
     qInfo().noquote() << "       Frames start time:" << statistics.framesStart.getTimeAsQString();
     qInfo().noquote() << "         Frames end time:" << statistics.frameCurrent.getTimeAsQString();
@@ -106,11 +107,12 @@ void F2ToF1Frames::reset()
 // Method to clear the statistics counters
 void F2ToF1Frames::clearStatistics()
 {
-    statistics.validFrames = 0;
+    statistics.validF2Frames = 0;
+    statistics.initialPaddingFrames = 0;
     statistics.missingSectionFrames = 0;
     statistics.encoderOffFrames = 0;
     statistics.totalFrames = 0;
-    statistics.invalidFrames = 0;
+    statistics.invalidF2Frames = 0;
 
     statistics.framesStart.setTime(0, 0, 0);
     statistics.frameCurrent.setTime(0, 0, 0);
@@ -163,7 +165,7 @@ F2ToF1Frames::StateMachine F2ToF1Frames::sm_state_getInitialDiscTime()
             }
 
             // Add filled section to statistics
-            statistics.missingSectionFrames += 98;
+            statistics.initialPaddingFrames += 98;
             statistics.totalFrames += 98;
         }
     }
@@ -231,7 +233,7 @@ F2ToF1Frames::StateMachine F2ToF1Frames::sm_state_processSection()
         f1FramesOut.append(f1Frame);
 
         // Update the statistics
-        if (f2FrameBuffer[i].isFrameCorrupt()) statistics.invalidFrames++; else statistics.validFrames++;
+        if (f2FrameBuffer[i].isFrameCorrupt()) statistics.invalidF2Frames++; else statistics.validF2Frames++;
         if (!sectionEncoderState) statistics.encoderOffFrames++;
         statistics.totalFrames++;
     }
