@@ -77,7 +77,6 @@ void TrackTime::addFrames(qint32 frames)
 void TrackTime::subtractFrames(qint32 frames)
 {
     trackFrames -= frames;
-    if (trackFrames < 0) trackFrames = 0;
 }
 
 // Method to get the difference (in frames) between two track times

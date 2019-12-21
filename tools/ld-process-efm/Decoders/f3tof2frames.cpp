@@ -76,12 +76,14 @@ QVector<F2Frame> F3ToF2Frames::process(QVector<F3Frame> f3FramesIn, bool debugSt
             if (!section.getQMetadata().qControl.isNoPreempNotPreemp) statistics.preempFrames++;
         }
 
-        // Keep track of the disc time
-        TrackTime currentDiscTime;
+        // Do we have an initial disc time?
         if (!initialDiscTimeSet) {
-            // Initial disc time is not set
-            // Get the initial disc time if available
-            if (section.getQMode() == 1 || section.getQMode() == 4) {
+            // Initial disc time is not set...
+
+            // Ensure the QMode is valid
+            if ((section.getQMode() == 1 || section.getQMode() == 4) &&
+                    (!section.getQMetadata().qMode1And4.isLeadIn && !section.getQMetadata().qMode1And4.isLeadOut)) {
+                TrackTime currentDiscTime;
                 statistics.initialDiscTime = section.getQMetadata().qMode1And4.discTime;
                 currentDiscTime = section.getQMetadata().qMode1And4.discTime;
 
@@ -89,24 +91,28 @@ QVector<F2Frame> F3ToF2Frames::process(QVector<F3Frame> f3FramesIn, bool debugSt
                 lastDiscTime.subtractFrames(1);
 
                 if (debugOn) qDebug().noquote() << "F3ToF2Frames::process(): Initial disc time is" << currentDiscTime.getTimeAsQString();
-                if (debugOn) qDebug().noquote() << "F3ToF2Frames::process(): Last disc time is" << lastDiscTime.getTimeAsQString();
                 initialDiscTimeSet = true;
             } else {
-                // If initial disc time isn't set and the first section isn't Q Mode 1 or 4, we could have
-                // a problem here... it might be smart to simply drop the section of F3 frames until we get a
-                // valid point; otherwise the decoded audio could be really messy?
-                if (debugOn) qWarning("F3ToF2Frames::startProcessing(): No available disc time in the first section of F3 Frames!");
+                // We can't use the current section, report why and then disregard
+                if (section.getQMode() != 1 && section.getQMode() != 4) if (debugOn) qDebug() << "F3ToF2Frames::process(): Current section is not QMode 1 or 4";
+                if (section.getQMetadata().qMode1And4.isLeadIn || section.getQMetadata().qMode1And4.isLeadOut) if (debugOn) qDebug() << "F3ToF2Frames::process(): Current section is lead in/out";
 
-                // Default to 00:00.00
-                lastDiscTime.setTime(0, 0, 0);
+                // Drop the section
+                if (debugOn) qDebug() << "F3ToF2Frames::process(): Ignoring section (disregards 98 F3 frames)";
             }
         }
 
         if (initialDiscTimeSet) {
-            // Initial disc time has been set
+            // We have an initial disc time
+            TrackTime currentDiscTime;
 
             // Compare the last known disc time to the current disc time
             if (section.getQMode() == 1 || section.getQMode() == 4) {
+                // Just checkin'
+                if (section.getQMetadata().qMode1And4.isLeadIn || section.getQMetadata().qMode1And4.isLeadOut) {
+                    if (debugOn) qDebug() << "F3ToF2Frames::process(): Weird!  Seeing lead/out frames after a valid initial disc time";
+                }
+
                 // Current section has a valid disc time - read it
                 currentDiscTime = section.getQMetadata().qMode1And4.discTime;
 
