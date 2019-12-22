@@ -32,7 +32,7 @@ F3ToF2Frames::F3ToF2Frames()
 
 // Public methods -----------------------------------------------------------------------------------------------------
 
-QVector<F2Frame> F3ToF2Frames::process(QVector<F3Frame> f3FramesIn, bool debugState)
+QVector<F2Frame> F3ToF2Frames::process(QVector<F3Frame> f3FramesIn, bool debugState, bool noTimeStamp)
 {
     debugOn = debugState;
     QVector<F2Frame> f2FramesOut;
@@ -79,26 +79,38 @@ QVector<F2Frame> F3ToF2Frames::process(QVector<F3Frame> f3FramesIn, bool debugSt
         // Do we have an initial disc time?
         if (!initialDiscTimeSet) {
             // Initial disc time is not set...
-
-            // Ensure the QMode is valid
-            if ((section.getQMode() == 1 || section.getQMode() == 4) &&
-                    (!section.getQMetadata().qMode1And4.isLeadIn && !section.getQMetadata().qMode1And4.isLeadOut)) {
+            if (noTimeStamp) {
+                // This is a special condition for when the EFM doesn't follow the standards and no
+                // time-stamp information is available.  We can only assume that it starts from
+                // zero and that there are no skips or jumps in the original disc data...
                 TrackTime currentDiscTime;
-                statistics.initialDiscTime = section.getQMetadata().qMode1And4.discTime;
-                currentDiscTime = section.getQMetadata().qMode1And4.discTime;
-
+                currentDiscTime.setTime(0, 0, 0);
+                statistics.initialDiscTime = currentDiscTime;
                 lastDiscTime = currentDiscTime;
                 lastDiscTime.subtractFrames(1);
-
-                if (debugOn) qDebug().noquote() << "F3ToF2Frames::process(): Initial disc time is" << currentDiscTime.getTimeAsQString();
+                if (debugOn) qDebug().noquote() << "F3ToF2Frames::process(): No time stamps... Initial disc time is set to" << currentDiscTime.getTimeAsQString();
                 initialDiscTimeSet = true;
             } else {
-                // We can't use the current section, report why and then disregard
-                if (section.getQMode() != 1 && section.getQMode() != 4) if (debugOn) qDebug() << "F3ToF2Frames::process(): Current section is not QMode 1 or 4";
-                if (section.getQMetadata().qMode1And4.isLeadIn || section.getQMetadata().qMode1And4.isLeadOut) if (debugOn) qDebug() << "F3ToF2Frames::process(): Current section is lead in/out";
+                // Ensure the QMode is valid
+                if ((section.getQMode() == 1 || section.getQMode() == 4) &&
+                        (!section.getQMetadata().qMode1And4.isLeadIn && !section.getQMetadata().qMode1And4.isLeadOut)) {
+                    TrackTime currentDiscTime;
+                    statistics.initialDiscTime = section.getQMetadata().qMode1And4.discTime;
+                    currentDiscTime = section.getQMetadata().qMode1And4.discTime;
 
-                // Drop the section
-                if (debugOn) qDebug() << "F3ToF2Frames::process(): Ignoring section (disregards 98 F3 frames)";
+                    lastDiscTime = currentDiscTime;
+                    lastDiscTime.subtractFrames(1);
+
+                    if (debugOn) qDebug().noquote() << "F3ToF2Frames::process(): Initial disc time is" << currentDiscTime.getTimeAsQString();
+                    initialDiscTimeSet = true;
+                } else {
+                    // We can't use the current section, report why and then disregard
+                    if (section.getQMode() != 1 && section.getQMode() != 4) if (debugOn) qDebug() << "F3ToF2Frames::process(): Current section is not QMode 1 or 4";
+                    if (section.getQMetadata().qMode1And4.isLeadIn || section.getQMetadata().qMode1And4.isLeadOut) if (debugOn) qDebug() << "F3ToF2Frames::process(): Current section is lead in/out";
+
+                    // Drop the section
+                    if (debugOn) qDebug() << "F3ToF2Frames::process(): Ignoring section (disregards 98 F3 frames)";
+                }
             }
         }
 
@@ -108,13 +120,19 @@ QVector<F2Frame> F3ToF2Frames::process(QVector<F3Frame> f3FramesIn, bool debugSt
 
             // Compare the last known disc time to the current disc time
             if (section.getQMode() == 1 || section.getQMode() == 4) {
-                // Just checkin'
-                if (section.getQMetadata().qMode1And4.isLeadIn || section.getQMetadata().qMode1And4.isLeadOut) {
-                    if (debugOn) qDebug() << "F3ToF2Frames::process(): Weird!  Seeing lead/out frames after a valid initial disc time";
-                }
+                if (!noTimeStamp) {
+                    // Just checkin'
+                    if (section.getQMetadata().qMode1And4.isLeadIn || section.getQMetadata().qMode1And4.isLeadOut) {
+                        if (debugOn) qDebug() << "F3ToF2Frames::process(): Weird!  Seeing lead/out frames after a valid initial disc time";
+                    }
 
-                // Current section has a valid disc time - read it
-                currentDiscTime = section.getQMetadata().qMode1And4.discTime;
+                    // Current section has a valid disc time - read it
+                    currentDiscTime = section.getQMetadata().qMode1And4.discTime;
+                } else {
+                    // We have to fake the time-stamp here
+                    currentDiscTime = lastDiscTime;
+                    currentDiscTime.addFrames(1); // We assume this section is contiguous
+                }
 
                 if (lostSections) {
                     if (debugOn) qDebug().noquote() << "F3ToF2Frames::process(): First valid time after section loss is" << currentDiscTime.getTimeAsQString();

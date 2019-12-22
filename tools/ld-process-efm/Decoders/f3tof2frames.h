@@ -59,7 +59,7 @@ public:
         qint32 preempFrames;
     };
 
-    QVector<F2Frame> process(QVector<F3Frame> f3FramesIn, bool debugState);
+    QVector<F2Frame> process(QVector<F3Frame> f3FramesIn, bool debugState, bool noTimeStamp);
     Statistics getStatistics();
     void reportStatistics();
     void reset();

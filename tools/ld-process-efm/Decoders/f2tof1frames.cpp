@@ -33,9 +33,10 @@ F2ToF1Frames::F2ToF1Frames()
 // Public methods -----------------------------------------------------------------------------------------------------
 
 // Method to feed the audio processing state-machine with F2Frames
-QVector<F1Frame> F2ToF1Frames::process(QVector<F2Frame> f2FramesIn, bool debugState)
+QVector<F1Frame> F2ToF1Frames::process(QVector<F2Frame> f2FramesIn, bool _debugState, bool _noTimeStamp)
 {
-    debugOn = debugState;
+    debugOn = _debugState;
+    noTimeStamp = _noTimeStamp;
 
     // Clear the output buffer
     f1FramesOut.clear();
@@ -224,6 +225,9 @@ F2ToF1Frames::StateMachine F2ToF1Frames::sm_state_processSection()
         if (f2FrameBuffer[i].getIsEncoderRunning()) encoderStateCount++;
     }
     if (encoderStateCount > 10) sectionEncoderState = true; else sectionEncoderState = false;
+
+    // Override the encoder state for non-standard EFM with no time-stamps
+    if (noTimeStamp) sectionEncoderState = true;
 
     // Output the F2 Frames as F1 Frames
     F1Frame f1Frame;

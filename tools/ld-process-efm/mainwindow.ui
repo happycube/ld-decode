@@ -110,7 +110,7 @@
          <item>
           <widget class="QTabWidget" name="tabWidget">
            <property name="currentIndex">
-            <number>4</number>
+            <number>0</number>
            </property>
            <widget class="QWidget" name="optionsTab">
             <attribute name="title">
@@ -219,7 +219,7 @@
                <property name="minimumSize">
                 <size>
                  <width>0</width>
-                 <height>100</height>
+                 <height>120</height>
                 </size>
                </property>
                <property name="title">
@@ -268,6 +268,19 @@
                 </property>
                 <property name="checked">
                  <bool>true</bool>
+                </property>
+               </widget>
+               <widget class="QCheckBox" name="options_noTimeStamp_checkBox">
+                <property name="geometry">
+                 <rect>
+                  <x>10</x>
+                  <y>90</y>
+                  <width>511</width>
+                  <height>23</height>
+                 </rect>
+                </property>
+                <property name="text">
+                 <string>Non-standard audio decode (no time-stamp information)</string>
                 </property>
                </widget>
               </widget>

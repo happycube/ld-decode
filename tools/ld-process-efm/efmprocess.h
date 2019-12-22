@@ -62,7 +62,7 @@ public:
                   bool _debug_f1ToAudio, bool _debug_f1ToData);
     void setAudioErrorTreatment(F1ToAudio::ErrorTreatment _errorTreatment,
                                             F1ToAudio::ConcealType _concealType);
-    void setDecoderOptions(bool _padInitialDiscTime, bool _decodeAsAudio, bool _decodeAsData);
+    void setDecoderOptions(bool _padInitialDiscTime, bool _decodeAsAudio, bool _decodeAsData, bool _noTimeStamp);
     void reportStatistics();
     void startProcessing(QFile *_inputFilename, QFile *_audioOutputFilename, QFile *_dataOutputFilename);
     void stopProcessing();
@@ -107,6 +107,7 @@ private:
     bool padInitialDiscTime;
     bool decodeAsAudio;
     bool decodeAsData;
+    bool noTimeStamp;
 
     Statistics statistics;
 

@@ -403,6 +403,7 @@ void MainWindow::resetDecoderOptions()
     ui->audio_padSampleStart_checkBox->setChecked(false);
     ui->options_decodeAsAudio_checkbox->setChecked(true);
     ui->options_decodeAsData_checkbox->setChecked(false);
+    ui->options_noTimeStamp_checkBox->setChecked(false);
 
     ui->tabWidget->setTabEnabled(ui->tabWidget->indexOf(ui->dataTab), false);
 }
@@ -583,7 +584,7 @@ void MainWindow::on_decodePushButton_clicked()
 
     // Set the audio options
     efmProcess.setDecoderOptions(ui->audio_padSampleStart_checkBox->isChecked(), ui->options_decodeAsAudio_checkbox->isChecked(),
-                                 ui->options_decodeAsData_checkbox->isChecked());
+                                 ui->options_decodeAsData_checkbox->isChecked(), ui->options_noTimeStamp_checkBox->isChecked());
 
     // Start the processing of the EFM
     efmProcess.startProcessing(&inputEfmFileHandle, &audioOutputTemporaryFileHandle,
