@@ -754,7 +754,9 @@ class DemodCache:
 
     def flushvideo(self):
         for k in self.blocks.keys():
-            if 'demod' in self.blocks[k]:
+            if self.blocks[k] is None:
+                pass
+            elif 'demod' in self.blocks[k]:
                 self.lock.acquire()
                 del self.blocks[k]['demod']
                 self.lock.release()
