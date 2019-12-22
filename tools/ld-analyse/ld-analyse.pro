@@ -4,7 +4,7 @@
 #
 #-------------------------------------------------
 
-QT       += core gui charts
+QT       += core gui
 
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
@@ -25,70 +25,77 @@ DEFINES += QT_DEPRECATED_WARNINGS
 CONFIG += c++11
 
 SOURCES += \
-        main.cpp \
-        mainwindow.cpp \
+    busydialog.cpp \
+    closedcaptionsdialog.cpp \
+    main.cpp \
+    mainwindow.cpp \
     oscilloscopedialog.cpp \
     aboutdialog.cpp \
+    palchromadecoderconfigdialog.cpp \
     snranalysisdialog.cpp \
+    tbcsource.cpp \
     vbidialog.cpp \
     configuration.cpp \
-    ntscdialog.cpp \
-    ../ld-comb-pal/palcolour.cpp \
-    ../ld-comb-ntsc/comb.cpp \
-    ../ld-comb-ntsc/filter.cpp \
-    ../ld-comb-ntsc/rgb.cpp \
-    ../ld-comb-ntsc/yiq.cpp \
-    videometadatadialog.cpp \
-    frameqlabel.cpp \
     dropoutanalysisdialog.cpp \
-    ../ld-comb-ntsc/yiqline.cpp \
-    ../ld-comb-ntsc/yiqbuffer.cpp \
-    ../ld-comb-ntsc/opticalflow.cpp \
-    vitsmetricsdialog.cpp
+    ../ld-chroma-decoder/palcolour.cpp \
+    ../ld-chroma-decoder/comb.cpp \
+    ../ld-chroma-decoder/rgb.cpp \
+    ../ld-chroma-decoder/yiq.cpp \
+    ../ld-chroma-decoder/transformpal.cpp \
+    ../ld-chroma-decoder/transformpal2d.cpp \
+    ../ld-chroma-decoder/transformpal3d.cpp \
+    ../ld-chroma-decoder/framecanvas.cpp \
+    ../ld-chroma-decoder/opticalflow.cpp \
+    ../ld-chroma-decoder/sourcefield.cpp \
+    ../library/tbc/lddecodemetadata.cpp \
+    ../library/tbc/sourcevideo.cpp \
+    ../library/tbc/vbidecoder.cpp \
+    ../library/tbc/filters.cpp
 
 HEADERS += \
-        mainwindow.h \
+    busydialog.h \
+    closedcaptionsdialog.h \
+    mainwindow.h \
     oscilloscopedialog.h \
     aboutdialog.h \
+    palchromadecoderconfigdialog.h \
     snranalysisdialog.h \
+    tbcsource.h \
     vbidialog.h \
     configuration.h \
-    ntscdialog.h \
-    ../ld-comb-pal/palcolour.h \
-    ../ld-comb-ntsc/comb.h \
-    ../ld-comb-ntsc/filter.h \
-    ../ld-comb-ntsc/rgb.h \
-    ../ld-comb-ntsc/yiq.h \
-    videometadatadialog.h \
-    frameqlabel.h \
     dropoutanalysisdialog.h \
-    ../ld-comb-ntsc/yiqbuffer.h \
-    ../ld-comb-ntsc/yiqline.h \
-    ../ld-comb-ntsc/opticalflow.h \
-    ../ld-comb-ntsc/yiqbuffer.h \
-    vitsmetricsdialog.h
+    ../ld-chroma-decoder/palcolour.h \
+    ../ld-chroma-decoder/comb.h \
+    ../ld-chroma-decoder/rgb.h \
+    ../ld-chroma-decoder/yiq.h \
+    ../ld-chroma-decoder/transformpal.h \
+    ../ld-chroma-decoder/transformpal2d.h \
+    ../ld-chroma-decoder/transformpal3d.h \
+    ../ld-chroma-decoder/framecanvas.h \
+    ../ld-chroma-decoder/yiqbuffer.h \
+    ../ld-chroma-decoder/opticalflow.h \
+    ../ld-chroma-decoder/sourcefield.h \
+    ../library/filter/firfilter.h \
+    ../library/tbc/lddecodemetadata.h \
+    ../library/tbc/sourcevideo.h \
+    ../library/tbc/vbidecoder.h \
+    ../library/tbc/filters.h
 
 FORMS += \
-        mainwindow.ui \
+    busydialog.ui \
+    closedcaptionsdialog.ui \
+    mainwindow.ui \
     oscilloscopedialog.ui \
     aboutdialog.ui \
+    palchromadecoderconfigdialog.ui \
     snranalysisdialog.ui \
     vbidialog.ui \
-    ntscdialog.ui \
-    videometadatadialog.ui \
-    dropoutanalysisdialog.ui \
-    vitsmetricsdialog.ui
+    dropoutanalysisdialog.ui
 
-MYDLLDIR = $$IN_PWD/../library
-
-# As our header files are in the same directory, we can make Qt Creator find it
-# by specifying it as INCLUDEPATH.
-INCLUDEPATH += $$MYDLLDIR
-
-# Dependency to library domain (libdomain.so for Unices or domain.dll on Win32)
-# Repeat this for more libraries if needed.
-win32:LIBS += $$quote($$MYDLLDIR/ld-decode-shared.dll)
- unix:LIBS += $$quote(-L$$MYDLLDIR) -lld-decode-shared
+# Add external includes to the include path
+INCLUDEPATH += ../library/filter
+INCLUDEPATH += ../library/tbc
+INCLUDEPATH += ../ld-chroma-decoder
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin
@@ -105,7 +112,12 @@ LIBS += -L"/usr/local/opt/opencv@2/lib"
 # Normal open-source OS goodness
 INCLUDEPATH += "/usr/local/include/opencv"
 LIBS += -L"/usr/local/lib"
-LIBS += -lopencv_core -lopencv_imgcodecs -lopencv_highgui -lopencv_imgproc -lopencv_video
+LIBS += -lopencv_core -lopencv_imgcodecs -lopencv_highgui -lopencv_imgproc -lopencv_video -lfftw3
+
+# Include the QWT library (used for charting)
+INCLUDEPATH += $(QWT)/include
+LIBS += -lqwt-qt5
+
 
 
 

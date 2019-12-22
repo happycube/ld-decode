@@ -6,16 +6,20 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>600</width>
-    <height>300</height>
+    <width>913</width>
+    <height>343</height>
    </rect>
   </property>
   <property name="windowTitle">
    <string>Dropout Analysis</string>
   </property>
-  <layout class="QVBoxLayout" name="verticalLayout_2">
+  <layout class="QHBoxLayout" name="horizontalLayout_2">
    <item>
-    <layout class="QVBoxLayout" name="verticalLayout"/>
+    <layout class="QHBoxLayout" name="horizontalLayout">
+     <item>
+      <layout class="QVBoxLayout" name="verticalLayout"/>
+     </item>
+    </layout>
    </item>
   </layout>
  </widget>

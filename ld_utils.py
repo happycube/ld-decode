@@ -2,7 +2,6 @@
 import numpy as np
 import scipy as sp
 import scipy.signal as sps
-import scipy.fftpack as fftpack 
 import sys
 
 import fdls as fdls

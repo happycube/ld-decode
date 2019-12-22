@@ -7,7 +7,7 @@
 
     This file is part of ld-decode-tools.
 
-    ld-dropout-correct is free software: you can redistribute it and/or
+    ld-analyse is free software: you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
     published by the Free Software Foundation, either version 3 of the
     License, or (at your option) any later version.
@@ -26,11 +26,13 @@
 #define DROPOUTANALYSISDIALOG_H
 
 #include <QDialog>
-#include <QtCharts>
+#include <qwt/qwt_plot.h>
+#include <qwt/qwt_plot_canvas.h>
+#include <qwt/qwt_legend.h>
+#include <qwt/qwt_plot_grid.h>
+#include <qwt/qwt_plot_curve.h>
 
 #include "lddecodemetadata.h"
-
-using namespace QtCharts;
 
 namespace Ui {
 class DropoutAnalysisDialog;
@@ -44,16 +46,23 @@ public:
     explicit DropoutAnalysisDialog(QWidget *parent = nullptr);
     ~DropoutAnalysisDialog();
 
-    void updateChart(LdDecodeMetaData *ldDecodeMetaData);
+    void startUpdate();
+    void addDataPoint(qint32 fieldNumber, qreal doLength);
+    void finishUpdate(qint32 numberOfFields, qint32 fieldsPerDataPoint);
+
+private slots:
 
 private:
-    Ui::DropoutAnalysisDialog *ui;
+    void removeChartContents();
 
-    QChart chart;
-    QLineSeries series;
-    QChartView *chartView;
-    QValueAxis axisX;
-    QValueAxis axisY;
+    Ui::DropoutAnalysisDialog *ui;
+    QwtPlot *plot;
+    QwtLegend *legend;
+    QwtPlotGrid *grid;
+    QPolygonF *points;
+    QwtPlotCurve *curve;
+
+    qreal maxY;
 };
 
 #endif // DROPOUTANALYSISDIALOG_H

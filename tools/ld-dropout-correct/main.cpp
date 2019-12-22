@@ -3,7 +3,7 @@
     main.cpp
 
     ld-dropout-correct - Dropout correction for ld-decode
-    Copyright (C) 2018 Simon Inns
+    Copyright (C) 2018-2019 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -26,7 +26,9 @@
 #include <QDebug>
 #include <QtGlobal>
 #include <QCommandLineParser>
+#include <QThread>
 
+#include "correctorpool.h"
 #include "dropoutcorrect.h"
 
 // Global for debug output
@@ -77,7 +79,7 @@ int main(int argc, char *argv[])
 
     // Set application name and version
     QCoreApplication::setApplicationName("ld-dropout-correct");
-    QCoreApplication::setApplicationVersion("1.2");
+    QCoreApplication::setApplicationVersion("1.4");
     QCoreApplication::setOrganizationDomain("domesday86.com");
 
     // Set up the command line parser
@@ -85,7 +87,7 @@ int main(int argc, char *argv[])
     parser.setApplicationDescription(
                 "ld-dropout-correct - Dropout correction for ld-decode\n"
                 "\n"
-                "(c)2018 Simon Inns\n"
+                "(c)2018-2019 Simon Inns\n"
                 "GPLv3 Open-Source - github: https://github.com/happycube/ld-decode");
     parser.addHelpOption();
     parser.addVersionOption();
@@ -95,21 +97,44 @@ int main(int argc, char *argv[])
                                        QCoreApplication::translate("main", "Show debug"));
     parser.addOption(showDebugOption);
 
+    // Option to specify a different JSON input file
+    QCommandLineOption inputJsonOption(QStringList() << "input-json",
+                                       QCoreApplication::translate("main", "Specify the input JSON file (default input.json)"),
+                                       QCoreApplication::translate("main", "filename"));
+    parser.addOption(inputJsonOption);
+
+    // Option to specify a different JSON output file
+    QCommandLineOption outputJsonOption(QStringList() << "output-json",
+                                        QCoreApplication::translate("main", "Specify the output JSON file (default output.json)"),
+                                        QCoreApplication::translate("main", "filename"));
+    parser.addOption(outputJsonOption);
+
     // Option to reverse the field order (-r)
     QCommandLineOption setReverseOption(QStringList() << "r" << "reverse",
                                        QCoreApplication::translate("main", "Reverse the field order to second/first (default first/second)"));
     parser.addOption(setReverseOption);
+
+    // Option to select over correct mode (-o)
+    QCommandLineOption setOverCorrectOption(QStringList() << "o" << "overcorrect",
+                                       QCoreApplication::translate("main", "Over correct mode (use on heavily damaged sources)"));
+    parser.addOption(setOverCorrectOption);
 
     // Force intra-field correction only
     QCommandLineOption setIntrafieldOption(QStringList() << "i" << "intra",
                                        QCoreApplication::translate("main", "Force intrafield correction (default interfield)"));
     parser.addOption(setIntrafieldOption);
 
+    // Option to select the number of threads (-t)
+    QCommandLineOption threadsOption(QStringList() << "t" << "threads",
+                                        QCoreApplication::translate("main", "Specify the number of concurrent threads (default is the number of logical CPUs)"),
+                                        QCoreApplication::translate("main", "number"));
+    parser.addOption(threadsOption);
+
     // Positional argument to specify input video file
-    parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input TBC file"));
+    parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input TBC file (- for piped input)"));
 
     // Positional argument to specify output video file
-    parser.addPositionalArgument("output", QCoreApplication::translate("main", "Specify output TBC file"));
+    parser.addPositionalArgument("output", QCoreApplication::translate("main", "Specify output TBC file (omit or - for piped output)"));
 
     // Process the command line options and arguments given by the user
     parser.process(a);
@@ -118,21 +143,46 @@ int main(int argc, char *argv[])
     bool isDebugOn = parser.isSet(showDebugOption);
     bool reverse = parser.isSet(setReverseOption);
     bool intraField = parser.isSet(setIntrafieldOption);
+    bool overCorrect = parser.isSet(setOverCorrectOption);
 
     // Get the arguments from the parser
-    QString inputFileName;
-    QString outputFileName;
+    qint32 maxThreads = QThread::idealThreadCount();
+    if (parser.isSet(threadsOption)) {
+        maxThreads = parser.value(threadsOption).toInt();
+
+        if (maxThreads < 1) {
+            // Quit with error
+            qCritical("Specified number of threads must be greater than zero");
+            return -1;
+        }
+    }
+
+    QString inputFilename;
+    QString outputFilename = "-";
     QStringList positionalArguments = parser.positionalArguments();
     if (positionalArguments.count() == 2) {
-        inputFileName = positionalArguments.at(0);
-        outputFileName = positionalArguments.at(1);
+        inputFilename = positionalArguments.at(0);
+        outputFilename = positionalArguments.at(1);
+    } else if (positionalArguments.count() == 1) {
+        inputFilename = positionalArguments.at(0);
     } else {
         // Quit with error
         qCritical("You must specify input and output TBC files");
         return -1;
     }
 
-    if (inputFileName == outputFileName) {
+    // Check filename arguments are reasonable
+    if (inputFilename == "-" && !parser.isSet(inputJsonOption)) {
+        // Quit with error
+        qCritical("With piped input, you must also specify the input JSON file");
+        return -1;
+    }
+    if (outputFilename == "-" && !parser.isSet(outputJsonOption)) {
+        // Quit with error
+        qCritical("With piped output, you must also specify the output JSON file");
+        return -1;
+    }
+    if (inputFilename == outputFilename) {
         // Quit with error
         qCritical("Input and output files cannot be the same");
         return -1;
@@ -141,9 +191,28 @@ int main(int argc, char *argv[])
     // Process the command line options
     if (isDebugOn) showDebug = true;
 
+    // Work out the metadata filenames
+    QString inputJsonFilename = inputFilename + ".json";
+    if (parser.isSet(inputJsonOption)) {
+        inputJsonFilename = parser.value(inputJsonOption);
+    }
+    QString outputJsonFilename = outputFilename + ".json";
+    if (parser.isSet(outputJsonOption)) {
+        outputJsonFilename = parser.value(outputJsonOption);
+    }
+
+    // Open the source video metadata
+    LdDecodeMetaData metaData;
+    qInfo().nospace().noquote() << "Reading JSON metadata from " << inputJsonFilename;
+    if (!metaData.read(inputJsonFilename)) {
+        qCritical() << "Unable to open TBC JSON metadata file";
+        return 1;
+    }
+
     // Perform the processing
-    DropOutCorrect dropOutCorrect;
-    dropOutCorrect.process(inputFileName, outputFileName, reverse, intraField);
+    qInfo() << "Beginning dropout correction...";
+    CorrectorPool correctorPool(inputFilename, outputFilename, outputJsonFilename, maxThreads, metaData, reverse, intraField, overCorrect);
+    if (!correctorPool.process()) return 1;
 
     // Quit with success
     return 0;

@@ -20,7 +20,7 @@ parser = argparse.ArgumentParser(description='Extracts a sample area from raw RF
 parser.add_argument('infile', metavar='infile', type=str, help='source file')
 parser.add_argument('outfile', metavar='outfile', type=str, help='destination file')
 
-parser.add_argument('-s', '--start', metavar='start', type=int, default=0, help='rough jump to frame n of capture (default is 0)')
+parser.add_argument('-s', '--start', metavar='start', type=float, default=0, help='rough jump to frame n of capture (default is 0)')
 parser.add_argument('-l', '--length', metavar='length', type=int, default = -1, help='limit length to n frames')
 
 parser.add_argument('-S', '--seek', metavar='seek', type=int, default=-1, help='seek to frame n of capture')
@@ -45,12 +45,11 @@ if args.pal and args.ntsc:
     print("ERROR: Can only be PAL or NTSC")
     exit(1)
 
-if filename[-3:] == 'lds':
-    loader = load_packed_data_4_40
-elif filename[-3:] == 'r30':
-    loader = load_packed_data_3_32
-elif filename[-3:] == 'r16':
-    loader = load_unpacked_data_s16
+try:
+    loader = make_loader(filename, None)
+except ValueError as e:
+    print(e)
+    exit(1)
 
 makelds = True if outname[-3:] == 'lds' else False
     
@@ -80,13 +79,13 @@ else:
     exit(-1)
 
 ldd.roughseek(startloc)
-startidx = ldd.fdoffset
+startidx = int(ldd.fdoffset)
 
 ldd.roughseek(endloc)
-endidx = ldd.fdoffset
+endidx = int(ldd.fdoffset)
 
 if makelds:
-    process = subprocess.Popen(['dddconv', '-o', outname, '-p'], stdin=subprocess.PIPE)
+    process = subprocess.Popen(['ld-lds-converter', '-o', outname, '-p'], stdin=subprocess.PIPE)
     fd = process.stdin
 else:
     fd = open(args.outfile, 'wb')
@@ -110,7 +109,7 @@ for i in range(startidx, endidx + 16384, 16384):
 fd.close()
 
 if makelds:
-    # allow dddconv to finish after EOFing it's input
+    # allow ld-lds-converter to finish after EOFing it's input
     process.wait()
     
 #exit(0)

@@ -22,13 +22,13 @@
 
 ************************************************************************/
 
-#include <QCoreApplication>
+#include "mainwindow.h"
+#include <QApplication>
 #include <QDebug>
 #include <QtGlobal>
 #include <QCommandLineParser>
 
 #include "logging.h"
-#include "efmprocess.h"
 
 int main(int argc, char *argv[])
 {
@@ -36,11 +36,11 @@ int main(int argc, char *argv[])
     setDebug(true);
     qInstallMessageHandler(debugOutputHandler);
 
-    QCoreApplication a(argc, argv);
+    QApplication a(argc, argv);
 
     // Set application name and version
     QCoreApplication::setApplicationName("ld-process-efm");
-    QCoreApplication::setApplicationVersion("1.1");
+    QCoreApplication::setApplicationVersion("3.0");
     QCoreApplication::setOrganizationDomain("domesday86.com");
 
     // Set up the command line parser
@@ -53,80 +53,69 @@ int main(int argc, char *argv[])
     parser.addHelpOption();
     parser.addVersionOption();
 
-    // Option to show debug (-d)
+    // Option to show debug (-d / --debug)
     QCommandLineOption showDebugOption(QStringList() << "d" << "debug",
                                        QCoreApplication::translate("main", "Show debug"));
     parser.addOption(showDebugOption);
 
-    // Option to show verbose F3 framing debug (-v)
-    QCommandLineOption verboseDebugOption(QStringList() << "x" << "verbose",
-                                       QCoreApplication::translate("main", "Show verbose F3 framing debug"));
-    parser.addOption(verboseDebugOption);
+    // Option to show debug (-d / --debug)
+    QCommandLineOption nonInteractiveOption(QStringList() << "n" << "noninteractive",
+                                       QCoreApplication::translate("main", "Run in non-interactive mode"));
+    parser.addOption(nonInteractiveOption);
 
-    // Option to specify input EFM file (-i)
-    QCommandLineOption inputEfmFileOption(QStringList() << "i" << "input",
-                QCoreApplication::translate("main", "Specify input EFM file"),
-                QCoreApplication::translate("main", "file"));
-    parser.addOption(inputEfmFileOption);
+    // -- Positional arguments --
 
-    // Option to specify output audio file (-a)
-    QCommandLineOption outputAudioFileOption(QStringList() << "a" << "audio",
-                QCoreApplication::translate("main", "Specify output audio file"),
-                QCoreApplication::translate("main", "file"));
-    parser.addOption(outputAudioFileOption);
+    // Positional argument to specify input EFM file
+    parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input EFM file"));
 
-    // Option to specify output sector data file (-s)
-    QCommandLineOption outputDataFileOption(QStringList() << "s" << "data",
-                QCoreApplication::translate("main", "Specify output sector data file"),
-                QCoreApplication::translate("main", "file"));
-    parser.addOption(outputDataFileOption);
-
-    // Option to specify output log file (-l)
-    QCommandLineOption outputLogFileOption(QStringList() << "l" << "log",
-                QCoreApplication::translate("main", "Specify optional log file"),
-                QCoreApplication::translate("main", "file"));
-    parser.addOption(outputLogFileOption);
+    // Positional argument to specify output audio file
+    parser.addPositionalArgument("output", QCoreApplication::translate("main", "Specify output audio file"));
 
     // Process the command line options and arguments given by the user
     parser.process(a);
 
     // Get the options from the parser
     bool isDebugOn = parser.isSet(showDebugOption);
-    bool verboseDebug = parser.isSet(verboseDebugOption);
-
-    // Get the arguments from the parser
-    QString inputEfmFilename = parser.value(inputEfmFileOption);
-    QString outputAudioFilename = parser.value(outputAudioFileOption);
-    QString outputDataFilename = parser.value(outputDataFileOption);
-    QString outputLogFilename = parser.value(outputLogFileOption);
-
-    // Check the parameters
-    if (inputEfmFilename.isEmpty()) {
-        qCritical() << "You must specify an input EFM file using --input";
-        return -1;
-    }
-
-    if (outputAudioFilename.isEmpty() && outputDataFilename.isEmpty()) {
-        qCritical() << "You must specify either audio output (with --audio <filename>) or sector data output (with --sector <filename>)";
-        return -1;
-    }
-
-    if (!outputLogFilename.isEmpty()) {
-        openDebugFile(outputLogFilename);
-    }
+    bool isNonInteractiveOn = parser.isSet(nonInteractiveOption);
 
     // Process the command line options
     if (isDebugOn) setDebug(true); else setDebug(false);
 
-    // Perform the processing
-    EfmProcess efmProcess;
-    efmProcess.process(inputEfmFilename, outputAudioFilename, outputDataFilename, verboseDebug);
-
-    // Close the log file
-    if (!outputLogFilename.isEmpty()) {
-        closeDebugFile();
+    // Get the arguments from the parser
+    QString inputEfmFilename;
+    QString outputAudioFilename;
+    QStringList positionalArguments = parser.positionalArguments();
+    if (positionalArguments.count() == 2) {
+        inputEfmFilename = positionalArguments.at(0);
+        outputAudioFilename = positionalArguments.at(1);
+    } else if (positionalArguments.count() == 1) {
+        inputEfmFilename = positionalArguments.at(0);
     }
 
-    // Quit with success
-    return 0;
+    if (isNonInteractiveOn) {
+        if (inputEfmFilename.isEmpty() || outputAudioFilename.isEmpty()) {
+            qWarning() << "You must specify the input EFM filename and the output audio filename in non-interactive mode";
+            return 1;
+        }
+    }
+
+    // Start the GUI application
+    MainWindow w(isDebugOn, isNonInteractiveOn, outputAudioFilename);
+    if (!inputEfmFilename.isEmpty()) {
+        // Load the file to decode
+        if (!w.loadInputEfmFile(inputEfmFilename)) {
+            if (isNonInteractiveOn) {
+                return 1;
+            }
+        } else {
+            if (isNonInteractiveOn) {
+                // Start the decode
+                w.startDecodeNonInteractive();
+            }
+        }
+    }
+
+    if (!isNonInteractiveOn) w.show();
+
+    return a.exec();
 }

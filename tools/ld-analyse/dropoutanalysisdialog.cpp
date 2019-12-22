@@ -7,7 +7,7 @@
 
     This file is part of ld-decode-tools.
 
-    ld-dropout-correct is free software: you can redistribute it and/or
+    ld-analyse is free software: you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
     published by the Free Software Foundation, either version 3 of the
     License, or (at your option) any later version.
@@ -30,84 +30,79 @@ DropoutAnalysisDialog::DropoutAnalysisDialog(QWidget *parent) :
     ui(new Ui::DropoutAnalysisDialog)
 {
     ui->setupUi(this);
-
-    // Set up the chart
-    chart.legend()->hide();
-    chart.addSeries(&series);
-
-    // Set up the X axis
-    axisX.setTitleText("Field number");
-    axisX.setLabelFormat("%i");
-    axisX.setTickCount(series.count());
-    chart.addAxis(&axisX, Qt::AlignBottom);
-    series.attachAxis(&axisX);
-
-    // Set up the Y axis
-    axisY.setTitleText("Dropout length (in dots)");
-    axisY.setLabelFormat("%i");
-    axisY.setTickCount(1000);
-    chart.addAxis(&axisY, Qt::AlignLeft);
-    series.attachAxis(&axisY);
+    setWindowFlags(Qt::Window);
+    maxY = 0;
 
     // Set up the chart view
-    chartView = new QChartView(&chart);
-    chartView->setRenderHint(QPainter::Antialiasing);
-    ui->verticalLayout->addWidget(chartView);
-    chartView->repaint();
+    plot = new QwtPlot();
+    grid = new QwtPlotGrid();
+    curve = new QwtPlotCurve();
+    points = new QPolygonF();
+
+    ui->verticalLayout->addWidget(plot);
 }
 
 DropoutAnalysisDialog::~DropoutAnalysisDialog()
 {
+    removeChartContents();
     delete ui;
 }
 
-void DropoutAnalysisDialog::updateChart(LdDecodeMetaData *ldDecodeMetaData)
+// Get ready for an update
+void DropoutAnalysisDialog::startUpdate()
 {
-    series.clear();
-
-    qreal targetDataPoints = 500;
-    qreal averageWidth = qRound(ldDecodeMetaData->getNumberOfFields() / targetDataPoints);
-    if (averageWidth < 1) averageWidth = 1; // Ensure we don't divide by zero
-    qint32 dataPoints = ldDecodeMetaData->getNumberOfFields() / static_cast<qint32>(averageWidth);
-    qint32 fieldsPerDataPoint = ldDecodeMetaData->getNumberOfFields() / dataPoints;
-
-    qint32 fieldNumber = 1;
-    qint32 maximumDropoutLength = 0;
-    for (qint32 dpCount = 0; dpCount < dataPoints; dpCount++) {
-        qint32 doLength = 0;
-        for (qint32 avCount = 0; avCount < fieldsPerDataPoint; avCount++) {
-            LdDecodeMetaData::Field field = ldDecodeMetaData->getField(fieldNumber);
-
-            if (field.dropOuts.startx.size() > 0) {
-                // Calculate the total length of the dropouts
-                for (qint32 i = 0; i < field.dropOuts.startx.size(); i++) {
-                    doLength += field.dropOuts.endx[i] - field.dropOuts.startx[i];
-                }
-            }
-
-            fieldNumber++;
-        }
-
-        // Calculate the average
-        doLength = doLength / fieldsPerDataPoint;
-
-        // Keep track of the maximum Y value
-        if (doLength > maximumDropoutLength) maximumDropoutLength = doLength;
-
-        // Add the result to the series
-        series.append(fieldNumber, doLength);
-    }
-
-    // Update the chart
-    chart.setTitle("Dropout loss analysis (averaged over " + QString::number(fieldsPerDataPoint) + " fields)");
-
-    axisX.setTickCount(10);
-    axisX.setMax(ldDecodeMetaData->getNumberOfFields());
-    axisX.setMin(0);
-
-    axisY.setTickCount(10);
-    axisY.setMax(maximumDropoutLength);
-    axisY.setMin(0);
-
-    chartView->repaint();
+    removeChartContents();
+    maxY = 0;
 }
+
+// Remove the axes and series from the chart, giving ownership back to this object
+void DropoutAnalysisDialog::removeChartContents()
+{
+    points->clear();
+    plot->replot();
+}
+
+// Add a data point to the chart
+void DropoutAnalysisDialog::addDataPoint(qint32 fieldNumber, qreal doLength)
+{
+    points->append(QPointF(fieldNumber, doLength));
+
+    // Keep track of the maximum Y value
+    if (doLength > maxY) maxY = doLength;
+}
+
+// Finish the update and render the graph
+void DropoutAnalysisDialog::finishUpdate(qint32 numberOfFields, qint32 fieldsPerDataPoint)
+{
+    // Set the chart title
+    plot->setTitle("Dropout loss analysis (averaged over " + QString::number(fieldsPerDataPoint) + " fields)");
+
+    // Set the background and grid
+    plot->setCanvasBackground(Qt::white);
+    grid->attach(plot);
+
+    // Define the x-axis
+    plot->setAxisScale(QwtPlot::xBottom, 0, numberOfFields, (numberOfFields / 10) + 1);
+    plot->setAxisTitle(QwtPlot::xBottom, "Field number");
+
+    // Define the y-axis
+    if (maxY < 10) plot->setAxisScale(QwtPlot::yLeft, 0, 10);
+    else plot->setAxisScale(QwtPlot::yLeft, 0, maxY);
+    plot->setAxisTitle(QwtPlot::yLeft, "Dropout length (in dots)");
+
+    // Attach the curve data to the chart
+    curve->setTitle("Dropout length");
+    curve->setPen(Qt::blue, 1);
+    curve->setRenderHint(QwtPlotItem::RenderAntialiased, true);
+    curve->setSamples(*points);
+    curve->attach(plot);
+
+    // Update the axis
+    plot->updateAxes();
+
+    // Render the chart
+    plot->maximumSize();
+    plot->show();
+}
+
+

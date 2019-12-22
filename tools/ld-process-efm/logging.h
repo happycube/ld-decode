@@ -30,16 +30,6 @@
 #include <QFile>
 #include <QString>
 
-#include <QLoggingCategory>
-Q_DECLARE_LOGGING_CATEGORY(efm_process)
-Q_DECLARE_LOGGING_CATEGORY(efm_efmToF3)
-Q_DECLARE_LOGGING_CATEGORY(efm_f3ToF2)
-Q_DECLARE_LOGGING_CATEGORY(efm_f2ToF1)
-Q_DECLARE_LOGGING_CATEGORY(efm_f1ToSectors)
-Q_DECLARE_LOGGING_CATEGORY(efm_f2ToAudio)
-Q_DECLARE_LOGGING_CATEGORY(efm_f3ToSections)
-Q_DECLARE_LOGGING_CATEGORY(efm_sectorsTodata)
-
 // Prototypes
 void debugOutputHandler(QtMsgType type, const QMessageLogContext &context, const QString &msg);
 void setDebug(bool state);

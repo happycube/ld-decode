@@ -7,7 +7,7 @@
 
     This file is part of ld-decode-tools.
 
-    ld-dropout-correct is free software: you can redistribute it and/or
+    ld-analyse is free software: you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
     published by the Free Software Foundation, either version 3 of the
     License, or (at your option) any later version.
@@ -54,20 +54,20 @@ public:
     // Get and set methods - windows
     void setMainWindowGeometry(QByteArray mainWindowGeometry);
     QByteArray getMainWindowGeometry(void);
+    void setMainWindowScaleFactor(qreal mainWindowScaleFactor);
+    qreal getMainWindowScaleFactor(void);
     void setVbiDialogGeometry(QByteArray vbiDialogGeometry);
     QByteArray getVbiDialogGeometry(void);
-    void setNtscDialogGeometry(QByteArray ntscDialogGeometry);
-    QByteArray getNtscDialogGeometry(void);
     void setOscilloscopeDialogGeometry(QByteArray oscilloscopeDialogGeometry);
     QByteArray getOscilloscopeDialogGeometry(void);
-    void setVideoMetadataDialogGeometry(QByteArray videoMetadataDialogGeometry);
-    QByteArray getVideoMetadataDialogGeometry(void);
     void setDropoutAnalysisDialogGeometry(QByteArray videoMetadataDialogGeometry);
     QByteArray getDropoutAnalysisDialogGeometry(void);
-    void setVitsMetricsDialogGeometry(QByteArray vitsMetricsDialogGeometry);
-    QByteArray getVitsMetricsDialogGeometry(void);
     void setSnrAnalysisDialogGeometry(QByteArray snrAnalysisDialogGeometry);
     QByteArray getSnrAnalysisDialogGeometry(void);
+    void setClosedCaptionDialogGeometry(QByteArray closedCaptionDialogGeometry);
+    QByteArray getClosedCaptionDialogGeometry(void);
+    void setPalChromaDecoderConfigDialogGeometry(QByteArray palChromaDecoderConfigDialogGeometry);
+    QByteArray getPalChromaDecoderConfigDialogGeometry(void);
 
 signals:
 
@@ -86,13 +86,13 @@ private:
     // Window geometry and settings
     struct Windows {
         QByteArray mainWindowGeometry;
+        qreal mainWindowScaleFactor;
         QByteArray vbiDialogGeometry;
-        QByteArray ntscDialogGeometry;
-        QByteArray videoMetadataDialogGeometry;
         QByteArray oscilloscopeDialogGeometry;
         QByteArray dropoutAnalysisDialogGeometry;
-        QByteArray vitsMetricsDialogGeometry;
         QByteArray snrAnalysisDialogGeometry;
+        QByteArray closedCaptionDialogGeometry;
+        QByteArray palChromaDecoderConfigDialogGeometry;
     };
 
     // Overall settings structure

@@ -1,4 +1,4 @@
-# NOTE:  These are not reduced from ld-decode notebook
+# A collection of helper functions used in dev notebooks and lddecode_core.py
 
 from base64 import b64encode
 from collections import namedtuple
@@ -9,13 +9,14 @@ import io
 from io import BytesIO
 import os
 import sys
+import subprocess
+
+from numba import jit, njit
 
 # standard numeric/scientific libraries
 import numpy as np
-import pandas as pd
 import scipy as sp
 import scipy.signal as sps
-import scipy.fftpack as fftpack 
 
 # plotting
 import matplotlib
@@ -67,21 +68,21 @@ def plotfilter_wh(w, h, freq, zero_base = False):
     
     return None
 
-def plotfilter(B, A, freq = 40, whole = False, zero_base = False):
-    w, h = sps.freqz(B, A, whole = whole, worN=4096)
-    
-    if whole:
-        w = np.arange(0, freq, freq / len(h))
-    else:
-        w = np.arange(0, (freq / 2), (freq / 2) / len(h))
+def plotfilter(B, A, dfreq = None, freq = 40, zero_base = False):
+    if dfreq is None:
+        dfreq = freq / 2
         
-    return plotfilter_wh(w, h, freq, zero_base)
-
+    w, h = sps.freqz(B, A, whole=True, worN=4096)
+    w = np.arange(0, freq, freq / len(h))
+    
+    keep = int((dfreq / freq) * len(h))
+        
+    return plotfilter_wh(w[1:keep], h[1:keep], freq, zero_base)
 
 from scipy import interpolate
 
 # This uses numpy's interpolator, which works well enough
-def scale(buf, begin, end, tgtlen):
+def scale_old(buf, begin, end, tgtlen):
 #        print("scaling ", begin, end, tgtlen)
         ibegin = int(begin)
         iend = int(end)
@@ -97,6 +98,23 @@ def scale(buf, begin, end, tgtlen):
 
         return interpolate.splev(arrout, spl)[:-1]
     
+@njit(nogil=True)
+def scale(buf, begin, end, tgtlen, mult = 1):
+    linelen = end - begin
+    sfactor = linelen/tgtlen
+
+    output = np.zeros(tgtlen, dtype=buf.dtype)
+    
+    for i in range(0, tgtlen):
+        coord = (i * sfactor) + begin
+        start = int(coord) - 1
+        p = buf[start:start+4]
+        x = coord - int(coord)
+        
+        output[i] = mult * (p[1] + 0.5 * x*(p[2] - p[0] + x*(2.0*p[0] - 5.0*p[1] + 4.0*p[2] - p[3] + x*(3.0*(p[1] - p[2]) + p[3] - p[0]))))
+
+    return output
+
 def downscale_field(data, lineinfo, outwidth=1820, lines=625, usewow=False):
     ilinepx = linelen
     dsout = np.zeros((len(lineinfo) * outwidth), dtype=np.double)    
@@ -115,6 +133,25 @@ def downscale_field(data, lineinfo, outwidth=1820, lines=625, usewow=False):
         
     return dsout
 
+frequency_suffixes = [
+    ("ghz", 1.0e9),
+    ("mhz", 1.0e6),
+    ("khz", 1.0e3),
+    ("hz", 1.0),
+    ("fsc", 315.0e6 / 88.0),
+    ("fscpal", (283.75 * 15625) + 25),
+]
+
+def parse_frequency(string):
+    """Parse an argument string, returning a float frequency in MHz."""
+    multiplier = 1.0e6
+    for suffix, mult in frequency_suffixes:
+        if string.lower().endswith(suffix):
+            multiplier = mult
+            string = string[:-len(suffix)]
+            break
+    return (multiplier * float(string)) / 1.0e6
+
 '''
 
 For this part of the loader phase I found myself going to function objects that implement this sample API:
@@ -125,9 +162,52 @@ sample: starting sample #
 readlen: # of samples
 ```
 Returns data if successful, or None or an upstream exception if not (including if not enough data is available)
-
-This might probably need to become a full object once FLAC support is added.
 '''
+
+def make_loader(filename, inputfreq=None):
+    """Return an appropriate loader function object for filename.
+
+    If inputfreq is specified, it gives the sample rate in MHz of the source
+    file, and the loader will resample from that rate to 40 MHz. Any sample
+    rate specified by the source file's metadata will be ignored, as some
+    formats can't represent typical RF sample rates accurately."""
+
+    if inputfreq is not None:
+        # We're resampling, so we have to use ffmpeg.
+
+        if filename.endswith('.r16') or filename.endswith('.s16'):
+            input_args = ['-f', 's16le']
+        elif filename.endswith('.r8') or filename.endswith('.u8'):
+            input_args = ['-f', 'u8']
+        elif filename.endswith('.lds') or filename.endswith('.r30'):
+            raise ValueError('File format not supported when resampling: ' + filename)
+        else:
+            # Assume ffmpeg will recognise this format itself.
+            input_args = []
+
+        # Use asetrate first to override the input file's sample rate.
+        output_args = ['-filter:a', 'asetrate=' + str(inputfreq * 1e6) + ',aresample=' + str(40e6)]
+
+        return LoadFFmpeg(input_args=input_args, output_args=output_args)
+
+    elif filename.endswith('.lds'):
+        return load_packed_data_4_40
+    elif filename.endswith('.r30'):
+        return load_packed_data_3_32
+    elif filename.endswith('.r16') or filename.endswith('.s16'):
+        return load_unpacked_data_s16
+    elif filename.endswith('.r8') or filename.endswith('.u8'):
+        return load_unpacked_data_u8
+    elif filename.endswith('raw.oga') or filename.endswith('.ldf'):
+        try:
+            rv = LoadLDF(filename)
+        except:
+            #print("Please build and install ld-ldf-reader in your PATH for improved performance", file=sys.stderr)
+            rv = LoadFFmpeg()
+
+        return rv
+    else:
+        return load_packed_data_4_40
 
 def load_unpacked_data(infile, sample, readlen, sampletype):
     # this is run for unpacked data - 1 is for old cxadc data, 2 for 16bit DD
@@ -243,6 +323,184 @@ def load_packed_data_4_40(infile, sample, readlen):
     return rv_signed
 
 
+class LoadFFmpeg:
+    """Load samples from a wide variety of formats using ffmpeg."""
+
+    def __init__(self, input_args=[], output_args=[]):
+        self.input_args = input_args
+        self.output_args = output_args
+
+        # ffmpeg subprocess
+        self.ffmpeg = None
+
+        # The number of the next byte ffmpeg will return
+        self.position = 0
+
+        # Keep a buffer of recently-read data, to allow seeking backwards by
+        # small amounts. The last byte returned by ffmpeg is at the end of
+        # this buffer.
+        self.rewind_size = 2 * 1024 * 1024
+        self.rewind_buf = b''
+
+    def __del__(self):
+        if self.ffmpeg is not None:
+            self.ffmpeg.kill()
+            self.ffmpeg.wait()
+
+    def _read_data(self, count):
+        """Read data as bytes from ffmpeg, append it to the rewind buffer, and
+        return it. May return less than count bytes if EOF is reached."""
+
+        data = self.ffmpeg.stdout.read(count)
+        self.position += len(data)
+
+        self.rewind_buf += data
+        self.rewind_buf = self.rewind_buf[-self.rewind_size:]
+
+        return data
+
+    def __call__(self, infile, sample, readlen):
+        sample_bytes = sample * 2
+        readlen_bytes = readlen * 2
+
+        if self.ffmpeg is None:
+            command = ["ffmpeg", "-hide_banner", "-loglevel", "error"]
+            command += self.input_args
+            command += ["-i", "-"]
+            command += self.output_args
+            command += ["-c:a", "pcm_s16le", "-f", "s16le", "-"]
+            self.ffmpeg = subprocess.Popen(command, stdin=infile,
+                                           stdout=subprocess.PIPE)
+
+        if sample_bytes < self.position:
+            # Seeking backwards - use data from rewind_buf
+            start = len(self.rewind_buf) - (self.position - sample_bytes)
+            end = min(start + readlen_bytes, len(self.rewind_buf))
+            if start < 0:
+                raise IOError("Seeking too far backwards with ffmpeg")
+            buf_data = self.rewind_buf[start:end]
+            sample_bytes += len(buf_data)
+            readlen_bytes -= len(buf_data)
+        else:
+            buf_data = b''
+
+        while sample_bytes > self.position:
+            # Seeking forwards - read and discard samples
+            count = min(sample_bytes - self.position, self.rewind_size)
+            self._read_data(count)
+
+        if readlen_bytes > 0:
+            # Read some new data from ffmpeg
+            read_data = self._read_data(readlen_bytes)
+            if len(read_data) < readlen_bytes:
+                # Short read - end of file
+                return None
+        else:
+            read_data = b''
+
+        data = buf_data + read_data
+        assert len(data) == readlen * 2
+        return np.fromstring(data, '<i2')
+
+class LoadLDF:
+    """Load samples from a wide variety of formats using ffmpeg."""
+
+    def __init__(self, filename, input_args=[], output_args=[]):
+        self.input_args = input_args
+        self.output_args = output_args
+
+        self.filename = filename
+
+        # The number of the next byte ld-ldf-reader will return
+
+        self.position = 0
+        # Keep a buffer of recently-read data, to allow seeking backwards by
+        # small amounts. The last byte returned by ffmpeg is at the end of
+        # this buffer.
+        self.rewind_size = 2 * 1024 * 1024
+        self.rewind_buf = b''
+
+        self.ldfreader = None
+
+        # ld-ldf-reader subprocess
+        self.ldfreader = self._open(0)
+
+    def __del__(self):
+        self._close()
+
+    def _read_data(self, count):
+        """Read data as bytes from ffmpeg, append it to the rewind buffer, and
+        return it. May return less than count bytes if EOF is reached."""
+
+        data = self.ldfreader.stdout.read(count)
+        self.position += len(data)
+
+        self.rewind_buf += data
+        self.rewind_buf = self.rewind_buf[-self.rewind_size:]
+
+        return data
+
+    def _close(self):
+        if self.ldfreader is not None:
+            self.ldfreader.kill()
+            self.ldfreader.wait()
+
+        self.ldfreader = None
+
+    def _open(self, sample):
+        self._close()
+
+        command = ["ld-ldf-reader", self.filename, str(sample)]
+
+        ldfreader = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.position = sample * 2
+        self.rewind_buf = b''
+
+        return ldfreader
+
+    def __call__(self, infile, sample, readlen):
+        sample_bytes = sample * 2
+        readlen_bytes = readlen * 2
+
+        if self.ldfreader is None or ((sample_bytes - self.position) > 40000000):
+            self.ldfreader = self._open(sample)
+
+        if (sample_bytes < self.position):
+            # Seeking backwards - use data from rewind_buf
+            start = len(self.rewind_buf) - (self.position - sample_bytes)
+            end = min(start + readlen_bytes, len(self.rewind_buf))
+            if start < 0:
+                #raise IOError("Seeking too far backwards with ffmpeg")
+                self.ldfreader = self._open(sample)
+                buf_data = b''
+            else:
+                buf_data = self.rewind_buf[start:end]
+                sample_bytes += len(buf_data)
+                readlen_bytes -= len(buf_data)
+        elif ((sample_bytes - self.position) > (40*1024*1024*2)):
+            self.ldfreader = self._open(sample)
+            buf_data = b''
+        else:
+            buf_data = b''
+
+        while sample_bytes > self.position:
+            # Seeking forwards - read and discard samples
+            count = min(sample_bytes - self.position, self.rewind_size)
+            self._read_data(count)
+
+        if readlen_bytes > 0:
+            # Read some new data from ffmpeg
+            read_data = self._read_data(readlen_bytes)
+            if len(read_data) < readlen_bytes:
+                # Short read - end of file
+                return None
+        else:
+            read_data = b''
+
+        data = buf_data + read_data
+        assert len(data) == readlen * 2
+        return np.frombuffer(data, '<i2')
+
 
 # Essential standalone routines 
 
@@ -270,58 +528,63 @@ hilbert_filter = np.fft.fftshift(
 def filtfft(filt, blocklen):
     return sps.freqz(filt[0], filt[1], blocklen, whole=1)[1]
 
+@njit
 def inrange(a, mi, ma):
     return (a >= mi) & (a <= ma)
 
 def sqsum(cmplx):
     return np.sqrt((cmplx.real ** 2) + (cmplx.imag ** 2))
 
-def calczc(data, _start_offset, target, edge='both', _count=10, reverse=False):
-    
-    if reverse:
-        # Instead of actually implementing this in reverse, use numpy to flip data
-        rev_zc = calczc(data[_start_offset::-1], 0, target, edge, _count)
-        if rev_zc is not None:
-            return _start_offset - rev_zc
-        else:
-            return None
-    
-    start_offset = int(_start_offset)
+@njit(cache=True)
+def calczc_findfirst(data, target, rising):
+    if rising:
+        for i in range(0, len(data)):
+            if data[i] >= target:
+                return i
+
+        return None
+    else:
+        for i in range(0, len(data)):
+            if data[i] <= target:
+                return i
+
+        return None
+
+@njit(cache=True)
+def calczc_do(data, _start_offset, target, edge=0, _count=10):
+    start_offset = max(1, int(_start_offset))
     count = int(_count + 1)
     
-    if edge == 'both': # capture rising or falling edge
+    if edge == 0: # capture rising or falling edge
         if data[start_offset] < target:
-            edge = 'rising'
+            edge = 1
         else:
-            edge = 'falling'
+            edge = -1
 
-    if edge == 'rising':
-        locs = np.where(data[start_offset:start_offset+count] >= target)[0]
-        #print(locs)
-        offset = 0
-    else:
-        locs = np.where(data[start_offset:start_offset+count] <= target)[0]
-        offset = -1
+    loc = calczc_findfirst(data[start_offset:start_offset+count], target, edge==1)
                
-    if len(locs) == 0:
+    if loc is None:
         return None
 
-    index = 0
-        
-    x = start_offset + locs[index] #+ offset
-    
-    if (x == 0):
-        #print("BUG:  cannot figure out zero crossing for beginning of data")
-        return None
-    
+    x = start_offset + loc
     a = data[x - 1] - target
     b = data[x] - target
     
     y = -a / (-a + b)
 
-    #print(x, y, locs, data[start_offset:start_offset+locs[0] + 1])
-
     return x-1+y
+
+def calczc(data, _start_offset, target, edge=0, _count=10, reverse=False):
+    ''' edge:  -1 falling, 0 either, 1 rising '''
+    if reverse:
+        # Instead of actually implementing this in reverse, use numpy to flip data
+        rev_zc = calczc_do(data[_start_offset::-1], 0, target, edge, _count)
+        if rev_zc is None:
+            return None
+
+        return _start_offset - rev_zc
+
+    return calczc_do(data, _start_offset, target, edge, _count)
 
 def calczc_sets(data, start, end, tgt = 0, cliplevel = None):
     zcsets = {False: [], True:[]}
@@ -362,15 +625,16 @@ def genwave(rate, freq, initialphase = 0):
     angle = initialphase
     
     for i in range(0, len(rate)):
+        out[i] = np.sin(angle)
+
         angle += np.pi * (rate[i] / freq)
         if angle > np.pi:
             angle -= tau
-        
-        out[i] = np.sin(angle)
-        
+                
     return out
 
 # slightly faster than np.std for short arrays
+@njit
 def rms(arr):
     return np.sqrt(np.mean(np.square(arr - np.mean(arr))))
 
@@ -398,7 +662,7 @@ def roundfloat(fl, places = 3):
     return np.round(fl * r) / r
 
 # Something like this should be a numpy function, but I can't find it.
-
+@jit(cache=True)
 def findareas(array, cross):
     ''' Find areas where `array` is <= `cross`
     
@@ -416,13 +680,13 @@ def findareas(array, cross):
 
     return [(*z, z[1] - z[0]) for z in zip(starts, ends)]
 
-Pulse = namedtuple('Pulse', 'start len')
-
 def findpulses(array, low, high):
     ''' Find areas where `array` is between `low` and `high`
     
     returns: array of tuples of said areas (begin, end, length)
     '''
+    
+    Pulse = namedtuple('Pulse', 'start len')
     
     array_inrange = inrange(array, low, high)
     
@@ -440,3 +704,80 @@ def findpulses(array, low, high):
         starts = starts[:-1]
 
     return [Pulse(z[0], z[1] - z[0]) for z in zip(starts, ends)]
+
+def findpeaks(array, low = None):
+    if min is not None:
+        array2 = array.copy()
+        array2[np.where(array2 < low)] = 0
+    else:
+        array2 = array
+    
+    return [loc - 1 for loc in np.where(np.logical_and(array2[:-1] > array2[-1], array2[1:] > array2[:-1]))[0]]
+
+def LRUupdate(l, k):
+    ''' This turns a list into an LRU table.  When called it makes sure item 'k' is at the beginning,
+        so the list is in descending order of previous use.
+    '''
+    try:
+        l.remove(k)
+    except:
+        pass
+
+    l.insert(0, k)
+
+@njit
+def nb_median(m):
+    return np.median(m)
+
+@njit
+def nb_mean(m):
+    return np.mean(m)
+
+@njit
+def nb_min(m):
+    return np.min(m)
+
+@njit
+def nb_max(m):
+    return np.max(m)
+
+@njit
+def nb_mul(x, y):
+    return x * y
+
+@njit
+def nb_where(x):
+    return np.where(x)
+
+def angular_mean(x, cycle_len = 1.0, zero_base = True):
+    ''' Compute the mean phase, assuming 0..1 is one phase cycle
+
+        (Using this technique handles the 3.99, 5.01 issue 
+        where otherwise the phase average would be 0.5.  while a
+        naive computation could be changed to rotate around 0.5, 
+        that breaks down when things are out of phase...)
+    '''
+    x2 = x - np.floor(x)  # not strictly necessary but slightly more precise
+
+    # refer to https://en.wikipedia.org/wiki/Mean_of_circular_quantities
+    angles = [np.e ** (1j * f * np.pi * 2 / cycle_len) for f in x2]
+
+    am = np.angle(np.mean(angles)) / (np.pi * 2)
+    if zero_base and (am < 0):
+        am = 1 + am
+        
+    return am
+
+def phase_distance(x, c = .75):
+    ''' returns the shortest path between two phases (assuming x and c are in (0..1)) '''
+    d = (x - np.floor(x)) - c
+    
+    if d < -.5:
+        d += 1
+    elif d > .5:
+        d -= 1
+    
+    return d
+
+if __name__ == "__main__":
+    print("Nothing to see here, move along ;)")

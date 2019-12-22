@@ -24,15 +24,6 @@
 
 #include "logging.h"
 
-Q_LOGGING_CATEGORY(efm_process, "efm.process")
-Q_LOGGING_CATEGORY(efm_efmToF3, "efm.efmToF3")
-Q_LOGGING_CATEGORY(efm_f3ToF2, "efm.f3ToF2")
-Q_LOGGING_CATEGORY(efm_f2ToF1, "efm.f2ToF1")
-Q_LOGGING_CATEGORY(efm_f1ToSectors, "efm.f1ToSectors")
-Q_LOGGING_CATEGORY(efm_f2ToAudio, "efm.f2ToAudio")
-Q_LOGGING_CATEGORY(efm_f3ToSections, "efm.f3ToSections")
-Q_LOGGING_CATEGORY(efm_sectorsTodata, "efm.sectorsTodata")
-
 // Global for debug output
 static bool showDebug = false;
 static bool saveDebug = false;
@@ -52,23 +43,23 @@ void debugOutputHandler(QtMsgType type, const QMessageLogContext &context, const
     switch (type) {
     case QtDebugMsg: // These are debug messages meant for developers
         // If the code was compiled as 'release' the context.file will be NULL
-        if (context.file != nullptr) outputMessage.sprintf("Debug (%s): [%s:%d] %s\n", context.category, context.file, context.line, localMsg.constData());
+        if (context.file != nullptr) outputMessage.sprintf("Debug: [%s:%d] %s\n", context.file, context.line, localMsg.constData());
         else outputMessage.sprintf("Debug: %s\n", localMsg.constData());
         break;
     case QtInfoMsg: // These are information messages meant for end-users
-        if (context.file != nullptr) outputMessage.sprintf("Info (%s): [%s:%d] %s\n", context.category, context.file, context.line, localMsg.constData());
+        if (context.file != nullptr) outputMessage.sprintf("Info: [%s:%d] %s\n", context.file, context.line, localMsg.constData());
         else outputMessage.sprintf("Info: %s\n", localMsg.constData());
         break;
     case QtWarningMsg:
-        if (context.file != nullptr) outputMessage.sprintf("Warning (%s): [%s:%d] %s\n", context.category, context.file, context.line, localMsg.constData());
+        if (context.file != nullptr) outputMessage.sprintf("Warning: [%s:%d] %s\n", context.file, context.line, localMsg.constData());
         else outputMessage.sprintf("Warning: %s\n", localMsg.constData());
         break;
     case QtCriticalMsg:
-        if (context.file != nullptr) outputMessage.sprintf("Critical (%s): [%s:%d] %s\n", context.category, context.file, context.line, localMsg.constData());
+        if (context.file != nullptr) outputMessage.sprintf("Critical: [%s:%d] %s\n", context.file, context.line, localMsg.constData());
         else outputMessage.sprintf("Critical: %s\n", localMsg.constData());
         break;
     case QtFatalMsg:
-        if (context.file != nullptr) outputMessage.sprintf("Fatal (%s): [%s:%d] %s\n", context.category, context.file, context.line, localMsg.constData());
+        if (context.file != nullptr) outputMessage.sprintf("Fatal: [%s:%d] %s\n", context.file, context.line, localMsg.constData());
         else outputMessage.sprintf("Fatal: %s\n", localMsg.constData());
         break;
     }
@@ -100,6 +91,7 @@ void closeDebugFile(void)
     if (saveDebug) efm_debug_file->close();
 }
 
+// Control the show debug flag (debug to stderr if true)
 void setDebug(bool state)
 {
     showDebug = state;

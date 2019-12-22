@@ -7,7 +7,7 @@
 
     This file is part of ld-decode-tools.
 
-    ld-dropout-correct is free software: you can redistribute it and/or
+    ld-analyse is free software: you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
     published by the Free Software Foundation, either version 3 of the
     License, or (at your option) any later version.
@@ -70,13 +70,13 @@ void Configuration::writeConfiguration(void)
     // Windows
     configuration->beginGroup("windows");
     configuration->setValue("mainWindowGeometry", settings.windows.mainWindowGeometry);
+    configuration->setValue("mainWindowScaleFactor", settings.windows.mainWindowScaleFactor);
     configuration->setValue("vbiDialogGeometry", settings.windows.vbiDialogGeometry);
-    configuration->setValue("ntscDialogGeometry", settings.windows.ntscDialogGeometry);
-    configuration->setValue("videoMetadataDialogGeometry", settings.windows.videoMetadataDialogGeometry);
     configuration->setValue("oscilloscopeDialogGeometry", settings.windows.oscilloscopeDialogGeometry);
     configuration->setValue("dropoutAnalysisDialogGeometry", settings.windows.dropoutAnalysisDialogGeometry);
-    configuration->setValue("vitsMetricsDialogGeometry", settings.windows.vitsMetricsDialogGeometry);
     configuration->setValue("snrAnalysisDialogGeometry", settings.windows.snrAnalysisDialogGeometry);
+    configuration->setValue("closedCaptionDialogGeometry", settings.windows.closedCaptionDialogGeometry);
+    configuration->setValue("palChromaDecoderConfigDialogGeometry", settings.windows.palChromaDecoderConfigDialogGeometry);
     configuration->endGroup();
 
     // Sync the settings with disk
@@ -101,13 +101,13 @@ void Configuration::readConfiguration(void)
     // Windows
     configuration->beginGroup("windows");
     settings.windows.mainWindowGeometry = configuration->value("mainWindowGeometry").toByteArray();
+    settings.windows.mainWindowScaleFactor = configuration->value("mainWindowScaleFactor").toReal();
     settings.windows.vbiDialogGeometry = configuration->value("vbiDialogGeometry").toByteArray();
-    settings.windows.ntscDialogGeometry = configuration->value("ntscDialogGeometry").toByteArray();
-    settings.windows.videoMetadataDialogGeometry = configuration->value("videoMetadataDialogGeometry").toByteArray();
     settings.windows.oscilloscopeDialogGeometry = configuration->value("oscilloscopeDialogGeometry").toByteArray();
     settings.windows.dropoutAnalysisDialogGeometry = configuration->value("dropoutAnalysisDialogGeometry").toByteArray();
-    settings.windows.vitsMetricsDialogGeometry = configuration->value("vitsMetricsDialogGeometry").toByteArray();
     settings.windows.snrAnalysisDialogGeometry = configuration->value("snrAnalysisDialogGeometry").toByteArray();
+    settings.windows.closedCaptionDialogGeometry = configuration->value("closedCaptionDialogGeometry").toByteArray();
+    settings.windows.palChromaDecoderConfigDialogGeometry = configuration->value("palChromaDecoderConfigDialogGeometry").toByteArray();
     configuration->endGroup();
 }
 
@@ -123,13 +123,13 @@ void Configuration::setDefault(void)
 
     // Windows
     settings.windows.mainWindowGeometry = QByteArray();
+    settings.windows.mainWindowScaleFactor = 1.0;
     settings.windows.vbiDialogGeometry = QByteArray();
-    settings.windows.ntscDialogGeometry = QByteArray();
-    settings.windows.videoMetadataDialogGeometry = QByteArray();
     settings.windows.oscilloscopeDialogGeometry = QByteArray();
     settings.windows.dropoutAnalysisDialogGeometry = QByteArray();
-    settings.windows.vitsMetricsDialogGeometry = QByteArray();
     settings.windows.snrAnalysisDialogGeometry = QByteArray();
+    settings.windows.closedCaptionDialogGeometry = QByteArray();
+    settings.windows.palChromaDecoderConfigDialogGeometry = QByteArray();
 
     // Write the configuration
     writeConfiguration();
@@ -179,6 +179,16 @@ QByteArray Configuration::getMainWindowGeometry(void)
     return settings.windows.mainWindowGeometry;
 }
 
+void Configuration::setMainWindowScaleFactor(qreal mainWindowScaleFactor)
+{
+    settings.windows.mainWindowScaleFactor = mainWindowScaleFactor;
+}
+
+qreal Configuration::getMainWindowScaleFactor(void)
+{
+    return settings.windows.mainWindowScaleFactor;
+}
+
 void Configuration::setVbiDialogGeometry(QByteArray vbiDialogGeometry)
 {
     settings.windows.vbiDialogGeometry = vbiDialogGeometry;
@@ -187,16 +197,6 @@ void Configuration::setVbiDialogGeometry(QByteArray vbiDialogGeometry)
 QByteArray Configuration::getVbiDialogGeometry(void)
 {
     return settings.windows.vbiDialogGeometry;
-}
-
-void Configuration::setNtscDialogGeometry(QByteArray ntscDialogGeometry)
-{
-    settings.windows.ntscDialogGeometry = ntscDialogGeometry;
-}
-
-QByteArray Configuration::getNtscDialogGeometry(void)
-{
-    return settings.windows.ntscDialogGeometry;
 }
 
 void Configuration::setOscilloscopeDialogGeometry(QByteArray oscilloscopeDialogGeometry)
@@ -209,16 +209,6 @@ QByteArray Configuration::getOscilloscopeDialogGeometry(void)
     return settings.windows.oscilloscopeDialogGeometry;
 }
 
-void Configuration::setVideoMetadataDialogGeometry(QByteArray videoMetadataDialogGeometry)
-{
-    settings.windows.videoMetadataDialogGeometry = videoMetadataDialogGeometry;
-}
-
-QByteArray Configuration::getVideoMetadataDialogGeometry(void)
-{
-    return settings.windows.videoMetadataDialogGeometry;
-}
-
 void Configuration::setDropoutAnalysisDialogGeometry(QByteArray dropoutAnalysisDialogGeometry)
 {
     settings.windows.dropoutAnalysisDialogGeometry = dropoutAnalysisDialogGeometry;
@@ -227,16 +217,6 @@ void Configuration::setDropoutAnalysisDialogGeometry(QByteArray dropoutAnalysisD
 QByteArray Configuration::getDropoutAnalysisDialogGeometry(void)
 {
     return settings.windows.dropoutAnalysisDialogGeometry;
-}
-
-void Configuration::setVitsMetricsDialogGeometry(QByteArray vitsMetricsDialogGeometry)
-{
-    settings.windows.vitsMetricsDialogGeometry = vitsMetricsDialogGeometry;
-}
-
-QByteArray Configuration::getVitsMetricsDialogGeometry(void)
-{
-    return settings.windows.vitsMetricsDialogGeometry;
 }
 
 void Configuration::setSnrAnalysisDialogGeometry(QByteArray snrAnalysisDialogGeometry)
@@ -249,3 +229,22 @@ QByteArray Configuration::getSnrAnalysisDialogGeometry(void)
     return settings.windows.snrAnalysisDialogGeometry;
 }
 
+void Configuration::setClosedCaptionDialogGeometry(QByteArray closedCaptionDialogGeometry)
+{
+    settings.windows.closedCaptionDialogGeometry = closedCaptionDialogGeometry;
+}
+
+QByteArray Configuration::getClosedCaptionDialogGeometry(void)
+{
+    return settings.windows.closedCaptionDialogGeometry;
+}
+
+void Configuration::setPalChromaDecoderConfigDialogGeometry(QByteArray palChromaDecoderConfigDialogGeometry)
+{
+    settings.windows.palChromaDecoderConfigDialogGeometry = palChromaDecoderConfigDialogGeometry;
+}
+
+QByteArray Configuration::getPalChromaDecoderConfigDialogGeometry(void)
+{
+    return settings.windows.palChromaDecoderConfigDialogGeometry;
+}

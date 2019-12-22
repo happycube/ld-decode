@@ -7,7 +7,7 @@
 
     This file is part of ld-decode-tools.
 
-    ld-dropout-correct is free software: you can redistribute it and/or
+    ld-analyse is free software: you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
     published by the Free Software Foundation, either version 3 of the
     License, or (at your option) any later version.
@@ -26,7 +26,11 @@
 #define SNRANALYSISDIALOG_H
 
 #include <QDialog>
-#include <QtCharts>
+#include <qwt/qwt_plot.h>
+#include <qwt/qwt_plot_canvas.h>
+#include <qwt/qwt_legend.h>
+#include <qwt/qwt_plot_grid.h>
+#include <qwt/qwt_plot_curve.h>
 
 #include "lddecodemetadata.h"
 
@@ -42,16 +46,28 @@ public:
     explicit SnrAnalysisDialog(QWidget *parent = nullptr);
     ~SnrAnalysisDialog();
 
-    void updateChart(LdDecodeMetaData *ldDecodeMetaData);
+    void startUpdate();
+    void addDataPoint(qint32 fieldNumber, qreal blackSnr, qreal whiteSnr);
+    void finishUpdate(qint32 numberOfFields, qint32 fieldsPerDataPoint);
+
+private slots:
+    void on_blackPSNR_checkBox_clicked();
+    void on_whiteSNR_checkBox_clicked();
 
 private:
-    Ui::SnrAnalysisDialog *ui;
+    void removeChartContents();
 
-    QChart chart;
-    QLineSeries series;
-    QChartView *chartView;
-    QValueAxis axisX;
-    QValueAxis axisY;
+    Ui::SnrAnalysisDialog *ui;
+    QwtPlot *plot;
+    QwtLegend *legend;
+    QwtPlotGrid *grid;
+    QPolygonF *blackPoints;
+    QPolygonF *whitePoints;
+    QwtPlotCurve *blackCurve;
+    QwtPlotCurve *whiteCurve;
+
+    qreal maxSnr;
+    qreal minSnr;
 };
 
 #endif // SNRANALYSISDIALOG_H
