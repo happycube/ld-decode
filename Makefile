@@ -14,9 +14,6 @@ clean:
 install:
 	cp ld-ldf-reader /usr/local/bin
 
-cx: cx-expander.cxx deemp.h
-	clang++ -std=c++14  -Wall $(CFLAGS) -o cx cx-expander.cxx
-
 deemp.h: filtermaker.py
 	python3 filtermaker.py > deemp.h
 
