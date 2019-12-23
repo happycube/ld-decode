@@ -55,7 +55,7 @@ else
       for f in "$@" ; do
         if [[ "$f" == *.lds ]]
         then
-          >&2 echo Compressing \'"$f"\' to \'"$(basename "$f" .lds).$ext"\' && ${fileinput_method} "$f" | ld-lds-converter -u |  ffmpeg -hide_banner -loglevel error -f s16le -ar 40k -ac 1 -i - -acodec flac -compression_level "$level" -f ogg "$(basename "$f" .lds).$ext"
+          >&2 echo Compressing \'"$f"\' to \'"$(basename "$f" .lds).$ext"\' && ${fileinput_method} "$f" | ld-lds-converter -u |  ffmpeg -hide_banner -loglevel error -f s16le -ar 40k -ac 1 -i - -acodec flac -compression_level "$level" -f ogg "$(basename "$f" .lds).$ext" && >&2 echo \'"$(basename "$f" .lds).$ext"\ written.
         else
           >&2 echo Error: \'"$f"\' does not appear to be a .lds file. Skipping.
         fi
