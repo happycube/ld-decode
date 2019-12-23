@@ -754,7 +754,9 @@ class DemodCache:
 
     def flushvideo(self):
         for k in self.blocks.keys():
-            if 'demod' in self.blocks[k]:
+            if self.blocks[k] is None:
+                pass
+            elif 'demod' in self.blocks[k]:
                 self.lock.acquire()
                 del self.blocks[k]['demod']
                 self.lock.release()
@@ -1935,7 +1937,9 @@ class FieldPAL(Field):
     
     def __init__(self, *args, **kwargs):
         super(FieldPAL, self).__init__(*args, **kwargs)
-        
+
+        self.out_scale = np.double(0xd300 - 0x0100) / (100 - self.rf.SysParams['vsync_ire'])
+
         if not self.valid:
             return
 
@@ -1954,8 +1958,6 @@ class FieldPAL(Field):
         self.lineoffset = 2 if self.isFirstField else 3
 
         self.linecode = [self.decodephillipscode(l + self.lineoffset) for l in [16, 17, 18]]
-
-        self.out_scale = np.double(0xd300 - 0x0100) / (100 - self.rf.SysParams['vsync_ire'])
 
         #self.downscale(final=True)
 
