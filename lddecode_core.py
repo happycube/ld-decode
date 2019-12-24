@@ -2405,9 +2405,13 @@ class LDdecode:
 
         self.demodcache.end()
 
-    def roughseek(self, fieldnr):
+    def roughseek(self, location, isField = True):
         self.prevPhaseID = None
-        self.fdoffset = fieldnr * self.bytes_per_field
+
+        if isField:
+            self.fdoffset = location * self.bytes_per_field
+        else:
+            self.fdoffset = location
 
     def checkMTF_calc(self, field):
         if not self.isCLV and self.frameNumber is not None:
@@ -2746,6 +2750,7 @@ class LDdecode:
               'seqNo': len(self.fieldinfo) + 1, 
               #'audioSamples': 0 if audio is None else int(len(audio) / 2),
               'diskLoc': np.round((self.fieldloc / self.bytes_per_field) * 10) / 10,
+              'fileLoc': np.floor(self.fieldloc),
               'medianBurstIRE': roundfloat(f.burstmedian)}
 
         if self.doDOD:
