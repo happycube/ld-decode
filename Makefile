@@ -14,8 +14,8 @@ clean:
 install:
 	cp ld-ldf-reader /usr/local/bin
 
-deemp.h: filtermaker.py
-	python3 filtermaker.py > deemp.h
+tools/library/filter/deemp.h: scripts/filtermaker
+	python3 scripts/filtermaker >$@
 
 ld-ldf-reader: ld-ldf-reader.c
 	clang -o ld-ldf-reader ld-ldf-reader.c -Wno-deprecated-declarations -lavcodec -lavutil -lavformat -O2

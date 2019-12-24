@@ -52,7 +52,7 @@ HEADERS += \
     transformpal3d.h \
     yiq.h \
     yiqbuffer.h \
-    ../../deemp.h \
+    ../library/filter/deemp.h \
     ../library/filter/iirfilter.h \
     ../library/tbc/lddecodemetadata.h \
     ../library/tbc/sourcevideo.h \
