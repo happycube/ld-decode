@@ -105,19 +105,23 @@ void VbiDialog::updateVbi(VbiDecoder::Vbi vbi, bool isVbiValid)
     else ui->chapterNumberLabel->setText("Unknown");
 
     QString clvTimecodeString;
-    if (vbi.clvHr != -1 || vbi.clvMin != -1 || vbi.clvSec != -1 || vbi.clvPicNo != -1) {
-        if (vbi.clvHr != -1 && vbi.clvMin != -1) {
-            clvTimecodeString = QString("%1").arg(vbi.clvHr, 2, 10, QChar('0')) + ":" + QString("%1").arg(vbi.clvMin, 2, 10, QChar('0')) + ":";
-        } else clvTimecodeString = "xx:xx:";
+    // Hours
+    if (vbi.clvHr != -1) clvTimecodeString = QString("%1").arg(vbi.clvHr, 2, 10, QChar('0')) + ":";
+    else clvTimecodeString = "xx:";
 
-        if (vbi.clvSec != -1 && vbi.clvPicNo != -1) {
-            clvTimecodeString += QString("%1").arg(vbi.clvSec, 2, 10, QChar('0')) + "." + QString("%1").arg(vbi.clvPicNo, 2, 10, QChar('0'));
-        } else clvTimecodeString += "xx.xx";
-    } else if (vbi.clvHr != -1 || vbi.clvMin != -1) {
-        if (vbi.clvHr != -1 && vbi.clvMin != -1) {
-            clvTimecodeString = QString("%1").arg(vbi.clvHr, 2, 10, QChar('0')) + ":" + QString("%1").arg(vbi.clvMin, 2, 10, QChar('0'));
-        } else clvTimecodeString = "xx:xx";
-    } else clvTimecodeString = "Unknown";
+    // Minutes
+    if (vbi.clvMin != -1) clvTimecodeString += QString("%1").arg(vbi.clvMin, 2, 10, QChar('0')) + ":";
+    else clvTimecodeString += "xx:";
+
+    // Seconds
+    if (vbi.clvSec != -1) clvTimecodeString += QString("%1").arg(vbi.clvSec, 2, 10, QChar('0')) + ".";
+    else clvTimecodeString += "xx.";
+
+    // Picture (frame) number
+    if (vbi.clvPicNo != -1) clvTimecodeString += QString("%1").arg(vbi.clvPicNo, 2, 10, QChar('0'));
+    else clvTimecodeString += "xx";
+
+    if (clvTimecodeString == "xx:xx:xx.xx") clvTimecodeString = "Unknown";
     ui->clvTimeCodeLabel->setText(clvTimecodeString);
 
     // Display original programme status
