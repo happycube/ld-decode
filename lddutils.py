@@ -779,5 +779,15 @@ def phase_distance(x, c = .75):
     
     return d
 
+# Used to help w/CX routines
+@njit
+def db_to_lev(db):
+    return 10**(db/20)
+
+@njit
+def lev_to_db(rlev):
+    return 20 * np.log10(rlev)
+
+
 if __name__ == "__main__":
     print("Nothing to see here, move along ;)")
