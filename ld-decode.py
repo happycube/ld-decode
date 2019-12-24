@@ -6,6 +6,7 @@ import getopt
 import io
 from io import BytesIO
 import os
+import signal
 import sys
 import argparse
 import json
@@ -62,8 +63,13 @@ except ValueError as e:
     exit(1)
 
 system = 'PAL' if args.pal else 'NTSC'
-    
+
+# Wrap the LDdecode creation so that the signal handler is not taken by sub-threads,
+# allowing SIGINT/control-C's to be handled cleanly
+original_sigint_handler = signal.signal(signal.SIGINT, signal.SIG_IGN)
 ldd = LDdecode(filename, outname, loader, analog_audio = 0 if args.daa else 44.100, digital_audio = not args.noefm, system=system, doDOD = not args.nodod, threads=args.threads)
+signal.signal(signal.SIGINT, original_sigint_handler)
+
 if args.start_fileloc != -1:
     ldd.roughseek(args.start_fileloc, False)
 else:

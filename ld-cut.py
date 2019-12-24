@@ -6,6 +6,7 @@ import getopt
 import io
 from io import BytesIO
 import os
+import signal
 import sys
 import argparse
 import json
@@ -54,8 +55,12 @@ except ValueError as e:
 makelds = True if outname[-3:] == 'lds' else False
     
 system = 'PAL' if args.pal else 'NTSC'
-    
+
+# Wrap the LDdecode creation so that the signal handler is not taken by sub-threads,
+# allowing SIGINT/control-C's to be handled cleanly
+original_sigint_handler = signal.signal(signal.SIGINT, signal.SIG_IGN)
 ldd = LDdecode(filename, None, loader, system=system, doDOD = False)
+signal.signal(signal.SIGINT, original_sigint_handler)
 
 if args.MTF is not None:
     ldd.rf.mtf_mult = args.MTF
