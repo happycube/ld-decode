@@ -65,7 +65,7 @@ def run_ld_decode(args):
 
     clean(args, ['.tbc', '.tbc.json', '.efm', '.pcm'])
 
-    cmd = [src_dir + '/ld-decode.py']
+    cmd = [src_dir + '/ld-decode']
     cmd += ['--ignoreleadout']
     if args.pal:
         cmd += ['--pal']
