@@ -11,3 +11,5 @@ HEADERS += \
 
 INCLUDEPATH += \
     ..
+
+target.CONFIG += no_default_install
