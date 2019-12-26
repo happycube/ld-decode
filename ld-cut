@@ -13,9 +13,8 @@ import json
 import traceback
 import subprocess
 
-from lddutils import *
-import lddecode_core
-from lddecode_core import *
+from lddecode.core import *
+from lddecode.utils import *
 
 parser = argparse.ArgumentParser(description='Extracts a sample area from raw RF laserdisc captures')
 parser.add_argument('infile', metavar='infile', type=str, help='source file')

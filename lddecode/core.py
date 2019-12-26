@@ -35,11 +35,8 @@ except ImportError:
     import numpy.fft as npfft
 
 #internal libraries
-import commpy_filters
-
-import fdls
-import efm_pll
-from lddutils import *
+from lddecode import efm_pll
+from lddecode.utils import *
 
 try:
     # If Anaconda's numpy is installed, mkl will use all threads for fft etc

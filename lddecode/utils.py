@@ -22,9 +22,6 @@ import scipy.signal as sps
 import matplotlib
 import matplotlib.pyplot as plt
 
-#internal libraries which may or may not get used
-import fdls
-
 def todb(y, zero = False):
     db = 20 * np.log10(np.abs(y))
     if zero:

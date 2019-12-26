@@ -5,8 +5,11 @@
 numpy
 scipy
 
-# Some odd python thing
+# Python build results
+/MANIFEST
 __pycache__
+/build
+/dist
 
 # Prerequisites
 *.d
