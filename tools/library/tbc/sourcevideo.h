@@ -30,13 +30,12 @@
 #include <QCache>
 #include <QDebug>
 
-class SourceVideo : public QObject
+class SourceVideo
 {
-    Q_OBJECT
 
 public:
-    explicit SourceVideo(QObject *parent = nullptr);
-    ~SourceVideo() override;
+    SourceVideo();
+    ~SourceVideo();
 
     // File handling methods
     bool open(QString filename, qint32 _fieldLength, qint32 _fieldLineLength = -1);

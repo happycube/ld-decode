@@ -97,9 +97,11 @@ INCLUDEPATH += ../library/filter
 INCLUDEPATH += ../library/tbc
 INCLUDEPATH += ../ld-chroma-decoder
 
-# Default rules for deployment.
-qnx: target.path = /tmp/$${TARGET}/bin
-else: unix:!android: target.path = /usr/local/bin/
+# Rules for installation
+isEmpty(PREFIX) {
+    PREFIX = /usr/local
+}
+unix:!android: target.path = $$PREFIX/bin/
 !isEmpty(target.path): INSTALLS += target
 
 RESOURCES += \

@@ -236,6 +236,7 @@ F1ToData::StateMachine F1ToData::sm_state_processFrame()
     // Verify the sector is valid
     if (!sector.isValid()) {
         // Sector is not valid, set to zero and force address
+        if (debugOn) qDebug() << "F1ToData::sm_state_processFrame(): Current frame is invalid, setting user data to null";
         lastAddress.addFrames(1);
         statistics.currentAddress = lastAddress;
         sector.setAsNull(statistics.currentAddress);
@@ -243,9 +244,7 @@ F1ToData::StateMachine F1ToData::sm_state_processFrame()
         if (debugOn && sectorBufferCorrupt) qDebug() << "F1ToData::sm_state_processFrame(): Sector invalid - Buffer contained corrupt F1 data";
         if (debugOn && sectorBufferMissing) qDebug() << "F1ToData::sm_state_processFrame(): Sector invalid - Buffer contained missing F1 data (padded)";
 
-        if (debugOn) qDebug() << "F1ToData::sm_state_processFrame(): Current frame is invalid, setting user data to null";
         statistics.invalidSectors++;
-
         statistics.totalSectors++;
     } else {
         // Sector is valid
@@ -298,7 +297,12 @@ F1ToData::StateMachine F1ToData::sm_state_noSync()
 
     // The current sector has no sync.  Here we need to determine if the sector is corrupt, or if it's just missing
     // (due to a gap in the EFM rather than errors in the EFM)
+
+    // If the f1DataBuffer is less than the minium sector size, we have to resize it to avoid
+    // unwanted errors
+    if (f1DataBuffer.size() < 2352) f1DataBuffer.resize(2352);
     Sector sector(f1DataBuffer.mid(0, 2352), true);
+
     if (sector.isMissing()) {
         if (debugOn) qDebug() << "F1ToData::sm_state_syncLost(): Sector sync has been lost and sector looks like it's missing.  Hunting for next valid sync";
 
