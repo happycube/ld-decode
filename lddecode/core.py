@@ -2345,7 +2345,7 @@ class LDdecode:
         self.digital_audio = digital_audio
 
         self.has_analog_audio = True
-        if system == 'PAL' and digital_audio:
+        if system == 'PAL' and analog_audio == 0:
             self.has_analog_audio = False
 
         self.outfile_json = None
