@@ -27,7 +27,7 @@
 #include <cstdio>
 
 // Class constructor
-SourceVideo::SourceVideo(QObject *parent) : QObject(parent)
+SourceVideo::SourceVideo()
 {
     // Default object settings
     isSourceVideoOpen = false;

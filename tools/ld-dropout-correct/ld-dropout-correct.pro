@@ -30,7 +30,7 @@ HEADERS += \
     ../library/tbc/filters.h \
     ../library/tbc/lddecodemetadata.h \
     ../library/tbc/sourcevideo.h \
-    ../library/tbc/vbidecoder.cpp
+    ../library/tbc/vbidecoder.h
 
 # Add external includes to the include path
 INCLUDEPATH += ../library/filter

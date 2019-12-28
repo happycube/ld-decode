@@ -33,9 +33,9 @@
 #include "../JsonWax/JsonWax.h"
 #include "vbidecoder.h"
 
-class LdDecodeMetaData : public QObject
+class LdDecodeMetaData
 {
-    Q_OBJECT
+
 public:
 
     // VBI Metadata definition
@@ -140,7 +140,7 @@ public:
         qint32 pictureNumber;
     };
 
-    explicit LdDecodeMetaData(QObject *parent = nullptr);
+    LdDecodeMetaData();
 
     bool read(QString fileName);
     bool write(QString fileName);

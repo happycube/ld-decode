@@ -24,7 +24,7 @@
 
 #include "lddecodemetadata.h"
 
-LdDecodeMetaData::LdDecodeMetaData(QObject *parent) : QObject(parent)
+LdDecodeMetaData::LdDecodeMetaData()
 {
     // Set defaults
     isFirstFieldFirst = false;
