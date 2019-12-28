@@ -71,6 +71,7 @@ SysParams_NTSC = {
     'analog_audio': True,
     # From the spec - audio frequencies are multiples of the (color) line rate
     'audio_lfreq': (1000000*315/88/227.5) * 146.25,
+    # NOTE: this changes to 2.88mhz on AC3 disks
     'audio_rfreq': (1000000*315/88/227.5) * 178.75,
 
     'colorBurstUS': (5.3, 7.8),
@@ -235,8 +236,8 @@ class RFDecode:
         if self.decode_digital_audio:
             self.computeefmfilter()
 
-        Frfbpf = sps.butter(1, [10/self.freq_half], btype='highpass')
-        self.Filters['Frfbpf'] = filtfft(Frfbpf, self.blocklen)
+        Frfhpf = sps.butter(1, [10/self.freq_half], btype='highpass')
+        self.Filters['Frfhpf'] = filtfft(Frfhpf, self.blocklen)
 
         self.computedelays()
 
@@ -328,7 +329,8 @@ class RFDecode:
         
         # Post processing:  lowpass filter + deemp
         SF['FVideo'] = SF['Fvideo_lpf'] * SF['Fdeemp'] 
-    
+        #SF['FVideo'] = SF['Fdeemp'] 
+        
         # additional filters:  0.5mhz and color burst
         # Using an FIR filter here to get a known delay
         F0_5 = sps.firwin(65, [0.5/self.freq_half], pass_zero=True)
@@ -440,8 +442,9 @@ class RFDecode:
             rotdelay = self.delays['video_rot']
         except:
             rotdelay = 0
-        rv['rfbpf'] = npfft.ifft(indata_fft * self.Filters['Frfbpf']).real
-        rv['rfbpf'] = rv['rfbpf'][self.blockcut-rotdelay:-self.blockcut_end-rotdelay]
+
+        rv['rfhpf'] = npfft.ifft(indata_fft * self.Filters['Frfhpf']).real
+        rv['rfhpf'] = rv['rfhpf'][self.blockcut-rotdelay:-self.blockcut_end-rotdelay]
 
         indata_fft_filt = indata_fft * self.Filters['RFVideo']
 
@@ -758,6 +761,17 @@ class DemodCache:
                 del self.blocks[k]['demod']
                 self.lock.release()
 
+    def apply_newparams(self, newparams):
+        for k in newparams.keys():
+            #print(k, k in self.rf.SysParams, k in self.rf.DecoderParams)
+            if k in self.rf.SysParams:
+                self.rf.SysParams[k] = newparams[k]
+
+            if k in self.rf.DecoderParams:
+                self.rf.DecoderParams[k] = newparams[k]
+
+        self.rf.computefilters()
+
     def worker(self, pipein):
         while True:
             ispiped = False
@@ -787,10 +801,7 @@ class DemodCache:
 
                 self.q_out.put((blocknum, output))
             elif item[0] == 'NEWPARAMS':
-                for k in item[1].keys():
-                    self.rf.DecoderParams[k] = item[1][k]
-
-                self.rf.computefilters()
+                self.apply_newparams(item[1])
 
             if not ispiped:
                 self.q_in.task_done()
@@ -879,7 +890,7 @@ class DemodCache:
 
     def read(self, begin, length, MTF=0, dodemod=True):
         # transpose the cache by key, not block #
-        t = {'input':[], 'fft':[], 'video':[], 'audio':[], 'efm':[], 'rfbpf':[]}
+        t = {'input':[], 'fft':[], 'video':[], 'audio':[], 'efm':[], 'rfhpf':[]}
 
         self.currentMTF = MTF
 
@@ -935,6 +946,9 @@ class DemodCache:
     def setparams(self, params):
         for p in self.threadpipes:
             p[0].send(('NEWPARAMS', params))
+
+        # Apply params to the core thread, so they match up with the decoders
+        self.apply_newparams(params)
 
 @njit
 def dsa_rescale(infloat):
@@ -1515,7 +1529,7 @@ class Field:
                 linelocs2[i] = zc 
 
                 # The hsync area, burst, and porches should not leave -50 to 30 IRE (on PAL or NTSC)
-                hsync_area = self.data['video']['demod_05'][int(zc-(self.rf.freq*1.25)):int(zc+(self.rf.freq*8))]
+                hsync_area = self.data['video']['demod_05'][int(zc-(self.rf.freq*.75)):int(zc+(self.rf.freq*8))]
                 if nb_min(hsync_area) < self.rf.iretohz(-55) or nb_max(hsync_area) > self.rf.iretohz(30):
                     self.linebad[i] = True
                     linelocs2[i] = self.linelocs1[i] # don't use the computed value here if it's bad
@@ -1729,9 +1743,9 @@ class Field:
 
         isPAL = self.rf.system == 'PAL'
 
-        rfstd = np.std(f.data['rfbpf'])
+        rfstd = np.std(f.data['rfhpf'])
         #iserr_rf = np.full(len(f.data['video']['demod']), False, dtype=np.bool)
-        iserr_rf1 = (f.data['rfbpf'] < (-rfstd * 3)) | (f.data['rfbpf'] > (rfstd * 3)) | (f.rawdata <= -32000)
+        iserr_rf1 = (f.data['rfhpf'] < (-rfstd * 3)) | (f.data['rfhpf'] > (rfstd * 3)) | (f.rawdata <= -32000)
         iserr_rf = np.full_like(iserr_rf1, False)
         iserr_rf[self.rf.delays['video_rot']:] = iserr_rf1[:-self.rf.delays['video_rot']]
         
