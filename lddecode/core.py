@@ -195,7 +195,7 @@ RFParams_PAL = {
 }
 
 class RFDecode:
-    def __init__(self, inputfreq = 40, system = 'NTSC', blocklen_ = 32*1024, decode_digital_audio = False, decode_analog_audio = 0, have_analog_audio = True, mtf_mult = 1.0, mtf_offset = 0):
+    def __init__(self, inputfreq = 40, system = 'NTSC', blocklen_ = 32*1024, decode_digital_audio = False, decode_analog_audio = 0, has_analog_audio = True, mtf_mult = 1.0, mtf_offset = 0):
         self.blocklen = blocklen_
         self.blockcut = 1024 # ???
         self.blockcut_end = 0
@@ -216,6 +216,9 @@ class RFDecode:
         elif system == 'PAL':
             self.SysParams = copy.deepcopy(SysParams_PAL)
             self.DecoderParams = copy.deepcopy(RFParams_PAL)
+
+        if not has_analog_audio:
+            self.SysParams['analog_audio'] = False
 
         linelen = self.freq_hz/(1000000.0/self.SysParams['line_period'])
         self.linelen = int(np.round(linelen))
@@ -2341,6 +2344,10 @@ class LDdecode:
         self.analog_audio = int(analog_audio * 1000)
         self.digital_audio = digital_audio
 
+        self.has_analog_audio = True
+        if system == 'PAL' and digital_audio:
+            self.has_analog_audio = False
+
         self.outfile_json = None
 
         self.lastvalidfield = {False: None, True: None}
@@ -2365,7 +2372,7 @@ class LDdecode:
         self.fieldloc = 0
 
         self.system = system
-        self.rf = RFDecode(system=system, decode_analog_audio=analog_audio, decode_digital_audio=digital_audio)
+        self.rf = RFDecode(system=system, decode_analog_audio=analog_audio, decode_digital_audio=digital_audio, has_analog_audio = self.has_analog_audio)
         if system == 'PAL':
             self.FieldClass = FieldPAL
             self.readlen = self.rf.linelen * 400
