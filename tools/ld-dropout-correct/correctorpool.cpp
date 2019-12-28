@@ -26,97 +26,60 @@
 
 #include <cstdio>
 
-CorrectorPool::CorrectorPool(QString _inputFilename, QString _outputFilename, QString _outputJsonFilename,
-                             qint32 _maxThreads, LdDecodeMetaData &_ldDecodeMetaData,
+CorrectorPool::CorrectorPool(QString _outputFilename, QString _outputJsonFilename,
+                             qint32 _maxThreads, QVector<LdDecodeMetaData> &_ldDecodeMetaData, QVector<SourceVideo> &_sourceVideos,
                              bool _reverse, bool _intraField, bool _overCorrect, QObject *parent)
-    : QObject(parent), inputFilename(_inputFilename), outputFilename(_outputFilename), outputJsonFilename(_outputJsonFilename),
-      maxThreads(_maxThreads), reverse(_reverse),
-      intraField(_intraField), overCorrect(_overCorrect),  abort(false), ldDecodeMetaData(_ldDecodeMetaData)
+    : QObject(parent), outputFilename(_outputFilename), outputJsonFilename(_outputJsonFilename),
+      maxThreads(_maxThreads), reverse(_reverse), intraField(_intraField), overCorrect(_overCorrect),
+      abort(false), ldDecodeMetaData(_ldDecodeMetaData), sourceVideos(_sourceVideos)
 {
 }
 
 bool CorrectorPool::process()
 {
-    // Reverse field order if required
-    if (reverse) {
-        qInfo() << "Expected field order is reversed to second field/first field";
-        ldDecodeMetaData.setIsFirstFieldFirst(false);
-    }
-
-    // Intrafield only correction if required
-    if (intraField) {
-        qInfo() << "Using intra-field correction only";
-    }
-
-    // Overcorrection if required
-    if (overCorrect) {
-        qInfo() << "Using over correction mode";
-    }
-
-    LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
-
-    qDebug() << "DropOutDetector::process(): Input source is" << videoParameters.fieldWidth << "x" << videoParameters.fieldHeight <<
-                "input filename" << inputFilename << "output filename" << outputFilename;
-
-    // Open the source video
-    qInfo() << "Opening source and target video files...";
-    if (!sourceVideo.open(inputFilename, videoParameters.fieldWidth * videoParameters.fieldHeight)) {
-        // Could not open source video file
-        qInfo() << "Unable to open ld-decode video file";
-        return false;
-    }
-
     // Open the target video
     targetVideo.setFileName(outputFilename);
     if (outputFilename == "-") {
         if (!targetVideo.open(stdout, QIODevice::WriteOnly)) {
                 // Could not open stdout
                 qInfo() << "Unable to open stdout";
-                sourceVideo.close();
+                sourceVideos[0].close();
                 return false;
         }
     } else {
         if (!targetVideo.open(QIODevice::WriteOnly)) {
                 // Could not open target video file
                 qInfo() << "Unable to open output video file";
-                sourceVideo.close();
+                sourceVideos[0].close();
                 return false;
         }
-    }
-
-    // Check TBC and JSON field numbers match
-    qInfo() << "Verifying metadata (number of available fields)...";
-    if (sourceVideo.getNumberOfAvailableFields() != ldDecodeMetaData.getNumberOfFields()) {
-        qInfo() << "Warning: TBC file contains" << sourceVideo.getNumberOfAvailableFields() <<
-                   "fields but the JSON indicates" << ldDecodeMetaData.getNumberOfFields() <<
-                   "fields - some fields will be ignored";
     }
 
     // If there is a leading field in the TBC which is out of field order, we need to copy it
     // to ensure the JSON metadata files match up
     qInfo() << "Verifying leading fields match...";
-    qint32 firstFieldNumber = ldDecodeMetaData.getFirstFieldNumber(1);
-    qint32 secondFieldNumber = ldDecodeMetaData.getSecondFieldNumber(1);
+    qint32 firstFieldNumber = ldDecodeMetaData[0].getFirstFieldNumber(1);
+    qint32 secondFieldNumber = ldDecodeMetaData[0].getSecondFieldNumber(1);
 
     if (firstFieldNumber != 1 && secondFieldNumber != 1) {
         QByteArray sourceField;
-        sourceField = sourceVideo.getVideoField(1);
+        sourceField = sourceVideos[0].getVideoField(1);
         if (!targetVideo.write(sourceField, sourceField.size())) {
             // Could not write to target TBC file
             qInfo() << "Writing first field to the output TBC file failed";
             targetVideo.close();
-            sourceVideo.close();
+            sourceVideos[0].close();
             return false;
         }
     }
 
     // Show some information for the user
-    qInfo() << "Using" << maxThreads << "threads to process" << ldDecodeMetaData.getNumberOfFrames() << "frames";
+    qInfo() << "Using" << maxThreads << "threads to process" << ldDecodeMetaData[0].getNumberOfFrames() << "frames";
 
     // Initialise processing state
     inputFrameNumber = 1;
     outputFrameNumber = 1;
-    lastFrameNumber = ldDecodeMetaData.getNumberOfFrames();
+    lastFrameNumber = ldDecodeMetaData[0].getNumberOfFrames();
     totalTimer.start();
 
     // Start a vector of decoding threads to process the video
@@ -135,7 +98,7 @@ bool CorrectorPool::process()
 
     // Did any of the threads abort?
     if (abort) {
-        sourceVideo.close();
+        sourceVideos[0].close();
         targetVideo.close();
         return false;
     }
@@ -146,12 +109,12 @@ bool CorrectorPool::process()
                lastFrameNumber / totalSecs << "FPS )";
 
     qInfo() << "Creating JSON metadata file for drop-out corrected TBC";
-    ldDecodeMetaData.write(outputJsonFilename);
+    ldDecodeMetaData[0].write(outputJsonFilename);
 
     qInfo() << "Processing complete";
 
     // Close the source and target video
-    sourceVideo.close();
+    sourceVideos[0].close();
     targetVideo.close();
 
     return true;
@@ -180,21 +143,21 @@ bool CorrectorPool::getInputFrame(qint32& frameNumber,
     qDebug() << "CorrectorPool::getInputFrame(): Frame number =" << frameNumber;
 
     // Determine the fields for the input frame
-    firstFieldNumber = ldDecodeMetaData.getFirstFieldNumber(frameNumber);
-    secondFieldNumber = ldDecodeMetaData.getSecondFieldNumber(frameNumber);
+    firstFieldNumber = ldDecodeMetaData[0].getFirstFieldNumber(frameNumber);
+    secondFieldNumber = ldDecodeMetaData[0].getSecondFieldNumber(frameNumber);
 
     // Fetch the input data (get the fields in TBC sequence order to save seeking)
     if (firstFieldNumber < secondFieldNumber) {
-        firstFieldVideoData = sourceVideo.getVideoField(firstFieldNumber);
-        secondFieldVideoData = sourceVideo.getVideoField(secondFieldNumber);
+        firstFieldVideoData = sourceVideos[0].getVideoField(firstFieldNumber);
+        secondFieldVideoData = sourceVideos[0].getVideoField(secondFieldNumber);
     } else {
-        secondFieldVideoData = sourceVideo.getVideoField(secondFieldNumber);
-        firstFieldVideoData = sourceVideo.getVideoField(firstFieldNumber);
+        secondFieldVideoData = sourceVideos[0].getVideoField(secondFieldNumber);
+        firstFieldVideoData = sourceVideos[0].getVideoField(firstFieldNumber);
     }
 
-    firstFieldMetadata = ldDecodeMetaData.getField(firstFieldNumber);
-    secondFieldMetadata = ldDecodeMetaData.getField(secondFieldNumber);
-    videoParameters = ldDecodeMetaData.getVideoParameters();
+    firstFieldMetadata = ldDecodeMetaData[0].getField(firstFieldNumber);
+    secondFieldMetadata = ldDecodeMetaData[0].getField(secondFieldNumber);
+    videoParameters = ldDecodeMetaData[0].getVideoParameters();
 
     _reverse = reverse;
     _intraField = intraField;
@@ -249,7 +212,7 @@ bool CorrectorPool::setOutputFrame(qint32 frameNumber,
             // Could not write to target TBC file
             qCritical() << "Writing fields to the output TBC file failed";
             targetVideo.close();
-            sourceVideo.close();
+            sourceVideos[0].close();
             return false;
         }
 
