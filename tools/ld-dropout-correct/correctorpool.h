@@ -48,9 +48,9 @@ public:
 
     // Member functions used by worker threads
     bool getInputFrame(qint32& frameNumber,
-                       qint32& firstFieldNumber, QByteArray& firstFieldVideoData, LdDecodeMetaData::Field& firstFieldMetadata,
-                       qint32& secondFieldNumber, QByteArray& secondFieldVideoData, LdDecodeMetaData::Field& secondFieldMetadata,
-                       LdDecodeMetaData::VideoParameters& videoParameters,
+                       QVector<qint32> &firstFieldNumber, QVector<QByteArray> &firstFieldVideoData, QVector<LdDecodeMetaData::Field> &firstFieldMetadata,
+                       QVector<qint32> &secondFieldNumber, QVector<QByteArray> &secondFieldVideoData, QVector<LdDecodeMetaData::Field> &secondFieldMetadata,
+                       QVector<LdDecodeMetaData::VideoParameters> &videoParameters,
                        bool& _reverse, bool& _intraField, bool& _overCorrect);
 
     bool setOutputFrame(qint32 frameNumber,

@@ -72,7 +72,7 @@ private:
     CorrectorPool& correctorPool;
 
     LdDecodeMetaData ldDecodeMetaData;
-    LdDecodeMetaData::VideoParameters videoParameters;
+    QVector<LdDecodeMetaData::VideoParameters> videoParameters;
 
     void correctField(const QVector<DropOutLocation> &thisFieldDropouts,
                       const QVector<DropOutLocation> &otherFieldDropouts,

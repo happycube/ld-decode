@@ -125,9 +125,9 @@ bool CorrectorPool::process()
 // Returns true if a frame was returned, false if the end of the input has been
 // reached.
 bool CorrectorPool::getInputFrame(qint32& frameNumber,
-                                  qint32& firstFieldNumber, QByteArray& firstFieldVideoData, LdDecodeMetaData::Field& firstFieldMetadata,
-                                  qint32& secondFieldNumber, QByteArray& secondFieldVideoData, LdDecodeMetaData::Field& secondFieldMetadata,
-                                  LdDecodeMetaData::VideoParameters& videoParameters,
+                                  QVector<qint32>& firstFieldNumber, QVector<QByteArray>& firstFieldVideoData, QVector<LdDecodeMetaData::Field>& firstFieldMetadata,
+                                  QVector<qint32>& secondFieldNumber, QVector<QByteArray>& secondFieldVideoData, QVector<LdDecodeMetaData::Field>& secondFieldMetadata,
+                                  QVector<LdDecodeMetaData::VideoParameters>& videoParameters,
                                   bool& _reverse, bool& _intraField, bool& _overCorrect)
 {
     QMutexLocker locker(&inputMutex);
@@ -142,22 +142,31 @@ bool CorrectorPool::getInputFrame(qint32& frameNumber,
 
     qDebug() << "CorrectorPool::getInputFrame(): Frame number =" << frameNumber;
 
+    // Prepare the vectors
+    firstFieldNumber.resize(1);
+    firstFieldVideoData.resize(1);
+    firstFieldMetadata.resize(1);
+    secondFieldNumber.resize(1);
+    secondFieldVideoData.resize(1);
+    secondFieldMetadata.resize(1);
+    videoParameters.resize(1);
+
     // Determine the fields for the input frame
-    firstFieldNumber = ldDecodeMetaData[0].getFirstFieldNumber(frameNumber);
-    secondFieldNumber = ldDecodeMetaData[0].getSecondFieldNumber(frameNumber);
+    firstFieldNumber[0] = ldDecodeMetaData[0].getFirstFieldNumber(frameNumber);
+    secondFieldNumber[0] = ldDecodeMetaData[0].getSecondFieldNumber(frameNumber);
 
     // Fetch the input data (get the fields in TBC sequence order to save seeking)
-    if (firstFieldNumber < secondFieldNumber) {
-        firstFieldVideoData = sourceVideos[0].getVideoField(firstFieldNumber);
-        secondFieldVideoData = sourceVideos[0].getVideoField(secondFieldNumber);
+    if (firstFieldNumber[0] < secondFieldNumber[0]) {
+        firstFieldVideoData[0] = sourceVideos[0].getVideoField(firstFieldNumber[0]);
+        secondFieldVideoData[0] = sourceVideos[0].getVideoField(secondFieldNumber[0]);
     } else {
-        secondFieldVideoData = sourceVideos[0].getVideoField(secondFieldNumber);
-        firstFieldVideoData = sourceVideos[0].getVideoField(firstFieldNumber);
+        secondFieldVideoData[0] = sourceVideos[0].getVideoField(secondFieldNumber[0]);
+        firstFieldVideoData[0] = sourceVideos[0].getVideoField(firstFieldNumber[0]);
     }
 
-    firstFieldMetadata = ldDecodeMetaData[0].getField(firstFieldNumber);
-    secondFieldMetadata = ldDecodeMetaData[0].getField(secondFieldNumber);
-    videoParameters = ldDecodeMetaData[0].getVideoParameters();
+    firstFieldMetadata[0] = ldDecodeMetaData[0].getField(firstFieldNumber[0]);
+    secondFieldMetadata[0] = ldDecodeMetaData[0].getField(secondFieldNumber[0]);
+    videoParameters[0] = ldDecodeMetaData[0].getVideoParameters();
 
     _reverse = reverse;
     _intraField = intraField;

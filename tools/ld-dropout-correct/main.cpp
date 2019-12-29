@@ -309,7 +309,7 @@ int main(int argc, char *argv[])
             }
 
             if (!videoParameters.isMapped) {
-                qInfo() << "Source video" << i << "has not been mapped - run ld-discmap on the source and try again";
+                qInfo() << "Source video" << i << "has not been mapped - run ld-discmap on all source video and try again";
                 return 1;
             }
         }
