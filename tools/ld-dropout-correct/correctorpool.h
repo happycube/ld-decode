@@ -40,8 +40,8 @@ class CorrectorPool : public QObject
 {
     Q_OBJECT
 public:
-    explicit CorrectorPool(QString _inputFilename, QString _outputFilename, QString _outputJsonFilename,
-                           qint32 _maxThreads, LdDecodeMetaData &_ldDecodeMetaData,
+    explicit CorrectorPool(QString _outputFilename, QString _outputJsonFilename,
+                           qint32 _maxThreads, QVector<LdDecodeMetaData> &_ldDecodeMetaData, QVector<SourceVideo> &_sourceVideos,
                            bool _reverse, bool _intraField, bool _overCorrect, QObject *parent = nullptr);
 
     bool process();
@@ -58,7 +58,6 @@ public:
                         qint32 firstFieldSeqNo, qint32 secondFieldSeqNo);
 
 private:
-    QString inputFilename;
     QString outputFilename;
     QString outputJsonFilename;
     qint32 maxThreads;
@@ -75,8 +74,8 @@ private:
     QMutex inputMutex;
     qint32 inputFrameNumber;
     qint32 lastFrameNumber;
-    LdDecodeMetaData &ldDecodeMetaData;
-    SourceVideo sourceVideo;
+    QVector<LdDecodeMetaData> &ldDecodeMetaData;
+    QVector<SourceVideo> &sourceVideos;
 
     // Output stream information (all guarded by outputMutex while threads are running)
     QMutex outputMutex;

@@ -37,12 +37,17 @@ SourceVideo::SourceVideo()
     fieldLineLength = -1;
 
     // Set up the cache
-    fieldCache.setMaxCost(100);
+    fieldCache = new QCache<qint32, QByteArray>;
+    fieldCache->setMaxCost(100);
+
+    inputFile = new QFile();
 }
 
 SourceVideo::~SourceVideo()
 {
-    if (isSourceVideoOpen) inputFile.close();
+    if (isSourceVideoOpen) inputFile->close();
+    delete inputFile;
+    delete fieldCache;
 }
 
 // Source Video file manipulation methods -----------------------------------------------------------------------------
@@ -64,9 +69,9 @@ bool SourceVideo::open(QString filename, qint32 _fieldLength, qint32 _fieldLineL
     }
 
     // Open the source video file
-    inputFile.setFileName(filename);
+    inputFile->setFileName(filename);
     if (filename == "-") {
-        if (!inputFile.open(stdin, QIODevice::ReadOnly)) {
+        if (!inputFile->open(stdin, QIODevice::ReadOnly)) {
             // Failed to open stdin
             qWarning() << "Could not open stdin as source video input file";
             return false;
@@ -75,20 +80,20 @@ bool SourceVideo::open(QString filename, qint32 _fieldLength, qint32 _fieldLineL
         // When reading from stdin, we don't know how long the input will be
         availableFields = -1;
     } else {
-        if (!inputFile.open(QIODevice::ReadOnly)) {
+        if (!inputFile->open(QIODevice::ReadOnly)) {
             // Failed to open named input file
             qWarning() << "Could not open " << filename << "as source video input file";
             return false;
         }
 
         // File open successful - configure source video parameters
-        qint64 tAvailableFields = (inputFile.size() / fieldByteLength);
+        qint64 tAvailableFields = (inputFile->size() / fieldByteLength);
         availableFields = static_cast<qint32>(tAvailableFields);
         qDebug() << "SourceVideo::open(): Successful -" << availableFields << "fields available";
     }
 
     // Initialise cache
-    fieldCache.clear();
+    fieldCache->clear();
 
     isSourceVideoOpen = true;
     inputFilePos = 0;
@@ -105,7 +110,7 @@ void SourceVideo::close()
     }
 
     qDebug() << "SourceVideo::close(): Called, closing the source video file and emptying the frame cache";
-    inputFile.close();
+    inputFile->close();
     isSourceVideoOpen = false;
     inputFilePos = -1;
 
@@ -151,8 +156,8 @@ QByteArray SourceVideo::getVideoField(qint32 fieldNumber, qint32 startFieldLine,
         // Read the whole field
 
         // Check the cache (we only cache whole fields)
-        if (fieldCache.contains(fieldNumber)) {
-            return *fieldCache.object(fieldNumber);
+        if (fieldCache->contains(fieldNumber)) {
+            return *fieldCache->object(fieldNumber);
         }
 
         requiredReadLength = static_cast<qint64>(fieldByteLength);
@@ -183,7 +188,7 @@ QByteArray SourceVideo::getVideoField(qint32 fieldNumber, qint32 startFieldLine,
 
     // Seek to the correct file position (if not already there)
     if (inputFilePos != requiredStartPosition) {
-        if (!inputFile.seek(requiredStartPosition)) qFatal("Could not seek to required field position in input TBC file");
+        if (!inputFile->seek(requiredStartPosition)) qFatal("Could not seek to required field position in input TBC file");
         inputFilePos = requiredStartPosition;
     }
 
@@ -191,7 +196,7 @@ QByteArray SourceVideo::getVideoField(qint32 fieldNumber, qint32 startFieldLine,
     qint64 totalReceivedBytes = 0;
     qint64 receivedBytes = 0;
     do {
-        receivedBytes = inputFile.read(outputFieldData.data() + totalReceivedBytes, requiredReadLength - totalReceivedBytes);
+        receivedBytes = inputFile->read(outputFieldData.data() + totalReceivedBytes, requiredReadLength - totalReceivedBytes);
         if (receivedBytes > 0) {
             totalReceivedBytes += receivedBytes;
             inputFilePos += receivedBytes;
@@ -203,7 +208,7 @@ QByteArray SourceVideo::getVideoField(qint32 fieldNumber, qint32 startFieldLine,
 
     if (startFieldLine == -1 && endFieldLine == -1) {
         // Insert the field data into the cache
-        fieldCache.insert(fieldNumber, new QByteArray(outputFieldData), 1);
+        fieldCache->insert(fieldNumber, new QByteArray(outputFieldData), 1);
     }
 
     // Return the data

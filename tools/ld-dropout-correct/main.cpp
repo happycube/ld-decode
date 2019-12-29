@@ -79,15 +79,16 @@ int main(int argc, char *argv[])
 
     // Set application name and version
     QCoreApplication::setApplicationName("ld-dropout-correct");
-    QCoreApplication::setApplicationVersion("1.4");
+    QCoreApplication::setApplicationVersion("1.5");
     QCoreApplication::setOrganizationDomain("domesday86.com");
 
-    // Set up the command line parser
+    // Set up the command line parser ---------------------------------------------------------------------------------
     QCommandLineParser parser;
     parser.setApplicationDescription(
-                "ld-dropout-correct - Dropout correction for ld-decode\n"
+                "ld-dropout-correct - Multi-source dropout correction for ld-decode\n"
                 "\n"
-                "(c)2018-2019 Simon Inns\n"
+                "(c)2018-2020 Simon Inns\n"
+                "(C)2019-2020 Adam Sampson\n"
                 "GPLv3 Open-Source - github: https://github.com/happycube/ld-decode");
     parser.addHelpOption();
     parser.addVersionOption();
@@ -99,7 +100,7 @@ int main(int argc, char *argv[])
 
     // Option to specify a different JSON input file
     QCommandLineOption inputJsonOption(QStringList() << "input-json",
-                                       QCoreApplication::translate("main", "Specify the input JSON file (default input.json)"),
+                                       QCoreApplication::translate("main", "Specify the input JSON file for the first input file (default input.json)"),
                                        QCoreApplication::translate("main", "filename"));
     parser.addOption(inputJsonOption);
 
@@ -126,17 +127,20 @@ int main(int argc, char *argv[])
 
     // Option to select the number of threads (-t)
     QCommandLineOption threadsOption(QStringList() << "t" << "threads",
-                                        QCoreApplication::translate("main", "Specify the number of concurrent threads (default is the number of logical CPUs)"),
+                                        QCoreApplication::translate(
+                                         "main", "Specify the number of concurrent threads (default is the number of logical CPUs)"),
                                         QCoreApplication::translate("main", "number"));
     parser.addOption(threadsOption);
 
     // Positional argument to specify input video file
-    parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input TBC file (- for piped input)"));
+    parser.addPositionalArgument("inputs", QCoreApplication::translate(
+                                     "main", "Specify input TBC files (- as first source for piped input)"));
 
     // Positional argument to specify output video file
-    parser.addPositionalArgument("output", QCoreApplication::translate("main", "Specify output TBC file (omit or - for piped output)"));
+    parser.addPositionalArgument("output", QCoreApplication::translate(
+                                     "main", "Specify output TBC file (omit or - for piped output)"));
 
-    // Process the command line options and arguments given by the user
+    // Process the command line options and arguments given by the user -----------------------------------------------
     parser.process(a);
 
     // Get the options from the parser
@@ -157,61 +161,165 @@ int main(int argc, char *argv[])
         }
     }
 
-    QString inputFilename;
+    // Require source and target filenames
+    QVector<QString> inputFilenames;
     QString outputFilename = "-";
     QStringList positionalArguments = parser.positionalArguments();
-    if (positionalArguments.count() == 2) {
-        inputFilename = positionalArguments.at(0);
-        outputFilename = positionalArguments.at(1);
-    } else if (positionalArguments.count() == 1) {
-        inputFilename = positionalArguments.at(0);
-    } else {
-        // Quit with error
-        qCritical("You must specify input and output TBC files");
+    qint32 totalNumberOfInputFiles = positionalArguments.count() - 1;
+    inputFilenames.resize(totalNumberOfInputFiles);
+
+    // Ensure we don't have more than 32 sources
+    if (totalNumberOfInputFiles > 32) {
+        qCritical() << "A maximum of 32 input TBC files are supported";
         return -1;
     }
 
-    // Check filename arguments are reasonable
-    if (inputFilename == "-" && !parser.isSet(inputJsonOption)) {
+    // Get the input TBC sources
+    if (positionalArguments.count() >= 2) {
+        for (qint32 i = 0; i < positionalArguments.count() - 1; i++) {
+            inputFilenames[i] = positionalArguments.at(i);
+        }
+    } else {
         // Quit with error
-        qCritical("With piped input, you must also specify the input JSON file");
+        qCritical("You must specify at least 1 input and 1 output TBC file");
         return -1;
     }
+
+    // Get the output TBC (should be the last argument of the command line
+    outputFilename = positionalArguments.at(positionalArguments.count() - 1);
+
+    // If the first input filename is "-" (piped input) - verify a JSON file has been specified
+    if (inputFilenames[0] == "-" && !parser.isSet(inputJsonOption)) {
+        // Quit with error
+        qCritical("With piped input, you must also specify the input JSON file with --input-json");
+        return -1;
+    }
+
+    // If the output filename is "-" (piped output) - verify a JSON file has been specified
     if (outputFilename == "-" && !parser.isSet(outputJsonOption)) {
         // Quit with error
-        qCritical("With piped output, you must also specify the output JSON file");
+        qCritical("With piped output, you must also specify the output JSON file with --output-json");
         return -1;
     }
-    if (inputFilename == outputFilename) {
-        // Quit with error
-        qCritical("Input and output files cannot be the same");
-        return -1;
+
+    // Check that none of the input filenames are used as the output file
+    for (qint32 i = 0; i < totalNumberOfInputFiles; i++) {
+        if (inputFilenames[i] == outputFilename) {
+            // Quit with error
+            qCritical("Input and output files cannot be the same");
+            return -1;
+        }
+    }
+
+    // Check that none of the input filenames are repeated
+    for (qint32 i = 0; i < totalNumberOfInputFiles; i++) {
+        for (qint32 j = 0; j < totalNumberOfInputFiles; j++) {
+            if (i != j) {
+                if (inputFilenames[i] == inputFilenames[j]) {
+                    // Quit with error
+                    qCritical("Each input file should only be specified once");
+                    return -1;
+                }
+            }
+        }
     }
 
     // Process the command line options
-    if (isDebugOn) showDebug = true;
+    if (isDebugOn) showDebug = true; else showDebug = false;
 
-    // Work out the metadata filenames
-    QString inputJsonFilename = inputFilename + ".json";
-    if (parser.isSet(inputJsonOption)) {
-        inputJsonFilename = parser.value(inputJsonOption);
-    }
+    // Metadata filename for output TBC
     QString outputJsonFilename = outputFilename + ".json";
     if (parser.isSet(outputJsonOption)) {
         outputJsonFilename = parser.value(outputJsonOption);
     }
 
+    // Prepare for DOC process ----------------------------------------------------------------------------------------
+
     // Open the source video metadata
-    LdDecodeMetaData metaData;
-    qInfo().nospace().noquote() << "Reading JSON metadata from " << inputJsonFilename;
-    if (!metaData.read(inputJsonFilename)) {
-        qCritical() << "Unable to open TBC JSON metadata file";
-        return 1;
+    qDebug() << "main(): Opening source video metadata files..";
+    QVector<LdDecodeMetaData> ldDecodeMetaData;
+    ldDecodeMetaData.resize(totalNumberOfInputFiles);
+    for (qint32 i = 0; i < totalNumberOfInputFiles; i++) {
+        // Work out the metadata filename
+        QString jsonFilename = inputFilenames[i] + ".json";
+        if (parser.isSet(inputJsonOption) && i == 0) jsonFilename = parser.value(inputJsonOption);
+        qInfo().nospace().noquote() << "Reading input #" << i << " JSON metadata from " << jsonFilename;
+
+        // Open it
+        if (!ldDecodeMetaData[i].read(jsonFilename)) {
+            qCritical() << "Unable to open TBC JSON metadata file";
+            return -1;
+        }
     }
 
-    // Perform the processing
+    // Reverse field order if required
+    if (reverse) {
+        qInfo() << "Expected field order is reversed to second field/first field";
+        for (qint32 i = 0; i < totalNumberOfInputFiles; i++)
+            ldDecodeMetaData[i].setIsFirstFieldFirst(false);
+    }
+
+    // Intrafield only correction if required
+    if (intraField) {
+        qInfo() << "Using intra-field correction only";
+    }
+
+    // Overcorrection if required
+    if (overCorrect) {
+        qInfo() << "Using over correction mode";
+    }
+
+    // Show and open input source TBC files
+    qDebug() << "main(): Opening source video files...";
+    QVector<SourceVideo> sourceVideos;
+    sourceVideos.resize(totalNumberOfInputFiles);
+
+    for (qint32 i = 0; i < totalNumberOfInputFiles; i++) {
+        LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData[i].getVideoParameters();
+
+        qInfo().nospace() << "Opening input #" << i << ": " << videoParameters.fieldWidth << "x" << videoParameters.fieldHeight <<
+                    " - input filename is " << inputFilenames[i];
+
+        // Open the source TBC
+        if (!sourceVideos[i].open(inputFilenames[i], videoParameters.fieldWidth * videoParameters.fieldHeight)) {
+            // Could not open source video file
+            qInfo() << "Unable to open input source" << i;
+            return 1;
+        }
+
+        // Verify TBC and JSON input fields match
+        if (sourceVideos[i].getNumberOfAvailableFields() != ldDecodeMetaData[0].getNumberOfFields()) {
+            qInfo() << "Warning: TBC file contains" << sourceVideos[i].getNumberOfAvailableFields() <<
+                       "fields but the JSON indicates" << ldDecodeMetaData[0].getNumberOfFields() <<
+                       "fields - some fields will be ignored";
+        }
+
+        // Additional checks when using multiple input sources
+        if (totalNumberOfInputFiles > 1) {
+            // Ensure source video has VBI data
+            if (!ldDecodeMetaData[i].getFieldVbi(1).inUse) {
+                qInfo() << "Source video" << i << "does not have the required VBI data! - Please run ld-process-vbi before loading source!";
+                return 1;
+            }
+
+            // Ensure that the video source standard matches the primary source
+            if (ldDecodeMetaData[0].getVideoParameters().isSourcePal != videoParameters.isSourcePal) {
+                qInfo() << "All additional input sources must have the same video format (PAL/NTSC) as the initial source!";
+                return 1;
+            }
+
+            if (!videoParameters.isMapped) {
+                qInfo() << "Source video" << i << "has not been mapped - run ld-discmap on the source and try again";
+                return 1;
+            }
+        }
+    }
+
+    // Perform the DOC process ----------------------------------------------------------------------------------------
     qInfo() << "Beginning dropout correction...";
-    CorrectorPool correctorPool(inputFilename, outputFilename, outputJsonFilename, maxThreads, metaData, reverse, intraField, overCorrect);
+    CorrectorPool correctorPool(outputFilename, outputJsonFilename, maxThreads,
+                                ldDecodeMetaData, sourceVideos,
+                                reverse, intraField, overCorrect);
     if (!correctorPool.process()) return 1;
 
     // Quit with success
