@@ -26,7 +26,11 @@
 #define SNRANALYSISDIALOG_H
 
 #include <QDialog>
-#include <QtCharts>
+#include <qwt/qwt_plot.h>
+#include <qwt/qwt_plot_canvas.h>
+#include <qwt/qwt_legend.h>
+#include <qwt/qwt_plot_grid.h>
+#include <qwt/qwt_plot_curve.h>
 
 #include "lddecodemetadata.h"
 
@@ -47,7 +51,6 @@ public:
     void finishUpdate(qint32 numberOfFields, qint32 fieldsPerDataPoint);
 
 private slots:
-    void on_pushButton_clicked();
     void on_blackPSNR_checkBox_clicked();
     void on_whiteSNR_checkBox_clicked();
 
@@ -55,14 +58,14 @@ private:
     void removeChartContents();
 
     Ui::SnrAnalysisDialog *ui;
-    QChartView chartView;
-    QLineSeries blackQLineSeries;
-    QLineSeries whiteQLineSeries;
-    QChart chart;
-    QValueAxis axisX;
-    QValueAxis axisY;
+    QwtPlot *plot;
+    QwtLegend *legend;
+    QwtPlotGrid *grid;
+    QPolygonF *blackPoints;
+    QPolygonF *whitePoints;
+    QwtPlotCurve *blackCurve;
+    QwtPlotCurve *whiteCurve;
 
-    bool chartOwnsContents;
     qreal maxSnr;
     qreal minSnr;
 };

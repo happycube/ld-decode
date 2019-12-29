@@ -4,7 +4,7 @@
 #
 #-------------------------------------------------
 
-QT       += core gui charts
+QT       += core gui
 
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
@@ -75,6 +75,7 @@ HEADERS += \
     ../ld-chroma-decoder/yiqbuffer.h \
     ../ld-chroma-decoder/opticalflow.h \
     ../ld-chroma-decoder/sourcefield.h \
+    ../library/filter/firfilter.h \
     ../library/tbc/lddecodemetadata.h \
     ../library/tbc/sourcevideo.h \
     ../library/tbc/vbidecoder.h \
@@ -92,6 +93,7 @@ FORMS += \
     dropoutanalysisdialog.ui
 
 # Add external includes to the include path
+INCLUDEPATH += ../library/filter
 INCLUDEPATH += ../library/tbc
 INCLUDEPATH += ../ld-chroma-decoder
 
@@ -111,6 +113,11 @@ LIBS += -L"/usr/local/opt/opencv@2/lib"
 INCLUDEPATH += "/usr/local/include/opencv"
 LIBS += -L"/usr/local/lib"
 LIBS += -lopencv_core -lopencv_imgcodecs -lopencv_highgui -lopencv_imgproc -lopencv_video -lfftw3
+
+# Include the QWT library (used for charting)
+INCLUDEPATH += $(QWT)/include
+LIBS += -lqwt-qt5
+
 
 
 

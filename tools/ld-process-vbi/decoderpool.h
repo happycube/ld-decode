@@ -34,14 +34,14 @@
 
 #include "sourcevideo.h"
 #include "lddecodemetadata.h"
-#include "vbidecoder.h"
+#include "vbilinedecoder.h"
 
 class DecoderPool : public QObject
 {
     Q_OBJECT
 public:
     // Public methods
-    explicit DecoderPool(QString _inputFileName,
+    explicit DecoderPool(QString _inputFilename, QString _outputJsonFilename,
                         qint32 _maxThreads, LdDecodeMetaData &_ldDecodeMetaData,
                         QObject *parent = nullptr);
     bool process();
@@ -52,6 +52,7 @@ public:
 
 private:
     QString inputFilename;
+    QString outputJsonFilename;
     bool performCorrection;
     bool noBackup;
     qint32 maxThreads;

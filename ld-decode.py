@@ -19,7 +19,7 @@ options_epilog = """FREQ can be a bare number in MHz, or a number with one of th
 parser = argparse.ArgumentParser(description='Extracts audio and video from raw RF laserdisc captures', epilog=options_epilog)
 parser.add_argument('infile', metavar='infile', type=str, help='source file')
 parser.add_argument('outfile', metavar='outfile', type=str, help='base name for destination files')
-parser.add_argument('-s', '--start', metavar='start', type=int, default=0, help='rough jump to frame n of capture (default is 0)')
+parser.add_argument('-s', '--start', metavar='start', type=float, default=0, help='rough jump to frame n of capture (default is 0)')
 parser.add_argument('-S', '--seek', metavar='seek', type=int, default=-1, help='seek to frame n of capture')
 #parser.add_argument('-E', '--end', metavar='end', type=int, default=-1, help='cutting: last frame')
 parser.add_argument('-l', '--length', metavar='length', type=int, default = 110000, help='limit length to n frames')
@@ -62,7 +62,7 @@ except ValueError as e:
 
 system = 'PAL' if args.pal else 'NTSC'
     
-ldd = LDdecode(filename, outname, loader, analog_audio = not args.daa, digital_audio = not args.noefm, system=system, doDOD = not args.nodod, threads=args.threads)
+ldd = LDdecode(filename, outname, loader, analog_audio = 0 if args.daa else 44.100, digital_audio = not args.noefm, system=system, doDOD = not args.nodod, threads=args.threads)
 ldd.roughseek(firstframe * 2)
 
 if system == 'NTSC' and not args.ntscj:

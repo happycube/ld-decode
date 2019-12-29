@@ -78,6 +78,7 @@ private:
     StateMachine nextState;
     bool waitingForData;
 
+    qint32 sequentialGoodSyncCounter;
     qint32 sequentialBadSyncCounter;
     qint32 endSyncTransition;
 

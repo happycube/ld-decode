@@ -77,7 +77,7 @@ bool DecoderPool::process()
     }
 
     // Open the output RGB file
-    if (outputFileName.isNull()) {
+    if (outputFileName == "-") {
         // No output filename, use stdout instead
         if (!targetVideo.open(stdout, QIODevice::WriteOnly)) {
             // Failed to open stdout

@@ -18,16 +18,22 @@ SOURCES += \
     correctorpool.cpp \
     main.cpp \
     dropoutcorrect.cpp \
+    ../library/tbc/filters.cpp \
     ../library/tbc/lddecodemetadata.cpp \
-    ../library/tbc/sourcevideo.cpp
+    ../library/tbc/sourcevideo.cpp \
+    ../library/tbc/vbidecoder.cpp
 
 HEADERS += \
     correctorpool.h \
     dropoutcorrect.h \
+    ../library/filter/firfilter.h \
+    ../library/tbc/filters.h \
     ../library/tbc/lddecodemetadata.h \
-    ../library/tbc/sourcevideo.h
+    ../library/tbc/sourcevideo.h \
+    ../library/tbc/vbidecoder.cpp
 
 # Add external includes to the include path
+INCLUDEPATH += ../library/filter
 INCLUDEPATH += ../library/tbc
 
 # Default rules for deployment.

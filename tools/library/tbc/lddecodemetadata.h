@@ -31,6 +31,7 @@
 #include <QDebug>
 
 #include "../JsonWax/JsonWax.h"
+#include "vbidecoder.h"
 
 class LdDecodeMetaData : public QObject
 {
@@ -144,6 +145,7 @@ public:
     bool read(QString fileName);
     bool write(QString fileName);
     bool writeVitsCsv(QString fileName);
+    bool writeVbiCsv(QString fileName);
 
     QString escapedString(QString unescapedString);
 

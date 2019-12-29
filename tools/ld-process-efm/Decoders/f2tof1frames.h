@@ -39,21 +39,23 @@ public:
     // Statistics
     struct Statistics {
         qint32 totalFrames;
-        qint32 validFrames;
-        qint32 invalidFrames;
+        qint32 validF2Frames;
+        qint32 invalidF2Frames;
+        qint32 initialPaddingFrames;
         qint32 missingSectionFrames;
         qint32 encoderOffFrames;
         TrackTime framesStart;
         TrackTime frameCurrent;
     };
 
-    QVector<F1Frame> process(QVector<F2Frame> f2FramesIn, bool debugState);
+    QVector<F1Frame> process(QVector<F2Frame> f2FramesIn, bool _debugState, bool _noTimeStamp);
     Statistics getStatistics();
     void reportStatistics();
     void reset();
 
 private:
     bool debugOn;
+    bool noTimeStamp;
     Statistics statistics;
 
     // State-machine variables

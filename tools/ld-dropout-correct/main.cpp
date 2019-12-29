@@ -97,6 +97,18 @@ int main(int argc, char *argv[])
                                        QCoreApplication::translate("main", "Show debug"));
     parser.addOption(showDebugOption);
 
+    // Option to specify a different JSON input file
+    QCommandLineOption inputJsonOption(QStringList() << "input-json",
+                                       QCoreApplication::translate("main", "Specify the input JSON file (default input.json)"),
+                                       QCoreApplication::translate("main", "filename"));
+    parser.addOption(inputJsonOption);
+
+    // Option to specify a different JSON output file
+    QCommandLineOption outputJsonOption(QStringList() << "output-json",
+                                        QCoreApplication::translate("main", "Specify the output JSON file (default output.json)"),
+                                        QCoreApplication::translate("main", "filename"));
+    parser.addOption(outputJsonOption);
+
     // Option to reverse the field order (-r)
     QCommandLineOption setReverseOption(QStringList() << "r" << "reverse",
                                        QCoreApplication::translate("main", "Reverse the field order to second/first (default first/second)"));
@@ -119,10 +131,10 @@ int main(int argc, char *argv[])
     parser.addOption(threadsOption);
 
     // Positional argument to specify input video file
-    parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input TBC file"));
+    parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input TBC file (- for piped input)"));
 
     // Positional argument to specify output video file
-    parser.addPositionalArgument("output", QCoreApplication::translate("main", "Specify output TBC file"));
+    parser.addPositionalArgument("output", QCoreApplication::translate("main", "Specify output TBC file (omit or - for piped output)"));
 
     // Process the command line options and arguments given by the user
     parser.process(a);
@@ -146,17 +158,30 @@ int main(int argc, char *argv[])
     }
 
     QString inputFilename;
-    QString outputFilename;
+    QString outputFilename = "-";
     QStringList positionalArguments = parser.positionalArguments();
     if (positionalArguments.count() == 2) {
         inputFilename = positionalArguments.at(0);
         outputFilename = positionalArguments.at(1);
+    } else if (positionalArguments.count() == 1) {
+        inputFilename = positionalArguments.at(0);
     } else {
         // Quit with error
         qCritical("You must specify input and output TBC files");
         return -1;
     }
 
+    // Check filename arguments are reasonable
+    if (inputFilename == "-" && !parser.isSet(inputJsonOption)) {
+        // Quit with error
+        qCritical("With piped input, you must also specify the input JSON file");
+        return -1;
+    }
+    if (outputFilename == "-" && !parser.isSet(outputJsonOption)) {
+        // Quit with error
+        qCritical("With piped output, you must also specify the output JSON file");
+        return -1;
+    }
     if (inputFilename == outputFilename) {
         // Quit with error
         qCritical("Input and output files cannot be the same");
@@ -166,19 +191,27 @@ int main(int argc, char *argv[])
     // Process the command line options
     if (isDebugOn) showDebug = true;
 
-    // Open the JSON metadata
-    LdDecodeMetaData metaData;
+    // Work out the metadata filenames
+    QString inputJsonFilename = inputFilename + ".json";
+    if (parser.isSet(inputJsonOption)) {
+        inputJsonFilename = parser.value(inputJsonOption);
+    }
+    QString outputJsonFilename = outputFilename + ".json";
+    if (parser.isSet(outputJsonOption)) {
+        outputJsonFilename = parser.value(outputJsonOption);
+    }
 
     // Open the source video metadata
-    qInfo().nospace().noquote() << "Reading JSON metadata from " << inputFilename << ".json";
-    if (!metaData.read(inputFilename + ".json")) {
+    LdDecodeMetaData metaData;
+    qInfo().nospace().noquote() << "Reading JSON metadata from " << inputJsonFilename;
+    if (!metaData.read(inputJsonFilename)) {
         qCritical() << "Unable to open TBC JSON metadata file";
         return 1;
     }
 
     // Perform the processing
-    qInfo() << "Beginning VBI processing...";
-    CorrectorPool correctorPool(inputFilename, outputFilename, maxThreads, metaData, reverse, intraField, overCorrect);
+    qInfo() << "Beginning dropout correction...";
+    CorrectorPool correctorPool(inputFilename, outputFilename, outputJsonFilename, maxThreads, metaData, reverse, intraField, overCorrect);
     if (!correctorPool.process()) return 1;
 
     // Quit with success

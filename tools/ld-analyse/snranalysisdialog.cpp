@@ -31,17 +31,18 @@ SnrAnalysisDialog::SnrAnalysisDialog(QWidget *parent) :
 {
     ui->setupUi(this);
     setWindowFlags(Qt::Window);
-
-    chartOwnsContents = false;
     maxSnr = 0;
     minSnr = 1000;
 
     // Set up the chart view
-    chartView.setChart(&chart);
-    chartView.setRubberBand(QChartView::HorizontalRubberBand);
-    chartView.setRenderHint(QPainter::Antialiasing);
+    plot = new QwtPlot();
+    grid = new QwtPlotGrid();
+    blackCurve = new QwtPlotCurve();
+    whiteCurve = new QwtPlotCurve();
+    blackPoints = new QPolygonF();
+    whitePoints = new QPolygonF();
 
-    ui->verticalLayout->addWidget(&chartView);
+    ui->verticalLayout->addWidget(plot);
 }
 
 SnrAnalysisDialog::~SnrAnalysisDialog()
@@ -54,13 +55,6 @@ SnrAnalysisDialog::~SnrAnalysisDialog()
 void SnrAnalysisDialog::startUpdate()
 {
     removeChartContents();
-    blackQLineSeries.clear();
-    whiteQLineSeries.clear();
-
-    // Create the QLineSeries
-    blackQLineSeries.setColor(Qt::black);
-    whiteQLineSeries.setColor(Qt::gray);
-
     maxSnr = 0;
     minSnr = 1000;
 }
@@ -68,21 +62,16 @@ void SnrAnalysisDialog::startUpdate()
 // Remove the axes and series from the chart, giving ownership back to this object
 void SnrAnalysisDialog::removeChartContents()
 {
-    if (!chartOwnsContents) return;
-
-    chart.removeAxis(&axisX);
-    chart.removeAxis(&axisY);
-    chart.removeSeries(&blackQLineSeries);
-    chart.removeSeries(&whiteQLineSeries);
-
-    chartOwnsContents = false;
+    blackPoints->clear();
+    whitePoints->clear();
+    plot->replot();
 }
 
 // Add a data point to the chart
 void SnrAnalysisDialog::addDataPoint(qint32 fieldNumber, qreal blackSnr, qreal whiteSnr)
 {
-    if (!isnanf(static_cast<float>(blackSnr))) blackQLineSeries.append(fieldNumber, blackSnr);
-    if (!isnanf(static_cast<float>(whiteSnr))) whiteQLineSeries.append(fieldNumber, whiteSnr);
+    if (!isnanf(static_cast<float>(blackSnr))) blackPoints->append(QPointF(fieldNumber, blackSnr));
+    if (!isnanf(static_cast<float>(whiteSnr))) whitePoints->append(QPointF(fieldNumber, whiteSnr));
 
     // Keep track of the minimum and maximum SNR values
     if (blackSnr < minSnr) minSnr = blackSnr;
@@ -94,59 +83,55 @@ void SnrAnalysisDialog::addDataPoint(qint32 fieldNumber, qreal blackSnr, qreal w
 // Finish the update and render the graph
 void SnrAnalysisDialog::finishUpdate(qint32 numberOfFields, qint32 fieldsPerDataPoint)
 {
-    // Create the chart
-    chart.setTitle("SNR analysis (averaged over " + QString::number(fieldsPerDataPoint) + " fields)");
-    chart.legend()->hide();
+    // Set the chart title
+    plot->setTitle("SNR analysis (averaged over " + QString::number(fieldsPerDataPoint) + " fields)");
 
-    // Create the x axis
-    axisX.setMin(0);
-    axisX.setTickCount(10);
-    if (numberOfFields < 10) axisX.setMax(10);
-    else axisX.setMax(numberOfFields);
-    axisX.setTitleText("Field number");
-    axisX.setLabelFormat("%i");
+    // Set the background and grid
+    plot->setCanvasBackground(Qt::white);
+    grid->attach(plot);
 
-    // Create the Y axis
-    axisY.setTickCount(10);
-    axisY.setMax(maxSnr + 1);
-    axisY.setMin(minSnr - 1);
-    axisY.setTitleText("SNR (in dB)");
-    axisY.setLabelFormat("%i");
+    // Define the x-axis
+    plot->setAxisScale(QwtPlot::xBottom, 0, numberOfFields, (numberOfFields / 10) + 1);
+    plot->setAxisTitle(QwtPlot::xBottom, "Field number");
 
-    // Attach the axis to the chart
-    chart.addAxis(&axisX, Qt::AlignBottom);
-    chart.addAxis(&axisY, Qt::AlignLeft);
+    // Define the y-axis
+    plot->setAxisScale(QwtPlot::yLeft, floor(minSnr - 1), ceil(maxSnr + 1),
+                       static_cast<qint32>(ceil(maxSnr + 1) - floor(minSnr - 1) + 1) / 10);
+    plot->setAxisTitle(QwtPlot::yLeft, "SNR (in dB)");
 
-    // Attach the series to the chart
-    chart.addSeries(&blackQLineSeries);
-    chart.addSeries(&whiteQLineSeries);
+    // Attach the black curve data to the chart
+    blackCurve->setTitle("Black SNR");
+    blackCurve->setPen(Qt::black, 1);
+    blackCurve->setRenderHint(QwtPlotItem::RenderAntialiased, true);
+    blackCurve->setSamples(*blackPoints);
+    blackCurve->attach(plot);
 
-    // The chart now owns the axes and series
-    chartOwnsContents = true;
+    // Attach the white curve data to the chart
+    whiteCurve->setTitle("White SNR");
+    whiteCurve->setPen(Qt::gray, 1);
+    whiteCurve->setRenderHint(QwtPlotItem::RenderAntialiased, true);
+    whiteCurve->setSamples(*whitePoints);
+    whiteCurve->attach(plot);
 
-    // Attach the axis to the QLineSeries
-    blackQLineSeries.attachAxis(&axisX);
-    whiteQLineSeries.attachAxis(&axisX);
-    blackQLineSeries.attachAxis(&axisY);
-    whiteQLineSeries.attachAxis(&axisY);
+    // Update the axis
+    plot->updateAxes();
 
-    // Render
-    chartView.repaint();
-}
-
-void SnrAnalysisDialog::on_pushButton_clicked()
-{
-    chart.zoomReset();
+    // Render the chart
+    plot->maximumSize();
+    plot->show();
 }
 
 void SnrAnalysisDialog::on_blackPSNR_checkBox_clicked()
 {
-    if (ui->blackPSNR_checkBox->isChecked()) blackQLineSeries.show();
-    else blackQLineSeries.hide();
+    if (ui->blackPSNR_checkBox->isChecked()) blackCurve->attach(plot);
+    else blackCurve->detach();
+    plot->replot();
 }
 
 void SnrAnalysisDialog::on_whiteSNR_checkBox_clicked()
 {
-    if (ui->whiteSNR_checkBox->isChecked()) whiteQLineSeries.show();
-    else whiteQLineSeries.hide();
+    if (ui->whiteSNR_checkBox->isChecked()) whiteCurve->attach(plot);
+    else whiteCurve->detach();
+    plot->replot();
 }
+

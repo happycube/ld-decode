@@ -235,6 +235,7 @@ void MainWindow::resetStatistics()
     // F1 tab
     ui->f1_f2ToF1_validFrames_label->setText(tr("0"));
     ui->f1_f2ToF1_invalidFrames_label->setText(tr("0"));
+    ui->f1_f2ToF1_initialPaddingFrames_label->setText(tr("0"));
     ui->f1_f2ToF1_missingSectionFrames_label->setText(tr("0"));
     ui->f1_f2ToF1_encoderOffFrames_label->setText(tr("0"));
     ui->f1_f2ToF1_totalFrames_label->setText(tr("0"));
@@ -345,8 +346,9 @@ void MainWindow::updateStatistics()
     ui->f2_deinterleave_delayBufferFlushes_label->setText(QString::number(statistics.f3ToF2Frames.c2Deinterleave_statistics.c2flushed));
 
     // F1 tab
-    ui->f1_f2ToF1_validFrames_label->setText(QString::number(statistics.f2ToF1Frames.validFrames));
-    ui->f1_f2ToF1_invalidFrames_label->setText(QString::number(statistics.f2ToF1Frames.invalidFrames));
+    ui->f1_f2ToF1_validFrames_label->setText(QString::number(statistics.f2ToF1Frames.validF2Frames));
+    ui->f1_f2ToF1_invalidFrames_label->setText(QString::number(statistics.f2ToF1Frames.invalidF2Frames));
+    ui->f1_f2ToF1_initialPaddingFrames_label->setText(QString::number(statistics.f2ToF1Frames.initialPaddingFrames));
     ui->f1_f2ToF1_missingSectionFrames_label->setText(QString::number(statistics.f2ToF1Frames.missingSectionFrames));
     ui->f1_f2ToF1_encoderOffFrames_label->setText(QString::number(statistics.f2ToF1Frames.encoderOffFrames));
     ui->f1_f2ToF1_totalFrames_label->setText(QString::number(statistics.f2ToF1Frames.totalFrames));
@@ -401,6 +403,7 @@ void MainWindow::resetDecoderOptions()
     ui->audio_padSampleStart_checkBox->setChecked(false);
     ui->options_decodeAsAudio_checkbox->setChecked(true);
     ui->options_decodeAsData_checkbox->setChecked(false);
+    ui->options_noTimeStamp_checkBox->setChecked(false);
 
     ui->tabWidget->setTabEnabled(ui->tabWidget->indexOf(ui->dataTab), false);
 }
@@ -581,7 +584,7 @@ void MainWindow::on_decodePushButton_clicked()
 
     // Set the audio options
     efmProcess.setDecoderOptions(ui->audio_padSampleStart_checkBox->isChecked(), ui->options_decodeAsAudio_checkbox->isChecked(),
-                                 ui->options_decodeAsData_checkbox->isChecked());
+                                 ui->options_decodeAsData_checkbox->isChecked(), ui->options_noTimeStamp_checkBox->isChecked());
 
     // Start the processing of the EFM
     efmProcess.startProcessing(&inputEfmFileHandle, &audioOutputTemporaryFileHandle,
@@ -659,12 +662,6 @@ void MainWindow::processingCompleteSignalHandler(bool audioAvailable, bool dataA
             if (!audioOutputTemporaryFileHandle.copy(outputAudioFilename)) {
                 qWarning() << "MainWindow::processingCompleteSignalHandler(): Failed to save file as" << outputAudioFilename;
             }
-
-            // Report the decode statistics
-            efmProcess.reportStatistics();
-
-            // Quit the application
-            qApp->quit();
         }
     }
 
@@ -675,6 +672,11 @@ void MainWindow::processingCompleteSignalHandler(bool audioAvailable, bool dataA
 
     // Report the decode statistics to qInfo
     efmProcess.reportStatistics();
+
+    if (nonInteractive) {
+        // Quit the application
+        qApp->quit();
+    }
 
     // Update the GUI
     guiEfmProcessingStop();

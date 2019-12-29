@@ -40,15 +40,15 @@
 // Abstract base class for Transform PAL filters.
 class TransformPal {
 public:
-    TransformPal();
+    TransformPal(qint32 xComplex, qint32 yComplex, qint32 zComplex);
     virtual ~TransformPal();
 
     // Specify what the frequency-domain filter should do to each pair of
-    // frequencies that should be symmetrical around the carriers.
+    // bins that should be symmetrical around the carriers.
     enum TransformMode {
-        // Adjust the amplitudes of the two points to be equal
+        // Adjust the amplitudes of the two bins to be equal
         levelMode = 0,
-        // If the amplitudes aren't within a threshold of each other, zero both points
+        // If the amplitudes aren't within a threshold of each other, zero both bins
         thresholdMode
     };
 
@@ -61,7 +61,8 @@ public:
     // be more similar to be considered chroma. 0.6 is pyctools-pal's default.
     void updateConfiguration(const LdDecodeMetaData::VideoParameters &videoParameters,
                              qint32 firstActiveLine, qint32 lastActiveLine,
-                             TransformMode mode, double threshold);
+                             TransformMode mode, double threshold,
+                             const QVector<double> &thresholds);
 
     // Filter input fields.
     //
@@ -88,14 +89,19 @@ protected:
                                  QByteArray &rgbFrame) = 0;
 
     void overlayFFTArrays(const fftw_complex *fftIn, const fftw_complex *fftOut,
-                          qint32 xSize, qint32 ySize, qint32 zSize, FrameCanvas &canvas);
+                          FrameCanvas &canvas);
+
+    // FFT size
+    qint32 xComplex;
+    qint32 yComplex;
+    qint32 zComplex;
 
     // Configuration parameters
     bool configurationSet;
     LdDecodeMetaData::VideoParameters videoParameters;
     qint32 firstActiveLine;
     qint32 lastActiveLine;
-    double threshold;
+    QVector<double> thresholds;
     TransformMode mode;
 };
 

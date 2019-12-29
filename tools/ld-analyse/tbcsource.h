@@ -67,11 +67,11 @@ public:
 
     void setHighlightDropouts(bool _state);
     void setChromaDecoder(bool _state);
-    void setLumaMode(bool _state);
+    void setLpfMode(bool _state);
     void setFieldOrder(bool _state);
     bool getHighlightDropouts();
     bool getChromaDecoder();
-    bool getLumaMode();
+    bool getLpfMode();
     bool getFieldOrder();
 
     QImage getFrameImage(qint32 frameNumber);
@@ -97,6 +97,7 @@ public:
     qint32 getSecondFieldNumber(qint32 frameNumber);
 
     bool saveVitsAsCsv(QString filename);
+    bool saveVbiAsCsv(QString filename);
 
     qint32 getCcData0(qint32 frameNumber);
     qint32 getCcData1(qint32 frameNumber);
@@ -122,7 +123,7 @@ private:
 
     // Frame image options
     bool chromaOn;
-    bool lumaOn;
+    bool lpfOn;
     bool dropoutsOn;
     bool reverseFoOn;
 

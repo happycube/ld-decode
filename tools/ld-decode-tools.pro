@@ -5,13 +5,10 @@ SUBDIRS = \
     ld-analyse \
     ld-chroma-decoder \
     ld-chroma-decoder/encoder \
-    ld-chroma-decoder/testfilter \
-    ld-combine \
+    ld-diffdod \
+    ld-discmap \
     ld-dropout-correct \
     ld-lds-converter \
-    ld-ldstoefm \
     ld-process-efm \
     ld-process-vbi \
-    ld-diffdod \
-    ld-discmap
-
+    library/filter/testfilter

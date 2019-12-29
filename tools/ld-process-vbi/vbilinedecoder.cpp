@@ -1,6 +1,6 @@
 /************************************************************************
 
-    vbidecoder.cpp
+    vbilinedecoder.cpp
 
     ld-process-vbi - VBI and IEC NTSC specific processor for ld-decode
     Copyright (C) 2018-2019 Simon Inns
@@ -22,17 +22,17 @@
 
 ************************************************************************/
 
-#include "vbidecoder.h"
+#include "vbilinedecoder.h"
 #include "decoderpool.h"
 
-VbiDecoder::VbiDecoder(QAtomicInt& _abort, DecoderPool& _decoderPool, QObject *parent)
+VbiLineDecoder::VbiLineDecoder(QAtomicInt& _abort, DecoderPool& _decoderPool, QObject *parent)
     : QThread(parent), abort(_abort), decoderPool(_decoderPool)
 {
 
 }
 
 // Thread main processing method
-void VbiDecoder::run()
+void VbiLineDecoder::run()
 {
     qint32 fieldNumber;
 
@@ -121,7 +121,7 @@ void VbiDecoder::run()
 }
 
 // Private method to get a single scanline of greyscale data
-QByteArray VbiDecoder::getActiveVideoLine(QByteArray *sourceField, qint32 fieldLine,
+QByteArray VbiLineDecoder::getActiveVideoLine(QByteArray *sourceField, qint32 fieldLine,
                                         LdDecodeMetaData::VideoParameters videoParameters)
 {
     // Range-check the scan line
@@ -137,7 +137,7 @@ QByteArray VbiDecoder::getActiveVideoLine(QByteArray *sourceField, qint32 fieldL
 }
 
 // Private method to read a 24-bit biphase coded signal (manchester code) from a field line
-qint32 VbiDecoder::manchesterDecoder(QByteArray lineData, qint32 zcPoint,
+qint32 VbiLineDecoder::manchesterDecoder(QByteArray lineData, qint32 zcPoint,
                                      LdDecodeMetaData::VideoParameters videoParameters)
 {
     qint32 result = 0;
@@ -199,7 +199,7 @@ qint32 VbiDecoder::manchesterDecoder(QByteArray lineData, qint32 zcPoint,
 }
 
 // Private method to get the map of transitions across the sample and reject noise
-QVector<bool> VbiDecoder::getTransitionMap(QByteArray lineData, qint32 zcPoint)
+QVector<bool> VbiLineDecoder::getTransitionMap(QByteArray lineData, qint32 zcPoint)
 {
     // First read the data into a boolean array using debounce to remove transition noise
     bool previousState = false;

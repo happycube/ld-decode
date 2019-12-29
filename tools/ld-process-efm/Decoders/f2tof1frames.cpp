@@ -33,9 +33,10 @@ F2ToF1Frames::F2ToF1Frames()
 // Public methods -----------------------------------------------------------------------------------------------------
 
 // Method to feed the audio processing state-machine with F2Frames
-QVector<F1Frame> F2ToF1Frames::process(QVector<F2Frame> f2FramesIn, bool debugState)
+QVector<F1Frame> F2ToF1Frames::process(QVector<F2Frame> f2FramesIn, bool _debugState, bool _noTimeStamp)
 {
-    debugOn = debugState;
+    debugOn = _debugState;
+    noTimeStamp = _noTimeStamp;
 
     // Clear the output buffer
     f1FramesOut.clear();
@@ -76,11 +77,12 @@ void F2ToF1Frames::reportStatistics()
 {
     qInfo()           << "";
     qInfo()           << "F2 Frames to F1 Frames:";
-    qInfo()           << "            Valid frames:" << statistics.validFrames;
-    qInfo()           << "          Invalid frames:" << statistics.invalidFrames;
-    qInfo()           << "  Missing section frames:" << statistics.missingSectionFrames << "(" << statistics.missingSectionFrames / 6 << "F3 Frames )";
-    qInfo()           << "      Encoder off frames:" << statistics.encoderOffFrames;
-    qInfo()           << "            TOTAL frames:" << statistics.totalFrames;
+    qInfo()           << "            Valid F2 frames:" << statistics.validF2Frames;
+    qInfo()           << "          Invalid F2 frames:" << statistics.invalidF2Frames;
+    qInfo()           << "     Initial padding frames:" << statistics.initialPaddingFrames;
+    qInfo()           << "     Missing section frames:" << statistics.missingSectionFrames;
+    qInfo()           << "         Encoder off frames:" << statistics.encoderOffFrames;
+    qInfo()           << "               TOTAL frames:" << statistics.totalFrames;
     qInfo()           << "";
     qInfo().noquote() << "       Frames start time:" << statistics.framesStart.getTimeAsQString();
     qInfo().noquote() << "         Frames end time:" << statistics.frameCurrent.getTimeAsQString();
@@ -106,11 +108,12 @@ void F2ToF1Frames::reset()
 // Method to clear the statistics counters
 void F2ToF1Frames::clearStatistics()
 {
-    statistics.validFrames = 0;
+    statistics.validF2Frames = 0;
+    statistics.initialPaddingFrames = 0;
     statistics.missingSectionFrames = 0;
     statistics.encoderOffFrames = 0;
     statistics.totalFrames = 0;
-    statistics.invalidFrames = 0;
+    statistics.invalidF2Frames = 0;
 
     statistics.framesStart.setTime(0, 0, 0);
     statistics.frameCurrent.setTime(0, 0, 0);
@@ -163,7 +166,7 @@ F2ToF1Frames::StateMachine F2ToF1Frames::sm_state_getInitialDiscTime()
             }
 
             // Add filled section to statistics
-            statistics.missingSectionFrames += 98;
+            statistics.initialPaddingFrames += 98;
             statistics.totalFrames += 98;
         }
     }
@@ -223,6 +226,9 @@ F2ToF1Frames::StateMachine F2ToF1Frames::sm_state_processSection()
     }
     if (encoderStateCount > 10) sectionEncoderState = true; else sectionEncoderState = false;
 
+    // Override the encoder state for non-standard EFM with no time-stamps
+    if (noTimeStamp) sectionEncoderState = true;
+
     // Output the F2 Frames as F1 Frames
     F1Frame f1Frame;
     for (qint32 i = 0; i < 98; i++) {
@@ -231,7 +237,7 @@ F2ToF1Frames::StateMachine F2ToF1Frames::sm_state_processSection()
         f1FramesOut.append(f1Frame);
 
         // Update the statistics
-        if (f2FrameBuffer[i].isFrameCorrupt()) statistics.invalidFrames++; else statistics.validFrames++;
+        if (f2FrameBuffer[i].isFrameCorrupt()) statistics.invalidF2Frames++; else statistics.validF2Frames++;
         if (!sectionEncoderState) statistics.encoderOffFrames++;
         statistics.totalFrames++;
     }

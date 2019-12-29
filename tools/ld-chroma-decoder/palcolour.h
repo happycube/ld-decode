@@ -61,6 +61,7 @@ public:
         ChromaFilterMode chromaFilter = palColourFilter;
         TransformPal::TransformMode transformMode = TransformPal::thresholdMode;
         double transformThreshold = 0.4;
+        QVector<double> transformThresholds;
         bool showFFTs = false;
         qint32 showPositionX = 200;
         qint32 showPositionY = 200;
@@ -70,6 +71,7 @@ public:
         // Interlaced line 619 is PAL line 623 (the last active half-line)
         qint32 lastActiveLine = 620;
 
+        qint32 getThresholdsSize() const;
         qint32 getLookBehind() const;
         qint32 getLookAhead() const;
     };

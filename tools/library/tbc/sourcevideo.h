@@ -43,8 +43,7 @@ public:
     void close(void);
 
     // Field handling methods
-    QByteArray getVideoField(qint32 fieldNumber);
-    QByteArray getVideoField(qint32 fieldNumber, qint32 startFieldLine, qint32 endFieldLine);
+    QByteArray getVideoField(qint32 fieldNumber, qint32 startFieldLine = -1, qint32 endFieldLine = -1);
 
     // Get and set methods
     bool isSourceValid();
@@ -54,12 +53,13 @@ public:
 private:
     // File handling globals
     QFile inputFile;
+    qint64 inputFilePos;
     bool isSourceVideoOpen;
     qint32 availableFields;
     qint32 fieldByteLength;
     qint32 fieldLineLength;
 
-    QByteArray outputFieldLineData;
+    QByteArray outputFieldData;
 
     // Field caching
     QCache<qint32, QByteArray> fieldCache;

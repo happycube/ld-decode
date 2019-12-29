@@ -30,7 +30,7 @@ TbcSource::TbcSource(QObject *parent) : QObject(parent)
 {
     // Default frame image options
     chromaOn = false;
-    lumaOn = false;
+    lpfOn = false;
     dropoutsOn = false;
     reverseFoOn = false;
     sourceReady = false;
@@ -50,7 +50,7 @@ void TbcSource::loadSource(QString sourceFilename)
 {
     // Default frame options
     chromaOn = false;
-    lumaOn = false;
+    lpfOn = false;
     dropoutsOn = false;
     reverseFoOn = false;
     sourceReady = false;
@@ -103,18 +103,18 @@ void TbcSource::setChromaDecoder(bool _state)
     frameCacheFrameNumber = -1;
     chromaOn = _state;
 
-    // Turn off luma if chroma is selected
-    if (chromaOn) lumaOn = false;
+    // Turn off LPF if chroma is selected
+    if (chromaOn) lpfOn = false;
 }
 
-// Method to set the luma mode (true = on)
-void TbcSource::setLumaMode(bool _state)
+// Method to set the LPF mode (true = on)
+void TbcSource::setLpfMode(bool _state)
 {
     frameCacheFrameNumber = -1;
-    lumaOn = _state;
+    lpfOn = _state;
 
-    // Turn off chroma if luma is selected
-    if (lumaOn) chromaOn = false;
+    // Turn off chroma if LPF is selected
+    if (lpfOn) chromaOn = false;
 }
 
 // Method to set the field order (true = reversed, false = normal)
@@ -139,10 +139,10 @@ bool TbcSource::getChromaDecoder()
     return chromaOn;
 }
 
-// Method to get the state of the luma mode
-bool TbcSource::getLumaMode()
+// Method to get the state of the LPF mode
+bool TbcSource::getLpfMode()
 {
-    return lumaOn;
+    return lpfOn;
 }
 
 // Method to get the field order
@@ -457,6 +457,14 @@ bool TbcSource::saveVitsAsCsv(QString filename)
     return ldDecodeMetaData.writeVitsCsv(filename);
 }
 
+// Save the VBI as a CSV file
+bool TbcSource::saveVbiAsCsv(QString filename)
+{
+    if (!sourceReady) return 0;
+
+    return ldDecodeMetaData.writeVbiCsv(filename);
+}
+
 qint32 TbcSource::getCcData0(qint32 frameNumber)
 {
     if (!sourceReady) return false;
@@ -523,8 +531,8 @@ QImage TbcSource::generateQImage(qint32 firstFieldNumber, qint32 secondFieldNumb
         qDebug().nospace() << "TbcSource::generateQImage(): Generating a chroma image from field pair " << firstFieldNumber <<
                     "/" << secondFieldNumber << " (" << videoParameters.fieldWidth << "x" <<
                     frameHeight << ")";
-    } else if (lumaOn) {
-        qDebug().nospace() << "TbcSource::generateQImage(): Generating a luma image from field pair " << firstFieldNumber <<
+    } else if (lpfOn) {
+        qDebug().nospace() << "TbcSource::generateQImage(): Generating a LPF image from field pair " << firstFieldNumber <<
                     "/" << secondFieldNumber << " (" << videoParameters.fieldWidth << "x" <<
                     frameHeight << ")";
     } else {
@@ -596,8 +604,8 @@ QImage TbcSource::generateQImage(qint32 firstFieldNumber, qint32 secondFieldNumb
                 *(frameImage.scanLine(y) + xpp + 2) = static_cast<uchar>(pixelValueB); // B
             }
         }
-    } else if (lumaOn) {
-        // Display the current frame as luma only
+    } else if (lpfOn) {
+        // Display the current frame as LPF only
 
         // Get the field data
         QByteArray firstField = sourceVideo.getVideoField(firstFieldNumber);
@@ -623,21 +631,37 @@ QImage TbcSource::generateQImage(qint32 firstFieldNumber, qint32 secondFieldNumb
 
         // Copy the raw 16-bit grayscale data into the RGB888 QImage
         for (qint32 y = 0; y < frameHeight; y++) {
-            // Extract the current scan line data from the frame
-            qint32 startPointer = (y / 2) * videoParameters.fieldWidth * 2;
-            qint32 length = videoParameters.fieldWidth * 2;
-
-            firstLineData = firstField.mid(startPointer, length);
-            secondLineData = secondField.mid(startPointer, length);
-
             for (qint32 x = 0; x < videoParameters.fieldWidth; x++) {
                 // Take just the MSB of the input data
-                qint32 dp = x * 2;
                 uchar pixelValue;
                 if (y % 2) {
-                    pixelValue = static_cast<uchar>(secondLineData[dp + 1]);
+                    qreal pixelValue32 = static_cast<qreal>(secondFieldPointer[x + (videoParameters.fieldWidth * (y / 2))]);
+
+                    // Clamp the IRE value for the pixel
+                    if (pixelValue32 < videoParameters.black16bIre) pixelValue32 = videoParameters.black16bIre;
+                    if (pixelValue32 > videoParameters.white16bIre) pixelValue32 = videoParameters.white16bIre;
+
+                    // Scale the IRE value to a 16 bit greyscale value
+                    qreal scaledValue = ((pixelValue32 - static_cast<qreal>(videoParameters.black16bIre)) /
+                                         (static_cast<qreal>(videoParameters.white16bIre) -
+                                          static_cast<qreal>(videoParameters.black16bIre))) * 65535.0;
+                    pixelValue32 = static_cast<qint32>(scaledValue);
+
+                    // Convert to 8-bit for RGB888
+                    pixelValue = static_cast<uchar>(pixelValue32 / 256);
                 } else {
-                    pixelValue = static_cast<uchar>(firstLineData[dp + 1]);
+                    qreal pixelValue32 = static_cast<qreal>(firstFieldPointer[x + (videoParameters.fieldWidth * (y / 2))]);
+                    if (pixelValue32 < videoParameters.black16bIre) pixelValue32 = videoParameters.black16bIre;
+                    if (pixelValue32 > videoParameters.white16bIre) pixelValue32 = videoParameters.white16bIre;
+
+                    // Scale the IRE value to a 16 bit greyscale value
+                    qreal scaledValue = ((pixelValue32 - static_cast<qreal>(videoParameters.black16bIre)) /
+                                         (static_cast<qreal>(videoParameters.white16bIre)
+                                          - static_cast<qreal>(videoParameters.black16bIre))) * 65535.0;
+                    pixelValue32 = static_cast<qint32>(scaledValue);
+
+                    // Convert to 8-bit for RGB888
+                    pixelValue = static_cast<uchar>(pixelValue32 / 256);
                 }
 
                 qint32 xpp = x * 3;

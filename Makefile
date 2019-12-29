@@ -2,9 +2,9 @@
 
 # Note: Targets do not include auto-generated .h files, which means
 #       that make clean will not remove them.
-TARGETS=cx ld-ldf-reader
+TARGETS=ld-ldf-reader
 
-CFLAGS=-g -O2 -fno-omit-frame-pointer -march=native -Itools/ld-chroma-decoder
+CFLAGS=-g -O2 -fno-omit-frame-pointer -march=native -Itools/library/filter
 
 all: $(TARGETS)
 
@@ -13,9 +13,6 @@ clean:
 
 install:
 	cp ld-ldf-reader /usr/local/bin
-
-cx: cx-expander.cxx deemp.h
-	clang++ -std=c++14  -Wall $(CFLAGS) -o cx cx-expander.cxx
 
 deemp.h: filtermaker.py
 	python3 filtermaker.py > deemp.h

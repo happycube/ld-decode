@@ -96,6 +96,18 @@ int main(int argc, char *argv[])
                                        QCoreApplication::translate("main", "Show debug"));
     parser.addOption(showDebugOption);
 
+    // Option to specify a different JSON input file
+    QCommandLineOption inputJsonOption(QStringList() << "input-json",
+                                       QCoreApplication::translate("main", "Specify the input JSON file (default input.json)"),
+                                       QCoreApplication::translate("main", "filename"));
+    parser.addOption(inputJsonOption);
+
+    // Option to specify a different JSON output file
+    QCommandLineOption outputJsonOption(QStringList() << "output-json",
+                                        QCoreApplication::translate("main", "Specify the output JSON file (default same as input)"),
+                                        QCoreApplication::translate("main", "filename"));
+    parser.addOption(outputJsonOption);
+
     // Option to disable JSON back-up (-n)
     QCommandLineOption showNoBackupOption(QStringList() << "n" << "nobackup",
                                        QCoreApplication::translate("main", "Do not create a backup of the input JSON metadata"));
@@ -142,20 +154,28 @@ int main(int argc, char *argv[])
     // Process the command line options
     if (debugOn) showDebug = true;
 
-    // Open the JSON metadata
-    LdDecodeMetaData metaData;
+    // Work out the metadata filenames
+    QString inputJsonFilename = inputFilename + ".json";
+    if (parser.isSet(inputJsonOption)) {
+        inputJsonFilename = parser.value(inputJsonOption);
+    }
+    QString outputJsonFilename = inputJsonFilename;
+    if (parser.isSet(outputJsonOption)) {
+        outputJsonFilename = parser.value(outputJsonOption);
+    }
 
     // Open the source video metadata
-    qInfo().nospace().noquote() << "Reading JSON metadata from " << inputFilename << ".json";
-    if (!metaData.read(inputFilename + ".json")) {
+    LdDecodeMetaData metaData;
+    qInfo().nospace().noquote() << "Reading JSON metadata from " << inputJsonFilename;
+    if (!metaData.read(inputJsonFilename)) {
         qCritical() << "Unable to open TBC JSON metadata file";
         return 1;
     }
 
-    // Perform a backup of the input JSON metadata
-    qInfo().nospace().noquote() << "Backing up JSON metadata to " << inputFilename << ".json.bup";
-    if (!noBackup) {
-        if (!QFile::copy(inputFilename + ".json", inputFilename + ".json.bup")) {
+    // If we're overwriting the input JSON file, back it up first
+    if (inputJsonFilename == outputJsonFilename && !noBackup) {
+        qInfo().nospace().noquote() << "Backing up JSON metadata to " << inputJsonFilename << ".bup";
+        if (!QFile::copy(inputJsonFilename, inputJsonFilename + ".bup")) {
             qCritical() << "Unable to back-up input JSON metadata file - back-up already exists?";
             return 1;
         }
@@ -163,7 +183,7 @@ int main(int argc, char *argv[])
 
     // Perform the processing
     qInfo() << "Beginning VBI processing...";
-    DecoderPool decoderPool(inputFilename, maxThreads, metaData);
+    DecoderPool decoderPool(inputFilename, outputJsonFilename, maxThreads, metaData);
     if (!decoderPool.process()) return 1;
 
     // Quit with success

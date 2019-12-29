@@ -116,6 +116,7 @@ void EfmToF3Frames::reset(void)
     currentState = state_initial;
     nextState = currentState;
     waitingForData = false;
+    sequentialGoodSyncCounter = 0;
     sequentialBadSyncCounter = 0;
     endSyncTransition = 0;
 }
@@ -165,7 +166,7 @@ EfmToF3Frames::StateMachine EfmToF3Frames::sm_state_findInitialSyncStage1()
     }
 
     if (startSyncTransition == -1) {
-        if (debugOn) qDebug() << "EfmToF3Frames::sm_state_findInitialSyncStage1(): No initial F3 sync found in EFM buffer, requesting more data";
+        if (debugOn) qDebug() << "EfmToF3Frames::sm_state_findInitialSyncStage1(): No initial F3 sync found in EFM buffer - discarding" << efmDataBuffer.size() - 1 << "EFM values";
 
         // Discard the EFM already tested and try again
         efmDataBuffer.remove(0, efmDataBuffer.size() - 1);
@@ -174,7 +175,7 @@ EfmToF3Frames::StateMachine EfmToF3Frames::sm_state_findInitialSyncStage1()
         return state_findInitialSyncStage1;
     }
 
-    if (debugOn) qDebug() << "EfmToF3Frames::sm_state_findInitialSyncStage1(): Initial F3 sync found at buffer position" << startSyncTransition;
+    if (debugOn) qDebug() << "EfmToF3Frames::sm_state_findInitialSyncStage1(): Initial F3 sync found at buffer position" << startSyncTransition << "- discarding" << startSyncTransition << "EFM values";
 
     // Discard all EFM data up to the sync start
     efmDataBuffer.remove(0, startSyncTransition);
@@ -210,6 +211,7 @@ EfmToF3Frames::StateMachine EfmToF3Frames::sm_state_findInitialSyncStage2()
 
     if (tTotal > searchLength) {
         if (debugOn) qDebug() << "EfmToF3Frames::sm_state_findInitialSyncStage2(): No second F3 sync found within a reasonable length, going back to look for new initial sync.  T =" << tTotal;
+        if (debugOn) qDebug() << "EfmToF3Frames::sm_state_findInitialSyncStage2(): Discarding" << endSyncTransition << "EFM values";
         efmDataBuffer.remove(0, endSyncTransition);
         return state_findInitialSyncStage1;
     }
@@ -222,11 +224,13 @@ EfmToF3Frames::StateMachine EfmToF3Frames::sm_state_findInitialSyncStage2()
     // Is the frame length valid (or close enough)?
     if (tTotal < 587 || tTotal > 589) {
         // Discard the transitions already tested and try again
+        if (debugOn) qDebug() << "EfmToF3Frames::sm_state_findInitialSyncStage2(): Discarding" << endSyncTransition << "EFM values";
         efmDataBuffer.remove(0, endSyncTransition);
         return state_findInitialSyncStage2;
     }
 
     if (debugOn) qDebug() << "EfmToF3Frames::sm_state_findInitialSyncStage2(): Found first F3 frame with a length of" << tTotal << "bits";
+    sequentialGoodSyncCounter = 0;
 
     return state_processFrame;
 }
@@ -263,7 +267,8 @@ EfmToF3Frames::StateMachine EfmToF3Frames::sm_state_findSecondSync()
         endSyncTransition = i;
         sequentialBadSyncCounter = 0;
         statistics.validSyncs++;
-        //if (debugOn) qDebug() << "EfmToF3Frames::sm_state_findSecondSync(): Got good F3 sync";
+        //if (debugOn) qDebug() << "EfmToF3Frames::sm_state_findSecondSync(): Got good F3 sync - #" << sequentialGoodSyncCounter;
+        sequentialGoodSyncCounter++;
     } else {
         // Handle various possible sync issues in a (hopefully) smart way
         if (efmDataBuffer[i] == static_cast<char>(11) && efmDataBuffer[i + 1] == static_cast<char>(11)) {
@@ -306,6 +311,15 @@ EfmToF3Frames::StateMachine EfmToF3Frames::sm_state_findSecondSync()
                 sequentialBadSyncCounter++;
                 statistics.overshootSyncs++;
             }
+
+            // If there is a failure when there are no previous good syncs, try to resync
+            if (sequentialGoodSyncCounter == 0 && sequentialBadSyncCounter !=0) {
+                if (debugOn) qDebug() << "EfmToF3Frames::sm_state_findSecondSync(): F3 Sync failing with no previous good frames - attempting to reset sync";
+                return state_findInitialSyncStage1;
+            }
+
+            // Reset the sequential good sync counter
+            sequentialGoodSyncCounter = 0;
         }
     }
 

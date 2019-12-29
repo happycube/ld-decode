@@ -2,7 +2,7 @@
 
     iirfilter.h
 
-    ld-chroma-decoder - Colourisation filter for ld-decode
+    ld-decode-tools filter library
     Copyright (C) 2018 Chad Page
     Copyright (C) 2018-2019 Simon Inns
     Copyright (C) 2019 Adam Sampson

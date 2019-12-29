@@ -29,6 +29,7 @@
 #include <QCommandLineParser>
 #include <QScopedPointer>
 #include <QThread>
+#include <fstream>
 
 #include "decoderpool.h"
 #include "lddecodemetadata.h"
@@ -86,6 +87,56 @@ void debugOutputHandler(QtMsgType type, const QMessageLogContext &context, const
     }
 }
 
+// Load the thresholds file for the Transform decoders, if specified. We must
+// do this after PalColour has been configured, so we know how many values to
+// expect.
+//
+// Return true on success; on failure, print a message and return false.
+static bool loadTransformThresholds(QCommandLineParser &parser, QCommandLineOption &transformThresholdsOption, PalColour::Configuration &palConfig)
+{
+    if (!parser.isSet(transformThresholdsOption)) {
+        // Nothing to load
+        return true;
+    }
+
+    // Open the file
+    QString filename = parser.value(transformThresholdsOption);
+    std::ifstream thresholdsFile(filename.toStdString());
+    if (thresholdsFile.fail()) {
+        qCritical() << "Transform thresholds file could not be opened:" << filename;
+        return false;
+    }
+
+    // Read threshold values from the file
+    palConfig.transformThresholds.clear();
+    while (true) {
+        double value;
+        thresholdsFile >> value;
+        if (thresholdsFile.eof()) {
+            break;
+        }
+        if (value < 0.0 || value > 1.0) {
+            qCritical() << "Values in Transform thresholds file must be between 0 and 1:" << filename;
+            return false;
+        }
+        if (thresholdsFile.fail()) {
+            qCritical() << "Couldn't parse Transform thresholds file:" << filename;
+            return false;
+        }
+        palConfig.transformThresholds.push_back(value);
+    }
+
+    // Check we've read the right number
+    if (palConfig.transformThresholds.size() != palConfig.getThresholdsSize()) {
+        qCritical() << "Transform thresholds file contained" << palConfig.transformThresholds.size()
+                    << "values, expecting" << palConfig.getThresholdsSize() << "values:" << filename;
+        return false;
+    }
+
+    thresholdsFile.close();
+    return true;
+}
+
 int main(int argc, char *argv[])
 {
     // Install the local debug message handler
@@ -117,6 +168,12 @@ int main(int argc, char *argv[])
     QCommandLineOption showDebugOption(QStringList() << "d" << "debug",
                                        QCoreApplication::translate("main", "Show debug"));
     parser.addOption(showDebugOption);
+
+    // Option to specify a different JSON input file
+    QCommandLineOption inputJsonOption(QStringList() << "input-json",
+                                       QCoreApplication::translate("main", "Specify the input JSON file (default input.json)"),
+                                       QCoreApplication::translate("main", "filename"));
+    parser.addOption(inputJsonOption);
 
     // Option to select start frame (sequential) (-s)
     QCommandLineOption startFrameOption(QStringList() << "s" << "start",
@@ -179,15 +236,21 @@ int main(int argc, char *argv[])
 
     // Option to select the Transform PAL filter mode
     QCommandLineOption transformModeOption(QStringList() << "transform-mode",
-                                           QCoreApplication::translate("main", "Transform: Filter mode to use (level, threshold; default level)"),
+                                           QCoreApplication::translate("main", "Transform: Filter mode to use (level, threshold; default threshold)"),
                                            QCoreApplication::translate("main", "mode"));
     parser.addOption(transformModeOption);
 
     // Option to select the Transform PAL threshold
     QCommandLineOption transformThresholdOption(QStringList() << "transform-threshold",
-                                                QCoreApplication::translate("main", "Transform: Similarity threshold in 'threshold' mode (default 0.4)"),
+                                                QCoreApplication::translate("main", "Transform: Uniform similarity threshold in 'threshold' mode (default 0.4)"),
                                                 QCoreApplication::translate("main", "number"));
     parser.addOption(transformThresholdOption);
+
+    // Option to select the Transform PAL thresholds file
+    QCommandLineOption transformThresholdsOption(QStringList() << "transform-thresholds",
+                                                 QCoreApplication::translate("main", "Transform: File containing per-bin similarity thresholds in 'threshold' mode"),
+                                                 QCoreApplication::translate("main", "file"));
+    parser.addOption(transformThresholdsOption);
 
     // Option to overlay the FFTs
     QCommandLineOption showFFTsOption(QStringList() << "show-ffts",
@@ -197,10 +260,10 @@ int main(int argc, char *argv[])
     // -- Positional arguments --
 
     // Positional argument to specify input video file
-    parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input TBC file"));
+    parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input TBC file (- for piped input)"));
 
     // Positional argument to specify output video file
-    parser.addPositionalArgument("output", QCoreApplication::translate("main", "Specify output RGB file (omit for piped output)"));
+    parser.addPositionalArgument("output", QCoreApplication::translate("main", "Specify output RGB file (omit or - for piped output)"));
 
     // Process the command line options and arguments given by the user
     parser.process(a);
@@ -211,24 +274,26 @@ int main(int argc, char *argv[])
 
     // Get the arguments from the parser
     QString inputFileName;
-    QString outputFileName;
+    QString outputFileName = "-";
     QStringList positionalArguments = parser.positionalArguments();
     if (positionalArguments.count() == 2) {
         inputFileName = positionalArguments.at(0);
         outputFileName = positionalArguments.at(1);
+    } else if (positionalArguments.count() == 1) {
+        inputFileName = positionalArguments.at(0);
     } else {
-        if (positionalArguments.count() == 1) {
-            // Use piped output
-            inputFileName = positionalArguments.at(0);
-            outputFileName.clear(); // Use pipe
-        } else {
-            // Quit with error
-            qCritical("You must specify the input TBC and output RGB files");
-            return -1;
-        }
+        // Quit with error
+        qCritical("You must specify the input TBC and output RGB files");
+        return -1;
     }
 
-    if (inputFileName == outputFileName) {
+    // Check filename arguments are reasonable
+    if (inputFileName == "-" && !parser.isSet(inputJsonOption)) {
+        // Quit with error
+        qCritical("With piped input, you must also specify the input JSON file");
+        return -1;
+    }
+    if (inputFileName == outputFileName && outputFileName != "-") {
         // Quit with error
         qCritical("Input and output files cannot be the same");
         return -1;
@@ -291,7 +356,6 @@ int main(int argc, char *argv[])
         } else if (name == "threshold") {
             palConfig.transformMode = TransformPal::thresholdMode;
         } else {
-            palConfig.transformMode = TransformPal::levelMode;
             // Quit with error
             qCritical() << "Unknown Transform mode " << name;
             return -1;
@@ -325,9 +389,15 @@ int main(int argc, char *argv[])
     // Process the command line options
     if (isDebugOn) showDebug = true;
 
+    // Work out the metadata filename
+    QString inputJsonFileName = inputFileName + ".json";
+    if (parser.isSet(inputJsonOption)) {
+        inputJsonFileName = parser.value(inputJsonOption);
+    }
+
     // Load the source video metadata
     LdDecodeMetaData metaData;
-    if (!metaData.read(inputFileName + ".json")) {
+    if (!metaData.read(inputJsonFileName)) {
         qInfo() << "Unable to open ld-decode metadata file";
         return -1;
     }
@@ -366,9 +436,15 @@ int main(int argc, char *argv[])
         decoder.reset(new PalDecoder(palConfig));
     } else if (decoderName == "transform2d") {
         palConfig.chromaFilter = PalColour::transform2DFilter;
+        if (!loadTransformThresholds(parser, transformThresholdsOption, palConfig)) {
+            return -1;
+        }
         decoder.reset(new PalDecoder(palConfig));
     } else if (decoderName == "transform3d") {
         palConfig.chromaFilter = PalColour::transform3DFilter;
+        if (!loadTransformThresholds(parser, transformThresholdsOption, palConfig)) {
+            return -1;
+        }
         decoder.reset(new PalDecoder(palConfig));
     } else if (decoderName == "ntsc2d") {
         decoder.reset(new NtscDecoder(combConfig));

@@ -61,6 +61,7 @@ static double computeWindow(qint32 element, qint32 limit)
 }
 
 TransformPal2D::TransformPal2D()
+    : TransformPal(XCOMPLEX, YCOMPLEX, 1)
 {
     // Compute the window function.
     for (qint32 y = 0; y < YTILE; y++) {
@@ -90,6 +91,12 @@ TransformPal2D::~TransformPal2D()
     fftw_free(fftReal);
     fftw_free(fftComplexIn);
     fftw_free(fftComplexOut);
+}
+
+qint32 TransformPal2D::getThresholdsSize()
+{
+    // On the X axis, include only the bins we actually use in applyFilter
+    return YCOMPLEX * ((XCOMPLEX / 4) + 1);
 }
 
 void TransformPal2D::filterFields(const QVector<SourceField> &inputFields, qint32 startIndex, qint32 endIndex,
@@ -211,6 +218,9 @@ static inline double fftwAbsSq(const fftw_complex &value)
 template <TransformPal::TransformMode MODE>
 void TransformPal2D::applyFilter()
 {
+    // Get pointer to squared threshold values
+    const double *thresholdsPtr = thresholds.data();
+
     // Clear fftComplexOut. We discard values by default; the filter only
     // copies values that look like chroma.
     for (qint32 i = 0; i < XCOMPLEX * YCOMPLEX; i++) {
@@ -227,13 +237,11 @@ void TransformPal2D::applyFilter()
     // symmetrical around the U carrier, which is at fSC Hz and 72 c/aph -- and
     // because we're sampling at 4fSC, this is handily equivalent to being
     // symmetrical around the V carrier owing to wraparound. We look at every
-    // point that might be a chroma signal, and only keep it if it's
+    // bin that might be a chroma signal, and only keep it if it's
     // sufficiently symmetrical with its reflection.
     //
     // The Y axis covers 0 to 288 c/aph;  72 c/aph is 1/4 * YTILE.
     // The X axis covers 0 to 4fSC Hz;    fSC HZ   is 1/4 * XTILE.
-
-    const double threshold_sq = threshold * threshold;
 
     for (qint32 y = 0; y < YTILE; y++) {
         // Reflect around 72 c/aph vertically.
@@ -249,14 +257,17 @@ void TransformPal2D::applyFilter()
 
         // We only need to look at horizontal frequencies that might be chroma (0.5fSC to 1.5fSC).
         for (qint32 x = XTILE / 8; x <= XTILE / 4; x++) {
-            // Reflect around 4fSC Hz horizontally.
+            // Reflect around fSC horizontally
             const qint32 x_ref = (XTILE / 2) - x;
+
+            // Get the threshold for this bin
+            const double threshold_sq = *thresholdsPtr++;
 
             const fftw_complex &in_val = bi[x];
             const fftw_complex &ref_val = bi_ref[x_ref];
 
             if (x == x_ref && y == y_ref) {
-                // This point is its own reflection (i.e. it's a carrier). Keep it!
+                // This bin is its own reflection (i.e. it's a carrier). Keep it!
                 bo[x][0] = in_val[0];
                 bo[x][1] = in_val[1];
                 continue;
@@ -285,8 +296,9 @@ void TransformPal2D::applyFilter()
                     bo_ref[x_ref][1] = ref_val[1] * factor;
                 }
             } else {
-                // Compare the magnitudes of the two values, and discard
-                // both if they are more different than the threshold.
+                // Compare the magnitudes of the two values, and discard both
+                // if they are more different than the threshold for this
+                // bin.
                 if (m_in_sq < m_ref_sq * threshold_sq || m_ref_sq < m_in_sq * threshold_sq) {
                     // Probably not a chroma signal; throw it away.
                 } else {
@@ -299,6 +311,8 @@ void TransformPal2D::applyFilter()
             }
         }
     }
+
+    assert(thresholdsPtr == thresholds.data() + thresholds.size());
 }
 
 void TransformPal2D::overlayFFTFrame(qint32 positionX, qint32 positionY,
@@ -336,5 +350,5 @@ void TransformPal2D::overlayFFTFrame(qint32 positionX, qint32 positionY,
     canvas.drawRectangle(positionX - 1, positionY + inputField.getOffset() - 1, XTILE + 1, (YTILE * 2) + 1, FrameCanvas::green);
 
     // Draw the arrays
-    overlayFFTArrays(fftComplexIn, fftComplexOut, XCOMPLEX, YCOMPLEX, 1, canvas);
+    overlayFFTArrays(fftComplexIn, fftComplexOut, canvas);
 }

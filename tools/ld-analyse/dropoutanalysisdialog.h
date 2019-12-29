@@ -26,11 +26,13 @@
 #define DROPOUTANALYSISDIALOG_H
 
 #include <QDialog>
-#include <QtCharts>
+#include <qwt/qwt_plot.h>
+#include <qwt/qwt_plot_canvas.h>
+#include <qwt/qwt_legend.h>
+#include <qwt/qwt_plot_grid.h>
+#include <qwt/qwt_plot_curve.h>
 
 #include "lddecodemetadata.h"
-
-using namespace QtCharts;
 
 namespace Ui {
 class DropoutAnalysisDialog;
@@ -49,20 +51,18 @@ public:
     void finishUpdate(qint32 numberOfFields, qint32 fieldsPerDataPoint);
 
 private slots:
-    void on_reset_pushButton_clicked();
 
 private:
     void removeChartContents();
 
     Ui::DropoutAnalysisDialog *ui;
-    QChartView chartView;
-    QLineSeries qLineSeries;
-    QChart chart;
-    QValueAxis axisX;
-    QValueAxis axisY;
-    qreal maxY;
+    QwtPlot *plot;
+    QwtLegend *legend;
+    QwtPlotGrid *grid;
+    QPolygonF *points;
+    QwtPlotCurve *curve;
 
-    bool chartOwnsContents;
+    qreal maxY;
 };
 
 #endif // DROPOUTANALYSISDIALOG_H

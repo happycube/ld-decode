@@ -59,7 +59,7 @@ public:
         qint32 preempFrames;
     };
 
-    QVector<F2Frame> process(QVector<F3Frame> f3FramesIn, bool debugState);
+    QVector<F2Frame> process(QVector<F3Frame> f3FramesIn, bool debugState, bool noTimeStamp);
     Statistics getStatistics();
     void reportStatistics();
     void reset();
@@ -80,6 +80,7 @@ private:
 
     bool initialDiscTimeSet;
     TrackTime lastDiscTime;
+    bool lostSections;
 };
 
 #endif // F3TOF2FRAMES_H

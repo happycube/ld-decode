@@ -42,6 +42,7 @@ EfmProcess::EfmProcess(QObject *parent) : QThread(parent)
 
     decodeAsAudio = true;
     decodeAsData = false;
+    noTimeStamp = false;
 }
 
 EfmProcess::~EfmProcess()
@@ -99,14 +100,16 @@ void EfmProcess::setAudioErrorTreatment(F1ToAudio::ErrorTreatment _errorTreatmen
 }
 
 // Set the decoder options
-void EfmProcess::setDecoderOptions(bool _padInitialDiscTime, bool _decodeAsAudio, bool _decodeAsData)
+void EfmProcess::setDecoderOptions(bool _padInitialDiscTime, bool _decodeAsAudio, bool _decodeAsData, bool _noTimeStamp)
 {
     qDebug() << "EfmProcess::setDecoderOptions(): Pad initial disc time is" << _padInitialDiscTime;
     qDebug() << "EfmProcess::setDecoderOptions(): Decode as audio is" << _decodeAsAudio;
     qDebug() << "EfmProcess::setDecoderOptions(): Decode as data is" << _decodeAsData;
+    qDebug() << "EfmProcess::setDecoderOptions(): No time-stamp is" << _noTimeStamp;
     padInitialDiscTime = _padInitialDiscTime;
     decodeAsAudio = _decodeAsAudio;
     decodeAsData = _decodeAsData;
+    noTimeStamp = _noTimeStamp;
 }
 
 // Output the result of the decode to qInfo
@@ -211,8 +214,8 @@ void EfmProcess::run()
             // Perform processing
             QVector<F3Frame> initialF3Frames = efmToF3Frames.process(inputEfmBuffer, debug_efmToF3Frames);
             QVector<F3Frame> syncedF3Frames = syncF3Frames.process(initialF3Frames, debug_syncF3Frames);
-            QVector<F2Frame> f2Frames = f3ToF2Frames.process(syncedF3Frames, debug_f3ToF2Frames);
-            QVector<F1Frame> f1Frames = f2ToF1Frames.process(f2Frames, debug_f2ToF1Frame);
+            QVector<F2Frame> f2Frames = f3ToF2Frames.process(syncedF3Frames, debug_f3ToF2Frames, noTimeStamp);
+            QVector<F1Frame> f1Frames = f2ToF1Frames.process(f2Frames, debug_f2ToF1Frame, noTimeStamp);
 
             if (decodeAsAudio) {
                 audioOutputFileHandle->write(f1ToAudio.process(f1Frames, padInitialDiscTime, errorTreatment, concealType, debug_f1ToAudio));
