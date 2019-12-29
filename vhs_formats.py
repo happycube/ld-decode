@@ -1,4 +1,4 @@
-from lddecode_core import RFParams_PAL,SysParams_PAL
+from lddecode.core import RFParams_PAL,SysParams_PAL
 
 # We base the parameters off the original laserdisc ones and override the ones
 # we need.

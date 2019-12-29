@@ -6,9 +6,9 @@ import scipy.signal as sps
 import scipy.fftpack as fftpack
 import copy
 
-import lddecode_core as ldd
-import lddutils as lddu
-from lddutils import unwrap_hilbert, inrange
+import lddecode.core as ldd
+import lddecode.utils as lddu
+from lddecode.utils import unwrap_hilbert, inrange
 import vhs_utils
 
 #import pll
@@ -294,7 +294,7 @@ class VHSRFDecode(ldd.RFDecode):
     def __init__(self, inputfreq = 40, system = 'NTSC'):
         # First init the rf decoder normally.
         super(VHSRFDecode, self).__init__(inputfreq, system, decode_analog_audio = False,
-                                              have_analog_audio = False)
+                                              has_analog_audio = False)
 
         # Then we override the laserdisc parameters with VHS ones.
         if system == 'PAL':

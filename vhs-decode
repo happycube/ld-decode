@@ -12,9 +12,9 @@ import json
 import traceback
 
 
-from lddutils import *
-import lddecode_core
-from lddecode_core import *
+from lddecode.utils import *
+import lddecode.core
+from lddecode.core import *
 from vhs_process import VHSDecode
 
 CXADC_FREQ = 28.636363636363637
