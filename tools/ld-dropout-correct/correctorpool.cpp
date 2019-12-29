@@ -37,6 +37,7 @@ CorrectorPool::CorrectorPool(QString _outputFilename, QString _outputJsonFilenam
 
 bool CorrectorPool::process()
 {
+    qInfo() << "Performing final sanity checks...";
     // Open the target video
     targetVideo.setFileName(outputFilename);
     if (outputFilename == "-") {
@@ -73,6 +74,16 @@ bool CorrectorPool::process()
         }
     }
 
+    // Are we processing a multi-source dropout correction?
+    if (sourceVideos.size() > 1) {
+        qInfo() << "Performing multi-source correction... Scanning source videos for VBI frame number ranges...";
+        // Get the VBI frame range for all sources
+        if (!setMinAndMaxVbiFrames()) {
+            qInfo() << "It was not possible to determine the VBI frame number range for the source video - cannot continue!";
+            return false;
+        }
+    }
+
     // Show some information for the user
     qInfo() << "Using" << maxThreads << "threads to process" << ldDecodeMetaData[0].getNumberOfFrames() << "frames";
 
@@ -83,6 +94,7 @@ bool CorrectorPool::process()
     totalTimer.start();
 
     // Start a vector of decoding threads to process the video
+    qInfo() << "Beginning multi-threaded dropout correction process...";
     QVector<QThread *> threads;
     threads.resize(maxThreads);
     for (qint32 i = 0; i < maxThreads; i++) {
@@ -108,7 +120,7 @@ bool CorrectorPool::process()
     qInfo() << "Dropout correction complete -" << lastFrameNumber << "frames in" << totalSecs << "seconds (" <<
                lastFrameNumber / totalSecs << "FPS )";
 
-    qInfo() << "Creating JSON metadata file for drop-out corrected TBC";
+    qInfo() << "Creating JSON metadata file for drop-out corrected TBC...";
     ldDecodeMetaData[0].write(outputJsonFilename);
 
     qInfo() << "Processing complete";
@@ -140,16 +152,20 @@ bool CorrectorPool::getInputFrame(qint32& frameNumber,
     frameNumber = inputFrameNumber;
     inputFrameNumber++;
 
-    qDebug() << "CorrectorPool::getInputFrame(): Frame number =" << frameNumber;
+    // Determine the number of sources available
+    qint32 numberOfSources = sourceVideos.size();
+
+    qDebug().nospace() << "CorrectorPool::getInputFrame(): Processing sequential frame number #" <<
+                          frameNumber << " from " << numberOfSources << " sources";
 
     // Prepare the vectors
-    firstFieldNumber.resize(1);
-    firstFieldVideoData.resize(1);
-    firstFieldMetadata.resize(1);
-    secondFieldNumber.resize(1);
-    secondFieldVideoData.resize(1);
-    secondFieldMetadata.resize(1);
-    videoParameters.resize(1);
+    firstFieldNumber.resize(numberOfSources);
+    firstFieldVideoData.resize(numberOfSources);
+    firstFieldMetadata.resize(numberOfSources);
+    secondFieldNumber.resize(numberOfSources);
+    secondFieldVideoData.resize(numberOfSources);
+    secondFieldMetadata.resize(numberOfSources);
+    videoParameters.resize(numberOfSources);
 
     // Determine the fields for the input frame
     firstFieldNumber[0] = ldDecodeMetaData[0].getFirstFieldNumber(frameNumber);
@@ -231,6 +247,94 @@ bool CorrectorPool::setOutputFrame(qint32 frameNumber,
 
         pendingOutputFrames.remove(outputFrameNumber);
         outputFrameNumber++;
+    }
+
+    return true;
+}
+
+// Determine the minimum and maximum VBI frame numbers for all sources
+// Expects sourceVideos[] and ldDecodeMetaData[] to be populated
+// Note: This function returns frame number even if the disc is CLV - conversion
+// from timecodes is performed automatically.
+bool CorrectorPool::setMinAndMaxVbiFrames()
+{
+    // Determine the number of sources available
+    qint32 numberOfSources = sourceVideos.size();
+
+    // Resize vectors
+    sourceDiscTypeCav.resize(numberOfSources);
+    sourceMaximumVbiFrame.resize(numberOfSources);
+    sourceMinimumVbiFrame.resize(numberOfSources);
+
+    for (qint32 sourceNumber = 0; sourceNumber < numberOfSources; sourceNumber++) {
+        sourceDiscTypeCav[sourceNumber] = false;
+
+        // Determine the disc type and max/min VBI frame numbers
+        VbiDecoder vbiDecoder;
+        qint32 cavCount = 0;
+        qint32 clvCount = 0;
+        qint32 cavMin = 1000000;
+        qint32 cavMax = 0;
+        qint32 clvMin = 1000000;
+        qint32 clvMax = 0;
+
+        // Using sequential frame numbering starting from 1
+        for (qint32 seqFrame = 1; seqFrame <= ldDecodeMetaData[sourceNumber].getNumberOfFrames(); seqFrame++) {
+            // Get the VBI data and then decode
+            QVector<qint32> vbi1 = ldDecodeMetaData[sourceNumber].getFieldVbi(ldDecodeMetaData[sourceNumber].getFirstFieldNumber(seqFrame)).vbiData;
+            QVector<qint32> vbi2 = ldDecodeMetaData[sourceNumber].getFieldVbi(ldDecodeMetaData[sourceNumber].getSecondFieldNumber(seqFrame)).vbiData;
+            VbiDecoder::Vbi vbi = vbiDecoder.decodeFrame(vbi1[0], vbi1[1], vbi1[2], vbi2[0], vbi2[1], vbi2[2]);
+
+            // Look for a complete, valid CAV picture number or CLV time-code
+            if (vbi.picNo > 0) {
+                cavCount++;
+
+                if (vbi.picNo < cavMin) cavMin = vbi.picNo;
+                if (vbi.picNo > cavMax) cavMax = vbi.picNo;
+            }
+
+            if (vbi.clvHr != -1 && vbi.clvMin != -1 &&
+                    vbi.clvSec != -1 && vbi.clvPicNo != -1) {
+                clvCount++;
+
+                LdDecodeMetaData::ClvTimecode timecode;
+                timecode.hours = vbi.clvHr;
+                timecode.minutes = vbi.clvMin;
+                timecode.seconds = vbi.clvSec;
+                timecode.pictureNumber = vbi.clvPicNo;
+                qint32 cvFrameNumber = ldDecodeMetaData[sourceNumber].convertClvTimecodeToFrameNumber(timecode);
+
+                if (cvFrameNumber < clvMin) clvMin = cvFrameNumber;
+                if (cvFrameNumber > clvMax) clvMax = cvFrameNumber;
+            }
+        }
+        qDebug() << "CorrectorPool::setMinAndMaxVbiFrames(): Got" << cavCount << "CAV picture codes and" << clvCount << "CLV timecodes";
+
+        // If the metadata has no picture numbers or time-codes, we cannot use the source
+        if (cavCount == 0 && clvCount == 0) {
+            qDebug() << "CorrectorPool::setMinAndMaxVbiFrames(): Source does not seem to contain valid CAV picture numbers or CLV time-codes - cannot process";
+            return false;
+        }
+
+        // Determine disc type
+        if (cavCount > clvCount) {
+            sourceDiscTypeCav[sourceNumber] = true;
+            qDebug() << "CorrectorPool::setMinAndMaxVbiFrames(): Got" << cavCount << "valid CAV picture numbers - source disc type is CAV";
+            qInfo().nospace() << "Source #" << sourceNumber << " has a disc type of CAV (uses VBI frame numbers)";
+
+            sourceMaximumVbiFrame[sourceNumber] = cavMax;
+            sourceMinimumVbiFrame[sourceNumber] = cavMin;
+        } else {
+            sourceDiscTypeCav[sourceNumber] = false;
+            qDebug() << "CorrectorPool::setMinAndMaxVbiFrames(): Got" << clvCount << "valid CLV picture numbers - source disc type is CLV";
+            qInfo().nospace() << "Source #" << sourceNumber << " has a disc type of CLV (uses VBI time codes)";
+
+            sourceMaximumVbiFrame[sourceNumber] = clvMax;
+            sourceMinimumVbiFrame[sourceNumber] = clvMin;
+        }
+
+        qInfo().nospace() << "Source #" << sourceNumber << " has a VBI frame number range of " << sourceMinimumVbiFrame[sourceNumber] << " to " <<
+            sourceMaximumVbiFrame[sourceNumber];
     }
 
     return true;

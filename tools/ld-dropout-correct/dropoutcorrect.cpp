@@ -44,7 +44,7 @@ void DropOutCorrect::run()
     QVector<LdDecodeMetaData::Field> secondFieldMetadata;
     bool reverse, intraField, overCorrect;
 
-    qDebug() << "DropOutCorrect::process(): Processing loop ready to go";
+    qDebug() << "DropOutCorrect::process(): Threaded processing loop initialising...";
 
     while(!abort) {
         // Get the next field to process from the input file
@@ -65,12 +65,12 @@ void DropOutCorrect::run()
         // Check if the frame contains drop-outs
         if (firstFieldMetadata[0].dropOuts.startx.empty() && secondFieldMetadata[0].dropOuts.startx.empty()) {
             // No correction required...
-            qDebug() << "DropOutDetector::process(): Skipping fields [" <<
-                        firstFieldSeqNo << "/" << secondFieldSeqNo << "]";
+            qDebug() << "DropOutCorrect::process(): Skipping fields [" <<
+                        firstFieldSeqNo[0] << "/" << secondFieldSeqNo[0] << "]";
         } else {
             // Perform correction...
-            qDebug() << "DropOutDetector::process(): Correcting fields [" <<
-                        firstFieldSeqNo << "/" << secondFieldSeqNo << "] containing" <<
+            qDebug() << "DropOutCorrect::process(): Correcting fields [" <<
+                        firstFieldSeqNo[0] << "/" << secondFieldSeqNo[0] << "] containing" <<
                         firstFieldMetadata[0].dropOuts.startx.size() + secondFieldMetadata[0].dropOuts.startx.size() <<
                         "drop-outs";
 

@@ -206,7 +206,7 @@ int main(int argc, char *argv[])
     for (qint32 i = 0; i < totalNumberOfInputFiles; i++) {
         if (inputFilenames[i] == outputFilename) {
             // Quit with error
-            qCritical("Input and output files cannot be the same");
+            qCritical("Input and output files cannot have the same filenames");
             return -1;
         }
     }
@@ -217,7 +217,7 @@ int main(int argc, char *argv[])
             if (i != j) {
                 if (inputFilenames[i] == inputFilenames[j]) {
                     // Quit with error
-                    qCritical("Each input file should only be specified once");
+                    qCritical("Each input file should only be specified once - some filenames were repeated");
                     return -1;
                 }
             }
@@ -235,6 +235,7 @@ int main(int argc, char *argv[])
 
     // Prepare for DOC process ----------------------------------------------------------------------------------------
 
+    qInfo() << "Starting preparation for dropout correction processes...";
     // Open the source video metadata
     qDebug() << "main(): Opening source video metadata files..";
     QVector<LdDecodeMetaData> ldDecodeMetaData;
@@ -247,7 +248,7 @@ int main(int argc, char *argv[])
 
         // Open it
         if (!ldDecodeMetaData[i].read(jsonFilename)) {
-            qCritical() << "Unable to open TBC JSON metadata file";
+            qCritical() << "Unable to open TBC JSON metadata file - cannot continue";
             return -1;
         }
     }
@@ -261,12 +262,12 @@ int main(int argc, char *argv[])
 
     // Intrafield only correction if required
     if (intraField) {
-        qInfo() << "Using intra-field correction only";
+        qInfo() << "Using intra-field correction only - dropouts will only be corrected within the affected field";
     }
 
     // Overcorrection if required
     if (overCorrect) {
-        qInfo() << "Using over correction mode";
+        qInfo() << "Using over correction mode - dropout lengths will be extended to compensate for slow ramping start and end points";
     }
 
     // Show and open input source TBC files
@@ -284,6 +285,7 @@ int main(int argc, char *argv[])
         if (!sourceVideos[i].open(inputFilenames[i], videoParameters.fieldWidth * videoParameters.fieldHeight)) {
             // Could not open source video file
             qInfo() << "Unable to open input source" << i;
+            qInfo() << "Please verify that the specified source video files exist with the correct file permissions";
             return 1;
         }
 
@@ -292,13 +294,15 @@ int main(int argc, char *argv[])
             qInfo() << "Warning: TBC file contains" << sourceVideos[i].getNumberOfAvailableFields() <<
                        "fields but the JSON indicates" << ldDecodeMetaData[0].getNumberOfFields() <<
                        "fields - some fields will be ignored";
+            qInfo() << "Update your copy of ld-decode and try again, this shouldn't happen unless the JSON metadata has been corrupted";
         }
 
         // Additional checks when using multiple input sources
         if (totalNumberOfInputFiles > 1) {
             // Ensure source video has VBI data
             if (!ldDecodeMetaData[i].getFieldVbi(1).inUse) {
-                qInfo() << "Source video" << i << "does not have the required VBI data! - Please run ld-process-vbi before loading source!";
+                qInfo() << "Source video" << i << "does not appear to have valid VBI data in the JSON metadata.";
+                qInfo() << "Please try running ld-process-vbi on the source video and then try again";
                 return 1;
             }
 
@@ -310,13 +314,14 @@ int main(int argc, char *argv[])
 
             if (!videoParameters.isMapped) {
                 qInfo() << "Source video" << i << "has not been mapped - run ld-discmap on all source video and try again";
+                qInfo() << "Multi-source dropout correction relies on accurate VBI frame numbering to match source frames together";
                 return 1;
             }
         }
     }
 
     // Perform the DOC process ----------------------------------------------------------------------------------------
-    qInfo() << "Beginning dropout correction...";
+    qInfo() << "Initial source checks are ok and sources are loaded";
     CorrectorPool correctorPool(outputFilename, outputJsonFilename, maxThreads,
                                 ldDecodeMetaData, sourceVideos,
                                 reverse, intraField, overCorrect);

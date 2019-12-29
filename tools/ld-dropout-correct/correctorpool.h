@@ -90,6 +90,13 @@ private:
     qint32 outputFrameNumber;
     QMap<qint32, OutputFrame> pendingOutputFrames;
     QFile targetVideo;
+
+    // Local source information
+    QVector<bool> sourceDiscTypeCav;
+    QVector<qint32> sourceMinimumVbiFrame;
+    QVector<qint32> sourceMaximumVbiFrame;
+
+    bool setMinAndMaxVbiFrames();
 };
 
 #endif // CORRECTORPOOL_H
