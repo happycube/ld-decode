@@ -9,10 +9,10 @@ import copy
 import lddecode.core as ldd
 import lddecode.utils as lddu
 from lddecode.utils import unwrap_hilbert, inrange
-import vhs_utils
+import vhsdecode.utils as utils
 
 #import pll
-import vhs_formats
+import vhsdecode.formats as vhs_formats
 
 def toDB(val):
     return 20 * np.log10(val)
@@ -392,7 +392,7 @@ class VHSRFDecode(ldd.RFDecode):
         cc_wave_270 = np.sin((2 * np.pi * cc_wave_scale * samples) + np.pi + (np.pi / 2))
 
         # Standard frequency color carrier wave.
-        self.fsc_wave = vhs_utils.gen_wave_at_frequency(fsc_mhz, out_sample_rate_mhz, fieldlen)
+        self.fsc_wave = utils.gen_wave_at_frequency(fsc_mhz, out_sample_rate_mhz, fieldlen)
 
         # cc_samples = np.arange(self.blocklen)
         # cc_scale = cc / inputfreq

@@ -15,7 +15,7 @@ import traceback
 from lddecode.utils import *
 import lddecode.core
 from lddecode.core import *
-from vhs_process import VHSDecode
+from vhsdecode.process import VHSDecode
 
 CXADC_FREQ = 28.636363636363637
 
