@@ -57,9 +57,6 @@ VbiDecoder::Vbi VbiDecoder::decodeFrame(qint32 vbi16_1, qint32 vbi17_1, qint32 v
     else vbi.clvMin = secondFieldVbi.clvMin;
 
     if (firstFieldVbi.clvSec != -1) vbi.clvSec = firstFieldVbi.clvSec;
-    else vbi.clvMin = secondFieldVbi.clvMin;
-
-    if (firstFieldVbi.clvSec != -1) vbi.clvSec = firstFieldVbi.clvSec;
     else vbi.clvSec = secondFieldVbi.clvSec;
 
     if (firstFieldVbi.clvPicNo != -1) vbi.clvPicNo = firstFieldVbi.clvPicNo;

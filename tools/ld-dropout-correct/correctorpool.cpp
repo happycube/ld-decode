@@ -26,100 +26,75 @@
 
 #include <cstdio>
 
-CorrectorPool::CorrectorPool(QString _inputFilename, QString _outputFilename, QString _outputJsonFilename,
-                             qint32 _maxThreads, LdDecodeMetaData &_ldDecodeMetaData,
+CorrectorPool::CorrectorPool(QString _outputFilename, QString _outputJsonFilename,
+                             qint32 _maxThreads, QVector<LdDecodeMetaData> &_ldDecodeMetaData, QVector<SourceVideo> &_sourceVideos,
                              bool _reverse, bool _intraField, bool _overCorrect, QObject *parent)
-    : QObject(parent), inputFilename(_inputFilename), outputFilename(_outputFilename), outputJsonFilename(_outputJsonFilename),
-      maxThreads(_maxThreads), reverse(_reverse),
-      intraField(_intraField), overCorrect(_overCorrect),  abort(false), ldDecodeMetaData(_ldDecodeMetaData)
+    : QObject(parent), outputFilename(_outputFilename), outputJsonFilename(_outputJsonFilename),
+      maxThreads(_maxThreads), reverse(_reverse), intraField(_intraField), overCorrect(_overCorrect),
+      abort(false), ldDecodeMetaData(_ldDecodeMetaData), sourceVideos(_sourceVideos)
 {
 }
 
 bool CorrectorPool::process()
 {
-    // Reverse field order if required
-    if (reverse) {
-        qInfo() << "Expected field order is reversed to second field/first field";
-        ldDecodeMetaData.setIsFirstFieldFirst(false);
-    }
-
-    // Intrafield only correction if required
-    if (intraField) {
-        qInfo() << "Using intra-field correction only";
-    }
-
-    // Overcorrection if required
-    if (overCorrect) {
-        qInfo() << "Using over correction mode";
-    }
-
-    LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
-
-    qDebug() << "DropOutDetector::process(): Input source is" << videoParameters.fieldWidth << "x" << videoParameters.fieldHeight <<
-                "input filename" << inputFilename << "output filename" << outputFilename;
-
-    // Open the source video
-    qInfo() << "Opening source and target video files...";
-    if (!sourceVideo.open(inputFilename, videoParameters.fieldWidth * videoParameters.fieldHeight)) {
-        // Could not open source video file
-        qInfo() << "Unable to open ld-decode video file";
-        return false;
-    }
-
+    qInfo() << "Performing final sanity checks...";
     // Open the target video
     targetVideo.setFileName(outputFilename);
     if (outputFilename == "-") {
         if (!targetVideo.open(stdout, QIODevice::WriteOnly)) {
                 // Could not open stdout
                 qInfo() << "Unable to open stdout";
-                sourceVideo.close();
+                sourceVideos[0].close();
                 return false;
         }
     } else {
         if (!targetVideo.open(QIODevice::WriteOnly)) {
                 // Could not open target video file
                 qInfo() << "Unable to open output video file";
-                sourceVideo.close();
+                sourceVideos[0].close();
                 return false;
         }
-    }
-
-    // Check TBC and JSON field numbers match
-    qInfo() << "Verifying metadata (number of available fields)...";
-    if (sourceVideo.getNumberOfAvailableFields() != ldDecodeMetaData.getNumberOfFields()) {
-        qInfo() << "Warning: TBC file contains" << sourceVideo.getNumberOfAvailableFields() <<
-                   "fields but the JSON indicates" << ldDecodeMetaData.getNumberOfFields() <<
-                   "fields - some fields will be ignored";
     }
 
     // If there is a leading field in the TBC which is out of field order, we need to copy it
     // to ensure the JSON metadata files match up
     qInfo() << "Verifying leading fields match...";
-    qint32 firstFieldNumber = ldDecodeMetaData.getFirstFieldNumber(1);
-    qint32 secondFieldNumber = ldDecodeMetaData.getSecondFieldNumber(1);
+    qint32 firstFieldNumber = ldDecodeMetaData[0].getFirstFieldNumber(1);
+    qint32 secondFieldNumber = ldDecodeMetaData[0].getSecondFieldNumber(1);
 
     if (firstFieldNumber != 1 && secondFieldNumber != 1) {
         QByteArray sourceField;
-        sourceField = sourceVideo.getVideoField(1);
+        sourceField = sourceVideos[0].getVideoField(1);
         if (!targetVideo.write(sourceField, sourceField.size())) {
             // Could not write to target TBC file
             qInfo() << "Writing first field to the output TBC file failed";
             targetVideo.close();
-            sourceVideo.close();
+            sourceVideos[0].close();
+            return false;
+        }
+    }
+
+    // Are we processing a multi-source dropout correction?
+    if (sourceVideos.size() > 1) {
+        qInfo() << "Performing multi-source correction... Scanning source videos for VBI frame number ranges...";
+        // Get the VBI frame range for all sources
+        if (!setMinAndMaxVbiFrames()) {
+            qInfo() << "It was not possible to determine the VBI frame number range for the source video - cannot continue!";
             return false;
         }
     }
 
     // Show some information for the user
-    qInfo() << "Using" << maxThreads << "threads to process" << ldDecodeMetaData.getNumberOfFrames() << "frames";
+    qInfo() << "Using" << maxThreads << "threads to process" << ldDecodeMetaData[0].getNumberOfFrames() << "frames";
 
     // Initialise processing state
     inputFrameNumber = 1;
     outputFrameNumber = 1;
-    lastFrameNumber = ldDecodeMetaData.getNumberOfFrames();
+    lastFrameNumber = ldDecodeMetaData[0].getNumberOfFrames();
     totalTimer.start();
 
     // Start a vector of decoding threads to process the video
+    qInfo() << "Beginning multi-threaded dropout correction process...";
     QVector<QThread *> threads;
     threads.resize(maxThreads);
     for (qint32 i = 0; i < maxThreads; i++) {
@@ -135,7 +110,7 @@ bool CorrectorPool::process()
 
     // Did any of the threads abort?
     if (abort) {
-        sourceVideo.close();
+        sourceVideos[0].close();
         targetVideo.close();
         return false;
     }
@@ -145,13 +120,13 @@ bool CorrectorPool::process()
     qInfo() << "Dropout correction complete -" << lastFrameNumber << "frames in" << totalSecs << "seconds (" <<
                lastFrameNumber / totalSecs << "FPS )";
 
-    qInfo() << "Creating JSON metadata file for drop-out corrected TBC";
-    ldDecodeMetaData.write(outputJsonFilename);
+    qInfo() << "Creating JSON metadata file for drop-out corrected TBC...";
+    ldDecodeMetaData[0].write(outputJsonFilename);
 
     qInfo() << "Processing complete";
 
     // Close the source and target video
-    sourceVideo.close();
+    sourceVideos[0].close();
     targetVideo.close();
 
     return true;
@@ -162,9 +137,9 @@ bool CorrectorPool::process()
 // Returns true if a frame was returned, false if the end of the input has been
 // reached.
 bool CorrectorPool::getInputFrame(qint32& frameNumber,
-                                  qint32& firstFieldNumber, QByteArray& firstFieldVideoData, LdDecodeMetaData::Field& firstFieldMetadata,
-                                  qint32& secondFieldNumber, QByteArray& secondFieldVideoData, LdDecodeMetaData::Field& secondFieldMetadata,
-                                  LdDecodeMetaData::VideoParameters& videoParameters,
+                                  QVector<qint32>& firstFieldNumber, QVector<QByteArray>& firstFieldVideoData, QVector<LdDecodeMetaData::Field>& firstFieldMetadata,
+                                  QVector<qint32>& secondFieldNumber, QVector<QByteArray>& secondFieldVideoData, QVector<LdDecodeMetaData::Field>& secondFieldMetadata,
+                                  QVector<LdDecodeMetaData::VideoParameters>& videoParameters,
                                   bool& _reverse, bool& _intraField, bool& _overCorrect)
 {
     QMutexLocker locker(&inputMutex);
@@ -177,24 +152,63 @@ bool CorrectorPool::getInputFrame(qint32& frameNumber,
     frameNumber = inputFrameNumber;
     inputFrameNumber++;
 
-    qDebug() << "CorrectorPool::getInputFrame(): Frame number =" << frameNumber;
+    // Determine the number of sources available
+    qint32 numberOfSources = sourceVideos.size();
 
-    // Determine the fields for the input frame
-    firstFieldNumber = ldDecodeMetaData.getFirstFieldNumber(frameNumber);
-    secondFieldNumber = ldDecodeMetaData.getSecondFieldNumber(frameNumber);
+    qDebug().nospace() << "CorrectorPool::getInputFrame(): Processing sequential frame number #" <<
+                          frameNumber << " from " << numberOfSources << " sources";
 
-    // Fetch the input data (get the fields in TBC sequence order to save seeking)
-    if (firstFieldNumber < secondFieldNumber) {
-        firstFieldVideoData = sourceVideo.getVideoField(firstFieldNumber);
-        secondFieldVideoData = sourceVideo.getVideoField(secondFieldNumber);
-    } else {
-        secondFieldVideoData = sourceVideo.getVideoField(secondFieldNumber);
-        firstFieldVideoData = sourceVideo.getVideoField(firstFieldNumber);
+    // Prepare the vectors
+    firstFieldNumber.resize(numberOfSources);
+    firstFieldVideoData.resize(numberOfSources);
+    firstFieldMetadata.resize(numberOfSources);
+    secondFieldNumber.resize(numberOfSources);
+    secondFieldVideoData.resize(numberOfSources);
+    secondFieldMetadata.resize(numberOfSources);
+    videoParameters.resize(numberOfSources);
+
+    // Get the current VBI frame number based on the first source
+    qint32 currentVbiFrame = convertSequentialFrameNumberToVbi(frameNumber, 0);
+    for (qint32 sourceNo = 0; sourceNo < numberOfSources; sourceNo++) {
+        // Determine the fields for the input frame
+        if (sourceNo == 0) {
+            // No need to perform VBI frame number mapping on the first source
+            firstFieldNumber[sourceNo] = ldDecodeMetaData[0].getFirstFieldNumber(frameNumber);
+            secondFieldNumber[sourceNo] = ldDecodeMetaData[0].getSecondFieldNumber(frameNumber);
+            qDebug().nospace() << "CorrectorPool::getInputFrame(): Source #0 fields are " <<
+                                  firstFieldNumber[sourceNo] << "/" << secondFieldNumber[sourceNo];
+        } else {
+            // Use VBI frame number mapping to get the same frame from the
+            // current additional source
+            if (currentVbiFrame >= sourceMinimumVbiFrame[sourceNo] && currentVbiFrame <= sourceMaximumVbiFrame[sourceNo]) {
+                qint32 currentSourceFrameNumber = convertVbiFrameNumberToSequential(currentVbiFrame, sourceNo);
+                firstFieldNumber[sourceNo] = ldDecodeMetaData[0].getFirstFieldNumber(currentSourceFrameNumber);
+                secondFieldNumber[sourceNo] = ldDecodeMetaData[0].getSecondFieldNumber(currentSourceFrameNumber);
+                qDebug().nospace() << "CorrectorPool::getInputFrame(): Source #" << sourceNo << " has VBI frame number " << currentVbiFrame <<
+                            " and fields " << firstFieldNumber[sourceNo] << "/" << secondFieldNumber[sourceNo];
+            } else {
+                firstFieldNumber[sourceNo] = -1;
+                secondFieldNumber[sourceNo] = -1;
+                qDebug().nospace() << "CorrectorPool::getInputFrame(): Source #" << sourceNo << " does not contain a usable frame";
+            }
+        }
+
+        // If the field numbers are valid - get the rest of the required data
+        if (firstFieldNumber[sourceNo] != -1 && secondFieldNumber[sourceNo] != -1) {
+            // Fetch the input data (get the fields in TBC sequence order to save seeking)
+            if (firstFieldNumber[sourceNo] < secondFieldNumber[sourceNo]) {
+                firstFieldVideoData[sourceNo] = sourceVideos[sourceNo].getVideoField(firstFieldNumber[sourceNo]);
+                secondFieldVideoData[sourceNo] = sourceVideos[sourceNo].getVideoField(secondFieldNumber[sourceNo]);
+            } else {
+                secondFieldVideoData[sourceNo] = sourceVideos[sourceNo].getVideoField(secondFieldNumber[sourceNo]);
+                firstFieldVideoData[sourceNo] = sourceVideos[sourceNo].getVideoField(firstFieldNumber[sourceNo]);
+            }
+
+            firstFieldMetadata[sourceNo] = ldDecodeMetaData[sourceNo].getField(firstFieldNumber[sourceNo]);
+            secondFieldMetadata[sourceNo] = ldDecodeMetaData[sourceNo].getField(secondFieldNumber[sourceNo]);
+            videoParameters[sourceNo] = ldDecodeMetaData[sourceNo].getVideoParameters();
+        }
     }
-
-    firstFieldMetadata = ldDecodeMetaData.getField(firstFieldNumber);
-    secondFieldMetadata = ldDecodeMetaData.getField(secondFieldNumber);
-    videoParameters = ldDecodeMetaData.getVideoParameters();
 
     _reverse = reverse;
     _intraField = intraField;
@@ -249,7 +263,7 @@ bool CorrectorPool::setOutputFrame(qint32 frameNumber,
             // Could not write to target TBC file
             qCritical() << "Writing fields to the output TBC file failed";
             targetVideo.close();
-            sourceVideo.close();
+            sourceVideos[0].close();
             return false;
         }
 
@@ -262,4 +276,126 @@ bool CorrectorPool::setOutputFrame(qint32 frameNumber,
     }
 
     return true;
+}
+
+// Determine the minimum and maximum VBI frame numbers for all sources
+// Expects sourceVideos[] and ldDecodeMetaData[] to be populated
+// Note: This function returns frame number even if the disc is CLV - conversion
+// from timecodes is performed automatically.
+bool CorrectorPool::setMinAndMaxVbiFrames()
+{
+    // Determine the number of sources available
+    qint32 numberOfSources = sourceVideos.size();
+
+    // Resize vectors
+    sourceDiscTypeCav.resize(numberOfSources);
+    sourceMaximumVbiFrame.resize(numberOfSources);
+    sourceMinimumVbiFrame.resize(numberOfSources);
+
+    for (qint32 sourceNumber = 0; sourceNumber < numberOfSources; sourceNumber++) {
+        sourceDiscTypeCav[sourceNumber] = false;
+
+        // Determine the disc type and max/min VBI frame numbers
+        VbiDecoder vbiDecoder;
+        qint32 cavCount = 0;
+        qint32 clvCount = 0;
+        qint32 cavMin = 1000000;
+        qint32 cavMax = 0;
+        qint32 clvMin = 1000000;
+        qint32 clvMax = 0;
+
+        // Using sequential frame numbering starting from 1
+        for (qint32 seqFrame = 1; seqFrame <= ldDecodeMetaData[sourceNumber].getNumberOfFrames(); seqFrame++) {
+            // Get the VBI data and then decode
+            QVector<qint32> vbi1 = ldDecodeMetaData[sourceNumber].getFieldVbi(ldDecodeMetaData[sourceNumber].getFirstFieldNumber(seqFrame)).vbiData;
+            QVector<qint32> vbi2 = ldDecodeMetaData[sourceNumber].getFieldVbi(ldDecodeMetaData[sourceNumber].getSecondFieldNumber(seqFrame)).vbiData;
+            VbiDecoder::Vbi vbi = vbiDecoder.decodeFrame(vbi1[0], vbi1[1], vbi1[2], vbi2[0], vbi2[1], vbi2[2]);
+
+            // Look for a complete, valid CAV picture number or CLV time-code
+            if (vbi.picNo > 0) {
+                cavCount++;
+
+                if (vbi.picNo < cavMin) cavMin = vbi.picNo;
+                if (vbi.picNo > cavMax) cavMax = vbi.picNo;
+            }
+
+            if (vbi.clvHr != -1 && vbi.clvMin != -1 &&
+                    vbi.clvSec != -1 && vbi.clvPicNo != -1) {
+                clvCount++;
+
+                LdDecodeMetaData::ClvTimecode timecode;
+                timecode.hours = vbi.clvHr;
+                timecode.minutes = vbi.clvMin;
+                timecode.seconds = vbi.clvSec;
+                timecode.pictureNumber = vbi.clvPicNo;
+                qint32 cvFrameNumber = ldDecodeMetaData[sourceNumber].convertClvTimecodeToFrameNumber(timecode);
+
+                if (cvFrameNumber < clvMin) clvMin = cvFrameNumber;
+                if (cvFrameNumber > clvMax) clvMax = cvFrameNumber;
+            }
+        }
+        qDebug() << "CorrectorPool::setMinAndMaxVbiFrames(): Got" << cavCount << "CAV picture codes and" << clvCount << "CLV timecodes";
+
+        // If the metadata has no picture numbers or time-codes, we cannot use the source
+        if (cavCount == 0 && clvCount == 0) {
+            qDebug() << "CorrectorPool::setMinAndMaxVbiFrames(): Source does not seem to contain valid CAV picture numbers or CLV time-codes - cannot process";
+            return false;
+        }
+
+        // Determine disc type
+        if (cavCount > clvCount) {
+            sourceDiscTypeCav[sourceNumber] = true;
+            qDebug() << "CorrectorPool::setMinAndMaxVbiFrames(): Got" << cavCount << "valid CAV picture numbers - source disc type is CAV";
+            qInfo().nospace() << "Source #" << sourceNumber << " has a disc type of CAV (uses VBI frame numbers)";
+
+            sourceMaximumVbiFrame[sourceNumber] = cavMax;
+            sourceMinimumVbiFrame[sourceNumber] = cavMin;
+        } else {
+            sourceDiscTypeCav[sourceNumber] = false;
+            qDebug() << "CorrectorPool::setMinAndMaxVbiFrames(): Got" << clvCount << "valid CLV picture numbers - source disc type is CLV";
+            qInfo().nospace() << "Source #" << sourceNumber << " has a disc type of CLV (uses VBI time codes)";
+
+            sourceMaximumVbiFrame[sourceNumber] = clvMax;
+            sourceMinimumVbiFrame[sourceNumber] = clvMin;
+        }
+
+        qInfo().nospace() << "Source #" << sourceNumber << " has a VBI frame number range of " << sourceMinimumVbiFrame[sourceNumber] << " to " <<
+            sourceMaximumVbiFrame[sourceNumber];
+    }
+
+    return true;
+}
+
+// Method to convert the first source sequential frame number to a VBI frame number
+qint32 CorrectorPool::convertSequentialFrameNumberToVbi(qint32 sequentialFrameNumber, qint32 sourceNumber)
+{
+    return (sourceMinimumVbiFrame[sourceNumber] - 1) + sequentialFrameNumber;
+}
+
+// Method to convert a VBI frame number to a sequential frame number
+qint32 CorrectorPool::convertVbiFrameNumberToSequential(qint32 vbiFrameNumber, qint32 sourceNumber)
+{
+    // Offset the VBI frame number to get the sequential source frame number
+    return vbiFrameNumber - sourceMinimumVbiFrame[sourceNumber] + 1;
+}
+
+// Method that returns a vector of the sources that contain data for the required VBI frame number
+QVector<qint32> CorrectorPool::getAvailableSourcesForFrame(qint32 vbiFrameNumber)
+{
+    QVector<qint32> availableSourcesForFrame;
+    for (qint32 sourceNo = 0; sourceNo < sourceVideos.size(); sourceNo++) {
+        if (vbiFrameNumber >= sourceMinimumVbiFrame[sourceNo] && vbiFrameNumber <= sourceMaximumVbiFrame[sourceNo]) {
+            // Get the field numbers for the frame
+            qint32 firstFieldNumber = ldDecodeMetaData[sourceNo].getFirstFieldNumber(convertVbiFrameNumberToSequential(vbiFrameNumber, sourceNo));
+            qint32 secondFieldNumber = ldDecodeMetaData[sourceNo].getSecondFieldNumber(convertVbiFrameNumberToSequential(vbiFrameNumber, sourceNo));
+
+            // Ensure the frame is not a padded field (i.e. missing)
+            if (!(ldDecodeMetaData[sourceNo].getField(firstFieldNumber).pad &&
+                  ldDecodeMetaData[sourceNo].getField(secondFieldNumber).pad)) {
+                availableSourcesForFrame.append(sourceNo);
+            }
+        }
+    }
+
+    return availableSourcesForFrame;
 }

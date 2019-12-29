@@ -1,5 +1,5 @@
 # ralf includes a bit of extra data on each side - will be useful for seeking and limits later
-python3 ld-decode.py ~/ralf_side1_6x_2018-10-09_21-41-14.lds ralf -s 7 -l 244 --NTSCJ --EFM
+python3 ld-decode ~/ralf_side1_6x_2018-10-09_21-41-14.lds ralf -s 7 -l 244 --NTSCJ --EFM
 #
 # -I 0 sets ire to 0, HE-010 is a Japanese LD
 ld-chroma-decoder --3d  -l 245 ralf.tbc ralf.rgb

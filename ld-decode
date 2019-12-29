@@ -6,20 +6,21 @@ import getopt
 import io
 from io import BytesIO
 import os
+import signal
 import sys
 import argparse
 import json
 import traceback
 
-from lddutils import *
-import lddecode_core
-from lddecode_core import *
+from lddecode.core import *
+from lddecode.utils import *
 
 options_epilog = """FREQ can be a bare number in MHz, or a number with one of the case-insensitive suffixes Hz, kHz, MHz, GHz, fSC (meaning NTSC) or fSCPAL."""
 parser = argparse.ArgumentParser(description='Extracts audio and video from raw RF laserdisc captures', epilog=options_epilog)
 parser.add_argument('infile', metavar='infile', type=str, help='source file')
 parser.add_argument('outfile', metavar='outfile', type=str, help='base name for destination files')
 parser.add_argument('-s', '--start', metavar='start', type=float, default=0, help='rough jump to frame n of capture (default is 0)')
+parser.add_argument('--start_fileloc', metavar='start_fileloc', type=float, default=-1, help='jump to precise sample # in the file')
 parser.add_argument('-S', '--seek', metavar='seek', type=int, default=-1, help='seek to frame n of capture')
 #parser.add_argument('-E', '--end', metavar='end', type=int, default=-1, help='cutting: last frame')
 parser.add_argument('-l', '--length', metavar='length', type=int, default = 110000, help='limit length to n frames')
@@ -34,6 +35,8 @@ parser.add_argument('--noEFM', dest='noefm', action='store_true', default=False,
 parser.add_argument('--daa', dest='daa', action='store_true', default=False, help='Disable analog audio decoding')
 parser.add_argument('--ignoreleadout', dest='ignoreleadout', action='store_true', default=False, help='continue decoding after lead-out seen')
 parser.add_argument('--verboseVITS', dest='verboseVITS', action='store_true', default=False, help='Enable additional JSON fields')
+
+parser.add_argument('--WibbleRemover', dest='WibbleRemover', action='store_true', default=False, help='PAL/digital sound: (try to) remove spurious ~8.5mhz signal')
 
 parser.add_argument('-t', '--threads', metavar='threads', type=int, default=5, help='number of CPU threads to use')
 
@@ -54,6 +57,10 @@ if args.pal and args.ntsc:
     print("ERROR: Can only be PAL or NTSC")
     exit(1)
 
+extra_options = {}
+if args.WibbleRemover:
+    extra_options['WibbleRemover'] = True
+
 try:
     loader = make_loader(filename, args.inputfreq)
 except ValueError as e:
@@ -61,9 +68,17 @@ except ValueError as e:
     exit(1)
 
 system = 'PAL' if args.pal else 'NTSC'
-    
-ldd = LDdecode(filename, outname, loader, analog_audio = 0 if args.daa else 44.100, digital_audio = not args.noefm, system=system, doDOD = not args.nodod, threads=args.threads)
-ldd.roughseek(firstframe * 2)
+
+# Wrap the LDdecode creation so that the signal handler is not taken by sub-threads,
+# allowing SIGINT/control-C's to be handled cleanly
+original_sigint_handler = signal.signal(signal.SIGINT, signal.SIG_IGN)
+ldd = LDdecode(filename, outname, loader, analog_audio = 0 if args.daa else 44.100, digital_audio = not args.noefm, system=system, doDOD = not args.nodod, threads=args.threads, extra_options=extra_options)
+signal.signal(signal.SIGINT, original_sigint_handler)
+
+if args.start_fileloc != -1:
+    ldd.roughseek(args.start_fileloc, False)
+else:
+    ldd.roughseek(firstframe * 2)
 
 if system == 'NTSC' and not args.ntscj:
     ldd.blackIRE = 7.5

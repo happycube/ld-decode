@@ -5,10 +5,11 @@ SOURCES += \
     testfilter.cpp
 
 HEADERS += \
+    ../deemp.h \
     ../firfilter.h \
-    ../iirfilter.h \
-    ../../../../deemp.h
+    ../iirfilter.h
 
 INCLUDEPATH += \
-    .. \
-    ../../../..
+    ..
+
+target.CONFIG += no_default_install

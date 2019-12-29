@@ -35,11 +35,8 @@ except ImportError:
     import numpy.fft as npfft
 
 #internal libraries
-import commpy_filters
-
-import fdls
-import efm_pll
-from lddutils import *
+from lddecode import efm_pll
+from lddecode.utils import *
 
 try:
     # If Anaconda's numpy is installed, mkl will use all threads for fft etc
@@ -74,6 +71,7 @@ SysParams_NTSC = {
     'analog_audio': True,
     # From the spec - audio frequencies are multiples of the (color) line rate
     'audio_lfreq': (1000000*315/88/227.5) * 146.25,
+    # NOTE: this changes to 2.88mhz on AC3 disks
     'audio_rfreq': (1000000*315/88/227.5) * 178.75,
 
     'colorBurstUS': (5.3, 7.8),
@@ -197,10 +195,11 @@ RFParams_PAL = {
 }
 
 class RFDecode:
-    def __init__(self, inputfreq = 40, system = 'NTSC', blocklen_ = 32*1024, decode_digital_audio = False, decode_analog_audio = 0, have_analog_audio = True, mtf_mult = 1.0, mtf_offset = 0):
+    def __init__(self, inputfreq = 40, system = 'NTSC', blocklen_ = 32*1024, decode_digital_audio = False, decode_analog_audio = 0, has_analog_audio = True, mtf_mult = 1.0, mtf_offset = 0):
         self.blocklen = blocklen_
         self.blockcut = 1024 # ???
         self.blockcut_end = 0
+        self.WibbleRemover = False
         self.system = system
         
         freq = inputfreq
@@ -218,6 +217,9 @@ class RFDecode:
         elif system == 'PAL':
             self.SysParams = copy.deepcopy(SysParams_PAL)
             self.DecoderParams = copy.deepcopy(RFParams_PAL)
+
+        if not has_analog_audio:
+            self.SysParams['analog_audio'] = False
 
         linelen = self.freq_hz/(1000000.0/self.SysParams['line_period'])
         self.linelen = int(np.round(linelen))
@@ -238,8 +240,8 @@ class RFDecode:
         if self.decode_digital_audio:
             self.computeefmfilter()
 
-        Frfbpf = sps.butter(1, [10/self.freq_half], btype='highpass')
-        self.Filters['Frfbpf'] = filtfft(Frfbpf, self.blocklen)
+        Frfhpf = sps.butter(1, [10/self.freq_half], btype='highpass')
+        self.Filters['Frfhpf'] = filtfft(Frfhpf, self.blocklen)
 
         self.computedelays()
 
@@ -331,7 +333,8 @@ class RFDecode:
         
         # Post processing:  lowpass filter + deemp
         SF['FVideo'] = SF['Fvideo_lpf'] * SF['Fdeemp'] 
-    
+        #SF['FVideo'] = SF['Fdeemp'] 
+        
         # additional filters:  0.5mhz and color burst
         # Using an FIR filter here to get a known delay
         F0_5 = sps.firwin(65, [0.5/self.freq_half], pass_zero=True)
@@ -443,8 +446,29 @@ class RFDecode:
             rotdelay = self.delays['video_rot']
         except:
             rotdelay = 0
-        rv['rfbpf'] = npfft.ifft(indata_fft * self.Filters['Frfbpf']).real
-        rv['rfbpf'] = rv['rfbpf'][self.blockcut-rotdelay:-self.blockcut_end-rotdelay]
+
+        rv['rfhpf'] = npfft.ifft(indata_fft * self.Filters['Frfhpf']).real
+        rv['rfhpf'] = rv['rfhpf'][self.blockcut-rotdelay:-self.blockcut_end-rotdelay]
+
+        if self.WibbleRemover:
+            ''' This routine works around an 'interesting' issue seen with LD-V4300D players and 
+                some PAL digital audio disks, where there is a signal somewhere between 8.47 and 8.57mhz.
+
+                The idea here is to look for anomolies (3 std deviations) and snip them out of the
+                FFT.  There may be side effects, however, but generally minor compared to the 
+                'wibble' itself and only in certain cases.
+            '''
+            sl = slice(int(self.blocklen*(8.42/self.freq)), int(1+(self.blocklen*(8.6/self.freq))))
+            sq_sl = sqsum(indata_fft[sl])
+            m = np.mean(sq_sl) + (np.std(sq_sl) * 3)        
+
+            for i in np.where(sq_sl > m)[0]:
+                indata_fft[(i - 1 + sl.start)] = 0
+                indata_fft[(i + sl.start)] = 0
+                indata_fft[(i + 1 + sl.start)] = 0
+                indata_fft[self.blocklen - (i + sl.start)] = 0
+                indata_fft[self.blocklen - (i - 1 + sl.start)] = 0
+                indata_fft[self.blocklen - (i + 1 + sl.start)] = 0
 
         indata_fft_filt = indata_fft * self.Filters['RFVideo']
 
@@ -761,6 +785,17 @@ class DemodCache:
                 del self.blocks[k]['demod']
                 self.lock.release()
 
+    def apply_newparams(self, newparams):
+        for k in newparams.keys():
+            #print(k, k in self.rf.SysParams, k in self.rf.DecoderParams)
+            if k in self.rf.SysParams:
+                self.rf.SysParams[k] = newparams[k]
+
+            if k in self.rf.DecoderParams:
+                self.rf.DecoderParams[k] = newparams[k]
+
+        self.rf.computefilters()
+
     def worker(self, pipein):
         while True:
             ispiped = False
@@ -790,10 +825,7 @@ class DemodCache:
 
                 self.q_out.put((blocknum, output))
             elif item[0] == 'NEWPARAMS':
-                for k in item[1].keys():
-                    self.rf.DecoderParams[k] = item[1][k]
-
-                self.rf.computefilters()
+                self.apply_newparams(item[1])
 
             if not ispiped:
                 self.q_in.task_done()
@@ -882,7 +914,7 @@ class DemodCache:
 
     def read(self, begin, length, MTF=0, dodemod=True):
         # transpose the cache by key, not block #
-        t = {'input':[], 'fft':[], 'video':[], 'audio':[], 'efm':[], 'rfbpf':[]}
+        t = {'input':[], 'fft':[], 'video':[], 'audio':[], 'efm':[], 'rfhpf':[]}
 
         self.currentMTF = MTF
 
@@ -938,6 +970,9 @@ class DemodCache:
     def setparams(self, params):
         for p in self.threadpipes:
             p[0].send(('NEWPARAMS', params))
+
+        # Apply params to the core thread, so they match up with the decoders
+        self.apply_newparams(params)
 
 @njit
 def dsa_rescale(infloat):
@@ -1518,7 +1553,7 @@ class Field:
                 linelocs2[i] = zc 
 
                 # The hsync area, burst, and porches should not leave -50 to 30 IRE (on PAL or NTSC)
-                hsync_area = self.data['video']['demod_05'][int(zc-(self.rf.freq*1.25)):int(zc+(self.rf.freq*8))]
+                hsync_area = self.data['video']['demod_05'][int(zc-(self.rf.freq*.75)):int(zc+(self.rf.freq*8))]
                 if nb_min(hsync_area) < self.rf.iretohz(-55) or nb_max(hsync_area) > self.rf.iretohz(30):
                     self.linebad[i] = True
                     linelocs2[i] = self.linelocs1[i] # don't use the computed value here if it's bad
@@ -1732,9 +1767,9 @@ class Field:
 
         isPAL = self.rf.system == 'PAL'
 
-        rfstd = np.std(f.data['rfbpf'])
+        rfstd = np.std(f.data['rfhpf'])
         #iserr_rf = np.full(len(f.data['video']['demod']), False, dtype=np.bool)
-        iserr_rf1 = (f.data['rfbpf'] < (-rfstd * 3)) | (f.data['rfbpf'] > (rfstd * 3)) | (f.rawdata <= -32000)
+        iserr_rf1 = (f.data['rfhpf'] < (-rfstd * 3)) | (f.data['rfhpf'] > (rfstd * 3)) | (f.rawdata <= -32000)
         iserr_rf = np.full_like(iserr_rf1, False)
         iserr_rf[self.rf.delays['video_rot']:] = iserr_rf1[:-self.rf.delays['video_rot']]
         
@@ -2315,7 +2350,7 @@ class CombNTSC:
 
 class LDdecode:
     
-    def __init__(self, fname_in, fname_out, freader, analog_audio = 0, digital_audio = False, system = 'NTSC', doDOD = True, threads=4):
+    def __init__(self, fname_in, fname_out, freader, analog_audio = 0, digital_audio = False, system = 'NTSC', doDOD = True, threads=4, extra_options = {}):
         self.demodcache = None
 
         self.infile = open(fname_in, 'rb')
@@ -2329,6 +2364,11 @@ class LDdecode:
 
         self.analog_audio = int(analog_audio * 1000)
         self.digital_audio = digital_audio
+
+        self.has_analog_audio = True
+        if system == 'PAL':
+            if analog_audio == 0:
+                self.has_analog_audio = False
 
         self.outfile_json = None
 
@@ -2354,11 +2394,13 @@ class LDdecode:
         self.fieldloc = 0
 
         self.system = system
-        self.rf = RFDecode(system=system, decode_analog_audio=analog_audio, decode_digital_audio=digital_audio)
+        self.rf = RFDecode(system=system, decode_analog_audio=analog_audio, decode_digital_audio=digital_audio, has_analog_audio = self.has_analog_audio)
         if system == 'PAL':
             self.FieldClass = FieldPAL
             self.readlen = self.rf.linelen * 400
             self.clvfps = 25
+            if 'WibbleRemover' in extra_options:
+                self.rf.WibbleRemover = True                
         else: # NTSC
             self.FieldClass = FieldNTSC
             self.readlen = ((self.rf.linelen * 350) // 16384) * 16384
@@ -2405,9 +2447,13 @@ class LDdecode:
 
         self.demodcache.end()
 
-    def roughseek(self, fieldnr):
+    def roughseek(self, location, isField = True):
         self.prevPhaseID = None
-        self.fdoffset = fieldnr * self.bytes_per_field
+
+        if isField:
+            self.fdoffset = location * self.bytes_per_field
+        else:
+            self.fdoffset = location
 
     def checkMTF_calc(self, field):
         if not self.isCLV and self.frameNumber is not None:
@@ -2746,6 +2792,7 @@ class LDdecode:
               'seqNo': len(self.fieldinfo) + 1, 
               #'audioSamples': 0 if audio is None else int(len(audio) / 2),
               'diskLoc': np.round((self.fieldloc / self.bytes_per_field) * 10) / 10,
+              'fileLoc': np.floor(self.fieldloc),
               'medianBurstIRE': roundfloat(f.burstmedian)}
 
         if self.doDOD:
