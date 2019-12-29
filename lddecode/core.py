@@ -199,6 +199,7 @@ class RFDecode:
         self.blocklen = blocklen_
         self.blockcut = 1024 # ???
         self.blockcut_end = 0
+        self.WibbleRemover = False
         self.system = system
         
         freq = inputfreq
@@ -448,6 +449,26 @@ class RFDecode:
 
         rv['rfhpf'] = npfft.ifft(indata_fft * self.Filters['Frfhpf']).real
         rv['rfhpf'] = rv['rfhpf'][self.blockcut-rotdelay:-self.blockcut_end-rotdelay]
+
+        if self.WibbleRemover:
+            ''' This routine works around an 'interesting' issue seen with LD-V4300D players and 
+                some PAL digital audio disks, where there is a signal somewhere between 8.47 and 8.57mhz.
+
+                The idea here is to look for anomolies (3 std deviations) and snip them out of the
+                FFT.  There may be side effects, however, but generally minor compared to the 
+                'wibble' itself and only in certain cases.
+            '''
+            sl = slice(int(self.blocklen*(8.42/self.freq)), int(1+(self.blocklen*(8.6/self.freq))))
+            sq_sl = sqsum(indata_fft[sl])
+            m = np.mean(sq_sl) + (np.std(sq_sl) * 3)        
+
+            for i in np.where(sq_sl > m)[0]:
+                indata_fft[(i - 1 + sl.start)] = 0
+                indata_fft[(i + sl.start)] = 0
+                indata_fft[(i + 1 + sl.start)] = 0
+                indata_fft[self.blocklen - (i + sl.start)] = 0
+                indata_fft[self.blocklen - (i - 1 + sl.start)] = 0
+                indata_fft[self.blocklen - (i + 1 + sl.start)] = 0
 
         indata_fft_filt = indata_fft * self.Filters['RFVideo']
 
@@ -2329,7 +2350,7 @@ class CombNTSC:
 
 class LDdecode:
     
-    def __init__(self, fname_in, fname_out, freader, analog_audio = 0, digital_audio = False, system = 'NTSC', doDOD = True, threads=4):
+    def __init__(self, fname_in, fname_out, freader, analog_audio = 0, digital_audio = False, system = 'NTSC', doDOD = True, threads=4, extra_options = {}):
         self.demodcache = None
 
         self.infile = open(fname_in, 'rb')
@@ -2345,8 +2366,9 @@ class LDdecode:
         self.digital_audio = digital_audio
 
         self.has_analog_audio = True
-        if system == 'PAL' and analog_audio == 0:
-            self.has_analog_audio = False
+        if system == 'PAL':
+            if analog_audio == 0:
+                self.has_analog_audio = False
 
         self.outfile_json = None
 
@@ -2377,6 +2399,8 @@ class LDdecode:
             self.FieldClass = FieldPAL
             self.readlen = self.rf.linelen * 400
             self.clvfps = 25
+            if 'WibbleRemover' in extra_options:
+                self.rf.WibbleRemover = True                
         else: # NTSC
             self.FieldClass = FieldNTSC
             self.readlen = ((self.rf.linelen * 350) // 16384) * 16384
