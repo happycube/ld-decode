@@ -167,22 +167,48 @@ bool CorrectorPool::getInputFrame(qint32& frameNumber,
     secondFieldMetadata.resize(numberOfSources);
     videoParameters.resize(numberOfSources);
 
-    // Determine the fields for the input frame
-    firstFieldNumber[0] = ldDecodeMetaData[0].getFirstFieldNumber(frameNumber);
-    secondFieldNumber[0] = ldDecodeMetaData[0].getSecondFieldNumber(frameNumber);
+    // Get the current VBI frame number based on the first source
+    qint32 currentVbiFrame = convertSequentialFrameNumberToVbi(frameNumber, 0);
+    for (qint32 sourceNo = 0; sourceNo < numberOfSources; sourceNo++) {
+        // Determine the fields for the input frame
+        if (sourceNo == 0) {
+            // No need to perform VBI frame number mapping on the first source
+            firstFieldNumber[sourceNo] = ldDecodeMetaData[0].getFirstFieldNumber(frameNumber);
+            secondFieldNumber[sourceNo] = ldDecodeMetaData[0].getSecondFieldNumber(frameNumber);
+            qDebug().nospace() << "CorrectorPool::getInputFrame(): Source #0 fields are " <<
+                                  firstFieldNumber[sourceNo] << "/" << secondFieldNumber[sourceNo];
+        } else {
+            // Use VBI frame number mapping to get the same frame from the
+            // current additional source
+            if (currentVbiFrame >= sourceMinimumVbiFrame[sourceNo] && currentVbiFrame <= sourceMaximumVbiFrame[sourceNo]) {
+                qint32 currentSourceFrameNumber = convertVbiFrameNumberToSequential(currentVbiFrame, sourceNo);
+                firstFieldNumber[sourceNo] = ldDecodeMetaData[0].getFirstFieldNumber(currentSourceFrameNumber);
+                secondFieldNumber[sourceNo] = ldDecodeMetaData[0].getSecondFieldNumber(currentSourceFrameNumber);
+                qDebug().nospace() << "CorrectorPool::getInputFrame(): Source #" << sourceNo << " has VBI frame number " << currentVbiFrame <<
+                            " and fields " << firstFieldNumber[sourceNo] << "/" << secondFieldNumber[sourceNo];
+            } else {
+                firstFieldNumber[sourceNo] = -1;
+                secondFieldNumber[sourceNo] = -1;
+                qDebug().nospace() << "CorrectorPool::getInputFrame(): Source #" << sourceNo << " does not contain a usable frame";
+            }
+        }
 
-    // Fetch the input data (get the fields in TBC sequence order to save seeking)
-    if (firstFieldNumber[0] < secondFieldNumber[0]) {
-        firstFieldVideoData[0] = sourceVideos[0].getVideoField(firstFieldNumber[0]);
-        secondFieldVideoData[0] = sourceVideos[0].getVideoField(secondFieldNumber[0]);
-    } else {
-        secondFieldVideoData[0] = sourceVideos[0].getVideoField(secondFieldNumber[0]);
-        firstFieldVideoData[0] = sourceVideos[0].getVideoField(firstFieldNumber[0]);
+        // If the field numbers are valid - get the rest of the required data
+        if (firstFieldNumber[sourceNo] != -1 && secondFieldNumber[sourceNo] != -1) {
+            // Fetch the input data (get the fields in TBC sequence order to save seeking)
+            if (firstFieldNumber[sourceNo] < secondFieldNumber[sourceNo]) {
+                firstFieldVideoData[sourceNo] = sourceVideos[sourceNo].getVideoField(firstFieldNumber[sourceNo]);
+                secondFieldVideoData[sourceNo] = sourceVideos[sourceNo].getVideoField(secondFieldNumber[sourceNo]);
+            } else {
+                secondFieldVideoData[sourceNo] = sourceVideos[sourceNo].getVideoField(secondFieldNumber[sourceNo]);
+                firstFieldVideoData[sourceNo] = sourceVideos[sourceNo].getVideoField(firstFieldNumber[sourceNo]);
+            }
+
+            firstFieldMetadata[sourceNo] = ldDecodeMetaData[sourceNo].getField(firstFieldNumber[sourceNo]);
+            secondFieldMetadata[sourceNo] = ldDecodeMetaData[sourceNo].getField(secondFieldNumber[sourceNo]);
+            videoParameters[sourceNo] = ldDecodeMetaData[sourceNo].getVideoParameters();
+        }
     }
-
-    firstFieldMetadata[0] = ldDecodeMetaData[0].getField(firstFieldNumber[0]);
-    secondFieldMetadata[0] = ldDecodeMetaData[0].getField(secondFieldNumber[0]);
-    videoParameters[0] = ldDecodeMetaData[0].getVideoParameters();
 
     _reverse = reverse;
     _intraField = intraField;
@@ -338,4 +364,38 @@ bool CorrectorPool::setMinAndMaxVbiFrames()
     }
 
     return true;
+}
+
+// Method to convert the first source sequential frame number to a VBI frame number
+qint32 CorrectorPool::convertSequentialFrameNumberToVbi(qint32 sequentialFrameNumber, qint32 sourceNumber)
+{
+    return (sourceMinimumVbiFrame[sourceNumber] - 1) + sequentialFrameNumber;
+}
+
+// Method to convert a VBI frame number to a sequential frame number
+qint32 CorrectorPool::convertVbiFrameNumberToSequential(qint32 vbiFrameNumber, qint32 sourceNumber)
+{
+    // Offset the VBI frame number to get the sequential source frame number
+    return vbiFrameNumber - sourceMinimumVbiFrame[sourceNumber] + 1;
+}
+
+// Method that returns a vector of the sources that contain data for the required VBI frame number
+QVector<qint32> CorrectorPool::getAvailableSourcesForFrame(qint32 vbiFrameNumber)
+{
+    QVector<qint32> availableSourcesForFrame;
+    for (qint32 sourceNo = 0; sourceNo < sourceVideos.size(); sourceNo++) {
+        if (vbiFrameNumber >= sourceMinimumVbiFrame[sourceNo] && vbiFrameNumber <= sourceMaximumVbiFrame[sourceNo]) {
+            // Get the field numbers for the frame
+            qint32 firstFieldNumber = ldDecodeMetaData[sourceNo].getFirstFieldNumber(convertVbiFrameNumberToSequential(vbiFrameNumber, sourceNo));
+            qint32 secondFieldNumber = ldDecodeMetaData[sourceNo].getSecondFieldNumber(convertVbiFrameNumberToSequential(vbiFrameNumber, sourceNo));
+
+            // Ensure the frame is not a padded field (i.e. missing)
+            if (!(ldDecodeMetaData[sourceNo].getField(firstFieldNumber).pad &&
+                  ldDecodeMetaData[sourceNo].getField(secondFieldNumber).pad)) {
+                availableSourcesForFrame.append(sourceNo);
+            }
+        }
+    }
+
+    return availableSourcesForFrame;
 }

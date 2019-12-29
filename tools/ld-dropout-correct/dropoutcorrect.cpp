@@ -69,10 +69,10 @@ void DropOutCorrect::run()
                         firstFieldSeqNo[0] << "/" << secondFieldSeqNo[0] << "]";
         } else {
             // Perform correction...
-            qDebug() << "DropOutCorrect::process(): Correcting fields [" <<
-                        firstFieldSeqNo[0] << "/" << secondFieldSeqNo[0] << "] containing" <<
+            qDebug().nospace() << "DropOutCorrect::process(): Correcting fields [" <<
+                        firstFieldSeqNo[0] << "/" << secondFieldSeqNo[0] << "] containing " <<
                         firstFieldMetadata[0].dropOuts.startx.size() + secondFieldMetadata[0].dropOuts.startx.size() <<
-                        "drop-outs";
+                        " drop-outs";
 
             // Analyse the drop out locations in the first field
             QVector<DropOutLocation> firstFieldDropouts;
