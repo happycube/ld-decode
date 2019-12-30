@@ -62,15 +62,19 @@ void SourceField::loadFields(SourceVideo &sourceVideo, LdDecodeMetaData &ldDecod
 
         // Fetch the input metadata
         fields[i].field = ldDecodeMetaData.getField(firstFieldNumber);
-        fields[i].data = sourceVideo.getVideoField(firstFieldNumber);
         fields[i + 1].field = ldDecodeMetaData.getField(secondFieldNumber);
-        fields[i + 1].data = sourceVideo.getVideoField(secondFieldNumber);
 
         if (useBlankFrame) {
             // Fill both fields with black
             const quint16 black = ldDecodeMetaData.getVideoParameters().black16bIre;
+            fields[i].data.resize(sourceVideo.getFieldByteLength());
+            fields[i + 1].data.resize(sourceVideo.getFieldByteLength());
             fillField(fields[i], black);
             fillField(fields[i + 1], black);
+        } else {
+            // Fetch the input fields
+            fields[i].data = sourceVideo.getVideoField(firstFieldNumber);
+            fields[i + 1].data = sourceVideo.getVideoField(secondFieldNumber);
         }
 
         frameNumber++;
