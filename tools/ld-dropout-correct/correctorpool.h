@@ -40,17 +40,17 @@ class CorrectorPool : public QObject
 {
     Q_OBJECT
 public:
-    explicit CorrectorPool(QString _inputFilename, QString _outputFilename, QString _outputJsonFilename,
-                           qint32 _maxThreads, LdDecodeMetaData &_ldDecodeMetaData,
+    explicit CorrectorPool(QString _outputFilename, QString _outputJsonFilename,
+                           qint32 _maxThreads, QVector<LdDecodeMetaData> &_ldDecodeMetaData, QVector<SourceVideo> &_sourceVideos,
                            bool _reverse, bool _intraField, bool _overCorrect, QObject *parent = nullptr);
 
     bool process();
 
     // Member functions used by worker threads
     bool getInputFrame(qint32& frameNumber,
-                       qint32& firstFieldNumber, QByteArray& firstFieldVideoData, LdDecodeMetaData::Field& firstFieldMetadata,
-                       qint32& secondFieldNumber, QByteArray& secondFieldVideoData, LdDecodeMetaData::Field& secondFieldMetadata,
-                       LdDecodeMetaData::VideoParameters& videoParameters,
+                       QVector<qint32> &firstFieldNumber, QVector<QByteArray> &firstFieldVideoData, QVector<LdDecodeMetaData::Field> &firstFieldMetadata,
+                       QVector<qint32> &secondFieldNumber, QVector<QByteArray> &secondFieldVideoData, QVector<LdDecodeMetaData::Field> &secondFieldMetadata,
+                       QVector<LdDecodeMetaData::VideoParameters> &videoParameters,
                        bool& _reverse, bool& _intraField, bool& _overCorrect);
 
     bool setOutputFrame(qint32 frameNumber,
@@ -58,7 +58,6 @@ public:
                         qint32 firstFieldSeqNo, qint32 secondFieldSeqNo);
 
 private:
-    QString inputFilename;
     QString outputFilename;
     QString outputJsonFilename;
     qint32 maxThreads;
@@ -75,8 +74,8 @@ private:
     QMutex inputMutex;
     qint32 inputFrameNumber;
     qint32 lastFrameNumber;
-    LdDecodeMetaData &ldDecodeMetaData;
-    SourceVideo sourceVideo;
+    QVector<LdDecodeMetaData> &ldDecodeMetaData;
+    QVector<SourceVideo> &sourceVideos;
 
     // Output stream information (all guarded by outputMutex while threads are running)
     QMutex outputMutex;
@@ -91,6 +90,16 @@ private:
     qint32 outputFrameNumber;
     QMap<qint32, OutputFrame> pendingOutputFrames;
     QFile targetVideo;
+
+    // Local source information
+    QVector<bool> sourceDiscTypeCav;
+    QVector<qint32> sourceMinimumVbiFrame;
+    QVector<qint32> sourceMaximumVbiFrame;
+
+    bool setMinAndMaxVbiFrames();
+    qint32 convertSequentialFrameNumberToVbi(qint32 sequentialFrameNumber, qint32 sourceNumber);
+    qint32 convertVbiFrameNumberToSequential(qint32 vbiFrameNumber, qint32 sourceNumber);
+    QVector<qint32> getAvailableSourcesForFrame(qint32 vbiFrameNumber);
 };
 
 #endif // CORRECTORPOOL_H

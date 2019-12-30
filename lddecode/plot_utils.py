@@ -4,9 +4,7 @@ import scipy as sp
 import scipy.signal as sps
 import sys
 
-import fdls as fdls
 import matplotlib.pyplot as plt
-import fft8 as fft8
 
 pi = np.pi
 tau = np.pi * 2

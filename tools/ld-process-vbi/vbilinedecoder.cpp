@@ -69,6 +69,10 @@ void VbiLineDecoder::run()
         fieldMetadata.vbi.vbiData[1] = manchesterDecoder(getActiveVideoLine(&sourceFieldData, 17 - 9, videoParameters), zcPoint, videoParameters);
         fieldMetadata.vbi.vbiData[2] = manchesterDecoder(getActiveVideoLine(&sourceFieldData, 18 - 9, videoParameters), zcPoint, videoParameters);
 
+        if (fieldMetadata.vbi.vbiData[0] == 0) qDebug() << "VbiDecoder::process(): No VBI present on line 16";
+        if (fieldMetadata.vbi.vbiData[1] == 0) qDebug() << "VbiDecoder::process(): No VBI present on line 17";
+        if (fieldMetadata.vbi.vbiData[2] == 0) qDebug() << "VbiDecoder::process(): No VBI present on line 18";
+
         // Show the VBI data as hexadecimal (for every 1000th field)
         if (fieldNumber % 1000 == 0) {
             qInfo() << "Processing field" << fieldNumber;
@@ -190,8 +194,7 @@ qint32 VbiLineDecoder::manchesterDecoder(QByteArray lineData, qint32 zcPoint,
 
     // We must have 24-bits if the decode was successful
     if (decodeCount != 24) {
-        if (decodeCount == 0) qDebug() << "VbiDecoder::manchesterDecoder(): No VBI data found in the field line";
-        else qDebug() << "VbiDecoder::manchesterDecoder(): Manchester decode failed!  Only got" << decodeCount << "bits";
+        if (decodeCount != 0) qDebug() << "VbiDecoder::manchesterDecoder(): Manchester decode failed!  Got" << decodeCount << "bits, expected 24";
         result = 0;
     }
 

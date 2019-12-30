@@ -1,0 +1,253 @@
+#!/usr/bin/python3
+#
+# test-decode - run the decoding toolchain against an RF sample
+# Copyright (C) 2019 Adam Sampson
+#
+# This file is part of ld-decode.
+#
+# test-decode is free software: you can redistribute it and/or
+# modify it under the terms of the GNU General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+# This script is intended for short decodes during regression testing and
+# debugging -- it won't work well for real-world decoding.
+
+import argparse
+import json
+import numpy
+import os
+import subprocess
+import sys
+
+dry_run = False
+src_dir = None
+
+def die(*args):
+    """Print an error message and exit."""
+    print(*args, file=sys.stderr)
+    sys.exit(1)
+
+def clean(args, suffixes):
+    """Remove output files, if they exist."""
+    for suffix in suffixes:
+        try:
+            os.unlink(args.output + suffix)
+        except FileNotFoundError:
+            pass
+
+def run_command(cmd, **kwopts):
+    """Run a command, as with subprocess.call.
+    If it fails, exit with an error message."""
+
+    print('\n>>>', ' '.join(cmd), file=sys.stderr)
+    if dry_run:
+        return
+
+    # Flush both streams, in case we're in an environment where they're both buffered
+    sys.stdout.flush()
+    sys.stderr.flush()
+
+    rc = subprocess.call(cmd, stderr=subprocess.STDOUT, **kwopts)
+    if rc != 0:
+        die(cmd[0], 'failed with exit code', rc)
+
+def run_ld_decode(args):
+    """Run ld-decode."""
+
+    clean(args, ['.tbc', '.tbc.json', '.efm', '.pcm'])
+
+    cmd = [src_dir + '/ld-decode']
+    cmd += ['--ignoreleadout']
+    if args.pal:
+        cmd += ['--pal']
+    cmd += [args.infile, args.output]
+
+    # Set PATH so it can invoke helper programs
+    env = os.environ.copy()
+    env['PATH'] = src_dir + ':' + env['PATH']
+    run_command(cmd, env=env)
+
+def run_ld_process_vbi(args):
+    """Run ld-process-vbi."""
+
+    clean(args, ['.tbc.json.bup'])
+
+    cmd = [src_dir + '/tools/ld-process-vbi/ld-process-vbi']
+    cmd += [args.output + '.tbc']
+    run_command(cmd)
+
+    if dry_run:
+        return
+
+    # Read the JSON output
+    json_file = args.output + '.tbc.json'
+    if not os.path.exists(json_file):
+        die(json_file, 'does not exist')
+    with open(json_file) as f:
+        data = json.load(f)
+    if "fields" not in data:
+        die(json_file, 'does not contain fields')
+
+    # Check black SNR
+    if args.expect_bpsnr is not None:
+        bpsnr = numpy.median([field["vitsMetrics"]["bPSNR"]
+                              for field in data["fields"]
+                              if ("vitsMetrics" in field)
+                                 and ("bPSNR" in field["vitsMetrics"])])
+        if args.expect_bpsnr > bpsnr:
+            die(json_file, 'has median bPSNR', bpsnr, 'dB, expected',
+                args.expect_bpsnr, 'dB')
+
+    # Check for a field with the expected VBI values
+    if args.expect_vbi is not None:
+        for field in data["fields"]:
+            if ("vbi" not in field) or ("vbiData" not in field["vbi"]):
+                pass
+            elif field["vbi"]["vbiData"] == args.expect_vbi:
+                break
+        else:
+            die(json_file, 'did not contain a field with VBI values',
+                args.expect_vbi)
+
+def run_ld_process_efm(args):
+    """Run ld-process-efm."""
+
+    if args.no_efm:
+        return
+
+    clean(args, ['.digital.pcm'])
+    efm_file = args.output + '.efm'
+    pcm_file = args.output + '.digital.pcm'
+
+    if not dry_run:
+        # XXX If the input file is empty, ld-process-efm will show a dialogue;
+        # detect this ourselves first
+        if not os.path.exists(efm_file):
+            die(efm_file, 'does not exist')
+        if os.stat(efm_file).st_size == 0:
+            die(efm_file, 'is empty')
+
+    cmd = [src_dir + '/tools/ld-process-efm/ld-process-efm']
+    # XXX Work around Qt needing a display for this tool
+    cmd += ['-platform', 'offscreen']
+    cmd += ['--noninteractive', efm_file, pcm_file]
+    run_command(cmd)
+
+    # Check there are enough output samples
+    if (args.expect_efm_samples is not None) and (not dry_run):
+        if not os.path.exists(pcm_file):
+            die(pcm_file, 'does not exist')
+        pcm_samples = os.stat(pcm_file).st_size // (2 * 2)
+        if pcm_samples < args.expect_efm_samples:
+            die(pcm_file, 'contains', pcm_samples,
+                'samples; expected at least', args.expect_efm_samples)
+
+def run_ld_dropout_correct(args):
+    """Run ld-dropout-correct."""
+
+    clean(args, ['.doc.tbc', '.doc.tbc.json'])
+
+    cmd = [src_dir + '/tools/ld-dropout-correct/ld-dropout-correct']
+    cmd += ['--overcorrect', args.output + '.tbc', args.output + '.doc.tbc']
+    run_command(cmd)
+
+def run_ld_chroma_decoder(args, decoder):
+    """Run ld-chroma-decoder with a given decoder."""
+
+    clean(args, ['.rgb'])
+    rgb_file = args.output + '.rgb'
+
+    cmd = [src_dir + '/tools/ld-chroma-decoder/ld-chroma-decoder']
+    if decoder is not None:
+        cmd += ['--decoder', decoder]
+    cmd += [args.output + '.doc.tbc', rgb_file]
+    run_command(cmd)
+
+    # Check there are enough output frames
+    if (args.expect_frames is not None) and (not dry_run):
+        if not os.path.exists(rgb_file):
+            die(rgb_file, 'does not exist')
+        if args.pal:
+            frame_w, frame_h = 928, 576
+        else:
+            frame_w, frame_h = 760, 488
+        rgb_frames = os.stat(rgb_file).st_size // (2 * 3 * frame_w * frame_h)
+        if rgb_frames < args.expect_frames:
+            die(rgb_file, 'contains', rgb_frames,
+                'frames; expected at least', args.expect_frames)
+
+def parse_vbi_arg(s):
+    """Parse a VBI triple argument."""
+    values = s.split(",")
+    if len(values) != 3:
+        raise ValueError("VBI argument must have three values")
+    return [int(value) for value in values]
+
+def main():
+    parser = argparse.ArgumentParser(description='Run the decoding toolchain against an RF sample')
+    group = parser.add_argument_group("Decoding")
+    group.add_argument('infile', metavar='infile',
+                       help='RF source file')
+    group.add_argument('output', metavar='output', nargs='?', default='testout/test',
+                       help='base name for output files (default testout/test)')
+    group.add_argument('-n', '--dry-run', action='store_true',
+                       help='show commands, rather than running them')
+    group.add_argument('--pal', action='store_true',
+                       help='source is PAL (default NTSC)')
+    group.add_argument('--no-efm', action='store_true', dest='no_efm',
+                       help='source has no EFM')
+    group.add_argument('--decoder', metavar='decoder', action='append',
+                       dest='decoders', default=[],
+                       help='use specific ld-chroma-decoder decoder (use more than once to test multiple decoders)')
+    group = parser.add_argument_group("Sanity checks")
+    group.add_argument('--expect-frames', metavar='N', type=int,
+                       help='expect at least N frames of video output')
+    group.add_argument('--expect-bpsnr', metavar='DB', type=float,
+                       help='expect median bPSNR of at least DB')
+    group.add_argument('--expect-vbi', metavar='N,N,N', type=parse_vbi_arg,
+                       help='expect at least one field with VBI values N,N,N')
+    group.add_argument('--expect-efm-samples', metavar='N', type=int,
+                       help='expect at least N stereo pairs of samples in EFM output')
+    args = parser.parse_args()
+
+    global dry_run
+    dry_run = args.dry_run
+    if args.decoders == []:
+        args.decoders = [None]
+
+    # Find the top-level source directory
+    prog_path = os.path.realpath(sys.argv[0])
+    global src_dir
+    src_dir = os.path.dirname(os.path.dirname(prog_path))
+    print('Decoding', args.infile, 'using tools from', src_dir, file=sys.stderr)
+
+    # Remove display environment variables, as the decoding tools shouldn't
+    # depend on having a display
+    for var in ('DISPLAY', 'WAYLAND_DISPLAY'):
+        if var in os.environ:
+            del os.environ[var]
+
+    # Ensure the directory containing output files exists
+    output_dir = os.path.dirname(args.output)
+    if output_dir != '':
+        os.makedirs(output_dir, exist_ok=True)
+
+    # Run the stages of the decoding toolchain
+    run_ld_decode(args)
+    run_ld_process_vbi(args)
+    run_ld_process_efm(args)
+    run_ld_dropout_correct(args)
+    for decoder in args.decoders:
+        run_ld_chroma_decoder(args, decoder)
+
+if __name__ == '__main__':
+    main()
