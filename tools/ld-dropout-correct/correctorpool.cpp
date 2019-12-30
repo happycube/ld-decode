@@ -90,7 +90,7 @@ bool CorrectorPool::process()
     // Initialise processing state
     inputFrameNumber = 1;
     outputFrameNumber = 1;
-    lastFrameNumber = ldDecodeMetaData[0].getNumberOfFrames();
+    lastFrameNumber = 5; //ldDecodeMetaData[0].getNumberOfFrames();
     totalTimer.start();
 
     // Start a vector of decoding threads to process the video
@@ -140,7 +140,8 @@ bool CorrectorPool::getInputFrame(qint32& frameNumber,
                                   QVector<qint32>& firstFieldNumber, QVector<QByteArray>& firstFieldVideoData, QVector<LdDecodeMetaData::Field>& firstFieldMetadata,
                                   QVector<qint32>& secondFieldNumber, QVector<QByteArray>& secondFieldVideoData, QVector<LdDecodeMetaData::Field>& secondFieldMetadata,
                                   QVector<LdDecodeMetaData::VideoParameters>& videoParameters,
-                                  bool& _reverse, bool& _intraField, bool& _overCorrect)
+                                  bool& _reverse, bool& _intraField, bool& _overCorrect,
+                                  QVector<qint32>& minVbiForSource, QVector<qint32>& maxVbiForSource)
 {
     QMutexLocker locker(&inputMutex);
 
@@ -213,6 +214,9 @@ bool CorrectorPool::getInputFrame(qint32& frameNumber,
     _reverse = reverse;
     _intraField = intraField;
     _overCorrect = overCorrect;
+
+    minVbiForSource = sourceMinimumVbiFrame;
+    maxVbiForSource = sourceMaximumVbiFrame;
 
     return true;
 }

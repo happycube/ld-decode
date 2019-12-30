@@ -43,18 +43,19 @@ void DropOutCorrect::run()
     QVector<LdDecodeMetaData::Field> firstFieldMetadata;
     QVector<LdDecodeMetaData::Field> secondFieldMetadata;
     bool reverse, intraField, overCorrect;
-
-    qDebug() << "DropOutCorrect::process(): Threaded processing loop initialising...";
+    QVector<qint32> minVbiForSource;
+    QVector<qint32> maxVbiForSource;
 
     while(!abort) {
         // Get the next field to process from the input file
         if (!correctorPool.getInputFrame(frameNumber, firstFieldSeqNo, firstSourceField, firstFieldMetadata,
                                        secondFieldSeqNo, secondSourceField, secondFieldMetadata,
-                                       videoParameters, reverse, intraField, overCorrect)) {
+                                       videoParameters, reverse, intraField, overCorrect,
+                                       minVbiForSource, maxVbiForSource)) {
             // No more input fields -- exit
             break;
         }
-        qDebug() << "DropOutCorrect::process(): Got frame number" << frameNumber;
+        qDebug() << "DropOutCorrect::process(): Got sequential frame number" << frameNumber << "with" <<firstFieldSeqNo.size() << "sources available";
 
         // Copy the input frames' data to the target frames.
         // We'll use these both as source and target during correction, which

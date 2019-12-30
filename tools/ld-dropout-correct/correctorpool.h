@@ -51,7 +51,7 @@ public:
                        QVector<qint32> &firstFieldNumber, QVector<QByteArray> &firstFieldVideoData, QVector<LdDecodeMetaData::Field> &firstFieldMetadata,
                        QVector<qint32> &secondFieldNumber, QVector<QByteArray> &secondFieldVideoData, QVector<LdDecodeMetaData::Field> &secondFieldMetadata,
                        QVector<LdDecodeMetaData::VideoParameters> &videoParameters,
-                       bool& _reverse, bool& _intraField, bool& _overCorrect);
+                       bool& _reverse, bool& _intraField, bool& _overCorrect, QVector<qint32> &minVbiForSource, QVector<qint32> &maxVbiForSource);
 
     bool setOutputFrame(qint32 frameNumber,
                         QByteArray firstTargetFieldData, QByteArray secondTargetFieldData,
