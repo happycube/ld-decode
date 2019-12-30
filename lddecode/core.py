@@ -980,9 +980,9 @@ def dsa_rescale(infloat):
 
 # right now defualt is 16/48, so not optimal :)
 def downscale_audio(audio, lineinfo, rf, linecount, timeoffset = 0, freq = 48000.0, scale=64):
-    #frametime = 1 / (rf.SysParams['FPS'] * 2)
+    failed = False
+
     frametime = linecount / (1000000 / rf.SysParams['line_period'])
-    #logging.info(frametime)
     soundgap = 1 / freq
 
     # include one extra 'tick' to interpolate the last one and use as a return value
@@ -1024,15 +1024,22 @@ def downscale_audio(audio, lineinfo, rf, linecount, timeoffset = 0, freq = 48000
     output = np.zeros((2 * (len(arange) - 1)), dtype=np.int32)
     output16 = np.zeros((2 * (len(arange) - 1)), dtype=np.int16)
 
-    for i in range(len(arange) - 1):    
-        output_left = nb_mean(audio['audio_left'][np.int(locs[i]):np.int(locs[i+1])])
-        output_right = nb_mean(audio['audio_right'][np.int(locs[i]):np.int(locs[i+1])])
+    for i in range(len(arange) - 1):
+        try:
+            output_left = nb_mean(audio['audio_left'][np.int(locs[i]):np.int(locs[i+1])])
+            output_right = nb_mean(audio['audio_right'][np.int(locs[i]):np.int(locs[i+1])])
 
-        output_left = (output_left * swow[i]) - rf.SysParams['audio_lfreq']
-        output_right = (output_right * swow[i]) - rf.SysParams['audio_rfreq']
-        
-        output[(i * 2) + 0] = dsa_rescale(output_left) #int(np.round(output_left * 32767 / 150000))
-        output[(i * 2) + 1] = dsa_rescale(output_right)
+            output_left = (output_left * swow[i]) - rf.SysParams['audio_lfreq']
+            output_right = (output_right * swow[i]) - rf.SysParams['audio_rfreq']
+            
+            output[(i * 2) + 0] = dsa_rescale(output_left) #int(np.round(output_left * 32767 / 150000))
+            output[(i * 2) + 1] = dsa_rescale(output_right)
+        except:
+            # TBC failure can cause this (issue #389)
+            if failed == False:
+                logging.warning("Analog audio processing error, muting samples")
+
+            failed = True
         
     #print(locs[len(arange)-1], len(audio['audio_left']), np.min(output), np.max(output), swow[len(arange) - 1], linenum)
 
