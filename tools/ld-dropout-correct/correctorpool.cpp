@@ -90,7 +90,7 @@ bool CorrectorPool::process()
     // Initialise processing state
     inputFrameNumber = 1;
     outputFrameNumber = 1;
-    lastFrameNumber = 5; //ldDecodeMetaData[0].getNumberOfFrames();
+    lastFrameNumber = ldDecodeMetaData[0].getNumberOfFrames();
     totalTimer.start();
 
     // Start a vector of decoding threads to process the video
@@ -141,7 +141,7 @@ bool CorrectorPool::getInputFrame(qint32& frameNumber,
                                   QVector<qint32>& secondFieldNumber, QVector<QByteArray>& secondFieldVideoData, QVector<LdDecodeMetaData::Field>& secondFieldMetadata,
                                   QVector<LdDecodeMetaData::VideoParameters>& videoParameters,
                                   bool& _reverse, bool& _intraField, bool& _overCorrect,
-                                  QVector<qint32>& minVbiForSource, QVector<qint32>& maxVbiForSource)
+                                  QVector<qint32>& minVbiForSource, QVector<qint32>& maxVbiForSource, QVector<qint32>& availableSourcesForFrame)
 {
     QMutexLocker locker(&inputMutex);
 
@@ -157,7 +157,7 @@ bool CorrectorPool::getInputFrame(qint32& frameNumber,
     qint32 numberOfSources = sourceVideos.size();
 
     qDebug().nospace() << "CorrectorPool::getInputFrame(): Processing sequential frame number #" <<
-                          frameNumber << " from " << numberOfSources << " sources";
+                          frameNumber << " from " << numberOfSources << " possible sources";
 
     // Prepare the vectors
     firstFieldNumber.resize(numberOfSources);
@@ -211,6 +211,10 @@ bool CorrectorPool::getInputFrame(qint32& frameNumber,
         }
     }
 
+    // Figure out which of the available sources can be used to correct the current frame
+    availableSourcesForFrame = getAvailableSourcesForFrame(currentVbiFrame);
+
+    // Set the other miscellaneous parameters
     _reverse = reverse;
     _intraField = intraField;
     _overCorrect = overCorrect;

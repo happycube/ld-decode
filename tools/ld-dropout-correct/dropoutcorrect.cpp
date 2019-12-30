@@ -45,23 +45,27 @@ void DropOutCorrect::run()
     bool reverse, intraField, overCorrect;
     QVector<qint32> minVbiForSource;
     QVector<qint32> maxVbiForSource;
+    QVector<qint32> availableSourcesForFrame;
 
     while(!abort) {
         // Get the next field to process from the input file
         if (!correctorPool.getInputFrame(frameNumber, firstFieldSeqNo, firstSourceField, firstFieldMetadata,
                                        secondFieldSeqNo, secondSourceField, secondFieldMetadata,
                                        videoParameters, reverse, intraField, overCorrect,
-                                       minVbiForSource, maxVbiForSource)) {
+                                       minVbiForSource, maxVbiForSource, availableSourcesForFrame)) {
             // No more input fields -- exit
             break;
         }
-        qDebug() << "DropOutCorrect::process(): Got sequential frame number" << frameNumber << "with" <<firstFieldSeqNo.size() << "sources available";
+
+        qint32 totalAvailableSources = firstFieldSeqNo.size();
+        qDebug().nospace() << "DropOutCorrect::process(): Frame #" << frameNumber << " - There are " << totalAvailableSources << " sources available of which " <<
+                              availableSourcesForFrame.size() << " contain the required frame";
 
         // Copy the input frames' data to the target frames.
         // We'll use these both as source and target during correction, which
         // is OK because we're careful not to copy data from another dropout.
-        QByteArray firstFieldData = firstSourceField[0];
-        QByteArray secondFieldData = secondSourceField[0];
+        QVector<QByteArray> firstFieldData = firstSourceField;
+        QVector<QByteArray> secondFieldData = secondSourceField;
 
         // Check if the frame contains drop-outs
         if (firstFieldMetadata[0].dropOuts.startx.empty() && secondFieldMetadata[0].dropOuts.startx.empty()) {
@@ -76,54 +80,64 @@ void DropOutCorrect::run()
                         " drop-outs";
 
             // Analyse the drop out locations in the first field
-            QVector<DropOutLocation> firstFieldDropouts;
-            if (firstFieldMetadata[0].dropOuts.startx.size() > 0) firstFieldDropouts = setDropOutLocations(populateDropoutsVector(firstFieldMetadata[0], overCorrect));
+            QVector<QVector<DropOutLocation>> firstFieldDropouts;
+            firstFieldDropouts.resize(totalAvailableSources);
+            for (qint32 i = 0; i < availableSourcesForFrame.size(); i++) {
+                qint32 currentSource = availableSourcesForFrame[i];
+                if (firstFieldMetadata[currentSource].dropOuts.startx.size() > 0)
+                    firstFieldDropouts[currentSource] = setDropOutLocations(populateDropoutsVector(firstFieldMetadata[currentSource], overCorrect));
+            }
 
             // Analyse the drop out locations in the second field
-            QVector<DropOutLocation> secondFieldDropouts;
-            if (secondFieldMetadata[0].dropOuts.startx.size() > 0) secondFieldDropouts = setDropOutLocations(populateDropoutsVector(secondFieldMetadata[0], overCorrect));
+            QVector<QVector<DropOutLocation>> secondFieldDropouts;
+            secondFieldDropouts.resize(totalAvailableSources);
+            for (qint32 i = 0; i < availableSourcesForFrame.size(); i++) {
+                qint32 currentSource = availableSourcesForFrame[i];
+                if (secondFieldMetadata[currentSource].dropOuts.startx.size() > 0)
+                    secondFieldDropouts[currentSource] = setDropOutLocations(populateDropoutsVector(secondFieldMetadata[currentSource], overCorrect));
+            }
 
             // Correct the first field
-            correctField(firstFieldDropouts, secondFieldDropouts, firstFieldData, secondFieldData, true, intraField);
+            correctField(firstFieldDropouts, secondFieldDropouts, firstFieldData, secondFieldData, true, intraField, availableSourcesForFrame);
 
             // Correct the second field
-            correctField(secondFieldDropouts, firstFieldDropouts, secondFieldData, firstFieldData, false, intraField);
+            correctField(secondFieldDropouts, firstFieldDropouts, secondFieldData, firstFieldData, false, intraField, availableSourcesForFrame);
         }
 
         // Return the processed fields
-        correctorPool.setOutputFrame(frameNumber, firstFieldData, secondFieldData, firstFieldSeqNo[0], secondFieldSeqNo[0]);
+        correctorPool.setOutputFrame(frameNumber, firstFieldData[0], secondFieldData[0], firstFieldSeqNo[0], secondFieldSeqNo[0]);
     }
 }
 
 // Correct dropouts within one field
-void DropOutCorrect::correctField(const QVector<DropOutLocation> &thisFieldDropouts,
-                                  const QVector<DropOutLocation> &otherFieldDropouts,
-                                  QByteArray &thisFieldData, const QByteArray &otherFieldData,
-                                  bool thisFieldIsFirst, bool intraField)
+void DropOutCorrect::correctField(const QVector<QVector<DropOutLocation>> &thisFieldDropouts,
+                                  const QVector<QVector<DropOutLocation>> &otherFieldDropouts,
+                                  QVector<QByteArray> &thisFieldData, const QVector<QByteArray> &otherFieldData,
+                                  bool thisFieldIsFirst, bool intraField, QVector<qint32> availableSourcesForFrame)
 {
-    for (qint32 dropoutIndex = 0; dropoutIndex < thisFieldDropouts.size(); dropoutIndex++) {
+    for (qint32 dropoutIndex = 0; dropoutIndex < thisFieldDropouts[0].size(); dropoutIndex++) {
         Replacement replacement, chromaReplacement;
 
         // Is the current dropout in the colour burst?
-        if (thisFieldDropouts[dropoutIndex].location == Location::colourBurst) {
-            replacement = findReplacementLine(thisFieldDropouts, otherFieldDropouts,
+        if (thisFieldDropouts[0][dropoutIndex].location == Location::colourBurst) {
+            replacement = findReplacementLine(thisFieldDropouts[0], otherFieldDropouts[0],
                                               dropoutIndex, thisFieldIsFirst, true,
                                               true, intraField);
         }
 
         // Is the current dropout in the visible video line?
-        if (thisFieldDropouts[dropoutIndex].location == Location::visibleLine) {
+        if (thisFieldDropouts[0][dropoutIndex].location == Location::visibleLine) {
             // Find separate replacements for luma and chroma
-            replacement = findReplacementLine(thisFieldDropouts, otherFieldDropouts,
+            replacement = findReplacementLine(thisFieldDropouts[0], otherFieldDropouts[0],
                                               dropoutIndex, thisFieldIsFirst, false,
                                               false, intraField);
-            chromaReplacement = findReplacementLine(thisFieldDropouts, otherFieldDropouts,
+            chromaReplacement = findReplacementLine(thisFieldDropouts[0], otherFieldDropouts[0],
                                                     dropoutIndex, thisFieldIsFirst, true,
                                                     false, intraField);
         }
 
         // Correct the data
-        correctDropOut(thisFieldDropouts[dropoutIndex], replacement, chromaReplacement, thisFieldData, otherFieldData);
+        correctDropOut(thisFieldDropouts[0][dropoutIndex], replacement, chromaReplacement, thisFieldData[0], otherFieldData[0]);
     }
 }
 
