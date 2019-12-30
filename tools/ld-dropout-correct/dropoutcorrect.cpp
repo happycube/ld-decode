@@ -120,7 +120,7 @@ void DropOutCorrect::correctField(const QVector<QVector<DropOutLocation>> &thisF
 
         // Is the current dropout in the colour burst?
         if (thisFieldDropouts[0][dropoutIndex].location == Location::colourBurst) {
-            replacement = findReplacementLine(thisFieldDropouts[0], otherFieldDropouts[0],
+            replacement = findReplacementLine(thisFieldDropouts, otherFieldDropouts,
                                               dropoutIndex, thisFieldIsFirst, true,
                                               true, intraField);
         }
@@ -128,10 +128,10 @@ void DropOutCorrect::correctField(const QVector<QVector<DropOutLocation>> &thisF
         // Is the current dropout in the visible video line?
         if (thisFieldDropouts[0][dropoutIndex].location == Location::visibleLine) {
             // Find separate replacements for luma and chroma
-            replacement = findReplacementLine(thisFieldDropouts[0], otherFieldDropouts[0],
+            replacement = findReplacementLine(thisFieldDropouts, otherFieldDropouts,
                                               dropoutIndex, thisFieldIsFirst, false,
                                               false, intraField);
-            chromaReplacement = findReplacementLine(thisFieldDropouts[0], otherFieldDropouts[0],
+            chromaReplacement = findReplacementLine(thisFieldDropouts, otherFieldDropouts,
                                                     dropoutIndex, thisFieldIsFirst, true,
                                                     false, intraField);
         }
@@ -239,8 +239,8 @@ QVector<DropOutCorrect::DropOutLocation> DropOutCorrect::setDropOutLocations(QVe
 // Find a replacement line to take replacement data from.  This method looks both up and down the field
 // for the nearest replacement line that doesn't contain a drop-out itself (to prevent copying bad data
 // over bad data).
-DropOutCorrect::Replacement DropOutCorrect::findReplacementLine(const QVector<DropOutLocation> &thisFieldDropouts,
-                                                                const QVector<DropOutLocation> &otherFieldDropouts,
+DropOutCorrect::Replacement DropOutCorrect::findReplacementLine(const QVector<QVector<DropOutLocation>> &thisFieldDropouts,
+                                                                const QVector<QVector<DropOutLocation>> &otherFieldDropouts,
                                                                 qint32 dropOutIndex, bool thisFieldIsFirst, bool matchChromaPhase,
                                                                 bool isColourBurst, bool intraField)
 {
@@ -341,7 +341,7 @@ DropOutCorrect::Replacement DropOutCorrect::findReplacementLine(const QVector<Dr
     }
 
     qDebug() << (isColourBurst ? "Colourburst" : "Visible video") << "dropout on line"
-             << thisFieldDropouts[dropOutIndex].fieldLine << "of" << (thisFieldIsFirst ? "first" : "second") << "field";
+             << thisFieldDropouts[0][dropOutIndex].fieldLine << "of" << (thisFieldIsFirst ? "first" : "second") << "field";
 
     // If no candidate is found, return no replacement
     Replacement replacement;
@@ -352,7 +352,7 @@ DropOutCorrect::Replacement DropOutCorrect::findReplacementLine(const QVector<Dr
         for (const Replacement &candidate: candidates) {
             // Work out the corresponding output frame line numbers.
             // The first field (in a .tbc, for both PAL and NTSC) contains the top frame line.
-            const qint32 dropoutFrameLine = (2 * thisFieldDropouts[dropOutIndex].fieldLine) + (thisFieldIsFirst ? 0 : 1);
+            const qint32 dropoutFrameLine = (2 * thisFieldDropouts[0][dropOutIndex].fieldLine) + (thisFieldIsFirst ? 0 : 1);
             const qint32 sourceFrameLine = (2 * candidate.fieldLine) + (candidate.isSameField ? (thisFieldIsFirst ? 0 : 1)
                                                                                               : (thisFieldIsFirst ? 1 : 0));
 
@@ -367,25 +367,28 @@ DropOutCorrect::Replacement DropOutCorrect::findReplacementLine(const QVector<Dr
         }
     }
 
+    // Temp: Fixed to source 0
+    replacement.sourceNumber = 0;
+
     return replacement;
 }
 
 // Given a dropout, scan through a source field for the nearest replacement line that doesn't have overlapping dropouts.
 // Adds a Replacement to candidates if one was found.
-void DropOutCorrect::findPotentialReplacementLine(const QVector<DropOutLocation> &targetDropouts, qint32 targetIndex,
-                                                  const QVector<DropOutLocation> &sourceDropouts, bool isSameField,
+void DropOutCorrect::findPotentialReplacementLine(const QVector<QVector<DropOutLocation>> &targetDropouts, qint32 targetIndex,
+                                                  const QVector<QVector<DropOutLocation>> &sourceDropouts, bool isSameField,
                                                   qint32 sourceOffset, qint32 stepAmount,
                                                   qint32 firstActiveFieldLine, qint32 lastActiveFieldLine,
                                                   QVector<Replacement> &candidates)
 {
-    qint32 sourceLine = targetDropouts[targetIndex].fieldLine + sourceOffset;
+    qint32 sourceLine = targetDropouts[0][targetIndex].fieldLine + sourceOffset;
     while (sourceLine >= firstActiveFieldLine && sourceLine < lastActiveFieldLine) {
         // Is there a dropout that overlaps the one we're trying to replace?
         bool hasOverlap = false;
-        for (qint32 sourceIndex = 0; sourceIndex < sourceDropouts.size(); sourceIndex++) {
-            if (sourceDropouts[sourceIndex].fieldLine == sourceLine &&
-                (targetDropouts[targetIndex].endx - sourceDropouts[sourceIndex].startx) >= 0 &&
-                (sourceDropouts[sourceIndex].endx - targetDropouts[targetIndex].startx) >= 0) {
+        for (qint32 sourceIndex = 0; sourceIndex < sourceDropouts[0].size(); sourceIndex++) {
+            if (sourceDropouts[0][sourceIndex].fieldLine == sourceLine &&
+                (targetDropouts[0][targetIndex].endx - sourceDropouts[0][sourceIndex].startx) >= 0 &&
+                (sourceDropouts[0][sourceIndex].endx - targetDropouts[0][targetIndex].startx) >= 0) {
                 // Overlap -- can't use this line
                 sourceLine += stepAmount;
                 hasOverlap = true;
@@ -397,6 +400,10 @@ void DropOutCorrect::findPotentialReplacementLine(const QVector<DropOutLocation>
             Replacement replacement;
             replacement.isSameField = isSameField;
             replacement.fieldLine = sourceLine;
+
+            // Temp: Fixed to source 0
+            replacement.sourceNumber = 0;
+
             candidates.push_back(replacement);
             return;
         }
