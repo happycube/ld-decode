@@ -1,7 +1,5 @@
-# ld-decode - Revision 7
-This is the GitHub repo for ld-decode revision 7.  This is the development branch of the ld-decode project.
-
-Please note that, for general use, you should be using the master branch.  Development branches can be updated at any time and may not work at all.
+# ld-decode
+This is the GitHub repo for ld-decode.  This is the (hopefully stable) merged development branch.
 
 # Documentation
 Documentation is available via the GitHub wiki.  This includes installation and usage instructions.  Start with the wiki if you have any questions.  The wiki also includes details of the project's IRC channel and Facebook group.  If you are intending on contributing, please join the IRC.  For general questions use the Facebook group.
