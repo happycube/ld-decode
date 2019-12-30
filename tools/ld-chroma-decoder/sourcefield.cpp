@@ -24,7 +24,17 @@
 
 #include "sourcefield.h"
 
+#include <algorithm>
+
 #include "sourcevideo.h"
+
+// Fill a SourceField's data with a colour
+static void fillField(SourceField &field, quint16 colour)
+{
+    quint16 *start = reinterpret_cast<quint16 *>(field.data.data());
+    quint16 *end = start + (field.data.size() / 2);
+    std::fill(start, end, colour);
+}
 
 void SourceField::loadFields(SourceVideo &sourceVideo, LdDecodeMetaData &ldDecodeMetaData,
                              qint32 firstFrameNumber, qint32 numFrames,
@@ -59,8 +69,8 @@ void SourceField::loadFields(SourceVideo &sourceVideo, LdDecodeMetaData &ldDecod
         if (useBlankFrame) {
             // Fill both fields with black
             const quint16 black = ldDecodeMetaData.getVideoParameters().black16bIre;
-            fields[i].data.fill(black);
-            fields[i + 1].data.fill(black);
+            fillField(fields[i], black);
+            fillField(fields[i + 1], black);
         }
 
         frameNumber++;
