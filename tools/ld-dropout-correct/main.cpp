@@ -166,7 +166,6 @@ int main(int argc, char *argv[])
     QString outputFilename = "-";
     QStringList positionalArguments = parser.positionalArguments();
     qint32 totalNumberOfInputFiles = positionalArguments.count() - 1;
-    inputFilenames.resize(totalNumberOfInputFiles);
 
     // Ensure we don't have more than 32 sources
     if (totalNumberOfInputFiles > 32) {
@@ -176,6 +175,9 @@ int main(int argc, char *argv[])
 
     // Get the input TBC sources
     if (positionalArguments.count() >= 2) {
+        // Resize the input filenames vector according to the number of input files supplied
+        inputFilenames.resize(totalNumberOfInputFiles);
+
         for (qint32 i = 0; i < positionalArguments.count() - 1; i++) {
             inputFilenames[i] = positionalArguments.at(i);
         }
