@@ -65,6 +65,8 @@ private:
 
         bool isSameField;
         qint32 fieldLine;
+
+        qint32 sourceNumber;
     };
 
     // Decoder pool
@@ -80,12 +82,12 @@ private:
                       bool thisFieldIsFirst, bool intraField, QVector<qint32> availableSourcesForFrame);
     QVector<DropOutLocation> populateDropoutsVector(LdDecodeMetaData::Field field, bool overCorrect);
     QVector<DropOutLocation> setDropOutLocations(QVector<DropOutLocation> dropOuts);
-    Replacement findReplacementLine(const QVector<DropOutLocation> &thisFieldDropouts,
-                                    const QVector<DropOutLocation> &otherFieldDropouts,
+    Replacement findReplacementLine(const QVector<QVector<DropOutLocation>> &thisFieldDropouts,
+                                    const QVector<QVector<DropOutLocation>> &otherFieldDropouts,
                                     qint32 dropOutIndex, bool thisFieldIsFirst, bool matchChromaPhase,
                                     bool isColourBurst, bool intraField);
-    void findPotentialReplacementLine(const QVector<DropOutLocation> &targetDropouts, qint32 targetIndex,
-                                      const QVector<DropOutLocation> &sourceDropouts, bool isSameField,
+    void findPotentialReplacementLine(const QVector<QVector<DropOutLocation>> &targetDropouts, qint32 targetIndex,
+                                      const QVector<QVector<DropOutLocation>> &sourceDropouts, bool isSameField,
                                       qint32 sourceOffset, qint32 stepAmount,
                                       qint32 firstActiveFieldLine, qint32 lastActiveFieldLine,
                                       QVector<Replacement> &candidates);
