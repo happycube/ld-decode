@@ -239,8 +239,13 @@ int main(int argc, char *argv[])
     qInfo() << "Starting preparation for dropout correction processes...";
     // Open the source video metadata
     qDebug() << "main(): Opening source video metadata files..";
-    QVector<LdDecodeMetaData> ldDecodeMetaData;
+    QVector<LdDecodeMetaData *> ldDecodeMetaData;
     ldDecodeMetaData.resize(totalNumberOfInputFiles);
+    for (qint32 i = 0; i < totalNumberOfInputFiles; i++) {
+        // Create an object for the source video
+        ldDecodeMetaData[i] = new LdDecodeMetaData;
+    }
+
     for (qint32 i = 0; i < totalNumberOfInputFiles; i++) {
         // Work out the metadata filename
         QString jsonFilename = inputFilenames[i] + ".json";
@@ -248,7 +253,7 @@ int main(int argc, char *argv[])
         qInfo().nospace().noquote() << "Reading input #" << i << " JSON metadata from " << jsonFilename;
 
         // Open it
-        if (!ldDecodeMetaData[i].read(jsonFilename)) {
+        if (!ldDecodeMetaData[i]->read(jsonFilename)) {
             qCritical() << "Unable to open TBC JSON metadata file - cannot continue";
             return -1;
         }
@@ -258,7 +263,7 @@ int main(int argc, char *argv[])
     if (reverse) {
         qInfo() << "Expected field order is reversed to second field/first field";
         for (qint32 i = 0; i < totalNumberOfInputFiles; i++)
-            ldDecodeMetaData[i].setIsFirstFieldFirst(false);
+            ldDecodeMetaData[i]->setIsFirstFieldFirst(false);
     }
 
     // Intrafield only correction if required
@@ -273,17 +278,21 @@ int main(int argc, char *argv[])
 
     // Show and open input source TBC files
     qDebug() << "main(): Opening source video files...";
-    QVector<SourceVideo> sourceVideos;
+    QVector<SourceVideo *> sourceVideos;
     sourceVideos.resize(totalNumberOfInputFiles);
+    for (qint32 i = 0; i < totalNumberOfInputFiles; i++) {
+        // Create an object for the source video
+        sourceVideos[i] = new SourceVideo;
+    }
 
     for (qint32 i = 0; i < totalNumberOfInputFiles; i++) {
-        LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData[i].getVideoParameters();
+        LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData[i]->getVideoParameters();
 
         qInfo().nospace() << "Opening input #" << i << ": " << videoParameters.fieldWidth << "x" << videoParameters.fieldHeight <<
                     " - input filename is " << inputFilenames[i];
 
         // Open the source TBC
-        if (!sourceVideos[i].open(inputFilenames[i], videoParameters.fieldWidth * videoParameters.fieldHeight)) {
+        if (!sourceVideos[i]->open(inputFilenames[i], videoParameters.fieldWidth * videoParameters.fieldHeight)) {
             // Could not open source video file
             qInfo() << "Unable to open input source" << i;
             qInfo() << "Please verify that the specified source video files exist with the correct file permissions";
@@ -291,9 +300,9 @@ int main(int argc, char *argv[])
         }
 
         // Verify TBC and JSON input fields match
-        if (sourceVideos[i].getNumberOfAvailableFields() != ldDecodeMetaData[0].getNumberOfFields()) {
-            qInfo() << "Warning: TBC file contains" << sourceVideos[i].getNumberOfAvailableFields() <<
-                       "fields but the JSON indicates" << ldDecodeMetaData[0].getNumberOfFields() <<
+        if (sourceVideos[i]->getNumberOfAvailableFields() != ldDecodeMetaData[0]->getNumberOfFields()) {
+            qInfo() << "Warning: TBC file contains" << sourceVideos[i]->getNumberOfAvailableFields() <<
+                       "fields but the JSON indicates" << ldDecodeMetaData[0]->getNumberOfFields() <<
                        "fields - some fields will be ignored";
             qInfo() << "Update your copy of ld-decode and try again, this shouldn't happen unless the JSON metadata has been corrupted";
         }
@@ -301,14 +310,14 @@ int main(int argc, char *argv[])
         // Additional checks when using multiple input sources
         if (totalNumberOfInputFiles > 1) {
             // Ensure source video has VBI data
-            if (!ldDecodeMetaData[i].getFieldVbi(1).inUse) {
+            if (!ldDecodeMetaData[i]->getFieldVbi(1).inUse) {
                 qInfo() << "Source video" << i << "does not appear to have valid VBI data in the JSON metadata.";
                 qInfo() << "Please try running ld-process-vbi on the source video and then try again";
                 return 1;
             }
 
             // Ensure that the video source standard matches the primary source
-            if (ldDecodeMetaData[0].getVideoParameters().isSourcePal != videoParameters.isSourcePal) {
+            if (ldDecodeMetaData[0]->getVideoParameters().isSourcePal != videoParameters.isSourcePal) {
                 qInfo() << "All additional input sources must have the same video format (PAL/NTSC) as the initial source!";
                 return 1;
             }
