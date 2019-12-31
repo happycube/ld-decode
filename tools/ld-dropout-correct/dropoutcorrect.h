@@ -85,15 +85,15 @@ private:
     Replacement findReplacementLine(const QVector<QVector<DropOutLocation>> &thisFieldDropouts,
                                     const QVector<QVector<DropOutLocation>> &otherFieldDropouts,
                                     qint32 dropOutIndex, bool thisFieldIsFirst, bool matchChromaPhase,
-                                    bool isColourBurst, bool intraField);
+                                    bool isColourBurst, bool intraField, QVector<qint32> availableSourcesForFrame);
     void findPotentialReplacementLine(const QVector<QVector<DropOutLocation>> &targetDropouts, qint32 targetIndex,
                                       const QVector<QVector<DropOutLocation>> &sourceDropouts, bool isSameField,
                                       qint32 sourceOffset, qint32 stepAmount,
                                       qint32 firstActiveFieldLine, qint32 lastActiveFieldLine,
-                                      QVector<Replacement> &candidates);
+                                      QVector<Replacement> &candidates, qint32 sourceNo);
     void correctDropOut(const DropOutLocation &dropOut,
                         const Replacement &replacement, const Replacement &chromaReplacement,
-                        QByteArray &thisFieldData, const QByteArray &otherFieldData);
+                        QVector<QByteArray> &thisFieldData, const QVector<QByteArray> &otherFieldData);
 };
 
 #endif // DROPOUTCORRECT_H
