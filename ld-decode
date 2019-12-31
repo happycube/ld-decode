@@ -36,6 +36,7 @@ parser.add_argument('--daa', dest='daa', action='store_true', default=False, hel
 parser.add_argument('--ignoreleadout', dest='ignoreleadout', action='store_true', default=False, help='continue decoding after lead-out seen')
 parser.add_argument('--verboseVITS', dest='verboseVITS', action='store_true', default=False, help='Enable additional JSON fields')
 
+parser.add_argument('--lowband', dest='lowband', action='store_true', default=False, help='Use more restricted RF settings for noisier disks')
 parser.add_argument('--WibbleRemover', dest='WibbleRemover', action='store_true', default=False, help='PAL/digital sound: (try to) remove spurious ~8.5mhz signal')
 
 parser.add_argument('-t', '--threads', metavar='threads', type=int, default=5, help='number of CPU threads to use')
@@ -60,6 +61,8 @@ if args.pal and args.ntsc:
 extra_options = {}
 if args.WibbleRemover:
     extra_options['WibbleRemover'] = True
+if args.lowband:
+    extra_options['lowband'] = True
 
 try:
     loader = make_loader(filename, args.inputfreq)
