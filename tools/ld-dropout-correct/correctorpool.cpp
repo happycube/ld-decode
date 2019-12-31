@@ -123,8 +123,6 @@ bool CorrectorPool::process()
     qInfo() << "Creating JSON metadata file for drop-out corrected TBC...";
     ldDecodeMetaData[0].write(outputJsonFilename);
 
-    qInfo() << "Processing complete";
-
     // Close the source and target video
     sourceVideos[0].close();
     targetVideo.close();
@@ -257,7 +255,8 @@ bool CorrectorPool::getInputFrame(qint32& frameNumber,
 // Returns true on success, false on failure.
 bool CorrectorPool::setOutputFrame(qint32 frameNumber,
                                    QByteArray firstTargetFieldData, QByteArray secondTargetFieldData,
-                                   qint32 firstFieldSeqNo, qint32 secondFieldSeqNo)
+                                   qint32 firstFieldSeqNo, qint32 secondFieldSeqNo,
+                                   qint32 sameSourceReplacement, qint32 multiSourceReplacement, qint32 totalReplacementDistance)
 {
     QMutexLocker locker(&outputMutex);
 
@@ -268,6 +267,11 @@ bool CorrectorPool::setOutputFrame(qint32 frameNumber,
     outputFrame.firstFieldSeqNo = firstFieldSeqNo;
     outputFrame.secondFieldSeqNo = secondFieldSeqNo;
     pendingOutputFrames[frameNumber] = outputFrame;
+
+    // Get statistics
+    outputFrame.sameSourceReplacement = sameSourceReplacement;
+    outputFrame.multiSourceReplacement = multiSourceReplacement;
+    outputFrame.totalReplacementDistance = totalReplacementDistance;
 
     // Write out as many frames as possible
     while (pendingOutputFrames.contains(outputFrameNumber)) {
@@ -296,6 +300,15 @@ bool CorrectorPool::setOutputFrame(qint32 frameNumber,
             sourceVideos[0].close();
             return false;
         }
+
+        // Show debug
+        qreal avgReplacementDistance = 0;
+        if (outputFrame.sameSourceReplacement + outputFrame.multiSourceReplacement > 0) {
+            avgReplacementDistance = static_cast<qreal>(outputFrame.totalReplacementDistance) /
+                            static_cast<qreal>(outputFrame.sameSourceReplacement + outputFrame.multiSourceReplacement);
+        }
+        qDebug() << "Processed frame" << outputFrameNumber << "- Replacements" << outputFrame.sameSourceReplacement << "same source," <<
+                    outputFrame.multiSourceReplacement << "multi-source - Average replacement distance of" << avgReplacementDistance;
 
         if (outputFrameNumber % 100 == 0) {
             qInfo() << "Processed and written frame" << outputFrameNumber;

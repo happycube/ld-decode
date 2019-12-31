@@ -51,11 +51,13 @@ public:
                        QVector<qint32> &firstFieldNumber, QVector<QByteArray> &firstFieldVideoData, QVector<LdDecodeMetaData::Field> &firstFieldMetadata,
                        QVector<qint32> &secondFieldNumber, QVector<QByteArray> &secondFieldVideoData, QVector<LdDecodeMetaData::Field> &secondFieldMetadata,
                        QVector<LdDecodeMetaData::VideoParameters> &videoParameters,
-                       bool& _reverse, bool& _intraField, bool& _overCorrect, QVector<qint32> &minVbiForSource, QVector<qint32> &maxVbiForSource, QVector<qint32> &availableSourcesForFrame, QVector<qreal> &sourceFrameQuality);
+                       bool& _reverse, bool& _intraField, bool& _overCorrect, QVector<qint32> &minVbiForSource,
+                       QVector<qint32> &maxVbiForSource, QVector<qint32> &availableSourcesForFrame, QVector<qreal> &sourceFrameQuality);
 
     bool setOutputFrame(qint32 frameNumber,
                         QByteArray firstTargetFieldData, QByteArray secondTargetFieldData,
-                        qint32 firstFieldSeqNo, qint32 secondFieldSeqNo);
+                        qint32 firstFieldSeqNo, qint32 secondFieldSeqNo,
+                        qint32 sameSourceReplacement, qint32 multiSourceReplacement, qint32 totalReplacementDistance);
 
 private:
     QString outputFilename;
@@ -85,6 +87,11 @@ private:
         QByteArray secondTargetFieldData;
         qint32 firstFieldSeqNo;
         qint32 secondFieldSeqNo;
+
+        // Statistics
+        qint32 sameSourceReplacement;
+        qint32 multiSourceReplacement;
+        qint32 totalReplacementDistance;
     };
 
     qint32 outputFrameNumber;
