@@ -141,7 +141,7 @@ bool CorrectorPool::getInputFrame(qint32& frameNumber,
                                   QVector<qint32>& secondFieldNumber, QVector<QByteArray>& secondFieldVideoData, QVector<LdDecodeMetaData::Field>& secondFieldMetadata,
                                   QVector<LdDecodeMetaData::VideoParameters>& videoParameters,
                                   bool& _reverse, bool& _intraField, bool& _overCorrect,
-                                  QVector<qint32>& minVbiForSource, QVector<qint32>& maxVbiForSource, QVector<qint32>& availableSourcesForFrame)
+                                  QVector<qint32>& minVbiForSource, QVector<qint32>& maxVbiForSource, QVector<qint32>& availableSourcesForFrame, QVector<qreal>& sourceFrameQuality)
 {
     QMutexLocker locker(&inputMutex);
 
@@ -167,6 +167,7 @@ bool CorrectorPool::getInputFrame(qint32& frameNumber,
     secondFieldVideoData.resize(numberOfSources);
     secondFieldMetadata.resize(numberOfSources);
     videoParameters.resize(numberOfSources);
+    sourceFrameQuality.resize(numberOfSources);
 
     // Get the current VBI frame number based on the first source
     qint32 currentVbiFrame = -1;
@@ -175,22 +176,37 @@ bool CorrectorPool::getInputFrame(qint32& frameNumber,
         // Determine the fields for the input frame
         if (sourceNo == 0) {
             // No need to perform VBI frame number mapping on the first source
-            firstFieldNumber[sourceNo] = ldDecodeMetaData[0].getFirstFieldNumber(frameNumber);
-            secondFieldNumber[sourceNo] = ldDecodeMetaData[0].getSecondFieldNumber(frameNumber);
+            firstFieldNumber[sourceNo] = ldDecodeMetaData[sourceNo].getFirstFieldNumber(frameNumber);
+            secondFieldNumber[sourceNo] = ldDecodeMetaData[sourceNo].getSecondFieldNumber(frameNumber);
+
+            // Determine the frame quality (currently this is based on frame average black SNR)
+            qreal firstFrameSnr = ldDecodeMetaData[sourceNo].getField(firstFieldNumber[sourceNo]).vitsMetrics.bPSNR;
+            qreal secondFrameSnr = ldDecodeMetaData[sourceNo].getField(secondFieldNumber[sourceNo]).vitsMetrics.bPSNR;
+            sourceFrameQuality[sourceNo] = (firstFrameSnr + secondFrameSnr) / 2.0;
+
             qDebug().nospace() << "CorrectorPool::getInputFrame(): Source #0 fields are " <<
-                                  firstFieldNumber[sourceNo] << "/" << secondFieldNumber[sourceNo];
+                                  firstFieldNumber[sourceNo] << "/" << secondFieldNumber[sourceNo] <<
+                                  " (quality is " << sourceFrameQuality[sourceNo] << ")";
         } else {
             // Use VBI frame number mapping to get the same frame from the
             // current additional source
             if (currentVbiFrame >= sourceMinimumVbiFrame[sourceNo] && currentVbiFrame <= sourceMaximumVbiFrame[sourceNo]) {
                 qint32 currentSourceFrameNumber = convertVbiFrameNumberToSequential(currentVbiFrame, sourceNo);
-                firstFieldNumber[sourceNo] = ldDecodeMetaData[0].getFirstFieldNumber(currentSourceFrameNumber);
-                secondFieldNumber[sourceNo] = ldDecodeMetaData[0].getSecondFieldNumber(currentSourceFrameNumber);
+                firstFieldNumber[sourceNo] = ldDecodeMetaData[sourceNo].getFirstFieldNumber(currentSourceFrameNumber);
+                secondFieldNumber[sourceNo] = ldDecodeMetaData[sourceNo].getSecondFieldNumber(currentSourceFrameNumber);
+
+                // Determine the frame quality (currently this is based on frame average black SNR)
+                qreal firstFrameSnr = ldDecodeMetaData[sourceNo].getField(firstFieldNumber[sourceNo]).vitsMetrics.bPSNR;
+                qreal secondFrameSnr = ldDecodeMetaData[sourceNo].getField(secondFieldNumber[sourceNo]).vitsMetrics.bPSNR;
+                sourceFrameQuality[sourceNo] = (firstFrameSnr + secondFrameSnr) / 2.0;
+
                 qDebug().nospace() << "CorrectorPool::getInputFrame(): Source #" << sourceNo << " has VBI frame number " << currentVbiFrame <<
-                            " and fields " << firstFieldNumber[sourceNo] << "/" << secondFieldNumber[sourceNo];
+                            " and fields " << firstFieldNumber[sourceNo] << "/" << secondFieldNumber[sourceNo] <<
+                            " (quality is " << sourceFrameQuality[sourceNo] << ")";
             } else {
                 firstFieldNumber[sourceNo] = -1;
                 secondFieldNumber[sourceNo] = -1;
+                sourceFrameQuality[sourceNo] = -1;
                 qDebug().nospace() << "CorrectorPool::getInputFrame(): Source #" << sourceNo << " does not contain a usable frame";
             }
         }

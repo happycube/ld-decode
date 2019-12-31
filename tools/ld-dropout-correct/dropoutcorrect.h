@@ -67,6 +67,7 @@ private:
         qint32 fieldLine;
 
         qint32 sourceNumber;
+        qreal quality;
     };
 
     // Decoder pool
@@ -79,18 +80,18 @@ private:
     void correctField(const QVector<QVector<DropOutLocation> > &thisFieldDropouts,
                       const QVector<QVector<DropOutLocation> > &otherFieldDropouts,
                       QVector<QByteArray> &thisFieldData, const QVector<QByteArray> &otherFieldData,
-                      bool thisFieldIsFirst, bool intraField, QVector<qint32> availableSourcesForFrame);
+                      bool thisFieldIsFirst, bool intraField, QVector<qint32> availableSourcesForFrame, QVector<qreal> sourceFrameQuality);
     QVector<DropOutLocation> populateDropoutsVector(LdDecodeMetaData::Field field, bool overCorrect);
     QVector<DropOutLocation> setDropOutLocations(QVector<DropOutLocation> dropOuts);
     Replacement findReplacementLine(const QVector<QVector<DropOutLocation>> &thisFieldDropouts,
                                     const QVector<QVector<DropOutLocation>> &otherFieldDropouts,
                                     qint32 dropOutIndex, bool thisFieldIsFirst, bool matchChromaPhase,
-                                    bool isColourBurst, bool intraField, QVector<qint32> availableSourcesForFrame);
+                                    bool isColourBurst, bool intraField, QVector<qint32> availableSourcesForFrame, QVector<qreal> sourceFrameQuality);
     void findPotentialReplacementLine(const QVector<QVector<DropOutLocation>> &targetDropouts, qint32 targetIndex,
                                       const QVector<QVector<DropOutLocation>> &sourceDropouts, bool isSameField,
                                       qint32 sourceOffset, qint32 stepAmount,
                                       qint32 firstActiveFieldLine, qint32 lastActiveFieldLine,
-                                      QVector<Replacement> &candidates, qint32 sourceNo);
+                                      QVector<Replacement> &candidates, qint32 sourceNo, QVector<qreal> sourceFrameQuality);
     void correctDropOut(const DropOutLocation &dropOut,
                         const Replacement &replacement, const Replacement &chromaReplacement,
                         QVector<QByteArray> &thisFieldData, const QVector<QByteArray> &otherFieldData);

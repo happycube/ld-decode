@@ -46,13 +46,15 @@ void DropOutCorrect::run()
     QVector<qint32> minVbiForSource;
     QVector<qint32> maxVbiForSource;
     QVector<qint32> availableSourcesForFrame;
+    QVector<qreal> sourceFrameQuality;
 
     while(!abort) {
         // Get the next field to process from the input file
         if (!correctorPool.getInputFrame(frameNumber, firstFieldSeqNo, firstSourceField, firstFieldMetadata,
                                        secondFieldSeqNo, secondSourceField, secondFieldMetadata,
                                        videoParameters, reverse, intraField, overCorrect,
-                                       minVbiForSource, maxVbiForSource, availableSourcesForFrame)) {
+                                       minVbiForSource, maxVbiForSource, availableSourcesForFrame,
+                                       sourceFrameQuality)) {
             // No more input fields -- exit
             break;
         }
@@ -98,10 +100,10 @@ void DropOutCorrect::run()
             }
 
             // Correct the first field
-            correctField(firstFieldDropouts, secondFieldDropouts, firstFieldData, secondFieldData, true, intraField, availableSourcesForFrame);
+            correctField(firstFieldDropouts, secondFieldDropouts, firstFieldData, secondFieldData, true, intraField, availableSourcesForFrame, sourceFrameQuality);
 
             // Correct the second field
-            correctField(secondFieldDropouts, firstFieldDropouts, secondFieldData, firstFieldData, false, intraField, availableSourcesForFrame);
+            correctField(secondFieldDropouts, firstFieldDropouts, secondFieldData, firstFieldData, false, intraField, availableSourcesForFrame, sourceFrameQuality);
         }
 
         // Return the processed fields
@@ -113,7 +115,8 @@ void DropOutCorrect::run()
 void DropOutCorrect::correctField(const QVector<QVector<DropOutLocation>> &thisFieldDropouts,
                                   const QVector<QVector<DropOutLocation>> &otherFieldDropouts,
                                   QVector<QByteArray> &thisFieldData, const QVector<QByteArray> &otherFieldData,
-                                  bool thisFieldIsFirst, bool intraField, QVector<qint32> availableSourcesForFrame)
+                                  bool thisFieldIsFirst, bool intraField, QVector<qint32> availableSourcesForFrame,
+                                  QVector<qreal> sourceFrameQuality)
 {
     for (qint32 dropoutIndex = 0; dropoutIndex < thisFieldDropouts[0].size(); dropoutIndex++) {
         Replacement replacement, chromaReplacement;
@@ -122,7 +125,8 @@ void DropOutCorrect::correctField(const QVector<QVector<DropOutLocation>> &thisF
         if (thisFieldDropouts[0][dropoutIndex].location == Location::colourBurst) {
             replacement = findReplacementLine(thisFieldDropouts, otherFieldDropouts,
                                               dropoutIndex, thisFieldIsFirst, true,
-                                              true, intraField, availableSourcesForFrame);
+                                              true, intraField, availableSourcesForFrame,
+                                              sourceFrameQuality);
         }
 
         // Is the current dropout in the visible video line?
@@ -130,10 +134,12 @@ void DropOutCorrect::correctField(const QVector<QVector<DropOutLocation>> &thisF
             // Find separate replacements for luma and chroma
             replacement = findReplacementLine(thisFieldDropouts, otherFieldDropouts,
                                               dropoutIndex, thisFieldIsFirst, false,
-                                              false, intraField, availableSourcesForFrame);
+                                              false, intraField, availableSourcesForFrame,
+                                              sourceFrameQuality);
             chromaReplacement = findReplacementLine(thisFieldDropouts, otherFieldDropouts,
                                                     dropoutIndex, thisFieldIsFirst, true,
-                                                    false, intraField, availableSourcesForFrame);
+                                                    false, intraField, availableSourcesForFrame,
+                                                    sourceFrameQuality);
         }
 
         // Correct the data
@@ -242,7 +248,8 @@ QVector<DropOutCorrect::DropOutLocation> DropOutCorrect::setDropOutLocations(QVe
 DropOutCorrect::Replacement DropOutCorrect::findReplacementLine(const QVector<QVector<DropOutLocation>> &thisFieldDropouts,
                                                                 const QVector<QVector<DropOutLocation>> &otherFieldDropouts,
                                                                 qint32 dropOutIndex, bool thisFieldIsFirst, bool matchChromaPhase,
-                                                                bool isColourBurst, bool intraField, QVector<qint32> availableSourcesForFrame)
+                                                                bool isColourBurst, bool intraField, QVector<qint32> availableSourcesForFrame,
+                                                                QVector<qreal> sourceFrameQuality)
 {
     // Determine the first and last active scan line based on the source format
     qint32 firstActiveFieldLine;
@@ -318,13 +325,13 @@ DropOutCorrect::Replacement DropOutCorrect::findReplacementLine(const QVector<QV
         findPotentialReplacementLine(thisFieldDropouts, dropOutIndex,
                                      thisFieldDropouts, true, 0, -stepAmount,
                                      firstActiveFieldLine, lastActiveFieldLine,
-                                     candidates, currentSource);
+                                     candidates, currentSource, sourceFrameQuality);
 
         // Look down the field for a replacement
         findPotentialReplacementLine(thisFieldDropouts, dropOutIndex,
                                      thisFieldDropouts, true, stepAmount, stepAmount,
                                      firstActiveFieldLine, lastActiveFieldLine,
-                                     candidates, currentSource);
+                                     candidates, currentSource, sourceFrameQuality);
 
         // Only check the other field for visible line replacements
         if (!isColourBurst && !intraField) {
@@ -334,13 +341,13 @@ DropOutCorrect::Replacement DropOutCorrect::findReplacementLine(const QVector<QV
             findPotentialReplacementLine(thisFieldDropouts, dropOutIndex,
                                          otherFieldDropouts, false, otherFieldOffset, -stepAmount,
                                          firstActiveFieldLine, lastActiveFieldLine,
-                                         candidates, currentSource);
+                                         candidates, currentSource, sourceFrameQuality);
 
             // Look down the field for a replacement
             findPotentialReplacementLine(thisFieldDropouts, dropOutIndex,
                                          otherFieldDropouts, false, otherFieldOffset + stepAmount, stepAmount,
                                          firstActiveFieldLine, lastActiveFieldLine,
-                                         candidates, currentSource);
+                                         candidates, currentSource, sourceFrameQuality);
         }
     }
 
@@ -353,6 +360,10 @@ DropOutCorrect::Replacement DropOutCorrect::findReplacementLine(const QVector<QV
     if (!candidates.empty()) {
         // Find the candidate with the lowest spatial distance from the dropout
         qint32 lowestDistance = 1000000;
+
+        // Find the candidate with the highest quality
+        replacement.quality = -1;
+
         for (const Replacement &candidate: candidates) {
             // Work out the corresponding output frame line numbers.
             // The first field (in a .tbc, for both PAL and NTSC) contains the top frame line.
@@ -363,9 +374,17 @@ DropOutCorrect::Replacement DropOutCorrect::findReplacementLine(const QVector<QV
             const qint32 distance = qAbs(dropoutFrameLine - sourceFrameLine);
             qDebug() << (candidate.isSameField ? "This" : "Other") << "field replacement candidate for line" <<
                         thisFieldDropouts[0][dropOutIndex].fieldLine << "is line" <<
-                        candidate.fieldLine << "distance" << distance << "of source" << candidate.sourceNumber;
+                        candidate.fieldLine << "distance" << distance << "of source" << candidate.sourceNumber <<
+                        "with a quality of" << candidate.quality;
 
+            // Choose the candidate if the distance is less
             if (distance < lowestDistance) {
+                replacement = candidate;
+                lowestDistance = distance;
+            }
+
+            // Choose the candidate if the distance is the same, but the quality is better
+            else if (distance == lowestDistance && candidate.quality > replacement.quality) {
                 replacement = candidate;
                 lowestDistance = distance;
             }
@@ -375,7 +394,8 @@ DropOutCorrect::Replacement DropOutCorrect::findReplacementLine(const QVector<QV
     if (replacement.fieldLine != -1) {
         qDebug() << "Selected replacement is" <<
                     (replacement.isSameField ? "same" : "other") << "field, line" <<
-                    replacement.fieldLine << "of source" << replacement.sourceNumber;
+                    replacement.fieldLine << "of source" << replacement.sourceNumber << (matchChromaPhase ? "(chroma phase matched)" : "(whole signal)") <<
+                    "with a quality of" << replacement.quality;
     } else {
         qDebug() << "No viable replacement selected for" << thisFieldDropouts[0][dropOutIndex].fieldLine;
     }
@@ -390,7 +410,8 @@ void DropOutCorrect::findPotentialReplacementLine(const QVector<QVector<DropOutL
                                                   const QVector<QVector<DropOutLocation>> &sourceDropouts, bool isSameField,
                                                   qint32 sourceOffset, qint32 stepAmount,
                                                   qint32 firstActiveFieldLine, qint32 lastActiveFieldLine,
-                                                  QVector<Replacement> &candidates, qint32 sourceNo)
+                                                  QVector<Replacement> &candidates, qint32 sourceNo,
+                                                  QVector<qreal> sourceFrameQuality)
 {    
     // Calculate the start source line (which is the same line as the dropout unless the source number is 0
     qint32 sourceLine = targetDropouts[0][targetIndex].fieldLine;
@@ -424,6 +445,9 @@ void DropOutCorrect::findPotentialReplacementLine(const QVector<QVector<DropOutL
 
             // Set the source
             replacement.sourceNumber = sourceNo;
+
+            // Set the quality of the replacement
+            replacement.quality = sourceFrameQuality[sourceNo];
 
             candidates.push_back(replacement);
             return;
