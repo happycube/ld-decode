@@ -1769,7 +1769,7 @@ class Field:
 
         rfstd = np.std(f.data['rfhpf'])
         #iserr_rf = np.full(len(f.data['video']['demod']), False, dtype=np.bool)
-        iserr_rf1 = (f.data['rfhpf'] < (-rfstd * 3)) | (f.data['rfhpf'] > (rfstd * 3)) | (f.rawdata <= -32000)
+        iserr_rf1 = (f.data['rfhpf'] < (-rfstd * 3)) | (f.data['rfhpf'] > (rfstd * 3)) # | (f.rawdata <= -32000)
         iserr_rf = np.full_like(iserr_rf1, False)
         iserr_rf[self.rf.delays['video_rot']:] = iserr_rf1[:-self.rf.delays['video_rot']]
         
