@@ -89,13 +89,15 @@ private:
     void correctField(const QVector<QVector<DropOutLocation> > &thisFieldDropouts,
                       const QVector<QVector<DropOutLocation> > &otherFieldDropouts,
                       QVector<QByteArray> &thisFieldData, const QVector<QByteArray> &otherFieldData,
-                      bool thisFieldIsFirst, bool intraField, QVector<qint32> availableSourcesForFrame, QVector<qreal> sourceFrameQuality, Statistics &statistics);
+                      bool thisFieldIsFirst, bool intraField, QVector<qint32> &availableSourcesForFrame,
+                      QVector<qreal> &sourceFrameQuality, Statistics &statistics);
     QVector<DropOutLocation> populateDropoutsVector(LdDecodeMetaData::Field field, bool overCorrect);
     QVector<DropOutLocation> setDropOutLocations(QVector<DropOutLocation> dropOuts);
     Replacement findReplacementLine(const QVector<QVector<DropOutLocation>> &thisFieldDropouts,
                                     const QVector<QVector<DropOutLocation>> &otherFieldDropouts,
                                     qint32 dropOutIndex, bool thisFieldIsFirst, bool matchChromaPhase,
-                                    bool isColourBurst, bool intraField, QVector<qint32> availableSourcesForFrame, QVector<qreal> sourceFrameQuality);
+                                    bool isColourBurst, bool intraField, QVector<qint32> &availableSourcesForFrame,
+                                    QVector<qreal> &sourceFrameQuality);
     void findPotentialReplacementLine(const QVector<QVector<DropOutLocation>> &targetDropouts, qint32 targetIndex,
                                       const QVector<QVector<DropOutLocation>> &sourceDropouts, bool isSameField,
                                       qint32 sourceOffset, qint32 stepAmount,

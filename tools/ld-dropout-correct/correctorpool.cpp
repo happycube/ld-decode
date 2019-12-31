@@ -44,14 +44,12 @@ bool CorrectorPool::process()
         if (!targetVideo.open(stdout, QIODevice::WriteOnly)) {
                 // Could not open stdout
                 qInfo() << "Unable to open stdout";
-                sourceVideos[0]->close();
                 return false;
         }
     } else {
         if (!targetVideo.open(QIODevice::WriteOnly)) {
                 // Could not open target video file
                 qInfo() << "Unable to open output video file";
-                sourceVideos[0]->close();
                 return false;
         }
     }
@@ -69,7 +67,6 @@ bool CorrectorPool::process()
             // Could not write to target TBC file
             qInfo() << "Writing first field to the output TBC file failed";
             targetVideo.close();
-            sourceVideos[0]->close();
             return false;
         }
     }
@@ -110,7 +107,6 @@ bool CorrectorPool::process()
 
     // Did any of the threads abort?
     if (abort) {
-        sourceVideos[0]->close();
         targetVideo.close();
         return false;
     }
@@ -123,8 +119,7 @@ bool CorrectorPool::process()
     qInfo() << "Creating JSON metadata file for drop-out corrected TBC...";
     ldDecodeMetaData[0]->write(outputJsonFilename);
 
-    // Close the source and target video
-    sourceVideos[0]->close();
+    // Close the target video
     targetVideo.close();
 
     return true;
@@ -185,28 +180,26 @@ bool CorrectorPool::getInputFrame(qint32& frameNumber,
             qDebug().nospace() << "CorrectorPool::getInputFrame(): Source #0 fields are " <<
                                   firstFieldNumber[sourceNo] << "/" << secondFieldNumber[sourceNo] <<
                                   " (quality is " << sourceFrameQuality[sourceNo] << ")";
-        } else {
+        } else if (currentVbiFrame >= sourceMinimumVbiFrame[sourceNo] && currentVbiFrame <= sourceMaximumVbiFrame[sourceNo]) {
             // Use VBI frame number mapping to get the same frame from the
             // current additional source
-            if (currentVbiFrame >= sourceMinimumVbiFrame[sourceNo] && currentVbiFrame <= sourceMaximumVbiFrame[sourceNo]) {
-                qint32 currentSourceFrameNumber = convertVbiFrameNumberToSequential(currentVbiFrame, sourceNo);
-                firstFieldNumber[sourceNo] = ldDecodeMetaData[sourceNo]->getFirstFieldNumber(currentSourceFrameNumber);
-                secondFieldNumber[sourceNo] = ldDecodeMetaData[sourceNo]->getSecondFieldNumber(currentSourceFrameNumber);
+            qint32 currentSourceFrameNumber = convertVbiFrameNumberToSequential(currentVbiFrame, sourceNo);
+            firstFieldNumber[sourceNo] = ldDecodeMetaData[sourceNo]->getFirstFieldNumber(currentSourceFrameNumber);
+            secondFieldNumber[sourceNo] = ldDecodeMetaData[sourceNo]->getSecondFieldNumber(currentSourceFrameNumber);
 
-                // Determine the frame quality (currently this is based on frame average black SNR)
-                qreal firstFrameSnr = ldDecodeMetaData[sourceNo]->getField(firstFieldNumber[sourceNo]).vitsMetrics.bPSNR;
-                qreal secondFrameSnr = ldDecodeMetaData[sourceNo]->getField(secondFieldNumber[sourceNo]).vitsMetrics.bPSNR;
-                sourceFrameQuality[sourceNo] = (firstFrameSnr + secondFrameSnr) / 2.0;
+            // Determine the frame quality (currently this is based on frame average black SNR)
+            qreal firstFrameSnr = ldDecodeMetaData[sourceNo]->getField(firstFieldNumber[sourceNo]).vitsMetrics.bPSNR;
+            qreal secondFrameSnr = ldDecodeMetaData[sourceNo]->getField(secondFieldNumber[sourceNo]).vitsMetrics.bPSNR;
+            sourceFrameQuality[sourceNo] = (firstFrameSnr + secondFrameSnr) / 2.0;
 
-                qDebug().nospace() << "CorrectorPool::getInputFrame(): Source #" << sourceNo << " has VBI frame number " << currentVbiFrame <<
-                            " and fields " << firstFieldNumber[sourceNo] << "/" << secondFieldNumber[sourceNo] <<
-                            " (quality is " << sourceFrameQuality[sourceNo] << ")";
-            } else {
-                firstFieldNumber[sourceNo] = -1;
-                secondFieldNumber[sourceNo] = -1;
-                sourceFrameQuality[sourceNo] = -1;
-                qDebug().nospace() << "CorrectorPool::getInputFrame(): Source #" << sourceNo << " does not contain a usable frame";
-            }
+            qDebug().nospace() << "CorrectorPool::getInputFrame(): Source #" << sourceNo << " has VBI frame number " << currentVbiFrame <<
+                        " and fields " << firstFieldNumber[sourceNo] << "/" << secondFieldNumber[sourceNo] <<
+                        " (quality is " << sourceFrameQuality[sourceNo] << ")";
+        } else {
+            firstFieldNumber[sourceNo] = -1;
+            secondFieldNumber[sourceNo] = -1;
+            sourceFrameQuality[sourceNo] = -1;
+            qDebug().nospace() << "CorrectorPool::getInputFrame(): Source #" << sourceNo << " does not contain a usable frame";
         }
 
         // If the field numbers are valid - get the rest of the required data
@@ -297,7 +290,6 @@ bool CorrectorPool::setOutputFrame(qint32 frameNumber,
             // Could not write to target TBC file
             qCritical() << "Writing fields to the output TBC file failed";
             targetVideo.close();
-            sourceVideos[0]->close();
             return false;
         }
 
