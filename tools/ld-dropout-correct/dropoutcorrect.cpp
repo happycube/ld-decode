@@ -3,7 +3,7 @@
     dropoutcorrect.cpp
 
     ld-dropout-correct - Dropout correction for ld-decode
-    Copyright (C) 2018-2019 Simon Inns
+    Copyright (C) 2018-2020 Simon Inns
     Copyright (C) 2019 Adam Sampson
 
     This file is part of ld-decode-tools.

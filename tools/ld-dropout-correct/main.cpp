@@ -3,7 +3,7 @@
     main.cpp
 
     ld-dropout-correct - Dropout correction for ld-decode
-    Copyright (C) 2018-2019 Simon Inns
+    Copyright (C) 2018-2020 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -29,7 +29,6 @@
 #include <QThread>
 
 #include "correctorpool.h"
-#include "dropoutcorrect.h"
 
 // Global for debug output
 static bool showDebug = false;
