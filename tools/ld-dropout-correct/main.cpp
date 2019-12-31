@@ -332,11 +332,21 @@ int main(int argc, char *argv[])
 
     // Perform the DOC process ----------------------------------------------------------------------------------------
     qInfo() << "Initial source checks are ok and sources are loaded";
+    qint32 result = 0;
     CorrectorPool correctorPool(outputFilename, outputJsonFilename, maxThreads,
                                 ldDecodeMetaData, sourceVideos,
                                 reverse, intraField, overCorrect);
-    if (!correctorPool.process()) return 1;
+    if (!correctorPool.process()) result = 1;
 
-    // Quit with success
-    return 0;
+    // Close open source video files
+    for (qint32 i = 0; i < totalNumberOfInputFiles; i++) sourceVideos[i]->close();
+
+    // Remove metadata objects
+    for (qint32 i = 0; i < totalNumberOfInputFiles; i++) delete ldDecodeMetaData[i];
+
+    // Remove source video objects
+    for (qint32 i = 0; i < totalNumberOfInputFiles; i++) delete sourceVideos[i];
+
+    // Quit
+    return result;
 }
