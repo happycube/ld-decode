@@ -251,13 +251,15 @@ RFParams_PAL_lowband = {
 }
 
 class RFDecode:
-    def __init__(self, inputfreq = 40, system = 'NTSC', blocklen_ = 32*1024, decode_digital_audio = False, decode_analog_audio = 0, has_analog_audio = True, mtf_mult = 1.0, mtf_offset = 0, lowband = False):
+    def __init__(self, inputfreq = 40, system = 'NTSC', blocklen_ = 32*1024, decode_digital_audio = False, decode_analog_audio = 0, has_analog_audio = True, mtf_mult = 1.0, mtf_offset = 0, extra_options = {}):
         self.blocklen = blocklen_
         self.blockcut = 1024 # ???
         self.blockcut_end = 0
-        self.WibbleRemover = False
         self.system = system
-        
+
+        self.WibbleRemover = True if extra_options.get('WibbleRemover') == True else False
+        lowband = True if extra_options.get('lowband') == True else False
+
         freq = inputfreq
         self.freq = freq
         self.freq_half = freq / 2
@@ -380,6 +382,10 @@ class RFDecode:
         
         video_lpf = sps.butter(DP['video_lpf_order'], DP['video_lpf_freq']/self.freq_hz_half, 'low')
         SF['Fvideo_lpf'] = filtfft(video_lpf, self.blocklen)
+
+        if self.system == 'NTSC' and self.WibbleRemover:
+            video_notch = sps.butter(2, [4.73/self.freq_half, 4.88/self.freq_half], 'bandstop')
+            SF['Fvideo_lpf'] *= filtfft(video_notch, self.blocklen)
 
         video_hpf = sps.butter(DP['video_hpf_order'], DP['video_hpf_freq']/self.freq_hz_half, 'high')
         SF['Fvideo_hpf'] = filtfft(video_hpf, self.blocklen)
@@ -512,7 +518,7 @@ class RFDecode:
         rv['rfhpf'] = npfft.ifft(indata_fft * self.Filters['Frfhpf']).real
         rv['rfhpf'] = rv['rfhpf'][self.blockcut-rotdelay:-self.blockcut_end-rotdelay]
 
-        if self.WibbleRemover:
+        if self.system == 'PAL' and self.WibbleRemover:
             ''' This routine works around an 'interesting' issue seen with LD-V4300D players and 
                 some PAL digital audio disks, where there is a signal somewhere between 8.47 and 8.57mhz.
 
@@ -2456,16 +2462,13 @@ class LDdecode:
         self.fieldloc = 0
 
         # if option is missing, get returns None
-        self.lowband = True if extra_options.get('lowband') == True else False
             
         self.system = system
-        self.rf = RFDecode(system=system, decode_analog_audio=analog_audio, decode_digital_audio=digital_audio, has_analog_audio = self.has_analog_audio, lowband = self.lowband)
+        self.rf = RFDecode(system=system, decode_analog_audio=analog_audio, decode_digital_audio=digital_audio, has_analog_audio = self.has_analog_audio, extra_options = extra_options)
         if system == 'PAL':
             self.FieldClass = FieldPAL
             self.readlen = self.rf.linelen * 400
             self.clvfps = 25
-            if 'WibbleRemover' in extra_options:
-                self.rf.WibbleRemover = True                
         else: # NTSC
             self.FieldClass = FieldNTSC
             self.readlen = ((self.rf.linelen * 350) // 16384) * 16384
