@@ -68,6 +68,15 @@ private:
 
         qint32 sourceNumber;
         qreal quality;
+
+        qint32 distance;
+    };
+
+    // Statistics
+    struct Statistics {
+        qint32 sameSourceReplacement;
+        qint32 multiSourceReplacement;
+        qint32 totalReplacementDistance;
     };
 
     // Decoder pool
@@ -80,7 +89,7 @@ private:
     void correctField(const QVector<QVector<DropOutLocation> > &thisFieldDropouts,
                       const QVector<QVector<DropOutLocation> > &otherFieldDropouts,
                       QVector<QByteArray> &thisFieldData, const QVector<QByteArray> &otherFieldData,
-                      bool thisFieldIsFirst, bool intraField, QVector<qint32> availableSourcesForFrame, QVector<qreal> sourceFrameQuality);
+                      bool thisFieldIsFirst, bool intraField, QVector<qint32> availableSourcesForFrame, QVector<qreal> sourceFrameQuality, Statistics &statistics);
     QVector<DropOutLocation> populateDropoutsVector(LdDecodeMetaData::Field field, bool overCorrect);
     QVector<DropOutLocation> setDropOutLocations(QVector<DropOutLocation> dropOuts);
     Replacement findReplacementLine(const QVector<QVector<DropOutLocation>> &thisFieldDropouts,
@@ -94,7 +103,7 @@ private:
                                       QVector<Replacement> &candidates, qint32 sourceNo, QVector<qreal> sourceFrameQuality);
     void correctDropOut(const DropOutLocation &dropOut,
                         const Replacement &replacement, const Replacement &chromaReplacement,
-                        QVector<QByteArray> &thisFieldData, const QVector<QByteArray> &otherFieldData);
+                        QVector<QByteArray> &thisFieldData, const QVector<QByteArray> &otherFieldData, Statistics &statistics);
 };
 
 #endif // DROPOUTCORRECT_H

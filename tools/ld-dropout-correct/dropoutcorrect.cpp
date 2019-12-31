@@ -48,6 +48,9 @@ void DropOutCorrect::run()
     QVector<qint32> availableSourcesForFrame;
     QVector<qreal> sourceFrameQuality;
 
+    // Statistics
+    Statistics statistics;
+
     while(!abort) {
         // Get the next field to process from the input file
         if (!correctorPool.getInputFrame(frameNumber, firstFieldSeqNo, firstSourceField, firstFieldMetadata,
@@ -58,6 +61,11 @@ void DropOutCorrect::run()
             // No more input fields -- exit
             break;
         }
+
+        // Reset statistics
+        statistics.sameSourceReplacement = 0;
+        statistics.multiSourceReplacement = 0;
+        statistics.totalReplacementDistance = 0;
 
         qint32 totalAvailableSources = firstFieldSeqNo.size();
         qDebug().nospace() << "DropOutCorrect::process(): Frame #" << frameNumber << " - There are " << totalAvailableSources << " sources available of which " <<
@@ -100,14 +108,17 @@ void DropOutCorrect::run()
             }
 
             // Correct the first field
-            correctField(firstFieldDropouts, secondFieldDropouts, firstFieldData, secondFieldData, true, intraField, availableSourcesForFrame, sourceFrameQuality);
+            correctField(firstFieldDropouts, secondFieldDropouts, firstFieldData, secondFieldData, true, intraField, availableSourcesForFrame, sourceFrameQuality,
+                         statistics);
 
             // Correct the second field
-            correctField(secondFieldDropouts, firstFieldDropouts, secondFieldData, firstFieldData, false, intraField, availableSourcesForFrame, sourceFrameQuality);
+            correctField(secondFieldDropouts, firstFieldDropouts, secondFieldData, firstFieldData, false, intraField, availableSourcesForFrame, sourceFrameQuality,
+                         statistics);
         }
 
         // Return the processed fields
-        correctorPool.setOutputFrame(frameNumber, firstFieldData[0], secondFieldData[0], firstFieldSeqNo[0], secondFieldSeqNo[0]);
+        correctorPool.setOutputFrame(frameNumber, firstFieldData[0], secondFieldData[0], firstFieldSeqNo[0], secondFieldSeqNo[0],
+                statistics.sameSourceReplacement, statistics.multiSourceReplacement, statistics.totalReplacementDistance);
     }
 }
 
@@ -116,7 +127,7 @@ void DropOutCorrect::correctField(const QVector<QVector<DropOutLocation>> &thisF
                                   const QVector<QVector<DropOutLocation>> &otherFieldDropouts,
                                   QVector<QByteArray> &thisFieldData, const QVector<QByteArray> &otherFieldData,
                                   bool thisFieldIsFirst, bool intraField, QVector<qint32> availableSourcesForFrame,
-                                  QVector<qreal> sourceFrameQuality)
+                                  QVector<qreal> sourceFrameQuality, Statistics& statistics)
 {
     for (qint32 dropoutIndex = 0; dropoutIndex < thisFieldDropouts[0].size(); dropoutIndex++) {
         Replacement replacement, chromaReplacement;
@@ -143,7 +154,7 @@ void DropOutCorrect::correctField(const QVector<QVector<DropOutLocation>> &thisF
         }
 
         // Correct the data
-        correctDropOut(thisFieldDropouts[0][dropoutIndex], replacement, chromaReplacement, thisFieldData, otherFieldData);
+        correctDropOut(thisFieldDropouts[0][dropoutIndex], replacement, chromaReplacement, thisFieldData, otherFieldData, statistics);
     }
 }
 
@@ -356,6 +367,7 @@ DropOutCorrect::Replacement DropOutCorrect::findReplacementLine(const QVector<QV
 
     // If no candidate is found, return no replacement
     Replacement replacement;
+    replacement.distance = 0;
 
     if (!candidates.empty()) {
         // Find the candidate with the lowest spatial distance from the dropout
@@ -380,12 +392,14 @@ DropOutCorrect::Replacement DropOutCorrect::findReplacementLine(const QVector<QV
             // Choose the candidate if the distance is less
             if (distance < lowestDistance) {
                 replacement = candidate;
+                replacement.distance = distance;
                 lowestDistance = distance;
             }
 
             // Choose the candidate if the distance is the same, but the quality is better
             else if (distance == lowestDistance && candidate.quality > replacement.quality) {
                 replacement = candidate;
+                replacement.distance = distance;
                 lowestDistance = distance;
             }
         }
@@ -458,7 +472,8 @@ void DropOutCorrect::findPotentialReplacementLine(const QVector<QVector<DropOutL
 // Correct a dropout by copying data from a replacement line.
 void DropOutCorrect::correctDropOut(const DropOutLocation &dropOut,
                                     const Replacement &replacement, const Replacement &chromaReplacement,
-                                    QVector<QByteArray> &thisFieldData, const QVector<QByteArray> &otherFieldData)
+                                    QVector<QByteArray> &thisFieldData, const QVector<QByteArray> &otherFieldData,
+                                    Statistics &statistics)
 {
     if (replacement.fieldLine == -1) {
         // No correction needed
@@ -518,4 +533,9 @@ void DropOutCorrect::correctDropOut(const DropOutLocation &dropOut,
             targetLine[pixel] += chromaLine[pixel] - lineBuf[pixel];
         }
     }
+
+    // Statistics
+    if (replacement.sourceNumber == 0) statistics.sameSourceReplacement++;
+    else statistics.multiSourceReplacement++;
+    statistics.totalReplacementDistance += replacement.distance;
 }
