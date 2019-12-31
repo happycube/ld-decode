@@ -157,7 +157,7 @@ bool CorrectorPool::getInputFrame(qint32& frameNumber,
     qint32 numberOfSources = sourceVideos.size();
 
     qDebug().nospace() << "CorrectorPool::getInputFrame(): Processing sequential frame number #" <<
-                          frameNumber << " from " << numberOfSources << " possible sources";
+                          frameNumber << " from " << numberOfSources << " possible source(s)";
 
     // Prepare the vectors
     firstFieldNumber.resize(numberOfSources);
@@ -169,7 +169,8 @@ bool CorrectorPool::getInputFrame(qint32& frameNumber,
     videoParameters.resize(numberOfSources);
 
     // Get the current VBI frame number based on the first source
-    qint32 currentVbiFrame = convertSequentialFrameNumberToVbi(frameNumber, 0);
+    qint32 currentVbiFrame = -1;
+    if (numberOfSources > 1) currentVbiFrame = convertSequentialFrameNumberToVbi(frameNumber, 0);
     for (qint32 sourceNo = 0; sourceNo < numberOfSources; sourceNo++) {
         // Determine the fields for the input frame
         if (sourceNo == 0) {
@@ -212,7 +213,12 @@ bool CorrectorPool::getInputFrame(qint32& frameNumber,
     }
 
     // Figure out which of the available sources can be used to correct the current frame
-    availableSourcesForFrame = getAvailableSourcesForFrame(currentVbiFrame);
+    availableSourcesForFrame.clear();
+    if (numberOfSources > 1) {
+        availableSourcesForFrame = getAvailableSourcesForFrame(currentVbiFrame);
+    } else {
+        availableSourcesForFrame.append(0);
+    }
 
     // Set the other miscellaneous parameters
     _reverse = reverse;
