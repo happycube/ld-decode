@@ -11,4 +11,5 @@ SUBDIRS = \
     ld-lds-converter \
     ld-process-efm \
     ld-process-vbi \
-    library/filter/testfilter
+    library/filter/testfilter \
+    library/tbc/testvbidecoder

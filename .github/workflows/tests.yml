@@ -37,6 +37,10 @@ jobs:
       timeout-minutes: 5
       run: tools/library/filter/testfilter/testfilter
 
+    - name: Run testvbidecoder
+      timeout-minutes: 5
+      run: tools/library/tbc/testvbidecoder/testvbidecoder
+
     - name: Decode NTSC CAV
       timeout-minutes: 10
       run: |
