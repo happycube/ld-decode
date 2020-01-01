@@ -752,12 +752,10 @@ class DemodCache:
     def end(self):            
         # stop workers
         for i in self.threads:
-            if i.is_alive():
-                self.q_in.put(None)
+            self.q_in.put(None)
 
         for t in self.threads:
-            if t.is_alive():
-                t.join()
+            t.join()
 
         self.q_out.put(None)
 
