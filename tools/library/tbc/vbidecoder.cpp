@@ -166,6 +166,9 @@ VbiDecoder::Vbi VbiDecoder::decode(qint32 vbi16, qint32 vbi17, qint32 vbi18)
     }
 
     if (bcdPictureNumber != 0) {
+        // This code indicates a CAV disc
+        vbi.type = VbiDecoder::VbiDiscTypes::cav;
+
         // Peform BCD to integer conversion:
         vbi.picNo =
             (10000 * ((bcdPictureNumber & 0xF0000) / (16*16*16*16))) +
@@ -186,6 +189,9 @@ VbiDecoder::Vbi VbiDecoder::decode(qint32 vbi16, qint32 vbi17, qint32 vbi18)
     // Check for picture stop code on lines 16 and 17
     if ((vbi16 == 0x82CFFF) ||
             (vbi17 == 0x82CFFF)) {
+        // This code indicates a CAV disc
+        vbi.type = VbiDecoder::VbiDiscTypes::cav;
+
         vbi.picStop = true;
         if (verboseDebug) qDebug() << "VbiDecoder::decode(): VBI Picture stop code flagged";
     }
@@ -246,9 +252,7 @@ VbiDecoder::Vbi VbiDecoder::decode(qint32 vbi16, qint32 vbi17, qint32 vbi18)
 
     // IEC 60857-1986 - 10.1.7 Constant linear velocity code ----------------------------------------------------------
 
-    // Check for CLV code on line 17 (note: this will be overwritten later if a CLV time code is found)
-    vbi.type = VbiDecoder::VbiDiscTypes::cav;
-
+    // Check for CLV code on line 17
     if ( vbi17 == 0x87FFFF ) {
         vbi.type = VbiDecoder::VbiDiscTypes::clv;
     }
