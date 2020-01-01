@@ -166,6 +166,34 @@ RFParams_NTSC = {
     'audio_filterorder': 800,
 }
 
+# Settings for use with noisier disks
+RFParams_NTSC_lowband = {
+    # The audio notch filters are important with DD v3.0+ boards
+    'audio_notchwidth': 350000,
+    'audio_notchorder': 2,
+
+    'video_deemp': (120*.32, 320*.32),
+
+    'video_bpf_low': 3800000, 
+    'video_bpf_high': 12500000,
+    'video_bpf_order': 4,
+
+    'video_lpf_freq': 4200000,   # in mhz
+    'video_lpf_order': 6, # butterworth filter order
+
+    # MTF filter
+    'MTF_basemult': .4, # general ** level of the MTF filter for frame 0.
+    'MTF_poledist': .9,
+    'MTF_freq': 12.2, # in mhz
+
+    # used to detect rot
+    'video_hpf_freq': 10000000,
+    'video_hpf_order': 4,
+
+    'audio_filterwidth': 150000,
+    'audio_filterorder': 800,
+}
+
 RFParams_PAL = {
     # The audio notch filters are important with DD v3.0+ boards
     'audio_notchwidth': 200000,
@@ -194,14 +222,44 @@ RFParams_PAL = {
     'audio_filterorder': 800,
 }
 
+RFParams_PAL_lowband = {
+    # The audio notch filters are important with DD v3.0+ boards
+    'audio_notchwidth': 200000,
+    'audio_notchorder': 2,
+
+    'video_deemp': (100*.30, 400*.30),
+
+    # XXX: guessing here!
+    'video_bpf_low': 3200000, 
+    'video_bpf_high': 13000000,
+    'video_bpf_order': 1,
+
+    'video_lpf_freq': 4800000,
+    'video_lpf_order': 7,
+
+    # MTF filter
+    'MTF_basemult': 1.0,  # general ** level of the MTF filter for frame 0.
+    'MTF_poledist': .70,
+    'MTF_freq': 10,
+
+    # used to detect rot
+    'video_hpf_freq': 10000000,
+    'video_hpf_order': 4,
+
+    'audio_filterwidth': 150000,
+    'audio_filterorder': 800,
+}
+
 class RFDecode:
-    def __init__(self, inputfreq = 40, system = 'NTSC', blocklen_ = 32*1024, decode_digital_audio = False, decode_analog_audio = 0, has_analog_audio = True, mtf_mult = 1.0, mtf_offset = 0):
+    def __init__(self, inputfreq = 40, system = 'NTSC', blocklen_ = 32*1024, decode_digital_audio = False, decode_analog_audio = 0, has_analog_audio = True, mtf_mult = 1.0, mtf_offset = 0, extra_options = {}):
         self.blocklen = blocklen_
         self.blockcut = 1024 # ???
         self.blockcut_end = 0
-        self.WibbleRemover = False
         self.system = system
-        
+
+        self.WibbleRemover = True if extra_options.get('WibbleRemover') == True else False
+        lowband = True if extra_options.get('lowband') == True else False
+
         freq = inputfreq
         self.freq = freq
         self.freq_half = freq / 2
@@ -213,10 +271,16 @@ class RFDecode:
         
         if system == 'NTSC':
             self.SysParams = copy.deepcopy(SysParams_NTSC)
-            self.DecoderParams = copy.deepcopy(RFParams_NTSC)
+            if lowband:
+                self.DecoderParams = copy.deepcopy(RFParams_NTSC_lowband)
+            else:
+                self.DecoderParams = copy.deepcopy(RFParams_NTSC)
         elif system == 'PAL':
             self.SysParams = copy.deepcopy(SysParams_PAL)
-            self.DecoderParams = copy.deepcopy(RFParams_PAL)
+            if lowband:
+                self.DecoderParams = copy.deepcopy(RFParams_PAL_lowband)
+            else:
+                self.DecoderParams = copy.deepcopy(RFParams_PAL)
 
         if not has_analog_audio:
             self.SysParams['analog_audio'] = False
@@ -313,11 +377,15 @@ class RFDecode:
             SF['Fcutr'] = filtfft(cut_right, self.blocklen)
         
             SF['RFVideo'] *= (SF['Fcutl'] * SF['Fcutr'])
-            
-        SF['RFVideo'] *= SF['hilbert']
+
+        SF['RFVideo'] *= SF['hilbert'] # * SF['Bcut']
         
         video_lpf = sps.butter(DP['video_lpf_order'], DP['video_lpf_freq']/self.freq_hz_half, 'low')
         SF['Fvideo_lpf'] = filtfft(video_lpf, self.blocklen)
+
+        if self.system == 'NTSC' and self.WibbleRemover:
+            video_notch = sps.butter(3, [4.5/self.freq_half, 5.0/self.freq_half], 'bandstop')
+            SF['Fvideo_lpf'] *= filtfft(video_notch, self.blocklen)
 
         video_hpf = sps.butter(DP['video_hpf_order'], DP['video_hpf_freq']/self.freq_hz_half, 'high')
         SF['Fvideo_hpf'] = filtfft(video_hpf, self.blocklen)
@@ -450,7 +518,7 @@ class RFDecode:
         rv['rfhpf'] = npfft.ifft(indata_fft * self.Filters['Frfhpf']).real
         rv['rfhpf'] = rv['rfhpf'][self.blockcut-rotdelay:-self.blockcut_end-rotdelay]
 
-        if self.WibbleRemover:
+        if self.system == 'PAL' and self.WibbleRemover:
             ''' This routine works around an 'interesting' issue seen with LD-V4300D players and 
                 some PAL digital audio disks, where there is a signal somewhere between 8.47 and 8.57mhz.
 
@@ -2391,14 +2459,14 @@ class LDdecode:
         self.firstfield = None # In frame output mode, the first field goes here
         self.fieldloc = 0
 
+        # if option is missing, get returns None
+            
         self.system = system
-        self.rf = RFDecode(system=system, decode_analog_audio=analog_audio, decode_digital_audio=digital_audio, has_analog_audio = self.has_analog_audio)
+        self.rf = RFDecode(system=system, decode_analog_audio=analog_audio, decode_digital_audio=digital_audio, has_analog_audio = self.has_analog_audio, extra_options = extra_options)
         if system == 'PAL':
             self.FieldClass = FieldPAL
             self.readlen = self.rf.linelen * 400
             self.clvfps = 25
-            if 'WibbleRemover' in extra_options:
-                self.rf.WibbleRemover = True                
         else: # NTSC
             self.FieldClass = FieldNTSC
             self.readlen = ((self.rf.linelen * 350) // 16384) * 16384
