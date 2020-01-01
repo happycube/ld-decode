@@ -37,6 +37,9 @@ public:
     SourceVideo();
     ~SourceVideo();
 
+    // Prevent implicit copying
+    SourceVideo(const SourceVideo &src) = delete;
+
     // File handling methods
     bool open(QString filename, qint32 _fieldLength, qint32 _fieldLineLength = -1);
     void close(void);

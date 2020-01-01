@@ -820,12 +820,10 @@ class DemodCache:
     def end(self):            
         # stop workers
         for i in self.threads:
-            if i.is_alive():
-                self.q_in.put(None)
+            self.q_in.put(None)
 
         for t in self.threads:
-            if t.is_alive():
-                t.join()
+            t.join()
 
         self.q_out.put(None)
 
@@ -1837,7 +1835,7 @@ class Field:
 
         rfstd = np.std(f.data['rfhpf'])
         #iserr_rf = np.full(len(f.data['video']['demod']), False, dtype=np.bool)
-        iserr_rf1 = (f.data['rfhpf'] < (-rfstd * 3)) | (f.data['rfhpf'] > (rfstd * 3)) | (f.rawdata <= -32000)
+        iserr_rf1 = (f.data['rfhpf'] < (-rfstd * 3)) | (f.data['rfhpf'] > (rfstd * 3)) # | (f.rawdata <= -32000)
         iserr_rf = np.full_like(iserr_rf1, False)
         iserr_rf[self.rf.delays['video_rot']:] = iserr_rf1[:-self.rf.delays['video_rot']]
         

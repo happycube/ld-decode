@@ -142,6 +142,9 @@ public:
 
     LdDecodeMetaData();
 
+    // Prevent implicit copying
+    LdDecodeMetaData(const LdDecodeMetaData &src) = delete;
+
     bool read(QString fileName);
     bool write(QString fileName);
     bool writeVitsCsv(QString fileName);
