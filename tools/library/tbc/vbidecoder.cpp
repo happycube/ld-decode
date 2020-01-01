@@ -116,33 +116,6 @@ VbiDecoder::Vbi VbiDecoder::decode(qint32 vbi16, qint32 vbi17, qint32 vbi18)
 {
     Vbi vbi;
 
-    // Default VBI
-    vbi.type = VbiDecoder::VbiDiscTypes::unknownDiscType;
-    vbi.userCode = "";
-    vbi.picNo = -1;
-    vbi.chNo = -1;
-    vbi.clvHr = -1;
-    vbi.clvMin = -1;
-    vbi.clvSec = -1;
-    vbi.clvPicNo = -1;
-    vbi.soundMode = VbiDecoder::VbiSoundModes::futureUse;
-    vbi.soundModeAm2 = VbiDecoder::VbiSoundModes::futureUse;
-
-    // Default VBI Flags
-    vbi.leadIn = false;
-    vbi.leadOut = false;
-    vbi.picStop = false;
-    vbi.cx = false;
-    vbi.size = false;
-    vbi.side = false;
-    vbi.teletext = false;
-    vbi.dump = false;
-    vbi.fm = false;
-    vbi.digital = false;
-    vbi.parity = false;
-    vbi.copyAm2 = false;
-    vbi.standardAm2 = false;
-
     if (vbi16 == -1 && vbi17 == -1 && vbi18 == -1) return vbi;
 
     // IEC 60857-1986 - 10.1.1 Lead-in --------------------------------------------------------------------------------
