@@ -321,6 +321,7 @@ void VbiMapper::correctFrameNumbering()
 
             // Set the frame number to a sane value ready for correction
             frames[frameElement].vbiFrameNumber = frames[frameElement - 1].vbiFrameNumber + 1;
+            frames[frameElement].isCorruptVbi = true; // Flag that the VBI should be rewritten
             qDebug() << "Seq. frame" << frameElement << "has a VBI frame number of -1 - Setting to" <<
                        frames[frameElement].vbiFrameNumber << "before correction";
 
@@ -367,7 +368,7 @@ void VbiMapper::correctFrameNumbering()
 
                         // Update the frame number
                         frames[frameElement].vbiFrameNumber = correctedFrameNumber;
-                        frames[frameElement].isCorruptVbi = false;
+                        frames[frameElement].isCorruptVbi = true; // Flag that the VBI should be rewritten
 
                         frameNumberErrorCount++;
                         break; // done
@@ -378,7 +379,7 @@ void VbiMapper::correctFrameNumbering()
                                         "target" << frames[frameElement].vbiFrameNumber;
 
                             // Set the VBI as invalid
-                            frames[frameElement].isCorruptVbi = true;
+                            frames[frameElement].isMarkedForDeletion = true; // Flag that the frame should be removed
                             frameNumberCorruptCount++;
                             frameNumberErrorCount++;
                         }
@@ -393,7 +394,7 @@ void VbiMapper::correctFrameNumbering()
                     qInfo() << "    VBI frame number corrected to" << frames[frameElement].vbiFrameNumber;
                     frameNumberErrorCount++;
                     isMissing = false;
-                    frames[frameElement].isCorruptVbi = false;
+                    frames[frameElement].isCorruptVbi = true; // Flag that the VBI should be rewritten
                 }
             }
         }
@@ -405,6 +406,7 @@ void VbiMapper::correctFrameNumbering()
         qInfo().nospace() << "The first frame does not have a valid frame number (" << frames[0].vbiFrameNumber <<
                              ") correcting to " << frames[1].vbiFrameNumber - 1 << " based on second frame VBI";
         frames[0].vbiFrameNumber = frames[1].vbiFrameNumber - 1;
+        frames[0].isCorruptVbi = true;
         frameNumberErrorCount++;
     }
 
@@ -412,6 +414,7 @@ void VbiMapper::correctFrameNumbering()
         qInfo().nospace() << "The last frame does not have a valid frame number (" << frames[frames.size() - 1].vbiFrameNumber <<
                              ") correcting to " << frames[frames.size() - 2].vbiFrameNumber + 1 << " based on second from last frame VBI";
         frames[frames.size() - 1].vbiFrameNumber = frames[frames.size() - 2].vbiFrameNumber + 1;
+        frames[frames.size() - 1].isCorruptVbi = true; // Flag that the VBI should be rewritten
         frameNumberErrorCount++;
     }
 
@@ -424,9 +427,9 @@ void VbiMapper::removeCorruptFrames()
     qInfo() << "";
     qInfo() << "Removing frames with unrecoverable corrupt VBI...";
 
-    // Remove all frames marked as corrupt from the map
+    // Remove all frames marked for deletion from the map
     qint32 previousSize = frames.size();
-    frames.erase(std::remove_if(frames.begin(), frames.end(), [](const Frame& f) {return f.isCorruptVbi == true;}), frames.end());
+    frames.erase(std::remove_if(frames.begin(), frames.end(), [](const Frame& f) {return f.isMarkedForDeletion == true;}), frames.end());
     qInfo() << "Removed" << previousSize - frames.size() << "corrupt VBI frames from the map -" << frames.size() << "sequential frames remaining.";
 }
 
