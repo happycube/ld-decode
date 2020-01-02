@@ -99,10 +99,8 @@ void testDecode()
         assertSame(decoder.decode(0, 0x80EEEE, 0), expected);
         assertSame(decoder.decode(0, 0, 0x80EEEE), expected);
 
-#if 0
         // EE1015 - lead-out code in line 16
         assertSame(decoder.decode(0x80EEEE, 0x80EEEE, 0), expected);
-#endif
     }
 
     cerr << "IEC 60857-1986 - 10.1.3 Picture numbers\n";
@@ -169,10 +167,8 @@ void testDecode()
     {
         Vbi expected;
 
-#if 0
         // Ignore invalid second digit
         assertSame(decoder.decode(0, 0x84ADDD, 0), expected);
-#endif
     }
 
     cerr << "IEC 60857-1986 - 10.1.6 Programme time code\n";
@@ -190,12 +186,10 @@ void testDecode()
     {
         Vbi expected;
 
-#if 0
         // Ignore invalid digits
         assertSame(decoder.decode(0, 0xFADD23, 0), expected);
         assertSame(decoder.decode(0, 0xF1DDA3, 0), expected);
         assertSame(decoder.decode(0, 0xF1DD2A, 0), expected);
-#endif
     }
 
     cerr << "IEC 60857-1986 - 10.1.7 Constant linear velocity code\n";
@@ -309,13 +303,11 @@ void testDecode()
     {
         Vbi expected;
 
-#if 0
         // Ignore invalid digits
         assertSame(decoder.decode(0x84E223, 0, 0), expected);
         assertSame(decoder.decode(0x8EEA23, 0, 0), expected);
         assertSame(decoder.decode(0x8EE2A3, 0, 0), expected);
         assertSame(decoder.decode(0x8EE22A, 0, 0), expected);
-#endif
     }
 }
 
