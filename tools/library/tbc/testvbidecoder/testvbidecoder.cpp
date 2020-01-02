@@ -77,8 +77,6 @@ void testDecode()
     // the standard says shouldn't work (e.g. invalid BCD digits), and for
     // things that discs do anyway regardless of what the standard says :-)
 
-    // FIXME - #if 0 blocks are tests that should pass but don't
-
     cerr << "Testing VbiDecoder::decode\n";
     cerr << "IEC 60857-1986 - 10.1.1 Lead-in\n";
 
@@ -283,10 +281,8 @@ void testDecode()
     {
         Vbi expected;
 
-#if 0
         // Ignore X1 not in range 0-7
         assertSame(decoder.decode(0x88DAFE, 0, 0), expected);
-#endif
     }
 
     cerr << "IEC 60857-1986 - 10.1.10 CLV picture number\n";
