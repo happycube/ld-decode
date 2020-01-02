@@ -230,9 +230,7 @@ void testDecode()
 
         // Any bit flips in X4 should be detected as invalid parity
         assert(!decoder.decode(0x8BA417, 0, 0).parity);
-#if 0
         assert(!decoder.decode(0x8BA407, 0, 0).parity);
-#endif
         assert(!decoder.decode(0x8BA447, 0, 0).parity);
         assert(!decoder.decode(0x8BA487, 0, 0).parity);
     }
@@ -270,10 +268,7 @@ void testDecode()
         expected.side = true;
         expected.standardAm2 = true;
         expected.parity = true;
-
-#if 0
         assertSame(decoder.decode(0x8BA839, 0, 0), expected);
-#endif
 
         // Any bit flips in X4 should be detected as invalid parity
         assert(!decoder.decode(0x8BA829, 0, 0).parity);

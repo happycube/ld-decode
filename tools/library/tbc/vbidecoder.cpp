@@ -659,8 +659,8 @@ bool VbiDecoder::parity(quint32 x4, quint32 x5)
     bool x53p = false;
 
     if ((((x51count % 2) == 0) && (x51 == 0)) || (((x51count % 2) != 0) && (x51 != 0))) x51p = true;
-    if ((((x52count % 2) == 0) && (x51 == 0)) || (((x52count % 2) != 0) && (x52 != 0))) x52p = true;
-    if ((((x53count % 2) == 0) && (x51 == 0)) || (((x53count % 2) != 0) && (x53 != 0))) x53p = true;
+    if ((((x52count % 2) == 0) && (x52 == 0)) || (((x52count % 2) != 0) && (x52 != 0))) x52p = true;
+    if ((((x53count % 2) == 0) && (x53 == 0)) || (((x53count % 2) != 0) && (x53 != 0))) x53p = true;
 
     if (x51p && x52p && x53p) return true;
     return false;
