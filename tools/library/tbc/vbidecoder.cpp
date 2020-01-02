@@ -138,49 +138,24 @@ VbiDecoder::Vbi VbiDecoder::decode(qint32 vbi16, qint32 vbi17, qint32 vbi18)
 
     // IEC 60857-1986 - 10.1.3 Picture numbers ------------------------------------------------------------------------
 
-    // Check for picture number on lines 17 and 18
-    quint32 bcdPictureNumber = 0;
+    // Check for CAV picture number on lines 17 and 18.
+    // The first digit is masked to be in the range 0-7, as the top bit was
+    // used to duplicate stop code signalling on early discs -- so the picture
+    // number is 0-79999.
 
-    // Check line 17
-    if ((vbi17 & 0xF00000) == 0xF00000 ) {
-        bcdPictureNumber = vbi17 & 0x07FFFF;
-        if (((bcdPictureNumber & 0xF0000) >> 16) > 9) bcdPictureNumber = 0;
-        if (((bcdPictureNumber & 0x0F000) >> 12) > 9) bcdPictureNumber = 0;
-        if (((bcdPictureNumber & 0x00F00) >> 8) > 9) bcdPictureNumber = 0;
-        if (((bcdPictureNumber & 0x000F0) >> 4) > 9) bcdPictureNumber = 0;
-        if (((bcdPictureNumber & 0x0000F) >> 0) > 9) bcdPictureNumber = 0;
+    if ((vbi17 & 0xF00000) == 0xF00000) {
+        if (decodeBCD(vbi17 & 0x07FFFF, vbi.picNo)) {
+            vbi.type = VbiDecoder::VbiDiscTypes::cav;
 
-        if (bcdPictureNumber == 0) qDebug() << "VbiDecoder::decode(): VBI picture number on line 17 corrupt";
+            if (verboseDebug) qDebug() << "VbiDecoder::decode(): VBI Picture number is" << vbi.picNo;
+        }
     }
 
-    // Check line 18
-    if (((vbi18 & 0xF00000) == 0xF00000 ) && bcdPictureNumber == 0) {
-        bcdPictureNumber = vbi18 & 0x07FFFF;
-        if (((bcdPictureNumber & 0xF0000) >> 16) > 9) bcdPictureNumber = 0;
-        if (((bcdPictureNumber & 0x0F000) >> 12) > 9) bcdPictureNumber = 0;
-        if (((bcdPictureNumber & 0x00F00) >> 8) > 9) bcdPictureNumber = 0;
-        if (((bcdPictureNumber & 0x000F0) >> 4) > 9) bcdPictureNumber = 0;
-        if (((bcdPictureNumber & 0x0000F) >> 0) > 9) bcdPictureNumber = 0;
+    if ((vbi18 & 0xF00000) == 0xF00000) {
+        if (decodeBCD(vbi18 & 0x07FFFF, vbi.picNo)) {
+            vbi.type = VbiDecoder::VbiDiscTypes::cav;
 
-        if (bcdPictureNumber == 0) qDebug() << "VbiDecoder::decode(): VBI picture number on line 18 corrupt";
-    }
-
-    if (bcdPictureNumber != 0) {
-        // This code indicates a CAV disc
-        vbi.type = VbiDecoder::VbiDiscTypes::cav;
-
-        // Peform BCD to integer conversion:
-        vbi.picNo =
-            (10000 * ((bcdPictureNumber & 0xF0000) / (16*16*16*16))) +
-            ( 1000 * ((bcdPictureNumber & 0x0F000) / (16*16*16))) +
-            (  100 * ((bcdPictureNumber & 0x00F00) / (16*16))) +
-            (   10 * ((bcdPictureNumber & 0x000F0) / 16)) +
-            (        ((bcdPictureNumber & 0x0000F)));
-
-        // IEC 60856 amendment 2 states maximum picture number is 79,999
-        if (vbi.picNo <= 0 && vbi.picNo >= 80000) {
-            if (verboseDebug) qDebug() << "VbiDecoder::decode(): VBI picture number is" << vbi.picNo << "(out of range - set to invalid!)";
-            vbi.picNo = -1;
+            if (verboseDebug) qDebug() << "VbiDecoder::decode(): VBI Picture number is" << vbi.picNo;
         }
     }
 
@@ -198,50 +173,45 @@ VbiDecoder::Vbi VbiDecoder::decode(qint32 vbi16, qint32 vbi17, qint32 vbi18)
 
     // IEC 60857-1986 - 10.1.5 Chapter numbers ------------------------------------------------------------------------
 
-    // Check for chapter number on lines 17 and 18
-    // Note: The allowed chapter number range is 0 to 79
-    quint32 bcdChapterNumber = 80;
+    // Check for chapter number on lines 17 and 18.
+    // The first digit is masked to be in the range 0-7, as the top bit is used
+    // to mark the first 400 tracks of the chapter -- so the chapter number is
+    // 0-79.
 
-    if ( (vbi17 & 0xF00FFF) == 0x800DDD ) {
-        bcdChapterNumber = (vbi17 & 0x07F000) >> 12;
-    } else if ( (vbi18 & 0xF00FFF) == 0x800DDD ) {
-        bcdChapterNumber = (vbi18 & 0x07F000) >> 12;
+    if ((vbi17 & 0xF00FFF) == 0x800DDD) {
+        if (decodeBCD((vbi17 & 0x07F000) >> 12, vbi.chNo)) {
+            if (verboseDebug) qDebug() << "VbiDecoder::decode(): VBI Chapter number is" << vbi.chNo;
+        }
     }
 
-    if (bcdChapterNumber < 80) {
-        // Peform BCD to integer conversion:
-        vbi.chNo =
-                (   10 * ((bcdChapterNumber & 0x000F0) / 16)) +
-                (        ((bcdChapterNumber & 0x0000F)));
-
-        if (verboseDebug) qDebug() << "VbiDecoder::decode(): VBI Chapter number is" << vbi.chNo;
-    } else {
-        if (verboseDebug) qDebug() << "VbiDecoder::decode(): VBI Chapter number not found";
+    if ((vbi18 & 0xF00FFF) == 0x800DDD) {
+        if (decodeBCD((vbi18 & 0x07F000) >> 12, vbi.chNo)) {
+            if (verboseDebug) qDebug() << "VbiDecoder::decode(): VBI Chapter number is" << vbi.chNo;
+        }
     }
 
     // IEC 60857-1986 - 10.1.6 Programme time code --------------------------------------------------------------------
 
-    bool clvProgrammeTimeCodeAvailable = false;
-    // Check for programme time code on lines 17 and 18
-    if ( (vbi17 & 0xF0FF00) == 0xF0DD00 ) {
-        vbi.clvHr = (vbi17 & 0x0F0000) >> 16;
-        vbi.clvMin = (vbi17 & 0x0000FF);
-        clvProgrammeTimeCodeAvailable = true;
-    } else if ( (vbi18 & 0xF0FF00) == 0xF0DD00 ) {
-        vbi.clvHr = (vbi18 & 0x0F0000) >> 16;
-        vbi.clvMin = (vbi18 & 0x0000FF);
-        clvProgrammeTimeCodeAvailable = true;
+    // Check for CLV programme time code on lines 17 and 18.
+    // Both hour and minute must be valid for us to trust the code.
+
+    if ((vbi17 & 0xF0FF00) == 0xF0DD00) {
+        qint32 hour;
+        if (decodeBCD((vbi17 & 0x0F0000) >> 16, hour) &&
+            decodeBCD(vbi17 & 0x0000FF, vbi.clvMin)) {
+            vbi.clvHr = hour;
+        }
     }
 
-    if (clvProgrammeTimeCodeAvailable) {
-        // Perform BCD conversion
-        vbi.clvHr =
-                (   10 * ((vbi.clvHr & 0x000F0) / 16)) +
-                (        ((vbi.clvHr & 0x0000F)));
-        vbi.clvMin =
-                (   10 * ((vbi.clvMin & 0x000F0) / 16)) +
-                (        ((vbi.clvMin & 0x0000F)));
+    if ((vbi18 & 0xF0FF00) == 0xF0DD00) {
+        qint32 hour;
+        if (decodeBCD((vbi18 & 0x0F0000) >> 16, hour) &&
+            decodeBCD(vbi18 & 0x0000FF, vbi.clvMin)) {
+            vbi.clvHr = hour;
+        }
+    }
 
+    if (vbi.clvHr != -1) {
         // Set the type to CLV for the field as well
         vbi.type = VbiDecoder::VbiDiscTypes::clv;
 
@@ -588,41 +558,31 @@ VbiDecoder::Vbi VbiDecoder::decode(qint32 vbi16, qint32 vbi17, qint32 vbi18)
 
     // IEC 60857-1986 - 10.1.10 CLV picture number --------------------------------------------------------------------
 
-    // Check for CLV picture number on line 16
-    qint32 clvPictureNumber = 0;
+    // Check for CLV picture number on line 16.
+    // Both second and picture number must be valid for us to trust the code.
 
     if ((vbi16 & 0xF0F000) == 0x80E000) {
-        clvPictureNumber = vbi16;
-    }
+        qint32 sec;
 
-    if (clvPictureNumber != 0) {
-        // Get the x1, x3, x4 and x5 parameters
-        qint32 x1   = (clvPictureNumber & 0x0F0000) >> 16;
-        qint32 x3   = (clvPictureNumber & 0x000F00) >> 8;
+        // The first digit of the second is A-F, rather than 0-5.
+        quint32 x1 = (vbi16 & 0x0F0000) >> 16;
 
-        qint32 x4   = (clvPictureNumber & 0x0000F0) >> 4;
-        qint32 x5   = (clvPictureNumber & 0x00000F);
+        if (x1 >= 0xA &&
+            decodeBCD((vbi16 & 0x000F00) >> 8, sec) &&
+            decodeBCD(vbi16 & 0x0000FF, vbi.clvPicNo)) {
 
-        vbi.clvSec = ((x1 - 10) * 10) + x3;
-        vbi.clvPicNo = (x4  * 10) + x5;
+            vbi.clvSec = (10 * (x1 - 0xA)) + sec;
 
-        // Set the type to CLV for the field as well
-        vbi.type = VbiDecoder::VbiDiscTypes::clv;
+            // Set the type to CLV for the field as well
+            vbi.type = VbiDecoder::VbiDiscTypes::clv;
 
-        if (verboseDebug) qDebug() << "VbiDecoder::decode(): VBI CLV picture number is" <<
-                    vbi.clvSec << "seconds," <<
-                    vbi.clvPicNo << "picture number";
-    }
+            if (verboseDebug) qDebug() << "VbiDecoder::decode(): VBI CLV picture number is" <<
+                        vbi.clvSec << "seconds," <<
+                        vbi.clvPicNo << "picture number";
 
-    // Output the disc type here, as the CLV time-code determination can change it
-    if (vbi.type == VbiDecoder::VbiDiscTypes::cav) {
-        if (verboseDebug) qDebug() << "VbiDecoder::decode(): VBI Disc type is CAV";
-        if (verboseDebug) qDebug() << "VbiDecoder::decode(): VBI picture number is" << vbi.picNo;
-    } else {
-        if (verboseDebug) qDebug() << "VbiDecoder::decode(): VBI Disc type is CLV";
-
-        // Invalidate the CAV picture number
-        vbi.picNo = -1;
+            // Invalidate the CAV picture number
+            vbi.picNo = -1;
+        }
     }
 
     return vbi;
@@ -664,4 +624,27 @@ bool VbiDecoder::parity(quint32 x4, quint32 x5)
 
     if (x51p && x52p && x53p) return true;
     return false;
+}
+
+// Decode a BCD number from bcd into output.
+// Returns true on success; if any digits aren't in the range 0-9, returns
+// false and does not modify output.
+bool VbiDecoder::decodeBCD(quint32 bcd, qint32 &output)
+{
+    qint32 value = 0;
+
+    quint32 place = 1;
+    while (bcd != 0) {
+        quint32 digit = bcd & 0xF;
+        if (digit > 9) {
+            return false;
+        }
+
+        value += digit * place;
+        place *= 10;
+        bcd >>= 4;
+    }
+
+    output = value;
+    return true;
 }

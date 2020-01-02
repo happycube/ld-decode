@@ -90,6 +90,7 @@ public:
 private:
     bool verboseDebug;
     bool parity(quint32 x4, quint32 x5);
+    bool decodeBCD(quint32 bcd, qint32 &output);
 };
 
 #endif // VBIDECODER_H
