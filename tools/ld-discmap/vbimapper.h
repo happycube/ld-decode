@@ -84,6 +84,7 @@ private:
     bool discCheck(LdDecodeMetaData &ldDecodeMetaData);
     bool createInitialMap(LdDecodeMetaData &ldDecodeMetaData);
     void correctFrameNumbering();
+    void removeCorruptFrames();
     void removeDuplicateFrames();
     void detectMissingFrames();
     bool isNtscAmendment2ClvFrameNumber(qint32 frameNumber);
