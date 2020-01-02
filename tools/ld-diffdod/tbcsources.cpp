@@ -427,8 +427,8 @@ void TbcSources::performFrameDiffDod(qint32 targetVbiFrame, qint32 dodThreshold,
     // Write the first and second field line metadata back to the source
     for (qint32 sourceNo = 0; sourceNo < availableSourcesForFrame.size(); sourceNo++) {
         // Get the required field numbers
-        qint32 firstFieldNumber = sourceVideos[availableSourcesForFrame[sourceNo]]->ldDecodeMetaData.getFirstFieldNumber(convertVbiFrameNumberToSequential(targetVbiFrame, sourceNo));
-        qint32 secondFieldNumber = sourceVideos[availableSourcesForFrame[sourceNo]]->ldDecodeMetaData.getSecondFieldNumber(convertVbiFrameNumberToSequential(targetVbiFrame, sourceNo));
+        qint32 firstFieldNumber = sourceVideos[availableSourcesForFrame[sourceNo]]->ldDecodeMetaData.getFirstFieldNumber(convertVbiFrameNumberToSequential(targetVbiFrame, availableSourcesForFrame[sourceNo]));
+        qint32 secondFieldNumber = sourceVideos[availableSourcesForFrame[sourceNo]]->ldDecodeMetaData.getSecondFieldNumber(convertVbiFrameNumberToSequential(targetVbiFrame, availableSourcesForFrame[sourceNo]));
 
         // Calculate the total number of dropouts detected for the frame
         qint32 totalFirstDropouts = frameDropouts[sourceNo].firstFieldDropOuts.startx.size();
