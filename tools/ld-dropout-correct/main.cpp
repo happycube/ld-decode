@@ -300,9 +300,9 @@ int main(int argc, char *argv[])
         }
 
         // Verify TBC and JSON input fields match
-        if (sourceVideos[i]->getNumberOfAvailableFields() != ldDecodeMetaData[0]->getNumberOfFields()) {
+        if (sourceVideos[i]->getNumberOfAvailableFields() != ldDecodeMetaData[i]->getNumberOfFields()) {
             qInfo() << "Warning: TBC file contains" << sourceVideos[i]->getNumberOfAvailableFields() <<
-                       "fields but the JSON indicates" << ldDecodeMetaData[0]->getNumberOfFields() <<
+                       "fields but the JSON indicates" << ldDecodeMetaData[i]->getNumberOfFields() <<
                        "fields - some fields will be ignored";
             qInfo() << "Update your copy of ld-decode and try again, this shouldn't happen unless the JSON metadata has been corrupted";
         }
