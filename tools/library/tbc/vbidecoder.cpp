@@ -549,11 +549,13 @@ VbiDecoder::Vbi VbiDecoder::decode(qint32 vbi16, qint32 vbi17, qint32 vbi18)
         quint32 x3x4x5 = (usersCode & 0x000FFF);
 
         // x1 should be 0x00-0x07, x3-x5 are 0x00-0x0F
-        if (x1 > 7) if (verboseDebug) qDebug() << "VbiDecoder::decode(): VBI invalid user code, X1 is > 7";
-
-        // Add the two results together to get the user code
-        vbi.userCode = QString::number(x1, 16).toUpper() + QString::number(x3x4x5, 16).toUpper();
-        if (verboseDebug) qDebug() << "VbiDecoder::decode(): VBI user code is" << vbi.userCode;
+        if (x1 > 7) {
+            if (verboseDebug) qDebug() << "VbiDecoder::decode(): VBI invalid user code, X1 is > 7";
+        } else {
+            // Add the two results together to get the user code
+            vbi.userCode = QString::number(x1, 16).toUpper() + QString::number(x3x4x5, 16).toUpper();
+            if (verboseDebug) qDebug() << "VbiDecoder::decode(): VBI user code is" << vbi.userCode;
+        }
     }
 
     // IEC 60857-1986 - 10.1.10 CLV picture number --------------------------------------------------------------------
