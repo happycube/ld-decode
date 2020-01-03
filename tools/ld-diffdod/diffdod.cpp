@@ -30,7 +30,8 @@ Diffdod::Diffdod(QObject *parent) : QObject(parent)
 }
 
 bool Diffdod::process(QVector<QString> inputFilenames, bool reverse,
-                      qint32 dodThreshold, bool noLumaClip)
+                      qint32 dodThreshold, bool noLumaClip,
+                      qint32 startVbi, qint32 lengthVbi)
 {
     // Show input filenames
     qInfo() << "Processing" << inputFilenames.size() << "input TBC files:";
@@ -52,8 +53,14 @@ bool Diffdod::process(QVector<QString> inputFilenames, bool reverse,
     qInfo() << "Sources have VBI frame number range of" << tbcSources.getMinimumVbiFrameNumber() << "to" << tbcSources.getMaximumVbiFrameNumber();
 
     // Check start and length
-    qint32 vbiStartFrame = tbcSources.getMinimumVbiFrameNumber();
-    qint32 length = tbcSources.getMaximumVbiFrameNumber() - tbcSources.getMinimumVbiFrameNumber() + 1;
+    qint32 vbiStartFrame = startVbi;
+    if (vbiStartFrame < tbcSources.getMinimumVbiFrameNumber())
+        vbiStartFrame = tbcSources.getMinimumVbiFrameNumber();
+
+    qint32 length = lengthVbi;
+    if (length > (tbcSources.getMaximumVbiFrameNumber() - vbiStartFrame + 1))
+        length = tbcSources.getMaximumVbiFrameNumber() - vbiStartFrame + 1;
+    if (length == -1) length = tbcSources.getMaximumVbiFrameNumber() - tbcSources.getMinimumVbiFrameNumber() + 1;
 
     qInfo() << "Processing" << length << "frames starting from VBI frame" << vbiStartFrame;
     if (!tbcSources.saveSources(vbiStartFrame, length, dodThreshold, noLumaClip)) {
