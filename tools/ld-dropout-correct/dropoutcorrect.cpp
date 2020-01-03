@@ -43,8 +43,6 @@ void DropOutCorrect::run()
     QVector<LdDecodeMetaData::Field> firstFieldMetadata;
     QVector<LdDecodeMetaData::Field> secondFieldMetadata;
     bool reverse, intraField, overCorrect;
-    QVector<qint32> minVbiForSource;
-    QVector<qint32> maxVbiForSource;
     QVector<qint32> availableSourcesForFrame;
     QVector<qreal> sourceFrameQuality;
 
@@ -56,8 +54,7 @@ void DropOutCorrect::run()
         if (!correctorPool.getInputFrame(frameNumber, firstFieldSeqNo, firstSourceField, firstFieldMetadata,
                                        secondFieldSeqNo, secondSourceField, secondFieldMetadata,
                                        videoParameters, reverse, intraField, overCorrect,
-                                       minVbiForSource, maxVbiForSource, availableSourcesForFrame,
-                                       sourceFrameQuality)) {
+                                       availableSourcesForFrame, sourceFrameQuality)) {
             // No more input fields -- exit
             break;
         }

@@ -134,7 +134,7 @@ bool CorrectorPool::getInputFrame(qint32& frameNumber,
                                   QVector<qint32>& secondFieldNumber, QVector<QByteArray>& secondFieldVideoData, QVector<LdDecodeMetaData::Field>& secondFieldMetadata,
                                   QVector<LdDecodeMetaData::VideoParameters>& videoParameters,
                                   bool& _reverse, bool& _intraField, bool& _overCorrect,
-                                  QVector<qint32>& minVbiForSource, QVector<qint32>& maxVbiForSource, QVector<qint32>& availableSourcesForFrame, QVector<qreal>& sourceFrameQuality)
+                                  QVector<qint32>& availableSourcesForFrame, QVector<qreal>& sourceFrameQuality)
 {
     QMutexLocker locker(&inputMutex);
 
@@ -167,6 +167,10 @@ bool CorrectorPool::getInputFrame(qint32& frameNumber,
     if (numberOfSources > 1) currentVbiFrame = convertSequentialFrameNumberToVbi(frameNumber, 0);
     for (qint32 sourceNo = 0; sourceNo < numberOfSources; sourceNo++) {
         // Determine the fields for the input frame
+        firstFieldNumber[sourceNo] = -1;
+        secondFieldNumber[sourceNo] = -1;
+        sourceFrameQuality[sourceNo] = -1;
+
         if (sourceNo == 0) {
             // No need to perform VBI frame number mapping on the first source
             firstFieldNumber[sourceNo] = ldDecodeMetaData[sourceNo]->getFirstFieldNumber(frameNumber);
@@ -196,9 +200,6 @@ bool CorrectorPool::getInputFrame(qint32& frameNumber,
                         " and fields " << firstFieldNumber[sourceNo] << "/" << secondFieldNumber[sourceNo] <<
                         " (quality is " << sourceFrameQuality[sourceNo] << ")";
         } else {
-            firstFieldNumber[sourceNo] = -1;
-            secondFieldNumber[sourceNo] = -1;
-            sourceFrameQuality[sourceNo] = -1;
             qDebug().nospace() << "CorrectorPool::getInputFrame(): Source #" << sourceNo << " does not contain a usable frame";
         }
 
@@ -231,9 +232,6 @@ bool CorrectorPool::getInputFrame(qint32& frameNumber,
     _reverse = reverse;
     _intraField = intraField;
     _overCorrect = overCorrect;
-
-    minVbiForSource = sourceMinimumVbiFrame;
-    maxVbiForSource = sourceMaximumVbiFrame;
 
     return true;
 }
@@ -328,8 +326,6 @@ bool CorrectorPool::setMinAndMaxVbiFrames()
     sourceMinimumVbiFrame.resize(numberOfSources);
 
     for (qint32 sourceNumber = 0; sourceNumber < numberOfSources; sourceNumber++) {
-        sourceDiscTypeCav[sourceNumber] = false;
-
         // Determine the disc type and max/min VBI frame numbers
         VbiDecoder vbiDecoder;
         qint32 cavCount = 0;
@@ -338,6 +334,10 @@ bool CorrectorPool::setMinAndMaxVbiFrames()
         qint32 cavMax = 0;
         qint32 clvMin = 1000000;
         qint32 clvMax = 0;
+
+        sourceMinimumVbiFrame[sourceNumber] = 0;
+        sourceMaximumVbiFrame[sourceNumber] = 0;
+        sourceDiscTypeCav[sourceNumber] = false;
 
         // Using sequential frame numbering starting from 1
         for (qint32 seqFrame = 1; seqFrame <= ldDecodeMetaData[sourceNumber]->getNumberOfFrames(); seqFrame++) {
