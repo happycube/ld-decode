@@ -196,6 +196,32 @@ qint32 TbcSources::getMaximumVbiFrameNumber()
     return maximumFrameNumber;
 }
 
+// Verify that at least 3 sources are available for every VBI frame
+void TbcSources::verifySources(qint32 vbiStartFrame, qint32 length)
+{
+    qint32 uncorrectableFrameCount = 0;
+
+    // Process the sources frame by frame
+    for (qint32 vbiFrame = vbiStartFrame; vbiFrame < vbiStartFrame + length; vbiFrame++) {
+        // Check how many source frames are available for the current frame
+        QVector<qint32> availableSourcesForFrame = getAvailableSourcesForFrame(vbiFrame);
+
+        // DiffDOD requires at least three source frames.  If 3 sources are not available leave any existing DO records in place
+        // and output a warning to the user
+        if (availableSourcesForFrame.size() < 3) {
+            // Differential DOD requires at least 3 valid source frames
+            qInfo().nospace() << "Frame #" << vbiFrame << " has only " << availableSourcesForFrame.size() << " source frames available - cannot correct";
+            uncorrectableFrameCount++;
+        }
+    }
+
+    if (uncorrectableFrameCount != 0) {
+        qInfo() << "Warning:" << uncorrectableFrameCount << "frame(s) cannot be corrected!";
+    } else {
+        qInfo() << "All frames have at least 3 sources available";
+    }
+}
+
 // Private methods ----------------------------------------------------------------------------------------------------
 
 // Perform differential dropout detection to determine (for each source) which frame pixels are valid

@@ -49,6 +49,7 @@ public:
     qint32 getNumberOfAvailableSources();
     qint32 getMinimumVbiFrameNumber();
     qint32 getMaximumVbiFrameNumber();
+    void verifySources(qint32 vbiStartFrame, qint32 length);
 
 private:
     // Source definition

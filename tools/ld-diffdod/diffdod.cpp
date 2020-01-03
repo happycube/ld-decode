@@ -62,6 +62,11 @@ bool Diffdod::process(QVector<QString> inputFilenames, bool reverse,
         length = tbcSources.getMaximumVbiFrameNumber() - vbiStartFrame + 1;
     if (length == -1) length = tbcSources.getMaximumVbiFrameNumber() - tbcSources.getMinimumVbiFrameNumber() + 1;
 
+    // Verify frame source availablity
+    qInfo() << "";
+    qInfo() << "Verifying VBI frame multi-source availablity:";
+    tbcSources.verifySources(vbiStartFrame, length);
+
     qInfo() << "Processing" << length << "frames starting from VBI frame" << vbiStartFrame;
     if (!tbcSources.saveSources(vbiStartFrame, length, dodThreshold, noLumaClip)) {
         qCritical() << "Saving source failed!";
