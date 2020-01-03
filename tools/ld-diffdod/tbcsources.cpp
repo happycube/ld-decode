@@ -503,6 +503,8 @@ bool TbcSources::setDiscTypeAndMaxMinFrameVbi(qint32 sourceNumber)
     qint32 cavMax = 0;
     qint32 clvMin = 1000000;
     qint32 clvMax = 0;
+    qint32 previousFrame = 0;
+
     // Using sequential frame numbering starting from 1
     for (qint32 seqFrame = 1; seqFrame <= sourceVideos[sourceNumber]->ldDecodeMetaData.getNumberOfFrames(); seqFrame++) {
         // Get the VBI data and then decode
@@ -518,6 +520,13 @@ bool TbcSources::setDiscTypeAndMaxMinFrameVbi(qint32 sourceNumber)
 
             if (vbi.picNo < cavMin) cavMin = vbi.picNo;
             if (vbi.picNo > cavMax) cavMax = vbi.picNo;
+
+            // Check for non-sequential VBI frame numbers
+            if (vbi.picNo != previousFrame + 1 && seqFrame > 1) {
+                qWarning() << "VBI frame numbering is not sequential!  Prev:" << previousFrame << "Curr:" << vbi.picNo;
+            }
+
+            previousFrame = vbi.picNo;
         }
 
         if (vbi.clvHr != -1 && vbi.clvMin != -1 &&

@@ -312,22 +312,23 @@ void VbiMapper::correctFrameNumbering()
         else maxFrames = 121800; // NTSC CLV set to 70 minutes (70*60*29)
     }
 
-    // Correct from frames from start + 1 to end
+    qInfo() << "Checking for missing frame numbers before correction";
     for (qint32 frameElement = 1; frameElement < frames.size(); frameElement++) {
         // Check if frame number is missing
-        bool isMissing = false;
         if (frames[frameElement].vbiFrameNumber < 1) {
             frameMissingFrameNumberCount++;
 
             // Set the frame number to a sane value ready for correction
             frames[frameElement].vbiFrameNumber = frames[frameElement - 1].vbiFrameNumber + 1;
             frames[frameElement].isCorruptVbi = true; // Flag that the VBI should be rewritten
-            qDebug() << "Seq. frame" << frameElement << "has a VBI frame number of -1 - Setting to" <<
-                       frames[frameElement].vbiFrameNumber << "before correction";
-
-            isMissing = true;
+            qInfo() << "Seq. frame" << frameElement << "has a VBI frame number of -1 - Setting to" <<
+                       frames[frameElement].vbiFrameNumber;
         }
+    }
 
+    qInfo() << "Performing sequential VBI frame numbering check/correction";
+    // Correct from frames from start + 1 to end
+    for (qint32 frameElement = 1; frameElement < frames.size(); frameElement++) {
         // Are there enough remaining frames to perform the search?
         if ((frames.size() - frameElement) < searchDistance) searchDistance = frames.size() - frameElement;
 
@@ -384,17 +385,6 @@ void VbiMapper::correctFrameNumbering()
                             frameNumberErrorCount++;
                         }
                     }
-                }
-            } else {
-                if (isMissing) {
-                    // This catches the condition where a VBI frame number is missing and the initial 'guess'
-                    // (of the last VBI number + 1) is correct - in which case the gap analysis won't see
-                    // the error frame and report it correctly to qInfo
-                    qInfo() << "    Seq. frame number" << frameElement << "has no VBI frame number";
-                    qInfo() << "    VBI frame number corrected to" << frames[frameElement].vbiFrameNumber;
-                    frameNumberErrorCount++;
-                    isMissing = false;
-                    frames[frameElement].isCorruptVbi = true; // Flag that the VBI should be rewritten
                 }
             }
         }

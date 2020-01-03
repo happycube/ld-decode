@@ -118,6 +118,7 @@ bool DiscMap::saveSource(QString filename)
     QByteArray firstSourceField;
     QByteArray secondSourceField;
     bool writeFail = false;
+    qint32 previousFrameNumber = -1;
     for (qint32 frameElement = 0; frameElement < vbiMapper.getNumberOfFrames(); frameElement++) {
         // Get the source frame field data
         if (vbiMapper.getFrame(frameElement).isMissing) {
@@ -171,9 +172,12 @@ bool DiscMap::saveSource(QString filename)
                 if (!firstSourceMetadata.vbi.inUse) {
                     firstSourceMetadata.vbi.inUse = true;
                     firstSourceMetadata.vbi.vbiData.resize(3);
-                }
+                } 
 
+                qDebug() << "Writing new VBI data for sequential frame" << frameElement <<
+                            "- new VBI frame number is" << vbiMapper.getFrame(frameElement).vbiFrameNumber;
                 if (vbiMapper.isDiscCav()) {
+                    firstSourceMetadata.vbi.vbiData[0] = 0;
                     firstSourceMetadata.vbi.vbiData[1] = convertFrameToVbi(vbiMapper.getFrame(frameElement).vbiFrameNumber);
                     firstSourceMetadata.vbi.vbiData[2] = convertFrameToVbi(vbiMapper.getFrame(frameElement).vbiFrameNumber);
                 } else {
@@ -211,6 +215,14 @@ bool DiscMap::saveSource(QString filename)
             sourceVideo.close();
             return false;
         }
+
+        // Check frames are sequential
+        if (frameElement > 1) {
+            if (vbiMapper.getFrame(frameElement).vbiFrameNumber != previousFrameNumber + 1) {
+                qInfo() << "Warning! VBI frame numbers are not sequential - something has gone wrong";
+            }
+        }
+        previousFrameNumber = vbiMapper.getFrame(frameElement).vbiFrameNumber;
 
         if (frameElement % 500 == 0) {
             if (vbiMapper.isDiscCav()) {
