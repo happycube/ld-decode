@@ -68,12 +68,23 @@ int main(int argc, char *argv[])
                                        QCoreApplication::translate("main", "Do not perform luma clip dropout detection"));
     parser.addOption(setNoLumaOption);
 
-
-    // Option to select DOD threshold (dod-threshold) (-x)
+    // Option to select DOD threshold (-x / --dod-threshold)
     QCommandLineOption dodThresholdOption(QStringList() << "x" << "dod-threshold",
-                                        QCoreApplication::translate("main", "Specify the DOD threshold (100-65435 default: 700"),
+                                        QCoreApplication::translate("main", "Specify the DOD threshold (100-65435 default: 1200"),
                                         QCoreApplication::translate("main", "number"));
     parser.addOption(dodThresholdOption);
+
+    // Option to select the start VBI frame (-s / --start)
+    QCommandLineOption startVbiOption(QStringList() << "s" << "start",
+                                        QCoreApplication::translate("main", "Specify the start VBI frame"),
+                                        QCoreApplication::translate("main", "number"));
+    parser.addOption(startVbiOption);
+
+    // Option to select the maximum number of VBI frames to process (-l / --length)
+    QCommandLineOption lengthVbiOption(QStringList() << "l" << "length",
+                                        QCoreApplication::translate("main", "Specify the maximum number of VBI frames to process"),
+                                        QCoreApplication::translate("main", "number"));
+    parser.addOption(lengthVbiOption);
 
     // Positional argument to specify input TBC files
     parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input TBC files (minimum of 3)"));
@@ -108,8 +119,7 @@ int main(int argc, char *argv[])
         return -1;
     }
 
-    qint32 dodThreshold = 700;
-
+    qint32 dodThreshold = 1200;
     if (parser.isSet(dodThresholdOption)) {
         dodThreshold = parser.value(dodThresholdOption).toInt();
 
@@ -120,9 +130,31 @@ int main(int argc, char *argv[])
         }
     }
 
+    qint32 vbiFrameStart = 0;
+    if (parser.isSet(startVbiOption)) {
+        vbiFrameStart = parser.value(startVbiOption).toInt();
+
+        if (vbiFrameStart < 1 || vbiFrameStart > 160000) {
+            // Quit with error
+            qCritical("Start VBI frame must be between 1 and 160000");
+            return -1;
+        }
+    }
+
+    qint32 vbiFrameLength = -1;
+    if (parser.isSet(lengthVbiOption)) {
+        vbiFrameLength = parser.value(lengthVbiOption).toInt();
+
+        if (vbiFrameLength < 1 || vbiFrameLength > 160000) {
+            // Quit with error
+            qCritical("VBI frame length must be between 1 and 160000");
+            return -1;
+        }
+    }
+
     // Process the TBC file
     Diffdod diffdod;
-    if (!diffdod.process(inputFilenames, reverse, dodThreshold, noLumaClip)) {
+    if (!diffdod.process(inputFilenames, reverse, dodThreshold, noLumaClip, vbiFrameStart, vbiFrameLength)) {
         return 1;
     }
 
