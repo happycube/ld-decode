@@ -45,6 +45,7 @@ CMakeLists.txt.user*
 /ld-chroma-decoder/encoder/ld-chroma-encoder
 /ld-chroma-decoder/ld-chroma-decoder
 /ld-dropout-correct/ld-dropout-correct
+/ld-export-metadata/ld-export-metadata
 /ld-process-vbi/ld-process-vbi
 /ld-process-efm/ld-process-efm
 /ld-lds-converter/ld-lds-converter
