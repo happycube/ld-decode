@@ -370,7 +370,7 @@ void TbcSources::performFrameDiffDod(qint32 targetVbiFrame, qint32 dodThreshold,
         }
     }
 
-    // Based on the diffential value - mark the data as a drop-out if required ----------------------------------------
+    // Based on the differential value - mark the data as a drop-out if required ----------------------------------------
 
     // This compares each available source against all other available sources to determine where the source differs.
     // If any of the frame's contents do not match that of the other sources, the frame's pixels are marked as dropouts.
@@ -451,6 +451,7 @@ void TbcSources::performFrameDiffDod(qint32 targetVbiFrame, qint32 dodThreshold,
     } // Next line
 
     // Write the first and second field line metadata back to the source
+    QVector<qint32> totalForSource(availableSourcesForFrame.size());
     for (qint32 sourceNo = 0; sourceNo < availableSourcesForFrame.size(); sourceNo++) {
         // Get the required field numbers
         qint32 firstFieldNumber = sourceVideos[availableSourcesForFrame[sourceNo]]->ldDecodeMetaData.getFirstFieldNumber(convertVbiFrameNumberToSequential(targetVbiFrame, availableSourcesForFrame[sourceNo]));
@@ -464,10 +465,25 @@ void TbcSources::performFrameDiffDod(qint32 targetVbiFrame, qint32 dodThreshold,
                     "frame" << targetVbiFrame << "fields" << firstFieldNumber << "/" << secondFieldNumber <<
                     "- Dropout records" << totalFirstDropouts << "/" << totalSecondDropouts;
 
+        // Record the total number of DOs for this source
+        totalForSource[sourceNo] = totalFirstDropouts + totalSecondDropouts;
+
         // Write the metadata
         sourceVideos[availableSourcesForFrame[sourceNo]]->ldDecodeMetaData.updateFieldDropOuts(frameDropouts[sourceNo].firstFieldDropOuts, firstFieldNumber);
         sourceVideos[availableSourcesForFrame[sourceNo]]->ldDecodeMetaData.updateFieldDropOuts(frameDropouts[sourceNo].secondFieldDropOuts, secondFieldNumber);
     }
+
+    // Check for mismatched source (display warning if detected DOs are more than 3x the average)
+    qint32 averageDo = 0;
+    for (qint32 sourceNo = 0; sourceNo < availableSourcesForFrame.size(); sourceNo++) averageDo += totalForSource[sourceNo];
+    averageDo = averageDo / availableSourcesForFrame.size();
+    for (qint32 sourceNo = 0; sourceNo < availableSourcesForFrame.size(); sourceNo++) {
+        if (totalForSource[sourceNo] > (averageDo * 3)) {
+            qInfo() << "Warning: Source" << availableSourcesForFrame[sourceNo] << "VBI frame" << targetVbiFrame << "has" <<
+                       totalForSource[sourceNo] << "dropouts - possible mismatching source?";
+        }
+    }
+
 }
 
 // Method that returns a vector of the sources that contain data for the required VBI frame number

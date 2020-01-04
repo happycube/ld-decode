@@ -40,6 +40,7 @@ bool Diffdod::process(QVector<QString> inputFilenames, bool reverse,
     // And then show the rest...
     if (reverse) qInfo() << "Using reverse field order"; else qInfo() << "Using normal field order";
     qInfo() << "Dropout detection threshold is" << dodThreshold;
+    if (noLumaClip) qInfo() << "Not performing luma clip detection"; else qInfo() << "Performing luma clip detection";
     qInfo() << "";
 
     // Load the input TBC files
