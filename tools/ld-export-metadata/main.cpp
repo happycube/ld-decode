@@ -28,6 +28,7 @@
 #include <QCommandLineParser>
 
 #include "csv.h"
+#include "ffmetadata.h"
 
 #include "lddecodemetadata.h"
 
@@ -123,6 +124,11 @@ int main(int argc, char *argv[])
                                           QCoreApplication::translate("main", "file"));
     parser.addOption(writeVbiCsvOption);
 
+    QCommandLineOption writeFfmetadataOption("ffmetadata",
+                                             QCoreApplication::translate("main", "Write navigation information as FFMETADATA1"),
+                                             QCoreApplication::translate("main", "file"));
+    parser.addOption(writeFfmetadataOption);
+
     // -- Positional arguments --
 
     // Positional argument to specify input video file
@@ -163,6 +169,13 @@ int main(int argc, char *argv[])
     if (parser.isSet(writeVbiCsvOption)) {
         const QString &fileName = parser.value(writeVbiCsvOption);
         if (!writeVbiCsv(metaData, fileName)) {
+            qCritical() << "Failed to write output file:" << fileName;
+            return 1;
+        }
+    }
+    if (parser.isSet(writeFfmetadataOption)) {
+        const QString &fileName = parser.value(writeFfmetadataOption);
+        if (!writeFfmetadata(metaData, fileName)) {
             qCritical() << "Failed to write output file:" << fileName;
             return 1;
         }

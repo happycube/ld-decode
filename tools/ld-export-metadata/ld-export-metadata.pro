@@ -16,12 +16,14 @@ DEFINES += QT_DEPRECATED_WARNINGS
 
 SOURCES += \
     csv.cpp \
+    ffmetadata.cpp \
     main.cpp \
     ../library/tbc/lddecodemetadata.cpp \
     ../library/tbc/vbidecoder.cpp
 
 HEADERS += \
     csv.h \
+    ffmetadata.h \
     ../library/tbc/lddecodemetadata.h \
     ../library/tbc/vbidecoder.h
 
