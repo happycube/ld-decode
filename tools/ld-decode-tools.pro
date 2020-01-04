@@ -8,6 +8,7 @@ SUBDIRS = \
     ld-diffdod \
     ld-discmap \
     ld-dropout-correct \
+    ld-export-metadata \
     ld-lds-converter \
     ld-process-efm \
     ld-process-vbi \
