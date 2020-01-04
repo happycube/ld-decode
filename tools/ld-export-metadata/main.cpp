@@ -27,6 +27,8 @@
 #include <QtGlobal>
 #include <QCommandLineParser>
 
+#include "csv.h"
+
 #include "lddecodemetadata.h"
 
 // Global for debug output
@@ -153,14 +155,14 @@ int main(int argc, char *argv[])
     // Write the selected output files
     if (parser.isSet(writeVitsCsvOption)) {
         const QString &fileName = parser.value(writeVitsCsvOption);
-        if (!metaData.writeVitsCsv(fileName)) {
+        if (!writeVitsCsv(metaData, fileName)) {
             qCritical() << "Failed to write output file:" << fileName;
             return 1;
         }
     }
     if (parser.isSet(writeVbiCsvOption)) {
         const QString &fileName = parser.value(writeVbiCsvOption);
-        if (!metaData.writeVbiCsv(fileName)) {
+        if (!writeVbiCsv(metaData, fileName)) {
             qCritical() << "Failed to write output file:" << fileName;
             return 1;
         }

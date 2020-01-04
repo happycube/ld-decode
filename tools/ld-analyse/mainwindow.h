@@ -67,8 +67,6 @@ private slots:
     void on_actionDropout_analysis_triggered();
     void on_actionSNR_analysis_triggered();
     void on_actionSave_frame_as_PNG_triggered();
-    void on_actionSave_metadata_as_CSV_triggered();
-    void on_actionSave_VBI_as_CSV_triggered();
     void on_actionZoom_In_triggered();
     void on_actionZoom_Out_triggered();
     void on_actionZoom_1x_triggered();
