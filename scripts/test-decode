@@ -121,11 +121,12 @@ def run_ld_process_vbi(args):
 def run_ld_export_metadata(args):
     """Run ld-export-metadata."""
 
-    clean(args, ['.vits.csv', '.vbi.csv'])
+    clean(args, ['.vits.csv', '.vbi.csv', '.ffmetadata'])
 
     cmd = [src_dir + '/tools/ld-export-metadata/ld-export-metadata']
     cmd += ['--vits-csv', args.output + '.vits.csv']
     cmd += ['--vbi-csv', args.output + '.vbi.csv']
+    cmd += ['--ffmetadata', args.output + '.ffmetadata']
     cmd += [args.output + '.tbc.json']
     run_command(cmd)
 
