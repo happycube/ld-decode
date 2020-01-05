@@ -2489,6 +2489,7 @@ class LDdecode:
 
         self.fieldinfo = []
 
+        self.leadIn = False
         self.leadOut = False
         self.isCLV = False
         self.frameNumber = None
@@ -2667,6 +2668,8 @@ class LDdecode:
             
             if l == 0x80eeee: # lead-out reached
                 leadoutCount += 1
+            elif l == 0x88ffff: # lead-in
+                self.leadIn = True
             elif (l & 0xf0dd00) == 0xf0dd00: # CLV minutes/hours
                 self.clvMinutes = (l & 0xf) + (((l >> 4) & 0xf) * 10) + (((l >> 16) & 0xf) * 60)
                 self.isCLV = True
@@ -2913,6 +2916,8 @@ class LDdecode:
                         print("file frame %d CLV timecode %d:%.2d.%.2d frame %d" % (rawloc, self.clvMinutes, self.clvSeconds, self.clvFrameNum, self.frameNumber), file=sys.stderr)
                     elif self.frameNumber:
                         print("file frame %d CAV frame %d" % (rawloc, self.frameNumber), file=sys.stderr)
+                    elif self.leadIn:
+                        print("file frame %d lead in" % (rawloc), file=sys.stderr)
                     elif self.leadOut:
                         print("file frame %d lead out" % (rawloc), file=sys.stderr)
                     else:
