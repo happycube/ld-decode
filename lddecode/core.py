@@ -2968,21 +2968,19 @@ class LDdecode:
 
         for retries in range(3):
             fnr = self.seek_getframenr(cur)
-            cur = int((self.fieldloc / self.bytes_per_field))
             if fnr is None:
                 return None
-            else:
-                if fnr == target:
-                    logging.info("Finished seek")
-                    print("Finished seeking, starting at frame", fnr, file=sys.stderr)
-                    self.roughseek(cur)
-                    return cur
-                else:
-                    cur += ((target - fnr) * 2) - 1
 
-        print("Finished seeking, starting at frame", fnr, file=sys.stderr)
+            cur = int((self.fieldloc / self.bytes_per_field))
+            if fnr == target:
+                logging.info("Finished seek")
+                print("Finished seeking, starting at frame", fnr, file=sys.stderr)
+                self.roughseek(cur)
+                return cur
 
-        return cur - 0
+            cur += ((target - fnr) * 2) - 1
+
+        return None
 
     def build_json(self, f):
         ''' build up the JSON structure for file output. '''

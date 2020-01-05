@@ -69,13 +69,19 @@ if args.MTF_offset is not None:
 
 if args.seek != -1:
     startloc = ldd.seek(args.start, args.seek) 
-    if startloc > 1:
+    if startloc is None:
+        print("ERROR: Seeking failed")
+        exit(1)
+    elif startloc > 1:
         startloc -= 1
 else:
     startloc = args.start * 2
 
 if args.end != -1:
     endloc = ldd.seek(startloc, args.end)
+    if endloc is None:
+        print("ERROR: Seeking failed")
+        exit(1)
 elif args.length != -1:
     endloc = startloc + (args.length * 2)
 else:
