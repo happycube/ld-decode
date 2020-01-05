@@ -2660,46 +2660,53 @@ class LDdecode:
         self.clvSeconds = None
         self.clvFrameNum = None
 
+        def decodeBCD(bcd):
+            """Read a BCD-encoded number.
+            Raise ValueError if any of the digits aren't valid BCD."""
+
+            if bcd == 0:
+                return 0
+            else:
+                digit = bcd & 0xF
+                if digit > 9:
+                    raise ValueError("Non-decimal BCD digit")
+                return (10 * decodeBCD(bcd >> 4)) + digit
+
         leadoutCount = 0
 
         for l in f1.linecode + f2.linecode:
             if l is None:
                 continue
-            
+
             if l == 0x80eeee: # lead-out reached
                 leadoutCount += 1
             elif l == 0x88ffff: # lead-in
                 self.leadIn = True
             elif (l & 0xf0dd00) == 0xf0dd00: # CLV minutes/hours
-                self.clvMinutes = (l & 0xf) + (((l >> 4) & 0xf) * 10) + (((l >> 16) & 0xf) * 60)
-                self.isCLV = True
-                #logging.info('CLV', mins)
+                try:
+                    self.clvMinutes = decodeBCD(l & 0xff) + (decodeBCD((l >> 16) & 0xf) * 60)
+                    self.isCLV = True
+                    #logging.info('CLV', mins)
+                except ValueError:
+                    pass
             elif (l & 0xf00000) == 0xf00000: # CAV frame
                 # Ignore the top bit of the first digit, used for PSC
-                l &= 0x7ffff
-
-                fnum = 0
-                for y in range(16, -1, -4):
-                    fnum *= 10
-                    toadd = l >> y & 0x0f
-                    if toadd > 9:
-                        fnum = -1
-                        break
-                    fnum += toadd
-                    
-                    fnum = fnum if fnum < 80000 else fnum - 80000
-
-                if fnum >= 0:
-                    return fnum
-                    
+                try:
+                    return decodeBCD(l & 0x7ffff)
+                except ValueError:
+                    pass
             elif (l & 0x80f000) == 0x80e000: # CLV picture #
-                self.clvSeconds = (((l >> 16) & 0xf) - 10) * 10
-                self.clvSeconds += ((l >> 8) & 0xf)
+                try:
+                    sec1s = decodeBCD((l >> 8) & 0xf)
+                    sec10s = ((l >> 16) & 0xf) - 0xa
+                    if sec10s < 0:
+                        raise ValueError("Digit 2 not in range A-F")
 
-                self.clvFrameNum = ((l >> 4) & 0xf) * 10
-                self.clvFrameNum += (l & 0xf)
-
-                self.isCLV = True
+                    self.clvFrameNum = decodeBCD(l & 0xff)
+                    self.clvSeconds = sec1s + (10 * sec10s)
+                    self.isCLV = True
+                except ValueError:
+                    pass
 
             if self.clvMinutes is not None:
                 if self.clvSeconds is not None: # newer CLV
