@@ -24,11 +24,6 @@
 
 #include "fmcode.h"
 
-FmCode::FmCode(QObject *parent) : QObject(parent)
-{
-
-}
-
 // Public method to read a 40-bit FM coded signal from a field line
 FmCode::FmDecode FmCode::fmDecoder(QByteArray lineData, LdDecodeMetaData::VideoParameters videoParameters)
 {

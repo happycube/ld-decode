@@ -24,11 +24,6 @@
 
 #include "closedcaption.h"
 
-ClosedCaption::ClosedCaption(QObject *parent) : QObject(parent)
-{
-
-}
-
 // Public method to read CEA-608 Closed Captioning data (NTSC only)
 ClosedCaption::CcData ClosedCaption::getData(QByteArray lineData, LdDecodeMetaData::VideoParameters videoParameters)
 {
