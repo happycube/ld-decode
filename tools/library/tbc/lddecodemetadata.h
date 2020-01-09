@@ -25,7 +25,6 @@
 #ifndef LDDECODEMETADATA_H
 #define LDDECODEMETADATA_H
 
-#include <QObject>
 #include <QVector>
 #include <QTemporaryFile>
 #include <QDebug>
@@ -181,10 +180,6 @@ public:
 
     qint32 convertClvTimecodeToFrameNumber(LdDecodeMetaData::ClvTimecode clvTimeCode);
     LdDecodeMetaData::ClvTimecode convertFrameNumberToClvTimecode(qint32 clvFrameNumber);
-
-signals:
-
-public slots:
 
 private:
     JsonWax json;
