@@ -25,18 +25,12 @@
 #ifndef CLOSEDCAPTION_H
 #define CLOSEDCAPTION_H
 
-#include <QObject>
-
 #include "sourcevideo.h"
 #include "lddecodemetadata.h"
 
-class ClosedCaption : public QObject
+class ClosedCaption
 {
-    Q_OBJECT
-
 public:
-    explicit ClosedCaption(QObject *parent = nullptr);
-
     struct CcData {
         uchar byte0;
         uchar byte1;

@@ -24,11 +24,6 @@
 
 #include "whiteflag.h"
 
-WhiteFlag::WhiteFlag(QObject *parent) : QObject(parent)
-{
-
-}
-
 // Public method to read the white flag status from a field-line
 bool WhiteFlag::getWhiteFlag(QByteArray lineData, LdDecodeMetaData::VideoParameters videoParameters)
 {

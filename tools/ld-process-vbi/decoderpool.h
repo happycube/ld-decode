@@ -25,7 +25,6 @@
 #ifndef DECODERPOOL_H
 #define DECODERPOOL_H
 
-#include <QObject>
 #include <QAtomicInt>
 #include <QByteArray>
 #include <QElapsedTimer>
@@ -36,14 +35,12 @@
 #include "lddecodemetadata.h"
 #include "vbilinedecoder.h"
 
-class DecoderPool : public QObject
+class DecoderPool
 {
-    Q_OBJECT
 public:
     // Public methods
     explicit DecoderPool(QString _inputFilename, QString _outputJsonFilename,
-                        qint32 _maxThreads, LdDecodeMetaData &_ldDecodeMetaData,
-                        QObject *parent = nullptr);
+                        qint32 _maxThreads, LdDecodeMetaData &_ldDecodeMetaData);
     bool process();
 
     // Member functions used by worker threads

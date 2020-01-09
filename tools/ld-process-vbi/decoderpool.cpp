@@ -25,8 +25,8 @@
 #include "decoderpool.h"
 
 DecoderPool::DecoderPool(QString _inputFilename, QString _outputJsonFilename,
-                         qint32 _maxThreads, LdDecodeMetaData &_ldDecodeMetaData, QObject *parent)
-    : QObject(parent), inputFilename(_inputFilename), outputJsonFilename(_outputJsonFilename),
+                         qint32 _maxThreads, LdDecodeMetaData &_ldDecodeMetaData)
+    : inputFilename(_inputFilename), outputJsonFilename(_outputJsonFilename),
       maxThreads(_maxThreads), ldDecodeMetaData(_ldDecodeMetaData)
 {
 }
