@@ -25,14 +25,12 @@
 #ifndef SOURCEVIDEO_H
 #define SOURCEVIDEO_H
 
-#include <QObject>
 #include <QFile>
 #include <QCache>
 #include <QDebug>
 
 class SourceVideo
 {
-
 public:
     SourceVideo();
     ~SourceVideo();

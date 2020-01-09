@@ -25,7 +25,6 @@
 #ifndef VBIDECODER_H
 #define VBIDECODER_H
 
-#include <QObject>
 #include <QDebug>
 
 class VbiDecoder
