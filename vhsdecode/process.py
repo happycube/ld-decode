@@ -11,7 +11,6 @@ import lddecode.utils as lddu
 from lddecode.utils import unwrap_hilbert, inrange
 import vhsdecode.utils as utils
 
-#import pll
 import vhsdecode.formats as vhs_formats
 
 def toDB(val):
@@ -33,7 +32,7 @@ def acc(chroma, burst_abs_ref, burststart, burstend, linelength, lines):
     """Scale chroma according to the level of the color burst on each line."""
     output = np.zeros(chroma.size, dtype=np.double)
     chromaavg = 0
-    for l in range(0,lines):
+    for l in range(16,lines):
         linestart = linelength * l
         lineend = linestart + linelength
         line = chroma[linestart:lineend]
@@ -106,6 +105,22 @@ def genHighShelf(f0, dbgain, qfactor, fs):
     a2 = (a + 1) - (a - 1) * cosw0 - 2 * asquared * alpha
     return [b0, b1, b2], [a0, a1, a2]
 
+def filter_simple(data, filter_coeffs):
+    fb,fa = filter_coeffs
+    return sps.filtfilt(fb,fa,data,padlen=150)
+
+def comb_c_pal(data, linelen):
+    """Very basic comb filter, adds the signal together with a signal delayed by 2H,
+    line by line. VCRs do this to reduce crosstalk.
+    """
+    numlines = len(data) // linelen
+    for l in range(16,numlines - 2):
+        delayed2h = data[(l - 2) * linelen:(l - 1) * linelen]
+        data[l * linelen:(l + 1) * linelen] -= delayed2h
+
+    return data
+
+
 # Phase comprensation stuff - needs rework.
 # def phase_shift(data, angle):
 #     return np.fft.irfft(np.fft.rfft(data) * np.exp(1.0j * angle), len(data)).real
@@ -128,13 +143,11 @@ class FieldPALVHS(ldd.FieldPAL):
 
         return linelocs
 
-    def final_chroma(self, signal):
-        return np.fft.ifft(np.fft.fft(signal) * (self.rf.Filters['FChromaFinal'])).real
-
     def processChroma(self):
+        # Run TBC/downscale on chroma.
         chroma, _, _ = ldd.Field.downscale(self, channel="demod_burst")
 
-        ## Chroma upheterodyne
+        # Chroma upheterodyne
         uphet = np.zeros(chroma.size, dtype=np.double)
 
         lineoffset = self.lineoffset + 1
@@ -144,38 +157,22 @@ class FieldPALVHS(ldd.FieldPAL):
         burstarea = (math.floor(self.usectooutpx(self.rf.SysParams['colorBurstUS'][0])),
                      math.ceil(self.usectooutpx(self.rf.SysParams['colorBurstUS'][1])))
 
-        chroma = acc(chroma, 200.0, burstarea[0], burstarea[1], outwidth, linesout)
-
-
-#        test = pll.run_pll(chroma[lineoffset:lineoffset + (outwidth * self.outlinelen)])
+        chroma = acc(chroma, 150.0, burstarea[0], burstarea[1], outwidth, linesout)
 
         # Naively assume field number/track relationship
         # TODO: Detect automatically.
         if self.rf.fieldNumber % 2 == 0:
-            # Track 1 - phase doesn't change.
-            for l in range(lineoffset, linesout + lineoffset):
-                linenum = l - lineoffset
-                linestart = (l - lineoffset) * outwidth
-                lineend = linestart + outwidth
+            # Track 1 - for PAL, phase doesn't change.
+            start = lineoffset
+            end = lineoffset + (outwidth * linesout)
+            heterodyne = self.rf.chroma_heterodyne[0][start:end]
+            c = chroma[start:end]
+            # Mixing the chroma signal with a signal at the frequency of colour under + fsc gives us
+            # a signal with frequencies at the difference and sum, the difference is what we want as
+            # it's at the right frequency.
+            mixed = heterodyne * c
 
-                # Heterodyne frequency - this doesn't work, need to generate one with a PLL maybe?
-                # heterodyne2 = np.fft.ifft(np.fft.fft(chroma[linestart:lineend]
-                #                                      * self.rf.fsc_wave[linestart:lineend]) * het_filter).real
-                # Basic heterodyne wave with no compensation for frequency variation.
-                heterodyne = self.rf.chroma_heterodyne[0][linestart:lineend]
-
-                c = chroma[linestart:lineend]
-
-                line = heterodyne * c
-
-                # Filter out unwanted frequencies from the final chroma signal.
-                # Mixing the signals will produce waves at the difference and sum of the
-                # frequencies. We only want the difference wave which is at the correct color
-                # carrier frequency here.
-                linefilt = np.fft.ifft(np.fft.fft(line) * (self.rf.Filters['FChromaFinal'])).real
-#                phase, ref, lock = pll.run_pll(linefilt, fsc, fsc * 4)
-
-                uphet[linestart:lineend] = linefilt
+            uphet[start:end] = mixed
 
         else:
             # Track 2 - needs phase rotation or the chroma will be inverted.
@@ -189,18 +186,25 @@ class FieldPALVHS(ldd.FieldPAL):
 
                 c = chroma[linestart:lineend]
 
-
                 line = heterodyne * c
 
-                linefilt = np.fft.ifft(np.fft.fft(line) * self.rf.Filters['FChromaFinal']).real
-
-                uphet[linestart:lineend] = linefilt
+                uphet[linestart:lineend] = line
 
                 phase -= 1
                 if phase < 0:
                     phase = 3
 
+        # Filter out unwanted frequencies from the final chroma signal.
+        # Mixing the signals will produce waves at the difference and sum of the
+        # frequencies. We only want the difference wave which is at the correct color
+        # carrier frequency here.
+        # We do however want to be careful to avoid filtering out too much of the sideband.
+        uphet = filter_simple(uphet,self.rf.Filters['FChromaFinal'])
 
+        # Basic comb filter to reduce crosstalk and fluctuation.
+        uphet[lineoffset:] = comb_c_pal(uphet[lineoffset:],outwidth)
+
+        # Final automatic chroma gain.
         uphet = acc(uphet, vhs_formats.PAL_BURST_REF_MEAN_ABS,
                     burstarea[0], burstarea[1], outwidth, linesout)
 
@@ -292,6 +296,7 @@ class VHSDecode(ldd.LDdecode):
 
 class VHSRFDecode(ldd.RFDecode):
     def __init__(self, inputfreq = 40, system = 'NTSC'):
+
         # First init the rf decoder normally.
         super(VHSRFDecode, self).__init__(inputfreq, system, decode_analog_audio = False,
                                               has_analog_audio = False)
@@ -342,9 +347,8 @@ class VHSRFDecode(ldd.RFDecode):
 
         # Filter to pick out color-under chroma component.
         # filter at about twice the carrier. (This seems to be similar to what VCRs do)
-        chroma_lowpass = sps.butter(4, [1.3/self.freq_half], btype='lowpass')
-        self.Filters['FVideoBurst'] = lddu.filtfft(chroma_lowpass, self.blocklen)
-
+        chroma_lowpass = sps.butter(4, [1.2/self.freq_half], btype='lowpass')
+        self.Filters['FVideoBurst'] = chroma_lowpass
 
         # The following filters are for post-TBC:
 
@@ -352,30 +356,21 @@ class VHSRFDecode(ldd.RFDecode):
         fsc_mhz = self.SysParams['fsc_mhz']
         out_sample_rate_mhz = fsc_mhz * 4
         out_frequency_half = out_sample_rate_mhz / 2
-
-        # Final band-pass filter for chroma output.
-        chroma_bandpass_final = sps.butter(2, [(fsc_mhz - .08)/out_frequency_half,
-                                               (fsc_mhz + .06)/out_frequency_half], btype='bandpass')
-        self.Filters['FChromaFinal'] = lddu.filtfft(chroma_bandpass_final, self.SysParams['outlinelen'])
-
-
+        het_freq = fsc_mhz + cc
+        outlinelen = self.SysParams['outlinelen']
         fieldlen = self.SysParams['outlinelen'] * max(self.SysParams['field_lines'])
 
-        het_freq = fsc_mhz + cc
+        # Final band-pass filter for chroma output.
+        # Mostly to filter out the higher-frequency wave that results from signal mixing.
+        # Needs tweaking.
+        chroma_bandpass_final = sps.butter(2, [(fsc_mhz - .64)/out_frequency_half,
+                                               (fsc_mhz + .24)/out_frequency_half], btype='bandpass')
+        self.Filters['FChromaFinal'] = chroma_bandpass_final
 
         ## Bandpass filter to select heterodyne frequency from the mixed fsc and color carrier signal
-        het_filter_raw = sps.butter(2, [(het_freq -.001)/out_frequency_half,
+        het_filter = sps.butter(2, [(het_freq -.001)/out_frequency_half,
                                                (het_freq +.001)/out_frequency_half], btype='bandpass')
-        het_filter = lddu.filtfft(het_filter_raw, fieldlen)
-
-        ### Heterodyne bandpass for frequency-compensated heterodyne - not used atm
-        # het_filter_b_raw = sps.butter(2, [(het_freq * 0.95)/out_frequency_half,
-        #                                        (het_freq * 1.05)/out_frequency_half], btype='bandpass')
-        # het_filter_b = lddu.filtfft(het_filter_b_raw, self.SysParams['outlinelen'])
-        # self.Filters['HetFreq'] = het_filter_b
-
         samples = np.arange(fieldlen)
-
 
         # As this is done on the tbced signal, we need the sampling frequency of that,
         # which is 4fsc for NTSC and approx. 4 fsc for PAL.
@@ -394,19 +389,16 @@ class VHSRFDecode(ldd.RFDecode):
         # Standard frequency color carrier wave.
         self.fsc_wave = utils.gen_wave_at_frequency(fsc_mhz, out_sample_rate_mhz, fieldlen)
 
-        # cc_samples = np.arange(self.blocklen)
-        # cc_scale = cc / inputfreq
-        # self.cc_orig_sampl = np.sin(2 * np.pi * cc_scale * cc_samples)
-
         # Heterodyne wave
         # We combine the color carrier with a wave with a frequency of the
         # subcarrier + the downconverted chroma carrier to get the original
         # color wave back.
         self.chroma_heterodyne = {}
-        self.chroma_heterodyne[0] = np.fft.ifft(np.fft.fft(self.cc_wave * self.fsc_wave) * het_filter).real
-        self.chroma_heterodyne[1] = np.fft.ifft(np.fft.fft(cc_wave_90 * self.fsc_wave) * het_filter).real
-        self.chroma_heterodyne[2] = np.fft.ifft(np.fft.fft(cc_wave_180 * self.fsc_wave) * het_filter).real
-        self.chroma_heterodyne[3] = np.fft.ifft(np.fft.fft(cc_wave_270 * self.fsc_wave) * het_filter).real
+
+        self.chroma_heterodyne[0] = sps.filtfilt(het_filter[0], het_filter[1],self.cc_wave * self.fsc_wave)
+        self.chroma_heterodyne[1] = sps.filtfilt(het_filter[0], het_filter[1],cc_wave_90 * self.fsc_wave)
+        self.chroma_heterodyne[2] = sps.filtfilt(het_filter[0], het_filter[1],cc_wave_180 * self.fsc_wave)
+        self.chroma_heterodyne[3] = sps.filtfilt(het_filter[0], het_filter[1],cc_wave_270 * self.fsc_wave)
 
         self.fieldNumber = 0
 
@@ -431,6 +423,9 @@ class VHSRFDecode(ldd.RFDecode):
         else:
             raise Exception("demodblock called without raw or FFT data")
 
+        if data is None:
+            data = np.fft.ifft(indata_fft).real
+
         indata_fft_filt = indata_fft * self.Filters['RFVideo']
 
         hilbert = np.fft.ifft(indata_fft_filt)
@@ -443,10 +438,15 @@ class VHSRFDecode(ldd.RFDecode):
         out_video05 = np.fft.ifft(demod_fft * self.Filters['FVideo05']).real
         out_video05 = np.roll(out_video05, -self.Filters['F05_offset'])
 
-        out_chroma = np.fft.ifft(indata_fft * self.Filters['FVideoBurst']
-                                 * self.Filters['FVideoBurst']).real
+        # Filter out the color-under signal from the raw data.
+        out_chroma = filter_simple(data[:self.blocklen],self.Filters['FVideoBurst'])
+
+        # Move chroma to compensate for Y filter delay.
+        # value needs tweaking, ideally it should be calculated if possible.
+        out_chroma = np.roll(out_chroma, 140)
         # crude DC offset removal
         out_chroma = out_chroma - np.mean(out_chroma)
+
 
         # demod_burst is a bit misleading, but keeping the naming for compatability.
         video_out = np.rec.array(
