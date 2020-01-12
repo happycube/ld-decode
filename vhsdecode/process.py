@@ -109,16 +109,18 @@ def filter_simple(data, filter_coeffs):
     fb,fa = filter_coeffs
     return sps.filtfilt(fb,fa,data,padlen=150)
 
-def comb_c_pal(data, linelen):
-    """Very basic comb filter, adds the signal together with a signal delayed by 2H,
-    line by line. VCRs do this to reduce crosstalk.
-    """
-    numlines = len(data) // linelen
-    for l in range(16,numlines - 2):
-        delayed2h = data[(l - 2) * linelen:(l - 1) * linelen]
-        data[l * linelen:(l + 1) * linelen] -= delayed2h
+# def comb_c_pal(data, linelen):
+#     """Very basic comb filter, adds the signal together with a signal delayed by 2H,
+#     line by line. VCRs do this to reduce crosstalk.
+#     """
 
-    return data
+#     data2 = data.copy()
+#     numlines = len(data) // linelen
+#     for l in range(16,numlines - 2):
+#         delayed2h = data2[(l - 2) * linelen:(l - 1) * linelen]
+#         data[l * linelen:(l + 1) * linelen] -= delayed2h
+
+#     return data
 
 
 # Phase comprensation stuff - needs rework.
@@ -159,9 +161,12 @@ class FieldPALVHS(ldd.FieldPAL):
 
         chroma = acc(chroma, 150.0, burstarea[0], burstarea[1], outwidth, linesout)
 
+        # Which track we assume has no phase shift.
+        track_phase = self.rf.track_phase
+
         # Naively assume field number/track relationship
         # TODO: Detect automatically.
-        if self.rf.fieldNumber % 2 == 0:
+        if self.rf.fieldNumber % 2 == track_phase:
             # Track 1 - for PAL, phase doesn't change.
             start = lineoffset
             end = lineoffset + (outwidth * linesout)
@@ -201,9 +206,6 @@ class FieldPALVHS(ldd.FieldPAL):
         # We do however want to be careful to avoid filtering out too much of the sideband.
         uphet = filter_simple(uphet,self.rf.Filters['FChromaFinal'])
 
-        # Basic comb filter to reduce crosstalk and fluctuation.
-        uphet[lineoffset:] = comb_c_pal(uphet[lineoffset:],outwidth)
-
         # Final automatic chroma gain.
         uphet = acc(uphet, vhs_formats.PAL_BURST_REF_MEAN_ABS,
                     burstarea[0], burstarea[1], outwidth, linesout)
@@ -230,11 +232,11 @@ class FieldPALVHS(ldd.FieldPAL):
 # later as the ld-decode is in flux at the moment.
 class VHSDecode(ldd.LDdecode):
     def __init__(self, fname_in, fname_out, freader, system = 'NTSC', doDOD = False,
-                 inputfreq = 40):
+                 inputfreq = 40, track_phase=0):
         super(VHSDecode, self).__init__(fname_in, fname_out, freader, analog_audio = False,
                                         system = system, doDOD = doDOD, threads = 1)
         # Overwrite the rf decoder with the VHS-altered one
-        self.rf = VHSRFDecode(system = system, inputfreq = inputfreq)
+        self.rf = VHSRFDecode(system = system, inputfreq = inputfreq, track_phase = track_phase)
         self.FieldClass = FieldPALVHS
         self.demodcache = ldd.DemodCache(self.rf, self.infile, self.freader,
                                      num_worker_threads=self.numthreads)
@@ -295,11 +297,13 @@ class VHSDecode(ldd.LDdecode):
         super(VHSDecode, self).close()
 
 class VHSRFDecode(ldd.RFDecode):
-    def __init__(self, inputfreq = 40, system = 'NTSC'):
+    def __init__(self, inputfreq = 40, system = 'NTSC', track_phase = 0):
 
         # First init the rf decoder normally.
         super(VHSRFDecode, self).__init__(inputfreq, system, decode_analog_audio = False,
                                               has_analog_audio = False)
+
+        self.track_phase = track_phase
 
         # Then we override the laserdisc parameters with VHS ones.
         if system == 'PAL':
