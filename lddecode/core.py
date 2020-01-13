@@ -282,8 +282,7 @@ class RFDecode:
             else:
                 self.DecoderParams = copy.deepcopy(RFParams_PAL)
 
-        if not has_analog_audio:
-            self.SysParams['analog_audio'] = False
+        self.SysParams['analog_audio'] = has_analog_audio
 
         linelen = self.freq_hz/(1000000.0/self.SysParams['line_period'])
         self.linelen = int(np.round(linelen))
@@ -349,7 +348,6 @@ class RFDecode:
         #coeffs[-nonzero_bins:] = np.flip(coeffs[:nonzero_bins], 0)
         
         self.Filters['Fefm'] = coeffs * 8
-
 
     def computevideofilters(self):
         self.Filters = {}
@@ -1115,6 +1113,52 @@ def downscale_audio(audio, lineinfo, rf, linecount, timeoffset = 0, freq = 48000
 
 # The Field class contains common features used by NTSC and PAL
 class Field:
+    def __init__(self, rf, decode, audio_offset = 0, keepraw = True, prevfield = None, initphase = False):
+        self.rawdata = decode['input']
+        self.data = decode
+        self.initphase = initphase # used for seeking or first field
+
+        self.prevfield = prevfield
+
+        self.rf = rf
+        self.freq = self.rf.freq
+        
+        self.inlinelen = self.rf.linelen
+        self.outlinelen = self.rf.SysParams['outlinelen']
+
+        self.lineoffset = 0
+        
+        self.valid = False
+        self.sync_confidence = 100
+        
+        self.dspicture = None
+        self.dsaudio = None
+        self.audio_offset = audio_offset
+        self.audio_next_offset = audio_offset
+
+        # On NTSC linecount rounds up to 263, and PAL 313
+        self.outlinecount = (self.rf.SysParams['frame_lines'] // 2) + 1
+        # this is eventually set to 262/263 and 312/313 for audio timing
+        self.linecount = None
+
+    def process(self):
+        self.linelocs1, self.linebad, self.nextfieldoffset = self.compute_linelocs()
+        if self.linelocs1 is None:
+            if self.nextfieldoffset is None:
+                self.nextfieldoffset = self.rf.linelen * 200
+
+            return
+
+        self.linebad = self.compute_deriv_error(self.linelocs1, self.linebad)
+
+        self.linelocs2 = self.refine_linelocs_hsync()
+        self.linebad = self.compute_deriv_error(self.linelocs2, self.linebad)
+
+        self.linelocs = self.linelocs2
+        self.wowfactor = self.computewow(self.linelocs)
+
+        self.valid = True
+
     def get_linefreq(self, l = None):
         if l is None or l == 0:
             return self.freq
@@ -1719,8 +1763,6 @@ class Field:
         # self.lineoffset is an adjustment for 0-based lines *before* downscaling so add 1 here
         lineoffset = self.lineoffset + 1
 
-        self.wowfactor = self.computewow(lineinfo)
-
         for l in range(lineoffset, linesout + lineoffset):
             if lineinfo[l + 1] > lineinfo[l]:
                 scaled = scale(self.data['video'][channel], lineinfo[l], lineinfo[l + 1], outwidth, self.wowfactor[l])
@@ -1782,57 +1824,6 @@ class Field:
         
         self.sync_confidence = min(self.sync_confidence, newconf)
         return int(self.sync_confidence)
-
-    def __init__(self, rf, decode, audio_offset = 0, keepraw = True, prevfield = None, initphase = False):
-        self.rawdata = decode['input']
-        self.data = decode
-        self.initphase = initphase # used for seeking or first field
-
-        self.prevfield = prevfield
-
-        self.rf = rf
-        self.freq = self.rf.freq
-        
-        self.inlinelen = self.rf.linelen
-        self.outlinelen = self.rf.SysParams['outlinelen']
-
-        self.lineoffset = 0
-        
-        self.valid = False
-        self.sync_confidence = 100
-        
-        self.dspicture = None
-        self.dsaudio = None
-        self.audio_offset = audio_offset
-        self.audio_next_offset = audio_offset
-
-        # On NTSC linecount rounds up to 263, and PAL 313
-        self.outlinecount = (self.rf.SysParams['frame_lines'] // 2) + 1
-        # this is eventually set to 262/263 and 312/313 for audio timing
-        self.linecount = None
-        
-        self.linelocs1, self.linebad, self.nextfieldoffset = self.compute_linelocs()
-        if self.linelocs1 is None:
-            if self.nextfieldoffset is None:
-                self.nextfieldoffset = self.rf.linelen * 200
-
-            return
-
-        self.linebad = self.compute_deriv_error(self.linelocs1, self.linebad)
-
-        self.linelocs2 = self.refine_linelocs_hsync()
-        self.linebad = self.compute_deriv_error(self.linelocs2, self.linebad)
-
-        self.linelocs = self.linelocs2
-
-        self.wowfactor = np.ones_like(self.linelocs)
-
-        # VBI info
-        self.valid = True
-
-        self.prevfield = None
-
-        return
 
     def dropout_detect_demod(self):
         # current field
@@ -2046,6 +2037,9 @@ class FieldPAL(Field):
     def __init__(self, *args, **kwargs):
         super(FieldPAL, self).__init__(*args, **kwargs)
 
+    def process(self):
+        super(FieldPAL, self).process()
+
         self.out_scale = np.double(0xd300 - 0x0100) / (100 - self.rf.SysParams['vsync_ire'])
 
         if not self.valid:
@@ -2060,6 +2054,7 @@ class FieldPAL(Field):
         else:
             self.linelocs = self.fix_badlines(self.linelocs2)
 
+        self.wowfactor = self.computewow(self.linelocs)
         self.burstmedian = self.calc_burstmedian()
 
         self.linecount = 312 if self.isFirstField else 313
@@ -2296,11 +2291,16 @@ class FieldNTSC(Field):
         self.burst90 = False
 
         super(FieldNTSC, self).__init__(*args, **kwargs)
-        
+
+    def process(self):
+        super(FieldNTSC, self).process()
+
         self.out_scale = np.double(0xc800 - 0x0400) / (100 - self.rf.SysParams['vsync_ire'])
         
         if not self.valid:
             return
+
+        self.linecount = 263 if self.isFirstField else 262
 
         self.linecode = [self.decodephillipscode(l + self.lineoffset) for l in [16, 17, 18]]
 
@@ -2314,10 +2314,8 @@ class FieldNTSC(Field):
         # Now adjust 33 degrees (-90 - 33) for color decoding
         shift33 = 84 * (np.pi / 180)
         self.linelocs = self.apply_offsets(self.linelocs3, -shift33 - 0)        
-        
-        self.linecount = 263 if self.isFirstField else 262
 
-        #self.downscale(final=True)
+        self.wowfactor = self.computewow(self.linelocs)        
 
 class CombNTSC:
     ''' *partial* NTSC comb filter class - only enough to do VITS calculations ATM '''
@@ -2588,6 +2586,7 @@ class LDdecode:
         self.indata = self.rawdecode['input']
 
         f = self.FieldClass(self.rf, self.rawdecode, audio_offset = self.audio_offset, prevfield = self.curfield, initphase = initphase)
+        f.process()
         self.curfield = f
 
         if not f.valid:
