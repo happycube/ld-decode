@@ -251,8 +251,53 @@ RFParams_PAL_lowband = {
 }
 
 class RFDecode:
-    def __init__(self, inputfreq = 40, system = 'NTSC', blocklen_ = 32*1024, decode_digital_audio = False, decode_analog_audio = 0, has_analog_audio = True, mtf_mult = 1.0, mtf_offset = 0, extra_options = {}):
-        self.blocklen = blocklen_
+    """The core RF decoding code.  
+    
+    This decoder uses FFT overlap-save processing(1) to allow for parallel processing and combination of 
+    operations.
+    
+    Video filter signal path:
+    - FFT/iFFT stage 1: RF BPF (i.e. 3.5-13.5mhz NTSC) * hilbert filter
+    - phase unwrapping
+    - FFT stage 2, which is processed into multiple final products:
+      - Regular video output
+      - 0.5mhz LPF (used for HSYNC)
+      - For fine-tuning HSYNC: NTSC: 3.5x mhz filtered signal, PAL: 3.75mhz pilot signal
+    
+    Analogue audio filter signal path:
+    
+        The audio signal path is actually more complex in some ways, since it reduces a
+        multi-msps signal down to <100khz.  A two stage processing system is used which
+        reduces the frequency in each stage.
+
+        Stage 1 performs the audio RF demodulation per block typically with 32x decimation,
+        while stage 2 is run once the entire frame is demodulated and decimates by 4x.
+
+    EFM filtering simply applies RF front end filters that massage the output so that ld-process-efm
+    can do the actual work.
+
+    references:
+    1 - https://en.wikipedia.org/wiki/Overlap–save_method
+
+    """
+
+    def __init__(self, inputfreq = 40, system = 'NTSC', blocklen = 32*1024, decode_digital_audio = False, decode_analog_audio = 0, has_analog_audio = True, extra_options = {}):
+        """Initialize the RF decoder object.
+
+        inputfreq -- frequency of raw RF data (in Msps)
+        system    -- Which system is in use (PAL or NTSC)
+        blocklen  -- Block length for FFT processing
+        decode_digital_audio -- Whether to apply EFM filtering
+        decode_analog_audio  -- Whether or not to decode analog(ue) audio
+        has_analog_audio     -- Whether or not analog(ue) audio channels are on the disk
+
+        extra_options -- Dictionary of additional options (typically boolean) - these include:
+          - WibbleRemover - PAL: cut 8.5mhz spurious signal, NTSC: notch filter on decoded video
+          - lowband: Substitute different decode settings for lower-bandwidth disks
+
+        """
+
+        self.blocklen = blocklen
         self.blockcut = 1024 # ???
         self.blockcut_end = 0
         self.system = system
@@ -266,8 +311,8 @@ class RFDecode:
         self.freq_hz = self.freq * 1000000
         self.freq_hz_half = self.freq * 1000000 / 2
         
-        self.mtf_mult = mtf_mult
-        self.mtf_offset = mtf_offset
+        self.mtf_mult = 1.0
+        self.mtf_offset = 0
         
         if system == 'NTSC':
             self.SysParams = copy.deepcopy(SysParams_NTSC)
@@ -291,18 +336,23 @@ class RFDecode:
         self.decode_analog_audio = decode_analog_audio
 
         self.computefilters()
-        # The last bit of the 0.5mhz filter is rolled over to keep it in sync w/video
+
+        # The 0.5mhz filter is rolled back, so there are a few unusable bytes at the end
         self.blockcut_end = self.Filters['F05_offset']
 
     def computefilters(self):
+        ''' (re)compute the filter sets '''
+
         self.computevideofilters()
 
+        # This is > 0 because decode_analog_audio is in khz.
         if self.decode_analog_audio > 0: 
             self.computeaudiofilters()
 
         if self.decode_digital_audio:
             self.computeefmfilter()
 
+        # This high pass filter is intended to detect RF dropouts
         Frfhpf = sps.butter(1, [10/self.freq_half], btype='highpass')
         self.Filters['Frfhpf'] = filtfft(Frfhpf, self.blocklen)
 
@@ -356,7 +406,10 @@ class RFDecode:
         SF = self.Filters
         SP = self.SysParams
         DP = self.DecoderParams
-        
+
+        # First phase FFT filtering
+
+        # MTF filter section
         # compute the pole locations symmetric to freq_half (i.e. 12.2 and 27.8)
         MTF_polef_lo = DP['MTF_freq']/self.freq_half
         MTF_polef_hi = (self.freq_half + (self.freq_half - DP['MTF_freq']))/self.freq_half
@@ -364,10 +417,12 @@ class RFDecode:
         MTF = sps.zpk2tf([], [polar2z(DP['MTF_poledist'],np.pi*MTF_polef_lo), polar2z(DP['MTF_poledist'],np.pi*MTF_polef_hi)], 1)
         SF['MTF'] = filtfft(MTF, self.blocklen)
 
-        SF['hilbert'] = npfft.fft(hilbert_filter, self.blocklen)
+        # The BPF filter, defined for each system in DecoderParams
         filt_rfvideo = sps.butter(DP['video_bpf_order'], [DP['video_bpf_low']/self.freq_hz_half, DP['video_bpf_high']/self.freq_hz_half], btype='bandpass')
+        # Start building up the combined FFT filter using the BPF
         SF['RFVideo'] = filtfft(filt_rfvideo, self.blocklen)
 
+        # Notch filters for analog audio.  DdD captures in particular need this.
         if SP['analog_audio']:
             cut_left = sps.butter(DP['audio_notchorder'], [(SP['audio_lfreq'] - DP['audio_notchwidth'])/self.freq_hz_half, (SP['audio_lfreq'] + DP['audio_notchwidth'])/self.freq_hz_half], btype='bandstop')
             SF['Fcutl'] = filtfft(cut_left, self.blocklen)
@@ -376,13 +431,17 @@ class RFDecode:
         
             SF['RFVideo'] *= (SF['Fcutl'] * SF['Fcutr'])
 
-        SF['RFVideo'] *= SF['hilbert'] # * SF['Bcut']
+        # The hilbert filter is defined in utils.py - it performs a 90 degree shift on the input.
+        SF['hilbert'] = npfft.fft(hilbert_filter, self.blocklen)
+        SF['RFVideo'] *= SF['hilbert']
         
+        # Second phase FFT filtering, which is performed after the signal is demodulated
+
         video_lpf = sps.butter(DP['video_lpf_order'], DP['video_lpf_freq']/self.freq_hz_half, 'low')
         SF['Fvideo_lpf'] = filtfft(video_lpf, self.blocklen)
 
         if self.system == 'NTSC' and self.WibbleRemover:
-            video_notch = sps.butter(3, [4.5/self.freq_half, 5.0/self.freq_half], 'bandstop')
+            video_notch = sps.butter(3, [DP['video_lpf_freq']/self.freq_half, 5.0/self.freq_half], 'bandstop')
             SF['Fvideo_lpf'] *= filtfft(video_notch, self.blocklen)
 
         video_hpf = sps.butter(DP['video_hpf_order'], DP['video_hpf_freq']/self.freq_hz_half, 'high')
@@ -544,8 +603,6 @@ class RFDecode:
         hilbert = npfft.ifft(indata_fft_filt)
         demod = unwrap_hilbert(hilbert, self.freq_hz)
 
-        #demod = np.clip(demod, 2000000, self.freq_hz_half)
-
         demod_fft_full = npfft.fft(demod)
         demod_hpf = npfft.ifft(demod_fft_full * self.Filters['Fvideo_hpf']).real
 
@@ -591,6 +648,8 @@ class RFDecode:
     def audio_dropout_detector(self, field_audio, padding = 48):
         rejects = None
         cmed = {}
+
+        # Check left and right channels separately.
         for channel in ['audio_left', 'audio_right']:
             achannel = field_audio[channel]
             cmed[channel] = np.median(achannel)
@@ -604,6 +663,8 @@ class RFDecode:
         if np.sum(rejects) == 0:
             # If no spikes, return original
             return field_audio
+
+        # Locate areas with impossible signals and perform interpolation
 
         reject_locs = np.where(rejects)[0]
         reject_areas = []
@@ -619,8 +680,6 @@ class RFDecode:
         reject_areas.append(cur_area)
 
         field_audio_dod = field_audio.copy()
-
-        #print(reject_areas)
 
         for channel in ['audio_left', 'audio_right']:
             for ra in reject_areas:
@@ -703,7 +762,11 @@ class RFDecode:
         return output_audio2    
 
     def computedelays(self, mtf_level = 0):
-        ''' Generate a fake signal and compute filter delays '''
+        '''Generate a fake signal and compute filter delays.
+        
+        mtf_level -- Specify the amount of MTF compensation needed (default 0.0)
+                     WARNING: May not actually work.
+        '''
 
         rf = self
 
