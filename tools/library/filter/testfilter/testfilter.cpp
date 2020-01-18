@@ -155,7 +155,7 @@ void testFIRFilter(const string &name, const Input& input, const Output& output,
     SimpleFilter refFilter(coeffs, one);
 
     // SimpleFilter has a delay, so pre-feed an appropriate number of samples
-    const int delay = coeffs.size() / 2;
+    const unsigned delay = coeffs.size() / 2;
     for (unsigned i = 0; i < delay; i++) {
         const double input_o = (i >= input.size()) ? 0 : input[i];
         refFilter.feed(input_o);
@@ -186,7 +186,7 @@ void testFIRCoeffs(const string &name, const Coeffs &coeffs)
     // This tests that making up samples outside the bounds of the input works
     // correctly for all combinations of sizes.
 
-    for (int i = 0; i < int {coeffs.size() + 3}; i++) {
+    for (int i = 0; i < static_cast<int>(coeffs.size()) + 3; i++) {
         f.apply(input, output);
         testFIRFilter(name + " length " + to_string(i) + " separate", input, output, coeffs);
 
