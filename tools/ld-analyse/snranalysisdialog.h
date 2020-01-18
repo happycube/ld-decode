@@ -25,10 +25,7 @@
 #ifndef SNRANALYSISDIALOG_H
 #define SNRANALYSISDIALOG_H
 
-/* workaround for Macs */
-#if defined(__APPLE__)
-#define isnanf(X) isnan((double)(X))
-#endif
+#include <cmath>
 
 #include <QDialog>
 #include <qwt_plot.h>
