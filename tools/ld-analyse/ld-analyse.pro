@@ -126,7 +126,6 @@ INCLUDEPATH += /usr/include/qwt
 LIBS += -lqwt-qt5 #Distrubutions other than Ubuntu may be -lqwt
 }
 macx {
-# There's probably a better way to reference these, but works for now...
-INCLUDEPATH += "/usr/local/Cellar/qwt/6.1.4/lib/qwt.framework/Versions/6/Headers"
-LIBS += -F"/usr/local/Cellar/qwt/6.1.4/lib" -framework qwt
+INCLUDEPATH += "/usr/local/lib/qwt.framework/Versions/6/Headers"
+LIBS += -F"/usr/local/lib" -framework qwt
 }
