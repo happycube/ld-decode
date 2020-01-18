@@ -31,20 +31,11 @@
 #endif
 
 #include <QDialog>
-/* Workaround to compile on Mac. Similar may need to be done for other non-ubuntu distros */
-#if defined(__APPLE__)
 #include <qwt_plot.h>
 #include <qwt_plot_canvas.h>
 #include <qwt_legend.h>
 #include <qwt_plot_grid.h>
 #include <qwt_plot_curve.h>
-#else
-#include <qwt/qwt_plot.h>
-#include <qwt/qwt_plot_canvas.h>
-#include <qwt/qwt_legend.h>
-#include <qwt/qwt_plot_grid.h>
-#include <qwt/qwt_plot_curve.h>
-#endif
 
 #include "lddecodemetadata.h"
 
