@@ -297,6 +297,10 @@ void MainWindow::showFrame()
     if (!tbcSource.getIsSourcePal()) {
         closedCaptionDialog->addData(currentFrameNumber, tbcSource.getCcData0(currentFrameNumber), tbcSource.getCcData1(currentFrameNumber));
     }
+    // QT Bug workaround for some macOS versions
+    #if defined(Q_OS_MACOS)
+    	repaint();
+    #endif
 }
 
 // Redraw the frame viewer (for example, when scaleFactor has been changed)
