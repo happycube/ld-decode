@@ -108,8 +108,11 @@ RESOURCES += \
     ld-analyse-resources.qrc
 
 # Additional include paths to support MacOS compilation
+macx {
 INCLUDEPATH += "/usr/local/opt/opencv@2/include"
 LIBS += -L"/usr/local/opt/opencv@2/lib"
+INCLUDEPATH += "/usr/local/include"
+}
 
 # Normal open-source OS goodness
 INCLUDEPATH += "/usr/local/include/opencv"
@@ -117,9 +120,12 @@ LIBS += -L"/usr/local/lib"
 LIBS += -lopencv_core -lopencv_imgcodecs -lopencv_highgui -lopencv_imgproc -lopencv_video -lfftw3
 
 # Include the QWT library (used for charting)
+unix:!macx {
 INCLUDEPATH += $(QWT)/include
-LIBS += -lqwt-qt5
-
-
-
-
+LIBS += -lqwt-qt5 #Distrubutions other than Ubuntu may be -lqwt
+}
+macx {
+# There's probably a better way to reference these, but works for now...
+INCLUDEPATH += "/usr/local/Cellar/qwt/6.1.4/lib/qwt.framework/Versions/6/Headers"
+LIBS += -F"/usr/local/Cellar/qwt/6.1.4/lib" -framework qwt
+}
