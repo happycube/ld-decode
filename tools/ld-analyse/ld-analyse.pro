@@ -121,7 +121,8 @@ LIBS += -lopencv_core -lopencv_imgcodecs -lopencv_highgui -lopencv_imgproc -lope
 
 # Include the QWT library (used for charting)
 unix:!macx {
-INCLUDEPATH += $(QWT)/include
+#INCLUDEPATH += $(QWT)/include
+INCLUDEPATH += /usr/include/qwt
 LIBS += -lqwt-qt5 #Distrubutions other than Ubuntu may be -lqwt
 }
 macx {
