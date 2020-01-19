@@ -1,6 +1,6 @@
 /************************************************************************
 
-    dropoutanalysisdialog.h
+    capturequalityindexdialog.h
 
     ld-analyse - TBC output analysis
     Copyright (C) 2018-2020 Simon Inns
@@ -22,8 +22,8 @@
 
 ************************************************************************/
 
-#ifndef DROPOUTANALYSISDIALOG_H
-#define DROPOUTANALYSISDIALOG_H
+#ifndef CAPTUREQUALITYINDEXDIALOG_H
+#define CAPTUREQUALITYINDEXDIALOG_H
 
 #include <QDialog>
 #include <qwt_plot.h>
@@ -35,25 +35,25 @@
 #include "lddecodemetadata.h"
 
 namespace Ui {
-class DropoutAnalysisDialog;
+class CaptureQualityIndexDialog;
 }
 
-class DropoutAnalysisDialog : public QDialog
+class CaptureQualityIndexDialog : public QDialog
 {
     Q_OBJECT
 
 public:
-    explicit DropoutAnalysisDialog(QWidget *parent = nullptr);
-    ~DropoutAnalysisDialog();
+    explicit CaptureQualityIndexDialog(QWidget *parent = nullptr);
+    ~CaptureQualityIndexDialog();
 
     void startUpdate();
-    void addDataPoint(qint32 fieldNumber, qreal doLength);
+    void addDataPoint(qint32 fieldNumber, qreal cqi);
     void finishUpdate(qint32 numberOfFields, qint32 fieldsPerDataPoint);
 
 private:
     void removeChartContents();
 
-    Ui::DropoutAnalysisDialog *ui;
+    Ui::CaptureQualityIndexDialog *ui;
     QwtPlot *plot;
     QwtLegend *legend;
     QwtPlotGrid *grid;
@@ -61,6 +61,7 @@ private:
     QwtPlotCurve *curve;
 
     qreal maxY;
+    qreal minY;
 };
 
-#endif // DROPOUTANALYSISDIALOG_H
+#endif // CAPTUREQUALITYINDEXDIALOG_H

@@ -3,7 +3,7 @@
     configuration.cpp
 
     ld-analyse - TBC output analysis
-    Copyright (C) 2018-2019 Simon Inns
+    Copyright (C) 2018-2020 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -76,6 +76,7 @@ void Configuration::writeConfiguration(void)
     configuration->setValue("snrAnalysisDialogGeometry", settings.windows.snrAnalysisDialogGeometry);
     configuration->setValue("closedCaptionDialogGeometry", settings.windows.closedCaptionDialogGeometry);
     configuration->setValue("palChromaDecoderConfigDialogGeometry", settings.windows.palChromaDecoderConfigDialogGeometry);
+    configuration->setValue("captureQualityIndexDialogGeometry", settings.windows.captureQualityIndexDialogGeometry);
     configuration->endGroup();
 
     // Sync the settings with disk
@@ -106,6 +107,7 @@ void Configuration::readConfiguration(void)
     settings.windows.snrAnalysisDialogGeometry = configuration->value("snrAnalysisDialogGeometry").toByteArray();
     settings.windows.closedCaptionDialogGeometry = configuration->value("closedCaptionDialogGeometry").toByteArray();
     settings.windows.palChromaDecoderConfigDialogGeometry = configuration->value("palChromaDecoderConfigDialogGeometry").toByteArray();
+    settings.windows.captureQualityIndexDialogGeometry = configuration->value("captureQualityIndexDialogGeometry").toByteArray();
     configuration->endGroup();
 }
 
@@ -127,6 +129,7 @@ void Configuration::setDefault(void)
     settings.windows.snrAnalysisDialogGeometry = QByteArray();
     settings.windows.closedCaptionDialogGeometry = QByteArray();
     settings.windows.palChromaDecoderConfigDialogGeometry = QByteArray();
+    settings.windows.captureQualityIndexDialogGeometry = QByteArray();
 
     // Write the configuration
     writeConfiguration();
@@ -234,4 +237,14 @@ void Configuration::setPalChromaDecoderConfigDialogGeometry(QByteArray palChroma
 QByteArray Configuration::getPalChromaDecoderConfigDialogGeometry(void)
 {
     return settings.windows.palChromaDecoderConfigDialogGeometry;
+}
+
+void Configuration::setCaptureQualityIndexDialogGeometry(QByteArray captureQualityIndexDialogGeometry)
+{
+    settings.windows.captureQualityIndexDialogGeometry = captureQualityIndexDialogGeometry;
+}
+
+QByteArray Configuration::getCaptureQualityIndexDialogGeometry(void)
+{
+    return settings.windows.captureQualityIndexDialogGeometry;
 }

@@ -398,6 +398,7 @@
     </property>
     <addaction name="actionDropout_analysis"/>
     <addaction name="actionSNR_analysis"/>
+    <addaction name="actionCapture_Quality_Index"/>
     <addaction name="actionVBI"/>
     <addaction name="actionLine_scope"/>
     <addaction name="actionClosed_Captions"/>
@@ -559,6 +560,11 @@
   <action name="actionPAL_Chroma_decoder">
    <property name="text">
     <string>PAL Chroma decoder...</string>
+   </property>
+  </action>
+  <action name="actionCapture_Quality_Index">
+   <property name="text">
+    <string>Capture Quality Index...</string>
    </property>
   </action>
  </widget>
