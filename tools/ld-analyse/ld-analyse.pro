@@ -112,6 +112,7 @@ RESOURCES += \
 
 # Additional include paths to support MacOS compilation
 macx {
+ICON = Graphics/ld-analyse.icns
 INCLUDEPATH += "/usr/local/opt/opencv@2/include"
 LIBS += -L"/usr/local/opt/opencv@2/lib"
 INCLUDEPATH += "/usr/local/include"
