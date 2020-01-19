@@ -3,7 +3,7 @@
     tbcsource.h
 
     ld-analyse - TBC output analysis
-    Copyright (C) 2018-2019 Simon Inns
+    Copyright (C) 2018-2020 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -87,6 +87,7 @@ public:
     QVector<qreal> getBlackSnrGraphData();
     QVector<qreal> getWhiteSnrGraphData();
     QVector<qreal> getDropOutGraphData();
+    QVector<qreal> getCaptureQualityIndexGraphData();
     qint32 getGraphDataSize();
     qint32 getFieldsPerGraphDataPoint();
 
@@ -116,6 +117,7 @@ private:
     QVector<qreal> blackSnrGraphData;
     QVector<qreal> whiteSnrGraphData;
     QVector<qreal> dropoutGraphData;
+    QVector<qreal> cqiGraphData;
     qint32 fieldsPerGraphDataPoint;
 
     // Frame image options

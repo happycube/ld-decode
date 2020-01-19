@@ -3,7 +3,7 @@
     configuration.h
 
     ld-analyse - TBC output analysis
-    Copyright (C) 2018-2019 Simon Inns
+    Copyright (C) 2018-2020 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -66,6 +66,8 @@ public:
     QByteArray getClosedCaptionDialogGeometry(void);
     void setPalChromaDecoderConfigDialogGeometry(QByteArray palChromaDecoderConfigDialogGeometry);
     QByteArray getPalChromaDecoderConfigDialogGeometry(void);
+    void setCaptureQualityIndexDialogGeometry(QByteArray captureQualityIndexDialogGeometry);
+    QByteArray getCaptureQualityIndexDialogGeometry(void);
 
 signals:
 
@@ -90,6 +92,7 @@ private:
         QByteArray snrAnalysisDialogGeometry;
         QByteArray closedCaptionDialogGeometry;
         QByteArray palChromaDecoderConfigDialogGeometry;
+        QByteArray captureQualityIndexDialogGeometry;
     };
 
     // Overall settings structure
