@@ -3,5 +3,13 @@
         <file>Graphics/64-analyse.png</file>
         <file>Graphics/128-analyse.png</file>
         <file>Graphics/256-analyse.png</file>
+        <file>Graphics/end-frame.svg</file>
+        <file>Graphics/next-frame.svg</file>
+        <file>Graphics/oscilloscope-target.svg</file>
+        <file>Graphics/prev-frame.svg</file>
+        <file>Graphics/start-frame.svg</file>
+        <file>Graphics/zoom-in.svg</file>
+        <file>Graphics/zoom-original.svg</file>
+        <file>Graphics/zoom-out.svg</file>
     </qresource>
 </RCC>
