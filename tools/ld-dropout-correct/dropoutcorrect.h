@@ -88,7 +88,7 @@ private:
 
     void correctField(const QVector<QVector<DropOutLocation> > &thisFieldDropouts,
                       const QVector<QVector<DropOutLocation> > &otherFieldDropouts,
-                      QVector<QByteArray> &thisFieldData, const QVector<QByteArray> &otherFieldData,
+                      QVector<SourceVideo::Data> &thisFieldData, const QVector<SourceVideo::Data> &otherFieldData,
                       bool thisFieldIsFirst, bool intraField, QVector<qint32> &availableSourcesForFrame,
                       QVector<qreal> &sourceFrameQuality, Statistics &statistics);
     QVector<DropOutLocation> populateDropoutsVector(LdDecodeMetaData::Field field, bool overCorrect);
@@ -105,7 +105,8 @@ private:
                                       QVector<Replacement> &candidates, qint32 sourceNo, QVector<qreal> sourceFrameQuality);
     void correctDropOut(const DropOutLocation &dropOut,
                         const Replacement &replacement, const Replacement &chromaReplacement,
-                        QVector<QByteArray> &thisFieldData, const QVector<QByteArray> &otherFieldData, Statistics &statistics);
+                        QVector<SourceVideo::Data> &thisFieldData, const QVector<SourceVideo::Data> &otherFieldData,
+                        Statistics &statistics);
 };
 
 #endif // DROPOUTCORRECT_H

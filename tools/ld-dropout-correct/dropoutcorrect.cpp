@@ -38,8 +38,8 @@ void DropOutCorrect::run()
     qint32 frameNumber;
     QVector<qint32> firstFieldSeqNo;
     QVector<qint32> secondFieldSeqNo;
-    QVector<QByteArray> firstSourceField;
-    QVector<QByteArray> secondSourceField;
+    QVector<SourceVideo::Data> firstSourceField;
+    QVector<SourceVideo::Data> secondSourceField;
     QVector<LdDecodeMetaData::Field> firstFieldMetadata;
     QVector<LdDecodeMetaData::Field> secondFieldMetadata;
     bool reverse, intraField, overCorrect;
@@ -71,8 +71,8 @@ void DropOutCorrect::run()
         // Copy the input frames' data to the target frames.
         // We'll use these both as source and target during correction, which
         // is OK because we're careful not to copy data from another dropout.
-        QVector<QByteArray> firstFieldData = firstSourceField;
-        QVector<QByteArray> secondFieldData = secondSourceField;
+        QVector<SourceVideo::Data> firstFieldData = firstSourceField;
+        QVector<SourceVideo::Data> secondFieldData = secondSourceField;
 
         // Check if the frame contains drop-outs
         if (firstFieldMetadata[0].dropOuts.startx.empty() && secondFieldMetadata[0].dropOuts.startx.empty()) {
@@ -120,7 +120,7 @@ void DropOutCorrect::run()
 // Correct dropouts within one field
 void DropOutCorrect::correctField(const QVector<QVector<DropOutLocation>> &thisFieldDropouts,
                                   const QVector<QVector<DropOutLocation>> &otherFieldDropouts,
-                                  QVector<QByteArray> &thisFieldData, const QVector<QByteArray> &otherFieldData,
+                                  QVector<SourceVideo::Data> &thisFieldData, const QVector<SourceVideo::Data> &otherFieldData,
                                   bool thisFieldIsFirst, bool intraField, QVector<qint32> &availableSourcesForFrame,
                                   QVector<qreal> &sourceFrameQuality, Statistics &statistics)
 {
@@ -464,7 +464,7 @@ void DropOutCorrect::findPotentialReplacementLine(const QVector<QVector<DropOutL
 // Correct a dropout by copying data from a replacement line.
 void DropOutCorrect::correctDropOut(const DropOutLocation &dropOut,
                                     const Replacement &replacement, const Replacement &chromaReplacement,
-                                    QVector<QByteArray> &thisFieldData, const QVector<QByteArray> &otherFieldData,
+                                    QVector<SourceVideo::Data> &thisFieldData, const QVector<SourceVideo::Data> &otherFieldData,
                                     Statistics &statistics)
 {
     if (replacement.fieldLine == -1) {
@@ -472,11 +472,10 @@ void DropOutCorrect::correctDropOut(const DropOutLocation &dropOut,
         return;
     }
 
-    const quint16 *sourceLine = reinterpret_cast<const quint16 *>(replacement.isSameField ? thisFieldData[replacement.sourceNumber].data()
-                                                                                          : otherFieldData[replacement.sourceNumber].data())
+    const quint16 *sourceLine = (replacement.isSameField ? thisFieldData[replacement.sourceNumber].data()
+                                                         : otherFieldData[replacement.sourceNumber].data())
                                 + ((replacement.fieldLine - 1) * videoParameters[0].fieldWidth);
-    quint16 *targetLine = reinterpret_cast<quint16 *>(thisFieldData[0].data())
-                          + ((dropOut.fieldLine - 1) * videoParameters[0].fieldWidth);
+    quint16 *targetLine = thisFieldData[0].data() + ((dropOut.fieldLine - 1) * videoParameters[0].fieldWidth);
 
     // Choose whole signal or just chroma replacement
     // Don't use chroma if the source of the replacement is > 0 and coming from the same line in another source
@@ -514,8 +513,8 @@ void DropOutCorrect::correctDropOut(const DropOutLocation &dropOut,
         }
 
         // Extract HF from chromaReplacement (by extracting LF, then subtracting from the original)
-        const quint16 *chromaLine = reinterpret_cast<const quint16 *>(chromaReplacement.isSameField ? thisFieldData[replacement.sourceNumber].data()
-                                                                                                    : otherFieldData[replacement.sourceNumber].data())
+        const quint16 *chromaLine = (chromaReplacement.isSameField ? thisFieldData[replacement.sourceNumber].data()
+                                                                   : otherFieldData[replacement.sourceNumber].data())
                                     + ((chromaReplacement.fieldLine - 1) * videoParameters[0].fieldWidth);
         for (qint32 pixel = 0; pixel < videoParameters[0].fieldWidth; pixel++) {
             lineBuf[pixel] = chromaLine[pixel];

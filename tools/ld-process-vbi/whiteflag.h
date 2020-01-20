@@ -31,7 +31,7 @@
 class WhiteFlag
 {
 public:
-    bool getWhiteFlag(QByteArray lineData, LdDecodeMetaData::VideoParameters videoParameters);
+    bool getWhiteFlag(const SourceVideo::Data &lineData, LdDecodeMetaData::VideoParameters videoParameters);
 };
 
 #endif // WHITEFLAG_H

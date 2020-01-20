@@ -128,7 +128,7 @@ void TransformPal3D::filterFields(const QVector<SourceField> &inputFields, qint3
     // Check we have a valid vector of input fields, and a matching output vector
     assert((inputFields.size() % 2) == 0);
     for (qint32 i = 0; i < inputFields.size(); i++) {
-        assert(!inputFields[i].data.isNull());
+        assert(!inputFields[i].data.empty());
     }
     assert(outputFields.size() == (endIndex - startIndex));
 
@@ -186,7 +186,7 @@ void TransformPal3D::forwardFFTTile(qint32 tileX, qint32 tileY, qint32 tileZ, co
     // Copy the input signal into fftReal, applying the window function
     for (qint32 z = 0; z < ZTILE; z++) {
         const qint32 fieldIndex = tileZ + z;
-        const quint16 *inputPtr = reinterpret_cast<const quint16 *>(inputFields[fieldIndex].data.data());
+        const quint16 *inputPtr = inputFields[fieldIndex].data.data();
 
         for (qint32 y = 0; y < YTILE; y++) {
             // If this frame line is not available in the field

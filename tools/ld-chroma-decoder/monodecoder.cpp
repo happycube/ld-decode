@@ -73,11 +73,10 @@ void MonoThread::decodeFrames(const QVector<SourceField> &inputFields, qint32 st
     for (qint32 fieldIndex = startIndex, frameIndex = 0; fieldIndex < endIndex; fieldIndex += 2, frameIndex++) {
         // Interlace the active lines of the two input fields to produce an output frame
         for (qint32 y = config.firstActiveLine; y < config.lastActiveLine; y++) {
-            const QByteArray &inputFieldData = (y % 2) == 0 ? inputFields[fieldIndex].data : inputFields[fieldIndex + 1].data;
+            const SourceVideo::Data &inputFieldData = (y % 2) == 0 ? inputFields[fieldIndex].data : inputFields[fieldIndex + 1].data;
 
             // Each quint16 input becomes three quint16 outputs
-            const quint16 *inputLine = reinterpret_cast<const quint16 *>(inputFieldData.data())
-                                       + ((y / 2) * videoParameters.fieldWidth);
+            const quint16 *inputLine = inputFieldData.data() + ((y / 2) * videoParameters.fieldWidth);
             quint16 *outputLine =      reinterpret_cast<quint16 *>(outputFrame.data())
                                        + (y * videoParameters.fieldWidth * 3);
 

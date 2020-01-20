@@ -33,11 +33,12 @@ SourceVideo::SourceVideo()
     isSourceVideoOpen = false;
     inputFilePos = -1;
     availableFields = -1;
+    fieldLength = -1;
     fieldByteLength = -1;
     fieldLineLength = -1;
 
     // Set up the cache
-    fieldCache = new QCache<qint32, QByteArray>;
+    fieldCache = new QCache<qint32, Data>;
     fieldCache->setMaxCost(100);
 
     inputFile = new QFile();
@@ -56,6 +57,7 @@ SourceVideo::~SourceVideo()
 // Returns true on success.
 bool SourceVideo::open(QString filename, qint32 _fieldLength, qint32 _fieldLineLength)
 {
+    fieldLength = _fieldLength;
     fieldByteLength = _fieldLength * 2;
     if (_fieldLineLength != -1) {
         fieldLineLength = _fieldLineLength * 2;
@@ -130,17 +132,17 @@ qint32 SourceVideo::getNumberOfAvailableFields()
     return availableFields;
 }
 
-// Get the byte length of the fields
-qint32 SourceVideo::getFieldByteLength()
+// Get the number of samples in a field
+qint32 SourceVideo::getFieldLength()
 {
-    return fieldByteLength;
+    return fieldLength;
 }
 
 // Frame data retrieval methods ---------------------------------------------------------------------------------------
 
 // Method to retrieve a range of field lines from a single video field.
 // If startFieldLine and endFieldLine are both -1, read the whole field.
-QByteArray SourceVideo::getVideoField(qint32 fieldNumber, qint32 startFieldLine, qint32 endFieldLine)
+SourceVideo::Data SourceVideo::getVideoField(qint32 fieldNumber, qint32 startFieldLine, qint32 endFieldLine)
 {
     // Adjust the field number to index from zero
     fieldNumber--;
@@ -184,7 +186,7 @@ QByteArray SourceVideo::getVideoField(qint32 fieldNumber, qint32 startFieldLine,
     }
 
     // Resize the output buffer
-    outputFieldData.resize(static_cast<qint32>(requiredReadLength));
+    outputFieldData.resize(static_cast<qint32>(requiredReadLength) / 2);
 
     // Seek to the correct file position (if not already there)
     if (inputFilePos != requiredStartPosition) {
@@ -196,7 +198,8 @@ QByteArray SourceVideo::getVideoField(qint32 fieldNumber, qint32 startFieldLine,
     qint64 totalReceivedBytes = 0;
     qint64 receivedBytes = 0;
     do {
-        receivedBytes = inputFile->read(outputFieldData.data() + totalReceivedBytes, requiredReadLength - totalReceivedBytes);
+        receivedBytes = inputFile->read(reinterpret_cast<char *>(outputFieldData.data()) + totalReceivedBytes,
+                                        requiredReadLength - totalReceivedBytes);
         if (receivedBytes > 0) {
             totalReceivedBytes += receivedBytes;
             inputFilePos += receivedBytes;
@@ -208,7 +211,7 @@ QByteArray SourceVideo::getVideoField(qint32 fieldNumber, qint32 startFieldLine,
 
     if (startFieldLine == -1 && endFieldLine == -1) {
         // Insert the field data into the cache
-        fieldCache->insert(fieldNumber, new QByteArray(outputFieldData), 1);
+        fieldCache->insert(fieldNumber, new Data(outputFieldData), 1);
     }
 
     // Return the data

@@ -107,7 +107,7 @@ void TransformPal2D::filterFields(const QVector<SourceField> &inputFields, qint3
     // Check we have a valid vector of input fields, and a matching output vector
     assert((inputFields.size() % 2) == 0);
     for (qint32 i = 0; i < inputFields.size(); i++) {
-        assert(!inputFields[i].data.isNull());
+        assert(!inputFields[i].data.empty());
     }
     assert(outputFields.size() == (endIndex - startIndex));
 
@@ -166,7 +166,7 @@ void TransformPal2D::filterField(const SourceField& inputField, qint32 outputInd
 void TransformPal2D::forwardFFTTile(qint32 tileX, qint32 tileY, qint32 startY, qint32 endY, const SourceField &inputField)
 {
     // Copy the input signal into fftReal, applying the window function
-    const quint16 *inputPtr = reinterpret_cast<const quint16 *>(inputField.data.data());
+    const quint16 *inputPtr = inputField.data.data();
     for (qint32 y = 0; y < YTILE; y++) {
         // If this frame line is above/below the active region, fill it with
         // black instead.

@@ -299,7 +299,7 @@ void PalColour::decodeFrames(const QVector<SourceField> &inputFields, qint32 sta
 void PalColour::decodeField(const SourceField &inputField, const double *chromaData, double chromaGain, QByteArray &outputFrame)
 {
     // Pointer to the composite signal data
-    const quint16 *compPtr = reinterpret_cast<const quint16 *>(inputField.data.data());
+    const quint16 *compPtr = inputField.data.data();
 
     const qint32 firstLine = inputField.getFirstActiveLine(configuration.firstActiveLine);
     const qint32 lastLine = inputField.getLastActiveLine(configuration.lastActiveLine);
@@ -494,7 +494,7 @@ void PalColour::decodeLine(const SourceField &inputField, const ChromaSample *ch
     }
 
     // Pointer to composite signal data
-    const quint16 *comp = reinterpret_cast<const quint16 *>(inputField.data.data()) + (line.number * videoParameters.fieldWidth);
+    const quint16 *comp = inputField.data.data() + (line.number * videoParameters.fieldWidth);
 
     // Define scan line pointer to output buffer using 16 bit unsigned words
     quint16 *ptr = reinterpret_cast<quint16 *>(outputFrame.data()

@@ -86,8 +86,8 @@ QByteArray Comb::decodeFrame(const SourceField &firstField, const SourceField &s
     qint32 fieldLine = 0;
     currentFrameBuffer.rawbuffer.clear();
     for (qint32 frameLine = 0; frameLine < frameHeight; frameLine += 2) {
-        currentFrameBuffer.rawbuffer.append(firstField.data.mid(fieldLine * videoParameters.fieldWidth * 2, videoParameters.fieldWidth * 2));
-        currentFrameBuffer.rawbuffer.append(secondField.data.mid(fieldLine * videoParameters.fieldWidth * 2, videoParameters.fieldWidth * 2));
+        currentFrameBuffer.rawbuffer.append(firstField.data.mid(fieldLine * videoParameters.fieldWidth, videoParameters.fieldWidth));
+        currentFrameBuffer.rawbuffer.append(secondField.data.mid(fieldLine * videoParameters.fieldWidth, videoParameters.fieldWidth));
         fieldLine++;
     }
 
@@ -213,7 +213,7 @@ void Comb::split1D(FrameBuffer *frameBuffer)
 {
     for (qint32 lineNumber = configuration.firstActiveLine; lineNumber < configuration.lastActiveLine; lineNumber++) {
         // Get a pointer to the line's data
-        quint16 *line = reinterpret_cast<quint16 *>(frameBuffer->rawbuffer.data() + (lineNumber * videoParameters.fieldWidth) * 2);
+        const quint16 *line = frameBuffer->rawbuffer.data() + (lineNumber * videoParameters.fieldWidth);
 
         for (qint32 h = videoParameters.activeVideoStart; h < videoParameters.activeVideoEnd; h++) {
             qreal tc1 = (((line[h + 2] + line[h - 2]) / 2) - line[h]);
@@ -297,9 +297,8 @@ void Comb::split3D(FrameBuffer *currentFrame, FrameBuffer *previousFrame)
     }
 
     for (qint32 lineNumber = configuration.firstActiveLine; lineNumber < configuration.lastActiveLine; lineNumber++) {
-
-        quint16 *currentLine = reinterpret_cast<quint16 *>(currentFrame->rawbuffer.data() + (lineNumber * videoParameters.fieldWidth) * 2);
-        quint16 *previousLine = reinterpret_cast<quint16 *>(previousFrame->rawbuffer.data() + (lineNumber * videoParameters.fieldWidth) * 2);
+        const quint16 *currentLine = currentFrame->rawbuffer.data() + (lineNumber * videoParameters.fieldWidth);
+        const quint16 *previousLine = previousFrame->rawbuffer.data() + (lineNumber * videoParameters.fieldWidth);
 
         for (qint32 h = videoParameters.activeVideoStart; h < videoParameters.activeVideoEnd; h++) {
             currentFrame->clpbuffer[2].pixel[lineNumber][h] = (previousLine[h] - currentLine[h]) / 2;
@@ -315,7 +314,7 @@ void Comb::splitIQ(FrameBuffer *frameBuffer)
 
     for (qint32 lineNumber = configuration.firstActiveLine; lineNumber < configuration.lastActiveLine; lineNumber++) {
         // Get a pointer to the line's data
-        quint16 *line = reinterpret_cast<quint16 *>(frameBuffer->rawbuffer.data() + (lineNumber * videoParameters.fieldWidth) * 2);
+        const quint16 *line = frameBuffer->rawbuffer.data() + (lineNumber * videoParameters.fieldWidth);
         bool linePhase = GetLinePhase(frameBuffer, lineNumber);
 
         qreal si = 0, sq = 0;

@@ -26,7 +26,6 @@
 #define DECODERPOOL_H
 
 #include <QAtomicInt>
-#include <QByteArray>
 #include <QElapsedTimer>
 #include <QMutex>
 #include <QThread>
@@ -44,7 +43,7 @@ public:
     bool process();
 
     // Member functions used by worker threads
-    bool getInputField(qint32& fieldNumber, QByteArray& fieldVideoData, LdDecodeMetaData::Field &fieldMetadata, LdDecodeMetaData::VideoParameters &videoParameters);
+    bool getInputField(qint32 &fieldNumber, SourceVideo::Data &fieldVideoData, LdDecodeMetaData::Field &fieldMetadata, LdDecodeMetaData::VideoParameters &videoParameters);
     bool setOutputField(qint32 fieldNumber, LdDecodeMetaData::Field fieldMetadata);
 
 private:

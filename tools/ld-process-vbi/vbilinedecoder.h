@@ -31,6 +31,7 @@
 #include <QDebug>
 
 #include "lddecodemetadata.h"
+#include "sourcevideo.h"
 #include "fmcode.h"
 #include "whiteflag.h"
 #include "closedcaption.h"
@@ -58,9 +59,11 @@ private:
     // Temporary output buffer
     LdDecodeMetaData::Field outputData;
 
-    QByteArray getActiveVideoLine(QByteArray *sourceFrame, qint32 scanLine, LdDecodeMetaData::VideoParameters videoParameters);
-    qint32 manchesterDecoder(QByteArray lineData, qint32 zcPoint, LdDecodeMetaData::VideoParameters videoParameters);
-    QVector<bool> getTransitionMap(QByteArray lineData, qint32 zcPoint);
+    SourceVideo::Data getActiveVideoLine(const SourceVideo::Data& sourceFrame, qint32 scanLine,
+                                         LdDecodeMetaData::VideoParameters videoParameters);
+    qint32 manchesterDecoder(const SourceVideo::Data& lineData, qint32 zcPoint,
+                             LdDecodeMetaData::VideoParameters videoParameters);
+    QVector<bool> getTransitionMap(const SourceVideo::Data& lineData, qint32 zcPoint);
 };
 
 #endif // VBILINEDECODER_H

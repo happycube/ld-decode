@@ -95,7 +95,7 @@ private:
     };
 
     struct FrameBuffer {
-        QByteArray rawbuffer;
+        SourceVideo::Data rawbuffer;
 
         QVector<PixelLine> clpbuffer; // Unfiltered chroma for the current phase (can be I or Q)
         QVector<qreal> kValues;
