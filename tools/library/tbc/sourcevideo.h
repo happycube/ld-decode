@@ -60,7 +60,7 @@ public:
 
 private:
     // File handling globals
-    QFile *inputFile;
+    QFile inputFile;
     qint64 inputFilePos;
     bool isSourceVideoOpen;
     qint32 availableFields;
@@ -71,7 +71,7 @@ private:
     Data outputFieldData;
 
     // Field caching
-    QCache<qint32, Data> *fieldCache;
+    QCache<qint32, Data> fieldCache;
 };
 
 #endif // SOURCEVIDEO_H
