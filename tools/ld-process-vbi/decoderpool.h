@@ -50,8 +50,6 @@ public:
 private:
     QString inputFilename;
     QString outputJsonFilename;
-    bool performCorrection;
-    bool noBackup;
     qint32 maxThreads;
     QElapsedTimer totalTimer;
 
