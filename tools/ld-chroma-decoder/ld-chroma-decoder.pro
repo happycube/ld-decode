@@ -70,8 +70,11 @@ unix:!android: target.path = $$PREFIX/bin/
 !isEmpty(target.path): INSTALLS += target
 
 # Additional include paths to support MacOS compilation
+macx {
 INCLUDEPATH += "/usr/local/opt/opencv@2/include"
 LIBS += -L"/usr/local/opt/opencv@2/lib"
+INCLUDEPATH += "/usr/local/include"
+}
 
 # Normal open-source OS goodness
 INCLUDEPATH += "/usr/local/include/opencv"

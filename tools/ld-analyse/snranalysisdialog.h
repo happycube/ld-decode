@@ -25,12 +25,14 @@
 #ifndef SNRANALYSISDIALOG_H
 #define SNRANALYSISDIALOG_H
 
+#include <cmath>
+
 #include <QDialog>
-#include <qwt/qwt_plot.h>
-#include <qwt/qwt_plot_canvas.h>
-#include <qwt/qwt_legend.h>
-#include <qwt/qwt_plot_grid.h>
-#include <qwt/qwt_plot_curve.h>
+#include <qwt_plot.h>
+#include <qwt_plot_canvas.h>
+#include <qwt_legend.h>
+#include <qwt_plot_grid.h>
+#include <qwt_plot_curve.h>
 
 #include "lddecodemetadata.h"
 

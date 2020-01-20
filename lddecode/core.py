@@ -2741,14 +2741,24 @@ class LDdecode:
                     raise ValueError("Non-decimal BCD digit")
                 return (10 * decodeBCD(bcd >> 4)) + digit
 
-        leadoutCount = 0
+        # With newer versions of the duplicator software, there may 
+        # only be one *field* with leadout, so handle each field 
+        # in turn. (issue #414)
+        for i in [f1.linecode, f2.linecode]:
+            leadoutCount = 0
+            for v in i:
+                if v is not None and v == 0x80eeee:
+                    leadoutCount += 1
+
+            if leadoutCount == 2:
+                self.leadOut = True
 
         for l in f1.linecode + f2.linecode:
             if l is None:
                 continue
 
             if l == 0x80eeee: # lead-out reached
-                leadoutCount += 1
+                pass
             elif l == 0x88ffff: # lead-in
                 self.leadIn = True
             elif (l & 0xf0dd00) == 0xf0dd00: # CLV minutes/hours
@@ -2783,9 +2793,6 @@ class LDdecode:
                 else:
                     self.earlyCLV = True
                     return (self.clvMinutes * 60)
-
-        if leadoutCount >= 3:
-            self.leadOut = True
 
         return None #seeking won't work w/minutes only
 

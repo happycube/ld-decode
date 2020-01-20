@@ -285,6 +285,12 @@ QVector<qreal> TbcSource::getDropOutGraphData()
     return dropoutGraphData;
 }
 
+// Get CQI data for graphing
+QVector<qreal> TbcSource::getCaptureQualityIndexGraphData()
+{
+    return cqiGraphData;
+}
+
 // Method to get the size of the graphing data
 qint32 TbcSource::getGraphDataSize()
 {
@@ -698,6 +704,7 @@ void TbcSource::generateData(qint32 _targetDataPoints)
     dropoutGraphData.clear();
     blackSnrGraphData.clear();
     whiteSnrGraphData.clear();
+    cqiGraphData.clear();
 
     qreal targetDataPoints = static_cast<qreal>(_targetDataPoints);
     qreal averageWidth = qRound(ldDecodeMetaData.getNumberOfFields() / targetDataPoints);
@@ -706,11 +713,15 @@ void TbcSource::generateData(qint32 _targetDataPoints)
     fieldsPerGraphDataPoint = ldDecodeMetaData.getNumberOfFields() / dataPoints;
     if (fieldsPerGraphDataPoint < 1) fieldsPerGraphDataPoint = 1;
 
+    // Get the total number of dots per field
+    qint32 totalDotsPerField = ldDecodeMetaData.getVideoParameters().fieldHeight + ldDecodeMetaData.getVideoParameters().fieldWidth;
+
     qint32 fieldNumber = 1;
     for (qint32 dpCount = 0; dpCount < dataPoints; dpCount++) {
         qreal doLength = 0;
         qreal blackSnrTotal = 0;
         qreal whiteSnrTotal = 0;
+        qreal syncConf = 0;
 
         // SNR data may be missing in some fields, so we count the points to prevent
         // the average from being thrown-off by missing data
@@ -738,6 +749,11 @@ void TbcSource::generateData(qint32 _targetDataPoints)
                     whiteSnrPoints++;
                 }
             }
+
+            // Get the sync confidence
+            syncConf += static_cast<qreal>(ldDecodeMetaData.getField(fieldNumber).syncConf);
+
+            // Next field...
             fieldNumber++;
         }
 
@@ -745,11 +761,24 @@ void TbcSource::generateData(qint32 _targetDataPoints)
         doLength = doLength / static_cast<qreal>(fieldsPerGraphDataPoint);
         blackSnrTotal = blackSnrTotal / blackSnrPoints;
         whiteSnrTotal = whiteSnrTotal / whiteSnrPoints;
+        syncConf = syncConf / static_cast<qreal>(fieldsPerGraphDataPoint);
+
+        // Calculate the Capture Quality Index
+        qreal fieldDoPercent = 100.0 - (static_cast<qreal>(doLength) / static_cast<qreal>(totalDotsPerField * fieldsPerGraphDataPoint));
+        qreal snrPercent = 0;
+        if (whiteSnrTotal != 0) snrPercent = (100.0 / 90.0) * (blackSnrTotal + whiteSnrTotal);
+        else snrPercent = (100.0 / 45.0) * (blackSnrTotal);
+        if (snrPercent > 100.0) snrPercent = 100.0;
+
+        // Note: The weighting is 1000:1:1 - this is just because dropouts have a greater visual effect
+        // on the resulting capture than SNR.
+        qreal captureQualityIndex = ((fieldDoPercent * 1000.0) + snrPercent + syncConf) / 1002.0;
 
         // Add the result to the vectors
         dropoutGraphData.append(doLength);
         blackSnrGraphData.append(blackSnrTotal);
         whiteSnrGraphData.append(whiteSnrTotal);
+        cqiGraphData.append(captureQualityIndex);
     }
 }
 
