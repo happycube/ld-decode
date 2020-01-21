@@ -317,7 +317,7 @@ void TransformPal2D::applyFilter()
 
 void TransformPal2D::overlayFFTFrame(qint32 positionX, qint32 positionY,
                                      const QVector<SourceField> &inputFields, qint32 fieldIndex,
-                                     QByteArray &rgbFrame)
+                                     RGBFrame &rgbFrame)
 {
     // Do nothing if the tile isn't within the frame
     if (positionX < 0 || positionX + XTILE > videoParameters.fieldWidth

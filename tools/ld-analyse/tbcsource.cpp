@@ -549,7 +549,7 @@ QImage TbcSource::generateQImage(qint32 firstFieldNumber, qint32 secondFieldNumb
         secondField.data = sourceVideo.getVideoField(secondFieldNumber);
 
         qint32 firstActiveLine, lastActiveLine;
-        QByteArray outputData;
+        RGBFrame rgbFrame;
 
         // Decode colour for the current frame, to RGB 16-16-16 interlaced output
         if (videoParameters.isSourcePal) {
@@ -558,39 +558,32 @@ QImage TbcSource::generateQImage(qint32 firstFieldNumber, qint32 secondFieldNumb
             firstActiveLine = palColourConfiguration.firstActiveLine;
             lastActiveLine = palColourConfiguration.lastActiveLine;
 
-            outputData = palColour.decodeFrame(firstField, secondField);
+            rgbFrame = palColour.decodeFrame(firstField, secondField);
         } else {
             // NTSC source
 
             firstActiveLine = ntscColour.getConfiguration().firstActiveLine;
             lastActiveLine = ntscColour.getConfiguration().lastActiveLine;
 
-            outputData = ntscColour.decodeFrame(firstField, secondField);
+            rgbFrame = ntscColour.decodeFrame(firstField, secondField);
         }
+
+        // Get a pointer to the RGB data
+        const quint16 *rgbPointer = rgbFrame.data();
 
         // Fill the QImage with black
         frameImage.fill(Qt::black);
 
         // Copy the RGB16-16-16 data into the RGB888 QImage
         for (qint32 y = firstActiveLine; y < lastActiveLine; y++) {
-            // Extract the current scan line data from the frame
-            qint32 startPointer = y * videoParameters.fieldWidth * 6;
-            qint32 length = videoParameters.fieldWidth * 6;
-
-            QByteArray rgbData = outputData.mid(startPointer, length);
-
             for (qint32 x = videoParameters.activeVideoStart; x < videoParameters.activeVideoEnd; x++) {
+                qint32 pixelOffset = ((y * videoParameters.fieldWidth) + x) * 3;
+
                 // Take just the MSB of the input data
-                qint32 dp = x * 6;
-
-                uchar pixelValueR = static_cast<uchar>(rgbData[dp + 1]);
-                uchar pixelValueG = static_cast<uchar>(rgbData[dp + 3]);
-                uchar pixelValueB = static_cast<uchar>(rgbData[dp + 5]);
-
                 qint32 xpp = x * 3;
-                *(frameImage.scanLine(y) + xpp + 0) = static_cast<uchar>(pixelValueR); // R
-                *(frameImage.scanLine(y) + xpp + 1) = static_cast<uchar>(pixelValueG); // G
-                *(frameImage.scanLine(y) + xpp + 2) = static_cast<uchar>(pixelValueB); // B
+                *(frameImage.scanLine(y) + xpp + 0) = static_cast<uchar>(rgbPointer[pixelOffset + 0] / 256); // R
+                *(frameImage.scanLine(y) + xpp + 1) = static_cast<uchar>(rgbPointer[pixelOffset + 1] / 256); // G
+                *(frameImage.scanLine(y) + xpp + 2) = static_cast<uchar>(rgbPointer[pixelOffset + 2] / 256); // B
             }
         }
     } else if (lpfOn) {

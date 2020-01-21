@@ -58,12 +58,12 @@ MonoThread::MonoThread(QAtomicInt& _abort, DecoderPool& _decoderPool,
 {
     // Resize and clear the output buffer
     const qint32 frameHeight = (config.videoParameters.fieldHeight * 2) - 1;
-    outputFrame.resize(config.videoParameters.fieldWidth * frameHeight * 6);
+    outputFrame.resize(config.videoParameters.fieldWidth * frameHeight * 3);
     outputFrame.fill(0);
 }
 
 void MonoThread::decodeFrames(const QVector<SourceField> &inputFields, qint32 startIndex, qint32 endIndex,
-                             QVector<QByteArray> &outputFrames)
+                              QVector<RGBFrame> &outputFrames)
 {
     // Work out black-white scaling factors
     const LdDecodeMetaData::VideoParameters &videoParameters = config.videoParameters;
@@ -77,8 +77,7 @@ void MonoThread::decodeFrames(const QVector<SourceField> &inputFields, qint32 st
 
             // Each quint16 input becomes three quint16 outputs
             const quint16 *inputLine = inputFieldData.data() + ((y / 2) * videoParameters.fieldWidth);
-            quint16 *outputLine =      reinterpret_cast<quint16 *>(outputFrame.data())
-                                       + (y * videoParameters.fieldWidth * 3);
+            quint16 *outputLine = outputFrame.data() + (y * videoParameters.fieldWidth * 3);
 
             for (qint32 x = videoParameters.activeVideoStart; x < videoParameters.activeVideoEnd; x++) {
                 const quint16 value = static_cast<quint16>(qBound(0.0, (inputLine[x] - blackOffset) * whiteScale, 65535.0));

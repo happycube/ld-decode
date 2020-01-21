@@ -69,6 +69,7 @@ HEADERS += \
     ../ld-chroma-decoder/palcolour.h \
     ../ld-chroma-decoder/comb.h \
     ../ld-chroma-decoder/rgb.h \
+    ../ld-chroma-decoder/rgbframe.h \
     ../ld-chroma-decoder/yiq.h \
     ../ld-chroma-decoder/transformpal.h \
     ../ld-chroma-decoder/transformpal2d.h \

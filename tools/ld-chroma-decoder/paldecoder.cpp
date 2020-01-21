@@ -68,9 +68,9 @@ PalThread::PalThread(QAtomicInt& _abort, DecoderPool& _decoderPool,
 }
 
 void PalThread::decodeFrames(const QVector<SourceField> &inputFields, qint32 startIndex, qint32 endIndex,
-                             QVector<QByteArray> &outputFrames)
+                             QVector<RGBFrame> &outputFrames)
 {
-    QVector<QByteArray> decodedFrames(outputFrames.size());
+    QVector<RGBFrame> decodedFrames(outputFrames.size());
 
     // Perform the PALcolour filtering
     palColour.decodeFrames(inputFields, startIndex, endIndex, decodedFrames);

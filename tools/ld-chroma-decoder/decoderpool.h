@@ -27,7 +27,6 @@
 
 #include <QObject>
 #include <QAtomicInt>
-#include <QByteArray>
 #include <QElapsedTimer>
 #include <QMap>
 #include <QMutex>
@@ -73,10 +72,10 @@ public:
     // frame being startFrameNumber.
     //
     // Returns true on success, false on failure.
-    bool putOutputFrames(qint32 startFrameNumber, const QVector<QByteArray> &outputFrames);
+    bool putOutputFrames(qint32 startFrameNumber, const QVector<RGBFrame> &outputFrames);
 
 private:
-    bool putOutputFrame(qint32 frameNumber, const QByteArray &outputFrame);
+    bool putOutputFrame(qint32 frameNumber, const RGBFrame &outputFrame);
 
     // Default batch size, in frames
     static constexpr qint32 DEFAULT_BATCH_SIZE = 16;
@@ -105,7 +104,7 @@ private:
     // Output stream information (all guarded by outputMutex while threads are running)
     QMutex outputMutex;
     qint32 outputFrameNumber;
-    QMap<qint32, QByteArray> pendingOutputFrames;
+    QMap<qint32, RGBFrame> pendingOutputFrames;
     QFile targetVideo;
     QElapsedTimer totalTimer;
 };

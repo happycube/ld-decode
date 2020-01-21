@@ -63,12 +63,12 @@ void Comb::updateConfiguration(const LdDecodeMetaData::VideoParameters &_videoPa
 }
 
 // Process the input buffer into the RGB output buffer
-QByteArray Comb::decodeFrame(const SourceField &firstField, const SourceField &secondField)
+RGBFrame Comb::decodeFrame(const SourceField &firstField, const SourceField &secondField)
 {
     // Ensure the object has been configured
     if (!configurationSet) {
         qDebug() << "Comb::process(): Called, but the object has not been configured";
-        return nullptr;
+        return RGBFrame();
     }
 
     // Allocate the frame buffer
@@ -79,8 +79,7 @@ QByteArray Comb::decodeFrame(const SourceField &firstField, const SourceField &s
     YiqBuffer tempYiqBuffer;
 
     // Allocate RGB output buffer
-    QByteArray rgbOutputBuffer;
-    QByteArray bgrBuffer;
+    RGBFrame rgbOutputBuffer;
 
     // Interlace the input fields and place in the frame[0]'s raw buffer
     qint32 fieldLine = 0;
@@ -463,10 +462,10 @@ void Comb::doYNR(YiqBuffer &yiqBuffer)
 }
 
 // Convert buffer from YIQ to RGB 16-16-16
-QByteArray Comb::yiqToRgbFrame(const YiqBuffer &yiqBuffer, qreal burstLevel)
+RGBFrame Comb::yiqToRgbFrame(const YiqBuffer &yiqBuffer, qreal burstLevel)
 {
-    QByteArray rgbOutputFrame;
-    rgbOutputFrame.resize((videoParameters.fieldWidth * frameHeight * 3) * 2); // * 3 * 2 for RGB 16-16-16)
+    RGBFrame rgbOutputFrame;
+    rgbOutputFrame.resize(videoParameters.fieldWidth * frameHeight * 3); // for RGB 16-16-16
 
     // Initialise the output frame
     rgbOutputFrame.fill(0);
@@ -476,8 +475,8 @@ QByteArray Comb::yiqToRgbFrame(const YiqBuffer &yiqBuffer, qreal burstLevel)
 
     // Perform YIQ to RGB conversion
     for (qint32 lineNumber = configuration.firstActiveLine; lineNumber < configuration.lastActiveLine; lineNumber++) {
-        // Map the QByteArray data to an unsigned 16 bit pointer
-        quint16 *linePointer = reinterpret_cast<quint16 *>(rgbOutputFrame.data() + ((videoParameters.fieldWidth * 3 * lineNumber) * 2));
+        // Get a pointer to the line
+        quint16 *linePointer = rgbOutputFrame.data() + (videoParameters.fieldWidth * 3 * lineNumber);
 
         // Offset the output by the activeVideoStart to keep the output frame
         // in the same x position as the input video frame (the +6 realigns the output
@@ -496,7 +495,7 @@ QByteArray Comb::yiqToRgbFrame(const YiqBuffer &yiqBuffer, qreal burstLevel)
 }
 
 // Convert buffer from YIQ to RGB
-void Comb::overlayOpticalFlowMap(const FrameBuffer &frameBuffer, QByteArray &rgbFrame)
+void Comb::overlayOpticalFlowMap(const FrameBuffer &frameBuffer, RGBFrame &rgbFrame)
 {
     qDebug() << "Comb::overlayOpticalFlowMap(): Overlaying optical flow map onto RGB output";
 //    QVector<qreal> motionKMap;
@@ -504,8 +503,8 @@ void Comb::overlayOpticalFlowMap(const FrameBuffer &frameBuffer, QByteArray &rgb
 
     // Overlay the optical flow map on the output RGB
     for (qint32 lineNumber = configuration.firstActiveLine; lineNumber < configuration.lastActiveLine; lineNumber++) {
-        // Map the QByteArray data to an unsigned 16 bit pointer
-        quint16 *linePointer = reinterpret_cast<quint16 *>(rgbFrame.data() + ((videoParameters.fieldWidth * 3 * lineNumber) * 2));
+        // Get a pointer to the line
+        quint16 *linePointer = rgbFrame.data() + (videoParameters.fieldWidth * 3 * lineNumber);
 
         // Fill the output frame with the RGB values
         for (qint32 h = videoParameters.activeVideoStart; h < videoParameters.activeVideoEnd; h++) {
