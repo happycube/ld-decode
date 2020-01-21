@@ -61,9 +61,8 @@ bool CorrectorPool::process()
     qint32 secondFieldNumber = ldDecodeMetaData[0]->getSecondFieldNumber(1);
 
     if (firstFieldNumber != 1 && secondFieldNumber != 1) {
-        QByteArray sourceField;
-        sourceField = sourceVideos[0]->getVideoField(1);
-        if (!targetVideo.write(sourceField, sourceField.size())) {
+        SourceVideo::Data sourceField = sourceVideos[0]->getVideoField(1);
+        if (!writeOutputField(sourceField)) {
             // Could not write to target TBC file
             qInfo() << "Writing first field to the output TBC file failed";
             targetVideo.close();
@@ -130,8 +129,8 @@ bool CorrectorPool::process()
 // Returns true if a frame was returned, false if the end of the input has been
 // reached.
 bool CorrectorPool::getInputFrame(qint32& frameNumber,
-                                  QVector<qint32>& firstFieldNumber, QVector<QByteArray>& firstFieldVideoData, QVector<LdDecodeMetaData::Field>& firstFieldMetadata,
-                                  QVector<qint32>& secondFieldNumber, QVector<QByteArray>& secondFieldVideoData, QVector<LdDecodeMetaData::Field>& secondFieldMetadata,
+                                  QVector<qint32>& firstFieldNumber, QVector<SourceVideo::Data>& firstFieldVideoData, QVector<LdDecodeMetaData::Field>& firstFieldMetadata,
+                                  QVector<qint32>& secondFieldNumber, QVector<SourceVideo::Data>& secondFieldVideoData, QVector<LdDecodeMetaData::Field>& secondFieldMetadata,
                                   QVector<LdDecodeMetaData::VideoParameters>& videoParameters,
                                   bool& _reverse, bool& _intraField, bool& _overCorrect,
                                   QVector<qint32>& availableSourcesForFrame, QVector<qreal>& sourceFrameQuality)
@@ -245,42 +244,40 @@ bool CorrectorPool::getInputFrame(qint32& frameNumber,
 //
 // Returns true on success, false on failure.
 bool CorrectorPool::setOutputFrame(qint32 frameNumber,
-                                   QByteArray firstTargetFieldData, QByteArray secondTargetFieldData,
+                                   SourceVideo::Data firstTargetFieldData, SourceVideo::Data secondTargetFieldData,
                                    qint32 firstFieldSeqNo, qint32 secondFieldSeqNo,
                                    qint32 sameSourceReplacement, qint32 multiSourceReplacement, qint32 totalReplacementDistance)
 {
     QMutexLocker locker(&outputMutex);
 
     // Put the output frame into the map
-    OutputFrame outputFrame;
-    outputFrame.firstTargetFieldData = firstTargetFieldData;
-    outputFrame.secondTargetFieldData = secondTargetFieldData;
-    outputFrame.firstFieldSeqNo = firstFieldSeqNo;
-    outputFrame.secondFieldSeqNo = secondFieldSeqNo;
-    pendingOutputFrames[frameNumber] = outputFrame;
+    OutputFrame pendingFrame;
+    pendingFrame.firstTargetFieldData = firstTargetFieldData;
+    pendingFrame.secondTargetFieldData = secondTargetFieldData;
+    pendingFrame.firstFieldSeqNo = firstFieldSeqNo;
+    pendingFrame.secondFieldSeqNo = secondFieldSeqNo;
 
     // Get statistics
-    outputFrame.sameSourceReplacement = sameSourceReplacement;
-    outputFrame.multiSourceReplacement = multiSourceReplacement;
-    outputFrame.totalReplacementDistance = totalReplacementDistance;
+    pendingFrame.sameSourceReplacement = sameSourceReplacement;
+    pendingFrame.multiSourceReplacement = multiSourceReplacement;
+    pendingFrame.totalReplacementDistance = totalReplacementDistance;
+
+    pendingOutputFrames[frameNumber] = pendingFrame;
 
     // Write out as many frames as possible
     while (pendingOutputFrames.contains(outputFrameNumber)) {
-        const QByteArray& outputFirstTargetFieldData = pendingOutputFrames.value(outputFrameNumber).firstTargetFieldData;
-        const QByteArray& outputSecondTargetFieldData = pendingOutputFrames.value(outputFrameNumber).secondTargetFieldData;
-        const qint32& outputFirstFieldSeqNo = pendingOutputFrames.value(outputFrameNumber).firstFieldSeqNo;
-        const qint32& secondFirstFieldSeqNo = pendingOutputFrames.value(outputFrameNumber).secondFieldSeqNo;
+        const OutputFrame &outputFrame = pendingOutputFrames.value(outputFrameNumber);
 
         // Save the frame data to the output file (with the fields in the correct order)
         bool writeFail = false;
-        if (outputFirstFieldSeqNo < secondFirstFieldSeqNo) {
+        if (outputFrame.firstFieldSeqNo < outputFrame.secondFieldSeqNo) {
             // Save the first field and then second field to the output file
-            if (!targetVideo.write(outputFirstTargetFieldData.data(), outputFirstTargetFieldData.size())) writeFail = true;
-            if (!targetVideo.write(outputSecondTargetFieldData.data(), outputSecondTargetFieldData.size())) writeFail = true;
+            if (!writeOutputField(outputFrame.firstTargetFieldData)) writeFail = true;
+            if (!writeOutputField(outputFrame.secondTargetFieldData)) writeFail = true;
         } else {
             // Save the second field and then first field to the output file
-            if (!targetVideo.write(outputSecondTargetFieldData.data(), outputSecondTargetFieldData.size())) writeFail = true;
-            if (!targetVideo.write(outputFirstTargetFieldData.data(), outputFirstTargetFieldData.size())) writeFail = true;
+            if (!writeOutputField(outputFrame.secondTargetFieldData)) writeFail = true;
+            if (!writeOutputField(outputFrame.firstTargetFieldData)) writeFail = true;
         }
 
         // Was the write successful?
@@ -433,4 +430,11 @@ QVector<qint32> CorrectorPool::getAvailableSourcesForFrame(qint32 vbiFrameNumber
     }
 
     return availableSourcesForFrame;
+}
+
+// Write a field to the output file.
+// Returns true on success, false on failure.
+bool CorrectorPool::writeOutputField(const SourceVideo::Data &fieldData)
+{
+    return targetVideo.write(reinterpret_cast<const char *>(fieldData.data()), 2 * fieldData.size());
 }

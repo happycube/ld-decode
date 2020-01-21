@@ -25,17 +25,18 @@
 #ifndef FRAMECANVAS_H
 #define FRAMECANVAS_H
 
-#include <QByteArray>
 #include <QtGlobal>
 
 #include "lddecodemetadata.h"
+
+#include "rgbframe.h"
 
 // Context for drawing on top of a full-frame RGB image.
 class FrameCanvas {
 public:
     // rgbFrame is the frame to draw upon, and videoParameters gives its dimensions.
     // (Both parameters are captured by reference, not copied.)
-    FrameCanvas(QByteArray &rgbFrame, const LdDecodeMetaData::VideoParameters &videoParameters,
+    FrameCanvas(RGBFrame &rgbFrame, const LdDecodeMetaData::VideoParameters &videoParameters,
                 qint32 firstActiveLine, qint32 lastActiveLine);
 
     // Return the edges of the active area.

@@ -28,41 +28,50 @@
 #include <QFile>
 #include <QCache>
 #include <QDebug>
+#include <QVector>
 
 class SourceVideo
 {
 public:
+    // A QVector of timebase-corrected video samples.
+    // This is usually a complete field, but it may be a partial field if
+    // you've requested fewer lines from getVideoField (or if you've sliced it
+    // yourself).
+    using Data = QVector<quint16>;
+
     SourceVideo();
     ~SourceVideo();
 
-    // Prevent implicit copying
-    SourceVideo(const SourceVideo &src) = delete;
+    // Prevent copying or assignment
+    SourceVideo(const SourceVideo &) = delete;
+    SourceVideo& operator=(const SourceVideo &) = delete;
 
     // File handling methods
     bool open(QString filename, qint32 _fieldLength, qint32 _fieldLineLength = -1);
     void close(void);
 
     // Field handling methods
-    QByteArray getVideoField(qint32 fieldNumber, qint32 startFieldLine = -1, qint32 endFieldLine = -1);
+    Data getVideoField(qint32 fieldNumber, qint32 startFieldLine = -1, qint32 endFieldLine = -1);
 
     // Get and set methods
     bool isSourceValid();
     qint32 getNumberOfAvailableFields();
-    qint32 getFieldByteLength();
+    qint32 getFieldLength();
 
 private:
     // File handling globals
-    QFile *inputFile;
+    QFile inputFile;
     qint64 inputFilePos;
     bool isSourceVideoOpen;
     qint32 availableFields;
+    qint32 fieldLength;
     qint32 fieldByteLength;
     qint32 fieldLineLength;
 
-    QByteArray outputFieldData;
+    Data outputFieldData;
 
     // Field caching
-    QCache<qint32, QByteArray> *fieldCache;
+    QCache<qint32, Data> fieldCache;
 };
 
 #endif // SOURCEVIDEO_H

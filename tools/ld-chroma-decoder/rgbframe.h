@@ -1,13 +1,13 @@
 /************************************************************************
 
-    whiteflag.h
+    rgbframe.h
 
-    ld-process-vbi - VBI and IEC NTSC specific processor for ld-decode
-    Copyright (C) 2018-2019 Simon Inns
+    ld-chroma-decoder - Colourisation filter for ld-decode
+    Copyright (C) 2020 Adam Sampson
 
     This file is part of ld-decode-tools.
 
-    ld-process-vbi is free software: you can redistribute it and/or
+    ld-chroma-decoder is free software: you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
     published by the Free Software Foundation, either version 3 of the
     License, or (at your option) any later version.
@@ -22,16 +22,13 @@
 
 ************************************************************************/
 
-#ifndef WHITEFLAG_H
-#define WHITEFLAG_H
+#ifndef RGBFRAME_H
+#define RGBFRAME_H
 
-#include "sourcevideo.h"
-#include "lddecodemetadata.h"
+#include <QtGlobal>
+#include <QVector>
 
-class WhiteFlag
-{
-public:
-    bool getWhiteFlag(const SourceVideo::Data &lineData, LdDecodeMetaData::VideoParameters videoParameters);
-};
+// A decoded frame, containing triples of (R, G, B) samples
+using RGBFrame = QVector<quint16>;
 
-#endif // WHITEFLAG_H
+#endif // RGBFRAME_H

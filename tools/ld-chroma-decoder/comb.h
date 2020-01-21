@@ -35,6 +35,7 @@
 
 #include "opticalflow.h"
 #include "rgb.h"
+#include "rgbframe.h"
 #include "sourcefield.h"
 #include "yiq.h"
 #include "yiqbuffer.h"
@@ -73,7 +74,7 @@ public:
                              const Configuration &configuration);
 
     // Decode two fields to produce an interlaced frame.
-    QByteArray decodeFrame(const SourceField &firstField, const SourceField &secondField);
+    RGBFrame decodeFrame(const SourceField &firstField, const SourceField &secondField);
 
 protected:
 
@@ -95,7 +96,7 @@ private:
     };
 
     struct FrameBuffer {
-        QByteArray rawbuffer;
+        SourceVideo::Data rawbuffer;
 
         QVector<PixelLine> clpbuffer; // Unfiltered chroma for the current phase (can be I or Q)
         QVector<qreal> kValues;
@@ -125,8 +126,8 @@ private:
     void doCNR(YiqBuffer &yiqBuffer);
     void doYNR(YiqBuffer &yiqBuffer);
 
-    QByteArray yiqToRgbFrame(const YiqBuffer &yiqBuffer, qreal burstLevel);
-    void overlayOpticalFlowMap(const FrameBuffer &frameBuffer, QByteArray &rgbOutputFrame);
+    RGBFrame yiqToRgbFrame(const YiqBuffer &yiqBuffer, qreal burstLevel);
+    void overlayOpticalFlowMap(const FrameBuffer &frameBuffer, RGBFrame &rgbOutputFrame);
     void adjustY(FrameBuffer *frameBuffer, YiqBuffer &yiqBuffer);
 };
 

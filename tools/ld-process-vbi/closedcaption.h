@@ -37,11 +37,11 @@ public:
         bool isValid;
     };
 
-    CcData getData(QByteArray lineData, LdDecodeMetaData::VideoParameters videoParameters);
+    CcData getData(const SourceVideo::Data &lineData, LdDecodeMetaData::VideoParameters videoParameters);
 
 private:
     bool isEvenParity(uchar data);
-    QVector<bool> getTransitionMap(QByteArray lineData, qint32 zcPoint);
+    QVector<bool> getTransitionMap(const SourceVideo::Data &lineData, qint32 zcPoint);
 };
 
 #endif // CLOSEDCAPTION_H

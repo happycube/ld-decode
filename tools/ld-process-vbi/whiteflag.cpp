@@ -25,15 +25,14 @@
 #include "whiteflag.h"
 
 // Public method to read the white flag status from a field-line
-bool WhiteFlag::getWhiteFlag(QByteArray lineData, LdDecodeMetaData::VideoParameters videoParameters)
+bool WhiteFlag::getWhiteFlag(const SourceVideo::Data &lineData, LdDecodeMetaData::VideoParameters videoParameters)
 {
     // Determine the 16-bit zero-crossing point
     qint32 zcPoint = videoParameters.white16bIre - videoParameters.black16bIre;
 
     qint32 whiteCount = 0;
     for (qint32 x = videoParameters.activeVideoStart; x < videoParameters.activeVideoEnd; x++) {
-        qint32 pixelValue = (static_cast<uchar>(lineData[x + 1]) * 256) + static_cast<uchar>(lineData[x]);
-        if (pixelValue > zcPoint) whiteCount++;
+        if (lineData[x] > zcPoint) whiteCount++;
     }
 
     // Mark the line as a white flag if at least 50% of the data is above the zc point

@@ -26,13 +26,13 @@
 #define DECODER_H
 
 #include <QAtomicInt>
-#include <QByteArray>
 #include <QDebug>
 #include <QThread>
 #include <cassert>
 
 #include "lddecodemetadata.h"
 
+#include "rgbframe.h"
 #include "sourcefield.h"
 
 class DecoderPool;
@@ -93,7 +93,7 @@ public:
                                    qint32 firstActiveLine, qint32 lastActiveLine);
 
     // Crop a full decoded frame to the output frame size
-    static QByteArray cropOutputFrame(const Configuration &config, QByteArray outputData);
+    static RGBFrame cropOutputFrame(const Configuration &config, const RGBFrame &outputData);
 };
 
 // Abstract base class for chroma decoder worker threads.
@@ -107,7 +107,7 @@ protected:
 
     // Decode a sequence of fields into a sequence of frames
     virtual void decodeFrames(const QVector<SourceField> &inputFields, qint32 startIndex, qint32 endIndex,
-                              QVector<QByteArray> &outputFrames) = 0;
+                              QVector<RGBFrame> &outputFrames) = 0;
 
     // Decoder pool
     QAtomicInt& abort;

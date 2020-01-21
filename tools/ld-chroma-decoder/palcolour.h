@@ -34,6 +34,7 @@
 
 #include "lddecodemetadata.h"
 
+#include "rgbframe.h"
 #include "sourcefield.h"
 #include "transformpal.h"
 
@@ -81,11 +82,11 @@ public:
                              const Configuration &configuration);
 
     // Decode two fields to produce an interlaced frame.
-    QByteArray decodeFrame(const SourceField &firstField, const SourceField &secondField);
+    RGBFrame decodeFrame(const SourceField &firstField, const SourceField &secondField);
 
     // Decode a sequence of fields into a sequence of interlaced frames
     void decodeFrames(const QVector<SourceField> &inputFields, qint32 startIndex, qint32 endIndex,
-                      QVector<QByteArray> &outputFrames);
+                      QVector<RGBFrame> &outputFrames);
 
     // Maximum frame size, based on PAL
     static constexpr qint32 MAX_WIDTH = 1135;
@@ -101,11 +102,11 @@ private:
     };
 
     void buildLookUpTables();
-    void decodeField(const SourceField &inputField, const double *chromaData, double chromaGain, QByteArray &outputFrame);
+    void decodeField(const SourceField &inputField, const double *chromaData, double chromaGain, RGBFrame &outputFrame);
     void detectBurst(LineInfo &line, const quint16 *inputData);
     template <typename ChromaSample, bool PREFILTERED_CHROMA>
     void decodeLine(const SourceField &inputField, const ChromaSample *chromaData, const LineInfo &line, double chromaGain,
-                    QByteArray &outputFrame);
+                    RGBFrame &outputFrame);
 
     // Configuration parameters
     bool configurationSet;

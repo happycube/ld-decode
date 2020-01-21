@@ -356,7 +356,7 @@ TbcSource::ScanLineData TbcSource::getScanLineData(qint32 frameNumber, qint32 sc
     scanLineData.isSourcePal = videoParameters.isSourcePal;
 
     // Get the field video and dropout data
-    QByteArray fieldData;
+    SourceVideo::Data fieldData;
     LdDecodeMetaData::DropOuts dropouts;
     if (isFieldTop) {
         fieldData = sourceVideo.getVideoField(firstFieldNumber);
@@ -370,8 +370,7 @@ TbcSource::ScanLineData TbcSource::getScanLineData(qint32 frameNumber, qint32 sc
     scanLineData.isDropout.resize(videoParameters.fieldWidth);
     for (qint32 xPosition = 0; xPosition < videoParameters.fieldWidth; xPosition++) {
         // Get the 16-bit YC value for the current pixel (frame data is numbered 0-624 or 0-524)
-        uchar *pixelPointer = reinterpret_cast<uchar*>(fieldData.data()) + ((fieldLine - 1) * videoParameters.fieldWidth * 2) + (xPosition * 2);
-        scanLineData.data[xPosition] = (pixelPointer[1] * 256) + pixelPointer[0];
+        scanLineData.data[xPosition] = fieldData[((fieldLine - 1) * videoParameters.fieldWidth) + xPosition];
 
         scanLineData.isDropout[xPosition] = false;
         for (qint32 doCount = 0; doCount < dropouts.startx.size(); doCount++) {
@@ -550,7 +549,7 @@ QImage TbcSource::generateQImage(qint32 firstFieldNumber, qint32 secondFieldNumb
         secondField.data = sourceVideo.getVideoField(secondFieldNumber);
 
         qint32 firstActiveLine, lastActiveLine;
-        QByteArray outputData;
+        RGBFrame rgbFrame;
 
         // Decode colour for the current frame, to RGB 16-16-16 interlaced output
         if (videoParameters.isSourcePal) {
@@ -559,51 +558,47 @@ QImage TbcSource::generateQImage(qint32 firstFieldNumber, qint32 secondFieldNumb
             firstActiveLine = palColourConfiguration.firstActiveLine;
             lastActiveLine = palColourConfiguration.lastActiveLine;
 
-            outputData = palColour.decodeFrame(firstField, secondField);
+            rgbFrame = palColour.decodeFrame(firstField, secondField);
         } else {
             // NTSC source
 
             firstActiveLine = ntscColour.getConfiguration().firstActiveLine;
             lastActiveLine = ntscColour.getConfiguration().lastActiveLine;
 
-            outputData = ntscColour.decodeFrame(firstField, secondField);
+            rgbFrame = ntscColour.decodeFrame(firstField, secondField);
         }
+
+        // Get a pointer to the RGB data
+        const quint16 *rgbPointer = rgbFrame.data();
 
         // Fill the QImage with black
         frameImage.fill(Qt::black);
 
         // Copy the RGB16-16-16 data into the RGB888 QImage
         for (qint32 y = firstActiveLine; y < lastActiveLine; y++) {
-            // Extract the current scan line data from the frame
-            qint32 startPointer = y * videoParameters.fieldWidth * 6;
-            qint32 length = videoParameters.fieldWidth * 6;
-
-            QByteArray rgbData = outputData.mid(startPointer, length);
-
             for (qint32 x = videoParameters.activeVideoStart; x < videoParameters.activeVideoEnd; x++) {
+                qint32 pixelOffset = ((y * videoParameters.fieldWidth) + x) * 3;
+
                 // Take just the MSB of the input data
-                qint32 dp = x * 6;
-
-                uchar pixelValueR = static_cast<uchar>(rgbData[dp + 1]);
-                uchar pixelValueG = static_cast<uchar>(rgbData[dp + 3]);
-                uchar pixelValueB = static_cast<uchar>(rgbData[dp + 5]);
-
                 qint32 xpp = x * 3;
-                *(frameImage.scanLine(y) + xpp + 0) = static_cast<uchar>(pixelValueR); // R
-                *(frameImage.scanLine(y) + xpp + 1) = static_cast<uchar>(pixelValueG); // G
-                *(frameImage.scanLine(y) + xpp + 2) = static_cast<uchar>(pixelValueB); // B
+                *(frameImage.scanLine(y) + xpp + 0) = static_cast<uchar>(rgbPointer[pixelOffset + 0] / 256); // R
+                *(frameImage.scanLine(y) + xpp + 1) = static_cast<uchar>(rgbPointer[pixelOffset + 1] / 256); // G
+                *(frameImage.scanLine(y) + xpp + 2) = static_cast<uchar>(rgbPointer[pixelOffset + 2] / 256); // B
             }
         }
     } else if (lpfOn) {
         // Display the current frame as LPF only
 
         // Get the field data
-        QByteArray firstField = sourceVideo.getVideoField(firstFieldNumber);
-        QByteArray secondField = sourceVideo.getVideoField(secondFieldNumber);
+        SourceVideo::Data firstField = sourceVideo.getVideoField(firstFieldNumber);
+        SourceVideo::Data secondField = sourceVideo.getVideoField(secondFieldNumber);
 
-        // Generate pointers to the 16-bit greyscale data
-        quint16* firstFieldPointer = reinterpret_cast<quint16*>(firstField.data());
-        quint16* secondFieldPointer = reinterpret_cast<quint16*>(secondField.data());
+        // Generate pointers to the 16-bit greyscale data.
+        // Since we're taking a non-const pointer here, this will detach from
+        // the original copy of the data (which is what we want, because we're
+        // going to filter it in place).
+        quint16 *firstFieldPointer = firstField.data();
+        quint16 *secondFieldPointer = secondField.data();
 
         // Generate a filter object
         Filters filters;
@@ -622,37 +617,25 @@ QImage TbcSource::generateQImage(qint32 firstFieldNumber, qint32 secondFieldNumb
         // Copy the raw 16-bit grayscale data into the RGB888 QImage
         for (qint32 y = 0; y < frameHeight; y++) {
             for (qint32 x = 0; x < videoParameters.fieldWidth; x++) {
-                // Take just the MSB of the input data
-                uchar pixelValue;
+                qint32 pixelOffset = (videoParameters.fieldWidth * (y / 2)) + x;
+                qreal pixelValue32;
                 if (y % 2) {
-                    qreal pixelValue32 = static_cast<qreal>(secondFieldPointer[x + (videoParameters.fieldWidth * (y / 2))]);
-
-                    // Clamp the IRE value for the pixel
-                    if (pixelValue32 < videoParameters.black16bIre) pixelValue32 = videoParameters.black16bIre;
-                    if (pixelValue32 > videoParameters.white16bIre) pixelValue32 = videoParameters.white16bIre;
-
-                    // Scale the IRE value to a 16 bit greyscale value
-                    qreal scaledValue = ((pixelValue32 - static_cast<qreal>(videoParameters.black16bIre)) /
-                                         (static_cast<qreal>(videoParameters.white16bIre) -
-                                          static_cast<qreal>(videoParameters.black16bIre))) * 65535.0;
-                    pixelValue32 = static_cast<qint32>(scaledValue);
-
-                    // Convert to 8-bit for RGB888
-                    pixelValue = static_cast<uchar>(pixelValue32 / 256);
+                    pixelValue32 = static_cast<qreal>(secondFieldPointer[pixelOffset]);
                 } else {
-                    qreal pixelValue32 = static_cast<qreal>(firstFieldPointer[x + (videoParameters.fieldWidth * (y / 2))]);
-                    if (pixelValue32 < videoParameters.black16bIre) pixelValue32 = videoParameters.black16bIre;
-                    if (pixelValue32 > videoParameters.white16bIre) pixelValue32 = videoParameters.white16bIre;
-
-                    // Scale the IRE value to a 16 bit greyscale value
-                    qreal scaledValue = ((pixelValue32 - static_cast<qreal>(videoParameters.black16bIre)) /
-                                         (static_cast<qreal>(videoParameters.white16bIre)
-                                          - static_cast<qreal>(videoParameters.black16bIre))) * 65535.0;
-                    pixelValue32 = static_cast<qint32>(scaledValue);
-
-                    // Convert to 8-bit for RGB888
-                    pixelValue = static_cast<uchar>(pixelValue32 / 256);
+                    pixelValue32 = static_cast<qreal>(firstFieldPointer[pixelOffset]);
                 }
+
+                if (pixelValue32 < videoParameters.black16bIre) pixelValue32 = videoParameters.black16bIre;
+                if (pixelValue32 > videoParameters.white16bIre) pixelValue32 = videoParameters.white16bIre;
+
+                // Scale the IRE value to a 16 bit greyscale value
+                qreal scaledValue = ((pixelValue32 - static_cast<qreal>(videoParameters.black16bIre)) /
+                                     (static_cast<qreal>(videoParameters.white16bIre)
+                                      - static_cast<qreal>(videoParameters.black16bIre))) * 65535.0;
+                pixelValue32 = static_cast<qint32>(scaledValue);
+
+                // Convert to 8-bit for RGB888
+                uchar pixelValue = static_cast<uchar>(pixelValue32 / 256);
 
                 qint32 xpp = x * 3;
                 *(frameImage.scanLine(y) + xpp + 0) = static_cast<uchar>(pixelValue); // R
@@ -664,26 +647,23 @@ QImage TbcSource::generateQImage(qint32 firstFieldNumber, qint32 secondFieldNumb
         // Display the current frame as source data
 
         // Get the field data
-        QByteArray firstField = sourceVideo.getVideoField(firstFieldNumber);
-        QByteArray secondField = sourceVideo.getVideoField(secondFieldNumber);
+        SourceVideo::Data firstField = sourceVideo.getVideoField(firstFieldNumber);
+        SourceVideo::Data secondField = sourceVideo.getVideoField(secondFieldNumber);
+
+        // Get pointers to the 16-bit greyscale data
+        const quint16 *firstFieldPointer = firstField.data();
+        const quint16 *secondFieldPointer = secondField.data();
 
         // Copy the raw 16-bit grayscale data into the RGB888 QImage
         for (qint32 y = 0; y < frameHeight; y++) {
-            // Extract the current scan line data from the frame
-            qint32 startPointer = (y / 2) * videoParameters.fieldWidth * 2;
-            qint32 length = videoParameters.fieldWidth * 2;
-
-            firstLineData = firstField.mid(startPointer, length);
-            secondLineData = secondField.mid(startPointer, length);
-
             for (qint32 x = 0; x < videoParameters.fieldWidth; x++) {
                 // Take just the MSB of the input data
-                qint32 dp = x * 2;
+                qint32 pixelOffset = (videoParameters.fieldWidth * (y / 2)) + x;
                 uchar pixelValue;
                 if (y % 2) {
-                    pixelValue = static_cast<uchar>(secondLineData[dp + 1]);
+                    pixelValue = static_cast<uchar>(secondFieldPointer[pixelOffset] / 256);
                 } else {
-                    pixelValue = static_cast<uchar>(firstLineData[dp + 1]);
+                    pixelValue = static_cast<uchar>(firstFieldPointer[pixelOffset] / 256);
                 }
 
                 qint32 xpp = x * 3;

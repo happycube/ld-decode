@@ -58,14 +58,14 @@ public:
 
 protected:
     void decodeFrames(const QVector<SourceField> &inputFields, qint32 startIndex, qint32 endIndex,
-                      QVector<QByteArray> &outputFrames) override;
+                      QVector<RGBFrame> &outputFrames) override;
 
 private:
     // Settings
     const MonoDecoder::Configuration &config;
 
     // The frame being assembled
-    QByteArray outputFrame;
+    RGBFrame outputFrame;
 };
 
 #endif // MONODECODER
