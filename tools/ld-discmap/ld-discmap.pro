@@ -19,17 +19,19 @@ SOURCES += \
     ../library/tbc/sourcevideo.cpp \
     ../library/tbc/vbidecoder.cpp \
     discmap.cpp \
+    discmapper.cpp \
+    frame.cpp \
     logging.cpp \
-    main.cpp \
-    vbimapper.cpp
+    main.cpp
 
 HEADERS += \
     ../library/tbc/lddecodemetadata.h \
     ../library/tbc/sourcevideo.h \
     ../library/tbc/vbidecoder.h \
     discmap.h \
-    logging.h \
-    vbimapper.h
+    discmapper.h \
+    frame.h \
+    logging.h
 
 # Add external includes to the include path
 INCLUDEPATH += ../library/tbc
@@ -40,3 +42,4 @@ isEmpty(PREFIX) {
 }
 unix:!android: target.path = $$PREFIX/bin/
 !isEmpty(target.path): INSTALLS += target
+

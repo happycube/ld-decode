@@ -1,6 +1,6 @@
 /************************************************************************
 
-    logging.h
+    discmapper.h
 
     ld-discmap - TBC and VBI alignment and correction
     Copyright (C) 2019-2020 Simon Inns
@@ -22,18 +22,42 @@
 
 ************************************************************************/
 
-#ifndef LOGGING_H
-#define LOGGING_H
+#ifndef DISCMAPPER_H
+#define DISCMAPPER_H
 
 #include <QCoreApplication>
 #include <QDebug>
+#include <QFileInfo>
 #include <QFile>
-#include <QString>
 
-// Prototypes
-void debugOutputHandler(QtMsgType type, const QMessageLogContext &context, const QString &msg);
-void setDebug(bool state);
-void openDebugFile(QString filename);
-void closeDebugFile(void);
+// TBC library includes
+#include "sourcevideo.h"
+#include "lddecodemetadata.h"
 
-#endif // LOGGING_H
+#include "discmap.h"
+
+class DiscMapper
+{
+public:
+    DiscMapper();
+
+    bool process(QFileInfo _inputFileInfo, QFileInfo _inputMetadataFileInfo,
+                 QFileInfo _outputFileInfo, bool _reverse, bool _mapOnly);
+
+private:
+    QFileInfo inputFileInfo;
+    QFileInfo inputMetadataFileInfo;
+    QFileInfo outputFileInfo;
+    bool reverse;
+    bool mapOnly;
+
+    void removeLeadInOut(DiscMap &discMap);
+    void correctVbiFrameNumbersUsingGapAnalysis(DiscMap &discMap);
+    void correctVbiFrameNumbersUsingSequenceAnalysis(DiscMap &discMap);
+    void removeDuplicateNumberedFrames(DiscMap &discMap);
+    void reorderFrames(DiscMap &discMap);
+    bool verifyFrameNumberPresence(DiscMap &discMap);
+    void padDiscMap(DiscMap &discMap);
+};
+
+#endif // DISCMAPPER_H

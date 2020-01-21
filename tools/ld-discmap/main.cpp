@@ -3,7 +3,7 @@
     main.cpp
 
     ld-discmap - TBC and VBI alignment and correction
-    Copyright (C) 2019 Simon Inns
+    Copyright (C) 2019-2020 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -26,9 +26,10 @@
 #include <QDebug>
 #include <QtGlobal>
 #include <QCommandLineParser>
+#include <QFileInfo>
 
 #include "logging.h"
-#include "discmap.h"
+#include "discmapper.h"
 
 int main(int argc, char *argv[])
 {
@@ -40,7 +41,7 @@ int main(int argc, char *argv[])
 
     // Set application name and version
     QCoreApplication::setApplicationName("ld-discmap");
-    QCoreApplication::setApplicationVersion("1.0");
+    QCoreApplication::setApplicationVersion("2.0");
     QCoreApplication::setOrganizationDomain("domesday86.com");
 
     // Set up the command line parser
@@ -48,7 +49,7 @@ int main(int argc, char *argv[])
     parser.setApplicationDescription(
                 "ld-discmap - TBC and VBI alignment and correction\n"
                 "\n"
-                "(c)2019 Simon Inns\n"
+                "(c)2019-2020 Simon Inns\n"
                 "GPLv3 Open-Source - github: https://github.com/happycube/ld-decode");
     parser.addHelpOption();
     parser.addVersionOption();
@@ -65,7 +66,7 @@ int main(int argc, char *argv[])
 
     // Option to only perform mapping (without saving) (-m / --maponly)
     QCommandLineOption setMapOnlyOption(QStringList() << "m" << "maponly",
-                                       QCoreApplication::translate("main", "Only perform mapping, but do not save to target (for testing purposes)"));
+                                       QCoreApplication::translate("main", "Only perform mapping - No output TBC file required"));
     parser.addOption(setMapOnlyOption);
 
     // Positional argument to specify input TBC file
@@ -116,11 +117,34 @@ int main(int argc, char *argv[])
 
     if (isDebugOn) setDebug(true); else setDebug(false);
 
-    // Process the TBC file
-    DiscMap discMap;
-    if (!discMap.process(inputFilename, outputFilename, reverse, mapOnly)) {
-        return 1;
+    // Put the input and output file names into QFileInfo for portability
+    QFileInfo inputFileInfo(inputFilename);
+    QFileInfo outputFileInfo(outputFilename);
+
+    // Check that required input TBC file exist
+    if (!inputFileInfo.exists()) {
+        qCritical("The specified input file does not exist");
+        return -1;
     }
+
+    // Check that the required input TBC metadata file exists
+    QFileInfo inputMetadataFileInfo(inputFileInfo.filePath() + ".json");
+    if (!inputMetadataFileInfo.exists()) {
+        qCritical("The specified input file metadata does not exist");
+        return -1;
+    }
+
+    // Check that the required output TBC file isn't overwriting something
+    if (!mapOnly) {
+        if (outputFileInfo.exists()) {
+            qCritical("The specified output file already exists - please delete the existing file or use another output file name");
+            return -1;
+        }
+    }
+
+    // Perform disc mapping
+    DiscMapper discMapper;
+    if (!discMapper.process(inputFileInfo, inputMetadataFileInfo, outputFileInfo, reverse, mapOnly)) return 1;
 
     // Quit with success
     return 0;
