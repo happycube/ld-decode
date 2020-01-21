@@ -841,7 +841,7 @@ class RFDecode:
         return fakedecode, dgap_sync, dgap_white
 
 class DemodCache:
-    def __init__(self, rf, infile, loader, cachesize = 128, num_worker_threads=6, MTF_tolerance = .05):
+    def __init__(self, rf, infile, loader, cachesize = 256, num_worker_threads=6, MTF_tolerance = .05):
         self.infile = infile
         self.loader = loader
         self.rf = rf
@@ -852,7 +852,7 @@ class DemodCache:
         self.blocksize = self.rf.blocklen - (self.rf.blockcut + self.rf.blockcut_end)
         
         # Cache dictionary - key is block #, which holds data for that block
-        self.lrusize = 256
+        self.lrusize = cachesize
         self.prefetch = 32 # TODO: set this to proper amount for format
         self.lru = []
         
@@ -1181,7 +1181,13 @@ class Field:
         self.data = decode
         self.initphase = initphase # used for seeking or first field
 
+        prevfield = None
         self.prevfield = prevfield
+
+        # XXX: need a better way to prevent memory leaks than this
+        # For now don't let a previous frame keep it's prev frame
+        if prevfield is not None:
+            prevfield.prevfield = None
 
         self.rf = rf
         self.freq = self.rf.freq
@@ -2531,6 +2537,7 @@ class LDdecode:
             
         self.system = system
         self.rf = RFDecode(system=system, decode_analog_audio=analog_audio, decode_digital_audio=digital_audio, has_analog_audio = self.has_analog_audio, extra_options = extra_options)
+
         if system == 'PAL':
             self.FieldClass = FieldPAL
             self.readlen = self.rf.linelen * 400
@@ -2539,6 +2546,8 @@ class LDdecode:
             self.FieldClass = FieldNTSC
             self.readlen = ((self.rf.linelen * 350) // 16384) * 16384
             self.clvfps = 30
+
+        self.blocksize = self.rf.blocklen
 
         self.output_lines = (self.rf.SysParams['frame_lines'] // 2) + 1
         
@@ -2640,7 +2649,10 @@ class LDdecode:
         if self.readloc < 0:
             self.readloc = 0
 
-        self.rawdecode = self.demodcache.read(self.readloc, self.readlen, self.mtf_level)
+        self.readloc_block = self.readloc // self.blocksize
+        self.numblocks = ((self.readlen + (self.readloc % self.blocksize)) // self.blocksize) + 1
+
+        self.rawdecode = self.demodcache.read(self.readloc_block * self.blocksize, self.numblocks * self.blocksize, self.mtf_level)
 
         if self.rawdecode is None:
             logging.info("Failed to demodulate data")
@@ -2649,8 +2661,12 @@ class LDdecode:
         self.indata = self.rawdecode['input']
 
         f = self.FieldClass(self.rf, self.rawdecode, audio_offset = self.audio_offset, prevfield = self.curfield, initphase = initphase)
-        f.process()
-        self.curfield = f
+        try:
+            f.process()
+            self.curfield = f
+        except:
+            logging.info("Internal error, jumping ahead")
+            return None, self.rf.linelen * 200
 
         if not f.valid:
             logging.info("Bad data - jumping one second")
