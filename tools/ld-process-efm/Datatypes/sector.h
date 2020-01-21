@@ -71,7 +71,6 @@ private:
     qint32 bcdToInteger(uchar bcd);
     QString dataToString(QByteArray data);
 
-    quint32 edc_lut[256];
     quint32 crc32(uchar *src, qint32 size);
 };
 
