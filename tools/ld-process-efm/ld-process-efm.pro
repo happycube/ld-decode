@@ -95,6 +95,8 @@ unix:!android: target.path = $$PREFIX/bin/
 
 RESOURCES += \
     applicationicons.qrc
+    
+ICON = Graphics/ld-process-efm.icns
 
 DISTFILES += \
     ezpwd/rs_base
