@@ -2533,6 +2533,8 @@ class LDdecode:
         self.firstfield = None # In frame output mode, the first field goes here
         self.fieldloc = 0
 
+        self.internalerrors = 0 # exceptions seen
+
         # if option is missing, get returns None
             
         self.system = system
@@ -2664,7 +2666,13 @@ class LDdecode:
         try:
             f.process()
             self.curfield = f
-        except:
+        except Exception as e:
+            # XXX: Get better diagnostics for this
+            self.internalerrors.append(e)
+            if len(self.internalerrors) == 3:
+                logging.info("Three internal errors seen, aborting")
+                return None, None
+
             logging.info("Internal error, jumping ahead")
             return None, self.rf.linelen * 200
 
