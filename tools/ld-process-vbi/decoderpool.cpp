@@ -100,8 +100,8 @@ bool DecoderPool::process()
 //
 // Returns true if a field was returned, false if the end of the input has been
 // reached.
-bool DecoderPool::getInputField(qint32 &fieldNumber, QByteArray& fieldVideoData,
-                                LdDecodeMetaData::Field& fieldMetadata, LdDecodeMetaData::VideoParameters& videoParameters)
+bool DecoderPool::getInputField(qint32 &fieldNumber, SourceVideo::Data &fieldVideoData,
+                                LdDecodeMetaData::Field &fieldMetadata, LdDecodeMetaData::VideoParameters &videoParameters)
 {
     QMutexLocker locker(&inputMutex);
 

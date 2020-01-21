@@ -27,7 +27,6 @@
 
 #include <QObject>
 #include <QAtomicInt>
-#include <QByteArray>
 #include <QElapsedTimer>
 #include <QMutex>
 #include <QThread>
@@ -48,13 +47,13 @@ public:
 
     // Member functions used by worker threads
     bool getInputFrame(qint32& frameNumber,
-                       QVector<qint32> &firstFieldNumber, QVector<QByteArray> &firstFieldVideoData, QVector<LdDecodeMetaData::Field> &firstFieldMetadata,
-                       QVector<qint32> &secondFieldNumber, QVector<QByteArray> &secondFieldVideoData, QVector<LdDecodeMetaData::Field> &secondFieldMetadata,
+                       QVector<qint32> &firstFieldNumber, QVector<SourceVideo::Data> &firstFieldVideoData, QVector<LdDecodeMetaData::Field> &firstFieldMetadata,
+                       QVector<qint32> &secondFieldNumber, QVector<SourceVideo::Data> &secondFieldVideoData, QVector<LdDecodeMetaData::Field> &secondFieldMetadata,
                        QVector<LdDecodeMetaData::VideoParameters> &videoParameters,
                        bool& _reverse, bool& _intraField, bool& _overCorrect, QVector<qint32> &availableSourcesForFrame, QVector<qreal> &sourceFrameQuality);
 
     bool setOutputFrame(qint32 frameNumber,
-                        QByteArray firstTargetFieldData, QByteArray secondTargetFieldData,
+                        SourceVideo::Data firstTargetFieldData, SourceVideo::Data secondTargetFieldData,
                         qint32 firstFieldSeqNo, qint32 secondFieldSeqNo,
                         qint32 sameSourceReplacement, qint32 multiSourceReplacement, qint32 totalReplacementDistance);
 
@@ -82,8 +81,8 @@ private:
     QMutex outputMutex;
 
     struct OutputFrame {
-        QByteArray firstTargetFieldData;
-        QByteArray secondTargetFieldData;
+        SourceVideo::Data firstTargetFieldData;
+        SourceVideo::Data secondTargetFieldData;
         qint32 firstFieldSeqNo;
         qint32 secondFieldSeqNo;
 
@@ -106,6 +105,7 @@ private:
     qint32 convertSequentialFrameNumberToVbi(qint32 sequentialFrameNumber, qint32 sourceNumber);
     qint32 convertVbiFrameNumberToSequential(qint32 vbiFrameNumber, qint32 sourceNumber);
     QVector<qint32> getAvailableSourcesForFrame(qint32 vbiFrameNumber);
+    bool writeOutputField(const SourceVideo::Data &fieldData);
 };
 
 #endif // CORRECTORPOOL_H

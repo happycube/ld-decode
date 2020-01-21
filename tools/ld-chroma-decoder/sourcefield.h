@@ -25,16 +25,13 @@
 #ifndef SOURCEFIELD_H
 #define SOURCEFIELD_H
 
-#include <QByteArray>
-
 #include "lddecodemetadata.h"
-
-class SourceVideo;
+#include "sourcevideo.h"
 
 // A field read from the input, with metadata and data
 struct SourceField {
     LdDecodeMetaData::Field field;
-    QByteArray data;
+    SourceVideo::Data data;
 
     // Load a sequence of frames from the input files.
     //

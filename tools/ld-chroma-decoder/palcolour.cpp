@@ -240,10 +240,10 @@ void PalColour::buildLookUpTables()
     }
 }
 
-QByteArray PalColour::decodeFrame(const SourceField &firstField, const SourceField &secondField)
+RGBFrame PalColour::decodeFrame(const SourceField &firstField, const SourceField &secondField)
 {
     QVector<SourceField> inputFields {firstField, secondField};
-    QVector<QByteArray> outputFrames(1);
+    QVector<RGBFrame> outputFrames(1);
 
     decodeFrames(inputFields, 0, 2, outputFrames);
 
@@ -251,7 +251,7 @@ QByteArray PalColour::decodeFrame(const SourceField &firstField, const SourceFie
 }
 
 void PalColour::decodeFrames(const QVector<SourceField> &inputFields, qint32 startIndex, qint32 endIndex,
-                             QVector<QByteArray> &outputFrames)
+                             QVector<RGBFrame> &outputFrames)
 {
     assert(configurationSet);
     assert((outputFrames.size() * 2) == (endIndex - startIndex));
@@ -265,7 +265,7 @@ void PalColour::decodeFrames(const QVector<SourceField> &inputFields, qint32 sta
     // Resize and clear the output buffers
     const qint32 frameHeight = (videoParameters.fieldHeight * 2) - 1;
     for (qint32 i = 0; i < outputFrames.size(); i++) {
-        outputFrames[i].resize(videoParameters.fieldWidth * frameHeight * 6);
+        outputFrames[i].resize(videoParameters.fieldWidth * frameHeight * 3);
         outputFrames[i].fill(0);
     }
 
@@ -296,10 +296,10 @@ void PalColour::decodeFrames(const QVector<SourceField> &inputFields, qint32 sta
 }
 
 // Decode one field into outputFrame
-void PalColour::decodeField(const SourceField &inputField, const double *chromaData, double chromaGain, QByteArray &outputFrame)
+void PalColour::decodeField(const SourceField &inputField, const double *chromaData, double chromaGain, RGBFrame &outputFrame)
 {
     // Pointer to the composite signal data
-    const quint16 *compPtr = reinterpret_cast<const quint16 *>(inputField.data.data());
+    const quint16 *compPtr = inputField.data.data();
 
     const qint32 firstLine = inputField.getFirstActiveLine(configuration.firstActiveLine);
     const qint32 lastLine = inputField.getLastActiveLine(configuration.lastActiveLine);
@@ -399,7 +399,7 @@ void PalColour::detectBurst(LineInfo &line, const quint16 *inputData)
 // inputField, or it may be pre-filtered down to chroma.
 template <typename ChromaSample, bool PREFILTERED_CHROMA>
 void PalColour::decodeLine(const SourceField &inputField, const ChromaSample *chromaData, const LineInfo &line, double chromaGain,
-                           QByteArray &outputFrame)
+                           RGBFrame &outputFrame)
 {
     // Dummy black line, used when the filter needs to look outside the active region.
     static constexpr ChromaSample blackLine[MAX_WIDTH] = {0};
@@ -494,11 +494,10 @@ void PalColour::decodeLine(const SourceField &inputField, const ChromaSample *ch
     }
 
     // Pointer to composite signal data
-    const quint16 *comp = reinterpret_cast<const quint16 *>(inputField.data.data()) + (line.number * videoParameters.fieldWidth);
+    const quint16 *comp = inputField.data.data() + (line.number * videoParameters.fieldWidth);
 
     // Define scan line pointer to output buffer using 16 bit unsigned words
-    quint16 *ptr = reinterpret_cast<quint16 *>(outputFrame.data()
-                                               + (((line.number * 2) + inputField.getOffset()) * videoParameters.fieldWidth * 6));
+    quint16 *ptr = outputFrame.data() + (((line.number * 2) + inputField.getOffset()) * videoParameters.fieldWidth * 3);
 
     // Gain for the Y component, to put reference black at 0 and reference white at 65535
     const double scaledContrast = 65535.0 / (videoParameters.white16bIre - videoParameters.black16bIre);

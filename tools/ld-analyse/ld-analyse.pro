@@ -69,6 +69,7 @@ HEADERS += \
     ../ld-chroma-decoder/palcolour.h \
     ../ld-chroma-decoder/comb.h \
     ../ld-chroma-decoder/rgb.h \
+    ../ld-chroma-decoder/rgbframe.h \
     ../ld-chroma-decoder/yiq.h \
     ../ld-chroma-decoder/transformpal.h \
     ../ld-chroma-decoder/transformpal2d.h \
@@ -112,6 +113,7 @@ RESOURCES += \
 
 # Additional include paths to support MacOS compilation
 macx {
+ICON = Graphics/ld-analyse.icns
 INCLUDEPATH += "/usr/local/opt/opencv@2/include"
 LIBS += -L"/usr/local/opt/opencv@2/lib"
 INCLUDEPATH += "/usr/local/include"

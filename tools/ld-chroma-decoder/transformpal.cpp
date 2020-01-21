@@ -70,7 +70,7 @@ void TransformPal::updateConfiguration(const LdDecodeMetaData::VideoParameters &
 
 void TransformPal::overlayFFT(qint32 positionX, qint32 positionY,
                               const QVector<SourceField> &inputFields, qint32 startIndex, qint32 endIndex,
-                              QVector<QByteArray> &rgbFrames)
+                              QVector<RGBFrame> &rgbFrames)
 {
     // Visualise the first field for each output frame
     for (int fieldIndex = startIndex, outputIndex = 0; fieldIndex < endIndex; fieldIndex += 2, outputIndex++) {

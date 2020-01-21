@@ -46,6 +46,7 @@ HEADERS += \
     palcolour.h \
     paldecoder.h \
     rgb.h \
+    rgbframe.h \
     sourcefield.h \
     transformpal.h \
     transformpal2d.h \

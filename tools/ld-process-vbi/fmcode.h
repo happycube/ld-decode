@@ -40,11 +40,11 @@ public:
         quint64 trailingDataRecognitionBits;
     };
 
-    FmCode::FmDecode fmDecoder(QByteArray lineData, LdDecodeMetaData::VideoParameters videoParameters);
+    FmCode::FmDecode fmDecoder(const SourceVideo::Data &lineData, LdDecodeMetaData::VideoParameters videoParameters);
 
 private:
     bool isEvenParity(quint64 data);
-    QVector<bool> getTransitionMap(QByteArray lineData, qint32 zcPoint);
+    QVector<bool> getTransitionMap(const SourceVideo::Data &lineData, qint32 zcPoint);
 };
 
 #endif // FMCODE_H

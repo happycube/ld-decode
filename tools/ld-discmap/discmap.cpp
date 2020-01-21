@@ -100,12 +100,20 @@ bool DiscMap::saveSource(QString filename)
     }
 
     // Generate the missing field dummy data
-    QByteArray missingFieldData;
-    missingFieldData.fill(0, sourceVideo.getFieldByteLength());
+    SourceVideo::Data missingFieldData;
+    missingFieldData.fill(0, sourceVideo.getFieldLength());
 
     // Create a target metadata object (using video and PCM audio settings from the source)
     LdDecodeMetaData targetMetadata;
     LdDecodeMetaData::VideoParameters sourceVideoParameters = sourceMetaData.getVideoParameters();
+
+    // Helper function to write a field and its metadata to the output.
+    // Returns true on success, false on failure.
+    const auto &writeField = [&](const SourceVideo::Data &fieldData, const LdDecodeMetaData::Field &fieldMetadata) -> bool {
+        if (!targetVideo.write(reinterpret_cast<const char *>(fieldData.data()), fieldData.size() * 2)) return false;
+        targetMetadata.appendField(fieldMetadata);
+        return true;
+    };
 
     // Indicate that the source has been mapped
     sourceVideoParameters.isMapped = true;
@@ -115,16 +123,14 @@ bool DiscMap::saveSource(QString filename)
     targetMetadata.setPcmAudioParameters(sourceMetaData.getPcmAudioParameters());
 
     // Process the fields
-    QByteArray firstSourceField;
-    QByteArray secondSourceField;
+    SourceVideo::Data firstSourceField;
+    SourceVideo::Data secondSourceField;
     bool writeFail = false;
     qint32 previousFrameNumber = -1;
     for (qint32 frameElement = 0; frameElement < vbiMapper.getNumberOfFrames(); frameElement++) {
         // Get the source frame field data
         if (vbiMapper.getFrame(frameElement).isMissing) {
             // Missing frame - generate dummy output
-            if (!targetVideo.write(missingFieldData.data(), missingFieldData.size())) writeFail = true;
-            if (!targetVideo.write(missingFieldData.data(), missingFieldData.size())) writeFail = true;
 
             // Generate dummy target field metadata
             LdDecodeMetaData::Field firstSourceMetadata;
@@ -153,8 +159,8 @@ bool DiscMap::saveSource(QString filename)
                 firstSourceMetadata.vbi.vbiData[2] = convertFrameToClvTimeCode(vbiMapper.getFrame(frameElement).vbiFrameNumber);
             }
 
-            targetMetadata.appendField(firstSourceMetadata);
-            targetMetadata.appendField(secondSourceMetadata);
+            if (!writeField(missingFieldData, firstSourceMetadata)) writeFail = true;
+            if (!writeField(missingFieldData, secondSourceMetadata)) writeFail = true;
         } else {
             // Normal frame - get the data from the source video
             qint32 firstFieldNumber = vbiMapper.getFrame(frameElement).firstField;
@@ -190,20 +196,12 @@ bool DiscMap::saveSource(QString filename)
             // Write the fields into the output TBC file in the same order as the source file
             if (firstFieldNumber < secondFieldNumber) {
                 // Save the first field and then second field to the output file
-                if (!targetVideo.write(firstSourceField.data(), firstSourceField.size())) writeFail = true;
-                if (!targetVideo.write(secondSourceField.data(), secondSourceField.size())) writeFail = true;
-
-                // Add the metadata
-                targetMetadata.appendField(firstSourceMetadata);
-                targetMetadata.appendField(secondSourceMetadata);
+                if (!writeField(firstSourceField, firstSourceMetadata)) writeFail = true;
+                if (!writeField(secondSourceField, secondSourceMetadata)) writeFail = true;
             } else {
                 // Save the second field and then first field to the output file
-                if (!targetVideo.write(secondSourceField.data(), secondSourceField.size())) writeFail = true;
-                if (!targetVideo.write(firstSourceField.data(), firstSourceField.size())) writeFail = true;
-
-                // Add the metadata
-                targetMetadata.appendField(secondSourceMetadata);
-                targetMetadata.appendField(firstSourceMetadata);
+                if (!writeField(secondSourceField, secondSourceMetadata)) writeFail = true;
+                if (!writeField(firstSourceField, firstSourceMetadata)) writeFail = true;
             }
         }
 

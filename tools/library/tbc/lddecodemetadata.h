@@ -141,8 +141,9 @@ public:
 
     LdDecodeMetaData();
 
-    // Prevent implicit copying
-    LdDecodeMetaData(const LdDecodeMetaData &src) = delete;
+    // Prevent copying or assignment
+    LdDecodeMetaData(const LdDecodeMetaData &) = delete;
+    LdDecodeMetaData& operator=(const LdDecodeMetaData &) = delete;
 
     bool read(QString fileName);
     bool write(QString fileName);

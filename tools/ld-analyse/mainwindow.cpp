@@ -331,6 +331,10 @@ void MainWindow::updateFrameViewer()
     ui->frameViewerLabel->setPixmap(QPixmap::fromImage(frameImage));
     ui->frameViewerLabel->setPixmap(ui->frameViewerLabel->pixmap()->scaled(scaleFactor * ui->frameViewerLabel->pixmap()->size(),
                                                                            Qt::IgnoreAspectRatio, Qt::SmoothTransformation));
+    // QT Bug workaround for some macOS versions
+    #if defined(Q_OS_MACOS)
+    	repaint();
+    #endif
 }
 
 // Method to hide the current frame

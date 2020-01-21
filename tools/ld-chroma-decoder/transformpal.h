@@ -28,13 +28,13 @@
 #ifndef TRANSFORMPAL_H
 #define TRANSFORMPAL_H
 
-#include <QByteArray>
 #include <QVector>
 #include <fftw3.h>
 
 #include "lddecodemetadata.h"
 
 #include "framecanvas.h"
+#include "rgbframe.h"
 #include "sourcefield.h"
 
 // Abstract base class for Transform PAL filters.
@@ -79,14 +79,14 @@ public:
     // frame coordinates.
     void overlayFFT(qint32 positionX, qint32 positionY,
                     const QVector<SourceField> &inputFields, qint32 startIndex, qint32 endIndex,
-                    QVector<QByteArray> &rgbFrames);
+                    QVector<RGBFrame> &rgbFrames);
 
 protected:
     // Overlay a visualisation of one field's FFT.
     // Calls back to overlayFFTArrays to draw the arrays.
     virtual void overlayFFTFrame(qint32 positionX, qint32 positionY,
                                  const QVector<SourceField> &inputFields, qint32 fieldIndex,
-                                 QByteArray &rgbFrame) = 0;
+                                 RGBFrame &rgbFrame) = 0;
 
     void overlayFFTArrays(const fftw_complex *fftIn, const fftw_complex *fftOut,
                           FrameCanvas &canvas);

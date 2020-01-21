@@ -261,8 +261,8 @@ void TbcSources::performFrameDiffDod(qint32 targetVbiFrame, qint32 dodThreshold,
     qDebug() << "TbcSources::performFrameDiffDod(): Processing VBI Frame" << targetVbiFrame << "-" << availableSourcesForFrame.size() << "sources available";
 
     // Get the field data for the frame from all of the available sources and copy locally ----------------------------
-    QVector<QByteArray> firstFields;
-    QVector<QByteArray> secondFields;
+    QVector<SourceVideo::Data> firstFields;
+    QVector<SourceVideo::Data> secondFields;
     firstFields.resize(availableSourcesForFrame.size());
     secondFields.resize(availableSourcesForFrame.size());
 
@@ -282,8 +282,8 @@ void TbcSources::performFrameDiffDod(qint32 targetVbiFrame, qint32 dodThreshold,
         secondFields[sourceNo] = (sourceVideos[availableSourcesForFrame[sourceNo]]->sourceVideo.getVideoField(secondFieldNumber));
 
         // Define a pointer to the data
-        sourceFirstFieldPointer[sourceNo] = reinterpret_cast<quint16*>(firstFields[sourceNo].data());
-        sourceSecondFieldPointer[sourceNo] = reinterpret_cast<quint16*>(secondFields[sourceNo].data());
+        sourceFirstFieldPointer[sourceNo] = firstFields[sourceNo].data();
+        sourceSecondFieldPointer[sourceNo] = secondFields[sourceNo].data();
 
         // Filter out the chroma information from the fields leaving just luma
         Filters filters;

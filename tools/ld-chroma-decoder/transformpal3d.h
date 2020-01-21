@@ -31,6 +31,7 @@
 #include <QVector>
 #include <fftw3.h>
 
+#include "rgbframe.h"
 #include "sourcefield.h"
 #include "transformpal.h"
 
@@ -57,7 +58,7 @@ protected:
     void applyFilter();
     void overlayFFTFrame(qint32 positionX, qint32 positionY,
                          const QVector<SourceField> &inputFields, qint32 fieldIndex,
-                         QByteArray &rgbFrame) override;
+                         RGBFrame &rgbFrame) override;
 
     // FFT input and output sizes.
     //
