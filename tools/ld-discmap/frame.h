@@ -55,7 +55,7 @@ public:
     void isPullDown(bool value);
     void isLeadInOrOut(bool value);
     void isMarkedForDeletion(bool value);
-    void frameQuality(bool value);
+    void frameQuality(qreal value);
     void isPadded(bool value);
 
     // Operators

@@ -122,7 +122,7 @@ void Frame::isMarkedForDeletion(bool value)
     m_isMarkedForDeletion = value;
 }
 
-void Frame::frameQuality(bool value)
+void Frame::frameQuality(qreal value)
 {
     m_frameQuality = value;
 }

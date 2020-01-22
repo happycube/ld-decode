@@ -269,7 +269,7 @@ DiscMap::DiscMap(const QFileInfo &metadataFileInfo, const bool &reverseFieldOrde
                                   ldDecodeMetaData.getField(ldDecodeMetaData.getSecondFieldNumber(frameNumber + 1)).syncConf) / 2;
 
         m_frames[frameNumber].frameQuality((bsnrPercent + penaltyPercent + syncConfPercent + (frameDoPercent * 1000.0)) / 1004.0);
-        //qDebug() << "Frame:" << frameNumber << bsnrPercent << penaltyPercent << syncConfPercent << frameDoPercent << "quality =" << m_frames[frameNumber].frameQuality;
+        //qDebug() << "Frame:" << frameNumber << bsnrPercent << penaltyPercent << syncConfPercent << frameDoPercent << "quality =" << m_frames[frameNumber].frameQuality();
     }
 
 }

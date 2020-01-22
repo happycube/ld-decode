@@ -68,7 +68,7 @@ bool DiscMapper::process(QFileInfo _inputFileInfo, QFileInfo _inputMetadataFileI
     }
 
     // Pad any gaps in the sequential disc map
-    padDiscMap(discMap);
+    //padDiscMap(discMap);
 
     // TODO: Need additional step to spot repeated pull-down frames for NTSC CLV only
 
@@ -215,79 +215,73 @@ void DiscMapper::correctVbiFrameNumbersUsingSequenceAnalysis(DiscMap &discMap)
 void DiscMapper::removeDuplicateNumberedFrames(DiscMap &discMap)
 {
     qInfo() << "Searching for duplicate frames";
-    QVector<qint32> uniqueVbis;
-    QVector<qint32> duplicatedList;
+    qDebug() << "Building list of VBIs that have more than one entry in the discmap...";
+    QVector<qint32> duplicatedFrameList;
+    duplicatedFrameList.reserve(discMap.numberOfFrames()); // just to speed things up a little
     for (qint32 frameNumber = 0; frameNumber < discMap.numberOfFrames(); frameNumber++) {
-        // Check the current VBI frame number is valid
-        if (discMap.vbiFrameNumber(frameNumber) != -1) {
-            // Is the current VBI number already in the unique VBI vector?
-            bool alreadyOnUniqueList = false;
-            for (qint32 i = 0; i < uniqueVbis.size(); i++) {
-                if (uniqueVbis[i] == discMap.vbiFrameNumber(frameNumber)) {
-                    // We have seen this VBI before, add it to the repeatList if it's not already there
-                    alreadyOnUniqueList = true;
-                    break;
+        if (!discMap.isPulldown(frameNumber)) {
+            for (qint32 i = frameNumber + 1; i < discMap.numberOfFrames(); i++) {
+                // Does the current frameNumber have a duplicate?
+                if (discMap.vbiFrameNumber(frameNumber) == discMap.vbiFrameNumber(i) && !discMap.isPulldown(i)) {
+                    duplicatedFrameList.append(discMap.vbiFrameNumber(frameNumber));
                 }
-            }
 
-            if (!alreadyOnUniqueList) {
-                // VBI is not already on the unique VBI list... add it
-                uniqueVbis.append(discMap.vbiFrameNumber(frameNumber));
-            } else {
-                // Current VBI is already on the unique list, so it's a repeat
-                duplicatedList.append(discMap.vbiFrameNumber(frameNumber));
-                qDebug() << "Seq. frame" << discMap.seqFrameNumber(frameNumber) << "with VBI" << discMap.vbiFrameNumber(frameNumber) << "is a duplicate";
             }
         }
     }
-    qDebug() << "There are" << uniqueVbis.size() << "unique VBI frame numbers in the disc map of" << discMap.numberOfFrames() << "frames";
 
-    // Now process the duplicate list
-    qInfo() << "Processing the list of duplicated frames";
-    if (duplicatedList.size() > 0) {
-        // Sort the vector of repeated VBIs and remove duplicate VBI frame numbers
-        qint32 totalRepeats = duplicatedList.size();
-        std::sort(duplicatedList.begin(), duplicatedList.end());
-        duplicatedList.erase(std::unique(duplicatedList.begin(), duplicatedList.end()), duplicatedList.end());
+    qDebug() << "Sorting the duplicated frame list into numerical order...";
+    std::sort(duplicatedFrameList.begin(), duplicatedFrameList.end());
+    qDebug() << "Removing any repeated frame numbers from the duplicated frame list...";
+    auto last = std::unique(duplicatedFrameList.begin(), duplicatedFrameList.end());
+    duplicatedFrameList.erase(last, duplicatedFrameList.end());
 
-        qInfo() << "Found" << duplicatedList.size() << "duplicated VBI frame numbers across" << totalRepeats << "frames";
+    qDebug() << "Found" << duplicatedFrameList.size() << "VBI frame numbers with more than 1 entry in the discmap";
 
-        // Process each unique duplicated frame number in turn
-        for (qint32 repeatCounter = 0; repeatCounter < duplicatedList.size(); repeatCounter++) {
-            // Find the best quality repeating frame
-            qreal bestQuality = -1;
-            qint32 bestFrame = -1;
-            for (qint32 frameNumber = 0; frameNumber < discMap.numberOfFrames(); frameNumber++) {
-                if (discMap.vbiFrameNumber(frameNumber) == duplicatedList[repeatCounter]) {
-                    if (discMap.frameQuality(frameNumber) > bestQuality) {
-                        bestQuality = discMap.frameQuality(frameNumber);
-                        bestFrame = frameNumber;
-                    }
-                }
-            }
+    // The duplicated frame list is a list of VBI frame numbers that have duplicates
 
-            // Mark all the others for deletion
-            for (qint32 frameNumber = 0; frameNumber < discMap.numberOfFrames(); frameNumber++) {
-                if (frameNumber != bestFrame && discMap.vbiFrameNumber(frameNumber) == duplicatedList[repeatCounter]) {
-                    discMap.setMarkedForDeletion(frameNumber);
-                }
-
-                if (frameNumber == bestFrame) {
-                    qDebug() << "Seq. frame" << discMap.seqFrameNumber(frameNumber) << "with VBI" <<
-                                discMap.vbiFrameNumber(frameNumber) << "has been picked with a quality of" <<
-                                discMap.frameQuality(frameNumber);
-                }
+    // Process the list of duplications one by one
+    for (qint32 i = 0; i < duplicatedFrameList.size(); i++) {
+        qDebug() << "VBI Frame number" << duplicatedFrameList[i] << "has duplicates; searching for them...";
+        QVector<qint32> discMapDuplicateAddress;
+        for (qint32 frameNumber = 0; frameNumber < discMap.numberOfFrames(); frameNumber++) {
+            // Does the current frameNumber's VBI match the VBI in the duplicated frame list?
+            if (discMap.vbiFrameNumber(frameNumber) == duplicatedFrameList[i]) {
+                // Add the frame number ot the duplicate disc map address list
+                discMapDuplicateAddress.append(frameNumber);
+                qDebug() << "  Seq frame" << discMap.seqFrameNumber(frameNumber) << "is a duplicate of" << duplicatedFrameList[i] <<
+                            "with a quality of" << discMap.frameQuality(frameNumber);
             }
         }
 
-        // Delete everything marked for deletion
-        qint32 originalSize = discMap.numberOfFrames();
-        discMap.flush();
-        qInfo() << "Removed" << originalSize - discMap.numberOfFrames() <<
-                   "repeating frames - disc map size now" << discMap.numberOfFrames() << "frames";
-    } else {
-        qInfo() << "No repeating frames found";
+        // Show the number of duplicates in the discMap that were found
+        qDebug() << "  Found" << discMapDuplicateAddress.size() << "duplicates of VBI frame" << duplicatedFrameList[i];
+
+        // Pick the sequential frame duplicate with the best quality
+        qint32 bestDiscMapFrame = discMapDuplicateAddress.first();
+        for (qint32 i = 0; i < discMapDuplicateAddress.size(); i++) {
+            if (discMap.frameQuality(bestDiscMapFrame) < discMap.frameQuality(discMapDuplicateAddress[i])) {
+                bestDiscMapFrame = discMapDuplicateAddress[i];
+            }
+        }
+
+        qDebug() << "  Highest quality duplicate of VBI" << duplicatedFrameList[i] << "is sequential frame" <<
+                    discMap.seqFrameNumber(bestDiscMapFrame) << "with a quality of" << discMap.frameQuality(bestDiscMapFrame);
+
+        // Delete all duplicates except the best sequential frame
+        for (qint32 i = 0; i < discMapDuplicateAddress.size(); i++) {
+            if (discMapDuplicateAddress[i] != bestDiscMapFrame) {
+                discMap.setMarkedForDeletion(discMapDuplicateAddress[i]);
+                //qDebug() << " Seq. frame" << discMap.seqFrameNumber(discMapDuplicateAddress[i]) << "marked for deletion";
+            }
+        }
     }
+
+    // Delete duplicates
+    qint32 originalSize = discMap.numberOfFrames();
+    discMap.flush();
+    qInfo() << "Removed" << originalSize - discMap.numberOfFrames() <<
+               "duplicate frames - disc map size now" << discMap.numberOfFrames() << "frames";
 }
 
 // Method to reorder frames according to VBI frame number order
@@ -317,10 +311,14 @@ void DiscMapper::reorderFrames(DiscMap &discMap)
 // (except frames marked as pulldown)
 bool DiscMapper::verifyFrameNumberPresence(DiscMap &discMap)
 {
-    qInfo() << "Verifying frame numbers are present for all frames in the disc map (except pulldowns)";
+    qInfo() << "Verifying frame numbers are present for all frames in the disc map (except pulldowns)...";
     for (qint32 frameNumber = 0; frameNumber < discMap.numberOfFrames(); frameNumber++) {
-        if (discMap.vbiFrameNumber(frameNumber) < 1 && !discMap.isPulldown(frameNumber)) return false;
+        if (discMap.vbiFrameNumber(frameNumber) < 1 && !discMap.isPulldown(frameNumber)) {
+            qInfo() << "Verification failed!";
+            return false;
+        }
     }
+    qInfo() << "Verification successful";
     return true;
 }
 
