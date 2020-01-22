@@ -52,7 +52,6 @@ private:
     bool mapOnly;
 
     void removeLeadInOut(DiscMap &discMap);
-    void correctVbiFrameNumbersUsingGapAnalysis(DiscMap &discMap);
     void correctVbiFrameNumbersUsingSequenceAnalysis(DiscMap &discMap);
     void removeDuplicateNumberedFrames(DiscMap &discMap);
     void reorderFrames(DiscMap &discMap);

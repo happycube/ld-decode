@@ -51,9 +51,6 @@ bool DiscMapper::process(QFileInfo _inputFileInfo, QFileInfo _inputMetadataFileI
     // Remove lead-in and lead-out frames from the map
     removeLeadInOut(discMap);
 
-    // Detect and correct bad VBI frame numbers using gap analysis
-    correctVbiFrameNumbersUsingGapAnalysis(discMap);
-
     // Detect and correct bad VBI frame numbers using sequence analysis
     correctVbiFrameNumbersUsingSequenceAnalysis(discMap);
 
@@ -95,92 +92,123 @@ void DiscMapper::removeLeadInOut(DiscMap &discMap)
     discMap.flush();
 }
 
-// Method to find and correct bad VBI numbers using gap analysis
-void DiscMapper::correctVbiFrameNumbersUsingGapAnalysis(DiscMap &discMap)
-{
-    qInfo() << "Correcting frame numbers using gap analysis";
-    qint32 corrections = 0;
-
-    // Look for bad frame numbers between two good frame numbers and correct
-    for (qint32 frameNumber = 1; frameNumber < discMap.numberOfFrames() - 1; frameNumber++) {
-        // Is the current frame a pulldown?
-        if (!discMap.isPulldown(frameNumber)) {
-            // Current frameNumber isn't a pull-down
-            qint32 previousFrameNumber = discMap.vbiFrameNumber(frameNumber - 1);
-            qint32 currentFrameNumber = discMap.vbiFrameNumber(frameNumber);
-            qint32 nextFrameNumber = discMap.vbiFrameNumber(frameNumber + 1);
-
-            // If the previous frame is a pulldown, get the frame number from two frames back instead
-            if (discMap.isPulldown(frameNumber - 1)) {
-                if (frameNumber > 2) previousFrameNumber = discMap.vbiFrameNumber(frameNumber - 2);
-            }
-
-            // If the next frame is a pulldown, get the frame number from two frames ahead instead
-            if (discMap.isPulldown(frameNumber + 1)) {
-                if (frameNumber < discMap.numberOfFrames() - 2) nextFrameNumber = discMap.vbiFrameNumber(frameNumber + 2);
-            }
-
-            if (previousFrameNumber == nextFrameNumber - 2 && currentFrameNumber != previousFrameNumber + 1) {
-                qDebug() << "Seq. Frame:" << discMap.seqFrameNumber(frameNumber) << "VBI correction, previous =" <<
-                            previousFrameNumber << "next =" << nextFrameNumber <<
-                            "was =" << currentFrameNumber << "now =" << previousFrameNumber + 1;
-                if (currentFrameNumber != previousFrameNumber + 1) discMap.setVbiFrameNumber(frameNumber, previousFrameNumber + 1);
-                corrections++;
-            }
-        } else {
-            // Current frameNumber is a pull-down frame (and isn't in the VBI sequence)
-            // So here we have to check that there is one frame difference between the previous and next
-            // as we have already corrected the previous frame, so it should be trustworthy
-            qint32 previousFrameNumber = discMap.vbiFrameNumber(frameNumber - 1);
-            qint32 nextFrameNumber = discMap.vbiFrameNumber(frameNumber + 1);
-
-            if (previousFrameNumber + 1 != nextFrameNumber) {
-                qDebug() << "Seq. Frame:" << discMap.seqFrameNumber(frameNumber) << "VBI correction, previous =" <<
-                            previousFrameNumber << "next =" << nextFrameNumber <<
-                            "- current is pulldown - next corrected to" << previousFrameNumber + 1;
-                discMap.setVbiFrameNumber(frameNumber + 1, previousFrameNumber + 1);
-                corrections++;
-            }
-        }
-    }
-
-    qInfo() << "Corrected" << corrections << "frame numbers using gap analysis";
-}
-
 // Method to find and correct bad VBI numbers using sequence analysis
 void DiscMapper::correctVbiFrameNumbersUsingSequenceAnalysis(DiscMap &discMap)
 {
     qInfo() << "Correcting frame numbers using sequence analysis";
 
+    qint32 scanDistance = 10;
     qint32 corrections = 0;
 
-    for (qint32 frameNumber = 0; frameNumber < discMap.numberOfFrames() - 10; frameNumber++) {
+    for (qint32 frameNumber = 0; frameNumber < discMap.numberOfFrames() - scanDistance; frameNumber++) {
         if (!discMap.isPulldown(frameNumber)) {
             qint32 startOfSequence = discMap.vbiFrameNumber(frameNumber);
-            qint32 matches = 0;
-            qint32 pointer = 1;
-            for (qint32 i = 1; i <= 10; i++) {
-                if (!discMap.isPulldown(frameNumber + i)) {
-                    if (discMap.vbiFrameNumber(frameNumber + i) == startOfSequence + pointer) matches++;
-                    pointer++;
+            qint32 expectedIncrement = 1;
+
+            QVector<bool> vbiGood;
+            vbiGood.resize(scanDistance);
+            bool sequenceIsGood = true;
+
+            for (qint32 i = 0; i < scanDistance; i++) {
+                if (!discMap.isPulldown(frameNumber + i + 1)) {
+                    if ((discMap.vbiFrameNumber(frameNumber + i + 1) == startOfSequence + expectedIncrement) || (discMap.isPulldown(frameNumber + i + 1))) {
+                        // Sequence is good
+                        sequenceIsGood = true;
+                    } else {
+                        // Sequence is bad
+                        sequenceIsGood = false;
+                    }
+
+                    // Set the good/bad flag and increase the frame number increment
+                    if (sequenceIsGood) vbiGood[i] = true; else vbiGood[i] = false;
+                    expectedIncrement++;
                 } else {
-                    // current is pulldown, count as a match but don't
-                    // increment the pointer as a pulldown doesn't change the
-                    // frame number sequence
-                    matches++;
+                    // Set the good/bad flag but don't increase the frame number
+                    // increment due to the pulldown
+                    if (sequenceIsGood) vbiGood[i] = true; else vbiGood[i] = false;
                 }
             }
 
             // Did the check pass?
-            if (matches != 10) {
-                qDebug() << "Seq frame" << discMap.seqFrameNumber(frameNumber) << "Start VBI" << startOfSequence << "matches =" << matches;
+            qint32 count = 0;
+            for (qint32 i = 0; i < scanDistance; i++) {
+                if (vbiGood[i]) count++;
+            }
 
+            // If any frame numbers were bad, check does not pass
+            if (count != scanDistance) {
+                // Do we have at least 2 good frame numbers (which are not pulldowns) before the error
+                qint32 check1 = 0;
+                for (qint32 i = 0; i < scanDistance; i++) {
+                    if (vbiGood[i] && !discMap.isPulldown(frameNumber + i + 1)) check1++;
+                    else if (!discMap.isPulldown(frameNumber + i + 1)) break;
+                }
+
+                // and another 2 good frame numbers (which are not pulldowns) after the error?
+                qint32 check2 = 0;
+                for (qint32 i = scanDistance - 1; i >= 0; i--) {
+                    if (vbiGood[i] && !discMap.isPulldown(frameNumber + i + 1)) check2++;
+                    else if (!discMap.isPulldown(frameNumber + i + 1)) break;
+                }
+
+                if (check1 >= 2 && check2 >= 2) {
+                    // We have enough leading and trailing good frame numbers to be sure we are looking
+                    // at a real error.  Now correct the error
+                    qDebug() << "Broken VBI frame number sequence detected:";
+
+                    bool inError = false;
+                    expectedIncrement = 1;
+                    for (qint32 i = 0; i < scanDistance; i++) {
+                        if (!vbiGood[i]) {
+                            inError = true;
+                            // Only correct non-pulldown frame numbers
+                            if (!discMap.isPulldown(frameNumber + i + 1)) {
+                                // Ensure this is an error, not a repeating frame
+                                if (discMap.vbiFrameNumber(frameNumber + i + 1) != discMap.vbiFrameNumber(frameNumber + i)) {
+                                    qDebug() << "  Position BAD   " << i << "Seq." << discMap.seqFrameNumber(frameNumber + i + 1) <<
+                                                "VBI was" << discMap.vbiFrameNumber(frameNumber + i + 1) << "now" << (startOfSequence + expectedIncrement);
+                                    discMap.setVbiFrameNumber(frameNumber + i + 1, startOfSequence + expectedIncrement);
+                                    if (!discMap.isPulldown(frameNumber + i + 1)) expectedIncrement++;
+                                    corrections++;
+                                } else {
+                                    // Repeating frame
+                                    qDebug() << "  Position REPEAT" << i << "Seq." << discMap.seqFrameNumber(frameNumber + i + 1) <<
+                                                "VBI" << discMap.vbiFrameNumber(frameNumber + i + 1);
+                                    qDebug() << "  Ignoring sequence break as frame is repeating rather than out of sequence";
+
+                                    // If we have a repeat, this probably isn't a sequence issue, so we give up
+                                    if (inError) break;
+                                }
+                            } else {
+                                // Out of sequence frame number
+                                if (!discMap.isPulldown(frameNumber + i + 1))
+                                    qDebug() << "  Position BAD   " << i << "Seq." << discMap.seqFrameNumber(frameNumber + i + 1) <<
+                                                "VBI" << discMap.vbiFrameNumber(frameNumber + i + 1);
+                                else qDebug() << "  Position BAD   " << i << "Seq." << discMap.seqFrameNumber(frameNumber + i + 1) <<
+                                                 "VBI pulldown";
+
+                                if (!discMap.isPulldown(frameNumber + i + 1)) expectedIncrement++;
+                            }
+                        } else {
+                            // In sequence frame number
+                            if (!discMap.isPulldown(frameNumber + i + 1))
+                                qDebug() << "  Position GOOD  " << i << "Seq." << discMap.seqFrameNumber(frameNumber + i + 1) <<
+                                            "VBI" << discMap.vbiFrameNumber(frameNumber + i + 1);
+                            else qDebug() << "  Position GOOD  " << i << "Seq." << discMap.seqFrameNumber(frameNumber + i + 1) <<
+                                             "VBI pulldown";
+
+                            if (!discMap.isPulldown(frameNumber + i + 1)) expectedIncrement++;
+
+                            // Stop once we get a good frame after the bad ones
+                            if (inError) break;
+                        }
+                    }
+                }
             }
         }
     }
 
-
-    qInfo() << "Corrected" << corrections << "frame numbers using sequence analysis";
+    qInfo() << "Sequence analysis corrected" << corrections << "frame numbers";
 }
 
 // Method to find and remove repeating frames
