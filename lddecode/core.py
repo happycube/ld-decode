@@ -441,7 +441,7 @@ class RFDecode:
         SF['Fvideo_lpf'] = filtfft(video_lpf, self.blocklen)
 
         if self.system == 'NTSC' and self.WibbleRemover:
-            video_notch = sps.butter(3, [DP['video_lpf_freq']/self.freq_half, 5.0/self.freq_half], 'bandstop')
+            video_notch = sps.butter(3, [DP['video_lpf_freq']/1000000/self.freq_half, 5.0/self.freq_half], 'bandstop')
             SF['Fvideo_lpf'] *= filtfft(video_notch, self.blocklen)
 
         video_hpf = sps.butter(DP['video_hpf_order'], DP['video_hpf_freq']/self.freq_hz_half, 'high')
