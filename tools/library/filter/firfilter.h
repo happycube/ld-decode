@@ -3,7 +3,7 @@
     firfilter.h
 
     ld-decode-tools filter library
-    Copyright (C) 2019 Adam Sampson
+    Copyright (C) 2019-2020 Adam Sampson
 
     This file is part of ld-decode-tools.
 
@@ -53,6 +53,10 @@ public:
         // input data.
         const int numTaps = coeffs.size();
         const int overlap = numTaps / 2;
+
+        // Check that the number of taps is odd. (If it was even, then the
+        // output would be delayed by half a sample.)
+        assert((numTaps % 2) == 1);
 
         // At the left end of the input, we definitely overlap to the left.
         // We might overlap to the right too if numSamples < numTaps, in which
