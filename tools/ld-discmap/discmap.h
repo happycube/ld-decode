@@ -38,7 +38,7 @@ class DiscMap
 {
 public:
     DiscMap() = default;
-    ~DiscMap() = default;
+    ~DiscMap();
     DiscMap(const DiscMap &) = default;
     DiscMap &operator=(const DiscMap &) = default;
 
@@ -67,6 +67,13 @@ public:
     qint32 flush();
     void sort();
     void debugFrameDetails(qint32 frameNumber);
+    void addPadding(qint32 startFrame, qint32 numberOfFrames);
+    qint32 getFieldLength();
+
+    qint32 getFirstFieldNumber(qint32 frameNumber) const;
+    qint32 getSecondFieldNumber(qint32 frameNumber) const;
+
+    bool saveTargetMetadata(QFileInfo outputFileInfo);
 
 private:
     // Miscellaneous
@@ -77,10 +84,15 @@ private:
     bool m_isDiscPal;
     bool m_isDiscCav;
     qint32 m_numberOfPulldowns;
+    qint32 m_fieldLength;
 
     QVector<Frame> m_frames;
+    LdDecodeMetaData *ldDecodeMetaData;
 
     bool isNtscAmendment2ClvFrameNumber(qint32 frameNumber);
+    qint32 convertFrameToVbi(qint32 frameNumber);
+    qint32 convertFrameToClvPicNo(qint32 frameNumber);
+    qint32 convertFrameToClvTimeCode(qint32 frameNumber);
 };
 
 // Custom streaming operator for debug

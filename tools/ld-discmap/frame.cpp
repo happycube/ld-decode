@@ -26,10 +26,12 @@
 
 Frame::Frame(const qint32 &seqFrameNumber, const qint32 &vbiFrameNumber, const bool &isPictureStop,
              const bool &isPullDown, const bool &isLeadInOrOut, const bool &isMarkedForDeletion,
-             const qreal &frameQuality, const bool &isPadded, const bool &isClvOffset)
+             const qreal &frameQuality, const bool &isPadded, const bool &isClvOffset,
+             const qint32 &firstField, const qint32 &secondField)
            : m_seqFrameNumber(seqFrameNumber),  m_vbiFrameNumber(vbiFrameNumber), m_isPictureStop(isPictureStop),
              m_isPullDown(isPullDown), m_isLeadInOrOut(isLeadInOrOut), m_isMarkedForDeletion(isMarkedForDeletion),
-             m_frameQuality(frameQuality), m_isPadded(isPadded), m_isClvOffset(isClvOffset)
+             m_frameQuality(frameQuality), m_isPadded(isPadded), m_isClvOffset(isClvOffset),
+             m_firstField(firstField), m_secondField(secondField)
 {
 }
 
@@ -45,7 +47,9 @@ QDebug operator<<(QDebug dbg, const Frame &frame)
                                ", isMarkedForDeletion " << frame.isMarkedForDeletion() <<
                                ", frameQuality " << frame.frameQuality() <<
                                ", isPadded " << frame.isPadded() <<
-                               ", isClvOffset" << frame.isClvOffset() <<
+                               ", isClvOffset " << frame.isClvOffset() <<
+                               ", firstField " << frame.firstField() <<
+                               ", secondField" << frame.secondField() <<
                                ")";
 
     return dbg.maybeSpace();
@@ -97,6 +101,16 @@ bool Frame::isClvOffset() const
     return m_isClvOffset;
 }
 
+qint32 Frame::firstField() const
+{
+    return m_firstField;
+}
+
+qint32 Frame::secondField() const
+{
+    return m_secondField;
+}
+
 // Set methods
 void Frame::seqFrameNumber(qint32 value)
 {
@@ -141,6 +155,16 @@ void Frame::isPadded(bool value)
 void Frame::isClvOffset(bool value)
 {
     m_isClvOffset = value;
+}
+
+void Frame::firstField(qint32 value)
+{
+    m_firstField = value;
+}
+
+void Frame::secondField(qint32 value)
+{
+    m_secondField = value;
 }
 
 // Overide less than operator for sorting

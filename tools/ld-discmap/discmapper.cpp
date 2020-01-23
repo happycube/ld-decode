@@ -99,6 +99,17 @@ bool DiscMapper::process(QFileInfo _inputFileInfo, QFileInfo _inputMetadataFileI
     padDiscMap(discMap);
 
     // Remove any frames after lead-out (like on the Almanac side 1)
+    // TODO!
+
+    qInfo() << "Disc mapping process completed";
+
+    if (mapOnly) {
+        qInfo() << "--maponly selected.  No output file will be written.";
+        return true;
+    }
+
+    qInfo() << "Writing output video and metadata information...";
+    saveDiscMap(discMap);
 
     return true;
 }
@@ -138,7 +149,8 @@ void DiscMapper::correctVbiFrameNumbersUsingSequenceAnalysis(DiscMap &discMap)
 
             for (qint32 i = 0; i < scanDistance; i++) {
                 if (!discMap.isPulldown(frameNumber + i + 1)) {
-                    if ((discMap.vbiFrameNumber(frameNumber + i + 1) == startOfSequence + expectedIncrement) || (discMap.isPulldown(frameNumber + i + 1))) {
+                    if ((discMap.vbiFrameNumber(frameNumber + i + 1) == startOfSequence + expectedIncrement) ||
+                            (discMap.isPulldown(frameNumber + i + 1))) {
                         // Sequence is good
                         sequenceIsGood = true;
                     } else {
@@ -192,14 +204,16 @@ void DiscMapper::correctVbiFrameNumbersUsingSequenceAnalysis(DiscMap &discMap)
                             if (!discMap.isPulldown(frameNumber + i + 1)) {
                                 // Ensure this is an error, not a repeating frame
                                 if (discMap.vbiFrameNumber(frameNumber + i + 1) != discMap.vbiFrameNumber(frameNumber + i)) {
-                                    qDebug() << "  Position BAD   " << i << "Seq." << discMap.seqFrameNumber(frameNumber + i + 1) <<
+                                    qDebug() << "  Position BAD   " << i << "Seq." <<
+                                                discMap.seqFrameNumber(frameNumber + i + 1) <<
                                                 "VBI was" << discMap.vbiFrameNumber(frameNumber + i + 1) << "now" << (startOfSequence + expectedIncrement);
                                     discMap.setVbiFrameNumber(frameNumber + i + 1, startOfSequence + expectedIncrement);
                                     if (!discMap.isPulldown(frameNumber + i + 1)) expectedIncrement++;
                                     corrections++;
                                 } else {
                                     // Repeating frame
-                                    qDebug() << "  Position REPEAT" << i << "Seq." << discMap.seqFrameNumber(frameNumber + i + 1) <<
+                                    qDebug() << "  Position REPEAT" << i << "Seq." <<
+                                                discMap.seqFrameNumber(frameNumber + i + 1) <<
                                                 "VBI" << discMap.vbiFrameNumber(frameNumber + i + 1);
                                     qDebug() << "  Ignoring sequence break as frame is repeating rather than out of sequence";
 
@@ -209,9 +223,11 @@ void DiscMapper::correctVbiFrameNumbersUsingSequenceAnalysis(DiscMap &discMap)
                             } else {
                                 // Out of sequence frame number
                                 if (!discMap.isPulldown(frameNumber + i + 1))
-                                    qDebug() << "  Position BAD   " << i << "Seq." << discMap.seqFrameNumber(frameNumber + i + 1) <<
+                                    qDebug() << "  Position BAD   " << i << "Seq." <<
+                                                discMap.seqFrameNumber(frameNumber + i + 1) <<
                                                 "VBI" << discMap.vbiFrameNumber(frameNumber + i + 1);
-                                else qDebug() << "  Position BAD   " << i << "Seq." << discMap.seqFrameNumber(frameNumber + i + 1) <<
+                                else qDebug() << "  Position BAD   " << i << "Seq." <<
+                                                 discMap.seqFrameNumber(frameNumber + i + 1) <<
                                                  "VBI pulldown";
 
                                 if (!discMap.isPulldown(frameNumber + i + 1)) expectedIncrement++;
@@ -276,7 +292,8 @@ void DiscMapper::removeDuplicateNumberedFrames(DiscMap &discMap)
                 if (discMap.vbiFrameNumber(frameNumber) == duplicatedFrameList[i]) {
                     // Add the frame number ot the duplicate disc map address list
                     discMapDuplicateAddress.append(frameNumber);
-                    qDebug() << "  Seq frame" << discMap.seqFrameNumber(frameNumber) << "is a duplicate of" << duplicatedFrameList[i] <<
+                    qDebug() << "  Seq frame" << discMap.seqFrameNumber(frameNumber) << "is a duplicate of" <<
+                                duplicatedFrameList[i] <<
                                 "with a quality of" << discMap.frameQuality(frameNumber);
                 }
             }
@@ -337,7 +354,8 @@ void DiscMapper::numberPulldownFrames(DiscMap &discMap)
         // Check that the very first frame isn't a pull-down
         if (discMap.isPulldown(0)) {
             discMap.setVbiFrameNumber(0, discMap.vbiFrameNumber(1) - 1);
-            qInfo() << "Attempted to number pulldown frames, but first frame is a pulldown... This probably isn't good, but continuing anyway";
+            qInfo() << "Attempted to number pulldown frames, but first frame is a pulldown.";
+            qInfo() << "This probably isn't a good thing, but continuing anyway...";
         }
 
         qInfo() << "Numbering complete";
@@ -374,10 +392,10 @@ void DiscMapper::reorderFrames(DiscMap &discMap)
 // Pad the disc map if there are missing frames in the disc map sequence
 void DiscMapper::padDiscMap(DiscMap &discMap)
 {
-    qInfo() << "Looking for sequence gaps in the disc map...";
+    qInfo() << "Looking for sequence gaps to pad in the disc map...";
 
     qint32 numberOfGaps = 0;
-    qint32 missingFrames = 0;
+    qint32 totalMissingFrames = 0;
     qint32 clvOffsetFrames = 0;
     for (qint32 frameNumber = 0; frameNumber < discMap.numberOfFrames() - 1; frameNumber++) {
         if (discMap.vbiFrameNumber(frameNumber) + 1 != discMap.vbiFrameNumber(frameNumber + 1)) {
@@ -391,8 +409,13 @@ void DiscMapper::padDiscMap(DiscMap &discMap)
                         qDebug() << "Sequence break over pulldown: Current VBI frame is" << discMap.vbiFrameNumber(frameNumber) <<
                                     "next frame is" << discMap.vbiFrameNumber(frameNumber + 1) << "gap of" <<
                                     discMap.vbiFrameNumber(frameNumber + 1) - discMap.vbiFrameNumber(frameNumber) - 1 << "frames";
+
                         numberOfGaps++;
-                        missingFrames += discMap.vbiFrameNumber(frameNumber + 1) - discMap.vbiFrameNumber(frameNumber) - 1;
+                        qint32 missingFrames = discMap.vbiFrameNumber(frameNumber + 1) - discMap.vbiFrameNumber(frameNumber) - 1;
+                        totalMissingFrames += missingFrames;
+
+                        // Pad the disc map
+                        discMap.addPadding(frameNumber + 1, missingFrames);
                     }
                 } else {
                     // Check if this is a CLV IEC ammendment 2 timecode gap
@@ -402,7 +425,7 @@ void DiscMapper::padDiscMap(DiscMap &discMap)
                                     "next frame is" << discMap.vbiFrameNumber(frameNumber + 1) << "gap of" <<
                                     discMap.vbiFrameNumber(frameNumber + 1) - discMap.vbiFrameNumber(frameNumber) - 1 << "frames";
                         numberOfGaps++;
-                        missingFrames += discMap.vbiFrameNumber(frameNumber + 1) - discMap.vbiFrameNumber(frameNumber) - 1;
+                        totalMissingFrames += discMap.vbiFrameNumber(frameNumber + 1) - discMap.vbiFrameNumber(frameNumber) - 1;
                     } else {
                         // CLV offset frame
                         clvOffsetFrames++;
@@ -412,15 +435,114 @@ void DiscMapper::padDiscMap(DiscMap &discMap)
         }
     }
 
-    if (numberOfGaps > 0) qInfo() << "Found" << numberOfGaps << "gaps representing" << missingFrames << "missing frames in the disc map";
-    else qInfo() << "No gaps found in the disc map";
+    if (totalMissingFrames > 0) {
+        // Sort the disc map to put the padding frames in the correct place
+        discMap.sort();
+    }
+
+    // Report the result to the user
+    if (numberOfGaps > 0) {
+        if (numberOfGaps > 0) qInfo() << "Found" << numberOfGaps << "gaps representing" <<
+                                         totalMissingFrames << "missing frames in the disc map";
+
+        qInfo() << "Note: The disc map has been padded.  This means that there were missing frames";
+        qInfo() << "that will be represented by black frames in the output video.";
+    } else qInfo() << "No gaps found in the disc map";
+
+
     if (clvOffsetFrames > 0) qInfo() << "There were" << clvOffsetFrames << "CLV timecode offsets in the disc map";
+    qInfo() << "After padding the disc map contains" << discMap.numberOfFrames() << "frames";
 }
 
+// Method to save the current disc map
+bool DiscMapper::saveDiscMap(DiscMap &discMap)
+{
+    // Open the input video file
+    SourceVideo sourceVideo;
+    sourceVideo.open(inputFileInfo.filePath(), discMap.getFieldLength());
 
+    // Open the output video file
+    QFile targetVideo(outputFileInfo.filePath());
+    if (!targetVideo.open(QIODevice::WriteOnly)) {
+        // Could not open target video file
+        qInfo() << "Cannot open target video file:" << outputFileInfo.filePath();
+        sourceVideo.close();
+        return false;
+    }
 
+    // Make a dummy video field to use when outputting padded frames
+    SourceVideo::Data missingFieldData;
+    missingFieldData.fill(0, discMap.getFieldLength());
 
+    // Create the output video file
+    SourceVideo::Data sourceFirstField;
+    SourceVideo::Data sourceSecondField;
 
+    qInfo() << "Saving target video frames...";
+    qint32 notifyInterval = discMap.numberOfFrames() / 100;
+    for (qint32 frameNumber = 0; frameNumber < discMap.numberOfFrames(); frameNumber++) {
+        bool writeFail = false;
+
+        // Is the current frameNumber a real frame or a padded frame?
+        if (!discMap.isPadded(frameNumber)) {
+            // Real frame
+            qint32 firstFieldNumber = discMap.getFirstFieldNumber(frameNumber);
+            qint32 secondFieldNumber = discMap.getSecondFieldNumber(frameNumber);
+            sourceFirstField = sourceVideo.getVideoField(firstFieldNumber);
+            sourceSecondField = sourceVideo.getVideoField(secondFieldNumber);
+
+            // Write the fields into the output TBC file in the same order as the source file
+            if (firstFieldNumber < secondFieldNumber) {
+                // Save the first field and then second field to the output file
+                if (!targetVideo.write(reinterpret_cast<const char *>(sourceFirstField.data()),
+                                       sourceFirstField.size() * 2)) writeFail = true;
+                if (!targetVideo.write(reinterpret_cast<const char *>(sourceSecondField.data()),
+                                       sourceSecondField.size() * 2)) writeFail = true;
+            } else {
+                // Save the second field and then first field to the output file
+                if (!targetVideo.write(reinterpret_cast<const char *>(sourceSecondField.data()),
+                                       sourceSecondField.size() * 2)) writeFail = true;
+                if (!targetVideo.write(reinterpret_cast<const char *>(sourceFirstField.data()),
+                                       sourceFirstField.size() * 2)) writeFail = true;
+            }
+        } else {
+            // Padded frame - write two dummy fields
+            if (!targetVideo.write(reinterpret_cast<const char *>(missingFieldData.data()),
+                                   missingFieldData.size() * 2)) writeFail = true;
+            if (!targetVideo.write(reinterpret_cast<const char *>(missingFieldData.data()),
+                                   missingFieldData.size() * 2)) writeFail = true;
+        }
+
+        // Notify user
+        if (frameNumber % notifyInterval == 0) {
+            qInfo() << "Written frame" << frameNumber << "of" << discMap.numberOfFrames();
+        }
+
+        // Was the write successful?
+        if (writeFail) {
+            // Could not write to target TBC file
+            qInfo() << "Writing fields to the target TBC file failed on frame number" << frameNumber;
+            targetVideo.close();
+            sourceVideo.close();
+            return false;
+        }
+    }
+    qInfo() << "Target video frames saved";
+
+    // Close the source and target video files
+    targetVideo.close();
+    sourceVideo.close();
+
+    // Now save the metadata
+    qInfo() << "Saving target video metadata...";
+    QFileInfo outputMetadataFileInfo(outputFileInfo.filePath() + ".json");
+    if (!discMap.saveTargetMetadata(outputMetadataFileInfo)) {
+        qInfo() << "Writing target metadata failed!";
+        return false;
+    }
+    qInfo() << "Target video metadata saved";
+    return true;
+}
 
 
 
