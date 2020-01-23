@@ -496,6 +496,8 @@ void DiscMap::sort()
     // Note that the stuct has an overloaded < operator that controls the sort comparison
     // (see the .h file)
     std::sort(m_frames.begin(), m_frames.end());
+
+    m_numberOfFrames = m_frames.size();
 }
 
 // Method to output frame debug for a frame number in the disc map
@@ -529,9 +531,10 @@ bool DiscMap::isNtscAmendment2ClvFrameNumber(qint32 frameNumber)
 // disc map must be sorted afterwards.
 void DiscMap::addPadding(qint32 startFrame, qint32 numberOfFrames)
 {
+    qint32 currentVbi = m_frames[startFrame].vbiFrameNumber() + 1;
     for (qint32 i = 0; i < numberOfFrames; i++) {
         Frame paddingFrame;
-        paddingFrame.vbiFrameNumber(startFrame + i);
+        paddingFrame.vbiFrameNumber(currentVbi + i);
         paddingFrame.seqFrameNumber(-1);
         paddingFrame.isPadded(true);
 
@@ -570,7 +573,7 @@ qint32 DiscMap::getSecondFieldNumber(qint32 frameNumber) const
 // Save the target metadata from the disc map
 bool DiscMap::saveTargetMetadata(QFileInfo outputFileInfo)
 {
-    qint32 notifyInterval = m_numberOfFrames / 100;
+    qint32 notifyInterval = m_numberOfFrames / 50;
     LdDecodeMetaData targetMetadata;
     LdDecodeMetaData::VideoParameters sourceVideoParameters = ldDecodeMetaData->getVideoParameters();
 
@@ -594,34 +597,29 @@ bool DiscMap::saveTargetMetadata(QFileInfo outputFileInfo)
             LdDecodeMetaData::Field secondSourceMetadata = ldDecodeMetaData->getField(secondFieldNumber);
 
             // Generate new VBI data for the frame
-            if (!firstSourceMetadata.vbi.inUse) {
-                firstSourceMetadata.vbi.inUse = true;
-                firstSourceMetadata.vbi.vbiData.resize(3);
-            }
-
-            if (!secondSourceMetadata.vbi.inUse) {
-                secondSourceMetadata.vbi.inUse = true;
-                secondSourceMetadata.vbi.vbiData.resize(3);
-            }
-
-            // Note: TODO - Currently this will wipe out all existing metadata like chapter numbers etc!
             if (m_isDiscCav) {
-                firstSourceMetadata.vbi.vbiData[0] = 0;
+                // Disc is CAV - add a frame number
+                // The frame number is hex 0xF12345 (where 1,2,3,4,5 are hex digits 0-9)
+                // inserted into VBI lines 17 and 18 of the first field
+                if (!firstSourceMetadata.vbi.inUse) {
+                    firstSourceMetadata.vbi.inUse = true;
+                    firstSourceMetadata.vbi.vbiData.resize(3);
+                    firstSourceMetadata.vbi.vbiData[0] = 0;
+                }
+
                 firstSourceMetadata.vbi.vbiData[1] = convertFrameToVbi(m_frames[frameNumber].vbiFrameNumber());
                 firstSourceMetadata.vbi.vbiData[2] = convertFrameToVbi(m_frames[frameNumber].vbiFrameNumber());
-
-                secondSourceMetadata.vbi.vbiData[0] = 0;
-                secondSourceMetadata.vbi.vbiData[1] = 0;
-                secondSourceMetadata.vbi.vbiData[2] = 0;
             } else {
+                // Disc is CLV - add a timecode
+                if (!firstSourceMetadata.vbi.inUse) {
+                    firstSourceMetadata.vbi.inUse = true;
+                    firstSourceMetadata.vbi.vbiData.resize(3);
+                }
                 firstSourceMetadata.vbi.vbiData[0] = convertFrameToClvPicNo(m_frames[frameNumber].vbiFrameNumber());
                 firstSourceMetadata.vbi.vbiData[1] = convertFrameToClvTimeCode(m_frames[frameNumber].vbiFrameNumber());
                 firstSourceMetadata.vbi.vbiData[2] = convertFrameToClvTimeCode(m_frames[frameNumber].vbiFrameNumber());
-
-                secondSourceMetadata.vbi.vbiData[0] = 0;
-                secondSourceMetadata.vbi.vbiData[1] = 0;
-                secondSourceMetadata.vbi.vbiData[2] = 0;
             }
+
 
             // Append the fields to the metadata
             targetMetadata.appendField(firstSourceMetadata);
@@ -639,21 +637,29 @@ bool DiscMap::saveTargetMetadata(QFileInfo outputFileInfo)
 
             // Generate VBI data for the dummy output frame
             if (m_isDiscCav) {
-                // Disc is CAV - add a frame number
-                // The frame number is hex 0xF12345 (where 1,2,3,4,5 are hex digits 0-9)
-                // inserted into VBI lines 17 and 18 of the first field
                 firstSourceMetadata.vbi.inUse = true;
                 firstSourceMetadata.vbi.vbiData.resize(3);
                 firstSourceMetadata.vbi.vbiData[0] = 0;
                 firstSourceMetadata.vbi.vbiData[1] = convertFrameToVbi(m_frames[frameNumber].vbiFrameNumber());
                 firstSourceMetadata.vbi.vbiData[2] = convertFrameToVbi(m_frames[frameNumber].vbiFrameNumber());
+
+                secondSourceMetadata.vbi.inUse = true;
+                secondSourceMetadata.vbi.vbiData.resize(3);
+                secondSourceMetadata.vbi.vbiData[0] = 0;
+                secondSourceMetadata.vbi.vbiData[1] = 0;
+                secondSourceMetadata.vbi.vbiData[2] = 0;
             } else {
-                // Disc is CLV - add a timecode
                 firstSourceMetadata.vbi.inUse = true;
                 firstSourceMetadata.vbi.vbiData.resize(3);
                 firstSourceMetadata.vbi.vbiData[0] = convertFrameToClvPicNo(m_frames[frameNumber].vbiFrameNumber());
                 firstSourceMetadata.vbi.vbiData[1] = convertFrameToClvTimeCode(m_frames[frameNumber].vbiFrameNumber());
                 firstSourceMetadata.vbi.vbiData[2] = convertFrameToClvTimeCode(m_frames[frameNumber].vbiFrameNumber());
+
+                secondSourceMetadata.vbi.inUse = true;
+                secondSourceMetadata.vbi.vbiData.resize(3);
+                secondSourceMetadata.vbi.vbiData[0] = 0;
+                secondSourceMetadata.vbi.vbiData[1] = 0;
+                secondSourceMetadata.vbi.vbiData[2] = 0;
             }
 
             // Append the fields to the metadata
@@ -710,13 +716,6 @@ qint32 DiscMap::convertFrameToClvPicNo(qint32 frameNumber)
     qint32 returnValue = number.toInt(&ok, 16);
     if (!ok) returnValue = 0;
 
-//    qInfo().nospace().noquote() << "Replaced picture number VBI - Frame number is " << frameNumber << " CLV time code is " <<
-//                         QString("%1").arg(timecode.hours, 2, 10, QChar('0')) << ":" <<
-//                         QString("%1").arg(timecode.minutes, 2, 10, QChar('0')) << ":" <<
-//                         QString("%1").arg(timecode.seconds, 2, 10, QChar('0')) << "." <<
-//                         QString("%1").arg(timecode.pictureNumber, 2, 10, QChar('0')) <<
-//                         " VBI data is " << returnValue;
-
     return returnValue;
 }
 
@@ -733,13 +732,6 @@ qint32 DiscMap::convertFrameToClvTimeCode(qint32 frameNumber)
     bool ok;
     qint32 returnValue = number.toInt(&ok, 16);
     if (!ok) returnValue = 0;
-
-//    qInfo().nospace().noquote() << "Replaced CLV timecode VBI - Frame number is " << frameNumber << " CLV time code is " <<
-//                         QString("%1").arg(timecode.hours, 2, 10, QChar('0')) << ":" <<
-//                         QString("%1").arg(timecode.minutes, 2, 10, QChar('0')) << ":" <<
-//                         QString("%1").arg(timecode.seconds, 2, 10, QChar('0')) << "." <<
-//                         QString("%1").arg(timecode.pictureNumber, 2, 10, QChar('0')) <<
-//                         " VBI data is " << returnValue;
 
     return returnValue;
 }

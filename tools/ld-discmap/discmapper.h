@@ -58,6 +58,8 @@ private:
     bool verifyFrameNumberPresence(DiscMap &discMap);
     void reorderFrames(DiscMap &discMap);
     void padDiscMap(DiscMap &discMap);
+    void rewriteFrameNumbers(DiscMap &discMap);
+
     bool saveDiscMap(DiscMap &discMap);
 };
 

@@ -98,9 +98,12 @@ bool DiscMapper::process(QFileInfo _inputFileInfo, QFileInfo _inputMetadataFileI
     // Pad any gaps in the sequential disc map
     padDiscMap(discMap);
 
-    // Remove any frames after lead-out (like on the Almanac side 1)
-    // TODO!
+    // If the disc map contains pulldown frames (which are not numbered)
+    // rewrite all VBI frame numbers in the disc map in order to number
+    // them.
+    rewriteFrameNumbers(discMap);
 
+    // All done
     qInfo() << "Disc mapping process completed";
 
     if (mapOnly) {
@@ -397,6 +400,8 @@ void DiscMapper::padDiscMap(DiscMap &discMap)
     qint32 numberOfGaps = 0;
     qint32 totalMissingFrames = 0;
     qint32 clvOffsetFrames = 0;
+    QVector<qint32> startFrame;
+    QVector<qint32> paddingLength;
     for (qint32 frameNumber = 0; frameNumber < discMap.numberOfFrames() - 1; frameNumber++) {
         if (discMap.vbiFrameNumber(frameNumber) + 1 != discMap.vbiFrameNumber(frameNumber + 1)) {
             // Is the current frame a pulldown?
@@ -414,8 +419,11 @@ void DiscMapper::padDiscMap(DiscMap &discMap)
                         qint32 missingFrames = discMap.vbiFrameNumber(frameNumber + 1) - discMap.vbiFrameNumber(frameNumber) - 1;
                         totalMissingFrames += missingFrames;
 
-                        // Pad the disc map
-                        discMap.addPadding(frameNumber + 1, missingFrames);
+                        // Add to the gap list
+                        startFrame.append(frameNumber);
+                        paddingLength.append(missingFrames);
+
+
                     }
                 } else {
                     // Check if this is a CLV IEC ammendment 2 timecode gap
@@ -425,7 +433,12 @@ void DiscMapper::padDiscMap(DiscMap &discMap)
                                     "next frame is" << discMap.vbiFrameNumber(frameNumber + 1) << "gap of" <<
                                     discMap.vbiFrameNumber(frameNumber + 1) - discMap.vbiFrameNumber(frameNumber) - 1 << "frames";
                         numberOfGaps++;
-                        totalMissingFrames += discMap.vbiFrameNumber(frameNumber + 1) - discMap.vbiFrameNumber(frameNumber) - 1;
+                        qint32 missingFrames = discMap.vbiFrameNumber(frameNumber + 1) - discMap.vbiFrameNumber(frameNumber) - 1;
+                        totalMissingFrames += missingFrames;
+
+                        // Add to the gap list
+                        startFrame.append(frameNumber);
+                        paddingLength.append(missingFrames);
                     } else {
                         // CLV offset frame
                         clvOffsetFrames++;
@@ -433,6 +446,11 @@ void DiscMapper::padDiscMap(DiscMap &discMap)
                 }
             }
         }
+    }
+
+    // Apply the padding
+    for (qint32 i = 0; i < startFrame.size(); i++) {
+        discMap.addPadding(startFrame[i], paddingLength[i]);
     }
 
     if (totalMissingFrames > 0) {
@@ -452,6 +470,38 @@ void DiscMapper::padDiscMap(DiscMap &discMap)
 
     if (clvOffsetFrames > 0) qInfo() << "There were" << clvOffsetFrames << "CLV timecode offsets in the disc map";
     qInfo() << "After padding the disc map contains" << discMap.numberOfFrames() << "frames";
+}
+
+// Method to rewrite all frame numbers in the disc map when pulldown frames
+// are present.  This ensures that all frames in the map (including the pulldown
+// frames) have valid frame numbers
+void DiscMapper::rewriteFrameNumbers(DiscMap &discMap)
+{
+    if (discMap.isDiscCav() && !discMap.isDiscPal()) {
+        // Check if pulldown frames are present in the disc map
+        qInfo() << "Searching disc map for pulldown frames...";
+        bool present = false;
+        for (qint32 frameNumber = 0; frameNumber < discMap.numberOfFrames(); frameNumber++) {
+            if (discMap.isPulldown(frameNumber)) {
+                present = true;
+                break;
+            }
+        }
+
+        if (present) qInfo() << "Search complete; pulldown frames are present.  Renumbering disc map...";
+        else {
+            qInfo() << "Search complete; no pulldown frames present";
+            return;
+        }
+
+        qint32 newVbi = discMap.vbiFrameNumber(0);
+        for (qint32 frameNumber = 0; frameNumber < discMap.numberOfFrames(); frameNumber++) {
+            discMap.setVbiFrameNumber(frameNumber, newVbi);
+            newVbi++;
+        }
+
+        qInfo() << "Renumbering complete";
+    }
 }
 
 // Method to save the current disc map
@@ -479,7 +529,7 @@ bool DiscMapper::saveDiscMap(DiscMap &discMap)
     SourceVideo::Data sourceSecondField;
 
     qInfo() << "Saving target video frames...";
-    qint32 notifyInterval = discMap.numberOfFrames() / 100;
+    qint32 notifyInterval = discMap.numberOfFrames() / 50;
     for (qint32 frameNumber = 0; frameNumber < discMap.numberOfFrames(); frameNumber++) {
         bool writeFail = false;
 
