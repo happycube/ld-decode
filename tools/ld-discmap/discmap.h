@@ -61,10 +61,12 @@ public:
     bool isLeadInOut(qint32 frameNumber) const;
     qreal frameQuality(qint32 frameNumber) const;
     bool isPadded(qint32 frameNumber) const;
+    bool isClvOffset(qint32 frameNumber) const;
 
     void setMarkedForDeletion(qint32 frameNumber);
     qint32 flush();
     void sort();
+    void debugFrameDetails(qint32 frameNumber);
 
 private:
     // Miscellaneous
@@ -77,6 +79,8 @@ private:
     qint32 m_numberOfPulldowns;
 
     QVector<Frame> m_frames;
+
+    bool isNtscAmendment2ClvFrameNumber(qint32 frameNumber);
 };
 
 // Custom streaming operator for debug

@@ -54,8 +54,9 @@ private:
     void removeLeadInOut(DiscMap &discMap);
     void correctVbiFrameNumbersUsingSequenceAnalysis(DiscMap &discMap);
     void removeDuplicateNumberedFrames(DiscMap &discMap);
-    void reorderFrames(DiscMap &discMap);
+    void numberPulldownFrames(DiscMap &discMap);
     bool verifyFrameNumberPresence(DiscMap &discMap);
+    void reorderFrames(DiscMap &discMap);
     void padDiscMap(DiscMap &discMap);
 };
 

@@ -117,6 +117,7 @@ DiscMap::DiscMap(const QFileInfo &metadataFileInfo, const bool &reverseFieldOrde
     // otherwise just store the CAV picture numbers
     if (m_isDiscCav)  qDebug() << "Storing VBI CAV picture numbers as frame numbers";
     else qDebug() << "Converting VBI CLV timecodes into frame numbers";
+    qint32 iecOffset = -1;
     for (qint32 frameNumber = 0; frameNumber < m_numberOfFrames; frameNumber++) {
         if (!m_isDiscCav) {
             // Attempt to translate the CLV timecode into a frame number
@@ -126,6 +127,18 @@ DiscMap::DiscMap(const QFileInfo &metadataFileInfo, const bool &reverseFieldOrde
             clvTimecode.seconds = vbiData[frameNumber].clvSec;
             clvTimecode.pictureNumber = vbiData[frameNumber].clvPicNo;
             m_frames[frameNumber].vbiFrameNumber(ldDecodeMetaData.convertClvTimecodeToFrameNumber(clvTimecode));
+
+            // Check for CLV timecode offset frame (actually, this marks the frame
+            // that preceeds the jump)
+            // There will be a one frame time-code jump after each frame marked
+            // by this check
+            if (!m_isDiscPal) {
+                if (isNtscAmendment2ClvFrameNumber(m_frames[frameNumber].vbiFrameNumber() - iecOffset)) {
+                    m_frames[frameNumber].isClvOffset(true);
+                    iecOffset++;
+                    //qDebug() << "CLV offset set for frame" << m_frames[frameNumber].seqFrameNumber() << "with VBI of" << m_frames[frameNumber].vbiFrameNumber();
+                }
+            }
         } else {
             m_frames[frameNumber].vbiFrameNumber(vbiData[frameNumber].picNo);
         }
@@ -205,27 +218,29 @@ DiscMap::DiscMap(const QFileInfo &metadataFileInfo, const bool &reverseFieldOrde
                     qDebug() << "Seq. frame" << m_frames[frameNumber].seqFrameNumber() << "has an incorrect intra-frame phaseID!";
                 }
 
-                // If we have a possible pull-down, perform an additional check based on the VBI numbering
-                // If it's really a pull-down, then the VBI frame numbers should be missing 5 frames before
-                // and after the current frame...
-                qint32 doubleCheckCounter = 0;
-                if (frameNumber > 5) {
-                    if (vbiData[frameNumber - 5].picNo == -1) doubleCheckCounter++;
-                }
-                if (frameNumber < m_numberOfFrames - 5) {
-                    if (vbiData[frameNumber + 5].picNo == -1) doubleCheckCounter++;
-                }
-
-                if (doubleCheckCounter < 1) {
-                    qDebug() << "Seq. frame" << m_frames[frameNumber].seqFrameNumber() <<
-                                "looks like a pull-down, but there is no pull-down sequence in the surrounding frames - marking as false-positive";
-                    isPulldown = false;
-                }
-
-                m_frames[frameNumber].isPullDown(isPulldown);
                 if (isPulldown) {
-                    //qDebug() << "Seq. frame" << m_frames[frameNumber].seqFrameNumber << "marked as pulldown";
-                    m_numberOfPulldowns++;
+                    // If we have a possible pull-down, perform an additional check based on the VBI numbering
+                    // If it's really a pull-down, then the VBI frame numbers should be missing 5 frames before
+                    // and after the current frame...
+                    qint32 doubleCheckCounter = 0;
+                    if (frameNumber > 5) {
+                        if (vbiData[frameNumber - 5].picNo == -1) doubleCheckCounter++;
+                    }
+                    if (frameNumber < m_numberOfFrames - 5) {
+                        if (vbiData[frameNumber + 5].picNo == -1) doubleCheckCounter++;
+                    }
+
+                    if (doubleCheckCounter < 1) {
+                        qDebug() << "Seq. frame" << m_frames[frameNumber].seqFrameNumber() <<
+                                    "looks like a pull-down, but there is no pull-down sequence in the surrounding frames - marking as false-positive";
+                        isPulldown = false;
+                    }
+
+                    m_frames[frameNumber].isPullDown(isPulldown);
+                    if (m_frames[frameNumber].isPullDown()) {
+                        //qDebug() << "Seq. frame" << m_frames[frameNumber].seqFrameNumber << "marked as pulldown";
+                        m_numberOfPulldowns++;
+                    }
                 }
             }
         }
@@ -433,6 +448,16 @@ void DiscMap::setMarkedForDeletion(qint32 frameNumber)
     m_frames[frameNumber].isMarkedForDeletion(true);
 }
 
+// Get the isClvOffset flag
+bool DiscMap::isClvOffset(qint32 frameNumber) const
+{
+    if (frameNumber < 0 || frameNumber >= m_numberOfFrames) {
+        qDebug() << "isClvOffset out of frameNumber range";
+        return false;
+    }
+    return m_frames[frameNumber].isClvOffset();
+}
+
 // Flush the frames (delete anything marked for deletion)
 // Returns the number of frames deleted
 qint32 DiscMap::flush()
@@ -462,4 +487,30 @@ void DiscMap::sort()
     // Note that the stuct has an overloaded < operator that controls the sort comparison
     // (see the .h file)
     std::sort(m_frames.begin(), m_frames.end());
+}
+
+// Method to output frame debug for a frame number in the disc map
+void DiscMap::debugFrameDetails(qint32 frameNumber)
+{
+    if (frameNumber < 0 || frameNumber >= m_numberOfFrames) {
+        qDebug() << "debugFrameDetails out of frameNumber range";
+        return;
+    }
+    qDebug() << m_frames[frameNumber];
+}
+
+// Check if frame number matches IEC 60857-1986 LaserVision NTSC Amendment 2
+// clause 10.1.10 CLV time-code skip frame number sequence
+bool DiscMap::isNtscAmendment2ClvFrameNumber(qint32 frameNumber)
+{
+    // l < 14 gives a maximum frame number of 124,974 (71 minutes)
+    for (qint32 l = 0; l < 14; l++) {
+        for (qint32 m = 1; m <= 9; m++) {
+            qint32 n = 8991 * l + 899 * m;
+            if (n == frameNumber) return true;
+            if (n > frameNumber) return false;
+        }
+    }
+
+    return false;
 }

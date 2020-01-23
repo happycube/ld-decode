@@ -39,6 +39,24 @@ bool DiscMapper::process(QFileInfo _inputFileInfo, QFileInfo _inputMetadataFileI
     reverse = _reverse;
     mapOnly = _mapOnly;
 
+    // Some info for the user...
+    qInfo() << "LaserDisc mapping tool";
+    qInfo() << "";
+    qInfo() << "Please note that disc mapping is not fool-proof - if you";
+    qInfo() << "have a disc that does not map correctly run ld-discmap";
+    qInfo() << "with the --debug option for more details about the process";
+    qInfo() << "(and the additional information required for issue reporting";
+    qInfo() << "to the ld-decode project).";
+    qInfo() << "";
+    qInfo() << "Some early LaserDiscs do not provide frame numbering or";
+    qInfo() << "time-code information and cannot be automatically mapped -";
+    qInfo() << "if in doubt verify your source TBC file using the ld-analyse";
+    qInfo() << "application.";
+    qInfo() << "";
+    qInfo() << "Note that NTSC CAV pulldown support currently only handles";
+    qInfo() << "discs that follow the standard 1-in-5 pulldown pattern.";
+    qInfo() << "";
+
     // Create the source metadata object
     qInfo().noquote() << "Processing input metadata for" << inputFileInfo.filePath();
     DiscMap discMap(inputMetadataFileInfo, reverse);
@@ -47,6 +65,12 @@ bool DiscMapper::process(QFileInfo _inputFileInfo, QFileInfo _inputMetadataFileI
         return false;
     }
     qDebug() << discMap;
+
+    // Show the disc type and video format:
+    if (discMap.isDiscCav() && discMap.isDiscPal()) qInfo() << "Input TBC is CAV PAL";
+    if (!discMap.isDiscCav() && discMap.isDiscPal()) qInfo() << "Input TBC is CLV PAL";
+    if (discMap.isDiscCav() && !discMap.isDiscPal()) qInfo() << "Input TBC is CAV NTSC";
+    if (!discMap.isDiscCav() && !discMap.isDiscPal()) qInfo() << "Input TBC is CLV NTSC";
 
     // Remove lead-in and lead-out frames from the map
     removeLeadInOut(discMap);
@@ -57,20 +81,22 @@ bool DiscMapper::process(QFileInfo _inputFileInfo, QFileInfo _inputMetadataFileI
     // Detect and remove duplicated frames (does not process pull-down frames)
     removeDuplicateNumberedFrames(discMap);
 
-    // Reorder the frames according to VBI frame number order
-    reorderFrames(discMap);
+    // Add numbering to any pulldown frames in the disc map
+    numberPulldownFrames(discMap);
 
     // Verify that there are no frames without frame numbers in the map
-    // (except frames marked as pulldown)
+    // otherwise reordering will fail
     if (!verifyFrameNumberPresence(discMap)) {
-        qInfo() << "Verification failed - disc mapping has failed";
+        qInfo() << "";
+        qInfo() << "Disc mapping has failed!";
         return false;
     }
 
-    // Pad any gaps in the sequential disc map
-    //padDiscMap(discMap);
+    // Reorder the frames according to VBI frame number order in the disc map
+    reorderFrames(discMap);
 
-    // TODO: Need additional step to spot repeated pull-down frames for NTSC CLV only
+    // Pad any gaps in the sequential disc map
+    padDiscMap(discMap);
 
     // Remove any frames after lead-out (like on the Almanac side 1)
 
@@ -80,6 +106,7 @@ bool DiscMapper::process(QFileInfo _inputFileInfo, QFileInfo _inputMetadataFileI
 // Method to remove lead in and lead out frames from the map
 void DiscMapper::removeLeadInOut(DiscMap &discMap)
 {
+    qInfo() << "Checking for lead in and out frames...";
     qint32 leadInOutCounter = 0;
     for (qint32 frameNumber = 0; frameNumber < discMap.numberOfFrames(); frameNumber++) {
         if (discMap.isLeadInOut(frameNumber)) {
@@ -95,7 +122,7 @@ void DiscMapper::removeLeadInOut(DiscMap &discMap)
 // Method to find and correct bad VBI numbers using sequence analysis
 void DiscMapper::correctVbiFrameNumbersUsingSequenceAnalysis(DiscMap &discMap)
 {
-    qInfo() << "Correcting frame numbers using sequence analysis";
+    qInfo() << "Correcting frame numbers using sequence analysis...";
 
     qint32 scanDistance = 10;
     qint32 corrections = 0;
@@ -225,7 +252,6 @@ void DiscMapper::removeDuplicateNumberedFrames(DiscMap &discMap)
                 if (discMap.vbiFrameNumber(frameNumber) == discMap.vbiFrameNumber(i) && !discMap.isPulldown(i)) {
                     duplicatedFrameList.append(discMap.vbiFrameNumber(frameNumber));
                 }
-
             }
         }
     }
@@ -242,38 +268,48 @@ void DiscMapper::removeDuplicateNumberedFrames(DiscMap &discMap)
 
     // Process the list of duplications one by one
     for (qint32 i = 0; i < duplicatedFrameList.size(); i++) {
-        qDebug() << "VBI Frame number" << duplicatedFrameList[i] << "has duplicates; searching for them...";
-        QVector<qint32> discMapDuplicateAddress;
-        for (qint32 frameNumber = 0; frameNumber < discMap.numberOfFrames(); frameNumber++) {
-            // Does the current frameNumber's VBI match the VBI in the duplicated frame list?
-            if (discMap.vbiFrameNumber(frameNumber) == duplicatedFrameList[i]) {
-                // Add the frame number ot the duplicate disc map address list
-                discMapDuplicateAddress.append(frameNumber);
-                qDebug() << "  Seq frame" << discMap.seqFrameNumber(frameNumber) << "is a duplicate of" << duplicatedFrameList[i] <<
-                            "with a quality of" << discMap.frameQuality(frameNumber);
+        if (duplicatedFrameList[i] != -1) {
+            qDebug() << "VBI Frame number" << duplicatedFrameList[i] << "has duplicates; searching for them...";
+            QVector<qint32> discMapDuplicateAddress;
+            for (qint32 frameNumber = 0; frameNumber < discMap.numberOfFrames(); frameNumber++) {
+                // Does the current frameNumber's VBI match the VBI in the duplicated frame list?
+                if (discMap.vbiFrameNumber(frameNumber) == duplicatedFrameList[i]) {
+                    // Add the frame number ot the duplicate disc map address list
+                    discMapDuplicateAddress.append(frameNumber);
+                    qDebug() << "  Seq frame" << discMap.seqFrameNumber(frameNumber) << "is a duplicate of" << duplicatedFrameList[i] <<
+                                "with a quality of" << discMap.frameQuality(frameNumber);
+                }
             }
-        }
 
-        // Show the number of duplicates in the discMap that were found
-        qDebug() << "  Found" << discMapDuplicateAddress.size() << "duplicates of VBI frame" << duplicatedFrameList[i];
+            // Show the number of duplicates in the discMap that were found
+            qDebug() << "  Found" << discMapDuplicateAddress.size() << "duplicates of VBI frame" << duplicatedFrameList[i];
 
-        // Pick the sequential frame duplicate with the best quality
-        qint32 bestDiscMapFrame = discMapDuplicateAddress.first();
-        for (qint32 i = 0; i < discMapDuplicateAddress.size(); i++) {
-            if (discMap.frameQuality(bestDiscMapFrame) < discMap.frameQuality(discMapDuplicateAddress[i])) {
-                bestDiscMapFrame = discMapDuplicateAddress[i];
+            // Pick the sequential frame duplicate with the best quality
+            qint32 bestDiscMapFrame = discMapDuplicateAddress.first();
+            for (qint32 i = 0; i < discMapDuplicateAddress.size(); i++) {
+                if (discMap.frameQuality(bestDiscMapFrame) < discMap.frameQuality(discMapDuplicateAddress[i])) {
+                    bestDiscMapFrame = discMapDuplicateAddress[i];
+                }
             }
-        }
 
-        qDebug() << "  Highest quality duplicate of VBI" << duplicatedFrameList[i] << "is sequential frame" <<
-                    discMap.seqFrameNumber(bestDiscMapFrame) << "with a quality of" << discMap.frameQuality(bestDiscMapFrame);
+            qDebug() << "  Highest quality duplicate of VBI" << duplicatedFrameList[i] << "is sequential frame" <<
+                        discMap.seqFrameNumber(bestDiscMapFrame) << "with a quality of" << discMap.frameQuality(bestDiscMapFrame);
 
-        // Delete all duplicates except the best sequential frame
-        for (qint32 i = 0; i < discMapDuplicateAddress.size(); i++) {
-            if (discMapDuplicateAddress[i] != bestDiscMapFrame) {
-                discMap.setMarkedForDeletion(discMapDuplicateAddress[i]);
-                //qDebug() << " Seq. frame" << discMap.seqFrameNumber(discMapDuplicateAddress[i]) << "marked for deletion";
+            // Delete all duplicates except the best sequential frame
+            for (qint32 i = 0; i < discMapDuplicateAddress.size(); i++) {
+                if (discMapDuplicateAddress[i] != bestDiscMapFrame) {
+                    discMap.setMarkedForDeletion(discMapDuplicateAddress[i]);
+                    //qDebug() << " Seq. frame" << discMap.seqFrameNumber(discMapDuplicateAddress[i]) << "marked for deletion";
+                }
             }
+        } else {
+            // Having frames without numbering (that are not pulldown) is a bad thing...
+            qInfo() << "";
+            qInfo() << "Warning:";
+            qInfo() << "There are frames without a frame number (that are not flagged as pulldown) in the duplicate frame list";
+            qInfo() << "This probably means that the disc map contains pulldown frames that do not follow the normal 1 in 5";
+            qInfo() << "pulldown pattern - and disc mapping will likely fail!";
+            qInfo() << "";
         }
     }
 
@@ -284,37 +320,40 @@ void DiscMapper::removeDuplicateNumberedFrames(DiscMap &discMap)
                "duplicate frames - disc map size now" << discMap.numberOfFrames() << "frames";
 }
 
-// Method to reorder frames according to VBI frame number order
-void DiscMapper::reorderFrames(DiscMap &discMap)
+// Method to give pulldown frames a real frame number so they can be
+// sorted correctly with the other frames
+void DiscMapper::numberPulldownFrames(DiscMap &discMap)
 {
-    qInfo() << "Sorting the disc map according to VBI frame numbering";
+    if (discMap.isDiscCav() && !discMap.isDiscPal()) {
+        qInfo() << "Numbering pulldown frames in the disc map...";
 
-    // Before sorting we have to give the pulldown frames a frame number
-    // Since there doesn't seem to be a smarter way to do this we will
-    // assign each pulldown frame, the frame number of the preceeding non-
-    // pulldown frame
-    for (qint32 i = 1; i < discMap.numberOfFrames(); i++) {
-        if (discMap.isPulldown(i)) discMap.setVbiFrameNumber(i, discMap.vbiFrameNumber(i - 1));
+        // This gives each pulldown frame the same frame number as the previous frame
+        // (later sorting uses both the frame number and the pulldown flag to ensure
+        // that the frame order remains correct)
+        for (qint32 i = 1; i < discMap.numberOfFrames(); i++) {
+            if (discMap.isPulldown(i)) discMap.setVbiFrameNumber(i, discMap.vbiFrameNumber(i - 1));
+        }
+
+        // Check that the very first frame isn't a pull-down
+        if (discMap.isPulldown(0)) {
+            discMap.setVbiFrameNumber(0, discMap.vbiFrameNumber(1) - 1);
+            qInfo() << "Attempted to number pulldown frames, but first frame is a pulldown... This probably isn't good, but continuing anyway";
+        }
+
+        qInfo() << "Numbering complete";
     }
-
-    // Check that the very first frame isn't a pull-down
-    if (discMap.isPulldown(0)) {
-        discMap.setVbiFrameNumber(0, discMap.vbiFrameNumber(1) - 1);
-        qInfo() << "Attempted to reorder frames, but first frame is a pulldown... This probably isn't good, but continuing anyway";
-    }
-
-    // Now perform the sort
-    discMap.sort();
 }
 
 // Method to verify that all frames in the map have VBI frame numbers
-// (except frames marked as pulldown)
 bool DiscMapper::verifyFrameNumberPresence(DiscMap &discMap)
 {
-    qInfo() << "Verifying frame numbers are present for all frames in the disc map (except pulldowns)...";
+    qInfo() << "Verifying frame numbers are present for all frames in the disc map...";
     for (qint32 frameNumber = 0; frameNumber < discMap.numberOfFrames(); frameNumber++) {
-        if (discMap.vbiFrameNumber(frameNumber) < 1 && !discMap.isPulldown(frameNumber)) {
-            qInfo() << "Verification failed!";
+        // For CLV discs a timecode of 00:00:00.00 is valid, so technically a frame number of 0 is legal
+        // (only for CLV discs, but it probably doesn't matter if we apply that to CAV too here)
+        if (discMap.vbiFrameNumber(frameNumber) < 0) {
+            qInfo() << "Verification failed - First failed frame was" << discMap.seqFrameNumber(frameNumber);
+            discMap.debugFrameDetails(frameNumber);
             return false;
         }
     }
@@ -322,13 +361,24 @@ bool DiscMapper::verifyFrameNumberPresence(DiscMap &discMap)
     return true;
 }
 
-
 // Method to reorder frames according to VBI frame number order
+void DiscMapper::reorderFrames(DiscMap &discMap)
+{
+    qInfo() << "Sorting the disc map into numerical frame order...";
+
+    // Perform the sort
+    discMap.sort();
+    qInfo() << "Sorting complete";
+}
+
+// Pad the disc map if there are missing frames in the disc map sequence
 void DiscMapper::padDiscMap(DiscMap &discMap)
 {
-    qInfo() << "Looking for sequence gaps in the disc map and padding missing frames";
+    qInfo() << "Looking for sequence gaps in the disc map...";
 
     qint32 numberOfGaps = 0;
+    qint32 missingFrames = 0;
+    qint32 clvOffsetFrames = 0;
     for (qint32 frameNumber = 0; frameNumber < discMap.numberOfFrames() - 1; frameNumber++) {
         if (discMap.vbiFrameNumber(frameNumber) + 1 != discMap.vbiFrameNumber(frameNumber + 1)) {
             // Is the current frame a pulldown?
@@ -339,20 +389,32 @@ void DiscMapper::padDiscMap(DiscMap &discMap)
                 if (discMap.isPulldown(frameNumber + 1)) {
                     if (discMap.vbiFrameNumber(frameNumber) + 1 != discMap.vbiFrameNumber(frameNumber + 2)) {
                         qDebug() << "Sequence break over pulldown: Current VBI frame is" << discMap.vbiFrameNumber(frameNumber) <<
-                                    "next frame is" << discMap.vbiFrameNumber(frameNumber + 1);
+                                    "next frame is" << discMap.vbiFrameNumber(frameNumber + 1) << "gap of" <<
+                                    discMap.vbiFrameNumber(frameNumber + 1) - discMap.vbiFrameNumber(frameNumber) - 1 << "frames";
                         numberOfGaps++;
+                        missingFrames += discMap.vbiFrameNumber(frameNumber + 1) - discMap.vbiFrameNumber(frameNumber) - 1;
                     }
-
                 } else {
-                    qDebug() << "Sequence break: Current VBI frame is" << discMap.vbiFrameNumber(frameNumber) <<
-                                "next frame is" << discMap.vbiFrameNumber(frameNumber + 1);
-                    numberOfGaps++;
+                    // Check if this is a CLV IEC ammendment 2 timecode gap
+                    if (!discMap.isClvOffset(frameNumber)) {
+                        // Not a CLV offset frame
+                        qDebug() << "Sequence break: Current VBI frame is" << discMap.vbiFrameNumber(frameNumber) <<
+                                    "next frame is" << discMap.vbiFrameNumber(frameNumber + 1) << "gap of" <<
+                                    discMap.vbiFrameNumber(frameNumber + 1) - discMap.vbiFrameNumber(frameNumber) - 1 << "frames";
+                        numberOfGaps++;
+                        missingFrames += discMap.vbiFrameNumber(frameNumber + 1) - discMap.vbiFrameNumber(frameNumber) - 1;
+                    } else {
+                        // CLV offset frame
+                        clvOffsetFrames++;
+                    }
                 }
             }
         }
     }
 
-    qInfo() << "Found" << numberOfGaps << "gaps in the disc map";
+    if (numberOfGaps > 0) qInfo() << "Found" << numberOfGaps << "gaps representing" << missingFrames << "missing frames in the disc map";
+    else qInfo() << "No gaps found in the disc map";
+    if (clvOffsetFrames > 0) qInfo() << "There were" << clvOffsetFrames << "CLV timecode offsets in the disc map";
 }
 
 

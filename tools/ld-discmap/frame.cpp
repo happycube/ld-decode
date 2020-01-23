@@ -26,10 +26,10 @@
 
 Frame::Frame(const qint32 &seqFrameNumber, const qint32 &vbiFrameNumber, const bool &isPictureStop,
              const bool &isPullDown, const bool &isLeadInOrOut, const bool &isMarkedForDeletion,
-             const qreal &frameQuality, const bool &isPadded)
+             const qreal &frameQuality, const bool &isPadded, const bool &isClvOffset)
            : m_seqFrameNumber(seqFrameNumber),  m_vbiFrameNumber(vbiFrameNumber), m_isPictureStop(isPictureStop),
              m_isPullDown(isPullDown), m_isLeadInOrOut(isLeadInOrOut), m_isMarkedForDeletion(isMarkedForDeletion),
-             m_frameQuality(frameQuality), m_isPadded(isPadded)
+             m_frameQuality(frameQuality), m_isPadded(isPadded), m_isClvOffset(isClvOffset)
 {
 }
 
@@ -45,6 +45,7 @@ QDebug operator<<(QDebug dbg, const Frame &frame)
                                ", isMarkedForDeletion " << frame.isMarkedForDeletion() <<
                                ", frameQuality " << frame.frameQuality() <<
                                ", isPadded " << frame.isPadded() <<
+                               ", isClvOffset" << frame.isClvOffset() <<
                                ")";
 
     return dbg.maybeSpace();
@@ -91,6 +92,11 @@ bool Frame::isPadded() const
     return m_isPadded;
 }
 
+bool Frame::isClvOffset() const
+{
+    return m_isClvOffset;
+}
+
 // Set methods
 void Frame::seqFrameNumber(qint32 value)
 {
@@ -130,6 +136,11 @@ void Frame::frameQuality(qreal value)
 void Frame::isPadded(bool value)
 {
     m_isPadded = value;
+}
+
+void Frame::isClvOffset(bool value)
+{
+    m_isClvOffset = value;
 }
 
 // Overide less than operator for sorting

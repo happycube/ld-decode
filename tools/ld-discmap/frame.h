@@ -33,7 +33,7 @@ class Frame
 public:
     Frame(const qint32 &seqFrameNumber = -1, const qint32 &vbiFrameNumber = -1, const bool &isPictureStop = false,
           const bool &isPullDown = false, const bool &isLeadInOrOut = false, const bool &isMarkedForDeletion = false,
-          const qreal &frameQuality = 0, const bool &isPadded = false);
+          const qreal &frameQuality = 0, const bool &isPadded = false, const bool &isClvOffset = false);
     ~Frame() = default;
     Frame(const Frame &) = default;
     Frame &operator =(const Frame &) = default;
@@ -47,6 +47,7 @@ public:
     bool isMarkedForDeletion() const;
     qreal frameQuality() const;
     bool isPadded() const;
+    bool isClvOffset() const;
 
     // Set
     void seqFrameNumber(qint32 value);
@@ -57,6 +58,7 @@ public:
     void isMarkedForDeletion(bool value);
     void frameQuality(qreal value);
     void isPadded(bool value);
+    void isClvOffset(bool value);
 
     // Operators
     bool operator <(const Frame &);
@@ -70,6 +72,7 @@ private:
     bool m_isMarkedForDeletion;
     qreal m_frameQuality;
     bool m_isPadded;
+    bool m_isClvOffset;
 };
 
 // Custom streaming operator for debug
