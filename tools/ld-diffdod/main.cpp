@@ -63,14 +63,14 @@ int main(int argc, char *argv[])
                                        QCoreApplication::translate("main", "Reverse the field order to second/first (default first/second)"));
     parser.addOption(setReverseOption);
 
-    // Option to turn off luma clip detection (-n / --noluma)
-    QCommandLineOption setNoLumaOption(QStringList() << "n" << "noluma",
-                                       QCoreApplication::translate("main", "Do not perform luma clip dropout detection"));
-    parser.addOption(setNoLumaOption);
+    // Option to turn off luma clip detection (-n / --lumaclip)
+    QCommandLineOption setLumaOption(QStringList() << "n" << "lumaclip",
+                                       QCoreApplication::translate("main", "Perform luma clip signal dropout detection"));
+    parser.addOption(setLumaOption);
 
     // Option to select DOD threshold (-x / --dod-threshold)
     QCommandLineOption dodThresholdOption(QStringList() << "x" << "dod-threshold",
-                                        QCoreApplication::translate("main", "Specify the DOD threshold (100-65435 default: 1200"),
+                                        QCoreApplication::translate("main", "Specify the DOD threshold (100-65435 default: 1000"),
                                         QCoreApplication::translate("main", "number"));
     parser.addOption(dodThresholdOption);
 
@@ -95,7 +95,7 @@ int main(int argc, char *argv[])
     // Get the options from the parser
     bool isDebugOn = parser.isSet(showDebugOption);
     bool reverse = parser.isSet(setReverseOption);
-    bool noLumaClip = parser.isSet(setNoLumaOption);
+    bool lumaClip = parser.isSet(setLumaOption);
 
     // Process the command line options
     if (isDebugOn) setDebug(true); else setDebug(false);
@@ -119,7 +119,7 @@ int main(int argc, char *argv[])
         return -1;
     }
 
-    qint32 dodThreshold = 1200;
+    qint32 dodThreshold = 1000;
     if (parser.isSet(dodThresholdOption)) {
         dodThreshold = parser.value(dodThresholdOption).toInt();
 
@@ -154,7 +154,7 @@ int main(int argc, char *argv[])
 
     // Process the TBC file
     Diffdod diffdod;
-    if (!diffdod.process(inputFilenames, reverse, dodThreshold, noLumaClip, vbiFrameStart, vbiFrameLength)) {
+    if (!diffdod.process(inputFilenames, reverse, dodThreshold, lumaClip, vbiFrameStart, vbiFrameLength)) {
         return 1;
     }
 

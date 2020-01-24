@@ -30,7 +30,7 @@ Diffdod::Diffdod(QObject *parent) : QObject(parent)
 }
 
 bool Diffdod::process(QVector<QString> inputFilenames, bool reverse,
-                      qint32 dodThreshold, bool noLumaClip,
+                      qint32 dodThreshold, bool lumaClip,
                       qint32 startVbi, qint32 lengthVbi)
 {
     // Show input filenames
@@ -40,7 +40,7 @@ bool Diffdod::process(QVector<QString> inputFilenames, bool reverse,
     // And then show the rest...
     if (reverse) qInfo() << "Using reverse field order"; else qInfo() << "Using normal field order";
     qInfo() << "Dropout detection threshold is" << dodThreshold;
-    if (noLumaClip) qInfo() << "Not performing luma clip detection"; else qInfo() << "Performing luma clip detection";
+    if (lumaClip) qInfo() << "Performing luma clip detection"; else qInfo() << "Not performing luma clip detection";
     qInfo() << "";
 
     // Load the input TBC files
@@ -69,7 +69,7 @@ bool Diffdod::process(QVector<QString> inputFilenames, bool reverse,
     tbcSources.verifySources(vbiStartFrame, length);
 
     qInfo() << "Processing" << length << "frames starting from VBI frame" << vbiStartFrame;
-    if (!tbcSources.saveSources(vbiStartFrame, length, dodThreshold, noLumaClip)) {
+    if (!tbcSources.saveSources(vbiStartFrame, length, dodThreshold, lumaClip)) {
         qCritical() << "Saving source failed!";
         return false;
     }
