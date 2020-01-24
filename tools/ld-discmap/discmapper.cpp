@@ -31,13 +31,16 @@ DiscMapper::DiscMapper()
 
 // Method to perform disc mapping process
 bool DiscMapper::process(QFileInfo _inputFileInfo, QFileInfo _inputMetadataFileInfo,
-                         QFileInfo _outputFileInfo, bool _reverse, bool _mapOnly)
+                         QFileInfo _outputFileInfo, bool _reverse, bool _mapOnly, bool _noStrict,
+                         bool _deleteUnmappable)
 {
     inputFileInfo = _inputFileInfo;
     inputMetadataFileInfo = _inputMetadataFileInfo;
     outputFileInfo = _outputFileInfo;
     reverse = _reverse;
     mapOnly = _mapOnly;
+    noStrict = _noStrict;
+    deleteUnmappable = _deleteUnmappable;
 
     // Some info for the user...
     qInfo() << "LaserDisc mapping tool";
@@ -59,7 +62,8 @@ bool DiscMapper::process(QFileInfo _inputFileInfo, QFileInfo _inputMetadataFileI
 
     // Create the source metadata object
     qInfo().noquote() << "Processing input metadata for" << inputFileInfo.filePath();
-    DiscMap discMap(inputMetadataFileInfo, reverse);
+    if (noStrict) qInfo() << "Not enforcing strict pulldown checking - this can cause false-positive detection";
+    DiscMap discMap(inputMetadataFileInfo, reverse, noStrict);
     if (!discMap.valid()) {
         qInfo() << "Could not process TBC metadata successfully - cannot map this disc";
         return false;
@@ -87,9 +91,17 @@ bool DiscMapper::process(QFileInfo _inputFileInfo, QFileInfo _inputMetadataFileI
     // Verify that there are no frames without frame numbers in the map
     // otherwise reordering will fail
     if (!verifyFrameNumberPresence(discMap)) {
-        qInfo() << "";
-        qInfo() << "Disc mapping has failed!";
-        return false;
+        if (!deleteUnmappable) {
+            qInfo() << "";
+            qInfo() << "Disc mapping has failed as there are unmappable frames in the disc map!";
+            qInfo() << "It is possible that running ld-discmap again with the --delete-unmappable-frames";
+            qInfo() << "option set could recitfy this issue.";
+            return false;
+        }
+
+        qInfo() << "Verification has failed, there are unmappable frames...";
+        qInfo() << "--delete-unmappable-frames is set, so the unmappable frames will be deleted";
+        deleteUnmappableFrames(discMap);
     }
 
     // Reorder the frames according to VBI frame number order in the disc map
@@ -142,7 +154,8 @@ void DiscMapper::correctVbiFrameNumbersUsingSequenceAnalysis(DiscMap &discMap)
     qint32 corrections = 0;
 
     for (qint32 frameNumber = 0; frameNumber < discMap.numberOfFrames() - scanDistance; frameNumber++) {
-        if (!discMap.isPulldown(frameNumber)) {
+        // Don't start on a pulldown or a frame with no VBI frame number
+        if (!discMap.isPulldown(frameNumber) && discMap.vbiFrameNumber(frameNumber) != -1) {
             qint32 startOfSequence = discMap.vbiFrameNumber(frameNumber);
             qint32 expectedIncrement = 1;
 
@@ -412,11 +425,11 @@ void DiscMapper::padDiscMap(DiscMap &discMap)
                 if (discMap.isPulldown(frameNumber + 1)) {
                     if (discMap.vbiFrameNumber(frameNumber) + 1 != discMap.vbiFrameNumber(frameNumber + 2)) {
                         qDebug() << "Sequence break over pulldown: Current VBI frame is" << discMap.vbiFrameNumber(frameNumber) <<
-                                    "next frame is" << discMap.vbiFrameNumber(frameNumber + 1) << "gap of" <<
-                                    discMap.vbiFrameNumber(frameNumber + 1) - discMap.vbiFrameNumber(frameNumber) - 1 << "frames";
+                                    "next frame (+1) is" << discMap.vbiFrameNumber(frameNumber + 2) << "gap of" <<
+                                    discMap.vbiFrameNumber(frameNumber + 2) - discMap.vbiFrameNumber(frameNumber) << "frames";
 
                         numberOfGaps++;
-                        qint32 missingFrames = discMap.vbiFrameNumber(frameNumber + 1) - discMap.vbiFrameNumber(frameNumber) - 1;
+                        qint32 missingFrames = discMap.vbiFrameNumber(frameNumber + 2) - discMap.vbiFrameNumber(frameNumber);
                         totalMissingFrames += missingFrames;
 
                         // Add to the gap list
@@ -502,6 +515,24 @@ void DiscMapper::rewriteFrameNumbers(DiscMap &discMap)
 
         qInfo() << "Renumbering complete";
     }
+}
+
+// Method to delete any unmappable frames from the disc map
+void DiscMapper::deleteUnmappableFrames(DiscMap &discMap)
+{
+    qInfo() << "Deleting unmappable frames from the disc map...";
+    for (qint32 frameNumber = 0; frameNumber < discMap.numberOfFrames(); frameNumber++) {
+        // For CLV discs a timecode of 00:00:00.00 is valid, so technically a frame number of 0 is legal
+        // (only for CLV discs, but it probably doesn't matter if we apply that to CAV too here)
+        if (discMap.vbiFrameNumber(frameNumber) < 0 && !discMap.isPulldown(frameNumber)) {
+            discMap.setMarkedForDeletion(frameNumber);
+        }
+    }
+
+    // Flush the frames marked for deletion
+    discMap.flush();
+
+    qInfo() << "Deletion successful";
 }
 
 // Method to save the current disc map

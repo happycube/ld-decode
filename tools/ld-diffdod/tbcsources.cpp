@@ -146,14 +146,14 @@ bool TbcSources::unloadSource()
 }
 
 // Save TBC source video metadata for all sources; returns false on failure
-bool TbcSources::saveSources(qint32 vbiStartFrame, qint32 length, qint32 dodThreshold, bool noLumaClip)
+bool TbcSources::saveSources(qint32 vbiStartFrame, qint32 length, qint32 dodThreshold, bool lumaClip)
 {
     // Process the sources frame by frame
     for (qint32 vbiFrame = vbiStartFrame; vbiFrame < vbiStartFrame + length; vbiFrame++) {
         if ((vbiFrame % 100 == 0) || (vbiFrame == vbiStartFrame)) qInfo() << "Processing VBI frame" << vbiFrame;
 
         // Process
-        performFrameDiffDod(vbiFrame, dodThreshold, noLumaClip);
+        performFrameDiffDod(vbiFrame, dodThreshold, lumaClip);
     }
 
     // Save the sources' metadata
@@ -226,7 +226,7 @@ void TbcSources::verifySources(qint32 vbiStartFrame, qint32 length)
 
 // Perform differential dropout detection to determine (for each source) which frame pixels are valid
 // Note: This method processes a single frame
-void TbcSources::performFrameDiffDod(qint32 targetVbiFrame, qint32 dodThreshold, bool noLumaClip)
+void TbcSources::performFrameDiffDod(qint32 targetVbiFrame, qint32 dodThreshold, bool lumaClip)
 {
     // Range check the diffDOD threshold
     if (dodThreshold < 100) dodThreshold = 100;
@@ -338,7 +338,7 @@ void TbcSources::performFrameDiffDod(qint32 targetVbiFrame, qint32 dodThreshold,
                         if (firstDifference < 0) firstDifference = -firstDifference;
                         if (firstDifference > dodThreshold) {
                             fieldDiff[sourceCounter].firstFieldDiff[x + startOfLinePointer] = fieldDiff[sourceCounter].firstFieldDiff[x + startOfLinePointer] + 1;
-                        } else if (!noLumaClip){
+                        } else if (lumaClip){
                             if (x >= videoParameters.activeVideoStart && x <= videoParameters.activeVideoEnd &&
                                     y >= firstActiveLine && y <= lastActiveLine) {
                                 // Check for luma level clipping
@@ -355,7 +355,7 @@ void TbcSources::performFrameDiffDod(qint32 targetVbiFrame, qint32 dodThreshold,
                         if (secondDifference < 0) secondDifference = -secondDifference;
                         if (secondDifference > dodThreshold) {
                             fieldDiff[sourceCounter].secondFieldDiff[x + startOfLinePointer] = fieldDiff[sourceCounter].secondFieldDiff[x + startOfLinePointer] + 1;
-                        } else if (!noLumaClip){
+                        } else if (lumaClip){
                             if (x >= videoParameters.activeVideoStart && x <= videoParameters.activeVideoEnd &&
                                     y >= firstActiveLine && y <= lastActiveLine) {
                                 // Check for luma level clipping

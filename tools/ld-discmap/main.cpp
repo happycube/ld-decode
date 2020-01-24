@@ -69,6 +69,16 @@ int main(int argc, char *argv[])
                                        QCoreApplication::translate("main", "Only perform mapping - No output TBC file required"));
     parser.addOption(setMapOnlyOption);
 
+    // Option to remove strict checking on pulldown frames (-s / --nostrict)
+    QCommandLineOption setNoStrictOption(QStringList() << "s" << "nostrict",
+                                       QCoreApplication::translate("main", "No strict checking on pulldown frames"));
+    parser.addOption(setNoStrictOption);
+
+    // Option to delete unmappable frames (-u / --delete-unmappable-frames)
+    QCommandLineOption setDeleteUnmappableOption(QStringList() << "u" << "delete-unmappable-frames",
+                                       QCoreApplication::translate("main", "Delete unmappable frames"));
+    parser.addOption(setDeleteUnmappableOption);
+
     // Positional argument to specify input TBC file
     parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input TBC file"));
 
@@ -82,6 +92,8 @@ int main(int argc, char *argv[])
     bool isDebugOn = parser.isSet(showDebugOption);
     bool reverse = parser.isSet(setReverseOption);
     bool mapOnly = parser.isSet(setMapOnlyOption);
+    bool noStrict = parser.isSet(setNoStrictOption);
+    bool deleteUnmappable = parser.isSet(setDeleteUnmappableOption);
 
     // Process the command line options
     QString inputFilename;
@@ -144,7 +156,7 @@ int main(int argc, char *argv[])
 
     // Perform disc mapping
     DiscMapper discMapper;
-    if (!discMapper.process(inputFileInfo, inputMetadataFileInfo, outputFileInfo, reverse, mapOnly)) return 1;
+    if (!discMapper.process(inputFileInfo, inputMetadataFileInfo, outputFileInfo, reverse, mapOnly, noStrict, deleteUnmappable)) return 1;
 
     // Quit with success
     return 0;

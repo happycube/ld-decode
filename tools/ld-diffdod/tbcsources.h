@@ -44,7 +44,7 @@ public:
 
     bool loadSource(QString filename, bool reverse);
     bool unloadSource();
-    bool saveSources(qint32 vbiStartFrame, qint32 length, qint32 dodThreshold, bool noLumaClip);
+    bool saveSources(qint32 vbiStartFrame, qint32 length, qint32 dodThreshold, bool lumaClip);
 
     qint32 getNumberOfAvailableSources();
     qint32 getMinimumVbiFrameNumber();
@@ -80,7 +80,7 @@ private:
     QVector<Source*> sourceVideos;
     qint32 currentSource;
 
-    void performFrameDiffDod(qint32 targetVbiFrame, qint32 dodOnThreshold, bool noLumaClip);
+    void performFrameDiffDod(qint32 targetVbiFrame, qint32 dodOnThreshold, bool lumaClip);
     QVector<qint32> getAvailableSourcesForFrame(qint32 vbiFrameNumber);
 
     bool setDiscTypeAndMaxMinFrameVbi(qint32 sourceNumber);

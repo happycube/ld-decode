@@ -42,7 +42,8 @@ public:
     DiscMapper();
 
     bool process(QFileInfo _inputFileInfo, QFileInfo _inputMetadataFileInfo,
-                 QFileInfo _outputFileInfo, bool _reverse, bool _mapOnly);
+                 QFileInfo _outputFileInfo, bool _reverse, bool _mapOnly, bool _noStrict,
+                 bool _deleteUnmappable);
 
 private:
     QFileInfo inputFileInfo;
@@ -50,6 +51,8 @@ private:
     QFileInfo outputFileInfo;
     bool reverse;
     bool mapOnly;
+    bool noStrict;
+    bool deleteUnmappable;
 
     void removeLeadInOut(DiscMap &discMap);
     void correctVbiFrameNumbersUsingSequenceAnalysis(DiscMap &discMap);
@@ -59,6 +62,7 @@ private:
     void reorderFrames(DiscMap &discMap);
     void padDiscMap(DiscMap &discMap);
     void rewriteFrameNumbers(DiscMap &discMap);
+    void deleteUnmappableFrames(DiscMap &discMap);
 
     bool saveDiscMap(DiscMap &discMap);
 };

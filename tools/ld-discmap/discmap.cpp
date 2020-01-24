@@ -24,8 +24,10 @@
 
 #include "discmap.h"
 
-DiscMap::DiscMap(const QFileInfo &metadataFileInfo, const bool &reverseFieldOrder)
-            : m_metadataFileInfo(metadataFileInfo), m_reverseFieldOrder(reverseFieldOrder)
+DiscMap::DiscMap(const QFileInfo &metadataFileInfo, const bool &reverseFieldOrder,
+                 const bool &noStrict)
+            : m_metadataFileInfo(metadataFileInfo), m_reverseFieldOrder(reverseFieldOrder),
+              m_noStrict(noStrict)
 {
     m_tbcValid = true;
     ldDecodeMetaData = new LdDecodeMetaData;
@@ -235,9 +237,16 @@ DiscMap::DiscMap(const QFileInfo &metadataFileInfo, const bool &reverseFieldOrde
                     }
 
                     if (doubleCheckCounter < 1) {
-                        qDebug() << "Seq. frame" << m_frames[frameNumber].seqFrameNumber() <<
-                                    "looks like a pull-down, but there is no pull-down sequence in the surrounding frames - marking as false-positive";
-                        isPulldown = false;
+                        if (!m_noStrict) {
+                            qDebug() << "Seq. frame" << m_frames[frameNumber].seqFrameNumber() <<
+                                        "looks like a pull-down, but there is no pull-down sequence in the surrounding frames - marking as false-positive";
+                            isPulldown = false;
+                        } else {
+                            qDebug() << "Seq. frame" << m_frames[frameNumber].seqFrameNumber() <<
+                                        "looks like a pull-down, but there is no pull-down sequence in the surrounding frames" <<
+                                        "- strict checking is disabled, so marking as pulldown anyway";
+                            isPulldown = true;
+                        }
                     }
 
                     m_frames[frameNumber].isPullDown(isPulldown);

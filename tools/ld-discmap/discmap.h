@@ -42,7 +42,7 @@ public:
     DiscMap(const DiscMap &) = default;
     DiscMap &operator=(const DiscMap &) = default;
 
-    DiscMap(const QFileInfo &metadataFileInfo, const bool &reverseFieldOrder);
+    DiscMap(const QFileInfo &metadataFileInfo, const bool &reverseFieldOrder, const bool &noStrict);
 
     QString filename() const;
     bool valid() const;
@@ -79,6 +79,7 @@ private:
     // Miscellaneous
     QFileInfo m_metadataFileInfo;
     bool m_reverseFieldOrder;
+    bool m_noStrict;
     bool m_tbcValid;
     qint32 m_numberOfFrames;
     bool m_isDiscPal;
