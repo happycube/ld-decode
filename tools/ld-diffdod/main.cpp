@@ -3,7 +3,7 @@
     main.cpp
 
     ld-diffdod - TBC Differential Drop-Out Detection tool
-    Copyright (C) 2019 Simon Inns
+    Copyright (C) 2019-2020 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -48,7 +48,7 @@ int main(int argc, char *argv[])
     parser.setApplicationDescription(
                 "ld-diffdod - TBC Differential Drop-Out Detection tool\n"
                 "\n"
-                "(c)2019 Simon Inns\n"
+                "(c)2019-2020 Simon Inns\n"
                 "GPLv3 Open-Source - github: https://github.com/happycube/ld-decode");
     parser.addHelpOption();
     parser.addVersionOption();

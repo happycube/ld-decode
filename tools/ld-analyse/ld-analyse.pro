@@ -51,7 +51,8 @@ SOURCES += \
     ../library/tbc/lddecodemetadata.cpp \
     ../library/tbc/sourcevideo.cpp \
     ../library/tbc/vbidecoder.cpp \
-    ../library/tbc/filters.cpp
+    ../library/tbc/filters.cpp \
+    ../library/tbc/logging.cpp
 
 HEADERS += \
     busydialog.h \
@@ -82,7 +83,8 @@ HEADERS += \
     ../library/tbc/lddecodemetadata.h \
     ../library/tbc/sourcevideo.h \
     ../library/tbc/vbidecoder.h \
-    ../library/tbc/filters.h
+    ../library/tbc/filters.h \
+    ../library/tbc/logging.h
 
 FORMS += \
     busydialog.ui \

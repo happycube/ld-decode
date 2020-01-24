@@ -23,7 +23,8 @@ SOURCES += \
     whiteflag.cpp \
     ../library/tbc/lddecodemetadata.cpp \
     ../library/tbc/sourcevideo.cpp \
-    ../library/tbc/vbidecoder.cpp
+    ../library/tbc/vbidecoder.cpp \
+    ../library/tbc/logging.cpp
 
 HEADERS += \
     closedcaption.h \
@@ -33,7 +34,8 @@ HEADERS += \
     whiteflag.h \
     ../library/tbc/lddecodemetadata.h \
     ../library/tbc/sourcevideo.h \
-    ../library/tbc/vbidecoder.h
+    ../library/tbc/vbidecoder.h \
+    ../library/tbc/logging.h
 
 # Add external includes to the include path
 INCLUDEPATH += ../library/tbc
