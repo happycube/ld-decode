@@ -19,8 +19,8 @@ SOURCES += \
     ../library/tbc/sourcevideo.cpp \
     ../library/tbc/vbidecoder.cpp \
     ../library/tbc/filters.cpp \
+    ../library/tbc/logging.cpp \
     diffdod.cpp \
-    logging.cpp \
     main.cpp \
     tbcsources.cpp
 
@@ -30,8 +30,8 @@ HEADERS += \
     ../library/tbc/sourcevideo.h \
     ../library/tbc/vbidecoder.h \
     ../library/tbc/filters.h \
+    ../library/tbc/logging.h \
     diffdod.h \
-    logging.h \
     tbcsources.h
 
 # Add external includes to the include path

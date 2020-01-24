@@ -3,8 +3,8 @@
     main.cpp
 
     ld-chroma-decoder - Colourisation filter for ld-decode
-    Copyright (C) 2018-2019 Simon Inns
-    Copyright (C) 2019 Adam Sampson
+    Copyright (C) 2018-2020 Simon Inns
+    Copyright (C) 2019-2020 Adam Sampson
 
     This file is part of ld-decode-tools.
 
@@ -33,6 +33,7 @@
 
 #include "decoderpool.h"
 #include "lddecodemetadata.h"
+#include "logging.h"
 
 #include "comb.h"
 #include "monodecoder.h"
@@ -41,51 +42,8 @@
 #include "paldecoder.h"
 #include "transformpal.h"
 
-// Global for debug output
-static bool showDebug = false;
-
 // Global for quiet mode (suppress info and warning messages)
 static bool showOutput = true;
-
-// Qt debug message handler
-void debugOutputHandler(QtMsgType type, const QMessageLogContext &context, const QString &msg)
-{
-    // Use:
-    // context.file - to show the filename
-    // context.line - to show the line number
-    // context.function - to show the function name
-
-    QByteArray localMsg = msg.toLocal8Bit();
-    switch (type) {
-    case QtDebugMsg: // These are debug messages meant for developers
-        if (showDebug) {
-            // If the code was compiled as 'release' the context.file will be NULL
-            if (context.file != nullptr) fprintf(stderr, "Debug: [%s:%d] %s\n", context.file, context.line, localMsg.constData());
-            else fprintf(stderr, "Debug: %s\n", localMsg.constData());
-        }
-        break;
-    case QtInfoMsg: // These are information messages meant for end-users
-        if (showOutput) {
-            if (context.file != nullptr) fprintf(stderr, "Info: [%s:%d] %s\n", context.file, context.line, localMsg.constData());
-            else fprintf(stderr, "Info: %s\n", localMsg.constData());
-        }
-        break;
-    case QtWarningMsg:
-        if (showOutput) {
-            if (context.file != nullptr) fprintf(stderr, "Warning: [%s:%d] %s\n", context.file, context.line, localMsg.constData());
-            else fprintf(stderr, "Warning: %s\n", localMsg.constData());
-        }
-        break;
-    case QtCriticalMsg:
-        if (context.file != nullptr) fprintf(stderr, "Critical: [%s:%d] %s\n", context.file, context.line, localMsg.constData());
-        else fprintf(stderr, "Critical: %s\n", localMsg.constData());
-        break;
-    case QtFatalMsg:
-        if (context.file != nullptr) fprintf(stderr, "Fatal: [%s:%d] %s\n", context.file, context.line, localMsg.constData());
-        else fprintf(stderr, "Fatal: %s\n", localMsg.constData());
-        abort();
-    }
-}
 
 // Load the thresholds file for the Transform decoders, if specified. We must
 // do this after PalColour has been configured, so we know how many values to
@@ -140,6 +98,7 @@ static bool loadTransformThresholds(QCommandLineParser &parser, QCommandLineOpti
 int main(int argc, char *argv[])
 {
     // Install the local debug message handler
+    setDebug(true);
     qInstallMessageHandler(debugOutputHandler);
 
     QCoreApplication a(argc, argv);
@@ -154,9 +113,9 @@ int main(int argc, char *argv[])
     parser.setApplicationDescription(
                 "ld-chroma-decoder - Colourisation filter for ld-decode\n"
                 "\n"
-                "(c)2018-2019 Simon Inns\n"
-                "(c)2019 Adam Sampson\n"
-                "Contains PALcolour: Copyright (c)2018  William Andrew Steer\n"
+                "(c)2018-2020 Simon Inns\n"
+                "(c)2019-2020 Adam Sampson\n"
+                "Contains PALcolour: Copyright (c)2018 William Andrew Steer\n"
                 "Contains Transform PAL: Copyright (c)2014 Jim Easterbrook\n"
                 "GPLv3 Open-Source - github: https://github.com/happycube/ld-decode");
     parser.addHelpOption();
@@ -387,7 +346,7 @@ int main(int argc, char *argv[])
     }
 
     // Process the command line options
-    if (isDebugOn) showDebug = true;
+    if (isDebugOn) setDebug(true); else setDebug(false);
 
     // Work out the metadata filename
     QString inputJsonFileName = inputFileName + ".json";
