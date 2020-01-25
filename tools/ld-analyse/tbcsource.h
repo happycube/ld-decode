@@ -103,6 +103,9 @@ public:
     void setPalColourConfiguration(const PalColour::Configuration &palColourConfiguration);
     const PalColour::Configuration &getPalColourConfiguration();
 
+    qint32 startOfNextChapter(qint32 currentFrameNumber);
+    qint32 startOfChapter(qint32 currentFrameNumber);
+
 signals:
     void busyLoading(QString information);
     void finishedLoading();
@@ -150,6 +153,9 @@ private:
     // PAL chroma-decoder configuration
     PalColour::Configuration palColourConfiguration;
     bool decoderConfigurationChanged;
+
+    // Chapter map
+    QVector<qint32> chapterMap;
 
     QImage generateQImage(qint32 firstFieldNumber, qint32 secondFieldNumber);
     void generateData(qint32 _targetDataPoints);

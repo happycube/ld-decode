@@ -62,6 +62,7 @@ private slots:
     // Menu bar handlers
     void on_actionExit_triggered();
     void on_actionOpen_TBC_file_triggered();
+    void on_actionReload_TBC_triggered();
     void on_actionLine_scope_triggered();
     void on_actionAbout_ld_analyse_triggered();
     void on_actionVBI_triggered();
@@ -126,6 +127,7 @@ private:
     qint32 currentFrameNumber;
     qreal scaleFactor;
     QPalette buttonPalette;
+    QString lastFilename;
 
     // Update GUI methods
     void updateGuiLoaded();
