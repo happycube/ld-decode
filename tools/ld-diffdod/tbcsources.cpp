@@ -295,6 +295,35 @@ void TbcSources::performFrameDiffDod(qint32 targetVbiFrame, qint32 dodThreshold,
             filters.ntscLumaFirFilter(sourceSecondFieldPointer[sourceNo], videoParameters.fieldWidth * videoParameters.fieldHeight);
         }
 
+        // Now balance the intensity according to the 0IRE to 100IRE range and clip
+        LdDecodeMetaData::VideoParameters sourceVideoParameters = sourceVideos[sourceNo]->ldDecodeMetaData.getVideoParameters();
+        for (qint32 y = 0; y < videoParameters.fieldHeight * 2; y++) {
+            for (qint32 x = 0; x < sourceVideoParameters.fieldWidth; x++) {
+                qint32 pixelOffset = (sourceVideoParameters.fieldWidth * (y / 2)) + x;
+                qreal pixelValue32;
+                if (y % 2) {
+                    pixelValue32 = static_cast<qreal>(sourceFirstFieldPointer[sourceNo][pixelOffset]);
+                } else {
+                    pixelValue32 = static_cast<qreal>(sourceSecondFieldPointer[sourceNo][pixelOffset]);
+                }
+
+                if (pixelValue32 < sourceVideoParameters.black16bIre) pixelValue32 = sourceVideoParameters.black16bIre;
+                if (pixelValue32 > sourceVideoParameters.white16bIre) pixelValue32 = sourceVideoParameters.white16bIre;
+
+                // Scale the IRE value to a 16 bit greyscale value
+                qreal scaledValue = ((pixelValue32 - static_cast<qreal>(sourceVideoParameters.black16bIre)) /
+                                     (static_cast<qreal>(sourceVideoParameters.white16bIre)
+                                      - static_cast<qreal>(sourceVideoParameters.black16bIre))) * 65535.0;
+
+                // Write the value back to the field
+                if (y % 2) {
+                    sourceFirstFieldPointer[sourceNo][pixelOffset] = static_cast<quint16>(scaledValue);
+                } else {
+                    sourceSecondFieldPointer[sourceNo][pixelOffset] = static_cast<quint16>(scaledValue);
+                }
+            }
+        }
+
         // Remove the existing field dropout metadata for the frame
         sourceVideos[availableSourcesForFrame[sourceNo]]->ldDecodeMetaData.clearFieldDropOuts(firstFieldNumber);
         sourceVideos[availableSourcesForFrame[sourceNo]]->ldDecodeMetaData.clearFieldDropOuts(secondFieldNumber);
@@ -507,22 +536,23 @@ QVector<qint32> TbcSources::getAvailableSourcesForFrame(qint32 vbiFrameNumber)
     return availableSourcesForFrame;
 }
 
+// Method to work out the disc type (CAV or CLV) and the maximum and minimum
+// VBI frame numbers for the source
 bool TbcSources::setDiscTypeAndMaxMinFrameVbi(qint32 sourceNumber)
 {
     sourceVideos[sourceNumber]->isSourceCav = false;
 
-    // Determine the disc type and max/min VBI frame numbers
+    // Determine the disc type
     VbiDecoder vbiDecoder;
     qint32 cavCount = 0;
     qint32 clvCount = 0;
-    qint32 cavMin = 1000000;
-    qint32 cavMax = 0;
-    qint32 clvMin = 1000000;
-    qint32 clvMax = 0;
-    qint32 previousFrame = 0;
+
+    qint32 typeCountMax = 100;
+    if (sourceVideos[sourceNumber]->ldDecodeMetaData.getNumberOfFrames() < typeCountMax)
+        typeCountMax = sourceVideos[sourceNumber]->ldDecodeMetaData.getNumberOfFrames();
 
     // Using sequential frame numbering starting from 1
-    for (qint32 seqFrame = 1; seqFrame <= sourceVideos[sourceNumber]->ldDecodeMetaData.getNumberOfFrames(); seqFrame++) {
+    for (qint32 seqFrame = 1; seqFrame <= typeCountMax; seqFrame++) {
         // Get the VBI data and then decode
         QVector<qint32> vbi1 = sourceVideos[sourceNumber]->ldDecodeMetaData.getFieldVbi(sourceVideos[sourceNumber]->
                                                                                         ldDecodeMetaData.getFirstFieldNumber(seqFrame)).vbiData;
@@ -531,34 +561,10 @@ bool TbcSources::setDiscTypeAndMaxMinFrameVbi(qint32 sourceNumber)
         VbiDecoder::Vbi vbi = vbiDecoder.decodeFrame(vbi1[0], vbi1[1], vbi1[2], vbi2[0], vbi2[1], vbi2[2]);
 
         // Look for a complete, valid CAV picture number or CLV time-code
-        if (vbi.picNo > 0) {
-            cavCount++;
-
-            if (vbi.picNo < cavMin) cavMin = vbi.picNo;
-            if (vbi.picNo > cavMax) cavMax = vbi.picNo;
-
-            // Check for non-sequential VBI frame numbers
-            if (vbi.picNo != previousFrame + 1 && seqFrame > 1) {
-                qWarning() << "VBI frame numbering is not sequential!  Prev:" << previousFrame << "Curr:" << vbi.picNo;
-            }
-
-            previousFrame = vbi.picNo;
-        }
+        if (vbi.picNo > 0) cavCount++;
 
         if (vbi.clvHr != -1 && vbi.clvMin != -1 &&
-                vbi.clvSec != -1 && vbi.clvPicNo != -1) {
-            clvCount++;
-
-            LdDecodeMetaData::ClvTimecode timecode;
-            timecode.hours = vbi.clvHr;
-            timecode.minutes = vbi.clvMin;
-            timecode.seconds = vbi.clvSec;
-            timecode.pictureNumber = vbi.clvPicNo;
-            qint32 cvFrameNumber = sourceVideos[sourceNumber]->ldDecodeMetaData.convertClvTimecodeToFrameNumber(timecode);
-
-            if (cvFrameNumber < clvMin) clvMin = cvFrameNumber;
-            if (cvFrameNumber > clvMax) clvMax = cvFrameNumber;
-        }
+                vbi.clvSec != -1 && vbi.clvPicNo != -1) clvCount++;
     }
     qDebug() << "TbcSources::getIsSourceCav(): Got" << cavCount << "CAV picture codes and" << clvCount << "CLV timecodes";
 
@@ -573,16 +579,47 @@ bool TbcSources::setDiscTypeAndMaxMinFrameVbi(qint32 sourceNumber)
         sourceVideos[sourceNumber]->isSourceCav = true;
         qDebug() << "TbcSources::getIsSourceCav(): Got" << cavCount << "valid CAV picture numbers - source disc type is CAV";
         qInfo() << "Disc type is CAV";
-
-        sourceVideos[sourceNumber]->maximumVbiFrameNumber = cavMax;
-        sourceVideos[sourceNumber]->minimumVbiFrameNumber = cavMin;
     } else {
         sourceVideos[sourceNumber]->isSourceCav = false;
         qDebug() << "TbcSources::getIsSourceCav(): Got" << clvCount << "valid CLV picture numbers - source disc type is CLV";
         qInfo() << "Disc type is CLV";
 
-        sourceVideos[sourceNumber]->maximumVbiFrameNumber = clvMax;
-        sourceVideos[sourceNumber]->minimumVbiFrameNumber = clvMin;
+    }
+
+    // Disc has been mapped, so we can use the first and last frame numbers as the
+    // min and max range of VBI frame numbers in the input source
+    QVector<qint32> vbi1 = sourceVideos[sourceNumber]->ldDecodeMetaData.getFieldVbi(sourceVideos[sourceNumber]->
+                                                                                    ldDecodeMetaData.getFirstFieldNumber(1)).vbiData;
+    QVector<qint32> vbi2 = sourceVideos[sourceNumber]->ldDecodeMetaData.getFieldVbi(sourceVideos[sourceNumber]->
+                                                                                    ldDecodeMetaData.getSecondFieldNumber(1)).vbiData;
+    VbiDecoder::Vbi vbi = vbiDecoder.decodeFrame(vbi1[0], vbi1[1], vbi1[2], vbi2[0], vbi2[1], vbi2[2]);
+
+    if (sourceVideos[sourceNumber]->isSourceCav) {
+        sourceVideos[sourceNumber]->minimumVbiFrameNumber = vbi.picNo;
+    } else {
+        LdDecodeMetaData::ClvTimecode timecode;
+        timecode.hours = vbi.clvHr;
+        timecode.minutes = vbi.clvMin;
+        timecode.seconds = vbi.clvSec;
+        timecode.pictureNumber = vbi.clvPicNo;
+        sourceVideos[sourceNumber]->minimumVbiFrameNumber = sourceVideos[sourceNumber]->ldDecodeMetaData.convertClvTimecodeToFrameNumber(timecode);
+    }
+
+    vbi1 = sourceVideos[sourceNumber]->ldDecodeMetaData.getFieldVbi(sourceVideos[sourceNumber]->
+                       ldDecodeMetaData.getFirstFieldNumber(sourceVideos[sourceNumber]->ldDecodeMetaData.getNumberOfFrames())).vbiData;
+    vbi2 = sourceVideos[sourceNumber]->ldDecodeMetaData.getFieldVbi(sourceVideos[sourceNumber]->
+                       ldDecodeMetaData.getSecondFieldNumber(sourceVideos[sourceNumber]->ldDecodeMetaData.getNumberOfFrames())).vbiData;
+    vbi = vbiDecoder.decodeFrame(vbi1[0], vbi1[1], vbi1[2], vbi2[0], vbi2[1], vbi2[2]);
+
+    if (sourceVideos[sourceNumber]->isSourceCav) {
+        sourceVideos[sourceNumber]->maximumVbiFrameNumber = vbi.picNo;
+    } else {
+        LdDecodeMetaData::ClvTimecode timecode;
+        timecode.hours = vbi.clvHr;
+        timecode.minutes = vbi.clvMin;
+        timecode.seconds = vbi.clvSec;
+        timecode.pictureNumber = vbi.clvPicNo;
+        sourceVideos[sourceNumber]->maximumVbiFrameNumber = sourceVideos[sourceNumber]->ldDecodeMetaData.convertClvTimecodeToFrameNumber(timecode);
     }
 
     qInfo() << "VBI frame number range is" << sourceVideos[sourceNumber]->minimumVbiFrameNumber << "to" <<
