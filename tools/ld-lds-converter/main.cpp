@@ -53,10 +53,8 @@ int main(int argc, char *argv[])
     parser.addHelpOption();
     parser.addVersionOption();
 
-    // Option to show debug (-d)
-    QCommandLineOption showDebugOption(QStringList() << "d" << "debug",
-                                       QCoreApplication::translate("main", "Show debug"));
-    parser.addOption(showDebugOption);
+    // Add the standard debug options --debug and --quiet
+    addStandardDebugOptions(parser);
 
     // Option to specify input video file (-i)
     QCommandLineOption sourceVideoFileOption(QStringList() << "i" << "input",
@@ -83,15 +81,14 @@ int main(int argc, char *argv[])
     // Process the command line arguments given by the user
     parser.process(a);
 
+    // Standard logging options
+    processStandardDebugOptions(parser);
+
     // Get the configured settings from the parser
-    bool isDebugOn = parser.isSet(showDebugOption);
     bool isUnpacking = parser.isSet(showUnpackOption);
     bool isPacking = parser.isSet(showPackOption);
     QString inputFileName = parser.value(sourceVideoFileOption);
     QString outputFileName = parser.value(targetVideoFileOption);
-
-    // Process the command line options
-    if (isDebugOn) setDebug(true); else setDebug(false);
 
     bool modeUnpack = true;
     if (isPacking) modeUnpack = false;

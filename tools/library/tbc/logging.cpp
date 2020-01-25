@@ -30,6 +30,12 @@ static bool saveDebug = false;
 static bool quietDebug = false;
 static QFile *debugFile;
 
+// Define the standard logging command line options
+static QCommandLineOption showDebugOption(QStringList() << "d" << "debug",
+                                          QCoreApplication::translate("main", "Show debug"));
+static QCommandLineOption setQuietOption({"q", "quiet"},
+                                         QCoreApplication::translate("main", "Suppress info and warning messages"));
+
 // Qt debug message handler
 void debugOutputHandler(QtMsgType type, const QMessageLogContext &context, const QString &msg)
 {
@@ -105,4 +111,28 @@ void setDebug(bool state)
 void setQuiet(bool state)
 {
     quietDebug = state;
+}
+
+// Method to add the standard debug options to the command line parser
+void addStandardDebugOptions(QCommandLineParser &parser)
+{
+    // Option to show debug (-d / --debug)
+    parser.addOption(showDebugOption);
+
+    // Option to set quiet mode (-q)
+    parser.addOption(setQuietOption);
+}
+
+// Method to process the standard debug options
+void processStandardDebugOptions(QCommandLineParser &parser)
+{
+    // Process any options added by the addStandardDebugOptions method
+    if (parser.isSet(showDebugOption)) setDebug(true); else setDebug(false);
+    if (parser.isSet(setQuietOption)) setQuiet(true); else setQuiet(false);
+}
+
+// Method to get the current debug logging state
+bool getDebugState()
+{
+    return showDebug;
 }

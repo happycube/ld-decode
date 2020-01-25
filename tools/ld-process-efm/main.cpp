@@ -53,12 +53,10 @@ int main(int argc, char *argv[])
     parser.addHelpOption();
     parser.addVersionOption();
 
-    // Option to show debug (-d / --debug)
-    QCommandLineOption showDebugOption(QStringList() << "d" << "debug",
-                                       QCoreApplication::translate("main", "Show debug"));
-    parser.addOption(showDebugOption);
+    // Add the standard debug options --debug and --quiet
+    addStandardDebugOptions(parser);
 
-    // Option to show debug (-d / --debug)
+    // Option to run in non-interactive mode (-n / --noninteractive)
     QCommandLineOption nonInteractiveOption(QStringList() << "n" << "noninteractive",
                                        QCoreApplication::translate("main", "Run in non-interactive mode"));
     parser.addOption(nonInteractiveOption);
@@ -74,12 +72,11 @@ int main(int argc, char *argv[])
     // Process the command line options and arguments given by the user
     parser.process(a);
 
-    // Get the options from the parser
-    bool isDebugOn = parser.isSet(showDebugOption);
-    bool isNonInteractiveOn = parser.isSet(nonInteractiveOption);
+    // Standard logging options
+    processStandardDebugOptions(parser);
 
-    // Process the command line options
-    if (isDebugOn) setDebug(true); else setDebug(false);
+    // Get the options from the parser
+    bool isNonInteractiveOn = parser.isSet(nonInteractiveOption);
 
     // Get the arguments from the parser
     QString inputEfmFilename;
@@ -100,7 +97,7 @@ int main(int argc, char *argv[])
     }
 
     // Start the GUI application
-    MainWindow w(isDebugOn, isNonInteractiveOn, outputAudioFilename);
+    MainWindow w(getDebugState(), isNonInteractiveOn, outputAudioFilename);
     if (!inputEfmFilename.isEmpty()) {
         // Load the file to decode
         if (!w.loadInputEfmFile(inputEfmFilename)) {

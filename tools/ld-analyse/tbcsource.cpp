@@ -3,7 +3,7 @@
     tbcsource.cpp
 
     ld-analyse - TBC output analysis
-    Copyright (C) 2018-2019 Simon Inns
+    Copyright (C) 2018-2020 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -504,6 +504,51 @@ const PalColour::Configuration &TbcSource::getPalColourConfiguration()
     return palColourConfiguration;
 }
 
+// Return the frame number of the start of the next chapter
+qint32 TbcSource::startOfNextChapter(qint32 currentFrameNumber)
+{
+    // Do we have a chapter map?
+    if (chapterMap.size() == 0) return getNumberOfFrames();
+
+    qint32 mapLocation = -1;
+    for (qint32 i = 0; i < chapterMap.size(); i++) {
+        if (chapterMap[i] > currentFrameNumber) {
+            mapLocation = i;
+            break;
+        }
+    }
+
+    // Found?
+    if (mapLocation != -1) {
+        return chapterMap[mapLocation];
+    }
+
+    return getNumberOfFrames();
+}
+
+// Return the frame number of the start of the current chapter
+qint32 TbcSource::startOfChapter(qint32 currentFrameNumber)
+{
+    // Do we have a chapter map?
+    if (chapterMap.size() == 0) return 1;
+
+    qint32 mapLocation = -1;
+    for (qint32 i = chapterMap.size() - 1; i >= 0; i--) {
+        if (chapterMap[i] < currentFrameNumber) {
+            mapLocation = i;
+            break;
+        }
+    }
+
+    // Found?
+    if (mapLocation != -1) {
+        return chapterMap[mapLocation];
+    }
+
+    return 1;
+}
+
+
 // Private methods ----------------------------------------------------------------------------------------------------
 
 // Method to create a QImage for a source video frame
@@ -746,8 +791,14 @@ void TbcSource::generateData(qint32 _targetDataPoints)
         // Calculate the Capture Quality Index
         qreal fieldDoPercent = 100.0 - (static_cast<qreal>(doLength) / static_cast<qreal>(totalDotsPerField * fieldsPerGraphDataPoint));
         qreal snrPercent = 0;
-        if (whiteSnrTotal != 0) snrPercent = (100.0 / 90.0) * (blackSnrTotal + whiteSnrTotal);
-        else snrPercent = (100.0 / 45.0) * (blackSnrTotal);
+
+        // Convert SNR to linear
+        qreal whiteSnrLinear = pow(whiteSnrTotal / 20, 10);
+        qreal blackSnrLinear = pow(blackSnrTotal / 20, 10);
+        qreal snrReferenceLinear = pow(43.0 / 20, 10); // Note: 43 dB is the expected maximum
+
+        if (whiteSnrTotal != 0) snrPercent = (100.0 / (snrReferenceLinear * 2)) * (blackSnrLinear + whiteSnrLinear);
+        else snrPercent = (100.0 / snrReferenceLinear) * blackSnrLinear;
         if (snrPercent > 100.0) snrPercent = 100.0;
 
         // Note: The weighting is 1000:1:1 - this is just because dropouts have a greater visual effect
@@ -809,6 +860,21 @@ void TbcSource::startBackgroundLoad(QString sourceFilename)
     // Generate the graph data for the source
     emit busyLoading("Generating graph data...");
     generateData(2000);
+
+    // Generate a chapter map (used by the chapter skip
+    // forwards and backwards buttons)
+    emit busyLoading("Generating VBI chapter map...");
+    qint32 lastChapter = -1;
+    chapterMap.clear();
+    for (qint32 i = 1; i <= getNumberOfFrames(); i++) {
+        qint32 currentChapter = getFrameVbi(i).chNo;
+        if (currentChapter != -1) {
+            if (currentChapter != lastChapter) {
+                lastChapter = currentChapter;
+                chapterMap.append(i);
+            }
+        }
+    }
 }
 
 void TbcSource::finishBackgroundLoad()

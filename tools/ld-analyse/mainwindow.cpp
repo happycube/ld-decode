@@ -82,7 +82,10 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
 
     // Was a filename specified on the command line?
     if (!inputFilenameParam.isEmpty()) {
+        lastFilename = inputFilenameParam;
         tbcSource.loadSource(inputFilenameParam);
+    } else {
+        lastFilename.clear();
     }
 }
 
@@ -158,6 +161,7 @@ void MainWindow::updateGuiLoaded()
     ui->actionClosed_Captions->setEnabled(true);
     if (tbcSource.getIsSourcePal()) ui->actionPAL_Chroma_decoder->setEnabled(true);
     else ui->actionPAL_Chroma_decoder->setEnabled(false);
+    ui->actionReload_TBC->setEnabled(true);
 
     // Set option button states
     ui->videoPushButton->setText(tr("Source"));
@@ -238,6 +242,7 @@ void MainWindow::updateGuiUnloaded()
     ui->actionSave_frame_as_PNG->setEnabled(false);
     ui->actionClosed_Captions->setEnabled(false);
     ui->actionPAL_Chroma_decoder->setEnabled(false);
+    ui->actionReload_TBC->setEnabled(false);
 
     // Set option button states
     ui->videoPushButton->setText(tr("Source"));
@@ -390,7 +395,17 @@ void MainWindow::on_actionOpen_TBC_file_triggered()
 
     // Was a filename specified?
     if (!inputFileName.isEmpty() && !inputFileName.isNull()) {
+        lastFilename = inputFileName;
         loadTbcFile(inputFileName);
+    }
+}
+
+// Reload the current TBC selection from the GUI
+void MainWindow::on_actionReload_TBC_triggered()
+{
+    // Reload the current TBC file
+    if (!lastFilename.isEmpty() && !lastFilename.isNull()) {
+        loadTbcFile(lastFilename);
     }
 }
 
@@ -550,18 +565,18 @@ void MainWindow::on_nextPushButton_clicked()
     }
 }
 
-// Skip to end frame button has been clicked
+// Skip to the next chapter (note: this button was repurposed from 'end frame')
 void MainWindow::on_endFramePushButton_clicked()
 {
-    currentFrameNumber = tbcSource.getNumberOfFrames();
+    currentFrameNumber = tbcSource.startOfNextChapter(currentFrameNumber);
     ui->frameNumberSpinBox->setValue(currentFrameNumber);
     ui->frameHorizontalSlider->setValue(currentFrameNumber);
 }
 
-// Skip to start frame button has been clicked
+// Skip to the start of chapter (note: this button was repurposed from 'start frame')
 void MainWindow::on_startFramePushButton_clicked()
 {
-    currentFrameNumber = 1;
+    currentFrameNumber = tbcSource.startOfChapter(currentFrameNumber);
     ui->frameNumberSpinBox->setValue(currentFrameNumber);
     ui->frameHorizontalSlider->setValue(currentFrameNumber);
 }
@@ -876,6 +891,3 @@ void MainWindow::on_finishedLoading()
     busyDialog->hide();
     this->setEnabled(true);
 }
-
-
-

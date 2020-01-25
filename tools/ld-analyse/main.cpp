@@ -53,10 +53,8 @@ int main(int argc, char *argv[])
     parser.addHelpOption();
     parser.addVersionOption();
 
-    // Option to show debug (-d)
-    QCommandLineOption showDebugOption(QStringList() << "d" << "debug",
-                                       QCoreApplication::translate("main", "Show debug"));
-    parser.addOption(showDebugOption);
+    // Add the standard debug options --debug and --quiet
+    addStandardDebugOptions(parser);
 
     // Positional argument to specify input video file
     parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input TBC file"));
@@ -64,11 +62,8 @@ int main(int argc, char *argv[])
     // Process the command line arguments given by the user
     parser.process(a);
 
-    // Get the configured settings from the parser
-    bool isDebugOn = parser.isSet(showDebugOption);
-
-    // Process the command line options
-    if (isDebugOn) setDebug(true); else setDebug(false);
+    // Standard logging options
+    processStandardDebugOptions(parser);
 
     // Get the arguments from the parser
     QString inputFileName;

@@ -55,10 +55,8 @@ int main(int argc, char *argv[])
     parser.addHelpOption();
     parser.addVersionOption();
 
-    // Option to show debug (-d)
-    QCommandLineOption showDebugOption(QStringList() << "d" << "debug",
-                                       QCoreApplication::translate("main", "Show debug"));
-    parser.addOption(showDebugOption);
+    // Add the standard debug options --debug and --quiet
+    addStandardDebugOptions(parser);
 
     // Option to specify a different JSON input file
     QCommandLineOption inputJsonOption(QStringList() << "input-json",
@@ -105,8 +103,10 @@ int main(int argc, char *argv[])
     // Process the command line options and arguments given by the user -----------------------------------------------
     parser.process(a);
 
+    // Standard logging options
+    processStandardDebugOptions(parser);
+
     // Get the options from the parser
-    bool isDebugOn = parser.isSet(showDebugOption);
     bool reverse = parser.isSet(setReverseOption);
     bool intraField = parser.isSet(setIntrafieldOption);
     bool overCorrect = parser.isSet(setOverCorrectOption);
@@ -187,9 +187,6 @@ int main(int argc, char *argv[])
             }
         }
     }
-
-    // Process the command line options
-    if (isDebugOn) setDebug(true); else setDebug(false);
 
     // Metadata filename for output TBC
     QString outputJsonFilename = outputFilename + ".json";
