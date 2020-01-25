@@ -39,5 +39,6 @@ void openDebugFile(QString filename);
 void closeDebugFile(void);
 void addStandardDebugOptions(QCommandLineParser &parser);
 void processStandardDebugOptions(QCommandLineParser &parser);
+bool getDebugState();
 
 #endif // LOGGING_H
