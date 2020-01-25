@@ -33,9 +33,6 @@
 #include "logging.h"
 #include "lddecodemetadata.h"
 
-// Global for quiet mode (suppress info and warning messages)
-static bool showOutput = true;
-
 int main(int argc, char *argv[])
 {
     // Install the local debug message handler
@@ -98,7 +95,7 @@ int main(int argc, char *argv[])
 
     // Get the options from the parser
     if (parser.isSet(showDebugOption)) setDebug(true); else setDebug(false);
-    if (parser.isSet(setQuietOption)) showOutput = false;
+    if (parser.isSet(setQuietOption)) setQuiet(true); else setQuiet(false);
 
     // Get the arguments from the parser
     QString inputFileName;

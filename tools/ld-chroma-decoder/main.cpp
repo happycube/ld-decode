@@ -42,9 +42,6 @@
 #include "paldecoder.h"
 #include "transformpal.h"
 
-// Global for quiet mode (suppress info and warning messages)
-static bool showOutput = true;
-
 // Load the thresholds file for the Transform decoders, if specified. We must
 // do this after PalColour has been configured, so we know how many values to
 // expect.
@@ -227,9 +224,9 @@ int main(int argc, char *argv[])
     // Process the command line options and arguments given by the user
     parser.process(a);
 
-    // Get the options from the parser
-    bool isDebugOn = parser.isSet(showDebugOption);
-    if (parser.isSet(setQuietOption)) showOutput = false;
+    // Get the debug options from the parser
+    if (parser.isSet(showDebugOption)) setDebug(true); else setDebug(false);
+    if (parser.isSet(setQuietOption)) setQuiet(true); else setQuiet(false);
 
     // Get the arguments from the parser
     QString inputFileName;
@@ -344,9 +341,6 @@ int main(int argc, char *argv[])
     if (parser.isSet(showFFTsOption)) {
         palConfig.showFFTs = true;
     }
-
-    // Process the command line options
-    if (isDebugOn) setDebug(true); else setDebug(false);
 
     // Work out the metadata filename
     QString inputJsonFileName = inputFileName + ".json";

@@ -27,6 +27,7 @@
 // Global for debug output
 static bool showDebug = false;
 static bool saveDebug = false;
+static bool quietDebug = false;
 static QFile *debugFile;
 
 // Qt debug message handler
@@ -64,8 +65,11 @@ void debugOutputHandler(QtMsgType type, const QMessageLogContext &context, const
         break;
     }
 
-    // Display the output message on stderr
-    if (showDebug || (type != QtDebugMsg)) QTextStream(stderr) << outputMessage;
+    // If quiet mode is set, suppress all output
+    if (!quietDebug) {
+        // Display the output message on stderr
+        if (showDebug || (type != QtDebugMsg)) QTextStream(stderr) << outputMessage;
+    }
 
     // Optional output to file
     if (saveDebug) QTextStream(debugFile) << outputMessage;
@@ -95,4 +99,10 @@ void closeDebugFile(void)
 void setDebug(bool state)
 {
     showDebug = state;
+}
+
+// Control the quiet flag (if set all output is suppressed)
+void setQuiet(bool state)
+{
+    quietDebug = state;
 }
