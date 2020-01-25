@@ -58,15 +58,8 @@ int main(int argc, char *argv[])
 
     // -- General options --
 
-    // Option to show debug (-d)
-    QCommandLineOption showDebugOption({"d", "debug"},
-                                       QCoreApplication::translate("main", "Show debug"));
-    parser.addOption(showDebugOption);
-
-    // Option to set quiet mode (-q)
-    QCommandLineOption setQuietOption({"q", "quiet"},
-                                      QCoreApplication::translate("main", "Suppress info and warning messages"));
-    parser.addOption(setQuietOption);
+    // Add the standard debug options --debug and --quiet
+    addStandardDebugOptions(parser);
 
     // -- Output types --
 
@@ -93,9 +86,8 @@ int main(int argc, char *argv[])
     // Process the command line options and arguments given by the user
     parser.process(a);
 
-    // Get the options from the parser
-    if (parser.isSet(showDebugOption)) setDebug(true); else setDebug(false);
-    if (parser.isSet(setQuietOption)) setQuiet(true); else setQuiet(false);
+    // Standard logging options
+    processStandardDebugOptions(parser);
 
     // Get the arguments from the parser
     QString inputFileName;

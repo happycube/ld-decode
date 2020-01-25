@@ -130,3 +130,9 @@ void processStandardDebugOptions(QCommandLineParser &parser)
     if (parser.isSet(showDebugOption)) setDebug(true); else setDebug(false);
     if (parser.isSet(setQuietOption)) setQuiet(true); else setQuiet(false);
 }
+
+// Method to get the current debug logging state
+bool getDebugState()
+{
+    return showDebug;
+}
