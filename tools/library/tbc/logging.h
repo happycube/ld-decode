@@ -29,6 +29,7 @@
 #include <QDebug>
 #include <QFile>
 #include <QString>
+#include <QCommandLineParser>
 
 // Prototypes
 void debugOutputHandler(QtMsgType type, const QMessageLogContext &context, const QString &msg);
@@ -36,5 +37,7 @@ void setDebug(bool state);
 void setQuiet(bool state);
 void openDebugFile(QString filename);
 void closeDebugFile(void);
+void addStandardDebugOptions(QCommandLineParser &parser);
+void processStandardDebugOptions(QCommandLineParser &parser);
 
 #endif // LOGGING_H

@@ -593,6 +593,9 @@ bool DiscMap::saveTargetMetadata(QFileInfo outputFileInfo)
     // Store the PCM audio parameters
     targetMetadata.setPcmAudioParameters(ldDecodeMetaData->getPcmAudioParameters());
 
+    // Make a VBI Decoder object for verifying generated VBI
+    VbiDecoder vbiDecoder;
+
     for (qint32 frameNumber = 0; frameNumber < m_numberOfFrames; frameNumber++) {
         if (!m_frames[frameNumber].isPadded()) {
             // Normal frame metadata
@@ -618,6 +621,18 @@ bool DiscMap::saveTargetMetadata(QFileInfo outputFileInfo)
 
                 firstSourceMetadata.vbi.vbiData[1] = convertFrameToVbi(m_frames[frameNumber].vbiFrameNumber());
                 firstSourceMetadata.vbi.vbiData[2] = convertFrameToVbi(m_frames[frameNumber].vbiFrameNumber());
+
+                // Note: Because only 2 lines of VBI are replaced here, its possible that corruption
+                // in the unmodified line causes the resulting VBI to be invalid - so we need to check
+                // for that here
+                VbiDecoder::Vbi vbi = vbiDecoder.decodeFrame(
+                        firstSourceMetadata.vbi.vbiData[0], firstSourceMetadata.vbi.vbiData[1], firstSourceMetadata.vbi.vbiData[2],
+                        secondSourceMetadata.vbi.vbiData[0], secondSourceMetadata.vbi.vbiData[1], secondSourceMetadata.vbi.vbiData[2]);
+
+                if (vbi.picNo != m_frames[frameNumber].vbiFrameNumber()) {
+                    qInfo() << "Warning: Updated VBI frame number for frame" << m_frames[frameNumber].vbiFrameNumber() << "has been corrupted by exisiting VBI data - overwriting all VBI for frame";
+                    firstSourceMetadata.vbi.vbiData[0] = 0;
+                }
             } else {
                 // Disc is CLV - add a timecode
                 if (!firstSourceMetadata.vbi.inUse) {

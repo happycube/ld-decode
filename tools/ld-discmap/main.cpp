@@ -54,10 +54,8 @@ int main(int argc, char *argv[])
     parser.addHelpOption();
     parser.addVersionOption();
 
-    // Option to show debug (-d / --debug)
-    QCommandLineOption showDebugOption(QStringList() << "d" << "debug",
-                                       QCoreApplication::translate("main", "Show debug"));
-    parser.addOption(showDebugOption);
+    // Add the standard debug options --debug and --quiet
+    addStandardDebugOptions(parser);
 
     // Option to reverse the field order (-r / --reverse)
     QCommandLineOption setReverseOption(QStringList() << "r" << "reverse",
@@ -88,8 +86,10 @@ int main(int argc, char *argv[])
     // Process the command line options and arguments given by the user
     parser.process(a);
 
+    // Standard logging options
+    processStandardDebugOptions(parser);
+
     // Get the options from the parser
-    bool isDebugOn = parser.isSet(showDebugOption);
     bool reverse = parser.isSet(setReverseOption);
     bool mapOnly = parser.isSet(setMapOnlyOption);
     bool noStrict = parser.isSet(setNoStrictOption);
@@ -126,8 +126,6 @@ int main(int argc, char *argv[])
             return -1;
         }
     }
-
-    if (isDebugOn) setDebug(true); else setDebug(false);
 
     // Put the input and output file names into QFileInfo for portability
     QFileInfo inputFileInfo(inputFilename);
