@@ -270,11 +270,16 @@ DiscMap::DiscMap(const QFileInfo &metadataFileInfo, const bool &reverseFieldOrde
             else penaltyPercent = 100.0;
         }
 
-        // Add the Black SNR to the quality value (here we consider 45+45 to be 100%)
-        qint32 bsnr = ldDecodeMetaData->getFieldVitsMetrics(ldDecodeMetaData->getFirstFieldNumber(frameNumber + 1)).bPSNR +
-                ldDecodeMetaData->getFieldVitsMetrics(ldDecodeMetaData->getSecondFieldNumber(frameNumber + 1)).bPSNR;
+        // Add the Black SNR to the quality value
+        // Get the average bPSNR for both fields
+        qreal bsnr = (ldDecodeMetaData->getFieldVitsMetrics(ldDecodeMetaData->getFirstFieldNumber(frameNumber + 1)).bPSNR +
+                ldDecodeMetaData->getFieldVitsMetrics(ldDecodeMetaData->getSecondFieldNumber(frameNumber + 1)).bPSNR) / 2.0;
 
-        qreal bsnrPercent = (100 / 90) * static_cast<qreal>(bsnr);
+        // Convert logarithmic to linear and then into percentage
+        qreal blackSnrLinear = pow(bsnr / 20, 10);
+        qreal snrReferenceLinear = pow(43.0 / 20, 10); // Note: 43 dB is the expected maximum
+        qreal bsnrPercent = (100.0 / snrReferenceLinear) * blackSnrLinear;
+        if (bsnrPercent > 100.0) bsnrPercent = 100.0;
 
         // Calculate the cumulative length of all the dropouts in the frame (by summing both fields)
         qint32 totalDotsInFrame = (ldDecodeMetaData->getVideoParameters().fieldHeight * 2) + ldDecodeMetaData->getVideoParameters().fieldWidth;
@@ -296,8 +301,8 @@ DiscMap::DiscMap(const QFileInfo &metadataFileInfo, const bool &reverseFieldOrde
         qint32 syncConfPercent = (ldDecodeMetaData->getField(ldDecodeMetaData->getFirstFieldNumber(frameNumber + 1)).syncConf +
                                   ldDecodeMetaData->getField(ldDecodeMetaData->getSecondFieldNumber(frameNumber + 1)).syncConf) / 2;
 
-        m_frames[frameNumber].frameQuality((bsnrPercent + penaltyPercent + syncConfPercent + (frameDoPercent * 1000.0)) / 1004.0);
-        //qDebug() << "Frame:" << frameNumber << bsnrPercent << penaltyPercent << syncConfPercent << frameDoPercent << "quality =" << m_frames[frameNumber].frameQuality();
+        m_frames[frameNumber].frameQuality((bsnrPercent + penaltyPercent + static_cast<qreal>(syncConfPercent) + (frameDoPercent * 1000.0)) / 1004.0);
+        qDebug() << "Frame:" << frameNumber << bsnrPercent << penaltyPercent << syncConfPercent << frameDoPercent << "quality =" << m_frames[frameNumber].frameQuality();
     }
 
 }

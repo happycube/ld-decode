@@ -27,6 +27,7 @@
 
 #include <QCoreApplication>
 #include <QDebug>
+#include <QtMath>
 
 // TBC library includes
 #include "lddecodemetadata.h"

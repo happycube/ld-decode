@@ -3,7 +3,7 @@
     tbcsource.cpp
 
     ld-analyse - TBC output analysis
-    Copyright (C) 2018-2019 Simon Inns
+    Copyright (C) 2018-2020 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -746,8 +746,14 @@ void TbcSource::generateData(qint32 _targetDataPoints)
         // Calculate the Capture Quality Index
         qreal fieldDoPercent = 100.0 - (static_cast<qreal>(doLength) / static_cast<qreal>(totalDotsPerField * fieldsPerGraphDataPoint));
         qreal snrPercent = 0;
-        if (whiteSnrTotal != 0) snrPercent = (100.0 / 90.0) * (blackSnrTotal + whiteSnrTotal);
-        else snrPercent = (100.0 / 45.0) * (blackSnrTotal);
+
+        // Convert SNR to linear
+        qreal whiteSnrLinear = pow(whiteSnrTotal / 20, 10);
+        qreal blackSnrLinear = pow(blackSnrTotal / 20, 10);
+        qreal snrReferenceLinear = pow(43.0 / 20, 10); // Note: 43 dB is the expected maximum
+
+        if (whiteSnrTotal != 0) snrPercent = (100.0 / (snrReferenceLinear * 2)) * (blackSnrLinear + whiteSnrLinear);
+        else snrPercent = (100.0 / snrReferenceLinear) * blackSnrLinear;
         if (snrPercent > 100.0) snrPercent = 100.0;
 
         // Note: The weighting is 1000:1:1 - this is just because dropouts have a greater visual effect
