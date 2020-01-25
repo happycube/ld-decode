@@ -388,25 +388,12 @@ VbiDecoder::Vbi TbcSource::getFrameVbi(qint32 frameNumber)
 {
     if (!sourceReady) return VbiDecoder::Vbi();
 
-    // Get the required field numbers
-    qint32 firstFieldNumber = ldDecodeMetaData.getFirstFieldNumber(frameNumber);
-    qint32 secondFieldNumber = ldDecodeMetaData.getSecondFieldNumber(frameNumber);
+    // Get the field VBI data
+    LdDecodeMetaData::Vbi firstField = ldDecodeMetaData.getFieldVbi(ldDecodeMetaData.getFirstFieldNumber(frameNumber));
+    LdDecodeMetaData::Vbi secondField = ldDecodeMetaData.getFieldVbi(ldDecodeMetaData.getSecondFieldNumber(frameNumber));
 
-    // Get the field metadata
-    LdDecodeMetaData::Field firstField = ldDecodeMetaData.getField(firstFieldNumber);
-    LdDecodeMetaData::Field secondField = ldDecodeMetaData.getField(secondFieldNumber);
-
-    qint32 vbi16_1, vbi17_1, vbi18_1;
-    qint32 vbi16_2, vbi17_2, vbi18_2;
-
-    vbi16_1 = firstField.vbi.vbiData[0];
-    vbi17_1 = firstField.vbi.vbiData[1];
-    vbi18_1 = firstField.vbi.vbiData[2];
-    vbi16_2 = secondField.vbi.vbiData[0];
-    vbi17_2 = secondField.vbi.vbiData[1];
-    vbi18_2 = secondField.vbi.vbiData[2];
-
-    return vbiDecoder.decodeFrame(vbi16_1, vbi17_1, vbi18_1, vbi16_2, vbi17_2, vbi18_2);
+    return vbiDecoder.decodeFrame(firstField.vbiData[0], firstField.vbiData[1], firstField.vbiData[2],
+            secondField.vbiData[0], secondField.vbiData[1], secondField.vbiData[2]);
 }
 
 // Method returns true if the VBI is valid for the specified frame number
@@ -414,26 +401,12 @@ bool TbcSource::getIsFrameVbiValid(qint32 frameNumber)
 {
     if (!sourceReady) return false;
 
-    // Get the required field numbers
-    qint32 firstFieldNumber = ldDecodeMetaData.getFirstFieldNumber(frameNumber);
-    qint32 secondFieldNumber = ldDecodeMetaData.getSecondFieldNumber(frameNumber);
+    // Get the field VBI data
+    LdDecodeMetaData::Vbi firstField = ldDecodeMetaData.getFieldVbi(ldDecodeMetaData.getFirstFieldNumber(frameNumber));
+    LdDecodeMetaData::Vbi secondField = ldDecodeMetaData.getFieldVbi(ldDecodeMetaData.getSecondFieldNumber(frameNumber));
 
-    // Get the field metadata
-    LdDecodeMetaData::Field firstField = ldDecodeMetaData.getField(firstFieldNumber);
-    LdDecodeMetaData::Field secondField = ldDecodeMetaData.getField(secondFieldNumber);
-
-    qint32 vbi16_1, vbi17_1, vbi18_1;
-    qint32 vbi16_2, vbi17_2, vbi18_2;
-
-    vbi16_1 = firstField.vbi.vbiData[0];
-    vbi17_1 = firstField.vbi.vbiData[1];
-    vbi18_1 = firstField.vbi.vbiData[2];
-    vbi16_2 = secondField.vbi.vbiData[0];
-    vbi17_2 = secondField.vbi.vbiData[1];
-    vbi18_2 = secondField.vbi.vbiData[2];
-
-    if (vbi16_1 == -1 || vbi17_1 == -1 || vbi18_1 == -1) return false;
-    if (vbi16_2 == -1 || vbi17_2 == -1 || vbi18_2 == -1) return false;
+    if (firstField.vbiData[0] == -1 || firstField.vbiData[1] == -1 || firstField.vbiData[2] == -1) return false;
+    if (secondField.vbiData[0] == -1 || secondField.vbiData[1] == -1 || secondField.vbiData[2] == -1) return false;
 
     return true;
 }
@@ -458,13 +431,9 @@ qint32 TbcSource::getCcData0(qint32 frameNumber)
 {
     if (!sourceReady) return false;
 
-    // Get the required field numbers
-    qint32 firstFieldNumber = ldDecodeMetaData.getFirstFieldNumber(frameNumber);
-    qint32 secondFieldNumber = ldDecodeMetaData.getSecondFieldNumber(frameNumber);
-
     // Get the field metadata
-    LdDecodeMetaData::Field firstField = ldDecodeMetaData.getField(firstFieldNumber);
-    LdDecodeMetaData::Field secondField = ldDecodeMetaData.getField(secondFieldNumber);
+    LdDecodeMetaData::Field firstField = ldDecodeMetaData.getField(ldDecodeMetaData.getFirstFieldNumber(frameNumber));
+    LdDecodeMetaData::Field secondField = ldDecodeMetaData.getField(ldDecodeMetaData.getSecondFieldNumber(frameNumber));
 
     if (firstField.ntsc.ccData0 != -1) return firstField.ntsc.ccData0;
     return secondField.ntsc.ccData0;
@@ -474,13 +443,9 @@ qint32 TbcSource::getCcData1(qint32 frameNumber)
 {
     if (!sourceReady) return false;
 
-    // Get the required field numbers
-    qint32 firstFieldNumber = ldDecodeMetaData.getFirstFieldNumber(frameNumber);
-    qint32 secondFieldNumber = ldDecodeMetaData.getSecondFieldNumber(frameNumber);
-
     // Get the field metadata
-    LdDecodeMetaData::Field firstField = ldDecodeMetaData.getField(firstFieldNumber);
-    LdDecodeMetaData::Field secondField = ldDecodeMetaData.getField(secondFieldNumber);
+    LdDecodeMetaData::Field firstField = ldDecodeMetaData.getField(ldDecodeMetaData.getFirstFieldNumber(frameNumber));
+    LdDecodeMetaData::Field secondField = ldDecodeMetaData.getField(ldDecodeMetaData.getSecondFieldNumber(frameNumber));
 
     if (firstField.ntsc.ccData1 != -1) return firstField.ntsc.ccData1;
     return secondField.ntsc.ccData1;
@@ -490,11 +455,8 @@ void TbcSource::setPalColourConfiguration(const PalColour::Configuration &_palCo
 {
     palColourConfiguration = _palColourConfiguration;
 
-    // Get the video parameters
-    LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
-
     // Configure the chroma decoder
-    palColour.updateConfiguration(videoParameters, palColourConfiguration);
+    palColour.updateConfiguration(ldDecodeMetaData.getVideoParameters(), palColourConfiguration);
 
     decoderConfigurationChanged = true;
 }
@@ -865,6 +827,7 @@ void TbcSource::startBackgroundLoad(QString sourceFilename)
     // forwards and backwards buttons)
     emit busyLoading("Generating VBI chapter map...");
     qint32 lastChapter = -1;
+    qint32 giveUpCounter = 0;
     chapterMap.clear();
     for (qint32 i = 1; i <= getNumberOfFrames(); i++) {
         qint32 currentChapter = getFrameVbi(i).chNo;
@@ -872,7 +835,12 @@ void TbcSource::startBackgroundLoad(QString sourceFilename)
             if (currentChapter != lastChapter) {
                 lastChapter = currentChapter;
                 chapterMap.append(i);
-            }
+            } else giveUpCounter++;
+        }
+
+        if (i == 100 && giveUpCounter < 50) {
+            qDebug() << "Not seeing valid chapter numbers, giving up chapter mapping";
+            break;
         }
     }
 }
