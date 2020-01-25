@@ -33,6 +33,7 @@
 // Prototypes
 void debugOutputHandler(QtMsgType type, const QMessageLogContext &context, const QString &msg);
 void setDebug(bool state);
+void setQuiet(bool state);
 void openDebugFile(QString filename);
 void closeDebugFile(void);
 
