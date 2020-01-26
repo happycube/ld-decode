@@ -243,9 +243,20 @@ void TbcSources::performFrameDiffDod(qint32 targetVbiFrame, qint32 dodThreshold,
     QVector<QVector<qint32>> firstFieldsDiff = getFieldDiff(firstFields, dodThreshold);
     QVector<QVector<qint32>> secondFieldsDiff = getFieldDiff(secondFields, dodThreshold);
 
+    // Perform luma clip check?
+    if (lumaClip) {
+        performLumaClip(firstFields, firstFieldsDiff);
+        performLumaClip(secondFields, secondFieldsDiff);
+    }
+
     // Create the drop-out metadata based on the differential map of the fields
     QVector<LdDecodeMetaData::DropOuts> firstFieldDropouts = getFieldDropouts(firstFieldsDiff);
     QVector<LdDecodeMetaData::DropOuts> secondFieldDropouts = getFieldDropouts(secondFieldsDiff);
+
+    // Concatenate dropouts on the same line that are close together (to cut down on the
+    // amount of generated metadata with noisy/bad sources)
+    concatenateFieldDropouts(firstFieldDropouts);
+    concatenateFieldDropouts(secondFieldDropouts);
 
     // Write the dropout metadata back to the sources
     writeDropoutMetadata(firstFieldDropouts, secondFieldDropouts, targetVbiFrame);
@@ -346,21 +357,74 @@ QVector<QVector<qint32>> TbcSources::getFieldDiff(QVector<SourceVideo::Data> &fi
     return fieldDiff;
 }
 
-// Keeping the luma clip code here for inclusion again
+// Perform a luma clip check on the field
+void TbcSources::performLumaClip(QVector<SourceVideo::Data> &fields, QVector<QVector<qint32>> &fieldsDiff)
+{
+    // Get the metadata for the video parameters (all sources are the same, so just grab from the first)
+    LdDecodeMetaData::VideoParameters videoParameters = sourceVideos[0]->ldDecodeMetaData.getVideoParameters();
 
-// Calculate the luma clip levels
-//qint32 blackClipPoint = videoParameters.black16bIre - 2000;
-//qint32 whiteClipPoint = videoParameters.white16bIre + 2000;
+    qint32 firstActiveFieldLine;
+    qint32 lastActiveFieldLine;
+    if (videoParameters.isSourcePal) {
+        firstActiveFieldLine = 22;
+        lastActiveFieldLine = 308;
+    } else {
+        firstActiveFieldLine = 20;
+        lastActiveFieldLine = 259;
+    }
 
-//else if (lumaClip){
-//   if (x >= videoParameters.activeVideoStart && x <= videoParameters.activeVideoEnd &&
-//           y >= firstActiveLine && y <= lastActiveLine) {
-//       // Check for luma level clipping
-//       if (sourceIreFirst < blackClipPoint || sourceIreFirst > whiteClipPoint) {
-//           fieldDiff[sourceCounter].firstFieldDiff[x + startOfLinePointer] = fieldDiff[sourceCounter].firstFieldDiff[x + startOfLinePointer] + 1;
-//       }
-//   }
-//}
+    // Process the fields one line at a time
+    for (qint32 y = firstActiveFieldLine; y < lastActiveFieldLine; y++) {
+        qint32 startOfLinePointer = y * videoParameters.fieldWidth;
+
+        for (qint32 sourceCounter = 0; sourceCounter < fields.size(); sourceCounter++) {
+            // Set the clipping levels
+            qint32 blackClipLevel = videoParameters.black16bIre - 4000;
+            qint32 whiteClipLevel = videoParameters.white16bIre + 4000;
+
+            for (qint32 x = videoParameters.activeVideoStart; x < videoParameters.activeVideoEnd; x++) {
+                // Get the IRE value for the source field, cast to 32 bit signed
+                qint32 sourceIre = static_cast<qint32>(fields[sourceCounter][x + startOfLinePointer]);
+
+                // Check for a luma clip event
+                if ((sourceIre < blackClipLevel) || (sourceIre > whiteClipLevel)) {
+                    // Luma has clipped, scan back and forth looking for the start
+                    // and end points of the event (i.e. the point where the event
+                    // goes back into the expected IRE range)
+                    qint32 range = 10; // maximum + and - scan range
+                    qint32 minX = x - range;
+                    if (minX < videoParameters.activeVideoStart) minX = videoParameters.activeVideoStart;
+                    qint32 maxX = x + range;
+                    if (maxX > videoParameters.activeVideoEnd) maxX = videoParameters.activeVideoEnd;
+
+                    qint32 startX = x;
+                    qint32 endX = x;
+
+                    for (qint32 i = x; i > minX; i--) {
+                        qint32 ire = static_cast<qint32>(fields[sourceCounter][x + startOfLinePointer]);
+                        if (ire < videoParameters.black16bIre || ire > videoParameters.white16bIre) {
+                            startX = i;
+                        }
+                    }
+
+                    for (qint32 i = x+1; i < maxX; i++) {
+                        qint32 ire = static_cast<qint32>(fields[sourceCounter][x + startOfLinePointer]);
+                        if (ire < videoParameters.black16bIre || ire > videoParameters.white16bIre) {
+                            endX = i;
+                        }
+                    }
+
+                    // Mark the dropout
+                    for (qint32 i = startX; i < endX; i++) {
+                        fieldsDiff[sourceCounter][i + startOfLinePointer] += 255;
+                    }
+
+                    x = x + range;
+                }
+            }
+        }
+    }
+}
 
 // Method to create the field drop-out metadata based on the differential map of the fields
 QVector<LdDecodeMetaData::DropOuts> TbcSources::getFieldDropouts(QVector<QVector<qint32>> &fieldsDiff)
@@ -372,6 +436,10 @@ QVector<LdDecodeMetaData::DropOuts> TbcSources::getFieldDropouts(QVector<QVector
     // If any of the frame's contents do not match that of the other sources, the frame's pixels are marked as dropouts.
     QVector<LdDecodeMetaData::DropOuts> frameDropouts;
     frameDropouts.resize(fieldsDiff.size());
+
+    // Define the area in which DOD should be performed
+    qint32 areaStart = videoParameters.colourBurstStart;
+    qint32 areaEnd = videoParameters.activeVideoEnd;
 
     // Process the frame one line at a time (both fields)
     for (qint32 y = 0; y < videoParameters.fieldHeight; y++) {
@@ -388,41 +456,47 @@ QVector<LdDecodeMetaData::DropOuts> TbcSources::getFieldDropouts(QVector<QVector
 
         // Process each source line in turn
         for (qint32 sourceNo = 0; sourceNo < fieldsDiff.size(); sourceNo++) {
-            qint32 doCounterFirst = 0;
-            qint32 doCounterSecond = 0;
-            qint32 minimumDetectLength = 3;
+            // Mark the individual dropouts
+            qint32 doCounter = 0;
+            qint32 minimumDetectLength = 5;
 
-            for (qint32 x = 0; x < videoParameters.fieldWidth; x++) {
-                // First field - Compare to threshold
+            qint32 doStart = 0;
+            qint32 doFieldLine = 0;
+
+            // Only create dropouts between the start of the colour burst and the end of the
+            // active video area
+            for (qint32 x = areaStart; x < areaEnd; x++) {
+                // Compare field dot to threshold
                 if (static_cast<qint32>(fieldsDiff[sourceNo][x + startOfLinePointer]) <= diffCompareThreshold) {
                     // Current X is not a dropout
-                    if (doCounterFirst > 0) {
-                        doCounterFirst--;
-                        if (doCounterFirst == 0) {
+                    if (doCounter > 0) {
+                        doCounter--;
+                        if (doCounter == 0) {
                             // Mark the previous x as the end of the dropout
+                            frameDropouts[sourceNo].startx.append(doStart);
                             frameDropouts[sourceNo].endx.append(x - 1);
+                            frameDropouts[sourceNo].fieldLine.append(doFieldLine);
                         }
                     }
                 } else {
                     // Current X is a dropout
-                    if (doCounterFirst == 0) {
-                        doCounterFirst = minimumDetectLength;
-                        frameDropouts[sourceNo].startx.append(x);
-                        frameDropouts[sourceNo].fieldLine.append(y + 1);
+                    if (doCounter == 0) {
+                        doCounter = minimumDetectLength;
+                        doStart = x;
+                        doFieldLine = y + 1;
                     }
                 }
             }
 
-            // Ensure metadata dropouts end at the end of scan line (require by the fieldLine attribute)
-            if (doCounterFirst > 0) {
-                doCounterFirst = 0;
-                frameDropouts[sourceNo].endx.append(videoParameters.fieldWidth);
+            // Ensure metadata dropouts end at the end of the active video area
+            if (doCounter > 0) {
+                doCounter = 0;
+
+                frameDropouts[sourceNo].startx.append(doStart);
+                frameDropouts[sourceNo].endx.append(areaEnd);
+                frameDropouts[sourceNo].fieldLine.append(doFieldLine);
             }
 
-            if (doCounterSecond > 0) {
-                doCounterSecond = 0;
-                frameDropouts[sourceNo].endx.append(videoParameters.fieldWidth);
-            }
         } // Next source
     } // Next line
 
@@ -458,6 +532,39 @@ void TbcSources::writeDropoutMetadata(QVector<LdDecodeMetaData::DropOuts> &first
         // Write the metadata
         sourceVideos[availableSourcesForFrame[sourceNo]]->ldDecodeMetaData.updateFieldDropOuts(firstFieldDropouts[sourceNo], firstFieldNumber);
         sourceVideos[availableSourcesForFrame[sourceNo]]->ldDecodeMetaData.updateFieldDropOuts(secondFieldDropouts[sourceNo], secondFieldNumber);
+    }
+}
+
+// Method to concatenate dropouts on the same line that are close together
+// (to cut down on the amount of generated metadata with noisy/bad sources)
+void TbcSources::concatenateFieldDropouts(QVector<LdDecodeMetaData::DropOuts> &dropouts)
+{
+    // This variable controls the minimum allowed gap between dropouts
+    // if the gap between the end of the last dropout and the start of
+    // the next is less than minimumGap, the two dropouts will be
+    // concatenated together
+    qint32 minimumGap = 50;
+
+    for (qint32 sourceNo = 0; sourceNo < dropouts.size(); sourceNo++) {
+        // Start from 1 as 0 has no previous dropout
+        qint32 i = 1;
+        while (i < dropouts[sourceNo].startx.size()) {
+            // Is the current dropout on the same field line as the last?
+            if (dropouts[sourceNo].fieldLine[i - 1] == dropouts[sourceNo].fieldLine[i]) {
+                if ((dropouts[sourceNo].endx[i - 1] + minimumGap) > (dropouts[sourceNo].startx[i])) {
+                    // Concatenate
+                    dropouts[sourceNo].endx[i - 1] = dropouts[sourceNo].endx[i];
+
+                    // Remove the current dropout
+                    dropouts[sourceNo].startx.removeAt(i);
+                    dropouts[sourceNo].endx.removeAt(i);
+                    dropouts[sourceNo].fieldLine.removeAt(i);
+                }
+            }
+
+            // Next dropout
+            i++;
+        }
     }
 }
 
