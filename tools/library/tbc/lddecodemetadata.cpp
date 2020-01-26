@@ -91,6 +91,21 @@ LdDecodeMetaData::VideoParameters LdDecodeMetaData::getVideoParameters()
         return videoParameters;
     }
 
+    // Add in the active field line range psuedo-metadata
+    if (videoParameters.isSourcePal) {
+        // PAL
+        videoParameters.firstActiveFieldLine = 22;
+        videoParameters.lastActiveFieldLine = 308;
+        videoParameters.firstActiveFrameLine = 44;
+        videoParameters.lastActiveFrameLine = 620;
+    } else {
+        // NTSC
+        videoParameters.firstActiveFieldLine = 20;
+        videoParameters.lastActiveFieldLine = 259;
+        videoParameters.firstActiveFrameLine = 40;
+        videoParameters.lastActiveFrameLine = 525;
+    }
+
     return videoParameters;
 }
 

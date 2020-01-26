@@ -59,6 +59,10 @@ void Comb::updateConfiguration(const LdDecodeMetaData::VideoParameters &_videoPa
     // Set the frame height
     frameHeight = ((videoParameters.fieldHeight * 2) - 1);
 
+    // Set the first and last active line
+    configuration.firstActiveLine = videoParameters.firstActiveFrameLine;
+    configuration.lastActiveLine = videoParameters.lastActiveFrameLine;
+
     configurationSet = true;
 }
 

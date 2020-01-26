@@ -257,17 +257,6 @@ DropOutCorrect::Replacement DropOutCorrect::findReplacementLine(const QVector<QV
                                                                 bool isColourBurst, bool intraField, QVector<qint32> &availableSourcesForFrame,
                                                                 QVector<qreal> &sourceFrameQuality)
 {
-    // Determine the first and last active scan line based on the source format
-    qint32 firstActiveFieldLine;
-    qint32 lastActiveFieldLine;
-    if (videoParameters[0].isSourcePal) {
-        firstActiveFieldLine = 22;
-        lastActiveFieldLine = 308;
-    } else {
-        firstActiveFieldLine = 20;
-        lastActiveFieldLine = 259;
-    }
-
     // Define the minimum step size to use when searching for replacement
     // lines, and the offset to the nearest replacement line in the other
     // field.
@@ -330,13 +319,13 @@ DropOutCorrect::Replacement DropOutCorrect::findReplacementLine(const QVector<QV
         // Look up the field for a replacement
         findPotentialReplacementLine(thisFieldDropouts, dropOutIndex,
                                      thisFieldDropouts, true, 0, -stepAmount,
-                                     firstActiveFieldLine, lastActiveFieldLine,
+                                     videoParameters[0].firstActiveFieldLine, videoParameters[0].lastActiveFieldLine,
                                      candidates, currentSource, sourceFrameQuality);
 
         // Look down the field for a replacement
         findPotentialReplacementLine(thisFieldDropouts, dropOutIndex,
                                      thisFieldDropouts, true, stepAmount, stepAmount,
-                                     firstActiveFieldLine, lastActiveFieldLine,
+                                     videoParameters[0].firstActiveFieldLine, videoParameters[0].lastActiveFieldLine,
                                      candidates, currentSource, sourceFrameQuality);
 
         // Only check the other field for visible line replacements
@@ -346,13 +335,13 @@ DropOutCorrect::Replacement DropOutCorrect::findReplacementLine(const QVector<QV
             // Look up the field for a replacement
             findPotentialReplacementLine(thisFieldDropouts, dropOutIndex,
                                          otherFieldDropouts, false, otherFieldOffset, -stepAmount,
-                                         firstActiveFieldLine, lastActiveFieldLine,
+                                         videoParameters[0].firstActiveFieldLine, videoParameters[0].lastActiveFieldLine,
                                          candidates, currentSource, sourceFrameQuality);
 
             // Look down the field for a replacement
             findPotentialReplacementLine(thisFieldDropouts, dropOutIndex,
                                          otherFieldDropouts, false, otherFieldOffset + stepAmount, stepAmount,
-                                         firstActiveFieldLine, lastActiveFieldLine,
+                                         videoParameters[0].firstActiveFieldLine, videoParameters[0].lastActiveFieldLine,
                                          candidates, currentSource, sourceFrameQuality);
         }
     }
