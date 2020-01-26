@@ -29,21 +29,25 @@
 #include <array>
 
 // PAL - Filter at Fsc/2 (Fsc = 4433618 (/2 = 2,216,809), sample rate = 17,734,472)
-// 2.2 MHz LPF - 7 Taps
+// 2.2 MHz LPF - 15 Taps
 // import scipy.signal
-// scipy.signal.firwin(7, [2.2e6/17734472], window='hamming')
-static constexpr std::array<double, 7> palLumaFilterCoeffs {
-    0.01976541, 0.0877332, 0.23558317, 0.31383644, 0.23558317, 0.0877332, 0.01976541
+// scipy.signal.firwin(15, [2.2e6/17734472], window='hamming')
+static constexpr std::array<double, 15> palLumaFilterCoeffs {
+    0.00188029,  0.00616523,  0.01927009,  0.04479076,  0.08068761,
+    0.11896474,  0.14846274,  0.15955709,  0.14846274,  0.11896474,
+    0.08068761,  0.04479076,  0.01927009,  0.00616523,  0.00188029
 };
 
 static constexpr auto palLumaFilter = makeFIRFilter(palLumaFilterCoeffs);
 
 // NTSC - Filter at Fsc/2 (Fsc = 3579545 (/2 = 1,789,772.5), sample rate = 14,318,180)
-// 1.8 MHz LPF - 7 Taps
+// 1.8 MHz LPF - 15 Taps
 // import scipy.signal
-// scipy.signal.firwin(7, [1.8e6/14318180], window='hamming')
-static constexpr std::array<double, 7> ntscLumaFilterCoeffs {
-    0.01965292, 0.08757913, 0.23567812, 0.31417965, 0.23567812, 0.08757913, 0.01965292
+// scipy.signal.firwin(15, [1.8e6/14318180], window='hamming')
+static constexpr std::array<double, 15> ntscLumaFilterCoeffs {
+    0.00170818,  0.00592632,  0.01890583,  0.04442077,  0.0805412 ,
+    0.11921885,  0.14910167,  0.16035437,  0.14910167,  0.11921885,
+    0.0805412 ,  0.04442077,  0.01890583,  0.00592632,  0.00170818
 };
 static constexpr auto ntscLumaFilter = makeFIRFilter(ntscLumaFilterCoeffs);
 

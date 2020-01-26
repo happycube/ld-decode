@@ -62,18 +62,6 @@ private:
         bool isSourceCav;
     };
 
-    // Frame differential map
-    struct FrameDiff {
-        QByteArray firstFieldDiff;
-        QByteArray secondFieldDiff;
-    };
-
-    // Dropout metadata
-    struct FrameDropOuts {
-        LdDecodeMetaData::DropOuts firstFieldDropOuts;
-        LdDecodeMetaData::DropOuts secondFieldDropOuts;
-    };
-
     // The frame number is common between sources
     qint32 currentVbiFrameNumber;
 
@@ -81,8 +69,15 @@ private:
     qint32 currentSource;
 
     void performFrameDiffDod(qint32 targetVbiFrame, qint32 dodOnThreshold, bool lumaClip);
-    QVector<qint32> getAvailableSourcesForFrame(qint32 vbiFrameNumber);
+    QVector<SourceVideo::Data> getFieldData(qint32 targetVbiFrame, bool isFirstField);
+    QVector<QVector<qint32> > getFieldDiff(QVector<SourceVideo::Data> &fields, qint32 dodThreshold);
+    void performLumaClip(QVector<SourceVideo::Data> &fields, QVector<QVector<qint32>> &fieldsDiff);
+    QVector<LdDecodeMetaData::DropOuts> getFieldDropouts(QVector<QVector<qint32> > &fieldsDiff);
+    void writeDropoutMetadata(QVector<LdDecodeMetaData::DropOuts> &firstFieldDropouts,
+                              QVector<LdDecodeMetaData::DropOuts> &secondFieldDropouts, qint32 targetVbiFrame);
+    void concatenateFieldDropouts(QVector<LdDecodeMetaData::DropOuts> &dropouts);
 
+    QVector<qint32> getAvailableSourcesForFrame(qint32 vbiFrameNumber);
     bool setDiscTypeAndMaxMinFrameVbi(qint32 sourceNumber);
     qint32 convertVbiFrameNumberToSequential(qint32 vbiFrameNumber, qint32 sourceNumber);
 };
