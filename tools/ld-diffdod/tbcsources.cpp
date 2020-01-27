@@ -363,18 +363,8 @@ void TbcSources::performLumaClip(QVector<SourceVideo::Data> &fields, QVector<QVe
     // Get the metadata for the video parameters (all sources are the same, so just grab from the first)
     LdDecodeMetaData::VideoParameters videoParameters = sourceVideos[0]->ldDecodeMetaData.getVideoParameters();
 
-    qint32 firstActiveFieldLine;
-    qint32 lastActiveFieldLine;
-    if (videoParameters.isSourcePal) {
-        firstActiveFieldLine = 22;
-        lastActiveFieldLine = 308;
-    } else {
-        firstActiveFieldLine = 20;
-        lastActiveFieldLine = 259;
-    }
-
     // Process the fields one line at a time
-    for (qint32 y = firstActiveFieldLine; y < lastActiveFieldLine; y++) {
+    for (qint32 y = videoParameters.firstActiveFieldLine; y < videoParameters.lastActiveFieldLine; y++) {
         qint32 startOfLinePointer = y * videoParameters.fieldWidth;
 
         for (qint32 sourceCounter = 0; sourceCounter < fields.size(); sourceCounter++) {

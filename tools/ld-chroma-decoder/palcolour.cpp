@@ -114,6 +114,10 @@ void PalColour::updateConfiguration(const LdDecodeMetaData::VideoParameters &_vi
     // Build the look-up tables
     buildLookUpTables();
 
+    // Set the frame area
+    configuration.firstActiveLine = videoParameters.firstActiveFrameLine;
+    configuration.lastActiveLine = videoParameters.lastActiveFrameLine;
+
     if (configuration.chromaFilter == transform2DFilter || configuration.chromaFilter == transform3DFilter) {
         // Create the Transform PAL filter
         if (configuration.chromaFilter == transform2DFilter) {
