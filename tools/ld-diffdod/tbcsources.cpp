@@ -509,8 +509,8 @@ void TbcSources::writeDropoutMetadata(QVector<LdDecodeMetaData::DropOuts> &first
                 ldDecodeMetaData.getSecondFieldNumber(convertVbiFrameNumberToSequential(targetVbiFrame, availableSourcesForFrame[sourceNo]));
 
         // Calculate the total number of dropouts detected for the frame
-        qint32 totalFirstDropouts = firstFieldDropouts[sourceNo].startx.size();
-        qint32 totalSecondDropouts = secondFieldDropouts[sourceNo].startx.size();
+        qint32 totalFirstDropouts = firstFieldDropouts[availableSourcesForFrame[sourceNo]].startx.size();
+        qint32 totalSecondDropouts = secondFieldDropouts[availableSourcesForFrame[sourceNo]].startx.size();
 
         qDebug() << "TbcSources::performFrameDiffDod(): Writing source" << availableSourcesForFrame[sourceNo] <<
                     "frame" << targetVbiFrame << "fields" << firstFieldNumber << "/" << secondFieldNumber <<

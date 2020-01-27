@@ -139,6 +139,14 @@ void DiscMapper::removeLeadInOut(DiscMap &discMap)
             discMap.setMarkedForDeletion(frameNumber);
             leadInOutCounter++;
         }
+
+        if (discMap.vbiFrameNumber(frameNumber) == 0) discMap.debugFrameDetails(frameNumber);
+
+        if (!discMap.isLeadInOut(frameNumber) && discMap.isDiscCav() && discMap.vbiFrameNumber(frameNumber) == 0) {
+            qInfo() << "Warning: Frame with illegal CAV frame number of 0 found... Assuming illegal leadin and deleting.";
+            discMap.setMarkedForDeletion(frameNumber);
+            leadInOutCounter++;
+        }
     }
 
     qInfo() << "Removing" << leadInOutCounter << "frames marked as lead in/out";
