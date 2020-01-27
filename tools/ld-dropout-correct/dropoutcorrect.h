@@ -83,7 +83,6 @@ private:
     QAtomicInt& abort;
     CorrectorPool& correctorPool;
 
-    LdDecodeMetaData ldDecodeMetaData;
     QVector<LdDecodeMetaData::VideoParameters> videoParameters;
 
     void correctField(const QVector<QVector<DropOutLocation> > &thisFieldDropouts,
