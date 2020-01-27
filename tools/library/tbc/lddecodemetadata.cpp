@@ -96,13 +96,19 @@ LdDecodeMetaData::VideoParameters LdDecodeMetaData::getVideoParameters()
         // PAL
         videoParameters.firstActiveFieldLine = 22;
         videoParameters.lastActiveFieldLine = 308;
+
+        // Interlaced line 44 is PAL line 23 (the first active half-line)
         videoParameters.firstActiveFrameLine = 44;
+        // Interlaced line 619 is PAL line 623 (the last active half-line)
         videoParameters.lastActiveFrameLine = 620;
     } else {
         // NTSC
         videoParameters.firstActiveFieldLine = 20;
         videoParameters.lastActiveFieldLine = 259;
+
+        // Interlaced line 40 is NTSC line 21 (the closed-caption line before the first active half-line)
         videoParameters.firstActiveFrameLine = 40;
+        // Interlaced line 524 is NTSC line 263 (the last active half-line).
         videoParameters.lastActiveFrameLine = 525;
     }
 

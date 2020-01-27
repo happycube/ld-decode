@@ -66,8 +66,9 @@ public:
 
         bool isMapped;
 
-        // Note: These are psuedo metadata items
-        // The values are populated by the library
+        // Note: These are psuedo metadata items - The values are populated by the library
+        // These are half-open ranges, where lines are numbered sequentially from 0 within
+        // each field or interlaced frame
         qint32 firstActiveFieldLine;
         qint32 lastActiveFieldLine;
         qint32 firstActiveFrameLine;
