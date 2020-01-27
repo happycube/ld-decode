@@ -30,20 +30,9 @@
 
 bool MonoDecoder::configure(const LdDecodeMetaData::VideoParameters &videoParameters) {
     // This decoder works for both PAL and NTSC.
-    // Get the active line range from either Comb or PalColour.
-    qint32 firstActiveLine, lastActiveLine;
-    if (videoParameters.isSourcePal) {
-        PalColour::Configuration palConfig;
-        firstActiveLine = palConfig.firstActiveLine;
-        lastActiveLine = palConfig.lastActiveLine;
-    } else {
-        Comb::Configuration combConfig;
-        firstActiveLine = combConfig.firstActiveLine;
-        lastActiveLine = combConfig.lastActiveLine;
-    }
 
     // Compute cropping parameters
-    setVideoParameters(config, videoParameters, firstActiveLine, lastActiveLine);
+    setVideoParameters(config, videoParameters);
 
     return true;
 }
@@ -72,7 +61,7 @@ void MonoThread::decodeFrames(const QVector<SourceField> &inputFields, qint32 st
 
     for (qint32 fieldIndex = startIndex, frameIndex = 0; fieldIndex < endIndex; fieldIndex += 2, frameIndex++) {
         // Interlace the active lines of the two input fields to produce an output frame
-        for (qint32 y = config.firstActiveLine; y < config.lastActiveLine; y++) {
+        for (qint32 y = config.videoParameters.firstActiveFrameLine; y < config.videoParameters.lastActiveFrameLine; y++) {
             const SourceVideo::Data &inputFieldData = (y % 2) == 0 ? inputFields[fieldIndex].data : inputFields[fieldIndex + 1].data;
 
             // Each quint16 input becomes three quint16 outputs

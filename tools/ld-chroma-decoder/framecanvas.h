@@ -36,8 +36,7 @@ class FrameCanvas {
 public:
     // rgbFrame is the frame to draw upon, and videoParameters gives its dimensions.
     // (Both parameters are captured by reference, not copied.)
-    FrameCanvas(RGBFrame &rgbFrame, const LdDecodeMetaData::VideoParameters &videoParameters,
-                qint32 firstActiveLine, qint32 lastActiveLine);
+    FrameCanvas(RGBFrame &rgbFrame, const LdDecodeMetaData::VideoParameters &videoParameters);
 
     // Return the edges of the active area.
     qint32 top();
@@ -65,8 +64,6 @@ private:
     quint16 *rgbData;
     qint32 rgbSize;
     const LdDecodeMetaData::VideoParameters &videoParameters;
-    qint32 firstActiveLine;
-    qint32 lastActiveLine;
 };
 
 #endif

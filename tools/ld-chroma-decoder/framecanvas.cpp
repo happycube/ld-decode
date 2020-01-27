@@ -28,21 +28,19 @@
 // pre-C++17 compilers
 constexpr FrameCanvas::RGB FrameCanvas::green;
 
-FrameCanvas::FrameCanvas(RGBFrame &_rgbFrame, const LdDecodeMetaData::VideoParameters &_videoParameters,
-                         qint32 _firstActiveLine, qint32 _lastActiveLine)
-    : rgbData(_rgbFrame.data()), rgbSize(_rgbFrame.size()),
-      videoParameters(_videoParameters), firstActiveLine(_firstActiveLine), lastActiveLine(_lastActiveLine)
+FrameCanvas::FrameCanvas(RGBFrame &_rgbFrame, const LdDecodeMetaData::VideoParameters &_videoParameters)
+    : rgbData(_rgbFrame.data()), rgbSize(_rgbFrame.size()), videoParameters(_videoParameters)
 {
 }
 
 qint32 FrameCanvas::top()
 {
-    return firstActiveLine;
+    return videoParameters.firstActiveFrameLine;
 }
 
 qint32 FrameCanvas::bottom()
 {
-    return lastActiveLine;
+    return videoParameters.lastActiveFrameLine;
 }
 
 qint32 FrameCanvas::left()

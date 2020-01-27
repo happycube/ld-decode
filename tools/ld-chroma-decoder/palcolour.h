@@ -67,11 +67,6 @@ public:
         qint32 showPositionX = 200;
         qint32 showPositionY = 200;
 
-        // Interlaced line 44 is PAL line 23 (the first active half-line)
-        qint32 firstActiveLine = 44;
-        // Interlaced line 619 is PAL line 623 (the last active half-line)
-        qint32 lastActiveLine = 620;
-
         qint32 getThresholdsSize() const;
         qint32 getLookBehind() const;
         qint32 getLookAhead() const;

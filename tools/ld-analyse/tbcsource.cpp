@@ -555,23 +555,13 @@ QImage TbcSource::generateQImage(qint32 firstFieldNumber, qint32 secondFieldNumb
         firstField.data = sourceVideo.getVideoField(firstFieldNumber);
         secondField.data = sourceVideo.getVideoField(secondFieldNumber);
 
-        qint32 firstActiveLine, lastActiveLine;
-        RGBFrame rgbFrame;
-
         // Decode colour for the current frame, to RGB 16-16-16 interlaced output
+        RGBFrame rgbFrame;
         if (videoParameters.isSourcePal) {
             // PAL source
-
-            firstActiveLine = palColourConfiguration.firstActiveLine;
-            lastActiveLine = palColourConfiguration.lastActiveLine;
-
             rgbFrame = palColour.decodeFrame(firstField, secondField);
         } else {
             // NTSC source
-
-            firstActiveLine = ntscColour.getConfiguration().firstActiveLine;
-            lastActiveLine = ntscColour.getConfiguration().lastActiveLine;
-
             rgbFrame = ntscColour.decodeFrame(firstField, secondField);
         }
 
@@ -582,7 +572,7 @@ QImage TbcSource::generateQImage(qint32 firstFieldNumber, qint32 secondFieldNumb
         frameImage.fill(Qt::black);
 
         // Copy the RGB16-16-16 data into the RGB888 QImage
-        for (qint32 y = firstActiveLine; y < lastActiveLine; y++) {
+        for (qint32 y = videoParameters.firstActiveFrameLine; y < videoParameters.lastActiveFrameLine; y++) {
             for (qint32 x = videoParameters.activeVideoStart; x < videoParameters.activeVideoEnd; x++) {
                 qint32 pixelOffset = ((y * videoParameters.fieldWidth) + x) * 3;
 

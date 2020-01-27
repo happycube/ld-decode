@@ -157,7 +157,7 @@ void TransformPal3D::filterFields(const QVector<SourceField> &inputFields, qint3
     // (See TransformPal3D member variable documentation for how the tiling works;
     // if you change the Z tiling here, also review getLookBehind/getLookAhead above.)
     for (qint32 tileZ = startIndex - HALFZTILE; tileZ < endIndex; tileZ += HALFZTILE) {
-        for (qint32 tileY = firstActiveLine - HALFYTILE; tileY < lastActiveLine; tileY += HALFYTILE) {
+        for (qint32 tileY = videoParameters.firstActiveFrameLine - HALFYTILE; tileY < videoParameters.lastActiveFrameLine; tileY += HALFYTILE) {
             for (qint32 tileX = videoParameters.activeVideoStart - HALFXTILE; tileX < videoParameters.activeVideoEnd; tileX += HALFXTILE) {
                 // Compute the forward FFT
                 forwardFFTTile(tileX, tileY, tileZ, inputFields);
@@ -180,8 +180,8 @@ void TransformPal3D::filterFields(const QVector<SourceField> &inputFields, qint3
 void TransformPal3D::forwardFFTTile(qint32 tileX, qint32 tileY, qint32 tileZ, const QVector<SourceField> &inputFields)
 {
     // Work out which lines of this tile are within the active region
-    const qint32 startY = qMax(firstActiveLine - tileY, 0);
-    const qint32 endY = qMin(lastActiveLine - tileY, YTILE);
+    const qint32 startY = qMax(videoParameters.firstActiveFrameLine - tileY, 0);
+    const qint32 endY = qMin(videoParameters.lastActiveFrameLine - tileY, YTILE);
 
     // Copy the input signal into fftReal, applying the window function
     for (qint32 z = 0; z < ZTILE; z++) {
@@ -218,8 +218,8 @@ void TransformPal3D::inverseFFTTile(qint32 tileX, qint32 tileY, qint32 tileZ, qi
     // Work out what portion of this tile is inside the active area
     const qint32 startX = qMax(videoParameters.activeVideoStart - tileX, 0);
     const qint32 endX = qMin(videoParameters.activeVideoEnd - tileX, XTILE);
-    const qint32 startY = qMax(firstActiveLine - tileY, 0);
-    const qint32 endY = qMin(lastActiveLine - tileY, YTILE);
+    const qint32 startY = qMax(videoParameters.firstActiveFrameLine - tileY, 0);
+    const qint32 endY = qMin(videoParameters.lastActiveFrameLine - tileY, YTILE);
     const qint32 startZ = qMax(startIndex - tileZ, 0);
     const qint32 endZ = qMin(endIndex - tileZ, ZTILE);
 
@@ -382,7 +382,7 @@ void TransformPal3D::overlayFFTFrame(qint32 positionX, qint32 positionY,
     }
 
     // Create a canvas
-    FrameCanvas canvas(rgbFrame, videoParameters, firstActiveLine, lastActiveLine);
+    FrameCanvas canvas(rgbFrame, videoParameters);
 
     // Outline the selected tile
     canvas.drawRectangle(positionX - 1, positionY - 1, XTILE + 1, YTILE + 1, FrameCanvas::green);

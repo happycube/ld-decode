@@ -60,7 +60,6 @@ public:
     // Values from 0-1 are meaningful, with higher values requiring signals to
     // be more similar to be considered chroma. 0.6 is pyctools-pal's default.
     void updateConfiguration(const LdDecodeMetaData::VideoParameters &videoParameters,
-                             qint32 firstActiveLine, qint32 lastActiveLine,
                              TransformMode mode, double threshold,
                              const QVector<double> &thresholds);
 
@@ -99,8 +98,6 @@ protected:
     // Configuration parameters
     bool configurationSet;
     LdDecodeMetaData::VideoParameters videoParameters;
-    qint32 firstActiveLine;
-    qint32 lastActiveLine;
     QVector<double> thresholds;
     TransformMode mode;
 };

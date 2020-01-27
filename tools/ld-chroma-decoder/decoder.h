@@ -81,16 +81,13 @@ public:
     struct Configuration {
         // Parameters computed from the video metadata
         LdDecodeMetaData::VideoParameters videoParameters;
-        qint32 firstActiveLine;
-        qint32 lastActiveLine;
         qint32 topPadLines;
         qint32 bottomPadLines;
     };
 
     // Compute the output frame size in Configuration, adjusting the active
     // video region as required
-    static void setVideoParameters(Configuration &config, const LdDecodeMetaData::VideoParameters &videoParameters,
-                                   qint32 firstActiveLine, qint32 lastActiveLine);
+    static void setVideoParameters(Configuration &config, const LdDecodeMetaData::VideoParameters &videoParameters);
 
     // Crop a full decoded frame to the output frame size
     static RGBFrame cropOutputFrame(const Configuration &config, const RGBFrame &outputData);

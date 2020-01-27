@@ -83,26 +83,25 @@ private:
     QAtomicInt& abort;
     CorrectorPool& correctorPool;
 
-    LdDecodeMetaData ldDecodeMetaData;
     QVector<LdDecodeMetaData::VideoParameters> videoParameters;
 
     void correctField(const QVector<QVector<DropOutLocation> > &thisFieldDropouts,
                       const QVector<QVector<DropOutLocation> > &otherFieldDropouts,
                       QVector<SourceVideo::Data> &thisFieldData, const QVector<SourceVideo::Data> &otherFieldData,
-                      bool thisFieldIsFirst, bool intraField, QVector<qint32> &availableSourcesForFrame,
-                      QVector<qreal> &sourceFrameQuality, Statistics &statistics);
+                      bool thisFieldIsFirst, bool intraField, const QVector<qint32> &availableSourcesForFrame,
+                      const QVector<qreal> &sourceFrameQuality, Statistics &statistics);
     QVector<DropOutLocation> populateDropoutsVector(LdDecodeMetaData::Field field, bool overCorrect);
     QVector<DropOutLocation> setDropOutLocations(QVector<DropOutLocation> dropOuts);
     Replacement findReplacementLine(const QVector<QVector<DropOutLocation>> &thisFieldDropouts,
                                     const QVector<QVector<DropOutLocation>> &otherFieldDropouts,
                                     qint32 dropOutIndex, bool thisFieldIsFirst, bool matchChromaPhase,
-                                    bool isColourBurst, bool intraField, QVector<qint32> &availableSourcesForFrame,
-                                    QVector<qreal> &sourceFrameQuality);
+                                    bool isColourBurst, bool intraField, const QVector<qint32> &availableSourcesForFrame,
+                                    const QVector<qreal> &sourceFrameQuality);
     void findPotentialReplacementLine(const QVector<QVector<DropOutLocation>> &targetDropouts, qint32 targetIndex,
                                       const QVector<QVector<DropOutLocation>> &sourceDropouts, bool isSameField,
                                       qint32 sourceOffset, qint32 stepAmount,
-                                      qint32 firstActiveFieldLine, qint32 lastActiveFieldLine,
-                                      QVector<Replacement> &candidates, qint32 sourceNo, QVector<qreal> sourceFrameQuality);
+                                      qint32 sourceNo, const QVector<qreal> &sourceFrameQuality,
+                                      QVector<Replacement> &candidates);
     void correctDropOut(const DropOutLocation &dropOut,
                         const Replacement &replacement, const Replacement &chromaReplacement,
                         QVector<SourceVideo::Data> &thisFieldData, const QVector<SourceVideo::Data> &otherFieldData,

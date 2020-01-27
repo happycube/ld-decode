@@ -40,13 +40,10 @@ TransformPal::~TransformPal()
 }
 
 void TransformPal::updateConfiguration(const LdDecodeMetaData::VideoParameters &_videoParameters,
-                                       qint32 _firstActiveLine, qint32 _lastActiveLine,
                                        TransformPal::TransformMode _mode, double threshold,
                                        const QVector<double> &_thresholds)
 {
     videoParameters = _videoParameters;
-    firstActiveLine = _firstActiveLine;
-    lastActiveLine = _lastActiveLine;
     mode = _mode;
 
     // Resize thresholds to match the number of FFT bins we will consider in

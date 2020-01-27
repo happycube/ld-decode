@@ -114,10 +114,6 @@ void PalColour::updateConfiguration(const LdDecodeMetaData::VideoParameters &_vi
     // Build the look-up tables
     buildLookUpTables();
 
-    // Set the frame area
-    configuration.firstActiveLine = videoParameters.firstActiveFrameLine;
-    configuration.lastActiveLine = videoParameters.lastActiveFrameLine;
-
     if (configuration.chromaFilter == transform2DFilter || configuration.chromaFilter == transform3DFilter) {
         // Create the Transform PAL filter
         if (configuration.chromaFilter == transform2DFilter) {
@@ -127,8 +123,7 @@ void PalColour::updateConfiguration(const LdDecodeMetaData::VideoParameters &_vi
         }
 
         // Configure the filter
-        transformPal->updateConfiguration(videoParameters, configuration.firstActiveLine, configuration.lastActiveLine,
-                                          configuration.transformMode, configuration.transformThreshold,
+        transformPal->updateConfiguration(videoParameters, configuration.transformMode, configuration.transformThreshold,
                                           configuration.transformThresholds);
     }
 
@@ -305,8 +300,8 @@ void PalColour::decodeField(const SourceField &inputField, const double *chromaD
     // Pointer to the composite signal data
     const quint16 *compPtr = inputField.data.data();
 
-    const qint32 firstLine = inputField.getFirstActiveLine(configuration.firstActiveLine);
-    const qint32 lastLine = inputField.getLastActiveLine(configuration.lastActiveLine);
+    const qint32 firstLine = inputField.getFirstActiveLine(videoParameters);
+    const qint32 lastLine = inputField.getLastActiveLine(videoParameters);
     for (qint32 fieldLine = firstLine; fieldLine < lastLine; fieldLine++) {
         LineInfo line(fieldLine);
 
@@ -410,8 +405,8 @@ void PalColour::decodeLine(const SourceField &inputField, const ChromaSample *ch
 
     // Get pointers to the surrounding lines of input data.
     // If a line we need is outside the active area, use blackLine instead.
-    const qint32 firstLine = inputField.getFirstActiveLine(configuration.firstActiveLine);
-    const qint32 lastLine = inputField.getLastActiveLine(configuration.lastActiveLine);
+    const qint32 firstLine = inputField.getFirstActiveLine(videoParameters);
+    const qint32 lastLine = inputField.getLastActiveLine(videoParameters);
     const ChromaSample *in0, *in1, *in2, *in3, *in4, *in5, *in6;
     in0 =                                               chromaData +  (line.number      * videoParameters.fieldWidth);
     in1 = (line.number - 1) <  firstLine ? blackLine : (chromaData + ((line.number - 1) * videoParameters.fieldWidth));
