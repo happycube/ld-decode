@@ -320,14 +320,12 @@ DropOutCorrect::Replacement DropOutCorrect::findReplacementLine(const QVector<QV
         // Look up the field for a replacement
         findPotentialReplacementLine(thisFieldDropouts, dropOutIndex,
                                      thisFieldDropouts, true, 0, -stepAmount,
-                                     videoParameters[0].firstActiveFieldLine, videoParameters[0].lastActiveFieldLine,
                                      currentSource, sourceFrameQuality,
                                      candidates);
 
         // Look down the field for a replacement
         findPotentialReplacementLine(thisFieldDropouts, dropOutIndex,
                                      thisFieldDropouts, true, stepAmount, stepAmount,
-                                     videoParameters[0].firstActiveFieldLine, videoParameters[0].lastActiveFieldLine,
                                      currentSource, sourceFrameQuality,
                                      candidates);
 
@@ -338,14 +336,12 @@ DropOutCorrect::Replacement DropOutCorrect::findReplacementLine(const QVector<QV
             // Look up the field for a replacement
             findPotentialReplacementLine(thisFieldDropouts, dropOutIndex,
                                          otherFieldDropouts, false, otherFieldOffset, -stepAmount,
-                                         videoParameters[0].firstActiveFieldLine, videoParameters[0].lastActiveFieldLine,
                                          currentSource, sourceFrameQuality,
                                          candidates);
 
             // Look down the field for a replacement
             findPotentialReplacementLine(thisFieldDropouts, dropOutIndex,
                                          otherFieldDropouts, false, otherFieldOffset + stepAmount, stepAmount,
-                                         videoParameters[0].firstActiveFieldLine, videoParameters[0].lastActiveFieldLine,
                                          currentSource, sourceFrameQuality,
                                          candidates);
         }
@@ -409,7 +405,6 @@ DropOutCorrect::Replacement DropOutCorrect::findReplacementLine(const QVector<QV
 void DropOutCorrect::findPotentialReplacementLine(const QVector<QVector<DropOutLocation>> &targetDropouts, qint32 targetIndex,
                                                   const QVector<QVector<DropOutLocation>> &sourceDropouts, bool isSameField,
                                                   qint32 sourceOffset, qint32 stepAmount,
-                                                  qint32 firstActiveFieldLine, qint32 lastActiveFieldLine,
                                                   qint32 sourceNo, const QVector<qreal> &sourceFrameQuality,
                                                   QVector<Replacement> &candidates)
 {    
@@ -418,13 +413,13 @@ void DropOutCorrect::findPotentialReplacementLine(const QVector<QVector<DropOutL
     if (sourceNo == 0) sourceLine += sourceOffset;
 
     // Is the line within the active range?
-    if (sourceLine < firstActiveFieldLine || sourceLine >= lastActiveFieldLine) {
+    if (sourceLine < videoParameters[sourceNo].firstActiveFieldLine || sourceLine >= videoParameters[sourceNo].lastActiveFieldLine) {
         qDebug() << "Line" << sourceLine << "is not in active range - ignoring";
         return;
     }
 
     // Hunt for a replacement
-    while (sourceLine >= firstActiveFieldLine && sourceLine < lastActiveFieldLine) {
+    while (sourceLine >= videoParameters[sourceNo].firstActiveFieldLine && sourceLine < videoParameters[sourceNo].lastActiveFieldLine) {
         // Is there a dropout that overlaps the one we're trying to replace?
         bool hasOverlap = false;
         for (qint32 sourceIndex = 0; sourceIndex < sourceDropouts[sourceNo].size(); sourceIndex++) {

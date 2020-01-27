@@ -100,7 +100,6 @@ private:
     void findPotentialReplacementLine(const QVector<QVector<DropOutLocation>> &targetDropouts, qint32 targetIndex,
                                       const QVector<QVector<DropOutLocation>> &sourceDropouts, bool isSameField,
                                       qint32 sourceOffset, qint32 stepAmount,
-                                      qint32 firstActiveFieldLine, qint32 lastActiveFieldLine,
                                       qint32 sourceNo, const QVector<qreal> &sourceFrameQuality,
                                       QVector<Replacement> &candidates);
     void correctDropOut(const DropOutLocation &dropOut,
