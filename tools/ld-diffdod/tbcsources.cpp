@@ -509,8 +509,8 @@ void TbcSources::writeDropoutMetadata(QVector<LdDecodeMetaData::DropOuts> &first
                 ldDecodeMetaData.getSecondFieldNumber(convertVbiFrameNumberToSequential(targetVbiFrame, availableSourcesForFrame[sourceNo]));
 
         // Calculate the total number of dropouts detected for the frame
-        qint32 totalFirstDropouts = firstFieldDropouts[sourceNo].startx.size();
-        qint32 totalSecondDropouts = secondFieldDropouts[sourceNo].startx.size();
+        qint32 totalFirstDropouts = firstFieldDropouts[availableSourcesForFrame[sourceNo]].startx.size();
+        qint32 totalSecondDropouts = secondFieldDropouts[availableSourcesForFrame[sourceNo]].startx.size();
 
         qDebug() << "TbcSources::performFrameDiffDod(): Writing source" << availableSourcesForFrame[sourceNo] <<
                     "frame" << targetVbiFrame << "fields" << firstFieldNumber << "/" << secondFieldNumber <<
@@ -663,6 +663,15 @@ bool TbcSources::setDiscTypeAndMaxMinFrameVbi(qint32 sourceNumber)
         timecode.seconds = vbi.clvSec;
         timecode.pictureNumber = vbi.clvPicNo;
         sourceVideos[sourceNumber]->maximumVbiFrameNumber = sourceVideos[sourceNumber]->ldDecodeMetaData.convertClvTimecodeToFrameNumber(timecode);
+    }
+
+    if (sourceVideos[sourceNumber]->isSourceCav) {
+        // If the source is CAV frame numbering should be a minimum of 1 (it
+        // can be 0 for CLV sources)
+        if (sourceVideos[sourceNumber]->minimumVbiFrameNumber < 1) {
+            qCritical() << "CAV start frame of" << sourceVideos[sourceNumber]->minimumVbiFrameNumber << "is out of bounds (should be 1 or above)";
+            return false;
+        }
     }
 
     qInfo() << "VBI frame number range is" << sourceVideos[sourceNumber]->minimumVbiFrameNumber << "to" <<
