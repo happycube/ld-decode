@@ -665,6 +665,15 @@ bool TbcSources::setDiscTypeAndMaxMinFrameVbi(qint32 sourceNumber)
         sourceVideos[sourceNumber]->maximumVbiFrameNumber = sourceVideos[sourceNumber]->ldDecodeMetaData.convertClvTimecodeToFrameNumber(timecode);
     }
 
+    if (sourceVideos[sourceNumber]->isSourceCav) {
+        // If the source is CAV frame numbering should be a minimum of 1 (it
+        // can be 0 for CLV sources)
+        if (sourceVideos[sourceNumber]->minimumVbiFrameNumber < 1) {
+            qCritical() << "CAV start frame of" << sourceVideos[sourceNumber]->minimumVbiFrameNumber << "is out of bounds (should be 1 or above)";
+            return false;
+        }
+    }
+
     qInfo() << "VBI frame number range is" << sourceVideos[sourceNumber]->minimumVbiFrameNumber << "to" <<
         sourceVideos[sourceNumber]->maximumVbiFrameNumber;
 
