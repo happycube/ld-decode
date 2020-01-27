@@ -54,11 +54,6 @@ public:
         bool use3D = false;
         bool showOpticalFlowMap = false;
 
-        // Interlaced line 40 is NTSC line 21 (the closed-caption line before the first active half-line)
-        qint32 firstActiveLine = 40;
-        // Interlaced line 524 is NTSC line 263 (the last active half-line).
-        qint32 lastActiveLine = 525;
-
         qreal cNRLevel = 0.0;
         qreal yNRLevel = 1.0;
     };

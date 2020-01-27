@@ -135,8 +135,8 @@ void TransformPal2D::filterFields(const QVector<SourceField> &inputFields, qint3
 // Process one field, writing the reuslt into chromaBuf[outputIndex]
 void TransformPal2D::filterField(const SourceField& inputField, qint32 outputIndex)
 {
-    const qint32 firstFieldLine = inputField.getFirstActiveLine(firstActiveLine);
-    const qint32 lastFieldLine = inputField.getLastActiveLine(lastActiveLine);
+    const qint32 firstFieldLine = inputField.getFirstActiveLine(videoParameters);
+    const qint32 lastFieldLine = inputField.getLastActiveLine(videoParameters);
 
     // Iterate through the overlapping tile positions, covering the active area.
     // (See TransformPal2D member variable documentation for how the tiling works.)
@@ -327,8 +327,8 @@ void TransformPal2D::overlayFFTFrame(qint32 positionX, qint32 positionY,
 
     // Work out which field lines to use (as the input is in frame lines)
     const SourceField &inputField = inputFields[fieldIndex];
-    const qint32 firstFieldLine = inputField.getFirstActiveLine(firstActiveLine);
-    const qint32 lastFieldLine = inputField.getLastActiveLine(lastActiveLine);
+    const qint32 firstFieldLine = inputField.getFirstActiveLine(videoParameters);
+    const qint32 lastFieldLine = inputField.getLastActiveLine(videoParameters);
     const qint32 tileY = positionY / 2;
     const qint32 startY = qMax(firstFieldLine - tileY, 0);
     const qint32 endY = qMin(lastFieldLine - tileY, YTILE);
@@ -344,7 +344,7 @@ void TransformPal2D::overlayFFTFrame(qint32 positionX, qint32 positionY,
     }
 
     // Create a canvas
-    FrameCanvas canvas(rgbFrame, videoParameters, firstActiveLine, lastActiveLine);
+    FrameCanvas canvas(rgbFrame, videoParameters);
 
     // Outline the selected tile
     canvas.drawRectangle(positionX - 1, positionY + inputField.getOffset() - 1, XTILE + 1, (YTILE * 2) + 1, FrameCanvas::green);

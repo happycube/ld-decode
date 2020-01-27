@@ -41,7 +41,7 @@ bool NtscDecoder::configure(const LdDecodeMetaData::VideoParameters &videoParame
     }
 
     // Compute cropping parameters
-    setVideoParameters(config, videoParameters, config.combConfig.firstActiveLine, config.combConfig.lastActiveLine);
+    setVideoParameters(config, videoParameters);
 
     return true;
 }

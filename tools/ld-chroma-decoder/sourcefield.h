@@ -49,12 +49,12 @@ struct SourceField {
     }
 
     // Return the first/last active line numbers within this field's data,
-    // given the first/last frame line numbers.
-    qint32 getFirstActiveLine(qint32 firstActiveFrameLine) const {
-        return (firstActiveFrameLine + 1 - getOffset()) / 2;
+    // given the video parameters.
+    qint32 getFirstActiveLine(const LdDecodeMetaData::VideoParameters &videoParameters) const {
+        return (videoParameters.firstActiveFrameLine + 1 - getOffset()) / 2;
     }
-    qint32 getLastActiveLine(qint32 lastActiveFrameLine) const {
-        return (lastActiveFrameLine + 1 - getOffset()) / 2;
+    qint32 getLastActiveLine(const LdDecodeMetaData::VideoParameters &videoParameters) const {
+        return (videoParameters.lastActiveFrameLine + 1 - getOffset()) / 2;
     }
 };
 

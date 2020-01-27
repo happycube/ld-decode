@@ -36,12 +36,8 @@ qint32 Decoder::getLookAhead() const
     return 0;
 }
 
-void Decoder::setVideoParameters(Decoder::Configuration &config, const LdDecodeMetaData::VideoParameters &videoParameters,
-                                 qint32 firstActiveLine, qint32 lastActiveLine) {
-
+void Decoder::setVideoParameters(Decoder::Configuration &config, const LdDecodeMetaData::VideoParameters &videoParameters) {
     config.videoParameters = videoParameters;
-    config.firstActiveLine = firstActiveLine;
-    config.lastActiveLine = lastActiveLine;
     config.topPadLines = 0;
     config.bottomPadLines = 0;
 
@@ -65,7 +61,8 @@ void Decoder::setVideoParameters(Decoder::Configuration &config, const LdDecodeM
     // Insert empty padding lines so the height is divisible by 8
     qint32 outputHeight;
     while (true) {
-        outputHeight = config.topPadLines + (config.lastActiveLine - config.firstActiveLine) + config.bottomPadLines;
+        const qint32 numActiveLines = videoParameters.lastActiveFrameLine - videoParameters.firstActiveFrameLine;
+        outputHeight = config.topPadLines + numActiveLines + config.bottomPadLines;
         if ((outputHeight % 8) == 0) {
             break;
         }
@@ -97,7 +94,7 @@ RGBFrame Decoder::cropOutputFrame(const Decoder::Configuration &config, const RG
     }
 
     // Copy the active region from the decoded image
-    for (qint32 y = config.firstActiveLine; y < config.lastActiveLine; y++) {
+    for (qint32 y = config.videoParameters.firstActiveFrameLine; y < config.videoParameters.lastActiveFrameLine; y++) {
         croppedData.append(outputData.mid((y * config.videoParameters.fieldWidth * 3) + (activeVideoStart * 3),
                                           outputLineLength));
     }
