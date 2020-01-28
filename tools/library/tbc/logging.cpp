@@ -28,6 +28,7 @@
 static bool showDebug = false;
 static bool saveDebug = false;
 static bool quietDebug = false;
+static bool firstDebug = true;
 static QFile *debugFile;
 
 // Define the standard logging command line options
@@ -73,12 +74,20 @@ void debugOutputHandler(QtMsgType type, const QMessageLogContext &context, const
 
     // If quiet mode is set, suppress all output
     if (!quietDebug) {
+        // First debug output?
+        if (firstDebug) {
+            firstDebug = false;
+            QTextStream(stderr) << QString("Debug: Version - Git branch: %1 / commit: %2\n").arg(APP_BRANCH, APP_COMMIT);
+        }
+
         // Display the output message on stderr
         if (showDebug || (type != QtDebugMsg)) QTextStream(stderr) << outputMessage;
     }
 
     // Optional output to file
-    if (saveDebug) QTextStream(debugFile) << outputMessage;
+    if (saveDebug) {
+        QTextStream(debugFile) << outputMessage;
+    }
 
     // If the error was fatal, then we should abort
     if (type == QtFatalMsg) abort();
