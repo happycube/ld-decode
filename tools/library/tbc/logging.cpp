@@ -75,7 +75,7 @@ void debugOutputHandler(QtMsgType type, const QMessageLogContext &context, const
     // If quiet mode is set, suppress all output
     if (!quietDebug) {
         // First debug output?
-        if (firstDebug) {
+        if (firstDebug && showDebug) {
             firstDebug = false;
             QTextStream(stderr) << QString("Debug: Version - Git branch: %1 / commit: %2\n").arg(APP_BRANCH, APP_COMMIT);
         }
