@@ -16,6 +16,10 @@ DESTDIR =
 PYTHON3 ?= python3
 QMAKE ?= qmake
 
+### Get the current git commit information ###
+BRANCH = $(shell git rev-parse --abbrev-ref HEAD)
+COMMIT = $(shell git rev-parse --short HEAD)
+
 ### Targets for users to invoke ###
 
 all: build-helpers build-python build-tools
@@ -60,7 +64,7 @@ clean-python:
 ### Qt-based tools ###
 
 build-tools:
-	cd tools && $(QMAKE) -recursive PREFIX="$(prefix)"
+	cd tools && $(QMAKE) -recursive PREFIX="$(prefix)" BRANCH="$(BRANCH)" COMMIT="$(COMMIT)"
 	$(MAKE) -C tools
 
 install-tools:

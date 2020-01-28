@@ -38,6 +38,16 @@ HEADERS += \
 INCLUDEPATH += ../library/filter
 INCLUDEPATH += ../library/tbc
 
+# Include git information definitions
+isEmpty(BRANCH) {
+    BRANCH = "unknown"
+}
+isEmpty(COMMIT) {
+    COMMIT = "unknown"
+}
+DEFINES += APP_BRANCH=\"\\\"$${BRANCH}\\\"\" \
+    APP_COMMIT=\"\\\"$${COMMIT}\\\"\"
+
 # Rules for installation
 isEmpty(PREFIX) {
     PREFIX = /usr/local
