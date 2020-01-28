@@ -1,9 +1,10 @@
-from lddecode.core import RFParams_PAL,SysParams_PAL
+from lddecode.core import RFParams_PAL,RFParams_NTSC,SysParams_PAL,SysParams_NTSC
 
 # We base the parameters off the original laserdisc ones and override the ones
 # we need.
 # NOTE: (This requires python 3.5+)
 RFParams_PAL_VHS = {**RFParams_PAL}
+RFParams_NTSC_VHS = {**RFParams_NTSC}
 
 # Tape-specific paramaters that differs from the laserdisc analogues
 # Video Y deemphasis
@@ -23,8 +24,20 @@ RFParams_PAL_VHS['video_lpf_freq'] = 3600000
 # Order may be fine as is.
 #RFParams_PAL_VHS['video_lpf_order'] = 9
 
+# Band-pass filter for Video rf.
+# TODO: Needs tweaking
+RFParams_NTSC_VHS['video_bpf_low'] = 3300000
+RFParams_NTSC_VHS['video_bpf_high'] = 5000000
+
+RFParams_NTSC_VHS['video_bpf_order'] = 2
+
+# Low-pass filter on Y after demodulation
+RFParams_NTSC_VHS['video_lpf_freq'] = 3600000
+# Order may be fine as is.
+#RFParams_PAL_VHS['video_lpf_order'] = 9
 
 SysParams_PAL_VHS = {**SysParams_PAL}
+SysParams_NTSC_VHS = {**SysParams_NTSC}
 
 #0 IRE level after demodulation
 SysParams_PAL_VHS['ire0'] = 4100000
@@ -33,6 +46,15 @@ SysParams_PAL_VHS['ire0'] = 4100000
 SysParams_PAL_VHS['hz_ire'] = 700000 / 100.0
 
 SysParams_PAL_VHS['max_ire'] = 100 # Top/white point defined by the standard 4.8 MHz
+
+#0 IRE level after demodulation
+SysParams_NTSC_VHS['ire0'] = 3700000
+
+# frequency/ire IRE change pr frequency (Is this labeled correctly?)
+SysParams_NTSC_VHS['hz_ire'] = 700000 / 100.0
+
+SysParams_NTSC_VHS['max_ire'] = 100 # Top/white point defined by the standard 4.8 MHz
+
 
 # Heterodyned color carrier frequency in Mhz.
 # On VHS the same frequency is used for both NTSC and PAL.

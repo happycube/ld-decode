@@ -225,6 +225,38 @@ class FieldPALVHS(ldd.FieldPAL):
         # Set this to a constant value for now to avoid the comb filter messing with chroma levels.
         return 1.0
 
+class FieldNTSCVHS(ldd.FieldNTSC):
+    def __init__(self, *args, **kwargs):
+        super(FieldNTSCVHS, self).__init__(*args, **kwargs)
+        self.fieldPhaseID = 1
+
+    def refine_linelocs_burst(self, linelocs = None):
+        """Override this as it's LD specific
+        At some point in the future we could maybe use the burst location to improve hsync accuracy,
+        but ignore it for now.
+        """
+        if linelocs is None:
+            linelocs = self.linelocs2
+        else:
+            linelocs = linelocs.copy()
+
+        # self.Burstlevel is set to the second parameter,
+        # but it does not seem to be used for anything, so leave it as 'None'.
+        return linelocs,None
+
+    def calc_burstmedian(self):
+        # Set this to a constant value for now to avoid the comb filter messing with chroma levels.
+        return 1.0
+
+    def downscale(self, linesoffset = 0, final = False, *args, **kwargs):
+        dsout, dsaudio, dsefm = super(FieldNTSCVHS, self).downscale(linesoffset,
+                                                                    final, *args, **kwargs)
+        ## TEMPORARY
+        dschroma = np.zeros(dsout.size, dtype=np.double)#self.processChroma()
+
+        return (dsout, dschroma), dsaudio, dsefm
+
+
 # Superclass to override laserdisc-specific parts of ld-decode with stuff that works for VHS
 #
 # We do this simply by using inheritance and overriding functions. This results in some redundant
@@ -237,7 +269,12 @@ class VHSDecode(ldd.LDdecode):
                                         system = system, doDOD = doDOD, threads = 1)
         # Overwrite the rf decoder with the VHS-altered one
         self.rf = VHSRFDecode(system = system, inputfreq = inputfreq, track_phase = track_phase)
-        self.FieldClass = FieldPALVHS
+        if system == 'PAL':
+            self.FieldClass = FieldPALVHS
+        elif system == 'NTSC':
+            self.FieldClass = FieldNTSCVHS
+        else:
+            raise Exception("Unknown video system!", system)
         self.demodcache = ldd.DemodCache(self.rf, self.infile, self.freader,
                                      num_worker_threads=self.numthreads)
 
@@ -296,6 +333,9 @@ class VHSDecode(ldd.LDdecode):
         setattr(self, self.outfile_chroma, None)
         super(VHSDecode, self).close()
 
+    def computeMetricsNTSC(self, metrics, f, fp = None):
+        return None
+
 class VHSRFDecode(ldd.RFDecode):
     def __init__(self, inputfreq = 40, system = 'NTSC', track_phase = 0):
 
@@ -310,9 +350,11 @@ class VHSRFDecode(ldd.RFDecode):
                 # Give the decoder it's separate own full copy to be on the safe side.
             self.SysParams = copy.deepcopy(vhs_formats.SysParams_PAL_VHS)
             self.DecoderParams = copy.deepcopy(vhs_formats.RFParams_PAL_VHS)
+        elif system == 'NTSC':
+            self.SysParams = copy.deepcopy(vhs_formats.SysParams_NTSC_VHS)
+            self.DecoderParams = copy.deepcopy(vhs_formats.RFParams_NTSC_VHS)
         else:
-            print("Non-PAL Not implemented yet!")
-            exit(1)
+            raise Exception("Unknown video system! ", system)
 
         # Lastly we re-create the filters with the new parameters.
         self.computevideofilters()
