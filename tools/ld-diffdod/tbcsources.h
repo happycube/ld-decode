@@ -70,12 +70,12 @@ private:
 
     void performFrameDiffDod(qint32 targetVbiFrame, qint32 dodOnThreshold, bool lumaClip);
     QVector<SourceVideo::Data> getFieldData(qint32 targetVbiFrame, bool isFirstField);
-    QVector<QVector<qint32> > getFieldDiff(QVector<SourceVideo::Data> &fields, qint32 dodThreshold);
-    void performLumaClip(QVector<SourceVideo::Data> &fields, QVector<QVector<qint32>> &fieldsDiff);
-    QVector<LdDecodeMetaData::DropOuts> getFieldDropouts(QVector<QVector<qint32> > &fieldsDiff);
-    void writeDropoutMetadata(QVector<LdDecodeMetaData::DropOuts> &firstFieldDropouts,
-                              QVector<LdDecodeMetaData::DropOuts> &secondFieldDropouts, qint32 targetVbiFrame);
-    void concatenateFieldDropouts(QVector<LdDecodeMetaData::DropOuts> &dropouts);
+    QVector<QVector<qint32> > getFieldDiff(qint32 targetVbiFrame, QVector<SourceVideo::Data> &fields, qint32 dodThreshold);
+    void performLumaClip(qint32 targetVbiFrame, QVector<SourceVideo::Data> &fields, QVector<QVector<qint32>> &fieldsDiff);
+    QVector<LdDecodeMetaData::DropOuts> getFieldDropouts(qint32 targetVbiFrame, QVector<QVector<qint32> > &fieldsDiff);
+    void writeDropoutMetadata(qint32 targetVbiFrame, QVector<LdDecodeMetaData::DropOuts> &firstFieldDropouts,
+                              QVector<LdDecodeMetaData::DropOuts> &secondFieldDropouts);
+    void concatenateFieldDropouts(qint32 targetVbiFrame, QVector<LdDecodeMetaData::DropOuts> &dropouts);
 
     QVector<qint32> getAvailableSourcesForFrame(qint32 vbiFrameNumber);
     bool setDiscTypeAndMaxMinFrameVbi(qint32 sourceNumber);
