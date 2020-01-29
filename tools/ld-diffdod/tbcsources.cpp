@@ -289,26 +289,27 @@ QVector<SourceVideo::Data> TbcSources::getFieldData(qint32 targetVbiFrame, bool 
     QVector<quint16*> sourceFirstFieldPointer;
     sourceFirstFieldPointer.resize(getNumberOfAvailableSources());
 
-    for (qint32 sourceNo = 0; sourceNo < availableSourcesForFrame.size(); sourceNo++) {
+    for (qint32 sourcePointer = 0; sourcePointer < availableSourcesForFrame.size(); sourcePointer++) {
+        qint32 sourceNo = availableSourcesForFrame[sourcePointer]; // Get the actual source
         qint32 fieldNumber = -1;
-        if (isFirstField) fieldNumber = sourceVideos[availableSourcesForFrame[sourceNo]]->
-                ldDecodeMetaData.getFirstFieldNumber(convertVbiFrameNumberToSequential(targetVbiFrame, availableSourcesForFrame[sourceNo]));
-        else fieldNumber = sourceVideos[availableSourcesForFrame[sourceNo]]->
-                ldDecodeMetaData.getSecondFieldNumber(convertVbiFrameNumberToSequential(targetVbiFrame, availableSourcesForFrame[sourceNo]));
+        if (isFirstField) fieldNumber = sourceVideos[sourceNo]->
+                ldDecodeMetaData.getFirstFieldNumber(convertVbiFrameNumberToSequential(targetVbiFrame, sourceNo));
+        else fieldNumber = sourceVideos[sourceNo]->
+                ldDecodeMetaData.getSecondFieldNumber(convertVbiFrameNumberToSequential(targetVbiFrame, sourceNo));
 
         // Copy the data locally
-        fields[availableSourcesForFrame[sourceNo]] = (sourceVideos[availableSourcesForFrame[sourceNo]]->sourceVideo.getVideoField(fieldNumber));
+        fields[sourceNo] = (sourceVideos[sourceNo]->sourceVideo.getVideoField(fieldNumber));
 
         // Filter out the chroma information from the fields leaving just luma
         Filters filters;
         if (videoParameters.isSourcePal) {
-            filters.palLumaFirFilter(fields[availableSourcesForFrame[sourceNo]].data(), videoParameters.fieldWidth * videoParameters.fieldHeight);
+            filters.palLumaFirFilter(fields[sourceNo].data(), videoParameters.fieldWidth * videoParameters.fieldHeight);
         } else {
-            filters.ntscLumaFirFilter(fields[availableSourcesForFrame[sourceNo]].data(), videoParameters.fieldWidth * videoParameters.fieldHeight);
+            filters.ntscLumaFirFilter(fields[sourceNo].data(), videoParameters.fieldWidth * videoParameters.fieldHeight);
         }
 
         // Remove the existing field dropout metadata for the field
-        sourceVideos[availableSourcesForFrame[sourceNo]]->ldDecodeMetaData.clearFieldDropOuts(fieldNumber);
+        sourceVideos[sourceNo]->ldDecodeMetaData.clearFieldDropOuts(fieldNumber);
     }
 
     return fields;
@@ -329,8 +330,8 @@ QVector<QVector<qint32>> TbcSources::getFieldDiff(qint32 targetVbiFrame, QVector
     fieldDiff.resize(getNumberOfAvailableSources());
 
     // Set the diff vector elements to zero (and resize the sub-vectors)
-    for (qint32 sourceNo = 0; sourceNo < availableSourcesForFrame.size(); sourceNo++) {
-        fieldDiff[availableSourcesForFrame[sourceNo]].fill(0, videoParameters.fieldHeight * videoParameters.fieldWidth);
+    for (qint32 sourcePointer = 0; sourcePointer < availableSourcesForFrame.size(); sourcePointer++) {
+        fieldDiff[availableSourcesForFrame[sourcePointer]].fill(0, videoParameters.fieldHeight * videoParameters.fieldWidth);
     }
 
     // Process the fields one line at a time
@@ -340,19 +341,21 @@ QVector<QVector<qint32>> TbcSources::getFieldDiff(qint32 targetVbiFrame, QVector
         // Compare all combinations of source and target field lines
         // Note: the source is the field line we are building a DO map for, target is the field line we are
         // comparing the source to.
-        for (qint32 sourceNo = 0; sourceNo < availableSourcesForFrame.size(); sourceNo++) {
-            for (qint32 targetCounter = 0; targetCounter < availableSourcesForFrame.size(); targetCounter++) {
-                if (availableSourcesForFrame[sourceNo] != availableSourcesForFrame[targetCounter]) {
+        for (qint32 sourcePointer = 0; sourcePointer < availableSourcesForFrame.size(); sourcePointer++) {
+            qint32 sourceNo = availableSourcesForFrame[sourcePointer]; // Get the actual source
+            for (qint32 targetPointer = 0; targetPointer < availableSourcesForFrame.size(); targetPointer++) {
+                qint32 targetNo = availableSourcesForFrame[targetPointer]; // Get the actual target
+                if (sourceNo != targetNo) {
                     for (qint32 x = 0; x < videoParameters.fieldWidth; x++) {
                         // Get the IRE values for target and source fields, cast to 32 bit signed
-                        qint32 targetIre = static_cast<qint32>(fields[availableSourcesForFrame[targetCounter]][x + startOfLinePointer]);
-                        qint32 sourceIre = static_cast<qint32>(fields[availableSourcesForFrame[sourceNo]][x + startOfLinePointer]);
+                        qint32 targetIre = static_cast<qint32>(fields[targetNo][x + startOfLinePointer]);
+                        qint32 sourceIre = static_cast<qint32>(fields[sourceNo][x + startOfLinePointer]);
 
                         // Diff the 16-bit pixel values of the first fields
                         qint32 difference = abs(targetIre - sourceIre);
 
                         // If the source and target differ, increment the fieldDiff
-                        if (difference > dodThreshold) fieldDiff[availableSourcesForFrame[sourceNo]][x + startOfLinePointer] += 1;
+                        if (difference > dodThreshold) fieldDiff[sourceNo][x + startOfLinePointer] += 1;
                     }
                 }
             }
@@ -375,14 +378,16 @@ void TbcSources::performLumaClip(qint32 targetVbiFrame, QVector<SourceVideo::Dat
     for (qint32 y = videoParameters.firstActiveFieldLine; y < videoParameters.lastActiveFieldLine; y++) {
         qint32 startOfLinePointer = y * videoParameters.fieldWidth;
 
-        for (qint32 sourceNo = 0; sourceNo < availableSourcesForFrame.size(); sourceNo++) {
+        for (qint32 sourcePointer = 0; sourcePointer < availableSourcesForFrame.size(); sourcePointer++) {
+            qint32 sourceNo = availableSourcesForFrame[sourcePointer]; // Get the actual source
+
             // Set the clipping levels
             qint32 blackClipLevel = videoParameters.black16bIre - 4000;
             qint32 whiteClipLevel = videoParameters.white16bIre + 4000;
 
             for (qint32 x = videoParameters.activeVideoStart; x < videoParameters.activeVideoEnd; x++) {
                 // Get the IRE value for the source field, cast to 32 bit signed
-                qint32 sourceIre = static_cast<qint32>(fields[availableSourcesForFrame[sourceNo]][x + startOfLinePointer]);
+                qint32 sourceIre = static_cast<qint32>(fields[sourceNo][x + startOfLinePointer]);
 
                 // Check for a luma clip event
                 if ((sourceIre < blackClipLevel) || (sourceIre > whiteClipLevel)) {
@@ -399,14 +404,14 @@ void TbcSources::performLumaClip(qint32 targetVbiFrame, QVector<SourceVideo::Dat
                     qint32 endX = x;
 
                     for (qint32 i = x; i > minX; i--) {
-                        qint32 ire = static_cast<qint32>(fields[availableSourcesForFrame[sourceNo]][x + startOfLinePointer]);
+                        qint32 ire = static_cast<qint32>(fields[sourceNo][x + startOfLinePointer]);
                         if (ire < videoParameters.black16bIre || ire > videoParameters.white16bIre) {
                             startX = i;
                         }
                     }
 
                     for (qint32 i = x+1; i < maxX; i++) {
-                        qint32 ire = static_cast<qint32>(fields[availableSourcesForFrame[sourceNo]][x + startOfLinePointer]);
+                        qint32 ire = static_cast<qint32>(fields[sourceNo][x + startOfLinePointer]);
                         if (ire < videoParameters.black16bIre || ire > videoParameters.white16bIre) {
                             endX = i;
                         }
@@ -414,7 +419,7 @@ void TbcSources::performLumaClip(qint32 targetVbiFrame, QVector<SourceVideo::Dat
 
                     // Mark the dropout
                     for (qint32 i = startX; i < endX; i++) {
-                        fieldsDiff[availableSourcesForFrame[sourceNo]][i + startOfLinePointer] += 255;
+                        fieldsDiff[sourceNo][i + startOfLinePointer] += 255;
                     }
 
                     x = x + range;
@@ -456,7 +461,9 @@ QVector<LdDecodeMetaData::DropOuts> TbcSources::getFieldDropouts(qint32 targetVb
         qint32 diffCompareThreshold = availableSourcesForFrame.size() - 2;
 
         // Process each source line in turn
-        for (qint32 sourceNo = 0; sourceNo < availableSourcesForFrame.size(); sourceNo++) {
+        for (qint32 sourcePointer = 0; sourcePointer < availableSourcesForFrame.size(); sourcePointer++) {
+            qint32 sourceNo = availableSourcesForFrame[sourcePointer]; // Get the actual source
+
             // Mark the individual dropouts
             qint32 doCounter = 0;
             qint32 minimumDetectLength = 5;
@@ -468,15 +475,15 @@ QVector<LdDecodeMetaData::DropOuts> TbcSources::getFieldDropouts(qint32 targetVb
             // active video area
             for (qint32 x = areaStart; x < areaEnd; x++) {
                 // Compare field dot to threshold
-                if (static_cast<qint32>(fieldsDiff[availableSourcesForFrame[sourceNo]][x + startOfLinePointer]) <= diffCompareThreshold) {
+                if (static_cast<qint32>(fieldsDiff[sourceNo][x + startOfLinePointer]) <= diffCompareThreshold) {
                     // Current X is not a dropout
                     if (doCounter > 0) {
                         doCounter--;
                         if (doCounter == 0) {
                             // Mark the previous x as the end of the dropout
-                            frameDropouts[availableSourcesForFrame[sourceNo]].startx.append(doStart);
-                            frameDropouts[availableSourcesForFrame[sourceNo]].endx.append(x - 1);
-                            frameDropouts[availableSourcesForFrame[sourceNo]].fieldLine.append(doFieldLine);
+                            frameDropouts[sourceNo].startx.append(doStart);
+                            frameDropouts[sourceNo].endx.append(x - 1);
+                            frameDropouts[sourceNo].fieldLine.append(doFieldLine);
                         }
                     }
                 } else {
@@ -493,9 +500,9 @@ QVector<LdDecodeMetaData::DropOuts> TbcSources::getFieldDropouts(qint32 targetVb
             if (doCounter > 0) {
                 doCounter = 0;
 
-                frameDropouts[availableSourcesForFrame[sourceNo]].startx.append(doStart);
-                frameDropouts[availableSourcesForFrame[sourceNo]].endx.append(areaEnd);
-                frameDropouts[availableSourcesForFrame[sourceNo]].fieldLine.append(doFieldLine);
+                frameDropouts[sourceNo].startx.append(doStart);
+                frameDropouts[sourceNo].endx.append(areaEnd);
+                frameDropouts[sourceNo].fieldLine.append(doFieldLine);
             }
 
         } // Next source
@@ -511,24 +518,26 @@ void TbcSources::writeDropoutMetadata(qint32 targetVbiFrame, QVector<LdDecodeMet
     QVector<qint32> availableSourcesForFrame = getAvailableSourcesForFrame(targetVbiFrame);
 
     // Write the first and second field line metadata back to the source
-    for (qint32 sourceNo = 0; sourceNo < availableSourcesForFrame.size(); sourceNo++) {
+    for (qint32 sourcePointer = 0; sourcePointer < availableSourcesForFrame.size(); sourcePointer++) {
+        qint32 sourceNo = availableSourcesForFrame[sourcePointer]; // Get the actual source
+
         // Get the required field numbers
-        qint32 firstFieldNumber = sourceVideos[availableSourcesForFrame[sourceNo]]->
-                ldDecodeMetaData.getFirstFieldNumber(convertVbiFrameNumberToSequential(targetVbiFrame, availableSourcesForFrame[sourceNo]));
-        qint32 secondFieldNumber = sourceVideos[availableSourcesForFrame[sourceNo]]->
-                ldDecodeMetaData.getSecondFieldNumber(convertVbiFrameNumberToSequential(targetVbiFrame, availableSourcesForFrame[sourceNo]));
+        qint32 firstFieldNumber = sourceVideos[sourceNo]->
+                ldDecodeMetaData.getFirstFieldNumber(convertVbiFrameNumberToSequential(targetVbiFrame, sourceNo));
+        qint32 secondFieldNumber = sourceVideos[sourceNo]->
+                ldDecodeMetaData.getSecondFieldNumber(convertVbiFrameNumberToSequential(targetVbiFrame, sourceNo));
 
         // Calculate the total number of dropouts detected for the frame
-        qint32 totalFirstDropouts = firstFieldDropouts[availableSourcesForFrame[sourceNo]].startx.size();
-        qint32 totalSecondDropouts = secondFieldDropouts[availableSourcesForFrame[sourceNo]].startx.size();
+        qint32 totalFirstDropouts = firstFieldDropouts[sourceNo].startx.size();
+        qint32 totalSecondDropouts = secondFieldDropouts[sourceNo].startx.size();
 
-        qDebug() << "TbcSources::performFrameDiffDod(): Writing source" << availableSourcesForFrame[sourceNo] <<
+        qDebug() << "TbcSources::performFrameDiffDod(): Writing source" << sourceNo <<
                     "frame" << targetVbiFrame << "fields" << firstFieldNumber << "/" << secondFieldNumber <<
                     "- Dropout records" << totalFirstDropouts << "/" << totalSecondDropouts;
 
         // Write the metadata
-        sourceVideos[availableSourcesForFrame[sourceNo]]->ldDecodeMetaData.updateFieldDropOuts(firstFieldDropouts[availableSourcesForFrame[sourceNo]], firstFieldNumber);
-        sourceVideos[availableSourcesForFrame[sourceNo]]->ldDecodeMetaData.updateFieldDropOuts(secondFieldDropouts[availableSourcesForFrame[sourceNo]], secondFieldNumber);
+        sourceVideos[sourceNo]->ldDecodeMetaData.updateFieldDropOuts(firstFieldDropouts[sourceNo], firstFieldNumber);
+        sourceVideos[sourceNo]->ldDecodeMetaData.updateFieldDropOuts(secondFieldDropouts[sourceNo], secondFieldNumber);
     }
 }
 
@@ -545,20 +554,22 @@ void TbcSources::concatenateFieldDropouts(qint32 targetVbiFrame, QVector<LdDecod
     // concatenated together
     qint32 minimumGap = 50;
 
-    for (qint32 sourceNo = 0; sourceNo < availableSourcesForFrame.size(); sourceNo++) {
+    for (qint32 sourcePointer = 0; sourcePointer < availableSourcesForFrame.size(); sourcePointer++) {
+        qint32 sourceNo = availableSourcesForFrame[sourcePointer]; // Get the actual source
+
         // Start from 1 as 0 has no previous dropout
         qint32 i = 1;
-        while (i < dropouts[availableSourcesForFrame[sourceNo]].startx.size()) {
+        while (i < dropouts[sourceNo].startx.size()) {
             // Is the current dropout on the same field line as the last?
-            if (dropouts[availableSourcesForFrame[sourceNo]].fieldLine[i - 1] == dropouts[availableSourcesForFrame[sourceNo]].fieldLine[i]) {
-                if ((dropouts[availableSourcesForFrame[sourceNo]].endx[i - 1] + minimumGap) > (dropouts[availableSourcesForFrame[sourceNo]].startx[i])) {
+            if (dropouts[sourceNo].fieldLine[i - 1] == dropouts[sourceNo].fieldLine[i]) {
+                if ((dropouts[sourceNo].endx[i - 1] + minimumGap) > (dropouts[sourceNo].startx[i])) {
                     // Concatenate
-                    dropouts[availableSourcesForFrame[sourceNo]].endx[i - 1] = dropouts[availableSourcesForFrame[sourceNo]].endx[i];
+                    dropouts[sourceNo].endx[i - 1] = dropouts[sourceNo].endx[i];
 
                     // Remove the current dropout
-                    dropouts[availableSourcesForFrame[sourceNo]].startx.removeAt(i);
-                    dropouts[availableSourcesForFrame[sourceNo]].endx.removeAt(i);
-                    dropouts[availableSourcesForFrame[sourceNo]].fieldLine.removeAt(i);
+                    dropouts[sourceNo].startx.removeAt(i);
+                    dropouts[sourceNo].endx.removeAt(i);
+                    dropouts[sourceNo].fieldLine.removeAt(i);
                 }
             }
 
