@@ -28,6 +28,7 @@ parser.add_argument('-E', '--end', metavar='end', type=int, default=-1, help='cu
 
 parser.add_argument('-p', '--pal', dest='pal', action='store_true', help='source is in PAL format')
 parser.add_argument('-n', '--ntsc', dest='ntsc', action='store_true', help='source is in NTSC format')
+parser.add_argument('-C', '--ldf-compression-level', dest='ldfcomp', type=int, default=11, help='compression level for .ldf files')
 
 args = parser.parse_args()
 
@@ -48,6 +49,7 @@ except ValueError as e:
     exit(1)
 
 makelds = True if outname[-3:] == 'lds' else False
+makeldf = True if outname[-3:] == 'ldf' else False
     
 system = 'PAL' if args.pal else 'NTSC'
 
@@ -75,8 +77,8 @@ if args.end != -1:
 elif args.length != -1:
     endloc = startloc + (args.length * 2)
 else:
-    print('ERROR: Must specify -l or -E option')
-    exit(-1)
+    # Set end location to well after any reasonable length so EOF is reached
+    endloc = startloc + (2 ** 40)
 
 ldd.roughseek(startloc)
 startidx = int(ldd.fdoffset)
@@ -86,6 +88,10 @@ endidx = int(ldd.fdoffset)
 
 if makelds:
     process = subprocess.Popen(['ld-lds-converter', '-o', outname, '-p'], stdin=subprocess.PIPE)
+    fd = process.stdin
+elif makeldf:
+    corecmd = "ffmpeg -y -hide_banner -loglevel error -f s16le -ar 40k -ac 1 -i - -acodec flac -f ogg".split(' ') 
+    process = subprocess.Popen([*corecmd, '-compression_level', str(args.ldfcomp), outname], stdin=subprocess.PIPE)
     fd = process.stdin
 else:
     fd = open(args.outfile, 'wb')
@@ -102,9 +108,11 @@ for i in range(startidx, endidx + 16384, 16384):
     #l = 16384 if (l > 16384) else l
 
     data = ldd.freader(ldd.infile, i, l)
-    dataout = np.array(data, dtype=np.int16)
-
-    fd.write(dataout)
+    if data is not None and len(data) == l:
+        dataout = np.array(data, dtype=np.int16)
+        fd.write(dataout)
+    else:
+        break
 
 fd.close()
 
