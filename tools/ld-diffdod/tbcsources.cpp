@@ -231,9 +231,9 @@ void TbcSources::verifySources(qint32 vbiStartFrame, qint32 length)
 // Note: This method processes a single frame
 void TbcSources::performFrameDiffDod(qint32 targetVbiFrame, qint32 dodThreshold, bool lumaClip)
 {
-    // Range check the diffDOD threshold
-    if (dodThreshold < 100) dodThreshold = 100;
-    if (dodThreshold > 65435) dodThreshold = 65435;
+    // Range check the diffDOD threshold percent
+    if (dodThreshold < 1) dodThreshold = 1;
+    if (dodThreshold > 100) dodThreshold = 100;
 
     // Get the field data for the current frame (from all available sources)
     QVector<SourceVideo::Data> firstFields = getFieldData(targetVbiFrame, true);
@@ -321,6 +321,9 @@ QVector<QByteArray> TbcSources::getFieldErrorByMedian(qint32 targetVbiFrame, QVe
         return QVector<QByteArray>();
     }
 
+    // Normalize the % dodThreshold to 0.00-1.00
+    double threshold = static_cast<double>(dodThreshold) / 100.0;
+
     // Make a vector to store the result of the diff
     QVector<QByteArray> fieldDiff;
     fieldDiff.resize(getNumberOfAvailableSources());
@@ -341,25 +344,18 @@ QVector<QByteArray> TbcSources::getFieldErrorByMedian(qint32 targetVbiFrame, QVe
             }
 
             // Compute the median of the dot values
-            qint32 dotMedian = median(dotValues);
+            double vMedian = static_cast<double>(convertLinearToBrightness(median(dotValues), videoParameters.black16bIre, videoParameters.white16bIre, videoParameters.isSourcePal));
 
             for (qint32 sourcePointer = 0; sourcePointer < availableSourcesForFrame.size(); sourcePointer++) {
                 qint32 sourceNo = availableSourcesForFrame[sourcePointer]; // Get the actual source
-                if (abs(dotValues[sourceNo] - dotMedian) > dodThreshold) fieldDiff[sourceNo][x + startOfLinePointer] = 1;
+                double v = convertLinearToBrightness(dotValues[sourceNo], videoParameters.black16bIre, videoParameters.white16bIre, videoParameters.isSourcePal);
+                if ((v - vMedian) > threshold) fieldDiff[sourceNo][x + startOfLinePointer] = 1;
                 else fieldDiff[sourceNo][x + startOfLinePointer] = 0;
             }
         }
     }
 
     return fieldDiff;
-}
-
-// Method to find the median of a vector of qint32s
-qint32 TbcSources::median(QVector<qint32> v)
-{
-    size_t n = v.size() / 2;
-    std::nth_element(v.begin(), v.begin()+n, v.end());
-    return v[n];
 }
 
 // Perform a luma clip check on the field
@@ -716,6 +712,48 @@ qint32 TbcSources::convertVbiFrameNumberToSequential(qint32 vbiFrameNumber, qint
 {
     // Offset the VBI frame number to get the sequential source frame number
     return vbiFrameNumber - sourceVideos[sourceNumber]->minimumVbiFrameNumber + 1;
+}
+
+// Method to find the median of a vector of qint32s
+qint32 TbcSources::median(QVector<qint32> v)
+{
+    size_t n = v.size() / 2;
+    std::nth_element(v.begin(), v.begin()+n, v.end());
+    return v[n];
+}
+
+// Method to convert a linear IRE to a logarithmic reflective brightness %
+// Note: Follows the Rec. 709 OETF transfer function
+double TbcSources::convertLinearToBrightness(quint16 value, quint16 black16bIre, quint16 white16bIre, bool isSourcePal)
+{
+    double v = 0;
+    double l = static_cast<double>(value);
+
+    // Factors to scale Y according to the black to white interval
+    // (i.e. make the black level 0 and the white level 65535)
+    qreal yScale = (1.0 / (black16bIre - white16bIre)) * -65535;
+
+    if (!isSourcePal) {
+        // NTSC uses a 75% white point; so here we scale the result by
+        // 25% (making 100 IRE 25% over the maximum allowed white point)
+        yScale *= 125.0 / 100.0;
+    }
+
+    // Scale the L to 0-65535 where 0 = blackIreLevel and 65535 = whiteIreLevel
+    l = (l - black16bIre) * yScale;
+    l = qBound(0.0, l, 65535.0);
+
+    // Scale L to 0.00-1.00
+    l = (1.0 / 65535.0) * l;
+
+    // Rec. 709 - https://en.wikipedia.org/wiki/Rec._709#Transfer_characteristics
+    if (l < 0.018) {
+        v = 4.500 * l;
+    } else {
+        v = pow(1.099 * l, 0.45) - 0.099;
+    }
+
+    return v;
 }
 
 
