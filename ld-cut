@@ -77,8 +77,8 @@ if args.end != -1:
 elif args.length != -1:
     endloc = startloc + (args.length * 2)
 else:
-    print('ERROR: Must specify -l or -E option')
-    exit(-1)
+    # Set end location to well after any reasonable length so EOF is reached
+    endloc = startloc + (2 ** 40)
 
 ldd.roughseek(startloc)
 startidx = int(ldd.fdoffset)
@@ -108,9 +108,11 @@ for i in range(startidx, endidx + 16384, 16384):
     #l = 16384 if (l > 16384) else l
 
     data = ldd.freader(ldd.infile, i, l)
-    dataout = np.array(data, dtype=np.int16)
-
-    fd.write(dataout)
+    if data is not None and len(data) == l:
+        dataout = np.array(data, dtype=np.int16)
+        fd.write(dataout)
+    else:
+        break
 
 fd.close()
 
