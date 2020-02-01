@@ -308,6 +308,7 @@ QVector<SourceVideo::Data> TbcSources::getFieldData(qint32 targetVbiFrame, bool 
 }
 
 // Create an error map of the fields based on median value differential analysis
+// Note: This only functions within the colour burst and visible areas of the frame
 QVector<QByteArray> TbcSources::getFieldErrorByMedian(qint32 targetVbiFrame, QVector<SourceVideo::Data> &fields, qint32 dodThreshold)
 {
     // Get the metadata for the video parameters (all sources are the same, so just grab from the first)
@@ -324,18 +325,21 @@ QVector<QByteArray> TbcSources::getFieldErrorByMedian(qint32 targetVbiFrame, QVe
     // Normalize the % dodThreshold to 0.00-1.00
     double threshold = static_cast<double>(dodThreshold) / 100.0;
 
+    // Calculate the linear threshold for the colourburst region
+    qint32 cbThreshold = ((65535 / 100) * dodThreshold) / 8; // Note: This is just a guess
+
     // Make a vector to store the result of the diff
     QVector<QByteArray> fieldDiff;
     fieldDiff.resize(getNumberOfAvailableSources());
 
-    // Resize the fieldDiff sub-vectors
+    // Resize the fieldDiff sub-vectors and default the elements to zero
     for (qint32 sourcePointer = 0; sourcePointer < getNumberOfAvailableSources(); sourcePointer++) {
-        fieldDiff[sourcePointer].resize(videoParameters.fieldHeight * videoParameters.fieldWidth);
+        fieldDiff[sourcePointer].fill(0, videoParameters.fieldHeight * videoParameters.fieldWidth);
     }
 
     for (qint32 y = 0; y < videoParameters.fieldHeight; y++) {
         qint32 startOfLinePointer = y * videoParameters.fieldWidth;
-        for (qint32 x = 0; x < videoParameters.fieldWidth; x++) {
+        for (qint32 x = videoParameters.colourBurstStart; x < videoParameters.activeVideoEnd; x++) {
             // Get the dot value from all of the sources
             QVector<qint32> dotValues(getNumberOfAvailableSources());
             for (qint32 sourcePointer = 0; sourcePointer < availableSourcesForFrame.size(); sourcePointer++) {
@@ -343,14 +347,26 @@ QVector<QByteArray> TbcSources::getFieldErrorByMedian(qint32 targetVbiFrame, QVe
                 dotValues[sourceNo] = static_cast<qint32>(fields[sourceNo][x + startOfLinePointer]);
             }
 
-            // Compute the median of the dot values
-            double vMedian = static_cast<double>(convertLinearToBrightness(median(dotValues), videoParameters.black16bIre, videoParameters.white16bIre, videoParameters.isSourcePal));
+            // If we are in the visible area use Rec.709 logarithmic comparison
+            if (x >= videoParameters.activeVideoStart && x < videoParameters.activeVideoEnd) {
+                // Compute the median of the dot values
+                double vMedian = static_cast<double>(convertLinearToBrightness(median(dotValues), videoParameters.black16bIre, videoParameters.white16bIre, videoParameters.isSourcePal));
 
-            for (qint32 sourcePointer = 0; sourcePointer < availableSourcesForFrame.size(); sourcePointer++) {
-                qint32 sourceNo = availableSourcesForFrame[sourcePointer]; // Get the actual source
-                double v = convertLinearToBrightness(dotValues[sourceNo], videoParameters.black16bIre, videoParameters.white16bIre, videoParameters.isSourcePal);
-                if ((v - vMedian) > threshold) fieldDiff[sourceNo][x + startOfLinePointer] = 1;
-                else fieldDiff[sourceNo][x + startOfLinePointer] = 0;
+                for (qint32 sourcePointer = 0; sourcePointer < availableSourcesForFrame.size(); sourcePointer++) {
+                    qint32 sourceNo = availableSourcesForFrame[sourcePointer]; // Get the actual source
+                    double v = convertLinearToBrightness(dotValues[sourceNo], videoParameters.black16bIre, videoParameters.white16bIre, videoParameters.isSourcePal);
+                    if ((v - vMedian) > threshold) fieldDiff[sourceNo][x + startOfLinePointer] = 1;
+                }
+            }
+
+            // If we are in the colourburst use linear comparison
+            if (x >= videoParameters.colourBurstStart && x < videoParameters.colourBurstEnd) {
+                // We are in the colour burst, use linear comparison
+                qint32 dotMedian = median(dotValues);
+                for (qint32 sourcePointer = 0; sourcePointer < availableSourcesForFrame.size(); sourcePointer++) {
+                    qint32 sourceNo = availableSourcesForFrame[sourcePointer]; // Get the actual source
+                    if ((dotValues[sourceNo] - dotMedian) > cbThreshold) fieldDiff[sourceNo][x + startOfLinePointer] = 1;
+                }
             }
         }
     }
@@ -740,8 +756,7 @@ double TbcSources::convertLinearToBrightness(quint16 value, quint16 black16bIre,
     }
 
     // Scale the L to 0-65535 where 0 = blackIreLevel and 65535 = whiteIreLevel
-    l = (l - black16bIre) * yScale;
-    l = qBound(0.0, l, 65535.0);
+    l = qBound(0.0, (l - black16bIre) * yScale, 65535.0);
 
     // Scale L to 0.00-1.00
     l = (1.0 / 65535.0) * l;
