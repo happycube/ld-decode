@@ -28,6 +28,7 @@ parser.add_argument('-E', '--end', metavar='end', type=int, default=-1, help='cu
 
 parser.add_argument('-p', '--pal', dest='pal', action='store_true', help='source is in PAL format')
 parser.add_argument('-n', '--ntsc', dest='ntsc', action='store_true', help='source is in NTSC format')
+parser.add_argument('-C', '--ldf-compression-level', dest='ldfcomp', type=int, default=11, help='compression level for .ldf files')
 
 args = parser.parse_args()
 
@@ -48,6 +49,7 @@ except ValueError as e:
     exit(1)
 
 makelds = True if outname[-3:] == 'lds' else False
+makeldf = True if outname[-3:] == 'ldf' else False
     
 system = 'PAL' if args.pal else 'NTSC'
 
@@ -86,6 +88,10 @@ endidx = int(ldd.fdoffset)
 
 if makelds:
     process = subprocess.Popen(['ld-lds-converter', '-o', outname, '-p'], stdin=subprocess.PIPE)
+    fd = process.stdin
+elif makeldf:
+    corecmd = "ffmpeg -y -hide_banner -loglevel error -f s16le -ar 40k -ac 1 -i - -acodec flac -f ogg".split(' ') 
+    process = subprocess.Popen([*corecmd, '-compression_level', str(args.ldfcomp), outname], stdin=subprocess.PIPE)
     fd = process.stdin
 else:
     fd = open(args.outfile, 'wb')
