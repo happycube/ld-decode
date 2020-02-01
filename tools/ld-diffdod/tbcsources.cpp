@@ -299,9 +299,6 @@ QVector<SourceVideo::Data> TbcSources::getFieldData(qint32 targetVbiFrame, bool 
         } else {
             filters.ntscLumaFirFilter(fields[sourceNo].data(), videoParameters.fieldWidth * videoParameters.fieldHeight);
         }
-
-        // Remove the existing field dropout metadata for the field
-        sourceVideos[sourceNo]->ldDecodeMetaData.clearFieldDropOuts(fieldNumber);
     }
 
     return fields;
@@ -323,10 +320,10 @@ QVector<QByteArray> TbcSources::getFieldErrorByMedian(qint32 targetVbiFrame, QVe
     }
 
     // Normalize the % dodThreshold to 0.00-1.00
-    double threshold = static_cast<double>(dodThreshold) / 100.0;
+    float threshold = static_cast<float>(dodThreshold) / 100.0;
 
     // Calculate the linear threshold for the colourburst region
-    qint32 cbThreshold = ((65535 / 100) * dodThreshold) / 8; // Note: This is just a guess
+    qint32 cbThreshold = ((65535 / 100) * dodThreshold) / 8; // Note: The /8 is just a guess
 
     // Make a vector to store the result of the diff
     QVector<QByteArray> fieldDiff;
@@ -350,11 +347,11 @@ QVector<QByteArray> TbcSources::getFieldErrorByMedian(qint32 targetVbiFrame, QVe
             // If we are in the visible area use Rec.709 logarithmic comparison
             if (x >= videoParameters.activeVideoStart && x < videoParameters.activeVideoEnd) {
                 // Compute the median of the dot values
-                double vMedian = static_cast<double>(convertLinearToBrightness(median(dotValues), videoParameters.black16bIre, videoParameters.white16bIre, videoParameters.isSourcePal));
+                float vMedian = static_cast<float>(convertLinearToBrightness(median(dotValues), videoParameters.black16bIre, videoParameters.white16bIre, videoParameters.isSourcePal));
 
                 for (qint32 sourcePointer = 0; sourcePointer < availableSourcesForFrame.size(); sourcePointer++) {
                     qint32 sourceNo = availableSourcesForFrame[sourcePointer]; // Get the actual source
-                    double v = convertLinearToBrightness(dotValues[sourceNo], videoParameters.black16bIre, videoParameters.white16bIre, videoParameters.isSourcePal);
+                    float v = convertLinearToBrightness(dotValues[sourceNo], videoParameters.black16bIre, videoParameters.white16bIre, videoParameters.isSourcePal);
                     if ((v - vMedian) > threshold) fieldDiff[sourceNo][x + startOfLinePointer] = 1;
                 }
             }
@@ -455,23 +452,10 @@ QVector<LdDecodeMetaData::DropOuts> TbcSources::getFieldDropouts(qint32 targetVb
 
     // This method requires at least three source frames
     if (availableSourcesForFrame.size() < 3) {
-        // Not enough source frames, preserve the current dropout metadata
-        for (qint32 sourcePointer = 0; sourcePointer < availableSourcesForFrame.size(); sourcePointer++) {
-            qint32 sourceNo = availableSourcesForFrame[sourcePointer]; // Get the actual source
-
-            // Get the required field number
-            qint32 fieldNumber;
-            if (isFirstField) fieldNumber = sourceVideos[sourceNo]->
-                    ldDecodeMetaData.getFirstFieldNumber(convertVbiFrameNumberToSequential(targetVbiFrame, sourceNo));
-            else fieldNumber = sourceVideos[sourceNo]->
-                    ldDecodeMetaData.getSecondFieldNumber(convertVbiFrameNumberToSequential(targetVbiFrame, sourceNo));
-
-            fieldDropouts[sourceNo] = sourceVideos[sourceNo]->ldDecodeMetaData.getFieldDropOuts(fieldNumber);
-        }
-
+        // Not enough source frames
         if (isFirstField) qInfo() << "Only" << availableSourcesForFrame.size() << "available sources for VBI frame" <<
                                      targetVbiFrame << "- preserving original dropout data";
-        return fieldDropouts;
+        return QVector<LdDecodeMetaData::DropOuts>();
     }
 
     // Define the area in which DOD should be performed
@@ -557,9 +541,16 @@ void TbcSources::writeDropoutMetadata(qint32 targetVbiFrame, QVector<LdDecodeMet
                     "frame" << targetVbiFrame << "fields" << firstFieldNumber << "/" << secondFieldNumber <<
                     "- Dropout records" << totalFirstDropouts << "/" << totalSecondDropouts;
 
-        // Write the metadata
-        sourceVideos[sourceNo]->ldDecodeMetaData.updateFieldDropOuts(firstFieldDropouts[sourceNo], firstFieldNumber);
-        sourceVideos[sourceNo]->ldDecodeMetaData.updateFieldDropOuts(secondFieldDropouts[sourceNo], secondFieldNumber);
+        // Only replace the existing metadata if it was possible to create new metadata
+        if (availableSourcesForFrame.size() >= 3) {
+            // Remove the existing field dropout metadata for the field
+            sourceVideos[sourceNo]->ldDecodeMetaData.clearFieldDropOuts(firstFieldNumber);
+            sourceVideos[sourceNo]->ldDecodeMetaData.clearFieldDropOuts(secondFieldNumber);
+
+            // Write the new field dropout metadata
+            sourceVideos[sourceNo]->ldDecodeMetaData.updateFieldDropOuts(firstFieldDropouts[sourceNo], firstFieldNumber);
+            sourceVideos[sourceNo]->ldDecodeMetaData.updateFieldDropOuts(secondFieldDropouts[sourceNo], secondFieldNumber);
+        }
     }
 }
 
@@ -740,14 +731,14 @@ qint32 TbcSources::median(QVector<qint32> v)
 
 // Method to convert a linear IRE to a logarithmic reflective brightness %
 // Note: Follows the Rec. 709 OETF transfer function
-double TbcSources::convertLinearToBrightness(quint16 value, quint16 black16bIre, quint16 white16bIre, bool isSourcePal)
+float TbcSources::convertLinearToBrightness(quint16 value, quint16 black16bIre, quint16 white16bIre, bool isSourcePal)
 {
-    double v = 0;
-    double l = static_cast<double>(value);
+    float v = 0;
+    float l = static_cast<float>(value);
 
     // Factors to scale Y according to the black to white interval
     // (i.e. make the black level 0 and the white level 65535)
-    qreal yScale = (1.0 / (black16bIre - white16bIre)) * -65535;
+    float yScale = (1.0 / (black16bIre - white16bIre)) * -65535;
 
     if (!isSourcePal) {
         // NTSC uses a 75% white point; so here we scale the result by
@@ -756,7 +747,9 @@ double TbcSources::convertLinearToBrightness(quint16 value, quint16 black16bIre,
     }
 
     // Scale the L to 0-65535 where 0 = blackIreLevel and 65535 = whiteIreLevel
-    l = qBound(0.0, (l - black16bIre) * yScale, 65535.0);
+    l = (l - black16bIre) * yScale;
+    if (l > 65535) l = 65535;
+    if (l < 0) l = 0;
 
     // Scale L to 0.00-1.00
     l = (1.0 / 65535.0) * l;

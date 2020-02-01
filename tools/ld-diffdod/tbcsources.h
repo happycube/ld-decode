@@ -81,7 +81,7 @@ private:
     bool setDiscTypeAndMaxMinFrameVbi(qint32 sourceNumber);
     qint32 convertVbiFrameNumberToSequential(qint32 vbiFrameNumber, qint32 sourceNumber);
     qint32 median(QVector<qint32> v);
-    double convertLinearToBrightness(quint16 value, quint16 black16bIre, quint16 white16bIre, bool isSourcePal);
+    float convertLinearToBrightness(quint16 value, quint16 black16bIre, quint16 white16bIre, bool isSourcePal);
 };
 
 #endif // TBCSOURCES_H
