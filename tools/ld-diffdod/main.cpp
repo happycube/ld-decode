@@ -28,7 +28,7 @@
 #include <QCommandLineParser>
 
 #include "logging.h"
-#include "diffdod.h"
+#include "sources.h"
 
 int main(int argc, char *argv[])
 {
@@ -150,8 +150,8 @@ int main(int argc, char *argv[])
     }
 
     // Process the TBC file
-    Diffdod diffdod;
-    if (!diffdod.process(inputFilenames, reverse, dodThreshold, lumaClip, vbiFrameStart, vbiFrameLength)) {
+    Sources sources;
+    if (!sources.process(inputFilenames, reverse, dodThreshold, lumaClip, vbiFrameStart, vbiFrameLength)) {
         return 1;
     }
 

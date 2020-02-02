@@ -22,7 +22,7 @@ SOURCES += \
     ../library/tbc/logging.cpp \
     diffdod.cpp \
     main.cpp \
-    tbcsources.cpp
+    sources.cpp
 
 HEADERS += \
     ../library/filter/firfilter.h \
@@ -32,7 +32,7 @@ HEADERS += \
     ../library/tbc/filters.h \
     ../library/tbc/logging.h \
     diffdod.h \
-    tbcsources.h
+    sources.h
 
 # Add external includes to the include path
 INCLUDEPATH += ../library/filter
