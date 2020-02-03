@@ -84,6 +84,13 @@ int main(int argc, char *argv[])
                                         QCoreApplication::translate("main", "number"));
     parser.addOption(lengthVbiOption);
 
+    // Option to select the number of threads (-t)
+    QCommandLineOption threadsOption(QStringList() << "t" << "threads",
+                                        QCoreApplication::translate(
+                                         "main", "Specify the number of concurrent threads (default is the number of logical CPUs)"),
+                                        QCoreApplication::translate("main", "number"));
+    parser.addOption(threadsOption);
+
     // Positional argument to specify input TBC files
     parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input TBC files (minimum of 3)"));
 
@@ -149,9 +156,21 @@ int main(int argc, char *argv[])
         }
     }
 
+    qint32 maxThreads = QThread::idealThreadCount();
+    if (parser.isSet(threadsOption)) {
+        maxThreads = parser.value(threadsOption).toInt();
+
+        if (maxThreads < 1) {
+            // Quit with error
+            qCritical("Specified number of threads must be greater than zero");
+            return -1;
+        }
+    }
+
     // Process the TBC file
-    Sources sources;
-    if (!sources.process(inputFilenames, reverse, dodThreshold, lumaClip, vbiFrameStart, vbiFrameLength)) {
+    Sources sources(inputFilenames, reverse, dodThreshold, lumaClip,
+                    vbiFrameStart, vbiFrameLength, maxThreads);
+    if (!sources.process()) {
         return 1;
     }
 

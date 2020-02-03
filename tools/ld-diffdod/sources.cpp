@@ -24,28 +24,33 @@
 
 #include "sources.h"
 
-Sources::Sources(QObject *parent) : QObject(parent)
+Sources::Sources(QVector<QString> inputFilenames, bool reverse,
+                 qint32 dodThreshold, bool lumaClip,
+                 qint32 startVbi, qint32 lengthVbi,
+                 qint32 maxThreads, QObject *parent)
+    : QObject(parent), m_inputFilenames(inputFilenames), m_reverse(reverse),
+      m_dodThreshold(dodThreshold), m_lumaClip(lumaClip), m_startVbi(startVbi),
+      m_lengthVbi(lengthVbi), m_maxThreads(maxThreads)
 {
+    // Used to track the sources as they are loaded
     currentSource = 0;
-    currentVbiFrameNumber = 1;
 }
 
-bool Sources::process(QVector<QString> inputFilenames, bool reverse,
-                      qint32 dodThreshold, bool lumaClip,
-                      qint32 startVbi, qint32 lengthVbi)
+bool Sources::process()
 {
     // Show input filenames
-    qInfo() << "Processing" << inputFilenames.size() << "input TBC files:";
-    for (qint32 i = 0; i < inputFilenames.size(); i++) qInfo().nospace() << "  Source #" << i << ": " << inputFilenames[i];
+    qInfo() << "Processing" << m_inputFilenames.size() << "input TBC files:";
+    for (qint32 i = 0; i < m_inputFilenames.size(); i++) qInfo().nospace() << "  Source #" << i << ": " << m_inputFilenames[i];
 
     // And then show the rest...
-    if (reverse) qInfo() << "Using reverse field order"; else qInfo() << "Using normal field order";
-    qInfo().nospace() << "Dropout detection threshold is " << dodThreshold << "% difference";
-    if (lumaClip) qInfo() << "Performing luma clip detection"; else qInfo() << "Not performing luma clip detection";
+    qInfo() << "Using" << m_maxThreads << "threads to process sources";
+    if (m_reverse) qInfo() << "Using reverse field order"; else qInfo() << "Using normal field order";
+    qInfo().nospace() << "Dropout detection threshold is " << m_dodThreshold << "% difference";
+    if (m_lumaClip) qInfo() << "Performing luma clip detection"; else qInfo() << "Not performing luma clip detection";
     qInfo() << "";
 
     // Load the input TBC files ---------------------------------------------------------------------------------------
-    if (!loadInputTbcFiles(inputFilenames, reverse)) {
+    if (!loadInputTbcFiles(m_inputFilenames, m_reverse)) {
         qCritical() << "Error: Unable to load input TBC files - cannot continue!";
         return false;
     }
@@ -56,29 +61,35 @@ bool Sources::process(QVector<QString> inputFilenames, bool reverse,
                "to" << getMaximumVbiFrameNumber();
 
     // Check start and length
-    qint32 vbiStartFrame = startVbi;
+    qint32 vbiStartFrame = m_startVbi;
     if (vbiStartFrame < getMinimumVbiFrameNumber())
         vbiStartFrame = getMinimumVbiFrameNumber();
 
-    qint32 length = lengthVbi;
+    qint32 length = m_lengthVbi;
     if (length > (getMaximumVbiFrameNumber() - vbiStartFrame + 1))
         length = getMaximumVbiFrameNumber() - vbiStartFrame + 1;
     if (length == -1) length = getMaximumVbiFrameNumber() - getMinimumVbiFrameNumber() + 1;
 
     // Verify frame source availablity
     qInfo() << "";
-    qInfo() << "Verifying VBI frame multi-source availablity:";
+    qInfo() << "Verifying VBI frame multi-source availablity...";
     verifySources(vbiStartFrame, length);
 
     // Process the sources --------------------------------------------------------------------------------------------
     qInfo() << "";
+    qInfo() << "Beginning multi-threaded diffDOD processing...";
     qInfo() << "Processing" << length << "frames starting from VBI frame" << vbiStartFrame;
-    processSources(vbiStartFrame, length, dodThreshold, lumaClip);
+    processSources(vbiStartFrame, length, m_dodThreshold, m_lumaClip);
 
     // Save the sources -----------------------------------------------------------------------------------------------
     qInfo() << "";
-    qInfo() << "Saving sources";
+    qInfo() << "Saving sources...";
     saveSources();
+
+    // Unload the input sources
+    qInfo() << "";
+    qInfo() << "Cleaning up...";
+    unloadInputTbcFiles();
 
     return true;
 }
@@ -94,6 +105,15 @@ bool Sources::loadInputTbcFiles(QVector<QString> inputFilenames, bool reverse)
     }
 
     return true;
+}
+
+// Unload the input sources
+void Sources::unloadInputTbcFiles()
+{
+    for (qint32 sourceNo = 0; sourceNo < getNumberOfAvailableSources(); sourceNo++) {
+        delete sourceVideos[sourceNo];
+        sourceVideos.removeFirst();
+    }
 }
 
 // Load a TBC source video; returns false on failure

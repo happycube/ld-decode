@@ -25,20 +25,28 @@
 #ifndef SOURCES_H
 #define SOURCES_H
 
-#include <QObject>
 #include <QDebug>
 #include <QFile>
+
+#include <QObject>
+#include <QAtomicInt>
+#include <QElapsedTimer>
+#include <QMutex>
+#include <QThread>
 
 #include "diffdod.h"
 
 class Sources : public QObject
 {
     Q_OBJECT
-public:
-    explicit Sources(QObject *parent = nullptr);
 
-    bool process(QVector<QString> inputFilenames, bool reverse,
-                 qint32 dodThreshold, bool lumaClip, qint32 startVbi, qint32 lengthVbi);
+public:
+    explicit Sources(QVector<QString> inputFilenames, bool reverse,
+                     qint32 dodThreshold, bool lumaClip,
+                     qint32 startVbi, qint32 lengthVbi,
+                     qint32 maxThreads, QObject *parent = nullptr);
+
+    bool process();
 
 private:
     // Source definition
@@ -51,13 +59,20 @@ private:
         bool isSourceCav;
     };
 
-    // The frame number is common between sources
-    qint32 currentVbiFrameNumber;
-
     QVector<Source*> sourceVideos;
     qint32 currentSource;
 
+    // Setup variables
+    QVector<QString> m_inputFilenames;
+    bool m_reverse;
+    qint32 m_dodThreshold;
+    bool m_lumaClip;
+    qint32 m_startVbi;
+    qint32 m_lengthVbi;
+    qint32 m_maxThreads;
+
     bool loadInputTbcFiles(QVector<QString> inputFilenames, bool reverse);
+    void unloadInputTbcFiles();
     bool loadSource(QString filename, bool reverse);
     bool setDiscTypeAndMaxMinFrameVbi(qint32 sourceNumber);
     qint32 getMinimumVbiFrameNumber();
