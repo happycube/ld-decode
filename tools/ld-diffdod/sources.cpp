@@ -76,10 +76,40 @@ bool Sources::process()
     verifySources(vbiStartFrame, length);
 
     // Process the sources --------------------------------------------------------------------------------------------
+    inputFrameNumber = vbiStartFrame;
+    lastFrameNumber = vbiStartFrame + length;
+
     qInfo() << "";
     qInfo() << "Beginning multi-threaded diffDOD processing...";
-    qInfo() << "Processing" << length << "frames starting from VBI frame" << vbiStartFrame;
-    processSources(vbiStartFrame, length, m_dodThreshold, m_lumaClip);
+    qInfo() << "Processing" << length << "frames - from VBI frame" << inputFrameNumber << "to" << lastFrameNumber;
+    totalTimer.start();
+
+    // Start a vector of decoding threads to process the video
+    qInfo() << "Beginning multi-threaded dropout correction process...";
+    QVector<QThread *> threads;
+    threads.resize(m_maxThreads);
+    for (qint32 i = 0; i < m_maxThreads; i++) {
+        threads[i] = new DiffDod(abort, *this);
+        threads[i]->start(QThread::LowPriority);
+    }
+
+    // Wait for the workers to finish
+    for (qint32 i = 0; i < m_maxThreads; i++) {
+        threads[i]->wait();
+        delete threads[i];
+    }
+
+    // Did any of the threads abort?
+    if (abort) {
+        qCritical() << "Threads aborted!  Cleaning up...";
+        unloadInputTbcFiles();
+        return false;
+    }
+
+    // Show the processing speed to the user
+    float totalSecs = (static_cast<float>(totalTimer.elapsed()) / 1000.0);
+    qInfo().nospace() << "DiffDOD complete - " << length << " frames in " << totalSecs << " seconds (" <<
+               length / totalSecs << " FPS)";
 
     // Save the sources -----------------------------------------------------------------------------------------------
     qInfo() << "";
@@ -90,6 +120,83 @@ bool Sources::process()
     qInfo() << "";
     qInfo() << "Cleaning up...";
     unloadInputTbcFiles();
+
+    return true;
+}
+
+// Provide a frame to the threaded processing
+bool Sources::getInputFrame(qint32& targetVbiFrame,
+                            QVector<SourceVideo::Data>& firstFields, QVector<SourceVideo::Data>& secondFields,
+                            LdDecodeMetaData::VideoParameters& videoParameters,
+                            QVector<qint32>& availableSourcesForFrame,
+                            qint32& dodThreshold, bool& lumaClip)
+{
+    QMutexLocker locker(&inputMutex);
+
+    if (inputFrameNumber > lastFrameNumber) {
+        // No more input frames
+        return false;
+    }
+
+    targetVbiFrame = inputFrameNumber;
+    inputFrameNumber++;
+
+    // Get the metadata for the video parameters (all sources are the same, so just grab from the first)
+    videoParameters = sourceVideos[0]->ldDecodeMetaData.getVideoParameters();
+
+    // Get the number of available sources for the current frame
+    availableSourcesForFrame = getAvailableSourcesForFrame(targetVbiFrame);
+
+    // Get the field data for the current frame (from all available sources)
+    firstFields = getFieldData(targetVbiFrame, true, videoParameters, availableSourcesForFrame);
+    secondFields = getFieldData(targetVbiFrame, false, videoParameters, availableSourcesForFrame);
+
+    // Set the other miscellaneous parameters
+    dodThreshold = m_dodThreshold;
+    lumaClip = m_lumaClip;
+
+    return true;
+}
+
+// Receive a frame from the threaded processing
+bool Sources::setOutputFrame(qint32 targetVbiFrame,
+                             QVector<LdDecodeMetaData::DropOuts> firstFieldDropouts,
+                             QVector<LdDecodeMetaData::DropOuts> secondFieldDropouts,
+                             QVector<qint32> availableSourcesForFrame)
+{
+    QMutexLocker locker(&outputMutex);
+
+    // Write the first and second field line metadata back to the source
+    for (qint32 sourcePointer = 0; sourcePointer < availableSourcesForFrame.size(); sourcePointer++) {
+        qint32 sourceNo = availableSourcesForFrame[sourcePointer]; // Get the actual source
+
+        // Get the required field numbers
+        qint32 firstFieldNumber = sourceVideos[sourceNo]->
+                ldDecodeMetaData.getFirstFieldNumber(convertVbiFrameNumberToSequential(targetVbiFrame, sourceNo));
+        qint32 secondFieldNumber = sourceVideos[sourceNo]->
+                ldDecodeMetaData.getSecondFieldNumber(convertVbiFrameNumberToSequential(targetVbiFrame, sourceNo));
+
+        // Calculate the total number of dropouts detected for the frame
+        qint32 totalFirstDropouts = 0;
+        qint32 totalSecondDropouts = 0;
+        if (firstFieldDropouts.size() > 0) totalFirstDropouts = firstFieldDropouts[sourceNo].startx.size();
+        if (secondFieldDropouts.size() > 0) totalSecondDropouts = secondFieldDropouts[sourceNo].startx.size();
+
+        qDebug() << "Writing source" << sourceNo <<
+                    "frame" << targetVbiFrame << "fields" << firstFieldNumber << "/" << secondFieldNumber <<
+                    "- Dropout records" << totalFirstDropouts << "/" << totalSecondDropouts;
+
+        // Only replace the existing metadata if it was possible to create new metadata
+        if (availableSourcesForFrame.size() >= 3) {
+            // Remove the existing field dropout metadata for the field
+            sourceVideos[sourceNo]->ldDecodeMetaData.clearFieldDropOuts(firstFieldNumber);
+            sourceVideos[sourceNo]->ldDecodeMetaData.clearFieldDropOuts(secondFieldNumber);
+
+            // Write the new field dropout metadata
+            sourceVideos[sourceNo]->ldDecodeMetaData.updateFieldDropOuts(firstFieldDropouts[sourceNo], firstFieldNumber);
+            sourceVideos[sourceNo]->ldDecodeMetaData.updateFieldDropOuts(secondFieldDropouts[sourceNo], secondFieldNumber);
+        }
+    }
 
     return true;
 }
@@ -407,67 +514,6 @@ qint32 Sources::convertVbiFrameNumberToSequential(qint32 vbiFrameNumber, qint32 
 qint32 Sources::getNumberOfAvailableSources()
 {
     return sourceVideos.size();
-}
-
-// Method to process a source frame
-void Sources::processSources(qint32 vbiStartFrame, qint32 length, qint32 dodThreshold, bool lumaClip)
-{
-    // Get the metadata for the video parameters (all sources are the same, so just grab from the first)
-    LdDecodeMetaData::VideoParameters videoParameters = sourceVideos[0]->ldDecodeMetaData.getVideoParameters();
-
-    // Define a processing object
-    DiffDod diffDod;
-
-    // Process the sources frame by frame
-    for (qint32 targetVbiFrame = vbiStartFrame; targetVbiFrame < vbiStartFrame + length; targetVbiFrame++) {
-        if ((targetVbiFrame % 100 == 0) || (targetVbiFrame == vbiStartFrame)) qInfo() << "Processing VBI frame" << targetVbiFrame;
-
-        // Get the number of available sources for the current frame
-        QVector<qint32> availableSourcesForFrame = getAvailableSourcesForFrame(targetVbiFrame);
-
-        // Get the field data for the current frame (from all available sources)
-        QVector<SourceVideo::Data> firstFields = getFieldData(targetVbiFrame, true, videoParameters, availableSourcesForFrame);
-        QVector<SourceVideo::Data> secondFields = getFieldData(targetVbiFrame, false, videoParameters, availableSourcesForFrame);
-
-        // Process the field
-        diffDod.performFrameDiffDod(firstFields, secondFields, dodThreshold, lumaClip, videoParameters, availableSourcesForFrame);
-
-        // Get the result
-        QVector<LdDecodeMetaData::DropOuts> firstFieldDropouts;
-        QVector<LdDecodeMetaData::DropOuts> secondFieldDropouts;
-        diffDod.getResults(firstFieldDropouts, secondFieldDropouts);
-
-        // Write the first and second field line metadata back to the source
-        for (qint32 sourcePointer = 0; sourcePointer < availableSourcesForFrame.size(); sourcePointer++) {
-            qint32 sourceNo = availableSourcesForFrame[sourcePointer]; // Get the actual source
-
-            // Get the required field numbers
-            qint32 firstFieldNumber = sourceVideos[sourceNo]->
-                    ldDecodeMetaData.getFirstFieldNumber(convertVbiFrameNumberToSequential(targetVbiFrame, sourceNo));
-            qint32 secondFieldNumber = sourceVideos[sourceNo]->
-                    ldDecodeMetaData.getSecondFieldNumber(convertVbiFrameNumberToSequential(targetVbiFrame, sourceNo));
-
-            // Calculate the total number of dropouts detected for the frame
-            qint32 totalFirstDropouts = firstFieldDropouts[sourceNo].startx.size();
-            qint32 totalSecondDropouts = secondFieldDropouts[sourceNo].startx.size();
-
-            qDebug() << "Writing source" << sourceNo <<
-                        "frame" << targetVbiFrame << "fields" << firstFieldNumber << "/" << secondFieldNumber <<
-                        "- Dropout records" << totalFirstDropouts << "/" << totalSecondDropouts;
-
-            // Only replace the existing metadata if it was possible to create new metadata
-            if (availableSourcesForFrame.size() >= 3) {
-                // Remove the existing field dropout metadata for the field
-                sourceVideos[sourceNo]->ldDecodeMetaData.clearFieldDropOuts(firstFieldNumber);
-                sourceVideos[sourceNo]->ldDecodeMetaData.clearFieldDropOuts(secondFieldNumber);
-
-                // Write the new field dropout metadata
-                sourceVideos[sourceNo]->ldDecodeMetaData.updateFieldDropOuts(firstFieldDropouts[sourceNo], firstFieldNumber);
-                sourceVideos[sourceNo]->ldDecodeMetaData.updateFieldDropOuts(secondFieldDropouts[sourceNo], secondFieldNumber);
-            }
-        }
-
-    }
 }
 
 // Method to write the source metadata to disc

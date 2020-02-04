@@ -26,9 +26,11 @@
 #define DIFFDOD_H
 
 #include <QObject>
-#include <QList>
-#include <QtConcurrent/QtConcurrent>
+#include <QElapsedTimer>
+#include <QAtomicInt>
+#include <QThread>
 #include <QDebug>
+#include <QtMath>
 
 // TBC library includes
 #include "sourcevideo.h"
@@ -36,20 +38,23 @@
 #include "vbidecoder.h"
 #include "filters.h"
 
-class DiffDod : public QObject
+class Sources;
+
+class DiffDod : public QThread
 {
     Q_OBJECT
 public:
-    explicit DiffDod(QObject *parent = nullptr);
+    explicit DiffDod(QAtomicInt& abort, Sources& sources, QObject *parent = nullptr);
 
-    void performFrameDiffDod(QVector<SourceVideo::Data> &firstFields, QVector<SourceVideo::Data> &secondFields, qint32 dodOnThreshold, bool lumaClip,
-                             LdDecodeMetaData::VideoParameters videoParameters, QVector<qint32> availableSourcesForFrame);
-    void getResults(QVector<LdDecodeMetaData::DropOuts>& firstFieldDropouts,
-                                QVector<LdDecodeMetaData::DropOuts>& secondFieldDropouts);
+protected:
+    void run() override;
+
 private:
-    QVector<LdDecodeMetaData::DropOuts> m_firstFieldDropouts;
-    QVector<LdDecodeMetaData::DropOuts> m_secondFieldDropouts;
+    // Decoder pool
+    QAtomicInt& m_abort;
+    Sources& m_sources;
 
+    // Processing methods
     QVector<QByteArray> getFieldErrorByMedian(QVector<SourceVideo::Data> &fields, qint32 dodThreshold, LdDecodeMetaData::VideoParameters videoParameters, QVector<qint32> availableSourcesForFrame);
     void performLumaClip(QVector<SourceVideo::Data> &fields, QVector<QByteArray> &fieldsDiff,
                                      LdDecodeMetaData::VideoParameters videoParameters,

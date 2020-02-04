@@ -48,6 +48,18 @@ public:
 
     bool process();
 
+    // Member functions used by worker threads
+    bool getInputFrame(qint32& targetVbiFrame,
+                        QVector<SourceVideo::Data>& firstFields, QVector<SourceVideo::Data>& secondFields,
+                        LdDecodeMetaData::VideoParameters& videoParameters,
+                        QVector<qint32>& availableSourcesForFrame,
+                        qint32& dodThreshold, bool& lumaClip);
+
+    bool setOutputFrame(qint32 targetVbiFrame,
+                         QVector<LdDecodeMetaData::DropOuts> firstFieldDropouts,
+                         QVector<LdDecodeMetaData::DropOuts> secondFieldDropouts,
+                         QVector<qint32> availableSourcesForFrame);
+
 private:
     // Source definition
     struct Source {
@@ -61,6 +73,7 @@ private:
 
     QVector<Source*> sourceVideos;
     qint32 currentSource;
+    QElapsedTimer totalTimer;
 
     // Setup variables
     QVector<QString> m_inputFilenames;
@@ -70,6 +83,18 @@ private:
     qint32 m_startVbi;
     qint32 m_lengthVbi;
     qint32 m_maxThreads;
+
+    // Input stream variables (all guarded by inputMutex while threads are running)
+    QMutex inputMutex;
+    qint32 inputFrameNumber;
+    qint32 lastFrameNumber;
+
+    // Output stream variables (all guarded by outputMutex while threads are running)
+    QMutex outputMutex;
+
+    // Atomic abort flag shared by worker threads; workers watch this, and shut
+    // down as soon as possible if it becomes true
+    QAtomicInt abort;
 
     bool loadInputTbcFiles(QVector<QString> inputFilenames, bool reverse);
     void unloadInputTbcFiles();
@@ -81,7 +106,7 @@ private:
     QVector<qint32> getAvailableSourcesForFrame(qint32 vbiFrameNumber);
     qint32 convertVbiFrameNumberToSequential(qint32 vbiFrameNumber, qint32 sourceNumber);
     qint32 getNumberOfAvailableSources();
-    void processSources(qint32 vbiStartFrame, qint32 length, qint32 dodThreshold, bool lumaClip);
+    //void processSources(qint32 vbiStartFrame, qint32 length, qint32 dodThreshold, bool lumaClip);
     void saveSources();
     QVector<SourceVideo::Data> getFieldData(qint32 targetVbiFrame, bool isFirstField, LdDecodeMetaData::VideoParameters videoParameters,
                                                      QVector<qint32> &availableSourcesForFrame);

@@ -23,50 +23,65 @@
 ************************************************************************/
 
 #include "diffdod.h"
+#include "sources.h"
 
-DiffDod::DiffDod(QObject *parent) : QObject(parent)
+DiffDod::DiffDod(QAtomicInt& abort, Sources& sources, QObject *parent)
+    : QThread(parent), m_abort(abort), m_sources(sources)
 {
 
 }
 
-// Perform differential dropout detection to determine (for each source) which frame pixels are valid
-// Note: This method processes a single frame
-void DiffDod::performFrameDiffDod(QVector<SourceVideo::Data>& firstFields, QVector<SourceVideo::Data>& secondFields,
-                                     qint32 dodThreshold, bool lumaClip, LdDecodeMetaData::VideoParameters videoParameters,
-                                     QVector<qint32> availableSourcesForFrame)
+// Run method for thread
+void DiffDod::run()
 {
-    // Range check the diffDOD threshold percent
-    if (dodThreshold < 1) dodThreshold = 1;
-    if (dodThreshold > 100) dodThreshold = 100;
+    // Set up the input variables
+    qint32 targetVbiFrame;
+    QVector<SourceVideo::Data> firstFields;
+    QVector<SourceVideo::Data> secondFields;
+    LdDecodeMetaData::VideoParameters videoParameters;
+    QVector<qint32> availableSourcesForFrame;
+    qint32 dodThreshold;
+    bool lumaClip;
 
-    // Create a differential map of the fields for the avaialble frames (based on the DOD threshold)
-    QVector<QByteArray> firstFieldsDiff = getFieldErrorByMedian(firstFields, dodThreshold,
-                                                                videoParameters, availableSourcesForFrame);
-    QVector<QByteArray> secondFieldsDiff = getFieldErrorByMedian(secondFields, dodThreshold,
-                                                                 videoParameters, availableSourcesForFrame);
+    // Set up the output variables
+    QVector<LdDecodeMetaData::DropOuts> firstFieldDropouts;
+    QVector<LdDecodeMetaData::DropOuts> secondFieldDropouts;
 
-    // Perform luma clip check?
-    if (lumaClip) {
-        performLumaClip(firstFields, firstFieldsDiff, videoParameters, availableSourcesForFrame);
-        performLumaClip(secondFields, secondFieldsDiff, videoParameters, availableSourcesForFrame);
+    // Process frames until there's nothing left to process
+    while(!m_abort) {
+        // Get the next frame to process ------------------------------------------------------------------------------
+        if (!m_sources.getInputFrame(targetVbiFrame, firstFields, secondFields, videoParameters,
+                                     availableSourcesForFrame, dodThreshold, lumaClip)) {
+            // No more input fields --> exit
+            break;
+        }
+
+        // Process the frame ------------------------------------------------------------------------------------------
+
+        // Create a differential map of the fields for the avaialble frames (based on the DOD threshold)
+        QVector<QByteArray> firstFieldsDiff = getFieldErrorByMedian(firstFields, dodThreshold,
+                                                                    videoParameters, availableSourcesForFrame);
+        QVector<QByteArray> secondFieldsDiff = getFieldErrorByMedian(secondFields, dodThreshold,
+                                                                     videoParameters, availableSourcesForFrame);
+
+        // Perform luma clip check?
+        if (lumaClip) {
+            performLumaClip(firstFields, firstFieldsDiff, videoParameters, availableSourcesForFrame);
+            performLumaClip(secondFields, secondFieldsDiff, videoParameters, availableSourcesForFrame);
+        }
+
+        // Create the drop-out metadata based on the differential map of the fields
+        firstFieldDropouts = getFieldDropouts(firstFieldsDiff, videoParameters, availableSourcesForFrame);
+        secondFieldDropouts = getFieldDropouts(secondFieldsDiff, videoParameters, availableSourcesForFrame);
+
+        // Concatenate dropouts on the same line that are close together (to cut down on the
+        // amount of generated metadata with noisy/bad sources)
+        concatenateFieldDropouts(firstFieldDropouts, availableSourcesForFrame);
+        concatenateFieldDropouts(secondFieldDropouts, availableSourcesForFrame);
+
+        // Return the processed frame ---------------------------------------------------------------------------------
+        m_sources.setOutputFrame(targetVbiFrame, firstFieldDropouts, secondFieldDropouts, availableSourcesForFrame);
     }
-
-    // Create the drop-out metadata based on the differential map of the fields
-    m_firstFieldDropouts = getFieldDropouts(firstFieldsDiff, videoParameters, availableSourcesForFrame);
-    m_secondFieldDropouts = getFieldDropouts(secondFieldsDiff, videoParameters, availableSourcesForFrame);
-
-    // Concatenate dropouts on the same line that are close together (to cut down on the
-    // amount of generated metadata with noisy/bad sources)
-    concatenateFieldDropouts(m_firstFieldDropouts, availableSourcesForFrame);
-    concatenateFieldDropouts(m_secondFieldDropouts, availableSourcesForFrame);
-}
-
-// Method to get the result of the diffDOD process
-void DiffDod::getResults(QVector<LdDecodeMetaData::DropOuts>& firstFieldDropouts,
-                            QVector<LdDecodeMetaData::DropOuts>& secondFieldDropouts)
-{
-    firstFieldDropouts = m_firstFieldDropouts;
-    secondFieldDropouts = m_secondFieldDropouts;
 }
 
 // Private methods ----------------------------------------------------------------------------------------------------
@@ -77,17 +92,6 @@ QVector<QByteArray> DiffDod::getFieldErrorByMedian(QVector<SourceVideo::Data> &f
                                                       LdDecodeMetaData::VideoParameters videoParameters,
                                                       QVector<qint32> availableSourcesForFrame)
 {
-    // This method requires at least three source frames
-    if (availableSourcesForFrame.size() < 3) {
-        return QVector<QByteArray>();
-    }
-
-    // Normalize the % dodThreshold to 0.00-1.00
-    float threshold = static_cast<float>(dodThreshold) / 100.0;
-
-    // Calculate the linear threshold for the colourburst region
-    qint32 cbThreshold = ((65535 / 100) * dodThreshold) / 8; // Note: The /8 is just a guess
-
     // Make a vector to store the result of the diff
     QVector<QByteArray> fieldDiff;
     fieldDiff.resize(fields.size());
@@ -96,6 +100,17 @@ QVector<QByteArray> DiffDod::getFieldErrorByMedian(QVector<SourceVideo::Data> &f
     for (qint32 sourcePointer = 0; sourcePointer < fields.size(); sourcePointer++) {
         fieldDiff[sourcePointer].fill(0, videoParameters.fieldHeight * videoParameters.fieldWidth);
     }
+
+    // This method requires at least three source frames
+    if (availableSourcesForFrame.size() < 3) {
+        return fieldDiff;
+    }
+
+    // Normalize the % dodThreshold to 0.00-1.00
+    float threshold = static_cast<float>(dodThreshold) / 100.0;
+
+    // Calculate the linear threshold for the colourburst region
+    qint32 cbThreshold = ((65535 / 100) * dodThreshold) / 8; // Note: The /8 is just a guess
 
     for (qint32 y = 0; y < videoParameters.fieldHeight; y++) {
         qint32 startOfLinePointer = y * videoParameters.fieldWidth;
@@ -207,7 +222,7 @@ QVector<LdDecodeMetaData::DropOuts> DiffDod::getFieldDropouts(QVector<QByteArray
 
     // This method requires at least three source frames
     if (availableSourcesForFrame.size() < 3) {
-        return QVector<LdDecodeMetaData::DropOuts>();
+        return fieldDropouts;
     }
 
     // Define the area in which DOD should be performed
@@ -285,6 +300,7 @@ void DiffDod::concatenateFieldDropouts(QVector<LdDecodeMetaData::DropOuts> &drop
 
         // Start from 1 as 0 has no previous dropout
         qint32 i = 1;
+
         while (i < dropouts[sourceNo].startx.size()) {
             // Is the current dropout on the same field line as the last?
             if (dropouts[sourceNo].fieldLine[i - 1] == dropouts[sourceNo].fieldLine[i]) {
