@@ -78,6 +78,7 @@ bool Sources::process()
     // Process the sources --------------------------------------------------------------------------------------------
     inputFrameNumber = vbiStartFrame;
     lastFrameNumber = vbiStartFrame + length;
+    processedFrames = 0;
 
     qInfo() << "";
     qInfo() << "Beginning multi-threaded diffDOD processing...";
@@ -140,6 +141,7 @@ bool Sources::getInputFrame(qint32& targetVbiFrame,
 
     targetVbiFrame = inputFrameNumber;
     inputFrameNumber++;
+    processedFrames++;
 
     // Get the metadata for the video parameters (all sources are the same, so just grab from the first)
     videoParameters = sourceVideos[0]->ldDecodeMetaData.getVideoParameters();
@@ -154,6 +156,9 @@ bool Sources::getInputFrame(qint32& targetVbiFrame,
     // Set the other miscellaneous parameters
     dodThreshold = m_dodThreshold;
     lumaClip = m_lumaClip;
+
+    // User feedback
+    if (processedFrames % 100 == 0) qInfo() << "Processing frame" << targetVbiFrame;
 
     return true;
 }
@@ -470,7 +475,7 @@ void Sources::verifySources(qint32 vbiStartFrame, qint32 length)
         // and output a warning to the user
         if (availableSourcesForFrame.size() < 3) {
             // Differential DOD requires at least 3 valid source frames
-            qInfo().nospace() << "Frame #" << vbiFrame << " has only " << availableSourcesForFrame.size() << " source frames available - cannot correct";
+            qDebug().nospace() << "Frame #" << vbiFrame << " has only " << availableSourcesForFrame.size() << " source frames available - cannot correct";
             uncorrectableFrameCount++;
         }
     }

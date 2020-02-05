@@ -361,7 +361,7 @@ float DiffDod::convertLinearToBrightness(quint16 value, quint16 black16bIre, qui
 
     // Factors to scale Y according to the black to white interval
     // (i.e. make the black level 0 and the white level 65535)
-    float yScale = (1.0 / (black16bIre - white16bIre)) * -65535;
+    float yScale = (1.0 / (white16bIre - black16bIre)) * 65535;
 
     if (!isSourcePal) {
         // NTSC uses a 75% white point; so here we scale the result by

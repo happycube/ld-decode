@@ -74,6 +74,7 @@ private:
     QVector<Source*> sourceVideos;
     qint32 currentSource;
     QElapsedTimer totalTimer;
+    qint32 processedFrames;
 
     // Setup variables
     QVector<QString> m_inputFilenames;
