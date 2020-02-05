@@ -148,8 +148,8 @@ bool Sources::getInputFrame(qint32& targetVbiFrame,
     availableSourcesForFrame = getAvailableSourcesForFrame(targetVbiFrame);
 
     // Get the field data for the current frame (from all available sources)
-    firstFields = getFieldData(targetVbiFrame, true, videoParameters, availableSourcesForFrame);
-    secondFields = getFieldData(targetVbiFrame, false, videoParameters, availableSourcesForFrame);
+    firstFields = getFieldData(targetVbiFrame, true, availableSourcesForFrame);
+    secondFields = getFieldData(targetVbiFrame, false, availableSourcesForFrame);
 
     // Set the other miscellaneous parameters
     dodThreshold = m_dodThreshold;
@@ -528,7 +528,7 @@ void Sources::saveSources()
 }
 
 // Get the field data for the specified frame
-QVector<SourceVideo::Data> Sources::getFieldData(qint32 targetVbiFrame, bool isFirstField, LdDecodeMetaData::VideoParameters videoParameters,
+QVector<SourceVideo::Data> Sources::getFieldData(qint32 targetVbiFrame, bool isFirstField,
                                                  QVector<qint32> &availableSourcesForFrame)
 {
     // Only display on first field (otherwise we will get 2 of the same debug)
@@ -551,14 +551,6 @@ QVector<SourceVideo::Data> Sources::getFieldData(qint32 targetVbiFrame, bool isF
 
         // Copy the data locally
         fields[sourceNo] = (sourceVideos[sourceNo]->sourceVideo.getVideoField(fieldNumber));
-
-        // Filter out the chroma information from the fields leaving just luma
-        Filters filters;
-        if (videoParameters.isSourcePal) {
-            filters.palLumaFirFilter(fields[sourceNo].data(), videoParameters.fieldWidth * videoParameters.fieldHeight);
-        } else {
-            filters.ntscLumaFirFilter(fields[sourceNo].data(), videoParameters.fieldWidth * videoParameters.fieldHeight);
-        }
     }
 
     return fields;

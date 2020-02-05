@@ -58,6 +58,10 @@ void DiffDod::run()
 
         // Process the frame ------------------------------------------------------------------------------------------
 
+        // Filter the frame to leave just the luma information
+        performLumaFilter(firstFields, videoParameters, availableSourcesForFrame);
+        performLumaFilter(secondFields, videoParameters, availableSourcesForFrame);
+
         // Create a differential map of the fields for the avaialble frames (based on the DOD threshold)
         QVector<QByteArray> firstFieldsDiff = getFieldErrorByMedian(firstFields, dodThreshold,
                                                                     videoParameters, availableSourcesForFrame);
@@ -66,8 +70,8 @@ void DiffDod::run()
 
         // Perform luma clip check?
         if (lumaClip) {
-            performLumaClip(firstFields, firstFieldsDiff, videoParameters, availableSourcesForFrame);
-            performLumaClip(secondFields, secondFieldsDiff, videoParameters, availableSourcesForFrame);
+            performLumaClip(firstFields, firstFieldsDiff, videoParameters, availableSourcesForFrame, 5);
+            performLumaClip(secondFields, secondFieldsDiff, videoParameters, availableSourcesForFrame, 5);
         }
 
         // Create the drop-out metadata based on the differential map of the fields
@@ -85,6 +89,23 @@ void DiffDod::run()
 }
 
 // Private methods ----------------------------------------------------------------------------------------------------
+
+void DiffDod::performLumaFilter(QVector<SourceVideo::Data> &fields,
+                                LdDecodeMetaData::VideoParameters videoParameters,
+                                QVector<qint32> availableSourcesForFrame)
+{
+    // Filter out the chroma information from the fields leaving just luma
+    Filters filters;
+
+    for (qint32 sourcePointer = 0; sourcePointer < availableSourcesForFrame.size(); sourcePointer++) {
+        qint32 sourceNo = availableSourcesForFrame[sourcePointer]; // Get the actual source
+        if (videoParameters.isSourcePal) {
+            filters.palLumaFirFilter(fields[sourceNo].data(), videoParameters.fieldWidth * videoParameters.fieldHeight);
+        } else {
+            filters.ntscLumaFirFilter(fields[sourceNo].data(), videoParameters.fieldWidth * videoParameters.fieldHeight);
+        }
+    }
+}
 
 // Create an error map of the fields based on median value differential analysis
 // Note: This only functions within the colour burst and visible areas of the frame
@@ -152,7 +173,8 @@ QVector<QByteArray> DiffDod::getFieldErrorByMedian(QVector<SourceVideo::Data> &f
 // Perform a luma clip check on the field
 void DiffDod::performLumaClip(QVector<SourceVideo::Data> &fields, QVector<QByteArray> &fieldsDiff,
                                  LdDecodeMetaData::VideoParameters videoParameters,
-                                 QVector<qint32> availableSourcesForFrame)
+                                 QVector<qint32> availableSourcesForFrame,
+                                 qint32 lumaClipThreshold)
 {
     // Process the fields one line at a time
     for (qint32 y = videoParameters.firstActiveFieldLine; y < videoParameters.lastActiveFieldLine; y++) {
@@ -162,8 +184,9 @@ void DiffDod::performLumaClip(QVector<SourceVideo::Data> &fields, QVector<QByteA
             qint32 sourceNo = availableSourcesForFrame[sourcePointer]; // Get the actual source
 
             // Set the clipping levels
-            qint32 blackClipLevel = videoParameters.black16bIre - 4000;
-            qint32 whiteClipLevel = videoParameters.white16bIre + 4000;
+            qint32 threshold = (65535 / 100) * lumaClipThreshold;
+            qint32 blackClipLevel = videoParameters.black16bIre - threshold;
+            qint32 whiteClipLevel = videoParameters.white16bIre + threshold;
 
             for (qint32 x = videoParameters.activeVideoStart; x < videoParameters.activeVideoEnd; x++) {
                 // Get the IRE value for the source field, cast to 32 bit signed

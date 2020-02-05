@@ -108,7 +108,7 @@ private:
     qint32 getNumberOfAvailableSources();
     //void processSources(qint32 vbiStartFrame, qint32 length, qint32 dodThreshold, bool lumaClip);
     void saveSources();
-    QVector<SourceVideo::Data> getFieldData(qint32 targetVbiFrame, bool isFirstField, LdDecodeMetaData::VideoParameters videoParameters,
+    QVector<SourceVideo::Data> getFieldData(qint32 targetVbiFrame, bool isFirstField,
                                                      QVector<qint32> &availableSourcesForFrame);
 };
 

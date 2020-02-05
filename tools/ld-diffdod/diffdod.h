@@ -55,10 +55,15 @@ private:
     Sources& m_sources;
 
     // Processing methods
-    QVector<QByteArray> getFieldErrorByMedian(QVector<SourceVideo::Data> &fields, qint32 dodThreshold, LdDecodeMetaData::VideoParameters videoParameters, QVector<qint32> availableSourcesForFrame);
+    void performLumaFilter(QVector<SourceVideo::Data> &fields,
+                                    LdDecodeMetaData::VideoParameters videoParameters,
+                                    QVector<qint32> availableSourcesForFrame);
+    QVector<QByteArray> getFieldErrorByMedian(QVector<SourceVideo::Data> &fields, qint32 dodThreshold,
+                                              LdDecodeMetaData::VideoParameters videoParameters,
+                                              QVector<qint32> availableSourcesForFrame);
     void performLumaClip(QVector<SourceVideo::Data> &fields, QVector<QByteArray> &fieldsDiff,
                                      LdDecodeMetaData::VideoParameters videoParameters,
-                                     QVector<qint32> availableSourcesForFrame);
+                                     QVector<qint32> availableSourcesForFrame, qint32 lumaClipThreshold);
     QVector<LdDecodeMetaData::DropOuts> getFieldDropouts(QVector<QByteArray> &fieldsDiff,
                                                                      LdDecodeMetaData::VideoParameters videoParameters,
                                                                      QVector<qint32> availableSourcesForFrame);
