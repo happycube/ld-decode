@@ -26,24 +26,52 @@
 #define DIFFDOD_H
 
 #include <QObject>
+#include <QElapsedTimer>
+#include <QAtomicInt>
+#include <QThread>
 #include <QDebug>
-#include <QFile>
+#include <QtMath>
 
-#include "tbcsources.h"
+// TBC library includes
+#include "sourcevideo.h"
+#include "lddecodemetadata.h"
+#include "vbidecoder.h"
+#include "filters.h"
 
-class Diffdod : public QObject
+class Sources;
+
+class DiffDod : public QThread
 {
     Q_OBJECT
 public:
-    explicit Diffdod(QObject *parent = nullptr);
+    explicit DiffDod(QAtomicInt& abort, Sources& sources, QObject *parent = nullptr);
 
-    bool process(QVector<QString> inputFilenames, bool reverse,
-                 qint32 dodThreshold, bool lumaClip, qint32 startVbi, qint32 lengthVbi);
+protected:
+    void run() override;
 
 private:
-    TbcSources tbcSources;
+    // Decoder pool
+    QAtomicInt& m_abort;
+    Sources& m_sources;
 
-    bool loadInputTbcFiles(QVector<QString> inputFilenames, bool reverse);
+    // Processing methods
+    void performClipCheck(QVector<SourceVideo::Data> &fields, QVector<QByteArray> &fieldDiff,
+                                   LdDecodeMetaData::VideoParameters videoParameters,
+                                   QVector<qint32> availableSourcesForFrame);
+    void performLumaFilter(QVector<SourceVideo::Data> &fields,
+                                    LdDecodeMetaData::VideoParameters videoParameters,
+                                    QVector<qint32> availableSourcesForFrame);
+    void getFieldErrorByMedian(QVector<SourceVideo::Data> &fields, QVector<QByteArray> &fieldDiff, qint32 dodThreshold,
+                                              LdDecodeMetaData::VideoParameters videoParameters,
+                                              QVector<qint32> availableSourcesForFrame);
+    QVector<LdDecodeMetaData::DropOuts> getFieldDropouts(QVector<QByteArray> &fieldDiff,
+                                                                     LdDecodeMetaData::VideoParameters videoParameters,
+                                                                     QVector<qint32> availableSourcesForFrame);
+
+    void concatenateFieldDropouts(QVector<LdDecodeMetaData::DropOuts> &dropouts, QVector<qint32> availableSourcesForFrame);
+
+    qint32 median(QVector<qint32> v);
+    float convertLinearToBrightness(quint16 value, quint16 black16bIre, quint16 white16bIre, bool isSourcePal);
 };
 
 #endif // DIFFDOD_H

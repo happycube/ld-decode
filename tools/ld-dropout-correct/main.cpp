@@ -188,6 +188,16 @@ int main(int argc, char *argv[])
         }
     }
 
+    // Check that the output file does not already exist
+    if (outputFilename != "-") {
+        QFileInfo outputFileInfo(outputFilename);
+        if (outputFileInfo.exists()) {
+            // Quit with error
+            qCritical("Specified output file already exists - will not overwrite");
+            return -1;
+        }
+    }
+
     // Metadata filename for output TBC
     QString outputJsonFilename = outputFilename + ".json";
     if (parser.isSet(outputJsonOption)) {

@@ -28,7 +28,7 @@
 #include <QCommandLineParser>
 
 #include "logging.h"
-#include "diffdod.h"
+#include "sources.h"
 
 int main(int argc, char *argv[])
 {
@@ -61,14 +61,14 @@ int main(int argc, char *argv[])
                                        QCoreApplication::translate("main", "Reverse the field order to second/first (default first/second)"));
     parser.addOption(setReverseOption);
 
-    // Option to turn off luma clip detection (-n / --lumaclip)
-    QCommandLineOption setLumaOption(QStringList() << "n" << "lumaclip",
-                                       QCoreApplication::translate("main", "Perform luma clip signal dropout detection"));
-    parser.addOption(setLumaOption);
+    // Option to turn off signal clip detection (-n / --noclip)
+    QCommandLineOption setNoClipOption(QStringList() << "n" << "noclip",
+                                       QCoreApplication::translate("main", "Do not perform signal clip dropout detection"));
+    parser.addOption(setNoClipOption);
 
     // Option to select DOD threshold (-x / --dod-threshold)
     QCommandLineOption dodThresholdOption(QStringList() << "x" << "dod-threshold",
-                                        QCoreApplication::translate("main", "Specify the DOD threshold (100-65435 default: 400"),
+                                        QCoreApplication::translate("main", "Specify the DOD threshold percent (1 to 100% default: 7%"),
                                         QCoreApplication::translate("main", "number"));
     parser.addOption(dodThresholdOption);
 
@@ -84,6 +84,13 @@ int main(int argc, char *argv[])
                                         QCoreApplication::translate("main", "number"));
     parser.addOption(lengthVbiOption);
 
+    // Option to select the number of threads (-t)
+    QCommandLineOption threadsOption(QStringList() << "t" << "threads",
+                                        QCoreApplication::translate(
+                                         "main", "Specify the number of concurrent threads (default is the number of logical CPUs)"),
+                                        QCoreApplication::translate("main", "number"));
+    parser.addOption(threadsOption);
+
     // Positional argument to specify input TBC files
     parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input TBC files (minimum of 3)"));
 
@@ -95,7 +102,8 @@ int main(int argc, char *argv[])
 
     // Get the options from the parser
     bool reverse = parser.isSet(setReverseOption);
-    bool lumaClip = parser.isSet(setLumaOption);
+    bool signalClip = true;
+    if (parser.isSet(setNoClipOption)) signalClip = false;
 
     QVector<QString> inputFilenames;
     QStringList positionalArguments = parser.positionalArguments();
@@ -116,13 +124,13 @@ int main(int argc, char *argv[])
         return -1;
     }
 
-    qint32 dodThreshold = 400;
+    qint32 dodThreshold = 7;
     if (parser.isSet(dodThresholdOption)) {
         dodThreshold = parser.value(dodThresholdOption).toInt();
 
-        if (dodThreshold < 100 || dodThreshold > 65435) {
+        if (dodThreshold < 1 || dodThreshold > 100) {
             // Quit with error
-            qCritical("DOD threshold must be between 100 and 65435");
+            qCritical("DOD threshold must be between 1 and 100 percent");
             return -1;
         }
     }
@@ -149,9 +157,21 @@ int main(int argc, char *argv[])
         }
     }
 
+    qint32 maxThreads = QThread::idealThreadCount();
+    if (parser.isSet(threadsOption)) {
+        maxThreads = parser.value(threadsOption).toInt();
+
+        if (maxThreads < 1) {
+            // Quit with error
+            qCritical("Specified number of threads must be greater than zero");
+            return -1;
+        }
+    }
+
     // Process the TBC file
-    Diffdod diffdod;
-    if (!diffdod.process(inputFilenames, reverse, dodThreshold, lumaClip, vbiFrameStart, vbiFrameLength)) {
+    Sources sources(inputFilenames, reverse, dodThreshold, signalClip,
+                    vbiFrameStart, vbiFrameLength, maxThreads);
+    if (!sources.process()) {
         return 1;
     }
 
