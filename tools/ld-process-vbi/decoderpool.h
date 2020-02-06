@@ -25,9 +25,7 @@
 #ifndef DECODERPOOL_H
 #define DECODERPOOL_H
 
-#include <QObject>
 #include <QAtomicInt>
-#include <QByteArray>
 #include <QElapsedTimer>
 #include <QMutex>
 #include <QThread>
@@ -36,25 +34,21 @@
 #include "lddecodemetadata.h"
 #include "vbilinedecoder.h"
 
-class DecoderPool : public QObject
+class DecoderPool
 {
-    Q_OBJECT
 public:
     // Public methods
     explicit DecoderPool(QString _inputFilename, QString _outputJsonFilename,
-                        qint32 _maxThreads, LdDecodeMetaData &_ldDecodeMetaData,
-                        QObject *parent = nullptr);
+                        qint32 _maxThreads, LdDecodeMetaData &_ldDecodeMetaData);
     bool process();
 
     // Member functions used by worker threads
-    bool getInputField(qint32& fieldNumber, QByteArray& fieldVideoData, LdDecodeMetaData::Field &fieldMetadata, LdDecodeMetaData::VideoParameters &videoParameters);
+    bool getInputField(qint32 &fieldNumber, SourceVideo::Data &fieldVideoData, LdDecodeMetaData::Field &fieldMetadata, LdDecodeMetaData::VideoParameters &videoParameters);
     bool setOutputField(qint32 fieldNumber, LdDecodeMetaData::Field fieldMetadata);
 
 private:
     QString inputFilename;
     QString outputJsonFilename;
-    bool performCorrection;
-    bool noBackup;
     qint32 maxThreads;
     QElapsedTimer totalTimer;
 

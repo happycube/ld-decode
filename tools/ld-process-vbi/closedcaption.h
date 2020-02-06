@@ -25,29 +25,23 @@
 #ifndef CLOSEDCAPTION_H
 #define CLOSEDCAPTION_H
 
-#include <QObject>
-
 #include "sourcevideo.h"
 #include "lddecodemetadata.h"
 
-class ClosedCaption : public QObject
+class ClosedCaption
 {
-    Q_OBJECT
-
 public:
-    explicit ClosedCaption(QObject *parent = nullptr);
-
     struct CcData {
         uchar byte0;
         uchar byte1;
         bool isValid;
     };
 
-    CcData getData(QByteArray lineData, LdDecodeMetaData::VideoParameters videoParameters);
+    CcData getData(const SourceVideo::Data &lineData, LdDecodeMetaData::VideoParameters videoParameters);
 
 private:
     bool isEvenParity(uchar data);
-    QVector<bool> getTransitionMap(QByteArray lineData, qint32 zcPoint);
+    QVector<bool> getTransitionMap(const SourceVideo::Data &lineData, qint32 zcPoint);
 };
 
 #endif // CLOSEDCAPTION_H

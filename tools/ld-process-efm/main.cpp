@@ -3,7 +3,7 @@
     main.cpp
 
     ld-process-efm - EFM data decoder
-    Copyright (C) 2019 Simon Inns
+    Copyright (C) 2019-2020 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -40,7 +40,7 @@ int main(int argc, char *argv[])
 
     // Set application name and version
     QCoreApplication::setApplicationName("ld-process-efm");
-    QCoreApplication::setApplicationVersion("3.0");
+    QCoreApplication::setApplicationVersion(QString("Branch: %1 / Commit: %2").arg(APP_BRANCH, APP_COMMIT));
     QCoreApplication::setOrganizationDomain("domesday86.com");
 
     // Set up the command line parser
@@ -48,17 +48,15 @@ int main(int argc, char *argv[])
     parser.setApplicationDescription(
                 "ld-process-efm - EFM data decoder\n"
                 "\n"
-                "(c)2019 Simon Inns\n"
+                "(c)2019-2020 Simon Inns\n"
                 "GPLv3 Open-Source - github: https://github.com/happycube/ld-decode");
     parser.addHelpOption();
     parser.addVersionOption();
 
-    // Option to show debug (-d / --debug)
-    QCommandLineOption showDebugOption(QStringList() << "d" << "debug",
-                                       QCoreApplication::translate("main", "Show debug"));
-    parser.addOption(showDebugOption);
+    // Add the standard debug options --debug and --quiet
+    addStandardDebugOptions(parser);
 
-    // Option to show debug (-d / --debug)
+    // Option to run in non-interactive mode (-n / --noninteractive)
     QCommandLineOption nonInteractiveOption(QStringList() << "n" << "noninteractive",
                                        QCoreApplication::translate("main", "Run in non-interactive mode"));
     parser.addOption(nonInteractiveOption);
@@ -74,12 +72,11 @@ int main(int argc, char *argv[])
     // Process the command line options and arguments given by the user
     parser.process(a);
 
-    // Get the options from the parser
-    bool isDebugOn = parser.isSet(showDebugOption);
-    bool isNonInteractiveOn = parser.isSet(nonInteractiveOption);
+    // Standard logging options
+    processStandardDebugOptions(parser);
 
-    // Process the command line options
-    if (isDebugOn) setDebug(true); else setDebug(false);
+    // Get the options from the parser
+    bool isNonInteractiveOn = parser.isSet(nonInteractiveOption);
 
     // Get the arguments from the parser
     QString inputEfmFilename;
@@ -100,7 +97,7 @@ int main(int argc, char *argv[])
     }
 
     // Start the GUI application
-    MainWindow w(isDebugOn, isNonInteractiveOn, outputAudioFilename);
+    MainWindow w(getDebugState(), isNonInteractiveOn, outputAudioFilename);
     if (!inputEfmFilename.isEmpty()) {
         // Load the file to decode
         if (!w.loadInputEfmFile(inputEfmFilename)) {

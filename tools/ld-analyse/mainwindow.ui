@@ -124,14 +124,20 @@
               </size>
              </property>
              <property name="toolTip">
-              <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Skip to start frame&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+              <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Skip to start of chapter&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
              </property>
              <property name="text">
               <string/>
              </property>
              <property name="icon">
-              <iconset theme="media-skip-backward">
-               <normaloff>.</normaloff>.</iconset>
+              <iconset resource="ld-analyse-resources.qrc">
+               <normaloff>:/icons/Graphics/start-frame.svg</normaloff>:/icons/Graphics/start-frame.svg</iconset>
+             </property>
+             <property name="iconSize">
+              <size>
+               <width>24</width>
+               <height>24</height>
+              </size>
              </property>
             </widget>
            </item>
@@ -150,8 +156,14 @@
               <string/>
              </property>
              <property name="icon">
-              <iconset theme="media-seek-backward">
-               <normaloff>.</normaloff>.</iconset>
+              <iconset resource="ld-analyse-resources.qrc">
+               <normaloff>:/icons/Graphics/prev-frame.svg</normaloff>:/icons/Graphics/prev-frame.svg</iconset>
+             </property>
+             <property name="iconSize">
+              <size>
+               <width>24</width>
+               <height>24</height>
+              </size>
              </property>
             </widget>
            </item>
@@ -170,8 +182,14 @@
               <string/>
              </property>
              <property name="icon">
-              <iconset theme="media-seek-forward">
-               <normaloff>.</normaloff>.</iconset>
+              <iconset resource="ld-analyse-resources.qrc">
+               <normaloff>:/icons/Graphics/next-frame.svg</normaloff>:/icons/Graphics/next-frame.svg</iconset>
+             </property>
+             <property name="iconSize">
+              <size>
+               <width>24</width>
+               <height>24</height>
+              </size>
              </property>
             </widget>
            </item>
@@ -184,14 +202,20 @@
               </size>
              </property>
              <property name="toolTip">
-              <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Skip to end frame&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+              <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Skip to end of chapter&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
              </property>
              <property name="text">
               <string/>
              </property>
              <property name="icon">
-              <iconset theme="media-skip-forward">
-               <normaloff>.</normaloff>.</iconset>
+              <iconset resource="ld-analyse-resources.qrc">
+               <normaloff>:/icons/Graphics/end-frame.svg</normaloff>:/icons/Graphics/end-frame.svg</iconset>
+             </property>
+             <property name="iconSize">
+              <size>
+               <width>24</width>
+               <height>24</height>
+              </size>
              </property>
             </widget>
            </item>
@@ -226,8 +250,14 @@
               <string/>
              </property>
              <property name="icon">
-              <iconset theme="zoom-in">
-               <normaloff>.</normaloff>.</iconset>
+              <iconset resource="ld-analyse-resources.qrc">
+               <normaloff>:/icons/Graphics/zoom-in.svg</normaloff>:/icons/Graphics/zoom-in.svg</iconset>
+             </property>
+             <property name="iconSize">
+              <size>
+               <width>24</width>
+               <height>24</height>
+              </size>
              </property>
             </widget>
            </item>
@@ -246,8 +276,14 @@
               <string/>
              </property>
              <property name="icon">
-              <iconset theme="zoom-out">
-               <normaloff>.</normaloff>.</iconset>
+              <iconset resource="ld-analyse-resources.qrc">
+               <normaloff>:/icons/Graphics/zoom-out.svg</normaloff>:/icons/Graphics/zoom-out.svg</iconset>
+             </property>
+             <property name="iconSize">
+              <size>
+               <width>24</width>
+               <height>24</height>
+              </size>
              </property>
             </widget>
            </item>
@@ -266,8 +302,14 @@
               <string/>
              </property>
              <property name="icon">
-              <iconset theme="zoom-original">
-               <normaloff>.</normaloff>.</iconset>
+              <iconset resource="ld-analyse-resources.qrc">
+               <normaloff>:/icons/Graphics/zoom-original.svg</normaloff>:/icons/Graphics/zoom-original.svg</iconset>
+             </property>
+             <property name="iconSize">
+              <size>
+               <width>24</width>
+               <height>24</height>
+              </size>
              </property>
             </widget>
            </item>
@@ -292,8 +334,14 @@
               <string/>
              </property>
              <property name="icon">
-              <iconset theme="input-mouse">
-               <normaloff>.</normaloff>.</iconset>
+              <iconset resource="ld-analyse-resources.qrc">
+               <normaloff>:/icons/Graphics/oscilloscope-target.svg</normaloff>:/icons/Graphics/oscilloscope-target.svg</iconset>
+             </property>
+             <property name="iconSize">
+              <size>
+               <width>24</width>
+               <height>24</height>
+              </size>
              </property>
              <property name="checkable">
               <bool>true</bool>
@@ -387,10 +435,9 @@
      <string>File</string>
     </property>
     <addaction name="actionOpen_TBC_file"/>
+    <addaction name="actionReload_TBC"/>
     <addaction name="separator"/>
     <addaction name="actionSave_frame_as_PNG"/>
-    <addaction name="actionSave_metadata_as_CSV"/>
-    <addaction name="actionSave_VBI_as_CSV"/>
     <addaction name="separator"/>
     <addaction name="actionExit"/>
    </widget>
@@ -400,6 +447,7 @@
     </property>
     <addaction name="actionDropout_analysis"/>
     <addaction name="actionSNR_analysis"/>
+    <addaction name="actionCapture_Quality_Index"/>
     <addaction name="actionVBI"/>
     <addaction name="actionLine_scope"/>
     <addaction name="actionClosed_Captions"/>
@@ -537,11 +585,6 @@
     <string>Ctrl+R</string>
    </property>
   </action>
-  <action name="actionSave_metadata_as_CSV">
-   <property name="text">
-    <string>Save VITS as CSV...</string>
-   </property>
-  </action>
   <action name="actionZoom_In">
    <property name="text">
     <string>Zoom In</string>
@@ -568,9 +611,20 @@
     <string>PAL Chroma decoder...</string>
    </property>
   </action>
-  <action name="actionSave_VBI_as_CSV">
+  <action name="actionCapture_Quality_Index">
    <property name="text">
-    <string>Save VBI as CSV...</string>
+    <string>Capture Quality Index...</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+U</string>
+   </property>
+  </action>
+  <action name="actionReload_TBC">
+   <property name="text">
+    <string>Reload TBC...</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+A</string>
    </property>
   </action>
  </widget>

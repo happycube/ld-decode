@@ -15,11 +15,26 @@ DEFINES += QT_DEPRECATED_WARNINGS
 #DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
 
 SOURCES += \
-        dataconverter.cpp \
-        main.cpp
+    dataconverter.cpp \
+    main.cpp \
+    ../library/tbc/logging.cpp
 
 HEADERS += \
-    dataconverter.h
+    dataconverter.h \
+    ../library/tbc/logging.h
+
+# Add external includes to the include path
+INCLUDEPATH += ../library/tbc
+
+# Include git information definitions
+isEmpty(BRANCH) {
+    BRANCH = "unknown"
+}
+isEmpty(COMMIT) {
+    COMMIT = "unknown"
+}
+DEFINES += APP_BRANCH=\"\\\"$${BRANCH}\\\"\" \
+    APP_COMMIT=\"\\\"$${COMMIT}\\\"\"
 
 # Rules for installation
 isEmpty(PREFIX) {

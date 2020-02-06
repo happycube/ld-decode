@@ -3,7 +3,7 @@
     mainwindow.h
 
     ld-analyse - TBC output analysis
-    Copyright (C) 2018-2019 Simon Inns
+    Copyright (C) 2018-2020 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -39,6 +39,7 @@
 #include "vbidialog.h"
 #include "dropoutanalysisdialog.h"
 #include "snranalysisdialog.h"
+#include "capturequalityindexdialog.h"
 #include "busydialog.h"
 #include "closedcaptionsdialog.h"
 #include "palchromadecoderconfigdialog.h"
@@ -61,14 +62,14 @@ private slots:
     // Menu bar handlers
     void on_actionExit_triggered();
     void on_actionOpen_TBC_file_triggered();
+    void on_actionReload_TBC_triggered();
     void on_actionLine_scope_triggered();
     void on_actionAbout_ld_analyse_triggered();
     void on_actionVBI_triggered();
     void on_actionDropout_analysis_triggered();
     void on_actionSNR_analysis_triggered();
+    void on_actionCapture_Quality_Index_triggered();
     void on_actionSave_frame_as_PNG_triggered();
-    void on_actionSave_metadata_as_CSV_triggered();
-    void on_actionSave_VBI_as_CSV_triggered();
     void on_actionZoom_In_triggered();
     void on_actionZoom_Out_triggered();
     void on_actionZoom_1x_triggered();
@@ -113,7 +114,8 @@ private:
     SnrAnalysisDialog* snrAnalysisDialog;
     BusyDialog* busyDialog;
     ClosedCaptionsDialog *closedCaptionDialog;
-    PalChromaDecoderConfigDialog * palChromaDecoderConfigDialog;
+    PalChromaDecoderConfigDialog *palChromaDecoderConfigDialog;
+    CaptureQualityIndexDialog *captureQualityIndexDialog;
 
     // Class globals
     Configuration configuration;
@@ -125,6 +127,7 @@ private:
     qint32 currentFrameNumber;
     qreal scaleFactor;
     QPalette buttonPalette;
+    QString lastFilename;
 
     // Update GUI methods
     void updateGuiLoaded();

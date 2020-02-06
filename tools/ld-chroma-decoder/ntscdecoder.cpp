@@ -41,7 +41,7 @@ bool NtscDecoder::configure(const LdDecodeMetaData::VideoParameters &videoParame
     }
 
     // Compute cropping parameters
-    setVideoParameters(config, videoParameters, config.combConfig.firstActiveLine, config.combConfig.lastActiveLine);
+    setVideoParameters(config, videoParameters);
 
     return true;
 }
@@ -70,7 +70,7 @@ NtscThread::NtscThread(QAtomicInt& _abort, DecoderPool &_decoderPool,
 }
 
 void NtscThread::decodeFrames(const QVector<SourceField> &inputFields, qint32 startIndex, qint32 endIndex,
-                              QVector<QByteArray> &outputFrames)
+                              QVector<RGBFrame> &outputFrames)
 {
     // Decode lookahead fields, discarding the result
     for (qint32 i = 0; i < startIndex; i += 2) {
@@ -80,7 +80,7 @@ void NtscThread::decodeFrames(const QVector<SourceField> &inputFields, qint32 st
     // Decode real fields to frames
     for (qint32 i = startIndex, j = 0; i < endIndex; i += 2, j++) {
         // Filter the frame
-        QByteArray outputData = comb.decodeFrame(inputFields[i], inputFields[i + 1]);
+        RGBFrame outputData = comb.decodeFrame(inputFields[i], inputFields[i + 1]);
 
         // The NTSC filter outputs the whole frame, so here we crop it to the required dimensions
         outputFrames[j] = NtscDecoder::cropOutputFrame(config, outputData);

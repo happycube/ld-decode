@@ -3,7 +3,7 @@
     dropoutcorrect.h
 
     ld-dropout-correct - Dropout correction for ld-decode
-    Copyright (C) 2018-2019 Simon Inns
+    Copyright (C) 2018-2020 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -65,33 +65,47 @@ private:
 
         bool isSameField;
         qint32 fieldLine;
+
+        qint32 sourceNumber;
+        qreal quality;
+
+        qint32 distance;
+    };
+
+    // Statistics
+    struct Statistics {
+        qint32 sameSourceReplacement;
+        qint32 multiSourceReplacement;
+        qint32 totalReplacementDistance;
     };
 
     // Decoder pool
     QAtomicInt& abort;
     CorrectorPool& correctorPool;
 
-    LdDecodeMetaData ldDecodeMetaData;
     QVector<LdDecodeMetaData::VideoParameters> videoParameters;
 
-    void correctField(const QVector<DropOutLocation> &thisFieldDropouts,
-                      const QVector<DropOutLocation> &otherFieldDropouts,
-                      QByteArray &thisFieldData, const QByteArray &otherFieldData,
-                      bool thisFieldIsFirst, bool intraField);
+    void correctField(const QVector<QVector<DropOutLocation> > &thisFieldDropouts,
+                      const QVector<QVector<DropOutLocation> > &otherFieldDropouts,
+                      QVector<SourceVideo::Data> &thisFieldData, const QVector<SourceVideo::Data> &otherFieldData,
+                      bool thisFieldIsFirst, bool intraField, const QVector<qint32> &availableSourcesForFrame,
+                      const QVector<qreal> &sourceFrameQuality, Statistics &statistics);
     QVector<DropOutLocation> populateDropoutsVector(LdDecodeMetaData::Field field, bool overCorrect);
     QVector<DropOutLocation> setDropOutLocations(QVector<DropOutLocation> dropOuts);
-    Replacement findReplacementLine(const QVector<DropOutLocation> &thisFieldDropouts,
-                                    const QVector<DropOutLocation> &otherFieldDropouts,
+    Replacement findReplacementLine(const QVector<QVector<DropOutLocation>> &thisFieldDropouts,
+                                    const QVector<QVector<DropOutLocation>> &otherFieldDropouts,
                                     qint32 dropOutIndex, bool thisFieldIsFirst, bool matchChromaPhase,
-                                    bool isColourBurst, bool intraField);
-    void findPotentialReplacementLine(const QVector<DropOutLocation> &targetDropouts, qint32 targetIndex,
-                                      const QVector<DropOutLocation> &sourceDropouts, bool isSameField,
+                                    bool isColourBurst, bool intraField, const QVector<qint32> &availableSourcesForFrame,
+                                    const QVector<qreal> &sourceFrameQuality);
+    void findPotentialReplacementLine(const QVector<QVector<DropOutLocation>> &targetDropouts, qint32 targetIndex,
+                                      const QVector<QVector<DropOutLocation>> &sourceDropouts, bool isSameField,
                                       qint32 sourceOffset, qint32 stepAmount,
-                                      qint32 firstActiveFieldLine, qint32 lastActiveFieldLine,
+                                      qint32 sourceNo, const QVector<qreal> &sourceFrameQuality,
                                       QVector<Replacement> &candidates);
     void correctDropOut(const DropOutLocation &dropOut,
                         const Replacement &replacement, const Replacement &chromaReplacement,
-                        QByteArray &thisFieldData, const QByteArray &otherFieldData);
+                        QVector<SourceVideo::Data> &thisFieldData, const QVector<SourceVideo::Data> &otherFieldData,
+                        Statistics &statistics);
 };
 
 #endif // DROPOUTCORRECT_H

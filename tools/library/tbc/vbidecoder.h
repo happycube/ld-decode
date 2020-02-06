@@ -25,7 +25,6 @@
 #ifndef VBIDECODER_H
 #define VBIDECODER_H
 
-#include <QObject>
 #include <QDebug>
 
 class VbiDecoder
@@ -54,33 +53,32 @@ public:
         futureUse               // 11
     };
 
-    // Overall container struct for VBI information
+    // Overall container struct for VBI information, with default values
     struct Vbi {
-        VbiDiscTypes type;
-        QString userCode;
-        qint32 picNo;
-        qint32 chNo;
-        qint32 clvHr;
-        qint32 clvMin;
-        qint32 clvSec;
-        qint32 clvPicNo;
-        VbiSoundModes soundMode;
-        VbiSoundModes soundModeAm2;
+        VbiDiscTypes type = VbiDiscTypes::unknownDiscType;
+        QString userCode = "";
+        qint32 picNo = -1;
+        qint32 chNo = -1;
+        qint32 clvHr = -1;
+        qint32 clvMin = -1;
+        qint32 clvSec = -1;
+        qint32 clvPicNo = -1;
+        VbiSoundModes soundMode = VbiSoundModes::futureUse;
+        VbiSoundModes soundModeAm2 = VbiSoundModes::futureUse;
 
-        // Note: These booleans are virtual (and stored in a single int)
-        bool leadIn;
-        bool leadOut;
-        bool picStop;
-        bool cx;
-        bool size;
-        bool side;
-        bool teletext;
-        bool dump;
-        bool fm;
-        bool digital;
-        bool parity;
-        bool copyAm2;
-        bool standardAm2;
+        bool leadIn = false;
+        bool leadOut = false;
+        bool picStop = false;
+        bool cx = false;
+        bool size = false;
+        bool side = false;
+        bool teletext = false;
+        bool dump = false;
+        bool fm = false;
+        bool digital = false;
+        bool parity = false;
+        bool copyAm2 = false;
+        bool standardAm2 = false;
     };
 
     VbiDecoder();
@@ -91,6 +89,7 @@ public:
 private:
     bool verboseDebug;
     bool parity(quint32 x4, quint32 x5);
+    bool decodeBCD(quint32 bcd, qint32 &output);
 };
 
 #endif // VBIDECODER_H

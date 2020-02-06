@@ -3,7 +3,7 @@
     dropoutanalysisdialog.h
 
     ld-analyse - TBC output analysis
-    Copyright (C) 2018-2019 Simon Inns
+    Copyright (C) 2018-2020 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -26,11 +26,11 @@
 #define DROPOUTANALYSISDIALOG_H
 
 #include <QDialog>
-#include <qwt/qwt_plot.h>
-#include <qwt/qwt_plot_canvas.h>
-#include <qwt/qwt_legend.h>
-#include <qwt/qwt_plot_grid.h>
-#include <qwt/qwt_plot_curve.h>
+#include <qwt_plot.h>
+#include <qwt_plot_canvas.h>
+#include <qwt_legend.h>
+#include <qwt_plot_grid.h>
+#include <qwt_plot_curve.h>
 
 #include "lddecodemetadata.h"
 
@@ -49,8 +49,6 @@ public:
     void startUpdate();
     void addDataPoint(qint32 fieldNumber, qreal doLength);
     void finishUpdate(qint32 numberOfFields, qint32 fieldsPerDataPoint);
-
-private slots:
 
 private:
     void removeChartContents();

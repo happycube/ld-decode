@@ -3,7 +3,7 @@
     configuration.h
 
     ld-analyse - TBC output analysis
-    Copyright (C) 2018-2019 Simon Inns
+    Copyright (C) 2018-2020 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -48,8 +48,6 @@ public:
     QString getSourceDirectory(void);
     void setPngDirectory(QString pngDirectory);
     QString getPngDirectory(void);
-    void setCsvDirectory(QString csvDirectory);
-    QString getCsvDirectory(void);
 
     // Get and set methods - windows
     void setMainWindowGeometry(QByteArray mainWindowGeometry);
@@ -68,6 +66,8 @@ public:
     QByteArray getClosedCaptionDialogGeometry(void);
     void setPalChromaDecoderConfigDialogGeometry(QByteArray palChromaDecoderConfigDialogGeometry);
     QByteArray getPalChromaDecoderConfigDialogGeometry(void);
+    void setCaptureQualityIndexDialogGeometry(QByteArray captureQualityIndexDialogGeometry);
+    QByteArray getCaptureQualityIndexDialogGeometry(void);
 
 signals:
 
@@ -80,7 +80,6 @@ private:
     struct Directories {
         QString sourceDirectory; // Last used directory for .tbc files
         QString pngDirectory; // Last used directory for .png files
-        QString csvDirectory; // Last used directory for .csv files
     };
 
     // Window geometry and settings
@@ -93,6 +92,7 @@ private:
         QByteArray snrAnalysisDialogGeometry;
         QByteArray closedCaptionDialogGeometry;
         QByteArray palChromaDecoderConfigDialogGeometry;
+        QByteArray captureQualityIndexDialogGeometry;
     };
 
     // Overall settings structure

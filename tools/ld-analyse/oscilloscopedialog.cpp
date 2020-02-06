@@ -82,6 +82,10 @@ void OscilloscopeDialog::showTraceImage(TbcSource::ScanLineData scanLineData, qi
 
     // Update the maximum scan-lines limit
     maximumScanLines = frameHeight;
+    // QT Bug workaround for some macOS versions
+    #if defined(Q_OS_MACOS)
+    	repaint();
+    #endif
 }
 
 QImage OscilloscopeDialog::getFieldLineTraceImage(TbcSource::ScanLineData scanLineData, qint32 pictureDot)

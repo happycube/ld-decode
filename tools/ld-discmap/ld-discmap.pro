@@ -18,21 +18,33 @@ SOURCES += \
     ../library/tbc/lddecodemetadata.cpp \
     ../library/tbc/sourcevideo.cpp \
     ../library/tbc/vbidecoder.cpp \
+    ../library/tbc/logging.cpp \
     discmap.cpp \
-    logging.cpp \
-    main.cpp \
-    vbimapper.cpp
+    discmapper.cpp \
+    frame.cpp \
+    main.cpp
 
 HEADERS += \
     ../library/tbc/lddecodemetadata.h \
     ../library/tbc/sourcevideo.h \
     ../library/tbc/vbidecoder.h \
+    ../library/tbc/logging.h \
     discmap.h \
-    logging.h \
-    vbimapper.h
+    discmapper.h \
+    frame.h
 
 # Add external includes to the include path
 INCLUDEPATH += ../library/tbc
+
+# Include git information definitions
+isEmpty(BRANCH) {
+    BRANCH = "unknown"
+}
+isEmpty(COMMIT) {
+    COMMIT = "unknown"
+}
+DEFINES += APP_BRANCH=\"\\\"$${BRANCH}\\\"\" \
+    APP_COMMIT=\"\\\"$${COMMIT}\\\"\"
 
 # Rules for installation
 isEmpty(PREFIX) {
@@ -40,3 +52,4 @@ isEmpty(PREFIX) {
 }
 unix:!android: target.path = $$PREFIX/bin/
 !isEmpty(target.path): INSTALLS += target
+

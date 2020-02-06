@@ -3,7 +3,7 @@
     main.cpp
 
     ld-diffdod - TBC Differential Drop-Out Detection tool
-    Copyright (C) 2019 Simon Inns
+    Copyright (C) 2019-2020 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -28,7 +28,7 @@
 #include <QCommandLineParser>
 
 #include "logging.h"
-#include "diffdod.h"
+#include "sources.h"
 
 int main(int argc, char *argv[])
 {
@@ -40,7 +40,7 @@ int main(int argc, char *argv[])
 
     // Set application name and version
     QCoreApplication::setApplicationName("ld-diffdod");
-    QCoreApplication::setApplicationVersion("1.0");
+    QCoreApplication::setApplicationVersion(QString("Branch: %1 / Commit: %2").arg(APP_BRANCH, APP_COMMIT));
     QCoreApplication::setOrganizationDomain("domesday86.com");
 
     // Set up the command line parser
@@ -48,32 +48,48 @@ int main(int argc, char *argv[])
     parser.setApplicationDescription(
                 "ld-diffdod - TBC Differential Drop-Out Detection tool\n"
                 "\n"
-                "(c)2019 Simon Inns\n"
+                "(c)2019-2020 Simon Inns\n"
                 "GPLv3 Open-Source - github: https://github.com/happycube/ld-decode");
     parser.addHelpOption();
     parser.addVersionOption();
 
-    // Option to show debug (-d / --debug)
-    QCommandLineOption showDebugOption(QStringList() << "d" << "debug",
-                                       QCoreApplication::translate("main", "Show debug"));
-    parser.addOption(showDebugOption);
+    // Add the standard debug options --debug and --quiet
+    addStandardDebugOptions(parser);
 
     // Option to reverse the field order (-r / --reverse)
     QCommandLineOption setReverseOption(QStringList() << "r" << "reverse",
                                        QCoreApplication::translate("main", "Reverse the field order to second/first (default first/second)"));
     parser.addOption(setReverseOption);
 
-    // Option to turn off luma clip detection (-n / --noluma)
-    QCommandLineOption setNoLumaOption(QStringList() << "n" << "noluma",
-                                       QCoreApplication::translate("main", "Do not perform luma clip dropout detection"));
-    parser.addOption(setNoLumaOption);
+    // Option to turn off signal clip detection (-n / --noclip)
+    QCommandLineOption setNoClipOption(QStringList() << "n" << "noclip",
+                                       QCoreApplication::translate("main", "Do not perform signal clip dropout detection"));
+    parser.addOption(setNoClipOption);
 
-
-    // Option to select DOD threshold (dod-threshold) (-x)
+    // Option to select DOD threshold (-x / --dod-threshold)
     QCommandLineOption dodThresholdOption(QStringList() << "x" << "dod-threshold",
-                                        QCoreApplication::translate("main", "Specify the DOD threshold (100-65435 default: 700"),
+                                        QCoreApplication::translate("main", "Specify the DOD threshold percent (1 to 100% default: 7%"),
                                         QCoreApplication::translate("main", "number"));
     parser.addOption(dodThresholdOption);
+
+    // Option to select the start VBI frame (-s / --start)
+    QCommandLineOption startVbiOption(QStringList() << "s" << "start",
+                                        QCoreApplication::translate("main", "Specify the start VBI frame"),
+                                        QCoreApplication::translate("main", "number"));
+    parser.addOption(startVbiOption);
+
+    // Option to select the maximum number of VBI frames to process (-l / --length)
+    QCommandLineOption lengthVbiOption(QStringList() << "l" << "length",
+                                        QCoreApplication::translate("main", "Specify the maximum number of VBI frames to process"),
+                                        QCoreApplication::translate("main", "number"));
+    parser.addOption(lengthVbiOption);
+
+    // Option to select the number of threads (-t)
+    QCommandLineOption threadsOption(QStringList() << "t" << "threads",
+                                        QCoreApplication::translate(
+                                         "main", "Specify the number of concurrent threads (default is the number of logical CPUs)"),
+                                        QCoreApplication::translate("main", "number"));
+    parser.addOption(threadsOption);
 
     // Positional argument to specify input TBC files
     parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input TBC files (minimum of 3)"));
@@ -81,13 +97,13 @@ int main(int argc, char *argv[])
     // Process the command line options and arguments given by the user
     parser.process(a);
 
-    // Get the options from the parser
-    bool isDebugOn = parser.isSet(showDebugOption);
-    bool reverse = parser.isSet(setReverseOption);
-    bool noLumaClip = parser.isSet(setNoLumaOption);
+    // Standard logging options
+    processStandardDebugOptions(parser);
 
-    // Process the command line options
-    if (isDebugOn) setDebug(true); else setDebug(false);
+    // Get the options from the parser
+    bool reverse = parser.isSet(setReverseOption);
+    bool signalClip = true;
+    if (parser.isSet(setNoClipOption)) signalClip = false;
 
     QVector<QString> inputFilenames;
     QStringList positionalArguments = parser.positionalArguments();
@@ -108,21 +124,54 @@ int main(int argc, char *argv[])
         return -1;
     }
 
-    qint32 dodThreshold = 700;
-
+    qint32 dodThreshold = 7;
     if (parser.isSet(dodThresholdOption)) {
         dodThreshold = parser.value(dodThresholdOption).toInt();
 
-        if (dodThreshold < 100 || dodThreshold > 65435) {
+        if (dodThreshold < 1 || dodThreshold > 100) {
             // Quit with error
-            qCritical("DOD threshold must be between 100 and 65435");
+            qCritical("DOD threshold must be between 1 and 100 percent");
+            return -1;
+        }
+    }
+
+    qint32 vbiFrameStart = 0;
+    if (parser.isSet(startVbiOption)) {
+        vbiFrameStart = parser.value(startVbiOption).toInt();
+
+        if (vbiFrameStart < 1 || vbiFrameStart > 160000) {
+            // Quit with error
+            qCritical("Start VBI frame must be between 1 and 160000");
+            return -1;
+        }
+    }
+
+    qint32 vbiFrameLength = -1;
+    if (parser.isSet(lengthVbiOption)) {
+        vbiFrameLength = parser.value(lengthVbiOption).toInt();
+
+        if (vbiFrameLength < 1 || vbiFrameLength > 160000) {
+            // Quit with error
+            qCritical("VBI frame length must be between 1 and 160000");
+            return -1;
+        }
+    }
+
+    qint32 maxThreads = QThread::idealThreadCount();
+    if (parser.isSet(threadsOption)) {
+        maxThreads = parser.value(threadsOption).toInt();
+
+        if (maxThreads < 1) {
+            // Quit with error
+            qCritical("Specified number of threads must be greater than zero");
             return -1;
         }
     }
 
     // Process the TBC file
-    Diffdod diffdod;
-    if (!diffdod.process(inputFilenames, reverse, dodThreshold, noLumaClip)) {
+    Sources sources(inputFilenames, reverse, dodThreshold, signalClip,
+                    vbiFrameStart, vbiFrameLength, maxThreads);
+    if (!sources.process()) {
         return 1;
     }
 

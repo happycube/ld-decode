@@ -40,13 +40,10 @@ TransformPal::~TransformPal()
 }
 
 void TransformPal::updateConfiguration(const LdDecodeMetaData::VideoParameters &_videoParameters,
-                                       qint32 _firstActiveLine, qint32 _lastActiveLine,
                                        TransformPal::TransformMode _mode, double threshold,
                                        const QVector<double> &_thresholds)
 {
     videoParameters = _videoParameters;
-    firstActiveLine = _firstActiveLine;
-    lastActiveLine = _lastActiveLine;
     mode = _mode;
 
     // Resize thresholds to match the number of FFT bins we will consider in
@@ -70,7 +67,7 @@ void TransformPal::updateConfiguration(const LdDecodeMetaData::VideoParameters &
 
 void TransformPal::overlayFFT(qint32 positionX, qint32 positionY,
                               const QVector<SourceField> &inputFields, qint32 startIndex, qint32 endIndex,
-                              QVector<QByteArray> &rgbFrames)
+                              QVector<RGBFrame> &rgbFrames)
 {
     // Visualise the first field for each output frame
     for (int fieldIndex = startIndex, outputIndex = 0; fieldIndex < endIndex; fieldIndex += 2, outputIndex++) {

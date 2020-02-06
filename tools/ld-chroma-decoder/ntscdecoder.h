@@ -68,7 +68,7 @@ public:
 
 protected:
     void decodeFrames(const QVector<SourceField> &inputFields, qint32 startIndex, qint32 endIndex,
-                      QVector<QByteArray> &outputFrames) override;
+                      QVector<RGBFrame> &outputFrames) override;
 
 private:
     // Settings

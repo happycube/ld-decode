@@ -25,8 +25,8 @@
 #include "decoderpool.h"
 
 DecoderPool::DecoderPool(QString _inputFilename, QString _outputJsonFilename,
-                         qint32 _maxThreads, LdDecodeMetaData &_ldDecodeMetaData, QObject *parent)
-    : QObject(parent), inputFilename(_inputFilename), outputJsonFilename(_outputJsonFilename),
+                         qint32 _maxThreads, LdDecodeMetaData &_ldDecodeMetaData)
+    : inputFilename(_inputFilename), outputJsonFilename(_outputJsonFilename),
       maxThreads(_maxThreads), ldDecodeMetaData(_ldDecodeMetaData)
 {
 }
@@ -100,8 +100,8 @@ bool DecoderPool::process()
 //
 // Returns true if a field was returned, false if the end of the input has been
 // reached.
-bool DecoderPool::getInputField(qint32 &fieldNumber, QByteArray& fieldVideoData,
-                                LdDecodeMetaData::Field& fieldMetadata, LdDecodeMetaData::VideoParameters& videoParameters)
+bool DecoderPool::getInputField(qint32 &fieldNumber, SourceVideo::Data &fieldVideoData,
+                                LdDecodeMetaData::Field &fieldMetadata, LdDecodeMetaData::VideoParameters &videoParameters)
 {
     QMutexLocker locker(&inputMutex);
 
@@ -116,8 +116,8 @@ bool DecoderPool::getInputField(qint32 &fieldNumber, QByteArray& fieldVideoData,
     // Show what we are about to process
     qDebug() << "DecoderPool::process(): Processing field number" << fieldNumber;
 
-    // Fetch the input data (we require only lines 10 to 21 from the field)
-    fieldVideoData = sourceVideo.getVideoField(fieldNumber, 10, 21);
+    // Fetch the input data
+    fieldVideoData = sourceVideo.getVideoField(fieldNumber, VbiLineDecoder::startFieldLine, VbiLineDecoder::endFieldLine);
     fieldMetadata = ldDecodeMetaData.getField(fieldNumber);
     videoParameters = ldDecodeMetaData.getVideoParameters();
 

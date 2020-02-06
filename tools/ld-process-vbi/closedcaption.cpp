@@ -24,13 +24,8 @@
 
 #include "closedcaption.h"
 
-ClosedCaption::ClosedCaption(QObject *parent) : QObject(parent)
-{
-
-}
-
 // Public method to read CEA-608 Closed Captioning data (NTSC only)
-ClosedCaption::CcData ClosedCaption::getData(QByteArray lineData, LdDecodeMetaData::VideoParameters videoParameters)
+ClosedCaption::CcData ClosedCaption::getData(const SourceVideo::Data &lineData, LdDecodeMetaData::VideoParameters videoParameters)
 {
     CcData ccData;
     ccData.byte0 = 0;
@@ -133,7 +128,7 @@ bool ClosedCaption::isEvenParity(uchar data)
 }
 
 // Private method to get the map of transitions across the sample and reject noise
-QVector<bool> ClosedCaption::getTransitionMap(QByteArray lineData, qint32 zcPoint)
+QVector<bool> ClosedCaption::getTransitionMap(const SourceVideo::Data &lineData, qint32 zcPoint)
 {
     // First read the data into a boolean array using debounce to remove transition noise
     bool previousState = false;
@@ -142,9 +137,8 @@ QVector<bool> ClosedCaption::getTransitionMap(QByteArray lineData, qint32 zcPoin
     QVector<bool> transitionMap;
 
     // Each value is 2 bytes (16-bit greyscale data)
-    for (qint32 xPoint = 0; xPoint < lineData.size(); xPoint += 2) {
-        qint32 pixelValue = (static_cast<uchar>(lineData[xPoint + 1]) * 256) + static_cast<uchar>(lineData[xPoint]);
-        if (pixelValue > zcPoint) currentState = true; else currentState = false;
+    for (qint32 xPoint = 0; xPoint < lineData.size(); xPoint++) {
+        if (lineData[xPoint] > zcPoint) currentState = true; else currentState = false;
 
         if (currentState != previousState) debounce++;
 

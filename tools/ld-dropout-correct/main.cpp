@@ -3,7 +3,7 @@
     main.cpp
 
     ld-dropout-correct - Dropout correction for ld-decode
-    Copyright (C) 2018-2019 Simon Inns
+    Copyright (C) 2018-2020 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -28,58 +28,20 @@
 #include <QCommandLineParser>
 #include <QThread>
 
+#include "logging.h"
 #include "correctorpool.h"
-#include "dropoutcorrect.h"
-
-// Global for debug output
-static bool showDebug = false;
-
-// Qt debug message handler
-void debugOutputHandler(QtMsgType type, const QMessageLogContext &context, const QString &msg)
-{
-    // Use:
-    // context.file - to show the filename
-    // context.line - to show the line number
-    // context.function - to show the function name
-
-    QByteArray localMsg = msg.toLocal8Bit();
-    switch (type) {
-    case QtDebugMsg: // These are debug messages meant for developers
-        if (showDebug) {
-            // If the code was compiled as 'release' the context.file will be NULL
-            if (context.file != nullptr) fprintf(stderr, "Debug: [%s:%d] %s\n", context.file, context.line, localMsg.constData());
-            else fprintf(stderr, "Debug: %s\n", localMsg.constData());
-        }
-        break;
-    case QtInfoMsg: // These are information messages meant for end-users
-        if (context.file != nullptr) fprintf(stderr, "Info: [%s:%d] %s\n", context.file, context.line, localMsg.constData());
-        else fprintf(stderr, "Info: %s\n", localMsg.constData());
-        break;
-    case QtWarningMsg:
-        if (context.file != nullptr) fprintf(stderr, "Warning: [%s:%d] %s\n", context.file, context.line, localMsg.constData());
-        else fprintf(stderr, "Warning: %s\n", localMsg.constData());
-        break;
-    case QtCriticalMsg:
-        if (context.file != nullptr) fprintf(stderr, "Critical: [%s:%d] %s\n", context.file, context.line, localMsg.constData());
-        else fprintf(stderr, "Critical: %s\n", localMsg.constData());
-        break;
-    case QtFatalMsg:
-        if (context.file != nullptr) fprintf(stderr, "Fatal: [%s:%d] %s\n", context.file, context.line, localMsg.constData());
-        else fprintf(stderr, "Fatal: %s\n", localMsg.constData());
-        abort();
-    }
-}
 
 int main(int argc, char *argv[])
 {
     // Install the local debug message handler
+    setDebug(true);
     qInstallMessageHandler(debugOutputHandler);
 
     QCoreApplication a(argc, argv);
 
     // Set application name and version
     QCoreApplication::setApplicationName("ld-dropout-correct");
-    QCoreApplication::setApplicationVersion("1.5");
+    QCoreApplication::setApplicationVersion(QString("Branch: %1 / Commit: %2").arg(APP_BRANCH, APP_COMMIT));
     QCoreApplication::setOrganizationDomain("domesday86.com");
 
     // Set up the command line parser ---------------------------------------------------------------------------------
@@ -93,10 +55,8 @@ int main(int argc, char *argv[])
     parser.addHelpOption();
     parser.addVersionOption();
 
-    // Option to show debug (-d)
-    QCommandLineOption showDebugOption(QStringList() << "d" << "debug",
-                                       QCoreApplication::translate("main", "Show debug"));
-    parser.addOption(showDebugOption);
+    // Add the standard debug options --debug and --quiet
+    addStandardDebugOptions(parser);
 
     // Option to specify a different JSON input file
     QCommandLineOption inputJsonOption(QStringList() << "input-json",
@@ -143,8 +103,10 @@ int main(int argc, char *argv[])
     // Process the command line options and arguments given by the user -----------------------------------------------
     parser.process(a);
 
+    // Standard logging options
+    processStandardDebugOptions(parser);
+
     // Get the options from the parser
-    bool isDebugOn = parser.isSet(showDebugOption);
     bool reverse = parser.isSet(setReverseOption);
     bool intraField = parser.isSet(setIntrafieldOption);
     bool overCorrect = parser.isSet(setOverCorrectOption);
@@ -166,7 +128,6 @@ int main(int argc, char *argv[])
     QString outputFilename = "-";
     QStringList positionalArguments = parser.positionalArguments();
     qint32 totalNumberOfInputFiles = positionalArguments.count() - 1;
-    inputFilenames.resize(totalNumberOfInputFiles);
 
     // Ensure we don't have more than 32 sources
     if (totalNumberOfInputFiles > 32) {
@@ -176,6 +137,9 @@ int main(int argc, char *argv[])
 
     // Get the input TBC sources
     if (positionalArguments.count() >= 2) {
+        // Resize the input filenames vector according to the number of input files supplied
+        inputFilenames.resize(totalNumberOfInputFiles);
+
         for (qint32 i = 0; i < positionalArguments.count() - 1; i++) {
             inputFilenames[i] = positionalArguments.at(i);
         }
@@ -224,8 +188,15 @@ int main(int argc, char *argv[])
         }
     }
 
-    // Process the command line options
-    if (isDebugOn) showDebug = true; else showDebug = false;
+    // Check that the output file does not already exist
+    if (outputFilename != "-") {
+        QFileInfo outputFileInfo(outputFilename);
+        if (outputFileInfo.exists()) {
+            // Quit with error
+            qCritical("Specified output file already exists - will not overwrite");
+            return -1;
+        }
+    }
 
     // Metadata filename for output TBC
     QString outputJsonFilename = outputFilename + ".json";
@@ -238,8 +209,13 @@ int main(int argc, char *argv[])
     qInfo() << "Starting preparation for dropout correction processes...";
     // Open the source video metadata
     qDebug() << "main(): Opening source video metadata files..";
-    QVector<LdDecodeMetaData> ldDecodeMetaData;
+    QVector<LdDecodeMetaData *> ldDecodeMetaData;
     ldDecodeMetaData.resize(totalNumberOfInputFiles);
+    for (qint32 i = 0; i < totalNumberOfInputFiles; i++) {
+        // Create an object for the source video
+        ldDecodeMetaData[i] = new LdDecodeMetaData;
+    }
+
     for (qint32 i = 0; i < totalNumberOfInputFiles; i++) {
         // Work out the metadata filename
         QString jsonFilename = inputFilenames[i] + ".json";
@@ -247,7 +223,7 @@ int main(int argc, char *argv[])
         qInfo().nospace().noquote() << "Reading input #" << i << " JSON metadata from " << jsonFilename;
 
         // Open it
-        if (!ldDecodeMetaData[i].read(jsonFilename)) {
+        if (!ldDecodeMetaData[i]->read(jsonFilename)) {
             qCritical() << "Unable to open TBC JSON metadata file - cannot continue";
             return -1;
         }
@@ -257,7 +233,7 @@ int main(int argc, char *argv[])
     if (reverse) {
         qInfo() << "Expected field order is reversed to second field/first field";
         for (qint32 i = 0; i < totalNumberOfInputFiles; i++)
-            ldDecodeMetaData[i].setIsFirstFieldFirst(false);
+            ldDecodeMetaData[i]->setIsFirstFieldFirst(false);
     }
 
     // Intrafield only correction if required
@@ -272,17 +248,21 @@ int main(int argc, char *argv[])
 
     // Show and open input source TBC files
     qDebug() << "main(): Opening source video files...";
-    QVector<SourceVideo> sourceVideos;
+    QVector<SourceVideo *> sourceVideos;
     sourceVideos.resize(totalNumberOfInputFiles);
+    for (qint32 i = 0; i < totalNumberOfInputFiles; i++) {
+        // Create an object for the source video
+        sourceVideos[i] = new SourceVideo;
+    }
 
     for (qint32 i = 0; i < totalNumberOfInputFiles; i++) {
-        LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData[i].getVideoParameters();
+        LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData[i]->getVideoParameters();
 
         qInfo().nospace() << "Opening input #" << i << ": " << videoParameters.fieldWidth << "x" << videoParameters.fieldHeight <<
                     " - input filename is " << inputFilenames[i];
 
         // Open the source TBC
-        if (!sourceVideos[i].open(inputFilenames[i], videoParameters.fieldWidth * videoParameters.fieldHeight)) {
+        if (!sourceVideos[i]->open(inputFilenames[i], videoParameters.fieldWidth * videoParameters.fieldHeight)) {
             // Could not open source video file
             qInfo() << "Unable to open input source" << i;
             qInfo() << "Please verify that the specified source video files exist with the correct file permissions";
@@ -290,9 +270,9 @@ int main(int argc, char *argv[])
         }
 
         // Verify TBC and JSON input fields match
-        if (sourceVideos[i].getNumberOfAvailableFields() != ldDecodeMetaData[0].getNumberOfFields()) {
-            qInfo() << "Warning: TBC file contains" << sourceVideos[i].getNumberOfAvailableFields() <<
-                       "fields but the JSON indicates" << ldDecodeMetaData[0].getNumberOfFields() <<
+        if (sourceVideos[i]->getNumberOfAvailableFields() != ldDecodeMetaData[i]->getNumberOfFields()) {
+            qInfo() << "Warning: TBC file contains" << sourceVideos[i]->getNumberOfAvailableFields() <<
+                       "fields but the JSON indicates" << ldDecodeMetaData[i]->getNumberOfFields() <<
                        "fields - some fields will be ignored";
             qInfo() << "Update your copy of ld-decode and try again, this shouldn't happen unless the JSON metadata has been corrupted";
         }
@@ -300,14 +280,14 @@ int main(int argc, char *argv[])
         // Additional checks when using multiple input sources
         if (totalNumberOfInputFiles > 1) {
             // Ensure source video has VBI data
-            if (!ldDecodeMetaData[i].getFieldVbi(1).inUse) {
+            if (!ldDecodeMetaData[i]->getFieldVbi(1).inUse) {
                 qInfo() << "Source video" << i << "does not appear to have valid VBI data in the JSON metadata.";
                 qInfo() << "Please try running ld-process-vbi on the source video and then try again";
                 return 1;
             }
 
             // Ensure that the video source standard matches the primary source
-            if (ldDecodeMetaData[0].getVideoParameters().isSourcePal != videoParameters.isSourcePal) {
+            if (ldDecodeMetaData[0]->getVideoParameters().isSourcePal != videoParameters.isSourcePal) {
                 qInfo() << "All additional input sources must have the same video format (PAL/NTSC) as the initial source!";
                 return 1;
             }
@@ -322,11 +302,21 @@ int main(int argc, char *argv[])
 
     // Perform the DOC process ----------------------------------------------------------------------------------------
     qInfo() << "Initial source checks are ok and sources are loaded";
+    qint32 result = 0;
     CorrectorPool correctorPool(outputFilename, outputJsonFilename, maxThreads,
                                 ldDecodeMetaData, sourceVideos,
                                 reverse, intraField, overCorrect);
-    if (!correctorPool.process()) return 1;
+    if (!correctorPool.process()) result = 1;
 
-    // Quit with success
-    return 0;
+    // Close open source video files
+    for (qint32 i = 0; i < totalNumberOfInputFiles; i++) sourceVideos[i]->close();
+
+    // Remove metadata objects
+    for (qint32 i = 0; i < totalNumberOfInputFiles; i++) delete ldDecodeMetaData[i];
+
+    // Remove source video objects
+    for (qint32 i = 0; i < totalNumberOfInputFiles; i++) delete sourceVideos[i];
+
+    // Quit
+    return result;
 }

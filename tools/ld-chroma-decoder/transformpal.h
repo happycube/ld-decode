@@ -28,13 +28,13 @@
 #ifndef TRANSFORMPAL_H
 #define TRANSFORMPAL_H
 
-#include <QByteArray>
 #include <QVector>
 #include <fftw3.h>
 
 #include "lddecodemetadata.h"
 
 #include "framecanvas.h"
+#include "rgbframe.h"
 #include "sourcefield.h"
 
 // Abstract base class for Transform PAL filters.
@@ -60,7 +60,6 @@ public:
     // Values from 0-1 are meaningful, with higher values requiring signals to
     // be more similar to be considered chroma. 0.6 is pyctools-pal's default.
     void updateConfiguration(const LdDecodeMetaData::VideoParameters &videoParameters,
-                             qint32 firstActiveLine, qint32 lastActiveLine,
                              TransformMode mode, double threshold,
                              const QVector<double> &thresholds);
 
@@ -79,14 +78,14 @@ public:
     // frame coordinates.
     void overlayFFT(qint32 positionX, qint32 positionY,
                     const QVector<SourceField> &inputFields, qint32 startIndex, qint32 endIndex,
-                    QVector<QByteArray> &rgbFrames);
+                    QVector<RGBFrame> &rgbFrames);
 
 protected:
     // Overlay a visualisation of one field's FFT.
     // Calls back to overlayFFTArrays to draw the arrays.
     virtual void overlayFFTFrame(qint32 positionX, qint32 positionY,
                                  const QVector<SourceField> &inputFields, qint32 fieldIndex,
-                                 QByteArray &rgbFrame) = 0;
+                                 RGBFrame &rgbFrame) = 0;
 
     void overlayFFTArrays(const fftw_complex *fftIn, const fftw_complex *fftOut,
                           FrameCanvas &canvas);
@@ -99,8 +98,6 @@ protected:
     // Configuration parameters
     bool configurationSet;
     LdDecodeMetaData::VideoParameters videoParameters;
-    qint32 firstActiveLine;
-    qint32 lastActiveLine;
     QVector<double> thresholds;
     TransformMode mode;
 };

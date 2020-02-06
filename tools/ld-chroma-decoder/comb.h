@@ -35,15 +35,10 @@
 
 #include "opticalflow.h"
 #include "rgb.h"
+#include "rgbframe.h"
 #include "sourcefield.h"
 #include "yiq.h"
 #include "yiqbuffer.h"
-
-// Fix required for Mac OS compilation - environment doesn't seem to set up
-// the expected definitions properly
-#ifndef M_PIl
-#define M_PIl 0xc.90fdaa22168c235p-2L
-#endif
 
 class Comb
 {
@@ -59,11 +54,6 @@ public:
         bool use3D = false;
         bool showOpticalFlowMap = false;
 
-        // Interlaced line 40 is NTSC line 21 (the closed-caption line before the first active half-line)
-        qint32 firstActiveLine = 40;
-        // Interlaced line 524 is NTSC line 263 (the last active half-line).
-        qint32 lastActiveLine = 525;
-
         qreal cNRLevel = 0.0;
         qreal yNRLevel = 1.0;
     };
@@ -73,7 +63,7 @@ public:
                              const Configuration &configuration);
 
     // Decode two fields to produce an interlaced frame.
-    QByteArray decodeFrame(const SourceField &firstField, const SourceField &secondField);
+    RGBFrame decodeFrame(const SourceField &firstField, const SourceField &secondField);
 
 protected:
 
@@ -95,7 +85,7 @@ private:
     };
 
     struct FrameBuffer {
-        QByteArray rawbuffer;
+        SourceVideo::Data rawbuffer;
 
         QVector<PixelLine> clpbuffer; // Unfiltered chroma for the current phase (can be I or Q)
         QVector<qreal> kValues;
@@ -125,8 +115,8 @@ private:
     void doCNR(YiqBuffer &yiqBuffer);
     void doYNR(YiqBuffer &yiqBuffer);
 
-    QByteArray yiqToRgbFrame(const YiqBuffer &yiqBuffer, qreal burstLevel);
-    void overlayOpticalFlowMap(const FrameBuffer &frameBuffer, QByteArray &rgbOutputFrame);
+    RGBFrame yiqToRgbFrame(const YiqBuffer &yiqBuffer, qreal burstLevel);
+    void overlayOpticalFlowMap(const FrameBuffer &frameBuffer, RGBFrame &rgbOutputFrame);
     void adjustY(FrameBuffer *frameBuffer, YiqBuffer &yiqBuffer);
 };
 

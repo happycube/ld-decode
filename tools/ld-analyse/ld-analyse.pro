@@ -26,6 +26,7 @@ CONFIG += c++11
 
 SOURCES += \
     busydialog.cpp \
+    capturequalityindexdialog.cpp \
     closedcaptionsdialog.cpp \
     main.cpp \
     mainwindow.cpp \
@@ -50,10 +51,12 @@ SOURCES += \
     ../library/tbc/lddecodemetadata.cpp \
     ../library/tbc/sourcevideo.cpp \
     ../library/tbc/vbidecoder.cpp \
-    ../library/tbc/filters.cpp
+    ../library/tbc/filters.cpp \
+    ../library/tbc/logging.cpp
 
 HEADERS += \
     busydialog.h \
+    capturequalityindexdialog.h \
     closedcaptionsdialog.h \
     mainwindow.h \
     oscilloscopedialog.h \
@@ -67,6 +70,7 @@ HEADERS += \
     ../ld-chroma-decoder/palcolour.h \
     ../ld-chroma-decoder/comb.h \
     ../ld-chroma-decoder/rgb.h \
+    ../ld-chroma-decoder/rgbframe.h \
     ../ld-chroma-decoder/yiq.h \
     ../ld-chroma-decoder/transformpal.h \
     ../ld-chroma-decoder/transformpal2d.h \
@@ -79,10 +83,12 @@ HEADERS += \
     ../library/tbc/lddecodemetadata.h \
     ../library/tbc/sourcevideo.h \
     ../library/tbc/vbidecoder.h \
-    ../library/tbc/filters.h
+    ../library/tbc/filters.h \
+    ../library/tbc/logging.h
 
 FORMS += \
     busydialog.ui \
+    capturequalityindexdialog.ui \
     closedcaptionsdialog.ui \
     mainwindow.ui \
     oscilloscopedialog.ui \
@@ -97,6 +103,16 @@ INCLUDEPATH += ../library/filter
 INCLUDEPATH += ../library/tbc
 INCLUDEPATH += ../ld-chroma-decoder
 
+# Include git information definitions
+isEmpty(BRANCH) {
+    BRANCH = "unknown"
+}
+isEmpty(COMMIT) {
+    COMMIT = "unknown"
+}
+DEFINES += APP_BRANCH=\"\\\"$${BRANCH}\\\"\" \
+    APP_COMMIT=\"\\\"$${COMMIT}\\\"\"
+
 # Rules for installation
 isEmpty(PREFIX) {
     PREFIX = /usr/local
@@ -108,8 +124,12 @@ RESOURCES += \
     ld-analyse-resources.qrc
 
 # Additional include paths to support MacOS compilation
+macx {
+ICON = Graphics/ld-analyse.icns
 INCLUDEPATH += "/usr/local/opt/opencv@2/include"
 LIBS += -L"/usr/local/opt/opencv@2/lib"
+INCLUDEPATH += "/usr/local/include"
+}
 
 # Normal open-source OS goodness
 INCLUDEPATH += "/usr/local/include/opencv"
@@ -117,9 +137,12 @@ LIBS += -L"/usr/local/lib"
 LIBS += -lopencv_core -lopencv_imgcodecs -lopencv_highgui -lopencv_imgproc -lopencv_video -lfftw3
 
 # Include the QWT library (used for charting)
-INCLUDEPATH += $(QWT)/include
-LIBS += -lqwt-qt5
-
-
-
-
+unix:!macx {
+#INCLUDEPATH += $(QWT)/include
+INCLUDEPATH += /usr/include/qwt
+LIBS += -lqwt-qt5 #Distrubutions other than Ubuntu may be -lqwt
+}
+macx {
+INCLUDEPATH += "/usr/local/lib/qwt.framework/Versions/6/Headers"
+LIBS += -F"/usr/local/lib" -framework qwt
+}

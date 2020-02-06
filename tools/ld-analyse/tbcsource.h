@@ -3,7 +3,7 @@
     tbcsource.h
 
     ld-analyse - TBC output analysis
-    Copyright (C) 2018-2019 Simon Inns
+    Copyright (C) 2018-2020 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -87,6 +87,7 @@ public:
     QVector<qreal> getBlackSnrGraphData();
     QVector<qreal> getWhiteSnrGraphData();
     QVector<qreal> getDropOutGraphData();
+    QVector<qreal> getCaptureQualityIndexGraphData();
     qint32 getGraphDataSize();
     qint32 getFieldsPerGraphDataPoint();
 
@@ -96,14 +97,14 @@ public:
     qint32 getFirstFieldNumber(qint32 frameNumber);
     qint32 getSecondFieldNumber(qint32 frameNumber);
 
-    bool saveVitsAsCsv(QString filename);
-    bool saveVbiAsCsv(QString filename);
-
     qint32 getCcData0(qint32 frameNumber);
     qint32 getCcData1(qint32 frameNumber);
 
     void setPalColourConfiguration(const PalColour::Configuration &palColourConfiguration);
     const PalColour::Configuration &getPalColourConfiguration();
+
+    qint32 startOfNextChapter(qint32 currentFrameNumber);
+    qint32 startOfChapter(qint32 currentFrameNumber);
 
 signals:
     void busyLoading(QString information);
@@ -119,6 +120,7 @@ private:
     QVector<qreal> blackSnrGraphData;
     QVector<qreal> whiteSnrGraphData;
     QVector<qreal> dropoutGraphData;
+    QVector<qreal> cqiGraphData;
     qint32 fieldsPerGraphDataPoint;
 
     // Frame image options
@@ -151,6 +153,9 @@ private:
     // PAL chroma-decoder configuration
     PalColour::Configuration palColourConfiguration;
     bool decoderConfigurationChanged;
+
+    // Chapter map
+    QVector<qint32> chapterMap;
 
     QImage generateQImage(qint32 firstFieldNumber, qint32 secondFieldNumber);
     void generateData(qint32 _targetDataPoints);

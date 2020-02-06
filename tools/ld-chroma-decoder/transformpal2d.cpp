@@ -107,7 +107,7 @@ void TransformPal2D::filterFields(const QVector<SourceField> &inputFields, qint3
     // Check we have a valid vector of input fields, and a matching output vector
     assert((inputFields.size() % 2) == 0);
     for (qint32 i = 0; i < inputFields.size(); i++) {
-        assert(!inputFields[i].data.isNull());
+        assert(!inputFields[i].data.empty());
     }
     assert(outputFields.size() == (endIndex - startIndex));
 
@@ -135,8 +135,8 @@ void TransformPal2D::filterFields(const QVector<SourceField> &inputFields, qint3
 // Process one field, writing the reuslt into chromaBuf[outputIndex]
 void TransformPal2D::filterField(const SourceField& inputField, qint32 outputIndex)
 {
-    const qint32 firstFieldLine = inputField.getFirstActiveLine(firstActiveLine);
-    const qint32 lastFieldLine = inputField.getLastActiveLine(lastActiveLine);
+    const qint32 firstFieldLine = inputField.getFirstActiveLine(videoParameters);
+    const qint32 lastFieldLine = inputField.getLastActiveLine(videoParameters);
 
     // Iterate through the overlapping tile positions, covering the active area.
     // (See TransformPal2D member variable documentation for how the tiling works.)
@@ -166,7 +166,7 @@ void TransformPal2D::filterField(const SourceField& inputField, qint32 outputInd
 void TransformPal2D::forwardFFTTile(qint32 tileX, qint32 tileY, qint32 startY, qint32 endY, const SourceField &inputField)
 {
     // Copy the input signal into fftReal, applying the window function
-    const quint16 *inputPtr = reinterpret_cast<const quint16 *>(inputField.data.data());
+    const quint16 *inputPtr = inputField.data.data();
     for (qint32 y = 0; y < YTILE; y++) {
         // If this frame line is above/below the active region, fill it with
         // black instead.
@@ -317,7 +317,7 @@ void TransformPal2D::applyFilter()
 
 void TransformPal2D::overlayFFTFrame(qint32 positionX, qint32 positionY,
                                      const QVector<SourceField> &inputFields, qint32 fieldIndex,
-                                     QByteArray &rgbFrame)
+                                     RGBFrame &rgbFrame)
 {
     // Do nothing if the tile isn't within the frame
     if (positionX < 0 || positionX + XTILE > videoParameters.fieldWidth
@@ -327,8 +327,8 @@ void TransformPal2D::overlayFFTFrame(qint32 positionX, qint32 positionY,
 
     // Work out which field lines to use (as the input is in frame lines)
     const SourceField &inputField = inputFields[fieldIndex];
-    const qint32 firstFieldLine = inputField.getFirstActiveLine(firstActiveLine);
-    const qint32 lastFieldLine = inputField.getLastActiveLine(lastActiveLine);
+    const qint32 firstFieldLine = inputField.getFirstActiveLine(videoParameters);
+    const qint32 lastFieldLine = inputField.getLastActiveLine(videoParameters);
     const qint32 tileY = positionY / 2;
     const qint32 startY = qMax(firstFieldLine - tileY, 0);
     const qint32 endY = qMin(lastFieldLine - tileY, YTILE);
@@ -344,7 +344,7 @@ void TransformPal2D::overlayFFTFrame(qint32 positionX, qint32 positionY,
     }
 
     // Create a canvas
-    FrameCanvas canvas(rgbFrame, videoParameters, firstActiveLine, lastActiveLine);
+    FrameCanvas canvas(rgbFrame, videoParameters);
 
     // Outline the selected tile
     canvas.drawRectangle(positionX - 1, positionY + inputField.getOffset() - 1, XTILE + 1, (YTILE * 2) + 1, FrameCanvas::green);

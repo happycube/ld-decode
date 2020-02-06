@@ -30,20 +30,9 @@
 
 bool MonoDecoder::configure(const LdDecodeMetaData::VideoParameters &videoParameters) {
     // This decoder works for both PAL and NTSC.
-    // Get the active line range from either Comb or PalColour.
-    qint32 firstActiveLine, lastActiveLine;
-    if (videoParameters.isSourcePal) {
-        PalColour::Configuration palConfig;
-        firstActiveLine = palConfig.firstActiveLine;
-        lastActiveLine = palConfig.lastActiveLine;
-    } else {
-        Comb::Configuration combConfig;
-        firstActiveLine = combConfig.firstActiveLine;
-        lastActiveLine = combConfig.lastActiveLine;
-    }
 
     // Compute cropping parameters
-    setVideoParameters(config, videoParameters, firstActiveLine, lastActiveLine);
+    setVideoParameters(config, videoParameters);
 
     return true;
 }
@@ -58,12 +47,12 @@ MonoThread::MonoThread(QAtomicInt& _abort, DecoderPool& _decoderPool,
 {
     // Resize and clear the output buffer
     const qint32 frameHeight = (config.videoParameters.fieldHeight * 2) - 1;
-    outputFrame.resize(config.videoParameters.fieldWidth * frameHeight * 6);
+    outputFrame.resize(config.videoParameters.fieldWidth * frameHeight * 3);
     outputFrame.fill(0);
 }
 
 void MonoThread::decodeFrames(const QVector<SourceField> &inputFields, qint32 startIndex, qint32 endIndex,
-                             QVector<QByteArray> &outputFrames)
+                              QVector<RGBFrame> &outputFrames)
 {
     // Work out black-white scaling factors
     const LdDecodeMetaData::VideoParameters &videoParameters = config.videoParameters;
@@ -72,14 +61,12 @@ void MonoThread::decodeFrames(const QVector<SourceField> &inputFields, qint32 st
 
     for (qint32 fieldIndex = startIndex, frameIndex = 0; fieldIndex < endIndex; fieldIndex += 2, frameIndex++) {
         // Interlace the active lines of the two input fields to produce an output frame
-        for (qint32 y = config.firstActiveLine; y < config.lastActiveLine; y++) {
-            const QByteArray &inputFieldData = (y % 2) == 0 ? inputFields[fieldIndex].data : inputFields[fieldIndex + 1].data;
+        for (qint32 y = config.videoParameters.firstActiveFrameLine; y < config.videoParameters.lastActiveFrameLine; y++) {
+            const SourceVideo::Data &inputFieldData = (y % 2) == 0 ? inputFields[fieldIndex].data : inputFields[fieldIndex + 1].data;
 
             // Each quint16 input becomes three quint16 outputs
-            const quint16 *inputLine = reinterpret_cast<const quint16 *>(inputFieldData.data())
-                                       + ((y / 2) * videoParameters.fieldWidth);
-            quint16 *outputLine =      reinterpret_cast<quint16 *>(outputFrame.data())
-                                       + (y * videoParameters.fieldWidth * 3);
+            const quint16 *inputLine = inputFieldData.data() + ((y / 2) * videoParameters.fieldWidth);
+            quint16 *outputLine = outputFrame.data() + (y * videoParameters.fieldWidth * 3);
 
             for (qint32 x = videoParameters.activeVideoStart; x < videoParameters.activeVideoEnd; x++) {
                 const quint16 value = static_cast<quint16>(qBound(0.0, (inputLine[x] - blackOffset) * whiteScale, 65535.0));

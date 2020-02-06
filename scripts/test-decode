@@ -118,6 +118,18 @@ def run_ld_process_vbi(args):
             die(json_file, 'did not contain a field with VBI values',
                 args.expect_vbi)
 
+def run_ld_export_metadata(args):
+    """Run ld-export-metadata."""
+
+    clean(args, ['.vits.csv', '.vbi.csv', '.ffmetadata'])
+
+    cmd = [src_dir + '/tools/ld-export-metadata/ld-export-metadata']
+    cmd += ['--vits-csv', args.output + '.vits.csv']
+    cmd += ['--vbi-csv', args.output + '.vbi.csv']
+    cmd += ['--ffmetadata', args.output + '.ffmetadata']
+    cmd += [args.output + '.tbc.json']
+    run_command(cmd)
+
 def run_ld_process_efm(args):
     """Run ld-process-efm."""
 
@@ -244,6 +256,7 @@ def main():
     # Run the stages of the decoding toolchain
     run_ld_decode(args)
     run_ld_process_vbi(args)
+    run_ld_export_metadata(args)
     run_ld_process_efm(args)
     run_ld_dropout_correct(args)
     for decoder in args.decoders:

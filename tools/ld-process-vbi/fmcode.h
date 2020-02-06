@@ -25,14 +25,11 @@
 #ifndef FMCODE_H
 #define FMCODE_H
 
-#include <QObject>
-
 #include "sourcevideo.h"
 #include "lddecodemetadata.h"
 
-class FmCode : public QObject
+class FmCode
 {
-    Q_OBJECT
 public:
     struct FmDecode {
         quint64 receiverClockSyncBits;
@@ -43,17 +40,11 @@ public:
         quint64 trailingDataRecognitionBits;
     };
 
-    explicit FmCode(QObject *parent = nullptr);
-
-    FmCode::FmDecode fmDecoder(QByteArray lineData, LdDecodeMetaData::VideoParameters videoParameters);
-
-signals:
-
-public slots:
+    FmCode::FmDecode fmDecoder(const SourceVideo::Data &lineData, LdDecodeMetaData::VideoParameters videoParameters);
 
 private:
     bool isEvenParity(quint64 data);
-    QVector<bool> getTransitionMap(QByteArray lineData, qint32 zcPoint);
+    QVector<bool> getTransitionMap(const SourceVideo::Data &lineData, qint32 zcPoint);
 };
 
 #endif // FMCODE_H

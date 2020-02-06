@@ -3,7 +3,7 @@
     tbcsource.cpp
 
     ld-analyse - TBC output analysis
-    Copyright (C) 2018-2019 Simon Inns
+    Copyright (C) 2018-2020 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -285,6 +285,12 @@ QVector<qreal> TbcSource::getDropOutGraphData()
     return dropoutGraphData;
 }
 
+// Get CQI data for graphing
+QVector<qreal> TbcSource::getCaptureQualityIndexGraphData()
+{
+    return cqiGraphData;
+}
+
 // Method to get the size of the graphing data
 qint32 TbcSource::getGraphDataSize()
 {
@@ -350,7 +356,7 @@ TbcSource::ScanLineData TbcSource::getScanLineData(qint32 frameNumber, qint32 sc
     scanLineData.isSourcePal = videoParameters.isSourcePal;
 
     // Get the field video and dropout data
-    QByteArray fieldData;
+    SourceVideo::Data fieldData;
     LdDecodeMetaData::DropOuts dropouts;
     if (isFieldTop) {
         fieldData = sourceVideo.getVideoField(firstFieldNumber);
@@ -364,8 +370,7 @@ TbcSource::ScanLineData TbcSource::getScanLineData(qint32 frameNumber, qint32 sc
     scanLineData.isDropout.resize(videoParameters.fieldWidth);
     for (qint32 xPosition = 0; xPosition < videoParameters.fieldWidth; xPosition++) {
         // Get the 16-bit YC value for the current pixel (frame data is numbered 0-624 or 0-524)
-        uchar *pixelPointer = reinterpret_cast<uchar*>(fieldData.data()) + ((fieldLine - 1) * videoParameters.fieldWidth * 2) + (xPosition * 2);
-        scanLineData.data[xPosition] = (pixelPointer[1] * 256) + pixelPointer[0];
+        scanLineData.data[xPosition] = fieldData[((fieldLine - 1) * videoParameters.fieldWidth) + xPosition];
 
         scanLineData.isDropout[xPosition] = false;
         for (qint32 doCount = 0; doCount < dropouts.startx.size(); doCount++) {
@@ -383,25 +388,12 @@ VbiDecoder::Vbi TbcSource::getFrameVbi(qint32 frameNumber)
 {
     if (!sourceReady) return VbiDecoder::Vbi();
 
-    // Get the required field numbers
-    qint32 firstFieldNumber = ldDecodeMetaData.getFirstFieldNumber(frameNumber);
-    qint32 secondFieldNumber = ldDecodeMetaData.getSecondFieldNumber(frameNumber);
+    // Get the field VBI data
+    LdDecodeMetaData::Vbi firstField = ldDecodeMetaData.getFieldVbi(ldDecodeMetaData.getFirstFieldNumber(frameNumber));
+    LdDecodeMetaData::Vbi secondField = ldDecodeMetaData.getFieldVbi(ldDecodeMetaData.getSecondFieldNumber(frameNumber));
 
-    // Get the field metadata
-    LdDecodeMetaData::Field firstField = ldDecodeMetaData.getField(firstFieldNumber);
-    LdDecodeMetaData::Field secondField = ldDecodeMetaData.getField(secondFieldNumber);
-
-    qint32 vbi16_1, vbi17_1, vbi18_1;
-    qint32 vbi16_2, vbi17_2, vbi18_2;
-
-    vbi16_1 = firstField.vbi.vbiData[0];
-    vbi17_1 = firstField.vbi.vbiData[1];
-    vbi18_1 = firstField.vbi.vbiData[2];
-    vbi16_2 = secondField.vbi.vbiData[0];
-    vbi17_2 = secondField.vbi.vbiData[1];
-    vbi18_2 = secondField.vbi.vbiData[2];
-
-    return vbiDecoder.decodeFrame(vbi16_1, vbi17_1, vbi18_1, vbi16_2, vbi17_2, vbi18_2);
+    return vbiDecoder.decodeFrame(firstField.vbiData[0], firstField.vbiData[1], firstField.vbiData[2],
+            secondField.vbiData[0], secondField.vbiData[1], secondField.vbiData[2]);
 }
 
 // Method returns true if the VBI is valid for the specified frame number
@@ -409,26 +401,12 @@ bool TbcSource::getIsFrameVbiValid(qint32 frameNumber)
 {
     if (!sourceReady) return false;
 
-    // Get the required field numbers
-    qint32 firstFieldNumber = ldDecodeMetaData.getFirstFieldNumber(frameNumber);
-    qint32 secondFieldNumber = ldDecodeMetaData.getSecondFieldNumber(frameNumber);
+    // Get the field VBI data
+    LdDecodeMetaData::Vbi firstField = ldDecodeMetaData.getFieldVbi(ldDecodeMetaData.getFirstFieldNumber(frameNumber));
+    LdDecodeMetaData::Vbi secondField = ldDecodeMetaData.getFieldVbi(ldDecodeMetaData.getSecondFieldNumber(frameNumber));
 
-    // Get the field metadata
-    LdDecodeMetaData::Field firstField = ldDecodeMetaData.getField(firstFieldNumber);
-    LdDecodeMetaData::Field secondField = ldDecodeMetaData.getField(secondFieldNumber);
-
-    qint32 vbi16_1, vbi17_1, vbi18_1;
-    qint32 vbi16_2, vbi17_2, vbi18_2;
-
-    vbi16_1 = firstField.vbi.vbiData[0];
-    vbi17_1 = firstField.vbi.vbiData[1];
-    vbi18_1 = firstField.vbi.vbiData[2];
-    vbi16_2 = secondField.vbi.vbiData[0];
-    vbi17_2 = secondField.vbi.vbiData[1];
-    vbi18_2 = secondField.vbi.vbiData[2];
-
-    if (vbi16_1 == -1 || vbi17_1 == -1 || vbi18_1 == -1) return false;
-    if (vbi16_2 == -1 || vbi17_2 == -1 || vbi18_2 == -1) return false;
+    if (firstField.vbiData[0] == -1 || firstField.vbiData[1] == -1 || firstField.vbiData[2] == -1) return false;
+    if (secondField.vbiData[0] == -1 || secondField.vbiData[1] == -1 || secondField.vbiData[2] == -1) return false;
 
     return true;
 }
@@ -449,33 +427,13 @@ qint32 TbcSource::getSecondFieldNumber(qint32 frameNumber)
     return ldDecodeMetaData.getSecondFieldNumber(frameNumber);
 }
 
-// Save the VITS metadata as a CSV file
-bool TbcSource::saveVitsAsCsv(QString filename)
-{
-    if (!sourceReady) return 0;
-
-    return ldDecodeMetaData.writeVitsCsv(filename);
-}
-
-// Save the VBI as a CSV file
-bool TbcSource::saveVbiAsCsv(QString filename)
-{
-    if (!sourceReady) return 0;
-
-    return ldDecodeMetaData.writeVbiCsv(filename);
-}
-
 qint32 TbcSource::getCcData0(qint32 frameNumber)
 {
     if (!sourceReady) return false;
 
-    // Get the required field numbers
-    qint32 firstFieldNumber = ldDecodeMetaData.getFirstFieldNumber(frameNumber);
-    qint32 secondFieldNumber = ldDecodeMetaData.getSecondFieldNumber(frameNumber);
-
     // Get the field metadata
-    LdDecodeMetaData::Field firstField = ldDecodeMetaData.getField(firstFieldNumber);
-    LdDecodeMetaData::Field secondField = ldDecodeMetaData.getField(secondFieldNumber);
+    LdDecodeMetaData::Field firstField = ldDecodeMetaData.getField(ldDecodeMetaData.getFirstFieldNumber(frameNumber));
+    LdDecodeMetaData::Field secondField = ldDecodeMetaData.getField(ldDecodeMetaData.getSecondFieldNumber(frameNumber));
 
     if (firstField.ntsc.ccData0 != -1) return firstField.ntsc.ccData0;
     return secondField.ntsc.ccData0;
@@ -485,13 +443,9 @@ qint32 TbcSource::getCcData1(qint32 frameNumber)
 {
     if (!sourceReady) return false;
 
-    // Get the required field numbers
-    qint32 firstFieldNumber = ldDecodeMetaData.getFirstFieldNumber(frameNumber);
-    qint32 secondFieldNumber = ldDecodeMetaData.getSecondFieldNumber(frameNumber);
-
     // Get the field metadata
-    LdDecodeMetaData::Field firstField = ldDecodeMetaData.getField(firstFieldNumber);
-    LdDecodeMetaData::Field secondField = ldDecodeMetaData.getField(secondFieldNumber);
+    LdDecodeMetaData::Field firstField = ldDecodeMetaData.getField(ldDecodeMetaData.getFirstFieldNumber(frameNumber));
+    LdDecodeMetaData::Field secondField = ldDecodeMetaData.getField(ldDecodeMetaData.getSecondFieldNumber(frameNumber));
 
     if (firstField.ntsc.ccData1 != -1) return firstField.ntsc.ccData1;
     return secondField.ntsc.ccData1;
@@ -501,11 +455,8 @@ void TbcSource::setPalColourConfiguration(const PalColour::Configuration &_palCo
 {
     palColourConfiguration = _palColourConfiguration;
 
-    // Get the video parameters
-    LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
-
     // Configure the chroma decoder
-    palColour.updateConfiguration(videoParameters, palColourConfiguration);
+    palColour.updateConfiguration(ldDecodeMetaData.getVideoParameters(), palColourConfiguration);
 
     decoderConfigurationChanged = true;
 }
@@ -514,6 +465,51 @@ const PalColour::Configuration &TbcSource::getPalColourConfiguration()
 {
     return palColourConfiguration;
 }
+
+// Return the frame number of the start of the next chapter
+qint32 TbcSource::startOfNextChapter(qint32 currentFrameNumber)
+{
+    // Do we have a chapter map?
+    if (chapterMap.size() == 0) return getNumberOfFrames();
+
+    qint32 mapLocation = -1;
+    for (qint32 i = 0; i < chapterMap.size(); i++) {
+        if (chapterMap[i] > currentFrameNumber) {
+            mapLocation = i;
+            break;
+        }
+    }
+
+    // Found?
+    if (mapLocation != -1) {
+        return chapterMap[mapLocation];
+    }
+
+    return getNumberOfFrames();
+}
+
+// Return the frame number of the start of the current chapter
+qint32 TbcSource::startOfChapter(qint32 currentFrameNumber)
+{
+    // Do we have a chapter map?
+    if (chapterMap.size() == 0) return 1;
+
+    qint32 mapLocation = -1;
+    for (qint32 i = chapterMap.size() - 1; i >= 0; i--) {
+        if (chapterMap[i] < currentFrameNumber) {
+            mapLocation = i;
+            break;
+        }
+    }
+
+    // Found?
+    if (mapLocation != -1) {
+        return chapterMap[mapLocation];
+    }
+
+    return 1;
+}
+
 
 // Private methods ----------------------------------------------------------------------------------------------------
 
@@ -559,61 +555,47 @@ QImage TbcSource::generateQImage(qint32 firstFieldNumber, qint32 secondFieldNumb
         firstField.data = sourceVideo.getVideoField(firstFieldNumber);
         secondField.data = sourceVideo.getVideoField(secondFieldNumber);
 
-        qint32 firstActiveLine, lastActiveLine;
-        QByteArray outputData;
-
         // Decode colour for the current frame, to RGB 16-16-16 interlaced output
+        RGBFrame rgbFrame;
         if (videoParameters.isSourcePal) {
             // PAL source
-
-            firstActiveLine = palColourConfiguration.firstActiveLine;
-            lastActiveLine = palColourConfiguration.lastActiveLine;
-
-            outputData = palColour.decodeFrame(firstField, secondField);
+            rgbFrame = palColour.decodeFrame(firstField, secondField);
         } else {
             // NTSC source
-
-            firstActiveLine = ntscColour.getConfiguration().firstActiveLine;
-            lastActiveLine = ntscColour.getConfiguration().lastActiveLine;
-
-            outputData = ntscColour.decodeFrame(firstField, secondField);
+            rgbFrame = ntscColour.decodeFrame(firstField, secondField);
         }
+
+        // Get a pointer to the RGB data
+        const quint16 *rgbPointer = rgbFrame.data();
 
         // Fill the QImage with black
         frameImage.fill(Qt::black);
 
         // Copy the RGB16-16-16 data into the RGB888 QImage
-        for (qint32 y = firstActiveLine; y < lastActiveLine; y++) {
-            // Extract the current scan line data from the frame
-            qint32 startPointer = y * videoParameters.fieldWidth * 6;
-            qint32 length = videoParameters.fieldWidth * 6;
-
-            QByteArray rgbData = outputData.mid(startPointer, length);
-
+        for (qint32 y = videoParameters.firstActiveFrameLine; y < videoParameters.lastActiveFrameLine; y++) {
             for (qint32 x = videoParameters.activeVideoStart; x < videoParameters.activeVideoEnd; x++) {
+                qint32 pixelOffset = ((y * videoParameters.fieldWidth) + x) * 3;
+
                 // Take just the MSB of the input data
-                qint32 dp = x * 6;
-
-                uchar pixelValueR = static_cast<uchar>(rgbData[dp + 1]);
-                uchar pixelValueG = static_cast<uchar>(rgbData[dp + 3]);
-                uchar pixelValueB = static_cast<uchar>(rgbData[dp + 5]);
-
                 qint32 xpp = x * 3;
-                *(frameImage.scanLine(y) + xpp + 0) = static_cast<uchar>(pixelValueR); // R
-                *(frameImage.scanLine(y) + xpp + 1) = static_cast<uchar>(pixelValueG); // G
-                *(frameImage.scanLine(y) + xpp + 2) = static_cast<uchar>(pixelValueB); // B
+                *(frameImage.scanLine(y) + xpp + 0) = static_cast<uchar>(rgbPointer[pixelOffset + 0] / 256); // R
+                *(frameImage.scanLine(y) + xpp + 1) = static_cast<uchar>(rgbPointer[pixelOffset + 1] / 256); // G
+                *(frameImage.scanLine(y) + xpp + 2) = static_cast<uchar>(rgbPointer[pixelOffset + 2] / 256); // B
             }
         }
     } else if (lpfOn) {
         // Display the current frame as LPF only
 
         // Get the field data
-        QByteArray firstField = sourceVideo.getVideoField(firstFieldNumber);
-        QByteArray secondField = sourceVideo.getVideoField(secondFieldNumber);
+        SourceVideo::Data firstField = sourceVideo.getVideoField(firstFieldNumber);
+        SourceVideo::Data secondField = sourceVideo.getVideoField(secondFieldNumber);
 
-        // Generate pointers to the 16-bit greyscale data
-        quint16* firstFieldPointer = reinterpret_cast<quint16*>(firstField.data());
-        quint16* secondFieldPointer = reinterpret_cast<quint16*>(secondField.data());
+        // Generate pointers to the 16-bit greyscale data.
+        // Since we're taking a non-const pointer here, this will detach from
+        // the original copy of the data (which is what we want, because we're
+        // going to filter it in place).
+        quint16 *firstFieldPointer = firstField.data();
+        quint16 *secondFieldPointer = secondField.data();
 
         // Generate a filter object
         Filters filters;
@@ -632,37 +614,25 @@ QImage TbcSource::generateQImage(qint32 firstFieldNumber, qint32 secondFieldNumb
         // Copy the raw 16-bit grayscale data into the RGB888 QImage
         for (qint32 y = 0; y < frameHeight; y++) {
             for (qint32 x = 0; x < videoParameters.fieldWidth; x++) {
-                // Take just the MSB of the input data
-                uchar pixelValue;
+                qint32 pixelOffset = (videoParameters.fieldWidth * (y / 2)) + x;
+                qreal pixelValue32;
                 if (y % 2) {
-                    qreal pixelValue32 = static_cast<qreal>(secondFieldPointer[x + (videoParameters.fieldWidth * (y / 2))]);
-
-                    // Clamp the IRE value for the pixel
-                    if (pixelValue32 < videoParameters.black16bIre) pixelValue32 = videoParameters.black16bIre;
-                    if (pixelValue32 > videoParameters.white16bIre) pixelValue32 = videoParameters.white16bIre;
-
-                    // Scale the IRE value to a 16 bit greyscale value
-                    qreal scaledValue = ((pixelValue32 - static_cast<qreal>(videoParameters.black16bIre)) /
-                                         (static_cast<qreal>(videoParameters.white16bIre) -
-                                          static_cast<qreal>(videoParameters.black16bIre))) * 65535.0;
-                    pixelValue32 = static_cast<qint32>(scaledValue);
-
-                    // Convert to 8-bit for RGB888
-                    pixelValue = static_cast<uchar>(pixelValue32 / 256);
+                    pixelValue32 = static_cast<qreal>(secondFieldPointer[pixelOffset]);
                 } else {
-                    qreal pixelValue32 = static_cast<qreal>(firstFieldPointer[x + (videoParameters.fieldWidth * (y / 2))]);
-                    if (pixelValue32 < videoParameters.black16bIre) pixelValue32 = videoParameters.black16bIre;
-                    if (pixelValue32 > videoParameters.white16bIre) pixelValue32 = videoParameters.white16bIre;
-
-                    // Scale the IRE value to a 16 bit greyscale value
-                    qreal scaledValue = ((pixelValue32 - static_cast<qreal>(videoParameters.black16bIre)) /
-                                         (static_cast<qreal>(videoParameters.white16bIre)
-                                          - static_cast<qreal>(videoParameters.black16bIre))) * 65535.0;
-                    pixelValue32 = static_cast<qint32>(scaledValue);
-
-                    // Convert to 8-bit for RGB888
-                    pixelValue = static_cast<uchar>(pixelValue32 / 256);
+                    pixelValue32 = static_cast<qreal>(firstFieldPointer[pixelOffset]);
                 }
+
+                if (pixelValue32 < videoParameters.black16bIre) pixelValue32 = videoParameters.black16bIre;
+                if (pixelValue32 > videoParameters.white16bIre) pixelValue32 = videoParameters.white16bIre;
+
+                // Scale the IRE value to a 16 bit greyscale value
+                qreal scaledValue = ((pixelValue32 - static_cast<qreal>(videoParameters.black16bIre)) /
+                                     (static_cast<qreal>(videoParameters.white16bIre)
+                                      - static_cast<qreal>(videoParameters.black16bIre))) * 65535.0;
+                pixelValue32 = static_cast<qint32>(scaledValue);
+
+                // Convert to 8-bit for RGB888
+                uchar pixelValue = static_cast<uchar>(pixelValue32 / 256);
 
                 qint32 xpp = x * 3;
                 *(frameImage.scanLine(y) + xpp + 0) = static_cast<uchar>(pixelValue); // R
@@ -674,26 +644,23 @@ QImage TbcSource::generateQImage(qint32 firstFieldNumber, qint32 secondFieldNumb
         // Display the current frame as source data
 
         // Get the field data
-        QByteArray firstField = sourceVideo.getVideoField(firstFieldNumber);
-        QByteArray secondField = sourceVideo.getVideoField(secondFieldNumber);
+        SourceVideo::Data firstField = sourceVideo.getVideoField(firstFieldNumber);
+        SourceVideo::Data secondField = sourceVideo.getVideoField(secondFieldNumber);
+
+        // Get pointers to the 16-bit greyscale data
+        const quint16 *firstFieldPointer = firstField.data();
+        const quint16 *secondFieldPointer = secondField.data();
 
         // Copy the raw 16-bit grayscale data into the RGB888 QImage
         for (qint32 y = 0; y < frameHeight; y++) {
-            // Extract the current scan line data from the frame
-            qint32 startPointer = (y / 2) * videoParameters.fieldWidth * 2;
-            qint32 length = videoParameters.fieldWidth * 2;
-
-            firstLineData = firstField.mid(startPointer, length);
-            secondLineData = secondField.mid(startPointer, length);
-
             for (qint32 x = 0; x < videoParameters.fieldWidth; x++) {
                 // Take just the MSB of the input data
-                qint32 dp = x * 2;
+                qint32 pixelOffset = (videoParameters.fieldWidth * (y / 2)) + x;
                 uchar pixelValue;
                 if (y % 2) {
-                    pixelValue = static_cast<uchar>(secondLineData[dp + 1]);
+                    pixelValue = static_cast<uchar>(secondFieldPointer[pixelOffset] / 256);
                 } else {
-                    pixelValue = static_cast<uchar>(firstLineData[dp + 1]);
+                    pixelValue = static_cast<uchar>(firstFieldPointer[pixelOffset] / 256);
                 }
 
                 qint32 xpp = x * 3;
@@ -714,6 +681,7 @@ void TbcSource::generateData(qint32 _targetDataPoints)
     dropoutGraphData.clear();
     blackSnrGraphData.clear();
     whiteSnrGraphData.clear();
+    cqiGraphData.clear();
 
     qreal targetDataPoints = static_cast<qreal>(_targetDataPoints);
     qreal averageWidth = qRound(ldDecodeMetaData.getNumberOfFields() / targetDataPoints);
@@ -722,11 +690,15 @@ void TbcSource::generateData(qint32 _targetDataPoints)
     fieldsPerGraphDataPoint = ldDecodeMetaData.getNumberOfFields() / dataPoints;
     if (fieldsPerGraphDataPoint < 1) fieldsPerGraphDataPoint = 1;
 
+    // Get the total number of dots per field
+    qint32 totalDotsPerField = ldDecodeMetaData.getVideoParameters().fieldHeight + ldDecodeMetaData.getVideoParameters().fieldWidth;
+
     qint32 fieldNumber = 1;
     for (qint32 dpCount = 0; dpCount < dataPoints; dpCount++) {
         qreal doLength = 0;
         qreal blackSnrTotal = 0;
         qreal whiteSnrTotal = 0;
+        qreal syncConf = 0;
 
         // SNR data may be missing in some fields, so we count the points to prevent
         // the average from being thrown-off by missing data
@@ -754,6 +726,11 @@ void TbcSource::generateData(qint32 _targetDataPoints)
                     whiteSnrPoints++;
                 }
             }
+
+            // Get the sync confidence
+            syncConf += static_cast<qreal>(ldDecodeMetaData.getField(fieldNumber).syncConf);
+
+            // Next field...
             fieldNumber++;
         }
 
@@ -761,11 +738,30 @@ void TbcSource::generateData(qint32 _targetDataPoints)
         doLength = doLength / static_cast<qreal>(fieldsPerGraphDataPoint);
         blackSnrTotal = blackSnrTotal / blackSnrPoints;
         whiteSnrTotal = whiteSnrTotal / whiteSnrPoints;
+        syncConf = syncConf / static_cast<qreal>(fieldsPerGraphDataPoint);
+
+        // Calculate the Capture Quality Index
+        qreal fieldDoPercent = 100.0 - (static_cast<qreal>(doLength) / static_cast<qreal>(totalDotsPerField * fieldsPerGraphDataPoint));
+        qreal snrPercent = 0;
+
+        // Convert SNR to linear
+        qreal whiteSnrLinear = pow(whiteSnrTotal / 20, 10);
+        qreal blackSnrLinear = pow(blackSnrTotal / 20, 10);
+        qreal snrReferenceLinear = pow(43.0 / 20, 10); // Note: 43 dB is the expected maximum
+
+        if (whiteSnrTotal != 0) snrPercent = (100.0 / (snrReferenceLinear * 2)) * (blackSnrLinear + whiteSnrLinear);
+        else snrPercent = (100.0 / snrReferenceLinear) * blackSnrLinear;
+        if (snrPercent > 100.0) snrPercent = 100.0;
+
+        // Note: The weighting is 1000:1:1 - this is just because dropouts have a greater visual effect
+        // on the resulting capture than SNR.
+        qreal captureQualityIndex = ((fieldDoPercent * 1000.0) + snrPercent + syncConf) / 1002.0;
 
         // Add the result to the vectors
         dropoutGraphData.append(doLength);
         blackSnrGraphData.append(blackSnrTotal);
         whiteSnrGraphData.append(whiteSnrTotal);
+        cqiGraphData.append(captureQualityIndex);
     }
 }
 
@@ -816,6 +812,27 @@ void TbcSource::startBackgroundLoad(QString sourceFilename)
     // Generate the graph data for the source
     emit busyLoading("Generating graph data...");
     generateData(2000);
+
+    // Generate a chapter map (used by the chapter skip
+    // forwards and backwards buttons)
+    emit busyLoading("Generating VBI chapter map...");
+    qint32 lastChapter = -1;
+    qint32 giveUpCounter = 0;
+    chapterMap.clear();
+    for (qint32 i = 1; i <= getNumberOfFrames(); i++) {
+        qint32 currentChapter = getFrameVbi(i).chNo;
+        if (currentChapter != -1) {
+            if (currentChapter != lastChapter) {
+                lastChapter = currentChapter;
+                chapterMap.append(i);
+            } else giveUpCounter++;
+        }
+
+        if (i == 100 && giveUpCounter < 50) {
+            qDebug() << "Not seeing valid chapter numbers, giving up chapter mapping";
+            break;
+        }
+    }
 }
 
 void TbcSource::finishBackgroundLoad()

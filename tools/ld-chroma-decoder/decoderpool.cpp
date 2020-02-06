@@ -178,7 +178,7 @@ bool DecoderPool::getInputFrames(qint32 &startFrameNumber, QVector<SourceField> 
     return true;
 }
 
-bool DecoderPool::putOutputFrames(qint32 startFrameNumber, const QVector<QByteArray> &outputFrames)
+bool DecoderPool::putOutputFrames(qint32 startFrameNumber, const QVector<RGBFrame> &outputFrames)
 {
     QMutexLocker locker(&outputMutex);
 
@@ -199,17 +199,17 @@ bool DecoderPool::putOutputFrames(qint32 startFrameNumber, const QVector<QByteAr
 // whether we can now write some of them out.
 //
 // Returns true on success, false on failure.
-bool DecoderPool::putOutputFrame(qint32 frameNumber, const QByteArray &outputFrame)
+bool DecoderPool::putOutputFrame(qint32 frameNumber, const RGBFrame &outputFrame)
 {
     // Put this frame into the map
     pendingOutputFrames[frameNumber] = outputFrame;
 
     // Write out as many frames as possible
     while (pendingOutputFrames.contains(outputFrameNumber)) {
-        const QByteArray& outputData = pendingOutputFrames.value(outputFrameNumber);
+        const RGBFrame& outputData = pendingOutputFrames.value(outputFrameNumber);
 
         // Save the frame data to the output file
-        if (!targetVideo.write(outputData.data(), outputData.size())) {
+        if (!targetVideo.write(reinterpret_cast<const char *>(outputData.data()), outputData.size() * 2)) {
             // Could not write to target video file
             qCritical() << "Writing to the output video file failed";
             return false;

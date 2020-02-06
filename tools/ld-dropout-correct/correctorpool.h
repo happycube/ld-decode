@@ -3,7 +3,7 @@
     correctorpool.h
 
     ld-dropout-correct - Dropout correction for ld-decode
-    Copyright (C) 2018-2019 Simon Inns
+    Copyright (C) 2018-2020 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -27,7 +27,6 @@
 
 #include <QObject>
 #include <QAtomicInt>
-#include <QByteArray>
 #include <QElapsedTimer>
 #include <QMutex>
 #include <QThread>
@@ -41,21 +40,22 @@ class CorrectorPool : public QObject
     Q_OBJECT
 public:
     explicit CorrectorPool(QString _outputFilename, QString _outputJsonFilename,
-                           qint32 _maxThreads, QVector<LdDecodeMetaData> &_ldDecodeMetaData, QVector<SourceVideo> &_sourceVideos,
+                           qint32 _maxThreads, QVector<LdDecodeMetaData *> &_ldDecodeMetaData, QVector<SourceVideo *> &_sourceVideos,
                            bool _reverse, bool _intraField, bool _overCorrect, QObject *parent = nullptr);
 
     bool process();
 
     // Member functions used by worker threads
     bool getInputFrame(qint32& frameNumber,
-                       QVector<qint32> &firstFieldNumber, QVector<QByteArray> &firstFieldVideoData, QVector<LdDecodeMetaData::Field> &firstFieldMetadata,
-                       QVector<qint32> &secondFieldNumber, QVector<QByteArray> &secondFieldVideoData, QVector<LdDecodeMetaData::Field> &secondFieldMetadata,
+                       QVector<qint32> &firstFieldNumber, QVector<SourceVideo::Data> &firstFieldVideoData, QVector<LdDecodeMetaData::Field> &firstFieldMetadata,
+                       QVector<qint32> &secondFieldNumber, QVector<SourceVideo::Data> &secondFieldVideoData, QVector<LdDecodeMetaData::Field> &secondFieldMetadata,
                        QVector<LdDecodeMetaData::VideoParameters> &videoParameters,
-                       bool& _reverse, bool& _intraField, bool& _overCorrect);
+                       bool& _reverse, bool& _intraField, bool& _overCorrect, QVector<qint32> &availableSourcesForFrame, QVector<qreal> &sourceFrameQuality);
 
     bool setOutputFrame(qint32 frameNumber,
-                        QByteArray firstTargetFieldData, QByteArray secondTargetFieldData,
-                        qint32 firstFieldSeqNo, qint32 secondFieldSeqNo);
+                        SourceVideo::Data firstTargetFieldData, SourceVideo::Data secondTargetFieldData,
+                        qint32 firstFieldSeqNo, qint32 secondFieldSeqNo,
+                        qint32 sameSourceReplacement, qint32 multiSourceReplacement, qint32 totalReplacementDistance);
 
 private:
     QString outputFilename;
@@ -74,17 +74,22 @@ private:
     QMutex inputMutex;
     qint32 inputFrameNumber;
     qint32 lastFrameNumber;
-    QVector<LdDecodeMetaData> &ldDecodeMetaData;
-    QVector<SourceVideo> &sourceVideos;
+    QVector<LdDecodeMetaData *> &ldDecodeMetaData;
+    QVector<SourceVideo *> &sourceVideos;
 
     // Output stream information (all guarded by outputMutex while threads are running)
     QMutex outputMutex;
 
     struct OutputFrame {
-        QByteArray firstTargetFieldData;
-        QByteArray secondTargetFieldData;
+        SourceVideo::Data firstTargetFieldData;
+        SourceVideo::Data secondTargetFieldData;
         qint32 firstFieldSeqNo;
         qint32 secondFieldSeqNo;
+
+        // Statistics
+        qint32 sameSourceReplacement;
+        qint32 multiSourceReplacement;
+        qint32 totalReplacementDistance;
     };
 
     qint32 outputFrameNumber;
@@ -100,6 +105,7 @@ private:
     qint32 convertSequentialFrameNumberToVbi(qint32 sequentialFrameNumber, qint32 sourceNumber);
     qint32 convertVbiFrameNumberToSequential(qint32 vbiFrameNumber, qint32 sourceNumber);
     QVector<qint32> getAvailableSourcesForFrame(qint32 vbiFrameNumber);
+    bool writeOutputField(const SourceVideo::Data &fieldData);
 };
 
 #endif // CORRECTORPOOL_H

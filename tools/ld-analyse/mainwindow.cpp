@@ -3,7 +3,7 @@
     mainwindow.cpp
 
     ld-analyse - TBC output analysis
-    Copyright (C) 2018-2019 Simon Inns
+    Copyright (C) 2018-2020 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -40,6 +40,7 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     busyDialog = new BusyDialog(this);
     closedCaptionDialog = new ClosedCaptionsDialog(this);
     palChromaDecoderConfigDialog = new PalChromaDecoderConfigDialog(this);
+    captureQualityIndexDialog = new CaptureQualityIndexDialog(this);
 
     // Add a status bar to show the state of the source video file
     ui->statusBar->addWidget(&sourceVideoStatus);
@@ -71,6 +72,7 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     snrAnalysisDialog->restoreGeometry(configuration.getSnrAnalysisDialogGeometry());
     closedCaptionDialog->restoreGeometry(configuration.getClosedCaptionDialogGeometry());
     palChromaDecoderConfigDialog->restoreGeometry(configuration.getPalChromaDecoderConfigDialogGeometry());
+    captureQualityIndexDialog->restoreGeometry(configuration.getCaptureQualityIndexDialogGeometry());
 
     // Store the current button palette for the show dropouts button
     buttonPalette = ui->dropoutsPushButton->palette();
@@ -80,7 +82,10 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
 
     // Was a filename specified on the command line?
     if (!inputFilenameParam.isEmpty()) {
+        lastFilename = inputFilenameParam;
         tbcSource.loadSource(inputFilenameParam);
+    } else {
+        lastFilename.clear();
     }
 }
 
@@ -95,6 +100,7 @@ MainWindow::~MainWindow()
     configuration.setSnrAnalysisDialogGeometry(snrAnalysisDialog->saveGeometry());
     configuration.setClosedCaptionDialogGeometry(closedCaptionDialog->saveGeometry());
     configuration.setPalChromaDecoderConfigDialogGeometry(palChromaDecoderConfigDialog->saveGeometry());
+    configuration.setCaptureQualityIndexDialogGeometry(captureQualityIndexDialog->saveGeometry());
     configuration.writeConfiguration();
 
     // Close the source video if open
@@ -150,12 +156,12 @@ void MainWindow::updateGuiLoaded()
     ui->actionZoom_3x->setEnabled(true);
     ui->actionDropout_analysis->setEnabled(true);
     ui->actionSNR_analysis->setEnabled(true);
+    ui->actionCapture_Quality_Index->setEnabled(true);
     ui->actionSave_frame_as_PNG->setEnabled(true);
-    ui->actionSave_metadata_as_CSV->setEnabled(true);
-    ui->actionSave_VBI_as_CSV->setEnabled(true);
     ui->actionClosed_Captions->setEnabled(true);
     if (tbcSource.getIsSourcePal()) ui->actionPAL_Chroma_decoder->setEnabled(true);
     else ui->actionPAL_Chroma_decoder->setEnabled(false);
+    ui->actionReload_TBC->setEnabled(true);
 
     // Set option button states
     ui->videoPushButton->setText(tr("Source"));
@@ -232,11 +238,11 @@ void MainWindow::updateGuiUnloaded()
     ui->actionZoom_3x->setEnabled(false);
     ui->actionDropout_analysis->setEnabled(false);
     ui->actionSNR_analysis->setEnabled(false);
+    ui->actionCapture_Quality_Index->setEnabled(false);
     ui->actionSave_frame_as_PNG->setEnabled(false);
-    ui->actionSave_metadata_as_CSV->setEnabled(false);
-    ui->actionSave_VBI_as_CSV->setEnabled(false);
     ui->actionClosed_Captions->setEnabled(false);
     ui->actionPAL_Chroma_decoder->setEnabled(false);
+    ui->actionReload_TBC->setEnabled(false);
 
     // Set option button states
     ui->videoPushButton->setText(tr("Source"));
@@ -254,6 +260,7 @@ void MainWindow::updateGuiUnloaded()
     // Hide graphs
     snrAnalysisDialog->hide();
     dropoutAnalysisDialog->hide();
+    captureQualityIndexDialog->hide();
 
     // Hide configuration dialogues
     palChromaDecoderConfigDialog->hide();
@@ -301,6 +308,10 @@ void MainWindow::showFrame()
     if (!tbcSource.getIsSourcePal()) {
         closedCaptionDialog->addData(currentFrameNumber, tbcSource.getCcData0(currentFrameNumber), tbcSource.getCcData1(currentFrameNumber));
     }
+    // QT Bug workaround for some macOS versions
+    #if defined(Q_OS_MACOS)
+    	repaint();
+    #endif
 }
 
 // Redraw the frame viewer (for example, when scaleFactor has been changed)
@@ -325,6 +336,10 @@ void MainWindow::updateFrameViewer()
     ui->frameViewerLabel->setPixmap(QPixmap::fromImage(frameImage));
     ui->frameViewerLabel->setPixmap(ui->frameViewerLabel->pixmap()->scaled(scaleFactor * ui->frameViewerLabel->pixmap()->size(),
                                                                            Qt::IgnoreAspectRatio, Qt::SmoothTransformation));
+    // QT Bug workaround for some macOS versions
+    #if defined(Q_OS_MACOS)
+    	repaint();
+    #endif
 }
 
 // Method to hide the current frame
@@ -380,7 +395,17 @@ void MainWindow::on_actionOpen_TBC_file_triggered()
 
     // Was a filename specified?
     if (!inputFileName.isEmpty() && !inputFileName.isNull()) {
+        lastFilename = inputFileName;
         loadTbcFile(inputFileName);
+    }
+}
+
+// Reload the current TBC selection from the GUI
+void MainWindow::on_actionReload_TBC_triggered()
+{
+    // Reload the current TBC file
+    if (!lastFilename.isEmpty() && !lastFilename.isNull()) {
+        loadTbcFile(lastFilename);
     }
 }
 
@@ -422,6 +447,13 @@ void MainWindow::on_actionSNR_analysis_triggered()
     snrAnalysisDialog->show();
 }
 
+// Show the Capture Quality Index graph
+void MainWindow::on_actionCapture_Quality_Index_triggered()
+{
+    // Show the CQI dialogue
+    captureQualityIndexDialog->show();
+}
+
 // Save current frame as PNG
 void MainWindow::on_actionSave_frame_as_PNG_triggered()
 {
@@ -460,78 +492,6 @@ void MainWindow::on_actionSave_frame_as_PNG_triggered()
         configuration.setPngDirectory(pngFileInfo.absolutePath());
         qDebug() << "MainWindow::on_actionSave_frame_as_PNG_triggered(): Setting PNG directory to:" << pngFileInfo.absolutePath();
         configuration.writeConfiguration();
-    }
-}
-
-// Save the VITS metadata as a CSV file
-void MainWindow::on_actionSave_metadata_as_CSV_triggered()
-{
-    qDebug() << "MainWindow::on_actionSave_metadata_as_CSV_triggered(): Called";
-
-    // Create a suggestion for the filename
-    QString filenameSuggestion = configuration.getCsvDirectory() + tr("/");
-    filenameSuggestion += tbcSource.getCurrentSourceFilename() + tr("_vits.csv");
-
-    QString csvFilename = QFileDialog::getSaveFileName(this,
-                tr("Save CSV file"),
-                filenameSuggestion,
-                tr("CSV file (*.csv);;All Files (*)"));
-
-    // Was a filename specified?
-    if (!csvFilename.isEmpty() && !csvFilename.isNull()) {
-        // Save the metadata as CSV
-        qDebug() << "MainWindow::on_actionSave_metadata_as_CSV_triggered(): Saving VITS metadata as" << csvFilename;
-
-        if (tbcSource.saveVitsAsCsv(csvFilename)) {
-            // Update the configuration for the CSV directory
-            QFileInfo csvFileInfo(csvFilename);
-            configuration.setCsvDirectory(csvFileInfo.absolutePath());
-            qDebug() << "MainWindow::on_actionSave_metadata_as_CSV_triggered(): Setting CSV directory to:" << csvFileInfo.absolutePath();
-            configuration.writeConfiguration();
-        } else {
-            // Save as CSV failed
-            qDebug() << "MainWindow::on_actionSave_metadata_as_CSV_triggered(): Failed to save file as" << csvFilename;
-
-            QMessageBox messageBox;
-            messageBox.warning(this, "Warning", "Could not save VITS CSV file using the specified filename!");
-            messageBox.setFixedSize(500, 200);
-        }
-    }
-}
-
-// Save the VBI as a CSV file
-void MainWindow::on_actionSave_VBI_as_CSV_triggered()
-{
-    qDebug() << "MainWindow::on_actionSave_VBI_as_CSV_triggered(): Called";
-
-    // Create a suggestion for the filename
-    QString filenameSuggestion = configuration.getCsvDirectory() + tr("/");
-    filenameSuggestion += tbcSource.getCurrentSourceFilename() + tr("_vbi.csv");
-
-    QString csvFilename = QFileDialog::getSaveFileName(this,
-                tr("Save CSV file"),
-                filenameSuggestion,
-                tr("CSV file (*.csv);;All Files (*)"));
-
-    // Was a filename specified?
-    if (!csvFilename.isEmpty() && !csvFilename.isNull()) {
-        // Save the metadata as CSV
-        qDebug() << "MainWindow::on_actionSave_VBI_as_CSV_triggered(): Saving VBI as" << csvFilename;
-
-        if (tbcSource.saveVbiAsCsv(csvFilename)) {
-            // Update the configuration for the CSV directory
-            QFileInfo csvFileInfo(csvFilename);
-            configuration.setCsvDirectory(csvFileInfo.absolutePath());
-            qDebug() << "MainWindow::on_actionSave_VBI_as_CSV_triggered(): Setting CSV directory to:" << csvFileInfo.absolutePath();
-            configuration.writeConfiguration();
-        } else {
-            // Save as CSV failed
-            qDebug() << "MainWindow::on_actionSave_VBI_as_CSV_triggered(): Failed to save file as" << csvFilename;
-
-            QMessageBox messageBox;
-            messageBox.warning(this, "Warning","Could not save VBI CSV file using the specified filename!");
-            messageBox.setFixedSize(500, 200);
-        }
     }
 }
 
@@ -605,18 +565,18 @@ void MainWindow::on_nextPushButton_clicked()
     }
 }
 
-// Skip to end frame button has been clicked
+// Skip to the next chapter (note: this button was repurposed from 'end frame')
 void MainWindow::on_endFramePushButton_clicked()
 {
-    currentFrameNumber = tbcSource.getNumberOfFrames();
+    currentFrameNumber = tbcSource.startOfNextChapter(currentFrameNumber);
     ui->frameNumberSpinBox->setValue(currentFrameNumber);
     ui->frameHorizontalSlider->setValue(currentFrameNumber);
 }
 
-// Skip to start frame button has been clicked
+// Skip to the start of chapter (note: this button was repurposed from 'start frame')
 void MainWindow::on_startFramePushButton_clicked()
 {
-    currentFrameNumber = 1;
+    currentFrameNumber = tbcSource.startOfChapter(currentFrameNumber);
     ui->frameNumberSpinBox->setValue(currentFrameNumber);
     ui->frameHorizontalSlider->setValue(currentFrameNumber);
 }
@@ -892,16 +852,19 @@ void MainWindow::on_finishedLoading()
         // Generate the graph data
         dropoutAnalysisDialog->startUpdate();
         snrAnalysisDialog->startUpdate();
+        captureQualityIndexDialog->startUpdate();
 
         qint32 fieldNumber = 1;
         for (qint32 i = 0; i < tbcSource.getGraphDataSize(); i++) {
             dropoutAnalysisDialog->addDataPoint(fieldNumber, tbcSource.getDropOutGraphData()[i]);
             snrAnalysisDialog->addDataPoint(fieldNumber, tbcSource.getBlackSnrGraphData()[i], tbcSource.getWhiteSnrGraphData()[i]);
+            captureQualityIndexDialog->addDataPoint(fieldNumber, tbcSource.getCaptureQualityIndexGraphData()[i]);
             fieldNumber += tbcSource.getFieldsPerGraphDataPoint();
         }
 
         dropoutAnalysisDialog->finishUpdate(tbcSource.getNumberOfFields(), tbcSource.getFieldsPerGraphDataPoint());
         snrAnalysisDialog->finishUpdate(tbcSource.getNumberOfFields(), tbcSource.getFieldsPerGraphDataPoint());
+        captureQualityIndexDialog->finishUpdate(tbcSource.getNumberOfFields(), tbcSource.getFieldsPerGraphDataPoint());
 
         // Update the GUI
         updateGuiLoaded();
@@ -928,4 +891,3 @@ void MainWindow::on_finishedLoading()
     busyDialog->hide();
     this->setEnabled(true);
 }
-

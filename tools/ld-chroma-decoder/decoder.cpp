@@ -36,12 +36,8 @@ qint32 Decoder::getLookAhead() const
     return 0;
 }
 
-void Decoder::setVideoParameters(Decoder::Configuration &config, const LdDecodeMetaData::VideoParameters &videoParameters,
-                                 qint32 firstActiveLine, qint32 lastActiveLine) {
-
+void Decoder::setVideoParameters(Decoder::Configuration &config, const LdDecodeMetaData::VideoParameters &videoParameters) {
     config.videoParameters = videoParameters;
-    config.firstActiveLine = firstActiveLine;
-    config.lastActiveLine = lastActiveLine;
     config.topPadLines = 0;
     config.bottomPadLines = 0;
 
@@ -65,7 +61,8 @@ void Decoder::setVideoParameters(Decoder::Configuration &config, const LdDecodeM
     // Insert empty padding lines so the height is divisible by 8
     qint32 outputHeight;
     while (true) {
-        outputHeight = config.topPadLines + (config.lastActiveLine - config.firstActiveLine) + config.bottomPadLines;
+        const qint32 numActiveLines = videoParameters.lastActiveFrameLine - videoParameters.firstActiveFrameLine;
+        outputHeight = config.topPadLines + numActiveLines + config.bottomPadLines;
         if ((outputHeight % 8) == 0) {
             break;
         }
@@ -84,27 +81,27 @@ void Decoder::setVideoParameters(Decoder::Configuration &config, const LdDecodeM
                "will be colourised and trimmed to" << outputWidth << "x" << outputHeight << "RGB 16-16-16 frames";
 }
 
-QByteArray Decoder::cropOutputFrame(const Decoder::Configuration &config, QByteArray outputData) {
+RGBFrame Decoder::cropOutputFrame(const Decoder::Configuration &config, const RGBFrame &outputData) {
     const qint32 activeVideoStart = config.videoParameters.activeVideoStart;
     const qint32 activeVideoEnd = config.videoParameters.activeVideoEnd;
-    const qint32 outputLineBytes = (activeVideoEnd - activeVideoStart) * 6;
+    const qint32 outputLineLength = (activeVideoEnd - activeVideoStart) * 3;
 
-    QByteArray croppedData;
+    RGBFrame croppedData;
 
     // Insert padding at the top
     if (config.topPadLines > 0) {
-        croppedData.append(config.topPadLines * outputLineBytes, 0);
+        croppedData.insert(croppedData.begin(), config.topPadLines * outputLineLength, 0);
     }
 
     // Copy the active region from the decoded image
-    for (qint32 y = config.firstActiveLine; y < config.lastActiveLine; y++) {
-        croppedData.append(outputData.mid((y * config.videoParameters.fieldWidth * 6) + (activeVideoStart * 6),
-                                          outputLineBytes));
+    for (qint32 y = config.videoParameters.firstActiveFrameLine; y < config.videoParameters.lastActiveFrameLine; y++) {
+        croppedData.append(outputData.mid((y * config.videoParameters.fieldWidth * 3) + (activeVideoStart * 3),
+                                          outputLineLength));
     }
 
     // Insert padding at the bottom
     if (config.bottomPadLines > 0) {
-        croppedData.append(config.bottomPadLines * outputLineBytes, 0);
+        croppedData.insert(croppedData.end(), config.bottomPadLines * outputLineLength, 0);
     }
 
     return croppedData;
@@ -119,7 +116,7 @@ void DecoderThread::run()
 {
     // Input and output data
     QVector<SourceField> inputFields;
-    QVector<QByteArray> outputFrames;
+    QVector<RGBFrame> outputFrames;
 
     while (!abort) {
         // Get the next batch of fields to process

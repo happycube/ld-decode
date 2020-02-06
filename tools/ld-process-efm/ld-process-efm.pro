@@ -44,9 +44,9 @@ SOURCES += \
         aboutdialog.cpp \
         configuration.cpp \
         efmprocess.cpp \
-        logging.cpp \
         main.cpp \
-        mainwindow.cpp
+        mainwindow.cpp \
+        ../library/tbc/logging.cpp
 
 HEADERS += \
         Datatypes/audio.h \
@@ -79,12 +79,25 @@ HEADERS += \
         ezpwd/serialize \
         ezpwd/serialize_definitions \
         ezpwd/timeofday \
-        logging.h \
-        mainwindow.h
+        mainwindow.h \
+        ../library/tbc/logging.h
 
 FORMS += \
         aboutdialog.ui \
         mainwindow.ui
+
+# Add external includes to the include path
+INCLUDEPATH += ../library/tbc
+
+# Include git information definitions
+isEmpty(BRANCH) {
+    BRANCH = "unknown"
+}
+isEmpty(COMMIT) {
+    COMMIT = "unknown"
+}
+DEFINES += APP_BRANCH=\"\\\"$${BRANCH}\\\"\" \
+    APP_COMMIT=\"\\\"$${COMMIT}\\\"\"
 
 # Rules for installation
 isEmpty(PREFIX) {
@@ -95,6 +108,8 @@ unix:!android: target.path = $$PREFIX/bin/
 
 RESOURCES += \
     applicationicons.qrc
+    
+ICON = Graphics/ld-process-efm.icns
 
 DISTFILES += \
     ezpwd/rs_base

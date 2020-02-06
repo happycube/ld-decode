@@ -21,7 +21,8 @@ SOURCES += \
     ../library/tbc/filters.cpp \
     ../library/tbc/lddecodemetadata.cpp \
     ../library/tbc/sourcevideo.cpp \
-    ../library/tbc/vbidecoder.cpp
+    ../library/tbc/vbidecoder.cpp \
+    ../library/tbc/logging.cpp
 
 HEADERS += \
     correctorpool.h \
@@ -30,11 +31,22 @@ HEADERS += \
     ../library/tbc/filters.h \
     ../library/tbc/lddecodemetadata.h \
     ../library/tbc/sourcevideo.h \
-    ../library/tbc/vbidecoder.h
+    ../library/tbc/vbidecoder.h \
+    ../library/tbc/logging.h
 
 # Add external includes to the include path
 INCLUDEPATH += ../library/filter
 INCLUDEPATH += ../library/tbc
+
+# Include git information definitions
+isEmpty(BRANCH) {
+    BRANCH = "unknown"
+}
+isEmpty(COMMIT) {
+    COMMIT = "unknown"
+}
+DEFINES += APP_BRANCH=\"\\\"$${BRANCH}\\\"\" \
+    APP_COMMIT=\"\\\"$${COMMIT}\\\"\"
 
 # Rules for installation
 isEmpty(PREFIX) {

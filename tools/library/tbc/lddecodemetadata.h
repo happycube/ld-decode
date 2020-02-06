@@ -25,7 +25,6 @@
 #ifndef LDDECODEMETADATA_H
 #define LDDECODEMETADATA_H
 
-#include <QObject>
 #include <QVector>
 #include <QTemporaryFile>
 #include <QDebug>
@@ -66,6 +65,14 @@ public:
         qint32 fsc;
 
         bool isMapped;
+
+        // Note: These are psuedo metadata items - The values are populated by the library
+        // These are half-open ranges, where lines are numbered sequentially from 0 within
+        // each field or interlaced frame
+        qint32 firstActiveFieldLine;
+        qint32 lastActiveFieldLine;
+        qint32 firstActiveFrameLine;
+        qint32 lastActiveFrameLine;
     };
 
     // Drop-outs metadata definition
@@ -142,12 +149,12 @@ public:
 
     LdDecodeMetaData();
 
+    // Prevent copying or assignment
+    LdDecodeMetaData(const LdDecodeMetaData &) = delete;
+    LdDecodeMetaData& operator=(const LdDecodeMetaData &) = delete;
+
     bool read(QString fileName);
     bool write(QString fileName);
-    bool writeVitsCsv(QString fileName);
-    bool writeVbiCsv(QString fileName);
-
-    QString escapedString(QString unescapedString);
 
     VideoParameters getVideoParameters();
     void setVideoParameters (VideoParameters _videoParameters);
@@ -182,10 +189,6 @@ public:
 
     qint32 convertClvTimecodeToFrameNumber(LdDecodeMetaData::ClvTimecode clvTimeCode);
     LdDecodeMetaData::ClvTimecode convertFrameNumberToClvTimecode(qint32 clvFrameNumber);
-
-signals:
-
-public slots:
 
 private:
     JsonWax json;

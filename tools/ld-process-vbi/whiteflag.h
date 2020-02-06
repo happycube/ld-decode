@@ -28,19 +28,10 @@
 #include "sourcevideo.h"
 #include "lddecodemetadata.h"
 
-#include <QObject>
-
-class WhiteFlag : public QObject
+class WhiteFlag
 {
-    Q_OBJECT
 public:
-    explicit WhiteFlag(QObject *parent = nullptr);
-
-    bool getWhiteFlag(QByteArray lineData, LdDecodeMetaData::VideoParameters videoParameters);
-
-signals:
-
-public slots:
+    bool getWhiteFlag(const SourceVideo::Data &lineData, LdDecodeMetaData::VideoParameters videoParameters);
 };
 
 #endif // WHITEFLAG_H

@@ -19,10 +19,10 @@ SOURCES += \
     ../library/tbc/sourcevideo.cpp \
     ../library/tbc/vbidecoder.cpp \
     ../library/tbc/filters.cpp \
+    ../library/tbc/logging.cpp \
     diffdod.cpp \
-    logging.cpp \
     main.cpp \
-    tbcsources.cpp
+    sources.cpp
 
 HEADERS += \
     ../library/filter/firfilter.h \
@@ -30,13 +30,23 @@ HEADERS += \
     ../library/tbc/sourcevideo.h \
     ../library/tbc/vbidecoder.h \
     ../library/tbc/filters.h \
+    ../library/tbc/logging.h \
     diffdod.h \
-    logging.h \
-    tbcsources.h
+    sources.h
 
 # Add external includes to the include path
 INCLUDEPATH += ../library/filter
 INCLUDEPATH += ../library/tbc
+
+# Include git information definitions
+isEmpty(BRANCH) {
+    BRANCH = "unknown"
+}
+isEmpty(COMMIT) {
+    COMMIT = "unknown"
+}
+DEFINES += APP_BRANCH=\"\\\"$${BRANCH}\\\"\" \
+    APP_COMMIT=\"\\\"$${COMMIT}\\\"\"
 
 # Rules for installation
 isEmpty(PREFIX) {

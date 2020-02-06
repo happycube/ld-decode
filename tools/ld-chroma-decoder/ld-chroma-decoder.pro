@@ -33,7 +33,8 @@ SOURCES += \
     yiq.cpp \
     ../library/tbc/lddecodemetadata.cpp \
     ../library/tbc/sourcevideo.cpp \
-    ../library/tbc/vbidecoder.cpp
+    ../library/tbc/vbidecoder.cpp \
+    ../library/tbc/logging.cpp
 
 HEADERS += \
     comb.h \
@@ -46,6 +47,7 @@ HEADERS += \
     palcolour.h \
     paldecoder.h \
     rgb.h \
+    rgbframe.h \
     sourcefield.h \
     transformpal.h \
     transformpal2d.h \
@@ -56,11 +58,23 @@ HEADERS += \
     ../library/filter/iirfilter.h \
     ../library/tbc/lddecodemetadata.h \
     ../library/tbc/sourcevideo.h \
-    ../library/tbc/vbidecoder.h
+    ../library/tbc/vbidecoder.h \
+    ../library/tbc/logging.h
 
 # Add external includes to the include path
 INCLUDEPATH += ../library/filter
 INCLUDEPATH += ../library/tbc
+
+# Include git information definitions
+isEmpty(BRANCH) {
+    BRANCH = "unknown"
+}
+isEmpty(COMMIT) {
+    COMMIT = "unknown"
+}
+DEFINES += APP_BRANCH=\"\\\"$${BRANCH}\\\"\" \
+    APP_COMMIT=\"\\\"$${COMMIT}\\\"\"
+
 
 # Rules for installation
 isEmpty(PREFIX) {
@@ -70,8 +84,11 @@ unix:!android: target.path = $$PREFIX/bin/
 !isEmpty(target.path): INSTALLS += target
 
 # Additional include paths to support MacOS compilation
+macx {
 INCLUDEPATH += "/usr/local/opt/opencv@2/include"
 LIBS += -L"/usr/local/opt/opencv@2/lib"
+INCLUDEPATH += "/usr/local/include"
+}
 
 # Normal open-source OS goodness
 INCLUDEPATH += "/usr/local/include/opencv"
