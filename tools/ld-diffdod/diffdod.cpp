@@ -193,7 +193,7 @@ void DiffDod::getFieldErrorByMedian(QVector<SourceVideo::Data> &fields, QVector<
     float threshold = static_cast<float>(dodThreshold) / 100.0;
 
     // Calculate the linear threshold for the colourburst region
-    qint32 cbThreshold = ((65535 / 100) * dodThreshold) / 8; // Note: The /8 is just a guess
+    qint32 cbThreshold = ((65535 / 100) * dodThreshold) / 4; // Note: The /4 is just a guess
 
     for (qint32 y = 0; y < videoParameters.fieldHeight; y++) {
         qint32 startOfLinePointer = y * videoParameters.fieldWidth;

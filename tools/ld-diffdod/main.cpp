@@ -68,7 +68,7 @@ int main(int argc, char *argv[])
 
     // Option to select DOD threshold (-x / --dod-threshold)
     QCommandLineOption dodThresholdOption(QStringList() << "x" << "dod-threshold",
-                                        QCoreApplication::translate("main", "Specify the DOD threshold percent (1 to 100% default: 5"),
+                                        QCoreApplication::translate("main", "Specify the DOD threshold percent (1 to 100% default: 7%"),
                                         QCoreApplication::translate("main", "number"));
     parser.addOption(dodThresholdOption);
 
@@ -124,7 +124,7 @@ int main(int argc, char *argv[])
         return -1;
     }
 
-    qint32 dodThreshold = 5;
+    qint32 dodThreshold = 7;
     if (parser.isSet(dodThresholdOption)) {
         dodThreshold = parser.value(dodThresholdOption).toInt();
 
