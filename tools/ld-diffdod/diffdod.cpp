@@ -41,7 +41,7 @@ void DiffDod::run()
     LdDecodeMetaData::VideoParameters videoParameters;
     QVector<qint32> availableSourcesForFrame;
     qint32 dodThreshold;
-    bool lumaClip;
+    bool signalClip;
 
     // Set up the output variables
     QVector<LdDecodeMetaData::DropOuts> firstFieldDropouts;
@@ -51,32 +51,45 @@ void DiffDod::run()
     while(!m_abort) {
         // Get the next frame to process ------------------------------------------------------------------------------
         if (!m_sources.getInputFrame(targetVbiFrame, firstFields, secondFields, videoParameters,
-                                     availableSourcesForFrame, dodThreshold, lumaClip)) {
+                                     availableSourcesForFrame, dodThreshold, signalClip)) {
             // No more input fields --> exit
             break;
         }
 
         // Process the frame ------------------------------------------------------------------------------------------
 
+        // Create the field difference maps
+        // Make a vector to store the result of the diff
+        QVector<QByteArray> firstFieldDiff;
+        QVector<QByteArray> secondFieldDiff;
+        firstFieldDiff.resize(firstFields.size());
+        secondFieldDiff.resize(secondFields.size());
+
+        // Resize the fieldDiff sub-vectors and default the elements to zero
+        for (qint32 sourcePointer = 0; sourcePointer < firstFieldDiff.size(); sourcePointer++) {
+            firstFieldDiff[sourcePointer].fill(0, videoParameters.fieldHeight * videoParameters.fieldWidth);
+        }
+        for (qint32 sourcePointer = 0; sourcePointer < secondFieldDiff.size(); sourcePointer++) {
+            secondFieldDiff[sourcePointer].fill(0, videoParameters.fieldHeight * videoParameters.fieldWidth);
+        }
+
+        // Perform the clip check
+        if (signalClip) {
+            performClipCheck(firstFields, firstFieldDiff, videoParameters, availableSourcesForFrame);
+            performClipCheck(secondFields, secondFieldDiff, videoParameters, availableSourcesForFrame);
+        }
+
         // Filter the frame to leave just the luma information
         performLumaFilter(firstFields, videoParameters, availableSourcesForFrame);
         performLumaFilter(secondFields, videoParameters, availableSourcesForFrame);
 
         // Create a differential map of the fields for the avaialble frames (based on the DOD threshold)
-        QVector<QByteArray> firstFieldsDiff = getFieldErrorByMedian(firstFields, dodThreshold,
-                                                                    videoParameters, availableSourcesForFrame);
-        QVector<QByteArray> secondFieldsDiff = getFieldErrorByMedian(secondFields, dodThreshold,
-                                                                     videoParameters, availableSourcesForFrame);
-
-        // Perform luma clip check?
-        if (lumaClip) {
-            performLumaClip(firstFields, firstFieldsDiff, videoParameters, availableSourcesForFrame, 5);
-            performLumaClip(secondFields, secondFieldsDiff, videoParameters, availableSourcesForFrame, 5);
-        }
+        getFieldErrorByMedian(firstFields, firstFieldDiff, dodThreshold, videoParameters, availableSourcesForFrame);
+        getFieldErrorByMedian(secondFields, secondFieldDiff, dodThreshold, videoParameters, availableSourcesForFrame);
 
         // Create the drop-out metadata based on the differential map of the fields
-        firstFieldDropouts = getFieldDropouts(firstFieldsDiff, videoParameters, availableSourcesForFrame);
-        secondFieldDropouts = getFieldDropouts(secondFieldsDiff, videoParameters, availableSourcesForFrame);
+        firstFieldDropouts = getFieldDropouts(firstFieldDiff, videoParameters, availableSourcesForFrame);
+        secondFieldDropouts = getFieldDropouts(secondFieldDiff, videoParameters, availableSourcesForFrame);
 
         // Concatenate dropouts on the same line that are close together (to cut down on the
         // amount of generated metadata with noisy/bad sources)
@@ -89,6 +102,63 @@ void DiffDod::run()
 }
 
 // Private methods ----------------------------------------------------------------------------------------------------
+
+// Create an error maps of the field based on absolute clipping of the input field values (i.e.
+// where the signal clips on 0 or 65535 before any filtering)
+void DiffDod::performClipCheck(QVector<SourceVideo::Data> &fields, QVector<QByteArray> &fieldDiff,
+                               LdDecodeMetaData::VideoParameters videoParameters,
+                               QVector<qint32> availableSourcesForFrame)
+{
+    // Process the fields one line at a time
+    for (qint32 y = videoParameters.firstActiveFieldLine; y < videoParameters.lastActiveFieldLine; y++) {
+        qint32 startOfLinePointer = y * videoParameters.fieldWidth;
+
+        for (qint32 sourcePointer = 0; sourcePointer < availableSourcesForFrame.size(); sourcePointer++) {
+            qint32 sourceNo = availableSourcesForFrame[sourcePointer]; // Get the actual source
+
+            for (qint32 x = videoParameters.colourBurstStart; x < videoParameters.activeVideoEnd; x++) {
+                // Get the IRE value for the source field, cast to 32 bit signed
+                qint32 sourceIre = static_cast<qint32>(fields[sourceNo][x + startOfLinePointer]);
+
+                // Check for a luma clip event
+                if ((sourceIre == 0) || (sourceIre == 65535)) {
+                    // Signal has clipped, scan back and forth looking for the start
+                    // and end points of the event (i.e. the point where the event
+                    // goes back into the expected range)
+                    qint32 range = 10; // maximum + and - scan range
+                    qint32 minX = x - range;
+                    if (minX < videoParameters.activeVideoStart) minX = videoParameters.activeVideoStart;
+                    qint32 maxX = x + range;
+                    if (maxX > videoParameters.activeVideoEnd) maxX = videoParameters.activeVideoEnd;
+
+                    qint32 startX = x;
+                    qint32 endX = x;
+
+                    for (qint32 i = x; i > minX; i--) {
+                        qint32 ire = static_cast<qint32>(fields[sourceNo][x + startOfLinePointer]);
+                        if (ire > 200 || ire < 65335) {
+                            startX = i;
+                        }
+                    }
+
+                    for (qint32 i = x + 1; i < maxX; i++) {
+                        qint32 ire = static_cast<qint32>(fields[sourceNo][x + startOfLinePointer]);
+                        if (ire > 200 || ire < 65335) {
+                            endX = i;
+                        }
+                    }
+
+                    // Mark the dropout
+                    for (qint32 i = startX; i < endX; i++) {
+                        fieldDiff[sourceNo][i + startOfLinePointer] = 1;
+                    }
+
+                    x = x + range;
+                }
+            }
+        }
+    }
+}
 
 void DiffDod::performLumaFilter(QVector<SourceVideo::Data> &fields,
                                 LdDecodeMetaData::VideoParameters videoParameters,
@@ -109,22 +179,14 @@ void DiffDod::performLumaFilter(QVector<SourceVideo::Data> &fields,
 
 // Create an error map of the fields based on median value differential analysis
 // Note: This only functions within the colour burst and visible areas of the frame
-QVector<QByteArray> DiffDod::getFieldErrorByMedian(QVector<SourceVideo::Data> &fields, qint32 dodThreshold,
-                                                      LdDecodeMetaData::VideoParameters videoParameters,
-                                                      QVector<qint32> availableSourcesForFrame)
+void DiffDod::getFieldErrorByMedian(QVector<SourceVideo::Data> &fields, QVector<QByteArray> &fieldDiff,
+                                                   qint32 dodThreshold,
+                                                   LdDecodeMetaData::VideoParameters videoParameters,
+                                                   QVector<qint32> availableSourcesForFrame)
 {
-    // Make a vector to store the result of the diff
-    QVector<QByteArray> fieldDiff;
-    fieldDiff.resize(fields.size());
-
-    // Resize the fieldDiff sub-vectors and default the elements to zero
-    for (qint32 sourcePointer = 0; sourcePointer < fields.size(); sourcePointer++) {
-        fieldDiff[sourcePointer].fill(0, videoParameters.fieldHeight * videoParameters.fieldWidth);
-    }
-
     // This method requires at least three source frames
     if (availableSourcesForFrame.size() < 3) {
-        return fieldDiff;
+        return;
     }
 
     // Normalize the % dodThreshold to 0.00-1.00
@@ -151,7 +213,7 @@ QVector<QByteArray> DiffDod::getFieldErrorByMedian(QVector<SourceVideo::Data> &f
                 for (qint32 sourcePointer = 0; sourcePointer < availableSourcesForFrame.size(); sourcePointer++) {
                     qint32 sourceNo = availableSourcesForFrame[sourcePointer]; // Get the actual source
                     float v = convertLinearToBrightness(dotValues[sourceNo], videoParameters.black16bIre, videoParameters.white16bIre, videoParameters.isSourcePal);
-                    if ((v - vMedian) > threshold) fieldDiff[sourceNo][x + startOfLinePointer] = 1;
+                    if ((v - vMedian) > threshold) fieldDiff[sourceNo][x + startOfLinePointer] = 2;
                 }
             }
 
@@ -161,71 +223,7 @@ QVector<QByteArray> DiffDod::getFieldErrorByMedian(QVector<SourceVideo::Data> &f
                 qint32 dotMedian = median(dotValues);
                 for (qint32 sourcePointer = 0; sourcePointer < availableSourcesForFrame.size(); sourcePointer++) {
                     qint32 sourceNo = availableSourcesForFrame[sourcePointer]; // Get the actual source
-                    if ((dotValues[sourceNo] - dotMedian) > cbThreshold) fieldDiff[sourceNo][x + startOfLinePointer] = 1;
-                }
-            }
-        }
-    }
-
-    return fieldDiff;
-}
-
-// Perform a luma clip check on the field
-void DiffDod::performLumaClip(QVector<SourceVideo::Data> &fields, QVector<QByteArray> &fieldsDiff,
-                                 LdDecodeMetaData::VideoParameters videoParameters,
-                                 QVector<qint32> availableSourcesForFrame,
-                                 qint32 lumaClipThreshold)
-{
-    // Process the fields one line at a time
-    for (qint32 y = videoParameters.firstActiveFieldLine; y < videoParameters.lastActiveFieldLine; y++) {
-        qint32 startOfLinePointer = y * videoParameters.fieldWidth;
-
-        for (qint32 sourcePointer = 0; sourcePointer < availableSourcesForFrame.size(); sourcePointer++) {
-            qint32 sourceNo = availableSourcesForFrame[sourcePointer]; // Get the actual source
-
-            // Set the clipping levels
-            qint32 threshold = (65535 / 100) * lumaClipThreshold;
-            qint32 blackClipLevel = videoParameters.black16bIre - threshold;
-            qint32 whiteClipLevel = videoParameters.white16bIre + threshold;
-
-            for (qint32 x = videoParameters.activeVideoStart; x < videoParameters.activeVideoEnd; x++) {
-                // Get the IRE value for the source field, cast to 32 bit signed
-                qint32 sourceIre = static_cast<qint32>(fields[sourceNo][x + startOfLinePointer]);
-
-                // Check for a luma clip event
-                if ((sourceIre < blackClipLevel) || (sourceIre > whiteClipLevel)) {
-                    // Luma has clipped, scan back and forth looking for the start
-                    // and end points of the event (i.e. the point where the event
-                    // goes back into the expected IRE range)
-                    qint32 range = 10; // maximum + and - scan range
-                    qint32 minX = x - range;
-                    if (minX < videoParameters.activeVideoStart) minX = videoParameters.activeVideoStart;
-                    qint32 maxX = x + range;
-                    if (maxX > videoParameters.activeVideoEnd) maxX = videoParameters.activeVideoEnd;
-
-                    qint32 startX = x;
-                    qint32 endX = x;
-
-                    for (qint32 i = x; i > minX; i--) {
-                        qint32 ire = static_cast<qint32>(fields[sourceNo][x + startOfLinePointer]);
-                        if (ire < videoParameters.black16bIre || ire > videoParameters.white16bIre) {
-                            startX = i;
-                        }
-                    }
-
-                    for (qint32 i = x+1; i < maxX; i++) {
-                        qint32 ire = static_cast<qint32>(fields[sourceNo][x + startOfLinePointer]);
-                        if (ire < videoParameters.black16bIre || ire > videoParameters.white16bIre) {
-                            endX = i;
-                        }
-                    }
-
-                    // Mark the dropout
-                    for (qint32 i = startX; i < endX; i++) {
-                        fieldsDiff[sourceNo][i + startOfLinePointer] = 1;
-                    }
-
-                    x = x + range;
+                    if ((dotValues[sourceNo] - dotMedian) > cbThreshold) fieldDiff[sourceNo][x + startOfLinePointer] = 2;
                 }
             }
         }
@@ -235,13 +233,13 @@ void DiffDod::performLumaClip(QVector<SourceVideo::Data> &fields, QVector<QByteA
 // Method to create the field drop-out metadata based on the differential map of the fields
 // This method compares each available source against all other available sources to determine where the source differs.
 // If any of the frame's contents do not match that of the other sources, the frame's pixels are marked as dropouts.
-QVector<LdDecodeMetaData::DropOuts> DiffDod::getFieldDropouts(QVector<QByteArray> &fieldsDiff,
+QVector<LdDecodeMetaData::DropOuts> DiffDod::getFieldDropouts(QVector<QByteArray> &fieldDiff,
                                                                  LdDecodeMetaData::VideoParameters videoParameters,
                                                                  QVector<qint32> availableSourcesForFrame)
 {
     // Create and resize the return data vector
     QVector<LdDecodeMetaData::DropOuts> fieldDropouts;
-    fieldDropouts.resize(fieldsDiff.size());
+    fieldDropouts.resize(fieldDiff.size());
 
     // This method requires at least three source frames
     if (availableSourcesForFrame.size() < 3) {
@@ -271,7 +269,7 @@ QVector<LdDecodeMetaData::DropOuts> DiffDod::getFieldDropouts(QVector<QByteArray
             // active video area
             for (qint32 x = areaStart; x < areaEnd; x++) {
                 // Compare field dot to threshold
-                if (static_cast<qint32>(fieldsDiff[sourceNo][x + startOfLinePointer]) == 0) {
+                if (static_cast<qint32>(fieldDiff[sourceNo][x + startOfLinePointer]) == 0) {
                     // Current X is not a dropout
                     if (doCounter > 0) {
                         doCounter--;

@@ -25,11 +25,11 @@
 #include "sources.h"
 
 Sources::Sources(QVector<QString> inputFilenames, bool reverse,
-                 qint32 dodThreshold, bool lumaClip,
+                 qint32 dodThreshold, bool signalClip,
                  qint32 startVbi, qint32 lengthVbi,
                  qint32 maxThreads, QObject *parent)
     : QObject(parent), m_inputFilenames(inputFilenames), m_reverse(reverse),
-      m_dodThreshold(dodThreshold), m_lumaClip(lumaClip), m_startVbi(startVbi),
+      m_dodThreshold(dodThreshold), m_signalClip(signalClip), m_startVbi(startVbi),
       m_lengthVbi(lengthVbi), m_maxThreads(maxThreads)
 {
     // Used to track the sources as they are loaded
@@ -46,7 +46,7 @@ bool Sources::process()
     qInfo() << "Using" << m_maxThreads << "threads to process sources";
     if (m_reverse) qInfo() << "Using reverse field order"; else qInfo() << "Using normal field order";
     qInfo().nospace() << "Dropout detection threshold is " << m_dodThreshold << "% difference";
-    if (m_lumaClip) qInfo() << "Performing luma clip detection"; else qInfo() << "Not performing luma clip detection";
+    if (m_signalClip) qInfo() << "Performing signal clip detection"; else qInfo() << "Not performing signal clip detection";
     qInfo() << "";
 
     // Load the input TBC files ---------------------------------------------------------------------------------------
@@ -130,7 +130,7 @@ bool Sources::getInputFrame(qint32& targetVbiFrame,
                             QVector<SourceVideo::Data>& firstFields, QVector<SourceVideo::Data>& secondFields,
                             LdDecodeMetaData::VideoParameters& videoParameters,
                             QVector<qint32>& availableSourcesForFrame,
-                            qint32& dodThreshold, bool& lumaClip)
+                            qint32& dodThreshold, bool& signalClip)
 {
     QMutexLocker locker(&inputMutex);
 
@@ -155,7 +155,7 @@ bool Sources::getInputFrame(qint32& targetVbiFrame,
 
     // Set the other miscellaneous parameters
     dodThreshold = m_dodThreshold;
-    lumaClip = m_lumaClip;
+    signalClip = m_signalClip;
 
     // User feedback
     if (processedFrames % 100 == 0) qInfo() << "Processing frame" << targetVbiFrame;

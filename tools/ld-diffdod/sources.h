@@ -53,7 +53,7 @@ public:
                         QVector<SourceVideo::Data>& firstFields, QVector<SourceVideo::Data>& secondFields,
                         LdDecodeMetaData::VideoParameters& videoParameters,
                         QVector<qint32>& availableSourcesForFrame,
-                        qint32& dodThreshold, bool& lumaClip);
+                        qint32& dodThreshold, bool& signalClip);
 
     bool setOutputFrame(qint32 targetVbiFrame,
                          QVector<LdDecodeMetaData::DropOuts> firstFieldDropouts,
@@ -80,7 +80,7 @@ private:
     QVector<QString> m_inputFilenames;
     bool m_reverse;
     qint32 m_dodThreshold;
-    bool m_lumaClip;
+    bool m_signalClip;
     qint32 m_startVbi;
     qint32 m_lengthVbi;
     qint32 m_maxThreads;

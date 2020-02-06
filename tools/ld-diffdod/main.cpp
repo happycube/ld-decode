@@ -61,10 +61,10 @@ int main(int argc, char *argv[])
                                        QCoreApplication::translate("main", "Reverse the field order to second/first (default first/second)"));
     parser.addOption(setReverseOption);
 
-    // Option to turn off luma clip detection (-n / --lumaclip)
-    QCommandLineOption setLumaOption(QStringList() << "n" << "lumaclip",
-                                       QCoreApplication::translate("main", "Perform luma clip signal dropout detection"));
-    parser.addOption(setLumaOption);
+    // Option to turn off signal clip detection (-n / --noclip)
+    QCommandLineOption setNoClipOption(QStringList() << "n" << "noclip",
+                                       QCoreApplication::translate("main", "Do not perform signal clip dropout detection"));
+    parser.addOption(setNoClipOption);
 
     // Option to select DOD threshold (-x / --dod-threshold)
     QCommandLineOption dodThresholdOption(QStringList() << "x" << "dod-threshold",
@@ -102,7 +102,8 @@ int main(int argc, char *argv[])
 
     // Get the options from the parser
     bool reverse = parser.isSet(setReverseOption);
-    bool lumaClip = parser.isSet(setLumaOption);
+    bool signalClip = true;
+    if (parser.isSet(setNoClipOption)) signalClip = false;
 
     QVector<QString> inputFilenames;
     QStringList positionalArguments = parser.positionalArguments();
@@ -168,7 +169,7 @@ int main(int argc, char *argv[])
     }
 
     // Process the TBC file
-    Sources sources(inputFilenames, reverse, dodThreshold, lumaClip,
+    Sources sources(inputFilenames, reverse, dodThreshold, signalClip,
                     vbiFrameStart, vbiFrameLength, maxThreads);
     if (!sources.process()) {
         return 1;
