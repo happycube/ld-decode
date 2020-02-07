@@ -588,6 +588,8 @@ qint32 DiscMap::getSecondFieldNumber(qint32 frameNumber) const
 bool DiscMap::saveTargetMetadata(QFileInfo outputFileInfo)
 {
     qint32 notifyInterval = m_numberOfFrames / 50;
+    if (notifyInterval < 1) notifyInterval = 1;
+
     LdDecodeMetaData targetMetadata;
     LdDecodeMetaData::VideoParameters sourceVideoParameters = ldDecodeMetaData->getVideoParameters();
 
