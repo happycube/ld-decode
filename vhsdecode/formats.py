@@ -48,10 +48,10 @@ SysParams_PAL_VHS['hz_ire'] = 700000 / 100.0
 SysParams_PAL_VHS['max_ire'] = 100 # Top/white point defined by the standard 4.8 MHz
 
 #0 IRE level after demodulation
-SysParams_NTSC_VHS['ire0'] = 3700000
+SysParams_NTSC_VHS['ire0'] = 3685000
 
 # frequency/ire IRE change pr frequency (Is this labeled correctly?)
-SysParams_NTSC_VHS['hz_ire'] = 700000 / 100.0
+SysParams_NTSC_VHS['hz_ire'] = 715000 / 100.0
 
 SysParams_NTSC_VHS['max_ire'] = 100 # Top/white point defined by the standard 4.8 MHz
 
