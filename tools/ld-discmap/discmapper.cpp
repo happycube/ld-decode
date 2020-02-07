@@ -569,6 +569,8 @@ bool DiscMapper::saveDiscMap(DiscMap &discMap)
 
     qInfo() << "Saving target video frames...";
     qint32 notifyInterval = discMap.numberOfFrames() / 50;
+    if (notifyInterval < 1) notifyInterval = 1;
+
     for (qint32 frameNumber = 0; frameNumber < discMap.numberOfFrames(); frameNumber++) {
         bool writeFail = false;
 
