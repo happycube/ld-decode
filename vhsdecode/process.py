@@ -344,6 +344,7 @@ class VHSRFDecode(ldd.RFDecode):
                                               has_analog_audio = False)
 
         self.track_phase = track_phase
+        self.hsync_tolerance = .8
 
         # Then we override the laserdisc parameters with VHS ones.
         if system == 'PAL':
