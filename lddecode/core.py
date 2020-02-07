@@ -331,6 +331,11 @@ class RFDecode:
 
         linelen = self.freq_hz/(1000000.0/self.SysParams['line_period'])
         self.linelen = int(np.round(linelen))
+        # How much horizontal sync position can deviate from previous/expected position 
+        #and still be interpreted as a horizontal sync pulse.
+        # Too high tolerance may result in false positive sync pulses, too low may end up missing them.
+        # Tapes will need a wider tolerance than laserdiscs due to head switch etc.
+        self.hsync_tolerance = .4
             
         self.decode_digital_audio = decode_digital_audio
         self.decode_analog_audio = decode_analog_audio
@@ -1656,7 +1661,7 @@ class Field:
             #print(p, lineloc, rlineloc, lineloc_distance)
 
             # only record if it's closer to the (probable) beginning of the line
-            if lineloc_distance > .4 or (rlineloc in linelocs_dict and lineloc_distance > linelocs_dist[rlineloc]):
+            if lineloc_distance > self.rf.hsync_tolerance or (rlineloc in linelocs_dict and lineloc_distance > linelocs_dist[rlineloc]):
                 #print(rlineloc, p, 'reject')
                 continue
 
