@@ -37,7 +37,7 @@ public:
           const qint32 &firstField = -1, const qint32 &secondField = -1);
     ~Frame() = default;
     Frame(const Frame &) = default;
-    Frame &operator =(const Frame &) = default;
+    Frame &operator=(const Frame &) = default;
 
     // Get
     qint32 seqFrameNumber() const;
@@ -66,7 +66,7 @@ public:
     void secondField(qint32 value);
 
     // Operators
-    bool operator <(const Frame &);
+    bool operator<(const Frame &) const;
 
 private:
     qint32 m_seqFrameNumber;
