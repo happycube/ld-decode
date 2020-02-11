@@ -30,7 +30,7 @@ YIQ::YIQ(qreal _y, qreal _i, qreal _q)
 {
 }
 
-YIQ YIQ::operator*=(qreal x)
+YIQ YIQ::operator*=(qreal x) const
 {
     YIQ o;
 
@@ -41,7 +41,7 @@ YIQ YIQ::operator*=(qreal x)
     return o;
 }
 
-YIQ YIQ::operator+=(const YIQ &p)
+YIQ YIQ::operator+=(const YIQ &p) const
 {
     YIQ o;
 

@@ -168,7 +168,7 @@ void Frame::secondField(qint32 value)
 }
 
 // Overide less than operator for sorting
-bool Frame::operator<(const Frame& other)
+bool Frame::operator<(const Frame& other) const
 {
     return (m_vbiFrameNumber < other.m_vbiFrameNumber) ||
             ((m_vbiFrameNumber == other.m_vbiFrameNumber) && (other.m_isPullDown));
