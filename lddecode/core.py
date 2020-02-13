@@ -3124,7 +3124,10 @@ class LDdecode:
         vp['colourBurstStart'] = np.round((f.rf.SysParams['colorBurstUS'][0] * spu) + badj)
         vp['colourBurstEnd'] = np.round((f.rf.SysParams['colorBurstUS'][1] * spu) + badj)
         vp['activeVideoStart'] = np.round((f.rf.SysParams['activeVideoUS'][0] * spu) + badj)
-        vp['activeVideoEnd'] = np.round((f.rf.SysParams['activeVideoUS'][1] * spu) + badj)
+        if self.rf.system == 'NTSC' and (np.round((f.rf.SysParams['activeVideoUS'][0] * spu) + badj) + 760 ) < f.rf.SysParams['outlinelen'] :
+        	vp['activeVideoEnd'] = (np.round((f.rf.SysParams['activeVideoUS'][0] * spu) + badj) + 760 )
+        else:
+        	vp['activeVideoEnd'] = np.round((f.rf.SysParams['activeVideoUS'][1] * spu) + badj)
 
         jout['videoParameters'] = vp
         
