@@ -75,7 +75,7 @@ SysParams_NTSC = {
     'audio_rfreq': (1000000*315/88/227.5) * 178.75,
 
     'colorBurstUS': (5.3, 7.8),
-    'activeVideoUS': (9.45, 63.555-1.5),
+    'activeVideoUS': (9.45, 63.555-1.0),
 
     # In NTSC framing, the distances between the first/last eq pulses and the 
     # corresponding next lines are different.
@@ -90,7 +90,7 @@ SysParams_NTSC = {
 # In color NTSC, the line period was changed from 63.5 to 227.5 color cycles,
 # which works out to 63.555(with a bar on top) usec
 SysParams_NTSC['line_period'] = 1/(SysParams_NTSC['fsc_mhz']/227.5)
-SysParams_NTSC['activeVideoUS'] = (9.45, SysParams_NTSC['line_period'] - 1.5)
+SysParams_NTSC['activeVideoUS'] = (9.45, SysParams_NTSC['line_period'] - 1.0)
 
 SysParams_NTSC['FPS'] = 1000000/ (525 * SysParams_NTSC['line_period'])
 
@@ -3124,10 +3124,7 @@ class LDdecode:
         vp['colourBurstStart'] = np.round((f.rf.SysParams['colorBurstUS'][0] * spu) + badj)
         vp['colourBurstEnd'] = np.round((f.rf.SysParams['colorBurstUS'][1] * spu) + badj)
         vp['activeVideoStart'] = np.round((f.rf.SysParams['activeVideoUS'][0] * spu) + badj)
-        if self.rf.system == 'NTSC' and (np.round((f.rf.SysParams['activeVideoUS'][0] * spu) + badj) + 760 ) < f.rf.SysParams['outlinelen'] :
-        	vp['activeVideoEnd'] = (np.round((f.rf.SysParams['activeVideoUS'][0] * spu) + badj) + 760 )
-        else:
-        	vp['activeVideoEnd'] = np.round((f.rf.SysParams['activeVideoUS'][1] * spu) + badj)
+        vp['activeVideoEnd'] = np.round((f.rf.SysParams['activeVideoUS'][1] * spu) + badj)
 
         jout['videoParameters'] = vp
         
