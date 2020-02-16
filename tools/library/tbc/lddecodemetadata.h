@@ -179,6 +179,7 @@ public:
 
     void appendField(Field _field);
 
+    void setNumberOfFields(qint32 numberOfFields);
     qint32 getNumberOfFields();
     qint32 getNumberOfFrames();
     qint32 getFirstFieldNumber(qint32 frameNumber);

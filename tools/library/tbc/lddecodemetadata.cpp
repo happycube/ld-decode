@@ -462,6 +462,12 @@ qint32 LdDecodeMetaData::getNumberOfFields()
     return json.size({"fields"});
 }
 
+// Method to set the available number of fields
+void LdDecodeMetaData::setNumberOfFields(qint32 numberOfFields)
+{
+    json.setValue({"videoParameters", "numberOfSequentialFields"}, numberOfFields);
+}
+
 // A note about fields, frames and still-frames:
 //
 // There is a lot of confusing terminology around fields and the order in which

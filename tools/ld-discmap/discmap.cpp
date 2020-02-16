@@ -600,6 +600,9 @@ bool DiscMap::saveTargetMetadata(QFileInfo outputFileInfo)
     // Store the PCM audio parameters
     targetMetadata.setPcmAudioParameters(ldDecodeMetaData->getPcmAudioParameters());
 
+    // Set the number of sequential fields
+    targetMetadata.setNumberOfFields(m_numberOfFrames * 2);
+
     // Make a VBI Decoder object for verifying generated VBI
     VbiDecoder vbiDecoder;
 
@@ -650,7 +653,6 @@ bool DiscMap::saveTargetMetadata(QFileInfo outputFileInfo)
                 firstSourceMetadata.vbi.vbiData[1] = convertFrameToClvTimeCode(m_frames[frameNumber].vbiFrameNumber());
                 firstSourceMetadata.vbi.vbiData[2] = convertFrameToClvTimeCode(m_frames[frameNumber].vbiFrameNumber());
             }
-
 
             // Append the fields to the metadata
             targetMetadata.appendField(firstSourceMetadata);
