@@ -1914,17 +1914,15 @@ class Field:
         # detect absurd fluctuations in pre-deemp demod, since only dropouts can cause them
         # (current np.diff has a prepend option, but not in ubuntu 18.04's version)
         iserr1 = f.data['video']['demod_raw'] > self.rf.freq_hz_half
-        iserr1 |= f.data['video']['demod_hpf'] > 1200000
-
-        #return iserr1 | iserr_rf
+        # This didn't work right for PAL (issue #471)
+        # iserr1 |= f.data['video']['demod_hpf'] > 3000000
 
         # build sets of min/max valid levels 
-
         valid_min = np.full_like(f.data['video']['demod'], f.rf.iretohz(-60 if isPAL else -50))
         valid_max = np.full_like(f.data['video']['demod'], f.rf.iretohz(150 if isPAL else 140))
         
         # the minimum valid value during VSYNC is lower for PAL because of the pilot signal
-        minsync = -100 if self.rf.system == 'PAL' else -50
+        minsync = -100 if isPAL else -50
 
         # these lines should cover both PAL and NTSC's hsync areas
         if False:
