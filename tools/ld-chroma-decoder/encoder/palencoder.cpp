@@ -54,6 +54,7 @@ PALEncoder::PALEncoder(QFile &_rgbFile, QFile &_tbcFile, LdDecodeMetaData &_meta
     // Initialise video parameters based on ld-decode's usual output.
     // numberOfSequentialFields will be computed automatically.
     videoParameters.isSourcePal = true;
+    videoParameters.isSubcarrierLocked = false;
     videoParameters.colourBurstStart = 98;
     videoParameters.colourBurstEnd = 138;
     videoParameters.activeVideoStart = 185;

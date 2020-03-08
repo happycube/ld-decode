@@ -31,6 +31,8 @@ void SourceField::loadFields(SourceVideo &sourceVideo, LdDecodeMetaData &ldDecod
                              qint32 lookBehindFrames, qint32 lookAheadFrames,
                              QVector<SourceField> &fields, qint32 &startIndex, qint32 &endIndex)
 {
+    const LdDecodeMetaData::VideoParameters &videoParameters = ldDecodeMetaData.getVideoParameters();
+
     // Work out indexes.
     // fields will contain {lookbehind fields... [startIndex] real fields... [endIndex] lookahead fields...}.
     startIndex = 2 * lookBehindFrames;
@@ -54,15 +56,31 @@ void SourceField::loadFields(SourceVideo &sourceVideo, LdDecodeMetaData &ldDecod
         fields[i].field = ldDecodeMetaData.getField(firstFieldNumber);
         fields[i + 1].field = ldDecodeMetaData.getField(secondFieldNumber);
 
+        const quint16 black = videoParameters.black16bIre;
+
         if (useBlankFrame) {
             // Fill both fields with black
-            const quint16 black = ldDecodeMetaData.getVideoParameters().black16bIre;
             fields[i].data.fill(black, sourceVideo.getFieldLength());
             fields[i + 1].data.fill(black, sourceVideo.getFieldLength());
         } else {
             // Fetch the input fields
             fields[i].data = sourceVideo.getVideoField(firstFieldNumber);
             fields[i + 1].data = sourceVideo.getVideoField(secondFieldNumber);
+
+            if (videoParameters.isSourcePal && videoParameters.isSubcarrierLocked) {
+                // With subcarrier-locked 4fSC PAL sampling, we have four
+                // "extra" samples over the course of the frame, so the two
+                // fields will be horizontally misaligned by two samples. Shift
+                // the second field to the left to compensate.
+                //
+                // XXX This should be done elsewhere, as it affects other tools
+                // too.
+
+                fields[i + 1].data.remove(0, 2);
+                for (int j = 0; j < 2; j++) {
+                    fields[i + 1].data.append(black);
+                }
+            }
         }
 
         frameNumber++;

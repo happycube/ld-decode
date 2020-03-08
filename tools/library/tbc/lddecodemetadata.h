@@ -50,6 +50,7 @@ public:
         qint32 numberOfSequentialFields;
 
         bool isSourcePal;
+        bool isSubcarrierLocked;
 
         qint32 colourBurstStart;
         qint32 colourBurstEnd;
