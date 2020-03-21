@@ -20,17 +20,29 @@ SOURCES += \
     main.cpp \
     palencoder.cpp \
     ../../library/tbc/lddecodemetadata.cpp \
+    ../../library/tbc/logging.cpp \
     ../../library/tbc/vbidecoder.cpp
 
 HEADERS += \
     palencoder.h \
     ../../library/filter/firfilter.h \
     ../../library/tbc/lddecodemetadata.h \
+    ../../library/tbc/logging.h \
     ../../library/tbc/vbidecoder.h
 
 # Add external includes to the include path
 INCLUDEPATH += ../../library/filter
 INCLUDEPATH += ../../library/tbc
+
+# Include git information definitions
+isEmpty(BRANCH) {
+    BRANCH = "unknown"
+}
+isEmpty(COMMIT) {
+    COMMIT = "unknown"
+}
+DEFINES += APP_BRANCH=\"\\\"$${BRANCH}\\\"\" \
+    APP_COMMIT=\"\\\"$${COMMIT}\\\"\"
 
 # Rules for installation
 isEmpty(PREFIX) {
