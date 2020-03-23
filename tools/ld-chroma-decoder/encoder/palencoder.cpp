@@ -76,8 +76,8 @@ PALEncoder::PALEncoder(QFile &_rgbFile, QFile &_tbcFile, LdDecodeMetaData &_meta
         // [Poynton p530]
         const double burstStartPos = zeroH + (5.6e-6 * sampleRate);
         const double burstEndPos = burstStartPos + (10 * 4);
-        videoParameters.colourBurstStart = static_cast<qint32>(burstStartPos);
-        videoParameters.colourBurstEnd = static_cast<qint32>(burstEndPos);
+        videoParameters.colourBurstStart = static_cast<qint32>(lrint(burstStartPos));
+        videoParameters.colourBurstEnd = static_cast<qint32>(lrint(burstEndPos));
         // The colourburst is sampled at 0, 90, 180 and 270 degrees, so the
         // sample values are [95.5, 64, 32.5, 64] * 0x100. [Poynton p532]
 
@@ -107,8 +107,8 @@ PALEncoder::PALEncoder(QFile &_rgbFile, QFile &_tbcFile, LdDecodeMetaData &_meta
     videoParameters.fieldHeight = 313;
     // sampleRate and fsc are integers in this struct, so they're not precise;
     // the code below uses fSC and sampleRate instead
-    videoParameters.sampleRate = static_cast<qint32>(sampleRate);
-    videoParameters.fsc = static_cast<qint32>(fSC);
+    videoParameters.sampleRate = static_cast<qint32>(lrint(sampleRate));
+    videoParameters.fsc = static_cast<qint32>(lrint(fSC));
     videoParameters.isMapped = false;
     // numberOfSequentialFields will be computed automatically.
 
