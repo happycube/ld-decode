@@ -416,10 +416,6 @@ void PalColour::decodeLine(const SourceField &inputField, const ChromaSample *ch
     in5 = (line.number - 2) <  firstLine ? blackLine : (chromaData + ((line.number - 3) * videoParameters.fieldWidth));
     in6 = (line.number + 3) >= lastLine  ? blackLine : (chromaData + ((line.number + 3) * videoParameters.fieldWidth));
 
-    // Check that the filter isn't going to run out of data horizontally.
-    assert(videoParameters.activeVideoStart - FILTER_SIZE >= videoParameters.colourBurstEnd);
-    assert(videoParameters.activeVideoEnd + FILTER_SIZE + 1 <= videoParameters.fieldWidth);
-
     // Multiply the composite input signal by the reference carrier, giving
     // quadrature samples where the colour subcarrier is now at 0 Hz.
     // There will be a considerable amount of energy at higher frequencies
