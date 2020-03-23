@@ -287,7 +287,7 @@ void PALEncoder::encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rgb
 
     // How many complete lines have gone by since the start of the 4-frame sequence?
     const qint32 fieldID = fieldNo % 8; 
-    const qint32 prevLines = ((fieldID / 2) * 625) + ((fieldID % 2) * 312) + (frameLine / 2);
+    const qint32 prevLines = ((fieldID / 2) * 625) + ((fieldID % 2) * 313) + (frameLine / 2);
 
     // Compute the time at which 0H occurs within the line (see above)
     double zeroH;
