@@ -34,7 +34,7 @@
 class PALEncoder
 {
 public:
-    PALEncoder(QFile &rgbFile, QFile &tbcFile, LdDecodeMetaData &metaData);
+    PALEncoder(QFile &rgbFile, QFile &tbcFile, LdDecodeMetaData &metaData, bool scLocked);
 
     // Encode RGB stream to PAL.
     // Returns true on success; on failure, prints an error and returns false.
@@ -48,9 +48,11 @@ private:
     QFile &rgbFile;
     QFile &tbcFile;
     LdDecodeMetaData &metaData;
+    bool scLocked;
 
     LdDecodeMetaData::VideoParameters videoParameters;
     double fSC;
+    double sampleRate;
     qint32 activeWidth;
     qint32 activeHeight;
     qint32 activeLeft;

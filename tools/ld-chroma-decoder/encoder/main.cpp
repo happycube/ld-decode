@@ -62,6 +62,11 @@ int main(int argc, char *argv[])
     // Add the standard debug options --debug and --quiet
     addStandardDebugOptions(parser);
 
+    // Option to produce subcarrier-locked output (-c)
+    QCommandLineOption scLockedOption(QStringList() << "c" << "sc-locked",
+                                      QCoreApplication::translate("main", "Output samples are subcarrier-locked (default: line-locked)"));
+    parser.addOption(scLockedOption);
+
     // -- Positional arguments --
 
     // Positional argument to specify input video file
@@ -75,6 +80,9 @@ int main(int argc, char *argv[])
 
     // Standard logging options
     processStandardDebugOptions(parser);
+
+    // Get the options from the parser
+    const bool scLocked = parser.isSet(scLockedOption);
 
     // Get the arguments from the parser
     QString inputFileName;
@@ -118,7 +126,7 @@ int main(int argc, char *argv[])
 
     // Encode the data
     LdDecodeMetaData metaData;
-    PALEncoder encoder(rgbFile, tbcFile, metaData);
+    PALEncoder encoder(rgbFile, tbcFile, metaData, scLocked);
     if (!encoder.encode()) {
         return -1;
     }
