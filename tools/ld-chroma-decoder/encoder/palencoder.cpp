@@ -363,11 +363,13 @@ void PALEncoder::encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rgb
         const double chromaGate = raisedCosineGate(t, activeStartTime, activeEndTime, halfChromaRiseTime);
         const double composite = (burst * burstGate) + qBound(-lumaGate, Y[x], lumaGate) + qBound(-chromaGate, chroma, chromaGate);
 
-        // Scale to a 16-bit output sample and limit the excursion. Some RGB
-        // colours (e.g. strongly saturated yellows) can go outside ld-decode's
-        // usual range with line-locked sampling, because there isn't enough
-        // headroom given the black/white levels we're using [EBU p6].
+        // Scale to a 16-bit output sample and limit the excursion to the
+        // permitted sample values. [EBU p6]
+        //
+        // With line-locked sampling, some colours (e.g. the yellow colourbar)
+        // can result in values outside this range because there isn't enough
+        // headroom.
         const double scaled = (composite * (videoParameters.white16bIre - videoParameters.black16bIre)) + videoParameters.black16bIre;
-        outputLine[x] = qBound(0.0, scaled, 65535.0);
+        outputLine[x] = qBound(static_cast<double>(0x0100), scaled, static_cast<double>(0xFEFF));
     }
 }
