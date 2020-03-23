@@ -55,6 +55,7 @@ HEADERS += \
     yiq.h \
     yiqbuffer.h \
     ../library/filter/deemp.h \
+    ../library/filter/firfilter.h \
     ../library/filter/iirfilter.h \
     ../library/tbc/lddecodemetadata.h \
     ../library/tbc/sourcevideo.h \

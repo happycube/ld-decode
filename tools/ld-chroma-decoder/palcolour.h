@@ -59,6 +59,7 @@ public:
         bool blackAndWhite = false;
         // This value is chosen to compensate for typical LaserDisc characteristics
         double chromaGain = 0.735;
+        bool simplePAL = false;
         ChromaFilterMode chromaFilter = palColourFilter;
         TransformPal::TransformMode transformMode = TransformPal::thresholdMode;
         double transformThreshold = 0.4;

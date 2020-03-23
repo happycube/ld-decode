@@ -183,6 +183,11 @@ int main(int argc, char *argv[])
                                         QCoreApplication::translate("main", "number"));
     parser.addOption(chromaGainOption);
 
+    // Option to use Simple PAL UV filter
+    QCommandLineOption simplePALOption(QStringList() << "simple-pal",
+                                           QCoreApplication::translate("main", "Transform: Use 1D UV filter (default 2D)"));
+    parser.addOption(simplePALOption);
+
     // Option to select the Transform PAL filter mode
     QCommandLineOption transformModeOption(QStringList() << "transform-mode",
                                            QCoreApplication::translate("main", "Transform: Filter mode to use (level, threshold; default threshold)"),
@@ -318,6 +323,10 @@ int main(int argc, char *argv[])
             qCritical("Chroma gain must be greater than 0");
             return -1;
         }
+    }
+
+    if (parser.isSet(simplePALOption)) {
+        palConfig.simplePAL = true;
     }
 
     if (parser.isSet(transformThresholdOption)) {
