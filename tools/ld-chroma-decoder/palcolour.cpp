@@ -46,7 +46,7 @@
     For a good overview of line-locked PAL decoding techniques, see
     BBC Research Department Report 1986/02 (https://www.bbc.co.uk/rd/publications/rdreport_1986_02),
     "Colour encoding and decoding techniques for line-locked sampled PAL and
-    NTSC television signals" by C.K.P. Clark. PALcolour uses the architecture
+    NTSC television signals" by C.K.P. Clarke. PALcolour uses the architecture
     shown in Figure 23(c), except that it has three separate baseband filters,
     one each for Y, U and V, with different characteristics. Rather than
     tracking the colour subcarrier using a PLL, PALcolour detects the phase of
@@ -55,7 +55,7 @@
 
     BBC Research Department Report 1988/11 (https://www.bbc.co.uk/rd/publications/rdreport_1988_11),
     "PAL decoding: Multi-dimensional filter design for chrominance-luminance
-    separation", also by C.K.P. Clark, describes the design concerns behind
+    separation", also by C.K.P. Clarke, describes the design concerns behind
     these filters. As PALcolour is a software implementation, it can use larger
     filters with more complex coefficients than the report describes.
  */
