@@ -111,13 +111,6 @@ void TransformPal2D::filterFields(const QVector<SourceField> &inputFields, qint3
     }
     assert(outputFields.size() == (endIndex - startIndex));
 
-    // Check that there is enough horizontal space around the active region to
-    // overlap safely by half a tile. (We can't do this vertically because we'd
-    // run into the VBI data, so we have to pad with black lines on the Y
-    // axis.)
-    assert((videoParameters.activeVideoStart - videoParameters.colourBurstEnd) >= HALFXTILE);
-    assert((videoParameters.fieldWidth - videoParameters.activeVideoEnd) >= HALFXTILE);
-
     // Allocate and clear output buffers
     chromaBuf.resize(endIndex - startIndex);
     for (qint32 i = 0; i < chromaBuf.size(); i++) {
