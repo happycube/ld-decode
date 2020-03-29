@@ -30,6 +30,7 @@ def chroma_to_u16(chroma):
 
 def acc(chroma, burst_abs_ref, burststart, burstend, linelength, lines):
     """Scale chroma according to the level of the color burst on each line."""
+
     output = np.zeros(chroma.size, dtype=np.double)
     chromaavg = 0
     for l in range(16,lines):
@@ -46,7 +47,8 @@ def acc_line(chroma, burst_abs_ref, burststart, burstend):
     output = np.zeros(chroma.size, dtype=np.double)
 
     line = chroma
-    burst_abs_mean = np.mean(np.abs(line[burststart:burstend]))
+    burst_abs_mean = np.sqrt(np.mean(np.square(line[burststart:burstend])))
+#    burst_abs_mean = np.mean(np.abs(line[burststart:burstend]))
     scale = burst_abs_ref / burst_abs_mean if burst_abs_mean != 0 else 1
     output = line * scale
 
@@ -109,18 +111,118 @@ def filter_simple(data, filter_coeffs):
     fb,fa = filter_coeffs
     return sps.filtfilt(fb,fa,data,padlen=150)
 
-# def comb_c_pal(data, linelen):
-#     """Very basic comb filter, adds the signal together with a signal delayed by 2H,
-#     line by line. VCRs do this to reduce crosstalk.
-#     """
+def comb_c_pal(data, linelen):
+     """Very basic comb filter, adds the signal together with a signal delayed by 2H,
+     line by line. VCRs do this to reduce crosstalk.
+     """
 
-#     data2 = data.copy()
-#     numlines = len(data) // linelen
-#     for l in range(16,numlines - 2):
-#         delayed2h = data2[(l - 2) * linelen:(l - 1) * linelen]
-#         data[l * linelen:(l + 1) * linelen] -= delayed2h
+     data2 = data.copy()
+     numlines = len(data) // linelen
+     for l in range(16,numlines - 2):
+         delayed2h = data[(l - 2) * linelen:(l - 1) * linelen]
+         data[l * linelen:(l + 1) * linelen] += (delayed2h / 2)
+     return data
 
-#     return data
+def upconvert_chroma(chroma, lineoffset, linesout, outwidth, chroma_heterodyne, phase_rotation, starting_phase):
+    uphet = np.zeros(chroma.size, dtype=np.double)
+    if phase_rotation == 0:
+        # Track 1 - for PAL, phase doesn't change.
+        start = lineoffset
+        end = lineoffset + (outwidth * linesout)
+        heterodyne = chroma_heterodyne[0][start:end]
+        c = chroma[start:end]
+        # Mixing the chroma signal with a signal at the frequency of colour under + fsc gives us
+        # a signal with frequencies at the difference and sum, the difference is what we want as
+        # it's at the right frequency.
+        mixed = heterodyne * c
+
+        uphet[start:end] = mixed
+
+    else:
+#        rotation = [(0,0),(90,-270),(180,-180),(270,-90)]
+        # Track 2 - needs phase rotation or the chroma will be inverted.
+        phase = starting_phase
+        for l in range(lineoffset, linesout + lineoffset):
+            linenum = l - lineoffset
+            linestart = (l - lineoffset) * outwidth
+            lineend = linestart + outwidth
+
+            heterodyne = chroma_heterodyne[phase][linestart:lineend]
+
+            c = chroma[linestart:lineend]
+
+            line = heterodyne * c
+
+            uphet[linestart:lineend] = line
+
+            phase = (phase + phase_rotation) % 4
+    return uphet
+
+def burst_deemphasis(chroma, lineoffset, linesout, outwidth, burstarea):
+    for l in range(lineoffset, linesout + lineoffset):
+        linestart = (l - lineoffset) * outwidth
+        lineend = linestart + outwidth
+
+        chroma[linestart + burstarea[1] + 5:lineend] *= 2
+
+    return chroma
+
+def process_chroma(field):
+    # Run TBC/downscale on chroma.
+    chroma, _, _ = ldd.Field.downscale(field, channel="demod_burst")
+
+    lineoffset = field.lineoffset + 1
+    linesout = field.outlinecount
+    outwidth = field.outlinelen
+
+    burstarea = (math.floor(field.usectooutpx(field.rf.SysParams['colorBurstUS'][0]) - 5),
+                 math.ceil(field.usectooutpx(field.rf.SysParams['colorBurstUS'][1])) + 10)
+
+    # For NTSC, the color burst amplitude is doubled when recording, so we have to undo that.
+    if field.rf.system == 'NTSC':
+        chroma = burst_deemphasis(chroma, lineoffset, linesout, outwidth, burstarea)
+
+    # Which track we assume is track 1.
+    track_phase = field.rf.track_phase
+
+    # Track 2 is rotated ccw in both NTSC and PAL
+    phase_rotation = -1
+    # What phase we start on. (Needed for NTSC to get the color phase correct)
+    starting_phase = 0
+
+    if field.rf.fieldNumber % 2 == track_phase:
+        if field.rf.system == 'PAL':
+            # For PAL, track 1 has no rotation.
+            phase_rotation = 0
+        elif field.rf.system == 'NTSC':
+            # For NTSC, track 1 rotates cw
+            phase_rotation = 1
+            starting_phase = 1
+        else:
+            raise Exception("Unknown video system!", field.rf.system)
+
+
+
+    uphet = upconvert_chroma(
+        chroma, lineoffset, linesout, outwidth,
+        field.rf.chroma_heterodyne, phase_rotation, starting_phase)
+
+    #uphet = comb_c_pal(uphet,outwidth)
+
+    # Filter out unwanted frequencies from the final chroma signal.
+    # Mixing the signals will produce waves at the difference and sum of the
+    # frequencies. We only want the difference wave which is at the correct color
+    # carrier frequency here.
+    # We do however want to be careful to avoid filtering out too much of the sideband.
+    uphet = filter_simple(uphet,field.rf.Filters['FChromaFinal'])
+
+    # Final automatic chroma gain.
+    uphet = acc(uphet, field.rf.SysParams['burst_abs_ref'],
+                burstarea[0], burstarea[1], outwidth, linesout)
+
+    field.rf.fieldNumber += 1
+
+    return uphet
 
 
 # Phase comprensation stuff - needs rework.
@@ -146,73 +248,7 @@ class FieldPALVHS(ldd.FieldPAL):
         return linelocs
 
     def processChroma(self):
-        # Run TBC/downscale on chroma.
-        chroma, _, _ = ldd.Field.downscale(self, channel="demod_burst")
-
-        # Chroma upheterodyne
-        uphet = np.zeros(chroma.size, dtype=np.double)
-
-        lineoffset = self.lineoffset + 1
-        linesout = self.outlinecount
-        outwidth = self.outlinelen
-
-        burstarea = (math.floor(self.usectooutpx(self.rf.SysParams['colorBurstUS'][0])),
-                     math.ceil(self.usectooutpx(self.rf.SysParams['colorBurstUS'][1])))
-
-        chroma = acc(chroma, 150.0, burstarea[0], burstarea[1], outwidth, linesout)
-
-        # Which track we assume has no phase shift.
-        track_phase = self.rf.track_phase
-
-        # Naively assume field number/track relationship
-        # TODO: Detect automatically.
-        if self.rf.fieldNumber % 2 == track_phase:
-            # Track 1 - for PAL, phase doesn't change.
-            start = lineoffset
-            end = lineoffset + (outwidth * linesout)
-            heterodyne = self.rf.chroma_heterodyne[0][start:end]
-            c = chroma[start:end]
-            # Mixing the chroma signal with a signal at the frequency of colour under + fsc gives us
-            # a signal with frequencies at the difference and sum, the difference is what we want as
-            # it's at the right frequency.
-            mixed = heterodyne * c
-
-            uphet[start:end] = mixed
-
-        else:
-            # Track 2 - needs phase rotation or the chroma will be inverted.
-            phase = 0
-            for l in range(lineoffset, linesout + lineoffset):
-                linenum = l - lineoffset
-                linestart = (l - lineoffset) * outwidth
-                lineend = linestart + outwidth
-
-                heterodyne = self.rf.chroma_heterodyne[phase][linestart:lineend]
-
-                c = chroma[linestart:lineend]
-
-                line = heterodyne * c
-
-                uphet[linestart:lineend] = line
-
-                phase -= 1
-                if phase < 0:
-                    phase = 3
-
-        # Filter out unwanted frequencies from the final chroma signal.
-        # Mixing the signals will produce waves at the difference and sum of the
-        # frequencies. We only want the difference wave which is at the correct color
-        # carrier frequency here.
-        # We do however want to be careful to avoid filtering out too much of the sideband.
-        uphet = filter_simple(uphet,self.rf.Filters['FChromaFinal'])
-
-        # Final automatic chroma gain.
-        uphet = acc(uphet, vhs_formats.PAL_BURST_REF_MEAN_ABS,
-                    burstarea[0], burstarea[1], outwidth, linesout)
-
-
-        self.rf.fieldNumber += 1
-
+        uphet = process_chroma(self)
         return chroma_to_u16(uphet)
 
     def downscale(self, final = False, *args, **kwargs):
@@ -228,7 +264,7 @@ class FieldPALVHS(ldd.FieldPAL):
 class FieldNTSCVHS(ldd.FieldNTSC):
     def __init__(self, *args, **kwargs):
         super(FieldNTSCVHS, self).__init__(*args, **kwargs)
-        self.fieldPhaseID = 1
+        self.fieldPhaseID = 0
 
     def refine_linelocs_burst(self, linelocs = None):
         """Override this as it's LD specific
@@ -248,11 +284,17 @@ class FieldNTSCVHS(ldd.FieldNTSC):
         # Set this to a constant value for now to avoid the comb filter messing with chroma levels.
         return 1.0
 
+    def processChroma(self):
+        uphet = process_chroma(self)
+        return chroma_to_u16(uphet)
+
     def downscale(self, linesoffset = 0, final = False, *args, **kwargs):
         dsout, dsaudio, dsefm = super(FieldNTSCVHS, self).downscale(linesoffset,
                                                                     final, *args, **kwargs)
         ## TEMPORARY
-        dschroma = np.zeros(dsout.size, dtype=np.double)#self.processChroma()
+        dschroma = self.processChroma()
+        self.fieldPhaseID = (self.rf.fieldNumber % 4) + 1
+        #_ = self.refine_linelocs_burst(self.linelocs1)
 
         return (dsout, dschroma), dsaudio, dsefm
 
@@ -282,8 +324,6 @@ class VHSDecode(ldd.LDdecode):
             self.outfile_chroma = open(fname_out + '.tbcc', 'wb')
         else:
             self.outfile_chroma = None
-
-        #plt.rcParams['figure.figsize'] = 15, 8
 
     # Override to avoid NaN in JSON.
     def calcsnr(self, f, snrslice):
@@ -360,7 +400,7 @@ class VHSRFDecode(ldd.RFDecode):
         # Lastly we re-create the filters with the new parameters.
         self.computevideofilters()
 
-        cc = vhs_formats.VHS_COLOR_CARRIER_MHZ
+        cc = self.DecoderParams['color_under_carrier'] / 1000000
 
         # More advanced rf filter - disabled for commit
         # DP = self.DecoderParams
@@ -394,7 +434,7 @@ class VHSRFDecode(ldd.RFDecode):
 
         # Filter to pick out color-under chroma component.
         # filter at about twice the carrier. (This seems to be similar to what VCRs do)
-        chroma_lowpass = sps.butter(4, [1.2/self.freq_half], btype='lowpass')
+        chroma_lowpass = sps.butter(4, [0.05/self.freq_half,1.4/self.freq_half], btype='bandpass') #sps.butter(4, [1.2/self.freq_half], btype='lowpass')
         self.Filters['FVideoBurst'] = chroma_lowpass
 
         # The following filters are for post-TBC:
