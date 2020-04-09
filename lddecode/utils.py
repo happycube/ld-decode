@@ -521,6 +521,18 @@ hilbert_filter = np.fft.fftshift(
 # This can be complex multiplied with the raw RF to do a good chunk of real demoduation work
 #fft_hilbert = np.fft.fft(hilbert_filter, blocklen)
 
+def emphasis_iir(t1, t2, fs):
+    """Generate an IIR filter for 6dB/octave pre-emphasis (t1 > t2) or
+    de-emphasis (t1 < t2), given time constants for the two corners."""
+
+    # Convert time constants to frequencies, and pre-warp for bilinear transform
+    w1 = 2 * fs * np.tan((1 / t1) / (2 * fs))
+    w2 = 2 * fs * np.tan((1 / t2) / (2 * fs))
+
+    # Zero at t1, pole at t2
+    tf_b, tf_a = sps.zpk2tf([-w1], [-w2], w2 / w1)
+    return sps.bilinear(tf_b, tf_a, fs)
+
 # This converts a regular B, A filter to an FFT of our selected block length
 def filtfft(filt, blocklen):
     return sps.freqz(filt[0], filt[1], blocklen, whole=1)[1]
