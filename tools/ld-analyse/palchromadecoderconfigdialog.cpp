@@ -67,8 +67,8 @@ const PalColour::Configuration &PalChromaDecoderConfigDialog::getConfiguration()
 
 void PalChromaDecoderConfigDialog::updateDialog()
 {
-    if (palChromaDecoderConfig.blackAndWhite) ui->blackAndWhiteCheckBox->setChecked(true);
-    else ui->blackAndWhiteCheckBox->setChecked(false);
+    ui->chromaGainHorizontalSlider->setValue(static_cast<qint32>(palChromaDecoderConfig.chromaGain * 100));
+    ui->chromaGainValueLabel->setText(QString::number(palChromaDecoderConfig.chromaGain, 'f', 2));
 
     if (palChromaDecoderConfig.chromaFilter == PalColour::transform2DFilter) {
         ui->twoDeeTransformCheckBox->setChecked(true);
@@ -107,10 +107,10 @@ void PalChromaDecoderConfigDialog::updateDialog()
 
 // Methods to handle changes to the dialogue
 
-void PalChromaDecoderConfigDialog::on_blackAndWhiteCheckBox_clicked()
+void PalChromaDecoderConfigDialog::on_chromaGainHorizontalSlider_valueChanged(int value)
 {
-    if (ui->blackAndWhiteCheckBox->isChecked()) palChromaDecoderConfig.blackAndWhite = true;
-    else palChromaDecoderConfig.blackAndWhite = false;
+    palChromaDecoderConfig.chromaGain = static_cast<double>(value) / 100;
+    ui->chromaGainValueLabel->setText(QString::number(palChromaDecoderConfig.chromaGain, 'f', 2));
     emit palChromaDecoderConfigChanged();
 }
 

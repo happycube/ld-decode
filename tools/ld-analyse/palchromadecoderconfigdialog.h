@@ -48,7 +48,7 @@ signals:
     void palChromaDecoderConfigChanged();
 
 private slots:
-    void on_blackAndWhiteCheckBox_clicked();
+    void on_chromaGainHorizontalSlider_valueChanged(int value);
     void on_twoDeeTransformCheckBox_clicked();
     void on_thresholdModeCheckBox_clicked();
     void on_thresholdHorizontalSlider_valueChanged(int value);

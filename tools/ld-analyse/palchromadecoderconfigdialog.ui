@@ -17,9 +17,29 @@
    <item>
     <layout class="QVBoxLayout" name="verticalLayout">
      <item>
-      <widget class="QCheckBox" name="blackAndWhiteCheckBox">
+      <widget class="QLabel" name="label">
        <property name="text">
-        <string>Black and white</string>
+        <string>Chroma gain:</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QSlider" name="chromaGainHorizontalSlider">
+       <property name="maximum">
+        <number>200</number>
+       </property>
+       <property name="orientation">
+        <enum>Qt::Horizontal</enum>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLabel" name="chromaGainValueLabel">
+       <property name="text">
+        <string>1.0</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
        </property>
       </widget>
      </item>
