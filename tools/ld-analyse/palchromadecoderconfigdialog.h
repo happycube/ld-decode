@@ -53,6 +53,7 @@ private slots:
     void on_thresholdModeCheckBox_clicked();
     void on_thresholdHorizontalSlider_valueChanged(int value);
     void on_showFFTsCheckBox_clicked();
+    void on_simplePALCheckBox_clicked();
 
 private:
     Ui::PalChromaDecoderConfigDialog *ui;

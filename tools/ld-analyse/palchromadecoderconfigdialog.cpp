@@ -74,10 +74,12 @@ void PalChromaDecoderConfigDialog::updateDialog()
         ui->twoDeeTransformCheckBox->setChecked(true);
         ui->thresholdModeCheckBox->setEnabled(true);
         ui->showFFTsCheckBox->setEnabled(true);
+        ui->simplePALCheckBox->setEnabled(true);
     } else {
         ui->twoDeeTransformCheckBox->setChecked(false);
         ui->thresholdModeCheckBox->setEnabled(false);
         ui->showFFTsCheckBox->setEnabled(false);
+        ui->simplePALCheckBox->setEnabled(false);
     }
 
     if (palChromaDecoderConfig.transformMode == TransformPal::thresholdMode) {
@@ -99,6 +101,8 @@ void PalChromaDecoderConfigDialog::updateDialog()
 
     if (palChromaDecoderConfig.showFFTs) ui->showFFTsCheckBox->setChecked(true);
     else ui->showFFTsCheckBox->setChecked(false);
+    if (palChromaDecoderConfig.simplePAL) ui->simplePALCheckBox->setChecked(true);
+    else ui->simplePALCheckBox->setChecked(false);
 }
 
 // Methods to handle changes to the dialogue
@@ -143,5 +147,12 @@ void PalChromaDecoderConfigDialog::on_showFFTsCheckBox_clicked()
 {
     if (ui->showFFTsCheckBox->isChecked()) palChromaDecoderConfig.showFFTs = true;
     else palChromaDecoderConfig.showFFTs = false;
+    emit palChromaDecoderConfigChanged();
+}
+
+void PalChromaDecoderConfigDialog::on_simplePALCheckBox_clicked()
+{
+    if (ui->simplePALCheckBox->isChecked()) palChromaDecoderConfig.simplePAL = true;
+    else palChromaDecoderConfig.simplePAL = false;
     emit palChromaDecoderConfigChanged();
 }
