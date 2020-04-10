@@ -63,13 +63,11 @@ void RGB::convertLine(const YIQ *begin, const YIQ *end, quint16 *out)
         i *= iqScale;
         q *= iqScale;
 
-        // YIQ to RGB colour-space conversion (from page 18
-        // of Video Demystified, 5th edition)
-        //
-        // For RGB 0-255: Y 0-255. I 0- +-152. Q 0- +-134 :
-        double r = y + (0.956 * i) + (0.621 * q);
-        double g = y - (0.272 * i) - (0.647 * q);
-        double b = y - (1.107 * i) + (1.704 * q);
+        // Y'IQ to R'G'B' colour-space conversion.
+        // Coefficients from Poynton, "Digital Video and HDTV" first edition, p367 eq 30.3.
+        double r = y + (0.955986 * i) + (0.620825 * q);
+        double g = y - (0.272013 * i) - (0.647204 * q);
+        double b = y - (1.106740 * i) + (1.704230 * q);
 
         r = qBound(0.0, r, 65535.0);
         g = qBound(0.0, g, 65535.0);
