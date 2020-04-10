@@ -56,7 +56,6 @@ public:
     };
 
     struct Configuration {
-        bool blackAndWhite = false;
         double chromaGain = 1.0;
         bool simplePAL = false;
         ChromaFilterMode chromaFilter = palColourFilter;

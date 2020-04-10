@@ -37,9 +37,8 @@ public:
     // whiteIreLevel: 100 IRE 16-bit level
     // blackIreLevel: 0 or 7.5 IRE 16-bit level
     // whitePoint75: false = using 100% white point, true = 75%
-    // blackAndWhite: true = output in black and white only
     // chromaGain: gain applied to I/Q channels
-    RGB(double whiteIreLevel, double blackIreLevel, bool whitePoint75, bool blackAndWhite, double chromaGain);
+    RGB(double whiteIreLevel, double blackIreLevel, bool whitePoint75, double chromaGain);
 
     void convertLine(const YIQ *begin, const YIQ *end, quint16 *out);
 
@@ -47,7 +46,6 @@ private:
     double whiteIreLevel;
     double blackIreLevel;
     bool whitePoint75;
-    bool blackAndWhite;
     double chromaGain;
 };
 

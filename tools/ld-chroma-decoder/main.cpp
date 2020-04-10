@@ -301,8 +301,8 @@ int main(int argc, char *argv[])
     }
 
     if (parser.isSet(setBwModeOption)) {
-        palConfig.blackAndWhite = true;
-        combConfig.blackAndWhite = true;
+        palConfig.chromaGain = 0.0;
+        combConfig.chromaGain = 0.0;
     }
 
     if (parser.isSet(whitePointOption)) {

@@ -271,12 +271,8 @@ void PalColour::decodeFrames(const QVector<SourceField> &inputFields, qint32 sta
         outputFrames[i].fill(0);
     }
 
+    const double chromaGain = configuration.chromaGain;
     for (qint32 i = startIndex, j = 0, k = 0; i < endIndex; i += 2, j += 2, k++) {
-        double chromaGain = configuration.chromaGain;
-        if (configuration.blackAndWhite) {
-            chromaGain = 0.0;
-        }
-
         decodeField(inputFields[i], chromaData[j], chromaGain, outputFrames[k]);
         decodeField(inputFields[i + 1], chromaData[j + 1], chromaGain, outputFrames[k]);
     }

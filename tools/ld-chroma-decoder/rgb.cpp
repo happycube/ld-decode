@@ -25,9 +25,9 @@
 
 #include "rgb.h"
 
-RGB::RGB(double _whiteIreLevel, double _blackIreLevel, bool _whitePoint75, bool _blackAndWhite, double _chromaGain)
+RGB::RGB(double _whiteIreLevel, double _blackIreLevel, bool _whitePoint75, double _chromaGain)
     : whiteIreLevel(_whiteIreLevel), blackIreLevel(_blackIreLevel), whitePoint75(_whitePoint75),
-      blackAndWhite(_blackAndWhite), chromaGain(_chromaGain)
+      chromaGain(_chromaGain)
 {
 }
 
@@ -42,10 +42,6 @@ void RGB::convertLine(const YIQ *begin, const YIQ *end, quint16 *out)
     // This is the same as for Y, i.e. when 7.5% setup is in use the chroma
     // scale is reduced proportionately.
     const double iqScale = yScale * chromaGain;
-    if (blackAndWhite) {
-        // Remove the colour components
-        iqScale = 0;
-    }
 
     if (whitePoint75) {
         // NTSC uses a 75% white point; so here we scale the result by
