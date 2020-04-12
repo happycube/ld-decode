@@ -202,9 +202,9 @@ RFParams_PAL = {
     'video_deemp': (100e-9, 400e-9),
 
     # XXX: guessing here!
-    'video_bpf_low': 2700000, 
+    'video_bpf_low': 2400000, 
     'video_bpf_high': 13500000,
-    'video_bpf_order': 1,
+    'video_bpf_order': 2,
 
     'video_lpf_freq': 4800000,
     'video_lpf_order': 7,
@@ -443,6 +443,10 @@ class RFDecode:
         # Second phase FFT filtering, which is performed after the signal is demodulated
 
         video_lpf = sps.butter(DP['video_lpf_order'], DP['video_lpf_freq']/self.freq_hz_half, 'low')
+        #video_lpf = sps.ellip(N=7, rp=0.04, rs=53.0, Wn=5.3e6, fs=self.freq_hz)
+        video_lpf = sps.ellip(N=7, rp=0.01, rs=80.0, Wn=5.3e6, fs=self.freq_hz)
+        #video_lpf = sps.ellip(N=5, rp=0.04, rs=53.0, Wn=5.3e6, fs=self.freq_hz)
+        #video_lpf = sps.ellip(N=5, rp=0.2, rs=90.0, Wn=5.3e6, fs=self.freq_hz)
         SF['Fvideo_lpf'] = filtfft(video_lpf, self.blocklen)
 
         if self.system == 'NTSC' and self.WibbleRemover:
