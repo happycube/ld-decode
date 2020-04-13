@@ -141,7 +141,7 @@ RFParams_NTSC = {
     'audio_notchwidth': 350000,
     'audio_notchorder': 2,
 
-    'video_deemp': (120*.32, 320*.32),
+    'video_deemp': (120e-9, 320e-9),
 
     # This BPF is similar but not *quite* identical to what Pioneer did
     'video_bpf_low': 3400000, 
@@ -172,7 +172,7 @@ RFParams_NTSC_lowband = {
     'audio_notchwidth': 350000,
     'audio_notchorder': 2,
 
-    'video_deemp': (120*.32, 320*.32),
+    'video_deemp': (120e-9, 320e-9),
 
     'video_bpf_low': 3800000, 
     'video_bpf_high': 12500000,
@@ -199,7 +199,7 @@ RFParams_PAL = {
     'audio_notchwidth': 200000,
     'audio_notchorder': 2,
 
-    'video_deemp': (100*.30, 400*.30),
+    'video_deemp': (100e-9, 400e-9),
 
     # XXX: guessing here!
     'video_bpf_low': 2700000, 
@@ -227,7 +227,7 @@ RFParams_PAL_lowband = {
     'audio_notchwidth': 200000,
     'audio_notchorder': 2,
 
-    'video_deemp': (100*.30, 400*.30),
+    'video_deemp': (100e-9, 400e-9),
 
     # XXX: guessing here!
     'video_bpf_low': 3200000, 
@@ -452,15 +452,13 @@ class RFDecode:
         video_hpf = sps.butter(DP['video_hpf_order'], DP['video_hpf_freq']/self.freq_hz_half, 'high')
         SF['Fvideo_hpf'] = filtfft(video_hpf, self.blocklen)
 
-        # The deemphasis filter.  This math is probably still quite wrong, but with the right values it works
-        deemp0, deemp1 = DP['video_deemp']
-        [tf_b, tf_a] = sps.zpk2tf([-deemp1*(10**-10)], [-deemp0*(10**-10)], deemp0 / deemp1)
-        SF['Fdeemp'] = filtfft(sps.bilinear(tf_b, tf_a, 1.0/self.freq_hz_half), self.blocklen)
+        # The deemphasis filter
+        deemp1, deemp2 = DP['video_deemp']
+        SF['Fdeemp'] = filtfft(emphasis_iir(deemp1, deemp2, self.freq_hz), self.blocklen)
 
         # The direct opposite of the above, used in test signal generation
-        [tf_b, tf_a] = sps.zpk2tf([-deemp0*(10**-10)], [-deemp1*(10**-10)], deemp1 / deemp0)
-        SF['Femp'] = filtfft(sps.bilinear(tf_b, tf_a, 1.0/self.freq_hz_half), self.blocklen)
-        
+        SF['Femp'] = filtfft(emphasis_iir(deemp2, deemp1, self.freq_hz), self.blocklen)
+
         # Post processing:  lowpass filter + deemp
         SF['FVideo'] = SF['Fvideo_lpf'] * SF['Fdeemp'] 
         #SF['FVideo'] = SF['Fdeemp'] 
