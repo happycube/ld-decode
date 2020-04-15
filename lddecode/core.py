@@ -2628,6 +2628,32 @@ class LDdecode:
 
         return np.abs(self.mtf_level - oldmtf) < .05
 
+    def detectLevels(self, field):
+        # Returns sync level and ire0 level of a field, computed from serration pulses
+            
+        # Build a list of each half-line's average
+        hlevels = []
+
+        for l in range(1,8):
+            lsa = field.lineslice(l, 10, 10)
+            lsb = field.lineslice(l, 40, 10)
+            
+            hlevels.append(np.mean(field.data['video']['demod_05'][lsa]))
+            hlevels.append(np.mean(field.data['video']['demod_05'][lsb]))
+
+        # Now group them by level (either sync or ire 0) and return the means of those
+        sync_hzs = []
+        ire0_hzs = []
+
+        for hz in hlevels:
+            ire = field.rf.hztoire(hz)
+            if ire < field.rf.SysParams['vsync_ire'] / 2:
+                sync_hzs.append(hz)
+            else:
+                ire0_hzs.append(hz)
+
+        return np.mean(sync_hzs), np.mean(ire0_hzs)
+
     def writeout(self, dataset):
         f, fi, picture, audio, efm = dataset
 
@@ -2687,7 +2713,7 @@ class LDdecode:
         # pretty much a retry-ing wrapper around decodefield with MTF checking
         self.prevfield = self.curfield
         done = False
-        MTFadjusted = False
+        adjusted = False
         
         while done == False:
             self.fieldloc = self.fdoffset
@@ -2707,20 +2733,34 @@ class LDdecode:
                 self.audio_offset = f.audio_next_offset
 
                 metrics = self.computeMetrics(f, None, verbose=True)
-                if 'blackToWhiteRFRatio' in metrics and MTFadjusted == False:
+                if 'blackToWhiteRFRatio' in metrics and adjusted == False:
                     keep = 900 if self.isCLV else 30
                     self.bw_ratios.append(metrics['blackToWhiteRFRatio'])
                     self.bw_ratios = self.bw_ratios[-keep:]
 
                     #logging.info(metrics['blackToWhiteRFRatio'], np.mean(self.bw_ratios))
 
-                if self.checkMTF(f, self.prevfield) or MTFadjusted:
-                    done = True
-                else:
-                    # redo field
+                redo = False
+
+                if not self.checkMTF(f, self.prevfield):
+                    redo = True
+                
+                sync_hz, ire0_hz = self.detectLevels(f)
+                sync_ire_diff = np.abs(self.rf.hztoire(sync_hz) - self.rf.SysParams['vsync_ire'])
+
+                if (sync_ire_diff > 2) or (np.abs(self.rf.hztoire(ire0_hz)) > 2):
+                    redo = True
+
+                self.rf.SysParams['ire0'] = ire0_hz
+                # Note that vsync_ire is a negative number, so (sync_hz - ire0_hz) is correct
+                self.rf.SysParams['hz_ire'] = (sync_hz - ire0_hz) / self.rf.SysParams['vsync_ire']
+                    
+                if adjusted == False and redo == True:
                     self.demodcache.flushvideo()
-                    MTFadjusted = True
+                    adjusted = True
                     self.fdoffset -= offset
+                else:
+                    done = True
 
         if f is not None and self.fname_out is not None:
             # Only write a FirstField first
