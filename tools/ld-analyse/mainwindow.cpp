@@ -159,8 +159,7 @@ void MainWindow::updateGuiLoaded()
     ui->actionCapture_Quality_Index->setEnabled(true);
     ui->actionSave_frame_as_PNG->setEnabled(true);
     ui->actionClosed_Captions->setEnabled(true);
-    if (tbcSource.getIsSourcePal()) ui->actionChroma_decoder_configuration->setEnabled(true);
-    else ui->actionChroma_decoder_configuration->setEnabled(false);
+    ui->actionChroma_decoder_configuration->setEnabled(true);
     ui->actionReload_TBC->setEnabled(true);
 
     // Set option button states
@@ -190,7 +189,7 @@ void MainWindow::updateGuiLoaded()
     sourceVideoStatus.setText(statusText);
 
     // Update the chroma decoder configuration dialogue
-    chromaDecoderConfigDialog->setConfiguration(tbcSource.getPalColourConfiguration());
+    chromaDecoderConfigDialog->setConfiguration(tbcSource.getIsSourcePal(), tbcSource.getPalConfiguration(), tbcSource.getNtscConfiguration());
 
     // Show the current frame
     showFrame();
@@ -817,7 +816,7 @@ void MainWindow::mouseScanLineSelect(qint32 oX, qint32 oY)
 void MainWindow::chromaDecoderConfigChangedSignalHandler()
 {
     // Set the new configuration
-    tbcSource.setPalColourConfiguration(chromaDecoderConfigDialog->getConfiguration());
+    tbcSource.setChromaConfiguration(chromaDecoderConfigDialog->getPalConfiguration(), chromaDecoderConfigDialog->getNtscConfiguration());
 
     // Update the frame viewer;
     updateFrameViewer();

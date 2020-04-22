@@ -37,9 +37,10 @@ TbcSource::TbcSource(QObject *parent) : QObject(parent)
     fieldsPerGraphDataPoint = 0;
     frameCacheFrameNumber = -1;
 
-    // Set the PALcolour configuration to default
-    palColourConfiguration = palColour.getConfiguration();
-    palColourConfiguration.chromaFilter = PalColour::transform2DFilter;
+    // Set the chroma decoder configuration to default
+    palConfiguration = palColour.getConfiguration();
+    palConfiguration.chromaFilter = PalColour::transform2DFilter;
+    ntscConfiguration = ntscColour.getConfiguration();
     decoderConfigurationChanged = false;
 }
 
@@ -451,19 +452,30 @@ qint32 TbcSource::getCcData1(qint32 frameNumber)
     return secondField.ntsc.ccData1;
 }
 
-void TbcSource::setPalColourConfiguration(const PalColour::Configuration &_palColourConfiguration)
+void TbcSource::setChromaConfiguration(const PalColour::Configuration &_palConfiguration, const Comb::Configuration &_ntscConfiguration)
 {
-    palColourConfiguration = _palColourConfiguration;
+    palConfiguration = _palConfiguration;
+    ntscConfiguration = _ntscConfiguration;
 
     // Configure the chroma decoder
-    palColour.updateConfiguration(ldDecodeMetaData.getVideoParameters(), palColourConfiguration);
+    LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
+    if (videoParameters.isSourcePal) {
+        palColour.updateConfiguration(videoParameters, palConfiguration);
+    } else {
+        ntscColour.updateConfiguration(videoParameters, ntscConfiguration);
+    }
 
     decoderConfigurationChanged = true;
 }
 
-const PalColour::Configuration &TbcSource::getPalColourConfiguration()
+const PalColour::Configuration &TbcSource::getPalConfiguration()
 {
-    return palColourConfiguration;
+    return palConfiguration;
+}
+
+const Comb::Configuration &TbcSource::getNtscConfiguration()
+{
+    return ntscConfiguration;
 }
 
 // Return the frame number of the start of the next chapter
@@ -803,10 +815,9 @@ void TbcSource::startBackgroundLoad(QString sourceFilename)
 
     // Configure the chroma decoder
     if (videoParameters.isSourcePal) {
-        palColour.updateConfiguration(videoParameters, palColourConfiguration);
+        palColour.updateConfiguration(videoParameters, palConfiguration);
     } else {
-        Comb::Configuration configuration;
-        ntscColour.updateConfiguration(videoParameters, configuration);
+        ntscColour.updateConfiguration(videoParameters, ntscConfiguration);
     }
 
     // Generate the graph data for the source

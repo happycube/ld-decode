@@ -65,7 +65,7 @@
       </widget>
      </item>
      <item>
-      <widget class="QLabel" name="label">
+      <widget class="QLabel" name="thresholdLabel">
        <property name="text">
         <string>Transform threshold:</string>
        </property>

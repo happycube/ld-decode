@@ -27,6 +27,7 @@
 
 #include <QDialog>
 
+#include "comb.h"
 #include "palcolour.h"
 
 namespace Ui {
@@ -41,8 +42,9 @@ public:
     explicit ChromaDecoderConfigDialog(QWidget *parent = nullptr);
     ~ChromaDecoderConfigDialog();
 
-    void setConfiguration(const PalColour::Configuration &_palChromaDecoderConfig);
-    const PalColour::Configuration &getConfiguration();
+    void setConfiguration(bool isSourcePal, const PalColour::Configuration &palConfiguration, const Comb::Configuration &ntscConfiguration);
+    const PalColour::Configuration &getPalConfiguration();
+    const Comb::Configuration &getNtscConfiguration();
 
 signals:
     void chromaDecoderConfigChanged();
@@ -57,7 +59,9 @@ private slots:
 
 private:
     Ui::ChromaDecoderConfigDialog *ui;
-    PalColour::Configuration palChromaDecoderConfig;
+    bool isSourcePal;
+    PalColour::Configuration palConfiguration;
+    Comb::Configuration ntscConfiguration;
 
     void updateDialog();
 };
