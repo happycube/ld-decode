@@ -1,6 +1,6 @@
 /************************************************************************
 
-    palchromadecoderconfigdialog.cpp
+    chromadecoderconfigdialog.cpp
 
     ld-analyse - TBC output analysis
     Copyright (C) 2019 Simon Inns
@@ -22,12 +22,12 @@
 
 ************************************************************************/
 
-#include "palchromadecoderconfigdialog.h"
-#include "ui_palchromadecoderconfigdialog.h"
+#include "chromadecoderconfigdialog.h"
+#include "ui_chromadecoderconfigdialog.h"
 
-PalChromaDecoderConfigDialog::PalChromaDecoderConfigDialog(QWidget *parent) :
+ChromaDecoderConfigDialog::ChromaDecoderConfigDialog(QWidget *parent) :
     QDialog(parent),
-    ui(new Ui::PalChromaDecoderConfigDialog)
+    ui(new Ui::ChromaDecoderConfigDialog)
 {
     ui->setupUi(this);
     setWindowFlags(Qt::Window);
@@ -39,12 +39,12 @@ PalChromaDecoderConfigDialog::PalChromaDecoderConfigDialog(QWidget *parent) :
     updateDialog();
 }
 
-PalChromaDecoderConfigDialog::~PalChromaDecoderConfigDialog()
+ChromaDecoderConfigDialog::~ChromaDecoderConfigDialog()
 {
     delete ui;
 }
 
-void PalChromaDecoderConfigDialog::setConfiguration(const PalColour::Configuration &_palChromaDecoderConfig)
+void ChromaDecoderConfigDialog::setConfiguration(const PalColour::Configuration &_palChromaDecoderConfig)
 {
     palChromaDecoderConfig = _palChromaDecoderConfig;
 
@@ -57,15 +57,15 @@ void PalChromaDecoderConfigDialog::setConfiguration(const PalColour::Configurati
     }
 
     updateDialog();
-    emit palChromaDecoderConfigChanged();
+    emit chromaDecoderConfigChanged();
 }
 
-const PalColour::Configuration &PalChromaDecoderConfigDialog::getConfiguration()
+const PalColour::Configuration &ChromaDecoderConfigDialog::getConfiguration()
 {
     return palChromaDecoderConfig;
 }
 
-void PalChromaDecoderConfigDialog::updateDialog()
+void ChromaDecoderConfigDialog::updateDialog()
 {
     ui->chromaGainHorizontalSlider->setValue(static_cast<qint32>(palChromaDecoderConfig.chromaGain * 100));
     ui->chromaGainValueLabel->setText(QString::number(palChromaDecoderConfig.chromaGain, 'f', 2));
@@ -107,14 +107,14 @@ void PalChromaDecoderConfigDialog::updateDialog()
 
 // Methods to handle changes to the dialogue
 
-void PalChromaDecoderConfigDialog::on_chromaGainHorizontalSlider_valueChanged(int value)
+void ChromaDecoderConfigDialog::on_chromaGainHorizontalSlider_valueChanged(int value)
 {
     palChromaDecoderConfig.chromaGain = static_cast<double>(value) / 100;
     ui->chromaGainValueLabel->setText(QString::number(palChromaDecoderConfig.chromaGain, 'f', 2));
-    emit palChromaDecoderConfigChanged();
+    emit chromaDecoderConfigChanged();
 }
 
-void PalChromaDecoderConfigDialog::on_twoDeeTransformCheckBox_clicked()
+void ChromaDecoderConfigDialog::on_twoDeeTransformCheckBox_clicked()
 {
     if (ui->twoDeeTransformCheckBox->isChecked()) {
         palChromaDecoderConfig.chromaFilter = PalColour::transform2DFilter;
@@ -122,10 +122,10 @@ void PalChromaDecoderConfigDialog::on_twoDeeTransformCheckBox_clicked()
         palChromaDecoderConfig.chromaFilter = PalColour::palColourFilter;
     }
     updateDialog();
-    emit palChromaDecoderConfigChanged();
+    emit chromaDecoderConfigChanged();
 }
 
-void PalChromaDecoderConfigDialog::on_thresholdModeCheckBox_clicked()
+void ChromaDecoderConfigDialog::on_thresholdModeCheckBox_clicked()
 {
     if (ui->thresholdModeCheckBox->isChecked()) {
         palChromaDecoderConfig.transformMode = TransformPal::thresholdMode;
@@ -133,26 +133,26 @@ void PalChromaDecoderConfigDialog::on_thresholdModeCheckBox_clicked()
         palChromaDecoderConfig.transformMode = TransformPal::levelMode;
     }
     updateDialog();
-    emit palChromaDecoderConfigChanged();
+    emit chromaDecoderConfigChanged();
 }
 
-void PalChromaDecoderConfigDialog::on_thresholdHorizontalSlider_valueChanged(int value)
+void ChromaDecoderConfigDialog::on_thresholdHorizontalSlider_valueChanged(int value)
 {
     palChromaDecoderConfig.transformThreshold = static_cast<double>(value) / 100;
     ui->thresholdValueLabel->setText(QString::number(palChromaDecoderConfig.transformThreshold, 'f', 2));
-    emit palChromaDecoderConfigChanged();
+    emit chromaDecoderConfigChanged();
 }
 
-void PalChromaDecoderConfigDialog::on_showFFTsCheckBox_clicked()
+void ChromaDecoderConfigDialog::on_showFFTsCheckBox_clicked()
 {
     if (ui->showFFTsCheckBox->isChecked()) palChromaDecoderConfig.showFFTs = true;
     else palChromaDecoderConfig.showFFTs = false;
-    emit palChromaDecoderConfigChanged();
+    emit chromaDecoderConfigChanged();
 }
 
-void PalChromaDecoderConfigDialog::on_simplePALCheckBox_clicked()
+void ChromaDecoderConfigDialog::on_simplePALCheckBox_clicked()
 {
     if (ui->simplePALCheckBox->isChecked()) palChromaDecoderConfig.simplePAL = true;
     else palChromaDecoderConfig.simplePAL = false;
-    emit palChromaDecoderConfigChanged();
+    emit chromaDecoderConfigChanged();
 }

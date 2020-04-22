@@ -452,7 +452,7 @@
     <addaction name="actionLine_scope"/>
     <addaction name="actionClosed_Captions"/>
     <addaction name="separator"/>
-    <addaction name="actionPAL_Chroma_decoder"/>
+    <addaction name="actionChroma_decoder_configuration"/>
    </widget>
    <widget class="QMenu" name="menuHelp">
     <property name="title">
@@ -606,9 +606,9 @@
     <string>Closed Captions...</string>
    </property>
   </action>
-  <action name="actionPAL_Chroma_decoder">
+  <action name="actionChroma_decoder_configuration">
    <property name="text">
-    <string>PAL Chroma decoder...</string>
+    <string>Chroma decoder configuration...</string>
    </property>
   </action>
   <action name="actionCapture_Quality_Index">

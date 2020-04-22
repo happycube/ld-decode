@@ -150,7 +150,7 @@ private:
     QImage frameCache;
     qint32 frameCacheFrameNumber;
 
-    // PAL chroma-decoder configuration
+    // Chroma decoder configuration
     PalColour::Configuration palColourConfiguration;
     bool decoderConfigurationChanged;
 

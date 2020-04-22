@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
- <class>PalChromaDecoderConfigDialog</class>
- <widget class="QDialog" name="PalChromaDecoderConfigDialog">
+ <class>ChromaDecoderConfigDialog</class>
+ <widget class="QDialog" name="ChromaDecoderConfigDialog">
   <property name="geometry">
    <rect>
     <x>0</x>
@@ -11,7 +11,7 @@
    </rect>
   </property>
   <property name="windowTitle">
-   <string>PAL Chroma-Decoder Configuration</string>
+   <string>Chroma Decoder Configuration</string>
   </property>
   <layout class="QHBoxLayout" name="horizontalLayout">
    <item>

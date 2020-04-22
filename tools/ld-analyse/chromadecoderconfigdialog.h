@@ -1,6 +1,6 @@
 /************************************************************************
 
-    palchromadecoderconfigdialog.h
+    chromadecoderconfigdialog.h
 
     ld-analyse - TBC output analysis
     Copyright (C) 2019 Simon Inns
@@ -22,30 +22,30 @@
 
 ************************************************************************/
 
-#ifndef PALCHROMADECODERCONFIGDIALOG_H
-#define PALCHROMADECODERCONFIGDIALOG_H
+#ifndef CHROMADECODERCONFIGDIALOG_H
+#define CHROMADECODERCONFIGDIALOG_H
 
 #include <QDialog>
 
 #include "palcolour.h"
 
 namespace Ui {
-class PalChromaDecoderConfigDialog;
+class ChromaDecoderConfigDialog;
 }
 
-class PalChromaDecoderConfigDialog : public QDialog
+class ChromaDecoderConfigDialog : public QDialog
 {
     Q_OBJECT
 
 public:
-    explicit PalChromaDecoderConfigDialog(QWidget *parent = nullptr);
-    ~PalChromaDecoderConfigDialog();
+    explicit ChromaDecoderConfigDialog(QWidget *parent = nullptr);
+    ~ChromaDecoderConfigDialog();
 
     void setConfiguration(const PalColour::Configuration &_palChromaDecoderConfig);
     const PalColour::Configuration &getConfiguration();
 
 signals:
-    void palChromaDecoderConfigChanged();
+    void chromaDecoderConfigChanged();
 
 private slots:
     void on_chromaGainHorizontalSlider_valueChanged(int value);
@@ -56,10 +56,10 @@ private slots:
     void on_simplePALCheckBox_clicked();
 
 private:
-    Ui::PalChromaDecoderConfigDialog *ui;
+    Ui::ChromaDecoderConfigDialog *ui;
     PalColour::Configuration palChromaDecoderConfig;
 
     void updateDialog();
 };
 
-#endif // PALCHROMADECODERCONFIGDIALOG_H
+#endif // CHROMADECODERCONFIGDIALOG_H
