@@ -13,112 +13,262 @@
   <property name="windowTitle">
    <string>Chroma Decoder Configuration</string>
   </property>
-  <layout class="QHBoxLayout" name="horizontalLayout">
+  <layout class="QVBoxLayout" name="outerVerticalLayout">
    <item>
-    <layout class="QVBoxLayout" name="verticalLayout">
-     <item>
-      <widget class="QLabel" name="label">
-       <property name="text">
-        <string>Chroma gain:</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QSlider" name="chromaGainHorizontalSlider">
-       <property name="maximum">
-        <number>200</number>
-       </property>
-       <property name="orientation">
-        <enum>Qt::Horizontal</enum>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QLabel" name="chromaGainValueLabel">
-       <property name="text">
-        <string>1.0</string>
-       </property>
-       <property name="alignment">
-        <set>Qt::AlignCenter</set>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QCheckBox" name="twoDeeTransformCheckBox">
-       <property name="text">
-        <string>Use Transform PAL 2D filter</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QCheckBox" name="thresholdModeCheckBox">
-       <property name="text">
-        <string>Use threshold comparison mode</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QLabel" name="label_3">
-       <property name="text">
-        <string/>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QLabel" name="thresholdLabel">
-       <property name="text">
-        <string>Transform threshold:</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QSlider" name="thresholdHorizontalSlider">
-       <property name="maximum">
-        <number>100</number>
-       </property>
-       <property name="orientation">
-        <enum>Qt::Horizontal</enum>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QLabel" name="thresholdValueLabel">
-       <property name="text">
-        <string>0.4</string>
-       </property>
-       <property name="alignment">
-        <set>Qt::AlignCenter</set>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QCheckBox" name="showFFTsCheckBox">
-       <property name="text">
-        <string>Overlay FFT visualisation</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QCheckBox" name="simplePALCheckBox">
-       <property name="text">
-        <string>Use Simple PAL decoder</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <spacer name="verticalSpacer">
-       <property name="orientation">
-        <enum>Qt::Vertical</enum>
-       </property>
-       <property name="sizeHint" stdset="0">
-        <size>
-         <width>20</width>
-         <height>40</height>
-        </size>
-       </property>
-      </spacer>
-     </item>
-    </layout>
+    <widget class="QLabel" name="chromaGainLabel">
+     <property name="text">
+      <string>Chroma gain:</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QSlider" name="chromaGainHorizontalSlider">
+     <property name="maximum">
+      <number>200</number>
+     </property>
+     <property name="orientation">
+      <enum>Qt::Horizontal</enum>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QLabel" name="chromaGainValueLabel">
+     <property name="text">
+      <string>1.0</string>
+     </property>
+     <property name="alignment">
+      <set>Qt::AlignCenter</set>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <spacer name="verticalSpacer_1">
+     <property name="orientation">
+      <enum>Qt::Vertical</enum>
+     </property>
+     <property name="sizeHint" stdset="0">
+      <size>
+       <width>20</width>
+       <height>40</height>
+      </size>
+     </property>
+    </spacer>
+   </item>
+   <item>
+    <widget class="QTabWidget" name="standardTabs">
+     <property name="currentIndex">
+      <number>1</number>
+     </property>
+     <widget class="QWidget" name="palTab">
+      <attribute name="title">
+       <string>PAL</string>
+      </attribute>
+      <layout class="QVBoxLayout" name="palVerticalLayout">
+       <item>
+        <widget class="QCheckBox" name="twoDeeTransformCheckBox">
+         <property name="text">
+          <string>Use Transform PAL 2D filter</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QCheckBox" name="thresholdModeCheckBox">
+         <property name="text">
+          <string>Use threshold comparison mode</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <spacer name="verticalSpacer_2">
+         <property name="orientation">
+          <enum>Qt::Vertical</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>20</width>
+           <height>40</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+       <item>
+        <widget class="QLabel" name="thresholdLabel">
+         <property name="text">
+          <string>Transform threshold:</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QSlider" name="thresholdHorizontalSlider">
+         <property name="maximum">
+          <number>100</number>
+         </property>
+         <property name="orientation">
+          <enum>Qt::Horizontal</enum>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="thresholdValueLabel">
+         <property name="text">
+          <string>0.4</string>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignCenter</set>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <spacer name="verticalSpacer_3">
+         <property name="orientation">
+          <enum>Qt::Vertical</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>20</width>
+           <height>40</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+       <item>
+        <widget class="QCheckBox" name="showFFTsCheckBox">
+         <property name="text">
+          <string>Overlay FFT visualisation</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QCheckBox" name="simplePALCheckBox">
+         <property name="text">
+          <string>Use Simple PAL decoder</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <spacer name="verticalSpacer_4">
+         <property name="orientation">
+          <enum>Qt::Vertical</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>20</width>
+           <height>40</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="ntscTab">
+      <attribute name="title">
+       <string>NTSC</string>
+      </attribute>
+      <layout class="QVBoxLayout" name="ntscVerticalLayout">
+       <item>
+        <widget class="QCheckBox" name="whitePoint75CheckBox">
+         <property name="text">
+          <string>Use 75 IRE white point</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QCheckBox" name="colorLpfHqCheckBox">
+         <property name="text">
+          <string>Use full bandwidth Q channel filter</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <spacer name="verticalSpacer_5">
+         <property name="orientation">
+          <enum>Qt::Vertical</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>20</width>
+           <height>40</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+       <item>
+        <widget class="QLabel" name="cNRLabel">
+         <property name="text">
+          <string>Chroma noise reduction:</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QSlider" name="cNRHorizontalSlider">
+         <property name="orientation">
+          <enum>Qt::Horizontal</enum>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="cNRValueLabel">
+         <property name="text">
+          <string>0.00 IRE</string>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignCenter</set>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <spacer name="verticalSpacer_6">
+         <property name="orientation">
+          <enum>Qt::Vertical</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>20</width>
+           <height>40</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+       <item>
+        <widget class="QLabel" name="yNRLabel">
+         <property name="text">
+          <string>Luma noise reduction:</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QSlider" name="yNRHorizontalSlider">
+         <property name="orientation">
+          <enum>Qt::Horizontal</enum>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="yNRValueLabel">
+         <property name="text">
+          <string>0.00 IRE</string>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignCenter</set>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <spacer name="verticalSpacer">
+         <property name="orientation">
+          <enum>Qt::Vertical</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>20</width>
+           <height>40</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+      </layout>
+     </widget>
+    </widget>
    </item>
   </layout>
  </widget>

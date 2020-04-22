@@ -38,6 +38,12 @@ ChromaDecoderConfigDialog::ChromaDecoderConfigDialog(QWidget *parent) :
     ui->thresholdHorizontalSlider->setMinimum(0);
     ui->thresholdHorizontalSlider->setMaximum(100);
 
+    ui->cNRHorizontalSlider->setMinimum(0);
+    ui->cNRHorizontalSlider->setMaximum(100);
+
+    ui->yNRHorizontalSlider->setMinimum(0);
+    ui->yNRHorizontalSlider->setMaximum(100);
+
     // Update the dialogue
     updateDialog();
 }
@@ -56,14 +62,24 @@ void ChromaDecoderConfigDialog::setConfiguration(bool _isSourcePal, const PalCol
 
     palConfiguration.chromaGain = qBound(0.0, palConfiguration.chromaGain, 2.0);
     palConfiguration.transformThreshold = qBound(0.0, palConfiguration.transformThreshold, 1.0);
+    ntscConfiguration.cNRLevel = qBound(0.0, ntscConfiguration.cNRLevel, 10.0);
+    ntscConfiguration.yNRLevel = qBound(0.0, ntscConfiguration.yNRLevel, 10.0);
 
     // ld-analyse only supports 2D filters at the moment
     if (palConfiguration.chromaFilter == PalColour::transform3DFilter) {
         palConfiguration.chromaFilter = PalColour::transform2DFilter;
     }
+    ntscConfiguration.use3D = false;
 
     // For settings that both decoders share, the PAL default takes precedence
     ntscConfiguration.chromaGain = palConfiguration.chromaGain;
+
+    // Select the tab corresponding to the current standard automatically
+    if (isSourcePal) {
+        ui->standardTabs->setCurrentWidget(ui->palTab);
+    } else {
+        ui->standardTabs->setCurrentWidget(ui->ntscTab);
+    }
 
     updateDialog();
     emit chromaDecoderConfigChanged();
@@ -113,7 +129,35 @@ void ChromaDecoderConfigDialog::updateDialog()
 
     ui->simplePALCheckBox->setEnabled(isSourcePal && isTransform);
     ui->simplePALCheckBox->setChecked(palConfiguration.simplePAL);
+
+    // NTSC settings
+
+    const bool isSourceNtsc = !isSourcePal;
+
+    ui->whitePoint75CheckBox->setEnabled(isSourceNtsc);
+    ui->whitePoint75CheckBox->setChecked(ntscConfiguration.whitePoint75);
+
+    ui->colorLpfHqCheckBox->setEnabled(isSourceNtsc);
+    ui->colorLpfHqCheckBox->setChecked(ntscConfiguration.colorlpf_hq);
+
+    ui->cNRLabel->setEnabled(isSourceNtsc);
+
+    ui->cNRHorizontalSlider->setEnabled(isSourceNtsc);
+    ui->cNRHorizontalSlider->setValue(static_cast<qint32>(ntscConfiguration.cNRLevel * 10));
+
+    ui->cNRValueLabel->setEnabled(isSourceNtsc);
+    ui->cNRValueLabel->setText(QString::number(ntscConfiguration.cNRLevel, 'f', 1) + " IRE");
+
+    ui->yNRLabel->setEnabled(isSourceNtsc);
+
+    ui->yNRHorizontalSlider->setEnabled(isSourceNtsc);
+    ui->yNRHorizontalSlider->setValue(static_cast<qint32>(ntscConfiguration.yNRLevel * 10));
+
+    ui->yNRValueLabel->setEnabled(isSourceNtsc);
+    ui->yNRValueLabel->setText(QString::number(ntscConfiguration.yNRLevel, 'f', 1) + " IRE");
 }
+
+// XXX Select the right tab when first opened
 
 // Methods to handle changes to the dialogue
 
@@ -163,5 +207,31 @@ void ChromaDecoderConfigDialog::on_showFFTsCheckBox_clicked()
 void ChromaDecoderConfigDialog::on_simplePALCheckBox_clicked()
 {
     palConfiguration.simplePAL = ui->simplePALCheckBox->isChecked();
+    emit chromaDecoderConfigChanged();
+}
+
+void ChromaDecoderConfigDialog::on_whitePoint75CheckBox_clicked()
+{
+    ntscConfiguration.whitePoint75 = ui->whitePoint75CheckBox->isChecked();
+    emit chromaDecoderConfigChanged();
+}
+
+void ChromaDecoderConfigDialog::on_colorLpfHqCheckBox_clicked()
+{
+    ntscConfiguration.colorlpf_hq = ui->colorLpfHqCheckBox->isChecked();
+    emit chromaDecoderConfigChanged();
+}
+
+void ChromaDecoderConfigDialog::on_cNRHorizontalSlider_valueChanged(int value)
+{
+    ntscConfiguration.cNRLevel = static_cast<double>(value) / 10;
+    ui->cNRValueLabel->setText(QString::number(ntscConfiguration.cNRLevel, 'f', 1) + " IRE");
+    emit chromaDecoderConfigChanged();
+}
+
+void ChromaDecoderConfigDialog::on_yNRHorizontalSlider_valueChanged(int value)
+{
+    ntscConfiguration.yNRLevel = static_cast<double>(value) / 10;
+    ui->yNRValueLabel->setText(QString::number(ntscConfiguration.yNRLevel, 'f', 1) + " IRE");
     emit chromaDecoderConfigChanged();
 }
