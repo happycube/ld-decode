@@ -306,7 +306,7 @@ int main(int argc, char *argv[])
     }
 
     if (parser.isSet(whitePointOption)) {
-        combConfig.whitePoint100 = true;
+        combConfig.whitePoint75 = true;
     }
 
     if (parser.isSet(showOpticalFlowOption)) {

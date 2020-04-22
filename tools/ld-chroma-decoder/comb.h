@@ -50,7 +50,7 @@ public:
         double chromaGain = 1.0;
         bool colorlpf = true;
         bool colorlpf_hq = true;
-        bool whitePoint100 = false;
+        bool whitePoint75 = false;
         bool use3D = false;
         bool showOpticalFlowMap = false;
 

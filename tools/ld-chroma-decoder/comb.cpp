@@ -466,7 +466,7 @@ RGBFrame Comb::yiqToRgbFrame(const YiqBuffer &yiqBuffer)
     rgbOutputFrame.fill(0);
 
     // Initialise YIQ to RGB converter
-    RGB rgb(videoParameters.white16bIre, videoParameters.black16bIre, configuration.whitePoint100, configuration.chromaGain);
+    RGB rgb(videoParameters.white16bIre, videoParameters.black16bIre, configuration.whitePoint75, configuration.chromaGain);
 
     // Perform YIQ to RGB conversion
     for (qint32 lineNumber = videoParameters.firstActiveFrameLine; lineNumber < videoParameters.lastActiveFrameLine; lineNumber++) {
