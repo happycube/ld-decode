@@ -56,9 +56,7 @@ public:
     };
 
     struct Configuration {
-        bool blackAndWhite = false;
-        // This value is chosen to compensate for typical LaserDisc characteristics
-        double chromaGain = 0.735;
+        double chromaGain = 1.0;
         bool simplePAL = false;
         ChromaFilterMode chromaFilter = palColourFilter;
         TransformPal::TransformMode transformMode = TransformPal::thresholdMode;

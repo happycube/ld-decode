@@ -64,8 +64,8 @@ public:
     QByteArray getSnrAnalysisDialogGeometry(void);
     void setClosedCaptionDialogGeometry(QByteArray closedCaptionDialogGeometry);
     QByteArray getClosedCaptionDialogGeometry(void);
-    void setPalChromaDecoderConfigDialogGeometry(QByteArray palChromaDecoderConfigDialogGeometry);
-    QByteArray getPalChromaDecoderConfigDialogGeometry(void);
+    void setChromaDecoderConfigDialogGeometry(QByteArray chromaDecoderConfigDialogGeometry);
+    QByteArray getChromaDecoderConfigDialogGeometry(void);
     void setCaptureQualityIndexDialogGeometry(QByteArray captureQualityIndexDialogGeometry);
     QByteArray getCaptureQualityIndexDialogGeometry(void);
 
@@ -91,7 +91,7 @@ private:
         QByteArray dropoutAnalysisDialogGeometry;
         QByteArray snrAnalysisDialogGeometry;
         QByteArray closedCaptionDialogGeometry;
-        QByteArray palChromaDecoderConfigDialogGeometry;
+        QByteArray chromaDecoderConfigDialogGeometry;
         QByteArray captureQualityIndexDialogGeometry;
     };
 

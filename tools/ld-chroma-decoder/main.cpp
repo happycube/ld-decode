@@ -146,6 +146,12 @@ int main(int argc, char *argv[])
                                        QCoreApplication::translate("main", "Reverse the field order to second/first (default first/second)"));
     parser.addOption(setReverseOption);
 
+    // Option to specify chroma gain
+    QCommandLineOption chromaGainOption(QStringList() << "chroma-gain",
+                                        QCoreApplication::translate("main", "Gain factor applied to chroma components (default 1.0)"),
+                                        QCoreApplication::translate("main", "number"));
+    parser.addOption(chromaGainOption);
+
     // Option to set the black and white output flag (causes output to be black and white) (-b)
     QCommandLineOption setBwModeOption(QStringList() << "b" << "blackandwhite",
                                        QCoreApplication::translate("main", "Output in black and white"));
@@ -176,12 +182,6 @@ int main(int argc, char *argv[])
     parser.addOption(whitePointOption);
 
     // -- PAL decoder options --
-
-    // Option to specify chroma gain
-    QCommandLineOption chromaGainOption(QStringList() << "chroma-gain",
-                                        QCoreApplication::translate("main", "PAL: Gain factor applied to U/V chroma components (default 0.735)"),
-                                        QCoreApplication::translate("main", "number"));
-    parser.addOption(chromaGainOption);
 
     // Option to use Simple PAL UV filter
     QCommandLineOption simplePALOption(QStringList() << "simple-pal",
@@ -288,13 +288,25 @@ int main(int argc, char *argv[])
         }
     }
 
+    if (parser.isSet(chromaGainOption)) {
+        const double value = parser.value(chromaGainOption).toDouble();
+        palConfig.chromaGain = value;
+        combConfig.chromaGain = value;
+
+        if (value <= 0.0) {
+            // Quit with error
+            qCritical("Chroma gain must be greater than 0");
+            return -1;
+        }
+    }
+
     if (parser.isSet(setBwModeOption)) {
-        palConfig.blackAndWhite = true;
-        combConfig.blackAndWhite = true;
+        palConfig.chromaGain = 0.0;
+        combConfig.chromaGain = 0.0;
     }
 
     if (parser.isSet(whitePointOption)) {
-        combConfig.whitePoint100 = true;
+        combConfig.whitePoint75 = true;
     }
 
     if (parser.isSet(showOpticalFlowOption)) {
@@ -311,16 +323,6 @@ int main(int argc, char *argv[])
         } else {
             // Quit with error
             qCritical() << "Unknown Transform mode " << name;
-            return -1;
-        }
-    }
-
-    if (parser.isSet(chromaGainOption)) {
-        palConfig.chromaGain = parser.value(chromaGainOption).toDouble();
-
-        if (palConfig.chromaGain <= 0.0) {
-            // Quit with error
-            qCritical("Chroma gain must be greater than 0");
             return -1;
         }
     }

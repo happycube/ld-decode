@@ -271,21 +271,8 @@ void PalColour::decodeFrames(const QVector<SourceField> &inputFields, qint32 sta
         outputFrames[i].fill(0);
     }
 
+    const double chromaGain = configuration.chromaGain;
     for (qint32 i = startIndex, j = 0, k = 0; i < endIndex; i += 2, j += 2, k++) {
-        // Calculate the chroma gain from the burst median IRE, using the *first*
-        // field's burst amplitude to compensate both fields.
-        // Note: This code works as a temporary MTF compensator whilst ld-decode gets
-        // real MTF compensation added to it.
-        //
-        // The PAL colourburst has peak-to-peak amplitude of 3/7 of the
-        // reference black - reference white range.
-        const double nominalBurstIRE = (3.0 / 7.0) * 100.0 * 0.5;
-        double chromaGain = configuration.chromaGain * nominalBurstIRE / inputFields[i].field.medianBurstIRE;
-
-        if (configuration.blackAndWhite) {
-            chromaGain = 0.0;
-        }
-
         decodeField(inputFields[i], chromaData[j], chromaGain, outputFrames[k]);
         decodeField(inputFields[i + 1], chromaData[j + 1], chromaGain, outputFrames[k]);
     }

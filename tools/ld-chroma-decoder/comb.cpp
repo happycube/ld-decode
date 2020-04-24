@@ -90,11 +90,6 @@ RGBFrame Comb::decodeFrame(const SourceField &firstField, const SourceField &sec
         fieldLine++;
     }
 
-    // Set the frame's burst median (IRE) from the *first* field only.
-    // This is used by yiqToRgbFrame to tweak the colour saturation levels
-    // (compensating for MTF issues)
-    currentFrameBuffer.burstLevel = firstField.field.medianBurstIRE;
-
     // Set the phase IDs for the frame
     currentFrameBuffer.firstFieldPhaseID = firstField.field.fieldPhaseID;
     currentFrameBuffer.secondFieldPhaseID = secondField.field.fieldPhaseID;
@@ -123,7 +118,7 @@ RGBFrame Comb::decodeFrame(const SourceField &firstField, const SourceField &sec
         doCNR(tempYiqBuffer);
 
         // Convert the YIQ result to RGB
-        rgbOutputBuffer = yiqToRgbFrame(tempYiqBuffer, currentFrameBuffer.burstLevel);
+        rgbOutputBuffer = yiqToRgbFrame(tempYiqBuffer);
     } else {
         // 3D comb filter processing
 
@@ -161,7 +156,7 @@ RGBFrame Comb::decodeFrame(const SourceField &firstField, const SourceField &sec
         doCNR(tempYiqBuffer);
 
         // Convert the YIQ result to RGB
-        rgbOutputBuffer = yiqToRgbFrame(tempYiqBuffer, currentFrameBuffer.burstLevel);
+        rgbOutputBuffer = yiqToRgbFrame(tempYiqBuffer);
 
         // Overlay the optical flow map if required
         if (configuration.showOpticalFlowMap) overlayOpticalFlowMap(currentFrameBuffer, rgbOutputBuffer);
@@ -462,7 +457,7 @@ void Comb::doYNR(YiqBuffer &yiqBuffer)
 }
 
 // Convert buffer from YIQ to RGB 16-16-16
-RGBFrame Comb::yiqToRgbFrame(const YiqBuffer &yiqBuffer, qreal burstLevel)
+RGBFrame Comb::yiqToRgbFrame(const YiqBuffer &yiqBuffer)
 {
     RGBFrame rgbOutputFrame;
     rgbOutputFrame.resize(videoParameters.fieldWidth * frameHeight * 3); // for RGB 16-16-16
@@ -471,7 +466,7 @@ RGBFrame Comb::yiqToRgbFrame(const YiqBuffer &yiqBuffer, qreal burstLevel)
     rgbOutputFrame.fill(0);
 
     // Initialise YIQ to RGB converter
-    RGB rgb(videoParameters.white16bIre, videoParameters.black16bIre, configuration.whitePoint100, configuration.blackAndWhite, burstLevel);
+    RGB rgb(videoParameters.white16bIre, videoParameters.black16bIre, configuration.whitePoint75, configuration.chromaGain);
 
     // Perform YIQ to RGB conversion
     for (qint32 lineNumber = videoParameters.firstActiveFrameLine; lineNumber < videoParameters.lastActiveFrameLine; lineNumber++) {

@@ -39,7 +39,7 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     snrAnalysisDialog = new SnrAnalysisDialog(this);
     busyDialog = new BusyDialog(this);
     closedCaptionDialog = new ClosedCaptionsDialog(this);
-    palChromaDecoderConfigDialog = new PalChromaDecoderConfigDialog(this);
+    chromaDecoderConfigDialog = new ChromaDecoderConfigDialog(this);
     captureQualityIndexDialog = new CaptureQualityIndexDialog(this);
 
     // Add a status bar to show the state of the source video file
@@ -56,8 +56,8 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     lastScopeLine = 1;
     lastScopeDot = 1;
 
-    // Connect to the PAL decoder configuration changed signal
-    connect(palChromaDecoderConfigDialog, &PalChromaDecoderConfigDialog::palChromaDecoderConfigChanged, this, &MainWindow::palConfigurationChangedSignalHandler);
+    // Connect to the chroma decoder configuration changed signal
+    connect(chromaDecoderConfigDialog, &ChromaDecoderConfigDialog::chromaDecoderConfigChanged, this, &MainWindow::chromaDecoderConfigChangedSignalHandler);
 
     // Connect to the TbcSource signals (busy loading and finished loading)
     connect(&tbcSource, &TbcSource::busyLoading, this, &MainWindow::on_busyLoading);
@@ -71,7 +71,7 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     dropoutAnalysisDialog->restoreGeometry(configuration.getDropoutAnalysisDialogGeometry());
     snrAnalysisDialog->restoreGeometry(configuration.getSnrAnalysisDialogGeometry());
     closedCaptionDialog->restoreGeometry(configuration.getClosedCaptionDialogGeometry());
-    palChromaDecoderConfigDialog->restoreGeometry(configuration.getPalChromaDecoderConfigDialogGeometry());
+    chromaDecoderConfigDialog->restoreGeometry(configuration.getChromaDecoderConfigDialogGeometry());
     captureQualityIndexDialog->restoreGeometry(configuration.getCaptureQualityIndexDialogGeometry());
 
     // Store the current button palette for the show dropouts button
@@ -99,7 +99,7 @@ MainWindow::~MainWindow()
     configuration.setDropoutAnalysisDialogGeometry(dropoutAnalysisDialog->saveGeometry());
     configuration.setSnrAnalysisDialogGeometry(snrAnalysisDialog->saveGeometry());
     configuration.setClosedCaptionDialogGeometry(closedCaptionDialog->saveGeometry());
-    configuration.setPalChromaDecoderConfigDialogGeometry(palChromaDecoderConfigDialog->saveGeometry());
+    configuration.setChromaDecoderConfigDialogGeometry(chromaDecoderConfigDialog->saveGeometry());
     configuration.setCaptureQualityIndexDialogGeometry(captureQualityIndexDialog->saveGeometry());
     configuration.writeConfiguration();
 
@@ -159,8 +159,7 @@ void MainWindow::updateGuiLoaded()
     ui->actionCapture_Quality_Index->setEnabled(true);
     ui->actionSave_frame_as_PNG->setEnabled(true);
     ui->actionClosed_Captions->setEnabled(true);
-    if (tbcSource.getIsSourcePal()) ui->actionPAL_Chroma_decoder->setEnabled(true);
-    else ui->actionPAL_Chroma_decoder->setEnabled(false);
+    ui->actionChroma_decoder_configuration->setEnabled(true);
     ui->actionReload_TBC->setEnabled(true);
 
     // Set option button states
@@ -189,8 +188,8 @@ void MainWindow::updateGuiLoaded()
     statusText += " sequential frames available";
     sourceVideoStatus.setText(statusText);
 
-    // Update the PAL chroma configuration dialogue
-    palChromaDecoderConfigDialog->setConfiguration(tbcSource.getPalColourConfiguration());
+    // Update the chroma decoder configuration dialogue
+    chromaDecoderConfigDialog->setConfiguration(tbcSource.getIsSourcePal(), tbcSource.getPalConfiguration(), tbcSource.getNtscConfiguration());
 
     // Show the current frame
     showFrame();
@@ -241,7 +240,7 @@ void MainWindow::updateGuiUnloaded()
     ui->actionCapture_Quality_Index->setEnabled(false);
     ui->actionSave_frame_as_PNG->setEnabled(false);
     ui->actionClosed_Captions->setEnabled(false);
-    ui->actionPAL_Chroma_decoder->setEnabled(false);
+    ui->actionChroma_decoder_configuration->setEnabled(false);
     ui->actionReload_TBC->setEnabled(false);
 
     // Set option button states
@@ -263,7 +262,7 @@ void MainWindow::updateGuiUnloaded()
     captureQualityIndexDialog->hide();
 
     // Hide configuration dialogues
-    palChromaDecoderConfigDialog->hide();
+    chromaDecoderConfigDialog->hide();
 }
 
 // Frame display methods ----------------------------------------------------------------------------------------------
@@ -533,10 +532,10 @@ void MainWindow::on_actionClosed_Captions_triggered()
     closedCaptionDialog->show();
 }
 
-// Show PAL Chroma-Decoder configuration
-void MainWindow::on_actionPAL_Chroma_decoder_triggered()
+// Show chroma decoder configuration
+void MainWindow::on_actionChroma_decoder_configuration_triggered()
 {
-    palChromaDecoderConfigDialog->show();
+    chromaDecoderConfigDialog->show();
 }
 
 // Media control frame signal handlers --------------------------------------------------------------------------------
@@ -813,11 +812,11 @@ void MainWindow::mouseScanLineSelect(qint32 oX, qint32 oY)
     }
 }
 
-// Handle PAL configuration changed signal from the PAL configuration dialogue
-void MainWindow::palConfigurationChangedSignalHandler()
+// Handle configuration changed signal from the chroma decoder configuration dialogue
+void MainWindow::chromaDecoderConfigChangedSignalHandler()
 {
     // Set the new configuration
-    tbcSource.setPalColourConfiguration(palChromaDecoderConfigDialog->getConfiguration());
+    tbcSource.setChromaConfiguration(chromaDecoderConfigDialog->getPalConfiguration(), chromaDecoderConfigDialog->getNtscConfiguration());
 
     // Update the frame viewer;
     updateFrameViewer();
