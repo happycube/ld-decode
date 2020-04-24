@@ -29,17 +29,12 @@
 
 static AVFormatContext *fmt_ctx = NULL;
 static AVCodecContext *audio_dec_ctx;
-static int width, height;
-static enum AVPixelFormat pix_fmt;
 static AVStream *audio_stream = NULL;
 static const char *src_filename = NULL;
-static const char *audio_dst_filename = NULL;
-static FILE *audio_dst_file = NULL;
 
 static int audio_stream_idx = -1;
 static AVFrame *frame = NULL;
 static AVPacket pkt;
-static int audio_frame_count = 0;
 
 static uint64_t seekto = 0;
 
@@ -82,7 +77,6 @@ static int decode_packet(int *got_frame, int cached)
              * in these cases.
              * You should use libswresample or libavfilter to convert the frame
              * to packed data. */
-            // fwrite(frame->extended_data[0], 1, unpadded_linesize, audio_dst_file);
             rv = write(1, frame->extended_data[0] + (offset * av_get_bytes_per_sample(frame->format)), unpadded_linesize);
 
             if (rv != unpadded_linesize) {
@@ -151,10 +145,7 @@ static int open_codec_context(int *stream_idx,
 
 int main (int argc, char **argv)
 {
-    AVInputFormat *iformat;
-    AVFormatContext infmt_ctx;
     int ret = 0, got_frame;
-    int t = 0;
 
     src_filename = argv[1];
     if (argc >= 3) {
@@ -183,12 +174,6 @@ int main (int argc, char **argv)
 
     if (open_codec_context(&audio_stream_idx, &audio_dec_ctx, fmt_ctx, AVMEDIA_TYPE_AUDIO) >= 0) {
         audio_stream = fmt_ctx->streams[audio_stream_idx];
-        audio_dst_file = fopen("/dev/null", "wb");
-        if (!audio_dst_file) {
-            fprintf(stderr, "Could not open destination file %s\n", audio_dst_filename);
-            ret = 1;
-            goto end;
-        }
     }
 
     /* dump input information to stderr */
@@ -243,8 +228,6 @@ int main (int argc, char **argv)
 end:
     avcodec_free_context(&audio_dec_ctx);
     avformat_close_input(&fmt_ctx);
-    if (audio_dst_file)
-        fclose(audio_dst_file);
     av_frame_free(&frame);
 
     return ret < 0;
