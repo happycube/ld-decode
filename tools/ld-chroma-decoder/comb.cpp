@@ -94,76 +94,32 @@ RGBFrame Comb::decodeFrame(const SourceField &firstField, const SourceField &sec
     currentFrameBuffer.firstFieldPhaseID = firstField.field.fieldPhaseID;
     currentFrameBuffer.secondFieldPhaseID = secondField.field.fieldPhaseID;
 
-    // 2D or 3D comb filter processing?
-    if (!configuration.use3D) {
-        // 2D comb filter processing
+    // Note: Only 2D processing is currently supported, requests for 3D processing result in the
+    // same output.  This needs to be replaced with a real 3D process
 
-        // Perform 1D processing
-        split1D(&currentFrameBuffer);
+    // 2D comb filter processing
 
-        // Perform 2D processing
-        split2D(&currentFrameBuffer);
+    // Perform 1D processing
+    split1D(&currentFrameBuffer);
 
-        // Split the IQ values
-        splitIQ(&currentFrameBuffer);
+    // Perform 2D processing
+    split2D(&currentFrameBuffer);
 
-        // Copy the current frame to a temporary buffer, so operations on the frame do not
-        // alter the original data
-        tempYiqBuffer = currentFrameBuffer.yiqBuffer;
+    // Split the IQ values
+    splitIQ(&currentFrameBuffer);
 
-        // Process the copy of the current frame
-        adjustY(&currentFrameBuffer, tempYiqBuffer);
-        if (configuration.colorlpf) filterIQ(currentFrameBuffer.yiqBuffer);
-        doYNR(tempYiqBuffer);
-        doCNR(tempYiqBuffer);
+    // Copy the current frame to a temporary buffer, so operations on the frame do not
+    // alter the original data
+    tempYiqBuffer = currentFrameBuffer.yiqBuffer;
 
-        // Convert the YIQ result to RGB
-        rgbOutputBuffer = yiqToRgbFrame(tempYiqBuffer);
-    } else {
-        // 3D comb filter processing
+    // Process the copy of the current frame
+    adjustY(&currentFrameBuffer, tempYiqBuffer);
+    if (configuration.colorlpf) filterIQ(currentFrameBuffer.yiqBuffer);
+    doYNR(tempYiqBuffer);
+    doCNR(tempYiqBuffer);
 
-        // Perform 1D processing
-        split1D(&currentFrameBuffer);
-
-        // Perform 2D processing
-        split2D(&currentFrameBuffer);
-
-        // Split the IQ values (populates Y)
-        splitIQ(&currentFrameBuffer);
-
-        tempYiqBuffer = currentFrameBuffer.yiqBuffer;
-
-        // Process the copy of the current frame (needed for the Y image used by the optical flow)
-        adjustY(&currentFrameBuffer, tempYiqBuffer);
-        if (configuration.colorlpf) filterIQ(currentFrameBuffer.yiqBuffer);
-        doYNR(tempYiqBuffer);
-        doCNR(tempYiqBuffer);
-
-        opticalFlow.denseOpticalFlow(currentFrameBuffer.yiqBuffer, currentFrameBuffer.kValues);
-
-        // Perform 3D processing
-        split3D(&currentFrameBuffer, &previousFrameBuffer);
-
-        // Split the IQ values
-        splitIQ(&currentFrameBuffer);
-
-        tempYiqBuffer = currentFrameBuffer.yiqBuffer;
-
-        // Process the copy of the current frame (for final output now flow detection has been performed)
-        adjustY(&currentFrameBuffer, tempYiqBuffer);
-        if (configuration.colorlpf) filterIQ(currentFrameBuffer.yiqBuffer);
-        doYNR(tempYiqBuffer);
-        doCNR(tempYiqBuffer);
-
-        // Convert the YIQ result to RGB
-        rgbOutputBuffer = yiqToRgbFrame(tempYiqBuffer);
-
-        // Overlay the optical flow map if required
-        if (configuration.showOpticalFlowMap) overlayOpticalFlowMap(currentFrameBuffer, rgbOutputBuffer);
-
-        // Store the current frame
-        previousFrameBuffer = currentFrameBuffer;
-    }
+    // Convert the YIQ result to RGB
+    rgbOutputBuffer = yiqToRgbFrame(tempYiqBuffer);
 
     // Return the output frame
     return rgbOutputBuffer;

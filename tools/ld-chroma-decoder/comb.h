@@ -33,7 +33,6 @@
 
 #include "lddecodemetadata.h"
 
-#include "opticalflow.h"
 #include "rgb.h"
 #include "rgbframe.h"
 #include "sourcefield.h"
@@ -94,9 +93,6 @@ private:
         qint32 firstFieldPhaseID; // The phase of the frame's first field
         qint32 secondFieldPhaseID; // The phase of the frame's second field
     };
-
-    // Optical flow processor
-    OpticalFlow opticalFlow;
 
     // Previous and next frame for 3D processing
     FrameBuffer previousFrameBuffer;
