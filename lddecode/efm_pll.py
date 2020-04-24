@@ -27,6 +27,12 @@ import numba
 import numpy as np
 import sys
 
+try:
+    from numba.experimental import jitclass
+except ImportError:
+    # Prior to numba 0.49
+    from numba import jitclass
+
 # Attribute types of EFM_PLL for numba.
 EFM_PLL_spec = [
     ("zcPreviousInput", numba.int16),
@@ -48,7 +54,7 @@ EFM_PLL_spec = [
     ("tCounter", numba.int8),
 ]
 
-@numba.jitclass(EFM_PLL_spec)
+@jitclass(EFM_PLL_spec)
 class EFM_PLL:
     def __init__(self):
         # ZC detector state

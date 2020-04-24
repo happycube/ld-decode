@@ -136,14 +136,14 @@ void DiffDod::performClipCheck(QVector<SourceVideo::Data> &fields, QVector<QByte
 
                     for (qint32 i = x; i > minX; i--) {
                         qint32 ire = static_cast<qint32>(fields[sourceNo][x + startOfLinePointer]);
-                        if (ire > 200 || ire < 65335) {
+                        if (ire > 200 && ire < 65335) {
                             startX = i;
                         }
                     }
 
                     for (qint32 i = x + 1; i < maxX; i++) {
                         qint32 ire = static_cast<qint32>(fields[sourceNo][x + startOfLinePointer]);
-                        if (ire > 200 || ire < 65335) {
+                        if (ire > 200 && ire < 65335) {
                             endX = i;
                         }
                     }
