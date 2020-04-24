@@ -101,6 +101,6 @@ private:
 QDebug operator<<(QDebug dbg, const DiscMap &tbcInformation);
 
 // Custom meta-type declaration
-Q_DECLARE_METATYPE(DiscMap);
+Q_DECLARE_METATYPE(DiscMap)
 
 #endif // DISCMAP_H

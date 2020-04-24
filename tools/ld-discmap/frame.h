@@ -86,6 +86,6 @@ private:
 QDebug operator<<(QDebug dbg, const Frame &frame);
 
 // Custom meta-type declaration
-Q_DECLARE_METATYPE(Frame);
+Q_DECLARE_METATYPE(Frame)
 
 #endif // FRAME_H
