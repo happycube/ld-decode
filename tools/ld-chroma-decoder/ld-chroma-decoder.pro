@@ -22,7 +22,6 @@ SOURCES += \
     main.cpp \
     monodecoder.cpp \
     ntscdecoder.cpp \
-    opticalflow.cpp \
     palcolour.cpp \
     paldecoder.cpp \
     rgb.cpp \
@@ -43,7 +42,6 @@ HEADERS += \
     framecanvas.h \
     monodecoder.h \
     ntscdecoder.h \
-    opticalflow.h \
     palcolour.h \
     paldecoder.h \
     rgb.h \
@@ -86,12 +84,9 @@ unix:!android: target.path = $$PREFIX/bin/
 
 # Additional include paths to support MacOS compilation
 macx {
-INCLUDEPATH += "/usr/local/opt/opencv@2/include"
-LIBS += -L"/usr/local/opt/opencv@2/lib"
 INCLUDEPATH += "/usr/local/include"
 }
 
 # Normal open-source OS goodness
-INCLUDEPATH += "/usr/local/include/opencv"
 LIBS += -L"/usr/local/lib"
-LIBS += -lopencv_core -lopencv_imgproc -lopencv_video -lfftw3
+LIBS += -lfftw3
