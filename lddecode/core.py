@@ -202,11 +202,11 @@ RFParams_PAL = {
     'video_deemp': (100e-9, 400e-9),
 
     # XXX: guessing here!
-    'video_bpf_low': 2400000, 
+    'video_bpf_low': 2300000, 
     'video_bpf_high': 13500000,
     'video_bpf_order': 2,
 
-    'video_lpf_freq': 4800000,
+    'video_lpf_freq': 5200000,
     'video_lpf_order': 7,
 
     # MTF filter
