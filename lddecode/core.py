@@ -2261,8 +2261,7 @@ class FieldNTSC(Field):
             amed = {}
             amed[True] = np.abs(angular_mean(bursts_arr[True] + .25, zero_base=False))
             amed[False] = np.abs(angular_mean(bursts_arr[False] + .25, zero_base=False))
-            # Use > instead of < to maintain polarity in *most* cases
-            field14 = amed[True] > amed[False]
+            field14 = amed[True] < amed[False]
 
         self.amed = amed
         self.zc_bursts = zc_bursts
