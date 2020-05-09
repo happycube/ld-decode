@@ -42,7 +42,7 @@
 #include "capturequalityindexdialog.h"
 #include "busydialog.h"
 #include "closedcaptionsdialog.h"
-#include "palchromadecoderconfigdialog.h"
+#include "chromadecoderconfigdialog.h"
 #include "configuration.h"
 #include "tbcsource.h"
 
@@ -76,7 +76,7 @@ private slots:
     void on_actionZoom_2x_triggered();
     void on_actionZoom_3x_triggered();
     void on_actionClosed_Captions_triggered();
-    void on_actionPAL_Chroma_decoder_triggered();
+    void on_actionChroma_decoder_configuration_triggered();
 
     // Media control frame handlers
     void on_previousPushButton_clicked();
@@ -97,7 +97,7 @@ private slots:
     void scanLineChangedSignalHandler(qint32 scanLine, qint32 pictureDot);
     void mousePressEvent(QMouseEvent *event);
     void mouseMoveEvent(QMouseEvent *event);
-    void palConfigurationChangedSignalHandler();
+    void chromaDecoderConfigChangedSignalHandler();
 
     // Tbc Source signal handlers
     void on_busyLoading(QString infoMessage);
@@ -114,7 +114,7 @@ private:
     SnrAnalysisDialog* snrAnalysisDialog;
     BusyDialog* busyDialog;
     ClosedCaptionsDialog *closedCaptionDialog;
-    PalChromaDecoderConfigDialog *palChromaDecoderConfigDialog;
+    ChromaDecoderConfigDialog *chromaDecoderConfigDialog;
     CaptureQualityIndexDialog *captureQualityIndexDialog;
 
     // Class globals

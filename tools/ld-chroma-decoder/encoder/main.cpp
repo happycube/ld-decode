@@ -3,7 +3,7 @@
     main.cpp
 
     ld-chroma-encoder - PAL encoder for testing
-    Copyright (C) 2019 Adam Sampson
+    Copyright (C) 2019-2020 Adam Sampson
 
     This file is part of ld-decode-tools.
 
@@ -30,65 +30,21 @@
 #include <cstdio>
 
 #include "lddecodemetadata.h"
+#include "logging.h"
 
 #include "palencoder.h"
-
-// Global for debug output
-static bool showDebug = false;
-
-// Global for quiet mode (suppress info and warning messages)
-static bool showOutput = true;
-
-// Qt debug message handler
-void debugOutputHandler(QtMsgType type, const QMessageLogContext &context, const QString &msg)
-{
-    // Use:
-    // context.file - to show the filename
-    // context.line - to show the line number
-    // context.function - to show the function name
-
-    QByteArray localMsg = msg.toLocal8Bit();
-    switch (type) {
-    case QtDebugMsg: // These are debug messages meant for developers
-        if (showDebug) {
-            // If the code was compiled as 'release' the context.file will be NULL
-            if (context.file != nullptr) fprintf(stderr, "Debug: [%s:%d] %s\n", context.file, context.line, localMsg.constData());
-            else fprintf(stderr, "Debug: %s\n", localMsg.constData());
-        }
-        break;
-    case QtInfoMsg: // These are information messages meant for end-users
-        if (showOutput) {
-            if (context.file != nullptr) fprintf(stderr, "Info: [%s:%d] %s\n", context.file, context.line, localMsg.constData());
-            else fprintf(stderr, "Info: %s\n", localMsg.constData());
-        }
-        break;
-    case QtWarningMsg:
-        if (showOutput) {
-            if (context.file != nullptr) fprintf(stderr, "Warning: [%s:%d] %s\n", context.file, context.line, localMsg.constData());
-            else fprintf(stderr, "Warning: %s\n", localMsg.constData());
-        }
-        break;
-    case QtCriticalMsg:
-        if (context.file != nullptr) fprintf(stderr, "Critical: [%s:%d] %s\n", context.file, context.line, localMsg.constData());
-        else fprintf(stderr, "Critical: %s\n", localMsg.constData());
-        break;
-    case QtFatalMsg:
-        if (context.file != nullptr) fprintf(stderr, "Fatal: [%s:%d] %s\n", context.file, context.line, localMsg.constData());
-        else fprintf(stderr, "Fatal: %s\n", localMsg.constData());
-        abort();
-    }
-}
 
 int main(int argc, char *argv[])
 {
     // Install the local debug message handler
+    setDebug(true);
     qInstallMessageHandler(debugOutputHandler);
 
     QCoreApplication a(argc, argv);
 
     // Set application name and version
     QCoreApplication::setApplicationName("ld-chroma-encoder");
-    QCoreApplication::setApplicationVersion("1.0");
+    QCoreApplication::setApplicationVersion(QString("Branch: %1 / Commit: %2").arg(APP_BRANCH, APP_COMMIT));
     QCoreApplication::setOrganizationDomain("domesday86.com");
 
     // Set up the command line parser
@@ -96,22 +52,20 @@ int main(int argc, char *argv[])
     parser.setApplicationDescription(
                 "ld-chroma-encoder - PAL encoder for testing\n"
                 "\n"
-                "(c)2019 Adam Sampson\n"
+                "(c)2019-2020 Adam Sampson\n"
                 "GPLv3 Open-Source - github: https://github.com/happycube/ld-decode");
     parser.addHelpOption();
     parser.addVersionOption();
 
     // -- General options --
 
-    // Option to show debug (-d)
-    QCommandLineOption showDebugOption(QStringList() << "d" << "debug",
-                                       QCoreApplication::translate("main", "Show debug"));
-    parser.addOption(showDebugOption);
+    // Add the standard debug options --debug and --quiet
+    addStandardDebugOptions(parser);
 
-    // Option to set quiet mode (-q)
-    QCommandLineOption setQuietOption(QStringList() << "q" << "quiet",
-                                       QCoreApplication::translate("main", "Suppress info and warning messages"));
-    parser.addOption(setQuietOption);
+    // Option to produce subcarrier-locked output (-c)
+    QCommandLineOption scLockedOption(QStringList() << "c" << "sc-locked",
+                                      QCoreApplication::translate("main", "Output samples are subcarrier-locked (default: line-locked)"));
+    parser.addOption(scLockedOption);
 
     // -- Positional arguments --
 
@@ -124,9 +78,11 @@ int main(int argc, char *argv[])
     // Process the command line options and arguments given by the user
     parser.process(a);
 
+    // Standard logging options
+    processStandardDebugOptions(parser);
+
     // Get the options from the parser
-    if (parser.isSet(showDebugOption)) showDebug = true;
-    if (parser.isSet(setQuietOption)) showOutput = false;
+    const bool scLocked = parser.isSet(scLockedOption);
 
     // Get the arguments from the parser
     QString inputFileName;
@@ -170,7 +126,7 @@ int main(int argc, char *argv[])
 
     // Encode the data
     LdDecodeMetaData metaData;
-    PALEncoder encoder(rgbFile, tbcFile, metaData);
+    PALEncoder encoder(rgbFile, tbcFile, metaData, scLocked);
     if (!encoder.encode()) {
         return -1;
     }

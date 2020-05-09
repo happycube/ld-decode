@@ -75,7 +75,7 @@ SysParams_NTSC = {
     'audio_rfreq': (1000000*315/88/227.5) * 178.75,
 
     'colorBurstUS': (5.3, 7.8),
-    'activeVideoUS': (9.45, 63.555-1.5),
+    'activeVideoUS': (9.45, 63.555-1.0),
 
     # In NTSC framing, the distances between the first/last eq pulses and the 
     # corresponding next lines are different.
@@ -90,7 +90,7 @@ SysParams_NTSC = {
 # In color NTSC, the line period was changed from 63.5 to 227.5 color cycles,
 # which works out to 63.555(with a bar on top) usec
 SysParams_NTSC['line_period'] = 1/(SysParams_NTSC['fsc_mhz']/227.5)
-SysParams_NTSC['activeVideoUS'] = (9.45, SysParams_NTSC['line_period'] - 1.5)
+SysParams_NTSC['activeVideoUS'] = (9.45, SysParams_NTSC['line_period'] - 1.0)
 
 SysParams_NTSC['FPS'] = 1000000/ (525 * SysParams_NTSC['line_period'])
 
@@ -141,7 +141,7 @@ RFParams_NTSC = {
     'audio_notchwidth': 350000,
     'audio_notchorder': 2,
 
-    'video_deemp': (120*.32, 320*.32),
+    'video_deemp': (120e-9, 320e-9),
 
     # This BPF is similar but not *quite* identical to what Pioneer did
     'video_bpf_low': 3400000, 
@@ -172,7 +172,7 @@ RFParams_NTSC_lowband = {
     'audio_notchwidth': 350000,
     'audio_notchorder': 2,
 
-    'video_deemp': (120*.32, 320*.32),
+    'video_deemp': (120e-9, 320e-9),
 
     'video_bpf_low': 3800000, 
     'video_bpf_high': 12500000,
@@ -199,7 +199,7 @@ RFParams_PAL = {
     'audio_notchwidth': 200000,
     'audio_notchorder': 2,
 
-    'video_deemp': (100*.30, 400*.30),
+    'video_deemp': (100e-9, 400e-9),
 
     # XXX: guessing here!
     'video_bpf_low': 2700000, 
@@ -227,7 +227,7 @@ RFParams_PAL_lowband = {
     'audio_notchwidth': 200000,
     'audio_notchorder': 2,
 
-    'video_deemp': (100*.30, 400*.30),
+    'video_deemp': (100e-9, 400e-9),
 
     # XXX: guessing here!
     'video_bpf_low': 3200000, 
@@ -452,15 +452,13 @@ class RFDecode:
         video_hpf = sps.butter(DP['video_hpf_order'], DP['video_hpf_freq']/self.freq_hz_half, 'high')
         SF['Fvideo_hpf'] = filtfft(video_hpf, self.blocklen)
 
-        # The deemphasis filter.  This math is probably still quite wrong, but with the right values it works
-        deemp0, deemp1 = DP['video_deemp']
-        [tf_b, tf_a] = sps.zpk2tf([-deemp1*(10**-10)], [-deemp0*(10**-10)], deemp0 / deemp1)
-        SF['Fdeemp'] = filtfft(sps.bilinear(tf_b, tf_a, 1.0/self.freq_hz_half), self.blocklen)
+        # The deemphasis filter
+        deemp1, deemp2 = DP['video_deemp']
+        SF['Fdeemp'] = filtfft(emphasis_iir(deemp1, deemp2, self.freq_hz), self.blocklen)
 
         # The direct opposite of the above, used in test signal generation
-        [tf_b, tf_a] = sps.zpk2tf([-deemp0*(10**-10)], [-deemp1*(10**-10)], deemp1 / deemp0)
-        SF['Femp'] = filtfft(sps.bilinear(tf_b, tf_a, 1.0/self.freq_hz_half), self.blocklen)
-        
+        SF['Femp'] = filtfft(emphasis_iir(deemp2, deemp1, self.freq_hz), self.blocklen)
+
         # Post processing:  lowpass filter + deemp
         SF['FVideo'] = SF['Fvideo_lpf'] * SF['Fdeemp'] 
         #SF['FVideo'] = SF['Fdeemp'] 
@@ -1914,17 +1912,15 @@ class Field:
         # detect absurd fluctuations in pre-deemp demod, since only dropouts can cause them
         # (current np.diff has a prepend option, but not in ubuntu 18.04's version)
         iserr1 = f.data['video']['demod_raw'] > self.rf.freq_hz_half
-        iserr1 |= f.data['video']['demod_hpf'] > 1200000
-
-        #return iserr1 | iserr_rf
+        # This didn't work right for PAL (issue #471)
+        # iserr1 |= f.data['video']['demod_hpf'] > 3000000
 
         # build sets of min/max valid levels 
-
         valid_min = np.full_like(f.data['video']['demod'], f.rf.iretohz(-60 if isPAL else -50))
         valid_max = np.full_like(f.data['video']['demod'], f.rf.iretohz(150 if isPAL else 140))
         
         # the minimum valid value during VSYNC is lower for PAL because of the pilot signal
-        minsync = -100 if self.rf.system == 'PAL' else -50
+        minsync = -100 if isPAL else -50
 
         # these lines should cover both PAL and NTSC's hsync areas
         if False:
@@ -2265,8 +2261,7 @@ class FieldNTSC(Field):
             amed = {}
             amed[True] = np.abs(angular_mean(bursts_arr[True] + .25, zero_base=False))
             amed[False] = np.abs(angular_mean(bursts_arr[False] + .25, zero_base=False))
-            # Use > instead of < to maintain polarity in *most* cases
-            field14 = amed[True] > amed[False]
+            field14 = amed[True] < amed[False]
 
         self.amed = amed
         self.zc_bursts = zc_bursts
@@ -2632,6 +2627,32 @@ class LDdecode:
 
         return np.abs(self.mtf_level - oldmtf) < .05
 
+    def detectLevels(self, field):
+        # Returns sync level and ire0 level of a field, computed from serration pulses
+            
+        # Build a list of each half-line's average
+        hlevels = []
+
+        for l in range(1,8):
+            lsa = field.lineslice(l, 10, 10)
+            lsb = field.lineslice(l, 40, 10)
+            
+            hlevels.append(np.mean(field.data['video']['demod_05'][lsa]))
+            hlevels.append(np.mean(field.data['video']['demod_05'][lsb]))
+
+        # Now group them by level (either sync or ire 0) and return the means of those
+        sync_hzs = []
+        ire0_hzs = []
+
+        for hz in hlevels:
+            ire = field.rf.hztoire(hz)
+            if ire < field.rf.SysParams['vsync_ire'] / 2:
+                sync_hzs.append(hz)
+            else:
+                ire0_hzs.append(hz)
+
+        return np.mean(sync_hzs), np.mean(ire0_hzs)
+
     def writeout(self, dataset):
         f, fi, picture, audio, efm = dataset
 
@@ -2691,7 +2712,7 @@ class LDdecode:
         # pretty much a retry-ing wrapper around decodefield with MTF checking
         self.prevfield = self.curfield
         done = False
-        MTFadjusted = False
+        adjusted = False
         
         while done == False:
             self.fieldloc = self.fdoffset
@@ -2711,20 +2732,34 @@ class LDdecode:
                 self.audio_offset = f.audio_next_offset
 
                 metrics = self.computeMetrics(f, None, verbose=True)
-                if 'blackToWhiteRFRatio' in metrics and MTFadjusted == False:
+                if 'blackToWhiteRFRatio' in metrics and adjusted == False:
                     keep = 900 if self.isCLV else 30
                     self.bw_ratios.append(metrics['blackToWhiteRFRatio'])
                     self.bw_ratios = self.bw_ratios[-keep:]
 
                     #logging.info(metrics['blackToWhiteRFRatio'], np.mean(self.bw_ratios))
 
-                if self.checkMTF(f, self.prevfield) or MTFadjusted:
-                    done = True
-                else:
-                    # redo field
+                redo = False
+
+                if not self.checkMTF(f, self.prevfield):
+                    redo = True
+                
+                sync_hz, ire0_hz = self.detectLevels(f)
+                sync_ire_diff = np.abs(self.rf.hztoire(sync_hz) - self.rf.SysParams['vsync_ire'])
+
+                if (sync_ire_diff > 2) or (np.abs(self.rf.hztoire(ire0_hz)) > 2):
+                    redo = True
+
+                self.rf.SysParams['ire0'] = ire0_hz
+                # Note that vsync_ire is a negative number, so (sync_hz - ire0_hz) is correct
+                self.rf.SysParams['hz_ire'] = (sync_hz - ire0_hz) / self.rf.SysParams['vsync_ire']
+                    
+                if adjusted == False and redo == True:
                     self.demodcache.flushvideo()
-                    MTFadjusted = True
+                    adjusted = True
                     self.fdoffset -= offset
+                else:
+                    done = True
 
         if f is not None and self.fname_out is not None:
             # Only write a FirstField first

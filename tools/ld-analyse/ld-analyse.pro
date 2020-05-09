@@ -32,7 +32,7 @@ SOURCES += \
     mainwindow.cpp \
     oscilloscopedialog.cpp \
     aboutdialog.cpp \
-    palchromadecoderconfigdialog.cpp \
+    chromadecoderconfigdialog.cpp \
     snranalysisdialog.cpp \
     tbcsource.cpp \
     vbidialog.cpp \
@@ -46,7 +46,6 @@ SOURCES += \
     ../ld-chroma-decoder/transformpal2d.cpp \
     ../ld-chroma-decoder/transformpal3d.cpp \
     ../ld-chroma-decoder/framecanvas.cpp \
-    ../ld-chroma-decoder/opticalflow.cpp \
     ../ld-chroma-decoder/sourcefield.cpp \
     ../library/tbc/lddecodemetadata.cpp \
     ../library/tbc/sourcevideo.cpp \
@@ -61,7 +60,7 @@ HEADERS += \
     mainwindow.h \
     oscilloscopedialog.h \
     aboutdialog.h \
-    palchromadecoderconfigdialog.h \
+    chromadecoderconfigdialog.h \
     snranalysisdialog.h \
     tbcsource.h \
     vbidialog.h \
@@ -77,7 +76,6 @@ HEADERS += \
     ../ld-chroma-decoder/transformpal3d.h \
     ../ld-chroma-decoder/framecanvas.h \
     ../ld-chroma-decoder/yiqbuffer.h \
-    ../ld-chroma-decoder/opticalflow.h \
     ../ld-chroma-decoder/sourcefield.h \
     ../library/filter/firfilter.h \
     ../library/tbc/lddecodemetadata.h \
@@ -93,7 +91,7 @@ FORMS += \
     mainwindow.ui \
     oscilloscopedialog.ui \
     aboutdialog.ui \
-    palchromadecoderconfigdialog.ui \
+    chromadecoderconfigdialog.ui \
     snranalysisdialog.ui \
     vbidialog.ui \
     dropoutanalysisdialog.ui
@@ -126,15 +124,13 @@ RESOURCES += \
 # Additional include paths to support MacOS compilation
 macx {
 ICON = Graphics/ld-analyse.icns
-INCLUDEPATH += "/usr/local/opt/opencv@2/include"
-LIBS += -L"/usr/local/opt/opencv@2/lib"
 INCLUDEPATH += "/usr/local/include"
 }
 
 # Normal open-source OS goodness
 INCLUDEPATH += "/usr/local/include/opencv"
 LIBS += -L"/usr/local/lib"
-LIBS += -lopencv_core -lopencv_imgcodecs -lopencv_highgui -lopencv_imgproc -lopencv_video -lfftw3
+LIBS += -lfftw3
 
 # Include the QWT library (used for charting)
 unix:!macx {

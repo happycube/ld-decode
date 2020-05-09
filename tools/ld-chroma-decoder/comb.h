@@ -33,7 +33,6 @@
 
 #include "lddecodemetadata.h"
 
-#include "opticalflow.h"
 #include "rgb.h"
 #include "rgbframe.h"
 #include "sourcefield.h"
@@ -47,10 +46,10 @@ public:
 
     // Comb filter configuration parameters
     struct Configuration {
-        bool blackAndWhite = false;
+        double chromaGain = 1.0;
         bool colorlpf = true;
         bool colorlpf_hq = true;
-        bool whitePoint100 = false;
+        bool whitePoint75 = false;
         bool use3D = false;
         bool showOpticalFlowMap = false;
 
@@ -91,13 +90,9 @@ private:
         QVector<qreal> kValues;
         YiqBuffer yiqBuffer; // YIQ values for the frame
 
-        qreal burstLevel; // The median colour burst amplitude for the frame
         qint32 firstFieldPhaseID; // The phase of the frame's first field
         qint32 secondFieldPhaseID; // The phase of the frame's second field
     };
-
-    // Optical flow processor
-    OpticalFlow opticalFlow;
 
     // Previous and next frame for 3D processing
     FrameBuffer previousFrameBuffer;
@@ -115,7 +110,7 @@ private:
     void doCNR(YiqBuffer &yiqBuffer);
     void doYNR(YiqBuffer &yiqBuffer);
 
-    RGBFrame yiqToRgbFrame(const YiqBuffer &yiqBuffer, qreal burstLevel);
+    RGBFrame yiqToRgbFrame(const YiqBuffer &yiqBuffer);
     void overlayOpticalFlowMap(const FrameBuffer &frameBuffer, RGBFrame &rgbOutputFrame);
     void adjustY(FrameBuffer *frameBuffer, YiqBuffer &yiqBuffer);
 };

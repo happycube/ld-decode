@@ -185,7 +185,24 @@ SourceVideo::Data SourceVideo::getVideoField(qint32 fieldNumber, qint32 startFie
 
     // Seek to the correct file position (if not already there)
     if (inputFilePos != requiredStartPosition) {
-        if (!inputFile.seek(requiredStartPosition)) qFatal("Could not seek to required field position in input TBC file");
+        if (!inputFile.seek(requiredStartPosition)) {
+            // Seek failed
+
+            if (inputFilePos > requiredStartPosition) {
+                qFatal("Could not seek backwards to required field position in input TBC file");
+            } else {
+                // Seeking forwards -- try reading and discarding data instead
+                qint64 discardBytes = requiredStartPosition - inputFilePos;
+                while (discardBytes > 0) {
+                    qint64 readBytes = inputFile.read(reinterpret_cast<char *>(outputFieldData.data()),
+                                                      qMin(discardBytes, static_cast<qint64>(outputFieldData.size() * 2)));
+                    if (readBytes <= 0) {
+                        qFatal("Could not seek or read forwards to required field position in input TBC file");
+                    }
+                    discardBytes -= readBytes;
+                }
+            }
+        }
         inputFilePos = requiredStartPosition;
     }
 

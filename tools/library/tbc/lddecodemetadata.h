@@ -50,6 +50,7 @@ public:
         qint32 numberOfSequentialFields;
 
         bool isSourcePal;
+        bool isSubcarrierLocked;
 
         qint32 colourBurstStart;
         qint32 colourBurstEnd;
@@ -179,6 +180,7 @@ public:
 
     void appendField(Field _field);
 
+    void setNumberOfFields(qint32 numberOfFields);
     qint32 getNumberOfFields();
     qint32 getNumberOfFrames();
     qint32 getFirstFieldNumber(qint32 frameNumber);

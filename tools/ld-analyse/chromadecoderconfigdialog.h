@@ -1,6 +1,6 @@
 /************************************************************************
 
-    palchromadecoderconfigdialog.h
+    chromadecoderconfigdialog.h
 
     ld-analyse - TBC output analysis
     Copyright (C) 2019 Simon Inns
@@ -22,43 +22,54 @@
 
 ************************************************************************/
 
-#ifndef PALCHROMADECODERCONFIGDIALOG_H
-#define PALCHROMADECODERCONFIGDIALOG_H
+#ifndef CHROMADECODERCONFIGDIALOG_H
+#define CHROMADECODERCONFIGDIALOG_H
 
 #include <QDialog>
 
+#include "comb.h"
 #include "palcolour.h"
 
 namespace Ui {
-class PalChromaDecoderConfigDialog;
+class ChromaDecoderConfigDialog;
 }
 
-class PalChromaDecoderConfigDialog : public QDialog
+class ChromaDecoderConfigDialog : public QDialog
 {
     Q_OBJECT
 
 public:
-    explicit PalChromaDecoderConfigDialog(QWidget *parent = nullptr);
-    ~PalChromaDecoderConfigDialog();
+    explicit ChromaDecoderConfigDialog(QWidget *parent = nullptr);
+    ~ChromaDecoderConfigDialog();
 
-    void setConfiguration(const PalColour::Configuration &_palChromaDecoderConfig);
-    const PalColour::Configuration &getConfiguration();
+    void setConfiguration(bool isSourcePal, const PalColour::Configuration &palConfiguration, const Comb::Configuration &ntscConfiguration);
+    const PalColour::Configuration &getPalConfiguration();
+    const Comb::Configuration &getNtscConfiguration();
 
 signals:
-    void palChromaDecoderConfigChanged();
+    void chromaDecoderConfigChanged();
 
 private slots:
-    void on_blackAndWhiteCheckBox_clicked();
+    void on_chromaGainHorizontalSlider_valueChanged(int value);
+
     void on_twoDeeTransformCheckBox_clicked();
     void on_thresholdModeCheckBox_clicked();
     void on_thresholdHorizontalSlider_valueChanged(int value);
     void on_showFFTsCheckBox_clicked();
+    void on_simplePALCheckBox_clicked();
+
+    void on_whitePoint75CheckBox_clicked();
+    void on_colorLpfHqCheckBox_clicked();
+    void on_cNRHorizontalSlider_valueChanged(int value);
+    void on_yNRHorizontalSlider_valueChanged(int value);
 
 private:
-    Ui::PalChromaDecoderConfigDialog *ui;
-    PalColour::Configuration palChromaDecoderConfig;
+    Ui::ChromaDecoderConfigDialog *ui;
+    bool isSourcePal;
+    PalColour::Configuration palConfiguration;
+    Comb::Configuration ntscConfiguration;
 
     void updateDialog();
 };
 
-#endif // PALCHROMADECODERCONFIGDIALOG_H
+#endif // CHROMADECODERCONFIGDIALOG_H

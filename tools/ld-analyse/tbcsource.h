@@ -100,8 +100,9 @@ public:
     qint32 getCcData0(qint32 frameNumber);
     qint32 getCcData1(qint32 frameNumber);
 
-    void setPalColourConfiguration(const PalColour::Configuration &palColourConfiguration);
-    const PalColour::Configuration &getPalColourConfiguration();
+    void setChromaConfiguration(const PalColour::Configuration &palConfiguration, const Comb::Configuration &ntscConfiguration);
+    const PalColour::Configuration &getPalConfiguration();
+    const Comb::Configuration &getNtscConfiguration();
 
     qint32 startOfNextChapter(qint32 currentFrameNumber);
     qint32 startOfChapter(qint32 currentFrameNumber);
@@ -150,8 +151,9 @@ private:
     QImage frameCache;
     qint32 frameCacheFrameNumber;
 
-    // PAL chroma-decoder configuration
-    PalColour::Configuration palColourConfiguration;
+    // Chroma decoder configuration
+    PalColour::Configuration palConfiguration;
+    Comb::Configuration ntscConfiguration;
     bool decoderConfigurationChanged;
 
     // Chapter map

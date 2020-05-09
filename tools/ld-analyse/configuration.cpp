@@ -75,7 +75,7 @@ void Configuration::writeConfiguration(void)
     configuration->setValue("dropoutAnalysisDialogGeometry", settings.windows.dropoutAnalysisDialogGeometry);
     configuration->setValue("snrAnalysisDialogGeometry", settings.windows.snrAnalysisDialogGeometry);
     configuration->setValue("closedCaptionDialogGeometry", settings.windows.closedCaptionDialogGeometry);
-    configuration->setValue("palChromaDecoderConfigDialogGeometry", settings.windows.palChromaDecoderConfigDialogGeometry);
+    configuration->setValue("chromaDecoderConfigDialogGeometry", settings.windows.chromaDecoderConfigDialogGeometry);
     configuration->setValue("captureQualityIndexDialogGeometry", settings.windows.captureQualityIndexDialogGeometry);
     configuration->endGroup();
 
@@ -106,7 +106,7 @@ void Configuration::readConfiguration(void)
     settings.windows.dropoutAnalysisDialogGeometry = configuration->value("dropoutAnalysisDialogGeometry").toByteArray();
     settings.windows.snrAnalysisDialogGeometry = configuration->value("snrAnalysisDialogGeometry").toByteArray();
     settings.windows.closedCaptionDialogGeometry = configuration->value("closedCaptionDialogGeometry").toByteArray();
-    settings.windows.palChromaDecoderConfigDialogGeometry = configuration->value("palChromaDecoderConfigDialogGeometry").toByteArray();
+    settings.windows.chromaDecoderConfigDialogGeometry = configuration->value("chromaDecoderConfigDialogGeometry").toByteArray();
     settings.windows.captureQualityIndexDialogGeometry = configuration->value("captureQualityIndexDialogGeometry").toByteArray();
     configuration->endGroup();
 }
@@ -128,7 +128,7 @@ void Configuration::setDefault(void)
     settings.windows.dropoutAnalysisDialogGeometry = QByteArray();
     settings.windows.snrAnalysisDialogGeometry = QByteArray();
     settings.windows.closedCaptionDialogGeometry = QByteArray();
-    settings.windows.palChromaDecoderConfigDialogGeometry = QByteArray();
+    settings.windows.chromaDecoderConfigDialogGeometry = QByteArray();
     settings.windows.captureQualityIndexDialogGeometry = QByteArray();
 
     // Write the configuration
@@ -229,14 +229,14 @@ QByteArray Configuration::getClosedCaptionDialogGeometry(void)
     return settings.windows.closedCaptionDialogGeometry;
 }
 
-void Configuration::setPalChromaDecoderConfigDialogGeometry(QByteArray palChromaDecoderConfigDialogGeometry)
+void Configuration::setChromaDecoderConfigDialogGeometry(QByteArray chromaDecoderConfigDialogGeometry)
 {
-    settings.windows.palChromaDecoderConfigDialogGeometry = palChromaDecoderConfigDialogGeometry;
+    settings.windows.chromaDecoderConfigDialogGeometry = chromaDecoderConfigDialogGeometry;
 }
 
-QByteArray Configuration::getPalChromaDecoderConfigDialogGeometry(void)
+QByteArray Configuration::getChromaDecoderConfigDialogGeometry(void)
 {
-    return settings.windows.palChromaDecoderConfigDialogGeometry;
+    return settings.windows.chromaDecoderConfigDialogGeometry;
 }
 
 void Configuration::setCaptureQualityIndexDialogGeometry(QByteArray captureQualityIndexDialogGeometry)
