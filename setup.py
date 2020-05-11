@@ -30,6 +30,7 @@ setup(
     # see the documentation for the full list of dependencies.
     provides=['lddecode'],
     requires=[
+        'matplotlib',
         'numba',
         'numpy',
         'scipy',
