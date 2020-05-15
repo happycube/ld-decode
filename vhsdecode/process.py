@@ -163,7 +163,7 @@ def burst_deemphasis(chroma, lineoffset, linesout, outwidth, burstarea):
         linestart = (l - lineoffset) * outwidth
         lineend = linestart + outwidth
 
-        chroma[linestart + burstarea[1] + 5:lineend] *= 2
+        chroma[linestart + burstarea[1] + 5:lineend] *= 8
 
     return chroma
 

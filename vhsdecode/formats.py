@@ -67,7 +67,7 @@ SysParams_NTSC_VHS['max_ire'] = 100 # Top/white point defined by the standard 4.
 
 # Mean absolute value of color burst for Automatic Chroma Control.
 # The value is eyeballed to give ok chroma level as of now, needs to be tweaked.
-SysParams_NTSC_VHS['burst_abs_ref'] = 300
+SysParams_NTSC_VHS['burst_abs_ref'] = 750
 
 #SysParams_PAL['outlinelen'] = calclinelen(SysParams_PAL, 4, 'fsc_mhz')
 #SysParams_PAL['outlinelen_pilot'] = calclinelen(SysParams_PAL, 4, 'pilot_mhz')
