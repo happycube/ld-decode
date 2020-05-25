@@ -181,6 +181,18 @@ int main(int argc, char *argv[])
                                         QCoreApplication::translate("main", "NTSC: Use 75% white-point (default 100%)"));
     parser.addOption(whitePointOption);
 
+    // Option to set the chroma noise reduction level
+    QCommandLineOption chromaNROption(QStringList() << "chroma-nr",
+                                      QCoreApplication::translate("main", "NTSC: Chroma noise reduction level in dB (default 0.0)"),
+                                      QCoreApplication::translate("main", "number"));
+    parser.addOption(chromaNROption);
+
+    // Option to set the luma noise reduction level
+    QCommandLineOption lumaNROption(QStringList() << "luma-nr",
+                                    QCoreApplication::translate("main", "NTSC: Luma noise reduction level in dB (default 1.0)"),
+                                    QCoreApplication::translate("main", "number"));
+    parser.addOption(lumaNROption);
+
     // -- PAL decoder options --
 
     // Option to use Simple PAL UV filter
@@ -311,6 +323,26 @@ int main(int argc, char *argv[])
 
     if (parser.isSet(showOpticalFlowOption)) {
         combConfig.showOpticalFlowMap = true;
+    }
+
+    if (parser.isSet(chromaNROption)) {
+        combConfig.cNRLevel = parser.value(chromaNROption).toDouble();
+
+        if (combConfig.cNRLevel < 0.0) {
+            // Quit with error
+            qCritical("Chroma noise reduction cannot be negative");
+            return -1;
+        }
+    }
+
+    if (parser.isSet(lumaNROption)) {
+        combConfig.yNRLevel = parser.value(lumaNROption).toDouble();
+
+        if (combConfig.yNRLevel < 0.0) {
+            // Quit with error
+            qCritical("Luma noise reduction cannot be negative");
+            return -1;
+        }
     }
 
     if (parser.isSet(transformModeOption)) {
