@@ -2636,9 +2636,13 @@ class LDdecode:
         for l in range(1,8):
             lsa = field.lineslice(l, 10, 10)
             lsb = field.lineslice(l, 40, 10)
+
+            # compute wow adjustment
+            thislinelen = field.linelocs[l + field.lineoffset] - field.linelocs[l + field.lineoffset - 1]
+            adj = field.rf.linelen / thislinelen
             
-            hlevels.append(np.mean(field.data['video']['demod_05'][lsa]))
-            hlevels.append(np.mean(field.data['video']['demod_05'][lsb]))
+            hlevels.append(np.mean(field.data['video']['demod_05'][lsa]) / adj)
+            hlevels.append(np.mean(field.data['video']['demod_05'][lsb]) / adj)
 
         # Now group them by level (either sync or ire 0) and return the means of those
         sync_hzs = []
