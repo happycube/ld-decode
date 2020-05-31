@@ -1,10 +1,19 @@
 #!/usr/bin/python3
+
+import io
+from io import BytesIO
+
 import numpy as np
 import scipy as sp
 import scipy.signal as sps
 import sys
 
 import matplotlib.pyplot as plt
+
+# To support image displays
+from PIL import Image
+import IPython.display 
+from IPython.display import HTML
 
 pi = np.pi
 tau = np.pi * 2
@@ -130,4 +139,27 @@ def doplot2(B, A, B2, A2, freq = (315.0/88.0) * 8.0):
 def BA_to_FFT(B, A, blocklen):
     return np.complex64(sps.freqz(B, A, blocklen, whole=True)[1])
 
+# Draws a uint16 image, downscaled to uint8
+def draw_raw_bwimage(bm, x = 2800, y = 525, hscale = 1, vscale = 2, outsize = None):
+    if y is None:
+        y = len(bm) // x
+        
+    if outsize is None:
+        outsize = (x * hscale, y * vscale)
+    
+    bmf = np.uint8(bm[0:x*y] / 256.0)
+#    print(bmf.shape)
+    if x is not None:
+        bms = (bmf.reshape(len(bmf)//x, -1))
+    else:
+        bms = bmf
+    
+#    print(bms.dtype, bms.shape, bms[:][0:y].shape)
+    im = Image.fromarray(bms[0:y])
+    im = im.resize(outsize)
+    b = BytesIO()
+    im.save(b, format='png')
+    return IPython.display.Image(b.getvalue())
  
+def draw_field(field):
+    return draw_raw_bwimage(field.dspicture, f.outlinelen, f.outlinecount)

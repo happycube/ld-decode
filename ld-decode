@@ -112,16 +112,6 @@ if len(DecoderParamsOverride.keys()):
 if args.verboseVITS:
     ldd.verboseVITS = True
 
-def write_json(ldd, outname):
-    jsondict = ldd.build_json(ldd.curfield)
-    
-    fp = open(outname + '.tbc.json.tmp', 'w')
-    json.dump(jsondict, fp, indent=4 if args.verboseVITS else None)
-    fp.write('\n')
-    fp.close()
-    
-    os.rename(outname + '.tbc.json.tmp', outname + '.tbc.json')
-
 done = False
 
 while not done and ldd.fields_written < (req_frames * 2):

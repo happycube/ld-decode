@@ -3102,6 +3102,8 @@ class LDdecode:
             f, offset = self.decodefield(initphase = True)
 
             if f is None:
+                # If given an invalid starting location (i.e. seeking to a frame in an already cut raw file),
+                # go back to the beginning and try again.
                 if startfield != 0:
                     startfield = 0
                     self.roughseek(startfield)
@@ -3112,6 +3114,8 @@ class LDdecode:
                 self.curfield = f
                 self.fdoffset += offset
 
+                # Two fields are needed to be sure to have sufficient Philips code data
+                # to determine frame #.
                 if self.prevfield is not None and f.valid:
                     fnum = self.decodeFrameNumber(self.prevfield, self.curfield)
 
