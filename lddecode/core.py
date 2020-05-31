@@ -1108,7 +1108,8 @@ class DemodCache:
 def dsa_rescale(infloat):
     return int(np.round(infloat * 32767 / 150000))
 
-# right now defualt is 16/48, so not optimal :)
+# Downscales to 16bit/44.1khz.  It might be nice when analog audio is better to support 24/96, 
+# but if we only support one output type, matching CD audio/digital sound is greatly preferable.
 def downscale_audio(audio, lineinfo, rf, linecount, timeoffset = 0, freq = 48000.0, scale=64):
     failed = False
 
@@ -1126,8 +1127,7 @@ def downscale_audio(audio, lineinfo, rf, linecount, timeoffset = 0, freq = 48000
         
         # XXX: 
         # The timing handling can sometimes go outside the bounds of the known line #'s.  
-        # This is a quick-ish fix that should work OK, but may need to be reworked if
-        # analog audio is weak for some reason
+        # This is a quick-ish fix that should work OK but may affect quality slightly.
         if linenum < 0:
             lineloc_cur = int(lineinfo[0] + (rf.linelen * linenum))
             lineloc_next = lineloc_cur + rf.linelen
@@ -1144,7 +1144,7 @@ def downscale_audio(audio, lineinfo, rf, linecount, timeoffset = 0, freq = 48000
         sampleloc += (lineloc_next - lineloc_cur) * (linenum - np.floor(linenum))
 
         swow[i] = (lineloc_next - lineloc_cur) / rf.linelen
-        # There's almost *no way* the disk is spinning more than 5% off, so mask TBC errors here
+        # There's almost *no way* the disk is spinning more than 1.5% off, so mask TBC errors here
         # to reduce pops
         if i and np.abs(swow[i] - swow[i - 1]) > .015:
             swow[i] = swow[i - 1]
@@ -1171,8 +1171,6 @@ def downscale_audio(audio, lineinfo, rf, linecount, timeoffset = 0, freq = 48000
 
             failed = True
         
-    #print(locs[len(arange)-1], len(audio['audio_left']), np.min(output), np.max(output), swow[len(arange) - 1], linenum)
-
     np.clip(output, -32766, 32766, out=output16)
             
     return output16, arange[-1] - frametime

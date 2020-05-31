@@ -162,4 +162,4 @@ def draw_raw_bwimage(bm, x = 2800, y = 525, hscale = 1, vscale = 2, outsize = No
     return IPython.display.Image(b.getvalue())
  
 def draw_field(field):
-    return draw_raw_bwimage(field.dspicture, f.outlinelen, f.outlinecount)
+    return draw_raw_bwimage(field.dspicture, field.outlinelen, field.outlinecount)
