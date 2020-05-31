@@ -3088,42 +3088,55 @@ class LDdecode:
 
         return fi, False
 
-    # seek support function
-    def seek_getframenr(self, start):
-        self.roughseek(start)
+    def seek_getframenr(self, startfield):
+        """ Reads from file location startfield, returns first VBI frame # or None on failure and revised startfield """
+
+        ''' Note that if startfield is not 0, and the read fails, it will automatically retry
+            at file location 0
+        '''
+
+        self.roughseek(startfield)
 
         for fields in range(10):
             self.fieldloc = self.fdoffset
             f, offset = self.decodefield(initphase = True)
 
-            self.prevfield = self.curfield
-            self.curfield = f
-            self.fdoffset += offset
+            if f is None:
+                if startfield != 0:
+                    startfield = 0
+                    self.roughseek(startfield)
+                else:
+                    return None, startfield
+            else:
+                self.prevfield = self.curfield
+                self.curfield = f
+                self.fdoffset += offset
 
-            if self.prevfield is not None and f is not None and f.valid:
-                fnum = self.decodeFrameNumber(self.prevfield, self.curfield)
+                if self.prevfield is not None and f.valid:
+                    fnum = self.decodeFrameNumber(self.prevfield, self.curfield)
 
-                if self.earlyCLV:
-                    logging.error("Cannot seek in early CLV disks w/o timecode")
-                    return None
-                elif fnum is not None:
-                    rawloc = np.floor((self.readloc / self.bytes_per_field) / 2)
-                    logging.info('seeking: file loc %d frame # %d', rawloc, fnum)
-                    return fnum
+                    if self.earlyCLV:
+                        logging.error("Cannot seek in early CLV disks w/o timecode")
+                        return None, startfield
+                    elif fnum is not None:
+                        rawloc = np.floor((self.readloc / self.bytes_per_field) / 2)
+                        logging.info('seeking: file loc %d frame # %d', rawloc, fnum)
+                        return fnum, startfield
         
-        return False
+        return None, None
         
-    def seek(self, start, target):
-        cur = start * 2
-        
+    def seek(self, startframe, target):
+        """ Attempts to find frame target from file location startframe """
         logging.info("Beginning seek")
 
         if not sys.warnoptions:
             import warnings
             warnings.simplefilter("ignore")
 
+        curfield = startframe * 2
+
         for retries in range(3):
-            fnr = self.seek_getframenr(cur)
+            fnr, curfield = self.seek_getframenr(curfield)
             if fnr is None:
                 return None
 
@@ -3134,7 +3147,7 @@ class LDdecode:
                 self.roughseek(cur)
                 return cur
 
-            cur += ((target - fnr) * 2) - 1
+            curfield += ((target - fnr) * 2) - 1
 
         return None
 

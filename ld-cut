@@ -60,7 +60,7 @@ ldd = LDdecode(filename, None, loader, system=system, doDOD = False)
 signal.signal(signal.SIGINT, original_sigint_handler)
 
 if args.seek != -1:
-    startloc = ldd.seek(args.start, args.seek) 
+    startloc = ldd.seek(args.seek if args.start == 0 else args.start, args.seek) 
     if startloc is None:
         print("ERROR: Seeking failed")
         exit(1)

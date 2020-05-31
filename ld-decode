@@ -89,8 +89,8 @@ if system == 'NTSC' and not args.ntscj:
 #print(ldd.blackIRE)
 
 if args.seek != -1:
-    if ldd.seek(firstframe, args.seek) is None:
-        print("ERROR: Seeking failed")
+    if ldd.seek(args.seek if firstframe == 0 else firstframe, args.seek) is None:
+        print("ERROR: Seeking failed", file=sys.stderr)
         exit(1)
 
 if args.MTF is not None:
