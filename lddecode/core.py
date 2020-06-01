@@ -2754,9 +2754,9 @@ class LDdecode:
                     if (sync_ire_diff > 2) or (np.abs(self.rf.hztoire(ire0_hz)) > 2):
                         redo = True
 
-                    self.rf.SysParams['ire0'] = ire0_hz
-                    # Note that vsync_ire is a negative number, so (sync_hz - ire0_hz) is correct
-                    self.rf.SysParams['hz_ire'] = (sync_hz - ire0_hz) / self.rf.SysParams['vsync_ire']
+                        self.rf.SysParams['ire0'] = ire0_hz
+                        # Note that vsync_ire is a negative number, so (sync_hz - ire0_hz) is correct
+                        self.rf.SysParams['hz_ire'] = (sync_hz - ire0_hz) / self.rf.SysParams['vsync_ire']
                     
                 if adjusted == False and redo == True:
                     self.demodcache.flushvideo()
