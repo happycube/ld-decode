@@ -2572,6 +2572,7 @@ class LDdecode:
         self.frameNumber = None
 
         self.autoMTF = True
+        self.useAGC = extra_options.getkey('useAGC', default = True)
 
         self.verboseVITS = False
 
@@ -2747,7 +2748,7 @@ class LDdecode:
                     redo = True
 
                 # Perform AGC changes on first fields only to prevent luma mismatch intra-field
-                if f.isFirstField:
+                if self.useAGC and f.isFirstField:
                     sync_hz, ire0_hz = self.detectLevels(f)
                     sync_ire_diff = np.abs(self.rf.hztoire(sync_hz) - self.rf.SysParams['vsync_ire'])
 
