@@ -2745,16 +2745,18 @@ class LDdecode:
 
                 if not self.checkMTF(f, self.prevfield):
                     redo = True
-                
-                sync_hz, ire0_hz = self.detectLevels(f)
-                sync_ire_diff = np.abs(self.rf.hztoire(sync_hz) - self.rf.SysParams['vsync_ire'])
 
-                if (sync_ire_diff > 2) or (np.abs(self.rf.hztoire(ire0_hz)) > 2):
-                    redo = True
+                # Perform AGC changes on first fields only to prevent luma mismatch intra-field
+                if f.isFirstField:
+                    sync_hz, ire0_hz = self.detectLevels(f)
+                    sync_ire_diff = np.abs(self.rf.hztoire(sync_hz) - self.rf.SysParams['vsync_ire'])
 
-                self.rf.SysParams['ire0'] = ire0_hz
-                # Note that vsync_ire is a negative number, so (sync_hz - ire0_hz) is correct
-                self.rf.SysParams['hz_ire'] = (sync_hz - ire0_hz) / self.rf.SysParams['vsync_ire']
+                    if (sync_ire_diff > 2) or (np.abs(self.rf.hztoire(ire0_hz)) > 2):
+                        redo = True
+
+                    self.rf.SysParams['ire0'] = ire0_hz
+                    # Note that vsync_ire is a negative number, so (sync_hz - ire0_hz) is correct
+                    self.rf.SysParams['hz_ire'] = (sync_hz - ire0_hz) / self.rf.SysParams['vsync_ire']
                     
                 if adjusted == False and redo == True:
                     self.demodcache.flushvideo()

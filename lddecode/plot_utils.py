@@ -216,7 +216,7 @@ class RGBoutput:
         plt.plot(self.rgb[sl[1]], 'g')
         plt.plot(self.rgb[sl[2]], 'b')
         
-    def display(self, framenr):
+    def display(self, framenr, scale = 1):
         begin = self.lineslice(framenr, 0)[0].start
         end = self.lineslice(framenr, self.y - 1)[0].stop
 
@@ -226,4 +226,4 @@ class RGBoutput:
         b = BytesIO()
         im.save(b, format='png')
         
-        return IPython.display.Image(b.getvalue())
+        return IPython.display.Image(b.getvalue(), width=int(self.x * scale), height=int(self.y * scale))
