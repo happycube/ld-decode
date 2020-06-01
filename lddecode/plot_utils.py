@@ -1,10 +1,21 @@
 #!/usr/bin/python3
+
+import io
+from io import BytesIO
+import re
+import subprocess
+import sys
+
 import numpy as np
 import scipy as sp
 import scipy.signal as sps
-import sys
 
 import matplotlib.pyplot as plt
+
+# To support image displays
+from PIL import Image
+import IPython.display 
+from IPython.display import HTML
 
 pi = np.pi
 tau = np.pi * 2
@@ -130,4 +141,89 @@ def doplot2(B, A, B2, A2, freq = (315.0/88.0) * 8.0):
 def BA_to_FFT(B, A, blocklen):
     return np.complex64(sps.freqz(B, A, blocklen, whole=True)[1])
 
+# Notebook support functions follow
+
+# Draws a uint16 image, downscaled to uint8
+def draw_raw_bwimage(bm, x = 2800, y = 525, hscale = 1, vscale = 2, outsize = None):
+    if y is None:
+        y = len(bm) // x
+        
+    if outsize is None:
+        outsize = (x * hscale, y * vscale)
+    
+    bmf = np.uint8(bm[0:x*y] / 256.0)
+#    print(bmf.shape)
+    if x is not None:
+        bms = (bmf.reshape(len(bmf)//x, -1))
+    else:
+        bms = bmf
+    
+#    print(bms.dtype, bms.shape, bms[:][0:y].shape)
+    im = Image.fromarray(bms[0:y])
+    im = im.resize(outsize)
+    b = BytesIO()
+    im.save(b, format='png')
+    return IPython.display.Image(b.getvalue())
  
+def draw_field(field):
+    return draw_raw_bwimage(field.dspicture, field.outlinelen, field.outlinecount)
+
+class RGBoutput:
+    def __init__(self, outname):
+        try:
+            rv = subprocess.run('ld-chroma-decoder {0}.tbc {0}.rgb'.format(outname), capture_output=True, shell=True)
+        except:
+
+            return None
+
+        if rv.returncode != 0:
+            print("Failed to run ld-chroma-decoder: ", rv.returncode)
+            print(rv.stderr.split('\n'))
+
+        stderr = rv.stderr.decode('utf-8')
+
+        outres = re.search('trimmed to ([0-9]{3}) x ([0-9]{3})', stderr)
+        outframes = re.search('complete - ([0-9]*) frames', stderr)
+
+        if outres is None or outframes is None:
+        	print("Error, did not decode correctly")
+
+        self.x, self.y = [int(v) for v in outres.groups()]
+        self.numframes = int(outframes.groups()[0])
+
+        with open('{0}.rgb'.format(outname), 'rb') as fd:
+            # 3 colors, 2 bytes/color
+            raw = fd.read((self.x * self.y * 3 * 2 * self.numframes))
+
+        self.rgb = np.frombuffer(raw, 'uint16', len(raw)//2)
+
+    def lineslice(self, frame, line):
+        if line >= self.y or frame > self.numframes:
+            return None
+
+        def getslice(offset):
+            return slice(((self.y * frame) + line) * (self.x * 3) + offset, ((self.y * frame) + line + 1) * (self.x * 3) + offset, 3)
+
+        return [getslice(offset) for offset in range(3)]
+
+    def plotline(self, frame, line):
+        sl = self.lineslice(frame, line)
+
+        if sl is None:
+            return None
+
+        plt.plot(self.rgb[sl[0]], 'r')
+        plt.plot(self.rgb[sl[1]], 'g')
+        plt.plot(self.rgb[sl[2]], 'b')
+        
+    def display(self, framenr, scale = 1):
+        begin = self.lineslice(framenr, 0)[0].start
+        end = self.lineslice(framenr, self.y - 1)[0].stop
+
+        rawimg = self.rgb[begin:end].reshape((self.y, self.x, 3))
+        rawimg_u8 = np.uint8(rawimg // 256)
+        im = Image.fromarray(rawimg_u8)
+        b = BytesIO()
+        im.save(b, format='png')
+        
+        return IPython.display.Image(b.getvalue(), width=int(self.x * scale), height=int(self.y * scale))

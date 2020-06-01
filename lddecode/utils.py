@@ -7,6 +7,7 @@ from datetime import datetime
 import getopt
 import io
 from io import BytesIO
+import json
 import os
 import sys
 import subprocess
@@ -797,6 +798,16 @@ def db_to_lev(db):
 def lev_to_db(rlev):
     return 20 * np.log10(rlev)
 
+# Write the .tbc.json file (used by lddecode and notebooks)
+def write_json(ldd, outname):
+    jsondict = ldd.build_json(ldd.curfield)
+    
+    fp = open(outname + '.tbc.json.tmp', 'w')
+    json.dump(jsondict, fp, indent=4 if ldd.verboseVITS else None)
+    fp.write('\n')
+    fp.close()
+    
+    os.rename(outname + '.tbc.json.tmp', outname + '.tbc.json')
 
 if __name__ == "__main__":
     print("Nothing to see here, move along ;)")

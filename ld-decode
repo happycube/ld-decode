@@ -30,6 +30,7 @@ parser.add_argument('-n', '--ntsc', dest='ntsc', action='store_true', help='sour
 parser.add_argument('-m', '--MTF', metavar='mtf', type=float, default=None, help='mtf compensation multiplier')
 parser.add_argument('--MTF_offset', metavar='mtf_offset', type=float, default=None, help='mtf compensation offset')
 parser.add_argument('-j', '--NTSCJ', dest='ntscj', action='store_true', help='source is in NTSC-J (IRE 0 black) format')
+parser.add_argument('--noAGC', dest='noAGC', action='store_true', default=False, help='Disable AGC')
 parser.add_argument('--noDOD', dest='nodod', action='store_true', default=False, help='disable dropout detector')
 parser.add_argument('--noEFM', dest='noefm', action='store_true', default=False, help='Disable EFM front end')
 parser.add_argument('--daa', dest='daa', action='store_true', default=False, help='Disable analog audio decoding')
@@ -58,7 +59,8 @@ if args.pal and args.ntsc:
     print("ERROR: Can only be PAL or NTSC")
     exit(1)
 
-extra_options = {}
+extra_options = {'useAGC': not args.noAGC}
+
 if args.WibbleRemover:
     extra_options['WibbleRemover'] = True
 if args.lowband:
@@ -111,16 +113,6 @@ if len(DecoderParamsOverride.keys()):
 
 if args.verboseVITS:
     ldd.verboseVITS = True
-
-def write_json(ldd, outname):
-    jsondict = ldd.build_json(ldd.curfield)
-    
-    fp = open(outname + '.tbc.json.tmp', 'w')
-    json.dump(jsondict, fp, indent=4 if args.verboseVITS else None)
-    fp.write('\n')
-    fp.close()
-    
-    os.rename(outname + '.tbc.json.tmp', outname + '.tbc.json')
 
 done = False
 
