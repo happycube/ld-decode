@@ -2572,7 +2572,7 @@ class LDdecode:
         self.frameNumber = None
 
         self.autoMTF = True
-        self.useAGC = extra_options.getkey('useAGC', default = True)
+        self.useAGC = extra_options.get('useAGC', default = True)
 
         self.verboseVITS = False
 
