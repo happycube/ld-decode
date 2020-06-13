@@ -329,6 +329,10 @@ class RFDecode:
 
         self.SysParams['analog_audio'] = has_analog_audio
 
+        self.deemp_level = extra_options.get('deemp_level')
+        if self.deemp_level is None:
+            self.deemp_level = (1.0, 1.0)
+
         linelen = self.freq_hz/(1000000.0/self.SysParams['line_period'])
         self.linelen = int(np.round(linelen))
         # How much horizontal sync position can deviate from previous/expected position 
@@ -454,6 +458,8 @@ class RFDecode:
 
         # The deemphasis filter
         deemp1, deemp2 = DP['video_deemp']
+        deemp1 *= self.deemp_level[0]
+        deemp2 *= self.deemp_level[1]
         SF['Fdeemp'] = filtfft(emphasis_iir(deemp1, deemp2, self.freq_hz), self.blocklen)
 
         # The direct opposite of the above, used in test signal generation
