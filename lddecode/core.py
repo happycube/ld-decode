@@ -77,6 +77,10 @@ SysParams_NTSC = {
     'colorBurstUS': (5.3, 7.8),
     'activeVideoUS': (9.45, 63.555-1.0),
 
+    # Known-good area for computing black SNR - for NTSC pull from VSYNC
+    # tuple: (line, beginning, length)
+    'blacksnr_slice': (1, 10, 20),
+
     # In NTSC framing, the distances between the first/last eq pulses and the 
     # corresponding next lines are different.
     'firstFieldH': (.5, 1),
@@ -121,6 +125,10 @@ SysParams_PAL = {
 
     # In PAL, the first field's line sync<->first/last EQ pulse are both .5H
     'firstFieldH': (1, .5),
+
+    # Known-good area for computing black SNR - for PAL this is blanked in mastering
+    # tuple: (line, beginning, length)
+    'blacksnr_slice': (22, 12, 50),
 
     'numPulses': 5,         # number of equalization pulses per section
     'hsyncPulseUS': 4.7,
@@ -2956,11 +2964,15 @@ class LDdecode:
         else:
             self.computeMetricsPAL(metrics, f, fp)
             whitelocs = [(19, 12, 8)]
-        
+
+        # FIXME: these should probably be computed in the Field class        
+        f.whitesnr_slice = None
+
         for l in whitelocs:
             wl_slice = f.lineslice_tbc(*l)
             #logging.info(l, np.mean(f.output_to_ire(f.dspicture[wl_slice])))
             if inrange(np.mean(f.output_to_ire(f.dspicture[wl_slice])), 90, 110):
+                f.whitesnr_slice = l
                 metrics['wSNR'] = self.calcpsnr(f, wl_slice)
                 metrics['whiteIRE'] = np.mean(f.output_to_ire(f.dspicture[wl_slice]))
 
@@ -2970,13 +2982,8 @@ class LDdecode:
 
                 break
         
-        if system == 'PAL':
-            # these metrics handle various easily detectable differences between fields
-            bl_slice = f.lineslice(22, 12, 50)
-            bl_slicetbc = f.lineslice_tbc(22, 12, 50)
-        else: # NTSC
-            bl_slice = f.lineslice(1, 10, 20)
-            bl_slicetbc = f.lineslice_tbc(1, 10, 20)            
+        bl_slice = f.lineslice(*f.rf.SysParams['blacksnr_slice'])
+        bl_slicetbc = f.lineslice_tbc(*f.rf.SysParams['blacksnr_slice'])
 
         delay = int(f.rf.delays['video_sync'])
         bl_sliceraw = slice(bl_slice.start - delay, bl_slice.stop - delay)
