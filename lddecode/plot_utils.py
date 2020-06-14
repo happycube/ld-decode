@@ -168,6 +168,10 @@ def draw_raw_bwimage(bm, x = 2800, y = 525, hscale = 1, vscale = 2, outsize = No
 def draw_field(field):
     return draw_raw_bwimage(field.dspicture, field.outlinelen, field.outlinecount)
 
+def plotline(field, line):
+	ls = field.lineslice(line, 0, 63.5)
+	plt.plot(field.data['video']['demod'][ls])
+
 class RGBoutput:
     def __init__(self, outname):
         try:
