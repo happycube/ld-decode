@@ -77,6 +77,10 @@ SysParams_NTSC = {
     'colorBurstUS': (5.3, 7.8),
     'activeVideoUS': (9.45, 63.555-1.0),
 
+    # Known-good area for computing black SNR - for NTSC pull from VSYNC
+    # tuple: (line, beginning, length)
+    'blacksnr_slice': (1, 10, 20),
+
     # In NTSC framing, the distances between the first/last eq pulses and the 
     # corresponding next lines are different.
     'firstFieldH': (.5, 1),
@@ -121,6 +125,10 @@ SysParams_PAL = {
 
     # In PAL, the first field's line sync<->first/last EQ pulse are both .5H
     'firstFieldH': (1, .5),
+
+    # Known-good area for computing black SNR - for PAL this is blanked in mastering
+    # tuple: (line, beginning, length)
+    'blacksnr_slice': (22, 12, 50),
 
     'numPulses': 5,         # number of equalization pulses per section
     'hsyncPulseUS': 4.7,
@@ -202,11 +210,11 @@ RFParams_PAL = {
     'video_deemp': (100e-9, 400e-9),
 
     # XXX: guessing here!
-    'video_bpf_low': 2700000, 
+    'video_bpf_low': 2300000, 
     'video_bpf_high': 13500000,
-    'video_bpf_order': 1,
+    'video_bpf_order': 2,
 
-    'video_lpf_freq': 4800000,
+    'video_lpf_freq': 5200000,
     'video_lpf_order': 7,
 
     # MTF filter
@@ -831,9 +839,9 @@ class RFDecode:
 
         # XXX: sync detector does NOT reflect actual sync detection, just regular filtering @ sync level
         # (but only regular filtering is needed for DOD)
-        dgap_sync = calczc(fakedecode['video']['demod'], 1500, rf.iretohz(rf.SysParams['vsync_ire'] / 2), _count=512) - 1500
-        dgap_white = calczc(fakedecode['video']['demod'], 3000, rf.iretohz(50), _count=512) - 3000
-        dgap_rot = calczc(fakedecode['video']['demod'], 6000, rf.iretohz(-10), _count=512) - 6000
+        dgap_sync = calczc(fakedecode['video']['demod'], 1500, rf.iretohz(rf.SysParams['vsync_ire'] / 2), count=512) - 1500
+        dgap_white = calczc(fakedecode['video']['demod'], 3000, rf.iretohz(50), count=512) - 3000
+        dgap_rot = calczc(fakedecode['video']['demod'], 6000, rf.iretohz(-10), count=512) - 6000
 
         rf.delays = {}
         # factor in the 1k or so block cut as well, since we never *just* do demodblock
@@ -1740,7 +1748,7 @@ class Field:
             ll1 = self.linelocs1[i] - self.usectoinpx(5.5)
             #logging.info(i, ll1)
             #print(i, ll1, len(self.data['video']['demod_05']))
-            zc = calczc(self.data['video']['demod_05'], ll1, self.rf.iretohz(self.rf.SysParams['vsync_ire'] / 2), reverse=False, _count=400)
+            zc = calczc(self.data['video']['demod_05'], ll1, self.rf.iretohz(self.rf.SysParams['vsync_ire'] / 2), reverse=False, count=400)
 
             if zc is not None and not self.linebad[i]:
                 linelocs2[i] = zc 
@@ -1754,7 +1762,7 @@ class Field:
                     porch_level = nb_median(self.data['video']['demod_05'][int(zc+(self.rf.freq*8)):int(zc+(self.rf.freq*9))])
                     sync_level = nb_median(self.data['video']['demod_05'][int(zc+(self.rf.freq*1)):int(zc+(self.rf.freq*2.5))])
 
-                    zc2 = calczc(self.data['video']['demod_05'], ll1, (porch_level + sync_level) / 2, reverse=False, _count=400)
+                    zc2 = calczc(self.data['video']['demod_05'], ll1, (porch_level + sync_level) / 2, reverse=False, count=400)
 
                     # any wild variation here indicates a failure
                     if zc2 is not None and np.abs(zc2 - zc) < (self.rf.freq / 2):
@@ -1862,12 +1870,12 @@ class Field:
     def decodephillipscode(self, linenum):
         linestart = self.linelocs[linenum]
         data = self.data['video']['demod']
-        curzc = calczc(data, int(linestart + self.usectoinpx(2)), self.rf.iretohz(50), _count=int(self.usectoinpx(12)))
+        curzc = calczc(data, int(linestart + self.usectoinpx(2)), self.rf.iretohz(50), count=int(self.usectoinpx(12)))
 
         zc = []
         while curzc is not None:
             zc.append((curzc, data[int(curzc - self.usectoinpx(0.5))] < self.rf.iretohz(50)))
-            curzc = calczc(data, curzc+self.usectoinpx(1.9), self.rf.iretohz(50), _count=int(self.usectoinpx(0.2)))
+            curzc = calczc(data, curzc+self.usectoinpx(1.9), self.rf.iretohz(50), count=int(self.usectoinpx(0.2)))
 
         usecgap = self.inpxtousec(np.diff([z[0] for z in zc]))
         valid = len(zc) == 24 and np.min(usecgap) > 1.85 and np.max(usecgap) < 2.15
@@ -2956,11 +2964,15 @@ class LDdecode:
         else:
             self.computeMetricsPAL(metrics, f, fp)
             whitelocs = [(19, 12, 8)]
-        
+
+        # FIXME: these should probably be computed in the Field class        
+        f.whitesnr_slice = None
+
         for l in whitelocs:
             wl_slice = f.lineslice_tbc(*l)
             #logging.info(l, np.mean(f.output_to_ire(f.dspicture[wl_slice])))
             if inrange(np.mean(f.output_to_ire(f.dspicture[wl_slice])), 90, 110):
+                f.whitesnr_slice = l
                 metrics['wSNR'] = self.calcpsnr(f, wl_slice)
                 metrics['whiteIRE'] = np.mean(f.output_to_ire(f.dspicture[wl_slice]))
 
@@ -2970,13 +2982,8 @@ class LDdecode:
 
                 break
         
-        if system == 'PAL':
-            # these metrics handle various easily detectable differences between fields
-            bl_slice = f.lineslice(22, 12, 50)
-            bl_slicetbc = f.lineslice_tbc(22, 12, 50)
-        else: # NTSC
-            bl_slice = f.lineslice(1, 10, 20)
-            bl_slicetbc = f.lineslice_tbc(1, 10, 20)            
+        bl_slice = f.lineslice(*f.rf.SysParams['blacksnr_slice'])
+        bl_slicetbc = f.lineslice_tbc(*f.rf.SysParams['blacksnr_slice'])
 
         delay = int(f.rf.delays['video_sync'])
         bl_sliceraw = slice(bl_slice.start - delay, bl_slice.stop - delay)
