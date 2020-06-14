@@ -561,9 +561,9 @@ def calczc_findfirst(data, target, rising):
         return None
 
 @njit(cache=True)
-def calczc_do(data, _start_offset, target, edge=0, _count=10):
+def calczc_do(data, _start_offset, target, edge=0, count=10):
     start_offset = max(1, int(_start_offset))
-    count = int(_count + 1)
+    icount = int(count + 1)
     
     if edge == 0: # capture rising or falling edge
         if data[start_offset] < target:
@@ -571,7 +571,7 @@ def calczc_do(data, _start_offset, target, edge=0, _count=10):
         else:
             edge = -1
 
-    loc = calczc_findfirst(data[start_offset:start_offset+count], target, edge==1)
+    loc = calczc_findfirst(data[start_offset:start_offset+icount], target, edge==1)
                
     if loc is None:
         return None
@@ -584,17 +584,17 @@ def calczc_do(data, _start_offset, target, edge=0, _count=10):
 
     return x-1+y
 
-def calczc(data, _start_offset, target, edge=0, _count=10, reverse=False):
+def calczc(data, _start_offset, target, edge=0, count=10, reverse=False):
     ''' edge:  -1 falling, 0 either, 1 rising '''
     if reverse:
         # Instead of actually implementing this in reverse, use numpy to flip data
-        rev_zc = calczc_do(data[_start_offset::-1], 0, target, edge, _count)
+        rev_zc = calczc_do(data[_start_offset::-1], 0, target, edge, count)
         if rev_zc is None:
             return None
 
         return _start_offset - rev_zc
 
-    return calczc_do(data, _start_offset, target, edge, _count)
+    return calczc_do(data, _start_offset, target, edge, count)
 
 def calczc_sets(data, start, end, tgt = 0, cliplevel = None):
     zcsets = {False: [], True:[]}
@@ -723,6 +723,13 @@ def findpeaks(array, low = None):
         array2 = array
     
     return [loc - 1 for loc in np.where(np.logical_and(array2[:-1] > array2[-1], array2[1:] > array2[:-1]))[0]]
+
+# originally from http://www.paulinternet.nl/?page=bicubic
+def cubic_interpolate(data, loc):
+    p = data[int(loc)-1:int(loc)+3]
+    x = (loc - np.floor(loc))
+
+    return p[1] + 0.5 * x*(p[2] - p[0] + x*(2.0*p[0] - 5.0*p[1] + 4.0*p[2] - p[3] + x*(3.0*(p[1] - p[2]) + p[3] - p[0])))
 
 def LRUupdate(l, k):
     ''' This turns a list into an LRU table.  When called it makes sure item 'k' is at the beginning,

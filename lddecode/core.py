@@ -839,9 +839,9 @@ class RFDecode:
 
         # XXX: sync detector does NOT reflect actual sync detection, just regular filtering @ sync level
         # (but only regular filtering is needed for DOD)
-        dgap_sync = calczc(fakedecode['video']['demod'], 1500, rf.iretohz(rf.SysParams['vsync_ire'] / 2), _count=512) - 1500
-        dgap_white = calczc(fakedecode['video']['demod'], 3000, rf.iretohz(50), _count=512) - 3000
-        dgap_rot = calczc(fakedecode['video']['demod'], 6000, rf.iretohz(-10), _count=512) - 6000
+        dgap_sync = calczc(fakedecode['video']['demod'], 1500, rf.iretohz(rf.SysParams['vsync_ire'] / 2), count=512) - 1500
+        dgap_white = calczc(fakedecode['video']['demod'], 3000, rf.iretohz(50), count=512) - 3000
+        dgap_rot = calczc(fakedecode['video']['demod'], 6000, rf.iretohz(-10), count=512) - 6000
 
         rf.delays = {}
         # factor in the 1k or so block cut as well, since we never *just* do demodblock
@@ -1748,7 +1748,7 @@ class Field:
             ll1 = self.linelocs1[i] - self.usectoinpx(5.5)
             #logging.info(i, ll1)
             #print(i, ll1, len(self.data['video']['demod_05']))
-            zc = calczc(self.data['video']['demod_05'], ll1, self.rf.iretohz(self.rf.SysParams['vsync_ire'] / 2), reverse=False, _count=400)
+            zc = calczc(self.data['video']['demod_05'], ll1, self.rf.iretohz(self.rf.SysParams['vsync_ire'] / 2), reverse=False, count=400)
 
             if zc is not None and not self.linebad[i]:
                 linelocs2[i] = zc 
@@ -1762,7 +1762,7 @@ class Field:
                     porch_level = nb_median(self.data['video']['demod_05'][int(zc+(self.rf.freq*8)):int(zc+(self.rf.freq*9))])
                     sync_level = nb_median(self.data['video']['demod_05'][int(zc+(self.rf.freq*1)):int(zc+(self.rf.freq*2.5))])
 
-                    zc2 = calczc(self.data['video']['demod_05'], ll1, (porch_level + sync_level) / 2, reverse=False, _count=400)
+                    zc2 = calczc(self.data['video']['demod_05'], ll1, (porch_level + sync_level) / 2, reverse=False, count=400)
 
                     # any wild variation here indicates a failure
                     if zc2 is not None and np.abs(zc2 - zc) < (self.rf.freq / 2):
@@ -1870,12 +1870,12 @@ class Field:
     def decodephillipscode(self, linenum):
         linestart = self.linelocs[linenum]
         data = self.data['video']['demod']
-        curzc = calczc(data, int(linestart + self.usectoinpx(2)), self.rf.iretohz(50), _count=int(self.usectoinpx(12)))
+        curzc = calczc(data, int(linestart + self.usectoinpx(2)), self.rf.iretohz(50), count=int(self.usectoinpx(12)))
 
         zc = []
         while curzc is not None:
             zc.append((curzc, data[int(curzc - self.usectoinpx(0.5))] < self.rf.iretohz(50)))
-            curzc = calczc(data, curzc+self.usectoinpx(1.9), self.rf.iretohz(50), _count=int(self.usectoinpx(0.2)))
+            curzc = calczc(data, curzc+self.usectoinpx(1.9), self.rf.iretohz(50), count=int(self.usectoinpx(0.2)))
 
         usecgap = self.inpxtousec(np.diff([z[0] for z in zc]))
         valid = len(zc) == 24 and np.min(usecgap) > 1.85 and np.max(usecgap) < 2.15
