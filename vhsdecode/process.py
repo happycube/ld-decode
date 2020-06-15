@@ -370,7 +370,7 @@ class VHSDecode(ldd.LDdecode):
         self.fields_written += 1
 
     def close(self):
-        setattr(self, self.outfile_chroma, None)
+        setattr(self, 'outfile_chroma', None)
         super(VHSDecode, self).close()
 
     def computeMetricsNTSC(self, metrics, f, fp = None):
@@ -402,23 +402,27 @@ class VHSRFDecode(ldd.RFDecode):
 
         cc = self.DecoderParams['color_under_carrier'] / 1000000
 
-        # More advanced rf filter - disabled for commit
-        # DP = self.DecoderParams
-        # y_fm = sps.butter(DP['video_bpf_order'], [DP['video_bpf_low']/self.freq_hz_half,
-        #                                    DP['video_bpf_high']/self.freq_hz_half], btype='bandpass')
-        # y_fm = lddu.filtfft(y_fm, self.blocklen)
+        DP = self.DecoderParams
 
-        # y_fm_lowpass = lddu.filtfft(sps.butter(1, [5.7/self.freq_half], btype='lowpass'),
-        #                             self.blocklen)
+        # More advanced rf filter - only used for NTSC for now.
+        if system == 'NTSC':
+            y_fm = sps.butter(DP['video_bpf_order'],
+                              [DP['video_bpf_low']/self.freq_hz_half,
+                               DP['video_bpf_high']/self.freq_hz_half],
+                              btype='bandpass')
+            y_fm = lddu.filtfft(y_fm, self.blocklen)
 
-        # y_fm_chroma_trap = lddu.filtfft(sps.butter(1,
-        #                                         [(cc * 0.9)/self.freq_half, (cc * 1.1)/self.freq_half],
-        #                                         btype='bandstop'),
-        #                             self.blocklen)
+            y_fm_lowpass = lddu.filtfft(sps.butter(8, [5.6/self.freq_half], btype='lowpass'),
+                                        self.blocklen)
 
-        # y_fm_filter = y_fm * y_fm_lowpass * y_fm_chroma_trap * self.Filters['hilbert']
+            y_fm_chroma_trap = lddu.filtfft(sps.butter(1,
+                                                       [(cc * 0.9)/self.freq_half, (cc * 1.1)/self.freq_half],
+                                                       btype='bandstop'),
+                                            self.blocklen)
 
-        # self.Filters['RFVideo'] = y_fm_filter
+            y_fm_filter = y_fm * y_fm_lowpass * y_fm_chroma_trap * self.Filters['hilbert']
+
+            self.Filters['RFVideo'] = y_fm_filter
 
         # Video (luma) de-emphasis
         # Not sure about the math of this but, by using a high-shelf filter and then

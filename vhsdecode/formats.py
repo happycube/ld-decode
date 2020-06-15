@@ -29,8 +29,8 @@ RFParams_PAL_VHS['color_under_carrier'] = ((625 * 25) * 40) + 1953
 
 # Band-pass filter for Video rf.
 # TODO: Needs tweaking
-RFParams_NTSC_VHS['video_bpf_low'] = 3300000
-RFParams_NTSC_VHS['video_bpf_high'] = 5000000
+RFParams_NTSC_VHS['video_bpf_low'] = 3200000
+RFParams_NTSC_VHS['video_bpf_high'] = 5300000
 
 RFParams_NTSC_VHS['video_bpf_order'] = 2
 
@@ -51,7 +51,8 @@ SysParams_PAL_VHS['ire0'] = 4100000
 # frequency/ire IRE change pr frequency (Is this labeled correctly?)
 SysParams_PAL_VHS['hz_ire'] = 700000 / 100.0
 
-SysParams_PAL_VHS['max_ire'] = 100 # Top/white point defined by the standard 4.8 MHz
+# Top/white point defined by the standard 4.8 MHz
+SysParams_PAL_VHS['max_ire'] = 100
 
 # Mean absolute value of color burst for Automatic Chroma Control.
 # The value is eyeballed to give ok chroma level as of now, needs to be tweaked.
@@ -63,7 +64,8 @@ SysParams_NTSC_VHS['ire0'] = 3685000
 # frequency/ire IRE change pr frequency (Is this labeled correctly?)
 SysParams_NTSC_VHS['hz_ire'] = 715000 / 100.0
 
-SysParams_NTSC_VHS['max_ire'] = 100 # Top/white point defined by the standard 4.8 MHz
+# Top/white point defined by the standard
+SysParams_NTSC_VHS['max_ire'] = 100
 
 # Mean absolute value of color burst for Automatic Chroma Control.
 # The value is eyeballed to give ok chroma level as of now, needs to be tweaked.

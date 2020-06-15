@@ -131,3 +131,4 @@ while not done and vhsd.fields_written < (req_frames * 2):
 
 print("saving JSON and exiting")
 write_json(vhsd, outname)
+vhsd.close()
