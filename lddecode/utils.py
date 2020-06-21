@@ -805,6 +805,27 @@ def db_to_lev(db):
 def lev_to_db(rlev):
     return 20 * np.log10(rlev)
 
+# moved from core.py
+@njit
+def dsa_rescale(infloat):
+    return int(np.round(infloat * 32767 / 150000))
+
+# Hotspot subroutines in FieldNTSC's compute_line_bursts function,
+# removed so that they can be JIT'd
+
+@njit(cache=True)
+def clb_findnextburst(burstarea, i, endburstarea, threshold):
+    for j in range(i, endburstarea):
+        if np.abs(burstarea[j]) > threshold:
+            return j, burstarea[j]
+
+    return None
+
+@njit(cache=True)
+def distance_from_round(x):
+    # Yes, this was a hotspot.
+    return np.round(x) - x
+
 # Write the .tbc.json file (used by lddecode and notebooks)
 def write_json(ldd, outname):
     jsondict = ldd.build_json(ldd.curfield)
