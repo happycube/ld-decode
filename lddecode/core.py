@@ -370,15 +370,11 @@ class RFDecode:
         self.computevideofilters()
 
         # This is > 0 because decode_analog_audio is in khz.
-        if self.decode_analog_audio > 0: 
+        if self.decode_analog_audio != 0: 
             self.computeaudiofilters()
 
         if self.decode_digital_audio:
             self.computeefmfilter()
-
-        # This high pass filter is intended to detect RF dropouts
-        Frfhpf = sps.butter(1, [10/self.freq_half], btype='highpass')
-        self.Filters['Frfhpf'] = filtfft(Frfhpf, self.blocklen)
 
         self.computedelays()
 
@@ -409,7 +405,6 @@ class RFDecode:
         p_interp = spi.interp1d(freqs, phase, kind="cubic")
         
         nonzero_bins = int(freqs[-1] / freq_per_bin) + 1
-        #print(nonzero_bins)
         
         bin_freqs = np.arange(nonzero_bins) * freq_per_bin
         bin_amp = a_interp(bin_freqs)
@@ -418,9 +413,6 @@ class RFDecode:
         # Scale by the amplitude, rotate by the phase
         coeffs[:nonzero_bins] = bin_amp * (np.cos(bin_phase) + (complex(0, -1) * np.sin(bin_phase)))
 
-        # TODO: figure out this flip, the filter is asymmetric but works better that way.  huh.
-        #coeffs[-nonzero_bins:] = np.flip(coeffs[:nonzero_bins], 0)
-        
         self.Filters['Fefm'] = coeffs * 8
 
     def computevideofilters(self):
@@ -430,6 +422,10 @@ class RFDecode:
         SF = self.Filters
         SP = self.SysParams
         DP = self.DecoderParams
+
+        # This high pass filter is intended to detect RF dropouts
+        Frfhpf = sps.butter(1, [10/self.freq_half], btype='highpass')
+        self.Filters['Frfhpf'] = filtfft(Frfhpf, self.blocklen)
 
         # First phase FFT filtering
 
@@ -482,7 +478,6 @@ class RFDecode:
 
         # Post processing:  lowpass filter + deemp
         SF['FVideo'] = SF['Fvideo_lpf'] * SF['Fdeemp'] 
-        #SF['FVideo'] = SF['Fdeemp'] 
         
         # additional filters:  0.5mhz and color burst
         # Using an FIR filter here to get a known delay
@@ -843,23 +838,18 @@ class RFDecode:
 
         # XXX: sync detector does NOT reflect actual sync detection, just regular filtering @ sync level
         # (but only regular filtering is needed for DOD)
-        dgap_sync = calczc(fakedecode['video']['demod'], 1500, rf.iretohz(rf.SysParams['vsync_ire'] / 2), count=512) - 1500
-        dgap_white = calczc(fakedecode['video']['demod'], 3000, rf.iretohz(50), count=512) - 3000
-        dgap_rot = calczc(fakedecode['video']['demod'], 6000, rf.iretohz(-10), count=512) - 6000
-
         rf.delays = {}
-        # factor in the 1k or so block cut as well, since we never *just* do demodblock
-        rf.delays['video_sync'] = dgap_sync #- self.blockcut
-        rf.delays['video_white'] = dgap_white #- self.blockcut
-        rf.delays['video_rot'] = int(np.round(dgap_rot)) #- self.blockcut
-        
+        rf.delays['video_sync'] = calczc(fakedecode['video']['demod'], 1500, rf.iretohz(rf.SysParams['vsync_ire'] / 2), count=512) - 1500
+        rf.delays['video_white'] = calczc(fakedecode['video']['demod'], 3000, rf.iretohz(50), count=512) - 3000
+        rf.delays['video_rot'] = int(np.round(calczc(fakedecode['video']['demod'], 6000, rf.iretohz(-10), count=512) - 6000))
+
         fdec_raw = fakedecode['video']['demod_raw']
         
         rf.limits = {}
         rf.limits['sync'] = (np.min(fdec_raw[1400:2800]), np.max(fdec_raw[1400:2800]))
         rf.limits['viewable'] = (np.min(fdec_raw[2900:6000]), np.max(fdec_raw[2900:6000]))
 
-        return fakedecode, dgap_sync, dgap_white
+        return fakedecode
 
 class DemodCache:
     def __init__(self, rf, infile, loader, cachesize = 256, num_worker_threads=6, MTF_tolerance = .05):
@@ -2334,13 +2324,11 @@ class FieldNTSC(Field):
 
             if (len(zc_bursts[l][True]) == 0) or (len(zc_bursts[l][False]) == 0):
                 continue
+            
+            even_line = not (l % 2)
 
-            if not (l % 2):
-                bursts['even'].append(zc_bursts[l][True])
-                bursts['odd'].append(zc_bursts[l][False])
-            else:
-                bursts['even'].append(zc_bursts[l][False])
-                bursts['odd'].append(zc_bursts[l][True])
+            bursts['even'].append(zc_bursts[l][True if even_line else False])
+            bursts['odd'].append(zc_bursts[l][False if even_line else True])
 
         bursts_arr = {}
         bursts_arr[True] = np.concatenate(bursts['even'])
@@ -2718,10 +2706,7 @@ class LDdecode:
 
                     #logging.info(metrics['blackToWhiteRFRatio'], np.mean(self.bw_ratios))
 
-                redo = False
-
-                if not self.checkMTF(f, self.prevfield):
-                    redo = True
+                redo = not self.checkMTF(f, self.prevfield)
 
                 # Perform AGC changes on first fields only to prevent luma mismatch intra-field
                 if self.useAGC and f.isFirstField:
@@ -2786,24 +2771,17 @@ class LDdecode:
                     raise ValueError("Non-decimal BCD digit")
                 return (10 * decodeBCD(bcd >> 4)) + digit
 
-        # With newer versions of the duplicator software, there may 
-        # only be one *field* with leadout, so handle each field 
-        # in turn. (issue #414)
-        for i in [f1.linecode, f2.linecode]:
-            leadoutCount = 0
-            for v in i:
-                if v is not None and v == 0x80eeee:
-                    leadoutCount += 1
-
-            if leadoutCount == 2:
-                self.leadOut = True
+        leadoutCount = 0
 
         for l in f1.linecode + f2.linecode:
             if l is None:
                 continue
 
             if l == 0x80eeee: # lead-out reached
-                pass
+                leadoutCount += 1
+                # Require two leadouts, since there may only be one field in the raw data w/it
+                if leadoutCount == 2:
+                    self.leadOut = True
             elif l == 0x88ffff: # lead-in
                 self.leadIn = True
             elif (l & 0xf0dd00) == 0xf0dd00: # CLV minutes/hours
@@ -2843,21 +2821,17 @@ class LDdecode:
 
         return None # seeking won't work w/minutes only
 
-    def calcsnr(self, f, snrslice):
-        data = f.output_to_ire(f.dspicture[snrslice])
+    def calcsnr(self, f, snrslice, psnr = False):
+        # if dspicture isn't converted to float, this underflows at -40IRE
+        data = f.output_to_ire(f.dspicture[snrslice].astype(float))
         
-        signal = np.mean(data)
+        signal = np.mean(data) if not psnr else 100
         noise = np.std(data)
 
         return 20 * np.log10(signal / noise)
 
     def calcpsnr(self, f, snrslice):
-        # if dspicture isn't converted to float, this underflows at -40IRE
-        data = f.output_to_ire(f.dspicture[snrslice].astype(float))
-        
-        noise = np.std(data)
-
-        return 20 * np.log10(100 / noise)
+        return self.calcsnr(f, snrslice, psnr=True)        
 
     def computeMetricsPAL(self, metrics, f, fp = None):
         
