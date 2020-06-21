@@ -323,7 +323,7 @@ class RFDecode:
         self.freq = freq
         self.freq_half = freq / 2
         self.freq_hz = self.freq * 1000000
-        self.freq_hz_half = self.freq * 1000000 / 2
+        self.freq_hz_half = self.freq_hz / 2
         
         self.mtf_mult = 1.0
         self.mtf_offset = 0
@@ -360,7 +360,8 @@ class RFDecode:
 
         self.computefilters()
 
-        # The 0.5mhz filter is rolled back, so there are a few unusable samples at the end
+        # The 0.5mhz filter is rolled back to align with the data, so there 
+        # are a few unusable samples at the end.
         self.blockcut_end = self.Filters['F05_offset']
 
     def computefilters(self):
@@ -504,6 +505,10 @@ class RFDecode:
     def audio_fdslice2(self, freqdomain):
         return np.concatenate([freqdomain[self.Filters['audio_fdslice2_lo']], freqdomain[self.Filters['audio_fdslice2_hi']]])
     
+    def compute_deemp_audio2(self, dfreq):
+        adeemp_b, adeemp_a = sps.butter(1, [(1000000/dfreq)/(self.Filters['freq_aud2']/2)], btype='lowpass')
+        return filtfft([adeemp_b, adeemp_a], self.blocklen // self.Filters['audio_fdiv2'])
+
     def computeaudiofilters(self):
         SF = self.Filters
         SP = self.SysParams
@@ -556,17 +561,10 @@ class RFDecode:
 
         # XXX: This probably needs further tuning, but more or less flattens the 20hz-20khz response
         # on both PAL and NTSC
-        d75freq = 1000000/(2*pi*62)
-        adeemp_b, adeemp_a = sps.butter(1, [d75freq/(SF['freq_aud2']/2)], btype='lowpass')
-        addemp2lp = filtfft([adeemp_b, adeemp_a], self.blocklen // audio_fdiv2)
-
-        dxfreq = 1000000/(2*pi*45)
-        adeemp_b, adeemp_a = sps.butter(1, [dxfreq/(SF['freq_aud2']/2)], btype='highpass')
-        addemp2hp1 = filtfft([adeemp_b, adeemp_a], self.blocklen // audio_fdiv2)
-
-        dxfreq = 1000000/(2*pi*8)
-        adeemp_b, adeemp_a = sps.butter(1, [dxfreq/(SF['freq_aud2']/2)], btype='highpass')
-        addemp2hp2 = filtfft([adeemp_b, adeemp_a], self.blocklen // audio_fdiv2)
+        # (and no, I don't know where those frequencies come from)
+        addemp2lp = self.compute_deemp_audio2(2*pi*62) # 2567hz
+        addemp2hp1 = self.compute_deemp_audio2(2*pi*45) # 3536hz
+        addemp2hp2 = self.compute_deemp_audio2(2*pi*8) # 19894hz (i.e. cutoff?)
 
         SF['audio_deemp2'] = addemp2lp + (addemp2hp1 * .14) + (addemp2hp2 * .29)
 
@@ -2507,24 +2505,23 @@ class LDdecode:
 
         if fname_out is not None:        
             self.outfile_video = open(fname_out + '.tbc', 'wb')
-            #self.outfile_json = open(fname_out + '.json', 'wb')
             self.outfile_audio = open(fname_out + '.pcm', 'wb') if self.analog_audio else None
             self.outfile_efm = open(fname_out + '.efm', 'wb') if self.digital_audio else None
+
+            if digital_audio:
+                # feed EFM stream into ld-ldstoefm
+                self.efm_pll = efm_pll.EFM_PLL()
         else:
             self.outfile_video = None
             self.outfile_audio = None
             self.outfile_efm = None
-
-        if fname_out is not None and digital_audio:
-            # feed EFM stream into ld-ldstoefm
-            self.efm_pll = efm_pll.EFM_PLL()
 
         self.fname_out = fname_out
 
         self.firstfield = None # In frame output mode, the first field goes here
         self.fieldloc = 0
 
-        self.internalerrors = 0 # exceptions seen
+        self.internalerrors = [] # exceptions seen
 
         # if option is missing, get returns None
             
@@ -2580,7 +2577,7 @@ class LDdecode:
     def close(self):
         ''' deletes all open files, so it's possible to pickle an LDDecode object '''
 
-        # use setattr to force file closure
+        # use setattr to force file closure by unlinking the objects
         for outfiles in ['infile', 'outfile_video', 'outfile_audio', 'outfile_json', 'outfile_efm']:
             setattr(self, outfiles, None)
 
@@ -2589,10 +2586,9 @@ class LDdecode:
     def roughseek(self, location, isField = True):
         self.prevPhaseID = None
 
+        self.fdoffset = location
         if isField:
-            self.fdoffset = location * self.bytes_per_field
-        else:
-            self.fdoffset = location
+            self.fdoffset *= self.bytes_per_field
 
     def checkMTF(self, field, pfield = None):
         oldmtf = self.mtf_level
@@ -2653,8 +2649,6 @@ class LDdecode:
         if self.digital_audio == True:
             efm_out = self.efm_pll.process(efm)
             self.outfile_efm.write(efm_out.tobytes())
-        else:
-            efm = None
         
     def decodefield(self, initphase = False):
         ''' returns field object if valid, and the offset to the next decode '''
@@ -2816,7 +2810,6 @@ class LDdecode:
                 try:
                     self.clvMinutes = decodeBCD(l & 0xff) + (decodeBCD((l >> 16) & 0xf) * 60)
                     self.isCLV = True
-                    #logging.info('CLV', mins)
                 except ValueError:
                     pass
             elif (l & 0xf00000) == 0xf00000: # CAV frame
@@ -2839,13 +2832,16 @@ class LDdecode:
                     pass
 
             if self.clvMinutes is not None:
+                minute_seconds = self.clvMinutes * 60
+
                 if self.clvSeconds is not None: # newer CLV
-                    return (((self.clvMinutes * 60) + self.clvSeconds) * self.clvfps) + self.clvFrameNum
+                    # XXX: does not auto-decrement for skip frames
+                    return ((minute_seconds + self.clvSeconds) * self.clvfps) + self.clvFrameNum
                 else:
                     self.earlyCLV = True
-                    return (self.clvMinutes * 60)
+                    return minute_seconds
 
-        return None #seeking won't work w/minutes only
+        return None # seeking won't work w/minutes only
 
     def calcsnr(self, f, snrslice):
         data = f.output_to_ire(f.dspicture[snrslice])
