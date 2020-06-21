@@ -354,7 +354,7 @@ class RFDecode:
 
         self.computefilters()
 
-        # The 0.5mhz filter is rolled back, so there are a few unusable bytes at the end
+        # The 0.5mhz filter is rolled back, so there are a few unusable samples at the end
         self.blockcut_end = self.Filters['F05_offset']
 
     def computefilters(self):
@@ -992,8 +992,8 @@ class DemodCache:
                     self.lock.release()
                     return None
 
+                # ??? - I think I put it in to make sure it isn't erased for whatever reason, but might not be needed
                 rawdatac = rawdata.copy()
-                #rawdatac[16384:16388] = -32500
 
                 self.blocks[b] = {}
                 self.blocks[b]['rawinput'] = rawdatac
@@ -1023,12 +1023,11 @@ class DemodCache:
 
         self.lock.release()
 
-        #print(hc, len(need_blocks), len(self.q_in_metadata))
-
         return need_blocks
 
     def dequeue(self):
-        while True: # not self.q_out.empty():
+        # This is the thread's main loop - run until killed.
+        while True:
             rv = self.q_out.get()
             if rv is None:
                 return
@@ -1080,7 +1079,7 @@ class DemodCache:
             return rv
 
         while need_blocks is not None and len(need_blocks):
-            time.sleep(.005)
+            time.sleep(.005) # A crude busy loop
             need_blocks = self.doread(toread, MTF)
 
         if need_blocks is None:
@@ -2655,8 +2654,8 @@ class LDdecode:
             thislinelen = field.linelocs[l + field.lineoffset] - field.linelocs[l + field.lineoffset - 1]
             adj = field.rf.linelen / thislinelen
             
-            hlevels.append(np.mean(field.data['video']['demod_05'][lsa]) / adj)
-            hlevels.append(np.mean(field.data['video']['demod_05'][lsb]) / adj)
+            hlevels.append(np.median(field.data['video']['demod_05'][lsa]) / adj)
+            hlevels.append(np.median(field.data['video']['demod_05'][lsb]) / adj)
 
         # Now group them by level (either sync or ire 0) and return the means of those
         sync_hzs = []
