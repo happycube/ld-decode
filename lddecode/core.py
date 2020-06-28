@@ -1767,9 +1767,11 @@ class Field:
                         linelocs2[i] = zc2
                     else:
                         self.linebad[i] = True
-                        linelocs2[i] = self.linelocs1[i]  # don't use the computed value here if it's bad
             else:
                 self.linebad[i] = True
+
+            if self.linebad[i]:
+                linelocs2[i] = self.linelocs1[i]  # don't use the computed value here if it's bad
 
         return linelocs2
 
@@ -1807,7 +1809,8 @@ class Field:
 
             #print(l, prevgood, nextgood)
 
-            if prevgood >= 0 and nextgood < len(linelocs):
+            firstcheck = 0 if self.rf.system == 'PAL' else 1
+            if prevgood >= firstcheck and nextgood < (len(linelocs) + self.lineoffset):
                 gap = (linelocs[nextgood] - linelocs[prevgood]) / (nextgood - prevgood)
                 linelocs[l] = (gap * (l - prevgood)) + linelocs[prevgood]
                 
@@ -2598,16 +2601,18 @@ class LDdecode:
         # Build a list of each half-line's average
         hlevels = []
 
-        for l in range(1,8):
+        for l in range(2,8):
             lsa = field.lineslice(l, 10, 10)
             lsb = field.lineslice(l, 40, 10)
 
             # compute wow adjustment
             thislinelen = field.linelocs[l + field.lineoffset] - field.linelocs[l + field.lineoffset - 1]
             adj = field.rf.linelen / thislinelen
-            
+
             hlevels.append(np.median(field.data['video']['demod_05'][lsa]) / adj)
             hlevels.append(np.median(field.data['video']['demod_05'][lsb]) / adj)
+
+            #print(l, thislinelen, adj, hlevels[-2:])            
 
         # Now group them by level (either sync or ire 0) and return the means of those
         sync_hzs = []
@@ -2713,7 +2718,11 @@ class LDdecode:
                     sync_hz, ire0_hz = self.detectLevels(f)
                     sync_ire_diff = np.abs(self.rf.hztoire(sync_hz) - self.rf.SysParams['vsync_ire'])
 
-                    if (sync_ire_diff > 2) or (np.abs(self.rf.hztoire(ire0_hz)) > 2):
+                    #print(ire0_hz, sync_ire_diff)
+
+                    acceptable_diff = 2 if self.fields_written else .5
+
+                    if (sync_ire_diff > acceptable_diff) or (np.abs(self.rf.hztoire(ire0_hz)) > acceptable_diff):
                         redo = True
 
                         self.rf.SysParams['ire0'] = ire0_hz
