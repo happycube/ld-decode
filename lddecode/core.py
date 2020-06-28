@@ -2609,7 +2609,7 @@ class LDdecode:
         # Build a list of each half-line's average
         hlevels = []
 
-        for l in range(1,8):
+        for l in range(2,8):
             lsa = field.lineslice(l, 10, 10)
             lsb = field.lineslice(l, 40, 10)
 
@@ -2619,6 +2619,8 @@ class LDdecode:
             
             hlevels.append(np.median(field.data['video']['demod_05'][lsa]) / adj)
             hlevels.append(np.median(field.data['video']['demod_05'][lsb]) / adj)
+            
+            #print(hlevels[-2:])
 
         # Now group them by level (either sync or ire 0) and return the means of those
         sync_hzs = []
@@ -2726,7 +2728,9 @@ class LDdecode:
 
                     #print(sync_hz, ire0_hz, sync_ire_diff)
 
-                    if (sync_ire_diff > 2) or (np.abs(self.rf.hztoire(ire0_hz)) > 2):
+                    diff_to_redo = 2 if self.fields_written else .5
+
+                    if (sync_ire_diff > diff_to_redo) or (np.abs(self.rf.hztoire(ire0_hz)) > diff_to_redo):
                         redo = True
 
                         self.rf.SysParams['ire0'] = ire0_hz
