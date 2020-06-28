@@ -1767,9 +1767,11 @@ class Field:
                         linelocs2[i] = zc2
                     else:
                         self.linebad[i] = True
-                        linelocs2[i] = self.linelocs1[i]  # don't use the computed value here if it's bad
             else:
                 self.linebad[i] = True
+
+            if self.linebad[i]:
+                linelocs2[i] = self.linelocs1[i]  # don't use the computed value here if it's bad
 
         return linelocs2
 
@@ -1795,6 +1797,13 @@ class Field:
             badlines = np.isnan(linelocs)
             linelocs[badlines] = linelocs_backup[badlines]
 
+        # compute mean adjustment for linelocs1
+        adjs = []
+        for l in range(20, self.linecount - 1):
+            if l not in self.linebad:
+                adjs.append(linelocs_in[l] - self.linelocs1[l])
+        adjmean = np.mean(adjs)
+
         for l in np.where(self.linebad)[0]:
             prevgood = l - 1
             nextgood = l + 1
@@ -1805,12 +1814,14 @@ class Field:
             while nextgood < len(linelocs) and self.linebad[nextgood]:
                 nextgood += 1
 
-            #print(l, prevgood, nextgood)
-
-            if prevgood >= 0 and nextgood < len(linelocs):
+            if prevgood > 0 and nextgood <= self.linecount:
                 gap = (linelocs[nextgood] - linelocs[prevgood]) / (nextgood - prevgood)
                 linelocs[l] = (gap * (l - prevgood)) + linelocs[prevgood]
-                
+            else:
+                linelocs[l] = self.linelocs1[l] + adjmean
+
+            #print(l, prevgood, nextgood, self.linelocs1[l] - self.linelocs1[l - 1], linelocs[l] - linelocs[l-1])
+
         return linelocs
 
     def computewow(self, lineinfo):
@@ -2617,7 +2628,7 @@ class LDdecode:
             ire = field.rf.hztoire(hz)
             if ire < field.rf.SysParams['vsync_ire'] / 2:
                 sync_hzs.append(hz)
-            else:
+            elif ire < 10:
                 ire0_hzs.append(hz)
 
         return np.mean(sync_hzs), np.mean(ire0_hzs)
@@ -2712,6 +2723,8 @@ class LDdecode:
                 if self.useAGC and f.isFirstField:
                     sync_hz, ire0_hz = self.detectLevels(f)
                     sync_ire_diff = np.abs(self.rf.hztoire(sync_hz) - self.rf.SysParams['vsync_ire'])
+
+                    #print(sync_hz, ire0_hz, sync_ire_diff)
 
                     if (sync_ire_diff > 2) or (np.abs(self.rf.hztoire(ire0_hz)) > 2):
                         redo = True
