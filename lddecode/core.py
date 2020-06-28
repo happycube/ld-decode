@@ -1673,6 +1673,10 @@ class Field:
                 #print(rlineloc, p, 'reject')
                 continue
 
+            # also skip non-regular lines (p[0]) that don't seem to be in valid order (p[2])
+            if rlineloc > 0 and p[0] > 0 and not p[2]:
+                continue
+
             linelocs_dict[np.round(lineloc)] = p[1].start
             linelocs_dist[np.round(lineloc)] = lineloc_distance
 
