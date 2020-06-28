@@ -2609,8 +2609,9 @@ class LDdecode:
             thislinelen = field.linelocs[l + field.lineoffset] - field.linelocs[l + field.lineoffset - 1]
             adj = field.rf.linelen / thislinelen
 
-            hlevels.append(np.median(field.data['video']['demod_05'][lsa]) / adj)
-            hlevels.append(np.median(field.data['video']['demod_05'][lsb]) / adj)
+            if inrange(adj, .98, 1.02):
+                hlevels.append(np.median(field.data['video']['demod_05'][lsa]) / adj)
+                hlevels.append(np.median(field.data['video']['demod_05'][lsb]) / adj)
 
             #print(l, thislinelen, adj, hlevels[-2:])            
 
