@@ -2609,7 +2609,7 @@ class LDdecode:
         # Build a list of each half-line's average
         hlevels = []
 
-        for l in range(2,8):
+        for l in range(1,8):
             lsa = field.lineslice(l, 10, 10)
             lsb = field.lineslice(l, 40, 10)
 
