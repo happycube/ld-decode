@@ -19,64 +19,6 @@ import numpy as np
 import scipy as sp
 import scipy.signal as sps
 
-# plotting
-import matplotlib
-import matplotlib.pyplot as plt
-
-def todb(y, zero = False):
-    db = 20 * np.log10(np.abs(y))
-    if zero:
-        return db - np.max(db)
-    else:
-        return db
-
-def plotfilter_wh(w, h, freq, zero_base = False):
-    db = todb(h, zero_base)
-    
-    above_m3 = None
-    for i in range(1, len(w)):
-        if (db[i] >= -10) and (db[i - 1] < -10):
-            print(">-10db crossing at ", w[i]) 
-        if (db[i] >= -3) and (db[i - 1] < -3):
-            print(">-3db crossing at ", w[i])
-            above_m3 = i
-        if (db[i] < -3) and (db[i - 1] >= -3):
-            if above_m3 is not None:
-                peak_index = np.argmax(db[above_m3:i]) + above_m3
-                print("peak at ", w[peak_index], db[peak_index])
-            print("<-3db crossing at ", w[i]) 
-        if (db[i] >= 3) and (db[i - 1] < 3):
-            print(">3db crossing at ", w[i]) 
-    
-    fig, ax1 = plt.subplots(1, 1, sharex=True)
-    ax1.set_title('Digital filter frequency response')
-
-    ax1.plot(w, db, 'b')
-    ax1.set_ylabel('Amplitude [dB]', color='b')
-    ax1.set_xlabel('Frequency [rad/sample]')
-    
-    ax2 = ax1.twinx()
-    angles = np.unwrap(np.angle(h))
-    ax2.plot(w, angles, 'g')
-    ax2.set_ylabel('Angle (radians)', color='g')
-
-    plt.grid()
-    plt.axis('tight')
-    plt.show()
-    
-    return None
-
-def plotfilter(B, A, dfreq = None, freq = 40, zero_base = False):
-    if dfreq is None:
-        dfreq = freq / 2
-        
-    w, h = sps.freqz(B, A, whole=True, worN=4096)
-    w = np.arange(0, freq, freq / len(h))
-    
-    keep = int((dfreq / freq) * len(h))
-        
-    return plotfilter_wh(w[1:keep], h[1:keep], freq, zero_base)
-
 from scipy import interpolate
 
 # This uses numpy's interpolator, which works well enough
@@ -804,6 +746,27 @@ def db_to_lev(db):
 @njit
 def lev_to_db(rlev):
     return 20 * np.log10(rlev)
+
+# moved from core.py
+@njit
+def dsa_rescale(infloat):
+    return int(np.round(infloat * 32767 / 150000))
+
+# Hotspot subroutines in FieldNTSC's compute_line_bursts function,
+# removed so that they can be JIT'd
+
+@njit(cache=True)
+def clb_findnextburst(burstarea, i, endburstarea, threshold):
+    for j in range(i, endburstarea):
+        if np.abs(burstarea[j]) > threshold:
+            return j, burstarea[j]
+
+    return None
+
+@njit(cache=True)
+def distance_from_round(x):
+    # Yes, this was a hotspot.
+    return np.round(x) - x
 
 # Write the .tbc.json file (used by lddecode and notebooks)
 def write_json(ldd, outname):
