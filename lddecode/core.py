@@ -2609,7 +2609,7 @@ class LDdecode:
         # Build a list of each half-line's average
         hlevels = []
 
-        for l in range(1,8):
+        for l in range(2,8):
             lsa = field.lineslice(l, 10, 10)
             lsb = field.lineslice(l, 40, 10)
 
@@ -2630,7 +2630,7 @@ class LDdecode:
             ire = field.rf.hztoire(hz)
             if ire < field.rf.SysParams['vsync_ire'] / 2:
                 sync_hzs.append(hz)
-            elif ire < 10:
+            else:
                 ire0_hzs.append(hz)
 
         return np.mean(sync_hzs), np.mean(ire0_hzs)
