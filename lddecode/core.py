@@ -1767,11 +1767,9 @@ class Field:
                         linelocs2[i] = zc2
                     else:
                         self.linebad[i] = True
+                        linelocs2[i] = self.linelocs1[i]  # don't use the computed value here if it's bad
             else:
                 self.linebad[i] = True
-
-            if self.linebad[i]:
-                linelocs2[i] = self.linelocs1[i]  # don't use the computed value here if it's bad
 
         return linelocs2
 
@@ -1797,13 +1795,6 @@ class Field:
             badlines = np.isnan(linelocs)
             linelocs[badlines] = linelocs_backup[badlines]
 
-        # compute mean adjustment for linelocs1
-        adjs = []
-        for l in range(20, self.linecount - 1):
-            if l not in self.linebad:
-                adjs.append(linelocs_in[l] - self.linelocs1[l])
-        adjmean = np.mean(adjs)
-
         for l in np.where(self.linebad)[0]:
             prevgood = l - 1
             nextgood = l + 1
@@ -1814,14 +1805,12 @@ class Field:
             while nextgood < len(linelocs) and self.linebad[nextgood]:
                 nextgood += 1
 
-            if prevgood > 0 and nextgood <= self.linecount:
+            #print(l, prevgood, nextgood)
+
+            if prevgood >= 0 and nextgood < len(linelocs):
                 gap = (linelocs[nextgood] - linelocs[prevgood]) / (nextgood - prevgood)
                 linelocs[l] = (gap * (l - prevgood)) + linelocs[prevgood]
-            else:
-                linelocs[l] = self.linelocs1[l] + adjmean
-
-            #print(l, prevgood, nextgood, self.linelocs1[l] - self.linelocs1[l - 1], linelocs[l] - linelocs[l-1])
-
+                
         return linelocs
 
     def computewow(self, lineinfo):
@@ -2609,7 +2598,7 @@ class LDdecode:
         # Build a list of each half-line's average
         hlevels = []
 
-        for l in range(2,8):
+        for l in range(1,8):
             lsa = field.lineslice(l, 10, 10)
             lsb = field.lineslice(l, 40, 10)
 
@@ -2619,8 +2608,6 @@ class LDdecode:
             
             hlevels.append(np.median(field.data['video']['demod_05'][lsa]) / adj)
             hlevels.append(np.median(field.data['video']['demod_05'][lsb]) / adj)
-            
-            #print(hlevels[-2:])
 
         # Now group them by level (either sync or ire 0) and return the means of those
         sync_hzs = []
@@ -2726,11 +2713,7 @@ class LDdecode:
                     sync_hz, ire0_hz = self.detectLevels(f)
                     sync_ire_diff = np.abs(self.rf.hztoire(sync_hz) - self.rf.SysParams['vsync_ire'])
 
-                    #print(sync_hz, ire0_hz, sync_ire_diff)
-
-                    diff_to_redo = 2 if self.fields_written else .5
-
-                    if (sync_ire_diff > diff_to_redo) or (np.abs(self.rf.hztoire(ire0_hz)) > diff_to_redo):
+                    if (sync_ire_diff > 2) or (np.abs(self.rf.hztoire(ire0_hz)) > 2):
                         redo = True
 
                         self.rf.SysParams['ire0'] = ire0_hz
