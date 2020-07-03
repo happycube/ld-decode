@@ -2600,37 +2600,29 @@ class LDdecode:
         return np.abs(self.mtf_level - oldmtf) < .05
 
     def detectLevels(self, field):
-        # Returns sync level and ire0 level of a field, computed from serration pulses
+        # Returns sync level and ire0 level of a field, computed from HSYNC areas
+
+        sync_hzs = []
+        ire0_hzs = []
+        
+        for l in range(12, self.output_lines):
+            lsa = field.lineslice(l, 0.25, 4)
             
-        # Build a list of each half-line's average
-        hlevels = []
-
-        for l in range(2,8):
-            lsa = field.lineslice(l, 10, 10)
-            lsb = field.lineslice(l, 40, 10)
-
+            begin_ire0 = field.rf.SysParams['colorBurstUS'][1]
+            end_ire0 = field.rf.SysParams['activeVideoUS'][0]
+            lsb = field.lineslice(l, begin_ire0 + .25, end_ire0 - begin_ire0 - .5)
+            
             # compute wow adjustment
             thislinelen = field.linelocs[l + field.lineoffset] - field.linelocs[l + field.lineoffset - 1]
             adj = field.rf.linelen / thislinelen
 
             if inrange(adj, .98, 1.02):
-                hlevels.append(np.median(field.data['video']['demod_05'][lsa]) / adj)
-                hlevels.append(np.median(field.data['video']['demod_05'][lsb]) / adj)
+                sync_hzs.append(np.median(field.data['video']['demod_05'][lsa]) / adj)
+                ire0_hzs.append(np.median(field.data['video']['demod_05'][lsb]) / adj)
 
-            #print(l, thislinelen, adj, hlevels[-2:])            
+        #print(np.median(sync_hzs), np.median(ire0_hzs))
 
-        # Now group them by level (either sync or ire 0) and return the means of those
-        sync_hzs = []
-        ire0_hzs = []
-
-        for hz in hlevels:
-            ire = field.rf.hztoire(hz)
-            if ire < field.rf.SysParams['vsync_ire'] / 2:
-                sync_hzs.append(hz)
-            else:
-                ire0_hzs.append(hz)
-
-        return np.mean(sync_hzs), np.mean(ire0_hzs)
+        return np.median(sync_hzs), np.median(ire0_hzs)
 
     def writeout(self, dataset):
         f, fi, picture, audio, efm = dataset
@@ -2723,7 +2715,7 @@ class LDdecode:
                     sync_hz, ire0_hz = self.detectLevels(f)
                     sync_ire_diff = np.abs(self.rf.hztoire(sync_hz) - self.rf.SysParams['vsync_ire'])
 
-                    #print(ire0_hz, sync_ire_diff)
+                    #print(sync_hz, ire0_hz, sync_ire_diff)
 
                     acceptable_diff = 2 if self.fields_written else .5
 
