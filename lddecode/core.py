@@ -1826,18 +1826,10 @@ class Field:
         for l in range(0, len(wow)-1):
             wow[l] = (lineinfo[l + 1] - lineinfo[l]) / self.inlinelen
 
+        for l in range(self.lineoffset, self.lineoffset + 10):
+            wow[l] = np.median(wow[l:l+4])
+
         return wow
-
-        # early work on issue 37, hits a FutureWarning in scipy
-
-        # apply a simple 5-tap filter to the wowfactor
-        #filt = (0.1, 0.2, 0.4, 0.2, 0.1)
-        # do not use the first or last lines, which are often inaccurate...
-        #wf_filter = sps.lfilter(filt, (1.0), wow[1:-1])
-
-        # copy the valid new wowfactors (drop the first few lines since they were 0...)
-        #wf2 = copy.copy(wow)
-        #wf2[4:-3] = wf_filter[5:]
 
     def downscale(self, lineinfo = None, linesout = None, outwidth = None, channel='demod', audio = 0):
         if lineinfo is None:
