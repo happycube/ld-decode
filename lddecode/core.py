@@ -1746,11 +1746,9 @@ class Field:
                 self.linebad[i] = True
                 continue
                         
-            # Find beginning of hsync (linelocs1 is generally in the middle)
-            ll1 = self.linelocs1[i] - self.usectoinpx(5.5)
-            #logging.info(i, ll1)
-            #print(i, ll1, len(self.data['video']['demod_05']))
-            zc = calczc(self.data['video']['demod_05'], ll1, self.rf.iretohz(self.rf.SysParams['vsync_ire'] / 2), reverse=False, count=400)
+            # refine beginning of hsync
+            ll1 = self.linelocs1[i] - 2
+            zc = calczc(self.data['video']['demod_05'], ll1, self.rf.iretohz(self.rf.SysParams['vsync_ire'] / 2), reverse=False, count=4)
 
             if zc is not None and not self.linebad[i]:
                 linelocs2[i] = zc 
