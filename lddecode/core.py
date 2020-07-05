@@ -1575,7 +1575,7 @@ class Field:
         # and we need to reject anything too far in (which could be the *next* vsync)
         limit = 100 if self.prevfield is not None else None
         line0loc_local, isFirstField_local, firstblank_local = self.processVBlank(validpulses, 0, limit)
-        #print('aa', self.prevfield, self.data['startloc'], line0loc_local, limit)
+#        print('aa', self.prevfield, self.data['startloc'], line0loc_local, limit)
 
         line0loc_next, isNotFirstField_next = None, None
 
@@ -1595,17 +1595,25 @@ class Field:
             except:
                 pass
 
-        #print('locs:', line0loc_local, line0loc_prev, line0loc_next)
+        if line0loc_next is not None:
+            meanlinelen = self.computeLineLen(validpulses)
+            fieldlen = (meanlinelen * self.rf.SysParams['field_lines'][0 if isFirstField_next else 1])
+            line0loc_next = int(np.round(line0loc_next - fieldlen))
+
+#            print('corrected: ', line0loc_next)
+
+        if line0loc_local is not None and line0loc_next is not None and line0loc_prev is not None:
+            isFirstField_all = (isFirstField_local + isFirstField_prev + isFirstField_next) > 2
+            return np.median([line0loc_local, line0loc_next, line0loc_prev]), isFirstField_all
+
+#        print('locs:', line0loc_local, line0loc_prev, line0loc_next)
+#        print(isFirstField_local, isFirstField_prev, isFirstField_next)
 
         if line0loc_local is not None:
             return line0loc_local, isFirstField_local
         elif line0loc_prev is not None:
             return line0loc_prev, isFirstField_prev
         elif line0loc_next is not None:
-            meanlinelen = self.computeLineLen(validpulses)
-            fieldlen = (meanlinelen * self.rf.SysParams['field_lines'][0 if isFirstField_next else 1])
-            line0loc_next = int(np.round(line0loc_next - fieldlen))
-
             return line0loc_next, isFirstField_next
         else:
             # Failed to find anything useful - the caller is expected to skip ahead and try again
