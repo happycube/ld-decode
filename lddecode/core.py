@@ -1185,7 +1185,7 @@ class Field:
         self.data = decode
         self.initphase = initphase # used for seeking or first field
 
-        prevfield = None
+        #prevfield = None
         self.prevfield = prevfield
 
         # XXX: need a better way to prevent memory leaks than this
@@ -1327,8 +1327,14 @@ class Field:
         validpulses = []
 
         vsync_start = None
+
         earliest_eq = 0
         earliest_hsync = 0
+
+        # state_end tracks the earliest expected phase transition...
+        state_end = 0
+        # ... and state length is set by the phase transition to set above (in H)
+        state_length = None
 
         # state order: HSYNC -> EQPUL1 -> VSYNC -> EQPUL2 -> HSYNC
 
@@ -1347,6 +1353,7 @@ class Field:
                     spulse = (HSYNC, p)
                 elif p.start > earliest_eq and inrange(p.len, eq_min, eq_max):
                     spulse = (EQPL1, p)
+                    state_length = self.rf.SysParams['numPulses'] / 2
                 elif p.start > earliest_eq and inrange(p.len, vsync_min, vsync_max):
                     vsync_start = len(validpulses)-1
                     spulse = (VSYNC, p)
@@ -1357,6 +1364,7 @@ class Field:
                     # len(validpulses)-1 before appending adds index to first VSYNC pulse
                     vsync_start = len(validpulses)-1
                     spulse = (VSYNC, p)
+                    state_length = self.rf.SysParams['numPulses'] / 2
                 elif inrange(p.len, hsync_min, hsync_max):
                     # previous state transition was likely in error!
                     spulse = (HSYNC, p)
@@ -1365,9 +1373,10 @@ class Field:
                     # len(validpulses)-1 before appending adds index to first EQ pulse
                     vsyncs.append((vsync_start, len(validpulses)-1))
                     spulse = (EQPL2, p)
+                    state_length = self.rf.SysParams['numPulses'] / 2
                 elif inrange(p.len, vsync_min, vsync_max):
                     spulse = (VSYNC, p)
-                elif p.start > earliest_hsync and inrange(p.len, hsync_min, hsync_max):
+                elif p.start > state_end and inrange(p.len, hsync_min, hsync_max):
                     spulse = (HSYNC, p)
                     earliest_eq = p.start + (self.inlinelen * (np.min(self.rf.SysParams['field_lines']) - 10))
             elif state == EQPL2:
@@ -1376,9 +1385,20 @@ class Field:
                 elif inrange(p.len, hsync_min, hsync_max):
                     spulse = (HSYNC, p)
                     earliest_eq = p.start + (self.inlinelen * (np.min(self.rf.SysParams['field_lines']) - 10))
+                    state_length = np.min(self.rf.SysParams['field_lines']) - 10
+
+#            if p.start < 2532 * 20:
+            #print(p, state, spulse, state_end)
 
             if vsync_start is not None and earliest_hsync == 0:
                 earliest_hsync = validpulses[vsync_start][1].start + (self.rf.SysParams['numPulses'] * self.inlinelen)
+
+            if spulse is not None and spulse[0] != state:
+                if spulse[1].start < state_end:
+                    spulse = None
+                elif state_length:
+                    state_end = spulse[1].start + ((state_length - .1) * self.inlinelen)
+                    state_length = None
 
             # Quality check
             if spulse is not None and len(validpulses) >= 1:
@@ -1426,7 +1446,7 @@ class Field:
         
         return core
 
-    def processVBlank(self, validpulses, start):
+    def processVBlank(self, validpulses, start, limit = 200):
 
         firstblank, lastblank = self.getblankrange(validpulses, start)
 
@@ -1435,7 +1455,7 @@ class Field:
         it can be used to determine where line 0 is...
         '''
         # locations of lines before after/vblank.  may not be line 0 etc
-        if firstblank is None:
+        if firstblank is None or firstblank > (start + limit):
             return None, None
 
         loc_presync = validpulses[firstblank-1][1].start
@@ -1548,37 +1568,36 @@ class Field:
     # the previous field.
 
     def getLine0(self, validpulses):
-        line0loc, isFirstField = self.processVBlank(validpulses, 0)
-        
-        if line0loc is not None and self.sync_confidence == 100:
-            return line0loc, isFirstField
+        # Gather the local line 0 location and projected from the previous field        
+        line0loc_local, isFirstField_local = self.processVBlank(validpulses, 0)
 
-        # If there isn't a valid transition in the first field's hsync, try the next
-        line0loc_next, isNotFirstField = self.processVBlank(validpulses, 100)
+        # Get the 'next' field
+        line0loc_next, isNotFirstField_next = self.processVBlank(validpulses, 100)
+        isFirstField_next = not isNotFirstField_next
 
-        if line0loc_next is None:
+        line0loc_prev, isFirstField_prev = None, None
+
+        if self.prevfield is not None:
             try:
-                if self.prevfield is not None:
-                    if self.initphase == False:
-                        logging.warning("Severe VSYNC-area corruption detected.")
-                    self.sync_confidence = 10
-                    return self.prevfield.linelocs[self.prevfield.outlinecount - 1] - self.prevfield.nextfieldoffset, not self.prevfield.isFirstField
+                frameoffset = self.data['startloc'] - self.prevfield.data['startloc']
+
+                line0loc_prev = self.prevfield.linelocs[self.prevfield.linecount] - frameoffset
+                isFirstField_prev = not self.prevfield.isFirstField
             except:
-                # If the previous field is corrupt, something may fail up there
                 pass
 
-            if line0loc is None and self.initphase == False:
-                logging.error("Extreme VSYNC-area corruption detected, dropping field")
+        #print('locs:', line0loc_local, line0loc_prev, line0loc_next)
 
-            return line0loc, isFirstField
+        if line0loc_local is not None:
+            return line0loc_local, isFirstField_local
+        elif line0loc_prev is not None:
+            return line0loc_prev, isFirstField_prev
+        else:
+            meanlinelen = self.computeLineLen(validpulses)
+            fieldlen = (meanlinelen * self.rf.SysParams['field_lines'][0 if isFirstField_next else 1])
+            line0loc_next = int(np.round(line0loc_next - fieldlen))
 
-        isFirstField = not isNotFirstField
-
-        meanlinelen = self.computeLineLen(validpulses)
-        fieldlen = (meanlinelen * self.rf.SysParams['field_lines'][0 if isFirstField else 1])
-        line0loc = int(np.round(line0loc_next - fieldlen))
-
-        return line0loc, isFirstField        
+            return line0loc_next, isFirstField_next
 
     def getpulses(self):
         # pass one using standard levels 
@@ -1642,6 +1661,7 @@ class Field:
         self.rawpulses = self.getpulses()
         if self.rawpulses is None or len(self.rawpulses) == 0:
             logging.error("Unable to find any sync pulses, jumping one second")
+            print("Unable to find any sync pulses, jumping one second")
             return None, None, int(self.rf.freq_hz)
 
         self.validpulses = validpulses = self.refinepulses(self.rawpulses)
@@ -1845,7 +1865,6 @@ class Field:
         for l in range(lineoffset, linesout + lineoffset):
             if lineinfo[l + 1] > lineinfo[l]:
                 scaled = scale(self.data['video'][channel], lineinfo[l], lineinfo[l + 1], outwidth, self.wowfactor[l])
-#                scaled *= self.wowfactor[l]
 
                 dsout[(l - lineoffset) * outwidth:(l + 1 - lineoffset)*outwidth] = scaled
             else:
@@ -2648,11 +2667,12 @@ class LDdecode:
         self.indata = self.rawdecode['input']
 
         f = self.FieldClass(self.rf, self.rawdecode, audio_offset = self.audio_offset, prevfield = self.curfield, initphase = initphase)
+
         try:
             f.process()
-            self.curfield = f
         except Exception as e:
             # XXX: Get better diagnostics for this
+            raise e
             self.internalerrors.append(e)
             if len(self.internalerrors) == 3:
                 logging.info("Three internal errors seen, aborting")
@@ -2665,6 +2685,8 @@ class LDdecode:
             logging.info("Bad data - jumping one second")
             return f, f.nextfieldoffset
             
+        self.curfield = f
+
         return f, f.nextfieldoffset - (self.readloc - self.rawdecode['startloc'])
 
     def readfield(self, initphase = False):
@@ -2976,7 +2998,7 @@ class LDdecode:
             if prevfi:
                 if not ((fi['fieldPhaseID'] == 1 and prevfi['fieldPhaseID'] == 4) or
                         (fi['fieldPhaseID'] == prevfi['fieldPhaseID'] + 1)):
-                    logging.warning('NTSC field phaseID sequence mismatch (player may be paused)')
+                    logging.warning('NTSC field phaseID sequence mismatch ({0}->{1}) (player may be paused)'.format(prevfi['fieldPhaseID'], fi['fieldPhaseID']))
                     decodeFaults |= 2
 
         if prevfi is not None and prevfi['isFirstField'] == fi['isFirstField']:
