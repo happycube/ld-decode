@@ -1446,7 +1446,7 @@ class Field:
         
         return core
 
-    def processVBlank(self, validpulses, start, limit = 200):
+    def processVBlank(self, validpulses, start, limit = None):
 
         firstblank, lastblank = self.getblankrange(validpulses, start)
 
@@ -1455,8 +1455,9 @@ class Field:
         it can be used to determine where line 0 is...
         '''
         # locations of lines before after/vblank.  may not be line 0 etc
-        if firstblank is None or firstblank > (start + limit):
-            return None, None
+        lastvalid = len(validpulses) if limit is None else start + limit
+        if firstblank is None or firstblank > lastvalid:
+            return None, None, None
 
         loc_presync = validpulses[firstblank-1][1].start
 
@@ -1511,7 +1512,7 @@ class Field:
             eqgap = self.rf.SysParams['firstFieldH'][isfirstfield]
             line0 = firstloc - ((eqgap + distfroml1) * self.inlinelen)
 
-            return np.int(line0), isfirstfield
+            return np.int(line0), isfirstfield, firstblank
 
         '''
         If there are no valid sections, check line 0 and the first eq pulse, and the last eq
@@ -1531,13 +1532,13 @@ class Field:
                 isfirstfield = inrange((gap1 / self.inlinelen), 0.95, 1.05)
             else:
                 self.sync_confidence = 0
-                return None, None
+                return None, None, None
 
-            return validpulses[firstblank - 1][1].start, isfirstfield
+            return validpulses[firstblank - 1][1].start, isfirstfield, firstblank
 
         self.sync_confidence = 0
                 
-        return None, None
+        return None, None, None
 
     def computeLineLen(self, validpulses):
         # determine longest run of 0's
@@ -1569,11 +1570,19 @@ class Field:
 
     def getLine0(self, validpulses):
         # Gather the local line 0 location and projected from the previous field        
-        line0loc_local, isFirstField_local = self.processVBlank(validpulses, 0)
+        
+        # If we have a previous field, the first vblank should be close to the beginning,
+        # and we need to reject anything too far in (which could be the *next* vsync)
+        limit = 100 if self.prevfield is not None else None
+        line0loc_local, isFirstField_local, firstblank_local = self.processVBlank(validpulses, 0, limit)
+        #print('aa', self.prevfield, self.data['startloc'], line0loc_local, limit)
 
-        # Get the 'next' field
-        line0loc_next, isNotFirstField_next = self.processVBlank(validpulses, 100)
-        isFirstField_next = not isNotFirstField_next
+        line0loc_next, isNotFirstField_next = None, None
+
+        # Get the 'next' field if possible
+        if line0loc_local is not None:
+            line0loc_next, isNotFirstField_next, firstblank_next = self.processVBlank(validpulses, firstblank_local + 24)
+            isFirstField_next = not isNotFirstField_next
 
         line0loc_prev, isFirstField_prev = None, None
 
@@ -1592,12 +1601,15 @@ class Field:
             return line0loc_local, isFirstField_local
         elif line0loc_prev is not None:
             return line0loc_prev, isFirstField_prev
-        else:
+        elif line0loc_next is not None:
             meanlinelen = self.computeLineLen(validpulses)
             fieldlen = (meanlinelen * self.rf.SysParams['field_lines'][0 if isFirstField_next else 1])
             line0loc_next = int(np.round(line0loc_next - fieldlen))
 
             return line0loc_next, isFirstField_next
+        else:
+            # Failed to find anything useful - the caller is expected to skip ahead and try again
+            return None, None
 
     def getpulses(self):
         # pass one using standard levels 
@@ -1661,7 +1673,6 @@ class Field:
         self.rawpulses = self.getpulses()
         if self.rawpulses is None or len(self.rawpulses) == 0:
             logging.error("Unable to find any sync pulses, jumping one second")
-            print("Unable to find any sync pulses, jumping one second")
             return None, None, int(self.rf.freq_hz)
 
         self.validpulses = validpulses = self.refinepulses(self.rawpulses)
@@ -1679,7 +1690,7 @@ class Field:
         meanlinelen = self.computeLineLen(validpulses)
 
         if ((self.rawpulses[-1].start - line0loc) / meanlinelen) < (self.outlinecount + 7):
-            return None, None, line0loc - (meanlinelen * 3)
+            return None, None, line0loc - (meanlinelen * 20)
 
         for p in validpulses:
             lineloc = (p[1].start - line0loc) / meanlinelen
@@ -2684,8 +2695,8 @@ class LDdecode:
         if not f.valid:
             logging.info("Bad data - jumping one second")
             return f, f.nextfieldoffset
-            
-        self.curfield = f
+        
+#        print(f, f.nextfieldoffset - (self.readloc - self.rawdecode['startloc']))
 
         return f, f.nextfieldoffset - (self.readloc - self.rawdecode['startloc'])
 
@@ -2694,6 +2705,7 @@ class LDdecode:
         self.prevfield = self.curfield
         done = False
         adjusted = False
+        redo = False
         
         while done == False:
             self.fieldloc = self.fdoffset
@@ -2704,7 +2716,6 @@ class LDdecode:
                     # EOF, probably
                     return None
             
-            self.curfield = f
             self.fdoffset += offset
             
             if f is not None and f.valid:
@@ -2744,6 +2755,8 @@ class LDdecode:
                     self.fdoffset -= offset
                 else:
                     done = True
+
+        self.curfield = f
 
         if f is not None and self.fname_out is not None:
             # Only write a FirstField first
@@ -2904,9 +2917,6 @@ class LDdecode:
         return metrics    
 
     def computeMetrics(self, f, fp = None, verbose = False):
-        if not self.curfield:
-            raise ValueError("No decoded field to work with")
-
         system = f.rf.system
         if self.verboseVITS:
             verbose = True
@@ -3078,6 +3088,8 @@ class LDdecode:
                     self.roughseek(startfield)
                 else:
                     return None, startfield
+            elif not f.valid:
+                self.fdoffset += offset
             else:
                 self.prevfield = self.curfield
                 self.curfield = f
@@ -3094,6 +3106,11 @@ class LDdecode:
                     elif fnum is not None:
                         rawloc = np.floor((self.readloc / self.bytes_per_field) / 2)
                         logging.info('seeking: file loc %d frame # %d', rawloc, fnum)
+
+                        # Clear field memory on seeks
+                        self.prevfield = None
+                        self.curfield = None
+
                         return fnum, startfield
         
         return None, None
