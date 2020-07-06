@@ -1449,6 +1449,7 @@ class Field:
     def processVBlank(self, validpulses, start, limit = None):
 
         firstblank, lastblank = self.getblankrange(validpulses, start)
+        conf = 100
 
         ''' 
         First Look at each equalization/vblank pulse section - if the expected # are there and valid,
@@ -1457,7 +1458,7 @@ class Field:
         # locations of lines before after/vblank.  may not be line 0 etc
         lastvalid = len(validpulses) if limit is None else start + limit
         if firstblank is None or firstblank > lastvalid:
-            return None, None, None
+            return None, None, None, None
 
         loc_presync = validpulses[firstblank-1][1].start
 
@@ -1512,7 +1513,7 @@ class Field:
             eqgap = self.rf.SysParams['firstFieldH'][isfirstfield]
             line0 = firstloc - ((eqgap + distfroml1) * self.inlinelen)
 
-            return np.int(line0), isfirstfield, firstblank
+            return np.int(line0), isfirstfield, firstblank, conf
 
         '''
         If there are no valid sections, check line 0 and the first eq pulse, and the last eq
@@ -1520,7 +1521,7 @@ class Field:
         (1.5H for NTSC, 1 or 2H for PAL, that means line 0 has been found correctly.
         '''
 
-        self.sync_confidence = 50
+        conf = 50
 
         if validpulses[firstblank - 1][2] and validpulses[firstblank][2] and validpulses[lastblank][2] and validpulses[lastblank + 1][2]:
             gap1 = validpulses[firstblank][1].start - validpulses[firstblank - 1][1].start
@@ -1532,13 +1533,13 @@ class Field:
                 isfirstfield = inrange((gap1 / self.inlinelen), 0.95, 1.05)
             else:
                 self.sync_confidence = 0
-                return None, None, None
+                return None, None, None, 0
 
-            return validpulses[firstblank - 1][1].start, isfirstfield, firstblank
+            return validpulses[firstblank - 1][1].start, isfirstfield, firstblank, conf
 
-        self.sync_confidence = 0
+        conf = 0
                 
-        return None, None, None
+        return None, None, None, 0
 
     def computeLineLen(self, validpulses):
         # determine longest run of 0's
@@ -1574,14 +1575,15 @@ class Field:
         # If we have a previous field, the first vblank should be close to the beginning,
         # and we need to reject anything too far in (which could be the *next* vsync)
         limit = 100 if self.prevfield is not None else None
-        line0loc_local, isFirstField_local, firstblank_local = self.processVBlank(validpulses, 0, limit)
+        line0loc_local, isFirstField_local, firstblank_local, conf_local = self.processVBlank(validpulses, 0, limit)
+        #print(conf_local)
 #        print('aa', self.prevfield, self.data['startloc'], line0loc_local, limit)
 
-        line0loc_next, isNotFirstField_next = None, None
+        line0loc_next, isFirstField_next, conf_next = None, None, None
 
         # Get the 'next' field if possible
         if line0loc_local is not None:
-            line0loc_next, isNotFirstField_next, firstblank_next = self.processVBlank(validpulses, firstblank_local + 24)
+            line0loc_next, isNotFirstField_next, firstblank_next, conf_next = self.processVBlank(validpulses, firstblank_local + 24)
             isFirstField_next = not isNotFirstField_next
 
         line0loc_prev, isFirstField_prev = None, None
@@ -1592,6 +1594,7 @@ class Field:
 
                 line0loc_prev = self.prevfield.linelocs[self.prevfield.linecount] - frameoffset
                 isFirstField_prev = not self.prevfield.isFirstField
+                conf_prev = self.prevfield.sync_confidence
             except:
                 pass
 
@@ -1603,17 +1606,24 @@ class Field:
 #            print('corrected: ', line0loc_next)
 
         if line0loc_local is not None and line0loc_next is not None and line0loc_prev is not None:
-            isFirstField_all = (isFirstField_local + isFirstField_prev + isFirstField_next) > 2
+            isFirstField_all = (isFirstField_local + isFirstField_prev + isFirstField_next) >= 2
+            #print('locs:', line0loc_local, line0loc_prev, line0loc_next)
+            #print(isFirstField_local, isFirstField_prev, isFirstField_next, isFirstField_local + isFirstField_prev + isFirstField_next)
+            #print('ret', np.median([line0loc_local, line0loc_next, line0loc_prev]), isFirstField_all)
+            self.sync_confidence = 100
             return np.median([line0loc_local, line0loc_next, line0loc_prev]), isFirstField_all
 
-#        print('locs:', line0loc_local, line0loc_prev, line0loc_next)
-#        print(isFirstField_local, isFirstField_prev, isFirstField_next)
+        #print('locs:', line0loc_local, line0loc_prev, line0loc_next)
+        #print(isFirstField_local, isFirstField_prev, isFirstField_next)
 
-        if line0loc_local is not None:
+        if line0loc_local is not None and conf_local > 50:
+            self.sync_confidence = 90
             return line0loc_local, isFirstField_local
         elif line0loc_prev is not None:
+            self.sync_confidence = np.max(conf_prev - 10, 0)
             return line0loc_prev, isFirstField_prev
         elif line0loc_next is not None:
+            self.sync_confidence = conf_next
             return line0loc_next, isFirstField_next
         else:
             # Failed to find anything useful - the caller is expected to skip ahead and try again
@@ -2425,20 +2435,26 @@ class FieldNTSC(Field):
 
         try:
             adjs_median = np.median([adjs[a] for a in adjs])
-            
+            lastvalid_adj = None
+
             for l in range(0, 266):
                 if l in adjs and inrange(adjs[l] - adjs_median, -2, 2):
                     linelocs_adj[l] += adjs[l]
+                    lastvalid_adj = adjs[l]
                 else:
-                    linelocs_adj[l] += adjs_median
-                    if l >= 20:
+                    linelocs_adj[l] += lastvalid_adj if lastvalid_adj is not None else adjs_median
+                    # Note Jul 6 2020 - disabled because at least sometimes doing below can add vroop
+                    #if l >= 20:
                         # issue #217: if possible keep some line data even if burst is bad 
-                        self.linebad[l] = True
+                        #self.linebad[l] = True
+
+                gap = (linelocs_adj[l] - linelocs_adj[l - 1]) if l else None
 
             if self.isFirstField:
                 self.fieldPhaseID = 1 if field14 else 3
             else:
                 self.fieldPhaseID = 4 if field14 else 2
+
         except:
             self.fieldPhaseID=1
             return linelocs_adj, burstlevel
