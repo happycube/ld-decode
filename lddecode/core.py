@@ -1796,8 +1796,8 @@ class Field:
                 continue
                         
             # refine beginning of hsync
-            ll1 = self.linelocs1[i] - 2
-            zc = calczc(self.data['video']['demod_05'], ll1, self.rf.iretohz(self.rf.SysParams['vsync_ire'] / 2), reverse=False, count=4)
+            ll1 = self.linelocs1[i] - self.rf.freq
+            zc = calczc(self.data['video']['demod_05'], ll1, self.rf.iretohz(self.rf.SysParams['vsync_ire'] / 2), reverse=False, count=self.rf.freq*2)
 
             if zc is not None and not self.linebad[i]:
                 linelocs2[i] = zc 
