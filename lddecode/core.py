@@ -55,6 +55,9 @@ def calclinelen(SP, mult, mhz):
         
     return int(np.round(SP['line_period'] * mhz * mult)) 
 
+# states for first field of validpulses (second field is pulse #)
+HSYNC, EQPL1, VSYNC, EQPL2 = range(4)
+
 # These are invariant parameters for PAL and NTSC
 SysParams_NTSC = {
     'fsc_mhz': (315.0 / 88.0),
@@ -583,10 +586,7 @@ class RFDecode:
         else:
             raise Exception("demodblock called without raw or FFT data")
 
-        try:
-            rotdelay = self.delays['video_rot']
-        except:
-            rotdelay = 0
+        rotdelay = self.delays['video_rot'] if 'video_rot' in self.delays else 0
 
         rv['rfhpf'] = npfft.ifft(indata_fft * self.Filters['Frfhpf']).real
         rv['rfhpf'] = rv['rfhpf'][self.blockcut-rotdelay:-self.blockcut_end-rotdelay]
@@ -1127,6 +1127,7 @@ def downscale_audio(audio, lineinfo, rf, linecount, timeoffset = 0, freq = 48000
     
     for i, t in enumerate(arange):
         linenum = (((t * 1000000) / rf.SysParams['line_period']) + 1)
+        intlinenum = int(linenum)
         
         # XXX: 
         # The timing handling can sometimes go outside the bounds of the known line #'s.  
@@ -1134,14 +1135,12 @@ def downscale_audio(audio, lineinfo, rf, linecount, timeoffset = 0, freq = 48000
         if linenum < 0:
             lineloc_cur = int(lineinfo[0] + (rf.linelen * linenum))
             lineloc_next = lineloc_cur + rf.linelen
+        elif len(lineinfo) > linenum + 2:
+            lineloc_cur, lineloc_next = lineinfo[intlinenum:intlinenum + 2]
         else:
-            try:
-                lineloc_cur = lineinfo[np.int(linenum)]
-                lineloc_next = lineinfo[np.int(linenum) + 1]
-            except:
-                # Catch things that go past the last known line by using the last lines here.
-                lineloc_cur = lineinfo[-2]
-                lineloc_next = lineloc_cur + rf.linelen
+            # Catch things that go past the last known line by using the last lines here.
+            lineloc_cur = lineinfo[-2]
+            lineloc_next = lineloc_cur + rf.linelen
 
         sampleloc = lineloc_cur
         sampleloc += (lineloc_next - lineloc_cur) * (linenum - np.floor(linenum))
@@ -1158,7 +1157,7 @@ def downscale_audio(audio, lineinfo, rf, linecount, timeoffset = 0, freq = 48000
     output16 = np.zeros((2 * (len(arange) - 1)), dtype=np.int16)
 
     for i in range(len(arange) - 1):
-        try:
+        if len(audio['audio_left']) > np.int(locs[i + 1]):
             output_left = nb_mean(audio['audio_left'][np.int(locs[i]):np.int(locs[i+1])])
             output_right = nb_mean(audio['audio_right'][np.int(locs[i]):np.int(locs[i+1])])
 
@@ -1167,7 +1166,7 @@ def downscale_audio(audio, lineinfo, rf, linecount, timeoffset = 0, freq = 48000
             
             output[(i * 2) + 0] = dsa_rescale(output_left) #int(np.round(output_left * 32767 / 150000))
             output[(i * 2) + 1] = dsa_rescale(output_right)
-        except:
+        else:
             # TBC failure can cause this (issue #389)
             if failed == False:
                 logging.warning("Analog audio processing error, muting samples")
@@ -1318,9 +1317,6 @@ class Field:
         # Pulse validator routine.  Removes sync pulses of invalid lengths, does not 
         # fill missing ones.
 
-        # states for first field of validpulses (second field is pulse #)
-        HSYNC, EQPL1, VSYNC, EQPL2 = range(4)
-
         vsyncs = [] # VSYNC area (first broad pulse->first EQ after broad pulses)
 
         inorder = False
@@ -1421,17 +1417,24 @@ class Field:
     def getblankrange(self, vpulses, start = 0):
         vp_type = np.array([p[0] for p in vpulses])
 
-        try:
-            firstvsync = np.where(vp_type[start:] == 2)[0][0] + start
-            
-            for newstart in range(firstvsync - 10, firstvsync - 4):
-                firstblank = np.where(vp_type[newstart:] > 0)[0][0] + newstart
-                lastblank = np.where(vp_type[firstblank:] == 0)[0][0] + firstblank - 1
-                
-                if (lastblank - firstblank) > 12:
-                    return firstblank, lastblank
-        except:
-            pass
+        vp_vsyncs = np.where(vp_type[start:] == VSYNC)[0]
+        firstvsync = vp_vsyncs[0] + start if len(vp_vsyncs) else None
+
+        if firstvsync is None or firstvsync < 10:
+            return None, None
+
+        for newstart in range(firstvsync - 10, firstvsync - 4):
+            blank_locs = np.where(vp_type[newstart:] > 0)[0]
+            hsync_locs = np.where(vp_type[firstblank:] == 0)[0]
+
+            if len(blank_locs) == 0 or len(hsync_locs) == 0:
+                continue
+
+            firstblank = blank_locs[0] + newstart
+            lastblank = hsync_locs[0] + firstblank - 1
+
+            if (lastblank - firstblank) > 12:
+                return firstblank, lastblank
         
         # there isn't a valid range to find, or it's impossibly short
         return None, None
@@ -1576,8 +1579,6 @@ class Field:
         # and we need to reject anything too far in (which could be the *next* vsync)
         limit = 100 if self.prevfield is not None else None
         line0loc_local, isFirstField_local, firstblank_local, conf_local = self.processVBlank(validpulses, 0, limit)
-        #print(conf_local)
-#        print('aa', self.prevfield, self.data['startloc'], line0loc_local, limit)
 
         line0loc_next, isFirstField_next, conf_next = None, None, None
 
@@ -1588,33 +1589,22 @@ class Field:
 
         line0loc_prev, isFirstField_prev = None, None
 
-        if self.prevfield is not None:
-            try:
-                frameoffset = self.data['startloc'] - self.prevfield.data['startloc']
+        if self.prevfield is not None and self.prevfield.valid:
+            frameoffset = self.data['startloc'] - self.prevfield.data['startloc']
 
-                line0loc_prev = self.prevfield.linelocs[self.prevfield.linecount] - frameoffset
-                isFirstField_prev = not self.prevfield.isFirstField
-                conf_prev = self.prevfield.sync_confidence
-            except:
-                pass
+            line0loc_prev = self.prevfield.linelocs[self.prevfield.linecount] - frameoffset
+            isFirstField_prev = not self.prevfield.isFirstField
+            conf_prev = self.prevfield.sync_confidence
 
         if line0loc_next is not None:
             meanlinelen = self.computeLineLen(validpulses)
             fieldlen = (meanlinelen * self.rf.SysParams['field_lines'][0 if isFirstField_next else 1])
             line0loc_next = int(np.round(line0loc_next - fieldlen))
 
-#            print('corrected: ', line0loc_next)
-
         if line0loc_local is not None and line0loc_next is not None and line0loc_prev is not None:
             isFirstField_all = (isFirstField_local + isFirstField_prev + isFirstField_next) >= 2
-            #print('locs:', line0loc_local, line0loc_prev, line0loc_next)
-            #print(isFirstField_local, isFirstField_prev, isFirstField_next, isFirstField_local + isFirstField_prev + isFirstField_next)
-            #print('ret', np.median([line0loc_local, line0loc_next, line0loc_prev]), isFirstField_all)
             self.sync_confidence = 100
             return np.median([line0loc_local, line0loc_next, line0loc_prev]), isFirstField_all
-
-        #print('locs:', line0loc_local, line0loc_prev, line0loc_next)
-        #print(isFirstField_local, isFirstField_prev, isFirstField_next)
 
         if line0loc_local is not None and conf_local > 50:
             self.sync_confidence = 90
@@ -2114,19 +2104,17 @@ class FieldPAL(Field):
 
             peakloc = np.argmax(np.abs(pilots))
 
-            try:
-                zc = (calczc(pilots, peakloc, 0) - lsoffset) / plen[l]
-            except:
+            zc_base = calczc(pilots, peakloc, 0)
+            if zc_base is not None:
+                zc = (zc_base - lsoffset) / plen[l]
+            else:
                 zc = zcs[-1] if len(zcs) else 0
                 
             zcs.append(zc)
 
         am = angular_mean(zcs)
 
-        #print(am, np.std(zcs - np.floor(zcs)))
-
         for l in range(0, 312):
-            #print(l, phase_distance(zcs[l], am))
             linelocs[l] += (phase_distance(zcs[l], am) * plen[l]) * 1
 
         return np.array(linelocs)
@@ -2433,7 +2421,7 @@ class FieldNTSC(Field):
 
                 adjs[l] = -(nb_median(zc_bursts[l][edge]) * lfreq * (1 / self.rf.SysParams['fsc_mhz']))
 
-        try:
+        if len(adjs.keys()):
             adjs_median = np.median([adjs[a] for a in adjs])
             lastvalid_adj = None
 
@@ -2443,19 +2431,13 @@ class FieldNTSC(Field):
                     lastvalid_adj = adjs[l]
                 else:
                     linelocs_adj[l] += lastvalid_adj if lastvalid_adj is not None else adjs_median
-                    # Note Jul 6 2020 - disabled because at least sometimes doing below can add vroop
-                    #if l >= 20:
-                        # issue #217: if possible keep some line data even if burst is bad 
-                        #self.linebad[l] = True
-
-                gap = (linelocs_adj[l] - linelocs_adj[l - 1]) if l else None
 
             if self.isFirstField:
                 self.fieldPhaseID = 1 if field14 else 3
             else:
                 self.fieldPhaseID = 4 if field14 else 2
 
-        except:
+        else:
             self.fieldPhaseID=1
             return linelocs_adj, burstlevel
 
@@ -2706,8 +2688,6 @@ class LDdecode:
         try:
             f.process()
         except Exception as e:
-            # XXX: Get better diagnostics for this
-            raise e
             self.internalerrors.append(e)
             if len(self.internalerrors) == 3:
                 logging.info("Three internal errors seen, aborting")
