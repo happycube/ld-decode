@@ -586,7 +586,9 @@ class RFDecode:
         else:
             raise Exception("demodblock called without raw or FFT data")
 
-        rotdelay = self.delays['video_rot'] if 'video_rot' in self.delays else 0
+        rotdelay = 0
+        if getattr(self, 'delays', None) is not None and 'video_rot' in self.delays:
+            rotdelay = self.delays['video_rot']
 
         rv['rfhpf'] = npfft.ifft(indata_fft * self.Filters['Frfhpf']).real
         rv['rfhpf'] = rv['rfhpf'][self.blockcut-rotdelay:-self.blockcut_end-rotdelay]
@@ -1425,12 +1427,15 @@ class Field:
 
         for newstart in range(firstvsync - 10, firstvsync - 4):
             blank_locs = np.where(vp_type[newstart:] > 0)[0]
-            hsync_locs = np.where(vp_type[firstblank:] == 0)[0]
-
-            if len(blank_locs) == 0 or len(hsync_locs) == 0:
+            if len(blank_locs) == 0:
                 continue
 
             firstblank = blank_locs[0] + newstart
+            hsync_locs = np.where(vp_type[firstblank:] == 0)[0]
+
+            if len(hsync_locs) == 0:
+                continue
+
             lastblank = hsync_locs[0] + firstblank - 1
 
             if (lastblank - firstblank) > 12:
@@ -2687,11 +2692,15 @@ class LDdecode:
 
         try:
             f.process()
+        except (KeyboardInterrupt, SystemExit):
+            raise
         except Exception as e:
+            raise e
             self.internalerrors.append(e)
             if len(self.internalerrors) == 3:
-                logging.info("Three internal errors seen, aborting")
-                return None, None
+                logging.error("Three internal errors seen, aborting")
+                raise e
+                #return None, None
 
             logging.info("Internal error, jumping ahead")
             return None, self.rf.linelen * 200
@@ -3153,7 +3162,10 @@ class LDdecode:
         vp = {}
 
         vp['numberOfSequentialFields'] = len(self.fieldinfo)
-        
+
+        if f is None:
+            return
+
         vp['isSourcePal'] = True if f.rf.system == 'PAL' else False
 
         vp['fsc'] = int(f.rf.SysParams['fsc_mhz'] * 1000000)
