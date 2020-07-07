@@ -1185,7 +1185,7 @@ class Field:
         self.data = decode
         self.initphase = initphase # used for seeking or first field
 
-        prevfield = None
+        #prevfield = None
         self.prevfield = prevfield
 
         # XXX: need a better way to prevent memory leaks than this
@@ -1327,8 +1327,14 @@ class Field:
         validpulses = []
 
         vsync_start = None
+
         earliest_eq = 0
         earliest_hsync = 0
+
+        # state_end tracks the earliest expected phase transition...
+        state_end = 0
+        # ... and state length is set by the phase transition to set above (in H)
+        state_length = None
 
         # state order: HSYNC -> EQPUL1 -> VSYNC -> EQPUL2 -> HSYNC
 
@@ -1347,6 +1353,7 @@ class Field:
                     spulse = (HSYNC, p)
                 elif p.start > earliest_eq and inrange(p.len, eq_min, eq_max):
                     spulse = (EQPL1, p)
+                    state_length = self.rf.SysParams['numPulses'] / 2
                 elif p.start > earliest_eq and inrange(p.len, vsync_min, vsync_max):
                     vsync_start = len(validpulses)-1
                     spulse = (VSYNC, p)
@@ -1357,6 +1364,7 @@ class Field:
                     # len(validpulses)-1 before appending adds index to first VSYNC pulse
                     vsync_start = len(validpulses)-1
                     spulse = (VSYNC, p)
+                    state_length = self.rf.SysParams['numPulses'] / 2
                 elif inrange(p.len, hsync_min, hsync_max):
                     # previous state transition was likely in error!
                     spulse = (HSYNC, p)
@@ -1365,9 +1373,10 @@ class Field:
                     # len(validpulses)-1 before appending adds index to first EQ pulse
                     vsyncs.append((vsync_start, len(validpulses)-1))
                     spulse = (EQPL2, p)
+                    state_length = self.rf.SysParams['numPulses'] / 2
                 elif inrange(p.len, vsync_min, vsync_max):
                     spulse = (VSYNC, p)
-                elif p.start > earliest_hsync and inrange(p.len, hsync_min, hsync_max):
+                elif p.start > state_end and inrange(p.len, hsync_min, hsync_max):
                     spulse = (HSYNC, p)
                     earliest_eq = p.start + (self.inlinelen * (np.min(self.rf.SysParams['field_lines']) - 10))
             elif state == EQPL2:
@@ -1376,9 +1385,20 @@ class Field:
                 elif inrange(p.len, hsync_min, hsync_max):
                     spulse = (HSYNC, p)
                     earliest_eq = p.start + (self.inlinelen * (np.min(self.rf.SysParams['field_lines']) - 10))
+                    state_length = np.min(self.rf.SysParams['field_lines']) - 10
+
+#            if p.start < 2532 * 20:
+            #print(p, state, spulse, state_end)
 
             if vsync_start is not None and earliest_hsync == 0:
                 earliest_hsync = validpulses[vsync_start][1].start + (self.rf.SysParams['numPulses'] * self.inlinelen)
+
+            if spulse is not None and spulse[0] != state:
+                if spulse[1].start < state_end:
+                    spulse = None
+                elif state_length:
+                    state_end = spulse[1].start + ((state_length - .1) * self.inlinelen)
+                    state_length = None
 
             # Quality check
             if spulse is not None and len(validpulses) >= 1:
@@ -1426,17 +1446,19 @@ class Field:
         
         return core
 
-    def processVBlank(self, validpulses, start):
+    def processVBlank(self, validpulses, start, limit = None):
 
         firstblank, lastblank = self.getblankrange(validpulses, start)
+        conf = 100
 
         ''' 
         First Look at each equalization/vblank pulse section - if the expected # are there and valid,
         it can be used to determine where line 0 is...
         '''
         # locations of lines before after/vblank.  may not be line 0 etc
-        if firstblank is None:
-            return None, None
+        lastvalid = len(validpulses) if limit is None else start + limit
+        if firstblank is None or firstblank > lastvalid:
+            return None, None, None, None
 
         loc_presync = validpulses[firstblank-1][1].start
 
@@ -1491,7 +1513,7 @@ class Field:
             eqgap = self.rf.SysParams['firstFieldH'][isfirstfield]
             line0 = firstloc - ((eqgap + distfroml1) * self.inlinelen)
 
-            return np.int(line0), isfirstfield
+            return np.int(line0), isfirstfield, firstblank, conf
 
         '''
         If there are no valid sections, check line 0 and the first eq pulse, and the last eq
@@ -1499,7 +1521,7 @@ class Field:
         (1.5H for NTSC, 1 or 2H for PAL, that means line 0 has been found correctly.
         '''
 
-        self.sync_confidence = 50
+        conf = 50
 
         if validpulses[firstblank - 1][2] and validpulses[firstblank][2] and validpulses[lastblank][2] and validpulses[lastblank + 1][2]:
             gap1 = validpulses[firstblank][1].start - validpulses[firstblank - 1][1].start
@@ -1511,13 +1533,13 @@ class Field:
                 isfirstfield = inrange((gap1 / self.inlinelen), 0.95, 1.05)
             else:
                 self.sync_confidence = 0
-                return None, None
+                return None, None, None, 0
 
-            return validpulses[firstblank - 1][1].start, isfirstfield
+            return validpulses[firstblank - 1][1].start, isfirstfield, firstblank, conf
 
-        self.sync_confidence = 0
+        conf = 0
                 
-        return None, None
+        return None, None, None, 0
 
     def computeLineLen(self, validpulses):
         # determine longest run of 0's
@@ -1548,37 +1570,64 @@ class Field:
     # the previous field.
 
     def getLine0(self, validpulses):
-        line0loc, isFirstField = self.processVBlank(validpulses, 0)
+        # Gather the local line 0 location and projected from the previous field        
         
-        if line0loc is not None and self.sync_confidence == 100:
-            return line0loc, isFirstField
+        # If we have a previous field, the first vblank should be close to the beginning,
+        # and we need to reject anything too far in (which could be the *next* vsync)
+        limit = 100 if self.prevfield is not None else None
+        line0loc_local, isFirstField_local, firstblank_local, conf_local = self.processVBlank(validpulses, 0, limit)
+        #print(conf_local)
+#        print('aa', self.prevfield, self.data['startloc'], line0loc_local, limit)
 
-        # If there isn't a valid transition in the first field's hsync, try the next
-        line0loc_next, isNotFirstField = self.processVBlank(validpulses, 100)
+        line0loc_next, isFirstField_next, conf_next = None, None, None
 
-        if line0loc_next is None:
+        # Get the 'next' field if possible
+        if line0loc_local is not None:
+            line0loc_next, isNotFirstField_next, firstblank_next, conf_next = self.processVBlank(validpulses, firstblank_local + 24)
+            isFirstField_next = not isNotFirstField_next
+
+        line0loc_prev, isFirstField_prev = None, None
+
+        if self.prevfield is not None:
             try:
-                if self.prevfield is not None:
-                    if self.initphase == False:
-                        logging.warning("Severe VSYNC-area corruption detected.")
-                    self.sync_confidence = 10
-                    return self.prevfield.linelocs[self.prevfield.outlinecount - 1] - self.prevfield.nextfieldoffset, not self.prevfield.isFirstField
+                frameoffset = self.data['startloc'] - self.prevfield.data['startloc']
+
+                line0loc_prev = self.prevfield.linelocs[self.prevfield.linecount] - frameoffset
+                isFirstField_prev = not self.prevfield.isFirstField
+                conf_prev = self.prevfield.sync_confidence
             except:
-                # If the previous field is corrupt, something may fail up there
                 pass
 
-            if line0loc is None and self.initphase == False:
-                logging.error("Extreme VSYNC-area corruption detected, dropping field")
+        if line0loc_next is not None:
+            meanlinelen = self.computeLineLen(validpulses)
+            fieldlen = (meanlinelen * self.rf.SysParams['field_lines'][0 if isFirstField_next else 1])
+            line0loc_next = int(np.round(line0loc_next - fieldlen))
 
-            return line0loc, isFirstField
+#            print('corrected: ', line0loc_next)
 
-        isFirstField = not isNotFirstField
+        if line0loc_local is not None and line0loc_next is not None and line0loc_prev is not None:
+            isFirstField_all = (isFirstField_local + isFirstField_prev + isFirstField_next) >= 2
+            #print('locs:', line0loc_local, line0loc_prev, line0loc_next)
+            #print(isFirstField_local, isFirstField_prev, isFirstField_next, isFirstField_local + isFirstField_prev + isFirstField_next)
+            #print('ret', np.median([line0loc_local, line0loc_next, line0loc_prev]), isFirstField_all)
+            self.sync_confidence = 100
+            return np.median([line0loc_local, line0loc_next, line0loc_prev]), isFirstField_all
 
-        meanlinelen = self.computeLineLen(validpulses)
-        fieldlen = (meanlinelen * self.rf.SysParams['field_lines'][0 if isFirstField else 1])
-        line0loc = int(np.round(line0loc_next - fieldlen))
+        #print('locs:', line0loc_local, line0loc_prev, line0loc_next)
+        #print(isFirstField_local, isFirstField_prev, isFirstField_next)
 
-        return line0loc, isFirstField        
+        if line0loc_local is not None and conf_local > 50:
+            self.sync_confidence = 90
+            return line0loc_local, isFirstField_local
+        elif line0loc_prev is not None:
+            self.sync_confidence = np.max(conf_prev - 10, 0)
+            return line0loc_prev, isFirstField_prev
+        elif line0loc_next is not None:
+            self.sync_confidence = conf_next
+            return line0loc_next, isFirstField_next
+        else:
+            # Failed to find anything useful - the caller is expected to skip ahead and try again
+            return None, None
 
     def getpulses(self):
         # pass one using standard levels 
@@ -1659,7 +1708,7 @@ class Field:
         meanlinelen = self.computeLineLen(validpulses)
 
         if ((self.rawpulses[-1].start - line0loc) / meanlinelen) < (self.outlinecount + 7):
-            return None, None, line0loc - (meanlinelen * 3)
+            return None, None, line0loc - (meanlinelen * 20)
 
         for p in validpulses:
             lineloc = (p[1].start - line0loc) / meanlinelen
@@ -1671,6 +1720,10 @@ class Field:
             # only record if it's closer to the (probable) beginning of the line
             if lineloc_distance > self.rf.hsync_tolerance or (rlineloc in linelocs_dict and lineloc_distance > linelocs_dist[rlineloc]):
                 #print(rlineloc, p, 'reject')
+                continue
+
+            # also skip non-regular lines (p[0]) that don't seem to be in valid order (p[2])
+            if rlineloc > 0 and p[0] > 0 and not p[2]:
                 continue
 
             linelocs_dict[np.round(lineloc)] = p[1].start
@@ -1742,11 +1795,9 @@ class Field:
                 self.linebad[i] = True
                 continue
                         
-            # Find beginning of hsync (linelocs1 is generally in the middle)
-            ll1 = self.linelocs1[i] - self.usectoinpx(5.5)
-            #logging.info(i, ll1)
-            #print(i, ll1, len(self.data['video']['demod_05']))
-            zc = calczc(self.data['video']['demod_05'], ll1, self.rf.iretohz(self.rf.SysParams['vsync_ire'] / 2), reverse=False, count=400)
+            # refine beginning of hsync
+            ll1 = self.linelocs1[i] - self.rf.freq
+            zc = calczc(self.data['video']['demod_05'], ll1, self.rf.iretohz(self.rf.SysParams['vsync_ire'] / 2), reverse=False, count=self.rf.freq*2)
 
             if zc is not None and not self.linebad[i]:
                 linelocs2[i] = zc 
@@ -1822,18 +1873,10 @@ class Field:
         for l in range(0, len(wow)-1):
             wow[l] = (lineinfo[l + 1] - lineinfo[l]) / self.inlinelen
 
+        for l in range(self.lineoffset, self.lineoffset + 10):
+            wow[l] = np.median(wow[l:l+4])
+
         return wow
-
-        # early work on issue 37, hits a FutureWarning in scipy
-
-        # apply a simple 5-tap filter to the wowfactor
-        #filt = (0.1, 0.2, 0.4, 0.2, 0.1)
-        # do not use the first or last lines, which are often inaccurate...
-        #wf_filter = sps.lfilter(filt, (1.0), wow[1:-1])
-
-        # copy the valid new wowfactors (drop the first few lines since they were 0...)
-        #wf2 = copy.copy(wow)
-        #wf2[4:-3] = wf_filter[5:]
 
     def downscale(self, lineinfo = None, linesout = None, outwidth = None, channel='demod', audio = 0):
         if lineinfo is None:
@@ -1851,7 +1894,6 @@ class Field:
         for l in range(lineoffset, linesout + lineoffset):
             if lineinfo[l + 1] > lineinfo[l]:
                 scaled = scale(self.data['video'][channel], lineinfo[l], lineinfo[l + 1], outwidth, self.wowfactor[l])
-#                scaled *= self.wowfactor[l]
 
                 dsout[(l - lineoffset) * outwidth:(l + 1 - lineoffset)*outwidth] = scaled
             else:
@@ -2393,20 +2435,26 @@ class FieldNTSC(Field):
 
         try:
             adjs_median = np.median([adjs[a] for a in adjs])
-            
+            lastvalid_adj = None
+
             for l in range(0, 266):
                 if l in adjs and inrange(adjs[l] - adjs_median, -2, 2):
                     linelocs_adj[l] += adjs[l]
+                    lastvalid_adj = adjs[l]
                 else:
-                    linelocs_adj[l] += adjs_median
-                    if l >= 20:
+                    linelocs_adj[l] += lastvalid_adj if lastvalid_adj is not None else adjs_median
+                    # Note Jul 6 2020 - disabled because at least sometimes doing below can add vroop
+                    #if l >= 20:
                         # issue #217: if possible keep some line data even if burst is bad 
-                        self.linebad[l] = True
+                        #self.linebad[l] = True
+
+                gap = (linelocs_adj[l] - linelocs_adj[l - 1]) if l else None
 
             if self.isFirstField:
                 self.fieldPhaseID = 1 if field14 else 3
             else:
                 self.fieldPhaseID = 4 if field14 else 2
+
         except:
             self.fieldPhaseID=1
             return linelocs_adj, burstlevel
@@ -2596,37 +2644,29 @@ class LDdecode:
         return np.abs(self.mtf_level - oldmtf) < .05
 
     def detectLevels(self, field):
-        # Returns sync level and ire0 level of a field, computed from serration pulses
+        # Returns sync level and ire0 level of a field, computed from HSYNC areas
+
+        sync_hzs = []
+        ire0_hzs = []
+        
+        for l in range(12, self.output_lines):
+            lsa = field.lineslice(l, 0.25, 4)
             
-        # Build a list of each half-line's average
-        hlevels = []
-
-        for l in range(2,8):
-            lsa = field.lineslice(l, 10, 10)
-            lsb = field.lineslice(l, 40, 10)
-
+            begin_ire0 = field.rf.SysParams['colorBurstUS'][1]
+            end_ire0 = field.rf.SysParams['activeVideoUS'][0]
+            lsb = field.lineslice(l, begin_ire0 + .25, end_ire0 - begin_ire0 - .5)
+            
             # compute wow adjustment
             thislinelen = field.linelocs[l + field.lineoffset] - field.linelocs[l + field.lineoffset - 1]
             adj = field.rf.linelen / thislinelen
 
             if inrange(adj, .98, 1.02):
-                hlevels.append(np.median(field.data['video']['demod_05'][lsa]) / adj)
-                hlevels.append(np.median(field.data['video']['demod_05'][lsb]) / adj)
+                sync_hzs.append(np.median(field.data['video']['demod_05'][lsa]) / adj)
+                ire0_hzs.append(np.median(field.data['video']['demod_05'][lsb]) / adj)
 
-            #print(l, thislinelen, adj, hlevels[-2:])            
+        #print(np.median(sync_hzs), np.median(ire0_hzs))
 
-        # Now group them by level (either sync or ire 0) and return the means of those
-        sync_hzs = []
-        ire0_hzs = []
-
-        for hz in hlevels:
-            ire = field.rf.hztoire(hz)
-            if ire < field.rf.SysParams['vsync_ire'] / 2:
-                sync_hzs.append(hz)
-            else:
-                ire0_hzs.append(hz)
-
-        return np.mean(sync_hzs), np.mean(ire0_hzs)
+        return np.median(sync_hzs), np.median(ire0_hzs)
 
     def writeout(self, dataset):
         f, fi, picture, audio, efm = dataset
@@ -2662,11 +2702,12 @@ class LDdecode:
         self.indata = self.rawdecode['input']
 
         f = self.FieldClass(self.rf, self.rawdecode, audio_offset = self.audio_offset, prevfield = self.curfield, initphase = initphase)
+
         try:
             f.process()
-            self.curfield = f
         except Exception as e:
             # XXX: Get better diagnostics for this
+            raise e
             self.internalerrors.append(e)
             if len(self.internalerrors) == 3:
                 logging.info("Three internal errors seen, aborting")
@@ -2678,7 +2719,9 @@ class LDdecode:
         if not f.valid:
             logging.info("Bad data - jumping one second")
             return f, f.nextfieldoffset
-            
+        
+#        print(f, f.nextfieldoffset - (self.readloc - self.rawdecode['startloc']))
+
         return f, f.nextfieldoffset - (self.readloc - self.rawdecode['startloc'])
 
     def readfield(self, initphase = False):
@@ -2686,6 +2729,7 @@ class LDdecode:
         self.prevfield = self.curfield
         done = False
         adjusted = False
+        redo = False
         
         while done == False:
             self.fieldloc = self.fdoffset
@@ -2696,7 +2740,6 @@ class LDdecode:
                     # EOF, probably
                     return None
             
-            self.curfield = f
             self.fdoffset += offset
             
             if f is not None and f.valid:
@@ -2719,7 +2762,7 @@ class LDdecode:
                     sync_hz, ire0_hz = self.detectLevels(f)
                     sync_ire_diff = np.abs(self.rf.hztoire(sync_hz) - self.rf.SysParams['vsync_ire'])
 
-                    #print(ire0_hz, sync_ire_diff)
+                    #print(sync_hz, ire0_hz, sync_ire_diff)
 
                     acceptable_diff = 2 if self.fields_written else .5
 
@@ -2736,6 +2779,8 @@ class LDdecode:
                     self.fdoffset -= offset
                 else:
                     done = True
+
+        self.curfield = f
 
         if f is not None and self.fname_out is not None:
             # Only write a FirstField first
@@ -2896,9 +2941,6 @@ class LDdecode:
         return metrics    
 
     def computeMetrics(self, f, fp = None, verbose = False):
-        if not self.curfield:
-            raise ValueError("No decoded field to work with")
-
         system = f.rf.system
         if self.verboseVITS:
             verbose = True
@@ -2990,7 +3032,7 @@ class LDdecode:
             if prevfi:
                 if not ((fi['fieldPhaseID'] == 1 and prevfi['fieldPhaseID'] == 4) or
                         (fi['fieldPhaseID'] == prevfi['fieldPhaseID'] + 1)):
-                    logging.warning('NTSC field phaseID sequence mismatch (player may be paused)')
+                    logging.warning('NTSC field phaseID sequence mismatch ({0}->{1}) (player may be paused)'.format(prevfi['fieldPhaseID'], fi['fieldPhaseID']))
                     decodeFaults |= 2
 
         if prevfi is not None and prevfi['isFirstField'] == fi['isFirstField']:
@@ -3070,6 +3112,8 @@ class LDdecode:
                     self.roughseek(startfield)
                 else:
                     return None, startfield
+            elif not f.valid:
+                self.fdoffset += offset
             else:
                 self.prevfield = self.curfield
                 self.curfield = f
@@ -3086,6 +3130,11 @@ class LDdecode:
                     elif fnum is not None:
                         rawloc = np.floor((self.readloc / self.bytes_per_field) / 2)
                         logging.info('seeking: file loc %d frame # %d', rawloc, fnum)
+
+                        # Clear field memory on seeks
+                        self.prevfield = None
+                        self.curfield = None
+
                         return fnum, startfield
         
         return None, None
