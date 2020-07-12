@@ -94,32 +94,88 @@ RGBFrame Comb::decodeFrame(const SourceField &firstField, const SourceField &sec
     currentFrameBuffer.firstFieldPhaseID = firstField.field.fieldPhaseID;
     currentFrameBuffer.secondFieldPhaseID = secondField.field.fieldPhaseID;
 
-    // Note: Only 2D processing is currently supported, requests for 3D processing result in the
-    // same output.  This needs to be replaced with a real 3D process
+    // 2D or 3D comb filter processing?
+    if (!configuration.use3D) {
+        // 2D comb filter processing
 
-    // 2D comb filter processing
+        // Perform 1D processing
+        split1D(&currentFrameBuffer);
 
-    // Perform 1D processing
-    split1D(&currentFrameBuffer);
+        // Perform 2D processing
+        split2D(&currentFrameBuffer);
 
-    // Perform 2D processing
-    split2D(&currentFrameBuffer);
+        // Split the IQ values
+        splitIQ(&currentFrameBuffer);
 
-    // Split the IQ values
-    splitIQ(&currentFrameBuffer);
+        // Copy the current frame to a temporary buffer, so operations on the frame do not
+        // alter the original data
+        tempYiqBuffer = currentFrameBuffer.yiqBuffer;
 
-    // Copy the current frame to a temporary buffer, so operations on the frame do not
-    // alter the original data
-    tempYiqBuffer = currentFrameBuffer.yiqBuffer;
+        // Process the copy of the current frame
+        adjustY(&currentFrameBuffer, tempYiqBuffer);
+        if (configuration.colorlpf) filterIQ(currentFrameBuffer.yiqBuffer);
+        doYNR(tempYiqBuffer);
+        doCNR(tempYiqBuffer);
 
-    // Process the copy of the current frame
-    adjustY(&currentFrameBuffer, tempYiqBuffer);
-    if (configuration.colorlpf) filterIQ(currentFrameBuffer.yiqBuffer);
-    doYNR(tempYiqBuffer);
-    doCNR(tempYiqBuffer);
+        // Convert the YIQ result to RGB
+        rgbOutputBuffer = yiqToRgbFrame(tempYiqBuffer);
+    } else {
+        // 3D comb filter processing
 
-    // Convert the YIQ result to RGB
-    rgbOutputBuffer = yiqToRgbFrame(tempYiqBuffer);
+        // Perform 1D processing
+        split1D(&currentFrameBuffer);
+
+        // Perform 2D processing
+        split2D(&currentFrameBuffer);
+
+#if 1
+        // XXX - At present we don't have an implementation of motion detection,
+        // which makes this a non-adaptive 3D decoder: it'll give good results
+        // for still images but garbage for moving images.
+
+        // Pretend no motion is detected, so only the 3D result is used
+        currentFrameBuffer.kValues.resize(910 * 525);
+        currentFrameBuffer.kValues.fill(0.0);
+#else
+        // With motion detection, it would look like this...
+
+        // Split the IQ values (populates Y)
+        splitIQ(&currentFrameBuffer);
+
+        tempYiqBuffer = currentFrameBuffer.yiqBuffer;
+
+        // Process the copy of the current frame (needed for the Y image used by the optical flow)
+        adjustY(&currentFrameBuffer, tempYiqBuffer);
+        if (configuration.colorlpf) filterIQ(currentFrameBuffer.yiqBuffer);
+        doYNR(tempYiqBuffer);
+        doCNR(tempYiqBuffer);
+
+        opticalFlow.denseOpticalFlow(currentFrameBuffer.yiqBuffer, currentFrameBuffer.kValues);
+#endif
+
+        // Perform 3D processing
+        split3D(&currentFrameBuffer, &previousFrameBuffer);
+
+        // Split the IQ values
+        splitIQ(&currentFrameBuffer);
+
+        tempYiqBuffer = currentFrameBuffer.yiqBuffer;
+
+        // Process the copy of the current frame (for final output now flow detection has been performed)
+        adjustY(&currentFrameBuffer, tempYiqBuffer);
+        if (configuration.colorlpf) filterIQ(currentFrameBuffer.yiqBuffer);
+        doYNR(tempYiqBuffer);
+        doCNR(tempYiqBuffer);
+
+        // Convert the YIQ result to RGB
+        rgbOutputBuffer = yiqToRgbFrame(tempYiqBuffer);
+
+        // Overlay the optical flow map if required
+        if (configuration.showOpticalFlowMap) overlayOpticalFlowMap(currentFrameBuffer, rgbOutputBuffer);
+
+        // Store the current frame
+        previousFrameBuffer = currentFrameBuffer;
+    }
 
     // Return the output frame
     return rgbOutputBuffer;
