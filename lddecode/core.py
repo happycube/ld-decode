@@ -1873,7 +1873,7 @@ class Field:
 
         return wow
 
-    def downscale(self, lineinfo = None, linesout = None, outwidth = None, channel='demod', audio = 0):
+    def downscale(self, lineinfo = None, linesout = None, outwidth = None, channel='demod', audio = 0, final=False):
         if lineinfo is None:
             lineinfo = self.linelocs
         if outwidth is None:
@@ -1902,6 +1902,10 @@ class Field:
             self.efmout = self.data['efm'][int(self.linelocs[1]):int(self.linelocs[self.linecount + 1])]
         else:
             self.efmout = None
+
+        if final:
+            dsout = self.hz_to_output(dsout)
+            self.dspicture = dsout
 
         return dsout, self.dsaudio, self.efmout
     
@@ -2135,13 +2139,7 @@ class FieldPAL(Field):
 
     def downscale(self, final = False, *args, **kwargs):
         # For PAL, each field starts with the line containing the first full VSYNC pulse
-        dsout, dsaudio, dsefm = super(FieldPAL, self).downscale(*args, **kwargs)
-        
-        if final:
-            self.dspicture = self.hz_to_output(dsout)
-            return self.dspicture, dsaudio, dsefm
-                    
-        return dsout, dsaudio, dsefm
+        return super(FieldPAL, self).downscale(final=final, *args, **kwargs)
     
     def __init__(self, *args, **kwargs):
         super(FieldPAL, self).__init__(*args, **kwargs)
@@ -2453,14 +2451,8 @@ class FieldNTSC(Field):
             if 'audio' in kwargs:
                 kwargs['audio'] = 0
 
-        dsout, dsaudio, dsefm = super(FieldNTSC, self).downscale(*args, **kwargs)
+        dsout, dsaudio, dsefm = super(FieldNTSC, self).downscale(final=final, *args, **kwargs)
         
-        if final:
-            lines16 = self.hz_to_output(dsout)
-
-            self.dspicture = lines16
-            return lines16, dsaudio, dsefm
-                    
         return dsout, dsaudio, dsefm
     
     def calc_burstmedian(self):
