@@ -81,7 +81,7 @@ RGBFrame Comb::decodeFrame(const SourceField &firstField, const SourceField &sec
     // Allocate RGB output buffer
     RGBFrame rgbOutputBuffer;
 
-    // Interlace the input fields and place in the frame[0]'s raw buffer
+    // Interlace the input fields and place in the frame buffer
     qint32 fieldLine = 0;
     currentFrameBuffer.rawbuffer.clear();
     for (qint32 frameLine = 0; frameLine < frameHeight; frameLine += 2) {
@@ -94,10 +94,10 @@ RGBFrame Comb::decodeFrame(const SourceField &firstField, const SourceField &sec
     currentFrameBuffer.firstFieldPhaseID = firstField.field.fieldPhaseID;
     currentFrameBuffer.secondFieldPhaseID = secondField.field.fieldPhaseID;
 
-    // Perform 1D processing
+    // Extract chroma using 1D filter
     split1D(&currentFrameBuffer);
 
-    // Perform 2D processing
+    // Extract chroma using 2D filter
     split2D(&currentFrameBuffer);
 
     if (configuration.use3D) {
@@ -114,37 +114,47 @@ RGBFrame Comb::decodeFrame(const SourceField &firstField, const SourceField &sec
 #else
         // With motion detection, it would look like this...
 
-        // Split the IQ values (populates Y)
+        // Demodulate chroma giving I/Q
         splitIQ(&currentFrameBuffer);
 
+        // Copy the current frame to a temporary buffer, so operations on the frame do not
+        // alter the original data
         tempYiqBuffer = currentFrameBuffer.yiqBuffer;
 
-        // Process the copy of the current frame (needed for the Y image used by the optical flow)
+        // Extract Y from baseband and I/Q
         adjustY(&currentFrameBuffer, tempYiqBuffer);
+
+        // Post-filter I/Q
         if (configuration.colorlpf) filterIQ(currentFrameBuffer.yiqBuffer);
+
+        // Apply noise reduction
         doYNR(tempYiqBuffer);
         doCNR(tempYiqBuffer);
 
         opticalFlow.denseOpticalFlow(currentFrameBuffer.yiqBuffer, currentFrameBuffer.kValues);
 #endif
 
-        // Perform 3D processing
+        // Extract chroma using 3D filter
         split3D(&currentFrameBuffer, &previousFrameBuffer);
 
-        // Store the current frame
+        // Save the current frame for next time
         previousFrameBuffer = currentFrameBuffer;
     }
 
-    // Split the IQ values
+    // Demodulate chroma giving I/Q
     splitIQ(&currentFrameBuffer);
 
     // Copy the current frame to a temporary buffer, so operations on the frame do not
     // alter the original data
     tempYiqBuffer = currentFrameBuffer.yiqBuffer;
 
-    // Process the copy of the current frame
+    // Extract Y from baseband and I/Q
     adjustY(&currentFrameBuffer, tempYiqBuffer);
+
+    // Post-filter I/Q
     if (configuration.colorlpf) filterIQ(currentFrameBuffer.yiqBuffer);
+
+    // Apply noise reduction
     doYNR(tempYiqBuffer);
     doCNR(tempYiqBuffer);
 
