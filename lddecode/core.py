@@ -1631,8 +1631,8 @@ class Field:
         
         # If we have a previous field, the first vblank should be close to the beginning,
         # and we need to reject anything too far in (which could be the *next* vsync)
-#        limit = 100 if self.prevfield is not None else None
-        line0loc_local, isFirstField_local, firstblank_local, conf_local = self.processVBlank(validpulses, 0)
+        limit = 100 if self.prevfield is not None else None
+        line0loc_local, isFirstField_local, firstblank_local, conf_local = self.processVBlank(validpulses, 0, limit)
 
         line0loc_next, isFirstField_next, conf_next = None, None, None
 
@@ -1646,6 +1646,8 @@ class Field:
                 meanlinelen = self.computeLineLen(validpulses)
                 fieldlen = (meanlinelen * self.rf.SysParams['field_lines'][0 if isFirstField_next else 1])
                 line0loc_next = int(np.round(self.vblank_next - fieldlen))
+        else:
+            self.vblank_next = None
 
         # Use the previous field's end to compute a possible line 0
         line0loc_prev, isFirstField_prev = None, None
@@ -1655,6 +1657,8 @@ class Field:
             line0loc_prev = self.prevfield.linelocs[self.prevfield.linecount] - frameoffset
             isFirstField_prev = not self.prevfield.isFirstField
             conf_prev = self.prevfield.sync_confidence
+
+        #print(line0loc_local, line0loc_prev, line0loc_next)
 
         # Best case - all three line detectors returned something - perform TOOT using median
         if line0loc_local is not None and line0loc_next is not None and line0loc_prev is not None:
@@ -1737,6 +1741,7 @@ class Field:
         self.rawpulses = self.getpulses()
         if self.rawpulses is None or len(self.rawpulses) == 0:
             logging.error("Unable to find any sync pulses, jumping one second")
+            #print('e0')
             return None, None, int(self.rf.freq_hz)
 
         self.validpulses = validpulses = self.refinepulses()
@@ -1749,11 +1754,14 @@ class Field:
             if self.initphase == False:
                 logging.error("Unable to determine start of field - dropping field")
 
+            #print('e1')
+
             return None, None, self.inlinelen * 200
 
         meanlinelen = self.computeLineLen(validpulses)
 
         if ((self.rawpulses[-1].start - line0loc) / meanlinelen) < (self.outlinecount + 7):
+            #print('ea')
             return None, None, line0loc - (meanlinelen * 20)
 
         for p in validpulses:
@@ -1792,12 +1800,14 @@ class Field:
 
             if next_valid is None:
                 #logging.warning(next_valid)
+                #print('eb')
                 return None, None, line0loc + (self.inlinelen * self.outlinecount - 7)
 
             linelocs_filled[0] = linelocs_filled[next_valid] - (next_valid * meanlinelen)
             
             if linelocs_filled[0] < self.inlinelen:
                 #logging.warning(linelocs_filled[0])
+                #print('ec')
                 return None, None, line0loc + (self.inlinelen * self.outlinecount - 7)
 
         for l in range(1, self.outlinecount + 6):
@@ -1833,7 +1843,9 @@ class Field:
         if self.vblank_next is None:
             nextfield = linelocs_filled[self.outlinecount - 7]
         else:
-            nextfield = self.vblank_next - (self.inlinelen * 3)
+            nextfield = self.vblank_next - (self.inlinelen * 8)
+
+        #print('nf', nextfield, self.vblank_next)
 
         return rv_ll, rv_err, nextfield
 
@@ -2743,7 +2755,7 @@ class LDdecode:
         except (KeyboardInterrupt, SystemExit):
             raise
         except Exception as e:
-            #raise e
+            raise e
             self.internalerrors.append(e)
             if len(self.internalerrors) == 3:
                 logging.error("Three internal errors seen, aborting")
