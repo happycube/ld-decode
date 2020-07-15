@@ -125,13 +125,13 @@ RGBFrame Comb::decodeFrame(const SourceField &firstField, const SourceField &sec
         adjustY(&currentFrameBuffer, tempYiqBuffer);
 
         // Post-filter I/Q
-        if (configuration.colorlpf) filterIQ(currentFrameBuffer.yiqBuffer);
+        if (configuration.colorlpf) filterIQ(tempYiqBuffer);
 
         // Apply noise reduction
         doYNR(tempYiqBuffer);
         doCNR(tempYiqBuffer);
 
-        opticalFlow.denseOpticalFlow(currentFrameBuffer.yiqBuffer, currentFrameBuffer.kValues);
+        opticalFlow.denseOpticalFlow(tempYiqBuffer, currentFrameBuffer.kValues);
 #endif
 
         // Extract chroma using 3D filter
@@ -152,7 +152,7 @@ RGBFrame Comb::decodeFrame(const SourceField &firstField, const SourceField &sec
     adjustY(&currentFrameBuffer, tempYiqBuffer);
 
     // Post-filter I/Q
-    if (configuration.colorlpf) filterIQ(currentFrameBuffer.yiqBuffer);
+    if (configuration.colorlpf) filterIQ(tempYiqBuffer);
 
     // Apply noise reduction
     doYNR(tempYiqBuffer);

@@ -47,7 +47,7 @@ public:
     // Comb filter configuration parameters
     struct Configuration {
         double chromaGain = 1.0;
-        bool colorlpf = true;
+        bool colorlpf = false;
         bool colorlpf_hq = true;
         bool whitePoint75 = false;
         bool use3D = false;
