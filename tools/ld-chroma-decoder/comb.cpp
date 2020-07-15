@@ -75,9 +75,6 @@ RGBFrame Comb::decodeFrame(const SourceField &firstField, const SourceField &sec
     FrameBuffer currentFrameBuffer;
     currentFrameBuffer.clpbuffer.resize(3);
 
-    // Allocate the temporary YIQ buffer
-    YiqBuffer tempYiqBuffer;
-
     // Allocate RGB output buffer
     RGBFrame rgbOutputBuffer;
 
@@ -117,21 +114,17 @@ RGBFrame Comb::decodeFrame(const SourceField &firstField, const SourceField &sec
         // Demodulate chroma giving I/Q
         splitIQ(&currentFrameBuffer);
 
-        // Copy the current frame to a temporary buffer, so operations on the frame do not
-        // alter the original data
-        tempYiqBuffer = currentFrameBuffer.yiqBuffer;
-
         // Extract Y from baseband and I/Q
-        adjustY(&currentFrameBuffer, tempYiqBuffer);
+        adjustY(&currentFrameBuffer, currentFrameBuffer.yiqBuffer);
 
         // Post-filter I/Q
-        if (configuration.colorlpf) filterIQ(tempYiqBuffer);
+        if (configuration.colorlpf) filterIQ(currentFrameBuffer.yiqBuffer);
 
         // Apply noise reduction
-        doYNR(tempYiqBuffer);
-        doCNR(tempYiqBuffer);
+        doYNR(currentFrameBuffer.yiqBuffer);
+        doCNR(currentFrameBuffer.yiqBuffer);
 
-        opticalFlow.denseOpticalFlow(tempYiqBuffer, currentFrameBuffer.kValues);
+        opticalFlow.denseOpticalFlow(currentFrameBuffer.yiqBuffer, currentFrameBuffer.kValues);
 #endif
 
         // Extract chroma using 3D filter
@@ -144,22 +137,18 @@ RGBFrame Comb::decodeFrame(const SourceField &firstField, const SourceField &sec
     // Demodulate chroma giving I/Q
     splitIQ(&currentFrameBuffer);
 
-    // Copy the current frame to a temporary buffer, so operations on the frame do not
-    // alter the original data
-    tempYiqBuffer = currentFrameBuffer.yiqBuffer;
-
     // Extract Y from baseband and I/Q
-    adjustY(&currentFrameBuffer, tempYiqBuffer);
+    adjustY(&currentFrameBuffer, currentFrameBuffer.yiqBuffer);
 
     // Post-filter I/Q
-    if (configuration.colorlpf) filterIQ(tempYiqBuffer);
+    if (configuration.colorlpf) filterIQ(currentFrameBuffer.yiqBuffer);
 
     // Apply noise reduction
-    doYNR(tempYiqBuffer);
-    doCNR(tempYiqBuffer);
+    doYNR(currentFrameBuffer.yiqBuffer);
+    doCNR(currentFrameBuffer.yiqBuffer);
 
     // Convert the YIQ result to RGB
-    rgbOutputBuffer = yiqToRgbFrame(tempYiqBuffer);
+    rgbOutputBuffer = yiqToRgbFrame(currentFrameBuffer.yiqBuffer);
 
     // Overlay the optical flow map if required
     if (configuration.showOpticalFlowMap) overlayOpticalFlowMap(currentFrameBuffer, rgbOutputBuffer);
