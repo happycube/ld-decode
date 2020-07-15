@@ -38,6 +38,8 @@ except ImportError:
 from lddecode import efm_pll
 from lddecode.utils import *
 
+WTF = 'huh?'
+
 try:
     # If Anaconda's numpy is installed, mkl will use all threads for fft etc
     # which doesn't work when we do more threads, do disable that...
@@ -1287,9 +1289,8 @@ class Field:
 
         return slice(int(np.round(_begin)), int(np.round(_begin + _length)))
 
-    def refinepulses(self, pulses):
-        ''' returns validated pulses with type and distance checks '''
-        
+    def get_timings(self):
+        pulses = self.rawpulses
         hsync_typical = self.usectoinpx(self.rf.SysParams['hsyncPulseUS'])
 
         # Some disks have odd sync levels resulting in short and/or long pulse lengths.
@@ -1303,30 +1304,55 @@ class Field:
             if inrange(p.len, hsync_checkmin, hsync_checkmax):
                 hlens.append(p.len)
 
-        hsync_median = np.median(hlens)
+        LT = {}
+        
+        LT['hsync_median'] = np.median(hlens)
 
-        hsync_min = hsync_median + self.usectoinpx(-.5)
-        hsync_max = hsync_median + self.usectoinpx(.5)
+        hsync_min = LT['hsync_median'] + self.usectoinpx(-.5)
+        hsync_max = LT['hsync_median'] + self.usectoinpx(.5)
 
-        hsync_offset = hsync_median - hsync_typical
+        LT['hsync'] = (hsync_min, hsync_max)
+        
+        LT['hsync_offset'] = LT['hsync_median'] - hsync_typical
 
-        eq_min = self.usectoinpx(self.rf.SysParams['eqPulseUS'] - .5) + hsync_offset
-        eq_max = self.usectoinpx(self.rf.SysParams['eqPulseUS'] + .5) + hsync_offset
+        # ??? - replace self.usectoinpx with local timings?
+        eq_min = self.usectoinpx(self.rf.SysParams['eqPulseUS'] - .5) + LT['hsync_offset']
+        eq_max = self.usectoinpx(self.rf.SysParams['eqPulseUS'] + .5) + LT['hsync_offset']
+        
+        LT['eq'] = (eq_min, eq_max)
 
-        vsync_min = self.usectoinpx(self.rf.SysParams['vsyncPulseUS'] * .5) + hsync_offset
-        vsync_max = self.usectoinpx(self.rf.SysParams['vsyncPulseUS'] + 1) + hsync_offset
+        vsync_min = self.usectoinpx(self.rf.SysParams['vsyncPulseUS'] * .5) + LT['hsync_offset']
+        vsync_max = self.usectoinpx(self.rf.SysParams['vsyncPulseUS'] + 1) + LT['hsync_offset']
+        
+        LT['vsync'] = (vsync_min, vsync_max)
 
-        # Pulse validator routine.  Removes sync pulses of invalid lengths, does not 
-        # fill missing ones.
+        return LT
+        
+    def pulse_qualitycheck(self, prevpulse, pulse):
 
+        if prevpulse[0] > 0 and pulse[0] > 0:
+            exprange = (.4, .6)
+        elif prevpulse[0] == 0 and pulse[0] == 0:
+            exprange = (.9, 1.1)
+        else: # transition to/from regular hsyncs can be .5 or 1H
+            exprange = (.4, 1.1)
+
+        linelen = (pulse[1].start - prevpulse[1].start) / self.inlinelen
+        inorder = inrange(linelen, *exprange)
+        
+        return inorder
+
+    def run_vblank_state_machine(self, pulses, LT):
+        ''' Determines if a pulse set is a valid vblank by running a state machine '''
+
+        done = 0
+        
         vsyncs = [] # VSYNC area (first broad pulse->first EQ after broad pulses)
 
         inorder = False
         validpulses = []
 
         vsync_start = None
-
-        earliest_eq = 0
         earliest_hsync = 0
 
         # state_end tracks the earliest expected phase transition...
@@ -1335,6 +1361,7 @@ class Field:
         state_length = None
 
         # state order: HSYNC -> EQPUL1 -> VSYNC -> EQPUL2 -> HSYNC
+        HSYNC, EQPL1, VSYNC, EQPL2 = range(4)
 
         for p in pulses:
             spulse = None
@@ -1343,54 +1370,48 @@ class Field:
 
             if state == -1:
                 # First valid pulse must be a regular HSYNC
-                if inrange(p.len, hsync_min, hsync_max):
+                if inrange(p.len, *LT['hsync']):
                     spulse = (HSYNC, p)
             elif state == HSYNC:
                 # HSYNC can transition to EQPUL/pre-vsync at the end of a field
-                if inrange(p.len, hsync_min, hsync_max):
+                if inrange(p.len, *LT['hsync']):
                     spulse = (HSYNC, p)
-                elif p.start > earliest_eq and inrange(p.len, eq_min, eq_max):
+                elif inrange(p.len, *LT['eq']):
                     spulse = (EQPL1, p)
                     state_length = self.rf.SysParams['numPulses'] / 2
-                elif p.start > earliest_eq and inrange(p.len, vsync_min, vsync_max):
+                elif inrange(p.len, *LT['vsync']):
+                    # should not happen(tm)
                     vsync_start = len(validpulses)-1
                     spulse = (VSYNC, p)
             elif state == EQPL1:
-                if inrange(p.len, eq_min, eq_max):
+                if inrange(p.len, *LT['eq']):
                     spulse = (EQPL1, p)
-                elif inrange(p.len, vsync_min, vsync_max):
+                elif inrange(p.len, *LT['vsync']):
                     # len(validpulses)-1 before appending adds index to first VSYNC pulse
                     vsync_start = len(validpulses)-1
                     spulse = (VSYNC, p)
                     state_length = self.rf.SysParams['numPulses'] / 2
-                elif inrange(p.len, hsync_min, hsync_max):
+                elif inrange(p.len, *LT['hsync']):
                     # previous state transition was likely in error!
                     spulse = (HSYNC, p)
             elif state == VSYNC:
-                if inrange(p.len, eq_min, eq_max):
+                if inrange(p.len, *LT['eq']):
                     # len(validpulses)-1 before appending adds index to first EQ pulse
                     vsyncs.append((vsync_start, len(validpulses)-1))
                     spulse = (EQPL2, p)
                     state_length = self.rf.SysParams['numPulses'] / 2
-                elif inrange(p.len, vsync_min, vsync_max):
+                elif inrange(p.len, *LT['vsync']):
                     spulse = (VSYNC, p)
-                elif p.start > state_end and inrange(p.len, hsync_min, hsync_max):
+                elif p.start > state_end and inrange(p.len, *LT['hsync']):
                     spulse = (HSYNC, p)
                     earliest_eq = p.start + (self.inlinelen * (np.min(self.rf.SysParams['field_lines']) - 10))
             elif state == EQPL2:
-                if inrange(p.len, eq_min, eq_max):
+                if inrange(p.len, *LT['eq']):
                     spulse = (EQPL2, p)
-                elif inrange(p.len, hsync_min, hsync_max):
+                elif inrange(p.len, *LT['hsync']):
                     spulse = (HSYNC, p)
-                    earliest_eq = p.start + (self.inlinelen * (np.min(self.rf.SysParams['field_lines']) - 10))
-                    state_length = np.min(self.rf.SysParams['field_lines']) - 10
-
-#            if p.start < 2532 * 20:
-            #print(p, state, spulse, state_end)
-
-            if vsync_start is not None and earliest_hsync == 0:
-                earliest_hsync = validpulses[vsync_start][1].start + (self.rf.SysParams['numPulses'] * self.inlinelen)
-
+                    done = True
+                    
             if spulse is not None and spulse[0] != state:
                 if spulse[1].start < state_end:
                     spulse = None
@@ -1399,25 +1420,53 @@ class Field:
                     state_length = None
 
             # Quality check
-            if spulse is not None and len(validpulses) >= 1:
-                prevpulse = validpulses[-1]
-                if prevpulse[0] > 0 and spulse[0] > 0:
-                    exprange = (.4, .6)
-                elif prevpulse[0] == 0 and spulse[0] == 0:
-                    exprange = (.9, 1.1)
-                else: # transition to/from regular hsyncs can be .5 or 1H
-                    exprange = (.4, 1.1)
-
-                linelen = (spulse[1].start - prevpulse[1].start) / self.inlinelen
-                inorder = inrange(linelen, *exprange)
-
             if spulse is not None:
-                validpulses.append((spulse[0], spulse[1], inorder))
+                good = self.pulse_qualitycheck(validpulses[-1], spulse) if len(validpulses) else False
 
-        return validpulses
+                validpulses.append((spulse[0], spulse[1], good))
+                
+            if done:
+                return done, validpulses
+                
+        return done, validpulses
 
-    def getblankrange(self, vpulses, start = 0):
-        vp_type = np.array([p[0] for p in vpulses])
+    def refinepulses(self):
+        prev_is_hsync = False
+
+        LT = self.get_timings()
+
+        HSYNC, EQPL1, VSYNC, EQPL2 = range(4)
+
+        i = 0
+        valid_pulses = []
+        num_vblanks = 0
+
+        while i < len(self.rawpulses):
+            curpulse = self.rawpulses[i]
+            if inrange(curpulse.len, *LT['hsync']):
+                good = self.pulse_qualitycheck(valid_pulses[-1], (0, curpulse)) if len(valid_pulses) else False
+                valid_pulses.append((HSYNC, curpulse, good))
+                i += 1
+            elif i > 2 and inrange(self.rawpulses[i].len, *LT['eq']) and valid_pulses[-1][0] == HSYNC:
+                #print(i, self.rawpulses[i])
+                done, vblank_pulses = self.run_vblank_state_machine(self.rawpulses[i-2:i+20], LT)
+                if done:
+                    [valid_pulses.append(p) for p in vblank_pulses[2:]]
+                    i += len(vblank_pulses) - 2
+                    num_vblanks += 1
+                else:
+                    spulse = (HSYNC, self.rawpulses[i], False)
+                    i += 1
+            else:
+                spulse = (HSYNC, self.rawpulses[i], False)
+                i += 1
+
+            prev_is_hsync = inrange(self.rawpulses[i - 1].len, *LT['hsync'])
+            
+        return valid_pulses #, num_vblanks
+        
+    def getBlankRange(self, validpulses, start = 0):
+        vp_type = np.array([p[0] for p in validpulses])
 
         vp_vsyncs = np.where(vp_type[start:] == VSYNC)[0]
         firstvsync = vp_vsyncs[0] + start if len(vp_vsyncs) else None
@@ -1456,7 +1505,7 @@ class Field:
 
     def processVBlank(self, validpulses, start, limit = None):
 
-        firstblank, lastblank = self.getblankrange(validpulses, start)
+        firstblank, lastblank = self.getBlankRange(validpulses, start)
         conf = 100
 
         ''' 
@@ -1582,18 +1631,24 @@ class Field:
         
         # If we have a previous field, the first vblank should be close to the beginning,
         # and we need to reject anything too far in (which could be the *next* vsync)
-        limit = 100 if self.prevfield is not None else None
-        line0loc_local, isFirstField_local, firstblank_local, conf_local = self.processVBlank(validpulses, 0, limit)
+#        limit = 100 if self.prevfield is not None else None
+        line0loc_local, isFirstField_local, firstblank_local, conf_local = self.processVBlank(validpulses, 0)
 
         line0loc_next, isFirstField_next, conf_next = None, None, None
 
-        # Get the 'next' field if possible
+        # If we have a vsync at the end, use it to compute the likely line 0
         if line0loc_local is not None:
-            line0loc_next, isNotFirstField_next, firstblank_next, conf_next = self.processVBlank(validpulses, firstblank_local + 24)
-            isFirstField_next = not isNotFirstField_next
+            self.vblank_next, isNotFirstField_next, firstblank_next, conf_next = self.processVBlank(validpulses, firstblank_local + 40)
 
+            if self.vblank_next is not None:
+                isFirstField_next = not isNotFirstField_next
+
+                meanlinelen = self.computeLineLen(validpulses)
+                fieldlen = (meanlinelen * self.rf.SysParams['field_lines'][0 if isFirstField_next else 1])
+                line0loc_next = int(np.round(self.vblank_next - fieldlen))
+
+        # Use the previous field's end to compute a possible line 0
         line0loc_prev, isFirstField_prev = None, None
-
         if self.prevfield is not None and self.prevfield.valid:
             frameoffset = self.data['startloc'] - self.prevfield.data['startloc']
 
@@ -1601,11 +1656,7 @@ class Field:
             isFirstField_prev = not self.prevfield.isFirstField
             conf_prev = self.prevfield.sync_confidence
 
-        if line0loc_next is not None:
-            meanlinelen = self.computeLineLen(validpulses)
-            fieldlen = (meanlinelen * self.rf.SysParams['field_lines'][0 if isFirstField_next else 1])
-            line0loc_next = int(np.round(line0loc_next - fieldlen))
-
+        # Best case - all three line detectors returned something - perform TOOT using median
         if line0loc_local is not None and line0loc_next is not None and line0loc_prev is not None:
             isFirstField_all = (isFirstField_local + isFirstField_prev + isFirstField_next) >= 2
             self.sync_confidence = 100
@@ -1688,7 +1739,7 @@ class Field:
             logging.error("Unable to find any sync pulses, jumping one second")
             return None, None, int(self.rf.freq_hz)
 
-        self.validpulses = validpulses = self.refinepulses(self.rawpulses)
+        self.validpulses = validpulses = self.refinepulses()
 
         line0loc, self.isFirstField = self.getLine0(validpulses)
         linelocs_dict = {}
@@ -1779,7 +1830,12 @@ class Field:
 
         rv_ll = [linelocs_filled[l] for l in range(0, self.outlinecount + 6)]
 
-        return rv_ll, rv_err, linelocs_filled[self.outlinecount - 7]
+        if self.vblank_next is None:
+            nextfield = linelocs_filled[self.outlinecount - 7]
+        else:
+            nextfield = self.vblank_next - (self.inlinelen * 3)
+
+        return rv_ll, rv_err, nextfield
 
     def refine_linelocs_hsync(self):
         linelocs2 = self.linelocs1.copy()
@@ -2687,7 +2743,7 @@ class LDdecode:
         except (KeyboardInterrupt, SystemExit):
             raise
         except Exception as e:
-            raise e
+            #raise e
             self.internalerrors.append(e)
             if len(self.internalerrors) == 3:
                 logging.error("Three internal errors seen, aborting")
