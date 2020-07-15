@@ -1447,7 +1447,7 @@ class Field:
                 good = self.pulse_qualitycheck(valid_pulses[-1], (0, curpulse)) if len(valid_pulses) else False
                 valid_pulses.append((HSYNC, curpulse, good))
                 i += 1
-            elif i > 2 and inrange(self.rawpulses[i].len, *LT['eq']) and valid_pulses[-1][0] == HSYNC:
+            elif i > 2 and inrange(self.rawpulses[i].len, *LT['eq']) and (len(valid_pulses) and valid_pulses[-1][0] == HSYNC):
                 #print(i, self.rawpulses[i])
                 done, vblank_pulses = self.run_vblank_state_machine(self.rawpulses[i-2:i+20], LT)
                 if done:
