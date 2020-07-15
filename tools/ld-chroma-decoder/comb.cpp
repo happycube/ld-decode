@@ -391,7 +391,7 @@ void Comb::filterIQ(YiqBuffer &yiqBuffer)
         iFilter.clear();
         qFilter.clear();
 
-        qint32 qoffset = 2; // f_colorlpf_hq ? f_colorlpi_offset : f_colorlpq_offset;
+        qint32 qoffset = configuration.colorlpf_hq ? f_colorlpi_offset : f_colorlpq_offset;
 
         qreal filti = 0, filtq = 0;
 
