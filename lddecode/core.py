@@ -1631,6 +1631,8 @@ class Field:
     def getLine0(self, validpulses):
         # Gather the local line 0 location and projected from the previous field        
         
+        self.sync_confidence = 100
+
         # If we have a previous field, the first vblank should be close to the beginning,
         # and we need to reject anything too far in (which could be the *next* vsync)
         limit = 100 if self.prevfield is not None else None
@@ -1648,6 +1650,9 @@ class Field:
                 meanlinelen = self.computeLineLen(validpulses)
                 fieldlen = (meanlinelen * self.rf.SysParams['field_lines'][0 if isFirstField_next else 1])
                 line0loc_next = int(np.round(self.vblank_next - fieldlen))
+
+                if line0loc_next < 0:
+                    self.sync_confidence = 0
         else:
             self.vblank_next = None
 
@@ -1660,19 +1665,19 @@ class Field:
             isFirstField_prev = not self.prevfield.isFirstField
             conf_prev = self.prevfield.sync_confidence
 
-        #print(line0loc_local, line0loc_prev, line0loc_next)
+        print(line0loc_local, line0loc_prev, line0loc_next)
 
         # Best case - all three line detectors returned something - perform TOOT using median
         if line0loc_local is not None and line0loc_next is not None and line0loc_prev is not None:
             isFirstField_all = (isFirstField_local + isFirstField_prev + isFirstField_next) >= 2
-            self.sync_confidence = 100
             return np.median([line0loc_local, line0loc_next, line0loc_prev]), isFirstField_all
 
         if line0loc_local is not None and conf_local > 50:
-            self.sync_confidence = 90
+            self.sync_confidence = min(self.sync_confidence, 90)
             return line0loc_local, isFirstField_local
         elif line0loc_prev is not None:
-            self.sync_confidence = np.max(conf_prev - 10, 0)
+            new_sync_confidence = np.max(conf_prev - 10, 0)
+            self.sync_confidence = min(self.sync_confidence, new_sync_confidence)
             return line0loc_prev, isFirstField_prev
         elif line0loc_next is not None:
             self.sync_confidence = conf_next
@@ -1743,7 +1748,7 @@ class Field:
         self.rawpulses = self.getpulses()
         if self.rawpulses is None or len(self.rawpulses) == 0:
             logging.error("Unable to find any sync pulses, jumping one second")
-            #print('e0')
+            print('e0')
             return None, None, int(self.rf.freq_hz)
 
         self.validpulses = validpulses = self.refinepulses()
@@ -2811,11 +2816,11 @@ class LDdecode:
                 redo = not self.checkMTF(f, self.prevfield)
 
                 # Perform AGC changes on first fields only to prevent luma mismatch intra-field
-                if self.useAGC and f.isFirstField:
+                if self.useAGC and f.isFirstField and f.sync_confidence > 80:
                     sync_hz, ire0_hz = self.detectLevels(f)
                     sync_ire_diff = np.abs(self.rf.hztoire(sync_hz) - self.rf.SysParams['vsync_ire'])
 
-                    #print(sync_hz, ire0_hz, sync_ire_diff)
+                    print(sync_hz, ire0_hz, sync_ire_diff)
 
                     acceptable_diff = 2 if self.fields_written else .5
 
