@@ -1427,7 +1427,7 @@ class Field:
                 
             if done:
                 return done, validpulses
-                
+        
         return done, validpulses
 
     def refinepulses(self):
@@ -1449,7 +1449,7 @@ class Field:
                 i += 1
             elif i > 2 and inrange(self.rawpulses[i].len, *LT['eq']) and (len(valid_pulses) and valid_pulses[-1][0] == HSYNC):
                 #print(i, self.rawpulses[i])
-                done, vblank_pulses = self.run_vblank_state_machine(self.rawpulses[i-2:i+20], LT)
+                done, vblank_pulses = self.run_vblank_state_machine(self.rawpulses[i-2:i+24], LT)
                 if done:
                     [valid_pulses.append(p) for p in vblank_pulses[2:]]
                     i += len(vblank_pulses) - 2
@@ -1471,6 +1471,7 @@ class Field:
         vp_vsyncs = np.where(vp_type[start:] == VSYNC)[0]
         firstvsync = vp_vsyncs[0] + start if len(vp_vsyncs) else None
 
+        #print(firstvsync)
         if firstvsync is None or firstvsync < 10:
             return None, None
 
@@ -1514,6 +1515,7 @@ class Field:
         '''
         # locations of lines before after/vblank.  may not be line 0 etc
         lastvalid = len(validpulses) if limit is None else start + limit
+        #print(firstblank, lastvalid)
         if firstblank is None or firstblank > lastvalid:
             return None, None, None, None
 
@@ -2442,6 +2444,8 @@ class FieldNTSC(Field):
         amed[True] = np.abs(angular_mean(bursts_arr[True], zero_base=False))
         amed[False] = np.abs(angular_mean(bursts_arr[False], zero_base=False))
         
+        #print(amed)
+
         field14 = amed[True] < amed[False]
 
         # if the medians are too close, recompute them with a 90 degree offset.
