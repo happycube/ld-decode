@@ -1652,7 +1652,7 @@ class Field:
                 line0loc_next = int(np.round(self.vblank_next - fieldlen))
 
                 if line0loc_next < 0:
-                    self.sync_confidence = 0
+                    self.sync_confidence = 10
         else:
             self.vblank_next = None
 
@@ -1665,7 +1665,7 @@ class Field:
             isFirstField_prev = not self.prevfield.isFirstField
             conf_prev = self.prevfield.sync_confidence
 
-        print(line0loc_local, line0loc_prev, line0loc_next)
+        #print(line0loc_local, line0loc_prev, line0loc_next)
 
         # Best case - all three line detectors returned something - perform TOOT using median
         if line0loc_local is not None and line0loc_next is not None and line0loc_prev is not None:
@@ -2820,7 +2820,7 @@ class LDdecode:
                     sync_hz, ire0_hz = self.detectLevels(f)
                     sync_ire_diff = np.abs(self.rf.hztoire(sync_hz) - self.rf.SysParams['vsync_ire'])
 
-                    print(sync_hz, ire0_hz, sync_ire_diff)
+                    #print(sync_hz, ire0_hz, sync_ire_diff)
 
                     acceptable_diff = 2 if self.fields_written else .5
 
