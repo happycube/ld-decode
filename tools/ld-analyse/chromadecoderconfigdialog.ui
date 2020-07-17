@@ -42,22 +42,9 @@
     </widget>
    </item>
    <item>
-    <spacer name="verticalSpacer_1">
-     <property name="orientation">
-      <enum>Qt::Vertical</enum>
-     </property>
-     <property name="sizeHint" stdset="0">
-      <size>
-       <width>20</width>
-       <height>40</height>
-      </size>
-     </property>
-    </spacer>
-   </item>
-   <item>
     <widget class="QTabWidget" name="standardTabs">
      <property name="currentIndex">
-      <number>1</number>
+      <number>0</number>
      </property>
      <widget class="QWidget" name="palTab">
       <attribute name="title">
@@ -65,11 +52,54 @@
       </attribute>
       <layout class="QVBoxLayout" name="palVerticalLayout">
        <item>
-        <widget class="QCheckBox" name="twoDeeTransformCheckBox">
+        <widget class="QLabel" name="palFilterLabel">
          <property name="text">
-          <string>Use Transform PAL 2D filter</string>
+          <string>Chroma filter:</string>
          </property>
         </widget>
+       </item>
+       <item>
+        <widget class="QRadioButton" name="palFilterPalColourRadioButton">
+         <property name="text">
+          <string>PalColour 2D</string>
+         </property>
+         <attribute name="buttonGroup">
+          <string notr="true">palFilterButtonGroup</string>
+         </attribute>
+        </widget>
+       </item>
+       <item>
+        <widget class="QRadioButton" name="palFilterTransform2DRadioButton">
+         <property name="text">
+          <string>Transform PAL 2D</string>
+         </property>
+         <attribute name="buttonGroup">
+          <string notr="true">palFilterButtonGroup</string>
+         </attribute>
+        </widget>
+       </item>
+       <item>
+        <widget class="QRadioButton" name="palFilterTransform3DRadioButton">
+         <property name="text">
+          <string>Transform PAL 3D</string>
+         </property>
+         <attribute name="buttonGroup">
+          <string notr="true">palFilterButtonGroup</string>
+         </attribute>
+        </widget>
+       </item>
+       <item>
+        <spacer name="verticalSpacer_7">
+         <property name="orientation">
+          <enum>Qt::Vertical</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>20</width>
+           <height>40</height>
+          </size>
+         </property>
+        </spacer>
        </item>
        <item>
         <widget class="QCheckBox" name="thresholdModeCheckBox">
@@ -165,6 +195,46 @@
        <string>NTSC</string>
       </attribute>
       <layout class="QVBoxLayout" name="ntscVerticalLayout">
+       <item>
+        <widget class="QLabel" name="ntscFilterLabel">
+         <property name="text">
+          <string>Chroma filter:</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QRadioButton" name="ntscFilter2DRadioButton">
+         <property name="text">
+          <string>2D</string>
+         </property>
+         <attribute name="buttonGroup">
+          <string notr="true">ntscFilterButtonGroup</string>
+         </attribute>
+        </widget>
+       </item>
+       <item>
+        <widget class="QRadioButton" name="ntscFilter3DRadioButton">
+         <property name="text">
+          <string>3D</string>
+         </property>
+         <attribute name="buttonGroup">
+          <string notr="true">ntscFilterButtonGroup</string>
+         </attribute>
+        </widget>
+       </item>
+       <item>
+        <spacer name="verticalSpacer_9">
+         <property name="orientation">
+          <enum>Qt::Vertical</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>20</width>
+           <height>40</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
        <item>
         <widget class="QCheckBox" name="whitePoint75CheckBox">
          <property name="text">
@@ -277,8 +347,25 @@
      </widget>
     </widget>
    </item>
+   <item>
+    <spacer name="verticalSpacer_1">
+     <property name="orientation">
+      <enum>Qt::Vertical</enum>
+     </property>
+     <property name="sizeHint" stdset="0">
+      <size>
+       <width>20</width>
+       <height>40</height>
+      </size>
+     </property>
+    </spacer>
+   </item>
   </layout>
  </widget>
  <resources/>
  <connections/>
+ <buttongroups>
+  <buttongroup name="ntscFilterButtonGroup"/>
+  <buttongroup name="palFilterButtonGroup"/>
+ </buttongroups>
 </ui>
