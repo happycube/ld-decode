@@ -408,9 +408,8 @@ void DropOutCorrect::findPotentialReplacementLine(const QVector<QVector<DropOutL
                                                   qint32 sourceNo, const QVector<qreal> &sourceFrameQuality,
                                                   QVector<Replacement> &candidates)
 {    
-    // Calculate the start source line (which is the same line as the dropout unless the source number is 0
-    qint32 sourceLine = targetDropouts[0][targetIndex].fieldLine;
-    if (sourceNo == 0) sourceLine += sourceOffset;
+    // Calculate the start source line, applying sourceOffset to find a line with the right chroma phase
+    qint32 sourceLine = targetDropouts[0][targetIndex].fieldLine + sourceOffset;
 
     // Is the line within the active range?
     if (sourceLine < videoParameters[sourceNo].firstActiveFieldLine || sourceLine >= videoParameters[sourceNo].lastActiveFieldLine) {
