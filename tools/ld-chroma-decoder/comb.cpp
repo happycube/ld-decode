@@ -5,6 +5,7 @@
     ld-chroma-decoder - Colourisation filter for ld-decode
     Copyright (C) 2018 Chad Page
     Copyright (C) 2018-2019 Simon Inns
+    Copyright (C) 2020 Adam Sampson
 
     This file is part of ld-decode-tools.
 
@@ -32,6 +33,19 @@
 Comb::Comb()
     : configurationSet(false)
 {
+}
+
+qint32 Comb::Configuration::getLookBehind() const {
+    if (use3D) {
+        // In 3D mode, we need to see the previous frame
+        return 1;
+    }
+
+    return 0;
+}
+
+qint32 Comb::Configuration::getLookAhead() const {
+    return 0;
 }
 
 // Return the current configuration
