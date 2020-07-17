@@ -4,6 +4,7 @@
 
     ld-analyse - TBC output analysis
     Copyright (C) 2019 Simon Inns
+    Copyright (C) 2020 Adam Sampson
 
     This file is part of ld-decode-tools.
 
@@ -137,7 +138,10 @@ void ChromaDecoderConfigDialog::updateDialog()
     ui->whitePoint75CheckBox->setEnabled(isSourceNtsc);
     ui->whitePoint75CheckBox->setChecked(ntscConfiguration.whitePoint75);
 
-    ui->colorLpfHqCheckBox->setEnabled(isSourceNtsc);
+    ui->colorLpfCheckBox->setEnabled(isSourceNtsc);
+    ui->colorLpfCheckBox->setChecked(ntscConfiguration.colorlpf);
+
+    ui->colorLpfHqCheckBox->setEnabled(isSourceNtsc && ntscConfiguration.colorlpf);
     ui->colorLpfHqCheckBox->setChecked(ntscConfiguration.colorlpf_hq);
 
     ui->cNRLabel->setEnabled(isSourceNtsc);
@@ -213,6 +217,13 @@ void ChromaDecoderConfigDialog::on_simplePALCheckBox_clicked()
 void ChromaDecoderConfigDialog::on_whitePoint75CheckBox_clicked()
 {
     ntscConfiguration.whitePoint75 = ui->whitePoint75CheckBox->isChecked();
+    emit chromaDecoderConfigChanged();
+}
+
+void ChromaDecoderConfigDialog::on_colorLpfCheckBox_clicked()
+{
+    ntscConfiguration.colorlpf = ui->colorLpfCheckBox->isChecked();
+    updateDialog();
     emit chromaDecoderConfigChanged();
 }
 
