@@ -480,7 +480,8 @@ void DropOutCorrect::correctDropOut(const DropOutLocation &dropOut,
         // frequencies (mostly chroma) from chromaReplacement. As this is only
         // a 1D filter, it won't achieve very good separation, but it's good
         // enough for the purposes of replacing a dropout.
-        qDebug() << "Chroma replacement - Source is fieldline" << chromaReplacement.fieldLine << "from source" << replacement.sourceNumber;
+        qDebug() << "Luma replacement - Source is fieldline" << replacement.fieldLine << "from source" << replacement.sourceNumber;
+        qDebug() << "Chroma replacement - Source is fieldline" << chromaReplacement.fieldLine << "from source" << chromaReplacement.sourceNumber;
 
         Filters filters;
         QVector<quint16> lineBuf(videoParameters[0].fieldWidth);
