@@ -161,8 +161,6 @@ void ChromaDecoderConfigDialog::updateDialog()
     ui->yNRValueLabel->setText(QString::number(ntscConfiguration.yNRLevel, 'f', 1) + " IRE");
 }
 
-// XXX Select the right tab when first opened
-
 // Methods to handle changes to the dialogue
 
 void ChromaDecoderConfigDialog::on_chromaGainHorizontalSlider_valueChanged(int value)
