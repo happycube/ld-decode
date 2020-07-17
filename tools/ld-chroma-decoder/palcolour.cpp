@@ -242,16 +242,6 @@ void PalColour::buildLookUpTables()
     }
 }
 
-RGBFrame PalColour::decodeFrame(const SourceField &firstField, const SourceField &secondField)
-{
-    QVector<SourceField> inputFields {firstField, secondField};
-    QVector<RGBFrame> outputFrames(1);
-
-    decodeFrames(inputFields, 0, 2, outputFrames);
-
-    return outputFrames[0];
-}
-
 void PalColour::decodeFrames(const QVector<SourceField> &inputFields, qint32 startIndex, qint32 endIndex,
                              QVector<RGBFrame> &outputFrames)
 {

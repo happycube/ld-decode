@@ -159,7 +159,7 @@ private:
     // Chapter map
     QVector<qint32> chapterMap;
 
-    QImage generateQImage(qint32 firstFieldNumber, qint32 secondFieldNumber);
+    QImage generateQImage(qint32 frameNumber);
     void generateData(qint32 _targetDataPoints);
     void startBackgroundLoad(QString sourceFilename);
 };

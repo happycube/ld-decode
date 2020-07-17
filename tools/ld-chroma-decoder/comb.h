@@ -65,8 +65,9 @@ public:
     void updateConfiguration(const LdDecodeMetaData::VideoParameters &videoParameters,
                              const Configuration &configuration);
 
-    // Decode two fields to produce an interlaced frame.
-    RGBFrame decodeFrame(const SourceField &firstField, const SourceField &secondField);
+    // Decode a sequence of fields into a sequence of interlaced frames
+    void decodeFrames(const QVector<SourceField> &inputFields, qint32 startIndex, qint32 endIndex,
+                      QVector<RGBFrame> &outputFrames);
 
 protected:
 
@@ -97,9 +98,6 @@ private:
         qint32 firstFieldPhaseID; // The phase of the frame's first field
         qint32 secondFieldPhaseID; // The phase of the frame's second field
     };
-
-    // Previous and next frame for 3D processing
-    FrameBuffer previousFrameBuffer;
 
     inline qint32 GetFieldID(FrameBuffer *frameBuffer, qint32 lineNumber);
     inline bool GetLinePhase(FrameBuffer *frameBuffer, qint32 lineNumber);
