@@ -408,9 +408,8 @@ void DropOutCorrect::findPotentialReplacementLine(const QVector<QVector<DropOutL
                                                   qint32 sourceNo, const QVector<qreal> &sourceFrameQuality,
                                                   QVector<Replacement> &candidates)
 {    
-    // Calculate the start source line (which is the same line as the dropout unless the source number is 0
-    qint32 sourceLine = targetDropouts[0][targetIndex].fieldLine;
-    if (sourceNo == 0) sourceLine += sourceOffset;
+    // Calculate the start source line, applying sourceOffset to find a line with the right chroma phase
+    qint32 sourceLine = targetDropouts[0][targetIndex].fieldLine + sourceOffset;
 
     // Is the line within the active range?
     if (sourceLine < videoParameters[sourceNo].firstActiveFieldLine || sourceLine >= videoParameters[sourceNo].lastActiveFieldLine) {
@@ -480,7 +479,8 @@ void DropOutCorrect::correctDropOut(const DropOutLocation &dropOut,
         // frequencies (mostly chroma) from chromaReplacement. As this is only
         // a 1D filter, it won't achieve very good separation, but it's good
         // enough for the purposes of replacing a dropout.
-        qDebug() << "Chroma replacement - Source is fieldline" << chromaReplacement.fieldLine << "from source" << replacement.sourceNumber;
+        qDebug() << "Luma replacement - Source is fieldline" << replacement.fieldLine << "from source" << replacement.sourceNumber;
+        qDebug() << "Chroma replacement - Source is fieldline" << chromaReplacement.fieldLine << "from source" << chromaReplacement.sourceNumber;
 
         Filters filters;
         QVector<quint16> lineBuf(videoParameters[0].fieldWidth);
