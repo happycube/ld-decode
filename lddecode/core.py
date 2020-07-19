@@ -1822,13 +1822,11 @@ class Field:
                     break
 
             if next_valid is None:
-                print('y1')
                 return None, None, line0loc + (self.inlinelen * self.outlinecount - 7)
 
             linelocs_filled[0] = linelocs_filled[next_valid] - (next_valid * meanlinelen)
             
             if linelocs_filled[0] < self.inlinelen:
-                print('y2', linelocs_filled[0], self.inlinelen)
                 return None, None, line0loc + (self.inlinelen * self.outlinecount - 7)
 
         for l in range(1, self.outlinecount + 6):
