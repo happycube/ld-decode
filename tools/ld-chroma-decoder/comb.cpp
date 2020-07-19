@@ -81,7 +81,7 @@ RGBFrame Comb::decodeFrame(const SourceField &firstField, const SourceField &sec
     // Allocate RGB output buffer
     RGBFrame rgbOutputBuffer;
 
-    // Interlace the input fields and place in the frame[0]'s raw buffer
+    // Interlace the input fields and place in the frame buffer
     qint32 fieldLine = 0;
     currentFrameBuffer.rawbuffer.clear();
     for (qint32 frameLine = 0; frameLine < frameHeight; frameLine += 2) {
@@ -94,39 +94,14 @@ RGBFrame Comb::decodeFrame(const SourceField &firstField, const SourceField &sec
     currentFrameBuffer.firstFieldPhaseID = firstField.field.fieldPhaseID;
     currentFrameBuffer.secondFieldPhaseID = secondField.field.fieldPhaseID;
 
-    // 2D or 3D comb filter processing?
-    if (!configuration.use3D) {
-        // 2D comb filter processing
+    // Extract chroma using 1D filter
+    split1D(&currentFrameBuffer);
 
-        // Perform 1D processing
-        split1D(&currentFrameBuffer);
+    // Extract chroma using 2D filter
+    split2D(&currentFrameBuffer);
 
-        // Perform 2D processing
-        split2D(&currentFrameBuffer);
-
-        // Split the IQ values
-        splitIQ(&currentFrameBuffer);
-
-        // Copy the current frame to a temporary buffer, so operations on the frame do not
-        // alter the original data
-        tempYiqBuffer = currentFrameBuffer.yiqBuffer;
-
-        // Process the copy of the current frame
-        adjustY(&currentFrameBuffer, tempYiqBuffer);
-        if (configuration.colorlpf) filterIQ(currentFrameBuffer.yiqBuffer);
-        doYNR(tempYiqBuffer);
-        doCNR(tempYiqBuffer);
-
-        // Convert the YIQ result to RGB
-        rgbOutputBuffer = yiqToRgbFrame(tempYiqBuffer);
-    } else {
+    if (configuration.use3D) {
         // 3D comb filter processing
-
-        // Perform 1D processing
-        split1D(&currentFrameBuffer);
-
-        // Perform 2D processing
-        split2D(&currentFrameBuffer);
 
 #if 1
         // XXX - At present we don't have an implementation of motion detection,
@@ -139,43 +114,55 @@ RGBFrame Comb::decodeFrame(const SourceField &firstField, const SourceField &sec
 #else
         // With motion detection, it would look like this...
 
-        // Split the IQ values (populates Y)
+        // Demodulate chroma giving I/Q
         splitIQ(&currentFrameBuffer);
 
+        // Copy the current frame to a temporary buffer, so operations on the frame do not
+        // alter the original data
         tempYiqBuffer = currentFrameBuffer.yiqBuffer;
 
-        // Process the copy of the current frame (needed for the Y image used by the optical flow)
+        // Extract Y from baseband and I/Q
         adjustY(&currentFrameBuffer, tempYiqBuffer);
+
+        // Post-filter I/Q
         if (configuration.colorlpf) filterIQ(currentFrameBuffer.yiqBuffer);
+
+        // Apply noise reduction
         doYNR(tempYiqBuffer);
         doCNR(tempYiqBuffer);
 
         opticalFlow.denseOpticalFlow(currentFrameBuffer.yiqBuffer, currentFrameBuffer.kValues);
 #endif
 
-        // Perform 3D processing
+        // Extract chroma using 3D filter
         split3D(&currentFrameBuffer, &previousFrameBuffer);
 
-        // Split the IQ values
-        splitIQ(&currentFrameBuffer);
-
-        tempYiqBuffer = currentFrameBuffer.yiqBuffer;
-
-        // Process the copy of the current frame (for final output now flow detection has been performed)
-        adjustY(&currentFrameBuffer, tempYiqBuffer);
-        if (configuration.colorlpf) filterIQ(currentFrameBuffer.yiqBuffer);
-        doYNR(tempYiqBuffer);
-        doCNR(tempYiqBuffer);
-
-        // Convert the YIQ result to RGB
-        rgbOutputBuffer = yiqToRgbFrame(tempYiqBuffer);
-
-        // Overlay the optical flow map if required
-        if (configuration.showOpticalFlowMap) overlayOpticalFlowMap(currentFrameBuffer, rgbOutputBuffer);
-
-        // Store the current frame
+        // Save the current frame for next time
         previousFrameBuffer = currentFrameBuffer;
     }
+
+    // Demodulate chroma giving I/Q
+    splitIQ(&currentFrameBuffer);
+
+    // Copy the current frame to a temporary buffer, so operations on the frame do not
+    // alter the original data
+    tempYiqBuffer = currentFrameBuffer.yiqBuffer;
+
+    // Extract Y from baseband and I/Q
+    adjustY(&currentFrameBuffer, tempYiqBuffer);
+
+    // Post-filter I/Q
+    if (configuration.colorlpf) filterIQ(currentFrameBuffer.yiqBuffer);
+
+    // Apply noise reduction
+    doYNR(tempYiqBuffer);
+    doCNR(tempYiqBuffer);
+
+    // Convert the YIQ result to RGB
+    rgbOutputBuffer = yiqToRgbFrame(tempYiqBuffer);
+
+    // Overlay the optical flow map if required
+    if (configuration.showOpticalFlowMap) overlayOpticalFlowMap(currentFrameBuffer, rgbOutputBuffer);
 
     // Return the output frame
     return rgbOutputBuffer;
@@ -215,6 +202,11 @@ inline bool Comb::GetLinePhase(FrameBuffer *frameBuffer, qint32 lineNumber)
     return isEvenLine ? isPositivePhaseOnEvenLines : !isPositivePhaseOnEvenLines;
 }
 
+// Extract chroma into clpbuffer[0] using a 1D bandpass filter.
+//
+// The filter is [0.5, 0, -1.0, 0, 0.5], a gentle bandpass centred on fSC, with
+// a gain of 2. So the output will contain all of the chroma signal, but also
+// whatever luma components ended up in the same frequency range.
 void Comb::split1D(FrameBuffer *frameBuffer)
 {
     for (qint32 lineNumber = videoParameters.firstActiveFrameLine; lineNumber < videoParameters.lastActiveFrameLine; lineNumber++) {
@@ -230,14 +222,26 @@ void Comb::split1D(FrameBuffer *frameBuffer)
     }
 }
 
-// This could do with an explaination of what it is doing...
+// Extract chroma into clpbuffer[1] using a 2D 3-line adaptive filter.
+//
+// Because the phase of the chroma signal changes by 180 degrees from line to
+// line, subtracting two adjacent lines that contain the same information will
+// give you just the chroma signal. But real images don't necessarily contain
+// the same information on every line.
+//
+// The "3-line adaptive" part means that we look at both surrounding lines to
+// estimate how similar they are to this one. We can then compute the 2D chroma
+// value as a blend of the two differences, weighted by similarity.
+//
+// We could do this using the input signal directly, but in fact we use the
+// output of split1D, which has already had most of the luma signal removed.
 void Comb::split2D(FrameBuffer *frameBuffer)
 {
-    // Dummy black line.
+    // Dummy black line
     static constexpr qreal blackLine[911] = {0};
 
     for (qint32 lineNumber = videoParameters.firstActiveFrameLine; lineNumber < videoParameters.lastActiveFrameLine; lineNumber++) {
-        // Get pointers to the surrounding lines.
+        // Get pointers to the surrounding lines of 1D chroma.
         // If a line we need is outside the active area, use blackLine instead.
         const qreal *previousLine = blackLine;
         if (lineNumber - 2 >= videoParameters.firstActiveFrameLine) {
@@ -249,16 +253,15 @@ void Comb::split2D(FrameBuffer *frameBuffer)
             nextLine = frameBuffer->clpbuffer[0].pixel[lineNumber + 2];
         }
 
-        // 2D filtering.
         for (qint32 h = videoParameters.activeVideoStart; h < videoParameters.activeVideoEnd; h++) {
-            qreal tc1;
-
             qreal kp, kn;
 
-            kp  = fabs(fabs(currentLine[h]) - fabs(previousLine[h])); // - fabs(c1line[h] * .20);
+            // Estimate similarity to the previous and next lines
+            // (with a penalty if this is also a horizontal transition)
+            kp  = fabs(fabs(currentLine[h]) - fabs(previousLine[h]));
             kp += fabs(fabs(currentLine[h - 1]) - fabs(previousLine[h - 1]));
             kp -= (fabs(currentLine[h]) + fabs(currentLine[h - 1])) * .10;
-            kn  = fabs(fabs(currentLine[h]) - fabs(nextLine[h])); // - fabs(c1line[h] * .20);
+            kn  = fabs(fabs(currentLine[h]) - fabs(nextLine[h]));
             kn += fabs(fabs(currentLine[h - 1]) - fabs(nextLine[h - 1]));
             kn -= (fabs(currentLine[h]) + fabs(nextLine[h - 1])) * .10;
 
@@ -272,29 +275,49 @@ void Comb::split2D(FrameBuffer *frameBuffer)
             qreal sc = 1.0;
 
             if ((kn > 0) || (kp > 0)) {
+                // At least one of the next/previous lines is pretty similar to this one.
+
+                // If one of them is much better than the other, just use that one
                 if (kn > (3 * kp)) kp = 0;
                 else if (kp > (3 * kn)) kn = 0;
 
-                sc = (2.0 / (kn + kp));// * max(kn * kn, kp * kp);
+                sc = (2.0 / (kn + kp));
                 if (sc < 1.0) sc = 1.0;
             } else {
+                // Both the next/previous lines are different.
+
+                // But are they similar to each other? If so, we can use both of them!
                 if ((fabs(fabs(previousLine[h]) - fabs(nextLine[h])) - fabs((nextLine[h] + previousLine[h]) * .2)) <= 0) {
                     kn = kp = 1;
                 }
+
+                // Else kn = kp = 0, so we won't extract any chroma for this sample.
+                // (Some NTSC decoders fall back to the 1D chroma in this situation.)
             }
 
-            tc1  = ((frameBuffer->clpbuffer[0].pixel[lineNumber][h] - previousLine[h]) * kp * sc);
-            tc1 += ((frameBuffer->clpbuffer[0].pixel[lineNumber][h] - nextLine[h]) * kn * sc);
-            tc1 /= 8; //(2 * 2);
+            // Compute the weighted sum of differences, giving the 2D chroma value
+            qreal tc1;
+            tc1  = ((currentLine[h] - previousLine[h]) * kp * sc);
+            tc1 += ((currentLine[h] - nextLine[h]) * kn * sc);
+            tc1 /= 8;
 
-            // Record the 2D C value
             frameBuffer->clpbuffer[1].pixel[lineNumber][h] = tc1;
         }
     }
 }
 
-// This could do with an explaination of what it is doing...
-// Only apply 3D processing to stationary pixels
+// Extract chroma into clpbuffer[2] using a 3D filter.
+//
+// This is like the 2D filtering above, except now we're looking at the
+// same sample in the previous *frame* -- and since there are an odd number of
+// lines in an NTSC frame, the subcarrier phase is also 180 degrees different
+// from the current sample. So if the previous frame carried the same
+// information in this sample, subtracting the two samples will give us just
+// the chroma again.
+//
+// And as with 2D filtering, real video can have differences between frames, so
+// we need to make an adaptive choice whether to use this or drop back to the
+// 2D result (which is done in splitIQ below).
 void Comb::split3D(FrameBuffer *currentFrame, FrameBuffer *previousFrame)
 {
     // If there is no previous frame data (i.e. this is the first frame), use the current frame.
@@ -331,6 +354,8 @@ void Comb::splitIQ(FrameBuffer *frameBuffer)
             qreal cavg = frameBuffer->clpbuffer[1].pixel[lineNumber][h]; // 2D C average
 
             if (configuration.use3D && frameBuffer->kValues.size() != 0) {
+                // 3D mode -- compute a weighted sum of the 2D and 3D chroma values
+
                 // The motionK map returns K (0 for stationary pixels to 1 for moving pixels)
                 cavg  = frameBuffer->clpbuffer[1].pixel[lineNumber][h] * frameBuffer->kValues[(lineNumber * 910) + h]; // 2D mix
                 cavg += frameBuffer->clpbuffer[2].pixel[lineNumber][h] * (1 - frameBuffer->kValues[(lineNumber * 910) + h]); // 3D mix
