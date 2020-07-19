@@ -1431,8 +1431,6 @@ class Field:
         return done, validpulses
 
     def refinepulses(self):
-        prev_is_hsync = False
-
         LT = self.get_timings()
 
         HSYNC, EQPL1, VSYNC, EQPL2 = range(4)
@@ -1460,8 +1458,6 @@ class Field:
             else:
                 spulse = (HSYNC, self.rawpulses[i], False)
                 i += 1
-
-            prev_is_hsync = inrange(self.rawpulses[i - 1].len, *LT['hsync'])
             
         return valid_pulses #, num_vblanks
         
@@ -1664,8 +1660,6 @@ class Field:
             isFirstField_prev = not self.prevfield.isFirstField
             conf_prev = self.prevfield.sync_confidence
 
-        #print(line0loc_local, line0loc_prev, line0loc_next)
-
         # Best case - all three line detectors returned something - perform TOOT using median
         if line0loc_local is not None and line0loc_next is not None and line0loc_prev is not None:
             isFirstField_all = (isFirstField_local + isFirstField_prev + isFirstField_next) >= 2
@@ -1827,15 +1821,11 @@ class Field:
                     break
 
             if next_valid is None:
-                #logging.warning(next_valid)
-                #print('eb')
                 return None, None, line0loc + (self.inlinelen * self.outlinecount - 7)
 
             linelocs_filled[0] = linelocs_filled[next_valid] - (next_valid * meanlinelen)
             
             if linelocs_filled[0] < self.inlinelen:
-                #logging.warning(linelocs_filled[0])
-                #print('ec')
                 return None, None, line0loc + (self.inlinelen * self.outlinecount - 7)
 
         for l in range(1, self.outlinecount + 6):
@@ -2799,8 +2789,6 @@ class LDdecode:
             logging.info("Bad data - jumping one second")
             return f, f.nextfieldoffset
         
-#        print(f, f.nextfieldoffset - (self.readloc - self.rawdecode['startloc']))
-
         return f, f.nextfieldoffset - (self.readloc - self.rawdecode['startloc'])
 
     def readfield(self, initphase = False):
