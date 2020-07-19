@@ -1660,6 +1660,8 @@ class Field:
             isFirstField_prev = not self.prevfield.isFirstField
             conf_prev = self.prevfield.sync_confidence
 
+        #print(line0loc_local, line0loc_prev, line0loc_next)
+
         # Best case - all three line detectors returned something - perform TOOT using median
         if line0loc_local is not None and line0loc_next is not None and line0loc_prev is not None:
             isFirstField_all = (isFirstField_local + isFirstField_prev + isFirstField_next) >= 2
@@ -1741,6 +1743,7 @@ class Field:
         self.rawpulses = self.getpulses()
         if self.rawpulses is None or len(self.rawpulses) == 0:
             logging.error("Unable to find any sync pulses, jumping one second")
+            print('x1')
             return None, None, int(self.rf.freq_hz)
 
         self.validpulses = validpulses = self.refinepulses()
@@ -1781,7 +1784,7 @@ class Field:
                 rlineloc_end = np.round(lineloc_end)
                 lineloc_end_distance = np.abs(lineloc_end - rlineloc_end)
 
-                if p[0] == 0 and lineloc_end_distance < lineloc_distance:
+                if p[0] == 0 and rlineloc > 23 and lineloc_end_distance < lineloc_distance:
                     skip_reached = True
 
                 if skip_reached:
@@ -1799,8 +1802,6 @@ class Field:
             if rlineloc > 0 and not p[2]:
                 if p[0] > 0 or (p[0] == 0 and rlineloc < 10):
                     continue
-
-            #print(p, lineloc, rlineloc)
 
             linelocs_dict[np.round(lineloc)] = p[1].start
             linelocs_dist[np.round(lineloc)] = lineloc_distance
@@ -1821,11 +1822,13 @@ class Field:
                     break
 
             if next_valid is None:
+                print('y1')
                 return None, None, line0loc + (self.inlinelen * self.outlinecount - 7)
 
             linelocs_filled[0] = linelocs_filled[next_valid] - (next_valid * meanlinelen)
             
             if linelocs_filled[0] < self.inlinelen:
+                print('y2', linelocs_filled[0], self.inlinelen)
                 return None, None, line0loc + (self.inlinelen * self.outlinecount - 7)
 
         for l in range(1, self.outlinecount + 6):
@@ -2660,6 +2663,8 @@ class LDdecode:
 
         self.doDOD = doDOD
 
+        self.badfields = None
+
         self.fieldinfo = []
 
         self.leadIn = False
@@ -2799,6 +2804,10 @@ class LDdecode:
         redo = False
         
         while done == False:
+            if redo:
+                # Only allow one redo, no matter what
+                done = True
+
             self.fieldloc = self.fdoffset
             f, offset = self.decodefield(initphase = initphase)
 
@@ -2846,6 +2855,12 @@ class LDdecode:
                     self.fdoffset -= offset
                 else:
                     done = True
+            else:
+                # Probably jumping ahead - delete the previous field so
+                # TBC computations aren't thrown off
+                if self.curfield is not None and self.badfields is None:
+                    self.badfields = (self.curfield, f)
+                self.curfield = None
 
         self.curfield = f
 
