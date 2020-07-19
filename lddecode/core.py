@@ -1800,9 +1800,13 @@ class Field:
                 #print(rlineloc, p, 'reject')
                 continue
 
-            # also skip non-regular lines (p[0]) that don't seem to be in valid order (p[2])
-            if rlineloc > 0 and p[0] > 0 and not p[2]:
-                continue
+            # also skip non-regular lines (non-hsync) that don't seem to be in valid order (p[2])
+            # (or hsync lines in the vblank area)
+            if rlineloc > 0 and not p[2]:
+                if p[0] > 0 or (p[0] == 0 and rlineloc < 10):
+                    continue
+
+            #print(p, lineloc, rlineloc)
 
             linelocs_dict[np.round(lineloc)] = p[1].start
             linelocs_dist[np.round(lineloc)] = lineloc_distance
@@ -1841,7 +1845,7 @@ class Field:
                 prev_valid = None
                 next_valid = None
 
-                for i in range(l, 1, -1):
+                for i in range(l, -1, -1):
                     if linelocs[i] > 0:
                         prev_valid = i
                         break
@@ -1849,6 +1853,8 @@ class Field:
                     if linelocs[i] > 0:
                         next_valid = i
                         break
+
+                #print(l, prev_valid, next_valid)
 
                 if prev_valid is None:
                     avglen = self.inlinelen
