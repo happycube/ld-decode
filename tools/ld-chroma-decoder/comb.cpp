@@ -5,6 +5,7 @@
     ld-chroma-decoder - Colourisation filter for ld-decode
     Copyright (C) 2018 Chad Page
     Copyright (C) 2018-2019 Simon Inns
+    Copyright (C) 2020 Adam Sampson
 
     This file is part of ld-decode-tools.
 
@@ -32,6 +33,19 @@
 Comb::Comb()
     : configurationSet(false)
 {
+}
+
+qint32 Comb::Configuration::getLookBehind() const {
+    if (use3D) {
+        // In 3D mode, we need to see the previous frame
+        return 1;
+    }
+
+    return 0;
+}
+
+qint32 Comb::Configuration::getLookAhead() const {
+    return 0;
 }
 
 // Return the current configuration
@@ -62,110 +76,103 @@ void Comb::updateConfiguration(const LdDecodeMetaData::VideoParameters &_videoPa
     configurationSet = true;
 }
 
-// Process the input buffer into the RGB output buffer
-RGBFrame Comb::decodeFrame(const SourceField &firstField, const SourceField &secondField)
+void Comb::decodeFrames(const QVector<SourceField> &inputFields, qint32 startIndex, qint32 endIndex,
+                        QVector<RGBFrame> &outputFrames)
 {
-    // Ensure the object has been configured
-    if (!configurationSet) {
-        qDebug() << "Comb::process(): Called, but the object has not been configured";
-        return RGBFrame();
-    }
+    assert(configurationSet);
+    assert((outputFrames.size() * 2) == (endIndex - startIndex));
 
-    // Allocate the frame buffer
-    FrameBuffer currentFrameBuffer;
+    // Buffers for the current and previous frame
+    FrameBuffer currentFrameBuffer, previousFrameBuffer;
     currentFrameBuffer.clpbuffer.resize(3);
 
-    // Allocate the temporary YIQ buffer
-    YiqBuffer tempYiqBuffer;
+    // Decode each pair of fields into a frame
+    for (qint32 fieldIndex = 0; fieldIndex < endIndex; fieldIndex += 2) {
+        const qint32 frameIndex = (fieldIndex - startIndex) / 2;
+        const SourceField &firstField = inputFields[fieldIndex];
+        const SourceField &secondField = inputFields[fieldIndex + 1];
 
-    // Allocate RGB output buffer
-    RGBFrame rgbOutputBuffer;
+        // Interlace the input fields and place in the frame buffer
+        qint32 fieldLine = 0;
+        currentFrameBuffer.rawbuffer.clear();
+        for (qint32 frameLine = 0; frameLine < frameHeight; frameLine += 2) {
+            currentFrameBuffer.rawbuffer.append(firstField.data.mid(fieldLine * videoParameters.fieldWidth, videoParameters.fieldWidth));
+            currentFrameBuffer.rawbuffer.append(secondField.data.mid(fieldLine * videoParameters.fieldWidth, videoParameters.fieldWidth));
+            fieldLine++;
+        }
 
-    // Interlace the input fields and place in the frame buffer
-    qint32 fieldLine = 0;
-    currentFrameBuffer.rawbuffer.clear();
-    for (qint32 frameLine = 0; frameLine < frameHeight; frameLine += 2) {
-        currentFrameBuffer.rawbuffer.append(firstField.data.mid(fieldLine * videoParameters.fieldWidth, videoParameters.fieldWidth));
-        currentFrameBuffer.rawbuffer.append(secondField.data.mid(fieldLine * videoParameters.fieldWidth, videoParameters.fieldWidth));
-        fieldLine++;
-    }
+        // Set the phase IDs for the frame
+        currentFrameBuffer.firstFieldPhaseID = firstField.field.fieldPhaseID;
+        currentFrameBuffer.secondFieldPhaseID = secondField.field.fieldPhaseID;
 
-    // Set the phase IDs for the frame
-    currentFrameBuffer.firstFieldPhaseID = firstField.field.fieldPhaseID;
-    currentFrameBuffer.secondFieldPhaseID = secondField.field.fieldPhaseID;
+        if (fieldIndex < startIndex) {
+            // This is a look-behind frame; we don't need to decode it
+            previousFrameBuffer = currentFrameBuffer;
+            continue;
+        }
 
-    // Extract chroma using 1D filter
-    split1D(&currentFrameBuffer);
+        // Extract chroma using 1D filter
+        split1D(&currentFrameBuffer);
 
-    // Extract chroma using 2D filter
-    split2D(&currentFrameBuffer);
+        // Extract chroma using 2D filter
+        split2D(&currentFrameBuffer);
 
-    if (configuration.use3D) {
-        // 3D comb filter processing
+        if (configuration.use3D) {
+            // 3D comb filter processing
 
-#if 1
-        // XXX - At present we don't have an implementation of motion detection,
-        // which makes this a non-adaptive 3D decoder: it'll give good results
-        // for still images but garbage for moving images.
+    #if 1
+            // XXX - At present we don't have an implementation of motion detection,
+            // which makes this a non-adaptive 3D decoder: it'll give good results
+            // for still images but garbage for moving images.
 
-        // Pretend no motion is detected, so only the 3D result is used
-        currentFrameBuffer.kValues.resize(910 * 525);
-        currentFrameBuffer.kValues.fill(0.0);
-#else
-        // With motion detection, it would look like this...
+            // Pretend no motion is detected, so only the 3D result is used
+            currentFrameBuffer.kValues.resize(910 * 525);
+            currentFrameBuffer.kValues.fill(0.0);
+    #else
+            // With motion detection, it would look like this...
+
+            // Demodulate chroma giving I/Q
+            splitIQ(&currentFrameBuffer);
+
+            // Extract Y from baseband and I/Q
+            adjustY(&currentFrameBuffer, currentFrameBuffer.yiqBuffer);
+
+            // Post-filter I/Q
+            if (configuration.colorlpf) filterIQ(currentFrameBuffer.yiqBuffer);
+
+            // Apply noise reduction
+            doYNR(currentFrameBuffer.yiqBuffer);
+            doCNR(currentFrameBuffer.yiqBuffer);
+
+            opticalFlow.denseOpticalFlow(currentFrameBuffer.yiqBuffer, currentFrameBuffer.kValues);
+    #endif
+
+            // Extract chroma using 3D filter
+            split3D(&currentFrameBuffer, &previousFrameBuffer);
+
+            // Save the current frame for next time
+            previousFrameBuffer = currentFrameBuffer;
+        }
 
         // Demodulate chroma giving I/Q
         splitIQ(&currentFrameBuffer);
 
-        // Copy the current frame to a temporary buffer, so operations on the frame do not
-        // alter the original data
-        tempYiqBuffer = currentFrameBuffer.yiqBuffer;
-
         // Extract Y from baseband and I/Q
-        adjustY(&currentFrameBuffer, tempYiqBuffer);
+        adjustY(&currentFrameBuffer, currentFrameBuffer.yiqBuffer);
 
         // Post-filter I/Q
         if (configuration.colorlpf) filterIQ(currentFrameBuffer.yiqBuffer);
 
         // Apply noise reduction
-        doYNR(tempYiqBuffer);
-        doCNR(tempYiqBuffer);
+        doYNR(currentFrameBuffer.yiqBuffer);
+        doCNR(currentFrameBuffer.yiqBuffer);
 
-        opticalFlow.denseOpticalFlow(currentFrameBuffer.yiqBuffer, currentFrameBuffer.kValues);
-#endif
+        // Convert the YIQ result to RGB
+        outputFrames[frameIndex] = yiqToRgbFrame(currentFrameBuffer.yiqBuffer);
 
-        // Extract chroma using 3D filter
-        split3D(&currentFrameBuffer, &previousFrameBuffer);
-
-        // Save the current frame for next time
-        previousFrameBuffer = currentFrameBuffer;
+        // Overlay the optical flow map if required
+        if (configuration.showOpticalFlowMap) overlayOpticalFlowMap(currentFrameBuffer, outputFrames[frameIndex]);
     }
-
-    // Demodulate chroma giving I/Q
-    splitIQ(&currentFrameBuffer);
-
-    // Copy the current frame to a temporary buffer, so operations on the frame do not
-    // alter the original data
-    tempYiqBuffer = currentFrameBuffer.yiqBuffer;
-
-    // Extract Y from baseband and I/Q
-    adjustY(&currentFrameBuffer, tempYiqBuffer);
-
-    // Post-filter I/Q
-    if (configuration.colorlpf) filterIQ(currentFrameBuffer.yiqBuffer);
-
-    // Apply noise reduction
-    doYNR(tempYiqBuffer);
-    doCNR(tempYiqBuffer);
-
-    // Convert the YIQ result to RGB
-    rgbOutputBuffer = yiqToRgbFrame(tempYiqBuffer);
-
-    // Overlay the optical flow map if required
-    if (configuration.showOpticalFlowMap) overlayOpticalFlowMap(currentFrameBuffer, rgbOutputBuffer);
-
-    // Return the output frame
-    return rgbOutputBuffer;
 }
 
 // Private methods ----------------------------------------------------------------------------------------------------
@@ -391,7 +398,7 @@ void Comb::filterIQ(YiqBuffer &yiqBuffer)
         iFilter.clear();
         qFilter.clear();
 
-        qint32 qoffset = 2; // f_colorlpf_hq ? f_colorlpi_offset : f_colorlpq_offset;
+        qint32 qoffset = configuration.colorlpf_hq ? f_colorlpi_offset : f_colorlpq_offset;
 
         qreal filti = 0, filtq = 0;
 

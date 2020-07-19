@@ -183,7 +183,7 @@ QImage TbcSource::getFrameImage(qint32 frameNumber)
     }
 
     // Get a QImage for the frame
-    QImage frameImage = generateQImage(firstFieldNumber, secondFieldNumber);
+    QImage frameImage = generateQImage(frameNumber);
 
     // Get the field metadata
     LdDecodeMetaData::Field firstField = ldDecodeMetaData.getField(firstFieldNumber);
@@ -526,7 +526,7 @@ qint32 TbcSource::startOfChapter(qint32 currentFrameNumber)
 // Private methods ----------------------------------------------------------------------------------------------------
 
 // Method to create a QImage for a source video frame
-QImage TbcSource::generateQImage(qint32 firstFieldNumber, qint32 secondFieldNumber)
+QImage TbcSource::generateQImage(qint32 frameNumber)
 {
     // Get the metadata for the video parameters
     LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
@@ -536,49 +536,55 @@ QImage TbcSource::generateQImage(qint32 firstFieldNumber, qint32 secondFieldNumb
 
     // Show debug information
     if (chromaOn) {
-        qDebug().nospace() << "TbcSource::generateQImage(): Generating a chroma image from field pair " << firstFieldNumber <<
-                    "/" << secondFieldNumber << " (" << videoParameters.fieldWidth << "x" <<
-                    frameHeight << ")";
+        qDebug().nospace() << "TbcSource::generateQImage(): Generating a chroma image from frame " << frameNumber <<
+                    " (" << videoParameters.fieldWidth << "x" << frameHeight << ")";
     } else if (lpfOn) {
-        qDebug().nospace() << "TbcSource::generateQImage(): Generating a LPF image from field pair " << firstFieldNumber <<
-                    "/" << secondFieldNumber << " (" << videoParameters.fieldWidth << "x" <<
-                    frameHeight << ")";
+        qDebug().nospace() << "TbcSource::generateQImage(): Generating a LPF image from frame " << frameNumber <<
+                    " (" << videoParameters.fieldWidth << "x" << frameHeight << ")";
     } else {
-        qDebug().nospace() << "TbcSource::generateQImage(): Generating a source image from field pair " << firstFieldNumber <<
-                    "/" << secondFieldNumber << " (" << videoParameters.fieldWidth << "x" <<
-                    frameHeight << ")";
+        qDebug().nospace() << "TbcSource::generateQImage(): Generating a source image from frame " << frameNumber <<
+                    " (" << videoParameters.fieldWidth << "x" << frameHeight << ")";
     }
 
     // Create a QImage
     QImage frameImage = QImage(videoParameters.fieldWidth, frameHeight, QImage::Format_RGB888);
 
-    // Define the data buffers
-    QByteArray firstLineData;
-    QByteArray secondLineData;
+    // Work out how many frames ahead/behind we need to fetch
+    qint32 lookBehind, lookAhead;
+    if (!chromaOn) {
+        // Not decoding chroma -- so none
+        lookBehind = 0;
+        lookAhead = 0;
+    } else if (videoParameters.isSourcePal) {
+        lookBehind = palConfiguration.getLookBehind();
+        lookAhead = palConfiguration.getLookAhead();
+    } else {
+        lookBehind = ntscConfiguration.getLookBehind();
+        lookAhead = ntscConfiguration.getLookAhead();
+    }
+
+    // Fetch the input fields and metadata
+    QVector<SourceField> inputFields;
+    qint32 startIndex, endIndex;
+    SourceField::loadFields(sourceVideo, ldDecodeMetaData,
+                            frameNumber, 1, lookBehind, lookAhead,
+                            inputFields, startIndex, endIndex);
 
     if (chromaOn) {
         // Chroma decode the current frame and display
 
-        // Get the two fields and their metadata and contain in the chroma-decoder's
-        // source field class
-        SourceField firstField, secondField;
-        firstField.field = ldDecodeMetaData.getField(firstFieldNumber);
-        secondField.field = ldDecodeMetaData.getField(secondFieldNumber);
-        firstField.data = sourceVideo.getVideoField(firstFieldNumber);
-        secondField.data = sourceVideo.getVideoField(secondFieldNumber);
-
         // Decode colour for the current frame, to RGB 16-16-16 interlaced output
-        RGBFrame rgbFrame;
+        QVector<RGBFrame> outputFrames(1);
         if (videoParameters.isSourcePal) {
             // PAL source
-            rgbFrame = palColour.decodeFrame(firstField, secondField);
+            palColour.decodeFrames(inputFields, startIndex, endIndex, outputFrames);
         } else {
             // NTSC source
-            rgbFrame = ntscColour.decodeFrame(firstField, secondField);
+            ntscColour.decodeFrames(inputFields, startIndex, endIndex, outputFrames);
         }
 
         // Get a pointer to the RGB data
-        const quint16 *rgbPointer = rgbFrame.data();
+        const quint16 *rgbPointer = outputFrames[0].data();
 
         // Fill the QImage with black
         frameImage.fill(Qt::black);
@@ -598,16 +604,12 @@ QImage TbcSource::generateQImage(qint32 firstFieldNumber, qint32 secondFieldNumb
     } else if (lpfOn) {
         // Display the current frame as LPF only
 
-        // Get the field data
-        SourceVideo::Data firstField = sourceVideo.getVideoField(firstFieldNumber);
-        SourceVideo::Data secondField = sourceVideo.getVideoField(secondFieldNumber);
-
         // Generate pointers to the 16-bit greyscale data.
         // Since we're taking a non-const pointer here, this will detach from
         // the original copy of the data (which is what we want, because we're
         // going to filter it in place).
-        quint16 *firstFieldPointer = firstField.data();
-        quint16 *secondFieldPointer = secondField.data();
+        quint16 *firstFieldPointer = inputFields[startIndex].data.data();
+        quint16 *secondFieldPointer = inputFields[startIndex + 1].data.data();
 
         // Generate a filter object
         Filters filters;
@@ -655,13 +657,9 @@ QImage TbcSource::generateQImage(qint32 firstFieldNumber, qint32 secondFieldNumb
     } else {
         // Display the current frame as source data
 
-        // Get the field data
-        SourceVideo::Data firstField = sourceVideo.getVideoField(firstFieldNumber);
-        SourceVideo::Data secondField = sourceVideo.getVideoField(secondFieldNumber);
-
         // Get pointers to the 16-bit greyscale data
-        const quint16 *firstFieldPointer = firstField.data();
-        const quint16 *secondFieldPointer = secondField.data();
+        const quint16 *firstFieldPointer = inputFields[startIndex].data.data();
+        const quint16 *secondFieldPointer = inputFields[startIndex + 1].data.data();
 
         // Copy the raw 16-bit grayscale data into the RGB888 QImage
         for (qint32 y = 0; y < frameHeight; y++) {

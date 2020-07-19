@@ -5,7 +5,7 @@
     ld-chroma-decoder - Colourisation filter for ld-decode
     Copyright (C) 2018 Chad Page
     Copyright (C) 2018-2019 Simon Inns
-    Copyright (C) 2019 Adam Sampson
+    Copyright (C) 2019-2020 Adam Sampson
 
     This file is part of ld-decode-tools.
 
@@ -47,6 +47,7 @@ public:
     NtscDecoder(const Comb::Configuration &combConfig);
     bool configure(const LdDecodeMetaData::VideoParameters &videoParameters) override;
     qint32 getLookBehind() const override;
+    qint32 getLookAhead() const override;
     QThread *makeThread(QAtomicInt& abort, DecoderPool& decoderPool) override;
 
     // Parameters used by NtscDecoder and NtscThread

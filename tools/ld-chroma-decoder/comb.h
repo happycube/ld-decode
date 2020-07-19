@@ -5,6 +5,7 @@
     ld-chroma-decoder - Colourisation filter for ld-decode
     Copyright (C) 2018 Chad Page
     Copyright (C) 2018-2019 Simon Inns
+    Copyright (C) 2020 Adam Sampson
 
     This file is part of ld-decode-tools.
 
@@ -47,7 +48,7 @@ public:
     // Comb filter configuration parameters
     struct Configuration {
         double chromaGain = 1.0;
-        bool colorlpf = true;
+        bool colorlpf = false;
         bool colorlpf_hq = true;
         bool whitePoint75 = false;
         bool use3D = false;
@@ -55,14 +56,18 @@ public:
 
         qreal cNRLevel = 0.0;
         qreal yNRLevel = 1.0;
+
+        qint32 getLookBehind() const;
+        qint32 getLookAhead() const;
     };
 
     const Configuration &getConfiguration() const;
     void updateConfiguration(const LdDecodeMetaData::VideoParameters &videoParameters,
                              const Configuration &configuration);
 
-    // Decode two fields to produce an interlaced frame.
-    RGBFrame decodeFrame(const SourceField &firstField, const SourceField &secondField);
+    // Decode a sequence of fields into a sequence of interlaced frames
+    void decodeFrames(const QVector<SourceField> &inputFields, qint32 startIndex, qint32 endIndex,
+                      QVector<RGBFrame> &outputFrames);
 
 protected:
 
@@ -93,9 +98,6 @@ private:
         qint32 firstFieldPhaseID; // The phase of the frame's first field
         qint32 secondFieldPhaseID; // The phase of the frame's second field
     };
-
-    // Previous and next frame for 3D processing
-    FrameBuffer previousFrameBuffer;
 
     inline qint32 GetFieldID(FrameBuffer *frameBuffer, qint32 lineNumber);
     inline bool GetLinePhase(FrameBuffer *frameBuffer, qint32 lineNumber);
