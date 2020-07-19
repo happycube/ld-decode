@@ -224,6 +224,12 @@ def draw_raw_bwimage(bm, x = 2800, y = 525, hscale = 1, vscale = 2, outsize = No
 def draw_field(field):
     return draw_raw_bwimage(field.dspicture, field.outlinelen, field.outlinecount)
 
+def draw_raw_field(self, channel = 'demod'):
+    # Draws the pre-TBC field.  Useful for determining if there's a skip (i.e. issue #509)
+    cooked = self.hz_to_output(self.data['video'][channel][int(self.linelocs[0]):int(self.linelocs[-1])])
+    
+    return draw_raw_bwimage(cooked, self.inlinelen, len(self.linelocs)-2, vscale=4)
+
 def plotline(field, line, usecs = 63.5, linelocs = None):
 	ls = field.lineslice(line, 0, usecs, linelocs)
 	plt.plot(field.data['video']['demod'][ls])
