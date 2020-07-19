@@ -1471,7 +1471,6 @@ class Field:
         vp_vsyncs = np.where(vp_type[start:] == VSYNC)[0]
         firstvsync = vp_vsyncs[0] + start if len(vp_vsyncs) else None
 
-        #print(firstvsync)
         if firstvsync is None or firstvsync < 10:
             return None, None
 
@@ -1513,9 +1512,9 @@ class Field:
         First Look at each equalization/vblank pulse section - if the expected # are there and valid,
         it can be used to determine where line 0 is...
         '''
+
         # locations of lines before after/vblank.  may not be line 0 etc
         lastvalid = len(validpulses) if limit is None else start + limit
-        #print(firstblank, lastvalid)
         if firstblank is None or firstblank > lastvalid:
             return None, None, None, None
 
@@ -1670,21 +1669,21 @@ class Field:
         # Best case - all three line detectors returned something - perform TOOT using median
         if line0loc_local is not None and line0loc_next is not None and line0loc_prev is not None:
             isFirstField_all = (isFirstField_local + isFirstField_prev + isFirstField_next) >= 2
-            return np.median([line0loc_local, line0loc_next, line0loc_prev]), isFirstField_all
+            return np.median([line0loc_local, line0loc_next, line0loc_prev]), self.vblank_next, isFirstField_all
 
         if line0loc_local is not None and conf_local > 50:
             self.sync_confidence = min(self.sync_confidence, 90)
-            return line0loc_local, isFirstField_local
+            return line0loc_local, self.vblank_next, isFirstField_local
         elif line0loc_prev is not None:
             new_sync_confidence = np.max(conf_prev - 10, 0)
             self.sync_confidence = min(self.sync_confidence, new_sync_confidence)
-            return line0loc_prev, isFirstField_prev
+            return line0loc_prev, self.vblank_next, isFirstField_prev
         elif line0loc_next is not None:
             self.sync_confidence = conf_next
-            return line0loc_next, isFirstField_next
+            return line0loc_next, self.vblank_next, isFirstField_next
         else:
             # Failed to find anything useful - the caller is expected to skip ahead and try again
-            return None, None
+            return None, None, None
 
     def getpulses(self):
         # pass one using standard levels 
@@ -1748,12 +1747,22 @@ class Field:
         self.rawpulses = self.getpulses()
         if self.rawpulses is None or len(self.rawpulses) == 0:
             logging.error("Unable to find any sync pulses, jumping one second")
-            print('e0')
             return None, None, int(self.rf.freq_hz)
 
         self.validpulses = validpulses = self.refinepulses()
 
-        line0loc, self.isFirstField = self.getLine0(validpulses)
+        line0loc, lastlineloc, self.isFirstField = self.getLine0(validpulses)
+        self.linecount = 263 if self.isFirstField else 262
+
+        # It's possible for getLine0 to return None for lastlineloc
+        if lastlineloc is not None:
+            numlines = ((lastlineloc - line0loc) / self.inlinelen) 
+            self.skipdetected = numlines < (self.linecount - 5)
+        else:
+            self.skipdetected = False
+
+        skip_reached = False
+        
         linelocs_dict = {}
         linelocs_dist = {}
 
@@ -1761,14 +1770,11 @@ class Field:
             if self.initphase == False:
                 logging.error("Unable to determine start of field - dropping field")
 
-            #print('e1')
-
             return None, None, self.inlinelen * 200
 
         meanlinelen = self.computeLineLen(validpulses)
 
         if ((self.rawpulses[-1].start - line0loc) / meanlinelen) < (self.outlinecount + 7):
-            #print('ea')
             return None, None, line0loc - (meanlinelen * 20)
 
         for p in validpulses:
@@ -1776,7 +1782,18 @@ class Field:
             rlineloc = np.round(lineloc)
             lineloc_distance = np.abs(lineloc - rlineloc)
 
-            #print(p, lineloc, rlineloc, lineloc_distance)
+            if self.skipdetected:
+                lineloc_end = self.linecount - ((lastlineloc - p[1].start) / meanlinelen)
+                rlineloc_end = np.round(lineloc_end)
+                lineloc_end_distance = np.abs(lineloc_end - rlineloc_end)
+
+                if p[0] == 0 and lineloc_end_distance < lineloc_distance:
+                    skip_reached = True
+
+                if skip_reached:
+                    lineloc = lineloc_end
+                    rlineloc = rlineloc_end
+                    lineloc_distance = lineloc_end_distance
 
             # only record if it's closer to the (probable) beginning of the line
             if lineloc_distance > self.rf.hsync_tolerance or (rlineloc in linelocs_dict and lineloc_distance > linelocs_dist[rlineloc]):
@@ -2554,8 +2571,6 @@ class FieldNTSC(Field):
         
         if not self.valid:
             return
-
-        self.linecount = 263 if self.isFirstField else 262
 
         self.linecode = [self.decodephillipscode(l + self.lineoffset) for l in [16, 17, 18]]
 
