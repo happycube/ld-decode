@@ -117,6 +117,8 @@ def make_loader(filename, inputfreq=None):
 
         if filename.endswith('.r16') or filename.endswith('.s16'):
             input_args = ['-f', 's16le']
+        elif filename.endswith('.rf'):
+            input_args = ['-f', 'f32le']
         elif filename.endswith('.r8') or filename.endswith('.u8'):
             input_args = ['-f', 'u8']
         elif filename.endswith('.lds') or filename.endswith('.r30'):
