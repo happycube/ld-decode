@@ -1743,7 +1743,6 @@ class Field:
         self.rawpulses = self.getpulses()
         if self.rawpulses is None or len(self.rawpulses) == 0:
             logging.error("Unable to find any sync pulses, jumping one second")
-            print('x1')
             return None, None, int(self.rf.freq_hz)
 
         self.validpulses = validpulses = self.refinepulses()
