@@ -159,7 +159,7 @@ def load_unpacked_data(infile, sample, readlen, sampletype):
     inbuf = infile.read(readlen * sampletype)
 
     if sampletype == 4:
-        indata = np.fromstring(inbuf, 'float32', len(inbuf) // 4)
+        indata = np.fromstring(inbuf, 'float32', len(inbuf) // 4) * 32768
     elif sampletype == 2:
         indata = np.fromstring(inbuf, 'int16', len(inbuf) // 2)
     else:
