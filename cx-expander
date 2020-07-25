@@ -133,8 +133,10 @@ class CXExpander:
             # lmfactor = max(1, mfactor) # ???
             lmfactor = 1 # ???
 
-            output[(i * 2)] = (fleft[i] * mfactor) + (lfleft[i] * lmfactor)
-            output[(i * 2) + 1] = (fright[i] * mfactor) + (lfright[i] * lmfactor)
+            scale = .25
+
+            output[(i * 2)] = scale * ((fleft[i] * mfactor) + (lfleft[i] * lmfactor))
+            output[(i * 2) + 1] = scale * ((fright[i] * mfactor) + (lfright[i] * lmfactor))
 
             #output[(i * 2)] = lfright[i]
             #output[(i * 2) + 1] = fright[i]
