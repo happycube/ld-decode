@@ -1173,8 +1173,10 @@ def downscale_audio(audio, lineinfo, rf, linecount, timeoffset = 0, freq = 48000
             output_left = (output_left * swow[i]) - rf.SysParams['audio_lfreq']
             output_right = (output_right * swow[i]) - rf.SysParams['audio_rfreq']
             
-            output[(i * 2) + 0] = dsa_rescale(output_left) #int(np.round(output_left * 32767 / 150000))
-            output[(i * 2) + 1] = dsa_rescale(output_right)
+            ascale = .5
+
+            output[(i * 2) + 0] = dsa_rescale(ascale * output_left) #int(np.round(output_left * 32767 / 150000))
+            output[(i * 2) + 1] = dsa_rescale(ascale * output_right)
         else:
             # TBC failure can cause this (issue #389)
             if failed == False:
