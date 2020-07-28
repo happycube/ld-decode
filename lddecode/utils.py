@@ -136,6 +136,8 @@ def make_loader(filename, inputfreq=None):
         return load_packed_data_4_40
     elif filename.endswith('.r30'):
         return load_packed_data_3_32
+    elif filename.endswith('.rf'):
+        return load_unpacked_data_float32
     elif filename.endswith('.r16') or filename.endswith('.s16'):
         return load_unpacked_data_s16
     elif filename.endswith('.r8') or filename.endswith('.u8'):
@@ -156,7 +158,9 @@ def load_unpacked_data(infile, sample, readlen, sampletype):
     infile.seek(sample * sampletype, 0)
     inbuf = infile.read(readlen * sampletype)
 
-    if sampletype == 2:
+    if sampletype == 4:
+        indata = np.fromstring(inbuf, 'float32', len(inbuf) // 4) * 32768
+    elif sampletype == 2:
         indata = np.fromstring(inbuf, 'int16', len(inbuf) // 2)
     else:
         indata = np.fromstring(inbuf, 'uint8', len(inbuf))
@@ -171,6 +175,9 @@ def load_unpacked_data_u8(infile, sample, readlen):
 
 def load_unpacked_data_s16(infile, sample, readlen):
     return load_unpacked_data(infile, sample, readlen, 2)
+
+def load_unpacked_data_float32(infile, sample, readlen):
+    return load_unpacked_data(infile, sample, readlen, 4)
 
 # This is for the .r30 format I did in ddpack/unpack.c.  Depricated but I still have samples in it.
 def load_packed_data_3_32(infile, sample, readlen):
