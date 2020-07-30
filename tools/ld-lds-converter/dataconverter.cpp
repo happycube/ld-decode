@@ -228,7 +228,7 @@ void DataConverter::unpackFile(void)
     while(!isComplete) {
         // Input buffer must be divisible by 5 bytes due to 10-bit data format
         qint32 bufferSizeInBytes = (5 * 1024 * 1024) * 4; // 5MiB * 4 = 20MiBytes
-        inputBuffer.resize(bufferSizeInBytes);
+        inputBuffer.fill(0, bufferSizeInBytes);
 
         // Every 5 input bytes is 4 output words (8 bytes)
         outputBuffer.resize((bufferSizeInBytes / 5) * 8);
