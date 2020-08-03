@@ -171,10 +171,10 @@ int main(int argc, char *argv[])
 
     // -- NTSC decoder options --
 
-    // Option to show the optical flow map (-o)
-    QCommandLineOption showOpticalFlowOption(QStringList() << "o" << "oftest",
-                                             QCoreApplication::translate("main", "NTSC: Show the optical flow map (only used for testing)"));
-    parser.addOption(showOpticalFlowOption);
+    // Option to overlay the adaptive filter map
+    QCommandLineOption showMapOption(QStringList() << "o" << "oftest",
+                                     QCoreApplication::translate("main", "NTSC: Overlay the adaptive filter map (only used for testing)"));
+    parser.addOption(showMapOption);
 
     // Option to set the white point to 75% (rather than 100%)
     QCommandLineOption whitePointOption(QStringList() << "w" << "white",
@@ -321,8 +321,8 @@ int main(int argc, char *argv[])
         combConfig.whitePoint75 = true;
     }
 
-    if (parser.isSet(showOpticalFlowOption)) {
-        combConfig.showOpticalFlowMap = true;
+    if (parser.isSet(showMapOption)) {
+        combConfig.showMap = true;
     }
 
     if (parser.isSet(chromaNROption)) {
@@ -406,9 +406,9 @@ int main(int argc, char *argv[])
         decoderName = "ntsc2d";
     }
 
-    // Require ntsc3d if the optical flow map overlay is selected
-    if (combConfig.showOpticalFlowMap && decoderName != "ntsc3d") {
-        qCritical() << "Can only show optical flow with the ntsc3d decoder";
+    // Require ntsc3d if the map overlay is selected
+    if (combConfig.showMap && decoderName != "ntsc3d") {
+        qCritical() << "Can only show adaptive filter map with the ntsc3d decoder";
         return -1;
     }
 

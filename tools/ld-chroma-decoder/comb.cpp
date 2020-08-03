@@ -157,8 +157,8 @@ void Comb::decodeFrames(const QVector<SourceField> &inputFields, qint32 startInd
         // Convert the YIQ result to RGB
         outputFrames[frameIndex] = currentFrameBuffer->yiqToRgbFrame();
 
-        // Overlay the optical flow map if required
-        if (configuration.showOpticalFlowMap) currentFrameBuffer->overlayOpticalFlowMap(outputFrames[frameIndex]);
+        // Overlay the map if required
+        if (configuration.showMap) currentFrameBuffer->overlayMap(outputFrames[frameIndex]);
     }
 }
 
@@ -593,11 +593,11 @@ RGBFrame Comb::FrameBuffer::yiqToRgbFrame()
 }
 
 // Convert buffer from YIQ to RGB
-void Comb::FrameBuffer::overlayOpticalFlowMap(RGBFrame &rgbFrame)
+void Comb::FrameBuffer::overlayMap(RGBFrame &rgbFrame)
 {
-    qDebug() << "Comb::FrameBuffer::overlayOpticalFlowMap(): Overlaying optical flow map onto RGB output";
+    qDebug() << "Comb::FrameBuffer::overlayMap(): Overlaying map onto RGB output";
 
-    // Overlay the optical flow map on the output RGB
+    // Overlay the map on the output RGB
     for (qint32 lineNumber = videoParameters.firstActiveFrameLine; lineNumber < videoParameters.lastActiveFrameLine; lineNumber++) {
         // Get a pointer to the line
         quint16 *linePointer = rgbFrame.data() + (videoParameters.fieldWidth * 3 * lineNumber);

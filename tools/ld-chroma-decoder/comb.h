@@ -51,7 +51,7 @@ public:
         bool colorlpf_hq = true;
         bool whitePoint75 = false;
         bool use3D = false;
-        bool showOpticalFlowMap = false;
+        bool showMap = false;
 
         double cNRLevel = 0.0;
         double yNRLevel = 1.0;
@@ -99,7 +99,7 @@ private:
         void doYNR();
 
         RGBFrame yiqToRgbFrame();
-        void overlayOpticalFlowMap(RGBFrame &rgbOutputFrame);
+        void overlayMap(RGBFrame &rgbOutputFrame);
 
     private:
         const LdDecodeMetaData::VideoParameters &videoParameters;
