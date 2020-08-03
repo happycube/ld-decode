@@ -33,12 +33,28 @@ class YIQ
 public:
     double y, i, q;
 
-    YIQ(double y = 0.0, double i = 0.0, double q = 0.0);
-    YIQ operator*=(double x) const;
-    YIQ operator+=(const YIQ &p) const;
+    YIQ(double y_ = 0.0, double i_ = 0.0, double q_ = 0.0)
+        : y(y_), i(i_), q(q_) {}
 
-private:
+    YIQ operator*=(double x) const {
+        YIQ o;
 
+        o.y = this->y * x;
+        o.i = this->i * x;
+        o.q = this->q * x;
+
+        return o;
+    }
+
+    YIQ operator+=(const YIQ &p) const {
+        YIQ o;
+
+        o.y = this->y + p.y;
+        o.i = this->i + p.i;
+        o.q = this->q + p.q;
+
+        return o;
+    }
 };
 
 #endif // YIQ_H

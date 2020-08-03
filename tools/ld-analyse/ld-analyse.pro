@@ -41,7 +41,6 @@ SOURCES += \
     ../ld-chroma-decoder/palcolour.cpp \
     ../ld-chroma-decoder/comb.cpp \
     ../ld-chroma-decoder/rgb.cpp \
-    ../ld-chroma-decoder/yiq.cpp \
     ../ld-chroma-decoder/transformpal.cpp \
     ../ld-chroma-decoder/transformpal2d.cpp \
     ../ld-chroma-decoder/transformpal3d.cpp \

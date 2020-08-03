@@ -29,7 +29,6 @@ SOURCES += \
     transformpal.cpp \
     transformpal2d.cpp \
     transformpal3d.cpp \
-    yiq.cpp \
     ../library/tbc/lddecodemetadata.cpp \
     ../library/tbc/sourcevideo.cpp \
     ../library/tbc/vbidecoder.cpp \
