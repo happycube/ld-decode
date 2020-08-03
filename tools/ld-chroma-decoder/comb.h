@@ -54,8 +54,8 @@ public:
         bool use3D = false;
         bool showOpticalFlowMap = false;
 
-        qreal cNRLevel = 0.0;
-        qreal yNRLevel = 1.0;
+        double cNRLevel = 0.0;
+        double yNRLevel = 1.0;
 
         qint32 getLookBehind() const;
         qint32 getLookAhead() const;
@@ -78,21 +78,21 @@ private:
     LdDecodeMetaData::VideoParameters videoParameters;
 
     // IRE scaling
-    qreal irescale;
+    double irescale;
 
     // Calculated frame height
     qint32 frameHeight;
 
     // Input frame buffer definitions
     struct PixelLine {
-        qreal pixel[526][911]; // 526 is the maximum allowed field lines, 911 is the maximum field width
+        double pixel[526][911]; // 526 is the maximum allowed field lines, 911 is the maximum field width
     };
 
     struct FrameBuffer {
         SourceVideo::Data rawbuffer;
 
         QVector<PixelLine> clpbuffer; // Unfiltered chroma for the current phase (can be I or Q)
-        QVector<qreal> kValues;
+        QVector<double> kValues;
         YiqBuffer yiqBuffer; // YIQ values for the frame
 
         qint32 firstFieldPhaseID; // The phase of the frame's first field

@@ -31,10 +31,10 @@
 class YIQ
 {
 public:
-    qreal y, i, q;
+    double y, i, q;
 
-    YIQ(qreal y = 0.0, qreal i = 0.0, qreal q = 0.0);
-    YIQ operator*=(qreal x) const;
+    YIQ(double y = 0.0, double i = 0.0, double q = 0.0);
+    YIQ operator*=(double x) const;
     YIQ operator+=(const YIQ &p) const;
 
 private:

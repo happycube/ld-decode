@@ -221,7 +221,7 @@ void Comb::split1D(FrameBuffer *frameBuffer)
         const quint16 *line = frameBuffer->rawbuffer.data() + (lineNumber * videoParameters.fieldWidth);
 
         for (qint32 h = videoParameters.activeVideoStart; h < videoParameters.activeVideoEnd; h++) {
-            qreal tc1 = (((line[h + 2] + line[h - 2]) / 2) - line[h]);
+            double tc1 = (((line[h + 2] + line[h - 2]) / 2) - line[h]);
 
             // Record the 1D C value
             frameBuffer->clpbuffer[0].pixel[lineNumber][h] = tc1;
@@ -245,23 +245,23 @@ void Comb::split1D(FrameBuffer *frameBuffer)
 void Comb::split2D(FrameBuffer *frameBuffer)
 {
     // Dummy black line
-    static constexpr qreal blackLine[911] = {0};
+    static constexpr double blackLine[911] = {0};
 
     for (qint32 lineNumber = videoParameters.firstActiveFrameLine; lineNumber < videoParameters.lastActiveFrameLine; lineNumber++) {
         // Get pointers to the surrounding lines of 1D chroma.
         // If a line we need is outside the active area, use blackLine instead.
-        const qreal *previousLine = blackLine;
+        const double *previousLine = blackLine;
         if (lineNumber - 2 >= videoParameters.firstActiveFrameLine) {
             previousLine = frameBuffer->clpbuffer[0].pixel[lineNumber - 2];
         }
-        const qreal *currentLine = frameBuffer->clpbuffer[0].pixel[lineNumber];
-        const qreal *nextLine = blackLine;
+        const double *currentLine = frameBuffer->clpbuffer[0].pixel[lineNumber];
+        const double *nextLine = blackLine;
         if (lineNumber + 2 < videoParameters.lastActiveFrameLine) {
             nextLine = frameBuffer->clpbuffer[0].pixel[lineNumber + 2];
         }
 
         for (qint32 h = videoParameters.activeVideoStart; h < videoParameters.activeVideoEnd; h++) {
-            qreal kp, kn;
+            double kp, kn;
 
             // Estimate similarity to the previous and next lines
             // (with a penalty if this is also a horizontal transition)
@@ -275,11 +275,11 @@ void Comb::split2D(FrameBuffer *frameBuffer)
             kp /= 2;
             kn /= 2;
 
-            qreal p_2drange = 45 * irescale;
+            double p_2drange = 45 * irescale;
             kp = qBound(0.0, 1 - (kp / p_2drange), 1.0);
             kn = qBound(0.0, 1 - (kn / p_2drange), 1.0);
 
-            qreal sc = 1.0;
+            double sc = 1.0;
 
             if ((kn > 0) || (kp > 0)) {
                 // At least one of the next/previous lines is pretty similar to this one.
@@ -303,7 +303,7 @@ void Comb::split2D(FrameBuffer *frameBuffer)
             }
 
             // Compute the weighted sum of differences, giving the 2D chroma value
-            qreal tc1;
+            double tc1;
             tc1  = ((currentLine[h] - previousLine[h]) * kp * sc);
             tc1 += ((currentLine[h] - nextLine[h]) * kn * sc);
             tc1 /= 8;
@@ -353,12 +353,12 @@ void Comb::splitIQ(FrameBuffer *frameBuffer)
         const quint16 *line = frameBuffer->rawbuffer.data() + (lineNumber * videoParameters.fieldWidth);
         bool linePhase = GetLinePhase(frameBuffer, lineNumber);
 
-        qreal si = 0, sq = 0;
+        double si = 0, sq = 0;
         for (qint32 h = videoParameters.activeVideoStart; h < videoParameters.activeVideoEnd; h++) {
             qint32 phase = h % 4;
 
             // Take the 2D C
-            qreal cavg = frameBuffer->clpbuffer[1].pixel[lineNumber][h]; // 2D C average
+            double cavg = frameBuffer->clpbuffer[1].pixel[lineNumber][h]; // 2D C average
 
             if (configuration.use3D && frameBuffer->kValues.size() != 0) {
                 // 3D mode -- compute a weighted sum of the 2D and 3D chroma values
@@ -400,7 +400,7 @@ void Comb::filterIQ(YiqBuffer &yiqBuffer)
 
         qint32 qoffset = configuration.colorlpf_hq ? f_colorlpi_offset : f_colorlpq_offset;
 
-        qreal filti = 0, filtq = 0;
+        double filti = 0, filtq = 0;
 
         for (qint32 h = videoParameters.activeVideoStart; h < videoParameters.activeVideoEnd; h++) {
             qint32 phase = h % 4;
@@ -436,7 +436,7 @@ void Comb::doCNR(YiqBuffer &yiqBuffer)
     auto qFilter(f_nrc);
 
     // nr_c is the coring level
-    qreal nr_c = configuration.cNRLevel * irescale;
+    double nr_c = configuration.cNRLevel * irescale;
 
     QVector<YIQ> hplinef;
     hplinef.resize(videoParameters.fieldWidth + 32);
@@ -451,8 +451,8 @@ void Comb::doCNR(YiqBuffer &yiqBuffer)
 
         for (qint32 h = videoParameters.activeVideoStart; h < videoParameters.activeVideoEnd; h++) {
             // Offset by 12 to cover the filter delay
-            qreal ai = hplinef[h + 12].i;
-            qreal aq = hplinef[h + 12].q;
+            double ai = hplinef[h + 12].i;
+            double aq = hplinef[h + 12].q;
 
             if (fabs(ai) > nr_c) {
                 ai = (ai > 0) ? nr_c : -nr_c;
@@ -476,7 +476,7 @@ void Comb::doYNR(YiqBuffer &yiqBuffer)
     auto yFilter(f_nr);
 
     // nr_y is the coring level
-    qreal nr_y = configuration.yNRLevel * irescale;
+    double nr_y = configuration.yNRLevel * irescale;
 
     QVector<YIQ> hplinef;
     hplinef.resize(videoParameters.fieldWidth + 32);
@@ -489,7 +489,7 @@ void Comb::doYNR(YiqBuffer &yiqBuffer)
         }
 
         for (qint32 h = videoParameters.activeVideoStart; h < videoParameters.activeVideoEnd; h++) {
-            qreal a = hplinef[h + 12].y;
+            double a = hplinef[h + 12].y;
 
             if (fabs(a) > nr_y) {
                 a = (a > 0) ? nr_y : -nr_y;
@@ -537,7 +537,7 @@ RGBFrame Comb::yiqToRgbFrame(const YiqBuffer &yiqBuffer)
 void Comb::overlayOpticalFlowMap(const FrameBuffer &frameBuffer, RGBFrame &rgbFrame)
 {
     qDebug() << "Comb::overlayOpticalFlowMap(): Overlaying optical flow map onto RGB output";
-//    QVector<qreal> motionKMap;
+//    QVector<double> motionKMap;
 //    opticalFlow.motionK(motionKMap);
 
     // Overlay the optical flow map on the output RGB
@@ -572,7 +572,7 @@ void Comb::adjustY(FrameBuffer *frameBuffer, YiqBuffer &yiqBuffer)
         bool linePhase = GetLinePhase(frameBuffer, lineNumber);
 
         for (qint32 h = videoParameters.activeVideoStart; h < videoParameters.activeVideoEnd; h++) {
-            qreal comp = 0;
+            double comp = 0;
             qint32 phase = h % 4;
 
             YIQ y = yiqBuffer[lineNumber][h + 2];
