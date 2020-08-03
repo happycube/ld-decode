@@ -28,6 +28,8 @@
 
 #include "deemp.h"
 
+#include <QScopedPointer>
+
 // Public methods -----------------------------------------------------------------------------------------------------
 
 Comb::Comb()
@@ -76,80 +78,82 @@ void Comb::decodeFrames(const QVector<SourceField> &inputFields, qint32 startInd
     assert(configurationSet);
     assert((outputFrames.size() * 2) == (endIndex - startIndex));
 
-    // Buffers for the current and previous frame
-    FrameBuffer currentFrameBuffer(videoParameters, configuration);
-    FrameBuffer previousFrameBuffer(videoParameters, configuration);
+    // Buffers for the current and previous frame.
+    // Because we only need two of these, we allocate them upfront then rotate
+    // the pointers below.
+    QScopedPointer<FrameBuffer> currentFrameBuffer, previousFrameBuffer;
+    currentFrameBuffer.reset(new FrameBuffer(videoParameters, configuration));
+    previousFrameBuffer.reset(new FrameBuffer(videoParameters, configuration));
 
     // Decode each pair of fields into a frame
     for (qint32 fieldIndex = 0; fieldIndex < endIndex; fieldIndex += 2) {
         const qint32 frameIndex = (fieldIndex - startIndex) / 2;
 
+        // Rotate the buffers
+        previousFrameBuffer.swap(currentFrameBuffer);
+
         // Load fields into the buffer
-        currentFrameBuffer.loadFields(inputFields[fieldIndex], inputFields[fieldIndex + 1]);
+        currentFrameBuffer->loadFields(inputFields[fieldIndex], inputFields[fieldIndex + 1]);
 
         if (fieldIndex < startIndex) {
-            // This is a look-behind frame; we don't need to decode it
-            previousFrameBuffer = currentFrameBuffer;
+            // This is a look-behind frame; no further decoding needed.
             continue;
         }
 
         // Extract chroma using 1D filter
-        currentFrameBuffer.split1D();
+        currentFrameBuffer->split1D();
 
         // Extract chroma using 2D filter
-        currentFrameBuffer.split2D();
+        currentFrameBuffer->split2D();
 
         if (configuration.use3D) {
             // 3D comb filter processing
 
-    #if 1
+#if 1
             // XXX - At present we don't have an implementation of motion detection,
             // which makes this a non-adaptive 3D decoder: it'll give good results
             // for still images but garbage for moving images.
-    #else
+#else
             // With motion detection, it would look like this...
 
             // Demodulate chroma giving I/Q
-            currentFrameBuffer.splitIQ();
+            currentFrameBuffer->splitIQ();
 
             // Extract Y from baseband and I/Q
-            currentFrameBuffer.adjustY();
+            currentFrameBuffer->adjustY();
 
             // Post-filter I/Q
-            if (configuration.colorlpf) currentFrameBuffer.filterIQ();
+            if (configuration.colorlpf) currentFrameBuffer->filterIQ();
 
             // Apply noise reduction
-            currentFrameBuffer.doYNR();
-            currentFrameBuffer.doCNR();
+            currentFrameBuffer->doYNR();
+            currentFrameBuffer->doCNR();
 
-            opticalFlow.denseOpticalFlow(currentFrameBuffer.yiqBuffer, currentFrameBuffer.kValues);
-    #endif
+            opticalFlow.denseOpticalFlow(currentFrameBuffer->yiqBuffer, currentFrameBuffer->kValues);
+#endif
 
             // Extract chroma using 3D filter
-            currentFrameBuffer.split3D(previousFrameBuffer);
-
-            // Save the current frame for next time
-            previousFrameBuffer = currentFrameBuffer;
+            currentFrameBuffer->split3D(*previousFrameBuffer);
         }
 
         // Demodulate chroma giving I/Q
-        currentFrameBuffer.splitIQ();
+        currentFrameBuffer->splitIQ();
 
         // Extract Y from baseband and I/Q
-        currentFrameBuffer.adjustY();
+        currentFrameBuffer->adjustY();
 
         // Post-filter I/Q
-        if (configuration.colorlpf) currentFrameBuffer.filterIQ();
+        if (configuration.colorlpf) currentFrameBuffer->filterIQ();
 
         // Apply noise reduction
-        currentFrameBuffer.doYNR();
-        currentFrameBuffer.doCNR();
+        currentFrameBuffer->doYNR();
+        currentFrameBuffer->doCNR();
 
         // Convert the YIQ result to RGB
-        outputFrames[frameIndex] = currentFrameBuffer.yiqToRgbFrame();
+        outputFrames[frameIndex] = currentFrameBuffer->yiqToRgbFrame();
 
         // Overlay the optical flow map if required
-        if (configuration.showOpticalFlowMap) currentFrameBuffer.overlayOpticalFlowMap(outputFrames[frameIndex]);
+        if (configuration.showOpticalFlowMap) currentFrameBuffer->overlayOpticalFlowMap(outputFrames[frameIndex]);
     }
 }
 
@@ -164,9 +168,6 @@ Comb::FrameBuffer::FrameBuffer(const LdDecodeMetaData::VideoParameters &videoPar
 
     // Set the IRE scale
     irescale = (videoParameters.white16bIre - videoParameters.black16bIre) / 100;
-
-    // Allocate the chroma buffers
-    clpbuffer.resize(3);
 
     // Allocate kValues and fill with 0 (no motion detected yet)
     kValues.resize(910 * 525);

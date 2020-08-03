@@ -99,8 +99,8 @@ private:
         void overlayOpticalFlowMap(RGBFrame &rgbOutputFrame);
 
     private:
-        LdDecodeMetaData::VideoParameters videoParameters;
-        Configuration configuration;
+        const LdDecodeMetaData::VideoParameters &videoParameters;
+        const Configuration &configuration;
 
         // Calculated frame height
         qint32 frameHeight;
@@ -115,12 +115,10 @@ private:
         qint32 firstFieldPhaseID;
         qint32 secondFieldPhaseID;
 
-        struct PixelLine {
-            double pixel[526][911]; // 526 is the maximum allowed field lines, 911 is the maximum field width
-        };
-
         // 1D, 2D and 3D-filtered chroma samples
-        QVector<PixelLine> clpbuffer;
+        struct {
+            double pixel[526][911]; // 526 is the maximum allowed field lines, 911 is the maximum field width
+        } clpbuffer[3];
 
         // Demodulated YIQ samples
         YiqBuffer yiqBuffer;
