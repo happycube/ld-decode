@@ -38,7 +38,6 @@
 #include "rgbframe.h"
 #include "sourcefield.h"
 #include "yiq.h"
-#include "yiqbuffer.h"
 
 class Comb
 {
@@ -125,7 +124,7 @@ private:
         } clpbuffer[3];
 
         // Demodulated YIQ samples
-        YiqBuffer yiqBuffer;
+        YIQ yiqBuffer[MAX_HEIGHT][MAX_WIDTH];
 
         // Motion detection result, from 0 (none) to 1 (lots)
         QVector<double> kValues;

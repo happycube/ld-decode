@@ -50,7 +50,6 @@ HEADERS += \
     transformpal2d.h \
     transformpal3d.h \
     yiq.h \
-    yiqbuffer.h \
     ../library/filter/deemp.h \
     ../library/filter/firfilter.h \
     ../library/filter/iirfilter.h \

@@ -374,7 +374,11 @@ void Comb::FrameBuffer::split3D(const FrameBuffer &previousFrame)
 void Comb::FrameBuffer::splitIQ()
 {
     // Clear the target frame YIQ buffer
-    yiqBuffer.clear();
+    for (qint32 lineNumber = 0; lineNumber < MAX_HEIGHT; lineNumber++) {
+        for (qint32 h = 0; h < MAX_WIDTH; h++) {
+            yiqBuffer[lineNumber][h] = YIQ();
+        }
+    }
 
     for (qint32 lineNumber = videoParameters.firstActiveFrameLine; lineNumber < videoParameters.lastActiveFrameLine; lineNumber++) {
         // Get a pointer to the line's data
