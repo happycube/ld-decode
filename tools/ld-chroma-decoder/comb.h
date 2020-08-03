@@ -69,6 +69,10 @@ public:
     void decodeFrames(const QVector<SourceField> &inputFields, qint32 startIndex, qint32 endIndex,
                       QVector<RGBFrame> &outputFrames);
 
+    // Maximum frame size
+    static constexpr qint32 MAX_WIDTH = 910;
+    static constexpr qint32 MAX_HEIGHT = 525;
+
 protected:
 
 private:
@@ -117,7 +121,7 @@ private:
 
         // 1D, 2D and 3D-filtered chroma samples
         struct {
-            double pixel[526][911]; // 526 is the maximum allowed field lines, 911 is the maximum field width
+            double pixel[MAX_HEIGHT][MAX_WIDTH];
         } clpbuffer[3];
 
         // Demodulated YIQ samples

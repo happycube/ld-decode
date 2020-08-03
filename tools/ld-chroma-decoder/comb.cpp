@@ -30,6 +30,11 @@
 
 #include <QScopedPointer>
 
+// Definitions of static constexpr data members, for compatibility with
+// pre-C++17 compilers
+constexpr qint32 Comb::MAX_WIDTH;
+constexpr qint32 Comb::MAX_HEIGHT;
+
 // Public methods -----------------------------------------------------------------------------------------------------
 
 Comb::Comb()
@@ -63,8 +68,8 @@ void Comb::updateConfiguration(const LdDecodeMetaData::VideoParameters &_videoPa
     configuration = _configuration;
 
     // Range check the frame dimensions
-    if (videoParameters.fieldWidth > 910) qCritical() << "Comb::Comb(): Frame width exceeds allowed maximum!";
-    if (((videoParameters.fieldHeight * 2) - 1) > 525) qCritical() << "Comb::Comb(): Frame height exceeds allowed maximum!";
+    if (videoParameters.fieldWidth > MAX_WIDTH) qCritical() << "Comb::Comb(): Frame width exceeds allowed maximum!";
+    if (((videoParameters.fieldHeight * 2) - 1) > MAX_HEIGHT) qCritical() << "Comb::Comb(): Frame height exceeds allowed maximum!";
 
     // Range check the video start
     if (videoParameters.activeVideoStart < 16) qCritical() << "Comb::Comb(): activeVideoStart must be > 16!";
@@ -170,7 +175,7 @@ Comb::FrameBuffer::FrameBuffer(const LdDecodeMetaData::VideoParameters &videoPar
     irescale = (videoParameters.white16bIre - videoParameters.black16bIre) / 100;
 
     // Allocate kValues and fill with 0 (no motion detected yet)
-    kValues.resize(910 * 525);
+    kValues.resize(MAX_WIDTH * MAX_HEIGHT);
     kValues.fill(0.0);
 }
 
@@ -259,7 +264,7 @@ void Comb::FrameBuffer::split1D()
 void Comb::FrameBuffer::split2D()
 {
     // Dummy black line
-    static constexpr double blackLine[911] = {0};
+    static constexpr double blackLine[MAX_WIDTH] = {0};
 
     for (qint32 lineNumber = videoParameters.firstActiveFrameLine; lineNumber < videoParameters.lastActiveFrameLine; lineNumber++) {
         // Get pointers to the surrounding lines of 1D chroma.
@@ -387,8 +392,8 @@ void Comb::FrameBuffer::splitIQ()
                 // 3D mode -- compute a weighted sum of the 2D and 3D chroma values
 
                 // The motionK map returns K (0 for stationary pixels to 1 for moving pixels)
-                cavg  = clpbuffer[1].pixel[lineNumber][h] * kValues[(lineNumber * 910) + h]; // 2D mix
-                cavg += clpbuffer[2].pixel[lineNumber][h] * (1 - kValues[(lineNumber * 910) + h]); // 3D mix
+                cavg  = clpbuffer[1].pixel[lineNumber][h] * kValues[(lineNumber * MAX_WIDTH) + h]; // 2D mix
+                cavg += clpbuffer[2].pixel[lineNumber][h] * (1 - kValues[(lineNumber * MAX_WIDTH) + h]); // 3D mix
 
                 // Use only 3D (for testing!)
                 //cavg = clpbuffer[2].pixel[lineNumber][h];
@@ -595,7 +600,7 @@ void Comb::FrameBuffer::overlayOpticalFlowMap(RGBFrame &rgbFrame)
 
         // Fill the output frame with the RGB values
         for (qint32 h = videoParameters.activeVideoStart; h < videoParameters.activeVideoEnd; h++) {
-            qint32 intensity = static_cast<qint32>(kValues[(lineNumber * 910) + h] * 65535);
+            qint32 intensity = static_cast<qint32>(kValues[(lineNumber * MAX_WIDTH) + h] * 65535);
             // Make the RGB more purple to show where motion was detected
             qint32 red = linePointer[(h * 3)] + intensity;
             qint32 green = linePointer[(h * 3) + 1];
