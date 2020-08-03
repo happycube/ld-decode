@@ -236,6 +236,13 @@
         </spacer>
        </item>
        <item>
+        <widget class="QCheckBox" name="showMapCheckBox">
+         <property name="text">
+          <string>Overlay adaptive filter visualisation</string>
+         </property>
+        </widget>
+       </item>
+       <item>
         <widget class="QCheckBox" name="whitePoint75CheckBox">
          <property name="text">
           <string>Use 75 IRE white point</string>

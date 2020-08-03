@@ -158,7 +158,9 @@ void Comb::decodeFrames(const QVector<SourceField> &inputFields, qint32 startInd
         outputFrames[frameIndex] = currentFrameBuffer->yiqToRgbFrame();
 
         // Overlay the map if required
-        if (configuration.showMap) currentFrameBuffer->overlayMap(outputFrames[frameIndex]);
+        if (configuration.use3D && configuration.showMap) {
+            currentFrameBuffer->overlayMap(outputFrames[frameIndex]);
+        }
     }
 }
 

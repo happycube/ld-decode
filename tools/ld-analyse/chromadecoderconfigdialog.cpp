@@ -150,6 +150,9 @@ void ChromaDecoderConfigDialog::updateDialog()
         ui->ntscFilter2DRadioButton->setChecked(true);
     }
 
+    ui->showMapCheckBox->setEnabled(isSourceNtsc && ntscConfiguration.use3D);
+    ui->showMapCheckBox->setChecked(ntscConfiguration.showMap);
+
     ui->whitePoint75CheckBox->setEnabled(isSourceNtsc);
     ui->whitePoint75CheckBox->setChecked(ntscConfiguration.whitePoint75);
 
@@ -233,6 +236,12 @@ void ChromaDecoderConfigDialog::on_ntscFilterButtonGroup_buttonClicked(QAbstract
 {
     ntscConfiguration.use3D = (button == ui->ntscFilter3DRadioButton);
     updateDialog();
+    emit chromaDecoderConfigChanged();
+}
+
+void ChromaDecoderConfigDialog::on_showMapCheckBox_clicked()
+{
+    ntscConfiguration.showMap = ui->showMapCheckBox->isChecked();
     emit chromaDecoderConfigChanged();
 }
 
