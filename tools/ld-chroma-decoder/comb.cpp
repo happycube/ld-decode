@@ -224,9 +224,9 @@ void Comb::FrameBuffer::loadFields(const SourceField &firstField, const SourceFi
 
 // Extract chroma into clpbuffer[0] using a 1D bandpass filter.
 //
-// The filter is [0.5, 0, -1.0, 0, 0.5], a gentle bandpass centred on fSC, with
-// a gain of -2. So the output will contain all of the chroma signal, but also
-// whatever luma components ended up in the same frequency range.
+// The filter is [-0.25, 0, 0.5, 0, -0.25], a gentle bandpass centred on fSC.
+// So the output will contain all of the chroma signal, but also whatever luma
+// components ended up in the same frequency range.
 //
 // This also acts as an alias removal pre-filter for the quadrature detector in
 // splitIQ, so we use its result for split2D rather than the raw signal.
@@ -237,7 +237,7 @@ void Comb::FrameBuffer::split1D()
         const quint16 *line = rawbuffer.data() + (lineNumber * videoParameters.fieldWidth);
 
         for (qint32 h = videoParameters.activeVideoStart; h < videoParameters.activeVideoEnd; h++) {
-            double tc1 = (((line[h + 2] + line[h - 2]) / 2) - line[h]);
+            double tc1 = (line[h] - ((line[h - 2] + line[h + 2]) / 2.0)) / 2.0;
 
             // Record the 1D C value
             clpbuffer[0].pixel[lineNumber][h] = tc1;
@@ -288,9 +288,6 @@ void Comb::FrameBuffer::split2D()
             kn += fabs(fabs(currentLine[h - 1]) - fabs(nextLine[h - 1]));
             kn -= (fabs(currentLine[h]) + fabs(nextLine[h - 1])) * .10;
 
-            kp /= 2;
-            kn /= 2;
-
             // Map the difference into a weighting 0-1.
             // 1 means in phase or unknown; 0 means out of phase (more than kRange difference).
             const double kRange = 45 * irescale;
@@ -324,7 +321,7 @@ void Comb::FrameBuffer::split2D()
             double tc1;
             tc1  = ((currentLine[h] - previousLine[h]) * kp * sc);
             tc1 += ((currentLine[h] - nextLine[h]) * kn * sc);
-            tc1 /= 8;
+            tc1 /= 4;
 
             clpbuffer[1].pixel[lineNumber][h] = tc1;
         }
@@ -396,7 +393,7 @@ void Comb::FrameBuffer::splitIQ()
                 //cavg = clpbuffer[2].pixel[lineNumber][h];
             }
 
-            if (!linePhase) cavg = -cavg;
+            if (linePhase) cavg = -cavg;
 
             switch (phase) {
                 case 0: sq = cavg; break;
@@ -465,8 +462,8 @@ void Comb::FrameBuffer::adjustY()
                 default: break;
             }
 
-            if (linePhase) comp = -comp;
-            y.y += comp;
+            if (!linePhase) comp = -comp;
+            y.y -= comp;
 
             yiqBuffer[lineNumber][h] = y;
         }
