@@ -186,7 +186,7 @@ Comb::FrameBuffer::FrameBuffer(const LdDecodeMetaData::VideoParameters &videoPar
  * getLinePhase returns true if the color burst is rising at the leading edge.
  */
 
-inline qint32 Comb::FrameBuffer::getFieldID(qint32 lineNumber)
+inline qint32 Comb::FrameBuffer::getFieldID(qint32 lineNumber) const
 {
     bool isFirstField = ((lineNumber % 2) == 0);
     
@@ -194,7 +194,7 @@ inline qint32 Comb::FrameBuffer::getFieldID(qint32 lineNumber)
 }
 
 // NOTE:  lineNumber is presumed to be starting at 1.  (This lines up with how splitIQ calls it)
-inline bool Comb::FrameBuffer::getLinePhase(qint32 lineNumber)
+inline bool Comb::FrameBuffer::getLinePhase(qint32 lineNumber) const
 {
     qint32 fieldID = getFieldID(lineNumber);
     bool isPositivePhaseOnEvenLines = (fieldID == 1) || (fieldID == 4);    

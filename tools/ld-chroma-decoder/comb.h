@@ -128,8 +128,8 @@ private:
         // Motion detection result, from 0 (none) to 1 (lots)
         QVector<double> kValues;
 
-        inline qint32 getFieldID(qint32 lineNumber);
-        inline bool getLinePhase(qint32 lineNumber);
+        inline qint32 getFieldID(qint32 lineNumber) const;
+        inline bool getLinePhase(qint32 lineNumber) const;
     };
 };
 
