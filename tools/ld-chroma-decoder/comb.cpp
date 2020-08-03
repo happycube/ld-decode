@@ -455,20 +455,20 @@ void Comb::FrameBuffer::adjustY()
             double comp = 0;
             qint32 phase = h % 4;
 
-            YIQ y = yiqBuffer[lineNumber][h + 2];
+            YIQ y = yiqBuffer[lineNumber][h];
 
             switch (phase) {
-                case 0: comp = y.q; break;
-                case 1: comp = -y.i; break;
-                case 2: comp = -y.q; break;
-                case 3: comp = y.i; break;
+                case 0: comp = -y.q; break;
+                case 1: comp = y.i; break;
+                case 2: comp = y.q; break;
+                case 3: comp = -y.i; break;
                 default: break;
             }
 
             if (linePhase) comp = -comp;
             y.y += comp;
 
-            yiqBuffer[lineNumber][h + 0] = y;
+            yiqBuffer[lineNumber][h] = y;
         }
     }
 }
@@ -572,10 +572,8 @@ RGBFrame Comb::FrameBuffer::yiqToRgbFrame()
         quint16 *linePointer = rgbOutputFrame.data() + (videoParameters.fieldWidth * 3 * lineNumber);
 
         // Offset the output by the activeVideoStart to keep the output frame
-        // in the same x position as the input video frame (the +6 realigns the output
-        // to the source frame; not sure where the 2 pixel offset is coming from, but
-        // it's really not important)
-        qint32 o = (videoParameters.activeVideoStart * 3) + 6;
+        // in the same x position as the input video frame
+        qint32 o = (videoParameters.activeVideoStart * 3);
 
         // Fill the output line with the RGB values
         rgb.convertLine(&yiqBuffer[lineNumber][videoParameters.activeVideoStart],
