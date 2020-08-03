@@ -203,6 +203,16 @@
         </widget>
        </item>
        <item>
+        <widget class="QRadioButton" name="ntscFilter1DRadioButton">
+         <property name="text">
+          <string>1D</string>
+         </property>
+         <attribute name="buttonGroup">
+          <string notr="true">ntscFilterButtonGroup</string>
+         </attribute>
+        </widget>
+       </item>
+       <item>
         <widget class="QRadioButton" name="ntscFilter2DRadioButton">
          <property name="text">
           <string>2D</string>
@@ -234,6 +244,13 @@
           </size>
          </property>
         </spacer>
+       </item>
+       <item>
+        <widget class="QCheckBox" name="adaptiveCheckBox">
+         <property name="text">
+          <string>Enable adaptive filter</string>
+         </property>
+        </widget>
        </item>
        <item>
         <widget class="QCheckBox" name="showMapCheckBox">

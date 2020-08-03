@@ -43,7 +43,7 @@ Comb::Comb()
 }
 
 qint32 Comb::Configuration::getLookBehind() const {
-    if (use3D) {
+    if (dimensions == 3) {
         // In 3D mode, we need to see the previous frame
         return 1;
     }
@@ -111,7 +111,7 @@ void Comb::decodeFrames(const QVector<SourceField> &inputFields, qint32 startInd
         // Extract chroma using 2D filter
         currentFrameBuffer->split2D();
 
-        if (configuration.use3D) {
+        if (configuration.dimensions == 3) {
             // 3D comb filter processing
 
 #if 1
@@ -158,7 +158,7 @@ void Comb::decodeFrames(const QVector<SourceField> &inputFields, qint32 startInd
         outputFrames[frameIndex] = currentFrameBuffer->yiqToRgbFrame();
 
         // Overlay the map if required
-        if (configuration.use3D && configuration.showMap) {
+        if (configuration.dimensions == 3 && configuration.showMap) {
             currentFrameBuffer->overlayMap(outputFrames[frameIndex]);
         }
     }
@@ -391,18 +391,26 @@ void Comb::FrameBuffer::splitIQ()
         for (qint32 h = videoParameters.activeVideoStart; h < videoParameters.activeVideoEnd; h++) {
             qint32 phase = h % 4;
 
-            // Take the 2D C
-            double cavg = clpbuffer[1].pixel[lineNumber][h]; // 2D C average
+            double cavg;
 
-            if (configuration.use3D && kValues.size() != 0) {
-                // 3D mode -- compute a weighted sum of the 2D and 3D chroma values
-
-                // The motionK map returns K (0 for stationary pixels to 1 for moving pixels)
-                cavg  = clpbuffer[1].pixel[lineNumber][h] * kValues[(lineNumber * MAX_WIDTH) + h]; // 2D mix
-                cavg += clpbuffer[2].pixel[lineNumber][h] * (1 - kValues[(lineNumber * MAX_WIDTH) + h]); // 3D mix
-
-                // Use only 3D (for testing!)
-                //cavg = clpbuffer[2].pixel[lineNumber][h];
+            switch (configuration.dimensions) {
+            case 1:
+                cavg = clpbuffer[0].pixel[lineNumber][h];
+                break;
+            case 2:
+                cavg = clpbuffer[1].pixel[lineNumber][h];
+                break;
+            default:
+                if (configuration.adaptive) {
+                    // Compute a weighted sum of the 2D and 3D chroma values
+                    const double kValue = kValues[(lineNumber * MAX_WIDTH) + h];
+                    cavg  = clpbuffer[1].pixel[lineNumber][h] * kValue; // 2D mix
+                    cavg += clpbuffer[2].pixel[lineNumber][h] * (1 - kValue); // 3D mix
+                } else {
+                    // Use 3D only
+                    cavg = clpbuffer[2].pixel[lineNumber][h];
+                }
+                break;
             }
 
             if (linePhase) cavg = -cavg;
