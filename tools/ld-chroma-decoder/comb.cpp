@@ -267,7 +267,7 @@ void Comb::split2D(FrameBuffer *frameBuffer)
             // (with a penalty if this is also a horizontal transition)
             kp  = fabs(fabs(currentLine[h]) - fabs(previousLine[h]));
             kp += fabs(fabs(currentLine[h - 1]) - fabs(previousLine[h - 1]));
-            kp -= (fabs(currentLine[h]) + fabs(currentLine[h - 1])) * .10;
+            kp -= (fabs(currentLine[h]) + fabs(previousLine[h - 1])) * .10;
             kn  = fabs(fabs(currentLine[h]) - fabs(nextLine[h]));
             kn += fabs(fabs(currentLine[h - 1]) - fabs(nextLine[h - 1]));
             kn -= (fabs(currentLine[h]) + fabs(nextLine[h - 1])) * .10;
