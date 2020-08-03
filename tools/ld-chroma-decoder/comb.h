@@ -90,7 +90,7 @@ private:
 
         void split1D();
         void split2D();
-        void split3D(const FrameBuffer &previousFrame);
+        void split3D(const FrameBuffer &previousFrame, const FrameBuffer &nextFrame);
 
         void splitIQ();
         void filterIQ();
@@ -100,7 +100,7 @@ private:
         void doYNR();
 
         RGBFrame yiqToRgbFrame();
-        void overlayMap(RGBFrame &rgbOutputFrame);
+        void overlayMap(const FrameBuffer &previousFrame, const FrameBuffer &nextFrame, RGBFrame &rgbOutputFrame);
 
     private:
         const LdDecodeMetaData::VideoParameters &videoParameters;
@@ -124,14 +124,23 @@ private:
             double pixel[MAX_HEIGHT][MAX_WIDTH];
         } clpbuffer[3];
 
+        // Result of evaluating a 3D candidate
+        struct Candidate {
+            double penalty;
+            double sample;
+        };
+
         // Demodulated YIQ samples
         YIQ yiqBuffer[MAX_HEIGHT][MAX_WIDTH];
 
-        // Motion detection result, from 0 (none) to 1 (lots)
-        QVector<double> kValues;
-
         inline qint32 getFieldID(qint32 lineNumber) const;
         inline bool getLinePhase(qint32 lineNumber) const;
+        void getBestCandidate(qint32 lineNumber, qint32 h,
+                              const FrameBuffer &previousFrame, const FrameBuffer &nextFrame,
+                              qint32 &bestIndex, double &bestSample) const;
+        Candidate getCandidate(qint32 refLineNumber, qint32 refH,
+                               const FrameBuffer &frameBuffer, qint32 lineNumber, qint32 h,
+                               double adjustPenalty) const;
     };
 };
 

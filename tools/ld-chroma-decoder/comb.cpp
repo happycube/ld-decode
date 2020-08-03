@@ -35,6 +35,31 @@
 constexpr qint32 Comb::MAX_WIDTH;
 constexpr qint32 Comb::MAX_HEIGHT;
 
+// Indexes for the candidates considered in 3D adaptive mode
+enum CandidateIndex : qint32 {
+    CAND_LEFT,
+    CAND_RIGHT,
+    CAND_UP,
+    CAND_DOWN,
+    CAND_PREV_FIELD,
+    CAND_NEXT_FIELD,
+    CAND_PREV_FRAME,
+    CAND_NEXT_FRAME,
+    NUM_CANDIDATES
+};
+
+// Map colours for the candidates
+static constexpr quint32 CANDIDATE_SHADES[] = {
+    0xFF8080, // CAND_LEFT - red
+    0xFF8080, // CAND_RIGHT - red
+    0xFFFF80, // CAND_UP - yellow
+    0xFFFF80, // CAND_DOWN - yellow
+    0x80FF80, // CAND_PREV_FIELD - green
+    0x80FF80, // CAND_NEXT_FIELD - green
+    0x8080FF, // CAND_PREV_FRAME - blue
+    0xFF80FF, // CAND_NEXT_FRAME - purple
+};
+
 // Public methods -----------------------------------------------------------------------------------------------------
 
 Comb::Comb()
@@ -52,6 +77,11 @@ qint32 Comb::Configuration::getLookBehind() const {
 }
 
 qint32 Comb::Configuration::getLookAhead() const {
+    if (dimensions == 3) {
+        // ... and also the next frame
+        return 1;
+    }
+
     return 0;
 }
 
@@ -83,62 +113,50 @@ void Comb::decodeFrames(const QVector<SourceField> &inputFields, qint32 startInd
     assert(configurationSet);
     assert((outputFrames.size() * 2) == (endIndex - startIndex));
 
-    // Buffers for the current and previous frame.
-    // Because we only need two of these, we allocate them upfront then rotate
-    // the pointers below.
-    QScopedPointer<FrameBuffer> currentFrameBuffer, previousFrameBuffer;
+    // Buffers for the next, current and previous frame.
+    // Because we only need three of these, we allocate them upfront then
+    // rotate the pointers below.
+    QScopedPointer<FrameBuffer> nextFrameBuffer, currentFrameBuffer, previousFrameBuffer;
+    nextFrameBuffer.reset(new FrameBuffer(videoParameters, configuration));
     currentFrameBuffer.reset(new FrameBuffer(videoParameters, configuration));
     previousFrameBuffer.reset(new FrameBuffer(videoParameters, configuration));
 
-    // Decode each pair of fields into a frame
-    for (qint32 fieldIndex = 0; fieldIndex < endIndex; fieldIndex += 2) {
+    // Decode each pair of fields into a frame.
+    // To support 3D operation, where we need to see three input frames at a time,
+    // each iteration of the loop loads and 1D/2D-filters frame N + 1, then
+    // 3D-filters and outputs frame N.
+    const qint32 preStartIndex = (configuration.dimensions == 3) ? startIndex - 4 : startIndex - 2;
+    for (qint32 fieldIndex = preStartIndex; fieldIndex < endIndex; fieldIndex += 2) {
         const qint32 frameIndex = (fieldIndex - startIndex) / 2;
 
         // Rotate the buffers
-        previousFrameBuffer.swap(currentFrameBuffer);
+        {
+            QScopedPointer<FrameBuffer> recycle(previousFrameBuffer.take());
+            previousFrameBuffer.reset(currentFrameBuffer.take());
+            currentFrameBuffer.reset(nextFrameBuffer.take());
+            nextFrameBuffer.reset(recycle.take());
+        }
 
-        // Load fields into the buffer
-        currentFrameBuffer->loadFields(inputFields[fieldIndex], inputFields[fieldIndex + 1]);
+        // If there's another input field, bring it into nextFrameBuffer
+        if (fieldIndex + 3 < inputFields.size()) {
+            // Load fields into the buffer
+            nextFrameBuffer->loadFields(inputFields[fieldIndex + 2], inputFields[fieldIndex + 3]);
+
+            // Extract chroma using 1D filter
+            nextFrameBuffer->split1D();
+
+            // Extract chroma using 2D filter
+            nextFrameBuffer->split2D();
+        }
 
         if (fieldIndex < startIndex) {
             // This is a look-behind frame; no further decoding needed.
             continue;
         }
 
-        // Extract chroma using 1D filter
-        currentFrameBuffer->split1D();
-
-        // Extract chroma using 2D filter
-        currentFrameBuffer->split2D();
-
         if (configuration.dimensions == 3) {
-            // 3D comb filter processing
-
-#if 1
-            // XXX - At present we don't have an implementation of motion detection,
-            // which makes this a non-adaptive 3D decoder: it'll give good results
-            // for still images but garbage for moving images.
-#else
-            // With motion detection, it would look like this...
-
-            // Demodulate chroma giving I/Q
-            currentFrameBuffer->splitIQ();
-
-            // Extract Y from baseband and I/Q
-            currentFrameBuffer->adjustY();
-
-            // Post-filter I/Q
-            if (configuration.colorlpf) currentFrameBuffer->filterIQ();
-
-            // Apply noise reduction
-            currentFrameBuffer->doYNR();
-            currentFrameBuffer->doCNR();
-
-            opticalFlow.denseOpticalFlow(currentFrameBuffer->yiqBuffer, currentFrameBuffer->kValues);
-#endif
-
             // Extract chroma using 3D filter
-            currentFrameBuffer->split3D(*previousFrameBuffer);
+            currentFrameBuffer->split3D(*previousFrameBuffer, *nextFrameBuffer);
         }
 
         // Demodulate chroma giving I/Q
@@ -159,7 +177,7 @@ void Comb::decodeFrames(const QVector<SourceField> &inputFields, qint32 startInd
 
         // Overlay the map if required
         if (configuration.dimensions == 3 && configuration.showMap) {
-            currentFrameBuffer->overlayMap(outputFrames[frameIndex]);
+            currentFrameBuffer->overlayMap(*previousFrameBuffer, *nextFrameBuffer, outputFrames[frameIndex]);
         }
     }
 }
@@ -175,10 +193,6 @@ Comb::FrameBuffer::FrameBuffer(const LdDecodeMetaData::VideoParameters &videoPar
 
     // Set the IRE scale
     irescale = (videoParameters.white16bIre - videoParameters.black16bIre) / 100;
-
-    // Allocate kValues and fill with 0 (no motion detected yet)
-    kValues.resize(MAX_WIDTH * MAX_HEIGHT);
-    kValues.fill(0.0);
 }
 
 /* 
@@ -336,40 +350,137 @@ void Comb::FrameBuffer::split2D()
     }
 }
 
-// Extract chroma into clpbuffer[2] using a 3D filter.
+// Extract chroma into clpbuffer[2] using an adaptive 3D filter.
 //
-// This is like the 2D filtering above, except now we're looking at the
-// same sample in the previous *frame* -- and since there are an odd number of
-// lines in an NTSC frame, the subcarrier phase is also 180 degrees different
-// from the current sample. So if the previous frame carried the same
-// information in this sample, subtracting the two samples will give us just
-// the chroma again.
-//
-// And as with 2D filtering, real video can have differences between frames, so
-// we need to make an adaptive choice whether to use this or drop back to the
-// 2D result (which is done in splitIQ below).
-void Comb::FrameBuffer::split3D(const FrameBuffer &previousFrame)
+// For each sample, this builds a list of candidates from other positions that
+// should have a 180 degree phase relationship to the current sample, and look
+// like they have similar luma/chroma content. It then picks the most similar
+// candidate.
+void Comb::FrameBuffer::split3D(const FrameBuffer &previousFrame, const FrameBuffer &nextFrame)
 {
-    if (previousFrame.rawbuffer.size() == 0) {
-        // There was no previous frame data (i.e. this is the first frame). Return all 0s.
+    for (qint32 lineNumber = videoParameters.firstActiveFrameLine; lineNumber < videoParameters.lastActiveFrameLine; lineNumber++) {
+        for (qint32 h = videoParameters.activeVideoStart; h < videoParameters.activeVideoEnd; h++) {
+            // Select the best candidate
+            qint32 bestIndex;
+            double bestSample;
+            getBestCandidate(lineNumber, h, previousFrame, nextFrame, bestIndex, bestSample);
 
-        for (qint32 lineNumber = videoParameters.firstActiveFrameLine; lineNumber < videoParameters.lastActiveFrameLine; lineNumber++) {
-            for (qint32 h = videoParameters.activeVideoStart; h < videoParameters.activeVideoEnd; h++) {
-                clpbuffer[2].pixel[lineNumber][h] = 0;
+            if (bestIndex < CAND_PREV_FIELD) {
+                // A 1D or 2D candidate was best.
+                // Use split2D's output, to save duplicating the line-blending heuristics here.
+                clpbuffer[2].pixel[lineNumber][h] = clpbuffer[1].pixel[lineNumber][h];
+            } else {
+                // Compute a 3D result.
+                // This sample is Y + C; the candidate is (ideally) Y - C. So compute C as ((Y + C) - (Y - C)) / 2.
+                clpbuffer[2].pixel[lineNumber][h] = (clpbuffer[0].pixel[lineNumber][h] - bestSample) / 2;
             }
         }
+    }
+}
 
-        return;
+// Evaluate all candidates for 3D decoding for a given position, and return the best one
+void Comb::FrameBuffer::getBestCandidate(qint32 lineNumber, qint32 h,
+                                         const FrameBuffer &previousFrame, const FrameBuffer &nextFrame,
+                                         qint32 &bestIndex, double &bestSample) const
+{
+    Candidate candidates[8];
+
+    // Bias the comparison so that we prefer 3D results, then 2D, then 1D
+    static constexpr double LINE_BONUS = -2.0;
+    static constexpr double FIELD_BONUS = LINE_BONUS - 2.0;
+    static constexpr double FRAME_BONUS = FIELD_BONUS - 2.0;
+
+    // 1D: Same line, 2 samples left and right
+    candidates[CAND_LEFT]  = getCandidate(lineNumber, h, *this, lineNumber, h - 2, 0);
+    candidates[CAND_RIGHT] = getCandidate(lineNumber, h, *this, lineNumber, h + 2, 0);
+
+    // 2D: Same field, 1 line up and down
+    candidates[CAND_UP]   = getCandidate(lineNumber, h, *this, lineNumber - 2, h, LINE_BONUS);
+    candidates[CAND_DOWN] = getCandidate(lineNumber, h, *this, lineNumber + 2, h, LINE_BONUS);
+
+    // Immediately adjacent lines in previous/next field
+    if (getLinePhase(lineNumber) == getLinePhase(lineNumber - 1)) {
+        candidates[CAND_PREV_FIELD] = getCandidate(lineNumber, h, previousFrame, lineNumber - 1, h, FIELD_BONUS);
+        candidates[CAND_NEXT_FIELD] = getCandidate(lineNumber, h, *this, lineNumber + 1, h, FIELD_BONUS);
+    } else {
+        candidates[CAND_PREV_FIELD] = getCandidate(lineNumber, h, *this, lineNumber - 1, h, FIELD_BONUS);
+        candidates[CAND_NEXT_FIELD] = getCandidate(lineNumber, h, nextFrame, lineNumber + 1, h, FIELD_BONUS);
     }
 
-    for (qint32 lineNumber = videoParameters.firstActiveFrameLine; lineNumber < videoParameters.lastActiveFrameLine; lineNumber++) {
-        const quint16 *currentLine = rawbuffer.data() + (lineNumber * videoParameters.fieldWidth);
-        const quint16 *previousLine = previousFrame.rawbuffer.data() + (lineNumber * videoParameters.fieldWidth);
+    // Previous/next frame, same position
+    candidates[CAND_PREV_FRAME] = getCandidate(lineNumber, h, previousFrame, lineNumber, h, FRAME_BONUS);
+    candidates[CAND_NEXT_FRAME] = getCandidate(lineNumber, h, nextFrame, lineNumber, h, FRAME_BONUS);
 
-        for (qint32 h = videoParameters.activeVideoStart; h < videoParameters.activeVideoEnd; h++) {
-            clpbuffer[2].pixel[lineNumber][h] = (previousLine[h] - currentLine[h]) / 2;
+    if (configuration.adaptive) {
+        // Find the candidate with the lowest penalty
+        bestIndex = 0;
+        for (qint32 i = 1; i < NUM_CANDIDATES; i++) {
+            if (candidates[i].penalty < candidates[bestIndex].penalty) bestIndex = i;
         }
+    } else {
+        // Adaptive mode is disabled - do 3D against the previous frame
+        bestIndex = CAND_PREV_FRAME;
     }
+
+    bestSample = candidates[bestIndex].sample;
+}
+
+// Evaluate a candidate for 3D decoding
+Comb::FrameBuffer::Candidate Comb::FrameBuffer::getCandidate(qint32 refLineNumber, qint32 refH,
+                                                             const FrameBuffer &frameBuffer, qint32 lineNumber, qint32 h,
+                                                             double adjustPenalty) const
+{
+    Candidate result;
+    result.sample = frameBuffer.clpbuffer[0].pixel[lineNumber][h];
+
+    // If the candidate is outside the active region (vertically), it's not viable
+    if (lineNumber < videoParameters.firstActiveFrameLine || lineNumber >= videoParameters.lastActiveFrameLine) {
+        result.penalty = 1000.0;
+        return result;
+    }
+
+    // The target sample should have 180 degrees phase difference from the reference.
+    // If it doesn't (e.g. because it's a blank frame or the player skipped), it's not viable.
+    const qint32 wantPhase = (2 + (getLinePhase(refLineNumber) ? 2 : 0) + refH) % 4;
+    const qint32 havePhase = ((frameBuffer.getLinePhase(lineNumber) ? 2 : 0) + h) % 4;
+    if (wantPhase != havePhase) {
+        result.penalty = 1000.0;
+        return result;
+    }
+
+    // Pointers to the baseband data
+    const quint16 *refLine = rawbuffer.data() + (refLineNumber * videoParameters.fieldWidth);
+    const quint16 *candidateLine = frameBuffer.rawbuffer.data() + (lineNumber * videoParameters.fieldWidth);
+
+    // Penalty based on mean luma difference in IRE over surrounding three samples
+    double yPenalty = 0.0;
+    for (qint32 offset = -1; offset < 2; offset++) {
+        const double refC = clpbuffer[1].pixel[refLineNumber][refH + offset];
+        const double refY = refLine[refH + offset] - refC;
+
+        const double candidateC = frameBuffer.clpbuffer[1].pixel[lineNumber][h + offset];
+        const double candidateY = candidateLine[h + offset] - candidateC;
+
+        yPenalty += fabs(refY - candidateY);
+    }
+    yPenalty = yPenalty / 3 / irescale;
+
+    // Penalty based on mean I/Q difference in IRE over surrounding three samples
+    double iqPenalty = 0.0;
+    for (qint32 offset = -1; offset < 2; offset++) {
+        // The reference and candidate are 180 degrees out of phase here, so negate one
+        const double refC = clpbuffer[1].pixel[refLineNumber][refH + offset];
+        const double candidateC = -frameBuffer.clpbuffer[1].pixel[lineNumber][h + offset];
+
+        // I and Q samples alternate, so weight the two channels equally
+        static constexpr double weights[] = {0.5, 1.0, 0.5};
+        iqPenalty += fabs(refC - candidateC) * weights[offset + 1];
+    }
+    // Weaken this relative to luma, to avoid spurious colour in the 2D result from showing through
+    iqPenalty = (iqPenalty / 2 / irescale) * 0.28;
+
+    result.penalty = yPenalty + iqPenalty + adjustPenalty;
+    return result;
 }
 
 // Spilt the I and Q
@@ -391,27 +502,7 @@ void Comb::FrameBuffer::splitIQ()
         for (qint32 h = videoParameters.activeVideoStart; h < videoParameters.activeVideoEnd; h++) {
             qint32 phase = h % 4;
 
-            double cavg;
-
-            switch (configuration.dimensions) {
-            case 1:
-                cavg = clpbuffer[0].pixel[lineNumber][h];
-                break;
-            case 2:
-                cavg = clpbuffer[1].pixel[lineNumber][h];
-                break;
-            default:
-                if (configuration.adaptive) {
-                    // Compute a weighted sum of the 2D and 3D chroma values
-                    const double kValue = kValues[(lineNumber * MAX_WIDTH) + h];
-                    cavg  = clpbuffer[1].pixel[lineNumber][h] * kValue; // 2D mix
-                    cavg += clpbuffer[2].pixel[lineNumber][h] * (1 - kValue); // 3D mix
-                } else {
-                    // Use 3D only
-                    cavg = clpbuffer[2].pixel[lineNumber][h];
-                }
-                break;
-            }
+            double cavg = clpbuffer[configuration.dimensions - 1].pixel[lineNumber][h];
 
             if (linePhase) cavg = -cavg;
 
@@ -603,7 +694,7 @@ RGBFrame Comb::FrameBuffer::yiqToRgbFrame()
 }
 
 // Convert buffer from YIQ to RGB
-void Comb::FrameBuffer::overlayMap(RGBFrame &rgbFrame)
+void Comb::FrameBuffer::overlayMap(const FrameBuffer &previousFrame, const FrameBuffer &nextFrame, RGBFrame &rgbFrame)
 {
     qDebug() << "Comb::FrameBuffer::overlayMap(): Overlaying map onto RGB output";
 
@@ -612,13 +703,21 @@ void Comb::FrameBuffer::overlayMap(RGBFrame &rgbFrame)
         // Get a pointer to the line
         quint16 *linePointer = rgbFrame.data() + (videoParameters.fieldWidth * 3 * lineNumber);
 
+        const quint16 *lineData = rawbuffer.data() + (lineNumber * videoParameters.fieldWidth);
+
         // Fill the output frame with the RGB values
         for (qint32 h = videoParameters.activeVideoStart; h < videoParameters.activeVideoEnd; h++) {
-            qint32 intensity = static_cast<qint32>(kValues[(lineNumber * MAX_WIDTH) + h] * 65535);
-            // Make the RGB more purple to show where motion was detected
-            qint32 red = linePointer[(h * 3)] + intensity;
-            qint32 green = linePointer[(h * 3) + 1];
-            qint32 blue = linePointer[(h * 3) + 2] + intensity;
+            // Select the best candidate
+            qint32 bestIndex;
+            double bestSample;
+            getBestCandidate(lineNumber, h, previousFrame, nextFrame, bestIndex, bestSample);
+
+            // Take the 2D luma, and colour according to the candidate index
+            const double luma = (lineData[h] - clpbuffer[1].pixel[lineNumber][h]) / 65535.0;
+            const quint32 shade = CANDIDATE_SHADES[bestIndex];
+            qint32 red = luma * (((shade >> 16) & 0xff) << 8);
+            qint32 green = luma * (((shade >> 8) & 0xff) << 8);
+            qint32 blue = luma * ((shade & 0xff) << 8);
 
             if (red > 65535) red = 65535;
             if (green > 65535) green = 65535;
