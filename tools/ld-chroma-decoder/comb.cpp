@@ -212,8 +212,11 @@ inline bool Comb::GetLinePhase(FrameBuffer *frameBuffer, qint32 lineNumber)
 // Extract chroma into clpbuffer[0] using a 1D bandpass filter.
 //
 // The filter is [0.5, 0, -1.0, 0, 0.5], a gentle bandpass centred on fSC, with
-// a gain of 2. So the output will contain all of the chroma signal, but also
+// a gain of -2. So the output will contain all of the chroma signal, but also
 // whatever luma components ended up in the same frequency range.
+//
+// This also acts as an alias removal pre-filter for the quadrature detector in
+// splitIQ, so we use its result for split2D rather than the raw signal.
 void Comb::split1D(FrameBuffer *frameBuffer)
 {
     for (qint32 lineNumber = videoParameters.firstActiveFrameLine; lineNumber < videoParameters.lastActiveFrameLine; lineNumber++) {
@@ -239,9 +242,6 @@ void Comb::split1D(FrameBuffer *frameBuffer)
 // The "3-line adaptive" part means that we look at both surrounding lines to
 // estimate how similar they are to this one. We can then compute the 2D chroma
 // value as a blend of the two differences, weighted by similarity.
-//
-// We could do this using the input signal directly, but in fact we use the
-// output of split1D, which has already had most of the luma signal removed.
 void Comb::split2D(FrameBuffer *frameBuffer)
 {
     // Dummy black line
@@ -263,8 +263,11 @@ void Comb::split2D(FrameBuffer *frameBuffer)
         for (qint32 h = videoParameters.activeVideoStart; h < videoParameters.activeVideoEnd; h++) {
             double kp, kn;
 
-            // Estimate similarity to the previous and next lines
-            // (with a penalty if this is also a horizontal transition)
+            // Summing the differences of the *absolute* values of the 1D chroma samples
+            // will give us a low value if the two lines are nearly in phase (strong Y)
+            // or nearly 180 degrees out of phase (strong C) -- i.e. the two cases where
+            // the 2D filter is probably usable. Also give a small bonus if
+            // there's a large signal (we think).
             kp  = fabs(fabs(currentLine[h]) - fabs(previousLine[h]));
             kp += fabs(fabs(currentLine[h - 1]) - fabs(previousLine[h - 1]));
             kp -= (fabs(currentLine[h]) + fabs(previousLine[h - 1])) * .10;
@@ -275,23 +278,25 @@ void Comb::split2D(FrameBuffer *frameBuffer)
             kp /= 2;
             kn /= 2;
 
-            double p_2drange = 45 * irescale;
-            kp = qBound(0.0, 1 - (kp / p_2drange), 1.0);
-            kn = qBound(0.0, 1 - (kn / p_2drange), 1.0);
+            // Map the difference into a weighting 0-1.
+            // 1 means in phase or unknown; 0 means out of phase (more than kRange difference).
+            const double kRange = 45 * irescale;
+            kp = qBound(0.0, 1 - (kp / kRange), 1.0);
+            kn = qBound(0.0, 1 - (kn / kRange), 1.0);
 
             double sc = 1.0;
 
             if ((kn > 0) || (kp > 0)) {
-                // At least one of the next/previous lines is pretty similar to this one.
+                // At least one of the next/previous lines has a good phase relationship.
 
-                // If one of them is much better than the other, just use that one
+                // If one of them is much better than the other, only use that one
                 if (kn > (3 * kp)) kp = 0;
                 else if (kp > (3 * kn)) kn = 0;
 
                 sc = (2.0 / (kn + kp));
                 if (sc < 1.0) sc = 1.0;
             } else {
-                // Both the next/previous lines are different.
+                // Neither line has a good phase relationship.
 
                 // But are they similar to each other? If so, we can use both of them!
                 if ((fabs(fabs(previousLine[h]) - fabs(nextLine[h])) - fabs((nextLine[h] + previousLine[h]) * .2)) <= 0) {
