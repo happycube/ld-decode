@@ -77,44 +77,60 @@ private:
     Configuration configuration;
     LdDecodeMetaData::VideoParameters videoParameters;
 
-    // IRE scaling
-    double irescale;
+    // An input frame in the process of being decoded
+    class FrameBuffer {
+    public:
+        FrameBuffer(const LdDecodeMetaData::VideoParameters &videoParameters_, const Configuration &configuration_);
 
-    // Calculated frame height
-    qint32 frameHeight;
+        void loadFields(const SourceField &firstField, const SourceField &secondField);
 
-    // Input frame buffer definitions
-    struct PixelLine {
-        double pixel[526][911]; // 526 is the maximum allowed field lines, 911 is the maximum field width
-    };
+        void split1D();
+        void split2D();
+        void split3D(const FrameBuffer &previousFrame);
 
-    struct FrameBuffer {
+        void splitIQ();
+        void filterIQ();
+        void adjustY();
+
+        void doCNR();
+        void doYNR();
+
+        RGBFrame yiqToRgbFrame();
+        void overlayOpticalFlowMap(RGBFrame &rgbOutputFrame);
+
+    private:
+        LdDecodeMetaData::VideoParameters videoParameters;
+        Configuration configuration;
+
+        // Calculated frame height
+        qint32 frameHeight;
+
+        // IRE scaling
+        double irescale;
+
+        // Baseband samples (interlaced to form a complete frame)
         SourceVideo::Data rawbuffer;
 
-        QVector<PixelLine> clpbuffer; // Unfiltered chroma for the current phase (can be I or Q)
+        // Chroma phase of the frame's two fields
+        qint32 firstFieldPhaseID;
+        qint32 secondFieldPhaseID;
+
+        struct PixelLine {
+            double pixel[526][911]; // 526 is the maximum allowed field lines, 911 is the maximum field width
+        };
+
+        // 1D, 2D and 3D-filtered chroma samples
+        QVector<PixelLine> clpbuffer;
+
+        // Demodulated YIQ samples
+        YiqBuffer yiqBuffer;
+
+        // Motion detection result, from 0 (none) to 1 (lots)
         QVector<double> kValues;
-        YiqBuffer yiqBuffer; // YIQ values for the frame
 
-        qint32 firstFieldPhaseID; // The phase of the frame's first field
-        qint32 secondFieldPhaseID; // The phase of the frame's second field
+        inline qint32 getFieldID(qint32 lineNumber);
+        inline bool getLinePhase(qint32 lineNumber);
     };
-
-    inline qint32 GetFieldID(FrameBuffer *frameBuffer, qint32 lineNumber);
-    inline bool GetLinePhase(FrameBuffer *frameBuffer, qint32 lineNumber);
-
-    void split1D(FrameBuffer *frameBuffer);
-    void split2D(FrameBuffer *frameBuffer);
-    void split3D(FrameBuffer *currentFrame, FrameBuffer *previousFrame);
-
-    void splitIQ(FrameBuffer *frameBuffer);
-    void filterIQ(YiqBuffer &yiqBuffer);
-    void adjustY(FrameBuffer *frameBuffer, YiqBuffer &yiqBuffer);
-
-    void doCNR(YiqBuffer &yiqBuffer);
-    void doYNR(YiqBuffer &yiqBuffer);
-
-    RGBFrame yiqToRgbFrame(const YiqBuffer &yiqBuffer);
-    void overlayOpticalFlowMap(const FrameBuffer &frameBuffer, RGBFrame &rgbOutputFrame);
 };
 
 #endif // COMB_H
