@@ -106,15 +106,15 @@ private:
     void split2D(FrameBuffer *frameBuffer);
     void split3D(FrameBuffer *currentFrame, FrameBuffer *previousFrame);
 
-    void filterIQ(YiqBuffer &yiqBuffer);
     void splitIQ(FrameBuffer *frameBuffer);
+    void filterIQ(YiqBuffer &yiqBuffer);
+    void adjustY(FrameBuffer *frameBuffer, YiqBuffer &yiqBuffer);
 
     void doCNR(YiqBuffer &yiqBuffer);
     void doYNR(YiqBuffer &yiqBuffer);
 
     RGBFrame yiqToRgbFrame(const YiqBuffer &yiqBuffer);
     void overlayOpticalFlowMap(const FrameBuffer &frameBuffer, RGBFrame &rgbOutputFrame);
-    void adjustY(FrameBuffer *frameBuffer, YiqBuffer &yiqBuffer);
 };
 
 #endif // COMB_H

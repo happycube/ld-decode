@@ -424,6 +424,35 @@ void Comb::filterIQ(YiqBuffer &yiqBuffer)
     }
 }
 
+// Remove the colour data from the baseband (Y)
+void Comb::adjustY(FrameBuffer *frameBuffer, YiqBuffer &yiqBuffer)
+{
+    // remove color data from baseband (Y)
+    for (qint32 lineNumber = videoParameters.firstActiveFrameLine; lineNumber < videoParameters.lastActiveFrameLine; lineNumber++) {
+        bool linePhase = GetLinePhase(frameBuffer, lineNumber);
+
+        for (qint32 h = videoParameters.activeVideoStart; h < videoParameters.activeVideoEnd; h++) {
+            double comp = 0;
+            qint32 phase = h % 4;
+
+            YIQ y = yiqBuffer[lineNumber][h + 2];
+
+            switch (phase) {
+                case 0: comp = y.q; break;
+                case 1: comp = -y.i; break;
+                case 2: comp = -y.q; break;
+                case 3: comp = y.i; break;
+                default: break;
+            }
+
+            if (linePhase) comp = -comp;
+            y.y += comp;
+
+            yiqBuffer[lineNumber][h + 0] = y;
+        }
+    }
+}
+
 /*
  * This applies an FIR coring filter to both I and Q color channels.  It's a simple (crude?) NR technique used
  * by LD players, but effective especially on the Y/luma channel.
@@ -565,35 +594,6 @@ void Comb::overlayOpticalFlowMap(const FrameBuffer &frameBuffer, RGBFrame &rgbFr
             linePointer[(h * 3)] = static_cast<quint16>(red);
             linePointer[(h * 3) + 1] = static_cast<quint16>(green);
             linePointer[(h * 3) + 2] = static_cast<quint16>(blue);
-        }
-    }
-}
-
-// Remove the colour data from the baseband (Y)
-void Comb::adjustY(FrameBuffer *frameBuffer, YiqBuffer &yiqBuffer)
-{
-    // remove color data from baseband (Y)
-    for (qint32 lineNumber = videoParameters.firstActiveFrameLine; lineNumber < videoParameters.lastActiveFrameLine; lineNumber++) {
-        bool linePhase = GetLinePhase(frameBuffer, lineNumber);
-
-        for (qint32 h = videoParameters.activeVideoStart; h < videoParameters.activeVideoEnd; h++) {
-            double comp = 0;
-            qint32 phase = h % 4;
-
-            YIQ y = yiqBuffer[lineNumber][h + 2];
-
-            switch (phase) {
-                case 0: comp = y.q; break;
-                case 1: comp = -y.i; break;
-                case 2: comp = -y.q; break;
-                case 3: comp = y.i; break;
-                default: break;
-            }
-
-            if (linePhase) comp = -comp;
-            y.y += comp;
-
-            yiqBuffer[lineNumber][h + 0] = y;
         }
     }
 }
