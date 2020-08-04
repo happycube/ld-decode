@@ -144,11 +144,23 @@ void ChromaDecoderConfigDialog::updateDialog()
     ui->ntscFilter2DRadioButton->setEnabled(isSourceNtsc);
     ui->ntscFilter3DRadioButton->setEnabled(isSourceNtsc);
 
-    if (ntscConfiguration.use3D) {
-        ui->ntscFilter3DRadioButton->setChecked(true);
-    } else {
+    switch (ntscConfiguration.dimensions) {
+    case 1:
+        ui->ntscFilter1DRadioButton->setChecked(true);
+        break;
+    case 2:
         ui->ntscFilter2DRadioButton->setChecked(true);
+        break;
+    case 3:
+        ui->ntscFilter3DRadioButton->setChecked(true);
+        break;
     }
+
+    ui->adaptiveCheckBox->setEnabled(isSourceNtsc && ntscConfiguration.dimensions == 3);
+    ui->adaptiveCheckBox->setChecked(ntscConfiguration.adaptive);
+
+    ui->showMapCheckBox->setEnabled(isSourceNtsc && ntscConfiguration.dimensions == 3);
+    ui->showMapCheckBox->setChecked(ntscConfiguration.showMap);
 
     ui->whitePoint75CheckBox->setEnabled(isSourceNtsc);
     ui->whitePoint75CheckBox->setChecked(ntscConfiguration.whitePoint75);
@@ -231,8 +243,26 @@ void ChromaDecoderConfigDialog::on_simplePALCheckBox_clicked()
 
 void ChromaDecoderConfigDialog::on_ntscFilterButtonGroup_buttonClicked(QAbstractButton *button)
 {
-    ntscConfiguration.use3D = (button == ui->ntscFilter3DRadioButton);
+    if (button == ui->ntscFilter1DRadioButton) {
+        ntscConfiguration.dimensions = 1;
+    } else if (button == ui->ntscFilter2DRadioButton) {
+        ntscConfiguration.dimensions = 2;
+    } else {
+        ntscConfiguration.dimensions = 3;
+    }
     updateDialog();
+    emit chromaDecoderConfigChanged();
+}
+
+void ChromaDecoderConfigDialog::on_adaptiveCheckBox_clicked()
+{
+    ntscConfiguration.adaptive = ui->adaptiveCheckBox->isChecked();
+    emit chromaDecoderConfigChanged();
+}
+
+void ChromaDecoderConfigDialog::on_showMapCheckBox_clicked()
+{
+    ntscConfiguration.showMap = ui->showMapCheckBox->isChecked();
     emit chromaDecoderConfigChanged();
 }
 

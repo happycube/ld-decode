@@ -29,7 +29,6 @@ SOURCES += \
     transformpal.cpp \
     transformpal2d.cpp \
     transformpal3d.cpp \
-    yiq.cpp \
     ../library/tbc/lddecodemetadata.cpp \
     ../library/tbc/sourcevideo.cpp \
     ../library/tbc/vbidecoder.cpp \
@@ -51,7 +50,6 @@ HEADERS += \
     transformpal2d.h \
     transformpal3d.h \
     yiq.h \
-    yiqbuffer.h \
     ../library/filter/deemp.h \
     ../library/filter/firfilter.h \
     ../library/filter/iirfilter.h \

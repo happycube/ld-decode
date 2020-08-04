@@ -35,8 +35,8 @@ void RGB::convertLine(const YIQ *begin, const YIQ *end, quint16 *out)
 {
     // Factors to scale Y according to the black to white interval
     // (i.e. make the black level 0 and the white level 65535)
-    qreal yBlackLevel = blackIreLevel;
-    qreal yScale = 65535.0 / (whiteIreLevel - blackIreLevel);
+    double yBlackLevel = blackIreLevel;
+    double yScale = 65535.0 / (whiteIreLevel - blackIreLevel);
 
     // Compute I & Q scaling factor.
     // This is the same as for Y, i.e. when 7.5% setup is in use the chroma

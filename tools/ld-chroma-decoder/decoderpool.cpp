@@ -136,7 +136,7 @@ bool DecoderPool::process()
         return false;
     }
 
-    qreal totalSecs = (static_cast<qreal>(totalTimer.elapsed()) / 1000.0);
+    double totalSecs = (static_cast<double>(totalTimer.elapsed()) / 1000.0);
     qInfo() << "Processing complete -" << length << "frames in" << totalSecs << "seconds (" <<
                length / totalSecs << "FPS )";
 
@@ -221,7 +221,7 @@ bool DecoderPool::putOutputFrame(qint32 frameNumber, const RGBFrame &outputFrame
         const qint32 outputCount = outputFrameNumber - startFrame;
         if ((outputCount % 32) == 0) {
             // Show an update to the user
-            qreal fps = outputCount / (static_cast<qreal>(totalTimer.elapsed()) / 1000.0);
+            double fps = outputCount / (static_cast<double>(totalTimer.elapsed()) / 1000.0);
             qInfo() << outputCount << "frames processed -" << fps << "FPS";
         }
     }
