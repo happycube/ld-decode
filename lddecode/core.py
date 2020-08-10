@@ -1161,9 +1161,11 @@ def downscale_audio(audio, lineinfo, rf, linecount, timeoffset = 0, freq = 48000
     output16 = np.zeros((2 * (len(arange) - 1)), dtype=np.int16)
 
     for i in range(len(arange) - 1):
-        if len(audio['audio_left']) > np.int(locs[i + 1]):
-            output_left = nb_mean(audio['audio_left'][np.int(locs[i]):np.int(locs[i+1])])
-            output_right = nb_mean(audio['audio_right'][np.int(locs[i]):np.int(locs[i+1])])
+        start = np.int(locs[i])
+        end = np.int(locs[i + 1])
+        if end > start and end < len(audio['audio_left']):
+            output_left = nb_mean(audio['audio_left'][start:end])
+            output_right = nb_mean(audio['audio_right'][start:end])
 
             output_left = (output_left * swow[i]) - rf.SysParams['audio_lfreq']
             output_right = (output_right * swow[i]) - rf.SysParams['audio_rfreq']
