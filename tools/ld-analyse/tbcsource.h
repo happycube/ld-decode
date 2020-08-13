@@ -67,11 +67,9 @@ public:
 
     void setHighlightDropouts(bool _state);
     void setChromaDecoder(bool _state);
-    void setLpfMode(bool _state);
     void setFieldOrder(bool _state);
     bool getHighlightDropouts();
     bool getChromaDecoder();
-    bool getLpfMode();
     bool getFieldOrder();
 
     QImage getFrameImage(qint32 frameNumber);
@@ -126,7 +124,6 @@ private:
 
     // Frame image options
     bool chromaOn;
-    bool lpfOn;
     bool dropoutsOn;
     bool reverseFoOn;
 

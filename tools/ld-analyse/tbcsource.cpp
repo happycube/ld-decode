@@ -30,7 +30,6 @@ TbcSource::TbcSource(QObject *parent) : QObject(parent)
 {
     // Default frame image options
     chromaOn = false;
-    lpfOn = false;
     dropoutsOn = false;
     reverseFoOn = false;
     sourceReady = false;
@@ -51,7 +50,6 @@ void TbcSource::loadSource(QString sourceFilename)
 {
     // Default frame options
     chromaOn = false;
-    lpfOn = false;
     dropoutsOn = false;
     reverseFoOn = false;
     sourceReady = false;
@@ -103,19 +101,6 @@ void TbcSource::setChromaDecoder(bool _state)
 {
     frameCacheFrameNumber = -1;
     chromaOn = _state;
-
-    // Turn off LPF if chroma is selected
-    if (chromaOn) lpfOn = false;
-}
-
-// Method to set the LPF mode (true = on)
-void TbcSource::setLpfMode(bool _state)
-{
-    frameCacheFrameNumber = -1;
-    lpfOn = _state;
-
-    // Turn off chroma if LPF is selected
-    if (lpfOn) chromaOn = false;
 }
 
 // Method to set the field order (true = reversed, false = normal)
@@ -138,12 +123,6 @@ bool TbcSource::getHighlightDropouts()
 bool TbcSource::getChromaDecoder()
 {
     return chromaOn;
-}
-
-// Method to get the state of the LPF mode
-bool TbcSource::getLpfMode()
-{
-    return lpfOn;
 }
 
 // Method to get the field order
@@ -538,9 +517,6 @@ QImage TbcSource::generateQImage(qint32 frameNumber)
     if (chromaOn) {
         qDebug().nospace() << "TbcSource::generateQImage(): Generating a chroma image from frame " << frameNumber <<
                     " (" << videoParameters.fieldWidth << "x" << frameHeight << ")";
-    } else if (lpfOn) {
-        qDebug().nospace() << "TbcSource::generateQImage(): Generating a LPF image from frame " << frameNumber <<
-                    " (" << videoParameters.fieldWidth << "x" << frameHeight << ")";
     } else {
         qDebug().nospace() << "TbcSource::generateQImage(): Generating a source image from frame " << frameNumber <<
                     " (" << videoParameters.fieldWidth << "x" << frameHeight << ")";
@@ -599,59 +575,6 @@ QImage TbcSource::generateQImage(qint32 frameNumber)
                 *(frameImage.scanLine(y) + xpp + 0) = static_cast<uchar>(rgbPointer[pixelOffset + 0] / 256); // R
                 *(frameImage.scanLine(y) + xpp + 1) = static_cast<uchar>(rgbPointer[pixelOffset + 1] / 256); // G
                 *(frameImage.scanLine(y) + xpp + 2) = static_cast<uchar>(rgbPointer[pixelOffset + 2] / 256); // B
-            }
-        }
-    } else if (lpfOn) {
-        // Display the current frame as LPF only
-
-        // Generate pointers to the 16-bit greyscale data.
-        // Since we're taking a non-const pointer here, this will detach from
-        // the original copy of the data (which is what we want, because we're
-        // going to filter it in place).
-        quint16 *firstFieldPointer = inputFields[startIndex].data.data();
-        quint16 *secondFieldPointer = inputFields[startIndex + 1].data.data();
-
-        // Generate a filter object
-        Filters filters;
-
-        // Filter out the Chroma information
-        if (videoParameters.isSourcePal) {
-            qDebug() << "TbcSource::generateQImage(): Applying FIR LPF to PAL image data";
-            filters.palLumaFirFilter(firstFieldPointer, videoParameters.fieldWidth * videoParameters.fieldHeight);
-            filters.palLumaFirFilter(secondFieldPointer, videoParameters.fieldWidth * videoParameters.fieldHeight);
-        } else {
-            qDebug() << "TbcSource::generateQImage(): Applying FIR LPF to NTSC image data";
-            filters.ntscLumaFirFilter(firstFieldPointer, videoParameters.fieldWidth * videoParameters.fieldHeight);
-            filters.ntscLumaFirFilter(secondFieldPointer, videoParameters.fieldWidth * videoParameters.fieldHeight);
-        }
-
-        // Copy the raw 16-bit grayscale data into the RGB888 QImage
-        for (qint32 y = 0; y < frameHeight; y++) {
-            for (qint32 x = 0; x < videoParameters.fieldWidth; x++) {
-                qint32 pixelOffset = (videoParameters.fieldWidth * (y / 2)) + x;
-                qreal pixelValue32;
-                if (y % 2) {
-                    pixelValue32 = static_cast<qreal>(secondFieldPointer[pixelOffset]);
-                } else {
-                    pixelValue32 = static_cast<qreal>(firstFieldPointer[pixelOffset]);
-                }
-
-                if (pixelValue32 < videoParameters.black16bIre) pixelValue32 = videoParameters.black16bIre;
-                if (pixelValue32 > videoParameters.white16bIre) pixelValue32 = videoParameters.white16bIre;
-
-                // Scale the IRE value to a 16 bit greyscale value
-                qreal scaledValue = ((pixelValue32 - static_cast<qreal>(videoParameters.black16bIre)) /
-                                     (static_cast<qreal>(videoParameters.white16bIre)
-                                      - static_cast<qreal>(videoParameters.black16bIre))) * 65535.0;
-                pixelValue32 = static_cast<qint32>(scaledValue);
-
-                // Convert to 8-bit for RGB888
-                uchar pixelValue = static_cast<uchar>(pixelValue32 / 256);
-
-                qint32 xpp = x * 3;
-                *(frameImage.scanLine(y) + xpp + 0) = static_cast<uchar>(pixelValue); // R
-                *(frameImage.scanLine(y) + xpp + 1) = static_cast<uchar>(pixelValue); // G
-                *(frameImage.scanLine(y) + xpp + 2) = static_cast<uchar>(pixelValue); // B
             }
         }
     } else {
