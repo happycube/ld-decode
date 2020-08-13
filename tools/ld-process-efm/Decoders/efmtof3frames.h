@@ -51,6 +51,7 @@ public:
 
         qint64 validEfmSymbols;
         qint64 invalidEfmSymbols;
+        qint64 correctedEfmSymbols;
     };
 
     QVector<F3Frame> process(QByteArray efmDataIn, bool debugState);
