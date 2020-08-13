@@ -90,6 +90,7 @@ void EfmToF3Frames::reportStatistics()
     qInfo() << "";
     qInfo() << "      Valid EFM symbols:" << statistics.validEfmSymbols;
     qInfo() << "    Invalid EFM symbols:" << statistics.invalidEfmSymbols;
+    qInfo() << "  Corrected EFM symbols:" << statistics.correctedEfmSymbols;
 
     qreal efmSymbolErrorRate = static_cast<qreal>(statistics.validEfmSymbols + statistics.invalidEfmSymbols);
     efmSymbolErrorRate = (100 / efmSymbolErrorRate) * (statistics.invalidEfmSymbols);
@@ -136,6 +137,7 @@ void EfmToF3Frames::clearStatistics()
 
     statistics.validEfmSymbols = 0;
     statistics.invalidEfmSymbols = 0;
+    statistics.correctedEfmSymbols = 0;
 
     statistics.inRangeTValues = 0;
     statistics.outOfRangeTValues = 0;
@@ -384,6 +386,7 @@ EfmToF3Frames::StateMachine EfmToF3Frames::sm_state_processFrame()
 
     statistics.validEfmSymbols += f3FramesOut.last().getNumberOfValidEfmSymbols();
     statistics.invalidEfmSymbols += f3FramesOut.last().getNumberOfInvalidEfmSymbols();
+    statistics.correctedEfmSymbols += f3FramesOut.last().getNumberOfCorrectedEfmSymbols();
 
     // Discard all transitions up to the sync end
     efmDataBuffer.remove(0, endSyncTransition);
