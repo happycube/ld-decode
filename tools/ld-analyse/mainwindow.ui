@@ -447,7 +447,6 @@
     </property>
     <addaction name="actionDropout_analysis"/>
     <addaction name="actionSNR_analysis"/>
-    <addaction name="actionCapture_Quality_Index"/>
     <addaction name="actionVBI"/>
     <addaction name="actionLine_scope"/>
     <addaction name="actionClosed_Captions"/>
@@ -609,14 +608,6 @@
   <action name="actionChroma_decoder_configuration">
    <property name="text">
     <string>Chroma decoder configuration...</string>
-   </property>
-  </action>
-  <action name="actionCapture_Quality_Index">
-   <property name="text">
-    <string>Capture Quality Index...</string>
-   </property>
-   <property name="shortcut">
-    <string>Ctrl+U</string>
    </property>
   </action>
   <action name="actionReload_TBC">

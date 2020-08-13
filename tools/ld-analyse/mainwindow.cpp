@@ -40,7 +40,6 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     busyDialog = new BusyDialog(this);
     closedCaptionDialog = new ClosedCaptionsDialog(this);
     chromaDecoderConfigDialog = new ChromaDecoderConfigDialog(this);
-    captureQualityIndexDialog = new CaptureQualityIndexDialog(this);
 
     // Add a status bar to show the state of the source video file
     ui->statusBar->addWidget(&sourceVideoStatus);
@@ -72,7 +71,6 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     snrAnalysisDialog->restoreGeometry(configuration.getSnrAnalysisDialogGeometry());
     closedCaptionDialog->restoreGeometry(configuration.getClosedCaptionDialogGeometry());
     chromaDecoderConfigDialog->restoreGeometry(configuration.getChromaDecoderConfigDialogGeometry());
-    captureQualityIndexDialog->restoreGeometry(configuration.getCaptureQualityIndexDialogGeometry());
 
     // Store the current button palette for the show dropouts button
     buttonPalette = ui->dropoutsPushButton->palette();
@@ -100,7 +98,6 @@ MainWindow::~MainWindow()
     configuration.setSnrAnalysisDialogGeometry(snrAnalysisDialog->saveGeometry());
     configuration.setClosedCaptionDialogGeometry(closedCaptionDialog->saveGeometry());
     configuration.setChromaDecoderConfigDialogGeometry(chromaDecoderConfigDialog->saveGeometry());
-    configuration.setCaptureQualityIndexDialogGeometry(captureQualityIndexDialog->saveGeometry());
     configuration.writeConfiguration();
 
     // Close the source video if open
@@ -156,7 +153,6 @@ void MainWindow::updateGuiLoaded()
     ui->actionZoom_3x->setEnabled(true);
     ui->actionDropout_analysis->setEnabled(true);
     ui->actionSNR_analysis->setEnabled(true);
-    ui->actionCapture_Quality_Index->setEnabled(true);
     ui->actionSave_frame_as_PNG->setEnabled(true);
     ui->actionClosed_Captions->setEnabled(true);
     ui->actionChroma_decoder_configuration->setEnabled(true);
@@ -237,7 +233,6 @@ void MainWindow::updateGuiUnloaded()
     ui->actionZoom_3x->setEnabled(false);
     ui->actionDropout_analysis->setEnabled(false);
     ui->actionSNR_analysis->setEnabled(false);
-    ui->actionCapture_Quality_Index->setEnabled(false);
     ui->actionSave_frame_as_PNG->setEnabled(false);
     ui->actionClosed_Captions->setEnabled(false);
     ui->actionChroma_decoder_configuration->setEnabled(false);
@@ -259,7 +254,6 @@ void MainWindow::updateGuiUnloaded()
     // Hide graphs
     snrAnalysisDialog->hide();
     dropoutAnalysisDialog->hide();
-    captureQualityIndexDialog->hide();
 
     // Hide configuration dialogues
     chromaDecoderConfigDialog->hide();
@@ -444,13 +438,6 @@ void MainWindow::on_actionSNR_analysis_triggered()
 {
     // Show the SNR analysis dialogue
     snrAnalysisDialog->show();
-}
-
-// Show the Capture Quality Index graph
-void MainWindow::on_actionCapture_Quality_Index_triggered()
-{
-    // Show the CQI dialogue
-    captureQualityIndexDialog->show();
 }
 
 // Save current frame as PNG
@@ -843,19 +830,16 @@ void MainWindow::on_finishedLoading()
         // Generate the graph data
         dropoutAnalysisDialog->startUpdate();
         snrAnalysisDialog->startUpdate();
-        captureQualityIndexDialog->startUpdate();
 
         qint32 fieldNumber = 1;
         for (qint32 i = 0; i < tbcSource.getGraphDataSize(); i++) {
             dropoutAnalysisDialog->addDataPoint(fieldNumber, tbcSource.getDropOutGraphData()[i]);
             snrAnalysisDialog->addDataPoint(fieldNumber, tbcSource.getBlackSnrGraphData()[i], tbcSource.getWhiteSnrGraphData()[i]);
-            captureQualityIndexDialog->addDataPoint(fieldNumber, tbcSource.getCaptureQualityIndexGraphData()[i]);
             fieldNumber += tbcSource.getFieldsPerGraphDataPoint();
         }
 
         dropoutAnalysisDialog->finishUpdate(tbcSource.getNumberOfFields(), tbcSource.getFieldsPerGraphDataPoint());
         snrAnalysisDialog->finishUpdate(tbcSource.getNumberOfFields(), tbcSource.getFieldsPerGraphDataPoint());
-        captureQualityIndexDialog->finishUpdate(tbcSource.getNumberOfFields(), tbcSource.getFieldsPerGraphDataPoint());
 
         // Update the GUI
         updateGuiLoaded();

@@ -66,8 +66,6 @@ public:
     QByteArray getClosedCaptionDialogGeometry(void);
     void setChromaDecoderConfigDialogGeometry(QByteArray chromaDecoderConfigDialogGeometry);
     QByteArray getChromaDecoderConfigDialogGeometry(void);
-    void setCaptureQualityIndexDialogGeometry(QByteArray captureQualityIndexDialogGeometry);
-    QByteArray getCaptureQualityIndexDialogGeometry(void);
 
 signals:
 
@@ -92,7 +90,6 @@ private:
         QByteArray snrAnalysisDialogGeometry;
         QByteArray closedCaptionDialogGeometry;
         QByteArray chromaDecoderConfigDialogGeometry;
-        QByteArray captureQualityIndexDialogGeometry;
     };
 
     // Overall settings structure
