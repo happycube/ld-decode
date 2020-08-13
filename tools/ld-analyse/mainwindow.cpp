@@ -161,6 +161,7 @@ void MainWindow::updateGuiLoaded()
     // Set option button states
     ui->videoPushButton->setText(tr("Source"));
     ui->dropoutsPushButton->setText(tr("Dropouts Off"));
+    ui->aspectPushButton->setText(tr("Native"));
     ui->fieldOrderPushButton->setText(tr("Normal Field-order"));
 
     // Set zoom button states
@@ -241,6 +242,7 @@ void MainWindow::updateGuiUnloaded()
     // Set option button states
     ui->videoPushButton->setText(tr("Source"));
     ui->dropoutsPushButton->setText(tr("Dropouts Off"));
+    ui->aspectPushButton->setText(tr("Native"));
     ui->fieldOrderPushButton->setText(tr("Normal Field-order"));
 
     // Set zoom button states
@@ -691,6 +693,21 @@ void MainWindow::on_mouseModePushButton_clicked()
     updateFrameViewer();
 }
 
+// Aspect ratio button clicked
+void MainWindow::on_aspectPushButton_clicked()
+{
+    if (tbcSource.getAspect43()) {
+        tbcSource.setAspect43(false);
+        ui->aspectPushButton->setText(tr("Native"));
+    } else {
+        tbcSource.setAspect43(true);
+        ui->aspectPushButton->setText(tr("4:3"));
+    }
+
+    // Show the current frame (why isn't this option passed?)
+    showFrame();
+}
+
 // Miscellaneous handler methods --------------------------------------------------------------------------------------
 
 // Handler called when another class changes the currenly selected scan line
@@ -866,3 +883,5 @@ void MainWindow::on_finishedLoading()
     busyDialog->hide();
     this->setEnabled(true);
 }
+
+

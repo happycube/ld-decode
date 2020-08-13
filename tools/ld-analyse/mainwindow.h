@@ -90,6 +90,7 @@ private slots:
     void on_zoomOutPushButton_clicked();
     void on_originalSizePushButton_clicked();
     void on_mouseModePushButton_clicked();
+    void on_aspectPushButton_clicked();
 
     // Miscellaneous handlers
     void scanLineChangedSignalHandler(qint32 scanLine, qint32 pictureDot);

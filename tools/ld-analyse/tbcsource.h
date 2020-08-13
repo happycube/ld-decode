@@ -68,9 +68,11 @@ public:
     void setHighlightDropouts(bool _state);
     void setChromaDecoder(bool _state);
     void setFieldOrder(bool _state);
+    void setAspect43(bool _state);
     bool getHighlightDropouts();
     bool getChromaDecoder();
     bool getFieldOrder();
+    bool getAspect43();
 
     QImage getFrameImage(qint32 frameNumber);
     qint32 getNumberOfFrames();
@@ -126,6 +128,7 @@ private:
     bool chromaOn;
     bool dropoutsOn;
     bool reverseFoOn;
+    bool aspect43On;
 
     // Source globals
     SourceVideo sourceVideo;
