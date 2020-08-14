@@ -329,8 +329,19 @@ void MainWindow::updateFrameViewer()
     }
 
     ui->frameViewerLabel->setPixmap(QPixmap::fromImage(frameImage));
-    ui->frameViewerLabel->setPixmap(ui->frameViewerLabel->pixmap()->scaled(scaleFactor * ui->frameViewerLabel->pixmap()->size(),
+
+    // Get the pixmap width and height (and apply scaling and aspect ratio adjustment if required)
+    qint32 adjustment = 0;
+    if (tbcSource.getAspect43()) {
+        if (tbcSource.getIsSourcePal()) adjustment = 160; // PAL 928->768 = 160
+        else adjustment = 150; // NTSC 910->760 = 150
+    }
+    qint32 width = scaleFactor * (ui->frameViewerLabel->pixmap()->size().width() - adjustment);
+    qint32 height = scaleFactor * ui->frameViewerLabel->pixmap()->size().height();
+
+    ui->frameViewerLabel->setPixmap(ui->frameViewerLabel->pixmap()->scaled(width, height,
                                                                            Qt::IgnoreAspectRatio, Qt::SmoothTransformation));
+
     // QT Bug workaround for some macOS versions
     #if defined(Q_OS_MACOS)
     	repaint();
