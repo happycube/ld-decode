@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>948</width>
-    <height>700</height>
+    <width>991</width>
+    <height>721</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -52,8 +52,8 @@
           <rect>
            <x>0</x>
            <y>0</y>
-           <width>926</width>
-           <height>555</height>
+           <width>969</width>
+           <height>576</height>
           </rect>
          </property>
          <layout class="QVBoxLayout" name="verticalLayout_2">
@@ -381,6 +381,13 @@
             </widget>
            </item>
            <item>
+            <widget class="QPushButton" name="aspectPushButton">
+             <property name="text">
+              <string>1:1</string>
+             </property>
+            </widget>
+           </item>
+           <item>
             <widget class="QPushButton" name="dropoutsPushButton">
              <property name="minimumSize">
               <size>
@@ -426,7 +433,7 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>948</width>
+     <width>991</width>
      <height>22</height>
     </rect>
    </property>
@@ -447,7 +454,6 @@
     </property>
     <addaction name="actionDropout_analysis"/>
     <addaction name="actionSNR_analysis"/>
-    <addaction name="actionCapture_Quality_Index"/>
     <addaction name="actionVBI"/>
     <addaction name="actionLine_scope"/>
     <addaction name="actionClosed_Captions"/>
@@ -609,14 +615,6 @@
   <action name="actionChroma_decoder_configuration">
    <property name="text">
     <string>Chroma decoder configuration...</string>
-   </property>
-  </action>
-  <action name="actionCapture_Quality_Index">
-   <property name="text">
-    <string>Capture Quality Index...</string>
-   </property>
-   <property name="shortcut">
-    <string>Ctrl+U</string>
    </property>
   </action>
   <action name="actionReload_TBC">

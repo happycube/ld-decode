@@ -76,7 +76,6 @@ void Configuration::writeConfiguration(void)
     configuration->setValue("snrAnalysisDialogGeometry", settings.windows.snrAnalysisDialogGeometry);
     configuration->setValue("closedCaptionDialogGeometry", settings.windows.closedCaptionDialogGeometry);
     configuration->setValue("chromaDecoderConfigDialogGeometry", settings.windows.chromaDecoderConfigDialogGeometry);
-    configuration->setValue("captureQualityIndexDialogGeometry", settings.windows.captureQualityIndexDialogGeometry);
     configuration->endGroup();
 
     // Sync the settings with disk
@@ -107,7 +106,6 @@ void Configuration::readConfiguration(void)
     settings.windows.snrAnalysisDialogGeometry = configuration->value("snrAnalysisDialogGeometry").toByteArray();
     settings.windows.closedCaptionDialogGeometry = configuration->value("closedCaptionDialogGeometry").toByteArray();
     settings.windows.chromaDecoderConfigDialogGeometry = configuration->value("chromaDecoderConfigDialogGeometry").toByteArray();
-    settings.windows.captureQualityIndexDialogGeometry = configuration->value("captureQualityIndexDialogGeometry").toByteArray();
     configuration->endGroup();
 }
 
@@ -129,7 +127,6 @@ void Configuration::setDefault(void)
     settings.windows.snrAnalysisDialogGeometry = QByteArray();
     settings.windows.closedCaptionDialogGeometry = QByteArray();
     settings.windows.chromaDecoderConfigDialogGeometry = QByteArray();
-    settings.windows.captureQualityIndexDialogGeometry = QByteArray();
 
     // Write the configuration
     writeConfiguration();
@@ -237,14 +234,4 @@ void Configuration::setChromaDecoderConfigDialogGeometry(QByteArray chromaDecode
 QByteArray Configuration::getChromaDecoderConfigDialogGeometry(void)
 {
     return settings.windows.chromaDecoderConfigDialogGeometry;
-}
-
-void Configuration::setCaptureQualityIndexDialogGeometry(QByteArray captureQualityIndexDialogGeometry)
-{
-    settings.windows.captureQualityIndexDialogGeometry = captureQualityIndexDialogGeometry;
-}
-
-QByteArray Configuration::getCaptureQualityIndexDialogGeometry(void)
-{
-    return settings.windows.captureQualityIndexDialogGeometry;
 }

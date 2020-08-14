@@ -40,7 +40,6 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     busyDialog = new BusyDialog(this);
     closedCaptionDialog = new ClosedCaptionsDialog(this);
     chromaDecoderConfigDialog = new ChromaDecoderConfigDialog(this);
-    captureQualityIndexDialog = new CaptureQualityIndexDialog(this);
 
     // Add a status bar to show the state of the source video file
     ui->statusBar->addWidget(&sourceVideoStatus);
@@ -50,6 +49,9 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
 
     // Set the initial frame number
     currentFrameNumber = 1;
+
+    // Set the initial aspect
+    aspect43On = false;
 
     // Connect to the scan line changed signal from the oscilloscope dialogue
     connect(oscilloscopeDialog, &OscilloscopeDialog::scanLineChanged, this, &MainWindow::scanLineChangedSignalHandler);
@@ -72,7 +74,6 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     snrAnalysisDialog->restoreGeometry(configuration.getSnrAnalysisDialogGeometry());
     closedCaptionDialog->restoreGeometry(configuration.getClosedCaptionDialogGeometry());
     chromaDecoderConfigDialog->restoreGeometry(configuration.getChromaDecoderConfigDialogGeometry());
-    captureQualityIndexDialog->restoreGeometry(configuration.getCaptureQualityIndexDialogGeometry());
 
     // Store the current button palette for the show dropouts button
     buttonPalette = ui->dropoutsPushButton->palette();
@@ -100,7 +101,6 @@ MainWindow::~MainWindow()
     configuration.setSnrAnalysisDialogGeometry(snrAnalysisDialog->saveGeometry());
     configuration.setClosedCaptionDialogGeometry(closedCaptionDialog->saveGeometry());
     configuration.setChromaDecoderConfigDialogGeometry(chromaDecoderConfigDialog->saveGeometry());
-    configuration.setCaptureQualityIndexDialogGeometry(captureQualityIndexDialog->saveGeometry());
     configuration.writeConfiguration();
 
     // Close the source video if open
@@ -156,7 +156,6 @@ void MainWindow::updateGuiLoaded()
     ui->actionZoom_3x->setEnabled(true);
     ui->actionDropout_analysis->setEnabled(true);
     ui->actionSNR_analysis->setEnabled(true);
-    ui->actionCapture_Quality_Index->setEnabled(true);
     ui->actionSave_frame_as_PNG->setEnabled(true);
     ui->actionClosed_Captions->setEnabled(true);
     ui->actionChroma_decoder_configuration->setEnabled(true);
@@ -165,6 +164,7 @@ void MainWindow::updateGuiLoaded()
     // Set option button states
     ui->videoPushButton->setText(tr("Source"));
     ui->dropoutsPushButton->setText(tr("Dropouts Off"));
+    ui->aspectPushButton->setText(tr("1:1"));
     ui->fieldOrderPushButton->setText(tr("Normal Field-order"));
 
     // Set zoom button states
@@ -187,6 +187,9 @@ void MainWindow::updateGuiLoaded()
     statusText += QString::number(tbcSource.getNumberOfFrames());
     statusText += " sequential frames available";
     sourceVideoStatus.setText(statusText);
+
+    // Reset the aspect setting
+    aspect43On = false;
 
     // Update the chroma decoder configuration dialogue
     chromaDecoderConfigDialog->setConfiguration(tbcSource.getIsSourcePal(), tbcSource.getPalConfiguration(), tbcSource.getNtscConfiguration());
@@ -237,7 +240,6 @@ void MainWindow::updateGuiUnloaded()
     ui->actionZoom_3x->setEnabled(false);
     ui->actionDropout_analysis->setEnabled(false);
     ui->actionSNR_analysis->setEnabled(false);
-    ui->actionCapture_Quality_Index->setEnabled(false);
     ui->actionSave_frame_as_PNG->setEnabled(false);
     ui->actionClosed_Captions->setEnabled(false);
     ui->actionChroma_decoder_configuration->setEnabled(false);
@@ -246,6 +248,7 @@ void MainWindow::updateGuiUnloaded()
     // Set option button states
     ui->videoPushButton->setText(tr("Source"));
     ui->dropoutsPushButton->setText(tr("Dropouts Off"));
+    ui->aspectPushButton->setText(tr("1:1"));
     ui->fieldOrderPushButton->setText(tr("Normal Field-order"));
 
     // Set zoom button states
@@ -259,7 +262,6 @@ void MainWindow::updateGuiUnloaded()
     // Hide graphs
     snrAnalysisDialog->hide();
     dropoutAnalysisDialog->hide();
-    captureQualityIndexDialog->hide();
 
     // Hide configuration dialogues
     chromaDecoderConfigDialog->hide();
@@ -333,8 +335,19 @@ void MainWindow::updateFrameViewer()
     }
 
     ui->frameViewerLabel->setPixmap(QPixmap::fromImage(frameImage));
-    ui->frameViewerLabel->setPixmap(ui->frameViewerLabel->pixmap()->scaled(scaleFactor * ui->frameViewerLabel->pixmap()->size(),
+
+    // Get the pixmap width and height (and apply scaling and aspect ratio adjustment if required)
+    qint32 adjustment = 0;
+    if (aspect43On) {
+        if (tbcSource.getIsSourcePal()) adjustment = 196; // PAL
+        else adjustment = 150; // NTSC
+    }
+
+    // Scale and apply the pixmap
+    ui->frameViewerLabel->setPixmap(ui->frameViewerLabel->pixmap()->scaled((scaleFactor * (ui->frameViewerLabel->pixmap()->size().width() - adjustment)),
+                                                                           (scaleFactor * ui->frameViewerLabel->pixmap()->size().height()),
                                                                            Qt::IgnoreAspectRatio, Qt::SmoothTransformation));
+
     // QT Bug workaround for some macOS versions
     #if defined(Q_OS_MACOS)
     	repaint();
@@ -446,13 +459,6 @@ void MainWindow::on_actionSNR_analysis_triggered()
     snrAnalysisDialog->show();
 }
 
-// Show the Capture Quality Index graph
-void MainWindow::on_actionCapture_Quality_Index_triggered()
-{
-    // Show the CQI dialogue
-    captureQualityIndexDialog->show();
-}
-
 // Save current frame as PNG
 void MainWindow::on_actionSave_frame_as_PNG_triggered()
 {
@@ -460,11 +466,15 @@ void MainWindow::on_actionSave_frame_as_PNG_triggered()
 
     // Create a suggestion for the filename
     QString filenameSuggestion = configuration.getPngDirectory();
+
     if (tbcSource.getIsSourcePal()) filenameSuggestion += tr("/frame_pal_");
     else filenameSuggestion += tr("/frame_ntsc_");
-    if (!tbcSource.getChromaDecoder() && !tbcSource.getLpfMode()) filenameSuggestion += tr("source_");
-    else if (tbcSource.getChromaDecoder() && !tbcSource.getLpfMode()) filenameSuggestion += tr("comb_");
-    else filenameSuggestion += tr("lpf_");
+
+    if (!tbcSource.getChromaDecoder()) filenameSuggestion += tr("source_");
+    else filenameSuggestion += tr("chroma_");
+
+    if (aspect43On) filenameSuggestion += tr("ar43_");
+
     filenameSuggestion += QString::number(currentFrameNumber) + tr(".png");
 
     QString pngFilename = QFileDialog::getSaveFileName(this,
@@ -472,13 +482,31 @@ void MainWindow::on_actionSave_frame_as_PNG_triggered()
                 filenameSuggestion,
                 tr("PNG image (*.png);;All Files (*)"));
 
+    // Get the required width and height taking into account the designed aspect ratio
+    qint32 adjustment = 0;
+    if (aspect43On) {
+        if (tbcSource.getIsSourcePal()) adjustment = 196; // PAL
+        else adjustment = 150; // NTSC
+    }
+
     // Was a filename specified?
     if (!pngFilename.isEmpty() && !pngFilename.isNull()) {
         // Save the current frame as a PNG
         qDebug() << "MainWindow::on_actionSave_frame_as_PNG_triggered(): Saving current frame as" << pngFilename;
 
         // Generate the current frame and save it
-        if (!tbcSource.getFrameImage(currentFrameNumber).save(pngFilename)) {
+        bool result = false;
+        if (aspect43On) {
+            // Save in 4:3 aspect
+            result = tbcSource.getFrameImage(currentFrameNumber).scaled((ui->frameViewerLabel->pixmap()->size().width() - adjustment),
+                                                           (ui->frameViewerLabel->pixmap()->size().height()),
+                                                           Qt::IgnoreAspectRatio, Qt::SmoothTransformation).save(pngFilename);
+        } else {
+            // Save in 1:1 aspect
+            result = tbcSource.getFrameImage(currentFrameNumber).save(pngFilename);
+        }
+
+        if (!result) {
             qDebug() << "MainWindow::on_actionSave_frame_as_PNG_triggered(): Failed to save file as" << pngFilename;
 
             QMessageBox messageBox;
@@ -612,18 +640,11 @@ void MainWindow::on_frameHorizontalSlider_valueChanged(int value)
 void MainWindow::on_videoPushButton_clicked()
 {
     if (tbcSource.getChromaDecoder()) {
-        // Chroma decoder off, LPF mode on
-        tbcSource.setChromaDecoder(false);
-        tbcSource.setLpfMode(true);
-        ui->videoPushButton->setText(tr("LPF"));
-    } else if (tbcSource.getLpfMode()) {
-        // Chroma decoder off, LPF mode off
-        tbcSource.setLpfMode(false);
+        // Chroma decoder off
         tbcSource.setChromaDecoder(false);
         ui->videoPushButton->setText(tr("Source"));
     } else {
-        // Chroma decoder on, LPF mode off
-        tbcSource.setLpfMode(false);
+        // Chroma decoder on
         tbcSource.setChromaDecoder(true);
         ui->videoPushButton->setText(tr("Chroma"));
     }
@@ -710,6 +731,21 @@ void MainWindow::on_mouseModePushButton_clicked()
 
     // Update the frame viewer to display/hide the indicator line
     updateFrameViewer();
+}
+
+// Aspect ratio button clicked
+void MainWindow::on_aspectPushButton_clicked()
+{
+    if (aspect43On) {
+        aspect43On = false;
+        ui->aspectPushButton->setText(tr("1:1"));
+    } else {
+        aspect43On = true;
+        ui->aspectPushButton->setText(tr("4:3"));
+    }
+
+    // Show the current frame (why isn't this option passed?)
+    showFrame();
 }
 
 // Miscellaneous handler methods --------------------------------------------------------------------------------------
@@ -851,19 +887,16 @@ void MainWindow::on_finishedLoading()
         // Generate the graph data
         dropoutAnalysisDialog->startUpdate();
         snrAnalysisDialog->startUpdate();
-        captureQualityIndexDialog->startUpdate();
 
         qint32 fieldNumber = 1;
         for (qint32 i = 0; i < tbcSource.getGraphDataSize(); i++) {
             dropoutAnalysisDialog->addDataPoint(fieldNumber, tbcSource.getDropOutGraphData()[i]);
             snrAnalysisDialog->addDataPoint(fieldNumber, tbcSource.getBlackSnrGraphData()[i], tbcSource.getWhiteSnrGraphData()[i]);
-            captureQualityIndexDialog->addDataPoint(fieldNumber, tbcSource.getCaptureQualityIndexGraphData()[i]);
             fieldNumber += tbcSource.getFieldsPerGraphDataPoint();
         }
 
         dropoutAnalysisDialog->finishUpdate(tbcSource.getNumberOfFields(), tbcSource.getFieldsPerGraphDataPoint());
         snrAnalysisDialog->finishUpdate(tbcSource.getNumberOfFields(), tbcSource.getFieldsPerGraphDataPoint());
-        captureQualityIndexDialog->finishUpdate(tbcSource.getNumberOfFields(), tbcSource.getFieldsPerGraphDataPoint());
 
         // Update the GUI
         updateGuiLoaded();
@@ -890,3 +923,5 @@ void MainWindow::on_finishedLoading()
     busyDialog->hide();
     this->setEnabled(true);
 }
+
+

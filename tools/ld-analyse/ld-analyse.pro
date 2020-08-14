@@ -26,7 +26,6 @@ CONFIG += c++11
 
 SOURCES += \
     busydialog.cpp \
-    capturequalityindexdialog.cpp \
     closedcaptionsdialog.cpp \
     main.cpp \
     mainwindow.cpp \
@@ -54,7 +53,6 @@ SOURCES += \
 
 HEADERS += \
     busydialog.h \
-    capturequalityindexdialog.h \
     closedcaptionsdialog.h \
     mainwindow.h \
     oscilloscopedialog.h \
@@ -84,7 +82,6 @@ HEADERS += \
 
 FORMS += \
     busydialog.ui \
-    capturequalityindexdialog.ui \
     closedcaptionsdialog.ui \
     mainwindow.ui \
     oscilloscopedialog.ui \
