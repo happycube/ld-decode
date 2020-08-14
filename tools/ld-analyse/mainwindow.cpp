@@ -164,7 +164,7 @@ void MainWindow::updateGuiLoaded()
     // Set option button states
     ui->videoPushButton->setText(tr("Source"));
     ui->dropoutsPushButton->setText(tr("Dropouts Off"));
-    ui->aspectPushButton->setText(tr("Native"));
+    ui->aspectPushButton->setText(tr("1:1"));
     ui->fieldOrderPushButton->setText(tr("Normal Field-order"));
 
     // Set zoom button states
@@ -248,7 +248,7 @@ void MainWindow::updateGuiUnloaded()
     // Set option button states
     ui->videoPushButton->setText(tr("Source"));
     ui->dropoutsPushButton->setText(tr("Dropouts Off"));
-    ui->aspectPushButton->setText(tr("Native"));
+    ui->aspectPushButton->setText(tr("1:1"));
     ui->fieldOrderPushButton->setText(tr("Normal Field-order"));
 
     // Set zoom button states
@@ -339,8 +339,8 @@ void MainWindow::updateFrameViewer()
     // Get the pixmap width and height (and apply scaling and aspect ratio adjustment if required)
     qint32 adjustment = 0;
     if (aspect43On) {
-        if (tbcSource.getIsSourcePal()) adjustment = 160; // PAL 928->768 = 160
-        else adjustment = 150; // NTSC 910->760 = 150
+        if (tbcSource.getIsSourcePal()) adjustment = 196; // PAL
+        else adjustment = 150; // NTSC
     }
 
     // Scale and apply the pixmap
@@ -485,8 +485,8 @@ void MainWindow::on_actionSave_frame_as_PNG_triggered()
     // Get the required width and height taking into account the designed aspect ratio
     qint32 adjustment = 0;
     if (aspect43On) {
-        if (tbcSource.getIsSourcePal()) adjustment = 160; // PAL 928->768 = 160
-        else adjustment = 150; // NTSC 910->760 = 150
+        if (tbcSource.getIsSourcePal()) adjustment = 196; // PAL
+        else adjustment = 150; // NTSC
     }
 
     // Was a filename specified?
@@ -497,12 +497,12 @@ void MainWindow::on_actionSave_frame_as_PNG_triggered()
         // Generate the current frame and save it
         bool result = false;
         if (aspect43On) {
-            // Scale to approx 4:3
+            // Save in 4:3 aspect
             result = tbcSource.getFrameImage(currentFrameNumber).scaled((ui->frameViewerLabel->pixmap()->size().width() - adjustment),
                                                            (ui->frameViewerLabel->pixmap()->size().height()),
                                                            Qt::IgnoreAspectRatio, Qt::SmoothTransformation).save(pngFilename);
         } else {
-            // Save as native resolution
+            // Save in 1:1 aspect
             result = tbcSource.getFrameImage(currentFrameNumber).save(pngFilename);
         }
 
@@ -738,7 +738,7 @@ void MainWindow::on_aspectPushButton_clicked()
 {
     if (aspect43On) {
         aspect43On = false;
-        ui->aspectPushButton->setText(tr("Native"));
+        ui->aspectPushButton->setText(tr("1:1"));
     } else {
         aspect43On = true;
         ui->aspectPushButton->setText(tr("4:3"));
