@@ -50,6 +50,9 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     // Set the initial frame number
     currentFrameNumber = 1;
 
+    // Set the initial aspect
+    aspect43On = false;
+
     // Connect to the scan line changed signal from the oscilloscope dialogue
     connect(oscilloscopeDialog, &OscilloscopeDialog::scanLineChanged, this, &MainWindow::scanLineChangedSignalHandler);
     lastScopeLine = 1;
@@ -184,6 +187,9 @@ void MainWindow::updateGuiLoaded()
     statusText += QString::number(tbcSource.getNumberOfFrames());
     statusText += " sequential frames available";
     sourceVideoStatus.setText(statusText);
+
+    // Reset the aspect setting
+    aspect43On = false;
 
     // Update the chroma decoder configuration dialogue
     chromaDecoderConfigDialog->setConfiguration(tbcSource.getIsSourcePal(), tbcSource.getPalConfiguration(), tbcSource.getNtscConfiguration());
@@ -332,14 +338,14 @@ void MainWindow::updateFrameViewer()
 
     // Get the pixmap width and height (and apply scaling and aspect ratio adjustment if required)
     qint32 adjustment = 0;
-    if (tbcSource.getAspect43()) {
+    if (aspect43On) {
         if (tbcSource.getIsSourcePal()) adjustment = 160; // PAL 928->768 = 160
         else adjustment = 150; // NTSC 910->760 = 150
     }
-    qint32 width = scaleFactor * (ui->frameViewerLabel->pixmap()->size().width() - adjustment);
-    qint32 height = scaleFactor * ui->frameViewerLabel->pixmap()->size().height();
 
-    ui->frameViewerLabel->setPixmap(ui->frameViewerLabel->pixmap()->scaled(width, height,
+    // Scale and apply the pixmap
+    ui->frameViewerLabel->setPixmap(ui->frameViewerLabel->pixmap()->scaled((scaleFactor * (ui->frameViewerLabel->pixmap()->size().width() - adjustment)),
+                                                                           (scaleFactor * ui->frameViewerLabel->pixmap()->size().height()),
                                                                            Qt::IgnoreAspectRatio, Qt::SmoothTransformation));
 
     // QT Bug workaround for some macOS versions
@@ -460,10 +466,15 @@ void MainWindow::on_actionSave_frame_as_PNG_triggered()
 
     // Create a suggestion for the filename
     QString filenameSuggestion = configuration.getPngDirectory();
+
     if (tbcSource.getIsSourcePal()) filenameSuggestion += tr("/frame_pal_");
     else filenameSuggestion += tr("/frame_ntsc_");
+
     if (!tbcSource.getChromaDecoder()) filenameSuggestion += tr("source_");
     else filenameSuggestion += tr("chroma_");
+
+    if (aspect43On) filenameSuggestion += tr("ar43_");
+
     filenameSuggestion += QString::number(currentFrameNumber) + tr(".png");
 
     QString pngFilename = QFileDialog::getSaveFileName(this,
@@ -471,13 +482,31 @@ void MainWindow::on_actionSave_frame_as_PNG_triggered()
                 filenameSuggestion,
                 tr("PNG image (*.png);;All Files (*)"));
 
+    // Get the required width and height taking into account the designed aspect ratio
+    qint32 adjustment = 0;
+    if (aspect43On) {
+        if (tbcSource.getIsSourcePal()) adjustment = 160; // PAL 928->768 = 160
+        else adjustment = 150; // NTSC 910->760 = 150
+    }
+
     // Was a filename specified?
     if (!pngFilename.isEmpty() && !pngFilename.isNull()) {
         // Save the current frame as a PNG
         qDebug() << "MainWindow::on_actionSave_frame_as_PNG_triggered(): Saving current frame as" << pngFilename;
 
         // Generate the current frame and save it
-        if (!tbcSource.getFrameImage(currentFrameNumber).save(pngFilename)) {
+        bool result = false;
+        if (aspect43On) {
+            // Scale to approx 4:3
+            result = tbcSource.getFrameImage(currentFrameNumber).scaled((ui->frameViewerLabel->pixmap()->size().width() - adjustment),
+                                                           (ui->frameViewerLabel->pixmap()->size().height()),
+                                                           Qt::IgnoreAspectRatio, Qt::SmoothTransformation).save(pngFilename);
+        } else {
+            // Save as native resolution
+            result = tbcSource.getFrameImage(currentFrameNumber).save(pngFilename);
+        }
+
+        if (!result) {
             qDebug() << "MainWindow::on_actionSave_frame_as_PNG_triggered(): Failed to save file as" << pngFilename;
 
             QMessageBox messageBox;
@@ -707,11 +736,11 @@ void MainWindow::on_mouseModePushButton_clicked()
 // Aspect ratio button clicked
 void MainWindow::on_aspectPushButton_clicked()
 {
-    if (tbcSource.getAspect43()) {
-        tbcSource.setAspect43(false);
+    if (aspect43On) {
+        aspect43On = false;
         ui->aspectPushButton->setText(tr("Native"));
     } else {
-        tbcSource.setAspect43(true);
+        aspect43On = true;
         ui->aspectPushButton->setText(tr("4:3"));
     }
 

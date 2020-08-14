@@ -32,7 +32,6 @@ TbcSource::TbcSource(QObject *parent) : QObject(parent)
     chromaOn = false;
     dropoutsOn = false;
     reverseFoOn = false;
-    aspect43On = false;
     sourceReady = false;
     fieldsPerGraphDataPoint = 0;
     frameCacheFrameNumber = -1;
@@ -53,7 +52,6 @@ void TbcSource::loadSource(QString sourceFilename)
     chromaOn = false;
     dropoutsOn = false;
     reverseFoOn = false;
-    aspect43On = false;
     sourceReady = false;
     fieldsPerGraphDataPoint = 0;
     frameCacheFrameNumber = -1;
@@ -115,22 +113,10 @@ void TbcSource::setFieldOrder(bool _state)
     else ldDecodeMetaData.setIsFirstFieldFirst(true);
 }
 
-void TbcSource::setAspect43(bool _state)
-{
-    frameCacheFrameNumber = -1;
-    aspect43On = _state;
-}
-
 // Method to get the state of the highlight dropouts mode
 bool TbcSource::getHighlightDropouts()
 {
     return dropoutsOn;
-}
-
-// Method to get the state of the aspect mode
-bool TbcSource::getAspect43()
-{
-    return aspect43On;
 }
 
 // Method to get the state of the chroma decoder mode

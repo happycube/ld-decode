@@ -126,6 +126,7 @@ private:
     qreal scaleFactor;
     QPalette buttonPalette;
     QString lastFilename;
+    bool aspect43On;
 
     // Update GUI methods
     void updateGuiLoaded();
