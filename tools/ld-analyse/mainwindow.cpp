@@ -482,31 +482,28 @@ void MainWindow::on_actionSave_frame_as_PNG_triggered()
                 filenameSuggestion,
                 tr("PNG image (*.png);;All Files (*)"));
 
-    // Get the required width and height taking into account the designed aspect ratio
-    qint32 adjustment = 0;
-    if (aspect43On) {
-        if (tbcSource.getIsSourcePal()) adjustment = 196; // PAL
-        else adjustment = 150; // NTSC
-    }
-
     // Was a filename specified?
     if (!pngFilename.isEmpty() && !pngFilename.isNull()) {
         // Save the current frame as a PNG
         qDebug() << "MainWindow::on_actionSave_frame_as_PNG_triggered(): Saving current frame as" << pngFilename;
 
-        // Generate the current frame and save it
-        bool result = false;
+        // Generate QImage for the current frame
+        QImage imageToSave = tbcSource.getFrameImage(currentFrameNumber);
+
+        // Change to 4:3 aspect ratio?
         if (aspect43On) {
-            // Save in 4:3 aspect
-            result = tbcSource.getFrameImage(currentFrameNumber).scaled((ui->frameViewerLabel->pixmap()->size().width() - adjustment),
-                                                           (ui->frameViewerLabel->pixmap()->size().height()),
-                                                           Qt::IgnoreAspectRatio, Qt::SmoothTransformation).save(pngFilename);
-        } else {
-            // Save in 1:1 aspect
-            result = tbcSource.getFrameImage(currentFrameNumber).save(pngFilename);
+            // Scale to 4:3 aspect
+            qint32 adjustment = 0;
+            if (tbcSource.getIsSourcePal()) adjustment = 196; // PAL
+            else adjustment = 150; // NTSC
+
+            imageToSave = imageToSave.scaled((imageToSave.size().width() - adjustment),
+                                             (imageToSave.size().height()),
+                                             Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
         }
 
-        if (!result) {
+        // Save the QImage as PNG
+        if (!imageToSave.save(pngFilename)) {
             qDebug() << "MainWindow::on_actionSave_frame_as_PNG_triggered(): Failed to save file as" << pngFilename;
 
             QMessageBox messageBox;
