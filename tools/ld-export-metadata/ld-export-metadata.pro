@@ -20,14 +20,16 @@ SOURCES += \
     main.cpp \
     ../library/tbc/lddecodemetadata.cpp \
     ../library/tbc/vbidecoder.cpp \
-    ../library/tbc/logging.cpp
+    ../library/tbc/logging.cpp \
+    ../library/tbc/dropouts.cpp
 
 HEADERS += \
     csv.h \
     ffmetadata.h \
     ../library/tbc/lddecodemetadata.h \
     ../library/tbc/vbidecoder.h \
-    ../library/tbc/logging.h
+    ../library/tbc/logging.h \
+    ../library/tbc/dropouts.h
 
 # Add external includes to the include path
 INCLUDEPATH += ../library/tbc

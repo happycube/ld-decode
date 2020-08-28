@@ -64,11 +64,11 @@ private:
     void getFieldErrorByMedian(QVector<SourceVideo::Data> &fields, QVector<QByteArray> &fieldDiff, qint32 dodThreshold,
                                               LdDecodeMetaData::VideoParameters videoParameters,
                                               QVector<qint32> availableSourcesForFrame);
-    QVector<LdDecodeMetaData::DropOuts> getFieldDropouts(QVector<QByteArray> &fieldDiff,
+    QVector<DropOuts> getFieldDropouts(QVector<QByteArray> &fieldDiff,
                                                                      LdDecodeMetaData::VideoParameters videoParameters,
                                                                      QVector<qint32> availableSourcesForFrame);
 
-    void concatenateFieldDropouts(QVector<LdDecodeMetaData::DropOuts> &dropouts, QVector<qint32> availableSourcesForFrame);
+    void concatenateFieldDropouts(QVector<DropOuts> &dropouts, QVector<qint32> availableSourcesForFrame);
 
     qint32 median(QVector<qint32> v);
     float convertLinearToBrightness(quint16 value, quint16 black16bIre, quint16 white16bIre, bool isSourcePal);

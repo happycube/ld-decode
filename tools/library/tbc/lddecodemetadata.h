@@ -3,7 +3,7 @@
     lddecodemetadata.h
 
     ld-decode-tools TBC library
-    Copyright (C) 2018-2019 Simon Inns
+    Copyright (C) 2018-2020 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -31,6 +31,7 @@
 
 #include "../JsonWax/JsonWax.h"
 #include "vbidecoder.h"
+#include "dropouts.h"
 
 class LdDecodeMetaData
 {
@@ -74,13 +75,6 @@ public:
         qint32 lastActiveFieldLine;
         qint32 firstActiveFrameLine;
         qint32 lastActiveFrameLine;
-    };
-
-    // Drop-outs metadata definition
-    struct DropOuts {
-        QVector<qint32> startx;
-        QVector<qint32> endx;
-        QVector<qint32> fieldLine;
     };
 
     // VITS metrics metadata definition
@@ -175,7 +169,7 @@ public:
     void updateFieldVitsMetrics(LdDecodeMetaData::VitsMetrics _vitsMetrics, qint32 sequentialFieldNumber);
     void updateFieldVbi(LdDecodeMetaData::Vbi _vbi, qint32 sequentialFieldNumber);
     void updateFieldNtsc(LdDecodeMetaData::Ntsc _ntsc, qint32 sequentialFieldNumber);
-    void updateFieldDropOuts(LdDecodeMetaData::DropOuts _dropOuts, qint32 sequentialFieldNumber);
+    void updateFieldDropOuts(DropOuts _dropOuts, qint32 sequentialFieldNumber);
     void clearFieldDropOuts(qint32 sequentialFieldNumber);
 
     void appendField(Field _field);

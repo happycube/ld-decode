@@ -19,6 +19,7 @@ SOURCES += \
     ../library/tbc/sourcevideo.cpp \
     ../library/tbc/vbidecoder.cpp \
     ../library/tbc/logging.cpp \
+    ../library/tbc/dropouts.cpp \
     discmap.cpp \
     discmapper.cpp \
     frame.cpp \
@@ -29,6 +30,7 @@ HEADERS += \
     ../library/tbc/sourcevideo.h \
     ../library/tbc/vbidecoder.h \
     ../library/tbc/logging.h \
+    ../library/tbc/dropouts.h \
     discmap.h \
     discmapper.h \
     frame.h
