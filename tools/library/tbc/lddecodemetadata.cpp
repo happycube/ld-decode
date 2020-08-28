@@ -3,7 +3,7 @@
     lddecodemetadata.cpp
 
     ld-decode-tools TBC library
-    Copyright (C) 2018-2019 Simon Inns
+    Copyright (C) 2018-2020 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -283,7 +283,7 @@ LdDecodeMetaData::Ntsc LdDecodeMetaData::getFieldNtsc(qint32 sequentialFieldNumb
 }
 
 // This method gets the drop-out metadata for the specified sequential field number
-LdDecodeMetaData::DropOuts LdDecodeMetaData::getFieldDropOuts(qint32 sequentialFieldNumber)
+DropOuts LdDecodeMetaData::getFieldDropOuts(qint32 sequentialFieldNumber)
 {
     DropOuts dropOuts;
     qint32 fieldNumber = sequentialFieldNumber - 1;
@@ -303,19 +303,13 @@ LdDecodeMetaData::DropOuts LdDecodeMetaData::getFieldDropOuts(qint32 sequentialF
     }
 
     if (startxSize > 0) {
-        dropOuts.startx.resize(startxSize);
-        dropOuts.endx.resize(startxSize);
-        dropOuts.fieldLine.resize(startxSize);
-
         for (qint32 doCounter = 0; doCounter < startxSize; doCounter++) {
-            dropOuts.startx[doCounter] = json.value({"fields", fieldNumber, "dropOuts", "startx", doCounter}).toInt();
-            dropOuts.endx[doCounter] = json.value({"fields", fieldNumber, "dropOuts", "endx", doCounter}).toInt();
-            dropOuts.fieldLine[doCounter] = json.value({"fields", fieldNumber, "dropOuts", "fieldLine", doCounter}).toInt();
+            dropOuts.append(json.value({"fields", fieldNumber, "dropOuts", "startx", doCounter}).toInt(),
+                            json.value({"fields", fieldNumber, "dropOuts", "endx", doCounter}).toInt(),
+                            json.value({"fields", fieldNumber, "dropOuts", "fieldLine", doCounter}).toInt());
         }
     } else {
-        dropOuts.startx.clear();
-        dropOuts.endx.clear();
-        dropOuts.fieldLine.clear();
+        dropOuts.clear();
     }
 
     return dropOuts;
@@ -416,7 +410,7 @@ void LdDecodeMetaData::updateFieldNtsc(LdDecodeMetaData::Ntsc _ntsc, qint32 sequ
 }
 
 // This method sets the field dropout metadata for a field
-void LdDecodeMetaData::updateFieldDropOuts(LdDecodeMetaData::DropOuts _dropOuts, qint32 sequentialFieldNumber)
+void LdDecodeMetaData::updateFieldDropOuts(DropOuts _dropOuts, qint32 sequentialFieldNumber)
 {
     qint32 fieldNumber = sequentialFieldNumber - 1;
 
@@ -424,12 +418,12 @@ void LdDecodeMetaData::updateFieldDropOuts(LdDecodeMetaData::DropOuts _dropOuts,
         qCritical() << "LdDecodeMetaData::updateFieldDropOuts(): Requested field number" << sequentialFieldNumber << "out of bounds!";
     }
 
-    if (_dropOuts.startx.size() != 0) {
+    if (_dropOuts.size() != 0) {
         // Populate the arrays with the drop out metadata
-        for (qint32 doCounter = 0; doCounter < _dropOuts.startx.size(); doCounter++) {
-            json.setValue({"fields", fieldNumber, "dropOuts", "startx", doCounter}, _dropOuts.startx[doCounter]);
-            json.setValue({"fields", fieldNumber, "dropOuts", "endx", doCounter}, _dropOuts.endx[doCounter]);
-            json.setValue({"fields", fieldNumber, "dropOuts", "fieldLine", doCounter}, _dropOuts.fieldLine[doCounter]);
+        for (qint32 doCounter = 0; doCounter < _dropOuts.size(); doCounter++) {
+            json.setValue({"fields", fieldNumber, "dropOuts", "startx", doCounter}, _dropOuts.startx(doCounter));
+            json.setValue({"fields", fieldNumber, "dropOuts", "endx", doCounter}, _dropOuts.endx(doCounter));
+            json.setValue({"fields", fieldNumber, "dropOuts", "fieldLine", doCounter}, _dropOuts.fieldLine(doCounter));
         }
     }
 }

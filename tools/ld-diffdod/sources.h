@@ -56,8 +56,8 @@ public:
                         qint32& dodThreshold, bool& signalClip);
 
     bool setOutputFrame(qint32 targetVbiFrame,
-                         QVector<LdDecodeMetaData::DropOuts> firstFieldDropouts,
-                         QVector<LdDecodeMetaData::DropOuts> secondFieldDropouts,
+                         QVector<DropOuts> firstFieldDropouts,
+                         QVector<DropOuts> secondFieldDropouts,
                          QVector<qint32> availableSourcesForFrame);
 
 private:

@@ -21,14 +21,16 @@ SOURCES += \
     palencoder.cpp \
     ../../library/tbc/lddecodemetadata.cpp \
     ../../library/tbc/logging.cpp \
-    ../../library/tbc/vbidecoder.cpp
+    ../../library/tbc/vbidecoder.cpp \
+    ../../library/tbc/dropouts.cpp
 
 HEADERS += \
     palencoder.h \
     ../../library/filter/firfilter.h \
     ../../library/tbc/lddecodemetadata.h \
     ../../library/tbc/logging.h \
-    ../../library/tbc/vbidecoder.h
+    ../../library/tbc/vbidecoder.h \
+    ../../library/tbc/dropouts.h
 
 # Add external includes to the include path
 INCLUDEPATH += ../../library/filter

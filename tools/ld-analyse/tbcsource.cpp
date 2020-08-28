@@ -176,20 +176,20 @@ QImage TbcSource::getFrameImage(qint32 frameNumber)
 
         // Draw the drop out data for the first field
         imagePainter.setPen(Qt::red);
-        for (qint32 dropOutIndex = 0; dropOutIndex < firstField.dropOuts.startx.size(); dropOutIndex++) {
-            qint32 startx = firstField.dropOuts.startx[dropOutIndex];
-            qint32 endx = firstField.dropOuts.endx[dropOutIndex];
-            qint32 fieldLine = firstField.dropOuts.fieldLine[dropOutIndex];
+        for (qint32 dropOutIndex = 0; dropOutIndex < firstField.dropOuts.size(); dropOutIndex++) {
+            qint32 startx = firstField.dropOuts.startx(dropOutIndex);
+            qint32 endx = firstField.dropOuts.endx(dropOutIndex);
+            qint32 fieldLine = firstField.dropOuts.fieldLine(dropOutIndex);
 
             imagePainter.drawLine(startx, ((fieldLine - 1) * 2), endx, ((fieldLine - 1) * 2));
         }
 
         // Draw the drop out data for the second field
         imagePainter.setPen(Qt::blue);
-        for (qint32 dropOutIndex = 0; dropOutIndex < secondField.dropOuts.startx.size(); dropOutIndex++) {
-            qint32 startx = secondField.dropOuts.startx[dropOutIndex];
-            qint32 endx = secondField.dropOuts.endx[dropOutIndex];
-            qint32 fieldLine = secondField.dropOuts.fieldLine[dropOutIndex];
+        for (qint32 dropOutIndex = 0; dropOutIndex < secondField.dropOuts.size(); dropOutIndex++) {
+            qint32 startx = secondField.dropOuts.startx(dropOutIndex);
+            qint32 endx = secondField.dropOuts.endx(dropOutIndex);
+            qint32 fieldLine = secondField.dropOuts.fieldLine(dropOutIndex);
 
             imagePainter.drawLine(startx, ((fieldLine - 1) * 2) + 1, endx, ((fieldLine - 1) * 2) + 1);
         }
@@ -295,8 +295,8 @@ bool TbcSource::getIsDropoutPresent(qint32 frameNumber)
     qint32 firstFieldNumber = ldDecodeMetaData.getFirstFieldNumber(frameNumber);
     qint32 secondFieldNumber = ldDecodeMetaData.getSecondFieldNumber(frameNumber);
 
-    if (ldDecodeMetaData.getFieldDropOuts(firstFieldNumber).startx.size() > 0) dropOutsPresent = true;
-    if (ldDecodeMetaData.getFieldDropOuts(secondFieldNumber).startx.size() > 0) dropOutsPresent = true;
+    if (ldDecodeMetaData.getFieldDropOuts(firstFieldNumber).size() > 0) dropOutsPresent = true;
+    if (ldDecodeMetaData.getFieldDropOuts(secondFieldNumber).size() > 0) dropOutsPresent = true;
 
     return dropOutsPresent;
 }
@@ -337,7 +337,7 @@ TbcSource::ScanLineData TbcSource::getScanLineData(qint32 frameNumber, qint32 sc
 
     // Get the field video and dropout data
     SourceVideo::Data fieldData;
-    LdDecodeMetaData::DropOuts dropouts;
+    DropOuts dropouts;
     if (isFieldTop) {
         fieldData = sourceVideo.getVideoField(firstFieldNumber);
         dropouts = ldDecodeMetaData.getFieldDropOuts(firstFieldNumber);
@@ -353,9 +353,9 @@ TbcSource::ScanLineData TbcSource::getScanLineData(qint32 frameNumber, qint32 sc
         scanLineData.data[xPosition] = fieldData[((fieldLine - 1) * videoParameters.fieldWidth) + xPosition];
 
         scanLineData.isDropout[xPosition] = false;
-        for (qint32 doCount = 0; doCount < dropouts.startx.size(); doCount++) {
-            if (dropouts.fieldLine[doCount] == fieldLine) {
-                if (xPosition >= dropouts.startx[doCount] && xPosition <= dropouts.endx[doCount]) scanLineData.isDropout[xPosition] = true;
+        for (qint32 doCount = 0; doCount < dropouts.size(); doCount++) {
+            if (dropouts.fieldLine(doCount) == fieldLine) {
+                if (xPosition >= dropouts.startx(doCount) && xPosition <= dropouts.endx(doCount)) scanLineData.isDropout[xPosition] = true;
             }
         }
     }
@@ -641,10 +641,10 @@ void TbcSource::generateData(qint32 _targetDataPoints)
             LdDecodeMetaData::Field field = ldDecodeMetaData.getField(fieldNumber);
 
             // Get the DOs
-            if (field.dropOuts.startx.size() > 0) {
+            if (field.dropOuts.size() > 0) {
                 // Calculate the total length of the dropouts
-                for (qint32 i = 0; i < field.dropOuts.startx.size(); i++) {
-                    doLength += field.dropOuts.endx[i] - field.dropOuts.startx[i];
+                for (qint32 i = 0; i < field.dropOuts.size(); i++) {
+                    doLength += field.dropOuts.endx(i) - field.dropOuts.startx(i);
                 }
             }
 

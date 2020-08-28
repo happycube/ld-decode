@@ -49,7 +49,8 @@ SOURCES += \
     ../library/tbc/sourcevideo.cpp \
     ../library/tbc/vbidecoder.cpp \
     ../library/tbc/filters.cpp \
-    ../library/tbc/logging.cpp
+    ../library/tbc/logging.cpp \
+    ../library/tbc/dropouts.cpp
 
 HEADERS += \
     busydialog.h \
@@ -78,7 +79,8 @@ HEADERS += \
     ../library/tbc/sourcevideo.h \
     ../library/tbc/vbidecoder.h \
     ../library/tbc/filters.h \
-    ../library/tbc/logging.h
+    ../library/tbc/logging.h \
+    ../library/tbc/dropouts.h
 
 FORMS += \
     busydialog.ui \

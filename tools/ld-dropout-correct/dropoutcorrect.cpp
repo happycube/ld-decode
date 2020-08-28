@@ -75,7 +75,7 @@ void DropOutCorrect::run()
         QVector<SourceVideo::Data> secondFieldData = secondSourceField;
 
         // Check if the frame contains drop-outs
-        if (firstFieldMetadata[0].dropOuts.startx.empty() && secondFieldMetadata[0].dropOuts.startx.empty()) {
+        if (firstFieldMetadata[0].dropOuts.empty() && secondFieldMetadata[0].dropOuts.empty()) {
             // No correction required...
             qDebug() << "DropOutCorrect::process(): Skipping fields [" <<
                         firstFieldSeqNo[0] << "/" << secondFieldSeqNo[0] << "]";
@@ -83,14 +83,14 @@ void DropOutCorrect::run()
             // Perform correction...
             qDebug().nospace() << "DropOutCorrect::process(): Correcting fields [" <<
                         firstFieldSeqNo[0] << "/" << secondFieldSeqNo[0] << "] containing " <<
-                        firstFieldMetadata[0].dropOuts.startx.size() + secondFieldMetadata[0].dropOuts.startx.size() <<
+                        firstFieldMetadata[0].dropOuts.size() + secondFieldMetadata[0].dropOuts.size() <<
                         " drop-outs";
 
             // Analyse the drop out locations in the first field
             QVector<QVector<DropOutLocation>> firstFieldDropouts(totalAvailableSources);
             for (qint32 i = 0; i < availableSourcesForFrame.size(); i++) {
                 qint32 currentSource = availableSourcesForFrame[i];
-                if (firstFieldMetadata[currentSource].dropOuts.startx.size() > 0)
+                if (firstFieldMetadata[currentSource].dropOuts.size() > 0)
                     firstFieldDropouts[currentSource] = setDropOutLocations(populateDropoutsVector(firstFieldMetadata[currentSource], overCorrect));
             }
 
@@ -98,7 +98,7 @@ void DropOutCorrect::run()
             QVector<QVector<DropOutLocation>> secondFieldDropouts(totalAvailableSources);
             for (qint32 i = 0; i < availableSourcesForFrame.size(); i++) {
                 qint32 currentSource = availableSourcesForFrame[i];
-                if (secondFieldMetadata[currentSource].dropOuts.startx.size() > 0)
+                if (secondFieldMetadata[currentSource].dropOuts.size() > 0)
                     secondFieldDropouts[currentSource] = setDropOutLocations(populateDropoutsVector(secondFieldMetadata[currentSource], overCorrect));
             }
 
@@ -158,11 +158,11 @@ QVector<DropOutCorrect::DropOutLocation> DropOutCorrect::populateDropoutsVector(
 {
     QVector<DropOutLocation> fieldDropOuts;
 
-    for (qint32 dropOutIndex = 0; dropOutIndex < field.dropOuts.startx.size(); dropOutIndex++) {
+    for (qint32 dropOutIndex = 0; dropOutIndex < field.dropOuts.size(); dropOutIndex++) {
         DropOutLocation dropOutLocation;
-        dropOutLocation.startx = field.dropOuts.startx[dropOutIndex];
-        dropOutLocation.endx = field.dropOuts.endx[dropOutIndex];
-        dropOutLocation.fieldLine = field.dropOuts.fieldLine[dropOutIndex];
+        dropOutLocation.startx = field.dropOuts.startx(dropOutIndex);
+        dropOutLocation.endx = field.dropOuts.endx(dropOutIndex);
+        dropOutLocation.fieldLine = field.dropOuts.fieldLine(dropOutIndex);
         dropOutLocation.location = DropOutCorrect::Location::unknown;
 
         // Ignore dropouts outside the field's data

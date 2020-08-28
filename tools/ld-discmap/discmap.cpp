@@ -283,16 +283,16 @@ DiscMap::DiscMap(const QFileInfo &metadataFileInfo, const bool &reverseFieldOrde
 
         // Calculate the cumulative length of all the dropouts in the frame (by summing both fields)
         qint32 totalDotsInFrame = (ldDecodeMetaData->getVideoParameters().fieldHeight * 2) + ldDecodeMetaData->getVideoParameters().fieldWidth;
-        LdDecodeMetaData::DropOuts dropOuts1 = ldDecodeMetaData->getFieldDropOuts(ldDecodeMetaData->getFirstFieldNumber(frameNumber + 1));
-        LdDecodeMetaData::DropOuts dropOuts2 = ldDecodeMetaData->getFieldDropOuts(ldDecodeMetaData->getSecondFieldNumber(frameNumber + 1));
+        DropOuts dropOuts1 = ldDecodeMetaData->getFieldDropOuts(ldDecodeMetaData->getFirstFieldNumber(frameNumber + 1));
+        DropOuts dropOuts2 = ldDecodeMetaData->getFieldDropOuts(ldDecodeMetaData->getSecondFieldNumber(frameNumber + 1));
 
         qint32 frameDoLength = 0;
-        for (qint32 i = 0; i < dropOuts1.startx.size(); i++) {
-            frameDoLength += dropOuts1.endx[i] - dropOuts1.startx[i];
+        for (qint32 i = 0; i < dropOuts1.size(); i++) {
+            frameDoLength += dropOuts1.endx(i) - dropOuts1.startx(i);
         }
 
-        for (qint32 i = 0; i < dropOuts2.startx.size(); i++) {
-            frameDoLength += dropOuts2.endx[i] - dropOuts2.startx[i];
+        for (qint32 i = 0; i < dropOuts2.size(); i++) {
+            frameDoLength += dropOuts2.endx(i) - dropOuts2.startx(i);
         }
 
         qreal frameDoPercent = 100.0 - (static_cast<qreal>(frameDoLength) / static_cast<qreal>(totalDotsInFrame));

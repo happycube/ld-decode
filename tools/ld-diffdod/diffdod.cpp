@@ -44,8 +44,8 @@ void DiffDod::run()
     bool signalClip;
 
     // Set up the output variables
-    QVector<LdDecodeMetaData::DropOuts> firstFieldDropouts;
-    QVector<LdDecodeMetaData::DropOuts> secondFieldDropouts;
+    QVector<DropOuts> firstFieldDropouts;
+    QVector<DropOuts> secondFieldDropouts;
 
     // Process frames until there's nothing left to process
     while(!m_abort) {
@@ -233,12 +233,12 @@ void DiffDod::getFieldErrorByMedian(QVector<SourceVideo::Data> &fields, QVector<
 // Method to create the field drop-out metadata based on the differential map of the fields
 // This method compares each available source against all other available sources to determine where the source differs.
 // If any of the frame's contents do not match that of the other sources, the frame's pixels are marked as dropouts.
-QVector<LdDecodeMetaData::DropOuts> DiffDod::getFieldDropouts(QVector<QByteArray> &fieldDiff,
+QVector<DropOuts> DiffDod::getFieldDropouts(QVector<QByteArray> &fieldDiff,
                                                                  LdDecodeMetaData::VideoParameters videoParameters,
                                                                  QVector<qint32> availableSourcesForFrame)
 {
     // Create and resize the return data vector
-    QVector<LdDecodeMetaData::DropOuts> fieldDropouts;
+    QVector<DropOuts> fieldDropouts;
     fieldDropouts.resize(fieldDiff.size());
 
     // This method requires at least three source frames
@@ -275,9 +275,7 @@ QVector<LdDecodeMetaData::DropOuts> DiffDod::getFieldDropouts(QVector<QByteArray
                         doCounter--;
                         if (doCounter == 0) {
                             // Mark the previous x as the end of the dropout
-                            fieldDropouts[sourceNo].startx.append(doStart);
-                            fieldDropouts[sourceNo].endx.append(x - 1);
-                            fieldDropouts[sourceNo].fieldLine.append(doFieldLine);
+                            fieldDropouts[sourceNo].append(doStart, x - 1, doFieldLine);
                         }
                     }
                 } else {
@@ -294,9 +292,7 @@ QVector<LdDecodeMetaData::DropOuts> DiffDod::getFieldDropouts(QVector<QByteArray
             if (doCounter > 0) {
                 doCounter = 0;
 
-                fieldDropouts[sourceNo].startx.append(doStart);
-                fieldDropouts[sourceNo].endx.append(areaEnd);
-                fieldDropouts[sourceNo].fieldLine.append(doFieldLine);
+                fieldDropouts[sourceNo].append(doStart, areaEnd, doFieldLine);
             }
 
         } // Next source
@@ -307,38 +303,13 @@ QVector<LdDecodeMetaData::DropOuts> DiffDod::getFieldDropouts(QVector<QByteArray
 
 // Method to concatenate dropouts on the same line that are close together
 // (to cut down on the amount of generated metadata with noisy/bad sources)
-void DiffDod::concatenateFieldDropouts(QVector<LdDecodeMetaData::DropOuts> &dropouts,
+void DiffDod::concatenateFieldDropouts(QVector<DropOuts> &dropouts,
                                           QVector<qint32> availableSourcesForFrame)
 {
-    // This variable controls the minimum allowed gap between dropouts
-    // if the gap between the end of the last dropout and the start of
-    // the next is less than minimumGap, the two dropouts will be
-    // concatenated together
-    qint32 minimumGap = 50;
-
     for (qint32 sourcePointer = 0; sourcePointer < availableSourcesForFrame.size(); sourcePointer++) {
         qint32 sourceNo = availableSourcesForFrame[sourcePointer]; // Get the actual source
 
-        // Start from 1 as 0 has no previous dropout
-        qint32 i = 1;
-
-        while (i < dropouts[sourceNo].startx.size()) {
-            // Is the current dropout on the same field line as the last?
-            if (dropouts[sourceNo].fieldLine[i - 1] == dropouts[sourceNo].fieldLine[i]) {
-                if ((dropouts[sourceNo].endx[i - 1] + minimumGap) > (dropouts[sourceNo].startx[i])) {
-                    // Concatenate
-                    dropouts[sourceNo].endx[i - 1] = dropouts[sourceNo].endx[i];
-
-                    // Remove the current dropout
-                    dropouts[sourceNo].startx.removeAt(i);
-                    dropouts[sourceNo].endx.removeAt(i);
-                    dropouts[sourceNo].fieldLine.removeAt(i);
-                }
-            }
-
-            // Next dropout
-            i++;
-        }
+        dropouts[sourceNo].concatenate();
     }
 }
 
