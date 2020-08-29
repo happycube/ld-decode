@@ -57,19 +57,44 @@ void Stacker::run()
         qDebug().nospace() << "Frame #" << frameNumber << " - There are " << totalAvailableSources << " sources available of which " <<
                               availableSourcesForFrame.size() << " contain the required frame";
 
-        // Copy the input frames' data to the target frames.
-        // We'll use these both as source and target during correction, which
-        // is OK because we're careful not to copy data from another dropout.
-        QVector<SourceVideo::Data> firstFieldData = firstSourceField;
-        QVector<SourceVideo::Data> secondFieldData = secondSourceField;
-
-        // Processing goes here...........
-
         // Return the processed fields
-        stackingPool.setOutputFrame(frameNumber, firstFieldData[0], secondFieldData[0], firstFieldSeqNo[0], secondFieldSeqNo[0]);
+        stackingPool.setOutputFrame(frameNumber,
+                                    stackField(firstSourceField, videoParameters[0], availableSourcesForFrame),
+                stackField(secondSourceField, videoParameters[0], availableSourcesForFrame),
+                firstFieldSeqNo[0], secondFieldSeqNo[0]);
     }
 }
 
+// Method to stack fields
+SourceVideo::Data Stacker::stackField(QVector<SourceVideo::Data> inputFields,
+                                      LdDecodeMetaData::VideoParameters videoParameters,
+                                      QVector<qint32> availableSourcesForFrame)
+{
+    SourceVideo::Data outputField(inputFields[0].size());
 
+    for (qint32 y = 0; y < videoParameters.fieldHeight; y++) {
+        for (qint32 x = 0; x < videoParameters.fieldWidth; x++) {
+            // Get the input values from the input sources
+            QVector<quint16> inputValues;
+            for (qint32 i = 0; i < availableSourcesForFrame.size(); i++) {
+                qint32 currentSource = availableSourcesForFrame[i];
+                inputValues.append(inputFields[currentSource][(videoParameters.fieldWidth * y) + x]);
+            }
+
+            // Store the median in the output field
+            outputField[(videoParameters.fieldWidth * y) + x] = median(inputValues);
+        }
+    }
+
+    return outputField;
+}
+
+// Method to find the median of a vector of qint16s
+quint16 Stacker::median(QVector<quint16> v)
+{
+    size_t n = v.size() / 2;
+    std::nth_element(v.begin(), v.begin()+n, v.end());
+    return v[n];
+}
 
 

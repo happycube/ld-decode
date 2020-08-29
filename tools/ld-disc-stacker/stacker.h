@@ -51,6 +51,9 @@ private:
     StackingPool& stackingPool;
 
     QVector<LdDecodeMetaData::VideoParameters> videoParameters;
+
+    SourceVideo::Data stackField(QVector<SourceVideo::Data> inputFields, LdDecodeMetaData::VideoParameters videoParameters, QVector<qint32> availableSourcesForFrame);
+    quint16 median(QVector<quint16> v);
 };
 
 #endif // STACKER_H
