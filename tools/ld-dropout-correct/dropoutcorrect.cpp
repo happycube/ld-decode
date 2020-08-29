@@ -4,7 +4,7 @@
 
     ld-dropout-correct - Dropout correction for ld-decode
     Copyright (C) 2018-2020 Simon Inns
-    Copyright (C) 2019 Adam Sampson
+    Copyright (C) 2019-2020 Adam Sampson
 
     This file is part of ld-decode-tools.
 
@@ -60,8 +60,9 @@ void DropOutCorrect::run()
         }
 
         // Reset statistics
-        statistics.sameSourceReplacement = 0;
-        statistics.multiSourceReplacement = 0;
+        statistics.sameSourceConcealment = 0;
+        statistics.multiSourceConcealment = 0;
+        statistics.multiSourceCorrection = 0;
         statistics.totalReplacementDistance = 0;
 
         qint32 totalAvailableSources = firstFieldSeqNo.size();
@@ -113,7 +114,7 @@ void DropOutCorrect::run()
 
         // Return the processed fields
         correctorPool.setOutputFrame(frameNumber, firstFieldData[0], secondFieldData[0], firstFieldSeqNo[0], secondFieldSeqNo[0],
-                statistics.sameSourceReplacement, statistics.multiSourceReplacement, statistics.totalReplacementDistance);
+                statistics.sameSourceConcealment, statistics.multiSourceConcealment, statistics.multiSourceCorrection ,statistics.totalReplacementDistance);
     }
 }
 
@@ -514,8 +515,12 @@ void DropOutCorrect::correctDropOut(const DropOutLocation &dropOut,
         }
     }
 
-    // Statistics
-    if (replacement.sourceNumber == 0) statistics.sameSourceReplacement++;
-    else statistics.multiSourceReplacement++;
+    // Update statistics
+    if (replacement.sourceNumber == 0) statistics.sameSourceConcealment++;
+    else {
+        if (replacement.distance == 0) statistics.multiSourceCorrection++;
+        else statistics.multiSourceConcealment++;
+    }
     statistics.totalReplacementDistance += replacement.distance;
 }
+
