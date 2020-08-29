@@ -313,7 +313,7 @@ int main(int argc, char *argv[])
     if (totalNumberOfInputFiles > 1) {
         // Multisource correction report
         qInfo() << "Multi-source correction from" << totalNumberOfInputFiles << "sources:";
-        qInfo() << "    Corrections (same source):" << correctorPool.getSameSourceConcealmentTotal();
+        qInfo() << "   Concealments (same source):" << correctorPool.getSameSourceConcealmentTotal();
         qInfo() << "  Concealments (multi-source):" << correctorPool.getMultiSourceConcealmentTotal();
         qInfo() << "   Corrections (multi-source):" << correctorPool.getMultiSourceCorrectionTotal();
         qInfo() << "                        Total:" << correctorPool.getSameSourceConcealmentTotal() +
