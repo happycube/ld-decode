@@ -4,6 +4,7 @@
 
     ld-dropout-correct - Dropout correction for ld-decode
     Copyright (C) 2018-2020 Simon Inns
+    Copyright (C) 2019-2020 Adam Sampson
 
     This file is part of ld-decode-tools.
 
@@ -23,8 +24,6 @@
 ************************************************************************/
 
 #include "correctorpool.h"
-
-#include <cstdio>
 
 CorrectorPool::CorrectorPool(QString _outputFilename, QString _outputJsonFilename,
                              qint32 _maxThreads, QVector<LdDecodeMetaData *> &_ldDecodeMetaData, QVector<SourceVideo *> &_sourceVideos,
@@ -82,6 +81,11 @@ bool CorrectorPool::process()
 
     // Show some information for the user
     qInfo() << "Using" << maxThreads << "threads to process" << ldDecodeMetaData[0]->getNumberOfFrames() << "frames";
+
+    // Initialise reporting
+    sameSourceConcealmentTotal = 0;
+    multiSourceConcealmentTotal = 0;
+    multiSourceCorrectionTotal = 0;
 
     // Initialise processing state
     inputFrameNumber = 1;
@@ -246,7 +250,8 @@ bool CorrectorPool::getInputFrame(qint32& frameNumber,
 bool CorrectorPool::setOutputFrame(qint32 frameNumber,
                                    SourceVideo::Data firstTargetFieldData, SourceVideo::Data secondTargetFieldData,
                                    qint32 firstFieldSeqNo, qint32 secondFieldSeqNo,
-                                   qint32 sameSourceReplacement, qint32 multiSourceReplacement, qint32 totalReplacementDistance)
+                                   qint32 sameSourceConcealment, qint32 multiSourceConcealment,
+                                   qint32 multiSourceCorrection, qint32 totalReplacementDistance)
 {
     QMutexLocker locker(&outputMutex);
 
@@ -258,8 +263,9 @@ bool CorrectorPool::setOutputFrame(qint32 frameNumber,
     pendingFrame.secondFieldSeqNo = secondFieldSeqNo;
 
     // Get statistics
-    pendingFrame.sameSourceReplacement = sameSourceReplacement;
-    pendingFrame.multiSourceReplacement = multiSourceReplacement;
+    pendingFrame.sameSourceConcealment = sameSourceConcealment;
+    pendingFrame.multiSourceConcealment = multiSourceConcealment;
+    pendingFrame.multiSourceCorrection = multiSourceCorrection;
     pendingFrame.totalReplacementDistance = totalReplacementDistance;
 
     pendingOutputFrames[frameNumber] = pendingFrame;
@@ -290,12 +296,25 @@ bool CorrectorPool::setOutputFrame(qint32 frameNumber,
 
         // Show debug
         qreal avgReplacementDistance = 0;
-        if (outputFrame.sameSourceReplacement + outputFrame.multiSourceReplacement > 0) {
+        if (outputFrame.sameSourceConcealment + outputFrame.multiSourceConcealment +  outputFrame.multiSourceCorrection > 0) {
             avgReplacementDistance = static_cast<qreal>(outputFrame.totalReplacementDistance) /
-                            static_cast<qreal>(outputFrame.sameSourceReplacement + outputFrame.multiSourceReplacement);
+                            static_cast<qreal>(outputFrame.sameSourceConcealment + outputFrame.multiSourceConcealment +
+                                               outputFrame.multiSourceCorrection);
+            qDebug().nospace() << "Processed frame " << outputFrameNumber << " with " << outputFrame.sameSourceConcealment +
+                        outputFrame.multiSourceConcealment +
+                        outputFrame.multiSourceCorrection << " changes ("  <<
+                        outputFrame.sameSourceConcealment << ", " <<
+                        outputFrame.multiSourceConcealment << ", " <<
+                        outputFrame.multiSourceCorrection << " - avg dist. " <<
+                        avgReplacementDistance << ")";
+        } else {
+            qDebug() << "Processed frame" << outputFrameNumber << "- no dropouts";
         }
-        qDebug() << "Processed frame" << outputFrameNumber << "- Replacements" << outputFrame.sameSourceReplacement << "same source," <<
-                    outputFrame.multiSourceReplacement << "multi-source - Average replacement distance of" << avgReplacementDistance;
+
+        // Tally the statistics
+        multiSourceConcealmentTotal += outputFrame.multiSourceConcealment;
+        multiSourceCorrectionTotal += outputFrame.multiSourceCorrection;
+        sameSourceConcealmentTotal += outputFrame.sameSourceConcealment;
 
         if (outputFrameNumber % 100 == 0) {
             qInfo() << "Processed and written frame" << outputFrameNumber;
@@ -437,4 +456,20 @@ QVector<qint32> CorrectorPool::getAvailableSourcesForFrame(qint32 vbiFrameNumber
 bool CorrectorPool::writeOutputField(const SourceVideo::Data &fieldData)
 {
     return targetVideo.write(reinterpret_cast<const char *>(fieldData.data()), 2 * fieldData.size());
+}
+
+// Getters for reporting
+qint32 CorrectorPool::getSameSourceConcealmentTotal()
+{
+    return sameSourceConcealmentTotal;
+}
+
+qint32 CorrectorPool::getMultiSourceConcealmentTotal()
+{
+    return multiSourceConcealmentTotal;
+}
+
+qint32 CorrectorPool::getMultiSourceCorrectionTotal()
+{
+    return multiSourceCorrectionTotal;
 }

@@ -4,6 +4,7 @@
 
     ld-dropout-correct - Dropout correction for ld-decode
     Copyright (C) 2018-2020 Simon Inns
+    Copyright (C) 2019-2020 Adam Sampson
 
     This file is part of ld-decode-tools.
 
@@ -74,8 +75,9 @@ private:
 
     // Statistics
     struct Statistics {
-        qint32 sameSourceReplacement;
-        qint32 multiSourceReplacement;
+        qint32 sameSourceConcealment;
+        qint32 multiSourceConcealment;
+        qint32 multiSourceCorrection;
         qint32 totalReplacementDistance;
     };
 

@@ -4,6 +4,7 @@
 
     ld-dropout-correct - Dropout correction for ld-decode
     Copyright (C) 2018-2020 Simon Inns
+    Copyright (C) 2019-2020 Adam Sampson
 
     This file is part of ld-decode-tools.
 
@@ -77,7 +78,7 @@ int main(int argc, char *argv[])
 
     // Option to select over correct mode (-o)
     QCommandLineOption setOverCorrectOption(QStringList() << "o" << "overcorrect",
-                                       QCoreApplication::translate("main", "Over correct mode (use on heavily damaged sources)"));
+                                       QCoreApplication::translate("main", "Over correct mode (use on heavily damaged single sources)"));
     parser.addOption(setOverCorrectOption);
 
     // Force intra-field correction only
@@ -293,7 +294,7 @@ int main(int argc, char *argv[])
             }
 
             if (!videoParameters.isMapped) {
-                qInfo() << "Source video" << i << "has not been mapped - run ld-discmap on all source video and try again";
+                qInfo() << "Source video" << i << "has not been mapped - run ld-discmap on all source videos and try again";
                 qInfo() << "Multi-source dropout correction relies on accurate VBI frame numbering to match source frames together";
                 return 1;
             }
@@ -307,6 +308,24 @@ int main(int argc, char *argv[])
                                 ldDecodeMetaData, sourceVideos,
                                 reverse, intraField, overCorrect);
     if (!correctorPool.process()) result = 1;
+
+    // Report on the result of the correction process
+    if (totalNumberOfInputFiles > 1) {
+        // Multisource correction report
+        qInfo() << "Multi-source correction from" << totalNumberOfInputFiles << "sources:";
+        qInfo() << "    Corrections (same source):" << correctorPool.getSameSourceConcealmentTotal();
+        qInfo() << "  Concealments (multi-source):" << correctorPool.getMultiSourceConcealmentTotal();
+        qInfo() << "   Corrections (multi-source):" << correctorPool.getMultiSourceCorrectionTotal();
+        qInfo() << "                        Total:" << correctorPool.getSameSourceConcealmentTotal() +
+                   correctorPool.getMultiSourceConcealmentTotal() +
+                   correctorPool.getMultiSourceCorrectionTotal();
+    } else {
+        // Single source correction report
+        qInfo() << "Single source correction:";
+        qInfo() << "  Total concealments:" << correctorPool.getSameSourceConcealmentTotal() +
+                   correctorPool.getMultiSourceConcealmentTotal() +
+                   correctorPool.getMultiSourceCorrectionTotal();
+    }
 
     // Close open source video files
     for (qint32 i = 0; i < totalNumberOfInputFiles; i++) sourceVideos[i]->close();

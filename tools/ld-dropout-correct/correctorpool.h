@@ -4,6 +4,7 @@
 
     ld-dropout-correct - Dropout correction for ld-decode
     Copyright (C) 2018-2020 Simon Inns
+    Copyright (C) 2019-2020 Adam Sampson
 
     This file is part of ld-decode-tools.
 
@@ -55,7 +56,12 @@ public:
     bool setOutputFrame(qint32 frameNumber,
                         SourceVideo::Data firstTargetFieldData, SourceVideo::Data secondTargetFieldData,
                         qint32 firstFieldSeqNo, qint32 secondFieldSeqNo,
-                        qint32 sameSourceReplacement, qint32 multiSourceReplacement, qint32 totalReplacementDistance);
+                        qint32 sameSourceReplacement, qint32 multiSourceReplacement, qint32 multiSourceCorrection, qint32 totalReplacementDistance);
+
+    // Reporting methods
+    qint32 getSameSourceConcealmentTotal();
+    qint32 getMultiSourceConcealmentTotal();
+    qint32 getMultiSourceCorrectionTotal();
 
 private:
     QString outputFilename;
@@ -87,8 +93,9 @@ private:
         qint32 secondFieldSeqNo;
 
         // Statistics
-        qint32 sameSourceReplacement;
-        qint32 multiSourceReplacement;
+        qint32 sameSourceConcealment;
+        qint32 multiSourceConcealment;
+        qint32 multiSourceCorrection;
         qint32 totalReplacementDistance;
     };
 
@@ -100,6 +107,11 @@ private:
     QVector<bool> sourceDiscTypeCav;
     QVector<qint32> sourceMinimumVbiFrame;
     QVector<qint32> sourceMaximumVbiFrame;
+
+    // Reporting information
+    qint32 sameSourceConcealmentTotal;
+    qint32 multiSourceConcealmentTotal;
+    qint32 multiSourceCorrectionTotal;
 
     bool setMinAndMaxVbiFrames();
     qint32 convertSequentialFrameNumberToVbi(qint32 sequentialFrameNumber, qint32 sourceNumber);
