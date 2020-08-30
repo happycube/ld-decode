@@ -54,7 +54,8 @@ public:
 
     bool setOutputFrame(qint32 frameNumber,
                         SourceVideo::Data firstTargetFieldData, SourceVideo::Data secondTargetFieldData,
-                        qint32 firstFieldSeqNo, qint32 secondFieldSeqNo);
+                        qint32 firstFieldSeqNo, qint32 secondFieldSeqNo,
+                        DropOuts firstTargetFieldDropOuts, DropOuts secondTargetFieldDropouts);
 
 private:
     QString outputFilename;
@@ -82,6 +83,8 @@ private:
         SourceVideo::Data secondTargetFieldData;
         qint32 firstFieldSeqNo;
         qint32 secondFieldSeqNo;
+        DropOuts firstTargetFieldDropOuts;
+        DropOuts secondTargetFieldDropOuts;
     };
 
     qint32 outputFrameNumber;

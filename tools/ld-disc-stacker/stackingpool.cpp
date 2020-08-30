@@ -85,7 +85,7 @@ bool StackingPool::process()
     totalTimer.start();
 
     // Start a vector of decoding threads to process the video
-    qInfo() << "Beginning multi-threaded dropout correction process...";
+    qInfo() << "Beginning multi-threaded disc stacking process...";
     QVector<QThread *> threads;
     threads.resize(maxThreads);
     for (qint32 i = 0; i < maxThreads; i++) {
@@ -223,7 +223,8 @@ bool StackingPool::getInputFrame(qint32& frameNumber,
 // Returns true on success, false on failure.
 bool StackingPool::setOutputFrame(qint32 frameNumber,
                                    SourceVideo::Data firstTargetFieldData, SourceVideo::Data secondTargetFieldData,
-                                   qint32 firstFieldSeqNo, qint32 secondFieldSeqNo)
+                                   qint32 firstFieldSeqNo, qint32 secondFieldSeqNo,
+                                   DropOuts firstTargetFieldDropOuts, DropOuts secondTargetFieldDropouts)
 {
     QMutexLocker locker(&outputMutex);
 
@@ -233,6 +234,8 @@ bool StackingPool::setOutputFrame(qint32 frameNumber,
     pendingFrame.secondTargetFieldData = secondTargetFieldData;
     pendingFrame.firstFieldSeqNo = firstFieldSeqNo;
     pendingFrame.secondFieldSeqNo = secondFieldSeqNo;
+    pendingFrame.firstTargetFieldDropOuts = firstTargetFieldDropOuts;
+    pendingFrame.secondTargetFieldDropOuts = secondTargetFieldDropouts;
 
     pendingOutputFrames[frameNumber] = pendingFrame;
 
@@ -259,6 +262,10 @@ bool StackingPool::setOutputFrame(qint32 frameNumber,
             targetVideo.close();
             return false;
         }
+
+        // Write the new dropout data into the LdDecodeMetaData output
+        ldDecodeMetaData[0]->updateFieldDropOuts(outputFrame.firstTargetFieldDropOuts, outputFrame.firstFieldSeqNo);
+        ldDecodeMetaData[0]->updateFieldDropOuts(outputFrame.secondTargetFieldDropOuts, outputFrame.secondFieldSeqNo);
 
         // Show debug
         qDebug().nospace() << "Processed frame " << outputFrameNumber;

@@ -52,8 +52,11 @@ private:
 
     QVector<LdDecodeMetaData::VideoParameters> videoParameters;
 
-    SourceVideo::Data stackField(QVector<SourceVideo::Data> inputFields, LdDecodeMetaData::VideoParameters videoParameters, QVector<qint32> availableSourcesForFrame);
+    void stackField(QVector<SourceVideo::Data> inputFields, LdDecodeMetaData::VideoParameters videoParameters,
+                    QVector<LdDecodeMetaData::Field> fieldMetadata, QVector<qint32> availableSourcesForFrame,
+                    SourceVideo::Data &outputField, DropOuts &dropOuts);
     quint16 median(QVector<quint16> v);
+    bool isDropout(DropOuts dropOuts, qint32 fieldX, qint32 fieldY);
 };
 
 #endif // STACKER_H
