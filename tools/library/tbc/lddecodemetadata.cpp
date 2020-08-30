@@ -425,6 +425,9 @@ void LdDecodeMetaData::updateFieldDropOuts(DropOuts _dropOuts, qint32 sequential
             json.setValue({"fields", fieldNumber, "dropOuts", "endx", doCounter}, _dropOuts.endx(doCounter));
             json.setValue({"fields", fieldNumber, "dropOuts", "fieldLine", doCounter}, _dropOuts.fieldLine(doCounter));
         }
+    } else {
+        // If updated dropouts is empty, clear the field's dropouts
+        clearFieldDropOuts(sequentialFieldNumber);
     }
 }
 
