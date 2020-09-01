@@ -35,6 +35,7 @@
 #include "lddecodemetadata.h"
 
 #include "discmap.h"
+#include "sourceaudio.h"
 
 class DiscMapper
 {
@@ -43,7 +44,7 @@ public:
 
     bool process(QFileInfo _inputFileInfo, QFileInfo _inputMetadataFileInfo,
                  QFileInfo _outputFileInfo, bool _reverse, bool _mapOnly, bool _noStrict,
-                 bool _deleteUnmappable);
+                 bool _deleteUnmappable, bool _noAudio);
 
 private:
     QFileInfo inputFileInfo;
@@ -53,6 +54,7 @@ private:
     bool mapOnly;
     bool noStrict;
     bool deleteUnmappable;
+    bool noAudio;
 
     void removeLeadInOut(DiscMap &discMap);
     void correctVbiFrameNumbersUsingSequenceAnalysis(DiscMap &discMap);

@@ -77,6 +77,11 @@ int main(int argc, char *argv[])
                                        QCoreApplication::translate("main", "Delete unmappable frames"));
     parser.addOption(setDeleteUnmappableOption);
 
+    // Option to not process analogue audio (-n / --no-audio)
+    QCommandLineOption setNoAudioOption(QStringList() << "n" << "no-audio",
+                                       QCoreApplication::translate("main", "Do not process analogue audio"));
+    parser.addOption(setNoAudioOption);
+
     // Positional argument to specify input TBC file
     parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input TBC file"));
 
@@ -94,6 +99,7 @@ int main(int argc, char *argv[])
     bool mapOnly = parser.isSet(setMapOnlyOption);
     bool noStrict = parser.isSet(setNoStrictOption);
     bool deleteUnmappable = parser.isSet(setDeleteUnmappableOption);
+    bool noAudio = parser.isSet(setNoAudioOption);
 
     // Process the command line options
     QString inputFilename;
@@ -154,7 +160,8 @@ int main(int argc, char *argv[])
 
     // Perform disc mapping
     DiscMapper discMapper;
-    if (!discMapper.process(inputFileInfo, inputMetadataFileInfo, outputFileInfo, reverse, mapOnly, noStrict, deleteUnmappable)) return 1;
+    if (!discMapper.process(inputFileInfo, inputMetadataFileInfo, outputFileInfo, reverse,
+                            mapOnly, noStrict, deleteUnmappable, noAudio)) return 1;
 
     // Quit with success
     return 0;

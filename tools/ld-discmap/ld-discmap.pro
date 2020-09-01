@@ -23,7 +23,8 @@ SOURCES += \
     discmap.cpp \
     discmapper.cpp \
     frame.cpp \
-    main.cpp
+    main.cpp \
+    sourceaudio.cpp
 
 HEADERS += \
     ../library/tbc/lddecodemetadata.h \
@@ -33,7 +34,8 @@ HEADERS += \
     ../library/tbc/dropouts.h \
     discmap.h \
     discmapper.h \
-    frame.h
+    frame.h \
+    sourceaudio.h
 
 # Add external includes to the include path
 INCLUDEPATH += ../library/tbc
