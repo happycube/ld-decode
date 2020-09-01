@@ -570,13 +570,19 @@ bool DiscMapper::saveDiscMap(DiscMap &discMap)
 
     if (!noAudio) {
         // Open the input audio file
-        sourceAudio.open(inputFileInfo);
+        if (!sourceAudio.open(inputFileInfo)) {
+            // Could not open input audio file
+            qInfo() << "Cannot open source audio file:" << inputFileInfo.absolutePath() + "/" + inputFileInfo.baseName() + ".pcm";
+            sourceVideo.close();
+            sourceAudio.close();
+            return false;
+        }
 
         // Open the output audio file
-        targetAudio.setFileName(outputFileInfo.absolutePath() + outputFileInfo.baseName() + ".pcm");
+        targetAudio.setFileName(outputFileInfo.absolutePath() + "/" + outputFileInfo.baseName() + ".pcm");
         if (!targetAudio.open(QIODevice::WriteOnly)) {
             // Could not open target audio file
-            qInfo() << "Cannot open target audi file:" << outputFileInfo.absolutePath() + outputFileInfo.baseName() + ".pcm";
+            qInfo() << "Cannot open target audio file:" << outputFileInfo.absolutePath() + "/" + outputFileInfo.baseName() + ".pcm";
             sourceVideo.close();
             sourceAudio.close();
             return false;
@@ -683,7 +689,7 @@ bool DiscMapper::saveDiscMap(DiscMap &discMap)
         // Was the write successful?
         if (writeFail) {
             // Could not write to target TBC file
-            qInfo() << "Writing fields to the target TBC file failed on frame number" << frameNumber;
+            qWarning() << "Writing fields to the target TBC file failed on frame number" << frameNumber;
             targetVideo.close();
             sourceVideo.close();
             return false;

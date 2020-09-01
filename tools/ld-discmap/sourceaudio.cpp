@@ -33,10 +33,11 @@ SourceAudio::SourceAudio()
 bool SourceAudio::open(QFileInfo inputFileInfo)
 {
     // Get the input audio fileinfo from the input TBC fileinfo:
-    QFileInfo inputAudioFileInfo(inputFileInfo.absolutePath() + inputFileInfo.baseName() + ".pcm");
+    QFileInfo inputAudioFileInfo(inputFileInfo.absolutePath() + "/" + inputFileInfo.baseName() + ".pcm");
 
     // Open the metadata for the input TBC file
     QFileInfo inputMetadataFileInfo(inputFileInfo.filePath() + ".json");
+    ldDecodeMetaData = new LdDecodeMetaData;
     ldDecodeMetaData->read(inputMetadataFileInfo.filePath());
 
     // Open the TBC metadata file
@@ -47,6 +48,7 @@ bool SourceAudio::open(QFileInfo inputFileInfo)
     }
 
     // Open the audio source data file
+    inputAudioFile.setFileName(inputAudioFileInfo.filePath());
     if (!inputAudioFile.open(QIODevice::ReadOnly)) {
         // Failed to open named input file
         qWarning() << "Could not open " << inputAudioFileInfo.filePath() << "as source audio input file";
@@ -55,14 +57,16 @@ bool SourceAudio::open(QFileInfo inputFileInfo)
 
     // Read the metadata and create an index to the field audio (position and length)
     qint32 numberOfFields = ldDecodeMetaData->getVideoParameters().numberOfSequentialFields;
-    startPosition.resize(numberOfFields);
-    fieldLength.resize(numberOfFields);
+    startPosition.resize(numberOfFields + 1);
+    fieldLength.resize(numberOfFields + 1);
 
     for (qint32 fieldNo = 0; fieldNo < numberOfFields; fieldNo++) {
         fieldLength[fieldNo] = static_cast<qint64>(ldDecodeMetaData->getField(fieldNo + 1).audioSamples);
         if (fieldNo > 0) startPosition[fieldNo] = startPosition[fieldNo - 1] + fieldLength[fieldNo];
         else startPosition[fieldNo] = 0;
     }
+
+    qDebug() << "******************************" << startPosition.size() << fieldLength.size();
 
     return true;
 }
@@ -83,22 +87,26 @@ QVector<qint16> SourceAudio::getAudioForField(qint32 fieldNo)
 {
     QVector<qint16> audioData;
 
+    fieldNo--;
+
     // Check the requested field number is value
     if (fieldNo > ldDecodeMetaData->getVideoParameters().numberOfSequentialFields) {
         qFatal("Application requested an audio field number that exceeds the available number of fields");
         return audioData;
     }
-    qint64 maxPosition = (startPosition[fieldNo] + fieldLength[fieldNo]) * 4; // 16-bit word * stereo - to byte
+
+    qint64 maxPosition = (startPosition[fieldNo] + fieldLength[fieldNo]) * 2; // 16-bit word * stereo - to byte
     if (maxPosition > inputAudioFile.bytesAvailable()) {
+        qDebug() << "Size:" << inputAudioFile.bytesAvailable() << "Request:" << maxPosition << "Field:" << fieldNo;
         qFatal("Application requested audio field number that exceeds the boundaries of the input PCM audio file");
         return audioData;
     }
 
     // Resize the audio buffer
-    audioData.resize(fieldLength[fieldNo]);
+    audioData.resize(fieldLength[fieldNo] * 2);
 
     // Seek to the correct file position (if not already there)
-    if (!inputAudioFile.seek(startPosition[fieldNo] * 4)) {
+    if (!inputAudioFile.seek(startPosition[fieldNo] * 2)) {
         // Seek failed
         qFatal("Could not seek to field position in input audio file!");
         return audioData;
@@ -109,12 +117,12 @@ QVector<qint16> SourceAudio::getAudioForField(qint32 fieldNo)
     qint64 receivedBytes = 0;
     do {
         receivedBytes = inputAudioFile.read(reinterpret_cast<char *>(audioData.data()) + totalReceivedBytes,
-                                       ((fieldLength[fieldNo]) * 4) - totalReceivedBytes);
+                                       ((fieldLength[fieldNo]) * 2) - totalReceivedBytes);
         totalReceivedBytes += receivedBytes;
-    } while (receivedBytes > 0 && totalReceivedBytes < ((fieldLength[fieldNo]) * 4));
+    } while (receivedBytes > 0 && totalReceivedBytes < ((fieldLength[fieldNo]) * 2));
 
     // Verify read was ok
-    if (totalReceivedBytes != ((fieldLength[fieldNo]) * 4)) {
+    if (totalReceivedBytes != ((fieldLength[fieldNo]) * 2)) {
         qFatal("Could not get enough input bytes from input audio file");
         return audioData;
     }
