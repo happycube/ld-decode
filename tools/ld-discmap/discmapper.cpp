@@ -583,12 +583,25 @@ bool DiscMapper::saveDiscMap(DiscMap &discMap)
         }
     }
 
-    // Make a dummy video and audio field to use when outputting padded frames
+    // Make a dummy video field to use when outputting padded frames
     SourceVideo::Data missingFieldData;
     missingFieldData.fill(0, discMap.getFieldLength());
 
+    // Make a dummy audio field to use when outputting padded frames
     QVector<qint16> missingFieldAudioData;
-    missingFieldAudioData.fill(0, 100); // TODO - WHAT SIZE IS THIS ?!?!
+    if (discMap.isDiscPal()) {
+        // Disc is PAL:
+        // 44,100 samples per second
+        // 50 fields per second
+        // 44,100 / 50 = 882 * 2 = 1764
+        missingFieldAudioData.fill(0, 1764);
+    } else {
+        // Disc is NTSC:
+        // 44,100 samples per second
+        // 60000/1001 fields per second
+        // 44100 / (60000/1001) = 735.735 * 2 = 1472
+        missingFieldAudioData.fill(0, 1472);
+    }
 
     // Create the output video file
     SourceVideo::Data sourceFirstField;

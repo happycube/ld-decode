@@ -88,7 +88,7 @@ QVector<qint16> SourceAudio::getAudioForField(qint32 fieldNo)
         qFatal("Application requested an audio field number that exceeds the available number of fields");
         return audioData;
     }
-    qint64 maxPosition = (startPosition[fieldNo] + fieldLength[fieldNo]) * 2; // 16-bit word to byte
+    qint64 maxPosition = (startPosition[fieldNo] + fieldLength[fieldNo]) * 4; // 16-bit word * stereo - to byte
     if (maxPosition > inputAudioFile.bytesAvailable()) {
         qFatal("Application requested audio field number that exceeds the boundaries of the input PCM audio file");
         return audioData;
@@ -98,7 +98,7 @@ QVector<qint16> SourceAudio::getAudioForField(qint32 fieldNo)
     audioData.resize(fieldLength[fieldNo]);
 
     // Seek to the correct file position (if not already there)
-    if (!inputAudioFile.seek(startPosition[fieldNo] * 2)) {
+    if (!inputAudioFile.seek(startPosition[fieldNo] * 4)) {
         // Seek failed
         qFatal("Could not seek to field position in input audio file!");
         return audioData;
@@ -109,12 +109,12 @@ QVector<qint16> SourceAudio::getAudioForField(qint32 fieldNo)
     qint64 receivedBytes = 0;
     do {
         receivedBytes = inputAudioFile.read(reinterpret_cast<char *>(audioData.data()) + totalReceivedBytes,
-                                       ((fieldLength[fieldNo]) * 2) - totalReceivedBytes);
+                                       ((fieldLength[fieldNo]) * 4) - totalReceivedBytes);
         totalReceivedBytes += receivedBytes;
-    } while (receivedBytes > 0 && totalReceivedBytes < ((fieldLength[fieldNo]) * 2));
+    } while (receivedBytes > 0 && totalReceivedBytes < ((fieldLength[fieldNo]) * 4));
 
     // Verify read was ok
-    if (totalReceivedBytes != ((fieldLength[fieldNo]) * 2)) {
+    if (totalReceivedBytes != ((fieldLength[fieldNo]) * 4)) {
         qFatal("Could not get enough input bytes from input audio file");
         return audioData;
     }
