@@ -666,12 +666,9 @@ def findpulses(array, low, high):
 
     return [Pulse(z[0], z[1] - z[0]) for z in zip(starts, ends)]
 
-def findpeaks(array, low = None):
-    if min is not None:
-        array2 = array.copy()
-        array2[np.where(array2 < low)] = 0
-    else:
-        array2 = array
+def findpeaks(array, low = 0):
+    array2 = array.copy()
+    array2[np.where(array2 < low)] = 0
     
     return [loc - 1 for loc in np.where(np.logical_and(array2[:-1] > array2[-1], array2[1:] > array2[:-1]))[0]]
 
@@ -708,6 +705,10 @@ def nb_min(m):
 @njit
 def nb_max(m):
     return np.max(m)
+
+@njit
+def nb_absmax(m):
+    return np.max(np.abs(m))
 
 @njit
 def nb_mul(x, y):
