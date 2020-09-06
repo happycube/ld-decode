@@ -40,14 +40,15 @@ public:
 
     bool open(QFileInfo inputFileInfo);
     void close();
-    QVector<qint16> getAudioForField(qint32 fieldNo);
+    QByteArray getAudioForField(qint32 fieldNo);
 
 private:
     LdDecodeMetaData *ldDecodeMetaData;
     QFile inputAudioFile;
 
-    QVector<qint64> startPosition;
-    QVector<qint64> fieldLength;
+    QVector<qint64> startBytePosition;
+    QVector<qint64> fieldByteLength;
+    qint64 totalByteSize;
 };
 
 #endif // SOURCEAUDIO_H

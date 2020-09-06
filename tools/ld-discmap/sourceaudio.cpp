@@ -26,7 +26,6 @@
 
 SourceAudio::SourceAudio()
 {
-
 }
 
 // Open an audio source file
@@ -36,9 +35,9 @@ bool SourceAudio::open(QFileInfo inputFileInfo)
     QFileInfo inputAudioFileInfo(inputFileInfo.absolutePath() + "/" + inputFileInfo.baseName() + ".pcm");
 
     // Open the metadata for the input TBC file
+    qDebug() << "Opening audio source metadata for sample analysis...";
     QFileInfo inputMetadataFileInfo(inputFileInfo.filePath() + ".json");
     ldDecodeMetaData = new LdDecodeMetaData;
-    ldDecodeMetaData->read(inputMetadataFileInfo.filePath());
 
     // Open the TBC metadata file
     if (!ldDecodeMetaData->read(inputMetadataFileInfo.filePath())) {
@@ -54,19 +53,29 @@ bool SourceAudio::open(QFileInfo inputFileInfo)
         qWarning() << "Could not open " << inputAudioFileInfo.filePath() << "as source audio input file";
         return false;
     }
+    qDebug() << "Opened audio source; processing field sample lengths...";
 
-    // Read the metadata and create an index to the field audio (position and length)
+    // Read the metadata and create an index to the field audio (byte position and byte length)
     qint32 numberOfFields = ldDecodeMetaData->getVideoParameters().numberOfSequentialFields;
-    startPosition.resize(numberOfFields + 1);
-    fieldLength.resize(numberOfFields + 1);
+    startBytePosition.resize(numberOfFields + 1);
+    fieldByteLength.resize(numberOfFields + 1);
+    totalByteSize = 0;
 
     for (qint32 fieldNo = 0; fieldNo < numberOfFields; fieldNo++) {
-        fieldLength[fieldNo] = static_cast<qint64>(ldDecodeMetaData->getField(fieldNo + 1).audioSamples);
-        if (fieldNo > 0) startPosition[fieldNo] = startPosition[fieldNo - 1] + fieldLength[fieldNo];
-        else startPosition[fieldNo] = 0;
+        // Each audio sample is 16 bit - and there are 2 samples per stereo pair
+        fieldByteLength[fieldNo] = static_cast<qint64>(ldDecodeMetaData->getField(fieldNo + 1).audioSamples * 4);
+        totalByteSize += fieldByteLength[fieldNo];
+        if (fieldNo > 0) startBytePosition[fieldNo] = startBytePosition[fieldNo - 1] + fieldByteLength[fieldNo];
+        else startBytePosition[fieldNo] = 0;
     }
 
-    qDebug() << "******************************" << startPosition.size() << fieldLength.size();
+    // Verify that the number of available bytes in the input sample file match
+    // the total number of samples indicated by the input sample file
+    if (totalByteSize != inputAudioFile.bytesAvailable()) {
+        qDebug() << "Bytes of audio data according to metadata =" << totalByteSize << "Actual size in bytes =" << inputAudioFile.bytesAvailable();
+        qFatal("Audio metadata for the source is not correct");
+        return false;
+    }
 
     return true;
 }
@@ -75,38 +84,44 @@ bool SourceAudio::open(QFileInfo inputFileInfo)
 void SourceAudio::close()
 {
     // Clear the indexes
-    startPosition.clear();
-    fieldLength.clear();
+    startBytePosition.clear();
+    fieldByteLength.clear();
 
     // Close the audio source data file
     inputAudioFile.close();
 }
 
 // Get audio data for a single field from the audio source file
-QVector<qint16> SourceAudio::getAudioForField(qint32 fieldNo)
+QByteArray SourceAudio::getAudioForField(qint32 fieldNo)
 {
-    QVector<qint16> audioData;
+    QByteArray audioData;
 
-    fieldNo--;
-
-    // Check the requested field number is value
+    // Check the requested field number is valid
     if (fieldNo > ldDecodeMetaData->getVideoParameters().numberOfSequentialFields) {
         qFatal("Application requested an audio field number that exceeds the available number of fields");
         return audioData;
     }
+    if (fieldNo < 1) {
+        qFatal("Application requested an invalid audio field number of 0");
+        return audioData;
+    }
 
-    qint64 maxPosition = (startPosition[fieldNo] + fieldLength[fieldNo]) * 2; // 16-bit word * stereo - to byte
-    if (maxPosition > inputAudioFile.bytesAvailable()) {
-        qDebug() << "Size:" << inputAudioFile.bytesAvailable() << "Request:" << maxPosition << "Field:" << fieldNo;
+    // Re-index field number from 0
+    fieldNo--;
+
+    // Ensure the maximum requested byte doesn't overrun the acutal file length
+    if ((startBytePosition[fieldNo] + fieldByteLength[fieldNo]) > totalByteSize) {
+        qDebug() << "Size:" << inputAudioFile.bytesAvailable() << "Request:" <<
+                    (startBytePosition[fieldNo] + fieldByteLength[fieldNo]) << "Field:" << fieldNo;
         qFatal("Application requested audio field number that exceeds the boundaries of the input PCM audio file");
         return audioData;
     }
 
-    // Resize the audio buffer
-    audioData.resize(fieldLength[fieldNo] * 2);
+    // Resize the audio buffer (2x 16-bit L/R sample)
+    audioData.resize(fieldByteLength[fieldNo]);
 
     // Seek to the correct file position (if not already there)
-    if (!inputAudioFile.seek(startPosition[fieldNo] * 2)) {
+    if (!inputAudioFile.seek(startBytePosition[fieldNo])) {
         // Seek failed
         qFatal("Could not seek to field position in input audio file!");
         return audioData;
@@ -117,15 +132,16 @@ QVector<qint16> SourceAudio::getAudioForField(qint32 fieldNo)
     qint64 receivedBytes = 0;
     do {
         receivedBytes = inputAudioFile.read(reinterpret_cast<char *>(audioData.data()) + totalReceivedBytes,
-                                       ((fieldLength[fieldNo]) * 2) - totalReceivedBytes);
+                                       fieldByteLength[fieldNo] - totalReceivedBytes);
         totalReceivedBytes += receivedBytes;
-    } while (receivedBytes > 0 && totalReceivedBytes < ((fieldLength[fieldNo]) * 2));
+    } while (receivedBytes > 0 && totalReceivedBytes < fieldByteLength[fieldNo]);
 
     // Verify read was ok
-    if (totalReceivedBytes != ((fieldLength[fieldNo]) * 2)) {
+    if (totalReceivedBytes != fieldByteLength[fieldNo]) {
         qFatal("Could not get enough input bytes from input audio file");
         return audioData;
     }
 
+    qDebug() << "Got audio for field" << fieldNo << "with byte length" << fieldByteLength[fieldNo] << "(" << audioData.size() << ")";
     return audioData;
 }

@@ -321,9 +321,9 @@ void DiscMapper::removeDuplicateNumberedFrames(DiscMap &discMap)
                 if (discMap.vbiFrameNumber(frameNumber) == duplicatedFrameList[i]) {
                     // Add the frame number ot the duplicate disc map address list
                     discMapDuplicateAddress.append(frameNumber);
-                    qDebug() << "  Seq frame" << discMap.seqFrameNumber(frameNumber) << "is a duplicate of" <<
-                                duplicatedFrameList[i] <<
-                                "with a quality of" << discMap.frameQuality(frameNumber);
+//                    qDebug() << "  Seq frame" << discMap.seqFrameNumber(frameNumber) << "is a duplicate of" <<
+//                                duplicatedFrameList[i] <<
+//                                "with a quality of" << discMap.frameQuality(frameNumber);
                 }
             }
 
@@ -594,7 +594,7 @@ bool DiscMapper::saveDiscMap(DiscMap &discMap)
     missingFieldData.fill(0, discMap.getFieldLength());
 
     // Make a dummy audio field to use when outputting padded frames
-    QVector<qint16> missingFieldAudioData;
+    QByteArray missingFieldAudioData;
     if (discMap.isDiscPal()) {
         // Disc is PAL:
         // 44,100 samples per second
@@ -612,8 +612,8 @@ bool DiscMapper::saveDiscMap(DiscMap &discMap)
     // Create the output video file
     SourceVideo::Data sourceFirstField;
     SourceVideo::Data sourceSecondField;
-    QVector<qint16> sourceAudioFirstField;
-    QVector<qint16> sourceAudioSecondField;
+    QByteArray sourceAudioFirstField;
+    QByteArray sourceAudioSecondField;
 
     qInfo() << "Saving target video frames...";
     qint32 notifyInterval = discMap.numberOfFrames() / 50;
@@ -630,11 +630,6 @@ bool DiscMapper::saveDiscMap(DiscMap &discMap)
             sourceFirstField = sourceVideo.getVideoField(firstFieldNumber);
             sourceSecondField = sourceVideo.getVideoField(secondFieldNumber);
 
-            if (!noAudio) {
-                sourceAudioFirstField = sourceAudio.getAudioForField(firstFieldNumber);
-                sourceAudioSecondField = sourceAudio.getAudioForField(secondFieldNumber);
-            }
-
             // Write the fields into the output TBC file in the same order as the source file
             if (firstFieldNumber < secondFieldNumber) {
                 // Save the first field and then second field to the output file
@@ -642,28 +637,25 @@ bool DiscMapper::saveDiscMap(DiscMap &discMap)
                                        sourceFirstField.size() * 2)) writeFail = true;
                 if (!targetVideo.write(reinterpret_cast<const char *>(sourceSecondField.data()),
                                        sourceSecondField.size() * 2)) writeFail = true;
-
-                if (!noAudio) {
-                    // Write the audio
-                    if (!targetAudio.write(reinterpret_cast<const char *>(sourceAudioFirstField.data()),
-                                           sourceAudioFirstField.size() * 2)) writeFail = true;
-                    if (!targetAudio.write(reinterpret_cast<const char *>(sourceAudioSecondField.data()),
-                                           sourceAudioSecondField.size() * 2)) writeFail = true;
-                }
             } else {
                 // Save the second field and then first field to the output file
                 if (!targetVideo.write(reinterpret_cast<const char *>(sourceSecondField.data()),
                                        sourceSecondField.size() * 2)) writeFail = true;
                 if (!targetVideo.write(reinterpret_cast<const char *>(sourceFirstField.data()),
                                        sourceFirstField.size() * 2)) writeFail = true;
+            }
 
-                if (!noAudio) {
-                    // Write the audio
-                    if (!targetAudio.write(reinterpret_cast<const char *>(sourceAudioSecondField.data()),
-                                           sourceAudioSecondField.size() * 2)) writeFail = true;
-                    if (!targetAudio.write(reinterpret_cast<const char *>(sourceAudioFirstField.data()),
-                                           sourceAudioFirstField.size() * 2)) writeFail = true;
-                }
+            // Save the audio (not field order dependent)
+            if (!noAudio) {
+                // Read the audio
+                sourceAudioFirstField = sourceAudio.getAudioForField(firstFieldNumber);
+                sourceAudioSecondField = sourceAudio.getAudioForField(secondFieldNumber);
+
+                // Write the audio
+                if (!targetAudio.write(reinterpret_cast<const char *>(sourceAudioFirstField.data()),
+                                       sourceAudioFirstField.size())) writeFail = true;
+                if (!targetAudio.write(reinterpret_cast<const char *>(sourceAudioSecondField.data()),
+                                       sourceAudioSecondField.size())) writeFail = true;
             }
         } else {
             // Padded frame - write two dummy fields
@@ -675,9 +667,9 @@ bool DiscMapper::saveDiscMap(DiscMap &discMap)
             if (!noAudio) {
                 // Write the padded audio
                 if (!targetAudio.write(reinterpret_cast<const char *>(missingFieldAudioData.data()),
-                                       missingFieldAudioData.size() * 2)) writeFail = true;
+                                       missingFieldAudioData.size())) writeFail = true;
                 if (!targetAudio.write(reinterpret_cast<const char *>(missingFieldAudioData.data()),
-                                       missingFieldAudioData.size() * 2)) writeFail = true;
+                                       missingFieldAudioData.size())) writeFail = true;
             }
         }
 
@@ -695,7 +687,7 @@ bool DiscMapper::saveDiscMap(DiscMap &discMap)
             return false;
         }
     }
-    qInfo() << "Target video frames saved";
+    qInfo() << discMap.numberOfFrames() << "video frames saved";
 
     // Close the source and target video files
     targetVideo.close();
