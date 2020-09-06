@@ -237,9 +237,9 @@ def draw_really_raw_field(self, channel = 'demod'):
     
     return draw_raw_bwimage(cooked, self.inlinelen, (len(cooked)//self.inlinelen), vscale=4)
 
-def plotline(field, line, usecs = 63.5, linelocs = None):
-	ls = field.lineslice(line, 0, usecs, linelocs)
-	plt.plot(field.data['video']['demod'][ls])
+def plotline(field, line, offset = 0, usecs = 63.5, linelocs = None, data='demod'):
+	ls = field.lineslice(line, offset, usecs - offset, linelocs)
+	plt.plot(field.data['video'][data][ls])
 
 class RGBoutput:
     def __init__(self, outname):

@@ -97,6 +97,8 @@ SysParams_NTSC = {
 
     # What 0 IRE/0V should be in digitaloutput
     'outputZero': 1024,
+
+    'fieldPhases': 4,
 }
 
 # In color NTSC, the line period was changed from 63.5 to 227.5 color cycles,
@@ -145,6 +147,8 @@ SysParams_PAL = {
 
     # What 0 IRE/0V should be in digitaloutput
     'outputZero': 256,
+
+    'fieldPhases': 8,
 }
 
 SysParams_PAL['outlinelen'] = calclinelen(SysParams_PAL, 4, 'fsc_mhz')
@@ -491,10 +495,10 @@ class RFDecode:
         SF['F05'] = filtfft((F0_5, [1.0]), self.blocklen)
         SF['FVideo05'] = SF['Fvideo_lpf'] * SF['Fdeemp']  * SF['F05']
 
-        if self.system == 'NTSC':
-            SF['Fburst'] = filtfft(sps.butter(1, [(SP['fsc_mhz']-.1)/self.freq_half, (SP['fsc_mhz']+.1)/self.freq_half], btype='bandpass'), self.blocklen) 
-            SF['FVideoBurst'] = SF['Fvideo_lpf'] * SF['Fdeemp']  * SF['Fburst']
-        else:
+        SF['Fburst'] = filtfft(sps.butter(1, [(SP['fsc_mhz']-.1)/self.freq_half, (SP['fsc_mhz']+.1)/self.freq_half], btype='bandpass'), self.blocklen) 
+        SF['FVideoBurst'] = SF['Fvideo_lpf'] * SF['Fdeemp']  * SF['Fburst']
+        
+        if self.system == 'PAL':
             SF['Fpilot'] = filtfft(sps.butter(1, [(SP['pilot_mhz']-.1)/self.freq_half, (SP['pilot_mhz']+.1)/self.freq_half], btype='bandpass'), self.blocklen) 
             SF['FVideoPilot'] = SF['Fvideo_lpf'] * SF['Fdeemp']  * SF['Fpilot']
         
@@ -634,11 +638,12 @@ class RFDecode:
         out_video05 = npfft.ifft(demod_fft * self.Filters['FVideo05']).real
         out_video05 = np.roll(out_video05, -self.Filters['F05_offset'])
 
+        out_videoburst = npfft.ifft(demod_fft * self.Filters['FVideoBurst']).real
+
         if self.system == 'PAL':
             out_videopilot = npfft.ifft(demod_fft * self.Filters['FVideoPilot']).real
-            video_out = np.rec.array([out_video, demod, demod_hpf, out_video05, out_videopilot], names=['demod', 'demod_raw', 'demod_hpf', 'demod_05', 'demod_pilot'])
+            video_out = np.rec.array([out_video, demod, demod_hpf, out_video05, out_videoburst, out_videopilot], names=['demod', 'demod_raw', 'demod_hpf', 'demod_05', 'demod_burst', 'demod_pilot'])
         else:
-            out_videoburst = npfft.ifft(demod_fft * self.Filters['FVideoBurst']).real
             video_out = np.rec.array([out_video, demod, demod_hpf, out_video05, out_videoburst], names=['demod', 'demod_raw', 'demod_hpf', 'demod_05', 'demod_burst'])
 
         rv['video'] = video_out[self.blockcut:-self.blockcut_end] if cut else video_out
@@ -853,7 +858,7 @@ class RFDecode:
         rf.limits['sync'] = (np.min(fdec_raw[1400:2800]), np.max(fdec_raw[1400:2800]))
         rf.limits['viewable'] = (np.min(fdec_raw[2900:6000]), np.max(fdec_raw[2900:6000]))
 
-        return fakedecode
+        return fakedecode, fakeoutput_emp
 
 class DemodCache:
     def __init__(self, rf, infile, loader, cachesize = 256, num_worker_threads=6, MTF_tolerance = .05):
@@ -2176,6 +2181,69 @@ class Field:
 
         return rv_lines, rv_starts, rv_ends
 
+    def compute_line_bursts(self, linelocs, line):
+        '''
+        Compute the zero crossing for the given line using calczc
+        
+        Returns a dictionary:  False is downwards, True is upwards
+        '''
+        # calczc works from integers, so get the start and remainder
+        s = int(linelocs[line])
+        s_rem = linelocs[line] - s
+
+        # compute adjusted frequency from neighboring line lengths
+        if line > 0:
+            lfreq = self.rf.freq * (((self.linelocs2[line+1] - self.linelocs2[line-1]) / 2) / self.rf.linelen)
+        elif line == 0:
+            lfreq = self.rf.freq * (((self.linelocs2[line+1] - self.linelocs2[line-0]) / 1) / self.rf.linelen)
+        elif line >= self.linecount + self.lineoffset:
+            lfreq = self.rf.freq * (((self.linelocs2[line+0] - self.linelocs2[line-1]) / 1) / self.rf.linelen)
+
+        # compute approximate burst beginning/end
+        bstime = 25 * (1 / self.rf.SysParams['fsc_mhz']) # approx start of burst in usecs
+
+        bstart = int(bstime * lfreq)
+        bend = int(8.8 * lfreq)
+
+        zc_bursts = {False: [], True: []}
+
+        # copy and get the mean of the burst area to factor out wow/flutter
+        burstarea = self.data['video']['demod_burst'][s+bstart:s+bend]
+        if len(burstarea) == 0:
+            return zc_bursts
+
+        burstarea = burstarea - nb_mean(burstarea)
+
+        threshold = 8 * self.rf.SysParams['hz_ire']
+
+        fsc_n1 = (1 / self.rf.SysParams['fsc_mhz'])
+        zcburstdiv = (lfreq * fsc_n1)
+
+        numpos = 0
+        numneg = 0
+        zc_bursts_t = np.zeros(64, dtype=np.float)
+        zc_bursts_n = np.zeros(64, dtype=np.float)
+
+        # this subroutine is in utils.py, broken out so it can be JIT'd
+        i = clb_findnextburst(burstarea, 0, len(burstarea) - 1, threshold)
+        zc = 0
+
+        while i is not None and zc is not None:
+            zc = calczc(burstarea, i[0], 0)
+            if zc is not None:
+                zc_burst = distance_from_round((bstart+zc-s_rem) / zcburstdiv) #+ phase_offset
+                #print(i, zc_burst)
+                if i[1] < 0:
+                    zc_bursts_t[numpos] = zc_burst
+                    numpos = numpos + 1
+                else:
+                    zc_bursts_n[numneg] = zc_burst
+                    numneg = numneg + 1
+
+                i = clb_findnextburst(burstarea, int(zc + 1), len(burstarea) - 1, threshold)
+
+        return {False: zc_bursts_n[:numneg], True:zc_bursts_t[:numpos]}        
+
 # These classes extend Field to do PAL/NTSC specific TBC features.
 
 class FieldPAL(Field):
@@ -2227,6 +2295,65 @@ class FieldPAL(Field):
 
         return nb_median(burstlevel / self.rf.SysParams['hz_ire'])
 
+    def determine_field_number(self):
+
+        ''' Background
+        PAL has an eight field sequence that can be split into two four field sequences.
+        
+        Field 1: First field of frame , colour burst on line 6
+        Field 2: Second field of frame, no colour burst on line 6
+        Field 3: First field of frame, no colour burst on line 6
+        Field 4: Second field of frame, colour burst on line 6
+        
+        Fields 5-8 can be differentiated using the burst phase on line 7 (the first line
+        guaranteed to have colour burst)  Ideally the rising phase would be at 0 or 180 
+        degrees, but since this is Laserdisc it's often quite off.  So the determination is
+        based on which phase is closer to 0 degrees.
+        '''
+        
+        # First compute the 4-field sequence
+        
+        burstUsec = self.rf.SysParams['colorBurstUS']
+        
+        map4 = {(True, True): 1, (False, False): 2, (True, False): 3, (False, True): 4}
+        
+        zc = []
+        for l in range(6, 10):
+            ls = self.lineslice(l, 0, burstUsec[1] + 1)
+            subset = self.data['video']['demod_burst'][ls]
+            # FIXME? PAL ~4fsc only
+            maxire = (np.max(subset[212:]) - np.mean(subset[212:])) / self.rf.SysParams['hz_ire']
+            
+            if maxire < 7:
+                zc.append(None)
+            else:
+                mea = nb_mean(subset[220:])
+                zc.append(calczc(subset, np.argmin(subset[210:]) + 210, mea))
+
+        m4 = map4[(self.isFirstField, zc[0] is None)]
+            
+        # Now compute if it's 0-3 or 4-7.
+        
+        bursts = self.compute_line_bursts(self.linelocs, 7+self.lineoffset)
+
+        if len(bursts[False]) == 0 or len(bursts[True]) == 0:
+            # If there aren't a full set of bursts, this probably isn't
+            # a useful frame
+            return m4
+
+        burstmedF = np.abs(np.median(bursts[False]))
+        burstmedT = np.abs(np.median(bursts[True]))
+        #print(burstmedF, burstmedT)
+        
+        is_firstfour = np.abs(burstmedT) < np.abs(burstmedF)
+        if m4 == 2:
+            # For field 1/5, reverse the above.
+            is_firstfour = not is_firstfour
+            
+        seqnum = m4 + (0 if is_firstfour else 4)
+        
+        return seqnum
+
     def downscale(self, final = False, *args, **kwargs):
         # For PAL, each field starts with the line containing the first full VSYNC pulse
         return super(FieldPAL, self).downscale(final=final, *args, **kwargs)
@@ -2258,6 +2385,8 @@ class FieldPAL(Field):
         self.lineoffset = 2 if self.isFirstField else 3
 
         self.linecode = [self.decodephillipscode(l + self.lineoffset) for l in [16, 17, 18]]
+
+        self.fieldPhaseID = self.determine_field_number()
 
         #self.downscale(final=True)
 
@@ -2372,68 +2501,6 @@ class FieldNTSC(Field):
         burstarea = self.data['video']['demod'][self.lineslice(l, 5.5, 2.4, linelocs)].copy()
 
         return rms(burstarea) * np.sqrt(2)
-
-    def compute_line_bursts(self, linelocs, line):
-        '''
-        Compute the zero crossing for the given line using calczc
-        '''
-        # calczc works from integers, so get the start and remainder
-        s = int(linelocs[line])
-        s_rem = linelocs[line] - s
-
-        # compute adjusted frequency from neighboring line lengths
-        if line > 0:
-            lfreq = self.rf.freq * (((self.linelocs2[line+1] - self.linelocs2[line-1]) / 2) / self.rf.linelen)
-        elif line == 0:
-            lfreq = self.rf.freq * (((self.linelocs2[line+1] - self.linelocs2[line-0]) / 1) / self.rf.linelen)
-        elif line >= 262:
-            lfreq = self.rf.freq * (((self.linelocs2[line+0] - self.linelocs2[line-1]) / 1) / self.rf.linelen)
-
-        # compute approximate burst beginning/end
-        bstime = 17 * (1 / self.rf.SysParams['fsc_mhz']) # approx start of burst in usecs
-
-        bstart = int(bstime * lfreq)
-        bend = int(8.8 * lfreq)
-
-        zc_bursts = {False: [], True: []}
-
-        # copy and get the mean of the burst area to factor out wow/flutter
-        burstarea = self.data['video']['demod_burst'][s+bstart:s+bend]
-        if len(burstarea) == 0:
-            #logging.info( line, s + bstart, s + bend, linelocs[line])
-            return zc_bursts
-
-        burstarea = burstarea - nb_mean(burstarea)
-
-        threshold = 8 * self.rf.SysParams['hz_ire']
-
-        fsc_n1 = (1 / self.rf.SysParams['fsc_mhz'])
-        zcburstdiv = (lfreq * fsc_n1)
-
-        numpos = 0
-        numneg = 0
-        zc_bursts_t = np.zeros(64, dtype=np.float)
-        zc_bursts_n = np.zeros(64, dtype=np.float)
-
-        # this subroutine is in utils.py, broken out so it can be JIT'd
-        i = clb_findnextburst(burstarea, 0, len(burstarea) - 1, threshold)
-        zc = 0
-
-        while i is not None and zc is not None:
-            zc = calczc(burstarea, i[0], 0)
-            if zc is not None:
-                zc_burst = distance_from_round((bstart+zc-s_rem) / zcburstdiv) 
-                if i[1] < 0:
-                    zc_bursts_t[numpos] = zc_burst
-                    numpos = numpos + 1
-                else:
-                    zc_bursts_n[numneg] = zc_burst
-                    numneg = numneg + 1
-
-                i = clb_findnextburst(burstarea, int(zc + 1), len(burstarea) - 1, threshold)
-
-        return {False: zc_bursts_n[:numneg], True:zc_bursts_t[:numpos]}
-        #return {False: np.array(zc_bursts[False]), True:np.array(zc_bursts[True])}
 
     def compute_burst_offsets(self, linelocs):
         linelocs_adj = linelocs
@@ -2742,7 +2809,13 @@ class LDdecode:
     def writeout(self, dataset):
         f, fi, picture, audio, efm = dataset
 
+        if self.digital_audio == True:
+            efm_out = self.efm_pll.process(efm)
+            self.outfile_efm.write(efm_out.tobytes())
+
         fi['audioSamples'] = 0 if audio is None else int(len(audio) / 2)
+        fi['efmTValues'] = len(efm_out) if self.digital_audio else 0
+        
         self.fieldinfo.append(fi)
 
         self.outfile_video.write(picture)
@@ -2750,10 +2823,6 @@ class LDdecode:
 
         if audio is not None and self.outfile_audio is not None:
             self.outfile_audio.write(audio)
-
-        if self.digital_audio == True:
-            efm_out = self.efm_pll.process(efm)
-            self.outfile_efm.write(efm_out.tobytes())
         
     def decodefield(self, initphase = False):
         ''' returns field object if valid, and the offset to the next decode '''
@@ -3107,14 +3176,13 @@ class LDdecode:
         # This is a bitmap, not a counter
         decodeFaults = 0
 
-        if f.rf.system == 'NTSC':
-            fi['fieldPhaseID'] = f.fieldPhaseID
+        fi['fieldPhaseID'] = f.fieldPhaseID
 
-            if prevfi:
-                if not ((fi['fieldPhaseID'] == 1 and prevfi['fieldPhaseID'] == 4) or
-                        (fi['fieldPhaseID'] == prevfi['fieldPhaseID'] + 1)):
-                    logging.warning('NTSC field phaseID sequence mismatch ({0}->{1}) (player may be paused)'.format(prevfi['fieldPhaseID'], fi['fieldPhaseID']))
-                    decodeFaults |= 2
+        if prevfi:
+            if not ((fi['fieldPhaseID'] == 1 and prevfi['fieldPhaseID'] == f.rf.SysParams['fieldPhases']) or
+                    (fi['fieldPhaseID'] == prevfi['fieldPhaseID'] + 1)):
+                logging.warning('Field phaseID sequence mismatch ({0}->{1}) (player may be paused)'.format(prevfi['fieldPhaseID'], fi['fieldPhaseID']))
+                decodeFaults |= 2
 
         if prevfi is not None and prevfi['isFirstField'] == fi['isFirstField']:
             #logging.info('WARNING!  isFirstField stuck between fields')
