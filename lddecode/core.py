@@ -2809,7 +2809,13 @@ class LDdecode:
     def writeout(self, dataset):
         f, fi, picture, audio, efm = dataset
 
+        if self.digital_audio == True:
+            efm_out = self.efm_pll.process(efm)
+            self.outfile_efm.write(efm_out.tobytes())
+
         fi['audioSamples'] = 0 if audio is None else int(len(audio) / 2)
+        fi['efmTValues'] = len(efm_out) if self.digital_audio else 0
+        
         self.fieldinfo.append(fi)
 
         self.outfile_video.write(picture)
@@ -2817,10 +2823,6 @@ class LDdecode:
 
         if audio is not None and self.outfile_audio is not None:
             self.outfile_audio.write(audio)
-
-        if self.digital_audio == True:
-            efm_out = self.efm_pll.process(efm)
-            self.outfile_efm.write(efm_out.tobytes())
         
     def decodefield(self, initphase = False):
         ''' returns field object if valid, and the offset to the next decode '''
