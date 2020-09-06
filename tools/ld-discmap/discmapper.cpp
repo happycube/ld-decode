@@ -600,13 +600,15 @@ bool DiscMapper::saveDiscMap(DiscMap &discMap)
         // 44,100 samples per second
         // 50 fields per second
         // 44,100 / 50 = 882 * 2 = 1764
-        missingFieldAudioData.fill(0, 1764);
+        // L/R channels = 1764 * 2 =
+        missingFieldAudioData.fill(0, 3528);
     } else {
         // Disc is NTSC:
         // 44,100 samples per second
         // 60000/1001 fields per second
         // 44100 / (60000/1001) = 735.735 * 2 = 1472
-        missingFieldAudioData.fill(0, 1472);
+        // L/R channels = 1472 * 2 =
+        missingFieldAudioData.fill(0, 2944);
     }
 
     // Create the output video file

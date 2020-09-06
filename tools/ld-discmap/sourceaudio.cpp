@@ -142,6 +142,5 @@ QByteArray SourceAudio::getAudioForField(qint32 fieldNo)
         return audioData;
     }
 
-    qDebug() << "Got audio for field" << fieldNo << "with byte length" << fieldByteLength[fieldNo] << "(" << audioData.size() << ")";
     return audioData;
 }
