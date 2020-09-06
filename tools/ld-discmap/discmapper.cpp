@@ -32,7 +32,7 @@ DiscMapper::DiscMapper()
 // Method to perform disc mapping process
 bool DiscMapper::process(QFileInfo _inputFileInfo, QFileInfo _inputMetadataFileInfo,
                          QFileInfo _outputFileInfo, bool _reverse, bool _mapOnly, bool _noStrict,
-                         bool _deleteUnmappable)
+                         bool _deleteUnmappable, bool _noAudio)
 {
     inputFileInfo = _inputFileInfo;
     inputMetadataFileInfo = _inputMetadataFileInfo;
@@ -41,6 +41,7 @@ bool DiscMapper::process(QFileInfo _inputFileInfo, QFileInfo _inputMetadataFileI
     mapOnly = _mapOnly;
     noStrict = _noStrict;
     deleteUnmappable = _deleteUnmappable;
+    noAudio = _noAudio;
 
     // Some info for the user...
     qInfo() << "LaserDisc mapping tool";
@@ -121,6 +122,10 @@ bool DiscMapper::process(QFileInfo _inputFileInfo, QFileInfo _inputMetadataFileI
     if (mapOnly) {
         qInfo() << "--maponly selected.  No output file will be written.";
         return true;
+    }
+
+    if (noAudio) {
+        qInfo() << "-no-audio selected.  No analogue audio output wil be written.";
     }
 
     qInfo() << "Writing output video and metadata information...";
@@ -316,9 +321,9 @@ void DiscMapper::removeDuplicateNumberedFrames(DiscMap &discMap)
                 if (discMap.vbiFrameNumber(frameNumber) == duplicatedFrameList[i]) {
                     // Add the frame number ot the duplicate disc map address list
                     discMapDuplicateAddress.append(frameNumber);
-                    qDebug() << "  Seq frame" << discMap.seqFrameNumber(frameNumber) << "is a duplicate of" <<
-                                duplicatedFrameList[i] <<
-                                "with a quality of" << discMap.frameQuality(frameNumber);
+//                    qDebug() << "  Seq frame" << discMap.seqFrameNumber(frameNumber) << "is a duplicate of" <<
+//                                duplicatedFrameList[i] <<
+//                                "with a quality of" << discMap.frameQuality(frameNumber);
                 }
             }
 
@@ -559,13 +564,58 @@ bool DiscMapper::saveDiscMap(DiscMap &discMap)
         return false;
     }
 
+    // Initialise the input audio file
+    SourceAudio sourceAudio;
+    QFile targetAudio;
+
+    if (!noAudio) {
+        // Open the input audio file
+        if (!sourceAudio.open(inputFileInfo)) {
+            // Could not open input audio file
+            qInfo() << "Cannot open source audio file:" << inputFileInfo.absolutePath() + "/" + inputFileInfo.baseName() + ".pcm";
+            sourceVideo.close();
+            sourceAudio.close();
+            return false;
+        }
+
+        // Open the output audio file
+        targetAudio.setFileName(outputFileInfo.absolutePath() + "/" + outputFileInfo.baseName() + ".pcm");
+        if (!targetAudio.open(QIODevice::WriteOnly)) {
+            // Could not open target audio file
+            qInfo() << "Cannot open target audio file:" << outputFileInfo.absolutePath() + "/" + outputFileInfo.baseName() + ".pcm";
+            sourceVideo.close();
+            sourceAudio.close();
+            return false;
+        }
+    }
+
     // Make a dummy video field to use when outputting padded frames
     SourceVideo::Data missingFieldData;
     missingFieldData.fill(0, discMap.getFieldLength());
 
+    // Make a dummy audio field to use when outputting padded frames
+    QByteArray missingFieldAudioData;
+    if (discMap.isDiscPal()) {
+        // Disc is PAL:
+        // 44,100 samples per second
+        // 50 fields per second
+        // 44,100 / 50 = 882 * 2 = 1764
+        // L/R channels = 1764 * 2 =
+        missingFieldAudioData.fill(0, 3528);
+    } else {
+        // Disc is NTSC:
+        // 44,100 samples per second
+        // 60000/1001 fields per second
+        // 44100 / (60000/1001) = 735.735 * 2 = 1472
+        // L/R channels = 1472 * 2 =
+        missingFieldAudioData.fill(0, 2944);
+    }
+
     // Create the output video file
     SourceVideo::Data sourceFirstField;
     SourceVideo::Data sourceSecondField;
+    QByteArray sourceAudioFirstField;
+    QByteArray sourceAudioSecondField;
 
     qInfo() << "Saving target video frames...";
     qint32 notifyInterval = discMap.numberOfFrames() / 50;
@@ -596,12 +646,33 @@ bool DiscMapper::saveDiscMap(DiscMap &discMap)
                 if (!targetVideo.write(reinterpret_cast<const char *>(sourceFirstField.data()),
                                        sourceFirstField.size() * 2)) writeFail = true;
             }
+
+            // Save the audio (not field order dependent)
+            if (!noAudio) {
+                // Read the audio
+                sourceAudioFirstField = sourceAudio.getAudioForField(firstFieldNumber);
+                sourceAudioSecondField = sourceAudio.getAudioForField(secondFieldNumber);
+
+                // Write the audio
+                if (!targetAudio.write(reinterpret_cast<const char *>(sourceAudioFirstField.data()),
+                                       sourceAudioFirstField.size())) writeFail = true;
+                if (!targetAudio.write(reinterpret_cast<const char *>(sourceAudioSecondField.data()),
+                                       sourceAudioSecondField.size())) writeFail = true;
+            }
         } else {
             // Padded frame - write two dummy fields
             if (!targetVideo.write(reinterpret_cast<const char *>(missingFieldData.data()),
                                    missingFieldData.size() * 2)) writeFail = true;
             if (!targetVideo.write(reinterpret_cast<const char *>(missingFieldData.data()),
                                    missingFieldData.size() * 2)) writeFail = true;
+
+            if (!noAudio) {
+                // Write the padded audio
+                if (!targetAudio.write(reinterpret_cast<const char *>(missingFieldAudioData.data()),
+                                       missingFieldAudioData.size())) writeFail = true;
+                if (!targetAudio.write(reinterpret_cast<const char *>(missingFieldAudioData.data()),
+                                       missingFieldAudioData.size())) writeFail = true;
+            }
         }
 
         // Notify user
@@ -612,17 +683,24 @@ bool DiscMapper::saveDiscMap(DiscMap &discMap)
         // Was the write successful?
         if (writeFail) {
             // Could not write to target TBC file
-            qInfo() << "Writing fields to the target TBC file failed on frame number" << frameNumber;
+            qWarning() << "Writing fields to the target TBC file failed on frame number" << frameNumber;
             targetVideo.close();
             sourceVideo.close();
             return false;
         }
     }
-    qInfo() << "Target video frames saved";
+    qInfo() << discMap.numberOfFrames() << "video frames saved";
 
     // Close the source and target video files
     targetVideo.close();
     sourceVideo.close();
+
+    // Close the source and target audio files
+    if (!noAudio) {
+        qInfo() << "Target audio frames saved";
+        targetAudio.close();
+        sourceAudio.close();
+    }
 
     // Now save the metadata
     qInfo() << "Saving target video metadata...";
