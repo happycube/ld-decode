@@ -553,7 +553,7 @@ bool DiscMapper::saveDiscMap(DiscMap &discMap)
 {
     // Open the input video file
     SourceVideo sourceVideo;
-    sourceVideo.open(inputFileInfo.filePath(), discMap.getFieldLength());
+    sourceVideo.open(inputFileInfo.filePath(), discMap.getVideoFieldLength());
 
     // Open the output video file
     QFile targetVideo(outputFileInfo.filePath());
@@ -591,25 +591,11 @@ bool DiscMapper::saveDiscMap(DiscMap &discMap)
 
     // Make a dummy video field to use when outputting padded frames
     SourceVideo::Data missingFieldData;
-    missingFieldData.fill(0, discMap.getFieldLength());
+    missingFieldData.fill(0, discMap.getVideoFieldLength());
 
     // Make a dummy audio field to use when outputting padded frames
     QByteArray missingFieldAudioData;
-    if (discMap.isDiscPal()) {
-        // Disc is PAL:
-        // 44,100 samples per second
-        // 50 fields per second
-        // 44,100 / 50 = 882 * 2 = 1764
-        // L/R channels = 1764 * 2 =
-        missingFieldAudioData.fill(0, 3528);
-    } else {
-        // Disc is NTSC:
-        // 44,100 samples per second
-        // 60000/1001 fields per second
-        // 44100 / (60000/1001) = 735.735 * 2 = 1472
-        // L/R channels = 1472 * 2 =
-        missingFieldAudioData.fill(0, 2944);
-    }
+    missingFieldAudioData.fill(0, discMap.getAudioFieldLength());
 
     // Create the output video file
     SourceVideo::Data sourceFirstField;

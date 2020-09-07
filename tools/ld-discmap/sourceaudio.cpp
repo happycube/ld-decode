@@ -144,3 +144,4 @@ QByteArray SourceAudio::getAudioForField(qint32 fieldNo)
 
     return audioData;
 }
+

@@ -59,8 +59,8 @@ DiscMap::DiscMap(const QFileInfo &metadataFileInfo, const bool &reverseFieldOrde
         return;
     }
 
-    // Set the field length
-    m_fieldLength = ldDecodeMetaData->getVideoParameters().fieldWidth *
+    // Set the video field length
+    m_videoFieldLength = ldDecodeMetaData->getVideoParameters().fieldWidth *
             ldDecodeMetaData->getVideoParameters().fieldHeight;
 
     // Resize the frame store
@@ -87,6 +87,23 @@ DiscMap::DiscMap(const QFileInfo &metadataFileInfo, const bool &reverseFieldOrde
     // Get the source format (PAL/NTSC)
     if (ldDecodeMetaData->getVideoParameters().isSourcePal) m_isDiscPal = true;
     else m_isDiscPal = false;
+
+    // Set the audio field length
+    if (m_isDiscPal) {
+        // Disc is PAL:
+        // 44,100 samples per second
+        // 50 fields per second
+        // 44,100 / 50 = 882 * 2 = 1764
+        // L/R channels = 1764 * 2 =
+        m_audioFieldLength = 3528;
+    } else {
+        // Disc is NTSC:
+        // 44,100 samples per second
+        // 60000/1001 fields per second
+        // 44100 / (60000/1001) = 735.735 * 2 = 1472
+        // L/R channels = 1472 * 2 =
+        m_audioFieldLength = 2944;
+    }
 
     // Get the disc type (CAV/CLV)
     qint32 framesToCheck = 100;
@@ -558,10 +575,18 @@ void DiscMap::addPadding(qint32 startFrame, qint32 numberOfFrames)
     m_numberOfFrames = m_frames.size();
 }
 
-// Method to get the current field length from the metadata
-qint32 DiscMap::getFieldLength()
+// Method to get the current video field length from the metadata
+qint32 DiscMap::getVideoFieldLength()
 {
-    return m_fieldLength;
+    return m_videoFieldLength;
+}
+
+// Method to get the current audio field length (in bytes) from the metadata
+// Note: This acutally varies from field to field, so this provides
+// a best guess
+qint32 DiscMap::getAudioFieldLength()
+{
+    return m_audioFieldLength;
 }
 
 // Get first field number
@@ -585,6 +610,12 @@ qint32 DiscMap::getSecondFieldNumber(qint32 frameNumber) const
 }
 
 // Save the target metadata from the disc map
+
+
+// Add number of sound samples (in padded field) - CAV/CLV flag and phase?
+// to output data (especially padded fields!)................. TODO TODO
+
+
 bool DiscMap::saveTargetMetadata(QFileInfo outputFileInfo)
 {
     qint32 notifyInterval = m_numberOfFrames / 50;
@@ -670,6 +701,7 @@ bool DiscMap::saveTargetMetadata(QFileInfo outputFileInfo)
 
             // Generate VBI data for the dummy output frame
             if (m_isDiscCav) {
+                // CAV
                 firstSourceMetadata.vbi.inUse = true;
                 firstSourceMetadata.vbi.vbiData.resize(3);
                 firstSourceMetadata.vbi.vbiData[0] = 0;
@@ -682,6 +714,7 @@ bool DiscMap::saveTargetMetadata(QFileInfo outputFileInfo)
                 secondSourceMetadata.vbi.vbiData[1] = 0;
                 secondSourceMetadata.vbi.vbiData[2] = 0;
             } else {
+                // CLV
                 firstSourceMetadata.vbi.inUse = true;
                 firstSourceMetadata.vbi.vbiData.resize(3);
                 firstSourceMetadata.vbi.vbiData[0] = convertFrameToClvPicNo(m_frames[frameNumber].vbiFrameNumber());
