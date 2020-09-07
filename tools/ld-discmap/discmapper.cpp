@@ -437,19 +437,31 @@ void DiscMapper::padDiscMap(DiscMap &discMap)
                 // Is the next frame a pulldown?
                 if (discMap.isPulldown(frameNumber + 1)) {
                     if (discMap.vbiFrameNumber(frameNumber) + 1 != discMap.vbiFrameNumber(frameNumber + 2)) {
-                        qDebug() << "Sequence break over pulldown: Current VBI frame is" << discMap.vbiFrameNumber(frameNumber) <<
-                                    "next frame (+1) is" << discMap.vbiFrameNumber(frameNumber + 2) << "gap of" <<
-                                    discMap.vbiFrameNumber(frameNumber + 2) - discMap.vbiFrameNumber(frameNumber) << "frames";
+                        if ((discMap.vbiFrameNumber(frameNumber + 2) - discMap.vbiFrameNumber(frameNumber)) != 0) {
+                            qDebug() << "Sequence break over pulldown: Current VBI frame is" << discMap.vbiFrameNumber(frameNumber) <<
+                                        "next frame (+1) is" << discMap.vbiFrameNumber(frameNumber + 2) << "gap of" <<
+                                        discMap.vbiFrameNumber(frameNumber + 2) - discMap.vbiFrameNumber(frameNumber) << "frames";
 
-                        numberOfGaps++;
-                        qint32 missingFrames = discMap.vbiFrameNumber(frameNumber + 2) - discMap.vbiFrameNumber(frameNumber);
-                        totalMissingFrames += missingFrames;
+                            numberOfGaps++;
+                            qint32 missingFrames = discMap.vbiFrameNumber(frameNumber + 2) - discMap.vbiFrameNumber(frameNumber);
+                            totalMissingFrames += missingFrames;
 
-                        // Add to the gap list
-                        startFrame.append(frameNumber);
-                        paddingLength.append(missingFrames);
+                            // Add to the gap list
+                            startFrame.append(frameNumber);
+                            paddingLength.append(missingFrames);
+                        } else {
+                            // Got a gap of 0????
 
-
+                            // There seems to be an edge case here (issue 539) that caused a crash.  The case seems to be that
+                            // there is a pulldown but the two frames on either side of the pull down have the same VBI frame
+                            // number, resulting in a gap of 0.  Need to find a better test case for this so, for now, let's just
+                            // quit with grace
+                            if ((discMap.vbiFrameNumber(frameNumber + 2) - discMap.vbiFrameNumber(frameNumber)) == 0) {
+                               qInfo() << "Analysis got a gap of 0 - this is a edge case reported in issue 539.  If you are";
+                               qInfo() << "seeing this then you have a useful TBC that can be diagnosed... Please take the";
+                               qInfo() << "to make your TBC file available to the developers so we can cure this bug.";
+                            }
+                        }
                     }
                 } else {
                     // Check if this is a CLV IEC ammendment 2 timecode gap

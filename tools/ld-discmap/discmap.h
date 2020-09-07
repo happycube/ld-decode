@@ -88,7 +88,8 @@ private:
     bool m_isDiscCav;
     qint32 m_numberOfPulldowns;
     qint32 m_videoFieldLength;
-    qint32 m_audioFieldLength;
+    qint32 m_audioFieldByteLength;
+    qint32 m_audioFieldSampleLength;
 
     QVector<Frame> m_frames;
     LdDecodeMetaData *ldDecodeMetaData;

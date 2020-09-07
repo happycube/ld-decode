@@ -95,14 +95,16 @@ DiscMap::DiscMap(const QFileInfo &metadataFileInfo, const bool &reverseFieldOrde
         // 50 fields per second
         // 44,100 / 50 = 882 * 2 = 1764
         // L/R channels = 1764 * 2 =
-        m_audioFieldLength = 3528;
+        m_audioFieldByteLength = 3528;
+        m_audioFieldSampleLength = 882;
     } else {
         // Disc is NTSC:
         // 44,100 samples per second
         // 60000/1001 fields per second
         // 44100 / (60000/1001) = 735.735 * 2 = 1472
         // L/R channels = 1472 * 2 =
-        m_audioFieldLength = 2944;
+        m_audioFieldByteLength = 2944;
+        m_audioFieldSampleLength = 736;
     }
 
     // Get the disc type (CAV/CLV)
@@ -586,7 +588,7 @@ qint32 DiscMap::getVideoFieldLength()
 // a best guess
 qint32 DiscMap::getAudioFieldLength()
 {
-    return m_audioFieldLength;
+    return m_audioFieldByteLength;
 }
 
 // Get first field number
@@ -610,12 +612,6 @@ qint32 DiscMap::getSecondFieldNumber(qint32 frameNumber) const
 }
 
 // Save the target metadata from the disc map
-
-
-// Add number of sound samples (in padded field) - CAV/CLV flag and phase?
-// to output data (especially padded fields!)................. TODO TODO
-
-
 bool DiscMap::saveTargetMetadata(QFileInfo outputFileInfo)
 {
     qint32 notifyInterval = m_numberOfFrames / 50;
@@ -699,7 +695,8 @@ bool DiscMap::saveTargetMetadata(QFileInfo outputFileInfo)
             firstSourceMetadata.pad = true;
             secondSourceMetadata.pad = true;
 
-            // Generate VBI data for the dummy output frame
+            // Generate VBI data for the padded (dummy) output frame
+            // Also add the padded size of the audio sample data
             if (m_isDiscCav) {
                 // CAV
                 firstSourceMetadata.vbi.inUse = true;
@@ -707,12 +704,14 @@ bool DiscMap::saveTargetMetadata(QFileInfo outputFileInfo)
                 firstSourceMetadata.vbi.vbiData[0] = 0;
                 firstSourceMetadata.vbi.vbiData[1] = convertFrameToVbi(m_frames[frameNumber].vbiFrameNumber());
                 firstSourceMetadata.vbi.vbiData[2] = convertFrameToVbi(m_frames[frameNumber].vbiFrameNumber());
+                firstSourceMetadata.audioSamples = m_audioFieldSampleLength;
 
                 secondSourceMetadata.vbi.inUse = true;
                 secondSourceMetadata.vbi.vbiData.resize(3);
                 secondSourceMetadata.vbi.vbiData[0] = 0;
                 secondSourceMetadata.vbi.vbiData[1] = 0;
                 secondSourceMetadata.vbi.vbiData[2] = 0;
+                secondSourceMetadata.audioSamples = m_audioFieldSampleLength;
             } else {
                 // CLV
                 firstSourceMetadata.vbi.inUse = true;
@@ -720,12 +719,14 @@ bool DiscMap::saveTargetMetadata(QFileInfo outputFileInfo)
                 firstSourceMetadata.vbi.vbiData[0] = convertFrameToClvPicNo(m_frames[frameNumber].vbiFrameNumber());
                 firstSourceMetadata.vbi.vbiData[1] = convertFrameToClvTimeCode(m_frames[frameNumber].vbiFrameNumber());
                 firstSourceMetadata.vbi.vbiData[2] = convertFrameToClvTimeCode(m_frames[frameNumber].vbiFrameNumber());
+                firstSourceMetadata.audioSamples = m_audioFieldSampleLength;
 
                 secondSourceMetadata.vbi.inUse = true;
                 secondSourceMetadata.vbi.vbiData.resize(3);
                 secondSourceMetadata.vbi.vbiData[0] = 0;
                 secondSourceMetadata.vbi.vbiData[1] = 0;
                 secondSourceMetadata.vbi.vbiData[2] = 0;
+                secondSourceMetadata.audioSamples = m_audioFieldSampleLength;
             }
 
             // Append the fields to the metadata
