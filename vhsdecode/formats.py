@@ -56,7 +56,7 @@ SysParams_PAL_VHS['max_ire'] = 100
 
 # Mean absolute value of color burst for Automatic Chroma Control.
 # The value is eyeballed to give ok chroma level as of now, needs to be tweaked.
-SysParams_PAL_VHS['burst_abs_ref'] = 750
+SysParams_PAL_VHS['burst_abs_ref'] = 2500
 
 #0 IRE level after demodulation
 SysParams_NTSC_VHS['ire0'] = 3685000
