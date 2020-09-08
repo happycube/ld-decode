@@ -31,8 +31,6 @@ SnrAnalysisDialog::SnrAnalysisDialog(QWidget *parent) :
 {
     ui->setupUi(this);
     setWindowFlags(Qt::Window);
-    maxSnr = 0;
-    minSnr = 1000;
 
     // Set up the chart view
     plot = new QwtPlot();
@@ -55,8 +53,6 @@ SnrAnalysisDialog::~SnrAnalysisDialog()
 void SnrAnalysisDialog::startUpdate()
 {
     removeChartContents();
-    maxSnr = 0;
-    minSnr = 1000;
 }
 
 // Remove the axes and series from the chart, giving ownership back to this object
@@ -72,12 +68,6 @@ void SnrAnalysisDialog::addDataPoint(qint32 fieldNumber, qreal blackSnr, qreal w
 {
     if (!std::isnan(static_cast<float>(blackSnr))) blackPoints->append(QPointF(fieldNumber, blackSnr));
     if (!std::isnan(static_cast<float>(whiteSnr))) whitePoints->append(QPointF(fieldNumber, whiteSnr));
-
-    // Keep track of the minimum and maximum SNR values
-    if (blackSnr < minSnr) minSnr = blackSnr;
-    if (whiteSnr < minSnr) minSnr = whiteSnr;
-    if (blackSnr > maxSnr) maxSnr = blackSnr;
-    if (whiteSnr > maxSnr) maxSnr = whiteSnr;
 }
 
 // Finish the update and render the graph
@@ -94,9 +84,8 @@ void SnrAnalysisDialog::finishUpdate(qint32 numberOfFields, qint32 fieldsPerData
     plot->setAxisScale(QwtPlot::xBottom, 0, numberOfFields, (numberOfFields / 10) + 1);
     plot->setAxisTitle(QwtPlot::xBottom, "Field number");
 
-    // Define the y-axis
-    plot->setAxisScale(QwtPlot::yLeft, floor(minSnr - 1), ceil(maxSnr + 1),
-                       static_cast<qint32>(ceil(maxSnr + 1) - floor(minSnr - 1) + 1) / 10);
+    // Define the y-axis (with a fixed scale)
+    plot->setAxisScale(QwtPlot::yLeft, 26, 48, 2);
     plot->setAxisTitle(QwtPlot::yLeft, "SNR (in dB)");
 
     // Attach the black curve data to the chart
