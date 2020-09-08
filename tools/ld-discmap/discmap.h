@@ -63,16 +63,21 @@ public:
     qreal frameQuality(qint32 frameNumber) const;
     bool isPadded(qint32 frameNumber) const;
     bool isClvOffset(qint32 frameNumber) const;
+    bool isPhaseCorrect(qint32 frameNumber) const;
+    bool isPhaseRepeating(qint32 frameNumber) const;
 
     void setMarkedForDeletion(qint32 frameNumber);
     qint32 flush();
     void sort();
     void debugFrameDetails(qint32 frameNumber);
     void addPadding(qint32 startFrame, qint32 numberOfFrames);
-    qint32 getFieldLength();
+    qint32 getVideoFieldLength();
+    qint32 getAudioFieldLength();
 
     qint32 getFirstFieldNumber(qint32 frameNumber) const;
     qint32 getSecondFieldNumber(qint32 frameNumber) const;
+    qint32 getFirstFieldPhase(qint32 frameNumber) const;
+    qint32 getSecondFieldPhase(qint32 frameNumber) const;
 
     bool saveTargetMetadata(QFileInfo outputFileInfo);
 
@@ -86,7 +91,9 @@ private:
     bool m_isDiscPal;
     bool m_isDiscCav;
     qint32 m_numberOfPulldowns;
-    qint32 m_fieldLength;
+    qint32 m_videoFieldLength;
+    qint32 m_audioFieldByteLength;
+    qint32 m_audioFieldSampleLength;
 
     QVector<Frame> m_frames;
     LdDecodeMetaData *ldDecodeMetaData;

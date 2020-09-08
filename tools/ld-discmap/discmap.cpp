@@ -59,8 +59,8 @@ DiscMap::DiscMap(const QFileInfo &metadataFileInfo, const bool &reverseFieldOrde
         return;
     }
 
-    // Set the field length
-    m_fieldLength = ldDecodeMetaData->getVideoParameters().fieldWidth *
+    // Set the video field length
+    m_videoFieldLength = ldDecodeMetaData->getVideoParameters().fieldWidth *
             ldDecodeMetaData->getVideoParameters().fieldHeight;
 
     // Resize the frame store
@@ -87,6 +87,25 @@ DiscMap::DiscMap(const QFileInfo &metadataFileInfo, const bool &reverseFieldOrde
     // Get the source format (PAL/NTSC)
     if (ldDecodeMetaData->getVideoParameters().isSourcePal) m_isDiscPal = true;
     else m_isDiscPal = false;
+
+    // Set the audio field length
+    if (m_isDiscPal) {
+        // Disc is PAL:
+        // 44,100 samples per second
+        // 50 fields per second
+        // 44,100 / 50 = 882 * 2 = 1764
+        // L/R channels = 1764 * 2 =
+        m_audioFieldByteLength = 3528;
+        m_audioFieldSampleLength = 882;
+    } else {
+        // Disc is NTSC:
+        // 44,100 samples per second
+        // 60000/1001 fields per second
+        // 44100 / (60000/1001) = 735.735 * 2 = 1472
+        // L/R channels = 1472 * 2 =
+        m_audioFieldByteLength = 2944;
+        m_audioFieldSampleLength = 736;
+    }
 
     // Get the disc type (CAV/CLV)
     qint32 framesToCheck = 100;
@@ -302,7 +321,13 @@ DiscMap::DiscMap(const QFileInfo &metadataFileInfo, const bool &reverseFieldOrde
                                   ldDecodeMetaData->getField(ldDecodeMetaData->getSecondFieldNumber(frameNumber + 1)).syncConf) / 2;
 
         m_frames[frameNumber].frameQuality((bsnrPercent + penaltyPercent + static_cast<qreal>(syncConfPercent) + (frameDoPercent * 1000.0)) / 1004.0);
-        qDebug() << "Frame:" << frameNumber << bsnrPercent << penaltyPercent << syncConfPercent << frameDoPercent << "quality =" << m_frames[frameNumber].frameQuality();
+        //qDebug() << "Frame:" << frameNumber << bsnrPercent << penaltyPercent << syncConfPercent << frameDoPercent << "quality =" << m_frames[frameNumber].frameQuality();
+    }
+
+    // Record the phase for both fields of each frame
+    for (qint32 frameNumber = 0; frameNumber < m_numberOfFrames; frameNumber++) {
+        m_frames[frameNumber].firstFieldPhase(ldDecodeMetaData->getField(ldDecodeMetaData->getFirstFieldNumber(frameNumber + 1)).fieldPhaseID);
+        m_frames[frameNumber].secondFieldPhase(ldDecodeMetaData->getField(ldDecodeMetaData->getSecondFieldNumber(frameNumber + 1)).fieldPhaseID);
     }
 
 }
@@ -481,6 +506,67 @@ bool DiscMap::isClvOffset(qint32 frameNumber) const
     return m_frames[frameNumber].isClvOffset();
 }
 
+// Return true if the phase of the frame is correct according to the leading and trailing frames
+// Note: This checks that:
+//  The second field of the preceeding frame phase is -1 from the first field of the current frame
+//  The second field of the current frame is -1 from the first field of the following frame
+bool DiscMap::isPhaseCorrect(qint32 frameNumber) const
+{
+    qint32 expectedNextPhase = -1;
+
+    if (frameNumber < 0 || frameNumber >= m_numberOfFrames) {
+        qDebug() << "isPhaseCorrect out of frameNumber range";
+        return false;
+    }
+
+    // Check that the phase of the preceeding field and the first field
+    // of the current frame are in sequence
+    if (frameNumber > 0) { // not the first frame
+        expectedNextPhase = m_frames[frameNumber - 1].secondFieldPhase() + 1;
+        if (m_isDiscPal && expectedNextPhase == 9) expectedNextPhase = 1;
+        if (!m_isDiscPal && expectedNextPhase == 5) expectedNextPhase = 1;
+        if (m_frames[frameNumber].firstFieldPhase() != expectedNextPhase) {
+            qDebug() << "Frame number" << frameNumber << "phase sequence does not match preceeding frame! -"
+            << expectedNextPhase << "expected but got" << m_frames[frameNumber].firstFieldPhase();
+            return false;
+        }
+    }
+
+    // Check that the phase of the second field and the first
+    // field of the next frame are in sequence
+    if (frameNumber != m_numberOfFrames) { // not the last frame
+        expectedNextPhase = m_frames[frameNumber].secondFieldPhase() + 1;
+        if (m_isDiscPal && expectedNextPhase == 9) expectedNextPhase = 1;
+        if (!m_isDiscPal && expectedNextPhase == 5) expectedNextPhase = 1;
+        if (m_frames[frameNumber + 1].firstFieldPhase() != expectedNextPhase) {
+            qDebug() << "Frame number" << frameNumber << "phase sequence does not match following frame! -"
+            << expectedNextPhase << "expected but got" << m_frames[frameNumber].secondFieldPhase();
+            return false;
+        }
+    }
+
+    return true;
+}
+
+// Return true if the phase of the frame is the same as the preceeding frame
+bool DiscMap::isPhaseRepeating(qint32 frameNumber) const
+{
+    if (frameNumber < 0 || frameNumber >= m_numberOfFrames) {
+        qDebug() << "isPhaseCorrect out of frameNumber range";
+        return false;
+    }
+
+    if (frameNumber > 0) { // not the first frame
+        if ((m_frames[frameNumber].firstFieldPhase() == m_frames[frameNumber - 1].firstFieldPhase()) &&
+                (m_frames[frameNumber].secondFieldPhase() == m_frames[frameNumber - 1].secondFieldPhase())) return true;
+    } else {
+        // Frame number 0 can never be a repeat of the previous frame`
+        return true;
+    }
+
+    return false;
+}
+
 // Flush the frames (delete anything marked for deletion)
 // Returns the number of frames deleted
 qint32 DiscMap::flush()
@@ -558,10 +644,18 @@ void DiscMap::addPadding(qint32 startFrame, qint32 numberOfFrames)
     m_numberOfFrames = m_frames.size();
 }
 
-// Method to get the current field length from the metadata
-qint32 DiscMap::getFieldLength()
+// Method to get the current video field length from the metadata
+qint32 DiscMap::getVideoFieldLength()
 {
-    return m_fieldLength;
+    return m_videoFieldLength;
+}
+
+// Method to get the current audio field length (in bytes) from the metadata
+// Note: This acutally varies from field to field, so this provides
+// a best guess
+qint32 DiscMap::getAudioFieldLength()
+{
+    return m_audioFieldByteLength;
 }
 
 // Get first field number
@@ -582,6 +676,26 @@ qint32 DiscMap::getSecondFieldNumber(qint32 frameNumber) const
         return false;
     }
     return m_frames[frameNumber].secondField();
+}
+
+// Get first field phase
+qint32 DiscMap::getFirstFieldPhase(qint32 frameNumber) const
+{
+    if (frameNumber < 0 || frameNumber >= m_numberOfFrames) {
+        qDebug() << "getFirstFieldPhase out of frameNumber range";
+        return false;
+    }
+    return m_frames[frameNumber].firstFieldPhase();
+}
+
+// Get second field phase
+qint32 DiscMap::getSecondFieldPhase(qint32 frameNumber) const
+{
+    if (frameNumber < 0 || frameNumber >= m_numberOfFrames) {
+        qDebug() << "getSecondFieldPhase out of frameNumber range";
+        return false;
+    }
+    return m_frames[frameNumber].secondFieldPhase();
 }
 
 // Save the target metadata from the disc map
@@ -668,31 +782,38 @@ bool DiscMap::saveTargetMetadata(QFileInfo outputFileInfo)
             firstSourceMetadata.pad = true;
             secondSourceMetadata.pad = true;
 
-            // Generate VBI data for the dummy output frame
+            // Generate VBI data for the padded (dummy) output frame
+            // Also add the padded size of the audio sample data
             if (m_isDiscCav) {
+                // CAV
                 firstSourceMetadata.vbi.inUse = true;
                 firstSourceMetadata.vbi.vbiData.resize(3);
                 firstSourceMetadata.vbi.vbiData[0] = 0;
                 firstSourceMetadata.vbi.vbiData[1] = convertFrameToVbi(m_frames[frameNumber].vbiFrameNumber());
                 firstSourceMetadata.vbi.vbiData[2] = convertFrameToVbi(m_frames[frameNumber].vbiFrameNumber());
+                firstSourceMetadata.audioSamples = m_audioFieldSampleLength;
 
                 secondSourceMetadata.vbi.inUse = true;
                 secondSourceMetadata.vbi.vbiData.resize(3);
                 secondSourceMetadata.vbi.vbiData[0] = 0;
                 secondSourceMetadata.vbi.vbiData[1] = 0;
                 secondSourceMetadata.vbi.vbiData[2] = 0;
+                secondSourceMetadata.audioSamples = m_audioFieldSampleLength;
             } else {
+                // CLV
                 firstSourceMetadata.vbi.inUse = true;
                 firstSourceMetadata.vbi.vbiData.resize(3);
                 firstSourceMetadata.vbi.vbiData[0] = convertFrameToClvPicNo(m_frames[frameNumber].vbiFrameNumber());
                 firstSourceMetadata.vbi.vbiData[1] = convertFrameToClvTimeCode(m_frames[frameNumber].vbiFrameNumber());
                 firstSourceMetadata.vbi.vbiData[2] = convertFrameToClvTimeCode(m_frames[frameNumber].vbiFrameNumber());
+                firstSourceMetadata.audioSamples = m_audioFieldSampleLength;
 
                 secondSourceMetadata.vbi.inUse = true;
                 secondSourceMetadata.vbi.vbiData.resize(3);
                 secondSourceMetadata.vbi.vbiData[0] = 0;
                 secondSourceMetadata.vbi.vbiData[1] = 0;
                 secondSourceMetadata.vbi.vbiData[2] = 0;
+                secondSourceMetadata.audioSamples = m_audioFieldSampleLength;
             }
 
             // Append the fields to the metadata

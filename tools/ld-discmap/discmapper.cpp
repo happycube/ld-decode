@@ -80,6 +80,9 @@ bool DiscMapper::process(QFileInfo _inputFileInfo, QFileInfo _inputMetadataFileI
     // Remove lead-in and lead-out frames from the map
     removeLeadInOut(discMap);
 
+    // Remove any frames that have incorrected intra-frame phase sequences
+    removeInvalidFramesByPhase(discMap);
+
     // Detect and correct bad VBI frame numbers using sequence analysis
     correctVbiFrameNumbersUsingSequenceAnalysis(discMap);
 
@@ -158,6 +161,30 @@ void DiscMapper::removeLeadInOut(DiscMap &discMap)
     discMap.flush();
 }
 
+// Method to check that each frame is a valid set of fields according to phase
+void DiscMapper::removeInvalidFramesByPhase(DiscMap &discMap)
+{
+    qInfo() << "Removing invalid frames by phase analysis...";
+
+    qint32 removals = 0;
+
+    for (qint32 frameNumber = 0; frameNumber < discMap.numberOfFrames(); frameNumber++) {
+        // Check that the phase of the first field and second field of the current frame are in sequence
+        qint32 expectedNextPhase = discMap.getFirstFieldPhase(frameNumber) + 1; //   m_frames[frameNumber].firstFieldPhase() + 1;
+        if (discMap.isDiscPal() && expectedNextPhase == 9) expectedNextPhase = 1;
+        if (!discMap.isDiscPal() && expectedNextPhase == 5) expectedNextPhase = 1;
+        if (discMap.getSecondFieldPhase(frameNumber) != expectedNextPhase) {
+            qDebug() << "VBI Frame number" << discMap.vbiFrameNumber(frameNumber) << "(" << frameNumber << ") first and second field phases are not in sequence! -"
+            << expectedNextPhase << "expected but got" << discMap.getSecondFieldPhase(frameNumber);
+            discMap.setMarkedForDeletion(frameNumber);
+            removals++;
+        }
+    }
+
+    qInfo() << "Removing" << removals << "frames marked as invalid due to incorrect phase sequence";
+    discMap.flush();
+}
+
 // Method to find and correct bad VBI numbers using sequence analysis
 void DiscMapper::correctVbiFrameNumbersUsingSequenceAnalysis(DiscMap &discMap)
 {
@@ -229,45 +256,54 @@ void DiscMapper::correctVbiFrameNumbersUsingSequenceAnalysis(DiscMap &discMap)
                     for (qint32 i = 0; i < scanDistance; i++) {
                         if (!vbiGood[i]) {
                             inError = true;
-                            // Only correct non-pulldown frame numbers
+                            // Out of sequence frame number
                             if (!discMap.isPulldown(frameNumber + i + 1)) {
+                                // Not a pulldown
+
                                 // Ensure this is an error, not a repeating frame
-                                if (discMap.vbiFrameNumber(frameNumber + i + 1) != discMap.vbiFrameNumber(frameNumber + i)) {
+                                if ((discMap.vbiFrameNumber(frameNumber + i + 1) != discMap.vbiFrameNumber(frameNumber + i)) && discMap.isPhaseCorrect(frameNumber + i + 1)) {
                                     qDebug() << "  Position BAD   " << i << "Seq." <<
                                                 discMap.seqFrameNumber(frameNumber + i + 1) <<
-                                                "VBI was" << discMap.vbiFrameNumber(frameNumber + i + 1) << "now" << (startOfSequence + expectedIncrement);
+                                                "VBI was" << discMap.vbiFrameNumber(frameNumber + i + 1) << "now" << (startOfSequence + expectedIncrement)  <<
+                                                "- Phase" << discMap.getFirstFieldPhase(frameNumber + i + 1) << "/" <<
+                                                discMap.getSecondFieldPhase(frameNumber + i + 1);
                                     discMap.setVbiFrameNumber(frameNumber + i + 1, startOfSequence + expectedIncrement);
                                     if (!discMap.isPulldown(frameNumber + i + 1)) expectedIncrement++;
                                     corrections++;
                                 } else {
-                                    // Repeating frame
-                                    qDebug() << "  Position REPEAT" << i << "Seq." <<
-                                                discMap.seqFrameNumber(frameNumber + i + 1) <<
-                                                "VBI" << discMap.vbiFrameNumber(frameNumber + i + 1);
-                                    qDebug() << "  Ignoring sequence break as frame is repeating rather than out of sequence";
+                                    // Look at the phases to ensure this really is a repeating frame
+                                    if (discMap.isPhaseRepeating(frameNumber + i + 1)) {
+                                        // Repeating frame
+                                        qDebug() << "  Position REPEAT" << i << "Seq." <<
+                                                    discMap.seqFrameNumber(frameNumber + i + 1) <<
+                                                    "VBI" << discMap.vbiFrameNumber(frameNumber + i + 1)  <<
+                                                    "- Phase" << discMap.getFirstFieldPhase(frameNumber + i + 1) << "/" <<
+                                                    discMap.getSecondFieldPhase(frameNumber + i + 1);
+                                        qDebug() << "  Ignoring sequence break as frame is repeating (VBI and phase) rather than out of sequence";
 
-                                    // If we have a repeat, this probably isn't a sequence issue, so we give up
-                                    if (inError) break;
+                                        // If we have a repeat, this probably isn't a sequence issue, so we give up
+                                        if (inError) break;
+                                    }
                                 }
                             } else {
-                                // Out of sequence frame number
-                                if (!discMap.isPulldown(frameNumber + i + 1))
-                                    qDebug() << "  Position BAD   " << i << "Seq." <<
-                                                discMap.seqFrameNumber(frameNumber + i + 1) <<
-                                                "VBI" << discMap.vbiFrameNumber(frameNumber + i + 1);
-                                else qDebug() << "  Position BAD   " << i << "Seq." <<
-                                                 discMap.seqFrameNumber(frameNumber + i + 1) <<
-                                                 "VBI pulldown";
-
-                                if (!discMap.isPulldown(frameNumber + i + 1)) expectedIncrement++;
+                                // A pulldown (no frame number)
+                                qDebug() << "  Position BAD   " << i << "Seq." <<
+                                            discMap.seqFrameNumber(frameNumber + i + 1) <<
+                                            "VBI pulldown" <<
+                                            "- Phase" << discMap.getFirstFieldPhase(frameNumber + i + 1) << "/" <<
+                                            discMap.getSecondFieldPhase(frameNumber + i + 1);
                             }
                         } else {
                             // In sequence frame number
                             if (!discMap.isPulldown(frameNumber + i + 1))
                                 qDebug() << "  Position GOOD  " << i << "Seq." << discMap.seqFrameNumber(frameNumber + i + 1) <<
-                                            "VBI" << discMap.vbiFrameNumber(frameNumber + i + 1);
+                                            "VBI" << discMap.vbiFrameNumber(frameNumber + i + 1) <<
+                                            "- Phase" << discMap.getFirstFieldPhase(frameNumber + i + 1) << "/" <<
+                                            discMap.getSecondFieldPhase(frameNumber + i + 1);
                             else qDebug() << "  Position GOOD  " << i << "Seq." << discMap.seqFrameNumber(frameNumber + i + 1) <<
-                                             "VBI pulldown";
+                                             "VBI pulldown"  <<
+                                             "- Phase" << discMap.getFirstFieldPhase(frameNumber + i + 1) << "/" <<
+                                             discMap.getSecondFieldPhase(frameNumber + i + 1);
 
                             if (!discMap.isPulldown(frameNumber + i + 1)) expectedIncrement++;
 
@@ -437,19 +473,31 @@ void DiscMapper::padDiscMap(DiscMap &discMap)
                 // Is the next frame a pulldown?
                 if (discMap.isPulldown(frameNumber + 1)) {
                     if (discMap.vbiFrameNumber(frameNumber) + 1 != discMap.vbiFrameNumber(frameNumber + 2)) {
-                        qDebug() << "Sequence break over pulldown: Current VBI frame is" << discMap.vbiFrameNumber(frameNumber) <<
-                                    "next frame (+1) is" << discMap.vbiFrameNumber(frameNumber + 2) << "gap of" <<
-                                    discMap.vbiFrameNumber(frameNumber + 2) - discMap.vbiFrameNumber(frameNumber) << "frames";
+                        if ((discMap.vbiFrameNumber(frameNumber + 2) - discMap.vbiFrameNumber(frameNumber)) != 0) {
+                            qDebug() << "Sequence break over pulldown: Current VBI frame is" << discMap.vbiFrameNumber(frameNumber) <<
+                                        "next frame (+1) is" << discMap.vbiFrameNumber(frameNumber + 2) << "gap of" <<
+                                        discMap.vbiFrameNumber(frameNumber + 2) - discMap.vbiFrameNumber(frameNumber) << "frames";
 
-                        numberOfGaps++;
-                        qint32 missingFrames = discMap.vbiFrameNumber(frameNumber + 2) - discMap.vbiFrameNumber(frameNumber);
-                        totalMissingFrames += missingFrames;
+                            numberOfGaps++;
+                            qint32 missingFrames = discMap.vbiFrameNumber(frameNumber + 2) - discMap.vbiFrameNumber(frameNumber);
+                            totalMissingFrames += missingFrames;
 
-                        // Add to the gap list
-                        startFrame.append(frameNumber);
-                        paddingLength.append(missingFrames);
+                            // Add to the gap list
+                            startFrame.append(frameNumber);
+                            paddingLength.append(missingFrames);
+                        } else {
+                            // Got a gap of 0????
 
-
+                            // There seems to be an edge case here (issue 539) that caused a crash.  The case seems to be that
+                            // there is a pulldown but the two frames on either side of the pull down have the same VBI frame
+                            // number, resulting in a gap of 0.  Need to find a better test case for this so, for now, let's just
+                            // quit with grace
+                            if ((discMap.vbiFrameNumber(frameNumber + 2) - discMap.vbiFrameNumber(frameNumber)) == 0) {
+                               qInfo() << "Analysis got a gap of 0 - this is a edge case reported in issue 539.  If you are";
+                               qInfo() << "seeing this then you have a useful TBC that can be diagnosed... Please take the";
+                               qInfo() << "to make your TBC file available to the developers so we can cure this bug.";
+                            }
+                        }
                     }
                 } else {
                     // Check if this is a CLV IEC ammendment 2 timecode gap
@@ -553,7 +601,7 @@ bool DiscMapper::saveDiscMap(DiscMap &discMap)
 {
     // Open the input video file
     SourceVideo sourceVideo;
-    sourceVideo.open(inputFileInfo.filePath(), discMap.getFieldLength());
+    sourceVideo.open(inputFileInfo.filePath(), discMap.getVideoFieldLength());
 
     // Open the output video file
     QFile targetVideo(outputFileInfo.filePath());
@@ -591,25 +639,11 @@ bool DiscMapper::saveDiscMap(DiscMap &discMap)
 
     // Make a dummy video field to use when outputting padded frames
     SourceVideo::Data missingFieldData;
-    missingFieldData.fill(0, discMap.getFieldLength());
+    missingFieldData.fill(0, discMap.getVideoFieldLength());
 
     // Make a dummy audio field to use when outputting padded frames
     QByteArray missingFieldAudioData;
-    if (discMap.isDiscPal()) {
-        // Disc is PAL:
-        // 44,100 samples per second
-        // 50 fields per second
-        // 44,100 / 50 = 882 * 2 = 1764
-        // L/R channels = 1764 * 2 =
-        missingFieldAudioData.fill(0, 3528);
-    } else {
-        // Disc is NTSC:
-        // 44,100 samples per second
-        // 60000/1001 fields per second
-        // 44100 / (60000/1001) = 735.735 * 2 = 1472
-        // L/R channels = 1472 * 2 =
-        missingFieldAudioData.fill(0, 2944);
-    }
+    missingFieldAudioData.fill(0, discMap.getAudioFieldLength());
 
     // Create the output video file
     SourceVideo::Data sourceFirstField;

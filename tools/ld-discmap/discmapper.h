@@ -57,6 +57,7 @@ private:
     bool noAudio;
 
     void removeLeadInOut(DiscMap &discMap);
+    void removeInvalidFramesByPhase(DiscMap &discMap);
     void correctVbiFrameNumbersUsingSequenceAnalysis(DiscMap &discMap);
     void removeDuplicateNumberedFrames(DiscMap &discMap);
     void numberPulldownFrames(DiscMap &discMap);
