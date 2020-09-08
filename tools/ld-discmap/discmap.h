@@ -64,6 +64,7 @@ public:
     bool isPadded(qint32 frameNumber) const;
     bool isClvOffset(qint32 frameNumber) const;
     bool isPhaseCorrect(qint32 frameNumber) const;
+    bool isPhaseRepeating(qint32 frameNumber) const;
 
     void setMarkedForDeletion(qint32 frameNumber);
     qint32 flush();
