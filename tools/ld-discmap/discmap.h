@@ -63,6 +63,7 @@ public:
     qreal frameQuality(qint32 frameNumber) const;
     bool isPadded(qint32 frameNumber) const;
     bool isClvOffset(qint32 frameNumber) const;
+    bool isPhaseCorrect(qint32 frameNumber) const;
 
     void setMarkedForDeletion(qint32 frameNumber);
     qint32 flush();
@@ -74,6 +75,8 @@ public:
 
     qint32 getFirstFieldNumber(qint32 frameNumber) const;
     qint32 getSecondFieldNumber(qint32 frameNumber) const;
+    qint32 getFirstFieldPhase(qint32 frameNumber) const;
+    qint32 getSecondFieldPhase(qint32 frameNumber) const;
 
     bool saveTargetMetadata(QFileInfo outputFileInfo);
 

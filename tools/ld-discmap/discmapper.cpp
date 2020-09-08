@@ -80,6 +80,9 @@ bool DiscMapper::process(QFileInfo _inputFileInfo, QFileInfo _inputMetadataFileI
     // Remove lead-in and lead-out frames from the map
     removeLeadInOut(discMap);
 
+    // Remove any frames that have incorrected intra-frame phase sequences
+    removeInvalidFramesByPhase(discMap);
+
     // Detect and correct bad VBI frame numbers using sequence analysis
     correctVbiFrameNumbersUsingSequenceAnalysis(discMap);
 
@@ -155,6 +158,30 @@ void DiscMapper::removeLeadInOut(DiscMap &discMap)
     }
 
     qInfo() << "Removing" << leadInOutCounter << "frames marked as lead in/out";
+    discMap.flush();
+}
+
+// Method to check that each frame is a valid set of fields according to phase
+void DiscMapper::removeInvalidFramesByPhase(DiscMap &discMap)
+{
+    qInfo() << "Removing invalid frames by phase analysis...";
+
+    qint32 removals = 0;
+
+    for (qint32 frameNumber = 0; frameNumber < discMap.numberOfFrames(); frameNumber++) {
+        // Check that the phase of the first field and second field of the current frame are in sequence
+        qint32 expectedNextPhase = discMap.getFirstFieldPhase(frameNumber) + 1; //   m_frames[frameNumber].firstFieldPhase() + 1;
+        if (discMap.isDiscPal() && expectedNextPhase == 9) expectedNextPhase = 1;
+        if (!discMap.isDiscPal() && expectedNextPhase == 5) expectedNextPhase = 1;
+        if (discMap.getSecondFieldPhase(frameNumber) != expectedNextPhase) {
+            qDebug() << "Frame number" << frameNumber << "first and second field phases are not in sequence! -"
+            << expectedNextPhase << "expected but got" << discMap.getSecondFieldPhase(frameNumber);
+            discMap.setMarkedForDeletion(frameNumber);
+            removals++;
+        }
+    }
+
+    qInfo() << "Removing" << removals << "frames marked as invalid";
     discMap.flush();
 }
 

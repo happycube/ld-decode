@@ -324,6 +324,12 @@ DiscMap::DiscMap(const QFileInfo &metadataFileInfo, const bool &reverseFieldOrde
         qDebug() << "Frame:" << frameNumber << bsnrPercent << penaltyPercent << syncConfPercent << frameDoPercent << "quality =" << m_frames[frameNumber].frameQuality();
     }
 
+    // Record the phase for both fields of each frame
+    for (qint32 frameNumber = 0; frameNumber < m_numberOfFrames; frameNumber++) {
+        m_frames[frameNumber].firstFieldPhase(ldDecodeMetaData->getField(ldDecodeMetaData->getFirstFieldNumber(frameNumber + 1)).fieldPhaseID);
+        m_frames[frameNumber].secondFieldPhase(ldDecodeMetaData->getField(ldDecodeMetaData->getSecondFieldNumber(frameNumber + 1)).fieldPhaseID);
+    }
+
 }
 
 DiscMap::~DiscMap()
@@ -500,6 +506,60 @@ bool DiscMap::isClvOffset(qint32 frameNumber) const
     return m_frames[frameNumber].isClvOffset();
 }
 
+// Return true if the phase of the frame is correct
+// Note: This checks that:
+//  The second field of the preceeding frame phase is -1 from the first field of the current frame
+//  The first field of the current frame is -1 from the second field of the current frame
+//  The second field of the current frame is -1 from the first field of the following frame
+bool DiscMap::isPhaseCorrect(qint32 frameNumber) const
+{
+    qint32 expectedNextPhase = -1;
+
+    if (frameNumber < 0 || frameNumber >= m_numberOfFrames) {
+        qDebug() << "isPhaseCorrect out of frameNumber range";
+        return false;
+    }
+
+    // Check that the phase of the preceeding field and the first field
+    // of the current frame are in sequence
+    if (frameNumber > 0) { // not the first frame
+        expectedNextPhase = m_frames[frameNumber - 1].secondFieldPhase() + 1;
+        if (m_isDiscPal && expectedNextPhase == 9) expectedNextPhase = 1;
+        if (!m_isDiscPal && expectedNextPhase == 5) expectedNextPhase = 1;
+        if (m_frames[frameNumber].firstFieldPhase() != expectedNextPhase) {
+            qDebug() << "Frame number" << frameNumber << "phase sequence does not match preceeding frame! -"
+            << expectedNextPhase << "expected but got" << m_frames[frameNumber].firstFieldPhase();
+            return false;
+        }
+    }
+
+    // Check that the phase of the first field and second field
+    // of the current frame are in sequence
+    expectedNextPhase = m_frames[frameNumber].firstFieldPhase() + 1;
+    if (m_isDiscPal && expectedNextPhase == 9) expectedNextPhase = 1;
+    if (!m_isDiscPal && expectedNextPhase == 5) expectedNextPhase = 1;
+    if (m_frames[frameNumber].secondFieldPhase() != expectedNextPhase) {
+        qDebug() << "Frame number" << frameNumber << "first and second field phases are not in sequence! -"
+        << expectedNextPhase << "expected but got" << m_frames[frameNumber].secondFieldPhase();
+        return false;
+    }
+
+    // Check that the phase of the second field and the first
+    // field of the next frame are in sequence
+    if (frameNumber != m_numberOfFrames) { // not the last frame
+        expectedNextPhase = m_frames[frameNumber].secondFieldPhase() + 1;
+        if (m_isDiscPal && expectedNextPhase == 9) expectedNextPhase = 1;
+        if (!m_isDiscPal && expectedNextPhase == 5) expectedNextPhase = 1;
+        if (m_frames[frameNumber + 1].firstFieldPhase() != expectedNextPhase) {
+            qDebug() << "Frame number" << frameNumber << "phase sequence does not match following frame! -"
+            << expectedNextPhase << "expected but got" << m_frames[frameNumber].secondFieldPhase();
+            return false;
+        }
+    }
+
+    return true;
+}
+
 // Flush the frames (delete anything marked for deletion)
 // Returns the number of frames deleted
 qint32 DiscMap::flush()
@@ -609,6 +669,26 @@ qint32 DiscMap::getSecondFieldNumber(qint32 frameNumber) const
         return false;
     }
     return m_frames[frameNumber].secondField();
+}
+
+// Get first field phase
+qint32 DiscMap::getFirstFieldPhase(qint32 frameNumber) const
+{
+    if (frameNumber < 0 || frameNumber >= m_numberOfFrames) {
+        qDebug() << "getFirstFieldPhase out of frameNumber range";
+        return false;
+    }
+    return m_frames[frameNumber].firstFieldPhase();
+}
+
+// Get second field phase
+qint32 DiscMap::getSecondFieldPhase(qint32 frameNumber) const
+{
+    if (frameNumber < 0 || frameNumber >= m_numberOfFrames) {
+        qDebug() << "getSecondFieldPhase out of frameNumber range";
+        return false;
+    }
+    return m_frames[frameNumber].secondFieldPhase();
 }
 
 // Save the target metadata from the disc map
