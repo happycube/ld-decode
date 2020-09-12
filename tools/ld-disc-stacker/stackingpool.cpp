@@ -1,14 +1,13 @@
 /************************************************************************
 
-    correctorpool.cpp
+    stackingpool.cpp
 
-    ld-dropout-correct - Dropout correction for ld-decode
-    Copyright (C) 2018-2020 Simon Inns
-    Copyright (C) 2019-2020 Adam Sampson
+    ld-disc-stacker - Disc stacking for ld-decode
+    Copyright (C) 2020 Simon Inns
 
     This file is part of ld-decode-tools.
 
-    ld-dropout-correct is free software: you can redistribute it and/or
+    ld-disc-stacker is free software: you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
     published by the Free Software Foundation, either version 3 of the
     License, or (at your option) any later version.
@@ -23,18 +22,18 @@
 
 ************************************************************************/
 
-#include "correctorpool.h"
+#include "stackingpool.h"
 
-CorrectorPool::CorrectorPool(QString _outputFilename, QString _outputJsonFilename,
+StackingPool::StackingPool(QString _outputFilename, QString _outputJsonFilename,
                              qint32 _maxThreads, QVector<LdDecodeMetaData *> &_ldDecodeMetaData, QVector<SourceVideo *> &_sourceVideos,
-                             bool _reverse, bool _intraField, bool _overCorrect, QObject *parent)
+                             bool _reverse, QObject *parent)
     : QObject(parent), outputFilename(_outputFilename), outputJsonFilename(_outputJsonFilename),
-      maxThreads(_maxThreads), reverse(_reverse), intraField(_intraField), overCorrect(_overCorrect),
+      maxThreads(_maxThreads), reverse(_reverse),
       abort(false), ldDecodeMetaData(_ldDecodeMetaData), sourceVideos(_sourceVideos)
 {
 }
 
-bool CorrectorPool::process()
+bool StackingPool::process()
 {
     qInfo() << "Performing final sanity checks...";
     // Open the target video
@@ -69,23 +68,15 @@ bool CorrectorPool::process()
         }
     }
 
-    // Are we processing a multi-source dropout correction?
-    if (sourceVideos.size() > 1) {
-        qInfo() << "Performing multi-source correction... Scanning source videos for VBI frame number ranges...";
-        // Get the VBI frame range for all sources
-        if (!setMinAndMaxVbiFrames()) {
-            qInfo() << "It was not possible to determine the VBI frame number range for the source video - cannot continue!";
-            return false;
-        }
+    qInfo() << "Scanning source videos for VBI frame number ranges...";
+    // Get the VBI frame range for all sources
+    if (!setMinAndMaxVbiFrames()) {
+        qInfo() << "It was not possible to determine the VBI frame number range for the source video - cannot continue!";
+        return false;
     }
 
     // Show some information for the user
     qInfo() << "Using" << maxThreads << "threads to process" << ldDecodeMetaData[0]->getNumberOfFrames() << "frames";
-
-    // Initialise reporting
-    sameSourceConcealmentTotal = 0;
-    multiSourceConcealmentTotal = 0;
-    multiSourceCorrectionTotal = 0;
 
     // Initialise processing state
     inputFrameNumber = 1;
@@ -94,11 +85,11 @@ bool CorrectorPool::process()
     totalTimer.start();
 
     // Start a vector of decoding threads to process the video
-    qInfo() << "Beginning multi-threaded dropout correction process...";
+    qInfo() << "Beginning multi-threaded disc stacking process...";
     QVector<QThread *> threads;
     threads.resize(maxThreads);
     for (qint32 i = 0; i < maxThreads; i++) {
-        threads[i] = new DropOutCorrect(abort, *this);
+        threads[i] = new Stacker(abort, *this);
         threads[i]->start(QThread::LowPriority);
     }
 
@@ -116,10 +107,10 @@ bool CorrectorPool::process()
 
     // Show the processing speed to the user
     qreal totalSecs = (static_cast<qreal>(totalTimer.elapsed()) / 1000.0);
-    qInfo() << "Dropout correction complete -" << lastFrameNumber << "frames in" << totalSecs << "seconds (" <<
+    qInfo() << "Disc stacking complete -" << lastFrameNumber << "frames in" << totalSecs << "seconds (" <<
                lastFrameNumber / totalSecs << "FPS )";
 
-    qInfo() << "Creating JSON metadata file for drop-out corrected TBC...";
+    qInfo() << "Creating JSON metadata file for stacked TBC...";
     ldDecodeMetaData[0]->write(outputJsonFilename);
 
     // Close the target video
@@ -132,12 +123,12 @@ bool CorrectorPool::process()
 //
 // Returns true if a frame was returned, false if the end of the input has been
 // reached.
-bool CorrectorPool::getInputFrame(qint32& frameNumber,
+bool StackingPool::getInputFrame(qint32& frameNumber,
                                   QVector<qint32>& firstFieldNumber, QVector<SourceVideo::Data>& firstFieldVideoData, QVector<LdDecodeMetaData::Field>& firstFieldMetadata,
                                   QVector<qint32>& secondFieldNumber, QVector<SourceVideo::Data>& secondFieldVideoData, QVector<LdDecodeMetaData::Field>& secondFieldMetadata,
                                   QVector<LdDecodeMetaData::VideoParameters>& videoParameters,
-                                  bool& _reverse, bool& _intraField, bool& _overCorrect,
-                                  QVector<qint32>& availableSourcesForFrame, QVector<qreal>& sourceFrameQuality)
+                                  bool& _reverse,
+                                  QVector<qint32>& availableSourcesForFrame)
 {
     QMutexLocker locker(&inputMutex);
 
@@ -152,7 +143,7 @@ bool CorrectorPool::getInputFrame(qint32& frameNumber,
     // Determine the number of sources available
     qint32 numberOfSources = sourceVideos.size();
 
-    qDebug().nospace() << "CorrectorPool::getInputFrame(): Processing sequential frame number #" <<
+    qDebug().nospace() << "Processing sequential frame number #" <<
                           frameNumber << " from " << numberOfSources << " possible source(s)";
 
     // Prepare the vectors
@@ -163,7 +154,6 @@ bool CorrectorPool::getInputFrame(qint32& frameNumber,
     secondFieldVideoData.resize(numberOfSources);
     secondFieldMetadata.resize(numberOfSources);
     videoParameters.resize(numberOfSources);
-    sourceFrameQuality.resize(numberOfSources);
 
     // Get the current VBI frame number based on the first source
     qint32 currentVbiFrame = -1;
@@ -172,21 +162,13 @@ bool CorrectorPool::getInputFrame(qint32& frameNumber,
         // Determine the fields for the input frame
         firstFieldNumber[sourceNo] = -1;
         secondFieldNumber[sourceNo] = -1;
-        sourceFrameQuality[sourceNo] = -1;
 
         if (sourceNo == 0) {
             // No need to perform VBI frame number mapping on the first source
             firstFieldNumber[sourceNo] = ldDecodeMetaData[sourceNo]->getFirstFieldNumber(frameNumber);
             secondFieldNumber[sourceNo] = ldDecodeMetaData[sourceNo]->getSecondFieldNumber(frameNumber);
-
-            // Determine the frame quality (currently this is based on frame average black SNR)
-            qreal firstFrameSnr = ldDecodeMetaData[sourceNo]->getField(firstFieldNumber[sourceNo]).vitsMetrics.bPSNR;
-            qreal secondFrameSnr = ldDecodeMetaData[sourceNo]->getField(secondFieldNumber[sourceNo]).vitsMetrics.bPSNR;
-            sourceFrameQuality[sourceNo] = (firstFrameSnr + secondFrameSnr) / 2.0;
-
-            qDebug().nospace() << "CorrectorPool::getInputFrame(): Source #0 fields are " <<
-                                  firstFieldNumber[sourceNo] << "/" << secondFieldNumber[sourceNo] <<
-                                  " (quality is " << sourceFrameQuality[sourceNo] << ")";
+            qDebug().nospace() << "Source #0 fields are " <<
+                                  firstFieldNumber[sourceNo] << "/" << secondFieldNumber[sourceNo];
         } else if (currentVbiFrame >= sourceMinimumVbiFrame[sourceNo] && currentVbiFrame <= sourceMaximumVbiFrame[sourceNo]) {
             // Use VBI frame number mapping to get the same frame from the
             // current additional source
@@ -194,16 +176,10 @@ bool CorrectorPool::getInputFrame(qint32& frameNumber,
             firstFieldNumber[sourceNo] = ldDecodeMetaData[sourceNo]->getFirstFieldNumber(currentSourceFrameNumber);
             secondFieldNumber[sourceNo] = ldDecodeMetaData[sourceNo]->getSecondFieldNumber(currentSourceFrameNumber);
 
-            // Determine the frame quality (currently this is based on frame average black SNR)
-            qreal firstFrameSnr = ldDecodeMetaData[sourceNo]->getField(firstFieldNumber[sourceNo]).vitsMetrics.bPSNR;
-            qreal secondFrameSnr = ldDecodeMetaData[sourceNo]->getField(secondFieldNumber[sourceNo]).vitsMetrics.bPSNR;
-            sourceFrameQuality[sourceNo] = (firstFrameSnr + secondFrameSnr) / 2.0;
-
-            qDebug().nospace() << "CorrectorPool::getInputFrame(): Source #" << sourceNo << " has VBI frame number " << currentVbiFrame <<
-                        " and fields " << firstFieldNumber[sourceNo] << "/" << secondFieldNumber[sourceNo] <<
-                        " (quality is " << sourceFrameQuality[sourceNo] << ")";
+            qDebug().nospace() << "Source #" << sourceNo << " has VBI frame number " << currentVbiFrame <<
+                        " and fields " << firstFieldNumber[sourceNo] << "/" << secondFieldNumber[sourceNo];
         } else {
-            qDebug().nospace() << "CorrectorPool::getInputFrame(): Source #" << sourceNo << " does not contain a usable frame";
+            qDebug().nospace() << "Source #" << sourceNo << " does not contain a usable frame";
         }
 
         // If the field numbers are valid - get the rest of the required data
@@ -233,8 +209,6 @@ bool CorrectorPool::getInputFrame(qint32& frameNumber,
 
     // Set the other miscellaneous parameters
     _reverse = reverse;
-    _intraField = intraField;
-    _overCorrect = overCorrect;
 
     return true;
 }
@@ -247,11 +221,10 @@ bool CorrectorPool::getInputFrame(qint32& frameNumber,
 // whether we can now write some of them out.
 //
 // Returns true on success, false on failure.
-bool CorrectorPool::setOutputFrame(qint32 frameNumber,
+bool StackingPool::setOutputFrame(qint32 frameNumber,
                                    SourceVideo::Data firstTargetFieldData, SourceVideo::Data secondTargetFieldData,
                                    qint32 firstFieldSeqNo, qint32 secondFieldSeqNo,
-                                   qint32 sameSourceConcealment, qint32 multiSourceConcealment,
-                                   qint32 multiSourceCorrection, qint32 totalReplacementDistance)
+                                   DropOuts firstTargetFieldDropOuts, DropOuts secondTargetFieldDropouts)
 {
     QMutexLocker locker(&outputMutex);
 
@@ -261,12 +234,8 @@ bool CorrectorPool::setOutputFrame(qint32 frameNumber,
     pendingFrame.secondTargetFieldData = secondTargetFieldData;
     pendingFrame.firstFieldSeqNo = firstFieldSeqNo;
     pendingFrame.secondFieldSeqNo = secondFieldSeqNo;
-
-    // Get statistics
-    pendingFrame.sameSourceConcealment = sameSourceConcealment;
-    pendingFrame.multiSourceConcealment = multiSourceConcealment;
-    pendingFrame.multiSourceCorrection = multiSourceCorrection;
-    pendingFrame.totalReplacementDistance = totalReplacementDistance;
+    pendingFrame.firstTargetFieldDropOuts = firstTargetFieldDropOuts;
+    pendingFrame.secondTargetFieldDropOuts = secondTargetFieldDropouts;
 
     pendingOutputFrames[frameNumber] = pendingFrame;
 
@@ -294,27 +263,12 @@ bool CorrectorPool::setOutputFrame(qint32 frameNumber,
             return false;
         }
 
-        // Show debug
-        qreal avgReplacementDistance = 0;
-        if (outputFrame.sameSourceConcealment + outputFrame.multiSourceConcealment +  outputFrame.multiSourceCorrection > 0) {
-            avgReplacementDistance = static_cast<qreal>(outputFrame.totalReplacementDistance) /
-                            static_cast<qreal>(outputFrame.sameSourceConcealment + outputFrame.multiSourceConcealment +
-                                               outputFrame.multiSourceCorrection);
-            qDebug().nospace() << "Processed frame " << outputFrameNumber << " with " << outputFrame.sameSourceConcealment +
-                        outputFrame.multiSourceConcealment +
-                        outputFrame.multiSourceCorrection << " changes ("  <<
-                        outputFrame.sameSourceConcealment << ", " <<
-                        outputFrame.multiSourceConcealment << ", " <<
-                        outputFrame.multiSourceCorrection << " - avg dist. " <<
-                        avgReplacementDistance << ")";
-        } else {
-            qDebug() << "Processed frame" << outputFrameNumber << "- no dropouts";
-        }
+        // Write the new dropout data into the LdDecodeMetaData output
+        ldDecodeMetaData[0]->updateFieldDropOuts(outputFrame.firstTargetFieldDropOuts, outputFrame.firstFieldSeqNo);
+        ldDecodeMetaData[0]->updateFieldDropOuts(outputFrame.secondTargetFieldDropOuts, outputFrame.secondFieldSeqNo);
 
-        // Tally the statistics
-        multiSourceConcealmentTotal += outputFrame.multiSourceConcealment;
-        multiSourceCorrectionTotal += outputFrame.multiSourceCorrection;
-        sameSourceConcealmentTotal += outputFrame.sameSourceConcealment;
+        // Show debug
+        qDebug().nospace() << "Processed frame " << outputFrameNumber;
 
         if (outputFrameNumber % 100 == 0) {
             qInfo() << "Processed and written frame" << outputFrameNumber;
@@ -331,7 +285,7 @@ bool CorrectorPool::setOutputFrame(qint32 frameNumber,
 // Expects sourceVideos[] and ldDecodeMetaData[] to be populated
 // Note: This function returns frame number even if the disc is CLV - conversion
 // from timecodes is performed automatically.
-bool CorrectorPool::setMinAndMaxVbiFrames()
+bool StackingPool::setMinAndMaxVbiFrames()
 {
     // Determine the number of sources available
     qint32 numberOfSources = sourceVideos.size();
@@ -385,25 +339,25 @@ bool CorrectorPool::setMinAndMaxVbiFrames()
                 if (cvFrameNumber > clvMax) clvMax = cvFrameNumber;
             }
         }
-        qDebug() << "CorrectorPool::setMinAndMaxVbiFrames(): Got" << cavCount << "CAV picture codes and" << clvCount << "CLV timecodes";
+        qDebug() << "StackingPool::setMinAndMaxVbiFrames(): Got" << cavCount << "CAV picture codes and" << clvCount << "CLV timecodes";
 
         // If the metadata has no picture numbers or time-codes, we cannot use the source
         if (cavCount == 0 && clvCount == 0) {
-            qDebug() << "CorrectorPool::setMinAndMaxVbiFrames(): Source does not seem to contain valid CAV picture numbers or CLV time-codes - cannot process";
+            qDebug() << "StackingPool::setMinAndMaxVbiFrames(): Source does not seem to contain valid CAV picture numbers or CLV time-codes - cannot process";
             return false;
         }
 
         // Determine disc type
         if (cavCount > clvCount) {
             sourceDiscTypeCav[sourceNumber] = true;
-            qDebug() << "CorrectorPool::setMinAndMaxVbiFrames(): Got" << cavCount << "valid CAV picture numbers - source disc type is CAV";
+            qDebug() << "StackingPool::setMinAndMaxVbiFrames(): Got" << cavCount << "valid CAV picture numbers - source disc type is CAV";
             qInfo().nospace() << "Source #" << sourceNumber << " has a disc type of CAV (uses VBI frame numbers)";
 
             sourceMaximumVbiFrame[sourceNumber] = cavMax;
             sourceMinimumVbiFrame[sourceNumber] = cavMin;
         } else {
             sourceDiscTypeCav[sourceNumber] = false;
-            qDebug() << "CorrectorPool::setMinAndMaxVbiFrames(): Got" << clvCount << "valid CLV picture numbers - source disc type is CLV";
+            qDebug() << "StackingPool::setMinAndMaxVbiFrames(): Got" << clvCount << "valid CLV picture numbers - source disc type is CLV";
             qInfo().nospace() << "Source #" << sourceNumber << " has a disc type of CLV (uses VBI time codes)";
 
             sourceMaximumVbiFrame[sourceNumber] = clvMax;
@@ -418,20 +372,20 @@ bool CorrectorPool::setMinAndMaxVbiFrames()
 }
 
 // Method to convert the first source sequential frame number to a VBI frame number
-qint32 CorrectorPool::convertSequentialFrameNumberToVbi(qint32 sequentialFrameNumber, qint32 sourceNumber)
+qint32 StackingPool::convertSequentialFrameNumberToVbi(qint32 sequentialFrameNumber, qint32 sourceNumber)
 {
     return (sourceMinimumVbiFrame[sourceNumber] - 1) + sequentialFrameNumber;
 }
 
 // Method to convert a VBI frame number to a sequential frame number
-qint32 CorrectorPool::convertVbiFrameNumberToSequential(qint32 vbiFrameNumber, qint32 sourceNumber)
+qint32 StackingPool::convertVbiFrameNumberToSequential(qint32 vbiFrameNumber, qint32 sourceNumber)
 {
     // Offset the VBI frame number to get the sequential source frame number
     return vbiFrameNumber - sourceMinimumVbiFrame[sourceNumber] + 1;
 }
 
 // Method that returns a vector of the sources that contain data for the required VBI frame number
-QVector<qint32> CorrectorPool::getAvailableSourcesForFrame(qint32 vbiFrameNumber)
+QVector<qint32> StackingPool::getAvailableSourcesForFrame(qint32 vbiFrameNumber)
 {
     QVector<qint32> availableSourcesForFrame;
     for (qint32 sourceNo = 0; sourceNo < sourceVideos.size(); sourceNo++) {
@@ -453,23 +407,7 @@ QVector<qint32> CorrectorPool::getAvailableSourcesForFrame(qint32 vbiFrameNumber
 
 // Write a field to the output file.
 // Returns true on success, false on failure.
-bool CorrectorPool::writeOutputField(const SourceVideo::Data &fieldData)
+bool StackingPool::writeOutputField(const SourceVideo::Data &fieldData)
 {
     return targetVideo.write(reinterpret_cast<const char *>(fieldData.data()), 2 * fieldData.size());
-}
-
-// Getters for reporting
-qint32 CorrectorPool::getSameSourceConcealmentTotal()
-{
-    return sameSourceConcealmentTotal;
-}
-
-qint32 CorrectorPool::getMultiSourceConcealmentTotal()
-{
-    return multiSourceConcealmentTotal;
-}
-
-qint32 CorrectorPool::getMultiSourceCorrectionTotal()
-{
-    return multiSourceCorrectionTotal;
 }

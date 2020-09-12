@@ -35,6 +35,7 @@ F3Frame::F3Frame()
 {
     validEfmSymbols = 0;
     invalidEfmSymbols = 0;
+    correctedEfmSymbols = 0;
 
     isSync0 = false;
     isSync1 = false;
@@ -50,6 +51,7 @@ F3Frame::F3Frame(uchar *tValuesIn, qint32 tLength)
 {
     validEfmSymbols = 0;
     invalidEfmSymbols = 0;
+    correctedEfmSymbols = 0;
 
     isSync0 = false;
     isSync1 = false;
@@ -175,6 +177,12 @@ qint64 F3Frame::getNumberOfInvalidEfmSymbols()
     return invalidEfmSymbols;
 }
 
+// Return the number of corrected EFM symbols in the frame
+qint64 F3Frame::getNumberOfCorrectedEfmSymbols()
+{
+    return correctedEfmSymbols;
+}
+
 // This method returns the 32 data symbols for the F3 Frame
 uchar *F3Frame::getDataSymbols()
 {
@@ -208,7 +216,7 @@ bool F3Frame::isSubcodeSync1()
 // Private methods ----------------------------------------------------------------------------------------------------
 
 // Method to translate 14-bit EFM value into 8-bit byte
-// Returns -1 if the EFM value is invalid
+// Returns -1 if the EFM value is could not be converted
 qint16 F3Frame::translateEfm(qint16 efmValue)
 {
     qint16 result = -1;
@@ -218,7 +226,29 @@ qint16 F3Frame::translateEfm(qint16 efmValue)
         lutPos++;
     }
 
-    if (result == -1) invalidEfmSymbols++; else validEfmSymbols++;
+    // Was 14-bit EFM symbol invalid?
+    if (result == -1) {
+        // Symbol was invalid
+        invalidEfmSymbols++;
+
+        // Attempt to recover symbol using cosine similarity lookup
+        result = -1;
+        lutPos = 0;
+        while (result == -1 && lutPos < 16384) {
+            if (efmerr2positionLUT[lutPos] == efmValue) result = lutPos;
+            lutPos++;
+        }
+
+        // Was lookup successful?
+        if (result != -1) {
+            // Get the translated value from the second LUT
+            result = efmerr2valueLUT[result];
+            correctedEfmSymbols++;
+        }
+    } else {
+        // Symbol was valid
+        validEfmSymbols++;
+    }
 
     return result;
 }

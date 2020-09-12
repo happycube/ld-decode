@@ -20,6 +20,7 @@ SOURCES += \
     ../library/tbc/vbidecoder.cpp \
     ../library/tbc/filters.cpp \
     ../library/tbc/logging.cpp \
+    ../library/tbc/dropouts.cpp \
     diffdod.cpp \
     main.cpp \
     sources.cpp
@@ -31,6 +32,7 @@ HEADERS += \
     ../library/tbc/vbidecoder.h \
     ../library/tbc/filters.h \
     ../library/tbc/logging.h \
+    ../library/tbc/dropouts.h \
     diffdod.h \
     sources.h
 

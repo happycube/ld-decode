@@ -75,9 +75,6 @@ public:
     void updateConfiguration(const LdDecodeMetaData::VideoParameters &videoParameters,
                              const Configuration &configuration);
 
-    // Decode two fields to produce an interlaced frame.
-    RGBFrame decodeFrame(const SourceField &firstField, const SourceField &secondField);
-
     // Decode a sequence of fields into a sequence of interlaced frames
     void decodeFrames(const QVector<SourceField> &inputFields, qint32 startIndex, qint32 endIndex,
                       QVector<RGBFrame> &outputFrames);

@@ -29,11 +29,11 @@ SOURCES += \
     transformpal.cpp \
     transformpal2d.cpp \
     transformpal3d.cpp \
-    yiq.cpp \
     ../library/tbc/lddecodemetadata.cpp \
     ../library/tbc/sourcevideo.cpp \
     ../library/tbc/vbidecoder.cpp \
-    ../library/tbc/logging.cpp
+    ../library/tbc/logging.cpp \
+    ../library/tbc/dropouts.cpp
 
 HEADERS += \
     comb.h \
@@ -51,14 +51,14 @@ HEADERS += \
     transformpal2d.h \
     transformpal3d.h \
     yiq.h \
-    yiqbuffer.h \
     ../library/filter/deemp.h \
     ../library/filter/firfilter.h \
     ../library/filter/iirfilter.h \
     ../library/tbc/lddecodemetadata.h \
     ../library/tbc/sourcevideo.h \
     ../library/tbc/vbidecoder.h \
-    ../library/tbc/logging.h
+    ../library/tbc/logging.h \
+    ../library/tbc/dropouts.h
 
 # Add external includes to the include path
 INCLUDEPATH += ../library/filter

@@ -5,7 +5,7 @@
     ld-chroma-decoder - Colourisation filter for ld-decode
     Copyright (C) 2018 Chad Page
     Copyright (C) 2018-2019 Simon Inns
-    Copyright (C) 2019 Adam Sampson
+    Copyright (C) 2019-2020 Adam Sampson
 
     This file is part of ld-decode-tools.
 
@@ -48,12 +48,12 @@ bool NtscDecoder::configure(const LdDecodeMetaData::VideoParameters &videoParame
 
 qint32 NtscDecoder::getLookBehind() const
 {
-    if (config.combConfig.use3D) {
-        // In 3D mode, we need to see the previous frame
-        return 1;
-    }
+    return config.combConfig.getLookBehind();
+}
 
-    return 0;
+qint32 NtscDecoder::getLookAhead() const
+{
+    return config.combConfig.getLookAhead();
 }
 
 QThread *NtscDecoder::makeThread(QAtomicInt& abort, DecoderPool& decoderPool)
@@ -72,17 +72,13 @@ NtscThread::NtscThread(QAtomicInt& _abort, DecoderPool &_decoderPool,
 void NtscThread::decodeFrames(const QVector<SourceField> &inputFields, qint32 startIndex, qint32 endIndex,
                               QVector<RGBFrame> &outputFrames)
 {
-    // Decode lookahead fields, discarding the result
-    for (qint32 i = 0; i < startIndex; i += 2) {
-        comb.decodeFrame(inputFields[i], inputFields[i + 1]);
-    }
+    QVector<RGBFrame> decodedFrames(outputFrames.size());
 
-    // Decode real fields to frames
-    for (qint32 i = startIndex, j = 0; i < endIndex; i += 2, j++) {
-        // Filter the frame
-        RGBFrame outputData = comb.decodeFrame(inputFields[i], inputFields[i + 1]);
+    // Decode fields to frames
+    comb.decodeFrames(inputFields, startIndex, endIndex, decodedFrames);
 
-        // The NTSC filter outputs the whole frame, so here we crop it to the required dimensions
-        outputFrames[j] = NtscDecoder::cropOutputFrame(config, outputData);
+    for (qint32 i = 0; i < outputFrames.size(); i++) {
+        // Crop the frame to just the active area
+        outputFrames[i] = NtscDecoder::cropOutputFrame(config, decodedFrames[i]);
     }
 }

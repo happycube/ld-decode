@@ -1,14 +1,13 @@
 /************************************************************************
 
-    yiqbuffer.h
+    sourceaudio.cpp
 
-    ld-chroma-decoder - Colourisation filter for ld-decode
-    Copyright (C) 2018 Chad Page
-    Copyright (C) 2018-2019 Simon Inns
+    ld-discmap - TBC and VBI alignment and correction
+    Copyright (C) 2019-2020 Simon Inns
 
     This file is part of ld-decode-tools.
 
-    ld-chroma-decoder is free software: you can redistribute it and/or
+    ld-discmap is free software: you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
     published by the Free Software Foundation, either version 3 of the
     License, or (at your option) any later version.
@@ -23,32 +22,33 @@
 
 ************************************************************************/
 
-#ifndef YIQBUFFER_H
-#define YIQBUFFER_H
+#ifndef SOURCEAUDIO_H
+#define SOURCEAUDIO_H
 
-#include <array>
-#include <vector>
+#include <QCoreApplication>
+#include <QDebug>
+#include <QFileInfo>
+#include <QFile>
 
-#include "yiq.h"
+// TBC library includes
+#include "lddecodemetadata.h"
 
-using YiqLine = std::array<YIQ, 910>;
-
-// A heap-allocated 2D array of YIQ pixels
-class YiqBuffer
-    : public std::vector<YiqLine>
+class SourceAudio
 {
 public:
-    YiqBuffer()
-        : std::vector<YiqLine>(525)
-    {
-    }
+    SourceAudio();
 
-    // Zero all pixels in the buffer
-    void clear() {
-        for (YiqLine &line: *this) {
-            line.fill(YIQ());
-        }
-    }
+    bool open(QFileInfo inputFileInfo);
+    void close();
+    QByteArray getAudioForField(qint32 fieldNo);
+
+private:
+    LdDecodeMetaData *ldDecodeMetaData;
+    QFile inputAudioFile;
+
+    QVector<qint64> startBytePosition;
+    QVector<qint64> fieldByteLength;
+    qint64 totalByteSize;
 };
 
-#endif // YIQBUFFER_H
+#endif // SOURCEAUDIO_H

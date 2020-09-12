@@ -2,13 +2,12 @@
 
     main.cpp
 
-    ld-dropout-correct - Dropout correction for ld-decode
-    Copyright (C) 2018-2020 Simon Inns
-    Copyright (C) 2019-2020 Adam Sampson
+    ld-disc-stacker - Disc stacking for ld-decode
+    Copyright (C) 2020 Simon Inns
 
     This file is part of ld-decode-tools.
 
-    ld-dropout-correct is free software: you can redistribute it and/or
+    ld-disc-stacker is free software: you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
     published by the Free Software Foundation, either version 3 of the
     License, or (at your option) any later version.
@@ -28,9 +27,13 @@
 #include <QtGlobal>
 #include <QCommandLineParser>
 #include <QThread>
+#include <QFile>
+#include <QFileInfo>
 
 #include "logging.h"
-#include "correctorpool.h"
+#include "lddecodemetadata.h"
+#include "sourcevideo.h"
+#include "stackingpool.h"
 
 int main(int argc, char *argv[])
 {
@@ -41,17 +44,16 @@ int main(int argc, char *argv[])
     QCoreApplication a(argc, argv);
 
     // Set application name and version
-    QCoreApplication::setApplicationName("ld-dropout-correct");
+    QCoreApplication::setApplicationName("ld-disc-stacker");
     QCoreApplication::setApplicationVersion(QString("Branch: %1 / Commit: %2").arg(APP_BRANCH, APP_COMMIT));
     QCoreApplication::setOrganizationDomain("domesday86.com");
 
     // Set up the command line parser ---------------------------------------------------------------------------------
     QCommandLineParser parser;
     parser.setApplicationDescription(
-                "ld-dropout-correct - Multi-source dropout correction for ld-decode\n"
+                "ld-disc-stacker - Disc stacking for ld-decode\n"
                 "\n"
-                "(c)2018-2020 Simon Inns\n"
-                "(C)2019-2020 Adam Sampson\n"
+                "(c)2020 Simon Inns\n"
                 "GPLv3 Open-Source - github: https://github.com/happycube/ld-decode");
     parser.addHelpOption();
     parser.addVersionOption();
@@ -76,16 +78,6 @@ int main(int argc, char *argv[])
                                        QCoreApplication::translate("main", "Reverse the field order to second/first (default first/second)"));
     parser.addOption(setReverseOption);
 
-    // Option to select over correct mode (-o)
-    QCommandLineOption setOverCorrectOption(QStringList() << "o" << "overcorrect",
-                                       QCoreApplication::translate("main", "Over correct mode (use on heavily damaged single sources)"));
-    parser.addOption(setOverCorrectOption);
-
-    // Force intra-field correction only
-    QCommandLineOption setIntrafieldOption(QStringList() << "i" << "intra",
-                                       QCoreApplication::translate("main", "Force intrafield correction (default interfield)"));
-    parser.addOption(setIntrafieldOption);
-
     // Option to select the number of threads (-t)
     QCommandLineOption threadsOption(QStringList() << "t" << "threads",
                                         QCoreApplication::translate(
@@ -109,8 +101,6 @@ int main(int argc, char *argv[])
 
     // Get the options from the parser
     bool reverse = parser.isSet(setReverseOption);
-    bool intraField = parser.isSet(setIntrafieldOption);
-    bool overCorrect = parser.isSet(setOverCorrectOption);
 
     // Get the arguments from the parser
     qint32 maxThreads = QThread::idealThreadCount();
@@ -137,7 +127,7 @@ int main(int argc, char *argv[])
     }
 
     // Get the input TBC sources
-    if (positionalArguments.count() >= 2) {
+    if (positionalArguments.count() >= 4) {
         // Resize the input filenames vector according to the number of input files supplied
         inputFilenames.resize(totalNumberOfInputFiles);
 
@@ -146,7 +136,7 @@ int main(int argc, char *argv[])
         }
     } else {
         // Quit with error
-        qCritical("You must specify at least 1 input and 1 output TBC file");
+        qCritical("You must specify at least 3 input and 1 output TBC file");
         return -1;
     }
 
@@ -205,9 +195,9 @@ int main(int argc, char *argv[])
         outputJsonFilename = parser.value(outputJsonOption);
     }
 
-    // Prepare for DOC process ----------------------------------------------------------------------------------------
+    // Prepare for stacking process -----------------------------------------------------------------------------------
 
-    qInfo() << "Starting preparation for dropout correction processes...";
+    qInfo() << "Starting preparation for disc stacking processes...";
     // Open the source video metadata
     qDebug() << "main(): Opening source video metadata files..";
     QVector<LdDecodeMetaData *> ldDecodeMetaData;
@@ -237,18 +227,8 @@ int main(int argc, char *argv[])
             ldDecodeMetaData[i]->setIsFirstFieldFirst(false);
     }
 
-    // Intrafield only correction if required
-    if (intraField) {
-        qInfo() << "Using intra-field correction only - dropouts will only be corrected within the affected field";
-    }
-
-    // Overcorrection if required
-    if (overCorrect) {
-        qInfo() << "Using over correction mode - dropout lengths will be extended to compensate for slow ramping start and end points";
-    }
-
     // Show and open input source TBC files
-    qDebug() << "main(): Opening source video files...";
+    qDebug() << "Opening source video files...";
     QVector<SourceVideo *> sourceVideos;
     sourceVideos.resize(totalNumberOfInputFiles);
     for (qint32 i = 0; i < totalNumberOfInputFiles; i++) {
@@ -278,54 +258,32 @@ int main(int argc, char *argv[])
             qInfo() << "Update your copy of ld-decode and try again, this shouldn't happen unless the JSON metadata has been corrupted";
         }
 
-        // Additional checks when using multiple input sources
-        if (totalNumberOfInputFiles > 1) {
-            // Ensure source video has VBI data
-            if (!ldDecodeMetaData[i]->getFieldVbi(1).inUse) {
-                qInfo() << "Source video" << i << "does not appear to have valid VBI data in the JSON metadata.";
-                qInfo() << "Please try running ld-process-vbi on the source video and then try again";
-                return 1;
-            }
+        // Ensure source video has VBI data
+        if (!ldDecodeMetaData[i]->getFieldVbi(1).inUse) {
+            qInfo() << "Source video" << i << "does not appear to have valid VBI data in the JSON metadata.";
+            qInfo() << "Please try running ld-process-vbi on the source video and then try again";
+            return 1;
+        }
 
-            // Ensure that the video source standard matches the primary source
-            if (ldDecodeMetaData[0]->getVideoParameters().isSourcePal != videoParameters.isSourcePal) {
-                qInfo() << "All additional input sources must have the same video format (PAL/NTSC) as the initial source!";
-                return 1;
-            }
+        // Ensure that the video source standard matches the primary source
+        if (ldDecodeMetaData[0]->getVideoParameters().isSourcePal != videoParameters.isSourcePal) {
+            qInfo() << "All additional input sources must have the same video format (PAL/NTSC) as the initial source!";
+            return 1;
+        }
 
-            if (!videoParameters.isMapped) {
-                qInfo() << "Source video" << i << "has not been mapped - run ld-discmap on all source videos and try again";
-                qInfo() << "Multi-source dropout correction relies on accurate VBI frame numbering to match source frames together";
-                return 1;
-            }
+        if (!videoParameters.isMapped) {
+            qInfo() << "Source video" << i << "has not been mapped - run ld-discmap on all source videos and try again";
+            qInfo() << "Disc stacking relies on accurate VBI frame numbering to match source frames together";
+            return 1;
         }
     }
 
-    // Perform the DOC process ----------------------------------------------------------------------------------------
+    // Perform the disc stacking processes ----------------------------------------------------------------------------
     qInfo() << "Initial source checks are ok and sources are loaded";
     qint32 result = 0;
-    CorrectorPool correctorPool(outputFilename, outputJsonFilename, maxThreads,
-                                ldDecodeMetaData, sourceVideos,
-                                reverse, intraField, overCorrect);
-    if (!correctorPool.process()) result = 1;
-
-    // Report on the result of the correction process
-    if (totalNumberOfInputFiles > 1) {
-        // Multisource correction report
-        qInfo() << "Multi-source correction from" << totalNumberOfInputFiles << "sources:";
-        qInfo() << "   Concealments (same source):" << correctorPool.getSameSourceConcealmentTotal();
-        qInfo() << "  Concealments (multi-source):" << correctorPool.getMultiSourceConcealmentTotal();
-        qInfo() << "   Corrections (multi-source):" << correctorPool.getMultiSourceCorrectionTotal();
-        qInfo() << "                        Total:" << correctorPool.getSameSourceConcealmentTotal() +
-                   correctorPool.getMultiSourceConcealmentTotal() +
-                   correctorPool.getMultiSourceCorrectionTotal();
-    } else {
-        // Single source correction report
-        qInfo() << "Single source correction:";
-        qInfo() << "  Total concealments:" << correctorPool.getSameSourceConcealmentTotal() +
-                   correctorPool.getMultiSourceConcealmentTotal() +
-                   correctorPool.getMultiSourceCorrectionTotal();
-    }
+    StackingPool stackingPool(outputFilename, outputJsonFilename, maxThreads,
+                                ldDecodeMetaData, sourceVideos, reverse);
+    if (!stackingPool.process()) result = 1;
 
     // Close open source video files
     for (qint32 i = 0; i < totalNumberOfInputFiles; i++) sourceVideos[i]->close();

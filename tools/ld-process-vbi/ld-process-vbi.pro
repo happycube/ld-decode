@@ -24,7 +24,8 @@ SOURCES += \
     ../library/tbc/lddecodemetadata.cpp \
     ../library/tbc/sourcevideo.cpp \
     ../library/tbc/vbidecoder.cpp \
-    ../library/tbc/logging.cpp
+    ../library/tbc/logging.cpp \
+    ../library/tbc/dropouts.cpp
 
 HEADERS += \
     closedcaption.h \
@@ -35,7 +36,8 @@ HEADERS += \
     ../library/tbc/lddecodemetadata.h \
     ../library/tbc/sourcevideo.h \
     ../library/tbc/vbidecoder.h \
-    ../library/tbc/logging.h
+    ../library/tbc/logging.h \
+    ../library/tbc/dropouts.h
 
 # Add external includes to the include path
 INCLUDEPATH += ../library/tbc

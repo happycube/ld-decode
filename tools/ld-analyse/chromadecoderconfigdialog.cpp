@@ -4,6 +4,7 @@
 
     ld-analyse - TBC output analysis
     Copyright (C) 2019 Simon Inns
+    Copyright (C) 2020 Adam Sampson
 
     This file is part of ld-decode-tools.
 
@@ -65,12 +66,6 @@ void ChromaDecoderConfigDialog::setConfiguration(bool _isSourcePal, const PalCol
     ntscConfiguration.cNRLevel = qBound(0.0, ntscConfiguration.cNRLevel, 10.0);
     ntscConfiguration.yNRLevel = qBound(0.0, ntscConfiguration.yNRLevel, 10.0);
 
-    // ld-analyse only supports 2D filters at the moment
-    if (palConfiguration.chromaFilter == PalColour::transform3DFilter) {
-        palConfiguration.chromaFilter = PalColour::transform2DFilter;
-    }
-    ntscConfiguration.use3D = false;
-
     // For settings that both decoders share, the PAL default takes precedence
     ntscConfiguration.chromaGain = palConfiguration.chromaGain;
 
@@ -107,11 +102,23 @@ void ChromaDecoderConfigDialog::updateDialog()
 
     // PAL settings
 
-    const bool isTransform2D = (palConfiguration.chromaFilter == PalColour::transform2DFilter);
-    const bool isTransform = isTransform2D;
-    ui->twoDeeTransformCheckBox->setEnabled(isSourcePal);
-    ui->twoDeeTransformCheckBox->setChecked(isTransform2D);
+    ui->palFilterPalColourRadioButton->setEnabled(isSourcePal);
+    ui->palFilterTransform2DRadioButton->setEnabled(isSourcePal);
+    ui->palFilterTransform3DRadioButton->setEnabled(isSourcePal);
 
+    switch (palConfiguration.chromaFilter) {
+    case PalColour::palColourFilter:
+        ui->palFilterPalColourRadioButton->setChecked(true);
+        break;
+    case PalColour::transform2DFilter:
+        ui->palFilterTransform2DRadioButton->setChecked(true);
+        break;
+    case PalColour::transform3DFilter:
+        ui->palFilterTransform3DRadioButton->setChecked(true);
+        break;
+    }
+
+    const bool isTransform = (palConfiguration.chromaFilter != PalColour::palColourFilter);
     const bool isThresholdMode = (palConfiguration.transformMode == TransformPal::thresholdMode);
     ui->thresholdModeCheckBox->setEnabled(isSourcePal && isTransform);
     ui->thresholdModeCheckBox->setChecked(isThresholdMode);
@@ -134,10 +141,34 @@ void ChromaDecoderConfigDialog::updateDialog()
 
     const bool isSourceNtsc = !isSourcePal;
 
+    ui->ntscFilter2DRadioButton->setEnabled(isSourceNtsc);
+    ui->ntscFilter3DRadioButton->setEnabled(isSourceNtsc);
+
+    switch (ntscConfiguration.dimensions) {
+    case 1:
+        ui->ntscFilter1DRadioButton->setChecked(true);
+        break;
+    case 2:
+        ui->ntscFilter2DRadioButton->setChecked(true);
+        break;
+    case 3:
+        ui->ntscFilter3DRadioButton->setChecked(true);
+        break;
+    }
+
+    ui->adaptiveCheckBox->setEnabled(isSourceNtsc && ntscConfiguration.dimensions == 3);
+    ui->adaptiveCheckBox->setChecked(ntscConfiguration.adaptive);
+
+    ui->showMapCheckBox->setEnabled(isSourceNtsc && ntscConfiguration.dimensions == 3);
+    ui->showMapCheckBox->setChecked(ntscConfiguration.showMap);
+
     ui->whitePoint75CheckBox->setEnabled(isSourceNtsc);
     ui->whitePoint75CheckBox->setChecked(ntscConfiguration.whitePoint75);
 
-    ui->colorLpfHqCheckBox->setEnabled(isSourceNtsc);
+    ui->colorLpfCheckBox->setEnabled(isSourceNtsc);
+    ui->colorLpfCheckBox->setChecked(ntscConfiguration.colorlpf);
+
+    ui->colorLpfHqCheckBox->setEnabled(isSourceNtsc && ntscConfiguration.colorlpf);
     ui->colorLpfHqCheckBox->setChecked(ntscConfiguration.colorlpf_hq);
 
     ui->cNRLabel->setEnabled(isSourceNtsc);
@@ -157,8 +188,6 @@ void ChromaDecoderConfigDialog::updateDialog()
     ui->yNRValueLabel->setText(QString::number(ntscConfiguration.yNRLevel, 'f', 1) + " IRE");
 }
 
-// XXX Select the right tab when first opened
-
 // Methods to handle changes to the dialogue
 
 void ChromaDecoderConfigDialog::on_chromaGainHorizontalSlider_valueChanged(int value)
@@ -169,12 +198,14 @@ void ChromaDecoderConfigDialog::on_chromaGainHorizontalSlider_valueChanged(int v
     emit chromaDecoderConfigChanged();
 }
 
-void ChromaDecoderConfigDialog::on_twoDeeTransformCheckBox_clicked()
+void ChromaDecoderConfigDialog::on_palFilterButtonGroup_buttonClicked(QAbstractButton *button)
 {
-    if (ui->twoDeeTransformCheckBox->isChecked()) {
+    if (button == ui->palFilterPalColourRadioButton) {
+        palConfiguration.chromaFilter = PalColour::palColourFilter;
+    } else if (button == ui->palFilterTransform2DRadioButton) {
         palConfiguration.chromaFilter = PalColour::transform2DFilter;
     } else {
-        palConfiguration.chromaFilter = PalColour::palColourFilter;
+        palConfiguration.chromaFilter = PalColour::transform3DFilter;
     }
     updateDialog();
     emit chromaDecoderConfigChanged();
@@ -210,9 +241,41 @@ void ChromaDecoderConfigDialog::on_simplePALCheckBox_clicked()
     emit chromaDecoderConfigChanged();
 }
 
+void ChromaDecoderConfigDialog::on_ntscFilterButtonGroup_buttonClicked(QAbstractButton *button)
+{
+    if (button == ui->ntscFilter1DRadioButton) {
+        ntscConfiguration.dimensions = 1;
+    } else if (button == ui->ntscFilter2DRadioButton) {
+        ntscConfiguration.dimensions = 2;
+    } else {
+        ntscConfiguration.dimensions = 3;
+    }
+    updateDialog();
+    emit chromaDecoderConfigChanged();
+}
+
+void ChromaDecoderConfigDialog::on_adaptiveCheckBox_clicked()
+{
+    ntscConfiguration.adaptive = ui->adaptiveCheckBox->isChecked();
+    emit chromaDecoderConfigChanged();
+}
+
+void ChromaDecoderConfigDialog::on_showMapCheckBox_clicked()
+{
+    ntscConfiguration.showMap = ui->showMapCheckBox->isChecked();
+    emit chromaDecoderConfigChanged();
+}
+
 void ChromaDecoderConfigDialog::on_whitePoint75CheckBox_clicked()
 {
     ntscConfiguration.whitePoint75 = ui->whitePoint75CheckBox->isChecked();
+    emit chromaDecoderConfigChanged();
+}
+
+void ChromaDecoderConfigDialog::on_colorLpfCheckBox_clicked()
+{
+    ntscConfiguration.colorlpf = ui->colorLpfCheckBox->isChecked();
+    updateDialog();
     emit chromaDecoderConfigChanged();
 }
 

@@ -1,14 +1,13 @@
 /************************************************************************
 
-    correctorpool.h
+    stackingpool.cpp
 
-    ld-dropout-correct - Dropout correction for ld-decode
-    Copyright (C) 2018-2020 Simon Inns
-    Copyright (C) 2019-2020 Adam Sampson
+    ld-disc-stacker - Disc stacking for ld-decode
+    Copyright (C) 2020 Simon Inns
 
     This file is part of ld-decode-tools.
 
-    ld-dropout-correct is free software: you can redistribute it and/or
+    ld-disc-stacker is free software: you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
     published by the Free Software Foundation, either version 3 of the
     License, or (at your option) any later version.
@@ -23,8 +22,8 @@
 
 ************************************************************************/
 
-#ifndef CORRECTORPOOL_H
-#define CORRECTORPOOL_H
+#ifndef STACKINGPOOL_H
+#define STACKINGPOOL_H
 
 #include <QObject>
 #include <QAtomicInt>
@@ -34,15 +33,15 @@
 
 #include "sourcevideo.h"
 #include "lddecodemetadata.h"
-#include "dropoutcorrect.h"
+#include "stacker.h"
 
-class CorrectorPool : public QObject
+class StackingPool : public QObject
 {
     Q_OBJECT
 public:
-    explicit CorrectorPool(QString _outputFilename, QString _outputJsonFilename,
+    explicit StackingPool(QString _outputFilename, QString _outputJsonFilename,
                            qint32 _maxThreads, QVector<LdDecodeMetaData *> &_ldDecodeMetaData, QVector<SourceVideo *> &_sourceVideos,
-                           bool _reverse, bool _intraField, bool _overCorrect, QObject *parent = nullptr);
+                           bool _reverse, QObject *parent = nullptr);
 
     bool process();
 
@@ -51,25 +50,18 @@ public:
                        QVector<qint32> &firstFieldNumber, QVector<SourceVideo::Data> &firstFieldVideoData, QVector<LdDecodeMetaData::Field> &firstFieldMetadata,
                        QVector<qint32> &secondFieldNumber, QVector<SourceVideo::Data> &secondFieldVideoData, QVector<LdDecodeMetaData::Field> &secondFieldMetadata,
                        QVector<LdDecodeMetaData::VideoParameters> &videoParameters,
-                       bool& _reverse, bool& _intraField, bool& _overCorrect, QVector<qint32> &availableSourcesForFrame, QVector<qreal> &sourceFrameQuality);
+                       bool& _reverse, QVector<qint32> &availableSourcesForFrame);
 
     bool setOutputFrame(qint32 frameNumber,
                         SourceVideo::Data firstTargetFieldData, SourceVideo::Data secondTargetFieldData,
                         qint32 firstFieldSeqNo, qint32 secondFieldSeqNo,
-                        qint32 sameSourceReplacement, qint32 multiSourceReplacement, qint32 multiSourceCorrection, qint32 totalReplacementDistance);
-
-    // Reporting methods
-    qint32 getSameSourceConcealmentTotal();
-    qint32 getMultiSourceConcealmentTotal();
-    qint32 getMultiSourceCorrectionTotal();
+                        DropOuts firstTargetFieldDropOuts, DropOuts secondTargetFieldDropouts);
 
 private:
     QString outputFilename;
     QString outputJsonFilename;
     qint32 maxThreads;
     bool reverse;
-    bool intraField;
-    bool overCorrect;
     QElapsedTimer totalTimer;
 
     // Atomic abort flag shared by worker threads; workers watch this, and shut
@@ -91,12 +83,8 @@ private:
         SourceVideo::Data secondTargetFieldData;
         qint32 firstFieldSeqNo;
         qint32 secondFieldSeqNo;
-
-        // Statistics
-        qint32 sameSourceConcealment;
-        qint32 multiSourceConcealment;
-        qint32 multiSourceCorrection;
-        qint32 totalReplacementDistance;
+        DropOuts firstTargetFieldDropOuts;
+        DropOuts secondTargetFieldDropOuts;
     };
 
     qint32 outputFrameNumber;
@@ -108,11 +96,6 @@ private:
     QVector<qint32> sourceMinimumVbiFrame;
     QVector<qint32> sourceMaximumVbiFrame;
 
-    // Reporting information
-    qint32 sameSourceConcealmentTotal;
-    qint32 multiSourceConcealmentTotal;
-    qint32 multiSourceCorrectionTotal;
-
     bool setMinAndMaxVbiFrames();
     qint32 convertSequentialFrameNumberToVbi(qint32 sequentialFrameNumber, qint32 sourceNumber);
     qint32 convertVbiFrameNumberToSequential(qint32 vbiFrameNumber, qint32 sourceNumber);
@@ -120,4 +103,4 @@ private:
     bool writeOutputField(const SourceVideo::Data &fieldData);
 };
 
-#endif // CORRECTORPOOL_H
+#endif // STACKINGPOOL_H

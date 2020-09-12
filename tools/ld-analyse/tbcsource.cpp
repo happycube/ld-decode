@@ -30,7 +30,6 @@ TbcSource::TbcSource(QObject *parent) : QObject(parent)
 {
     // Default frame image options
     chromaOn = false;
-    lpfOn = false;
     dropoutsOn = false;
     reverseFoOn = false;
     sourceReady = false;
@@ -51,7 +50,6 @@ void TbcSource::loadSource(QString sourceFilename)
 {
     // Default frame options
     chromaOn = false;
-    lpfOn = false;
     dropoutsOn = false;
     reverseFoOn = false;
     sourceReady = false;
@@ -103,19 +101,6 @@ void TbcSource::setChromaDecoder(bool _state)
 {
     frameCacheFrameNumber = -1;
     chromaOn = _state;
-
-    // Turn off LPF if chroma is selected
-    if (chromaOn) lpfOn = false;
-}
-
-// Method to set the LPF mode (true = on)
-void TbcSource::setLpfMode(bool _state)
-{
-    frameCacheFrameNumber = -1;
-    lpfOn = _state;
-
-    // Turn off chroma if LPF is selected
-    if (lpfOn) chromaOn = false;
 }
 
 // Method to set the field order (true = reversed, false = normal)
@@ -138,12 +123,6 @@ bool TbcSource::getHighlightDropouts()
 bool TbcSource::getChromaDecoder()
 {
     return chromaOn;
-}
-
-// Method to get the state of the LPF mode
-bool TbcSource::getLpfMode()
-{
-    return lpfOn;
 }
 
 // Method to get the field order
@@ -183,7 +162,7 @@ QImage TbcSource::getFrameImage(qint32 frameNumber)
     }
 
     // Get a QImage for the frame
-    QImage frameImage = generateQImage(firstFieldNumber, secondFieldNumber);
+    QImage frameImage = generateQImage(frameNumber);
 
     // Get the field metadata
     LdDecodeMetaData::Field firstField = ldDecodeMetaData.getField(firstFieldNumber);
@@ -197,20 +176,20 @@ QImage TbcSource::getFrameImage(qint32 frameNumber)
 
         // Draw the drop out data for the first field
         imagePainter.setPen(Qt::red);
-        for (qint32 dropOutIndex = 0; dropOutIndex < firstField.dropOuts.startx.size(); dropOutIndex++) {
-            qint32 startx = firstField.dropOuts.startx[dropOutIndex];
-            qint32 endx = firstField.dropOuts.endx[dropOutIndex];
-            qint32 fieldLine = firstField.dropOuts.fieldLine[dropOutIndex];
+        for (qint32 dropOutIndex = 0; dropOutIndex < firstField.dropOuts.size(); dropOutIndex++) {
+            qint32 startx = firstField.dropOuts.startx(dropOutIndex);
+            qint32 endx = firstField.dropOuts.endx(dropOutIndex);
+            qint32 fieldLine = firstField.dropOuts.fieldLine(dropOutIndex);
 
             imagePainter.drawLine(startx, ((fieldLine - 1) * 2), endx, ((fieldLine - 1) * 2));
         }
 
         // Draw the drop out data for the second field
         imagePainter.setPen(Qt::blue);
-        for (qint32 dropOutIndex = 0; dropOutIndex < secondField.dropOuts.startx.size(); dropOutIndex++) {
-            qint32 startx = secondField.dropOuts.startx[dropOutIndex];
-            qint32 endx = secondField.dropOuts.endx[dropOutIndex];
-            qint32 fieldLine = secondField.dropOuts.fieldLine[dropOutIndex];
+        for (qint32 dropOutIndex = 0; dropOutIndex < secondField.dropOuts.size(); dropOutIndex++) {
+            qint32 startx = secondField.dropOuts.startx(dropOutIndex);
+            qint32 endx = secondField.dropOuts.endx(dropOutIndex);
+            qint32 fieldLine = secondField.dropOuts.fieldLine(dropOutIndex);
 
             imagePainter.drawLine(startx, ((fieldLine - 1) * 2) + 1, endx, ((fieldLine - 1) * 2) + 1);
         }
@@ -316,8 +295,8 @@ bool TbcSource::getIsDropoutPresent(qint32 frameNumber)
     qint32 firstFieldNumber = ldDecodeMetaData.getFirstFieldNumber(frameNumber);
     qint32 secondFieldNumber = ldDecodeMetaData.getSecondFieldNumber(frameNumber);
 
-    if (ldDecodeMetaData.getFieldDropOuts(firstFieldNumber).startx.size() > 0) dropOutsPresent = true;
-    if (ldDecodeMetaData.getFieldDropOuts(secondFieldNumber).startx.size() > 0) dropOutsPresent = true;
+    if (ldDecodeMetaData.getFieldDropOuts(firstFieldNumber).size() > 0) dropOutsPresent = true;
+    if (ldDecodeMetaData.getFieldDropOuts(secondFieldNumber).size() > 0) dropOutsPresent = true;
 
     return dropOutsPresent;
 }
@@ -358,7 +337,7 @@ TbcSource::ScanLineData TbcSource::getScanLineData(qint32 frameNumber, qint32 sc
 
     // Get the field video and dropout data
     SourceVideo::Data fieldData;
-    LdDecodeMetaData::DropOuts dropouts;
+    DropOuts dropouts;
     if (isFieldTop) {
         fieldData = sourceVideo.getVideoField(firstFieldNumber);
         dropouts = ldDecodeMetaData.getFieldDropOuts(firstFieldNumber);
@@ -374,9 +353,9 @@ TbcSource::ScanLineData TbcSource::getScanLineData(qint32 frameNumber, qint32 sc
         scanLineData.data[xPosition] = fieldData[((fieldLine - 1) * videoParameters.fieldWidth) + xPosition];
 
         scanLineData.isDropout[xPosition] = false;
-        for (qint32 doCount = 0; doCount < dropouts.startx.size(); doCount++) {
-            if (dropouts.fieldLine[doCount] == fieldLine) {
-                if (xPosition >= dropouts.startx[doCount] && xPosition <= dropouts.endx[doCount]) scanLineData.isDropout[xPosition] = true;
+        for (qint32 doCount = 0; doCount < dropouts.size(); doCount++) {
+            if (dropouts.fieldLine(doCount) == fieldLine) {
+                if (xPosition >= dropouts.startx(doCount) && xPosition <= dropouts.endx(doCount)) scanLineData.isDropout[xPosition] = true;
             }
         }
     }
@@ -526,7 +505,7 @@ qint32 TbcSource::startOfChapter(qint32 currentFrameNumber)
 // Private methods ----------------------------------------------------------------------------------------------------
 
 // Method to create a QImage for a source video frame
-QImage TbcSource::generateQImage(qint32 firstFieldNumber, qint32 secondFieldNumber)
+QImage TbcSource::generateQImage(qint32 frameNumber)
 {
     // Get the metadata for the video parameters
     LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
@@ -536,49 +515,52 @@ QImage TbcSource::generateQImage(qint32 firstFieldNumber, qint32 secondFieldNumb
 
     // Show debug information
     if (chromaOn) {
-        qDebug().nospace() << "TbcSource::generateQImage(): Generating a chroma image from field pair " << firstFieldNumber <<
-                    "/" << secondFieldNumber << " (" << videoParameters.fieldWidth << "x" <<
-                    frameHeight << ")";
-    } else if (lpfOn) {
-        qDebug().nospace() << "TbcSource::generateQImage(): Generating a LPF image from field pair " << firstFieldNumber <<
-                    "/" << secondFieldNumber << " (" << videoParameters.fieldWidth << "x" <<
-                    frameHeight << ")";
+        qDebug().nospace() << "TbcSource::generateQImage(): Generating a chroma image from frame " << frameNumber <<
+                    " (" << videoParameters.fieldWidth << "x" << frameHeight << ")";
     } else {
-        qDebug().nospace() << "TbcSource::generateQImage(): Generating a source image from field pair " << firstFieldNumber <<
-                    "/" << secondFieldNumber << " (" << videoParameters.fieldWidth << "x" <<
-                    frameHeight << ")";
+        qDebug().nospace() << "TbcSource::generateQImage(): Generating a source image from frame " << frameNumber <<
+                    " (" << videoParameters.fieldWidth << "x" << frameHeight << ")";
     }
 
     // Create a QImage
     QImage frameImage = QImage(videoParameters.fieldWidth, frameHeight, QImage::Format_RGB888);
 
-    // Define the data buffers
-    QByteArray firstLineData;
-    QByteArray secondLineData;
+    // Work out how many frames ahead/behind we need to fetch
+    qint32 lookBehind, lookAhead;
+    if (!chromaOn) {
+        // Not decoding chroma -- so none
+        lookBehind = 0;
+        lookAhead = 0;
+    } else if (videoParameters.isSourcePal) {
+        lookBehind = palConfiguration.getLookBehind();
+        lookAhead = palConfiguration.getLookAhead();
+    } else {
+        lookBehind = ntscConfiguration.getLookBehind();
+        lookAhead = ntscConfiguration.getLookAhead();
+    }
+
+    // Fetch the input fields and metadata
+    QVector<SourceField> inputFields;
+    qint32 startIndex, endIndex;
+    SourceField::loadFields(sourceVideo, ldDecodeMetaData,
+                            frameNumber, 1, lookBehind, lookAhead,
+                            inputFields, startIndex, endIndex);
 
     if (chromaOn) {
         // Chroma decode the current frame and display
 
-        // Get the two fields and their metadata and contain in the chroma-decoder's
-        // source field class
-        SourceField firstField, secondField;
-        firstField.field = ldDecodeMetaData.getField(firstFieldNumber);
-        secondField.field = ldDecodeMetaData.getField(secondFieldNumber);
-        firstField.data = sourceVideo.getVideoField(firstFieldNumber);
-        secondField.data = sourceVideo.getVideoField(secondFieldNumber);
-
         // Decode colour for the current frame, to RGB 16-16-16 interlaced output
-        RGBFrame rgbFrame;
+        QVector<RGBFrame> outputFrames(1);
         if (videoParameters.isSourcePal) {
             // PAL source
-            rgbFrame = palColour.decodeFrame(firstField, secondField);
+            palColour.decodeFrames(inputFields, startIndex, endIndex, outputFrames);
         } else {
             // NTSC source
-            rgbFrame = ntscColour.decodeFrame(firstField, secondField);
+            ntscColour.decodeFrames(inputFields, startIndex, endIndex, outputFrames);
         }
 
         // Get a pointer to the RGB data
-        const quint16 *rgbPointer = rgbFrame.data();
+        const quint16 *rgbPointer = outputFrames[0].data();
 
         // Fill the QImage with black
         frameImage.fill(Qt::black);
@@ -595,73 +577,12 @@ QImage TbcSource::generateQImage(qint32 firstFieldNumber, qint32 secondFieldNumb
                 *(frameImage.scanLine(y) + xpp + 2) = static_cast<uchar>(rgbPointer[pixelOffset + 2] / 256); // B
             }
         }
-    } else if (lpfOn) {
-        // Display the current frame as LPF only
-
-        // Get the field data
-        SourceVideo::Data firstField = sourceVideo.getVideoField(firstFieldNumber);
-        SourceVideo::Data secondField = sourceVideo.getVideoField(secondFieldNumber);
-
-        // Generate pointers to the 16-bit greyscale data.
-        // Since we're taking a non-const pointer here, this will detach from
-        // the original copy of the data (which is what we want, because we're
-        // going to filter it in place).
-        quint16 *firstFieldPointer = firstField.data();
-        quint16 *secondFieldPointer = secondField.data();
-
-        // Generate a filter object
-        Filters filters;
-
-        // Filter out the Chroma information
-        if (videoParameters.isSourcePal) {
-            qDebug() << "TbcSource::generateQImage(): Applying FIR LPF to PAL image data";
-            filters.palLumaFirFilter(firstFieldPointer, videoParameters.fieldWidth * videoParameters.fieldHeight);
-            filters.palLumaFirFilter(secondFieldPointer, videoParameters.fieldWidth * videoParameters.fieldHeight);
-        } else {
-            qDebug() << "TbcSource::generateQImage(): Applying FIR LPF to NTSC image data";
-            filters.ntscLumaFirFilter(firstFieldPointer, videoParameters.fieldWidth * videoParameters.fieldHeight);
-            filters.ntscLumaFirFilter(secondFieldPointer, videoParameters.fieldWidth * videoParameters.fieldHeight);
-        }
-
-        // Copy the raw 16-bit grayscale data into the RGB888 QImage
-        for (qint32 y = 0; y < frameHeight; y++) {
-            for (qint32 x = 0; x < videoParameters.fieldWidth; x++) {
-                qint32 pixelOffset = (videoParameters.fieldWidth * (y / 2)) + x;
-                qreal pixelValue32;
-                if (y % 2) {
-                    pixelValue32 = static_cast<qreal>(secondFieldPointer[pixelOffset]);
-                } else {
-                    pixelValue32 = static_cast<qreal>(firstFieldPointer[pixelOffset]);
-                }
-
-                if (pixelValue32 < videoParameters.black16bIre) pixelValue32 = videoParameters.black16bIre;
-                if (pixelValue32 > videoParameters.white16bIre) pixelValue32 = videoParameters.white16bIre;
-
-                // Scale the IRE value to a 16 bit greyscale value
-                qreal scaledValue = ((pixelValue32 - static_cast<qreal>(videoParameters.black16bIre)) /
-                                     (static_cast<qreal>(videoParameters.white16bIre)
-                                      - static_cast<qreal>(videoParameters.black16bIre))) * 65535.0;
-                pixelValue32 = static_cast<qint32>(scaledValue);
-
-                // Convert to 8-bit for RGB888
-                uchar pixelValue = static_cast<uchar>(pixelValue32 / 256);
-
-                qint32 xpp = x * 3;
-                *(frameImage.scanLine(y) + xpp + 0) = static_cast<uchar>(pixelValue); // R
-                *(frameImage.scanLine(y) + xpp + 1) = static_cast<uchar>(pixelValue); // G
-                *(frameImage.scanLine(y) + xpp + 2) = static_cast<uchar>(pixelValue); // B
-            }
-        }
     } else {
         // Display the current frame as source data
 
-        // Get the field data
-        SourceVideo::Data firstField = sourceVideo.getVideoField(firstFieldNumber);
-        SourceVideo::Data secondField = sourceVideo.getVideoField(secondFieldNumber);
-
         // Get pointers to the 16-bit greyscale data
-        const quint16 *firstFieldPointer = firstField.data();
-        const quint16 *secondFieldPointer = secondField.data();
+        const quint16 *firstFieldPointer = inputFields[startIndex].data.data();
+        const quint16 *secondFieldPointer = inputFields[startIndex + 1].data.data();
 
         // Copy the raw 16-bit grayscale data into the RGB888 QImage
         for (qint32 y = 0; y < frameHeight; y++) {
@@ -720,10 +641,10 @@ void TbcSource::generateData(qint32 _targetDataPoints)
             LdDecodeMetaData::Field field = ldDecodeMetaData.getField(fieldNumber);
 
             // Get the DOs
-            if (field.dropOuts.startx.size() > 0) {
+            if (field.dropOuts.size() > 0) {
                 // Calculate the total length of the dropouts
-                for (qint32 i = 0; i < field.dropOuts.startx.size(); i++) {
-                    doLength += field.dropOuts.endx[i] - field.dropOuts.startx[i];
+                for (qint32 i = 0; i < field.dropOuts.size(); i++) {
+                    doLength += field.dropOuts.endx(i) - field.dropOuts.startx(i);
                 }
             }
 

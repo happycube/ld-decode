@@ -26,7 +26,6 @@ CONFIG += c++11
 
 SOURCES += \
     busydialog.cpp \
-    capturequalityindexdialog.cpp \
     closedcaptionsdialog.cpp \
     main.cpp \
     mainwindow.cpp \
@@ -41,7 +40,6 @@ SOURCES += \
     ../ld-chroma-decoder/palcolour.cpp \
     ../ld-chroma-decoder/comb.cpp \
     ../ld-chroma-decoder/rgb.cpp \
-    ../ld-chroma-decoder/yiq.cpp \
     ../ld-chroma-decoder/transformpal.cpp \
     ../ld-chroma-decoder/transformpal2d.cpp \
     ../ld-chroma-decoder/transformpal3d.cpp \
@@ -51,11 +49,11 @@ SOURCES += \
     ../library/tbc/sourcevideo.cpp \
     ../library/tbc/vbidecoder.cpp \
     ../library/tbc/filters.cpp \
-    ../library/tbc/logging.cpp
+    ../library/tbc/logging.cpp \
+    ../library/tbc/dropouts.cpp
 
 HEADERS += \
     busydialog.h \
-    capturequalityindexdialog.h \
     closedcaptionsdialog.h \
     mainwindow.h \
     oscilloscopedialog.h \
@@ -75,18 +73,17 @@ HEADERS += \
     ../ld-chroma-decoder/transformpal2d.h \
     ../ld-chroma-decoder/transformpal3d.h \
     ../ld-chroma-decoder/framecanvas.h \
-    ../ld-chroma-decoder/yiqbuffer.h \
     ../ld-chroma-decoder/sourcefield.h \
     ../library/filter/firfilter.h \
     ../library/tbc/lddecodemetadata.h \
     ../library/tbc/sourcevideo.h \
     ../library/tbc/vbidecoder.h \
     ../library/tbc/filters.h \
-    ../library/tbc/logging.h
+    ../library/tbc/logging.h \
+    ../library/tbc/dropouts.h
 
 FORMS += \
     busydialog.ui \
-    capturequalityindexdialog.ui \
     closedcaptionsdialog.ui \
     mainwindow.ui \
     oscilloscopedialog.ui \

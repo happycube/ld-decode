@@ -19,19 +19,23 @@ SOURCES += \
     ../library/tbc/sourcevideo.cpp \
     ../library/tbc/vbidecoder.cpp \
     ../library/tbc/logging.cpp \
+    ../library/tbc/dropouts.cpp \
     discmap.cpp \
     discmapper.cpp \
     frame.cpp \
-    main.cpp
+    main.cpp \
+    sourceaudio.cpp
 
 HEADERS += \
     ../library/tbc/lddecodemetadata.h \
     ../library/tbc/sourcevideo.h \
     ../library/tbc/vbidecoder.h \
     ../library/tbc/logging.h \
+    ../library/tbc/dropouts.h \
     discmap.h \
     discmapper.h \
-    frame.h
+    frame.h \
+    sourceaudio.h
 
 # Add external includes to the include path
 INCLUDEPATH += ../library/tbc

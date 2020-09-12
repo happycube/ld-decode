@@ -159,7 +159,7 @@ int main(int argc, char *argv[])
 
     // Option to select which decoder to use (-f)
     QCommandLineOption decoderOption(QStringList() << "f" << "decoder",
-                                     QCoreApplication::translate("main", "Decoder to use (pal2d, transform2d, transform3d, ntsc2d, ntsc3d, mono; default automatic)"),
+                                     QCoreApplication::translate("main", "Decoder to use (pal2d, transform2d, transform3d, ntsc1d, ntsc2d, ntsc3d, mono; default automatic)"),
                                      QCoreApplication::translate("main", "decoder"));
     parser.addOption(decoderOption);
 
@@ -171,15 +171,27 @@ int main(int argc, char *argv[])
 
     // -- NTSC decoder options --
 
-    // Option to show the optical flow map (-o)
-    QCommandLineOption showOpticalFlowOption(QStringList() << "o" << "oftest",
-                                             QCoreApplication::translate("main", "NTSC: Show the optical flow map (only used for testing)"));
-    parser.addOption(showOpticalFlowOption);
+    // Option to overlay the adaptive filter map
+    QCommandLineOption showMapOption(QStringList() << "o" << "oftest",
+                                     QCoreApplication::translate("main", "NTSC: Overlay the adaptive filter map (only used for testing)"));
+    parser.addOption(showMapOption);
 
     // Option to set the white point to 75% (rather than 100%)
     QCommandLineOption whitePointOption(QStringList() << "w" << "white",
                                         QCoreApplication::translate("main", "NTSC: Use 75% white-point (default 100%)"));
     parser.addOption(whitePointOption);
+
+    // Option to set the chroma noise reduction level
+    QCommandLineOption chromaNROption(QStringList() << "chroma-nr",
+                                      QCoreApplication::translate("main", "NTSC: Chroma noise reduction level in dB (default 0.0)"),
+                                      QCoreApplication::translate("main", "number"));
+    parser.addOption(chromaNROption);
+
+    // Option to set the luma noise reduction level
+    QCommandLineOption lumaNROption(QStringList() << "luma-nr",
+                                    QCoreApplication::translate("main", "NTSC: Luma noise reduction level in dB (default 1.0)"),
+                                    QCoreApplication::translate("main", "number"));
+    parser.addOption(lumaNROption);
 
     // -- PAL decoder options --
 
@@ -309,8 +321,28 @@ int main(int argc, char *argv[])
         combConfig.whitePoint75 = true;
     }
 
-    if (parser.isSet(showOpticalFlowOption)) {
-        combConfig.showOpticalFlowMap = true;
+    if (parser.isSet(showMapOption)) {
+        combConfig.showMap = true;
+    }
+
+    if (parser.isSet(chromaNROption)) {
+        combConfig.cNRLevel = parser.value(chromaNROption).toDouble();
+
+        if (combConfig.cNRLevel < 0.0) {
+            // Quit with error
+            qCritical("Chroma noise reduction cannot be negative");
+            return -1;
+        }
+    }
+
+    if (parser.isSet(lumaNROption)) {
+        combConfig.yNRLevel = parser.value(lumaNROption).toDouble();
+
+        if (combConfig.yNRLevel < 0.0) {
+            // Quit with error
+            qCritical("Luma noise reduction cannot be negative");
+            return -1;
+        }
     }
 
     if (parser.isSet(transformModeOption)) {
@@ -374,9 +406,9 @@ int main(int argc, char *argv[])
         decoderName = "ntsc2d";
     }
 
-    // Require ntsc3d if the optical flow map overlay is selected
-    if (combConfig.showOpticalFlowMap && decoderName != "ntsc3d") {
-        qCritical() << "Can only show optical flow with the ntsc3d decoder";
+    // Require ntsc3d if the map overlay is selected
+    if (combConfig.showMap && decoderName != "ntsc3d") {
+        qCritical() << "Can only show adaptive filter map with the ntsc3d decoder";
         return -1;
     }
 
@@ -402,10 +434,14 @@ int main(int argc, char *argv[])
             return -1;
         }
         decoder.reset(new PalDecoder(palConfig));
+    } else if (decoderName == "ntsc1d") {
+        combConfig.dimensions = 1;
+        decoder.reset(new NtscDecoder(combConfig));
     } else if (decoderName == "ntsc2d") {
+        combConfig.dimensions = 2;
         decoder.reset(new NtscDecoder(combConfig));
     } else if (decoderName == "ntsc3d") {
-        combConfig.use3D = true;
+        combConfig.dimensions = 3;
         decoder.reset(new NtscDecoder(combConfig));
     } else if (decoderName == "mono") {
         decoder.reset(new MonoDecoder);

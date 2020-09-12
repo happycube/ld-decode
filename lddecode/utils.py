@@ -7,6 +7,7 @@ from datetime import datetime
 import getopt
 import io
 from io import BytesIO
+import json
 import os
 import sys
 import subprocess
@@ -17,64 +18,6 @@ from numba import jit, njit
 import numpy as np
 import scipy as sp
 import scipy.signal as sps
-
-# plotting
-import matplotlib
-import matplotlib.pyplot as plt
-
-def todb(y, zero = False):
-    db = 20 * np.log10(np.abs(y))
-    if zero:
-        return db - np.max(db)
-    else:
-        return db
-
-def plotfilter_wh(w, h, freq, zero_base = False):
-    db = todb(h, zero_base)
-    
-    above_m3 = None
-    for i in range(1, len(w)):
-        if (db[i] >= -10) and (db[i - 1] < -10):
-            print(">-10db crossing at ", w[i]) 
-        if (db[i] >= -3) and (db[i - 1] < -3):
-            print(">-3db crossing at ", w[i])
-            above_m3 = i
-        if (db[i] < -3) and (db[i - 1] >= -3):
-            if above_m3 is not None:
-                peak_index = np.argmax(db[above_m3:i]) + above_m3
-                print("peak at ", w[peak_index], db[peak_index])
-            print("<-3db crossing at ", w[i]) 
-        if (db[i] >= 3) and (db[i - 1] < 3):
-            print(">3db crossing at ", w[i]) 
-    
-    fig, ax1 = plt.subplots(1, 1, sharex=True)
-    ax1.set_title('Digital filter frequency response')
-
-    ax1.plot(w, db, 'b')
-    ax1.set_ylabel('Amplitude [dB]', color='b')
-    ax1.set_xlabel('Frequency [rad/sample]')
-    
-    ax2 = ax1.twinx()
-    angles = np.unwrap(np.angle(h))
-    ax2.plot(w, angles, 'g')
-    ax2.set_ylabel('Angle (radians)', color='g')
-
-    plt.grid()
-    plt.axis('tight')
-    plt.show()
-    
-    return None
-
-def plotfilter(B, A, dfreq = None, freq = 40, zero_base = False):
-    if dfreq is None:
-        dfreq = freq / 2
-        
-    w, h = sps.freqz(B, A, whole=True, worN=4096)
-    w = np.arange(0, freq, freq / len(h))
-    
-    keep = int((dfreq / freq) * len(h))
-        
-    return plotfilter_wh(w[1:keep], h[1:keep], freq, zero_base)
 
 from scipy import interpolate
 
@@ -174,6 +117,8 @@ def make_loader(filename, inputfreq=None):
 
         if filename.endswith('.r16') or filename.endswith('.s16'):
             input_args = ['-f', 's16le']
+        elif filename.endswith('.rf'):
+            input_args = ['-f', 'f32le']
         elif filename.endswith('.r8') or filename.endswith('.u8'):
             input_args = ['-f', 'u8']
         elif filename.endswith('.lds') or filename.endswith('.r30'):
@@ -191,6 +136,8 @@ def make_loader(filename, inputfreq=None):
         return load_packed_data_4_40
     elif filename.endswith('.r30'):
         return load_packed_data_3_32
+    elif filename.endswith('.rf'):
+        return load_unpacked_data_float32
     elif filename.endswith('.r16') or filename.endswith('.s16'):
         return load_unpacked_data_s16
     elif filename.endswith('.r8') or filename.endswith('.u8'):
@@ -211,7 +158,9 @@ def load_unpacked_data(infile, sample, readlen, sampletype):
     infile.seek(sample * sampletype, 0)
     inbuf = infile.read(readlen * sampletype)
 
-    if sampletype == 2:
+    if sampletype == 4:
+        indata = np.fromstring(inbuf, 'float32', len(inbuf) // 4) * 32768
+    elif sampletype == 2:
         indata = np.fromstring(inbuf, 'int16', len(inbuf) // 2)
     else:
         indata = np.fromstring(inbuf, 'uint8', len(inbuf))
@@ -226,6 +175,9 @@ def load_unpacked_data_u8(infile, sample, readlen):
 
 def load_unpacked_data_s16(infile, sample, readlen):
     return load_unpacked_data(infile, sample, readlen, 2)
+
+def load_unpacked_data_float32(infile, sample, readlen):
+    return load_unpacked_data(infile, sample, readlen, 4)
 
 # This is for the .r30 format I did in ddpack/unpack.c.  Depricated but I still have samples in it.
 def load_packed_data_3_32(infile, sample, readlen):
@@ -560,9 +512,9 @@ def calczc_findfirst(data, target, rising):
         return None
 
 @njit(cache=True)
-def calczc_do(data, _start_offset, target, edge=0, _count=10):
+def calczc_do(data, _start_offset, target, edge=0, count=10):
     start_offset = max(1, int(_start_offset))
-    count = int(_count + 1)
+    icount = int(count + 1)
     
     if edge == 0: # capture rising or falling edge
         if data[start_offset] < target:
@@ -570,7 +522,7 @@ def calczc_do(data, _start_offset, target, edge=0, _count=10):
         else:
             edge = -1
 
-    loc = calczc_findfirst(data[start_offset:start_offset+count], target, edge==1)
+    loc = calczc_findfirst(data[start_offset:start_offset+icount], target, edge==1)
                
     if loc is None:
         return None
@@ -583,17 +535,17 @@ def calczc_do(data, _start_offset, target, edge=0, _count=10):
 
     return x-1+y
 
-def calczc(data, _start_offset, target, edge=0, _count=10, reverse=False):
+def calczc(data, _start_offset, target, edge=0, count=10, reverse=False):
     ''' edge:  -1 falling, 0 either, 1 rising '''
     if reverse:
         # Instead of actually implementing this in reverse, use numpy to flip data
-        rev_zc = calczc_do(data[_start_offset::-1], 0, target, edge, _count)
+        rev_zc = calczc_do(data[_start_offset::-1], 0, target, edge, count)
         if rev_zc is None:
             return None
 
         return _start_offset - rev_zc
 
-    return calczc_do(data, _start_offset, target, edge, _count)
+    return calczc_do(data, _start_offset, target, edge, count)
 
 def calczc_sets(data, start, end, tgt = 0, cliplevel = None):
     zcsets = {False: [], True:[]}
@@ -714,14 +666,18 @@ def findpulses(array, low, high):
 
     return [Pulse(z[0], z[1] - z[0]) for z in zip(starts, ends)]
 
-def findpeaks(array, low = None):
-    if min is not None:
-        array2 = array.copy()
-        array2[np.where(array2 < low)] = 0
-    else:
-        array2 = array
+def findpeaks(array, low = 0):
+    array2 = array.copy()
+    array2[np.where(array2 < low)] = 0
     
     return [loc - 1 for loc in np.where(np.logical_and(array2[:-1] > array2[-1], array2[1:] > array2[:-1]))[0]]
+
+# originally from http://www.paulinternet.nl/?page=bicubic
+def cubic_interpolate(data, loc):
+    p = data[int(loc)-1:int(loc)+3]
+    x = (loc - np.floor(loc))
+
+    return p[1] + 0.5 * x*(p[2] - p[0] + x*(2.0*p[0] - 5.0*p[1] + 4.0*p[2] - p[3] + x*(3.0*(p[1] - p[2]) + p[3] - p[0])))
 
 def LRUupdate(l, k):
     ''' This turns a list into an LRU table.  When called it makes sure item 'k' is at the beginning,
@@ -749,6 +705,10 @@ def nb_min(m):
 @njit
 def nb_max(m):
     return np.max(m)
+
+@njit
+def nb_absmax(m):
+    return np.max(np.abs(m))
 
 @njit
 def nb_mul(x, y):
@@ -797,6 +757,37 @@ def db_to_lev(db):
 def lev_to_db(rlev):
     return 20 * np.log10(rlev)
 
+# moved from core.py
+@njit
+def dsa_rescale(infloat):
+    return int(np.round(infloat * 32767 / 150000))
+
+# Hotspot subroutines in FieldNTSC's compute_line_bursts function,
+# removed so that they can be JIT'd
+
+@njit(cache=True)
+def clb_findnextburst(burstarea, i, endburstarea, threshold):
+    for j in range(i, endburstarea):
+        if np.abs(burstarea[j]) > threshold:
+            return j, burstarea[j]
+
+    return None
+
+@njit(cache=True)
+def distance_from_round(x):
+    # Yes, this was a hotspot.
+    return np.round(x) - x
+
+# Write the .tbc.json file (used by lddecode and notebooks)
+def write_json(ldd, outname):
+    jsondict = ldd.build_json(ldd.curfield)
+    
+    fp = open(outname + '.tbc.json.tmp', 'w')
+    json.dump(jsondict, fp, indent=4 if ldd.verboseVITS else None)
+    fp.write('\n')
+    fp.close()
+    
+    os.rename(outname + '.tbc.json.tmp', outname + '.tbc.json')
 
 if __name__ == "__main__":
     print("Nothing to see here, move along ;)")

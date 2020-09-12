@@ -165,8 +165,8 @@ bool Sources::getInputFrame(qint32& targetVbiFrame,
 
 // Receive a frame from the threaded processing
 bool Sources::setOutputFrame(qint32 targetVbiFrame,
-                             QVector<LdDecodeMetaData::DropOuts> firstFieldDropouts,
-                             QVector<LdDecodeMetaData::DropOuts> secondFieldDropouts,
+                             QVector<DropOuts> firstFieldDropouts,
+                             QVector<DropOuts> secondFieldDropouts,
                              QVector<qint32> availableSourcesForFrame)
 {
     QMutexLocker locker(&outputMutex);
@@ -184,8 +184,8 @@ bool Sources::setOutputFrame(qint32 targetVbiFrame,
         // Calculate the total number of dropouts detected for the frame
         qint32 totalFirstDropouts = 0;
         qint32 totalSecondDropouts = 0;
-        if (firstFieldDropouts.size() > 0) totalFirstDropouts = firstFieldDropouts[sourceNo].startx.size();
-        if (secondFieldDropouts.size() > 0) totalSecondDropouts = secondFieldDropouts[sourceNo].startx.size();
+        if (firstFieldDropouts.size() > 0) totalFirstDropouts = firstFieldDropouts[sourceNo].size();
+        if (secondFieldDropouts.size() > 0) totalSecondDropouts = secondFieldDropouts[sourceNo].size();
 
         qDebug() << "Writing source" << sourceNo <<
                     "frame" << targetVbiFrame << "fields" << firstFieldNumber << "/" << secondFieldNumber <<

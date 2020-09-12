@@ -39,7 +39,6 @@
 #include "vbidialog.h"
 #include "dropoutanalysisdialog.h"
 #include "snranalysisdialog.h"
-#include "capturequalityindexdialog.h"
 #include "busydialog.h"
 #include "closedcaptionsdialog.h"
 #include "chromadecoderconfigdialog.h"
@@ -68,7 +67,6 @@ private slots:
     void on_actionVBI_triggered();
     void on_actionDropout_analysis_triggered();
     void on_actionSNR_analysis_triggered();
-    void on_actionCapture_Quality_Index_triggered();
     void on_actionSave_frame_as_PNG_triggered();
     void on_actionZoom_In_triggered();
     void on_actionZoom_Out_triggered();
@@ -92,6 +90,7 @@ private slots:
     void on_zoomOutPushButton_clicked();
     void on_originalSizePushButton_clicked();
     void on_mouseModePushButton_clicked();
+    void on_aspectPushButton_clicked();
 
     // Miscellaneous handlers
     void scanLineChangedSignalHandler(qint32 scanLine, qint32 pictureDot);
@@ -115,7 +114,6 @@ private:
     BusyDialog* busyDialog;
     ClosedCaptionsDialog *closedCaptionDialog;
     ChromaDecoderConfigDialog *chromaDecoderConfigDialog;
-    CaptureQualityIndexDialog *captureQualityIndexDialog;
 
     // Class globals
     Configuration configuration;
@@ -128,6 +126,7 @@ private:
     qreal scaleFactor;
     QPalette buttonPalette;
     QString lastFilename;
+    bool aspect43On;
 
     // Update GUI methods
     void updateGuiLoaded();
