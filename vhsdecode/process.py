@@ -188,7 +188,7 @@ def process_chroma(field, track_phase):
     # What phase we start on. (Needed for NTSC to get the color phase correct)
     starting_phase = 0
 
-    if field.rf.fieldNumber % 2 == track_phase:
+    if field.rf.field_number % 2 == track_phase:
         if field.rf.system == 'PAL':
             # For PAL, track 1 has no rotation.
             phase_rotation = 0
@@ -356,12 +356,23 @@ class FieldPALVHS(ldd.FieldPAL):
         # Use field number based on raw data position
         # This may not be 100% accurate, so we may want to add some more logic to
         # make sure we re-check the phase occasionally.
-        rawfieldno = int(np.floor((self.rf.decoder.readloc / self.rf.decoder.bytes_per_field)))
-        self.rf.fieldNumber = rawfieldno
+        raw_loc = self.rf.decoder.readloc / self.rf.decoder.bytes_per_field
+
+        # Re-check phase if we moved very far since last time.
+        if raw_loc - self.rf.last_raw_loc > 2.0:
+            if self.rf.detect_track:
+                print("Possibly skipped track, re-checking phase..")
+            self.rf.needs_detect
+
         if self.rf.detect_track and self.rf.needs_detect:
             self.rf.track_phase = self.try_detect_track()
             self.rf.needs_detect = False
         uphet = process_chroma(self, self.rf.track_phase)
+
+        if raw_loc > self.rf.last_raw_loc:
+            self.rf.field_number += 1
+
+        self.rf.last_raw_loc = raw_loc
 
         return chroma_to_u16(uphet)
 
@@ -441,7 +452,7 @@ class FieldNTSCVHS(ldd.FieldNTSC):
                                                                     final, *args, **kwargs)
         ## TEMPORARY
         dschroma = self.processChroma()
-        self.fieldPhaseID = (self.rf.fieldNumber % 4) + 1
+        self.fieldPhaseID = (self.rf.field_number % 4) + 1
         #dschroma = self.refine_linelocs_burst(self.linelocs1)
 
         return (dsout, dschroma), dsaudio, dsefm
@@ -537,7 +548,7 @@ class VHSRFDecode(ldd.RFDecode):
         super(VHSRFDecode, self).__init__(inputfreq, system, decode_analog_audio = False,
                                               has_analog_audio = False)
 
-        if track_phase == None:
+        if track_phase is None:
             self.track_phase = 0
             self.detect_track = True
             self.needs_detect = True
@@ -548,6 +559,9 @@ class VHSRFDecode(ldd.RFDecode):
         else:
             raise Exception("Track phase can only be 0, 1 or None")
         self.hsync_tolerance = .8
+
+        self.field_number = 0
+        self.last_raw_loc = 0
 
         # Then we override the laserdisc parameters with VHS ones.
         if system == 'PAL':
@@ -658,8 +672,6 @@ class VHSRFDecode(ldd.RFDecode):
         self.chroma_heterodyne[1] = sps.filtfilt(het_filter[0], het_filter[1],cc_wave_90 * self.fsc_wave)
         self.chroma_heterodyne[2] = sps.filtfilt(het_filter[0], het_filter[1],cc_wave_180 * self.fsc_wave)
         self.chroma_heterodyne[3] = sps.filtfilt(het_filter[0], het_filter[1],cc_wave_270 * self.fsc_wave)
-
-        self.fieldNumber = 0
 
     def computedelays(self, mtf_level = 0):
         '''Override computedelays
