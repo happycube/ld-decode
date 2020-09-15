@@ -86,8 +86,8 @@ bool ProcessingPool::process()
                lastFieldNumber / totalSecs << "FPS )";
 
     // Write the JSON metadata file
-    qInfo() << "Writing JSON metadata file...";
-    ldDecodeMetaData.write(outputJsonFilename);
+    qInfo() << "NNNNOOOOOOOOOTTTTTTTT!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!        ---- Writing JSON metadata file...";
+    //ldDecodeMetaData.write(outputJsonFilename);
     qInfo() << "VITS processing complete";
 
     // Close the source video
@@ -113,10 +113,10 @@ bool ProcessingPool::getInputField(qint32 &fieldNumber, SourceVideo::Data &field
     inputFieldNumber++;
 
     // Show what we are about to process
-    qDebug() << "Processing field number" << fieldNumber;
+    //qDebug() << "Processing field number" << fieldNumber;
 
     // Fetch the input data
-    fieldVideoData = sourceVideo.getVideoField(fieldNumber, VitsAnalyser::startFieldLine, VitsAnalyser::endFieldLine);
+    fieldVideoData = sourceVideo.getVideoField(fieldNumber);
     fieldMetadata = ldDecodeMetaData.getField(fieldNumber);
     videoParameters = ldDecodeMetaData.getVideoParameters();
 
@@ -130,9 +130,8 @@ bool ProcessingPool::setOutputField(qint32 fieldNumber, LdDecodeMetaData::Field 
 {
     QMutexLocker locker(&outputMutex);
 
-    // Save the field data to the metadata (only VBI and NTSC metadata is affected)
-    ldDecodeMetaData.updateFieldVbi(fieldMetadata.vbi, fieldNumber);
-    ldDecodeMetaData.updateFieldNtsc(fieldMetadata.ntsc, fieldNumber);
+    // Save the field data to the metadata (only VITS metrics metadata is affected)
+    ldDecodeMetaData.updateFieldVitsMetrics(fieldMetadata.vitsMetrics, fieldNumber);
 
     return true;
 }

@@ -30,6 +30,8 @@
 #include <QThread>
 #include <QDebug>
 
+#include <cmath>
+
 #include "lddecodemetadata.h"
 #include "sourcevideo.h"
 
@@ -40,10 +42,6 @@ class VitsAnalyser : public QThread {
 
 public:
     explicit VitsAnalyser(QAtomicInt& _abort, ProcessingPool& _processingPool, QObject *parent = nullptr);
-
-    // The range of field lines needed from the input file (inclusive)
-    static constexpr qint32 startFieldLine = 10;
-    static constexpr qint32 endFieldLine = 21;
 
 protected:
     void run() override;
@@ -56,8 +54,13 @@ private:
     // Temporary output buffer
     LdDecodeMetaData::Field outputData;
 
-    SourceVideo::Data getActiveVideoLine(const SourceVideo::Data& sourceFrame, qint32 scanLine,
-                                         LdDecodeMetaData::VideoParameters videoParameters);
+    // Other settings
+    LdDecodeMetaData::VideoParameters videoParameters;
+
+    SourceVideo::Data getFieldLineSlice(const SourceVideo::Data &sourceField, qint32 fieldLine, qint32 startUs, qint32 lengthUs);
+    double calculateSnr(const SourceVideo::Data &data, bool usePsnr);
+    double calcMean(const SourceVideo::Data &data);
+    double calcStd(const SourceVideo::Data &data);
 };
 
 #endif // VITSANALYSER_H

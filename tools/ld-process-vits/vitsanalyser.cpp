@@ -22,14 +22,8 @@
 
 ************************************************************************/
 
-
 #include "vitsanalyser.h"
 #include "processingpool.h"
-
-// Definitions of static constexpr data members, for compatibility with
-// pre-C++17 compilers
-constexpr qint32 VitsAnalyser::startFieldLine;
-constexpr qint32 VitsAnalyser::endFieldLine;
 
 VitsAnalyser::VitsAnalyser(QAtomicInt& _abort, ProcessingPool& _processingPool, QObject *parent)
     : QThread(parent), abort(_abort), processingPool(_processingPool)
@@ -45,7 +39,6 @@ void VitsAnalyser::run()
     // Input data buffers
     SourceVideo::Data sourceFieldData;
     LdDecodeMetaData::Field fieldMetadata;
-    LdDecodeMetaData::VideoParameters videoParameters;
 
     while(!abort) {
         // Get the next field to process from the input file
@@ -54,65 +47,69 @@ void VitsAnalyser::run()
             break;
         }
 
-        if (fieldMetadata.isFirstField) qDebug() << "Getting VITS for field" << fieldNumber << "(first)";
-        else  qDebug() << "Getting VITS for field" << fieldNumber << "(second)";
+        // Show some debug
+//        if (fieldMetadata.isFirstField) qDebug() << "Getting VITS for field" << fieldNumber << "(first)";
+//        else  qDebug() << "Getting VITS for field" << fieldNumber << "(second)";
 
+        // Get multiple possible black and white measurement points based on video format, etc.
+        QVector<SourceVideo::Data> wlSlice;
+        QVector<SourceVideo::Data> blSlice;
 
-        // Code borrowed from VBI processing... to-do replace...
+        if (videoParameters.isSourcePal) {
+            // PAL (taken from ld-decode core.py)
+            wlSlice.append(getFieldLineSlice(sourceFieldData, 19, 12, 8));
+            blSlice.append(getFieldLineSlice(sourceFieldData, 22, 12, 50));
+        } else {
+            // NTSC (taken from ld-decode core.py)
+            wlSlice.append(getFieldLineSlice(sourceFieldData, 20, 14, 12));
+            wlSlice.append(getFieldLineSlice(sourceFieldData, 20, 52, 8));
+            wlSlice.append(getFieldLineSlice(sourceFieldData, 13, 13, 15));
+            blSlice.append(getFieldLineSlice(sourceFieldData, 1, 10, 20));
+        }
 
-//        // Determine the 16-bit zero-crossing point
-//        qint32 zcPoint = videoParameters.white16bIre - videoParameters.black16bIre;
+        // Calculate the 90 IRE and 110 IRE points
+        qint32 ire90 = (((videoParameters.white16bIre - videoParameters.black16bIre) / 100) * 90) + videoParameters.black16bIre;
+        qint32 ire110 = (((videoParameters.white16bIre - videoParameters.black16bIre) / 100) * 110) + videoParameters.black16bIre;
 
-//        // Get the VBI data from field lines 16-18
-//        qDebug() << "Getting field-lines for field" << fieldNumber;
-//        for (qint32 i = 0; i < 3; i++) {
-//            fieldMetadata.vbi.vbiData[i] = manchesterDecoder(getActiveVideoLine(sourceFieldData, i + 16 - startFieldLine, videoParameters),
-//                                                             zcPoint, videoParameters);
-//            if (fieldMetadata.vbi.vbiData[i] == 0) qDebug() << "No VBI present on line" << i + 16;
-//        }
+        // Only pick the white slice if it has values between 90 and 110 IRE
+        qint32 wlSliceToUse = -1;
+        for (qint32 i = 0; i < wlSlice.size(); i++) {
+            bool sliceGood = true;
+            if (wlSlice[i].size() > 0) {
+                for (qint32 dp = 0; dp < wlSlice[i].size(); dp++) {
+                    if (wlSlice[i][dp] < ire90 || wlSlice[i][dp] > ire110) {
+                        sliceGood = false;
+                    }
+                }
+            } else sliceGood = false;
 
-//        // Show the VBI data as hexadecimal (for every 1000th field)
-//        if (fieldNumber % 1000 == 0) {
-//            qInfo() << "Processing field" << fieldNumber;
-//        }
+            if (sliceGood) {
+                wlSliceToUse = i;
+                break;
+            }
+        }
 
-//        // Process NTSC specific data if source type is NTSC
-//        if (!videoParameters.isSourcePal) {
-//            // Get the 40-bit FM coded data from field line 10
-//            fmDecode = fmCode.fmDecoder(getActiveVideoLine(sourceFieldData, 10 - startFieldLine, videoParameters), videoParameters);
+        // Always use the black slice (there is only ever one to choose from)
+        qint32 blSliceToUse = 0;
 
-//            // Get the white flag from field line 11
-//            isWhiteFlag = whiteFlag.getWhiteFlag(getActiveVideoLine(sourceFieldData, 11 - startFieldLine, videoParameters), videoParameters);
+        // Only calculate the wSNR if we have a valid slice
+        double wSNR = 0;    // wSNR  - white SNR
+        if (wlSliceToUse != -1) {
+            wSNR = calculateSnr(wlSlice[wlSliceToUse], true);
+        } else qDebug() << "Didn't get a valid wSNR slice for field" << fieldNumber;
 
-//            // Get the closed captioning from field line 21
-//            ccData = closedCaption.getData(getActiveVideoLine(sourceFieldData, 21 - startFieldLine, videoParameters), videoParameters);
+        // Only calculate the bPSNT if we have a valid slice
+        double bPSNR = 0;   // bPSNR - black PSNR
+        if (blSliceToUse != -1) {
+            bPSNR = calculateSnr(blSlice[blSliceToUse], true);
+        } else qDebug() << "Didn't get a valid bPSNR slice for field" << fieldNumber;
 
-//            // Update the metadata
-//            if (fmDecode.receiverClockSyncBits != 0) {
-//                fieldMetadata.ntsc.isFmCodeDataValid = true;
-//                fieldMetadata.ntsc.fmCodeData = static_cast<qint32>(fmDecode.data);
-//                if (fmDecode.videoFieldIndicator == 1) fieldMetadata.ntsc.fieldFlag = true;
-//                else fieldMetadata.ntsc.fieldFlag = false;
-//            } else {
-//                fieldMetadata.ntsc.isFmCodeDataValid = false;
-//                fieldMetadata.ntsc.fmCodeData = -1;
-//                fieldMetadata.ntsc.fieldFlag = false;
-//            }
+        // Show the result as debug
+        qDebug() << "Field #" << fieldNumber << "has wSNR of" << wSNR << "and bPSNR of" << bPSNR;
 
-//            fieldMetadata.ntsc.whiteFlag = isWhiteFlag;
-//            fieldMetadata.ntsc.inUse = true;
-
-//            if (ccData.isValid) {
-//                fieldMetadata.ntsc.ccData0 = ccData.byte0;
-//                fieldMetadata.ntsc.ccData1 = ccData.byte1;
-//            } else {
-//                fieldMetadata.ntsc.ccData0 = -1;
-//                fieldMetadata.ntsc.ccData1 = -1;
-//            }
-//        }
-
-//        // Update the metadata for the field
-//        fieldMetadata.vbi.inUse = true;
+        // Update the metadata for the field
+        fieldMetadata.vitsMetrics.wSNR = static_cast<qreal>(wSNR);
+        fieldMetadata.vitsMetrics.bPSNR = static_cast<qreal>(bPSNR);
 
         // Write the result to the output metadata
         if (!processingPool.setOutputField(fieldNumber, fieldMetadata)) {
@@ -122,19 +119,68 @@ void VitsAnalyser::run()
     }
 }
 
-// Private method to get a single scanline of greyscale data
-SourceVideo::Data VitsAnalyser::getActiveVideoLine(const SourceVideo::Data &sourceField, qint32 fieldLine,
-                                                     LdDecodeMetaData::VideoParameters videoParameters)
+// Get a specific slice of a field line and return all the values
+SourceVideo::Data VitsAnalyser::getFieldLineSlice(const SourceVideo::Data &sourceField, qint32 fieldLine, qint32 startUs, qint32 lengthUs)
 {
-    // Range-check the scan line
+    fieldLine--; // Adjust for field offset
+
+    // Range-check the field line
     if (fieldLine < 0 || fieldLine >= videoParameters.fieldHeight) {
         qWarning() << "Cannot generate field-line data, line number is out of bounds! Scan line =" << fieldLine;
         return SourceVideo::Data();
     }
 
-    qint32 startPointer = (fieldLine * videoParameters.fieldWidth) + videoParameters.activeVideoStart;
-    qint32 length = videoParameters.activeVideoEnd - videoParameters.activeVideoStart;
+    // Calculate the number of samples per uS for the field
+    double samplesPerUs = 0;
+    if (videoParameters.isSourcePal) samplesPerUs = static_cast<double>(videoParameters.fieldWidth) / 64.0;
+    else samplesPerUs = static_cast<double>(videoParameters.fieldWidth) / 63.5;
+
+    // Get the start and end sample positions
+    double startSampleDouble = startUs * samplesPerUs;
+    double lengthSampleDouble = lengthUs * samplesPerUs;
+
+    qint32 startPointer = (fieldLine * videoParameters.fieldWidth) + static_cast<qint32>(startSampleDouble);
+    qint32 length = static_cast<qint32>(lengthSampleDouble);
 
     return sourceField.mid(startPointer, length);
 }
+
+// Calculate the SNR or Percentage SNR
+double VitsAnalyser::calculateSnr(const SourceVideo::Data &data, bool usePsnr)
+{
+    double signal = 0;
+    if (usePsnr) signal = 100.0; else signal = calcMean(data); // Compute the arithmetic mean
+    double noise = calcStd(data); // Compute the standard deviation
+
+    return 20 * log10(signal / noise);
+}
+
+// The arithmetic mean is the sum of the elements divided by the number of elements.
+double VitsAnalyser::calcMean(const SourceVideo::Data &data)
+{
+    double result = 0;
+
+    for (qint32 i = 0; i < data.size(); i++) {
+        result += static_cast<double>(data[i]);
+    }
+
+    return result / static_cast<double>(data.size());
+}
+
+// The standard deviation is the square root of the average of the squared deviations from the mean
+double VitsAnalyser::calcStd(const SourceVideo::Data &data)
+{
+    double sum = 0.0, mean, standardDeviation = 0.0;
+
+    for(qint32 i = 0; i < data.size(); ++i)
+        sum += static_cast<double>(data[i]);
+
+    mean = sum / static_cast<double>(data.size());
+
+    for(qint32 i = 0; i < data.size(); ++i)
+        standardDeviation += pow(static_cast<double>(data[i]) - mean, 2);
+
+    return sqrt(standardDeviation / static_cast<double>(data.size()));
+}
+
 
