@@ -58,7 +58,6 @@ private:
     LdDecodeMetaData::VideoParameters videoParameters;
 
     QVector<double> getFieldLineSlice(const SourceVideo::Data &sourceField, qint32 fieldLine, qint32 startUs, qint32 lengthUs);
-    QVector<double> limitByRange(QVector<double> &data, double floor, double ceiling);
     double calculateSnr(QVector<double> &data, bool usePsnr);
     double calcMean(QVector<double> &data);
     double calcStd(QVector<double> &data);

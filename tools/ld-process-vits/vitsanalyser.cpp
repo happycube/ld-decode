@@ -47,6 +47,11 @@ void VitsAnalyser::run()
             break;
         }
 
+        // Show an update to the user (for every 1000th field)
+        if (fieldNumber % 1000 == 0) {
+            qInfo() << "Processing field" << fieldNumber;
+        }
+
         // Get multiple possible black and white measurement points based on video format, etc.
         QVector<QVector<double>> wlSlice;
         QVector<QVector<double>> blSlice;
@@ -63,31 +68,27 @@ void VitsAnalyser::run()
             blSlice.append(getFieldLineSlice(sourceFieldData, 1, 10, 20));
         }
 
-        // Only pick the white slice if it has values between 90 and 110 IRE
+        // Only pick the white slice if it has a mean value between 90 and 110 IRE
         qint32 wlSliceToUse = -1;
         for (qint32 i = 0; i < wlSlice.size(); i++) {
-            wlSlice[i] = limitByRange(wlSlice[i], 90.0, 110.0);
-
-            if (wlSlice[i].size() > 0) {
+            double wlMean = calcMean(wlSlice[i]);
+            if (wlMean >= 90 && wlMean <= 110) {
                 wlSliceToUse = i;
                 break;
             }
         }
 
         // Always use the first black slice (there is only ever one to choose from)
+        // Doing it this way in case more sources are added in the future
         qint32 blSliceToUse = 0;
 
         // Only calculate the wSNR if we have a valid slice
-        double wSNR = 0;    // wSNR = white SNR
-        if (wlSliceToUse != -1) {
-            wSNR = calculateSnr(wlSlice[wlSliceToUse], true);
-        } else qDebug() << "Didn't get a valid wSNR slice for field" << fieldNumber;
+        double wSNR = 0;
+        if (wlSliceToUse != -1) wSNR = calculateSnr(wlSlice[wlSliceToUse], true);
 
         // Only calculate the bPSNR if we have a valid slice
-        double bPSNR = 0;   // bPSNR = black PSNR
-        if (blSliceToUse != -1) {
-            bPSNR = calculateSnr(blSlice[blSliceToUse], true);
-        } else qDebug() << "Didn't get a valid bPSNR slice for field" << fieldNumber;
+        double bPSNR = 0;
+        if (blSliceToUse != -1) bPSNR = calculateSnr(blSlice[blSliceToUse], true);
 
         // Update the metadata for the field
         qreal old_wSNR = fieldMetadata.vitsMetrics.wSNR;
@@ -111,7 +112,6 @@ void VitsAnalyser::run()
 QVector<double> VitsAnalyser::getFieldLineSlice(const SourceVideo::Data &sourceField, qint32 fieldLine, qint32 startUs, qint32 lengthUs)
 {
     QVector<double> returnData;
-
     fieldLine--; // Adjust for field offset
 
     // Range-check the field line
@@ -133,22 +133,10 @@ QVector<double> VitsAnalyser::getFieldLineSlice(const SourceVideo::Data &sourceF
     qint32 length = static_cast<qint32>(lengthSampleDouble);
 
     // Convert data points to floating-point IRE values
+    returnData.resize(length);
     for (qint32 i = startPointer; i < startPointer + length; i++) {
-        double dataPoint = (static_cast<double>(sourceField[i]) - static_cast<double>(videoParameters.black16bIre)) /
+        returnData[i - startPointer] =  (static_cast<double>(sourceField[i]) - static_cast<double>(videoParameters.black16bIre)) /
                 ((static_cast<double>(videoParameters.white16bIre) - static_cast<double>(videoParameters.black16bIre)) / 100.0);
-        returnData.append(dataPoint);
-    }
-
-    return returnData;
-}
-
-// Limit data set by range (drops any vector elements outside of the ceiling to floor range
-QVector<double> VitsAnalyser::limitByRange(QVector<double> &data, double floor, double ceiling)
-{
-    QVector<double> returnData;
-
-    for (qint32 dp = 0; dp < data.size(); dp++) {
-        if (data[dp] >= floor && data[dp] <= ceiling) returnData.append(data[dp]);
     }
 
     return returnData;
@@ -179,20 +167,22 @@ double VitsAnalyser::calcMean(QVector<double> &data)
 // The standard deviation is the square root of the average of the squared deviations from the mean
 double VitsAnalyser::calcStd(QVector<double> &data)
 {
-    double sum = 0.0, mean, standardDeviation = 0.0;
+    double sum = 0.0;
+    double mean = 0.0;
+    double standardDeviation = 0.0;
 
     for(qint32 i = 0; i < data.size(); ++i)
         sum += data[i];
 
-    mean = sum / data.size();
+    mean = sum / static_cast<double>(data.size());
 
     for(qint32 i = 0; i < data.size(); ++i)
         standardDeviation += pow(data[i] - mean, 2.0);
 
-    return sqrt(standardDeviation / data.size());
+    return sqrt(standardDeviation / static_cast<double>(data.size()));
 }
 
-// Round a double
+// Round a double to x decimal places
 double VitsAnalyser::roundDouble(double in, qint32 decimalPlaces)
 {
     const double multiplier = pow(10.0, decimalPlaces);

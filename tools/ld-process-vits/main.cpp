@@ -138,8 +138,8 @@ int main(int argc, char *argv[])
 
     // If we're overwriting the input JSON file, back it up first
     if (inputJsonFilename == outputJsonFilename && !noBackup) {
-        qInfo().nospace().noquote() << "Backing up JSON metadata to " << inputJsonFilename << ".bup";
-        if (!QFile::copy(inputJsonFilename, inputJsonFilename + ".bup")) {
+        qInfo().nospace().noquote() << "Backing up JSON metadata to " << inputJsonFilename << ".vbup";
+        if (!QFile::copy(inputJsonFilename, inputJsonFilename + ".vbup")) {
             qCritical() << "Unable to back-up input JSON metadata file - back-up already exists?";
             return 1;
         }
