@@ -57,10 +57,12 @@ private:
     // Other settings
     LdDecodeMetaData::VideoParameters videoParameters;
 
-    SourceVideo::Data getFieldLineSlice(const SourceVideo::Data &sourceField, qint32 fieldLine, qint32 startUs, qint32 lengthUs);
-    double calculateSnr(const SourceVideo::Data &data, bool usePsnr);
-    double calcMean(const SourceVideo::Data &data);
-    double calcStd(const SourceVideo::Data &data);
+    QVector<double> getFieldLineSlice(const SourceVideo::Data &sourceField, qint32 fieldLine, qint32 startUs, qint32 lengthUs);
+    QVector<double> limitByRange(QVector<double> &data, double floor, double ceiling);
+    double calculateSnr(QVector<double> &data, bool usePsnr);
+    double calcMean(QVector<double> &data);
+    double calcStd(QVector<double> &data);
+    double roundDouble(double in, qint32 decimalPlaces);
 };
 
 #endif // VITSANALYSER_H

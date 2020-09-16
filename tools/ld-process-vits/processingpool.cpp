@@ -86,8 +86,8 @@ bool ProcessingPool::process()
                lastFieldNumber / totalSecs << "FPS )";
 
     // Write the JSON metadata file
-    qInfo() << "NNNNOOOOOOOOOTTTTTTTT!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!        ---- Writing JSON metadata file...";
-    //ldDecodeMetaData.write(outputJsonFilename);
+    qInfo() << "Writing JSON metadata file...";
+    ldDecodeMetaData.write(outputJsonFilename);
     qInfo() << "VITS processing complete";
 
     // Close the source video

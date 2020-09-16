@@ -140,8 +140,8 @@ int main(int argc, char *argv[])
     if (inputJsonFilename == outputJsonFilename && !noBackup) {
         qInfo().nospace().noquote() << "Backing up JSON metadata to " << inputJsonFilename << ".bup";
         if (!QFile::copy(inputJsonFilename, inputJsonFilename + ".bup")) {
-            //qCritical() << "Unable to back-up input JSON metadata file - back-up already exists?";
-            //return 1;
+            qCritical() << "Unable to back-up input JSON metadata file - back-up already exists?";
+            return 1;
         }
     }
 
