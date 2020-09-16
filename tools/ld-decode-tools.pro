@@ -13,5 +13,6 @@ SUBDIRS = \
     ld-process-efm \
     ld-process-vbi \
     ld-disc-stacker \
+    ld-process-vits \
     library/filter/testfilter \
     library/tbc/testvbidecoder
