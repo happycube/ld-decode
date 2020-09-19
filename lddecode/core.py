@@ -1667,8 +1667,6 @@ class Field:
             isFirstField_prev = not self.prevfield.isFirstField
             conf_prev = self.prevfield.sync_confidence
 
-        #print(line0loc_local, line0loc_prev, line0loc_next)
-
         # Best case - all three line detectors returned something - perform TOOT using median
         if line0loc_local is not None and line0loc_next is not None and line0loc_prev is not None:
             isFirstField_all = (isFirstField_local + isFirstField_prev + isFirstField_next) >= 2
@@ -2182,11 +2180,6 @@ class Field:
         return rv_lines, rv_starts, rv_ends
 
     def compute_line_bursts(self, linelocs, line):
-        '''
-        Compute the zero crossing for the given line using calczc
-        
-        Returns a dictionary:  False is downwards, True is upwards
-        '''
         # calczc works from integers, so get the start and remainder
         s = int(linelocs[line])
         s_rem = linelocs[line] - s
@@ -2205,44 +2198,56 @@ class Field:
         bstart = int(bstime * lfreq)
         bend = int(8.8 * lfreq)
 
-        zc_bursts = {False: [], True: []}
-
         # copy and get the mean of the burst area to factor out wow/flutter
-        burstarea = self.data['video']['demod_burst'][s+bstart:s+bend]
+        burstarea = self.data['video']['demod'][s+bstart:s+bend]
         if len(burstarea) == 0:
-            return zc_bursts
+            print('null')
+            #return zc_bursts
 
         burstarea = burstarea - nb_mean(burstarea)
 
         threshold = 8 * self.rf.SysParams['hz_ire']
 
         fsc_n1 = (1 / self.rf.SysParams['fsc_mhz'])
-        zcburstdiv = (lfreq * fsc_n1)
+        zcburstdiv = (lfreq * fsc_n1) / 2
 
-        numpos = 0
-        numneg = 0
-        zc_bursts_t = np.zeros(64, dtype=np.float)
-        zc_bursts_n = np.zeros(64, dtype=np.float)
+        phase_adjust = 0
 
-        # this subroutine is in utils.py, broken out so it can be JIT'd
-        i = clb_findnextburst(burstarea, 0, len(burstarea) - 1, threshold)
-        zc = 0
+        # The first pass computes phase_offset, the second uses it to determine
+        # the colo(u)r burst phase of the line.
+        for passcount in range(2):
+            rising = 0
+            count = 0
+            phase_offset = []
 
-        while i is not None and zc is not None:
-            zc = calczc(burstarea, i[0], 0)
-            if zc is not None:
-                zc_burst = distance_from_round((bstart+zc-s_rem) / zcburstdiv) #+ phase_offset
-                #print(i, zc_burst)
-                if i[1] < 0:
-                    zc_bursts_t[numpos] = zc_burst
-                    numpos = numpos + 1
-                else:
-                    zc_bursts_n[numneg] = zc_burst
-                    numneg = numneg + 1
+            # this subroutine is in utils.py, broken out so it can be JIT'd
+            i = clb_findnextburst(burstarea, 0, len(burstarea) - 1, threshold)
+            zc = 0
 
-                i = clb_findnextburst(burstarea, int(zc + 1), len(burstarea) - 1, threshold)
+            while i is not None and zc is not None:
+                zc = calczc(burstarea, i[0], 0)
+                if zc is not None:
+                    zc_cycle = ((bstart+zc-s_rem) / zcburstdiv) + phase_adjust
+                    zc_round = int(np.round(zc_cycle))
 
-        return {False: zc_bursts_n[:numneg], True:zc_bursts_t[:numpos]}        
+                    phase_offset.append(zc_round - zc_cycle)
+
+                    if i[1] < 0:
+                        rising += not (zc_round % 2)
+                    else:
+                        rising += (zc_round % 2)
+
+                    count += 1
+
+                    i = clb_findnextburst(burstarea, int(zc + 1), len(burstarea) - 1, threshold)
+                    
+            phase_adjust += np.median(phase_offset)
+
+        if count == 0:
+            return None, None
+
+        return (rising / count) > .5, -phase_adjust / 2
+
 
 # These classes extend Field to do PAL/NTSC specific TBC features.
 
@@ -2318,36 +2323,39 @@ class FieldPAL(Field):
         map4 = {(True, True): 1, (False, False): 2, (True, False): 3, (False, True): 4}
         
         zc = []
-        for l in range(6, 10):
+        burst_levels = []
+        for l in [7, 8, 9, 6]:
+            # Do this out of order to get an average for line 6, 
+            # which may or may not have a burst at all
             ls = self.lineslice(l, 0, burstUsec[1] + 1)
             subset = self.data['video']['demod_burst'][ls]
             # FIXME? PAL ~4fsc only
-            maxire = (np.max(subset[212:]) - np.mean(subset[212:])) / self.rf.SysParams['hz_ire']
+            maxire = (np.max(subset[250:]) - np.mean(subset[250:])) / self.rf.SysParams['hz_ire']
             
-            if maxire < 7:
+            if l == 6 and (maxire < (np.mean(burst_levels) / 2)):
                 zc.append(None)
             else:
+                burst_levels.append(maxire)
                 mea = nb_mean(subset[220:])
                 zc.append(calczc(subset, np.argmin(subset[210:]) + 210, mea))
 
-        m4 = map4[(self.isFirstField, zc[0] is None)]
+        m4 = map4[(self.isFirstField, zc[-1] is None)]
             
         # Now compute if it's 0-3 or 4-7.
         
-        bursts = self.compute_line_bursts(self.linelocs, 7+self.lineoffset)
+        for l in range(6, 15):
+            clbn = self.compute_line_bursts(self.linelocs, l)
+            if clbn[0] is not None:
+                break
 
-        if len(bursts[False]) == 0 or len(bursts[True]) == 0:
+        if clbn[0] == None:
             # If there aren't a full set of bursts, this probably isn't
             # a useful frame
             return m4
 
-        burstmedF = np.abs(np.median(bursts[False]))
-        burstmedT = np.abs(np.median(bursts[True]))
-        #print(burstmedF, burstmedT)
-        
-        is_firstfour = np.abs(burstmedT) < np.abs(burstmedF)
+        is_firstfour = clbn[0]
         if m4 == 2:
-            # For field 1/5, reverse the above.
+            # For field 2/6, reverse the above.
             is_firstfour = not is_firstfour
             
         seqnum = m4 + (0 if is_firstfour else 4)
@@ -2507,49 +2515,29 @@ class FieldNTSC(Field):
 
         burstlevel = np.zeros_like(linelocs_adj, dtype=np.float32)
 
-        zc_bursts = {}
-        # Counter for which lines have + polarity.  TRACKS 1-BASED LINE #'s
-        bursts = {'odd': [], 'even': []}
+        clbn = {}
+
+        linecount = 0
+        clbsum = 0
+        adjs = {}
 
         for l in range(0, 266):
-            zc_bursts[l] = self.compute_line_bursts(linelocs, l)
+            clbn[l] = self.compute_line_bursts(linelocs, l)
+            if clbn[l][0] == None:
+                continue
+
+            adjs[l] = clbn[l][1]
+
+            linecount += 1
+
             burstlevel[l] = self.get_burstlevel(l, linelocs)
 
-            if (len(zc_bursts[l][True]) == 0) or (len(zc_bursts[l][False]) == 0):
-                continue
-            
             even_line = not (l % 2)
+            clbsum += 1 if (even_line and clbn[l][0]) else 0
+            
+        field14 = clbsum > (linecount // 4)
 
-            bursts['even'].append(zc_bursts[l][True if even_line else False])
-            bursts['odd'].append(zc_bursts[l][False if even_line else True])
-
-        bursts_arr = {}
-        bursts_arr[True] = np.concatenate(bursts['even'])
-        bursts_arr[False] = np.concatenate(bursts['odd'])
-
-        amed = {}
-        amed[True] = np.abs(angular_mean(bursts_arr[True], zero_base=False))
-        amed[False] = np.abs(angular_mean(bursts_arr[False], zero_base=False))
-        
-        #print(amed)
-
-        field14 = amed[True] < amed[False]
-
-        # if the medians are too close, recompute them with a 90 degree offset.
-
-        # XXX: print a warning message here since some disks will suffer phase errors
-        # if this code runs.  (OTOH, any disk that triggers this is *seriously* out of
-        # spec...)
-        if (np.abs(amed[True] - amed[False]) < .025):
-            amed = {}
-            amed[True] = np.abs(angular_mean(bursts_arr[True] + .25, zero_base=False))
-            amed[False] = np.abs(angular_mean(bursts_arr[False] + .25, zero_base=False))
-            field14 = amed[True] < amed[False]
-
-        self.amed = amed
-        self.zc_bursts = zc_bursts
-
-        return zc_bursts, field14, burstlevel
+        return field14, burstlevel, adjs
 
     def refine_linelocs_burst(self, linelocs = None):
         if linelocs is None:
@@ -2558,7 +2546,7 @@ class FieldNTSC(Field):
         linelocs_adj = linelocs.copy()
         burstlevel = np.zeros_like(linelocs_adj, dtype=np.float32)
 
-        zc_bursts, field14, burstlevel = self.compute_burst_offsets(linelocs_adj)
+        field14, burstlevel, adjs_new = self.compute_burst_offsets(linelocs_adj)
 
         adjs = {}
 
@@ -2571,9 +2559,7 @@ class FieldNTSC(Field):
             if self.linebad[l]:
                 continue
 
-            edge = not ((field14 and (l % 2)) or (not field14 and not (l % 2)))
-
-            if not (np.isnan(linelocs_adj[l]) or len(zc_bursts[l][edge]) == 0 or self.linebad[l]):
+            if not (np.isnan(linelocs_adj[l]) or self.linebad[l]):
                 if l > 0:
                     lfreq = self.rf.freq * (((self.linelocs2[l+1] - self.linelocs2[l-1]) / 2) / self.rf.linelen)
                 elif l == 0:
@@ -2581,7 +2567,7 @@ class FieldNTSC(Field):
                 elif l >= 262:
                     lfreq = self.rf.freq * (((self.linelocs2[l+0] - self.linelocs2[l-1]) / 1) / self.rf.linelen)
 
-                adjs[l] = -(nb_median(zc_bursts[l][edge]) * lfreq * (1 / self.rf.SysParams['fsc_mhz']))
+                adjs[l] = (adjs_new[l] * lfreq * (1 / self.rf.SysParams['fsc_mhz']))
 
         if len(adjs.keys()):
             adjs_median = np.median([adjs[a] for a in adjs])
