@@ -2199,7 +2199,7 @@ class Field:
         bend = int(8.8 * lfreq)
 
         # copy and get the mean of the burst area to factor out wow/flutter
-        burstarea = self.data['video']['demod'][s+bstart:s+bend]
+        burstarea = self.data['video']['demod_burst'][s+bstart:s+bend]
         if len(burstarea) == 0:
             print('null')
             #return zc_bursts
@@ -2243,10 +2243,12 @@ class Field:
                     
             if count:
                 phase_adjust += np.median(phase_offset)
+#                print(np.median(phase_offset))
             else:
                 return None, None
 
-        return (rising / count) > .5, -phase_adjust / 2
+#        print(rising, count, rising / count)
+        return (rising / count) > .5, -phase_adjust
 
 
 # These classes extend Field to do PAL/NTSC specific TBC features.
@@ -2345,7 +2347,7 @@ class FieldPAL(Field):
         
         for l in range(7, 15):
             # Usually line 7 is used to determine burst phase
-            clbn = self.compute_line_bursts(self.linelocs + self.lineoffset, l)
+            clbn = self.compute_line_bursts(self.linelocs, l + self.lineoffset)
             if clbn[0] is not None:
                 break
 
