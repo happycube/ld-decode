@@ -2241,10 +2241,10 @@ class Field:
 
                     i = clb_findnextburst(burstarea, int(zc + 1), len(burstarea) - 1, threshold)
                     
-            phase_adjust += np.median(phase_offset)
-
-        if count == 0:
-            return None, None
+            if count:
+                phase_adjust += np.median(phase_offset)
+            else:
+                return None, None
 
         return (rising / count) > .5, -phase_adjust / 2
 
@@ -2343,10 +2343,13 @@ class FieldPAL(Field):
             
         # Now compute if it's 0-3 or 4-7.
         
-        for l in range(6, 15):
-            clbn = self.compute_line_bursts(self.linelocs, l)
+        for l in range(7, 15):
+            # Usually line 7 is used to determine burst phase
+            clbn = self.compute_line_bursts(self.linelocs + self.lineoffset, l)
             if clbn[0] is not None:
                 break
+
+        #print(m4, l, clbn)
 
         if clbn[0] == None:
             # If there aren't a full set of bursts, this probably isn't
