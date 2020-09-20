@@ -1224,6 +1224,8 @@ class Field:
         # this is eventually set to 262/263 and 312/313 for audio timing
         self.linecount = None
 
+        self.phase_adjust = 0
+
     def process(self):
         self.linelocs1, self.linebad, self.nextfieldoffset = self.compute_linelocs()
         if self.linelocs1 is None:
@@ -2179,7 +2181,8 @@ class Field:
 
         return rv_lines, rv_starts, rv_ends
 
-    def compute_line_bursts(self, linelocs, line):
+    def compute_line_bursts(self, linelocs, _line):
+        line = _line + self.lineoffset
         # calczc works from integers, so get the start and remainder
         s = int(linelocs[line])
         s_rem = linelocs[line] - s
@@ -2202,16 +2205,21 @@ class Field:
         burstarea = self.data['video']['demod_burst'][s+bstart:s+bend]
         if len(burstarea) == 0:
             print('null')
-            #return zc_bursts
 
         burstarea = burstarea - nb_mean(burstarea)
-
         threshold = 8 * self.rf.SysParams['hz_ire']
+
+        burstarea_demod = self.data['video']['demod'][s+bstart:s+bend]
+        burstarea_demod = burstarea_demod - nb_mean(burstarea_demod)
+
+        #print(_line, np.max(np.abs(burstarea)), np.max(np.abs(burstarea_demod)))
+        if np.max(np.abs(burstarea_demod)) > (30 * self.rf.SysParams['hz_ire']):
+            return None, None
 
         fsc_n1 = (1 / self.rf.SysParams['fsc_mhz'])
         zcburstdiv = (lfreq * fsc_n1) / 2
 
-        phase_adjust = 0
+        phase_adjust = self.prevfield.phase_adjust if self.prevfield is not None else 0
 
         # The first pass computes phase_offset, the second uses it to determine
         # the colo(u)r burst phase of the line.
@@ -2243,10 +2251,12 @@ class Field:
                     
             if count:
                 phase_adjust += np.median(phase_offset)
-#                print(np.median(phase_offset))
+                #print(np.median(phase_offset), np.std(phase_offset))
             else:
-                return None, None
+                return None, None, None
 
+
+        self.phase_adjust = phase_adjust
 #        print(rising, count, rising / count)
         return (rising / count) > .5, -phase_adjust
 
@@ -2293,24 +2303,25 @@ class FieldPAL(Field):
 
         return np.array(linelocs)
 
+    def get_burstlevel(self, l, linelocs = None):
+        burstarea = self.data['video']['demod'][self.lineslice(l, 5.5, 2.4, linelocs)].copy()
+
+        return rms(burstarea) * np.sqrt(2)
+
     def calc_burstmedian(self):
-        burstlevel = np.zeros(314)
+        burstlevel = [self.get_burstlevel(l) for l in range(11, 264)]
 
-        for l in range(3, 313):
-            burstarea = self.data['video']['demod'][self.lineslice(l, 6, 3)]
-            burstlevel[l] = rms(burstarea) * np.sqrt(2)
-
-        return nb_median(burstlevel / self.rf.SysParams['hz_ire'])
+        return np.median(burstlevel) / self.rf.SysParams['hz_ire']
 
     def determine_field_number(self):
 
         ''' Background
         PAL has an eight field sequence that can be split into two four field sequences.
         
-        Field 1: First field of frame , colour burst on line 6
-        Field 2: Second field of frame, no colour burst on line 6
-        Field 3: First field of frame, no colour burst on line 6
-        Field 4: Second field of frame, colour burst on line 6
+        Field 1: First field of frame , no colour burst on line 6
+        Field 2: Second field of frame, colour burst on line 6 (319)
+        Field 3: First field of frame, colour burst on line 6
+        Field 4: Second field of frame, no colour burst on line 6 (319)
         
         Fields 5-8 can be differentiated using the burst phase on line 7 (the first line
         guaranteed to have colour burst)  Ideally the rising phase would be at 0 or 180 
@@ -2320,38 +2331,24 @@ class FieldPAL(Field):
         
         # First compute the 4-field sequence
         
-        burstUsec = self.rf.SysParams['colorBurstUS']
+        map4 = {(True, False): 1, (False, True): 2, (True, True): 3, (False, False): 4}
         
-        map4 = {(True, True): 1, (False, False): 2, (True, False): 3, (False, True): 4}
-        
-        zc = []
-        burst_levels = []
-        for l in [7, 8, 9, 6]:
-            # Do this out of order to get an average for line 6, 
-            # which may or may not have a burst at all
-            ls = self.lineslice(l, 0, burstUsec[1] + 1)
-            subset = self.data['video']['demod_burst'][ls]
-            # FIXME? PAL ~4fsc only
-            maxire = (np.max(subset[250:]) - np.mean(subset[250:])) / self.rf.SysParams['hz_ire']
-            
-            if l == 6 and (maxire < (np.mean(burst_levels) / 2)):
-                zc.append(None)
-            else:
-                burst_levels.append(maxire)
-                mea = nb_mean(subset[220:])
-                zc.append(calczc(subset, np.argmin(subset[210:]) + 210, mea))
+        burstlevel6 = self.get_burstlevel(6) / self.rf.SysParams['hz_ire']
+        hasburst = inrange(burstlevel6, self.burstmedian * .5, self.burstmedian * 1.5)
+        m4 = map4[(self.isFirstField, hasburst)]
 
-        m4 = map4[(self.isFirstField, zc[-1] is None)]
+        #print('map4 ', m4, self.isFirstField, burstlevel6, hasburst, self.burstmedian)
             
-        # Now compute if it's 0-3 or 4-7.
+        # Now compute if it's field 1-4 or 5-8.
         
-        for l in range(7, 15):
-            # Usually line 7 is used to determine burst phase
-            clbn = self.compute_line_bursts(self.linelocs, l + self.lineoffset)
+        for l in range(7, 20, 4):
+            # Usually line 7 is used to determine burst phase, but
+            # if that's corrupt every fourth line has the same phase
+            clbn = self.compute_line_bursts(self.linelocs, l)
             if clbn[0] is not None:
                 break
 
-        #print(m4, l, clbn)
+        #print(m4, l, l + self.lineoffset, clbn)
 
         if clbn[0] == None:
             # If there aren't a full set of bursts, this probably isn't
