@@ -406,6 +406,14 @@ class FieldPALVHS(ldd.FieldPAL):
         # make sure we re-check the phase occasionally.
         raw_loc = self.rf.decoder.readloc / self.rf.decoder.bytes_per_field
 
+        if self.rf.last_raw_loc is None:
+            self.rf.last_raw_loc = raw_loc
+
+        if raw_loc > self.rf.last_raw_loc:
+            self.rf.field_number += 1
+        else:
+            print("raw loc didn't advance")
+
         # Re-check phase if we moved very far since last time.
         if raw_loc - self.rf.last_raw_loc > 2.0:
             if self.rf.detect_track:
@@ -417,8 +425,7 @@ class FieldPALVHS(ldd.FieldPAL):
             self.rf.needs_detect = False
         uphet = process_chroma(self, self.rf.track_phase)
 
-        if raw_loc > self.rf.last_raw_loc:
-            self.rf.field_number += 1
+        # print("field no proc: ", self.rf.field_number)
 
         self.rf.last_raw_loc = raw_loc
 
@@ -485,6 +492,10 @@ class FieldPALVHS(ldd.FieldPAL):
 
         return assumed_phase
 
+    def determine_field_number(self):
+        """Workaround to shut down phase id mismatch warnings, the actual code
+        doesn't work properly with the vhs output at the moment."""
+        return 1 + (self.rf.field_number % 8)
 
 class FieldNTSCVHS(ldd.FieldNTSC):
     def __init__(self, *args, **kwargs):
@@ -649,7 +660,7 @@ class VHSRFDecode(ldd.RFDecode):
         self.hsync_tolerance = 0.8
 
         self.field_number = 0
-        self.last_raw_loc = 0
+        self.last_raw_loc = None
 
         # Then we override the laserdisc parameters with VHS ones.
         if system == "PAL":
