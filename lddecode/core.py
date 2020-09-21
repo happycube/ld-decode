@@ -2189,11 +2189,11 @@ class Field:
 
         # compute adjusted frequency from neighboring line lengths
         if line > 0:
-            lfreq = self.rf.freq * (((self.linelocs2[line+1] - self.linelocs2[line-1]) / 2) / self.rf.linelen)
+            lfreq = self.rf.freq * (((linelocs[line+1] - linelocs[line-1]) / 2) / self.rf.linelen)
         elif line == 0:
-            lfreq = self.rf.freq * (((self.linelocs2[line+1] - self.linelocs2[line-0]) / 1) / self.rf.linelen)
+            lfreq = self.rf.freq * (((linelocs[line+1] - linelocs[line-0]) / 1) / self.rf.linelen)
         elif line >= self.linecount + self.lineoffset:
-            lfreq = self.rf.freq * (((self.linelocs2[line+0] - self.linelocs2[line-1]) / 1) / self.rf.linelen)
+            lfreq = self.rf.freq * (((linelocs[line+0] - linelocs[line-1]) / 1) / self.rf.linelen)
 
         # compute approximate burst beginning/end
         bstime = 25 * (1 / self.rf.SysParams['fsc_mhz']) # approx start of burst in usecs
@@ -2257,7 +2257,6 @@ class Field:
 
 
         self.phase_adjust = phase_adjust
-#        print(rising, count, rising / count)
         return (rising / count) > .5, -phase_adjust
 
 
@@ -2348,8 +2347,6 @@ class FieldPAL(Field):
             if clbn[0] is not None:
                 break
 
-        #print(m4, l, l + self.lineoffset, clbn)
-
         if clbn[0] == None:
             # If there aren't a full set of bursts, this probably isn't
             # a useful frame
@@ -2361,6 +2358,7 @@ class FieldPAL(Field):
             is_firstfour = not is_firstfour
             
         seqnum = m4 + (0 if is_firstfour else 4)
+        #print(seqnum, m4, l, l + self.lineoffset, clbn, clbn[0])
         
         return seqnum
 
