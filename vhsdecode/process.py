@@ -3,6 +3,8 @@ import numpy as np
 import scipy.signal as sps
 import copy
 
+import itertools
+
 import lddecode.core as ldd
 import lddecode.utils as lddu
 from lddecode.utils import unwrap_hilbert, inrange
@@ -496,6 +498,88 @@ class FieldPALVHS(ldd.FieldPAL):
         """Workaround to shut down phase id mismatch warnings, the actual code
         doesn't work properly with the vhs output at the moment."""
         return 1 + (self.rf.field_number % 8)
+
+    def getpulses(self):
+        """Find sync pulses in the demodulated video sigal
+
+        NOTE: TEMPORARY override until an override for th evalue it self is added upstream.
+        """
+        # pass one using standard levels
+
+        # pulse_hz range:  vsync_ire - 10, maximum is the 50% crossing point to sync
+        pulse_hz_min = self.rf.iretohz(self.rf.SysParams["vsync_ire"] - 10)
+        pulse_hz_max = self.rf.iretohz(self.rf.SysParams["vsync_ire"] / 2)
+
+        pulses = lddu.findpulses(
+            self.data["video"]["demod_05"], pulse_hz_min, pulse_hz_max
+        )
+
+        if len(pulses) == 0:
+            # can't do anything about this
+            return pulses
+
+        # determine sync pulses from vsync
+        vsync_locs = []
+        vsync_means = []
+
+        for i, p in enumerate(pulses):
+            if p.len > self.usectoinpx(10):
+                vsync_locs.append(i)
+                vsync_means.append(
+                    np.mean(
+                        self.data["video"]["demod_05"][
+                            int(p.start + self.rf.freq) : int(
+                                p.start + p.len - self.rf.freq
+                            )
+                        ]
+                    )
+                )
+
+        if len(vsync_means) == 0:
+            return None
+
+        synclevel = np.median(vsync_means)
+
+        if np.abs(self.rf.hztoire(synclevel) - self.rf.SysParams["vsync_ire"]) < 5:
+            # sync level is close enough to use
+            return pulses
+
+        if vsync_locs is None or not len(vsync_locs):
+            return None
+
+        # Now compute black level and try again
+
+        # take the eq pulses before and after vsync
+        r1 = range(vsync_locs[0] - 5, vsync_locs[0])
+        r2 = range(vsync_locs[-1] + 1, vsync_locs[-1] + 6)
+
+        black_means = []
+
+        for i in itertools.chain(r1, r2):
+            if i < 0 or i >= len(pulses):
+                continue
+
+            p = pulses[i]
+            if inrange(p.len, self.rf.freq * 0.75, self.rf.freq * 3):
+                black_means.append(
+                    np.mean(
+                        self.data["video"]["demod_05"][
+                            int(p.start + (self.rf.freq * 5)) : int(
+                                p.start + (self.rf.freq * 20)
+                            )
+                        ]
+                    )
+                )
+
+        blacklevel = np.median(black_means)
+
+        pulse_hz_min = synclevel - (self.rf.SysParams["hz_ire"] * 10)
+        pulse_hz_max = (blacklevel + synclevel) / 2
+
+        return lddu.findpulses(
+            self.data["video"]["demod_05"], pulse_hz_min, pulse_hz_max
+        )
+
 
 class FieldNTSCVHS(ldd.FieldNTSC):
     def __init__(self, *args, **kwargs):
