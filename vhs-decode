@@ -10,6 +10,7 @@ import sys
 import argparse
 import json
 import traceback
+import shutil
 
 
 from lddecode.utils import *
@@ -56,6 +57,14 @@ parser.add_argument(
 parser.add_argument(
     "-n", "--ntsc", dest="ntsc", action="store_true", help="source is in NTSC format"
 )
+parser.add_argument(
+    "-t",
+    "--threads",
+    metavar="threads",
+    type=int,
+    default=5,
+    help="number of CPU threads to use",
+)
 # parser.add_argument('-c', '--cut', dest='cut', action='store_true', help='cut (to r16) instead of decode')
 # parser.add_argument('-m', '--MTF', metavar='mtf', type=float, default=None, help='mtf compensation multiplier')
 # parser.add_argument('--MTF_offset', metavar='mtf_offset', type=float, default=None, help='mtf compensation offset')
@@ -84,7 +93,7 @@ parser.add_argument(
     help="Use cxadc ten fsc input frequency (~35.8 Mhz)",
 )
 parser.add_argument(
-    "-t",
+    "-T",
     "--track_phase",
     metavar="track_phase",
     type=int,
@@ -125,6 +134,7 @@ vhsd = VHSDecode(
     loader,
     system=system,
     doDOD=False,
+    threads=args.threads,
     inputfreq=sample_freq,
     track_phase=args.track_phase,
 )
@@ -152,6 +162,7 @@ def write_json(vhsd, outname):
     fp.close()
 
     os.rename(outname + ".tbc.json.tmp", outname + ".tbc.json")
+    shutil.copy(outname + ".tbc.json", outname + ".tbcc.json")
 
 
 done = False
@@ -162,6 +173,7 @@ while not done and vhsd.fields_written < (req_frames * 2):
     except KeyboardInterrupt as kbd:
         print("Terminated, saving JSON and exiting")
         write_json(vhsd, outname)
+        vhsd.close()
         exit(1)
     except Exception as err:
         print("ERROR - please paste the following into a bug report:")
@@ -170,6 +182,7 @@ while not done and vhsd.fields_written < (req_frames * 2):
         print("Exception: ", err, " Traceback:")
         traceback.print_tb(err.__traceback__)
         write_json(vhsd, outname)
+        vhsd.close()
         exit(1)
 
     if f is None:

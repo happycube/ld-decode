@@ -633,6 +633,7 @@ class VHSDecode(ldd.LDdecode):
         freader,
         system="NTSC",
         doDOD=False,
+        threads=1,
         inputfreq=40,
         track_phase=0,
     ):
@@ -643,7 +644,7 @@ class VHSDecode(ldd.LDdecode):
             analog_audio=False,
             system=system,
             doDOD=doDOD,
-            threads=1,
+            threads=threads,
         )
         # Overwrite the rf decoder with the VHS-altered one
         self.rf = VHSRFDecode(
