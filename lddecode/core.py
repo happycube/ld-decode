@@ -1244,11 +1244,28 @@ class Field:
 
         self.valid = True
 
-    def get_linefreq(self, l = None):
-        if l is None or l == 0:
-            return self.freq
-        else:
-            return self.freq * (((self.linelocs[l+1] - self.linelocs[l-1]) / 2) / self.inlinelen)
+    def get_linelen(self, line = None, linelocs = None):
+        # compute adjusted frequency from neighboring line lengths
+
+        # If this is run early, line locations are unknown, so return
+        # the general value
+        if linelocs is None:
+            try:
+                linelocs = self.linelocs
+            except:
+                return self.rf.linelen
+
+        if line is None:
+            return self.rf.linelen
+        elif line >= self.linecount + self.lineoffset:
+            return ((self.linelocs[line+0] - self.linelocs[line-1]) / 1)
+        elif line > 0:
+            return ((self.linelocs[line+1] - self.linelocs[line-1]) / 2)
+        elif line == 0:
+            return ((self.linelocs[line+1] - self.linelocs[line-0]) / 1)
+
+    def get_linefreq(self, line = None, linelocs = None):
+        return self.rf.freq * (self.get_linelen(line, linelocs) / self.rf.linelen)
 
     def usectoinpx(self, x, line = None):
         return x * self.get_linefreq(line)
@@ -1961,7 +1978,7 @@ class Field:
         wow = np.ones(len(lineinfo))
 
         for l in range(0, len(wow)-1):
-            wow[l] = (lineinfo[l + 1] - lineinfo[l]) / self.inlinelen
+            wow[l] = self.get_linelen(l) / self.inlinelen
 
         for l in range(self.lineoffset, self.lineoffset + 10):
             wow[l] = np.median(wow[l:l+4])
@@ -2187,13 +2204,7 @@ class Field:
         s = int(linelocs[line])
         s_rem = linelocs[line] - s
 
-        # compute adjusted frequency from neighboring line lengths
-        if line > 0:
-            lfreq = self.rf.freq * (((linelocs[line+1] - linelocs[line-1]) / 2) / self.rf.linelen)
-        elif line == 0:
-            lfreq = self.rf.freq * (((linelocs[line+1] - linelocs[line-0]) / 1) / self.rf.linelen)
-        elif line >= self.linecount + self.lineoffset:
-            lfreq = self.rf.freq * (((linelocs[line+0] - linelocs[line-1]) / 1) / self.rf.linelen)
+        lfreq = self.get_linefreq(line)
 
         # compute approximate burst beginning/end
         bstime = 25 * (1 / self.rf.SysParams['fsc_mhz']) # approx start of burst in usecs
@@ -2340,14 +2351,14 @@ class FieldPAL(Field):
         Field 3: First field of frame, colour burst on line 6
         Field 4: Second field of frame, no colour burst on line 6 (319)
         
-        Fields 5-8 can be differentiated using the burst phase on line 7 (the first line
-        guaranteed to have colour burst)  Ideally the rising phase would be at 0 or 180 
+        Fields 5-8 can be differentiated using the burst phase on line 7+4x (based off the first 
+        line guaranteed to have colour burst)  Ideally the rising phase would be at 0 or 180 
         degrees, but since this is Laserdisc it's often quite off.  So the determination is
         based on which phase is closer to 0 degrees.
         '''
         
         # First compute the 4-field sequence
-        
+        # This map is based in (first field, has burst on line 6)
         map4 = {(True, False): 1, (False, True): 2, (True, True): 3, (False, False): 4}
         
         burstlevel6 = self.get_burstlevel(6) 
@@ -2357,8 +2368,6 @@ class FieldPAL(Field):
             return self.get_following_field_number()
 
         m4 = map4[(self.isFirstField, hasburst)]
-
-        #print('map4 ', m4, self.isFirstField, burstlevel6, hasburst, self.burstmedian)
             
         # Now compute if it's field 1-4 or 5-8.
         
@@ -2377,10 +2386,7 @@ class FieldPAL(Field):
             # For field 2/6, reverse the above.
             is_firstfour = not is_firstfour
             
-        seqnum = m4 + (0 if is_firstfour else 4)
-        #print(seqnum, m4, l, l + self.lineoffset, clbn, clbn[0])
-        
-        return seqnum
+        return m4 + (0 if is_firstfour else 4)
 
     def downscale(self, final = False, *args, **kwargs):
         # For PAL, each field starts with the line containing the first full VSYNC pulse
@@ -2535,27 +2541,25 @@ class FieldNTSC(Field):
 
         burstlevel = np.zeros_like(linelocs_adj, dtype=np.float32)
 
-        clbn = {}
-
-        linecount = 0
         clbsum = 0
+        valid_linecount = 0
+
         adjs = {}
 
         for l in range(0, 266):
-            clbn[l] = self.compute_line_bursts(linelocs, l)
-            if clbn[l][0] == None:
+            clb = self.compute_line_bursts(linelocs, l)
+            if clb[0] == None:
                 continue
 
-            adjs[l] = clbn[l][1]
-
-            linecount += 1
-
+            adjs[l] = clb[1] / 2
             burstlevel[l] = self.get_burstlevel(l, linelocs)
 
             even_line = not (l % 2)
-            clbsum += 1 if (even_line and clbn[l][0]) else 0
-            
-        field14 = clbsum > (linecount // 4)
+            clbsum += 1 if (even_line and clb[0]) else 0
+            valid_linecount += 1
+
+        # If more than half of the lines have rising phase alignment, it's (probably) field 1 or 4            
+        field14 = clbsum > (valid_linecount // 4)
 
         return field14, burstlevel, adjs
 
@@ -2570,26 +2574,17 @@ class FieldNTSC(Field):
 
         adjs = {}
 
-        for l in range(1, 9):
-            self.linebad[l] = True
-
-        for l in range(10, 266):
-            if l not in adjs_new:
+        for l in range(1, 266):
+            if l < 10 or l not in adjs_new:
                 self.linebad[l] = True
 
-        # compute the adjustments for each line but *do not* apply, so
-        # outliers can be bypassed
+        # compute the adjustments for each line but *do not* apply, so outliers can be bypassed
         for l in range(0, 266):
             if self.linebad[l]:
                 continue
 
             if not (np.isnan(linelocs_adj[l]) or self.linebad[l]):
-                if l > 0:
-                    lfreq = self.rf.freq * (((self.linelocs2[l+1] - self.linelocs2[l-1]) / 2) / self.rf.linelen)
-                elif l == 0:
-                    lfreq = self.rf.freq * (((self.linelocs2[l+1] - self.linelocs2[l-0]) / 1) / self.rf.linelen)
-                elif l >= 262:
-                    lfreq = self.rf.freq * (((self.linelocs2[l+0] - self.linelocs2[l-1]) / 1) / self.rf.linelen)
+                lfreq = self.get_linefreq(l, self.linelocs2)
 
                 adjs[l] = (adjs_new[l] * lfreq * (1 / self.rf.SysParams['fsc_mhz']))
 
@@ -2604,11 +2599,9 @@ class FieldNTSC(Field):
                 else:
                     linelocs_adj[l] += lastvalid_adj if lastvalid_adj is not None else adjs_median
 
-            if self.isFirstField:
-                self.fieldPhaseID = 1 if field14 else 3
-            else:
-                self.fieldPhaseID = 4 if field14 else 2
-
+            # This map is based on (first field, field14)
+            map4 = {(True, True): 1, (False, False): 2, (True, False): 3, (False, True): 4}
+            self.fieldPhaseID = map4[(self.isFirstField, field14)]
         else:
             self.fieldPhaseID=1
             return linelocs_adj, burstlevel
