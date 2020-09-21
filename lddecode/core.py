@@ -2304,13 +2304,31 @@ class FieldPAL(Field):
 
     def get_burstlevel(self, l, linelocs = None):
         burstarea = self.data['video']['demod'][self.lineslice(l, 5.5, 2.4, linelocs)].copy()
+        burstarea -= nb_mean(burstarea)
+
+        if max(burstarea) > (30 * self.rf.SysParams['hz_ire']):
+            return None
 
         return rms(burstarea) * np.sqrt(2)
 
     def calc_burstmedian(self):
-        burstlevel = [self.get_burstlevel(l) for l in range(11, 264)]
+        burstlevel = []
+
+        for l in range(11, 313):
+            lineburst = self.get_burstlevel(l)
+            if lineburst is not None:
+                burstlevel.append(lineburst)
 
         return np.median(burstlevel) / self.rf.SysParams['hz_ire']
+
+    def get_following_field_number(self):
+        if self.prevfield is not None:
+            newphase = self.prevfield.fieldPhaseID + 1
+            return 1 if newphase == 9 else newphase
+        else:
+            # This can be triggered by the first pass at the first field
+            #logging.error("Cannot determine PAL field sequence of first field")
+            return 1
 
     def determine_field_number(self):
 
@@ -2332,8 +2350,12 @@ class FieldPAL(Field):
         
         map4 = {(True, False): 1, (False, True): 2, (True, True): 3, (False, False): 4}
         
-        burstlevel6 = self.get_burstlevel(6) / self.rf.SysParams['hz_ire']
-        hasburst = inrange(burstlevel6, self.burstmedian * .5, self.burstmedian * 1.5)
+        burstlevel6 = self.get_burstlevel(6) 
+        if burstlevel6 is not None:
+            hasburst = inrange(burstlevel6 / self.rf.SysParams['hz_ire'], self.burstmedian * .5, self.burstmedian * 1.5)
+        else:
+            return self.get_following_field_number()
+
         m4 = map4[(self.isFirstField, hasburst)]
 
         #print('map4 ', m4, self.isFirstField, burstlevel6, hasburst, self.burstmedian)
@@ -2348,9 +2370,7 @@ class FieldPAL(Field):
                 break
 
         if clbn[0] == None:
-            # If there aren't a full set of bursts, this probably isn't
-            # a useful frame
-            return m4
+            return self.get_following_field_number()
 
         is_firstfour = clbn[0]
         if m4 == 2:
