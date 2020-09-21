@@ -38,8 +38,6 @@ except ImportError:
 from lddecode import efm_pll
 from lddecode.utils import *
 
-WTF = 'huh?'
-
 try:
     # If Anaconda's numpy is installed, mkl will use all threads for fft etc
     # which doesn't work when we do more threads, do disable that...
@@ -1375,11 +1373,8 @@ class Field:
         
         vsyncs = [] # VSYNC area (first broad pulse->first EQ after broad pulses)
 
-        inorder = False
         validpulses = []
-
         vsync_start = None
-        earliest_hsync = 0
 
         # state_end tracks the earliest expected phase transition...
         state_end = 0
@@ -1965,8 +1960,6 @@ class Field:
             while nextgood < len(linelocs) and self.linebad[nextgood]:
                 nextgood += 1
 
-            #print(l, prevgood, nextgood)
-
             firstcheck = 0 if self.rf.system == 'PAL' else 1
             if prevgood >= firstcheck and nextgood < (len(linelocs) + self.lineoffset):
                 gap = (linelocs[nextgood] - linelocs[prevgood]) / (nextgood - prevgood)
@@ -2119,7 +2112,6 @@ class Field:
         
         return iserr
 
-
     def build_errlist(self, errmap):
         errlist = []
 
@@ -2133,7 +2125,6 @@ class Field:
                 epad = curerr[0] + pad
                 curerr = (curerr[0], epad)
             elif e > firsterr:
-                #errlist.append((curerr[0] - 4, curerr[1] + 4))
                 errlist.append((curerr[0] - 8, curerr[1] + 4))
                 curerr = (e, e)
 
@@ -2223,7 +2214,6 @@ class Field:
         burstarea_demod = self.data['video']['demod'][s+bstart:s+bend]
         burstarea_demod = burstarea_demod - nb_mean(burstarea_demod)
 
-        #print(_line, np.max(np.abs(burstarea)), np.max(np.abs(burstarea_demod)))
         if np.max(np.abs(burstarea_demod)) > (30 * self.rf.SysParams['hz_ire']):
             return None, None
 
@@ -2262,14 +2252,11 @@ class Field:
                     
             if count:
                 phase_adjust += np.median(phase_offset)
-                #print(np.median(phase_offset), np.std(phase_offset))
             else:
                 return None, None, None
 
-
         self.phase_adjust = phase_adjust
         return (rising / count) > .5, -phase_adjust
-
 
 # These classes extend Field to do PAL/NTSC specific TBC features.
 
@@ -2699,10 +2686,6 @@ class LDdecode:
         self.firstfield = None # In frame output mode, the first field goes here
         self.fieldloc = 0
 
-        self.internalerrors = [] # exceptions seen
-
-        # if option is missing, get returns None
-            
         self.system = system
         self.rf = RFDecode(system=system, decode_analog_audio=analog_audio, decode_digital_audio=digital_audio, has_analog_audio = self.has_analog_audio, extra_options = extra_options)
 
@@ -2852,14 +2835,6 @@ class LDdecode:
             raise
         except Exception as e:
             raise e
-            self.internalerrors.append(e)
-            if len(self.internalerrors) == 3:
-                logging.error("Three internal errors seen, aborting")
-                raise e
-                #return None, None
-
-            logging.info("Internal error, jumping ahead")
-            return None, self.rf.linelen * 200
 
         if not f.valid:
             logging.info("Bad data - jumping one second")
@@ -3181,23 +3156,23 @@ class LDdecode:
 
         fi['fieldPhaseID'] = f.fieldPhaseID
 
-        if prevfi:
+        if prevfi is not None:
             if not ((fi['fieldPhaseID'] == 1 and prevfi['fieldPhaseID'] == f.rf.SysParams['fieldPhases']) or
                     (fi['fieldPhaseID'] == prevfi['fieldPhaseID'] + 1)):
                 logging.warning('Field phaseID sequence mismatch ({0}->{1}) (player may be paused)'.format(prevfi['fieldPhaseID'], fi['fieldPhaseID']))
                 decodeFaults |= 2
 
-        if prevfi is not None and prevfi['isFirstField'] == fi['isFirstField']:
-            #logging.info('WARNING!  isFirstField stuck between fields')
-            if inrange(fi['diskLoc'] - prevfi['diskLoc'], .95, 1.05):
-                decodeFaults |= 1
-                fi['isFirstField'] = not prevfi['isFirstField']
-                fi['syncConf'] = 10
-            else:
-                logging.error('Skipped field')
-                decodeFaults |= 4
-                fi['syncConf'] = 0
-                return fi, True
+            if prevfi['isFirstField'] == fi['isFirstField']:
+                #logging.info('WARNING!  isFirstField stuck between fields')
+                if inrange(fi['diskLoc'] - prevfi['diskLoc'], .95, 1.05):
+                    decodeFaults |= 1
+                    fi['isFirstField'] = not prevfi['isFirstField']
+                    fi['syncConf'] = 10
+                else:
+                    logging.error('Skipped field')
+                    decodeFaults |= 4
+                    fi['syncConf'] = 0
+                    return fi, True
 
         fi['decodeFaults'] = decodeFaults
         fi['vitsMetrics'] = self.computeMetrics(self.curfield, self.prevfield)
