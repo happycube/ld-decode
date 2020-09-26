@@ -38,8 +38,6 @@ except ImportError:
 from lddecode import efm_pll
 from lddecode.utils import *
 
-WTF = 'huh?'
-
 try:
     # If Anaconda's numpy is installed, mkl will use all threads for fft etc
     # which doesn't work when we do more threads, do disable that...
@@ -1224,6 +1222,8 @@ class Field:
         # this is eventually set to 262/263 and 312/313 for audio timing
         self.linecount = None
 
+        self.phase_adjust = 0
+
     def process(self):
         self.linelocs1, self.linebad, self.nextfieldoffset = self.compute_linelocs()
         if self.linelocs1 is None:
@@ -1242,11 +1242,28 @@ class Field:
 
         self.valid = True
 
-    def get_linefreq(self, l = None):
-        if l is None or l == 0:
-            return self.freq
-        else:
-            return self.freq * (((self.linelocs[l+1] - self.linelocs[l-1]) / 2) / self.inlinelen)
+    def get_linelen(self, line = None, linelocs = None):
+        # compute adjusted frequency from neighboring line lengths
+
+        # If this is run early, line locations are unknown, so return
+        # the general value
+        if linelocs is None:
+            try:
+                linelocs = self.linelocs
+            except:
+                return self.rf.linelen
+
+        if line is None:
+            return self.rf.linelen
+        elif line >= self.linecount + self.lineoffset:
+            return ((self.linelocs[line+0] - self.linelocs[line-1]) / 1)
+        elif line > 0:
+            return ((self.linelocs[line+1] - self.linelocs[line-1]) / 2)
+        elif line == 0:
+            return ((self.linelocs[line+1] - self.linelocs[line-0]) / 1)
+
+    def get_linefreq(self, line = None, linelocs = None):
+        return self.rf.freq * (self.get_linelen(line, linelocs) / self.rf.linelen)
 
     def usectoinpx(self, x, line = None):
         return x * self.get_linefreq(line)
@@ -1356,11 +1373,8 @@ class Field:
         
         vsyncs = [] # VSYNC area (first broad pulse->first EQ after broad pulses)
 
-        inorder = False
         validpulses = []
-
         vsync_start = None
-        earliest_hsync = 0
 
         # state_end tracks the earliest expected phase transition...
         state_end = 0
@@ -1667,8 +1681,6 @@ class Field:
             isFirstField_prev = not self.prevfield.isFirstField
             conf_prev = self.prevfield.sync_confidence
 
-        #print(line0loc_local, line0loc_prev, line0loc_next)
-
         # Best case - all three line detectors returned something - perform TOOT using median
         if line0loc_local is not None and line0loc_next is not None and line0loc_prev is not None:
             isFirstField_all = (isFirstField_local + isFirstField_prev + isFirstField_next) >= 2
@@ -1948,8 +1960,6 @@ class Field:
             while nextgood < len(linelocs) and self.linebad[nextgood]:
                 nextgood += 1
 
-            #print(l, prevgood, nextgood)
-
             firstcheck = 0 if self.rf.system == 'PAL' else 1
             if prevgood >= firstcheck and nextgood < (len(linelocs) + self.lineoffset):
                 gap = (linelocs[nextgood] - linelocs[prevgood]) / (nextgood - prevgood)
@@ -1961,7 +1971,7 @@ class Field:
         wow = np.ones(len(lineinfo))
 
         for l in range(0, len(wow)-1):
-            wow[l] = (lineinfo[l + 1] - lineinfo[l]) / self.inlinelen
+            wow[l] = self.get_linelen(l) / self.inlinelen
 
         for l in range(self.lineoffset, self.lineoffset + 10):
             wow[l] = np.median(wow[l:l+4])
@@ -2102,7 +2112,6 @@ class Field:
         
         return iserr
 
-
     def build_errlist(self, errmap):
         errlist = []
 
@@ -2116,7 +2125,6 @@ class Field:
                 epad = curerr[0] + pad
                 curerr = (curerr[0], epad)
             elif e > firsterr:
-                #errlist.append((curerr[0] - 4, curerr[1] + 4))
                 errlist.append((curerr[0] - 8, curerr[1] + 4))
                 curerr = (e, e)
 
@@ -2181,23 +2189,13 @@ class Field:
 
         return rv_lines, rv_starts, rv_ends
 
-    def compute_line_bursts(self, linelocs, line):
-        '''
-        Compute the zero crossing for the given line using calczc
-        
-        Returns a dictionary:  False is downwards, True is upwards
-        '''
+    def compute_line_bursts(self, linelocs, _line):
+        line = _line + self.lineoffset
         # calczc works from integers, so get the start and remainder
         s = int(linelocs[line])
         s_rem = linelocs[line] - s
 
-        # compute adjusted frequency from neighboring line lengths
-        if line > 0:
-            lfreq = self.rf.freq * (((self.linelocs2[line+1] - self.linelocs2[line-1]) / 2) / self.rf.linelen)
-        elif line == 0:
-            lfreq = self.rf.freq * (((self.linelocs2[line+1] - self.linelocs2[line-0]) / 1) / self.rf.linelen)
-        elif line >= self.linecount + self.lineoffset:
-            lfreq = self.rf.freq * (((self.linelocs2[line+0] - self.linelocs2[line-1]) / 1) / self.rf.linelen)
+        lfreq = self.get_linefreq(line)
 
         # compute approximate burst beginning/end
         bstime = 25 * (1 / self.rf.SysParams['fsc_mhz']) # approx start of burst in usecs
@@ -2205,44 +2203,60 @@ class Field:
         bstart = int(bstime * lfreq)
         bend = int(8.8 * lfreq)
 
-        zc_bursts = {False: [], True: []}
-
         # copy and get the mean of the burst area to factor out wow/flutter
         burstarea = self.data['video']['demod_burst'][s+bstart:s+bend]
         if len(burstarea) == 0:
-            return zc_bursts
+            print('null')
 
         burstarea = burstarea - nb_mean(burstarea)
-
         threshold = 8 * self.rf.SysParams['hz_ire']
 
+        burstarea_demod = self.data['video']['demod'][s+bstart:s+bend]
+        burstarea_demod = burstarea_demod - nb_mean(burstarea_demod)
+
+        if np.max(np.abs(burstarea_demod)) > (30 * self.rf.SysParams['hz_ire']):
+            return None, None
+
         fsc_n1 = (1 / self.rf.SysParams['fsc_mhz'])
-        zcburstdiv = (lfreq * fsc_n1)
+        zcburstdiv = (lfreq * fsc_n1) / 2
 
-        numpos = 0
-        numneg = 0
-        zc_bursts_t = np.zeros(64, dtype=np.float)
-        zc_bursts_n = np.zeros(64, dtype=np.float)
+        phase_adjust = self.prevfield.phase_adjust if self.prevfield is not None else 0
 
-        # this subroutine is in utils.py, broken out so it can be JIT'd
-        i = clb_findnextburst(burstarea, 0, len(burstarea) - 1, threshold)
-        zc = 0
+        # The first pass computes phase_offset, the second uses it to determine
+        # the colo(u)r burst phase of the line.
+        for passcount in range(2):
+            rising = 0
+            count = 0
+            phase_offset = []
 
-        while i is not None and zc is not None:
-            zc = calczc(burstarea, i[0], 0)
-            if zc is not None:
-                zc_burst = distance_from_round((bstart+zc-s_rem) / zcburstdiv) #+ phase_offset
-                #print(i, zc_burst)
-                if i[1] < 0:
-                    zc_bursts_t[numpos] = zc_burst
-                    numpos = numpos + 1
-                else:
-                    zc_bursts_n[numneg] = zc_burst
-                    numneg = numneg + 1
+            # this subroutine is in utils.py, broken out so it can be JIT'd
+            i = clb_findnextburst(burstarea, 0, len(burstarea) - 1, threshold)
+            zc = 0
 
-                i = clb_findnextburst(burstarea, int(zc + 1), len(burstarea) - 1, threshold)
+            while i is not None and zc is not None:
+                zc = calczc(burstarea, i[0], 0)
+                if zc is not None:
+                    zc_cycle = ((bstart+zc-s_rem) / zcburstdiv) + phase_adjust
+                    zc_round = int(np.round(zc_cycle))
 
-        return {False: zc_bursts_n[:numneg], True:zc_bursts_t[:numpos]}        
+                    phase_offset.append(zc_round - zc_cycle)
+
+                    if i[1] < 0:
+                        rising += not (zc_round % 2)
+                    else:
+                        rising += (zc_round % 2)
+
+                    count += 1
+
+                    i = clb_findnextburst(burstarea, int(zc + 1), len(burstarea) - 1, threshold)
+                    
+            if count:
+                phase_adjust += np.median(phase_offset)
+            else:
+                return None, None, None
+
+        self.phase_adjust = phase_adjust
+        return (rising / count) > .5, -phase_adjust
 
 # These classes extend Field to do PAL/NTSC specific TBC features.
 
@@ -2286,73 +2300,80 @@ class FieldPAL(Field):
 
         return np.array(linelocs)
 
+    def get_burstlevel(self, l, linelocs = None):
+        burstarea = self.data['video']['demod'][self.lineslice(l, 5.5, 2.4, linelocs)].copy()
+        burstarea -= nb_mean(burstarea)
+
+        if max(burstarea) > (30 * self.rf.SysParams['hz_ire']):
+            return None
+
+        return rms(burstarea) * np.sqrt(2)
+
     def calc_burstmedian(self):
-        burstlevel = np.zeros(314)
+        burstlevel = []
 
-        for l in range(3, 313):
-            burstarea = self.data['video']['demod'][self.lineslice(l, 6, 3)]
-            burstlevel[l] = rms(burstarea) * np.sqrt(2)
+        for l in range(11, 313):
+            lineburst = self.get_burstlevel(l)
+            if lineburst is not None:
+                burstlevel.append(lineburst)
 
-        return nb_median(burstlevel / self.rf.SysParams['hz_ire'])
+        return np.median(burstlevel) / self.rf.SysParams['hz_ire']
+
+    def get_following_field_number(self):
+        if self.prevfield is not None:
+            newphase = self.prevfield.fieldPhaseID + 1
+            return 1 if newphase == 9 else newphase
+        else:
+            # This can be triggered by the first pass at the first field
+            #logging.error("Cannot determine PAL field sequence of first field")
+            return 1
 
     def determine_field_number(self):
 
         ''' Background
         PAL has an eight field sequence that can be split into two four field sequences.
         
-        Field 1: First field of frame , colour burst on line 6
-        Field 2: Second field of frame, no colour burst on line 6
-        Field 3: First field of frame, no colour burst on line 6
-        Field 4: Second field of frame, colour burst on line 6
+        Field 1: First field of frame , no colour burst on line 6
+        Field 2: Second field of frame, colour burst on line 6 (319)
+        Field 3: First field of frame, colour burst on line 6
+        Field 4: Second field of frame, no colour burst on line 6 (319)
         
-        Fields 5-8 can be differentiated using the burst phase on line 7 (the first line
-        guaranteed to have colour burst)  Ideally the rising phase would be at 0 or 180 
+        Fields 5-8 can be differentiated using the burst phase on line 7+4x (based off the first 
+        line guaranteed to have colour burst)  Ideally the rising phase would be at 0 or 180 
         degrees, but since this is Laserdisc it's often quite off.  So the determination is
         based on which phase is closer to 0 degrees.
         '''
         
         # First compute the 4-field sequence
+        # This map is based in (first field, has burst on line 6)
+        map4 = {(True, False): 1, (False, True): 2, (True, True): 3, (False, False): 4}
         
-        burstUsec = self.rf.SysParams['colorBurstUS']
-        
-        map4 = {(True, True): 1, (False, False): 2, (True, False): 3, (False, True): 4}
-        
-        zc = []
-        for l in range(6, 10):
-            ls = self.lineslice(l, 0, burstUsec[1] + 1)
-            subset = self.data['video']['demod_burst'][ls]
-            # FIXME? PAL ~4fsc only
-            maxire = (np.max(subset[212:]) - np.mean(subset[212:])) / self.rf.SysParams['hz_ire']
+        burstlevel6 = self.get_burstlevel(6) 
+        if burstlevel6 is not None:
+            hasburst = inrange(burstlevel6 / self.rf.SysParams['hz_ire'], self.burstmedian * .5, self.burstmedian * 1.5)
+        else:
+            return self.get_following_field_number()
+
+        m4 = map4[(self.isFirstField, hasburst)]
             
-            if maxire < 7:
-                zc.append(None)
-            else:
-                mea = nb_mean(subset[220:])
-                zc.append(calczc(subset, np.argmin(subset[210:]) + 210, mea))
-
-        m4 = map4[(self.isFirstField, zc[0] is None)]
-            
-        # Now compute if it's 0-3 or 4-7.
+        # Now compute if it's field 1-4 or 5-8.
         
-        bursts = self.compute_line_bursts(self.linelocs, 7+self.lineoffset)
+        for l in range(7, 20, 4):
+            # Usually line 7 is used to determine burst phase, but
+            # if that's corrupt every fourth line has the same phase
+            clbn = self.compute_line_bursts(self.linelocs, l)
+            if clbn[0] is not None:
+                break
 
-        if len(bursts[False]) == 0 or len(bursts[True]) == 0:
-            # If there aren't a full set of bursts, this probably isn't
-            # a useful frame
-            return m4
+        if clbn[0] == None:
+            return self.get_following_field_number()
 
-        burstmedF = np.abs(np.median(bursts[False]))
-        burstmedT = np.abs(np.median(bursts[True]))
-        #print(burstmedF, burstmedT)
-        
-        is_firstfour = np.abs(burstmedT) < np.abs(burstmedF)
+        is_firstfour = clbn[0]
         if m4 == 2:
-            # For field 1/5, reverse the above.
+            # For field 2/6, reverse the above.
             is_firstfour = not is_firstfour
             
-        seqnum = m4 + (0 if is_firstfour else 4)
-        
-        return seqnum
+        return m4 + (0 if is_firstfour else 4)
 
     def downscale(self, final = False, *args, **kwargs):
         # For PAL, each field starts with the line containing the first full VSYNC pulse
@@ -2507,49 +2528,27 @@ class FieldNTSC(Field):
 
         burstlevel = np.zeros_like(linelocs_adj, dtype=np.float32)
 
-        zc_bursts = {}
-        # Counter for which lines have + polarity.  TRACKS 1-BASED LINE #'s
-        bursts = {'odd': [], 'even': []}
+        clbsum = 0
+        valid_linecount = 0
+
+        adjs = {}
 
         for l in range(0, 266):
-            zc_bursts[l] = self.compute_line_bursts(linelocs, l)
+            clb = self.compute_line_bursts(linelocs, l)
+            if clb[0] == None:
+                continue
+
+            adjs[l] = clb[1] / 2
             burstlevel[l] = self.get_burstlevel(l, linelocs)
 
-            if (len(zc_bursts[l][True]) == 0) or (len(zc_bursts[l][False]) == 0):
-                continue
-            
             even_line = not (l % 2)
+            clbsum += 1 if (even_line and clb[0]) else 0
+            valid_linecount += 1
 
-            bursts['even'].append(zc_bursts[l][True if even_line else False])
-            bursts['odd'].append(zc_bursts[l][False if even_line else True])
+        # If more than half of the lines have rising phase alignment, it's (probably) field 1 or 4            
+        field14 = clbsum > (valid_linecount // 4)
 
-        bursts_arr = {}
-        bursts_arr[True] = np.concatenate(bursts['even'])
-        bursts_arr[False] = np.concatenate(bursts['odd'])
-
-        amed = {}
-        amed[True] = np.abs(angular_mean(bursts_arr[True], zero_base=False))
-        amed[False] = np.abs(angular_mean(bursts_arr[False], zero_base=False))
-        
-        #print(amed)
-
-        field14 = amed[True] < amed[False]
-
-        # if the medians are too close, recompute them with a 90 degree offset.
-
-        # XXX: print a warning message here since some disks will suffer phase errors
-        # if this code runs.  (OTOH, any disk that triggers this is *seriously* out of
-        # spec...)
-        if (np.abs(amed[True] - amed[False]) < .025):
-            amed = {}
-            amed[True] = np.abs(angular_mean(bursts_arr[True] + .25, zero_base=False))
-            amed[False] = np.abs(angular_mean(bursts_arr[False] + .25, zero_base=False))
-            field14 = amed[True] < amed[False]
-
-        self.amed = amed
-        self.zc_bursts = zc_bursts
-
-        return zc_bursts, field14, burstlevel
+        return field14, burstlevel, adjs
 
     def refine_linelocs_burst(self, linelocs = None):
         if linelocs is None:
@@ -2558,30 +2557,23 @@ class FieldNTSC(Field):
         linelocs_adj = linelocs.copy()
         burstlevel = np.zeros_like(linelocs_adj, dtype=np.float32)
 
-        zc_bursts, field14, burstlevel = self.compute_burst_offsets(linelocs_adj)
+        field14, burstlevel, adjs_new = self.compute_burst_offsets(linelocs_adj)
 
         adjs = {}
 
-        for l in range(1, 9):
-            self.linebad[l] = True
+        for l in range(1, 266):
+            if l < 10 or l not in adjs_new:
+                self.linebad[l] = True
 
-        # compute the adjustments for each line but *do not* apply, so
-        # outliers can be bypassed
+        # compute the adjustments for each line but *do not* apply, so outliers can be bypassed
         for l in range(0, 266):
             if self.linebad[l]:
                 continue
 
-            edge = not ((field14 and (l % 2)) or (not field14 and not (l % 2)))
+            if not (np.isnan(linelocs_adj[l]) or self.linebad[l]):
+                lfreq = self.get_linefreq(l, self.linelocs2)
 
-            if not (np.isnan(linelocs_adj[l]) or len(zc_bursts[l][edge]) == 0 or self.linebad[l]):
-                if l > 0:
-                    lfreq = self.rf.freq * (((self.linelocs2[l+1] - self.linelocs2[l-1]) / 2) / self.rf.linelen)
-                elif l == 0:
-                    lfreq = self.rf.freq * (((self.linelocs2[l+1] - self.linelocs2[l-0]) / 1) / self.rf.linelen)
-                elif l >= 262:
-                    lfreq = self.rf.freq * (((self.linelocs2[l+0] - self.linelocs2[l-1]) / 1) / self.rf.linelen)
-
-                adjs[l] = -(nb_median(zc_bursts[l][edge]) * lfreq * (1 / self.rf.SysParams['fsc_mhz']))
+                adjs[l] = (adjs_new[l] * lfreq * (1 / self.rf.SysParams['fsc_mhz']))
 
         if len(adjs.keys()):
             adjs_median = np.median([adjs[a] for a in adjs])
@@ -2594,11 +2586,9 @@ class FieldNTSC(Field):
                 else:
                     linelocs_adj[l] += lastvalid_adj if lastvalid_adj is not None else adjs_median
 
-            if self.isFirstField:
-                self.fieldPhaseID = 1 if field14 else 3
-            else:
-                self.fieldPhaseID = 4 if field14 else 2
-
+            # This map is based on (first field, field14)
+            map4 = {(True, True): 1, (False, False): 2, (True, False): 3, (False, True): 4}
+            self.fieldPhaseID = map4[(self.isFirstField, field14)]
         else:
             self.fieldPhaseID=1
             return linelocs_adj, burstlevel
@@ -2696,10 +2686,6 @@ class LDdecode:
         self.firstfield = None # In frame output mode, the first field goes here
         self.fieldloc = 0
 
-        self.internalerrors = [] # exceptions seen
-
-        # if option is missing, get returns None
-            
         self.system = system
         self.rf = RFDecode(system=system, decode_analog_audio=analog_audio, decode_digital_audio=digital_audio, has_analog_audio = self.has_analog_audio, extra_options = extra_options)
 
@@ -2849,14 +2835,6 @@ class LDdecode:
             raise
         except Exception as e:
             raise e
-            self.internalerrors.append(e)
-            if len(self.internalerrors) == 3:
-                logging.error("Three internal errors seen, aborting")
-                raise e
-                #return None, None
-
-            logging.info("Internal error, jumping ahead")
-            return None, self.rf.linelen * 200
 
         if not f.valid:
             logging.info("Bad data - jumping one second")
@@ -3178,23 +3156,23 @@ class LDdecode:
 
         fi['fieldPhaseID'] = f.fieldPhaseID
 
-        if prevfi:
+        if prevfi is not None:
             if not ((fi['fieldPhaseID'] == 1 and prevfi['fieldPhaseID'] == f.rf.SysParams['fieldPhases']) or
                     (fi['fieldPhaseID'] == prevfi['fieldPhaseID'] + 1)):
                 logging.warning('Field phaseID sequence mismatch ({0}->{1}) (player may be paused)'.format(prevfi['fieldPhaseID'], fi['fieldPhaseID']))
                 decodeFaults |= 2
 
-        if prevfi is not None and prevfi['isFirstField'] == fi['isFirstField']:
-            #logging.info('WARNING!  isFirstField stuck between fields')
-            if inrange(fi['diskLoc'] - prevfi['diskLoc'], .95, 1.05):
-                decodeFaults |= 1
-                fi['isFirstField'] = not prevfi['isFirstField']
-                fi['syncConf'] = 10
-            else:
-                logging.error('Skipped field')
-                decodeFaults |= 4
-                fi['syncConf'] = 0
-                return fi, True
+            if prevfi['isFirstField'] == fi['isFirstField']:
+                #logging.info('WARNING!  isFirstField stuck between fields')
+                if inrange(fi['diskLoc'] - prevfi['diskLoc'], .95, 1.05):
+                    decodeFaults |= 1
+                    fi['isFirstField'] = not prevfi['isFirstField']
+                    fi['syncConf'] = 10
+                else:
+                    logging.error('Skipped field')
+                    decodeFaults |= 4
+                    fi['syncConf'] = 0
+                    return fi, True
 
         fi['decodeFaults'] = decodeFaults
         fi['vitsMetrics'] = self.computeMetrics(self.curfield, self.prevfield)

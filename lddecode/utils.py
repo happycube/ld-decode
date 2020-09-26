@@ -390,11 +390,15 @@ class LoadLDF:
         return data
 
     def _close(self):
-        if self.ldfreader is not None:
-            self.ldfreader.kill()
-            self.ldfreader.wait()
+        try:
+            if self.ldfreader is not None:
+                self.ldfreader.kill()
+                self.ldfreader.wait()
+                del self.ldfreader
 
-        self.ldfreader = None
+            self.ldfreader = None
+        except:
+            pass
 
     def _open(self, sample):
         self._close()
