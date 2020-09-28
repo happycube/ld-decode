@@ -2348,9 +2348,19 @@ class FieldPAL(Field):
         # This map is based in (first field, has burst on line 6)
         map4 = {(True, False): 1, (False, True): 2, (True, True): 3, (False, False): 4}
         
+        # Determine if line 6 has valid burst - or lack of it.  If there's rot interference,
+        # the burst level may be in the middle (or even None), and if so extrapolate 
+        # from the previous field.
         burstlevel6 = self.get_burstlevel(6) 
-        if burstlevel6 is not None:
-            hasburst = inrange(burstlevel6 / self.rf.SysParams['hz_ire'], self.burstmedian * .5, self.burstmedian * 1.5)
+        
+        if burstlevel6 is None:
+            return self.get_following_field_number()
+            
+        burstlevel6 /= self.rf.SysParams['hz_ire']
+        if inrange(burstlevel6, self.burstmedian * .8, self.burstmedian * 1.2):
+            hasburst = True
+        elif burstlevel6 < self.burstmedian * .2:
+            hasburst = False
         else:
             return self.get_following_field_number()
 
