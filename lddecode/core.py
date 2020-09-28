@@ -2571,9 +2571,12 @@ class FieldNTSC(Field):
                 continue
 
             if not (np.isnan(linelocs_adj[l]) or self.linebad[l]):
-                lfreq = self.get_linefreq(l, self.linelocs2)
+                lfreq = self.get_linefreq(l, linelocs)
 
-                adjs[l] = (adjs_new[l] * lfreq * (1 / self.rf.SysParams['fsc_mhz']))
+                try:
+                    adjs[l] = (adjs_new[l] * lfreq * (1 / self.rf.SysParams['fsc_mhz']))
+                except:
+                    pass
 
         if len(adjs.keys()):
             adjs_median = np.median([adjs[a] for a in adjs])
