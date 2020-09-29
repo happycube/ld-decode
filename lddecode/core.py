@@ -568,7 +568,7 @@ class RFDecode:
         addemp2hp1 = self.compute_deemp_audio2(2*pi*45) # 3536hz
         addemp2hp2 = self.compute_deemp_audio2(2*pi*8) # 19894hz (i.e. cutoff?)
 
-        SF['audio_deemp2'] = addemp2lp + (addemp2hp1 * .14) + (addemp2hp2 * .29)
+        SF['audio_deemp2'] = addemp2lp - (addemp2hp1 * 0.1) - (addemp2hp2 * .29)
 
     def iretohz(self, ire):
         return self.SysParams['ire0'] + (self.SysParams['hz_ire'] * ire)
@@ -738,7 +738,7 @@ class RFDecode:
 
             for l in clips:
                 replacelen = 16*self.Filters['audio_fdiv2']
-                raw[max(0, l - replacelen):min(l + replacelen, len(raw))] = 0# raw[replacement_idx]
+#                raw[max(0, l - replacelen):min(l + replacelen, len(raw))] = 0# raw[replacement_idx]
 
             fft_in_real = self.audio_fdslice2(npfft.fft(raw))
             if len(fft_in_real) < len(self.Filters['audio_lpf2']):
@@ -1157,6 +1157,7 @@ def downscale_audio(audio, lineinfo, rf, linecount, timeoffset = 0, freq = 48000
         # There's almost *no way* the disk is spinning more than 1.5% off, so mask TBC errors here
         # to reduce pops
         if i and np.abs(swow[i] - swow[i - 1]) > .015:
+            print(x, swow[i], swow[i - 1])
             swow[i] = swow[i - 1]
 
         locs[i] = sampleloc / scale
