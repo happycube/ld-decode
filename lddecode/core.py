@@ -1153,6 +1153,7 @@ def downscale_audio(audio, lineinfo, rf, linecount, timeoffset = 0, freq = 48000
         sampleloc += (lineloc_next - lineloc_cur) * (linenum - np.floor(linenum))
 
         swow[i] = (lineloc_next - lineloc_cur) / rf.linelen
+        swow[i] = ((swow[i] - 1) / 2) + 1
         # There's almost *no way* the disk is spinning more than 1.5% off, so mask TBC errors here
         # to reduce pops
         if i and np.abs(swow[i] - swow[i - 1]) > .015:
@@ -2076,7 +2077,7 @@ class Field:
 
         # build sets of min/max valid levels 
         valid_min = np.full_like(f.data['video']['demod'], f.rf.iretohz(-60 if isPAL else -50))
-        valid_max = np.full_like(f.data['video']['demod'], f.rf.iretohz(150 if isPAL else 140))
+        valid_max = np.full_like(f.data['video']['demod'], f.rf.iretohz(150 if isPAL else 160))
         
         # the minimum valid value during VSYNC is lower for PAL because of the pilot signal
         minsync = -100 if isPAL else -50
@@ -2099,7 +2100,7 @@ class Field:
         iserr2 |= f.data['video']['demod'] > valid_max
 
         valid_min05 = np.full_like(f.data['video']['demod_05'], f.rf.iretohz(-20 if isPAL else -20))
-        valid_max05 = np.full_like(f.data['video']['demod_05'], f.rf.iretohz(115 if isPAL else 110))
+        valid_max05 = np.full_like(f.data['video']['demod_05'], f.rf.iretohz(115))
 
         iserr3 = f.data['video']['demod_05'] < valid_min05
         iserr3 |= f.data['video']['demod_05'] > valid_max05
