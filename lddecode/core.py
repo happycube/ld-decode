@@ -2222,6 +2222,9 @@ class Field:
         zcburstdiv = (lfreq * fsc_n1) / 2
 
         phase_adjust = self.prevfield.phase_adjust if self.prevfield is not None else 0
+        # Do not use the previous phase adjustment if it's too high (#561)
+        if np.abs(phase_adjust) > .25:
+            phase_adjust = 0
 
         # The first pass computes phase_offset, the second uses it to determine
         # the colo(u)r burst phase of the line.
@@ -2548,6 +2551,8 @@ class FieldNTSC(Field):
             clb = self.compute_line_bursts(linelocs, l)
             if clb[0] == None:
                 continue
+
+            #print(l, clb)
 
             adjs[l] = clb[1] / 2
             burstlevel[l] = self.get_burstlevel(l, linelocs)
