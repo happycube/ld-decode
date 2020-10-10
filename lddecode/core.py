@@ -2099,7 +2099,7 @@ class Field:
         iserr2 = f.data['video']['demod'] < valid_min
         iserr2 |= f.data['video']['demod'] > valid_max
 
-        valid_min05 = np.full_like(f.data['video']['demod_05'], f.rf.iretohz(-20 if isPAL else -20))
+        valid_min05 = np.full_like(f.data['video']['demod_05'], f.rf.iretohz(-20))
         valid_max05 = np.full_like(f.data['video']['demod_05'], f.rf.iretohz(115))
 
         iserr3 = f.data['video']['demod_05'] < valid_min05
