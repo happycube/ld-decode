@@ -2584,7 +2584,8 @@ class FieldNTSC(Field):
         adjs = {}
 
         for l in range(1, 266):
-            if l < 10 or l not in adjs_new:
+            #if l < 10 or l not in adjs_new:
+            if l not in adjs_new:
                 self.linebad[l] = True
 
         # compute the adjustments for each line but *do not* apply, so outliers can be bypassed
