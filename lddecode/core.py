@@ -1143,7 +1143,8 @@ def downscale_audio(audio, lineinfo, rf, linecount, timeoffset = 0, freq = 48000
             lineloc_cur = int(lineinfo[0] + (rf.linelen * linenum))
             lineloc_next = lineloc_cur + rf.linelen
         elif len(lineinfo) > linenum + 2:
-            lineloc_cur, lineloc_next = lineinfo[intlinenum:intlinenum + 2]
+            lineloc_cur = lineinfo[intlinenum]
+            lineloc_next = lineinfo[intlinenum + 1]
         else:
             # Catch things that go past the last known line by using the last lines here.
             lineloc_cur = lineinfo[-2]
@@ -1157,7 +1158,7 @@ def downscale_audio(audio, lineinfo, rf, linecount, timeoffset = 0, freq = 48000
         # There's almost *no way* the disk is spinning more than 1.5% off, so mask TBC errors here
         # to reduce pops
         if i and np.abs(swow[i] - swow[i - 1]) > .015:
-            print(x, swow[i], swow[i - 1])
+            #print(x, swow[i], swow[i - 1])
             swow[i] = swow[i - 1]
 
         locs[i] = sampleloc / scale
@@ -1174,6 +1175,8 @@ def downscale_audio(audio, lineinfo, rf, linecount, timeoffset = 0, freq = 48000
 
             output_left = (output_left * swow[i]) - rf.SysParams['audio_lfreq']
             output_right = (output_right * swow[i]) - rf.SysParams['audio_rfreq']
+            #output_left = (output_left) - rf.SysParams['audio_lfreq']
+            #output_right = (output_right) - rf.SysParams['audio_rfreq']
             
             ascale = .5
 
@@ -3349,3 +3352,4 @@ class LDdecode:
         jout['fields'] = self.fieldinfo.copy()
 
         return jout
+ 

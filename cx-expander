@@ -60,7 +60,8 @@ Reference audio tests:
 
 GGV1069 CX test signal blocks 
     - NTSC ONLY, PAL GGV1011 was recorded w/o CX enabled.  Oops.
-    - 7.5 seconds of -8dB -> 0dB audio alternating with 7.5 secs of -18dB->20dB
+    - 7.5 seconds of -8dB -> 0dB audio alternating with 7.5 secs of -18dB->-20dB
+      frames 11701-12600 left, 12601-13500 right
 
 Tune-Up AV II audio test tones
     - Several seconds of 0dB in both CX-analog and digital between 50hz and 10khz.
