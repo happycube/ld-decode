@@ -2664,6 +2664,8 @@ class LDdecode:
     def __init__(self, fname_in, fname_out, freader, analog_audio = 0, digital_audio = False, system = 'NTSC', doDOD = True, threads=4, extra_options = {}):
         self.demodcache = None
 
+        self.branch, self.commit = get_git_info()
+
         self.infile = open(fname_in, 'rb')
         self.freader = freader
 
@@ -3320,6 +3322,9 @@ class LDdecode:
 
         if f is None:
             return
+
+        vp['gitBranch'] = self.branch
+        vp['gitCommit'] = self.commit
 
         vp['isSourcePal'] = True if f.rf.system == 'PAL' else False
 

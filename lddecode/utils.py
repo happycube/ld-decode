@@ -454,6 +454,24 @@ class LoadLDF:
         assert len(data) == readlen * 2
         return np.frombuffer(data, '<i2')
 
+# Git helpers
+
+def get_git_info():
+    ''' Return git branch and commit for current directory, iff available. '''
+    
+    branch = 'UNKNOWN'
+    commit = 'UNKNOWN'
+
+    try:
+        sp = subprocess.run('git rev-parse --abbrev-ref HEAD', shell=True, capture_output=True)
+        branch = sp.stdout.decode('utf-8').strip() if not sp.returncode else 'UNKNOWN'
+        
+        sp = subprocess.run('git rev-parse --short HEAD', shell=True, capture_output=True)
+        commit = sp.stdout.decode('utf-8').strip() if not sp.returncode else 'UNKNOWN'
+    except:
+        pass
+
+    return branch, commit
 
 # Essential standalone routines 
 
