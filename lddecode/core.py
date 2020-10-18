@@ -2275,7 +2275,7 @@ class FieldPAL(Field):
         plen = {}
 
         zcs = []
-        for l in range(0, 312):
+        for l in range(0, 313):
             adjfreq = self.rf.freq
             if l > 1:
                 adjfreq /= (linelocs[l] - linelocs[l - 1]) / self.rf.linelen
@@ -2299,7 +2299,7 @@ class FieldPAL(Field):
 
         am = angular_mean(zcs)
 
-        for l in range(0, 312):
+        for l in range(0, 313):
             linelocs[l] += (phase_distance(zcs[l], am) * plen[l]) * 1
 
         return np.array(linelocs)
@@ -2416,7 +2416,7 @@ class FieldPAL(Field):
         self.wowfactor = self.computewow(self.linelocs)
         self.burstmedian = self.calc_burstmedian()
 
-        self.linecount = 312 if self.isFirstField else 313
+        self.linecount = 313 #if self.isFirstField else 313
         self.lineoffset = 2 if self.isFirstField else 3
 
         self.linecode = [self.decodephillipscode(l + self.lineoffset) for l in [16, 17, 18]]
