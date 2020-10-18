@@ -2210,13 +2210,13 @@ class Field:
             print('null')
 
         burstarea = burstarea - nb_mean(burstarea)
-        threshold = 8 * self.rf.SysParams['hz_ire']
+        threshold = 5 * self.rf.SysParams['hz_ire']
 
         burstarea_demod = self.data['video']['demod'][s+bstart:s+bend]
         burstarea_demod = burstarea_demod - nb_mean(burstarea_demod)
 
         if np.max(np.abs(burstarea_demod)) > (30 * self.rf.SysParams['hz_ire']):
-            return None, None
+            return None, None, None
 
         fsc_n1 = (1 / self.rf.SysParams['fsc_mhz'])
         zcburstdiv = (lfreq * fsc_n1) / 2
@@ -2551,8 +2551,6 @@ class FieldNTSC(Field):
             clb = self.compute_line_bursts(linelocs, l)
             if clb[0] == None:
                 continue
-
-            #print(l, clb)
 
             adjs[l] = clb[1] / 2
             burstlevel[l] = self.get_burstlevel(l, linelocs)
