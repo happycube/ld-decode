@@ -313,7 +313,8 @@ class RFDecode:
         has_analog_audio     -- Whether or not analog(ue) audio channels are on the disk
 
         extra_options -- Dictionary of additional options (typically boolean) - these include:
-          - WibbleRemover - PAL: cut 8.5mhz spurious signal, NTSC: notch filter on decoded video
+          - PAL_V4300D_NotchFilter - cut 8.5mhz spurious signal
+          - NTSC_ColorNotchFilter:  notch filter on decoded video to reduce color 'wobble'
           - lowband: Substitute different decode settings for lower-bandwidth disks
 
         """
@@ -323,7 +324,8 @@ class RFDecode:
         self.blockcut_end = 0
         self.system = system
 
-        self.WibbleRemover = True if extra_options.get('WibbleRemover') == True else False
+        self.NTSC_ColorNotchFilter = True if extra_options.get('NTSC_ColorNotchFilter') == True else False
+        self.PAL_V4300D_NotchFilter = True if extra_options.get('PAL_V4300D_NotchFilter') == True else False
         lowband = True if extra_options.get('lowband') == True else False
 
         freq = inputfreq
@@ -467,7 +469,7 @@ class RFDecode:
         video_lpf = sps.butter(DP['video_lpf_order'], DP['video_lpf_freq']/self.freq_hz_half, 'low')
         SF['Fvideo_lpf'] = filtfft(video_lpf, self.blocklen)
 
-        if self.system == 'NTSC' and self.WibbleRemover:
+        if self.system == 'NTSC' and self.NTSC_ColorNotchFilter:
             video_notch = sps.butter(3, [DP['video_lpf_freq']/1000000/self.freq_half, 5.0/self.freq_half], 'bandstop')
             SF['Fvideo_lpf'] *= filtfft(video_notch, self.blocklen)
 
@@ -597,7 +599,7 @@ class RFDecode:
         rv['rfhpf'] = npfft.ifft(indata_fft * self.Filters['Frfhpf']).real
         rv['rfhpf'] = rv['rfhpf'][self.blockcut-rotdelay:-self.blockcut_end-rotdelay]
 
-        if self.system == 'PAL' and self.WibbleRemover:
+        if self.system == 'PAL' and self.PAL_V4300D_NotchFilter:
             ''' This routine works around an 'interesting' issue seen with LD-V4300D players and 
                 some PAL digital audio disks, where there is a signal somewhere between 8.47 and 8.57mhz.
 
@@ -2210,13 +2212,13 @@ class Field:
             print('null')
 
         burstarea = burstarea - nb_mean(burstarea)
-        threshold = 8 * self.rf.SysParams['hz_ire']
+        threshold = 5 * self.rf.SysParams['hz_ire']
 
         burstarea_demod = self.data['video']['demod'][s+bstart:s+bend]
         burstarea_demod = burstarea_demod - nb_mean(burstarea_demod)
 
         if np.max(np.abs(burstarea_demod)) > (30 * self.rf.SysParams['hz_ire']):
-            return None, None
+            return None, None, None
 
         fsc_n1 = (1 / self.rf.SysParams['fsc_mhz'])
         zcburstdiv = (lfreq * fsc_n1) / 2
@@ -2275,7 +2277,7 @@ class FieldPAL(Field):
         plen = {}
 
         zcs = []
-        for l in range(0, 312):
+        for l in range(0, 313):
             adjfreq = self.rf.freq
             if l > 1:
                 adjfreq /= (linelocs[l] - linelocs[l - 1]) / self.rf.linelen
@@ -2299,7 +2301,7 @@ class FieldPAL(Field):
 
         am = angular_mean(zcs)
 
-        for l in range(0, 312):
+        for l in range(0, 313):
             linelocs[l] += (phase_distance(zcs[l], am) * plen[l]) * 1
 
         return np.array(linelocs)
@@ -2416,7 +2418,7 @@ class FieldPAL(Field):
         self.wowfactor = self.computewow(self.linelocs)
         self.burstmedian = self.calc_burstmedian()
 
-        self.linecount = 312 if self.isFirstField else 313
+        self.linecount = 313 #if self.isFirstField else 313
         self.lineoffset = 2 if self.isFirstField else 3
 
         self.linecode = [self.decodephillipscode(l + self.lineoffset) for l in [16, 17, 18]]
@@ -2552,8 +2554,6 @@ class FieldNTSC(Field):
             if clb[0] == None:
                 continue
 
-            #print(l, clb)
-
             adjs[l] = clb[1] / 2
             burstlevel[l] = self.get_burstlevel(l, linelocs)
 
@@ -2665,6 +2665,8 @@ class LDdecode:
     
     def __init__(self, fname_in, fname_out, freader, analog_audio = 0, digital_audio = False, system = 'NTSC', doDOD = True, threads=4, extra_options = {}):
         self.demodcache = None
+
+        self.branch, self.commit = get_git_info()
 
         self.infile = open(fname_in, 'rb')
         self.freader = freader
@@ -3322,6 +3324,9 @@ class LDdecode:
 
         if f is None:
             return
+
+        vp['gitBranch'] = self.branch
+        vp['gitCommit'] = self.commit
 
         vp['isSourcePal'] = True if f.rf.system == 'PAL' else False
 
