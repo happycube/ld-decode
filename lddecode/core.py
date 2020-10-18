@@ -313,7 +313,8 @@ class RFDecode:
         has_analog_audio     -- Whether or not analog(ue) audio channels are on the disk
 
         extra_options -- Dictionary of additional options (typically boolean) - these include:
-          - WibbleRemover - PAL: cut 8.5mhz spurious signal, NTSC: notch filter on decoded video
+          - PAL_V4300D_NotchFilter - cut 8.5mhz spurious signal
+          - NTSC_ColorNotchFilter:  notch filter on decoded video to reduce color 'wobble'
           - lowband: Substitute different decode settings for lower-bandwidth disks
 
         """
@@ -323,7 +324,8 @@ class RFDecode:
         self.blockcut_end = 0
         self.system = system
 
-        self.WibbleRemover = True if extra_options.get('WibbleRemover') == True else False
+        self.NTSC_ColorNotchFilter = True if extra_options.get('NTSC_ColorNotchFilter') == True else False
+        self.PAL_V4300D_NotchFilter = True if extra_options.get('PAL_V4300D_NotchFilter') == True else False
         lowband = True if extra_options.get('lowband') == True else False
 
         freq = inputfreq
@@ -467,7 +469,7 @@ class RFDecode:
         video_lpf = sps.butter(DP['video_lpf_order'], DP['video_lpf_freq']/self.freq_hz_half, 'low')
         SF['Fvideo_lpf'] = filtfft(video_lpf, self.blocklen)
 
-        if self.system == 'NTSC' and self.WibbleRemover:
+        if self.system == 'NTSC' and self.NTSC_ColorNotchFilter:
             video_notch = sps.butter(3, [DP['video_lpf_freq']/1000000/self.freq_half, 5.0/self.freq_half], 'bandstop')
             SF['Fvideo_lpf'] *= filtfft(video_notch, self.blocklen)
 
@@ -597,7 +599,7 @@ class RFDecode:
         rv['rfhpf'] = npfft.ifft(indata_fft * self.Filters['Frfhpf']).real
         rv['rfhpf'] = rv['rfhpf'][self.blockcut-rotdelay:-self.blockcut_end-rotdelay]
 
-        if self.system == 'PAL' and self.WibbleRemover:
+        if self.system == 'PAL' and self.PAL_V4300D_NotchFilter:
             ''' This routine works around an 'interesting' issue seen with LD-V4300D players and 
                 some PAL digital audio disks, where there is a signal somewhere between 8.47 and 8.57mhz.
 
