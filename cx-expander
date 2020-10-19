@@ -95,7 +95,7 @@ class CXExpander:
         self.fast = 0
         self.slow = 0
         
-        self.zerodb = 14762 # rms of 0dB output from ld-decode
+        self.zerodb = 20400 # rms of 0dB output from ld-decode
         self.knee = -22     # beginning of 2:1 expansion in dB
         self.knee_level = db_to_lev(self.knee)
         
@@ -123,22 +123,18 @@ class CXExpander:
 
             # The filter itself
             # XXX: NOT CORRECT YET!
-            self.fast = (self.fast * .9995) + (highest * .000570)
-            self.slow = (self.slow * .999925) + (highest * .0000855)
+            #self.fast = (self.fast * .999375) + (highest * .000625)
+            self.fast = (self.fast * .998) + (highest * .00165)
+            self.slow = (self.slow * .9998) + (highest * .000212)
 
             lev = max(self.fast, self.slow)
 
             mdb = lev_to_db(lev / self.zerodb)
             mfactor = max(m6db, (db_to_lev(mdb - self.knee) / 2))
-            # lmfactor = max(1, mfactor) # ???
-            lmfactor = 1 # ???
-
-            output[(i * 2)] = (fleft[i] * mfactor) + (lfleft[i] * lmfactor)
-            output[(i * 2) + 1] = (fright[i] * mfactor) + (lfright[i] * lmfactor)
-
-            #output[(i * 2)] = lfright[i]
-            #output[(i * 2) + 1] = fright[i]
             
+            output[(i * 2)] = m6db * (fleft[i] * mfactor)
+            output[(i * 2) + 1] = m6db * (fright[i] * mfactor)
+
         np.clip(output, -32766, 32766, out=output16)
         return output16
     
@@ -178,7 +174,3 @@ while True:
     indata_raw = indata_raw[-(cxe.margin * 2)*4:]
     
     i += 1
-
-    if False:
-        if i == 16:
-            break
