@@ -1155,7 +1155,7 @@ def downscale_audio(audio, lineinfo, rf, linecount, timeoffset = 0, freq = 48000
         sampleloc += (lineloc_next - lineloc_cur) * (linenum - np.floor(linenum))
 
         swow[i] = (lineloc_next - lineloc_cur) / rf.linelen
-        swow[i] = ((swow[i] - 1) / 2) + 1
+        swow[i] = ((swow[i] - 1) / .715) + 1
         # There's almost *no way* the disk is spinning more than 1.5% off, so mask TBC errors here
         # to reduce pops
         if i and np.abs(swow[i] - swow[i - 1]) > .015:
@@ -2578,7 +2578,7 @@ class FieldNTSC(Field):
         adjs = {}
 
         for l in range(1, 266):
-            if l < 10 or l not in adjs_new:
+            if l not in adjs_new:
                 self.linebad[l] = True
 
         # compute the adjustments for each line but *do not* apply, so outliers can be bypassed
