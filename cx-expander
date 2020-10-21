@@ -124,10 +124,12 @@ class CXExpander:
             # The filter itself
             # XXX: NOT CORRECT YET!
             #self.fast = (self.fast * .999375) + (highest * .000625)
-            self.fast = (self.fast * .998) + (highest * .00165)
+            #self.fast = (self.fast * .998) + (highest * .00165)
+            self.fast = (self.fast * .9994) + (highest * .004)
             self.slow = (self.slow * .9998) + (highest * .000212)
 
-            lev = max(self.fast, self.slow)
+            lev = max(((self.fast - 1) / 6.4) + 1, self.slow)
+            lev = self.slow
 
             mdb = lev_to_db(lev / self.zerodb)
             mfactor = max(m6db, (db_to_lev(mdb - self.knee) / 2))
