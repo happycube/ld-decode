@@ -1196,13 +1196,16 @@ class Field:
         self.data = decode
         self.initphase = initphase # used for seeking or first field
 
-        #prevfield = None
         self.prevfield = prevfield
+
+        self.phase_adjust = 0
+        self.phase_adjust_90 = 0
 
         # XXX: need a better way to prevent memory leaks than this
         # For now don't let a previous frame keep it's prev frame
         if prevfield is not None:
             prevfield.prevfield = None
+            self.phase_adjust_90 = prevfield.phase_adjust_90
 
         self.rf = rf
         self.freq = self.rf.freq
@@ -1224,8 +1227,6 @@ class Field:
         self.outlinecount = (self.rf.SysParams['frame_lines'] // 2) + 1
         # this is eventually set to 262/263 and 312/313 for audio timing
         self.linecount = None
-
-        self.phase_adjust = 0
 
     def process(self):
         self.linelocs1, self.linebad, self.nextfieldoffset = self.compute_linelocs()
@@ -2223,10 +2224,17 @@ class Field:
         fsc_n1 = (1 / self.rf.SysParams['fsc_mhz'])
         zcburstdiv = (lfreq * fsc_n1) / 2
 
-        phase_adjust = self.prevfield.phase_adjust if self.prevfield is not None else 0
-        # Do not use the previous phase adjustment if it's too high (#561)
-        if np.abs(phase_adjust) > .25:
-            phase_adjust = 0
+        phase_adjust = 0
+
+        if self.prevfield is not None:
+            phase_adjust = self.prevfield.phase_adjust
+            # Do not use the previous phase adjustment if it's too high (#561)
+            if np.abs(phase_adjust) > .25:
+                phase_adjust = 0
+        
+        # ... but, if a 90 degree offset is detected handle that
+        if self.phase_adjust_90:
+            phase_adjust += .5
 
         # The first pass computes phase_offset, the second uses it to determine
         # the colo(u)r burst phase of the line.
@@ -2243,6 +2251,7 @@ class Field:
                 zc = calczc(burstarea, i[0], 0)
                 if zc is not None:
                     zc_cycle = ((bstart+zc-s_rem) / zcburstdiv) + phase_adjust
+                    #print(zc_cycle, phase_adjust)
                     zc_round = int(np.round(zc_cycle))
 
                     phase_offset.append(zc_round - zc_cycle)
@@ -2260,6 +2269,9 @@ class Field:
                 phase_adjust += np.median(phase_offset)
             else:
                 return None, None, None
+
+        if self.phase_adjust_90:
+            phase_adjust -= .5
 
         self.phase_adjust = phase_adjust
         return (rising / count) > .5, -phase_adjust
@@ -2540,29 +2552,40 @@ class FieldNTSC(Field):
         return rms(burstarea) * np.sqrt(2)
 
     def compute_burst_offsets(self, linelocs):
-        linelocs_adj = linelocs
 
-        burstlevel = np.zeros_like(linelocs_adj, dtype=np.float32)
+        # This potentially takes two passes to correct for ~90 degree 
+        # burst phase relative to the hsync start
+        for passnum in range(2):
+            linelocs_adj = linelocs
 
-        clbsum = 0
-        valid_linecount = 0
+            burstlevel = np.zeros_like(linelocs_adj, dtype=np.float32)
 
-        adjs = {}
+            clbsum = 0
+            valid_linecount = 0
 
-        for l in range(0, 266):
-            clb = self.compute_line_bursts(linelocs, l)
-            if clb[0] == None:
-                continue
+            adjs = {}
 
-            adjs[l] = clb[1] / 2
-            burstlevel[l] = self.get_burstlevel(l, linelocs)
+            for l in range(0, 266):
+                clb = self.compute_line_bursts(linelocs, l)
+                if clb[0] == None:
+                    continue
 
-            even_line = not (l % 2)
-            clbsum += 1 if (even_line and clb[0]) else 0
-            valid_linecount += 1
+                adjs[l] = clb[1] / 2
+                burstlevel[l] = self.get_burstlevel(l, linelocs)
 
-        # If more than half of the lines have rising phase alignment, it's (probably) field 1 or 4            
-        field14 = clbsum > (valid_linecount // 4)
+                even_line = not (l % 2)
+                clbsum += 1 if (even_line and clb[0]) else 0
+                valid_linecount += 1
+
+            # If more than half of the lines have rising phase alignment, it's (probably) field 1 or 4            
+            field14 = clbsum > (valid_linecount // 4)
+
+            median_adj = np.median([np.abs(adjs[k]) for k in adjs.keys()])
+
+            if median_adj < .2:
+                break
+            else:
+                self.phase_adjust_90 = not self.phase_adjust_90
 
         return field14, burstlevel, adjs
 
@@ -2634,7 +2657,6 @@ class FieldNTSC(Field):
 
     def __init__(self, *args, **kwargs):
         self.burstlevel = None
-        self.burst90 = False
 
         super(FieldNTSC, self).__init__(*args, **kwargs)
 
