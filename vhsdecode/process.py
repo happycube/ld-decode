@@ -379,6 +379,156 @@ def detect_burst_pal_line(
     return line
 
 
+def find_crossings(data, threshold):
+    """Find where the data crosses the set threshold."""
+    # TODO: add hysteresis.
+    crossings = np.diff(data < threshold)
+    return crossings
+
+
+def detect_dropouts_rf(field, threshold):
+    """Look for dropouts in the input data, based on rf envelope amplitude."""
+    env = field.data["video"]["envelope"]
+    errlist = []
+    crossings = find_crossings(env, threshold)
+
+    crossings_pos = np.argwhere(crossings)[:, 0]
+
+    crossings_up = []
+    crossings_down = []
+
+    if len(crossings_pos) > 0 and crossings_pos[0] + 1 < len(env):
+        first_cross = crossings_pos[0]
+
+        first_crossing_is_down = env[first_cross] > env[first_cross + 1]
+        # TODO: Handle down crossing at the end properly.
+
+        if first_crossing_is_down:
+            crossings_down = np.argwhere(crossings)[::2, 0]
+            crossings_up = np.argwhere(crossings)[1::2, 0]
+            errlist = list(zip(crossings_down, crossings_up))
+        else:
+            zero = np.array([0])
+            # If we start in a dropout, we pretend it started at position 0 in
+            # the data.
+            crossings_down = np.concatenate(
+                (zero, np.argwhere(crossings)[1::2, 0]), axis=None
+            )
+            crossings_up = np.argwhere(crossings)[::2, 0]
+            errlist = list(zip(crossings_down, crossings_up))
+
+    else:
+        # Avoid error if last crossing is at the last data point
+        # or there are no dropouts.
+        print("No dropouts detected in this block")
+
+    p = False
+
+    if p:
+        print("crossings :", crossings)
+        print("crossings up: ", crossings_up)
+        print("crossings down: ", crossings_down)
+        import matplotlib.pyplot as plt
+
+        fig, ax1 = plt.subplots()
+        plt.vlines(crossings_up, 0, 5000000, color="#FF0000")
+        plt.vlines(crossings_down, 000, 5000000, color="#FF00FF")
+        #        ax1.plot(hilbert, color='#FF0000')
+        ax1.plot(field.data["video"]["envelope"], color="#000000")
+        ax2 = ax1.twinx()
+        ax2.plot(field.data["video"]["raw"], color="#00FF00")
+        ax3 = ax1.twinx()
+        ax3.plot(field.data["video"]["demod"])
+        ax4 = ax1.twinx()
+        #        crossings = find_crossings(env, 700)
+        #        ax4.plot(crossings, color='#0000FF')
+        plt.show()
+
+    rv_lines = []
+    rv_starts = []
+    rv_ends = []
+
+    # Convert to tbc positions.
+    dropouts = dropout_errlist_to_tbc(field, errlist)
+    for r in dropouts:
+        rv_lines.append(r[0] - 1)
+        rv_starts.append(int(r[1]))
+        rv_ends.append(int(r[2]))
+
+    return rv_lines, rv_starts, rv_ends
+
+
+def dropout_errlist_to_tbc(field, errlist):
+    """Convert data from raw data coordinates to tbc coordinates, and splits up
+    multi-line dropouts.
+    """
+    dropouts = []
+
+    if len(errlist) == 0:
+        return dropouts
+
+    # Now convert the above errlist into TBC locations
+    errlistc = errlist.copy()
+
+    lineoffset = -field.lineoffset
+
+    # Remove dropouts occuring before the start of the frame so they don't cause
+    # the rest to be skipped
+    curerr = errlistc.pop(0)
+    while len(errlistc) > 0 and curerr[0] < field.linelocs[field.lineoffset]:
+        curerr = errlistc.pop(0)
+
+    # TODO: This could be reworked to be a bit cleaner and more performant.
+
+    for line in range(field.lineoffset, field.linecount + field.lineoffset):
+        while curerr is not None and inrange(
+            curerr[0], field.linelocs[line], field.linelocs[line + 1]
+        ):
+            start_rf_linepos = curerr[0] - field.linelocs[line]
+            start_linepos = start_rf_linepos / (
+                field.linelocs[line + 1] - field.linelocs[line]
+            )
+            start_linepos = int(start_linepos * field.outlinelen)
+
+            end_rf_linepos = curerr[1] - field.linelocs[line]
+            end_linepos = end_rf_linepos / (
+                field.linelocs[line + 1] - field.linelocs[line]
+            )
+            end_linepos = int(np.round(end_linepos * field.outlinelen))
+
+            first_line = line + 1 + lineoffset
+
+            # If the dropout spans multiple lines, we need to split it up into one for each line.
+            if end_linepos > field.outlinelen:
+                #                print("dop lines: ", end_linepos / field.outlinelen)
+                #                print("dop lines: ", end_linepos // field.outlinelen)
+
+                num_lines = end_linepos // field.outlinelen
+
+                # First line.
+                dropouts.append((first_line, start_linepos, field.outlinelen))
+                # Full lines in the middle.
+                for n in range(num_lines - 1):
+                    dropouts.append((first_line + n + 1, 0, field.outlinelen))
+                # leftover on last line.
+                dropouts.append(
+                    (
+                        first_line + (num_lines),
+                        0,
+                        np.remainder(end_linepos, field.outlinelen),
+                    )
+                )
+            else:
+                dropouts.append((first_line, start_linepos, end_linepos))
+
+            if len(errlistc):
+                curerr = errlistc.pop(0)
+            else:
+                curerr = None
+
+    return dropouts
+
+
 # Phase comprensation stuff - needs rework.
 # def phase_shift(data, angle):
 #     return np.fft.irfft(np.fft.rfft(data) * np.exp(1.0j * angle), len(data)).real
@@ -502,7 +652,7 @@ class FieldPALVHS(ldd.FieldPAL):
     def getpulses(self):
         """Find sync pulses in the demodulated video sigal
 
-        NOTE: TEMPORARY override until an override for th evalue it self is added upstream.
+        NOTE: TEMPORARY override until an override for the value itself is added upstream.
         """
         # pass one using standard levels
 
@@ -580,6 +730,9 @@ class FieldPALVHS(ldd.FieldPAL):
             self.data["video"]["demod_05"], pulse_hz_min, pulse_hz_max
         )
 
+    def dropout_detect(self):
+        return detect_dropouts_rf(self, 700)
+
 
 class FieldNTSCVHS(ldd.FieldNTSC):
     def __init__(self, *args, **kwargs):
@@ -619,6 +772,9 @@ class FieldNTSCVHS(ldd.FieldNTSC):
 
         return (dsout, dschroma), dsaudio, dsefm
 
+    def dropout_detect(self):
+        return detect_dropouts_rf(self, 700)
+
 
 # Superclass to override laserdisc-specific parts of ld-decode with stuff that works for VHS
 #
@@ -632,7 +788,7 @@ class VHSDecode(ldd.LDdecode):
         fname_out,
         freader,
         system="NTSC",
-        doDOD=False,
+        doDOD=True,
         threads=1,
         inputfreq=40,
         track_phase=0,
@@ -764,6 +920,22 @@ class VHSRFDecode(ldd.RFDecode):
         cc = self.DecoderParams["color_under_carrier"] / 1000000
 
         DP = self.DecoderParams
+
+        self.Filters["RFVideoRaw"] = lddu.filtfft(
+            sps.butter(
+                DP["video_bpf_order"],
+                [
+                    DP["video_bpf_low"] / self.freq_hz_half,
+                    DP["video_bpf_high"] / self.freq_hz_half,
+                ],
+                btype="bandpass",
+            ),
+            self.blocklen,
+        )
+
+        self.Filters["EnvLowPass"] = sps.butter(
+            8, [1.0 / self.freq_half], btype="lowpass"
+        )
 
         # More advanced rf filter - only used for NTSC for now.
         if system == "NTSC":
@@ -947,10 +1119,31 @@ class VHSRFDecode(ldd.RFDecode):
         # crude DC offset removal
         out_chroma = out_chroma - np.mean(out_chroma)
 
+        from scipy.signal import hilbert as hilbt
+
+        import matplotlib.pyplot as plt
+
+        raw_filtered = np.fft.ifft(indata_fft * self.Filters["RFVideoRaw"]).real
+        env = np.abs(hilbt(raw_filtered))
+        # env = filter_simple(env,
+        #                    self.Filters["EnvLowPass"])
+
+        if False:
+            fig, ax1 = plt.subplots()
+            ax1.plot(raw_filtered)
+            #        ax1.plot(hilbert, color='#FF0000')
+            ax1.plot(env, color="#00FF00")
+            ax2 = ax1.twinx()
+            ax3 = ax1.twinx()
+            ax2.plot(out_video, color="#FF0000")
+            crossings = find_crossings(env, 700)
+            ax3.plot(crossings, color="#0000FF")
+            plt.show()
+
         # demod_burst is a bit misleading, but keeping the naming for compatability.
         video_out = np.rec.array(
-            [out_video, demod, out_video05, out_chroma],
-            names=["demod", "demod_raw", "demod_05", "demod_burst"],
+            [out_video, demod, out_video05, out_chroma, env, data],
+            names=["demod", "demod_raw", "demod_05", "demod_burst", "envelope", "raw"],
         )
 
         rv["video"] = (

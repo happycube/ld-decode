@@ -17,10 +17,10 @@ RFParams_PAL_VHS["video_bpf_low"] = 3550000
 RFParams_PAL_VHS["video_bpf_high"] = 5200000
 # Band-pass filter order.
 # Order may be fine as is.
-RFParams_PAL_VHS["video_bpf_order"] = 1
+RFParams_PAL_VHS["video_bpf_order"] = 2
 
 # Low-pass filter on Y after demodulation
-RFParams_PAL_VHS["video_lpf_freq"] = 3600000
+RFParams_PAL_VHS["video_lpf_freq"] = 3300000
 # Order may be fine as is.
 # RFParams_PAL_VHS['video_lpf_order'] = 9
 

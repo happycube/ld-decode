@@ -62,7 +62,7 @@ parser.add_argument(
     "--threads",
     metavar="threads",
     type=int,
-    default=5,
+    default=1,
     help="number of CPU threads to use",
 )
 # parser.add_argument('-c', '--cut', dest='cut', action='store_true', help='cut (to r16) instead of decode')
@@ -74,6 +74,14 @@ parser.add_argument(
     action="store_true",
     help="source is in NTSC-J (IRE 0 black) format",
 )
+parser.add_argument(
+    "--doDOD",
+    dest="dodod",
+    action="store_true",
+    default=False,
+    help="enable dropout detector (disabled by default until it's working well)",
+)
+
 # parser.add_argument('--noDOD', dest='nodod', action='store_true', default=False,
 #                    help='disable dropout detector (Currently disabled for vhs)')
 # parser.add_argument('--EFM', dest='efm', action='store_true', default=False, help='Filter EFM output (WIP!)')
@@ -133,7 +141,7 @@ vhsd = VHSDecode(
     outname,
     loader,
     system=system,
-    doDOD=False,
+    doDOD=args.dodod,
     threads=args.threads,
     inputfreq=sample_freq,
     track_phase=args.track_phase,
