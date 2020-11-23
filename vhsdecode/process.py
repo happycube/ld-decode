@@ -30,7 +30,6 @@ def chroma_to_u16(chroma):
 
     return np.uint16(chroma + S16_ABS_MAX)
 
-
 def acc(chroma, burst_abs_ref, burststart, burstend, linelength, lines):
     """Scale chroma according to the level of the color burst on each line."""
 
@@ -385,10 +384,22 @@ def find_crossings(data, threshold):
     crossings = np.diff(data < threshold)
     return crossings
 
-
-def detect_dropouts_rf(field, threshold):
-    """Look for dropouts in the input data, based on rf envelope amplitude."""
+def detect_dropouts_rf(field):
+    """Look for dropouts in the input data, based on rf envelope amplitude.
+    Uses either an percentage of the frame average rf level, or an absolute value.
+    TODO: A more advanced algorithm with hysteresis etc.
+    """
     env = field.data["video"]["envelope"]
+    threshold_p = field.rf.dod_threshold_p
+    threshold_abs = field.rf.dod_threshold_a
+
+    threshold = 0.0
+    if threshold_abs is not None:
+        threshold = threshold_abs
+    else:
+        field_average = np.mean(field.data["video"]["envelope"])
+        threshold = field_average * threshold_p
+
     errlist = []
     crossings = find_crossings(env, threshold)
 
@@ -397,6 +408,8 @@ def detect_dropouts_rf(field, threshold):
     crossings_up = []
     crossings_down = []
 
+    # Avoid error if last crossing is at the last data point
+    # or there are no dropouts.
     if len(crossings_pos) > 0 and crossings_pos[0] + 1 < len(env):
         first_cross = crossings_pos[0]
 
@@ -416,33 +429,6 @@ def detect_dropouts_rf(field, threshold):
             )
             crossings_up = np.argwhere(crossings)[::2, 0]
             errlist = list(zip(crossings_down, crossings_up))
-
-    else:
-        # Avoid error if last crossing is at the last data point
-        # or there are no dropouts.
-        print("No dropouts detected in this block")
-
-    p = False
-
-    if p:
-        print("crossings :", crossings)
-        print("crossings up: ", crossings_up)
-        print("crossings down: ", crossings_down)
-        import matplotlib.pyplot as plt
-
-        fig, ax1 = plt.subplots()
-        plt.vlines(crossings_up, 0, 5000000, color="#FF0000")
-        plt.vlines(crossings_down, 000, 5000000, color="#FF00FF")
-        #        ax1.plot(hilbert, color='#FF0000')
-        ax1.plot(field.data["video"]["envelope"], color="#000000")
-        ax2 = ax1.twinx()
-        ax2.plot(field.data["video"]["raw"], color="#00FF00")
-        ax3 = ax1.twinx()
-        ax3.plot(field.data["video"]["demod"])
-        ax4 = ax1.twinx()
-        #        crossings = find_crossings(env, 700)
-        #        ax4.plot(crossings, color='#0000FF')
-        plt.show()
 
     rv_lines = []
     rv_starts = []
@@ -731,7 +717,7 @@ class FieldPALVHS(ldd.FieldPAL):
         )
 
     def dropout_detect(self):
-        return detect_dropouts_rf(self, 700)
+        return detect_dropouts_rf(self)
 
 
 class FieldNTSCVHS(ldd.FieldNTSC):
@@ -773,7 +759,7 @@ class FieldNTSCVHS(ldd.FieldNTSC):
         return (dsout, dschroma), dsaudio, dsefm
 
     def dropout_detect(self):
-        return detect_dropouts_rf(self, 700)
+        return detect_dropouts_rf(self)
 
 
 # Superclass to override laserdisc-specific parts of ld-decode with stuff that works for VHS
@@ -791,7 +777,10 @@ class VHSDecode(ldd.LDdecode):
         doDOD=True,
         threads=1,
         inputfreq=40,
+        dod_threshold_p=vhs_formats.DEFAULT_THRESHOLD_P_DDD,
+        dod_threshold_a=None,
         track_phase=0,
+        level_adjust=0.2
     ):
         super(VHSDecode, self).__init__(
             fname_in,
@@ -800,11 +789,14 @@ class VHSDecode(ldd.LDdecode):
             analog_audio=False,
             system=system,
             doDOD=doDOD,
-            threads=threads,
+            threads=threads
         )
+        # Adjustment for output to avoid clipping.
+        self.level_adjust = level_adjust
         # Overwrite the rf decoder with the VHS-altered one
         self.rf = VHSRFDecode(
-            system=system, inputfreq=inputfreq, track_phase=track_phase
+            system=system, inputfreq=inputfreq, track_phase=track_phase,
+            dod_threshold_p=dod_threshold_p, dod_threshold_a=dod_threshold_a
         )
         # Store reference to ourself in the rf decoder - needed to access data location for track
         # phase, may want to do this in a better way later.
@@ -879,14 +871,26 @@ class VHSDecode(ldd.LDdecode):
     def computeMetricsNTSC(self, metrics, f, fp=None):
         return None
 
+    def build_json(self, f):
+        jout = super(VHSDecode, self).build_json(f)
+        black= jout['videoParameters']['black16bIre']
+        white = jout['videoParameters']['white16bIre']
+#        print("orig W: ", orig)
+        jout['videoParameters']['black16bIre'] = black * (1 - self.level_adjust)
+        jout['videoParameters']['white16bIre'] = white * (1 + self.level_adjust)
+        return jout
+
 
 class VHSRFDecode(ldd.RFDecode):
-    def __init__(self, inputfreq=40, system="NTSC", track_phase=None):
+    def __init__(self, inputfreq=40, system="NTSC", dod_threshold_p=vhs_formats.DEFAULT_THRESHOLD_P_DDD, dod_threshold_a=None, track_phase=None):
 
         # First init the rf decoder normally.
         super(VHSRFDecode, self).__init__(
             inputfreq, system, decode_analog_audio=False, has_analog_audio=False
         )
+
+        self.dod_threshold_p = dod_threshold_p
+        self.dod_threshold_a = dod_threshold_a
 
         if track_phase is None:
             self.track_phase = 0
@@ -1121,14 +1125,12 @@ class VHSRFDecode(ldd.RFDecode):
 
         from scipy.signal import hilbert as hilbt
 
-        import matplotlib.pyplot as plt
-
         raw_filtered = np.fft.ifft(indata_fft * self.Filters["RFVideoRaw"]).real
+        # Calculate an evelope with signal strength using absolute of hilbert transform.
         env = np.abs(hilbt(raw_filtered))
-        # env = filter_simple(env,
-        #                    self.Filters["EnvLowPass"])
 
         if False:
+            import matplotlib.pyplot as plt
             fig, ax1 = plt.subplots()
             ax1.plot(raw_filtered)
             #        ax1.plot(hilbert, color='#FF0000')

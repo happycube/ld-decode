@@ -17,6 +17,7 @@ from lddecode.utils import *
 import lddecode.core
 from lddecode.core import *
 from vhsdecode.process import VHSDecode
+import vhsdecode.formats as f
 
 CXADC_FREQ = (8 * 315.0) / 88  # 28.636363636363637
 CXADC_FREQ_HIGH = 3150.0 / 88.0
@@ -72,7 +73,7 @@ parser.add_argument(
     "--NTSCJ",
     dest="ntscj",
     action="store_true",
-    help="source is in NTSC-J (IRE 0 black) format",
+    help="source is in NTSC-J (IRE 0 black) format (untested)",
 )
 parser.add_argument(
     "--doDOD",
@@ -81,7 +82,34 @@ parser.add_argument(
     default=False,
     help="enable dropout detector (disabled by default until it's working well)",
 )
-
+parser.add_argument(
+    "-D",
+    "--dod_t",
+    "--dod_threshold_p",
+    dest="dod_threshold_p",
+    metavar="value",
+    type=float,
+    default=None,
+    help="RF level fraction threshold for dropouts as percentage of average (in decimal).",
+)
+parser.add_argument(
+    "--dod_t_abs",
+    "--dod_threshold_abs",
+    dest="dod_threshold_a",
+    metavar="value",
+    type=float,
+    default=None,
+    help="RF level threshold absolute value. Note that RF levels vary greatly between tapes and recording setups.",
+)
+parser.add_argument(
+    "-L",
+    "--level_adjust",
+    dest="level_adjust",
+    metavar="value",
+    type=float,
+    default=0.2,
+    help="Multiply top/bottom IRE in json by 1 +/- this value (used to avoid clipping on RGB conversion in chroma decoder).",
+)
 # parser.add_argument('--noDOD', dest='nodod', action='store_true', default=False,
 #                    help='disable dropout detector (Currently disabled for vhs)')
 # parser.add_argument('--EFM', dest='efm', action='store_true', default=False, help='Filter EFM output (WIP!)')
@@ -131,6 +159,10 @@ elif filename[-2:] == "r8":
 else:
     loader = load_packed_data_4_40
 
+dod_threshold_p = f.DEFAULT_THRESHOLD_P_DDD
+if loader is not None and loader is not load_packed_data_4_40:
+    dod_threshold_p = f.DEFAULT_THRESHOLD_P_CXADC
+
 system = "PAL" if args.pal else "NTSC"
 
 # sample_freq = 40 if not args.cxadc else CXADC_FREQ
@@ -144,7 +176,10 @@ vhsd = VHSDecode(
     doDOD=args.dodod,
     threads=args.threads,
     inputfreq=sample_freq,
+    dod_threshold_p=dod_threshold_p,
+    dod_threshold_a=args.dod_threshold_a,
     track_phase=args.track_phase,
+    level_adjust=args.level_adjust
 )
 vhsd.roughseek(firstframe * 2)
 

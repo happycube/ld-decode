@@ -14,10 +14,10 @@ RFParams_NTSC_VHS = {**RFParams_NTSC}
 # Band-pass filter for Video rf.
 # TODO: Needs tweaking
 RFParams_PAL_VHS["video_bpf_low"] = 3550000
-RFParams_PAL_VHS["video_bpf_high"] = 5200000
+RFParams_PAL_VHS["video_bpf_high"] = 5300000
 # Band-pass filter order.
 # Order may be fine as is.
-RFParams_PAL_VHS["video_bpf_order"] = 2
+RFParams_PAL_VHS["video_bpf_order"] = 1
 
 # Low-pass filter on Y after demodulation
 RFParams_PAL_VHS["video_lpf_freq"] = 3300000
@@ -76,3 +76,7 @@ SysParams_NTSC_VHS["burst_abs_ref"] = 750
 # SysParams_PAL['vsync_ire'] = -.3 * (100 / .7)
 
 # TODO: SECAM
+
+# Default thresholds for rf dropout detection.
+DEFAULT_THRESHOLD_P_DDD = 0.146
+DEFAULT_THRESHOLD_P_CXADC = 0.3
