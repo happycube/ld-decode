@@ -35,8 +35,17 @@ except ImportError:
     import numpy.fft as npfft
 
 #internal libraries
-from lddecode import efm_pll
-from lddecode.utils import *
+
+# XXX: figure out how to handle these module imports better for vscode importing
+try:
+    import efm_pll
+except:
+    from lddecode import efm_pll
+
+try:
+    from utils import *
+except:
+    from lddecode.utils import *
 
 try:
     # If Anaconda's numpy is installed, mkl will use all threads for fft etc
@@ -2828,8 +2837,8 @@ class LDdecode:
             adj = field.rf.linelen / thislinelen
 
             if inrange(adj, .98, 1.02):
-                sync_hzs.append(np.median(field.data['video']['demod_05'][lsa]) / adj)
-                ire0_hzs.append(np.median(field.data['video']['demod_05'][lsb]) / adj)
+                sync_hzs.append(nb_median(field.data['video']['demod_05'][lsa]) / adj)
+                ire0_hzs.append(nb_median(field.data['video']['demod_05'][lsb]) / adj)
 
         #print(np.median(sync_hzs), np.median(ire0_hzs))
 
