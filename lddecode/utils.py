@@ -761,8 +761,7 @@ def dsa_rescale(infloat):
 def clb_findnextburst(burstarea, i, endburstarea, threshold):
     for j in range(i, endburstarea):
         if np.abs(burstarea[j]) > threshold:
-            zc = calczc_do(burstarea, j, 0, 0, 10)
-            return burstarea[j], zc
+            return burstarea[j], calczc_do(burstarea, j, 0)
 
     return (None, None)
 
