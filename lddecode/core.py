@@ -56,8 +56,6 @@ except:
     # If not running Anaconda, we don't care that mkl doesn't exist.
     pass
 
-from line_profiler import LineProfiler
-
 logging.getLogger(__name__).setLevel(logging.DEBUG)
 
 def calclinelen(SP, mult, mhz):
@@ -2880,23 +2878,8 @@ class LDdecode:
 
         f = self.FieldClass(self.rf, self.rawdecode, audio_offset = self.audio_offset, prevfield = self.curfield, initphase = initphase)
 
-        profile = False
-        if profile:
-            lpf = LineProfiler()
-            lpf.add_function(f.refine_linelocs_burst)
-            lpf.add_function(f.usectoinpx)
-            lpf.add_function(f.lineslice)
-            lpf.add_function(f.get_burstlevel)
-            lpf.add_function(f.compute_line_bursts)
-            lpf.add_function(f.compute_burst_offsets)
-            lpf_wrapper = lpf(f.process)
-
         try:
-            if profile:
-                lpf_wrapper()
-                lpf.print_stats()
-            else:
-                f.process()
+            f.process()
         except (KeyboardInterrupt, SystemExit):
             raise
         except Exception as e:
