@@ -680,7 +680,7 @@ def nb_median(m):
 
 @njit
 def nb_round(m):
-    return np.round(m)
+    return int(np.round(m))
 
 @njit
 def nb_mean(m):
@@ -757,9 +757,9 @@ def dsa_rescale(infloat):
 def clb_findnextburst(burstarea, i, endburstarea, threshold):
     for j in range(i, endburstarea):
         if np.abs(burstarea[j]) > threshold:
-            return j, burstarea[j]
+            return burstarea[j] < 0, calczc_do(burstarea, j, 0)
 
-    return None
+    return (None, None)
 
 @njit(cache=True)
 def distance_from_round(x):
