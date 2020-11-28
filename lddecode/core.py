@@ -35,8 +35,17 @@ except ImportError:
     import numpy.fft as npfft
 
 #internal libraries
-from lddecode import efm_pll
-from lddecode.utils import *
+
+# XXX: figure out how to handle these module imports better for vscode importing
+try:
+    import efm_pll
+except:
+    from lddecode import efm_pll
+
+try:
+    from utils import *
+except:
+    from lddecode.utils import *
 
 try:
     # If Anaconda's numpy is installed, mkl will use all threads for fft etc
@@ -1798,12 +1807,12 @@ class Field:
 
         for p in validpulses:
             lineloc = (p[1].start - line0loc) / meanlinelen
-            rlineloc = np.round(lineloc)
+            rlineloc = nb_round(lineloc)
             lineloc_distance = np.abs(lineloc - rlineloc)
 
             if self.skipdetected:
                 lineloc_end = self.linecount - ((lastlineloc - p[1].start) / meanlinelen)
-                rlineloc_end = np.round(lineloc_end)
+                rlineloc_end = nb_round(lineloc_end)
                 lineloc_end_distance = np.abs(lineloc_end - rlineloc_end)
 
                 if p[0] == 0 and rlineloc > 23 and lineloc_end_distance < lineloc_distance:
@@ -1825,8 +1834,8 @@ class Field:
                 if p[0] > 0 or (p[0] == 0 and rlineloc < 10):
                     continue
 
-            linelocs_dict[np.round(lineloc)] = p[1].start
-            linelocs_dist[np.round(lineloc)] = lineloc_distance
+            linelocs_dict[rlineloc] = p[1].start
+            linelocs_dist[rlineloc] = lineloc_distance
 
         rv_err = np.full(self.outlinecount + 6, False)
 
@@ -2218,7 +2227,7 @@ class Field:
         burstarea_demod = self.data['video']['demod'][s+bstart:s+bend]
         burstarea_demod = burstarea_demod - nb_mean(burstarea_demod)
 
-        if np.max(np.abs(burstarea_demod)) > (30 * self.rf.SysParams['hz_ire']):
+        if nb_absmax(burstarea_demod) > (30 * self.rf.SysParams['hz_ire']):
             return None, None, None
 
         fsc_n1 = (1 / self.rf.SysParams['fsc_mhz'])
@@ -2239,34 +2248,31 @@ class Field:
         # The first pass computes phase_offset, the second uses it to determine
         # the colo(u)r burst phase of the line.
         for passcount in range(2):
-            rising = 0
+            rising_count = 0
             count = 0
             phase_offset = []
 
             # this subroutine is in utils.py, broken out so it can be JIT'd
-            i = clb_findnextburst(burstarea, 0, len(burstarea) - 1, threshold)
-            zc = 0
+            prevalue, zc = clb_findnextburst(burstarea, 0, len(burstarea) - 1, threshold)
 
-            while i is not None and zc is not None:
-                zc = calczc(burstarea, i[0], 0)
-                if zc is not None:
-                    zc_cycle = ((bstart+zc-s_rem) / zcburstdiv) + phase_adjust
-                    #print(zc_cycle, phase_adjust)
-                    zc_round = int(np.round(zc_cycle))
+            while zc is not None:
+                count += 1
 
-                    phase_offset.append(zc_round - zc_cycle)
+                zc_cycle = ((bstart+zc-s_rem) / zcburstdiv) + phase_adjust
+                #print(zc_cycle, phase_adjust)
+                zc_round = nb_round(zc_cycle)
 
-                    if i[1] < 0:
-                        rising += not (zc_round % 2)
-                    else:
-                        rising += (zc_round % 2)
+                phase_offset.append(zc_round - zc_cycle)
 
-                    count += 1
+                if prevalue < 0:
+                    rising_count += not (zc_round % 2)
+                else:
+                    rising_count += (zc_round % 2)
 
-                    i = clb_findnextburst(burstarea, int(zc + 1), len(burstarea) - 1, threshold)
+                prevalue, zc = clb_findnextburst(burstarea, int(zc+1), len(burstarea) - 1, threshold)
                     
             if count:
-                phase_adjust += np.median(phase_offset)
+                phase_adjust += nb_median(np.array(phase_offset))
             else:
                 return None, None, None
 
@@ -2274,7 +2280,7 @@ class Field:
             phase_adjust -= .5
 
         self.phase_adjust = phase_adjust
-        return (rising / count) > .5, -phase_adjust
+        return (rising_count / count) > .5, -phase_adjust
 
 # These classes extend Field to do PAL/NTSC specific TBC features.
 
@@ -2547,7 +2553,7 @@ class CombNTSC:
 class FieldNTSC(Field):
 
     def get_burstlevel(self, l, linelocs = None):
-        burstarea = self.data['video']['demod'][self.lineslice(l, 5.5, 2.4, linelocs)].copy()
+        burstarea = self.data['video']['demod'][self.lineslice(l, 5.5, 2.4, linelocs)] 
 
         return rms(burstarea) * np.sqrt(2)
 
@@ -2828,8 +2834,8 @@ class LDdecode:
             adj = field.rf.linelen / thislinelen
 
             if inrange(adj, .98, 1.02):
-                sync_hzs.append(np.median(field.data['video']['demod_05'][lsa]) / adj)
-                ire0_hzs.append(np.median(field.data['video']['demod_05'][lsb]) / adj)
+                sync_hzs.append(nb_median(field.data['video']['demod_05'][lsa]) / adj)
+                ire0_hzs.append(nb_median(field.data['video']['demod_05'][lsb]) / adj)
 
         #print(np.median(sync_hzs), np.median(ire0_hzs))
 

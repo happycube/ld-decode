@@ -21,23 +21,7 @@ import scipy.signal as sps
 
 from scipy import interpolate
 
-# This uses numpy's interpolator, which works well enough
-def scale_old(buf, begin, end, tgtlen):
-#        print("scaling ", begin, end, tgtlen)
-        ibegin = int(begin)
-        iend = int(end)
-        linelen = end - begin
-
-        dist = iend - ibegin + 0
-        
-        sfactor = dist / tgtlen
-        
-        arr, step = np.linspace(0, dist, num=dist + 1, retstep=True)
-        spl = interpolate.splrep(arr, buf[ibegin:ibegin + dist + 1])
-        arrout = np.linspace(begin - ibegin, linelen + (begin - ibegin), tgtlen + 1)
-
-        return interpolate.splev(arrout, spl)[:-1]
-    
+# This runs a bicubic scaler on a line.    
 @njit(nogil=True)
 def scale(buf, begin, end, tgtlen, mult = 1):
     linelen = end - begin
@@ -54,24 +38,6 @@ def scale(buf, begin, end, tgtlen, mult = 1):
         output[i] = mult * (p[1] + 0.5 * x*(p[2] - p[0] + x*(2.0*p[0] - 5.0*p[1] + 4.0*p[2] - p[3] + x*(3.0*(p[1] - p[2]) + p[3] - p[0]))))
 
     return output
-
-def downscale_field(data, lineinfo, outwidth=1820, lines=625, usewow=False):
-    ilinepx = linelen
-    dsout = np.zeros((len(lineinfo) * outwidth), dtype=np.double)    
-
-    sfactor = [None]
-
-    for l in range(1, 262):
-        scaled = scale(data, lineinfo[l], lineinfo[l + 1], outwidth)
-        sfactor.append((lineinfo[l + 1] - lineinfo[l]) / outwidth)
-
-        if usewow:
-            wow = (lineinfo[l + 1] - lineinfo[l]) / linelen
-            scaled *= wow
-                
-        dsout[l * outwidth:(l + 1)*outwidth] = scaled
-        
-    return dsout
 
 frequency_suffixes = [
     ("ghz", 1.0e9),
@@ -491,10 +457,6 @@ hilbert_filter = np.fft.fftshift(
     np.fft.ifft([0]+[1]*hilbert_filter_terms+[0]*hilbert_filter_terms)
 )
 
-# Now construct the FFT transform of the hilbert filter.  
-# This can be complex multiplied with the raw RF to do a good chunk of real demoduation work
-#fft_hilbert = np.fft.fft(hilbert_filter, blocklen)
-
 def emphasis_iir(t1, t2, fs):
     """Generate an IIR filter for 6dB/octave pre-emphasis (t1 > t2) or
     de-emphasis (t1 < t2), given time constants for the two corners."""
@@ -717,6 +679,10 @@ def nb_median(m):
     return np.median(m)
 
 @njit
+def nb_round(m):
+    return int(np.round(m))
+
+@njit
 def nb_mean(m):
     return np.mean(m)
 
@@ -727,6 +693,10 @@ def nb_min(m):
 @njit
 def nb_max(m):
     return np.max(m)
+
+@njit
+def nb_abs(m):
+    return np.abs(m)
 
 @njit
 def nb_absmax(m):
@@ -791,9 +761,9 @@ def dsa_rescale(infloat):
 def clb_findnextburst(burstarea, i, endburstarea, threshold):
     for j in range(i, endburstarea):
         if np.abs(burstarea[j]) > threshold:
-            return j, burstarea[j]
+            return burstarea[j], calczc_do(burstarea, j, 0)
 
-    return None
+    return (None, None)
 
 @njit(cache=True)
 def distance_from_round(x):
