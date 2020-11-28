@@ -11,7 +11,6 @@ import sys
 import argparse
 import json
 import traceback
-from line_profiler import LineProfiler
 
 from lddecode.core import *
 from lddecode.utils import *
@@ -151,13 +150,6 @@ while not done and ldd.fields_written < (req_frames * 2):
     if ldd.fields_written < 100 or ((ldd.fields_written % 500) == 0):
         #print('write json')
         write_json(ldd, outname)
-
-lp = LineProfiler()
-lp.add_function(ldd.detectLevels)
-lp.add_function(ldd.decodefield)
-lp_wrapper = lp(ldd.readfield)
-lp_wrapper()
-lp.print_stats()
 
 print("saving JSON and exiting", file=sys.stderr)
 write_json(ldd, outname)
