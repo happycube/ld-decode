@@ -2399,7 +2399,6 @@ class FieldPAL(Field):
             if clbn[0] is not None:
                 break
 
-        print(clbn)
         if clbn[0] == None:
             return self.get_following_field_number()
 
