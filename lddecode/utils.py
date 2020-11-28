@@ -679,6 +679,10 @@ def nb_median(m):
     return np.median(m)
 
 @njit
+def nb_round(m):
+    return np.round(m)
+
+@njit
 def nb_mean(m):
     return np.mean(m)
 
