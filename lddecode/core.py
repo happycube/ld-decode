@@ -56,6 +56,8 @@ except:
     # If not running Anaconda, we don't care that mkl doesn't exist.
     pass
 
+from line_profiler import LineProfiler
+
 logging.getLogger(__name__).setLevel(logging.DEBUG)
 
 def calclinelen(SP, mult, mhz):
@@ -2261,7 +2263,7 @@ class Field:
                 if zc is not None:
                     zc_cycle = ((bstart+zc-s_rem) / zcburstdiv) + phase_adjust
                     #print(zc_cycle, phase_adjust)
-                    zc_round = int(np.round(zc_cycle))
+                    zc_round = int(nb_round(zc_cycle))
 
                     phase_offset.append(zc_round - zc_cycle)
 
@@ -2881,8 +2883,17 @@ class LDdecode:
 
         f = self.FieldClass(self.rf, self.rawdecode, audio_offset = self.audio_offset, prevfield = self.curfield, initphase = initphase)
 
+        lpf = LineProfiler()
+        lpf.add_function(f.refine_linelocs_burst)
+        lpf.add_function(f.get_burstlevel)
+        lpf.add_function(f.compute_line_bursts)
+        lpf.add_function(f.compute_burst_offsets)
+        lpf_wrapper = lpf(f.process)
+
         try:
-            f.process()
+            lpf_wrapper()
+            #f.process()
+            lpf.print_stats()
         except (KeyboardInterrupt, SystemExit):
             raise
         except Exception as e:
