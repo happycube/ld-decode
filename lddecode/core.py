@@ -2277,7 +2277,7 @@ class Field:
                     i = clb_findnextburst(burstarea, int(zc + 1), len(burstarea) - 1, threshold)
                     
             if count:
-                phase_adjust += np.median(phase_offset)
+                phase_adjust += nb_median(np.array(phase_offset))
             else:
                 return None, None, None
 
@@ -2883,17 +2883,21 @@ class LDdecode:
 
         f = self.FieldClass(self.rf, self.rawdecode, audio_offset = self.audio_offset, prevfield = self.curfield, initphase = initphase)
 
-        lpf = LineProfiler()
-        lpf.add_function(f.refine_linelocs_burst)
-        lpf.add_function(f.get_burstlevel)
-        lpf.add_function(f.compute_line_bursts)
-        lpf.add_function(f.compute_burst_offsets)
-        lpf_wrapper = lpf(f.process)
+        profile = False
+        if profile:
+            lpf = LineProfiler()
+            lpf.add_function(f.refine_linelocs_burst)
+            lpf.add_function(f.get_burstlevel)
+            lpf.add_function(f.compute_line_bursts)
+            lpf.add_function(f.compute_burst_offsets)
+            lpf_wrapper = lpf(f.process)
 
         try:
-            lpf_wrapper()
-            #f.process()
-            lpf.print_stats()
+            if profile:
+                lpf_wrapper()
+                lpf.print_stats()
+            else:
+                f.process()
         except (KeyboardInterrupt, SystemExit):
             raise
         except Exception as e:
