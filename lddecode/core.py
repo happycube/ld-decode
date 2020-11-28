@@ -18,6 +18,9 @@ import queue
 
 from multiprocessing import Process, Pool, Queue, JoinableQueue, Pipe
 
+from line_profiler import LineProfiler
+
+
 # standard numeric/scientific libraries
 import numpy as np
 import scipy as sp
@@ -1807,12 +1810,12 @@ class Field:
 
         for p in validpulses:
             lineloc = (p[1].start - line0loc) / meanlinelen
-            rlineloc = np.round(lineloc)
+            rlineloc = nb_round(lineloc)
             lineloc_distance = np.abs(lineloc - rlineloc)
 
             if self.skipdetected:
                 lineloc_end = self.linecount - ((lastlineloc - p[1].start) / meanlinelen)
-                rlineloc_end = np.round(lineloc_end)
+                rlineloc_end = nb_round(lineloc_end)
                 lineloc_end_distance = np.abs(lineloc_end - rlineloc_end)
 
                 if p[0] == 0 and rlineloc > 23 and lineloc_end_distance < lineloc_distance:
@@ -1834,8 +1837,8 @@ class Field:
                 if p[0] > 0 or (p[0] == 0 and rlineloc < 10):
                     continue
 
-            linelocs_dict[np.round(lineloc)] = p[1].start
-            linelocs_dist[np.round(lineloc)] = lineloc_distance
+            linelocs_dict[rlineloc] = p[1].start
+            linelocs_dist[rlineloc] = lineloc_distance
 
         rv_err = np.full(self.outlinecount + 6, False)
 
@@ -2253,7 +2256,7 @@ class Field:
             phase_offset = []
 
             # this subroutine is in utils.py, broken out so it can be JIT'd
-            rising, zc = clb_findnextburst(burstarea, 0, len(burstarea) - 1, threshold)
+            prevalue, zc = clb_findnextburst(burstarea, 0, len(burstarea) - 1, threshold)
 
             while zc is not None:
                 count += 1
@@ -2264,7 +2267,7 @@ class Field:
 
                 phase_offset.append(zc_round - zc_cycle)
 
-                if rising:
+                if prevalue < 0:
                     rising_count += not (zc_round % 2)
                 else:
                     rising_count += (zc_round % 2)
@@ -2280,6 +2283,7 @@ class Field:
             phase_adjust -= .5
 
         self.phase_adjust = phase_adjust
+        print(rising_count, count)
         return (rising_count / count) > .5, -phase_adjust
 
 # These classes extend Field to do PAL/NTSC specific TBC features.
@@ -2399,6 +2403,7 @@ class FieldPAL(Field):
             if clbn[0] is not None:
                 break
 
+        print(clbn)
         if clbn[0] == None:
             return self.get_following_field_number()
 
@@ -2878,8 +2883,16 @@ class LDdecode:
 
         f = self.FieldClass(self.rf, self.rawdecode, audio_offset = self.audio_offset, prevfield = self.curfield, initphase = initphase)
 
+        lpf = LineProfiler()
+        lpf.add_function(f.refine_linelocs_pilot)
+        lpf.add_function(Field.process)
+        lpf.add_function(Field.compute_linelocs)
+        lpf_wrapper = lpf(f.process)
+
         try:
-            f.process()
+            lpf_wrapper()
+            lpf.print_stats()
+            #f.process()
         except (KeyboardInterrupt, SystemExit):
             raise
         except Exception as e:

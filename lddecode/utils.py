@@ -695,6 +695,10 @@ def nb_max(m):
     return np.max(m)
 
 @njit
+def nb_abs(m):
+    return np.abs(m)
+
+@njit
 def nb_absmax(m):
     return np.max(np.abs(m))
 
@@ -757,7 +761,7 @@ def dsa_rescale(infloat):
 def clb_findnextburst(burstarea, i, endburstarea, threshold):
     for j in range(i, endburstarea):
         if np.abs(burstarea[j]) > threshold:
-            return burstarea[j] < 0, calczc_do(burstarea, j, 0)
+            return burstarea[j], calczc_do(burstarea, j, 0)
 
     return (None, None)
 
