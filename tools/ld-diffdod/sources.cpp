@@ -82,7 +82,7 @@ bool Sources::process()
 
     qInfo() << "";
     qInfo() << "Beginning multi-threaded diffDOD processing...";
-    qInfo() << "Processing" << length << "frames - from VBI frame" << inputFrameNumber << "to" << lastFrameNumber;
+    qInfo() << "Processing" << length << "frames - from VBI frame" << inputFrameNumber << "to" << lastFrameNumber - 1;
     totalTimer.start();
 
     // Start a vector of decoding threads to process the video
