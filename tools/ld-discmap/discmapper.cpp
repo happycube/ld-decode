@@ -620,17 +620,23 @@ bool DiscMapper::saveDiscMap(DiscMap &discMap)
         // Open the input audio file
         if (!sourceAudio.open(inputFileInfo)) {
             // Could not open input audio file
-            qInfo() << "Cannot open source audio file:" << inputFileInfo.absolutePath() + "/" + inputFileInfo.baseName() + ".pcm";
+            qInfo() << "Cannot open source audio file:" << inputFileInfo.absolutePath() + "/" + inputFileInfo.completeBaseName() + ".pcm";
             sourceVideo.close();
             sourceAudio.close();
             return false;
         }
 
         // Open the output audio file
-        targetAudio.setFileName(outputFileInfo.absolutePath() + "/" + outputFileInfo.baseName() + ".pcm");
+        targetAudio.setFileName(outputFileInfo.absolutePath() + "/" + outputFileInfo.completeBaseName() + ".pcm");
+        if (targetAudio.exists()) {
+            qInfo() << "Target audio file already exists:" << targetAudio.fileName() << "- Cannot proceed!";
+            sourceVideo.close();
+            sourceAudio.close();
+            return false;
+        }
         if (!targetAudio.open(QIODevice::WriteOnly)) {
             // Could not open target audio file
-            qInfo() << "Cannot open target audio file:" << outputFileInfo.absolutePath() + "/" + outputFileInfo.baseName() + ".pcm";
+            qInfo() << "Cannot open target audio file:" << targetAudio.fileName();
             sourceVideo.close();
             sourceAudio.close();
             return false;
