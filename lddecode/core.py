@@ -56,7 +56,7 @@ except:
     # If not running Anaconda, we don't care that mkl doesn't exist.
     pass
 
-logging.getLogger(__name__).setLevel(logging.DEBUG)
+logging.getLogger('ld-decode').setLevel(logging.DEBUG)
 
 def calclinelen(SP, mult, mhz):
     if type(mhz) == str:
@@ -1091,7 +1091,7 @@ class DemodCache:
             return rv
 
         while need_blocks is not None and len(need_blocks):
-            time.sleep(.005) # A crude busy loop
+            time.sleep(.001) # A crude busy loop
             need_blocks = self.doread(toread, MTF)
 
         if need_blocks is None:
@@ -2489,7 +2489,7 @@ class CombNTSC:
         
         return cbuffer
 
-    def splitIQ(self, cbuffer, line = 0):
+    def splitIQ_line(self, cbuffer, line = 0):
         ''' 
         NOTE:  currently? only works on one line
         
@@ -2533,7 +2533,7 @@ class CombNTSC:
             cbuffer -= comb_field2.cbuffer[l19_slice]
             cbuffer /= 2
             
-        si, sq = self.splitIQ(cbuffer, 19)
+        si, sq = self.splitIQ_line(cbuffer, 19)
 
         sl = slice(110,230)
         cdata = np.sqrt((si[sl] ** 2.0) + (sq[sl] ** 2.0))
@@ -2691,13 +2691,15 @@ class FieldNTSC(Field):
 
 class LDdecode:
     
-    def __init__(self, fname_in, fname_out, freader, analog_audio = 0, digital_audio = False, system = 'NTSC', doDOD = True, threads=4, extra_options = {}):
+    def __init__(self, fname_in, fname_out, freader, est_frames = None, analog_audio = 0, digital_audio = False, system = 'NTSC', doDOD = True, threads=4, extra_options = {}):
         self.demodcache = None
 
         self.branch, self.commit = get_git_info()
 
         self.infile = open(fname_in, 'rb')
         self.freader = freader
+
+        self.est_frames = est_frames
 
         self.numthreads = threads
 
@@ -3239,21 +3241,44 @@ class LDdecode:
 
                 rawloc = np.floor((self.readloc / self.bytes_per_field) / 2)
 
+                disk_Type = 'CLV' if self.isCLV else 'CAV'
+                disk_TimeCode = None
+                disk_Frame = None
+                special = None
+                
                 try:
                     if self.isCLV and self.earlyCLV: # early CLV
-                        print("file frame %d early-CLV minute %d" % (rawloc, self.clvMinutes), file=sys.stderr)
+                        disk_TimeCode = f'{self.clvMinutes}:xx'
+    #                        print("file frame %d early-CLV minute %d" % (rawloc, self.clvMinutes), file=sys.stderr)
                     elif self.isCLV and self.frameNumber is not None:
-                        print("file frame %d CLV timecode %d:%.2d.%.2d frame %d" % (rawloc, self.clvMinutes, self.clvSeconds, self.clvFrameNum, self.frameNumber), file=sys.stderr)
+                        disk_TimeCode = f'{self.clvMinutes}:{self.clvSeconds}:{self.clvFrameNum}'
+    #                        print("file frame %d CLV timecode %d:%.2d.%.2d frame %d" % (rawloc, self.clvMinutes, self.clvSeconds, self.clvFrameNum, self.frameNumber), file=sys.stderr)
                     elif self.frameNumber:
-                        print("file frame %d CAV frame %d" % (rawloc, self.frameNumber), file=sys.stderr)
+                        #print("file frame %d CAV frame %d" % (rawloc, self.frameNumber), file=sys.stderr)
+                        disk_Frame = f'{self.frameNumber}'
                     elif self.leadIn:
-                        print("file frame %d lead in" % (rawloc), file=sys.stderr)
+                        special = "Lead In"
                     elif self.leadOut:
-                        print("file frame %d lead out" % (rawloc), file=sys.stderr)
+                        special = "Lead Out"
                     else:
-                        print("file frame %d unknown" % (rawloc), file=sys.stderr)
+                        special = "Unknown"
+
+                    if self.est_frames is not None:
+                        outstr = f"Frame {(self.fields_written//2)+1}/{int(self.est_frames)}: File Frame {int(rawloc)}: {disk_Type} "
+                    else:
+                        outstr = f"File Frame {int(rawloc)}: {disk_Type} "
+                    if self.isCLV:
+                        outstr += f"Timecode {disk_TimeCode} "
+                    else:
+                        outstr += f"Frame #{disk_Frame} "
+
+                    if special is not None:
+                        outstr += special
+
+                    print(outstr, file=sys.stderr, end='\r')
                     sys.stderr.flush()
 
+                    # Prepare JSON fields
                     if self.frameNumber is not None:
                         fi['frameNumber'] = int(self.frameNumber)
 
