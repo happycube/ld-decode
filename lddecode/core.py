@@ -2721,6 +2721,7 @@ class LDdecode:
             self.outfile_video = open(fname_out + '.tbc', 'wb')
             self.outfile_audio = open(fname_out + '.pcm', 'wb') if self.analog_audio else None
             self.outfile_efm = open(fname_out + '.efm', 'wb') if self.digital_audio else None
+            self.outfile_pre_efm = open(fname_out + '.prefm', 'wb') if self.digital_audio else None
 
             if digital_audio:
                 # feed EFM stream into ld-ldstoefm
@@ -2845,6 +2846,7 @@ class LDdecode:
         f, fi, picture, audio, efm = dataset
 
         if self.digital_audio == True:
+            self.outfile_pre_efm.write(efm.tobytes())
             efm_out = self.efm_pll.process(efm)
             self.outfile_efm.write(efm_out.tobytes())
 
