@@ -94,7 +94,6 @@ system = 'PAL' if args.pal else 'NTSC'
 logger = logging.getLogger('lddecode')
 logger.setLevel(logging.DEBUG)
 
-os.unlink(outname + '.log')
 logger_file = logging.FileHandler(outname + '.log')
 logger_file.setLevel(logging.DEBUG)
 

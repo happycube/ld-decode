@@ -56,7 +56,8 @@ except:
     # If not running Anaconda, we don't care that mkl doesn't exist.
     pass
 
-# XXX: This relies on the lddecoder class
+# XXX: This is a hack so that logging is treated the same way in both this
+# and ld-decode.  Probably should just bring all logging in here...
 logger = None
 
 def calclinelen(SP, mult, mhz):
