@@ -94,6 +94,12 @@ system = 'PAL' if args.pal else 'NTSC'
 logger = logging.getLogger('lddecode')
 logger.setLevel(logging.DEBUG)
 
+# Delete old logfile if it exists
+try:
+    os.unlink(outname + '.log')
+except:
+    pass
+
 logger_file = logging.FileHandler(outname + '.log')
 logger_file.setLevel(logging.DEBUG)
 
