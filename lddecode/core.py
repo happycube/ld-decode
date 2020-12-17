@@ -56,7 +56,8 @@ except:
     # If not running Anaconda, we don't care that mkl doesn't exist.
     pass
 
-logging.getLogger('ld-decode').setLevel(logging.DEBUG)
+# XXX: This relies on the lddecoder class
+logger = None
 
 def calclinelen(SP, mult, mhz):
     if type(mhz) == str:
@@ -1050,7 +1051,7 @@ class DemodCache:
 
             if 'MTF' not in item or 'demod' not in item:
                 # This shouldn't happen, but was observed by Simon on a decode
-                logging.error('incomplete demodulated block placed on queue, block #%d', blocknum)
+                logger.error('incomplete demodulated block placed on queue, block #%d', blocknum)
                 self.q_in.put((blocknum, self.blocks[blocknum], self.currentMTF))
                 self.lock.release()
                 continue                
@@ -1190,7 +1191,7 @@ def downscale_audio(audio, lineinfo, rf, linecount, timeoffset = 0, freq = 48000
         else:
             # TBC failure can cause this (issue #389)
             if failed == False:
-                logging.warning("Analog audio processing error, muting samples")
+                logger.warning("Analog audio processing error, muting samples")
 
             failed = True
         
@@ -1774,7 +1775,7 @@ class Field:
 
         self.rawpulses = self.getpulses()
         if self.rawpulses is None or len(self.rawpulses) == 0:
-            logging.error("Unable to find any sync pulses, jumping one second")
+            logger.error("Unable to find any sync pulses, jumping one second")
             return None, None, int(self.rf.freq_hz)
 
         self.validpulses = validpulses = self.refinepulses()
@@ -1796,7 +1797,7 @@ class Field:
 
         if line0loc is None:
             if self.initphase == False:
-                logging.error("Unable to determine start of field - dropping field")
+                logger.error("Unable to determine start of field - dropping field")
 
             return None, None, self.inlinelen * 200
 
@@ -2010,7 +2011,7 @@ class Field:
 
                 dsout[(l - lineoffset) * outwidth:(l + 1 - lineoffset)*outwidth] = scaled
             else:
-                logging.warning("WARNING: TBC failure at line %d", l)
+                logger.warning("WARNING: TBC failure at line %d", l)
                 dsout[(l - lineoffset) * outwidth:(l + 1 - lineoffset)*outwidth] = self.rf.SysParams['ire0']
 
         if audio > 0 and self.rf.decode_analog_audio:
@@ -2349,7 +2350,7 @@ class FieldPAL(Field):
             return 1 if newphase == 9 else newphase
         else:
             # This can be triggered by the first pass at the first field
-            #logging.error("Cannot determine PAL field sequence of first field")
+            #logger.error("Cannot determine PAL field sequence of first field")
             return 1
 
     def determine_field_number(self):
@@ -2519,8 +2520,8 @@ class CombNTSC:
         # fail out if there is obviously bad data
         if not ((np.max(self.field.output_to_ire(self.field.dspicture[l19_slice_i70])) < 100) and
                 (np.min(self.field.output_to_ire(self.field.dspicture[l19_slice_i70])) > 40)):
-            #logging.info("WARNING: line 19 data incorrect")
-            #logging.info(np.max(self.field.output_to_ire(self.field.dspicture[l19_slice_i70])), np.min(self.field.output_to_ire(self.field.dspicture[l19_slice_i70])))
+            #logger.info("WARNING: line 19 data incorrect")
+            #logger.info(np.max(self.field.output_to_ire(self.field.dspicture[l19_slice_i70])), np.min(self.field.output_to_ire(self.field.dspicture[l19_slice_i70])))
             return None, None, None
 
         cbuffer = self.cbuffer[l19_slice]
@@ -2658,7 +2659,7 @@ class FieldNTSC(Field):
         return np.median(burstlevel) / self.rf.SysParams['hz_ire']
 
     def apply_offsets(self, linelocs, phaseoffset, picoffset = 0):
-        #logging.info(phaseoffset, (phaseoffset * (self.rf.freq / (4 * 315 / 88))))
+        #logger.info(phaseoffset, (phaseoffset * (self.rf.freq / (4 * 315 / 88))))
         return np.array(linelocs) + picoffset + (phaseoffset * (self.rf.freq / (4 * 315 / 88)))
 
     def __init__(self, *args, **kwargs):
@@ -2691,7 +2692,9 @@ class FieldNTSC(Field):
 
 class LDdecode:
     
-    def __init__(self, fname_in, fname_out, freader, est_frames = None, analog_audio = 0, digital_audio = False, system = 'NTSC', doDOD = True, threads=4, extra_options = {}):
+    def __init__(self, fname_in, fname_out, freader, _logger, est_frames = None, analog_audio = 0, digital_audio = False, system = 'NTSC', doDOD = True, threads=4, extra_options = {}):
+        global logger
+        logger = _logger
         self.demodcache = None
 
         self.branch, self.commit = get_git_info()
@@ -2872,8 +2875,10 @@ class LDdecode:
 
         self.rawdecode = self.demodcache.read(self.readloc_block * self.blocksize, self.numblocks * self.blocksize, self.mtf_level)
 
+        logger.debug('decoding field')
+
         if self.rawdecode is None:
-            logging.info("Failed to demodulate data")
+            logger.info("Failed to demodulate data")
             return None, None
         
         self.indata = self.rawdecode['input']
@@ -2888,7 +2893,7 @@ class LDdecode:
             raise e
 
         if not f.valid:
-            logging.info("Bad data - jumping one second")
+            #logger.info("Bad data - jumping one second")
             return f, f.nextfieldoffset
         
         return f, f.nextfieldoffset - (self.readloc - self.rawdecode['startloc'])
@@ -2926,7 +2931,7 @@ class LDdecode:
                     self.bw_ratios.append(metrics['blackToWhiteRFRatio'])
                     self.bw_ratios = self.bw_ratios[-keep:]
 
-                    #logging.info(metrics['blackToWhiteRFRatio'], np.mean(self.bw_ratios))
+                    #logger.info(metrics['blackToWhiteRFRatio'], np.mean(self.bw_ratios))
 
                 redo = not self.checkMTF(f, self.prevfield)
 
@@ -3138,7 +3143,7 @@ class LDdecode:
 
         for l in whitelocs:
             wl_slice = f.lineslice_tbc(*l)
-            #logging.info(l, np.mean(f.output_to_ire(f.dspicture[wl_slice])))
+            #logger.info(l, np.mean(f.output_to_ire(f.dspicture[wl_slice])))
             if inrange(np.mean(f.output_to_ire(f.dspicture[wl_slice])), 90, 110):
                 f.whitesnr_slice = l
                 metrics['wSNR'] = self.calcpsnr(f, wl_slice)
@@ -3210,17 +3215,17 @@ class LDdecode:
         if prevfi is not None:
             if not ((fi['fieldPhaseID'] == 1 and prevfi['fieldPhaseID'] == f.rf.SysParams['fieldPhases']) or
                     (fi['fieldPhaseID'] == prevfi['fieldPhaseID'] + 1)):
-                logging.warning('Field phaseID sequence mismatch ({0}->{1}) (player may be paused)'.format(prevfi['fieldPhaseID'], fi['fieldPhaseID']))
+                logger.warning('Field phaseID sequence mismatch ({0}->{1}) (player may be paused)'.format(prevfi['fieldPhaseID'], fi['fieldPhaseID']))
                 decodeFaults |= 2
 
             if prevfi['isFirstField'] == fi['isFirstField']:
-                #logging.info('WARNING!  isFirstField stuck between fields')
+                #logger.info('WARNING!  isFirstField stuck between fields')
                 if inrange(fi['diskLoc'] - prevfi['diskLoc'], .95, 1.05):
                     decodeFaults |= 1
                     fi['isFirstField'] = not prevfi['isFirstField']
                     fi['syncConf'] = 10
                 else:
-                    logging.error('Skipped field')
+                    logger.error('Skipped field')
                     decodeFaults |= 4
                     fi['syncConf'] = 0
                     return fi, True
@@ -3251,8 +3256,7 @@ class LDdecode:
                         disk_TimeCode = f'{self.clvMinutes}:xx'
     #                        print("file frame %d early-CLV minute %d" % (rawloc, self.clvMinutes), file=sys.stderr)
                     elif self.isCLV and self.frameNumber is not None:
-                        disk_TimeCode = f'{self.clvMinutes}:{self.clvSeconds}:{self.clvFrameNum}'
-    #                        print("file frame %d CLV timecode %d:%.2d.%.2d frame %d" % (rawloc, self.clvMinutes, self.clvSeconds, self.clvFrameNum, self.frameNumber), file=sys.stderr)
+                        disk_TimeCode = "CLV Timecode %d:%.2d.%.2d frame %d" % (self.clvMinutes, self.clvSeconds, self.clvFrameNum, self.frameNumber)
                     elif self.frameNumber:
                         #print("file frame %d CAV frame %d" % (rawloc, self.frameNumber), file=sys.stderr)
                         disk_Frame = f'{self.frameNumber}'
@@ -3276,6 +3280,7 @@ class LDdecode:
                         outstr += special
 
                     print(outstr, file=sys.stderr, end='\r')
+                    logger.debug(outstr)
                     sys.stderr.flush()
 
                     # Prepare JSON fields
@@ -3288,7 +3293,7 @@ class LDdecode:
                             fi['clvSeconds'] = int(self.clvSeconds)
                             fi['clvFrameNr'] = int(self.clvFrameNum)
                 except:
-                    logging.warning("file frame %d : VBI decoding error", rawloc)
+                    logger.warning("file frame %d : VBI decoding error", rawloc)
 
         return fi, False
 
@@ -3326,11 +3331,11 @@ class LDdecode:
                     fnum = self.decodeFrameNumber(self.prevfield, self.curfield)
 
                     if self.earlyCLV:
-                        logging.error("Cannot seek in early CLV disks w/o timecode")
+                        logger.error("Cannot seek in early CLV disks w/o timecode")
                         return None, startfield
                     elif fnum is not None:
                         rawloc = np.floor((self.readloc / self.bytes_per_field) / 2)
-                        logging.info('seeking: file loc %d frame # %d', rawloc, fnum)
+                        logger.info('seeking: file loc %d frame # %d', rawloc, fnum)
 
                         # Clear field memory on seeks
                         self.prevfield = None
@@ -3342,7 +3347,7 @@ class LDdecode:
         
     def seek(self, startframe, target):
         """ Attempts to find frame target from file location startframe """
-        logging.info("Beginning seek")
+        logger.info("Beginning seek")
 
         if not sys.warnoptions:
             import warnings
@@ -3357,7 +3362,7 @@ class LDdecode:
 
             cur = int((self.fieldloc / self.bytes_per_field))
             if fnr == target:
-                logging.info("Finished seek")
+                logger.info("Finished seek")
                 print("Finished seeking, starting at frame", fnr, file=sys.stderr)
                 self.roughseek(cur)
                 return cur

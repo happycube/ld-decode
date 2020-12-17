@@ -91,8 +91,10 @@ system = 'PAL' if args.pal else 'NTSC'
 # Configure logger to write to a file
 # Modified from https://docs.python.org/3.8/howto/logging-cookbook.html#logging-cookbook
 
-logger = logging.getLogger('ld-decode')
+logger = logging.getLogger('lddecode')
+logger.setLevel(logging.DEBUG)
 
+os.unlink(outname + '.log')
 logger_file = logging.FileHandler(outname + '.log')
 logger_file.setLevel(logging.DEBUG)
 
@@ -102,13 +104,13 @@ logger_file.setFormatter(logger_fileformatter)
 logger_stderr = logging.StreamHandler()
 logger_stderr.setLevel(logging.INFO)
 
-logger.addHandler(logger_file)
 logger.addHandler(logger_stderr)
+logger.addHandler(logger_file)
 
 # Wrap the LDdecode creation so that the signal handler is not taken by sub-threads,
 # allowing SIGINT/control-C's to be handled cleanly
 original_sigint_handler = signal.signal(signal.SIGINT, signal.SIG_IGN)
-ldd = LDdecode(filename, outname, loader, est_frames=req_frames, analog_audio = 0 if args.daa else 44.100, digital_audio = not args.noefm, system=system, doDOD = not args.nodod, threads=args.threads, extra_options=extra_options)
+ldd = LDdecode(filename, outname, loader, logger, est_frames=req_frames, analog_audio = 0 if args.daa else 44.100, digital_audio = not args.noefm, system=system, doDOD = not args.nodod, threads=args.threads, extra_options=extra_options)
 signal.signal(signal.SIGINT, original_sigint_handler)
 
 if args.start_fileloc != -1:
@@ -163,6 +165,7 @@ while not done and ldd.fields_written < (req_frames * 2):
         traceback.print_tb(err.__traceback__)
         write_json(ldd, outname)
         ldd.close()
+        logger_file.flush()
         exit(1)
 
     if f is None or (args.ignoreleadout == False and ldd.leadOut == True):
@@ -176,4 +179,5 @@ while not done and ldd.fields_written < (req_frames * 2):
 
 print("\nCompleted: saving JSON and exiting", file=sys.stderr)
 write_json(ldd, outname)
+logger_file.flush()
 ldd.close()
