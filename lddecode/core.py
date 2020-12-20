@@ -529,6 +529,8 @@ class RFDecode:
         SP = self.SysParams
         DP = self.DecoderParams
 
+        # Low pass filter for 'new' audio code
+
         # first stage audio filters
         if self.freq >= 32:
             audio_fdiv1 = 32 # this is good for 40mhz - 16 should be ideal for 28mhz
@@ -658,6 +660,10 @@ class RFDecode:
             video_out = np.rec.array([out_video, demod, demod_hpf, out_video05, out_videoburst], names=['demod', 'demod_raw', 'demod_hpf', 'demod_05', 'demod_burst'])
 
         rv['video'] = video_out[self.blockcut:-self.blockcut_end] if cut else video_out
+
+        if self.decode_digital_audio or self.decode_analog_audio:
+            audio_rf = npfft.ifft(indata_fft * self.Filters['Farf'])
+            rv['audio_rf'] = np.int16(np.clip(audio_rf.real, -32768, 32767))
 
         if self.decode_digital_audio:
             efm_out = npfft.ifft(indata_fft * self.Filters['Fefm'])
@@ -922,7 +928,8 @@ class DemodCache:
     def __del__(self):
         self.end()
 
-    def flush(self):
+    def prune_cache(self):
+        ''' Prune the LRU cache.  Typically run when a new field is loaded '''
         if len(self.lru) < self.lrusize:
             return 
         
@@ -934,7 +941,8 @@ class DemodCache:
 
         self.lru = self.lru[:self.lrusize]
 
-    def flushvideo(self):
+    def flush_demod(self):
+        ''' Flush all demodulation data.  This is called by the field class after calibration (i.e. MTF) is determined to be off '''
         for k in self.blocks.keys():
             if self.blocks[k] is None:
                 pass
@@ -1089,7 +1097,7 @@ class DemodCache:
             raw.append(self.blocks[-1]['rawinput'][:end % self.blocksize])
             
             rv = np.concatenate(raw)
-            self.flush()
+            self.prune_cache()
             return rv
 
         while need_blocks is not None and len(need_blocks):
@@ -1108,7 +1116,7 @@ class DemodCache:
                 elif k in self.blocks[b]:
                     t[k].append(self.blocks[b][k])
 
-        self.flush()
+        self.prune_cache()
 
         rv = {}
         for k in t.keys():
@@ -1125,11 +1133,13 @@ class DemodCache:
         return rv
 
     def setparams(self, params):
+        # XXX: This should flush out the data, but right now this isn't used at all
         for p in self.threadpipes:
             p[0].send(('NEWPARAMS', params))
 
         # Apply params to the core thread, so they match up with the decoders
         self.apply_newparams(params)
+
 
 # Downscales to 16bit/44.1khz.  It might be nice when analog audio is better to support 24/96, 
 # but if we only support one output type, matching CD audio/digital sound is greatly preferable.
@@ -2953,7 +2963,7 @@ class LDdecode:
                         self.rf.SysParams['hz_ire'] = (sync_hz - ire0_hz) / self.rf.SysParams['vsync_ire']
                     
                 if adjusted == False and redo == True:
-                    self.demodcache.flushvideo()
+                    self.demodcache.flush_demod()
                     adjusted = True
                     self.fdoffset -= offset
                 else:
