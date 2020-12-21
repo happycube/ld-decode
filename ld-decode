@@ -13,13 +13,8 @@ import argparse
 import json
 import traceback
 
-# Add lddecode core modules to path
-module_path = os.path.abspath(os.path.join('lddecode'))
-if module_path not in sys.path:
-    sys.path.append(module_path)
-
-from core import *
-from utils import *
+from lddecode.core import *
+from lddecode.utils import *
 
 options_epilog = """FREQ can be a bare number in MHz, or a number with one of the case-insensitive suffixes Hz, kHz, MHz, GHz, fSC (meaning NTSC) or fSCPAL."""
 parser = argparse.ArgumentParser(description='Extracts audio and video from raw RF laserdisc captures', epilog=options_epilog)
