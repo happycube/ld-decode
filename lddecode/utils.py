@@ -274,7 +274,7 @@ class LoadFFmpeg:
 
         return data
 
-    def __call__(self, infile, sample, readlen):
+    def read(self, infile, sample, readlen):
         sample_bytes = sample * 2
         readlen_bytes = readlen * 2
 
@@ -317,8 +317,11 @@ class LoadFFmpeg:
         assert len(data) == readlen * 2
         return np.fromstring(data, '<i2')
 
+    def __call__(self, infile, sample, readlen):
+        return self.read(infile, sample, readlen)
+
 class LoadLDF:
-    """Load samples from a wide variety of formats using ffmpeg."""
+    """Load samples from an .ldf file, using ld-ldf-reader which itself uses ffmpeg."""
 
     def __init__(self, filename, input_args=[], output_args=[]):
         self.input_args = input_args
@@ -377,7 +380,7 @@ class LoadLDF:
 
         return ldfreader
 
-    def __call__(self, infile, sample, readlen):
+    def read(self, infile, sample, readlen):
         sample_bytes = sample * 2
         readlen_bytes = readlen * 2
 
@@ -419,6 +422,9 @@ class LoadLDF:
         data = buf_data + read_data
         assert len(data) == readlen * 2
         return np.frombuffer(data, '<i2')
+
+    def __call__(self, infile, sample, readlen):
+        return self.read(infile, sample, readlen)
 
 # Git helpers
 

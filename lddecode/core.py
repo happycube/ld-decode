@@ -531,6 +531,7 @@ class RFDecode:
 
         # Low pass filter for 'new' audio code
 
+
         # first stage audio filters
         if self.freq >= 32:
             audio_fdiv1 = 32 # this is good for 40mhz - 16 should be ideal for 28mhz
@@ -660,10 +661,6 @@ class RFDecode:
             video_out = np.rec.array([out_video, demod, demod_hpf, out_video05, out_videoburst], names=['demod', 'demod_raw', 'demod_hpf', 'demod_05', 'demod_burst'])
 
         rv['video'] = video_out[self.blockcut:-self.blockcut_end] if cut else video_out
-
-        if self.decode_digital_audio or self.decode_analog_audio:
-            audio_rf = npfft.ifft(indata_fft * self.Filters['Farf'])
-            rv['audio_rf'] = np.int16(np.clip(audio_rf.real, -32768, 32767))
 
         if self.decode_digital_audio:
             efm_out = npfft.ifft(indata_fft * self.Filters['Fefm'])
