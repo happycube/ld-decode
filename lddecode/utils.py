@@ -1,5 +1,6 @@
 # A collection of helper functions used in dev notebooks and lddecode_core.py
 
+import atexit
 from base64 import b64encode
 from collections import namedtuple
 import copy
@@ -11,6 +12,10 @@ import json
 import os
 import sys
 import subprocess
+
+from multiprocessing import Process, Pool, Queue, JoinableQueue, Pipe
+import threading
+import queue
 
 from numba import jit, njit
 
@@ -786,6 +791,55 @@ def write_json(ldd, outname):
     fp.close()
     
     os.rename(outname + '.tbc.json.tmp', outname + '.tbc.json')
+
+# Write the .tbc.json file (used by lddecode and notebooks)
+def write_json(ldd, outname):
+    jsondict = ldd.build_json(ldd.curfield)
+    
+    fp = open(outname + '.tbc.json.tmp', 'w')
+    json.dump(jsondict, fp, indent=4 if ldd.verboseVITS else None)
+    fp.write('\n')
+    fp.close()
+    
+    os.rename(outname + '.tbc.json.tmp', outname + '.tbc.json')
+
+def jsondump_thread(ldd, outname):
+    '''
+    This creates a background thread to write a json dict to a file.
+
+    Probably had a bit too much fun here - this returns a queue that is 
+    fed into a thread created by the function itself.  Feed it json
+    dictionaries during runtime and None when done.
+    '''
+
+    def consume(q):
+        while True:
+            jsondict = q.get()
+
+            if jsondict is None:
+                q.task_done()
+                return
+
+            fp = open(outname + '.tbc.json.tmp', 'w')
+            json.dump(jsondict, fp, indent=4 if ldd.verboseVITS else None)
+            fp.write('\n')
+            fp.close()
+
+            os.rename(outname + '.tbc.json.tmp', outname + '.tbc.json')
+
+            q.task_done()
+    
+    q = JoinableQueue()
+
+    # Lambdas only support one statement, but they can be lists of function calls...
+    # ... and you can add them to a created object, so we only need to return the Queue
+    q.close = lambda: [q.put(None), q.join()][-1]
+        
+    # Start the self-contained thread
+    t = threading.Thread(target=consume, args=(q, ))
+    t.start()
+    
+    return q
 
 if __name__ == "__main__":
     print("Nothing to see here, move along ;)")
