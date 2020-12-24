@@ -793,7 +793,7 @@ def write_json(ldd, outname):
     os.rename(outname + '.tbc.json.tmp', outname + '.tbc.json')
 
 # Write the .tbc.json file (used by lddecode and notebooks)
-def write_json(jsondict, outname):
+def write_json(ldd, jsondict, outname):
 
     fp = open(outname + '.tbc.json.tmp', 'w')
     json.dump(jsondict, fp, indent=4 if ldd.verboseVITS else None)
@@ -819,7 +819,7 @@ def jsondump_thread(ldd, outname):
                 q.task_done()
                 return
 
-            write_json(jsondict, outname)
+            write_json(ldd, jsondict, outname)
 
             q.task_done()
     
