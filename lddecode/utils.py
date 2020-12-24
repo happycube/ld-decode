@@ -831,10 +831,6 @@ def jsondump_thread(ldd, outname):
     
     q = JoinableQueue()
 
-    # Lambdas only support one statement, but they can be lists of function calls...
-    # ... and you can add them to a created object, so we only need to return the Queue
-    q.close = lambda: [q.put(None), q.join()][-1]
-
     # Start the self-contained thread
     t = threading.Thread(target=consume, args=(q, ))
     t.start()
