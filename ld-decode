@@ -159,7 +159,7 @@ def cleanup():
     jsondumper.put(ldd.build_json(ldd.curfield))
     logger_file.flush()
     ldd.close()
-    jsondumper.close()
+    jsondumper.put(None)
 
 while not done and ldd.fields_written < (req_frames * 2):
     try:
