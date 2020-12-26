@@ -1,5 +1,6 @@
 # A collection of helper functions used in dev notebooks and lddecode_core.py
 
+import atexit
 from base64 import b64encode
 from collections import namedtuple
 import copy
@@ -11,6 +12,10 @@ import json
 import os
 import sys
 import subprocess
+
+from multiprocessing import Process, Pool, Queue, JoinableQueue, Pipe
+import threading
+import queue
 
 from numba import jit, njit
 
@@ -274,7 +279,7 @@ class LoadFFmpeg:
 
         return data
 
-    def __call__(self, infile, sample, readlen):
+    def read(self, infile, sample, readlen):
         sample_bytes = sample * 2
         readlen_bytes = readlen * 2
 
@@ -317,8 +322,11 @@ class LoadFFmpeg:
         assert len(data) == readlen * 2
         return np.fromstring(data, '<i2')
 
+    def __call__(self, infile, sample, readlen):
+        return self.read(infile, sample, readlen)
+
 class LoadLDF:
-    """Load samples from a wide variety of formats using ffmpeg."""
+    """Load samples from an .ldf file, using ld-ldf-reader which itself uses ffmpeg."""
 
     def __init__(self, filename, input_args=[], output_args=[]):
         self.input_args = input_args
@@ -377,7 +385,7 @@ class LoadLDF:
 
         return ldfreader
 
-    def __call__(self, infile, sample, readlen):
+    def read(self, infile, sample, readlen):
         sample_bytes = sample * 2
         readlen_bytes = readlen * 2
 
@@ -419,6 +427,9 @@ class LoadLDF:
         data = buf_data + read_data
         assert len(data) == readlen * 2
         return np.frombuffer(data, '<i2')
+
+    def __call__(self, infile, sample, readlen):
+        return self.read(infile, sample, readlen)
 
 # Git helpers
 
@@ -780,6 +791,45 @@ def write_json(ldd, outname):
     fp.close()
     
     os.rename(outname + '.tbc.json.tmp', outname + '.tbc.json')
+
+# Write the .tbc.json file (used by lddecode and notebooks)
+def write_json(ldd, jsondict, outname):
+
+    fp = open(outname + '.tbc.json.tmp', 'w')
+    json.dump(jsondict, fp, indent=4 if ldd.verboseVITS else None)
+    fp.write('\n')
+    fp.close()
+    
+    os.rename(outname + '.tbc.json.tmp', outname + '.tbc.json')
+
+def jsondump_thread(ldd, outname):
+    '''
+    This creates a background thread to write a json dict to a file.
+
+    Probably had a bit too much fun here - this returns a queue that is 
+    fed into a thread created by the function itself.  Feed it json
+    dictionaries during runtime and None when done.
+    '''
+
+    def consume(q):
+        while True:
+            jsondict = q.get()
+
+            if jsondict is None:
+                q.task_done()
+                return
+
+            write_json(ldd, jsondict, outname)
+
+            q.task_done()
+    
+    q = JoinableQueue()
+
+    # Start the self-contained thread
+    t = threading.Thread(target=consume, args=(q, ))
+    t.start()
+    
+    return q
 
 if __name__ == "__main__":
     print("Nothing to see here, move along ;)")

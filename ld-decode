@@ -13,8 +13,13 @@ import argparse
 import json
 import traceback
 
+from multiprocessing import Process, Pool, Queue, JoinableQueue, Pipe
+import threading
+import queue
+
 from lddecode.core import *
 from lddecode.utils import *
+from lddecode.utils_logging import init_logging
 
 options_epilog = """FREQ can be a bare number in MHz, or a number with one of the case-insensitive suffixes Hz, kHz, MHz, GHz, fSC (meaning NTSC) or fSCPAL."""
 parser = argparse.ArgumentParser(description='Extracts audio and video from raw RF laserdisc captures', epilog=options_epilog)
@@ -83,34 +88,13 @@ except ValueError as e:
 
 system = 'PAL' if args.pal else 'NTSC'
 
-# Configure logger to write to a file
-# Modified from https://docs.python.org/3.8/howto/logging-cookbook.html#logging-cookbook
-
-logger = logging.getLogger('lddecode')
-logger.setLevel(logging.DEBUG)
-
-# Delete old logfile if it exists
-try:
-    os.unlink(outname + '.log')
-except:
-    pass
-
-logger_file = logging.FileHandler(outname + '.log')
-logger_file.setLevel(logging.DEBUG)
-
-logger_fileformatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger_file.setFormatter(logger_fileformatter)
-
-logger_stderr = logging.StreamHandler()
-logger_stderr.setLevel(logging.INFO)
-
-logger.addHandler(logger_stderr)
-logger.addHandler(logger_file)
-
 # Wrap the LDdecode creation so that the signal handler is not taken by sub-threads,
 # allowing SIGINT/control-C's to be handled cleanly
 original_sigint_handler = signal.signal(signal.SIGINT, signal.SIG_IGN)
+
+logger = init_logging(outname + '.log')
 ldd = LDdecode(filename, outname, loader, logger, est_frames=req_frames, analog_audio = 0 if args.daa else 44.100, digital_audio = not args.noefm, system=system, doDOD = not args.nodod, threads=args.threads, extra_options=extra_options)
+
 signal.signal(signal.SIGINT, original_sigint_handler)
 
 if args.start_fileloc != -1:
@@ -149,13 +133,20 @@ if args.verboseVITS:
 
 done = False
 
+jsondumper = jsondump_thread(ldd, outname)
+
+def cleanup():
+    jsondumper.put(ldd.build_json(ldd.curfield))
+    #logger.flush()
+    ldd.close()
+    jsondumper.put(None)
+
 while not done and ldd.fields_written < (req_frames * 2):
     try:
         f = ldd.readfield()
     except KeyboardInterrupt as kbd:
         print("\nTerminated, saving JSON and exiting", file=sys.stderr)
-        write_json(ldd, outname)
-        ldd.close()
+        cleanup()
         exit(1)
     except Exception as err:
         print("\nERROR - please paste the following into a bug report:", file=sys.stderr)
@@ -163,21 +154,14 @@ while not done and ldd.fields_written < (req_frames * 2):
         print("arguments:", args, file=sys.stderr)
         print("Exception:", err, " Traceback:", file=sys.stderr)
         traceback.print_tb(err.__traceback__)
-        write_json(ldd, outname)
-        ldd.close()
-        logger_file.flush()
+        cleanup()
         exit(1)
 
     if f is None or (args.ignoreleadout == False and ldd.leadOut == True):
         done = True
 
-#    print(ldd.fields_written)
-
     if ldd.fields_written < 100 or ((ldd.fields_written % 500) == 0):
-        #print('write json')
-        write_json(ldd, outname)
+        jsondumper.put(ldd.build_json(ldd.curfield))
 
 print("\nCompleted: saving JSON and exiting", file=sys.stderr)
-write_json(ldd, outname)
-logger_file.flush()
-ldd.close()
+cleanup()

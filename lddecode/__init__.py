@@ -7,6 +7,7 @@ __all__ = [
     'efm_pll',
     'fdls',
     'fft8',
-    'plot_utils',
     'utils',
+    'utils_logging',
+    'utils_plotting',
 ]

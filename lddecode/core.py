@@ -529,6 +529,9 @@ class RFDecode:
         SP = self.SysParams
         DP = self.DecoderParams
 
+        # Low pass filter for 'new' audio code
+
+
         # first stage audio filters
         if self.freq >= 32:
             audio_fdiv1 = 32 # this is good for 40mhz - 16 should be ideal for 28mhz
@@ -922,7 +925,8 @@ class DemodCache:
     def __del__(self):
         self.end()
 
-    def flush(self):
+    def prune_cache(self):
+        ''' Prune the LRU cache.  Typically run when a new field is loaded '''
         if len(self.lru) < self.lrusize:
             return 
         
@@ -934,7 +938,8 @@ class DemodCache:
 
         self.lru = self.lru[:self.lrusize]
 
-    def flushvideo(self):
+    def flush_demod(self):
+        ''' Flush all demodulation data.  This is called by the field class after calibration (i.e. MTF) is determined to be off '''
         for k in self.blocks.keys():
             if self.blocks[k] is None:
                 pass
@@ -1089,7 +1094,7 @@ class DemodCache:
             raw.append(self.blocks[-1]['rawinput'][:end % self.blocksize])
             
             rv = np.concatenate(raw)
-            self.flush()
+            self.prune_cache()
             return rv
 
         while need_blocks is not None and len(need_blocks):
@@ -1108,7 +1113,7 @@ class DemodCache:
                 elif k in self.blocks[b]:
                     t[k].append(self.blocks[b][k])
 
-        self.flush()
+        self.prune_cache()
 
         rv = {}
         for k in t.keys():
@@ -1125,11 +1130,13 @@ class DemodCache:
         return rv
 
     def setparams(self, params):
+        # XXX: This should flush out the data, but right now this isn't used at all
         for p in self.threadpipes:
             p[0].send(('NEWPARAMS', params))
 
         # Apply params to the core thread, so they match up with the decoders
         self.apply_newparams(params)
+
 
 # Downscales to 16bit/44.1khz.  It might be nice when analog audio is better to support 24/96, 
 # but if we only support one output type, matching CD audio/digital sound is greatly preferable.
@@ -2695,7 +2702,8 @@ class LDdecode:
     
     def __init__(self, fname_in, fname_out, freader, _logger, est_frames = None, analog_audio = 0, digital_audio = False, system = 'NTSC', doDOD = True, threads=4, extra_options = {}):
         global logger
-        logger = _logger
+        self.logger = _logger
+        logger = self.logger
         self.demodcache = None
 
         self.branch, self.commit = get_git_info()
@@ -2780,8 +2788,7 @@ class LDdecode:
         self.frameNumber = None
 
         self.autoMTF = True
-        # Python 3.6 doesn't support .get with default=
-        self.useAGC = extra_options['useAGC'] if 'useAGC' in extra_options else True
+        self.useAGC = extra_options.get('useAGC', True)
 
         self.verboseVITS = False
 
@@ -2951,7 +2958,7 @@ class LDdecode:
                         self.rf.SysParams['hz_ire'] = (sync_hz - ire0_hz) / self.rf.SysParams['vsync_ire']
                     
                 if adjusted == False and redo == True:
-                    self.demodcache.flushvideo()
+                    self.demodcache.flush_demod()
                     adjusted = True
                     self.fdoffset -= offset
                 else:
@@ -3278,9 +3285,7 @@ class LDdecode:
                     if special is not None:
                         outstr += special
 
-                    print(outstr, file=sys.stderr, end='\r')
-                    logger.debug(outstr)
-                    sys.stderr.flush()
+                    self.logger.status(outstr)
 
                     # Prepare JSON fields
                     if self.frameNumber is not None:
