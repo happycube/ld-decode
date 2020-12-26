@@ -2883,8 +2883,6 @@ class LDdecode:
 
         self.rawdecode = self.demodcache.read(self.readloc_block * self.blocksize, self.numblocks * self.blocksize, self.mtf_level)
 
-        logger.debug('decoding field')
-
         if self.rawdecode is None:
             logger.info("Failed to demodulate data")
             return None, None
