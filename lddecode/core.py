@@ -2702,7 +2702,8 @@ class LDdecode:
     
     def __init__(self, fname_in, fname_out, freader, _logger, est_frames = None, analog_audio = 0, digital_audio = False, system = 'NTSC', doDOD = True, threads=4, extra_options = {}):
         global logger
-        logger = _logger
+        self.logger = _logger
+        logger = self.logger
         self.demodcache = None
 
         self.branch, self.commit = get_git_info()
@@ -3285,9 +3286,7 @@ class LDdecode:
                     if special is not None:
                         outstr += special
 
-                    print(outstr, file=sys.stderr, end='\r')
-                    logger.debug(outstr)
-                    sys.stderr.flush()
+                    self.logger.status(outstr)
 
                     # Prepare JSON fields
                     if self.frameNumber is not None:
