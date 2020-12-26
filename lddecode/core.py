@@ -2788,8 +2788,7 @@ class LDdecode:
         self.frameNumber = None
 
         self.autoMTF = True
-        # Python 3.6 doesn't support .get with default=
-        self.useAGC = extra_options['useAGC'] if 'useAGC' in extra_options else True
+        self.useAGC = extra_options.get('useAGC', True)
 
         self.verboseVITS = False
 
