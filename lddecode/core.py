@@ -363,9 +363,17 @@ class RFDecode:
 
         self.SysParams['analog_audio'] = has_analog_audio
 
-        self.deemp_level = extra_options.get('deemp_level')
-        if self.deemp_level is None:
-            self.deemp_level = (1.0, 1.0)
+        self.deemp_mult = extra_options.get('deemp_mult', (1.0, 1.0))
+
+        deemp = list(self.DecoderParams['video_deemp'])
+
+        if extra_options.get('deemp_low', 0):
+            deemp[0] = extra_options.get['deemp_low']
+
+        if extra_options.get('deemp_high', 0):
+            deemp[1] = extra_options.get['deemp_high']
+
+        self.DecoderParams['video_deemp'] = deemp
 
         linelen = self.freq_hz/(1000000.0/self.SysParams['line_period'])
         self.linelen = int(np.round(linelen))
@@ -480,6 +488,9 @@ class RFDecode:
         video_lpf = sps.butter(DP['video_lpf_order'], DP['video_lpf_freq']/self.freq_hz_half, 'low')
         SF['Fvideo_lpf'] = filtfft(video_lpf, self.blocklen)
 
+        video_bpf = sps.butter(2, [3900000/self.freq_hz_half, 4500000/self.freq_hz_half], 'bandpass')
+        SF['Fvideo_bpf'] = filtfft(video_bpf, self.blocklen)
+
         if self.system == 'NTSC' and self.NTSC_ColorNotchFilter:
             video_notch = sps.butter(3, [DP['video_lpf_freq']/1000000/self.freq_half, 5.0/self.freq_half], 'bandstop')
             SF['Fvideo_lpf'] *= filtfft(video_notch, self.blocklen)
@@ -489,16 +500,16 @@ class RFDecode:
 
         # The deemphasis filter
         deemp1, deemp2 = DP['video_deemp']
-        deemp1 *= self.deemp_level[0]
-        deemp2 *= self.deemp_level[1]
+        deemp1 *= self.deemp_mult[0]
+        deemp2 *= self.deemp_mult[1]
         SF['Fdeemp'] = filtfft(emphasis_iir(deemp1, deemp2, self.freq_hz), self.blocklen)
 
         # The direct opposite of the above, used in test signal generation
         SF['Femp'] = filtfft(emphasis_iir(deemp2, deemp1, self.freq_hz), self.blocklen)
 
         # Post processing:  lowpass filter + deemp
-        SF['FVideo'] = SF['Fvideo_lpf'] * SF['Fdeemp'] 
-        
+        SF['FVideo'] = (SF['Fvideo_lpf'] * SF['Fdeemp']) #+ (SF['Fvideo_bpf'] / 10)
+
         # additional filters:  0.5mhz and color burst
         # Using an FIR filter here to get a known delay
         F0_5 = sps.firwin(65, [0.5/self.freq_half], pass_zero=True)
@@ -2036,6 +2047,37 @@ class Field:
 
         return dsout, self.dsaudio, self.efmout
     
+    def rf_tbc(self, linelocs = None):
+        ''' This outputs a TBC'd version of the input RF data, mostly intended 
+            to assist in audio processing.  Outputs a uint16 array.
+        '''
+
+        # Convert raw RF to floating point to help the scaler
+        fdata = self.data['input'].astype(np.float)
+
+        if linelocs is None:
+            linelocs = self.linelocs
+        
+        # Ensure that the output line length is an integer
+        linelen = int(round(self.inlinelen))
+
+        # Adjust for the demodulation/filtering delays
+        delay = self.rf.delays['video_white']
+
+        # For output consistency reasons, linecount is set to 313 (i.e. 626 lines)
+        # in PAL mode.  This needs to be corrected for RF TBC.
+        lc = self.linecount    
+        if self.rf.system == 'PAL' and not self.isFirstField:
+            lc = 312
+        
+        output = []
+
+        for l in range(self.lineoffset, self.lineoffset + lc):
+            scaled = scale(fdata, linelocs[l] - delay, linelocs[l + 1] - delay, linelen)
+            output.append(np.round(scaled).astype(np.int16))
+
+        return np.concatenate(output)
+
     def decodephillipscode(self, linenum):
         linestart = self.linelocs[linenum]
         data = self.data['video']['demod']
@@ -2721,6 +2763,7 @@ class LDdecode:
 
         self.analog_audio = int(analog_audio * 1000)
         self.digital_audio = digital_audio
+        self.write_rf_tbc = extra_options.get('write_RF_TBC', False)
 
         self.has_analog_audio = True
         if system == 'PAL':
@@ -2735,6 +2778,7 @@ class LDdecode:
             self.outfile_video = open(fname_out + '.tbc', 'wb')
             self.outfile_audio = open(fname_out + '.pcm', 'wb') if self.analog_audio else None
             self.outfile_efm = open(fname_out + '.efm', 'wb') if self.digital_audio else None
+            self.outfile_rftbc = open(fname_out + '.r16', 'wb') if self.write_rf_tbc else None
 
             if digital_audio:
                 # feed EFM stream into ld-ldstoefm
@@ -2743,6 +2787,7 @@ class LDdecode:
             self.outfile_video = None
             self.outfile_audio = None
             self.outfile_efm = None
+            self.outfile_rftbc = None
 
         self.fname_out = fname_out
 
@@ -2868,6 +2913,9 @@ class LDdecode:
 
         self.outfile_video.write(picture)
         self.fields_written += 1
+
+        if self.outfile_rftbc is not None:
+            self.outfile_rftbc.write(f.rf_tbc())
 
         if audio is not None and self.outfile_audio is not None:
             self.outfile_audio.write(audio)
