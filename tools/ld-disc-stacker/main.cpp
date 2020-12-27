@@ -127,16 +127,21 @@ int main(int argc, char *argv[])
     }
 
     // Get the input TBC sources
-    if (positionalArguments.count() >= 4) {
+    if (positionalArguments.count() >= 3) {
         // Resize the input filenames vector according to the number of input files supplied
         inputFilenames.resize(totalNumberOfInputFiles);
 
         for (qint32 i = 0; i < positionalArguments.count() - 1; i++) {
             inputFilenames[i] = positionalArguments.at(i);
         }
+
+        // Warn if only 2 sources are used
+        if (positionalArguments.count() == 3) {
+            qInfo() << "Only 2 input sources specified - stack will be only based on averaging (3 or more sources are recommended)";
+        }
     } else {
         // Quit with error
-        qCritical("You must specify at least 3 input and 1 output TBC file");
+        qCritical("You must specify at least 2 input and 1 output TBC file");
         return -1;
     }
 
