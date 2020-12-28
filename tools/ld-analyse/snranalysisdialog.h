@@ -67,6 +67,7 @@ private:
     QPolygonF *whitePoints;
     QwtPlotCurve *blackCurve;
     QwtPlotCurve *whiteCurve;
+    double maxY;
 };
 
 #endif // SNRANALYSISDIALOG_H

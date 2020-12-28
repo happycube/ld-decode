@@ -41,6 +41,9 @@ SnrAnalysisDialog::SnrAnalysisDialog(QWidget *parent) :
     whitePoints = new QPolygonF();
 
     ui->verticalLayout->addWidget(plot);
+
+    // Set the maximum Y scale to 48
+    maxY = 48;
 }
 
 SnrAnalysisDialog::~SnrAnalysisDialog()
@@ -58,6 +61,7 @@ void SnrAnalysisDialog::startUpdate()
 // Remove the axes and series from the chart, giving ownership back to this object
 void SnrAnalysisDialog::removeChartContents()
 {
+    maxY = 48;
     blackPoints->clear();
     whitePoints->clear();
     plot->replot();
@@ -66,8 +70,15 @@ void SnrAnalysisDialog::removeChartContents()
 // Add a data point to the chart
 void SnrAnalysisDialog::addDataPoint(qint32 fieldNumber, qreal blackSnr, qreal whiteSnr)
 {
-    if (!std::isnan(static_cast<float>(blackSnr))) blackPoints->append(QPointF(fieldNumber, blackSnr));
-    if (!std::isnan(static_cast<float>(whiteSnr))) whitePoints->append(QPointF(fieldNumber, whiteSnr));
+    if (!std::isnan(static_cast<float>(blackSnr))) {
+        blackPoints->append(QPointF(fieldNumber, blackSnr));
+        if (blackSnr > maxY) maxY = ceil(blackSnr); // Round up
+    }
+
+    if (!std::isnan(static_cast<float>(whiteSnr))) {
+        whitePoints->append(QPointF(fieldNumber, whiteSnr));
+        if (whiteSnr > maxY) maxY = ceil(whiteSnr); // Round up
+    }
 }
 
 // Finish the update and render the graph
@@ -85,7 +96,7 @@ void SnrAnalysisDialog::finishUpdate(qint32 numberOfFields, qint32 fieldsPerData
     plot->setAxisTitle(QwtPlot::xBottom, "Field number");
 
     // Define the y-axis (with a fixed scale)
-    plot->setAxisScale(QwtPlot::yLeft, 26, 48, 2);
+    plot->setAxisScale(QwtPlot::yLeft, 26, maxY, 2);
     plot->setAxisTitle(QwtPlot::yLeft, "SNR (in dB)");
 
     // Attach the black curve data to the chart
