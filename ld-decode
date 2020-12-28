@@ -43,7 +43,7 @@ parser.add_argument('--daa', dest='daa', action='store_true', default=False, hel
 parser.add_argument('--ignoreleadout', dest='ignoreleadout', action='store_true', default=False, help='continue decoding after lead-out seen')
 parser.add_argument('--verboseVITS', dest='verboseVITS', action='store_true', default=False, help='Enable additional JSON fields')
 
-parser.add_argument('--RF_TBC', dest='RF_TBC', action='store_true', default=False, help="Write a .r16 with TBC'd raw RF")
+parser.add_argument('--RF_TBC', dest='RF_TBC', action='store_true', default=False, help="Create a .tbc.ldf file with TBC'd RF")
 
 parser.add_argument('--lowband', dest='lowband', action='store_true', default=False, help='Use more restricted RF settings for noisier disks')
 

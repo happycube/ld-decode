@@ -2774,20 +2774,21 @@ class LDdecode:
 
         self.lastvalidfield = {False: None, True: None}
 
+        self.outfile_video = None
+        self.outfile_audio = None
+        self.outfile_efm = None
+        self.ffmpeg_rftbc, self.outfile_rftbc = None, None
+
         if fname_out is not None:        
             self.outfile_video = open(fname_out + '.tbc', 'wb')
-            self.outfile_audio = open(fname_out + '.pcm', 'wb') if self.analog_audio else None
-            self.outfile_efm = open(fname_out + '.efm', 'wb') if self.digital_audio else None
-            self.outfile_rftbc = open(fname_out + '.r16', 'wb') if self.write_rf_tbc else None
-
-            if digital_audio:
+            if self.analog_audio:
+                self.outfile_audio = open(fname_out + '.pcm', 'wb')
+            if self.digital_audio:
                 # feed EFM stream into ld-ldstoefm
                 self.efm_pll = efm_pll.EFM_PLL()
-        else:
-            self.outfile_video = None
-            self.outfile_audio = None
-            self.outfile_efm = None
-            self.outfile_rftbc = None
+                self.outfile_efm = open(fname_out + '.efm', 'wb') 
+            if self.write_rf_tbc:
+                self.ffmpeg_rftbc, self.outfile_rftbc = ldf_pipe(fname_out + '.tbc.ldf')
 
         self.fname_out = fname_out
 
@@ -2847,8 +2848,13 @@ class LDdecode:
     def close(self):
         ''' deletes all open files, so it's possible to pickle an LDDecode object '''
 
+        try:
+            self.ffmpeg_rftbc.kill()
+        except:
+            pass
+
         # use setattr to force file closure by unlinking the objects
-        for outfiles in ['infile', 'outfile_video', 'outfile_audio', 'outfile_json', 'outfile_efm']:
+        for outfiles in ['infile', 'outfile_video', 'outfile_audio', 'outfile_json', 'outfile_efm', 'outfile_rftbc']:
             setattr(self, outfiles, None)
 
         self.demodcache.end()
