@@ -72,12 +72,12 @@ void SnrAnalysisDialog::addDataPoint(qint32 fieldNumber, qreal blackSnr, qreal w
 {
     if (!std::isnan(static_cast<float>(blackSnr))) {
         blackPoints->append(QPointF(fieldNumber, blackSnr));
-        if (blackSnr > maxY) maxY = blackSnr;
+        if (blackSnr > maxY) maxY = ceil(blackSnr); // Round up
     }
 
     if (!std::isnan(static_cast<float>(whiteSnr))) {
         whitePoints->append(QPointF(fieldNumber, whiteSnr));
-        if (whiteSnr > maxY) maxY = whiteSnr;
+        if (whiteSnr > maxY) maxY = ceil(whiteSnr); // Round up
     }
 }
 
