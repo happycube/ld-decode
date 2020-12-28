@@ -90,9 +90,7 @@ if makelds:
     process = subprocess.Popen(['ld-lds-converter', '-o', outname, '-p'], stdin=subprocess.PIPE)
     fd = process.stdin
 elif makeldf:
-    corecmd = "ffmpeg -y -hide_banner -loglevel error -f s16le -ar 40k -ac 1 -i - -acodec flac -f ogg".split(' ') 
-    process = subprocess.Popen([*corecmd, '-compression_level', str(args.ldfcomp), outname], stdin=subprocess.PIPE)
-    fd = process.stdin
+    process, fd = ldf_pipe(outname, args.ldfcomp)
 else:
     fd = open(args.outfile, 'wb')
 

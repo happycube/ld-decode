@@ -43,19 +43,24 @@ parser.add_argument('--daa', dest='daa', action='store_true', default=False, hel
 parser.add_argument('--ignoreleadout', dest='ignoreleadout', action='store_true', default=False, help='continue decoding after lead-out seen')
 parser.add_argument('--verboseVITS', dest='verboseVITS', action='store_true', default=False, help='Enable additional JSON fields')
 
+parser.add_argument('--RF_TBC', dest='RF_TBC', action='store_true', default=False, help="Create a .tbc.ldf file with TBC'd RF")
+
 parser.add_argument('--lowband', dest='lowband', action='store_true', default=False, help='Use more restricted RF settings for noisier disks')
 
 parser.add_argument('--NTSC_color_notch_filter', dest='NTSC_color_notch_filter', action='store_true', default=False, help='Mitigate interference from analog audio in reds in NTSC captures')
 parser.add_argument('--V4300D_notch_filter', dest='V4300D_notch_filter', action='store_true', default=False, help='LD-V4300D PAL/digital audio captures: remove spurious ~8.5mhz signal')
 
-parser.add_argument('-d', '--deemp_adjust', metavar='deemp_adjust', type=float, default=1.0, help='mtf compensation multiplier')
+parser.add_argument('-d', '--deemp_adjust', metavar='deemp_adjust', type=float, default=1.0, help='Deemphasis level multiplier')
+parser.add_argument('--deemp_low', metavar='deemp_low', type=float, default=0, help='Deemphasis low coefficient')
+parser.add_argument('--deemp_high', metavar='deemp_high', type=float, default=0, help='Deemphasis high coefficient')
 
 parser.add_argument('-t', '--threads', metavar='threads', type=int, default=5, help='number of CPU threads to use')
 
 parser.add_argument('-f', '--frequency', dest='inputfreq', metavar='FREQ', type=parse_frequency, default=None, help='RF sampling frequency in source file (default is 40MHz)')
+
 parser.add_argument('--video_bpf_high', dest='vbpf_high', metavar='FREQ', type=parse_frequency, default=None, help='Video BPF high end frequency')
 parser.add_argument('--video_lpf', dest='vlpf', metavar='FREQ', type=parse_frequency, default=None, help='Video low-pass filter frequency')
-
+parser.add_argument('--video_lpf_order', dest='vlpf_order', type=int, default=-1, help='Video low-pass filter order')
 
 args = parser.parse_args()
 #print(args)
@@ -69,7 +74,10 @@ if args.pal and args.ntsc:
     print("ERROR: Can only be PAL or NTSC")
     exit(1)
 
-extra_options = {'useAGC': not args.noAGC, 'deemp_level': (args.deemp_adjust, args.deemp_adjust)}
+extra_options = {'useAGC': not args.noAGC, 
+                 'write_RF_TBC': args.RF_TBC,
+                 'deemp_mult': (args.deemp_adjust, args.deemp_adjust),
+                 'deemp_coeff': (args.deemp_low, args.deemp_high)}
 
 if vid_standard == 'NTSC' and args.NTSC_color_notch_filter:
     extra_options['NTSC_ColorNotchFilter'] = True
@@ -124,6 +132,9 @@ if args.vbpf_high is not None:
 
 if args.vlpf is not None:
     DecoderParamsOverride['video_lpf_freq'] = args.vlpf * 1000000
+
+if args.vlpf_order >= 1:
+    DecoderParamsOverride['video_lpf_order'] = args.vlpf_order
 
 if len(DecoderParamsOverride.keys()):
     ldd.demodcache.setparams(DecoderParamsOverride)

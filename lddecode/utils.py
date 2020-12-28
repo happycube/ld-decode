@@ -431,6 +431,12 @@ class LoadLDF:
     def __call__(self, infile, sample, readlen):
         return self.read(infile, sample, readlen)
 
+def ldf_pipe(outname, compression_level = 6):
+    corecmd = "ffmpeg -y -hide_banner -loglevel error -f s16le -ar 40k -ac 1 -i - -acodec flac -f ogg".split(' ') 
+    process = subprocess.Popen([*corecmd, '-compression_level', str(compression_level), outname], stdin=subprocess.PIPE)
+    
+    return process, process.stdin
+
 # Git helpers
 
 def get_git_info():
