@@ -102,12 +102,13 @@ void Stacker::stackField(QVector<SourceVideo::Data> inputFields,
                 // Clear the current input values and recreate the list including marked dropouts
                 inputValues.clear();
                 for (qint32 i = 0; i < availableSourcesForFrame.size(); i++) {
-                    inputValues.append(inputFields[availableSourcesForFrame[i]][(videoParameters.fieldWidth * y) + x]);
+                    quint16 pixelValue = inputFields[availableSourcesForFrame[i]][(videoParameters.fieldWidth * y) + x];
+                    if (pixelValue > 0) inputValues.append(pixelValue);
                 }
 
-                // DiffDod the list
+                // Perform differential dropout detection to recover ld-decode false positive pixels
                 DiffDod diffDod;
-                inputValues = diffDod.process(inputValues);
+                inputValues = diffDod.process(inputValues, videoParameters, x);
             }
 
             // Stack with intelligence:
@@ -146,24 +147,30 @@ void Stacker::stackField(QVector<SourceVideo::Data> inputFields,
 }
 
 // Method to find the median of a vector of quint16s
-quint16 Stacker::median(QVector<quint16> v)
+quint16 Stacker::median(QVector<quint16> elements)
 {
-    size_t n = v.size() / 2;
-    std::nth_element(v.begin(), v.begin()+n, v.end());
+    qint32 noOfElements = elements.size();
 
-    // If set of input numbers is odd return the
-    // centre value
-    if (v.size() % 2 != 0) return v[n];
+    if (noOfElements % 2 == 0) {
+        // Input set is even length
 
-    // If set of input number is even, average the
-    // two centre values and return
-    quint16 val1 = v[(v.size() - 1) / 2];
-    quint16 val2 = v[n];
+        // Applying nth_element on n/2th index
+        std::nth_element(elements.begin(), elements.begin() + noOfElements / 2, elements.end());
 
-    double avg = (static_cast<double>(val1) + static_cast<double>(val2)) / 2.0;
+        // Applying nth_element on (n-1)/2 th index
+        std::nth_element(elements.begin(), elements.begin() + (noOfElements - 1) / 2, elements.end());
 
-    return static_cast<quint16>(avg);
-    //return (v[(v.size() - 1) / 2] + v[n]) / 2;
+        // Find the average of value at index N/2 and (N-1)/2
+        return static_cast<quint16>((elements[(noOfElements - 1) / 2] + elements[noOfElements / 2]) / 2.0);
+    } else {
+        // Input set is odd length
+
+        // Applying nth_element on n/2
+        std::nth_element(elements.begin(), elements.begin() + noOfElements / 2, elements.end());
+
+        // Value at index (N/2)th is the median
+        return static_cast<quint16>(elements[noOfElements / 2]);
+    }
 }
 
 // Method returns true if specified pixel is a dropout

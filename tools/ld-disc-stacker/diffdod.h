@@ -28,15 +28,18 @@
 #include <QCoreApplication>
 #include <QDebug>
 
+#include "sourcevideo.h"
+#include "lddecodemetadata.h"
+
 class DiffDod
 {
 public:
     DiffDod();
 
-    QVector<quint16> process(QVector<quint16> inputValues);
+    QVector<quint16> process(QVector<quint16> inputValues, LdDecodeMetaData::VideoParameters videoParameters, qint32 xPos);
 
 private:
-    quint16 median(QVector<quint16> v);
+    quint16 median(QVector<quint16> elements);
 };
 
 #endif // DIFFDOD_H

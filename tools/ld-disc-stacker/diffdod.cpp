@@ -31,9 +31,21 @@ DiffDod::DiffDod()
 
 // Use differential dropout detection to remove suspected dropout error
 // values from inputValues to produce the set of output values
-QVector<quint16> DiffDod::process(QVector<quint16> inputValues)
+QVector<quint16> DiffDod::process(QVector<quint16> inputValues, LdDecodeMetaData::VideoParameters videoParameters, qint32 xPos)
 {
     QVector<quint16> outputValues;
+
+    // Check that we have at least 3 input values
+    if (inputValues.size() < 3) {
+        qDebug() << "diffDOD: Only received" << inputValues.size() << "input values, exiting";
+        return outputValues;
+    }
+
+    // Check that we are in the colour burst or visible line area
+    if (xPos < videoParameters.colourBurstStart) {
+        qDebug() << "diffDOD: Pixel not in colourburst or visible area";
+        return outputValues;
+    }
 
     // Get the median value of the input values
     double medianValue = static_cast<double>(median(inputValues));
@@ -56,23 +68,39 @@ QVector<quint16> DiffDod::process(QVector<quint16> inputValues)
         }
     }
 
-    qDebug() << "DIFFDOD:  Input" << inputValues;
-    qDebug() << "DIFFDOD: Output" << outputValues;
+    qDebug() << "diffDOD:  Input" << inputValues;
+    qDebug() << "diffDOD: Output" << outputValues;
+
+    if (outputValues.size() == 0) {
+        qDebug().nospace() << "diffDOD: Range was " << minValue << "-" << maxValue << " with a median of " << medianValue;
+    }
 
     return outputValues;
 }
 
 // Method to find the median of a vector of quint16s
-quint16 DiffDod::median(QVector<quint16> v)
+quint16 DiffDod::median(QVector<quint16> elements)
 {
-    size_t n = v.size() / 2;
-    std::nth_element(v.begin(), v.begin()+n, v.end());
+    qint32 noOfElements = elements.size();
 
-    // If set of input numbers is odd return the
-    // centre value
-    if (v.size() % 2 != 0) return v[n];
+    if (noOfElements % 2 == 0) {
+        // Input set is even length
 
-    // If set of input number is even, average the
-    // two centre values and return
-    return (v[(v.size() - 1) / 2] + v[n]) / 2;
+        // Applying nth_element on n/2th index
+        std::nth_element(elements.begin(), elements.begin() + noOfElements / 2, elements.end());
+
+        // Applying nth_element on (n-1)/2 th index
+        std::nth_element(elements.begin(), elements.begin() + (noOfElements - 1) / 2, elements.end());
+
+        // Find the average of value at index N/2 and (N-1)/2
+        return static_cast<quint16>((elements[(noOfElements - 1) / 2] + elements[noOfElements / 2]) / 2.0);
+    } else {
+        // Input set is odd length
+
+        // Applying nth_element on n/2
+        std::nth_element(elements.begin(), elements.begin() + noOfElements / 2, elements.end());
+
+        // Value at index (N/2)th is the median
+        return static_cast<quint16>(elements[noOfElements / 2]);
+    }
 }
