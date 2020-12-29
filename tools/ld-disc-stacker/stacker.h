@@ -51,8 +51,8 @@ private:
     StackingPool& stackingPool;
     QVector<LdDecodeMetaData::VideoParameters> videoParameters;
 
-    void stackField(QVector<SourceVideo::Data> inputFields, LdDecodeMetaData::VideoParameters videoParameters,
-                    QVector<LdDecodeMetaData::Field> fieldMetadata, QVector<qint32> availableSourcesForFrame, bool noDiffDod,
+    void stackField(qint32 frameNumber, QVector<SourceVideo::Data> inputFields, LdDecodeMetaData::VideoParameters videoParameters,
+                    QVector<LdDecodeMetaData::Field> fieldMetadata, QVector<qint32> availableSourcesForFrame, bool noDiffDod, bool passThrough,
                     SourceVideo::Data &outputField, DropOuts &dropOuts);
     quint16 median(QVector<quint16> v);
     bool isDropout(DropOuts dropOuts, qint32 fieldX, qint32 fieldY);

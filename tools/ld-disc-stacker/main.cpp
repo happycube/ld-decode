@@ -86,11 +86,16 @@ int main(int argc, char *argv[])
     parser.addOption(threadsOption);
 
     // Option to disable differential dropout detection
-    QCommandLineOption noDiffDodOption(QStringList() << "e" << "no-diffdod",
+    QCommandLineOption noDiffDodOption(QStringList() << "no-diffdod",
                                         QCoreApplication::translate(
-                                         "main", "Do not use differential dropout detection on low source pixels"),
-                                        QCoreApplication::translate("main", "number"));
+                                         "main", "Do not use differential dropout detection on low source pixels"));
     parser.addOption(noDiffDodOption);
+
+    // Option to passthrough dropouts present in every source
+    QCommandLineOption passthroughOption(QStringList() << "passthrough",
+                                        QCoreApplication::translate(
+                                         "main", "Pass-through dropouts present on every source"));
+    parser.addOption(passthroughOption);
 
     // Positional argument to specify input video file
     parser.addPositionalArgument("inputs", QCoreApplication::translate(
@@ -109,6 +114,7 @@ int main(int argc, char *argv[])
     // Get the options from the parser
     bool reverse = parser.isSet(setReverseOption);
     bool noDiffDod = parser.isSet(noDiffDodOption);
+    bool passThrough = parser.isSet(passthroughOption);
 
     // Get the arguments from the parser
     qint32 maxThreads = QThread::idealThreadCount();
@@ -245,6 +251,11 @@ int main(int argc, char *argv[])
         qInfo() << "Differential Dropout Detection is disabled";
     }
 
+    // Show if pass-through is enabled
+    if (passThrough) {
+        qInfo() << "Passing through dropouts present on every input source";
+    }
+
     // Show and open input source TBC files
     qDebug() << "Opening source video files...";
     QVector<SourceVideo *> sourceVideos;
@@ -300,7 +311,7 @@ int main(int argc, char *argv[])
     qInfo() << "Initial source checks are ok and sources are loaded";
     qint32 result = 0;
     StackingPool stackingPool(outputFilename, outputJsonFilename, maxThreads,
-                                ldDecodeMetaData, sourceVideos, reverse, noDiffDod);
+                                ldDecodeMetaData, sourceVideos, reverse, noDiffDod, passThrough);
     if (!stackingPool.process()) result = 1;
 
     // Close open source video files

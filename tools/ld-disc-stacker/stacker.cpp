@@ -42,13 +42,14 @@ void Stacker::run()
     QVector<LdDecodeMetaData::Field> secondFieldMetadata;
     bool reverse;
     bool noDiffDod;
+    bool passThrough;
     QVector<qint32> availableSourcesForFrame;
 
     while(!abort) {
         // Get the next field to process from the input file
         if (!stackingPool.getInputFrame(frameNumber, firstFieldSeqNo, firstSourceField, firstFieldMetadata,
                                        secondFieldSeqNo, secondSourceField, secondFieldMetadata,
-                                       videoParameters, reverse, noDiffDod,
+                                       videoParameters, reverse, noDiffDod, passThrough,
                                        availableSourcesForFrame)) {
             // No more input fields -- exit
             break;
@@ -60,8 +61,8 @@ void Stacker::run()
         DropOuts outputFirstFieldDropOuts;
         DropOuts outputSecondFieldDropOuts;
 
-        stackField(firstSourceField, videoParameters[0], firstFieldMetadata, availableSourcesForFrame, noDiffDod, outputFirstField, outputFirstFieldDropOuts);
-        stackField(secondSourceField, videoParameters[0], secondFieldMetadata, availableSourcesForFrame, noDiffDod, outputSecondField, outputSecondFieldDropOuts);
+        stackField(frameNumber, firstSourceField, videoParameters[0], firstFieldMetadata, availableSourcesForFrame, noDiffDod, passThrough, outputFirstField, outputFirstFieldDropOuts);
+        stackField(frameNumber, secondSourceField, videoParameters[0], secondFieldMetadata, availableSourcesForFrame, noDiffDod, passThrough, outputSecondField, outputSecondFieldDropOuts);
 
         // Return the processed fields
         stackingPool.setOutputFrame(frameNumber, outputFirstField, outputSecondField,
@@ -71,19 +72,20 @@ void Stacker::run()
 }
 
 // Method to stack fields
-void Stacker::stackField(QVector<SourceVideo::Data> inputFields,
+void Stacker::stackField(qint32 frameNumber, QVector<SourceVideo::Data> inputFields,
                                       LdDecodeMetaData::VideoParameters videoParameters,
                                       QVector<LdDecodeMetaData::Field> fieldMetadata,
                                       QVector<qint32> availableSourcesForFrame,
-                                      bool noDiffDod,
+                                      bool noDiffDod, bool passThrough,
                                       SourceVideo::Data &outputField,
                                       DropOuts &dropOuts)
 {
-    quint16 prevGoodValue = 0;
+    quint16 prevGoodValue = videoParameters.black16bIre;
+    bool forceDropout = false;
 
     for (qint32 y = 0; y < videoParameters.fieldHeight; y++) {
-        for (qint32 x = 0; x < videoParameters.fieldWidth; x++) {
-            // Get the input values from the input sources
+        for (qint32 x = videoParameters.colourBurstStart; x < videoParameters.fieldWidth; x++) {
+            // Get input values from the input sources (which are not marked as dropouts)
             QVector<quint16> inputValues;
             for (qint32 i = 0; i < availableSourcesForFrame.size(); i++) {
                 // Include the source's pixel data if it's not marked as a dropout
@@ -93,12 +95,20 @@ void Stacker::stackField(QVector<SourceVideo::Data> inputFields,
                 }
             }
 
-            // If there are 3 or less available values from 3 or more available sources, use
-            // differential dropout detection to check for ld-decode false-positive dropout detection.
-            if ((inputValues.size() <= 3) && (availableSourcesForFrame.size() > 3) && (noDiffDod == false)) {
-                // Only 3 or less input values; perform differential dropout detection to verify
-                // that all available input pixels are really dropouts
+            // If passThrough is set, the output is always marked as a dropout if all input values are dropouts
+            // (regardless of the diffDOD process result).
+            forceDropout = false;
+            if ((availableSourcesForFrame.size() > 0) && (passThrough)) {
+                if (inputValues.size() == 0) {
+                    forceDropout = true;
+                    qInfo().nospace() << "Frame #" << frameNumber << ": All sources for field location (" << x << ", " << y << ") are marked as dropout, passing through";
+                }
+            }
 
+            // If all possible input values are dropouts (and noDiffDod is false) and there are more than 3 input sources...
+            // Take the available values (marked as dropouts) and perform a diffDOD to try and determine if the dropout markings
+            // are false positives.
+            if ((inputValues.size() == 0) && (availableSourcesForFrame.size() >= 3) && (noDiffDod == false)) {
                 // Clear the current input values and recreate the list including marked dropouts
                 inputValues.clear();
                 for (qint32 i = 0; i < availableSourcesForFrame.size(); i++) {
@@ -108,6 +118,13 @@ void Stacker::stackField(QVector<SourceVideo::Data> inputFields,
 
                 // Perform differential dropout detection to recover ld-decode false positive pixels
                 inputValues = diffDod(inputValues, videoParameters, x);
+
+                if (inputValues.size() > 0) {
+                    qInfo().nospace() << "Frame #" << frameNumber << ": DiffDOD recovered " << inputValues.size() <<
+                                         " values: " << inputValues << " for field location (" << x << ", " << y << ")";
+                } else {
+                    qInfo().nospace() << "Frame #" << frameNumber << ": DiffDOD failed, no values recovered for field location (" << x << ", " << y << ")";
+                }
             }
 
             // Stack with intelligence:
@@ -115,33 +132,32 @@ void Stacker::stackField(QVector<SourceVideo::Data> inputFields,
             // If there are 2 sources - average
             // If there is 1 source - output as is
             // If there are zero sources - mark as a dropout in the output file
-            if (inputValues.size() > 2) {
-                // Store the median in the output field
+            if (inputValues.size() == 0) {
+                // No values available - use the previous good value and mark as a dropout
+                outputField[(videoParameters.fieldWidth * y) + x] = prevGoodValue;
+                dropOuts.append(x, x, y + 1);
+            } else if (inputValues.size() == 1) {
+                // 1 value available - just copy it to the output
+                outputField[(videoParameters.fieldWidth * y) + x] = inputValues[0];
+                prevGoodValue = outputField[(videoParameters.fieldWidth * y) + x];
+                if (forceDropout) dropOuts.append(x, x, y + 1);
+            } else if (inputValues.size() == 2) {
+                // 2 values available - average and copy to output
+                // Use floating point for accuracy
+                double avg = (static_cast<double>(inputValues[0]) + static_cast<double>(inputValues[1])) / 2.0;
+                outputField[(videoParameters.fieldWidth * y) + x] = static_cast<quint16>(avg);
+                prevGoodValue = outputField[(videoParameters.fieldWidth * y) + x];
+                if (forceDropout) dropOuts.append(x, x, y + 1);
+            } else {
+                // More than 2 values available - store the median in the output field
                 outputField[(videoParameters.fieldWidth * y) + x] = median(inputValues);
                 prevGoodValue = outputField[(videoParameters.fieldWidth * y) + x];
-            } else {
-                if (inputValues.size() == 0) {
-                    // No values available - use the previous good value
-                    outputField[(videoParameters.fieldWidth * y) + x] = prevGoodValue;
-
-                    // Mark as a dropout (unless the error is in the sync region)
-                    if (x > videoParameters.colourBurstStart) dropOuts.append(x, x, y + 1);
-                } else if (inputValues.size() == 1) {
-                    // 1 value available - just copy it to the output
-                    outputField[(videoParameters.fieldWidth * y) + x] = inputValues[0];
-                    prevGoodValue = outputField[(videoParameters.fieldWidth * y) + x];
-                } else {
-                    // 2 values available - average and copy to output
-                    // Use floating point for accuracy
-                    double avg = (static_cast<double>(inputValues[0]) + static_cast<double>(inputValues[1])) / 2.0;
-                    outputField[(videoParameters.fieldWidth * y) + x] = static_cast<quint16>(avg);
-                    prevGoodValue = outputField[(videoParameters.fieldWidth * y) + x];
-                }
+                if (forceDropout) dropOuts.append(x, x, y + 1);
             }
         }
     }
 
-    // Cat the dropouts
+    // Concatenate the dropouts
     if (dropOuts.size() != 0) dropOuts.concatenate();
 }
 
