@@ -34,8 +34,6 @@
 #include "sourcevideo.h"
 #include "lddecodemetadata.h"
 
-#include "diffdod.h"
-
 class StackingPool;
 
 class Stacker : public QThread
@@ -58,6 +56,7 @@ private:
                     SourceVideo::Data &outputField, DropOuts &dropOuts);
     quint16 median(QVector<quint16> v);
     bool isDropout(DropOuts dropOuts, qint32 fieldX, qint32 fieldY);
+    QVector<quint16> diffDod(QVector<quint16> inputValues, LdDecodeMetaData::VideoParameters videoParameters, qint32 xPos);
 };
 
 #endif // STACKER_H

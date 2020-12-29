@@ -107,8 +107,7 @@ void Stacker::stackField(QVector<SourceVideo::Data> inputFields,
                 }
 
                 // Perform differential dropout detection to recover ld-decode false positive pixels
-                DiffDod diffDod;
-                inputValues = diffDod.process(inputValues, videoParameters, x);
+                inputValues = diffDod(inputValues, videoParameters, x);
             }
 
             // Stack with intelligence:
@@ -184,4 +183,57 @@ bool Stacker::isDropout(DropOuts dropOuts, qint32 fieldX, qint32 fieldY)
     }
 
     return false;
+}
+
+// Use differential dropout detection to remove suspected dropout error
+// values from inputValues to produce the set of output values.  This generally improves everything, but
+// might cause an increase in errors for really noisy frames (where the DOs are in the same place in
+// multiple sources).  Another possible disadvantage is that diffDOD might pass through master plate errors
+// which, whilst not technically errors, may be undesirable.
+QVector<quint16> Stacker::diffDod(QVector<quint16> inputValues, LdDecodeMetaData::VideoParameters videoParameters, qint32 xPos)
+{
+    QVector<quint16> outputValues;
+
+    // Check that we have at least 3 input values
+    if (inputValues.size() < 3) {
+        qDebug() << "diffDOD: Only received" << inputValues.size() << "input values, exiting";
+        return outputValues;
+    }
+
+    // Check that we are in the colour burst or visible line area
+    if (xPos < videoParameters.colourBurstStart) {
+        qDebug() << "diffDOD: Pixel not in colourburst or visible area";
+        return outputValues;
+    }
+
+    // Get the median value of the input values
+    double medianValue = static_cast<double>(median(inputValues));
+
+    // Set the matching threshold to +-10% of the median value
+    double threshold = 10; // %
+
+    // Set the maximum and minimum values for valid inputs
+    double maxValueD = medianValue + ((medianValue / 100.0) * threshold);
+    double minValueD = medianValue - ((medianValue / 100.0) * threshold);
+    if (minValueD < 0) minValueD = 0;
+    if (maxValueD > 65535) maxValueD = 65535;
+    quint16 minValue = minValueD;
+    quint16 maxValue = maxValueD;
+
+    // Copy valid input values to the output set
+    for (qint32 i = 0; i < inputValues.size(); i++) {
+        if ((inputValues[i] > minValue) && (inputValues[i] < maxValue)) {
+            outputValues.append(inputValues[i]);
+        }
+    }
+
+    // Show debug
+    qDebug() << "diffDOD:  Input" << inputValues;
+    if (outputValues.size() == 0) {
+        qDebug().nospace() << "diffDOD: Empty output... Range was " << minValue << "-" << maxValue << " with a median of " << medianValue;
+    } else {
+        qDebug() << "diffDOD: Output" << outputValues;
+    }
+
+    return outputValues;
 }

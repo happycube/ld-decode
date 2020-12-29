@@ -5,7 +5,6 @@ SUBDIRS = \
     ld-analyse \
     ld-chroma-decoder \
     ld-chroma-decoder/encoder \
-    ld-diffdod \
     ld-discmap \
     ld-dropout-correct \
     ld-export-metadata \
