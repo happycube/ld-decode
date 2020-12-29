@@ -1,6 +1,6 @@
 /************************************************************************
 
-    stacker.h
+    diffdod.h
 
     ld-disc-stacker - Disc stacking for ld-decode
     Copyright (C) 2020 Simon Inns
@@ -22,42 +22,21 @@
 
 ************************************************************************/
 
-#ifndef STACKER_H
-#define STACKER_H
+#ifndef DIFFDOD_H
+#define DIFFDOD_H
 
-#include <QObject>
-#include <QElapsedTimer>
-#include <QAtomicInt>
-#include <QThread>
+#include <QCoreApplication>
 #include <QDebug>
 
-#include "sourcevideo.h"
-#include "lddecodemetadata.h"
-
-#include "diffdod.h"
-
-class StackingPool;
-
-class Stacker : public QThread
+class DiffDod
 {
-    Q_OBJECT
 public:
-    explicit Stacker(QAtomicInt& _abort, StackingPool& _stackingPool, QObject *parent = nullptr);
+    DiffDod();
 
-protected:
-    void run() override;
+    QVector<quint16> process(QVector<quint16> inputValues);
 
 private:
-    // Stacking pool
-    QAtomicInt& abort;
-    StackingPool& stackingPool;
-    QVector<LdDecodeMetaData::VideoParameters> videoParameters;
-
-    void stackField(QVector<SourceVideo::Data> inputFields, LdDecodeMetaData::VideoParameters videoParameters,
-                    QVector<LdDecodeMetaData::Field> fieldMetadata, QVector<qint32> availableSourcesForFrame, bool noDiffDod,
-                    SourceVideo::Data &outputField, DropOuts &dropOuts);
     quint16 median(QVector<quint16> v);
-    bool isDropout(DropOuts dropOuts, qint32 fieldX, qint32 fieldY);
 };
 
-#endif // STACKER_H
+#endif // DIFFDOD_H

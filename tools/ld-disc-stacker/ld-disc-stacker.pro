@@ -8,6 +8,7 @@ CONFIG -= app_bundle
 #DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
 
 SOURCES += \
+    diffdod.cpp \
     main.cpp \
     ../library/tbc/lddecodemetadata.cpp \
     ../library/tbc/sourcevideo.cpp \
@@ -23,6 +24,7 @@ HEADERS += \
     ../library/tbc/vbidecoder.h \
     ../library/tbc/logging.h \
     ../library/tbc/dropouts.h \
+    diffdod.h \
     stacker.h \
     stackingpool.h
 

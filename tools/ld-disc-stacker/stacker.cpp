@@ -41,21 +41,18 @@ void Stacker::run()
     QVector<LdDecodeMetaData::Field> firstFieldMetadata;
     QVector<LdDecodeMetaData::Field> secondFieldMetadata;
     bool reverse;
+    bool noDiffDod;
     QVector<qint32> availableSourcesForFrame;
 
     while(!abort) {
         // Get the next field to process from the input file
         if (!stackingPool.getInputFrame(frameNumber, firstFieldSeqNo, firstSourceField, firstFieldMetadata,
                                        secondFieldSeqNo, secondSourceField, secondFieldMetadata,
-                                       videoParameters, reverse,
+                                       videoParameters, reverse, noDiffDod,
                                        availableSourcesForFrame)) {
             // No more input fields -- exit
             break;
         }
-
-        qint32 totalAvailableSources = firstFieldSeqNo.size();
-        qDebug().nospace() << "Frame #" << frameNumber << " - There are " << totalAvailableSources << " sources available of which " <<
-                              availableSourcesForFrame.size() << " contain the required frame";
 
         // Initialise the output fields and process sources to output
         SourceVideo::Data outputFirstField(firstSourceField[0].size());
@@ -63,8 +60,8 @@ void Stacker::run()
         DropOuts outputFirstFieldDropOuts;
         DropOuts outputSecondFieldDropOuts;
 
-        stackField(firstSourceField, videoParameters[0], firstFieldMetadata, availableSourcesForFrame, outputFirstField, outputFirstFieldDropOuts);
-        stackField(secondSourceField, videoParameters[0], secondFieldMetadata, availableSourcesForFrame, outputSecondField, outputSecondFieldDropOuts);
+        stackField(firstSourceField, videoParameters[0], firstFieldMetadata, availableSourcesForFrame, noDiffDod, outputFirstField, outputFirstFieldDropOuts);
+        stackField(secondSourceField, videoParameters[0], secondFieldMetadata, availableSourcesForFrame, noDiffDod, outputSecondField, outputSecondFieldDropOuts);
 
         // Return the processed fields
         stackingPool.setOutputFrame(frameNumber, outputFirstField, outputSecondField,
@@ -78,9 +75,12 @@ void Stacker::stackField(QVector<SourceVideo::Data> inputFields,
                                       LdDecodeMetaData::VideoParameters videoParameters,
                                       QVector<LdDecodeMetaData::Field> fieldMetadata,
                                       QVector<qint32> availableSourcesForFrame,
+                                      bool noDiffDod,
                                       SourceVideo::Data &outputField,
                                       DropOuts &dropOuts)
 {
+    quint16 prevGoodValue = 0;
+
     for (qint32 y = 0; y < videoParameters.fieldHeight; y++) {
         for (qint32 x = 0; x < videoParameters.fieldWidth; x++) {
             // Get the input values from the input sources
@@ -93,6 +93,23 @@ void Stacker::stackField(QVector<SourceVideo::Data> inputFields,
                 }
             }
 
+            // If there are 3 or less available values from 3 or more available sources, use
+            // differential dropout detection to check for ld-decode false-positive dropout detection.
+            if ((inputValues.size() <= 3) && (availableSourcesForFrame.size() > 3) && (noDiffDod == false)) {
+                // Only 3 or less input values; perform differential dropout detection to verify
+                // that all available input pixels are really dropouts
+
+                // Clear the current input values and recreate the list including marked dropouts
+                inputValues.clear();
+                for (qint32 i = 0; i < availableSourcesForFrame.size(); i++) {
+                    inputValues.append(inputFields[availableSourcesForFrame[i]][(videoParameters.fieldWidth * y) + x]);
+                }
+
+                // DiffDod the list
+                DiffDod diffDod;
+                inputValues = diffDod.process(inputValues);
+            }
+
             // Stack with intelligence:
             // If there are 3 or more sources - median (with central average for non-odd source sets)
             // If there are 2 sources - average
@@ -101,19 +118,24 @@ void Stacker::stackField(QVector<SourceVideo::Data> inputFields,
             if (inputValues.size() > 2) {
                 // Store the median in the output field
                 outputField[(videoParameters.fieldWidth * y) + x] = median(inputValues);
+                prevGoodValue = outputField[(videoParameters.fieldWidth * y) + x];
             } else {
                 if (inputValues.size() == 0) {
-                    // No values available - output a zero
-                    outputField[(videoParameters.fieldWidth * y) + x] = 0;
+                    // No values available - use the previous good value
+                    outputField[(videoParameters.fieldWidth * y) + x] = prevGoodValue;
 
-                    // Mark as a dropout
-                    dropOuts.append(x, x, y + 1);
+                    // Mark as a dropout (unless the error is in the sync region)
+                    if (x > videoParameters.colourBurstStart) dropOuts.append(x, x, y + 1);
                 } else if (inputValues.size() == 1) {
                     // 1 value available - just copy it to the output
                     outputField[(videoParameters.fieldWidth * y) + x] = inputValues[0];
+                    prevGoodValue = outputField[(videoParameters.fieldWidth * y) + x];
                 } else {
                     // 2 values available - average and copy to output
-                    outputField[(videoParameters.fieldWidth * y) + x] = (inputValues[0] + inputValues[1]) / 2;
+                    // Use floating point for accuracy
+                    double avg = (static_cast<double>(inputValues[0]) + static_cast<double>(inputValues[1])) / 2.0;
+                    outputField[(videoParameters.fieldWidth * y) + x] = static_cast<quint16>(avg);
+                    prevGoodValue = outputField[(videoParameters.fieldWidth * y) + x];
                 }
             }
         }
@@ -123,7 +145,7 @@ void Stacker::stackField(QVector<SourceVideo::Data> inputFields,
     if (dropOuts.size() != 0) dropOuts.concatenate();
 }
 
-// Method to find the median of a vector of qint16s
+// Method to find the median of a vector of quint16s
 quint16 Stacker::median(QVector<quint16> v)
 {
     size_t n = v.size() / 2;
@@ -135,7 +157,13 @@ quint16 Stacker::median(QVector<quint16> v)
 
     // If set of input number is even, average the
     // two centre values and return
-    return (v[(v.size() - 1) / 2] + v[n]) / 2;
+    quint16 val1 = v[(v.size() - 1) / 2];
+    quint16 val2 = v[n];
+
+    double avg = (static_cast<double>(val1) + static_cast<double>(val2)) / 2.0;
+
+    return static_cast<quint16>(avg);
+    //return (v[(v.size() - 1) / 2] + v[n]) / 2;
 }
 
 // Method returns true if specified pixel is a dropout
@@ -150,5 +178,3 @@ bool Stacker::isDropout(DropOuts dropOuts, qint32 fieldX, qint32 fieldY)
 
     return false;
 }
-
-
