@@ -85,6 +85,13 @@ int main(int argc, char *argv[])
                                         QCoreApplication::translate("main", "number"));
     parser.addOption(threadsOption);
 
+    // Option to disable differential dropout detection
+    QCommandLineOption noDiffDodOption(QStringList() << "e" << "no-diffdod",
+                                        QCoreApplication::translate(
+                                         "main", "Do not use differential dropout detection on low source pixels"),
+                                        QCoreApplication::translate("main", "number"));
+    parser.addOption(noDiffDodOption);
+
     // Positional argument to specify input video file
     parser.addPositionalArgument("inputs", QCoreApplication::translate(
                                      "main", "Specify input TBC files (- as first source for piped input)"));
@@ -101,6 +108,7 @@ int main(int argc, char *argv[])
 
     // Get the options from the parser
     bool reverse = parser.isSet(setReverseOption);
+    bool noDiffDod = parser.isSet(noDiffDodOption);
 
     // Get the arguments from the parser
     qint32 maxThreads = QThread::idealThreadCount();
@@ -232,6 +240,11 @@ int main(int argc, char *argv[])
             ldDecodeMetaData[i]->setIsFirstFieldFirst(false);
     }
 
+    // Show if DiffDOD is disabled
+    if (noDiffDod) {
+        qInfo() << "Differential Dropout Detection is disabled";
+    }
+
     // Show and open input source TBC files
     qDebug() << "Opening source video files...";
     QVector<SourceVideo *> sourceVideos;
@@ -287,7 +300,7 @@ int main(int argc, char *argv[])
     qInfo() << "Initial source checks are ok and sources are loaded";
     qint32 result = 0;
     StackingPool stackingPool(outputFilename, outputJsonFilename, maxThreads,
-                                ldDecodeMetaData, sourceVideos, reverse);
+                                ldDecodeMetaData, sourceVideos, reverse, noDiffDod);
     if (!stackingPool.process()) result = 1;
 
     // Close open source video files
