@@ -72,12 +72,17 @@ public:
     void debugFrameDetails(qint32 frameNumber);
     void addPadding(qint32 startFrame, qint32 numberOfFrames);
     qint32 getVideoFieldLength();
-    qint32 getAudioFieldLength();
+    qint32 getApproximateAudioFieldLength();
 
     qint32 getFirstFieldNumber(qint32 frameNumber) const;
     qint32 getSecondFieldNumber(qint32 frameNumber) const;
     qint32 getFirstFieldPhase(qint32 frameNumber) const;
     qint32 getSecondFieldPhase(qint32 frameNumber) const;
+
+    qint32 getFirstFieldAudioDataStart(qint32 frameNumber) const;
+    qint32 getFirstFieldAudioDataLength(qint32 frameNumber) const;
+    qint32 getSecondFieldAudioDataStart(qint32 frameNumber) const;
+    qint32 getSecondFieldAudioDataLength(qint32 frameNumber) const;
 
     bool saveTargetMetadata(QFileInfo outputFileInfo);
 

@@ -1,13 +1,13 @@
 /************************************************************************
 
-    sourceaudio.cpp
+    sourceaudio.h
 
-    ld-discmap - TBC and VBI alignment and correction
-    Copyright (C) 2019-2020 Simon Inns
+    ld-decode-tools TBC library
+    Copyright (C) 2018-2020 Simon Inns
 
     This file is part of ld-decode-tools.
 
-    ld-discmap is free software: you can redistribute it and/or
+    ld-decode-tools is free software: you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
     published by the Free Software Foundation, either version 3 of the
     License, or (at your option) any later version.
@@ -25,7 +25,7 @@
 #ifndef SOURCEAUDIO_H
 #define SOURCEAUDIO_H
 
-#include <QCoreApplication>
+#include <QVector>
 #include <QDebug>
 #include <QFileInfo>
 #include <QFile>
@@ -36,19 +36,26 @@
 class SourceAudio
 {
 public:
-    SourceAudio();
+    // A QVector of timebase-corrected audio samples.
+    using Data = QVector<qint16>;
 
+    SourceAudio();
+    ~SourceAudio();
+
+    // Prevent copying or assignment
+    SourceAudio(const SourceAudio &) = delete;
+    SourceAudio& operator=(const SourceAudio &) = delete;
+
+    // File handling methods
     bool open(QFileInfo inputFileInfo);
     void close();
-    QByteArray getAudioForField(qint32 fieldNo);
+
+    // Data handling methods
+    Data getAudioData(qint32 startSample, qint32 numberOfSamples);
 
 private:
-    LdDecodeMetaData *ldDecodeMetaData;
     QFile inputAudioFile;
-
-    QVector<qint64> startBytePosition;
-    QVector<qint64> fieldByteLength;
-    qint64 totalByteSize;
+    qint64 audioFileByteLength;
 };
 
 #endif // SOURCEAUDIO_H
