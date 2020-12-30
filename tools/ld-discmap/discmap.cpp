@@ -653,9 +653,9 @@ qint32 DiscMap::getVideoFieldLength()
 // Method to get the current audio field length (in bytes) from the metadata
 // Note: This acutally varies from field to field, so this provides
 // a best guess
-qint32 DiscMap::getAudioFieldLength()
+qint32 DiscMap::getApproximateAudioFieldLength()
 {
-    return m_audioFieldByteLength;
+    return m_audioFieldByteLength / 2; // return in qint16 samples
 }
 
 // Get first field number
@@ -696,6 +696,46 @@ qint32 DiscMap::getSecondFieldPhase(qint32 frameNumber) const
         return false;
     }
     return m_frames[frameNumber].secondFieldPhase();
+}
+
+// Get first field audio sample start position
+qint32 DiscMap::getFirstFieldAudioDataStart(qint32 frameNumber) const
+{
+    if (frameNumber < 0 || frameNumber >= m_numberOfFrames) {
+        qDebug() << "getFirstFieldAudioDataStart out of frameNumber range";
+        return false;
+    }
+    return ldDecodeMetaData->getFieldPcmAudioStart(m_frames[frameNumber].firstField());
+}
+
+// Get first field audio sample length
+qint32 DiscMap::getFirstFieldAudioDataLength(qint32 frameNumber) const
+{
+    if (frameNumber < 0 || frameNumber >= m_numberOfFrames) {
+        qDebug() << "getFirstFieldAudioDataLength out of frameNumber range";
+        return false;
+    }
+    return ldDecodeMetaData->getFieldPcmAudioLength(m_frames[frameNumber].firstField());
+}
+
+// Get second field audio sample start position
+qint32 DiscMap::getSecondFieldAudioDataStart(qint32 frameNumber) const
+{
+    if (frameNumber < 0 || frameNumber >= m_numberOfFrames) {
+        qDebug() << "getSecondFieldAudioDataStart out of frameNumber range";
+        return false;
+    }
+    return ldDecodeMetaData->getFieldPcmAudioStart(m_frames[frameNumber].secondField());
+}
+
+// Get second field audio sample length
+qint32 DiscMap::getSecondFieldAudioDataLength(qint32 frameNumber) const
+{
+    if (frameNumber < 0 || frameNumber >= m_numberOfFrames) {
+        qDebug() << "getSecondFieldAudioDataLength out of frameNumber range";
+        return false;
+    }
+    return ldDecodeMetaData->getFieldPcmAudioLength(m_frames[frameNumber].firstField());
 }
 
 // Save the target metadata from the disc map

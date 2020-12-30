@@ -186,11 +186,18 @@ public:
     qint32 convertClvTimecodeToFrameNumber(LdDecodeMetaData::ClvTimecode clvTimeCode);
     LdDecodeMetaData::ClvTimecode convertFrameNumberToClvTimecode(qint32 clvFrameNumber);
 
+    // PCM Analogue audio helper methods
+    qint32 getFieldPcmAudioStart(qint32 sequentialFieldNumber);
+    qint32 getFieldPcmAudioLength(qint32 sequentialFieldNumber);
+
 private:
     JsonWax json;
     bool isFirstFieldFirst;
+    QVector<qint32> pcmAudioFieldStartSampleMap;
+    QVector<qint32> pcmAudioFieldLengthMap;
 
     qint32 getFieldNumber(qint32 frameNumber, qint32 field);
+    void generatePcmAudioMap();
 };
 
 #endif // LDDECODEMETADATA_H
