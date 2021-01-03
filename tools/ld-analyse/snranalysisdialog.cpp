@@ -121,17 +121,3 @@ void SnrAnalysisDialog::finishUpdate(qint32 numberOfFrames, qint32 fieldsPerData
     plot->show();
 }
 
-void SnrAnalysisDialog::on_blackPSNR_checkBox_clicked()
-{
-    if (ui->blackPSNR_checkBox->isChecked()) blackCurve->attach(plot);
-    else blackCurve->detach();
-    plot->replot();
-}
-
-void SnrAnalysisDialog::on_whiteSNR_checkBox_clicked()
-{
-    if (ui->whiteSNR_checkBox->isChecked()) whiteCurve->attach(plot);
-    else whiteCurve->detach();
-    plot->replot();
-}
-

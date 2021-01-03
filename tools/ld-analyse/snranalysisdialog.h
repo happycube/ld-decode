@@ -52,10 +52,6 @@ public:
     void addDataPoint(qint32 frameNumber, qreal blackSnr, qreal whiteSnr);
     void finishUpdate(qint32 numberOfFrames, qint32 fieldsPerDataPoint);
 
-private slots:
-    void on_blackPSNR_checkBox_clicked();
-    void on_whiteSNR_checkBox_clicked();
-
 private:
     void removeChartContents();
 
