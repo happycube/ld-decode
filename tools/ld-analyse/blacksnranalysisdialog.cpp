@@ -23,7 +23,7 @@
 ************************************************************************/
 
 #include "blacksnranalysisdialog.h"
-#include "ui_snranalysisdialog.h"
+#include "ui_blacksnranalysisdialog.h"
 
 BlackSnrAnalysisDialog::BlackSnrAnalysisDialog(QWidget *parent) :
     QDialog(parent),
