@@ -1,21 +1,21 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
- <class>SnrAnalysisDialog</class>
- <widget class="QDialog" name="SnrAnalysisDialog">
+ <class>WhiteSnrAnalysisDialog</class>
+ <widget class="QDialog" name="WhiteSnrAnalysisDialog">
   <property name="geometry">
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1124</width>
-    <height>496</height>
+    <width>913</width>
+    <height>343</height>
    </rect>
   </property>
   <property name="windowTitle">
-   <string>SNR Analysis</string>
+   <string>White SNR Analysis</string>
   </property>
-  <layout class="QVBoxLayout" name="verticalLayout_2">
+  <layout class="QHBoxLayout" name="horizontalLayout">
    <item>
-    <layout class="QHBoxLayout" name="horizontalLayout">
+    <layout class="QHBoxLayout" name="horizontalLayout_2">
      <item>
       <layout class="QVBoxLayout" name="verticalLayout"/>
      </item>

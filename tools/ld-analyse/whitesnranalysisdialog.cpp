@@ -1,6 +1,6 @@
 /************************************************************************
 
-    dropoutanalysisdialog.cpp
+    whitesnranalysisdialog.cpp
 
     ld-analyse - TBC output analysis
     Copyright (C) 2018-2021 Simon Inns
@@ -22,60 +22,62 @@
 
 ************************************************************************/
 
-#include "dropoutanalysisdialog.h"
-#include "ui_dropoutanalysisdialog.h"
+#include "whitesnranalysisdialog.h"
+#include "ui_whitesnranalysisdialog.h"
 
-DropoutAnalysisDialog::DropoutAnalysisDialog(QWidget *parent) :
+WhiteSnrAnalysisDialog::WhiteSnrAnalysisDialog(QWidget *parent) :
     QDialog(parent),
-    ui(new Ui::DropoutAnalysisDialog)
+    ui(new Ui::WhiteSnrAnalysisDialog)
 {
     ui->setupUi(this);
     setWindowFlags(Qt::Window);
-    maxY = 0;
 
     // Set up the chart view
     plot = new QwtPlot();
     grid = new QwtPlotGrid();
-    curve = new QwtPlotCurve();
-    points = new QPolygonF();
+    whiteCurve = new QwtPlotCurve();
+    whitePoints = new QPolygonF();
 
     ui->verticalLayout->addWidget(plot);
+
+    // Set the maximum Y scale to 48
+    maxY = 48;
 }
 
-DropoutAnalysisDialog::~DropoutAnalysisDialog()
+WhiteSnrAnalysisDialog::~WhiteSnrAnalysisDialog()
 {
     removeChartContents();
     delete ui;
 }
 
 // Get ready for an update
-void DropoutAnalysisDialog::startUpdate()
+void WhiteSnrAnalysisDialog::startUpdate()
 {
     removeChartContents();
-    maxY = 0;
 }
 
 // Remove the axes and series from the chart, giving ownership back to this object
-void DropoutAnalysisDialog::removeChartContents()
+void WhiteSnrAnalysisDialog::removeChartContents()
 {
-    points->clear();
+    maxY = 42;
+    whitePoints->clear();
     plot->replot();
 }
 
 // Add a data point to the chart
-void DropoutAnalysisDialog::addDataPoint(qint32 frameNumber, qreal doLength)
+void WhiteSnrAnalysisDialog::addDataPoint(qint32 frameNumber, qreal whiteSnr)
 {
-    points->append(QPointF(frameNumber, doLength));
-
-    // Keep track of the maximum Y value
-    if (doLength > maxY) maxY = doLength;
+    if (!std::isnan(static_cast<float>(whiteSnr))) {
+        whitePoints->append(QPointF(frameNumber, whiteSnr));
+        if (whiteSnr > maxY) maxY = ceil(whiteSnr); // Round up
+    }
 }
 
 // Finish the update and render the graph
-void DropoutAnalysisDialog::finishUpdate(qint32 numberOfFrames)
+void WhiteSnrAnalysisDialog::finishUpdate(qint32 numberOfFrames)
 {
     // Set the chart title
-    plot->setTitle("Dropout Loss Analysis");
+    plot->setTitle("White SNR Analysis");
 
     // Set the background and grid
     plot->setCanvasBackground(Qt::white);
@@ -85,17 +87,16 @@ void DropoutAnalysisDialog::finishUpdate(qint32 numberOfFrames)
     plot->setAxisScale(QwtPlot::xBottom, 0, numberOfFrames, (numberOfFrames / 10));
     plot->setAxisTitle(QwtPlot::xBottom, "Frame number");
 
-    // Define the y-axis
-    if (maxY < 10) plot->setAxisScale(QwtPlot::yLeft, 0, 10);
-    else plot->setAxisScale(QwtPlot::yLeft, 0, maxY);
-    plot->setAxisTitle(QwtPlot::yLeft, "Dropout length (in dots)");
+    // Define the y-axis (with a fixed scale)
+    plot->setAxisScale(QwtPlot::yLeft, 20, maxY, 2);
+    plot->setAxisTitle(QwtPlot::yLeft, "SNR (in dB)");
 
-    // Attach the curve data to the chart
-    curve->setTitle("Dropout length");
-    curve->setPen(Qt::blue, 1);
-    curve->setRenderHint(QwtPlotItem::RenderAntialiased, true);
-    curve->setSamples(*points);
-    curve->attach(plot);
+    // Attach the black curve data to the chart
+    whiteCurve->setTitle("Black SNR");
+    whiteCurve->setPen(Qt::black, 1);
+    whiteCurve->setRenderHint(QwtPlotItem::RenderAntialiased, true);
+    whiteCurve->setSamples(*whitePoints);
+    whiteCurve->attach(plot);
 
     // Update the axis
     plot->updateAxes();
@@ -104,5 +105,4 @@ void DropoutAnalysisDialog::finishUpdate(qint32 numberOfFrames)
     plot->maximumSize();
     plot->show();
 }
-
 

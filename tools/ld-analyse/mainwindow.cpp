@@ -3,7 +3,7 @@
     mainwindow.cpp
 
     ld-analyse - TBC output analysis
-    Copyright (C) 2018-2020 Simon Inns
+    Copyright (C) 2018-2021 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -36,7 +36,8 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     aboutDialog = new AboutDialog(this);
     vbiDialog = new VbiDialog(this);
     dropoutAnalysisDialog = new DropoutAnalysisDialog(this);
-    snrAnalysisDialog = new SnrAnalysisDialog(this);
+    blackSnrAnalysisDialog = new BlackSnrAnalysisDialog(this);
+    whiteSnrAnalysisDialog = new WhiteSnrAnalysisDialog(this);
     busyDialog = new BusyDialog(this);
     closedCaptionDialog = new ClosedCaptionsDialog(this);
     chromaDecoderConfigDialog = new ChromaDecoderConfigDialog(this);
@@ -71,7 +72,8 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     vbiDialog->restoreGeometry(configuration.getVbiDialogGeometry());
     oscilloscopeDialog->restoreGeometry(configuration.getOscilloscopeDialogGeometry());
     dropoutAnalysisDialog->restoreGeometry(configuration.getDropoutAnalysisDialogGeometry());
-    snrAnalysisDialog->restoreGeometry(configuration.getSnrAnalysisDialogGeometry());
+    blackSnrAnalysisDialog->restoreGeometry(configuration.getBlackSnrAnalysisDialogGeometry());
+    whiteSnrAnalysisDialog->restoreGeometry(configuration.getWhiteSnrAnalysisDialogGeometry());
     closedCaptionDialog->restoreGeometry(configuration.getClosedCaptionDialogGeometry());
     chromaDecoderConfigDialog->restoreGeometry(configuration.getChromaDecoderConfigDialogGeometry());
 
@@ -98,7 +100,8 @@ MainWindow::~MainWindow()
     configuration.setVbiDialogGeometry(vbiDialog->saveGeometry());
     configuration.setOscilloscopeDialogGeometry(oscilloscopeDialog->saveGeometry());
     configuration.setDropoutAnalysisDialogGeometry(dropoutAnalysisDialog->saveGeometry());
-    configuration.setSnrAnalysisDialogGeometry(snrAnalysisDialog->saveGeometry());
+    configuration.setBlackSnrAnalysisDialogGeometry(blackSnrAnalysisDialog->saveGeometry());
+    configuration.setWhiteSnrAnalysisDialogGeometry(whiteSnrAnalysisDialog->saveGeometry());
     configuration.setClosedCaptionDialogGeometry(closedCaptionDialog->saveGeometry());
     configuration.setChromaDecoderConfigDialogGeometry(chromaDecoderConfigDialog->saveGeometry());
     configuration.writeConfiguration();
@@ -260,7 +263,8 @@ void MainWindow::updateGuiUnloaded()
     hideFrame();
 
     // Hide graphs
-    snrAnalysisDialog->hide();
+    blackSnrAnalysisDialog->hide();
+    whiteSnrAnalysisDialog->hide();
     dropoutAnalysisDialog->hide();
 
     // Hide configuration dialogues
@@ -452,11 +456,18 @@ void MainWindow::on_actionDropout_analysis_triggered()
     dropoutAnalysisDialog->show();
 }
 
-// Show the SNR analysis graph
+// Show the Black SNR analysis graph
 void MainWindow::on_actionSNR_analysis_triggered()
 {
-    // Show the SNR analysis dialogue
-    snrAnalysisDialog->show();
+    // Show the black SNR analysis dialogue
+    blackSnrAnalysisDialog->show();
+}
+
+// Show the White SNR analysis graph
+void MainWindow::on_actionWhite_SNR_analysis_triggered()
+{
+    // Show the white SNR analysis dialogue
+    whiteSnrAnalysisDialog->show();
 }
 
 // Save current frame as PNG
@@ -883,7 +894,8 @@ void MainWindow::on_finishedLoading()
     if (tbcSource.getIsSourceLoaded()) {
         // Generate the graph data
         dropoutAnalysisDialog->startUpdate();
-        snrAnalysisDialog->startUpdate();
+        blackSnrAnalysisDialog->startUpdate();
+        whiteSnrAnalysisDialog->startUpdate();
 
         QVector<qreal> doGraphData = tbcSource.getDropOutGraphData();
         QVector<qreal> blackSnrGraphData = tbcSource.getBlackSnrGraphData();
@@ -891,11 +903,13 @@ void MainWindow::on_finishedLoading()
 
         for (qint32 frameNumber = 0; frameNumber < tbcSource.getNumberOfFrames(); frameNumber++) {
             dropoutAnalysisDialog->addDataPoint(frameNumber, doGraphData[frameNumber]);
-            snrAnalysisDialog->addDataPoint(frameNumber, blackSnrGraphData[frameNumber], whiteSnrGraphData[frameNumber]);
+            blackSnrAnalysisDialog->addDataPoint(frameNumber, blackSnrGraphData[frameNumber]);
+            whiteSnrAnalysisDialog->addDataPoint(frameNumber, whiteSnrGraphData[frameNumber]);
         }
 
         dropoutAnalysisDialog->finishUpdate(tbcSource.getNumberOfFrames());
-        snrAnalysisDialog->finishUpdate(tbcSource.getNumberOfFrames());
+        blackSnrAnalysisDialog->finishUpdate(tbcSource.getNumberOfFrames());
+        whiteSnrAnalysisDialog->finishUpdate(tbcSource.getNumberOfFrames());
 
         // Update the GUI
         updateGuiLoaded();
@@ -922,5 +936,4 @@ void MainWindow::on_finishedLoading()
     busyDialog->hide();
     this->setEnabled(true);
 }
-
 

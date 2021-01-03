@@ -1,9 +1,9 @@
 /************************************************************************
 
-    snranalysisdialog.cpp
+    blacksnranalysisdialog.cpp
 
     ld-analyse - TBC output analysis
-    Copyright (C) 2018-2019 Simon Inns
+    Copyright (C) 2018-2021 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -22,12 +22,12 @@
 
 ************************************************************************/
 
-#include "snranalysisdialog.h"
+#include "blacksnranalysisdialog.h"
 #include "ui_snranalysisdialog.h"
 
-SnrAnalysisDialog::SnrAnalysisDialog(QWidget *parent) :
+BlackSnrAnalysisDialog::BlackSnrAnalysisDialog(QWidget *parent) :
     QDialog(parent),
-    ui(new Ui::SnrAnalysisDialog)
+    ui(new Ui::BlackSnrAnalysisDialog)
 {
     ui->setupUi(this);
     setWindowFlags(Qt::Window);
@@ -36,9 +36,7 @@ SnrAnalysisDialog::SnrAnalysisDialog(QWidget *parent) :
     plot = new QwtPlot();
     grid = new QwtPlotGrid();
     blackCurve = new QwtPlotCurve();
-    whiteCurve = new QwtPlotCurve();
     blackPoints = new QPolygonF();
-    whitePoints = new QPolygonF();
 
     ui->verticalLayout->addWidget(plot);
 
@@ -46,46 +44,40 @@ SnrAnalysisDialog::SnrAnalysisDialog(QWidget *parent) :
     maxY = 48;
 }
 
-SnrAnalysisDialog::~SnrAnalysisDialog()
+BlackSnrAnalysisDialog::~BlackSnrAnalysisDialog()
 {
     removeChartContents();
     delete ui;
 }
 
 // Get ready for an update
-void SnrAnalysisDialog::startUpdate()
+void BlackSnrAnalysisDialog::startUpdate()
 {
     removeChartContents();
 }
 
 // Remove the axes and series from the chart, giving ownership back to this object
-void SnrAnalysisDialog::removeChartContents()
+void BlackSnrAnalysisDialog::removeChartContents()
 {
     maxY = 48;
     blackPoints->clear();
-    whitePoints->clear();
     plot->replot();
 }
 
 // Add a data point to the chart
-void SnrAnalysisDialog::addDataPoint(qint32 frameNumber, qreal blackSnr, qreal whiteSnr)
+void BlackSnrAnalysisDialog::addDataPoint(qint32 frameNumber, qreal blackSnr)
 {
     if (!std::isnan(static_cast<float>(blackSnr))) {
         blackPoints->append(QPointF(frameNumber, blackSnr));
         if (blackSnr > maxY) maxY = ceil(blackSnr); // Round up
     }
-
-    if (!std::isnan(static_cast<float>(whiteSnr))) {
-        whitePoints->append(QPointF(frameNumber, whiteSnr));
-        if (whiteSnr > maxY) maxY = ceil(whiteSnr); // Round up
-    }
 }
 
 // Finish the update and render the graph
-void SnrAnalysisDialog::finishUpdate(qint32 numberOfFrames)
+void BlackSnrAnalysisDialog::finishUpdate(qint32 numberOfFrames)
 {
     // Set the chart title
-    plot->setTitle("SNR analysis");
+    plot->setTitle("Black SNR Analysis");
 
     // Set the background and grid
     plot->setCanvasBackground(Qt::white);
@@ -105,13 +97,6 @@ void SnrAnalysisDialog::finishUpdate(qint32 numberOfFrames)
     blackCurve->setRenderHint(QwtPlotItem::RenderAntialiased, true);
     blackCurve->setSamples(*blackPoints);
     blackCurve->attach(plot);
-
-    // Attach the white curve data to the chart
-    whiteCurve->setTitle("White SNR");
-    whiteCurve->setPen(Qt::gray, 1);
-    whiteCurve->setRenderHint(QwtPlotItem::RenderAntialiased, true);
-    whiteCurve->setSamples(*whitePoints);
-    whiteCurve->attach(plot);
 
     // Update the axis
     plot->updateAxes();

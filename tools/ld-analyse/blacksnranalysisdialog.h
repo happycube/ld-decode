@@ -1,9 +1,9 @@
 /************************************************************************
 
-    snranalysisdialog.h
+    blacksnranalysisdialog.h
 
     ld-analyse - TBC output analysis
-    Copyright (C) 2018-2019 Simon Inns
+    Copyright (C) 2018-2021 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -22,8 +22,8 @@
 
 ************************************************************************/
 
-#ifndef SNRANALYSISDIALOG_H
-#define SNRANALYSISDIALOG_H
+#ifndef BLACKSNRANALYSISDIALOG_H
+#define BLACKSNRANALYSISDIALOG_H
 
 #include <cmath>
 
@@ -37,33 +37,31 @@
 #include "lddecodemetadata.h"
 
 namespace Ui {
-class SnrAnalysisDialog;
+class BlackSnrAnalysisDialog;
 }
 
-class SnrAnalysisDialog : public QDialog
+class BlackSnrAnalysisDialog : public QDialog
 {
     Q_OBJECT
 
 public:
-    explicit SnrAnalysisDialog(QWidget *parent = nullptr);
-    ~SnrAnalysisDialog();
+    explicit BlackSnrAnalysisDialog(QWidget *parent = nullptr);
+    ~BlackSnrAnalysisDialog();
 
     void startUpdate();
-    void addDataPoint(qint32 frameNumber, qreal blackSnr, qreal whiteSnr);
+    void addDataPoint(qint32 frameNumber, qreal blackSnr);
     void finishUpdate(qint32 numberOfFrames);
 
 private:
     void removeChartContents();
 
-    Ui::SnrAnalysisDialog *ui;
+    Ui::BlackSnrAnalysisDialog *ui;
     QwtPlot *plot;
     QwtLegend *legend;
     QwtPlotGrid *grid;
     QPolygonF *blackPoints;
-    QPolygonF *whitePoints;
     QwtPlotCurve *blackCurve;
-    QwtPlotCurve *whiteCurve;
     double maxY;
 };
 
-#endif // SNRANALYSISDIALOG_H
+#endif // BLACKSNRANALYSISDIALOG_H

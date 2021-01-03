@@ -1,6 +1,6 @@
 /************************************************************************
 
-    dropoutanalysisdialog.h
+    whitesnranalysisdialog.h
 
     ld-analyse - TBC output analysis
     Copyright (C) 2018-2021 Simon Inns
@@ -22,8 +22,10 @@
 
 ************************************************************************/
 
-#ifndef DROPOUTANALYSISDIALOG_H
-#define DROPOUTANALYSISDIALOG_H
+#ifndef WHITESNRANALYSISDIALOG_H
+#define WHITESNRANALYSISDIALOG_H
+
+#include <cmath>
 
 #include <QDialog>
 #include <qwt_plot.h>
@@ -35,32 +37,31 @@
 #include "lddecodemetadata.h"
 
 namespace Ui {
-class DropoutAnalysisDialog;
+class WhiteSnrAnalysisDialog;
 }
 
-class DropoutAnalysisDialog : public QDialog
+class WhiteSnrAnalysisDialog : public QDialog
 {
     Q_OBJECT
 
 public:
-    explicit DropoutAnalysisDialog(QWidget *parent = nullptr);
-    ~DropoutAnalysisDialog();
+    explicit WhiteSnrAnalysisDialog(QWidget *parent = nullptr);
+    ~WhiteSnrAnalysisDialog();
 
     void startUpdate();
-    void addDataPoint(qint32 frameNumber, qreal doLength);
+    void addDataPoint(qint32 frameNumber, qreal whiteSnr);
     void finishUpdate(qint32 numberOfFrames);
 
 private:
     void removeChartContents();
 
-    Ui::DropoutAnalysisDialog *ui;
+    Ui::WhiteSnrAnalysisDialog *ui;
     QwtPlot *plot;
     QwtLegend *legend;
     QwtPlotGrid *grid;
-    QPolygonF *points;
-    QwtPlotCurve *curve;
-
-    qreal maxY;
+    QPolygonF *whitePoints;
+    QwtPlotCurve *whiteCurve;
+    double maxY;
 };
 
-#endif // DROPOUTANALYSISDIALOG_H
+#endif // WHITESNRANALYSISDIALOG_H
