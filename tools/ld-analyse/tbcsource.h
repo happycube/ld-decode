@@ -86,7 +86,6 @@ public:
     QVector<qreal> getWhiteSnrGraphData();
     QVector<qreal> getDropOutGraphData();
     qint32 getGraphDataSize();
-    qint32 getFramesPerGraphDataPoint();
 
     bool getIsDropoutPresent(qint32 frameNumber);
     ScanLineData getScanLineData(qint32 frameNumber, qint32 scanLine);
@@ -118,7 +117,6 @@ private:
     QVector<qreal> blackSnrGraphData;
     QVector<qreal> whiteSnrGraphData;
     QVector<qreal> dropoutGraphData;
-    qint32 framesPerGraphDataPoint;
 
     // Frame image options
     bool chromaOn;
@@ -155,7 +153,7 @@ private:
     QVector<qint32> chapterMap;
 
     QImage generateQImage(qint32 frameNumber);
-    void generateData(qint32 _targetDataPoints);
+    void generateData();
     void startBackgroundLoad(QString sourceFilename);
 };
 

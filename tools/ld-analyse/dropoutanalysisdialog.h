@@ -48,7 +48,7 @@ public:
 
     void startUpdate();
     void addDataPoint(qint32 frameNumber, qreal doLength);
-    void finishUpdate(qint32 numberOfFrames, qint32 framesPerDataPoint);
+    void finishUpdate(qint32 numberOfFrames);
 
 private:
     void removeChartContents();

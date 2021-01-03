@@ -885,19 +885,17 @@ void MainWindow::on_finishedLoading()
         dropoutAnalysisDialog->startUpdate();
         snrAnalysisDialog->startUpdate();
 
-        qint32 frameNumber = 1;
         QVector<qreal> doGraphData = tbcSource.getDropOutGraphData();
         QVector<qreal> blackSnrGraphData = tbcSource.getBlackSnrGraphData();
         QVector<qreal> whiteSnrGraphData = tbcSource.getWhiteSnrGraphData();
 
-        for (qint32 i = 0; i < tbcSource.getGraphDataSize(); i++) {
-            dropoutAnalysisDialog->addDataPoint(frameNumber, doGraphData[i]);
-            snrAnalysisDialog->addDataPoint(frameNumber, blackSnrGraphData[i], whiteSnrGraphData[i]);
-            frameNumber += tbcSource.getFramesPerGraphDataPoint();
+        for (qint32 frameNumber = 0; frameNumber < tbcSource.getNumberOfFrames(); frameNumber++) {
+            dropoutAnalysisDialog->addDataPoint(frameNumber, doGraphData[frameNumber]);
+            snrAnalysisDialog->addDataPoint(frameNumber, blackSnrGraphData[frameNumber], whiteSnrGraphData[frameNumber]);
         }
 
-        dropoutAnalysisDialog->finishUpdate(tbcSource.getNumberOfFrames(), tbcSource.getFramesPerGraphDataPoint());
-        snrAnalysisDialog->finishUpdate(tbcSource.getNumberOfFrames(), tbcSource.getFramesPerGraphDataPoint());
+        dropoutAnalysisDialog->finishUpdate(tbcSource.getNumberOfFrames());
+        snrAnalysisDialog->finishUpdate(tbcSource.getNumberOfFrames());
 
         // Update the GUI
         updateGuiLoaded();

@@ -72,17 +72,17 @@ void DropoutAnalysisDialog::addDataPoint(qint32 frameNumber, qreal doLength)
 }
 
 // Finish the update and render the graph
-void DropoutAnalysisDialog::finishUpdate(qint32 numberOfFrames, qint32 framesPerDataPoint)
+void DropoutAnalysisDialog::finishUpdate(qint32 numberOfFrames)
 {
     // Set the chart title
-    plot->setTitle("Dropout loss analysis (averaged over " + QString::number(framesPerDataPoint) + " frames)");
+    plot->setTitle("Dropout loss analysis");
 
     // Set the background and grid
     plot->setCanvasBackground(Qt::white);
     grid->attach(plot);
 
     // Define the x-axis
-    plot->setAxisScale(QwtPlot::xBottom, 0, numberOfFrames, (numberOfFrames / 10) + 1);
+    plot->setAxisScale(QwtPlot::xBottom, 0, numberOfFrames, (numberOfFrames / 10));
     plot->setAxisTitle(QwtPlot::xBottom, "Frame number");
 
     // Define the y-axis

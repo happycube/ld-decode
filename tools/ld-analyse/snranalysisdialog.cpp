@@ -82,17 +82,17 @@ void SnrAnalysisDialog::addDataPoint(qint32 frameNumber, qreal blackSnr, qreal w
 }
 
 // Finish the update and render the graph
-void SnrAnalysisDialog::finishUpdate(qint32 numberOfFrames, qint32 fieldsPerDataPoint)
+void SnrAnalysisDialog::finishUpdate(qint32 numberOfFrames)
 {
     // Set the chart title
-    plot->setTitle("SNR analysis (averaged over " + QString::number(fieldsPerDataPoint) + " frames)");
+    plot->setTitle("SNR analysis");
 
     // Set the background and grid
     plot->setCanvasBackground(Qt::white);
     grid->attach(plot);
 
     // Define the x-axis
-    plot->setAxisScale(QwtPlot::xBottom, 0, numberOfFrames, (numberOfFrames / 10) + 1);
+    plot->setAxisScale(QwtPlot::xBottom, 0, numberOfFrames, (numberOfFrames / 10));
     plot->setAxisTitle(QwtPlot::xBottom, "Frame number");
 
     // Define the y-axis (with a fixed scale)

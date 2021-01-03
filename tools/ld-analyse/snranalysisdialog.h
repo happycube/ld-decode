@@ -50,7 +50,7 @@ public:
 
     void startUpdate();
     void addDataPoint(qint32 frameNumber, qreal blackSnr, qreal whiteSnr);
-    void finishUpdate(qint32 numberOfFrames, qint32 fieldsPerDataPoint);
+    void finishUpdate(qint32 numberOfFrames);
 
 private:
     void removeChartContents();
