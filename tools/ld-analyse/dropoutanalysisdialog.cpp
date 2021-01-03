@@ -63,27 +63,27 @@ void DropoutAnalysisDialog::removeChartContents()
 }
 
 // Add a data point to the chart
-void DropoutAnalysisDialog::addDataPoint(qint32 fieldNumber, qreal doLength)
+void DropoutAnalysisDialog::addDataPoint(qint32 frameNumber, qreal doLength)
 {
-    points->append(QPointF(fieldNumber, doLength));
+    points->append(QPointF(frameNumber, doLength));
 
     // Keep track of the maximum Y value
     if (doLength > maxY) maxY = doLength;
 }
 
 // Finish the update and render the graph
-void DropoutAnalysisDialog::finishUpdate(qint32 numberOfFields, qint32 fieldsPerDataPoint)
+void DropoutAnalysisDialog::finishUpdate(qint32 numberOfFrames, qint32 framesPerDataPoint)
 {
     // Set the chart title
-    plot->setTitle("Dropout loss analysis (averaged over " + QString::number(fieldsPerDataPoint) + " fields)");
+    plot->setTitle("Dropout loss analysis (averaged over " + QString::number(framesPerDataPoint) + " frames)");
 
     // Set the background and grid
     plot->setCanvasBackground(Qt::white);
     grid->attach(plot);
 
     // Define the x-axis
-    plot->setAxisScale(QwtPlot::xBottom, 0, numberOfFields, (numberOfFields / 10) + 1);
-    plot->setAxisTitle(QwtPlot::xBottom, "Field number");
+    plot->setAxisScale(QwtPlot::xBottom, 0, numberOfFrames, (numberOfFrames / 10) + 1);
+    plot->setAxisTitle(QwtPlot::xBottom, "Frame number");
 
     // Define the y-axis
     if (maxY < 10) plot->setAxisScale(QwtPlot::yLeft, 0, 10);

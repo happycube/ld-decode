@@ -85,9 +85,8 @@ public:
     QVector<qreal> getBlackSnrGraphData();
     QVector<qreal> getWhiteSnrGraphData();
     QVector<qreal> getDropOutGraphData();
-    QVector<qreal> getCaptureQualityIndexGraphData();
     qint32 getGraphDataSize();
-    qint32 getFieldsPerGraphDataPoint();
+    qint32 getFramesPerGraphDataPoint();
 
     bool getIsDropoutPresent(qint32 frameNumber);
     ScanLineData getScanLineData(qint32 frameNumber, qint32 scanLine);
@@ -119,8 +118,7 @@ private:
     QVector<qreal> blackSnrGraphData;
     QVector<qreal> whiteSnrGraphData;
     QVector<qreal> dropoutGraphData;
-    QVector<qreal> cqiGraphData;
-    qint32 fieldsPerGraphDataPoint;
+    qint32 framesPerGraphDataPoint;
 
     // Frame image options
     bool chromaOn;

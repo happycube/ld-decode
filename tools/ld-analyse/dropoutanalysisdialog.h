@@ -47,8 +47,8 @@ public:
     ~DropoutAnalysisDialog();
 
     void startUpdate();
-    void addDataPoint(qint32 fieldNumber, qreal doLength);
-    void finishUpdate(qint32 numberOfFields, qint32 fieldsPerDataPoint);
+    void addDataPoint(qint32 frameNumber, qreal doLength);
+    void finishUpdate(qint32 numberOfFrames, qint32 framesPerDataPoint);
 
 private:
     void removeChartContents();

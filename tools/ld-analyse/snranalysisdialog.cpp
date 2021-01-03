@@ -68,32 +68,32 @@ void SnrAnalysisDialog::removeChartContents()
 }
 
 // Add a data point to the chart
-void SnrAnalysisDialog::addDataPoint(qint32 fieldNumber, qreal blackSnr, qreal whiteSnr)
+void SnrAnalysisDialog::addDataPoint(qint32 frameNumber, qreal blackSnr, qreal whiteSnr)
 {
     if (!std::isnan(static_cast<float>(blackSnr))) {
-        blackPoints->append(QPointF(fieldNumber, blackSnr));
+        blackPoints->append(QPointF(frameNumber, blackSnr));
         if (blackSnr > maxY) maxY = ceil(blackSnr); // Round up
     }
 
     if (!std::isnan(static_cast<float>(whiteSnr))) {
-        whitePoints->append(QPointF(fieldNumber, whiteSnr));
+        whitePoints->append(QPointF(frameNumber, whiteSnr));
         if (whiteSnr > maxY) maxY = ceil(whiteSnr); // Round up
     }
 }
 
 // Finish the update and render the graph
-void SnrAnalysisDialog::finishUpdate(qint32 numberOfFields, qint32 fieldsPerDataPoint)
+void SnrAnalysisDialog::finishUpdate(qint32 numberOfFrames, qint32 fieldsPerDataPoint)
 {
     // Set the chart title
-    plot->setTitle("SNR analysis (averaged over " + QString::number(fieldsPerDataPoint) + " fields)");
+    plot->setTitle("SNR analysis (averaged over " + QString::number(fieldsPerDataPoint) + " frames)");
 
     // Set the background and grid
     plot->setCanvasBackground(Qt::white);
     grid->attach(plot);
 
     // Define the x-axis
-    plot->setAxisScale(QwtPlot::xBottom, 0, numberOfFields, (numberOfFields / 10) + 1);
-    plot->setAxisTitle(QwtPlot::xBottom, "Field number");
+    plot->setAxisScale(QwtPlot::xBottom, 0, numberOfFrames, (numberOfFrames / 10) + 1);
+    plot->setAxisTitle(QwtPlot::xBottom, "Frame number");
 
     // Define the y-axis (with a fixed scale)
     plot->setAxisScale(QwtPlot::yLeft, 26, maxY, 2);

@@ -49,8 +49,8 @@ public:
     ~SnrAnalysisDialog();
 
     void startUpdate();
-    void addDataPoint(qint32 fieldNumber, qreal blackSnr, qreal whiteSnr);
-    void finishUpdate(qint32 numberOfFields, qint32 fieldsPerDataPoint);
+    void addDataPoint(qint32 frameNumber, qreal blackSnr, qreal whiteSnr);
+    void finishUpdate(qint32 numberOfFrames, qint32 fieldsPerDataPoint);
 
 private slots:
     void on_blackPSNR_checkBox_clicked();
