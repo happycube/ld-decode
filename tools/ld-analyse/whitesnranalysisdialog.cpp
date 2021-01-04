@@ -34,14 +34,23 @@ WhiteSnrAnalysisDialog::WhiteSnrAnalysisDialog(QWidget *parent) :
 
     // Set up the chart view
     plot = new QwtPlot();
+    zoomer = new QwtPlotZoomer(plot->canvas());
+    panner = new QwtPlotPanner(plot->canvas());
     grid = new QwtPlotGrid();
     whiteCurve = new QwtPlotCurve();
     whitePoints = new QPolygonF();
+    plotMarker = new QwtPlotMarker();
 
     ui->verticalLayout->addWidget(plot);
 
     // Set the maximum Y scale to 48
     maxY = 48;
+
+    // Set the default number of frames
+    numberOfFrames = 0;
+
+    // Connect to scale changed slot
+    connect(((QObject*)plot->axisWidget(QwtPlot::xBottom)) , SIGNAL(scaleDivChanged () ), this, SLOT(scaleDivChangedSlot () ));
 }
 
 WhiteSnrAnalysisDialog::~WhiteSnrAnalysisDialog()
@@ -74,8 +83,10 @@ void WhiteSnrAnalysisDialog::addDataPoint(qint32 frameNumber, qreal whiteSnr)
 }
 
 // Finish the update and render the graph
-void WhiteSnrAnalysisDialog::finishUpdate(qint32 numberOfFrames)
+void WhiteSnrAnalysisDialog::finishUpdate(qint32 _numberOfFrames, qint32 _currentFrameNumber)
 {
+    numberOfFrames = _numberOfFrames;
+
     // Set the chart title
     plot->setTitle("White SNR Analysis");
 
@@ -88,7 +99,7 @@ void WhiteSnrAnalysisDialog::finishUpdate(qint32 numberOfFrames)
     plot->setAxisTitle(QwtPlot::xBottom, "Frame number");
 
     // Define the y-axis (with a fixed scale)
-    plot->setAxisScale(QwtPlot::yLeft, 20, maxY, 2);
+    plot->setAxisScale(QwtPlot::yLeft, 14, maxY, 4);
     plot->setAxisTitle(QwtPlot::yLeft, "SNR (in dB)");
 
     // Attach the black curve data to the chart
@@ -98,11 +109,49 @@ void WhiteSnrAnalysisDialog::finishUpdate(qint32 numberOfFrames)
     whiteCurve->setSamples(*whitePoints);
     whiteCurve->attach(plot);
 
+    // Define the plot marker
+    plotMarker->setLineStyle(QwtPlotMarker::VLine);
+    plotMarker->setLinePen(Qt::blue, 2, Qt::SolidLine);
+    plotMarker->setXValue(static_cast<double>(_currentFrameNumber));
+    plotMarker->attach(plot);
+
     // Update the axis
     plot->updateAxes();
+
+    // Update the plot zoomer base
+    zoomer->setZoomBase(true);
+
+    // Set the plot zoomer mouse controls
+    zoomer->setMousePattern(QwtEventPattern::MouseSelect2, Qt::RightButton, Qt::ControlModifier);
+    zoomer->setMousePattern(QwtEventPattern::MouseSelect3, Qt::RightButton);
+
+    // Set the plot zoomer colour
+    zoomer->setRubberBandPen(QPen(Qt::red, 2, Qt::DotLine));
+    zoomer->setTrackerPen(QPen(Qt::red));
+
+    // Update the plot panner
+    panner->setAxisEnabled(QwtPlot::yRight, false);
+    panner->setMouseButton(Qt::MidButton);
 
     // Render the chart
     plot->maximumSize();
     plot->show();
+}
+
+// Method to update the frame marker
+void WhiteSnrAnalysisDialog::updateFrameMarker(qint32 _currentFrameNumber)
+{
+    plotMarker->setXValue(static_cast<double>(_currentFrameNumber));
+    plot->replot();
+}
+
+void WhiteSnrAnalysisDialog::scaleDivChangedSlot()
+{
+    // If user zooms all the way out, reapply axis scale defaults
+    if (zoomer->zoomRectIndex() == 0) {
+        plot->setAxisScale(QwtPlot::xBottom, 0, numberOfFrames, (numberOfFrames / 10));
+        plot->setAxisScale(QwtPlot::yLeft, 14, maxY, 4);
+        plot->replot();
+    }
 }
 

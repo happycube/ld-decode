@@ -77,7 +77,6 @@ void BlackSnrAnalysisDialog::removeChartContents()
 void BlackSnrAnalysisDialog::addDataPoint(qint32 frameNumber, qreal blackSnr)
 {
     if (!std::isnan(static_cast<float>(blackSnr))) {
-        qDebug() << "Frame number" << frameNumber;
         blackPoints->append(QPointF(frameNumber, blackSnr));
         if (blackSnr > maxY) maxY = ceil(blackSnr); // Round up
     }
@@ -100,7 +99,7 @@ void BlackSnrAnalysisDialog::finishUpdate(qint32 _numberOfFrames, qint32 _curren
     plot->setAxisTitle(QwtPlot::xBottom, "Frame number");
 
     // Define the y-axis (with a fixed scale)
-    plot->setAxisScale(QwtPlot::yLeft, 20, maxY, 2);
+    plot->setAxisScale(QwtPlot::yLeft, 20, maxY, 4);
     plot->setAxisTitle(QwtPlot::yLeft, "SNR (in dB)");
 
     // Attach the black curve data to the chart
@@ -137,7 +136,6 @@ void BlackSnrAnalysisDialog::finishUpdate(qint32 _numberOfFrames, qint32 _curren
     // Render the chart
     plot->maximumSize();
     plot->show();
-
 }
 
 // Method to update the frame marker
@@ -152,7 +150,7 @@ void BlackSnrAnalysisDialog::scaleDivChangedSlot()
     // If user zooms all the way out, reapply axis scale defaults
     if (zoomer->zoomRectIndex() == 0) {
         plot->setAxisScale(QwtPlot::xBottom, 0, numberOfFrames, (numberOfFrames / 10));
-        plot->setAxisScale(QwtPlot::yLeft, 20, maxY, 2);
+        plot->setAxisScale(QwtPlot::yLeft, 20, maxY, 4);
         plot->replot();
     }
 }
