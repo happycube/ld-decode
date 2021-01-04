@@ -53,9 +53,9 @@ public:
     explicit WhiteSnrAnalysisDialog(QWidget *parent = nullptr);
     ~WhiteSnrAnalysisDialog();
 
-    void startUpdate();
+    void startUpdate(qint32 _numberOfFrames);
     void addDataPoint(qint32 frameNumber, qreal whiteSnr);
-    void finishUpdate(qint32 _numberOfFrames, qint32 _currentFrameNumber);
+    void finishUpdate(qint32 _currentFrameNumber);
     void updateFrameMarker(qint32 _currentFrameNumber);
 
 private slots:
@@ -63,6 +63,7 @@ private slots:
 
 private:
     void removeChartContents();
+    void generateTrendLine();
 
     Ui::WhiteSnrAnalysisDialog *ui;
     QwtPlotZoomer *zoomer;
@@ -72,10 +73,13 @@ private:
     QwtPlotGrid *grid;
     QPolygonF *whitePoints;
     QwtPlotCurve *whiteCurve;
+    QPolygonF *trendPoints;
+    QwtPlotCurve *trendCurve;
     QwtPlotMarker *plotMarker;
 
     double maxY;
     qint32 numberOfFrames;
+    QVector<double> tlPoint;
 };
 
 #endif // WHITESNRANALYSISDIALOG_H
