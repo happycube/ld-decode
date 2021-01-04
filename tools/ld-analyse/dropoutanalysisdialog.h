@@ -31,6 +31,11 @@
 #include <qwt_legend.h>
 #include <qwt_plot_grid.h>
 #include <qwt_plot_curve.h>
+#include <qwt_plot_zoomer.h>
+#include <qwt_plot_panner.h>
+#include <qwt_scale_widget.h>
+#include <qwt_scale_draw.h>
+#include <qwt_plot_marker.h>
 
 #include "lddecodemetadata.h"
 
@@ -48,19 +53,27 @@ public:
 
     void startUpdate();
     void addDataPoint(qint32 frameNumber, qreal doLength);
-    void finishUpdate(qint32 numberOfFrames);
+    void finishUpdate(qint32 _numberOfFrames, qint32 _currentFrameNumber);
+    void updateFrameMarker(qint32 _currentFrameNumber);
+
+private slots:
+    void scaleDivChangedSlot();
 
 private:
     void removeChartContents();
 
     Ui::DropoutAnalysisDialog *ui;
+    QwtPlotZoomer *zoomer;
+    QwtPlotPanner *panner;
     QwtPlot *plot;
     QwtLegend *legend;
     QwtPlotGrid *grid;
     QPolygonF *points;
     QwtPlotCurve *curve;
+    QwtPlotMarker *plotMarker;
 
-    qreal maxY;
+    double maxY;
+    qint32 numberOfFrames;
 };
 
 #endif // DROPOUTANALYSISDIALOG_H

@@ -355,6 +355,7 @@ void MainWindow::updateFrameViewer()
     // Update the current frame markers on the graphs
     blackSnrAnalysisDialog->updateFrameMarker(currentFrameNumber);
     whiteSnrAnalysisDialog->updateFrameMarker(currentFrameNumber);
+    dropoutAnalysisDialog->updateFrameMarker(currentFrameNumber);
 
     // QT Bug workaround for some macOS versions
     #if defined(Q_OS_MACOS)
@@ -911,7 +912,7 @@ void MainWindow::on_finishedLoading()
             whiteSnrAnalysisDialog->addDataPoint(frameNumber + 1, whiteSnrGraphData[frameNumber]);
         }
 
-        dropoutAnalysisDialog->finishUpdate(tbcSource.getNumberOfFrames());
+        dropoutAnalysisDialog->finishUpdate(tbcSource.getNumberOfFrames(), currentFrameNumber);
         blackSnrAnalysisDialog->finishUpdate(tbcSource.getNumberOfFrames(), currentFrameNumber);
         whiteSnrAnalysisDialog->finishUpdate(tbcSource.getNumberOfFrames(), currentFrameNumber);
 

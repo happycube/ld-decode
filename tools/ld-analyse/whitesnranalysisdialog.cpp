@@ -102,9 +102,9 @@ void WhiteSnrAnalysisDialog::finishUpdate(qint32 _numberOfFrames, qint32 _curren
     plot->setAxisScale(QwtPlot::yLeft, 14, maxY, 4);
     plot->setAxisTitle(QwtPlot::yLeft, "SNR (in dB)");
 
-    // Attach the black curve data to the chart
-    whiteCurve->setTitle("Black SNR");
-    whiteCurve->setPen(Qt::black, 1);
+    // Attach the white curve data to the chart
+    whiteCurve->setTitle("White SNR");
+    whiteCurve->setPen(Qt::darkGray, 1);
     whiteCurve->setRenderHint(QwtPlotItem::RenderAntialiased, true);
     whiteCurve->setSamples(*whitePoints);
     whiteCurve->attach(plot);
