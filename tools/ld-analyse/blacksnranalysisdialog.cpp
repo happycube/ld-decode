@@ -39,6 +39,7 @@ BlackSnrAnalysisDialog::BlackSnrAnalysisDialog(QWidget *parent) :
     grid = new QwtPlotGrid();
     blackCurve = new QwtPlotCurve();
     blackPoints = new QPolygonF();
+    plotMarker = new QwtPlotMarker();
 
     ui->verticalLayout->addWidget(plot);
 
@@ -48,6 +49,7 @@ BlackSnrAnalysisDialog::BlackSnrAnalysisDialog(QWidget *parent) :
     // Set the default number of frames
     numberOfFrames = 0;
 
+    // Connect to scale changed slot
     connect(((QObject*)plot->axisWidget(QwtPlot::xBottom)) , SIGNAL(scaleDivChanged () ), this, SLOT(scaleDivChangedSlot () ));
 }
 
@@ -82,7 +84,7 @@ void BlackSnrAnalysisDialog::addDataPoint(qint32 frameNumber, qreal blackSnr)
 }
 
 // Finish the update and render the graph
-void BlackSnrAnalysisDialog::finishUpdate(qint32 _numberOfFrames)
+void BlackSnrAnalysisDialog::finishUpdate(qint32 _numberOfFrames, qint32 _currentFrameNumber)
 {
     numberOfFrames = _numberOfFrames;
 
@@ -108,6 +110,12 @@ void BlackSnrAnalysisDialog::finishUpdate(qint32 _numberOfFrames)
     blackCurve->setSamples(*blackPoints);
     blackCurve->attach(plot);
 
+    // Define the plot marker
+    plotMarker->setLineStyle(QwtPlotMarker::VLine);
+    plotMarker->setLinePen(Qt::blue, 2, Qt::SolidLine);
+    plotMarker->setXValue(static_cast<double>(_currentFrameNumber));
+    plotMarker->attach(plot);
+
     // Update the axis
     plot->updateAxes();
 
@@ -130,6 +138,13 @@ void BlackSnrAnalysisDialog::finishUpdate(qint32 _numberOfFrames)
     plot->maximumSize();
     plot->show();
 
+}
+
+// Method to update the frame marker
+void BlackSnrAnalysisDialog::updateFrameMarker(qint32 _currentFrameNumber)
+{
+    plotMarker->setXValue(static_cast<double>(_currentFrameNumber));
+    plot->replot();
 }
 
 void BlackSnrAnalysisDialog::scaleDivChangedSlot()

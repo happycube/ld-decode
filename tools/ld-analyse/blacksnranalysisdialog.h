@@ -37,6 +37,7 @@
 #include <qwt_plot_panner.h>
 #include <qwt_scale_widget.h>
 #include <qwt_scale_draw.h>
+#include <qwt_plot_marker.h>
 
 #include "lddecodemetadata.h"
 
@@ -54,7 +55,8 @@ public:
 
     void startUpdate();
     void addDataPoint(qint32 frameNumber, qreal blackSnr);
-    void finishUpdate(qint32 _numberOfFrames);
+    void finishUpdate(qint32 _numberOfFrames, qint32 _currentFrameNumber);
+    void updateFrameMarker(qint32 _currentFrameNumber);
 
 private slots:
     void scaleDivChangedSlot();
@@ -70,6 +72,8 @@ private:
     QwtPlotGrid *grid;
     QPolygonF *blackPoints;
     QwtPlotCurve *blackCurve;
+    QwtPlotMarker *plotMarker;
+
     double maxY;
     qint32 numberOfFrames;
 };

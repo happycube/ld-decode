@@ -352,6 +352,9 @@ void MainWindow::updateFrameViewer()
                                                                            (scaleFactor * ui->frameViewerLabel->pixmap()->size().height()),
                                                                            Qt::IgnoreAspectRatio, Qt::SmoothTransformation));
 
+    // Update the current frame markers on the graphs
+    blackSnrAnalysisDialog->updateFrameMarker(currentFrameNumber);
+
     // QT Bug workaround for some macOS versions
     #if defined(Q_OS_MACOS)
     	repaint();
@@ -908,7 +911,7 @@ void MainWindow::on_finishedLoading()
         }
 
         dropoutAnalysisDialog->finishUpdate(tbcSource.getNumberOfFrames());
-        blackSnrAnalysisDialog->finishUpdate(tbcSource.getNumberOfFrames());
+        blackSnrAnalysisDialog->finishUpdate(tbcSource.getNumberOfFrames(), currentFrameNumber);
         whiteSnrAnalysisDialog->finishUpdate(tbcSource.getNumberOfFrames());
 
         // Update the GUI
