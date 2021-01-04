@@ -3,7 +3,7 @@
     configuration.cpp
 
     ld-analyse - TBC output analysis
-    Copyright (C) 2018-2020 Simon Inns
+    Copyright (C) 2018-2021 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -25,7 +25,7 @@
 #include "configuration.h"
 
 // This define should be incremented if the settings file format changes
-static const qint32 SETTINGSVERSION = 3;
+static const qint32 SETTINGSVERSION = 4;
 
 Configuration::Configuration(QObject *parent) : QObject(parent)
 {
@@ -73,7 +73,8 @@ void Configuration::writeConfiguration(void)
     configuration->setValue("vbiDialogGeometry", settings.windows.vbiDialogGeometry);
     configuration->setValue("oscilloscopeDialogGeometry", settings.windows.oscilloscopeDialogGeometry);
     configuration->setValue("dropoutAnalysisDialogGeometry", settings.windows.dropoutAnalysisDialogGeometry);
-    configuration->setValue("snrAnalysisDialogGeometry", settings.windows.snrAnalysisDialogGeometry);
+    configuration->setValue("blackSnrAnalysisDialogGeometry", settings.windows.blackSnrAnalysisDialogGeometry);
+    configuration->setValue("whiteSnrAnalysisDialogGeometry", settings.windows.whiteSnrAnalysisDialogGeometry);
     configuration->setValue("closedCaptionDialogGeometry", settings.windows.closedCaptionDialogGeometry);
     configuration->setValue("chromaDecoderConfigDialogGeometry", settings.windows.chromaDecoderConfigDialogGeometry);
     configuration->endGroup();
@@ -103,7 +104,8 @@ void Configuration::readConfiguration(void)
     settings.windows.vbiDialogGeometry = configuration->value("vbiDialogGeometry").toByteArray();
     settings.windows.oscilloscopeDialogGeometry = configuration->value("oscilloscopeDialogGeometry").toByteArray();
     settings.windows.dropoutAnalysisDialogGeometry = configuration->value("dropoutAnalysisDialogGeometry").toByteArray();
-    settings.windows.snrAnalysisDialogGeometry = configuration->value("snrAnalysisDialogGeometry").toByteArray();
+    settings.windows.blackSnrAnalysisDialogGeometry = configuration->value("blackSnrAnalysisDialogGeometry").toByteArray();
+    settings.windows.whiteSnrAnalysisDialogGeometry = configuration->value("whiteSnrAnalysisDialogGeometry").toByteArray();
     settings.windows.closedCaptionDialogGeometry = configuration->value("closedCaptionDialogGeometry").toByteArray();
     settings.windows.chromaDecoderConfigDialogGeometry = configuration->value("chromaDecoderConfigDialogGeometry").toByteArray();
     configuration->endGroup();
@@ -124,7 +126,8 @@ void Configuration::setDefault(void)
     settings.windows.vbiDialogGeometry = QByteArray();
     settings.windows.oscilloscopeDialogGeometry = QByteArray();
     settings.windows.dropoutAnalysisDialogGeometry = QByteArray();
-    settings.windows.snrAnalysisDialogGeometry = QByteArray();
+    settings.windows.blackSnrAnalysisDialogGeometry = QByteArray();
+    settings.windows.whiteSnrAnalysisDialogGeometry = QByteArray();
     settings.windows.closedCaptionDialogGeometry = QByteArray();
     settings.windows.chromaDecoderConfigDialogGeometry = QByteArray();
 
@@ -206,14 +209,24 @@ QByteArray Configuration::getDropoutAnalysisDialogGeometry(void)
     return settings.windows.dropoutAnalysisDialogGeometry;
 }
 
-void Configuration::setSnrAnalysisDialogGeometry(QByteArray snrAnalysisDialogGeometry)
+void Configuration::setBlackSnrAnalysisDialogGeometry(QByteArray blackSnrAnalysisDialogGeometry)
 {
-    settings.windows.snrAnalysisDialogGeometry = snrAnalysisDialogGeometry;
+    settings.windows.blackSnrAnalysisDialogGeometry = blackSnrAnalysisDialogGeometry;
 }
 
-QByteArray Configuration::getSnrAnalysisDialogGeometry(void)
+QByteArray Configuration::getBlackSnrAnalysisDialogGeometry(void)
 {
-    return settings.windows.snrAnalysisDialogGeometry;
+    return settings.windows.blackSnrAnalysisDialogGeometry;
+}
+
+void Configuration::setWhiteSnrAnalysisDialogGeometry(QByteArray whiteSnrAnalysisDialogGeometry)
+{
+    settings.windows.whiteSnrAnalysisDialogGeometry = whiteSnrAnalysisDialogGeometry;
+}
+
+QByteArray Configuration::getWhiteSnrAnalysisDialogGeometry(void)
+{
+    return settings.windows.whiteSnrAnalysisDialogGeometry;
 }
 
 void Configuration::setClosedCaptionDialogGeometry(QByteArray closedCaptionDialogGeometry)

@@ -3,7 +3,7 @@
     mainwindow.h
 
     ld-analyse - TBC output analysis
-    Copyright (C) 2018-2020 Simon Inns
+    Copyright (C) 2018-2021 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -38,7 +38,8 @@
 #include "aboutdialog.h"
 #include "vbidialog.h"
 #include "dropoutanalysisdialog.h"
-#include "snranalysisdialog.h"
+#include "blacksnranalysisdialog.h"
+#include "whitesnranalysisdialog.h"
 #include "busydialog.h"
 #include "closedcaptionsdialog.h"
 #include "chromadecoderconfigdialog.h"
@@ -102,6 +103,8 @@ private slots:
     void on_busyLoading(QString infoMessage);
     void on_finishedLoading();    
 
+    void on_actionWhite_SNR_analysis_triggered();
+
 private:
     Ui::MainWindow *ui;
 
@@ -110,7 +113,8 @@ private:
     AboutDialog* aboutDialog;
     VbiDialog* vbiDialog;
     DropoutAnalysisDialog* dropoutAnalysisDialog;
-    SnrAnalysisDialog* snrAnalysisDialog;
+    BlackSnrAnalysisDialog* blackSnrAnalysisDialog;
+    WhiteSnrAnalysisDialog* whiteSnrAnalysisDialog;
     BusyDialog* busyDialog;
     ClosedCaptionsDialog *closedCaptionDialog;
     ChromaDecoderConfigDialog *chromaDecoderConfigDialog;

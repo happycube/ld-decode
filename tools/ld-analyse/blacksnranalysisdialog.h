@@ -1,6 +1,6 @@
 /************************************************************************
 
-    dropoutanalysisdialog.h
+    blacksnranalysisdialog.h
 
     ld-analyse - TBC output analysis
     Copyright (C) 2018-2021 Simon Inns
@@ -22,8 +22,10 @@
 
 ************************************************************************/
 
-#ifndef DROPOUTANALYSISDIALOG_H
-#define DROPOUTANALYSISDIALOG_H
+#ifndef BLACKSNRANALYSISDIALOG_H
+#define BLACKSNRANALYSISDIALOG_H
+
+#include <cmath>
 
 #include <QDialog>
 #include <qwt_plot.h>
@@ -40,19 +42,19 @@
 #include "lddecodemetadata.h"
 
 namespace Ui {
-class DropoutAnalysisDialog;
+class BlackSnrAnalysisDialog;
 }
 
-class DropoutAnalysisDialog : public QDialog
+class BlackSnrAnalysisDialog : public QDialog
 {
     Q_OBJECT
 
 public:
-    explicit DropoutAnalysisDialog(QWidget *parent = nullptr);
-    ~DropoutAnalysisDialog();
+    explicit BlackSnrAnalysisDialog(QWidget *parent = nullptr);
+    ~BlackSnrAnalysisDialog();
 
     void startUpdate();
-    void addDataPoint(qint32 frameNumber, qreal doLength);
+    void addDataPoint(qint32 frameNumber, qreal blackSnr);
     void finishUpdate(qint32 _numberOfFrames, qint32 _currentFrameNumber);
     void updateFrameMarker(qint32 _currentFrameNumber);
 
@@ -62,18 +64,18 @@ private slots:
 private:
     void removeChartContents();
 
-    Ui::DropoutAnalysisDialog *ui;
+    Ui::BlackSnrAnalysisDialog *ui;
     QwtPlotZoomer *zoomer;
     QwtPlotPanner *panner;
     QwtPlot *plot;
     QwtLegend *legend;
     QwtPlotGrid *grid;
-    QPolygonF *points;
-    QwtPlotCurve *curve;
+    QPolygonF *blackPoints;
+    QwtPlotCurve *blackCurve;
     QwtPlotMarker *plotMarker;
 
     double maxY;
     qint32 numberOfFrames;
 };
 
-#endif // DROPOUTANALYSISDIALOG_H
+#endif // BLACKSNRANALYSISDIALOG_H
