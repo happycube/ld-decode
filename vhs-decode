@@ -14,6 +14,7 @@ import shutil
 
 
 from lddecode.utils import *
+from lddecode.utils_logging import init_logging
 import lddecode.core
 from lddecode.core import *
 from vhsdecode.process import VHSDecode
@@ -168,6 +169,8 @@ elif filename[-2:] == "r8":
 else:
     loader = load_packed_data_4_40
 
+logger = init_logging(outname + ".log")
+
 dod_threshold_p = f.DEFAULT_THRESHOLD_P_DDD
 if loader is not None and loader is not load_packed_data_4_40:
     dod_threshold_p = f.DEFAULT_THRESHOLD_P_CXADC
@@ -181,6 +184,7 @@ vhsd = VHSDecode(
     filename,
     outname,
     loader,
+    logger,
     system=system,
     doDOD=args.dodod,
     threads=args.threads,
@@ -189,7 +193,7 @@ vhsd = VHSDecode(
     dod_threshold_a=args.dod_threshold_a,
     dod_hysteresis=args.dod_hysteresis,
     track_phase=args.track_phase,
-    level_adjust=args.level_adjust
+    level_adjust=args.level_adjust,
 )
 vhsd.roughseek(firstframe * 2)
 

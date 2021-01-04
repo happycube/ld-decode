@@ -30,6 +30,7 @@ def chroma_to_u16(chroma):
 
     return np.uint16(chroma + S16_ABS_MAX)
 
+
 def acc(chroma, burst_abs_ref, burststart, burstend, linelength, lines):
     """Scale chroma according to the level of the color burst on each line."""
 
@@ -178,7 +179,7 @@ def burst_deemphasis(chroma, lineoffset, linesout, outwidth, burstarea):
         linestart = (line - lineoffset) * outwidth
         lineend = linestart + outwidth
 
-        chroma[linestart + burstarea[1] + 5: lineend] *= 8
+        chroma[linestart + burstarea[1] + 5 : lineend] *= 8
 
     return chroma
 
@@ -249,7 +250,7 @@ def process_chroma(field, track_phase):
 
 
 def get_line(data, line_length, line):
-    return data[line * line_length: (line + 1) * line_length]
+    return data[line * line_length : (line + 1) * line_length]
 
 
 class LineInfo:
@@ -389,6 +390,7 @@ def find_crossings(data, threshold):
     # down crossing when we just need one of them.
     return crossings
 
+
 def find_crossings_dir(data, threshold, look_for_down):
     """Find where the data crosses the set threshold
     the look_for_down parameters determines if the crossings returned are down
@@ -408,7 +410,6 @@ def find_crossings_dir(data, threshold, look_for_down):
         return crossings_pos[1::2]
 
 
-
 def combine_to_dropouts(crossings_down, crossings_up, merge_threshold):
     """Combine arrays of up and down crossings, and merge ones with small gaps between them.
     Intended to be used where up and down crossing levels are different, the two lists will not
@@ -416,11 +417,6 @@ def combine_to_dropouts(crossings_down, crossings_up, merge_threshold):
     Returns a list of start/end tuples.
     """
     used = []
-
-    if len(crossings_down) > 0 and len(crossings_up) > 0 and crossings_down[0] > crossings_up[0]:
-        # Handle if we start on a dropout by adding a zero at the start since we won't have any
-        # down crossing for it in the data.
-        crossings_down = np.concatenate((np.array([0]), crossings_down), axis=None)
 
     # TODO: Fix when ending on dropout
 
@@ -438,8 +434,8 @@ def combine_to_dropouts(crossings_down, crossings_up, merge_threshold):
         if d - last_u < merge_threshold and len(used) > 0:
             # Pop the last added dropout and use it's starting point
             # as the start of the merged one.
-            last_d = used.pop()[0]
-            d = last_d
+            last = used.pop()
+            d = last[0]
 
         for u in cr_up:
             if u > d:
@@ -473,9 +469,22 @@ def detect_dropouts_rf(field):
 
     errlist = []
 
-    crossings_down_b = find_crossings_dir(env, threshold, True)
-    crossings_up_b = find_crossings_dir(env, threshold * hysteresis, False)
-    errlist = combine_to_dropouts(crossings_down_b, crossings_up_b, vhs_formats.DOD_MERGE_THRESHOLD)
+    crossings_down = find_crossings_dir(env, threshold, True)
+    crossings_up = find_crossings_dir(env, threshold * hysteresis, False)
+
+    if (
+        len(crossings_down) > 0
+        and len(crossings_up) > 0
+        and crossings_down[0] > crossings_up[0]
+        and env[0] < threshold
+    ):
+        # Handle if we start on a dropout by adding a zero at the start since we won't have any
+        # down crossing for it in the data.
+        crossings_down = np.concatenate((np.array([0]), crossings_down), axis=None)
+
+    errlist = combine_to_dropouts(
+        crossings_down, crossings_up, vhs_formats.DOD_MERGE_THRESHOLD
+    )
 
     # Drop very short dropouts that were not merged.
     # We do this after mergin to avoid removing short consecutive dropouts that
@@ -822,6 +831,7 @@ class VHSDecode(ldd.LDdecode):
         fname_in,
         fname_out,
         freader,
+        logger,
         system="NTSC",
         doDOD=True,
         threads=1,
@@ -830,24 +840,28 @@ class VHSDecode(ldd.LDdecode):
         dod_threshold_a=None,
         dod_hysteresis=vhs_formats.DEFAULT_HYSTERESIS,
         track_phase=0,
-        level_adjust=0.2
+        level_adjust=0.2,
     ):
         super(VHSDecode, self).__init__(
             fname_in,
             fname_out,
             freader,
+            logger,
             analog_audio=False,
             system=system,
             doDOD=doDOD,
-            threads=threads
+            threads=threads,
         )
         # Adjustment for output to avoid clipping.
         self.level_adjust = level_adjust
         # Overwrite the rf decoder with the VHS-altered one
         self.rf = VHSRFDecode(
-            system=system, inputfreq=inputfreq, track_phase=track_phase,
-            dod_threshold_p=dod_threshold_p, dod_threshold_a=dod_threshold_a,
-            dod_hysteresis=dod_hysteresis
+            system=system,
+            inputfreq=inputfreq,
+            track_phase=track_phase,
+            dod_threshold_p=dod_threshold_p,
+            dod_threshold_a=dod_threshold_a,
+            dod_hysteresis=dod_hysteresis,
         )
         # Store reference to ourself in the rf decoder - needed to access data location for track
         # phase, may want to do this in a better way later.
@@ -924,19 +938,23 @@ class VHSDecode(ldd.LDdecode):
 
     def build_json(self, f):
         jout = super(VHSDecode, self).build_json(f)
-        black= jout['videoParameters']['black16bIre']
-        white = jout['videoParameters']['white16bIre']
+        black = jout["videoParameters"]["black16bIre"]
+        white = jout["videoParameters"]["white16bIre"]
 
-        jout['videoParameters']['black16bIre'] = black * (1 - self.level_adjust)
-        jout['videoParameters']['white16bIre'] = white * (1 + self.level_adjust)
+        jout["videoParameters"]["black16bIre"] = black * (1 - self.level_adjust)
+        jout["videoParameters"]["white16bIre"] = white * (1 + self.level_adjust)
         return jout
 
 
 class VHSRFDecode(ldd.RFDecode):
-    def __init__(self, inputfreq=40, system="NTSC", dod_threshold_p=vhs_formats.
-                 DEFAULT_THRESHOLD_P_DDD, dod_threshold_a=None,
-                 dod_hysteresis=vhs_formats.DEFAULT_HYSTERESIS,
-                 track_phase=None,
+    def __init__(
+        self,
+        inputfreq=40,
+        system="NTSC",
+        dod_threshold_p=vhs_formats.DEFAULT_THRESHOLD_P_DDD,
+        dod_threshold_a=None,
+        dod_hysteresis=vhs_formats.DEFAULT_HYSTERESIS,
+        track_phase=None,
     ):
 
         # First init the rf decoder normally.
@@ -1187,6 +1205,7 @@ class VHSRFDecode(ldd.RFDecode):
 
         if False:
             import matplotlib.pyplot as plt
+
             fig, ax1 = plt.subplots()
             ax1.plot(raw_filtered)
             #        ax1.plot(hilbert, color='#FF0000')
