@@ -26,7 +26,7 @@ def chroma_to_u16(chroma):
     S16_ABS_MAX = 32767
 
     if np.max(chroma) > S16_ABS_MAX or abs(np.min(chroma)) > S16_ABS_MAX:
-        print("Warning! Chroma signal clipping.")
+        ldd.logger.warning("Chroma signal clipping.")
 
     return np.uint16(chroma + S16_ABS_MAX)
 
@@ -608,20 +608,18 @@ class FieldPALVHS(ldd.FieldPAL):
         if raw_loc > self.rf.last_raw_loc:
             self.rf.field_number += 1
         else:
-            print("raw loc didn't advance")
+            ldd.logger.info("raw loc didn't advance")
 
         # Re-check phase if we moved very far since last time.
         if raw_loc - self.rf.last_raw_loc > 2.0:
             if self.rf.detect_track:
-                print("Possibly skipped track, re-checking phase..")
+                ldd.logger.info("Possibly skipped track, re-checking phase..")
             self.rf.needs_detect
 
         if self.rf.detect_track and self.rf.needs_detect:
             self.rf.track_phase = self.try_detect_track()
             self.rf.needs_detect = False
         uphet = process_chroma(self, self.rf.track_phase)
-
-        # print("field no proc: ", self.rf.field_number)
 
         self.rf.last_raw_loc = raw_loc
 
@@ -648,7 +646,7 @@ class FieldPALVHS(ldd.FieldPAL):
         Additionally, most tapes are recorded with a luma half-shift which shifts the fm-encoded
         luma frequencies slightly depending on the track to avoid luma crosstalk.
         """
-        print("Trying to detect track phase...")
+        ldd.logger.info("Trying to detect track phase...")
         burst_area = (
             math.floor(self.usectooutpx(self.rf.SysParams["colorBurstUS"][0])),
             math.ceil(self.usectooutpx(self.rf.SysParams["colorBurstUS"][1])),
@@ -681,10 +679,10 @@ class FieldPALVHS(ldd.FieldPAL):
         # We use the one where the phase of the chroma vectors make the most sense.
         assumed_phase = int(phase0_mean < phase1_mean)
 
-        print("Phase previously set: ", self.rf.track_phase)
-        print("phase0 mean: ", phase0_mean)
-        print("phase1 mean: ", phase1_mean)
-        print("assumed_phase: ", assumed_phase)
+        ldd.logger.info("Phase previously set: %i", self.rf.track_phase)
+        ldd.logger.info("phase0 mean: %d", phase0_mean)
+        ldd.logger.info("phase1 mean: %d", phase1_mean)
+        ldd.logger.info("assumed_phase: %d", assumed_phase)
 
         return assumed_phase
 
@@ -890,7 +888,9 @@ class VHSDecode(ldd.LDdecode):
 
         # Make sure signal is positive so we don't try to do log on a negative value.
         if signal < 0.0:
-            print("WARNING: Negative mean for SNR, changing to absolute value.")
+            ldd.logger.info(
+                "WARNING: Negative mean for SNR, changing to absolute value."
+            )
             signal = abs(signal)
         if noise == 0:
             return 0
