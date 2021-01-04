@@ -34,6 +34,8 @@ BlackSnrAnalysisDialog::BlackSnrAnalysisDialog(QWidget *parent) :
 
     // Set up the chart view
     plot = new QwtPlot();
+    zoomer = new QwtPlotZoomer(plot->canvas());
+    panner = new QwtPlotPanner(plot->canvas());
     grid = new QwtPlotGrid();
     blackCurve = new QwtPlotCurve();
     blackPoints = new QPolygonF();
@@ -42,6 +44,11 @@ BlackSnrAnalysisDialog::BlackSnrAnalysisDialog(QWidget *parent) :
 
     // Set the maximum Y scale to 48
     maxY = 48;
+
+    // Set the default number of frames
+    numberOfFrames = 0;
+
+    connect(((QObject*)plot->axisWidget(QwtPlot::xBottom)) , SIGNAL(scaleDivChanged () ), this, SLOT(scaleDivChangedSlot () ));
 }
 
 BlackSnrAnalysisDialog::~BlackSnrAnalysisDialog()
@@ -68,14 +75,17 @@ void BlackSnrAnalysisDialog::removeChartContents()
 void BlackSnrAnalysisDialog::addDataPoint(qint32 frameNumber, qreal blackSnr)
 {
     if (!std::isnan(static_cast<float>(blackSnr))) {
+        qDebug() << "Frame number" << frameNumber;
         blackPoints->append(QPointF(frameNumber, blackSnr));
         if (blackSnr > maxY) maxY = ceil(blackSnr); // Round up
     }
 }
 
 // Finish the update and render the graph
-void BlackSnrAnalysisDialog::finishUpdate(qint32 numberOfFrames)
+void BlackSnrAnalysisDialog::finishUpdate(qint32 _numberOfFrames)
 {
+    numberOfFrames = _numberOfFrames;
+
     // Set the chart title
     plot->setTitle("Black SNR Analysis");
 
@@ -88,7 +98,7 @@ void BlackSnrAnalysisDialog::finishUpdate(qint32 numberOfFrames)
     plot->setAxisTitle(QwtPlot::xBottom, "Frame number");
 
     // Define the y-axis (with a fixed scale)
-    plot->setAxisScale(QwtPlot::yLeft, 26, maxY, 2);
+    plot->setAxisScale(QwtPlot::yLeft, 20, maxY, 2);
     plot->setAxisTitle(QwtPlot::yLeft, "SNR (in dB)");
 
     // Attach the black curve data to the chart
@@ -101,8 +111,34 @@ void BlackSnrAnalysisDialog::finishUpdate(qint32 numberOfFrames)
     // Update the axis
     plot->updateAxes();
 
+    // Update the plot zoomer base
+    zoomer->setZoomBase(true);
+
+    // Set the plot zoomer mouse controls
+    zoomer->setMousePattern(QwtEventPattern::MouseSelect2, Qt::RightButton, Qt::ControlModifier);
+    zoomer->setMousePattern(QwtEventPattern::MouseSelect3, Qt::RightButton);
+
+    // Set the plot zoomer colour
+    zoomer->setRubberBandPen(QPen(Qt::red, 2, Qt::DotLine));
+    zoomer->setTrackerPen(QPen(Qt::red));
+
+    // Update the plot panner
+    panner->setAxisEnabled(QwtPlot::yRight, false);
+    panner->setMouseButton(Qt::MidButton);
+
     // Render the chart
     plot->maximumSize();
     plot->show();
+
+}
+
+void BlackSnrAnalysisDialog::scaleDivChangedSlot()
+{
+    // If user zooms all the way out, reapply axis scale defaults
+    if (zoomer->zoomRectIndex() == 0) {
+        plot->setAxisScale(QwtPlot::xBottom, 0, numberOfFrames, (numberOfFrames / 10));
+        plot->setAxisScale(QwtPlot::yLeft, 20, maxY, 2);
+        plot->replot();
+    }
 }
 

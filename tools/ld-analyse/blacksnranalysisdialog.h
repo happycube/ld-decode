@@ -33,6 +33,10 @@
 #include <qwt_legend.h>
 #include <qwt_plot_grid.h>
 #include <qwt_plot_curve.h>
+#include <qwt_plot_zoomer.h>
+#include <qwt_plot_panner.h>
+#include <qwt_scale_widget.h>
+#include <qwt_scale_draw.h>
 
 #include "lddecodemetadata.h"
 
@@ -50,18 +54,24 @@ public:
 
     void startUpdate();
     void addDataPoint(qint32 frameNumber, qreal blackSnr);
-    void finishUpdate(qint32 numberOfFrames);
+    void finishUpdate(qint32 _numberOfFrames);
+
+private slots:
+    void scaleDivChangedSlot();
 
 private:
     void removeChartContents();
 
     Ui::BlackSnrAnalysisDialog *ui;
+    QwtPlotZoomer *zoomer;
+    QwtPlotPanner *panner;
     QwtPlot *plot;
     QwtLegend *legend;
     QwtPlotGrid *grid;
     QPolygonF *blackPoints;
     QwtPlotCurve *blackCurve;
     double maxY;
+    qint32 numberOfFrames;
 };
 
 #endif // BLACKSNRANALYSISDIALOG_H

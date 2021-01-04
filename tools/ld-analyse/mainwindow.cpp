@@ -902,9 +902,9 @@ void MainWindow::on_finishedLoading()
         QVector<qreal> whiteSnrGraphData = tbcSource.getWhiteSnrGraphData();
 
         for (qint32 frameNumber = 0; frameNumber < tbcSource.getNumberOfFrames(); frameNumber++) {
-            dropoutAnalysisDialog->addDataPoint(frameNumber, doGraphData[frameNumber]);
-            blackSnrAnalysisDialog->addDataPoint(frameNumber, blackSnrGraphData[frameNumber]);
-            whiteSnrAnalysisDialog->addDataPoint(frameNumber, whiteSnrGraphData[frameNumber]);
+            dropoutAnalysisDialog->addDataPoint(frameNumber + 1, doGraphData[frameNumber]);
+            blackSnrAnalysisDialog->addDataPoint(frameNumber + 1, blackSnrGraphData[frameNumber]);
+            whiteSnrAnalysisDialog->addDataPoint(frameNumber + 1, whiteSnrGraphData[frameNumber]);
         }
 
         dropoutAnalysisDialog->finishUpdate(tbcSource.getNumberOfFrames());
