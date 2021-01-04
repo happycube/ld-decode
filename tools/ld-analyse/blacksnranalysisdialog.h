@@ -53,9 +53,9 @@ public:
     explicit BlackSnrAnalysisDialog(QWidget *parent = nullptr);
     ~BlackSnrAnalysisDialog();
 
-    void startUpdate();
+    void startUpdate(qint32 _numberOfFrames);
     void addDataPoint(qint32 frameNumber, qreal blackSnr);
-    void finishUpdate(qint32 _numberOfFrames, qint32 _currentFrameNumber);
+    void finishUpdate(qint32 _currentFrameNumber);
     void updateFrameMarker(qint32 _currentFrameNumber);
 
 private slots:
@@ -63,6 +63,7 @@ private slots:
 
 private:
     void removeChartContents();
+    void generateTrendLine();
 
     Ui::BlackSnrAnalysisDialog *ui;
     QwtPlotZoomer *zoomer;
@@ -72,10 +73,13 @@ private:
     QwtPlotGrid *grid;
     QPolygonF *blackPoints;
     QwtPlotCurve *blackCurve;
+    QPolygonF *trendPoints;
+    QwtPlotCurve *trendCurve;
     QwtPlotMarker *plotMarker;
 
     double maxY;
     qint32 numberOfFrames;
+    QVector<double> tlPoint;
 };
 
 #endif // BLACKSNRANALYSISDIALOG_H

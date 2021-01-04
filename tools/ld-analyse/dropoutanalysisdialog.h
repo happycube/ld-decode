@@ -51,9 +51,9 @@ public:
     explicit DropoutAnalysisDialog(QWidget *parent = nullptr);
     ~DropoutAnalysisDialog();
 
-    void startUpdate();
+    void startUpdate(qint32 _numberOfFrames);
     void addDataPoint(qint32 frameNumber, qreal doLength);
-    void finishUpdate(qint32 _numberOfFrames, qint32 _currentFrameNumber);
+    void finishUpdate(qint32 _currentFrameNumber);
     void updateFrameMarker(qint32 _currentFrameNumber);
 
 private slots:

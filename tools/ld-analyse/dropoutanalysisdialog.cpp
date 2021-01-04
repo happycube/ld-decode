@@ -60,9 +60,11 @@ DropoutAnalysisDialog::~DropoutAnalysisDialog()
 }
 
 // Get ready for an update
-void DropoutAnalysisDialog::startUpdate()
+void DropoutAnalysisDialog::startUpdate(qint32 _numberOfFrames)
 {
     removeChartContents();
+    numberOfFrames = _numberOfFrames;
+    points->reserve(numberOfFrames);
 }
 
 // Remove the axes and series from the chart, giving ownership back to this object
@@ -83,10 +85,8 @@ void DropoutAnalysisDialog::addDataPoint(qint32 frameNumber, qreal doLength)
 }
 
 // Finish the update and render the graph
-void DropoutAnalysisDialog::finishUpdate(qint32 _numberOfFrames, qint32 _currentFrameNumber)
+void DropoutAnalysisDialog::finishUpdate(qint32 _currentFrameNumber)
 {
-    numberOfFrames = _numberOfFrames;
-
     // Set the chart title
     plot->setTitle("Dropout Loss Analysis");
 

@@ -898,9 +898,9 @@ void MainWindow::on_finishedLoading()
     // Ensure source loaded ok
     if (tbcSource.getIsSourceLoaded()) {
         // Generate the graph data
-        dropoutAnalysisDialog->startUpdate();
-        blackSnrAnalysisDialog->startUpdate();
-        whiteSnrAnalysisDialog->startUpdate();
+        dropoutAnalysisDialog->startUpdate(tbcSource.getNumberOfFrames());
+        blackSnrAnalysisDialog->startUpdate(tbcSource.getNumberOfFrames());
+        whiteSnrAnalysisDialog->startUpdate(tbcSource.getNumberOfFrames());
 
         QVector<qreal> doGraphData = tbcSource.getDropOutGraphData();
         QVector<qreal> blackSnrGraphData = tbcSource.getBlackSnrGraphData();
@@ -912,9 +912,9 @@ void MainWindow::on_finishedLoading()
             whiteSnrAnalysisDialog->addDataPoint(frameNumber + 1, whiteSnrGraphData[frameNumber]);
         }
 
-        dropoutAnalysisDialog->finishUpdate(tbcSource.getNumberOfFrames(), currentFrameNumber);
-        blackSnrAnalysisDialog->finishUpdate(tbcSource.getNumberOfFrames(), currentFrameNumber);
-        whiteSnrAnalysisDialog->finishUpdate(tbcSource.getNumberOfFrames(), currentFrameNumber);
+        dropoutAnalysisDialog->finishUpdate(currentFrameNumber);
+        blackSnrAnalysisDialog->finishUpdate(currentFrameNumber);
+        whiteSnrAnalysisDialog->finishUpdate(currentFrameNumber);
 
         // Update the GUI
         updateGuiLoaded();

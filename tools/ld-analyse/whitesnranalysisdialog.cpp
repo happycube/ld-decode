@@ -39,6 +39,8 @@ WhiteSnrAnalysisDialog::WhiteSnrAnalysisDialog(QWidget *parent) :
     grid = new QwtPlotGrid();
     whiteCurve = new QwtPlotCurve();
     whitePoints = new QPolygonF();
+    trendCurve = new QwtPlotCurve();
+    trendPoints = new QPolygonF();
     plotMarker = new QwtPlotMarker();
 
     ui->verticalLayout->addWidget(plot);
@@ -60,9 +62,12 @@ WhiteSnrAnalysisDialog::~WhiteSnrAnalysisDialog()
 }
 
 // Get ready for an update
-void WhiteSnrAnalysisDialog::startUpdate()
+void WhiteSnrAnalysisDialog::startUpdate(qint32 _numberOfFrames)
 {
     removeChartContents();
+    numberOfFrames = _numberOfFrames;
+    tlPoint.resize(numberOfFrames);
+    whitePoints->reserve(numberOfFrames);
 }
 
 // Remove the axes and series from the chart, giving ownership back to this object
@@ -70,6 +75,8 @@ void WhiteSnrAnalysisDialog::removeChartContents()
 {
     maxY = 42;
     whitePoints->clear();
+    tlPoint.clear();
+    trendPoints->clear();
     plot->replot();
 }
 
@@ -79,14 +86,18 @@ void WhiteSnrAnalysisDialog::addDataPoint(qint32 frameNumber, qreal whiteSnr)
     if (!std::isnan(static_cast<float>(whiteSnr))) {
         whitePoints->append(QPointF(frameNumber, whiteSnr));
         if (whiteSnr > maxY) maxY = ceil(whiteSnr); // Round up
+
+        // Add to trendline data
+        tlPoint[frameNumber] = whiteSnr;
+    } else {
+        // Add to trendline data (mark as null value)
+        tlPoint[frameNumber] = -1;
     }
 }
 
 // Finish the update and render the graph
-void WhiteSnrAnalysisDialog::finishUpdate(qint32 _numberOfFrames, qint32 _currentFrameNumber)
+void WhiteSnrAnalysisDialog::finishUpdate(qint32 _currentFrameNumber)
 {
-    numberOfFrames = _numberOfFrames;
-
     // Set the chart title
     plot->setTitle("White SNR Analysis");
 
@@ -108,6 +119,14 @@ void WhiteSnrAnalysisDialog::finishUpdate(qint32 _numberOfFrames, qint32 _curren
     whiteCurve->setRenderHint(QwtPlotItem::RenderAntialiased, true);
     whiteCurve->setSamples(*whitePoints);
     whiteCurve->attach(plot);
+
+    // Attach the trend line curve data to the chart
+    generateTrendLine();
+    trendCurve->setTitle("Trend line");
+    trendCurve->setPen(Qt::red, 2);
+    trendCurve->setRenderHint(QwtPlotItem::RenderAntialiased, true);
+    trendCurve->setSamples(*trendPoints);
+    trendCurve->attach(plot);
 
     // Define the plot marker
     plotMarker->setLineStyle(QwtPlotMarker::VLine);
@@ -152,6 +171,36 @@ void WhiteSnrAnalysisDialog::scaleDivChangedSlot()
         plot->setAxisScale(QwtPlot::xBottom, 0, numberOfFrames, (numberOfFrames / 10));
         plot->setAxisScale(QwtPlot::yLeft, 14, maxY, 4);
         plot->replot();
+    }
+}
+
+// Method to generate the trendline points
+void WhiteSnrAnalysisDialog::generateTrendLine()
+{
+    // Only add a trend line if there are 5000 or more frames
+    if (numberOfFrames < 5000) return;
+
+    qint32 elements = 0;
+    qint32 count = 0;
+    double avgSum = 0;
+    qint32 target = numberOfFrames / 500; // Number of frames to average
+
+    for (qint32 f = 0; f < numberOfFrames; f++) {
+        if (tlPoint[f] != -1) {
+            avgSum += tlPoint[f];
+            elements++;
+        }
+        count++;
+
+        if (count == target) {
+            if (avgSum > 0 && elements > 0) {
+                avgSum = avgSum / static_cast<double>(elements);
+                trendPoints->append(QPointF(f-target, avgSum));
+            }
+            avgSum = 0;
+            count = 0;
+            elements = 0;
+        }
     }
 }
 
