@@ -479,8 +479,12 @@ class RFDecode:
         
             SF['RFVideo'] *= (SF['Fcutl'] * SF['Fcutr'])
 
-        # The hilbert filter is defined in utils.py - it performs a 90 degree shift on the input.
-        SF['hilbert'] = npfft.fft(hilbert_filter, self.blocklen)
+        # The hilbert filter performs a 90 degree shift on the input.
+        # Below code shamelessly based on https://github.com/scipy/scipy/blob/v1.6.0/scipy/signal/signaltools.py#L2264-2267
+        SF['hilbert'] = np.zeros(self.blocklen)
+        SF['hilbert'][0] = SF['hilbert'][self.blocklen // 2] = 1
+        SF['hilbert'][1:self.blocklen // 2] = 2
+
         SF['RFVideo'] *= SF['hilbert']
         
         # Second phase FFT filtering, which is performed after the signal is demodulated
@@ -1184,7 +1188,7 @@ def downscale_audio(audio, lineinfo, rf, linecount, timeoffset = 0, freq = 48000
         sampleloc += (lineloc_next - lineloc_cur) * (linenum - np.floor(linenum))
 
         swow[i] = (lineloc_next - lineloc_cur) / rf.linelen
-        swow[i] = ((swow[i] - 1) / .715) + 1
+        swow[i] = ((swow[i] - 1)) + 1
         # There's almost *no way* the disk is spinning more than 1.5% off, so mask TBC errors here
         # to reduce pops
         if i and np.abs(swow[i] - swow[i - 1]) > .015:
