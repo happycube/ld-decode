@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
- <class>DropoutAnalysisDialog</class>
- <widget class="QDialog" name="DropoutAnalysisDialog">
+ <class>BlackSnrAnalysisDialog</class>
+ <widget class="QDialog" name="BlackSnrAnalysisDialog">
   <property name="geometry">
    <rect>
     <x>0</x>
@@ -11,9 +11,9 @@
    </rect>
   </property>
   <property name="windowTitle">
-   <string>Dropout Loss Analysis</string>
+   <string>Black SNR Analysis</string>
   </property>
-  <layout class="QHBoxLayout" name="horizontalLayout_2">
+  <layout class="QVBoxLayout" name="verticalLayout_2">
    <item>
     <layout class="QHBoxLayout" name="horizontalLayout">
      <item>

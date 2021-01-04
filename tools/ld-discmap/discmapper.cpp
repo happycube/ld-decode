@@ -61,7 +61,7 @@ bool DiscMapper::process(QFileInfo _inputFileInfo, QFileInfo _inputMetadataFileI
     qInfo() << "discs that follow the standard 1-in-5 pulldown pattern.";
     qInfo() << "";
 
-    // Create the source metadata object
+    // Create the source disc map object
     qInfo().noquote() << "Processing input metadata for" << inputFileInfo.filePath();
     if (noStrict) qInfo() << "Not enforcing strict pulldown checking - this can cause false-positive detection";
     DiscMap discMap(inputMetadataFileInfo, reverse, noStrict);
@@ -620,17 +620,23 @@ bool DiscMapper::saveDiscMap(DiscMap &discMap)
         // Open the input audio file
         if (!sourceAudio.open(inputFileInfo)) {
             // Could not open input audio file
-            qInfo() << "Cannot open source audio file:" << inputFileInfo.absolutePath() + "/" + inputFileInfo.baseName() + ".pcm";
+            qInfo() << "Cannot open source audio file:" << inputFileInfo.absolutePath() + "/" + inputFileInfo.completeBaseName() + ".pcm";
             sourceVideo.close();
             sourceAudio.close();
             return false;
         }
 
         // Open the output audio file
-        targetAudio.setFileName(outputFileInfo.absolutePath() + "/" + outputFileInfo.baseName() + ".pcm");
+        targetAudio.setFileName(outputFileInfo.absolutePath() + "/" + outputFileInfo.completeBaseName() + ".pcm");
+        if (targetAudio.exists()) {
+            qInfo() << "Target audio file already exists:" << targetAudio.fileName() << "- Cannot proceed!";
+            sourceVideo.close();
+            sourceAudio.close();
+            return false;
+        }
         if (!targetAudio.open(QIODevice::WriteOnly)) {
             // Could not open target audio file
-            qInfo() << "Cannot open target audio file:" << outputFileInfo.absolutePath() + "/" + outputFileInfo.baseName() + ".pcm";
+            qInfo() << "Cannot open target audio file:" << targetAudio.fileName();
             sourceVideo.close();
             sourceAudio.close();
             return false;
@@ -642,14 +648,14 @@ bool DiscMapper::saveDiscMap(DiscMap &discMap)
     missingFieldData.fill(0, discMap.getVideoFieldLength());
 
     // Make a dummy audio field to use when outputting padded frames
-    QByteArray missingFieldAudioData;
-    missingFieldAudioData.fill(0, discMap.getAudioFieldLength());
+    SourceAudio::Data missingFieldAudioData;
+    missingFieldAudioData.fill(0, discMap.getApproximateAudioFieldLength());
 
     // Create the output video file
     SourceVideo::Data sourceFirstField;
     SourceVideo::Data sourceSecondField;
-    QByteArray sourceAudioFirstField;
-    QByteArray sourceAudioSecondField;
+    SourceAudio::Data sourceAudioFirstField;
+    SourceAudio::Data sourceAudioSecondField;
 
     qInfo() << "Saving target video frames...";
     qint32 notifyInterval = discMap.numberOfFrames() / 50;
@@ -684,14 +690,16 @@ bool DiscMapper::saveDiscMap(DiscMap &discMap)
             // Save the audio (not field order dependent)
             if (!noAudio) {
                 // Read the audio
-                sourceAudioFirstField = sourceAudio.getAudioForField(firstFieldNumber);
-                sourceAudioSecondField = sourceAudio.getAudioForField(secondFieldNumber);
+                sourceAudioFirstField = sourceAudio.getAudioData(discMap.getFirstFieldAudioDataStart(frameNumber),
+                                                                 discMap.getFirstFieldAudioDataLength(frameNumber));
+                sourceAudioSecondField = sourceAudio.getAudioData(discMap.getSecondFieldAudioDataStart(frameNumber),
+                                                                  discMap.getSecondFieldAudioDataLength(frameNumber));
 
                 // Write the audio
                 if (!targetAudio.write(reinterpret_cast<const char *>(sourceAudioFirstField.data()),
-                                       sourceAudioFirstField.size())) writeFail = true;
+                                       sourceAudioFirstField.size() * 2)) writeFail = true;
                 if (!targetAudio.write(reinterpret_cast<const char *>(sourceAudioSecondField.data()),
-                                       sourceAudioSecondField.size())) writeFail = true;
+                                       sourceAudioSecondField.size() * 2)) writeFail = true;
             }
         } else {
             // Padded frame - write two dummy fields
@@ -703,9 +711,9 @@ bool DiscMapper::saveDiscMap(DiscMap &discMap)
             if (!noAudio) {
                 // Write the padded audio
                 if (!targetAudio.write(reinterpret_cast<const char *>(missingFieldAudioData.data()),
-                                       missingFieldAudioData.size())) writeFail = true;
+                                       missingFieldAudioData.size() * 2)) writeFail = true;
                 if (!targetAudio.write(reinterpret_cast<const char *>(missingFieldAudioData.data()),
-                                       missingFieldAudioData.size())) writeFail = true;
+                                       missingFieldAudioData.size() * 2)) writeFail = true;
             }
         }
 

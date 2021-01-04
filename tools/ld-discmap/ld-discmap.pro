@@ -17,25 +17,25 @@ DEFINES += QT_DEPRECATED_WARNINGS
 SOURCES += \
     ../library/tbc/lddecodemetadata.cpp \
     ../library/tbc/sourcevideo.cpp \
+    ../library/tbc/sourceaudio.cpp \
     ../library/tbc/vbidecoder.cpp \
     ../library/tbc/logging.cpp \
     ../library/tbc/dropouts.cpp \
     discmap.cpp \
     discmapper.cpp \
     frame.cpp \
-    main.cpp \
-    sourceaudio.cpp
+    main.cpp
 
 HEADERS += \
     ../library/tbc/lddecodemetadata.h \
     ../library/tbc/sourcevideo.h \
+    ../library/tbc/sourceaudio.h \
     ../library/tbc/vbidecoder.h \
     ../library/tbc/logging.h \
     ../library/tbc/dropouts.h \
     discmap.h \
     discmapper.h \
-    frame.h \
-    sourceaudio.h
+    frame.h
 
 # Add external includes to the include path
 INCLUDEPATH += ../library/tbc

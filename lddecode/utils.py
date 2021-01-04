@@ -1,5 +1,6 @@
 # A collection of helper functions used in dev notebooks and lddecode_core.py
 
+import atexit
 from base64 import b64encode
 from collections import namedtuple
 import copy
@@ -12,6 +13,10 @@ import os
 import sys
 import subprocess
 
+from multiprocessing import Process, Pool, Queue, JoinableQueue, Pipe
+import threading
+import queue
+
 from numba import jit, njit
 
 # standard numeric/scientific libraries
@@ -21,23 +26,7 @@ import scipy.signal as sps
 
 from scipy import interpolate
 
-# This uses numpy's interpolator, which works well enough
-def scale_old(buf, begin, end, tgtlen):
-#        print("scaling ", begin, end, tgtlen)
-        ibegin = int(begin)
-        iend = int(end)
-        linelen = end - begin
-
-        dist = iend - ibegin + 0
-        
-        sfactor = dist / tgtlen
-        
-        arr, step = np.linspace(0, dist, num=dist + 1, retstep=True)
-        spl = interpolate.splrep(arr, buf[ibegin:ibegin + dist + 1])
-        arrout = np.linspace(begin - ibegin, linelen + (begin - ibegin), tgtlen + 1)
-
-        return interpolate.splev(arrout, spl)[:-1]
-    
+# This runs a bicubic scaler on a line.    
 @njit(nogil=True)
 def scale(buf, begin, end, tgtlen, mult = 1):
     linelen = end - begin
@@ -54,24 +43,6 @@ def scale(buf, begin, end, tgtlen, mult = 1):
         output[i] = mult * (p[1] + 0.5 * x*(p[2] - p[0] + x*(2.0*p[0] - 5.0*p[1] + 4.0*p[2] - p[3] + x*(3.0*(p[1] - p[2]) + p[3] - p[0]))))
 
     return output
-
-def downscale_field(data, lineinfo, outwidth=1820, lines=625, usewow=False):
-    ilinepx = linelen
-    dsout = np.zeros((len(lineinfo) * outwidth), dtype=np.double)    
-
-    sfactor = [None]
-
-    for l in range(1, 262):
-        scaled = scale(data, lineinfo[l], lineinfo[l + 1], outwidth)
-        sfactor.append((lineinfo[l + 1] - lineinfo[l]) / outwidth)
-
-        if usewow:
-            wow = (lineinfo[l + 1] - lineinfo[l]) / linelen
-            scaled *= wow
-                
-        dsout[l * outwidth:(l + 1)*outwidth] = scaled
-        
-    return dsout
 
 frequency_suffixes = [
     ("ghz", 1.0e9),
@@ -308,7 +279,7 @@ class LoadFFmpeg:
 
         return data
 
-    def __call__(self, infile, sample, readlen):
+    def read(self, infile, sample, readlen):
         sample_bytes = sample * 2
         readlen_bytes = readlen * 2
 
@@ -351,8 +322,11 @@ class LoadFFmpeg:
         assert len(data) == readlen * 2
         return np.fromstring(data, '<i2')
 
+    def __call__(self, infile, sample, readlen):
+        return self.read(infile, sample, readlen)
+
 class LoadLDF:
-    """Load samples from a wide variety of formats using ffmpeg."""
+    """Load samples from an .ldf file, using ld-ldf-reader which itself uses ffmpeg."""
 
     def __init__(self, filename, input_args=[], output_args=[]):
         self.input_args = input_args
@@ -390,11 +364,15 @@ class LoadLDF:
         return data
 
     def _close(self):
-        if self.ldfreader is not None:
-            self.ldfreader.kill()
-            self.ldfreader.wait()
+        try:
+            if self.ldfreader is not None:
+                self.ldfreader.kill()
+                self.ldfreader.wait()
+                del self.ldfreader
 
-        self.ldfreader = None
+            self.ldfreader = None
+        except:
+            pass
 
     def _open(self, sample):
         self._close()
@@ -407,7 +385,7 @@ class LoadLDF:
 
         return ldfreader
 
-    def __call__(self, infile, sample, readlen):
+    def read(self, infile, sample, readlen):
         sample_bytes = sample * 2
         readlen_bytes = readlen * 2
 
@@ -450,6 +428,33 @@ class LoadLDF:
         assert len(data) == readlen * 2
         return np.frombuffer(data, '<i2')
 
+    def __call__(self, infile, sample, readlen):
+        return self.read(infile, sample, readlen)
+
+def ldf_pipe(outname, compression_level = 6):
+    corecmd = "ffmpeg -y -hide_banner -loglevel error -f s16le -ar 40k -ac 1 -i - -acodec flac -f ogg".split(' ') 
+    process = subprocess.Popen([*corecmd, '-compression_level', str(compression_level), outname], stdin=subprocess.PIPE)
+    
+    return process, process.stdin
+
+# Git helpers
+
+def get_git_info():
+    ''' Return git branch and commit for current directory, iff available. '''
+    
+    branch = 'UNKNOWN'
+    commit = 'UNKNOWN'
+
+    try:
+        sp = subprocess.run('git rev-parse --abbrev-ref HEAD', shell=True, capture_output=True)
+        branch = sp.stdout.decode('utf-8').strip() if not sp.returncode else 'UNKNOWN'
+        
+        sp = subprocess.run('git rev-parse --short HEAD', shell=True, capture_output=True)
+        commit = sp.stdout.decode('utf-8').strip() if not sp.returncode else 'UNKNOWN'
+    except:
+        pass
+
+    return branch, commit
 
 # Essential standalone routines 
 
@@ -468,10 +473,6 @@ hilbert_filter_terms = 128
 hilbert_filter = np.fft.fftshift(
     np.fft.ifft([0]+[1]*hilbert_filter_terms+[0]*hilbert_filter_terms)
 )
-
-# Now construct the FFT transform of the hilbert filter.  
-# This can be complex multiplied with the raw RF to do a good chunk of real demoduation work
-#fft_hilbert = np.fft.fft(hilbert_filter, blocklen)
 
 def emphasis_iir(t1, t2, fs):
     """Generate an IIR filter for 6dB/octave pre-emphasis (t1 > t2) or
@@ -695,6 +696,10 @@ def nb_median(m):
     return np.median(m)
 
 @njit
+def nb_round(m):
+    return int(np.round(m))
+
+@njit
 def nb_mean(m):
     return np.mean(m)
 
@@ -705,6 +710,10 @@ def nb_min(m):
 @njit
 def nb_max(m):
     return np.max(m)
+
+@njit
+def nb_abs(m):
+    return np.abs(m)
 
 @njit
 def nb_absmax(m):
@@ -769,9 +778,9 @@ def dsa_rescale(infloat):
 def clb_findnextburst(burstarea, i, endburstarea, threshold):
     for j in range(i, endburstarea):
         if np.abs(burstarea[j]) > threshold:
-            return j, burstarea[j]
+            return burstarea[j], calczc_do(burstarea, j, 0)
 
-    return None
+    return (None, None)
 
 @njit(cache=True)
 def distance_from_round(x):
@@ -788,6 +797,45 @@ def write_json(ldd, outname):
     fp.close()
     
     os.rename(outname + '.tbc.json.tmp', outname + '.tbc.json')
+
+# Write the .tbc.json file (used by lddecode and notebooks)
+def write_json(ldd, jsondict, outname):
+
+    fp = open(outname + '.tbc.json.tmp', 'w')
+    json.dump(jsondict, fp, indent=4 if ldd.verboseVITS else None)
+    fp.write('\n')
+    fp.close()
+    
+    os.rename(outname + '.tbc.json.tmp', outname + '.tbc.json')
+
+def jsondump_thread(ldd, outname):
+    '''
+    This creates a background thread to write a json dict to a file.
+
+    Probably had a bit too much fun here - this returns a queue that is 
+    fed into a thread created by the function itself.  Feed it json
+    dictionaries during runtime and None when done.
+    '''
+
+    def consume(q):
+        while True:
+            jsondict = q.get()
+
+            if jsondict is None:
+                q.task_done()
+                return
+
+            write_json(ldd, jsondict, outname)
+
+            q.task_done()
+    
+    q = JoinableQueue()
+
+    # Start the self-contained thread
+    t = threading.Thread(target=consume, args=(q, ))
+    t.start()
+    
+    return q
 
 if __name__ == "__main__":
     print("Nothing to see here, move along ;)")

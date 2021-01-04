@@ -5,7 +5,6 @@ SUBDIRS = \
     ld-analyse \
     ld-chroma-decoder \
     ld-chroma-decoder/encoder \
-    ld-diffdod \
     ld-discmap \
     ld-dropout-correct \
     ld-export-metadata \
@@ -13,5 +12,6 @@ SUBDIRS = \
     ld-process-efm \
     ld-process-vbi \
     ld-disc-stacker \
+    ld-process-vits \
     library/filter/testfilter \
     library/tbc/testvbidecoder

@@ -3,7 +3,7 @@
     configuration.h
 
     ld-analyse - TBC output analysis
-    Copyright (C) 2018-2020 Simon Inns
+    Copyright (C) 2018-2021 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -60,8 +60,10 @@ public:
     QByteArray getOscilloscopeDialogGeometry(void);
     void setDropoutAnalysisDialogGeometry(QByteArray videoMetadataDialogGeometry);
     QByteArray getDropoutAnalysisDialogGeometry(void);
-    void setSnrAnalysisDialogGeometry(QByteArray snrAnalysisDialogGeometry);
-    QByteArray getSnrAnalysisDialogGeometry(void);
+    void setBlackSnrAnalysisDialogGeometry(QByteArray blackSnrAnalysisDialogGeometry);
+    QByteArray getBlackSnrAnalysisDialogGeometry(void);
+    void setWhiteSnrAnalysisDialogGeometry(QByteArray whiteSnrAnalysisDialogGeometry);
+    QByteArray getWhiteSnrAnalysisDialogGeometry(void);
     void setClosedCaptionDialogGeometry(QByteArray closedCaptionDialogGeometry);
     QByteArray getClosedCaptionDialogGeometry(void);
     void setChromaDecoderConfigDialogGeometry(QByteArray chromaDecoderConfigDialogGeometry);
@@ -87,7 +89,8 @@ private:
         QByteArray vbiDialogGeometry;
         QByteArray oscilloscopeDialogGeometry;
         QByteArray dropoutAnalysisDialogGeometry;
-        QByteArray snrAnalysisDialogGeometry;
+        QByteArray blackSnrAnalysisDialogGeometry;
+        QByteArray whiteSnrAnalysisDialogGeometry;
         QByteArray closedCaptionDialogGeometry;
         QByteArray chromaDecoderConfigDialogGeometry;
     };

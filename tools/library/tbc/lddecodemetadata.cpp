@@ -46,6 +46,9 @@ bool LdDecodeMetaData::read(QString fileName)
     // Default to the standard still-frame field order (of first field first)
     isFirstFieldFirst = true;
 
+    // Generate the PCM audio map based on the field metadata
+    generatePcmAudioMap();
+
     return true;
 }
 
@@ -703,3 +706,45 @@ LdDecodeMetaData::ClvTimecode LdDecodeMetaData::convertFrameNumberToClvTimecode(
     return clvTimecode;
 }
 
+// Private method to generate a map of the PCM audio data (used by the sourceAudio library)
+// Note: That the map unit is "stereo sample pairs"; so each unit represents 2 16-bit samples
+// for a total of 4 bytes per unit.
+void LdDecodeMetaData::generatePcmAudioMap()
+{
+    pcmAudioFieldStartSampleMap.clear();
+    pcmAudioFieldLengthMap.clear();
+
+    qDebug() << "LdDecodeMetaData::generatePcmAudioMap(): Generating PCM audio map...";
+
+    // Get the number of fields and resize the maps
+    qint32 numberOfFields = getVideoParameters().numberOfSequentialFields;
+    pcmAudioFieldStartSampleMap.resize(numberOfFields + 1);
+    pcmAudioFieldLengthMap.resize(numberOfFields + 1);
+
+    for (qint32 fieldNo = 0; fieldNo < numberOfFields; fieldNo++) {
+        // Each audio sample is 16 bit - and there are 2 samples per stereo pair
+        pcmAudioFieldLengthMap[fieldNo] = static_cast<qint32>(getField(fieldNo+1).audioSamples);
+
+        if (fieldNo == 0) {
+            // First field starts at 0 units
+            pcmAudioFieldStartSampleMap[fieldNo] = 0;
+        } else {
+            // Every following field's start position is the start+length of the previous
+            pcmAudioFieldStartSampleMap[fieldNo] = pcmAudioFieldStartSampleMap[fieldNo - 1] + pcmAudioFieldLengthMap[fieldNo];
+        }
+    }
+}
+
+// Method to get the start sample location of the specified sequential field number
+qint32 LdDecodeMetaData::getFieldPcmAudioStart(qint32 sequentialFieldNumber)
+{
+    if (pcmAudioFieldStartSampleMap.size() < sequentialFieldNumber) return -1;
+    return pcmAudioFieldStartSampleMap[sequentialFieldNumber];
+}
+
+// Method to get the sample length of the specified sequential field number
+qint32 LdDecodeMetaData::getFieldPcmAudioLength(qint32 sequentialFieldNumber)
+{
+    if (pcmAudioFieldLengthMap.size() < sequentialFieldNumber) return -1;
+    return pcmAudioFieldLengthMap[sequentialFieldNumber];
+}

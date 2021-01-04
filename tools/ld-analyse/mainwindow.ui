@@ -454,6 +454,7 @@
     </property>
     <addaction name="actionDropout_analysis"/>
     <addaction name="actionSNR_analysis"/>
+    <addaction name="actionWhite_SNR_analysis"/>
     <addaction name="actionVBI"/>
     <addaction name="actionLine_scope"/>
     <addaction name="actionClosed_Captions"/>
@@ -585,7 +586,7 @@
   </action>
   <action name="actionSNR_analysis">
    <property name="text">
-    <string>SNR analysis...</string>
+    <string>Black SNR analysis...</string>
    </property>
    <property name="shortcut">
     <string>Ctrl+R</string>
@@ -623,6 +624,14 @@
    </property>
    <property name="shortcut">
     <string>Ctrl+A</string>
+   </property>
+  </action>
+  <action name="actionWhite_SNR_analysis">
+   <property name="text">
+    <string>White SNR analysis...</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+T</string>
    </property>
   </action>
  </widget>

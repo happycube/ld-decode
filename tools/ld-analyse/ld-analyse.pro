@@ -25,6 +25,7 @@ DEFINES += QT_DEPRECATED_WARNINGS
 CONFIG += c++11
 
 SOURCES += \
+    blacksnranalysisdialog.cpp \
     busydialog.cpp \
     closedcaptionsdialog.cpp \
     main.cpp \
@@ -32,7 +33,6 @@ SOURCES += \
     oscilloscopedialog.cpp \
     aboutdialog.cpp \
     chromadecoderconfigdialog.cpp \
-    snranalysisdialog.cpp \
     tbcsource.cpp \
     vbidialog.cpp \
     configuration.cpp \
@@ -50,16 +50,17 @@ SOURCES += \
     ../library/tbc/vbidecoder.cpp \
     ../library/tbc/filters.cpp \
     ../library/tbc/logging.cpp \
-    ../library/tbc/dropouts.cpp
+    ../library/tbc/dropouts.cpp \
+    whitesnranalysisdialog.cpp
 
 HEADERS += \
+    blacksnranalysisdialog.h \
     busydialog.h \
     closedcaptionsdialog.h \
     mainwindow.h \
     oscilloscopedialog.h \
     aboutdialog.h \
     chromadecoderconfigdialog.h \
-    snranalysisdialog.h \
     tbcsource.h \
     vbidialog.h \
     configuration.h \
@@ -80,18 +81,20 @@ HEADERS += \
     ../library/tbc/vbidecoder.h \
     ../library/tbc/filters.h \
     ../library/tbc/logging.h \
-    ../library/tbc/dropouts.h
+    ../library/tbc/dropouts.h \
+    whitesnranalysisdialog.h
 
 FORMS += \
+    blacksnranalysisdialog.ui \
     busydialog.ui \
     closedcaptionsdialog.ui \
     mainwindow.ui \
     oscilloscopedialog.ui \
     aboutdialog.ui \
     chromadecoderconfigdialog.ui \
-    snranalysisdialog.ui \
     vbidialog.ui \
-    dropoutanalysisdialog.ui
+    dropoutanalysisdialog.ui \
+    whitesnranalysisdialog.ui
 
 # Add external includes to the include path
 INCLUDEPATH += ../library/filter

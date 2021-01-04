@@ -85,6 +85,18 @@ int main(int argc, char *argv[])
                                         QCoreApplication::translate("main", "number"));
     parser.addOption(threadsOption);
 
+    // Option to disable differential dropout detection
+    QCommandLineOption noDiffDodOption(QStringList() << "no-diffdod",
+                                        QCoreApplication::translate(
+                                         "main", "Do not use differential dropout detection on low source pixels"));
+    parser.addOption(noDiffDodOption);
+
+    // Option to passthrough dropouts present in every source
+    QCommandLineOption passthroughOption(QStringList() << "passthrough",
+                                        QCoreApplication::translate(
+                                         "main", "Pass-through dropouts present on every source"));
+    parser.addOption(passthroughOption);
+
     // Positional argument to specify input video file
     parser.addPositionalArgument("inputs", QCoreApplication::translate(
                                      "main", "Specify input TBC files (- as first source for piped input)"));
@@ -101,6 +113,8 @@ int main(int argc, char *argv[])
 
     // Get the options from the parser
     bool reverse = parser.isSet(setReverseOption);
+    bool noDiffDod = parser.isSet(noDiffDodOption);
+    bool passThrough = parser.isSet(passthroughOption);
 
     // Get the arguments from the parser
     qint32 maxThreads = QThread::idealThreadCount();
@@ -127,16 +141,21 @@ int main(int argc, char *argv[])
     }
 
     // Get the input TBC sources
-    if (positionalArguments.count() >= 4) {
+    if (positionalArguments.count() >= 3) {
         // Resize the input filenames vector according to the number of input files supplied
         inputFilenames.resize(totalNumberOfInputFiles);
 
         for (qint32 i = 0; i < positionalArguments.count() - 1; i++) {
             inputFilenames[i] = positionalArguments.at(i);
         }
+
+        // Warn if only 2 sources are used
+        if (positionalArguments.count() == 3) {
+            qInfo() << "Only 2 input sources specified - stack will be only based on averaging (3 or more sources are recommended)";
+        }
     } else {
         // Quit with error
-        qCritical("You must specify at least 3 input and 1 output TBC file");
+        qCritical("You must specify at least 2 input and 1 output TBC file");
         return -1;
     }
 
@@ -227,6 +246,16 @@ int main(int argc, char *argv[])
             ldDecodeMetaData[i]->setIsFirstFieldFirst(false);
     }
 
+    // Show if DiffDOD is disabled
+    if (noDiffDod) {
+        qInfo() << "Differential Dropout Detection is disabled";
+    }
+
+    // Show if pass-through is enabled
+    if (passThrough) {
+        qInfo() << "Passing through dropouts present on every input source";
+    }
+
     // Show and open input source TBC files
     qDebug() << "Opening source video files...";
     QVector<SourceVideo *> sourceVideos;
@@ -282,7 +311,7 @@ int main(int argc, char *argv[])
     qInfo() << "Initial source checks are ok and sources are loaded";
     qint32 result = 0;
     StackingPool stackingPool(outputFilename, outputJsonFilename, maxThreads,
-                                ldDecodeMetaData, sourceVideos, reverse);
+                                ldDecodeMetaData, sourceVideos, reverse, noDiffDod, passThrough);
     if (!stackingPool.process()) result = 1;
 
     // Close open source video files
