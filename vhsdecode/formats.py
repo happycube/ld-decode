@@ -78,5 +78,9 @@ SysParams_NTSC_VHS["burst_abs_ref"] = 750
 # TODO: SECAM
 
 # Default thresholds for rf dropout detection.
-DEFAULT_THRESHOLD_P_DDD = 0.146
+DEFAULT_THRESHOLD_P_DDD = 0.12
 DEFAULT_THRESHOLD_P_CXADC = 0.3
+DEFAULT_HYSTERESIS = 1.25
+# Merge dropouts if they there is less than this number of samples between them.
+DOD_MERGE_THRESHOLD = 30
+DOD_MIN_LENGTH = 5

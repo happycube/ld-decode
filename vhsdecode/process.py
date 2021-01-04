@@ -174,11 +174,11 @@ def upconvert_chroma(
 
 
 def burst_deemphasis(chroma, lineoffset, linesout, outwidth, burstarea):
-    for l in range(lineoffset, linesout + lineoffset):
-        linestart = (l - lineoffset) * outwidth
+    for line in range(lineoffset, linesout + lineoffset):
+        linestart = (line - lineoffset) * outwidth
         lineend = linestart + outwidth
 
-        chroma[linestart + burstarea[1] + 5 : lineend] *= 8
+        chroma[linestart + burstarea[1] + 5: lineend] *= 8
 
     return chroma
 
@@ -249,7 +249,7 @@ def process_chroma(field, track_phase):
 
 
 def get_line(data, line_length, line):
-    return data[line * line_length : (line + 1) * line_length]
+    return data[line * line_length: (line + 1) * line_length]
 
 
 class LineInfo:
@@ -380,9 +380,75 @@ def detect_burst_pal_line(
 
 def find_crossings(data, threshold):
     """Find where the data crosses the set threshold."""
-    # TODO: add hysteresis.
+
+    # We do this by constructing array where positions above
+    # the threshold are marked as true, other sfalse,
+    # and use diff to mark where the value changes.
     crossings = np.diff(data < threshold)
+    # TODO: See if we can avoid reduntantly looking for both up and
+    # down crossing when we just need one of them.
     return crossings
+
+def find_crossings_dir(data, threshold, look_for_down):
+    """Find where the data crosses the set threshold
+    the look_for_down parameters determines if the crossings returned are down
+    or up crossings.
+    ."""
+    crossings = find_crossings(data, threshold)
+    crossings_pos = np.argwhere(crossings)[:, 0]
+    if len(crossings_pos) <= 0:
+        return []
+    first_cross = crossings_pos[0]
+    if first_cross >= len(data):
+        return []
+    first_crossing_is_down = data[first_cross] > data[first_cross + 1]
+    if first_crossing_is_down == look_for_down:
+        return crossings_pos[::2]
+    else:
+        return crossings_pos[1::2]
+
+
+
+def combine_to_dropouts(crossings_down, crossings_up, merge_threshold):
+    """Combine arrays of up and down crossings, and merge ones with small gaps between them.
+    Intended to be used where up and down crossing levels are different, the two lists will not
+    always alternate or have the same length.
+    Returns a list of start/end tuples.
+    """
+    used = []
+
+    if len(crossings_down) > 0 and len(crossings_up) > 0 and crossings_down[0] > crossings_up[0]:
+        # Handle if we start on a dropout by adding a zero at the start since we won't have any
+        # down crossing for it in the data.
+        crossings_down = np.concatenate((np.array([0]), crossings_down), axis=None)
+
+    # TODO: Fix when ending on dropout
+
+    cr_up = iter(crossings_up)
+    last_u = 0
+    # Loop through crossings and combine
+    # TODO: Doing this via a loop is probably not ideal in python,
+    # we may want to look for a way to more directly generate a list of down/up crossings
+    # with hysteresis.
+    for d in crossings_down:
+        if d < last_u:
+            continue
+
+        # If the distance between two dropouts is very small, we merge them.
+        if d - last_u < merge_threshold and len(used) > 0:
+            # Pop the last added dropout and use it's starting point
+            # as the start of the merged one.
+            last_d = used.pop()[0]
+            d = last_d
+
+        for u in cr_up:
+            if u > d:
+                used.append((d, u))
+                last_u = u
+                break
+
+    return used
+
 
 def detect_dropouts_rf(field):
     """Look for dropouts in the input data, based on rf envelope amplitude.
@@ -392,43 +458,29 @@ def detect_dropouts_rf(field):
     env = field.data["video"]["envelope"]
     threshold_p = field.rf.dod_threshold_p
     threshold_abs = field.rf.dod_threshold_a
+    hysteresis = field.rf.dod_hysteresis
 
     threshold = 0.0
     if threshold_abs is not None:
         threshold = threshold_abs
     else:
+        # Generate a threshold based on the field envelope average.
+        # This may not be ideal on a field with a lot of droputs,
+        # so we may want to use statistics of the previous averages
+        # to avoid the threshold ending too low.
         field_average = np.mean(field.data["video"]["envelope"])
         threshold = field_average * threshold_p
 
     errlist = []
-    crossings = find_crossings(env, threshold)
 
-    crossings_pos = np.argwhere(crossings)[:, 0]
+    crossings_down_b = find_crossings_dir(env, threshold, True)
+    crossings_up_b = find_crossings_dir(env, threshold * hysteresis, False)
+    errlist = combine_to_dropouts(crossings_down_b, crossings_up_b, vhs_formats.DOD_MERGE_THRESHOLD)
 
-    crossings_up = []
-    crossings_down = []
-
-    # Avoid error if last crossing is at the last data point
-    # or there are no dropouts.
-    if len(crossings_pos) > 0 and crossings_pos[0] + 1 < len(env):
-        first_cross = crossings_pos[0]
-
-        first_crossing_is_down = env[first_cross] > env[first_cross + 1]
-        # TODO: Handle down crossing at the end properly.
-
-        if first_crossing_is_down:
-            crossings_down = np.argwhere(crossings)[::2, 0]
-            crossings_up = np.argwhere(crossings)[1::2, 0]
-            errlist = list(zip(crossings_down, crossings_up))
-        else:
-            zero = np.array([0])
-            # If we start in a dropout, we pretend it started at position 0 in
-            # the data.
-            crossings_down = np.concatenate(
-                (zero, np.argwhere(crossings)[1::2, 0]), axis=None
-            )
-            crossings_up = np.argwhere(crossings)[::2, 0]
-            errlist = list(zip(crossings_down, crossings_up))
+    # Drop very short dropouts that were not merged.
+    # We do this after mergin to avoid removing short consecutive dropouts that
+    # could be merged.
+    errlist = list(filter(lambda s: s[1] - s[0] > vhs_formats.DOD_MIN_LENGTH, errlist))
 
     rv_lines = []
     rv_starts = []
@@ -458,8 +510,8 @@ def dropout_errlist_to_tbc(field, errlist):
 
     lineoffset = -field.lineoffset
 
-    # Remove dropouts occuring before the start of the frame so they don't cause
-    # the rest to be skipped
+    # Remove dropouts occuring before the start of the frame so they don't
+    # cause the rest to be skipped
     curerr = errlistc.pop(0)
     while len(errlistc) > 0 and curerr[0] < field.linelocs[field.lineoffset]:
         curerr = errlistc.pop(0)
@@ -486,9 +538,6 @@ def dropout_errlist_to_tbc(field, errlist):
 
             # If the dropout spans multiple lines, we need to split it up into one for each line.
             if end_linepos > field.outlinelen:
-                #                print("dop lines: ", end_linepos / field.outlinelen)
-                #                print("dop lines: ", end_linepos // field.outlinelen)
-
                 num_lines = end_linepos // field.outlinelen
 
                 # First line.
@@ -779,6 +828,7 @@ class VHSDecode(ldd.LDdecode):
         inputfreq=40,
         dod_threshold_p=vhs_formats.DEFAULT_THRESHOLD_P_DDD,
         dod_threshold_a=None,
+        dod_hysteresis=vhs_formats.DEFAULT_HYSTERESIS,
         track_phase=0,
         level_adjust=0.2
     ):
@@ -796,7 +846,8 @@ class VHSDecode(ldd.LDdecode):
         # Overwrite the rf decoder with the VHS-altered one
         self.rf = VHSRFDecode(
             system=system, inputfreq=inputfreq, track_phase=track_phase,
-            dod_threshold_p=dod_threshold_p, dod_threshold_a=dod_threshold_a
+            dod_threshold_p=dod_threshold_p, dod_threshold_a=dod_threshold_a,
+            dod_hysteresis=dod_hysteresis
         )
         # Store reference to ourself in the rf decoder - needed to access data location for track
         # phase, may want to do this in a better way later.
@@ -875,14 +926,18 @@ class VHSDecode(ldd.LDdecode):
         jout = super(VHSDecode, self).build_json(f)
         black= jout['videoParameters']['black16bIre']
         white = jout['videoParameters']['white16bIre']
-#        print("orig W: ", orig)
+
         jout['videoParameters']['black16bIre'] = black * (1 - self.level_adjust)
         jout['videoParameters']['white16bIre'] = white * (1 + self.level_adjust)
         return jout
 
 
 class VHSRFDecode(ldd.RFDecode):
-    def __init__(self, inputfreq=40, system="NTSC", dod_threshold_p=vhs_formats.DEFAULT_THRESHOLD_P_DDD, dod_threshold_a=None, track_phase=None):
+    def __init__(self, inputfreq=40, system="NTSC", dod_threshold_p=vhs_formats.
+                 DEFAULT_THRESHOLD_P_DDD, dod_threshold_a=None,
+                 dod_hysteresis=vhs_formats.DEFAULT_HYSTERESIS,
+                 track_phase=None,
+    ):
 
         # First init the rf decoder normally.
         super(VHSRFDecode, self).__init__(
@@ -891,6 +946,7 @@ class VHSRFDecode(ldd.RFDecode):
 
         self.dod_threshold_p = dod_threshold_p
         self.dod_threshold_a = dod_threshold_a
+        self.dod_hysteresis = dod_hysteresis
 
         if track_phase is None:
             self.track_phase = 0

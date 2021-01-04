@@ -102,6 +102,15 @@ parser.add_argument(
     help="RF level threshold absolute value. Note that RF levels vary greatly between tapes and recording setups.",
 )
 parser.add_argument(
+    "--dod_h",
+    "--dod_hysteresis",
+    dest="dod_hysteresis",
+    metavar="value",
+    type=float,
+    default=f.DEFAULT_HYSTERESIS,
+    help="Dropout detection hysteresis, the rf level needs to go above the dropout threshold multiplied by this for a dropout to end.",
+)
+parser.add_argument(
     "-L",
     "--level_adjust",
     dest="level_adjust",
@@ -178,6 +187,7 @@ vhsd = VHSDecode(
     inputfreq=sample_freq,
     dod_threshold_p=dod_threshold_p,
     dod_threshold_a=args.dod_threshold_a,
+    dod_hysteresis=args.dod_hysteresis,
     track_phase=args.track_phase,
     level_adjust=args.level_adjust
 )
