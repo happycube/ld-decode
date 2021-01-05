@@ -37,7 +37,13 @@ parser.add_argument(
     default=0,
     help="rough jump to frame n of capture (default is 0)",
 )
-parser.add_argument('--start_fileloc', metavar='start_fileloc', type=float, default=-1, help='jump to precise sample # in the file')
+parser.add_argument(
+    "--start_fileloc",
+    metavar="start_fileloc",
+    type=float,
+    default=-1,
+    help="jump to precise sample # in the file",
+)
 parser.add_argument(
     "-S",
     "--seek",
@@ -69,7 +75,15 @@ parser.add_argument(
     default=1,
     help="number of CPU threads to use",
 )
-parser.add_argument('-f', '--frequency', dest='inputfreq', metavar='FREQ', type=lddu.parse_frequency, default=None, help='RF sampling frequency in source file (default is 40MHz)')
+parser.add_argument(
+    "-f",
+    "--frequency",
+    dest="inputfreq",
+    metavar="FREQ",
+    type=lddu.parse_frequency,
+    default=None,
+    help="RF sampling frequency in source file (default is 40MHz)",
+)
 # parser.add_argument('-c', '--cut', dest='cut', action='store_true', help='cut (to r16) instead of decode')
 # parser.add_argument('-m', '--MTF', metavar='mtf', type=float, default=None, help='mtf compensation multiplier')
 # parser.add_argument('--MTF_offset', metavar='mtf_offset', type=float, default=None, help='mtf compensation offset')
@@ -161,8 +175,10 @@ if args.pal and args.ntsc:
     print("ERROR: Can only be PAL or NTSC")
     exit(1)
 
-sample_freq = CXADC_FREQ if args.cxadc else CXADC_FREQ_HIGH if args.cxadc3 else args.inputfreq
-print("sample freq", sample_freq)
+sample_freq = (
+    CXADC_FREQ if args.cxadc else CXADC_FREQ_HIGH if args.cxadc3 else args.inputfreq
+)
+
 try:
     loader = lddu.make_loader(filename, sample_freq)
 except ValueError as e:
@@ -239,6 +255,7 @@ done = False
 
 jsondumper = lddu.jsondump_thread(vhsd, outname)
 
+
 def cleanup(outname):
     jsondumper.put(vhsd.build_json(vhsd.curfield))
     vhsd.close()
@@ -257,7 +274,9 @@ while not done and vhsd.fields_written < (req_frames * 2):
         cleanup(outname)
         exit(1)
     except Exception as err:
-        print("\nERROR - please paste the following into a bug report:", file=sys.stderr)
+        print(
+            "\nERROR - please paste the following into a bug report:", file=sys.stderr
+        )
         print("current sample:", vhsd.fdoffset, file=sys.stderr)
         print("arguments:", args, file=sys.stderr)
         print("Exception:", err, " Traceback:", file=sys.stderr)

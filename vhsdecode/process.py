@@ -772,6 +772,14 @@ class FieldPALVHS(ldd.FieldPAL):
             self.data["video"]["demod_05"], pulse_hz_min, pulse_hz_max
         )
 
+    def compute_deriv_error(self, linelocs, baserr):
+        """Disabled this for now as tapes have large variations in line pos
+        Due to e.g head switch.
+        compute errors based off the second derivative - if it exceeds 1 something's wrong,
+        and if 4 really wrong...
+        """
+        return baserr
+
     def dropout_detect(self):
         return detect_dropouts_rf(self)
 
@@ -816,6 +824,10 @@ class FieldNTSCVHS(ldd.FieldNTSC):
 
     def dropout_detect(self):
         return detect_dropouts_rf(self)
+
+    def compute_deriv_error(self, linelocs, baserr):
+        """Disabled this for now as line starts can vary widely."""
+        return baserr
 
 
 # Superclass to override laserdisc-specific parts of ld-decode with stuff that works for VHS
