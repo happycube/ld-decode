@@ -325,11 +325,8 @@ class RFDecode:
 
         deemp = list(self.DecoderParams["video_deemp"])
 
-        if extra_options.get("deemp_low", 0):
-            deemp[0] = extra_options.get["deemp_low"]
-
-        if extra_options.get("deemp_high", 0):
-            deemp[1] = extra_options.get["deemp_high"]
+        deemp[0] = extra_options.get("deemp_low", deemp[0]):
+        deemp[1] = extra_options.get("deemp_high", deemp[1]):
 
         self.DecoderParams["video_deemp"] = deemp
 
@@ -486,11 +483,6 @@ class RFDecode:
         )
         SF["Fvideo_lpf"] = filtfft(video_lpf, self.blocklen)
 
-        video_bpf = sps.butter(
-            2, [3900000 / self.freq_hz_half, 4500000 / self.freq_hz_half], "bandpass"
-        )
-        SF["Fvideo_bpf"] = filtfft(video_bpf, self.blocklen)
-
         if self.system == "NTSC" and self.NTSC_ColorNotchFilter:
             video_notch = sps.butter(
                 3,
@@ -516,7 +508,7 @@ class RFDecode:
         SF["Femp"] = filtfft(emphasis_iir(deemp2, deemp1, self.freq_hz), self.blocklen)
 
         # Post processing:  lowpass filter + deemp
-        SF["FVideo"] = SF["Fvideo_lpf"] * SF["Fdeemp"]  # + (SF['Fvideo_bpf'] / 10)
+        SF["FVideo"] = SF["Fvideo_lpf"] * SF["Fdeemp"]
 
         # additional filters:  0.5mhz and color burst
         # Using an FIR filter here to get a known delay
@@ -573,6 +565,7 @@ class RFDecode:
         adeemp_b, adeemp_a = sps.butter(
             1, [(1000000 / dfreq) / (self.Filters["freq_aud2"] / 2)], btype="lowpass"
         )
+        
         return filtfft(
             [adeemp_b, adeemp_a], self.blocklen // self.Filters["audio_fdiv2"]
         )
