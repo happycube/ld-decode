@@ -1,33 +1,19 @@
-from base64 import b64encode
 import copy
-from datetime import datetime
-import getopt
 import itertools
-import io
-from io import BytesIO
-import logging
-import os
-import subprocess
 import sys
+import threading
 import time
 
-from numba import jit, njit
-
-import threading
-import queue
-
-from multiprocessing import Process, Pool, Queue, JoinableQueue, Pipe
+from multiprocessing import Process, Queue, JoinableQueue, Pipe
 
 # standard numeric/scientific libraries
 import numpy as np
-import scipy as sp
 import scipy.signal as sps
 import scipy.interpolate as spi
 
 # Use PyFFTW's faster FFT implementation if available
 try:
     import pyfftw.interfaces.numpy_fft as npfft
-
     import pyfftw.interfaces
 
     pyfftw.interfaces.cache.enable()
@@ -37,15 +23,15 @@ except ImportError:
 
 # internal libraries
 
-# XXX: figure out how to handle these module imports better for vscode importing
+# XXX: figure out how to handle these module imports better for vscode imports
 try:
     import efm_pll
-except:
+except ImportError:
     from lddecode import efm_pll
 
 try:
     from utils import *
-except:
+except ImportError:
     from lddecode.utils import *
 
 try:
@@ -54,7 +40,7 @@ try:
     import mkl
 
     mkl.set_num_threads(1)
-except:
+except ImportError:
     # If not running Anaconda, we don't care that mkl doesn't exist.
     pass
 
@@ -307,13 +293,9 @@ class RFDecode:
         self.blockcut_end = 0
         self.system = system
 
-        self.NTSC_ColorNotchFilter = (
-            True if extra_options.get("NTSC_ColorNotchFilter") == True else False
-        )
-        self.PAL_V4300D_NotchFilter = (
-            True if extra_options.get("PAL_V4300D_NotchFilter") == True else False
-        )
-        lowband = True if extra_options.get("lowband") == True else False
+        self.NTSC_ColorNotchFilter = extra_options.get("NTSC_ColorNotchFilter", False)
+        self.PAL_V4300D_NotchFilter = extra_options.get("PAL_V4300D_NotchFilter", False)
+        lowband = extra_options.get("lowband", False)
 
         freq = inputfreq
         self.freq = freq
@@ -3935,7 +3917,7 @@ class LDdecode:
 
                     if self.verboseVITS and self.isCLV and self.clvMinutes is not None:
                         fi["clvMinutes"] = int(self.clvMinutes)
-                        if self.earlyCLV == False:
+                        if not self.earlyCLV:
                             fi["clvSeconds"] = int(self.clvSeconds)
                             fi["clvFrameNr"] = int(self.clvFrameNum)
                 except:
