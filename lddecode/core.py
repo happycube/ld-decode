@@ -325,8 +325,8 @@ class RFDecode:
 
         deemp = list(self.DecoderParams["video_deemp"])
 
-        deemp[0] = extra_options.get("deemp_low", deemp[0]):
-        deemp[1] = extra_options.get("deemp_high", deemp[1]):
+        deemp[0] = extra_options.get("deemp_low", deemp[0])
+        deemp[1] = extra_options.get("deemp_high", deemp[1])
 
         self.DecoderParams["video_deemp"] = deemp
 
@@ -445,8 +445,8 @@ class RFDecode:
         # Start building up the combined FFT filter using the BPF
         SF["RFVideo"] = filtfft(filt_rfvideo, self.blocklen)
 
-        # Notch filters for analog audio.  DdD captures in particular need this.
-        if SP["analog_audio"]:
+        # Notch filters for analog audio.  DdD captures on NTSC need this.
+        if SP["analog_audio"] and self.system == 'NTSC':
             cut_left = sps.butter(
                 DP["audio_notchorder"],
                 [
@@ -565,7 +565,7 @@ class RFDecode:
         adeemp_b, adeemp_a = sps.butter(
             1, [(1000000 / dfreq) / (self.Filters["freq_aud2"] / 2)], btype="lowpass"
         )
-        
+
         return filtfft(
             [adeemp_b, adeemp_a], self.blocklen // self.Filters["audio_fdiv2"]
         )
@@ -2099,8 +2099,6 @@ class Field:
         else:
             self.skipdetected = False
 
-        skip_reached = False
-
         linelocs_dict = {}
         linelocs_dist = {}
 
@@ -2112,9 +2110,9 @@ class Field:
 
         meanlinelen = self.computeLineLen(validpulses)
 
-        if ((self.rawpulses[-1].start - line0loc) / meanlinelen) < (
-            self.outlinecount + 7
-        ):
+        # If we don't have enough data at the end, move onto the next field
+        lastline = ((self.rawpulses[-1].start - line0loc) / meanlinelen)
+        if lastline < (self.outlinecount + 7):
             return None, None, line0loc - (meanlinelen * 20)
 
         for p in validpulses:
@@ -2134,9 +2132,6 @@ class Field:
                     and rlineloc > 23
                     and lineloc_end_distance < lineloc_distance
                 ):
-                    skip_reached = True
-
-                if skip_reached:
                     lineloc = lineloc_end
                     rlineloc = rlineloc_end
                     lineloc_distance = lineloc_end_distance
@@ -2263,10 +2258,9 @@ class Field:
                 if nb_min(hsync_area) < self.rf.iretohz(-55) or nb_max(
                     hsync_area
                 ) > self.rf.iretohz(30):
+                    # don't use the computed value here if it's bad
                     self.linebad[i] = True
-                    linelocs2[i] = self.linelocs1[
-                        i
-                    ]  # don't use the computed value here if it's bad
+                    linelocs2[i] = self.linelocs1[i]
                 else:
                     porch_level = nb_median(
                         self.data["video"]["demod_05"][
@@ -2728,7 +2722,6 @@ class Field:
                 count += 1
 
                 zc_cycle = ((bstart + zc - s_rem) / zcburstdiv) + phase_adjust
-                # print(zc_cycle, phase_adjust)
                 zc_round = nb_round(zc_cycle)
 
                 phase_offset.append(zc_round - zc_cycle)
@@ -2855,6 +2848,7 @@ class FieldPAL(Field):
             return self.get_following_field_number()
 
         burstlevel6 /= self.rf.SysParams["hz_ire"]
+
         if inrange(burstlevel6, self.burstmedian * 0.8, self.burstmedian * 1.2):
             hasburst = True
         elif burstlevel6 < self.burstmedian * 0.2:
@@ -3062,39 +3056,31 @@ class FieldNTSC(Field):
 
     def compute_burst_offsets(self, linelocs):
 
-        # This potentially takes two passes to correct for ~90 degree
-        # burst phase relative to the hsync start
-        for passnum in range(2):
-            linelocs_adj = linelocs
+        linelocs_adj = linelocs
 
-            burstlevel = np.zeros_like(linelocs_adj, dtype=np.float32)
+        burstlevel = np.zeros_like(linelocs_adj, dtype=np.float32)
 
-            clbsum = 0
-            valid_linecount = 0
+        clbsum = 0
+        valid_linecount = 0
 
-            adjs = {}
+        adjs = {}
 
-            for l in range(0, 266):
-                clb = self.compute_line_bursts(linelocs, l)
-                if clb[0] == None:
-                    continue
+        for l in range(0, 266):
+            clb = self.compute_line_bursts(linelocs, l)
+            if clb[0] == None:
+                continue
 
-                adjs[l] = clb[1] / 2
-                burstlevel[l] = self.get_burstlevel(l, linelocs)
+            adjs[l] = clb[1] / 2
+            burstlevel[l] = self.get_burstlevel(l, linelocs)
 
-                even_line = not (l % 2)
-                clbsum += 1 if (even_line and clb[0]) else 0
-                valid_linecount += 1
+            even_line = not (l % 2)
+            clbsum += 1 if (even_line and clb[0]) else 0
+            valid_linecount += 1
 
-            # If more than half of the lines have rising phase alignment, it's (probably) field 1 or 4
-            field14 = clbsum > (valid_linecount // 4)
+        # If more than half of the lines have rising phase alignment, it's (probably) field 1 or 4
+        field14 = clbsum > (valid_linecount // 4)
 
-            median_adj = np.median([np.abs(adjs[k]) for k in adjs.keys()])
-
-            if median_adj < 0.2:
-                break
-            else:
-                self.phase_adjust_90 = not self.phase_adjust_90
+        median_adj = np.median([np.abs(adjs[k]) for k in adjs.keys()])
 
         return field14, burstlevel, adjs
 
