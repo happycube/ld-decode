@@ -470,8 +470,8 @@ class RFDecode:
         # Start building up the combined FFT filter using the BPF
         SF['RFVideo'] = filtfft(filt_rfvideo, self.blocklen)
 
-        # Notch filters for analog audio.  DdD captures in particular need this.
-        if SP['analog_audio']:
+        # Notch filters for analog audio.  DdD captures on NTSC need this.
+        if SP['analog_audio'] and self.system == 'NTSC':
             cut_left = sps.butter(DP['audio_notchorder'], [(SP['audio_lfreq'] - DP['audio_notchwidth'])/self.freq_hz_half, (SP['audio_lfreq'] + DP['audio_notchwidth'])/self.freq_hz_half], btype='bandstop')
             SF['Fcutl'] = filtfft(cut_left, self.blocklen)
             cut_right = sps.butter(DP['audio_notchorder'], [(SP['audio_rfreq'] - DP['audio_notchwidth'])/self.freq_hz_half, (SP['audio_rfreq'] + DP['audio_notchwidth'])/self.freq_hz_half], btype='bandstop')
