@@ -67,7 +67,7 @@ jobs:
         scripts/test-decode --pal \
           --decoder mono --decoder pal2d --decoder transform2d --decoder transform3d \
           --expect-frames 4 \
-          --expect-bpsnr 39.1 \
+          --expect-bpsnr 38.45 \
           --expect-vbi 9151527,16065688,16065688 \
           --expect-efm-samples 5292 \
           testdata/pal/jason-testpattern.lds
@@ -77,6 +77,6 @@ jobs:
       run: |
         scripts/test-decode --pal --no-efm \
           --expect-frames 9 \
-          --expect-bpsnr 30.6 \
+          --expect-bpsnr 30.3 \
           --expect-vbi 0,8449774,8449774 \
           testdata/pal/kagemusha-leadout-cbar.ldf
