@@ -3015,8 +3015,8 @@ class FieldNTSC(Field):
         median_adj = np.median([np.abs(adjs[k]) for k in adjs.keys()])
 
         self.linelocsx = linelocs
-        print(field14, rising_sum, median_adj)
-        print()
+        #print(field14, rising_sum, median_adj)
+        #print()
 
         return field14, adjs
 
