@@ -468,8 +468,8 @@ class RFDecode:
 
             SF["RFVideo"] *= SF["Fcutl"] * SF["Fcutr"]
 
-        # The hilbert filter performs a 90 degree shift on the input.
-        # Below code shamelessly based on https://github.com/scipy/scipy/blob/v1.6.0/scipy/signal/signaltools.py#L2264-2267
+        # The hilbert filter performs a 90 degree shift on the input.  From: 
+        # https://github.com/scipy/scipy/blob/v1.6.0/scipy/signal/signaltools.py#L2264-2267
         SF["hilbert"] = np.zeros(self.blocklen)
         SF["hilbert"][0] = SF["hilbert"][self.blocklen // 2] = 1
         SF["hilbert"][1 : self.blocklen // 2] = 2
@@ -2689,7 +2689,7 @@ class Field:
         burstarea_demod = burstarea_demod - nb_mean(burstarea_demod)
 
         if nb_absmax(burstarea_demod) > (30 * self.rf.SysParams["hz_ire"]):
-            return None, None, None
+            return None, None
 
         fsc_n1 = 1 / self.rf.SysParams["fsc_mhz"]
         zcburstdiv = (lfreq * fsc_n1) / 2
@@ -2701,6 +2701,8 @@ class Field:
             # Do not use the previous phase adjustment if it's too high (#561)
             if np.abs(phase_adjust) > 0.25:
                 phase_adjust = 0
+
+        phase_adjust = 0
 
         # ... but, if a 90 degree offset is detected handle that
         if self.phase_adjust_90:
@@ -2738,7 +2740,7 @@ class Field:
             if count:
                 phase_adjust += nb_median(np.array(phase_offset))
             else:
-                return None, None, None
+                return None, None
 
         if self.phase_adjust_90:
             phase_adjust -= 0.5
@@ -2989,42 +2991,18 @@ class CombNTSC:
         l19_slice = self.field.lineslice_tbc(19, 0, 40)
         l19_slice_i70 = self.field.lineslice_tbc(19, 14, 18)
 
+        ire_out1 = self.field.dspicture[l19_slice_i70]
+
         # fail out if there is obviously bad data
-        if not (
-            (
-                np.max(self.field.output_to_ire(self.field.dspicture[l19_slice_i70]))
-                < 100
-            )
-            and (
-                np.min(self.field.output_to_ire(self.field.dspicture[l19_slice_i70]))
-                > 40
-            )
-        ):
-            # logger.info("WARNING: line 19 data incorrect")
-            # logger.info(np.max(self.field.output_to_ire(self.field.dspicture[l19_slice_i70])), np.min(self.field.output_to_ire(self.field.dspicture[l19_slice_i70])))
+        if not ((np.max(ire_out1) < 100) and (np.min(ire_out1) > 40)):
             return None, None, None
 
         cbuffer = self.cbuffer[l19_slice]
+
         if comb_field2 is not None:
+            ire_out2 = comb_field2.field.dspicture[l19_slice_i70]
             # fail out if there is obviously bad data
-            if not (
-                (
-                    np.max(
-                        self.field.output_to_ire(
-                            comb_field2.field.dspicture[l19_slice_i70]
-                        )
-                    )
-                    < 100
-                )
-                and (
-                    np.min(
-                        self.field.output_to_ire(
-                            comb_field2.field.dspicture[l19_slice_i70]
-                        )
-                    )
-                    > 40
-                )
-            ):
+            if not ((np.max(ire_out2) < 100) and (np.min(ire_out2) > 40)):
                 return None, None, None
 
             cbuffer -= comb_field2.cbuffer[l19_slice]
@@ -3056,10 +3034,6 @@ class FieldNTSC(Field):
 
     def compute_burst_offsets(self, linelocs):
 
-        linelocs_adj = linelocs
-
-        burstlevel = np.zeros_like(linelocs_adj, dtype=np.float32)
-
         clbsum = 0
         valid_linecount = 0
 
@@ -3071,7 +3045,6 @@ class FieldNTSC(Field):
                 continue
 
             adjs[l] = clb[1] / 2
-            burstlevel[l] = self.get_burstlevel(l, linelocs)
 
             even_line = not (l % 2)
             clbsum += 1 if (even_line and clb[0]) else 0
@@ -3082,16 +3055,19 @@ class FieldNTSC(Field):
 
         median_adj = np.median([np.abs(adjs[k]) for k in adjs.keys()])
 
-        return field14, burstlevel, adjs
+        self.linelocsx = linelocs
+        print(field14, clbsum, median_adj)
+        print()
+
+        return field14, adjs
 
     def refine_linelocs_burst(self, linelocs=None):
         if linelocs is None:
             linelocs = self.linelocs2
 
         linelocs_adj = linelocs.copy()
-        burstlevel = np.zeros_like(linelocs_adj, dtype=np.float32)
 
-        field14, burstlevel, adjs_new = self.compute_burst_offsets(linelocs_adj)
+        field14, adjs_new = self.compute_burst_offsets(linelocs_adj)
 
         adjs = {}
 
@@ -3135,9 +3111,9 @@ class FieldNTSC(Field):
             self.fieldPhaseID = map4[(self.isFirstField, field14)]
         else:
             self.fieldPhaseID = 1
-            return linelocs_adj, burstlevel
+            return linelocs_adj
 
-        return linelocs_adj, burstlevel
+        return linelocs_adj
 
     def downscale(self, lineoffset=0, final=False, *args, **kwargs):
         if final == False:
@@ -3164,8 +3140,6 @@ class FieldNTSC(Field):
         )
 
     def __init__(self, *args, **kwargs):
-        self.burstlevel = None
-
         super(FieldNTSC, self).__init__(*args, **kwargs)
 
     def process(self):
@@ -3182,7 +3156,7 @@ class FieldNTSC(Field):
             self.decodephillipscode(l + self.lineoffset) for l in [16, 17, 18]
         ]
 
-        self.linelocs3, self.burstlevel = self.refine_linelocs_burst(self.linelocs2)
+        self.linelocs3 = self.refine_linelocs_burst(self.linelocs2)
         self.linelocs3 = self.fix_badlines(self.linelocs3, self.linelocs2)
 
         self.burstmedian = self.calc_burstmedian()
