@@ -1013,6 +1013,7 @@ class RFDecode:
         fakesignal[6000:6005] = 0
 
         fakedecode = rf.demodblock(fakesignal, mtf_level=mtf_level)
+        vdemod = fakedecode["video"]["demod"]
 
         # XXX: sync detector does NOT reflect actual sync detection, just regular filtering @ sync level
         # (but only regular filtering is needed for DOD)
@@ -1426,14 +1427,10 @@ class Field:
 
         self.prevfield = prevfield
 
-        self.phase_adjust = 0
-        self.phase_adjust_90 = 0
-
         # XXX: need a better way to prevent memory leaks than this
         # For now don't let a previous frame keep it's prev frame
         if prevfield is not None:
             prevfield.prevfield = None
-            self.phase_adjust_90 = prevfield.phase_adjust_90
 
         self.rf = rf
         self.freq = self.rf.freq
@@ -2529,28 +2526,6 @@ class Field:
         # the minimum valid value during VSYNC is lower for PAL because of the pilot signal
         minsync = -100 if isPAL else -50
 
-        # these lines should cover both PAL and NTSC's hsync areas
-        if False:
-            for i in range(0, len(f.linelocs)):
-                l = f.linelocs[i]
-                # Could compute the estimated length of setup, but we can cut this a bit early...
-                valid_min[
-                    int(l - (f.rf.freq * 0.5)) : int(l + (f.rf.freq * 8))
-                ] = f.rf.iretohz(minsync)
-                valid_max[
-                    int(l - (f.rf.freq * 0.5)) : int(l + (f.rf.freq * 8))
-                ] = f.rf.iretohz(40)
-
-                if self.rf.system == "PAL":
-                    # basically exclude the pilot signal altogether
-                    # This is needed even though HSYNC is excluded later, since failures can be expanded
-                    valid_min[
-                        int(l - (f.rf.freq * 0.5)) : int(l + (f.rf.freq * 4.7))
-                    ] = f.rf.iretohz(-80)
-                    valid_max[
-                        int(l - (f.rf.freq * 0.5)) : int(l + (f.rf.freq * 4.7))
-                    ] = f.rf.iretohz(50)
-
         iserr2 = f.data["video"]["demod"] < valid_min
         iserr2 |= f.data["video"]["demod"] > valid_max
 
@@ -2696,18 +2671,6 @@ class Field:
 
         phase_adjust = 0
 
-        if self.prevfield is not None:
-            phase_adjust = self.prevfield.phase_adjust
-            # Do not use the previous phase adjustment if it's too high (#561)
-            if np.abs(phase_adjust) > 0.25:
-                phase_adjust = 0
-
-        phase_adjust = 0
-
-        # ... but, if a 90 degree offset is detected handle that
-        if self.phase_adjust_90:
-            phase_adjust += 0.5
-
         # The first pass computes phase_offset, the second uses it to determine
         # the colo(u)r burst phase of the line.
         for passcount in range(2):
@@ -2742,10 +2705,6 @@ class Field:
             else:
                 return None, None
 
-        if self.phase_adjust_90:
-            phase_adjust -= 0.5
-
-        self.phase_adjust = phase_adjust
         return (rising_count / count) > 0.5, -phase_adjust
 
 
@@ -2865,14 +2824,14 @@ class FieldPAL(Field):
         for l in range(7, 20, 4):
             # Usually line 7 is used to determine burst phase, but
             # if that's corrupt every fourth line has the same phase
-            clbn = self.compute_line_bursts(self.linelocs, l)
-            if clbn[0] is not None:
+            rising, phase_adjust = self.compute_line_bursts(self.linelocs, l)
+            if rising is not None:
                 break
 
-        if clbn[0] == None:
+        if rising == None:
             return self.get_following_field_number()
 
-        is_firstfour = clbn[0]
+        is_firstfour = rising
         if m4 == 2:
             # For field 2/6, reverse the above.
             is_firstfour = not is_firstfour
@@ -3034,29 +2993,29 @@ class FieldNTSC(Field):
 
     def compute_burst_offsets(self, linelocs):
 
-        clbsum = 0
+        rising_sum = 0
         valid_linecount = 0
 
         adjs = {}
 
         for l in range(0, 266):
-            clb = self.compute_line_bursts(linelocs, l)
-            if clb[0] == None:
+            rising, phase_adjust = self.compute_line_bursts(linelocs, l)
+            if rising == None:
                 continue
 
-            adjs[l] = clb[1] / 2
+            adjs[l] = phase_adjust / 2
 
             even_line = not (l % 2)
-            clbsum += 1 if (even_line and clb[0]) else 0
+            rising_sum += 1 if (even_line and rising) else 0
             valid_linecount += 1
 
         # If more than half of the lines have rising phase alignment, it's (probably) field 1 or 4
-        field14 = clbsum > (valid_linecount // 4)
+        field14 = rising_sum > (valid_linecount // 4)
 
         median_adj = np.median([np.abs(adjs[k]) for k in adjs.keys()])
 
         self.linelocsx = linelocs
-        print(field14, clbsum, median_adj)
+        print(field14, rising_sum, median_adj)
         print()
 
         return field14, adjs
@@ -3985,9 +3944,8 @@ class LDdecode:
 
         vp["fieldHeight"] = f.outlinecount
 
-        badj = (
-            -1.4
-        )  # current burst adjustment as of 2/27/19, update when #158 is fixed!
+        # current burst adjustment as of 2/27/19, update when #158 is fixed!
+        badj = -1.4
         vp["colourBurstStart"] = np.round(
             (f.rf.SysParams["colorBurstUS"][0] * spu) + badj
         )
