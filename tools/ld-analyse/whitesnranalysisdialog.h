@@ -1,9 +1,9 @@
 /************************************************************************
 
-    snranalysisdialog.h
+    whitesnranalysisdialog.h
 
     ld-analyse - TBC output analysis
-    Copyright (C) 2018-2019 Simon Inns
+    Copyright (C) 2018-2021 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -22,8 +22,8 @@
 
 ************************************************************************/
 
-#ifndef SNRANALYSISDIALOG_H
-#define SNRANALYSISDIALOG_H
+#ifndef WHITESNRANALYSISDIALOG_H
+#define WHITESNRANALYSISDIALOG_H
 
 #include <cmath>
 
@@ -33,41 +33,53 @@
 #include <qwt_legend.h>
 #include <qwt_plot_grid.h>
 #include <qwt_plot_curve.h>
+#include <qwt_plot_zoomer.h>
+#include <qwt_plot_panner.h>
+#include <qwt_scale_widget.h>
+#include <qwt_scale_draw.h>
+#include <qwt_plot_marker.h>
 
 #include "lddecodemetadata.h"
 
 namespace Ui {
-class SnrAnalysisDialog;
+class WhiteSnrAnalysisDialog;
 }
 
-class SnrAnalysisDialog : public QDialog
+class WhiteSnrAnalysisDialog : public QDialog
 {
     Q_OBJECT
 
 public:
-    explicit SnrAnalysisDialog(QWidget *parent = nullptr);
-    ~SnrAnalysisDialog();
+    explicit WhiteSnrAnalysisDialog(QWidget *parent = nullptr);
+    ~WhiteSnrAnalysisDialog();
 
-    void startUpdate();
-    void addDataPoint(qint32 fieldNumber, qreal blackSnr, qreal whiteSnr);
-    void finishUpdate(qint32 numberOfFields, qint32 fieldsPerDataPoint);
+    void startUpdate(qint32 _numberOfFrames);
+    void addDataPoint(qint32 frameNumber, qreal whiteSnr);
+    void finishUpdate(qint32 _currentFrameNumber);
+    void updateFrameMarker(qint32 _currentFrameNumber);
 
 private slots:
-    void on_blackPSNR_checkBox_clicked();
-    void on_whiteSNR_checkBox_clicked();
+    void scaleDivChangedSlot();
 
 private:
     void removeChartContents();
+    void generateTrendLine();
 
-    Ui::SnrAnalysisDialog *ui;
+    Ui::WhiteSnrAnalysisDialog *ui;
+    QwtPlotZoomer *zoomer;
+    QwtPlotPanner *panner;
     QwtPlot *plot;
     QwtLegend *legend;
     QwtPlotGrid *grid;
-    QPolygonF *blackPoints;
     QPolygonF *whitePoints;
-    QwtPlotCurve *blackCurve;
     QwtPlotCurve *whiteCurve;
+    QPolygonF *trendPoints;
+    QwtPlotCurve *trendCurve;
+    QwtPlotMarker *plotMarker;
+
     double maxY;
+    qint32 numberOfFrames;
+    QVector<double> tlPoint;
 };
 
-#endif // SNRANALYSISDIALOG_H
+#endif // WHITESNRANALYSISDIALOG_H

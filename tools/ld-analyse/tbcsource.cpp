@@ -3,7 +3,7 @@
     tbcsource.cpp
 
     ld-analyse - TBC output analysis
-    Copyright (C) 2018-2020 Simon Inns
+    Copyright (C) 2018-2021 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -33,7 +33,6 @@ TbcSource::TbcSource(QObject *parent) : QObject(parent)
     dropoutsOn = false;
     reverseFoOn = false;
     sourceReady = false;
-    fieldsPerGraphDataPoint = 0;
     frameCacheFrameNumber = -1;
 
     // Set the chroma decoder configuration to default
@@ -53,7 +52,6 @@ void TbcSource::loadSource(QString sourceFilename)
     dropoutsOn = false;
     reverseFoOn = false;
     sourceReady = false;
-    fieldsPerGraphDataPoint = 0;
     frameCacheFrameNumber = -1;
 
     // Set the current file name
@@ -265,23 +263,11 @@ QVector<qreal> TbcSource::getDropOutGraphData()
     return dropoutGraphData;
 }
 
-// Get CQI data for graphing
-QVector<qreal> TbcSource::getCaptureQualityIndexGraphData()
-{
-    return cqiGraphData;
-}
-
 // Method to get the size of the graphing data
 qint32 TbcSource::getGraphDataSize()
 {
     // All data vectors are the same size, just return the size on one
     return dropoutGraphData.size();
-}
-
-// Method to get the number of fields averaged into each graphing data point
-qint32 TbcSource::getFieldsPerGraphDataPoint()
-{
-    return fieldsPerGraphDataPoint;
 }
 
 // Method returns true if frame contains dropouts
@@ -609,92 +595,73 @@ QImage TbcSource::generateQImage(qint32 frameNumber)
 
 // Generate the data points for the Drop-out and SNR analysis graphs
 // We do these both at the same time to reduce calls to the metadata
-void TbcSource::generateData(qint32 _targetDataPoints)
+void TbcSource::generateData()
 {
     dropoutGraphData.clear();
     blackSnrGraphData.clear();
     whiteSnrGraphData.clear();
-    cqiGraphData.clear();
 
-    qreal targetDataPoints = static_cast<qreal>(_targetDataPoints);
-    qreal averageWidth = qRound(ldDecodeMetaData.getNumberOfFields() / targetDataPoints);
-    if (averageWidth < 1) averageWidth = 1; // Ensure we don't divide by zero
-    qint32 dataPoints = ldDecodeMetaData.getNumberOfFields() / static_cast<qint32>(averageWidth);
-    fieldsPerGraphDataPoint = ldDecodeMetaData.getNumberOfFields() / dataPoints;
-    if (fieldsPerGraphDataPoint < 1) fieldsPerGraphDataPoint = 1;
+    dropoutGraphData.resize(ldDecodeMetaData.getNumberOfFrames());
+    blackSnrGraphData.resize(ldDecodeMetaData.getNumberOfFrames());
+    whiteSnrGraphData.resize(ldDecodeMetaData.getNumberOfFrames());
 
-    // Get the total number of dots per field
-    qint32 totalDotsPerField = ldDecodeMetaData.getVideoParameters().fieldHeight + ldDecodeMetaData.getVideoParameters().fieldWidth;
-
-    qint32 fieldNumber = 1;
-    for (qint32 dpCount = 0; dpCount < dataPoints; dpCount++) {
+    for (qint32 frameNumber = 0; frameNumber < ldDecodeMetaData.getNumberOfFrames(); frameNumber++) {
         qreal doLength = 0;
         qreal blackSnrTotal = 0;
         qreal whiteSnrTotal = 0;
-        qreal syncConf = 0;
 
         // SNR data may be missing in some fields, so we count the points to prevent
-        // the average from being thrown-off by missing data
+        // the frame average from being thrown-off by missing data
         qreal blackSnrPoints = 0;
         qreal whiteSnrPoints = 0;
-        for (qint32 avCount = 0; avCount < fieldsPerGraphDataPoint; avCount++) {
-            LdDecodeMetaData::Field field = ldDecodeMetaData.getField(fieldNumber);
 
-            // Get the DOs
-            if (field.dropOuts.size() > 0) {
-                // Calculate the total length of the dropouts
-                for (qint32 i = 0; i < field.dropOuts.size(); i++) {
-                    doLength += field.dropOuts.endx(i) - field.dropOuts.startx(i);
-                }
+        LdDecodeMetaData::Field firstField = ldDecodeMetaData.getField(ldDecodeMetaData.getFirstFieldNumber(frameNumber + 1));
+        LdDecodeMetaData::Field secondField = ldDecodeMetaData.getField(ldDecodeMetaData.getSecondFieldNumber(frameNumber + 1));
+
+        // Get the first field DOs
+        if (firstField.dropOuts.size() > 0) {
+            // Calculate the total length of the dropouts
+            for (qint32 i = 0; i < firstField.dropOuts.size(); i++) {
+                doLength += firstField.dropOuts.endx(i) - firstField.dropOuts.startx(i);
             }
-
-            // Get the SNRs
-            if (field.vitsMetrics.inUse) {
-                if (field.vitsMetrics.bPSNR > 0) {
-                    blackSnrTotal += field.vitsMetrics.bPSNR;
-                    blackSnrPoints++;
-                }
-                if (field.vitsMetrics.wSNR > 0) {
-                    whiteSnrTotal += field.vitsMetrics.wSNR;
-                    whiteSnrPoints++;
-                }
-            }
-
-            // Get the sync confidence
-            syncConf += static_cast<qreal>(ldDecodeMetaData.getField(fieldNumber).syncConf);
-
-            // Next field...
-            fieldNumber++;
         }
 
-        // Calculate the average
-        doLength = doLength / static_cast<qreal>(fieldsPerGraphDataPoint);
-        blackSnrTotal = blackSnrTotal / blackSnrPoints;
-        whiteSnrTotal = whiteSnrTotal / whiteSnrPoints;
-        syncConf = syncConf / static_cast<qreal>(fieldsPerGraphDataPoint);
+        // Get the second field DOs
+        if (secondField.dropOuts.size() > 0) {
+            // Calculate the total length of the dropouts
+            for (qint32 i = 0; i < secondField.dropOuts.size(); i++) {
+                doLength += secondField.dropOuts.endx(i) - secondField.dropOuts.startx(i);
+            }
+        }
 
-        // Calculate the Capture Quality Index
-        qreal fieldDoPercent = 100.0 - (static_cast<qreal>(doLength) / static_cast<qreal>(totalDotsPerField * fieldsPerGraphDataPoint));
-        qreal snrPercent = 0;
+        // Get the first field SNRs
+        if (firstField.vitsMetrics.inUse) {
+            if (firstField.vitsMetrics.bPSNR > 0) {
+                blackSnrTotal += firstField.vitsMetrics.bPSNR;
+                blackSnrPoints++;
+            }
+            if (firstField.vitsMetrics.wSNR > 0) {
+                whiteSnrTotal += firstField.vitsMetrics.wSNR;
+                whiteSnrPoints++;
+            }
+        }
 
-        // Convert SNR to linear
-        qreal whiteSnrLinear = pow(whiteSnrTotal / 20, 10);
-        qreal blackSnrLinear = pow(blackSnrTotal / 20, 10);
-        qreal snrReferenceLinear = pow(43.0 / 20, 10); // Note: 43 dB is the expected maximum
-
-        if (whiteSnrTotal != 0) snrPercent = (100.0 / (snrReferenceLinear * 2)) * (blackSnrLinear + whiteSnrLinear);
-        else snrPercent = (100.0 / snrReferenceLinear) * blackSnrLinear;
-        if (snrPercent > 100.0) snrPercent = 100.0;
-
-        // Note: The weighting is 1000:1:1 - this is just because dropouts have a greater visual effect
-        // on the resulting capture than SNR.
-        qreal captureQualityIndex = ((fieldDoPercent * 1000.0) + snrPercent + syncConf) / 1002.0;
+        // Get the second field SNRs
+        if (secondField.vitsMetrics.inUse) {
+            if (secondField.vitsMetrics.bPSNR > 0) {
+                blackSnrTotal += secondField.vitsMetrics.bPSNR;
+                blackSnrPoints++;
+            }
+            if (secondField.vitsMetrics.wSNR > 0) {
+                whiteSnrTotal += secondField.vitsMetrics.wSNR;
+                whiteSnrPoints++;
+            }
+        }
 
         // Add the result to the vectors
-        dropoutGraphData.append(doLength);
-        blackSnrGraphData.append(blackSnrTotal);
-        whiteSnrGraphData.append(whiteSnrTotal);
-        cqiGraphData.append(captureQualityIndex);
+        dropoutGraphData[frameNumber] = doLength;
+        blackSnrGraphData[frameNumber] = blackSnrTotal / blackSnrPoints; // Calc average for frame
+        whiteSnrGraphData[frameNumber] = whiteSnrTotal / whiteSnrPoints; // Calc average for frame
     }
 }
 
@@ -743,7 +710,7 @@ void TbcSource::startBackgroundLoad(QString sourceFilename)
 
     // Generate the graph data for the source
     emit busyLoading("Generating graph data...");
-    generateData(2000);
+    generateData();
 
     // Generate a chapter map (used by the chapter skip
     // forwards and backwards buttons)

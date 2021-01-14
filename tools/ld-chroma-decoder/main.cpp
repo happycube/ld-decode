@@ -159,7 +159,7 @@ int main(int argc, char *argv[])
 
     // Option to select which decoder to use (-f)
     QCommandLineOption decoderOption(QStringList() << "f" << "decoder",
-                                     QCoreApplication::translate("main", "Decoder to use (pal2d, transform2d, transform3d, ntsc1d, ntsc2d, ntsc3d, mono; default automatic)"),
+                                     QCoreApplication::translate("main", "Decoder to use (pal2d, transform2d, transform3d, ntsc1d, ntsc2d, ntsc3d, ntsc3dnoadapt, mono; default automatic)"),
                                      QCoreApplication::translate("main", "decoder"));
     parser.addOption(decoderOption);
 
@@ -442,6 +442,10 @@ int main(int argc, char *argv[])
         decoder.reset(new NtscDecoder(combConfig));
     } else if (decoderName == "ntsc3d") {
         combConfig.dimensions = 3;
+        decoder.reset(new NtscDecoder(combConfig));
+    } else if (decoderName == "ntsc3dnoadapt") {
+        combConfig.dimensions = 3;
+        combConfig.adaptive = false;
         decoder.reset(new NtscDecoder(combConfig));
     } else if (decoderName == "mono") {
         decoder.reset(new MonoDecoder);

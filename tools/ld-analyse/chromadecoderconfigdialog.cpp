@@ -3,8 +3,8 @@
     chromadecoderconfigdialog.cpp
 
     ld-analyse - TBC output analysis
-    Copyright (C) 2019 Simon Inns
-    Copyright (C) 2020 Adam Sampson
+    Copyright (C) 2019-2021 Simon Inns
+    Copyright (C) 2020-2021 Adam Sampson
 
     This file is part of ld-decode-tools.
 
