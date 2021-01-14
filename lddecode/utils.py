@@ -26,23 +26,40 @@ import scipy.signal as sps
 
 from scipy import interpolate
 
-# This runs a bicubic scaler on a line.    
+# This runs a bicubic scaler on a line.
 @njit(nogil=True)
-def scale(buf, begin, end, tgtlen, mult = 1):
+def scale(buf, begin, end, tgtlen, mult=1):
     linelen = end - begin
-    sfactor = linelen/tgtlen
+    sfactor = linelen / tgtlen
 
     output = np.zeros(tgtlen, dtype=buf.dtype)
-    
+
     for i in range(0, tgtlen):
         coord = (i * sfactor) + begin
         start = int(coord) - 1
-        p = buf[start:start+4]
+        p = buf[start : start + 4]
         x = coord - int(coord)
-        
-        output[i] = mult * (p[1] + 0.5 * x*(p[2] - p[0] + x*(2.0*p[0] - 5.0*p[1] + 4.0*p[2] - p[3] + x*(3.0*(p[1] - p[2]) + p[3] - p[0]))))
+
+        output[i] = mult * (
+            p[1]
+            + 0.5
+            * x
+            * (
+                p[2]
+                - p[0]
+                + x
+                * (
+                    2.0 * p[0]
+                    - 5.0 * p[1]
+                    + 4.0 * p[2]
+                    - p[3]
+                    + x * (3.0 * (p[1] - p[2]) + p[3] - p[0])
+                )
+            )
+        )
 
     return output
+
 
 frequency_suffixes = [
     ("ghz", 1.0e9),
@@ -53,17 +70,19 @@ frequency_suffixes = [
     ("fscpal", (283.75 * 15625) + 25),
 ]
 
+
 def parse_frequency(string):
     """Parse an argument string, returning a float frequency in MHz."""
     multiplier = 1.0e6
     for suffix, mult in frequency_suffixes:
         if string.lower().endswith(suffix):
             multiplier = mult
-            string = string[:-len(suffix)]
+            string = string[: -len(suffix)]
             break
     return (multiplier * float(string)) / 1.0e6
 
-'''
+
+"""
 
 For this part of the loader phase I found myself going to function objects that implement this sample API:
 
@@ -73,7 +92,8 @@ sample: starting sample #
 readlen: # of samples
 ```
 Returns data if successful, or None or an upstream exception if not (including if not enough data is available)
-'''
+"""
+
 
 def make_loader(filename, inputfreq=None):
     """Return an appropriate loader function object for filename.
@@ -86,43 +106,47 @@ def make_loader(filename, inputfreq=None):
     if inputfreq is not None:
         # We're resampling, so we have to use ffmpeg.
 
-        if filename.endswith('.r16') or filename.endswith('.s16'):
-            input_args = ['-f', 's16le']
-        elif filename.endswith('.rf'):
-            input_args = ['-f', 'f32le']
-        elif filename.endswith('.r8') or filename.endswith('.u8'):
-            input_args = ['-f', 'u8']
-        elif filename.endswith('.lds') or filename.endswith('.r30'):
-            raise ValueError('File format not supported when resampling: ' + filename)
+        if filename.endswith(".r16") or filename.endswith(".s16"):
+            input_args = ["-f", "s16le"]
+        elif filename.endswith(".rf"):
+            input_args = ["-f", "f32le"]
+        elif filename.endswith(".r8") or filename.endswith(".u8"):
+            input_args = ["-f", "u8"]
+        elif filename.endswith(".lds") or filename.endswith(".r30"):
+            raise ValueError("File format not supported when resampling: " + filename)
         else:
             # Assume ffmpeg will recognise this format itself.
             input_args = []
 
         # Use asetrate first to override the input file's sample rate.
-        output_args = ['-filter:a', 'asetrate=' + str(inputfreq * 1e6) + ',aresample=' + str(40e6)]
+        output_args = [
+            "-filter:a",
+            "asetrate=" + str(inputfreq * 1e6) + ",aresample=" + str(40e6),
+        ]
 
         return LoadFFmpeg(input_args=input_args, output_args=output_args)
 
-    elif filename.endswith('.lds'):
+    elif filename.endswith(".lds"):
         return load_packed_data_4_40
-    elif filename.endswith('.r30'):
+    elif filename.endswith(".r30"):
         return load_packed_data_3_32
-    elif filename.endswith('.rf'):
+    elif filename.endswith(".rf"):
         return load_unpacked_data_float32
-    elif filename.endswith('.r16') or filename.endswith('.s16'):
+    elif filename.endswith(".r16") or filename.endswith(".s16"):
         return load_unpacked_data_s16
-    elif filename.endswith('.r8') or filename.endswith('.u8'):
+    elif filename.endswith(".r8") or filename.endswith(".u8"):
         return load_unpacked_data_u8
-    elif filename.endswith('raw.oga') or filename.endswith('.ldf'):
+    elif filename.endswith("raw.oga") or filename.endswith(".ldf"):
         try:
             rv = LoadLDF(filename)
         except:
-            #print("Please build and install ld-ldf-reader in your PATH for improved performance", file=sys.stderr)
+            # print("Please build and install ld-ldf-reader in your PATH for improved performance", file=sys.stderr)
             rv = LoadFFmpeg()
 
         return rv
     else:
         return load_packed_data_4_40
+
 
 def load_unpacked_data(infile, sample, readlen, sampletype):
     # this is run for unpacked data - 1 is for old cxadc data, 2 for 16bit DD
@@ -130,25 +154,29 @@ def load_unpacked_data(infile, sample, readlen, sampletype):
     inbuf = infile.read(readlen * sampletype)
 
     if sampletype == 4:
-        indata = np.fromstring(inbuf, 'float32', len(inbuf) // 4) * 32768
+        indata = np.fromstring(inbuf, "float32", len(inbuf) // 4) * 32768
     elif sampletype == 2:
-        indata = np.fromstring(inbuf, 'int16', len(inbuf) // 2)
+        indata = np.fromstring(inbuf, "int16", len(inbuf) // 2)
     else:
-        indata = np.fromstring(inbuf, 'uint8', len(inbuf))
-    
+        indata = np.fromstring(inbuf, "uint8", len(inbuf))
+
     if len(indata) < readlen:
         return None
 
     return indata
 
+
 def load_unpacked_data_u8(infile, sample, readlen):
     return load_unpacked_data(infile, sample, readlen, 1)
+
 
 def load_unpacked_data_s16(infile, sample, readlen):
     return load_unpacked_data(infile, sample, readlen, 2)
 
+
 def load_unpacked_data_float32(infile, sample, readlen):
     return load_unpacked_data(infile, sample, readlen, 4)
+
 
 # This is for the .r30 format I did in ddpack/unpack.c.  Depricated but I still have samples in it.
 def load_packed_data_3_32(infile, sample, readlen):
@@ -162,7 +190,7 @@ def load_packed_data_3_32(infile, sample, readlen):
     needed = int(np.ceil(readlen * 3 / 4) * 4) + 4
 
     inbuf = infile.read(needed)
-    indata = np.fromstring(inbuf, 'uint32', len(inbuf) // 4)
+    indata = np.fromstring(inbuf, "uint32", len(inbuf) // 4)
 
     if len(indata) < needed:
         return None
@@ -170,19 +198,19 @@ def load_packed_data_3_32(infile, sample, readlen):
     unpacked = np.zeros(len(indata) * 3, dtype=np.int16)
 
     # By using strides the unpacked data can be loaded with no additional copies
-    np.bitwise_and(indata, 0x3ff, out = unpacked[0::3])
+    np.bitwise_and(indata, 0x3FF, out=unpacked[0::3])
     # hold the shifted bits in it's own array to avoid an allocation
     tmp = np.right_shift(indata, 10)
-    np.bitwise_and(tmp, 0x3ff, out = unpacked[1::3])
-    np.right_shift(indata, 20, out = tmp)
-    np.bitwise_and(tmp, 0x3ff, out = unpacked[2::3])
+    np.bitwise_and(tmp, 0x3FF, out=unpacked[1::3])
+    np.right_shift(indata, 20, out=tmp)
+    np.bitwise_and(tmp, 0x3FF, out=unpacked[2::3])
 
-    return unpacked[offset:offset + readlen]
+    return unpacked[offset : offset + readlen]
 
 
 # The 10-bit samples from the Duplicator...
 
-'''
+"""
 From Simon's code:
 
 // Original
@@ -195,7 +223,7 @@ From Simon's code:
 // 0: 0000 0000 0011 1111
 // 2: 1111 2222 2222 2233
 // 4: 3333 3333
-'''
+"""
 
 # The bit twiddling is a bit more complex than I'd like... but eh.  I think
 # it's debugged now. ;)
@@ -204,12 +232,12 @@ def load_packed_data_4_40(infile, sample, readlen):
     offset = sample % 4
 
     seekedto = infile.seek(start)
-    
+
     # we need another word in case offset != 0
     needed = int(np.ceil(readlen * 5 // 4)) + 5
 
     inbuf = infile.read(needed)
-    indata = np.frombuffer(inbuf, 'uint8', len(inbuf))
+    indata = np.frombuffer(inbuf, "uint8", len(inbuf))
 
     if len(indata) < needed:
         return None
@@ -222,24 +250,36 @@ def load_packed_data_4_40(infile, sample, readlen):
     # correctly...
     unpacked[0::4] = indata[0::5]
     np.left_shift(unpacked[0::4], 2, out=unpacked[0::4])
-    np.bitwise_or(unpacked[0::4], np.bitwise_and(np.right_shift(indata[1::5], 6), 0x03), out=unpacked[0::4])
+    np.bitwise_or(
+        unpacked[0::4],
+        np.bitwise_and(np.right_shift(indata[1::5], 6), 0x03),
+        out=unpacked[0::4],
+    )
 
-    unpacked[1::4] = np.bitwise_and(indata[1::5], 0x3f)
+    unpacked[1::4] = np.bitwise_and(indata[1::5], 0x3F)
     np.left_shift(unpacked[1::4], 4, out=unpacked[1::4])
-    np.bitwise_or(unpacked[1::4], np.bitwise_and(np.right_shift(indata[2::5], 4), 0x0f), out=unpacked[1::4])
+    np.bitwise_or(
+        unpacked[1::4],
+        np.bitwise_and(np.right_shift(indata[2::5], 4), 0x0F),
+        out=unpacked[1::4],
+    )
 
-    unpacked[2::4] = np.bitwise_and(indata[2::5], 0x0f)
+    unpacked[2::4] = np.bitwise_and(indata[2::5], 0x0F)
     np.left_shift(unpacked[2::4], 6, out=unpacked[2::4])
-    np.bitwise_or(unpacked[2::4], np.bitwise_and(np.right_shift(indata[3::5], 2), 0x3f), out=unpacked[2::4])
+    np.bitwise_or(
+        unpacked[2::4],
+        np.bitwise_and(np.right_shift(indata[3::5], 2), 0x3F),
+        out=unpacked[2::4],
+    )
 
     unpacked[3::4] = np.bitwise_and(indata[3::5], 0x03)
     np.left_shift(unpacked[3::4], 8, out=unpacked[3::4])
     np.bitwise_or(unpacked[3::4], indata[4::5], out=unpacked[3::4])
 
     # convert back to original DdD 16-bit format (signed 16-bit, left shifted)
-    rv_unsigned = unpacked[offset:offset + readlen].copy()
+    rv_unsigned = unpacked[offset : offset + readlen].copy()
     rv_signed = np.left_shift(rv_unsigned.astype(np.int16) - 512, 6)
-    
+
     return rv_signed
 
 
@@ -260,7 +300,7 @@ class LoadFFmpeg:
         # small amounts. The last byte returned by ffmpeg is at the end of
         # this buffer.
         self.rewind_size = 2 * 1024 * 1024
-        self.rewind_buf = b''
+        self.rewind_buf = b""
 
     def __del__(self):
         if self.ffmpeg is not None:
@@ -275,7 +315,7 @@ class LoadFFmpeg:
         self.position += len(data)
 
         self.rewind_buf += data
-        self.rewind_buf = self.rewind_buf[-self.rewind_size:]
+        self.rewind_buf = self.rewind_buf[-self.rewind_size :]
 
         return data
 
@@ -289,8 +329,9 @@ class LoadFFmpeg:
             command += ["-i", "-"]
             command += self.output_args
             command += ["-c:a", "pcm_s16le", "-f", "s16le", "-"]
-            self.ffmpeg = subprocess.Popen(command, stdin=infile,
-                                           stdout=subprocess.PIPE)
+            self.ffmpeg = subprocess.Popen(
+                command, stdin=infile, stdout=subprocess.PIPE
+            )
 
         if sample_bytes < self.position:
             # Seeking backwards - use data from rewind_buf
@@ -302,7 +343,7 @@ class LoadFFmpeg:
             sample_bytes += len(buf_data)
             readlen_bytes -= len(buf_data)
         else:
-            buf_data = b''
+            buf_data = b""
 
         while sample_bytes > self.position:
             # Seeking forwards - read and discard samples
@@ -316,14 +357,15 @@ class LoadFFmpeg:
                 # Short read - end of file
                 return None
         else:
-            read_data = b''
+            read_data = b""
 
         data = buf_data + read_data
         assert len(data) == readlen * 2
-        return np.fromstring(data, '<i2')
+        return np.fromstring(data, "<i2")
 
     def __call__(self, infile, sample, readlen):
         return self.read(infile, sample, readlen)
+
 
 class LoadLDF:
     """Load samples from an .ldf file, using ld-ldf-reader which itself uses ffmpeg."""
@@ -341,7 +383,7 @@ class LoadLDF:
         # small amounts. The last byte returned by ffmpeg is at the end of
         # this buffer.
         self.rewind_size = 2 * 1024 * 1024
-        self.rewind_buf = b''
+        self.rewind_buf = b""
 
         self.ldfreader = None
 
@@ -359,7 +401,7 @@ class LoadLDF:
         self.position += len(data)
 
         self.rewind_buf += data
-        self.rewind_buf = self.rewind_buf[-self.rewind_size:]
+        self.rewind_buf = self.rewind_buf[-self.rewind_size :]
 
         return data
 
@@ -379,9 +421,11 @@ class LoadLDF:
 
         command = ["ld-ldf-reader", self.filename, str(sample)]
 
-        ldfreader = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        ldfreader = subprocess.Popen(
+            command, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        )
         self.position = sample * 2
-        self.rewind_buf = b''
+        self.rewind_buf = b""
 
         return ldfreader
 
@@ -392,23 +436,23 @@ class LoadLDF:
         if self.ldfreader is None or ((sample_bytes - self.position) > 40000000):
             self.ldfreader = self._open(sample)
 
-        if (sample_bytes < self.position):
+        if sample_bytes < self.position:
             # Seeking backwards - use data from rewind_buf
             start = len(self.rewind_buf) - (self.position - sample_bytes)
             end = min(start + readlen_bytes, len(self.rewind_buf))
             if start < 0:
-                #raise IOError("Seeking too far backwards with ffmpeg")
+                # raise IOError("Seeking too far backwards with ffmpeg")
                 self.ldfreader = self._open(sample)
-                buf_data = b''
+                buf_data = b""
             else:
                 buf_data = self.rewind_buf[start:end]
                 sample_bytes += len(buf_data)
                 readlen_bytes -= len(buf_data)
-        elif ((sample_bytes - self.position) > (40*1024*1024*2)):
+        elif (sample_bytes - self.position) > (40 * 1024 * 1024 * 2):
             self.ldfreader = self._open(sample)
-            buf_data = b''
+            buf_data = b""
         else:
-            buf_data = b''
+            buf_data = b""
 
         while sample_bytes > self.position:
             # Seeking forwards - read and discard samples
@@ -422,57 +466,62 @@ class LoadLDF:
                 # Short read - end of file
                 return None
         else:
-            read_data = b''
+            read_data = b""
 
         data = buf_data + read_data
         assert len(data) == readlen * 2
-        return np.frombuffer(data, '<i2')
+        return np.frombuffer(data, "<i2")
 
     def __call__(self, infile, sample, readlen):
         return self.read(infile, sample, readlen)
 
-def ldf_pipe(outname, compression_level = 6):
-    corecmd = "ffmpeg -y -hide_banner -loglevel error -f s16le -ar 40k -ac 1 -i - -acodec flac -f ogg".split(' ') 
-    process = subprocess.Popen([*corecmd, '-compression_level', str(compression_level), outname], stdin=subprocess.PIPE)
-    
+
+def ldf_pipe(outname, compression_level=6):
+    corecmd = "ffmpeg -y -hide_banner -loglevel error -f s16le -ar 40k -ac 1 -i - -acodec flac -f ogg".split(
+        " "
+    )
+    process = subprocess.Popen(
+        [*corecmd, "-compression_level", str(compression_level), outname],
+        stdin=subprocess.PIPE,
+    )
+
     return process, process.stdin
+
 
 # Git helpers
 
+
 def get_git_info():
-    ''' Return git branch and commit for current directory, iff available. '''
-    
-    branch = 'UNKNOWN'
-    commit = 'UNKNOWN'
+    """ Return git branch and commit for current directory, iff available. """
+
+    branch = "UNKNOWN"
+    commit = "UNKNOWN"
 
     try:
-        sp = subprocess.run('git rev-parse --abbrev-ref HEAD', shell=True, capture_output=True)
-        branch = sp.stdout.decode('utf-8').strip() if not sp.returncode else 'UNKNOWN'
-        
-        sp = subprocess.run('git rev-parse --short HEAD', shell=True, capture_output=True)
-        commit = sp.stdout.decode('utf-8').strip() if not sp.returncode else 'UNKNOWN'
+        sp = subprocess.run(
+            "git rev-parse --abbrev-ref HEAD", shell=True, capture_output=True
+        )
+        branch = sp.stdout.decode("utf-8").strip() if not sp.returncode else "UNKNOWN"
+
+        sp = subprocess.run(
+            "git rev-parse --short HEAD", shell=True, capture_output=True
+        )
+        commit = sp.stdout.decode("utf-8").strip() if not sp.returncode else "UNKNOWN"
     except:
         pass
 
     return branch, commit
 
-# Essential standalone routines 
+
+# Essential standalone routines
 
 pi = np.pi
 tau = np.pi * 2
 
-#https://stackoverflow.com/questions/20924085/python-conversion-between-coordinates
-polar2z = lambda r,θ: r * np.exp( 1j * θ )
+# https://stackoverflow.com/questions/20924085/python-conversion-between-coordinates
+polar2z = lambda r, θ: r * np.exp(1j * θ)
 deg2rad = lambda θ: θ * (np.pi / 180)
 
-# from http://tlfabian.blogspot.com/2013/01/implementing-hilbert-90-degree-shift.html
-
-# hilbert_filter_terms has a direct impact on filter delays.  Emperical testing
-# determined that 128 was a good value here.
-hilbert_filter_terms = 128
-hilbert_filter = np.fft.fftshift(
-    np.fft.ifft([0]+[1]*hilbert_filter_terms+[0]*hilbert_filter_terms)
-)
 
 def emphasis_iir(t1, t2, fs):
     """Generate an IIR filter for 6dB/octave pre-emphasis (t1 > t2) or
@@ -486,16 +535,20 @@ def emphasis_iir(t1, t2, fs):
     tf_b, tf_a = sps.zpk2tf([-w1], [-w2], w2 / w1)
     return sps.bilinear(tf_b, tf_a, fs)
 
+
 # This converts a regular B, A filter to an FFT of our selected block length
 def filtfft(filt, blocklen):
     return sps.freqz(filt[0], filt[1], blocklen, whole=1)[1]
+
 
 @njit
 def inrange(a, mi, ma):
     return (a >= mi) & (a <= ma)
 
+
 def sqsum(cmplx):
     return np.sqrt((cmplx.real ** 2) + (cmplx.imag ** 2))
+
 
 @njit(cache=True)
 def calczc_findfirst(data, target, rising):
@@ -512,32 +565,36 @@ def calczc_findfirst(data, target, rising):
 
         return None
 
+
 @njit(cache=True)
 def calczc_do(data, _start_offset, target, edge=0, count=10):
     start_offset = max(1, int(_start_offset))
     icount = int(count + 1)
-    
-    if edge == 0: # capture rising or falling edge
+
+    if edge == 0:  # capture rising or falling edge
         if data[start_offset] < target:
             edge = 1
         else:
             edge = -1
 
-    loc = calczc_findfirst(data[start_offset:start_offset+icount], target, edge==1)
-               
+    loc = calczc_findfirst(
+        data[start_offset : start_offset + icount], target, edge == 1
+    )
+
     if loc is None:
         return None
 
     x = start_offset + loc
     a = data[x - 1] - target
     b = data[x] - target
-    
+
     y = -a / (-a + b)
 
-    return x-1+y
+    return x - 1 + y
+
 
 def calczc(data, _start_offset, target, edge=0, count=10, reverse=False):
-    ''' edge:  -1 falling, 0 either, 1 rising '''
+    """ edge:  -1 falling, 0 either, 1 rising """
     if reverse:
         # Instead of actually implementing this in reverse, use numpy to flip data
         rev_zc = calczc_do(data[_start_offset::-1], 0, target, edge, count)
@@ -548,10 +605,11 @@ def calczc(data, _start_offset, target, edge=0, count=10, reverse=False):
 
     return calczc_do(data, _start_offset, target, edge, count)
 
-def calczc_sets(data, start, end, tgt = 0, cliplevel = None):
-    zcsets = {False: [], True:[]}
+
+def calczc_sets(data, start, end, tgt=0, cliplevel=None):
+    zcsets = {False: [], True: []}
     bi = start
-    
+
     while bi < end:
         if np.abs(data[bi]) > cliplevel:
             zc = calczc(data, bi, tgt)
@@ -561,75 +619,85 @@ def calczc_sets(data, start, end, tgt = 0, cliplevel = None):
                 bi = np.int(zc)
 
         bi += 1
-    
+
     return {False: np.array(zcsets[False]), True: np.array(zcsets[True])}
+
 
 def unwrap_hilbert(hilbert, freq_hz):
     tangles = np.angle(hilbert)
-    dangles = np.pad(np.diff(tangles), (1, 0), mode='constant')
+    dangles = np.pad(np.diff(tangles), (1, 0), mode="constant")
 
     # make sure unwapping goes the right way
-    if (dangles[0] < -pi):
+    if dangles[0] < -pi:
         dangles[0] += tau
 
-    tdangles2 = np.unwrap(dangles) 
+    tdangles2 = np.unwrap(dangles)
     # With extremely bad data, the unwrapped angles can jump.
     while np.min(tdangles2) < 0:
         tdangles2[tdangles2 < 0] += tau
     while np.max(tdangles2) > tau:
         tdangles2[tdangles2 > tau] -= tau
-    return (tdangles2 * (freq_hz / tau))
+    return tdangles2 * (freq_hz / tau)
 
-def genwave(rate, freq, initialphase = 0):
-    ''' Generate an FM waveform from target frequency data '''
+
+def genwave(rate, freq, initialphase=0):
+    """ Generate an FM waveform from target frequency data """
     out = np.zeros(len(rate), dtype=np.double)
-    
+
     angle = initialphase
-    
+
     for i in range(0, len(rate)):
         out[i] = np.sin(angle)
 
         angle += np.pi * (rate[i] / freq)
         if angle > np.pi:
             angle -= tau
-                
+
     return out
+
 
 # slightly faster than np.std for short arrays
 @njit
 def rms(arr):
     return np.sqrt(np.mean(np.square(arr - np.mean(arr))))
 
-# MTF calculations
-def get_fmax(cavframe = 0, laser=780, na=0.5, fps=30):
-    loc = .055 + ((cavframe / 54000) * .090)
-    return (2*na/(laser/1000))*(2*np.pi*fps)*loc
 
-def compute_mtf(freq, cavframe = 0, laser=780, na=0.52):
+# MTF calculations
+def get_fmax(cavframe=0, laser=780, na=0.5, fps=30):
+    loc = 0.055 + ((cavframe / 54000) * 0.090)
+    return (2 * na / (laser / 1000)) * (2 * np.pi * fps) * loc
+
+
+def compute_mtf(freq, cavframe=0, laser=780, na=0.52):
     fmax = get_fmax(cavframe, laser, na)
 
     freq_mhz = freq / 1000000
-    
+
     if type(freq_mhz) == np.ndarray:
         freq_mhz[freq_mhz > fmax] = fmax
     elif freq_mhz > fmax:
         return 0
 
     # from Compact Disc Technology AvHeitarō Nakajima, Hiroshi Ogawa page 17
-    return (2/np.pi)*(np.arccos(freq_mhz/fmax)-((freq_mhz/fmax)*np.sqrt(1-((freq_mhz/fmax)**2))))
+    return (2 / np.pi) * (
+        np.arccos(freq_mhz / fmax)
+        - ((freq_mhz / fmax) * np.sqrt(1 - ((freq_mhz / fmax) ** 2)))
+    )
 
-def roundfloat(fl, places = 3):
-    ''' round float to (places) decimal places '''
+
+def roundfloat(fl, places=3):
+    """ round float to (places) decimal places """
     r = 10 ** places
     return np.round(fl * r) / r
+
 
 # Something like this should be a numpy function, but I can't find it.
 @jit(cache=True)
 def findareas(array, cross):
-    ''' Find areas where `array` is <= `cross`
+    """ Find areas where `array` is <= `cross`
     
     returns: array of tuples of said areas (begin, end, length)
-    '''
+    """
     starts = np.where(np.logical_and(array[1:] < cross, array[:-1] >= cross))[0]
     ends = np.where(np.logical_and(array[1:] >= cross, array[:-1] < cross))[0]
 
@@ -642,18 +710,23 @@ def findareas(array, cross):
 
     return [(*z, z[1] - z[0]) for z in zip(starts, ends)]
 
+
 def findpulses(array, low, high):
-    ''' Find areas where `array` is between `low` and `high`
+    """ Find areas where `array` is between `low` and `high`
     
     returns: array of tuples of said areas (begin, end, length)
-    '''
-    
-    Pulse = namedtuple('Pulse', 'start len')
-    
+    """
+
+    Pulse = namedtuple("Pulse", "start len")
+
     array_inrange = inrange(array, low, high)
-    
-    starts = np.where(np.logical_and(array_inrange[1:] == True, array_inrange[:-1] == False))[0]
-    ends = np.where(np.logical_and(array_inrange[1:] == False, array_inrange[:-1] == True))[0]
+
+    starts = np.where(
+        np.logical_and(array_inrange[1:] == True, array_inrange[:-1] == False)
+    )[0]
+    ends = np.where(
+        np.logical_and(array_inrange[1:] == False, array_inrange[:-1] == True)
+    )[0]
 
     if len(starts) == 0 or len(ends) == 0:
         return []
@@ -667,23 +740,42 @@ def findpulses(array, low, high):
 
     return [Pulse(z[0], z[1] - z[0]) for z in zip(starts, ends)]
 
-def findpeaks(array, low = 0):
+
+def findpeaks(array, low=0):
     array2 = array.copy()
     array2[np.where(array2 < low)] = 0
-    
-    return [loc - 1 for loc in np.where(np.logical_and(array2[:-1] > array2[-1], array2[1:] > array2[:-1]))[0]]
+
+    return [
+        loc - 1
+        for loc in np.where(
+            np.logical_and(array2[:-1] > array2[-1], array2[1:] > array2[:-1])
+        )[0]
+    ]
+
 
 # originally from http://www.paulinternet.nl/?page=bicubic
 def cubic_interpolate(data, loc):
-    p = data[int(loc)-1:int(loc)+3]
-    x = (loc - np.floor(loc))
+    p = data[int(loc) - 1 : int(loc) + 3]
+    x = loc - np.floor(loc)
 
-    return p[1] + 0.5 * x*(p[2] - p[0] + x*(2.0*p[0] - 5.0*p[1] + 4.0*p[2] - p[3] + x*(3.0*(p[1] - p[2]) + p[3] - p[0])))
+    return p[1] + 0.5 * x * (
+        p[2]
+        - p[0]
+        + x
+        * (
+            2.0 * p[0]
+            - 5.0 * p[1]
+            + 4.0 * p[2]
+            - p[3]
+            + x * (3.0 * (p[1] - p[2]) + p[3] - p[0])
+        )
+    )
+
 
 def LRUupdate(l, k):
-    ''' This turns a list into an LRU table.  When called it makes sure item 'k' is at the beginning,
+    """ This turns a list into an LRU table.  When called it makes sure item 'k' is at the beginning,
         so the list is in descending order of previous use.
-    '''
+    """
     try:
         l.remove(k)
     except:
@@ -691,50 +783,60 @@ def LRUupdate(l, k):
 
     l.insert(0, k)
 
+
 @njit
 def nb_median(m):
     return np.median(m)
+
 
 @njit
 def nb_round(m):
     return int(np.round(m))
 
+
 @njit
 def nb_mean(m):
     return np.mean(m)
+
 
 @njit
 def nb_min(m):
     return np.min(m)
 
+
 @njit
 def nb_max(m):
     return np.max(m)
+
 
 @njit
 def nb_abs(m):
     return np.abs(m)
 
+
 @njit
 def nb_absmax(m):
     return np.max(np.abs(m))
+
 
 @njit
 def nb_mul(x, y):
     return x * y
 
+
 @njit
 def nb_where(x):
     return np.where(x)
 
-def angular_mean(x, cycle_len = 1.0, zero_base = True):
-    ''' Compute the mean phase, assuming 0..1 is one phase cycle
+
+def angular_mean(x, cycle_len=1.0, zero_base=True):
+    """ Compute the mean phase, assuming 0..1 is one phase cycle
 
         (Using this technique handles the 3.99, 5.01 issue 
         where otherwise the phase average would be 0.5.  while a
         naive computation could be changed to rotate around 0.5, 
         that breaks down when things are out of phase...)
-    '''
+    """
     x2 = x - np.floor(x)  # not strictly necessary but slightly more precise
 
     # refer to https://en.wikipedia.org/wiki/Mean_of_circular_quantities
@@ -743,36 +845,42 @@ def angular_mean(x, cycle_len = 1.0, zero_base = True):
     am = np.angle(np.mean(angles)) / (np.pi * 2)
     if zero_base and (am < 0):
         am = 1 + am
-        
+
     return am
 
-def phase_distance(x, c = .75):
-    ''' returns the shortest path between two phases (assuming x and c are in (0..1)) '''
+
+def phase_distance(x, c=0.75):
+    """ returns the shortest path between two phases (assuming x and c are in (0..1)) """
     d = (x - np.floor(x)) - c
-    
-    if d < -.5:
+
+    if d < -0.5:
         d += 1
-    elif d > .5:
+    elif d > 0.5:
         d -= 1
-    
+
     return d
+
 
 # Used to help w/CX routines
 @njit
 def db_to_lev(db):
-    return 10**(db/20)
+    return 10 ** (db / 20)
+
 
 @njit
 def lev_to_db(rlev):
     return 20 * np.log10(rlev)
+
 
 # moved from core.py
 @njit
 def dsa_rescale(infloat):
     return int(np.round(infloat * 32767 / 150000))
 
+
 # Hotspot subroutines in FieldNTSC's compute_line_bursts function,
 # removed so that they can be JIT'd
+
 
 @njit(cache=True)
 def clb_findnextburst(burstarea, i, endburstarea, threshold):
@@ -782,40 +890,44 @@ def clb_findnextburst(burstarea, i, endburstarea, threshold):
 
     return (None, None)
 
+
 @njit(cache=True)
 def distance_from_round(x):
     # Yes, this was a hotspot.
     return np.round(x) - x
 
+
 # Write the .tbc.json file (used by lddecode and notebooks)
 def write_json(ldd, outname):
     jsondict = ldd.build_json(ldd.curfield)
-    
-    fp = open(outname + '.tbc.json.tmp', 'w')
+
+    fp = open(outname + ".tbc.json.tmp", "w")
     json.dump(jsondict, fp, indent=4 if ldd.verboseVITS else None)
-    fp.write('\n')
+    fp.write("\n")
     fp.close()
-    
-    os.rename(outname + '.tbc.json.tmp', outname + '.tbc.json')
+
+    os.rename(outname + ".tbc.json.tmp", outname + ".tbc.json")
+
 
 # Write the .tbc.json file (used by lddecode and notebooks)
 def write_json(ldd, jsondict, outname):
 
-    fp = open(outname + '.tbc.json.tmp', 'w')
+    fp = open(outname + ".tbc.json.tmp", "w")
     json.dump(jsondict, fp, indent=4 if ldd.verboseVITS else None)
-    fp.write('\n')
+    fp.write("\n")
     fp.close()
-    
-    os.rename(outname + '.tbc.json.tmp', outname + '.tbc.json')
+
+    os.rename(outname + ".tbc.json.tmp", outname + ".tbc.json")
+
 
 def jsondump_thread(ldd, outname):
-    '''
+    """
     This creates a background thread to write a json dict to a file.
 
     Probably had a bit too much fun here - this returns a queue that is 
     fed into a thread created by the function itself.  Feed it json
     dictionaries during runtime and None when done.
-    '''
+    """
 
     def consume(q):
         while True:
@@ -828,14 +940,15 @@ def jsondump_thread(ldd, outname):
             write_json(ldd, jsondict, outname)
 
             q.task_done()
-    
+
     q = JoinableQueue()
 
     # Start the self-contained thread
-    t = threading.Thread(target=consume, args=(q, ))
+    t = threading.Thread(target=consume, args=(q,))
     t.start()
-    
+
     return q
+
 
 if __name__ == "__main__":
     print("Nothing to see here, move along ;)")

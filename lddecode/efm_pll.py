@@ -37,22 +37,19 @@ except ImportError:
 EFM_PLL_spec = [
     ("zcPreviousInput", numba.int16),
     ("delta", numba.float64),
-
     ("pllResult", numba.int8[:]),
     ("pllResultCount", numba.uintp),
-
     ("basePeriod", numba.float64),
-
     ("minimumPeriod", numba.float64),
     ("maximumPeriod", numba.float64),
     ("periodAdjustBase", numba.float64),
-
     ("currentPeriod", numba.float64),
     ("phaseAdjust", numba.float64),
     ("refClockTime", numba.float64),
     ("frequencyHysteresis", numba.int32),
     ("tCounter", numba.int8),
 ]
+
 
 @jitclass(EFM_PLL_spec)
 class EFM_PLL:
@@ -66,11 +63,11 @@ class EFM_PLL:
         self.pllResultCount = 0
 
         # PLL state
-        self.basePeriod = 40000000.0 / 4321800.0 # T1 clock period 40MSPS / bit-rate
+        self.basePeriod = 40000000.0 / 4321800.0  # T1 clock period 40MSPS / bit-rate
 
-        self.minimumPeriod = self.basePeriod * 0.90 # -10% minimum
-        self.maximumPeriod = self.basePeriod * 1.10 # +10% maximum
-        self.periodAdjustBase = self.basePeriod * 0.0001 # Clock adjustment step
+        self.minimumPeriod = self.basePeriod * 0.90  # -10% minimum
+        self.maximumPeriod = self.basePeriod * 1.10  # +10% maximum
+        self.periodAdjustBase = self.basePeriod * 0.0001  # Clock adjustment step
 
         # PLL Working parameters
         self.currentPeriod = self.basePeriod
@@ -120,7 +117,7 @@ class EFM_PLL:
             # Keep the previous input (so we can work across buffer boundaries)
             self.zcPreviousInput = curr
 
-        return self.pllResult[:self.pllResultCount]
+        return self.pllResult[: self.pllResultCount]
 
     def pushEdge(self, sampleDelta):
         """Called when a ZC happens on a sample number."""
@@ -182,7 +179,8 @@ class EFM_PLL:
         self.refClockTime -= sampleDelta
 
         # Use this debug if you want to monitor the PLL output frequency
-        #print("Base =", self.basePeriod, "current = ", self.currentPeriod, file=sys.stderr)
+        # print("Base =", self.basePeriod, "current = ", self.currentPeriod, file=sys.stderr)
+
 
 if __name__ == "__main__":
     # If invoked as a script, test the PLL by reading from stdin and writing to stdout.

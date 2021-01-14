@@ -67,7 +67,7 @@ jobs:
         scripts/test-decode --pal \
           --decoder mono --decoder pal2d --decoder transform2d --decoder transform3d \
           --expect-frames 4 \
-          --expect-bpsnr 38.45 \
+          --expect-bpsnr 38.4 \
           --expect-vbi 9151527,16065688,16065688 \
           --expect-efm-samples 5292 \
           testdata/pal/jason-testpattern.lds

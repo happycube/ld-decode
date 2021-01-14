@@ -22,54 +22,56 @@ import matplotlib.pyplot as plt
 
 # to test these filters
 def doplot(freq, B, A):
-	w, h = sps.freqz(B, A)
+    w, h = sps.freqz(B, A)
 
-	fig = plt.figure()
-	plt.title('Digital filter frequency response')
+    fig = plt.figure()
+    plt.title("Digital filter frequency response")
 
-	ax1 = fig.add_subplot(111)
+    ax1 = fig.add_subplot(111)
 
-	plt.plot(w * (freq/np.pi) / 2.0, 20 * np.log10(abs(h)), 'b')
-	plt.ylabel('Amplitude [dB]', color='b')
-	plt.xlabel('Frequency [rad/sample]')
+    plt.plot(w * (freq / np.pi) / 2.0, 20 * np.log10(abs(h)), "b")
+    plt.ylabel("Amplitude [dB]", color="b")
+    plt.xlabel("Frequency [rad/sample]")
 
-	ax2 = ax1.twinx()
-	angles = np.unwrap(np.angle(h))
-	angles = np.angle(h)
-	plt.plot(w * (freq/np.pi) / 2.0, angles, 'g')
-	plt.ylabel('Angle (radians)', color='g')
-	plt.grid()
-	plt.axis('tight')
-	plt.show()
+    ax2 = ax1.twinx()
+    angles = np.unwrap(np.angle(h))
+    angles = np.angle(h)
+    plt.plot(w * (freq / np.pi) / 2.0, angles, "g")
+    plt.ylabel("Angle (radians)", color="g")
+    plt.grid()
+    plt.axis("tight")
+    plt.show()
+
 
 def diffplot(freq, B, A, B2, A2):
-	w, h = sps.freqz(B, A)
-	w2, h2 = sps.freqz(B2, A2)
+    w, h = sps.freqz(B, A)
+    w2, h2 = sps.freqz(B2, A2)
 
-#	h = h - h2
-	dabs = abs(h2) / abs(h)
-	dphase = np.unwrap(np.angle(h2)) - np.unwrap(np.angle(h))  
+    # 	h = h - h2
+    dabs = abs(h2) / abs(h)
+    dphase = np.unwrap(np.angle(h2)) - np.unwrap(np.angle(h))
 
-	fig = plt.figure()
-	plt.title('Difference between digital filter frequency responses')
+    fig = plt.figure()
+    plt.title("Difference between digital filter frequency responses")
 
-	ax1 = fig.add_subplot(111)
+    ax1 = fig.add_subplot(111)
 
-	plt.plot(w * (freq/np.pi) / 2.0, 20 * np.log10(dabs), 'b')
-	plt.ylabel('Amplitude [dB]', color='b')
-	plt.xlabel('Frequency [rad/sample]')
+    plt.plot(w * (freq / np.pi) / 2.0, 20 * np.log10(dabs), "b")
+    plt.ylabel("Amplitude [dB]", color="b")
+    plt.xlabel("Frequency [rad/sample]")
 
-	ax2 = ax1.twinx()
-	angles = np.unwrap(np.angle(h))
-	angles = dphase
-	plt.plot(w * (freq/np.pi) / 2.0, angles, 'g')
-	plt.ylabel('Angle (radians)', color='g')
-	plt.grid()
-	plt.axis('tight')
-	plt.show()
+    ax2 = ax1.twinx()
+    angles = np.unwrap(np.angle(h))
+    angles = dphase
+    plt.plot(w * (freq / np.pi) / 2.0, angles, "g")
+    plt.ylabel("Angle (radians)", color="g")
+    plt.grid()
+    plt.axis("tight")
+    plt.show()
 
-def FDLS(N, D, w, Am = [], Th = [], shift = 0, h = []):
-	""" Python implentation of the FDLS filter design algorithm.
+
+def FDLS(N, D, w, Am=[], Th=[], shift=0, h=[]):
+    """ Python implentation of the FDLS filter design algorithm.
 
 	Keyword Arguments:
 	w, Am, Th are equal-length vectors:
@@ -85,68 +87,68 @@ def FDLS(N, D, w, Am = [], Th = [], shift = 0, h = []):
 	
 	"""
 
-	# Compute amplitude and angle from h if provided
-	if len(h) > 0:
-		Am = np.absolute(h)
-		Th = np.angle(h) 
+    # Compute amplitude and angle from h if provided
+    if len(h) > 0:
+        Am = np.absolute(h)
+        Th = np.angle(h)
 
-	M = len(w)
+    M = len(w)
 
-	rownum = 0
-	X = np.zeros((N + D + 1, M)) 
+    rownum = 0
+    X = np.zeros((N + D + 1, M))
 
-	# Build the X matrix one column at a time.  It's simpler if we do this as rows and
-	# transpose the finished product 
+    # Build the X matrix one column at a time.  It's simpler if we do this as rows and
+    # transpose the finished product
 
-	# For each parameter in the denominator, the formula is -A[n]cos(-d*ω[n]*(freq^-1)+Th[n]) for n in [0..M] and d in [1..(D+1)]
-	for i in range(0, D):
-		X[rownum] = -Am * np.cos((-(i + 1) * w) + Th - (shift * w))
-		rownum = rownum + 1
+    # For each parameter in the denominator, the formula is -A[n]cos(-d*ω[n]*(freq^-1)+Th[n]) for n in [0..M] and d in [1..(D+1)]
+    for i in range(0, D):
+        X[rownum] = -Am * np.cos((-(i + 1) * w) + Th - (shift * w))
+        rownum = rownum + 1
 
-	# For each parameter in the numerator, the formula is cos(-n*ω[n]*(freq^-1)) for n in [0..M] and n in [0..N] (inclusive)
-	# This means that the first column will always be cos(0) 
-	for i in range(0, N + 1):
-		X[rownum] = np.cos(i * -w)
-		rownum = rownum + 1
-	
-	X = X.transpose()
+    # For each parameter in the numerator, the formula is cos(-n*ω[n]*(freq^-1)) for n in [0..M] and n in [0..N] (inclusive)
+    # This means that the first column will always be cos(0)
+    for i in range(0, N + 1):
+        X[rownum] = np.cos(i * -w)
+        rownum = rownum + 1
 
-	# Y is a simple vector
-	Y = Am * np.cos(Th)
-	#print(X, Y)
+    X = X.transpose()
 
-	# The actual computation - the setup leading up to this is the brilliant part
-	out = numpy.linalg.lstsq(X, Y, rcond=None)
+    # Y is a simple vector
+    Y = Am * np.cos(Th)
+    # print(X, Y)
 
-	# There's always one A, even for an FIR filter
-	A = np.zeros(D + 1)
-	A[0] = 1
-	A[1:D+1] = out[0][0:D]
+    # The actual computation - the setup leading up to this is the brilliant part
+    out = numpy.linalg.lstsq(X, Y, rcond=None)
 
-	# Now grab the B parameters.
-	B = np.zeros(N + 1)
-	B[0:N+1] = out[0][D:N+D+1]
-	if N == 0:
-		B[0] = 1
+    # There's always one A, even for an FIR filter
+    A = np.zeros(D + 1)
+    A[0] = 1
+    A[1 : D + 1] = out[0][0:D]
 
-	# All done.
-	return [B, A]
+    # Now grab the B parameters.
+    B = np.zeros(N + 1)
+    B[0 : N + 1] = out[0][D : N + D + 1]
+    if N == 0:
+        B[0] = 1
 
-#def FDLS_fromfilt(B, A, N, D, shift = 0.0):
-#	w, h = sps.freqz(B, A, worN = 1024)
+    # All done.
+    return [B, A]
 
-#	return FDLS(N, D, w, h = h, shift = shift) 
 
-def FDLS_fromfilt(B, A, N, D, shift = 0.0, phasemult = 1.0, analog = False):
+# def FDLS_fromfilt(B, A, N, D, shift = 0.0):
+# 	w, h = sps.freqz(B, A, worN = 1024)
+
+# 	return FDLS(N, D, w, h = h, shift = shift)
+
+
+def FDLS_fromfilt(B, A, N, D, shift=0.0, phasemult=1.0, analog=False):
 
     if analog:
         w, h = sps.freqs(B, A)
     else:
-        w, h = sps.freqz(B, A, worN = 1024)
+        w, h = sps.freqz(B, A, worN=1024)
 
     Am = np.absolute(h)
-    Th = np.angle(h) * phasemult 
+    Th = np.angle(h) * phasemult
 
-    return FDLS(N, D, w, Am = Am, Th = Th, shift = shift) 
- 
- 
+    return FDLS(N, D, w, Am=Am, Th=Th, shift=shift)
