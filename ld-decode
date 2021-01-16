@@ -114,6 +114,13 @@ parser.add_argument(
     help="Disable EFM front end",
 )
 parser.add_argument(
+    "--preEFM",
+    dest="prefm",
+    action="store_true",
+    default=False,
+    help="Write filtered but otherwise pre-processed EFM data",
+)
+parser.add_argument(
     "--daa",
     dest="daa",
     action="store_true",
@@ -247,6 +254,7 @@ if args.pal and args.ntsc:
 extra_options = {
     "useAGC": not args.noAGC,
     "write_RF_TBC": args.RF_TBC,
+    "write_pre_efm": args.prefm,
     "deemp_mult": (args.deemp_adjust, args.deemp_adjust),
     "deemp_coeff": (args.deemp_low, args.deemp_high),
 }
