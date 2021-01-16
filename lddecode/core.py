@@ -3156,7 +3156,7 @@ class LDdecode:
         self.outfile_video = None
         self.outfile_audio = None
         self.outfile_efm = None
-        self.outfile_prefm = None
+        self.outfile_pre_efm = None
         self.ffmpeg_rftbc, self.outfile_rftbc = None, None
 
         if fname_out is not None:
