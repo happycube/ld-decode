@@ -2626,8 +2626,7 @@ class Field:
         if len(errmap) > 0 and errmap[-1] > self.linelocs[self.lineoffset]:
             errlist = self.build_errlist(errmap)
 
-            rvs = self.dropout_errlist_to_tbc(errlist)
-            for r in rvs:
+            for r in self.dropout_errlist_to_tbc(errlist):
                 rv_lines.append(r[0] - 1)
                 rv_starts.append(int(r[1]))
                 rv_ends.append(int(r[2]))
@@ -2642,10 +2641,10 @@ class Field:
 
         lfreq = self.get_linefreq(line)
 
+        fsc_mhz_inv = 1 / self.rf.SysParams["fsc_mhz"]
+
         # compute approximate burst beginning/end
-        bstime = 25 * (
-            1 / self.rf.SysParams["fsc_mhz"]
-        )  # approx start of burst in usecs
+        bstime = 25 * fsc_mhz_inv  # approx start of burst in usecs
 
         bstart = int(bstime * lfreq)
         bend = int(8.8 * lfreq)
@@ -2664,8 +2663,7 @@ class Field:
         if nb_absmax(burstarea_demod) > (30 * self.rf.SysParams["hz_ire"]):
             return None, None
 
-        fsc_n1 = 1 / self.rf.SysParams["fsc_mhz"]
-        zcburstdiv = (lfreq * fsc_n1) / 2
+        zcburstdiv = (lfreq * fsc_mhz_inv) / 2
 
         phase_adjust = 0
 
@@ -2749,9 +2747,9 @@ class FieldPAL(Field):
         return np.array(linelocs)
 
     def get_burstlevel(self, l, linelocs=None):
-        burstarea = self.data["video"]["demod"][
-            self.lineslice(l, 5.5, 2.4, linelocs)
-        ].copy()
+        lineslice = self.lineslice(l, 5.5, 2.4, linelocs)
+        
+        burstarea = self.data["video"]["demod"][lineslice].copy()
         burstarea -= nb_mean(burstarea)
 
         if max(burstarea) > (30 * self.rf.SysParams["hz_ire"]):
@@ -2853,14 +2851,11 @@ class FieldPAL(Field):
         if not self.valid:
             return
 
-        if True:
-            self.linelocs3 = self.refine_linelocs_pilot(self.linelocs2)
-            # do a second pass for fine tuning (typically < .1px), because the adjusted
-            # frequency changes slightly from the first pass
-            self.linelocs3a = self.refine_linelocs_pilot(self.linelocs3)
-            self.linelocs = self.fix_badlines(self.linelocs3a)
-        else:
-            self.linelocs = self.fix_badlines(self.linelocs2)
+        self.linelocs3 = self.refine_linelocs_pilot(self.linelocs2)
+        # do a second pass for fine tuning (typically < .1px), because the adjusted
+        # frequency changes slightly from the first pass
+        self.linelocs3a = self.refine_linelocs_pilot(self.linelocs3)
+        self.linelocs = self.fix_badlines(self.linelocs3a)
 
         self.wowfactor = self.computewow(self.linelocs)
         self.burstmedian = self.calc_burstmedian()
@@ -2888,12 +2883,14 @@ class CombNTSC:
         self.cbuffer = self.buildCBuffer()
 
     def getlinephase(self, line):
-        """ determine if a line has positive color burst phase """
+        """ determine if a line has positive color burst phase.  
+            This is based on line # and field phase ID """
         fieldID = self.field.fieldPhaseID
 
-        fieldPositivePhase = (fieldID == 1) | (fieldID == 4)
-
-        return fieldPositivePhase if ((line % 2) == 0) else not fieldPositivePhase
+        if (line % 2) == 0:
+            return (fieldID == 1) | (fieldID == 4)
+        else:
+            return (fieldID == 2) | (fieldID == 3)
 
     def buildCBuffer(self, subset=None):
         """ 
@@ -2962,8 +2959,7 @@ class CombNTSC:
             if not ((np.max(ire_out2) < 100) and (np.min(ire_out2) > 40)):
                 return None, None, None
 
-            cbuffer -= comb_field2.cbuffer[l19_slice]
-            cbuffer /= 2
+            cbuffer = (cbuffer - comb_field2.cbuffer[l19_slice]) / 2
 
         si, sq = self.splitIQ_line(cbuffer, 19)
 
@@ -2990,10 +2986,7 @@ class FieldNTSC(Field):
         return rms(burstarea) * np.sqrt(2)
 
     def compute_burst_offsets(self, linelocs):
-
         rising_sum = 0
-        valid_linecount = 0
-
         adjs = {}
 
         for l in range(0, 266):
@@ -3005,16 +2998,9 @@ class FieldNTSC(Field):
 
             even_line = not (l % 2)
             rising_sum += 1 if (even_line and rising) else 0
-            valid_linecount += 1
 
         # If more than half of the lines have rising phase alignment, it's (probably) field 1 or 4
-        field14 = rising_sum > (valid_linecount // 4)
-
-        median_adj = np.median([np.abs(adjs[k]) for k in adjs.keys()])
-
-        self.linelocsx = linelocs
-        #print(field14, rising_sum, median_adj)
-        #print()
+        field14 = rising_sum > (len(adjs.keys()) // 4)
 
         return field14, adjs
 
@@ -3034,9 +3020,6 @@ class FieldNTSC(Field):
 
         # compute the adjustments for each line but *do not* apply, so outliers can be bypassed
         for l in range(0, 266):
-            if self.linebad[l]:
-                continue
-
             if not (np.isnan(linelocs_adj[l]) or self.linebad[l]):
                 lfreq = self.get_linefreq(l, linelocs)
 
@@ -3047,16 +3030,14 @@ class FieldNTSC(Field):
 
         if len(adjs.keys()):
             adjs_median = np.median([adjs[a] for a in adjs])
-            lastvalid_adj = None
+            lastvalid_adj = adjs_median
 
             for l in range(0, 266):
                 if l in adjs and inrange(adjs[l] - adjs_median, -2, 2):
                     linelocs_adj[l] += adjs[l]
                     lastvalid_adj = adjs[l]
                 else:
-                    linelocs_adj[l] += (
-                        lastvalid_adj if lastvalid_adj is not None else adjs_median
-                    )
+                    linelocs_adj[l] += lastvalid_adj
 
             # This map is based on (first field, field14)
             map4 = {
@@ -3068,7 +3049,6 @@ class FieldNTSC(Field):
             self.fieldPhaseID = map4[(self.isFirstField, field14)]
         else:
             self.fieldPhaseID = 1
-            return linelocs_adj
 
         return linelocs_adj
 
@@ -3176,6 +3156,7 @@ class LDdecode:
         self.outfile_video = None
         self.outfile_audio = None
         self.outfile_efm = None
+        self.outfile_prefm = None
         self.ffmpeg_rftbc, self.outfile_rftbc = None, None
 
         if fname_out is not None:
@@ -3186,6 +3167,8 @@ class LDdecode:
                 # feed EFM stream into ld-ldstoefm
                 self.efm_pll = efm_pll.EFM_PLL()
                 self.outfile_efm = open(fname_out + ".efm", "wb")
+                if extra_options.get("write_pre_efm", False):
+                    self.outfile_pre_efm = open(fname_out + ".prefm", "wb")
             if self.write_rf_tbc:
                 self.ffmpeg_rftbc, self.outfile_rftbc = ldf_pipe(fname_out + ".tbc.ldf")
 
@@ -3284,9 +3267,7 @@ class LDdecode:
         oldmtf = self.mtf_level
 
         if not self.autoMTF:
-            self.mtf_level = (
-                1 - (self.frameNumber / 10000) if self.frameNumber < 10000 else 0
-            )
+            self.mtf_level = np.max(1 - (self.frameNumber / 10000), 0)
         else:
             if len(self.bw_ratios) == 0:
                 return True
@@ -3320,14 +3301,14 @@ class LDdecode:
                 sync_hzs.append(nb_median(field.data["video"]["demod_05"][lsa]) / adj)
                 ire0_hzs.append(nb_median(field.data["video"]["demod_05"][lsb]) / adj)
 
-        # print(np.median(sync_hzs), np.median(ire0_hzs))
-
         return np.median(sync_hzs), np.median(ire0_hzs)
 
     def writeout(self, dataset):
         f, fi, picture, audio, efm = dataset
 
         if self.digital_audio == True:
+            if self.outfile_pre_efm is not None:
+                self.outfile_pre_efm.write(efm.tobytes())
             efm_out = self.efm_pll.process(efm)
             self.outfile_efm.write(efm_out.tobytes())
 
@@ -3352,9 +3333,7 @@ class LDdecode:
             self.readloc = 0
 
         self.readloc_block = self.readloc // self.blocksize
-        self.numblocks = (
-            (self.readlen + (self.readloc % self.blocksize)) // self.blocksize
-        ) + 1
+        self.numblocks = (self.readlen // self.blocksize) + 2
 
         self.rawdecode = self.demodcache.read(
             self.readloc_block * self.blocksize,
@@ -3424,31 +3403,24 @@ class LDdecode:
                     self.bw_ratios.append(metrics["blackToWhiteRFRatio"])
                     self.bw_ratios = self.bw_ratios[-keep:]
 
-                    # logger.info(metrics['blackToWhiteRFRatio'], np.mean(self.bw_ratios))
-
                 redo = not self.checkMTF(f, self.prevfield)
 
                 # Perform AGC changes on first fields only to prevent luma mismatch intra-field
                 if self.useAGC and f.isFirstField and f.sync_confidence > 80:
                     sync_hz, ire0_hz = self.detectLevels(f)
-                    sync_ire_diff = np.abs(
-                        self.rf.hztoire(sync_hz) - self.rf.SysParams["vsync_ire"]
-                    )
+                    vsync_ire = self.rf.SysParams["vsync_ire"]
 
-                    # print(sync_hz, ire0_hz, sync_ire_diff)
+                    sync_ire_diff = np.abs(self.rf.hztoire(sync_hz) - vsync_ire)
+                    ire0_diff = np.abs(self.rf.hztoire(ire0_hz))
 
                     acceptable_diff = 2 if self.fields_written else 0.5
 
-                    if (sync_ire_diff > acceptable_diff) or (
-                        np.abs(self.rf.hztoire(ire0_hz)) > acceptable_diff
-                    ):
+                    if max(sync_ire_diff, ire0_diff) > acceptable_diff:
                         redo = True
 
                         self.rf.SysParams["ire0"] = ire0_hz
                         # Note that vsync_ire is a negative number, so (sync_hz - ire0_hz) is correct
-                        self.rf.SysParams["hz_ire"] = (
-                            sync_hz - ire0_hz
-                        ) / self.rf.SysParams["vsync_ire"]
+                        self.rf.SysParams["hz_ire"] = (sync_hz - ire0_hz) / vsync_ire
 
                 if adjusted == False and redo == True:
                     self.demodcache.flush_demod()
@@ -3462,6 +3434,9 @@ class LDdecode:
                 if self.curfield is not None and self.badfields is None:
                     self.badfields = (self.curfield, f)
                 self.curfield = None
+
+        if f is None or f.valid == False:
+            return None
 
         self.curfield = f
 
