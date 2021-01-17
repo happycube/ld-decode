@@ -1927,16 +1927,13 @@ class Field:
     # pull the above together into a routine that (should) find line 0, the last line of
     # the previous field.
 
-    def getLine0(self, validpulses):
+    def getLine0(self, validpulses, prevfield = None):
         # Gather the local line 0 location and projected from the previous field
 
         self.sync_confidence = 100
 
-        # If we have a previous field, the first vblank should be close to the beginning,
-        # and we need to reject anything too far in (which could be the *next* vsync)
-        limit = 100 if self.prevfield is not None else None
         line0loc_local, isFirstField_local, firstblank_local, conf_local = self.processVBlank(
-            validpulses, 0, limit
+            validpulses, 0, None
         )
 
         line0loc_next, isFirstField_next, conf_next = None, None, None
@@ -1964,14 +1961,16 @@ class Field:
 
         # Use the previous field's end to compute a possible line 0
         line0loc_prev, isFirstField_prev = None, None
-        if self.prevfield is not None and self.prevfield.valid:
-            frameoffset = self.data["startloc"] - self.prevfield.data["startloc"]
+        if prevfield is not None and prevfield.valid:
+            frameoffset = self.data["startloc"] - prevfield.data["startloc"]
 
             line0loc_prev = (
-                self.prevfield.linelocs[self.prevfield.linecount] - frameoffset
+                prevfield.linelocs[prevfield.linecount] - frameoffset
             )
-            isFirstField_prev = not self.prevfield.isFirstField
-            conf_prev = self.prevfield.sync_confidence
+            isFirstField_prev = not prevfield.isFirstField
+            conf_prev = prevfield.sync_confidence
+
+        logger.info(f'{line0loc_local} {line0loc_next} {line0loc_prev}')
 
         # Best case - all three line detectors returned something - perform TOOT using median
         if (
@@ -2084,7 +2083,7 @@ class Field:
 
         self.validpulses = validpulses = self.refinepulses()
 
-        line0loc, lastlineloc, self.isFirstField = self.getLine0(validpulses)
+        line0loc, lastlineloc, self.isFirstField = self.getLine0(validpulses, self.prevfield)
         self.linecount = 263 if self.isFirstField else 262
 
         # It's possible for getLine0 to return None for lastlineloc
