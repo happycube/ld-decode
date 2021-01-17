@@ -1931,11 +1931,15 @@ class Field:
         score = 0
         vsync_lines = 0
 
-        for l in range(self.outlinecount, self.outlinecount + 9):
+        vsync_ire = self.rf.SysParams['vsync_ire']
+
+        for l in range(self.outlinecount, self.outlinecount + 8):
             sl = self.lineslice(l, 0, self.rf.SysParams['line_period'])
             line_ire = self.rf.hztoire(nb_median(self.data['video']['demod'][sl]))
 
-            if inrange(line_ire, self.rf.SysParams['vsync_ire'] - 5, self.rf.SysParams['vsync_ire'] + 5):
+            # vsync_ire is always negative, so /2 is the higher number
+
+            if inrange(line_ire, vsync_ire - 10, vsync_ire / 2):
                 vsync_lines += 1
             elif inrange(line_ire, -5, 5):
                 score += 1
@@ -2117,6 +2121,12 @@ class Field:
         line0loc, lastlineloc, self.isFirstField = self.getLine0(validpulses)
         self.linecount = 263 if self.isFirstField else 262
 
+        # Number of lines to actually process.  This is set so that the entire following
+        # VSYNC is processed
+        proclines = self.outlinecount + self.lineoffset + 10
+        if self.rf.system == 'PAL':
+            proclines += 3
+
         # It's possible for getLine0 to return None for lastlineloc
         if lastlineloc is not None:
             numlines = (lastlineloc - line0loc) / self.inlinelen
@@ -2137,7 +2147,7 @@ class Field:
 
         # If we don't have enough data at the end, move onto the next field
         lastline = ((self.rawpulses[-1].start - line0loc) / meanlinelen)
-        if lastline < (self.outlinecount + 10):
+        if lastline < proclines:
             return None, None, line0loc - (meanlinelen * 20)
 
         for p in validpulses:
@@ -2177,12 +2187,12 @@ class Field:
             linelocs_dict[rlineloc] = p[1].start
             linelocs_dist[rlineloc] = lineloc_distance
 
-        rv_err = np.full(self.outlinecount + 10, False)
+        rv_err = np.full(proclines, False)
 
         # Convert dictionary into list, then fill in gaps
         linelocs = [
             linelocs_dict[l] if l in linelocs_dict else -1
-            for l in range(0, self.outlinecount + 10)
+            for l in range(0, proclines)
         ]
         linelocs_filled = linelocs.copy()
 
@@ -2205,7 +2215,7 @@ class Field:
             if linelocs_filled[0] < self.inlinelen:
                 return None, None, line0loc + (self.inlinelen * self.outlinecount - 7)
 
-        for l in range(1, self.outlinecount + 10):
+        for l in range(1, proclines):
             if linelocs_filled[l] < 0:
                 rv_err[l] = True
 
@@ -2243,7 +2253,7 @@ class Field:
 
         # *finally* done :)
 
-        rv_ll = [linelocs_filled[l] for l in range(0, self.outlinecount + 10)]
+        rv_ll = [linelocs_filled[l] for l in range(0, proclines)]
 
         if self.vblank_next is None:
             nextfield = linelocs_filled[self.outlinecount - 7]
@@ -2747,7 +2757,7 @@ class FieldPAL(Field):
         plen = {}
 
         zcs = []
-        for l in range(0, 313):
+        for l in range(0, 323):
             adjfreq = self.rf.freq
             if l > 1:
                 adjfreq /= (linelocs[l] - linelocs[l - 1]) / self.rf.linelen
@@ -2771,7 +2781,7 @@ class FieldPAL(Field):
 
         am = angular_mean(zcs)
 
-        for l in range(0, 313):
+        for l in range(0, 323):
             linelocs[l] += (phase_distance(zcs[l], am) * plen[l]) * 1
 
         return np.array(linelocs)
@@ -3794,7 +3804,7 @@ class LDdecode:
                 try:
                     if self.isCLV and self.earlyCLV:  # early CLV
                         disk_TimeCode = f"{self.clvMinutes}:xx"
-                    #                        print("file frame %d early-CLV minute %d" % (rawloc, self.clvMinutes), file=sys.stderr)
+                    # print("file frame %d early-CLV minute %d" % (rawloc, self.clvMinutes), file=sys.stderr)
                     elif self.isCLV and self.frameNumber is not None:
                         disk_TimeCode = "CLV Timecode %d:%.2d.%.2d frame %d" % (
                             self.clvMinutes,
