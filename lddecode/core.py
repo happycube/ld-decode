@@ -3382,7 +3382,7 @@ class LDdecode:
         )
 
         if self.rawdecode is None:
-            logger.info("Failed to demodulate data")
+            #logger.info("Failed to demodulate data")
             return None, None
 
         self.indata = self.rawdecode["input"]
