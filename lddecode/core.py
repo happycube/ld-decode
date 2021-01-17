@@ -1970,8 +1970,6 @@ class Field:
             isFirstField_prev = not prevfield.isFirstField
             conf_prev = prevfield.sync_confidence
 
-        logger.info(f'{line0loc_local} {line0loc_next} {line0loc_prev}')
-
         # Best case - all three line detectors returned something - perform TOOT using median
         if (
             line0loc_local is not None
