@@ -1924,6 +1924,35 @@ class Field:
 
         return np.mean(linelens)
 
+    def skip_check(self):
+        ''' This routine checks to see if there's a (probable) VSYNC at the end.
+            Returns a (currently rough) probability.
+        '''
+        score = 0
+        vsync_lines = 0
+
+        for l in range(self.outlinecount, self.outlinecount + 9):
+            sl = self.lineslice(l, 0, self.rf.SysParams['line_period'])
+            line_ire = self.rf.hztoire(nb_median(self.data['video']['demod'][sl]))
+
+            if inrange(line_ire, self.rf.SysParams['vsync_ire'] - 5, self.rf.SysParams['vsync_ire'] + 5):
+                vsync_lines += 1
+            elif inrange(line_ire, -5, 5):
+                score += 1
+            else:
+                score -= 1
+
+        if vsync_lines >= 2:
+            return 100
+
+        if vsync_lines == 1 and score > 0:
+            return 50
+
+        if score > 0:
+            return 25
+
+        return 0
+
     # pull the above together into a routine that (should) find line 0, the last line of
     # the previous field.
 
@@ -1934,7 +1963,8 @@ class Field:
 
         # If we have a previous field, the first vblank should be close to the beginning,
         # and we need to reject anything too far in (which could be the *next* vsync)
-        limit = 100 if self.prevfield is not None else None
+        limit = None
+        limit = 100 if (self.prevfield is not None and self.prevfield.skip_check() >= 50) else None
         line0loc_local, isFirstField_local, firstblank_local, conf_local = self.processVBlank(
             validpulses, 0, limit
         )
