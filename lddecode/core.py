@@ -2107,7 +2107,7 @@ class Field:
 
         # If we don't have enough data at the end, move onto the next field
         lastline = ((self.rawpulses[-1].start - line0loc) / meanlinelen)
-        if lastline < (self.outlinecount + 7):
+        if lastline < (self.outlinecount + 10):
             return None, None, line0loc - (meanlinelen * 20)
 
         for p in validpulses:
@@ -2147,12 +2147,12 @@ class Field:
             linelocs_dict[rlineloc] = p[1].start
             linelocs_dist[rlineloc] = lineloc_distance
 
-        rv_err = np.full(self.outlinecount + 6, False)
+        rv_err = np.full(self.outlinecount + 10, False)
 
         # Convert dictionary into list, then fill in gaps
         linelocs = [
             linelocs_dict[l] if l in linelocs_dict else -1
-            for l in range(0, self.outlinecount + 6)
+            for l in range(0, self.outlinecount + 10)
         ]
         linelocs_filled = linelocs.copy()
 
@@ -2175,7 +2175,7 @@ class Field:
             if linelocs_filled[0] < self.inlinelen:
                 return None, None, line0loc + (self.inlinelen * self.outlinecount - 7)
 
-        for l in range(1, self.outlinecount + 6):
+        for l in range(1, self.outlinecount + 10):
             if linelocs_filled[l] < 0:
                 rv_err[l] = True
 
@@ -2213,7 +2213,7 @@ class Field:
 
         # *finally* done :)
 
-        rv_ll = [linelocs_filled[l] for l in range(0, self.outlinecount + 6)]
+        rv_ll = [linelocs_filled[l] for l in range(0, self.outlinecount + 10)]
 
         if self.vblank_next is None:
             nextfield = linelocs_filled[self.outlinecount - 7]
