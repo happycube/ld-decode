@@ -465,15 +465,6 @@ tau = np.pi * 2
 polar2z = lambda r,θ: r * np.exp( 1j * θ )
 deg2rad = lambda θ: θ * (np.pi / 180)
 
-# from http://tlfabian.blogspot.com/2013/01/implementing-hilbert-90-degree-shift.html
-
-# hilbert_filter_terms has a direct impact on filter delays.  Emperical testing
-# determined that 128 was a good value here.
-hilbert_filter_terms = 128
-hilbert_filter = np.fft.fftshift(
-    np.fft.ifft([0]+[1]*hilbert_filter_terms+[0]*hilbert_filter_terms)
-)
-
 def emphasis_iir(t1, t2, fs):
     """Generate an IIR filter for 6dB/octave pre-emphasis (t1 > t2) or
     de-emphasis (t1 < t2), given time constants for the two corners."""
