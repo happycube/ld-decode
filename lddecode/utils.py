@@ -26,7 +26,8 @@ import scipy.signal as sps
 
 from scipy import interpolate
 
-# This runs a bicubic scaler on a line.
+# This runs a cubic scaler on a line.
+# originally from https://www.paulinternet.nl/?page=bicubic
 @njit(nogil=True)
 def scale(buf, begin, end, tgtlen, mult=1):
     linelen = end - begin
