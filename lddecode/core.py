@@ -468,8 +468,8 @@ class RFDecode:
 
             SF["RFVideo"] *= SF["Fcutl"] * SF["Fcutr"]
 
-        # The hilbert filter performs a 90 degree shift on the input.
-        # Below code shamelessly based on https://github.com/scipy/scipy/blob/v1.6.0/scipy/signal/signaltools.py#L2264-2267
+        # The hilbert filter performs a 90 degree shift on the input.  From: 
+        # https://github.com/scipy/scipy/blob/v1.6.0/scipy/signal/signaltools.py#L2264-2267
         SF["hilbert"] = np.zeros(self.blocklen)
         SF["hilbert"][0] = SF["hilbert"][self.blocklen // 2] = 1
         SF["hilbert"][1 : self.blocklen // 2] = 2
@@ -1013,6 +1013,7 @@ class RFDecode:
         fakesignal[6000:6005] = 0
 
         fakedecode = rf.demodblock(fakesignal, mtf_level=mtf_level)
+        vdemod = fakedecode["video"]["demod"]
 
         # XXX: sync detector does NOT reflect actual sync detection, just regular filtering @ sync level
         # (but only regular filtering is needed for DOD)
@@ -1399,9 +1400,7 @@ def downscale_audio(
             output_left = (output_left * swow[i]) - rf.SysParams["audio_lfreq"]
             output_right = (output_right * swow[i]) - rf.SysParams["audio_rfreq"]
 
-            output[(i * 2) + 0] = dsa_rescale(
-                output_left
-            )  # int(np.round(output_left * 32767 / 150000))
+            output[(i * 2) + 0] = dsa_rescale(output_left)
             output[(i * 2) + 1] = dsa_rescale(output_right)
         else:
             # TBC failure can cause this (issue #389)
@@ -1426,14 +1425,10 @@ class Field:
 
         self.prevfield = prevfield
 
-        self.phase_adjust = 0
-        self.phase_adjust_90 = 0
-
         # XXX: need a better way to prevent memory leaks than this
         # For now don't let a previous frame keep it's prev frame
         if prevfield is not None:
             prevfield.prevfield = None
-            self.phase_adjust_90 = prevfield.phase_adjust_90
 
         self.rf = rf
         self.freq = self.rf.freq
@@ -2529,28 +2524,6 @@ class Field:
         # the minimum valid value during VSYNC is lower for PAL because of the pilot signal
         minsync = -100 if isPAL else -50
 
-        # these lines should cover both PAL and NTSC's hsync areas
-        if False:
-            for i in range(0, len(f.linelocs)):
-                l = f.linelocs[i]
-                # Could compute the estimated length of setup, but we can cut this a bit early...
-                valid_min[
-                    int(l - (f.rf.freq * 0.5)) : int(l + (f.rf.freq * 8))
-                ] = f.rf.iretohz(minsync)
-                valid_max[
-                    int(l - (f.rf.freq * 0.5)) : int(l + (f.rf.freq * 8))
-                ] = f.rf.iretohz(40)
-
-                if self.rf.system == "PAL":
-                    # basically exclude the pilot signal altogether
-                    # This is needed even though HSYNC is excluded later, since failures can be expanded
-                    valid_min[
-                        int(l - (f.rf.freq * 0.5)) : int(l + (f.rf.freq * 4.7))
-                    ] = f.rf.iretohz(-80)
-                    valid_max[
-                        int(l - (f.rf.freq * 0.5)) : int(l + (f.rf.freq * 4.7))
-                    ] = f.rf.iretohz(50)
-
         iserr2 = f.data["video"]["demod"] < valid_min
         iserr2 |= f.data["video"]["demod"] > valid_max
 
@@ -2689,22 +2662,12 @@ class Field:
         burstarea_demod = burstarea_demod - nb_mean(burstarea_demod)
 
         if nb_absmax(burstarea_demod) > (30 * self.rf.SysParams["hz_ire"]):
-            return None, None, None
+            return None, None
 
         fsc_n1 = 1 / self.rf.SysParams["fsc_mhz"]
         zcburstdiv = (lfreq * fsc_n1) / 2
 
         phase_adjust = 0
-
-        if self.prevfield is not None:
-            phase_adjust = self.prevfield.phase_adjust
-            # Do not use the previous phase adjustment if it's too high (#561)
-            if np.abs(phase_adjust) > 0.25:
-                phase_adjust = 0
-
-        # ... but, if a 90 degree offset is detected handle that
-        if self.phase_adjust_90:
-            phase_adjust += 0.5
 
         # The first pass computes phase_offset, the second uses it to determine
         # the colo(u)r burst phase of the line.
@@ -2738,12 +2701,8 @@ class Field:
             if count:
                 phase_adjust += nb_median(np.array(phase_offset))
             else:
-                return None, None, None
+                return None, None
 
-        if self.phase_adjust_90:
-            phase_adjust -= 0.5
-
-        self.phase_adjust = phase_adjust
         return (rising_count / count) > 0.5, -phase_adjust
 
 
@@ -2863,14 +2822,14 @@ class FieldPAL(Field):
         for l in range(7, 20, 4):
             # Usually line 7 is used to determine burst phase, but
             # if that's corrupt every fourth line has the same phase
-            clbn = self.compute_line_bursts(self.linelocs, l)
-            if clbn[0] is not None:
+            rising, phase_adjust = self.compute_line_bursts(self.linelocs, l)
+            if rising is not None:
                 break
 
-        if clbn[0] == None:
+        if rising == None:
             return self.get_following_field_number()
 
-        is_firstfour = clbn[0]
+        is_firstfour = rising
         if m4 == 2:
             # For field 2/6, reverse the above.
             is_firstfour = not is_firstfour
@@ -2989,42 +2948,18 @@ class CombNTSC:
         l19_slice = self.field.lineslice_tbc(19, 0, 40)
         l19_slice_i70 = self.field.lineslice_tbc(19, 14, 18)
 
+        ire_out1 = self.field.dspicture[l19_slice_i70]
+
         # fail out if there is obviously bad data
-        if not (
-            (
-                np.max(self.field.output_to_ire(self.field.dspicture[l19_slice_i70]))
-                < 100
-            )
-            and (
-                np.min(self.field.output_to_ire(self.field.dspicture[l19_slice_i70]))
-                > 40
-            )
-        ):
-            # logger.info("WARNING: line 19 data incorrect")
-            # logger.info(np.max(self.field.output_to_ire(self.field.dspicture[l19_slice_i70])), np.min(self.field.output_to_ire(self.field.dspicture[l19_slice_i70])))
+        if not ((np.max(ire_out1) < 100) and (np.min(ire_out1) > 40)):
             return None, None, None
 
         cbuffer = self.cbuffer[l19_slice]
+
         if comb_field2 is not None:
+            ire_out2 = comb_field2.field.dspicture[l19_slice_i70]
             # fail out if there is obviously bad data
-            if not (
-                (
-                    np.max(
-                        self.field.output_to_ire(
-                            comb_field2.field.dspicture[l19_slice_i70]
-                        )
-                    )
-                    < 100
-                )
-                and (
-                    np.min(
-                        self.field.output_to_ire(
-                            comb_field2.field.dspicture[l19_slice_i70]
-                        )
-                    )
-                    > 40
-                )
-            ):
+            if not ((np.max(ire_out2) < 100) and (np.min(ire_out2) > 40)):
                 return None, None, None
 
             cbuffer -= comb_field2.cbuffer[l19_slice]
@@ -3056,42 +2991,40 @@ class FieldNTSC(Field):
 
     def compute_burst_offsets(self, linelocs):
 
-        linelocs_adj = linelocs
-
-        burstlevel = np.zeros_like(linelocs_adj, dtype=np.float32)
-
-        clbsum = 0
+        rising_sum = 0
         valid_linecount = 0
 
         adjs = {}
 
         for l in range(0, 266):
-            clb = self.compute_line_bursts(linelocs, l)
-            if clb[0] == None:
+            rising, phase_adjust = self.compute_line_bursts(linelocs, l)
+            if rising == None:
                 continue
 
-            adjs[l] = clb[1] / 2
-            burstlevel[l] = self.get_burstlevel(l, linelocs)
+            adjs[l] = phase_adjust / 2
 
             even_line = not (l % 2)
-            clbsum += 1 if (even_line and clb[0]) else 0
+            rising_sum += 1 if (even_line and rising) else 0
             valid_linecount += 1
 
         # If more than half of the lines have rising phase alignment, it's (probably) field 1 or 4
-        field14 = clbsum > (valid_linecount // 4)
+        field14 = rising_sum > (valid_linecount // 4)
 
         median_adj = np.median([np.abs(adjs[k]) for k in adjs.keys()])
 
-        return field14, burstlevel, adjs
+        self.linelocsx = linelocs
+        #print(field14, rising_sum, median_adj)
+        #print()
+
+        return field14, adjs
 
     def refine_linelocs_burst(self, linelocs=None):
         if linelocs is None:
             linelocs = self.linelocs2
 
         linelocs_adj = linelocs.copy()
-        burstlevel = np.zeros_like(linelocs_adj, dtype=np.float32)
 
-        field14, burstlevel, adjs_new = self.compute_burst_offsets(linelocs_adj)
+        field14, adjs_new = self.compute_burst_offsets(linelocs_adj)
 
         adjs = {}
 
@@ -3135,9 +3068,9 @@ class FieldNTSC(Field):
             self.fieldPhaseID = map4[(self.isFirstField, field14)]
         else:
             self.fieldPhaseID = 1
-            return linelocs_adj, burstlevel
+            return linelocs_adj
 
-        return linelocs_adj, burstlevel
+        return linelocs_adj
 
     def downscale(self, lineoffset=0, final=False, *args, **kwargs):
         if final == False:
@@ -3164,8 +3097,6 @@ class FieldNTSC(Field):
         )
 
     def __init__(self, *args, **kwargs):
-        self.burstlevel = None
-
         super(FieldNTSC, self).__init__(*args, **kwargs)
 
     def process(self):
@@ -3182,7 +3113,7 @@ class FieldNTSC(Field):
             self.decodephillipscode(l + self.lineoffset) for l in [16, 17, 18]
         ]
 
-        self.linelocs3, self.burstlevel = self.refine_linelocs_burst(self.linelocs2)
+        self.linelocs3 = self.refine_linelocs_burst(self.linelocs2)
         self.linelocs3 = self.fix_badlines(self.linelocs3, self.linelocs2)
 
         self.burstmedian = self.calc_burstmedian()
@@ -4011,9 +3942,8 @@ class LDdecode:
 
         vp["fieldHeight"] = f.outlinecount
 
-        badj = (
-            -1.4
-        )  # current burst adjustment as of 2/27/19, update when #158 is fixed!
+        # current burst adjustment as of 2/27/19, update when #158 is fixed!
+        badj = -1.4
         vp["colourBurstStart"] = np.round(
             (f.rf.SysParams["colorBurstUS"][0] * spu) + badj
         )
