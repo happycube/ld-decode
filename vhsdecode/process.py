@@ -801,7 +801,7 @@ class FieldNTSCVHS(ldd.FieldNTSC):
 
         # self.Burstlevel is set to the second parameter,
         # but it does not seem to be used for anything, so leave it as 'None'.
-        return linelocs, None
+        return linelocs
 
     def calc_burstmedian(self):
         # Set this to a constant value for now to avoid the comb filter messing with chroma levels.
@@ -1205,7 +1205,8 @@ class VHSRFDecode(ldd.RFDecode):
 
         # Move chroma to compensate for Y filter delay.
         # value needs tweaking, ideally it should be calculated if possible.
-        out_chroma = np.roll(out_chroma, 140)
+        # TODO: Not sure if we need this after hilbert filter change, needs check.
+        out_chroma = np.roll(out_chroma, 10)
         # crude DC offset removal
         out_chroma = out_chroma - np.mean(out_chroma)
 
