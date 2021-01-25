@@ -15,28 +15,70 @@ import subprocess
 
 from lddecode.core import *
 from lddecode.utils import *
+from lddecode.utils_logging import *
 
-parser = argparse.ArgumentParser(description='Extract a sample area from raw RF laserdisc captures.  (Similar to ld-decode, except it outputs samples)')
-parser.add_argument('infile', metavar='infile', type=str, help='source file')
-parser.add_argument('outfile', metavar='outfile', type=str, help='destination file (recommended to use .lds suffix)')
+parser = argparse.ArgumentParser(
+    description="Extract a sample area from raw RF laserdisc captures.  (Similar to ld-decode, except it outputs samples)"
+)
+parser.add_argument("infile", metavar="infile", type=str, help="source file")
+parser.add_argument(
+    "outfile",
+    metavar="outfile",
+    type=str,
+    help="destination file (recommended to use .lds suffix)",
+)
 
-parser.add_argument('-s', '--start', metavar='start', type=float, default=0, help='rough jump to frame n of capture (default is 0)')
-parser.add_argument('-l', '--length', metavar='length', type=int, default = -1, help='limit length to n frames')
+parser.add_argument(
+    "-s",
+    "--start",
+    metavar="start",
+    type=float,
+    default=0,
+    help="rough jump to frame n of capture (default is 0)",
+)
+parser.add_argument(
+    "-l",
+    "--length",
+    metavar="length",
+    type=int,
+    default=-1,
+    help="limit length to n frames",
+)
 
-parser.add_argument('-S', '--seek', metavar='seek', type=int, default=-1, help='seek to frame n of capture')
-parser.add_argument('-E', '--end', metavar='end', type=int, default=-1, help='cutting: last frame')
+parser.add_argument(
+    "-S",
+    "--seek",
+    metavar="seek",
+    type=int,
+    default=-1,
+    help="seek to frame n of capture",
+)
+parser.add_argument(
+    "-E", "--end", metavar="end", type=int, default=-1, help="cutting: last frame"
+)
 
-parser.add_argument('-p', '--pal', dest='pal', action='store_true', help='source is in PAL format')
-parser.add_argument('-n', '--ntsc', dest='ntsc', action='store_true', help='source is in NTSC format')
-parser.add_argument('-C', '--ldf-compression-level', dest='ldfcomp', type=int, default=11, help='compression level for .ldf files')
+parser.add_argument(
+    "-p", "--pal", dest="pal", action="store_true", help="source is in PAL format"
+)
+parser.add_argument(
+    "-n", "--ntsc", dest="ntsc", action="store_true", help="source is in NTSC format"
+)
+parser.add_argument(
+    "-C",
+    "--ldf-compression-level",
+    dest="ldfcomp",
+    type=int,
+    default=11,
+    help="compression level for .ldf files",
+)
 
 args = parser.parse_args()
 
-#print(args)
+# print(args)
 filename = args.infile
 outname = args.outfile
 
-vid_standard = 'PAL' if args.pal else 'NTSC'
+vid_standard = "PAL" if args.pal else "NTSC"
 
 if args.pal and args.ntsc:
     print("ERROR: Can only be PAL or NTSC")
@@ -48,19 +90,20 @@ except ValueError as e:
     print(e)
     exit(1)
 
-makelds = True if outname[-3:] == 'lds' else False
-makeldf = True if outname[-3:] == 'ldf' else False
-    
-system = 'PAL' if args.pal else 'NTSC'
+makelds = True if outname[-3:] == "lds" else False
+makeldf = True if outname[-3:] == "ldf" else False
+
+system = "PAL" if args.pal else "NTSC"
 
 # Wrap the LDdecode creation so that the signal handler is not taken by sub-threads,
 # allowing SIGINT/control-C's to be handled cleanly
 original_sigint_handler = signal.signal(signal.SIGINT, signal.SIG_IGN)
-ldd = LDdecode(filename, None, loader, system=system, doDOD = False)
+logger = init_logging(None)
+ldd = LDdecode(filename, None, loader, system=system, doDOD=False, _logger=logger)
 signal.signal(signal.SIGINT, original_sigint_handler)
 
 if args.seek != -1:
-    startloc = ldd.seek(args.seek if args.start == 0 else args.start, args.seek) 
+    startloc = ldd.seek(args.seek if args.start == 0 else args.start, args.seek)
     if startloc is None:
         print("ERROR: Seeking failed")
         exit(1)
@@ -87,14 +130,16 @@ ldd.roughseek(endloc)
 endidx = int(ldd.fdoffset)
 
 if makelds:
-    process = subprocess.Popen(['ld-lds-converter', '-o', outname, '-p'], stdin=subprocess.PIPE)
+    process = subprocess.Popen(
+        ["ld-lds-converter", "-o", outname, "-p"], stdin=subprocess.PIPE
+    )
     fd = process.stdin
 elif makeldf:
     process, fd = ldf_pipe(outname, args.ldfcomp)
 else:
-    fd = open(args.outfile, 'wb')
+    fd = open(args.outfile, "wb")
 
-#print(startloc, endloc, startidx, endidx)
+# print(startloc, endloc, startidx, endidx)
 
 for i in range(startidx, endidx + 16384, 16384):
     l = endidx - i
@@ -103,7 +148,7 @@ for i in range(startidx, endidx + 16384, 16384):
         l = 16384
     else:
         break
-    #l = 16384 if (l > 16384) else l
+    # l = 16384 if (l > 16384) else l
 
     data = ldd.freader(ldd.infile, i, l)
     if data is not None and len(data) == l:
@@ -117,5 +162,5 @@ fd.close()
 if makelds:
     # allow ld-lds-converter to finish after EOFing it's input
     process.wait()
-    
-#exit(0)
+
+# exit(0)
