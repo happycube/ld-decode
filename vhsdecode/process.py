@@ -35,8 +35,8 @@ def acc(chroma, burst_abs_ref, burststart, burstend, linelength, lines):
     """Scale chroma according to the level of the color burst on each line."""
 
     output = np.zeros(chroma.size, dtype=np.double)
-    for l in range(16, lines):
-        linestart = linelength * l
+    for linenumber in range(16, lines):
+        linestart = linelength * linenumber
         lineend = linestart + linelength
         line = chroma[linestart:lineend]
         output[linestart:lineend] = acc_line(line, burst_abs_ref, burststart, burstend)
@@ -58,7 +58,7 @@ def acc_line(chroma, burst_abs_ref, burststart, burstend):
     return output
 
 
-def genLowShelf(f0, dbgain, qfactor, fs):
+def gen_low_shelf(f0, dbgain, qfactor, fs):
     """Generate low shelving filter coeficcients (digital).
     f0: The frequency where the gain in decibel is at half the maximum value.
        Normalized to sampling frequency, i.e output will be filter from 0 to 2pi.
@@ -85,7 +85,7 @@ def genLowShelf(f0, dbgain, qfactor, fs):
     return [b0, b1, b2], [a0, a1, a2]
 
 
-def genHighShelf(f0, dbgain, qfactor, fs):
+def gen_high_shelf(f0, dbgain, qfactor, fs):
     """Generate high shelving filter coeficcients (digital).
     f0: The frequency where the gain in decibel is at half the maximum value.
        Normalized to sampling frequency, i.e output will be filter from 0 to 2pi.
@@ -157,9 +157,8 @@ def upconvert_chroma(
         #        rotation = [(0,0),(90,-270),(180,-180),(270,-90)]
         # Track 2 - needs phase rotation or the chroma will be inverted.
         phase = starting_phase
-        for l in range(lineoffset, linesout + lineoffset):
-            linenum = l - lineoffset
-            linestart = (l - lineoffset) * outwidth
+        for linenumber in range(lineoffset, linesout + lineoffset):
+            linestart = (linenumber - lineoffset) * outwidth
             lineend = linestart + outwidth
 
             heterodyne = chroma_heterodyne[phase][linestart:lineend]
@@ -179,9 +178,10 @@ def burst_deemphasis(chroma, lineoffset, linesout, outwidth, burstarea):
         linestart = (line - lineoffset) * outwidth
         lineend = linestart + outwidth
 
-        chroma[linestart + burstarea[1] + 5: lineend] *= 8
+        chroma[linestart + burstarea[1] + 5 : lineend] *= 8
 
     return chroma
+
 
 def process_chroma(field, track_phase, disable_deemph=False):
     # Run TBC/downscale on chroma.
@@ -247,6 +247,7 @@ def process_chroma(field, track_phase, disable_deemph=False):
 
     return uphet
 
+
 def decode_chroma_vhs(field):
     """Do track detection if needed and upconvert the chroma signal"""
     # Use field number based on raw data position
@@ -273,13 +274,13 @@ def decode_chroma_vhs(field):
     return chroma_to_u16(uphet)
 
 
-
 def get_line(data, line_length, line):
     return data[line * line_length : (line + 1) * line_length]
 
 
 class LineInfo:
     """Helper class to store line burst info for PAL."""
+
     def __init__(self, num):
         self.linenum = num
         self.bp = 0
@@ -310,7 +311,9 @@ def mean_of_burst_sums(chroma_data, line_length, lines, burst_start, burst_end):
 
     for line_number in range(start_line, end_line, 2):
         burst_a = get_line(chroma_data, line_length, line_number)[burst_start:burst_end]
-        burst_b = get_line(chroma_data, line_length, line_number + 1)[burst_start:burst_end]
+        burst_b = get_line(chroma_data, line_length, line_number + 1)[
+            burst_start:burst_end
+        ]
 
         # Use the absolute of the sums to differences cancelling out.
         mean_dev = np.mean(abs(burst_a + burst_b))
@@ -319,6 +322,7 @@ def mean_of_burst_sums(chroma_data, line_length, lines, burst_start, burst_end):
 
     mean_burst_sum = np.nanmean(burst_sums)
     return mean_burst_sum
+
 
 def detect_burst_pal(
     chroma_data, sine_wave, cosine_wave, burst_area, line_length, lines
@@ -332,12 +336,12 @@ def detect_burst_pal(
     line_data = []
     burst_norm = np.full(lines, np.nan)
     # Decode the burst vectors on each line and try to get an average of the burst amplitude.
-    for l in range(IGNORED_LINES, lines - IGNORED_LINES):
+    for linenumber in range(IGNORED_LINES, lines - IGNORED_LINES):
         info = detect_burst_pal_line(
-            chroma_data, sine_wave, cosine_wave, burst_area, line_length, l
+            chroma_data, sine_wave, cosine_wave, burst_area, line_length, linenumber
         )
         line_data.append(info)
-        burst_norm[l] = info.burst_norm
+        burst_norm[linenumber] = info.burst_norm
 
     burst_mean = np.nanmean(burst_norm[IGNORED_LINES : lines - IGNORED_LINES])
 
@@ -630,6 +634,7 @@ def dropout_errlist_to_tbc(field, errlist):
 #     data = data / np.mean(abs(data))
 #     return lddu.calczc(data, 1, 0, edge=1)
 
+
 def check_increment_field_no(rf):
     """Increment field number if the raw data location moved significantly since the last call"""
     raw_loc = rf.decoder.readloc / rf.decoder.bytes_per_field
@@ -641,6 +646,7 @@ def check_increment_field_no(rf):
         rf.field_number += 1
     else:
         ldd.logger.info("Raw data loc didn't advance.")
+
 
 class FieldPALVHS(ldd.FieldPAL):
     def __init__(self, *args, **kwargs):
@@ -836,7 +842,7 @@ class FieldNTSCVHS(ldd.FieldNTSC):
         return 1.0
 
     def try_detect_track(self):
-        """ Try to detect which track the current field was read from.
+        """Try to detect which track the current field was read from.
         returns 0 or 1 depending on detected track phase.
 
         We use the fact that the color burst in NTSC is inverted on every line, so
@@ -857,15 +863,13 @@ class FieldNTSCVHS(ldd.FieldNTSC):
 
         # Look at the bursts from each upconversion and see which one looks most
         # normal.
-        burst_mean_sum_0 = mean_of_burst_sums(uphet[0], self.outlinelen,
-                                              self.outlinecount,
-                                              burst_area[0],
-                                              burst_area[1])
+        burst_mean_sum_0 = mean_of_burst_sums(
+            uphet[0], self.outlinelen, self.outlinecount, burst_area[0], burst_area[1]
+        )
 
-        burst_mean_sum_1 = mean_of_burst_sums(uphet[1], self.outlinelen,
-                                              self.outlinecount,
-                                              burst_area[0],
-                                              burst_area[1])
+        burst_mean_sum_1 = mean_of_burst_sums(
+            uphet[1], self.outlinelen, self.outlinecount, burst_area[0], burst_area[1]
+        )
 
         assumed_phase = int(burst_mean_sum_1 < burst_mean_sum_0)
 
@@ -1126,7 +1130,7 @@ class VHSRFDecode(ldd.RFDecode):
         # Not sure about the math of this but, by using a high-shelf filter and then
         # swapping b and a we get a low-shelf filter that goes from 0 to -14 dB rather
         # than from 14 to 0 which the high shelf function gives.
-        da, db = genHighShelf(0.26, 14, 1 / 2, inputfreq)
+        da, db = gen_high_shelf(0.26, 14, 1 / 2, inputfreq)
         w, h = sps.freqz(db, da)
 
         self.Filters["Fdeemp"] = lddu.filtfft((db, da), self.blocklen)
@@ -1148,7 +1152,6 @@ class VHSRFDecode(ldd.RFDecode):
         out_sample_rate_mhz = fsc_mhz * 4
         out_frequency_half = out_sample_rate_mhz / 2
         het_freq = fsc_mhz + cc
-        outlinelen = self.SysParams["outlinelen"]
         fieldlen = self.SysParams["outlinelen"] * max(self.SysParams["field_lines"])
 
         # Final band-pass filter for chroma output.
@@ -1174,7 +1177,7 @@ class VHSRFDecode(ldd.RFDecode):
         )
         self.Filters["FChromaBurstCheck"] = chroma_burst_check
 
-        ## Bandpass filter to select heterodyne frequency from the mixed fsc and color carrier signal
+        # Bandpass filter to select heterodyne frequency from the mixed fsc and color carrier signal
         het_filter = sps.butter(
             2,
             [
@@ -1188,8 +1191,6 @@ class VHSRFDecode(ldd.RFDecode):
         # As this is done on the tbced signal, we need the sampling frequency of that,
         # which is 4fsc for NTSC and approx. 4 fsc for PAL.
         # TODO: Correct frequency for pal?
-        wave_scale = fsc_mhz / out_sample_rate_mhz
-
         cc_wave_scale = cc / out_sample_rate_mhz
         self.cc_ratio = cc_wave_scale
         # 0 phase downconverted color under carrier wave
