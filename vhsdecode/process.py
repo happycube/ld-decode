@@ -179,12 +179,11 @@ def burst_deemphasis(chroma, lineoffset, linesout, outwidth, burstarea):
         linestart = (line - lineoffset) * outwidth
         lineend = linestart + outwidth
 
-        chroma[linestart + burstarea[1] + 5 : lineend] *= 8
+        chroma[linestart + burstarea[1] + 5: lineend] *= 8
 
     return chroma
 
-
-def process_chroma(field, track_phase):
+def process_chroma(field, track_phase, disable_deemph=False):
     # Run TBC/downscale on chroma.
     chroma, _, _ = ldd.Field.downscale(field, channel="demod_burst")
 
@@ -198,7 +197,7 @@ def process_chroma(field, track_phase):
     )
 
     # For NTSC, the color burst amplitude is doubled when recording, so we have to undo that.
-    if field.rf.system == "NTSC":
+    if field.rf.system == "NTSC" and not disable_deemph:
         chroma = burst_deemphasis(chroma, lineoffset, linesout, outwidth, burstarea)
 
     # Track 2 is rotated ccw in both NTSC and PAL
@@ -248,12 +247,39 @@ def process_chroma(field, track_phase):
 
     return uphet
 
+def decode_chroma_vhs(field):
+    """Do track detection if needed and upconvert the chroma signal"""
+    # Use field number based on raw data position
+    # This may not be 100% accurate, so we may want to add some more logic to
+    # make sure we re-check the phase occasionally.
+    raw_loc = field.rf.decoder.readloc / field.rf.decoder.bytes_per_field
+
+    check_increment_field_no(field.rf)
+
+    # If we moved significantly more than the length of one field, re-check phase
+    # as we may have skipped fields.
+    if raw_loc - field.rf.last_raw_loc > 2.0:
+        if field.rf.detect_track:
+            ldd.logger.info("Possibly skipped track, re-checking phase..")
+            field.rf.needs_detect
+
+    if field.rf.detect_track and field.rf.needs_detect:
+        field.rf.track_phase = field.try_detect_track()
+        field.rf.needs_detect = False
+
+    uphet = process_chroma(field, field.rf.track_phase)
+    # Store previous raw location so we can detect if we moved in the next call.
+    field.rf.last_raw_loc = raw_loc
+    return chroma_to_u16(uphet)
+
+
 
 def get_line(data, line_length, line):
     return data[line * line_length : (line + 1) * line_length]
 
 
 class LineInfo:
+    """Helper class to store line burst info for PAL."""
     def __init__(self, num):
         self.linenum = num
         self.bp = 0
@@ -270,6 +296,29 @@ class LineInfo:
             self.burst_norm,
         )
 
+
+def mean_of_burst_sums(chroma_data, line_length, lines, burst_start, burst_end):
+    """Sum the burst areas of two and two lines together, and return the mean of these sums."""
+    IGNORED_LINES = 16
+
+    burst_sums = []
+
+    # We ignore the top and bottom 16 lines. The top will typically not have a color burst, and
+    # the bottom 16 may be after or at the head switch where the phase rotation will be different.
+    start_line = IGNORED_LINES
+    end_line = lines - IGNORED_LINES
+
+    for line_number in range(start_line, end_line, 2):
+        burst_a = get_line(chroma_data, line_length, line_number)[burst_start:burst_end]
+        burst_b = get_line(chroma_data, line_length, line_number + 1)[burst_start:burst_end]
+
+        # Use the absolute of the sums to differences cancelling out.
+        mean_dev = np.mean(abs(burst_a + burst_b))
+
+        burst_sums.append(mean_dev)
+
+    mean_burst_sum = np.nanmean(burst_sums)
+    return mean_burst_sum
 
 def detect_burst_pal(
     chroma_data, sine_wave, cosine_wave, burst_area, line_length, lines
@@ -581,6 +630,17 @@ def dropout_errlist_to_tbc(field, errlist):
 #     data = data / np.mean(abs(data))
 #     return lddu.calczc(data, 1, 0, edge=1)
 
+def check_increment_field_no(rf):
+    """Increment field number if the raw data location moved significantly since the last call"""
+    raw_loc = rf.decoder.readloc / rf.decoder.bytes_per_field
+
+    if rf.last_raw_loc is None:
+        rf.last_raw_loc = raw_loc
+
+    if raw_loc > rf.last_raw_loc:
+        rf.field_number += 1
+    else:
+        ldd.logger.info("Raw data loc didn't advance.")
 
 class FieldPALVHS(ldd.FieldPAL):
     def __init__(self, *args, **kwargs):
@@ -595,41 +655,11 @@ class FieldPALVHS(ldd.FieldPAL):
 
         return linelocs
 
-    def processChroma(self):
-        """Upconvert the chroma signal"""
-        # Use field number based on raw data position
-        # This may not be 100% accurate, so we may want to add some more logic to
-        # make sure we re-check the phase occasionally.
-        raw_loc = self.rf.decoder.readloc / self.rf.decoder.bytes_per_field
-
-        if self.rf.last_raw_loc is None:
-            self.rf.last_raw_loc = raw_loc
-
-        if raw_loc > self.rf.last_raw_loc:
-            self.rf.field_number += 1
-        else:
-            ldd.logger.info("raw loc didn't advance")
-
-        # Re-check phase if we moved very far since last time.
-        if raw_loc - self.rf.last_raw_loc > 2.0:
-            if self.rf.detect_track:
-                ldd.logger.info("Possibly skipped track, re-checking phase..")
-            self.rf.needs_detect
-
-        if self.rf.detect_track and self.rf.needs_detect:
-            self.rf.track_phase = self.try_detect_track()
-            self.rf.needs_detect = False
-        uphet = process_chroma(self, self.rf.track_phase)
-
-        self.rf.last_raw_loc = raw_loc
-
-        return chroma_to_u16(uphet)
-
     def downscale(self, final=False, *args, **kwargs):
         dsout, dsaudio, dsefm = super(FieldPALVHS, self).downscale(
             final, *args, **kwargs
         )
-        dschroma = self.processChroma()
+        dschroma = decode_chroma_vhs(self)
 
         return (dsout, dschroma), dsaudio, dsefm
 
@@ -799,25 +829,59 @@ class FieldNTSCVHS(ldd.FieldNTSC):
         else:
             linelocs = linelocs.copy()
 
-        # self.Burstlevel is set to the second parameter,
-        # but it does not seem to be used for anything, so leave it as 'None'.
         return linelocs
 
     def calc_burstmedian(self):
         # Set this to a constant value for now to avoid the comb filter messing with chroma levels.
         return 1.0
 
-    def processChroma(self):
-        uphet = process_chroma(self, self.rf.track_phase)
-        return chroma_to_u16(uphet)
+    def try_detect_track(self):
+        """ Try to detect which track the current field was read from.
+        returns 0 or 1 depending on detected track phase.
+
+        We use the fact that the color burst in NTSC is inverted on every line, so
+        in a perfect signal, the burst from one line and the previous one should cancel
+        each other out when summed together. When upconverting with the wrong phase rotation,
+        the bursts will have the same phase instead, and thus the mean absolute
+        sum will be much higher. This seem to give a reasonably good guess, but could probably
+        be improved.
+        """
+        ldd.logger.info("Trying to detect track phase...")
+        burst_area = (
+            math.floor(self.usectooutpx(self.rf.SysParams["colorBurstUS"][0])),
+            math.ceil(self.usectooutpx(self.rf.SysParams["colorBurstUS"][1])),
+        )
+
+        # Upconvert chroma twice, once for each possible track phase
+        uphet = [process_chroma(self, 0, True), process_chroma(self, 1, True)]
+
+        # Look at the bursts from each upconversion and see which one looks most
+        # normal.
+        burst_mean_sum_0 = mean_of_burst_sums(uphet[0], self.outlinelen,
+                                              self.outlinecount,
+                                              burst_area[0],
+                                              burst_area[1])
+
+        burst_mean_sum_1 = mean_of_burst_sums(uphet[1], self.outlinelen,
+                                              self.outlinecount,
+                                              burst_area[0],
+                                              burst_area[1])
+
+        assumed_phase = int(burst_mean_sum_1 < burst_mean_sum_0)
+
+        ldd.logger.info("burst mean sum 0: %f", burst_mean_sum_0)
+        ldd.logger.info("burst mean sum 1: %f", burst_mean_sum_1)
+        ldd.logger.info("assumed phase: %i", assumed_phase)
+
+        return assumed_phase
 
     def downscale(self, linesoffset=0, final=False, *args, **kwargs):
         dsout, dsaudio, dsefm = super(FieldNTSCVHS, self).downscale(
             linesoffset, final, *args, **kwargs
         )
-        ## TEMPORARY
-        dschroma = self.processChroma()
-        self.fieldPhaseID = (self.rf.field_number % 4) + 1
+        # TEMPORARY
+        dschroma = decode_chroma_vhs(self)
+        self.fieldPhaseID = ((self.rf.field_number + 2) % 4) + 1
         # dschroma = self.refine_linelocs_burst(self.linelocs1)
 
         return (dsout, dschroma), dsaudio, dsefm
