@@ -140,28 +140,28 @@ parser.add_argument(
     dest="cxadc",
     action="store_true",
     default=False,
-    help="Use cxadc input frequency (~28,63 Mhz)"
+    help="Use cxadc input frequency (~28,63 Mhz)",
 )
 parser.add_argument(
     "--cxadc3",
     dest="cxadc3",
     action="store_true",
     default=False,
-    help="Use cxadc ten fsc input frequency (~35,79 Mhz)"
+    help="Use cxadc ten fsc input frequency (~35,79 Mhz)",
 )
 parser.add_argument(
     "--10cxadc",
     dest="cxadc_tenbit",
     action="store_true",
     default=False,
-    help="Use cxadc input frequency in ten bit mode (~14,31 Mhz)"
+    help="Use cxadc input frequency in ten bit mode (~14,31 Mhz)",
 )
 parser.add_argument(
     "--10cxadc3",
     dest="cxadc3_tenbit",
     action="store_true",
     default=False,
-    help="Use cxadc ten fsc input frequency in ten bit mode (~17,89 Mhz)"
+    help="Use cxadc ten fsc input frequency in ten bit mode (~17,89 Mhz)",
 )
 parser.add_argument(
     "-T",
