@@ -107,8 +107,10 @@ def make_loader(filename, inputfreq=None):
     if inputfreq is not None:
         # We're resampling, so we have to use ffmpeg.
 
-        if filename.endswith(".r16") or filename.endswith(".s16"):
+        if filename.endswith(".s16"):
             input_args = ["-f", "s16le"]
+        elif filename.endswith(".r16") or filename.endswith(".u16"):
+            input_args = ["-f", "u16le"]
         elif filename.endswith(".rf"):
             input_args = ["-f", "f32le"]
         elif filename.endswith(".r8") or filename.endswith(".u8"):
@@ -133,11 +135,13 @@ def make_loader(filename, inputfreq=None):
         return load_packed_data_3_32
     elif filename.endswith(".rf"):
         return load_unpacked_data_float32
-    elif filename.endswith(".r16") or filename.endswith(".s16"):
+    elif filename.endswith(".s16"):
         return load_unpacked_data_s16
+    elif filename.endswith(".r16") or filename.endswith(".u16"):
+        return load_unpacked_data_u16
     elif filename.endswith(".r8") or filename.endswith(".u8"):
         return load_unpacked_data_u8
-    elif filename.endswith("raw.oga") or filename.endswith(".ldf"):
+    elif filename.endswith("raw.oga") or filename.endswith(".ldf") or filename.endswith(".wav") or filename.endswith(".flac") or filename.endswith(".vhs"):
         try:
             rv = LoadLDF(filename)
         except:
@@ -156,6 +160,8 @@ def load_unpacked_data(infile, sample, readlen, sampletype):
 
     if sampletype == 4:
         indata = np.fromstring(inbuf, "float32", len(inbuf) // 4) * 32768
+    elif sampletype == 3:
+        indata = np.fromstring(inbuf, "uint16", len(inbuf) // 2)
     elif sampletype == 2:
         indata = np.fromstring(inbuf, "int16", len(inbuf) // 2)
     else:
@@ -172,6 +178,10 @@ def load_unpacked_data_u8(infile, sample, readlen):
 
 
 def load_unpacked_data_s16(infile, sample, readlen):
+    return load_unpacked_data(infile, sample, readlen, 2)
+    
+    
+def load_unpacked_data_u16(infile, sample, readlen):
     return load_unpacked_data(infile, sample, readlen, 2)
 
 
@@ -953,3 +963,4 @@ def jsondump_thread(ldd, outname):
 
 if __name__ == "__main__":
     print("Nothing to see here, move along ;)")
+    

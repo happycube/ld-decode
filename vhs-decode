@@ -13,10 +13,12 @@ from lddecode.utils_logging import init_logging
 from vhsdecode.process import VHSDecode
 import vhsdecode.formats as f
 
-CXADC_FREQ = (8 * 315.0) / 88  # 28.636363636363637
-CXADC_FREQ_HIGH = 3150.0 / 88.0
+CXADC_FREQ = (8 * 315.0) / 88.0 #28.636363636
+CXADC_FREQ_HIGH = 3150.0 / 88.0 #35.795454545
+CXADC_TENBIT_FREQ = (8 * 315.0) / 88.0 / 2.0 #14.318181818
+CXADC_TENBIT_FREQ_HIGH = 3150.0 / 88.0 / 2.0 #17.897727272
 
-parser = argparse.ArgumentParser(description="Extractsvideo from raw VHS rf captures")
+parser = argparse.ArgumentParser(description="Extracts video from raw VHS rf captures")
 parser.add_argument("infile", metavar="infile", type=str, help="source file")
 parser.add_argument(
     "outfile", metavar="outfile", type=str, help="base name for destination files"
@@ -138,14 +140,28 @@ parser.add_argument(
     dest="cxadc",
     action="store_true",
     default=False,
-    help="Use cxadc input frequency",
+    help="Use cxadc input frequency (~28,63 Mhz)",
 )
 parser.add_argument(
     "--cxadc3",
     dest="cxadc3",
     action="store_true",
     default=False,
-    help="Use cxadc ten fsc input frequency (~35.8 Mhz)",
+    help="Use cxadc ten fsc input frequency (~35,79 Mhz)",
+)
+parser.add_argument(
+    "--10cxadc",
+    dest="cxadc_tenbit",
+    action="store_true",
+    default=False,
+    help="Use cxadc input frequency in ten bit mode (~14,31 Mhz)",
+)
+parser.add_argument(
+    "--10cxadc3",
+    dest="cxadc3_tenbit",
+    action="store_true",
+    default=False,
+    help="Use cxadc ten fsc input frequency in ten bit mode (~17,89 Mhz)",
 )
 parser.add_argument(
     "-T",
@@ -178,7 +194,7 @@ if args.pal and args.ntsc:
     exit(1)
 
 sample_freq = (
-    CXADC_FREQ if args.cxadc else CXADC_FREQ_HIGH if args.cxadc3 else args.inputfreq
+    CXADC_FREQ if args.cxadc else CXADC_FREQ_HIGH if args.cxadc3 else CXADC_TENBIT_FREQ if args.cxadc_tenbit else CXADC_TENBIT_FREQ_HIGH if args.cxadc3_tenbit else args.inputfreq
 )
 
 try:
@@ -188,7 +204,7 @@ except ValueError as e:
     exit(1)
 
 dod_threshold_p = f.DEFAULT_THRESHOLD_P_DDD
-if args.cxadc or args.cxadc3:
+if args.cxadc or args.cxadc3 or args.cxadc_tenbit or args.cxadc3_tenbit:
     dod_threshold_p = f.DEFAULT_THRESHOLD_P_CXADC
 
 # Wrap the LDdecode creation so that the signal handler is not taken by sub-threads,
@@ -294,3 +310,4 @@ while not done and vhsd.fields_written < (req_frames * 2):
 
 print("saving JSON and exiting")
 cleanup(outname)
+exit(0)
