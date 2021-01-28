@@ -156,11 +156,21 @@ parser.add_argument(
     help="If set to 0 or 1, force use of video track phase.",
 )
 
+parser.add_argument(
+    "-U",
+    "--u-matic",
+    dest="umatic",
+    action="store_true",
+    default=False,
+    help="Decode u-matic",
+)
+
 args = parser.parse_args()
 filename = args.infile
 outname = args.outfile
 firstframe = args.start
 req_frames = args.length
+tape_format = "UMATIC" if args.umatic else "VHS"
 system = "PAL" if args.pal else "NTSC"
 
 if args.pal and args.ntsc:
@@ -181,8 +191,6 @@ dod_threshold_p = f.DEFAULT_THRESHOLD_P_DDD
 if args.cxadc or args.cxadc3:
     dod_threshold_p = f.DEFAULT_THRESHOLD_P_CXADC
 
-system = "PAL" if args.pal else "NTSC"
-
 # Wrap the LDdecode creation so that the signal handler is not taken by sub-threads,
 # allowing SIGINT/control-C's to be handled cleanly
 original_sigint_handler = signal.signal(signal.SIGINT, signal.SIG_IGN)
@@ -198,6 +206,7 @@ vhsd = VHSDecode(
     loader,
     logger,
     system=system,
+    tape_format=tape_format,
     doDOD=args.dodod,
     threads=args.threads,
     inputfreq=40,

@@ -178,7 +178,7 @@ def burst_deemphasis(chroma, lineoffset, linesout, outwidth, burstarea):
         linestart = (line - lineoffset) * outwidth
         lineend = linestart + outwidth
 
-        chroma[linestart + burstarea[1] + 5 : lineend] *= 8
+        chroma[linestart + burstarea[1] + 5 : lineend] *= 2
 
     return chroma
 
@@ -200,12 +200,13 @@ def process_chroma(field, track_phase, disable_deemph=False):
     if field.rf.system == "NTSC" and not disable_deemph:
         chroma = burst_deemphasis(chroma, lineoffset, linesout, outwidth, burstarea)
 
-    # Track 2 is rotated ccw in both NTSC and PAL
-    phase_rotation = -1
+    # Track 2 is rotated ccw in both NTSC and PAL for VHS
+    # u-matic has no phase rotation.
+    phase_rotation = -1 if track_phase is not None else 0
     # What phase we start on. (Needed for NTSC to get the color phase correct)
     starting_phase = 0
 
-    if field.rf.field_number % 2 == track_phase:
+    if track_phase is not None and field.rf.field_number % 2 == track_phase:
         if field.rf.system == "PAL":
             # For PAL, track 1 has no rotation.
             phase_rotation = 0
@@ -269,6 +270,21 @@ def decode_chroma_vhs(field):
         field.rf.needs_detect = False
 
     uphet = process_chroma(field, field.rf.track_phase)
+    # Store previous raw location so we can detect if we moved in the next call.
+    field.rf.last_raw_loc = raw_loc
+    return chroma_to_u16(uphet)
+
+
+def decode_chroma_umatic(field):
+    """Do track detection if needed and upconvert the chroma signal"""
+    # Use field number based on raw data position
+    # This may not be 100% accurate, so we may want to add some more logic to
+    # make sure we re-check the phase occasionally.
+    raw_loc = field.rf.decoder.readloc / field.rf.decoder.bytes_per_field
+
+    check_increment_field_no(field.rf)
+
+    uphet = process_chroma(field, None, True)
     # Store previous raw location so we can detect if we moved in the next call.
     field.rf.last_raw_loc = raw_loc
     return chroma_to_u16(uphet)
@@ -898,6 +914,46 @@ class FieldNTSCVHS(ldd.FieldNTSC):
         return baserr
 
 
+class FieldNTSCUMatic(ldd.FieldNTSC):
+    def __init__(self, *args, **kwargs):
+        super(FieldNTSCUMatic, self).__init__(*args, **kwargs)
+        self.fieldPhaseID = 0
+
+    def refine_linelocs_burst(self, linelocs=None):
+        """Override this as it's LD specific
+        At some point in the future we could maybe use the burst location to improve hsync accuracy,
+        but ignore it for now.
+        """
+        if linelocs is None:
+            linelocs = self.linelocs2
+        else:
+            linelocs = linelocs.copy()
+
+        return linelocs
+
+    def calc_burstmedian(self):
+        # Set this to a constant value for now to avoid the comb filter messing with chroma levels.
+        return 1.0
+
+    def downscale(self, linesoffset=0, final=False, *args, **kwargs):
+        dsout, dsaudio, dsefm = super(FieldNTSCUMatic, self).downscale(
+            linesoffset, final, *args, **kwargs
+        )
+        # TEMPORARY
+        dschroma = decode_chroma_umatic(self)
+        self.fieldPhaseID = ((self.rf.field_number + 2) % 4) + 1
+        # dschroma = self.refine_linelocs_burst(self.linelocs1)
+
+        return (dsout, dschroma), dsaudio, dsefm
+
+    def dropout_detect(self):
+        return detect_dropouts_rf(self)
+
+    def compute_deriv_error(self, linelocs, baserr):
+        """Disabled this for now as line starts can vary widely."""
+        return baserr
+
+
 # Superclass to override laserdisc-specific parts of ld-decode with stuff that works for VHS
 #
 # We do this simply by using inheritance and overriding functions. This results in some redundant
@@ -911,6 +967,7 @@ class VHSDecode(ldd.LDdecode):
         freader,
         logger,
         system="NTSC",
+        tape_format="VHS",
         doDOD=True,
         threads=1,
         inputfreq=40,
@@ -935,6 +992,7 @@ class VHSDecode(ldd.LDdecode):
         # Overwrite the rf decoder with the VHS-altered one
         self.rf = VHSRFDecode(
             system=system,
+            tape_format=tape_format,
             inputfreq=inputfreq,
             track_phase=track_phase,
             dod_threshold_p=dod_threshold_p,
@@ -947,7 +1005,10 @@ class VHSDecode(ldd.LDdecode):
         if system == "PAL":
             self.FieldClass = FieldPALVHS
         elif system == "NTSC":
-            self.FieldClass = FieldNTSCVHS
+            if tape_format == "UMATIC":
+                self.FieldClass = FieldNTSCUMatic
+            else:
+                self.FieldClass = FieldNTSCVHS
         else:
             raise Exception("Unknown video system!", system)
         self.demodcache = ldd.DemodCache(
@@ -1031,6 +1092,7 @@ class VHSRFDecode(ldd.RFDecode):
         self,
         inputfreq=40,
         system="NTSC",
+        tape_format="VHS",
         dod_threshold_p=vhs_formats.DEFAULT_THRESHOLD_P_DDD,
         dod_threshold_a=None,
         dod_hysteresis=vhs_formats.DEFAULT_HYSTERESIS,
@@ -1067,8 +1129,12 @@ class VHSRFDecode(ldd.RFDecode):
             self.SysParams = copy.deepcopy(vhs_formats.SysParams_PAL_VHS)
             self.DecoderParams = copy.deepcopy(vhs_formats.RFParams_PAL_VHS)
         elif system == "NTSC":
-            self.SysParams = copy.deepcopy(vhs_formats.SysParams_NTSC_VHS)
-            self.DecoderParams = copy.deepcopy(vhs_formats.RFParams_NTSC_VHS)
+            if tape_format == "UMATIC":
+                self.SysParams = copy.deepcopy(vhs_formats.SysParams_NTSC_UMATIC)
+                self.DecoderParams = copy.deepcopy(vhs_formats.RFParams_NTSC_UMATIC)
+            else:
+                self.SysParams = copy.deepcopy(vhs_formats.SysParams_NTSC_VHS)
+                self.DecoderParams = copy.deepcopy(vhs_formats.RFParams_NTSC_VHS)
         else:
             raise Exception("Unknown video system! ", system)
 
@@ -1108,7 +1174,10 @@ class VHSRFDecode(ldd.RFDecode):
             y_fm = lddu.filtfft(y_fm, self.blocklen)
 
             y_fm_lowpass = lddu.filtfft(
-                sps.butter(8, [5.6 / self.freq_half], btype="lowpass"), self.blocklen
+                sps.butter(
+                    8, [DP["video_lpf_extra"] / self.freq_hz_half], btype="lowpass"
+                ),
+                self.blocklen,
             )
 
             y_fm_chroma_trap = lddu.filtfft(
@@ -1125,12 +1194,22 @@ class VHSRFDecode(ldd.RFDecode):
             )
 
             self.Filters["RFVideo"] = y_fm_filter
+        else:
+            y_fm_lowpass = lddu.filtfft(
+                sps.butter(
+                    8, [DP["video_lpf_extra"] / self.freq_hz_half], btype="lowpass"
+                ),
+                self.blocklen,
+            )
+            self.Filters["RFVideo"] = self.Filters["RFVideo"] * y_fm_lowpass
 
         # Video (luma) de-emphasis
         # Not sure about the math of this but, by using a high-shelf filter and then
         # swapping b and a we get a low-shelf filter that goes from 0 to -14 dB rather
         # than from 14 to 0 which the high shelf function gives.
-        da, db = gen_high_shelf(0.26, 14, 1 / 2, inputfreq)
+        da, db = gen_high_shelf(
+            DP["deemph_corner"] / 1.0e6, DP["deemph_gain"], 1 / 2, inputfreq
+        )
         w, h = sps.freqz(db, da)
 
         self.Filters["Fdeemp"] = lddu.filtfft((db, da), self.blocklen)
@@ -1146,7 +1225,6 @@ class VHSRFDecode(ldd.RFDecode):
         self.Filters["FVideoBurst"] = chroma_lowpass
 
         # The following filters are for post-TBC:
-
         # The output sample rate is at approx 4fsc
         fsc_mhz = self.SysParams["fsc_mhz"]
         out_sample_rate_mhz = fsc_mhz * 4
@@ -1285,14 +1363,19 @@ class VHSRFDecode(ldd.RFDecode):
             import matplotlib.pyplot as plt
 
             fig, ax1 = plt.subplots()
-            ax1.plot(raw_filtered)
+            # ax1.plot((20 * np.log10(self.Filters["Fdeemp"])))
             #        ax1.plot(hilbert, color='#FF0000')
-            ax1.plot(env, color="#00FF00")
+            ax1.plot(out_video, color="#00FF00")
+            ax1.axhline(self.iretohz(0))
+            ax1.axhline(self.iretohz(self.SysParams["vsync_ire"]))
+            ax1.axhline(self.iretohz(7.5))
+            ax1.axhline(self.iretohz(100))
+            # print("Vsync IRE", self.SysParams["vsync_ire"])
             ax2 = ax1.twinx()
             ax3 = ax1.twinx()
-            ax2.plot(out_video, color="#FF0000")
-            crossings = find_crossings(env, 700)
-            ax3.plot(crossings, color="#0000FF")
+            #            ax2.plot(out_video, color="#FF0000")
+            #            crossings = find_crossings(env, 700)
+            #            ax3.plot(crossings, color="#0000FF")
             plt.show()
 
         # demod_burst is a bit misleading, but keeping the naming for compatability.
