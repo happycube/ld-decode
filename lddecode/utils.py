@@ -141,7 +141,7 @@ def make_loader(filename, inputfreq=None):
         return load_unpacked_data_u16
     elif filename.endswith(".r8") or filename.endswith(".u8"):
         return load_unpacked_data_u8
-    elif filename.endswith("raw.oga") or filename.endswith(".ldf") or filename.endswith(".wav") or filename.endswith(".flac"):
+    elif filename.endswith("raw.oga") or filename.endswith(".ldf") or filename.endswith(".wav") or filename.endswith(".flac") or filename.endswith(".vhs"):
         try:
             rv = LoadLDF(filename)
         except:
