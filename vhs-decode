@@ -13,10 +13,10 @@ from lddecode.utils_logging import init_logging
 from vhsdecode.process import VHSDecode
 import vhsdecode.formats as f
 
-CXADC_FREQ = (8 * 315.0) / 88.0 #28.636363636
-CXADC_FREQ_HIGH = 3150.0 / 88.0 #35.795454545
-CXADC_TENBIT_FREQ = (8 * 315.0) / 88.0 / 2.0 #14.318181818
-CXADC_TENBIT_FREQ_HIGH = 3150.0 / 88.0 / 2.0 #17.897727272
+CXADC_FREQ = (8 * 315.0) / 88.0  # 28.636363636
+CXADC_FREQ_HIGH = 3150.0 / 88.0  # 35.795454545
+CXADC_TENBIT_FREQ = (8 * 315.0) / 88.0 / 2.0  # 14.318181818
+CXADC_TENBIT_FREQ_HIGH = 3150.0 / 88.0 / 2.0  # 17.897727272
 
 parser = argparse.ArgumentParser(description="Extracts video from raw VHS rf captures")
 parser.add_argument("infile", metavar="infile", type=str, help="source file")
@@ -194,7 +194,15 @@ if args.pal and args.ntsc:
     exit(1)
 
 sample_freq = (
-    CXADC_FREQ if args.cxadc else CXADC_FREQ_HIGH if args.cxadc3 else CXADC_TENBIT_FREQ if args.cxadc_tenbit else CXADC_TENBIT_FREQ_HIGH if args.cxadc3_tenbit else args.inputfreq
+    CXADC_FREQ
+    if args.cxadc
+    else CXADC_FREQ_HIGH
+    if args.cxadc3
+    else CXADC_TENBIT_FREQ
+    if args.cxadc_tenbit
+    else CXADC_TENBIT_FREQ_HIGH
+    if args.cxadc3_tenbit
+    else args.inputfreq
 )
 
 try:
