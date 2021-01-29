@@ -5,7 +5,6 @@ import signal
 import argparse
 import json
 import traceback
-import shutil
 
 
 import lddecode.utils as lddu
@@ -273,7 +272,6 @@ def write_json(vhsd, outname):
     fp.close()
 
     os.rename(outname + ".tbc.json.tmp", outname + ".tbc.json")
-    shutil.copy(outname + ".tbc.json", outname + ".tbcc.json")
 
 
 done = False
@@ -285,10 +283,6 @@ def cleanup(outname):
     jsondumper.put(vhsd.build_json(vhsd.curfield))
     vhsd.close()
     jsondumper.put(None)
-    # Make a json copy for the chroma output.
-    # TODO: this is a workaround for now, should make chroma and luma able
-    # to use the same json later.
-    shutil.copy(outname + ".tbc.json", outname + ".tbcc.json")
 
 
 while not done and vhsd.fields_written < (req_frames * 2):
