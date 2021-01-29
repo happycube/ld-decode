@@ -1016,7 +1016,7 @@ class VHSDecode(ldd.LDdecode):
         )
 
         if fname_out is not None:
-            self.outfile_chroma = open(fname_out + ".tbcc", "wb")
+            self.outfile_chroma = open(fname_out + "_chroma.tbc", "wb")
         else:
             self.outfile_chroma = None
 
