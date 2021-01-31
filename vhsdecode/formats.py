@@ -16,25 +16,29 @@ RFParams_NTSC_UMATIC = {**RFParams_NTSC}
 
 # Band-pass filter for Video rf.
 # TODO: Needs tweaking
-RFParams_PAL_VHS["video_bpf_low"] = 3550000
-RFParams_PAL_VHS["video_bpf_high"] = 5300000
+RFParams_PAL_VHS["video_bpf_low"] = 3490000
+RFParams_PAL_VHS["video_bpf_high"] = 5580000
 # Band-pass filter order.
 # Order may be fine as is.
 RFParams_PAL_VHS["video_bpf_order"] = 1
 # Sharper upper cutoff to get rid of high-frequency junk.
-RFParams_PAL_VHS["video_lpf_extra"] = 5600000
+RFParams_PAL_VHS["video_lpf_extra"] = 5410000
+RFParams_PAL_VHS['video_lpf_extra_order'] = 5
+
+RFParams_PAL_VHS["video_hpf_extra"] = 1690000
+RFParams_PAL_VHS['video_hpf_extra_order'] = 1
 
 # Low-pass filter on Y after demodulation
-RFParams_PAL_VHS["video_lpf_freq"] = 3300000
+RFParams_PAL_VHS["video_lpf_freq"] = 3200000
 # Order may be fine as is.
-# RFParams_PAL_VHS['video_lpf_order'] = 9
+RFParams_PAL_VHS['video_lpf_order'] = 6
 
 # PAL color under carrier is 40H + 1953
 RFParams_PAL_VHS["color_under_carrier"] = ((625 * 25) * 40) + 1953
 
 # -3dB frequency for deemph filter, subject to change
 # as filter generation isn't quite right at the moment.
-RFParams_PAL_VHS["deemph_corner"] = 260000
+RFParams_PAL_VHS["deemph_corner"] = 230000
 RFParams_PAL_VHS["deemph_gain"] = 15
 
 
@@ -42,15 +46,17 @@ RFParams_PAL_VHS["deemph_gain"] = 15
 # TODO: Needs tweaking
 RFParams_NTSC_VHS["video_bpf_low"] = 3200000
 RFParams_NTSC_VHS["video_bpf_high"] = 5300000
-RFParams_NTSC_VHS["video_lpf_extra"] = 5600000
 
 RFParams_NTSC_VHS["video_bpf_order"] = 2
+
+RFParams_NTSC_VHS["video_lpf_extra"] = 5600000
+RFParams_NTSC_VHS['video_lpf_extra_order'] = 8
 
 # Low-pass filter on Y after demodulation
 RFParams_NTSC_VHS["video_lpf_freq"] = 3600000
 
 # Order may be fine as is.
-# RFParams_PAL_VHS['video_lpf_order'] = 9
+# RFParams_NTSC_VHS['video_lpf_order'] = 9
 
 # NTSC color under carrier is 40H
 RFParams_NTSC_VHS["color_under_carrier"] = (525 * (30 / 1.001)) * 40
@@ -65,6 +71,7 @@ RFParams_NTSC_UMATIC["video_bpf_order"] = 2
 RFParams_NTSC_UMATIC["video_lpf_extra"] = 7000000
 RFParams_NTSC_UMATIC["video_lpf_freq"] = 4200000
 RFParams_NTSC_UMATIC["video_lpf_order"] = 6
+RFParams_NTSC_UMATIC['video_lpf_extra_order'] = 8
 RFParams_NTSC_UMATIC["color_under_carrier"] = 688373
 RFParams_NTSC_UMATIC["deemph_corner"] = 400000
 RFParams_NTSC_UMATIC["deemph_gain"] = 10
@@ -115,4 +122,4 @@ DEFAULT_THRESHOLD_P_CXADC = 0.3
 DEFAULT_HYSTERESIS = 1.25
 # Merge dropouts if they there is less than this number of samples between them.
 DOD_MERGE_THRESHOLD = 30
-DOD_MIN_LENGTH = 5
+DOD_MIN_LENGTH = 10

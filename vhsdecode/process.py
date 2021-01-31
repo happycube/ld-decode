@@ -200,6 +200,7 @@ def process_chroma(field, track_phase, disable_deemph=False):
     if field.rf.system == "NTSC" and not disable_deemph:
         chroma = burst_deemphasis(chroma, lineoffset, linesout, outwidth, burstarea)
 
+
     # Track 2 is rotated ccw in both NTSC and PAL for VHS
     # u-matic has no phase rotation.
     phase_rotation = -1 if track_phase is not None else 0
@@ -1175,7 +1176,7 @@ class VHSRFDecode(ldd.RFDecode):
 
             y_fm_lowpass = lddu.filtfft(
                 sps.butter(
-                    8, [DP["video_lpf_extra"] / self.freq_hz_half], btype="lowpass"
+                    DP['video_lpf_extra_order'], [DP["video_lpf_extra"] / self.freq_hz_half], btype="lowpass"
                 ),
                 self.blocklen,
             )
@@ -1197,11 +1198,17 @@ class VHSRFDecode(ldd.RFDecode):
         else:
             y_fm_lowpass = lddu.filtfft(
                 sps.butter(
-                    8, [DP["video_lpf_extra"] / self.freq_hz_half], btype="lowpass"
+                    DP['video_lpf_extra_order'], [DP["video_lpf_extra"] / self.freq_hz_half], btype="lowpass"
                 ),
                 self.blocklen,
             )
-            self.Filters["RFVideo"] = self.Filters["RFVideo"] * y_fm_lowpass
+            y_fm_highpass = lddu.filtfft(
+                sps.butter(
+                    DP['video_hpf_extra_order'], [DP["video_hpf_extra"] / self.freq_hz_half], btype="highpass"
+                ),
+                self.blocklen,
+            )
+            self.Filters["RFVideo"] = self.Filters["RFVideo"] * y_fm_lowpass * y_fm_highpass
 
         # Video (luma) de-emphasis
         # Not sure about the math of this but, by using a high-shelf filter and then
