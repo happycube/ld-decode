@@ -148,7 +148,7 @@ int main(int argc, char *argv[])
 
     // Option to specify chroma gain
     QCommandLineOption chromaGainOption(QStringList() << "chroma-gain",
-                                        QCoreApplication::translate("main", "Gain factor applied to chroma components (default 1.0)"),
+                                        QCoreApplication::translate("main", "Gain factor applied to chroma components (default 1.0 NTSC, 0.5 PAL)"),
                                         QCoreApplication::translate("main", "number"));
     parser.addOption(chromaGainOption);
 

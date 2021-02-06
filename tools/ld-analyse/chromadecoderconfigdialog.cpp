@@ -66,7 +66,7 @@ void ChromaDecoderConfigDialog::setConfiguration(bool _isSourcePal, const PalCol
 
     palConfiguration.chromaGain = qBound(0.0, palConfiguration.chromaGain, 2.0);
     palConfiguration.transformThreshold = qBound(0.0, palConfiguration.transformThreshold, 1.0);
-    palConfiguration.yNRLevel = qBound(0.0, palConfiguration.yNRLevel, 1500.0);
+    palConfiguration.yNRLevel = qBound(0.0, palConfiguration.yNRLevel, 10.0);
     ntscConfiguration.cNRLevel = qBound(0.0, ntscConfiguration.cNRLevel, 10.0);
     ntscConfiguration.yNRLevel = qBound(0.0, ntscConfiguration.yNRLevel, 10.0);
 

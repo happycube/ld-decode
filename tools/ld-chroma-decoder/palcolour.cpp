@@ -378,7 +378,7 @@ void PalColour::detectBurst(LineInfo &line, const quint16 *inputData)
 void PalColour::doYNR(double *Yline)
 {
     // High-pass filter for Y
-    auto yFilter(f_nr);
+    auto yFilter(f_nrpal);
 
     const double irescale = (videoParameters.white16bIre - videoParameters.black16bIre) / 100;
 
@@ -386,7 +386,7 @@ void PalColour::doYNR(double *Yline)
 
     double hplinef[videoParameters.fieldWidth];
 
-    for (qint32 h = 0; h <= videoParameters.fieldWidth; h++) {
+    for (qint32 h = 0; h < videoParameters.fieldWidth; h++) {
         hplinef[h] = yFilter.feed(Yline[h]);
     }
 
