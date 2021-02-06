@@ -189,7 +189,7 @@ int main(int argc, char *argv[])
 
     // Option to set the luma noise reduction level
     QCommandLineOption lumaNROption(QStringList() << "luma-nr",
-                                    QCoreApplication::translate("main", "NTSC: Luma noise reduction level in dB (default 1.0)"),
+                                    QCoreApplication::translate("main", "Luma noise reduction level in dB (default 1.0)"),
                                     QCoreApplication::translate("main", "number"));
     parser.addOption(lumaNROption);
 
@@ -337,6 +337,7 @@ int main(int argc, char *argv[])
 
     if (parser.isSet(lumaNROption)) {
         combConfig.yNRLevel = parser.value(lumaNROption).toDouble();
+        palConfig.yNRLevel = parser.value(lumaNROption).toDouble();
 
         if (combConfig.yNRLevel < 0.0) {
             // Quit with error

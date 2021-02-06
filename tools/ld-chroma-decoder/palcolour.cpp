@@ -37,6 +37,8 @@
 
 #include "firfilter.h"
 
+#include "deemp.h"
+
 #include <array>
 #include <cassert>
 
@@ -372,6 +374,36 @@ void PalColour::detectBurst(LineInfo &line, const quint16 *inputData)
     line.bq /= burstNorm;
 }
 
+// Perform analog-style noise coring.
+void PalColour::doYNR(double *Yline)
+{
+    // High-pass filter for Y
+    auto yFilter(f_nr);
+
+    const double irescale = (videoParameters.white16bIre - videoParameters.black16bIre) / 100;
+
+    double nr_y = configuration.yNRLevel * irescale;
+
+    double hplinef[videoParameters.fieldWidth];
+
+    for (qint32 h = 0; h <= videoParameters.fieldWidth; h++) {
+        hplinef[h] = yFilter.feed(Yline[h]);
+    }
+
+    for (qint32 h = videoParameters.activeVideoStart; h < videoParameters.activeVideoEnd; h++) {
+        // Compensate for 12-sample filter delay
+        double a = hplinef[h + 12];
+
+        // Clip the filter strength 
+        if (fabs(a) > nr_y) {
+            a = (a > 0) ? nr_y : -nr_y;
+        }
+
+        Yline[h] -= a;
+    }
+}
+
+
 // Decode one line into outputFrame.
 // chromaData (templated, so it can be any numeric type) is the input to
 // the chroma demodulator; this may be the composite signal from
@@ -519,7 +551,10 @@ void PalColour::decodeLine(const SourceField &inputField, const ChromaSample *ch
     // burst-based correction applied.
     const double scaledSaturation = 2.0 * scaledContrast * chromaGain;
 
-    for (qint32 i = videoParameters.activeVideoStart; i < videoParameters.activeVideoEnd; i++) {
+    // extract luma first so it can be run through NR
+    double extractedY[videoParameters.fieldWidth];
+
+    for (qint32 i = 0; i < videoParameters.fieldWidth; i++) {
         // Compute luma by...
         double rY;
         if (PREFILTERED_CHROMA) {
@@ -531,6 +566,16 @@ void PalColour::decodeLine(const SourceField &inputField, const ChromaSample *ch
             // composite input
             rY = comp[i] - ((py[i] * sine[i] + qy[i] * cosine[i]) * 2.0);
         }
+
+        extractedY[i] = rY;
+    }
+
+    if (configuration.yNRLevel > 0.0) {
+        doYNR(extractedY);
+    }
+
+    for (qint32 i = videoParameters.activeVideoStart; i < videoParameters.activeVideoEnd; i++) {
+        double rY = extractedY[i];
 
         // Scale to 16-bit output
         rY = qBound(0.0, (rY - videoParameters.black16bIre) * scaledContrast, 65535.0);

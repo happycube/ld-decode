@@ -58,6 +58,7 @@ private slots:
     void on_thresholdHorizontalSlider_valueChanged(int value);
     void on_showFFTsCheckBox_clicked();
     void on_simplePALCheckBox_clicked();
+    void on_palyNRHorizontalSlider_valueChanged(int value);
 
     void on_ntscFilterButtonGroup_buttonClicked(QAbstractButton *button);
     void on_adaptiveCheckBox_clicked();
