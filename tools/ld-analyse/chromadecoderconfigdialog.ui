@@ -41,6 +41,30 @@
      </property>
     </widget>
    </item>
+       <item>
+        <widget class="QLabel" name="yNRLabel">
+         <property name="text">
+          <string>Luma noise reduction:</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QSlider" name="yNRHorizontalSlider">
+         <property name="orientation">
+          <enum>Qt::Horizontal</enum>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="yNRValueLabel">
+         <property name="text">
+          <string>0.00 IRE</string>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignCenter</set>
+         </property>
+        </widget>
+       </item>
    <item>
     <widget class="QTabWidget" name="standardTabs">
      <property name="currentIndex">
@@ -187,30 +211,6 @@
           </size>
          </property>
         </spacer>
-       </item>
-       <item>
-        <widget class="QLabel" name="palyNRLabel">
-         <property name="text">
-          <string>Luma noise reduction:</string>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QSlider" name="palyNRHorizontalSlider">
-         <property name="orientation">
-          <enum>Qt::Horizontal</enum>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QLabel" name="palyNRValueLabel">
-         <property name="text">
-          <string>0.00 IRE</string>
-         </property>
-         <property name="alignment">
-          <set>Qt::AlignCenter</set>
-         </property>
-        </widget>
        </item>
        <item>
         <spacer name="verticalSpacer_4">
@@ -366,30 +366,6 @@
           </size>
          </property>
         </spacer>
-       </item>
-       <item>
-        <widget class="QLabel" name="yNRLabel">
-         <property name="text">
-          <string>Luma noise reduction:</string>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QSlider" name="yNRHorizontalSlider">
-         <property name="orientation">
-          <enum>Qt::Horizontal</enum>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QLabel" name="yNRValueLabel">
-         <property name="text">
-          <string>0.00 IRE</string>
-         </property>
-         <property name="alignment">
-          <set>Qt::AlignCenter</set>
-         </property>
-        </widget>
        </item>
        <item>
         <spacer name="verticalSpacer">

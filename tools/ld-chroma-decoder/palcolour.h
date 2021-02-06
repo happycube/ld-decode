@@ -112,6 +112,9 @@ private:
     // The subcarrier reference signal
     double sine[MAX_WIDTH], cosine[MAX_WIDTH];
 
+    // extract luma first so it can be run through NR
+    double extractedY[MAX_WIDTH];
+
     // Coefficients for the three 2D chroma low-pass filters. There are
     // separate filters for U and V, but only the signs differ, so they can
     // share a set of coefficients.
