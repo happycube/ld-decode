@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>460</width>
-    <height>180</height>
+    <height>514</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -41,34 +41,34 @@
      </property>
     </widget>
    </item>
-       <item>
-        <widget class="QLabel" name="yNRLabel">
-         <property name="text">
-          <string>Luma noise reduction:</string>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QSlider" name="yNRHorizontalSlider">
-         <property name="orientation">
-          <enum>Qt::Horizontal</enum>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QLabel" name="yNRValueLabel">
-         <property name="text">
-          <string>0.00 IRE</string>
-         </property>
-         <property name="alignment">
-          <set>Qt::AlignCenter</set>
-         </property>
-        </widget>
-       </item>
+   <item>
+    <widget class="QLabel" name="yNRLabel">
+     <property name="text">
+      <string>Luma noise reduction:</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QSlider" name="yNRHorizontalSlider">
+     <property name="orientation">
+      <enum>Qt::Horizontal</enum>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QLabel" name="yNRValueLabel">
+     <property name="text">
+      <string>0.00 IRE</string>
+     </property>
+     <property name="alignment">
+      <set>Qt::AlignCenter</set>
+     </property>
+    </widget>
+   </item>
    <item>
     <widget class="QTabWidget" name="standardTabs">
      <property name="currentIndex">
-      <number>0</number>
+      <number>1</number>
      </property>
      <widget class="QWidget" name="palTab">
       <attribute name="title">
@@ -283,6 +283,13 @@
         </spacer>
        </item>
        <item>
+        <widget class="QCheckBox" name="phaseCompCheckBox">
+         <property name="text">
+          <string>Phase compensating decoder</string>
+         </property>
+        </widget>
+       </item>
+       <item>
         <widget class="QCheckBox" name="adaptiveCheckBox">
          <property name="text">
           <string>Enable adaptive filter</string>
@@ -402,7 +409,7 @@
  <resources/>
  <connections/>
  <buttongroups>
-  <buttongroup name="ntscFilterButtonGroup"/>
   <buttongroup name="palFilterButtonGroup"/>
+  <buttongroup name="ntscFilterButtonGroup"/>
  </buttongroups>
 </ui>
