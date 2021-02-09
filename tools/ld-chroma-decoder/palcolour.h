@@ -57,6 +57,7 @@ public:
 
     struct Configuration {
         double chromaGain = 1.0;
+        double yNRLevel = 0.5;
         bool simplePAL = false;
         ChromaFilterMode chromaFilter = palColourFilter;
         TransformPal::TransformMode transformMode = TransformPal::thresholdMode;
@@ -95,6 +96,7 @@ private:
     void buildLookUpTables();
     void decodeField(const SourceField &inputField, const double *chromaData, double chromaGain, RGBFrame &outputFrame);
     void detectBurst(LineInfo &line, const quint16 *inputData);
+    void doYNR(double *inY);
     template <typename ChromaSample, bool PREFILTERED_CHROMA>
     void decodeLine(const SourceField &inputField, const ChromaSample *chromaData, const LineInfo &line, double chromaGain,
                     RGBFrame &outputFrame);
@@ -109,6 +111,9 @@ private:
 
     // The subcarrier reference signal
     double sine[MAX_WIDTH], cosine[MAX_WIDTH];
+
+    // extract luma first so it can be run through NR
+    double extractedY[MAX_WIDTH];
 
     // Coefficients for the three 2D chroma low-pass filters. There are
     // separate filters for U and V, but only the signs differ, so they can
