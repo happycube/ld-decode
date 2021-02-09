@@ -130,6 +130,24 @@ def filter_simple(data, filter_coeffs):
 #     return data
 
 
+def comb_c_ntsc(data, line_len):
+    """Very basic comb filter, adds the signal together with a signal delayed by 1H,
+    line by line. VCRs do this to reduce crosstalk.
+    """
+
+    data2 = data.copy()
+    numlines = len(data) // line_len
+    for line_num in range(16, numlines - 2):
+        delayed1h = data2[(line_num - 1) * line_len : (line_num) * line_len]
+        line_slice = data[line_num * line_len : (line_num + 1) * line_len]
+        # Let the delayed signal contribute 1/3.
+        # Could probably make the filtering configurable later.
+        data[line_num * line_len : (line_num + 1) * line_len] = (
+            (line_slice * 2) - (delayed1h)
+        ) / 3
+    return data
+
+
 def upconvert_chroma(
     chroma,
     lineoffset,
@@ -200,7 +218,6 @@ def process_chroma(field, track_phase, disable_deemph=False):
     if field.rf.system == "NTSC" and not disable_deemph:
         chroma = burst_deemphasis(chroma, lineoffset, linesout, outwidth, burstarea)
 
-
     # Track 2 is rotated ccw in both NTSC and PAL for VHS
     # u-matic has no phase rotation.
     phase_rotation = -1 if track_phase is not None else 0
@@ -237,6 +254,10 @@ def process_chroma(field, track_phase, disable_deemph=False):
     # We do however want to be careful to avoid filtering out too much of the sideband.
     uphet = filter_simple(uphet, field.rf.Filters["FChromaFinal"])
 
+    # Basic comb filter for NTSC to calm the color a little.
+    if field.rf.system == "NTSC":
+        uphet = comb_c_ntsc(uphet, outwidth)
+
     # Final automatic chroma gain.
     uphet = acc(
         uphet,
@@ -271,6 +292,7 @@ def decode_chroma_vhs(field):
         field.rf.needs_detect = False
 
     uphet = process_chroma(field, field.rf.track_phase)
+    field.uphet_temp = uphet
     # Store previous raw location so we can detect if we moved in the next call.
     field.rf.last_raw_loc = raw_loc
     return chroma_to_u16(uphet)
@@ -286,9 +308,17 @@ def decode_chroma_umatic(field):
     check_increment_field_no(field.rf)
 
     uphet = process_chroma(field, None, True)
+    field.uphet_temp = uphet
     # Store previous raw location so we can detect if we moved in the next call.
     field.rf.last_raw_loc = raw_loc
     return chroma_to_u16(uphet)
+
+
+def get_burst_area(field):
+    return (
+        math.floor(field.usectooutpx(field.rf.SysParams["colorBurstUS"][0])),
+        math.ceil(field.usectooutpx(field.rf.SysParams["colorBurstUS"][1])),
+    )
 
 
 def get_line(data, line_length, line):
@@ -447,6 +477,97 @@ def detect_burst_pal_line(
     line.bq /= burst_norm
 
     return line
+
+
+def detect_burst_ntsc(
+    chroma_data, sine_wave, cosine_wave, burst_area, line_length, lines
+):
+    """Check the phase of the color burst."""
+
+    # Ignore the first and last 16 lines of the field.
+    # first ones contain sync and often doesn't have color burst,
+    # while the last lines of the field will contain the head switch and may be distorted.
+    IGNORED_LINES = 16
+    odd_i_acc = 0
+    even_i_acc = 0
+
+    for linenumber in range(IGNORED_LINES, lines - IGNORED_LINES):
+        bi, _, _ = detect_burst_ntsc_line(
+            chroma_data, sine_wave, cosine_wave, burst_area, line_length, linenumber
+        )
+        #        line_data.append((bi, bq, linenumber))
+        if linenumber % 2 == 0:
+            even_i_acc += bi
+        else:
+            odd_i_acc += bi
+
+    num_lines = lines - (IGNORED_LINES * 2)
+
+    return even_i_acc / num_lines, odd_i_acc / num_lines
+
+
+def detect_burst_ntsc_line(
+    chroma_data, sine, cosine, burst_area, line_length, line_number
+):
+    sf = sine
+    cf = cosine
+
+    bi = 0
+    bq = 0
+    # TODO:
+    sine = sine[burst_area[0] :]
+    cosine = cosine[burst_area[0] :]
+    line = get_line(chroma_data, line_length, line_number)
+    for i in range(burst_area[0], burst_area[1]):
+        bi += line[i] * sine[i]
+        bq += line[i] * cosine[i]
+
+    burst_length = burst_area[1] - burst_area[0]
+
+    bi /= burst_length
+    bq /= burst_length
+
+    burst_norm = max(math.sqrt(bi * bi + bq * bq), 130000.0 / 128)
+    bi /= burst_norm
+    bq /= burst_norm
+    return bi, bq, burst_norm
+
+
+def get_field_phase_id(field):
+    """Try to determine which of the 4 NTSC phase cycles the field is.
+    For tapes the result seem to not be cyclical at all, not sure if that's normal
+    or if something is off.
+    The most relevant thing is which lines the burst phase is positive or negative on.
+    """
+    burst_area = get_burst_area(field)
+
+    sine_wave = field.rf.fsc_wave
+    cosine_wave = field.rf.fsc_cos_wave
+
+    # Try to detect the average burst phase of odd and even lines.
+    even, odd = detect_burst_ntsc(
+        field.uphet_temp,
+        sine_wave,
+        cosine_wave,
+        burst_area,
+        field.outlinelen,
+        field.outlinecount,
+    )
+
+    # This map is based on (first field, field14)
+    map4 = {
+        (True, True): 1,
+        (False, False): 2,
+        (True, False): 3,
+        (False, True): 4,
+    }
+
+    phase_id = map4[(field.isFirstField, even < odd)]
+
+    # ldd.logger.info("Field: %i, Odd I %f , Even I %f, phase id %i, field first %i",
+    #                field.rf.field_number, even, odd, phase_id, field.isFirstField)
+
+    return phase_id
 
 
 def find_crossings(data, threshold):
@@ -646,10 +767,6 @@ def dropout_errlist_to_tbc(field, errlist):
 # Phase comprensation stuff - needs rework.
 # def phase_shift(data, angle):
 #     return np.fft.irfft(np.fft.rfft(data) * np.exp(1.0j * angle), len(data)).real
-
-# def detect_phase(data):
-#     data = data / np.mean(abs(data))
-#     return lddu.calczc(data, 1, 0, edge=1)
 
 
 def check_increment_field_no(rf):
@@ -897,13 +1014,14 @@ class FieldNTSCVHS(ldd.FieldNTSC):
         return assumed_phase
 
     def downscale(self, linesoffset=0, final=False, *args, **kwargs):
+        """Downscale the channels and upconvert chroma to standard color carrier frequency."""
         dsout, dsaudio, dsefm = super(FieldNTSCVHS, self).downscale(
             linesoffset, final, *args, **kwargs
         )
-        # TEMPORARY
+
         dschroma = decode_chroma_vhs(self)
-        self.fieldPhaseID = ((self.rf.field_number + 2) % 4) + 1
-        # dschroma = self.refine_linelocs_burst(self.linelocs1)
+
+        self.fieldPhaseID = get_field_phase_id(self)
 
         return (dsout, dschroma), dsaudio, dsefm
 
@@ -940,10 +1058,9 @@ class FieldNTSCUMatic(ldd.FieldNTSC):
         dsout, dsaudio, dsefm = super(FieldNTSCUMatic, self).downscale(
             linesoffset, final, *args, **kwargs
         )
-        # TEMPORARY
         dschroma = decode_chroma_umatic(self)
-        self.fieldPhaseID = ((self.rf.field_number + 2) % 4) + 1
-        # dschroma = self.refine_linelocs_burst(self.linelocs1)
+
+        self.fieldPhaseID = self.fieldPhaseID = get_field_phase_id(self)
 
         return (dsout, dschroma), dsaudio, dsefm
 
@@ -1176,7 +1293,9 @@ class VHSRFDecode(ldd.RFDecode):
 
             y_fm_lowpass = lddu.filtfft(
                 sps.butter(
-                    DP['video_lpf_extra_order'], [DP["video_lpf_extra"] / self.freq_hz_half], btype="lowpass"
+                    DP["video_lpf_extra_order"],
+                    [DP["video_lpf_extra"] / self.freq_hz_half],
+                    btype="lowpass",
                 ),
                 self.blocklen,
             )
@@ -1198,17 +1317,23 @@ class VHSRFDecode(ldd.RFDecode):
         else:
             y_fm_lowpass = lddu.filtfft(
                 sps.butter(
-                    DP['video_lpf_extra_order'], [DP["video_lpf_extra"] / self.freq_hz_half], btype="lowpass"
+                    DP["video_lpf_extra_order"],
+                    [DP["video_lpf_extra"] / self.freq_hz_half],
+                    btype="lowpass",
                 ),
                 self.blocklen,
             )
             y_fm_highpass = lddu.filtfft(
                 sps.butter(
-                    DP['video_hpf_extra_order'], [DP["video_hpf_extra"] / self.freq_hz_half], btype="highpass"
+                    DP["video_hpf_extra_order"],
+                    [DP["video_hpf_extra"] / self.freq_hz_half],
+                    btype="highpass",
                 ),
                 self.blocklen,
             )
-            self.Filters["RFVideo"] = self.Filters["RFVideo"] * y_fm_lowpass * y_fm_highpass
+            self.Filters["RFVideo"] = (
+                self.Filters["RFVideo"] * y_fm_lowpass * y_fm_highpass
+            )
 
         # Video (luma) de-emphasis
         # Not sure about the math of this but, by using a high-shelf filter and then
@@ -1226,6 +1351,8 @@ class VHSRFDecode(ldd.RFDecode):
 
         # Filter to pick out color-under chroma component.
         # filter at about twice the carrier. (This seems to be similar to what VCRs do)
+        # TODO: Needs tweaking
+        # Note: order will be doubled since we use filtfilt.
         chroma_lowpass = sps.butter(
             4, [0.05 / self.freq_half, 1.4 / self.freq_half], btype="bandpass"
         )  # sps.butter(4, [1.2/self.freq_half], btype='lowpass')
@@ -1242,6 +1369,7 @@ class VHSRFDecode(ldd.RFDecode):
         # Final band-pass filter for chroma output.
         # Mostly to filter out the higher-frequency wave that results from signal mixing.
         # Needs tweaking.
+        # Note: order will be doubled since we use filtfilt.
         chroma_bandpass_final = sps.butter(
             2,
             [
@@ -1264,7 +1392,7 @@ class VHSRFDecode(ldd.RFDecode):
 
         # Bandpass filter to select heterodyne frequency from the mixed fsc and color carrier signal
         het_filter = sps.butter(
-            2,
+            1,
             [
                 (het_freq - 0.001) / out_frequency_half,
                 (het_freq + 0.001) / out_frequency_half,
@@ -1372,15 +1500,16 @@ class VHSRFDecode(ldd.RFDecode):
             fig, ax1 = plt.subplots()
             # ax1.plot((20 * np.log10(self.Filters["Fdeemp"])))
             #        ax1.plot(hilbert, color='#FF0000')
-            ax1.plot(out_video, color="#00FF00")
-            ax1.axhline(self.iretohz(0))
-            ax1.axhline(self.iretohz(self.SysParams["vsync_ire"]))
-            ax1.axhline(self.iretohz(7.5))
-            ax1.axhline(self.iretohz(100))
+            # ax1.plot(data, color="#00FF00")
+            #            ax1.axhline(self.iretohz(0))
+            #            ax1.axhline(self.iretohz(self.SysParams["vsync_ire"]))
+            #            ax1.axhline(self.iretohz(7.5))
+            #            ax1.axhline(self.iretohz(100))
             # print("Vsync IRE", self.SysParams["vsync_ire"])
-            ax2 = ax1.twinx()
-            ax3 = ax1.twinx()
-            #            ax2.plot(out_video, color="#FF0000")
+            #            ax2 = ax1.twinx()
+            #            ax3 = ax1.twinx()
+            ax1.plot(demod, color="#FFFF00")
+            ax1.plot(out_video, color="#FF0000")
             #            crossings = find_crossings(env, 700)
             #            ax3.plot(crossings, color="#0000FF")
             plt.show()

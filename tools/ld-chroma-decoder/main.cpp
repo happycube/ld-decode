@@ -223,6 +223,16 @@ int main(int argc, char *argv[])
                                       QCoreApplication::translate("main", "Transform: Overlay the input and output FFTs"));
     parser.addOption(showFFTsOption);
 
+    // Option to overlay the FFTs
+    QCommandLineOption ntscPhaseComp(QStringList() << "ntsc-phase-comp",
+                                      QCoreApplication::translate("main", "Use NTSC QADM decoder taking burst phase into account (BETA)"));
+    parser.addOption(ntscPhaseComp);
+
+    // Option to overlay the FFTs
+    QCommandLineOption colorLPF(QStringList() << "color-lpf",
+                                      QCoreApplication::translate("main", "NTSC: Use Chroma post-filter"));
+    parser.addOption(colorLPF);
+
     // -- Positional arguments --
 
     // Positional argument to specify input video file
@@ -375,6 +385,14 @@ int main(int argc, char *argv[])
 
     if (parser.isSet(showFFTsOption)) {
         palConfig.showFFTs = true;
+    }
+
+    if (parser.isSet(ntscPhaseComp)) {
+        combConfig.phaseCompensation = true;
+    }
+
+    if (parser.isSet(colorLPF)) {
+        combConfig.colorlpf = true;
     }
 
     // Work out the metadata filename

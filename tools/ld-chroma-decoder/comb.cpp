@@ -104,6 +104,22 @@ void Comb::updateConfiguration(const LdDecodeMetaData::VideoParameters &_videoPa
     // Range check the video start
     if (videoParameters.activeVideoStart < 16) qCritical() << "Comb::Comb(): activeVideoStart must be > 16!";
 
+    if (configuration.phaseCompensation && ((sine.size() == 0) | (cosine.size() == 0))) {
+            sine.reserve(videoParameters.fieldWidth);
+            cosine.reserve(videoParameters.fieldWidth);
+            // Generate the reference carrier: quadrature samples of a sine wave at the
+            // subcarrier frequency. We'll use this for two purposes below:
+            // - product-detecting the line samples, to give us quadrature samples of
+            //   the chroma information centred on 0 Hz
+            // - working out what the phase of the subcarrier is on each line,
+            //   so we can rotate the chroma samples to put I/Q on the right axes
+            for (auto i = 0; i < videoParameters.fieldWidth; i++) {
+                const double rad = 2 * M_PI * i * videoParameters.fsc / videoParameters.sampleRate;
+                sine[i] = sin(rad);
+                cosine[i] = cos(rad);
+            }
+    }
+
     configurationSet = true;
 }
 
@@ -160,7 +176,12 @@ void Comb::decodeFrames(const QVector<SourceField> &inputFields, qint32 startInd
         }
 
         // Demodulate chroma giving I/Q
-        currentFrameBuffer->splitIQ();
+        if (configuration.phaseCompensation) {
+            currentFrameBuffer->splitIQlocked(sine, cosine);
+            currentFrameBuffer->filterIQFull();
+        } else {
+            currentFrameBuffer->splitIQ();
+        }
 
         // Extract Y from baseband and I/Q
         currentFrameBuffer->adjustY();
@@ -195,9 +216,9 @@ Comb::FrameBuffer::FrameBuffer(const LdDecodeMetaData::VideoParameters &videoPar
     irescale = (videoParameters.white16bIre - videoParameters.black16bIre) / 100;
 }
 
-/* 
+/*
  * The color burst frequency is 227.5 cycles per line, so it flips 180 degrees for each line.
- * 
+ *
  * The color burst *signal* is at 180 degrees, which is a greenish yellow.
  *
  * When SCH phase is 0 (properly aligned) the color burst is in phase with the leading edge of the HSYNC pulse.
@@ -211,7 +232,7 @@ Comb::FrameBuffer::FrameBuffer(const LdDecodeMetaData::VideoParameters &videoPar
 inline qint32 Comb::FrameBuffer::getFieldID(qint32 lineNumber) const
 {
     bool isFirstField = ((lineNumber % 2) == 0);
-    
+
     return isFirstField ? firstFieldPhaseID : secondFieldPhaseID;
 }
 
@@ -219,11 +240,11 @@ inline qint32 Comb::FrameBuffer::getFieldID(qint32 lineNumber) const
 inline bool Comb::FrameBuffer::getLinePhase(qint32 lineNumber) const
 {
     qint32 fieldID = getFieldID(lineNumber);
-    bool isPositivePhaseOnEvenLines = (fieldID == 1) || (fieldID == 4);    
+    bool isPositivePhaseOnEvenLines = (fieldID == 1) || (fieldID == 4);
 
     int fieldLine = (lineNumber / 2);
     bool isEvenLine = (fieldLine % 2) == 0;
-    
+
     return isEvenLine ? isPositivePhaseOnEvenLines : !isPositivePhaseOnEvenLines;
 }
 
@@ -482,6 +503,76 @@ Comb::FrameBuffer::Candidate Comb::FrameBuffer::getCandidate(qint32 refLineNumbe
     result.penalty = yPenalty + iqPenalty + adjustPenalty;
     return result;
 }
+namespace {
+    // Information about a line we're decoding.
+    struct BurstInfo {
+        double bsin, bcos;
+    };
+}
+
+BurstInfo detectBurst(const quint16* lineData,
+                     const LdDecodeMetaData::VideoParameters& videoParameters,
+                     const std::vector<double>& sine, const std::vector<double>& cosine)
+{
+    double bsin = 0, bcos = 0;
+
+    // Find absolute burst phase relative to the reference carrier by
+    // product detection.
+    // For now we just use the burst on the current line, but we could possibly do some averaging with
+    // neighbouring lines later if needed.
+    for (qint32 i = videoParameters.colourBurstStart; i < videoParameters.colourBurstEnd; i++) {
+        bsin += lineData[i] * sine[i];
+        bcos += lineData[i] * cosine[i];
+    }
+
+    // Normalise the sums above
+    const qint32 colourBurstLength = videoParameters.colourBurstEnd - videoParameters.colourBurstStart;
+    bsin /= colourBurstLength;
+    bcos /= colourBurstLength;
+
+    const double burstNorm = qMax(sqrt(bsin * bsin + bcos * bcos), 130000.0 / 128);
+
+    //qDebug() << "burst norm " << burstNorm;
+
+    bsin /= burstNorm;
+    bcos /= burstNorm;
+
+    BurstInfo info{bsin, bcos};
+    return info;
+}
+
+// Split I and Q, taking burst phase into account.
+void Comb::FrameBuffer::splitIQlocked(const std::vector<double>& sine, const std::vector<double>& cosine)
+{
+    // Clear the target frame YIQ buffer
+    for (qint32 lineNumber = 0; lineNumber < MAX_HEIGHT; lineNumber++) {
+        for (qint32 h = 0; h < MAX_WIDTH; h++) {
+            yiqBuffer[lineNumber][h] = YIQ();
+        }
+    }
+
+    for (qint32 lineNumber = videoParameters.firstActiveFrameLine; lineNumber < videoParameters.lastActiveFrameLine; lineNumber++) {
+        // Get a pointer to the line's data
+        const quint16 *line = rawbuffer.data() + (lineNumber * videoParameters.fieldWidth);
+        // Calculate burst phase
+        auto info = detectBurst(line, videoParameters, sine, cosine);
+
+        for (qint32 h = videoParameters.activeVideoStart; h < videoParameters.activeVideoEnd; h++) {
+            auto val = clpbuffer[configuration.dimensions - 1].pixel[lineNumber][h];
+            yiqBuffer[lineNumber][h].y = line[h];
+
+            // Demodulate the sine and cosine components.
+            auto lsin = val * sine[h] * 2;
+            auto lcos = val * cosine[h] * 2;
+            // Rotate the demodulated vector by the burst phase.
+            auto ti = (lsin * info.bcos - lcos * info.bsin);
+            auto tq = (lsin * info.bsin + lcos * info.bcos);
+            // Rotate back 33 degrees and invert Q to get the correct I/Q vector.
+            yiqBuffer[lineNumber][h].i = (ti * 0.83867056794 - tq * -0.54463903501);
+            yiqBuffer[lineNumber][h].q = -(ti * -0.54463903501 + tq * 0.83867056794);
+        }
+    }
+}
 
 // Spilt the I and Q
 void Comb::FrameBuffer::splitIQ()
@@ -545,6 +636,31 @@ void Comb::FrameBuffer::filterIQ()
                 case 3: filtq = qFilter.feed(yiqBuffer[lineNumber][h].q); break;
                 default: break;
             }
+
+            yiqBuffer[lineNumber][h - qoffset].i = filti;
+            yiqBuffer[lineNumber][h - qoffset].q = filtq;
+
+        }
+    }
+}
+
+// Filter the full set of I and Q values from the input buffer.
+void Comb::FrameBuffer::filterIQFull()
+{
+    auto iFilter(f_colorlpi);
+    auto qFilter(configuration.colorlpf_hq ? f_colorlpi : f_colorlpq);
+
+    for (qint32 lineNumber = videoParameters.firstActiveFrameLine; lineNumber < videoParameters.lastActiveFrameLine; lineNumber++) {
+        iFilter.clear();
+        qFilter.clear();
+
+        qint32 qoffset = configuration.colorlpf_hq ? f_colorlpi_offset : f_colorlpq_offset;
+
+        double filti = 0, filtq = 0;
+
+        for (qint32 h = videoParameters.activeVideoStart; h < videoParameters.activeVideoEnd; h++) {
+            filti = iFilter.feed(yiqBuffer[lineNumber][h].i);
+            filtq = qFilter.feed(yiqBuffer[lineNumber][h].q);
 
             yiqBuffer[lineNumber][h - qoffset].i = filti;
             yiqBuffer[lineNumber][h - qoffset].q = filtq;
