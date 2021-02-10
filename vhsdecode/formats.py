@@ -44,24 +44,24 @@ RFParams_PAL_VHS["deemph_gain"] = 15
 
 # Band-pass filter for Video rf.
 # TODO: Needs tweaking
-RFParams_NTSC_VHS["video_bpf_low"] = 3200000
-RFParams_NTSC_VHS["video_bpf_high"] = 5300000
+RFParams_NTSC_VHS["video_bpf_low"] = 3350000
+RFParams_NTSC_VHS["video_bpf_high"] = 5600000
 
-RFParams_NTSC_VHS["video_bpf_order"] = 2
+RFParams_NTSC_VHS["video_bpf_order"] = 1
 
-RFParams_NTSC_VHS["video_lpf_extra"] = 5600000
+RFParams_NTSC_VHS["video_lpf_extra"] = 6600000
 RFParams_NTSC_VHS["video_lpf_extra_order"] = 8
 
 # Low-pass filter on Y after demodulation
-RFParams_NTSC_VHS["video_lpf_freq"] = 3600000
+RFParams_NTSC_VHS["video_lpf_freq"] = 3000000
 
 # Order may be fine as is.
-# RFParams_NTSC_VHS['video_lpf_order'] = 9
+RFParams_NTSC_VHS['video_lpf_order'] = 2
 
 # NTSC color under carrier is 40H
 RFParams_NTSC_VHS["color_under_carrier"] = (525 * (30 / 1.001)) * 40
 
-RFParams_NTSC_VHS["deemph_corner"] = 260000
+RFParams_NTSC_VHS["deemph_corner"] = 230000
 RFParams_NTSC_VHS["deemph_gain"] = 15
 
 
