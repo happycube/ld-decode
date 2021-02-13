@@ -76,22 +76,22 @@ bool DecoderPool::process()
         }
     }
 
-    // Open the output RGB file
+    // Open the output file
     if (outputFileName == "-") {
         // No output filename, use stdout instead
         if (!targetVideo.open(stdout, QIODevice::WriteOnly)) {
             // Failed to open stdout
-            qCritical() << "Could not open stdout for RGB output";
+            qCritical() << "Could not open stdout for output";
             sourceVideo.close();
             return false;
         }
-        qInfo() << "Using stdout as RGB output";
+        qInfo() << "Writing" << decoder.getPixelName() << "to stdout";
     } else {
         // Open output file
         targetVideo.setFileName(outputFileName);
         if (!targetVideo.open(QIODevice::WriteOnly)) {
             // Failed to open output file
-            qCritical() << "Could not open " << outputFileName << "as RGB output file";
+            qCritical() << "Could not open" << outputFileName << "as" << decoder.getPixelName() << "output file";
             sourceVideo.close();
             return false;
         }
@@ -178,7 +178,7 @@ bool DecoderPool::getInputFrames(qint32 &startFrameNumber, QVector<SourceField> 
     return true;
 }
 
-bool DecoderPool::putOutputFrames(qint32 startFrameNumber, const QVector<RGBFrame> &outputFrames)
+bool DecoderPool::putOutputFrames(qint32 startFrameNumber, const QVector<OutputFrame> &outputFrames)
 {
     QMutexLocker locker(&outputMutex);
 
@@ -199,20 +199,30 @@ bool DecoderPool::putOutputFrames(qint32 startFrameNumber, const QVector<RGBFram
 // whether we can now write some of them out.
 //
 // Returns true on success, false on failure.
-bool DecoderPool::putOutputFrame(qint32 frameNumber, const RGBFrame &outputFrame)
+bool DecoderPool::putOutputFrame(qint32 frameNumber, const OutputFrame &outputFrame)
 {
     // Put this frame into the map
     pendingOutputFrames[frameNumber] = outputFrame;
 
     // Write out as many frames as possible
     while (pendingOutputFrames.contains(outputFrameNumber)) {
-        const RGBFrame& outputData = pendingOutputFrames.value(outputFrameNumber);
+        const OutputFrame& outputData = pendingOutputFrames.value(outputFrameNumber);
 
         // Save the frame data to the output file
-        if (!targetVideo.write(reinterpret_cast<const char *>(outputData.data()), outputData.size() * 2)) {
-            // Could not write to target video file
-            qCritical() << "Writing to the output video file failed";
-            return false;
+        if (outputData.Y.size()) {
+            if (targetVideo.write(reinterpret_cast<const char *>(outputData.Y.data()), outputData.Y.size() * 2) == -1 ||
+                targetVideo.write(reinterpret_cast<const char *>(outputData.Cb.data()), outputData.Cb.size() * 2) == -1 ||
+                targetVideo.write(reinterpret_cast<const char *>(outputData.Cr.data()), outputData.Cr.size() * 2) == -1) {
+                // Could not write to target video file
+                qCritical() << "Writing to the output video file failed";
+                return false;
+            }
+        } else {
+            if (!targetVideo.write(reinterpret_cast<const char *>(outputData.RGB.data()), outputData.RGB.size() * 2)) {
+                // Could not write to target video file
+                qCritical() << "Writing to the output video file failed";
+                return false;
+            }
         }
 
         pendingOutputFrames.remove(outputFrameNumber);

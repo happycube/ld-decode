@@ -108,7 +108,7 @@ void Comb::updateConfiguration(const LdDecodeMetaData::VideoParameters &_videoPa
 }
 
 void Comb::decodeFrames(const QVector<SourceField> &inputFields, qint32 startIndex, qint32 endIndex,
-                        QVector<RGBFrame> &outputFrames)
+                        QVector<OutputFrame> &outputFrames)
 {
     assert(configurationSet);
     assert((outputFrames.size() * 2) == (endIndex - startIndex));
@@ -172,8 +172,9 @@ void Comb::decodeFrames(const QVector<SourceField> &inputFields, qint32 startInd
         currentFrameBuffer->doYNR();
         currentFrameBuffer->doCNR();
 
-        // Convert the YIQ result to RGB
-        outputFrames[frameIndex] = currentFrameBuffer->yiqToRgbFrame();
+        // Convert the YIQ result to RGB or YCbCr
+        outputFrames[frameIndex] = configuration.outputYCbCr ? currentFrameBuffer->yiqToYUVFrame() :
+                                                               currentFrameBuffer->yiqToRGBFrame();
 
         // Overlay the map if required
         if (configuration.dimensions == 3 && configuration.showMap) {
@@ -195,9 +196,9 @@ Comb::FrameBuffer::FrameBuffer(const LdDecodeMetaData::VideoParameters &videoPar
     irescale = (videoParameters.white16bIre - videoParameters.black16bIre) / 100;
 }
 
-/* 
+/*
  * The color burst frequency is 227.5 cycles per line, so it flips 180 degrees for each line.
- * 
+ *
  * The color burst *signal* is at 180 degrees, which is a greenish yellow.
  *
  * When SCH phase is 0 (properly aligned) the color burst is in phase with the leading edge of the HSYNC pulse.
@@ -211,7 +212,7 @@ Comb::FrameBuffer::FrameBuffer(const LdDecodeMetaData::VideoParameters &videoPar
 inline qint32 Comb::FrameBuffer::getFieldID(qint32 lineNumber) const
 {
     bool isFirstField = ((lineNumber % 2) == 0);
-    
+
     return isFirstField ? firstFieldPhaseID : secondFieldPhaseID;
 }
 
@@ -219,11 +220,11 @@ inline qint32 Comb::FrameBuffer::getFieldID(qint32 lineNumber) const
 inline bool Comb::FrameBuffer::getLinePhase(qint32 lineNumber) const
 {
     qint32 fieldID = getFieldID(lineNumber);
-    bool isPositivePhaseOnEvenLines = (fieldID == 1) || (fieldID == 4);    
+    bool isPositivePhaseOnEvenLines = (fieldID == 1) || (fieldID == 4);
 
     int fieldLine = (lineNumber / 2);
     bool isEvenLine = (fieldLine % 2) == 0;
-    
+
     return isEvenLine ? isPositivePhaseOnEvenLines : !isPositivePhaseOnEvenLines;
 }
 
@@ -662,14 +663,14 @@ void Comb::FrameBuffer::doYNR()
     }
 }
 
-// Convert buffer from YIQ to RGB 16-16-16
-RGBFrame Comb::FrameBuffer::yiqToRgbFrame()
+// Convert buffer from YIQ to RGB and store as packed RGB48
+OutputFrame Comb::FrameBuffer::yiqToRGBFrame()
 {
-    RGBFrame rgbOutputFrame;
-    rgbOutputFrame.resize(videoParameters.fieldWidth * frameHeight * 3); // for RGB 16-16-16
+    OutputFrame outputFrame;
+    outputFrame.RGB.resize(videoParameters.fieldWidth * frameHeight * 3); // for RGB 16-16-16
 
     // Initialise the output frame
-    rgbOutputFrame.fill(0);
+    outputFrame.RGB.fill(0);
 
     // Initialise YIQ to RGB converter
     RGB rgb(videoParameters.white16bIre, videoParameters.black16bIre, configuration.whitePoint75, configuration.chromaGain);
@@ -677,7 +678,7 @@ RGBFrame Comb::FrameBuffer::yiqToRgbFrame()
     // Perform YIQ to RGB conversion
     for (qint32 lineNumber = videoParameters.firstActiveFrameLine; lineNumber < videoParameters.lastActiveFrameLine; lineNumber++) {
         // Get a pointer to the line
-        quint16 *linePointer = rgbOutputFrame.data() + (videoParameters.fieldWidth * 3 * lineNumber);
+        quint16 *linePointer = outputFrame.RGB.data() + (videoParameters.fieldWidth * 3 * lineNumber);
 
         // Offset the output by the activeVideoStart to keep the output frame
         // in the same x position as the input video frame
@@ -689,19 +690,18 @@ RGBFrame Comb::FrameBuffer::yiqToRgbFrame()
                         &linePointer[o]);
     }
 
-    // Return the RGB frame data
-    return rgbOutputFrame;
+    return outputFrame;
 }
 
 // Convert buffer from YIQ to RGB
-void Comb::FrameBuffer::overlayMap(const FrameBuffer &previousFrame, const FrameBuffer &nextFrame, RGBFrame &rgbFrame)
+void Comb::FrameBuffer::overlayMap(const FrameBuffer &previousFrame, const FrameBuffer &nextFrame, OutputFrame &rgbFrame)
 {
     qDebug() << "Comb::FrameBuffer::overlayMap(): Overlaying map onto RGB output";
 
     // Overlay the map on the output RGB
     for (qint32 lineNumber = videoParameters.firstActiveFrameLine; lineNumber < videoParameters.lastActiveFrameLine; lineNumber++) {
         // Get a pointer to the line
-        quint16 *linePointer = rgbFrame.data() + (videoParameters.fieldWidth * 3 * lineNumber);
+        quint16 *linePointer = rgbFrame.RGB.data() + (videoParameters.fieldWidth * 3 * lineNumber);
 
         const quint16 *lineData = rawbuffer.data() + (lineNumber * videoParameters.fieldWidth);
 
@@ -728,4 +728,41 @@ void Comb::FrameBuffer::overlayMap(const FrameBuffer &previousFrame, const Frame
             linePointer[(h * 3) + 2] = static_cast<quint16>(blue);
         }
     }
+}
+
+// Convert buffer from YIQ to YCbCr and store as planer YUV444P16
+OutputFrame Comb::FrameBuffer::yiqToYUVFrame()
+{
+    OutputFrame outputFrame;
+
+    outputFrame.Y.resize(videoParameters.fieldWidth * frameHeight);
+    outputFrame.Cb.resize(videoParameters.fieldWidth * frameHeight);
+    outputFrame.Cr.resize(videoParameters.fieldWidth * frameHeight);
+
+    // Initialise the output frame
+    outputFrame.Y.fill(16 * 256);
+    outputFrame.Cb.fill(128 * 256);
+    outputFrame.Cr.fill(128 * 256);
+
+    // Initialise YIQ to YCbCr converter
+    YCbCr ycbcr(videoParameters.white16bIre, videoParameters.black16bIre, configuration.whitePoint75, configuration.chromaGain);
+
+    // Perform YIQ to YCbCr conversion
+    for (qint32 lineNumber = videoParameters.firstActiveFrameLine; lineNumber < videoParameters.lastActiveFrameLine; lineNumber++) {
+        // Get a pointer to each plane
+        quint16 *linePointerY = outputFrame.Y.data() + (videoParameters.fieldWidth * lineNumber);
+        quint16 *linePointerCb = outputFrame.Cb.data() + (videoParameters.fieldWidth * lineNumber);
+        quint16 *linePointerCr = outputFrame.Cr.data() + (videoParameters.fieldWidth * lineNumber);
+
+        // Offset the output by the activeVideoStart to keep the output frame
+        // in the same x position as the input video frame
+        qint32 o = videoParameters.activeVideoStart;
+
+        // Fill the output line with YCbCr values
+        ycbcr.convertLine(&yiqBuffer[lineNumber][videoParameters.activeVideoStart],
+                        &yiqBuffer[lineNumber][videoParameters.activeVideoEnd],
+                        &linePointerY[o], &linePointerCb[o], &linePointerCr[o]);
+    }
+
+    return outputFrame;
 }
