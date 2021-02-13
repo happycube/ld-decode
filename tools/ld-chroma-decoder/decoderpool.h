@@ -68,14 +68,14 @@ public:
 
     // For worker threads: return decoded frames to write to the output file.
     //
-    // outputFrames should contain RGB16-16-16 output frames, with the first
-    // frame being startFrameNumber.
+    // outputFrames should contain RGB48, YUV444P16, or GRAY16 output frames,
+    // with the first frame being startFrameNumber.
     //
     // Returns true on success, false on failure.
-    bool putOutputFrames(qint32 startFrameNumber, const QVector<RGBFrame> &outputFrames);
+    bool putOutputFrames(qint32 startFrameNumber, const QVector<OutputFrame> &outputFrames);
 
 private:
-    bool putOutputFrame(qint32 frameNumber, const RGBFrame &outputFrame);
+    bool putOutputFrame(qint32 frameNumber, const OutputFrame &outputFrame);
 
     // Default batch size, in frames
     static constexpr qint32 DEFAULT_BATCH_SIZE = 16;
@@ -104,7 +104,7 @@ private:
     // Output stream information (all guarded by outputMutex while threads are running)
     QMutex outputMutex;
     qint32 outputFrameNumber;
-    QMap<qint32, RGBFrame> pendingOutputFrames;
+    QMap<qint32, OutputFrame> pendingOutputFrames;
     QFile targetVideo;
     QElapsedTimer totalTimer;
 };

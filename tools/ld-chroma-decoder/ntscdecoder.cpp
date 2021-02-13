@@ -31,6 +31,8 @@
 NtscDecoder::NtscDecoder(const Comb::Configuration &combConfig)
 {
     config.combConfig = combConfig;
+    config.outputYCbCr = combConfig.outputYCbCr;
+    config.pixelFormat = combConfig.pixelFormat;
 }
 
 bool NtscDecoder::configure(const LdDecodeMetaData::VideoParameters &videoParameters) {
@@ -56,6 +58,11 @@ qint32 NtscDecoder::getLookAhead() const
     return config.combConfig.getLookAhead();
 }
 
+const char *NtscDecoder::getPixelName() const
+{
+    return config.combConfig.outputYCbCr ? "YUV444P16" : "RGB48";
+}
+
 QThread *NtscDecoder::makeThread(QAtomicInt& abort, DecoderPool& decoderPool)
 {
     return new NtscThread(abort, decoderPool, config);
@@ -70,9 +77,9 @@ NtscThread::NtscThread(QAtomicInt& _abort, DecoderPool &_decoderPool,
 }
 
 void NtscThread::decodeFrames(const QVector<SourceField> &inputFields, qint32 startIndex, qint32 endIndex,
-                              QVector<RGBFrame> &outputFrames)
+                              QVector<OutputFrame> &outputFrames)
 {
-    QVector<RGBFrame> decodedFrames(outputFrames.size());
+    QVector<OutputFrame> decodedFrames(outputFrames.size());
 
     // Decode fields to frames
     comb.decodeFrames(inputFields, startIndex, endIndex, decodedFrames);

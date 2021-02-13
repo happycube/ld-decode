@@ -34,9 +34,11 @@
 
 #include "lddecodemetadata.h"
 
+#include "decoder.h"
+#include "outputframe.h"
 #include "rgb.h"
-#include "rgbframe.h"
 #include "sourcefield.h"
+#include "ycbcr.h"
 #include "yiq.h"
 
 class Comb
@@ -53,6 +55,8 @@ public:
         qint32 dimensions = 2;
         bool adaptive = true;
         bool showMap = false;
+        Decoder::PixelFormat pixelFormat = Decoder::PixelFormat::RGB48;
+        bool outputYCbCr = false;
 
         double cNRLevel = 0.0;
         double yNRLevel = 1.0;
@@ -67,7 +71,7 @@ public:
 
     // Decode a sequence of fields into a sequence of interlaced frames
     void decodeFrames(const QVector<SourceField> &inputFields, qint32 startIndex, qint32 endIndex,
-                      QVector<RGBFrame> &outputFrames);
+                      QVector<OutputFrame> &outputFrames);
 
     // Maximum frame size
     static constexpr qint32 MAX_WIDTH = 910;
@@ -99,8 +103,9 @@ private:
         void doCNR();
         void doYNR();
 
-        RGBFrame yiqToRgbFrame();
-        void overlayMap(const FrameBuffer &previousFrame, const FrameBuffer &nextFrame, RGBFrame &rgbOutputFrame);
+        OutputFrame yiqToRGBFrame();
+        OutputFrame yiqToYUVFrame();
+        void overlayMap(const FrameBuffer &previousFrame, const FrameBuffer &nextFrame, OutputFrame &outputFrame);
 
     private:
         const LdDecodeMetaData::VideoParameters &videoParameters;
