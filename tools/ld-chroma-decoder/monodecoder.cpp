@@ -47,6 +47,31 @@ const char *MonoDecoder::getPixelName() const
     return config.outputYCbCr ? "GRAY16" : "RGB48";
 }
 
+bool MonoDecoder::isOutputY4m()
+{
+    return config.outputY4m;
+}
+
+QString MonoDecoder::getHeaders() const
+{
+    QString y4mHeader;
+    qint32 rateN = 30000;
+    qint32 rateD = 1001;
+    qint32 width = config.videoParameters.activeVideoEnd - config.videoParameters.activeVideoStart;
+    qint32 height = config.topPadLines + config.bottomPadLines +
+                    config.videoParameters.lastActiveFrameLine - config.videoParameters.firstActiveFrameLine;
+    QString y4mPixelAspect = (config.videoParameters.isWidescreen ? Y4M_PAR_NTSC_169 : Y4M_PAR_NTSC_43);
+    if (config.videoParameters.isSourcePal) {
+        rateN = 25;
+        rateD = 1;
+        y4mPixelAspect = (config.videoParameters.isWidescreen ? Y4M_PAR_PAL_169 : Y4M_PAR_PAL_43);
+    }
+    QTextStream(&y4mHeader) << "YUV4MPEG2 W" << width << " H" << height << " F" << rateN << ":" << rateD
+                            << " I" << y4mFieldOrder << " A" << y4mPixelAspect
+                            << (config.pixelFormat == YUV444P16 ? Y4M_CS_YUV444P16 : Y4M_CS_GRAY16);
+    return y4mHeader;
+}
+
 QThread *MonoDecoder::makeThread(QAtomicInt& abort, DecoderPool& decoderPool) {
     return new MonoThread(abort, decoderPool, config);
 }
