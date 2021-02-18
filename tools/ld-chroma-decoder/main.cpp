@@ -154,7 +154,7 @@ int main(int argc, char *argv[])
 
     // Option to select the output format (-p)
     QCommandLineOption outputFormatOption(QStringList() << "p" << "output-format",
-                                       QCoreApplication::translate("main", "Output format (rgb, yuv; default rgb); RGB48, YUV444P16, GRAY16 pixel formats are supported"),
+                                       QCoreApplication::translate("main", "Output format (rgb, yuv, y4m; default rgb); RGB48, YUV444P16, GRAY16 pixel formats are supported"),
                                        QCoreApplication::translate("main", "output-format"));
     parser.addOption(outputFormatOption);
 
@@ -331,7 +331,12 @@ int main(int argc, char *argv[])
     } else {
         outputFormatName = "rgb";
     }
-    if (outputFormatName == "yuv") {
+    if (outputFormatName == "yuv" || outputFormatName == "y4m") {
+        if (outputFormatName == "y4m") {
+            palConfig.outputY4m = true;
+            combConfig.outputY4m = true;
+            monoConfig.outputY4m = true;
+        }
         palConfig.outputYCbCr = true;
         palConfig.pixelFormat = Decoder::PixelFormat::YUV444P16;
         combConfig.outputYCbCr = true;
@@ -402,7 +407,11 @@ int main(int argc, char *argv[])
 
     if (parser.isSet(showFFTsOption)) {
         palConfig.showFFTs = true;
-        if (palConfig.outputYCbCr) {
+        if (palConfig.outputY4m) {
+            // Quit with error
+            qCritical("Y4M output not available when showFFT is enabled");
+            return -1;
+        } else if (palConfig.outputYCbCr) {
             // Quit with error
             qCritical("YUV output not available when showFFT is enabled");
             return -1;

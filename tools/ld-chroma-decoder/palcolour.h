@@ -66,6 +66,7 @@ public:
         QVector<double> transformThresholds;
         Decoder::PixelFormat pixelFormat = Decoder::PixelFormat::RGB48;
         bool outputYCbCr = false;
+        bool outputY4m = false;
         bool showFFTs = false;
         qint32 showPositionX = 200;
         qint32 showPositionY = 200;

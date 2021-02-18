@@ -97,6 +97,13 @@ bool DecoderPool::process()
         }
     }
 
+    if (decoder.isOutputY4m()) {
+        if (targetVideo.write(decoder.getHeaders().toUtf8()) == -1) {
+            qCritical() << "Could not write Y4M header";
+            return false;
+        }
+    }
+
     qInfo() << "Using" << maxThreads << "threads";
     qInfo() << "Processing from start frame #" << startFrame << "with a length of" << length << "frames";
 
@@ -210,6 +217,12 @@ bool DecoderPool::putOutputFrame(qint32 frameNumber, const OutputFrame &outputFr
 
         // Save the frame data to the output file
         if (outputData.Y.size()) {
+            if (decoder.isOutputY4m()) {
+                if (targetVideo.write("FRAME\n") == -1) {
+                    qCritical() << "Writing to the output video file failed";
+                    return false;
+                }
+            }
             if (targetVideo.write(reinterpret_cast<const char *>(outputData.Y.data()), outputData.Y.size() * 2) == -1 ||
                 targetVideo.write(reinterpret_cast<const char *>(outputData.Cb.data()), outputData.Cb.size() * 2) == -1 ||
                 targetVideo.write(reinterpret_cast<const char *>(outputData.Cr.data()), outputData.Cr.size() * 2) == -1) {
