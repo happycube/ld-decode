@@ -52,6 +52,7 @@ public:
 
         bool isSourcePal;
         bool isSubcarrierLocked;
+        bool isWidescreen;
 
         qint32 colourBurstStart;
         qint32 colourBurstEnd;

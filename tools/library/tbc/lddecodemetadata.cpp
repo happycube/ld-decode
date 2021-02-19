@@ -75,6 +75,7 @@ LdDecodeMetaData::VideoParameters LdDecodeMetaData::getVideoParameters()
         videoParameters.numberOfSequentialFields = json.value({"videoParameters", "numberOfSequentialFields"}).toInt();
         videoParameters.isSourcePal = json.value({"videoParameters", "isSourcePal"}).toBool();
         videoParameters.isSubcarrierLocked = json.value({"videoParameters", "isSubcarrierLocked"}).toBool();
+        videoParameters.isWidescreen = json.value({"videoParameters", "isWidescreen"}).toBool();
 
         videoParameters.colourBurstStart = json.value({"videoParameters", "colourBurstStart"}).toInt();
         videoParameters.colourBurstEnd = json.value({"videoParameters", "colourBurstEnd"}).toInt();
@@ -126,6 +127,7 @@ void LdDecodeMetaData::setVideoParameters (LdDecodeMetaData::VideoParameters _vi
     json.setValue({"videoParameters", "numberOfSequentialFields"}, getNumberOfFields());
     json.setValue({"videoParameters", "isSourcePal"}, _videoParameters.isSourcePal);
     json.setValue({"videoParameters", "isSubcarrierLocked"}, _videoParameters.isSubcarrierLocked);
+    json.setValue({"videoParameters", "isWidescreen"}, _videoParameters.isWidescreen);
 
     json.setValue({"videoParameters", "colourBurstStart"}, _videoParameters.colourBurstStart);
     json.setValue({"videoParameters", "colourBurstEnd"}, _videoParameters.colourBurstEnd);
