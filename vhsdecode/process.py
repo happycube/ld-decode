@@ -1279,61 +1279,40 @@ class VHSRFDecode(ldd.RFDecode):
             8, [1.0 / self.freq_half], btype="lowpass"
         )
 
-        # More advanced rf filter - only used for NTSC for now.
-        if system == "NTSC":
-            y_fm = sps.butter(
+        # Filter for rf before demodulating.
+        y_fm = lddu.filtfft(
+            sps.butter(
                 DP["video_bpf_order"],
                 [
                     DP["video_bpf_low"] / self.freq_hz_half,
                     DP["video_bpf_high"] / self.freq_hz_half,
                 ],
                 btype="bandpass",
-            )
-            y_fm = lddu.filtfft(y_fm, self.blocklen)
+            ),
+            self.blocklen,
+        )
 
-            y_fm_lowpass = lddu.filtfft(
-                sps.butter(
-                    DP["video_lpf_extra_order"],
-                    [DP["video_lpf_extra"] / self.freq_hz_half],
-                    btype="lowpass",
-                ),
-                self.blocklen,
-            )
+        y_fm_lowpass = lddu.filtfft(
+            sps.butter(
+                DP["video_lpf_extra_order"],
+                [DP["video_lpf_extra"] / self.freq_hz_half],
+                btype="lowpass",
+            ),
+            self.blocklen,
+        )
 
-            y_fm_chroma_trap = lddu.filtfft(
-                sps.butter(
-                    1,
-                    [(cc * 0.9) / self.freq_half, (cc * 1.1) / self.freq_half],
-                    btype="bandstop",
-                ),
-                self.blocklen,
-            )
+        y_fm_highpass = lddu.filtfft(
+            sps.butter(
+                DP["video_hpf_extra_order"],
+                [DP["video_hpf_extra"] / self.freq_hz_half],
+                btype="highpass",
+            ),
+            self.blocklen,
+        )
 
-            y_fm_filter = (
-                y_fm * y_fm_lowpass * y_fm_chroma_trap * self.Filters["hilbert"]
-            )
+        y_fm_filter = y_fm * y_fm_lowpass * y_fm_highpass * self.Filters["hilbert"]
 
-            self.Filters["RFVideo"] = y_fm_filter
-        else:
-            y_fm_lowpass = lddu.filtfft(
-                sps.butter(
-                    DP["video_lpf_extra_order"],
-                    [DP["video_lpf_extra"] / self.freq_hz_half],
-                    btype="lowpass",
-                ),
-                self.blocklen,
-            )
-            y_fm_highpass = lddu.filtfft(
-                sps.butter(
-                    DP["video_hpf_extra_order"],
-                    [DP["video_hpf_extra"] / self.freq_hz_half],
-                    btype="highpass",
-                ),
-                self.blocklen,
-            )
-            self.Filters["RFVideo"] = (
-                self.Filters["RFVideo"] * y_fm_lowpass * y_fm_highpass
-            )
+        self.Filters["RFVideo"] = y_fm_filter
 
         # Video (luma) de-emphasis
         # Not sure about the math of this but, by using a high-shelf filter and then
@@ -1342,7 +1321,10 @@ class VHSRFDecode(ldd.RFDecode):
         da, db = gen_high_shelf(
             DP["deemph_corner"] / 1.0e6, DP["deemph_gain"], 1 / 2, inputfreq
         )
-        w, h = sps.freqz(db, da)
+
+        self.Filters["FEnvPost"] = sps.butter(
+            1, [1000000 / self.freq_hz_half], btype="lowpass"
+        )
 
         self.Filters["Fdeemp"] = lddu.filtfft((db, da), self.blocklen)
         self.Filters["FVideo"] = self.Filters["Fvideo_lpf"] * self.Filters["Fdeemp"]
@@ -1379,16 +1361,6 @@ class VHSRFDecode(ldd.RFDecode):
             btype="bandpass",
         )
         self.Filters["FChromaFinal"] = chroma_bandpass_final
-
-        chroma_burst_check = sps.butter(
-            2,
-            [
-                (fsc_mhz - 0.14) / out_frequency_half,
-                (fsc_mhz + 0.04) / out_frequency_half,
-            ],
-            btype="bandpass",
-        )
-        self.Filters["FChromaBurstCheck"] = chroma_burst_check
 
         # Bandpass filter to select heterodyne frequency from the mixed fsc and color carrier signal
         het_filter = sps.butter(
@@ -1469,13 +1441,17 @@ class VHSRFDecode(ldd.RFDecode):
         indata_fft_filt = indata_fft * self.Filters["RFVideo"]
 
         hilbert = np.fft.ifft(indata_fft_filt)
-        demod = unwrap_hilbert(hilbert, self.freq_hz)
 
-        demod_fft = np.fft.fft(demod)
+        demod = unwrap_hilbert(hilbert, self.freq_hz).real
+        demod_fft = np.fft.rfft(demod)
 
-        out_video = np.fft.ifft(demod_fft * self.Filters["FVideo"]).real
+        out_video = np.fft.irfft(
+            demod_fft * self.Filters["FVideo"][0 : (self.blocklen // 2) + 1]
+        ).real
 
-        out_video05 = np.fft.ifft(demod_fft * self.Filters["FVideo05"]).real
+        out_video05 = np.fft.irfft(
+            demod_fft * self.Filters["FVideo05"][0 : (self.blocklen // 2) + 1]
+        ).real
         out_video05 = np.roll(out_video05, -self.Filters["F05_offset"])
 
         # Filter out the color-under signal from the raw data.
@@ -1492,12 +1468,13 @@ class VHSRFDecode(ldd.RFDecode):
 
         raw_filtered = np.fft.ifft(indata_fft * self.Filters["RFVideoRaw"]).real
         # Calculate an evelope with signal strength using absolute of hilbert transform.
-        env = np.abs(hilbt(raw_filtered))
+        raw_env = np.abs(hilbt(raw_filtered))
+        env = filter_simple(raw_env, self.Filters["FEnvPost"])
 
         if False:
             import matplotlib.pyplot as plt
 
-            fig, ax1 = plt.subplots()
+            fig, (ax1, ax2) = plt.subplots(5, 1, sharex=True)
             # ax1.plot((20 * np.log10(self.Filters["Fdeemp"])))
             #        ax1.plot(hilbert, color='#FF0000')
             # ax1.plot(data, color="#00FF00")
@@ -1508,8 +1485,8 @@ class VHSRFDecode(ldd.RFDecode):
             # print("Vsync IRE", self.SysParams["vsync_ire"])
             #            ax2 = ax1.twinx()
             #            ax3 = ax1.twinx()
-            ax1.plot(demod, color="#FFFF00")
-            ax1.plot(out_video, color="#FF0000")
+            ax1.plot(demod, color="#FF0000")
+            ax2.plot(hilbert)
             #            crossings = find_crossings(env, 700)
             #            ax3.plot(crossings, color="#0000FF")
             plt.show()
