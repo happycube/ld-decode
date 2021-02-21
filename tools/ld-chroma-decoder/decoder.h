@@ -32,7 +32,7 @@
 
 #include "lddecodemetadata.h"
 
-#include "rgbframe.h"
+#include "outputframe.h"
 #include "sourcefield.h"
 
 class DecoderPool;
@@ -76,6 +76,16 @@ public:
     // Construct a new worker thread
     virtual QThread *makeThread(QAtomicInt& abort, DecoderPool& decoderPool) = 0;
 
+    // All of the supported output pixel formats
+    enum PixelFormat {
+        RGB48 = 0,
+        YUV444P16,
+        GRAY16
+    };
+
+    // After configuration, return a readable output pixel format
+    virtual const char *getPixelName() const = 0;
+
     // Parameters used by the decoder and its threads.
     // This may be subclassed by decoders to add extra parameters.
     struct Configuration {
@@ -83,6 +93,8 @@ public:
         LdDecodeMetaData::VideoParameters videoParameters;
         qint32 topPadLines;
         qint32 bottomPadLines;
+        Decoder::PixelFormat pixelFormat = RGB48;
+        bool outputYCbCr = false;
     };
 
     // Compute the output frame size in Configuration, adjusting the active
@@ -90,7 +102,7 @@ public:
     static void setVideoParameters(Configuration &config, const LdDecodeMetaData::VideoParameters &videoParameters);
 
     // Crop a full decoded frame to the output frame size
-    static RGBFrame cropOutputFrame(const Configuration &config, const RGBFrame &outputData);
+    static OutputFrame cropOutputFrame(const Configuration &config, const OutputFrame &outputData);
 };
 
 // Abstract base class for chroma decoder worker threads.
@@ -104,7 +116,7 @@ protected:
 
     // Decode a sequence of fields into a sequence of frames
     virtual void decodeFrames(const QVector<SourceField> &inputFields, qint32 startIndex, qint32 endIndex,
-                              QVector<RGBFrame> &outputFrames) = 0;
+                              QVector<OutputFrame> &outputFrames) = 0;
 
     // Decoder pool
     QAtomicInt& abort;

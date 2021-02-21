@@ -38,6 +38,7 @@
 #include "firfilter.h"
 
 #include "deemp.h"
+#include "ycbcr.h"
 
 #include <array>
 #include <cassert>
@@ -245,7 +246,7 @@ void PalColour::buildLookUpTables()
 }
 
 void PalColour::decodeFrames(const QVector<SourceField> &inputFields, qint32 startIndex, qint32 endIndex,
-                             QVector<RGBFrame> &outputFrames)
+                             QVector<OutputFrame> &outputFrames)
 {
     assert(configurationSet);
     assert((outputFrames.size() * 2) == (endIndex - startIndex));
@@ -258,9 +259,20 @@ void PalColour::decodeFrames(const QVector<SourceField> &inputFields, qint32 sta
 
     // Resize and clear the output buffers
     const qint32 frameHeight = (videoParameters.fieldHeight * 2) - 1;
-    for (qint32 i = 0; i < outputFrames.size(); i++) {
-        outputFrames[i].resize(videoParameters.fieldWidth * frameHeight * 3);
-        outputFrames[i].fill(0);
+    if (configuration.outputYCbCr) {
+        for (qint32 i = 0; i < outputFrames.size(); i++) {
+            outputFrames[i].Y.resize(videoParameters.fieldWidth * frameHeight);
+            outputFrames[i].Y.fill(16 * 256);
+            outputFrames[i].Cb.resize(videoParameters.fieldWidth * frameHeight);
+            outputFrames[i].Cb.fill(128 * 256);
+            outputFrames[i].Cr.resize(videoParameters.fieldWidth * frameHeight);
+            outputFrames[i].Cr.fill(128 * 256);
+        }
+    } else {
+        for (qint32 i = 0; i < outputFrames.size(); i++) {
+            outputFrames[i].RGB.resize(videoParameters.fieldWidth * frameHeight * 3);
+            outputFrames[i].RGB.fill(0);
+        }
     }
 
     const double chromaGain = configuration.chromaGain;
@@ -277,7 +289,7 @@ void PalColour::decodeFrames(const QVector<SourceField> &inputFields, qint32 sta
 }
 
 // Decode one field into outputFrame
-void PalColour::decodeField(const SourceField &inputField, const double *chromaData, double chromaGain, RGBFrame &outputFrame)
+void PalColour::decodeField(const SourceField &inputField, const double *chromaData, double chromaGain, OutputFrame &outputFrame)
 {
     // Pointer to the composite signal data
     const quint16 *compPtr = inputField.data.data();
@@ -394,7 +406,7 @@ void PalColour::doYNR(double *Yline)
         // Compensate for 12-sample filter delay
         double a = hplinef[h + 12];
 
-        // Clip the filter strength 
+        // Clip the filter strength
         if (fabs(a) > nr_y) {
             a = (a > 0) ? nr_y : -nr_y;
         }
@@ -410,7 +422,7 @@ void PalColour::doYNR(double *Yline)
 // inputField, or it may be pre-filtered down to chroma.
 template <typename ChromaSample, bool PREFILTERED_CHROMA>
 void PalColour::decodeLine(const SourceField &inputField, const ChromaSample *chromaData, const LineInfo &line, double chromaGain,
-                           RGBFrame &outputFrame)
+                           OutputFrame &outputFrame)
 {
     // Dummy black line, used when the filter needs to look outside the active region.
     static constexpr ChromaSample blackLine[MAX_WIDTH] = {0};
@@ -539,9 +551,6 @@ void PalColour::decodeLine(const SourceField &inputField, const ChromaSample *ch
     // Pointer to composite signal data
     const quint16 *comp = inputField.data.data() + (line.number * videoParameters.fieldWidth);
 
-    // Define scan line pointer to output buffer using 16 bit unsigned words
-    quint16 *ptr = outputFrame.data() + (((line.number * 2) + inputField.getOffset()) * videoParameters.fieldWidth * 3);
-
     // Gain for the Y component, to put reference black at 0 and reference white at 65535
     const double scaledContrast = 65535.0 / (videoParameters.white16bIre - videoParameters.black16bIre);
 
@@ -574,29 +583,65 @@ void PalColour::decodeLine(const SourceField &inputField, const ChromaSample *ch
         doYNR(extractedY);
     }
 
-    for (qint32 i = videoParameters.activeVideoStart; i < videoParameters.activeVideoEnd; i++) {
-        double rY = extractedY[i];
+    if (configuration.outputYCbCr) {
+        quint16 *ptrY = outputFrame.Y.data() + (((line.number * 2) + inputField.getOffset()) * videoParameters.fieldWidth);
+        quint16 *ptrCb = outputFrame.Cb.data() + (((line.number * 2) + inputField.getOffset()) * videoParameters.fieldWidth);
+        quint16 *ptrCr = outputFrame.Cr.data() + (((line.number * 2) + inputField.getOffset()) * videoParameters.fieldWidth);
 
-        // Scale to 16-bit output
-        rY = qBound(0.0, (rY - videoParameters.black16bIre) * scaledContrast, 65535.0);
+        const double yScale = 219.0 * 257.0 / (videoParameters.white16bIre - videoParameters.black16bIre);
+        const double cbScale = 112.0 / 256.0 / (ONE_MINUS_Kb * kB); // Poynton, Eq 25.5 & 28.1
+        const double crScale = 112.0 / 256.0 / (ONE_MINUS_Kr * kR);
 
-        // Rotate the p&q components (at the arbitrary sine/cosine
-        // reference phase) backwards by the burst phase (relative to the
-        // reference phase), in order to recover U and V. The Vswitch is
-        // applied to flip the V-phase on alternate lines for PAL.
-        const double rU =            -(pu[i] * line.bp + qu[i] * line.bq) * scaledSaturation;
-        const double rV = line.Vsw * -(qv[i] * line.bp - pv[i] * line.bq) * scaledSaturation;
+        for (qint32 i = videoParameters.activeVideoStart; i < videoParameters.activeVideoEnd; i++) {
+            double rY = extractedY[i];
 
-        // Convert YUV to RGB, saturating levels at 0-65535 to prevent overflow.
-        // Coefficients from Poynton, "Digital Video and HDTV" first edition, p337 eq 28.6.
-        const double R = qBound(0.0, rY                    + (1.139883 * rV),  65535.0);
-        const double G = qBound(0.0, rY + (-0.394642 * rU) + (-0.580622 * rV), 65535.0);
-        const double B = qBound(0.0, rY + (2.032062 * rU),                     65535.0);
+            // Scale to 16-bit output
+            rY = qBound(1.0 * 256.0, (rY - videoParameters.black16bIre) * yScale + 16 * 256, 254.75 * 256.0);
 
-        // Pack the data back into the RGB 16/16/16 buffer
-        const qint32 pp = i * 3; // 3 words per pixel
-        ptr[pp + 0] = static_cast<quint16>(R);
-        ptr[pp + 1] = static_cast<quint16>(G);
-        ptr[pp + 2] = static_cast<quint16>(B);
+            // Rotate the p&q components (at the arbitrary sine/cosine
+            // reference phase) backwards by the burst phase (relative to the
+            // reference phase), in order to recover U and V. The Vswitch is
+            // applied to flip the V-phase on alternate lines for PAL.
+            const double rU =            -(pu[i] * line.bp + qu[i] * line.bq) * scaledSaturation;
+            const double rV = line.Vsw * -(qv[i] * line.bp - pv[i] * line.bq) * scaledSaturation;
+
+            // Clamp to valid range, per ITU-R BT.601-7 § 2.5.3
+            const double u = qBound(1.0 * 256.0, rU * cbScale + 128 * 256, 254.75 * 256.0);
+            const double v = qBound(1.0 * 256.0, rV * crScale + 128 * 256, 254.75 * 256.0);
+
+            // Place the 16-bit YCbCr values in the output arrays
+            ptrY[i] = static_cast<quint16>(rY);
+            ptrCb[i] = static_cast<quint16>(u);
+            ptrCr[i] = static_cast<quint16>(v);
+        }
+    } else {
+        // Define scan line pointer to RGB output buffer using 16 bit unsigned words
+        quint16 *ptr = outputFrame.RGB.data() + (((line.number * 2) + inputField.getOffset()) * videoParameters.fieldWidth * 3);
+
+        for (qint32 i = videoParameters.activeVideoStart; i < videoParameters.activeVideoEnd; i++) {
+            double rY = extractedY[i];
+
+            // Scale to 16-bit output
+            rY = qBound(0.0, (rY - videoParameters.black16bIre) * scaledContrast, 65535.0);
+
+            // Rotate the p&q components (at the arbitrary sine/cosine
+            // reference phase) backwards by the burst phase (relative to the
+            // reference phase), in order to recover U and V. The Vswitch is
+            // applied to flip the V-phase on alternate lines for PAL.
+            const double rU =            -(pu[i] * line.bp + qu[i] * line.bq) * scaledSaturation;
+            const double rV = line.Vsw * -(qv[i] * line.bp - pv[i] * line.bq) * scaledSaturation;
+
+            // Convert YUV to RGB, saturating levels at 0-65535 to prevent overflow.
+            // Coefficients from Poynton, "Digital Video and HDTV" first edition, p337 eq 28.6.
+            const double R = qBound(0.0, rY                    + (1.139883 * rV),  65535.0);
+            const double G = qBound(0.0, rY + (-0.394642 * rU) + (-0.580622 * rV), 65535.0);
+            const double B = qBound(0.0, rY + (2.032062 * rU),                     65535.0);
+
+            // Pack the data back into the RGB 16/16/16 buffer
+            const qint32 pp = i * 3; // 3 words per pixel
+            ptr[pp + 0] = static_cast<quint16>(R);
+            ptr[pp + 1] = static_cast<quint16>(G);
+            ptr[pp + 2] = static_cast<quint16>(B);
+        }
     }
 }

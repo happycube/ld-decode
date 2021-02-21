@@ -152,6 +152,12 @@ int main(int argc, char *argv[])
                                         QCoreApplication::translate("main", "number"));
     parser.addOption(chromaGainOption);
 
+    // Option to select the output format (-p)
+    QCommandLineOption outputFormatOption(QStringList() << "p" << "output-format",
+                                       QCoreApplication::translate("main", "Output format (rgb, yuv; default rgb); RGB48, YUV444P16, GRAY16 pixel formats are supported"),
+                                       QCoreApplication::translate("main", "output-format"));
+    parser.addOption(outputFormatOption);
+
     // Option to set the black and white output flag (causes output to be black and white) (-b)
     QCommandLineOption setBwModeOption(QStringList() << "b" << "blackandwhite",
                                        QCoreApplication::translate("main", "Output in black and white"));
@@ -239,7 +245,7 @@ int main(int argc, char *argv[])
     parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input TBC file (- for piped input)"));
 
     // Positional argument to specify output video file
-    parser.addPositionalArgument("output", QCoreApplication::translate("main", "Specify output RGB file (omit or - for piped output)"));
+    parser.addPositionalArgument("output", QCoreApplication::translate("main", "Specify output file (omit or - for piped output)"));
 
     // Process the command line options and arguments given by the user
     parser.process(a);
@@ -258,7 +264,7 @@ int main(int argc, char *argv[])
         inputFileName = positionalArguments.at(0);
     } else {
         // Quit with error
-        qCritical("You must specify the input TBC and output RGB files");
+        qCritical("You must specify the input TBC and output files");
         return -1;
     }
 
@@ -279,6 +285,7 @@ int main(int argc, char *argv[])
     qint32 maxThreads = QThread::idealThreadCount();
     PalColour::Configuration palConfig;
     Comb::Configuration combConfig;
+    MonoDecoder::Configuration monoConfig;
 
     if (parser.isSet(startFrameOption)) {
         startFrame = parser.value(startFrameOption).toInt();
@@ -325,6 +332,25 @@ int main(int argc, char *argv[])
     if (parser.isSet(setBwModeOption)) {
         palConfig.chromaGain = 0.0;
         combConfig.chromaGain = 0.0;
+    }
+
+    // Determine the output format
+    QString outputFormatName;
+    if (parser.isSet(outputFormatOption)) {
+        outputFormatName = parser.value(outputFormatOption);
+    } else {
+        outputFormatName = "rgb";
+    }
+    if (outputFormatName == "yuv") {
+        palConfig.outputYCbCr = true;
+        palConfig.pixelFormat = Decoder::PixelFormat::YUV444P16;
+        combConfig.outputYCbCr = true;
+        combConfig.pixelFormat = Decoder::PixelFormat::YUV444P16;
+        monoConfig.outputYCbCr = true;
+        monoConfig.pixelFormat = Decoder::PixelFormat::GRAY16;
+    } else if (outputFormatName != "rgb") {
+        qCritical() << "Unknown output format " << outputFormatName;
+        return -1;
     }
 
     if (parser.isSet(whitePointOption)) {
@@ -386,6 +412,11 @@ int main(int argc, char *argv[])
 
     if (parser.isSet(showFFTsOption)) {
         palConfig.showFFTs = true;
+        if (palConfig.outputYCbCr) {
+            // Quit with error
+            qCritical("YUV output not available when showFFT is enabled");
+            return -1;
+        }
     }
 
     if (parser.isSet(ntscPhaseComp)) {
@@ -467,7 +498,7 @@ int main(int argc, char *argv[])
         combConfig.adaptive = false;
         decoder.reset(new NtscDecoder(combConfig));
     } else if (decoderName == "mono") {
-        decoder.reset(new MonoDecoder);
+        decoder.reset(new MonoDecoder(monoConfig));
     } else {
         qCritical() << "Unknown decoder " << decoderName;
         return -1;

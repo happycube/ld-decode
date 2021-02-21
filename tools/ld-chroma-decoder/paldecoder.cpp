@@ -30,6 +30,8 @@
 PalDecoder::PalDecoder(const PalColour::Configuration &palConfig)
 {
     config.pal = palConfig;
+    config.outputYCbCr = palConfig.outputYCbCr;
+    config.pixelFormat = palConfig.pixelFormat;
 }
 
 bool PalDecoder::configure(const LdDecodeMetaData::VideoParameters &videoParameters) {
@@ -43,6 +45,11 @@ bool PalDecoder::configure(const LdDecodeMetaData::VideoParameters &videoParamet
     setVideoParameters(config, videoParameters);
 
     return true;
+}
+
+const char *PalDecoder::getPixelName() const
+{
+    return config.pal.outputYCbCr ? "YUV444P16" : "RGB48";
 }
 
 qint32 PalDecoder::getLookBehind() const
@@ -68,9 +75,9 @@ PalThread::PalThread(QAtomicInt& _abort, DecoderPool& _decoderPool,
 }
 
 void PalThread::decodeFrames(const QVector<SourceField> &inputFields, qint32 startIndex, qint32 endIndex,
-                             QVector<RGBFrame> &outputFrames)
+                             QVector<OutputFrame> &outputFrames)
 {
-    QVector<RGBFrame> decodedFrames(outputFrames.size());
+    QVector<OutputFrame> decodedFrames(outputFrames.size());
 
     // Perform the PALcolour filtering
     palColour.decodeFrames(inputFields, startIndex, endIndex, decodedFrames);
