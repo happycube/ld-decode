@@ -50,7 +50,8 @@ bool PalDecoder::configure(const LdDecodeMetaData::VideoParameters &videoParamet
 
 const char *PalDecoder::getPixelName() const
 {
-    return config.pal.outputYCbCr ? "YUV444P16" : "RGB48";
+    return config.outputYCbCr ?
+           config.pal.chromaGain > 0 ? "YUV444P16" : "GRAY16" : "RGB48";
 }
 
 bool PalDecoder::isOutputY4m()

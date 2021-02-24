@@ -51,7 +51,8 @@ bool NtscDecoder::configure(const LdDecodeMetaData::VideoParameters &videoParame
 
 const char *NtscDecoder::getPixelName() const
 {
-    return config.combConfig.outputYCbCr ? "YUV444P16" : "RGB48";
+    return config.outputYCbCr ?
+           config.combConfig.chromaGain > 0 ? "YUV444P16" : "GRAY16" : "RGB48";
 }
 
 bool NtscDecoder::isOutputY4m()

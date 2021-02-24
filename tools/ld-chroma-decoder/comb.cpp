@@ -736,13 +736,17 @@ OutputFrame Comb::FrameBuffer::yiqToYUVFrame()
     OutputFrame outputFrame;
 
     outputFrame.Y.resize(videoParameters.fieldWidth * frameHeight);
-    outputFrame.Cb.resize(videoParameters.fieldWidth * frameHeight);
-    outputFrame.Cr.resize(videoParameters.fieldWidth * frameHeight);
-
-    // Initialise the output frame
     outputFrame.Y.fill(16 * 256);
-    outputFrame.Cb.fill(128 * 256);
-    outputFrame.Cr.fill(128 * 256);
+
+    if (configuration.chromaGain > 0) {
+        outputFrame.Cb.resize(videoParameters.fieldWidth * frameHeight);
+        outputFrame.Cr.resize(videoParameters.fieldWidth * frameHeight);
+        outputFrame.Cb.fill(128 * 256);
+        outputFrame.Cr.fill(128 * 256);
+    } else {
+        outputFrame.Cb.clear();
+        outputFrame.Cr.clear();
+    }
 
     // Initialise YIQ to YCbCr converter
     YCbCr ycbcr(videoParameters.white16bIre, videoParameters.black16bIre, configuration.whitePoint75, configuration.chromaGain);
