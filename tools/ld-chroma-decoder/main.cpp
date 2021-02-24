@@ -338,9 +338,11 @@ int main(int argc, char *argv[])
             monoConfig.outputY4m = true;
         }
         palConfig.outputYCbCr = true;
-        palConfig.pixelFormat = Decoder::PixelFormat::YUV444P16;
+        palConfig.pixelFormat = palConfig.chromaGain > 0 ? Decoder::PixelFormat::YUV444P16 :
+                                                           Decoder::PixelFormat::GRAY16;
         combConfig.outputYCbCr = true;
-        combConfig.pixelFormat = Decoder::PixelFormat::YUV444P16;
+        combConfig.pixelFormat = combConfig.chromaGain > 0 ? Decoder::PixelFormat::YUV444P16 :
+                                                             Decoder::PixelFormat::GRAY16;
         monoConfig.outputYCbCr = true;
         monoConfig.pixelFormat = Decoder::PixelFormat::GRAY16;
     } else if (outputFormatName != "rgb") {

@@ -78,7 +78,9 @@ void YCbCr::convertLine(const YIQ *begin, const YIQ *end, quint16 *outY, quint16
 
         // Place the 16-bit YCbCr values in the output arrays
         *outY++ = static_cast<quint16>(y);
-        *outCb++ = static_cast<quint16>(Cb);
-        *outCr++ = static_cast<quint16>(Cr);
+        if (chromaGain > 0) {
+            *outCb++ = static_cast<quint16>(Cb);
+            *outCr++ = static_cast<quint16>(Cr);
+        }
     }
 }
