@@ -4,11 +4,11 @@ import atexit
 from base64 import b64encode
 from collections import namedtuple
 import copy
-from datetime import datetime
 import getopt
 import io
 from io import BytesIO
 import json
+import math
 import os
 import sys
 import subprocess
@@ -623,6 +623,17 @@ def calczc_sets(data, start, end, tgt=0, cliplevel=None):
 
     return {False: np.array(zcsets[False]), True: np.array(zcsets[True])}
 
+# Shamelessly based on https://github.com/scipy/scipy/blob/v1.6.0/scipy/signal/signaltools.py#L2264-2267
+# ... and intended for real FFT, but seems fine with complex as well ;)
+def build_hilbert(fft_size):
+    if (fft_size // 2) - (fft_size / 2) != 0:
+        raise Exception("build_hilbert: must have even fft_size")
+    
+    output = np.zeros(fft_size)
+    output[0] = output[fft_size // 2] = 1
+    output[1:fft_size // 2] = 2
+
+    return output
 
 def unwrap_hilbert(hilbert, freq_hz):
     tangles = np.angle(hilbert)
@@ -640,6 +651,34 @@ def unwrap_hilbert(hilbert, freq_hz):
         tdangles2[tdangles2 > tau] -= tau
     return tdangles2 * (freq_hz / tau)
 
+def fft_determine_slices(center, min_bandwidth, freq_hz, bins_in):
+    ''' returns the # of sub-bins needed to get center+/-min_bandwidth.
+        The returned lowbin is the first bin (symmetrically) needed to be saved.
+        
+        This will need to be 'flipped' using fft_slice to get the trimmed set
+    '''
+    
+    # compute the width of each bin
+    binwidth = freq_hz / bins_in
+    
+    cbin = nb_round(center / binwidth)
+    
+    # compute the needed number of fft bins...
+    bbins = nb_round(min_bandwidth / binwidth)
+    # ... and round that up to the next power of two
+    nbins = 2 * (2 ** math.ceil(math.log2(bbins * 2)))
+    
+    lowbin = cbin - (nbins // 4)
+    
+    cut_freq = binwidth * nbins
+    
+    return lowbin, nbins, cut_freq
+
+def fft_do_slice(fdomain, lowbin, nbins, blocklen):
+    ''' Uses lowbin and nbins as returned from fft_determine_slices to 
+        cut the fft '''
+    nbins_half = nbins//2
+    return np.concatenate([fdomain[lowbin:lowbin+nbins_half], fdomain[blocklen-lowbin-nbins_half:blocklen-lowbin]])
 
 def genwave(rate, freq, initialphase=0):
     """ Generate an FM waveform from target frequency data """

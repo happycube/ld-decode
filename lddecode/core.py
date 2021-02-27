@@ -468,11 +468,7 @@ class RFDecode:
 
             SF["RFVideo"] *= SF["Fcutl"] * SF["Fcutr"]
 
-        # The hilbert filter performs a 90 degree shift on the input.  From: 
-        # https://github.com/scipy/scipy/blob/v1.6.0/scipy/signal/signaltools.py#L2264-2267
-        SF["hilbert"] = np.zeros(self.blocklen)
-        SF["hilbert"][0] = SF["hilbert"][self.blocklen // 2] = 1
-        SF["hilbert"][1 : self.blocklen // 2] = 2
+        SF["hilbert"] = build_hilbert(self.blocklen)
 
         SF["RFVideo"] *= SF["hilbert"]
 
