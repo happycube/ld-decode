@@ -28,8 +28,8 @@
 // pre-C++17 compilers
 constexpr FrameCanvas::RGB FrameCanvas::green;
 
-FrameCanvas::FrameCanvas(RGBFrame &_rgbFrame, const LdDecodeMetaData::VideoParameters &_videoParameters)
-    : rgbData(_rgbFrame.data()), rgbSize(_rgbFrame.size()), videoParameters(_videoParameters)
+FrameCanvas::FrameCanvas(OutputFrame &_videoFrame, const LdDecodeMetaData::VideoParameters &_videoParameters)
+    : rgbData(_videoFrame.RGB.data()), rgbSize(_videoFrame.RGB.size()), videoParameters(_videoParameters)
 {
 }
 

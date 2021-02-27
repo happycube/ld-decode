@@ -46,6 +46,7 @@ class NtscDecoder : public Decoder {
 public:
     NtscDecoder(const Comb::Configuration &combConfig);
     bool configure(const LdDecodeMetaData::VideoParameters &videoParameters) override;
+    const char *getPixelName() const override;
     qint32 getLookBehind() const override;
     qint32 getLookAhead() const override;
     QThread *makeThread(QAtomicInt& abort, DecoderPool& decoderPool) override;
@@ -69,7 +70,7 @@ public:
 
 protected:
     void decodeFrames(const QVector<SourceField> &inputFields, qint32 startIndex, qint32 endIndex,
-                      QVector<RGBFrame> &outputFrames) override;
+                      QVector<OutputFrame> &outputFrames) override;
 
 private:
     // Settings
