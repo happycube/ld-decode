@@ -312,9 +312,9 @@ int main(int argc, char *argv[])
         palConfig.chromaGain = value;
         combConfig.chromaGain = value;
 
-        if (value <= 0.0) {
+        if (value < 0.0) {
             // Quit with error
-            qCritical("Chroma gain must be greater than 0");
+            qCritical("Chroma gain must not be less than 0");
             return -1;
         }
     }
