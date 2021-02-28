@@ -72,7 +72,17 @@ def handle_options(argstring = sys.argv):
     parser.add_argument("-o", dest="outfile", default='test', type=str, help="base name for destination files")
     
     parser.add_argument("-f", "--freq", dest='freq', default = "40.0mhz", type=str, help="Input frequency")
-    
+
+    parser.add_argument(
+        "--disable_analog_audio",
+        "--disable_analogue_audio",
+        "--daa",
+        dest="daa",
+        action="store_true",
+        default=False,
+        help="Disable analog(ue) audio decoding",
+    )
+
     parser.add_argument(
         "--PAL",
         "-p",
@@ -125,10 +135,23 @@ else:
     in_fd = open(args.infile, 'rb')
 
 if args.outfile == '-':
-    out_fd = sys.stdin
+    out_fd = sys.stdout
+    args.prefm = False
+    efm_decode = False
 else:
-    out_fd = open(args.outfile + '.pcm32', 'wb')
-    
+    if not args.daa:
+        out_fd = open(args.outfile + '.pcm32', 'wb')
+
+    if args.prefm:
+        rawefm_fd = open(args.outfile + '.prefm', 'wb')
+    else:
+        args.prefm = False
+
+    efm_decode = not args.noefm
+    if efm_decode:
+        efm_pll = efm_pll.EFM_PLL()
+        efm_fd = open(args.outfile + '.efm', 'wb')
+
 # Common top-level code
 logger = utils_logging.init_logging(None)
 
@@ -143,15 +166,18 @@ SysParams['freq_hz'] = SysParams['freq_hz'] / 2
 SysParams['audio_filterwidth'] = 150000
 
 SysParams['blocklen'] = 65536
-# We need to drop the beginning of each block
-SysParams['blocklen_drop'] = 4096
+# We need to drop the beginning (and end) of each block
+SysParams['blocklen_dropb'] = 4096-512
+SysParams['blocklen_drope'] = 512
 
 from functools import partial
 
 SP = SysParams
 
 blocklen = SysParams['blocklen']
-blockskip = SysParams['blocklen_drop']
+blockskip = SysParams['blocklen_dropb'] + SysParams['blocklen_drope']
+dropb = SysParams['blocklen_dropb']
+drope = SysParams['blocklen_drope']
 
 afilt_len = 512
 
@@ -185,6 +211,48 @@ audio2_deemp = utils.filtfft(utils.emphasis_iir(-7e-6, 75e-6, a1_freq), blocklen
 
 audio2_filter = audio2_lpf * audio2_deemp
 
+def computeefmfilter():
+    """Frequency-domain equalisation filter for the LaserDisc EFM signal.
+    This was inspired by the input signal equaliser in WSJT-X, described in
+    Steven J. Franke and Joseph H. Taylor, "The MSK144 Protocol for
+    Meteor-Scatter Communication", QEX July/August 2017.
+    <http://physics.princeton.edu/pulsar/k1jt/MSK144_Protocol_QEX.pdf>
+
+    This improved EFM filter was devised by Adam Sampson (@atsampson)
+    """
+    # Frequency bands
+    freqs = np.linspace(0.0e6, 2.0e6, num=11)
+    freq_per_bin = freq_hz / blocklen
+    # Amplitude and phase adjustments for each band.
+    # These values were adjusted empirically based on a selection of NTSC and PAL samples.
+    amp = np.array([0.0, 0.2, 0.41, 0.73, 0.98, 1.03, 0.99, 0.81, 0.59, 0.42, 0.0])
+    phase = np.array(
+        [0.0, -0.95, -1.05, -1.05, -1.2, -1.2, -1.2, -1.2, -1.2, -1.2, -1.2]
+    )
+    coeffs = None
+
+    """Compute filter coefficients for the given FFTFilter."""
+    # Anything above the highest frequency is left as zero.
+    coeffs = np.zeros(blocklen, dtype=np.complex)
+
+    # Generate the frequency-domain coefficients by cubic interpolation between the equaliser values.
+    a_interp = spi.interp1d(freqs, amp, kind="cubic")
+    p_interp = spi.interp1d(freqs, phase, kind="cubic")
+
+    nonzero_bins = int(freqs[-1] / freq_per_bin) + 1
+
+    bin_freqs = np.arange(nonzero_bins) * freq_per_bin
+    bin_amp = a_interp(bin_freqs)
+    bin_phase = p_interp(bin_freqs)
+
+    # Scale by the amplitude, rotate by the phase
+    coeffs[:nonzero_bins] = bin_amp * (
+        np.cos(bin_phase) + (complex(0, -1) * np.sin(bin_phase))
+    )
+
+    return coeffs * 8
+
+efm_filter = computeefmfilter()
 
 aa_channels = []
 
@@ -222,9 +290,7 @@ audio1_clip = blockskip // (blocklen // nbins)
 # Have input_buffer store 8-bit bytes, then convert afterwards
 input_buffer = utils.StridedCollector(blocklen*2, blockskip*2)
 
-def proc1(data_in):
-    fft_in = npfft.fft(data_in)
-
+def proc1(fft_in):
     for ch in aa_channels:
         a1 = npfft.ifft(slicer(fft_in) * filt1[ch[0]])
         a1u = utils.unwrap_hilbert(a1, audio1_freq)
@@ -232,7 +298,7 @@ def proc1(data_in):
 
         audio1_buffer[ch[0]].add(a1u)
         
-    return audio1_buffer[ch[0]].have_block()
+    return fft_in
 
 def proc2():
     output = []
@@ -243,7 +309,7 @@ def proc2():
         a2_fft = npfft.fft(a2_in)
         inputs.append(a2_fft)
         a2 = npfft.ifft(a2_fft * audio2_filter)
-        output.append(utils.sqsum(a2[blockskip:]))
+        output.append(utils.sqsum(a2[dropb:-drope]))
         
     return inputs, output    
 
@@ -266,24 +332,39 @@ while True:
         b = buf.tobytes()
         s16 = np.frombuffer(b, 'int16', len(b)//2)
 
-        if proc1(s16):
-            infft, outputs = proc2()
-            inputs.append(infft)
-            allout.append(outputs)
-            
-            oleft = outputs[0] + low_freq['left'] - SP['audio_lfreq']
-            olefts32 = np.clip(oleft, -150000, 150000) * (2**31 / 150000)
-            
-            if len(outputs) == 2:
-                oright = outputs[1] + low_freq['right'] - SP['audio_rfreq']
-                orights32 = np.clip(oright, -150000, 150000) * (2**31 / 150000)
-                
-                outdata = np.zeros(len(olefts32) * 2, dtype=np.int32)
-                outdata[0::2] = olefts32
-                outdata[1::2] = orights32
-            else:
-                outdata = np.array(olefts32, dtype=np.int32)
-                
-            out_fd.write(outdata)
+        fft_in = npfft.fft(s16)
 
+        if not args.daa:
+            proc1(fft_in)
+
+            if audio1_buffer['left'].have_block():
+                infft, outputs = proc2()
+                inputs.append(infft)
+                allout.append(outputs)
+                
+                oleft = outputs[0] + low_freq['left'] - SP['audio_lfreq']
+                olefts32 = np.clip(oleft, -150000, 150000) * (2**31 / 150000)
+                
+                if len(outputs) == 2:
+                    oright = outputs[1] + low_freq['right'] - SP['audio_rfreq']
+                    orights32 = np.clip(oright, -150000, 150000) * (2**31 / 150000)
+                    
+                    outdata = np.zeros(len(olefts32) * 2, dtype=np.int32)
+                    outdata[0::2] = olefts32
+                    outdata[1::2] = orights32
+                else:
+                    outdata = np.array(olefts32, dtype=np.int32)
+                    
+                out_fd.write(outdata)
+
+        if efm_decode:
+            filtered_efm = npfft.ifft(fft_in * efm_filter)[dropb:-drope]
+            filtered_efm2 = np.int16(np.clip(filtered_efm.real, -32768, 32767))
+
+            if args.prefm:
+                rawefm_fd.write(filtered_efm2.tobytes())
+
+            efm_out = efm_pll.process(filtered_efm2)
+            #print(efm_out.shape, max(filtered_efm.imag))
+            efm_fd.write(efm_out.tobytes())
             
