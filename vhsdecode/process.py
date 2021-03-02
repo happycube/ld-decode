@@ -1094,6 +1094,7 @@ class VHSDecode(ldd.LDdecode):
         dod_hysteresis=vhs_formats.DEFAULT_HYSTERESIS,
         track_phase=0,
         level_adjust=0.2,
+        extra_options={},
     ):
         super(VHSDecode, self).__init__(
             fname_in,
@@ -1104,6 +1105,7 @@ class VHSDecode(ldd.LDdecode):
             system=system,
             doDOD=doDOD,
             threads=threads,
+            extra_options=extra_options,
         )
         # Adjustment for output to avoid clipping.
         self.level_adjust = level_adjust

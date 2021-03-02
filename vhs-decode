@@ -180,6 +180,10 @@ parser.add_argument(
     help="Decode u-matic",
 )
 
+parser.add_argument(
+    "--noAGC", dest="noAGC", action="store_true", default=False, help="Disable AGC"
+)
+
 args = parser.parse_args()
 filename = args.infile
 outname = args.outfile
@@ -187,6 +191,10 @@ firstframe = args.start
 req_frames = args.length
 tape_format = "UMATIC" if args.umatic else "VHS"
 system = "PAL" if args.pal else "NTSC"
+
+extra_options = {
+    "useAGC": not args.noAGC,
+}
 
 if args.pal and args.ntsc:
     print("ERROR: Can only be PAL or NTSC")
@@ -238,6 +246,7 @@ vhsd = VHSDecode(
     dod_hysteresis=args.dod_hysteresis,
     track_phase=args.track_phase,
     level_adjust=args.level_adjust,
+    extra_options=extra_options
 )
 
 signal.signal(signal.SIGINT, original_sigint_handler)
