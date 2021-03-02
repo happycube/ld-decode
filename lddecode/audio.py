@@ -185,9 +185,15 @@ freq = utils.parse_frequency(args.freq)
 freq_hz = (freq * 1.0e6)
 freq_hz_half = freq_hz / 2
 
-apass = 150000 #SysParams['audio_filterwidth']
-audio_lfilt_full = utils.filtfft([sps.firwin(afilt_len, [(SP['audio_lfreq']-apass)/freq_hz_half, (SP['audio_lfreq']+apass)/freq_hz_half], pass_zero=False), 1.0], blocklen)
-audio_rfilt_full = utils.filtfft([sps.firwin(afilt_len, [(SP['audio_rfreq']-apass)/freq_hz_half, (SP['audio_rfreq']+apass)/freq_hz_half], pass_zero=False), 1.0], blocklen)
+def audio_bandpass_butter(center, closerange = 125000, longrange = 180000):
+    #center = SP['audio_lfreq']
+    freqs_inner = [(center - closerange) / freq_hz_half, (center + closerange) / freq_hz_half]
+    freqs_outer = [(center - longrange) / freq_hz_half, (center + longrange) / freq_hz_half]
+    N, Wn = sps.buttord(freqs_inner, freqs_outer, 1, 15)
+    return sps.butter(N, Wn, btype='bandpass')
+
+audio_lfilt_full = utils.filtfft(audio_bandpass_butter(SP['audio_lfreq']), blocklen)
+audio_rfilt_full = utils.filtfft(audio_bandpass_butter(SP['audio_rfreq']), blocklen)
 
 lowbin, nbins, a1_freq = utils.fft_determine_slices(SP['audio_lfreq'], 150000, freq_hz, blocklen)
 hilbert = utils.build_hilbert(nbins)
@@ -203,11 +209,11 @@ right_filter = right_slicer(audio_rfilt_full) * hilbert
 
 # Compute stage 2 audio filters: 20k-ish LPF and deemp
 
-audio2_lpf_b = sps.firwin(512, [22000/(a1_freq/2)], pass_zero=True)
-audio2_lpf = utils.filtfft([audio2_lpf_b, 1.0], blocklen)
-#audio2_deemp = utils.filtfft(utils.emphasis_iir(-20e-6, 75e-6, a1_freq), blocklen)
-# XXX: the first value here is all wrong.
-audio2_deemp = utils.filtfft(utils.emphasis_iir(-7e-6, 75e-6, a1_freq), blocklen)
+N, Wn = sps.buttord(20000 / (a1_freq / 2), 24000 / (a1_freq / 2), 1, 9)
+audio2_lpf = utils.filtfft(sps.butter(N, Wn), blocklen)
+# 75e-6 is 75usec/2133khz (matching American FM emphasis) and 5.3e-6 is approx
+# a 30khz break frequency
+audio2_deemp = utils.filtfft(utils.emphasis_iir(5.3e-6, 75e-6, a1_freq), blocklen)
 
 audio2_filter = audio2_lpf * audio2_deemp
 
@@ -266,6 +272,8 @@ low_freq = {}
 filt1 = {}
 filt1f = {}
 audio1_buffer = {}
+
+apass = 150000 #SysParams['audio_filterwidth']
 
 for ch in aa_channels:
     cname = ch[0]
@@ -339,8 +347,10 @@ while True:
 
             if audio1_buffer['left'].have_block():
                 infft, outputs = proc2()
-                inputs.append(infft)
-                allout.append(outputs)
+
+                if testmode:
+                    inputs.append(infft)
+                    allout.append(outputs)
                 
                 oleft = outputs[0] + low_freq['left'] - SP['audio_lfreq']
                 olefts32 = np.clip(oleft, -150000, 150000) * (2**31 / 150000)
