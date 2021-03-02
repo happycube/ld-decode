@@ -989,6 +989,31 @@ def jsondump_thread(ldd, outname):
 
     return q
 
-
+class StridedCollector:
+    # This keeps a numpy buffer and outputs an fft block and keeps the overlap
+    # for the next fft.
+    def __init__(self, blocklen = 65536, stride = 2048):
+        self.buffer = None
+        self.blocklen = blocklen
+        self.stride = stride
+        
+    def add(self, data):
+        if self.buffer is None:
+            self.buffer = data
+        else:
+            self.buffer = np.concatenate([self.buffer, data])
+        
+    def have_block(self):
+        return (self.buffer is not None) and (len(self.buffer) >= self.blocklen)
+    
+    def get_block(self):
+        if self.have_block():
+            rv = self.buffer[0:self.blocklen]
+            self.buffer = self.buffer[self.blocklen-self.stride:]
+                
+            return rv
+            
+        return None
+        
 if __name__ == "__main__":
     print("Nothing to see here, move along ;)")
