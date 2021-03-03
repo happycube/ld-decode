@@ -31,12 +31,16 @@ RFParams_PAL_VHS["video_hpf_extra_order"] = 1
 # Low-pass filter on Y after demodulation
 RFParams_PAL_VHS["video_lpf_freq"] = 3200000
 # Order may be fine as is.
-RFParams_PAL_VHS["video_lpf_order"] = 6
+RFParams_PAL_VHS["video_lpf_order"] = 1
 
 # PAL color under carrier is 40H + 1953
 RFParams_PAL_VHS["color_under_carrier"] = ((625 * 25) * 40) + 1953
 
-#Video Y FM de-emphasis (1.25~1.35µs)
+# Upper frequency of bandpass to filter out chroma from the rf signal.
+# For vhs decks it's typically a bit more than 2x cc
+RFParams_PAL_VHS["chroma_bpf_upper"] = 1400000
+
+# Video Y FM de-emphasis (1.25~1.35µs)
 RFParams_PAL_VHS["deemph_tau"] = 1.30e-6
 
 # Band-pass filter for Video rf.
@@ -60,9 +64,13 @@ RFParams_NTSC_VHS["video_lpf_order"] = 1
 
 # NTSC color under carrier is 40H
 RFParams_NTSC_VHS["color_under_carrier"] = (525 * (30 / 1.001)) * 40
+
+# Upper frequency of bandpass to filter out chroma from the rf signal.
+RFParams_NTSC_VHS["chroma_bpf_upper"] = 1400000
+
 RFParams_NTSC_VHS["luma_carrier"] = 455.0 * ((525 * (30 / 1.001)) / 2.0)
 
-#Video Y FM de-emphasis (1.25~1.35µs)
+# Video Y FM de-emphasis (1.25~1.35µs)
 RFParams_NTSC_VHS["deemph_tau"] = 1.30e-6
 
 
@@ -76,8 +84,9 @@ RFParams_NTSC_UMATIC["video_hpf_extra_order"] = 1
 RFParams_NTSC_UMATIC["video_lpf_freq"] = 4000000
 RFParams_NTSC_UMATIC["video_lpf_order"] = 2
 RFParams_NTSC_UMATIC["color_under_carrier"] = 688373
+RFParams_NTSC_UMATIC["chroma_bpf_upper"] = 1500000
 
-#Video Y FM de-emphasis (550 ~ 650ns)
+# Video Y FM de-emphasis (550 ~ 650ns)
 RFParams_NTSC_UMATIC["deemph_tau"] = 600e-9
 
 SysParams_PAL_VHS = {**SysParams_PAL}
@@ -95,6 +104,8 @@ SysParams_PAL_VHS["max_ire"] = 100
 
 # Mean absolute value of color burst for Automatic Chroma Control.
 # The value is eyeballed to give ok chroma level as of now, needs to be tweaked.
+# This has to be low enough to avoid clipping, so we have to
+# tell the chroma decoder to boost it by a bit afterwards.
 SysParams_PAL_VHS["burst_abs_ref"] = 2500
 
 # 0 IRE level after demodulation

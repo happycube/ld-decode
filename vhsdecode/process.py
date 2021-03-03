@@ -13,13 +13,6 @@ import vhsdecode.utils as utils
 import vhsdecode.formats as vhs_formats
 from vhsdecode.addons.FMdeemph import FMDeEmphasis
 
-def toDB(val):
-    return 20 * np.log10(val)
-
-
-def fromDB(val):
-    return 10.0 ** (val / 20.0)
-
 
 def chroma_to_u16(chroma):
     """Scale the chroma output array to a 16-bit value for output."""
@@ -27,7 +20,6 @@ def chroma_to_u16(chroma):
 
     if np.max(chroma) > S16_ABS_MAX or abs(np.min(chroma)) > S16_ABS_MAX:
         ldd.logger.warning("Chroma signal clipping.")
-
     return np.uint16(chroma + S16_ABS_MAX)
 
 
@@ -58,63 +50,89 @@ def acc_line(chroma, burst_abs_ref, burststart, burstend):
     return output
 
 
-def gen_low_shelf(f0, dbgain, qfactor, fs):
-    """Generate low shelving filter coeficcients (digital).
-    f0: The frequency where the gain in decibel is at half the maximum value.
-       Normalized to sampling frequency, i.e output will be filter from 0 to 2pi.
-    dbgain: gain at the top of the shelf in decibels
-    qfactor: determines shape of filter TODO: Document better
-    fs: sampling frequency
+def getpulses_override(field):
+    """Find sync pulses in the demodulated video sigal
 
-    Based on: https://www.w3.org/2011/audio/audio-eq-cookbook.html
+    NOTE: TEMPORARY override until an override for the value itself is added upstream.
     """
-    # Not sure if the implementation is quite correct here but it seems to work
-    a = 10 ** (dbgain / 40.0)
-    w0 = 2 * math.pi * (f0 / fs)
-    alpha = math.sin(w0) / (2 * qfactor)
+    # pass one using standard levels
 
-    cosw0 = math.cos(w0)
-    asquared = math.sqrt(a)
+    # pulse_hz range:  vsync_ire - 10, maximum is the 50% crossing point to sync
+    pulse_hz_min = field.rf.iretohz(field.rf.SysParams["vsync_ire"] - 10)
+    pulse_hz_max = field.rf.iretohz(field.rf.SysParams["vsync_ire"] / 2)
 
-    b0 = a * ((a + 1) - (a - 1) * cosw0 + 2 * asquared * alpha)
-    b1 = 2 * a * ((a - 1) - (a + 1) * cosw0)
-    b2 = a * ((a + 1) - (a - 1) * cosw0 - 2 * asquared * alpha)
-    a0 = (a + 1) + (a - 1) * cosw0 + 2 * asquared * alpha
-    a1 = -2 * ((a - 1) + (a + 1) * cosw0)
-    a2 = (a + 1) + (a - 1) * cosw0 - 2 * asquared * alpha
-    return [b0, b1, b2], [a0, a1, a2]
+    pulses = lddu.findpulses(
+        field.data["video"]["demod_05"], pulse_hz_min, pulse_hz_max
+    )
 
+    if len(pulses) == 0:
+        # can't do anything about this
+        return pulses
 
-def gen_high_shelf(f0, dbgain, qfactor, fs):
-    """Generate high shelving filter coeficcients (digital).
-    f0: The frequency where the gain in decibel is at half the maximum value.
-       Normalized to sampling frequency, i.e output will be filter from 0 to 2pi.
-    dbgain: gain at the top of the shelf in decibels
-    qfactor: determines shape of filter TODO: Document better
-    fs: sampling frequency
+    # determine sync pulses from vsync
+    vsync_locs = []
+    vsync_means = []
 
-    TODO: Generate based on -3db
-    Based on: https://www.w3.org/2011/audio/audio-eq-cookbook.html
-    """
-    a = 10 ** (dbgain / 40.0)
-    w0 = 2 * math.pi * (f0 / fs)
-    alpha = math.sin(w0) / (2 * qfactor)
+    for i, p in enumerate(pulses):
+        if p.len > field.usectoinpx(10):
+            vsync_locs.append(i)
+            vsync_means.append(
+                np.mean(
+                    field.data["video"]["demod_05"][
+                        int(p.start + field.rf.freq) : int(
+                            p.start + p.len - field.rf.freq
+                        )
+                    ]
+                )
+            )
 
-    cosw0 = math.cos(w0)
-    asquared = math.sqrt(a)
+    if len(vsync_means) == 0:
+        return None
 
-    b0 = a * ((a + 1) + (a - 1) * cosw0 + 2 * asquared * alpha)
-    b1 = -2 * a * ((a - 1) + (a + 1) * cosw0)
-    b2 = a * ((a + 1) + (a - 1) * cosw0 - 2 * asquared * alpha)
-    a0 = (a + 1) - (a - 1) * cosw0 + 2 * asquared * alpha
-    a1 = 2 * ((a - 1) - (a + 1) * cosw0)
-    a2 = (a + 1) - (a - 1) * cosw0 - 2 * asquared * alpha
-    return [b0, b1, b2], [a0, a1, a2]
+    synclevel = np.median(vsync_means)
+
+    if np.abs(field.rf.hztoire(synclevel) - field.rf.SysParams["vsync_ire"]) < 5:
+        # sync level is close enough to use
+        return pulses
+
+    if vsync_locs is None or not len(vsync_locs):
+        return None
+
+    # Now compute black level and try again
+
+    # take the eq pulses before and after vsync
+    r1 = range(vsync_locs[0] - 5, vsync_locs[0])
+    r2 = range(vsync_locs[-1] + 1, vsync_locs[-1] + 6)
+
+    black_means = []
+
+    for i in itertools.chain(r1, r2):
+        if i < 0 or i >= len(pulses):
+            continue
+
+        p = pulses[i]
+        if inrange(p.len, field.rf.freq * 0.75, field.rf.freq * 3):
+            black_means.append(
+                np.mean(
+                    field.data["video"]["demod_05"][
+                        int(p.start + (field.rf.freq * 5)) : int(
+                            p.start + (field.rf.freq * 20)
+                        )
+                    ]
+                )
+            )
+
+    blacklevel = np.median(black_means)
+
+    pulse_hz_min = synclevel - (field.rf.SysParams["hz_ire"] * 10)
+    pulse_hz_max = (blacklevel + synclevel) / 2
+
+    return lddu.findpulses(field.data["video"]["demod_05"], pulse_hz_min, pulse_hz_max)
 
 
 def filter_simple(data, filter_coeffs):
-    fb, fa = filter_coeffs
-    return sps.filtfilt(fb, fa, data, padlen=150)
+    #    fb, fa = filter_coeffs
+    return sps.sosfiltfilt(filter_coeffs, data, padlen=150)
 
 
 # def comb_c_pal(data, linelen):
@@ -509,9 +527,6 @@ def detect_burst_ntsc(
 def detect_burst_ntsc_line(
     chroma_data, sine, cosine, burst_area, line_length, line_number
 ):
-    sf = sine
-    cf = cosine
-
     bi = 0
     bq = 0
     # TODO:
@@ -787,7 +802,7 @@ class FieldPALVHS(ldd.FieldPAL):
         super(FieldPALVHS, self).__init__(*args, **kwargs)
 
     def refine_linelocs_pilot(self, linelocs=None):
-        """Override this as it's LD specific"""
+        """Override this as standard vhs does not use have a pilot burst."""
         if linelocs is None:
             linelocs = self.linelocs2.copy()
         else:
@@ -866,81 +881,7 @@ class FieldPALVHS(ldd.FieldPAL):
 
         NOTE: TEMPORARY override until an override for the value itself is added upstream.
         """
-        # pass one using standard levels
-
-        # pulse_hz range:  vsync_ire - 10, maximum is the 50% crossing point to sync
-        pulse_hz_min = self.rf.iretohz(self.rf.SysParams["vsync_ire"] - 10)
-        pulse_hz_max = self.rf.iretohz(self.rf.SysParams["vsync_ire"] / 2)
-
-        pulses = lddu.findpulses(
-            self.data["video"]["demod_05"], pulse_hz_min, pulse_hz_max
-        )
-
-        if len(pulses) == 0:
-            # can't do anything about this
-            return pulses
-
-        # determine sync pulses from vsync
-        vsync_locs = []
-        vsync_means = []
-
-        for i, p in enumerate(pulses):
-            if p.len > self.usectoinpx(10):
-                vsync_locs.append(i)
-                vsync_means.append(
-                    np.mean(
-                        self.data["video"]["demod_05"][
-                            int(p.start + self.rf.freq) : int(
-                                p.start + p.len - self.rf.freq
-                            )
-                        ]
-                    )
-                )
-
-        if len(vsync_means) == 0:
-            return None
-
-        synclevel = np.median(vsync_means)
-
-        if np.abs(self.rf.hztoire(synclevel) - self.rf.SysParams["vsync_ire"]) < 5:
-            # sync level is close enough to use
-            return pulses
-
-        if vsync_locs is None or not len(vsync_locs):
-            return None
-
-        # Now compute black level and try again
-
-        # take the eq pulses before and after vsync
-        r1 = range(vsync_locs[0] - 5, vsync_locs[0])
-        r2 = range(vsync_locs[-1] + 1, vsync_locs[-1] + 6)
-
-        black_means = []
-
-        for i in itertools.chain(r1, r2):
-            if i < 0 or i >= len(pulses):
-                continue
-
-            p = pulses[i]
-            if inrange(p.len, self.rf.freq * 0.75, self.rf.freq * 3):
-                black_means.append(
-                    np.mean(
-                        self.data["video"]["demod_05"][
-                            int(p.start + (self.rf.freq * 5)) : int(
-                                p.start + (self.rf.freq * 20)
-                            )
-                        ]
-                    )
-                )
-
-        blacklevel = np.median(black_means)
-
-        pulse_hz_min = synclevel - (self.rf.SysParams["hz_ire"] * 10)
-        pulse_hz_max = (blacklevel + synclevel) / 2
-
-        return lddu.findpulses(
-            self.data["video"]["demod_05"], pulse_hz_min, pulse_hz_max
-        )
+        return getpulses_override(self)
 
     def compute_deriv_error(self, linelocs, baserr):
         """Disabled this for now as tapes have large variations in line pos
@@ -1028,6 +969,13 @@ class FieldNTSCVHS(ldd.FieldNTSC):
     def dropout_detect(self):
         return detect_dropouts_rf(self)
 
+    def getpulses(self):
+        """Find sync pulses in the demodulated video sigal
+
+        NOTE: TEMPORARY override until an override for the value itself is added upstream.
+        """
+        return getpulses_override(self)
+
     def compute_deriv_error(self, linelocs, baserr):
         """Disabled this for now as line starts can vary widely."""
         return baserr
@@ -1066,6 +1014,13 @@ class FieldNTSCUMatic(ldd.FieldNTSC):
 
     def dropout_detect(self):
         return detect_dropouts_rf(self)
+
+    def getpulses(self):
+        """Find sync pulses in the demodulated video sigal
+
+        NOTE: TEMPORARY override until an override for the value itself is added upstream.
+        """
+        return getpulses_override(self)
 
     def compute_deriv_error(self, linelocs, baserr):
         """Disabled this for now as line starts can vary widely."""
@@ -1278,7 +1233,7 @@ class VHSRFDecode(ldd.RFDecode):
         )
 
         self.Filters["EnvLowPass"] = sps.butter(
-            8, [1.0 / self.freq_half], btype="lowpass"
+            1, [1.0 / self.freq_half], btype="lowpass"
         )
 
         # Filter for rf before demodulating.
@@ -1320,7 +1275,7 @@ class VHSRFDecode(ldd.RFDecode):
         db, da = FMDeEmphasis(self.freq_hz, tau=DP["deemph_tau"]).get()
 
         self.Filters["FEnvPost"] = sps.butter(
-            1, [1000000 / self.freq_hz_half], btype="lowpass"
+            1, [1000000 / self.freq_hz_half], btype="lowpass", output="sos"
         )
 
         self.Filters["Fdeemp"] = lddu.filtfft((db, da), self.blocklen)
@@ -1333,7 +1288,10 @@ class VHSRFDecode(ldd.RFDecode):
         # TODO: Needs tweaking
         # Note: order will be doubled since we use filtfilt.
         chroma_lowpass = sps.butter(
-            4, [0.05 / self.freq_half, 1.4 / self.freq_half], btype="bandpass"
+            4,
+            [50000 / self.freq_hz_half, DP["chroma_bpf_upper"] / self.freq_hz_half],
+            btype="bandpass",
+            output="sos",
         )  # sps.butter(4, [1.2/self.freq_half], btype='lowpass')
         self.Filters["FVideoBurst"] = chroma_lowpass
 
@@ -1356,6 +1314,7 @@ class VHSRFDecode(ldd.RFDecode):
                 (fsc_mhz + 0.24) / out_frequency_half,
             ],
             btype="bandpass",
+            output="sos",
         )
         self.Filters["FChromaFinal"] = chroma_bandpass_final
 
@@ -1367,6 +1326,7 @@ class VHSRFDecode(ldd.RFDecode):
                 (het_freq + 0.001) / out_frequency_half,
             ],
             btype="bandpass",
+            output="sos",
         )
         samples = np.arange(fieldlen)
 
@@ -1398,17 +1358,17 @@ class VHSRFDecode(ldd.RFDecode):
         # color wave back.
         self.chroma_heterodyne = {}
 
-        self.chroma_heterodyne[0] = sps.filtfilt(
-            het_filter[0], het_filter[1], self.cc_wave * self.fsc_wave
+        self.chroma_heterodyne[0] = sps.sosfiltfilt(
+            het_filter, self.cc_wave * self.fsc_wave
         )
-        self.chroma_heterodyne[1] = sps.filtfilt(
-            het_filter[0], het_filter[1], cc_wave_90 * self.fsc_wave
+        self.chroma_heterodyne[1] = sps.sosfiltfilt(
+            het_filter, cc_wave_90 * self.fsc_wave
         )
-        self.chroma_heterodyne[2] = sps.filtfilt(
-            het_filter[0], het_filter[1], cc_wave_180 * self.fsc_wave
+        self.chroma_heterodyne[2] = sps.sosfiltfilt(
+            het_filter, cc_wave_180 * self.fsc_wave
         )
-        self.chroma_heterodyne[3] = sps.filtfilt(
-            het_filter[0], het_filter[1], cc_wave_270 * self.fsc_wave
+        self.chroma_heterodyne[3] = sps.sosfiltfilt(
+            het_filter, cc_wave_270 * self.fsc_wave
         )
 
     def computedelays(self, mtf_level=0):
@@ -1484,8 +1444,8 @@ class VHSRFDecode(ldd.RFDecode):
             # print("Vsync IRE", self.SysParams["vsync_ire"])
             #            ax2 = ax1.twinx()
             #            ax3 = ax1.twinx()
-            ax1.plot(demod[1:-1], color="#FF0000")
-            ax2.plot(hilbert[1:-1])
+            ax1.plot(hilbert)
+            ax2.plot(out_chroma)
             #            ax4.plot(env, color="#00FF00")
             #            ax3.plot(np.angle(hilbert))
             #            ax4.plot(hilbert.imag)

@@ -246,7 +246,7 @@ vhsd = VHSDecode(
     dod_hysteresis=args.dod_hysteresis,
     track_phase=args.track_phase,
     level_adjust=args.level_adjust,
-    extra_options=extra_options
+    extra_options=extra_options,
 )
 
 signal.signal(signal.SIGINT, original_sigint_handler)
