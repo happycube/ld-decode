@@ -1438,6 +1438,15 @@ class VHSRFDecode(ldd.RFDecode):
         if data is None:
             data = np.fft.ifft(indata_fft).real
 
+        from scipy.signal import hilbert as hilbt
+
+        raw_filtered = np.fft.ifft(indata_fft * self.Filters["RFVideoRaw"]).real
+        # Calculate an evelope with signal strength using absolute of hilbert transform.
+        raw_env = np.abs(hilbt(raw_filtered))
+        env = filter_simple(raw_env, self.Filters["FEnvPost"])
+        # Roll this a bit to compensate for filter delay, value eyballed for now.
+        env = np.roll(env, 4)
+
         indata_fft_filt = indata_fft * self.Filters["RFVideo"]
 
         hilbert = np.fft.ifft(indata_fft_filt)
@@ -1464,17 +1473,10 @@ class VHSRFDecode(ldd.RFDecode):
         # crude DC offset removal
         out_chroma = out_chroma - np.mean(out_chroma)
 
-        from scipy.signal import hilbert as hilbt
-
-        raw_filtered = np.fft.ifft(indata_fft * self.Filters["RFVideoRaw"]).real
-        # Calculate an evelope with signal strength using absolute of hilbert transform.
-        raw_env = np.abs(hilbt(raw_filtered))
-        env = filter_simple(raw_env, self.Filters["FEnvPost"])
-
         if False:
             import matplotlib.pyplot as plt
 
-            fig, (ax1, ax2) = plt.subplots(5, 1, sharex=True)
+            fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True)
             # ax1.plot((20 * np.log10(self.Filters["Fdeemp"])))
             #        ax1.plot(hilbert, color='#FF0000')
             # ax1.plot(data, color="#00FF00")
@@ -1485,8 +1487,11 @@ class VHSRFDecode(ldd.RFDecode):
             # print("Vsync IRE", self.SysParams["vsync_ire"])
             #            ax2 = ax1.twinx()
             #            ax3 = ax1.twinx()
-            ax1.plot(demod, color="#FF0000")
-            ax2.plot(hilbert)
+            ax1.plot(demod[1:-1], color="#FF0000")
+            ax2.plot(hilbert[1:-1])
+            #            ax4.plot(env, color="#00FF00")
+            #            ax3.plot(np.angle(hilbert))
+            #            ax4.plot(hilbert.imag)
             #            crossings = find_crossings(env, 700)
             #            ax3.plot(crossings, color="#0000FF")
             plt.show()
