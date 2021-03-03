@@ -11,7 +11,7 @@ from lddecode.utils import unwrap_hilbert, inrange
 import vhsdecode.utils as utils
 
 import vhsdecode.formats as vhs_formats
-
+from vhsdecode.addons.FMdeemph import FMDeEmphasis
 
 def toDB(val):
     return 20 * np.log10(val)
@@ -1094,6 +1094,7 @@ class VHSDecode(ldd.LDdecode):
         dod_hysteresis=vhs_formats.DEFAULT_HYSTERESIS,
         track_phase=0,
         level_adjust=0.2,
+        extra_options={},
     ):
         super(VHSDecode, self).__init__(
             fname_in,
@@ -1104,6 +1105,7 @@ class VHSDecode(ldd.LDdecode):
             system=system,
             doDOD=doDOD,
             threads=threads,
+            extra_options=extra_options,
         )
         # Adjustment for output to avoid clipping.
         self.level_adjust = level_adjust
@@ -1315,12 +1317,7 @@ class VHSRFDecode(ldd.RFDecode):
         self.Filters["RFVideo"] = y_fm_filter
 
         # Video (luma) de-emphasis
-        # Not sure about the math of this but, by using a high-shelf filter and then
-        # swapping b and a we get a low-shelf filter that goes from 0 to -14 dB rather
-        # than from 14 to 0 which the high shelf function gives.
-        da, db = gen_high_shelf(
-            DP["deemph_corner"] / 1.0e6, DP["deemph_gain"], 1 / 2, inputfreq
-        )
+        db, da = FMDeEmphasis(self.freq_hz, tau=DP["deemph_tau"]).get()
 
         self.Filters["FEnvPost"] = sps.butter(
             1, [1000000 / self.freq_hz_half], btype="lowpass"

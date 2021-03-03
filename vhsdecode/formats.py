@@ -36,11 +36,8 @@ RFParams_PAL_VHS["video_lpf_order"] = 6
 # PAL color under carrier is 40H + 1953
 RFParams_PAL_VHS["color_under_carrier"] = ((625 * 25) * 40) + 1953
 
-# -3dB frequency for deemph filter, subject to change
-# as filter generation isn't quite right at the moment.
-RFParams_PAL_VHS["deemph_corner"] = 260000
-RFParams_PAL_VHS["deemph_gain"] = 15
-
+#Video Y FM de-emphasis (1.25~1.35µs)
+RFParams_PAL_VHS["deemph_tau"] = 1.30e-6
 
 # Band-pass filter for Video rf.
 # TODO: Needs tweaking
@@ -56,7 +53,7 @@ RFParams_NTSC_VHS["video_hpf_extra"] = 1690000
 RFParams_NTSC_VHS["video_hpf_extra_order"] = 1
 
 # Low-pass filter on Y after demodulation
-RFParams_NTSC_VHS["video_lpf_freq"] = 3000000
+RFParams_NTSC_VHS["video_lpf_freq"] = 3200000
 
 # Order may be fine as is.
 RFParams_NTSC_VHS["video_lpf_order"] = 1
@@ -65,8 +62,8 @@ RFParams_NTSC_VHS["video_lpf_order"] = 1
 RFParams_NTSC_VHS["color_under_carrier"] = (525 * (30 / 1.001)) * 40
 RFParams_NTSC_VHS["luma_carrier"] = 455.0 * ((525 * (30 / 1.001)) / 2.0)
 
-RFParams_NTSC_VHS["deemph_corner"] = 260000
-RFParams_NTSC_VHS["deemph_gain"] = 14
+#Video Y FM de-emphasis (1.25~1.35µs)
+RFParams_NTSC_VHS["deemph_tau"] = 1.30e-6
 
 
 RFParams_NTSC_UMATIC["video_bpf_low"] = 3200000
@@ -79,9 +76,9 @@ RFParams_NTSC_UMATIC["video_hpf_extra_order"] = 1
 RFParams_NTSC_UMATIC["video_lpf_freq"] = 4000000
 RFParams_NTSC_UMATIC["video_lpf_order"] = 2
 RFParams_NTSC_UMATIC["color_under_carrier"] = 688373
-# This is prob wrong, just eyeballed for now.
-RFParams_NTSC_UMATIC["deemph_corner"] = 450000
-RFParams_NTSC_UMATIC["deemph_gain"] = 11
+
+#Video Y FM de-emphasis (550 ~ 650ns)
+RFParams_NTSC_UMATIC["deemph_tau"] = 600e-9
 
 SysParams_PAL_VHS = {**SysParams_PAL}
 SysParams_NTSC_VHS = {**SysParams_NTSC}
