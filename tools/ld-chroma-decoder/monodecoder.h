@@ -45,6 +45,8 @@ public:
     MonoDecoder(const MonoDecoder::Configuration &monoConfig);
     bool configure(const LdDecodeMetaData::VideoParameters &videoParameters) override;
     const char *getPixelName() const override;
+    bool isOutputY4m() override;
+    QString getHeaders() const override;
     QThread *makeThread(QAtomicInt& abort, DecoderPool& decoderPool) override;
 
 private:

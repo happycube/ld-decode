@@ -263,10 +263,19 @@ void PalColour::decodeFrames(const QVector<SourceField> &inputFields, qint32 sta
         for (qint32 i = 0; i < outputFrames.size(); i++) {
             outputFrames[i].Y.resize(videoParameters.fieldWidth * frameHeight);
             outputFrames[i].Y.fill(16 * 256);
-            outputFrames[i].Cb.resize(videoParameters.fieldWidth * frameHeight);
-            outputFrames[i].Cb.fill(128 * 256);
-            outputFrames[i].Cr.resize(videoParameters.fieldWidth * frameHeight);
-            outputFrames[i].Cr.fill(128 * 256);
+        }
+        if (configuration.chromaGain > 0) {
+            for (qint32 i = 0; i < outputFrames.size(); i++) {
+                outputFrames[i].Cb.resize(videoParameters.fieldWidth * frameHeight);
+                outputFrames[i].Cb.fill(128 * 256);
+                outputFrames[i].Cr.resize(videoParameters.fieldWidth * frameHeight);
+                outputFrames[i].Cr.fill(128 * 256);
+            }
+        } else {
+            for (qint32 i = 0; i < outputFrames.size(); i++) {
+                outputFrames[i].Cb.clear();
+                outputFrames[i].Cr.clear();
+            }
         }
     } else {
         for (qint32 i = 0; i < outputFrames.size(); i++) {
@@ -611,8 +620,10 @@ void PalColour::decodeLine(const SourceField &inputField, const ChromaSample *ch
 
             // Place the 16-bit YCbCr values in the output arrays
             ptrY[i] = static_cast<quint16>(rY);
-            ptrCb[i] = static_cast<quint16>(u);
-            ptrCr[i] = static_cast<quint16>(v);
+            if (configuration.chromaGain > 0) {
+                ptrCb[i] = static_cast<quint16>(u);
+                ptrCr[i] = static_cast<quint16>(v);
+            }
         }
     } else {
         // Define scan line pointer to RGB output buffer using 16 bit unsigned words
