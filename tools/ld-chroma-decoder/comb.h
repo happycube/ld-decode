@@ -58,6 +58,7 @@ public:
         bool phaseCompensation = false;
 	Decoder::PixelFormat pixelFormat = Decoder::PixelFormat::RGB48;
         bool outputYCbCr = false;
+        bool outputY4m = false;
 
         double cNRLevel = 0.0;
         double yNRLevel = 1.0;

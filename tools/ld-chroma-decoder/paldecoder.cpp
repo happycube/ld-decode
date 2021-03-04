@@ -31,6 +31,7 @@ PalDecoder::PalDecoder(const PalColour::Configuration &palConfig)
 {
     config.pal = palConfig;
     config.outputYCbCr = palConfig.outputYCbCr;
+    config.outputY4m = palConfig.outputY4m;
     config.pixelFormat = palConfig.pixelFormat;
 }
 
@@ -49,7 +50,27 @@ bool PalDecoder::configure(const LdDecodeMetaData::VideoParameters &videoParamet
 
 const char *PalDecoder::getPixelName() const
 {
-    return config.pal.outputYCbCr ? "YUV444P16" : "RGB48";
+    return config.outputYCbCr ?
+           config.pal.chromaGain > 0 ? "YUV444P16" : "GRAY16" : "RGB48";
+}
+
+bool PalDecoder::isOutputY4m()
+{
+    return config.outputY4m;
+}
+
+QString PalDecoder::getHeaders() const
+{
+    QString y4mHeader;
+    qint32 rateN = 25;
+    qint32 rateD = 1;
+    qint32 width = config.videoParameters.activeVideoEnd - config.videoParameters.activeVideoStart;
+    qint32 height = config.topPadLines + config.bottomPadLines +
+                    config.videoParameters.lastActiveFrameLine - config.videoParameters.firstActiveFrameLine;
+    QTextStream(&y4mHeader) << "YUV4MPEG2 W" << width << " H" << height << " F" << rateN << ":" << rateD
+                            << " I" << y4mFieldOrder << " A" << (config.videoParameters.isWidescreen ? Y4M_PAR_PAL_169 : Y4M_PAR_PAL_43)
+                            << (config.pixelFormat == YUV444P16 ? Y4M_CS_YUV444P16 : Y4M_CS_GRAY16);
+    return y4mHeader;
 }
 
 qint32 PalDecoder::getLookBehind() const
