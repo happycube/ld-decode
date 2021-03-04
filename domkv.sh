@@ -14,20 +14,14 @@ ffmpeg -hide_banner -thread_queue_size 1024 -f rawvideo \
     [eq];
     [eq]
       eq=
-      contrast=1.5:
+      contrast=1:
       brightness=0:
-      saturation=2.3:
+      saturation=1:
       gamma=1:
       gamma_r=1:
       gamma_g=1:
       gamma_b=1:
       gamma_weight=1
-    [luma];
-    [luma]
-      unsharp=
-      luma_msize_x=7:
-      luma_msize_y=7:
-      luma_amount=2.5
     [chroma];
     [chroma]
         mergeplanes=0x001112:yuv422p10le

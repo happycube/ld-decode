@@ -63,7 +63,7 @@ RFParams_NTSC_VHS["color_under_carrier"] = (525 * (30 / 1.001)) * 40
 RFParams_NTSC_VHS["luma_carrier"] = 455.0 * ((525 * (30 / 1.001)) / 2.0)
 
 #Video Y FM de-emphasis (1.25~1.35µs)
-RFParams_NTSC_VHS["deemph_tau"] = 1.30e-6
+RFParams_NTSC_VHS["deemph_tau"] = 1.23e-6
 
 
 RFParams_NTSC_UMATIC["video_bpf_low"] = 3200000

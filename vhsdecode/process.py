@@ -1471,7 +1471,7 @@ class VHSRFDecode(ldd.RFDecode):
         if False:
             import matplotlib.pyplot as plt
 
-            fig, (ax1, ax2) = plt.subplots(5, 1, sharex=True)
+            fig, ax1 = plt.subplots()
             # ax1.plot((20 * np.log10(self.Filters["Fdeemp"])))
             #        ax1.plot(hilbert, color='#FF0000')
             # ax1.plot(data, color="#00FF00")
@@ -1483,7 +1483,6 @@ class VHSRFDecode(ldd.RFDecode):
             #            ax2 = ax1.twinx()
             #            ax3 = ax1.twinx()
             ax1.plot(demod, color="#FF0000")
-            ax2.plot(hilbert)
             #            crossings = find_crossings(env, 700)
             #            ax3.plot(crossings, color="#0000FF")
             plt.show()
