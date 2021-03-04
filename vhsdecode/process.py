@@ -1482,7 +1482,7 @@ class VHSRFDecode(ldd.RFDecode):
             # print("Vsync IRE", self.SysParams["vsync_ire"])
             #            ax2 = ax1.twinx()
             #            ax3 = ax1.twinx()
-            ax1.plot(demod, color="#FF0000")
+            ax1.plot(video_out, color="#FF0000")
             #            crossings = find_crossings(env, 700)
             #            ax3.plot(crossings, color="#0000FF")
             plt.show()
