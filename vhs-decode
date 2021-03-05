@@ -170,7 +170,14 @@ parser.add_argument(
     default=None,
     help="If set to 0 or 1, force use of video track phase.",
 )
-
+parser.add_argument(
+    "-sl",
+    "--sharpness",
+    metavar="sharpness",
+    type=int,
+    default=100,
+    help="Sharpness level (0~100)",
+)
 parser.add_argument(
     "-U",
     "--u-matic",
@@ -179,6 +186,8 @@ parser.add_argument(
     default=False,
     help="Decode u-matic",
 )
+
+
 
 parser.add_argument(
     "--noAGC", dest="noAGC", action="store_true", default=False, help="Disable AGC"
@@ -246,6 +255,7 @@ vhsd = VHSDecode(
     dod_hysteresis=args.dod_hysteresis,
     track_phase=args.track_phase,
     level_adjust=args.level_adjust,
+    sharpness_level=args.sharpness,
     extra_options=extra_options,
 )
 
