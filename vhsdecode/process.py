@@ -1065,7 +1065,6 @@ class VHSDecode(ldd.LDdecode):
         )
         # Adjustment for output to avoid clipping.
         self.level_adjust = level_adjust
-
         # Overwrite the rf decoder with the VHS-altered one
         self.rf = VHSRFDecode(
             system=system,
@@ -1183,9 +1182,6 @@ class VHSRFDecode(ldd.RFDecode):
             inputfreq, system, decode_analog_audio=False, has_analog_audio=False
         )
 
-        #controls the sharpness EQ gain
-        self.sharpness_level = sharpness_level / 100
-
         self.dod_threshold_p = dod_threshold_p
         self.dod_threshold_a = dod_threshold_a
         self.dod_hysteresis = dod_hysteresis
@@ -1295,7 +1291,7 @@ class VHSRFDecode(ldd.RFDecode):
         # TODO: Needs tweaking
         # Note: order will be doubled since we use filtfilt.
         chroma_lowpass = sps.butter(
-            4,
+            2,
             [50000 / self.freq_hz_half, DP["chroma_bpf_upper"] / self.freq_hz_half],
             btype="bandpass",
             output="sos",
@@ -1315,7 +1311,7 @@ class VHSRFDecode(ldd.RFDecode):
         # Needs tweaking.
         # Note: order will be doubled since we use filtfilt.
         chroma_bandpass_final = sps.butter(
-            2,
+            1,
             [
                 (fsc_mhz - 0.64) / out_frequency_half,
                 (fsc_mhz + 0.24) / out_frequency_half,
@@ -1386,6 +1382,10 @@ class VHSRFDecode(ldd.RFDecode):
         self.sharpnessFilter = utils.FiltersClass(iir_sharp[0], iir_sharp[1], self.freq_hz)
 
 
+        # Increase the cutoff at the end of blocks to avoid edge distortion from filters
+        # making it through.
+        self.blockcut_end = 1024
+
     def computedelays(self, mtf_level=0):
         """Override computedelays
         It's normally used for dropout compensation, but the dropout compensation implementation
@@ -1396,18 +1396,6 @@ class VHSRFDecode(ldd.RFDecode):
         self.delays = {}
         self.delays["video_sync"] = 0
         self.delays["video_white"] = 0
-
-    def sharpness_EQ(self, demod, out_video):
-        ha = self.sharpnessFilter.filtfilt(demod)
-        hb = self.sharpnessFilter.lfilt(demod)
-        hf = np.append(hb[:10], ha[10:])  # first edge distortion hack
-        gain = 0.6 * self.sharpness_level
-        result = np.multiply(
-                    np.add(np.multiply(gain, hf), out_video),
-                    (1 - gain)
-        )
-        assert len(result) == len(out_video)
-        return result
 
     def demodblock(self, data=None, mtf_level=0, fftdata=None, cut=False):
         rv = {}
@@ -1438,19 +1426,9 @@ class VHSRFDecode(ldd.RFDecode):
         demod = unwrap_hilbert(hilbert, self.freq_hz).real
         demod_fft = np.fft.rfft(demod)
 
-        # applies deemphasis filter
         out_video = np.fft.irfft(
             demod_fft * self.Filters["FVideo"][0 : (self.blocklen // 2) + 1]
         ).real
-
-        # applies sharpness EQ
-        if self.sharpness_level > 0:
-            out_video = self.sharpness_EQ(demod, out_video)
-
-        # DC offset removal of luminance
-        self.min_video_peaks.append(min(out_video))
-        out_video -= utils.moving_average(self.min_video_peaks, window=self.SysParams["frame_lines"])
-        out_video += self.iretohz(self.SysParams['vsync_ire'])
 
         out_video05 = np.fft.irfft(
             demod_fft * self.Filters["FVideo05"][0 : (self.blocklen // 2) + 1]
@@ -1474,14 +1452,14 @@ class VHSRFDecode(ldd.RFDecode):
             # ax1.plot((20 * np.log10(self.Filters["Fdeemp"])))
             #        ax1.plot(hilbert, color='#FF0000')
             # ax1.plot(data, color="#00FF00")
-            ax1.axhline(self.iretohz(0))
-            ax1.axhline(self.iretohz(self.SysParams["vsync_ire"]))
-            ax1.axhline(self.iretohz(7.5))
-            ax1.axhline(self.iretohz(100))
+            #            ax1.axhline(self.iretohz(0))
+            #            ax1.axhline(self.iretohz(self.SysParams["vsync_ire"]))
+            #            ax1.axhline(self.iretohz(7.5))
+            #            ax1.axhline(self.iretohz(100))
             # print("Vsync IRE", self.SysParams["vsync_ire"])
             #            ax2 = ax1.twinx()
             #            ax3 = ax1.twinx()
-            ax1.plot(out_video)
+            ax1.plot(hilbert)
             ax2.plot(out_chroma)
             #            ax4.plot(env, color="#00FF00")
             #            ax3.plot(np.angle(hilbert))
