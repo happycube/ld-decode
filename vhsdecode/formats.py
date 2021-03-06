@@ -57,7 +57,7 @@ RFParams_NTSC_VHS["video_hpf_extra"] = 1690000
 RFParams_NTSC_VHS["video_hpf_extra_order"] = 1
 
 # Low-pass filter on Y after demodulation
-RFParams_NTSC_VHS["video_lpf_freq"] = 3200000
+RFParams_NTSC_VHS["video_lpf_freq"] = 3000000
 
 # Order may be fine as is.
 RFParams_NTSC_VHS["video_lpf_order"] = 1

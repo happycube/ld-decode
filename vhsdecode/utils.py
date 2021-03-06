@@ -16,7 +16,7 @@ def gen_compl_wave_at_frequency(frequency, sample_frequency, num_samples):
     wave_scale = frequency / sample_frequency
     return np.exp(-2 * np.pi * wave_scale * samples * 1j)
 
-# returns the indices of zero cross detection
+# returns the indexes where the signal crosses zero
 def zero_cross_det(data):
     return np.where(np.diff(np.sign(data)))[0]
 
