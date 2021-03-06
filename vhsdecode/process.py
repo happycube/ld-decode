@@ -1288,7 +1288,7 @@ class VHSRFDecode(ldd.RFDecode):
         # TODO: Needs tweaking
         # Note: order will be doubled since we use filtfilt.
         chroma_lowpass = sps.butter(
-            4,
+            2,
             [50000 / self.freq_hz_half, DP["chroma_bpf_upper"] / self.freq_hz_half],
             btype="bandpass",
             output="sos",
@@ -1308,7 +1308,7 @@ class VHSRFDecode(ldd.RFDecode):
         # Needs tweaking.
         # Note: order will be doubled since we use filtfilt.
         chroma_bandpass_final = sps.butter(
-            2,
+            1,
             [
                 (fsc_mhz - 0.64) / out_frequency_half,
                 (fsc_mhz + 0.24) / out_frequency_half,
@@ -1370,6 +1370,10 @@ class VHSRFDecode(ldd.RFDecode):
         self.chroma_heterodyne[3] = sps.sosfiltfilt(
             het_filter, cc_wave_270 * self.fsc_wave
         )
+
+        # Increase the cutoff at the end of blocks to avoid edge distortion from filters
+        # making it through.
+        self.blockcut_end = 1024
 
     def computedelays(self, mtf_level=0):
         """Override computedelays
